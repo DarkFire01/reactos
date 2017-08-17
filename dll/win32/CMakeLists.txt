@@ -27,7 +27,7 @@ add_subdirectory(comdlg32)
 add_subdirectory(compstui)
 add_subdirectory(credui)
 if(ARCH STREQUAL "i386")
-    #add_subdirectory(crtdll) # only built on x86
+    add_subdirectory(crtdll) # only built on x86
 endif()
 add_subdirectory(crypt32)
 add_subdirectory(cryptdlg)
