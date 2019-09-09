@@ -131,7 +131,10 @@ BOOLEAN
 WinLdrAddDriverToList(LIST_ENTRY *BootDriverListHead,
                       PWSTR RegistryPath,
                       PWSTR ImagePath,
-                      PWSTR ServiceName);
+                      PWSTR ServiceName,
+                      PWSTR GroupName,
+                      ULONG ErrorControl,
+                      ULONG Tag);
 
 VOID
 WinLdrpDumpMemoryDescriptors(PLOADER_PARAMETER_BLOCK LoaderBlock);

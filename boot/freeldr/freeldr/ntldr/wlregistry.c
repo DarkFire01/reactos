@@ -105,7 +105,10 @@ WinLdrLoadSystemHive(
         Success = WinLdrAddDriverToList(&LoaderBlock->BootDriverListHead,
                                         L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\",
                                         NULL,
-                                        (PWSTR)FsService);
+                                        (PWSTR)FsService,
+                                        L"FileSystem",
+                                        1,
+                                        (ULONG)-1);
         if (!Success)
             TRACE("Failed to add filesystem service\n");
     }
@@ -514,6 +517,7 @@ WinLdrScanRegistry(IN OUT PLIST_ENTRY BootDriverListHead,
     ULONG ValueType;
     ULONG StartValue;
     ULONG TagValue;
+    ULONG ErrorControl;
     WCHAR DriverGroup[256];
     ULONG DriverGroupSize;
 
@@ -618,6 +622,11 @@ WinLdrScanRegistry(IN OUT PLIST_ENTRY BootDriverListHead,
                 rc = RegQueryValue(hDriverKey, L"Group", NULL, (PUCHAR)DriverGroup, &DriverGroupSize);
                 //TRACE_CH(REACTOS, "  Group: '%S'\n", DriverGroup);
 
+                /* Read the error control value */
+                ValueSize = sizeof(ULONG);
+                rc = RegQueryValue(hDriverKey, L"ErrorControl", &ValueType, (PUCHAR)&ErrorControl, &ValueSize);
+                if (rc != ERROR_SUCCESS) ErrorControl = 0;
+
                 /* Make sure it should be started */
                 if ((StartValue == 0) &&
                     (TagValue == OrderList[TagIndex]) &&
@@ -649,7 +658,10 @@ WinLdrScanRegistry(IN OUT PLIST_ENTRY BootDriverListHead,
                     Success = WinLdrAddDriverToList(BootDriverListHead,
                                                     L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\",
                                                     TempImagePath,
-                                                    ServiceName);
+                                                    ServiceName,
+                                                    DriverGroup,
+                                                    ErrorControl,
+                                                    TagValue);
                     if (!Success)
                         ERR("Failed to add boot driver\n");
                 }
@@ -693,6 +705,11 @@ WinLdrScanRegistry(IN OUT PLIST_ENTRY BootDriverListHead,
             rc = RegQueryValue(hDriverKey, L"Group", NULL, (PUCHAR)DriverGroup, &DriverGroupSize);
             //TRACE_CH(REACTOS, "  Group: '%S'\n", DriverGroup);
 
+            /* Read the error control value */
+            ValueSize = sizeof(ULONG);
+            rc = RegQueryValue(hDriverKey, L"ErrorControl", &ValueType, (PUCHAR)&ErrorControl, &ValueSize);
+            if (rc != ERROR_SUCCESS) ErrorControl = 0;
+
             for (TagIndex = 1; TagIndex <= OrderList[0]; TagIndex++)
             {
                 if (TagValue == OrderList[TagIndex]) break;
@@ -724,7 +741,10 @@ WinLdrScanRegistry(IN OUT PLIST_ENTRY BootDriverListHead,
                 Success = WinLdrAddDriverToList(BootDriverListHead,
                                                 L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\",
                                                 TempImagePath,
-                                                ServiceName);
+                                                ServiceName,
+                                                DriverGroup,
+                                                ErrorControl,
+                                                TagValue);
                 if (!Success)
                     ERR(" Failed to add boot driver\n");
             }
@@ -795,7 +815,10 @@ BOOLEAN
 WinLdrAddDriverToList(LIST_ENTRY *BootDriverListHead,
                       PWSTR RegistryPath,
                       PWSTR ImagePath,
-                      PWSTR ServiceName)
+                      PWSTR ServiceName,
+                      PWSTR GroupName,
+                      ULONG ErrorControl,
+                      ULONG Tag)
 {
     PBOOT_DRIVER_LIST_ENTRY BootDriverEntry;
     NTSTATUS Status;
@@ -899,6 +922,38 @@ WinLdrAddDriverToList(LIST_ENTRY *BootDriverListHead,
         FrLdrHeapFree(BootDriverEntry, TAG_WLDR_BDE);
         return FALSE;
     }
+
+    BootDriverEntry->ServiceName.Length = wcslen(ServiceName) * sizeof(WCHAR);
+    BootDriverEntry->ServiceName.MaximumLength = BootDriverEntry->ServiceName.Length;
+    BootDriverEntry->ServiceName.Buffer = FrLdrHeapAlloc(BootDriverEntry->ServiceName.Length, TAG_WLDR_NAME);
+    if (!BootDriverEntry->ServiceName.Buffer)
+        return FALSE;
+
+    RtlCopyMemory(BootDriverEntry->ServiceName.Buffer, ServiceName, BootDriverEntry->ServiceName.Length);
+
+    if (GroupName)
+    {
+        BootDriverEntry->GroupName.Length = wcslen(GroupName) * sizeof(WCHAR);
+        BootDriverEntry->GroupName.MaximumLength = BootDriverEntry->GroupName.Length;
+        BootDriverEntry->GroupName.Buffer = FrLdrHeapAlloc(BootDriverEntry->GroupName.Length, TAG_WLDR_NAME);
+        if (!BootDriverEntry->GroupName.Buffer)
+            return FALSE;
+
+        RtlCopyMemory(BootDriverEntry->GroupName.Buffer, GroupName, BootDriverEntry->GroupName.Length);
+    }
+    else
+    {
+        BootDriverEntry->GroupName.Length = 0;
+        BootDriverEntry->GroupName.MaximumLength = 0;
+        BootDriverEntry->GroupName.Buffer = NULL;
+    }
+
+    BootDriverEntry->Status = STATUS_SUCCESS;
+    BootDriverEntry->unk1 = 0;
+    BootDriverEntry->Tag = Tag;
+    BootDriverEntry->ErrorControl = ErrorControl;
+    BootDriverEntry->unk2 = NULL;
+    BootDriverEntry->unk3 = NULL;
 
     // Insert entry into the list
     if (!InsertInBootDriverList(BootDriverListHead, BootDriverEntry))
