@@ -153,7 +153,7 @@ VOID
 WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock);
 
 VOID
-WinLdrSetProcessorContext(VOID);
+WinLdrSetProcessorContext(USHORT OperatingSystemVersion);
 
 // arch/xxx/winldr.c
 BOOLEAN
