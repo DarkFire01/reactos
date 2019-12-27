@@ -7,6 +7,9 @@
 #ifndef NTFSLIB_H
 #define NTFSLIB_H
 
+
+/* INCLUDES ******************************************************************/
+
 #include <ndk/iofuncs.h>
 #include <ndk/obfuncs.h>
 #include <ndk/rtlfuncs.h>
@@ -14,20 +17,24 @@
 #include <ndk/umtypes.h>
 #include <fmifs/fmifs.h>
 
-#define BOOT_SECTOR_END  0x55AA
+
+/* DEFINES *******************************************************************/
 
 #define BPB_BYTES_PER_SECTOR     512
-
 #define BPB_WINXP_HIDDEN_SECTORS 0x3F
 #define BPB_WIN7_HIDDEN_SECTORS  0x800
-
 #define BPB_HEADS  0xFF
 
 #define EBPB_HEADER 0x80008000
 
 #define MFT_LOCATION  0x0C0000
 #define CLUSTER_PER_MFT_RECORD     0xF6
-#define CLUSTERS_PER_INDEX_RECORD  0x01  //check this
+#define CLUSTERS_PER_INDEX_RECORD  0x01  // TODO: Recheck the correctness of the value
+
+#define BOOT_SECTOR_END  0x55AA
+
+
+/* STRUCTURES ****************************************************************/
 
 #include <pshpack1.h>
 
@@ -35,13 +42,13 @@ typedef struct _BIOS_PARAMETERS_BLOCK
 {
     USHORT    BytesPerSector;      // 0x0B
     UCHAR     SectorsPerCluster;   // 0x0D
-    UCHAR     Unused0[7];          // 0x0E, checked when volume is mounted
+    UCHAR     Unused0[7];          // 0x0E
     UCHAR     MediaId;             // 0x15
     USHORT    Unused1;             // 0x16
     USHORT    SectorsPerTrack;     // 0x18
     USHORT    Heads;               // 0x1A
     DWORD32   HiddenSectorsCount;  // 0x1C
-    DWORD32   Unused2;             // 0x20, checked when volume is mounted
+    DWORD32   Unused2;             // 0x20
 } BIOS_PARAMETERS_BLOCK, *PBIOS_PARAMETERS_BLOCK;
 
 typedef struct _EXTENDED_BIOS_PARAMETERS_BLOCK
@@ -69,6 +76,9 @@ typedef struct _BOOT_SECTOR
 } BOOT_SECTOR, *PBOOT_SECTOR;
 
 #include <poppack.h>
+
+
+/* PROTOTYPES ****************************************************************/
 
 ULONG NTAPI NtGetTickCount(VOID);
 

@@ -8,10 +8,10 @@
 
 /* INCLUDES ******************************************************************/
 
-#include "ntfslib.h"
-
 #define NDEBUG
 #include <debug.h>
+
+#include "ntfslib.h"
 
 
 /* MACROSES ******************************************************************/
@@ -25,7 +25,7 @@ static
 ULONGLONG
 CalcVolumeSerialNumber(VOID)
 {
-    //todo test that
+    // TODO: Ñheck the correctness of the generated serial number
 
     BYTE  i;
     ULONG r;
@@ -39,7 +39,7 @@ CalcVolumeSerialNumber(VOID)
         r = RtlRandom(&seed);
 
         serial |= ((r & 0xff00) >> 8) << (i * 8);
-        serial |= ((r & 0xff)) << (i * 8 + 8);
+        serial |= ((r & 0xff)) << (i * 8 * 2);
     }
 
     return serial;
@@ -59,9 +59,9 @@ WriteJumpInstruction(OUT PBOOT_SECTOR pbs)
 
 static
 VOID
-WriteBiosParametrsBlock(OUT PBIOS_PARAMETERS_BLOCK bpb,
-                        IN  GET_LENGTH_INFORMATION* gli,
-                        IN  PDISK_GEOMETRY dg)
+WriteBiosParametersBlock(OUT PBIOS_PARAMETERS_BLOCK bpb,
+                         IN  GET_LENGTH_INFORMATION* gli,
+                         IN  PDISK_GEOMETRY dg)
 {
     bpb->BytesPerSector = BPB_BYTES_PER_SECTOR;
 
@@ -83,23 +83,20 @@ WriteBiosParametrsBlock(OUT PBIOS_PARAMETERS_BLOCK bpb,
     }
 
     bpb->MediaId = (dg->MediaType == FixedMedia) ? 0xF8 : 0x00;
-
     bpb->SectorsPerTrack = dg->SectorsPerTrack;
-
     bpb->Heads = BPB_HEADS;
-
     bpb->HiddenSectorsCount = BPB_WINXP_HIDDEN_SECTORS;
 }
 
 static
 VOID
-WriteExBiosParametrsBlock(OUT PEXTENDED_BIOS_PARAMETERS_BLOCK ebpb,
-                          IN  GET_LENGTH_INFORMATION* gli,
-                          IN  PDISK_GEOMETRY dg)
+WriteExBiosParametersBlock(OUT PEXTENDED_BIOS_PARAMETERS_BLOCK ebpb,
+                           IN  GET_LENGTH_INFORMATION* gli,
+                           IN  PDISK_GEOMETRY dg)
 {
     ebpb->Header      = EBPB_HEADER;
     ebpb->SectorCount = 
-        ((ULONGLONG) dg->SectorsPerTrack) *
+        ((ULONGLONG) dg->SectorsPerTrack)   *
         ((ULONGLONG) dg->TracksPerCylinder) * 
         ((ULONGLONG) dg->Cylinders.QuadPart);
 
@@ -121,25 +118,28 @@ WriteBootSector(IN HANDLE h,
     PBOOT_SECTOR    BootSector;
     NTSTATUS        Status;
     IO_STATUS_BLOCK IoStatusBlock;
-    LARGE_INTEGER   FileOffset;
 
+    // Allocate memory
     BootSector = RtlAllocateHeap(RtlGetProcessHeap(), 0, sizeof(BOOT_SECTOR));
-
     if (BootSector == NULL)
+    {
         return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
+    // Clear memory
     RtlZeroMemory(BootSector, sizeof(BOOT_SECTOR));
 
+    // Fill boot sector structure
     WriteJumpInstruction(BootSector);
 
-    BootSector->OEMID.QuadPart = 0x202020205346544E;
+    BootSector->OEMID.QuadPart = 0x202020205346544E;  // NTFS   
 
-    WriteBiosParametrsBlock(&(BootSector->BPB), gli, dg);
-    WriteExBiosParametrsBlock(&(BootSector->EBPB), gli, dg);
+    WriteBiosParametersBlock(&(BootSector->BPB), gli, dg);
+    WriteExBiosParametersBlock(&(BootSector->EBPB), gli, dg);
 
     BootSector->EndSector = BOOT_SECTOR_END;
 
-    FileOffset.QuadPart = 0ULL;
+    // Write to disk
     Status = NtWriteFile(h,
                          NULL,
                          NULL,
@@ -147,16 +147,17 @@ WriteBootSector(IN HANDLE h,
                          &IoStatusBlock,
                          BootSector,
                          sizeof(BOOT_SECTOR),
-                         &FileOffset,
+                         0L,
                          NULL);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("BootSector write failed. NtWriteFile() failed (Status %lx)\n", Status);
-        goto done;
     }
 
 done:
+    // Clear memory
     RtlFreeHeap(RtlGetProcessHeap(), 0, BootSector);
+    
     return Status;
 }
 
@@ -179,6 +180,7 @@ NtfsFormat(IN PUNICODE_STRING DriveRoot,
 
     InitializeObjectAttributes(&Attributes, DriveRoot, 0, NULL, NULL);
 
+    // Open volume
     Status = NtOpenFile(&FileHandle,
                         FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE,
                         &Attributes,
@@ -191,6 +193,7 @@ NtfsFormat(IN PUNICODE_STRING DriveRoot,
         return Status;
     }
 
+    // Get length info
     Status = NtDeviceIoControlFile(FileHandle, 
                                    NULL,
                                    NULL,
@@ -208,6 +211,7 @@ NtfsFormat(IN PUNICODE_STRING DriveRoot,
         return Status;
     }
 
+    // Get disk geometry
     Status = NtDeviceIoControlFile(FileHandle, 
                                    NULL,
                                    NULL, 
@@ -225,12 +229,14 @@ NtfsFormat(IN PUNICODE_STRING DriveRoot,
         return Status;
     }
 
+    // Initialize progress bar
     if (Callback)
     {
         ULONG pc = 0;
         Callback(PROGRESS, 0, (PVOID)&pc);
     }
 
+    // Lock volume
     NtFsControlFile(FileHandle, 
                     NULL,
                     NULL,
@@ -242,6 +248,7 @@ NtfsFormat(IN PUNICODE_STRING DriveRoot,
                     NULL,
                     0);
 
+    // Write boot sector
     Status = WriteBootSector(FileHandle, &LengthInformation, &DiskGeometry);
     if (!NT_SUCCESS(Status))
     {
@@ -251,11 +258,15 @@ NtfsFormat(IN PUNICODE_STRING DriveRoot,
     }
 
 end:
+
+    // Dismount and unlock volume
     NtFsControlFile(FileHandle, NULL, NULL, NULL, &Iosb, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0);
     NtFsControlFile(FileHandle, NULL, NULL, NULL, &Iosb, FSCTL_UNLOCK_VOLUME, NULL, 0, NULL, 0);
 
+    // Clear memory
     NtClose(FileHandle);
 
+    // Update progress bar
     if (Callback)
     {
         BOOL success = NT_SUCCESS(Status);
@@ -266,13 +277,15 @@ end:
 }
 
 
+/* NTFS CHECK DISK FUNCTIONS *****************************************************/
+
 NTSTATUS NTAPI
 NtfsChkdsk(IN PUNICODE_STRING DriveRoot,
-    IN BOOLEAN FixErrors,
-    IN BOOLEAN Verbose,
-    IN BOOLEAN CheckOnlyIfDirty,
-    IN BOOLEAN ScanDrive,
-    IN PFMIFSCALLBACK Callback)
+           IN BOOLEAN FixErrors,
+           IN BOOLEAN Verbose,
+           IN BOOLEAN CheckOnlyIfDirty,
+           IN BOOLEAN ScanDrive,
+           IN PFMIFSCALLBACK Callback)
 {
     // STUB
 
