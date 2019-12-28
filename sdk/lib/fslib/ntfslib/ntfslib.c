@@ -8,10 +8,10 @@
 
 /* INCLUDES ******************************************************************/
 
+#include "ntfslib.h"
+
 #define NDEBUG
 #include <debug.h>
-
-#include "ntfslib.h"
 
 
 /* MACROSES ******************************************************************/
@@ -154,7 +154,6 @@ WriteBootSector(IN HANDLE h,
         DPRINT1("BootSector write failed. NtWriteFile() failed (Status %lx)\n", Status);
     }
 
-done:
     // Clear memory
     RtlFreeHeap(RtlGetProcessHeap(), 0, BootSector);
     
