@@ -22,7 +22,7 @@
 
 #define BPB_BYTES_PER_SECTOR     512
 #define BPB_WINXP_HIDDEN_SECTORS 0x3F
-#define BPB_WIN7_HIDDEN_SECTORS  0x800
+#define BPB_WIN7_HIDDEN_SECTORS  0x0800
 #define BPB_HEADS  0xFF
 
 #define EBPB_HEADER 0x80008000
@@ -31,7 +31,7 @@
 #define CLUSTER_PER_MFT_RECORD     0xF6
 #define CLUSTERS_PER_INDEX_RECORD  0x01  // TODO: Recheck the correctness of the value
 
-#define BOOT_SECTOR_END  0x55AA
+#define BOOT_SECTOR_END  0xAA55
 
 
 /* STRUCTURES ****************************************************************/
@@ -76,7 +76,6 @@ typedef struct _BOOT_SECTOR
 } BOOT_SECTOR, *PBOOT_SECTOR;
 
 #include <poppack.h>
-
 
 /* PROTOTYPES ****************************************************************/
 
