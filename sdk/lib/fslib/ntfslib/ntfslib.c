@@ -18,35 +18,24 @@
 
 #define MB_TO_B(x) (x * 1024)
 
-
-/* HELPERS FUNCTIONS *********************************************************/
-
-static
-ULONGLONG
-CalcVolumeSerialNumber(VOID)
+VOID
+GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime)
 {
-    // TODO: Ñheck the correctness of the generated serial number
+    LARGE_INTEGER SystemTime;
 
-    BYTE  i;
-    ULONG r;
-    ULONG seed;
-    ULONGLONG serial;
-
-    seed = NtGetTickCount();
-
-    for (i = 0; i < 32; i += 2)
+    do
     {
-        r = RtlRandom(&seed);
+        SystemTime.HighPart = SharedUserData->SystemTime.High1Time;
+        SystemTime.LowPart = SharedUserData->SystemTime.LowPart;
+    } while (SystemTime.HighPart != SharedUserData->SystemTime.High2Time);
 
-        serial |= ((r & 0xff00) >> 8) << (i * 8);
-        serial |= ((r & 0xff)) << (i * 8 * 2);
-    }
-
-    return serial;
+    lpFileTime->dwLowDateTime = SystemTime.LowPart;
+    lpFileTime->dwHighDateTime = SystemTime.HighPart;
 }
 
+#define KeQuerySystemTime(t)     GetSystemTimeAsFileTime((LPFILETIME)(t));
 
-/* NTFS FORMAT FUNCTIONS *****************************************************/
+/* NTFS BOOT SECTOR **********************************************************/
 
 static
 VOID
@@ -86,6 +75,30 @@ WriteBiosParametersBlock(OUT PBIOS_PARAMETERS_BLOCK bpb,
     bpb->SectorsPerTrack = dg->SectorsPerTrack;
     bpb->Heads = BPB_HEADS;
     bpb->HiddenSectorsCount = BPB_WINXP_HIDDEN_SECTORS;
+}
+
+static
+ULONGLONG
+CalcVolumeSerialNumber(VOID)
+{
+    // TODO: Ñheck the correctness of the generated serial number
+
+    BYTE  i;
+    ULONG r;
+    ULONG seed;
+    ULONGLONG serial;
+
+    seed = NtGetTickCount();
+
+    for (i = 0; i < 32; i += 2)
+    {
+        r = RtlRandom(&seed);
+
+        serial |= ((r & 0xff00) >> 8) << (i * 8);
+        serial |= ((r & 0xff)) << (i * 8 * 2);
+    }
+
+    return serial;
 }
 
 static
@@ -159,6 +172,247 @@ WriteBootSector(IN HANDLE h,
     
     return Status;
 }
+
+
+/* ATTRIBUTES FUNCTIONS ******************************************************/
+
+static
+VOID
+SetFileRecordEnd(PFILE_RECORD_HEADER FileRecord,
+    PNTFS_ATTR_RECORD AttrEnd,
+    ULONG EndMarker)
+{
+    // Ensure AttrEnd is aligned on an 8-byte boundary, relative to FileRecord
+    ASSERT(((ULONG_PTR)AttrEnd - (ULONG_PTR)FileRecord) % ATTR_RECORD_ALIGNMENT == 0);
+
+    // mark the end of attributes
+    AttrEnd->Type = AttributeEnd;
+
+    // Restore the "file-record-end marker." The value is never checked but this behavior is consistent with Win2k3.
+    AttrEnd->Length = EndMarker;
+
+    // recalculate bytes in use
+    FileRecord->BytesInUse = (ULONG_PTR)AttrEnd - (ULONG_PTR)FileRecord + sizeof(ULONG) * 2;
+}
+
+static
+VOID
+AddStandardInformation(OUT PFILE_RECORD_HEADER FileRecord,
+                       OUT PNTFS_ATTR_RECORD   AttributeAddress)
+{
+    ULONG ResidentHeaderLength = FIELD_OFFSET(NTFS_ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR);
+    PSTANDARD_INFORMATION StandardInfo = (PSTANDARD_INFORMATION)((LONG_PTR)AttributeAddress + ResidentHeaderLength);
+    LARGE_INTEGER SystemTime;
+    ULONG FileRecordEnd = AttributeAddress->Length;
+
+    AttributeAddress->Type   = AttributeStandardInformation;
+    AttributeAddress->Length = sizeof(STANDARD_INFORMATION) + ResidentHeaderLength;
+    AttributeAddress->Length = ALIGN_UP_BY(AttributeAddress->Length, ATTR_RECORD_ALIGNMENT);
+    AttributeAddress->Resident.ValueLength = sizeof(STANDARD_INFORMATION);
+    AttributeAddress->Resident.ValueOffset = ResidentHeaderLength;
+    AttributeAddress->Instance = FileRecord->NextAttributeNumber++;
+
+    // Set dates and times
+    KeQuerySystemTime(&SystemTime);
+    StandardInfo->CreationTime   = SystemTime.QuadPart;
+    StandardInfo->ChangeTime     = SystemTime.QuadPart;
+    StandardInfo->LastWriteTime  = SystemTime.QuadPart;
+    StandardInfo->LastAccessTime = SystemTime.QuadPart;
+    StandardInfo->FileAttribute  = NTFS_FILE_TYPE_ARCHIVE;
+
+    // Move the attribute-end and file-record-end markers to the end of the file record
+    AttributeAddress = (PNTFS_ATTR_RECORD)((ULONG_PTR)AttributeAddress + AttributeAddress->Length);
+    SetFileRecordEnd(FileRecord, AttributeAddress, FileRecordEnd);
+}
+
+static
+VOID
+AddFileName(OUT PFILE_RECORD_HEADER FileRecord,
+            OUT PNTFS_ATTR_RECORD   AttributeAddress,
+            IN  DWORD32             MftRecordNumber)
+{
+    ULONG ResidentHeaderLength = FIELD_OFFSET(NTFS_ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR);
+    PFILENAME_ATTRIBUTE FileNameAttribute;
+    ULONG FileRecordEnd = AttributeAddress->Length;
+    UNICODE_STRING FilenameNoPath;
+    LARGE_INTEGER SystemTime;
+
+    AttributeAddress->Type     = AttributeFileName;
+    AttributeAddress->Instance = FileRecord->NextAttributeNumber++;
+
+    FileNameAttribute = (PFILENAME_ATTRIBUTE)((LONG_PTR)AttributeAddress + ResidentHeaderLength);
+
+    // Set dates and times
+    KeQuerySystemTime(&SystemTime);
+    FileNameAttribute->CreationTime   = SystemTime.QuadPart;
+    FileNameAttribute->ChangeTime     = SystemTime.QuadPart;
+    FileNameAttribute->LastWriteTime  = SystemTime.QuadPart;
+    FileNameAttribute->LastAccessTime = SystemTime.QuadPart;
+
+    if (FileRecord->Flags & MFT_RECORD_IS_DIRECTORY)
+    {
+        FileNameAttribute->FileAttributes = NTFS_FILE_TYPE_DIRECTORY;
+    }
+    else
+    {
+        FileNameAttribute->FileAttributes = NTFS_FILE_TYPE_ARCHIVE;
+    }
+
+    FileNameAttribute->DirectoryFileReferenceNumber = MftRecordNumber;
+
+    FileNameAttribute->DirectoryFileReferenceNumber |= (ULONGLONG) NTFS_FILE_ROOT << 48;
+
+    FileNameAttribute->NameLength = FilenameNoPath.Length / sizeof(WCHAR);
+    RtlCopyMemory(FileNameAttribute->Name, FilenameNoPath.Buffer, FilenameNoPath.Length);
+
+    // For now, we're emulating the way Windows behaves when 8.3 name generation is disabled
+    if (RtlIsNameLegalDOS8Dot3(&FilenameNoPath, NULL, NULL))
+        FileNameAttribute->NameType = NTFS_FILE_NAME_WIN32_AND_DOS;
+    else
+        FileNameAttribute->NameType = NTFS_FILE_NAME_POSIX;
+
+    FileRecord->LinkCount++;
+
+    AttributeAddress->Length =
+        ResidentHeaderLength +
+        FIELD_OFFSET(FILENAME_ATTRIBUTE, Name) +
+        FilenameNoPath.Length;
+
+    AttributeAddress->Length = ALIGN_UP_BY(AttributeAddress->Length, ATTR_RECORD_ALIGNMENT);
+
+    AttributeAddress->Resident.ValueLength = FIELD_OFFSET(FILENAME_ATTRIBUTE, Name) + FilenameNoPath.Length;
+    AttributeAddress->Resident.ValueOffset = ResidentHeaderLength;
+    AttributeAddress->Resident.Flags       = RA_INDEXED;
+
+    // Move the attribute-end and file-record-end markers to the end of the file record
+    AttributeAddress = (PNTFS_ATTR_RECORD)((ULONG_PTR)AttributeAddress + AttributeAddress->Length);
+    SetFileRecordEnd(FileRecord, AttributeAddress, FileRecordEnd);
+}
+
+void
+AddData(OUT PFILE_RECORD_HEADER FileRecord,
+        OUT PNTFS_ATTR_RECORD AttributeAddress)
+{
+    ULONG ResidentHeaderLength = FIELD_OFFSET(NTFS_ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR);
+    ULONG FileRecordEnd = AttributeAddress->Length;
+
+    AttributeAddress->Type   = AttributeData;
+    AttributeAddress->Length = ResidentHeaderLength;
+    AttributeAddress->Length = ALIGN_UP_BY(AttributeAddress->Length, ATTR_RECORD_ALIGNMENT);
+    AttributeAddress->Resident.ValueLength = 0;
+    AttributeAddress->Resident.ValueOffset = ResidentHeaderLength;
+
+    // For unnamed $DATA attributes, NameOffset equals header length
+    AttributeAddress->NameOffset = ResidentHeaderLength;
+    AttributeAddress->Instance = FileRecord->NextAttributeNumber++;
+
+    // Move the attribute-end and file-record-end markers to the end of the file record
+    AttributeAddress = (PNTFS_ATTR_RECORD)((ULONG_PTR)AttributeAddress + AttributeAddress->Length);
+    SetFileRecordEnd(FileRecord, AttributeAddress, FileRecordEnd);
+}
+
+
+/* FILES FUNCTIONS ***********************************************************/
+
+// Create empty file record
+static
+PFILE_RECORD_HEADER
+NtfsCreateEmptyFileRecord(IN DWORD32 MftRecordNumber)
+{
+    PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_RECORD NextAttribute;
+
+    DPRINT("NtfsCreateEmptyFileRecord(%d)\n", MftRecordNumber);
+
+    // Allocate memory for file record
+    FileRecord = RtlAllocateHeap(RtlGetProcessHeap(), 0, MFT_RECORD_SIZE);
+    if (!FileRecord)
+    {
+        DPRINT1("ERROR: Unable to allocate memory for file record!\n");
+        return NULL;
+    }
+
+    RtlZeroMemory(FileRecord, MFT_RECORD_SIZE);
+
+    FileRecord->Header.Magic    = NRH_FILE_TYPE;
+    FileRecord->MFTRecordNumber = MftRecordNumber;
+
+    // Calculate USA offset and count
+    FileRecord->Header.UsaOffset = FIELD_OFFSET(FILE_RECORD_HEADER, MFTRecordNumber) + sizeof(ULONG);  // Check this!
+
+    // Size of USA (in ULONG's) will be 1 (for USA number) + 1 for every sector the file record uses
+    FileRecord->BytesAllocated  = MFT_RECORD_SIZE;
+    FileRecord->Header.UsaCount = (FileRecord->BytesAllocated / BPB_BYTES_PER_SECTOR) + 1;  // Check this!
+
+    // Setup other file record fields
+    FileRecord->SequenceNumber  = 1;
+    FileRecord->AttributeOffset = FileRecord->Header.UsaOffset + (2 * FileRecord->Header.UsaCount);
+    FileRecord->AttributeOffset = ALIGN_UP_BY(FileRecord->AttributeOffset, ATTR_RECORD_ALIGNMENT);
+    FileRecord->Flags           = MFT_RECORD_IN_USE;
+    FileRecord->BytesInUse      = FileRecord->AttributeOffset + sizeof(ULONG) * 2;
+
+    // Find where the first attribute will be added
+    NextAttribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + FileRecord->AttributeOffset);
+
+    // Temporary mark the end of the file-record
+    NextAttribute->Type = AttributeEnd;
+    NextAttribute->Length = FILE_RECORD_END;
+
+    return FileRecord;
+}
+
+// Create file record with default attributes
+static
+PFILE_RECORD_HEADER
+NtfsCreateBlankFileRecord(IN DWORD32 MftRecordNumber)
+{
+    PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_RECORD   NextAttribute;
+
+    // Create empty file record
+    FileRecord = NtfsCreateEmptyFileRecord(MftRecordNumber);
+    if (!FileRecord)
+    {
+        DPRINT1("ERROR: Unable to allocate memory for file record!\n");
+        return NULL;
+    }
+
+    // Find where the first attribute will be added
+    NextAttribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + FileRecord->AttributeOffset);
+
+    // Add $STANDARD_INFORMATION attribute
+    AddStandardInformation(FileRecord, NextAttribute);
+
+    // Calculate pointer to the next attribute
+    NextAttribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)NextAttribute + (ULONG_PTR)NextAttribute->Length);
+
+    // Add the $FILE_NAME attribute
+    AddFileName(FileRecord, NextAttribute, MftRecordNumber);
+
+    // Calculate pointer to the next attribute
+    NextAttribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)NextAttribute + (ULONG_PTR)NextAttribute->Length);
+
+    // Add the $DATA attribute
+    AddData(FileRecord, NextAttribute);
+
+    return FileRecord;
+}
+
+static
+NTSTATUS
+WriteMetafiles(IN HANDLE h)
+{
+    NTSTATUS Status;
+
+    NtfsCreateBlankFileRecord(0);
+
+    Status = STATUS_SUCCESS;
+
+    return Status;
+}
+
+
+/* COMMON ********************************************************************/
 
 NTSTATUS NTAPI
 NtfsFormat(IN PUNICODE_STRING DriveRoot,
@@ -256,6 +510,15 @@ NtfsFormat(IN PUNICODE_STRING DriveRoot,
         goto end;
     }
 
+    // Create metafiles
+    Status = WriteMetafiles(FileHandle);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteMetafiles() failed with status 0x%.08x\n", Status);
+        NtClose(FileHandle);
+        goto end;
+    }
+
 end:
 
     // Dismount and unlock volume
@@ -275,8 +538,6 @@ end:
     return Status;
 }
 
-
-/* NTFS CHECK DISK FUNCTIONS *****************************************************/
 
 NTSTATUS NTAPI
 NtfsChkdsk(IN PUNICODE_STRING DriveRoot,
@@ -300,3 +561,5 @@ NtfsChkdsk(IN PUNICODE_STRING DriveRoot,
 
     return STATUS_SUCCESS;
 }
+
+#undef KeQuerySystemTime
