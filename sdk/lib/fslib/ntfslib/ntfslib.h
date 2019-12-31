@@ -2,25 +2,30 @@
  * COPYRIGHT:   See COPYING in the top level directory
  * PROJECT:     ReactOS NTFS FS library
  * FILE:        lib/fslib/ntfslib/ntfslib.h
+ * PURPOSE:     NTFS lib definitions
+ * PROGRAMMERS: Klachkov Valery
  */
 
 #ifndef NTFSLIB_H
 #define NTFSLIB_H
 
 
- /* INCLUDES ******************************************************************/
+/* INCLUDES ******************************************************************/
 
 #include <ndk/iofuncs.h>
 #include <ndk/obfuncs.h>
 #include <ndk/rtlfuncs.h>
-
 #include <ndk/umtypes.h>
+
 #include <fmifs/fmifs.h>
 
 
-/* DEFINES *******************************************************************/
+/* MACROSES ******************************************************************/
 
-// Boot Sector
+#define KeQuerySystemTime(t)  GetSystemTimeAsFileTime((LPFILETIME)(t));
+
+
+/* BOOT SECTOR DEFINES *******************************************************/
 
 #define BPB_BYTES_PER_SECTOR     512
 #define BPB_WINXP_HIDDEN_SECTORS 0x3F
@@ -36,7 +41,7 @@
 #define BOOT_SECTOR_END  0xAA55
 
 
-// MFT
+/* FILES DEFINES *************************************************************/
 
 // NRH - NTFS_RECORD_HEADER
 #define NRH_FILE_TYPE         0x454C4946  // 'FILE'
@@ -52,7 +57,10 @@
 // No clue what data is being represented here.
 #define FILE_RECORD_END  0x11477982
 
-#define NTFS_FILE_ROOT  5
+#define NTFS_FILE_NAME_POSIX          0
+#define NTFS_FILE_NAME_WIN32          1
+#define NTFS_FILE_NAME_DOS            2
+#define NTFS_FILE_NAME_WIN32_AND_DOS  3
 
 #define NTFS_FILE_TYPE_READ_ONLY  0x1
 #define NTFS_FILE_TYPE_HIDDEN     0x2
@@ -62,18 +70,28 @@
 #define NTFS_FILE_TYPE_COMPRESSED 0x800
 #define NTFS_FILE_TYPE_DIRECTORY  0x10000000
 
-#define NTFS_FILE_NAME_POSIX          0
-#define NTFS_FILE_NAME_WIN32          1
-#define NTFS_FILE_NAME_DOS            2
-#define NTFS_FILE_NAME_WIN32_AND_DOS  3
+#define NTFS_FILE_CASE_SENSITIVE  FALSE
 
-#define CASE_SENSITIVE  FALSE
+// Indexed Flag in Resident attributes - still somewhat speculative
+#define RA_INDEXED  0x01
 
-/* Indexed Flag in Resident attributes - still somewhat speculative */
-#define RA_INDEXED    0x01
+// MFT Metafiles
+#define NTFS_FILE_MFT              0
+#define NTFS_FILE_MFTMIRR          1
+#define NTFS_FILE_LOGFILE          2
+#define NTFS_FILE_VOLUME           3
+#define NTFS_FILE_ATTRDEF          4
+#define NTFS_FILE_ROOT             5
+#define NTFS_FILE_BITMAP           6
+#define NTFS_FILE_BOOT             7
+#define NTFS_FILE_BADCLUS          8
+#define NTFS_FILE_QUOTA            9
+#define NTFS_FILE_UPCASE           10
+#define NTFS_FILE_EXTEND           11
+#define NTFS_FILE_FIRST_USER_FILE  16
 
 
-/* STRUCTURES ****************************************************************/
+/* BOOT SECTOR STRUCTURES ****************************************************/
 
 #include <pshpack1.h>
 
@@ -116,19 +134,23 @@ typedef struct _BOOT_SECTOR
 
 #include <poppack.h>
 
+
+/* FILES DATA ****************************************************************/
+
 typedef struct _NTFS_RECORD_HEADER
 {
     ULONG     Magic;        // 0x00, magic 'FILE'
     USHORT    UsaOffset;    // 0x04, offset to the update sequence
     USHORT    UsaCount;     // 0x06, size in words of Update Sequence Number & Array (S)
     ULONGLONG Lsn;          // 0x08, $LogFile Sequence Number
-} NTFS_RECORD_HEADER, * PNTFS_RECORD_HEADER;
+} NTFS_RECORD_HEADER, *PNTFS_RECORD_HEADER;
 
-typedef enum _MFT_RECORD_FLAGS {
+typedef enum _MFT_RECORD_FLAGS
+{
     MFT_RECORD_NOT_USED = 0x0000,
     MFT_RECORD_IN_USE = 0x0001,
     MFT_RECORD_IS_DIRECTORY = 0x0002
-} MFT_RECORD_FLAGS;
+} MFT_RECORD_FLAGS, *PMFT_RECORD_FLAGS;
 
 typedef struct _FILE_RECORD_HEADER
 {
@@ -136,7 +158,7 @@ typedef struct _FILE_RECORD_HEADER
     USHORT     SequenceNumber;       // 0x10, sequence number
     USHORT     LinkCount;            // 0x12, hard link count
     USHORT     AttributeOffset;      // 0x14, offset to the first Attribute
-    USHORT     Flags;                // 0x16, flags
+    USHORT     Flags;                // 0x16, flags (see MFT_RECORD_FLAGS)
     ULONG      BytesInUse;           // 0x18, real size of the FILE record
     ULONG      BytesAllocated;       // 0x1C, allocated size of the FILE record
     ULONGLONG  BaseFileRecord;       // 0x20, file reference to the base FILE record
@@ -145,32 +167,36 @@ typedef struct _FILE_RECORD_HEADER
     ULONG      MFTRecordNumber;      // 0x2C, number of this MFT Record (XP)
 } FILE_RECORD_HEADER, * PFILE_RECORD_HEADER;
 
-typedef enum _ATTR_FLAGS {
+
+/* ATTRIBUTES COMMON *********************************************************/
+
+typedef enum _ATTR_FLAGS
+{
     ATTR_IS_COMPRESSED = 0x1,
-    ATTR_IS_ENCRYPTED = 0x4000,
-    ATTR_IS_SPARSE = 0x8000
-} ATTR_FLAGS, * PATTR_FLAGS;
+    ATTR_IS_ENCRYPTED  = 0x4000,
+    ATTR_IS_SPARSE     = 0x8000
+} ATTR_FLAGS, *PATTR_FLAGS;
 
 typedef enum _ATTRIBUTE_TYPE
 {
     AttributeStandardInformation = 0x10,
-    AttributeAttributeList = 0x20,
-    AttributeFileName = 0x30,
-    AttributeObjectId = 0x40,
-    AttributeSecurityDescriptor = 0x50,
-    AttributeVolumeName = 0x60,
-    AttributeVolumeInformation = 0x70,
-    AttributeData = 0x80,
-    AttributeIndexRoot = 0x90,
-    AttributeIndexAllocation = 0xA0,
-    AttributeBitmap = 0xB0,
-    AttributeReparsePoint = 0xC0,
-    AttributeEAInformation = 0xD0,
-    AttributeEA = 0xE0,
-    AttributePropertySet = 0xF0,
+    AttributeAttributeList       = 0x20,
+    AttributeFileName            = 0x30,
+    AttributeObjectId            = 0x40,
+    AttributeSecurityDescriptor  = 0x50,
+    AttributeVolumeName          = 0x60,
+    AttributeVolumeInformation   = 0x70,
+    AttributeData                = 0x80,
+    AttributeIndexRoot           = 0x90,
+    AttributeIndexAllocation     = 0xA0,
+    AttributeBitmap              = 0xB0,
+    AttributeReparsePoint        = 0xC0,
+    AttributeEAInformation       = 0xD0,
+    AttributeEA                  = 0xE0,
+    AttributePropertySet         = 0xF0,
     AttributeLoggedUtilityStream = 0x100,
-    AttributeEnd = 0xFFFFFFFF
-} ATTRIBUTE_TYPE, * PATTRIBUTE_TYPE;
+    AttributeEnd                 = 0xFFFFFFFF
+} ATTRIBUTE_TYPE, *PATTRIBUTE_TYPE;
 
 typedef struct _NTFS_ATTR_RECORD
 {
@@ -179,7 +205,7 @@ typedef struct _NTFS_ATTR_RECORD
     UCHAR   IsNonResident;
     UCHAR   NameLength;
     USHORT  NameOffset;
-    USHORT  Flags;          // flags from ATTR_FLAGS
+    USHORT  Flags;
     USHORT  Instance;
     union
     {
@@ -204,18 +230,10 @@ typedef struct _NTFS_ATTR_RECORD
             LONGLONG   CompressedSize;
         } NonResident;
     };
-} NTFS_ATTR_RECORD, * PNTFS_ATTR_RECORD;
+} NTFS_ATTR_RECORD, *PNTFS_ATTR_RECORD;
 
-typedef struct _NTFS_ATTRIBUTE_LIST_ITEM
-{
-    ULONG      Type;
-    USHORT     Length;
-    UCHAR      NameLength;
-    UCHAR      NameOffset;
-    ULONGLONG  StartingVCN;
-    ULONGLONG  MFTIndex;
-    USHORT     Instance;
-} NTFS_ATTRIBUTE_LIST_ITEM, * PNTFS_ATTRIBUTE_LIST_ITEM;
+
+/* ATTRIBUTES STRUCTURES *****************************************************/
 
 typedef struct _STANDARD_INFORMATION
 {
@@ -234,7 +252,6 @@ typedef struct _STANDARD_INFORMATION
     USN Usn;
 #endif
 } STANDARD_INFORMATION, * PSTANDARD_INFORMATION;
-
 
 typedef struct _FILENAME_ATTRIBUTE
 {
@@ -259,11 +276,44 @@ typedef struct _FILENAME_ATTRIBUTE
     UCHAR NameLength;
     UCHAR NameType;
     WCHAR Name[1];
-} FILENAME_ATTRIBUTE, * PFILENAME_ATTRIBUTE;
+} FILENAME_ATTRIBUTE, *PFILENAME_ATTRIBUTE;
 
 
 /* PROTOTYPES ****************************************************************/
 
-ULONG NTAPI NtGetTickCount(VOID);
+// System
+
+ULONG
+NTAPI NtGetTickCount(VOID); 
+
+VOID
+GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime);
+
+// Boot Sector
+
+NTSTATUS
+WriteBootSector(IN HANDLE h,
+                IN GET_LENGTH_INFORMATION* gli,
+                IN PDISK_GEOMETRY dg);
+
+// Attributes
+
+VOID
+AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                                OUT PNTFS_ATTR_RECORD   AttributeAddress);
+
+VOID
+AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                     OUT PNTFS_ATTR_RECORD   AttributeAddress,
+                     IN  DWORD32             MftRecordNumber);
+
+VOID
+AddDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                 OUT PNTFS_ATTR_RECORD AttributeAddress);
+
+// Files
+
+NTSTATUS
+WriteMetafiles(IN HANDLE h);
 
 #endif
