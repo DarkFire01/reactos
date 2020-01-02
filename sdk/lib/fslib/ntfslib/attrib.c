@@ -67,13 +67,14 @@ AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
 VOID
 AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
                      OUT PNTFS_ATTR_RECORD   AttributeAddress,
+                     IN  LPCWSTR             FileName,
                      IN  DWORD32             MftRecordNumber)
 {
     ULONG ResidentHeaderLength = FIELD_OFFSET(NTFS_ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR);
     PFILENAME_ATTRIBUTE FileNameAttribute;
     ULONG FileRecordEnd = AttributeAddress->Length;
-    UNICODE_STRING FilenameNoPath;
     LARGE_INTEGER SystemTime;
+    DWORD32 FileNameSize = wcslen(FileName);
 
     AttributeAddress->Type = AttributeFileName;
     AttributeAddress->Instance = FileRecord->NextAttributeNumber++;
@@ -100,53 +101,24 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
 
     FileNameAttribute->DirectoryFileReferenceNumber |= (ULONGLONG)NTFS_FILE_ROOT << 48;
 
-    FileNameAttribute->NameLength = FilenameNoPath.Length / sizeof(WCHAR);
-    RtlCopyMemory(FileNameAttribute->Name, FilenameNoPath.Buffer, FilenameNoPath.Length);
+    FileNameAttribute->NameLength = FileNameSize;
+    RtlCopyMemory(FileNameAttribute->Name, FileName, FileNameSize);
 
-    // For now, we're emulating the way Windows behaves when 8.3 name generation is disabled
-    if (RtlIsNameLegalDOS8Dot3(&FilenameNoPath, NULL, NULL))
-    {
-        FileNameAttribute->NameType = NTFS_FILE_NAME_WIN32_AND_DOS;
-    }
-    else
-    {
-        FileNameAttribute->NameType = NTFS_FILE_NAME_POSIX;
-    }
+    // TODO: Check filename for DOS compatibility and set NameType to NTFS_FILE_NAME_WIN32_AND_DOS
+    FileNameAttribute->NameType = NTFS_FILE_NAME_POSIX;
 
     FileRecord->LinkCount++;
 
     AttributeAddress->Length =
         ResidentHeaderLength +
         FIELD_OFFSET(FILENAME_ATTRIBUTE, Name) +
-        FilenameNoPath.Length;
+        FileNameSize;
 
     AttributeAddress->Length = ALIGN_UP_BY(AttributeAddress->Length, ATTR_RECORD_ALIGNMENT);
 
-    AttributeAddress->Resident.ValueLength = FIELD_OFFSET(FILENAME_ATTRIBUTE, Name) + FilenameNoPath.Length;
+    AttributeAddress->Resident.ValueLength = FIELD_OFFSET(FILENAME_ATTRIBUTE, Name) + FileNameSize;
     AttributeAddress->Resident.ValueOffset = ResidentHeaderLength;
     AttributeAddress->Resident.Flags = RA_INDEXED;
-
-    // Move the attribute-end and file-record-end markers to the end of the file record
-    AttributeAddress = (PNTFS_ATTR_RECORD)((ULONG_PTR)AttributeAddress + AttributeAddress->Length);
-    SetFileRecordEnd(FileRecord, AttributeAddress, FileRecordEnd);
-}
-
-VOID
-AddDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                 OUT PNTFS_ATTR_RECORD AttributeAddress)
-{
-    ULONG ResidentHeaderLength = FIELD_OFFSET(NTFS_ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR);
-    ULONG FileRecordEnd = AttributeAddress->Length;
-
-    AttributeAddress->Type   = AttributeData;
-    AttributeAddress->Length = ResidentHeaderLength;
-    AttributeAddress->Length = ALIGN_UP_BY(AttributeAddress->Length, ATTR_RECORD_ALIGNMENT);
-    AttributeAddress->Resident.ValueLength = 0;
-    AttributeAddress->Resident.ValueOffset = ResidentHeaderLength;
-
-    // For unnamed $DATA attributes, NameOffset equals header length
-    AttributeAddress->NameOffset = ResidentHeaderLength;
-    AttributeAddress->Instance   = FileRecord->NextAttributeNumber++;
 
     // Move the attribute-end and file-record-end markers to the end of the file record
     AttributeAddress = (PNTFS_ATTR_RECORD)((ULONG_PTR)AttributeAddress + AttributeAddress->Length);
