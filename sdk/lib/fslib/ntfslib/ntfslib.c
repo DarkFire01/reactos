@@ -129,7 +129,7 @@ NtfsFormat(IN PUNICODE_STRING DriveRoot,
     }
 
     // Create metafiles
-    Status = WriteMetafiles(FileHandle);
+    Status = WriteMetafiles(FileHandle, &LengthInformation);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafiles() failed with status 0x%.08x\n", Status);

@@ -24,6 +24,8 @@
 
 #define KeQuerySystemTime(t)  GetSystemTimeAsFileTime((LPFILETIME)(t));
 
+#define FREE(p) if (p) RtlFreeHeap(RtlGetProcessHeap(), 0, p);
+
 
 /* BOOT SECTOR DEFINES *******************************************************/
 
@@ -281,22 +283,20 @@ typedef struct _FILENAME_ATTRIBUTE
 
 /* PROTOTYPES ****************************************************************/
 
-// System
-
 ULONG
 NTAPI NtGetTickCount(VOID); 
 
 VOID
 GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime);
 
-// Boot Sector
+// bootsect.c
 
 NTSTATUS
 WriteBootSector(IN HANDLE h,
                 IN GET_LENGTH_INFORMATION* gli,
                 IN PDISK_GEOMETRY dg);
 
-// Attributes
+// attrib.c
 
 VOID
 AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
@@ -305,15 +305,12 @@ AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
 VOID
 AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
                      OUT PNTFS_ATTR_RECORD   AttributeAddress,
+                     IN  LPCWSTR             FileName,
                      IN  DWORD32             MftRecordNumber);
 
-VOID
-AddDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                 OUT PNTFS_ATTR_RECORD AttributeAddress);
-
-// Files
+// files.c
 
 NTSTATUS
-WriteMetafiles(IN HANDLE h);
+WriteMetafiles(IN HANDLE h, IN  GET_LENGTH_INFORMATION* gli);
 
 #endif
