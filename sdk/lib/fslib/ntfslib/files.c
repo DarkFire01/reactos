@@ -337,7 +337,5 @@ end:
     FREE(Boot);
     FREE(UpCase);
 
-    NtfsCreateBlankFileRecord(L"test", 0);
-
     return Status;
 }
