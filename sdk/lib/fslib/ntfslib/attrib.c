@@ -70,7 +70,6 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
                      IN  LPCWSTR             FileName,
                      IN  DWORD32             MftRecordNumber)
 {
-    ULONG ResidentHeaderLength = FIELD_OFFSET(NTFS_ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR);
     PFILENAME_ATTRIBUTE FileNameAttribute;
     ULONG FileRecordEnd = AttributeAddress->Length;
     LARGE_INTEGER SystemTime;
@@ -79,7 +78,7 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     AttributeAddress->Type = AttributeFileName;
     AttributeAddress->Instance = FileRecord->NextAttributeNumber++;
 
-    FileNameAttribute = (PFILENAME_ATTRIBUTE)((LONG_PTR)AttributeAddress + ResidentHeaderLength);
+    FileNameAttribute = (PFILENAME_ATTRIBUTE)((LONG_PTR)AttributeAddress + RA_HEADER_LENGTH);
 
     // Set dates and times
     KeQuerySystemTime(&SystemTime);
@@ -110,14 +109,94 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     FileRecord->LinkCount++;
 
     AttributeAddress->Length =
-        ResidentHeaderLength +
+        RA_HEADER_LENGTH +
         FIELD_OFFSET(FILENAME_ATTRIBUTE, Name) +
         FileNameSize;
 
     AttributeAddress->Length = ALIGN_UP_BY(AttributeAddress->Length, ATTR_RECORD_ALIGNMENT);
 
     AttributeAddress->Resident.ValueLength = FIELD_OFFSET(FILENAME_ATTRIBUTE, Name) + FileNameSize;
+    AttributeAddress->Resident.ValueOffset = RA_HEADER_LENGTH;
+    AttributeAddress->Resident.Flags = RA_INDEXED;
+
+    // Move the attribute-end and file-record-end markers to the end of the file record
+    AttributeAddress = (PNTFS_ATTR_RECORD)((ULONG_PTR)AttributeAddress + AttributeAddress->Length);
+    SetFileRecordEnd(FileRecord, AttributeAddress, FileRecordEnd);
+}
+
+VOID
+AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                      OUT PNTFS_ATTR_RECORD   AttributeAddress)
+{
+    ULONG ResidentHeaderLength = FIELD_OFFSET(NTFS_ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR);
+    ULONG FileRecordEnd = AttributeAddress->Length;
+
+    AttributeAddress->Type = AttributeData;
+    AttributeAddress->Length = ResidentHeaderLength;
+    AttributeAddress->Length = ALIGN_UP_BY(AttributeAddress->Length, ATTR_RECORD_ALIGNMENT);
+    AttributeAddress->Resident.ValueLength = 0;
     AttributeAddress->Resident.ValueOffset = ResidentHeaderLength;
+
+    // For unnamed $DATA attributes, NameOffset equals header length
+    AttributeAddress->NameOffset = ResidentHeaderLength;
+    AttributeAddress->Instance = FileRecord->NextAttributeNumber++;
+
+    // Move the attribute-end and file-record-end markers to the end of the file record
+    AttributeAddress = (PNTFS_ATTR_RECORD)((ULONG_PTR)AttributeAddress + AttributeAddress->Length);
+    SetFileRecordEnd(FileRecord, AttributeAddress, FileRecordEnd);
+}
+
+
+VOID
+AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                            OUT PNTFS_ATTR_RECORD   AttributeAddress)
+{
+    ULONG ResidentHeaderLength = FIELD_OFFSET(NTFS_ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR);
+    ULONG FileRecordEnd = AttributeAddress->Length;
+
+    AttributeAddress->Type = AttributeVolumeName;
+    AttributeAddress->Length = ResidentHeaderLength;
+    AttributeAddress->Length = ALIGN_UP_BY(AttributeAddress->Length, ATTR_RECORD_ALIGNMENT);
+    AttributeAddress->Resident.ValueLength = 0;
+    AttributeAddress->Resident.ValueOffset = ResidentHeaderLength;
+
+    // For unnamed $DATA attributes, NameOffset equals header length
+    AttributeAddress->NameOffset = ResidentHeaderLength;
+    AttributeAddress->Instance = FileRecord->NextAttributeNumber++;
+
+    // Move the attribute-end and file-record-end markers to the end of the file record
+    AttributeAddress = (PNTFS_ATTR_RECORD)((ULONG_PTR)AttributeAddress + AttributeAddress->Length);
+    SetFileRecordEnd(FileRecord, AttributeAddress, FileRecordEnd);
+}
+
+VOID
+AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                              OUT PNTFS_ATTR_RECORD   AttributeAddress,
+                              IN  BYTE                MajorVersion,
+                              IN  BYTE                MinorVersion)
+{
+    PVOLUME_INFORMATION_ATTRIBUTE Attribute;
+    ULONG FileRecordEnd = AttributeAddress->Length;
+
+    AttributeAddress->Type = AttributeFileName;
+    AttributeAddress->Instance = FileRecord->NextAttributeNumber++;
+
+    Attribute = (PVOLUME_INFORMATION_ATTRIBUTE)((LONG_PTR)AttributeAddress + RA_HEADER_LENGTH);
+
+    Attribute->MajorVersion = MajorVersion;
+    Attribute->MinorVersion = MinorVersion;
+    Attribute->Flags = 0;
+
+    FileRecord->LinkCount++;
+
+    AttributeAddress->Length =
+        RA_HEADER_LENGTH +
+        sizeof(VOLUME_INFORMATION_ATTRIBUTE);
+
+    AttributeAddress->Length = ALIGN_UP_BY(AttributeAddress->Length, ATTR_RECORD_ALIGNMENT);
+
+    AttributeAddress->Resident.ValueLength = sizeof(VOLUME_INFORMATION_ATTRIBUTE);
+    AttributeAddress->Resident.ValueOffset = RA_HEADER_LENGTH;
     AttributeAddress->Resident.Flags = RA_INDEXED;
 
     // Move the attribute-end and file-record-end markers to the end of the file record

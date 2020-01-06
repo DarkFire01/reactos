@@ -66,10 +66,11 @@ NtfsCreateEmptyFileRecord(IN DWORD32 MftRecordNumber)
 // Create file record with $STANDARD_INFORMATION and $FILE_NAME attributes
 static
 PFILE_RECORD_HEADER
-NtfsCreateBlankFileRecord(IN LPCWSTR FileName, IN DWORD32 MftRecordNumber)
+NtfsCreateBlankFileRecord(IN  LPCWSTR FileName,
+                          IN  DWORD32 MftRecordNumber,
+                          OUT PNTFS_ATTR_RECORD* NextAttribute)
 {
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_RECORD   NextAttribute;
 
     // Create empty file record
     FileRecord = NtfsCreateEmptyFileRecord(MftRecordNumber);
@@ -80,17 +81,19 @@ NtfsCreateBlankFileRecord(IN LPCWSTR FileName, IN DWORD32 MftRecordNumber)
     }
 
     // Find where the first attribute will be added
-    NextAttribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + FileRecord->AttributeOffset);
+    (*NextAttribute) = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + FileRecord->AttributeOffset);
 
     // Add $STANDARD_INFORMATION attribute
-    AddStandardInformationAttribute(FileRecord, NextAttribute);
+    AddStandardInformationAttribute(FileRecord, (*NextAttribute));
 
     // Calculate pointer to the next attribute
-    NextAttribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)NextAttribute + (ULONG_PTR)NextAttribute->Length);
+    (*NextAttribute) = (PNTFS_ATTR_RECORD)((ULONG_PTR)(*NextAttribute) + (ULONG_PTR)(*NextAttribute)->Length);
 
     // Add the $FILE_NAME attribute
-    AddFileNameAttribute(FileRecord, NextAttribute, FileName, MftRecordNumber);
+    AddFileNameAttribute(FileRecord, (*NextAttribute), FileName, MftRecordNumber);
 
+    (*NextAttribute) = (PNTFS_ATTR_RECORD)((ULONG_PTR)(*NextAttribute) + (ULONG_PTR)(*NextAttribute)->Length);
+   
     return FileRecord;
 }
 
@@ -99,9 +102,10 @@ PFILE_RECORD_HEADER
 CreateMft()
 {
     PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_RECORD   Attribute = NULL;
     
     // Create MFT file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$MFT", NTFS_FILE_MFT);
+    FileRecord = NtfsCreateBlankFileRecord(L"$MFT", NTFS_FILE_MFT, &Attribute);
     if (!FileRecord)
     {
         DPRINT1("ERROR: Unable to allocate memory for $MFT file record!\n");
@@ -120,9 +124,10 @@ PFILE_RECORD_HEADER
 CreateMFTMirr()
 {
     PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_RECORD   Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$MFTMirr", NTFS_FILE_MFTMIRR);
+    FileRecord = NtfsCreateBlankFileRecord(L"$MFTMirr", NTFS_FILE_MFTMIRR, &Attribute);
     if (!FileRecord)
     {
         DPRINT1("ERROR: Unable to allocate memory for $MFTMirr file record!\n");
@@ -139,9 +144,10 @@ PFILE_RECORD_HEADER
 CreateLogFile()
 {
     PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_RECORD   Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$LogFile", NTFS_FILE_LOGFILE);
+    FileRecord = NtfsCreateBlankFileRecord(L"$LogFile", NTFS_FILE_LOGFILE, &Attribute);
     if (!FileRecord)
     {
         DPRINT1("ERROR: Unable to allocate memory for $LogFile file record!\n");
@@ -158,20 +164,26 @@ PFILE_RECORD_HEADER
 CreateVolume()
 {
     PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_RECORD   Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$Volume", NTFS_FILE_VOLUME);
+    FileRecord = NtfsCreateBlankFileRecord(L"$Volume", NTFS_FILE_VOLUME, &Attribute);
     if (!FileRecord)
     {
         DPRINT1("ERROR: Unable to allocate memory for $Volume file record!\n");
         return NULL;
     }
 
-    // Create VOLUME_NAME attribute
+    // Add $VOLUME_NAME
+    AddEmptyVolumeNameAttribute(FileRecord, Attribute);
 
-    // Create VOLUME_INFORMATION attribute
-
-    // Create resident DATA attribute
+    // Add $VOLUME_INFORMATION
+    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)Attribute + (ULONG_PTR)Attribute->Length);
+    AddVolumeInformationAttribute(FileRecord, Attribute, 3, 1);
+    
+    // Add $DATA
+    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)Attribute + (ULONG_PTR)Attribute->Length);
+    AddEmptyDataAttribute(FileRecord, Attribute);
 
     return FileRecord;
 }
@@ -181,9 +193,10 @@ PFILE_RECORD_HEADER
 CreateAttrDef()
 {
     PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_RECORD   Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$AttrDef", NTFS_FILE_ATTRDEF);
+    FileRecord = NtfsCreateBlankFileRecord(L"$AttrDef", NTFS_FILE_ATTRDEF, &Attribute);
     if (!FileRecord)
     {
         DPRINT1("ERROR: Unable to allocate memory for $AttrDef file record!\n");
@@ -200,9 +213,10 @@ PFILE_RECORD_HEADER
 CreateRoot()
 {
     PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_RECORD   Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L".", NTFS_FILE_ROOT);
+    FileRecord = NtfsCreateBlankFileRecord(L".", NTFS_FILE_ROOT, &Attribute);
     if (!FileRecord)
     {
         DPRINT1("ERROR: Unable to allocate memory for . file record!\n");
@@ -219,9 +233,10 @@ PFILE_RECORD_HEADER
 CreateBitmap()
 {
     PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_RECORD   Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$Bitmap", NTFS_FILE_BITMAP);
+    FileRecord = NtfsCreateBlankFileRecord(L"$Bitmap", NTFS_FILE_BITMAP, &Attribute);
     if (!FileRecord)
     {
         DPRINT1("ERROR: Unable to allocate memory for $Bitmap file record!\n");
@@ -238,9 +253,10 @@ PFILE_RECORD_HEADER
 CreateBoot()
 {
     PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_RECORD   Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$Boot", NTFS_FILE_BOOT);
+    FileRecord = NtfsCreateBlankFileRecord(L"$Boot", NTFS_FILE_BOOT, &Attribute);
     if (!FileRecord)
     {
         DPRINT1("ERROR: Unable to allocate memory for $Boot file record!\n");
@@ -257,9 +273,10 @@ PFILE_RECORD_HEADER
 CreateUpCase()
 {
     PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_RECORD   Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$UpCase", NTFS_FILE_ATTRDEF);
+    FileRecord = NtfsCreateBlankFileRecord(L"$UpCase", NTFS_FILE_ATTRDEF, &Attribute);
     if (!FileRecord)
     {
         DPRINT1("ERROR: Unable to allocate memory for $UpCase file record!\n");
@@ -278,9 +295,10 @@ PFILE_RECORD_HEADER
 CreateStub(IN DWORD32 MftRecordNumber)
 {
     PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_RECORD   Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"", MftRecordNumber);
+    FileRecord = NtfsCreateBlankFileRecord(L"", MftRecordNumber, Attribute);
     if (!FileRecord)
     {
         DPRINT1("ERROR: Unable to allocate memory for stub file record!\n");

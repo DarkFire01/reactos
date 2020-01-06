@@ -77,6 +77,8 @@
 // Indexed Flag in Resident attributes - still somewhat speculative
 #define RA_INDEXED  0x01
 
+#define RA_HEADER_LENGTH (FIELD_OFFSET(NTFS_ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR))
+
 // MFT Metafiles
 #define NTFS_FILE_MFT              0
 #define NTFS_FILE_MFTMIRR          1
@@ -280,6 +282,14 @@ typedef struct _FILENAME_ATTRIBUTE
     WCHAR Name[1];
 } FILENAME_ATTRIBUTE, *PFILENAME_ATTRIBUTE;
 
+typedef struct _VOLUME_INFORMATION_ATTRIBUTE
+{
+    BYTE   Unused[8];
+    BYTE   MajorVersion;
+    BYTE   MinorVersion;
+    USHORT Flags;
+} VOLUME_INFORMATION_ATTRIBUTE, *PVOLUME_INFORMATION_ATTRIBUTE;
+
 
 /* PROTOTYPES ****************************************************************/
 
@@ -307,6 +317,20 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
                      OUT PNTFS_ATTR_RECORD   AttributeAddress,
                      IN  LPCWSTR             FileName,
                      IN  DWORD32             MftRecordNumber);
+
+VOID
+AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                      OUT PNTFS_ATTR_RECORD   AttributeAddress);
+
+VOID
+AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                            OUT PNTFS_ATTR_RECORD   AttributeAddress);
+
+VOID
+AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                              OUT PNTFS_ATTR_RECORD   AttributeAddress,
+                              IN  BYTE                MajorVersion,
+                              IN  BYTE                MinorVersion);
 
 // files.c
 
