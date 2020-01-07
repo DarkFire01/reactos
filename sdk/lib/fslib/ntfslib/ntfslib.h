@@ -303,39 +303,39 @@ GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime);
 // bootsect.c
 
 NTSTATUS
-WriteBootSector(IN HANDLE h,
-                IN GET_LENGTH_INFORMATION* gli,
-                IN PDISK_GEOMETRY dg);
+WriteBootSector(IN HANDLE                  Handle,
+                IN GET_LENGTH_INFORMATION* LengthInformation,
+                IN PDISK_GEOMETRY          DiskGeometry);
 
 // attrib.c
 
 VOID
 AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                                OUT PNTFS_ATTR_RECORD   AttributeAddress);
+                                OUT PNTFS_ATTR_RECORD   Attribute);
 
 VOID
 AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                     OUT PNTFS_ATTR_RECORD   AttributeAddress,
+                     OUT PNTFS_ATTR_RECORD   Attribute,
                      IN  LPCWSTR             FileName,
                      IN  DWORD32             MftRecordNumber);
 
 VOID
 AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                      OUT PNTFS_ATTR_RECORD   AttributeAddress);
+                      OUT PNTFS_ATTR_RECORD   Attribute);
 
 VOID
 AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                            OUT PNTFS_ATTR_RECORD   AttributeAddress);
+                            OUT PNTFS_ATTR_RECORD   Attribute);
 
 VOID
 AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                              OUT PNTFS_ATTR_RECORD   AttributeAddress,
+                              OUT PNTFS_ATTR_RECORD   Attribute,
                               IN  BYTE                MajorVersion,
                               IN  BYTE                MinorVersion);
 
 // files.c
 
 NTSTATUS
-WriteMetafiles(IN HANDLE h, IN  GET_LENGTH_INFORMATION* gli);
+WriteMetafiles(IN HANDLE Handle, IN GET_LENGTH_INFORMATION* LengthInformation);
 
 #endif

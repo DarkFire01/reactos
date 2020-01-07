@@ -33,12 +33,12 @@ GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime)
 }
 
 NTSTATUS NTAPI
-NtfsFormat(IN PUNICODE_STRING DriveRoot,
+NtfsFormat(IN PUNICODE_STRING  DriveRoot,
            IN FMIFS_MEDIA_FLAG MediaFlag,
-           IN PUNICODE_STRING Label,
-           IN BOOLEAN QuickFormat,
-           IN ULONG ClusterSize,
-           IN PFMIFSCALLBACK Callback)
+           IN PUNICODE_STRING  Label,
+           IN BOOLEAN          QuickFormat,
+           IN ULONG            ClusterSize,
+           IN PFMIFSCALLBACK   Callback)
 {
     HANDLE                 FileHandle;
     OBJECT_ATTRIBUTES      Attributes;
@@ -159,11 +159,11 @@ end:
 
 NTSTATUS NTAPI
 NtfsChkdsk(IN PUNICODE_STRING DriveRoot,
-           IN BOOLEAN FixErrors,
-           IN BOOLEAN Verbose,
-           IN BOOLEAN CheckOnlyIfDirty,
-           IN BOOLEAN ScanDrive,
-           IN PFMIFSCALLBACK Callback)
+           IN BOOLEAN         FixErrors,
+           IN BOOLEAN         Verbose,
+           IN BOOLEAN         CheckOnlyIfDirty,
+           IN BOOLEAN         ScanDrive,
+           IN PFMIFSCALLBACK  Callback)
 {
     // STUB
 

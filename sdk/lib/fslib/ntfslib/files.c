@@ -313,7 +313,9 @@ CreateStub(IN DWORD32 MftRecordNumber)
 
 static
 NTSTATUS
-WriteMetafile(IN HANDLE Handle, IN PFILE_RECORD_HEADER FileRecord, OUT PIO_STATUS_BLOCK IoStatusBlock)
+WriteMetafile(IN HANDLE              Handle, 
+              IN PFILE_RECORD_HEADER FileRecord, 
+              OUT PIO_STATUS_BLOCK   IoStatusBlock)
 {
     LARGE_INTEGER Offset;
 
@@ -332,7 +334,7 @@ WriteMetafile(IN HANDLE Handle, IN PFILE_RECORD_HEADER FileRecord, OUT PIO_STATU
 }
 
 NTSTATUS
-WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
+WriteMetafiles(IN HANDLE Handle, IN GET_LENGTH_INFORMATION* LengthInformation)
 {
     NTSTATUS Status = STATUS_SUCCESS;
     IO_STATUS_BLOCK IoStatusBlock;
@@ -359,17 +361,8 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
         goto end;
     }
 
-    /* TODO:
-     *   + Write files
-     *   + Write MFT, MFTMirr, LogFile, Volume, AttrDef, Root, Bitmap, Boot
-     *   + Write 2 stubs
-     *   + Write UpCase
-     *   + Write 5 stubs
-     *   Write mirror of mft
-     */
-
     // Write $MFT
-    Status = WriteMetafile(h, MFT, &IoStatusBlock);
+    Status = WriteMetafile(Handle, MFT, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $MFT write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -377,7 +370,7 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
     }
 
     // Write $MFTMirr
-    Status = WriteMetafile(h, MFTMirr, &IoStatusBlock);
+    Status = WriteMetafile(Handle, MFTMirr, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $MFTMirr write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -385,7 +378,7 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
     }
 
     // Write $LogFile
-    Status = WriteMetafile(h, LogFile, &IoStatusBlock);
+    Status = WriteMetafile(Handle, LogFile, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $LogFile write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -393,7 +386,7 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
     }
 
     // Write $Volume
-    Status = WriteMetafile(h, Volume, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Volume, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $Volume write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -401,7 +394,7 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
     }
 
     // Write $AttrDef
-    Status = WriteMetafile(h, AttrDef, &IoStatusBlock);
+    Status = WriteMetafile(Handle, AttrDef, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $AttrDef write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -409,7 +402,7 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
     }
 
     // Write $Root
-    Status = WriteMetafile(h, Root, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Root, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $Root write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -417,7 +410,7 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
     }
 
     // Write $Bitmap
-    Status = WriteMetafile(h, Bitmap, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Bitmap, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $Bitmap write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -425,7 +418,7 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
     }
 
     // Write $Boot
-    Status = WriteMetafile(h, Boot, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Boot, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $Boot write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -434,7 +427,7 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
 
     // Write stub for $BadClus
     Stub = CreateStub(NTFS_FILE_BADCLUS);
-    Status = WriteMetafile(h, Stub, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Stub, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). Stub for $BadClus write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -445,7 +438,7 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
 
     // Write stub for $Secure
     Stub = CreateStub(NTFS_FILE_SECURE);
-    Status = WriteMetafile(h, Stub, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Stub, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). Stub for $Secure write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -455,7 +448,7 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
     FREE(Stub);
 
     // Write $UpCase
-    Status = WriteMetafile(h, UpCase, &IoStatusBlock);
+    Status = WriteMetafile(Handle, UpCase, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $UpCase write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -466,7 +459,7 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
     for (MftIndex = NTFS_FILE_UPCASE; MftIndex < NTFS_FILE_FIRST_USER_FILE; MftIndex++)
     {
         Stub = CreateStub(MftIndex);
-        Status = WriteMetafile(h, Stub, &IoStatusBlock);
+        Status = WriteMetafile(Handle, Stub, &IoStatusBlock);
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("WriteMetafile(). Stub #%d write failed. NtWriteFile() failed (Status %lx)\n", MftIndex, Status);

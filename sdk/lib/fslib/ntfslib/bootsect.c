@@ -23,42 +23,53 @@
 
 static
 VOID
-WriteJumpInstruction(OUT PBOOT_SECTOR pbs)
+FillJumpInstruction(OUT PBOOT_SECTOR BootSector)
 {
-    pbs->Jump[0] = 0xEB;  // jmp
-    pbs->Jump[1] = 0x52;  // 82
-    pbs->Jump[2] = 0x90;  // nop
+    BootSector->Jump[0] = 0xEB;  // jmp
+    BootSector->Jump[1] = 0x52;  // 82
+    BootSector->Jump[2] = 0x90;  // nop
 }
 
 static
 VOID
-WriteBiosParametersBlock(OUT PBIOS_PARAMETERS_BLOCK bpb,
-                         IN  GET_LENGTH_INFORMATION* gli,
-                         IN  PDISK_GEOMETRY dg)
+FillOemId(OUT PBOOT_SECTOR BootSector)
 {
-    bpb->BytesPerSector = BPB_BYTES_PER_SECTOR;
+    BootSector->OEMID.QuadPart = 0x202020205346544E;  // NTFS   
+}
 
-    if (gli->Length.QuadPart < MB_TO_B(512))
+static
+VOID
+FillBiosParametersBlock(OUT PBIOS_PARAMETERS_BLOCK  BiosParametersBlock,
+                        IN  GET_LENGTH_INFORMATION* LengthInformation,
+                        IN  PDISK_GEOMETRY          DiskGeometry)
+{
+    // See: https://en.wikipedia.org/wiki/BIOS_parameter_block
+    
+    BiosParametersBlock->BytesPerSector = BPB_BYTES_PER_SECTOR;
+
+    if (LengthInformation->Length.QuadPart < MB_TO_B(512))
     {
-        bpb->SectorsPerCluster = 1;
+        BiosParametersBlock->SectorsPerCluster = 1;
     }
-    else if (gli->Length.QuadPart < MB_TO_B(1024))
+    else if (LengthInformation->Length.QuadPart < MB_TO_B(1024))
     {
-        bpb->SectorsPerCluster = 2;
+        BiosParametersBlock->SectorsPerCluster = 2;
     }
-    else if (gli->Length.QuadPart < MB_TO_B(2048))
+    else if (LengthInformation->Length.QuadPart < MB_TO_B(2048))
     {
-        bpb->SectorsPerCluster = 4;
+        BiosParametersBlock->SectorsPerCluster = 4;
     }
     else
     {
-        bpb->SectorsPerCluster = 8;
+        BiosParametersBlock->SectorsPerCluster = 8;
     }
 
-    bpb->MediaId = (dg->MediaType == FixedMedia) ? 0xF8 : 0x00;
-    bpb->SectorsPerTrack = dg->SectorsPerTrack;
-    bpb->Heads = BPB_HEADS;
-    bpb->HiddenSectorsCount = BPB_WINXP_HIDDEN_SECTORS;
+    // MediaId for hard drives always 0xF8
+    BiosParametersBlock->MediaId = (DiskGeometry->MediaType == FixedMedia) ? 0xF8 : 0x00;
+
+    BiosParametersBlock->SectorsPerTrack    = DiskGeometry->SectorsPerTrack;
+    BiosParametersBlock->Heads              = BPB_HEADS;
+    BiosParametersBlock->HiddenSectorsCount = BPB_WINXP_HIDDEN_SECTORS;
 }
 
 static
@@ -87,37 +98,39 @@ CalcVolumeSerialNumber(VOID)
 
 static
 VOID
-WriteExBiosParametersBlock(OUT PEXTENDED_BIOS_PARAMETERS_BLOCK ebpb,
-                           IN  GET_LENGTH_INFORMATION* gli,
-                           IN  PDISK_GEOMETRY dg)
+FillExBiosParametersBlock(OUT PEXTENDED_BIOS_PARAMETERS_BLOCK ExBiosParametersBlock,
+                          IN  GET_LENGTH_INFORMATION*         LengthInformation,
+                          IN  PDISK_GEOMETRY                  DiskGeometry)
 {
-    ebpb->Header = EBPB_HEADER;
-    ebpb->SectorCount =
-        ((ULONGLONG)dg->SectorsPerTrack) *
-        ((ULONGLONG)dg->TracksPerCylinder) *
-        ((ULONGLONG)dg->Cylinders.QuadPart);
+    // See: https://en.wikipedia.org/wiki/BIOS_parameter_block
 
-    ebpb->MftLocation = MFT_LOCATION;
-    ebpb->MftMirrLocation = gli->Length.QuadPart / 2;  // Only for Windows XP
+    ExBiosParametersBlock->Header = EBPB_HEADER;
+    ExBiosParametersBlock->SectorCount =
+        ((ULONGLONG)DiskGeometry->SectorsPerTrack)   *
+        ((ULONGLONG)DiskGeometry->TracksPerCylinder) *
+        ((ULONGLONG)DiskGeometry->Cylinders.QuadPart);
 
-    ebpb->ClustersPerMftRecord = CLUSTER_PER_MFT_RECORD;
-    ebpb->ClustersPerIndexRecord = 0x01;
+    ExBiosParametersBlock->MftLocation = MFT_LOCATION;
+    ExBiosParametersBlock->MftMirrLocation = LengthInformation->Length.QuadPart / 2;  // Only for Windows XP
 
-    ebpb->SerialNumber = CalcVolumeSerialNumber();
+    ExBiosParametersBlock->ClustersPerMftRecord = CLUSTER_PER_MFT_RECORD;
+    ExBiosParametersBlock->ClustersPerIndexRecord = 0x01;
+
+    ExBiosParametersBlock->SerialNumber = CalcVolumeSerialNumber();
 }
 
 NTSTATUS
-WriteBootSector(IN HANDLE h,
-                IN GET_LENGTH_INFORMATION* gli,
-                IN PDISK_GEOMETRY dg)
+WriteBootSector(IN HANDLE                  Handle,
+                IN GET_LENGTH_INFORMATION* LengthInformation,
+                IN PDISK_GEOMETRY          DiskGeometry)
 {
-    PBOOT_SECTOR    BootSector;
     NTSTATUS        Status;
     IO_STATUS_BLOCK IoStatusBlock;
+    PBOOT_SECTOR    BootSector;
 
     // Allocate memory
     BootSector = RtlAllocateHeap(RtlGetProcessHeap(), 0, sizeof(BOOT_SECTOR));
-    if (BootSector == NULL)
+    if (!BootSector)
     {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -126,25 +139,24 @@ WriteBootSector(IN HANDLE h,
     RtlZeroMemory(BootSector, sizeof(BOOT_SECTOR));
 
     // Fill boot sector structure
-    WriteJumpInstruction(BootSector);
+    FillJumpInstruction(BootSector);
+    FillOemId(BootSector);
 
-    BootSector->OEMID.QuadPart = 0x202020205346544E;  // NTFS   
-
-    WriteBiosParametersBlock(&(BootSector->BPB), gli, dg);
-    WriteExBiosParametersBlock(&(BootSector->EBPB), gli, dg);
+    FillBiosParametersBlock(&(BootSector->BPB),    LengthInformation, DiskGeometry);
+    FillExBiosParametersBlock(&(BootSector->EBPB), LengthInformation, DiskGeometry);
 
     BootSector->EndSector = BOOT_SECTOR_END;
 
     // Write to disk
-    Status = NtWriteFile(h,
-        NULL,
-        NULL,
-        NULL,
-        &IoStatusBlock,
-        BootSector,
-        sizeof(BOOT_SECTOR),
-        0L,
-        NULL);
+    Status = NtWriteFile(Handle,
+                         NULL,
+                         NULL,
+                         NULL,
+                         &IoStatusBlock,
+                         BootSector,
+                         sizeof(BOOT_SECTOR),
+                         0ULL,
+                         NULL);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("BootSector write failed. NtWriteFile() failed (Status %lx)\n", Status);
