@@ -73,7 +73,7 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     PFILENAME_ATTRIBUTE FileNameAttribute;
     ULONG FileRecordEnd = AttributeAddress->Length;
     LARGE_INTEGER SystemTime;
-    DWORD32 FileNameSize = wcslen(FileName);
+    DWORD32 FileNameSize = wcslen(FileName) * sizeof(WCHAR);
 
     AttributeAddress->Type = AttributeFileName;
     AttributeAddress->Instance = FileRecord->NextAttributeNumber++;
@@ -100,7 +100,7 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
 
     FileNameAttribute->DirectoryFileReferenceNumber |= (ULONGLONG)NTFS_FILE_ROOT << 48;
 
-    FileNameAttribute->NameLength = FileNameSize;
+    FileNameAttribute->NameLength = wcslen(FileName);
     RtlCopyMemory(FileNameAttribute->Name, FileName, FileNameSize);
 
     // TODO: Check filename for DOS compatibility and set NameType to NTFS_FILE_NAME_WIN32_AND_DOS
