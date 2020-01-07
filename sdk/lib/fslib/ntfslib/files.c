@@ -290,7 +290,7 @@ CreateUpCase()
     return FileRecord;
 }
 
-/*static
+static
 PFILE_RECORD_HEADER
 CreateStub(IN DWORD32 MftRecordNumber)
 {
@@ -298,22 +298,44 @@ CreateStub(IN DWORD32 MftRecordNumber)
     PNTFS_ATTR_RECORD   Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"", MftRecordNumber, Attribute);
+    FileRecord = NtfsCreateBlankFileRecord(L"", MftRecordNumber, &Attribute);
     if (!FileRecord)
     {
-        DPRINT1("ERROR: Unable to allocate memory for stub file record!\n");
+        DPRINT1("ERROR: Unable to allocate memory for stub #%d file record!\n", MftRecordNumber);
         return NULL;
     }
 
-    // Create empty resident DATA attribute
+    // Empty resident $DATA attribute
+    AddEmptyDataAttribute(FileRecord, Attribute);
 
     return FileRecord;
-}*/
+}
+
+static
+NTSTATUS
+WriteMetafile(IN HANDLE Handle, IN PFILE_RECORD_HEADER FileRecord, OUT PIO_STATUS_BLOCK IoStatusBlock)
+{
+    LARGE_INTEGER Offset;
+
+    // FIXME: Incorrect offset
+    Offset.QuadPart = MFT_LOCATION + (FileRecord->MFTRecordNumber * MFT_RECORD_SIZE);
+
+    return NtWriteFile(Handle,
+                       NULL,
+                       NULL,
+                       NULL,
+                       IoStatusBlock,
+                       FileRecord,
+                       MFT_RECORD_SIZE,
+                       &Offset,
+                       NULL);
+}
 
 NTSTATUS
 WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
 {
     NTSTATUS Status = STATUS_SUCCESS;
+    IO_STATUS_BLOCK IoStatusBlock;
 
     PFILE_RECORD_HEADER MFT     = CreateMft();
     PFILE_RECORD_HEADER MFTMirr = CreateMFTMirr();
@@ -324,8 +346,10 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
     PFILE_RECORD_HEADER Bitmap  = CreateBitmap();
     PFILE_RECORD_HEADER Boot    = CreateBoot();  
     PFILE_RECORD_HEADER UpCase  = CreateUpCase();
-    //PFILE_RECORD_HEADER Stub; 
-    
+    PFILE_RECORD_HEADER Stub;
+
+    DWORD32 MftIndex;
+
     if (!MFT    || !MFTMirr || !LogFile ||
         !Volume || !AttrDef || !Root    ||
         !Bitmap || !Boot    || !UpCase)
@@ -336,13 +360,123 @@ WriteMetafiles(IN HANDLE h, IN GET_LENGTH_INFORMATION* gli)
     }
 
     /* TODO:
-     *   Write files
-     *   Write MFT, MFTMirr, LogFile, Volume, AttrDef, Root, Bitmap, Boot
-     *   Write 2 stubs
-     *   Write UpCase
-     *   Write 5 stubs
+     *   + Write files
+     *   + Write MFT, MFTMirr, LogFile, Volume, AttrDef, Root, Bitmap, Boot
+     *   + Write 2 stubs
+     *   + Write UpCase
+     *   + Write 5 stubs
      *   Write mirror of mft
      */
+
+    // Write $MFT
+    Status = WriteMetafile(h, MFT, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteMetafile(). $MFT write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+    // Write $MFTMirr
+    Status = WriteMetafile(h, MFTMirr, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteMetafile(). $MFTMirr write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+    // Write $LogFile
+    Status = WriteMetafile(h, LogFile, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteMetafile(). $LogFile write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+    // Write $Volume
+    Status = WriteMetafile(h, Volume, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteMetafile(). $Volume write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+    // Write $AttrDef
+    Status = WriteMetafile(h, AttrDef, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteMetafile(). $AttrDef write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+    // Write $Root
+    Status = WriteMetafile(h, Root, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteMetafile(). $Root write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+    // Write $Bitmap
+    Status = WriteMetafile(h, Bitmap, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteMetafile(). $Bitmap write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+    // Write $Boot
+    Status = WriteMetafile(h, Boot, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteMetafile(). $Boot write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+    // Write stub for $BadClus
+    Stub = CreateStub(NTFS_FILE_BADCLUS);
+    Status = WriteMetafile(h, Stub, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteMetafile(). Stub for $BadClus write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+    FREE(Stub);
+
+    // Write stub for $Secure
+    Stub = CreateStub(NTFS_FILE_SECURE);
+    Status = WriteMetafile(h, Stub, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteMetafile(). Stub for $Secure write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+    FREE(Stub);
+
+    // Write $UpCase
+    Status = WriteMetafile(h, UpCase, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteMetafile(). $UpCase write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+    // Create stubs
+    for (MftIndex = NTFS_FILE_UPCASE; MftIndex < NTFS_FILE_FIRST_USER_FILE; MftIndex++)
+    {
+        Stub = CreateStub(MftIndex);
+        Status = WriteMetafile(h, Stub, &IoStatusBlock);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("WriteMetafile(). Stub #%d write failed. NtWriteFile() failed (Status %lx)\n", MftIndex, Status);
+            goto end;
+        }
+
+        FREE(Stub);
+    }
+
+    // TODO: Write Mft Mirror
 
 end:
     FREE(MFT);
@@ -354,6 +488,7 @@ end:
     FREE(Bitmap);
     FREE(Boot);
     FREE(UpCase);
+    FREE(Stub);
 
     return Status;
 }
