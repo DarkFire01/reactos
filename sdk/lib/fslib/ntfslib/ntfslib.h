@@ -89,9 +89,8 @@
 #define NTFS_FILE_BITMAP           6
 #define NTFS_FILE_BOOT             7
 #define NTFS_FILE_BADCLUS          8
-#define NTFS_FILE_QUOTA            9
+#define NTFS_FILE_SECURE           9
 #define NTFS_FILE_UPCASE           10
-#define NTFS_FILE_EXTEND           11
 #define NTFS_FILE_FIRST_USER_FILE  16
 
 
