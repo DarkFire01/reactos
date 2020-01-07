@@ -178,7 +178,7 @@ AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     PVOLUME_INFORMATION_ATTRIBUTE Attribute;
     ULONG FileRecordEnd = AttributeAddress->Length;
 
-    AttributeAddress->Type = AttributeFileName;
+    AttributeAddress->Type = AttributeVolumeInformation;
     AttributeAddress->Instance = FileRecord->NextAttributeNumber++;
 
     Attribute = (PVOLUME_INFORMATION_ATTRIBUTE)((LONG_PTR)AttributeAddress + RA_HEADER_LENGTH);
