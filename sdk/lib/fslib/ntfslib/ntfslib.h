@@ -77,6 +77,8 @@
 // Indexed Flag in Resident attributes - still somewhat speculative
 #define RA_INDEXED  0x01
 
+#define RA_METAFILES_ATTRIBUTES (NTFS_FILE_TYPE_SYSTEM | NTFS_FILE_TYPE_HIDDEN)
+
 #define RA_HEADER_LENGTH (FIELD_OFFSET(NTFS_ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR))
 
 // MFT Metafiles

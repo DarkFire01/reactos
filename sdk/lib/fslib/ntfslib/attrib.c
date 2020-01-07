@@ -57,7 +57,7 @@ AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     StandardInfo->ChangeTime     = SystemTime.QuadPart;
     StandardInfo->LastWriteTime  = SystemTime.QuadPart;
     StandardInfo->LastAccessTime = SystemTime.QuadPart;
-    StandardInfo->FileAttribute  = NTFS_FILE_TYPE_ARCHIVE;
+    StandardInfo->FileAttribute  = RA_METAFILES_ATTRIBUTES;
 
     // Move the attribute-end and file-record-end markers to the end of the file record
     AttributeAddress = (PNTFS_ATTR_RECORD)((ULONG_PTR)AttributeAddress + AttributeAddress->Length);
@@ -93,7 +93,7 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     }
     else
     {
-        FileNameAttribute->FileAttributes = NTFS_FILE_TYPE_ARCHIVE;
+        FileNameAttribute->FileAttributes = RA_METAFILES_ATTRIBUTES;
     }
 
     FileNameAttribute->DirectoryFileReferenceNumber = MftRecordNumber;
