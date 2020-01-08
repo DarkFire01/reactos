@@ -340,7 +340,6 @@ AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
 NTSTATUS
 WriteMetafiles(IN HANDLE                  Handle,
                IN GET_LENGTH_INFORMATION* LengthInformation,
-               IN PDISK_GEOMETRY          DiskGeometry,
-               IN PBOOT_SECTOR            BootSector);
+               IN PDISK_GEOMETRY          DiskGeometry);
 
 #endif

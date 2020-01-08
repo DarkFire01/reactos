@@ -337,8 +337,7 @@ WriteMetafile(IN HANDLE              Handle,
 NTSTATUS
 WriteMetafiles(IN HANDLE                  Handle, 
                IN GET_LENGTH_INFORMATION* LengthInformation,
-               IN PDISK_GEOMETRY          DiskGeometry,
-               IN PBOOT_SECTOR            BootSector)
+               IN PDISK_GEOMETRY          DiskGeometry)
 {
     NTSTATUS Status = STATUS_SUCCESS;
     IO_STATUS_BLOCK IoStatusBlock;
