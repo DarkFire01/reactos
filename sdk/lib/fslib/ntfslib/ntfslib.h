@@ -37,6 +37,7 @@
 #define EBPB_HEADER 0x80008000
 
 #define MFT_LOCATION  0x0C0000
+#define MFT_FIRST_SECTOR 0x600000
 #define CLUSTER_PER_MFT_RECORD     0xF6
 #define CLUSTERS_PER_INDEX_RECORD  0x01  // TODO: Recheck the correctness of the value
 
