@@ -122,7 +122,8 @@ FillExBiosParametersBlock(OUT PEXTENDED_BIOS_PARAMETERS_BLOCK ExBiosParametersBl
 NTSTATUS
 WriteBootSector(IN HANDLE                  Handle,
                 IN GET_LENGTH_INFORMATION* LengthInformation,
-                IN PDISK_GEOMETRY          DiskGeometry)
+                IN PDISK_GEOMETRY          DiskGeometry,
+                OUT OPTIONAL PBOOT_SECTOR *FinalBootSector)
 {
     NTSTATUS        Status;
     IO_STATUS_BLOCK IoStatusBlock;
@@ -162,8 +163,14 @@ WriteBootSector(IN HANDLE                  Handle,
         DPRINT1("BootSector write failed. NtWriteFile() failed (Status %lx)\n", Status);
     }
 
-    // Clear memory
-    RtlFreeHeap(RtlGetProcessHeap(), 0, BootSector);
+    if (FinalBootSector)
+    {
+        (*FinalBootSector) = BootSector;
+    }
+    else
+    {
+        RtlFreeHeap(RtlGetProcessHeap(), 0, BootSector);
+    }
 
     return Status;
 }

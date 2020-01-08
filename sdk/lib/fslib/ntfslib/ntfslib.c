@@ -45,6 +45,7 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
     IO_STATUS_BLOCK        Iosb;
     GET_LENGTH_INFORMATION LengthInformation;
     DISK_GEOMETRY          DiskGeometry;
+    PBOOT_SECTOR           BootSector;
     NTSTATUS               Status;
 
     DPRINT1("NtfsFormat(DriveRoot '%wZ')\n", DriveRoot);
@@ -120,7 +121,7 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
                     0);
 
     // Write boot sector
-    Status = WriteBootSector(FileHandle, &LengthInformation, &DiskGeometry);
+    Status = WriteBootSector(FileHandle, &LengthInformation, &DiskGeometry, &BootSector);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteBootSector() failed with status 0x%.08x\n", Status);
@@ -129,7 +130,7 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
     }
 
     // Create metafiles
-    Status = WriteMetafiles(FileHandle, &LengthInformation);
+    Status = WriteMetafiles(FileHandle, &LengthInformation, &DiskGeometry, BootSector);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafiles() failed with status 0x%.08x\n", Status);

@@ -334,7 +334,10 @@ WriteMetafile(IN HANDLE              Handle,
 }
 
 NTSTATUS
-WriteMetafiles(IN HANDLE Handle, IN GET_LENGTH_INFORMATION* LengthInformation)
+WriteMetafiles(IN HANDLE                  Handle, 
+               IN GET_LENGTH_INFORMATION* LengthInformation,
+               IN PDISK_GEOMETRY          DiskGeometry,
+               IN PBOOT_SECTOR            BootSector)
 {
     NTSTATUS Status = STATUS_SUCCESS;
     IO_STATUS_BLOCK IoStatusBlock;
@@ -351,6 +354,8 @@ WriteMetafiles(IN HANDLE Handle, IN GET_LENGTH_INFORMATION* LengthInformation)
     PFILE_RECORD_HEADER Stub;
 
     DWORD32 MftIndex;
+
+    DPRINT1("TEST %lx", BootSector->BPB.SectorsPerCluster);
 
     if (!MFT    || !MFTMirr || !LogFile ||
         !Volume || !AttrDef || !Root    ||

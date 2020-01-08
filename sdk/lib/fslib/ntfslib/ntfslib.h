@@ -305,7 +305,8 @@ GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime);
 NTSTATUS
 WriteBootSector(IN HANDLE                  Handle,
                 IN GET_LENGTH_INFORMATION* LengthInformation,
-                IN PDISK_GEOMETRY          DiskGeometry);
+                IN PDISK_GEOMETRY          DiskGeometry,
+                OUT OPTIONAL PBOOT_SECTOR  *FinalBootSector);
 
 // attrib.c
 
@@ -336,6 +337,9 @@ AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
 // files.c
 
 NTSTATUS
-WriteMetafiles(IN HANDLE Handle, IN GET_LENGTH_INFORMATION* LengthInformation);
+WriteMetafiles(IN HANDLE                  Handle,
+               IN GET_LENGTH_INFORMATION* LengthInformation,
+               IN PDISK_GEOMETRY          DiskGeometry,
+               IN PBOOT_SECTOR            BootSector);
 
 #endif
