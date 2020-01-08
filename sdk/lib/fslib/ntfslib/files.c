@@ -313,8 +313,7 @@ CreateStub(IN DWORD32 MftRecordNumber)
 
 static
 NTSTATUS
-WriteMetafile(IN HANDLE              Handle, 
-              IN BYTE                SectorsPerCluster,
+WriteMetafile(IN HANDLE              Handle,
               IN PFILE_RECORD_HEADER FileRecord, 
               OUT PIO_STATUS_BLOCK   IoStatusBlock)
 {
@@ -367,7 +366,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $MFT
-    Status = WriteMetafile(Handle, BootSector->BPB.SectorsPerCluster, MFT, &IoStatusBlock);
+    Status = WriteMetafile(Handle, MFT, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $MFT write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -375,7 +374,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $MFTMirr
-    Status = WriteMetafile(Handle, BootSector->BPB.SectorsPerCluster, MFTMirr, &IoStatusBlock);
+    Status = WriteMetafile(Handle, MFTMirr, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $MFTMirr write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -383,7 +382,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $LogFile
-    Status = WriteMetafile(Handle, BootSector->BPB.SectorsPerCluster, LogFile, &IoStatusBlock);
+    Status = WriteMetafile(Handle, LogFile, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $LogFile write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -391,7 +390,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $Volume
-    Status = WriteMetafile(Handle, BootSector->BPB.SectorsPerCluster, Volume, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Volume, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $Volume write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -399,7 +398,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $AttrDef
-    Status = WriteMetafile(Handle, BootSector->BPB.SectorsPerCluster, AttrDef, &IoStatusBlock);
+    Status = WriteMetafile(Handle, AttrDef, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $AttrDef write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -407,7 +406,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $Root
-    Status = WriteMetafile(Handle, BootSector->BPB.SectorsPerCluster, Root, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Root, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $Root write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -415,7 +414,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $Bitmap
-    Status = WriteMetafile(Handle, BootSector->BPB.SectorsPerCluster, Bitmap, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Bitmap, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $Bitmap write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -423,7 +422,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $Boot
-    Status = WriteMetafile(Handle, BootSector->BPB.SectorsPerCluster, Boot, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Boot, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $Boot write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -432,7 +431,7 @@ WriteMetafiles(IN HANDLE                  Handle,
 
     // Write stub for $BadClus
     Stub = CreateStub(NTFS_FILE_BADCLUS);
-    Status = WriteMetafile(Handle, BootSector->BPB.SectorsPerCluster, Stub, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Stub, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). Stub for $BadClus write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -443,7 +442,7 @@ WriteMetafiles(IN HANDLE                  Handle,
 
     // Write stub for $Secure
     Stub = CreateStub(NTFS_FILE_SECURE);
-    Status = WriteMetafile(Handle, BootSector->BPB.SectorsPerCluster, Stub, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Stub, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). Stub for $Secure write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -453,7 +452,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     FREE(Stub);
 
     // Write $UpCase
-    Status = WriteMetafile(Handle, BootSector->BPB.SectorsPerCluster, UpCase, &IoStatusBlock);
+    Status = WriteMetafile(Handle, UpCase, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $UpCase write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -464,7 +463,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     for (MftIndex = NTFS_FILE_UPCASE; MftIndex < NTFS_FILE_FIRST_USER_FILE; MftIndex++)
     {
         Stub = CreateStub(MftIndex);
-        Status = WriteMetafile(Handle, BootSector->BPB.SectorsPerCluster, Stub, &IoStatusBlock);
+        Status = WriteMetafile(Handle, Stub, &IoStatusBlock);
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("WriteMetafile(). Stub #%d write failed. NtWriteFile() failed (Status %lx)\n", MftIndex, Status);
