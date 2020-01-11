@@ -3266,7 +3266,7 @@ IsSupportedActivePartition(
         /* NOTE: Please keep in sync with the RegisteredFileSystems list! */
         if (wcsicmp(PartEntry->FileSystem, L"FAT")   == 0 ||
             wcsicmp(PartEntry->FileSystem, L"FAT32") == 0 ||
-         // wcsicmp(PartEntry->FileSystem, L"NTFS")  == 0 ||
+            wcsicmp(PartEntry->FileSystem, L"NTFS")  == 0 ||
             wcsicmp(PartEntry->FileSystem, L"BTRFS") == 0)
         {
             return TRUE;
