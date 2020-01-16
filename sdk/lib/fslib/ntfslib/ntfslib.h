@@ -26,6 +26,8 @@
 
 #define FREE(p) if (p) RtlFreeHeap(RtlGetProcessHeap(), 0, p);
 
+#define MB_TO_B(x) (x * 1024)
+
 
 /* BOOT SECTOR DEFINES *******************************************************/
 
@@ -95,6 +97,9 @@
 #define NTFS_FILE_SECURE           9
 #define NTFS_FILE_UPCASE           10
 #define NTFS_FILE_FIRST_USER_FILE  16
+
+#define MFT_DEFAULT_CLUSTERS_SIZE 64
+#define MFT_DATA_RUN_SIZE         8
 
 
 /* BOOT SECTOR STRUCTURES ****************************************************/
@@ -206,13 +211,13 @@ typedef enum _ATTRIBUTE_TYPE
 
 typedef struct _NTFS_ATTR_RECORD
 {
-    ULONG   Type;
-    ULONG   Length;
-    UCHAR   IsNonResident;
-    UCHAR   NameLength;
-    USHORT  NameOffset;
-    USHORT  Flags;
-    USHORT  Instance;
+    ULONG   Type;           // 0x00
+    ULONG   Length;         // 0x04
+    UCHAR   IsNonResident;  // 0x08
+    UCHAR   NameLength;     // 0x09
+    USHORT  NameOffset;     // 0x0A
+    USHORT  Flags;          // 0x0C
+    USHORT  Instance;       // 0x0E
     union
     {
         struct
@@ -225,15 +230,14 @@ typedef struct _NTFS_ATTR_RECORD
 
         struct
         {
-            ULONGLONG  LowestVCN;
-            ULONGLONG  HighestVCN;
-            USHORT     MappingPairsOffset;
-            USHORT     CompressionUnit;
-            UCHAR      Reserved[4];
-            LONGLONG   AllocatedSize;
-            LONGLONG   DataSize;
-            LONGLONG   InitializedSize;
-            LONGLONG   CompressedSize;
+            ULONGLONG  LowestVCN;           // 0x10
+            ULONGLONG  HighestVCN;          // 0x18
+            USHORT     DataRunsOffset;      // 0x20
+            USHORT     CompressionUnit;     // 0x22
+            BYTE       Reserved[4];         // 0x24
+            LONGLONG   AllocatedSize;       // 0x28
+            LONGLONG   DataSize;            // 0x30
+            LONGLONG   InitializedSize;     // 0x38
         } NonResident;
     };
 } NTFS_ATTR_RECORD, *PNTFS_ATTR_RECORD;
@@ -298,8 +302,12 @@ typedef struct _VOLUME_INFORMATION_ATTRIBUTE
 ULONG
 NTAPI NtGetTickCount(VOID); 
 
+// ntfslib.c
+
 VOID
 GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime);
+
+BYTE GetSectorsPerCluster(IN GET_LENGTH_INFORMATION* LengthInformation);
 
 // bootsect.c
 
@@ -324,6 +332,13 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
 VOID
 AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
                       OUT PNTFS_ATTR_RECORD   Attribute);
+
+VOID
+AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
+                                     OUT PNTFS_ATTR_RECORD       Attribute,
+                                     IN  GET_LENGTH_INFORMATION* LengthInformation,
+                                     IN  ULONG                   Address,
+                                     IN  ULONGLONG               VirtualClusters);
 
 VOID
 AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,

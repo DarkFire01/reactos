@@ -32,6 +32,27 @@ GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime)
     lpFileTime->dwHighDateTime = SystemTime.HighPart;
 }
 
+BYTE
+GetSectorsPerCluster(IN GET_LENGTH_INFORMATION* LengthInformation)
+{
+    if (LengthInformation->Length.QuadPart < MB_TO_B(512))
+    {
+        return 1;
+    }
+    else if (LengthInformation->Length.QuadPart < MB_TO_B(1024))
+    {
+        return 2;
+    }
+    else if (LengthInformation->Length.QuadPart < MB_TO_B(2048))
+    {
+        return 4;
+    }
+    else
+    {
+        return 8;
+    }
+}
+
 NTSTATUS NTAPI
 NtfsFormat(IN PUNICODE_STRING  DriveRoot,
            IN FMIFS_MEDIA_FLAG MediaFlag,

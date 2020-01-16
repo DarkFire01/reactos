@@ -149,6 +149,54 @@ AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
 }
 
+VOID
+AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
+                                     OUT PNTFS_ATTR_RECORD       Attribute,
+                                     IN  GET_LENGTH_INFORMATION* LengthInformation,
+                                     IN  ULONG                   Address,
+                                     IN  ULONGLONG               VirtualClusters)
+{
+    typedef struct _RUN_LIST_ENTRY
+    {
+        BYTE   Header;
+        BYTE   Size;
+        USHORT Reserved;
+        ULONG  Address;
+    } RUN_LIST_ENTRY, *PRUN_LIST_ENTRY;
+
+    PRUN_LIST_ENTRY RunListEntry;
+
+    Attribute->Type     = AttributeData;
+    Attribute->Instance = FileRecord->NextAttributeNumber++;
+
+    Attribute->IsNonResident = 1;
+    Attribute->Flags         = 0;
+
+    Attribute->NameLength = 0;
+    Attribute->NameOffset = sizeof(NTFS_ATTR_RECORD);
+
+    Attribute->NonResident.LowestVCN       = 0;
+    Attribute->NonResident.HighestVCN      = (VirtualClusters - 1);
+    Attribute->NonResident.DataRunsOffset  = sizeof(NTFS_ATTR_RECORD);
+    Attribute->NonResident.CompressionUnit = 0;
+
+    Attribute->NonResident.AllocatedSize = 
+        VirtualClusters *  ((LONGLONG)BPB_BYTES_PER_SECTOR * (LONGLONG)GetSectorsPerCluster(LengthInformation));
+    Attribute->NonResident.DataSize        = Attribute->NonResident.AllocatedSize;
+    Attribute->NonResident.InitializedSize = Attribute->NonResident.AllocatedSize;
+
+    RunListEntry = (PRUN_LIST_ENTRY)((ULONG_PTR)Attribute + sizeof(NTFS_ATTR_RECORD));
+
+    RunListEntry->Header  = 0x31;
+    RunListEntry->Size    = 0x40;
+    RunListEntry->Address = Address;  // FIXME: Convert Address to Big-Endian
+
+    Attribute->Length = sizeof(NTFS_ATTR_RECORD) + sizeof(RUN_LIST_ENTRY);
+
+    // Move the attribute-end and file-record-end markers to the end of the file record
+    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)Attribute + Attribute->Length);
+    SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
+}
 
 VOID
 AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
