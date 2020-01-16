@@ -338,7 +338,7 @@ AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
                                      OUT PNTFS_ATTR_RECORD       Attribute,
                                      IN  GET_LENGTH_INFORMATION* LengthInformation,
                                      IN  ULONG                   Address,
-                                     IN  ULONGLONG               VirtualClusters);
+                                     IN  BYTE                    ClustersCount);
 
 VOID
 AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,

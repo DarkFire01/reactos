@@ -113,7 +113,11 @@ CreateMft(IN GET_LENGTH_INFORMATION *LengthInformation)
     }
 
     // Create DATA attribute
-    AddNonResidentSingleRunDataAttribute(FileRecord, Attribute, LengthInformation, 0x00000C /* HACK! Use MFT_LOCATION */, 64);
+    AddNonResidentSingleRunDataAttribute(FileRecord, 
+                                         Attribute,
+                                         LengthInformation,
+                                         0x00000C /* HACK! Use MFT_LOCATION after fix */,
+                                         MFT_DEFAULT_CLUSTERS_SIZE);
 
     // Create BITMAP attribute
 
