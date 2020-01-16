@@ -14,11 +14,6 @@
 #include <debug.h>
 
 
-/* MACROSES ******************************************************************/
-
-#define MB_TO_B(x) (x * 1024)
-
-
 /* FUNCTIONS *****************************************************************/
 
 static
@@ -45,24 +40,8 @@ FillBiosParametersBlock(OUT PBIOS_PARAMETERS_BLOCK  BiosParametersBlock,
 {
     // See: https://en.wikipedia.org/wiki/BIOS_parameter_block
     
-    BiosParametersBlock->BytesPerSector = BPB_BYTES_PER_SECTOR;
-
-    if (LengthInformation->Length.QuadPart < MB_TO_B(512))
-    {
-        BiosParametersBlock->SectorsPerCluster = 1;
-    }
-    else if (LengthInformation->Length.QuadPart < MB_TO_B(1024))
-    {
-        BiosParametersBlock->SectorsPerCluster = 2;
-    }
-    else if (LengthInformation->Length.QuadPart < MB_TO_B(2048))
-    {
-        BiosParametersBlock->SectorsPerCluster = 4;
-    }
-    else
-    {
-        BiosParametersBlock->SectorsPerCluster = 8;
-    }
+    BiosParametersBlock->BytesPerSector    = BPB_BYTES_PER_SECTOR;
+    BiosParametersBlock->SectorsPerCluster = GetSectorsPerCluster(LengthInformation);
 
     // MediaId for hard drives always 0xF8
     BiosParametersBlock->MediaId = (DiskGeometry->MediaType == FixedMedia) ? 0xF8 : 0x00;
