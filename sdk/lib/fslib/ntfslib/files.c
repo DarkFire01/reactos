@@ -14,6 +14,23 @@
 #include <debug.h>
 
 
+/* CONSTS ********************************************************************/
+
+static const WCHAR* METAFILES_NAMES[] = {
+    L"$MFT",
+    L"$MFTMirr",
+    L"$LogFile",
+    L"$Volume",
+    L"$AttrDef",
+    L".",
+    L"$Bitmap",
+    L"$Boot",
+    L"$BadClus",
+    L"$Secure",
+    L"$UpCase"
+};
+
+
 /* FUNCTIONS *****************************************************************/
 
 // Create empty file record
@@ -22,9 +39,7 @@ PFILE_RECORD_HEADER
 NtfsCreateEmptyFileRecord(IN DWORD32 MftRecordNumber)
 {
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_RECORD NextAttribute;
-
-    DPRINT("NtfsCreateEmptyFileRecord(%d)\n", MftRecordNumber);
+    PATTR_RECORD NextAttribute;
 
     // Allocate memory for file record
     FileRecord = RtlAllocateHeap(RtlGetProcessHeap(), 0, MFT_RECORD_SIZE);
@@ -36,25 +51,25 @@ NtfsCreateEmptyFileRecord(IN DWORD32 MftRecordNumber)
 
     RtlZeroMemory(FileRecord, MFT_RECORD_SIZE);
 
-    FileRecord->Header.Magic    = NRH_FILE_TYPE;
+    FileRecord->Header.Magic    = FILE_RECORD_MAGIC;
     FileRecord->MFTRecordNumber = MftRecordNumber;
 
     // Calculate USA offset and count
-    FileRecord->Header.UsaOffset = FIELD_OFFSET(FILE_RECORD_HEADER, MFTRecordNumber) + sizeof(ULONG);  // Check this!
+    FileRecord->Header.UsaOffset = FIELD_OFFSET(FILE_RECORD_HEADER, MFTRecordNumber) + sizeof(ULONG);
 
     // Size of USA (in ULONG's) will be 1 (for USA number) + 1 for every sector the file record uses
     FileRecord->BytesAllocated = MFT_RECORD_SIZE;
-    FileRecord->Header.UsaCount = (FileRecord->BytesAllocated / BPB_BYTES_PER_SECTOR) + 1;  // Check this!
+    FileRecord->Header.UsaCount = (FileRecord->BytesAllocated / DISK_BYTES_PER_SECTOR) + 1;
 
     // Setup other file record fields
     FileRecord->SequenceNumber  = 1;
-    FileRecord->AttributeOffset = FileRecord->Header.UsaOffset + (2 * FileRecord->Header.UsaCount);
-    FileRecord->AttributeOffset = ALIGN_UP_BY(FileRecord->AttributeOffset, ATTR_RECORD_ALIGNMENT);
+    FileRecord->FirstAttributeOffset = FileRecord->Header.UsaOffset + (2 * FileRecord->Header.UsaCount);
+    FileRecord->FirstAttributeOffset = ALIGN_UP_BY(FileRecord->FirstAttributeOffset, ATTR_RECORD_ALIGNMENT);
     FileRecord->Flags      = MFT_RECORD_IN_USE;
-    FileRecord->BytesInUse = FileRecord->AttributeOffset + sizeof(ULONG) * 2;
+    FileRecord->BytesInUse = FileRecord->FirstAttributeOffset + sizeof(ULONG) * 2;
 
     // Find where the first attribute will be added
-    NextAttribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + FileRecord->AttributeOffset);  // Check this!
+    NextAttribute = (PATTR_RECORD)((ULONG_PTR)FileRecord + FileRecord->FirstAttributeOffset);
 
     // Temporary mark the end of the file-record
     NextAttribute->Type   = AttributeEnd;
@@ -66,9 +81,9 @@ NtfsCreateEmptyFileRecord(IN DWORD32 MftRecordNumber)
 // Create file record with $STANDARD_INFORMATION and $FILE_NAME attributes
 static
 PFILE_RECORD_HEADER
-NtfsCreateBlankFileRecord(IN  LPCWSTR FileName,
-                          IN  DWORD32 MftRecordNumber,
-                          OUT PNTFS_ATTR_RECORD* NextAttribute)
+NtfsCreateBlankFileRecord(IN  LPCWSTR       FileName,
+                          IN  DWORD32       MftRecordNumber,
+                          OUT PATTR_RECORD* NextAttribute)
 {
     PFILE_RECORD_HEADER FileRecord;
 
@@ -80,20 +95,33 @@ NtfsCreateBlankFileRecord(IN  LPCWSTR FileName,
         return NULL;
     }
 
-    // Find where the first attribute will be added
-    (*NextAttribute) = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + FileRecord->AttributeOffset);
+    // $STANDARD_INFORMATION
+    (*NextAttribute) = FIRST_ATTRIBUTE(FileRecord);
+    AddStandardInformationAttribute(FileRecord, *NextAttribute);
 
-    // Add $STANDARD_INFORMATION attribute
-    AddStandardInformationAttribute(FileRecord, (*NextAttribute));
+    // $FILE_NAME
+    (*NextAttribute) = NEXT_ATTRIBUTE(*NextAttribute);
+    AddFileNameAttribute(FileRecord, *NextAttribute, FileName, MftRecordNumber);
 
-    // Calculate pointer to the next attribute
-    (*NextAttribute) = (PNTFS_ATTR_RECORD)((ULONG_PTR)(*NextAttribute) + (ULONG_PTR)(*NextAttribute)->Length);
-
-    // Add the $FILE_NAME attribute
-    AddFileNameAttribute(FileRecord, (*NextAttribute), FileName, MftRecordNumber);
-
-    (*NextAttribute) = (PNTFS_ATTR_RECORD)((ULONG_PTR)(*NextAttribute) + (ULONG_PTR)(*NextAttribute)->Length);
+    (*NextAttribute) = NEXT_ATTRIBUTE(*NextAttribute);
    
+    return FileRecord;
+}
+
+static
+PFILE_RECORD_HEADER
+CreateMetaFileRecord(IN  DWORD32       MftRecordNumber,
+                     OUT PATTR_RECORD* Attribute)
+{
+    PFILE_RECORD_HEADER FileRecord;
+
+    FileRecord = NtfsCreateBlankFileRecord(METAFILES_NAMES[MftRecordNumber], MftRecordNumber, Attribute);
+    if (!FileRecord)
+    {
+        DPRINT1("ERROR: Unable to allocate memory for %S file record!\n", METAFILES_NAMES[MftRecordNumber]);
+        return NULL;
+    }
+
     return FileRecord;
 }
 
@@ -102,24 +130,23 @@ PFILE_RECORD_HEADER
 CreateMft(IN GET_LENGTH_INFORMATION *LengthInformation)
 {
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_RECORD   Attribute = NULL;
+    PATTR_RECORD        Attribute = NULL;
     
-    // Create MFT file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$MFT", NTFS_FILE_MFT, &Attribute);
+    // Create file record
+    FileRecord = CreateMetaFileRecord(METAFILE_MFT, &Attribute);
     if (!FileRecord)
     {
-        DPRINT1("ERROR: Unable to allocate memory for $MFT file record!\n");
         return NULL;
     }
 
-    // Create DATA attribute
+    // $DATA
     AddNonResidentSingleRunDataAttribute(FileRecord, 
                                          Attribute,
                                          LengthInformation,
-                                         0x00000C /* HACK! Use MFT_LOCATION after fix */,
+                                         MFT_LOCATION,
                                          MFT_DEFAULT_CLUSTERS_SIZE);
 
-    // Create BITMAP attribute
+    // TODO: $BITMAP
 
     return FileRecord;
 }
@@ -129,17 +156,16 @@ PFILE_RECORD_HEADER
 CreateMFTMirr()
 {
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_RECORD   Attribute = NULL;
+    PATTR_RECORD        Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$MFTMirr", NTFS_FILE_MFTMIRR, &Attribute);
+    FileRecord = CreateMetaFileRecord(METAFILE_MFTMIRR, &Attribute);
     if (!FileRecord)
     {
-        DPRINT1("ERROR: Unable to allocate memory for $MFTMirr file record!\n");
         return NULL;
     }
 
-    // Create DATA attribute
+    // TODO: $DATA
 
     return FileRecord;
 }
@@ -149,17 +175,16 @@ PFILE_RECORD_HEADER
 CreateLogFile()
 {
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_RECORD   Attribute = NULL;
+    PATTR_RECORD        Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$LogFile", NTFS_FILE_LOGFILE, &Attribute);
+    FileRecord = CreateMetaFileRecord(METAFILE_LOGFILE, &Attribute);
     if (!FileRecord)
     {
-        DPRINT1("ERROR: Unable to allocate memory for $LogFile file record!\n");
         return NULL;
     }
 
-    // Create DATA attribute
+    // TODO: $DATA
 
     return FileRecord;
 }
@@ -169,25 +194,27 @@ PFILE_RECORD_HEADER
 CreateVolume()
 {
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_RECORD   Attribute = NULL;
+    PATTR_RECORD        Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$Volume", NTFS_FILE_VOLUME, &Attribute);
+    FileRecord = CreateMetaFileRecord(METAFILE_VOLUME, &Attribute);
     if (!FileRecord)
     {
-        DPRINT1("ERROR: Unable to allocate memory for $Volume file record!\n");
         return NULL;
     }
 
-    // Add $VOLUME_NAME
+    // $VOLUME_NAME
     AddEmptyVolumeNameAttribute(FileRecord, Attribute);
 
-    // Add $VOLUME_INFORMATION
-    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)Attribute + (ULONG_PTR)Attribute->Length);
-    AddVolumeInformationAttribute(FileRecord, Attribute, 3, 1);
-    
-    // Add $DATA
-    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)Attribute + (ULONG_PTR)Attribute->Length);
+    // $VOLUME_INFORMATION
+    Attribute = NEXT_ATTRIBUTE(Attribute);
+    AddVolumeInformationAttribute(FileRecord, 
+                                  Attribute, 
+                                  NTFS_MAJOR_VERSION, 
+                                  NTFS_MINOR_VERSION);
+
+    // $DATA
+    Attribute = NEXT_ATTRIBUTE(Attribute);
     AddEmptyDataAttribute(FileRecord, Attribute);
 
     return FileRecord;
@@ -198,17 +225,16 @@ PFILE_RECORD_HEADER
 CreateAttrDef()
 {
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_RECORD   Attribute = NULL;
+    PATTR_RECORD        Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$AttrDef", NTFS_FILE_ATTRDEF, &Attribute);
+    FileRecord = CreateMetaFileRecord(METAFILE_ATTRDEF, &Attribute);
     if (!FileRecord)
     {
-        DPRINT1("ERROR: Unable to allocate memory for $AttrDef file record!\n");
         return NULL;
     }
     
-    // Create DATA attribute
+    // TODO: $DATA
 
     return FileRecord;
 }
@@ -217,18 +243,18 @@ static
 PFILE_RECORD_HEADER
 CreateRoot()
 {
+    // FIXME!
+
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_RECORD   Attribute = NULL;
+    PATTR_RECORD   Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L".", NTFS_FILE_ROOT, &Attribute);
+    FileRecord = NtfsCreateBlankFileRecord(L".", METAFILE_ROOT, &Attribute);
     if (!FileRecord)
     {
         DPRINT1("ERROR: Unable to allocate memory for . file record!\n");
         return NULL;
     }
-
-    // Create DATA attribute
 
     return FileRecord;
 }
@@ -238,17 +264,16 @@ PFILE_RECORD_HEADER
 CreateBitmap()
 {
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_RECORD   Attribute = NULL;
+    PATTR_RECORD        Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$Bitmap", NTFS_FILE_BITMAP, &Attribute);
+    FileRecord = CreateMetaFileRecord(METAFILE_BITMAP, &Attribute);
     if (!FileRecord)
     {
-        DPRINT1("ERROR: Unable to allocate memory for $Bitmap file record!\n");
         return NULL;
     }
 
-    // Create DATA attribute
+    // TODO: $DATA
 
     return FileRecord;
 }
@@ -258,17 +283,16 @@ PFILE_RECORD_HEADER
 CreateBoot()
 {
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_RECORD   Attribute = NULL;
+    PATTR_RECORD        Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$Boot", NTFS_FILE_BOOT, &Attribute);
+    FileRecord = CreateMetaFileRecord(METAFILE_BOOT, &Attribute);
     if (!FileRecord)
     {
-        DPRINT1("ERROR: Unable to allocate memory for $Boot file record!\n");
         return NULL;
     }
 
-    // Create DATA attribute
+    // TODO: $DATA
 
     return FileRecord;
 }
@@ -278,19 +302,18 @@ PFILE_RECORD_HEADER
 CreateUpCase()
 {
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_RECORD   Attribute = NULL;
+    PATTR_RECORD        Attribute = NULL;
 
     // Create file record
-    FileRecord = NtfsCreateBlankFileRecord(L"$UpCase", NTFS_FILE_ATTRDEF, &Attribute);
+    FileRecord = CreateMetaFileRecord(METAFILE_UPCASE, &Attribute);
     if (!FileRecord)
     {
-        DPRINT1("ERROR: Unable to allocate memory for $UpCase file record!\n");
         return NULL;
     }
 
-    // Create unnamed DATA attribute
+    // TODO: $DATA
 
-    // Create $Info DATA attribute
+    // TODO: $Info DATA
 
     return FileRecord;
 }
@@ -300,7 +323,7 @@ PFILE_RECORD_HEADER
 CreateStub(IN DWORD32 MftRecordNumber)
 {
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_RECORD   Attribute = NULL;
+    PATTR_RECORD   Attribute = NULL;
 
     // Create file record
     FileRecord = NtfsCreateBlankFileRecord(L"", MftRecordNumber, &Attribute);
@@ -310,7 +333,7 @@ CreateStub(IN DWORD32 MftRecordNumber)
         return NULL;
     }
 
-    // Empty resident $DATA attribute
+    // Create empty resident $DATA attribute
     AddEmptyDataAttribute(FileRecord, Attribute);
 
     return FileRecord;
@@ -327,7 +350,7 @@ WriteMetafile(IN  HANDLE                   Handle,
 
     // Offset to $MFT + offset to record
     Offset.QuadPart = 
-        ((LONGLONG)MFT_LOCATION * (LONGLONG)GetSectorsPerCluster(LengthInformation) * (LONGLONG)BPB_BYTES_PER_SECTOR) +
+        ((LONGLONG)MFT_LOCATION * (LONGLONG)GetSectorsPerCluster(LengthInformation) * (LONGLONG)DISK_BYTES_PER_SECTOR) +
         (LONGLONG)(FileRecord->MFTRecordNumber * MFT_RECORD_SIZE);
 
     return NtWriteFile(Handle,
@@ -359,7 +382,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     PFILE_RECORD_HEADER Boot    = CreateBoot();  
     PFILE_RECORD_HEADER UpCase  = CreateUpCase();
     PFILE_RECORD_HEADER Stub;
-
+    
     DWORD32 MftIndex;
 
     if (!MFT    || !MFTMirr || !LogFile ||
@@ -436,7 +459,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write stub for $BadClus
-    Stub = CreateStub(NTFS_FILE_BADCLUS);
+    Stub = CreateStub(METAFILE_BADCLUS);
     Status = WriteMetafile(Handle, LengthInformation, Stub, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
@@ -447,7 +470,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     FREE(Stub);
 
     // Write stub for $Secure
-    Stub = CreateStub(NTFS_FILE_SECURE);
+    Stub = CreateStub(METAFILE_SECURE);
     Status = WriteMetafile(Handle, LengthInformation, Stub, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
@@ -466,7 +489,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Create stubs
-    for (MftIndex = NTFS_FILE_UPCASE; MftIndex < NTFS_FILE_FIRST_USER_FILE; MftIndex++)
+    for (MftIndex = METAFILE_UPCASE+1; MftIndex < METAFILE_FIRST_USER_FILE; MftIndex++)
     {
         Stub = CreateStub(MftIndex);
         Status = WriteMetafile(Handle, LengthInformation, Stub, &IoStatusBlock);

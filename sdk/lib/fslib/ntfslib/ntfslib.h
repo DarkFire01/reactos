@@ -12,6 +12,8 @@
 
 /* INCLUDES ******************************************************************/
 
+#include <stdlib.h>
+
 #include <ndk/iofuncs.h>
 #include <ndk/obfuncs.h>
 #include <ndk/rtlfuncs.h>
@@ -28,31 +30,60 @@
 
 #define MB_TO_B(x) (x * 1024)
 
+#define BSWAP16(val) \
+ ( (((val) >> 8) & 0x00FF) | (((val) << 8) & 0xFF00) )
+
+#define BSWAP32(val) \
+ ( (((val) >> 24) & 0x000000FF) | (((val) >>  8) & 0x0000FF00) | \
+   (((val) <<  8) & 0x00FF0000) | (((val) << 24) & 0xFF000000) )
+
+#define BSWAP64(val) \
+ ( (((val) >> 56) & 0x00000000000000FF) | (((val) >> 40) & 0x000000000000FF00) | \
+   (((val) >> 24) & 0x0000000000FF0000) | (((val) >>  8) & 0x00000000FF000000) | \
+   (((val) <<  8) & 0x000000FF00000000) | (((val) << 24) & 0x0000FF0000000000) | \
+   (((val) << 40) & 0x00FF000000000000) | (((val) << 56) & 0xFF00000000000000) )
+
+#define IS_HARD_DRIVE(dg) (dg->MediaType == FixedMedia)
+
+#define SECTORS_COUNT(dg) (((ULONGLONG)dg->SectorsPerTrack)   * \
+                           ((ULONGLONG)dg->TracksPerCylinder) * \
+                           ((ULONGLONG)dg->Cylinders.QuadPart))
+
+#define FIRST_ATTRIBUTE(fr) ((PATTR_RECORD)((ULONG_PTR)fr + fr->FirstAttributeOffset))
+#define NEXT_ATTRIBUTE(attr) ((PATTR_RECORD)((ULONG_PTR)(attr) + (attr)->Length))
+
+
+/* DISK DEFINES **************************************************************/
+
+#define DISK_BYTES_PER_SECTOR  512
+#define DISK_HEADS             0xFF
+
 
 /* BOOT SECTOR DEFINES *******************************************************/
 
-#define BPB_BYTES_PER_SECTOR     512
-#define BPB_WINXP_HIDDEN_SECTORS 0x3F
-#define BPB_WIN7_HIDDEN_SECTORS  0x0800
-#define BPB_HEADS  0xFF
+#define BPB_HIDDEN_SECTORS  0x3F  // From WinXP
 
-#define EBPB_HEADER 0x80008000
+#define EBPB_HEADER         BSWAP32(0x80008000)
+#define OEM_ID              BSWAP64(0x4E54465320202020)
+#define BOOT_SECTOR_END     BSWAP16(0x55AA)
+
+
+/* MFT DEFINES ***************************************************************/
 
 #define MFT_LOCATION  0x0C0000
-#define MFT_FIRST_SECTOR 0x600000
-#define CLUSTER_PER_MFT_RECORD     0xF6
-#define CLUSTERS_PER_INDEX_RECORD  0x01  // TODO: Recheck the correctness of the value
 
-#define BOOT_SECTOR_END  0xAA55
+#define MFT_CLUSTERS_PER_RECORD        0xF6
+#define MFT_CLUSTERS_PER_INDEX_RECORD  0x01
+
+#define MFT_RECORD_SIZE     1024
 
 
-/* FILES DEFINES *************************************************************/
+/* OTHER DEFINES *************************************************************/
 
-// NRH - NTFS_RECORD_HEADER
-#define NRH_FILE_TYPE         0x454C4946  // 'FILE'
-#define NRH_USA_OFFSET_WINXP  0x002D
+#define NTFS_MAJOR_VERSION 3
+#define NTFS_MINOR_VERSION 1
 
-#define MFT_RECORD_SIZE  0x400  // 1KB
+#define FILE_RECORD_MAGIC  BSWAP32(0x46494C45)
 
 // The beginning and length of an attribute record are always aligned to an 8-byte boundary,
 // relative to the beginning of the file record.
@@ -62,44 +93,45 @@
 // No clue what data is being represented here.
 #define FILE_RECORD_END  0x11477982
 
-#define NTFS_FILE_NAME_POSIX          0
-#define NTFS_FILE_NAME_WIN32          1
-#define NTFS_FILE_NAME_DOS            2
-#define NTFS_FILE_NAME_WIN32_AND_DOS  3
+#define FILE_NAME_POSIX          0
+#define FILE_NAME_WIN32          1
+#define FILE_NAME_DOS            2
+#define FILE_NAME_WIN32_AND_DOS  3
 
-#define NTFS_FILE_TYPE_READ_ONLY  0x1
-#define NTFS_FILE_TYPE_HIDDEN     0x2
-#define NTFS_FILE_TYPE_SYSTEM     0x4
-#define NTFS_FILE_TYPE_ARCHIVE    0x20
-#define NTFS_FILE_TYPE_REPARSE    0x400
-#define NTFS_FILE_TYPE_COMPRESSED 0x800
-#define NTFS_FILE_TYPE_DIRECTORY  0x10000000
+#define FILE_TYPE_READ_ONLY  0x1
+#define FILE_TYPE_HIDDEN     0x2
+#define FILE_TYPE_SYSTEM     0x4
+#define FILE_TYPE_ARCHIVE    0x20
+#define FILE_TYPE_REPARSE    0x400
+#define FILE_TYPE_COMPRESSED 0x800
+#define FILE_TYPE_DIRECTORY  0x10000000
 
-#define NTFS_FILE_CASE_SENSITIVE  FALSE
+#define FILE_CASE_SENSITIVE  FALSE
 
 // Indexed Flag in Resident attributes - still somewhat speculative
 #define RA_INDEXED  0x01
 
-#define RA_METAFILES_ATTRIBUTES (NTFS_FILE_TYPE_SYSTEM | NTFS_FILE_TYPE_HIDDEN)
+#define RA_METAFILES_ATTRIBUTES  (FILE_TYPE_SYSTEM | FILE_TYPE_HIDDEN)
+#define RA_HEADER_LENGTH         (FIELD_OFFSET(ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR))
 
-#define RA_HEADER_LENGTH (FIELD_OFFSET(NTFS_ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR))
-
-// MFT Metafiles
-#define NTFS_FILE_MFT              0
-#define NTFS_FILE_MFTMIRR          1
-#define NTFS_FILE_LOGFILE          2
-#define NTFS_FILE_VOLUME           3
-#define NTFS_FILE_ATTRDEF          4
-#define NTFS_FILE_ROOT             5
-#define NTFS_FILE_BITMAP           6
-#define NTFS_FILE_BOOT             7
-#define NTFS_FILE_BADCLUS          8
-#define NTFS_FILE_SECURE           9
-#define NTFS_FILE_UPCASE           10
-#define NTFS_FILE_FIRST_USER_FILE  16
+// Metafiles
+#define METAFILE_MFT              0
+#define METAFILE_MFTMIRR          1
+#define METAFILE_LOGFILE          2
+#define METAFILE_VOLUME           3
+#define METAFILE_ATTRDEF          4
+#define METAFILE_ROOT             5
+#define METAFILE_BITMAP           6
+#define METAFILE_BOOT             7
+#define METAFILE_BADCLUS          8
+#define METAFILE_SECURE           9
+#define METAFILE_UPCASE           10
+#define METAFILE_FIRST_USER_FILE  16
 
 #define MFT_DEFAULT_CLUSTERS_SIZE 64
-#define MFT_DATA_RUN_SIZE         8
+
+#define RUN_ENTRY_HEADER  0x31
+#define RUN_ENTRY_SIZE    8
 
 
 /* BOOT SECTOR STRUCTURES ****************************************************/
@@ -108,38 +140,38 @@
 
 typedef struct _BIOS_PARAMETERS_BLOCK
 {
-    USHORT    BytesPerSector;      // 0x0B
-    UCHAR     SectorsPerCluster;   // 0x0D
-    UCHAR     Unused0[7];          // 0x0E
-    UCHAR     MediaId;             // 0x15
-    USHORT    Unused1;             // 0x16
-    USHORT    SectorsPerTrack;     // 0x18
-    USHORT    Heads;               // 0x1A
+    USHORT   BytesPerSector;       // 0x0B
+    BYTE     SectorsPerCluster;    // 0x0D
+    BYTE     Unused0[7];           // 0x0E
+    BYTE     MediaId;              // 0x15
+    USHORT   Unused1;              // 0x16
+    USHORT   SectorsPerTrack;      // 0x18
+    USHORT   Heads;                // 0x1A
     DWORD32   HiddenSectorsCount;  // 0x1C
-    DWORD32   Unused2;             // 0x20
-} BIOS_PARAMETERS_BLOCK, * PBIOS_PARAMETERS_BLOCK;
+    DWORD32  Unused2;              // 0x20
+} BIOS_PARAMETERS_BLOCK, *PBIOS_PARAMETERS_BLOCK;
 
 typedef struct _EXTENDED_BIOS_PARAMETERS_BLOCK
 {
-    DWORD32    Header;                  // 0x24, always 80 00 80 00
+    DWORD32    Header;                  // 0x24
     ULONGLONG  SectorCount;             // 0x28
     ULONGLONG  MftLocation;             // 0x30
     ULONGLONG  MftMirrLocation;         // 0x38
     CHAR       ClustersPerMftRecord;    // 0x40
-    UCHAR      Unused0[3];              // 0x41
+    BYTE       Unused0[3];              // 0x41
     CHAR       ClustersPerIndexRecord;  // 0x44
-    UCHAR      Unused1[3];              // 0x45
+    BYTE       Unused1[3];              // 0x45
     ULONGLONG  SerialNumber;            // 0x48
     DWORD32    Checksum;                // 0x50, unused
-} EXTENDED_BIOS_PARAMETERS_BLOCK, * PEXTENDED_BIOS_PARAMETERS_BLOCK;
+} EXTENDED_BIOS_PARAMETERS_BLOCK, *PEXTENDED_BIOS_PARAMETERS_BLOCK;
 
 typedef struct _BOOT_SECTOR
 {
-    UCHAR                           Jump[3];         // 0x00
+    BYTE                            Jump[3];         // 0x00
     ULARGE_INTEGER                  OEMID;           // 0x03
     BIOS_PARAMETERS_BLOCK           BPB;             // 0x0B
     EXTENDED_BIOS_PARAMETERS_BLOCK  EBPB;            // 0x24
-    UCHAR                           BootStrap[426];  // 0x54
+    BYTE                            BootStrap[426];  // 0x54
     USHORT                          EndSector;       // 0x1FE
 } BOOT_SECTOR, * PBOOT_SECTOR;
 
@@ -148,35 +180,35 @@ typedef struct _BOOT_SECTOR
 
 /* FILES DATA ****************************************************************/
 
-typedef struct _NTFS_RECORD_HEADER
+typedef struct _RECORD_HEADER
 {
-    ULONG     Magic;        // 0x00, magic 'FILE'
-    USHORT    UsaOffset;    // 0x04, offset to the update sequence
-    USHORT    UsaCount;     // 0x06, size in words of Update Sequence Number & Array (S)
-    ULONGLONG Lsn;          // 0x08, $LogFile Sequence Number
-} NTFS_RECORD_HEADER, *PNTFS_RECORD_HEADER;
+    ULONG      Magic;        // 0x00, magic 'FILE'
+    USHORT     UsaOffset;    // 0x04, offset to the update sequence
+    USHORT     UsaCount;     // 0x06, size in words of Update Sequence Number & Array (S)
+    ULONGLONG  Lsn;          // 0x08, $LogFile Sequence Number
+} RECORD_HEADER, *PRECORD_HEADER;
 
 typedef enum _MFT_RECORD_FLAGS
 {
-    MFT_RECORD_NOT_USED = 0x0000,
-    MFT_RECORD_IN_USE = 0x0001,
+    MFT_RECORD_NOT_USED     = 0x0000,
+    MFT_RECORD_IN_USE       = 0x0001,
     MFT_RECORD_IS_DIRECTORY = 0x0002
 } MFT_RECORD_FLAGS, *PMFT_RECORD_FLAGS;
 
 typedef struct _FILE_RECORD_HEADER
 {
-    NTFS_RECORD_HEADER Header;       // 0x00
-    USHORT     SequenceNumber;       // 0x10, sequence number
-    USHORT     LinkCount;            // 0x12, hard link count
-    USHORT     AttributeOffset;      // 0x14, offset to the first Attribute
-    USHORT     Flags;                // 0x16, flags (see MFT_RECORD_FLAGS)
-    ULONG      BytesInUse;           // 0x18, real size of the FILE record
-    ULONG      BytesAllocated;       // 0x1C, allocated size of the FILE record
-    ULONGLONG  BaseFileRecord;       // 0x20, file reference to the base FILE record
-    USHORT     NextAttributeNumber;  // 0x28, Next Attribute Id
-    USHORT     Padding;              // 0x2A, align to 4 UCHAR boundary (XP)
-    ULONG      MFTRecordNumber;      // 0x2C, number of this MFT Record (XP)
-} FILE_RECORD_HEADER, * PFILE_RECORD_HEADER;
+    RECORD_HEADER  Header;            // 0x00
+    USHORT     SequenceNumber;        // 0x10
+    USHORT     HardLinkCount;         // 0x12
+    USHORT     FirstAttributeOffset;  // 0x14
+    USHORT     Flags;                 // 0x16, flags (see MFT_RECORD_FLAGS)
+    ULONG      BytesInUse;            // 0x18, real size of the FILE record
+    ULONG      BytesAllocated;        // 0x1C, allocated size of the FILE record
+    ULONGLONG  BaseFileRecord;        // 0x20, file reference to the base FILE record
+    USHORT     NextAttributeNumber;   // 0x28
+    USHORT     Padding;               // 0x2A
+    ULONG      MFTRecordNumber;       // 0x2C
+} FILE_RECORD_HEADER, *PFILE_RECORD_HEADER;
 
 
 /* ATTRIBUTES COMMON *********************************************************/
@@ -209,7 +241,7 @@ typedef enum _ATTRIBUTE_TYPE
     AttributeEnd                 = 0xFFFFFFFF
 } ATTRIBUTE_TYPE, *PATTRIBUTE_TYPE;
 
-typedef struct _NTFS_ATTR_RECORD
+typedef struct _ATTR_RECORD
 {
     ULONG   Type;           // 0x00
     ULONG   Length;         // 0x04
@@ -222,10 +254,10 @@ typedef struct _NTFS_ATTR_RECORD
     {
         struct
         {
-            ULONG   ValueLength;
-            USHORT  ValueOffset;
-            UCHAR   Flags;
-            UCHAR   Reserved;
+            ULONG   ValueLength;  // 0x10
+            USHORT  ValueOffset;  // 0x14
+            BYTE    Flags;        // 0x16
+            BYTE    Reserved;     // 0x17
         } Resident;
 
         struct
@@ -240,7 +272,7 @@ typedef struct _NTFS_ATTR_RECORD
             LONGLONG   InitializedSize;     // 0x38
         } NonResident;
     };
-} NTFS_ATTR_RECORD, *PNTFS_ATTR_RECORD;
+} ATTR_RECORD, *PATTR_RECORD;
 
 
 /* ATTRIBUTES STRUCTURES *****************************************************/
@@ -253,15 +285,15 @@ typedef struct _STANDARD_INFORMATION
     ULONGLONG LastAccessTime;
     ULONG     FileAttribute;
     ULONG     AlignmentOrReserved[3];
-
-    // UNIMPLEMENTED
+    
+    // FIXME: UNIMPLEMENTED
 #if 0
     ULONG QuotaId;
     ULONG SecurityId;
     ULONGLONG QuotaCharge;
     USN Usn;
 #endif
-} STANDARD_INFORMATION, * PSTANDARD_INFORMATION;
+} STANDARD_INFORMATION, *PSTANDARD_INFORMATION;
 
 typedef struct _FILENAME_ATTRIBUTE
 {
@@ -283,8 +315,8 @@ typedef struct _FILENAME_ATTRIBUTE
 
         ULONG ReparseTag;
     } Extended;
-    UCHAR NameLength;
-    UCHAR NameType;
+    BYTE  NameLength;
+    BYTE  NameType;
     WCHAR Name[1];
 } FILENAME_ATTRIBUTE, *PFILENAME_ATTRIBUTE;
 
@@ -321,32 +353,32 @@ WriteBootSector(IN HANDLE                  Handle,
 
 VOID
 AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                                OUT PNTFS_ATTR_RECORD   Attribute);
+                                OUT PATTR_RECORD   Attribute);
 
 VOID
 AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                     OUT PNTFS_ATTR_RECORD   Attribute,
+                     OUT PATTR_RECORD   Attribute,
                      IN  LPCWSTR             FileName,
                      IN  DWORD32             MftRecordNumber);
 
 VOID
 AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                      OUT PNTFS_ATTR_RECORD   Attribute);
+                      OUT PATTR_RECORD   Attribute);
 
 VOID
 AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
-                                     OUT PNTFS_ATTR_RECORD       Attribute,
+                                     OUT PATTR_RECORD       Attribute,
                                      IN  GET_LENGTH_INFORMATION* LengthInformation,
                                      IN  ULONG                   Address,
                                      IN  BYTE                    ClustersCount);
 
 VOID
 AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                            OUT PNTFS_ATTR_RECORD   Attribute);
+                            OUT PATTR_RECORD   Attribute);
 
 VOID
 AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                              OUT PNTFS_ATTR_RECORD   Attribute,
+                              OUT PATTR_RECORD        Attribute,
                               IN  BYTE                MajorVersion,
                               IN  BYTE                MinorVersion);
 

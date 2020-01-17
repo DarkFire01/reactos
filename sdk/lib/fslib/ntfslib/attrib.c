@@ -17,7 +17,9 @@
 /* MACROSES ******************************************************************/
 
 // Get resident attribute data address
-#define RESIDENT_DATA(A, T) ((T)((LONG_PTR)A + RA_HEADER_LENGTH))
+#define RESIDENT_DATA(attr, type) ((type)((LONG_PTR)attr + RA_HEADER_LENGTH))
+
+#define GET_BYTE(val, n) (val << (8 * (sizeof(val) - 1 - n))) >> (8 * (sizeof(val) - 1))
 
 
 /* FUNCTIONS *****************************************************************/
@@ -25,7 +27,7 @@
 static
 VOID
 SetFileRecordEnd(OUT PFILE_RECORD_HEADER FileRecord,
-                 OUT PNTFS_ATTR_RECORD   AttrEnd,
+                 OUT PATTR_RECORD        AttrEnd,
                  IN  ULONG               EndMarker)
 {
     // Ensure AttrEnd is aligned on an 8-byte boundary, relative to FileRecord
@@ -43,7 +45,7 @@ SetFileRecordEnd(OUT PFILE_RECORD_HEADER FileRecord,
 
 VOID
 AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                                OUT PNTFS_ATTR_RECORD   Attribute)
+                                OUT PATTR_RECORD        Attribute)
 {
     PSTANDARD_INFORMATION StandardInfo;
     LARGE_INTEGER         SystemTime;
@@ -69,13 +71,13 @@ AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     StandardInfo->FileAttribute  = RA_METAFILES_ATTRIBUTES;
 
     // Move the attribute-end and file-record-end markers to the end of the file record
-    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)Attribute + Attribute->Length);
+    Attribute = NEXT_ATTRIBUTE(Attribute);
     SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
 }
 
 VOID
 AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                     OUT PNTFS_ATTR_RECORD   Attribute,
+                     OUT PATTR_RECORD        Attribute,
                      IN  LPCWSTR             FileName,
                      IN  DWORD32             MftRecordNumber)
 {
@@ -98,21 +100,21 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     FileNameAttribute->LastAccessTime = SystemTime.QuadPart;
 
     FileNameAttribute->FileAttributes = (FileRecord->Flags & MFT_RECORD_IS_DIRECTORY)
-        ? NTFS_FILE_TYPE_DIRECTORY
+        ? FILE_TYPE_DIRECTORY
         : RA_METAFILES_ATTRIBUTES;
     
     // Set reference to parent directory
     FileNameAttribute->DirectoryFileReferenceNumber = MftRecordNumber;
-    FileNameAttribute->DirectoryFileReferenceNumber |= (ULONGLONG)NTFS_FILE_ROOT << 48;
+    FileNameAttribute->DirectoryFileReferenceNumber |= (ULONGLONG)METAFILE_ROOT << 48;
 
     // Copy file name and save it length
     FileNameAttribute->NameLength = FileNameLength;
     RtlCopyMemory(FileNameAttribute->Name, FileName, FileNameSize);
 
-    // TODO: Check filename for DOS compatibility and set NameType to NTFS_FILE_NAME_WIN32_AND_DOS
-    FileNameAttribute->NameType = NTFS_FILE_NAME_POSIX;
+    // TODO: Check filename for DOS compatibility and set NameType to FILE_NAME_WIN32_AND_DOS
+    FileNameAttribute->NameType = FILE_NAME_POSIX;
 
-    FileRecord->LinkCount++;
+    FileRecord->HardLinkCount++;
 
     // Setup for resident attribute
     Attribute->Length = RA_HEADER_LENGTH + FIELD_OFFSET(FILENAME_ATTRIBUTE, Name) + FileNameSize;
@@ -124,13 +126,13 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     Attribute->Resident.Flags = RA_INDEXED;
 
     // Move the attribute-end and file-record-end markers to the end of the file record
-    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)Attribute + Attribute->Length);
+    Attribute = NEXT_ATTRIBUTE(Attribute);
     SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
 }
 
 VOID
 AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                      OUT PNTFS_ATTR_RECORD   Attribute)
+                      OUT PATTR_RECORD        Attribute)
 {
     Attribute->Type     = AttributeData;
     Attribute->Instance = FileRecord->NextAttributeNumber++;
@@ -145,27 +147,26 @@ AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     Attribute->NameOffset = RA_HEADER_LENGTH;
 
     // Move the attribute-end and file-record-end markers to the end of the file record
-    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)Attribute + Attribute->Length);
+    Attribute = NEXT_ATTRIBUTE(Attribute);
     SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
 }
 
 static
 VOID
 AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
-                                 OUT PNTFS_ATTR_RECORD       Attribute,
+                                 OUT PATTR_RECORD            Attribute,
                                  IN  ULONG                   AttributeType,
                                  IN  GET_LENGTH_INFORMATION* LengthInformation,
                                  IN  ULONG                   Address,
                                  IN  BYTE                    ClustersCount)
 {
-    // HACK STRUCTURE
     typedef struct _RUN_LIST_ENTRY
     {
         BYTE   Header;
         BYTE   Size;
-        USHORT Reserved;
-        ULONG  Address;
-    } RUN_LIST_ENTRY, * PRUN_LIST_ENTRY;
+        BYTE   LCN[3];
+        BYTE   Reserved[3];
+    } RUN_LIST_ENTRY, *PRUN_LIST_ENTRY;
 
     PRUN_LIST_ENTRY RunListEntry;
 
@@ -176,34 +177,37 @@ AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
     Attribute->Flags         = 0;
 
     Attribute->NameLength = 0;
-    Attribute->NameOffset = sizeof(NTFS_ATTR_RECORD);
+    Attribute->NameOffset = sizeof(ATTR_RECORD);
 
     Attribute->NonResident.LowestVCN       = 0;
     Attribute->NonResident.HighestVCN      = (ClustersCount - 1);
-    Attribute->NonResident.DataRunsOffset  = sizeof(NTFS_ATTR_RECORD);
+    Attribute->NonResident.DataRunsOffset  = sizeof(ATTR_RECORD);
     Attribute->NonResident.CompressionUnit = 0;
-
+    
     Attribute->NonResident.AllocatedSize =
-        ClustersCount * ((LONGLONG)BPB_BYTES_PER_SECTOR * (LONGLONG)GetSectorsPerCluster(LengthInformation));
+        ClustersCount * ((LONGLONG)DISK_BYTES_PER_SECTOR * (LONGLONG)GetSectorsPerCluster(LengthInformation));
     Attribute->NonResident.DataSize        = Attribute->NonResident.AllocatedSize;
     Attribute->NonResident.InitializedSize = Attribute->NonResident.AllocatedSize;
 
-    RunListEntry = (PRUN_LIST_ENTRY)((ULONG_PTR)Attribute + sizeof(NTFS_ATTR_RECORD));
+    RunListEntry = (PRUN_LIST_ENTRY)((ULONG_PTR)Attribute + sizeof(ATTR_RECORD));
 
-    RunListEntry->Header  = 0x31;           // HACK...
-    RunListEntry->Size    = ClustersCount;  //
-    RunListEntry->Address = Address;        // FIXME: Convert Address to Big-Endian
+    RunListEntry->Header  = RUN_ENTRY_HEADER;
+    RunListEntry->Size    = ClustersCount;
 
-    Attribute->Length = sizeof(NTFS_ATTR_RECORD) + sizeof(RUN_LIST_ENTRY);
+    RunListEntry->LCN[0] = GET_BYTE(Address, 0);
+    RunListEntry->LCN[1] = GET_BYTE(Address, 1);
+    RunListEntry->LCN[2] = GET_BYTE(Address, 2);
+
+    Attribute->Length = sizeof(ATTR_RECORD) + sizeof(RUN_LIST_ENTRY);
 
     // Move the attribute-end and file-record-end markers to the end of the file record
-    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)Attribute + Attribute->Length);
+    Attribute = NEXT_ATTRIBUTE(Attribute);
     SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
 }
 
 VOID
 AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
-                                     OUT PNTFS_ATTR_RECORD       Attribute,
+                                     OUT PATTR_RECORD            Attribute,
                                      IN  GET_LENGTH_INFORMATION* LengthInformation,
                                      IN  ULONG                   Address,
                                      IN  BYTE                    ClustersCount)
@@ -218,7 +222,7 @@ AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
 
 VOID
 AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                            OUT PNTFS_ATTR_RECORD   Attribute)
+                            OUT PATTR_RECORD        Attribute)
 {
     Attribute->Type     = AttributeVolumeName;
     Attribute->Instance = FileRecord->NextAttributeNumber++;
@@ -232,13 +236,13 @@ AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     Attribute->NameOffset = RA_HEADER_LENGTH;
 
     // Move the attribute-end and file-record-end markers to the end of the file record
-    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)Attribute + Attribute->Length);
+    Attribute = NEXT_ATTRIBUTE(Attribute);
     SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
 }
 
 VOID
 AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                              OUT PNTFS_ATTR_RECORD   Attribute,
+                              OUT PATTR_RECORD        Attribute,
                               IN  BYTE                MajorVersion,
                               IN  BYTE                MinorVersion)
 {
@@ -253,7 +257,7 @@ AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     VolumeInfo->MinorVersion = MinorVersion;
     VolumeInfo->Flags = 0;
 
-    FileRecord->LinkCount++;
+    FileRecord->HardLinkCount++;
 
     Attribute->Length = RA_HEADER_LENGTH + sizeof(VOLUME_INFORMATION_ATTRIBUTE);
     Attribute->Length = ALIGN_UP_BY(Attribute->Length, ATTR_RECORD_ALIGNMENT);
@@ -263,6 +267,6 @@ AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     Attribute->Resident.Flags = RA_INDEXED;
 
     // Move the attribute-end and file-record-end markers to the end of the file record
-    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)Attribute + Attribute->Length);
+    Attribute = NEXT_ATTRIBUTE(Attribute);
     SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
 }

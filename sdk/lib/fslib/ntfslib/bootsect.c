@@ -29,7 +29,7 @@ static
 VOID
 FillOemId(OUT PBOOT_SECTOR BootSector)
 {
-    BootSector->OEMID.QuadPart = 0x202020205346544E;  // NTFS   
+    BootSector->OEMID.QuadPart = OEM_ID;
 }
 
 static
@@ -40,23 +40,20 @@ FillBiosParametersBlock(OUT PBIOS_PARAMETERS_BLOCK  BiosParametersBlock,
 {
     // See: https://en.wikipedia.org/wiki/BIOS_parameter_block
     
-    BiosParametersBlock->BytesPerSector    = BPB_BYTES_PER_SECTOR;
+    BiosParametersBlock->BytesPerSector    = DISK_BYTES_PER_SECTOR;
     BiosParametersBlock->SectorsPerCluster = GetSectorsPerCluster(LengthInformation);
 
-    // MediaId for hard drives always 0xF8
-    BiosParametersBlock->MediaId = (DiskGeometry->MediaType == FixedMedia) ? 0xF8 : 0x00;
+    BiosParametersBlock->MediaId = IS_HARD_DRIVE(DiskGeometry) ? 0xF8 : 0x00;
 
     BiosParametersBlock->SectorsPerTrack    = DiskGeometry->SectorsPerTrack;
-    BiosParametersBlock->Heads              = BPB_HEADS;
-    BiosParametersBlock->HiddenSectorsCount = BPB_WINXP_HIDDEN_SECTORS;
+    BiosParametersBlock->Heads              = DISK_HEADS;
+    BiosParametersBlock->HiddenSectorsCount = BPB_HIDDEN_SECTORS;
 }
 
 static
 ULONGLONG
 CalcVolumeSerialNumber(VOID)
 {
-    // FIXME: Ñheck the correctness of the generated serial number
-
     BYTE  i;
     ULONG r;
     ULONG seed;
@@ -83,17 +80,15 @@ FillExBiosParametersBlock(OUT PEXTENDED_BIOS_PARAMETERS_BLOCK ExBiosParametersBl
 {
     // See: https://en.wikipedia.org/wiki/BIOS_parameter_block
 
-    ExBiosParametersBlock->Header = EBPB_HEADER;
-    ExBiosParametersBlock->SectorCount =
-        ((ULONGLONG)DiskGeometry->SectorsPerTrack)   *
-        ((ULONGLONG)DiskGeometry->TracksPerCylinder) *
-        ((ULONGLONG)DiskGeometry->Cylinders.QuadPart);
+    ExBiosParametersBlock->Header      = EBPB_HEADER;
+    ExBiosParametersBlock->SectorCount = SECTORS_COUNT(DiskGeometry);
 
-    ExBiosParametersBlock->MftLocation = MFT_LOCATION;
-    ExBiosParametersBlock->MftMirrLocation = LengthInformation->Length.QuadPart / 2;  // Only for Windows XP
+    ExBiosParametersBlock->MftLocation     = MFT_LOCATION;
+    ExBiosParametersBlock->MftMirrLocation = 
+        SECTORS_COUNT(DiskGeometry) / (ULONGLONG)GetSectorsPerCluster(LengthInformation) / 2;
 
-    ExBiosParametersBlock->ClustersPerMftRecord = CLUSTER_PER_MFT_RECORD;
-    ExBiosParametersBlock->ClustersPerIndexRecord = 0x01;
+    ExBiosParametersBlock->ClustersPerMftRecord   = MFT_CLUSTERS_PER_RECORD;
+    ExBiosParametersBlock->ClustersPerIndexRecord = MFT_CLUSTERS_PER_INDEX_RECORD;
 
     ExBiosParametersBlock->SerialNumber = CalcVolumeSerialNumber();
 }
@@ -108,17 +103,14 @@ WriteBootSector(IN HANDLE                  Handle,
     IO_STATUS_BLOCK IoStatusBlock;
     PBOOT_SECTOR    BootSector;
 
-    // Allocate memory
     BootSector = RtlAllocateHeap(RtlGetProcessHeap(), 0, sizeof(BOOT_SECTOR));
     if (!BootSector)
     {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    // Clear memory
     RtlZeroMemory(BootSector, sizeof(BOOT_SECTOR));
 
-    // Fill boot sector structure
     FillJumpInstruction(BootSector);
     FillOemId(BootSector);
 
@@ -127,7 +119,6 @@ WriteBootSector(IN HANDLE                  Handle,
 
     BootSector->EndSector = BOOT_SECTOR_END;
 
-    // Write to disk
     Status = NtWriteFile(Handle,
                          NULL,
                          NULL,
