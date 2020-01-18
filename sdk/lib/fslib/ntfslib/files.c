@@ -146,7 +146,11 @@ CreateMft(IN GET_LENGTH_INFORMATION *LengthInformation)
                                          MFT_LOCATION,
                                          MFT_DEFAULT_CLUSTERS_SIZE);
 
-    // TODO: $BITMAP
+    // $BITMAP
+    Attribute = NEXT_ATTRIBUTE(Attribute);
+    AddMftBitmapAttribute(FileRecord,
+                          Attribute,
+                          LengthInformation);
 
     return FileRecord;
 }
@@ -341,6 +345,46 @@ CreateStub(IN DWORD32 MftRecordNumber)
 
 static
 NTSTATUS
+WriteZerosToClusters(IN  HANDLE                  Handle,
+                     IN  GET_LENGTH_INFORMATION* LengthInformation,
+                     IN  LONGLONG                Address,
+                     IN  ULONG                   ClustersCount,
+                     OUT PIO_STATUS_BLOCK        IoStatusBlock)
+{
+    PBYTE         Zeros;
+    ULONG         Size;
+    LARGE_INTEGER Offset;
+    NTSTATUS      Status;
+
+    Size = CLUSTER_SIZE(LengthInformation) * ClustersCount;
+
+    Zeros = RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
+    if (!Zeros)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlZeroMemory(Zeros, Size);
+
+    Offset.QuadPart = Address * CLUSTER_SIZE(LengthInformation);
+
+    Status = NtWriteFile(Handle,
+                         NULL,
+                         NULL,
+                         NULL,
+                         IoStatusBlock,
+                         Zeros,
+                         Size,
+                         &Offset,
+                         NULL);
+
+    RtlFreeHeap(RtlGetProcessHeap(), 0, Zeros);
+
+    return Status;
+}
+
+static
+NTSTATUS
 WriteMetafile(IN  HANDLE                   Handle,
               IN  GET_LENGTH_INFORMATION*  LengthInformation,
               IN  PFILE_RECORD_HEADER      FileRecord, 
@@ -350,7 +394,7 @@ WriteMetafile(IN  HANDLE                   Handle,
 
     // Offset to $MFT + offset to record
     Offset.QuadPart = 
-        ((LONGLONG)MFT_LOCATION * (LONGLONG)GetSectorsPerCluster(LengthInformation) * (LONGLONG)DISK_BYTES_PER_SECTOR) +
+        ((LONGLONG)MFT_LOCATION * CLUSTER_SIZE(LengthInformation)) +
         (LONGLONG)(FileRecord->MFTRecordNumber * MFT_RECORD_SIZE);
 
     return NtWriteFile(Handle,
@@ -362,6 +406,49 @@ WriteMetafile(IN  HANDLE                   Handle,
                        MFT_RECORD_SIZE,
                        &Offset,
                        NULL);
+}
+
+static
+NTSTATUS
+WriteMftBitmap(IN  HANDLE                   Handle,
+               IN  GET_LENGTH_INFORMATION*  LengthInformation,
+               OUT PIO_STATUS_BLOCK         IoStatusBlock)
+{
+    PBYTE         Data;
+    ULONG         Size;
+    LARGE_INTEGER Offset;
+    NTSTATUS      Status;
+
+    Size = CLUSTER_SIZE(LengthInformation);
+
+    Data = RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
+    if (!Data)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlZeroMemory(Data, Size);
+
+    // Every bit is cluster
+    // First 16 clusters used by metafiles
+    Data[0] = 0xFF;
+    Data[1] = 0xFF;
+
+    Offset.QuadPart = MFT_BITMAP_ADDRESS * CLUSTER_SIZE(LengthInformation);
+
+    Status = NtWriteFile(Handle,
+                         NULL,
+                         NULL,
+                         NULL,
+                         IoStatusBlock,
+                         Data,
+                         Size,
+                         &Offset,
+                         NULL);
+
+    RtlFreeHeap(RtlGetProcessHeap(), 0, Data);
+
+    return Status;
 }
 
 NTSTATUS
@@ -394,11 +481,43 @@ WriteMetafiles(IN HANDLE                  Handle,
         goto end;
     }
 
+    // Clear first clusters
+    Status = WriteZerosToClusters(Handle,
+                                  LengthInformation,
+                                  MFT_LOCATION,
+                                  MFT_DEFAULT_CLUSTERS_SIZE,
+                                  &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteZerosToClusters(). Failed to clear sectors. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
     // Write $MFT
     Status = WriteMetafile(Handle, LengthInformation, MFT, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $MFT write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+    
+    // Clear bitmap cluster for $MFT
+    Status = WriteZerosToClusters(Handle,
+                                  LengthInformation,
+                                  MFT_BITMAP_ADDRESS,
+                                  1,
+                                  &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("WriteZerosToClusters(). Failed to clear sectors for bitmap. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+    // Write bitmap for $MFT
+    Status = WriteMftBitmap(Handle, LengthInformation, &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Write bitmap unsuccessful. $MFT not completed. NtWriteFile() failed (Status %lx)\n", Status);
         goto end;
     }
 

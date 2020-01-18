@@ -221,6 +221,19 @@ AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
 }
 
 VOID
+AddMftBitmapAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
+                      OUT PATTR_RECORD            Attribute,
+                      IN  GET_LENGTH_INFORMATION* LengthInformation)
+{
+    AddNonResidentSingleRunAttribute(FileRecord,
+                                     Attribute,
+                                     AttributeBitmap,
+                                     LengthInformation,
+                                     MFT_BITMAP_ADDRESS,
+                                     1);
+}
+
+VOID
 AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
                             OUT PATTR_RECORD        Attribute)
 {

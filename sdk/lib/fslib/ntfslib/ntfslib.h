@@ -52,6 +52,8 @@
 #define FIRST_ATTRIBUTE(fr) ((PATTR_RECORD)((ULONG_PTR)fr + fr->FirstAttributeOffset))
 #define NEXT_ATTRIBUTE(attr) ((PATTR_RECORD)((ULONG_PTR)(attr) + (attr)->Length))
 
+#define CLUSTER_SIZE(li) ((LONGLONG)GetSectorsPerCluster(li) * (LONGLONG)DISK_BYTES_PER_SECTOR)
+
 
 /* DISK DEFINES **************************************************************/
 
@@ -129,6 +131,8 @@
 #define METAFILE_FIRST_USER_FILE  16
 
 #define MFT_DEFAULT_CLUSTERS_SIZE 64
+
+#define MFT_BITMAP_ADDRESS    0x0BFFFF
 
 #define RUN_ENTRY_HEADER  0x31
 #define RUN_ENTRY_SIZE    8
@@ -357,24 +361,29 @@ AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
 
 VOID
 AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                     OUT PATTR_RECORD   Attribute,
+                     OUT PATTR_RECORD        Attribute,
                      IN  LPCWSTR             FileName,
                      IN  DWORD32             MftRecordNumber);
 
 VOID
 AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                      OUT PATTR_RECORD   Attribute);
+                      OUT PATTR_RECORD        Attribute);
 
 VOID
 AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
-                                     OUT PATTR_RECORD       Attribute,
+                                     OUT PATTR_RECORD            Attribute,
                                      IN  GET_LENGTH_INFORMATION* LengthInformation,
                                      IN  ULONG                   Address,
                                      IN  BYTE                    ClustersCount);
 
 VOID
+AddMftBitmapAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
+                      OUT PATTR_RECORD            Attribute,
+                      IN  GET_LENGTH_INFORMATION* LengthInformation);
+
+VOID
 AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                            OUT PATTR_RECORD   Attribute);
+                            OUT PATTR_RECORD        Attribute);
 
 VOID
 AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
