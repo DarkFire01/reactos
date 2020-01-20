@@ -22,13 +22,21 @@
 #include <fmifs/fmifs.h>
 
 
-/* MACROSES ******************************************************************/
+/* OTHER MACROSES ************************************************************/
 
 #define KeQuerySystemTime(t)  GetSystemTimeAsFileTime((LPFILETIME)(t));
 
 #define FREE(p) if (p) RtlFreeHeap(RtlGetProcessHeap(), 0, p);
 
+#define FIRST_ATTRIBUTE(fr) ((PATTR_RECORD)((ULONG_PTR)fr + fr->FirstAttributeOffset))
+#define NEXT_ATTRIBUTE(attr) ((PATTR_RECORD)((ULONG_PTR)(attr) + (attr)->Length))
+
+
+/* BYTES MACROSES ************************************************************/
+
 #define MB_TO_B(x) (x * 1024)
+
+#define GET_BYTE(val, n) (val << (8 * (sizeof(val) - 1 - n))) >> (8 * (sizeof(val) - 1))
 
 #define BSWAP16(val) \
  ( (((val) >> 8) & 0x00FF) | (((val) << 8) & 0xFF00) )
@@ -43,21 +51,27 @@
    (((val) <<  8) & 0x000000FF00000000) | (((val) << 24) & 0x0000FF0000000000) | \
    (((val) << 40) & 0x00FF000000000000) | (((val) << 56) & 0xFF00000000000000) )
 
-#define IS_HARD_DRIVE(dg) (dg->MediaType == FixedMedia)
 
-#define SECTORS_COUNT(dg) (((ULONGLONG)dg->SectorsPerTrack)   * \
-                           ((ULONGLONG)dg->TracksPerCylinder) * \
-                           ((ULONGLONG)dg->Cylinders.QuadPart))
+/* DISK MACROSES *************************************************************/
 
-#define FIRST_ATTRIBUTE(fr) ((PATTR_RECORD)((ULONG_PTR)fr + fr->FirstAttributeOffset))
-#define NEXT_ATTRIBUTE(attr) ((PATTR_RECORD)((ULONG_PTR)(attr) + (attr)->Length))
+#define DISK_GEO (NtfsFormatData.DiskGeometry)
+#define DISK_LEN (NtfsFormatData.LengthInformation)
 
-#define CLUSTER_SIZE(li) ((LONGLONG)GetSectorsPerCluster(li) * (LONGLONG)DISK_BYTES_PER_SECTOR)
+#define BYTES_PER_SECTOR    (DISK_GEO->BytesPerSector)
+
+#define SECTORS_PER_TRACK   (DISK_GEO->SectorsPerTrack)
+#define SECTORS_PER_CLUSTER (GetSectorsPerCluster())
+#define BYTES_PER_CLUSTER   ((ULONGLONG)BYTES_PER_SECTOR * (ULONGLONG)SECTORS_PER_CLUSTER)
+
+#define SECTORS_COUNT ( ((ULONGLONG)DISK_GEO->SectorsPerTrack)    * \
+                        ((ULONGLONG)DISK_GEO->TracksPerCylinder)  * \
+                        ((ULONGLONG)DISK_GEO->Cylinders.QuadPart) )
+
+#define IS_HARD_DRIVE (DISK_GEO->MediaType == FixedMedia)
 
 
 /* DISK DEFINES **************************************************************/
 
-#define DISK_BYTES_PER_SECTOR  512
 #define DISK_HEADS             0xFF
 
 
@@ -65,8 +79,8 @@
 
 #define BPB_HIDDEN_SECTORS  0x3F  // From WinXP
 
-#define EBPB_HEADER         BSWAP32(0x80008000)
 #define OEM_ID              BSWAP64(0x4E54465320202020)
+#define EBPB_HEADER         BSWAP32(0x80008000)
 #define BOOT_SECTOR_END     BSWAP16(0x55AA)
 
 
@@ -136,6 +150,15 @@
 
 #define RUN_ENTRY_HEADER  0x31
 #define RUN_ENTRY_SIZE    8
+
+
+/* GLOBAL DATA ***************************************************************/
+
+struct
+{
+    GET_LENGTH_INFORMATION* LengthInformation;
+    PDISK_GEOMETRY          DiskGeometry;
+} NtfsFormatData;
 
 
 /* BOOT SECTOR STRUCTURES ****************************************************/
@@ -343,21 +366,18 @@ NTAPI NtGetTickCount(VOID);
 VOID
 GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime);
 
-BYTE GetSectorsPerCluster(IN GET_LENGTH_INFORMATION* LengthInformation);
+BYTE GetSectorsPerCluster();
 
 // bootsect.c
 
 NTSTATUS
-WriteBootSector(IN HANDLE                  Handle,
-                IN GET_LENGTH_INFORMATION* LengthInformation,
-                IN PDISK_GEOMETRY          DiskGeometry,
-                OUT OPTIONAL PBOOT_SECTOR  *FinalBootSector);
+WriteBootSector(IN HANDLE Handle);
 
 // attrib.c
 
 VOID
-AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                                OUT PATTR_RECORD   Attribute);
+AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord, 
+                                OUT PATTR_RECORD        Attribute);
 
 VOID
 AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
@@ -372,14 +392,12 @@ AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
 VOID
 AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
                                      OUT PATTR_RECORD            Attribute,
-                                     IN  GET_LENGTH_INFORMATION* LengthInformation,
                                      IN  ULONG                   Address,
                                      IN  BYTE                    ClustersCount);
 
 VOID
 AddMftBitmapAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
-                      OUT PATTR_RECORD            Attribute,
-                      IN  GET_LENGTH_INFORMATION* LengthInformation);
+                      OUT PATTR_RECORD            Attribute);
 
 VOID
 AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
@@ -394,8 +412,6 @@ AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
 // files.c
 
 NTSTATUS
-WriteMetafiles(IN HANDLE                  Handle,
-               IN GET_LENGTH_INFORMATION* LengthInformation,
-               IN PDISK_GEOMETRY          DiskGeometry);
+WriteMetafiles(IN HANDLE Handle);
 
 #endif

@@ -59,7 +59,7 @@ NtfsCreateEmptyFileRecord(IN DWORD32 MftRecordNumber)
 
     // Size of USA (in ULONG's) will be 1 (for USA number) + 1 for every sector the file record uses
     FileRecord->BytesAllocated = MFT_RECORD_SIZE;
-    FileRecord->Header.UsaCount = (FileRecord->BytesAllocated / DISK_BYTES_PER_SECTOR) + 1;
+    FileRecord->Header.UsaCount = (FileRecord->BytesAllocated / BYTES_PER_SECTOR) + 1;
 
     // Setup other file record fields
     FileRecord->SequenceNumber  = 1;
@@ -127,7 +127,7 @@ CreateMetaFileRecord(IN  DWORD32       MftRecordNumber,
 
 static
 PFILE_RECORD_HEADER
-CreateMft(IN GET_LENGTH_INFORMATION *LengthInformation)
+CreateMft()
 {
     PFILE_RECORD_HEADER FileRecord;
     PATTR_RECORD        Attribute = NULL;
@@ -142,15 +142,13 @@ CreateMft(IN GET_LENGTH_INFORMATION *LengthInformation)
     // $DATA
     AddNonResidentSingleRunDataAttribute(FileRecord, 
                                          Attribute,
-                                         LengthInformation,
                                          MFT_LOCATION,
                                          MFT_DEFAULT_CLUSTERS_SIZE);
 
     // $BITMAP
     Attribute = NEXT_ATTRIBUTE(Attribute);
     AddMftBitmapAttribute(FileRecord,
-                          Attribute,
-                          LengthInformation);
+                          Attribute);
 
     return FileRecord;
 }
@@ -260,6 +258,12 @@ CreateRoot()
         return NULL;
     }
 
+    // TODO: $INDEX_ROOT
+
+    // TODO: $INDEX_ALLOCATION
+
+    // TODO: $BITMAP
+
     return FileRecord;
 }
 
@@ -346,7 +350,6 @@ CreateStub(IN DWORD32 MftRecordNumber)
 static
 NTSTATUS
 WriteZerosToClusters(IN  HANDLE                  Handle,
-                     IN  GET_LENGTH_INFORMATION* LengthInformation,
                      IN  LONGLONG                Address,
                      IN  ULONG                   ClustersCount,
                      OUT PIO_STATUS_BLOCK        IoStatusBlock)
@@ -356,7 +359,7 @@ WriteZerosToClusters(IN  HANDLE                  Handle,
     LARGE_INTEGER Offset;
     NTSTATUS      Status;
 
-    Size = CLUSTER_SIZE(LengthInformation) * ClustersCount;
+    Size = BYTES_PER_CLUSTER * ClustersCount;
 
     Zeros = RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
     if (!Zeros)
@@ -366,7 +369,7 @@ WriteZerosToClusters(IN  HANDLE                  Handle,
 
     RtlZeroMemory(Zeros, Size);
 
-    Offset.QuadPart = Address * CLUSTER_SIZE(LengthInformation);
+    Offset.QuadPart = Address * BYTES_PER_CLUSTER;
 
     Status = NtWriteFile(Handle,
                          NULL,
@@ -378,7 +381,7 @@ WriteZerosToClusters(IN  HANDLE                  Handle,
                          &Offset,
                          NULL);
 
-    RtlFreeHeap(RtlGetProcessHeap(), 0, Zeros);
+    FREE(Zeros);
 
     return Status;
 }
@@ -386,7 +389,6 @@ WriteZerosToClusters(IN  HANDLE                  Handle,
 static
 NTSTATUS
 WriteMetafile(IN  HANDLE                   Handle,
-              IN  GET_LENGTH_INFORMATION*  LengthInformation,
               IN  PFILE_RECORD_HEADER      FileRecord, 
               OUT PIO_STATUS_BLOCK         IoStatusBlock)
 {
@@ -394,7 +396,7 @@ WriteMetafile(IN  HANDLE                   Handle,
 
     // Offset to $MFT + offset to record
     Offset.QuadPart = 
-        ((LONGLONG)MFT_LOCATION * CLUSTER_SIZE(LengthInformation)) +
+        ((LONGLONG)MFT_LOCATION * BYTES_PER_CLUSTER) +
         (LONGLONG)(FileRecord->MFTRecordNumber * MFT_RECORD_SIZE);
 
     return NtWriteFile(Handle,
@@ -411,30 +413,26 @@ WriteMetafile(IN  HANDLE                   Handle,
 static
 NTSTATUS
 WriteMftBitmap(IN  HANDLE                   Handle,
-               IN  GET_LENGTH_INFORMATION*  LengthInformation,
                OUT PIO_STATUS_BLOCK         IoStatusBlock)
 {
     PBYTE         Data;
-    ULONG         Size;
     LARGE_INTEGER Offset;
     NTSTATUS      Status;
 
-    Size = CLUSTER_SIZE(LengthInformation);
-
-    Data = RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
+    Data = RtlAllocateHeap(RtlGetProcessHeap(), 0, BYTES_PER_SECTOR);
     if (!Data)
     {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlZeroMemory(Data, Size);
+    RtlZeroMemory(Data, BYTES_PER_SECTOR);
 
     // Every bit is cluster
     // First 16 clusters used by metafiles
     Data[0] = 0xFF;
     Data[1] = 0xFF;
 
-    Offset.QuadPart = MFT_BITMAP_ADDRESS * CLUSTER_SIZE(LengthInformation);
+    Offset.QuadPart = MFT_BITMAP_ADDRESS * BYTES_PER_CLUSTER;
 
     Status = NtWriteFile(Handle,
                          NULL,
@@ -442,24 +440,24 @@ WriteMftBitmap(IN  HANDLE                   Handle,
                          NULL,
                          IoStatusBlock,
                          Data,
-                         Size,
+                         BYTES_PER_SECTOR,
                          &Offset,
                          NULL);
 
-    RtlFreeHeap(RtlGetProcessHeap(), 0, Data);
+    FREE(Data);
 
     return Status;
 }
 
 NTSTATUS
-WriteMetafiles(IN HANDLE                  Handle, 
-               IN GET_LENGTH_INFORMATION* LengthInformation,
-               IN PDISK_GEOMETRY          DiskGeometry)
+WriteMetafiles(IN HANDLE Handle)
 {
+    // FIXME: Rework structure of this
+
     NTSTATUS Status = STATUS_SUCCESS;
     IO_STATUS_BLOCK IoStatusBlock;
 
-    PFILE_RECORD_HEADER MFT     = CreateMft(LengthInformation);
+    PFILE_RECORD_HEADER MFT     = CreateMft();
     PFILE_RECORD_HEADER MFTMirr = CreateMFTMirr();
     PFILE_RECORD_HEADER LogFile = CreateLogFile();
     PFILE_RECORD_HEADER Volume  = CreateVolume();
@@ -483,7 +481,6 @@ WriteMetafiles(IN HANDLE                  Handle,
 
     // Clear first clusters
     Status = WriteZerosToClusters(Handle,
-                                  LengthInformation,
                                   MFT_LOCATION,
                                   MFT_DEFAULT_CLUSTERS_SIZE,
                                   &IoStatusBlock);
@@ -494,7 +491,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $MFT
-    Status = WriteMetafile(Handle, LengthInformation, MFT, &IoStatusBlock);
+    Status = WriteMetafile(Handle, MFT, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $MFT write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -503,7 +500,6 @@ WriteMetafiles(IN HANDLE                  Handle,
     
     // Clear bitmap cluster for $MFT
     Status = WriteZerosToClusters(Handle,
-                                  LengthInformation,
                                   MFT_BITMAP_ADDRESS,
                                   1,
                                   &IoStatusBlock);
@@ -514,7 +510,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write bitmap for $MFT
-    Status = WriteMftBitmap(Handle, LengthInformation, &IoStatusBlock);
+    Status = WriteMftBitmap(Handle, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Write bitmap unsuccessful. $MFT not completed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -522,7 +518,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $MFTMirr
-    Status = WriteMetafile(Handle, LengthInformation, MFTMirr, &IoStatusBlock);
+    Status = WriteMetafile(Handle, MFTMirr, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $MFTMirr write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -530,7 +526,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $LogFile
-    Status = WriteMetafile(Handle, LengthInformation, LogFile, &IoStatusBlock);
+    Status = WriteMetafile(Handle, LogFile, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $LogFile write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -538,7 +534,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $Volume
-    Status = WriteMetafile(Handle, LengthInformation, Volume, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Volume, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $Volume write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -546,7 +542,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $AttrDef
-    Status = WriteMetafile(Handle, LengthInformation, AttrDef, &IoStatusBlock);
+    Status = WriteMetafile(Handle, AttrDef, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $AttrDef write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -554,7 +550,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $Root
-    Status = WriteMetafile(Handle, LengthInformation, Root, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Root, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $Root write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -562,7 +558,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $Bitmap
-    Status = WriteMetafile(Handle, LengthInformation, Bitmap, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Bitmap, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $Bitmap write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -570,7 +566,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     }
 
     // Write $Boot
-    Status = WriteMetafile(Handle, LengthInformation, Boot, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Boot, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $Boot write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -579,7 +575,7 @@ WriteMetafiles(IN HANDLE                  Handle,
 
     // Write stub for $BadClus
     Stub = CreateStub(METAFILE_BADCLUS);
-    Status = WriteMetafile(Handle, LengthInformation, Stub, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Stub, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). Stub for $BadClus write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -590,7 +586,7 @@ WriteMetafiles(IN HANDLE                  Handle,
 
     // Write stub for $Secure
     Stub = CreateStub(METAFILE_SECURE);
-    Status = WriteMetafile(Handle, LengthInformation, Stub, &IoStatusBlock);
+    Status = WriteMetafile(Handle, Stub, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). Stub for $Secure write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -600,7 +596,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     FREE(Stub);
 
     // Write $UpCase
-    Status = WriteMetafile(Handle, LengthInformation, UpCase, &IoStatusBlock);
+    Status = WriteMetafile(Handle, UpCase, &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafile(). $UpCase write failed. NtWriteFile() failed (Status %lx)\n", Status);
@@ -611,7 +607,7 @@ WriteMetafiles(IN HANDLE                  Handle,
     for (MftIndex = METAFILE_UPCASE+1; MftIndex < METAFILE_FIRST_USER_FILE; MftIndex++)
     {
         Stub = CreateStub(MftIndex);
-        Status = WriteMetafile(Handle, LengthInformation, Stub, &IoStatusBlock);
+        Status = WriteMetafile(Handle, Stub, &IoStatusBlock);
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("WriteMetafile(). Stub #%d write failed. NtWriteFile() failed (Status %lx)\n", MftIndex, Status);

@@ -33,8 +33,10 @@ GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime)
 }
 
 BYTE
-GetSectorsPerCluster(IN GET_LENGTH_INFORMATION* LengthInformation)
+GetSectorsPerCluster()
 {
+    GET_LENGTH_INFORMATION* LengthInformation = NtfsFormatData.LengthInformation;
+
     if (LengthInformation->Length.QuadPart < MB_TO_B(512))
     {
         return 1;
@@ -128,6 +130,10 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
         Callback(PROGRESS, 0, (PVOID)&pc);
     }
 
+    // Setup global data
+    DISK_GEO = &DiskGeometry;
+    DISK_LEN = &LengthInformation;
+
     // Lock volume
     NtFsControlFile(FileHandle, 
                     NULL,
@@ -141,7 +147,7 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
                     0);
 
     // Write boot sector
-    Status = WriteBootSector(FileHandle, &LengthInformation, &DiskGeometry, NULL);
+    Status = WriteBootSector(FileHandle);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteBootSector() failed with status 0x%.08x\n", Status);
@@ -150,7 +156,7 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
     }
 
     // Create metafiles
-    Status = WriteMetafiles(FileHandle, &LengthInformation, &DiskGeometry);
+    Status = WriteMetafiles(FileHandle);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafiles() failed with status 0x%.08x\n", Status);

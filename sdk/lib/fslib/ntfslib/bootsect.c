@@ -34,18 +34,16 @@ FillOemId(OUT PBOOT_SECTOR BootSector)
 
 static
 VOID
-FillBiosParametersBlock(OUT PBIOS_PARAMETERS_BLOCK  BiosParametersBlock,
-                        IN  GET_LENGTH_INFORMATION* LengthInformation,
-                        IN  PDISK_GEOMETRY          DiskGeometry)
+FillBiosParametersBlock(OUT PBIOS_PARAMETERS_BLOCK BiosParametersBlock)
 {
     // See: https://en.wikipedia.org/wiki/BIOS_parameter_block
     
-    BiosParametersBlock->BytesPerSector    = DISK_BYTES_PER_SECTOR;
-    BiosParametersBlock->SectorsPerCluster = GetSectorsPerCluster(LengthInformation);
+    BiosParametersBlock->BytesPerSector    = BYTES_PER_SECTOR;
+    BiosParametersBlock->SectorsPerCluster = SECTORS_PER_CLUSTER;
 
-    BiosParametersBlock->MediaId = IS_HARD_DRIVE(DiskGeometry) ? 0xF8 : 0x00;
+    BiosParametersBlock->MediaId = IS_HARD_DRIVE ? 0xF8 : 0x00;
 
-    BiosParametersBlock->SectorsPerTrack    = DiskGeometry->SectorsPerTrack;
+    BiosParametersBlock->SectorsPerTrack    = SECTORS_PER_TRACK;
     BiosParametersBlock->Heads              = DISK_HEADS;
     BiosParametersBlock->HiddenSectorsCount = BPB_HIDDEN_SECTORS;
 }
@@ -74,18 +72,15 @@ CalcVolumeSerialNumber(VOID)
 
 static
 VOID
-FillExBiosParametersBlock(OUT PEXTENDED_BIOS_PARAMETERS_BLOCK ExBiosParametersBlock,
-                          IN  GET_LENGTH_INFORMATION*         LengthInformation,
-                          IN  PDISK_GEOMETRY                  DiskGeometry)
+FillExBiosParametersBlock(OUT PEXTENDED_BIOS_PARAMETERS_BLOCK ExBiosParametersBlock)
 {
     // See: https://en.wikipedia.org/wiki/BIOS_parameter_block
 
     ExBiosParametersBlock->Header      = EBPB_HEADER;
-    ExBiosParametersBlock->SectorCount = SECTORS_COUNT(DiskGeometry);
+    ExBiosParametersBlock->SectorCount = SECTORS_COUNT;
 
     ExBiosParametersBlock->MftLocation     = MFT_LOCATION;
-    ExBiosParametersBlock->MftMirrLocation = 
-        SECTORS_COUNT(DiskGeometry) / (ULONGLONG)GetSectorsPerCluster(LengthInformation) / 2;
+    ExBiosParametersBlock->MftMirrLocation = SECTORS_COUNT / SECTORS_PER_CLUSTER / 2;
 
     ExBiosParametersBlock->ClustersPerMftRecord   = MFT_CLUSTERS_PER_RECORD;
     ExBiosParametersBlock->ClustersPerIndexRecord = MFT_CLUSTERS_PER_INDEX_RECORD;
@@ -94,10 +89,7 @@ FillExBiosParametersBlock(OUT PEXTENDED_BIOS_PARAMETERS_BLOCK ExBiosParametersBl
 }
 
 NTSTATUS
-WriteBootSector(IN HANDLE                  Handle,
-                IN GET_LENGTH_INFORMATION* LengthInformation,
-                IN PDISK_GEOMETRY          DiskGeometry,
-                OUT OPTIONAL PBOOT_SECTOR *FinalBootSector)
+WriteBootSector(IN HANDLE Handle)
 {
     NTSTATUS        Status;
     IO_STATUS_BLOCK IoStatusBlock;
@@ -114,8 +106,8 @@ WriteBootSector(IN HANDLE                  Handle,
     FillJumpInstruction(BootSector);
     FillOemId(BootSector);
 
-    FillBiosParametersBlock(&(BootSector->BPB),    LengthInformation, DiskGeometry);
-    FillExBiosParametersBlock(&(BootSector->EBPB), LengthInformation, DiskGeometry);
+    FillBiosParametersBlock(&(BootSector->BPB));
+    FillExBiosParametersBlock(&(BootSector->EBPB));
 
     BootSector->EndSector = BOOT_SECTOR_END;
 
@@ -133,14 +125,7 @@ WriteBootSector(IN HANDLE                  Handle,
         DPRINT1("BootSector write failed. NtWriteFile() failed (Status %lx)\n", Status);
     }
 
-    if (FinalBootSector)
-    {
-        (*FinalBootSector) = BootSector;
-    }
-    else
-    {
-        RtlFreeHeap(RtlGetProcessHeap(), 0, BootSector);
-    }
+    FREE(BootSector);
 
     return Status;
 }

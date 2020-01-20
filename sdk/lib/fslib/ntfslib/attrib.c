@@ -19,8 +19,6 @@
 // Get resident attribute data address
 #define RESIDENT_DATA(attr, type) ((type)((LONG_PTR)attr + RA_HEADER_LENGTH))
 
-#define GET_BYTE(val, n) (val << (8 * (sizeof(val) - 1 - n))) >> (8 * (sizeof(val) - 1))
-
 
 /* FUNCTIONS *****************************************************************/
 
@@ -156,7 +154,6 @@ VOID
 AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
                                  OUT PATTR_RECORD            Attribute,
                                  IN  ULONG                   AttributeType,
-                                 IN  GET_LENGTH_INFORMATION* LengthInformation,
                                  IN  ULONG                   Address,
                                  IN  BYTE                    ClustersCount)
 {
@@ -184,8 +181,7 @@ AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
     Attribute->NonResident.DataRunsOffset  = sizeof(ATTR_RECORD);
     Attribute->NonResident.CompressionUnit = 0;
     
-    Attribute->NonResident.AllocatedSize =
-        ClustersCount * ((LONGLONG)DISK_BYTES_PER_SECTOR * (LONGLONG)GetSectorsPerCluster(LengthInformation));
+    Attribute->NonResident.AllocatedSize   = ClustersCount * BYTES_PER_CLUSTER;
     Attribute->NonResident.DataSize        = Attribute->NonResident.AllocatedSize;
     Attribute->NonResident.InitializedSize = Attribute->NonResident.AllocatedSize;
 
@@ -208,27 +204,23 @@ AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
 VOID
 AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
                                      OUT PATTR_RECORD            Attribute,
-                                     IN  GET_LENGTH_INFORMATION* LengthInformation,
                                      IN  ULONG                   Address,
                                      IN  BYTE                    ClustersCount)
 {
     AddNonResidentSingleRunAttribute(FileRecord,
                                      Attribute,
                                      AttributeData,
-                                     LengthInformation,
                                      Address,
                                      ClustersCount);
 }
 
 VOID
 AddMftBitmapAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
-                      OUT PATTR_RECORD            Attribute,
-                      IN  GET_LENGTH_INFORMATION* LengthInformation)
+                      OUT PATTR_RECORD            Attribute)
 {
     AddNonResidentSingleRunAttribute(FileRecord,
                                      Attribute,
                                      AttributeBitmap,
-                                     LengthInformation,
                                      MFT_BITMAP_ADDRESS,
                                      1);
 }
