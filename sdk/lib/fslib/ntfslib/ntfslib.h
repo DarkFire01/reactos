@@ -409,6 +409,14 @@ AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
                               IN  BYTE                MajorVersion,
                               IN  BYTE                MinorVersion);
 
+VOID
+AddIndexRoot(OUT PFILE_RECORD_HEADER FileRecord,
+             OUT PATTR_RECORD        Attribute);
+
+VOID
+AddIndexAllocation(OUT PFILE_RECORD_HEADER FileRecord,
+                   OUT PATTR_RECORD        Attribute);
+
 // files.c
 
 NTSTATUS

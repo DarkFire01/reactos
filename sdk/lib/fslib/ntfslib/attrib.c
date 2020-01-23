@@ -275,3 +275,31 @@ AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     Attribute = NEXT_ATTRIBUTE(Attribute);
     SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
 }
+
+VOID
+AddIndexRoot(OUT PFILE_RECORD_HEADER FileRecord,
+             OUT PATTR_RECORD        Attribute)
+{
+    Attribute->Type     = AttributeIndexRoot;
+    Attribute->Instance = FileRecord->NextAttributeNumber++;
+
+    // TODO: Implement this
+
+    // Move the attribute-end and file-record-end markers to the end of the file record
+    Attribute = NEXT_ATTRIBUTE(Attribute);
+    SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
+}
+
+VOID
+AddIndexAllocation(OUT PFILE_RECORD_HEADER FileRecord,
+                   OUT PATTR_RECORD        Attribute)
+{
+    Attribute->Type     = AttributeIndexAllocation;
+    Attribute->Instance = FileRecord->NextAttributeNumber++;
+
+    // TODO: Implement this
+
+    // Move the attribute-end and file-record-end markers to the end of the file record
+    Attribute = NEXT_ATTRIBUTE(Attribute);
+    SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
+}

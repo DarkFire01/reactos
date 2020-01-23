@@ -258,9 +258,12 @@ CreateRoot()
         return NULL;
     }
 
-    // TODO: $INDEX_ROOT
+    // $INDEX_ROOT [$I30]
+    AddIndexRoot(FileRecord, Attribute);
 
-    // TODO: $INDEX_ALLOCATION
+    // $INDEX_ALLOCATION
+    Attribute = NEXT_ATTRIBUTE(Attribute);
+    AddIndexAllocation(FileRecord, Attribute);
 
     // TODO: $BITMAP
 
@@ -618,6 +621,8 @@ WriteMetafiles(IN HANDLE Handle)
     }
 
     // TODO: Write Mft Mirror
+
+    // TODO: Add metafiles into root
 
 end:
     FREE(MFT);
