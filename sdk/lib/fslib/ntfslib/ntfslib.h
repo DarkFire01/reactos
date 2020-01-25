@@ -36,7 +36,9 @@
 
 #define MB_TO_B(x) (x * 1024)
 
-#define GET_BYTE(val, n) (val << (8 * (sizeof(val) - 1 - n))) >> (8 * (sizeof(val) - 1))
+#define GET_BYTE(val, n) (((val) >> (8*(n))) & 0xFF)
+
+#define GET_BYTE_FROM_END(val, n) (((val) >> (8*(sizeof((val)) - 1 - (n)))) & 0xFF)
 
 #define BSWAP16(val) \
  ( (((val) >> 8) & 0x00FF) | (((val) << 8) & 0xFF00) )
@@ -148,8 +150,17 @@
 
 #define MFT_BITMAP_ADDRESS    0x0BFFFF
 
-#define RUN_ENTRY_HEADER  0x31
-#define RUN_ENTRY_SIZE    8
+#define RUN_LIST_ENTRY_HEADER_SIZE 1
+#define RUN_LIST_ENTRY_SIZE        8
+
+#define BOOT_ADDRESS 0x00
+#define BOOT_SIZE    2
+
+#define UPCASE_ADDRESS 0x03
+#define UPCASE_SIZE    32
+
+#define ATTRDEF_ADDRESS (UPCASE_ADDRESS + UPCASE_SIZE)
+#define ATTRDEF_SIZE    1
 
 
 /* GLOBAL DATA ***************************************************************/

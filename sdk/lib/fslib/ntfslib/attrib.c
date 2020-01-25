@@ -155,18 +155,20 @@ AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
                                  OUT PATTR_RECORD            Attribute,
                                  IN  ULONG                   AttributeType,
                                  IN  ULONG                   Address,
-                                 IN  BYTE                    ClustersCount)
+                                 IN  ULONG                   ClustersCount)
 {
-    typedef struct _RUN_LIST_ENTRY
-    {
-        BYTE   Header;
-        BYTE   Size;
-        BYTE   LCN[3];
-        BYTE   Reserved[3];
-    } RUN_LIST_ENTRY, *PRUN_LIST_ENTRY;
+    ULONG LCN = BSWAP32(Address);
+    BYTE  LCNOffset;
+    BYTE  LCNCutSize;
 
-    PRUN_LIST_ENTRY RunListEntry;
+    ULONG Clusters = BSWAP32(ClustersCount);
+    BYTE  ClustersOffset = RUN_LIST_ENTRY_HEADER_SIZE;
+    BYTE  ClustersCutSize;
 
+    PBYTE RunListEntry;
+    BYTE  RunListEntryOffset;
+
+    // Setup attribute
     Attribute->Type     = AttributeType;
     Attribute->Instance = FileRecord->NextAttributeNumber++;
 
@@ -185,16 +187,76 @@ AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
     Attribute->NonResident.DataSize        = Attribute->NonResident.AllocatedSize;
     Attribute->NonResident.InitializedSize = Attribute->NonResident.AllocatedSize;
 
-    RunListEntry = (PRUN_LIST_ENTRY)((ULONG_PTR)Attribute + sizeof(ATTR_RECORD));
+    Attribute->Length = sizeof(ATTR_RECORD) + RUN_LIST_ENTRY_SIZE;
 
-    RunListEntry->Header  = RUN_ENTRY_HEADER;
-    RunListEntry->Size    = ClustersCount;
+    // Setup run list entry
+    RunListEntry = (PBYTE)((ULONG_PTR)Attribute + sizeof(ATTR_RECORD));
+    RtlZeroMemory(RunListEntry, RUN_LIST_ENTRY_SIZE);
 
-    RunListEntry->LCN[0] = GET_BYTE(Address, 0);
-    RunListEntry->LCN[1] = GET_BYTE(Address, 1);
-    RunListEntry->LCN[2] = GET_BYTE(Address, 2);
+    // Calculating the minimum segment length for data placement
 
-    Attribute->Length = sizeof(ATTR_RECORD) + sizeof(RUN_LIST_ENTRY);
+    if (Address < 0x0100)
+    {
+        LCNCutSize = 1;
+    }
+    else if (Address < 0x010000)
+    {
+        LCNCutSize = 2;
+    }
+    else if (Address < 0x01000000)
+    {
+        LCNCutSize = 3;
+    }
+    else if (Address < 0x0100000000)
+    {
+        LCNCutSize = 4;
+    }
+
+    if (ClustersCount < 0x0100)
+    {
+        ClustersCutSize = 1;
+    }
+    else if (ClustersCount < 0x010000)
+    {
+        ClustersCutSize = 2;
+    }
+    else if (ClustersCount < 0x01000000)
+    {
+        ClustersCutSize = 3;
+    }
+    else if (ClustersCount < 0x0100000000)
+    {
+        ClustersCutSize = 4;
+    }
+
+    // FIXME: Check whether the data is fit in the record
+    // ASSERT((LCNCutSize + ClustersCutSize) < (RUN_LIST_ENTRY_HEADER_SIZE));
+
+    // Calculate offsets
+    LCNOffset = ClustersOffset + ClustersCutSize;
+
+    // Setup header
+    RunListEntry[0] = (LCNCutSize) << 4 | ClustersCutSize;
+
+    // Copy clusters count
+    for (
+        RunListEntryOffset = ClustersOffset;
+        RunListEntryOffset < ClustersOffset + ClustersCutSize;
+        RunListEntryOffset++
+    )
+    {
+        RunListEntry[RunListEntryOffset] = GET_BYTE_FROM_END(Clusters, RunListEntryOffset - ClustersOffset);
+    }
+
+    // Copy LCN
+    for (
+        RunListEntryOffset = LCNOffset;
+        RunListEntryOffset < LCNOffset + LCNCutSize;
+        RunListEntryOffset++
+    )
+    {
+        RunListEntry[RunListEntryOffset] = GET_BYTE_FROM_END(LCN, RunListEntryOffset - LCNOffset);
+    }
 
     // Move the attribute-end and file-record-end markers to the end of the file record
     Attribute = NEXT_ATTRIBUTE(Attribute);

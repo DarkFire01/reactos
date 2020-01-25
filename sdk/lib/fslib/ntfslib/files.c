@@ -236,7 +236,11 @@ CreateAttrDef()
         return NULL;
     }
     
-    // TODO: $DATA
+    // $DATA
+    AddNonResidentSingleRunDataAttribute(FileRecord,
+                                         Attribute,
+                                         ATTRDEF_ADDRESS,
+                                         ATTRDEF_SIZE);
 
     return FileRecord;
 }
@@ -303,7 +307,11 @@ CreateBoot()
         return NULL;
     }
 
-    // TODO: $DATA
+    // $DATA
+    AddNonResidentSingleRunDataAttribute(FileRecord,
+                                         Attribute,
+                                         BOOT_ADDRESS,
+                                         BOOT_SIZE);
 
     return FileRecord;
 }
@@ -322,7 +330,11 @@ CreateUpCase()
         return NULL;
     }
 
-    // TODO: $DATA
+    // $DATA
+    AddNonResidentSingleRunDataAttribute(FileRecord,
+                                         Attribute,
+                                         UPCASE_ADDRESS,
+                                         UPCASE_SIZE);
 
     // TODO: $Info DATA
 
