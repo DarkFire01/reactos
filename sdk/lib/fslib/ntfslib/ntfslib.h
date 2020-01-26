@@ -31,6 +31,8 @@
 #define FIRST_ATTRIBUTE(fr) ((PATTR_RECORD)((ULONG_PTR)fr + fr->FirstAttributeOffset))
 #define NEXT_ATTRIBUTE(attr) ((PATTR_RECORD)((ULONG_PTR)(attr) + (attr)->Length))
 
+#define ARR_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
+
 
 /* BYTES MACROSES ************************************************************/
 
