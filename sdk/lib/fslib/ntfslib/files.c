@@ -21,7 +21,7 @@ typedef struct
     ULONG  Number;
     WCHAR* Name;
     PFILE_RECORD_HEADER (*Constructor)();
-    NTSTATUS (*AdditionalDataWriter)(HANDLE);
+    NTSTATUS (*AdditionalDataWriter)();
 } METAFILE, *PMETAFILE;
 
 
@@ -29,15 +29,13 @@ typedef struct
 
 static
 NTSTATUS
-WriteZerosToClusters(IN  HANDLE                  Handle,
-                     IN  LONGLONG                Address,
+WriteZerosToClusters(IN  LONGLONG                Address,
                      IN  ULONG                   ClustersCount,
                      OUT PIO_STATUS_BLOCK        IoStatusBlock);
 
 static
 NTSTATUS
-WriteMetafile(IN  HANDLE                   Handle,
-              IN  PFILE_RECORD_HEADER      FileRecord,
+WriteMetafile(IN  PFILE_RECORD_HEADER      FileRecord,
               OUT PIO_STATUS_BLOCK         IoStatusBlock);
 
 static
@@ -64,11 +62,11 @@ static PFILE_RECORD_HEADER CreateBoot();
 static PFILE_RECORD_HEADER CreateUpCase();
 static PFILE_RECORD_HEADER CreateStub(IN DWORD32 MftRecordNumber);
 
-static NTSTATUS WriteMftBitmap(IN HANDLE Handle);
-static NTSTATUS WriteMftMirr(IN HANDLE Handle);
-static NTSTATUS WriteAttributesTable(IN HANDLE Handle);
-static NTSTATUS WriteBitmap(IN HANDLE Handle);
-static NTSTATUS WriteUpCaseTable(IN HANDLE Handle);
+static NTSTATUS WriteMftBitmap();
+static NTSTATUS WriteMftMirr();
+static NTSTATUS WriteAttributesTable();
+static NTSTATUS WriteBitmap();
+static NTSTATUS WriteUpCaseTable();
 
 
 /* CONSTS ********************************************************************/
@@ -97,7 +95,7 @@ static const METAFILE METAFILES[] =
 /* FUNCTIONS *****************************************************************/
 
 NTSTATUS
-WriteMetafiles(IN HANDLE Handle)
+WriteMetafiles()
 {
     BYTE MetafileIndex;
     METAFILE Metafile;
@@ -107,8 +105,7 @@ WriteMetafiles(IN HANDLE Handle)
     IO_STATUS_BLOCK IoStatusBlock;
 
     // Clear first clusters
-    Status = WriteZerosToClusters(Handle,
-                                  MFT_LOCATION,
+    Status = WriteZerosToClusters(MFT_LOCATION,
                                   MFT_DEFAULT_CLUSTERS_SIZE,
                                   &IoStatusBlock);
     if (!NT_SUCCESS(Status))
@@ -151,7 +148,7 @@ WriteMetafiles(IN HANDLE Handle)
         }
 
         // Write metafile to disk
-        Status = WriteMetafile(Handle, FileRecord, &IoStatusBlock);
+        Status = WriteMetafile(FileRecord, &IoStatusBlock);
         if (!NT_SUCCESS(Status))
         {
             DPRINT1(
@@ -167,7 +164,7 @@ WriteMetafiles(IN HANDLE Handle)
         // Write additional data to disk
         if (Metafile.AdditionalDataWriter)
         {
-            Status = Metafile.AdditionalDataWriter(Handle);
+            Status = Metafile.AdditionalDataWriter();
             if (!NT_SUCCESS(Status))
             {
                 DPRINT1(
@@ -193,8 +190,7 @@ WriteMetafiles(IN HANDLE Handle)
 
 static
 NTSTATUS
-WriteZerosToClusters(IN  HANDLE                  Handle,
-                     IN  LONGLONG                Address,
+WriteZerosToClusters(IN  LONGLONG                Address,
                      IN  ULONG                   ClustersCount,
                      OUT PIO_STATUS_BLOCK        IoStatusBlock)
 {
@@ -214,15 +210,15 @@ WriteZerosToClusters(IN  HANDLE                  Handle,
 
     RtlZeroMemory(Zeros, Size);
 
-    Status = NtWriteFile(Handle,
-        NULL,
-        NULL,
-        NULL,
-        IoStatusBlock,
-        Zeros,
-        Size,
-        &Offset,
-        NULL);
+    Status = NtWriteFile(DISK_HANDLE,
+                         NULL,
+                         NULL,
+                         NULL,
+                         IoStatusBlock,
+                         Zeros,
+                         Size,
+                         &Offset,
+                         NULL);
 
     FREE(Zeros);
 
@@ -231,8 +227,7 @@ WriteZerosToClusters(IN  HANDLE                  Handle,
 
 static
 NTSTATUS
-WriteMetafile(IN  HANDLE                   Handle,
-              IN  PFILE_RECORD_HEADER      FileRecord,
+WriteMetafile(IN  PFILE_RECORD_HEADER      FileRecord,
               OUT PIO_STATUS_BLOCK         IoStatusBlock)
 {
     LARGE_INTEGER Offset;
@@ -242,15 +237,15 @@ WriteMetafile(IN  HANDLE                   Handle,
         ((LONGLONG)MFT_LOCATION * BYTES_PER_CLUSTER) +
         (LONGLONG)(FileRecord->MFTRecordNumber * MFT_RECORD_SIZE);
 
-    return NtWriteFile(Handle,
-        NULL,
-        NULL,
-        NULL,
-        IoStatusBlock,
-        FileRecord,
-        MFT_RECORD_SIZE,
-        &Offset,
-        NULL);
+    return NtWriteFile(DISK_HANDLE,
+                       NULL,
+                       NULL,
+                       NULL,
+                       IoStatusBlock,
+                       FileRecord,
+                       MFT_RECORD_SIZE,
+                       &Offset,
+                       NULL);
 }
 
 
@@ -586,7 +581,7 @@ CreateStub(IN DWORD32 MftRecordNumber)
 
 /* METAFILES ADDITIONAL DATA WRITERS *****************************************/
 
-static NTSTATUS WriteMftBitmap(IN HANDLE Handle)
+static NTSTATUS WriteMftBitmap()
 {
     PBYTE Data = NULL;
     LARGE_INTEGER Offset;
@@ -595,8 +590,7 @@ static NTSTATUS WriteMftBitmap(IN HANDLE Handle)
     IO_STATUS_BLOCK IoStatusBlock;
 
     // Clear bitmap cluster
-    Status = WriteZerosToClusters(Handle,
-                                  MFT_BITMAP_ADDRESS,
+    Status = WriteZerosToClusters(MFT_BITMAP_ADDRESS,
                                   1,
                                   &IoStatusBlock);
     if (!NT_SUCCESS(Status))
@@ -625,7 +619,7 @@ static NTSTATUS WriteMftBitmap(IN HANDLE Handle)
     Offset.QuadPart = MFT_BITMAP_ADDRESS * BYTES_PER_CLUSTER;
 
     // Write file
-    Status = NtWriteFile(Handle,
+    Status = NtWriteFile(DISK_HANDLE,
                          NULL,
                          NULL,
                          NULL,
@@ -645,22 +639,22 @@ end:
     return Status;
 }
 
-static NTSTATUS WriteMftMirr(IN HANDLE Handle)
+static NTSTATUS WriteMftMirr()
 {
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS WriteAttributesTable(IN HANDLE Handle)
+static NTSTATUS WriteAttributesTable()
 {
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS WriteBitmap(IN HANDLE Handle)
+static NTSTATUS WriteBitmap()
 {
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS WriteUpCaseTable(IN HANDLE Handle)
+static NTSTATUS WriteUpCaseTable()
 {
     return STATUS_SUCCESS;
 }

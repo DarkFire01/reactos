@@ -50,7 +50,7 @@ FillBiosParametersBlock(OUT PBIOS_PARAMETERS_BLOCK BiosParametersBlock)
 
 static
 ULONGLONG
-CalcVolumeSerialNumber(VOID)
+CalcVolumeSerialNumber()
 {
     BYTE  i;
     ULONG r;
@@ -89,7 +89,7 @@ FillExBiosParametersBlock(OUT PEXTENDED_BIOS_PARAMETERS_BLOCK ExBiosParametersBl
 }
 
 NTSTATUS
-WriteBootSector(IN HANDLE Handle)
+WriteBootSector()
 {
     NTSTATUS        Status;
     IO_STATUS_BLOCK IoStatusBlock;
@@ -111,7 +111,7 @@ WriteBootSector(IN HANDLE Handle)
 
     BootSector->EndSector = BOOT_SECTOR_END;
 
-    Status = NtWriteFile(Handle,
+    Status = NtWriteFile(DISK_HANDLE,
                          NULL,
                          NULL,
                          NULL,

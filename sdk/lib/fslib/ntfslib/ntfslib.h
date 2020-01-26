@@ -58,8 +58,9 @@
 
 /* DISK MACROSES *************************************************************/
 
-#define DISK_GEO (NtfsFormatData.DiskGeometry)
-#define DISK_LEN (NtfsFormatData.LengthInformation)
+#define DISK_HANDLE (NtfsFormatData.DiskHandle)
+#define DISK_GEO    (NtfsFormatData.DiskGeometry)
+#define DISK_LEN    (NtfsFormatData.LengthInformation)
 
 #define BYTES_PER_SECTOR    (DISK_GEO->BytesPerSector)
 
@@ -169,6 +170,7 @@
 
 struct
 {
+    HANDLE                  DiskHandle;
     GET_LENGTH_INFORMATION* LengthInformation;
     PDISK_GEOMETRY          DiskGeometry;
 } NtfsFormatData;
@@ -187,7 +189,7 @@ typedef struct _BIOS_PARAMETERS_BLOCK
     USHORT   Unused1;              // 0x16
     USHORT   SectorsPerTrack;      // 0x18
     USHORT   Heads;                // 0x1A
-    DWORD32   HiddenSectorsCount;  // 0x1C
+    DWORD32  HiddenSectorsCount;   // 0x1C
     DWORD32  Unused2;              // 0x20
 } BIOS_PARAMETERS_BLOCK, *PBIOS_PARAMETERS_BLOCK;
 
@@ -384,7 +386,7 @@ BYTE GetSectorsPerCluster();
 // bootsect.c
 
 NTSTATUS
-WriteBootSector(IN HANDLE Handle);
+WriteBootSector();
 
 // attrib.c
 
@@ -433,6 +435,6 @@ AddIndexAllocation(OUT PFILE_RECORD_HEADER FileRecord,
 // files.c
 
 NTSTATUS
-WriteMetafiles(IN HANDLE Handle);
+WriteMetafiles();
 
 #endif

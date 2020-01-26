@@ -63,7 +63,7 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
            IN ULONG            ClusterSize,
            IN PFMIFSCALLBACK   Callback)
 {
-    HANDLE                 FileHandle;
+    HANDLE                 DiskHandle;
     OBJECT_ATTRIBUTES      Attributes;
     IO_STATUS_BLOCK        Iosb;
     GET_LENGTH_INFORMATION LengthInformation;
@@ -75,7 +75,7 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
     InitializeObjectAttributes(&Attributes, DriveRoot, 0, NULL, NULL);
 
     // Open volume
-    Status = NtOpenFile(&FileHandle,
+    Status = NtOpenFile(&DiskHandle,
                         FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE,
                         &Attributes,
                         &Iosb,
@@ -88,7 +88,7 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
     }
 
     // Get length info
-    Status = NtDeviceIoControlFile(FileHandle, 
+    Status = NtDeviceIoControlFile(DiskHandle, 
                                    NULL,
                                    NULL,
                                    NULL, 
@@ -101,12 +101,12 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("IOCTL_DISK_GET_LENGTH_INFO failed with status 0x%.08x\n", Status);
-        NtClose(FileHandle);
+        NtClose(DiskHandle);
         return Status;
     }
 
     // Get disk geometry
-    Status = NtDeviceIoControlFile(FileHandle, 
+    Status = NtDeviceIoControlFile(DiskHandle, 
                                    NULL,
                                    NULL, 
                                    NULL, 
@@ -119,7 +119,7 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("IOCTL_DISK_GET_DRIVE_GEOMETRY failed with status 0x%.08x\n", Status);
-        NtClose(FileHandle);
+        NtClose(DiskHandle);
         return Status;
     }
 
@@ -131,11 +131,12 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
     }
 
     // Setup global data
-    DISK_GEO = &DiskGeometry;
-    DISK_LEN = &LengthInformation;
+    DISK_HANDLE = DiskHandle;
+    DISK_GEO    = &DiskGeometry;
+    DISK_LEN    = &LengthInformation;
 
     // Lock volume
-    NtFsControlFile(FileHandle, 
+    NtFsControlFile(DiskHandle, 
                     NULL,
                     NULL,
                     NULL, 
@@ -147,31 +148,36 @@ NtfsFormat(IN PUNICODE_STRING  DriveRoot,
                     0);
 
     // Write boot sector
-    Status = WriteBootSector(FileHandle);
+    Status = WriteBootSector();
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteBootSector() failed with status 0x%.08x\n", Status);
-        NtClose(FileHandle);
+        NtClose(DiskHandle);
         goto end;
     }
 
     // Create metafiles
-    Status = WriteMetafiles(FileHandle);
+    Status = WriteMetafiles();
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafiles() failed with status 0x%.08x\n", Status);
-        NtClose(FileHandle);
+        NtClose(DiskHandle);
         goto end;
     }
 
 end:
 
+    // Clear global data structure
+    DISK_HANDLE = NULL;
+    DISK_GEO    = NULL;
+    DISK_LEN    = NULL;
+
     // Dismount and unlock volume
-    NtFsControlFile(FileHandle, NULL, NULL, NULL, &Iosb, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0);
-    NtFsControlFile(FileHandle, NULL, NULL, NULL, &Iosb, FSCTL_UNLOCK_VOLUME, NULL, 0, NULL, 0);
+    NtFsControlFile(DiskHandle, NULL, NULL, NULL, &Iosb, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0);
+    NtFsControlFile(DiskHandle, NULL, NULL, NULL, &Iosb, FSCTL_UNLOCK_VOLUME, NULL, 0, NULL, 0);
 
     // Clear memory
-    NtClose(FileHandle);
+    NtClose(DiskHandle);
 
     // Update progress bar
     if (Callback)
