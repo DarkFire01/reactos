@@ -24,6 +24,24 @@ typedef struct
     NTSTATUS (*AdditionalDataWriter)();
 } METAFILE, *PMETAFILE;
 
+typedef struct
+{
+    WCHAR     Label[64];
+    ULONG     Type;
+    ULONG     DisplayRule;
+    ULONG     CollationRule;
+    ULONG     Flags;
+    ULONGLONG MinimumSize;
+    ULONGLONG MaximumSize;
+} ATTR_DEF, *PATTR_DEF;
+
+typedef enum
+{
+    Indexed     = 0x02,
+    Resident    = 0x40,  // Always
+    NonResident = 0x80   // Allowed to be
+} ATTR_FLAG, *PATTR_FLAG;
+
 
 /* PROTOTYPES ****************************************************************/
 
@@ -78,22 +96,43 @@ static NTSTATUS WriteUpCaseTable();
 
 static const METAFILE METAFILES[] =
 {
-    { METAFILE_MFT,     L"$MFT",     CreateMft    , WriteMftBitmap        },
+    { METAFILE_MFT    , L"$MFT"    , CreateMft    , WriteMftBitmap        },
     { METAFILE_MFTMIRR, L"$MFTMirr", CreateMftMirr, WriteMftMirr          },
     { METAFILE_LOGFILE, L"$LogFile", CreateLogFile, NULL                  },  // Partially implemented
-    { METAFILE_VOLUME,  L"$Volume",  CreateVolume , NULL                  },
+    { METAFILE_VOLUME , L"$Volume" , CreateVolume , NULL                  },
     { METAFILE_ATTRDEF, L"$AttrDef", CreateAttrDef, WriteAttributesTable  },
-    { METAFILE_ROOT,    L".",        CreateRoot   , NULL                  },
-    { METAFILE_BITMAP,  L"$Bitmap",  CreateBitmap , WriteBitmap           },
-    { METAFILE_BOOT,    L"$Boot",    CreateBoot   , NULL                  },
+    { METAFILE_ROOT   , L"."       , CreateRoot   , NULL                  },
+    { METAFILE_BITMAP , L"$Bitmap" , CreateBitmap , WriteBitmap           },
+    { METAFILE_BOOT   , L"$Boot"   , CreateBoot   , NULL                  },
     { METAFILE_BADCLUS, L"$BadClus", NULL         , NULL                  },  // Unimplemented
-    { METAFILE_SECURE,  L"$Secure",  NULL         , NULL                  },  // Unimplemented
-    { METAFILE_UPCASE,  L"$UpCase",  CreateUpCase , WriteUpCaseTable      },
-    { 11,               L"",         NULL         , NULL                  },  // Reserved
-    { 12,               L"",         NULL         , NULL                  },  // Reserved
-    { 13,               L"",         NULL         , NULL                  },  // Reserved
-    { 14,               L"",         NULL         , NULL                  },  // Reserved
-    { 15,               L"",         NULL         , NULL                  },  // Reserved
+    { METAFILE_SECURE , L"$Secure" , NULL         , NULL                  },  // Unimplemented
+    { METAFILE_UPCASE , L"$UpCase" , CreateUpCase , WriteUpCaseTable      },
+    { 11              , L""        , NULL         , NULL                  },  // Reserved
+    { 12              , L""        , NULL         , NULL                  },  // Reserved
+    { 13              , L""        , NULL         , NULL                  },  // Reserved
+    { 14              , L""        , NULL         , NULL                  },  // Reserved
+    { 15              , L""        , NULL         , NULL                  },  // Reserved
+};
+
+// From Windows XP
+static const ATTR_DEF ATTRIBUTES_TABLE[] =
+{
+    { L"$STANDARD_INFORMATION" , 0x10 , 0, 0, Resident          , 0x30, 0x48    },
+    { L"$ATTRIBUTE_LIST"       , 0x20 , 0, 0, NonResident       , 0   , 0       },
+    { L"$FILE_NAME"            , 0x32 , 0, 0, Indexed | Resident, 0x44, 0x242   },
+    { L"$OBJECT_ID"            , 0x40 , 0, 0, Resident          , 0   , 0x100   },
+    { L"$SECURITY_DESCRIPTOR"  , 0x50 , 0, 0, NonResident       , 0   , 0       },
+    { L"$VOLUME_NAME"          , 0x60 , 0, 0, Resident          , 0x02, 0x100   },
+    { L"$VOLUME_INFORMATION"   , 0x70 , 0, 0, Resident          , 0x0C, 0x0C    },
+    { L"$DATA"                 , 0x80 , 0, 0, 0                 , 0   , 0       },
+    { L"$INDEX_ROOT"           , 0x90 , 0, 0, Resident          , 0   , 0       },
+    { L"$INDEX_ALLOCATION"     , 0xA0 , 0, 0, NonResident       , 0   , 0       },
+    { L"$BITMAP"               , 0xB0 , 0, 0, NonResident       , 0   , 0       },
+    { L"$REPARSE_POINT"        , 0xC0 , 0, 0, NonResident       , 0   , 0x4000  },
+    { L"$EA_INFORMATION"       , 0xD0 , 0, 0, Resident          , 0x08, 0x08    },
+    { L"$EA"                   , 0xE0 , 0, 0, 0                 , 0   , 0x10000 },
+    { L"$PROPERTY_SET"         , 0xF0 , 0, 0, 0                 , 0   , 0       },
+    { L"$LOGGED_UTILITY_STREAM", 0x100, 0, 0, NonResident       , 0   , 0x10000 },
 };
 
 
