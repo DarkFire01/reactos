@@ -91,7 +91,7 @@
 
 /* MFT DEFINES ***************************************************************/
 
-#define MFT_LOCATION  0x0C0000
+#define MFT_ADDRESS         0x0C0000
 
 #define MFT_CLUSTERS_PER_RECORD        0xF6
 #define MFT_CLUSTERS_PER_INDEX_RECORD  0x01
@@ -164,6 +164,10 @@
 
 #define ATTRDEF_ADDRESS (UPCASE_ADDRESS + UPCASE_SIZE)
 #define ATTRDEF_SIZE    1
+
+#define MFT_MIRR_ADDRESS (SECTORS_COUNT / SECTORS_PER_CLUSTER / 2)
+#define MFT_MIRR_SIZE    1
+#define MFT_MIRR_COUNT   4
 
 
 /* GLOBAL DATA ***************************************************************/

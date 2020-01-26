@@ -39,6 +39,11 @@ WriteMetafile(IN  PFILE_RECORD_HEADER      FileRecord,
               OUT PIO_STATUS_BLOCK         IoStatusBlock);
 
 static
+NTSTATUS
+WriteMetafileMirror(IN  PFILE_RECORD_HEADER      FileRecord,
+    OUT PIO_STATUS_BLOCK         IoStatusBlock);
+
+static
 PFILE_RECORD_HEADER
 CreateMetafileRecord(IN DWORD32 MftRecordNumber, OUT PATTR_RECORD* Attribute);
 
@@ -105,7 +110,7 @@ WriteMetafiles()
     IO_STATUS_BLOCK IoStatusBlock;
 
     // Clear first clusters
-    Status = WriteZerosToClusters(MFT_LOCATION,
+    Status = WriteZerosToClusters(MFT_ADDRESS,
                                   MFT_DEFAULT_CLUSTERS_SIZE,
                                   &IoStatusBlock);
     if (!NT_SUCCESS(Status))
@@ -114,7 +119,7 @@ WriteMetafiles()
         return Status;
     }
 
-    // Create metafiles
+    // Write metafiles
     for (
         MetafileIndex = 0;
         MetafileIndex < ARR_SIZE(METAFILES);
@@ -234,7 +239,30 @@ WriteMetafile(IN  PFILE_RECORD_HEADER      FileRecord,
 
     // Offset to $MFT + offset to record
     Offset.QuadPart =
-        ((LONGLONG)MFT_LOCATION * BYTES_PER_CLUSTER) +
+        ((LONGLONG)MFT_ADDRESS * BYTES_PER_CLUSTER) +
+        (LONGLONG)(FileRecord->MFTRecordNumber * MFT_RECORD_SIZE);
+
+    return NtWriteFile(DISK_HANDLE,
+                       NULL,
+                       NULL,
+                       NULL,
+                       IoStatusBlock,
+                       FileRecord,
+                       MFT_RECORD_SIZE,
+                       &Offset,
+                       NULL);
+}
+
+static
+NTSTATUS
+WriteMetafileMirror(IN  PFILE_RECORD_HEADER      FileRecord,
+                    OUT PIO_STATUS_BLOCK         IoStatusBlock)
+{
+    LARGE_INTEGER Offset;
+
+    // Offset to $MFT + offset to record
+    Offset.QuadPart =
+        ((LONGLONG)MFT_MIRR_ADDRESS * BYTES_PER_CLUSTER) +
         (LONGLONG)(FileRecord->MFTRecordNumber * MFT_RECORD_SIZE);
 
     return NtWriteFile(DISK_HANDLE,
@@ -361,7 +389,7 @@ CreateMft()
     // $DATA
     AddNonResidentSingleRunDataAttribute(FileRecord, 
                                          Attribute,
-                                         MFT_LOCATION,
+                                         MFT_ADDRESS,
                                          MFT_DEFAULT_CLUSTERS_SIZE);
 
     // $BITMAP
@@ -385,7 +413,11 @@ CreateMftMirr()
         return NULL;
     }
 
-    // TODO: $DATA
+    // $DATA
+    AddNonResidentSingleRunDataAttribute(FileRecord,
+                                         Attribute,
+                                         MFT_MIRR_ADDRESS,
+                                         MFT_MIRR_SIZE);
 
     return FileRecord;
 }
@@ -641,7 +673,75 @@ end:
 
 static NTSTATUS WriteMftMirr()
 {
-    return STATUS_SUCCESS;
+    BYTE MetafileIndex;
+    METAFILE Metafile;
+    PFILE_RECORD_HEADER FileRecord;
+
+    NTSTATUS Status = STATUS_SUCCESS;
+    IO_STATUS_BLOCK IoStatusBlock;
+
+    // Clear cluster for MFT mirror
+    Status = WriteZerosToClusters(MFT_MIRR_ADDRESS,
+                                  MFT_MIRR_SIZE,
+                                  &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("ERROR: Unable to clear sectors for $MFT bitmap! NtWriteFile() failed (Status %lx)\n", Status);
+        return Status;
+    }
+
+    // Write metafiles to mirror
+    for (
+        MetafileIndex = 0;
+        MetafileIndex < MFT_MIRR_COUNT;
+        MetafileIndex++
+        )
+    {
+        Metafile = METAFILES[MetafileIndex];
+
+        // Create metafile record or stub, if metafile is not implemented
+        if (!Metafile.Constructor)
+        {
+            FileRecord = CreateStub(MetafileIndex);
+        }
+        else
+        {
+            FileRecord = Metafile.Constructor();
+        }
+
+        // Check file record
+        if (!FileRecord)
+        {
+            DPRINT1(
+                "ERROR: Unable to allocate memory for file record #%d!\n",
+                MetafileIndex
+            );
+
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+
+            FREE(FileRecord);
+            break;
+        }
+
+        // Write metafile to disk
+        Status = WriteMetafileMirror(FileRecord, &IoStatusBlock);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1(
+                "ERROR: Unable to write metafile mirror #%d to disk. NtWriteFile() failed (Status %lx)\n",
+                MetafileIndex,
+                Status
+            );
+
+            FREE(FileRecord);
+            break;
+        }
+
+        // Free memory
+        FREE(FileRecord);
+    }
+
+    return Status;
 }
 
 static NTSTATUS WriteAttributesTable()

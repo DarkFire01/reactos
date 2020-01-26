@@ -79,8 +79,8 @@ FillExBiosParametersBlock(OUT PEXTENDED_BIOS_PARAMETERS_BLOCK ExBiosParametersBl
     ExBiosParametersBlock->Header      = EBPB_HEADER;
     ExBiosParametersBlock->SectorCount = SECTORS_COUNT;
 
-    ExBiosParametersBlock->MftLocation     = MFT_LOCATION;
-    ExBiosParametersBlock->MftMirrLocation = SECTORS_COUNT / SECTORS_PER_CLUSTER / 2;
+    ExBiosParametersBlock->MftLocation     = MFT_ADDRESS;
+    ExBiosParametersBlock->MftMirrLocation = MFT_MIRR_ADDRESS;
 
     ExBiosParametersBlock->ClustersPerMftRecord   = MFT_CLUSTERS_PER_RECORD;
     ExBiosParametersBlock->ClustersPerIndexRecord = MFT_CLUSTERS_PER_INDEX_RECORD;
