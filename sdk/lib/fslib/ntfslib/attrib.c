@@ -229,8 +229,8 @@ AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
         ClustersCutSize = 4;
     }
 
-    // FIXME: Check whether the data is fit in the record
-    // ASSERT((LCNCutSize + ClustersCutSize) < (RUN_LIST_ENTRY_HEADER_SIZE));
+    // Check whether the data is fit in the record
+    ASSERT((LCNCutSize + ClustersCutSize) < RUN_LIST_ENTRY_SIZE);
 
     // Calculate offsets
     LCNOffset = ClustersOffset + ClustersCutSize;
