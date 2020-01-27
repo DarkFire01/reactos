@@ -207,7 +207,7 @@ AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
     {
         LCNCutSize = 3;
     }
-    else if (Address < 0x0100000000)
+    else
     {
         LCNCutSize = 4;
     }
@@ -224,7 +224,7 @@ AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
     {
         ClustersCutSize = 3;
     }
-    else if (ClustersCount < 0x0100000000)
+    else
     {
         ClustersCutSize = 4;
     }
@@ -267,7 +267,7 @@ VOID
 AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
                                      OUT PATTR_RECORD            Attribute,
                                      IN  ULONG                   Address,
-                                     IN  BYTE                    ClustersCount)
+                                     IN  ULONG                   ClustersCount)
 {
     AddNonResidentSingleRunAttribute(FileRecord,
                                      Attribute,

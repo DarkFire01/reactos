@@ -151,22 +151,26 @@
 
 #define MFT_DEFAULT_CLUSTERS_SIZE 64
 
-#define MFT_BITMAP_ADDRESS    0x0BFFFF
+#define MFT_BITMAP_SIZE    1 
+#define MFT_BITMAP_ADDRESS (MFT_ADDRESS - MFT_BITMAP_SIZE)
 
 #define RUN_LIST_ENTRY_HEADER_SIZE 1
 #define RUN_LIST_ENTRY_SIZE        8
 
-#define BOOT_ADDRESS 0x00
 #define BOOT_SIZE    2
+#define BOOT_ADDRESS 0x00
 
-#define UPCASE_ADDRESS 0x03
 #define UPCASE_SIZE    32
+#define UPCASE_ADDRESS 0x03
 
-#define ATTRDEF_ADDRESS (UPCASE_ADDRESS + UPCASE_SIZE)
 #define ATTRDEF_SIZE    1
+#define ATTRDEF_ADDRESS (MFT_BITMAP_ADDRESS - ATTRDEF_SIZE)
 
-#define MFT_MIRR_ADDRESS (SECTORS_COUNT / SECTORS_PER_CLUSTER / 2)
+#define LOGFILE_SIZE    11000
+#define LOGFILE_ADDRESS (ATTRDEF_ADDRESS - LOGFILE_SIZE)
+
 #define MFT_MIRR_SIZE    1
+#define MFT_MIRR_ADDRESS (SECTORS_COUNT / SECTORS_PER_CLUSTER / 2)
 #define MFT_MIRR_COUNT   4
 
 
@@ -412,7 +416,7 @@ VOID
 AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
                                      OUT PATTR_RECORD            Attribute,
                                      IN  ULONG                   Address,
-                                     IN  BYTE                    ClustersCount);
+                                     IN  ULONG                   ClustersCount);
 
 VOID
 AddMftBitmapAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
