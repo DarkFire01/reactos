@@ -679,6 +679,7 @@ static NTSTATUS WriteMftBitmap()
         goto end;
     }
 
+    // Clear memory
     RtlZeroMemory(Data, BYTES_PER_SECTOR);
 
     // Every bit is cluster
@@ -725,7 +726,7 @@ static NTSTATUS WriteMftMirr()
                                   &IoStatusBlock);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("ERROR: Unable to clear sectors for $MFT bitmap! NtWriteFile() failed (Status %lx)\n", Status);
+        DPRINT1("ERROR: Unable to clear sectors for $MFTMirr! NtWriteFile() failed (Status %lx)\n", Status);
         return Status;
     }
 
@@ -785,7 +786,46 @@ static NTSTATUS WriteMftMirr()
 
 static NTSTATUS WriteAttributesTable()
 {
-    return STATUS_SUCCESS;
+    PBYTE Table;
+    LARGE_INTEGER Offset;
+
+    NTSTATUS Status = STATUS_SUCCESS;
+    IO_STATUS_BLOCK IoStatusBlock;
+
+    Offset.QuadPart = ATTRDEF_ADDRESS * BYTES_PER_CLUSTER;
+
+    // Allocate memory
+    Table = RtlAllocateHeap(RtlGetProcessHeap(), 0, BYTES_PER_CLUSTER);
+    if (!Table)
+    {
+        DPRINT1("ERROR: Unable to allocate memory for attributes table!\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    // Clear memory
+    RtlZeroMemory(Table, BYTES_PER_CLUSTER);
+
+    // Copy table to memory
+    RtlCopyBytes(Table, &ATTRIBUTES_TABLE, sizeof(ATTRIBUTES_TABLE));
+
+    // Write table to disk
+    Status = NtWriteFile(DISK_HANDLE,
+                         NULL,
+                         NULL,
+                         NULL,
+                         &IoStatusBlock,
+                         Table,
+                         BYTES_PER_CLUSTER,
+                         &Offset,
+                         NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("ERROR: Unable to write attributes table to disk! NtWriteFile() failed (Status %lx)\n", Status);
+    }
+
+    FREE(Table);
+
+    return Status;
 }
 
 static NTSTATUS WriteBitmap()
