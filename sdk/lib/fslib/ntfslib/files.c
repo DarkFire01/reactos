@@ -59,7 +59,7 @@ WriteMetafile(IN  PFILE_RECORD_HEADER      FileRecord,
 static
 NTSTATUS
 WriteMetafileMirror(IN  PFILE_RECORD_HEADER      FileRecord,
-    OUT PIO_STATUS_BLOCK         IoStatusBlock);
+                    OUT PIO_STATUS_BLOCK         IoStatusBlock);
 
 static
 PFILE_RECORD_HEADER
@@ -117,22 +117,22 @@ static const METAFILE METAFILES[] =
 // From Windows XP
 static const ATTR_DEF ATTRIBUTES_TABLE[] =
 {
-    { L"$STANDARD_INFORMATION" , 0x10 , 0, 0, Resident          , 0x30, 0x48    },
-    { L"$ATTRIBUTE_LIST"       , 0x20 , 0, 0, NonResident       , 0   , 0       },
-    { L"$FILE_NAME"            , 0x32 , 0, 0, Indexed | Resident, 0x44, 0x242   },
-    { L"$OBJECT_ID"            , 0x40 , 0, 0, Resident          , 0   , 0x100   },
-    { L"$SECURITY_DESCRIPTOR"  , 0x50 , 0, 0, NonResident       , 0   , 0       },
-    { L"$VOLUME_NAME"          , 0x60 , 0, 0, Resident          , 0x02, 0x100   },
-    { L"$VOLUME_INFORMATION"   , 0x70 , 0, 0, Resident          , 0x0C, 0x0C    },
-    { L"$DATA"                 , 0x80 , 0, 0, 0                 , 0   , 0       },
-    { L"$INDEX_ROOT"           , 0x90 , 0, 0, Resident          , 0   , 0       },
-    { L"$INDEX_ALLOCATION"     , 0xA0 , 0, 0, NonResident       , 0   , 0       },
-    { L"$BITMAP"               , 0xB0 , 0, 0, NonResident       , 0   , 0       },
-    { L"$REPARSE_POINT"        , 0xC0 , 0, 0, NonResident       , 0   , 0x4000  },
-    { L"$EA_INFORMATION"       , 0xD0 , 0, 0, Resident          , 0x08, 0x08    },
-    { L"$EA"                   , 0xE0 , 0, 0, 0                 , 0   , 0x10000 },
-    { L"$PROPERTY_SET"         , 0xF0 , 0, 0, 0                 , 0   , 0       },
-    { L"$LOGGED_UTILITY_STREAM", 0x100, 0, 0, NonResident       , 0   , 0x10000 },
+    { L"$STANDARD_INFORMATION" , AttributeStandardInformation, 0, 0, Resident          , 0x30, 0x48       },
+    { L"$ATTRIBUTE_LIST"       , AttributeAttributeList      , 0, 0, NonResident       , 0   , ULLONG_MAX },
+    { L"$FILE_NAME"            , AttributeFileName           , 0, 0, Indexed | Resident, 0x44, 0x242      },
+    { L"$OBJECT_ID"            , AttributeObjectId           , 0, 0, Resident          , 0   , 0x100      },
+    { L"$SECURITY_DESCRIPTOR"  , AttributeSecurityDescriptor , 0, 0, NonResident       , 0   , ULLONG_MAX },
+    { L"$VOLUME_NAME"          , AttributeVolumeName         , 0, 0, Resident          , 0x02, 0x100      },
+    { L"$VOLUME_INFORMATION"   , AttributeVolumeInformation  , 0, 0, Resident          , 0x0C, 0x0C       },
+    { L"$DATA"                 , AttributeData               , 0, 0, 0                 , 0   , ULLONG_MAX },
+    { L"$INDEX_ROOT"           , AttributeIndexRoot          , 0, 0, Resident          , 0   , ULLONG_MAX },
+    { L"$INDEX_ALLOCATION"     , AttributeIndexAllocation    , 0, 0, NonResident       , 0   , ULLONG_MAX },
+    { L"$BITMAP"               , AttributeBitmap             , 0, 0, NonResident       , 0   , ULLONG_MAX },
+    { L"$REPARSE_POINT"        , AttributeReparsePoint       , 0, 0, NonResident       , 0   , 0x4000     },
+    { L"$EA_INFORMATION"       , AttributeEAInformation      , 0, 0, Resident          , 0x08, 0x08       },
+    { L"$EA"                   , AttributeEA                 , 0, 0, 0                 , 0   , 0x10000    },
+    { L"$LOGGED_UTILITY_STREAM", AttributeLoggedUtilityStream, 0, 0, NonResident       , 0   , 0x10000    },
+    { L""                      , 0                           , 0, 0, 0                 , 0   , 0          }
 };
 
 
