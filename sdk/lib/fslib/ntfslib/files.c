@@ -475,7 +475,11 @@ CreateLogFile()
         return NULL;
     }
 
-    // TODO: $DATA
+    // $DATA
+    AddNonResidentSingleRunDataAttribute(FileRecord,
+                                         Attribute,
+                                         LOGFILE_ADDRESS,
+                                         LOGFILE_SIZE);
 
     return FileRecord;
 }
