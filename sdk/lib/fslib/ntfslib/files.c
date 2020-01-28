@@ -801,5 +801,46 @@ static NTSTATUS WriteBitmap()
 
 static NTSTATUS WriteUpCaseTable()
 {
-    return STATUS_SUCCESS;
+    PUSHORT       Table;
+    LARGE_INTEGER Offset;
+    ULONG         Size;
+
+    NTSTATUS Status = STATUS_SUCCESS;
+    IO_STATUS_BLOCK IoStatusBlock;
+
+    Offset.QuadPart = UPCASE_ADDRESS * BYTES_PER_CLUSTER;
+    Size = UPCASE_SIZE * BYTES_PER_CLUSTER;
+
+    // Allocate memory
+    Table = RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
+    if (!Table)
+    {
+        DPRINT1("ERROR: Unable to allocate memory for upcase table!\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    // Clear memory
+    RtlZeroMemory(Table, Size);
+
+    // Copy table to memory
+    RtlCopyBytes(Table, &UPCASE_TABLE, sizeof(UPCASE_TABLE));
+
+    // Write table to disk
+    Status = NtWriteFile(DISK_HANDLE,
+                         NULL,
+                         NULL,
+                         NULL,
+                         &IoStatusBlock,
+                         Table,
+                         Size,
+                         &Offset,
+                         NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("ERROR: Unable to write upcase table to disk! NtWriteFile() failed (Status %lx)\n", Status);
+    }
+
+    FREE(Table);
+
+    return Status;
 }
