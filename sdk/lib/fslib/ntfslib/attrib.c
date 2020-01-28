@@ -186,7 +186,7 @@ AddNonResidentAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
     
     Attribute->NonResident.AllocatedSize   = ClustersCount * BYTES_PER_CLUSTER;
     Attribute->NonResident.DataSize        = !DataSize ? Attribute->NonResident.AllocatedSize : DataSize;
-    Attribute->NonResident.InitializedSize = !DataSize ? Attribute->NonResident.AllocatedSize : DataSize;
+    Attribute->NonResident.CompressedSize  = !DataSize ? Attribute->NonResident.AllocatedSize : DataSize;
 
     Attribute->Length = sizeof(ATTR_RECORD) + RUN_LIST_ENTRY_SIZE;
 

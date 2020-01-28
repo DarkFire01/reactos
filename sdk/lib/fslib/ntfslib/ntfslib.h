@@ -320,7 +320,7 @@ typedef struct _ATTR_RECORD
             BYTE       Reserved[4];         // 0x24
             LONGLONG   AllocatedSize;       // 0x28
             LONGLONG   DataSize;            // 0x30
-            LONGLONG   InitializedSize;     // 0x38
+            LONGLONG   CompressedSize;     // 0x38
         } NonResident;
     };
 } ATTR_RECORD, *PATTR_RECORD;
