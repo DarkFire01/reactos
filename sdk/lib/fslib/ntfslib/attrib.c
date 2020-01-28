@@ -184,8 +184,8 @@ AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
     Attribute->NonResident.CompressionUnit = 0;
     
     Attribute->NonResident.AllocatedSize   = ClustersCount * BYTES_PER_CLUSTER;
-    Attribute->NonResident.DataSize        = Attribute->NonResident.AllocatedSize;
-    Attribute->NonResident.InitializedSize = Attribute->NonResident.AllocatedSize;
+    Attribute->NonResident.DataSize        = Attribute->NonResident.AllocatedSize;  // Incorrect value. FIXME!
+    Attribute->NonResident.InitializedSize = Attribute->NonResident.AllocatedSize;  // Incorrect value. FIXME!
 
     Attribute->Length = sizeof(ATTR_RECORD) + RUN_LIST_ENTRY_SIZE;
 

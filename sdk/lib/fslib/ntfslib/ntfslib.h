@@ -3,7 +3,7 @@
  * PROJECT:     ReactOS NTFS FS library
  * FILE:        lib/fslib/ntfslib/ntfslib.h
  * PURPOSE:     NTFS lib definitions
- * PROGRAMMERS: Klachkov Valery
+ * PROGRAMMERS: Pierre Schweitzer, Klachkov Valery
  */
 
 #ifndef NTFSLIB_H
