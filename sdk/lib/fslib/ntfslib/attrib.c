@@ -151,11 +151,12 @@ AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
 
 static
 VOID
-AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
-                                 OUT PATTR_RECORD            Attribute,
-                                 IN  ULONG                   AttributeType,
-                                 IN  ULONG                   Address,
-                                 IN  ULONG                   ClustersCount)
+AddNonResidentAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
+                        OUT PATTR_RECORD            Attribute,
+                        IN  ULONG                   AttributeType,
+                        IN  ULONG                   Address,
+                        IN  ULONG                   ClustersCount,
+                        OPTIONAL IN ULONG           DataSize)
 {
     ULONG LCN = BSWAP32(Address);
     BYTE  LCNOffset;
@@ -184,8 +185,8 @@ AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
     Attribute->NonResident.CompressionUnit = 0;
     
     Attribute->NonResident.AllocatedSize   = ClustersCount * BYTES_PER_CLUSTER;
-    Attribute->NonResident.DataSize        = Attribute->NonResident.AllocatedSize;  // Incorrect value. FIXME!
-    Attribute->NonResident.InitializedSize = Attribute->NonResident.AllocatedSize;  // Incorrect value. FIXME!
+    Attribute->NonResident.DataSize        = !DataSize ? Attribute->NonResident.AllocatedSize : DataSize;
+    Attribute->NonResident.InitializedSize = !DataSize ? Attribute->NonResident.AllocatedSize : DataSize;
 
     Attribute->Length = sizeof(ATTR_RECORD) + RUN_LIST_ENTRY_SIZE;
 
@@ -264,27 +265,30 @@ AddNonResidentSingleRunAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
 }
 
 VOID
-AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
-                                     OUT PATTR_RECORD            Attribute,
-                                     IN  ULONG                   Address,
-                                     IN  ULONG                   ClustersCount)
+AddNonResidentDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
+                            OUT PATTR_RECORD            Attribute,
+                            IN  ULONG                   Address,
+                            IN  ULONG                   ClustersCount,
+                            OPTIONAL IN ULONG           DataSize)
 {
-    AddNonResidentSingleRunAttribute(FileRecord,
-                                     Attribute,
-                                     AttributeData,
-                                     Address,
-                                     ClustersCount);
+    AddNonResidentAttribute(FileRecord,
+                            Attribute,
+                            AttributeData,
+                            Address,
+                            ClustersCount,
+                            DataSize);
 }
 
 VOID
 AddMftBitmapAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
                       OUT PATTR_RECORD            Attribute)
 {
-    AddNonResidentSingleRunAttribute(FileRecord,
-                                     Attribute,
-                                     AttributeBitmap,
-                                     MFT_BITMAP_ADDRESS,
-                                     1);
+    AddNonResidentAttribute(FileRecord,
+                            Attribute,
+                            AttributeBitmap,
+                            MFT_BITMAP_ADDRESS,
+                            1,
+                            MFT_DEFAULT_RECORDS_COUNT);
 }
 
 VOID

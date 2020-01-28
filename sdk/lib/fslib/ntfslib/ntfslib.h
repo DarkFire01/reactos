@@ -149,7 +149,8 @@
 #define METAFILE_UPCASE           10
 #define METAFILE_FIRST_USER_FILE  16
 
-#define MFT_DEFAULT_CLUSTERS_SIZE 64
+#define MFT_DEFAULT_CLUSTERS_SIZE 8
+#define MFT_DEFAULT_RECORDS_COUNT (MFT_DEFAULT_CLUSTERS_SIZE * (BYTES_PER_CLUSTER / MFT_RECORD_SIZE))
 
 #define MFT_BITMAP_SIZE    1 
 #define MFT_BITMAP_ADDRESS (MFT_ADDRESS - MFT_BITMAP_SIZE)
@@ -413,10 +414,11 @@ AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
                       OUT PATTR_RECORD        Attribute);
 
 VOID
-AddNonResidentSingleRunDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
-                                     OUT PATTR_RECORD            Attribute,
-                                     IN  ULONG                   Address,
-                                     IN  ULONG                   ClustersCount);
+AddNonResidentDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
+                            OUT PATTR_RECORD            Attribute,
+                            IN  ULONG                   Address,
+                            IN  ULONG                   ClustersCount,
+                            OPTIONAL IN  ULONG          DataSize);
 
 VOID
 AddMftBitmapAttribute(OUT PFILE_RECORD_HEADER     FileRecord,

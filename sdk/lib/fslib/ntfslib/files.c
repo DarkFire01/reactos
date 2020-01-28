@@ -388,10 +388,11 @@ CreateMft()
     }
 
     // $DATA
-    AddNonResidentSingleRunDataAttribute(FileRecord, 
-                                         Attribute,
-                                         MFT_ADDRESS,
-                                         MFT_DEFAULT_CLUSTERS_SIZE);
+    AddNonResidentDataAttribute(FileRecord, 
+                                Attribute,
+                                MFT_ADDRESS,
+                                MFT_DEFAULT_CLUSTERS_SIZE,
+                                0);
 
     // $BITMAP
     Attribute = NEXT_ATTRIBUTE(Attribute);
@@ -415,10 +416,11 @@ CreateMftMirr()
     }
 
     // $DATA
-    AddNonResidentSingleRunDataAttribute(FileRecord,
-                                         Attribute,
-                                         MFT_MIRR_ADDRESS,
-                                         MFT_MIRR_SIZE);
+    AddNonResidentDataAttribute(FileRecord,
+                                Attribute,
+                                MFT_MIRR_ADDRESS,
+                                MFT_MIRR_SIZE,
+                                0);
 
     return FileRecord;
 }
@@ -438,10 +440,11 @@ CreateLogFile()
     }
 
     // $DATA
-    AddNonResidentSingleRunDataAttribute(FileRecord,
-                                         Attribute,
-                                         LOGFILE_ADDRESS,
-                                         LOGFILE_SIZE);
+    AddNonResidentDataAttribute(FileRecord,
+                                Attribute,
+                                LOGFILE_ADDRESS,
+                                LOGFILE_SIZE,
+                                0);
 
     return FileRecord;
 }
@@ -492,10 +495,11 @@ CreateAttrDef()
     }
     
     // $DATA
-    AddNonResidentSingleRunDataAttribute(FileRecord,
-                                         Attribute,
-                                         ATTRDEF_ADDRESS,
-                                         ATTRDEF_SIZE);
+    AddNonResidentDataAttribute(FileRecord,
+                                Attribute,
+                                ATTRDEF_ADDRESS,
+                                ATTRDEF_SIZE,
+                                sizeof(ATTRIBUTES_TABLE));
 
     return FileRecord;
 }
@@ -563,10 +567,11 @@ CreateBoot()
     }
 
     // $DATA
-    AddNonResidentSingleRunDataAttribute(FileRecord,
-                                         Attribute,
-                                         BOOT_ADDRESS,
-                                         BOOT_SIZE);
+    AddNonResidentDataAttribute(FileRecord,
+                                Attribute,
+                                BOOT_ADDRESS,
+                                BOOT_SIZE,
+                                0);
 
     return FileRecord;
 }
@@ -586,10 +591,11 @@ CreateUpCase()
     }
 
     // $DATA
-    AddNonResidentSingleRunDataAttribute(FileRecord,
-                                         Attribute,
-                                         UPCASE_ADDRESS,
-                                         UPCASE_SIZE);
+    AddNonResidentDataAttribute(FileRecord,
+                                Attribute,
+                                UPCASE_ADDRESS,
+                                UPCASE_SIZE,
+                                sizeof(UPCASE_TABLE));
 
     return FileRecord;
 }
