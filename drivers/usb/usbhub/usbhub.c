@@ -1860,7 +1860,7 @@ USBH_ProcessHubStateChange(IN PUSBHUB_FDO_EXTENSION HubExtension,
         if (HubStatus->HubStatus.OverCurrent)
         {
             DPRINT1("USBH_ProcessHubStateChange: OverCurrent UNIMPLEMENTED. FIXME\n");
-            DbgBreakPoint();
+            //DbgBreakPoint();
         }
     }
 }
