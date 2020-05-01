@@ -235,12 +235,12 @@ DefaultLayout    = 00000409
 DefaultLanguage  = 00000409
 
 [Computer.NTx86]
-pci_up = "Standard PC Uniprocessor"
+;pci_up = "Standard PC Uniprocessor"
 ;pci_mp = "Standard PC Multiprocessor"
-acpi_up = "ACPI PC Uniprocessor"
-acpi_mp = "ACPI PC Multiprocessor"
-apic_up = "Standard APIC PC Uniprocessor"
-aacpi_up = "ACPI APIC PC Uniprocessor"
+;acpi_up = "ACPI PC Uniprocessor"
+;acpi_mp = "ACPI PC Multiprocessor"
+;apic_up = "Standard APIC PC Uniprocessor"
+;aacpi_up = "ACPI APIC PC Uniprocessor"
 xbox = "Original Xbox (x86 based)"
 pc98_up = "NEC PC-98 Uniprocessor"
 
@@ -250,12 +250,12 @@ x64_mp = "Standard x64 Multiprocessor"
 
 [Map.Computer.NTx86]
 ;<id> = <pnp id string>
-pci_up = "PC UP"
+;pci_up = "PC UP"
 ;pci_mp = "PC MP"
-acpi_up = "ACPI UP"
-acpi_mp = "ACPI MP"
-apic_up = "APIC UP"
-aacpi_up = "AAPIC UP"
+;acpi_up = "ACPI UP"
+;acpi_mp = "ACPI MP"
+;apic_up = "APIC UP"
+;aacpi_up = "AAPIC UP"
 xbox = "Xbox"
 pc98_up = "NEC PC-98 UP"
 
