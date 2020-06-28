@@ -6,6 +6,7 @@ list(APPEND INF_FILES
     bth.inf
     c_image.inf
     display.inf
+    bcmwl5.inf
     fdc.inf
     flpydisk.inf
     hal.inf
@@ -18,8 +19,10 @@ list(APPEND INF_FILES
     machine.inf
     monitor.inf
     msmouse.inf
+    Netrtuw.inf
     NET_NIC.inf
     nettcpip.inf
+    NETwNx32.INF
     ports.inf
     scsi.inf
     shortcuts.inf

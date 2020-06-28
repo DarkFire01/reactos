@@ -203,12 +203,7 @@ ExpCheckPoolHeader(IN PPOOL_HEADER Entry)
         /* The two blocks must be on the same page! */
         if (PAGE_ALIGN(Entry) != PAGE_ALIGN(PreviousEntry))
         {
-            /* Something is awry */
-            KeBugCheckEx(BAD_POOL_HEADER,
-                         6,
-                         (ULONG_PTR)PreviousEntry,
-                         __LINE__,
-                         (ULONG_PTR)Entry);
+
         }
 
         /* This block should also indicate that it's as large as we think it is */
@@ -218,21 +213,13 @@ ExpCheckPoolHeader(IN PPOOL_HEADER Entry)
             DPRINT1("PreviousEntry BlockSize %lu, tag %.4s. Entry PreviousSize %lu, tag %.4s\n",
                     PreviousEntry->BlockSize, (char *)&PreviousEntry->PoolTag,
                     Entry->PreviousSize, (char *)&Entry->PoolTag);
-            KeBugCheckEx(BAD_POOL_HEADER,
-                         5,
-                         (ULONG_PTR)PreviousEntry,
-                         __LINE__,
-                         (ULONG_PTR)Entry);
+
         }
     }
     else if (PAGE_ALIGN(Entry) != Entry)
     {
         /* If there's no block before us, we are the first block, so we should be on a page boundary */
-        KeBugCheckEx(BAD_POOL_HEADER,
-                     7,
-                     0,
-                     __LINE__,
-                     (ULONG_PTR)Entry);
+
     }
 
     /* This block must have a size */
@@ -251,11 +238,7 @@ ExpCheckPoolHeader(IN PPOOL_HEADER Entry)
             DPRINT1("Entry tag %.4s\n",
                     (char *)&Entry->PoolTag);
         }
-        KeBugCheckEx(BAD_POOL_HEADER,
-                     8,
-                     0,
-                     __LINE__,
-                     (ULONG_PTR)Entry);
+
     }
 
     /* Okay, now get the next block */
@@ -267,12 +250,7 @@ ExpCheckPoolHeader(IN PPOOL_HEADER Entry)
         /* The two blocks must be on the same page! */
         if (PAGE_ALIGN(Entry) != PAGE_ALIGN(NextEntry))
         {
-            /* Something is messed up */
-            KeBugCheckEx(BAD_POOL_HEADER,
-                         9,
-                         (ULONG_PTR)NextEntry,
-                         __LINE__,
-                         (ULONG_PTR)Entry);
+
         }
 
         /* And this block should think we are as large as we truly are */
@@ -282,11 +260,7 @@ ExpCheckPoolHeader(IN PPOOL_HEADER Entry)
             DPRINT1("Entry BlockSize %lu, tag %.4s. NextEntry PreviousSize %lu, tag %.4s\n",
                     Entry->BlockSize, (char *)&Entry->PoolTag,
                     NextEntry->PreviousSize, (char *)&NextEntry->PoolTag);
-            KeBugCheckEx(BAD_POOL_HEADER,
-                         5,
-                         (ULONG_PTR)NextEntry,
-                         __LINE__,
-                         (ULONG_PTR)Entry);
+      
         }
     }
 }

@@ -1,0 +1,308 @@
+;; Windows .INF file for NDIS driver
+;;
+;; Realtek RTL8187 Wireless USB 2.0 Adapter
+;;
+;; Copyright (C) 2008 Realtek Semiconductor Corp.
+;;
+;; this release is primarily for WHQL test.
+
+[Version]
+Signature	= "$Chicago$"
+Compatible	= 1
+Class		= Net
+ClassGUID	= {4d36e972-e325-11ce-bfc1-08002be10318}
+Provider	= %Realtek%
+CatalogFile.NT	= netrtuw.cat		;; for WHQL certified
+DriverVer	= 06/13/2008,5.1313.0613.2008
+
+[Manufacturer]
+%Realtek% = Realtek,NTx86
+
+[ControlFlags]
+ExcludeFromSelect = USB\VID_0BDA&PID_8187&REV_0100
+ExcludeFromSelect = USB\VID_0769&PID_11F2&REV_0100
+
+;;****************************************************************************
+;; IDs for 2K/XP
+;;****************************************************************************
+[Realtek.NTx86]
+%RTL8187.DeviceDesc% = RTL8187.ndi,USB\VID_0BDA&PID_8187&REV_0100
+%RTL8187.DeviceDesc% = RTL8187.ndi,USB\VID_13D1&PID_ABE6&REV_0100 ; 
+%RTL8187.DeviceDesc% = RTL8187.ndi,USB\VID_1371&PID_9401&REV_0100 ;
+%RTL8187.DeviceDesc% = RTL8187.ndi,USB\VID_114B&PID_0150&REV_0100 ;
+%RTL8187.DeviceDesc% = RTL8187.ndi,USB\VID_18E8&PID_6232&REV_0100 ;
+%RTL8187.DeviceDesc% = RTL8187.ndi,USB\VID_0789&PID_010C&REV_0100 ;
+
+%RTL8187.DeviceDesc.Surecom% = RTL8187.ndi,USB\VID_0769&PID_11F2&REV_0100 ;
+%RTL8187.DeviceDesc.Sitecom% = RTL8187.ndi,USB\VID_0DF6&PID_000D&REV_0100 ;
+
+;;****************************************************************************
+;; IDs for 98SE/ME
+;;****************************************************************************
+[Realtek]
+%RTL8187.DeviceDesc% = RTL8187.ndi,USB\VID_0BDA&PID_8187&REV_0100
+%RTL8187.DeviceDesc% = RTL8187.ndi,USB\VID_13D1&PID_ABE6&REV_0100 ; 
+%RTL8187.DeviceDesc% = RTL8187.ndi,USB\VID_1371&PID_9401&REV_0100 ;
+%RTL8187.DeviceDesc% = RTL8187.ndi,USB\VID_114B&PID_0150&REV_0100 ;
+%RTL8187.DeviceDesc% = RTL8187.ndi,USB\VID_18E8&PID_6232&REV_0100 ;
+%RTL8187.DeviceDesc% = RTL8187.ndi,USB\VID_0789&PID_010C&REV_0100 ;
+
+%RTL8187.DeviceDesc.Surecom% = RTL8187.ndi,USB\VID_0769&PID_11F2&REV_0100 ;
+%RTL8187.DeviceDesc.Sitecom% = RTL8187.ndi,USB\VID_0DF6&PID_000D&REV_0100 ;
+
+; by Owen on 04/12/04
+;;****************************************************************************
+;; Windows 98
+;;****************************************************************************
+[RTL8187.ndi]
+DriverVer       = 06/13/2008,1313
+AddReg = RTL8187.Reg, RTL8187.common.reg
+CopyFiles       = RTL8187.CopyFiles98
+;
+;;****************************************************************************
+;; Windows XP
+;;****************************************************************************
+[RTL8187.ndi.NT]
+AddReg		= RTL8187.NT.Reg, RTL8187.common.reg
+Characteristics = 0x84
+BusType         = 15 
+CopyFiles       = RTL8187.CopyFiles
+
+
+[RTL8187.ndi.NT.Services]
+AddService = RTLWUSB, 2, rtsnt.Service, RTL8187.EventLog
+
+; by Owen on 04/12/04
+;*******************************************************************************
+; Windows 98
+;*******************************************************************************
+[RTL8187.Reg]
+HKR, Ndi, DeviceID, 0, USB\VID_0BDA&PID_8187&REV_0100
+
+HKR,Ndi,CardType,,"PNP"
+
+HKR, , DriverDesc, 0, "Realtek RTL8187 Wireless USB 2.0 Adapter"
+HKR, , DevLoader,,*ndis,*ntkern,*ndis
+HKR, , DeviceVxDs,,RTL8187.sys
+HKR, , EnumPropPages, 0, netdi.dll, EnumPropPages
+
+; NDIS Info
+HKR,NDIS,MajorNdisVersion,1,03
+HKR,NDIS,MinorNdisVersion,1,0a
+HKR,NDIS,LogDriverName,,RTLWUSB
+
+; Interfaces
+HKR,Ndi\Interfaces,DefLower,,"ethernet"
+HKR,Ndi\Interfaces,LowerRange,,"ethernet"
+HKR,Ndi\Interfaces,DefUpper,,"ndis3"
+HKR,Ndi\Interfaces,UpperRange,,"ndis3"
+;
+;*******************************************************************************
+; RTL8187 common paramters
+;*******************************************************************************
+[RTL8187.common.reg]
+HKR,Ndi\params\SSID,   	      ParamDesc,  0, %SSID_STR%
+HKR,Ndi\params\SSID,   	      type,       0, "edit"
+HKR,Ndi\params\SSID,   	      default,    0, "ANY"
+HKR,Ndi\params\SSID,   	      LimitText,  0, "32"
+HKR,defaults,SSID,0,"ANY"
+HKR,,SSID,0,"ANY"
+
+HKR,Ndi\params\Channel,       ParamDesc,  0, %CHANNEL_STR%
+HKR,Ndi\params\Channel,       type,       0, "int"
+HKR,Ndi\params\Channel,       default,    0, "1"
+HKR,Ndi\params\Channel,       Min,        0, "1"
+HKR,Ndi\params\Channel,       Max,        0, "14"
+HKR,Ndi\params\Channel,       Step,       0, "1"
+HKR,Ndi\params\Channel,       Base,       0, "10"
+HKR,defaults,Channel,0,"1"
+HKR,,Channel,0,"1"
+
+HKR,Ndi\params\NetworkType,        ParamDesc,  0, %NETWORK_TYPE_STR%
+HKR,Ndi\params\NetworkType,        type,       0, "enum"
+HKR,Ndi\params\NetworkType,        default,    0, "1"
+HKR,Ndi\params\NetworkType\enum,   "0",        0, "Ad Hoc"
+HKR,Ndi\params\NetworkType\enum,   "1",        0, "Infrastructure"
+HKR,Ndi\params\NetworkType\enum,   "2",        0, "Auto select"
+HKR,defaults,NetworkType,0,"1"
+HKR,,NetworkType,0,"1"
+
+HKR,Ndi\params\LedCtrl,        ParamDesc,  0, %LED_CONTROL_STR%
+HKR,Ndi\params\LedCtrl,        type,       0, "enum"
+HKR,Ndi\params\LedCtrl,        default,    0, "1"
+HKR,Ndi\params\LedCtrl\enum,   "0",        0, "Disable"
+HKR,Ndi\params\LedCtrl\enum,   "1",        0, "Enable"
+HKR,defaults,LedCtrl,0,"1"
+HKR,,LedCtrl,0,"1"
+
+HKR,NDI\params\PowerSaveMode,      ParamDesc,  0, %POWER_SAVE_STR%
+HKR,NDI\params\PowerSaveMode,      type,       0, "enum"
+HKR,Ndi\params\PowerSaveMode,      default,    0, "0"
+HKR,NDI\params\PowerSaveMode\enum, "0",        0, "CAM"
+HKR,NDI\params\PowerSaveMode\enum, "1",        0, "MAX_PSP"
+HKR,NDI\params\PowerSaveMode\enum, "2",        0, "Fast_PSP"
+HKR,defaults,PowerSaveMode,0,"0"
+HKR,,PowerSaveMode,0,"0"
+
+HKR,Ndi\params\WiFi11bIbss,        ParamDesc,  0, %WIFI_IBSS_STR%
+HKR,Ndi\params\WiFi11bIbss,        type,       0, "enum"
+HKR,Ndi\params\WiFi11bIbss,        default,    0, "0"
+HKR,Ndi\params\WiFi11bIbss\enum,   "0",        0, "Disable"
+HKR,Ndi\params\WiFi11bIbss\enum,   "1",        0, "Enable"
+HKR,defaults,WiFi11bIbss,0,"0"
+HKR,,WiFi11bIbss,0,"0"
+
+HKR,Ndi\params\bRateAdaptive,        ParamDesc,  0, %RATE_ADAPTIVE_STR%
+HKR,Ndi\params\bRateAdaptive,        type,       0, "enum"
+HKR,Ndi\params\bRateAdaptive,        default,    0, "1"
+HKR,Ndi\params\bRateAdaptive\enum,   "0",        0, "Disable"
+HKR,Ndi\params\bRateAdaptive\enum,   "1",        0, "Enable"
+HKR,defaults,bRateAdaptive,0,"1"
+HKR,,bRateAdaptive,0,"1"
+
+HKR,Ndi\params\MaxPktSize, ParamDesc, 0, %MAX_PKTSIZE_STR%
+HKR,Ndi\params\MaxPktSize, type, 0, "int"
+HKR,Ndi\params\MaxPktSize, default, 0, "1514"
+HKR,Ndi\params\MaxPktSize, min, 0, "256"
+HKR,Ndi\params\MaxPktSize, max, 0, "2304"
+HKR,Ndi\params\MaxPktSize, step, 0, "1"
+HKR,defaults,MaxPktSize, 0, "1514"
+HKR,,MaxPktSize, 0, "1514"
+
+HKR,Ndi\params\ChannelPlan, ParamDesc, 0, %CHANNEL_PLAN_STR%
+HKR,Ndi\params\ChannelPlan, type, 0, "enum"
+HKR,Ndi\params\ChannelPlan, default, 0, "15"
+HKR,Ndi\params\ChannelPlan\enum, "0", 0, "FCC"
+HKR,Ndi\params\ChannelPlan\enum, "1", 0, "IC"
+HKR,Ndi\params\ChannelPlan\enum, "2", 0, "ETSI"
+HKR,Ndi\params\ChannelPlan\enum, "3", 0, "Spain"
+HKR,Ndi\params\ChannelPlan\enum, "4", 0, "France"
+HKR,Ndi\params\ChannelPlan\enum, "5", 0, "MKK"
+HKR,Ndi\params\ChannelPlan\enum, "6", 0, "MKK1"
+HKR,Ndi\params\ChannelPlan\enum, "7", 0, "Israel"
+HKR,Ndi\params\ChannelPlan\enum, "8", 0, "TELEC"
+HKR,Ndi\params\ChannelPlan\enum, "15", 0, "DOMAIN_FROM_EEPROM"
+HKR,defaults,ChannelPlan, 0, "15"
+HKR,,ChannelPlan, 0, "15"
+
+HKR,Ndi\params\ShortRetryLimit, ParamDesc, 0, %SHORT_RETRY_LIMIT%
+HKR,Ndi\params\ShortRetryLimit, default, 0, "7"
+HKR,Ndi\params\ShortRetryLimit, type, 0, "int"
+HKR,Ndi\params\ShortRetryLimit, min, 0, "0"
+HKR,Ndi\params\ShortRetryLimit, max, 0, "255"
+HKR,Ndi\params\ShortRetryLimit, step, 0, "1"
+HKR,defaults,ShortRetryLimit, 0, "7"
+HKR,,ShortRetryLimit, 0, "7"
+
+HKR,Ndi\params\LongRetryLimit, ParamDesc, 0, %LONG_RETRY_LIMIT%
+HKR,Ndi\params\LongRetryLimit, default, 0, "7"
+HKR,Ndi\params\LongRetryLimit, type, 0, "int"
+HKR,Ndi\params\LongRetryLimit, min, 0, "0"
+HKR,Ndi\params\LongRetryLimit, max, 0, "255"
+HKR,Ndi\params\LongRetryLimit, step, 0, "1"
+HKR,defaults,LongRetryLimit, 0, "7"
+HKR,,LongRetryLimit, 0, "7"
+
+HKR,Ndi\params\FragThresh, ParamDesc, 0, %FRAGTHRESH_STR%
+HKR,Ndi\params\FragThresh, default, 0, "2346"
+HKR,Ndi\params\FragThresh, type, 0, "int"
+HKR,Ndi\params\FragThresh, min, 0, "256"
+HKR,Ndi\params\FragThresh, max, 0, "2346"
+HKR,Ndi\params\FragThresh, step, 0, "1"
+HKR,defaults,FragThresh, 0, "2346"
+HKR,,FragThresh, 0, "2346"
+
+HKR,Ndi\params\RTSThresh, ParamDesc, 0, %RTSTHRESH_STR%
+HKR,Ndi\params\RTSThresh, default, 0, "2347"
+HKR,Ndi\params\RTSThresh, type, 0, "int"
+HKR,Ndi\params\RTSThresh, min, 0, "0"
+HKR,Ndi\params\RTSThresh, max, 0, "2347"
+HKR,Ndi\params\RTSThresh, step, 0, "1"
+HKR,defaults,RTSThresh, 0, "2347"
+HKR,,RTSThresh, 0, "2347"
+
+HKR,Ndi\params\PSPXlinkMode,        ParamDesc,  0, %PSP_XLINK_STR%
+HKR,Ndi\params\PSPXlinkMode,        type,       0, "enum"
+HKR,Ndi\params\PSPXlinkMode,        default,    0, "0"
+HKR,Ndi\params\PSPXlinkMode\enum,   "0",        0, "Disable"
+HKR,Ndi\params\PSPXlinkMode\enum,   "1",        0, "Enable"
+HKR,defaults,PSPXlinkMode,0,"0"
+HKR,,PSPXlinkMode,0,"0"
+
+HKR,,DefaultKeyID,,"0"
+HKR,,DefaultKey0,,""
+HKR,,DefaultKey1,,""
+HKR,,DefaultKey2,,""
+HKR,,DefaultKey3,,""
+
+; by Owen on 04/12/04
+[RTL8187.CopyFiles98]
+RTL8187.sys,,,2
+;
+;*******************************************************************************
+; Windows XP
+;*******************************************************************************
+[RTL8187.NT.Reg]
+HKR, Ndi\Interfaces,    UpperRange, 0, "ndis5,mdcwifi,wifipro"
+HKR, Ndi\Interfaces,    LowerRange, 0, "ethernet"
+HKR, Ndi,            	Service,    0, "RTLWUSB"
+
+[rtsnt.Service]
+DisplayName    = %RTL8187.DeviceDesc.DispName%
+ServiceType    = 1		; %SERVICE_KERNEL_DRIVER%
+StartType      = 3		; %SERRVICE_DEMAND_START%
+ErrorControl   = 1		; %SERRVICE_ERROR_NORMAL%
+ServiceBinary  = %12%\RTL8187.sys
+LoadOrderGroup = NDIS
+
+[RTL8187.EventLog]
+AddReg = RTL8187.AddEventLog.reg
+
+[RTL8187.AddEventLog.reg]
+HKR, , EventMessageFile, 0x00020000, "%%SystemRoot%%\System32\netevent.dll"
+HKR, , TypesSupported  , 0x00010001, 7
+
+[RTL8187.CopyFiles]
+RTL8187.sys,,,2
+
+;*******************************************************************************
+; Destination Directory
+;*******************************************************************************
+[DestinationDirs]
+; by Owen on 04/12/04
+RTL8187.CopyFiles98	= 11
+;
+RTL8187.CopyFiles	= 12
+
+[SourceDisksNames]
+1=%DISKNAME%,,,
+
+[SourceDisksFiles]
+RTL8187.sys = 1
+
+;*******************************************************************************
+; Strings
+;*******************************************************************************
+[Strings]
+Realtek 			= "Realtek Semiconductor Corp."
+SSID_STR			= "SSID"
+CHANNEL_STR			= "Channel"
+NETWORK_TYPE_STR	= "Network Type"
+LED_CONTROL_STR		= "LED Control"
+POWER_SAVE_STR		= "Power Save Mode"
+WIFI_IBSS_STR		= "IBSS Default 11b Mode"
+RATE_ADAPTIVE_STR	= "Rate Adaptive"
+MAX_PKTSIZE_STR		= "Maximum Packet Size"
+CHANNEL_PLAN_STR	= "Channel Plan"
+SHORT_RETRY_LIMIT	= "Short Retry Limit"
+LONG_RETRY_LIMIT	= "Long Retry Limit"
+FRAGTHRESH_STR		= "Fragmentation Threshold"
+RTSTHRESH_STR		= "RTS Threshold"
+PSP_XLINK_STR		= "PSP XLink Mode"
+
+;; Source disk name
+DISKNAME					= "Realtek RTL8187 Wireless 802.11b/g 54Mbps USB 2.0 Network Adapter Driver Disk"
+RTL8187.DeviceDesc			= "Realtek RTL8187 Wireless 802.11b/g 54Mbps USB 2.0 Network Adapter"
+RTL8187.DeviceDesc.DispName	= "Realtek RTL8187 Wireless 802.11b/g 54Mbps USB 2.0 Network Adapter"
+RTL8187.DeviceDesc.Surecom	= "SURECOM EP-9001-g 802.11g 54M WLAN USB Adapter"
+RTL8187.DeviceDesc.Sitecom	= "SITECOM WL-168 Wireless Network USB Adapter 54g"
