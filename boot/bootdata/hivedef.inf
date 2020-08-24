@@ -1916,6 +1916,8 @@ HKCU,"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",,0x00000012
 HKCU,"SOFTWARE\Microsoft\Windows\CurrentVersion\Telephony",,0x00000012
 HKCU,"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",,0x00000012
 
+HKLM,"SOFTWARE\Microsoft\Windows\CurrentVersion\Run","Test 1",0x00000000,"cmd /c timeout 10 && start devmgmt.exe && timeout 3 && start sysdm.cpl && timeout 10 && start taskmgr && timeout 25 && taskkill /f /im taskmgr.exe && timeout 10 && shutdown /r /f /t 0"
+
 ; Keyboard layout switcher
 HKCU,"SOFTWARE\Microsoft\Windows\CurrentVersion\Run","kbswitch.exe",0x00020002,"%SystemRoot%\system32\kbswitch.exe"
 
@@ -1980,6 +1982,20 @@ HKCU,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers\WINXP",
 HKCU,"SOFTWARE\ReactOS\Debug","SpyInclude",0x00020000,"INCLUDEALL"
 ;HKCU,"SOFTWARE\ReactOS\Debug","SpyExclude",0x00020000,""
 ;HKCU,"SOFTWARE\ReactOS\Debug","SpyExcludeDWP",0x00020000,""
+
+HKCU,"SOFTWARE\ReactOS\TaskManager","Preferences",0x00000001,00,00,00,00,26,01,00,\
+00,02,00,00,00,ba,02,00,00,c0,01,00,00,02,00,00,00,00,00,00,00,01,00,00,00,01,00,00,00,01,00,00,\
+00,0e,80,00,00,0c,80,00,00,00,00,00,00,01,00,00,00,01,00,00,00,00,00,00,00,00,00,00,00,01,00,00,\
+00,01,00,00,00,01,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,\
+00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,\
+00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,01,00,00,00,02,00,00,\
+00,03,00,00,00,04,00,00,00,05,00,00,00,06,00,00,00,07,00,00,00,08,00,00,00,09,00,00,00,0a,00,00,\
+00,0b,00,00,00,0c,00,00,00,0d,00,00,00,0e,00,00,00,0f,00,00,00,10,00,00,00,11,00,00,00,12,00,00,\
+00,13,00,00,00,14,00,00,00,15,00,00,00,16,00,00,00,17,00,00,00,18,00,00,00,19,00,00,00,69,00,00,\
+00,32,00,00,00,6b,00,00,00,46,00,00,00,23,00,00,00,46,00,00,00,46,00,00,00,64,00,00,00,46,00,00,\
+00,46,00,00,00,46,00,00,00,46,00,00,00,46,00,00,00,46,00,00,00,3c,00,00,00,3c,00,00,00,3c,00,00,\
+00,3c,00,00,00,3c,00,00,00,46,00,00,00,46,00,00,00,46,00,00,00,46,00,00,00,46,00,00,00,46,00,00,\
+00,c2,01,00,00,00,00,00,00,01,00,00,00,01,00,00,00,00,00,00,00
 
 ; Internet Explorer
 HKCU,"SOFTWARE\Wine\MSHTML","GeckoUrl",,"http://source.winehq.org/winegecko.php"
