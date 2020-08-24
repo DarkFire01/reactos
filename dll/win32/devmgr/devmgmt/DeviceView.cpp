@@ -39,7 +39,7 @@ CDeviceView::CDeviceView(
     m_hTreeView(NULL),
     m_hPropertyDialog(NULL),
     m_hMenu(NULL),
-    m_ViewType(DevicesByType),
+    m_ViewType(DevicesByConnection),
     m_ShowHidden(false),
     m_RootNode(NULL)
 {
@@ -842,8 +842,7 @@ CDeviceView::RecurseChildDevices(
                                 hParentTreeItem,
                                 0);
 
-    // Expand the class if it has a problem device
-    if (HasProblem == true)
+    if (true)
     {
         (void)TreeView_Expand(m_hTreeView,
                               hParentTreeItem,
