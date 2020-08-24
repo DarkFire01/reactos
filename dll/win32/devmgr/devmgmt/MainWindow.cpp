@@ -137,6 +137,7 @@ CDeviceManager::Initialize(_In_z_ LPCTSTR lpCaption,
 {
     CAtlStringW szCaption;
     WNDCLASSEXW wc = {0};
+    RECT rcRect;
 
     // Store the show window value
     m_CmdShow = nCmdShow;
@@ -173,6 +174,8 @@ CDeviceManager::Initialize(_In_z_ LPCTSTR lpCaption,
                                      NULL,
                                      g_hThisInstance,
                                      this);
+        if (GetWindowRect(m_hMainWnd, &rcRect))
+            MoveWindow(m_hMainWnd, 0, -70, (rcRect.right - rcRect.left), 700, TRUE);
     }
 
     // Return creation result
