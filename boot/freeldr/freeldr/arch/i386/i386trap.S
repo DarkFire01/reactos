@@ -119,6 +119,17 @@ MACRO(TRAP_STUB2, function, index)
     jmp i386CommonExceptionHandler
 ENDM
 
+MACRO(IRQ_STUB, function, handler)
+    EXTERN handler:PROC
+
+    PUBLIC VAL(function)
+    &function:
+    pusha
+    call VAL(handler)
+    popa
+    iret
+ENDM
+
 /************************************************************************/
 TRAP_STUB _i386DivideByZero, 0
 
@@ -141,6 +152,23 @@ TRAP_STUB _i386CoprocessorError, 16
 TRAP_STUB _i386AlignmentCheck, 17
 TRAP_STUB _i386MachineCheck, 18
 TRAP_STUB _i386SimdFloatError, 19
+
+IRQ_STUB _i386Irq0, _i386Irq0_handler
+IRQ_STUB _i386Irq1, _i386Irq1_handler
+IRQ_STUB _i386Irq2, _i386Irq2_handler
+IRQ_STUB _i386Irq3, _i386Irq3_handler
+IRQ_STUB _i386Irq4, _i386Irq4_handler
+IRQ_STUB _i386Irq5, _i386Irq5_handler
+IRQ_STUB _i386Irq6, _i386Irq6_handler
+IRQ_STUB _i386Irq7, _i386Irq7_handler
+IRQ_STUB _i386Irq8, _i386Irq8_handler
+IRQ_STUB _i386Irq9, _i386Irq9_handler
+IRQ_STUB _i386Irq10, _i386Irq10_handler
+IRQ_STUB _i386Irq11, _i386Irq11_handler
+IRQ_STUB _i386Irq12, _i386Irq12_handler
+IRQ_STUB _i386Irq13, _i386Irq13_handler
+IRQ_STUB _i386Irq14, _i386Irq14_handler
+IRQ_STUB _i386Irq15, _i386Irq15_handler
 
 /************************************************************************
  * DEBUGGING SUPPORT FUNCTIONS

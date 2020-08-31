@@ -26,6 +26,69 @@ DBG_DEFAULT_CHANNEL(HWDETECT);
 
 extern PVOID FrameBuffer;
 extern ULONG FrameBufferSize;
+extern void i386AcceptIrqs(void);
+extern MACH_SET_PIC_IDT_OFFSETS MachSetPicIdtOffsets;
+extern MACH_HANDLE_IRQ MachHandleIrq;
+
+CROMWELL_PARAMETER_BLOCK * ParamBlock = (void *)CROMWELL_PARAM_BLOCK_OFFSET;
+PCROMWELL_CALLBACK BiosCallback = NULL;
+
+int XboxCalcParamChecksum(UCHAR * Data)
+{
+    UCHAR Checksum = 0;
+    int i;
+
+    for (i = 0; i < sizeof(CROMWELL_PARAMETER_BLOCK) - sizeof(int); i++, Data++)
+        Checksum += *Data;
+    return (signed char)(Checksum ^ 0x55);
+}
+
+VOID
+XboxSetPicIdtOffsets(UCHAR Pic1IdtOffset, UCHAR Pic2IdtOffset)
+{
+    UCHAR Mask1, Mask2;
+
+    Mask1 = READ_PORT_UCHAR(PIC1_DATA_PORT);
+    Mask2 = READ_PORT_UCHAR(PIC2_DATA_PORT);
+
+    WRITE_PORT_UCHAR(PIC1_CONTROL_PORT, ICW1_INIT | ICW1_ICW4);
+    WRITE_PORT_UCHAR(PIC2_CONTROL_PORT, ICW1_INIT | ICW1_ICW4);
+    WRITE_PORT_UCHAR(PIC1_DATA_PORT, Pic1IdtOffset);
+    WRITE_PORT_UCHAR(PIC2_DATA_PORT, Pic2IdtOffset);
+    WRITE_PORT_UCHAR(PIC1_DATA_PORT, 4);
+    WRITE_PORT_UCHAR(PIC2_DATA_PORT, 2);
+    WRITE_PORT_UCHAR(PIC1_DATA_PORT, ICW4_8086);
+    WRITE_PORT_UCHAR(PIC2_DATA_PORT, ICW4_8086);
+
+    WRITE_PORT_UCHAR(PIC1_DATA_PORT, Mask1);
+    WRITE_PORT_UCHAR(PIC2_DATA_PORT, Mask2);
+}
+
+VOID
+XboxHandleIrq(UCHAR Interrupt)
+{
+    USHORT SmcData;
+
+    if (BiosCallback)
+        BiosCallback(CROMWELL_CALLBACK_CALL_IRQ, (void *)(ULONG)Interrupt);
+
+    if (Interrupt == 12)
+    {
+        /* SMC interrupt: Acknowledge EXTSMI# action (from PIC p6) */
+        SmcData = READ_PORT_USHORT(0x8020);
+        WRITE_PORT_USHORT(0x8020, SmcData | 0x200);
+    }
+
+    if (Interrupt >= 8)
+    {
+        WRITE_PORT_UCHAR(PIC2_CONTROL_PORT, PIC_EOI);
+        WRITE_PORT_UCHAR(PIC1_CONTROL_PORT, PIC_SPECIFIC_EOI2);
+    }
+    else
+    {
+        WRITE_PORT_UCHAR(PIC1_CONTROL_PORT, PIC_EOI);
+    }
+}
 
 BOOLEAN
 XboxFindPciBios(PPCI_REGISTRY_INFO BusData)
@@ -333,6 +396,24 @@ MachInit(const char *CmdLine)
 
     /* Set LEDs to red before anything is initialized */
     XboxSetLED("rrrr");
+
+    /* Cromwell callback */
+    if (ParamBlock->Signature == CROMWELL_PARAM_BLOCK_SIGNATURE &&
+        ParamBlock->Checksum == XboxCalcParamChecksum((UCHAR *)ParamBlock))
+    {
+        BiosCallback = ParamBlock->BiosCallback;
+    }
+    if (BiosCallback)
+    {
+        MachSetPicIdtOffsets = XboxSetPicIdtOffsets;
+        MachHandleIrq = XboxHandleIrq;
+        i386AcceptIrqs();
+        if (!BiosCallback(CROMWELL_CALLBACK_START_SERVICE, NULL))
+        {
+            ERR("Failed to initialize Cromwell boot services\n");
+            BiosCallback = NULL;
+        }
+    }
 
     /* Setup vtbl */
     MachVtbl.ConsPutChar = XboxConsPutChar;

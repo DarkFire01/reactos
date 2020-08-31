@@ -51,11 +51,7 @@ _RealEntryPoint:
     mov esp, dword ptr ds:[stack32]
 
     /* Load the IDT */
-#ifdef _USE_ML
-    lidt fword ptr ds:[i386idtptr]
-#else
-    lidt i386idtptr
-#endif
+    call _LoadIdt
 
     /* Continue execution */
     jmp dword ptr ds:[ContinueAddress]
@@ -233,6 +229,19 @@ SwitchToReal16Address:
     nop
 
 
+PUBLIC _LoadIdt
+_LoadIdt:
+
+    /* Load the IDT */
+#ifdef _USE_ML
+    lidt fword ptr ds:[_i386idtptr]
+#else
+    lidt _i386idtptr
+#endif
+
+    ret
+
+
     /* 16-bit stack pointer */
 stack16:
     .word STACK16ADDR
@@ -279,8 +288,8 @@ gdtptr:
     .long gdt           /* Base Address */
 
 // See _i386IdtDescriptor
-PUBLIC i386idtptr
-i386idtptr:
+PUBLIC _i386idtptr
+_i386idtptr:
     .word 255           /* Limit */
     .long _i386Idt      /* Base Address */
 

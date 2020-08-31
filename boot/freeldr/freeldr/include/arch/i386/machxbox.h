@@ -24,6 +24,34 @@
 
 #include <drivers/xbox/xgpu.h>
 
+#define PIC1_CONTROL_PORT      0x20
+#define PIC1_DATA_PORT         0x21
+#define PIC2_CONTROL_PORT      0xA0
+#define PIC2_DATA_PORT         0xA1
+#define PIC_EOI                0x20
+#define PIC_SPECIFIC_EOI2      0x62
+
+#define ICW1_ICW4              0x01
+#define ICW1_INIT              0x10
+#define ICW4_8086              0x01
+
+#define CROMWELL_PARAM_BLOCK_OFFSET       0x00000200
+#define CROMWELL_PARAM_BLOCK_SIGNATURE    'morC'
+#define CROMWELL_CALLBACK_DEBUG         0
+#define CROMWELL_CALLBACK_START_SERVICE 1
+#define CROMWELL_CALLBACK_EXIT_SERVICE  2
+#define CROMWELL_CALLBACK_CALL_IRQ      3
+#define CROMWELL_CALLBACK_CHECK_KEY     4
+#define CROMWELL_CALLBACK_GET_KEY       5
+
+typedef struct {
+    int Signature;
+    void * BiosCallback;
+    int Checksum;
+} CROMWELL_PARAMETER_BLOCK;
+
+typedef int (__fastcall *PCROMWELL_CALLBACK)(int Reason, void *Param);
+
 extern UCHAR BitmapFont8x16[256 * 16];
 
 VOID XboxConsPutChar(int Ch);
