@@ -897,6 +897,11 @@ MmReleasePage(PFN_NUMBER Page);
 NTSTATUS
 MmRequestPage(PPFN_NUMBER AllocatedPage);
 
+VOID
+NTAPI
+MmWorkingSetManager(VOID);
+extern KEVENT MmWorkingSetManagerEvent;
+
 CODE_SEG("INIT")
 VOID
 NTAPI
