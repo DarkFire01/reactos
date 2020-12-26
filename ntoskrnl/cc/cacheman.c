@@ -6,6 +6,7 @@
  *
  * PROGRAMMERS:     David Welch (welch@cwcom.net)
  *                  Pierre Schweitzer (pierre@reactos.org)
+ *                  Oleg Dubinskiy (oleg.dubinskij2013@yandex.ua)
  */
 
 /* INCLUDES *****************************************************************/
@@ -136,7 +137,7 @@ CcGetFlushedValidData (
 }
 
 /*
- * @unimplemented
+ * @implemented
  */
 PVOID
 NTAPI
@@ -144,9 +145,12 @@ CcRemapBcb (
     IN PVOID Bcb
     )
 {
-	UNIMPLEMENTED;
+    PINTERNAL_BCB iBcb = Bcb;
 
-    return 0;
+    CCTRACE(CC_API_DEBUG, "Bcb=%p\n", Bcb);
+
+    iBcb->RefCount++;
+    return Bcb;
 }
 
 /*
