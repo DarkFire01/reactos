@@ -884,7 +884,7 @@ inline VOID UpdateTotalCommittedPages(LONG Delta)
                                MiMemoryConsumers[MC_USER].PagesUsed +
                                MiUsedSwapPages;
      */
-    
+
     /* Update Commitment */
     SIZE_T TotalCommittedPages = InterlockedExchangeAddSizeT(&MmTotalCommittedPages, Delta) + Delta;
 
@@ -1285,7 +1285,22 @@ MiArchCreateProcessAddressSpace(
     _In_ PEPROCESS Process,
     _In_ PULONG_PTR DirectoryTableBase);
 
-/* region.c ************************************************************/
+
+/* pfnlist.c *****************************************************************/
+VOID
+MmCompletePageWrite(
+    _Inout_ PMDL Mdl,
+    _In_ NTSTATUS Status);
+
+/* wset.c ********************************************************************/
+
+NTSTATUS
+MmTrimUserMemory(
+    ULONG Target,
+    ULONG Priority,
+    PULONG NrFreedPages
+);
+
 
 NTSTATUS
 NTAPI
