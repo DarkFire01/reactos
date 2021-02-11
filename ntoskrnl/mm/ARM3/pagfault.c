@@ -969,6 +969,13 @@ MiResolvePageFileFault(_In_ BOOLEAN StoreInstruction,
         KeSetEvent(Pfn1->u1.Event, IO_NO_INCREMENT, FALSE);
     }
 
+<<<<<<< HEAD
+=======
+    /* And we can insert this into the working set */
+    if ((CurrentProcess > HYDRA_PROCESS) && (PointerPte == MiAddressToPte(FaultingAddress)))
+        MiInsertInWorkingSetList(&CurrentProcess->Vm, FaultingAddress, Protection);
+
+>>>>>>> ed63a06f668 ([NTOS:MM] Implement reading from page files for prototype PTEs)
     return Status;
 }
 
@@ -1286,11 +1293,17 @@ MiResolveProtoPteFault(IN BOOLEAN StoreInstruction,
                                           &InPageBlock);
         ASSERT(NT_SUCCESS(Status));
     }
+    else if (TempPte.u.Soft.PageFileHigh != 0)
+    {
+        /* Shared section was paged out. */
+        Status = MiResolvePageFileFault(StoreInstruction,
+                                        Address,
+                                        PointerProtoPte,
+                                        Process,
+                                        &OldIrql);
+    }
     else
     {
-        /* We also don't support paged out pages */
-        ASSERT(TempPte.u.Soft.PageFileHigh == 0);
-
         /* Resolve the demand zero fault */
         Status = MiResolveDemandZeroFault(Address,
                                           PointerProtoPte,
