@@ -1829,6 +1829,10 @@ MmArmInitSystem(
 );
 
 CODE_SEG("INIT")
+NTSTATUS
+MiStartModifiedPageWriterThread(VOID);
+
+CODE_SEG("INIT")
 VOID
 NTAPI
 MiInitializeSessionSpaceLayout(VOID);
