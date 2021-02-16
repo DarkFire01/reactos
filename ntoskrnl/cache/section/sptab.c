@@ -370,8 +370,10 @@ MmGetSectionAssociation(PFN_NUMBER Page,
         Segment = PageTable->Segment;
         Offset->QuadPart = PageTable->FileOffset.QuadPart +
                            ((ULONG64)RawOffset << PAGE_SHIFT);
+
         ASSERT(PFN_FROM_SSE(PageTable->PageEntries[RawOffset]) == Page);
         InterlockedIncrement64(Segment->ReferenceCount);
+
     }
 
     return Segment;
