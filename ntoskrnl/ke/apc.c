@@ -223,8 +223,7 @@ KiInsertQueueApc(IN PKAPC Apc,
                          (!(Thread->KernelApcDisable) &&
                           !(Thread->ApcState.KernelApcInProgress))))
                     {
-                        /* We were in a gate wait. Handle this. */
-                        DPRINT1("A thread was in a gate wait\n");
+                         DPRINT1("A thread was in a gate wait\n");
 
                         /* Get the gate */
                         Gate = Thread->GateObject;
