@@ -35,8 +35,7 @@ static LONG PageOutThreadActive;
 
 /* FUNCTIONS ****************************************************************/
 
-<<<<<<< HEAD
-=======
+
 CODE_SEG("INIT")
 VOID
 NTAPI
@@ -68,8 +67,6 @@ NTAPI
 MiZeroPhysicalPage(
     IN PFN_NUMBER PageFrameIndex
 );
-
->>>>>>> 6ce3f5d4a87 ([NTOS:MM] Do not fire the legacy memory balancer when shutting down.)
 NTSTATUS
 MmReleasePage(PFN_NUMBER Page)
 {
@@ -93,7 +90,53 @@ MmReleasePage(PFN_NUMBER Page)
     return(STATUS_SUCCESS);
 }
 
+<<<<<<< HEAD
 static
+=======
+ULONG
+NTAPI
+MiTrimMemoryConsumer(ULONG Consumer, ULONG InitialTarget)
+{
+    ULONG Target = InitialTarget;
+    ULONG NrFreedPages = 0;
+    NTSTATUS Status;
+
+    /* Make sure we can trim this consumer */
+    if (!MiMemoryConsumers[Consumer].Trim)
+    {
+        /* Return the unmodified initial target */
+        return InitialTarget;
+    }
+
+    if (MmAvailablePages < MmThrottleTop)
+    {
+        /* Global page limit exceeded */
+        Target = (ULONG)max(Target, MmThrottleTop - MmAvailablePages + 30);
+    }
+    else if (MiMemoryConsumers[Consumer].PagesUsed > MiMemoryConsumers[Consumer].PagesTarget)
+    {
+        /* Consumer page limit exceeded */
+        Target = max(Target, MiMemoryConsumers[Consumer].PagesUsed - MiMemoryConsumers[Consumer].PagesTarget);
+    }
+
+    if (Target)
+    {
+        /* Now swap the pages out */
+        Status = MiMemoryConsumers[Consumer].Trim(Target, MmAvailablePages < MmThrottleTop, &NrFreedPages);
+
+        DPRINT("Trimming consumer %lu: Freed %lu pages with a target of %lu pages\n", Consumer, NrFreedPages, Target);
+
+        if (!NT_SUCCESS(Status))
+        {
+            KeBugCheck(MEMORY_MANAGEMENT);
+        }
+    }
+
+    /* Return the page count needed to be freed to meet the initial target */
+    return (InitialTarget > NrFreedPages) ? (InitialTarget - NrFreedPages) : 0;
+}
+
+>>>>>>> 7bd31589917 ([NTOS:MM] Tune balancers to account for Cc throttling behaviour)
 NTSTATUS
 MmTrimUserMemory(ULONG Target, ULONG Priority, PULONG NrFreedPages)
 {

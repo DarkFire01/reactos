@@ -392,6 +392,21 @@ CcCanIWrite (
                                     &CcDeferredWriteSpinLock);
     }
 
+<<<<<<< HEAD
+=======
+    /* Now make sure that the lazy scan writer will be active */
+    OldIrql = KeAcquireQueuedSpinLock(LockQueueMasterLock);
+    if (!LazyWriter.ScanActive)
+        CcScheduleLazyWriteScan(TRUE);
+    KeReleaseQueuedSpinLock(LockQueueMasterLock, OldIrql);
+
+    /* If we are hard on modified page, wake up the MPW */
+    if (MmModifiedNoWritePageListHead.Total >= 1000)
+    {
+        MmWakeModifiedWriterThread();
+    }
+
+>>>>>>> 7bd31589917 ([NTOS:MM] Tune balancers to account for Cc throttling behaviour)
 #if DBG
     DPRINT1("Actively deferring write for: %p\n", FileObject);
     DPRINT1("Because:\n");
