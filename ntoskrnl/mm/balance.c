@@ -19,6 +19,12 @@ h/*
 /* GLOBALS ******************************************************************/
 
 static ULONG MiMinimumAvailablePages = 256;
+MM_MEMORY_CONSUMER MiMemoryConsumers[MC_MAXIMUM];
+static ULONG MiMinimumAvailablePages;
+static LIST_ENTRY AllocationListHead;
+static KSPIN_LOCK AllocationListLock;
+static ULONG MiMinimumPagesPerRun;
+KEVENT MmBalancerIdleEvent;
 static CLIENT_ID MiBalancerThreadId;
 static HANDLE MiBalancerThreadHandle = NULL;
 static KEVENT MiBalancerEvent;
@@ -29,6 +35,41 @@ static LONG PageOutThreadActive;
 
 /* FUNCTIONS ****************************************************************/
 
+<<<<<<< HEAD
+=======
+CODE_SEG("INIT")
+VOID
+NTAPI
+MmInitializeBalancer(ULONG NrAvailablePages, ULONG NrSystemPages)
+{
+    memset(MiMemoryConsumers, 0, sizeof(MiMemoryConsumers));
+    InitializeListHead(&AllocationListHead);
+    KeInitializeSpinLock(&AllocationListLock);
+    KeInitializeEvent(&MmBalancerIdleEvent, NotificationEvent, TRUE);
+
+    /* Set up targets. */
+    MiMinimumAvailablePages = 256;
+    MiMinimumPagesPerRun = 256;
+    MiMemoryConsumers[MC_USER].PagesTarget = NrAvailablePages / 2;
+}
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+MmInitializeMemoryConsumer(
+    ULONG Consumer,
+    NTSTATUS (*Trim)(ULONG Target, ULONG Priority, PULONG NrFreed))
+{
+    MiMemoryConsumers[Consumer].Trim = Trim;
+}
+
+VOID
+NTAPI
+MiZeroPhysicalPage(
+    IN PFN_NUMBER PageFrameIndex
+);
+
+>>>>>>> 6ce3f5d4a87 ([NTOS:MM] Do not fire the legacy memory balancer when shutting down.)
 NTSTATUS
 MmReleasePage(PFN_NUMBER Page)
 {
@@ -276,6 +317,41 @@ MiBalancerThread(PVOID Unused)
         {
             ULONG InitialTarget = 0;
 
+<<<<<<< HEAD
+=======
+                /* Don't try anything if we are shutting down */
+                if (MmShutdownInProgress)
+                    continue;
+
+                KeClearEvent(&MmBalancerIdleEvent);
+
+#if (_MI_PAGING_LEVELS == 2)
+            if (!MiIsBalancerThread())
+            {
+                /* Clean up the unused PDEs */
+                ULONG_PTR Address;
+                PEPROCESS Process = PsGetCurrentProcess();
+
+                /* Acquire PFN lock */
+                KIRQL OldIrql = MiAcquirePfnLock();
+                PMMPDE pointerPde;
+                for (Address = (ULONG_PTR)MI_LOWEST_VAD_ADDRESS;
+                     Address < (ULONG_PTR)MM_HIGHEST_VAD_ADDRESS;
+                     Address += PTE_PER_PAGE * PAGE_SIZE)
+                {
+                    if (MiQueryPageTableReferences((PVOID)Address) == 0)
+                    {
+                        pointerPde = MiAddressToPde(Address);
+                        if (pointerPde->u.Hard.Valid)
+                            MiDeletePte(pointerPde, MiPdeToPte(pointerPde), Process, NULL);
+                        ASSERT(pointerPde->u.Hard.Valid == 0);
+                    }
+                }
+                /* Release lock */
+                MiReleasePfnLock(OldIrql);
+            }
+#endif
+>>>>>>> 6ce3f5d4a87 ([NTOS:MM] Do not fire the legacy memory balancer when shutting down.)
             do
             {
                 ULONG OldTarget = InitialTarget;
@@ -292,6 +368,8 @@ MiBalancerThread(PVOID Unused)
                 }
             }
             while (InitialTarget != 0);
+
+            KeSetEvent(&MmBalancerIdleEvent, IO_NO_INCREMENT, FALSE);
 
             if (Status == STATUS_WAIT_0)
                 InterlockedDecrement(&PageOutThreadActive);

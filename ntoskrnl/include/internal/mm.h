@@ -934,6 +934,8 @@ VOID
 NTAPI
 MmRebalanceMemoryConsumers(VOID);
 
+extern KEVENT MmBalancerIdleEvent;
+
 /* rmap.c **************************************************************/
 #define RMAP_SEGMENT_MASK ~((ULONG_PTR)0xff)
 #define RMAP_IS_SEGMENT(x) (((ULONG_PTR)(x) & RMAP_SEGMENT_MASK) == RMAP_SEGMENT_MASK)
@@ -1755,6 +1757,8 @@ MmSetSessionLocaleId(
 
 VOID
 MmShutdownSystem(IN ULONG Phase);
+
+extern BOOLEAN MmShutdownInProgress;
 
 /* virtual.c *****************************************************************/
 
