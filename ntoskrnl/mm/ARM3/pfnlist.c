@@ -922,6 +922,9 @@ MiInsertPageInList(IN PMMPFNLIST ListHead,
 
         /* Increment the number of paging file modified pages */
         MmTotalPagesForPagingFile++;
+
+        if (MmTotalPagesForPagingFile > 800)
+            MmWakeModifiedWriterThread();
     }
 
     /* Don't handle bad pages yet yet */
@@ -1468,15 +1471,19 @@ MiModifiedPageWriter(_Unreferenced_parameter_ PVOID Context)
         if (!MmNumberOfPagingFiles)
             continue;
 
-        KIRQL OldIrql = MiAcquirePfnLock();
-
-        /* Limit ourselves so that we don't write everything in,
-         * but free enough pages so that Cc can move ahead in case it is in need.
-         * See CcCanIWrite implementation about why this is so. */
-        while (MmModifiedPageListHead.Total > 900)
+        while (TRUE)
         {
-            PFN_NUMBER Page = MmModifiedPageListByColor[0].Flink;
+            PFN_NUMBER Page;
             NTSTATUS Status;
+            KIRQL OldIrql = MiAcquirePfnLock();
+
+            if (MmModifiedPageListHead.Total == 0)
+            {
+                MiReleasePfnLock(OldIrql);
+                break;
+            }
+
+            Page = MmModifiedPageListByColor[0].Flink;
 
             ASSERT(Page != LIST_HEAD);
 
@@ -1487,6 +1494,8 @@ MiModifiedPageWriter(_Unreferenced_parameter_ PVOID Context)
 
             /* Put this page in transition & write state and unlock */
             MiUnlinkPageFromList(Pfn);
+
+            MiReferenceUnusedPageAndBumpLockCount(Pfn);
 
             Pfn->u3.e1.PageLocation = TransitionPage;
             Pfn->u3.e1.WriteInProgress = 1;
@@ -1503,15 +1512,16 @@ MiModifiedPageWriter(_Unreferenced_parameter_ PVOID Context)
                 if (!NT_SUCCESS(Status))
                 {
                     DPRINT1("No space left in swap file!\n");
+                    Pfn->u3.e1.WriteInProgress = 0;
+                    Pfn->u3.e1.Modified = 1;
+                    MiDereferencePfnAndDropLockCount(Pfn);
                     MiReleasePfnLock(OldIrql);
-                    goto DoneForThisPage;
+                    break;
                 }
 
                 Pfn->OriginalPte.u.Soft.PageFileLow = PageFileLow;
                 Pfn->OriginalPte.u.Soft.PageFileHigh = PageFileHigh;
             }
-
-            MiReferenceUnusedPageAndBumpLockCount(Pfn);
 
             MiReleasePfnLock(OldIrql);
 
@@ -1520,7 +1530,6 @@ MiModifiedPageWriter(_Unreferenced_parameter_ PVOID Context)
                    Pfn->PteAddress);
 
             Status = MiWriteSwapEntry(Pfn->OriginalPte.u.Soft.PageFileLow, Pfn->OriginalPte.u.Soft.PageFileHigh, Page);
-DoneForThisPage:
             if (!NT_SUCCESS(Status))
             {
                 /* No way to write it. Bail out. */
@@ -1535,17 +1544,20 @@ DoneForThisPage:
                 MiReleasePfnLock(OldIrql);
                 break;
             }
-
-            OldIrql = MiAcquirePfnLock();
         }
-
-        MiReleasePfnLock(OldIrql);
     }
 }
 
 VOID
 MmWakeModifiedWriterThread(VOID)
 {
+    /* Do not do anything if there is no pagefile */
+    if (!MmNumberOfPagingFiles)
+    {
+        DPRINT1("Not waking up the MPW because there is no page file.\n");
+        return;
+    }
+
     KeSignalGateBoostPriority(&MiModifiedPageWriterGate);
 }
 
