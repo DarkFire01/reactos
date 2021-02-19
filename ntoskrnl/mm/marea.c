@@ -550,4 +550,72 @@ MiRosCleanupMemoryArea(
     /* Make sure this worked! */
     ASSERT(NT_SUCCESS(Status));
 }
-/* EOF */
+VOID
+NTAPI
+MmDeleteProcessAddressSpace2(IN PEPROCESS Process);
+
+NTSTATUS
+NTAPI
+MmDeleteProcessAddressSpace(PEPROCESS Process)
+{
+#ifndef _M_AMD64
+    KIRQL OldIrql;
+#endif
+
+    DPRINT("MmDeleteProcessAddressSpace(Process %p (%s))\n", Process,
+           Process->ImageFileName);
+
+#ifndef _M_AMD64
+    OldIrql = MiAcquireExpansionLock();
+    RemoveEntryList(&Process->MmProcessLinks);
+    MiReleaseExpansionLock(OldIrql);
+#endif
+    MmLockAddressSpace(&Process->Vm);
+
+#if (_MI_PAGING_LEVELS == 2)
+    {
+        PVOID Address;
+        PMMPDE pointerPde;
+        KAPC_STATE ApcState;
+
+        /* Attach to Process */
+        KeStackAttachProcess(&Process->Pcb, &ApcState);
+
+        MiLockProcessWorkingSet(Process, PsGetCurrentThread());
+
+        for (Address = MI_LOWEST_VAD_ADDRESS;
+             Address < MM_HIGHEST_VAD_ADDRESS;
+             Address = (PVOID)((ULONG_PTR)Address + (PTE_PER_PAGE * PAGE_SIZE)))
+        {
+            /* At this point all references should be dead */
+            if (MiQueryPageTableReferences(Address) != 0)
+            {
+                DPRINT1("Process %p, Address %p, UsedPageTableEntries %lu\n",
+                        Process,
+                        Address,
+                        MiQueryPageTableReferences(Address));
+                ASSERT(MiQueryPageTableReferences(Address) == 0);
+            }
+
+            pointerPde = MiAddressToPde(Address);
+            /* Unlike in ARM3, we don't necesarrily free the PDE page as soon as reference reaches 0,
+             * so we must clean up a bit when process closes */
+            if (pointerPde->u.Hard.Valid)
+                MiDeletePte(pointerPde, MiPdeToPte(pointerPde), &Process->Vm, NULL);
+            ASSERT(pointerPde->u.Hard.Valid == 0);
+        }
+
+        MiUnlockProcessWorkingSet(Process, PsGetCurrentThread());
+
+        /* Detach */
+        KeUnstackDetachProcess(&ApcState);
+    }
+#endif
+
+    MmUnlockAddressSpace(&Process->Vm);
+
+    DPRINT("Finished MmDeleteProcessAddressSpace()\n");
+    MmDeleteProcessAddressSpace2(Process);
+    return(STATUS_SUCCESS);
+}
+

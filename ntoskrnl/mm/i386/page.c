@@ -296,6 +296,7 @@ MmDeleteVirtualMapping(
 
         if (OldPte.u.Long != 0)
         {
+
             /* It must have been present, or not a swap entry */
             ASSERT(OldPte.u.Hard.Valid || !FlagOn(OldPte.u.Long, 0x800));
             if (WasDirty != NULL)
@@ -370,7 +371,11 @@ MmDeletePageFileMapping(
     {
         /* We can let it go */
         KIRQL OldIrql = MiAcquirePfnLock();
+<<<<<<< HEAD
         MiDeletePde(MiPteToPde(PointerPte), Process);
+=======
+        MiDeletePte(MiAddressToPte(PointerPte), PointerPte, &Process->Vm, NULL);
+>>>>>>> ace19c43bdd ([NTOS:MM] Initialize and use the system & cache working set)
         MiReleasePfnLock(OldIrql);
     }
 

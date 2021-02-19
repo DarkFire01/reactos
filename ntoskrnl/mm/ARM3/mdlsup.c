@@ -359,6 +359,24 @@ MiUnmapLockedPagesInUserSpace(
         NumberOfPages--;
         BaseAddress = (PVOID)((ULONG_PTR)BaseAddress + PAGE_SIZE);
         MdlPages++;
+
+
+        /* Moving to a new PDE? */
+        if (PointerPde != MiAddressToPde(BaseAddress))
+        {
+            /* See if we should delete it */
+            KeFlushProcessTb();
+            PointerPde = MiPteToPde(PointerPte - 1);
+            ASSERT(PointerPde->u.Hard.Valid == 1);
+            if (MiQueryPageTableReferences(BaseAddress) == 0)
+            {
+                ASSERT(PointerPde->u.Long != 0);
+                MiDeletePte(PointerPde,
+                            MiPteToAddress(PointerPde),
+                            &Process->Vm,
+                            NULL);
+            }
+        }
     }
 
     KeFlushProcessTb();
