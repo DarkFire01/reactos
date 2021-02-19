@@ -90,9 +90,6 @@ MmReleasePage(PFN_NUMBER Page)
     return(STATUS_SUCCESS);
 }
 
-<<<<<<< HEAD
-static
-=======
 ULONG
 NTAPI
 MiTrimMemoryConsumer(ULONG Consumer, ULONG InitialTarget)
@@ -135,8 +132,7 @@ MiTrimMemoryConsumer(ULONG Consumer, ULONG InitialTarget)
     /* Return the page count needed to be freed to meet the initial target */
     return (InitialTarget > NrFreedPages) ? (InitialTarget - NrFreedPages) : 0;
 }
-
->>>>>>> 7bd31589917 ([NTOS:MM] Tune balancers to account for Cc throttling behaviour)
+static
 NTSTATUS
 MmTrimUserMemory(ULONG Target, ULONG Priority, PULONG NrFreedPages)
 {
