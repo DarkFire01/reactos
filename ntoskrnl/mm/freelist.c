@@ -599,9 +599,8 @@ MmAllocPage(VOID)
 {
     PFN_NUMBER PfnOffset;
     PMMPFN Pfn1;
-    KIRQL OldIrql;
 
-    OldIrql = MiAcquirePfnLock();
+    MI_ASSERT_PFN_LOCK_HELD();
 
     MI_SET_USAGE(MI_USAGE_SECTION);
 
@@ -628,7 +627,6 @@ MmAllocPage(VOID)
 
     MmInsertLRULastUserPage(PfnOffset);
 
-    MiReleasePfnLock(OldIrql);
     return PfnOffset;
 }
 

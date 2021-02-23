@@ -309,6 +309,7 @@ NTSTATUS
 MmRequestPage(PPFN_NUMBER AllocatedPage)
 {
     PFN_NUMBER Page;
+    KIRQL OldIrql;
 
     /* Update the target */
 <<<<<<< HEAD
@@ -317,6 +318,19 @@ MmRequestPage(PPFN_NUMBER AllocatedPage)
 =======
     InterlockedIncrementUL(&MiPagesUsed);
 >>>>>>> bea6abef221 ([NTOS:MM] Get rid of MiMemoryConsumers array)
+
+    OldIrql = MiAcquirePfnLock();
+
+    while ((PsGetCurrentThreadId() != MiBalancerThreadId.UniqueThread) && (MmAvailablePages < 32))
+    {
+        MiReleasePfnLock(OldIrql);
+        /* Wait for the balancer thread to finish and relaunch it */
+        KeWaitForSingleObject(&MmBalancerIdleEvent, WrPageIn, KernelMode, FALSE, NULL);
+        MmRebalanceMemoryConsumers();
+        YieldProcessor();
+
+        OldIrql = MiAcquirePfnLock();
+    }
 
     /*
      * Actually allocate the page.
@@ -327,6 +341,8 @@ MmRequestPage(PPFN_NUMBER AllocatedPage)
         KeBugCheck(NO_PAGES_AVAILABLE);
     }
     *AllocatedPage = Page;
+
+    MiReleasePfnLock(OldIrql);
 
     return(STATUS_SUCCESS);
 }
