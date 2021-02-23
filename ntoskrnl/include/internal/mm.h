@@ -1322,6 +1322,9 @@ MmCompletePageWrite(
 VOID
 MmWakeModifiedWriterThread(VOID);
 
+VOID
+MiModifiedPageWrite(BOOLEAN Urgent);
+
 /* wset.c ********************************************************************/
 
 NTSTATUS
