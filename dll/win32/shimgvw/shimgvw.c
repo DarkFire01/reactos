@@ -243,7 +243,7 @@ BOOL Anime_Step(DWORD *pdwDelay)
 
 static void ZoomInOrOut(BOOL bZoomIn)
 {
-    INT i;
+    UINT i;
 
     if (image == NULL)
         return;
@@ -251,12 +251,12 @@ static void ZoomInOrOut(BOOL bZoomIn)
     if (bZoomIn)    /* zoom in */
     {
         /* find next step */
-        for (i = 0; i < ARRAYSIZE(ZoomSteps); ++i)
+        for (i = 0; i < _countof(ZoomSteps); ++i)
         {
             if (ZoomPercents < ZoomSteps[i])
                 break;
         }
-        if (i == ARRAYSIZE(ZoomSteps))
+        if (i == _countof(ZoomSteps))
             ZoomPercents = MAX_ZOOM;
         else
             ZoomPercents = ZoomSteps[i];
@@ -271,7 +271,7 @@ static void ZoomInOrOut(BOOL bZoomIn)
     else            /* zoom out */
     {
         /* find previous step */
-        for (i = ARRAYSIZE(ZoomSteps); i > 0; )
+        for (i = _countof(ZoomSteps); i > 0; )
         {
             --i;
             if (ZoomSteps[i] < ZoomPercents)
@@ -337,7 +337,7 @@ static void ResetZoom(void)
     }
 }
 
-static void pLoadImage(LPWSTR szOpenFileName)
+static void pLoadImage(LPCWSTR szOpenFileName)
 {
     /* check file presence */
     if (GetFileAttributesW(szOpenFileName) == 0xFFFFFFFF)
@@ -420,7 +420,7 @@ static void pSaveImageAs(HWND hwnd)
     sfn.lpstrFile   = szSaveFileName;
     sfn.lpstrFilter = szFilterMask;
     sfn.nMaxFile    = MAX_PATH;
-    sfn.Flags       = OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY;
+    sfn.Flags       = OFN_EXPLORER | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY;
 
     c = szFilterMask;
 
@@ -507,7 +507,7 @@ pLoadImageFromNode(SHIMGVW_FILENODE *node, HWND hwnd)
 
     pLoadImage(node->FileName);
 
-    LoadStringW(hInstance, IDS_APPTITLE, szResStr, ARRAYSIZE(szResStr));
+    LoadStringW(hInstance, IDS_APPTITLE, szResStr, _countof(szResStr));
     if (image != NULL)
     {
         pchFileTitle = PathFindFileNameW(node->FileName);
@@ -718,7 +718,7 @@ ImageView_DrawImage(HWND hwnd)
     {
         FillRect(hdc, &rect, white);
 
-        LoadStringW(hInstance, IDS_NOPREVIEW, szText, ARRAYSIZE(szText));
+        LoadStringW(hInstance, IDS_NOPREVIEW, szText, _countof(szText));
 
         SetTextColor(hdc, RGB(0, 0, 0));
         SetBkMode(hdc, TRANSPARENT);
@@ -798,24 +798,21 @@ ImageView_DrawImage(HWND hwnd)
 }
 
 static BOOL
-ImageView_LoadSettings()
+ImageView_LoadSettings(VOID)
 {
     HKEY hKey;
     DWORD dwSize;
+    LONG nError;
 
-    if (RegOpenKeyEx(HKEY_CURRENT_USER, _T("Software\\ReactOS\\shimgvw"), 0, KEY_READ, &hKey) == ERROR_SUCCESS)
-    {
-        dwSize = sizeof(SHIMGVW_SETTINGS);
-        if (RegQueryValueEx(hKey, _T("Settings"), NULL, NULL, (LPBYTE)&shiSettings, &dwSize) == ERROR_SUCCESS)
-        {
-            RegCloseKey(hKey);
-            return TRUE;
-        }
+    nError = RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\ReactOS\\shimgvw", 0, KEY_READ, &hKey);
+    if (nError)
+        return FALSE;
 
-        RegCloseKey(hKey);
-    }
+    dwSize = sizeof(shiSettings);
+    nError = RegQueryValueExW(hKey, L"Settings", NULL, NULL, (LPBYTE)&shiSettings, &dwSize);
+    RegCloseKey(hKey);
 
-    return FALSE;
+    return !nError;
 }
 
 static VOID
@@ -845,13 +842,11 @@ ImageView_SaveSettings(HWND hwnd)
 static BOOL
 ImageView_CreateToolBar(HWND hwnd)
 {
-    int n;
-
     hToolBar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL,
                               WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | CCS_BOTTOM | TBSTYLE_TOOLTIPS,
                               0, 0, 0, 0, hwnd,
                               0, hInstance, NULL);
-    if(hToolBar != NULL)
+    if (hToolBar != NULL)
     {
         HIMAGELIST hImageList;
 
@@ -864,7 +859,7 @@ ImageView_CreateToolBar(HWND hwnd)
         hImageList = ImageList_Create(TB_IMAGE_WIDTH, TB_IMAGE_HEIGHT, ILC_MASK | ILC_COLOR24, 1, 1);
         if (hImageList == NULL) return FALSE;
 
-        for (n = 0; n < _countof(BtnConfig); n++)
+        for (UINT n = 0; n < _countof(BtnConfig); n++)
         {
             ImageList_AddMasked(hImageList, LoadImageW(hInstance, MAKEINTRESOURCEW(BtnConfig[n].idb), IMAGE_BITMAP,
                                 TB_IMAGE_WIDTH, TB_IMAGE_HEIGHT, LR_DEFAULTCOLOR), RGB(255, 255, 255));
@@ -914,7 +909,7 @@ ImageView_DispWndProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lParam)
             break;
         }
     }
-    return CallWindowProc(PrevProc, hwnd, Message, wParam, lParam);
+    return CallWindowProcW(PrevProc, hwnd, Message, wParam, lParam);
 }
 
 static VOID
@@ -1085,11 +1080,11 @@ ImageView_WndProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lParam)
         }
     }
 
-    return DefWindowProc(hwnd, Message, wParam, lParam);
+    return DefWindowProcW(hwnd, Message, wParam, lParam);
 }
 
 LONG WINAPI
-ImageView_CreateWindow(HWND hwnd, LPWSTR szFileName)
+ImageView_CreateWindow(HWND hwnd, LPCWSTR szFileName)
 {
     struct GdiplusStartupInput gdiplusStartupInput;
     ULONG_PTR gdiplusToken;
@@ -1132,7 +1127,7 @@ ImageView_CreateWindow(HWND hwnd, LPWSTR szFileName)
 
     if (!RegisterClassW(&WndClass)) return -1;
 
-    LoadStringW(hInstance, IDS_APPTITLE, szBuf, sizeof(szBuf) / sizeof(TCHAR));
+    LoadStringW(hInstance, IDS_APPTITLE, szBuf, _countof(szBuf));
     hMainWnd = CreateWindowExW(0, L"shimgvw_window", szBuf,
                                WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CAPTION,
                                CW_USEDEFAULT, CW_USEDEFAULT,
@@ -1188,13 +1183,13 @@ ImageView_CreateWindow(HWND hwnd, LPWSTR szFileName)
 VOID WINAPI
 ImageView_FullscreenW(HWND hwnd, HINSTANCE hInst, LPCWSTR path, int nShow)
 {
-    ImageView_CreateWindow(hwnd, (LPWSTR)path);
+    ImageView_CreateWindow(hwnd, path);
 }
 
 VOID WINAPI
 ImageView_Fullscreen(HWND hwnd, HINSTANCE hInst, LPCWSTR path, int nShow)
 {
-    ImageView_CreateWindow(hwnd, (LPWSTR)path);
+    ImageView_CreateWindow(hwnd, path);
 }
 
 VOID WINAPI
@@ -1202,9 +1197,9 @@ ImageView_FullscreenA(HWND hwnd, HINSTANCE hInst, LPCSTR path, int nShow)
 {
     WCHAR szFile[MAX_PATH];
 
-    if (MultiByteToWideChar(CP_ACP, 0, (char*)path, strlen((char*)path)+1, szFile, MAX_PATH))
+    if (MultiByteToWideChar(CP_ACP, 0, path, -1, szFile, _countof(szFile)))
     {
-        ImageView_CreateWindow(hwnd, (LPWSTR)szFile);
+        ImageView_CreateWindow(hwnd, szFile);
     }
 }
 

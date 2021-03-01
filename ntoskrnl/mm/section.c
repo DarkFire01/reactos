@@ -1200,9 +1200,21 @@ MmMakeSegmentResident(
     if (!NT_SUCCESS(Status))
         return Status;
 
-    RangeStart = Offset - (Offset % _64K);
-    if (RangeEnd % _64K)
-        RangeEnd += _64K - (RangeEnd % _64K);
+    /* If the file is not random access and we are not the page out thread
+     * read a 64K Chunk. */
+    if (((ULONG_PTR)IoGetTopLevelIrp() != FSRTL_MOD_WRITE_TOP_LEVEL_IRP)
+        && !FlagOn(FileObject->Flags, FO_RANDOM_ACCESS))
+    {
+        RangeStart = Offset - (Offset % _64K);
+        if (RangeEnd % _64K)
+            RangeEnd += _64K - (RangeEnd % _64K);
+    }
+    else
+    {
+        RangeStart = Offset  - (Offset % PAGE_SIZE);
+        if (RangeEnd % PAGE_SIZE)
+            RangeEnd += PAGE_SIZE - (RangeEnd % PAGE_SIZE);
+    }
 
     /* Clamp if needed */
     if (!FlagOn(*Segment->Flags, MM_DATAFILE_SEGMENT))
