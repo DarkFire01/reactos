@@ -411,7 +411,9 @@ MiDeletePte(
             MI_ERASE_PTE(PointerPte);
 
             /* Drop the reference on the page table. */
-            MiDecrementShareCount(MiGetPfnEntry(Pfn1->u4.PteFrame), Pfn1->u4.PteFrame);
+            PointerPde = MiPteToPde(PointerPte);
+            MiDecrementShareCount(MiGetPfnEntry(PointerPde->u.Hard.PageFrameNumber),
+                PointerPde->u.Hard.PageFrameNumber);
 
             /* In case of shared page, the prototype PTE must be in transition, not the process one */
             ASSERT(Pfn1->u3.e1.PrototypePte == 0);
@@ -526,6 +528,7 @@ MiDeletePte(
         ASSERT(Pfn1->u2.ShareCount == 1);
 
         /* Drop the reference on the page table. */
+        ASSERT(Pfn1->u4.PteFrame == MiPteToPde(PointerPte)->u.Hard.PageFrameNumber);
         MiDecrementShareCount(MiGetPfnEntry(Pfn1->u4.PteFrame), Pfn1->u4.PteFrame);
 
         /* Mark the PFN for deletion and dereference what should be the last ref */
