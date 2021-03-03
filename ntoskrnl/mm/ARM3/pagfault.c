@@ -945,15 +945,13 @@ MiResolvePageFileFault(_In_ BOOLEAN StoreInstruction,
 
     MI_WRITE_INVALID_PTE(PointerPte, TempPte);
 
-    /* Release the locks while we proceed */
+    /* Release the PFN lock while we proceed */
     MiReleasePfnLock(*OldIrql);
-    MiUnlockWorkingSet(PsGetCurrentThread(), WorkingSet);
 
     /* Do the paging IO */
     Status = MiReadPageFile(Page, PageFileIndex, PageFileOffset);
 
     /* Acquire our locks like they were when we were called. */
-    MiLockWorkingSet(PsGetCurrentThread(), WorkingSet);
     *OldIrql = MiAcquirePfnLock();
 
     /* Nobody should have changed that while we were not looking */
@@ -1325,20 +1323,14 @@ MiResolveProtoPteFault(IN BOOLEAN StoreInstruction,
         {
             PreviousEvent = *InPageBlock;
             KeInitializeEvent(&Event, NotificationEvent, FALSE);
+            *InPageBlock = &Event;
 
             MiReleasePfnLock(OldIrql);
-            MiUnlockWorkingSet(PsGetCurrentThread(), WorkingSet);
 
             KeWaitForSingleObject(&Event, WrPageIn, KernelMode, FALSE, NULL);
 
             if (PreviousEvent)
                 KeSetEvent(PreviousEvent, IO_NO_INCREMENT, FALSE);
-
-            MiLockWorkingSet(PsGetCurrentThread(), WorkingSet);
-
-            /* Check if this was resolved while we waited for I/O to happen */
-            if (PointerPte->u.Hard.Valid)
-                return Status;
 
             /* Acquire the PFN lock again */
             OldIrql = MiAcquirePfnLock();
@@ -1527,26 +1519,13 @@ MiDispatchFault(
                         KeInitializeEvent(&Event, NotificationEvent, FALSE);
                         *EventChain = &Event;
 
-                        /* Release all our lock, wait for the I/O to finish */
+                        /* Release the PFN lock, wait for the I/O to finish */
                         MiReleasePfnLock(OldIrql);
-                        MiUnlockWorkingSet(PsGetCurrentThread(), WorkingSet);
 
                         KeWaitForSingleObject(&Event, WrPageIn, KernelMode, FALSE, NULL);
 
                         if( PreviousEvent)
                             KeSetEvent(PreviousEvent, IO_NO_INCREMENT, FALSE);
-
-                        MiLockWorkingSet(PsGetCurrentThread(), WorkingSet);
-
-                        /* Maybe somone beat us while we were waiting */
-                        if (PointerPte->u.Hard.Valid)
-                        {
-                            /* Complete this as a transition fault */
-                            ASSERT(OldIrql == KeGetCurrentIrql());
-                            ASSERT(OldIrql <= APC_LEVEL);
-                            ASSERT(KeAreAllApcsDisabled() == TRUE);
-                            return STATUS_PAGE_FAULT_TRANSITION;
-                        }
 
                         OldIrql = MiAcquirePfnLock();
                     }
@@ -1665,17 +1644,11 @@ MiDispatchFault(
 
         if (InPageBlock != NULL)
         {
-            MiUnlockWorkingSet(PsGetCurrentThread(), WorkingSet);
-
             KeWaitForSingleObject(&CurrentPageEvent, WrPageIn, KernelMode, FALSE, NULL);
 
             /* Let's the chain go on */
             if (PreviousPageEvent)
-            {
                 KeSetEvent(PreviousPageEvent, IO_NO_INCREMENT, FALSE);
-            }
-
-            MiLockWorkingSet(PsGetCurrentThread(), WorkingSet);
         }
 
         ASSERT(OldIrql == KeGetCurrentIrql());
