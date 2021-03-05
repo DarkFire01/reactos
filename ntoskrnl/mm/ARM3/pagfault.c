@@ -686,7 +686,6 @@ MiResolveDemandZeroFault(IN PVOID Address,
         {
             /* System wants a zero page, obtain one */
             PageFrameNumber = MiRemoveZeroPage(Color);
-            /* No need to zero-fill it */
             NeedZero = FALSE;
         }
     }
