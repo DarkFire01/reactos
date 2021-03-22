@@ -659,6 +659,7 @@ MiResolveDemandZeroFault(IN PVOID Address,
     /* Do we need a zero page? */
     if (Color != 0xFFFFFFFF)
     {
+<<<<<<< HEAD
         /* Try to get one, if we couldn't grab a free page and zero it */
         PageFrameNumber = MiRemoveZeroPageSafe(Color);
         if (!PageFrameNumber)
@@ -672,6 +673,10 @@ MiResolveDemandZeroFault(IN PVOID Address,
             /* Page guaranteed to be zero-filled */
             NeedZero = FALSE;
         }
+=======
+        /* Get one */
+        PageFrameNumber = MiRemoveZeroPage(Color);
+>>>>>>> fe02b0eabb4 ([NTOS:MM] Do not manually zero the page when resolving faults)
     }
     else
     {
@@ -686,7 +691,9 @@ MiResolveDemandZeroFault(IN PVOID Address,
         {
             /* System wants a zero page, obtain one */
             PageFrameNumber = MiRemoveZeroPage(Color);
+
             NeedZero = FALSE;
+
         }
     }
 
@@ -695,20 +702,6 @@ MiResolveDemandZeroFault(IN PVOID Address,
 
     /* Increment demand zero faults */
     KeGetCurrentPrcb()->MmDemandZeroCount++;
-
-    /* Do we have the lock? */
-    if (HaveLock)
-    {
-        /* Release it */
-        MiReleasePfnLock(OldIrql);
-
-        /* Update performance counters */
-        if (Process > HYDRA_PROCESS) Process->NumberOfPrivatePages++;
-    }
-
-    /* Zero the page if need be */
-    if (NeedZero) MiZeroPfn(PageFrameNumber);
-
     /* Fault on user PDE, or fault on user PTE? */
     if (PointerPte <= MiHighestUserPte)
     {
