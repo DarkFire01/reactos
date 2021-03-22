@@ -368,16 +368,17 @@ _Requires_exclusive_lock_held_(WorkingSet->WorkingSetMutex)
 VOID
 NTAPI
 MiDeletePte(
-	_Inout_ PMMPTE PointerPte,
-	_In_ PVOID VirtualAddress,
-	_In_ PMMSUPPORT WorkingSet,
-	_In_ PMMPTE PrototypePte)
+    _Inout_ PMMPTE PointerPte,
+    _In_ PVOID VirtualAddress,
+    _In_ PMMSUPPORT WorkingSet,
+    _In_ PMMPTE PrototypePte)
 {
     PMMPFN Pfn1;
     MMPTE TempPte;
     PFN_NUMBER PageFrameIndex;
     PMMPDE PointerPde;
 
+<<<<<<< HEAD
     /* PFN lock must be held */
     MI_ASSERT_PFN_LOCK_HELD();
 
@@ -386,6 +387,13 @@ MiDeletePte(
 
     /* This must be current process. */
     ASSERT(CurrentProcess == PsGetCurrentProcess());
+=======
+    /* WorkingSet must be exclusively locked */
+    ASSERT(MM_ANY_WS_LOCK_HELD_EXCLUSIVE(PsGetCurrentThread()));
+
+    /* If this is a process working set, this must be current one. */
+    ASSERT((WorkingSet == &PsGetCurrentProcess()->Vm) || !MI_IS_PROCESS_WORKING_SET(WorkingSet));
+>>>>>>> 1674ca10c04 ([NTOS:MM] Fix PDE pages refcounting when deleting a PTE)
 
     /* Capture the PTE */
     TempPte = *PointerPte;
@@ -410,6 +418,7 @@ MiDeletePte(
             /* Destroy the PTE */
             MI_ERASE_PTE(PointerPte);
 
+<<<<<<< HEAD
             /* Drop the reference on the page table. */
             PointerPde = MiPteToPde(PointerPte);
             MiDecrementShareCount(MiGetPfnEntry(PointerPde->u.Hard.PageFrameNumber),
@@ -418,6 +427,14 @@ MiDeletePte(
             /* In case of shared page, the prototype PTE must be in transition, not the process one */
             ASSERT(Pfn1->u3.e1.PrototypePte == 0);
 
+=======
+            KIRQL OldIrql = MiAcquirePfnLock();
+            ASSERT(Pfn1->u3.e1.PrototypePte == 0);
+
+            /* Drop the reference on the page table. */
+            MiDecrementShareCount(MiGetPfnEntry(Pfn1->u4.PteFrame), Pfn1->u4.PteFrame);
+
+>>>>>>> 1674ca10c04 ([NTOS:MM] Fix PDE pages refcounting when deleting a PTE)
             /* Delete the PFN */
             MI_SET_PFN_DELETED(Pfn1);
 
