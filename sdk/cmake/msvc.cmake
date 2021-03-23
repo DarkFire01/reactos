@@ -187,14 +187,14 @@ if(MSVC_IDE)
     add_definitions(/DLANGUAGE_EN_US)
 else()
     set(CMAKE_RC_COMPILE_OBJECT "<CMAKE_RC_COMPILER> /nologo <INCLUDES> <FLAGS> <DEFINES> ${I18N_DEFS} /fo <OBJECT> <SOURCE>")
+endif()
+
+# We don't put <INCLUDES> <DEFINES> <FLAGS> because this is handled in add_asm_files macro
+if (NOT MSVC_IDE)
     if(ARCH STREQUAL "arm")
-        set(CMAKE_ASM_COMPILE_OBJECT
-            "cl ${cl_includes_flag} /nologo /X /I${REACTOS_SOURCE_DIR}/sdk/include/asm /I${REACTOS_BINARY_DIR}/sdk/include/asm <INCLUDES> <FLAGS> <DEFINES> /D__ASM__ /D_USE_ML /EP /c <SOURCE> > <OBJECT>.tmp"
-            "<CMAKE_ASM_COMPILER> -nologo -o <OBJECT> <OBJECT>.tmp")
+        set(CMAKE_ASM_MASM_COMPILE_OBJECT "<CMAKE_ASM_MASM_COMPILER> -nologo -o <OBJECT> <SOURCE>")
     else()
-        set(CMAKE_ASM_COMPILE_OBJECT
-            "cl ${cl_includes_flag} /nologo /X /I${REACTOS_SOURCE_DIR}/sdk/include/asm /I${REACTOS_BINARY_DIR}/sdk/include/asm <INCLUDES> <FLAGS> <DEFINES> /D__ASM__ /D_USE_ML /EP /c <SOURCE> > <OBJECT>.tmp"
-            "<CMAKE_ASM_COMPILER> /nologo /Cp /Fo<OBJECT> /c /Ta <OBJECT>.tmp")
+        set(CMAKE_ASM_MASM_COMPILE_OBJECT "<CMAKE_ASM_MASM_COMPILER> /nologo /Cp /Fo <OBJECT> /c /Ta <SOURCE>")
     endif()
 endif()
 
@@ -214,9 +214,9 @@ elseif(_PREFAST_)
 endif()
 
 set(CMAKE_RC_CREATE_SHARED_LIBRARY ${CMAKE_C_CREATE_SHARED_LIBRARY})
-set(CMAKE_ASM_CREATE_SHARED_LIBRARY ${CMAKE_C_CREATE_SHARED_LIBRARY})
+set(CMAKE_ASM_MASM_CREATE_SHARED_LIBRARY ${CMAKE_C_CREATE_SHARED_LIBRARY})
 set(CMAKE_RC_CREATE_SHARED_MODULE ${CMAKE_C_CREATE_SHARED_MODULE})
-set(CMAKE_ASM_CREATE_SHARED_MODULE ${CMAKE_C_CREATE_SHARED_MODULE})
+set(CMAKE_ASM_MASM_CREATE_SHARED_MODULE ${CMAKE_C_CREATE_SHARED_MODULE})
 set(CMAKE_ASM_CREATE_STATIC_LIBRARY ${CMAKE_C_CREATE_STATIC_LIBRARY})
 
 function(set_entrypoint _module _entrypoint)
@@ -264,12 +264,6 @@ function(set_module_type_toolchain MODULE TYPE)
 
 endfunction()
 
-if(ARCH STREQUAL "arm")
-    set(CMAKE_STUB_ASM_COMPILE_OBJECT "<CMAKE_ASM_COMPILER> -nologo -o <OBJECT> <SOURCE>")
-else()
-    set(CMAKE_STUB_ASM_COMPILE_OBJECT "<CMAKE_ASM_COMPILER> /nologo /Cp /Fo<OBJECT> /c /Ta <SOURCE>")
-endif()
-
 function(add_delay_importlibs _module)
     get_target_property(_module_type ${_module} TYPE)
     if(_module_type STREQUAL "STATIC_LIBRARY")
@@ -304,9 +298,9 @@ function(generate_import_lib _libname _dllname _spec_file)
 
     # Compile the generated asm stub file
     if(ARCH STREQUAL "arm")
-        set(_asm_stub_command ${CMAKE_ASM_COMPILER} -nologo -o ${_asm_stubs_file}.obj ${_asm_stubs_file})
+        set(_asm_stub_command ${CMAKE_ASM_MASM_COMPILER} -nologo -o ${_asm_stubs_file}.obj ${_asm_stubs_file})
     else()
-        set(_asm_stub_command ${CMAKE_ASM_COMPILER} /nologo /Cp /Fo${_asm_stubs_file}.obj /c /Ta ${_asm_stubs_file})
+        set(_asm_stub_command ${CMAKE_ASM_MASM_COMPILER} /nologo /Cp /Fo${_asm_stubs_file}.obj /c /Ta ${_asm_stubs_file})
     endif()
     add_custom_command(
         OUTPUT ${_asm_stubs_file}.obj
@@ -442,37 +436,26 @@ function(allow_warnings __module)
 endfunction()
 
 macro(add_asm_files _target)
-    if(MSVC_IDE)
-        get_defines(_directory_defines)
-        get_includes(_directory_includes)
-        get_directory_property(_defines COMPILE_DEFINITIONS)
-        foreach(_source_file ${ARGN})
-            get_filename_component(_source_file_base_name ${_source_file} NAME_WE)
-            get_filename_component(_source_file_full_path ${_source_file} ABSOLUTE)
-            set(_preprocessed_asm_file ${CMAKE_CURRENT_BINARY_DIR}/asm/${_source_file_base_name}_${_target}.tmp)
-            set(_object_file ${CMAKE_CURRENT_BINARY_DIR}/asm/${_source_file_base_name}_${_target}.obj)
-            get_source_file_property(_defines_semicolon_list ${_source_file_full_path} COMPILE_DEFINITIONS)
-            unset(_source_file_defines)
-            foreach(_define ${_defines_semicolon_list})
-                if(NOT ${_define} STREQUAL "NOTFOUND")
-                    list(APPEND _source_file_defines -D${_define})
-                endif()
-            endforeach()
-            if(ARCH STREQUAL "arm")
-                set(_pp_asm_compile_command ${CMAKE_ASM_COMPILER} -nologo -o ${_object_file} ${_preprocessed_asm_file})
-            else()
-                set(_pp_asm_compile_command ${CMAKE_ASM_COMPILER} /nologo /Cp /Fo${_object_file} /c /Ta ${_preprocessed_asm_file})
+    get_defines(_directory_defines)
+    get_includes(_directory_includes)
+    get_directory_property(_defines COMPILE_DEFINITIONS)
+    foreach(_source_file ${ARGN})
+        get_filename_component(_source_file_base_name ${_source_file} NAME_WE)
+        get_filename_component(_source_file_full_path ${_source_file} ABSOLUTE)
+        set(_preprocessed_asm_file ${CMAKE_CURRENT_BINARY_DIR}/asm/${_source_file_base_name}_${_target}.asm)
+        get_source_file_property(_defines_semicolon_list ${_source_file_full_path} COMPILE_DEFINITIONS)
+        unset(_source_file_defines)
+        foreach(_define ${_defines_semicolon_list})
+            if(NOT ${_define} STREQUAL "NOTFOUND")
+                list(APPEND _source_file_defines -D${_define})
             endif()
-            add_custom_command(
-                OUTPUT ${_preprocessed_asm_file} ${_object_file}
-                COMMAND cl /nologo /X /I${REACTOS_SOURCE_DIR}/sdk/include/asm /I${REACTOS_BINARY_DIR}/sdk/include/asm ${_directory_includes} ${_source_file_defines} ${_directory_defines} /D__ASM__ /D_USE_ML /EP /c ${_source_file_full_path} > ${_preprocessed_asm_file} && ${_pp_asm_compile_command}
-                DEPENDS ${_source_file_full_path})
-            set_source_files_properties(${_object_file} PROPERTIES EXTERNAL_OBJECT TRUE)
-            list(APPEND ${_target} ${_object_file})
         endforeach()
-    else()
-        list(APPEND ${_target} ${ARGN})
-    endif()
+        add_custom_command(
+            OUTPUT ${_preprocessed_asm_file}
+            COMMAND cl /nologo /X /I${REACTOS_SOURCE_DIR}/sdk/include/asm /I${REACTOS_BINARY_DIR}/sdk/include/asm ${_directory_includes} ${_source_file_defines} ${_directory_defines} /D__ASM__ /D_USE_ML /EP /c ${_source_file_full_path} > ${_preprocessed_asm_file}
+            DEPENDS ${_source_file_full_path})
+        list(APPEND ${_target} ${_preprocessed_asm_file})
+    endforeach()
 endmacro()
 
 function(add_linker_script _target _linker_script_file)
@@ -486,7 +469,7 @@ function(add_linker_script _target _linker_script_file)
         OUTPUT ${_generated_file}
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_file_full_path}" "${_generated_file}"
         DEPENDS ${_file_full_path})
-    set_source_files_properties(${_generated_file} PROPERTIES LANGUAGE "ASM" GENERATED TRUE)
+    set_source_files_properties(${_generated_file} PROPERTIES LANGUAGE "ASM_MASM" GENERATED TRUE)
     add_asm_files(${_target}_linker_file ${_generated_file})
 
     # Generate the C module containing extra sections specifications and layout,

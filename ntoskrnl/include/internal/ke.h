@@ -740,6 +740,7 @@ VOID
 NTAPI
 KiInitializeBugCheck(VOID);
 
+DECLSPEC_NORETURN
 VOID
 NTAPI
 KiSystemStartup(
@@ -1015,8 +1016,8 @@ KiQuantumEnd(
     VOID
 );
 
+DECLSPEC_NORETURN
 VOID
-FASTCALL
 KiIdleLoop(
     VOID
 );

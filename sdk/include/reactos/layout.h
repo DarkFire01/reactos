@@ -45,7 +45,7 @@ _layout_MoveGrip(LAYOUT_DATA *pData, HDWP hDwp OPTIONAL)
         return hDwp;
 
     SIZE size = { GetSystemMetrics(SM_CXVSCROLL), GetSystemMetrics(SM_CYHSCROLL) };
-    const UINT uFlags = SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER;
+    const UINT uFlags = SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_NOCOPYBITS;
     RECT rcClient;
     GetClientRect(pData->m_hwndParent, &rcClient);
 
@@ -67,6 +67,16 @@ _layout_MoveGrip(LAYOUT_DATA *pData, HDWP hDwp OPTIONAL)
 static __inline void
 LayoutShowGrip(LAYOUT_DATA *pData, BOOL bShow)
 {
+    UINT uSWP = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
+                SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED;
+    DWORD style = GetWindowLongPtrW(pData->m_hwndParent, GWL_STYLE);
+    DWORD new_style = (bShow ? (style | WS_SIZEBOX) : (style & ~WS_SIZEBOX));
+    if (style != new_style)
+    {
+        SetWindowLongPtrW(pData->m_hwndParent, GWL_STYLE, new_style); /* change style */
+        SetWindowPos(pData->m_hwndParent, NULL, 0, 0, 0, 0, uSWP); /* frame changed */
+    }
+
     if (!bShow)
     {
         ShowWindow(pData->m_hwndGrip, SW_HIDE);
@@ -117,7 +127,7 @@ _layout_DoMoveItem(LAYOUT_DATA *pData, HDWP hDwp, const LAYOUT_INFO *pLayout,
     {
         hDwp = DeferWindowPos(hDwp, pLayout->m_hwndCtrl, NULL, NewRect.left, NewRect.top,
                               NewRect.right - NewRect.left, NewRect.bottom - NewRect.top,
-                              SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREPOSITION);
+                              SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREPOSITION | SWP_NOCOPYBITS);
     }
     return hDwp;
 }
@@ -138,18 +148,6 @@ _layout_ArrangeLayout(LAYOUT_DATA *pData)
 
     hDwp = _layout_MoveGrip(pData, hDwp);
     EndDeferWindowPos(hDwp);
-
-    /* STATIC controls need refreshing. */
-    for (iItem = 0; iItem < pData->m_cLayouts; ++iItem)
-    {
-        HWND hwndCtrl = pData->m_pLayouts[iItem].m_hwndCtrl;
-        WCHAR szClass[8];
-        GetClassNameW(hwndCtrl, szClass, _countof(szClass));
-        if (lstrcmpiW(szClass, L"STATIC") == 0)
-        {
-            InvalidateRect(hwndCtrl, NULL, TRUE);
-        }
-    }
 }
 
 static __inline void
@@ -191,7 +189,7 @@ LayoutUpdate(HWND ignored1, LAYOUT_DATA *pData, LPCVOID ignored2, UINT ignored3)
     UNREFERENCED_PARAMETER(ignored1);
     UNREFERENCED_PARAMETER(ignored2);
     UNREFERENCED_PARAMETER(ignored3);
-    if (pData == NULL)
+    if (pData == NULL || !pData->m_hwndParent)
         return;
     assert(IsWindow(pData->m_hwndParent));
     _layout_ArrangeLayout(pData);

@@ -835,7 +835,7 @@ MiAllocatePoolPages(IN POOL_TYPE PoolType,
         //
         // Ran out of memory
         //
-        DPRINT1("Out of NP Expansion Pool\n");
+        DPRINT("Out of NP Expansion Pool\n");
         return NULL;
     }
 
@@ -848,6 +848,19 @@ MiAllocatePoolPages(IN POOL_TYPE PoolType,
     // Lock the PFN database too
     //
     MiAcquirePfnLockAtDpcLevel();
+
+    /* Check that we have enough available pages for this request */
+    if (MmAvailablePages < SizeInPages)
+    {
+        MiReleasePfnLockFromDpcLevel();
+        KeReleaseQueuedSpinLock(LockQueueMmNonPagedPoolLock, OldIrql);
+
+        MiReleaseSystemPtes(StartPte, SizeInPages, NonPagedPoolExpansion);
+
+        DPRINT1("OUT OF AVAILABLE PAGES! Required %lu, Available %lu\n", SizeInPages, MmAvailablePages);
+
+        return NULL;
+    }
 
     //
     // Loop the pages

@@ -7,6 +7,13 @@ endif()
 
 include(CMakeDependentOption)
 
+# CMAKE_CROSSCOMPILING and MSVC_IDE are not set until project() is called, so let's test this instead
+if ((DEFINED CMAKE_TOOLCHAIN_FILE) AND (CMAKE_GENERATOR MATCHES "Visual Studio.*"))
+# Do not use MSVC_RUNTIME_LIBRARY target property. We use our own flags instead
+message(WARNING "Setting policy CMP0091 to OLD behaviour")
+cmake_policy(SET CMP0091 OLD)
+endif()
+
 project(REACTOS)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -120,6 +127,13 @@ else()
     # Print build type
     message("-- Build Type: ${CMAKE_BUILD_TYPE}")
 
+    # Always add /MT in VS CMAKE_GENERATOR and define _SBCS otherwise VS thinks it's a multi-byte or whatever project
+    if (MSVC_IDE)
+        add_compile_options("/MT")
+        add_compile_definitions(_SBCS)
+    endif()
+
+
     # adjust the default behaviour of the FIND_XXX() commands:
     # search headers and libraries in the target environment, search
     # programs in the host environment
@@ -213,7 +227,11 @@ Enable this if the module uses typeid or dynamic_cast. You will probably need to
     endif()
 
     # Activate support for assembly source files
-    enable_language(ASM)
+    if (MSVC)
+        enable_language(ASM_MASM)
+    else()
+        enable_language(ASM)
+    endif()
 
     # Activate language support for resource files
     enable_language(RC)
