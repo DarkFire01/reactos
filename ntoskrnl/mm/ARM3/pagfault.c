@@ -1732,13 +1732,12 @@ MmArmAccessFault(IN ULONG FaultCode,
     PETHREAD CurrentThread;
     PEPROCESS CurrentProcess;
     NTSTATUS Status;
-    PMMSUPPORT WorkingSet;
     ULONG ProtectionCode;
     PMMVAD Vad = NULL;
     PFN_NUMBER PageFrameIndex;
     ULONG Color;
-    BOOLEAN IsSessionAddress;
     PMMPFN Pfn1;
+
     DPRINT("ARM3 FAULT AT: %p\n", Address);
 
     /* Check for page fault on high IRQL */
@@ -1815,6 +1814,9 @@ MmArmAccessFault(IN ULONG FaultCode,
     /* Check for kernel fault address */
     if (Address >= MmSystemRangeStart)
     {
+        PMMSUPPORT WorkingSet;
+        BOOLEAN IsSessionAddress;
+
         /* Bail out, if the fault came from user mode */
         if (Mode == UserMode) return STATUS_ACCESS_VIOLATION;
 
