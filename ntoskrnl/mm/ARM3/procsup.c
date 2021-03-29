@@ -951,7 +951,10 @@ MmInitializeProcessAddressSpace(IN PEPROCESS Process,
     PWCHAR Source;
     PCHAR Destination;
     USHORT Length = 0;
+<<<<<<< HEAD
 
+=======
+>>>>>>> dae054119a6 ([NTOS:MM] Do not map the process WS list in system space)
 #if (_MI_PAGING_LEVELS >= 3)
     PMMPPE PointerPpe;
 #endif
