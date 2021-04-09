@@ -187,6 +187,7 @@ extern PACL SePublicDefaultUnrestrictedDacl;
 extern PACL SePublicOpenDacl;
 extern PACL SePublicOpenUnrestrictedDacl;
 extern PACL SeUnrestrictedDacl;
+extern PACL SeSystemAnonymousLogonDacl;
 
 /* SDs */
 extern PSECURITY_DESCRIPTOR SePublicDefaultSd;
@@ -195,6 +196,11 @@ extern PSECURITY_DESCRIPTOR SePublicOpenSd;
 extern PSECURITY_DESCRIPTOR SePublicOpenUnrestrictedSd;
 extern PSECURITY_DESCRIPTOR SeSystemDefaultSd;
 extern PSECURITY_DESCRIPTOR SeUnrestrictedSd;
+extern PSECURITY_DESCRIPTOR SeSystemAnonymousLogonSd;
+
+/* Anonymous Logon Tokens */
+extern PTOKEN SeAnonymousLogonToken;
+extern PTOKEN SeAnonymousLogonTokenNoEveryone;
 
 
 #define SepAcquireTokenLockExclusive(Token)                                    \
@@ -332,6 +338,12 @@ SepInitializeTokenImplementation(VOID);
 PTOKEN
 NTAPI
 SepCreateSystemProcessToken(VOID);
+
+PTOKEN
+SepCreateSystemAnonymousLogonToken(VOID);
+
+PTOKEN
+SepCreateSystemAnonymousLogonTokenNoEveryone(VOID);
 
 BOOLEAN
 NTAPI
