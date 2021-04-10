@@ -45,7 +45,7 @@ include(generic.cmake)
 include(acpi.cmake)
 include(apic.cmake)
 include(up.cmake)
-
+include(smp.cmake)
 if(ARCH STREQUAL "i386")
     include(pcidata.cmake)
     include(legacy.cmake)
@@ -58,16 +58,13 @@ if(ARCH STREQUAL "i386")
     remove_definitions(-DSARCH_PC98)
 
     # hal
-    add_hal(hal SOURCES pic/halpic.rc COMPONENTS generic legacy up pic)
-    add_hal(halacpi SOURCES acpi/halacpi.rc COMPONENTS generic acpi up pic)
-    add_hal(halaacpi SOURCES acpi/halacpi.rc COMPONENTS generic acpi up apic)
-    add_hal(halxbox SOURCES xbox/halxbox.rc COMPONENTS xbox up)
-    add_hal(halpc98 SOURCES pc98/halpc98.rc COMPONENTS pc98 up)
+    #add_hal(hal SOURCES pic/halpic.rc COMPONENTS generic legacy up pic)
+    #add_hal(halacpi SOURCES acpi/halacpi.rc COMPONENTS generic acpi up pic)
+    add_hal(hal SOURCES acpi/halacpi.rc COMPONENTS generic acpi up apic)
+    #add_hal(halxbox SOURCES xbox/halxbox.rc COMPONENTS xbox up)
+    #add_hal(halpc98 SOURCES pc98/halpc98.rc COMPONENTS pc98 up)
 
-    #add_hal(halmps SOURCES up/halup.rc COMPONENTS generic legacy smp pic)
-    #add_hal(halmacpi SOURCES acpi/halacpi.rc COMPONENTS generic acpi smp pic)
-    #add_hal(halmapic SOURCES acpi/halacpi.rc COMPONENTS generic legacy smp apic)
-    #add_hal(halmaacpi SOURCES acpi/halacpi.rc COMPONENTS generic acpi smp apic)
+    #add_hal(halmacpi SOURCES smp/halmacpi.rc COMPONENTS generic acpi smp apic)
 
 elseif(ARCH STREQUAL "amd64")
 
@@ -75,6 +72,7 @@ elseif(ARCH STREQUAL "amd64")
         amd64/x86bios.c)
 
     add_hal(hal SOURCES ${HAL_SOURCE} COMPONENTS generic acpi up apic)
+    #add_hal(hal SOURCES ${HAL_SOURCE} COMPONENTS generic acpi smp apic)
     target_link_libraries(hal fast486)
 
 endif()

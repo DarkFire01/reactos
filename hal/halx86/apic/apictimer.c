@@ -11,8 +11,7 @@
 #include <hal.h>
 #define NDEBUG
 #include <debug.h>
-
-#include "apic.h"
+#include <apic.h>
 
 extern LARGE_INTEGER HalpCpuClockFrequency;
 
