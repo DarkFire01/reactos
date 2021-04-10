@@ -14,15 +14,15 @@
 #include <hal.h>
 #define NDEBUG
 #include <debug.h>
+#include <apic.h>
 
-#include "apic.h"
 void __cdecl HackEoi(void);
 
 #ifndef _M_AMD64
 #define APIC_LAZY_IRQL
 #endif
 
-/* GLOBALS ********************************************************************/
+/* GLOBALS *************************BE RIGHT BACK*******************************************/
 
 ULONG ApicVersion;
 UCHAR HalpVectorToIndex[256];

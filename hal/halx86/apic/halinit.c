@@ -2,7 +2,9 @@
  * PROJECT:     ReactOS Hardware Abstraction Layer
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     Initialize the x86 HAL
- * COPYRIGHT:   Copyright 2011 Timo Kreuzer <timo.kreuzer@reactos.org>
+ * PROGRAMMERS:    2011 Timo Kreuzer <timo.kreuzer@reactos.org>
+ *                 2021 Justin Miller <the_darkfire@ring0productions.com>
+ *              
  */
 
 /* INCLUDES *****************************************************************/
@@ -10,7 +12,7 @@
 #include <hal.h>
 #define NDEBUG
 #include <debug.h>
-#include "apic.h"
+#include <apic.h>
 
 VOID
 NTAPI
@@ -57,6 +59,7 @@ HalpInitPhase1(VOID)
 {
     /* Initialize DMA. NT does this in Phase 0 */
     HalpInitDma();
+   // __debugbreak(); //DONT INCLUDE IN PULL REQUEST
 }
 
 /* EOF */
