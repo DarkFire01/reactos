@@ -18,5 +18,4 @@ VOID NTAPI HalpInitializeTsc(void);
 #endif
 
 #endif
-
 #endif /* !_TSC_H_ */
