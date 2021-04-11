@@ -22,7 +22,7 @@ void __cdecl HackEoi(void);
 #define APIC_LAZY_IRQL
 #endif
 
-/* GLOBALS *************************BE RIGHT BACK*******************************************/
+/* GLOBALS ********************************************************************/
 
 ULONG ApicVersion;
 UCHAR HalpVectorToIndex[256];

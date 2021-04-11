@@ -4,7 +4,7 @@ list(APPEND HAL_SMP_SOURCE
     )
 
 list(APPEND HAL_SMP_ASM_SOURCE
-    #smp/apboot.S
+    smp/apboot.S
     )
 
 add_asm_files(lib_hal_smp_asm ${HAL_SMP_ASM_SOURCE})

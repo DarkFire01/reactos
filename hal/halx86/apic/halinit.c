@@ -59,7 +59,6 @@ HalpInitPhase1(VOID)
 {
     /* Initialize DMA. NT does this in Phase 0 */
     HalpInitDma();
-   // __debugbreak(); //DONT INCLUDE IN PULL REQUEST
 }
 
 /* EOF */
