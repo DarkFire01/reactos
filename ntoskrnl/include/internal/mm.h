@@ -903,13 +903,6 @@ VOID
 NTAPI
 MmInitializeRmapList(VOID);
 
-VOID
-NTAPI
-MmSetCleanAllRmaps(PFN_NUMBER Page);
-BOOLEAN
-NTAPI
-MmIsDirtyPageRmap(PFN_NUMBER Page);
-
 NTSTATUS
 NTAPI
 MmPageOutPhysicalAddress(PFN_NUMBER Page);
@@ -1041,8 +1034,7 @@ MmCreateVirtualMapping(
     struct _EPROCESS* Process,
     PVOID Address,
     ULONG flProtect,
-    PPFN_NUMBER Pages,
-    ULONG PageCount
+    PFN_NUMBER Page
 );
 
 NTSTATUS
@@ -1051,8 +1043,7 @@ MmCreateVirtualMappingUnsafe(
     struct _EPROCESS* Process,
     PVOID Address,
     ULONG flProtect,
-    PPFN_NUMBER Pages,
-    ULONG PageCount
+    PFN_NUMBER Page
 );
 
 ULONG
@@ -1089,13 +1080,6 @@ MmInitGlobalKernelPageDirectory(VOID);
 
 VOID
 NTAPI
-MmGetPageFileMapping(
-	struct _EPROCESS *Process,
-	PVOID Address,
-	SWAPENTRY* SwapEntry);
-
-VOID
-NTAPI
 MmDeletePageFileMapping(
     struct _EPROCESS *Process,
     PVOID Address,
@@ -1110,16 +1094,16 @@ MmCreatePageFileMapping(
     SWAPENTRY SwapEntry
 );
 
+VOID
+NTAPI
+MmGetPageFileMapping(
+    PEPROCESS Process,
+    PVOID Address,
+    SWAPENTRY *SwapEntry);
+
 BOOLEAN
 NTAPI
 MmIsPageSwapEntry(
-    struct _EPROCESS *Process,
-    PVOID Address
-);
-
-VOID
-NTAPI
-MmSetDirtyPage(
     struct _EPROCESS *Process,
     PVOID Address
 );
@@ -1162,6 +1146,12 @@ MmSetCleanPage(
     struct _EPROCESS *Process,
     PVOID Address
 );
+
+VOID
+NTAPI
+MmSetDirtyBit(PEPROCESS Process, PVOID Address, BOOLEAN Bit);
+#define MmSetCleanPage(__P, __A) MmSetDirtyBit(__P, __A, FALSE)
+#define MmSetDirtyPage(__P, __A) MmSetDirtyBit(__P, __A, TRUE)
 
 VOID
 NTAPI
@@ -1215,20 +1205,12 @@ MmDeleteVirtualMapping(
     PPFN_NUMBER Page
 );
 
-BOOLEAN
-NTAPI
-MmIsDirtyPage(
-    struct _EPROCESS *Process,
-    PVOID Address
-);
-
-VOID
-NTAPI
-MmClearPageAccessedBit(PEPROCESS Process, PVOID Address);
+/* arch/procsup.c ************************************************************/
 
 BOOLEAN
-NTAPI
-MmIsPageAccessed(PEPROCESS Process, PVOID Address);
+MiArchCreateProcessAddressSpace(
+    _In_ PEPROCESS Process,
+    _In_ PULONG_PTR DirectoryTableBase);
 
 /* wset.c ********************************************************************/
 
@@ -1376,7 +1358,8 @@ NTAPI
 MmAccessFaultSectionView(
     PMMSUPPORT AddressSpace,
     MEMORY_AREA* MemoryArea,
-    PVOID Address
+    PVOID Address,
+    BOOLEAN Locked
 );
 
 VOID
@@ -1407,14 +1390,6 @@ MmMakePagesDirty(
     _In_ PEPROCESS Process,
     _In_ PVOID Address,
     _In_ ULONG Length);
-
-NTSTATUS
-NTAPI
-MmRosFlushVirtualMemory(
-    _In_ PEPROCESS Process,
-    _Inout_ PVOID* Address,
-    _Inout_ PSIZE_T Length,
-    _Out_ PIO_STATUS_BLOCK Iosb);
 
 NTSTATUS
 NTAPI
