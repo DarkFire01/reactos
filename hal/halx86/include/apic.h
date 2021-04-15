@@ -3,10 +3,13 @@
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     Header file for APIC hal
  * COPYRIGHT:   2011 Timo Kreuzer <timo.kreuzer@reactos.org>
+ *              2020-2021 Vadim Galyant <vgal@rambler.ru>
  *              2021 Justin Miller <justinmiller100@gmail.com>
  */
 
 #pragma once
+
+#include "../../drivers/bus/acpi/acpica/include/acpi.h"
 
 #ifdef _M_AMD64
     #define LOCAL_APIC_BASE 0xFFFFFFFFFFFE0000ULL
@@ -89,6 +92,37 @@
 #define IOAPIC_PHYS_BASE 0xFEC00000
 #define APIC_CLOCK_INDEX 8
 #define ApicLogicalId(Cpu) ((UCHAR)(1<< Cpu))
+ 
+/* MADT information */
+#define LOCAL_APIC_VERSION_MAX 0x1F
+#define MAX_IOAPICS      64
+
+
+typedef struct _ACPI_MADT_TABLE
+{
+    ACPI_TABLE_HEADER Header;   // Common ACPI table header
+    ULONG Address;              // Physical address of local APIC
+    ULONG Flags;
+
+} ACPI_MADT_TABLE, *PACPI_TABLE_MADT;
+
+typedef struct _HALP_MP_INFO_TABLE
+{
+    ULONG LocalApicversion;
+    ULONG ProcessorCount;
+    ULONG ActiveProcessorCount;
+    ULONG Reserved1;
+    ULONG IoApicCount;
+    ULONG Reserved2;
+    ULONG Reserved3;
+    BOOLEAN ImcrPresent;              // When the IMCR presence bit is set, the IMCR is present and PIC Mode is implemented; otherwise, Virtual Wire Mode is implemented.
+    UCHAR Pad[3];
+    ULONG LocalApicPA;                // The 32-bit physical address at which each processor can access its local interrupt controller
+    ULONG IoApicVA[MAX_IOAPICS];
+    ULONG IoApicPA[MAX_IOAPICS];
+    ULONG IoApicIrqBase[MAX_IOAPICS]; // Global system interrupt base 
+
+} HALP_MP_INFO_TABLE, *PHALP_MP_INFO_TABLE;
 
 enum
 {
@@ -297,5 +331,9 @@ HalInitializeProfiling(VOID);
 VOID
 NTAPI
 HalpInitApicInfo(IN PLOADER_PARAMETER_BLOCK KeLoaderBlock); 
+
+VOID
+NTAPI
+HalpInitMADT(IN PLOADER_PARAMETER_BLOCK KeLoaderBlock); 
 
 VOID __cdecl ApicSpuriousService(VOID);

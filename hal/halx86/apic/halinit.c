@@ -28,6 +28,8 @@ HalpInitProcessor(
     IN ULONG ProcessorNumber,
     IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    HalpInitMADT(LoaderBlock);
+   
     /* Initialize the local APIC for this cpu */
     ApicInitializeLocalApic(ProcessorNumber);
 
@@ -36,11 +38,13 @@ HalpInitProcessor(
 
     /* Initialize the timer */
     //ApicInitializeTimer(ProcessorNumber);
+
 }
 
 VOID
 HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+
 
     /* Enable clock interrupt handler */
     HalpEnableInterruptHandler(IDT_INTERNAL,
@@ -49,13 +53,15 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                                CLOCK2_LEVEL,
                                HalpClockInterrupt,
                                Latched);
+
 }
 
 VOID
 HalpInitPhase1(VOID)
 {
+    __debugbreak();
     /* Initialize DMA. NT does this in Phase 0 */
-    HalpInitDma();
+
 }
 
 /* EOF */

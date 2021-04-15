@@ -13,6 +13,7 @@
 
 #include <hal.h>
 #include <apic.h>
+
 #define NDEBUG
 #include <debug.h>
 
@@ -86,6 +87,8 @@ HalVectorToIRQL[16] =
       31, /* FF HIGH_LEVEL */
 };
 #endif
+
+//HALP_MP_INFO_TABLE HalpMpInfoTable
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
@@ -477,7 +480,20 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
     __writeeflags(EFlags);
 }
 
+/* Fill the MADT structs with the information we need to work with. */
 
+VOID
+NTAPI
+HalpInitMADT(_In_ PLOADER_PARAMETER_BLOCK LoaderBlock){
+    /* MADT Tables Setup*/
+    PACPI_TABLE_MADT HalpMADTTable;
+    HalpMADTTable = HalAcpiGetTable(LoaderBlock, 'APIC');
+
+   // ULONG_PTR TableEnd;
+    //ULONG ix = 0;
+
+   // HalpMpo
+}
 /* SOFTWARE INTERRUPT TRAPS ***************************************************/
 
 #ifndef _M_AMD64

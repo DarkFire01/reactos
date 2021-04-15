@@ -36,6 +36,9 @@
 #define IOAPIC_TBL_DF1      (0xFF<< 56) /* Destination Field (logical mode) */
 #define IOAPIC_TBL_VECTOR   (0xFF << 0) /* Vector (10h - FEh) */
 
+#define IOAPIC_DEFAULT_BASE   0xFEC00000    /* Default I/O APIC Base Register Address */
+#define IOAPIC_SIZE           0x400
+
 #include <pshpack1.h>
 typedef struct _IOAPIC_ROUTE_ENTRY {
    ULONG vector	    :  8,
@@ -72,8 +75,6 @@ typedef struct _IOAPIC_INFO
    ULONG  ApicAddress;    /* APIC address */
    ULONG  EntryCount;     /* Number of redirection entries */
 } IOAPIC_INFO, *PIOAPIC_INFO;
-
-#define IOAPIC_DEFAULT_BASE   0xFEC00000    /* Default I/O APIC Base Register Address */
 
 extern ULONG IRQCount;					/* Number of IRQs  */
 extern UCHAR BUSMap[MAX_BUS];				/* Map of all buses in the system */
