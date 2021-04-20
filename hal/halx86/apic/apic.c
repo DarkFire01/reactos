@@ -13,7 +13,7 @@
 
 #include <hal.h>
 #include <apic.h>
-
+#include <acpi.h> 
 #define NDEBUG
 #include <debug.h>
 
@@ -88,9 +88,13 @@ HalVectorToIRQL[16] =
 };
 #endif
 
-//HALP_MP_INFO_TABLE HalpMpInfoTable
+HALP_MP_INFO_TABLE HalpMpInfoTable;
+//ACPI_TABLE_MADT *PACPI_TABLE_MADT ;
+//ACPI_MADT_LOCAL_APIC *LOCAL_APIC;
+ACPI_MADT_LOCAL_APIC HalpStaticProcLocalApicTable[32] = {{0}};
+//LOCAL_APIC HalpProcLocalApicTable = NULL;
 
-/* PRIVATE FUNCTIONS **********************************************************/
+/* PRIVATE FUNCTIONS ********************************************************** */
 
 FORCEINLINE
 ULONG
@@ -485,14 +489,44 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
 VOID
 NTAPI
 HalpInitMADT(_In_ PLOADER_PARAMETER_BLOCK LoaderBlock){
-    /* MADT Tables Setup*/
-    PACPI_TABLE_MADT HalpMADTTable;
-    HalpMADTTable = HalAcpiGetTable(LoaderBlock, 'APIC');
 
-   // ULONG_PTR TableEnd;
+    /* MADT Tables Setup*/
+   // PACPI_TABLE_MADT MadtTable;
+   // HalpMADTTable = HalAcpiGetTable(LoaderBlock, 'APIC');//
+   //  MadtTable = HalAcpiGetTable(LoaderBlock, 'CIPA');
+    //PLOCAL_APIC LocalApic;
+    //ULONG_PTR TableEnd;
     //ULONG ix = 0;
 
-   // HalpMpo
+     HalpMpInfoTable.LocalApicversion = 0x10;
+    #if 0
+   if(HalpProcLocalApicTable == NULL)
+   {
+        Header = (ACPI_SUBTABLE_HEADER)&HalpMADTTable[1];
+        TableEnd = (ULONG_PTR)HalpMADTTable + HalpMADTTable->Header.Length;
+
+        HalpProcLocalApicTable = HalpStaticProcLocalApicTable;
+
+        while ((ULONG_PTR)Header < TableEnd)
+        {
+              LocalApic = (ACPI_MADT_LOCAL_APIC)Header;
+
+            if (LocalApic->Header.Type == ACPI_MADT_TYPE_LOCAL_APIC &&
+                LocalApic->Header.Length == sizeof(ACPI_MADT_LOCAL_APIC) &&
+                LocalApic->LapicFlags & ACPI_MADT_ENABLED)
+            {
+                ix++;
+            }
+
+            if (!Header->Length)
+            {
+                break;
+            }
+
+            Header = (ACPI_SUBTABLE_HEADER)((ULONG_PTR)Header + Header->Length);
+        }
+   }
+   #endif
 }
 /* SOFTWARE INTERRUPT TRAPS ***************************************************/
 

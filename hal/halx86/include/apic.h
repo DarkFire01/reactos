@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "../../drivers/bus/acpi/acpica/include/acpi.h"
+//#include "../../drivers/bus/acpi/acpica/include/acpi.h"
 
 #ifdef _M_AMD64
     #define LOCAL_APIC_BASE 0xFFFFFFFFFFFE0000ULL
@@ -96,15 +96,6 @@
 /* MADT information */
 #define LOCAL_APIC_VERSION_MAX 0x1F
 #define MAX_IOAPICS      64
-
-
-typedef struct _ACPI_MADT_TABLE
-{
-    ACPI_TABLE_HEADER Header;   // Common ACPI table header
-    ULONG Address;              // Physical address of local APIC
-    ULONG Flags;
-
-} ACPI_MADT_TABLE, *PACPI_TABLE_MADT;
 
 typedef struct _HALP_MP_INFO_TABLE
 {
