@@ -20,7 +20,7 @@
 void __cdecl HackEoi(void);
 
 #ifndef _M_AMD64
-#define APIC_LAZY_IRQL //FIXME: Disabled due to bug.
+//#define APIC_LAZY_IRQL //FIXME: Disabled due to bug.
 #endif
 
 /* GLOBALS ********************************************************************/
@@ -87,12 +87,6 @@ HalVectorToIRQL[16] =
       31, /* FF HIGH_LEVEL */
 };
 #endif
-
-HALP_MP_INFO_TABLE HalpMpInfoTable;
-//ACPI_TABLE_MADT *PACPI_TABLE_MADT ;
-//ACPI_MADT_LOCAL_APIC *LOCAL_APIC;
-ACPI_MADT_LOCAL_APIC HalpStaticProcLocalApicTable[32] = {{0}};
-//LOCAL_APIC HalpProcLocalApicTable = NULL;
 
 /* PRIVATE FUNCTIONS ********************************************************** */
 
@@ -485,49 +479,13 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
 }
 
 /* Fill the MADT structs with the information we need to work with. */
-
 VOID
 NTAPI
-HalpInitMADT(_In_ PLOADER_PARAMETER_BLOCK LoaderBlock){
+HalpInitMADT(_In_ PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
 
-    /* MADT Tables Setup*/
-   // PACPI_TABLE_MADT MadtTable;
-   // HalpMADTTable = HalAcpiGetTable(LoaderBlock, 'APIC');//
-   //  MadtTable = HalAcpiGetTable(LoaderBlock, 'CIPA');
-    //PLOCAL_APIC LocalApic;
-    //ULONG_PTR TableEnd;
-    //ULONG ix = 0;
+}     
 
-     HalpMpInfoTable.LocalApicversion = 0x10;
-    #if 0
-   if(HalpProcLocalApicTable == NULL)
-   {
-        Header = (ACPI_SUBTABLE_HEADER)&HalpMADTTable[1];
-        TableEnd = (ULONG_PTR)HalpMADTTable + HalpMADTTable->Header.Length;
-
-        HalpProcLocalApicTable = HalpStaticProcLocalApicTable;
-
-        while ((ULONG_PTR)Header < TableEnd)
-        {
-              LocalApic = (ACPI_MADT_LOCAL_APIC)Header;
-
-            if (LocalApic->Header.Type == ACPI_MADT_TYPE_LOCAL_APIC &&
-                LocalApic->Header.Length == sizeof(ACPI_MADT_LOCAL_APIC) &&
-                LocalApic->LapicFlags & ACPI_MADT_ENABLED)
-            {
-                ix++;
-            }
-
-            if (!Header->Length)
-            {
-                break;
-            }
-
-            Header = (ACPI_SUBTABLE_HEADER)((ULONG_PTR)Header + Header->Length);
-        }
-   }
-   #endif
-}
 /* SOFTWARE INTERRUPT TRAPS ***************************************************/
 
 #ifndef _M_AMD64
@@ -866,4 +824,3 @@ KeRaiseIrqlToSynchLevel(VOID)
 }
 
 #endif /* !_M_AMD64 */
-
