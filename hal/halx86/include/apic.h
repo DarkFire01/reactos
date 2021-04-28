@@ -316,3 +316,197 @@ NTAPI
 HalpInitMADT(IN PLOADER_PARAMETER_BLOCK KeLoaderBlock); 
 
 VOID __cdecl ApicSpuriousService(VOID);
+=======
+enum
+{
+    APIC_TGM_Edge,
+    APIC_TGM_Level
+};
+
+enum
+{
+    APIC_DM_Physical,
+    APIC_DM_Logical
+};
+
+enum
+{
+    APIC_DSH_Destination,
+    APIC_DSH_Self,
+    APIC_DSH_AllIncludingSelf,
+    APIC_DSH_AllExclusingSelf
+};
+
+enum
+{
+    APIC_DF_Flat = 0xFFFFFFFF,
+    APIC_DF_Cluster = 0x0FFFFFFF
+};
+
+enum
+{
+    TIMER_DV_DivideBy2 = 0,
+    TIMER_DV_DivideBy4 = 1,
+    TIMER_DV_DivideBy8 = 2,
+    TIMER_DV_DivideBy16 = 3,
+    TIMER_DV_DivideBy32 = 8,
+    TIMER_DV_DivideBy64 = 9,
+    TIMER_DV_DivideBy128 = 10,
+    TIMER_DV_DivideBy1 = 11,
+};
+
+
+typedef union _APIC_BASE_ADRESS_REGISTER
+{
+    ULONG64 Long;
+    struct
+    {
+        ULONG64 Reserved1:8;
+        ULONG64 BootStrapCPUCore:1;
+        ULONG64 Reserved2:2;
+        ULONG64 Enable:1;
+        ULONG64 BaseAddress:40;
+        ULONG64 ReservedMBZ:12;
+    };
+} APIC_BASE_ADRESS_REGISTER;
+
+typedef union _APIC_SPURIOUS_INERRUPT_REGISTER
+{
+    ULONG Long;
+    struct
+    {
+        ULONG Vector:8;
+        ULONG SoftwareEnable:1;
+        ULONG FocusCPUCoreChecking:1;
+        ULONG ReservedMBZ:22;
+    };
+} APIC_SPURIOUS_INERRUPT_REGISTER;
+
+typedef union
+{
+    ULONG Long;
+    struct
+    {
+        ULONG Version:8;
+        ULONG ReservedMBZ:8;
+        ULONG MaxLVT:8;
+        ULONG ReservedMBZ1:7;
+        ULONG ExtRegSpacePresent:1;
+    };
+} APIC_VERSION_REGISTER;
+
+typedef union
+{
+    ULONG Long;
+    struct
+    {
+        ULONG Version:1;
+        ULONG SEOIEnable:1;
+        ULONG ExtApicIdEnable:1;
+        ULONG ReservedMBZ:29;
+    };
+} APIC_EXTENDED_CONTROL_REGISTER;
+
+typedef union _APIC_COMMAND_REGISTER
+{
+    ULONGLONG LongLong;
+    struct
+    {
+        ULONG Long0;
+        ULONG Long1;
+    };
+    struct
+    {
+        ULONGLONG Vector:8;
+        ULONGLONG MessageType:3;
+        ULONGLONG DestinationMode:1;
+        ULONGLONG DeliveryStatus:1;
+        ULONGLONG ReservedMBZ:1;
+        ULONGLONG Level:1;
+        ULONGLONG TriggerMode:1;
+        ULONGLONG RemoteReadStatus:2;
+        ULONGLONG DestinationShortHand:2;
+        ULONGLONG Reserved2MBZ:36;
+        ULONGLONG Destination:8;
+    };
+} APIC_COMMAND_REGISTER;
+
+typedef union
+{
+    ULONG Long;
+    struct
+    {
+        ULONG Vector:8;
+        ULONG MessageType:3;
+        ULONG ReservedMBZ:1;
+        ULONG DeliveryStatus:1;
+        ULONG Reserved1MBZ:1;
+        ULONG RemoteIRR:1;
+        ULONG TriggerMode:1;
+        ULONG Mask:1;
+        ULONG TimerMode:1;
+        ULONG Reserved2MBZ:13;
+    };
+} LVT_REGISTER;
+
+
+enum
+{
+    IOAPIC_IOREGSEL = 0x00,
+    IOAPIC_IOWIN    = 0x10
+};
+
+enum
+{
+    IOAPIC_ID  = 0x00,
+    IOAPIC_VER = 0x01,
+    IOAPIC_ARB = 0x02,
+    IOAPIC_REDTBL = 0x10
+};
+
+typedef union _IOAPIC_REDIRECTION_REGISTER
+{
+    ULONGLONG LongLong;
+    struct
+    {
+        ULONG Long0;
+        ULONG Long1;
+    };
+    struct
+    {
+        ULONGLONG Vector:8;
+        ULONGLONG DeliveryMode:3;
+        ULONGLONG DestinationMode:1;
+        ULONGLONG DeliveryStatus:1;
+        ULONGLONG Polarity:1;
+        ULONGLONG RemoteIRR:1;
+        ULONGLONG TriggerMode:1;
+        ULONGLONG Mask:1;
+        ULONGLONG Reserved:39;
+        ULONGLONG Destination:8;
+    };
+} IOAPIC_REDIRECTION_REGISTER;
+
+FORCEINLINE
+ULONG
+ApicRead(ULONG Offset)
+{
+    return *(volatile ULONG *)(APIC_BASE + Offset);
+}
+
+FORCEINLINE
+VOID
+ApicWrite(ULONG Offset, ULONG Value)
+{
+    *(volatile ULONG *)(APIC_BASE + Offset) = Value;
+}
+
+VOID
+NTAPI
+ApicInitializeTimer(ULONG Cpu);
+
+VOID
+NTAPI
+HalInitializeProfiling(VOID);
+
+VOID __cdecl ApicSpuriousService(VOID);

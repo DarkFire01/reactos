@@ -1,3 +1,10 @@
+/*
+ * PROJECT:         ReactOS HAL
+ * LICENSE:         GPL - See COPYING in the top level directory
+ * FILE:            hal/halx86/apic/tsc.h
+ * PURPOSE:         HAL Routines for TSC handling
+ * PROGRAMMERS:     Timo Kreuzer (timo.kreuzer@reactos.org)
+ */
 
 #ifndef _TSC_H_
 #define _TSC_H_

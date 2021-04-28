@@ -16,6 +16,7 @@
 #include <smp.h>
 #define NDEBUG
 #include <debug.h>
+#include <apic.h>
 
 void __cdecl HackEoi(void);
 

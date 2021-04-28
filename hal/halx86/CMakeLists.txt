@@ -45,7 +45,7 @@ include(generic.cmake)
 include(acpi.cmake)
 include(apic.cmake)
 include(up.cmake)
-
+include(smp.cmake)
 if(ARCH STREQUAL "i386")
     include(pcidata.cmake)
     include(legacy.cmake)
