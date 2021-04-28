@@ -13,14 +13,14 @@
 
 #include <hal.h>
 #include <apic.h>
-#include <acpi.h> 
+#include <smp.h>
 #define NDEBUG
 #include <debug.h>
 
 void __cdecl HackEoi(void);
 
 #ifndef _M_AMD64
-//#define APIC_LAZY_IRQL //FIXME: Disabled due to bug.
+#define APIC_LAZY_IRQL //FIXME: Disabled due to bug.
 #endif
 
 /* GLOBALS ********************************************************************/
