@@ -769,10 +769,10 @@ HBITMAP APIENTRY DxEngSelectBitmap(HDC hdc, HBITMAP hbmp)
 /************************************************************************/
 /* DxEngSetBitmapOwner                                                  */
 /************************************************************************/
-DWORD APIENTRY DxEngSetBitmapOwner(DWORD x1, DWORD x2)
+BOOLEAN APIENTRY DxEngSetBitmapOwner(HBITMAP hbmp, ULONG ulOwner)
 {
-    UNIMPLEMENTED;
-    return FALSE;
+    /* Call win32k directly */
+    return GreSetBitmapOwner(hbmp, ulOwner);
 }
 
 /************************************************************************/
