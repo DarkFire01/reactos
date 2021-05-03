@@ -778,10 +778,10 @@ BOOLEAN APIENTRY DxEngSetBitmapOwner(HBITMAP hbmp, ULONG ulOwner)
 /************************************************************************/
 /* DxEngDeleteSurface                                                   */
 /************************************************************************/
-DWORD APIENTRY DxEngDeleteSurface(DWORD x1)
+BOOLEAN APIENTRY DxEngDeleteSurface(HSURF hsurf)
 {
-    UNIMPLEMENTED;
-    return FALSE;
+    /* Call win32k directly */
+    return EngDeleteSurface(hsurf);
 }
 
 /************************************************************************/

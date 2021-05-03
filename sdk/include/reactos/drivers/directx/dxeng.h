@@ -109,7 +109,7 @@ BOOLEAN NTAPI DxEngDeleteDC(HDC hdc, BOOL Force);
 BOOLEAN NTAPI DxEngSetDCState(HDC hDC, DWORD SetType, DWORD Set);
 HBITMAP APIENTRY DxEngSelectBitmap(HDC hdc, HBITMAP hbmp);
 BOOLEAN APIENTRY DxEngSetBitmapOwner(HBITMAP hbmp, ULONG ulOwner);
-DWORD NTAPI DxEngDeleteSurface(DWORD x1);
+BOOLEAN APIENTRY DxEngDeleteSurface(HSURF hsurf);
 DWORD NTAPI DxEngGetSurfaceData(DWORD x1, DWORD x2);
 DWORD NTAPI DxEngAltLockSurface(DWORD x1);
 DWORD NTAPI DxEngUploadPaletteEntryToSurface(DWORD x1, DWORD x2,DWORD x3, DWORD x4);

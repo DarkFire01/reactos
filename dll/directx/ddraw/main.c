@@ -203,6 +203,9 @@ DirectDrawEnumerateA( LPDDENUMCALLBACKA lpCallback,
  * UNIMPLEMENT
  */
 
+BOOL  EnumerateAttachedSecondaries;
+DWORD privateDWFlags;
+
 HRESULT
 WINAPI
 DirectDrawEnumerateExA(LPDDENUMCALLBACKEXA lpCallback,
@@ -213,8 +216,8 @@ DirectDrawEnumerateExA(LPDDENUMCALLBACKEXA lpCallback,
     DWORD cbData = 0;
     DWORD Value = 0;
     LONG rc;
-    BOOL  EnumerateAttachedSecondaries = FALSE;
-    DWORD privateDWFlags = 0;
+    EnumerateAttachedSecondaries = FALSE;
+    privateDWFlags = 0;
     CHAR strMsg[RC_STRING_MAX_SIZE];
     HRESULT retVal = DDERR_INVALIDPARAMS;
 
