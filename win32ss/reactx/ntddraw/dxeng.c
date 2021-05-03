@@ -760,10 +760,10 @@ DxEngSetDCState(HDC hDC, DWORD SetType, DWORD Set)
 /************************************************************************/
 /* DxEngSelectBitmap                                                    */
 /************************************************************************/
-DWORD APIENTRY DxEngSelectBitmap(DWORD x1, DWORD x2)
+HBITMAP APIENTRY DxEngSelectBitmap(HDC hdc, HBITMAP hbmp)
 {
-    UNIMPLEMENTED;
-    return FALSE;
+    /* Call win32k directly */
+    return NtGdiSelectBitmap(hdc, hbmp);
 }
 
 /************************************************************************/

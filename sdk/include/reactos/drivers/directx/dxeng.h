@@ -107,7 +107,7 @@ DWORD NTAPI DxEngSpSpritesVisible(DWORD x1);
 HDC NTAPI DxEngGetDesktopDC(ULONG DcType, BOOL EmptyDC, BOOL ValidatehWnd);
 BOOLEAN NTAPI DxEngDeleteDC(HDC hdc, BOOL Force);
 BOOLEAN NTAPI DxEngSetDCState(HDC hDC, DWORD SetType, DWORD Set);
-DWORD NTAPI DxEngSelectBitmap(DWORD x1, DWORD x2);
+HBITMAP APIENTRY DxEngSelectBitmap(HDC hdc, HBITMAP hbmp);
 DWORD NTAPI DxEngSetBitmapOwner(DWORD x1, DWORD x2);
 DWORD NTAPI DxEngDeleteSurface(DWORD x1);
 DWORD NTAPI DxEngGetSurfaceData(DWORD x1, DWORD x2);
