@@ -767,6 +767,12 @@ NtYieldExecution(VOID)
         /* Acquire thread and PRCB lock */
         KiAcquireThreadLock(Thread);
         KiAcquirePrcbLock(Prcb);
+       /* Setup the wait information */
+          if(Thread->SwapBusy == TRUE)
+         {
+               KiSetThreadIdle(Thread);
+         }
+           
 
         /* Find a new thread to run if none was selected */
         if (!Prcb->NextThread) Prcb->NextThread = KiSelectReadyThread(1, Prcb);

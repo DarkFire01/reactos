@@ -215,6 +215,7 @@ KeSetEvent(IN PKEVENT Event,
         Thread = KeGetCurrentThread();
         Thread->WaitNext = TRUE;
         Thread->WaitIrql = OldIrql;
+        KiSetThreadIdle(Thread);
     }
 
     /* Return the previous State */

@@ -217,6 +217,16 @@ KiSetThreadSwapBusy(IN PKTHREAD Thread)
 //
 FORCEINLINE
 VOID
+KiSetThreadIdle(IN PKTHREAD Thread)
+{
+  UNREFERENCED_PARAMETER(Thread);
+}
+
+//
+// This routine protects against multiple CPU acquires, it's meaningless on UP.
+//
+FORCEINLINE
+VOID
 KiAcquirePrcbLock(IN PKPRCB Prcb)
 {
     UNREFERENCED_PARAMETER(Prcb);
@@ -426,6 +436,17 @@ KiSetThreadSwapBusy(IN PKTHREAD Thread)
 
     /* Set it ourselves */
     Thread->SwapBusy = TRUE;
+}
+
+FORCEINLINE
+VOID
+KiSetThreadIdle(IN PKTHREAD Thread)
+{
+    /* Make sure nobody already set it */
+    ASSERT(Thread->SwapBusy == TRUE);
+
+    /* Set it ourselves */
+    Thread->SwapBusy = FALSE;
 }
 
 //
@@ -1248,8 +1269,11 @@ KxSetTimerForThreadWait(IN PKTIMER Timer,
     Thread->WaitListEntry.Flink = NULL;                                     \
     Swappable = KiCheckThreadStackSwap(Thread, WaitMode);                   \
                                                                             \
+                                                                            \
     /* Set the wait time */                                                 \
     Thread->WaitTime = KeTickCount.LowPart;
+
+                                             
 
 //
 // Unwaits a Thread

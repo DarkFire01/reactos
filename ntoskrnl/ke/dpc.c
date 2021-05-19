@@ -479,6 +479,11 @@ KiQuantumEnd(VOID)
     KiAcquireThreadLock(Thread);
     KiAcquirePrcbLock(Prcb);
 
+     if(Thread->SwapBusy == TRUE)
+     {
+        KiSetThreadIdle(Thread);
+     }
+
     /* Check if Quantum expired */
     if (Thread->Quantum <= 0)
     {

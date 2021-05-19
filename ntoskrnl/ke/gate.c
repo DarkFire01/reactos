@@ -89,6 +89,11 @@ KeWaitForGate(IN PKGATE Gate,
             GateWaitBlock->Object = (PVOID)Gate;
             GateWaitBlock->Thread = Thread;
 
+            if(Thread->SwapBusy == TRUE)
+            {
+               KiSetThreadIdle(Thread);
+            }
+
             /* Set the Thread Wait Data */
             Thread->WaitMode = WaitMode;
             Thread->WaitReason = WaitReason;

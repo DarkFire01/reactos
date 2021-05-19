@@ -98,6 +98,7 @@ KiUnwaitThread(IN PKTHREAD Thread,
     Thread->AdjustIncrement = (SCHAR)Increment;
     Thread->AdjustReason = AdjustUnwait;
 
+    KiSetThreadIdle(Thread);
     /* Reschedule the Thread */
     KiReadyThread(Thread);
 }
@@ -232,13 +233,10 @@ KiExitDispatcher(IN KIRQL OldIrql)
     NextThread = Prcb->NextThread;
     Thread = Prcb->CurrentThread;
 
-    /* Set current thread's swap busy to true */
-    KiSetThreadSwapBusy(Thread);
-
     /* Switch threads in PRCB */
     Prcb->NextThread = NULL;
     Prcb->CurrentThread = NextThread;
-
+    
     /* Set thread to running */
     NextThread->State = Running;
 
@@ -316,6 +314,10 @@ KeDelayExecutionThread(IN KPROCESSOR_MODE WaitMode,
 
     /* Check if the lock is already held */
     if (!Thread->WaitNext) goto WaitStart;
+     if(Thread->SwapBusy == TRUE)
+     {
+        KiSetThreadIdle(Thread);
+     }
 
     /*  Otherwise, we already have the lock, so initialize the wait */
     Thread->WaitNext = FALSE;
@@ -522,6 +524,11 @@ KeWaitForSingleObject(IN PVOID Object,
             if (Thread->Queue) KiActivateWaiterQueue(Thread->Queue);
 
             /* Setup the wait information */
+             if(Thread->SwapBusy == TRUE)
+            {
+                  KiSetThreadIdle(Thread);
+            }
+           
             Thread->State = Waiting;
 
             /* Add the thread to the wait list */
@@ -817,8 +824,13 @@ KeWaitForMultipleObjects(IN ULONG Count,
             if (Thread->Queue) KiActivateWaiterQueue(Thread->Queue);
 
             /* Setup the wait information */
+            if(Thread->SwapBusy == TRUE)
+            {
+                  KiSetThreadIdle(Thread);
+            }
+           
             Thread->State = Waiting;
-
+            
             /* Add the thread to the wait list */
             KiAddThreadToWaitList(Thread, Swappable);
 

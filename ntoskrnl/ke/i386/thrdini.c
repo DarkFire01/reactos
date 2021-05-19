@@ -500,6 +500,9 @@ KiDispatchInterrupt(VOID)
         /* Set new thread data */
         Prcb->NextThread = NULL;
         Prcb->CurrentThread = NewThread;
+        
+        /* Put PRCB into spin lock */
+        KiAcquirePrcbLock(Prcb);
 
         /* The thread is now running */
         NewThread->State = Running;

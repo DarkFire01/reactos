@@ -2410,10 +2410,9 @@ MiProtectVirtualMemory(IN PEPROCESS Process,
                     MiDecrementShareCount(Pfn1, PFN_FROM_PTE(&PteContents));
                     // FIXME: remove the page from the WS
                     MI_WRITE_INVALID_PTE(PointerPte, PteContents);
-#ifdef CONFIG_SMP
+                    #ifdef CONFIG_SMP 
                     // FIXME: Should invalidate entry in every CPU TLB
-                    ASSERT(FALSE);
-#endif
+                    #endif
                     KeInvalidateTlbEntry(MiPteToAddress(PointerPte));
 
                     /* We are done for this PTE */

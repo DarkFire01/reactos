@@ -19,7 +19,9 @@
 #include <debug.h>
 
 #ifndef _M_AMD64
-#define APIC_LAZY_IRQL
+#ifndef CONFIG_SMP
+//#define APIC_LAZY_IRQL
+#endif
 #endif
 
 /* GLOBALS ********************************************************************/

@@ -507,7 +507,7 @@ KeSetPriorityAndQuantumProcess(IN PKPROCESS Process,
     }
 
     /* Release Dispatcher Database */
-    KiReleaseDispatcherLockFromSynchLevel();
+    //KiReleaseDispatcherLockFromSynchLevel();
 
     /* Release the process lock */
     KiReleaseProcessLockFromSynchLevel(&ProcessLock);

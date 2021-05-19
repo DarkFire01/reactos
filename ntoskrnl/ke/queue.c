@@ -298,6 +298,11 @@ KeRemoveQueue(IN PKQUEUE Queue,
         Queue->CurrentCount--;
     }
 
+    if(Thread->SwapBusy == TRUE)
+    {
+        KiSetThreadIdle(Thread);
+    }
+
     /* Loop until the queue is processed */
     while (TRUE)
     {
@@ -380,7 +385,6 @@ KeRemoveQueue(IN PKQUEUE Queue,
 
                 /* Add the thread to the wait list */
                 KiAddThreadToWaitList(Thread, Swappable);
-
                 /* Activate thread swap */
                 ASSERT(Thread->WaitIrql <= DISPATCH_LEVEL);
                 KiSetThreadSwapBusy(Thread);
