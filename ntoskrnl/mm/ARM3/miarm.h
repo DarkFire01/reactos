@@ -210,6 +210,7 @@ extern const ULONG MmProtectToValue[32];
 #endif
 
 //
+<<<<<<< HEAD
 // Returns the color of a page
 //
 #define MI_GET_PAGE_COLOR(x)                ((x) & MmSecondaryColorMask)
@@ -220,6 +221,8 @@ extern const ULONG MmProtectToValue[32];
 #define MM_NOIRQL (KIRQL)0xFFFFFFFF
 
 //
+=======
+>>>>>>> cceb453ec2c ([NTOS:MM] Allow mapping pages in hyperspace at high IRQL)
 // Prototype PTEs that don't yet have a pagefile association
 //
 #ifdef _WIN64
