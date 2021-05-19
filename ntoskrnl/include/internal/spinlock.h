@@ -10,8 +10,19 @@ VOID
 NTAPI
 Kii386SpinOnSpinLock(PKSPIN_LOCK SpinLock, ULONG Flags);
 
-#ifndef CONFIG_SMP
+/* FIXME: Quick hack to get SMP x64 to build */
+#ifdef _M_AMD64
+#undef KeGetCurrentThread
+#define KeGetCurrentThread GetCurrentThread
+FORCEINLINE
+PKTHREAD
+GetCurrentThread(VOID)
+{
+    return (struct _KTHREAD *)__readgsqword(0x188);
+}
+#endif
 
+#ifndef CONFIG_SMP
 //
 // Spinlock Acquire at IRQL >= DISPATCH_LEVEL
 //

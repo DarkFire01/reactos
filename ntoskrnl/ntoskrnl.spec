@@ -722,7 +722,7 @@
 @ stdcall -arch=i386 Kei386EoiHelper()
 @ cdecl -arch=x86_64 -private KfRaiseIrql(long) KxRaiseIrql
 @ fastcall -arch=i386 KiEoiHelper(ptr) #ReactOS-Specific
-@ fastcall -arch=i386,arm KiAcquireSpinLock(ptr)
+@ fastcall -arch=i386,x86_64,arm KiAcquireSpinLock(ptr)
 @ extern KiBugCheckData
 @ stdcall KiCheckForKernelApcDelivery()
 @ fastcall -arch=i386 KiCheckForSListAddress(ptr)
@@ -732,7 +732,7 @@
 @ stdcall -arch=i386 KiDispatchInterrupt()
 @ extern -arch=i386,arm KiEnableTimerWatchdog
 @ stdcall -arch=i386,arm KiIpiServiceRoutine(ptr ptr)
-@ fastcall -arch=i386,arm KiReleaseSpinLock(ptr)
+@ fastcall -arch=i386,arm,x86_64 KiReleaseSpinLock(ptr)
 @ cdecl -arch=i386,arm KiUnexpectedInterrupt()
 @ stdcall -arch=i386 Kii386SpinOnSpinLock(ptr long)
 @ stdcall LdrAccessResource(ptr ptr ptr ptr)

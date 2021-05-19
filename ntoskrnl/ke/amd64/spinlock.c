@@ -180,6 +180,7 @@ KeTryToAcquireQueuedSpinLockRaiseToSynch(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
 #else
     UNIMPLEMENTED;
     ASSERT(FALSE);
+    return FALSE;
 #endif
 }
 
@@ -203,6 +204,7 @@ KeTryToAcquireQueuedSpinLock(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
 #else
     UNIMPLEMENTED;
     ASSERT(FALSE);
+    return FALSE;
 #endif
 }
 

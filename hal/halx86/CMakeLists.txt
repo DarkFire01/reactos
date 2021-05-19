@@ -45,7 +45,8 @@ include(generic.cmake)
 include(acpi.cmake)
 include(apic.cmake)
 include(up.cmake)
-
+include(halmacpi.cmake)
+include(smp.cmake)
 if(ARCH STREQUAL "i386")
     include(pcidata.cmake)
     include(legacy.cmake)
@@ -64,7 +65,7 @@ if(ARCH STREQUAL "i386")
     add_hal(halxbox SOURCES xbox/halxbox.rc COMPONENTS xbox up)
     add_hal(halpc98 SOURCES pc98/halpc98.rc COMPONENTS pc98 up)
 
-    #add_hal(halmacpi SOURCES acpi/halacpi.rc COMPONENTS generic acpi smp pic)
+    add_hal(halmacpi SOURCES smp/halmacpi.rc COMPONENTS halmacpi smp)
 
 elseif(ARCH STREQUAL "amd64")
 
@@ -72,7 +73,7 @@ elseif(ARCH STREQUAL "amd64")
         amd64/x86bios.c)
 
     add_hal(hal SOURCES ${HAL_SOURCE} COMPONENTS generic acpi up apic)
-    #add_hal(halmacpi SOURCES acpi/halacpi.rc COMPONENTS generic acpi smp pic)
+    add_hal(halmacpi SOURCES ${HAL_SOURCE} smp/halmacpi.rc COMPONENTS halmacpi smp)
     target_link_libraries(hal fast486)
-
+    target_link_libraries(halmacpi fast486)
 endif()

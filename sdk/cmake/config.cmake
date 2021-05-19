@@ -97,9 +97,6 @@ else()
     set(_WINKD_ FALSE CACHE BOOL "Whether to compile with the KD protocol.")
 endif()
 
-cmake_dependent_option(BUILD_MP "Whether to build the multiprocessor versions of NTOSKRNL and HAL." ON
-                       "ARCH STREQUAL i386" OFF)
-
 set(GENERATE_DEPENDENCY_GRAPH FALSE CACHE BOOL
 "Whether to create a GraphML dependency graph of DLLs.")
 

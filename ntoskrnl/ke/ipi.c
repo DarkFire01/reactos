@@ -170,6 +170,7 @@ KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame,
 #ifdef _M_ARM
         DbgBreakPoint();
 #else
+        #if 0
         (void)InterlockedDecrementUL(&Prcb->SignalDone->CurrentPacket[1]);
         if (InterlockedCompareExchangeUL(&Prcb->SignalDone->CurrentPacket[2], 0, 0))
         {
@@ -182,6 +183,7 @@ KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame,
             while (0 != InterlockedCompareExchangeUL(&Prcb->SignalDone->TargetSet, 0, 0));
         }
         (void)InterlockedExchangePointer((PVOID*)&Prcb->SignalDone, NULL);
+        #endif
 #endif // _M_ARM
     }
 #endif
