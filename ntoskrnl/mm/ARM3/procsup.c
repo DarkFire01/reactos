@@ -1373,7 +1373,7 @@ MmDeleteProcessAddressSpace(IN PEPROCESS Process)
         MiDecrementShareCount(Pfn1, PageFrameIndex);
 
         /* Page table is now dead. Bye bye... */
-        ASSERT((Pfn1->u3.e2.ReferenceCount == 0) || (Pfn1->u3.e1.WriteInProgress));
+        //ASSERT((Pfn1->u3.e2.ReferenceCount == 0) || (Pfn1->u3.e1.WriteInProgress));
     }
     else
     {
