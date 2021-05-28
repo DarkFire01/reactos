@@ -241,7 +241,7 @@ MmDeleteVirtualMapping(PEPROCESS Process, PVOID Address,
         if (MiDecrementPageTableReferences(Address) == 0)
         {
             KIRQL OldIrql = MiAcquirePfnLock();
-            MiDeletePte(MiAddressToPte(PointerPte), PointerPte, Process, NULL);
+            MiDeletePde(MiAddressToPde(Address), Process);
             MiReleasePfnLock(OldIrql);
         }
 
