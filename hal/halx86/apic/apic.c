@@ -368,8 +368,7 @@ HalpAllocateSystemInterrupt(
 
 ULONG
 NTAPI
-HalpGetSystemInterruptVector_Apic(
-    _In_ ULONG BusNumber,
+HalpGetRootInterruptVector(
     _In_ ULONG BusInterruptLevel,
     _In_ ULONG BusInterruptVector,
     _Out_ PKIRQL OutIrql,
