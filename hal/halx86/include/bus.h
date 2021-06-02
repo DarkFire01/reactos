@@ -410,6 +410,15 @@ HalpGetSystemInterruptVector_Acpi(
 
 ULONG
 NTAPI
+HalpGetSystemInterruptVector_Apic(
+    _In_ ULONG BusNumber,
+    _In_ ULONG BusInterruptLevel,
+    _In_ ULONG BusInterruptVector,
+    _Out_ PKIRQL Irql,
+    _Out_ PKAFFINITY Affinity);
+
+ULONG
+NTAPI
 HalpGetCmosData(
     _In_ ULONG BusNumber,
     _In_ ULONG SlotNumber,

@@ -254,11 +254,19 @@ HalGetInterruptVector(IN INTERFACE_TYPE InterfaceType,
                       OUT PKAFFINITY Affinity)
 {
     /* Call the system bus translator */
+#ifdef _M_AMD64
+    return HalpGetSystemInterruptVector_Apic(BusNumber,
+                                             BusInterruptLevel,
+                                             BusInterruptVector,
+                                             Irql,
+                                             Affinity);
+#else
     return HalpGetSystemInterruptVector_Acpi(BusNumber,
                                              BusInterruptLevel,
                                              BusInterruptVector,
                                              Irql,
                                              Affinity);
+#endif
 }
 
 /*
