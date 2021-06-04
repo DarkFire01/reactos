@@ -12,6 +12,7 @@
 /* INCLUDES *******************************************************************/
 
 #include <hal.h>
+#include "apicp.h"
 #define NDEBUG
 #include <debug.h>
 
@@ -122,6 +123,8 @@ HalpInitializeClock(VOID)
     KeSetTimeIncrement(RtcClockRateToIncrement(RtcMaximumClockRate),
                        RtcClockRateToIncrement(RtcMinimumClockRate));
 
+    /* Enable the timer interrupt */
+    //HalEnableSystemInterrupt(APIC_CLOCK_VECTOR, CLOCK_LEVEL, Latched);
 
     DPRINT1("Clock initialized\n");
 }
