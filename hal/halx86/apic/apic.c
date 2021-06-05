@@ -94,6 +94,7 @@ ULONG
 IOApicRead(UCHAR Register)
 {
     /* Select the register, then do the read */
+    ASSERT(Register <= 0x3F);
     *(volatile UCHAR *)(IOAPIC_BASE + IOAPIC_IOREGSEL) = Register;
     return *(volatile ULONG *)(IOAPIC_BASE + IOAPIC_IOWIN);
 }
@@ -103,7 +104,8 @@ VOID
 IOApicWrite(UCHAR Register, ULONG Value)
 {
     /* Select the register, then do the write */
-    *(volatile UCHAR *)(IOAPIC_BASE + IOAPIC_IOREGSEL) = Register;
+    ASSERT(Register <= 0x3F);
+    *(volatile ULONG *)(IOAPIC_BASE + IOAPIC_IOREGSEL) = Register;
     *(volatile ULONG *)(IOAPIC_BASE + IOAPIC_IOWIN) = Value;
 }
 
@@ -113,6 +115,7 @@ ApicWriteIORedirectionEntry(
     UCHAR Index,
     IOAPIC_REDIRECTION_REGISTER ReDirReg)
 {
+    ASSERT(Index < 24);
     IOApicWrite(IOAPIC_REDTBL + 2 * Index, ReDirReg.Long0);
     IOApicWrite(IOAPIC_REDTBL + 2 * Index + 1, ReDirReg.Long1);
 }
@@ -124,6 +127,7 @@ ApicReadIORedirectionEntry(
 {
     IOAPIC_REDIRECTION_REGISTER ReDirReg;
 
+    ASSERT(Index < 24);
     ReDirReg.Long0 = IOApicRead(IOAPIC_REDTBL + 2 * Index);
     ReDirReg.Long1 = IOApicRead(IOAPIC_REDTBL + 2 * Index + 1);
 
@@ -372,8 +376,7 @@ HalpAllocateSystemInterrupt(
     ReDirReg.Destination = 0;
 
     /* Initialize entry */
-    IOApicWrite(IOAPIC_REDTBL + 2 * Irq, ReDirReg.Long0);
-    IOApicWrite(IOAPIC_REDTBL + 2 * Irq + 1, ReDirReg.Long1);
+    ApicWriteIORedirectionEntry(Irq, ReDirReg);
 
     return Vector;
 }
@@ -437,7 +440,7 @@ ApicInitializeIOApic(VOID)
     ReDirReg.TriggerMode = APIC_TGM_Edge;
     ReDirReg.Mask = 0;
     ReDirReg.Destination = ApicRead(APIC_ID);
-    IOApicWrite(IOAPIC_REDTBL + 2 * APIC_CLOCK_INDEX, ReDirReg.Long0);
+    ApicWriteIORedirectionEntry(APIC_CLOCK_INDEX, ReDirReg);
 }
 
 VOID
@@ -669,7 +672,7 @@ HalDisableSystemInterrupt(
     ReDirReg.Mask = 1;
 
     /* Write back lower dword */
-    IOApicWrite(IOAPIC_REDTBL + 2 * Irql, ReDirReg.Long0);
+    IOApicWrite(IOAPIC_REDTBL + 2 * Index, ReDirReg.Long0);
 }
 
 #ifndef _M_AMD64
