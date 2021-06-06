@@ -167,19 +167,27 @@ BOOLEAN
 KeTryToAcquireQueuedSpinLockRaiseToSynch(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
                                          IN PKIRQL OldIrql)
 {
-#ifndef CONFIG_SMP
-    /* Simply raise to dispatch */
-    KeRaiseIrql(DISPATCH_LEVEL, OldIrql);
+    /* Raise to synch level */
+    KeRaiseIrql(SYNCH_LEVEL, OldIrql);
 
+#ifdef CONFIG_SMP
+    // HACK
+    if (InterlockedBitTestAndSet64((PLONG64)KeGetCurrentPrcb()->LockQueue[LockNumber].Lock, 0) == 0)
+    {
+        return TRUE;
+    }
+    else
+    {
+        KeLowerIrql(*OldIrql);
+        return FALSE;
+    }
+#else
     /* Add an explicit memory barrier to prevent the compiler from reordering
        memory accesses across the borders of spinlocks */
     KeMemoryBarrierWithoutFence();
 
     /* Always return true on UP Machines */
     return TRUE;
-#else
-    UNIMPLEMENTED;
-    ASSERT(FALSE);
 #endif
 }
 
@@ -190,9 +198,21 @@ LOGICAL
 KeTryToAcquireQueuedSpinLock(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
                              OUT PKIRQL OldIrql)
 {
-#ifndef CONFIG_SMP
-    /* Simply raise to dispatch */
+    /* Raise to dispatch level */
     KeRaiseIrql(DISPATCH_LEVEL, OldIrql);
+
+#ifdef CONFIG_SMP
+    // HACK
+    if (InterlockedBitTestAndSet64((PLONG64)KeGetCurrentPrcb()->LockQueue[LockNumber].Lock, 0) == 0)
+    {
+        return TRUE;
+    }
+    else
+    {
+        KeLowerIrql(*OldIrql);
+        return FALSE;
+    }
+#else
 
     /* Add an explicit memory barrier to prevent the compiler from reordering
        memory accesses across the borders of spinlocks */
@@ -200,9 +220,6 @@ KeTryToAcquireQueuedSpinLock(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
 
     /* Always return true on UP Machines */
     return TRUE;
-#else
-    UNIMPLEMENTED;
-    ASSERT(FALSE);
 #endif
 }
 
