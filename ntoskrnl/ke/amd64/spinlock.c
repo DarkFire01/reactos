@@ -172,15 +172,7 @@ KeTryToAcquireQueuedSpinLockRaiseToSynch(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
 
 #ifdef CONFIG_SMP
     // HACK
-    if (InterlockedBitTestAndSet64((PLONG64)KeGetCurrentPrcb()->LockQueue[LockNumber].Lock, 0) == 0)
-    {
-        return TRUE;
-    }
-    else
-    {
-        KeLowerIrql(*OldIrql);
-        return FALSE;
-    }
+    return KeTryToAcquireSpinLockAtDpcLevel(KeGetCurrentPrcb()->LockQueue[LockNumber].Lock);
 #else
     /* Add an explicit memory barrier to prevent the compiler from reordering
        memory accesses across the borders of spinlocks */
@@ -203,15 +195,7 @@ KeTryToAcquireQueuedSpinLock(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
 
 #ifdef CONFIG_SMP
     // HACK
-    if (InterlockedBitTestAndSet64((PLONG64)KeGetCurrentPrcb()->LockQueue[LockNumber].Lock, 0) == 0)
-    {
-        return TRUE;
-    }
-    else
-    {
-        KeLowerIrql(*OldIrql);
-        return FALSE;
-    }
+    return KeTryToAcquireSpinLockAtDpcLevel(KeGetCurrentPrcb()->LockQueue[LockNumber].Lock);
 #else
 
     /* Add an explicit memory barrier to prevent the compiler from reordering

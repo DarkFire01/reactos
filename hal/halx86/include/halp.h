@@ -568,8 +568,6 @@ HalInitializeBios(
 #define HalBeginSystemInterrupt(Irql, Vector, OldIrql) ((*(OldIrql) = PASSIVE_LEVEL), TRUE)
 #ifndef CONFIG_SMP
 /* On UP builds, spinlocks don't exist at IRQL >= DISPATCH */
-#define KiAcquireSpinLock(SpinLock)
-#define KiReleaseSpinLock(SpinLock)
 #define KfAcquireSpinLock(SpinLock) KfRaiseIrql(DISPATCH_LEVEL);
 #define KfReleaseSpinLock(SpinLock, OldIrql) KeLowerIrql(OldIrql);
 #endif // !CONFIG_SMP

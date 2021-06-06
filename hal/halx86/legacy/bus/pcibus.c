@@ -119,11 +119,9 @@ VOID
 NTAPI
 HalpPCISynchronizeType1(IN PBUS_HANDLER BusHandler,
                         IN PCI_SLOT_NUMBER Slot,
-                        IN PKIRQL Irql,
-                        IN PPCI_TYPE1_CFG_BITS PciCfg1)
+                        OUT PKIRQL OldIrql,
+                        OUT PPCI_TYPE1_CFG_BITS PciCfg1)
 {
-    KIRQL OldIrql;
-
     /* Setup the PCI Configuration Register */
     PciCfg1->u.AsULONG = 0;
     PciCfg1->u.bits.BusNumber = BusHandler->BusNumber;
@@ -132,8 +130,7 @@ HalpPCISynchronizeType1(IN PBUS_HANDLER BusHandler,
     PciCfg1->u.bits.Enable = TRUE;
 
     /* Acquire the lock */
-    KeAcquireSpinLock(&HalpPCIConfigLock, &OldIrql);
-    ASSERT(OldIrql == PASSIVE_LEVEL);
+    KeAcquireSpinLock(&HalpPCIConfigLock, OldIrql);
 }
 
 VOID

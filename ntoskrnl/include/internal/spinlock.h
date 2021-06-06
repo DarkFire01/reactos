@@ -97,7 +97,9 @@ KxReleaseSpinLock(IN PKSPIN_LOCK SpinLock)
     }
 #endif
     /* Clear the lock */
-    InterlockedAnd((PLONG)SpinLock, 0);
+    //InterlockedAnd((PLONG)SpinLock, 0);
+    //WritePointerRelease((PVOID*)SpinLock, 0);
+    *(volatile PVOID*)SpinLock = 0;
 }
 
 #endif
