@@ -34,6 +34,10 @@ add_executable(ntoskrnl
     ${CMAKE_CURRENT_BINARY_DIR}/ntoskrnl.def)
 set_module_type(ntoskrnl kernel)
 
+if(ARCH STREQUAL "amd64")
+    target_compile_definitions(ntoskrnl PRIVATE CONFIG_SMP)
+endif()
+
 source_group(TREE ${REACTOS_SOURCE_DIR}/ntoskrnl PREFIX "Source Files" FILES ${NTOSKRNL_SOURCE})
 
 if(GDB AND NOT CLANG)
