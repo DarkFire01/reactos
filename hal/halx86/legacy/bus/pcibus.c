@@ -122,6 +122,8 @@ HalpPCISynchronizeType1(IN PBUS_HANDLER BusHandler,
                         IN PKIRQL Irql,
                         IN PPCI_TYPE1_CFG_BITS PciCfg1)
 {
+    KIRQL OldIrql;
+
     /* Setup the PCI Configuration Register */
     PciCfg1->u.AsULONG = 0;
     PciCfg1->u.bits.BusNumber = BusHandler->BusNumber;
@@ -130,8 +132,8 @@ HalpPCISynchronizeType1(IN PBUS_HANDLER BusHandler,
     PciCfg1->u.bits.Enable = TRUE;
 
     /* Acquire the lock */
-    KeRaiseIrql(HIGH_LEVEL, Irql);
-    KiAcquireSpinLock(&HalpPCIConfigLock);
+    KeAcquireSpinLock(&HalpPCIConfigLock, &OldIrql);
+    ASSERT(OldIrql == PASSIVE_LEVEL);
 }
 
 VOID
@@ -147,8 +149,7 @@ HalpPCIReleaseSynchronzationType1(IN PBUS_HANDLER BusHandler,
                      PciCfg1.u.AsULONG);
 
     /* Release the lock */
-    KiReleaseSpinLock(&HalpPCIConfigLock);
-    KeLowerIrql(Irql);
+    KeReleaseSpinLock(&HalpPCIConfigLock, Irql);
 }
 
 TYPE1_READ(HalpPCIReadUcharType1, UCHAR)
@@ -169,6 +170,7 @@ HalpPCISynchronizeType2(IN PBUS_HANDLER BusHandler,
 {
     PCI_TYPE2_CSE_BITS PciCfg2Cse;
     PPCIPBUSDATA BusData = (PPCIPBUSDATA)BusHandler->BusData;
+    KIRQL OldIrql;
 
     /* Setup the configuration register */
     PciCfg->u.AsUSHORT = 0;
@@ -176,8 +178,8 @@ HalpPCISynchronizeType2(IN PBUS_HANDLER BusHandler,
     PciCfg->u.bits.AddressBase = (USHORT)BusData->Config.Type2.Base;
 
     /* Acquire the lock */
-    KeRaiseIrql(HIGH_LEVEL, Irql);
-    KiAcquireSpinLock(&HalpPCIConfigLock);
+    KeAcquireSpinLock(&HalpPCIConfigLock, &OldIrql);
+    ASSERT(OldIrql == PASSIVE_LEVEL);
 
     /* Setup the CSE Register */
     PciCfg2Cse.u.AsUCHAR = 0;
@@ -205,8 +207,7 @@ HalpPCIReleaseSynchronizationType2(IN PBUS_HANDLER BusHandler,
     WRITE_PORT_UCHAR(BusData->Config.Type2.Forward, 0);
 
     /* Release the lock */
-    KiReleaseSpinLock(&HalpPCIConfigLock);
-    KeLowerIrql(Irql);
+    KeReleaseSpinLock(&HalpPCIConfigLock, Irql);
 }
 
 TYPE2_READ(HalpPCIReadUcharType2, UCHAR)

@@ -72,8 +72,11 @@ elseif(ARCH STREQUAL "amd64")
     list(APPEND HAL_SOURCE
         amd64/x86bios.c)
 
+    add_definitions(-DCONFIG_SMP)
     add_hal(hal SOURCES ${HAL_SOURCE} COMPONENTS generic acpi up apic)
     #add_hal(halmacpi SOURCES acpi/halacpi.rc COMPONENTS generic acpi smp pic)
     target_link_libraries(hal fast486)
+
+    target_compile_definitions(hal PRIVATE CONFIG_SMP)
 
 endif()
