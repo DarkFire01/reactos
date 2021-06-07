@@ -184,6 +184,9 @@ KiSwapContextResume(
                      0);
     }
 
+    /* Old thread os no longer busy */
+    OldThread->SwapBusy = 0;
+
     /* Kernel APCs may be pending */
     if (NewThread->ApcState.KernelApcPending)
     {
