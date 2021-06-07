@@ -98,7 +98,7 @@ KiUnwaitThread(IN PKTHREAD Thread,
     Thread->AdjustIncrement = (SCHAR)Increment;
     Thread->AdjustReason = AdjustUnwait;
 
-    KiSetThreadIdle(Thread);
+    //KiSetThreadIdle(Thread);
     /* Reschedule the Thread */
     KiReadyThread(Thread);
 }
