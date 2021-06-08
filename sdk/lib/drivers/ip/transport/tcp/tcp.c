@@ -147,17 +147,12 @@ NTSTATUS TCPSocket( PCONNECTION_ENDPOINT Connection,
     return Status;
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 NTSTATUS TCPClose( PCONNECTION_ENDPOINT Connection )
 {
-    KIRQL OldIrql;
-
-    LockObject(Connection, &OldIrql);
-
     FlushAllQueues(Connection, STATUS_CANCELLED);
 
     LibTCPClose(Connection, FALSE, TRUE);
-
-    UnlockObject(Connection, OldIrql);
 
     DereferenceObject(Connection);
 
@@ -383,6 +378,7 @@ NTSTATUS TCPConnect
     return Status;
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 NTSTATUS TCPDisconnect
 ( PCONNECTION_ENDPOINT Connection,
   UINT Flags,
@@ -407,10 +403,12 @@ NTSTATUS TCPDisconnect
         {
             if (IsListEmpty(&Connection->SendRequest))
             {
+                UnlockObject(Connection, OldIrql);
                 Status = TCPTranslateError(LibTCPShutdown(Connection, 0, 1));
             }
             else if (Timeout && Timeout->QuadPart == 0)
             {
+                UnlockObject(Connection, OldIrql);
                 FlushSendQueue(Connection, STATUS_FILE_CLOSED, FALSE);
                 TCPTranslateError(LibTCPShutdown(Connection, 0, 1));
                 Status = STATUS_TIMEOUT;
@@ -432,7 +430,8 @@ NTSTATUS TCPDisconnect
                 if (!Bucket)
                 {
                     UnlockObject(Connection, OldIrql);
-                    return STATUS_NO_MEMORY;
+                    Status = STATUS_NO_MEMORY;
+                    goto Exit;
                 }
 
                 Bucket->Request.RequestNotifyObject = (PVOID)Complete;
@@ -448,6 +447,7 @@ NTSTATUS TCPDisconnect
                 KeSetTimer(&Connection->DisconnectTimer, ActualTimeout, &Connection->DisconnectDpc);
 
                 Status = STATUS_PENDING;
+                UnlockObject(Connection, OldIrql);
             }
         }
 
@@ -462,10 +462,11 @@ NTSTATUS TCPDisconnect
     else
     {
         /* We already got closed by the other side so just return success */
+        UnlockObject(Connection, OldIrql);
         Status = STATUS_SUCCESS;
     }
 
-    UnlockObject(Connection, OldIrql);
+Exit:
 
     TI_DbgPrint(DEBUG_TCP,("[IP, TCPDisconnect] Leaving. Status = 0x%x\n", Status));
 
@@ -521,6 +522,7 @@ NTSTATUS TCPReceiveData
     return Status;
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 NTSTATUS TCPSendData
 ( PCONNECTION_ENDPOINT Connection,
   PCHAR BufferData,
@@ -533,8 +535,6 @@ NTSTATUS TCPSendData
     NTSTATUS Status;
     PTDI_BUCKET Bucket;
     KIRQL OldIrql;
-
-    LockObject(Connection, &OldIrql);
 
     TI_DbgPrint(DEBUG_TCP,("[IP, TCPSendData] Called for %d bytes (on socket %x)\n",
                            SendLength, Connection->SocketContext));
@@ -558,19 +558,19 @@ NTSTATUS TCPSendData
         Bucket = ExAllocateFromNPagedLookasideList(&TdiBucketLookasideList);
         if (!Bucket)
         {
-            UnlockObject(Connection, OldIrql);
-            TI_DbgPrint(DEBUG_TCP,("[IP, TCPSendData] Failed to allocate bucket\n"));
+             TI_DbgPrint(DEBUG_TCP,("[IP, TCPSendData] Failed to allocate bucket\n"));
             return STATUS_NO_MEMORY;
         }
         
         Bucket->Request.RequestNotifyObject = Complete;
         Bucket->Request.RequestContext = Context;
-        
+
+        LockObject(Connection, &OldIrql);
         InsertTailList( &Connection->SendRequest, &Bucket->Entry );
+        UnlockObject(Connection, OldIrql);
+
         TI_DbgPrint(DEBUG_TCP,("[IP, TCPSendData] Queued write irp\n"));
     }
-
-    UnlockObject(Connection, OldIrql);
 
     TI_DbgPrint(DEBUG_TCP, ("[IP, TCPSendData] Leaving. Status = %x\n", Status));
 
@@ -598,6 +598,7 @@ VOID TCPFreePort(const UINT Port)
     DeallocatePort(&TCPPorts, Port);
 }
 
+_Requires_lock_held_(Connection->Lock)
 NTSTATUS TCPGetSockAddress
 ( PCONNECTION_ENDPOINT Connection,
   PTRANSPORT_ADDRESS Address,
@@ -606,13 +607,10 @@ NTSTATUS TCPGetSockAddress
     PTA_IP_ADDRESS AddressIP = (PTA_IP_ADDRESS)Address;
     struct ip_addr ipaddr;
     NTSTATUS Status;
-    KIRQL OldIrql;
     
     AddressIP->TAAddressCount = 1;
     AddressIP->Address[0].AddressLength = TDI_ADDRESS_LENGTH_IP;
     AddressIP->Address[0].AddressType = TDI_ADDRESS_TYPE_IP;
-
-    LockObject(Connection, &OldIrql);
 
     if (GetRemote)
     {
@@ -627,8 +625,6 @@ NTSTATUS TCPGetSockAddress
                                     &AddressIP->Address[0].Address[0].sin_port));
     }
 
-    UnlockObject(Connection, OldIrql);
-    
     AddressIP->Address[0].Address[0].in_addr = ipaddr.addr;
     
     RtlZeroMemory(&AddressIP->Address[0].Address[0].sin_zero,

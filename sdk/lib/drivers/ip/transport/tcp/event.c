@@ -18,6 +18,7 @@
 
 extern NPAGED_LOOKASIDE_LIST TdiBucketLookasideList;
 
+_Requires_lock_not_held_(Connection->Lock)
 static
 VOID
 BucketCompletionWorker(PVOID Context)
@@ -34,6 +35,7 @@ BucketCompletionWorker(PVOID Context)
     ExFreeToNPagedLookasideList(&TdiBucketLookasideList, Bucket);
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 VOID
 CompleteBucket(PCONNECTION_ENDPOINT Connection, PTDI_BUCKET Bucket, const BOOLEAN Synchronous)
 {
@@ -49,6 +51,7 @@ CompleteBucket(PCONNECTION_ENDPOINT Connection, PTDI_BUCKET Bucket, const BOOLEA
     }
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 VOID
 FlushReceiveQueue(PCONNECTION_ENDPOINT Connection, const NTSTATUS Status, const BOOLEAN interlocked)
 {
@@ -91,6 +94,7 @@ FlushReceiveQueue(PCONNECTION_ENDPOINT Connection, const NTSTATUS Status, const 
     DereferenceObject(Connection);
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 VOID
 FlushSendQueue(PCONNECTION_ENDPOINT Connection, const NTSTATUS Status, const BOOLEAN interlocked)
 {
@@ -133,6 +137,7 @@ FlushSendQueue(PCONNECTION_ENDPOINT Connection, const NTSTATUS Status, const BOO
     DereferenceObject(Connection);
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 VOID
 FlushShutdownQueue(PCONNECTION_ENDPOINT Connection, const NTSTATUS Status, const BOOLEAN interlocked)
 {
@@ -171,6 +176,7 @@ FlushShutdownQueue(PCONNECTION_ENDPOINT Connection, const NTSTATUS Status, const
     DereferenceObject(Connection);
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 VOID
 FlushConnectQueue(PCONNECTION_ENDPOINT Connection, const NTSTATUS Status)
 {
@@ -192,6 +198,7 @@ FlushConnectQueue(PCONNECTION_ENDPOINT Connection, const NTSTATUS Status)
     DereferenceObject(Connection);
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 VOID
 FlushListenQueue(PCONNECTION_ENDPOINT Connection, const NTSTATUS Status)
 {
@@ -214,6 +221,7 @@ FlushListenQueue(PCONNECTION_ENDPOINT Connection, const NTSTATUS Status)
     DereferenceObject(Connection);
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 VOID
 FlushAllQueues(PCONNECTION_ENDPOINT Connection, NTSTATUS Status)
 {    
@@ -243,6 +251,7 @@ FlushAllQueues(PCONNECTION_ENDPOINT Connection, NTSTATUS Status)
     DereferenceObject(Connection);
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 VOID
 TCPFinEventHandler(void *arg, const err_t err)
 {
@@ -292,7 +301,8 @@ TCPFinEventHandler(void *arg, const err_t err)
 
    UnlockObject(Connection, OldIrql);
 }
-    
+
+_Requires_lock_not_held_(Connection->Lock)
 VOID
 TCPAcceptEventHandler(void *arg, PTCP_PCB newpcb)
 {
@@ -355,6 +365,7 @@ TCPAcceptEventHandler(void *arg, PTCP_PCB newpcb)
     DereferenceObject(Connection);
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 VOID
 TCPSendEventHandler(void *arg, const u16_t space)
 {
@@ -433,6 +444,7 @@ TCPSendEventHandler(void *arg, const u16_t space)
     DereferenceObject(Connection);
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 VOID
 TCPRecvEventHandler(void *arg)
 {
@@ -475,6 +487,7 @@ TCPRecvEventHandler(void *arg)
     DereferenceObject(Connection);
 }
 
+_Requires_lock_not_held_(Connection->Lock)
 VOID
 TCPConnectEventHandler(void *arg, const err_t err)
 {

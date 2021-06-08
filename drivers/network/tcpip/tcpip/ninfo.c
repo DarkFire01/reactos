@@ -224,6 +224,9 @@ TDI_STATUS InfoTdiQueryGetConnectionTcpTable(PADDRESS_FILE AddrFile,
              AddrFile->Connection->SocketContext != NULL)
     {
         TA_IP_ADDRESS EndPoint;
+        KIRQL OldIrql;
+
+        LockObject(AddrFile->Connection, &OldIrql);
 
         Status = TCPGetSockAddress(AddrFile->Connection, (PTRANSPORT_ADDRESS)&EndPoint, FALSE);
         if (NT_SUCCESS(Status))
@@ -245,6 +248,8 @@ TDI_STATUS InfoTdiQueryGetConnectionTcpTable(PADDRESS_FILE AddrFile,
                 ASSERT(NT_SUCCESS(Status));
             }
         }
+
+        UnlockObject(AddrFile->Connection, OldIrql);
     }
 
     if (NT_SUCCESS(Status))
