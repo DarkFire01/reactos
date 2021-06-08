@@ -63,6 +63,12 @@ KxAcquireSpinLock(IN PKSPIN_LOCK SpinLock)
     /* Try to acquire the lock */
     while (InterlockedBitTestAndSet((PLONG)SpinLock, 0))
     {
+#if DBG
+        if (KeNumberProcessors == 1)
+        {
+            __debugbreak();
+        }
+#endif
 #if defined(_M_IX86) && DBG
         /* On x86 debug builds, we use a much slower but useful routine */
         Kii386SpinOnSpinLock(SpinLock, 5);
@@ -72,6 +78,7 @@ KxAcquireSpinLock(IN PKSPIN_LOCK SpinLock)
         {
                 /* Yield and keep looping */
                 YieldProcessor();
+                __debugbreak();
         }
 #endif
     }

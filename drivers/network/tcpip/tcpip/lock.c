@@ -9,6 +9,11 @@
 
 #include "precomp.h"
 
+DBG_SPINLOCK_ENTRY DbgSpinLockTable[DBG_TABLE_SIZE];
+ULONG64 DbgSpinLockAcquireCount;
+ULONG64 DbgSpinLockSpinCount;
+
+
 KIRQL TcpipGetCurrentIrql() { return KeGetCurrentIrql(); }
 
 VOID TcpipInitializeSpinLock( PKSPIN_LOCK SpinLock ) {

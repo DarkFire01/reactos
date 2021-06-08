@@ -7,6 +7,64 @@
 
 #pragma once
 
+#define DBG_TABLE_SIZE 10
+
+typedef struct _DBG_SPINLOCK_ENTRY
+{
+    PKSPIN_LOCK SpinLock;
+    PVOID LockThread;
+    PVOID LockCaller[5];
+} DBG_SPINLOCK_ENTRY;
+
+extern DBG_SPINLOCK_ENTRY DbgSpinLockTable[DBG_TABLE_SIZE];
+extern ULONG64 DbgSpinLockAcquireCount;
+
+NTSYSAPI
+USHORT
+NTAPI
+RtlCaptureStackBackTrace(
+    _In_ ULONG FramesToSkip,
+    _In_ ULONG FramesToCapture,
+    _Out_writes_to_(FramesToCapture, return) PVOID *BackTrace,
+    _Out_opt_ PULONG BackTraceHash);
+
+static
+void
+DbgLockObject(PKSPIN_LOCK SpinLock)
+{
+    ULONG i;
+    DbgSpinLockAcquireCount++;
+    if (*SpinLock != 0) __debugbreak();
+
+    for (i = 0; i < DBG_TABLE_SIZE; i++)
+    {
+        if (DbgSpinLockTable[i].SpinLock == NULL)
+        {
+            DbgSpinLockTable[i].SpinLock = SpinLock;
+            DbgSpinLockTable[i].LockThread = PsGetCurrentThread();
+            RtlCaptureStackBackTrace(1, 5, DbgSpinLockTable[i].LockCaller, NULL);
+            return;
+        }
+    }
+    __debugbreak();
+}
+
+static
+void
+DbgUnlockObject(PKSPIN_LOCK SpinLock)
+{
+    ULONG i;
+    for (i = 0; i < DBG_TABLE_SIZE; i++)
+    {
+        if (DbgSpinLockTable[i].SpinLock == SpinLock)
+        {
+            RtlZeroMemory(&DbgSpinLockTable[i], sizeof(DbgSpinLockTable[i]));
+            return;
+        }
+    }
+    __debugbreak();
+}
+
 /*
  * VOID ReferenceObject(
  *     PVOID Object)
@@ -33,6 +91,7 @@
  */
 #define LockObject(Object, Irql)                         \
 {                                                        \
+    DbgLockObject(&(Object)->Lock); \
     ReferenceObject(Object);                             \
     KeAcquireSpinLock(&((Object)->Lock), Irql);          \
     memcpy(&(Object)->OldIrql, Irql, sizeof(KIRQL));     \
@@ -43,6 +102,7 @@
  */
 #define LockObjectAtDpcLevel(Object)                     \
 {                                                        \
+    DbgLockObject(&(Object)->Lock); \
     ReferenceObject(Object);                             \
     KeAcquireSpinLockAtDpcLevel(&((Object)->Lock));      \
     (Object)->OldIrql = DISPATCH_LEVEL;                  \
@@ -55,6 +115,7 @@
 {                                                           \
     KeReleaseSpinLock(&((Object)->Lock), OldIrql);          \
     DereferenceObject(Object);                              \
+    DbgUnlockObject(&(Object)->Lock); \
 }
 
 /*
@@ -64,6 +125,7 @@
 {                                                           \
     KeReleaseSpinLockFromDpcLevel(&((Object)->Lock));       \
     DereferenceObject(Object);                              \
+    DbgUnlockObject(&(Object)->Lock); \
 }
 
 
