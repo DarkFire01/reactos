@@ -16,8 +16,3 @@ NTAPI
 PXHCI_ControllerWorkTest(IN PXHCI_EXTENSION XhciExtension,
                          IN PXHCI_HC_RESOURCES HcResourcesVA,
                          IN PVOID resourcesStartPA);
-
-MPSTATUS
-NTAPI
-XHCI_SendCommand (IN XHCI_TRB CommandTRB,
-                  IN PXHCI_EXTENSION XhciExtension);
