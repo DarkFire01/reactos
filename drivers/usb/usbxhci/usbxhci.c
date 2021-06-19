@@ -4,8 +4,8 @@
  * PURPOSE:         main functions of xHCI
  * PROGRAMMER:      Rama Teja Gampa <ramateja.g@gmail.com>
 */
-#include "usbxhci.h"
-#define NDEBUG
+#include "usbxhcip.h"
+//#define NDEBUG
 #include <debug.h>
 #define NDEBUG_XHCI_TRACE
 #include "dbg_xhci.h"
