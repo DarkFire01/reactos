@@ -33,7 +33,6 @@ PXHCI_ControllerWorkTest(IN PXHCI_EXTENSION XhciExtension,
     XHCI_EVENT_RING_TABLE_BASE_ADDR erstba;
     // place a no op command trb on the command ring
     XHCI_TRB trb;
-    int i = 0;
     XHCI_TRB eventtrb;
     DPRINT("XHCI_ControllerWorkTest: Initiated.\n");
     trb.CommandTRB.NoOperation.RsvdZ1 = 0;
@@ -43,14 +42,9 @@ PXHCI_ControllerWorkTest(IN PXHCI_EXTENSION XhciExtension,
     trb.CommandTRB.NoOperation.RsvdZ4 = 0;
     trb.CommandTRB.NoOperation.TRBType = NO_OP_COMMAND;
     trb.CommandTRB.NoOperation.RsvdZ5 = 0;
-    for(i=0; i<256; i++){
-        XHCI_SendCommand(trb,XhciExtension);
-    
-        XHCI_ProcessEvent(XhciExtension);
-    }
     XHCI_SendCommand(trb,XhciExtension);
-    
     XHCI_ProcessEvent(XhciExtension);
+
     HcResourcesVA -> CommandRing.firstSeg.XhciTrb[0] = trb;
     // ring the commmand ring door bell register
     DoorBellRegisterBase = XhciExtension->DoorBellRegisterBase;
@@ -91,8 +85,8 @@ PXHCI_ControllerWorkTest(IN PXHCI_EXTENSION XhciExtension,
     DPRINT("PXHCI_ControllerWorkTest: CommandRingAddr     - %x\n", CommandRingAddr);
     CommandRingControlRegister.AsULONGLONG = READ_REGISTER_ULONG(XhciExtension->OperationalRegs + XHCI_CRCR+1) | READ_REGISTER_ULONG(XhciExtension->OperationalRegs + XHCI_CRCR );
     DPRINT("PXHCI_ControllerWorkTest: CommandRingControlRegister     - %x\n", CommandRingControlRegister.AsULONGLONG);
-        DPRINT("PXHCI_ControllerWorkTest: CommandRingControlRegister1     - %p\n", READ_REGISTER_ULONG(XhciExtension->OperationalRegs + XHCI_CRCR ));
-        DPRINT("PXHCI_ControllerWorkTest: CommandRingControlRegister2     - %p\n", READ_REGISTER_ULONG(XhciExtension->OperationalRegs + XHCI_CRCR + 1 ));
+    DPRINT("PXHCI_ControllerWorkTest: CommandRingControlRegister1     - %p\n", READ_REGISTER_ULONG(XhciExtension->OperationalRegs + XHCI_CRCR ));
+    DPRINT("PXHCI_ControllerWorkTest: CommandRingControlRegister2     - %p\n", READ_REGISTER_ULONG(XhciExtension->OperationalRegs + XHCI_CRCR + 1 ));
     // event ring dprints
     EventRingAddr = HcResourcesPA.QuadPart + FIELD_OFFSET(XHCI_HC_RESOURCES, EventRing.firstSeg.XhciTrb[0]);
     DPRINT("PXHCI_ControllerWorkTest: EventRingSegTable.RingSegmentBaseAddr     - %x\n", HcResourcesVA -> EventRingSegTable.RingSegmentBaseAddr);
