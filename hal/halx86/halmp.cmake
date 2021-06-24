@@ -28,6 +28,7 @@ list(APPEND HAL_HALMP_SOURCE
     legacy/bussupp.c
     legacy/halpnpdd.c
     legacy/halpcat.c
+    mp/mps.c
     #APIC
     apic/apic.c
     apic/apictimer.c

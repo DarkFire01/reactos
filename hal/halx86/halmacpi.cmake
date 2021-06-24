@@ -21,6 +21,7 @@ list(APPEND HAL_HALMACPI_SOURCE
     acpi/halacpi.c
     acpi/halpnpdd.c
     acpi/busemul.c
+    acpi/madt.c
     legacy/bus/pcibus.c
     #APIC
     apic/apic.c
@@ -44,7 +45,13 @@ if(ARCH STREQUAL "i386")
         generic/v86.S)
 endif()
 
+if(ARCH STREQUAL "amd64")
+    add_definitions(-DWIN64)
+endif()
+
 add_asm_files(lib_hal_halmacpi_asm ${HAL_HALMACPI_ASM_SOURCE})
 add_library(lib_hal_halmacpi OBJECT ${HAL_HALMACPI_SOURCE} ${lib_hal_halmacpi_asm})
+include_directories(include ${REACTOS_SOURCE_DIR}/drivers/bus/acpi/acpica/include)
+add_pch(lib_hal_halmacpi ${REACTOS_SOURCE_DIR}/drivers/bus/acpi/acpica/include/acpi.h ${HAL_HALMACPI_SOURCE})
 add_dependencies(lib_hal_halmacpi bugcodes xdk)
 target_compile_definitions(lib_hal_halmacpi PRIVATE CONFIG_SMP)
