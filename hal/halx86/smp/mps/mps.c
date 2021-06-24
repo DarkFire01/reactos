@@ -1,6 +1,8 @@
+
 #include <hal.h>
 #define NDEBUG
 #include <mps.h>
+#include <smp.h>
 #include <debug.h>
 PHYSICAL_ADDRESS HalpLowStubPhysicalAddress;
 PVOID HalpLowStub;
