@@ -1559,6 +1559,11 @@ Phase1InitializationDiscard(IN PVOID Context)
         KeBootTimeBias = 0;
     }
 
+#ifdef CONFIG_SMP
+    /* Start Application Processors */
+    KeStartAllProcessors();
+#endif
+
     /* Initialize all processors */
     if (!HalAllProcessorsStarted()) KeBugCheck(HAL1_INITIALIZATION_FAILED);
 
