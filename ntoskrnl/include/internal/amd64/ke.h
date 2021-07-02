@@ -443,6 +443,13 @@ KiThreadStartup(PKSYSTEM_ROUTINE SystemRoutine,
                 PVOID StartContext,
                 BOOLEAN UserThread,
                 KTRAP_FRAME TrapFrame);
+
+VOID
+NTAPI
+KiInitializePcr(IN PKIPCR Pcr,
+                IN ULONG ProcessorNumber,
+                IN PKTHREAD IdleThread,
+                IN PVOID DpcStack);
 #endif
 
 #endif /* __ASM__ */

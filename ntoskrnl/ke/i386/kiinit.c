@@ -529,8 +529,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     }
     else
     {
-        /* FIXME */
-        DPRINT1("SMP Boot support not yet present\n");
+        KeLowerIrql(DISPATCH_LEVEL);
     }
 
     /* Setup the Idle Thread */
