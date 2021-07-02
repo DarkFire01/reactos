@@ -18,9 +18,13 @@
 
 #include <freeldr.h>
 
+#include <debug.h>
+DBG_DEFAULT_CHANNEL(HWDETECT);
+
 static unsigned CurrentCursorX = 0;
 static unsigned CurrentCursorY = 0;
 static unsigned CurrentAttr = 0x0f;
+extern PCROMWELL_CALLBACK BiosCallback;
 
 VOID
 XboxConsPutChar(int c)
@@ -68,17 +72,23 @@ XboxConsPutChar(int c)
 BOOLEAN
 XboxConsKbHit(VOID)
 {
-    /* No keyboard support yet */
-    return FALSE;
+    if (!BiosCallback)
+        return FALSE;
+    return (BiosCallback(CROMWELL_CALLBACK_CHECK_KEY, NULL) == 1);
 }
 
 int
 XboxConsGetCh(void)
 {
-    /* No keyboard support yet */
-    while (1) ;
+    if (!BiosCallback)
+    {
+        /* No keyboard support yet */
+        ERR("No BIOS callback available!\n");
+        while (1) ;
+    }
 
-    return 0;
+    /* Return keystroke */
+    return BiosCallback(CROMWELL_CALLBACK_GET_KEY, NULL);
 }
 
 /* EOF */

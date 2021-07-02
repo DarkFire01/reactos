@@ -83,6 +83,14 @@ extern MACHVTBL MachVtbl;
 /* NOTE: Implemented by each architecture */
 VOID MachInit(const char *CmdLine);
 
+typedef
+VOID
+(*MACH_SET_PIC_IDT_OFFSETS)(UCHAR Pic1IdtOffset, UCHAR Pic2IdtOffset);
+
+typedef
+VOID
+(*MACH_HANDLE_IRQ)(UCHAR Interrupt);
+
 #define MachConsPutChar(Ch) \
     MachVtbl.ConsPutChar(Ch)
 #define MachConsKbHit()     \
