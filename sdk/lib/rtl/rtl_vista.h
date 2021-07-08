@@ -9,10 +9,12 @@
 #ifndef RTL_VISTA_H
 #define RTL_VISTA_H
 
+#if 0 /* take a look at this later. */
 #undef _WIN32_WINNT
 #undef WINVER
 #define _WIN32_WINNT 0x600
 #define WINVER 0x600
+#endif
 
 /* We're a core NT DLL, we don't import syscalls */
 #define _INC_SWPRINTF_INL_

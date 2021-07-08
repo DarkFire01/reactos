@@ -1,6 +1,6 @@
 
-remove_definitions(-D_WIN32_WINNT=0x502 -DWINVER=0x502)
-add_definitions(-D_WIN32_WINNT=0x601)
+#remove_definitions(-D_WIN32_WINNT=0x502 -DWINVER=0x502)
+#add_definitions(-D_WIN32_WINNT=0x601)
 
 add_executable(fltmc fltmc.cpp fltmc.rc)
 target_link_libraries(fltmc cpprt atl_classes)

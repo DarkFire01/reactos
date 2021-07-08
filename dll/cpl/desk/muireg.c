@@ -49,7 +49,12 @@ static int load_string(HINSTANCE hModule, UINT resId, LPWSTR pwszBuffer, INT cMa
  *
  * @implemented
  */
+#if (_WIN32_WINNT >= 0x0600)
+LSTATUS
+WINAPI
+#else
 LONG
+#endif
 RegLoadMUIStringW(IN HKEY hKey,
                   IN LPCWSTR pszValue  OPTIONAL,
                   OUT LPWSTR pszOutBuf,

@@ -468,7 +468,7 @@ OFFSET(PbNestingLevel, KPRCB, NestingLevel),
 OFFSET(PbRspBase, KPRCB, RspBase),
 OFFSET(PbPrcbLock, KPRCB, PrcbLock),
 #if (NTDDI_VERSION >= NTDDI_VISTA)
-OFFSET(PbPriorityState, KPRCB, PriorityState),
+//OFFSET(PbPriorityState, KPRCB, PriorityState),
 #endif /* (NTDDI_VERSION >= NTDDI_VISTA) */
 OFFSET(PbSetMember, KPRCB, SetMember), // not Win 10
 OFFSET(PbProcessorState, KPRCB, ProcessorState),
@@ -814,6 +814,7 @@ OFFSET(TssNmiStack, KTSS64, Ist[3]),
 OFFSET(TssIoMapBase, KTSS64, IoMapBase),
 SIZE(TssLength, KTSS64),
 
+#if 0
 #if (NTDDI_VERSION >= NTDDI_WIN7)
 HEADER("RTL_UMS_CONTEXT offsets"),
 OFFSET(UcLink, RTL_UMS_CONTEXT, Link),
@@ -838,7 +839,7 @@ SIZE(KUMS_CONTEXT_HEADER_LENGTH, KUMS_CONTEXT_HEADER),
 HEADER("UMS_CONTROL_BLOCK offsets"),
 OFFSET(UcbUmsTeb, UMS_CONTROL_BLOCK, UmsTeb),
 #endif
-
+#endif
 HEADER("XSTATE_CONFIGURATION offsets"),
 OFFSET(XcfgEnabledFeatures, XSTATE_CONFIGURATION, EnabledFeatures),
 #if (NTDDI_VERSION >= NTDDI_WIN10)
@@ -860,18 +861,17 @@ SIZE(XsaHeaderLength, XSAVE_AREA_HEADER),
 
 HEADER("KTHREAD offsets"),
 #if (NTDDI_VERSION >= NTDDI_VISTA)
-OFFSET(ThTebMappedLowVa, KTHREAD, TebMappedLowVa), // not Win 10
-OFFSET(ThUcb, KTHREAD, Ucb),
+//OFFSET(ThTebMappedLowVa, KTHREAD, TebMappedLowVa), // not Win 10
+//OFFSET(ThUcb, KTHREAD, Ucb),
 //OFFSET(ThBase, KTHREAD, Base?),
 //OFFSET(ThLimit, KTHREAD, Limit?),
 #endif
 
 #if (NTDDI_VERSION >= NTDDI_VISTA)
 HEADER("KPROCESS offsets"),
-OFFSET(PrLdtSystemDescriptor, KPROCESS, LdtSystemDescriptor), // not Win 10
-OFFSET(PrLdtBaseAddress, KPROCESS, LdtBaseAddress), // not Win 10
+//OFFSET(PrLdtSystemDescriptor, KPROCESS, LdtSystemDescriptor), // not Win 10
+//OFFSET(PrLdtBaseAddress, KPROCESS, LdtBaseAddress), // not Win 10
 #endif
-
 
 /// ROS definitions
 
