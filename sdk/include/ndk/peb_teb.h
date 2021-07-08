@@ -117,11 +117,11 @@ typedef struct STRUCT(_PEB)
     PTR(PVOID) TlsBitmap;
     ULONG TlsBitmapBits[2];
     PTR(PVOID) ReadOnlySharedMemoryBase;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-    PTR(PVOID) HotpatchInformation;
-#else
+//#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    //PTR(PVOID) HotpatchInformation;
+//#else
     PTR(PVOID) ReadOnlySharedMemoryHeap;
-#endif
+//#endif
     PTR(PVOID*) ReadOnlyStaticServerData;
     PTR(PVOID) AnsiCodePageData;
     PTR(PVOID) OemCodePageData;

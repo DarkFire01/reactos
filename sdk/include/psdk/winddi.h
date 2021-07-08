@@ -2323,7 +2323,7 @@ EngReleaseSemaphore(
     _Inout_ HSEMAPHORE hsem);
 
 #if defined(_M_AMD64) && (NTDDI_VERSION >= NTDDI_VISTA)
-
+#if 0
 _Check_return_
 _Success_(return)
 _Kernel_float_restored_
@@ -2356,7 +2356,7 @@ EngSaveFloatingPointState(
 {
     return ((((pBuffer) == NULL) || ((cjBufferSize) == 0)) ? 8 : TRUE);
 }
-
+#endif
 #else /* !(defined(_M_AMD64) && (NTDDI_VERSION >= NTDDI_VISTA)) */
 
 _Check_return_

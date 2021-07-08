@@ -291,7 +291,7 @@ RtlExitUserThread(NTSTATUS Status)
     LdrShutdownThread();
 
     /* Shut us down */
-    NtCurrentTeb()->FreeStackOnTermination = TRUE;
+    NtCurrentTeb()->SpareBool1 = TRUE;
     NtTerminateThread(NtCurrentThread(), Status);
 }
 

@@ -33,10 +33,10 @@ NTAPI
 RtlpSetInDbgPrint(VOID)
 {
     /* Check if it's already set and return TRUE if so */
-    if (NtCurrentTeb()->InDbgPrint) return TRUE;
+    //if (NtCurrentTeb()->InDbgPrint) return TRUE;
 
     /* Set it and return */
-    NtCurrentTeb()->InDbgPrint = TRUE;
+   // NtCurrentTeb()->InDbgPrint = TRUE;
     return FALSE;
 }
 
@@ -45,7 +45,7 @@ NTAPI
 RtlpClearInDbgPrint(VOID)
 {
     /* Clear the flag */
-    NtCurrentTeb()->InDbgPrint = FALSE;
+   // NtCurrentTeb()->InDbgPrint = FALSE;
 }
 
 KPROCESSOR_MODE

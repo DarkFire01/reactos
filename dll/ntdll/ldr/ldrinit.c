@@ -1235,7 +1235,7 @@ LdrShutdownThread(VOID)
     }
 
     /* Check for Fiber data */
-    if (Teb->HasFiberData)
+    if (Teb->SpareBool2)
     {
         /* Free Fiber data*/
         RtlFreeHeap(RtlGetProcessHeap(), 0, Teb->NtTib.FiberData);

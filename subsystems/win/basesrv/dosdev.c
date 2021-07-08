@@ -359,7 +359,7 @@ BaseSrvBSMThread(PVOID StartupContext)
     --BaseSrvpBSMThreadCount;
     RtlLeaveCriticalSection(&BaseSrvDDDBSMCritSec);
 
-    NtCurrentTeb()->FreeStackOnTermination = TRUE;
+    NtCurrentTeb()->SpareBool1 = TRUE;
     NtTerminateThread(NtCurrentThread(), ExitStatus);
 
     return ExitStatus;

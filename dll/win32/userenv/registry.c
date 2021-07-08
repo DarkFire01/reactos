@@ -38,7 +38,8 @@ CopyKey(HKEY hDstKey,
 {
     LONG Error;
 
-#if (_WIN32_WINNT >= 0x0600)
+//#if (_WIN32_WINNT >= 0x0600)
+    #if 0
     Error = RegCopyTreeW(hSrcKey,
                          NULL,
                          hDstKey);
@@ -49,8 +50,8 @@ CopyKey(HKEY hDstKey,
     }
 
     return TRUE;
-
-#else
+    #endif
+//#else
     FILETIME LastWrite;
     DWORD dwSubKeys;
     DWORD dwValues;
@@ -271,7 +272,7 @@ CopyKey(HKEY hDstKey,
     DPRINT("CopyKey() done \n");
 
     return TRUE;
-#endif
+//#endif
 }
 
 
