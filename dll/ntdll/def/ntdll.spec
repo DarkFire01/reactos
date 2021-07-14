@@ -111,6 +111,7 @@
 @ stdcall -version=0x502 EtwTraceEvent(double ptr)
 @ stdcall -stub EtwTraceEventInstance(double ptr ptr ptr)
 @ varargs EtwTraceMessage(int64 long ptr long)
+@ stdcall -stub EtwTraceDiagnosticEvent()
 @ stdcall -stub EtwTraceMessageVa(int64 long ptr long ptr)
 @ stdcall EtwUnregisterTraceGuids(double)
 @ stdcall -version=0x502 EtwUpdateTraceA(double str ptr)

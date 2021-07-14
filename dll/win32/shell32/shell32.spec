@@ -471,6 +471,7 @@
 781 stub -noname -version=0x600+ SHApplyPropertiesToItem
 787 stub -version=0x600+ SHMapIDListToSystemImageListIndexAsync
 790 stub -version=0x600+ SHMapIDListToSystemImageListIndex
+800 stub -noname -version=0x600+ BlankFunc
 814 stub -noname -version=0x600+ SHCreateLeafConditionEx
 815 stub -noname -version=0x600+ SHCreateAndOrConditionEx
 817 stub -noname -version=0x600+ SHCreateLeafCondition
