@@ -3571,6 +3571,14 @@ RtlDeleteTimerQueue(HANDLE TimerQueue);
 //
 // SList functions
 //
+PSLIST_ENTRY //Look at me!
+FASTCALL
+InterlockedPushListSList(
+    _Inout_ PSLIST_HEADER ListHead,
+    _Inout_ __drv_aliasesMem PSLIST_ENTRY List,
+    _Inout_ PSLIST_ENTRY ListEnd,
+    _In_ ULONG Count
+);
 
 //
 // Range List functions
