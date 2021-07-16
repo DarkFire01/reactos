@@ -1147,7 +1147,7 @@ BaseProcessInitPostImport(VOID)
 }
 
 
-typedef struct _PEBB32
+typedef struct _PEBB32 //Look at me! something here is off...
 {
     BOOLEAN InheritedAddressSpace;
     BOOLEAN ReadImageFileExecOptions;
@@ -1242,9 +1242,9 @@ static BOOL init_module_iterator(MODULE_ITERATOR *iter, HANDLE process)
     {
         PEB_LDR_DATA32 *ldr_data32_ptr;
         DWORD ldr_data32, first_module;
-        PEBB32 *peb32;
+        PEBB32 *peb32; //FIXme
 
-        peb32 = (PEBB32 *)(DWORD_PTR)pbi.PebBaseAddress;
+        peb32 = (PEBB32 *)(DWORD_PTR)pbi.PebBaseAddress; //FIXME
 
         if (!ReadProcessMemory(process, &peb32->LdrData, &ldr_data32,
                                sizeof(ldr_data32), NULL))

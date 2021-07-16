@@ -237,7 +237,7 @@
 @ cdecl _mktemp(str)
 @ cdecl _msize(ptr)
 @ cdecl _nextafter(double double)
-@ cdecl _onexit(ptr)
+@ cdecl _onexit(ptr) #Look at me
 @ varargs _open(str long)
 @ cdecl _open_osfhandle(long long)
 @ extern _osmajor_dll CRTDLL__osmajor_dll
