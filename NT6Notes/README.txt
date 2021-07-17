@@ -14,3 +14,9 @@ first.
 
 Thank you for taking the time to mess with my silly expierments 
 -The_DarkFire_
+
+and finally, thank you Getequ and Oleg for the base the inspired me to 
+do this crazy experiment. 
+
+link to the original branch:
+https://github.com/Getequ/reactos/tree/R6-2021.02.14

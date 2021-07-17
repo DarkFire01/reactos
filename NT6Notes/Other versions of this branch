@@ -1,0 +1,36 @@
+This branch has 4 implementations;
+Tests-NT6
+Tests-NT6Extra (Coming soon)
+Tests-NT10 (Coming soon)
+Tests-NT10Extra (Coming soon)
+
+Tests-NT6: the basic branch targetting Windows 7 compatibility. 
+only the commits minimally used for this is in this branch.
+
+Tests-NT6Extra: the branch extended with extra features and drivers
+that may not be in master branch or have anything to do with NT6;
+Example:
+as of 07/19/21
+this may include 
+-Nightly SMP code from
+    https://github.com/DarkFire01/reactos/tree/PR-HalmacpiPastOne
+-xHCI driver from 
+    https://github.com/DarkFire01/reactos/tree/Tests-xHCI
+
+Tests-NT10: the basic branch targetting Windows 8.1+ compatibility. 
+only the commits minimally used for this is in this branch.
+
+Tests-NT10Extra: the branch extended with extra features and drivers
+that may not be in master branch or have anything to do with NT6.3>;
+Example:
+as of 07/19/21
+this may include 
+-Nightly SMP code from
+    https://github.com/DarkFire01/reactos/tree/PR-HalmacpiPastOne
+-xHCI driver from 
+    https://github.com/DarkFire01/reactos/tree/Tests-xHCI
+
+Please check what branch you are using, if you are using the extra branches
+and something goes wrong with one of those please don't mess with the authors!
+NT6+ support is not encorged by the ReactOS team and really they shouldn't be bothered
+by it.
