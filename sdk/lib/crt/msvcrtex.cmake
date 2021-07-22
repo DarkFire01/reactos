@@ -1,4 +1,3 @@
-
 include_directories(include/internal/mingw-w64)
 
 list(APPEND MSVCRTEX_SOURCE
@@ -7,7 +6,8 @@ list(APPEND MSVCRTEX_SOURCE
     misc/fltused.c
     misc/isblank.c
     misc/iswblank.c
-    misc/ofmt_stub.c)
+    misc/ofmt_stub.c
+    stdio/acrt_iob_func.c)
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
     # Clang performs some optimizations requiring those funtions
@@ -67,9 +67,16 @@ add_asm_files(msvcrtex_asm ${MSVCRTEX_ASM_SOURCE})
 add_library(msvcrtex ${MSVCRTEX_SOURCE} ${msvcrtex_asm})
 target_compile_definitions(msvcrtex PRIVATE _DLL _MSVCRTEX_)
 
+if(MSVC AND (ARCH STREQUAL "i386"))
+    # user32.dll needs this as a stand-alone object file
+    add_asm_files(ftol2_asm math/i386/ftol2_asm.s)
+    add_library(ftol2_sse OBJECT ${ftol2_asm})
+    target_compile_definitions(ftol2_sse PRIVATE $<TARGET_PROPERTY:msvcrtex,COMPILE_DEFINITIONS>)
+    set_target_properties(ftol2_sse PROPERTIES LINKER_LANGUAGE C)
+endif()
+
 # Link msvcrtex to the "real" msvcrt.dll library. See msvcrt.dll CMakeLists.txt to see what really happens here
 target_link_libraries(msvcrtex libmsvcrt_real libkernel32)
-
 
 if(GCC OR CLANG)
     target_compile_options(msvcrtex PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wno-main>)
