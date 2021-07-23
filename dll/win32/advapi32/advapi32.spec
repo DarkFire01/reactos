@@ -57,6 +57,7 @@
 @ stdcall ChangeServiceConfigA(long long long long wstr str ptr str str str str)
 @ stdcall ChangeServiceConfigW(long long long long wstr wstr ptr wstr wstr wstr wstr)
 @ stdcall CheckTokenMembership(long ptr ptr)
+@ stub -version=0x600+ CheckAppInitBlockedServiceIdentity
 @ stdcall ClearEventLogA(long str)
 @ stdcall ClearEventLogW(long wstr)
 @ stub CloseCodeAuthzLevel
@@ -318,6 +319,10 @@
 @ stdcall InitializeAcl(ptr long long)
 @ stdcall InitializeSecurityDescriptor(ptr long)
 @ stdcall InitializeSid(ptr ptr long)
+@ stub -version=600+ InitiateShutdownW
+@ stub -version=600+ EventWriteEndScenario
+@ stub -version=600+ EventWriteStartScenario
+@ stub -version=600+ CredReadByTokenHandle 
 @ stdcall InitiateSystemShutdownA(str str long long long)
 @ stdcall InitiateSystemShutdownExA(str str long long long long)
 @ stdcall InitiateSystemShutdownExW(wstr wstr long long long long)
