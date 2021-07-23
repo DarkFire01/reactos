@@ -831,6 +831,8 @@ CreateEventExW(LPSECURITY_ATTRIBUTES lpEventAttributes,
     PUNICODE_STRING Name;
     POBJECT_ATTRIBUTES ObjectAttributes;
     NTSTATUS Status;
+    ObjectAttributes = 0;
+    Name = NULL;
 
     _SEH2_TRY
     {

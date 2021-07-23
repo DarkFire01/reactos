@@ -3568,10 +3568,11 @@ NTSTATUS
 NTAPI
 RtlDeleteTimerQueue(HANDLE TimerQueue);
 
+#if 0
 //
 // SList functions
-//
-PSLIST_ENTRY //Look at me!
+// 
+PSLIST_ENTRY //Fix me!!!
 FASTCALL
 InterlockedPushListSList(
     _Inout_ PSLIST_HEADER ListHead,
@@ -3579,7 +3580,7 @@ InterlockedPushListSList(
     _Inout_ PSLIST_ENTRY ListEnd,
     _In_ ULONG Count
 );
-
+#endif
 //
 // Range List functions
 //
