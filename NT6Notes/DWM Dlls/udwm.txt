@@ -1,0 +1,7 @@
+
+Taken from geoffchappell:
+https://www.geoffchappell.com/studies/windows/win32/udwm/api/index.htm?ta=11&tx=89-92 
+
+@ stub -version=0x600 DwmClientNotifyRedirectionShutdown
+@ stub -version=0x600 DwmClientShutdown
+@ stub -version=0x600 DwmClientStartup
