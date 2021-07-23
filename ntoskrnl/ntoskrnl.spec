@@ -15,6 +15,7 @@
 @ stdcall CcGetLsnForFileObject(ptr ptr)
 @ stdcall CcInitializeCacheMap(ptr ptr long ptr ptr)
 @ stdcall CcIsThereDirtyData(ptr)
+@ stdcall -stub -version=600+ CcIsThereDityDataEx(ptr ptr)
 @ stdcall CcMapData(ptr ptr long long ptr ptr)
 @ stdcall CcMdlRead(ptr ptr long ptr ptr)
 @ stdcall CcMdlReadComplete(ptr ptr)
@@ -33,15 +34,24 @@
 @ stdcall CcSetDirtyPageThreshold(ptr long)
 @ stdcall CcSetDirtyPinnedData(ptr ptr)
 @ stdcall CcSetFileSizes(ptr ptr)
+@ stdcall -stub -version=0x600+ CcSetFileSizesEx(ptr ptr)
+@ stdcall -stub -version=0x600+ CcGetFileObjectFromSectionPtrsRef(ptr)
 @ stdcall CcSetLogHandleForFile(ptr ptr ptr)
 @ stdcall CcSetReadAheadGranularity(ptr long)
 @ stdcall CcUninitializeCacheMap(ptr ptr ptr)
 @ stdcall CcUnpinData(ptr)
 @ stdcall CcUnpinDataForThread(ptr ptr)
+@ stdcall -stub -version=0x600+ CcSetParallelFlushFile(ptr long)
+@ stub -version=0x600+ CcTestControl ;FIXME needs reversing
 @ stdcall CcUnpinRepinnedBcb(ptr long ptr)
 @ stdcall CcWaitForCurrentLazyWriterActivity()
 @ stdcall CcZeroData(ptr ptr ptr long)
+@ stdcall -stub -version=0x600+ CmCallbackGetKeyObjectID(ptr ptr ptr ptr)
+@ stdcall -stub -version=0x600+ CmGetBoundTransaction(ptr ptr)
+@ stdcall -stub -version=0x600+ CmGetCallbackVersion(ptr ptr)
 @ stdcall CmRegisterCallback(ptr ptr ptr)
+@ stdcall -stub -version=0x600+ CmRegisterCallbackEx(ptr ptr ptr ptr ptr ptr)
+@ stdcall -stub -version=0x600+ CmSetCallbackObjectContext(ptr ptr ptr ptr)
 @ stdcall CmUnRegisterCallback(long long)
 @ stdcall DbgBreakPoint()
 @ stdcall DbgBreakPointWithStatus(long)
@@ -54,12 +64,29 @@
 @ stdcall DbgPrompt(str ptr long)
 @ stdcall DbgQueryDebugFilterState(long long)
 @ stdcall DbgSetDebugFilterState(long long long)
+@ stdcall -stub -version=0x600+ DbgSetDebugPrintCallback(ptr long)
+@ stub -version=0x600+ EmClientQueryRuleState ;FIXME
+@ stub -version=0x600+ EmClientRuleDeregisterNotification ;FIXME
+@ stub -version=0x600+ EmClientRuleEvaluate ;FIXME
+@ stub -version=0x600+ EmClientRuleRegisterNotification ;FIXME
 @ stdcall -stub -version=0x600+ EmProviderDeregister()
+@ stub -version=0x600+ EmProviderDeregisterEntry ;FIXME
 @ stdcall -stub -version=0x600+ EmProviderRegister()
+@ stub -version=0x600+ EmProviderRegisterEntry ;FIXME
+@ stdcall -stub -version=0x600+ EtwActivityIdControl(long long)
+@ stdcall -stub -version=0x600+ EtwEnableTrace(long long long ptr double)
 @ stdcall -version=0x600+ EtwEventEnabled(int64 ptr)
+@ stdcall -stub -version=0x600+ EtwProviderEnabled(long long int64)
 @ stdcall -version=0x600+ EtwRegister(ptr ptr ptr ptr)
+@ stub -version=0x600+ EtwRegisterClassicProvider
+@ stub -version=0x600+ EtwSendTraceBuffer
 @ stdcall -version=0x600+ EtwUnregister(int64)
 @ stdcall -version=0x600+ EtwWrite(int64 ptr ptr long ptr)
+@ stub -version=0x600+ EtwWriteEndScenario
+@ stub -version=0x600+ EtwWriteStartScenario
+@ stdcall -stub -version=0x600+ EtwWriteString(long long int64 long str)
+@ stdcall -stub -version=0x600+ EtwWriteTransfer(long long long long long long)
+@ stub -version=0x600+ ExAcquireCacheAwarePushLockExclusive
 @ stdcall -arch=x86_64 ExAcquireFastMutex(ptr)
 @ fastcall ExAcquireFastMutexUnsafe(ptr)
 @ stdcall ExAcquireResourceExclusiveLite(ptr long)
@@ -68,8 +95,13 @@
 @ fastcall ExAcquireRundownProtectionCacheAware(ptr) ExfAcquireRundownProtectionCacheAware
 @ fastcall ExAcquireRundownProtectionCacheAwareEx(ptr long) ExfAcquireRundownProtectionCacheAwareEx
 @ fastcall ExAcquireRundownProtectionEx(ptr long) ExfAcquireRundownProtectionEx
+@ stdcall -stub -version=0x600+ ExAcquireSpinLockExclusive(ptr)
+@ stdcall -stub -version=0x600+ ExAcquireSpinLockExclusiveAtDpcLevel(ptr)
+@ stdcall -stub -version=0x600+ ExAcquireSpinLockShared(ptr)
+@ stdcall -stub -version=0x600+ ExAcquireSpinLockSharedAtDpcLevel(ptr)
 @ stdcall ExAcquireSharedStarveExclusive(ptr long)
 @ stdcall ExAcquireSharedWaitForExclusive(ptr long)
+@ stub -version=0x600+ ExAllocateCacheAwarePushLock
 @ stdcall ExAllocateCacheAwareRundownProtection(long long)
 @ stdcall ExAllocateFromPagedLookasideList(ptr) ExiAllocateFromPagedLookasideList
 @ stdcall ExAllocatePool(long long)
@@ -79,6 +111,7 @@
 @ stdcall ExAllocatePoolWithTagPriority(long long long long)
 @ stdcall ExConvertExclusiveToSharedLite(ptr)
 @ stdcall ExCreateCallback(ptr ptr long long)
+@ stdcall -version=0x600+ ExDeleteLookasideListEx(ptr)
 @ stdcall ExDeleteNPagedLookasideList(ptr)
 @ stdcall ExDeletePagedLookasideList(ptr)
 @ stdcall ExDeleteResourceLite(ptr)
@@ -93,6 +126,7 @@
 @ stdcall ExEnumHandleTable(ptr ptr ptr ptr)
 @ extern ExEventObjectType
 @ stdcall ExExtendZone(ptr ptr long)
+@ stdcall -stub -version=0x600+ ExFetchLicenseData(ptr long ptr)
 @ stdcall ExFreeCacheAwareRundownProtection(ptr)
 @ stdcall ExFreePool(ptr)
 @ stdcall ExFreePoolWithTag(ptr long)
@@ -102,7 +136,6 @@
 @ stdcall ExGetExclusiveWaiterCount(ptr)
 @ stdcall ExGetPreviousMode()
 @ stdcall ExGetSharedWaiterCount(ptr)
-@ stdcall -version=0x600+ ExDeleteLookasideListEx(ptr)
 @ stdcall -version=0x600+ ExInitializeLookasideListEx(ptr ptr ptr ptr long long long long)
 @ stdcall ExInitializeNPagedLookasideList(ptr ptr ptr long long long long)
 @ stdcall ExInitializePagedLookasideList(ptr ptr ptr long long long long)
@@ -650,7 +683,7 @@
 @ stdcall -arch=i386,arm KeProfileInterrupt(ptr)
 @ stdcall KeProfileInterruptWithSource(ptr long)
 @ stdcall KePulseEvent(ptr long long)
-@ stdcall -stub -version=0x600+ KeQueryActiveProcessorCountEx(long)
+@ stdcall -stub -version=0x601+ KeQueryActiveProcessorCountEx(long)
 @ stdcall KeQueryActiveProcessors()
 @ stdcall -arch=i386,arm KeQueryInterruptTime()
 ;@ cdecl -arch=x86_64 KeQueryMultiThreadProcessorSet
@@ -860,19 +893,19 @@
 @ stdcall NtAllocateLocallyUniqueId(ptr)
 @ stdcall NtAllocateUuids(ptr ptr ptr ptr)
 @ stdcall NtAllocateVirtualMemory(ptr ptr long ptr long long)
-@ stdcall -version=0x600+ NtAlpcCancelMessage(ptr long ptr)
+@ stdcall -version=0x600+ NtAlpcCancelMessage(ptr long ptr) ;FIX here to
 @ stdcall -version=0x600+ NtAlpcConnectPort(ptr wstr ptr ptr long ptr ptr long ptr ptr ptr)
 @ stdcall -version=0x600+ NtAlpcCreatePortSection(ptr long ptr long ptr long)
 @ stdcall -version=0x600+ NtAlpcCreateResourceReserve(ptr long long ptr)
 @ stdcall -version=0x600+ NtAlpcCreateSectionView(ptr long ptr)
 @ stdcall -version=0x600+ NtAlpcCreateSecurityContext(ptr long ptr)
-@ stdcall -version=0x600+ NtAlpcDeletePortSection(ptr long ptr)
-@ stdcall -version=0x600+ NtAlpcDeleteSectionView(ptr long ptr)
+@ stdcall -version=0x600+ NtAlpcDeletePortSection(ptr long ptr)   ;Look into these more..
+@ stdcall -version=0x600+ NtAlpcDeleteSectionView(ptr long ptr)             
 @ stdcall -version=0x600+ NtAlpcDeleteSecurityContext(ptr long ptr)
 @ stdcall -version=0x600+ NtAlpcDisconnectPort(ptr long)
 @ stdcall -version=0x600+ NtAlpcQueryInformation(ptr ptr ptr long long)
 @ stdcall -version=0x600+ NtAlpcSendWaitReceivePort(ptr long ptr ptr ptr long ptr ptr)
-@ stdcall -version=0x600+ NtAlpcSetInformation(ptr ptr ptr long)
+@ stdcall -version=0x600+ NtAlpcSetInformation(ptr ptr ptr long) ;FIX here
 @ extern NtBuildNumber
 @ stdcall NtClose(ptr)
 @ stdcall NtConnectPort(ptr ptr ptr ptr ptr ptr ptr ptr)
@@ -889,7 +922,7 @@
 @ stdcall NtFreeVirtualMemory(ptr ptr ptr long)
 @ stdcall NtFsControlFile(ptr ptr ptr ptr ptr long ptr long ptr long)
 @ extern NtGlobalFlag
-@ stdcall -version=0x600+ NtImpersonateAnonymousToken(ptr)
+@ stdcall -version=0x600+ NtCreateIoCompletion(ptr) ;FIXME look into me..
 @ stdcall NtLockFile(ptr ptr ptr ptr ptr ptr ptr long long long)
 @ stdcall NtMakePermanentObject(ptr)
 @ stdcall NtMapViewOfSection(ptr ptr ptr long long ptr ptr long long long)
@@ -909,12 +942,12 @@
 @ stdcall NtQueryInformationThread(ptr long ptr long ptr)
 @ stdcall NtQueryInformationToken(ptr long ptr long ptr)
 @ stdcall -version=0x600+ NtQueryLicenseValue(ptr ptr ptr long ptr)
-@ stdcall NtQueryQuotaInformationFile(ptr ptr ptr long long ptr long ptr long)
+@ stdcall NtQueryQuotaInformationFile(ptr ptr ptr long long ptr long ptr long) ;FIXME look into me..
 @ stdcall NtQuerySecurityObject(ptr long ptr long ptr)
 @ stdcall NtQuerySystemInformation(long ptr long ptr)
 @ stdcall NtQueryVolumeInformationFile(ptr ptr ptr long long)
 @ stdcall NtReadFile(ptr ptr ptr ptr ptr ptr long ptr ptr)
-@ stdcall -version=0x600+ NtRemoveIoCompletionEx(ptr ptr long ptr ptr long)
+@ stdcall -version=0x600+ NtRemoveIoCompletionEx(ptr ptr long ptr ptr long) ;FIXME look into me..
 @ stdcall NtRequestPort(ptr ptr)
 @ stdcall NtRequestWaitReplyPort(ptr ptr ptr)
 @ stdcall NtSetEaFile(ptr ptr ptr long)
@@ -948,7 +981,7 @@
 @ stdcall ObMakeTemporaryObject(ptr)
 @ stdcall ObOpenObjectByName(ptr ptr long ptr long ptr ptr)
 @ stdcall ObOpenObjectByPointer(ptr long ptr long ptr long ptr)
-@ stdcall -version=0x601+ ObQueryNameInfo(ptr)
+@ stdcall -version=0x601+ ObQueryNameInfo(ptr) ;FIXME look into me...
 @ stdcall ObQueryNameString(ptr ptr long ptr)
 @ stdcall ObQueryObjectAuditingByHandle(ptr ptr)
 @ stdcall ObReferenceObjectByHandle(ptr long ptr long ptr ptr)
