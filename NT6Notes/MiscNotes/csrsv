@@ -1,0 +1,38 @@
+
+(ntoskrnl/config/cmcheck.c:25) CmCheckRegistry(0xB86CF008, 0) is UNIMPLEMENTED!
+(ntoskrnl/config/cmcheck.c:25) CmCheckRegistry(0xB8E92008, 0) is UNIMPLEMENTED!
+(ntoskrnl/config/cmcheck.c:25) CmCheckRegistry(0xB86CB008, 0) is UNIMPLEMENTED!
+(base/system/smss/sminit.c:908) SMSS: Cannot find drive letter for system partition
+(ntoskrnl/mm/ARM3/session.c:795) Session 0 is ready to go: 0xBF7F0000 0xF7256000, 27fc 0xB86CFE00
+(ntoskrnl/mm/ARM3/sysldr.c:182) Loading: \SystemRoot\System32\win32k.sys at F6F28000 with 32e pages
+(ntoskrnl/mm/ARM3/sysldr.c:182) Loading: \SystemRoot\System32\ftfd.dll at F6DD3000 with 155 pages
+KdSystemDebugControl is unimplemented!
+KdSystemDebugControl is unimplemented!
+(win32ss/gdi/ntgdi/freetype.c:691) Fonts registry is empty.
+RO▒▒▒lX▒, 00000000, 00000000, 4D8BDC68) stub.
+WARNING:  RtlCreateTagHeap at sdk/lib/rtl/heap.c:4037 is UNIMPLEMENTED!
+WARNING:  RtlCreateTagHeap at sdk/lib/rtl/heap.c:4037 is UNIMPLEMENTED!
+WARNING:  RtlUnhandledExceptionFilter at sdk/lib/rtl/exception.c:316 is UNIMPLEMENTED!
+Unhandled exception
+ExceptionCode:    c0000005
+Faulting Address:       44
+CS:EIP 1b:7c94afe2
+DS 23 ES 23 FS 3b GS 0
+EAX: 00000000   EBX: 00000008   ECX: 00000012
+EDX: 00000024   EBP: 0031f9b8   ESI: 00000000   ESP: 0031f928
+EDI: 0031fa10   EFLAGS: 00013206
+Address:
+          0+7c94afe2
+Frames:
+          0+79dc2f12
+          0+79dc3ae1
+          0+4d8b4ee4
+          0+4d8b494b
+          0+4d8b4b36
+          0+4010a7
+          0+401491
+(sdk/lib/rtl/priv.c:446) Retrieving token handle failed (Status c000007c)
+
+*** Fatal System Error: 0xc000021a
+                       (0x0031F4EC,0xC0000005,0x7C94AFE2,0x0031F65C)
+

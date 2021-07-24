@@ -1,0 +1,4 @@
+Heavily required changes:
+(win32ss/user/ntuser/window.c:2225) err: co_UserCreateWindowEx(): NCCREATE message failed
+(win32ss/user/ntuser/window.c:2555) err: co_UserCreateWindowEx failed!
+(win32ss/gdi/eng/stubs.c:1357) WIN32K: NtGdiGetWidthTable UNIMPLEMENTED
