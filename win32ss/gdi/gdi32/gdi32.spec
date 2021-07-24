@@ -636,3 +636,6 @@
 @ stdcall -version=0x600+ D3DKMTOpenAdapterFromGdiDisplayName(ptr)
 @ stdcall -version=0x600+ D3DKMTOpenAdapterFromHdc(ptr)
 @ stdcall -version=0x600+ D3DKMTQueryAdapterInfo(ptr)
+;FIXME Implement these ass full vista+ functions
+@ stub -version=0x600+ DwmGetSurfaceData
+@ stub -version=0x600+ DwmGetDirtyRgn

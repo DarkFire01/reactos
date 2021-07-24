@@ -1,0 +1,14 @@
+Current Status of DWM:
+Non existent other than a stub.
+however copying over DWM from vista leads to some interesting results;
+
+dwmapi,
+udwm,
+milcore,
+dwmredir,
+slcc,
+slwga,
+DWM.exe,
+
+Will at the current status of this branch start execution of DWM as a service.
+However nevertheless we are held back by user32 for going much further as it crashes soon after.
