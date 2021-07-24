@@ -19,6 +19,7 @@
 @ stdcall ServerQueryInetConnectorInformationW(ptr ptr ptr ptr)
 @ stdcall ServerSetInternetConnectorStatus(ptr ptr ptr)
 @ stdcall WinStationActivateLicense(ptr ptr ptr ptr)
+@ stdcall -version=0x600+ WinStationReportUIResult(ptr ptr ptr)
 @ stdcall WinStationAutoReconnect(ptr)
 @ stdcall WinStationBroadcastSystemMessage(ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr)
 @ stdcall WinStationCanLogonProceed(ptr ptr ptr)
@@ -60,6 +61,7 @@
 @ stdcall WinStationIsSessionPermitted()
 @ stdcall WinStationNameFromLogonIdA(ptr ptr ptr)
 @ stdcall WinStationNameFromLogonIdW(ptr ptr ptr)
+@ stdcall -version=0x600+ WinStationNegotiateSession(ptr ptr ptr ptr ptr ptr)
 @ stdcall WinStationNtsdDebug(ptr ptr ptr ptr ptr)
 @ stdcall WinStationOpenServerA(ptr)
 @ stdcall WinStationOpenServerW(ptr)
@@ -122,4 +124,3 @@
 @ stdcall _WinStationUpdateSettings(ptr ptr ptr)
 @ stdcall _WinStationUpdateUserConfig(ptr)
 @ stdcall _WinStationWaitForConnect()
-
