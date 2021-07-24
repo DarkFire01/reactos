@@ -2,10 +2,10 @@
 spec2def(UIAutomationCore.dll uiautomationcore.spec)
 
 list(APPEND SOURCE
-    uiautomationcore.rc
+    UIAutomationCore.rc
     ${CMAKE_CURRENT_BINARY_DIR}/UIAutomationCore.def)
 
-add_library(uiautomationcore MODULE ${SOURCE})
-set_module_type(uiautomationcore nativedll)
-add_importlibs(uiautomationcore ntdll)
-add_cd_file(TARGET uiautomationcore DESTINATION reactos/system32 FOR all)
+add_library(UIAutomationCore MODULE ${SOURCE})
+set_module_type(UIAutomationCore nativedll)
+add_importlibs(UIAutomationCore ntdll)
+add_cd_file(TARGET UIAutomationCore DESTINATION reactos/system32 FOR all)
