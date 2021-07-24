@@ -708,3 +708,10 @@
 @ stdcall WriteEncryptedFileRaw(ptr ptr ptr)
 @ stdcall -version=0x600+ RegLoadMUIStringW(ptr wstr wstr long ptr long wstr) advapi32_vista.RegLoadMUIStringW
 @ stdcall -version=0x600+ RegLoadMUIStringA(ptr str str long ptr long str) advapi32_vista.RegLoadMUIStringA
+
+;longhorn
+@ stub -version=0x600+ EvtRegisterPublisher
+@ stub -version=0x600+ EvtScopePublisher
+@ stub -version=0x600+ EvtReportText
+@ stub -version=0x600+ EvtClose
+@ stub -version=0x600+ EvtOpen

@@ -1344,3 +1344,6 @@
 @ stdcall -version=0x600+ PowerClearRequest(long long)
 @ stdcall -version=0x600+ PowerCreateRequest(ptr)
 @ stdcall -version=0x600+ PowerSetRequest(long long)
+
+;NT6.0 stuff
+@ stub -version=0x600+ GetDurationFormatW

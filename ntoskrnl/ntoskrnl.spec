@@ -76,6 +76,7 @@
 @ stdcall -stub -version=0x600+ EtwActivityIdControl(long long)
 @ stdcall -stub -version=0x600+ EtwEnableTrace(long long long ptr double)
 @ stdcall -version=0x600+ EtwEventEnabled(int64 ptr)
+@ stub -version=0x600+ EtwKernelTraceDiagnosticEvent ;check me
 @ stdcall -stub -version=0x600+ EtwProviderEnabled(long long int64)
 @ stdcall -version=0x600+ EtwRegister(ptr ptr ptr ptr)
 @ stub -version=0x600+ EtwRegisterClassicProvider
@@ -1749,3 +1750,9 @@
 @ stdcall -arch=arm __rt_udiv()
 @ stdcall -arch=arm __rt_udiv64()
 @ stdcall -arch=arm __rt_srsh()
+
+
+;Longhorn
+@ stub -version=0x600+ PoUnregisterPowerSettingCallback
+@ stdcall -version=0x600+ PsGetCurrentProcessSessionIdEx() PsGetCurrentProcessSessionId
+@ stub -version=0x600+ RtlFormatSidUserKeyPath

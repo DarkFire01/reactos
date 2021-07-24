@@ -116,3 +116,5 @@
 @  stdcall -stub -version=0x600+ SetWindowThemeAttribute(ptr ptr ptr long)
 @  stdcall -stub -version=0x600+ SetWindowThemeNonClientAttributes(ptr long long)
 @  stdcall -stub -version=0x601+ UpdatePanningFeedback(ptr long long long)
+
+@ stub -version=0x600+ GetThemeBitmap
