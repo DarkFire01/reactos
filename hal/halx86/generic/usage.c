@@ -279,6 +279,13 @@ HalpReportResourceUsage(IN PUNICODE_STRING HalName,
     LARGE_INTEGER CurrentSortValue, SortValue;
     DbgPrint("%wZ Detected\n", HalName);
 
+#if defined(SARCH_XBOX)
+    /*
+     * Do not claim interrupt resources for the KD COM port.
+     * The actual COM port lacks SERIRQ, IRQ 4 is hardwired to the NIC.
+     */
+    UNREFERENCED_PARAMETER(Port);
+#else
     /* Check if KD is using a COM port */
     if (KdComPortInUse)
     {
@@ -319,6 +326,7 @@ HalpReportResourceUsage(IN PUNICODE_STRING HalName,
         }
 #endif
     }
+#endif
 
     /* On non-ACPI systems, we need to build an address map */
     HalpBuildAddressMap();
