@@ -29,6 +29,7 @@
 27 stdcall CallNextHookEx(long long long long)
 28 stdcall CallWindowProcA(ptr long long long long)
 29 stdcall CallWindowProcW(ptr long long long long)
+@ stub -version=0x600+ CancelShutdown
 30 stdcall CascadeChildWindows(long long)
 31 stdcall CascadeWindows(long long ptr long ptr)
 32 stdcall ChangeClipboardChain(long long) NtUserChangeClipboardChain
@@ -716,6 +717,7 @@
 @   stdcall -stub -version=0x600+ SfmDxReportPendingBindingsToDwm()
 @   stdcall -stub -version=0x600+ SfmDxSetSwapChainBindingStatus()
 @   stdcall -stub -version=0x600+ SfmDxSetSwapChainStats()
+@   stub -version=0x600+ SwitchDesktopWithFade
 662 stdcall ShowCaret(long) NtUserShowCaret
 663 stdcall ShowCursor(long)
 664 stdcall ShowOwnedPopups(long long)
