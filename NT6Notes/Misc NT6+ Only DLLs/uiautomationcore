@@ -1,0 +1,6 @@
+You might notice an empty dll name:
+UIAutomationCore.dll
+is being built. This is a Vista+ DLL.
+
+Status: I have not merged the tests I have done to implement this quite yet, as they require a little more
+fiddling around with this new method of adding Vista+ functionality
