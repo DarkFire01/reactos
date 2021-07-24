@@ -1,0 +1,14 @@
+
+Currently this is the output of using frankenROS with vista
+
+WARNING:  EtwRegister at sdk/lib/rtl/process.c:533 is UNIMPLEMENTED!
+WARNING:  RtlQueryElevationFlags at sdk/lib/rtl/process.c:561 is UNIMPLEMENTED!
+WARNING:  NtQueryLicenseValue at ntoskrnl/rtl/misc.c:233 is UNIMPLEMENTED!
+WARNING:  NtQueryLicenseValue at ntoskrnl/rtl/misc.c:233 is UNIMPLEMENTED!
+WARNING:  NtQueryLicenseValue at ntoskrnl/rtl/misc.c:233 is UNIMPLEMENTED!
+RO▒▒▒lX▒, 00000000, 00000000, 4D8BDC68) stub.
+WARNING:  RtlCreateTagHeap at sdk/lib/rtl/heap.c:4037 is UNIMPLEMENTED!
+WARNING:  RtlCreateTagHeap at sdk/lib/rtl/heap.c:4037 is UNIMPLEMENTED!
+WARNING:  RtlUnhandledExceptionFilter at sdk/lib/rtl/exception.c:316 is UNIMPLEMENTED!
+
+We need to implement these to continue much more.
