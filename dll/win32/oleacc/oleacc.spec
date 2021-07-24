@@ -19,4 +19,5 @@
 @ extern LIBID_Accessibility
 @ stdcall LresultFromObject(ptr long ptr)
 @ stdcall ObjectFromLresult(long ptr long ptr)
+@ stub PropMgrClient_LookupProp
 @ stdcall WindowFromAccessibleObject(ptr ptr)
