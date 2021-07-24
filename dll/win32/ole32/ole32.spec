@@ -385,3 +385,6 @@
 @ stdcall WriteFmtUserTypeStg(ptr long ptr)
 @ stub WriteOleStg
 @ stub WriteStringStream
+
+;Longhorn stuff:
+@ stub -version=0x600+ VariantToPropVariant
