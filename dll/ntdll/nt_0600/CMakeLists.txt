@@ -12,6 +12,7 @@ include_directories(
 
 list(APPEND SOURCE
     DllMain.c
+    ZwFuncs.c
     ${CMAKE_CURRENT_BINARY_DIR}/ntdll_vista.def)
 
 add_library(ntdll_vista MODULE ${SOURCE})

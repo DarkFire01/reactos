@@ -1,3 +1,4 @@
+@ stdcall NtQueryLicenseValue(wstr long ptr long long)
 @ stdcall RtlInitializeConditionVariable(ptr)
 @ stdcall RtlWakeConditionVariable(ptr)
 @ stdcall RtlWakeAllConditionVariable(ptr)
@@ -44,3 +45,4 @@
 @ stdcall TpWaitForTimer(ptr long)
 @ stdcall TpWaitForWait(ptr long)
 @ stdcall TpWaitForWork(ptr long)
+@ stdcall ZwQueryLicenseValue(wstr long ptr long long)

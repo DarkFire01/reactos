@@ -46,6 +46,21 @@ extern ULONG CsrMaxApiRequestThreads;
  * @remarks None.
  *
  *--*/
+/* weird longhorn stuff start */
+VOID
+NTAPI
+ShutdownProcessForLuid()
+{
+    UNIMPLEMENTED;
+}
+VOID
+NTAPI
+CsrClearShutdownFlags()
+{
+    UNIMPLEMENTED;
+}
+
+/* weird longhorn stuff end */
 NTSTATUS
 NTAPI
 CsrCallServerFromServer(IN PCSR_API_MESSAGE ReceiveMsg,
