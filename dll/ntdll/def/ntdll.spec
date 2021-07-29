@@ -447,7 +447,7 @@
 @ stdcall NtQueryIntervalProfile(long ptr)
 @ stdcall NtQueryIoCompletion(long long ptr long ptr)
 @ stdcall NtQueryKey (long long ptr long ptr)
-@ stdcall -stub -version=0x600+ NtQueryLicenseValue(wstr long ptr long long)
+@ stdcall -version=0x600+ NtQueryLicenseValue(wstr long ptr long long) ntdll_vista.NtQueryLicenseValue
 @ stdcall NtQueryMultipleValueKey(long ptr long ptr long ptr)
 @ stdcall NtQueryMutant(long long ptr long ptr)
 @ stdcall NtQueryObject(long long long long long)
@@ -1631,7 +1631,7 @@
 @ stdcall ZwQueryIntervalProfile(long ptr)
 @ stdcall ZwQueryIoCompletion(long long ptr long ptr)
 @ stdcall ZwQueryKey(long long ptr long ptr)
-@ stdcall -stub -version=0x600+ ZwQueryLicenseValue(wstr long ptr long long)
+@ stdcall -version=0x600+ ZwQueryLicenseValue(wstr long ptr long long) ntdll_vista.ZwQueryLicenseValue
 @ stdcall ZwQueryMultipleValueKey(long ptr long ptr long ptr)
 @ stdcall ZwQueryMutant(long long ptr long ptr)
 @ stdcall ZwQueryObject(long long long long long)

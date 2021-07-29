@@ -231,7 +231,7 @@ NtQueryLicenseValue(PUNICODE_STRING Name,
                     ULONG *DataLength)
 {
     UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    return STATUS_SUCCESS;
 }
 
 /* EOF */

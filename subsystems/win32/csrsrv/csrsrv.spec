@@ -35,3 +35,7 @@
 @ stdcall CsrUnlockThread(ptr)
 @ stdcall CsrValidateMessageBuffer(ptr ptr long long)
 @ stdcall CsrValidateMessageString(ptr ptr)
+
+;Longhorn
+@ stdcall -version=0x600+ ShutdownProcessForLuid()
+@ stdcall -version=0x600+ CsrClearShutdownFlags()
