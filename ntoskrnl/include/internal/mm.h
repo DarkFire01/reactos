@@ -495,8 +495,6 @@ typedef struct _MM_PAGED_POOL_INFO
     SIZE_T AllocatedPagedPool;
 } MM_PAGED_POOL_INFO, *PMM_PAGED_POOL_INFO;
 
-extern MM_MEMORY_CONSUMER MiMemoryConsumers[MC_MAXIMUM];
-
 /* Page file information */
 typedef struct _MMPAGING_FILE
 {
@@ -897,22 +895,6 @@ inline VOID UpdateTotalCommittedPages(LONG Delta)
 
 /* balance.c *****************************************************************/
 
-CODE_SEG("INIT")
-VOID
-NTAPI
-MmInitializeMemoryConsumer(
-    ULONG Consumer,
-    NTSTATUS (*Trim)(ULONG Target, ULONG Priority, PULONG NrFreed)
-);
-
-CODE_SEG("INIT")
-VOID
-NTAPI
-MmInitializeBalancer(
-    ULONG NrAvailablePages,
-    ULONG NrSystemPages
-);
-
 NTSTATUS
 NTAPI
 MmReleasePageMemoryConsumer(
@@ -1305,15 +1287,6 @@ BOOLEAN
 MiArchCreateProcessAddressSpace(
     _In_ PEPROCESS Process,
     _In_ PULONG_PTR DirectoryTableBase);
-
-/* wset.c ********************************************************************/
-
-NTSTATUS
-MmTrimUserMemory(
-    ULONG Target,
-    ULONG Priority,
-    PULONG NrFreedPages
-);
 
 /* region.c ************************************************************/
 

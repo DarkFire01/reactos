@@ -1,4 +1,4 @@
-/*
+h/*
  * COPYRIGHT:       See COPYING in the top level directory
  * PROJECT:         ReactOS kernel
  * FILE:            ntoskrnl/mm/balance.c
@@ -16,57 +16,18 @@
 
 #include "ARM3/miarm.h"
 
-
-/* TYPES ********************************************************************/
-typedef struct _MM_ALLOCATION_REQUEST
-{
-    PFN_NUMBER Page;
-    LIST_ENTRY ListEntry;
-    KEVENT Event;
-}
-MM_ALLOCATION_REQUEST, *PMM_ALLOCATION_REQUEST;
 /* GLOBALS ******************************************************************/
 
-MM_MEMORY_CONSUMER MiMemoryConsumers[MC_MAXIMUM];
-static ULONG MiMinimumAvailablePages;
-static ULONG MiMinimumPagesPerRun;
+static ULONG MiMinimumAvailablePages = 256;
 static CLIENT_ID MiBalancerThreadId;
 static HANDLE MiBalancerThreadHandle = NULL;
 static KEVENT MiBalancerEvent;
 static KTIMER MiBalancerTimer;
+static ULONG MiPagesUsed;
 
 static LONG PageOutThreadActive;
 
 /* FUNCTIONS ****************************************************************/
-
-CODE_SEG("INIT")
-VOID
-NTAPI
-MmInitializeBalancer(ULONG NrAvailablePages, ULONG NrSystemPages)
-{
-    memset(MiMemoryConsumers, 0, sizeof(MiMemoryConsumers));
-
-    /* Set up targets. */
-    MiMinimumAvailablePages = 256;
-    MiMinimumPagesPerRun = 256;
-    MiMemoryConsumers[MC_USER].PagesTarget = NrAvailablePages / 2;
-}
-
-CODE_SEG("INIT")
-VOID
-NTAPI
-MmInitializeMemoryConsumer(
-    ULONG Consumer,
-    NTSTATUS (*Trim)(ULONG Target, ULONG Priority, PULONG NrFreed))
-{
-    MiMemoryConsumers[Consumer].Trim = Trim;
-}
-
-VOID
-NTAPI
-MiZeroPhysicalPage(
-    IN PFN_NUMBER PageFrameIndex
-);
 
 NTSTATUS
 NTAPI
@@ -92,49 +53,7 @@ MmReleasePageMemoryConsumer(ULONG Consumer, PFN_NUMBER Page)
     return(STATUS_SUCCESS);
 }
 
-ULONG
-NTAPI
-MiTrimMemoryConsumer(ULONG Consumer, ULONG InitialTarget)
-{
-    ULONG Target = InitialTarget;
-    ULONG NrFreedPages = 0;
-    NTSTATUS Status;
-
-    /* Make sure we can trim this consumer */
-    if (!MiMemoryConsumers[Consumer].Trim)
-    {
-        /* Return the unmodified initial target */
-        return InitialTarget;
-    }
-
-    if (MmAvailablePages < MiMinimumAvailablePages)
-    {
-        /* Global page limit exceeded */
-        Target = (ULONG)max(Target, MiMinimumAvailablePages - MmAvailablePages);
-    }
-    else if (MiMemoryConsumers[Consumer].PagesUsed > MiMemoryConsumers[Consumer].PagesTarget)
-    {
-        /* Consumer page limit exceeded */
-        Target = max(Target, MiMemoryConsumers[Consumer].PagesUsed - MiMemoryConsumers[Consumer].PagesTarget);
-    }
-
-    if (Target)
-    {
-        /* Now swap the pages out */
-        Status = MiMemoryConsumers[Consumer].Trim(Target, MmAvailablePages < MiMinimumAvailablePages, &NrFreedPages);
-
-        DPRINT("Trimming consumer %lu: Freed %lu pages with a target of %lu pages\n", Consumer, NrFreedPages, Target);
-
-        if (!NT_SUCCESS(Status))
-        {
-            KeBugCheck(MEMORY_MANAGEMENT);
-        }
-    }
-
-    /* Return the page count needed to be freed to meet the initial target */
-    return (InitialTarget > NrFreedPages) ? (InitialTarget - NrFreedPages) : 0;
-}
-
+static
 NTSTATUS
 MmTrimUserMemory(ULONG Target, ULONG Priority, PULONG NrFreedPages)
 {
@@ -266,6 +185,37 @@ MmTrimUserMemory(ULONG Target, ULONG Priority, PULONG NrFreedPages)
     return STATUS_SUCCESS;
 }
 
+static
+ULONG
+MiTrimMemory(ULONG InitialTarget)
+{
+    ULONG Target = InitialTarget;
+    ULONG NrFreedPages = 0;
+    NTSTATUS Status;
+
+    if (MmAvailablePages < MiMinimumAvailablePages)
+    {
+        /* Global page limit exceeded */
+        Target = (ULONG)max(Target, MiMinimumAvailablePages - MmAvailablePages);
+    }
+
+    if (Target)
+    {
+        /* Now swap the pages out */
+        Status = MmTrimUserMemory(Target, MmAvailablePages < MiMinimumAvailablePages, &NrFreedPages);
+
+        DPRINT("Trimming memory from legacy MM: Freed %lu pages with a target of %lu pages\n", NrFreedPages, Target);
+
+        if (!NT_SUCCESS(Status))
+        {
+            KeBugCheck(MEMORY_MANAGEMENT);
+        }
+    }
+
+    /* Return the page count needed to be freed to meet the initial target */
+    return (InitialTarget > NrFreedPages) ? (InitialTarget - NrFreedPages) : 0;
+}
+
 VOID
 NTAPI
 MmRebalanceMemoryConsumers(VOID)
@@ -278,19 +228,22 @@ MmRebalanceMemoryConsumers(VOID)
 
 NTSTATUS
 NTAPI
-MmRequestPageMemoryConsumer(ULONG Consumer, BOOLEAN CanWait,
-                            PPFN_NUMBER AllocatedPage)
+MmRequestPageMemoryConsumer(ULONG Consumer, BOOLEAN Canwait, PPFN_NUMBER AllocatedPage)
 {
     PFN_NUMBER Page;
 
     /* Update the target */
+<<<<<<< HEAD
     InterlockedIncrementUL(&MiMemoryConsumers[Consumer].PagesUsed);
     UpdateTotalCommittedPages(1);
+=======
+    InterlockedIncrementUL(&MiPagesUsed);
+>>>>>>> bea6abef221 ([NTOS:MM] Get rid of MiMemoryConsumers array)
 
     /*
      * Actually allocate the page.
      */
-    Page = MmAllocPage(Consumer);
+    Page = MmAllocPage(0);
     if (Page == 0)
     {
         KeBugCheck(NO_PAGES_AVAILABLE);
@@ -306,7 +259,6 @@ MiBalancerThread(PVOID Unused)
 {
     PVOID WaitObjects[2];
     NTSTATUS Status;
-    ULONG i;
 
     WaitObjects[0] = &MiBalancerEvent;
     WaitObjects[1] = &MiBalancerTimer;
@@ -331,10 +283,7 @@ MiBalancerThread(PVOID Unused)
                 ULONG OldTarget = InitialTarget;
 
                 /* Trim each consumer */
-                for (i = 0; i < MC_MAXIMUM; i++)
-                {
-                    InitialTarget = MiTrimMemoryConsumer(i, InitialTarget);
-                }
+                InitialTarget = MiTrimMemory(InitialTarget);
 
                 /* No pages left to swap! */
                 if (InitialTarget != 0 &&
