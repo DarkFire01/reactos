@@ -264,7 +264,7 @@ GetEntry:
             ASSERT(MmGetRmapListHeadPage(Page) == NULL);
             MiReleasePfnLock(OldIrql);
 #endif
-            MmReleasePageMemoryConsumer(MC_USER, Page);
+            MmReleasePage(Page);
 
             ExReleaseRundownProtection(&Process->RundownProtect);
             ObDereferenceObject(Process);

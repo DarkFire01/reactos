@@ -111,10 +111,6 @@ typedef ULONG_PTR SWAPENTRY;
 
 #define SEC_PHYSICALMEMORY                  (0x80000000)
 
-#define MC_USER                             (0)
-#define MC_SYSTEM                           (1)
-#define MC_MAXIMUM                          (2)
-
 #define PAGED_POOL_MASK                     1
 #define MUST_SUCCEED_POOL_MASK              2
 #define CACHE_ALIGNED_POOL_MASK             4
@@ -896,19 +892,10 @@ inline VOID UpdateTotalCommittedPages(LONG Delta)
 /* balance.c *****************************************************************/
 
 NTSTATUS
-NTAPI
-MmReleasePageMemoryConsumer(
-    ULONG Consumer,
-    PFN_NUMBER Page
-);
+MmReleasePage(PFN_NUMBER Page);
 
 NTSTATUS
-NTAPI
-MmRequestPageMemoryConsumer(
-    ULONG Consumer,
-    BOOLEAN MyWait,
-    PPFN_NUMBER AllocatedPage
-);
+MmRequestPage(PPFN_NUMBER AllocatedPage);
 
 CODE_SEG("INIT")
 VOID
@@ -1183,10 +1170,7 @@ MmIsPageSwapEntry(
 );
 
 PFN_NUMBER
-NTAPI
-MmAllocPage(
-    ULONG Consumer
-);
+MmAllocPage(VOID);
 
 VOID
 NTAPI

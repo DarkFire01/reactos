@@ -948,7 +948,7 @@ MmpFreePageFileSegment(PMM_SECTION_SEGMENT Segment)
                     MmSetSavedSwapEntryPage(Page, 0);
                     MmFreeSwapPage(SavedSwapEntry);
                 }
-                MmReleasePageMemoryConsumer(MC_USER, Page);
+                MmReleasePage(Page);
             }
         }
     }
@@ -984,7 +984,7 @@ FreeSegmentPage(PMM_SECTION_SEGMENT Segment, PLARGE_INTEGER Offset)
     if (IS_DIRTY_SSE(Entry))
         MiWritePage(Segment, Offset->QuadPart, Page);
 
-    MmReleasePageMemoryConsumer(MC_USER, Page);
+    MmReleasePage(Page);
 }
 
 _When_(OldIrql == MM_NOIRQL, _IRQL_requires_max_(DISPATCH_LEVEL))
@@ -1163,7 +1163,7 @@ MmUnsharePageEntrySectionSegment(PMEMORY_AREA MemoryArea,
         MmFreeSwapPage(SwapEntry);
     }
     MmSetPageEntrySectionSegment(Segment, Offset, 0);
-    MmReleasePageMemoryConsumer(MC_USER, Page);
+    MmReleasePage(Page);
     return TRUE;
 }
 
@@ -1336,8 +1336,8 @@ MmMakeSegmentResident(
             RtlZeroMemory(Pages, BYTES_TO_PAGES(ReadLength) * sizeof(PFN_NUMBER));
             for (UINT i = 0; i < BYTES_TO_PAGES(ReadLength); i++)
             {
-                /* MmRequestPageMemoryConsumer succeeds or bugchecks */
-                (void)MmRequestPageMemoryConsumer(MC_USER, FALSE, &Pages[i]);
+                /* MmRequestPage succeeds or bugchecks */
+                (void)MmRequestPage(&Pages[i]);
             }
             Mdl->MdlFlags |= MDL_PAGES_LOCKED | MDL_IO_PAGE_READ;
 
@@ -1388,7 +1388,7 @@ MmMakeSegmentResident(
             {
                 /* Damn. Roll back. */
                 for (UINT i = 0; i < BYTES_TO_PAGES(ReadLength); i++)
-                    MmReleasePageMemoryConsumer(MC_USER, Pages[i]);
+                    MmReleasePage(Pages[i]);
 
                 MmLockSectionSegment(Segment);
                 while (ChunkOffset < ChunkEnd)
@@ -1631,7 +1631,7 @@ MmNotPresentFaultSectionView(PMMSUPPORT AddressSpace,
         MI_SET_USAGE(MI_USAGE_SECTION);
         if (Process) MI_SET_PROCESS2(Process->ImageFileName);
         if (!Process) MI_SET_PROCESS2("Kernel Section");
-        Status = MmRequestPageMemoryConsumer(MC_USER, TRUE, &Page);
+        Status = MmRequestPage(&Page);
         if (!NT_SUCCESS(Status))
         {
             KeBugCheck(MEMORY_MANAGEMENT);
@@ -1737,7 +1737,7 @@ MmNotPresentFaultSectionView(PMMSUPPORT AddressSpace,
             MI_SET_USAGE(MI_USAGE_SECTION);
             if (Process) MI_SET_PROCESS2(Process->ImageFileName);
             if (!Process) MI_SET_PROCESS2("Kernel Section");
-            MmRequestPageMemoryConsumer(MC_USER, FALSE, &Page);
+            MmRequestPage(&Page);
             MmSetPageEntrySectionSegment(Segment, &Offset, MAKE_SSE(Page << PAGE_SHIFT, 1));
             MmUnlockSectionSegment(Segment);
 
@@ -1802,7 +1802,7 @@ MmNotPresentFaultSectionView(PMMSUPPORT AddressSpace,
         MmUnlockSectionSegment(Segment);
 
         MmUnlockAddressSpace(AddressSpace);
-        Status = MmRequestPageMemoryConsumer(MC_USER, TRUE, &Page);
+        Status = MmRequestPage(&Page);
         if (!NT_SUCCESS(Status))
         {
             KeBugCheck(MEMORY_MANAGEMENT);
@@ -1991,7 +1991,7 @@ MmAccessFaultSectionView(PMMSUPPORT AddressSpace,
     /*
      * Allocate a page
      */
-    if (!NT_SUCCESS(MmRequestPageMemoryConsumer(MC_USER, TRUE, &NewPage)))
+    if (!NT_SUCCESS(MmRequestPage(&NewPage)))
     {
         KeBugCheck(MEMORY_MANAGEMENT);
     }
@@ -3485,7 +3485,7 @@ MmFreeSectionPage(PVOID Context, MEMORY_AREA* MemoryArea, PVOID Address,
                 MmSetSavedSwapEntryPage(Page, 0);
             }
             MmDeleteRmap(Page, Process, Address);
-            MmReleasePageMemoryConsumer(MC_USER, Page);
+            MmReleasePage(Page);
         }
         else
         {
@@ -4311,8 +4311,39 @@ MmFlushImageSection (IN PSECTION_OBJECT_POINTERS SectionObjectPointer,
 
             for (ULONG i = 0; i < ImageSectionObject->NrSegments; i++)
             {
-                if (!MiPurgeImageSegment(&ImageSectionObject->Segments[i]))
-                    break;
+
+                PMM_SECTION_SEGMENT Segment = &ImageSectionObject->Segments[i];
+                LONGLONG Length;
+
+                MmLockSectionSegment(Segment);
+                /* Loop over all entries */
+                LARGE_INTEGER Offset;
+                Offset.QuadPart = 0;
+
+                Length = Segment->Length.QuadPart;
+                if (Length < Segment->RawLength.QuadPart)
+                    Length = Segment->RawLength.QuadPart;
+
+                while (Offset.QuadPart < Length)
+                {
+                    ULONG_PTR Entry = MmGetPageEntrySectionSegment(Segment, &Offset);
+
+                    /* Shared data must already be discarded, and nobody should be reading it. */
+                    ASSERT(!IS_SWAP_FROM_SSE(Entry));
+                    if (Entry != 0)
+                    {
+                        DPRINT1("Freeing page %lx for image section %p\n", PFN_FROM_SSE(Entry), ImageSectionObject);
+                        /* Release the page */
+                        ASSERT(SHARE_COUNT_FROM_SSE(Entry) == 0);
+                        ASSERT(!IS_WRITE_SSE(Entry));
+                        ASSERT(MmGetSavedSwapEntryPage(PFN_FROM_SSE(Entry)) == 0);
+                        MmSetPageEntrySectionSegment(Segment, &Offset, 0);
+                        MmReleasePage(PFN_FROM_SSE(Entry));
+                    }
+                    Offset.QuadPart += PAGE_SIZE;
+                }
+                MmUnlockSectionSegment(Segment);
+
             }
 
             /* Grab lock again */
@@ -4806,7 +4837,7 @@ MmPurgeSegment(
 
         /* We can let this page go */
         MmSetPageEntrySectionSegment(Segment, &PurgeStart, 0);
-        MmReleasePageMemoryConsumer(MC_USER, PFN_FROM_SSE(Entry));
+        MmReleasePage(PFN_FROM_SSE(Entry));
 
         PurgeStart.QuadPart += PAGE_SIZE;
     }
@@ -5052,7 +5083,7 @@ MmCheckDirtySegment(
 
         /* Yes. Release it */
         MmSetPageEntrySectionSegment(Segment, Offset, NewEntry);
-        MmReleasePageMemoryConsumer(MC_USER, Page);
+        MmReleasePage(Page);
         /* Tell the caller we released the page */
         return TRUE;
     }
