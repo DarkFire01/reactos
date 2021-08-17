@@ -76,7 +76,7 @@
 @ stub strtok_s
 @ stdcall strtol() msvcrt.strtol
 @ stdcall strtoul() msvcrt.strtoul
-@ stub swprintf_s
+@ stdcall swprintf_s() msvcrt.swprintf_s
 @ stdcall tolower() msvcrt.tolower
 @ stdcall toupper() msvcrt.toupper
 @ stdcall towlower() msvcrt.towlower
