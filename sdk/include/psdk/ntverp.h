@@ -13,10 +13,51 @@
  * PROGRAMMERS:     Alex Ionescu (alex.ionescu@reactos.org)
  */
 
-#define  TARGET_VERSION _WIN32_WINNT_WIN7 
+#if 0
+//Windows 11 target really shouldn't be built, it does boot though :)
+//
+// Windows NT Build 17764.2061
+//
+#define VER_PRODUCTBUILD                    22000
+#define VER_PRODUCTBUILD_QFE                71
+//
+// Windows NT Version 10.1
+//
+#define VER_PRODUCTMAJORVERSION             11
+#define VER_PRODUCTMINORVERSION             0
+#define VER_PRODUCTVERSION_W                (0x0B00)
+#define VER_PRODUCTVERSION_DW               (0x0B000000 | VER_PRODUCTBUILD)
+#endif
 
-#if (TARGET_VERSION >= _WIN32_WINNT_WIN7)
- 
+
+//Windows 10 target really shouldn't be built, it does boot though :)
+//
+// Windows NT Build 17764.2061
+//
+#define VER_PRODUCTBUILD                    17764
+#define VER_PRODUCTBUILD_QFE                2061
+//
+// Windows NT Version 10.1
+//
+#define VER_PRODUCTMAJORVERSION             10
+#define VER_PRODUCTMINORVERSION             0
+#define VER_PRODUCTVERSION_W                (0x0A00)
+#define VER_PRODUCTVERSION_DW               (0x0A000000 | VER_PRODUCTBUILD)
+
+
+#if 0
+//
+// Windows NT 6.3.9600.19846
+//
+#define VER_PRODUCTBUILD                    9600
+#define VER_PRODUCTBUILD_QFE                19846
+#define VER_PRODUCTMAJORVERSION             6
+#define VER_PRODUCTMINORVERSION             3
+#define VER_PRODUCTVERSION_W                (0x0603)
+#define VER_PRODUCTVERSION_DW               (0x06030000 | VER_PRODUCTBUILD)
+#endif
+
+#if 0
 //
 // Windows NT 6.1.7601.17514
 //
@@ -26,9 +67,8 @@
 #define VER_PRODUCTMINORVERSION             1
 #define VER_PRODUCTVERSION_W                (0x0601)
 #define VER_PRODUCTVERSION_DW               (0x06010000 | VER_PRODUCTBUILD)
-
-#elif (TARGET_VERSION >= _WIN32_WINNT_VISTA)
- 
+#endif
+#if 0
 //
 // Windows NT 6.0.6002.18005
 //
@@ -39,9 +79,9 @@
 #define VER_PRODUCTVERSION_W                (0x0600)
 #define VER_PRODUCTVERSION_DW               (0x06000000 | VER_PRODUCTBUILD)
 
+#endif
 
-#else
-
+#if 0
 //
 // Windows NT Build 3790.3959
 //

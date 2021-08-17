@@ -72,7 +72,7 @@ char *pszSourceFileName = NULL;
 char *pszDllName = NULL;
 char *gpszUnderscore = "";
 int gbDebug;
-unsigned guOsVersion = 0x601; //THis is to choose kernel functions
+unsigned guOsVersion = 0x603; //THis is to choose kernel functions
 #define DbgPrint(...) (!gbDebug || fprintf(stderr, __VA_ARGS__))
 
 enum

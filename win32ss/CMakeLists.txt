@@ -193,7 +193,9 @@ list(APPEND SOURCE
     gdi/ntgdi/xformobj.c
     gdi/eng/stubs.c
     gdi/eng/umpdstubs.c
-    pch.h)
+    pch.h
+    ${CMAKE_CURRENT_BINARY_DIR}/win32k_stubs.c
+    ${CMAKE_CURRENT_BINARY_DIR}/win32k.def)
 
 if(USE_DIBLIB)
     add_definitions(-D_USE_DIBLIB_)

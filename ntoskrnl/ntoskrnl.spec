@@ -1756,3 +1756,29 @@
 @ stub -version=0x600+ PoUnregisterPowerSettingCallback
 @ stdcall -version=0x600+ PsGetCurrentProcessSessionIdEx() PsGetCurrentProcessSessionId
 @ stub -version=0x600+ RtlFormatSidUserKeyPath
+
+;Windows 8 stuff
+
+@ stub -version=0x602+ NtAddAtomEx	
+@ stub -version=0x602+ NtAlertThreadByThreadId	
+@ stub -version=0x602+ NtAlpcConnectPortEx	
+@ stub -version=0x602+ NtAssociateWaitCompletionPacket	
+@ stub -version=0x602+ NtCancelWaitCompletionPacket	
+@ stub -version=0x602+ NtCreateDirectoryObjectEx	
+@ stub -version=0x602+ NtCreateLowBoxToken	
+@ stub -version=0x602+ NtCreateTokenEx	
+@ stub -version=0x602+ NtCreateWaitCompletionPacket	
+@ stub -version=0x602+ NtCreateWnfStateName	
+@ stub -version=0x602+ NtDeleteWnfStateData	
+@ stub -version=0x602+ NtDeleteWnfStateName	
+@ stub -version=0x602+ NtFlushBuffersFileEx	
+@ stub -version=0x602+ NtPrefetchVirtualMemory	
+@ stub -version=0x602+ NtQueryWnfStateData	
+@ stub -version=0x602+ NtQueryWnfStateNameInformation	
+@ stub -version=0x602+ NtSetSystemCodeIntegrityRoots	
+@ stub -version=0x602+ NtSubscribeWnfStateChange	
+@ stub -version=0x602+ NtUnmapViewOfSectionEx	
+@ stub -version=0x602+ NtUnsubscribeWnfStateChange	
+@ stub -version=0x602+ NtUpdateWnfStateData	
+@ stub -version=0x602+ NtWaitForAlertByThreadId	
+@ stub -version=0x602+ NtWaitForWnfNotifications

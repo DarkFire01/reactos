@@ -715,3 +715,42 @@
 @ stub -version=0x600+ EvtReportText
 @ stub -version=0x600+ EvtClose
 @ stub -version=0x600+ EvtOpen
+
+
+;Windows 8
+
+@ stub -version=0x602+ CheckForHiberboot	
+@ stub -version=0x602+ EnumerateTraces	
+@ stub -version=0x602+ EtwLogSysConfigExtension	
+@ stub -version=0x602+ EventSetInformation	
+@ stub -version=0x602+ GetStringConditionFromBinary	
+@ stub -version=0x602+ I_ScRegisterPreshutdownRestart	
+@ stub -version=0x602+ LsaGetAvailableCAPIDs	
+@ stub -version=0x602+ LsaLookupSids2	
+@ stub -version=0x602+ LsaQueryCAPs	
+@ stub -version=0x602+ LsaSetCAPs	
+@ stub -version=0x602+ MIDL_user_free_Ext	
+@ stub -version=0x602+ OperationEnd	
+@ stub -version=0x602+ OperationStart	
+@ stub -version=0x602+ PerfRegCloseKey	
+@ stub -version=0x602+ PerfRegEnumKey	
+@ stub -version=0x602+ PerfRegEnumValue	
+@ stub -version=0x602+ PerfRegQueryInfoKey	
+@ stub -version=0x602+ PerfRegQueryValue	
+@ stub -version=0x602+ PerfRegSetValue	
+@ stub -version=0x602+ PsmAdjustActivationToken	
+@ stub -version=0x602+ PsmBlockAppStateChangeCompletion	
+@ stub -version=0x602+ PsmEnableApplicationSandbox	
+@ stub -version=0x602+ PsmRegisterAppStateChangeNotification	
+@ stub -version=0x602+ PsmRegisterApplicationProcess	
+@ stub -version=0x602+ PsmUnblockAppStateChangeCompletion	
+@ stub -version=0x602+ PsmUnregisterAppStateChangeNotification	
+@ stub -version=0x602+ PsmWaitForAppResume	
+@ stub -version=0x602+ QueryServiceDynamicInformation	
+@ stub -version=0x602+ RemoteRegEnumKeyWrapper	
+@ stub -version=0x602+ RemoteRegEnumValueWrapper	
+@ stub -version=0x602+ RemoteRegQueryInfoKeyWrapper	
+@ stub -version=0x602+ RemoteRegQueryValueWrapper	
+@ stub -version=0x602+ SafeBaseRegGetKeySecurity	
+@ stub -version=0x602+ TraceQueryInformation	
+@ stub -version=0x602+ WaitServiceState
