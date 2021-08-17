@@ -976,7 +976,7 @@ RtlAddMandatoryAce(IN OUT PACL pAcl,
                    IN PSID pSid)
 {
     ACE *pAce;
-    ACE_HEADER *pAceHeader;
+    ACE_HEADER *pAceHeader = 0;
     DWORD dwLengthSid;
     DWORD dwAceSize;
     DWORD *pAccessMask;

@@ -1,6 +1,7 @@
 
 #include "dwmcore.h"
 
+#if 0
 BOOL
 WINAPI
 DllMain(HANDLE hDll,
@@ -12,3 +13,4 @@ DllMain(HANDLE hDll,
         DisableThreadLibraryCalls(hDll);
     return TRUE;
 }
+#endif

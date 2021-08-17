@@ -205,9 +205,3 @@ BEGIN
     IDS_NOTIF_BEH_HIDE          "Always hide"
     IDS_NOTIF_BEH_SHOW          "Always show"
 END
-
-STRINGTABLE
-BEGIN
-    IDS_NOTIF_BEH_CURRENT "Current Items"
-    IDS_NOTIF_BEH_PAST    "Past Items"
-END

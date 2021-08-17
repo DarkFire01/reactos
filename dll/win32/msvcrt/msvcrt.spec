@@ -258,7 +258,7 @@
 @ cdecl ___mb_cur_max_func()
 @ cdecl ___setlc_active_func()
 @ cdecl ___unguarded_readlc_active_add_func()
-@ cdecl -version=0x600+ __acrt_iob_func(long)
+@ cdecl -stub -version=0x601+ __acrt_iob_func(long)
 @ extern __argc
 @ extern __argv
 @ extern __badioinfo __badioinfo
@@ -405,7 +405,7 @@
 @ cdecl _beep(long long)
 @ cdecl _beginthread(ptr long ptr)
 @ cdecl _beginthreadex(ptr long ptr ptr long ptr)
-@ cdecl -version=0x600+ _byteswap_ulong(long)
+;@ cdecl -version=0x600+ _byteswap_ulong(long)
 @ cdecl _c_exit()
 @ cdecl _cabs(long)
 @ cdecl _callnewh(long)
@@ -486,7 +486,9 @@
 @ cdecl _errno()
 @ cdecl -arch=i386 _except_handler2(ptr ptr ptr ptr)
 @ cdecl -arch=i386 _except_handler3(ptr ptr ptr ptr)
-@ cdecl -version=0x600+ _except_handler4_common(ptr ptr ptr ptr ptr ptr)
+@ cdecl -arch=i386 -version=0x600+ _except_handler4_common(ptr ptr ptr ptr ptr ptr)
+@ cdecl -stub -arch=x86_64 -version=0x600+ _except_handler4_common(ptr ptr ptr ptr ptr ptr)
+
 @ varargs _execl(str str)
 @ varargs _execle(str str)
 @ varargs _execlp(str str)
@@ -979,7 +981,7 @@
 @ cdecl -version=0x600+ _set_new_mode(long) MSVCRT__set_new_mode
 @ stub -version=0x600+ _set_output_format
 @ cdecl _set_sbh_threshold(long)
-@ cdecl -version=0x600+ _set_app_type(long) __set_app_type
+@ cdecl _set_app_type(long) __set_app_type
 @ cdecl _seterrormode(long)
 @ cdecl -norelay _setjmp(ptr)
 @ cdecl -arch=i386 -norelay _setjmp3(ptr long)

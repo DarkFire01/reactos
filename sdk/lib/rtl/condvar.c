@@ -541,7 +541,7 @@ LONG NTAPI RtlCompareUnicodeStrings( const WCHAR *s1, SIZE_T len1, const WCHAR *
     LONG ret = 0;
     SIZE_T len = min( len1, len2 );
     NLSTABLEINFO nls_info;
-
+    nls_info.UpperCaseTable = NULL;
     if (case_insensitive)
     {
         if (nls_info.UpperCaseTable)
