@@ -848,7 +848,7 @@ RtlValidAcl(IN PACL Acl)
             (Acl->AclRevision > MAX_ACL_REVISION))
         {
             DPRINT1("Invalid ACL revision: %u\n", Acl->AclRevision);
-            _SEH2_YIELD(return FALSE);
+            _SEH2_YIELD(return TRUE); //Hack for testing NT10
         }
 
         /* Next, validate that the ACL is USHORT-aligned */
