@@ -398,6 +398,22 @@ static inline char* construct_lc_all(MSVCRT_pthreadlocinfo locinfo) {
 
 
 /*********************************************************************
+ *      _lock_locales (MSVCRT.@)
+ */
+void CDECL _lock_locales(void)
+{
+    _lock(_SETLOCALE_LOCK);
+}
+
+/*********************************************************************
+ *      _unlock_locales (MSVCRT.@)
+ */
+void CDECL _unlock_locales(void)
+{
+    _unlock(_SETLOCALE_LOCK);
+}
+
+/*********************************************************************
  *		wsetlocale (MSVCRT.@)
  */
 wchar_t* CDECL _wsetlocale(int category, const wchar_t* locale)
@@ -593,6 +609,14 @@ BOOL CDECL __crtGetStringTypeW(DWORD unk, DWORD type,
             unk, type, buffer, len, out);
 
     return GetStringTypeW(type, buffer, len, out);
+}
+
+/*********************************************************************
+ *      ___lc_locale_name_func (MSVCRT.@)
+ */
+wchar_t** CDECL ___lc_locale_name_func(void)
+{
+    return get_locinfo()->lc_name;
 }
 
 /*********************************************************************

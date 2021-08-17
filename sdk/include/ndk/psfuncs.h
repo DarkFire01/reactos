@@ -236,6 +236,20 @@ PsGetProcessExitProcessCalled(
     _In_ PEPROCESS Process
 );
 
+NTKERNELAPI
+NTSTATUS
+NTAPI
+PsEnterPriorityRegion(
+    VOID
+);
+
+NTKERNELAPI
+NTSTATUS
+NTAPI
+PsLeavePriorityRegion(
+    VOID
+);
+
 //
 // Quota Functions
 //

@@ -8,7 +8,8 @@ spec2def(iphlpapi.dll iphlpapi.spec ADD_IMPORTLIB)
 
 add_definitions(
     -DGetAdaptersAddressesV2
-    -D_CRT_NO_POSIX_ERROR_CODES)
+    -D_CRT_NO_POSIX_ERROR_CODES
+    -D_WINESRC)
 
 list(APPEND SOURCE
     address.c

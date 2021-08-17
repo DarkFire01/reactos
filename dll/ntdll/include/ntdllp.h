@@ -23,11 +23,52 @@
 /* Page heap flags */
 #define DPH_FLAG_DLL_NOTIFY 0x40
 
+typedef enum _ETW_NOTIFICATION_TYPE
+{
+    EtwNotificationTypeNoReply,
+    EtwNotificationTypeLegacyEnable,
+    EtwNotificationTypeEnable,
+    EtwNotificationTypePrivateLogger,
+    EtwNotificationTypePerfLib,
+    EtwNotificationTypeAudio,
+    EtwNotificationTypeSession,
+    EtwNotificationTypeReserved,
+    EtwNotificationTypeCredentialUI,
+    EtwNotificationTypeInProcSession,
+    EtwNotificationTypeFilteredPrivateLogger,
+    EtwNotificationTypeMax
+} ETW_NOTIFICATION_TYPE;
+
 typedef struct _LDRP_TLS_DATA
 {
     LIST_ENTRY TlsLinks;
     IMAGE_TLS_DIRECTORY TlsDirectory;
 } LDRP_TLS_DATA, *PLDRP_TLS_DATA;
+
+typedef struct _ETW_NOTIFICATION_HEADER
+{
+    ETW_NOTIFICATION_TYPE NotificationType;
+    ULONG NotificationSize;
+    ULONG Offset;
+    BOOLEAN ReplyRequested;
+    ULONG Timeout;
+    union
+    {
+        ULONG ReplyCount;
+        ULONG NotifyeeCount;
+    };
+    ULONGLONG Reserved2;
+    ULONG TargetPID;
+    ULONG SourcePID;
+    GUID DestinationGuid;
+    GUID SourceGuid;
+} *ETW_NOTIFICATION_HEADER, PETW_NOTIFICATION_HEADER;
+
+typedef 
+ULONG 
+(*PETW_NOTIFICATION_CALLBACK) (
+    ETW_NOTIFICATION_HEADER *NotificationHeader,
+    PVOID Context);
 
 typedef
 NTSTATUS

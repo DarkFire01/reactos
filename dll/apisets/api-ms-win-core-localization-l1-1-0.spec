@@ -32,7 +32,7 @@
 @ stdcall -version=0x601+ IsValidCodePage() kernel32.IsValidCodePage
 @ stdcall -version=0x601+ IsValidLanguageGroup() kernel32.IsValidLanguageGroup
 @ stdcall -version=0x601+ IsValidLocale() kernel32.IsValidLocale
-@ stub -version=0x601+ IsValidLocaleName
+@ stdcall -version=0x601+ IsValidLocaleName() kernel32.IsValidLocaleName
 @ stdcall -version=0x601+ LCMapStringEx() kernel32.LCMapStringEx
 @ stdcall -version=0x601+ LCMapStringW() kernel32.LCMapStringW
 @ stdcall -version=0x601+ LocaleNameToLCID() kernel32.LocaleNameToLCID
@@ -42,7 +42,7 @@
 @ stdcall -version=0x601+ NlsUpdateLocale() kernel32.NlsUpdateLocale
 @ stdcall -version=0x601+ NlsUpdateSystemLocale() kernel32.NlsUpdateSystemLocale
 @ stdcall -version=0x601+ NlsWriteEtwEvent() kernel32.NlsWriteEtwEvent
-@ stub -version=0x601+ ResolveLocaleName
+@ stdcall -version=0x601+ ResolveLocaleName() kernel32.ResolveLocaleName
 @ stdcall -version=0x601+ SetCalendarInfoW() kernel32.SetCalendarInfoW
 @ stdcall -version=0x601+ SetLocaleInfoW() kernel32.SetLocaleInfoW
 @ stdcall -version=0x601+ SetThreadLocale() kernel32.SetThreadLocale

@@ -192,6 +192,14 @@ SHGetFolderPathAndSubDirW(
 
 #define SHGetFolderPathAndSubDir WINELIB_NAME_AW(SHGetFolderPathAndSubDir);
 
+HRESULT
+WINAPI
+SHGetKnownFolderIDList(
+  REFKNOWNFOLDERID rfid,
+  DWORD flags,
+  HANDLE token,
+  PIDLIST_ABSOLUTE *pidl);
+
 _Success_(return != 0)
 BOOL
 WINAPI

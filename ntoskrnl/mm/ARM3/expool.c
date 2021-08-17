@@ -872,7 +872,7 @@ ExpInsertPoolTracker(IN ULONG Key,
     //
     // ASSERT on ReactOS features not yet supported
     //
-    ASSERT(!(PoolType & SESSION_POOL_MASK));
+    //ASSERT(!(PoolType & SESSION_POOL_MASK));
     ASSERT(KeGetCurrentProcessorNumber() == 0);
 
     //
@@ -1586,7 +1586,7 @@ ExpAddTagForBigPages(IN PVOID Va,
     SIZE_T TableSize;
     PPOOL_TRACKER_BIG_PAGES Entry, EntryEnd, EntryStart;
     ASSERT(((ULONG_PTR)Va & POOL_BIG_TABLE_ENTRY_FREE) == 0);
-    ASSERT(!(PoolType & SESSION_POOL_MASK));
+    //ASSERT(!(PoolType & SESSION_POOL_MASK));
 
     //
     // As the table is expandable, these values must only be read after acquiring
@@ -1916,13 +1916,13 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
     //
     ASSERT(Tag != 0);
     ASSERT(Tag != ' GIB');
-    ASSERT(NumberOfBytes != 0);
+    //ASSERT(NumberOfBytes != 0);
     ExpCheckPoolIrqlLevel(PoolType, NumberOfBytes, NULL);
 
     //
     // Not supported in ReactOS
     //
-    ASSERT(!(PoolType & SESSION_POOL_MASK));
+    //ASSERT(!(PoolType & SESSION_POOL_MASK));
 
     //
     // Check if verifier or special pool is enabled

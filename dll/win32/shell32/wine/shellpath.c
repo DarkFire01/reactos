@@ -2866,6 +2866,98 @@ failed:
     return hr;
 }
 
+HRESULT WINAPI SHGetKnownFolderIDList(REFKNOWNFOLDERID rfid, DWORD flags, HANDLE token, PIDLIST_ABSOLUTE *pidl)
+{
+    TRACE("%s, 0x%08x, %p, %p\n", debugstr_guid(rfid), flags, token, pidl);
+
+    if (!pidl)
+        return E_INVALIDARG;
+
+    if (flags)
+        FIXME("unsupported flags: 0x%08x\n", flags);
+
+    if (token)
+        FIXME("user token is not used.\n");
+
+    *pidl = NULL;
+    if (IsEqualIID(rfid, &FOLDERID_Desktop))
+        *pidl = _ILCreateDesktop();
+    else if (IsEqualIID(rfid, &FOLDERID_RecycleBinFolder))
+        *pidl = _ILCreateBitBucket();
+    else if (IsEqualIID(rfid, &FOLDERID_ComputerFolder))
+        *pidl = _ILCreateMyComputer();
+    else if (IsEqualIID(rfid, &FOLDERID_PrintersFolder))
+        *pidl = _ILCreatePrinters();
+    else if (IsEqualIID(rfid, &FOLDERID_ControlPanelFolder))
+        *pidl = _ILCreateControlPanel();
+    else if (IsEqualIID(rfid, &FOLDERID_NetworkFolder))
+        *pidl = _ILCreateNetwork();
+    else if (IsEqualIID(rfid, &FOLDERID_Documents))
+        *pidl = _ILCreateMyDocuments();
+    else
+    {
+        DWORD attributes = 0;
+        WCHAR *pathW;
+        HRESULT hr;
+
+        hr = SHGetKnownFolderPath(rfid, flags, token, &pathW);
+        if (FAILED(hr))
+            return hr;
+
+        hr = SHILCreateFromPathW(pathW, pidl, &attributes);
+        CoTaskMemFree(pathW);
+        return hr;
+    }
+
+    return *pidl ? S_OK : E_FAIL;
+}
+
+HRESULT WINAPI SHGetKnownFolderItem(REFKNOWNFOLDERID rfid, KNOWN_FOLDER_FLAG flags, HANDLE hToken,
+    REFIID riid, void **ppv)
+{
+    PIDLIST_ABSOLUTE pidl;
+    HRESULT hr;
+
+    TRACE("%s, 0x%08x, %p, %s, %p\n", debugstr_guid(rfid), flags, hToken, debugstr_guid(riid), ppv);
+
+    hr = SHGetKnownFolderIDList(rfid, flags, hToken, &pidl);
+    if (FAILED(hr))
+    {
+        *ppv = NULL;
+        return hr;
+    }
+
+    hr = SHCreateItemFromIDList(pidl, riid, ppv);
+    CoTaskMemFree(pidl);
+    return hr;
+}
+
+/*************************************************************************
+ * SHGetFolderPathEx           [SHELL32.@]
+ */
+HRESULT WINAPI SHGetFolderPathEx(REFKNOWNFOLDERID rfid, DWORD flags, HANDLE token, LPWSTR path, DWORD len)
+{
+    HRESULT hr;
+    WCHAR *buffer;
+
+    TRACE("%s, 0x%08x, %p, %p, %u\n", debugstr_guid(rfid), flags, token, path, len);
+
+    if (!path || !len) return E_INVALIDARG;
+
+    hr = SHGetKnownFolderPath( rfid, flags, token, &buffer );
+    if (SUCCEEDED( hr ))
+    {
+        if (strlenW( buffer ) + 1 > len)
+        {
+            CoTaskMemFree( buffer );
+            return HRESULT_FROM_WIN32( ERROR_INSUFFICIENT_BUFFER );
+        }
+        strcpyW( path, buffer );
+        CoTaskMemFree( buffer );
+    }
+    return hr;
+}
+
 /* For each folder in folders, if its value has not been set in the registry,
  * calls _SHGetUserProfilePath or _SHGetAllUsersProfilePath (depending on the
  * folder's type) to get the unexpanded value first.

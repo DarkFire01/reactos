@@ -80,9 +80,9 @@
 @ stdcall _wcsicoll() msvcrt._wcsicoll
 @ stub _wcsicoll_l
 @ stdcall _wcslwr() msvcrt._wcslwr
-@ stub _wcslwr_l
-@ stub _wcslwr_s
-@ stub _wcslwr_s_l
+@ stdcall -version=0x600+ _wcslwr_l() msvcrt._wcslwr_l
+@ stdcall -version=0x600+ _wcslwr_s() msvcrt._wcslwr_s
+@ stdcall -version=0x600+ _wcslwr_s_l() msvcrt._wcslwr_s_l
 @ stdcall _wcsncoll() msvcrt._wcsncoll
 @ stub _wcsncoll_l
 @ stdcall _wcsnicmp() msvcrt._wcsnicmp
@@ -158,11 +158,11 @@
 @ stdcall towlower() msvcrt.towlower
 @ stdcall towupper() msvcrt.towupper
 @ stdcall wcscat() msvcrt.wcscat
-@ stub wcscat_s
+@ stdcall -version=0x600+ wcscat_s() msvcrt.wcscat_s
 @ stdcall wcscmp() msvcrt.wcscmp
 @ stdcall wcscoll() msvcrt.wcscoll
 @ stdcall wcscpy() msvcrt.wcscpy
-@ stub wcscpy_s
+@ stdcall -version=0x600+ wcscpy_s() msvcrt.wcscpy_s
 @ stdcall wcscspn() msvcrt.wcscspn
 @ stdcall wcslen() msvcrt.wcslen
 @ stdcall wcsncat() msvcrt.wcsncat
@@ -174,7 +174,7 @@
 @ stdcall wcspbrk() msvcrt.wcspbrk
 @ stdcall wcsspn() msvcrt.wcsspn
 @ stdcall wcstok() msvcrt.wcstok
-@ stub wcstok_s
+@ stdcall -version=0x600+ wcstok_s() msvcrt.wcstok_s
 @ stdcall wcsxfrm() msvcrt.wcsxfrm
 @ stub wctype
 @ stub wmemcpy_s

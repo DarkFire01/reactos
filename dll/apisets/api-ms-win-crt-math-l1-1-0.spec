@@ -86,7 +86,7 @@
 @ stdcall -arch=i386 _ftol() msvcrt._ftol
 @ stub _get_FMA3_enable
 @ stdcall _hypot() msvcrt._hypot
-@ stdcall -arch=x86_64,arm _hypotf() msvcrt._hypotf
+@ stdcall -arch=i386,x86_64,arm _hypotf() msvcrt._hypotf
 @ stdcall _isnan() msvcrt._isnan
 @ stub _isnanf
 @ stdcall _j0() msvcrt._j0

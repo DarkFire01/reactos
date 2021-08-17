@@ -152,6 +152,16 @@ NTSTATUS Status;
  */
 BOOL
 WINAPI
+SetProcessDPIAware()
+{
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
 IsGUIThread(
     BOOL bConvert)
 {

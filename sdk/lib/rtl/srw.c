@@ -799,3 +799,12 @@ RtlTryAcquireSRWLockExclusive(PRTL_SRWLOCK SRWLock)
 {
     return InterlockedCompareExchangePointer(&SRWLock->Ptr, (ULONG_PTR*)RTL_SRWLOCK_OWNED, 0) == 0;
 }
+
+/***********************************************************************
+ *              RtlQueryPerformanceCounter (NTDLL.@)
+ */
+BOOLEAN WINAPI RtlQueryPerformanceCounter(OUT PLARGE_INTEGER PerformanceCounter)
+{
+    NtQueryPerformanceCounter(PerformanceCounter, NULL);
+    return TRUE;
+}

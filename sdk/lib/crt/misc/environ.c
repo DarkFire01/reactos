@@ -518,4 +518,56 @@ unsigned int *__p__winver(void)
     return &_winver;
 }
 
+/*********************************************************************
+ *		_get_initial_narrow_environment (MSVCRT.@)
+ */
+char** CDECL _get_initial_narrow_environment(void)
+{
+  return __initenv;
+}
+
+/*********************************************************************
+ *		_configure_narrow_argv (MSVCRT.@)
+ */
+int CDECL _configure_narrow_argv(int mode)
+{
+  TRACE("(%d)\n", mode);
+  return 0;
+}
+
+/*********************************************************************
+ *		_initialize_narrow_environment (MSVCRT.@)
+ */
+int CDECL _initialize_narrow_environment(void)
+{
+  TRACE("\n");
+  return 0;
+}
+
+/*********************************************************************
+ *		_get_initial_wide_environment (MSVCRT.@)
+ */
+wchar_t** CDECL _get_initial_wide_environment(void)
+{
+  return __winitenv;
+}
+
+/*********************************************************************
+ *		_configure_wide_argv (MSVCRT.@)
+ */
+int CDECL _configure_wide_argv(int mode)
+{
+  WARN("(%d) stub\n", mode);
+  return 0;
+}
+
+/*********************************************************************
+ *		_initialize_wide_environment (MSVCRT.@)
+ */
+int CDECL _initialize_wide_environment(void)
+{
+  WARN("stub\n");
+  return 0;
+}
+
 /* EOF */

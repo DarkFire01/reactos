@@ -491,7 +491,8 @@ CcPinRead (
     if (!SharedCacheMap->PinAccess)
     {
         DPRINT1("FIXME: Pinning a file with no pin access!\n");
-        return FALSE;
+        DPRINT1("Fake success\n");
+        //return FALSE;
     }
 
     if (Flags & PIN_WAIT)

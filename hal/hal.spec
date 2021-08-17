@@ -106,3 +106,8 @@
 @ stdcall -arch=x86_64 x86BiosFreeBuffer()
 @ stdcall -arch=x86_64 x86BiosReadMemory()
 @ stdcall -arch=x86_64 x86BiosWriteMemory()
+;@ stdcall -stub -version=0x600+ x86BiosAllocateBuffer(long long long)
+;@ stdcall -stub -version=0x600+ x86BiosCall(long ptr)
+;@ stdcall -stub -version=0x600+ x86BiosFreeBuffer(long long)
+;@ stdcall -stub -version=0x600+ x86BiosReadMemory(long long ptr long)
+;@ stdcall -stub -version=0x600+ x86BiosWriteMemory(long long ptr long)

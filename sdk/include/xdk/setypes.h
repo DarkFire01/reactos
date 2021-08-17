@@ -953,6 +953,14 @@ typedef enum _TOKEN_INFORMATION_CLASS {
   TokenRestrictedDeviceGroups,
   TokenSecurityAttributes,
   TokenIsRestricted,
+  TokenProcessTrustLevel,
+  TokenPrivateNameSpace,
+  TokenSingletonAttributes,
+  TokenBnoIsolation,
+  TokenChildProcessFlags,
+  TokenIsLessPrivilegedAppContainer,
+  TokenIsSandboxed,
+  TokenOriginatingProcessTrustLevel,
   MaxTokenInfoClass
 } TOKEN_INFORMATION_CLASS, *PTOKEN_INFORMATION_CLASS;
 

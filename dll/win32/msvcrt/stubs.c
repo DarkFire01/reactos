@@ -923,6 +923,3 @@ vsnprintf(
     UNIMPLEMENTED;
     return 0;
 }
-
-
-

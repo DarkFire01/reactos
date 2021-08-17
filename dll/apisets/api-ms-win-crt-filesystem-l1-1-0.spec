@@ -52,13 +52,13 @@
 @ stub _wfindnext64i32
 @ stdcall _wfullpath() msvcrt._wfullpath
 @ stdcall _wmakepath() msvcrt._wmakepath
-@ stub _wmakepath_s
+@ stdcall -version=0x600+ _wmakepath_s() msvcrt._wmakepath_s
 @ stdcall _wmkdir() msvcrt._wmkdir
 @ stdcall _wremove() msvcrt._wremove
 @ stdcall _wrename() msvcrt._wrename
 @ stdcall _wrmdir() msvcrt._wrmdir
 @ stdcall _wsplitpath() msvcrt._wsplitpath
-@ stub _wsplitpath_s
+@ stdcall -version=0x600+ _wsplitpath_s() msvcrt._wsplitpath_s
 @ stub _wstat32
 @ stub _wstat32i64
 @ stdcall _wstat64() msvcrt._wstat64

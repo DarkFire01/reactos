@@ -1227,8 +1227,8 @@ typedef struct _ETHREAD
 #if (NTDDI_VERSION >= NTDDI_LONGHORN)
            ULONG SuppressSymbolLoad:1;
            ULONG Spare1:3;
-           ULONG PriorityRegionActive:4;
 #else
+           ULONG PriorityRegionActive:4;
            ULONG ApcNeeded:1;
 #endif
         };

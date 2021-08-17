@@ -43,14 +43,14 @@
 
 extern unsigned int __lc_codepage;
 extern int __lc_collate_cp;
-extern int __mb_cur_max;
+//extern int __mb_cur_max;
 extern const unsigned short _ctype [257];
 
 void __cdecl _purecall(void);
 __declspec(noreturn) void __cdecl _amsg_exit(int errnum);
 
-extern char **_environ;
-extern wchar_t **_wenviron;
+//extern char **_environ;
+//extern wchar_t **_wenviron;
 extern char ** SnapshotOfEnvironmentA(char **);
 extern wchar_t ** SnapshotOfEnvironmentW(wchar_t **);
 
@@ -80,6 +80,7 @@ void* __cdecl MSVCRT_operator_new(size_t);
 void __cdecl MSVCRT_operator_delete(void*);
 typedef void* (__cdecl *malloc_func_t)(size_t);
 typedef void  (__cdecl *free_func_t)(void*);
+typedef int (__cdecl *MSVCRT__onexit_t)(void);
 
 /* Setup and teardown multi threaded locks */
 extern void msvcrt_init_mt_locks(void);
@@ -161,5 +162,12 @@ typedef struct {
     int                 exflag;
     CRITICAL_SECTION    crit;
 } ioinfo;
+
+typedef struct MSVCRT__onexit_table_t
+{
+    MSVCRT__onexit_t *_first;
+    MSVCRT__onexit_t *_last;
+    MSVCRT__onexit_t *_end;
+} MSVCRT__onexit_table_t;
 
 #endif /* __WINE_MSVCRT_H */

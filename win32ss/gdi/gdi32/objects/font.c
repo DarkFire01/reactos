@@ -2664,6 +2664,36 @@ GetFontData(HDC hdc,
     return NtGdiGetFontData(hdc, dwTable, dwOffset, lpvBuffer, cbData);
 }
 
+BOOL
+WINAPI
+GetFontFileData(DWORD instance_id,
+                DWORD unknown,
+                UINT64 offset,
+                PVOID buff,
+                DWORD buff_size)
+{
+    return TRUE;
+}
+
+BOOL
+WINAPI
+GetFontFileInfo(DWORD instance_id,
+                DWORD unknown,
+                PVOID *info,
+                SIZE_T size,
+                SIZE_T *needed)
+{
+    return TRUE;
+}
+
+BOOL
+WINAPI
+GetFontRealizationInfo(HDC hdc,
+                       PVOID *info)
+{
+    return TRUE;
+}
+
 DWORD
 WINAPI
 cGetTTFFromFOT(DWORD x1 ,DWORD x2 ,DWORD x3, DWORD x4, DWORD x5, DWORD x6, DWORD x7)

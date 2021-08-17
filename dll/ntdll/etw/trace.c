@@ -6,6 +6,7 @@
 
 #include <wmistr.h>
 #include <evntrace.h>
+#include <evntprov.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -165,6 +166,26 @@ ULONG WINAPI EtwControlTraceA( TRACEHANDLE hSession, LPCSTR SessionName, PEVENT_
 }
 
 /******************************************************************************
+ *                  EtwEventActivityIdControl (NTDLL.@)
+ */
+ULONG WINAPI EtwEventActivityIdControl(ULONG code, GUID *guid)
+{
+    static int once;
+
+    if (!once++) FIXME("0x%x, %p: stub\n", code, guid);
+    return ERROR_SUCCESS;
+}
+
+/******************************************************************************
+ *                  EtwEventProviderEnabled (NTDLL.@)
+ */
+BOOLEAN WINAPI EtwEventProviderEnabled( REGHANDLE handle, UCHAR level, ULONGLONG keyword )
+{
+    FIXME("%s, %u, %s: stub\n", handle, level, keyword);
+    return FALSE;
+}
+
+/******************************************************************************
  * EtwEnableTrace [NTDLL.@]
  */
 ULONG WINAPI EtwEnableTrace( ULONG enable, ULONG flag, ULONG level, LPCGUID guid, TRACEHANDLE hSession )
@@ -172,6 +193,56 @@ ULONG WINAPI EtwEnableTrace( ULONG enable, ULONG flag, ULONG level, LPCGUID guid
     FIXME("(%d, 0x%x, %d, %p, %I64x): stub\n", enable, flag, level,
             guid, hSession);
 
+    return ERROR_SUCCESS;
+}
+
+/******************************************************************************
+ *                  EtwEventRegister (NTDLL.@)
+ */
+ULONG WINAPI EtwEventRegister( LPCGUID provider, PENABLECALLBACK callback, PVOID context, PREGHANDLE handle )
+{
+    FIXME("(%s, %p, %p, %p) stub.\n", provider, callback, context, handle);
+
+    if (!handle) return ERROR_INVALID_PARAMETER;
+
+    *handle = 0xdeadbeef;
+    return ERROR_SUCCESS;
+}
+
+/******************************************************************************
+ *                  EtwEventUnregister (NTDLL.@)
+ */
+ULONG WINAPI EtwEventUnregister( REGHANDLE handle )
+{
+    FIXME("(%s) stub.\n", handle);
+    return ERROR_SUCCESS;
+}
+
+/******************************************************************************
+ *                  EtwEventWrite (NTDLL.@)
+ */
+ULONG WINAPI EtwEventWrite( REGHANDLE handle, const EVENT_DESCRIPTOR *descriptor, ULONG count, EVENT_DATA_DESCRIPTOR *data )
+{
+    FIXME("(%s, %p, %u, %p): stub\n", handle, descriptor, count, data);
+    return ERROR_SUCCESS;
+}
+
+/******************************************************************************
+ *                  EtwEventWriteString   (NTDLL.@)
+ */
+ULONG WINAPI EtwEventWriteString( REGHANDLE handle, UCHAR level, ULONGLONG keyword, PCWSTR string )
+{
+    FIXME("%s, %u, %s, %s: stub\n", handle, level, keyword, string);
+    return ERROR_SUCCESS;
+}
+
+/******************************************************************************
+ *                  EtwEventWriteTransfer   (NTDLL.@)
+ */
+ULONG WINAPI EtwEventWriteTransfer( REGHANDLE handle, PCEVENT_DESCRIPTOR descriptor, LPCGUID activity,
+                                    LPCGUID related, ULONG count, PEVENT_DATA_DESCRIPTOR data )
+{
+    FIXME("%s, %p, %s, %s, %u, %p: stub\n", handle, descriptor, activity, related, count, data);
     return ERROR_SUCCESS;
 }
 
@@ -272,6 +343,20 @@ ULONG WINAPI EtwUpdateTraceA( TRACEHANDLE hSession, LPCSTR SessionName, PEVENT_T
 ULONG WINAPI EtwUpdateTraceW( TRACEHANDLE hSession, LPCWSTR SessionName, PEVENT_TRACE_PROPERTIES Properties )
 {
     return EtwControlTraceW( hSession, SessionName, Properties, EVENT_TRACE_CONTROL_UPDATE );
+}
+
+ULONG
+WINAPI
+EtwNotificationRegister(
+    LPCGUID Guid,
+    ULONG Type,
+    PETW_NOTIFICATION_CALLBACK Callback,
+    PVOID Context,
+    REGHANDLE RegHandle
+)
+{
+    UNIMPLEMENTED;
+    return 0;
 }
 
 /* EOF */

@@ -1092,3 +1092,88 @@ GdiAddGlsRecord(HDC hdc,
     return 0;
 }
 
+NTSTATUS
+WINAPI
+D3DKMTCloseAdapter(const PVOID *Arg1) // D3DKMT_CLOSEADAPTER
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+WINAPI
+D3DKMTGetPresentHistory(PVOID *Arg1) // D3DKMT_GETPRESENTHISTORY
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+WINAPI
+D3DKMTGetPresentQueueEvent(PVOID hAdapter, // D3DKMT_HANDLE
+                           HANDLE *Handle)
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+WINAPI
+D3DKMTOpenAdapterFromGdiDisplayName(PVOID *Arg1) // D3DKMT_OPENADAPTERFROMGDIDISPLAYNAME
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+WINAPI
+D3DKMTOpenAdapterFromHdc(PVOID *Arg1) // D3DKMT_OPENADAPTERFROMHDC
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+WINAPI
+D3DKMTQueryAdapterInfo(const PVOID *Arg1) // D3DKMT_QUERYADAPTERINFO
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+WINAPI
+D3DKMTSetProcessSchedulingPriorityClass(HANDLE ProcessHandle,
+                                        PVOID PriorityClass) // D3DKMT_SCHEDULINGPRIORITYCLASS
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+VOID
+WINAPI
+CreateBitmapFromDxSurface(VOID)
+{
+    UNIMPLEMENTED;
+}
+
+VOID
+WINAPI
+CreateBitmapFromDxSurface2(VOID)
+{
+    UNIMPLEMENTED;
+}
+
+VOID
+WINAPI
+BeginGdiRendering(VOID)
+{
+    UNIMPLEMENTED;
+}
+
+VOID
+WINAPI
+EndGdiRendering(VOID)
+{
+    UNIMPLEMENTED;
+}

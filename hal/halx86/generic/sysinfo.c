@@ -73,7 +73,11 @@ HaliQuerySystemInformation(IN HAL_QUERY_INFORMATION_CLASS InformationClass,
             /* FIXME: TODO */
             return STATUS_NOT_IMPLEMENTED;
 		}
-		REPORT_THIS_CASE(HalDisplayBiosInformation);
+		case HalDisplayBiosInformation:
+		{
+            /* FIXME: TODO */
+            return STATUS_NOT_IMPLEMENTED;
+		}
 		REPORT_THIS_CASE(HalProcessorFeatureInformation);
 		REPORT_THIS_CASE(HalNumaTopologyInterface);
 		REPORT_THIS_CASE(HalErrorInformation);

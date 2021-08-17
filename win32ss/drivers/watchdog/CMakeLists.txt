@@ -3,6 +3,7 @@ spec2def(watchdog.sys watchdog.spec)
 
 add_library(watchdog MODULE
     watchdog.c
+    ${CMAKE_CURRENT_BINARY_DIR}/watchdog_stubs.c
     ${CMAKE_CURRENT_BINARY_DIR}/watchdog.def)
 
 set_module_type(watchdog kernelmodedriver)

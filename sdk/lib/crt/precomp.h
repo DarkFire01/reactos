@@ -34,6 +34,7 @@
 #include <winbase.h>
 #include <wincon.h>
 #include <winuser.h>
+#include <winnls.h>
 #include <ndk/rtlfuncs.h>
 
 // Our headers are pretty messed up
@@ -72,6 +73,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(msvcrt);
 #include <internal/math.h>
 #include <internal/mbstring.h>
 #include <internal/misc.h>
+#include <internal/wine/msvcrt.h>
 #include <internal/mtdll.h>
 #include <internal/popen.h>
 #include <internal/rterror.h>

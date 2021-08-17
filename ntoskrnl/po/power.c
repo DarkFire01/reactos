@@ -896,7 +896,7 @@ NtPowerInformation(IN POWER_INFORMATION_LEVEL PowerInformationLevel,
         }
 
         default:
-            Status = STATUS_NOT_IMPLEMENTED;
+            Status = STATUS_SUCCESS;
             DPRINT1("PowerInformationLevel 0x%x is UNIMPLEMENTED! Have a nice day.\n",
                     PowerInformationLevel);
             break;

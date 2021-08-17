@@ -2045,5 +2045,18 @@ DisableProcessWindowsGhosting(VOID)
     NtUserxEnableProcessWindowGhosting(FALSE);
 }
 
+/*
+ * @unimplemented
+ */
+BOOL WINAPI
+ChangeWindowMessageFilterEx(HWND hwnd,
+                            UINT message,
+                            DWORD action,
+                            PVOID pChangeFilterStruct)
+{
+    UNIMPLEMENTED;
+    return TRUE;
+}
+
 /* EOF */
 

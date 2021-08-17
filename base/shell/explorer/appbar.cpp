@@ -198,7 +198,11 @@ static UINT_PTR handle_appbarmessage(DWORD msg, _AppBarData *abd)
         }
         return TRUE;
     case ABM_GETSTATE:
-        FIXME("SHAppBarMessage(ABM_GETSTATE): stub\n");
+        if ((GetWindowLongA(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0 || IsWindowVisible(hwnd))
+        {
+            WARN("taskbar %p is not on top or not hided\n", hwnd);
+            return 0;
+        }
         return ABS_ALWAYSONTOP | ABS_AUTOHIDE;
     case ABM_GETTASKBARPOS:
         FIXME("SHAppBarMessage(ABM_GETTASKBARPOS, hwnd=%p): stub\n", hwnd);

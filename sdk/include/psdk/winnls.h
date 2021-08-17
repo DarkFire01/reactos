@@ -225,9 +225,9 @@ extern "C" {
 #endif
 
 #define CP_ACP 0
-#ifdef _WINE
+//#ifdef _WINE
 #define CP_UNIXCP CP_ACP
-#endif
+//#endif
 #define CP_OEMCP 1
 #define CP_MACCP 2
 #define CP_THREAD_ACP 3
@@ -699,6 +699,16 @@ CompareStringW(
   _In_ int cchCount1,
   _In_reads_(cchCount2) LPCWSTR lpString2,
   _In_ int cchCount2);
+
+int
+WINAPI
+CompareStringOrdinal(
+  _In_NLS_string_(cchCount1)LPCWCH lpString1,
+  int cchCount1,
+  _In_NLS_string_(cchCount2)LPCWCH lpString2,
+  int cchCount2,
+  BOOL bIgnoreCase
+);
 
 LCID WINAPI ConvertDefaultLocale(_In_ LCID);
 BOOL WINAPI EnumCalendarInfoA(_In_ CALINFO_ENUMPROCA, _In_ LCID, _In_ CALID, _In_ CALTYPE);

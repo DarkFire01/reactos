@@ -39,6 +39,7 @@ extern "C" {
 
 typedef HANDLE HPAINTBUFFER;
 typedef HANDLE HTHEME;
+typedef HANDLE HANIMATIONBUFFER;
 
 typedef enum _BP_BUFFERFORMAT
 {
@@ -55,6 +56,22 @@ typedef struct _BP_PAINTPARAMS
 	const RECT *prcExclude;
 	const BLENDFUNCTION *pBlendFunction;
 } BP_PAINTPARAMS, *PBP_PAINTPARAMS;
+
+typedef enum _BP_ANIMATIONSTYLE
+{
+    BPAS_NONE,
+    BPAS_LINEAR,
+    BPAS_CUBIC,
+    BPAS_SINE
+} BP_ANIMATIONSTYLE;
+
+typedef struct _BP_ANIMATIONPARAMS
+{
+    DWORD cbSize;
+    DWORD dwFlags;
+    BP_ANIMATIONSTYLE style;
+    DWORD dwDuration;
+} BP_ANIMATIONPARAMS, *PBP_ANIMATIONPARAMS;
 
 typedef enum PROPERTYORIGIN {
     PO_STATE = 0,
@@ -90,6 +107,16 @@ typedef struct _MARGINS {
     int cyBottomHeight;
 } MARGINS, *PMARGINS;
 
+HPAINTBUFFER WINAPI BeginBufferedPaint(HDC, const RECT *, BP_BUFFERFORMAT, BP_PAINTPARAMS *,HDC *);
+HRESULT WINAPI EndBufferedPaint(HPAINTBUFFER, BOOL);
+HRESULT WINAPI BufferedPaintClear(HPAINTBUFFER, const RECT *);
+HRESULT WINAPI BufferedPaintSetAlpha(HPAINTBUFFER, const RECT *, BYTE);
+HRESULT WINAPI GetBufferedPaintBits(HPAINTBUFFER, RGBQUAD **, int *);
+HDC WINAPI GetBufferedPaintDC(HPAINTBUFFER);
+HDC WINAPI GetBufferedPaintTargetDC(HPAINTBUFFER);
+HRESULT WINAPI GetBufferedPaintTargetRect(HPAINTBUFFER, RECT *prc);
+HRESULT WINAPI BufferedPaintInit(VOID);
+HRESULT WINAPI BufferedPaintUnInit(VOID);
 HRESULT WINAPI CloseThemeData(HTHEME);
 HRESULT WINAPI DrawThemeBackground(HTHEME,HDC,int,int,const RECT*,const RECT*);
 HRESULT WINAPI DrawThemeBackgroundEx(HTHEME,HDC,int,int,const RECT*,const DTBGOPTS*);
