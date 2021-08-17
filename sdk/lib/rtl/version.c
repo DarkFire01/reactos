@@ -149,6 +149,15 @@ RtlVerifyVersionInfo(IN PRTL_OSVERSIONINFOEXW VersionInfo,
 
     if (TypeMask & VER_MAJORVERSION)
     {
+        /*if (VersionInfo->dwMajorVersion >= 6)
+        {
+            if (NtCurrentPeb()->pShimData != NULL)
+            {
+                Version.dwMajorVersion = 6;
+                Version.dwMinorVersion = 2;
+            }
+        }*/
+        
         Condition = RtlpVerGetCondition(ConditionMask, VER_MAJORVERSION);
         DoNextCheck = (VersionInfo->dwMajorVersion == Version.dwMajorVersion);
         Comparison = RtlpVerCompare(Version.dwMajorVersion,

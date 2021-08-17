@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-#if (_WIN32_WINNT >= _WIN32_WINNT_VISTA) && !defined(NOGDI)
+#if (_WIN32_WINNT >= 0x0499) && !defined(NOGDI)
 #  include "wingdi.h"
 #endif
 
@@ -280,7 +280,7 @@ typedef struct _INPUT_RECORD {
     } Event;
 } INPUT_RECORD, *PINPUT_RECORD;
 
-#if (_WIN32_WINNT >= _WIN32_WINNT_VISTA)
+#if (_WIN32_WINNT >= 0x0499)
 typedef struct _CONSOLE_HISTORY_INFO {
     UINT cbSize;
     UINT HistoryBufferSize;

@@ -39,6 +39,7 @@
 #include <ndk/psfuncs.h>
 #include <ndk/rtlfuncs.h>
 #include <ndk/umfuncs.h>
+#include <xdk/winnt.h>
 
 /* Internal NTDLL */
 #include "ntdllp.h"

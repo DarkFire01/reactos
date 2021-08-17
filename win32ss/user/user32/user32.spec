@@ -554,6 +554,8 @@
 549 stdcall RegisterHotKey(long long long long) NtUserRegisterHotKey
 550 stdcall RegisterLogonProcess(long long)
 551 stdcall RegisterMessagePumpHook(ptr)
+@   stdcall -stub -version=0x600+ RegisterPowerSettingNotification(ptr ptr long)
+@   stdcall -stub -version=0x600+ UnregisterPowerSettingNotification(ptr) 
 552 stdcall RegisterRawInputDevices(ptr long long)
 553 stdcall RegisterServicesProcess(long)
 554 stdcall RegisterShellHookWindow(long)
@@ -653,6 +655,7 @@
 646 stdcall SetUserObjectSecurity(long ptr ptr)
 647 stdcall SetWinEventHook(long long long ptr long long long)
 648 stdcall SetWindowContextHelpId(long long)
+@   stdcall -stub -version=0x600+ SetWindowDisplayAffinity(ptr long)
 649 stdcall SetWindowLongA(long long long)
 @ stdcall -arch=x86_64 SetWindowLongPtrA(ptr long ptr)
 @ stdcall -arch=x86_64 SetWindowLongPtrW(ptr long ptr)
@@ -675,6 +678,9 @@
 666 stdcall ShowStartGlass(long)
 667 stdcall ShowWindow(long long) NtUserShowWindow
 668 stdcall ShowWindowAsync(long long) NtUserShowWindowAsync
+@   stdcall ShutdownBlockReasonCreate(ptr wstr)
+@   stdcall ShutdownBlockReasonQuery(ptr wstr ptr)
+@   stdcall ShutdownBlockReasonDestroy(ptr)
 669 stdcall SoftModalMessageBox(ptr)
 670 stdcall SubtractRect(ptr ptr ptr)
 671 stdcall SwapMouseButton(long)

@@ -96,7 +96,7 @@ static PUCHAR ResourceList[1 + IDB_MAX_RESOURCE]; // First entry == NULL, follow
 /*
  * Change this to modify progress bar behaviour
  */
-#define ROT_BAR_DEFAULT_MODE    RB_PROGRESS_BAR
+#define ROT_BAR_DEFAULT_MODE    RB_SQUARE_CELLS// RB_PROGRESS_BAR
 
 /*
  * Values for PltRotBarStatus:

@@ -47,6 +47,13 @@ size_t _heapused( size_t *pUsed, size_t *pCommit )
     return( 0 );
 }
 
+int _seh_filter_dll(unsigned long num, void* ex)
+{
+	DbgPrint("WARNING: calling stub _seh_filter_dll(%x)\n", num);
+	__wine_spec_unimplemented_stub("api-ms-win-crt-runtime-l1-1-0.dll", __FUNCTION__);
+	return 0;
+}
+
 #ifdef _M_IX86
 int MSVCRT__inp(
    unsigned short port)

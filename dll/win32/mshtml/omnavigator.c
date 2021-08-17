@@ -18,7 +18,7 @@
 
 #include "mshtml_private.h"
 
-#ifdef __REACTOS__
+#ifndef __REACTOS__
 /* HACK This is a Vista+ API */
 static INT WINAPI LCIDToLocaleName( LCID lcid, LPWSTR name, INT count, DWORD flags )
 {

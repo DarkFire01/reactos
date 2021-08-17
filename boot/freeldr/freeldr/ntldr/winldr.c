@@ -441,7 +441,7 @@ WinLdrDetectVersion(VOID)
     }
 
     /* We may here want to read the value of ProductVersion */
-    return _WIN32_WINNT_WS03;
+    return TARGET_VERSION;
 }
 
 static
@@ -709,7 +709,7 @@ WinLdrInitErrataInf(
     CHAR ErrataFilePath[MAX_PATH];
 
     /* Open either the 'BiosInfo' (Windows <= 2003) or the 'Errata' (Vista+) key */
-    if (OperatingSystemVersion >= _WIN32_WINNT_VISTA)
+    if (OperatingSystemVersion > TARGET_VERSION)
     {
         rc = RegOpenKey(NULL,
                         L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Control\\Errata",
@@ -785,7 +785,7 @@ LoadAndBootWindows(
     if (_stricmp(ArgValue, "Windows") == 0 ||
         _stricmp(ArgValue, "Windows2003") == 0)
     {
-        OperatingSystemVersion = _WIN32_WINNT_WS03;
+        OperatingSystemVersion = TARGET_VERSION;
     }
     else if (_stricmp(ArgValue, "WindowsNT40") == 0)
     {

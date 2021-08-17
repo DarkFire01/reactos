@@ -16,6 +16,7 @@ QuickLaunchShortcuts=26, Microsoft\Internet Explorer\Quick Launch
 
 [DesktopShortcuts]
 %SystemRoot%\readme.txt, %README_TITLE%, %README_DESC%
+%SystemRoot%\NT6.txt, %NT6_TITLE%, %NT6_DESC%
 %SystemRoot%\system32\cmd.exe, %CMD_TITLE%, %CMD_DESC%, 0, %HOMEDRIVE%%HOMEPATH%
 %SystemRoot%\system32\rapps.exe, %RAPPS_TITLE_SHORT%, %RAPPS_DESC%, 0
 
@@ -81,6 +82,9 @@ GAMES=Games
 
 README_TITLE=Read Me
 README_DESC=ReactOS Read-Me file
+
+NT6_TITLE=NT6 read me
+NT6_DESC=NT6 changes Read-Me file
 
 CMD_TITLE=Command Prompt
 CMD_DESC=Open command prompt

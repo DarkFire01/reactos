@@ -12,6 +12,8 @@
 @ stdcall AllocateAndGetUdpTableFromStack( ptr long long long )
 @ stdcall CancelIPChangeNotify(ptr)
 @ stub CancelSecurityHealthChangeNotify
+@ stdcall -version=0x600+ ConvertInterfaceIndexToLuid( long ptr )
+@ stdcall -version=0x600+ ConvertInterfaceLuidToNameW( ptr ptr long )
 @ stdcall CreateIpForwardEntry( ptr )
 @ stdcall CreateIpNetEntry( ptr )
 @ stdcall CreateProxyArpEntry( long long long )

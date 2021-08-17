@@ -131,7 +131,7 @@ CreateFreeLoaderReactOSEntries(
     {
         /* DefaultOS=ReactOS */
 #ifndef _WINKD_
-        BootOptions.CurrentBootEntryKey = MAKESTRKEY(L"ReactOS_KdSerial");
+        BootOptions.CurrentBootEntryKey = MAKESTRKEY(L"ReactOS_LogFile");
 #else
         BootOptions.CurrentBootEntryKey = MAKESTRKEY(L"ReactOS_Debug");
 #endif
@@ -154,7 +154,7 @@ CreateFreeLoaderReactOSEntries(
     else
     {
         /* Timeout=10 */
-        BootOptions.Timeout = 10;
+        BootOptions.Timeout = 3;
     }
 #endif
 

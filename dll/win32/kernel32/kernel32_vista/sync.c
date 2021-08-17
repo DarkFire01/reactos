@@ -3,7 +3,7 @@
 #define NDEBUG
 #include <debug.h>
 
-VOID
+/*VOID
 NTAPI
 RtlInitializeConditionVariable(OUT PRTL_CONDITION_VARIABLE ConditionVariable);
 
@@ -13,8 +13,8 @@ RtlWakeConditionVariable(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable);
 
 VOID
 NTAPI
-RtlWakeAllConditionVariable(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable);
-
+RtlWakeAllConditionVariable(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable);*/
+/*
 NTSTATUS
 NTAPI
 RtlSleepConditionVariableCS(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
@@ -26,7 +26,7 @@ NTAPI
 RtlSleepConditionVariableSRW(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
                              IN OUT PRTL_SRWLOCK SRWLock,
                              IN PLARGE_INTEGER TimeOut OPTIONAL,
-                             IN ULONG Flags);
+                             IN ULONG Flags);*/
 
 VOID
 NTAPI
@@ -145,7 +145,6 @@ WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable)
 {
     RtlWakeConditionVariable((PRTL_CONDITION_VARIABLE)ConditionVariable);
 }
-
 
 /*
 * @implemented

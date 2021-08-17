@@ -8,7 +8,7 @@ LANGUAGE LANG_CZECH, SUBLANG_DEFAULT
 /* See also: dll/win32/shell32/lang */
 STRINGTABLE
 BEGIN
-    IDS_PROFILEPATH "%SystemDrive%\\Documents and Settings"
+    IDS_PROFILEPATH "%SystemDrive%\\Users"
     IDS_APPDATA "Data aplikací"
     IDS_DESKTOP "Plocha"
     IDS_FAVORITES "Oblíbené"
