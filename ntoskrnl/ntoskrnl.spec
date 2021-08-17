@@ -923,7 +923,7 @@
 @ stdcall NtFreeVirtualMemory(ptr ptr ptr long)
 @ stdcall NtFsControlFile(ptr ptr ptr ptr ptr long ptr long ptr long)
 @ extern NtGlobalFlag
-@ stdcall -version=0x600+ NtCreateIoCompletion(ptr) ;FIXME look into me..
+;@ stdcall -version=0x600+ NtCreateIoCompletion(ptr) ;FIXME look into me..
 @ stdcall NtLockFile(ptr ptr ptr ptr ptr ptr ptr long long long)
 @ stdcall NtMakePermanentObject(ptr)
 @ stdcall NtMapViewOfSection(ptr ptr ptr long long ptr ptr long long long)
@@ -1673,7 +1673,7 @@
 @ varargs swprintf_s(ptr long wstr)
 @ cdecl _vsnprintf()
 @ cdecl _vsnwprintf()
-@ cdecl -stub -version=0x600+ _vswprintf(ptr wstr ptr)
+;@ cdecl -stub -version=0x600+ _vswprintf(ptr wstr ptr)
 @ cdecl _wcsicmp()
 @ cdecl _wcslwr()
 @ cdecl _wcsnicmp()
@@ -1712,7 +1712,7 @@
 @ cdecl strspn()
 @ cdecl strstr()
 @ cdecl swprintf()
-@ varargs -stub -version=0x601+ swprintf_s(ptr long wstr)
+;@ varargs -stub -version=0x601+ swprintf_s(ptr long wstr)
 @ cdecl tolower()
 @ cdecl toupper()
 @ cdecl towlower()
@@ -1720,8 +1720,8 @@
 @ stdcall vDbgPrintEx(long long str ptr)
 @ stdcall vDbgPrintExWithPrefix(str long long str ptr)
 @ cdecl vsprintf(ptr str ptr)
-@ cdecl -stub -version=0x601+ vsprintf_s(ptr long str ptr)
-@ cdecl -stub -version=0x600+ vswprintf_s(ptr long wstr ptr)
+;@ cdecl -stub -version=0x601+ vsprintf_s(ptr long str ptr)
+;@ cdecl -stub -version=0x600+ vswprintf_s(ptr long wstr ptr)
 @ cdecl wcscat()
 @ cdecl -version=0x601+ wcscat_s(wstr long wstr)
 @ cdecl wcschr()

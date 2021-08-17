@@ -1,4 +1,4 @@
-@ stdcall NtQueryLicenseValue(wstr long ptr long long)
+;@ stdcall NtQueryLicenseValue(wstr long ptr long long)
 @ stdcall RtlInitializeConditionVariable(ptr)
 @ stdcall RtlWakeConditionVariable(ptr)
 @ stdcall RtlWakeAllConditionVariable(ptr)

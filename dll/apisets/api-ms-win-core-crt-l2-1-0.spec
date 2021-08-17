@@ -10,7 +10,7 @@
 @ stdcall _initterm() msvcrt._initterm
 @ stub _initterm_e
 @ stub _invalid_parameter
-@ stdcall _onexit() msvcrt._onexit
+#@ stdcall _onexit() msvcrt._onexit
 @ stdcall _purecall() msvcrt._purecall
 @ stdcall _time64() msvcrt._time64
 @ extern -stub atexit msvcrt.atexit # the -stub is a HACK to fix VS < 2017 build!

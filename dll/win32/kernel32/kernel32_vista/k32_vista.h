@@ -16,6 +16,9 @@
 #include <ndk/psfuncs.h>
 #include <ndk/rtlfuncs.h>
 
+#undef NTDDI_VERSION
+#define NTDDI_VERSION NTDDI_WIN7
+#include <psdk/winnls.h>
 /* CSRSS Headers */
 #include <win/base.h>
 

@@ -429,9 +429,12 @@ void DumpKey2(HWND hListView, CNotifyToolbar* toolbar)
 
     if (hilPastIcons == NULL)
     {
+        #if 0
         WCHAR error[20];
-        _itow((int)hilPastIcons, error, 10);
-        ::MessageBoxW(NULL, error, L"no past icons", MB_OK);
+        _itow(-hilPastIcons, error, 10);
+        ::MessageBoxW(NULL, error, L"no past icons", MB_OK); //Look at this again
+        
+        #endif
     }
 
     HIMAGELIST hilTrayIcons = (HIMAGELIST)toolbar->GetImageList();
@@ -522,7 +525,7 @@ VOID SetNotifyIcons(HWND hDialog, IUnknown *TrayNotify)
     
     if (toolbar == NULL) return;
     
-    SetWindowLongPtrW(hListView, GWLP_USERDATA, (LONG)toolbar);
+   // SetWindowLongPtrW(hListView, GWLP_USERDATA, (LONG)toolbar); //please check me im begging you bro
     
     HIMAGELIST tbImageList = (HIMAGELIST)toolbar->GetImageList();
     HIMAGELIST lvImageList = ImageList_Duplicate(tbImageList);
