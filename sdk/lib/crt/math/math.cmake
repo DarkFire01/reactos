@@ -120,7 +120,6 @@ if(NOT ARCH STREQUAL "i386")
     list(APPEND CRT_MATH_SOURCE
         math/_chgsignf.c
         math/_copysignf.c
-        math/_hypotf.c
         math/acosf.c
         math/asinf.c
         math/atan2f.c
@@ -143,6 +142,7 @@ endif()
 
 list(APPEND CRT_MATH_SOURCE
     ${LIBCNTPR_MATH_SOURCE}
+    math/_hypotf.c
     math/acos.c
     math/adjust.c
     math/asin.c
