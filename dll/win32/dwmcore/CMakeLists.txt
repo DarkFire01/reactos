@@ -11,9 +11,10 @@ list(APPEND SOURCE
 add_library(dwmcore MODULE
     ${SOURCE}
     dwmcore.rc
-    ${CMAKE_CURRENT_BINARY_DIR}/dwmcore.def)
+    ${CMAKE_CURRENT_BINARY_DIR}/dwmcore.def
+    ${CMAKE_CURRENT_BINARY_DIR}/dwmcore_stubs.c)
 
-set_module_type(dwmcore win32dll)
+set_module_type(dwmcore win32dll ENTRYPOINT DllMain)
 add_importlibs(dwmcore kernel32 ntdll)
 add_dependencies(dwmcore psdk)
 add_cd_file(TARGET dwmcore DESTINATION reactos/system32 FOR all)
