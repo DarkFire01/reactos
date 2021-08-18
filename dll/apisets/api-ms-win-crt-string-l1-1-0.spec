@@ -70,35 +70,35 @@
 @ stdcall _tolower() msvcrt._tolower
 @ stub _tolower_l
 @ stdcall _toupper() msvcrt._toupper
-@ stub _toupper_l
-@ stub _towlower_l
-@ stub _towupper_l
-@ stub _wcscoll_l
+@ stdcall _toupper_l() msvcrt._towupper_l
+@ stdcall _towlower_l() msvcrt._tolower_l
+@ stdcall _towupper_l() msvcrt._towupper_l
+@ stdcall _wcscoll_l() msvcrt._wcscoll_l
 @ stdcall _wcsdup() msvcrt._wcsdup
 @ stdcall _wcsicmp() msvcrt._wcsicmp
-@ stub _wcsicmp_l
+@ stdcall _wcsicmp_l() msvcrt._wcsicmp_l
 @ stdcall _wcsicoll() msvcrt._wcsicoll
-@ stub _wcsicoll_l
+@ stdcall _wcsicoll_l() msvcrt._wcsicoll_l
 @ stdcall _wcslwr() msvcrt._wcslwr
 @ stdcall -version=0x600+ _wcslwr_l() msvcrt._wcslwr_l
 @ stdcall -version=0x600+ _wcslwr_s() msvcrt._wcslwr_s
 @ stdcall -version=0x600+ _wcslwr_s_l() msvcrt._wcslwr_s_l
 @ stdcall _wcsncoll() msvcrt._wcsncoll
-@ stub _wcsncoll_l
+@ stdcall _wcsncoll_l() msvcrt._wcsncoll_l
 @ stdcall _wcsnicmp() msvcrt._wcsnicmp
-@ stub _wcsnicmp_l
+@ stdcall _wcsnicmp_l() msvcrt._wcsnicmp_l
 @ stdcall _wcsnicoll() msvcrt._wcsnicoll
-@ stub _wcsnicoll_l
+@ stdcall _wcsnicoll_l() msvcrt._wcsnicoll_l
 @ stdcall _wcsnset() msvcrt._wcsnset
-@ stub _wcsnset_s
+@ stdcall _wcsnset_s() msvcrt._wcsnset_s
 @ stdcall _wcsrev() msvcrt._wcsrev
 @ stdcall _wcsset() msvcrt._wcsset
-@ stub _wcsset_s
+@ stdcall _wcsset_s() msvcrt._wcsset_s
 @ stdcall _wcsupr() msvcrt._wcsupr
-@ stub _wcsupr_l
-@ stub _wcsupr_s
-@ stub _wcsupr_s_l
-@ stub _wcsxfrm_l
+@ stdcall _wcsupr_l() msvcrt._wcsupr_l
+@ stdcall _wcsupr_s() msvcrt._wcsupr_s
+@ stdcall _wcsupr_s_l() msvcrt._wcsupr_s_l
+@ stdcall _wcsxfrm_l() msvcrt._wcsxfrm_l
 @ stub _wctype
 @ stdcall is_wctype() msvcrt.is_wctype
 @ stdcall isalnum() msvcrt.isalnum
@@ -129,28 +129,28 @@
 @ stdcall iswxdigit() msvcrt.iswxdigit
 @ stdcall isxdigit() msvcrt.isxdigit
 @ stdcall mblen() msvcrt.mblen
-@ stub mbrlen
-@ stub memcpy_s
-@ stub memmove_s
+@ stdcall mbrlen() msvcrt.mbrlen
+@ stdcall memcpy_s() msvcrt.memcpy_s
+@ stdcall memmove_s() msvcrt.memmove_s
 @ stdcall memset() msvcrt.memset
 @ stdcall strcat() msvcrt.strcat
-@ stub strcat_s
+@ stdcall strcat_s() msvcrt.strcat_s
 @ stdcall strcmp() msvcrt.strcmp
 @ stdcall strcoll() msvcrt.strcoll
 @ stdcall strcpy() msvcrt.strcpy
-@ stub strcpy_s
+@ stdcall strcpy_s() msvcrt.strcpy_s
 @ stdcall strcspn() msvcrt.strcspn
 @ stdcall strlen() msvcrt.strlen
 @ stdcall strncat() msvcrt.strncat
-@ stub strncat_s
+@ stdcall strncat_s() msvcrt.strncat_s
 @ stdcall strncmp() msvcrt.strncmp
 @ stdcall strncpy() msvcrt.strncpy
-@ stub strncpy_s
-@ stub strnlen
+@ stdcall strncpy_s() msvcrt.strncpy_s
+@ stdcall strnlen() msvcrt.strnlen
 @ stdcall strpbrk() msvcrt.strpbrk
 @ stdcall strspn() msvcrt.strspn
 @ stdcall strtok() msvcrt.strtok
-@ stub strtok_s
+@ stdcall strtok_s() msvcrt.strtok_s
 @ stdcall strxfrm() msvcrt.strxfrm
 @ stdcall tolower() msvcrt.tolower
 @ stdcall toupper() msvcrt.toupper
@@ -166,11 +166,11 @@
 @ stdcall wcscspn() msvcrt.wcscspn
 @ stdcall wcslen() msvcrt.wcslen
 @ stdcall wcsncat() msvcrt.wcsncat
-@ stub wcsncat_s
+@ stdcall wcsncat_s() msvcrt.wcsncat_s
 @ stdcall wcsncmp() msvcrt.wcsncmp
 @ stdcall wcsncpy() msvcrt.wcsncpy
-@ stub wcsncpy_s
-@ stub wcsnlen
+@ stdcall wcsncpy_s() msvcrt.wcsncpy_s
+@ stdcall wcsnlen() msvcrt.wcsnlen
 @ stdcall wcspbrk() msvcrt.wcspbrk
 @ stdcall wcsspn() msvcrt.wcsspn
 @ stdcall wcstok() msvcrt.wcstok

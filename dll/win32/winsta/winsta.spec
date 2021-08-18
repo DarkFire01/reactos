@@ -124,3 +124,6 @@
 @ stdcall _WinStationUpdateSettings(ptr ptr ptr)
 @ stdcall _WinStationUpdateUserConfig(ptr)
 @ stdcall _WinStationWaitForConnect()
+
+
+@ stdcall -stub -version=0x601+ WinStationIsSessionRemoteable()

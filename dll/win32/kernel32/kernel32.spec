@@ -1238,9 +1238,11 @@
 @ stdcall -stub -version=0x600+ WerGetFlags(ptr ptr)
 @ stdcall -stub -version=0x600+ WerRegisterFile(wstr long long)
 @ stdcall -version=0x600+ WerRegisterMemoryBlock(ptr long)
+@ stub -version=0x600+ WerRegisterRuntimeExceptionModule
 @ stdcall -stub -version=0x600+ WerSetFlags(long)
 @ stdcall -stub -version=0x600+ WerUnregisterFile(wstr)
 @ stdcall -stub -version=0x600+ WerUnregisterMemoryBlock(ptr)
+@ stub -version=0x601+ WerUnregisterRuntimeExceptionModule
 @ stub -version=0x600+ WerpCleanupMessageMapping
 @ stub -version=0x600+ WerpInitiateRemoteRecovery
 @ stub -version=0x600+ WerpNotifyLoadStringResource
@@ -1541,7 +1543,7 @@
 @ stub -version=0x602+ UnmapViewOfFileEx	
 @ stub -version=0x602+ UnregisterBadMemoryNotification	
 @ stub -version=0x602+ WerRegisterMemoryBlockWorker	
-@ stub -version=0x602+ WerUnregisterMemoryBlockWorker	
+@ stub -version=0x602+ WerUnregisterMemoryBlockWorker
 @ stub -version=0x602+ WerpGetDebugger	
 @ stub -version=0x602+ WerpLaunchAeDebug	
 @ stub -version=0x602+ WerpNotifyLoadStringResourceWorker	
