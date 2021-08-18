@@ -82,14 +82,14 @@
 @ stdcall towlower() msvcrt.towlower
 @ stdcall towupper() msvcrt.towupper
 @ stub vsprintf_s
-@ stub vswprintf_s
+@ stdcall vswprintf_s() msvcrt.vswprintf_s
 @ stub wcscat_s
 @ stdcall wcschr() msvcrt.wcschr
 @ stdcall wcscmp() msvcrt.wcscmp
 @ stub wcscpy_s
 @ stdcall wcscspn() msvcrt.wcscspn
 @ stdcall wcslen() msvcrt.wcslen
-@ stub wcsncat_s
+@ stub wcsncat_s() msvcrt.wcsncat_s
 @ stdcall wcsncmp() msvcrt.wcsncmp
 @ stub wcsncpy_s
 @ stub wcsnlen

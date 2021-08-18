@@ -27,7 +27,7 @@
 @ stdcall _itoa() msvcrt._itoa
 @ stub _itoa_s
 @ stdcall _itow() msvcrt._itow
-@ stub _itow_s
+@ stdcall _itow_s() msvcrt._itow_s
 @ stdcall _ltoa() msvcrt._ltoa
 @ stub _ltoa_s
 @ stdcall _ltow() msvcrt._ltow

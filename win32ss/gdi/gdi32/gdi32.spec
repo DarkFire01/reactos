@@ -639,7 +639,7 @@
 ;FIXME Implement these ass full vista+ functions
 @ stub -version=0x600+ DwmGetSurfaceData
 @ stub -version=0x600+ DwmGetDirtyRgn
-
+@ stub -version=0x601+ D3DKMTCheckVidPnExclusiveOwnership
 ;@ stub -version=0x602+ CreateBitmapFromDxSurface2	
 @ stub -version=0x602+ CreateCompatibleBitmapEx	
 @ stub -version=0x602+ CreateSessionMappedDIBSection	

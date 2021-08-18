@@ -16,7 +16,8 @@ list(APPEND SOURCE
 add_library(winsta MODULE
     ${SOURCE}
     winsta.rc
-    ${CMAKE_CURRENT_BINARY_DIR}/winsta.def)
+    ${CMAKE_CURRENT_BINARY_DIR}/winsta.def
+    ${CMAKE_CURRENT_BINARY_DIR}/winsta_stubs.c)
 
 set_module_type(winsta win32dll)
 target_link_libraries(winsta wine)
