@@ -1957,6 +1957,8 @@
 @ stdcall -arch=arm __rt_udiv64()
 @ stdcall -arch=arm __rt_srsh()
 
+;Windows 7 stuff
+@ stub -version=0x600+ RtlAddIntegrityLabelToBoundaryDescriptor
 
 ;Windows 8 stuff
 @ stub -version=0x602+ ApiSetQueryApiSetPresence	
