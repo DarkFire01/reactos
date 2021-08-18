@@ -9,6 +9,7 @@ list(APPEND LIBCNTPR_PRINTF_SOURCE
     printf/sprintf.c
     printf/streamout.c
     printf/swprintf.c
+    printf/swprintf_s.c
     printf/vprintf.c
     printf/vsprintf.c
     printf/vswprintf.c
@@ -35,7 +36,6 @@ list(APPEND CRT_PRINTF_SOURCE
     printf/printf.c
     printf/printf_s.c
     printf/sprintf_s.c
-    printf/swprintf_s.c
     printf/vfprintf.c
     printf/vfprintf_s.c
     printf/vfwprintf.c
