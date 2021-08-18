@@ -15,6 +15,6 @@ add_library(KernelBase MODULE
 
 target_link_libraries(KernelBase)
 set_module_type(KernelBase win32dll ENTRYPOINT DllMain)
-add_importlibs(KernelBase ntdll ntdll_vista kernel32_vista)
+add_importlibs(KernelBase ntdll ntdll_vista kernel32_vista advapi32 kernel32)
 add_dependencies(KernelBase psdk)
 add_cd_file(TARGET KernelBase DESTINATION reactos/system32 FOR all)

@@ -131,7 +131,7 @@
 #include <arch/mips/arcbios.h>
 #endif
 
-#define TARGET_VERSION _WIN32_WINNT_WIN10
+#define TARGET_VERSION _WIN32_WINNT_WINBLUE
 
 VOID __cdecl BootMain(IN PCCH CmdLine);
 VOID LoadOperatingSystem(IN OperatingSystemItem* OperatingSystem);
