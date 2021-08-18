@@ -11,9 +11,10 @@ list(APPEND SOURCE
 add_library(dwmredir MODULE
     ${SOURCE}
     dwmredir.rc
-    ${CMAKE_CURRENT_BINARY_DIR}/dwmredir.def)
+    ${CMAKE_CURRENT_BINARY_DIR}/dwmredir.def
+    ${CMAKE_CURRENT_BINARY_DIR}/dwmredir_stubs.c)
 
-set_module_type(dwmredir win32dll)
+set_module_type(dwmredir win32dll ENTRYPOINT DllMain)
 add_importlibs(dwmredir kernel32 ntdll)
 add_dependencies(dwmredir psdk)
 add_cd_file(TARGET dwmredir DESTINATION reactos/system32 FOR all)

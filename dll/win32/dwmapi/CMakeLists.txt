@@ -14,7 +14,7 @@ add_library(dwmapi MODULE
     ${CMAKE_CURRENT_BINARY_DIR}/dwmapi.def
 	${CMAKE_CURRENT_BINARY_DIR}/dwmapi_stubs.c)
 
-set_module_type(dwmapi win32dll)
+set_module_type(dwmapi win32dll ENTRYPOINT DllMain)
 add_importlibs(dwmapi kernel32 ntdll msvcrt)
 add_dependencies(dwmapi psdk)
 add_cd_file(TARGET dwmapi DESTINATION reactos/system32 FOR all)

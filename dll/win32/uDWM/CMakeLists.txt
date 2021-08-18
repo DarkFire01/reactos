@@ -1,0 +1,20 @@
+
+remove_definitions(-D_WIN32_WINNT=0x502 -DWINVER=0x502)
+add_definitions(-D_WIN32_WINNT=0x600 -DWINVER=0x600)
+
+add_definitions(-D_UDWM_)
+spec2def(uDWM.dll uDWM.spec)
+
+list(APPEND SOURCE
+    DllMain.c)
+
+add_library(uDWM MODULE
+    ${SOURCE}
+    uDWM.rc
+    ${CMAKE_CURRENT_BINARY_DIR}/uDWM.def
+	${CMAKE_CURRENT_BINARY_DIR}/uDWM_stubs.c)
+
+set_module_type(uDWM win32dll ENTRYPOINT DllMain)
+add_importlibs(uDWM kernel32 ntdll msvcrt)
+add_dependencies(uDWM psdk)
+add_cd_file(TARGET uDWM DESTINATION reactos/system32 FOR all)
