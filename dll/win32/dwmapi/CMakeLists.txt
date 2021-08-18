@@ -11,9 +11,10 @@ list(APPEND SOURCE
 add_library(dwmapi MODULE
     ${SOURCE}
     dwmapi.rc
-    ${CMAKE_CURRENT_BINARY_DIR}/dwmapi.def)
+    ${CMAKE_CURRENT_BINARY_DIR}/dwmapi.def
+	${CMAKE_CURRENT_BINARY_DIR}/dwmapi_stubs.c)
 
 set_module_type(dwmapi win32dll)
-add_importlibs(dwmapi kernel32 ntdll)
+add_importlibs(dwmapi kernel32 ntdll msvcrt)
 add_dependencies(dwmapi psdk)
 add_cd_file(TARGET dwmapi DESTINATION reactos/system32 FOR all)

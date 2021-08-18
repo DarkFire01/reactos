@@ -22,11 +22,6 @@
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
-DWORD GetActiveProcessorCount(WORD GroupNumber)
-{
-    return 1;
-}
-
 VOID
 WINAPI
 GetSystemInfoInternal(IN PSYSTEM_BASIC_INFORMATION BasicInfo,

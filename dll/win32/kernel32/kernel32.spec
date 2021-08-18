@@ -151,8 +151,8 @@
 @ stdcall CreateNamedPipeW(wstr long long long long long long ptr)
 @ stdcall -version=0x501-0x502 CreateNlsSecurityDescriptor(ptr long long)
 @ stdcall CreatePipe(ptr ptr ptr long)
-@ stdcall -stub -version=0x601+ CreatePrivateNamespaceA(ptr ptr str)
-@ stdcall -stub -version=0x601+ CreatePrivateNamespaceW(ptr ptr wstr)
+@ stdcall -stub -version=0x600+ CreatePrivateNamespaceA(ptr ptr str)
+@ stdcall -stub -version=0x600+ CreatePrivateNamespaceW(ptr ptr wstr)
 @ stdcall CreateProcessA(str str ptr ptr long long ptr str ptr ptr)
 @ stdcall CreateProcessInternalA(ptr str str ptr ptr long long ptr str ptr ptr long)
 @ stdcall CreateProcessInternalW(ptr wstr wstr ptr ptr long long ptr wstr ptr ptr long)
@@ -345,7 +345,7 @@
 @ stdcall FreeUserPhysicalPages(long long long)
 @ stdcall GenerateConsoleCtrlEvent(long long)
 @ stdcall GetACP()
-@ stdcall -version=0x600+ GetActiveProcessorCount(long)
+@ stdcall -stub -version=0x600+ GetActiveProcessorCount(long)
 @ stdcall -version=0x600+ GetApplicationRecoveryCallback(ptr ptr ptr ptr ptr) kernel32_vista.GetApplicationRecoveryCallback
 @ stdcall -stub -version=0x600+ GetApplicationRestartSettings(ptr wstr ptr ptr)
 @ stdcall GetAtomNameA(long ptr long)
@@ -1562,5 +1562,5 @@
 @ stub -version=0x601+ BaseVerifyUnicodeString
 @ stub -version=0x601+ BasepAnsiStringToDynamicUnicodeString
 @ stub -version=0x601+ BasepCheckAppCompat
-@ stub -version=0x601+ CreateProcessAsUserW
+;@ stub -version=0x601+ CreateProcessAsUserW
 @ stub -version=0x601+ CreateRemoteThreadEx
