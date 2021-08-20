@@ -298,7 +298,7 @@ HalSetTimeIncrement(
 //
 // BIOS call API
 //
-#ifdef _M_AMD64
+//#ifdef _M_AMD64
 
 NTSTATUS
 NTAPI
@@ -335,7 +335,7 @@ x86BiosCall(
     _In_ ULONG InterruptNumber,
     _Inout_ PX86_BIOS_REGISTERS Registers);
 
-#endif // _M_AMD64
+//#endif // _M_AMD64
 
 #endif // NTOS_MODE_USER
 #endif // _HALFUNCS_H

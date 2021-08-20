@@ -1,6 +1,7 @@
 
 # Generic
 list(APPEND HAL_PC98_SOURCE
+    amd64/x86bios.c
     pc98/beep.c
     pc98/clock.c
     pc98/cmos.c

@@ -278,7 +278,7 @@ extern PUCHAR NTHALAPI KdComPortInUse;
 //
 // BIOS call structure
 //
-#ifdef _M_AMD64
+//#ifdef _M_AMD64
 
 typedef struct _X86_BIOS_REGISTERS
 {
@@ -293,7 +293,7 @@ typedef struct _X86_BIOS_REGISTERS
     USHORT SegEs;
 } X86_BIOS_REGISTERS, *PX86_BIOS_REGISTERS;
 
-#endif // _M_AMD64
+//#endif // _M_AMD64
 
 #endif
 #endif
