@@ -1,5 +1,6 @@
 
 list(APPEND HAL_GENERIC_SOURCE
+    amd64/x86bios.c
     generic/beep.c
     generic/cmos.c
     generic/display.c

@@ -6,6 +6,7 @@ list(APPEND HAL_XBOX_ASM_SOURCE
     pic/pic.S)
 
 list(APPEND HAL_XBOX_SOURCE
+    amd64/x86bios.c
     generic/beep.c
     generic/cmos.c
     generic/display.c
