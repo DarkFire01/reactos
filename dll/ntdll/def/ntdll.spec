@@ -895,7 +895,7 @@
 @ stdcall RtlGetFullPathName_UstrEx(ptr ptr ptr ptr ptr ptr ptr ptr)
 @ stdcall -stub -version=0x600+ -arch=x86_64 RtlGetFunctionTableListHead()
 @ stdcall RtlGetGroupSecurityDescriptor(ptr ptr ptr)
-;@ stdcall -stub -version=0x600+ RtlGetIntegerAtom()
+@ stdcall -stub -version=0x600+ -arch=i386 RtlGetIntegerAtom() ; Needs to be fixed on AMD64
 @ stdcall RtlGetLastNtStatus()
 @ stdcall RtlGetLastWin32Error()
 @ stdcall RtlGetLengthWithoutLastFullDosOrNtPathElement(long ptr ptr)
