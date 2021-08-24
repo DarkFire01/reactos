@@ -1564,5 +1564,5 @@
 @ stub -version=0x601+ BaseVerifyUnicodeString
 @ stub -version=0x601+ BasepAnsiStringToDynamicUnicodeString
 @ stub -version=0x601+ BasepCheckAppCompat
-@ stub -version=0x601+ CreateProcessAsUserW
+;@ stub -version=0x601+ CreateProcessAsUserW
 @ stub -version=0x601+ CreateRemoteThreadEx
