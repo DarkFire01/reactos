@@ -1959,10 +1959,10 @@
 @ stdcall -arch=arm __rt_srsh()
 
 ;Windows 7 stuff
-@ stub -version=0x601+ RtlAddIntegrityLabelToBoundaryDescriptor
+;@ stub -version=0x601+ RtlAddIntegrityLabelToBoundaryDescriptor
 
 ;Windows 8 stuff
-@ stub -version=0x602+ ApiSetQueryApiSetPresence	
+;@ stub -version=0x602+ ApiSetQueryApiSetPresence	
 @ stub -version=0x602+ EtwEventSetInformation	
 @ stub -version=0x602+ LdrAddDllDirectory	
 @ stub -version=0x602+ LdrGetDllDirectory	

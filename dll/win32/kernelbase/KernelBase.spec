@@ -83,7 +83,7 @@
 @ stdcall -version=0x601+ CreatePipe() kernel32.CreatePipe
 @ stdcall -version=0x601+ CreatePrivateObjectSecurity() kernel32.CreatePrivateObjectSecurity
 @ stdcall -version=0x601+ CreatePrivateObjectSecurityEx() kernel32.CreatePrivateObjectSecurityEx
-@ stdcall -version=0x601+ CreatePrivateObjectSecurityWithMultipleInheritance()
+;@ stdcall -version=0x601+ CreatePrivateObjectSecurityWithMultipleInheritance()
 @ stdcall -version=0x601+ CreateRemoteThread() kernel32.CreateRemoteThread
 @ stdcall -version=0x601+ CreateRemoteThreadEx() kernel32.CreateRemoteThreadEx
 @ stdcall -version=0x601+ CreateRestrictedToken() kernel32.CreateRestrictedToken
@@ -1251,7 +1251,7 @@
 @ stub -version=0x602+ _amsg_exit	
 @ stub -version=0x602+ _c_exit	
 @ stub -version=0x602+ _cexit	
-@ stub -version=0x602+ _exit	
+;@ stub -version=0x602+ _exit	
 @ stub -version=0x602+ _initterm	
 @ stub -version=0x602+ _initterm_e	
 @ stub -version=0x602+ _invalid_parameter	
@@ -1259,7 +1259,7 @@
 @ stub -version=0x602+ _purecall	
 @ stub -version=0x602+ _time64	
 @ stub -version=0x602+ atexit	
-@ stub -version=0x602+ exit	
+;@ stub -version=0x602+ exit	
 @ stub -version=0x602+ hgets	
 @ stub -version=0x602+ hwprintf	
 @ stub -version=0x602+ time	
