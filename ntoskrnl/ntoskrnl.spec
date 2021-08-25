@@ -1770,7 +1770,9 @@
 ;Longhorn
 @ stub -version=0x600+ PoUnregisterPowerSettingCallback
 @ stdcall -version=0x600+ PsGetCurrentProcessSessionIdEx() PsGetCurrentProcessSessionId
+@ stdcall -stub -version=0x600+ PsIsSecureProcess(ptr) ; Longhorn 5112
 @ stub -version=0x600+ RtlFormatSidUserKeyPath
+@ stdcall -version=0x600+ ZwRequestPort(ptr ptr) ; Longhorn 5112
 
 ;Windows 8 stuff
 
