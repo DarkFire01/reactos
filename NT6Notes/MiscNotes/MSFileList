@@ -1,0 +1,15 @@
+
+System files:
+dwmapi.dll (Vista RTM and Win7 SP1)
+dwmcore.dll (Vista RTM)
+dwrite.dll (Win7 SP1)
+msvcrt.dll (Vista SP2 and Win7 SP1)
+ncrypt.dll (Win7 SP1)
+uDWM.dll (Vista RTM)
+UIAutomationCore (Win7 SP1)
+wsock32.dll (Win7 SP1, only with https://github.com/archeYR/reactos/tree/CORE-12152)
+
+Drivers:
+msrpc.sys (tested with Vista RTM)
+videoprt.sys (tested Vista RTM and Win7 SP1. Works after installing 3rd party video drivers, to use with stock ROS video drivers apply: https://github.com/archeYR/reactos/commit/3c5f4781c47ec9bc9d1f07a56bce2cbfd4344d1a)
+watchdog.sys (tested Vista RTM and Win7 SP1)

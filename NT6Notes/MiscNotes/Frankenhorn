@@ -1,0 +1,7 @@
+It is possible to use win32ss files from early Longhorn post-reset builds, it doesn't work well (it's worse than usual NT 5.2 frankenstein), but works good enough for some experimenting.
+
+Current status:
+gdi32.dll 6.0.5219.0
+user32.dll 6.0.5001.0
+win32k.sys 6.0.5001.0
+winsrv.dll 6.0.5001.0
