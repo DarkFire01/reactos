@@ -755,3 +755,7 @@
 @ stub -version=0x602+ SafeBaseRegGetKeySecurity	
 @ stub -version=0x602+ TraceQueryInformation	
 @ stub -version=0x602+ WaitServiceState
+
+;Windows 10 stuff
+
+@ stub -version=0xA00+ NpGetUserName

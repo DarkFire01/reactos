@@ -1565,3 +1565,24 @@
 @ stub -version=0x601+ BasepCheckAppCompat
 ;@ stub -version=0x601+ CreateProcessAsUserW
 @ stub -version=0x601+ CreateRemoteThreadEx
+
+;Windows 10 stuff 
+;@ stub -version=0xA00+ CreateProcessAsUserA
+;@ stdcall -version=0xA00+ DiscardVirtualMemory()
+@ stub -version=0xA00+ FreeMemoryJobObject	 
+@ stub -version=0xA00+ GetProcessDefaultCpuSets
+@ stub -version=0xA00+ GetSystemCpuSetInformation
+@ stub -version=0xA00+ GetThreadSelectedCpuSets
+;@ stdcall -version=0xA00+ OfferVirtualMemory()
+@ stub -version=0xA00+ QueryIoRateControlInformationJobObject	 
+@ stub -version=0xA00+ QueryProtectedPolicy
+@ stub -version=0xA00+ QuirkIsEnabledForPackage3Worker	 
+@ stub -version=0xA00+ QuirkIsEnabledForPackage4Worker	 
+;@ stdcall -version=0xA00+ ReclaimVirtualMemory()
+@ stub -version=0xA00+ SetIoRateControlInformationJobObject	 
+@ stub -version=0xA00+ SetProcessDefaultCpuSets
+@ stub -version=0xA00+ SetProtectedPolicy
+@ stub -version=0xA00+ SetThreadSelectedCpuSets
+@ stub -version=0xA00+ WaitForDebugEventEx
+@ stub -version=0xA00+ WerGetFlagsWorker	 
+@ stub -version=0xA00+ WerSetFlagsWorker

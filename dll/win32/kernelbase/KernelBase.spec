@@ -1438,3 +1438,197 @@
 @ stub -version=0x603+ UnsubscribeStateChangeNotification	;KERNEL32 in 6.2 only
 @ stub -version=0x603+ WriteStateAtomValue	;KERNEL32 in 6.2 only
 @ stub -version=0x603+ WriteStateContainerValue	;KERNEL32 in 6.2 only
+
+;Windows 10 stuff 
+;AppXUpdatePackageCapabilities	 
+;ApplicationUserModelIdFromProductId	 
+;BaseGetNamedObjectDirectory	also exported from KERNEL32 in 6.1 and higher
+;CalloutOnFiberStack	also exported from KERNEL32 in 6.3 and higher
+;CeipIsOptedIn	also exported from KERNEL32 in 6.2 and higher
+;CloseGlobalizationUserSettingsKey	 
+;CompareObjectHandles	 
+;ConvertFiberToThread	also exported from KERNEL32 in 5.1 and higher
+;ConvertThreadToFiber	also exported from KERNEL32 in some 3.51 and higher (NT) and 4.10 and higher (Windows)
+;ConvertThreadToFiberEx	also exported from KERNEL32 in 5.2 and higher
+;CopyFileW	also exported from KERNEL32 in 3.51 and higher
+;CreateFiber	also exported from KERNEL32 in some 3.51 and higher (NT) and 4.10 and higher (Windows)
+;CreateFiberEx	also exported from KERNEL32 in some 5.0 and higher
+;CreateHardLinkA	also exported from KERNEL32 in 5.0 and higher
+;CreateProcessAsUserA	also exported from ADVAPI32 in 3.51 and higher;
+;also exported from KERNEL32 in 10.0 and higher
+;CreateSemaphoreW	also exported from KERNEL32 in 3.51 and higher
+;CreateWaitableTimerW	also exported from KERNEL32 in some 4.0 and higher
+;DecodeRemotePointer	forwarded to NTDLL function RtlDecodeRemotePointer
+;DeleteFiber	also exported from KERNEL32 in some 3.51 and higher (NT) and 4.10 and higher (Windows)
+;DsFreeNgcKey	 
+;DsReadNgcKeyW	 
+;DsWriteNgcKeyW	 
+;EncodeRemotePointer	forwarded to NTDLL function RtlEncodeRemotePointer
+;FindFirstFileNameW	also exported from KERNEL32 in 6.0 and higher
+;FindFirstStreamW	also exported from KERNEL32 in 5.2 and higher
+;FindNextFileNameW	also exported from KERNEL32 in 6.0 and higher
+;FindNextStreamW	also exported from KERNEL32 in 5.2 and higher
+;FindResourceW	also exported from KERNEL32 in 3.51 and higher
+;GetAlternatePackageRoots	 
+;GetAppDataFolder	 
+;GetApplicationUserModelIdFromToken	 
+;GetCurrentTargetPlatformContext	 
+;GetDurationFormatEx	also exported from KERNEL32 in 6.0 and higher
+;GetEffectivePackageStatusForUser	 
+;GetFileVersionInfoA	 
+;GetFileVersionInfoSizeA	 
+;GetFileVersionInfoSizeW	 
+;GetFileVersionInfoW	 
+;GetIntegratedDisplaySize	 
+;GetNamedPipeHandleStateW	also exported from KERNEL32 in 3.51 and higher
+;GetNamedPipeInfo	also exported from KERNEL32 in 3.51 and higher
+;GetOsManufacturingMode	 
+;GetPackageFamilyNameFromToken	 
+;GetPackageFullNameFromToken	 
+;GetPackagePathOnVolume	 
+;GetPackageStatus	 
+;GetPackageStatusForUser	 
+;GetPackageTargetPlatformProperty	 
+;GetPackageVolumeSisPath	 
+;GetProcessDefaultCpuSets	also exported from KERNEL32 in 10.0 and higher
+;GetProcessInformation	also exported from KERNEL32 in 6.2 and higher
+;GetProcessShutdownParameters	also exported from KERNEL32 in 3.51 and higher
+;GetProcessorSystemCycleTime	also exported from KERNEL32 in 6.1 and higher
+;GetPublisherCacheFolder	 
+;GetPublisherRootFolder	 
+;GetSharedLocalFolder	 
+;GetStateRootFolderBase	 
+;GetSystemCpuSetInformation	also exported from KERNEL32 in 10.0 and higher
+;GetSystemMetadataPath	 
+;GetSystemMetadataPathForPackage	 
+;GetSystemMetadataPathForPackageFamily	 
+;GetSystemStateRootFolder	 
+;GetSystemWow64DirectoryA	also exported from KERNEL32 in 5.1 and higher
+;GetSystemWow64DirectoryW	also exported from KERNEL32 in 5.1 and higher
+;GetTargetPlatformContext	 
+;GetTempFileNameA	also exported from KERNEL32 in 3.51 and higher
+;GetTempPathA	also exported from KERNEL32 in 3.51 and higher
+;GetThreadErrorMode	also exported from KERNEL32 in 6.1 and higher
+;GetThreadSelectedCpuSets	also exported from KERNEL32 in 10.0 and higher
+;GetUserOverrideString	 
+;GetUserOverrideWord	 
+;GetVolumeInformationA	also exported from KERNEL32 in 3.51 and higher
+;IncrementPackageStatusVersion	 
+;IsDeveloperModeEnabled	 
+;IsDeveloperModePolicyApplied	 
+;IsSideloadingEnabled	 
+;IsSideloadingPolicyApplied	 
+;LoadLibraryA	also exported from KERNEL32 in 3.51 and higher
+;LoadLibraryW	also exported from KERNEL32 in 3.51 and higher
+;LoadPackagedLibrary	also exported from KERNEL32 in 6.2 and higher
+;MulDiv	also exported from KERNEL32 in 3.51 and higher
+@ stub -version=0xA00+ NamedPipeEventEnum	 
+@ stub -version=0xA00+ NamedPipeEventSelect	 
+@ stub -version=0xA00+ OpenFileMappingFromApp	 
+@ stub -version=0xA00+ OpenGlobalizationUserSettingsKey	 
+@ stub -version=0xA00+ OpenPackageInfoByFullNameForUser	 
+@ stub -version=0xA00+ OpenStateExplicitForUserSid	 
+@ stub -version=0xA00+ OpenStateExplicitForUserSidString	 
+@ stub -version=0xA00+ PackageFamilyNameFromProductId	 
+@ stub -version=0xA00+ PackageFullNameFromProductId	 
+@ stub -version=0xA00+ PackageIdFromProductId	 
+@ stub -version=0xA00+ PackageRelativeApplicationIdFromProductId	 
+@ stub -version=0xA00+ PackageSidFromFamilyName	 
+@ stub -version=0xA00+ PackageSidFromProductId	 
+@ stub -version=0xA00+ PcwAddQueryItem	 
+@ stub -version=0xA00+ PcwClearCounterSetSecurity	 
+@ stub -version=0xA00+ PcwCollectData	 
+@ stub -version=0xA00+ PcwCompleteNotification	 
+@ stub -version=0xA00+ PcwCreateNotifier	 
+@ stub -version=0xA00+ PcwCreateQuery	 
+@ stub -version=0xA00+ PcwDisconnectCounterSet	 
+@ stub -version=0xA00+ PcwEnumerateInstances	 
+@ stub -version=0xA00+ PcwIsNotifierAlive	 
+@ stub -version=0xA00+ PcwQueryCounterSetSecurity	 
+@ stub -version=0xA00+ PcwReadNotificationData	 
+@ stub -version=0xA00+ PcwRegisterCounterSet	 
+@ stub -version=0xA00+ PcwRemoveQueryItem	 
+@ stub -version=0xA00+ PcwSendNotification	 
+@ stub -version=0xA00+ PcwSendStatelessNotification	 
+@ stub -version=0xA00+ PcwSetCounterSetSecurity	 
+@ stub -version=0xA00+ PcwSetQueryItemUserData	 
+;PerfCreateInstance	also exported from ADVAPI32 in 6.0 and higher
+;PerfDecrementULongCounterValue	also exported from ADVAPI32 in 6.0 and higher
+;PerfDecrementULongLongCounterValue	also exported from ADVAPI32 in 6.0 and higher
+;PerfDeleteInstance	also exported from ADVAPI32 in 6.0 and higher
+;PerfIncrementULongCounterValue	also exported from ADVAPI32 in 6.0 and higher
+;PerfIncrementULongLongCounterValue	also exported from ADVAPI32 in 6.0 and higher
+;PerfQueryInstance	also exported from ADVAPI32 in 6.0 and higher
+;PerfSetCounterRefValue	also exported from ADVAPI32 in 6.0 and higher
+;PerfSetCounterSetInfo	also exported from ADVAPI32 in 6.0 and higher
+;PerfSetULongCounterValue	also exported from ADVAPI32 in 6.0 and higher
+;PerfSetULongLongCounterValue	also exported from ADVAPI32 in 6.0 and higher
+;PerfStartProvider	also exported from ADVAPI32 in 6.0 and higher
+;PerfStartProviderEx	also exported from ADVAPI32 in 6.0 and higher
+;PerfStopProvider	also exported from ADVAPI32 in 6.0 and higher
+;ProductIdFromPackageFamilyName	 
+;PsmCreateKeyWithDynamicId	 
+;PssCaptureSnapshot	also exported from KERNEL32 in 6.3 and higher
+;PssDuplicateSnapshot	also exported from KERNEL32 in 6.3 and higher
+;PssFreeSnapshot	also exported from KERNEL32 in 6.3 and higher
+;PssQuerySnapshot	also exported from KERNEL32 in 6.3 and higher
+;PssWalkMarkerCreate	also exported from KERNEL32 in 6.3 and higher
+;PssWalkMarkerFree	also exported from KERNEL32 in 6.3 and higher
+;PssWalkMarkerGetPosition	also exported from KERNEL32 in 6.3 and higher
+;PssWalkMarkerSeekToBeginning	also exported from KERNEL32 in 6.3 and higher
+;PssWalkMarkerSetPosition	also exported from KERNEL32 in 6.3 and higher
+;PssWalkSnapshot	also exported from KERNEL32 in 6.3 and higher
+;QueryInterruptTime	 
+;QueryInterruptTimePrecise	 
+;QueryProtectedPolicy	also exported from KERNEL32 in 10.0 and higher
+;QueryUnbiasedInterruptTimePrecise	 
+;QuirkIsEnabledForPackage3	 
+;QuirkIsEnabledForPackage4	 
+;RaiseFailFastException	also exported from KERNEL32 in 6.1 and higher
+@ stub -version=0xA00+ RegDeleteKeyValueA	 
+@ stub -version=0xA00+ RegDeleteKeyValueW	 
+@ stub -version=0xA00+ RegSetKeyValueA	 
+@ stub -version=0xA00+ RegSetKeyValueW	 
+@ stub -version=0xA00+ RemovePackageStatus	 
+@ stub -version=0xA00+ RemovePackageStatusForUser	 
+@ stub -version=0xA00+ SHLoadIndirectStringInternal	 
+@ stub -version=0xA00+ SaveAlternatePackageRootPath	 
+@ stub -version=0xA00+ SaveStateRootFolderPath	 
+;SetComputerNameA	also exported from KERNEL32 in 3.51 and higher
+;SetComputerNameExA	also exported from KERNEL32 in 5.0 and higher
+;SetComputerNameW	also exported from KERNEL32 in 3.51 and higher
+;SetIsDeveloperModeEnabled	 
+;SetIsSideloadingEnabled	 
+;SetProcessDefaultCpuSets	also exported from KERNEL32 in 10.0 and higher
+;SetProcessInformation	also exported from KERNEL32 in 6.2 and higher
+;SetProcessValidCallTargets	 
+;SetProtectedPolicy	also exported from KERNEL32 in 10.0 and higher
+;SetThreadErrorMode	also exported from KERNEL32 in 6.1 and higher
+;SetThreadIdealProcessor	also exported from KERNEL32 in some 4.0 and higher
+;SetThreadSelectedCpuSets	also exported from KERNEL32 in 10.0 and higher
+@ stub -version=0xA00+ SharedLocalIsEnabled	 
+@ stub -version=0xA00+ StmAlignSize	 
+@ stub -version=0xA00+ StmAllocateFlat	 
+@ stub -version=0xA00+ StmCoalesceChunks	 
+@ stub -version=0xA00+ StmDeinitialize	 
+@ stub -version=0xA00+ StmInitialize	 
+@ stub -version=0xA00+ StmReduceSize	 
+@ stub -version=0xA00+ StmReserve	 
+@ stub -version=0xA00+ StmWrite	 
+@ stdcall SwitchToFiber() kernel32.SwitchToFiber
+@ stub -version=0xA00+ TerminateProcessOnMemoryExhaustion	 
+@ stub -version=0xA00+ UpdatePackageStatus	 
+@ stub -version=0xA00+ UpdatePackageStatusForUser	 
+@ stub -version=0xA00+ VerifyApplicationUserModelId	 
+@ stub -version=0xA00+ VerifyPackageFamilyName	 
+@ stub -version=0xA00+ VerifyPackageFullName	 
+@ stub -version=0xA00+ VerifyPackageId	 
+@ stub -version=0xA00+ VerifyPackageRelativeApplicationId	 
+@ stub -version=0xA00+ VirtualAllocFromApp	 
+@ stub -version=0xA00+ VirtualProtectFromApp	 
+@ stub -version=0xA00+ WTSGetServiceSessionId	 
+@ stub -version=0xA00+ WTSIsServerContainer	 
+@ stub -version=0xA00+ WaitForDebugEventEx;	also exported from KERNEL32 in 10.0 and higher
+@ stdcall -version=0xA00+ WaitForMultipleObjects() kernel32.WaitForMultipleObjects
+@ stdcall -version=0xA00+ WerGetFlags() kernel32.WerGetFlags
+@ stdcall -version=0xA00+ WerSetFlags() kernel32.WerSetFlags
