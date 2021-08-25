@@ -258,7 +258,7 @@
 @ cdecl ___mb_cur_max_func()
 @ cdecl ___setlc_active_func()
 @ cdecl ___unguarded_readlc_active_add_func()
-@ cdecl -stub -version=0x601+ __acrt_iob_func(long)
+@ cdecl -version=0x601+ __acrt_iob_func(long)
 @ extern __argc
 @ extern __argv
 @ extern __badioinfo __badioinfo
