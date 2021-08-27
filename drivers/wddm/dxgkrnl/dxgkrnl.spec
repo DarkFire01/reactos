@@ -26,18 +26,18 @@
 @ stub -version=0x600+ TraceDxgkPresentHistory ;25
 
 ;Windows 8+ 
-@ stub -version=0x602+ DxgkSqmCommonGeneric ;26
-@ stub -version=0x602+ DxgkSqmCreateDwordStreamEntry ;27
-@ stub -version=0x602+ DxgkSqmCreateStringStreamEntry ;28
-@ stub -version=0x602+ DxgkSqmGenericDword ;29
-@ stub -version=0x602+ DxgkSqmGenericDword64 ;30
-@ stub -version=0x602+ DxgkSqmGenericString ;31
-@ stub -version=0x602+ DxgkSqmOptedIn ;32
-@ stub -version=0x602+ DxgkSqmSetDword ;33
-@ stub -version=0x602+ TraceDxgkBlockThread ;34
-@ stub -version=0x602+ TraceDxgkContext ;35
-@ stub -version=0x602+ TraceDxgkDevice ;36
-@ stub -version=0x602+ TraceDxgkFunctionProfiler ;37
-@ stub -version=0x602+ TraceDxgkPerformanceWarning ;38
-@ stub -version=0x602+ DxgkSqmSetDword ;39
+;@ stub -version=0x602+ DxgkSqmCommonGeneric ;26
+;@ stub -version=0x602+ DxgkSqmCreateDwordStreamEntry ;27
+;@ stub -version=0x602+ DxgkSqmCreateStringStreamEntry ;28
+;@ stub -version=0x602+ DxgkSqmGenericDword ;29
+;@ stub -version=0x602+ DxgkSqmGenericDword64 ;30
+;@ stub -version=0x602+ DxgkSqmGenericString ;31
+;@ stub -version=0x602+ DxgkSqmOptedIn ;32
+;@ stub -version=0x602+ DxgkSqmSetDword ;33
+;@ stub -version=0x602+ TraceDxgkBlockThread ;34
+;@ stub -version=0x602+ TraceDxgkContext ;35
+;@ stub -version=0x602+ TraceDxgkDevice ;36
+;@ stub -version=0x602+ TraceDxgkFunctionProfiler ;37
+;@ stub -version=0x602+ TraceDxgkPerformanceWarning ;38
+;@ stub -version=0x602+ DxgkSqmSetDword ;39
 

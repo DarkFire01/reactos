@@ -1557,7 +1557,7 @@
 @ stub -version=0x602+ timeGetTime
 
 ;Windows 7 stuff
-@ stdcall -version=0x601+ AddIntegrityLabelToBoundaryDescriptor() ntdll.RtlAddIntegrityLabelToBoundaryDescriptor
+;@ stdcall -version=0x601+ AddIntegrityLabelToBoundaryDescriptor() ntdll.RtlAddIntegrityLabelToBoundaryDescriptor
 @ stub -version=0x601+ BaseCheckAppcompatCacheEx
 @ stub -version=0x601+ BaseDllReadWriteIniFile
 @ stub -version=0x601+ BaseVerifyUnicodeString
