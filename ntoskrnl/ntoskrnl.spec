@@ -398,6 +398,8 @@
 @ stdcall IoBuildPartialMdl(ptr ptr ptr long)
 @ stdcall IoBuildSynchronousFsdRequest(long ptr ptr long ptr ptr ptr)
 @ stdcall IoCallDriver(ptr ptr)
+@ stdcall -version=0x600+ IoCallDriverStackSafe(ptr ptr) NTOSKRNL.IoCallDriver
+@ stdcall -version=0x600+ IoCallDriverStackSafeDefault(ptr ptr) NTOSKRNL.IoCallDriver
 @ stdcall IoCancelFileOpen(ptr ptr)
 @ stdcall IoCancelIrp(ptr)
 @ stdcall IoCheckDesiredAccess(ptr long)
@@ -410,6 +412,7 @@
 @ stdcall IoCompleteRequest(ptr long)
 @ stdcall IoConnectInterrupt(ptr ptr ptr ptr long long long long long long long)
 @ stdcall -version=0x600+ IoConnectInterruptEx(ptr ptr ptr ptr long long long long long long long) ntoskrnl.IoConnectInterrupt
+@ stdcall -stub -version=0x600+ IoCreateArcName(ptr)
 @ stdcall IoCreateController(long)
 @ stdcall IoCreateDevice(ptr long ptr long long long ptr)
 @ stdcall IoCreateDisk(ptr ptr)
@@ -457,6 +460,7 @@
 @ stdcall IoGetAttachedDeviceReference(ptr)
 @ stdcall IoGetBaseFileSystemDeviceObject(ptr)
 @ stdcall IoGetBootDiskInformation(ptr long)
+@ stdcall -stub -version=0x600+ IoGetBootDiskInformationLite(ptr)
 @ stdcall IoGetConfigurationInformation()
 @ stdcall IoGetCurrentProcess()
 @ stdcall IoGetDeviceAttachmentBaseRef(ptr)
@@ -696,6 +700,7 @@
 @ stdcall -stub -version=0x601+ KeQueryActiveProcessorCountEx(long)
 @ stdcall KeQueryActiveProcessors()
 @ stdcall -arch=i386,arm KeQueryInterruptTime()
+@ stdcall -stub -version=0x600+ KeQueryMaximumProcessorCount()
 ;@ cdecl -arch=x86_64 KeQueryMultiThreadProcessorSet
 ;@ cdecl -arch=x86_64 KeQueryPrcbAddress
 @ stdcall KeQueryPriorityThread(ptr)
@@ -806,6 +811,7 @@
 @ stdcall LpcRequestPort(ptr ptr)
 @ stdcall LpcRequestWaitReplyPort(ptr ptr ptr)
 @ stdcall -version=0x600+ LpcRequestWaitReplyPortEx(ptr ptr ptr)
+@ stub -version=0x600+ LpcReplyWaitReplyPort
 @ stdcall LsaCallAuthenticationPackage(long long ptr long ptr ptr ptr)
 @ stdcall LsaDeregisterLogonProcess(long)
 @ stdcall LsaFreeReturnBuffer(ptr)
@@ -826,6 +832,7 @@
 @ stdcall MmBuildMdlForNonPagedPool(ptr)
 @ stdcall MmCanFileBeTruncated(ptr ptr)
 @ stdcall MmCommitSessionMappedView(ptr ptr)
+@ stdcall -version=0x600+ MmCopyVirtualMemory(ptr ptr ptr ptr long long ptr)
 @ stdcall MmCreateMdl(ptr ptr long)
 @ stdcall MmCreateMirror()
 @ stdcall MmCreateSection(ptr long ptr ptr long long ptr ptr)
@@ -985,6 +992,7 @@
 @ stdcall ObDeleteCapturedInsertInfo(ptr)
 @ stdcall ObDereferenceObject(ptr)
 @ stdcall ObDereferenceSecurityDescriptor(ptr long)
+@ stdcall -version=0x600+ ObIsDosDeviceLocallyMapped(long ptr)
 @ stdcall ObFindHandleForObject(ptr ptr ptr ptr ptr)
 @ stdcall ObGetObjectSecurity(ptr ptr ptr)
 @ stdcall -version=0x601+ ObGetObjectType(ptr)
@@ -1013,16 +1021,19 @@
 @ stdcall PoCallDriver(ptr ptr)
 @ stdcall PoCancelDeviceNotify(ptr)
 @ stdcall -stub -version=0x600+ PoDisableSleepStates()
+@ stdcall -version=0x600+ PoGetSystemWake(ptr)
 @ stdcall PoQueueShutdownWorkItem(ptr)
 @ stdcall -stub -version=0x600+ PoReenableSleepStates()
 @ stdcall PoRegisterDeviceForIdleDetection(ptr long long long)
 @ stdcall PoRegisterDeviceNotify(ptr long long long ptr ptr)
+@ stdcall -version=0x600+ PoRegisterPowerSettingCallback(ptr long ptr ptr ptr)
 @ stdcall PoRegisterSystemState(ptr long)
 @ stdcall PoRequestPowerIrp(ptr long long ptr ptr ptr)
 @ stdcall PoRequestShutdownEvent(ptr)
 @ stdcall PoSetHiberRange(ptr long ptr long long)
 @ stdcall PoSetPowerState(ptr long long)
 @ stdcall PoSetSystemState(long)
+@ stdcall -version=0x600+ PoSetSystemWake(ptr)
 @ stdcall PoShutdownBugCheck(long long ptr ptr ptr ptr)
 @ stdcall PoStartNextPowerIrp(ptr)
 @ stdcall PoUnregisterSystemState(ptr)
@@ -1460,6 +1471,7 @@
 @ stdcall SePrivilegeCheck(ptr ptr long)
 @ stdcall SePrivilegeObjectAuditAlarm(ptr ptr long ptr long long)
 @ extern SePublicDefaultDacl
+@ stdcall -stub -version=0x600+ SeReportSecurityEventWithSubCategory()
 @ stdcall SeQueryAuthenticationIdToken(ptr ptr)
 @ stdcall SeQueryInformationToken(ptr long ptr)
 @ stdcall SeQuerySecurityDescriptorInfo(ptr ptr ptr ptr)
@@ -1470,6 +1482,7 @@
 @ stdcall SeReportSecurityEvent(long ptr ptr ptr)
 @ stdcall SeSetAccessStateGenericMapping(ptr ptr)
 @ stdcall SeSetAuditParameter(ptr long long ptr)
+@ stub -version=0x600+ SeSetAuthorizationCallbacks
 @ stdcall SeSetSecurityDescriptorInfo(ptr ptr ptr ptr long ptr)
 @ stdcall SeSetSecurityDescriptorInfoEx(ptr ptr ptr ptr long long ptr)
 @ stdcall SeSinglePrivilegeCheck(long long long)

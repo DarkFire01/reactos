@@ -665,7 +665,7 @@ ObIsLUIDDeviceMapsEnabled(VOID)
 }
 
 
-#if 0
+#if 1
 NTSTATUS
 NTAPI
 ObIsDosDeviceLocallyMapped(
