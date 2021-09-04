@@ -7,7 +7,7 @@ add_subdirectory(clipbrd)
 add_subdirectory(cmdutils)
 add_subdirectory(control)
 add_subdirectory(drwtsn32)
-add_subdirectory(dxdiag)
+#add_subdirectory(dxdiag) #disabled in this branch
 add_subdirectory(extrac32)
 add_subdirectory(findstr)
 add_subdirectory(fltmc)
