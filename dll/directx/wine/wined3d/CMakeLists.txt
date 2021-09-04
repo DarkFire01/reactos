@@ -14,7 +14,7 @@ spec2def(d3dwine.dll wined3d.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
     arb_program_shader.c
-    ati_fragment_shader.c
+    #ati_fragment_shader.c
     buffer.c
     context.c
     cs.c
