@@ -45,7 +45,7 @@ include(generic.cmake)
 include(acpi.cmake)
 include(apic.cmake)
 include(up.cmake)
-include(smp.cmake)
+include(halmacpi.cmake)
 
 if(ARCH STREQUAL "i386")
     include(pcidata.cmake)
@@ -53,6 +53,7 @@ if(ARCH STREQUAL "i386")
     include(pic.cmake)
     include(xbox.cmake)
     include(pc98.cmake)
+    include(halmp.cmake)
     add_subdirectory(minihal)
 
     remove_definitions(-DSARCH_XBOX)
@@ -66,7 +67,8 @@ if(ARCH STREQUAL "i386")
     add_hal(halxbox SOURCES xbox/halxbox.rc COMPONENTS xbox up)
     add_hal(halpc98 SOURCES pc98/halpc98.rc COMPONENTS pc98 up)
 
-    #add_hal(halmacpi SOURCES acpi/halacpi.rc COMPONENTS generic acpi smp pic)
+    add_hal(halmacpi SOURCES smp/halmacpi.rc COMPONENTS halmacpi)
+    add_hal(halmp SOURCES mp/halmp.rc COMPONENTS halmp)
 
 elseif(ARCH STREQUAL "amd64")
 
@@ -76,7 +78,7 @@ elseif(ARCH STREQUAL "amd64")
     add_hal(hal SOURCES ${HAL_SOURCE} COMPONENTS generic acpi up apic)
     target_link_libraries(hal fast486)
 
-    add_hal(halmp SOURCES ${HAL_SOURCE} COMPONENTS generic acpi smp apic)
+    add_hal(halmp SOURCES ${HAL_SOURCE} COMPONENTS halmacpi)
     target_link_libraries(halmp fast486)
 
 endif()

@@ -33,7 +33,7 @@
     #define TprToIrql(Tpr) ((KIRQL)(Tpr >> 4))
     #define CLOCK2_LEVEL CLOCK_LEVEL
 #else
-    #define LOCAL_APIC_BASE  0xFFFE0000
+    #define LOCAL_APIC_BASE 0xFFFE0000
     #define IOAPIC_BASE 0xFFFE1000
 
     /* Vectors */
