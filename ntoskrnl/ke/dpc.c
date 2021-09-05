@@ -324,7 +324,7 @@ KiTimerExpiration(IN PKDPC Dpc,
         }
 
         /* Lower IRQL if we need to */
-        if (OldIrql != DISPATCH_LEVEL) KeLowerIrql(OldIrql);
+        if (OldIrql != DISPATCH_LEVEL) KeLowerIrql(DISPATCH_LEVEL);
     }
     else
     {

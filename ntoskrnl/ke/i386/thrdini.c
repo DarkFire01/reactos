@@ -437,6 +437,10 @@ KiSwapContextEntry(IN PKSWITCHFRAME SwitchFrame,
              KiGetThreadNpxArea(NewThread)->Cr0NpxState;
     if (Cr0 != NewCr0)  __writecr0(NewCr0);
 
+    /* If it isn't already set, set swapbusy to false for the new thread */
+    if(NewThread->SwapBusy != FALSE)
+        NewThread->SwapBusy = FALSE;
+
     /* Now enable interrupts and do the switch */
     _enable();
     KiSwitchThreads(OldThread, NewThread->KernelStack);
@@ -493,6 +497,11 @@ KiDispatchInterrupt(VOID)
         /* The thread is now running */
         NewThread->State = Running;
         OldThread->WaitReason = WrDispatchInt;
+
+    #ifdef CONFIG_SMP
+        /* Lock the PRCB */
+        KiAcquirePrcbLock(Prcb);
+    #endif
 
         /* Make the old thread ready */
         KxQueueReadyThread(OldThread, Prcb);
