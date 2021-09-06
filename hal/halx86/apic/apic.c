@@ -15,6 +15,8 @@
 
 #include <hal.h>
 #include "apicp.h"
+#include <madt.h>
+#include <smp.h>
 #define NDEBUG
 #include <debug.h>
 
@@ -26,6 +28,7 @@
 
 ULONG ApicVersion;
 UCHAR HalpVectorToIndex[256];
+extern PROCESSOR_IDENTITY HalpStaticProcessorIdentity[];
 
 #ifndef _M_AMD64
 const UCHAR

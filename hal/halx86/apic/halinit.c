@@ -10,6 +10,7 @@
 #include <hal.h>
 #include "apicp.h"
 #include <smp.h>
+#include <madt.h>
 #define NDEBUG
 #include <debug.h>
 
@@ -30,7 +31,7 @@ HalpInitProcessor(
         /* APIC tables should always be parsed once before touching APIC */
         HalpParseApicTables(LoaderBlock);
     }
-    
+
     /* Initialize the local APIC for this cpu */
     ApicInitializeLocalApic(ProcessorNumber);
 
@@ -47,6 +48,8 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     DPRINT1("Using HAL: APIC %s %s\n",
             (HalpBuildType & PRCB_BUILD_UNIPROCESSOR) ? "UP" : "SMP",
             (HalpBuildType & PRCB_BUILD_DEBUG) ? "DBG" : "REL");
+
+    HalpPrintApicTables();
 
     /* Enable clock interrupt handler */
     HalpEnableInterruptHandler(IDT_INTERNAL,
