@@ -298,7 +298,7 @@ IntVideoPortCreateAdapterDeviceObject(
     KeInitializeMutex(&DeviceExtension->DeviceLock, 0);
 
     /* Attach the device. */
-    if ((PhysicalDeviceObject != NULL) && (DisplayNumber == 0))
+    if (PhysicalDeviceObject != NULL)
         DeviceExtension->NextDeviceObject = IoAttachDeviceToDeviceStack(
                                                 *DeviceObject,
                                                 PhysicalDeviceObject);
