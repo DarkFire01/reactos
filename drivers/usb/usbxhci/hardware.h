@@ -1,10 +1,14 @@
 /*
- * PROJECT:         ReactOS system libraries
+ * PROJECT:         ReactOS xHCI Driver
  * LICENSE:         GPLv2+ - See COPYING in the top level directory
  * PURPOSE:         hardware register definitions
- * PROGRAMMER:      Rama Teja Gampa <ramateja.g@gmail.com>
-*/
-    
+ * COPYRIGHT:       Rama Teja Gampa <ramateja.g@gmail.com>
+ */
+
+#pragma once
+
+/* Register Definitions ***************************************************************************/
+
 // base io addr register offsets
 #define XHCI_HCSP1            1
 #define XHCI_HCSP2            2
@@ -29,6 +33,7 @@
 #define XHCI_ERSTBA           12
 #define XHCI_ERSTDP           14
 
+/* Hardware Structs *******************************************************************************/
 
 typedef volatile union _XHCI_CAPLENGHT_INTERFACE_VERSION 
 {

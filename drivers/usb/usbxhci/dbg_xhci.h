@@ -1,11 +1,11 @@
 /*
- * PROJECT:         ReactOS system libraries
+ * PROJECT:         ReactOS xHCI Driver
  * LICENSE:         GPLv2+ - See COPYING in the top level directory
  * PURPOSE:         debug header files
- * PROGRAMMER:      Rama Teja Gampa <ramateja.g@gmail.com>
-*/
-#ifndef DBG_XHCI_H__
-#define DBG_XHCI_H__
+ * COPYRIGHT:       Rama Teja Gampa <ramateja.g@gmail.com>
+ */
+
+#pragma once
 
 #if DBG
 
@@ -46,5 +46,3 @@
     #endif /* _MSC_VER */
 
 #endif /* not DBG */
-
-#endif /* DBG_XHCI_H__ */

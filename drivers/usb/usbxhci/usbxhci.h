@@ -1,11 +1,11 @@
 /*
- * PROJECT:         ReactOS system libraries
+ * PROJECT:         ReactOS xHCI Driver
  * LICENSE:         GPLv2+ - See COPYING in the top level directory
- * PURPOSE:         resources definitions
- * PROGRAMMER:      Rama Teja Gampa <ramateja.g@gmail.com>
-*/
-#ifndef USBXHCI_H__
-#define USBXHCI_H__
+ * PURPOSE:         Resource definitions
+ * COPYRIGHT:       Copyright 2017 Rama Teja Gampa <ramateja.g@gmail.com>
+ */
+
+#pragma once
 
 #include <ntddk.h>
 #include <windef.h>
@@ -18,10 +18,8 @@
 
 extern USBPORT_REGISTRATION_PACKET RegPacket;
 
-#define XHCI_FLAGS_CONTROLLER_SUSPEND 0x01
+/* Transfer TRBs IDs ******************************************************************************/
 
-// TRB Types
-// transfer TRBs ids
 #define NORMAL          1
 #define SETUP_STAGE     2
 #define DATA_STAGE      3
@@ -31,7 +29,8 @@ extern USBPORT_REGISTRATION_PACKET RegPacket;
 #define EVENT_DATA      7
 #define NO_OP           8
 
-// COMMAND TRB IDs
+/* Command TRB IDs ********************************************************************************/
+
 #define ENABLE_SLOT_COMMAND             9
 #define DISABLE_SLOT_COMMAND            10
 #define ADDRESS_DEVICE_COMMAND          11
@@ -48,7 +47,8 @@ extern USBPORT_REGISTRATION_PACKET RegPacket;
 #define FORCE_HEADER_COMMAND            22
 #define NO_OP_COMMAND                   23
 
-// EVENT TRB IDs
+/* Event TRB IDs **********************************************************************************/
+
 #define TRANSFER_EVENT                  32
 #define COMMAND_COMPLETION_EVENT        33
 #define PORT_STATUS_CHANGE_EVENT        34
@@ -58,8 +58,8 @@ extern USBPORT_REGISTRATION_PACKET RegPacket;
 #define DEVICE_NOTIFICATION_EVENT       38
 #define MF_INDEX_WARP_EVENT             39
 
+/* TRB Completion Codes ***************************************************************************/
 
-// TRB COMPLETION CODES
 #define INVALID                     0
 #define SUCCESS                     1
 #define DATA_BUFFER_ERROR           2
@@ -97,13 +97,16 @@ extern USBPORT_REGISTRATION_PACKET RegPacket;
 #define SECONDARY_BANDWIDTH_ERROR   35
 #define SPLIT_TRNASACTION_ERROR     36
 
-//Data structures
+#define XHCI_FLAGS_CONTROLLER_SUSPEND 0x01
+
 typedef struct  _XHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY 
 {
     PHYSICAL_ADDRESS ContextBaseAddr [256];
 } XHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY, *PXHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY;
 
-//----------------------------------------LINK TRB--------------------------------------------------------------------
+
+/* Link TRB ***************************************************************************************/
+
 typedef union _XHCI_LINK_ADDR
 {
     struct 
@@ -145,7 +148,8 @@ typedef struct _XHCI_LINK_TRB
 } XHCI_LINK_TRB;
 C_ASSERT(sizeof(XHCI_LINK_TRB) == 16);
 
-//----------------------------------------generic trb----------------------------------------------------------------
+/* Generic TRB ************************************************************************************/
+
 typedef struct _XHCI_GENERIC_TRB {
     ULONG Word0;
     ULONG Word1;
@@ -153,7 +157,9 @@ typedef struct _XHCI_GENERIC_TRB {
     ULONG Word3;
 }XHCI_GENERIC_TRB, *PXHCI_GENERIC_TRB;
 C_ASSERT(sizeof(XHCI_GENERIC_TRB) == 16);
-//----------------------------------------Command TRBs----------------------------------------------------------------
+
+/* Command TRB ************************************************************************************/
+
 typedef struct _XHCI_COMMAND_NO_OP_TRB 
 {
     ULONG RsvdZ1;
@@ -175,7 +181,8 @@ typedef union _XHCI_COMMAND_TRB
 }XHCI_COMMAND_TRB, *PXHCI_COMMAND_TRB;
 C_ASSERT(sizeof(XHCI_COMMAND_TRB) == 16);
 
-//----------------------------------------CONTROL TRANSFER DATA STRUCTUERS--------------------------------------------
+/* Control Transfer Data Structures ***************************************************************/
+
 typedef struct _XHCI_CONTROL_SETUP_TRB 
 {
     struct 
@@ -280,7 +287,8 @@ typedef union _XHCI_CONTROL_TRB
 } XHCI_CONTROL_TRB, *PXHCI_CONTROL_TRB;  
 C_ASSERT(sizeof(XHCI_CONTROL_TRB) == 16);
 
-//----------------event strucs-------------------
+/* Event Structs **********************************************************************************/
+
 typedef struct _XHCI_EVENT_COMMAND_COMPLETION_TRB
 {
     struct 
@@ -352,6 +360,7 @@ typedef union _XHCI_EVENT_TRB
 }XHCI_EVENT_TRB, *PXHCI_EVENT_TRB;
 C_ASSERT(sizeof(XHCI_EVENT_TRB) == 16);
 
+// 6.5
 typedef struct _XHCI_EVENT_RING_SEGMENT_TABLE
 {
     ULONGLONG RingSegmentBaseAddr;
@@ -361,7 +370,8 @@ typedef struct _XHCI_EVENT_RING_SEGMENT_TABLE
         ULONGLONG RsvdZ           :  48;
     };
 } XHCI_EVENT_RING_SEGMENT_TABLE;
-//------------------------------------main structs-----------------------
+
+/* Main Structs ***********************************************************************************/
 
 typedef union _XHCI_TRB 
 {
@@ -377,7 +387,7 @@ typedef struct _XHCI_SEGMENT
 {
     XHCI_TRB XhciTrb[256];
     PVOID nextSegment;
-}XHCI_SEGMENT, *PXHCI_SEGMENT;
+} XHCI_SEGMENT, *PXHCI_SEGMENT;
 
 typedef struct _XHCI_RING 
 {
@@ -437,6 +447,7 @@ typedef struct _XHCI_TRANSFER
     ULONG Reserved;
 } XHCI_TRANSFER, *PXHCI_TRANSFER;
 
+// 6.6
 typedef union _XHCI_SCRATCHPAD_BUFFER_ARRAY
 {
     struct 
@@ -447,7 +458,9 @@ typedef union _XHCI_SCRATCHPAD_BUFFER_ARRAY
     ULONGLONG AsULONGLONG;
 } XHCI_SCRATCHPAD_BUFFER_ARRAY, *PXHCI_SCRATCHPAD_BUFFER_ARRAY;
 C_ASSERT(sizeof(XHCI_SCRATCHPAD_BUFFER_ARRAY) == 8);
-//roothub functions
+
+/* Roothub Functions ******************************************************************************/
+
 VOID
 NTAPI
 XHCI_RH_GetRootHubData(
@@ -555,5 +568,11 @@ NTAPI
 XHCI_RH_EnableIrq(
   IN PVOID xhciExtension);
 
+MPSTATUS
+NTAPI
+XHCI_SendCommand (IN XHCI_TRB CommandTRB,
+                  IN PXHCI_EXTENSION XhciExtension);
 
-#endif /* USBXHCI_H__ */
+MPSTATUS
+NTAPI
+XHCI_ProcessEvent (IN PXHCI_EXTENSION XhciExtension);

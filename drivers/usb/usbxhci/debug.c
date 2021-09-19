@@ -1,11 +1,11 @@
 /*
- * PROJECT:         ReactOS system libraries
+ * PROJECT:         ReactOS xHCI Driver
  * LICENSE:         GPLv2+ - See COPYING in the top level directory
  * PURPOSE:         debug functions
- * PROGRAMMER:      Rama Teja Gampa <ramateja.g@gmail.com>
-*/
-#include "usbxhci.h"
+ * COPYRIGHT:       Rama Teja Gampa <ramateja.g@gmail.com>
+ */
 
+#include "usbxhci.h"
 #define NDEBUG
 #include <debug.h>
 
