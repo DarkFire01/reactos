@@ -1,10 +1,14 @@
 /*
- * PROJECT:         ReactOS system libraries
+ * PROJECT:         ReactOS xHCI Driver
  * LICENSE:         GPLv2+ - See COPYING in the top level directory
  * PURPOSE:         hardware register definitions
- * PROGRAMMER:      Rama Teja Gampa <ramateja.g@gmail.com>
-*/
-    
+ * COPYRIGHT:       Rama Teja Gampa <ramateja.g@gmail.com>
+ */
+
+#pragma once
+
+/* Register Definitions ***************************************************************************/
+
 // base io addr register offsets
 #define XHCI_HCSP1            1
 #define XHCI_HCSP2            2
@@ -29,21 +33,22 @@
 #define XHCI_ERSTBA           12
 #define XHCI_ERSTDP           14
 
+/* Hardware Structs *******************************************************************************/
 
-typedef volatile union _XHCI_CAPLENGHT_INTERFACE_VERSION 
+typedef volatile union _XHCI_CAPLENGHT_INTERFACE_VERSION
 {
-    struct 
+    struct
     {
-        ULONG CapabilityRegistersLength                         : 8; 
-        ULONG Rsvd                                              : 8; 
+        ULONG CapabilityRegistersLength                         : 8;
+        ULONG Rsvd                                              : 8;
         ULONG HostControllerInterfaceVersion                    : 16;
     };
     ULONG AsULONG;
 } XHCI_CAPLENGHT_INTERFACE_VERSION;
 
-typedef volatile union _XHCI_HC_STRUCTURAL_PARAMS_1 
+typedef volatile union _XHCI_HC_STRUCTURAL_PARAMS_1
 {
-    struct 
+    struct
     {
         ULONG NumberOfDeviceSlots     : 8; // MAXSLOTS
         ULONG NumberOfInterrupters    : 11; // MAXINTRS
@@ -53,11 +58,11 @@ typedef volatile union _XHCI_HC_STRUCTURAL_PARAMS_1
     ULONG AsULONG;
 } XHCI_HC_STRUCTURAL_PARAMS_1;
 
-typedef volatile union _XHCI_HC_STRUCTURAL_PARAMS_2 
+typedef volatile union _XHCI_HC_STRUCTURAL_PARAMS_2
 {
-    struct 
+    struct
     {
-        ULONG Ist               : 4; // Isochronous Scheduling Treshold 
+        ULONG Ist               : 4; // Isochronous Scheduling Treshold
         ULONG ERSTMax           : 4; //Even ring segment table max
         ULONG Rsvd              : 13;
         ULONG MaxSPBuffersHi    : 5; //Max Scratchpad buffers high
@@ -67,9 +72,9 @@ typedef volatile union _XHCI_HC_STRUCTURAL_PARAMS_2
     ULONG AsULONG;
 } XHCI_HC_STRUCTURAL_PARAMS_2;
 
-typedef volatile union _XHCI_HC_STRUCTURAL_PARAMS_3 
+typedef volatile union _XHCI_HC_STRUCTURAL_PARAMS_3
 {
-    struct 
+    struct
     {
         ULONG U1DeviceExitLatecy : 8;
         ULONG Rsvd               : 8;
@@ -78,8 +83,8 @@ typedef volatile union _XHCI_HC_STRUCTURAL_PARAMS_3
     ULONG AsULONG;
 } XHCI_HC_STRUCTURAL_PARAMS_3;
 
-typedef volatile union _XHCI_HC_CAPABILITY_PARAMS_1 
-{  // need to comment full forms, pg 291 in xHCI documentation 
+typedef volatile union _XHCI_HC_CAPABILITY_PARAMS_1
+{  // need to comment full forms, pg 291 in xHCI documentation
     struct
     {
         ULONG AC64               : 1;
@@ -100,9 +105,9 @@ typedef volatile union _XHCI_HC_CAPABILITY_PARAMS_1
     ULONG AsULONG;
 } XHCI_HC_CAPABILITY_PARAMS_1;
 
-typedef volatile union _XHCI_DOORBELL_OFFSET 
+typedef volatile union _XHCI_DOORBELL_OFFSET
 {
-    struct 
+    struct
     {
         ULONG Rsvd               : 2;
         ULONG DBArrayOffset      : 30;
@@ -110,7 +115,7 @@ typedef volatile union _XHCI_DOORBELL_OFFSET
     ULONG AsULONG;
 } XHCI_DOORBELL_OFFSET;
 
-typedef volatile union _XHCI_RT_REGISTER_SPACE_OFFSET 
+typedef volatile union _XHCI_RT_REGISTER_SPACE_OFFSET
 { //RUNTIME REGISTER SPACE OFFSET
     struct {
         ULONG Rsvd               : 5;
@@ -119,9 +124,9 @@ typedef volatile union _XHCI_RT_REGISTER_SPACE_OFFSET
     ULONG AsULONG;
 } XHCI_RT_REGISTER_SPACE_OFFSET;
 
-typedef volatile union _XHCI_HC_CAPABILITY_PARAMS_2 
+typedef volatile union _XHCI_HC_CAPABILITY_PARAMS_2
 {
-    struct 
+    struct
     {
         ULONG U3C                : 1;
         ULONG CMC                : 1;
@@ -134,9 +139,9 @@ typedef volatile union _XHCI_HC_CAPABILITY_PARAMS_2
     ULONG AsULONG;
 } XHCI_HC_CAPABILITY_PARAMS_2;
 
-typedef volatile union _XHCI_USB_COMMAND 
+typedef volatile union _XHCI_USB_COMMAND
 {
-    struct 
+    struct
         {
         ULONG RunStop                    : 1;
         ULONG HCReset                    : 1;
@@ -144,10 +149,10 @@ typedef volatile union _XHCI_USB_COMMAND
         ULONG HostSystemErrorEnable      : 1;
         ULONG RsvdP1                     : 3;
         ULONG LightHCReset               : 1;
-        ULONG ControllerSaveState        : 1; 
-        ULONG ControllerRestoreState     : 1; 
+        ULONG ControllerSaveState        : 1;
+        ULONG ControllerRestoreState     : 1;
         ULONG EnableWrapEvent            : 1;
-        ULONG EnableU3Stop               : 1; 
+        ULONG EnableU3Stop               : 1;
         ULONG RsvdP2                     : 1;
         ULONG CEMEnable                  : 1;
         ULONG RsvdP3                     : 18;
@@ -156,9 +161,9 @@ typedef volatile union _XHCI_USB_COMMAND
 } XHCI_USB_COMMAND;
 C_ASSERT(sizeof(XHCI_USB_COMMAND) == sizeof(ULONG));
 
-typedef volatile union _XHCI_USB_STATUS 
+typedef volatile union _XHCI_USB_STATUS
 {
-    struct 
+    struct
     {
         ULONG HCHalted               : 1;
         ULONG RsvdZ1                 : 1;
@@ -166,10 +171,10 @@ typedef volatile union _XHCI_USB_STATUS
         ULONG EventInterrupt         : 1;
         ULONG PortChangeDetect       : 1;
         ULONG RsvdZ2                 : 3;
-        ULONG SaveStateStatus        : 1; 
-        ULONG RestoreStateStatus     : 1; 
+        ULONG SaveStateStatus        : 1;
+        ULONG RestoreStateStatus     : 1;
         ULONG SaveRestoreError       : 1;
-        ULONG ControllerNotReady     : 1; 
+        ULONG ControllerNotReady     : 1;
         ULONG HCError                : 1;
         ULONG RsvdZ3                 : 19;
     };
@@ -177,9 +182,9 @@ typedef volatile union _XHCI_USB_STATUS
 } XHCI_USB_STATUS;
 C_ASSERT(sizeof(XHCI_USB_STATUS) == sizeof(ULONG));
 
-typedef volatile union _XHCI_PAGE_SIZE 
-{ 
-    struct 
+typedef volatile union _XHCI_PAGE_SIZE
+{
+    struct
     {
         ULONG PageSize           : 16;
         ULONG Rsvd               : 16;
@@ -187,9 +192,9 @@ typedef volatile union _XHCI_PAGE_SIZE
     ULONG AsULONG;
 } XHCI_PAGE_SIZE;
 
-typedef volatile union _XHCI_DEVICE_NOTIFICATION_CONTROL 
-{ 
-    struct 
+typedef volatile union _XHCI_DEVICE_NOTIFICATION_CONTROL
+{
+    struct
     {
         ULONG NotificationEnable : 16;
         ULONG Rsvd               : 16;
@@ -197,9 +202,9 @@ typedef volatile union _XHCI_DEVICE_NOTIFICATION_CONTROL
     ULONG AsULONG;
 } XHCI_DEVICE_NOTIFICATION_CONTROL;
 
-typedef volatile union _XHCI_COMMAND_RING_CONTROL 
-{ 
-    struct 
+typedef volatile union _XHCI_COMMAND_RING_CONTROL
+{
+    struct
     {
         ULONGLONG RingCycleState           : 1;
         ULONGLONG CommandStop              : 1;
@@ -212,9 +217,9 @@ typedef volatile union _XHCI_COMMAND_RING_CONTROL
     ULONGLONG AsULONGLONG;
 } XHCI_COMMAND_RING_CONTROL;
 
-typedef volatile union _XHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY_POINTER 
-{ 
-    struct 
+typedef volatile union _XHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY_POINTER
+{
+    struct
     {
         ULONGLONG RsvdZ                       : 6;
         ULONGLONG DCBAAPointerLo              : 26;
@@ -223,9 +228,9 @@ typedef volatile union _XHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY_POINTER
     ULONGLONG AsULONGLONG;
 } XHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY_POINTER;
 
-typedef volatile union _XHCI_CONFIGURE 
-{ 
-    struct 
+typedef volatile union _XHCI_CONFIGURE
+{
+    struct
     {
         ULONG MaxDeviceSlotsEnabled        : 8;
         ULONG U3EntryEnable                : 1;
@@ -237,9 +242,9 @@ typedef volatile union _XHCI_CONFIGURE
 C_ASSERT(sizeof(XHCI_CONFIGURE) == sizeof(ULONG));
 
 #define PORT_STATUS_MASK    0x4F01FFE9  // 0100 1111 0000 0001 1111 1111 1110 1001 // RW 1, RW1C/RW1S 0, RO 1
-typedef volatile union _XHCI_PORT_STATUS_CONTROL 
+typedef volatile union _XHCI_PORT_STATUS_CONTROL
 {
-    struct 
+    struct
     {
         ULONG CurrentConnectStatus                  : 1;
         ULONG PortEnableDisable                     : 1;
@@ -270,9 +275,9 @@ typedef volatile union _XHCI_PORT_STATUS_CONTROL
 } XHCI_PORT_STATUS_CONTROL;
 
 // Interrupt Register Set
-typedef volatile union _XHCI_INTERRUPTER_MANAGEMENT 
+typedef volatile union _XHCI_INTERRUPTER_MANAGEMENT
 {
-    struct 
+    struct
     {
         ULONG InterruptPending  : 1;
         ULONG InterruptEnable   : 1;
@@ -281,9 +286,9 @@ typedef volatile union _XHCI_INTERRUPTER_MANAGEMENT
     ULONG AsULONG;
 } XHCI_INTERRUPTER_MANAGEMENT;
 
-typedef volatile union _XHCI_INTERRUPTER_MODERATION 
+typedef volatile union _XHCI_INTERRUPTER_MODERATION
 {
-    struct 
+    struct
     {
         ULONG InterruptModIterval  : 16;
         ULONG InterruptModCounter  : 16;
@@ -291,9 +296,9 @@ typedef volatile union _XHCI_INTERRUPTER_MODERATION
     ULONG AsULONG;
 } XHCI_INTERRUPTER_MODERATION;
 
-typedef volatile union _XHCI_EVENT_RING_TABLE_SIZE 
+typedef volatile union _XHCI_EVENT_RING_TABLE_SIZE
 {
-    struct 
+    struct
     {
         ULONG EventRingSegTableSize  : 16;
         ULONG RsvdP                  : 16;
@@ -301,8 +306,8 @@ typedef volatile union _XHCI_EVENT_RING_TABLE_SIZE
     ULONG AsULONG;
 } XHCI_EVENT_RING_TABLE_SIZE;
 
-typedef volatile union _XHCI_EVENT_RING_TABLE_BASE_ADDR 
-{ 
+typedef volatile union _XHCI_EVENT_RING_TABLE_BASE_ADDR
+{
     struct
     {
         ULONGLONG RsvdP                       : 6;
@@ -311,9 +316,9 @@ typedef volatile union _XHCI_EVENT_RING_TABLE_BASE_ADDR
     ULONGLONG AsULONGLONG;
 } XHCI_EVENT_RING_TABLE_BASE_ADDR;
 
-typedef volatile union _XHCI_EVENT_RING_DEQUEUE_POINTER 
-{ 
-    struct 
+typedef volatile union _XHCI_EVENT_RING_DEQUEUE_POINTER
+{
+    struct
     {
         ULONGLONG DequeueERSTIndex            : 3;
         ULONGLONG EventHandlerBusy            : 1;
@@ -323,9 +328,9 @@ typedef volatile union _XHCI_EVENT_RING_DEQUEUE_POINTER
 } XHCI_EVENT_RING_DEQUEUE_POINTER;
 
 // Doorbell register
-typedef volatile union _XHCI_DOORBELL 
+typedef volatile union _XHCI_DOORBELL
 {
-    struct 
+    struct
     {
         ULONG DoorBellTarget        : 8;
         ULONG RsvdZ                 : 8;

@@ -1,11 +1,11 @@
 /*
- * PROJECT:         ReactOS system libraries
+ * PROJECT:         ReactOS xHCI Driver
  * LICENSE:         GPLv2+ - See COPYING in the top level directory
- * PURPOSE:         resources definitions
- * PROGRAMMER:      Rama Teja Gampa <ramateja.g@gmail.com>
-*/
-#ifndef USBXHCI_H__
-#define USBXHCI_H__
+ * PURPOSE:         Resource definitions
+ * COPYRIGHT:       Copyright 2017 Rama Teja Gampa <ramateja.g@gmail.com>
+ */
+
+#pragma once
 
 #include <ntddk.h>
 #include <windef.h>
@@ -13,15 +13,13 @@
 #include <hubbusif.h>
 #include <usbbusif.h>
 #include <usbdlib.h>
-#include <usbport/usbmport.h>
+#include <drivers/usbport/usbmport.h>
 #include "hardware.h"
 
 extern USBPORT_REGISTRATION_PACKET RegPacket;
 
-#define XHCI_FLAGS_CONTROLLER_SUSPEND 0x01
+/* Transfer TRBs IDs ******************************************************************************/
 
-// TRB Types
-// transfer TRBs ids
 #define NORMAL          1
 #define SETUP_STAGE     2
 #define DATA_STAGE      3
@@ -31,7 +29,8 @@ extern USBPORT_REGISTRATION_PACKET RegPacket;
 #define EVENT_DATA      7
 #define NO_OP           8
 
-// COMMAND TRB IDs
+/* Command TRB IDs ********************************************************************************/
+
 #define ENABLE_SLOT_COMMAND             9
 #define DISABLE_SLOT_COMMAND            10
 #define ADDRESS_DEVICE_COMMAND          11
@@ -48,7 +47,8 @@ extern USBPORT_REGISTRATION_PACKET RegPacket;
 #define FORCE_HEADER_COMMAND            22
 #define NO_OP_COMMAND                   23
 
-// EVENT TRB IDs
+/* Event TRB IDs **********************************************************************************/
+
 #define TRANSFER_EVENT                  32
 #define COMMAND_COMPLETION_EVENT        33
 #define PORT_STATUS_CHANGE_EVENT        34
@@ -58,8 +58,8 @@ extern USBPORT_REGISTRATION_PACKET RegPacket;
 #define DEVICE_NOTIFICATION_EVENT       38
 #define MF_INDEX_WARP_EVENT             39
 
+/* TRB Completion Codes ***************************************************************************/
 
-// TRB COMPLETION CODES
 #define INVALID                     0
 #define SUCCESS                     1
 #define DATA_BUFFER_ERROR           2
@@ -97,16 +97,19 @@ extern USBPORT_REGISTRATION_PACKET RegPacket;
 #define SECONDARY_BANDWIDTH_ERROR   35
 #define SPLIT_TRNASACTION_ERROR     36
 
-//Data structures
-typedef struct  _XHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY 
+#define XHCI_FLAGS_CONTROLLER_SUSPEND 0x01
+
+typedef struct  _XHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY
 {
     PHYSICAL_ADDRESS ContextBaseAddr [256];
 } XHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY, *PXHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY;
 
-//----------------------------------------LINK TRB--------------------------------------------------------------------
+
+/* Link TRB ***************************************************************************************/
+
 typedef union _XHCI_LINK_ADDR
 {
-    struct 
+    struct
     {
         ULONGLONG RsvdZ1                     : 4;
         ULONGLONG RingSegmentPointerLo       : 28;
@@ -117,21 +120,21 @@ typedef union _XHCI_LINK_ADDR
 
 typedef struct _XHCI_LINK_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                     : 4;
         ULONG RingSegmentPointerLo       : 28;
     };
-    struct 
+    struct
     {
         ULONG RingSegmentPointerHi       : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                     : 22;
         ULONG InterrupterTarget          : 10;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                  : 1;
         ULONG ToggleCycle               : 1;
@@ -145,7 +148,8 @@ typedef struct _XHCI_LINK_TRB
 } XHCI_LINK_TRB;
 C_ASSERT(sizeof(XHCI_LINK_TRB) == 16);
 
-//----------------------------------------generic trb----------------------------------------------------------------
+/* Generic TRB ************************************************************************************/
+
 typedef struct _XHCI_GENERIC_TRB {
     ULONG Word0;
     ULONG Word1;
@@ -153,8 +157,10 @@ typedef struct _XHCI_GENERIC_TRB {
     ULONG Word3;
 }XHCI_GENERIC_TRB, *PXHCI_GENERIC_TRB;
 C_ASSERT(sizeof(XHCI_GENERIC_TRB) == 16);
-//----------------------------------------Command TRBs----------------------------------------------------------------
-typedef struct _XHCI_COMMAND_NO_OP_TRB 
+
+/* Command TRB ************************************************************************************/
+
+typedef struct _XHCI_COMMAND_NO_OP_TRB
 {
     ULONG RsvdZ1;
     ULONG RsvdZ2;
@@ -169,33 +175,34 @@ typedef struct _XHCI_COMMAND_NO_OP_TRB
 } XHCI_COMMAND_NO_OP_TRB;
 C_ASSERT(sizeof(XHCI_COMMAND_NO_OP_TRB) == 16);
 
-typedef union _XHCI_COMMAND_TRB 
+typedef union _XHCI_COMMAND_TRB
 {
     XHCI_COMMAND_NO_OP_TRB NoOperation;
 }XHCI_COMMAND_TRB, *PXHCI_COMMAND_TRB;
 C_ASSERT(sizeof(XHCI_COMMAND_TRB) == 16);
 
-//----------------------------------------CONTROL TRANSFER DATA STRUCTUERS--------------------------------------------
-typedef struct _XHCI_CONTROL_SETUP_TRB 
+/* Control Transfer Data Structures ***************************************************************/
+
+typedef struct _XHCI_CONTROL_SETUP_TRB
 {
-    struct 
+    struct
     {
         ULONG bmRequestType             : 8;
         ULONG bRequest                  : 8;
         ULONG wValue                    : 16;
     };
-    struct 
+    struct
     {
         ULONG wIndex                    : 16;
         ULONG wLength                   : 16;
     };
-    struct 
+    struct
     {
         ULONG TRBTransferLength         : 17;
         ULONG RsvdZ                     : 5;
         ULONG InterrupterTarget         : 10;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                  : 1;
         ULONG RsvdZ1                    : 4;
@@ -211,21 +218,21 @@ C_ASSERT(sizeof(XHCI_CONTROL_SETUP_TRB) == 16);
 
 typedef struct _XHCI_CONTROL_DATA_TRB 
 {
-    struct 
+    struct
     {
         ULONG DataBufferPointerLo       : 32;
     };
-    struct 
+    struct
     {
         ULONG DataBufferPointerHi       : 32;
     };
-    struct 
+    struct
     {
         ULONG TRBTransferLength         : 17;
         ULONG TDSize                    : 5;
         ULONG InterrupterTarget         : 10;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                  : 1;
         ULONG EvaluateNextTRB           : 1;
@@ -242,22 +249,22 @@ typedef struct _XHCI_CONTROL_DATA_TRB
 } XHCI_CONTROL_DATA_TRB;
 C_ASSERT(sizeof(XHCI_CONTROL_DATA_TRB) == 16);
 
-typedef struct _XHCI_CONTROL_STATUS_TRB 
+typedef struct _XHCI_CONTROL_STATUS_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                    : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                    : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ                     : 22;
         ULONG InterrupterTarget         : 10;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                  : 1;
         ULONG EvaluateNextTRB           : 1;
@@ -271,30 +278,31 @@ typedef struct _XHCI_CONTROL_STATUS_TRB
 } XHCI_CONTROL_STATUS_TRB;
 C_ASSERT(sizeof(XHCI_CONTROL_STATUS_TRB) == 16);
 
-typedef union _XHCI_CONTROL_TRB 
+typedef union _XHCI_CONTROL_TRB
 {
     XHCI_CONTROL_SETUP_TRB  SetupTRB;
     XHCI_CONTROL_DATA_TRB   DataTRB;
     XHCI_CONTROL_STATUS_TRB StatusTRB;
     XHCI_GENERIC_TRB    GenericTRB;
-} XHCI_CONTROL_TRB, *PXHCI_CONTROL_TRB;  
+} XHCI_CONTROL_TRB, *PXHCI_CONTROL_TRB;
 C_ASSERT(sizeof(XHCI_CONTROL_TRB) == 16);
 
-//----------------event strucs-------------------
+/* Event Structs **********************************************************************************/
+
 typedef struct _XHCI_EVENT_COMMAND_COMPLETION_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                : 4;
         ULONG CommandTRBPointerLo   : 28;
     };
     ULONG CommandTRBPointerHi;
-    struct 
+    struct
     {
         ULONG CommandCompletionParam     : 24;
         ULONG CompletionCode             : 8;
     };
-    struct 
+    struct
     {
         ULONG CycleBit          : 1;
         ULONG RsvdZ2            : 9;
@@ -307,18 +315,18 @@ C_ASSERT(sizeof(XHCI_EVENT_COMMAND_COMPLETION_TRB) == 16);
 
 typedef struct _XHCI_EVENT_PORT_STATUS_CHANGE_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                : 24;
         ULONG PortID                : 8;
     };
     ULONG RsvdZ2;
-    struct 
+    struct
     {
         ULONG RsvdZ3                     : 24;
         ULONG CompletionCode             : 8;
     };
-    struct 
+    struct
     {
         ULONG CycleBit          : 1;
         ULONG RsvdZ4            : 9;
@@ -333,7 +341,7 @@ typedef struct _XHCI_EVENT_GENERIC_TRB
     ULONG Word0;
     ULONG Word1;
     ULONG Word2;
-    struct 
+    struct
     {
         ULONG CycleBit          : 1;
         ULONG RsvdZ1            : 9;
@@ -344,7 +352,7 @@ typedef struct _XHCI_EVENT_GENERIC_TRB
 }XHCI_EVENT_GENERIC_TRB;
 C_ASSERT(sizeof(XHCI_EVENT_GENERIC_TRB) == 16);
 
-typedef union _XHCI_EVENT_TRB 
+typedef union _XHCI_EVENT_TRB
 {
     XHCI_EVENT_COMMAND_COMPLETION_TRB   CommandCompletionTRB;
     XHCI_EVENT_PORT_STATUS_CHANGE_TRB   PortStatusChangeTRB;
@@ -352,18 +360,20 @@ typedef union _XHCI_EVENT_TRB
 }XHCI_EVENT_TRB, *PXHCI_EVENT_TRB;
 C_ASSERT(sizeof(XHCI_EVENT_TRB) == 16);
 
+// 6.5
 typedef struct _XHCI_EVENT_RING_SEGMENT_TABLE
 {
     ULONGLONG RingSegmentBaseAddr;
-    struct 
+    struct
     {
         ULONGLONG RingSegmentSize :  16;
         ULONGLONG RsvdZ           :  48;
     };
 } XHCI_EVENT_RING_SEGMENT_TABLE;
-//------------------------------------main structs-----------------------
 
-typedef union _XHCI_TRB 
+/* Main Structs ***********************************************************************************/
+
+typedef union _XHCI_TRB
 {
     XHCI_COMMAND_TRB    CommandTRB;
     XHCI_LINK_TRB       LinkTRB;
@@ -373,38 +383,38 @@ typedef union _XHCI_TRB
 } XHCI_TRB, *PXHCI_TRB;
 C_ASSERT(sizeof(XHCI_TRB) == 16);
 
-typedef struct _XHCI_SEGMENT 
+typedef struct _XHCI_SEGMENT
 {
     XHCI_TRB XhciTrb[256];
     PVOID nextSegment;
-}XHCI_SEGMENT, *PXHCI_SEGMENT;
+} XHCI_SEGMENT, *PXHCI_SEGMENT;
 
-typedef struct _XHCI_RING 
+typedef struct _XHCI_RING
 {
     XHCI_SEGMENT firstSeg;
     PXHCI_TRB dequeue_pointer;
     PXHCI_TRB enqueue_pointer;
     PXHCI_SEGMENT enqueue_segment;
     PXHCI_SEGMENT dequeue_segment;
-    struct 
+    struct
     {
         UCHAR ProducerCycleState : 1;
         UCHAR ConsumerCycleState : 1;
     };
 } XHCI_RING, *PXHCI_RING;
 
-typedef struct _XHCI_HC_RESOURCES 
+typedef struct _XHCI_HC_RESOURCES
 {
     XHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY DCBAA;
     DECLSPEC_ALIGN(16) XHCI_RING         EventRing ;
     DECLSPEC_ALIGN(64) XHCI_RING         CommandRing ;
     DECLSPEC_ALIGN(64) XHCI_EVENT_RING_SEGMENT_TABLE EventRingSegTable;
 } XHCI_HC_RESOURCES, *PXHCI_HC_RESOURCES;
-C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,EventRing)% 16 == 0); 
-C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,CommandRing)% 64 == 0); 
+C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,EventRing)% 16 == 0);
+C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,CommandRing)% 64 == 0);
 C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,EventRingSegTable)% 64 == 0);
 
-typedef struct _XHCI_EXTENSION 
+typedef struct _XHCI_EXTENSION
 {
     ULONG Reserved;
     ULONG Flags;
@@ -416,7 +426,7 @@ typedef struct _XHCI_EXTENSION
     BOOLEAN IsStarted;
     USHORT HcSystemErrors;
     ULONG PortRoutingControl;
-    USHORT NumberOfPorts; // HCSPARAMS1 => N_PORTS 
+    USHORT NumberOfPorts; // HCSPARAMS1 => N_PORTS
     USHORT PortPowerControl; // HCSPARAMS => Port Power Control (PPC)
     USHORT PageSize;
     USHORT MaxScratchPadBuffers;
@@ -427,19 +437,20 @@ typedef struct _XHCI_EXTENSION
 } XHCI_EXTENSION, *PXHCI_EXTENSION;
 
 
-typedef struct _XHCI_ENDPOINT 
+typedef struct _XHCI_ENDPOINT
 {
     ULONG Reserved;
 } XHCI_ENDPOINT, *PXHCI_ENDPOINT;
 
-typedef struct _XHCI_TRANSFER 
+typedef struct _XHCI_TRANSFER
 {
     ULONG Reserved;
 } XHCI_TRANSFER, *PXHCI_TRANSFER;
 
+// 6.6
 typedef union _XHCI_SCRATCHPAD_BUFFER_ARRAY
 {
-    struct 
+    struct
     {
         ULONGLONG RsvdZ1              :  12;
         ULONGLONG bufferBaseAddr      :  52;
@@ -447,7 +458,9 @@ typedef union _XHCI_SCRATCHPAD_BUFFER_ARRAY
     ULONGLONG AsULONGLONG;
 } XHCI_SCRATCHPAD_BUFFER_ARRAY, *PXHCI_SCRATCHPAD_BUFFER_ARRAY;
 C_ASSERT(sizeof(XHCI_SCRATCHPAD_BUFFER_ARRAY) == 8);
-//roothub functions
+
+/* Roothub Functions ******************************************************************************/
+
 VOID
 NTAPI
 XHCI_RH_GetRootHubData(
@@ -555,5 +568,11 @@ NTAPI
 XHCI_RH_EnableIrq(
   IN PVOID xhciExtension);
 
+MPSTATUS
+NTAPI
+XHCI_SendCommand (IN XHCI_TRB CommandTRB,
+                  IN PXHCI_EXTENSION XhciExtension);
 
-#endif /* USBXHCI_H__ */
+MPSTATUS
+NTAPI
+XHCI_ProcessEvent (IN PXHCI_EXTENSION XhciExtension);
