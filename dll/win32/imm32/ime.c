@@ -221,7 +221,7 @@ PIMEDPI APIENTRY Ime32LoadImeDpi(HKL hKL, BOOL bLock)
 
     if (!Imm32LoadImeInfo(&ImeInfoEx, pImeDpiNew))
     {
-        HeapFree(g_hImm32Heap, 0, pImeDpiNew);
+        Imm32HeapFree(pImeDpiNew);
         return FALSE;
     }
 
@@ -236,7 +236,7 @@ PIMEDPI APIENTRY Ime32LoadImeDpi(HKL hKL, BOOL bLock)
         RtlLeaveCriticalSection(&g_csImeDpi);
 
         Imm32FreeImeDpi(pImeDpiNew, FALSE);
-        HeapFree(g_hImm32Heap, 0, pImeDpiNew);
+        Imm32HeapFree(pImeDpiNew);
         return pImeDpiFound;
     }
     else
@@ -274,6 +274,20 @@ PIMEDPI APIENTRY ImmLockOrLoadImeDpi(HKL hKL)
     if (pImeDpi == NULL)
         pImeDpi = Ime32LoadImeDpi(hKL, TRUE);
     return pImeDpi;
+}
+
+static LRESULT APIENTRY
+ImeDpi_Escape(PIMEDPI pImeDpi, HIMC hIMC, UINT uSubFunc, LPVOID lpData, HKL hKL)
+{
+    if (IS_IME_HKL(hKL))
+        return pImeDpi->ImeEscape(hIMC, uSubFunc, lpData);
+
+    if (g_psi && (g_psi->dwSRVIFlags & SRVINFO_CICERO_ENABLED))
+    {
+        if (pImeDpi->CtfImeEscapeEx)
+            return pImeDpi->CtfImeEscapeEx(hIMC, uSubFunc, lpData, hKL);
+    }
+    return 0;
 }
 
 /***********************************************************************
@@ -463,7 +477,7 @@ VOID WINAPI ImmUnlockImeDpi(PIMEDPI pImeDpi)
     }
 
     Imm32FreeImeDpi(pImeDpi, TRUE);
-    HeapFree(g_hImm32Heap, 0, pImeDpi);
+    Imm32HeapFree(pImeDpi);
 
     RtlLeaveCriticalSection(&g_csImeDpi);
 }
@@ -648,6 +662,170 @@ DWORD WINAPI ImmGetProperty(HKL hKL, DWORD fdwIndex)
     if (pImeDpi)
         ImmUnlockImeDpi(pImeDpi);
     return dwValue;
+}
+
+/***********************************************************************
+ *		ImmEscapeA (IMM32.@)
+ */
+LRESULT WINAPI ImmEscapeA(HKL hKL, HIMC hIMC, UINT uSubFunc, LPVOID lpData)
+{
+    LRESULT ret;
+    PIMEDPI pImeDpi;
+    INT cch;
+    CHAR szA[MAX_IMM_FILENAME];
+    WCHAR szW[MAX_IMM_FILENAME];
+
+    TRACE("(%p, %p, %u, %p)\n", hKL, hIMC, uSubFunc, lpData);
+
+    pImeDpi = ImmLockOrLoadImeDpi(hKL);
+    if (!pImeDpi)
+        return 0;
+
+    if (!(pImeDpi->ImeInfo.fdwProperty & IME_PROP_UNICODE) || !lpData)
+    {
+        ret = ImeDpi_Escape(pImeDpi, hIMC, uSubFunc, lpData, hKL);
+        ImmUnlockImeDpi(pImeDpi);
+        return ret;
+    }
+
+    switch (uSubFunc)
+    {
+        case IME_ESC_SEQUENCE_TO_INTERNAL:
+            ret = ImeDpi_Escape(pImeDpi, hIMC, uSubFunc, lpData, hKL);
+
+            cch = 0;
+            if (HIWORD(ret))
+                szW[cch++] = HIWORD(ret);
+            if (LOWORD(ret))
+                szW[cch++] = LOWORD(ret);
+
+            cch = WideCharToMultiByte(pImeDpi->uCodePage, 0, szW, cch, szA, _countof(szA),
+                                      NULL, NULL);
+            switch (cch)
+            {
+                case 1:
+                    ret = MAKEWORD(szA[0], 0);
+                    break;
+                case 2:
+                    ret = MAKEWORD(szA[1], szA[0]);
+                    break;
+                case 3:
+                    ret = MAKELONG(MAKEWORD(szA[2], szA[1]), MAKEWORD(szA[0], 0));
+                    break;
+                case 4:
+                    ret = MAKELONG(MAKEWORD(szA[3], szA[2]), MAKEWORD(szA[1], szA[0]));
+                    break;
+                default:
+                    ret = 0;
+                    break;
+            }
+            break;
+
+        case IME_ESC_GET_EUDC_DICTIONARY:
+        case IME_ESC_IME_NAME:
+        case IME_ESC_GETHELPFILENAME:
+            ret = ImeDpi_Escape(pImeDpi, hIMC, uSubFunc, szW, hKL);
+            if (ret)
+            {
+                szW[_countof(szW) - 1] = 0;
+                WideCharToMultiByte(pImeDpi->uCodePage, 0, szW, -1,
+                                    lpData, MAX_IMM_FILENAME, NULL, NULL);
+                ((LPSTR)lpData)[MAX_IMM_FILENAME - 1] = 0;
+            }
+            break;
+
+        case IME_ESC_SET_EUDC_DICTIONARY:
+        case IME_ESC_HANJA_MODE:
+            MultiByteToWideChar(pImeDpi->uCodePage, MB_PRECOMPOSED,
+                                lpData, -1, szW, _countof(szW));
+            szW[_countof(szW) - 1] = 0;
+            ret = ImeDpi_Escape(pImeDpi, hIMC, uSubFunc, szW, hKL);
+            break;
+
+        default:
+            ret = ImeDpi_Escape(pImeDpi, hIMC, uSubFunc, lpData, hKL);
+            break;
+    }
+
+    ImmUnlockImeDpi(pImeDpi);
+    return ret;
+}
+
+/***********************************************************************
+ *		ImmEscapeW (IMM32.@)
+ */
+LRESULT WINAPI ImmEscapeW(HKL hKL, HIMC hIMC, UINT uSubFunc, LPVOID lpData)
+{
+    LRESULT ret;
+    PIMEDPI pImeDpi;
+    INT cch;
+    CHAR szA[MAX_IMM_FILENAME];
+    WCHAR szW[MAX_IMM_FILENAME];
+    WORD word;
+
+    TRACE("(%p, %p, %u, %p)\n", hKL, hIMC, uSubFunc, lpData);
+
+    pImeDpi = ImmLockOrLoadImeDpi(hKL);
+    if (!pImeDpi)
+        return 0;
+
+    if ((pImeDpi->ImeInfo.fdwProperty & IME_PROP_UNICODE) || !lpData)
+    {
+        ret = ImeDpi_Escape(pImeDpi, hIMC, uSubFunc, lpData, hKL);
+        ImmUnlockImeDpi(pImeDpi);
+        return ret;
+    }
+
+    switch (uSubFunc)
+    {
+        case IME_ESC_SEQUENCE_TO_INTERNAL:
+            ret = ImeDpi_Escape(pImeDpi, hIMC, uSubFunc, lpData, hKL);
+
+            word = LOWORD(ret);
+            cch = 0;
+            if (HIBYTE(word))
+                szA[cch++] = HIBYTE(word);
+            if (LOBYTE(word))
+                szA[cch++] = LOBYTE(word);
+
+            cch = MultiByteToWideChar(pImeDpi->uCodePage, MB_PRECOMPOSED,
+                                      szA, cch, szW, _countof(szW));
+            switch (cch)
+            {
+                case 1:  ret = szW[0]; break;
+                case 2:  ret = MAKELONG(szW[1], szW[0]); break;
+                default: ret = 0; break;
+            }
+            break;
+
+        case IME_ESC_GET_EUDC_DICTIONARY:
+        case IME_ESC_IME_NAME:
+        case IME_ESC_GETHELPFILENAME:
+            ret = ImeDpi_Escape(pImeDpi, hIMC, uSubFunc, szA, hKL);
+            if (ret)
+            {
+                szA[_countof(szA) - 1] = 0;
+                MultiByteToWideChar(pImeDpi->uCodePage, MB_PRECOMPOSED,
+                                    szA, -1, lpData, MAX_IMM_FILENAME);
+                ((LPWSTR)lpData)[MAX_IMM_FILENAME - 1] = 0;
+            }
+            break;
+
+        case IME_ESC_SET_EUDC_DICTIONARY:
+        case IME_ESC_HANJA_MODE:
+            WideCharToMultiByte(pImeDpi->uCodePage, 0,
+                                lpData, -1, szA, _countof(szA), NULL, NULL);
+            szA[_countof(szA) - 1] = 0;
+            ret = ImeDpi_Escape(pImeDpi, hIMC, uSubFunc, szA, hKL);
+            break;
+
+        default:
+            ret = ImeDpi_Escape(pImeDpi, hIMC, uSubFunc, lpData, hKL);
+            break;
+    }
+
+    ImmUnlockImeDpi(pImeDpi);
+    return ret;
 }
 
 /***********************************************************************
@@ -1050,10 +1228,8 @@ ImmGetConversionListA(HKL hKL, HIMC hIMC, LPCSTR pSrc, LPCANDIDATELIST lpDst,
     ret = CandidateListWideToAnsi(pCL, lpDst, dwBufLen, CP_ACP);
 
 Quit:
-    if (pszSrcW)
-        HeapFree(g_hImm32Heap, 0, pszSrcW);
-    if (pCL)
-        HeapFree(g_hImm32Heap, 0, pCL);
+    Imm32HeapFree(pszSrcW);
+    Imm32HeapFree(pCL);
     ImmUnlockImeDpi(pImeDpi);
     return ret;
 }
@@ -1107,10 +1283,8 @@ ImmGetConversionListW(HKL hKL, HIMC hIMC, LPCWSTR pSrc, LPCANDIDATELIST lpDst,
     ret = CandidateListAnsiToWide(pCL, lpDst, dwBufLen, CP_ACP);
 
 Quit:
-    if (pszSrcA)
-        HeapFree(g_hImm32Heap, 0, pszSrcA);
-    if (pCL)
-        HeapFree(g_hImm32Heap, 0, pCL);
+    Imm32HeapFree(pszSrcA);
+    Imm32HeapFree(pCL);
     ImmUnlockImeDpi(pImeDpi);
     return ret;
 }
@@ -1251,10 +1425,8 @@ DoIt:
     SendMessageW(hWnd, WM_IME_SYSTEM, 0x1A, 0);
 
 Quit:
-    if (RegWordW.lpReading)
-        HeapFree(g_hImm32Heap, 0, RegWordW.lpReading);
-    if (RegWordW.lpWord)
-        HeapFree(g_hImm32Heap, 0, RegWordW.lpWord);
+    Imm32HeapFree(RegWordW.lpReading);
+    Imm32HeapFree(RegWordW.lpWord);
     ImmUnlockImeDpi(pImeDpi);
     return ret;
 }
@@ -1310,10 +1482,8 @@ DoIt:
     SendMessageW(hWnd, WM_IME_SYSTEM, 0x1A, 0);
 
 Quit:
-    if (RegWordA.lpReading)
-        HeapFree(g_hImm32Heap, 0, RegWordA.lpReading);
-    if (RegWordA.lpWord)
-        HeapFree(g_hImm32Heap, 0, RegWordA.lpWord);
+    Imm32HeapFree(RegWordA.lpReading);
+    Imm32HeapFree(RegWordA.lpWord);
     ImmUnlockImeDpi(pImeDpi);
     return ret;
 }
