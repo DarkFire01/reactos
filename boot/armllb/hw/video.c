@@ -6,7 +6,7 @@
  * PROGRAMMERS:     ReactOS Portable Systems Group
  */
 
-#include "precomp.h"
+#include <precomp.h>
 
 #define FONT_HEIGHT 16
 

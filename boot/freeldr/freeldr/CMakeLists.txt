@@ -56,7 +56,7 @@ list(APPEND FREELDR_NTLDR_SOURCE
 
 list(APPEND FREELDR_ARC_SOURCE
     arcname.c
-    arch/drivers/hwide.c
+    #arch/drivers/hwide.c
     arch/arcemul.c
     arch/archwsup.c
     disk/disk.c
@@ -265,7 +265,7 @@ set_target_properties(freeldr_pe
     DEFINE_SYMBOL "")
 
 if(MSVC)
-    if(ARCH STREQUAL "arm")
+    if(ARCH STREQUAL "arm" OR ARCH STREQUAL "arm64")
         target_link_options(freeldr_pe PRIVATE /ignore:4078 /ignore:4254 /DRIVER)
     else()
         target_link_options(freeldr_pe PRIVATE /ignore:4078 /ignore:4254 /DYNAMICBASE:NO /FIXED /FILEALIGN:512 /ALIGN:512)
@@ -314,7 +314,7 @@ if(SARCH STREQUAL "pc98")
         VERBATIM)
 endif()
 
-if(NOT ARCH STREQUAL "arm")
+if(NOT ARCH STREQUAL "arm" OR NOT ARCH STREQUAL "arm64")
     concatenate_files(
         ${CMAKE_CURRENT_BINARY_DIR}/freeldr.sys
         ${CMAKE_CURRENT_BINARY_DIR}/frldr16.bin
@@ -328,7 +328,7 @@ endif()
 add_cd_file(TARGET freeldr FILE ${CMAKE_CURRENT_BINARY_DIR}/freeldr.sys DESTINATION loader NO_CAB FOR bootcd regtest)
 add_cd_file(TARGET freeldr FILE ${CMAKE_CURRENT_BINARY_DIR}/freeldr.sys DESTINATION loader NO_CAB NOT_IN_HYBRIDCD FOR livecd hybridcd NAME_ON_CD setupldr.sys)
 
-if(NOT ARCH STREQUAL "arm")
+if(NOT ARCH STREQUAL "arm" OR NOT ARCH STREQUAL "arm64")
     concatenate_files(
         ${CMAKE_CURRENT_BINARY_DIR}/setupldr.sys
         ${CMAKE_CURRENT_BINARY_DIR}/frldr16.bin

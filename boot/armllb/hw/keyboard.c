@@ -6,7 +6,7 @@
  * PROGRAMMERS:     ReactOS Portable Systems Group
  */
 
-#include "precomp.h"
+#include <precomp.h>
 
 #define E0_KPENTER      96
 #define E0_RCTRL        97

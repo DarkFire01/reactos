@@ -6,7 +6,7 @@
  * PROGRAMMERS:     ReactOS Portable Systems Group
  */
 
-#include "precomp.h"
+#include <precomp.h>
 
 #define PL031_RTC_DR                (LlbHwVersaRtcBase + 0x00)
 static const ULONG LlbHwVersaRtcBase = 0x101E8000;

@@ -6,7 +6,7 @@
  * PROGRAMMERS:     ReactOS Portable Systems Group
  */
 
-#include "precomp.h"
+#include <precomp.h>
 
 VOID
 NTAPI
@@ -22,6 +22,7 @@ LlbHwInitialize(VOID)
     LlbHwVersaKmiInitialize();
 }
 
+#if 0
 //
 // Should go to hwdev.c
 //
@@ -32,7 +33,7 @@ LlbHwLoadOsLoaderFromRam(VOID)
     ULONG Base, RootFs, Size;
     PCHAR Offset;
     CHAR CommandLine[64];
-
+                        FUck off
     /* On versatile we load the RAMDISK with initrd */
     LlbEnvGetRamDiskInformation(&RootFs, &Size);
 
@@ -50,5 +51,5 @@ LlbHwLoadOsLoaderFromRam(VOID)
     return (POSLOADER_INIT)Base;
 }
 
-
+#endif 
 /* EOF */

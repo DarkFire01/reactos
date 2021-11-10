@@ -6,7 +6,7 @@
  * PROGRAMMERS:     ReactOS Portable Systems Group
  */
 
-#include "precomp.h"
+#include <precomp.h>
 
 VOID
 LlbStartup(IN ULONG Reserved,
@@ -15,19 +15,19 @@ LlbStartup(IN ULONG Reserved,
 {
     /* Make sure we are booting on the correct kind of machine */
     if (BoardInfo != LlbHwGetBoardType()) while (TRUE);
-
+    
     /* Initialize hardware components */
     LlbHwInitialize();
-
+    
     /* Either QEMU or U-Boot itself should send this information */
     LlbEnvParseArguments(Arguments);
-
+    
     /* Clean up the screen */
     LlbVideoClearScreen(FALSE);
-
+    
     /* Print header */
     printf("\nReactOS ARM Low-Level Boot Loader [" __DATE__ " "__TIME__ "]\n");
-
+    
     /* Boot the OS Loader */
     LlbBoot();
     while (TRUE);

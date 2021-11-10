@@ -6,18 +6,31 @@
  * PROGRAMMERS:     ReactOS Portable Systems Group
  */
 
-#include "ntdef.h"
-#include "stdio.h"
-#include "ioaccess.h"
-#include "machtype.h"
+
+//#include "osloader.h"
+//#include "ioaccess.h"
+
+
+/* C Headers */
+#include <stdlib.h>
+#include <stdio.h>
+#include <wchar.h>
+
+/* NT Base Headers */
+#include <initguid.h>
+#include <ntifs.h> /* Cant do this without more stuff implemented */
+#include "envir.h"
 #include "osloader.h"
+#include "ioaccess.h"
+#include "stdio.h"
+#include "machtype.h"
+#include "versa.h"
 #include "fw.h"
 #include "hw.h"
 #include "serial.h"
 #include "video.h"
 #include "keyboard.h"
-#include "envir.h"
 #include "../../freeldr/freeldr/include/keycodes.h"
 #include "debug.h"
-
+#include "omap3.h"
 /* EOF */

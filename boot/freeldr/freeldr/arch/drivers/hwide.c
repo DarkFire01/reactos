@@ -309,7 +309,9 @@ AtaReadLogicalSectorsLBA(
 
         /* Disable interrupts */
         AtaWritePort(DeviceUnit->Channel, IDX_IO2_o_Control, IDE_DC_DISABLE_INTERRUPTS);
-        StallExecutionProcessor(1);
+        #ifndef _M_ARM
+            StallExecutionProcessor(1);
+        #endif
 
         if (UseLBA48)
         {
@@ -344,8 +346,9 @@ AtaReadLogicalSectorsLBA(
 
         /* Send read command */
         AtaWritePort(DeviceUnit->Channel, IDX_IO1_o_Command, Command);
+        #ifndef _M_ARM
         StallExecutionProcessor(5);
-
+        #endif
         for (RemainingBlockCount = BlockCount; RemainingBlockCount > 0; --RemainingBlockCount)
         {
             /* Wait for ready to transfer data block */
@@ -398,7 +401,9 @@ AtaSendAtapiPacket(
 
     /* Prepare to transfer a device command via a command packet */
     AtaWritePort(Channel, IDX_ATAPI_IO1_o_Command, IDE_COMMAND_ATAPI_PACKET);
-    StallExecutionProcessor(50);
+    #ifndef _M_ARM
+        StallExecutionProcessor(50);
+    #endif
     if (!WaitForFlagsOr(Channel, IDE_STATUS_DRQ, IDE_STATUS_DRDY, ATA_STATUS_TIMEOUT))
     {
         ERR("AtaSendAtapiPacket(0x%x) failed. A device error occurred Status: 0x%02x, Error: 0x%02x\n",
@@ -439,8 +444,9 @@ AtapiReadLogicalSectorLBA(
 
     /* Disable interrupts */
     AtaWritePort(DeviceUnit->Channel, IDX_IO2_o_Control, IDE_DC_DISABLE_INTERRUPTS);
+    #ifndef _M_ARM
     StallExecutionProcessor(1);
-
+    #endif
     /* Send the SCSI READ command */
     RtlZeroMemory(&AtapiPacket, sizeof(AtapiPacket));
     AtapiPacket[0] = SCSIOP_READ;
@@ -588,7 +594,9 @@ AtapiReadyCheck(IN OUT PDEVICE_UNIT DeviceUnit)
             {
                 case SCSI_SENSEQ_BECOMING_READY:
                     /* Wait until the CD is spun up */
+                    #ifndef _M_ARM
                     StallExecutionProcessor(4e6);
+                    #endif
                     return FALSE;
 
                 case SCSI_SENSEQ_INIT_COMMAND_REQUIRED:
@@ -661,8 +669,9 @@ WaitForFlags(
 
     while (Timeout--)
     {
+        #ifndef _M_ARM
         StallExecutionProcessor(10);
-
+        #endif
         Status = AtaReadPort(Channel, IDX_IO1_i_Status);
         if (Status & IDE_STATUS_ERROR)
             return FALSE;
@@ -688,8 +697,10 @@ WaitForFlagsOr(
 
     while (Timeout--)
     {
+        #ifndef _M_ARM
         StallExecutionProcessor(10);
 
+        #endif
         Status = AtaReadPort(Channel, IDX_IO1_i_Status);
         if (Status & IDE_STATUS_ERROR)
             return FALSE;

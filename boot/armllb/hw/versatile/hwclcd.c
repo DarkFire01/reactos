@@ -6,7 +6,7 @@
  * PROGRAMMERS:     ReactOS Portable Systems Group
  */
 
-#include "precomp.h"
+#include <precomp.h>
 
 #define LCDTIMING0_PPL(x) 		((((x) / 16 - 1) & 0x3f) << 2)
 #define LCDTIMING1_LPP(x) 		(((x) & 0x3ff) - 1)

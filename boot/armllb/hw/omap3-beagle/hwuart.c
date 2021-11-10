@@ -6,8 +6,7 @@
  * PROGRAMMERS:     ReactOS Portable Systems Group
  */
 
-#include "precomp.h"
-
+#include <precomp.h>
 /* FUNCTIONS ******************************************************************/
 
 VOID

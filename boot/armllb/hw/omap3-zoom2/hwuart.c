@@ -6,9 +6,9 @@
  * PROGRAMMERS:     ReactOS Portable Systems Group
  */
 
-#include "precomp.h"
+#include <precomp.h>
 #define SERIAL_REGISTER_STRIDE 2
-#include "lib/cportlib/cport.c"
+#include "../../../../sdk/lib/cportlib/cport.c"
 
 /* GLOBALS ********************************************************************/
 

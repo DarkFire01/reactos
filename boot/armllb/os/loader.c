@@ -6,7 +6,7 @@
  * PROGRAMMERS:     ReactOS Portable Systems Group
  */
 
-#include "precomp.h"
+#include <precomp.h>
 
 BIOS_MEMORY_MAP MemoryMap[32];
 ARM_BOARD_CONFIGURATION_BLOCK ArmBlock;

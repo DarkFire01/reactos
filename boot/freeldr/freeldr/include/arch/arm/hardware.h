@@ -12,8 +12,8 @@
 //#include "../../reactos/registry.h"
 #endif
 
-#include "../../../../../armllb/inc/osloader.h"
-#include "../../../../../armllb/inc/machtype.h"
+#include "../../../../../armllb/include/osloader.h"
+#include "../../../../../armllb/include/machtype.h"
 
 #define FREELDR_BASE       0x0001F000
 #define FREELDR_PE_BASE    0x0001F000
