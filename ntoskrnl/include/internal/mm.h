@@ -162,9 +162,9 @@ typedef ULONG_PTR SWAPENTRY;
 #define MM_WAIT_ENTRY            0x7ffffc00
 #elif defined(_M_AMD64)
 #define MM_WAIT_ENTRY            0x7FFFFFFFFFFFFC00ULL
-#elif _M_ARM
-/* TODO: We gotta figure out what windows does here... */
+#elif defined(_M_ARM)
 #define MM_WAIT_ENTRY            0x7ffffc00
+/* We need to implement MM_WAIT_ENTRY for arm32 and arm64 */
 #else
 #error Unsupported architecture!
 #endif

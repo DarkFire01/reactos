@@ -21,11 +21,13 @@ Kernel        dcb 2 		 /* Kernel */
 NoCompression dcb 0 		 /* No compression */
 	AREA    ARMLLBEntryPoint, CODE, READONLY
 
+	ldr lr, L_LlbStartup
  	ldr sp, L_BootStackEnd
 	bx lr
 
 L_BootStackEnd dcq 0x81014000
 
 	END
-
+L_LlbStartup
+	dcq LlbStartup
 /* EOF */

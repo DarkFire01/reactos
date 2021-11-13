@@ -7,4 +7,4 @@ list(APPEND LIB_VERSATILE_SOURCE
     hw/versatile/hwkmi.c)
 
 add_library(lib_board_versatile OBJECT ${LIB_VERSATILE_SOURCE})
-add_dependencies(lib_board_versatile xdk)
+add_dependencies(lib_board_versatile bugcodes xdk asm)

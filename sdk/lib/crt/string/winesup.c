@@ -99,10 +99,7 @@ _internal_handle_float(
 #ifdef _M_ARM
     DbgBreakPoint();
     //_controlfp(fpcontrol, 0xffffffff);
-<<<<<<< HEAD
      fpcontrol = 0;
-=======
->>>>>>> ef9f78ef8f ([ARMLLB] Fix freeldr_pe and start compiling armllb once again)
 #else
     _control87(fpcontrol, 0xffffffff);
 #endif

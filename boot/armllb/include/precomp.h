@@ -35,3 +35,8 @@
 #include "debug.h"
 #include "omap3.h"
 /* EOF */
+
+VOID
+LlbStartup(IN ULONG Reserved,
+           IN ULONG BoardInfo,
+           IN PATAG Arguments);

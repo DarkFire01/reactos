@@ -11,5 +11,9 @@ list(APPEND LIB_GENERIC_SOURCE
     hw/video.c
     hw/time.c)
 
-add_library(lib_board_generic OBJECT ${LIB_GENERIC_SOURCE})
+list(APPEND LIB_VERSATILE_ASM_SOURCE
+    hw/versatile/boot.S)
+
+add_asm_files(lib_generic_asm ${LIB_VERSATILE_ASM_SOURCE})
+add_library(lib_board_generic OBJECT ${LIB_GENERIC_SOURCE} ${lib_generic_asm})
 add_dependencies(lib_board_generic xdk asm)
