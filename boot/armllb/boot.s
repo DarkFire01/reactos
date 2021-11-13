@@ -20,15 +20,12 @@ ARMlabel      dcb 2 		 /* ARM */
 Kernel        dcb 2 		 /* Kernel */
 NoCompression dcb 0 		 /* No compression */
 	AREA    ARMLLBEntryPoint, CODE, READONLY
-    /* EXTERN _LlbStartup{WEAK} */
 
-    ldr lr, L_LlbStartup 
  	ldr sp, L_BootStackEnd
 	bx lr
 
 L_BootStackEnd dcq 0x81014000
 
-L_LlbStartup
-	dcq LlbStartup
 	END
+
 /* EOF */

@@ -19,6 +19,7 @@
 /* NT Base Headers */
 #include <initguid.h>
 #include <ntifs.h> /* Cant do this without more stuff implemented */
+#include <rtcapi.h>
 #include "envir.h"
 #include "osloader.h"
 #include "ioaccess.h"
