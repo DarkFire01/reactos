@@ -23,9 +23,8 @@ KdPortGetByteEx(
 VOID
 NTAPI
 KdPortPutByteEx(
-    PCPPORT PortInformation,
-    UCHAR ByteToSend
-);
+    IN PCPPORT PortInformation,
+    IN UCHAR ByteToSend);
 
 #ifdef _NTOSKRNL_
 
