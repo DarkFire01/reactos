@@ -1,0 +1,5 @@
+#define REACTOS_VERSION_DLL
+#define REACTOS_STR_FILE_DESCRIPTION  "Apple Silicon Uniprocessor Hardware Abstraction Layer"
+#define REACTOS_STR_INTERNAL_NAME     "halapple"
+#define REACTOS_STR_ORIGINAL_FILENAME "halapple.dll"
+#include <reactos/version.rc>
