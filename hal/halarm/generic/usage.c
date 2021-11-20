@@ -62,6 +62,7 @@ HalpEnableInterruptHandler(IN UCHAR Flags,
 /*
  * @unimplemented
  */
+CODE_SEG("INIT")
 VOID
 NTAPI
 HalReportResourceUsage(VOID)

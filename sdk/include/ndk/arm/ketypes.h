@@ -1083,6 +1083,7 @@ typedef struct _KIPCR
     ULONG PcrAlign2[19];
     UCHAR _PADDING1_[0x4];
     KPRCB Prcb;
+    PKINTERRUPT_ROUTINE InterruptRoutine[16];
 } KIPCR, *PKIPCR;
 
 C_ASSERT(FIELD_OFFSET(KIPCR, Prcb.LegacyNumber) == 0x580);
