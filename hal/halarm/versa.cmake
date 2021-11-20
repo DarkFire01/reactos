@@ -4,3 +4,4 @@ list(APPEND HAL_VERSA_SOURCE
     versa/halup.rc)
     
 add_library(lib_hal_versa OBJECT ${HAL_VERSA_SOURCE})
+add_dependencies(lib_hal_versa xdk)
