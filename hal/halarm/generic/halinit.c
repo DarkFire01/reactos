@@ -38,6 +38,7 @@ HalpGetParameters(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 /*
  * @implemented
  */
+CODE_SEG("INIT")
 BOOLEAN
 NTAPI
 HalInitSystem(IN ULONG BootPhase,
@@ -106,13 +107,13 @@ HalInitSystem(IN ULONG BootPhase,
         //HalpCalibrateStallExecution();
 
         /* Initialize the clock */
-        HalpInitializeClock();
+        //HalpInitializeClock();
 
         /* Setup time increments to 10ms and 1ms */
-        HalpCurrentTimeIncrement = 100000;
-        HalpNextTimeIncrement = 100000;
-        HalpNextIntervalCount = 0;
-        KeSetTimeIncrement(100000, 10000);
+        //HalpCurrentTimeIncrement = 100000;
+        //HalpNextTimeIncrement = 100000;
+        //HalpNextIntervalCount = 0;
+        //KeSetTimeIncrement(100000, 10000);
 
         /*
          * We could be rebooting with a pending profile interrupt,
@@ -125,6 +126,7 @@ HalInitSystem(IN ULONG BootPhase,
     }
     else if (BootPhase == 1)
     {
+#if 0		
         /* Enable timer interrupt */
         HalpEnableInterruptHandler(IDT_DEVICE,
                                    0,
@@ -132,7 +134,7 @@ HalInitSystem(IN ULONG BootPhase,
                                    CLOCK2_LEVEL,
                                    HalpClockInterrupt,
                                    Latched);
-#if 0
+
         /* Enable IRQ 8 */
         HalpEnableInterruptHandler(IDT_DEVICE,
                                    0,
@@ -152,6 +154,7 @@ HalInitSystem(IN ULONG BootPhase,
     return TRUE;
 }
 
+/* TODO: fix me..?  */
 #include <internal/kd.h>
 ULONG
 DbgPrintEarly(const char *fmt, ...)
@@ -170,9 +173,9 @@ DbgPrintEarly(const char *fmt, ...)
     {
         if (*String == '\n')
         {
-            KdPortPutByteEx(NULL, '\r');
+           //KdPortPutByteEx(NULL, '\r');
         }
-        KdPortPutByteEx(NULL, *String);
+        //KdPortPutByteEx(NULL, *String);
         String++;
     }
 
