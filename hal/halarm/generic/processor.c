@@ -118,7 +118,7 @@ HalSweepDcache(VOID)
     if (HalpTestCleanSupported)
     {
         /* Test, clean, flush D-Cache */
-        __asm__ __volatile__ ("1: mrc p15, 0, pc, c7, c14, 3; bne 1b");
+       // __asm__ __volatile__ ("1: mrc p15, 0, pc, c7, c14, 3; bne 1b");
     }
     else
     {

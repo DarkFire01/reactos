@@ -38,6 +38,7 @@ HalpGetParameters(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 /*
  * @implemented
  */
+CODE_SEG("INIT")
 BOOLEAN
 NTAPI
 HalInitSystem(IN ULONG BootPhase,
@@ -152,6 +153,7 @@ HalInitSystem(IN ULONG BootPhase,
     return TRUE;
 }
 
+/* TODO: fix me..?  */
 #include <internal/kd.h>
 ULONG
 DbgPrintEarly(const char *fmt, ...)
@@ -170,9 +172,9 @@ DbgPrintEarly(const char *fmt, ...)
     {
         if (*String == '\n')
         {
-            KdPortPutByteEx(NULL, '\r');
+           //KdPortPutByteEx(NULL, '\r');
         }
-        KdPortPutByteEx(NULL, *String);
+        //KdPortPutByteEx(NULL, *String);
         String++;
     }
 
