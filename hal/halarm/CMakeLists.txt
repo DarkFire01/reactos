@@ -33,7 +33,6 @@ endfunction()
 
 # The components
 include(generic.cmake)
-include(stub.cmake)
 if(ARCH STREQUAL "arm")
     include(versa.cmake)
     # hal
