@@ -290,8 +290,10 @@ RtlExitUserThread(NTSTATUS Status)
     /* Call the Loader and tell him to notify the DLLs */
     LdrShutdownThread();
 
-    /* Shut us down */
+    #if (NTDDI_VERSION <= NTDDI_WS03SP4)
+    /* Shut us down (Depreciated methodology in vista+) */
     NtCurrentTeb()->FreeStackOnTermination = TRUE;
+    #endif()
     NtTerminateThread(NtCurrentThread(), Status);
 }
 

@@ -25,7 +25,7 @@
     #define NTDDI_VISTA                         NTDDI_WIN6
     #define NTDDI_WIN7                          0x06010000
 
-    #define NTDDI_VERSION   NTDDI_WS03SP4 // This is the ReactOS NT kernel version
+    #define NTDDI_VERSION   NTDDI_VISTA // This is the ReactOS NT kernel version (In this branch)
 
     /* C_ASSERT Definition */
     #define C_ASSERT(expr) extern char (*c_assert(void)) [(expr) ? 1 : -1]

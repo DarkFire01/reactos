@@ -134,3 +134,6 @@ endif()
 
 set(USE_DUMMY_PSEH FALSE CACHE BOOL
 "Whether to disable PSEH support.")
+
+set(TARGET_WINVER 0x601 CACHE BOOL "The Windows platform version to target. Value of _WIN32_WINNT. Include the leading 0x.")
+set(TARGET_WINVER_IE 0x601 CACHE BOOL "The Internet Explorer platform version to target. Value of _WIN32_IE. Include the leading 0x.")

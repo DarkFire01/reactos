@@ -147,11 +147,7 @@ Abstract:
 
 /* Choose NTDDI Version */
 #ifndef NTDDI_VERSION
-#ifdef _WIN32_WINNT
-#define NTDDI_VERSION   NTDDI_VERSION_FROM_WIN32_WINNT(_WIN32_WINNT)
-#else
 #define NTDDI_VERSION   0x06000000 /* NTDDI_WS03SP4 */
-#endif
 #endif
 
 /* Choose WINVER Value */
