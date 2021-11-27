@@ -779,8 +779,8 @@
 714 stdcall UserLpkTabbedTextOut(long long long long long long long long long long long long)
 715 stdcall UserRealizePalette(long)
 716 stdcall UserRegisterWowHandlers(ptr ptr)
-# VRipOutput
-# VTagOutput
+717 stub VRipOutput
+718 stub VTagOutput
 719 stdcall ValidateRect(long ptr) NtUserValidateRect
 720 stdcall ValidateRgn(long long)
 721 stdcall VkKeyScanA(long)

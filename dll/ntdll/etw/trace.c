@@ -201,6 +201,7 @@ ULONG WINAPI EtwEnableTrace( ULONG enable, ULONG flag, ULONG level, LPCGUID guid
  */
 ULONG WINAPI EtwEventRegister( LPCGUID provider, PENABLECALLBACK callback, PVOID context, PREGHANDLE handle )
 {
+    //TODO: THis needs to be implemented
     FIXME("(%s, %p, %p, %p) stub.\n", provider, callback, context, handle);
 
     if (!handle) return ERROR_INVALID_PARAMETER;

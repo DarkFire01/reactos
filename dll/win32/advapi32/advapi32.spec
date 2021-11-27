@@ -226,8 +226,8 @@
 @ stdcall -version=0x600+ EventWrite(ptr ptr long ptr)
 @ stdcall -stub -version=0x600+ EventWriteString(long long long ptr)
 @ stdcall -version=0x600+ EventWriteTransfer(ptr ptr ptr ptr long ptr)
-@ stdcall -version=0x600+ EventRegister(ptr ptr ptr ptr)
-@ stdcall -version=0x600+ EventUnregister(ptr)
+@ stdcall -version=0x600+ EventRegister(ptr ptr ptr ptr) ntdll.EtwEventRegister
+@ stdcall -version=0x600+ EventUnregister(ptr) ntdll.EtwEventUnregister
 @ stdcall FileEncryptionStatusA(str ptr)
 @ stdcall FileEncryptionStatusW(wstr ptr)
 @ stdcall FindFirstFreeAce(ptr ptr)
@@ -319,7 +319,7 @@
 @ stdcall InitializeAcl(ptr long long)
 @ stdcall InitializeSecurityDescriptor(ptr long)
 @ stdcall InitializeSid(ptr ptr long)
-;@ stub -version=600+ InitiateShutdownW
+@ stdcall -version=600+ InitiateShutdownW(str str long long long)
 @ stub -version=600+ EventWriteEndScenario
 @ stub -version=600+ EventWriteStartScenario
 @ stub -version=600+ CredReadByTokenHandle 

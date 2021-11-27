@@ -127,7 +127,7 @@
 #include <arch/mips/arcbios.h>
 #endif
 
-#define TARGET_VERSION _WIN32_WINNT_WINBLUE
+#define TARGET_VERSION _WIN32_WINNT_VISTA
 
 VOID __cdecl BootMain(IN PCCH CmdLine);
 VOID LoadOperatingSystem(IN OperatingSystemItem* OperatingSystem);

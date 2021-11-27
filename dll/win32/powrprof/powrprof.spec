@@ -33,6 +33,8 @@
 @ stdcall -stub -version=0x600+ PowerReadPossibleFriendlyName(ptr ptr ptr long str long)
 @ stdcall -stub -version=0x600+ PowerReadPossibleValue(ptr ptr ptr long long str long)
 @ stdcall -stub -version=0x600+ PowerReadSettingAttributes(ptr ptr)
+@ stub -version=0x600+ PowerWriteDCValue
+@ stub -version=0x600+ PowerWriteACValue
 @ stdcall -stub -version=0x600+ PowerReadValueIncrement(ptr ptr ptr long)
 @ stdcall -stub -version=0x600+ PowerReadValueMax(ptr ptr ptr long)
 @ stdcall -stub -version=0x600+ PowerReadValueMin(ptr ptr ptr long)

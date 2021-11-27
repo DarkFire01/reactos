@@ -149,20 +149,3 @@ EventWriteTransfer(
 	UNIMPLEMENTED;
     return ERROR_SUCCESS;
 };
-
-ULONG WINAPI EventRegister(
-  LPCGUID         ProviderId,
-  PENABLECALLBACK EnableCallback,
-  PVOID           CallbackContext,
-  REGHANDLE*      RegHandle
-  )
-{
-	UNIMPLEMENTED;
-    return ERROR_SUCCESS;
-};
-  
-ULONG WINAPI EventUnregister(REGHANDLE RegHandle)
-{
-	UNIMPLEMENTED;
-    return ERROR_SUCCESS;
-};  

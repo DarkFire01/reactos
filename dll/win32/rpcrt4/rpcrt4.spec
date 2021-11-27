@@ -92,6 +92,7 @@
 # I_RpcSessionStrictContextHandle
 90 stub I_RpcSetAsyncHandle
 @  stub -version=0x600+ I_RpcSetDCOMAppId
+@ stub -version=0x600+ I_RpcBindingCreateNP
 91 stub I_RpcSsDontSerializeContext
 92 stub I_RpcSystemFunction001
 93 stub I_RpcTransConnectionAllocatePacket
