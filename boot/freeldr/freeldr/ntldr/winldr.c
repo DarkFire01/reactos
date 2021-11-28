@@ -838,7 +838,7 @@ WinLdrInitErrataInf(
     CHAR ErrataFilePath[MAX_PATH];
 
     /* Open either the 'BiosInfo' (Windows <= 2003) or the 'Errata' (Vista+) key */
-    if (OperatingSystemVersion > TARGET_VERSION)
+    if (OperatingSystemVersion > _WIN32_WINNT_WS03)
     {
         rc = RegOpenKey(NULL,
                         L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Control\\Errata",

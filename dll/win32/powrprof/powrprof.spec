@@ -5,6 +5,7 @@
 @ stdcall -stub -version=0x600+ DevicePowerEnumDevices(long long long long long)
 @ stdcall -stub -version=0x600+ DevicePowerOpen(long)
 @ stdcall -stub -version=0x600+ DevicePowerSetDeviceState(wstr long ptr)
+@ stub PowerDeterminePlatformRoleEx
 @ stdcall -version=0x501-0x502 EnumPwrSchemes (ptr long)
 @ stdcall -version=0x501-0x502 GetActivePwrScheme (ptr)
 @ stdcall GetCurrentPowerPolicies (ptr ptr)

@@ -11,6 +11,7 @@
 @ stdcall -arch=i386 ExpInterlockedPopEntrySListFault()
 @ stdcall -arch=i386 ExpInterlockedPopEntrySListResume()
 @ stdcall -stub -version=0x600+ A_SHAFinal(ptr ptr)
+@ stub EvtIntReportEventAndSourceAsync
 @ stdcall -stub -version=0x600+ A_SHAInit(ptr)
 @ stdcall -stub -version=0x600+ A_SHAUpdate(ptr ptr long)
 @ stdcall -stub -version=0x600+ AlpcAdjustCompletionListConcurrencyCount(ptr long)

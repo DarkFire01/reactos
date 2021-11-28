@@ -40,6 +40,7 @@
 @ stdcall CM_Enumerate_Enumerators_ExA(long str ptr long long) setupapi.CM_Enumerate_Enumerators_ExA
 @ stdcall CM_Enumerate_Enumerators_ExW(long wstr ptr long long) setupapi.CM_Enumerate_Enumerators_ExW
 @ stub CM_Find_Range # setupapi.CM_Find_Range
+@ stub CM_Get_DevNode_PropertyW
 @ stub CM_First_Range # setupapi.CM_First_Range
 @ stdcall CM_Free_Log_Conf(ptr long) setupapi.CM_Free_Log_Conf
 @ stdcall CM_Free_Log_Conf_Ex(ptr long ptr) setupapi.CM_Free_Log_Conf_Ex
