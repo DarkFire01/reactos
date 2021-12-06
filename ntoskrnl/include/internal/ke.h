@@ -368,6 +368,15 @@ KiIpiSignalPacketDoneAndStall(
     IN volatile PULONG ReverseStall
 );
 
+/* mp.c *********************************************************************/
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+KeStartAllProcessors(
+    VOID
+);
+
 /* next file ***************************************************************/
 
 UCHAR

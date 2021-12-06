@@ -530,7 +530,8 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     else
     {
         /* FIXME */
-        DPRINT1("SMP Boot support not yet present\n");
+        DPRINT1("Starting CPU#%u - you are brave!\n", Number);
+        KeLowerIrql(DISPATCH_LEVEL);
     }
 
     /* Setup the Idle Thread */
