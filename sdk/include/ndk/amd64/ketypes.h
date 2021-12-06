@@ -91,6 +91,8 @@ Author:
 //#define KeGetPcr()              ((volatile KPCR * const)__readfsdword(0x1C))
 //#endif
 
+#define DOUBLE_FAULT_STACK_SIZE 0x2000
+
 //
 // CPU Vendors
 //

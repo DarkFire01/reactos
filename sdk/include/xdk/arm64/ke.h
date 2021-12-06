@@ -40,8 +40,6 @@ KeGetCurrentThread(VOID);
 $endif (_WDMDDK_)
 $if (_NTDDK_)
 
-#define DOUBLE_FAULT_STACK_SIZE 0x8000
-
 #define ARM64_MAX_BREAKPOINTS 8
 #define ARM64_MAX_WATCHPOINTS 2
 

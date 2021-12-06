@@ -49,6 +49,8 @@ extern "C" {
 #define MM_HAL_VA_START         0xFFFFFFFFFFC00000ULL
 #define MM_HAL_VA_END           0xFFFFFFFFFFFFFFFFULL
 
+#define DOUBLE_FAULT_STACK_SIZE 0x8000
+
 //
 // Structure for CPUID info
 //

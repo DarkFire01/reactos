@@ -536,7 +536,8 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     else
     {
         /* FIXME */
-        DPRINT1("SMP Boot support not yet present\n");
+        DPRINT1("Starting CPU#%u - you are brave!\n", Number);
+        KeLowerIrql(DISPATCH_LEVEL);
     }
 
     /* Setup the Idle Thread */
@@ -739,11 +740,13 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     /* Boot cycles timestamp */
     BootCycles = __rdtsc();
 
-    /* Save the loader block and get the current CPU */
-    KeLoaderBlock = LoaderBlock;
+    /* get the current CPU */
     Cpu = KeNumberProcessors;
+
     if (!Cpu)
     {
+        KeLoaderBlock = LoaderBlock;
+
         /* If this is the boot CPU, set FS and the CPU Number*/
         Ke386SetFs(KGDT_R0_PCR);
         __writefsdword(KPCR_PROCESSOR_NUMBER, Cpu);
@@ -823,6 +826,19 @@ AppCpuInit:
     __writefsdword(KPCR_SET_MEMBER, 1 << Cpu);
     __writefsdword(KPCR_SET_MEMBER_COPY, 1 << Cpu);
     __writefsdword(KPCR_PRCB_SET_MEMBER, 1 << Cpu);
+
+    //TODO: We don't setup IPIs yet so freeze other processors here.
+    if (Cpu)
+    {
+        KeMemoryBarrier();
+        LoaderBlock->Prcb = 0; 
+        
+        for(;;)
+        {
+            KeMemoryBarrier();
+            YieldProcessor();
+        }
+    }
 
     KiVerifyCpuFeatures(Pcr->Prcb);
 

@@ -305,6 +305,8 @@ typedef enum
 //
 #define SYNCH_LEVEL             DISPATCH_LEVEL
 
+#define DOUBLE_FAULT_STACK_SIZE 0x3000
+
 //
 // Number of pool lookaside lists per pool in the PRCB
 //
