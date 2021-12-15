@@ -56,42 +56,437 @@ typedef union _CPU_INFO
     ULONG dummy;
 } CPU_INFO, *PCPU_INFO;
 
-/* TODO: REVERSE ME D: */
+typedef struct _KARM64_VFP_STATE
+{
+    struct _KARM64_VFP_STATE *Link;
+    ULONG64 FPCR;
+    ULONG64 FPSR;
+    NEON128[32] V;
+} KARM64_VFP_STATE, *PKARM64_VFP_STATE;
+
 typedef struct _KTRAP_FRAME
 {
-    ULONG dummy;
+    UCHAR ExceptionActive;
+    UCHAR ContextFromKFramesUnwound;
+    UCHAR DebugRegistersValid;
+    union
+    {
+        struct
+        {
+            CHAR PreviousMode;
+            UCHAR PreviousIrql;
+        };
+    };
+    ULONG Reserved;
+    union
+    {
+        struct
+        {
+            ULONG64 FaultAddress;
+            ULONG64 TrapFrame;
+        };
+    };
+    PKARM64_VFP_STATE VfpState;
+    ULONG VfpState;
+    ULONG Bcr[8];
+    ULONG64 Bvr[8];
+    ULONG Wcr[2];
+    ULONG64 Wvr[2];
+    ULONG Spsr;
+    ULONG Esr;
+    ULONG64 Sp;
+    union
+    {
+        ULONG64 X[19];
+        struct
+        {
+            ULONG64 X0;
+            ULONG64 X1;
+            ULONG64 X2;
+            ULONG64 X3;
+            ULONG64 X4;
+            ULONG64 X5;
+            ULONG64 X6;
+            ULONG64 X7;
+            ULONG64 X8;
+            ULONG64 X9;
+            ULONG64 X10;
+            ULONG64 X11;
+            ULONG64 X12;
+            ULONG64 X13;
+            ULONG64 X14;
+            ULONG64 X15;
+            ULONG64 X16;
+            ULONG64 X17;
+            ULONG64 X18;
+        };
+    };
+    ULONG64 Lr;
+    ULONG64 Fp;
+    ULONG64 Pc;
 } KTRAP_FRAME, *PKTRAP_FRAME;
 
 typedef struct _KEXCEPTION_FRAME
 {
     ULONG dummy;
-} KEXCEPTION_FRAME, *PKEXCEPTION_FRAME; // size = 0x38
+} KEXCEPTION_FRAME, *PKEXCEPTION_FRAME;
 
 #ifndef NTOS_MODE_USER
 
+typedef struct _TRAPFRAME_LOG_ENTRY
+{
+    ULONG64 Thread;
+    UCHAR CpuNumber;
+    UCHAR TrapType;
+    USHORT Padding;
+    ULONG Cpsrl
+    ULONG64 X0;
+    ULONG64 X1;
+    ULONG64 X2;
+    ULONG64 X3;
+    ULONG64 X4;
+    ULONG64 X5;
+    ULONG64 X6;
+    ULONG64 X7;
+    ULONG64 Fp;
+    ULONG64 Lr;
+    ULONG64 Sp;
+    ULONG64 Pc;
+    ULONG64 Far;
+    ULONG Esr;
+    ULONG Reserved1;
+} TRAPFRAME_LOG_ENTRY, *PTRAPFRAME_LOG_ENTRY;
+
 //
 // Processor Region Control Block
-// Based on Windows 10
+// Based on WoA
 //
 typedef struct _KPRCB
 {
-    /* TODO: REVERSE ME D: */
-    ULONG dummy;
+    UCHAR LegacyNumber;
+    UCHAR ReservedMustBeZero;
+    UCHAR IdleHalt;
+    PKTHREAD CurrentThread;
+    PKTHREAD NextThread;
+    PKTHREAD IdleThread;
+    UCHAR NestingLevel;
+    UCHAR ClockOwner;
+    union
+    {
+        UCHAR PendingTickFlags;
+        struct
+        {
+            UCHAR PendingTick : 1;
+            UCHAR PendingBackupTick : 1;
+        };
+    };
+    UCHAR IdleState;
+    ULONG Number;
+    ULONG PrcbLock;
+    PCHAR PriorityState;
+    KPROCESSOR_STATE ProcessorState;
+    USHORT ProcessorModel;
+    USHORT ProcessorRevision;
+    ULONG MHz;
+    UINT64 CycleCounterFrequency;
+    ULONG64 HalReserved[10];
+    USHORT MinorVersion;
+    USHORT MajorVersion;
+    UCHAR BuildType;
+    UCHAR CpuVendor;
+    UCHAR LegacyCoresPerPhysicalProcessor;
+    UCHAR LegacyLogicalProcessorsPerCore;
+    PVOID AcpiReserved;
+    ULONG64 GroupSetMember;
+    UCHAR Group;
+    UCHAR GroupIndex;
+    UCHAR PrcbPad3[6];
+    UCHAR LegacyCoresPerPhysicalProcessor;
+    UCHAR LegacyLogicalProcessorsPerCore;
+    ULONG64 PrcbPad4[1];
+    KSPIN_LOCK_QUEUE DECLSPEC_ALIGN(128) LockQueue[17];
+    UCHAR ProcessorVendorString[2];
+    UCHAR PrcbPad4[1];
+    ULONG FeatureBits;
+    ULONG MaxBreakpoints;
+    ULONG MaxWatchpoints;
+    PCONTEXT Context;
+    ULONG ContextFlagsInit;
+    UCHAR EmulatedAccess;
+    ULONG64 EmulatedAccess;
+    ULONG64 EmulatedAccess;
+    ULONG64 EmulatedAccess;
+    LONG EmulatedAccess;
+    LONG TrapFrameLogIndex;
+    PTRAPFRAME_LOG_ENTRY TrapFrameLog
+    PP_LOOKASIDE_LIST DECLSPEC_ALIGN(128) PPLookasideList[16];
+    LONG PacketBarrier;
+    SINGLE_LIST_ENTRY DeferredReadyListHead;
+    LONG MmPageFaultCount;
+    LONG MmCopyOnWriteCount;
+    LONG MmTransitionCount;
+    LONG MmDemandZeroCount;
+    LONG MmPageReadCount;
+    LONG MmPageReadIoCount;
+    LONG MmDirtyPagesWriteCount;
+    LONG MmDirtyWriteIoCount;
+    LONG MmMappedPagesWriteCount;
+    LONG MmMappedWriteIoCount;
+    ULONG KeSystemCalls;
+    ULONG KeContextSwitches;
+    ULONG CcFastReadNoWait;
+    ULONG CcFastReadWait;
+    ULONG CcFastReadNotPossible;
+    ULONG CcCopyReadNoWait;
+    ULONG CcCopyReadWait;
+    ULONG CcCopyReadNoWaitMiss;
+    LONG LookasideIrpFloat;
+    LONG IoReadOperationCount;
+    LONG IoWriteOperationCount;
+    LONG IoOtherOperationCount;
+    LARGE_INTEGER IoReadTransferCount;
+    LARGE_INTEGER IoWriteTransferCount;
+    LARGE_INTEGER IoOtherTransferCount;
+    struct _REQUEST_MAILBOX* Mailbox;
+    LONG TargetCount;
+    ULONG IpiFrozen;
+    ULONG RequestSummary;
+    KDPC_DATA DpcData[2];
+    PVOID DpcStack;
+    PVOID SpBase;
+    LONG MaximumDpcQueueDepth;
+    ULONG DpcRequestRate;
+    ULONG MinimumDpcRate;
+    ULONG DpcLastCount;
+    UCHAR ThreadDpcEnable;
+    UCHAR QuantumEnd;
+    UCHAR DpcRoutineActive;
+    UCHAR IdleSchedule;
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+    union
+    {
+        LONG DpcRequestSummary;
+        SHORT DpcRequestSlot[2];
+        struct
+        {
+            SHORT NormalDpcState;
+            SHORT ThreadDpcState;
+        };
+        struct
+        {
+            ULONG DpcNormalProcessingActive : 1;
+            ULONG DpcNormalProcessingRequested : 1;
+            ULONG DpcNormalThreadSignal : 1;
+            ULONG DpcNormalTimerExpiration : 1;
+            ULONG DpcNormalDpcPresent : 1;
+            ULONG DpcNormalLocalInterrupt : 1;
+            ULONG DpcNormalSpare : 10;
+            ULONG DpcThreadActive : 1;
+            ULONG DpcThreadRequested : 1;
+            ULONG DpcThreadSpare : 14;
+        };
+    };
+#else
+    LONG DpcSetEventRequest;
+#endif
+    ULONG LastTick;
+    ULONG ClockInterrupts;
+    ULONG ReadyScanTick;
+    union
+    {
+        struct
+        {
+            ULONG BamQosLevel : 8;
+            ULONG PendingQosUpdate : 2;
+            ULONG CacheIsolationEnabled : 1;
+            ULONG TracepointActive : 1;
+            ULONG LongDpcRunning : 1;
+            ULONG PrcbFlagsReserved : 19;
+        };
+    };
+    ULONG InterruptLastCount;
+    ULONG InterruptRate;
+#if (NTDDI_VERSION >= NTDDI_WINBLUE)
+    ULONG SingleDpcSoftTimeLimitTicks;
+    ULONG CumulativeDpcSoftTimeLimitTicks;
+    union
+    {
+        struct
+        {
+            KDPC EventDpc;
+            PVOID DeferredRoutine;
+            ULONG TickCount:
+        };
+    };
+#else
+    KEVENT DpcEvent;
+#endif
+    KGATE DpcGate;
+    ULONG MPAffinity;
+    KDPC CallDpc;
+    LONG ClockKeepAlive;
+    UCHAR PrcbPad11[2];
+    LONG DpcWatchdogPeriod;
+    LONG DpcWatchdogCount;
+    LONG KeSpinLockOrdering;
+    ULONG64 TrappedSecurityDomain;
+    LIST_ENTRY WaitListHead;
+    ULONG WaitLock;
+    ULONG ReadySummary;
+    LONG AffinitizedSelectionMask;
+    ULONG QueueIndex;
+    ULONG NormalPriorityQueueIndex;
+    ULONG NormalPriorityReadyScanTick;
+    KDPC TimerExpirationDpc;
+    RTL_RB_TREE ScbQueue;
+    LIST_ENTRY ScbList;
+    UCHAR _PADDING8_[0x38];
+    LIST_ENTRY DispatcherReadyListHead[32];
+    ULONG InterruptCount;
+    ULONG KernelTime;
+    ULONG UserTime;
+    ULONG DpcTime;
+    ULONG InterruptTime;
+    ULONG AdjustDpcThreshold;
+    UCHAR SkipTick;
+    UCHAR DebuggerSavedIRQL;
+    UCHAR TbFlushListActive;
+    UCHAR GroupSchedulingOverQuota;
+    ULONG DpcTimeCount;
+    ULONG DpcTimeLimit;
+    ULONG PeriodicCount;
+    ULONG PeriodicBias;
+    ULONG AvailableTime;
+    ULONG ScbOffset;
+    ULONG KeExceptionDispatchCount;
+    /////////////////////////////////////////////////////////
+    /* Continue implementation from  KeExceptionDispatchCount*/
+    REQUEST_MAILBOX RequestMailbox[1];
+
+    // FIXME: Oldstyle stuff
+#if (NTDDI_VERSION < NTDDI_WIN8) // FIXME
+    UCHAR CpuType;
+    volatile UCHAR DpcInterruptRequested;
+    volatile UCHAR DpcThreadRequested;
+    volatile UCHAR DpcThreadActive;
+    volatile ULONG TimerHand;
+    volatile ULONG TimerRequest;
+    ULONG DebugDpcTime;
+    LONG Sleeping;
+    KAFFINITY SetMember;
+    CHAR VendorString[13];
+#endif
 } KPRCB, *PKPRCB;
 
 //
 // Processor Control Region
-// Based on Windows 10
+// Based on Windows WoA
 //
 typedef struct _KIPCR
 {
-    ULONG dummy;
+    union
+    {
+        struct
+        {
+            ULONG TibPad0[2];
+            PVOID Spare1;
+            struct _KPCR *Self;
+            PVOID  PcrReserved0;
+            struct _KSPIN_LOCK_QUEUE* LockArray;
+            PVOID Used_Self;
+        };
+    };
+    KIRQL CurrentIrql;
+    UCHAR SecondLevelCacheAssociativity;
+    UCHAR Pad1[2];
+    USHORT MajorVersion;
+    USHORT MinorVersion;
+    ULONG StallScaleFactor;
+    ULONG SecondLevelCacheSize
+    union
+    {
+        struct
+        {
+            UCHAR ApcInterrupt;
+            UCHAR DispatchInterrupt;
+        };
+    };
+    USHORT InterruptPad;
+    UCHAR BtiMitigation;
+    union
+    {
+        struct
+        {
+            UCHAR SsbMitigationFirmware:1;
+            UCHAR SsbMitigationDynamic:1;
+            UCHAR SsbMitigationKernel:1;
+            UCHAR SsbMitigationUser:1;
+            UCHAR SsbMitigationReserved:4;
+        };
+    };
+    UCHAR Pad2[2];
+    ULONG64 PanicStorage[6];
+    PVOID KdVersionBlock;
+    PVOID HalReserved[134];
+    PVOID KvaUserModeTtbr1;
+
+    /* Private members, not in ntddk.h */
+    PVOID Idt[256];
+    PVOID* IdtExt;
+    PVOID PcrAlign[15];
+    KPRCB Prcb;
 } KIPCR, *PKIPCR;
+
+//
+// Special Registers Structure (outside of CONTEXT)
+// Based on WoA symbols
+//
+typedef struct _KSPECIAL_REGISTERS
+{
+    ULONG64 Elr_El1;
+    UINT    Spsr_El1;
+    ULONG64 Tpidr_El0;
+    ULONG64 Tpidrro_El0;
+    ULONG64 Tpidr_El1;
+    ULONG64 KernelBvr[8];
+    ULONG   KernelBcr[8];
+    ULONG64 KernelWvr[2];
+    ULONG   KernelWcr[2];
+} KSPECIAL_REGISTERS, *PKSPECIAL_REGISTERS;
 
 typedef struct _KPROCESSOR_STATE
 {
-    ULONG dummy;
+    KSPECIAL_REGISTERS SpecialRegisters; // 0
+    KARM64_ARCH_STATE ArchState;         // 160
+    CONTEXT ContextFrame;                // 800
 } KPROCESSOR_STATE, *PKPROCESSOR_STATE;
+
+//
+// ARM64 Architecture State
+// Based on Windows WoA symbols
+//
+typedef struct _KARM64_ARCH_STATE
+{
+    ULONG64 Midr_El1;
+    ULONG64 Sctlr_El1;
+    ULONG64 Actlr_El1;
+    ULONG64 Cpacr_El1;
+    ULONG64 Tcr_El1;
+    ULONG64 Ttbr0_El1;
+    ULONG64 Ttbr1_El1;
+    ULONG64 Esr_El1;
+    ULONG64 Far_El1;
+    ULONG64 Pmcr_El0;
+    ULONG64 Pmcntenset_El0;
+    ULONG64 Pmccntr_El0;
+    ULONG64 Pmxevcntr_El0[31];
+    ULONG64 Pmxevtyper_El0[31];
+    ULONG64 Pmovsclr_El0;
+    ULONG64 Pmselr_El0;
+    ULONG64 Pmuserenr_El0;
+    ULONG64 Mair_El1;
+    ULONG64 Vbar_El1;
+} KARM64_ARCH_STATE, *PKARM64_ARCH_STATE;
 
 //
 // Macro to get current KPRCB
