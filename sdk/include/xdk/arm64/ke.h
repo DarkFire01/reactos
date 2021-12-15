@@ -13,6 +13,13 @@ $if (_WDMDDK_)
 #define PROFILE_LEVEL           15
 #define HIGH_LEVEL              15
 
+#define KIP0PCRADDRESS          0xFFDFF000
+#define KI_USER_SHARED_DATA     0xFFFF9000
+#define SharedUserData          ((KUSER_SHARED_DATA * const)KI_USER_SHARED_DATA)
+
+#define PAGE_SIZE               0x1000
+#define PAGE_SHIFT              12L
+
 NTSYSAPI
 PKTHREAD
 NTAPI
