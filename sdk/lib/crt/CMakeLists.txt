@@ -43,5 +43,5 @@ add_library(user32_wsprintf
     string/mbstowcs_nt.c
     string/wcstombs_nt.c)
 
-add_dependencies(user32_wsprintf psdk)
+add_dependencies(user32_wsprintf psdk xdk)
 target_compile_definitions(user32_wsprintf PRIVATE _USER32_WSPRINTF)

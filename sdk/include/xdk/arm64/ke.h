@@ -120,8 +120,4 @@ typedef struct _CONTEXT {
     ULONG64 Wvr[ARM64_MAX_WATCHPOINTS];
 
 } CONTEXT, *PCONTEXT;
-<<<<<<< HEAD
 $endif
-=======
-$endif
->>>>>>> c4012536dda ([SDK] Get more functional headers building)

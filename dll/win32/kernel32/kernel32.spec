@@ -938,9 +938,9 @@
 @ stdcall -arch=x86_64 RtlAddFunctionTable(ptr long long) ntdll.RtlAddFunctionTable
 @ stdcall -register RtlCaptureContext(ptr) ntdll.RtlCaptureContext
 @ stdcall RtlCaptureStackBackTrace(long long ptr ptr) ntdll.RtlCaptureStackBackTrace
-@ stdcall -arch=x86_64 RtlCompareMemory(ptr ptr ptr) ntdll.RtlCompareMemory
-@ stdcall -arch=x86_64 RtlCopyMemory(ptr ptr ptr) ntdll.memcpy
-@ stdcall -arch=x86_64 RtlDeleteFunctionTable(ptr) ntdll.RtlDeleteFunctionTable
+@ stdcall -arch=x86_64,arm64 RtlCompareMemory(ptr ptr ptr) ntdll.RtlCompareMemory
+@ stdcall -arch=x86_64,arm64 RtlCopyMemory(ptr ptr ptr) ntdll.memcpy
+@ stdcall -arch=x86_64,arm64 RtlDeleteFunctionTable(ptr) ntdll.RtlDeleteFunctionTable
 @ stdcall RtlFillMemory(ptr long long) ntdll.RtlFillMemory
 @ stdcall -arch=x86_64 RtlInstallFunctionTableCallback(double double long ptr ptr ptr) ntdll.RtlInstallFunctionTableCallback
 @ stdcall -arch=x86_64 RtlLookupFunctionEntry(ptr ptr ptr) ntdll.RtlLookupFunctionEntry
@@ -1225,7 +1225,7 @@
 @ stdcall WriteTapemark(ptr long long long)
 @ stdcall ZombifyActCtx(ptr)
 @ stdcall -arch=x86_64 __C_specific_handler() ntdll.__C_specific_handler
-@ stdcall -arch=x86_64 __chkstk() ntdll.__chkstk
+@ stdcall -arch=x86_64,arm64 __chkstk() ntdll.__chkstk
 ;@ stdcall -arch=x86_64 __misaligned_access() ntdll.__misaligned_access
 @ stdcall _hread(long ptr long)
 @ stdcall _hwrite(long ptr long)
