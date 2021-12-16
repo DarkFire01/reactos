@@ -4401,6 +4401,26 @@ FORCEINLINE PVOID GetCurrentFiber(VOID)
     return ((PNT_TIB )(ULONG_PTR)_MoveFromCoprocessor(CP15_TPIDRURW))->FiberData;
   #endif
 }
+#elif defined (_M_ARM64)
+#define CP15_PMSELR      15, 0,  9, 12, 5
+#define CP15_PMXEVCNTR   15, 0,  9, 13, 2
+#define CP15_TPIDRURW    15, 0, 13,  0, 2
+#define CP15_TPIDRURO    15, 0, 13,  0, 3
+#define CP15_TPIDRPRW    15, 0, 13,  0, 4
+FORCEINLINE struct _TEB * NtCurrentTeb(void)
+{
+    //return (struct _TEB *)(ULONG_PTR)_MoveFromCoprocessor(CP15_TPIDRURW);
+    return 0;
+}
+FORCEINLINE PVOID GetCurrentFiber(VOID)
+{
+  #ifdef NONAMELESSUNION
+    //return ((PNT_TIB )(ULONG_PTR)_MoveFromCoprocessor(CP15_TPIDRURW))->DUMMYUNIONNAME.FiberData;
+  #else
+    //return ((PNT_TIB )(ULONG_PTR)_MoveFromCoprocessor(CP15_TPIDRURW))->FiberData;
+  #endif
+  return 0;
+}
 #elif defined(_M_PPC)
 FORCEINLINE unsigned long _read_teb_dword(const unsigned long Offset)
 {
@@ -4495,6 +4515,8 @@ DbgRaiseAssertionFailure(VOID)
 #elif defined(_M_MIPS)
 #define YieldProcessor() __asm__ __volatile__("nop");
 #elif defined(_M_ARM)
+#define YieldProcessor __yield
+#elif defined(_M_ARM64)
 #define YieldProcessor __yield
 #else
 #error Unknown architecture
