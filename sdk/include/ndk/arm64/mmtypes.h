@@ -154,6 +154,41 @@ typedef struct _MMPTE_LIST
     ULONG64 NextEntry:36;
 } MMPTE_LIST;
 
+typedef struct _MMPTE
+{
+    union
+    {
+        ULONG_PTR Long;
+        HARDWARE_PTE Flush;
+        HARDWARE_PTE Hard;
+        MMPTE_PROTOTYPE Proto;
+        MMPTE_SOFTWARE Soft;
+        MMPTE_TRANSITION Trans;
+        MMPTE_SUBSECTION Subsect;
+        MMPTE_LIST List;
+    } u;
+} MMPTE, *PMMPTE;
+
+typedef union _MMPDE_HARDWARE
+{
+    ULONG Valid:1;
+    ULONG LargePage:1;
+    ULONG Buffered:1;
+    ULONG Cached:1;
+    ULONG NoExecute:1;
+    ULONG Domain:4;
+    ULONG Ecc:1;
+    ULONG PageFrameNumber:22;
+} MMPDE_HARDWARE, *PMMPDE_HARDWARE;
+
+typedef struct _MMPDE
+{
+    union
+    {
+        MMPDE_HARDWARE Hard;
+        ULONG Long;
+    } u;
+} MMPDE, *PMMPDE;
 
 #ifdef __cplusplus
 }; // extern "C"

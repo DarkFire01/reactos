@@ -61,7 +61,7 @@ typedef struct _KARM64_VFP_STATE
     struct _KARM64_VFP_STATE *Link;
     ULONG64 FPCR;
     ULONG64 FPSR;
-    NEON128[32] V;
+    //struct _NEON128 V[32];
 } KARM64_VFP_STATE, *PKARM64_VFP_STATE;
 
 typedef struct _KTRAP_FRAME
@@ -86,7 +86,7 @@ typedef struct _KTRAP_FRAME
             ULONG64 TrapFrame;
         };
     };
-    PKARM64_VFP_STATE VfpState;
+    //struct PKARM64_VFP_STATE VfpState;
     ULONG VfpState;
     ULONG Bcr[8];
     ULONG64 Bvr[8];
@@ -139,7 +139,7 @@ typedef struct _TRAPFRAME_LOG_ENTRY
     UCHAR CpuNumber;
     UCHAR TrapType;
     USHORT Padding;
-    ULONG Cpsrl
+    ULONG Cpsrl;
     ULONG64 X0;
     ULONG64 X1;
     ULONG64 X2;
@@ -163,6 +163,7 @@ typedef struct _TRAPFRAME_LOG_ENTRY
 //
 typedef struct _KPRCB
 {
+    #if 0
     UCHAR LegacyNumber;
     UCHAR ReservedMustBeZero;
     UCHAR IdleHalt;
@@ -376,6 +377,8 @@ typedef struct _KPRCB
     KAFFINITY SetMember;
     CHAR VendorString[13];
 #endif
+#endif
+    ULONG dummy;
 } KPRCB, *PKPRCB;
 
 //
@@ -402,27 +405,21 @@ typedef struct _KIPCR
     USHORT MajorVersion;
     USHORT MinorVersion;
     ULONG StallScaleFactor;
-    ULONG SecondLevelCacheSize
-    union
+    ULONG SecondLevelCacheSize;
+    struct
     {
-        struct
-        {
-            UCHAR ApcInterrupt;
-            UCHAR DispatchInterrupt;
-        };
+        UCHAR ApcInterrupt;
+        UCHAR DispatchInterrupt;
     };
     USHORT InterruptPad;
     UCHAR BtiMitigation;
-    union
+    struct
     {
-        struct
-        {
-            UCHAR SsbMitigationFirmware:1;
-            UCHAR SsbMitigationDynamic:1;
-            UCHAR SsbMitigationKernel:1;
-            UCHAR SsbMitigationUser:1;
-            UCHAR SsbMitigationReserved:4;
-        };
+        UCHAR SsbMitigationFirmware:1;
+        UCHAR SsbMitigationDynamic:1;
+        UCHAR SsbMitigationKernel:1;
+        UCHAR SsbMitigationUser:1;
+        UCHAR SsbMitigationReserved:4;
     };
     UCHAR Pad2[2];
     ULONG64 PanicStorage[6];
@@ -444,7 +441,7 @@ typedef struct _KIPCR
 typedef struct _KSPECIAL_REGISTERS
 {
     ULONG64 Elr_El1;
-    UINT    Spsr_El1;
+    UINT32  Spsr_El1;
     ULONG64 Tpidr_El0;
     ULONG64 Tpidrro_El0;
     ULONG64 Tpidr_El1;
@@ -453,13 +450,6 @@ typedef struct _KSPECIAL_REGISTERS
     ULONG64 KernelWvr[2];
     ULONG   KernelWcr[2];
 } KSPECIAL_REGISTERS, *PKSPECIAL_REGISTERS;
-
-typedef struct _KPROCESSOR_STATE
-{
-    KSPECIAL_REGISTERS SpecialRegisters; // 0
-    KARM64_ARCH_STATE ArchState;         // 160
-    CONTEXT ContextFrame;                // 800
-} KPROCESSOR_STATE, *PKPROCESSOR_STATE;
 
 //
 // ARM64 Architecture State
@@ -487,6 +477,12 @@ typedef struct _KARM64_ARCH_STATE
     ULONG64 Mair_El1;
     ULONG64 Vbar_El1;
 } KARM64_ARCH_STATE, *PKARM64_ARCH_STATE;
+typedef struct _KPROCESSOR_STATE
+{
+    KSPECIAL_REGISTERS SpecialRegisters; // 0
+    KARM64_ARCH_STATE ArchState;         // 160
+    CONTEXT ContextFrame;                // 800
+} KPROCESSOR_STATE, *PKPROCESSOR_STATE;
 
 //
 // Macro to get current KPRCB

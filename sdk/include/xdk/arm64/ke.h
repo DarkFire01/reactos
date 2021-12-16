@@ -25,7 +25,7 @@ PKTHREAD
 NTAPI
 KeGetCurrentThread(VOID);
 
-#define DbgRaiseAssertionFailure() __break(0xf001)
+#define DbgRaiseAssertionFailure() __emit(0xdefc)
 
 $endif (_WDMDDK_)
 $if (_NTDDK_)
@@ -116,4 +116,8 @@ typedef struct _CONTEXT {
     ULONG64 Wvr[ARM64_MAX_WATCHPOINTS];
 
 } CONTEXT, *PCONTEXT;
+<<<<<<< HEAD
 $endif
+=======
+$endif
+>>>>>>> c4012536dda ([SDK] Get more functional headers building)
