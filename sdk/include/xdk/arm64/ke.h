@@ -25,6 +25,8 @@ PKTHREAD
 NTAPI
 KeGetCurrentThread(VOID);
 
+#define DbgRaiseAssertionFailure() __emit(0xdefc)
+
 $endif (_WDMDDK_)
 $if (_NTDDK_)
 
@@ -49,70 +51,69 @@ typedef struct _CONTEXT {
     // Control flags.
     //
 
-    DWORD ContextFlags;
+    ULONG ContextFlags;
 
     //
     // Integer registers
     //
 
-    DWORD Cpsr;
+    ULONG Cpsr;
     union {
         struct {
-            DWORD64 X0;
-            DWORD64 X1;
-            DWORD64 X2;
-            DWORD64 X3;
-            DWORD64 X4;
-            DWORD64 X5;
-            DWORD64 X6;
-            DWORD64 X7;
-            DWORD64 X8;
-            DWORD64 X9;
-            DWORD64 X10;
-            DWORD64 X11;
-            DWORD64 X12;
-            DWORD64 X13;
-            DWORD64 X14;
-            DWORD64 X15;
-            DWORD64 X16;
-            DWORD64 X17;
-            DWORD64 X18;
-            DWORD64 X19;
-            DWORD64 X20;
-            DWORD64 X21;
-            DWORD64 X22;
-            DWORD64 X23;
-            DWORD64 X24;
-            DWORD64 X25;
-            DWORD64 X26;
-            DWORD64 X27;
-            DWORD64 X28;
-    		DWORD64 Fp;
-            DWORD64 Lr;
+            ULONG64 X0;
+            ULONG64 X1;
+            ULONG64 X2;
+            ULONG64 X3;
+            ULONG64 X4;
+            ULONG64 X5;
+            ULONG64 X6;
+            ULONG64 X7;
+            ULONG64 X8;
+            ULONG64 X9;
+            ULONG64 X10;
+            ULONG64 X11;
+            ULONG64 X12;
+            ULONG64 X13;
+            ULONG64 X14;
+            ULONG64 X15;
+            ULONG64 X16;
+            ULONG64 X17;
+            ULONG64 X18;
+            ULONG64 X19;
+            ULONG64 X20;
+            ULONG64 X21;
+            ULONG64 X22;
+            ULONG64 X23;
+            ULONG64 X24;
+            ULONG64 X25;
+            ULONG64 X26;
+            ULONG64 X27;
+            ULONG64 X28;
+    		ULONG64 Fp;
+            ULONG64 Lr;
         } DUMMYSTRUCTNAME;
-        DWORD64 X[31];
+        ULONG64 X[31];
     } DUMMYUNIONNAME;
 
-    DWORD64 Sp;
-    DWORD64 Pc;
+    ULONG64 Sp;
+    ULONG64 Pc;
 
     //
     // Floating Point/NEON Registers
     //
 
     NEON128 V[32];
-    DWORD Fpcr;
-    DWORD Fpsr;
+    ULONG Fpcr;
+    ULONG Fpsr;
 
     //
     // Debug registers
     //
 
-    DWORD Bcr[ARM64_MAX_BREAKPOINTS];
-    DWORD64 Bvr[ARM64_MAX_BREAKPOINTS];
-    DWORD Wcr[ARM64_MAX_WATCHPOINTS];
-    DWORD64 Wvr[ARM64_MAX_WATCHPOINTS];
+    ULONG Bcr[ARM64_MAX_BREAKPOINTS];
+    ULONG64 Bvr[ARM64_MAX_BREAKPOINTS];
+    ULONG Wcr[ARM64_MAX_WATCHPOINTS];
+    ULONG64 Wvr[ARM64_MAX_WATCHPOINTS];
 
-} _CONTEXT, *P_CONTEXT;
-typedef _CONTEXT CONTEXT, *PCONTEXT;;
+} CONTEXT, *PCONTEXT;
 $endif
