@@ -702,7 +702,7 @@ typedef enum _KAPC_ENVIRONMENT
 
 typedef struct _KTIMER_TABLE_ENTRY
 {
-#if (NTDDI_VERSION >= NTDDI_LONGHORN) || defined(_M_ARM) || defined(_M_AMD64)
+#if (NTDDI_VERSION >= NTDDI_LONGHORN) || defined(_M_ARM) || defined(_M_AMD64) || defined(_M_ARM64)
     KSPIN_LOCK Lock;
 #endif
     LIST_ENTRY Entry;
@@ -782,13 +782,13 @@ typedef struct _KDPC_DATA
     LIST_ENTRY DpcListHead;
 #endif
     ULONG_PTR DpcLock;
-#if defined(_M_AMD64) || defined(_M_ARM)
+#if defined(_M_AMD64) || defined(_M_ARM) || defined(_M_ARM64)
     volatile LONG DpcQueueDepth;
 #else
     volatile ULONG DpcQueueDepth;
 #endif
     ULONG DpcCount;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN) || defined(_M_ARM)
+#if (NTDDI_VERSION >= NTDDI_LONGHORN) || defined(_M_ARM) || defined(_M_ARM64)
     PKDPC ActiveDpc;
 #endif
 } KDPC_DATA, *PKDPC_DATA;
@@ -1204,11 +1204,13 @@ typedef struct _KTHREAD
     };
     KSPIN_LOCK ApcQueueLock;
 #ifndef _M_AMD64 // [
+#ifndef _M_ARM64 
     ULONG ContextSwitches;
     volatile UCHAR State;
     UCHAR NpxState;
     KIRQL WaitIrql;
     KPROCESSOR_MODE WaitMode;
+#endif
 #endif // ]
     LONG_PTR WaitStatus;
 #if (NTDDI_VERSION >= NTDDI_WIN7) // [
@@ -1254,6 +1256,7 @@ typedef struct _KTHREAD
     };
     PKQUEUE Queue;
 #ifndef _M_AMD64 // [
+#ifndef _M_ARM64 
     ULONG WaitTime;
     union
     {
@@ -1264,6 +1267,7 @@ typedef struct _KTHREAD
         };
         ULONG CombinedApcDisable;
     };
+#endif
 #endif // ]
     struct _TEB *Teb;
 
