@@ -7,111 +7,31 @@
 
 #include "precomp.h"
 
-int      nlastBarsUsed = 0;
+static int nlastBarsUsed = 0;
 
-WNDPROC  OldGraphWndProc;
-
-void     Graph_DrawCpuUsageGraph(HDC hDC, HWND hWnd);
-void     Graph_DrawMemUsageGraph(HDC hDC, HWND hWnd);
-void     Graph_DrawMemUsageHistoryGraph(HDC hDC, HWND hWnd);
+static void Graph_DrawCpuUsageGraph(HDC hDC, HWND hWnd);
+static void Graph_DrawMemUsageGraph(HDC hDC, HWND hWnd);
 
 INT_PTR CALLBACK
-Graph_WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+Graph_Draw(HWND hWnd, WPARAM wParam, LPARAM lParam)
 {
-    HDC          hdc;
-    PAINTSTRUCT  ps;
-    LONG         WindowId;
+    LONG WindowId = GetWindowLongPtrW(hWnd, GWLP_ID);
+    HDC  hdc = (HDC)wParam;
 
-    switch (message)
+    switch (WindowId)
     {
-    case WM_ERASEBKGND:
-        return TRUE;
-
-    /*
-     * Filter out mouse & keyboard messages
-     */
-    /* case WM_APPCOMMAND: */
-    case WM_CAPTURECHANGED:
-    case WM_LBUTTONDBLCLK:
-    case WM_LBUTTONDOWN:
-    case WM_LBUTTONUP:
-    case WM_MBUTTONDBLCLK:
-    case WM_MBUTTONDOWN:
-    case WM_MBUTTONUP:
-    case WM_MOUSEACTIVATE:
-    case WM_MOUSEHOVER:
-    case WM_MOUSELEAVE:
-    case WM_MOUSEMOVE:
-    /* case WM_MOUSEWHEEL: */
-    case WM_NCHITTEST:
-    case WM_NCLBUTTONDBLCLK:
-    case WM_NCLBUTTONDOWN:
-    case WM_NCLBUTTONUP:
-    case WM_NCMBUTTONDBLCLK:
-    case WM_NCMBUTTONDOWN:
-    case WM_NCMBUTTONUP:
-    /* case WM_NCMOUSEHOVER: */
-    /* case WM_NCMOUSELEAVE: */
-    case WM_NCMOUSEMOVE:
-    case WM_NCRBUTTONDBLCLK:
-    case WM_NCRBUTTONDOWN:
-    case WM_NCRBUTTONUP:
-    /* case WM_NCXBUTTONDBLCLK: */
-    /* case WM_NCXBUTTONDOWN: */
-    /* case WM_NCXBUTTONUP: */
-    case WM_RBUTTONDBLCLK:
-    case WM_RBUTTONDOWN:
-    case WM_RBUTTONUP:
-    /* case WM_XBUTTONDBLCLK: */
-    /* case WM_XBUTTONDOWN: */
-    /* case WM_XBUTTONUP: */
-    case WM_ACTIVATE:
-    case WM_CHAR:
-    case WM_DEADCHAR:
-    case WM_GETHOTKEY:
-    case WM_HOTKEY:
-    case WM_KEYDOWN:
-    case WM_KEYUP:
-    case WM_KILLFOCUS:
-    case WM_SETFOCUS:
-    case WM_SETHOTKEY:
-    case WM_SYSCHAR:
-    case WM_SYSDEADCHAR:
-    case WM_SYSKEYDOWN:
-    case WM_SYSKEYUP:
-
-    case WM_NCCALCSIZE:
-        return 0;
-
-    case WM_PAINT:
-        hdc = BeginPaint(hWnd, &ps);
-
-        WindowId = GetWindowLongPtrW(hWnd, GWLP_ID);
-
-        switch (WindowId)
-        {
-        case IDC_CPU_USAGE_GRAPH:
-            Graph_DrawCpuUsageGraph(hdc, hWnd);
-            break;
-        case IDC_MEM_USAGE_GRAPH:
-            Graph_DrawMemUsageGraph(hdc, hWnd);
-            break;
-        case IDC_MEM_USAGE_HISTORY_GRAPH:
-            Graph_DrawMemUsageHistoryGraph(hdc, hWnd);
-            break;
-        }
-
-        EndPaint(hWnd, &ps);
-        return 0;
+    case IDC_CPU_USAGE_GRAPH:
+        Graph_DrawCpuUsageGraph(hdc, hWnd);
+        break;
+    case IDC_MEM_USAGE_GRAPH:
+        Graph_DrawMemUsageGraph(hdc, hWnd);
+        break;
     }
 
-    /*
-     * Pass on all non-handled messages
-     */
-    return CallWindowProcW(OldGraphWndProc, hWnd, message, wParam, lParam);
+    return 0;
 }
 
-void Graph_DrawCpuUsageGraph(HDC hDC, HWND hWnd)
+static void Graph_DrawCpuUsageGraph(HDC hDC, HWND hWnd)
 {
     RECT      rcClient;
     RECT      rcBarLeft;
@@ -131,19 +51,13 @@ void Graph_DrawCpuUsageGraph(HDC hDC, HWND hWnd)
 /* Top bars that are "unused", i.e. are dark green, representing free cpu time */
     int       i;
 
-    /*
-     * Get the client area rectangle
-     */
+    /* Get the client area rectangle */
     GetClientRect(hWnd, &rcClient);
 
-    /*
-     * Fill it with blackness
-     */
+    /* Fill it with blackness */
     FillSolidRect(hDC, &rcClient, RGB(0, 0, 0));
 
-    /*
-     * Get the CPU usage
-     */
+    /* Get the CPU usage */
     CpuUsage = PerfDataGetProcessorUsage();
 
     wsprintfW(Text, L"%d%%", (int)CpuUsage);
@@ -168,8 +82,7 @@ void Graph_DrawCpuUsageGraph(HDC hDC, HWND hWnd)
     {
         nBarsUsed = 1;
     }
-    nBarsFree = nBars - (nlastBarsUsed>nBarsUsed ? nlastBarsUsed : nBarsUsed);
-
+    nBarsFree = nBars - (nlastBarsUsed > nBarsUsed ? nlastBarsUsed : nBarsUsed);
     if (TaskManagerSettings.ShowKernelTimes)
     {
         CpuKernelUsage = PerfDataGetProcessorSystemUsage();
@@ -217,7 +130,8 @@ void Graph_DrawCpuUsageGraph(HDC hDC, HWND hWnd)
     /*
      * Draw the last "used" bars
      */
-    if ((nlastBarsUsed - nBarsUsed) > 0) {
+    if ((nlastBarsUsed - nBarsUsed) > 0)
+    {
         for (i=0; i< (nlastBarsUsed - nBarsUsed); i++)
         {
             if (nlastBarsUsed > 5000) nlastBarsUsed = 5000;
@@ -275,7 +189,7 @@ void Graph_DrawCpuUsageGraph(HDC hDC, HWND hWnd)
     SelectObject(hDC, hOldFont);
 }
 
-void Graph_DrawMemUsageGraph(HDC hDC, HWND hWnd)
+static void Graph_DrawMemUsageGraph(HDC hDC, HWND hWnd)
 {
     RECT       rcClient;
     RECT       rcBarLeft;
@@ -293,19 +207,13 @@ void Graph_DrawMemUsageGraph(HDC hDC, HWND hWnd)
 /* Top bars that are "unused", i.e. are dark green, representing free memory */
     int        i;
 
-    /*
-     * Get the client area rectangle
-     */
+    /* Get the client area rectangle */
     GetClientRect(hWnd, &rcClient);
 
-    /*
-     * Fill it with blackness
-     */
+    /* Fill it with blackness */
     FillSolidRect(hDC, &rcClient, RGB(0, 0, 0));
 
-    /*
-     * Get the memory usage
-     */
+    /* Get the memory usage */
     PerfDataGetCommitChargeK(&CommitChargeTotal,
                              &CommitChargeLimit,
                              NULL);
@@ -314,6 +222,7 @@ void Graph_DrawMemUsageGraph(HDC hDC, HWND hWnd)
         wsprintfW(Text, L"%d MB", (int)(CommitChargeTotal / 1024));
     else
         wsprintfW(Text, L"%d K", (int)CommitChargeTotal);
+
     /*
      * Draw the font text onto the graph
      */
@@ -329,8 +238,8 @@ void Graph_DrawMemUsageGraph(HDC hDC, HWND hWnd)
      * Draw the graph. So first find out how many bars we can fit
      */
     nBars = ((rcClient.bottom - rcClient.top) - 25) / 3;
-        if (CommitChargeLimit)
-    nBarsUsed = (nBars * (int)((CommitChargeTotal * 100) / CommitChargeLimit)) / 100;
+    if (CommitChargeLimit)
+        nBarsUsed = (nBars * (int)((CommitChargeTotal * 100) / CommitChargeLimit)) / 100;
     nBarsFree = nBars - nBarsUsed;
 
     if (nBarsUsed < 0)     nBarsUsed = 0;
@@ -342,8 +251,8 @@ void Graph_DrawMemUsageGraph(HDC hDC, HWND hWnd)
     /*
      * Draw the bar graph
      */
-    rcBarLeft.left =  ((rcClient.right - rcClient.left) - 33) / 2;
-    rcBarLeft.right =  rcBarLeft.left + 16;
+    rcBarLeft.left = ((rcClient.right - rcClient.left) - 33) / 2;
+    rcBarLeft.right = rcBarLeft.left + 16;
     rcBarRight.left = rcBarLeft.left + 17;
     rcBarRight.right = rcBarLeft.right + 17;
     rcBarLeft.top = rcBarRight.top = 5;
@@ -381,6 +290,7 @@ void Graph_DrawMemUsageGraph(HDC hDC, HWND hWnd)
 
     SelectObject(hDC, hOldFont);
 }
+<<<<<<< HEAD
 
 void Graph_DrawMemUsageHistoryGraph(HDC hDC, HWND hWnd)
 {
@@ -436,3 +346,5 @@ void Graph_DrawMemUsageHistoryGraph(HDC hDC, HWND hWnd)
     {
     }
 }
+=======
+>>>>>>> ad0893d007d ([TASKMGR] Use owner-drawn performance graphs.)
