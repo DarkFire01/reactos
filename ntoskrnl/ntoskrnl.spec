@@ -1079,8 +1079,8 @@
 @ stdcall RtlConvertSidToUnicodeString(ptr ptr long)
 @ stdcall RtlConvertUlongToLargeInteger(long)
 @ stdcall RtlCopyLuid(ptr ptr)
-@ stdcall -arch=x86_64 RtlCopyMemory(ptr ptr int64) memmove
-@ stdcall -arch=x86_64 RtlCopyMemoryNonTemporal(ptr ptr int64) memmove
+@ stdcall -arch=x86_64,arm64 RtlCopyMemory(ptr ptr int64) memmove
+@ stdcall -arch=x86_64,arm64 RtlCopyMemoryNonTemporal(ptr ptr int64) memmove
 @ stdcall RtlCopyRangeList(ptr ptr)
 @ stdcall RtlCopySid(long ptr ptr)
 @ stdcall RtlCopyString(ptr ptr)
@@ -1126,7 +1126,7 @@
 @ stdcall -arch=win32 RtlExtendedLargeIntegerDivide(long long long ptr)
 @ stdcall -arch=win32 RtlExtendedMagicDivide(long long long long long)
 @ stdcall RtlFillMemory(ptr long long)
-@ stdcall -arch=i386,arm RtlFillMemoryUlong(ptr long long)
+@ stdcall -arch=i386,arm,arm64 RtlFillMemoryUlong(ptr long long)
 @ stdcall RtlFindClearBits(ptr long long)
 @ stdcall RtlFindClearBitsAndSet(ptr long long)
 @ stdcall RtlFindClearRuns(ptr ptr long long)
@@ -1585,11 +1585,11 @@
 @ cdecl isspace()
 @ cdecl isupper()
 @ cdecl isxdigit()
-@ cdecl -arch=x86_64,arm longjmp(ptr long)
+@ cdecl -arch=x86_64,arm,arm64 longjmp(ptr long)
 @ cdecl mbstowcs()
 @ cdecl mbtowc()
 @ cdecl memchr()
-@ cdecl -arch=x86_64 memcmp()
+@ cdecl -arch=x86_64,arm64 memcmp()
 @ cdecl memcpy()
 @ cdecl memmove()
 @ cdecl memset()
