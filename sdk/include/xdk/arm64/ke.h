@@ -20,6 +20,10 @@ $if (_WDMDDK_)
 #define PAGE_SIZE               0x1000
 #define PAGE_SHIFT              12L
 
+#define KERNEL_STACK_SIZE         0x3000 /* Place holder based on arm32 for testing! */
+#define KERNEL_LARGE_STACK_SIZE   0xF000 /* Place holder based on arm32 for testing! */
+#define KERNEL_LARGE_STACK_COMMIT KERNEL_STACK_SIZE /* Place holder based on arm32 for testing! */
+
 NTSYSAPI
 PKTHREAD
 NTAPI
