@@ -165,44 +165,6 @@ KeRestoreFloatingPointState(
     return STATUS_SUCCESS;
 }
 
-NTSYSAPI
-PRUNTIME_FUNCTION
-NTAPI
-RtlLookupFunctionEntry(
-    _In_ DWORD64 ControlPc,
-    _Out_ PDWORD64 ImageBase,
-    _Inout_opt_ PUNWIND_HISTORY_TABLE HistoryTable);
-
-NTSYSAPI
-PEXCEPTION_ROUTINE
-NTAPI
-RtlVirtualUnwind(
-    _In_ DWORD HandlerType,
-    _In_ DWORD64 ImageBase,
-    _In_ DWORD64 ControlPc,
-    _In_ PRUNTIME_FUNCTION FunctionEntry,
-    _Inout_ struct _CONTEXT *ContextRecord,
-    _Out_ PVOID *HandlerData,
-    _Out_ PDWORD64 EstablisherFrame,
-    _Inout_opt_ PKNONVOLATILE_CONTEXT_POINTERS ContextPointers);
-
-NTSYSAPI
-VOID
-NTAPI
-RtlUnwindEx(
-    _In_opt_ PVOID TargetFrame,
-    _In_opt_ PVOID TargetIp,
-    _In_opt_ struct _EXCEPTION_RECORD *ExceptionRecord,
-    _In_ PVOID ReturnValue,
-    _In_ struct _CONTEXT *ContextRecord,
-    _In_opt_ PUNWIND_HISTORY_TABLE HistoryTable);
-
-NTSYSAPI
-VOID
-__cdecl
-RtlRestoreContext(struct _CONTEXT *ContextRecord,
-                  struct _EXCEPTION_RECORD *ExceptionRecord);
-
 VOID
 KeFlushIoBuffers(
     _In_ PMDL Mdl,
