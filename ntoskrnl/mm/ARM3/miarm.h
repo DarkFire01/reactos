@@ -903,12 +903,16 @@ MI_MAKE_SUBSECTION_PTE(IN PMMPTE NewPte,
     if ((ULONG_PTR)Segment < ((ULONG_PTR)MmSubsectionBase + (128 * _1MB)))
     {
         Offset = (ULONG_PTR)Segment - (ULONG_PTR)MmSubsectionBase;
+        #ifdef _M_IX86
         NewPte->u.Subsect.WhichPool = PagedPool;
+        #endif
     }
     else
     {
         Offset = (ULONG_PTR)MmNonPagedPoolEnd - (ULONG_PTR)Segment;
+        #ifdef _M_IX86
         NewPte->u.Subsect.WhichPool = NonPagedPool;
+        #endif
     }
 
     /*
