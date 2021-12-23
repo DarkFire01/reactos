@@ -810,8 +810,10 @@ QSI_DEF(SystemPerformanceInformation)
         if (Prcb)
         {
             Spi->ContextSwitches += KeGetContextSwitches(Prcb);
+            #ifdef _M_IX86
             Spi->FirstLevelTbFills += Prcb->KeFirstLevelTbFills;
             Spi->SecondLevelTbFills += Prcb->KeSecondLevelTbFills;
+            #endif
             Spi->SystemCalls += Prcb->KeSystemCalls;
         }
     }
@@ -2634,6 +2636,7 @@ QSI_DEF(SystemObjectSecurityMode)
 /* Class 73 - Logical processor information */
 QSI_DEF(SystemLogicalProcessorInformation)
 {
+    #ifndef _M_ARM
     LONG i;
     PKPRCB Prcb;
     KAFFINITY CurrentProc;
@@ -2713,6 +2716,10 @@ QSI_DEF(SystemLogicalProcessorInformation)
     *ReqSize = DataSize;
 
     return Status;
+    #else
+    return 0;
+    #endif
+
 }
 
 /* Class 76 - System firmware table information */
