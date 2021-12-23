@@ -1625,8 +1625,10 @@ void BtrfsRecv::Open(HWND hwnd, const wstring& file, const wstring& path, bool q
     __get_cpuid(1, &cpuInfo[0], &cpuInfo[1], &cpuInfo[2], &cpuInfo[3]);
     have_sse42 = cpuInfo[2] & bit_SSE4_2;
 #else
+#ifndef _M_ARM
     __cpuid((int*)cpuInfo, 1);
     have_sse42 = cpuInfo[2] & (1 << 20);
+#endif
 #endif
 #endif
 
