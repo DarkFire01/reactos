@@ -30,7 +30,7 @@ VOID
 HalpClockInterrupt(VOID)
 {
     /* Clear the interrupt */
-    ASSERT(KeGetCurrentIrql() == CLOCK2_LEVEL);
+    ASSERT(KeGetCurrentIrql() == CLOCK_LEVEL);
     WRITE_REGISTER_ULONG(TIMER0_INT_CLEAR, 1);
 
     /* FIXME: Update HAL Perf counters */
@@ -40,7 +40,7 @@ HalpClockInterrupt(VOID)
     /* Call the kernel */
     KeUpdateSystemTime(KeGetCurrentThread()->TrapFrame,
                        HalpCurrentTimeIncrement,
-                       CLOCK2_LEVEL);
+                       CLOCK_LEVEL);
 }
 
 VOID
@@ -53,12 +53,11 @@ HalpStallInterrupt(VOID)
 VOID
 HalpInitializeClock(VOID)
 {
-    PKIPCR Pcr = (PKIPCR)KeGetPcr();
     ULONG ClockInterval;
     SP804_CONTROL_REGISTER ControlRegister;
 
     /* Setup the clock and profile interrupt */
-    Pcr->InterruptRoutine[CLOCK2_LEVEL] = HalpStallInterrupt;
+    //Pcr->InterruptRoutine[CLOCK_LEVEL] = HalpStallInterrupt;
 
     /*
      * Configure the interval to 10ms

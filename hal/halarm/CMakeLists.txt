@@ -36,7 +36,7 @@ include(generic.cmake)
 if(ARCH STREQUAL "arm")
     include(versa.cmake)
     # hal
-    add_hal(halversa SOURCES versa/halup.rc COMPONENTS generic versa)
+    add_hal(hal SOURCES COMPONENTS generic versa) #wtf
 elseif(ARCH STREQUAL "arm64")
-    add_hal(halapple SOURCES apple/halapple.rc COMPONENTS generic apple)
+    #add_hal(halapple SOURCES apple/halapple.rc COMPONENTS generic apple)
 endif()

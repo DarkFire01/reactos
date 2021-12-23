@@ -28,7 +28,7 @@ KeRaiseIrql(KIRQL NewIrql,
             PKIRQL OldIrql)
 {
     /* Call the fastcall function */
-    *OldIrql = KfRaiseIrql(NewIrql);
+   // *OldIrql = KfRaiseIrql(NewIrql);
 }
 
 /*
@@ -39,7 +39,7 @@ NTAPI
 KeLowerIrql(KIRQL NewIrql)
 {
     /* Call the fastcall function */
-    KfLowerIrql(NewIrql);
+  //  KfLowerIrql(NewIrql);
 }
 
 /*
@@ -62,7 +62,8 @@ FASTCALL
 KeAcquireSpinLockRaiseToSynch(PKSPIN_LOCK SpinLock)
 {
     /* Simply raise to dispatch */
-    return KfRaiseIrql(DISPATCH_LEVEL);
+    //return KfRaiseIrql(DISPATCH_LEVEL);
+    return 0;
 }
 
 /*
@@ -85,7 +86,8 @@ FASTCALL
 KfAcquireSpinLock(PKSPIN_LOCK SpinLock)
 {
     /* Simply raise to dispatch */
-    return KfRaiseIrql(DISPATCH_LEVEL);
+    //return KfRaiseIrql(DISPATCH_LEVEL);
+    return 0;
 }
 
 /*
@@ -97,7 +99,7 @@ KfReleaseSpinLock(PKSPIN_LOCK SpinLock,
                   KIRQL OldIrql)
 {
     /* Simply lower IRQL back */
-    KeLowerIrql(OldIrql);
+    //KeLowerIrql(OldIrql);
 }
 
 /*
@@ -108,7 +110,8 @@ FASTCALL
 KeAcquireQueuedSpinLock(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber)
 {
     /* Simply raise to dispatch */
-    return KfRaiseIrql(DISPATCH_LEVEL);
+   // return KfRaiseIrql(DISPATCH_LEVEL);
+   return 0;
 }
 
 /*
@@ -119,7 +122,8 @@ FASTCALL
 KeAcquireQueuedSpinLockRaiseToSynch(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber)
 {
     /* Simply raise to dispatch */
-    return KfRaiseIrql(DISPATCH_LEVEL);
+    //return KfRaiseIrql(DISPATCH_LEVEL);
+    return 0;
 }
 
 /*
@@ -131,7 +135,7 @@ KeAcquireInStackQueuedSpinLock(IN PKSPIN_LOCK SpinLock,
                                IN PKLOCK_QUEUE_HANDLE LockHandle)
 {
     /* Simply raise to dispatch */
-    LockHandle->OldIrql = KfRaiseIrql(DISPATCH_LEVEL);
+   // LockHandle->OldIrql = KfRaiseIrql(DISPATCH_LEVEL);
 }
 
 /*
@@ -143,7 +147,7 @@ KeAcquireInStackQueuedSpinLockRaiseToSynch(IN PKSPIN_LOCK SpinLock,
                                            IN PKLOCK_QUEUE_HANDLE LockHandle)
 {
     /* Simply raise to dispatch */
-    LockHandle->OldIrql = KfRaiseIrql(DISPATCH_LEVEL);
+  //  LockHandle->OldIrql = KfRaiseIrql(DISPATCH_LEVEL);
 }
 
 /*
@@ -155,7 +159,7 @@ KeReleaseQueuedSpinLock(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
                         IN KIRQL OldIrql)
 {
     /* Simply lower IRQL back */
-    KfLowerIrql(OldIrql);
+    //KfLowerIrql(OldIrql);
 }
 
 /*
@@ -166,7 +170,7 @@ FASTCALL
 KeReleaseInStackQueuedSpinLock(IN PKLOCK_QUEUE_HANDLE LockHandle)
 {
     /* Simply lower IRQL back */
-    KfLowerIrql(LockHandle->OldIrql);
+    //KfLowerIrql(LockHandle->OldIrql);
 }
 
 /*
@@ -178,7 +182,7 @@ KeTryToAcquireQueuedSpinLockRaiseToSynch(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
                                          IN PKIRQL OldIrql)
 {
     /* Simply raise to synch */
-    KeRaiseIrql(SYNCH_LEVEL, OldIrql);
+    //(SYNCH_LEVEL, OldIrql);
 
     /* Always return true on UP Machines */
     return TRUE;
@@ -193,7 +197,7 @@ KeTryToAcquireQueuedSpinLock(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
                              OUT PKIRQL OldIrql)
 {
     /* Simply raise to dispatch */
-    KeRaiseIrql(DISPATCH_LEVEL, OldIrql);
+   // KeRaiseIrql(DISPATCH_LEVEL, OldIrql);
 
     /* Always return true on UP Machines */
     return TRUE;

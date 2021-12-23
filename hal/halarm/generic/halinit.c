@@ -38,6 +38,7 @@ HalpGetParameters(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 /*
  * @implemented
  */
+CODE_SEG("INIT")
 BOOLEAN
 NTAPI
 HalInitSystem(IN ULONG BootPhase,
@@ -84,10 +85,10 @@ HalInitSystem(IN ULONG BootPhase,
         }
 
         /* Initialize interrupts */
-        HalpInitializeInterrupts();
+        //HalpInitializeInterrupts();
 
         /* Force initial PIC state */
-        KfRaiseIrql(KeGetCurrentIrql());
+       // KfRaiseIrql(KeGetCurrentIrql());
 
         /* Fill out the dispatch tables */
         //HalQuerySystemInformation = NULL; // FIXME: TODO;
@@ -129,7 +130,7 @@ HalInitSystem(IN ULONG BootPhase,
         HalpEnableInterruptHandler(IDT_DEVICE,
                                    0,
                                    PRIMARY_VECTOR_BASE,
-                                   CLOCK2_LEVEL,
+                                   CLOCK_LEVEL,
                                    HalpClockInterrupt,
                                    Latched);
 #if 0
@@ -170,9 +171,9 @@ DbgPrintEarly(const char *fmt, ...)
     {
         if (*String == '\n')
         {
-            KdPortPutByteEx(NULL, '\r');
+            //KdPortPutByteEx(NULL, '\r');
         }
-        KdPortPutByteEx(NULL, *String);
+        //KdPortPutByteEx(NULL, *String);
         String++;
     }
 

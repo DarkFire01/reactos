@@ -8,7 +8,7 @@ list(APPEND HAL_GENERIC_SOURCE
     generic/fmutex.c
     generic/halinit.c
     generic/misc.c
-    generic/pic.c
+    #generic/pic.c
     generic/portio.c
     generic/processor.c
     generic/profil.c
@@ -21,7 +21,8 @@ list(APPEND HAL_GENERIC_SOURCE
 
 if(ARCH STREQUAL "arm")
     list(APPEND HAL_GENERIC_ASM_SOURCE
-        generic/arm/cache.S)
+        #generic/arm/cache.S)
+    )
 endif()
 
 add_asm_files(lib_hal_generic_asm ${HAL_GENERIC_ASM_SOURCE})

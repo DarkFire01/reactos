@@ -54,7 +54,8 @@ HalpEnableInterruptHandler(IN UCHAR Flags,
                            IN KINTERRUPT_MODE Mode)
 {
     /* Register the routine */
-    ((PKIPCR)KeGetPcr())->InterruptRoutine[Irql] = Handler;
+    //((PKIPCR)KeGetPcr())->InterruptRoutine[Irql] = Handler;
+    UNIMPLEMENTED;
 }
 
 /* PUBLIC FUNCTIONS ***********************************************************/
@@ -62,6 +63,7 @@ HalpEnableInterruptHandler(IN UCHAR Flags,
 /*
  * @unimplemented
  */
+CODE_SEG("INIT")
 VOID
 NTAPI
 HalReportResourceUsage(VOID)
