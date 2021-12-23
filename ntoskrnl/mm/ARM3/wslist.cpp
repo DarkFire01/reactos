@@ -286,11 +286,11 @@ TrimWsList(PMMWSL WsList)
             /* We can remove it from the list. Save Protection first */
             ULONG Protection = Entry.u1.e1.Protection;
             RemoveFromWsList(WsList, Entry.u1.VirtualAddress);
-
+#ifdef _M_IX86
             /* Dirtify the page, if needed */
             if (PointerPte->u.Hard.Dirty)
                 Pfn->u3.e1.Modified = 1;
-
+#endif
             /* Make this a transition PTE */
             MI_MAKE_TRANSITION_PTE(PointerPte, Page, Protection);
             KeInvalidateTlbEntry(MiAddressToPte(PointerPte));
