@@ -163,7 +163,6 @@ typedef struct _TRAPFRAME_LOG_ENTRY
 //
 typedef struct _KPRCB
 {
-    #if 0
     UCHAR LegacyNumber;
     UCHAR ReservedMustBeZero;
     UCHAR IdleHalt;
@@ -185,7 +184,7 @@ typedef struct _KPRCB
     ULONG Number;
     ULONG PrcbLock;
     PCHAR PriorityState;
-    KPROCESSOR_STATE ProcessorState;
+    //struct KPROCESSOR_STATE ProcessorState;
     USHORT ProcessorModel;
     USHORT ProcessorRevision;
     ULONG MHz;
@@ -195,8 +194,8 @@ typedef struct _KPRCB
     USHORT MajorVersion;
     UCHAR BuildType;
     UCHAR CpuVendor;
-    UCHAR LegacyCoresPerPhysicalProcessor;
-    UCHAR LegacyLogicalProcessorsPerCore;
+    //UCHAR LegacyCoresPerPhysicalProcessor;
+    //UCHAR LegacyLogicalProcessorsPerCore;
     PVOID AcpiReserved;
     ULONG64 GroupSetMember;
     UCHAR Group;
@@ -207,19 +206,19 @@ typedef struct _KPRCB
     ULONG64 PrcbPad4[1];
     KSPIN_LOCK_QUEUE DECLSPEC_ALIGN(128) LockQueue[17];
     UCHAR ProcessorVendorString[2];
-    UCHAR PrcbPad4[1];
+    UCHAR PrcbPad5[1];
     ULONG FeatureBits;
     ULONG MaxBreakpoints;
     ULONG MaxWatchpoints;
     PCONTEXT Context;
     ULONG ContextFlagsInit;
     UCHAR EmulatedAccess;
-    ULONG64 EmulatedAccess;
-    ULONG64 EmulatedAccess;
-    ULONG64 EmulatedAccess;
-    LONG EmulatedAccess;
+    //ULONG64 EmulatedAccess;
+    //ULONG64 EmulatedAccess;
+    //ULONG64 EmulatedAccess;
+    //LONG EmulatedAccess;
     LONG TrapFrameLogIndex;
-    PTRAPFRAME_LOG_ENTRY TrapFrameLog
+    PTRAPFRAME_LOG_ENTRY TrapFrameLog;
     PP_LOOKASIDE_LIST DECLSPEC_ALIGN(128) PPLookasideList[16];
     LONG PacketBarrier;
     SINGLE_LIST_ENTRY DeferredReadyListHead;
@@ -339,7 +338,7 @@ typedef struct _KPRCB
     ULONG NormalPriorityQueueIndex;
     ULONG NormalPriorityReadyScanTick;
     KDPC TimerExpirationDpc;
-    RTL_RB_TREE ScbQueue;
+    //RTL_RB_TREE ScbQueue;
     LIST_ENTRY ScbList;
     UCHAR _PADDING8_[0x38];
     LIST_ENTRY DispatcherReadyListHead[32];
@@ -362,8 +361,101 @@ typedef struct _KPRCB
     ULONG KeExceptionDispatchCount;
     /////////////////////////////////////////////////////////
     /* Continue implementation from  KeExceptionDispatchCount*/
+     struct _KNODE* ParentNode;
+    UCHAR _PADDING9_[0x4];
+    ULONG64 AffinitizedCycles;
+    ULONG64 StartCycles;
+    ULONG64 GenerationTarget;
+    ULONG64 CycleCounterHigh;
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+    KENTROPY_TIMING_STATE EntropyTimingState;
+#endif /* (NTDDI_VERSION >= NTDDI_WIN8) */
+    LONG MmSpinLockOrdering;
+    ULONG PageColor;
+    ULONG NodeColor;
+    ULONG NodeShiftedColor;
+    ULONG SecondaryColorMask;
+    ULONG64 CycleTime;
+    UCHAR _PADDING10_[0x58];
+    ULONG CcFastMdlReadNoWait;
+    ULONG CcFastMdlReadWait;
+    ULONG CcFastMdlReadNotPossible;
+    ULONG CcMapDataNoWait;
+    ULONG CcMapDataWait;
+    ULONG CcPinMappedDataCount;
+    ULONG CcPinReadNoWait;
+    ULONG CcPinReadWait;
+    ULONG CcMdlReadNoWait;
+    ULONG CcMdlReadWait;
+    ULONG CcLazyWriteHotSpots;
+    ULONG CcLazyWriteIos;
+    ULONG CcLazyWritePages;
+    ULONG CcDataFlushes;
+    ULONG CcDataPages;
+    ULONG CcLostDelayedWrites;
+    ULONG CcFastReadResourceMiss;
+    ULONG CcCopyReadWaitMiss;
+    ULONG CcFastMdlReadResourceMiss;
+    ULONG CcMapDataNoWaitMiss;
+    ULONG CcMapDataWaitMiss;
+    ULONG CcPinReadNoWaitMiss;
+    ULONG CcPinReadWaitMiss;
+    ULONG CcMdlReadNoWaitMiss;
+    ULONG CcMdlReadWaitMiss;
+    ULONG CcReadAheadIos;
+    LONG MmCacheTransitionCount;
+    LONG MmCacheReadCount;
+    LONG MmCacheIoCount;
+    UCHAR _PADDING11_[0xC];
+    PROCESSOR_POWER_STATE PowerState;
+    ULONG SharedReadyQueueOffset;
+    ULONG PrcbPad15[2];
+    ULONG DeviceInterrupts;
+    PVOID IsrDpcStats;
+    ULONG KeAlignmentFixupCount;
+    KDPC DpcWatchdogDpc;
+    KTIMER DpcWatchdogTimer;
+    SLIST_HEADER InterruptObjectPool;
+    //KAFFINITY_EX PackageProcessorSet;
+    UCHAR _PADDING12_[0x4];
+    ULONG SharedReadyQueueMask;
+    struct _KSHARED_READY_QUEUE* SharedReadyQueue;
+    ULONG CoreProcessorSet;
+    ULONG ScanSiblingMask;
+    ULONG LLCMask;
+    ULONG CacheProcessorMask[5];
+    ULONG ScanSiblingIndex;
+    CACHE_DESCRIPTOR Cache[6];
+    UCHAR CacheCount;
+    UCHAR PrcbPad20[3];
+    ULONG CachedCommit;
+    ULONG CachedResidentAvailable;
+    PVOID HyperPte;
+    PVOID WheaInfo;
+    PVOID EtwSupport;
+    UCHAR _PADDING13_[0x74];
+    SYNCH_COUNTERS SynchCounters;
+    //FILESYSTEM_DISK_COUNTERS FsCounters;
+    UCHAR _PADDING14_[0x8];
+    KARM_MINI_STACK FiqMiniStack;
+    KARM_MINI_STACK IrqMiniStack;
+    KARM_MINI_STACK UdfMiniStack;
+    KARM_MINI_STACK AbtMiniStack;
+    KARM_MINI_STACK PanicMiniStack;
+    ULONG PanicStackBase;
+    PVOID IsrStack;
+    ULONG PteBitCache;
+    ULONG PteBitOffset;
+    KTIMER_TABLE TimerTable;
+    GENERAL_LOOKASIDE_POOL PPNxPagedLookasideList[32];
+    GENERAL_LOOKASIDE_POOL PPNPagedLookasideList[32];
+    GENERAL_LOOKASIDE_POOL PPPagedLookasideList[32];
+    SINGLE_LIST_ENTRY AbSelfIoBoostsList;
+    SINGLE_LIST_ENTRY AbPropagateBoostsList;
+    KDPC AbDpc;
+    UCHAR _PADDING15_[0x58];
+    //REQUEST_MAILBOX RequestMailbox[1];
     REQUEST_MAILBOX RequestMailbox[1];
-
     // FIXME: Oldstyle stuff
 #if (NTDDI_VERSION < NTDDI_WIN8) // FIXME
     UCHAR CpuType;
@@ -377,8 +469,6 @@ typedef struct _KPRCB
     KAFFINITY SetMember;
     CHAR VendorString[13];
 #endif
-#endif
-    ULONG dummy;
 } KPRCB, *PKPRCB;
 
 //
