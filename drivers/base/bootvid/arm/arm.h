@@ -17,11 +17,37 @@ extern PUSHORT VgaArmBase;
 #define PL110_LCDLPBASE     (PVOID)0xE0020014
 #define PL110_LCDCONTROL    (PVOID)0xE0020018
 
+#define GetRValue(quad)    ((UCHAR)(((quad)>>16) & 0xFF))
+#define GetGValue(quad)    ((UCHAR)(((quad)>>8) & 0xFF))
+#define GetBValue(quad)    ((UCHAR)((quad) & 0xFF))
+
 #define READ_REGISTER_ULONG(r) (*(volatile ULONG * const)(r))
 #define WRITE_REGISTER_ULONG(r, v) (*(volatile ULONG *)(r) = (v))
 
 #define READ_REGISTER_USHORT(r) (*(volatile USHORT * const)(r))
 #define WRITE_REGISTER_USHORT(r, v) (*(volatile USHORT *)(r) = (v))
+
+
+static const UCHAR DefaultPalette[] =
+{
+    0, 0, 0,
+    0, 0, 0xC0,
+    0, 0xC0, 0,
+    0, 0xC0, 0xC0,
+    0xC0, 0, 0,
+    0xC0, 0, 0xC0,
+    0xC0, 0xC0, 0,
+    0xC0, 0xC0, 0xC0,
+    0x80, 0x80, 0x80,
+    0, 0, 0xFF,
+    0, 0xFF, 0,
+    0, 0xFF, 0xFF,
+    0xFF, 0, 0,
+    0xFF, 0, 0xFF,
+    0xFF, 0xFF, 0,
+    0xFF, 0xFF, 0xFF
+};
+
 
 FORCEINLINE
 USHORT

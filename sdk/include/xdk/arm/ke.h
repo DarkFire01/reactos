@@ -199,6 +199,15 @@ _KeQueryTickCount(
 #define CP15_TPIDRURO   15, 0, 13,  0, 3 /* Software Thread ID Register, UsRO */
 #define CP15_TPIDRPRW   15, 0, 13,  0, 4 /* Software Thread ID Register, Kernel */
 
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+FORCEINLINE
+ULONG
+KeGetCurrentProcessorIndex(VOID)
+{
+    return 1;
+}
+#endif
+
 $endif (_WDMDDK_)
 $if (_NTDDK_)
 

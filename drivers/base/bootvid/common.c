@@ -79,7 +79,7 @@ BitBlt(
         return;
     }
 
-    PrepareForSetPixel();
+    //PrepareForSetPixel();
 
     /* 4bpp blitting */
     for (Y = Top; Y < Bottom; ++Y)
@@ -123,7 +123,7 @@ RleBitBlt(
     ULONG i, j;
     ULONG Code;
 
-    PrepareForSetPixel();
+    //PrepareForSetPixel();
 
     /* Set Y height and current X value and start loop */
     YDelta = Top + Height - 1;

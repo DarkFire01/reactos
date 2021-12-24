@@ -387,11 +387,13 @@ public:
         __in PFX_DRIVER_GLOBALS FxDriverGlobals
         )
     {
+        #ifndef _M_ARM
         ASSERT(m_PoolToFree != NULL);
 
         GetProcessorDriverEntryRef(
             KeGetCurrentProcessorIndex())->FxDriverGlobals =
                 FxDriverGlobals;
+        #endif
     }
 
     //
@@ -404,6 +406,7 @@ public:
     PFX_DRIVER_GLOBALS
     GetCurrentTrackedDriver()
     {
+        #ifndef _M_ARM
         PFX_DRIVER_GLOBALS fxDriverGlobals = NULL;
 
         ASSERT(m_PoolToFree != NULL);
@@ -412,6 +415,8 @@ public:
             KeGetCurrentProcessorIndex())->FxDriverGlobals;
 
         return fxDriverGlobals;
+        #endif
+        return 0;
     }
 
     //

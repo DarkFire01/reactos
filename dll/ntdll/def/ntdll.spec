@@ -702,7 +702,7 @@
 @ stdcall RtlCopyLuidAndAttributesArray(long ptr ptr)
 @ stdcall RtlCopyMappedMemory(ptr ptr long)
 @ cdecl -version=0x600+ -arch=x86_64 RtlCopyMemory(ptr ptr long) memmove
-@ stub -version=0x600+ -arch=x86_64 RtlCopyMemoryNonTemporal
+@ stub -version=0x600+ -arch=x86_64,arm RtlCopyMemoryNonTemporal
 @ stdcall RtlCopyMemoryStreamTo(ptr ptr int64 ptr ptr)
 @ stdcall RtlCopyOutOfProcessMemoryStreamTo(ptr ptr int64 ptr ptr) RtlCopyMemoryStreamTo
 @ stdcall RtlCopySecurityDescriptor(ptr ptr)
@@ -825,7 +825,7 @@
 @ stdcall -arch=win32 -ret64 RtlExtendedLargeIntegerDivide(double long ptr)
 @ stdcall -arch=win32 -ret64 RtlExtendedMagicDivide(double double long)
 @ stdcall RtlFillMemory(ptr long long)
-@ stdcall -arch=i386 RtlFillMemoryUlong(ptr long long)
+@ stdcall -arch=i386,arm RtlFillMemoryUlong(ptr long long)
 @ stdcall RtlFinalReleaseOutOfProcessMemoryStream(ptr)
 @ stub -version=0x600+ RtlFindAceByType
 @ stdcall RtlFindActivationContextSectionGuid(long ptr long ptr ptr)

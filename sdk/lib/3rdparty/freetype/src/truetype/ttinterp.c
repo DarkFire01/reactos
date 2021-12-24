@@ -1240,6 +1240,10 @@
                    FT_Int    b )
   {
     FT_Int32  t, t2;
+    #ifdef __REACTOS__
+    t = 0;
+    t2 = 0;
+    #endif
 
 
 #if defined( __CC_ARM ) || defined( __ARMCC__ )

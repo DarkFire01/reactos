@@ -262,9 +262,12 @@ IntInt10AllocateBuffer(
     IntDetachFromCSRSS(&CallingProcess, &ApcState);
 
     return NO_ERROR;
-#else
+#elif _M_AMD64
     Status = x86BiosAllocateBuffer(Length, Seg, Off);
     return NT_SUCCESS(Status) ? NO_ERROR : ERROR_NOT_ENOUGH_MEMORY;
+#else
+    Status = 0;
+    return Status;
 #endif
 }
 
@@ -295,9 +298,12 @@ IntInt10FreeBuffer(
     IntDetachFromCSRSS(&CallingProcess, &ApcState);
 
     return Status;
-#else
+#elif _M_AMD64
     Status = x86BiosFreeBuffer(Seg, Off);
     return NT_SUCCESS(Status) ? NO_ERROR : ERROR_INVALID_PARAMETER;
+#else
+    Status = 0;
+    return Status;
 #endif
 }
 
@@ -331,11 +337,13 @@ IntInt10ReadMemory(
     IntDetachFromCSRSS(&CallingProcess, &ApcState);
 
     return NO_ERROR;
-#else
+#elif _M_AMD64
     NTSTATUS Status;
 
     Status = x86BiosReadMemory(Seg, Off, Buffer, Length);
     return NT_SUCCESS(Status) ? NO_ERROR : ERROR_INVALID_PARAMETER;
+#else
+    return 0;
 #endif
 }
 
@@ -367,11 +375,13 @@ IntInt10WriteMemory(
     IntDetachFromCSRSS(&CallingProcess, &ApcState);
 
     return NO_ERROR;
-#else
+#elif _M_AMD64
     NTSTATUS Status;
 
     Status = x86BiosWriteMemory(Seg, Off, Buffer, Length);
     return NT_SUCCESS(Status) ? NO_ERROR : ERROR_INVALID_PARAMETER;
+#else
+    return 0;
 #endif
 }
 
@@ -395,7 +405,7 @@ IntInt10CallBios(
 
     /* Clear the context */
     RtlZeroMemory(&BiosContext, sizeof(BiosContext));
-
+#ifdef _M_IX86
     /* Fill out the bios arguments */
     BiosContext.Eax = BiosArguments->Eax;
     BiosContext.Ebx = BiosArguments->Ebx;
@@ -406,7 +416,7 @@ IntInt10CallBios(
     BiosContext.Ebp = BiosArguments->Ebp;
     BiosContext.SegDs = BiosArguments->SegDs;
     BiosContext.SegEs = BiosArguments->SegEs;
-
+#endif
     /* Do the ROM BIOS call */
     (void)KeWaitForMutexObject(&VideoPortInt10Mutex,
                                Executive,
@@ -418,13 +428,15 @@ IntInt10CallBios(
     UnprotectLowV86Mem();
 #ifdef _M_AMD64
     Status = x86BiosCall(0x10, &BiosContext) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
-#else
+#elif _M_IX86
     Status = Ke386CallBios(0x10, &BiosContext);
+#else
+    Status = 0;
 #endif
     ProtectLowV86Mem();
 
     KeReleaseMutex(&VideoPortInt10Mutex, FALSE);
-
+#ifdef _M_IX86
     /* Return the arguments */
     BiosArguments->Eax = BiosContext.Eax;
     BiosArguments->Ebx = BiosContext.Ebx;
@@ -435,7 +447,7 @@ IntInt10CallBios(
     BiosArguments->Ebp = BiosContext.Ebp;
     BiosArguments->SegDs = (USHORT)BiosContext.SegDs;
     BiosArguments->SegEs = (USHORT)BiosContext.SegEs;
-
+#endif
     /* Detach and return status */
     IntDetachFromCSRSS(&CallingProcess, &ApcState);
 
