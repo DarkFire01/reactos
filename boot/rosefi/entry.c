@@ -5,26 +5,18 @@
  * COPYRIGHT:   Copyright 2021 Justin Miller <justinmiller100@gmail.com>
  */
 
-#include "include/uefiloader.h"
+#include "include/rosefip.h"
 
 EFI_STATUS
 RefiEntry(
     _In_ EFI_HANDLE ImageHandle,
     _In_ EFI_SYSTEM_TABLE *SystemTable)
 {
-    RefiClearScreen(SystemTable);
-    RefiColPrint(L"Testing refactor...", SystemTable);
-
+    RefiSetColor(SystemTable, EFI_MAGENTA);
+    RefiColPrint(SystemTable, L"Starting ROSEFI:");
     for(;;)
     {
-
+        
     }
-    return 0;
-}
-
-
-VOID 
-RefiStallProcessor(EFI_SYSTEM_TABLE* SystemTable, UINTN d)
-{
-    SystemTable->BootServices->Stall(d * 1000);
+    return EFI_SUCCESS;
 }

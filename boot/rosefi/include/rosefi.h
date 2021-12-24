@@ -30,3 +30,7 @@
 /* UEFI Headers */
 #include <uefi/uefigop.h>
 #include <uefi/uefierror.h>
+
+/* Registry Headers */
+#define __FREELDR_H
+#include <cmlib.h>

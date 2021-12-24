@@ -25,9 +25,9 @@ endif()
 
 list(APPEND BOOTMGR_BASE_SOURCE
         include/rosefi.h
-        loader/entry.c
-        loader/misc.c
-        loader/display/eficonsolelib.c
+        entry.c
+        time.c
+        display/eficonsolelib.c
     )
 
 add_executable(${EFI_PLATFORM_ID} ${BOOTMGR_BASE_SOURCE})
@@ -55,7 +55,7 @@ endif()
 set_entrypoint(${EFI_PLATFORM_ID} RefiEntry)
 
 target_link_libraries(${EFI_PLATFORM_ID} cportlib cmlib rtl libcntpr)
-
+add_dependencies(${EFI_PLATFORM_ID} xdk)
 # dynamic analysis switches
 if(STACK_PROTECTOR)
     target_sources(${EFI_PLATFORM_ID} PRIVATE $<TARGET_OBJECTS:gcc_ssp_nt>)

@@ -1,20 +1,20 @@
 /*
  * PROJECT:     ROSEFI
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
- * PURPOSE:     ROSEFI console source file
+ * PURPOSE:     ROSEFI default console source file
  * COPYRIGHT:   Copyright 2021 Justin Miller <justinmiller100@gmail.com>
  */
 
-#include "../include/uefiloader.h"
+#include "../include/rosefip.h"
 
 VOID
-RefiColSetCursor(UINT32 Col, UINT32 Row, EFI_SYSTEM_TABLE* SystemTable)
+RefiColSetCursor(EFI_SYSTEM_TABLE* SystemTable, UINT32 Col, UINT32 Row)
 {
     SystemTable->ConOut->SetCursorPosition(SystemTable->ConOut, Col, Row);
 }
 
 VOID
-RefiColPrint(CHAR16* str,  EFI_SYSTEM_TABLE* SystemTable)
+RefiColPrint(EFI_SYSTEM_TABLE* SystemTable, CHAR16* str)
 {
     SystemTable->ConOut->OutputString(SystemTable->ConOut, str);
 }
@@ -26,7 +26,7 @@ RefiClearScreen(EFI_SYSTEM_TABLE* SystemTable)
 }
 
 VOID
-RefiSetColor(UINTN Attribute, EFI_SYSTEM_TABLE* SystemTable)
+RefiSetColor(EFI_SYSTEM_TABLE* SystemTable, UINTN Attribute)
 {
     SystemTable->ConOut->SetAttribute(SystemTable->ConOut, Attribute);
 }

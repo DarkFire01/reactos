@@ -325,6 +325,7 @@ KiInitializeMachineType(VOID)
     }
 }
 
+/* ARM specific, abstraction between asm and c */
 DECLSPEC_NORETURN
 VOID
 KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
