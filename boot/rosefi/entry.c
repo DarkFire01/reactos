@@ -7,16 +7,37 @@
 
 #include "include/rosefip.h"
 
+EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
+PROSEFI_FRAMEBUFFER_DATA refiFbData;
+
 EFI_STATUS
 RefiEntry(
     _In_ EFI_HANDLE ImageHandle,
     _In_ EFI_SYSTEM_TABLE *SystemTable)
 {
-    RefiSetColor(SystemTable, EFI_MAGENTA);
-    RefiColPrint(SystemTable, L"Starting ROSEFI:");
+    EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
+    EFI_STATUS refiCheck;
+    //UINT32 x, y, color;
+
+    /* Just print a string to show we are alive on system with standard GOP */
+    RefiSetColor(SystemTable, EFI_GREEN);
+    RefiColPrint(SystemTable, L"RefiEntry: ");
+    RefiSetColor(SystemTable, EFI_WHITE);
+    RefiColPrint(SystemTable, L"Starting ROSEFI\r\n");
+
+
+    SystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
+    RefiInitGOP(SystemTable, refiFbData, gop);
+    /* Initalize UEFI loader memory managment */
+    refiCheck = RefiInitMemoryManager(SystemTable);
+    RefiStallProcessor(SystemTable, 5000);
+    RefiFatalFailure(SystemTable, refiCheck, gop, refiFbData->ScreenWidth, refiFbData->ScreenHeight);
+    if(refiCheck != EFI_SUCCESS)
+    {
+    }
     for(;;)
     {
-        
+
     }
     return EFI_SUCCESS;
 }

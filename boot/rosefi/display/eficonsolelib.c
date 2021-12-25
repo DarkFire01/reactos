@@ -7,6 +7,8 @@
 
 #include "../include/rosefip.h"
 
+/* Before swapping to a true GOP set up, we can use these to quickly debug */
+
 VOID
 RefiColSetCursor(EFI_SYSTEM_TABLE* SystemTable, UINT32 Col, UINT32 Row)
 {

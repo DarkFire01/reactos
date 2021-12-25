@@ -27,7 +27,10 @@ list(APPEND BOOTMGR_BASE_SOURCE
         include/rosefi.h
         entry.c
         time.c
+        display/gop.c
         display/eficonsolelib.c
+        lib/mm/efimm.c
+        debug.c
     )
 
 add_executable(${EFI_PLATFORM_ID} ${BOOTMGR_BASE_SOURCE})

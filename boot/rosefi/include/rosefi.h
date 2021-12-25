@@ -24,6 +24,9 @@
 /* PE Headers */
 #include <ntimage.h>
 
+/* ReactOS Headers */
+#include <reactos/arc/arc.h>
+
 /* ACPI Headers */
 #include <drivers/acpi/acpi.h>
 
