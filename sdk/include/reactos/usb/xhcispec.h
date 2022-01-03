@@ -16,6 +16,8 @@
 
 extern USBPORT_REGISTRATION_PACKET RegPacket;
 
+#define XHCI_MAX_ENDPOINTS 32;
+
 /* Transfer TRBs IDs ******************************************************************************/
 
 #define NORMAL                          1
@@ -760,145 +762,47 @@ typedef struct _XHCI_INPUT_CONTROL_CONTEXT
     };
 } XHCI_INPUT_CONTROL_CONTEXT, *PXHCI_INPUT_CONTROL_CONTEXT;
 
+typedef struct _XHCI_ENDPOINT_CONTEXT {
+    struct
+    {
+        ULONG dwendpoint0                    : 32;
+    };
+    struct
+    {
+        ULONG dwendpoint1                    : 32;
+    };
+    struct
+    {
+        ULONG dwendpoint2                    : 32;
+    };
+    struct
+    {
+        ULONG dwendpoint3                    : 32;
+    };
+	struct
+    {
+        ULONG RsvdZ1                         : 32;
+    };
+    struct
+    {
+        ULONG RsvdZ2                         : 32;
+    };
+    struct
+    {
+        ULONG RsvdZ3                         : 32;
+    };
+} XHCI_ENDPOINT_CONTEXT, *PXHCI_ENDPOINT_CONTEXT;
+
+
 /* Input Context **********************************************************************************/
 
 /* AKA the what the fuck struct */
 /* 6.2.5 */
 typedef struct _XHCI_INPUT_CONTEXT
 {
-    struct
-    {
-        XHCI_INPUT_CONTROL_CONTEXT InputControlContext;
-    };
-    struct
-    {
-        XHCI_DEVICE_CONTEXT Slot;
-    };
-    struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext0;
-    };
-    struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext1OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext1IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext2OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext2IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext3OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext3IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext4OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext4IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext5OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext5IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext6OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext6IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext7OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext7IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext8OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext8IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext9OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext9IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext10OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext10IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext11OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext11IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext12OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext12IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext13OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext13IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext14OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext14IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext15OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext15IN;
-    };
-
+    XHCI_INPUT_CONTROL_CONTEXT InputContext;
+    XHCI_SLOT_CONTEXT SlotContext;
+    XHCI_ENDPOINT_CONTEXT EndpointList[32 - 1];
 } XHCI_INPUT_CONTEXT, *PXHCI_INPUT_CONTEXT;
 
 /* Device Context *********************************************************************************/
@@ -907,133 +811,6 @@ typedef struct _XHCI_INPUT_CONTEXT
 /* 6.2.5 */
 typedef struct _XHCI_OUTPUT_DEVICE_CONTEXT
 {
-    struct
-    {
-        XHCI_SLOT_CONTEXT SlotContext;
-    };
-    struct
-    {
-        XHCI_ENDPOINT EPContext0BiDr;
-    };
-    struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext1OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext1IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext2OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext2IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext3OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext3IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext4OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext4IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext5OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext5IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext6OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext6IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext7OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext7IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext8OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext8IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext9OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext9IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext10OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext10IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext11OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext11IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext12OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext12IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext13OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext13IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext14OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext14IN;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext15OUT;
-    };
-     struct
-    {
-        XHCI_DEVICE_CONTEXT EPContext15IN;
-    };
-
+    XHCI_SLOT_CONTEXT SlotContext;
+    XHCI_ENDPOINT_CONTEXT EndpointList[32 - 1];
 } XHCI_OUTPUT_DEVICE_CONTEXT, *PXHCI_OUTPUT_DEVICE_CONTEXT;

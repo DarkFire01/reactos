@@ -7,7 +7,7 @@
  */
 
 #include "pusbxhci.h"
-#define NDEBUG
+//#define NDEBUG
 #include <debug.h>
 #define NDEBUG_XHCI_TRACE
 #include "dbg_xhci.h"
@@ -57,10 +57,10 @@ XHCI_QueryEndpointRequirements(IN PVOID xhciExtension,
     PXHCI_EXTENSION XhciExtension;
     ULONG TransferType;
     
-    DPRINT1("XHCI_QueryEndpointRequirements: function initiated\n");
+    DPRINT("XHCI_QueryEndpointRequirements: function initiated\n");
     TransferType = EndpointProperties->TransferType;
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
-    DPRINT1("your usb device is configured :D\n");
+
     switch (TransferType)
     {
         case USBPORT_TRANSFER_TYPE_ISOCHRONOUS:

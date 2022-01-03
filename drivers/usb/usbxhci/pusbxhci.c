@@ -86,7 +86,7 @@ PXHCI_AssignSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID)
 }
 
 XHCI_ENDPOINT HcDefaultEndpoint;
-
+PXHCI_HC_RESOURCES HcResourcesVA;
 VOID
 NTAPI
 PXHCI_InitSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID, ULONG SlotID)
@@ -95,7 +95,6 @@ PXHCI_InitSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID, ULONG SlotID)
     PXHCI_OUTPUT_DEVICE_CONTEXT HcOutputDeviceContext;
     PXHCI_TRANSFER_RING HcTransferControlRing;
     PXHCI_INPUT_CONTEXT HcInputContext;
-    PXHCI_HC_RESOURCES HcResourcesVA;
     PXHCI_SLOT_CONTEXT HcSlotContext;
 
     PXHCI_EXTENSION XhciExtension;
@@ -108,27 +107,28 @@ PXHCI_InitSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID, ULONG SlotID)
     XHCI_TRB Trb;
 
     OperationalRegs = xhciExtension->OperationalRegs;
-    max.QuadPart = -1;
     CheckCompletion = INVALID;
+    max.QuadPart = -1;
 
+    dequeue_pointer = HcResourcesVA-> EventRing.dequeue_pointer;
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
     HcResourcesVA = XhciExtension -> HcResourcesVA;
-    dequeue_pointer = HcResourcesVA-> EventRing.dequeue_pointer;
     eventTRB = (*dequeue_pointer).EventTRB;
 
     HcOutputDeviceContext = MmAllocateContiguousMemory(sizeof(XHCI_OUTPUT_DEVICE_CONTEXT),max);
     HcTransferControlRing = MmAllocateContiguousMemory(sizeof(XHCI_TRANSFER_RING),max);
     HcInputContext = MmAllocateContiguousMemory(sizeof(XHCI_INPUT_CONTEXT),max);
     HcSlotContext = MmAllocateContiguousMemory(sizeof(XHCI_SLOT_CONTEXT),max);
+
     RtlZeroMemory((PVOID)HcOutputDeviceContext, sizeof(XHCI_OUTPUT_DEVICE_CONTEXT));
     RtlZeroMemory((PVOID)HcTransferControlRing, sizeof(XHCI_TRANSFER_RING));
     RtlZeroMemory((PVOID)HcInputContext, sizeof(XHCI_INPUT_CONTEXT));
     RtlZeroMemory((PVOID)HcSlotContext, sizeof(XHCI_SLOT_CONTEXT));
-    
+
     TrDeqPtr = (ULONG_PTR)HcTransferControlRing->firstSeg.XhciTrb;
 
-    HcInputContext->InputControlContext.A0 = 1;
-    HcInputContext->InputControlContext.A1 = 1;
+    HcInputContext->InputContext.A0 = 1;
+    HcInputContext->InputContext.A1 = 1;
 
     HcSlotContext->RouteString = 0;
     HcSlotContext->ParentPortNumber = PortID;
@@ -146,8 +146,8 @@ PXHCI_InitSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID, ULONG SlotID)
 
     XHCI_Write64bitReg(OperationalRegs + XHCI_DCBAAP, (ULONG_PTR)HcOutputDeviceContext);
 
-    Trb.CommandTRB.AddressDevice.InputContextPtrLow = (ULONG_PTR)HcInputContext->InputControlContext.RsvdZ1;
-    Trb.CommandTRB.AddressDevice.InputContextPtrHigh = (ULONG_PTR)HcInputContext->EPContext8OUT.RsvdZ1;
+    Trb.CommandTRB.AddressDevice.InputContextPtrLow = (ULONG_PTR)HcInputContext->InputContext.RsvdZ1;
+    Trb.CommandTRB.AddressDevice.InputContextPtrHigh = ((ULONG_PTR)HcInputContext->InputContext.RsvdZ1 + sizeof(XHCI_INPUT_CONTEXT));
     Trb.CommandTRB.AddressDevice.RsvdZ2 = 0;
     Trb.CommandTRB.AddressDevice.RsvdZ3 = 0;
     Trb.CommandTRB.AddressDevice.CycleBit = 0;
@@ -166,8 +166,6 @@ PXHCI_InitSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID, ULONG SlotID)
             break;
         }
     }
-
-    DPRINT("Device is Active\n");
 }
 
 /* Transfer type functions ************************************************************************/
