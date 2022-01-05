@@ -33,7 +33,49 @@ XHCI_OpenEndpoint(IN PVOID xhciExtension,
                   IN PUSBPORT_ENDPOINT_PROPERTIES  endpointParameters,
                   IN PVOID xhciEndpoint)
 {
-    DPRINT1("XHCI_OpenEndpoint: function initiated\n");
+    PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties = endpointParameters;
+    PXHCI_EXTENSION XhciExtension = (PXHCI_EXTENSION)xhciExtension;
+    PXHCI_ENDPOINT XhciEndpoint = xhciEndpoint;
+    ULONG TransferType;
+    MPSTATUS MPStatus;
+
+    DPRINT("XHCI_OpenEndpoint: function initiated\n");
+    TransferType = EndpointProperties->TransferType;
+
+    switch (TransferType)
+    {
+        case USBPORT_TRANSFER_TYPE_ISOCHRONOUS:
+            MPStatus = XHCI_OpenIsoEndpoint(XhciExtension,
+                                            EndpointProperties,
+                                            XhciEndpoint);
+            break;
+
+        case USBPORT_TRANSFER_TYPE_CONTROL:
+            MPStatus = XHCI_OpenControlEndpoint(XhciExtension,
+                                                EndpointProperties,
+                                                XhciEndpoint);
+            break;
+
+        case USBPORT_TRANSFER_TYPE_BULK:
+            MPStatus = XHCI_OpenBulkEndpoint(XhciExtension,
+                                             EndpointProperties,
+                                             XhciEndpoint);
+            break;
+
+        case USBPORT_TRANSFER_TYPE_INTERRUPT:
+            MPStatus = XHCI_OpenInterruptEndpoint(XhciExtension,
+                                                  EndpointProperties,
+                                                  XhciEndpoint);
+            break;
+
+        default:
+            return MP_STATUS_NOT_SUPPORTED;
+            break;
+    }
+
+    if (MPStatus != MP_STATUS_SUCCESS)
+        return MPStatus;
+
     return MP_STATUS_SUCCESS;
 }
 
@@ -43,7 +85,9 @@ XHCI_ReopenEndpoint(IN PVOID xhciExtension,
                     IN PUSBPORT_ENDPOINT_PROPERTIES  endpointParameters,
                     IN PVOID  xhciEndpoint)
 {
-    DPRINT1("XHCI_ReopenEndpoint: function initiated\n");
+    DPRINT("XHCI_ReopenEndpoint: function initiated\n");
+    UNIMPLEMENTED;
+    __debugbreak();
     return MP_STATUS_SUCCESS;
 }
 
@@ -1026,6 +1070,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
                               USB_MINIPORT_FLAGS_POLLING |
                               USB_MINIPORT_FLAGS_WAKE_SUPPORT;
 
+    //TODO: This probably should depend on what we are dealing with...
     RegPacket.MiniPortBusBandwidth = TOTAL_USB30_BUS_BANDWIDTH;
 
     RegPacket.MiniPortExtensionSize = sizeof(XHCI_EXTENSION);
@@ -1091,4 +1136,44 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     return USBPORT_RegisterUSBPortDriver(DriverObject, USB30_MINIPORT_INTERFACE_VERSION, &RegPacket);
 
+}
+
+MPSTATUS
+NTAPI
+XHCI_OpenIsoEndpoint(IN PXHCI_EXTENSION XhciExtension,
+                     IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
+                     IN PXHCI_ENDPOINT  XhciEndpoint)
+{
+    DPRINT("XHCI_OpenIsoEndpoint: function initiated\n");
+    return MP_STATUS_SUCCESS;
+}
+
+MPSTATUS
+NTAPI                            
+XHCI_OpenControlEndpoint(IN PXHCI_EXTENSION XhciExtension,
+                         IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
+                         IN PXHCI_ENDPOINT  XhciEndpoint)
+{
+    DPRINT("XHCI_OpenControlEndpoint: function initiated\n");
+    return MP_STATUS_SUCCESS;
+}
+
+MPSTATUS
+NTAPI
+XHCI_OpenBulkEndpoint(IN PXHCI_EXTENSION XhciExtension,
+                      IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
+                      IN PXHCI_ENDPOINT  XhciEndpoint)
+{
+    DPRINT("XHCI_OpenBulkEndpoint: function initiated\n");
+    return MP_STATUS_SUCCESS;
+}
+
+MPSTATUS
+NTAPI
+XHCI_OpenInterruptEndpoint(IN PXHCI_EXTENSION XhciExtension,
+                           IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
+                           IN PXHCI_ENDPOINT  XhciEndpoint)
+{
+    DPRINT("XHCI_OpenInterruptEndpoint: function initiated\n");
+    return MP_STATUS_SUCCESS;
 }

@@ -796,21 +796,19 @@ typedef struct _XHCI_ENDPOINT_CONTEXT {
 
 /* Input Context **********************************************************************************/
 
-/* AKA the what the fuck struct */
 /* 6.2.5 */
 typedef struct _XHCI_INPUT_CONTEXT
 {
     XHCI_INPUT_CONTROL_CONTEXT InputContext;
     XHCI_SLOT_CONTEXT SlotContext;
-    XHCI_ENDPOINT_CONTEXT EndpointList[32 - 1];
+    XHCI_ENDPOINT_CONTEXT EndpointList[31]; /* Hard value in spec */
 } XHCI_INPUT_CONTEXT, *PXHCI_INPUT_CONTEXT;
 
 /* Device Context *********************************************************************************/
 
-/* AKA the what the fuck struct part 2 */
 /* 6.2.5 */
 typedef struct _XHCI_OUTPUT_DEVICE_CONTEXT
 {
     XHCI_SLOT_CONTEXT SlotContext;
-    XHCI_ENDPOINT_CONTEXT EndpointList[32 - 1];
+    XHCI_ENDPOINT_CONTEXT EndpointList[31]; /* Hard value in spec */
 } XHCI_OUTPUT_DEVICE_CONTEXT, *PXHCI_OUTPUT_DEVICE_CONTEXT;

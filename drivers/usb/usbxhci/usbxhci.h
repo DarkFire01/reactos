@@ -123,10 +123,40 @@ XHCI_RH_EnableIrq(
 
 MPSTATUS
 NTAPI
-XHCI_SendCommand (IN XHCI_TRB CommandTRB,
-                  IN PXHCI_EXTENSION XhciExtension);
+XHCI_SendCommand(
+  IN XHCI_TRB CommandTRB,
+  IN PXHCI_EXTENSION XhciExtension);
 
 VOID
 NTAPI
-XHCI_Write64bitReg(IN PULONG BaseAddr,
-                   IN ULONGLONG Data);
+XHCI_Write64bitReg(
+  IN PULONG BaseAddr,
+  IN ULONGLONG Data);
+
+MPSTATUS
+NTAPI
+XHCI_OpenIsoEndpoint(
+  IN PXHCI_EXTENSION XhciExtension,
+  IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
+  IN PXHCI_ENDPOINT  XhciEndpoint);
+
+MPSTATUS
+NTAPI
+XHCI_OpenControlEndpoint(
+  IN PXHCI_EXTENSION XhciExtension,
+  IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
+  IN PXHCI_ENDPOINT  XhciEndpoint);
+
+MPSTATUS
+NTAPI
+XHCI_OpenBulkEndpoint(
+  IN PXHCI_EXTENSION XhciExtension,
+  IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
+  IN PXHCI_ENDPOINT  XhciEndpoint);
+
+MPSTATUS
+NTAPI
+XHCI_OpenInterruptEndpoint(
+  IN PXHCI_EXTENSION XhciExtension,
+  IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
+  IN PXHCI_ENDPOINT  XhciEndpoint);

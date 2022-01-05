@@ -1,0 +1,4 @@
+[PUBLIC (XHCI_XXXX)]
+    -> Be valid for any speed, device and configuartion of the driver
+[PRIVATE (PXHCI_XXXX)]
+    -> Should vary on the parameters mention above.

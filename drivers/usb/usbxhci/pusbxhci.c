@@ -27,12 +27,12 @@ PXHCI_PortStatusChange(IN PXHCI_EXTENSION xhciExtension, IN ULONG PortID)
 
     if(DeviceInsertedEvent == TRUE)
     {
-        DPRINT1("PXHCI_PortStatusChange: USB device has been inserted from port: %X\n", PortID);
+        DPRINT("PXHCI_PortStatusChange: USB device has been inserted from port: %X\n", PortID);
         PXHCI_AssignSlot(xhciExtension, PortID);
     }
     else
     {
-        DPRINT1("PXHCI_PortStatusChange: USB device has been removed from port: %X\n", PortID);
+        DPRINT("PXHCI_PortStatusChange: USB device has been removed from port: %X\n", PortID);
         /* Run de-escalation code */
     }
 }
