@@ -1269,8 +1269,17 @@ LoadAndBootWindowsCommon(
     /* Save final value of LoaderPagesSpanned */
     LoaderBlock->Extension->LoaderPagesSpanned = MmGetLoaderPagesSpanned();
 
-    TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
-          KiSystemStartup, LoaderBlockVA);
+    if (PaeModeOn)
+    {
+        /* No PAE support for kernel (no ntkrnlpa.exe) */
+        FIXME("Hello from PAE paged mode! KiSystemStartup %p, LoaderBlockVA %p\n", KiSystemStartup, LoaderBlockVA);
+        BugCheck("No PAE support for kernel!\n");
+    }
+    else
+    {
+        TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
+              KiSystemStartup, LoaderBlockVA);
+    }
 
     /* Zero KI_USER_SHARED_DATA page */
     RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
