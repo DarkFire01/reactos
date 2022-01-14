@@ -12,6 +12,7 @@
 #include <ndk/asm.h>
 #include <internal/i386/intrin_i.h>
 #include "../../winldr.h"
+#include "pae.h"
 
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WINDOWS);
