@@ -392,7 +392,8 @@ MempSetupPaging(IN PFN_NUMBER StartPage,
 
             if (KernelMapping)
             {
-                if (KernelPde[Page & PAE_PDE_MASK].Valid) WARN("KernelPde already mapped\n");
+                if (KernelPde[Page & PAE_PDE_MASK].Valid)
+                    WARN("KernelPde already mapped\n");
 
                 KernelPde[Page & PAE_PDE_MASK].PageFrameNumber = Page;
                 KernelPde[Page & PAE_PDE_MASK].Valid = (Page != 0);
@@ -640,7 +641,7 @@ WinLdrSetProcessorContext(
         __writecr3((ULONG_PTR)PaeTables);
 
         /* Enable PAE */
-        __writecr4(__readcr4() | 0x20);
+        __writecr4(__readcr4() | CR4_PAE);
     }
 
     /* Enable paging */
