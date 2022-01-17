@@ -291,7 +291,7 @@ typedef struct _XHCI_CONTROL_DATA_TRB
 C_ASSERT(sizeof(XHCI_CONTROL_DATA_TRB) == 16);
 
 /* 6.4.1.3 - Isoch Control TRB */
-typedef struct _XHCI_CONTROL_DATA_TRB 
+typedef struct _XHCI_CONTROL_ISO_TRB 
 {
     struct 
     {
@@ -323,8 +323,8 @@ typedef struct _XHCI_CONTROL_DATA_TRB
         ULONG FrameID                        : 10;
         ULONG SIA                            : 1;
     };
-} XHCI_CONTROL_DATA_TRB;
-C_ASSERT(sizeof(XHCI_CONTROL_DATA_TRB) == 16);
+} XHCI_CONTROL_ISO_TRB, *PXHCI_CONTROL_ISO_TRB;
+C_ASSERT(sizeof(XHCI_CONTROL_ISO_TRB) == 16);
 
 typedef struct _XHCI_CONTROL_STATUS_TRB 
 {
@@ -379,7 +379,7 @@ typedef struct _XHCI_BANDWITH_REQUEST_TRB
         ULONG SlotID                         : 8;
     };
 } XHCI_BANDWITH_REQUEST_TRB;
-C_ASSERT(sizeof(XHCI_BANDWITH_REQUEST_TRB) == 16);
+
 typedef union _XHCI_CONTROL_TRB 
 {
     XHCI_CONTROL_SETUP_TRB  SetupTRB;
@@ -397,7 +397,6 @@ typedef union _XHCI_EVENT_TRB
     XHCI_EVENT_TRANSFER_TRB             EventTransferTRB;
     XHCI_BANDWITH_REQUEST_TRB           BandwithRequestTRB;
 }XHCI_EVENT_TRB, *PXHCI_EVENT_TRB;
-C_ASSERT(sizeof(XHCI_EVENT_TRB) == 16);
 
 /* Main Structs ***********************************************************************************/
 
@@ -420,7 +419,6 @@ typedef union _XHCI_TRB
     XHCI_EVENT_TRB      EventTRB;
     XHCI_GENERIC_TRB    GenericTRB;
 } XHCI_TRB, *PXHCI_TRB;
-C_ASSERT(sizeof(XHCI_TRB) == 16);
 
 typedef struct _XHCI_SEGMENT 
 {
@@ -447,10 +445,12 @@ typedef struct _XHCI_HC_RESOURCES
     XHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY DCBAA;
     DECLSPEC_ALIGN(16) XHCI_RING         EventRing ;
     DECLSPEC_ALIGN(64) XHCI_RING         CommandRing ;
+    DECLSPEC_ALIGN(64) XHCI_RING         TransferRing ;
     DECLSPEC_ALIGN(64) XHCI_EVENT_RING_SEGMENT_TABLE EventRingSegTable;
 } XHCI_HC_RESOURCES, *PXHCI_HC_RESOURCES;
-C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,EventRing)% 16 == 0); 
-C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,CommandRing)% 64 == 0); 
+C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,EventRing)% 16 == 0);
+C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,CommandRing)% 64 == 0);
+C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,TransferRing)% 64 == 0);
 C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,EventRingSegTable)% 64 == 0);
 
 typedef struct _XHCI_EXTENSION 

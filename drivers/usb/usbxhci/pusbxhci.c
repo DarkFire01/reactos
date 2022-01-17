@@ -105,7 +105,8 @@ PXHCI_InitSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID, ULONG SlotID)
     PHYSICAL_ADDRESS max;
     ULONG_PTR TrDeqPtr;
     XHCI_TRB Trb;
-
+    DPRINT1("Test");
+__debugbreak();
     OperationalRegs = xhciExtension->OperationalRegs;
     CheckCompletion = INVALID;
     max.QuadPart = -1;
@@ -119,12 +120,14 @@ PXHCI_InitSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID, ULONG SlotID)
     HcTransferControlRing = MmAllocateContiguousMemory(sizeof(XHCI_TRANSFER_RING),max);
     HcInputContext = MmAllocateContiguousMemory(sizeof(XHCI_INPUT_CONTEXT),max);
     HcSlotContext = MmAllocateContiguousMemory(sizeof(XHCI_SLOT_CONTEXT),max);
-
+    DPRINT1("memory alloc");
+__debugbreak();
     RtlZeroMemory((PVOID)HcOutputDeviceContext, sizeof(XHCI_OUTPUT_DEVICE_CONTEXT));
     RtlZeroMemory((PVOID)HcTransferControlRing, sizeof(XHCI_TRANSFER_RING));
     RtlZeroMemory((PVOID)HcInputContext, sizeof(XHCI_INPUT_CONTEXT));
     RtlZeroMemory((PVOID)HcSlotContext, sizeof(XHCI_SLOT_CONTEXT));
-
+    DPRINT1("Memory zero");
+__debugbreak();
     TrDeqPtr = (ULONG_PTR)HcTransferControlRing->firstSeg.XhciTrb;
 
     HcInputContext->InputContext.A0 = 1;
@@ -166,6 +169,9 @@ PXHCI_InitSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID, ULONG SlotID)
             break;
         }
     }
+
+    DPRINT1("Device is online");
+    __debugbreak();
 }
 
 /* Transfer type functions ************************************************************************/

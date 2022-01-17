@@ -404,7 +404,7 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     
     erstba.AsULONGLONG = HcResourcesPA.QuadPart + FIELD_OFFSET(XHCI_HC_RESOURCES, EventRingSegTable);
     EventRingSegTable.RingSegmentBaseAddr = (ULONGLONG)HcResourcesPA.QuadPart + FIELD_OFFSET(XHCI_HC_RESOURCES, EventRing.firstSeg.XhciTrb[0]);
-    EventRingSegTable.RingSegmentSize = 256;
+    EventRingSegTable.RingSegmentSize = XHCI_MAX_ENDPOINTS;
     EventRingSegTable.RsvdZ = 0;
     HcResourcesVA->EventRingSegTable = EventRingSegTable;
     DPRINT1("XHCI_InitializeResources  : erstba.AsULONGLONG   %p\n", erstba.AsULONGLONG );
@@ -414,12 +414,26 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     
     for (i=0; i<256; i++)
     {
-        HcResourcesVA->EventRing.firstSeg.XhciTrb[i].GenericTRB.Word0 = 0;
-        HcResourcesVA->EventRing.firstSeg.XhciTrb[i].GenericTRB.Word1 = 0;
-        HcResourcesVA->EventRing.firstSeg.XhciTrb[i].GenericTRB.Word2 = 0;
-        HcResourcesVA->EventRing.firstSeg.XhciTrb[i].GenericTRB.Word3 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word0 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word1 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word2 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word3 = 0;
     }
-    
+
+    /* Initalize Transfer Ring */
+
+    HcResourcesVA->TransferRing.enqueue_pointer = &(HcResourcesVA->TransferRing.firstSeg.XhciTrb[0]);
+    HcResourcesVA->TransferRing.dequeue_pointer = &(HcResourcesVA->TransferRing.firstSeg.XhciTrb[0]);
+    for (i=0; i<256; i++)
+    {
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word0 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word1 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word2 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word3 = 0;
+    }
+    HcResourcesVA->TransferRing.ProducerCycleState = 1;
+    HcResourcesVA->TransferRing.ConsumerCycleState = 1;
+
     // check if the controller supports 4k page size or quit.
     PageSize = XhciExtension-> PageSize;
     MaxScratchPadBuffers = XhciExtension->MaxScratchPadBuffers;
@@ -1015,7 +1029,7 @@ XHCI_RebalanceEndpoint(IN PVOID ohciExtension,
                        IN PVOID ohciEndpoint)
 {
     DPRINT1("XHCI_RebalanceEndpoint: UNIMPLEMENTED. FIXME\n");
-}
+} 
 
 VOID
 NTAPI

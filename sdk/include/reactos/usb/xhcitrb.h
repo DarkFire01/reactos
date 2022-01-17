@@ -15,17 +15,17 @@ typedef struct _XHCI_NORMAL_TRANSFER_TRB
     struct
     {
         ULONG DataBufPtrLow                  : 32;
-    }
+    };
     struct
     {
         ULONG DataBufPtrHigh                 : 32;
-    }
+    };
     struct
     {
         ULONG TrbTransferLen                 : 17;
         ULONG TDSize                         : 5;
-        ULONG InterruptTarget;               : 10;
-    }
+        ULONG InterruptTarget                : 10;
+    };
     struct 
     {
         ULONG CycleBit                       : 1;
@@ -38,10 +38,9 @@ typedef struct _XHCI_NORMAL_TRANSFER_TRB
         ULONG RsvdZ1                         : 2;
         ULONG BEI                            : 1;
         ULONG TRBType                        : 6;
-        ULONG RsvdZ1                         : 16;
+        ULONG RsvdZ2                         : 16;
     };
 } XHCI_NORMAL_TRANSFER_TRB, *PXHCI_NORMAL_TRANSFER_TRB;
-C_ASSERT(sizeof(XHCI_EVENT_GENERIC_TRB) == 16);
 
 /* Event TRBs ****************************************************************************************/
 
