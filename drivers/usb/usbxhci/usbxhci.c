@@ -135,6 +135,8 @@ XHCI_ProcessEvent (IN PXHCI_EXTENSION XhciExtension)
                 break;
             case PORT_STATUS_CHANGE_EVENT: 
                 DPRINT("XHCI_ProcessEvent: Port Status change event\n");
+                /* Call a private function to handle port status events */
+                PXHCI_PortStatusChange(XhciExtension, eventTRB.PortStatusChangeTRB.PortID);
                 break;
             case BANDWIDTH_RESET_REQUEST_EVENT:
                 DPRINT("XHCI_ProcessEvent: BANDWIDTH_RESET_REQUEST_EVENT\n");
@@ -359,7 +361,7 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     DPRINT("XHCI_InitializeResources  : erstba.AsULONGLONG   %p\n", erstba.AsULONGLONG );
     XHCI_Write64bitReg(RunTimeRegisterBase + XHCI_ERSTBA, erstba.AsULONGLONG);
     // intially enque and deque are equal. 
-    
+
     
     for (i=0; i<256; i++)
     {
@@ -368,7 +370,21 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
         HcResourcesVA->EventRing.firstSeg.XhciTrb[i].GenericTRB.Word2 = 0;
         HcResourcesVA->EventRing.firstSeg.XhciTrb[i].GenericTRB.Word3 = 0;
     }
-    
+
+    /* Initalize Transfer Ring */
+
+    HcResourcesVA->TransferRing.enqueue_pointer = &(HcResourcesVA->TransferRing.firstSeg.XhciTrb[0]);
+    HcResourcesVA->TransferRing.dequeue_pointer = &(HcResourcesVA->TransferRing.firstSeg.XhciTrb[0]);
+    for (i=0; i<256; i++)
+    {
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word0 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word1 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word2 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word3 = 0;
+    }
+    HcResourcesVA->TransferRing.ProducerCycleState = 1;
+    HcResourcesVA->TransferRing.ConsumerCycleState = 1;
+
     // check if the controller supports 4k page size or quit.
     PageSize = XhciExtension-> PageSize;
     MaxScratchPadBuffers = XhciExtension->MaxScratchPadBuffers;
@@ -383,7 +399,7 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
         return MP_STATUS_FAILURE;
     }
     // allocate scratchpad buffer array
-     
+     // Start of sus
     Zero.QuadPart = 0; 
     Max.QuadPart = -1;   
     
@@ -426,6 +442,8 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     }
     XhciExtension-> ScratchPadArrayMDL = ScratchPadArrayMDL;
     XhciExtension-> ScratchPadBufferMDL = ScratchPadBufferMDL;
+    //end of sus
+    DPRINT1("XHCI has been sucessfully setup... odd..");
     return MP_STATUS_SUCCESS;
 }
 
@@ -512,7 +530,7 @@ XHCI_StartController(IN PVOID xhciExtension,
     XHCI_PAGE_SIZE PageSizeReg;
     USHORT MaxScratchPadBuffers;
     XHCI_HC_STRUCTURAL_PARAMS_2 HCSPARAMS2;
-    
+
     DPRINT("XHCI_StartController: function initiated\n");
     if ((Resources->ResourcesTypes & (USBPORT_RESOURCES_MEMORY | USBPORT_RESOURCES_INTERRUPT)) !=
                                      (USBPORT_RESOURCES_MEMORY | USBPORT_RESOURCES_INTERRUPT))
@@ -584,15 +602,18 @@ XHCI_StartController(IN PVOID xhciExtension,
         DPRINT("XHCI_StartController: Unsuccessful InitializeSchedule()\n");
         return MPStatus;
     }
-    
+
     // starting the controller
     Command.AsULONG = READ_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD);
     Command.RunStop = 1;
-    WRITE_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD, Command.AsULONG);
-    
+    PULONG Region;
+    Region = (OperationalRegs + XHCI_USBCMD);
+    //WRITE_REGISTER_ULONG(Region, 31 << 1);
+    WRITE_REGISTER_ULONG(Region, Command.AsULONG);
+    DPRINT1("xHCI has started\n");
+    __debugbreak();
     //below line should be uncommented if you want to use the controller work test function
-    MPStatus = PXHCI_ControllerWorkTest(XhciExtension, (PXHCI_HC_RESOURCES)Resources->StartVA, (PVOID)Resources->StartPA);
-
+    //MPStatus = PXHCI_ControllerWorkTest(XhciExtension, (PXHCI_HC_RESOURCES)Resources->StartVA, (PVOID)Resources->StartPA);
     return MP_STATUS_SUCCESS;
 }
 
@@ -813,6 +834,7 @@ NTAPI
 XHCI_CheckController(IN PVOID xhciExtension)
 {
     DPRINT("XHCI_CheckController: function initiated\n");
+    XHCI_ProcessEvent(xhciExtension);
 }
 
 ULONG

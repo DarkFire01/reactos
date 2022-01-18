@@ -16,3 +16,21 @@ NTAPI
 PXHCI_ControllerWorkTest(IN PXHCI_EXTENSION XhciExtension,
                          IN PXHCI_HC_RESOURCES HcResourcesVA,
                          IN PVOID resourcesStartPA);
+
+VOID
+NTAPI
+PXHCI_PortStatusChange(IN PXHCI_EXTENSION XhciExtension, 
+                       IN ULONG PortID);
+
+VOID  
+NTAPI
+PXHCI_AssignSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID);
+
+VOID
+NTAPI
+PXHCI_InitSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID, ULONG SlotID);
+
+VOID
+NTAPI
+XHCI_Write64bitReg(IN PULONG BaseAddr,
+                   IN ULONGLONG Data);

@@ -11,11 +11,6 @@
 #include <usbdlib.h>
 #include "hardware.h"
 
-typedef struct _XHCI_ENDPOINT //TODO: Which endpoint is it referring to?
-{
-    ULONG Reserved;
-} XHCI_ENDPOINT, *PXHCI_ENDPOINT;
-
 typedef struct _XHCI_TRANSFER 
 {
     ULONG Reserved;
