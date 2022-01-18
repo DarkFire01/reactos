@@ -35,6 +35,39 @@
 
 /* Hardware Structs *******************************************************************************/
 
+/* 5.4.8 */
+typedef struct _XHCI_PORT_STATUS_REGISTER
+{
+    struct 
+    {
+        ULONG WPR                            : 1;
+        ULONG DR                             : 1;
+        ULONG RsvdZ1                         : 2;
+        ULONG WOE                            : 1;
+        ULONG WDE                            : 1;
+        ULONG WCE                            : 1;
+        ULONG CAS                            : 1;
+        ULONG CEC                            : 1;
+        ULONG PLC                            : 1;
+        ULONG PRC                            : 1;
+        ULONG OCC                            : 1;
+        ULONG WRC                            : 1;
+        ULONG PEC                            : 1;
+        ULONG CSC                            : 1;
+        ULONG LWS                            : 1;
+        ULONG PIC                            : 2;
+        ULONG PortSpeed                      : 4;
+        ULONG PP                             : 1;
+        ULONG PLS                            : 4;
+        ULONG PR                             : 1;
+        ULONG OCA                            : 1;
+        ULONG RsvdZ2                         : 1;
+        ULONG PED                            : 1;
+        ULONG CCS                            : 1;
+        
+    };
+} XHCI_PORT_STATUS_REGISTER, *PXHCI_PORT_STATUS_REGISTER;
+
 typedef volatile union _XHCI_CAPLENGHT_INTERFACE_VERSION 
 {
     struct 

@@ -47,6 +47,8 @@ C_ASSERT(sizeof(XHCI_EVENT_GENERIC_TRB) == 16);
 typedef union _XHCI_COMMAND_TRB 
 {
     XHCI_COMMAND_NO_OP_TRB NoOperation;
+    XHCI_ENABLE_SLOT_COMMAND_TRB SlotEnable;
+    XHCI_ADDRESS_DEVICE_COMMAND_TRB AddressDevice;
 }XHCI_COMMAND_TRB, *PXHCI_COMMAND_TRB;
 C_ASSERT(sizeof(XHCI_COMMAND_TRB) == 16);
 
@@ -104,6 +106,21 @@ typedef struct _XHCI_RING
     };
 } XHCI_RING, *PXHCI_RING;
 
+typedef struct _XHCI_TRANSFER_RING
+{
+    XHCI_SEGMENT firstSeg;
+    PXHCI_TRB dequeue_pointer;
+    PXHCI_TRB enqueue_pointer;
+    PXHCI_SEGMENT enqueue_segment;
+    PXHCI_SEGMENT dequeue_segment;
+    struct 
+    {
+        UCHAR ProducerCycleState             : 1;
+        UCHAR ConsumerCycleState             : 1;
+    };
+} XHCI_TRANSFER_RING, *PXHCI_TRANSFER_RING;
+
+
 /* 6.5 */
 typedef struct _XHCI_EVENT_RING_SEGMENT_TABLE
 {
@@ -119,12 +136,14 @@ typedef struct _XHCI_EVENT_RING_SEGMENT_TABLE
 typedef struct _XHCI_HC_RESOURCES 
 {
     XHCI_DEVICE_CONTEXT_BASE_ADD_ARRAY DCBAA;
-    DECLSPEC_ALIGN(16) XHCI_RING         EventRing;
-    DECLSPEC_ALIGN(64) XHCI_RING         CommandRing;
+    DECLSPEC_ALIGN(16) XHCI_RING         EventRing ;
+    DECLSPEC_ALIGN(64) XHCI_RING         CommandRing ;
+    DECLSPEC_ALIGN(64) XHCI_RING         TransferRing ;
     DECLSPEC_ALIGN(64) XHCI_EVENT_RING_SEGMENT_TABLE EventRingSegTable;
 } XHCI_HC_RESOURCES, *PXHCI_HC_RESOURCES;
-C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,EventRing)% 16 == 0); 
-C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,CommandRing)% 64 == 0); 
+C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,EventRing)% 16 == 0);
+C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,CommandRing)% 64 == 0);
+C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,TransferRing)% 64 == 0);
 C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,EventRingSegTable)% 64 == 0);
 
 typedef struct _XHCI_EXTENSION 
@@ -171,3 +190,184 @@ typedef union _XHCI_SCRATCHPAD_BUFFER_ARRAY
     ULONGLONG AsULONGLONG;
 } XHCI_SCRATCHPAD_BUFFER_ARRAY, *PXHCI_SCRATCHPAD_BUFFER_ARRAY;
 C_ASSERT(sizeof(XHCI_SCRATCHPAD_BUFFER_ARRAY) == 8);
+
+/* Endpoint Context *******************************************************************************/
+
+/* 6.2.3 */
+typedef struct _XHCI_ENDPOINT
+{
+    /* Offset 00h */
+    struct 
+    {
+        ULONG EPState                        : 3;
+        ULONG RsvdZ1                         : 5;
+        ULONG Mult                           : 2;
+        ULONG MaxPStreams                    : 5;
+        ULONG LSA                            : 1;
+        ULONG Interval                       : 8;
+        ULONG MaxESITHigh                    : 8;
+    };
+    /* Offset 04h */
+    struct 
+    {
+        ULONG RsvdZ2                         : 1;
+        ULONG CErr                           : 2;
+        ULONG EPType                         : 3;
+        ULONG RsvdZ3                         : 1;
+        ULONG HID                            : 1;
+        ULONG MaxBurstSize                   : 8;
+        ULONG MaxPacketSize                  : 16;
+
+    };
+    /* Offset 08h */
+    struct 
+    {
+        ULONG DCS                            : 1;
+        ULONG Rsvdz4                         : 3;
+        ULONGLONG TRDeqPtr                   : 60;
+    };
+    
+    /* Offset 10h */
+    struct 
+    {
+        ULONG AverageTRBLength               : 16;
+        ULONG MaxESITPayload                 : 16;
+    };
+} XHCI_ENDPOINT, *PXHCI_ENDPOINT;
+
+
+/* Slot Context ***********************************************************************************/
+
+/* 6.2.2 */
+typedef struct _XHCI_SLOT_CONTEXT
+{
+    struct
+    {
+        ULONG RouteString                    : 20;
+        ULONG Speed                          : 4;   /* Deprecated in latest spec */
+        ULONG RsvdZ1                         : 1;
+        ULONG MultiTT                        : 1;
+        ULONG Hub                            : 1;
+        ULONG ContextEntries                 : 5;
+    };
+    struct
+    {
+        ULONG MaxExitLatency                 : 16;
+        ULONG RootHubPortNumber              : 8;
+        ULONG NumberOfPorts                  : 8;
+    };
+    struct
+    {
+        ULONG ParentHubSlotID                : 8;
+        ULONG ParentPortNumber               : 8;
+        ULONG TTThinkTime                    : 2;
+        ULONG RsvdZ2                         : 4;
+        ULONG InterrupterTarget              : 10;
+    };
+    struct
+    {
+        ULONG USBDeviceAddress               : 8;
+        ULONG RsvdZ3                         : 19;
+        ULONG SlotState                      : 5;
+    };
+    struct
+    {
+        ULONG RsvdZ4                         : 32;
+    };
+    struct
+    {
+        ULONG RsvdZ5                         : 32;
+    };
+    struct
+    {
+        ULONG RsvdZ6                         : 32;
+    };
+    struct
+    {
+        ULONG RsvdZ7                         : 32;
+    };
+} XHCI_SLOT_CONTEXT, *PXHCI_SLOT_CONTEXT;
+
+/* Input Control Context **************************************************************************/
+
+/* 6.2.5.1 */
+typedef struct _XHCI_INPUT_CONTROL_CONTEXT
+{
+    //Offset 00h
+    struct
+    {
+        ULONG RsvdZ1                         : 2;
+        ULONG DropContextFlags               : 30;
+    };
+    // Offset 04h
+    struct
+    {
+        ULONG A0                             : 1;
+        ULONG A1                             : 1;
+        ULONG AddContextFlags                : 30;
+    };
+    struct
+    {
+        ULONG RsvdZ2                         : 32;
+    };
+      struct
+    {
+        ULONG RsvdZ3                         : 32;
+    };
+      struct
+    {
+        ULONG RsvdZ4                         : 32;
+    };
+      struct
+    {
+        ULONG RsvdZ5                         : 32;
+    };
+      struct
+    {
+        ULONG RsvdZ6                         : 32;
+    };
+    // Offset 1Ch
+    struct
+    {
+        ULONG ConfigVal                      : 8;
+        ULONG InterfaceNum                   : 8;
+        ULONG AltSetting                     : 8;
+        ULONG RsvdZ7                         : 8;
+    };
+} XHCI_INPUT_CONTROL_CONTEXT, *PXHCI_INPUT_CONTROL_CONTEXT;
+
+/* Device Context *********************************************************************************/
+
+/* 6.2.1 */
+typedef struct _XHCI_DEVICE_CONTEXT
+{
+    struct 
+    {
+        ULONG RsvdZ1                         : 6;
+        ULONGLONG DeviceContextBA            : 58;
+    };
+    struct 
+    {
+        ULONG RsvdZ2                         : 6;
+        ULONGLONG ScratchPadBufferBA         : 58;
+    };
+} XHCI_DEVICE_CONTEXT, *PXHCI_DEVICE_CONTEXT;
+
+/* Input Context **********************************************************************************/
+
+/* 6.2.5 */
+typedef struct _XHCI_INPUT_CONTEXT
+{
+    XHCI_INPUT_CONTROL_CONTEXT InputContext;
+    XHCI_SLOT_CONTEXT SlotContext;
+    XHCI_ENDPOINT EndpointList[31]; /* Hard value in spec */
+} XHCI_INPUT_CONTEXT, *PXHCI_INPUT_CONTEXT;
+
+/* Device Context *********************************************************************************/
+
+/* 6.2.5 */
+typedef struct _XHCI_OUTPUT_DEVICE_CONTEXT
+{
+    XHCI_SLOT_CONTEXT SlotContext;
+    XHCI_ENDPOINT EndpointList[31]; /* Hard value in spec */
+} XHCI_OUTPUT_DEVICE_CONTEXT, *PXHCI_OUTPUT_DEVICE_CONTEXT;
