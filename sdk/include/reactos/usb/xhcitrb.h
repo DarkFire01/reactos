@@ -256,18 +256,18 @@ C_ASSERT(sizeof(XHCI_EVENT_TRANSFER_TRB) == 16);
 /* 6.4.2.2 - Command Completion Event TRB */
 typedef struct _XHCI_EVENT_COMMAND_COMPLETION_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                : 4;
         ULONG CommandTRBPointerLo   : 28;
     };
     ULONG CommandTRBPointerHi;
-    struct 
+    struct
     {
         ULONG CommandCompletionParam     : 24;
         ULONG CompletionCode             : 8;
     };
-    struct 
+    struct
     {
         ULONG CycleBit          : 1;
         ULONG RsvdZ2            : 9;
@@ -281,21 +281,21 @@ C_ASSERT(sizeof(XHCI_EVENT_COMMAND_COMPLETION_TRB) == 16);
 /* 6.4.2.3 - Port Status Change Event TRB */
 typedef struct _XHCI_EVENT_PORT_STATUS_CHANGE_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                : 24;
         ULONG PortID                : 8;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ3                     : 24;
         ULONG CompletionCode             : 8;
     };
-    struct 
+    struct
     {
         ULONG CycleBit          : 1;
         ULONG RsvdZ4            : 9;
@@ -306,22 +306,22 @@ typedef struct _XHCI_EVENT_PORT_STATUS_CHANGE_TRB
 C_ASSERT(sizeof(XHCI_EVENT_PORT_STATUS_CHANGE_TRB) == 16);
 
 /* 6.4.2.4 - Bandwith Request Event TRB */
-typedef struct _XHCI_BANDWITH_REQUEST_TRB 
+typedef struct _XHCI_BANDWITH_REQUEST_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                         : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                         : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ3                         : 24;
         ULONG CompletetionCode               : 8;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                       : 1;
         ULONG RsvdZ4                         : 9;
@@ -423,7 +423,7 @@ C_ASSERT(sizeof(XHCI_EVENT_MFINDEX_WRAP_TRB) == 16);
 /* Command TRBs **************************************************************************************/
 
 /* 6.4.3.1 - No Operation Command TRB */
-typedef struct _XHCI_COMMAND_NO_OP_TRB 
+typedef struct _XHCI_COMMAND_NO_OP_TRB
 {
     ULONG RsvdZ1;
     ULONG RsvdZ2;
@@ -441,19 +441,19 @@ C_ASSERT(sizeof(XHCI_COMMAND_NO_OP_TRB) == 16);
 /* 6.4.3.2 - Enable Slot TRB */
 typedef struct _XHCI_ENABLE_SLOT_COMMAND_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                         : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                         : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ3                         : 32;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                       : 1;
         ULONG RsvdZ4                         : 10;
@@ -467,19 +467,19 @@ C_ASSERT(sizeof(XHCI_ENABLE_SLOT_COMMAND_TRB) == 16);
 /* 6.4.3.3 - Disable Slot TRB */
 typedef struct _XHCI_DISABLE_SLOT_COMMAND_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                         : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                         : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ3                         : 32;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                       : 1;
         ULONG RsvdZ4                         : 9;
@@ -493,20 +493,20 @@ C_ASSERT(sizeof(XHCI_DISABLE_SLOT_COMMAND_TRB) == 16);
 /* 6.4.3.4 - Address Device TRB */
 typedef struct _XHCI_ADDRESS_DEVICE_COMMAND_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                         : 4;
         ULONG InputContextPtrLow             : 27;
     };
-    struct 
+    struct
     {
         ULONG InputContextPtrHigh            : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                         : 32;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                       : 1;
         ULONG RsvdZ3                         : 8;
@@ -521,20 +521,20 @@ C_ASSERT(sizeof(XHCI_ADDRESS_DEVICE_COMMAND_TRB) == 16);
 /* 6.4.3.5 - Configure Endpoint Command TRB */
 typedef struct _XHCI_CONFIGURE_ENDPOINT_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                         : 4;
         ULONG InputContextPtrLow             : 27;
     };
-    struct 
+    struct
     {
         ULONG InputContextPtrHigh            : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                         : 32;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                       : 1;
         ULONG RsvdZ3                         : 8;
@@ -549,20 +549,20 @@ C_ASSERT(sizeof(XHCI_CONFIGURE_ENDPOINT_TRB) == 16);
 /* 6.4.3.6 - Evaluate Context Command TRB */
 typedef struct _XHCI_EVALUATE_CONTEXT_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                         : 4;
         ULONG InputContextPtrLow             : 27;
     };
-    struct 
+    struct
     {
         ULONG InputContextPtrHigh            : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                         : 32;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                       : 1;
         ULONG RsvdZ3                         : 8;
@@ -577,19 +577,19 @@ C_ASSERT(sizeof(XHCI_EVALUATE_CONTEXT_TRB) == 16);
 /* 6.4.3.7 - Reset Endpoint Command TRB */
 typedef struct _XHCI_RESET_ENDPOINT_COMMAND_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                         : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                         : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ3                         : 32;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                       : 1;
         ULONG RsvdZ4                         : 8;
@@ -605,15 +605,15 @@ C_ASSERT(sizeof(XHCI_RESET_ENDPOINT_COMMAND_TRB) == 16);
 /* 6.4.3.8 - Stop Endpoint Command TRB  */
 typedef struct _XHCI_STOP_ENDPOINT_COMMAND_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                         : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                         : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ3                         : 32;
     };
@@ -633,19 +633,19 @@ C_ASSERT(sizeof(XHCI_STOP_ENDPOINT_COMMAND_TRB) == 16);
 /* 6.4.3.9 - Set TR Dequeue Pointer Command TRB - UNIMPLEMENTED */
 typedef struct _XHCI_SET_DEQUEUE_PTR_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                         : 32;
     };
-    struct 
+    struct
     {
         ULONG InputContextPtrHigh            : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                         : 32;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                       : 32;
     };
@@ -655,15 +655,15 @@ C_ASSERT(sizeof(XHCI_SET_DEQUEUE_PTR_TRB) == 16);
 /* 6.4.3.10 - Reset Device Command TRB */
 typedef struct _XHCI_RESET_DEVICE_COMMAND_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                         : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                         : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ3                         : 32;
     };
@@ -684,16 +684,16 @@ C_ASSERT(sizeof(XHCI_RESET_DEVICE_COMMAND_TRB) == 16);
 /* 6.4.3.14 - Get Port Bandwidth Command TRB */
 typedef struct _XHCI_GET_PORT_BANDWIDTH_COMMAND_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                         : 4;
         ULONG PortBandwidthContextPtrLo      : 28;
     };
-    struct 
+    struct
     {
         ULONG PortBandwidthContextPtrHi      : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                         : 32;
     };
@@ -712,16 +712,16 @@ C_ASSERT(sizeof(XHCI_GET_PORT_BANDWIDTH_COMMAND_TRB) == 16);
 /* 6.4.3.15 - Force Header Command TRB */
 typedef struct _XHCI_FORCE_HEADER_COMMAND_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                         : 5;
         ULONG HeaderInfoLo                   : 27;
     };
-    struct 
+    struct
     {
         ULONG HeaderInfoMid                  : 32;
     };
-    struct 
+    struct
     {
         ULONG HeaderInfoHi                  : 32;
     };
@@ -744,21 +744,21 @@ C_ASSERT(sizeof(XHCI_FORCE_HEADER_COMMAND_TRB) == 16);
 /* 6.4.4.1 - Link TRB */
 typedef struct _XHCI_LINK_TRB
 {
-    struct 
+    struct
     {
         ULONG RsvdZ1                     : 4;
         ULONG RingSegmentPointerLo       : 28;
     };
-    struct 
+    struct
     {
         ULONG RingSegmentPointerHi       : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ2                     : 22;
         ULONG InterrupterTarget          : 10;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                   : 1;
         ULONG ToggleCycle                : 1;
@@ -775,20 +775,20 @@ C_ASSERT(sizeof(XHCI_LINK_TRB) == 16);
 /* 6.4.4.2 - Event Data TRB */
 typedef struct _XHCI_EVENT_DATA_TRB
 {
-    struct 
+    struct
     {
         ULONG EventDataLo                : 32;
     };
-    struct 
+    struct
     {
         ULONG EventDataHi                : 32;
     };
-    struct 
+    struct
     {
         ULONG RsvdZ1                     : 22;
         ULONG InterrupterTarget          : 10;
     };
-    struct 
+    struct
     {
         ULONG CycleBit                   : 1;
         ULONG EvaluateNextTrb            : 1;
