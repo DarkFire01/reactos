@@ -224,7 +224,7 @@ static VOID PcVideoSetBiosMode(UCHAR VideoMode)
    * AL = CRT controller mode byte (Phoenix 386 BIOS v1.10)
    */
   Regs.b.ah = 0x00;
-  Regs.b.al = VideoMode;
+  Regs.b.al = VideoMode /**/ | 0x80 /**/; // Do not clear screen
   Int386(0x10, &Regs, &Regs);
 }
 

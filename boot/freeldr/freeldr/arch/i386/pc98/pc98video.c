@@ -454,13 +454,23 @@ Pc98VideoPrepareForReactOS(VOID)
 
     Pc98VideoHideShowTextCursor(FALSE);
 
+//
+// Questions:
+// - Is it the clear-screen because we switched
+//   back from graphics to text mode?
+// - If so: Could we move it before hiding cursor?
+// - Couldn't we use Pc98VideoClearScreen() instead?
+//
+#if 0
     if (UseCGFont && CGAccelDraw)
     {
         /* Clear the text screen, resetting to default attributes */
-        for (USHORT i = 0; i < VRAM_TEXT_SIZE; i += TEXT_CHAR_SIZE)
+        USHORT i;
+        for (i = 0; i < VRAM_TEXT_SIZE; i += TEXT_CHAR_SIZE)
         {
             *(PUSHORT)(VramText + i) = ' ';
             *(PUCHAR)(VramText + VRAM_TEXT_ATTR_OFFSET + i) = GDC_ATTR_WHITE | GDC_ATTR_VISIBLE;
         }
     }
+#endif
 }

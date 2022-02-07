@@ -34,9 +34,12 @@ Pc98HwIdle(VOID)
 VOID
 Pc98PrepareForReactOS(VOID)
 {
-    Pc98DiskPrepareForReactOS();
+    /* On PC98, prepare video and disk support */
     Pc98VideoPrepareForReactOS();
+    Pc98DiskPrepareForReactOS();
     DiskStopFloppyMotor();
+
+    /* Turn off debug messages to screen */
     DebugDisableScreenPort();
 }
 
