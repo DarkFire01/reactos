@@ -632,6 +632,21 @@ LoadReactOSSetup(
 
     TRACE("BootPath: '%s', SystemPath: '%s'\n", BootPath, SystemPath);
 
+    /* Get the optional loader prompt string */
+    if (InfFindFirstLine(InfHandle, "SetupData", "LoaderPrompt", &InfContext))
+    {
+        PCSTR ptr;
+        if (InfGetDataField(&InfContext, 1, &ptr))
+        {
+            SIZE_T LdrPromptSize = (strlen(ptr) + 1) * sizeof(CHAR);
+            LoaderPrompt = FrLdrHeapAlloc(LdrPromptSize, TAG_LDR_PROMPT);
+            if (LoaderPrompt)
+                RtlCopyMemory((PVOID)LoaderPrompt, ptr, LdrPromptSize);
+        }
+        if (LoaderPrompt)
+            UiSetProgressBarText(LoaderPrompt);
+    }
+
     // UseLocalSif = NtLdrGetOption(BootOptions, "USELOCALSIF");
 
     if (NtLdrGetOption(BootOptions, "SIFOPTIONSOVERRIDE"))
@@ -783,7 +798,7 @@ LoadReactOSSetup(
     SetupBlock->Flags = SETUPLDR_TEXT_MODE;
 
     /* Load the "setupreg.hiv" setup system hive */
-    UiUpdateProgressBar(15, "Loading setup system hive...");
+    UiUpdateProgressBar(15, !LoaderPrompt ? "Loading setup system hive..." : NULL);
     Success = WinLdrInitSystemHive(LoaderBlock, BootPath, TRUE);
     TRACE("Setup SYSTEM hive %s\n", (Success ? "loaded" : "not loaded"));
     /* Bail out if failure */
@@ -807,8 +822,6 @@ LoadReactOSSetup(
 
     /* Close the inf file */
     InfCloseFile(InfHandle);
-
-    UiDrawStatusText("The Setup program is starting...");
 
     /* Finish loading */
     return LoadAndBootWindowsCommon(_WIN32_WINNT_WS03,

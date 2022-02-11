@@ -78,6 +78,9 @@ extern BOOLEAN SosEnabled;
 extern BOOLEAN PaeModeOn;
 #endif
 
+extern PCSTR LoaderPrompt;
+#define TAG_LDR_PROMPT  'tpmP'
+
 FORCEINLINE
 VOID
 UiResetForSOS(VOID)

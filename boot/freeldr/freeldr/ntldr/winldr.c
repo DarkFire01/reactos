@@ -38,6 +38,8 @@ BOOLEAN PaeModeOn = FALSE;
 #endif
 BOOLEAN NoExecuteEnabled = FALSE;
 
+PCSTR LoaderPrompt = NULL;
+
 // debug stuff
 VOID DumpMemoryAllocMap(VOID);
 
@@ -509,11 +511,18 @@ LoadModule(
 {
     BOOLEAN Success;
     CHAR FullFileName[MAX_PATH];
-    CHAR ProgressString[256];
     PVOID BaseAddress;
 
-    RtlStringCbPrintfA(ProgressString, sizeof(ProgressString), "Loading %s...", File);
-    UiUpdateProgressBar(Percentage, ProgressString);
+    if (!LoaderPrompt)
+    {
+        CHAR ProgressString[256];
+        RtlStringCbPrintfA(ProgressString, sizeof(ProgressString), "Loading %s...", File);
+        UiUpdateProgressBar(Percentage, ProgressString);
+    }
+    else
+    {
+        UiUpdateProgressBar(Percentage, NULL);
+    }
 
     RtlStringCbCopyA(FullFileName, sizeof(FullFileName), Path);
     RtlStringCbCatA(FullFileName, sizeof(FullFileName), File);
@@ -1114,7 +1123,7 @@ LoadAndBootWindows(
     AllocateAndInitLPB(OperatingSystemVersion, &LoaderBlock);
 
     /* Load the system hive */
-    UiUpdateProgressBar(15, "Loading system hive...");
+    UiUpdateProgressBar(15, !LoaderPrompt ? "Loading system hive..." : NULL);
     Success = WinLdrInitSystemHive(LoaderBlock, BootPath, FALSE);
     TRACE("SYSTEM hive %s\n", (Success ? "loaded" : "not loaded"));
     /* Bail out if failure */
@@ -1172,7 +1181,7 @@ LoadAndBootWindowsCommon(
     SystemRoot = strstr(BootPath, "\\");
 
     /* Detect hardware */
-    UiUpdateProgressBar(20, "Detecting hardware...");
+    UiUpdateProgressBar(20, !LoaderPrompt ? "Detecting hardware..." : NULL);
     LoaderBlock->ConfigurationRoot = MachHwDetect();
 
     /* Initialize the PE loader import-DLL callback, so that we can obtain
@@ -1204,7 +1213,7 @@ LoadAndBootWindowsCommon(
     UiSetProgressBarSubset(40, 90); // NTOS goes from 25 to 75%
 
     /* Load boot drivers */
-    UiSetProgressBarText("Loading boot drivers...");
+    if (!LoaderPrompt) UiSetProgressBarText("Loading boot drivers...");
     Success = WinLdrLoadBootDrivers(LoaderBlock, BootPath);
     TRACE("Boot drivers loading %s\n", Success ? "successful" : "failed");
 
@@ -1213,14 +1222,39 @@ LoadAndBootWindowsCommon(
     /* Reset the PE loader import-DLL callback */
     PeLdrImportDllLoadCallback = NULL;
 
-    /* Initialize Phase 1 - no drivers loading anymore */
+    /* Initialize Phase 1 */
     WinLdrInitializePhase1(LoaderBlock,
                            BootOptions,
                            SystemRoot,
                            BootPath,
                            OperatingSystemVersion);
 
-    UiUpdateProgressBar(100, NULL);
+    /* Let the user know we are starting */
+    {
+    PCSTR Info = NULL;
+    if (!LoaderPrompt)
+    {
+        // "Setup is starting..."
+        // "The Setup program is starting..."
+        if (LoaderBlock->SetupLdrBlock)
+            Info = "Starting ReactOS Setup...";
+        else
+            Info = "Starting NT..."; // TODO: Determine whether it's ReactOS or Windows.
+        LoaderPrompt = Info;
+    }
+    if (SosEnabled)
+    {
+        printf("\n%s\n", LoaderPrompt);
+        TRACE("\n%s\n", LoaderPrompt);
+    }
+    else
+    {
+        UiDrawStatusText(LoaderPrompt);
+        UiUpdateProgressBar(100, LoaderPrompt);
+    }
+    if (LoaderPrompt && LoaderPrompt != Info)
+        FrLdrHeapFree((PVOID)LoaderPrompt, TAG_LDR_PROMPT);
+    }
 
     /* Save entry-point pointer and Loader block VAs */
     KiSystemStartup = (KERNEL_ENTRY_POINT)KernelDTE->EntryPoint;
