@@ -8,10 +8,27 @@
 /* INCLUDES *******************************************************************/
 
 #include <freeldr.h>
+#include <drivers/pc98/video.h>
 
 extern ULONG VramText;
 extern UCHAR TextCols;
 extern UCHAR TextLines;
+
+extern ULONG VramPlaneB;
+extern ULONG VramPlaneG;
+extern ULONG VramPlaneR;
+extern ULONG VramPlaneI;
+
+extern BOOLEAN UseCGFont;
+extern BOOLEAN CGAccelDraw;
+
+#define CHAR_WIDTH  8
+#define CHAR_HEIGHT 16
+
+#define SCREEN_WIDTH  640
+#define SCREEN_HEIGHT 400
+#define BYTES_PER_SCANLINE (SCREEN_WIDTH / 8)
+
 
 /* GLOBALS ********************************************************************/
 
@@ -24,20 +41,49 @@ static USHORT CursorPosition = 0;
 VOID
 Pc98ConsPutChar(int Ch)
 {
-    /* If scrolling is needed */
+    /* If scrolling is needed, scroll one line */
     if (CursorPosition >= TextCols * TextLines)
     {
-        RtlCopyMemory((PUSHORT)VramText,
-                      (PUSHORT)(VramText + TextCols * TEXT_CHAR_SIZE),
-                      TextCols * TextLines * TEXT_CHAR_SIZE);
+        if (UseCGFont && CGAccelDraw)
+        {
+            /* Scroll the text... */
+            RtlMoveMemory((PVOID)VramText,
+                          (PVOID)(VramText + TextCols * TEXT_CHAR_SIZE),
+                          TextCols * (TextLines - 1) * TEXT_CHAR_SIZE);
+
+            /* ... and the attributes */
+            RtlMoveMemory((PVOID)(VramText + VRAM_TEXT_ATTR_OFFSET),
+                          (PVOID)(VramText + VRAM_TEXT_ATTR_OFFSET + TextCols * TEXT_CHAR_SIZE),
+                          TextCols * (TextLines - 1) * TEXT_CHAR_SIZE);
+        }
+        else
+        {
+            /* Scroll in the graphics planes */
+            RtlMoveMemory((PVOID)VramPlaneB,
+                          (PVOID)(VramPlaneB + CHAR_HEIGHT * BYTES_PER_SCANLINE),
+                          (SCREEN_HEIGHT - CHAR_HEIGHT) * BYTES_PER_SCANLINE);
+
+            RtlMoveMemory((PVOID)VramPlaneG,
+                          (PVOID)(VramPlaneG + CHAR_HEIGHT * BYTES_PER_SCANLINE),
+                          (SCREEN_HEIGHT - CHAR_HEIGHT) * BYTES_PER_SCANLINE);
+
+            RtlMoveMemory((PVOID)VramPlaneR,
+                          (PVOID)(VramPlaneR + CHAR_HEIGHT * BYTES_PER_SCANLINE),
+                          (SCREEN_HEIGHT - CHAR_HEIGHT) * BYTES_PER_SCANLINE);
+
+            RtlMoveMemory((PVOID)VramPlaneI,
+                          (PVOID)(VramPlaneI + CHAR_HEIGHT * BYTES_PER_SCANLINE),
+                          (SCREEN_HEIGHT - CHAR_HEIGHT) * BYTES_PER_SCANLINE);
+        }
 
         CursorPosition -= TextCols;
     }
 
     if (Ch == '\n')
     {
-        if (CursorPosition % TextCols != 0)
-            CursorPosition += TextCols - (CursorPosition % TextCols);
+        /* Go to the next line and at its beginning */
+        // if (CursorPosition % TextCols != 0)
+        CursorPosition += TextCols - (CursorPosition % TextCols);
 
         return;
     }
@@ -56,7 +102,9 @@ Pc98ConsPutChar(int Ch)
         return;
     }
 
-    *(PUSHORT)(VramText + CursorPosition * TEXT_CHAR_SIZE) = Ch;
+    // *(PUSHORT)(VramText + CursorPosition * TEXT_CHAR_SIZE) = Ch;
+    Pc98VideoPutChar(Ch, ATTR(COLOR_WHITE, COLOR_BLACK),
+                     CursorPosition % TextCols, CursorPosition / TextCols);
     ++CursorPosition;
 }
 

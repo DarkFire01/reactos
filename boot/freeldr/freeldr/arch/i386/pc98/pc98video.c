@@ -29,19 +29,19 @@ UCHAR TextLines;
 #define BYTES_PER_SCANLINE (SCREEN_WIDTH / 8)
 
 /* Use BIOS font; set to FALSE for built-in VGA font. */
-static BOOLEAN UseCGFont = TRUE;
+/*static*/ BOOLEAN UseCGFont = TRUE;
 /* Hardware accelerated text drawing; set to FALSE for non-accelerated
  * self-drawing, which will allow more than 8 colors for text though.
  * This option is possible only with BIOS fonts enabled. */
-static BOOLEAN CGAccelDraw = TRUE;
+/*static*/ BOOLEAN CGAccelDraw = TRUE;
 
 UCHAR MachDefaultTextColor = COLOR_WHITE;
 
 ULONG VramText;
-static ULONG VramPlaneB;
-static ULONG VramPlaneG;
-static ULONG VramPlaneR;
-static ULONG VramPlaneI;
+/*static*/ ULONG VramPlaneB;
+/*static*/ ULONG VramPlaneG;
+/*static*/ ULONG VramPlaneR;
+/*static*/ ULONG VramPlaneI;
 
 static const PALETTE_ENTRY CgaPalette[] =
 {
@@ -163,25 +163,62 @@ Pc98VideoInit(VOID)
     Int386(0x18, &Regs, &Regs);
 }
 
+static
+UCHAR
+Pc98VideoAttrToGdcAttr(UCHAR Attr)
+{
+    switch (Attr & 0xF)
+    {
+        case COLOR_BLACK:
+            return GDC_ATTR_BLACK;
+        case COLOR_BLUE:
+            return GDC_ATTR_BLUE;
+        case COLOR_GREEN:
+        case COLOR_LIGHTGREEN:
+            return GDC_ATTR_GREEN;
+        case COLOR_CYAN:
+        case COLOR_GRAY:
+        case COLOR_DARKGRAY:
+        case COLOR_WHITE:
+            return GDC_ATTR_WHITE;
+        case COLOR_RED:
+        case COLOR_LIGHTRED:
+            return GDC_ATTR_RED;
+        case COLOR_MAGENTA:
+        case COLOR_LIGHTMAGENTA:
+            return GDC_ATTR_PURPLE;
+        case COLOR_BROWN:
+        case COLOR_YELLOW:
+            return GDC_ATTR_YELLOW;
+        case COLOR_LIGHTBLUE:
+        case COLOR_LIGHTCYAN:
+            return GDC_ATTR_LIGHTBLUE;
+        default:
+            return GDC_ATTR_BLACK;
+    }
+}
+
 VOID
 Pc98VideoClearScreen(UCHAR Attr)
 {
-    USHORT i;
+    USHORT GdcAttr = (USHORT)Pc98VideoAttrToGdcAttr(Attr) | GDC_ATTR_VISIBLE;
     USHORT B = (Attr & 0x10) ? 0xFFFF : 0;
     USHORT G = (Attr & 0x20) ? 0xFFFF : 0;
     USHORT R = (Attr & 0x40) ? 0xFFFF : 0;
     USHORT I = (Attr & 0x80) ? 0xFFFF : 0;
 
-    for (i = 0; i < VRAM_TEXT_SIZE; i += TEXT_CHAR_SIZE)
-        *(PUSHORT)(VramText + i) = ' ';
-
-    for (i = 0; i < BYTES_PER_SCANLINE * SCREEN_HEIGHT; i += sizeof(USHORT))
+    if (UseCGFont && CGAccelDraw)
     {
-        *(PUSHORT)(VramPlaneB + i) = B;
-        *(PUSHORT)(VramPlaneG + i) = G;
-        *(PUSHORT)(VramPlaneR + i) = R;
-        *(PUSHORT)(VramPlaneI + i) = I;
+        /* Clear the text and attributes */
+        __stosw((PVOID)VramText, '\0 ', VRAM_TEXT_SIZE / TEXT_CHAR_SIZE);
+        __stosw((PVOID)(VramText + VRAM_TEXT_ATTR_OFFSET), GdcAttr, VRAM_ATTR_SIZE / TEXT_CHAR_SIZE);
     }
+
+    /* Clear the graphics planes */
+    __stosw((PVOID)VramPlaneB, B, (BYTES_PER_SCANLINE * SCREEN_HEIGHT) / sizeof(USHORT));
+    __stosw((PVOID)VramPlaneG, G, (BYTES_PER_SCANLINE * SCREEN_HEIGHT) / sizeof(USHORT));
+    __stosw((PVOID)VramPlaneR, R, (BYTES_PER_SCANLINE * SCREEN_HEIGHT) / sizeof(USHORT));
+    __stosw((PVOID)VramPlaneI, I, (BYTES_PER_SCANLINE * SCREEN_HEIGHT) / sizeof(USHORT));
 }
 
 VIDEODISPLAYMODE
@@ -242,41 +279,6 @@ Pc98VideoHideShowTextCursor(BOOLEAN Show)
 }
 
 static
-UCHAR
-Pc98VideoAttrToGdcAttr(UCHAR Attr)
-{
-    switch (Attr & 0xF)
-    {
-        case COLOR_BLACK:
-            return GDC_ATTR_BLACK;
-        case COLOR_BLUE:
-            return GDC_ATTR_BLUE;
-        case COLOR_GREEN:
-        case COLOR_LIGHTGREEN:
-            return GDC_ATTR_GREEN;
-        case COLOR_CYAN:
-        case COLOR_GRAY:
-        case COLOR_DARKGRAY:
-        case COLOR_WHITE:
-            return GDC_ATTR_WHITE;
-        case COLOR_RED:
-        case COLOR_LIGHTRED:
-            return GDC_ATTR_RED;
-        case COLOR_MAGENTA:
-        case COLOR_LIGHTMAGENTA:
-            return GDC_ATTR_PURPLE;
-        case COLOR_BROWN:
-        case COLOR_YELLOW:
-            return GDC_ATTR_YELLOW;
-        case COLOR_LIGHTBLUE:
-        case COLOR_LIGHTCYAN:
-            return GDC_ATTR_LIGHTBLUE;
-        default:
-            return GDC_ATTR_BLACK;
-    }
-}
-
-static
 USHORT
 Pc98AsciiToJisX(int Ch)
 {
@@ -331,6 +333,7 @@ Pc98VideoPutChar(int Ch, UCHAR Attr, unsigned X, unsigned Y)
         if (CGAccelDraw)
         {
             Pc98VideoTextRamPutChar(Ch, Attr, X, Y);
+            /*****/return;/******/
         }
         else
         {
@@ -452,8 +455,6 @@ Pc98VideoPrepareForReactOS(VOID)
     Regs.b.ah = 0x41;
     Int386(0x18, &Regs, &Regs);
 
-    Pc98VideoHideShowTextCursor(FALSE);
-
 //
 // Questions:
 // - Is it the clear-screen because we switched
@@ -472,5 +473,9 @@ Pc98VideoPrepareForReactOS(VOID)
             *(PUCHAR)(VramText + VRAM_TEXT_ATTR_OFFSET + i) = GDC_ATTR_WHITE | GDC_ATTR_VISIBLE;
         }
     }
+#else
+    // Pc98VideoClearScreen(ATTR(COLOR_WHITE, COLOR_BLACK));
 #endif
+
+    Pc98VideoHideShowTextCursor(FALSE);
 }
