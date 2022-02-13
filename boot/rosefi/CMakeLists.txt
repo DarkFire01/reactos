@@ -31,6 +31,7 @@ list(APPEND BOOTMGR_BASE_SOURCE
         display/eficonsolelib.c
         lib/mm/efimm.c
         debug.c
+        lib/comm/rs232.c
     )
 
 add_executable(${EFI_PLATFORM_ID} ${BOOTMGR_BASE_SOURCE})

@@ -10,6 +10,17 @@
 EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 PROSEFI_FRAMEBUFFER_DATA refiFbData;
 
+VOID
+WriteStringThing(CHAR16* str)
+{
+    UINT32 fred;
+
+    for(fred = 0; fred < 15; fred++)
+    {
+        Rs232PortPutByte(str[fred]);
+    }
+}
+
 EFI_STATUS
 RefiEntry(
     _In_ EFI_HANDLE ImageHandle,
@@ -30,6 +41,10 @@ RefiEntry(
     RefiInitGOP(SystemTable, refiFbData, gop);
     /* Initalize UEFI loader memory managment */
     refiCheck = RefiInitMemoryManager(SystemTable);
+
+    Rs232PortInitialize(0, 115200);
+    WriteStringThing(L"FredIsSweetMeow");
+
     RefiStallProcessor(SystemTable, 5000);
     RefiFatalFailure(SystemTable, refiCheck, gop, refiFbData->ScreenWidth, refiFbData->ScreenHeight);
     if(refiCheck != EFI_SUCCESS)

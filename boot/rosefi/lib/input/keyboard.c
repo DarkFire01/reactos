@@ -5,7 +5,6 @@
  * COPYRIGHT:   Copyright 2021 Justin Miller <justinmiller100@gmail.com>
  */
 
-#pragma once
 
 #include <rosefi.h>
 
