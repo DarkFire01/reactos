@@ -28,10 +28,13 @@ list(APPEND BOOTMGR_BASE_SOURCE
         entry.c
         time.c
         display/gop.c
+        display/gui.c
         display/eficonsolelib.c
         lib/mm/efimm.c
         debug.c
+        #COMM
         lib/comm/rs232.c
+        lib/comm/i386/debug.c
     )
 
 add_executable(${EFI_PLATFORM_ID} ${BOOTMGR_BASE_SOURCE})

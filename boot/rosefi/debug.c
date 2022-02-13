@@ -1,14 +1,18 @@
 #include "include/rosefip.h"
 
+
+
+
+
+#if 0
 /* 
- * This function is really just to display the issue then shutdown the computer. 
- * but its also a meme 
+ * meme 
  */
 
 VOID
-RefiFatalFailure(_In_ EFI_SYSTEM_TABLE *SystemTable, 
-                 _In_ EFI_STATUS refiCheck,
-                 _In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop, _In_ UINT32 x, UINT32 y)
+RefiTrollBSoD(_In_ EFI_SYSTEM_TABLE *SystemTable, 
+              _In_ EFI_STATUS refiCheck,
+              _In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop, _In_ UINT32 x, UINT32 y)
 {
     RefiClearScreen(SystemTable);
     RefiSetColor(SystemTable, EFI_BLUE);
@@ -36,3 +40,4 @@ RefiFatalFailure(_In_ EFI_SYSTEM_TABLE *SystemTable,
     RefiStallProcessor(SystemTable, 5000);
     SystemTable->RuntimeServices->ResetSystem(EfiResetCold, EFI_SUCCESS, 0, 0);
 }
+#endif
