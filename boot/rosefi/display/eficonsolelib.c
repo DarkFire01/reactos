@@ -18,6 +18,7 @@ RefiColSetCursor(EFI_SYSTEM_TABLE* SystemTable, UINT32 Col, UINT32 Row)
 VOID
 RefiColPrint(EFI_SYSTEM_TABLE* SystemTable, CHAR16* str)
 {
+    RefiDebugPrint(str);
     SystemTable->ConOut->OutputString(SystemTable->ConOut, str);
 }
 

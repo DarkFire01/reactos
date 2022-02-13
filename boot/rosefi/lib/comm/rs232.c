@@ -23,9 +23,8 @@
 
 /* INCLUDES *******************************************************************/
 
-//#include <freeldr.h>
 #include <cportlib/cportlib.h>
-#include "cport.h"
+#include "pcdebug.h"
 #if DBG
 
 /* STATIC VARIABLES ***********************************************************/

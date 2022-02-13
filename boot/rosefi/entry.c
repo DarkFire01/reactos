@@ -8,18 +8,6 @@
 #include "include/rosefip.h"
 
 EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
-PROSEFI_FRAMEBUFFER_DATA refiFbData;
-
-VOID
-WriteStringThing(CHAR16* str)
-{
-    UINT32 fred;
-
-    for(fred = 0; fred < 15; fred++)
-    {
-        Rs232PortPutByte(str[fred]);
-    }
-}
 
 EFI_STATUS
 RefiEntry(
@@ -28,31 +16,36 @@ RefiEntry(
 {
     EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
     EFI_STATUS refiCheck;
-    //UINT32 x, y, color;
 
-    /* Just print a string to show we are alive on system with standard GOP */
-    RefiSetColor(SystemTable, EFI_GREEN);
-    RefiColPrint(SystemTable, L"RefiEntry: ");
-    RefiSetColor(SystemTable, EFI_WHITE);
-    RefiColPrint(SystemTable, L"Starting ROSEFI\r\n");
+    RefiDebugInit(0);
+    RefiColPrint(SystemTable, L"RefiEntry: Starting ROSEFI\r\n");
 
-
+    /* Grab GOP pointer and initalize UI */
     SystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
-    RefiInitGOP(SystemTable, refiFbData, gop);
-    /* Initalize UEFI loader memory managment */
-    refiCheck = RefiInitMemoryManager(SystemTable);
+    RefiInitUI(SystemTable, gop);
 
-    Rs232PortInitialize(0, 115200);
-    WriteStringThing(L"FredIsSweetMeow");
+    RefiBaseClearScreen(0x000000);
+    RefiBaseDrawBox(32, 32, 64, 64, 0x423E41);
 
-    RefiStallProcessor(SystemTable, 5000);
-    RefiFatalFailure(SystemTable, refiCheck, gop, refiFbData->ScreenWidth, refiFbData->ScreenHeight);
-    if(refiCheck != EFI_SUCCESS)
-    {
-    }
+    /* Start FS support */
     for(;;)
     {
 
     }
-    return EFI_SUCCESS;
+    refiCheck = RefiInitMemoryManager(SystemTable);
+    if (refiCheck != EFI_SUCCESS)
+    {
+        RefiColPrint(SystemTable, L"RefiEntry: Initalizing MemoryManager has failed\r\n");
+        RefiColPrint(SystemTable, L"RefiEntry: Rebooting...\r\n");
+        RefiStallProcessor(SystemTable, 2000);
+        SystemTable->RuntimeServices->ResetSystem(EfiResetCold, refiCheck, 0, 0);
+    }
+
+    return refiCheck;
+}
+
+VOID
+RefiStartLoader()
+{
+    /* Here we begin real loader setup */
 }

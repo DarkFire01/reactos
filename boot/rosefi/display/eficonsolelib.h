@@ -33,6 +33,3 @@ CreateFilledBox(UINT32 xPos, UINT32 yPos, UINT32 w, UINT32 h, EFI_GRAPHICS_OUTPU
 
 EFI_GRAPHICS_OUTPUT_BLT_PIXEL
 SetGraphicsColor(UINT32 color);
-
-VOID
-RefiAssignPixel(ULONG* screen, UINT32 x, UINT32 y, UINT64 color);
