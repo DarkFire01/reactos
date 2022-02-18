@@ -8,7 +8,7 @@
  *       19/1-2006   Magnus Olsen
  */
 
-
+/* #define NDEBUG */
 #include <win32k.h>
 #include <debug.h>
 
@@ -28,7 +28,7 @@ NtGdiDdBeginMoCompFrame(HANDLE hMoComp,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys DdBeginMoCompFrame");
+    DPRINT("Calling dxg.sys DdBeginMoCompFrame");
     return pfnDdBeginMoCompFrame(hMoComp,puBeginFrameData);
 }
 
@@ -47,7 +47,7 @@ NtGdiDdCreateMoComp(HANDLE hDirectDraw, PDD_CREATEMOCOMPDATA puCreateMoCompData)
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys DdCreateMoComp");
+    DPRINT("Calling dxg.sys DdCreateMoComp");
     return pfnDdCreateMoComp(hDirectDraw, puCreateMoCompData);
 }
 
@@ -67,7 +67,7 @@ NtGdiDdDestroyMoComp(HANDLE hMoComp,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys DxDdDestroyMoComp");
+    DPRINT("Calling dxg.sys DxDdDestroyMoComp");
     return pfnDxDdDestroyMoComp(hMoComp, puBeginFrameData);
 }
 
@@ -87,7 +87,7 @@ NtGdiDdEndMoCompFrame(HANDLE hMoComp,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdEndMoCompFrame");
+    DPRINT("Calling dxg.sys pfnDdEndMoCompFrame");
     return pfnDdEndMoCompFrame(hMoComp, puEndFrameData);
 }
 
@@ -107,7 +107,7 @@ NtGdiDdGetInternalMoCompInfo(HANDLE hDirectDraw,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdGetInternalMoCompInfo");
+    DPRINT("Calling dxg.sys pfnDdGetInternalMoCompInfo");
     return pfnDdGetInternalMoCompInfo(hDirectDraw, puGetInternalData);
 }
 
@@ -128,7 +128,7 @@ NtGdiDdGetMoCompBuffInfo(HANDLE hDirectDraw,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdGetMoCompBuffInfo");
+    DPRINT("Calling dxg.sys pfnDdGetMoCompBuffInfo");
     return pfnDdGetMoCompBuffInfo(hDirectDraw, puGetBuffData);
 }
 
@@ -148,7 +148,7 @@ NtGdiDdGetMoCompFormats(HANDLE hDirectDraw,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdGetMoCompFormats");
+    DPRINT("Calling dxg.sys pfnDdGetMoCompFormats");
     return pfnDdGetMoCompFormats(hDirectDraw, puGetMoCompFormatsData);
 }
 
@@ -169,7 +169,7 @@ NtGdiDdGetMoCompGuids(HANDLE hDirectDraw,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdGetMoCompGuids");
+    DPRINT("Calling dxg.sys pfnDdGetMoCompGuids");
     return pfnDdGetMoCompGuids(hDirectDraw, puGetMoCompGuidsData);
 }
 
@@ -191,7 +191,7 @@ NtGdiDdQueryMoCompStatus(HANDLE hMoComp,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdQueryMoCompStatus");
+    DPRINT("Calling dxg.sys pfnDdQueryMoCompStatus");
     return pfnDdQueryMoCompStatus(hMoComp, puQueryMoCompStatusData);
 }
 
@@ -212,7 +212,7 @@ NtGdiDdRenderMoComp(HANDLE hMoComp,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdRenderMoComp");
+    DPRINT("Calling dxg.sys pfnDdRenderMoComp");
     return pfnDdRenderMoComp(hMoComp, puRenderMoCompData);
 }
 

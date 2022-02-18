@@ -8,6 +8,7 @@
  *       19/1-2006   Magnus Olsen
  */
 
+/* #define NDEBUG */
 #include <win32k.h>
 #include <debug.h>
 
@@ -84,7 +85,7 @@ intEnableReactXDriver(HDC hdc)
             }
             else
             {
-                DPRINT1(" call to pfnDdEnableDirectDraw \n ");
+                DPRINT(" call to pfnDdEnableDirectDraw \n ");
 
                 /* Note: it is the hdev struct it wants, not the drv hPDev aka pdc->PDev */
                 success = pfnDdEnableDirectDraw(pDC->ppdev, TRUE);
@@ -98,9 +99,9 @@ intEnableReactXDriver(HDC hdc)
     }
 
 
-    DPRINT1("Return value : 0x%08x\n",success);
+    DPRINT("Return value : 0x%08x\n",success);
     DC_UnlockDc(pDC);
-    DPRINT1(" end call to pfnDdEnableDirectDraw \n ");
+    DPRINT(" end call to pfnDdEnableDirectDraw \n ");
     return success;
 }
 
@@ -235,7 +236,7 @@ NtGdiDdCreateDirectDrawObject(HDC hdc)
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys DdCreateDirectDrawObject\n");
+    DPRINT("Calling dxg.sys DdCreateDirectDrawObject\n");
 
     return pfnDdCreateDirectDrawObject(hdc);
 }
@@ -290,7 +291,7 @@ NtGdiDxgGenericThunk(ULONG_PTR ulIndex,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDxgGenericThunk\n");
+    DPRINT("Calling dxg.sys pfnDxgGenericThunk\n");
     return pfnDxgGenericThunk(ulIndex, ulHandle, pdwSizeOfPtr1, pvPtr1, pdwSizeOfPtr2, pvPtr2);
 }
 
@@ -309,7 +310,7 @@ NtGdiDdGetDriverState(PDD_GETDRIVERSTATEDATA pdata)
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys DdGetDriverState\n");
+    DPRINT("Calling dxg.sys DdGetDriverState\n");
     return pfnDdGetDriverState(pdata);
 }
 
@@ -329,7 +330,7 @@ NtGdiDdColorControl(HANDLE hSurface,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys DdColorControl\n");
+    DPRINT("Calling dxg.sys DdColorControl\n");
     return pfnDdColorControl(hSurface,puColorControlData);
 }
 
@@ -354,7 +355,7 @@ NtGdiDdCreateSurfaceObject(HANDLE hDirectDrawLocal,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdCreateSurfaceObject\n");
+    DPRINT("Calling dxg.sys pfnDdCreateSurfaceObject\n");
     return pfnDdCreateSurfaceObject(hDirectDrawLocal, hSurface, puSurfaceLocal, puSurfaceMore, puSurfaceGlobal, bComplete);
 }
 
@@ -379,8 +380,8 @@ NtGdiDdDeleteDirectDrawObject(HANDLE hDirectDrawLocal)
          return FALSE;
     }
 
-    DPRINT1("hDirectDrawLocal = %p \n", hDirectDrawLocal);
-    DPRINT1("Calling dxg.sys pfnDdDeleteDirectDrawObject\n");
+    DPRINT("hDirectDrawLocal = %p \n", hDirectDrawLocal);
+    DPRINT("Calling dxg.sys pfnDdDeleteDirectDrawObject\n");
 
     return pfnDdDeleteDirectDrawObject(hDirectDrawLocal);
 }
@@ -401,7 +402,7 @@ NtGdiDdDeleteSurfaceObject(HANDLE hSurface)
     }
     /* Try and see if the handle is valid */
 
-    DPRINT1("Calling dxg.sys DdDeleteSurfaceObject\n");
+    DPRINT("Calling dxg.sys DdDeleteSurfaceObject\n");
     return pfnDdDeleteSurfaceObject(hSurface);
 }
 
@@ -430,7 +431,7 @@ NtGdiDdQueryDirectDrawObject(HANDLE hDirectDrawLocal,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdQueryDirectDrawObject\n");
+    DPRINT("Calling dxg.sys pfnDdQueryDirectDrawObject\n");
 
 
     return pfnDdQueryDirectDrawObject(hDirectDrawLocal, pHalInfo, pCallBackFlags, puD3dCallbacks, puD3dDriverData,
@@ -458,12 +459,12 @@ NtGdiDdReenableDirectDrawObject(HANDLE hDirectDrawLocal,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdReenableDirectDrawObject\n");
+    DPRINT("Calling dxg.sys pfnDdReenableDirectDrawObject\n");
 
 #if DXDBG
     status = pfnDdReenableDirectDrawObject(hDirectDrawLocal, pubNewMode);
-    DPRINT1("end Calling dxg.sys pfnDdReenableDirectDrawObject\n");
-    DPRINT1("return value : 0x%08x\n", status);
+    DPRINT("end Calling dxg.sys pfnDdReenableDirectDrawObject\n");
+    DPRINT("return value : 0x%08x\n", status);
     return status;
 #else
     return pfnDdReenableDirectDrawObject(hDirectDrawLocal, pubNewMode);
@@ -488,7 +489,7 @@ NtGdiDdGetDriverInfo(HANDLE hDirectDrawLocal,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdGetDriverInfo\n");
+    DPRINT("Calling dxg.sys pfnDdGetDriverInfo\n");
     return pfnDdGetDriverInfo(hDirectDrawLocal, puGetDriverInfoData);
 }
 
@@ -509,7 +510,7 @@ NtGdiDdGetAvailDriverMemory(HANDLE hDirectDrawLocal,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdGetAvailDriverMemory\n");
+    DPRINT("Calling dxg.sys pfnDdGetAvailDriverMemory\n");
     return pfnDdGetAvailDriverMemory(hDirectDrawLocal, puGetAvailDriverMemoryData);
 }
 
@@ -531,7 +532,7 @@ NtGdiDdSetExclusiveMode(HANDLE hDirectDraw,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdSetExclusiveMode\n");
+    DPRINT("Calling dxg.sys pfnDdSetExclusiveMode\n");
     return pfnDdSetExclusiveMode(hDirectDraw, puSetExclusiveModeData);
 
 }
@@ -553,7 +554,7 @@ NtGdiDdFlipToGDISurface(HANDLE hDirectDraw,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdFlipToGDISurface\n");
+    DPRINT("Calling dxg.sys pfnDdFlipToGDISurface\n");
     return pfnDdFlipToGDISurface(hDirectDraw, puFlipToGDISurfaceData);
 
 }
@@ -574,7 +575,7 @@ NtGdiDdGetDC(HANDLE hSurface,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdGetDC\n");
+    DPRINT("Calling dxg.sys pfnDdGetDC\n");
     return pfnDdGetDC(hSurface, puColorTable);
 }
 
@@ -595,7 +596,7 @@ NtGdiDdGetDxHandle(HANDLE hDirectDraw,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdGetDxHandle\n");
+    DPRINT("Calling dxg.sys pfnDdGetDxHandle\n");
     return pfnDdGetDxHandle(hDirectDraw, hSurface, bRelease);
 }
 
@@ -615,7 +616,7 @@ NtGdiDdReleaseDC(HANDLE hSurface)
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdReleaseDC\n");
+    DPRINT("Calling dxg.sys pfnDdReleaseDC\n");
     return pfnDdReleaseDC(hSurface);
 }
 
@@ -636,7 +637,7 @@ NtGdiDdResetVisrgn(HANDLE hSurface,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdResetVisrgn\n");
+    DPRINT("Calling dxg.sys pfnDdResetVisrgn\n");
     return pfnDdResetVisrgn(hSurface, hwnd);
 }
 
@@ -657,6 +658,6 @@ NtGdiDdSetGammaRamp(HANDLE hDirectDraw,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdSetGammaRamp\n");
+    DPRINT("Calling dxg.sys pfnDdSetGammaRamp\n");
     return pfnDdSetGammaRamp(hDirectDraw, hdc, lpGammaRamp);
 }

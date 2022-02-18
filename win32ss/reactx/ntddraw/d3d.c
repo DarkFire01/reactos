@@ -13,6 +13,7 @@
  *   NtGdiDdUnlock and NtGdiDdUnlockD3D ultimately call the same function in dxg.sys 
  */
 
+/* #define NDEBUG */
 #include <win32k.h>
 #include <debug.h>
 
@@ -68,7 +69,7 @@ NtGdiDdCanCreateD3DBuffer(HANDLE hDirectDraw,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys DdCanCreateD3DBuffer");
+    DPRINT("Calling on dxg.sys DdCanCreateD3DBuffer");
     return pfnDdCanCreateD3DBuffer(hDirectDraw,puCanCreateSurfaceData);
 }
 
@@ -127,7 +128,7 @@ NtGdiD3dContextCreate(HANDLE hDirectDrawLocal,
         return FALSE;
     }
 
-	DPRINT1("Calling dxg.sys D3dContextCreate");
+	DPRINT("Calling dxg.sys D3dContextCreate");
     return pfnD3dContextCreate(hDirectDrawLocal, hSurfColor, hSurfZ, pdcci);
 }
 
@@ -162,7 +163,7 @@ NtGdiD3dContextDestroy(LPD3DNTHAL_CONTEXTDESTROYDATA pContextDestroyData)
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys D3dContextDestroy");
+    DPRINT("Calling dxg.sys D3dContextDestroy");
     return pfnD3dContextDestroy(pContextDestroyData);
 }
 
@@ -200,7 +201,7 @@ NtGdiD3dContextDestroyAll(LPD3DNTHAL_CONTEXTDESTROYALLDATA pdcad)
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys D3dContextDestroyAll");
+    DPRINT("Calling dxg.sys D3dContextDestroyAll");
     return pfnD3dContextDestroyAll(pdcad);
 }
 
@@ -275,7 +276,7 @@ NtGdiDdCreateD3DBuffer(HANDLE hDirectDraw,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys DdCreateD3DBuffer");
+    DPRINT("Calling dxg.sys DdCreateD3DBuffer");
     return pfnDdCreateD3DBuffer(hDirectDraw, hSurface,
                                 puSurfaceDescription, puSurfaceGlobalData,
                                 puSurfaceLocalData, puSurfaceMoreData,
@@ -297,7 +298,7 @@ NtGdiDdDestroyD3DBuffer(HANDLE hSurface)
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdDestroyD3DBuffer");
+    DPRINT("Calling dxg.sys pfnDdDestroyD3DBuffer");
     return pfnDdDestroyD3DBuffer(hSurface);
 }
 
@@ -322,7 +323,7 @@ NtGdiD3dDrawPrimitives2(HANDLE hCmdBuf,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys D3dDrawPrimitives2");
+    DPRINT("Calling dxg.sys D3dDrawPrimitives2");
     return pfnD3dDrawPrimitives2(hCmdBuf,hVBuf,pded,pfpVidMemCmd,pdwSizeCmd,pfpVidMemVtx,pdwSizeVtx);
 }
 
@@ -343,7 +344,7 @@ NtGdiDdLockD3D(HANDLE hSurface,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdLockD3D");
+    DPRINT("Calling dxg.sys pfnDdLockD3D");
     return pfnDdLockD3D(hSurface, puLockData);
 }
 
@@ -362,7 +363,7 @@ NtGdiD3dValidateTextureStageState(LPD3DNTHAL_VALIDATETEXTURESTAGESTATEDATA pData
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys D3dValidateTextureStageState");
+    DPRINT("Calling dxg.sys D3dValidateTextureStageState");
     return pfnD3dValidateTextureStageState(pData);
 }
 
@@ -382,7 +383,7 @@ NtGdiDdUnlockD3D(HANDLE hSurface,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling dxg.sys pfnDdUnlockD3D");
+    DPRINT("Calling dxg.sys pfnDdUnlockD3D");
     return pfnDdUnlockD3D(hSurface, puUnlockData);
 
 }

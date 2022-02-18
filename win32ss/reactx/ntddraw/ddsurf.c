@@ -8,6 +8,7 @@
  *       19/7-2006  Magnus Olsen
  */
 
+/* #define NDEBUG */
 #include <win32k.h>
 #include <debug.h>
 
@@ -26,7 +27,7 @@ NtGdiDdDestroySurface(HANDLE hSurface, BOOL bRealDestroy)
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys pfnDdDestroySurface");
+    DPRINT("Calling on dxg.sys pfnDdDestroySurface");
     return pfnDdDestroySurface(hSurface, bRealDestroy);
 }
 
@@ -49,7 +50,7 @@ NtGdiDdFlip(HANDLE hSurfaceCurrent,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys pfnDdDdFlip");
+    DPRINT("Calling on dxg.sys pfnDdDdFlip");
     return pfnDdDdFlip(hSurfaceCurrent, hSurfaceTarget, hSurfaceCurrentLeft, hSurfaceTargetLeft, puFlipData);
 }
 
@@ -70,7 +71,7 @@ NtGdiDdLock(HANDLE hSurface,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys pfnDdLock");
+    DPRINT("Calling on dxg.sys pfnDdLock");
     return pfnDdLock(hSurface, puLockData, hdcClip);
 }
 
@@ -90,7 +91,7 @@ NtGdiDdUnlock(HANDLE hSurface,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys pfnDdUnlock");
+    DPRINT("Calling on dxg.sys pfnDdUnlock");
     return pfnDdUnlock(hSurface, puUnlockData);
 }
 
@@ -111,7 +112,7 @@ NtGdiDdBlt(HANDLE hSurfaceDest,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys DdBlt");
+    DPRINT("Calling on dxg.sys DdBlt");
     return pfnDdBlt(hSurfaceDest,hSurfaceSrc,puBltData);
 }
 
@@ -131,7 +132,7 @@ NtGdiDdSetColorKey(HANDLE hSurface,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys pfnDdSetColorKey");
+    DPRINT("Calling on dxg.sys pfnDdSetColorKey");
     return pfnDdSetColorKey(hSurface,puSetColorKeyData);
 
 }
@@ -154,7 +155,7 @@ NtGdiDdAddAttachedSurface(HANDLE hSurface,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys DdAddAttachedSurface");
+    DPRINT("Calling on dxg.sys DdAddAttachedSurface");
     return pfnDdAddAttachedSurface(hSurface,hSurfaceAttached,puAddAttachedSurfaceData);
 }
 
@@ -174,7 +175,7 @@ NtGdiDdGetBltStatus(HANDLE hSurface,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys pfnDdGetBltStatus");
+    DPRINT("Calling on dxg.sys pfnDdGetBltStatus");
     return pfnDdGetBltStatus(hSurface,puGetBltStatusData);
 }
 
@@ -194,7 +195,7 @@ NtGdiDdGetFlipStatus(HANDLE hSurface,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys pfnDdGetFlipStatus");
+    DPRINT("Calling on dxg.sys pfnDdGetFlipStatus");
     return pfnDdGetFlipStatus(hSurface,puGetFlipStatusData);
 }
 
@@ -215,7 +216,7 @@ NtGdiDdUpdateOverlay(HANDLE hSurfaceDestination,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys pfnDdUpdateOverlay");
+    DPRINT("Calling on dxg.sys pfnDdUpdateOverlay");
     return pfnDdUpdateOverlay(hSurfaceDestination,hSurfaceSource,puUpdateOverlayData);
 }
 
@@ -237,7 +238,7 @@ NtGdiDdSetOverlayPosition(HANDLE hSurfaceSource,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys pfnDdSetOverlayPosition");
+    DPRINT("Calling on dxg.sys pfnDdSetOverlayPosition");
     return pfnDdSetOverlayPosition(hSurfaceSource,hSurfaceDestination,puSetOverlayPositionData);
 }
 
@@ -264,7 +265,7 @@ NtGdiDdAlphaBlt(HANDLE hSurfaceDest,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys DdAlphaBlt");
+    DPRINT("Calling on dxg.sys DdAlphaBlt");
     return pfnDdAlphaBlt(hSurfaceDest,hSurfaceSrc,puBltData);
 }
 
@@ -285,7 +286,7 @@ NtGdiDdAttachSurface(HANDLE hSurfaceFrom,
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
-    DPRINT1("Calling on dxg.sys pfnDdAttachSurface");
+    DPRINT("Calling on dxg.sys pfnDdAttachSurface");
     return pfnDdAttachSurface(hSurfaceFrom,hSurfaceTo);
 }
 
@@ -309,6 +310,6 @@ NtGdiDdUnattachSurface(HANDLE hSurface,
         return STATUS_NOT_IMPLEMENTED;
     }
 
-    DPRINT1("Calling on dxg.sys pfnDdUnattachSurface");
+    DPRINT("Calling on dxg.sys pfnDdUnattachSurface");
     return pfnDdUnattachSurface(hSurface,hSurfaceAttached);
 }
