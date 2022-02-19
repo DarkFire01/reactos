@@ -8,7 +8,7 @@
  *       19/1-2006   Magnus Olsen
  */
 
-/* #define NDEBUG */
+#define NDEBUG
 #include <win32k.h>
 #include <debug.h>
 

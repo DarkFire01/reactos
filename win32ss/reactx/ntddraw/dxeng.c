@@ -8,7 +8,7 @@
  *                   Copyright Justin Miller <justinmiller100@gmail.com>
  */
 
-/* #define NDEBUG */
+#define NDEBUG
 #include <win32k.h>
 #include <debug.h>
 
