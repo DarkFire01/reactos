@@ -1225,7 +1225,7 @@
 @ stdcall WriteTapemark(ptr long long long)
 @ stdcall ZombifyActCtx(ptr)
 @ stdcall -arch=x86_64 __C_specific_handler() ntdll.__C_specific_handler
-@ stdcall -arch=x86_64 __chkstk() ntdll.__chkstk
+@ stdcall -arch=x86_64,arm64 __chkstk() ntdll.__chkstk
 ;@ stdcall -arch=x86_64 __misaligned_access() ntdll.__misaligned_access
 @ stdcall _hread(long ptr long)
 @ stdcall _hwrite(long ptr long)

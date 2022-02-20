@@ -24,7 +24,7 @@ RefiEntry(
     EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
     EFI_STATUS refiCheck;
 
-    RefiDebugInit(0);
+    //RefiDebugInit(0);
     RefiColPrint(SystemTable, L"RefiEntry: Starting ROSEFI\r\n");
 
     /* Grab GOP pointer and initalize UI */

@@ -4,19 +4,6 @@
  * No warranty is given; refer to the file DISCLAIMER.PD within this package.
  */
 
-void* __cdecl __RTC_memset(void* src, int val, size_t count)
-{
-    char *char_src = (char *)src;..........................
-
-    while(count>0) {
-        *char_src = val;
-        char_src++;
-        count--;
-    }
-    return src;
-}
-
-
 #define WPRFLAG
 #define UNICODE
 #define _UNICODE
