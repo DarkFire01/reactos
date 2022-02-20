@@ -1,5 +1,4 @@
 #include "gui.h"
-#include "../include/rosefip.h"
 
 PROSEFI_FRAMEBUFFER_DATA refiFbData;
 
@@ -12,6 +11,22 @@ RefiInitUI(_In_ EFI_SYSTEM_TABLE *SystemTable,
     refiFbData->ScreenWidth        = gop->Mode->Info->HorizontalResolution;
     refiFbData->ScreenHeight       = gop->Mode->Info->VerticalResolution;
     refiFbData->PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
+}
+
+VOID
+RosEFIAdvPutChar(PPSF1_FONT psf1_font, unsigned int colour, char chr, unsigned int xOff, unsigned int yOff)
+{
+    unsigned int* pixPtr = (unsigned int*)refiFbData->BaseAddress;
+    char* fontPtr = (PUCHAR)psf1_font->glyphBuffer + (chr * psf1_font->psf1_header.charsize);
+    for (unsigned long y = yOff; y < yOff + 16; y++){
+        for (unsigned long x = xOff; x < xOff+8; x++){
+            if ((*fontPtr & (0b10000000 >> (x - xOff))) > 0){
+                    *(unsigned int*)(pixPtr + x + (y * refiFbData->PixelsPerScanLine)) = colour;
+                }
+
+        }
+        fontPtr++;
+    }
 }
 
 VOID

@@ -61,4 +61,12 @@ VOID
 RefiTrollBSoD(_In_ EFI_SYSTEM_TABLE *SystemTable, 
               _In_ EFI_STATUS refiCheck,
               _In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop, _In_ UINT32 x, UINT32 y);
-    
+
+VOID 
+InitializeFILESYSTEM(_In_ EFI_HANDLE ImageHandle,
+                     _In_ EFI_SYSTEM_TABLE *SystemTable);
+void 
+readFile(EFI_SYSTEM_TABLE *SystemTable, CHAR16* FileName);
+
+void closeFile(EFI_SYSTEM_TABLE *SystemTable, EFI_FILE_PROTOCOL* FileHandle);
+EFI_FILE_PROTOCOL* openFile(EFI_SYSTEM_TABLE *SystemTable, CHAR16* FileName);

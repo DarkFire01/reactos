@@ -28,8 +28,10 @@ list(APPEND BOOTMGR_BASE_SOURCE
         entry.c
         time.c
         display/gop.c
+        display/font.c
         display/gui.c
         display/eficonsolelib.c
+        #lib/fs/uefidefault/uefifilesystem.c
         lib/mm/efimm.c
         debug.c
         #COMM
@@ -61,7 +63,7 @@ endif()
 
 set_entrypoint(${EFI_PLATFORM_ID} RefiEntry)
 
-target_link_libraries(${EFI_PLATFORM_ID} cportlib cmlib rtl libcntpr)
+target_link_libraries(${EFI_PLATFORM_ID} cportlib cmlib rtl libcntpr freetype)
 add_dependencies(${EFI_PLATFORM_ID} xdk)
 # dynamic analysis switches
 if(STACK_PROTECTOR)
