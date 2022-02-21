@@ -24,6 +24,7 @@ typedef struct _ROSEFI_FRAMEBUFFER_DATA
     UINT32       ScreenWidth;
     UINT32       ScreenHeight;
     UINT32       PixelsPerScanLine;
+    UINT32       PixelFormat;
 } ROSEFI_FRAMEBUFFER_DATA, *PROSEFI_FRAMEBUFFER_DATA;
 
 BOOLEAN

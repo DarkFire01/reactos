@@ -13,7 +13,7 @@ typedef struct PSF1_HEADER {
 
 typedef struct PSF1_FONT {
     PPSF1_HEADER psf1_header;
-    void* glyphBuffer;
+    PVOID glyphBuffer;
 } PSF1_FONT, *PPSF1_FONT;
 
 VOID
@@ -29,4 +29,8 @@ VOID
 RefiBaseDrawRandomShit(UINT32 Color);
 
 VOID
-RosEFIAdvPutChar(PPSF1_FONT psf1_font, unsigned int colour, char chr, unsigned int xOff, unsigned int yOff);
+RosEFIAdvPutChar(PPSF1_FONT psf1_font, UINT32 colour, CHAR16 chr, UINT32 xOff, UINT32 yOff);
+
+
+PSF1_HEADER 
+LoadPSF1Font(EFI_SYSTEM_TABLE *SystemTable);

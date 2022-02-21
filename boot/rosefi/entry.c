@@ -12,10 +12,13 @@ struct EFI_GUID EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID = {0x964e5b22, 0x6459, 0x11
 struct EFI_GUID EFI_DEVICE_PATH_PROTOCOL_GUID        = {0x09576e91, 0x6d3f, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b}};
 struct EFI_GUID EFI_FILE_INFO_GUID                   = {0x09576e92, 0x6d3f, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b}};
 
+
 EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *Volume;
-void* OSBuffer_Handle;
-
+EFI_FILE_PROTOCOL* Font;
+PPSF1_FONT OSBuffer_Handle;
+PPSF1_FONT CoreFont;
+PVOID GlyphBufferHolder;
 EFI_STATUS
 RefiEntry(
     _In_ EFI_HANDLE ImageHandle,
@@ -23,28 +26,56 @@ RefiEntry(
 {
     EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
     EFI_STATUS refiCheck;
-
     //RefiDebugInit(0);
     RefiColPrint(SystemTable, L"RefiEntry: Starting ROSEFI\r\n");
 
     /* Grab GOP pointer and initalize UI */
     SystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
     RefiInitUI(SystemTable, gop);
-
-    RefiBaseClearScreen(0x000000);
+    RefiBaseClearScreen(0x0000FF);
     RefiBaseDrawBox(32, 32, 64, 64, 0x423E41);
 
     InitializeFILESYSTEM(ImageHandle, SystemTable);
     RefiBaseDrawBox(32, 32, 128, 64, 0xF03F00);
     //PSF1_FONT baseFont = LoadPSF1Font();
-   // EFI_FILE_PROTOCOL* Font = openFile(SystemTable, (CHAR16*)"font.psf");
-    RefiBaseClearScreen(0x000000);
+    RefiBaseClearScreen(0x0000FF);
+    RefiColPrint(SystemTable, L"Attempting to Load font...");
+    CoreFont->psf1_header = LoadPSF1Font(SystemTable);
+    if (CoreFont->psf1_header.magic[0] == 0x36)
+    {
+        RefiColPrint(SystemTable, L"Font header sucessfully identified");
+    }
+    if (CoreFont->psf1_header.magic[1] == 0x04)
+    {
+        RefiColPrint(SystemTable, L"Font header sucessfully identified");
+    }
+    if (CoreFont->psf1_header.magic[0] == 0x32)
+    {
+        RefiColPrint(SystemTable, L"Font header failed");
+    }
+    if (CoreFont->glyphBuffer == 0)
+    {
+        RefiColPrint(SystemTable, L"Oh shit its dead");
+    }
+
+    refiCheck = SystemTable->BootServices->AllocatePool(EfiLoaderData, 0x00020000, (void**)&GlyphBufferHolder);
+    //GlyphBufferHolder = (PVOID)(OSBuffer_Handle + sizeof(PSF1_HEADER));
+    CoreFont->glyphBuffer = 0;
+    CoreFont->glyphBuffer = OSBuffer_Handle->glyphBuffer;
+    RefiBaseClearScreen(0x0000FF);
+    RosEFIAdvPutChar(CoreFont, 0xFF00FF, 'H', 32, 32);
+    RosEFIAdvPutChar(CoreFont, 0xFF00FF, 'E', 32 + 32 + 8, 32);
+    RosEFIAdvPutChar(CoreFont, 0xFF00FF, 'L', 32 + 64 + 8, 32);
+    RosEFIAdvPutChar(CoreFont, 0xFF00FF, 'L', 32 + 96 + 8, 32);
+    RosEFIAdvPutChar(CoreFont, 0xFF00FF, 'O', 32 + 128 + 8, 32);
+    //RefiBaseDrawBox(0,0,32,32,0x00FF00);
+    //RosEFIAdvPutChar(CoreFont, 0xFF00FF, 'G', 64 + 8, 64 + 8);
     /* BOT */
     //RefiStartFileSystem(ImageHandle, SystemTable, &Volume);
     /* Start FS support */
     for(;;)
     {
-
+        RefiStallProcessor(SystemTable, 1000);
     }
     refiCheck = RefiInitMemoryManager(SystemTable);
     if (refiCheck != EFI_SUCCESS)
@@ -67,8 +98,6 @@ int memcmp(const void* aptr, const void* bptr, size_t n){
 	}
 	return 0;
 }
-
-
 
 VOID
 RefiStartLoader()
@@ -247,6 +276,18 @@ unsigned short int* CheckStandardEFIError(unsigned long long s)
     }
     return (unsigned short int*)L" ERROR\r\n";
 }
+/* IM DOING THIS TEMPORARILY TO CREATE FILE SYSTEM DATA */
+
+PSF1_HEADER LoadPSF1Font(EFI_SYSTEM_TABLE *SystemTable)
+{
+    EFI_STATUS Status;
+    PSF1_HEADER Result;
+    readFile(SystemTable, L"\\Font.psf");
+    Status = SystemTable->BootServices->AllocatePool(EfiLoaderData, (0x00010000), (void**)&CoreFont);
+    RefiColPrint(SystemTable,CheckStandardEFIError(Status));
+    Result = OSBuffer_Handle->psf1_header;
+    return Result;
+}
 
 VOID
 InitializeFILESYSTEM(_In_ EFI_HANDLE ImageHandle,
@@ -287,11 +328,6 @@ EFI_FILE_PROTOCOL* openFile(EFI_SYSTEM_TABLE *SystemTable, CHAR16* FileName)
     RefiColPrint(SystemTable, L"Opening File ... ");
     EFI_FILE_PROTOCOL* FileHandle = NULL;
     Status = RootFS->Open(RootFS, &FileHandle, FileName, 0x0000000000000001, 0);
-     RefiColPrint(SystemTable, CheckStandardEFIError(Status));
-    if (Status == EFI_LOAD_ERROR)
-    {
-        RefiColPrint(SystemTable, L"Failed to load font");
-    }
     RefiColPrint(SystemTable, CheckStandardEFIError(Status));
     return FileHandle;
 }
@@ -315,10 +351,10 @@ void readFile(EFI_SYSTEM_TABLE *SystemTable, CHAR16* FileName)
     if(mytextfile != NULL)
     {
         RefiColPrint(SystemTable, L"AllocatingPool ... ");
-        EFI_STATUS Status = SystemTable->BootServices->AllocatePool(EfiLoaderData, 0x00100000, (void**)&OSBuffer_Handle);
+        EFI_STATUS Status = SystemTable->BootServices->AllocatePool(EfiLoaderData, 0x00010000, (void**)&OSBuffer_Handle);
          RefiColPrint(SystemTable, CheckStandardEFIError(Status));
     
-        UINT64 fileSize = 0x00100000;
+        UINT64 fileSize = 0x0010000;
         
         RefiColPrint(SystemTable, L"Reading File ... ");
         Status = mytextfile->Read(mytextfile, (UINTN*)&fileSize, OSBuffer_Handle);
