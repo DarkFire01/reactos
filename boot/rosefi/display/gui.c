@@ -81,6 +81,7 @@ RefiBaseDrawRandomShit(UINT32 Color)
     }
 }
 
+
 VOID
 RefiBaseClearScreen(UINT32 Color)
 {

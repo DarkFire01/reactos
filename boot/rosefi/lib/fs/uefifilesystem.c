@@ -32,15 +32,3 @@ RefiOpenFile(CHAR16* FileName, EFI_SYSTEM_TABLE *SystemTable)
     return FileHandle;
 }
 #endif
-VOID
-RefiCheckSucess(EFI_STATUS Status, EFI_SYSTEM_TABLE *SystemTable)
-{
-    if (Status == 0)
-    {
-        RefiColPrint(L":D yay",SystemTable);
-    }
-    else
-    {
-        RefiColPrint(L"D: nuuuu",SystemTable);
-    }
-}

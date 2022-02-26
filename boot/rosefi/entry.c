@@ -19,6 +19,7 @@ EFI_FILE_PROTOCOL* Font;
 PPSF1_FONT OSBuffer_Handle;
 PPSF1_FONT CoreFont;
 PVOID GlyphBufferHolder;
+
 EFI_STATUS
 RefiEntry(
     _In_ EFI_HANDLE ImageHandle,
@@ -38,7 +39,7 @@ RefiEntry(
     InitializeFILESYSTEM(ImageHandle, SystemTable);
     RefiBaseDrawBox(32, 32, 128, 64, 0xF03F00);
     //PSF1_FONT baseFont = LoadPSF1Font();
-    RefiBaseClearScreen(0x0000FF);
+   // RefiBaseClearScreen(0x0000FF);
     RefiColPrint(SystemTable, L"Attempting to Load font...");
     CoreFont->psf1_header = LoadPSF1Font(SystemTable);
     if (CoreFont->psf1_header.magic[0] == 0x36)
@@ -62,7 +63,7 @@ RefiEntry(
     //GlyphBufferHolder = (PVOID)(OSBuffer_Handle + sizeof(PSF1_HEADER));
     CoreFont->glyphBuffer = 0;
     CoreFont->glyphBuffer = OSBuffer_Handle->glyphBuffer;
-    RefiBaseClearScreen(0x0000FF);
+    //RefiBaseClearScreen(0x0000FF);
     RosEFIAdvPutChar(CoreFont, 0xFF00FF, 'H', 32, 32);
     RosEFIAdvPutChar(CoreFont, 0xFF00FF, 'E', 32 + 32 + 8, 32);
     RosEFIAdvPutChar(CoreFont, 0xFF00FF, 'L', 32 + 64 + 8, 32);
