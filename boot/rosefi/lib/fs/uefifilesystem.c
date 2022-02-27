@@ -1,5 +1,5 @@
 
-#include "../../../include/rosefip.h"
+#include "fs.h"
 
 VOID
 RefiStartFileSystem(EFI_HANDLE ImageHandle,

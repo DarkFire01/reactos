@@ -25,13 +25,15 @@ endif()
 
 list(APPEND BOOTMGR_BASE_SOURCE
         include/rosefi.h
+        debug.c
         entry.c
-        time.c
-        display/gop.c
-        display/font.c
-        display/gui.c
-        display/eficonsolelib.c
-        #lib/fs/uefidefault/uefifilesystem.c
+        utils.c
+        lib/input/uefikeyboard.c
+        lib/peloader.c
+        lib/ui/ui.c
+        lib/ui/font.c
+
+
         lib/mm/efimm.c
         #COMM
     )

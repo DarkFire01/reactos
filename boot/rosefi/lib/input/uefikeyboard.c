@@ -6,10 +6,10 @@
  */
 
 
-#include <rosefi.h>
+#include "../../include/rosefip.h"
 
 VOID
-RefiHitAnyKey(EFI_SYSTEM_TABLE* SystemTable)
+RefiUefiHitAnyKey(EFI_SYSTEM_TABLE* SystemTable)
 {
     // This clears the keyboard buffer.
     SystemTable->ConIn->Reset(SystemTable->ConIn, 1);
@@ -22,13 +22,13 @@ RefiHitAnyKey(EFI_SYSTEM_TABLE* SystemTable)
 }
 
 VOID
-RefiResetKeyboard(EFI_SYSTEM_TABLE* SystemTable)
+RefiUefiResetKeyboard(EFI_SYSTEM_TABLE* SystemTable)
 {
     SystemTable->ConIn->Reset(SystemTable->ConIn, 1);
 }
 
 BOOLEAN 
-RefiGetKey(CHAR16 key, EFI_INPUT_KEY CheckKeystroke)
+RefiUefiGetKey(CHAR16 key, EFI_INPUT_KEY CheckKeystroke)
 {
     if(CheckKeystroke.UnicodeChar == key)
     {
@@ -41,7 +41,7 @@ RefiGetKey(CHAR16 key, EFI_INPUT_KEY CheckKeystroke)
 }
 
 EFI_STATUS 
-RefiCheckKey(EFI_SYSTEM_TABLE* SystemTable, EFI_INPUT_KEY CheckKeystroke)
+RefiUefiCheckKey(EFI_SYSTEM_TABLE* SystemTable, EFI_INPUT_KEY CheckKeystroke)
 {
     return SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &CheckKeystroke);
 }
