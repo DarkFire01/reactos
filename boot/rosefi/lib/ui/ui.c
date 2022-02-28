@@ -40,13 +40,28 @@ RefiClearScreen(UINT32 Color)
 VOID
 RefiDrawRectangle(UINT32 x, UINT32 y, UINT32 width, UINT32 height, UINT32 Color)
 {
-    for(int Newy = y; Newy < height; Newy++)
+    
+    for(int  Newx = 0; Newx < width; Newx++)
     {
-        for(int  Newx = x; Newx < width; Newx++)
+        for(int Newy = 0; Newy < height; Newy++)
         {
-            RefiSetPixel(Newx, Newy, Color);
-        }
+           // RefiSetPixel(Newx + x, Newy + y, Color);
+           *((UINT32*)(refiFbData->BaseAddress + 4 * refiFbData->PixelsPerScanLine * (Newy + y) + 4 * (Newx + x))) = Color;     
+        } 
     }
+    #if 0
+    UCHAR *where = (PUCHAR)refiFbData->BaseAddress;
+    int i, j;
+ 
+    for (i = 0; i < width; i++) {
+        for (j = 0; j < height; j++) {
+            //putpixel(vram, 64 + j, 64 + i, (r << 16) + (g << 8) + b);
+           // where[j*refiFbData->PixelFormat] = Color;
+           RefiSetPixel(i, j, Color);
+        }
+        where += (4 * refiFbData->PixelsPerScanLine);
+    }
+     #endif
 }
 
 /*
@@ -73,8 +88,11 @@ RefiBaseDrawRandomShit(UINT32 Color)
 VOID
 RefiDrawUIBackground()
 {
-    //RefiDrawRectangle(32, 32, refiFbData->ScreenWidth - 32, 64, 0x555555);
-    RefiDrawRectangle(32, 32, 640, 64, 0x555555);
-  //  RefiDrawRectangle(32, refiFbData->ScreenHeight - 32 - 64, refiFbData->ScreenWidth - 32, 64, 0x555555);
+    RefiClearScreen(0x000000);
+    RefiDrawRectangle(32, 32, refiFbData->ScreenWidth - 64, 64, 0x555555);
+    RefiDrawRectangle(32, refiFbData->ScreenHeight - 96, (refiFbData->ScreenWidth - 64) , 64, 0x555555);
+    RefiDrawRectangle(64, 128, (refiFbData->ScreenWidth - 128), (refiFbData->ScreenHeight - 256), 0x0000FF);
+   // RefiDrawRectangle(32, 32, 32, 3200, 0x555555);
+   // RefiDrawRectangle(32, refiFbData-256>ScreenHeight - 32, refiFbData->ScreenWidth - 32, 96, 0x555555);
 
 }

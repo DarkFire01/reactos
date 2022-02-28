@@ -33,7 +33,6 @@ RefiEntry(
     /* Grab GOP pointer and initalize UI */
     SystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
     RefiInitUI(SystemTable, gop);
-    RefiClearScreen(0x000000);
     RefiDrawUIBackground();
 #if 0
     InitializeFILESYSTEM(ImageHandle, SystemTable);
