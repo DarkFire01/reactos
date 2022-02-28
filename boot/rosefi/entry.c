@@ -7,12 +7,6 @@
 
 #include "include/rosefip.h"
 
-struct EFI_GUID EFI_LOADED_IMAGE_PROTOCOL_GUID       = {0x5b1b31a1, 0x9562, 0x11d2, {0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b}};
-struct EFI_GUID EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID = {0x964e5b22, 0x6459, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b}};
-struct EFI_GUID EFI_DEVICE_PATH_PROTOCOL_GUID        = {0x09576e91, 0x6d3f, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b}};
-struct EFI_GUID EFI_FILE_INFO_GUID                   = {0x09576e92, 0x6d3f, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b}};
-
-
 EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *Volume;
 EFI_FILE_PROTOCOL* Font;
@@ -20,6 +14,7 @@ PPSF1_FONT OSBuffer_Handle;
 PPSF1_FONT CoreFont;
 PVOID GlyphBufferHolder;
 PUCHAR Test;
+CHAR16* CharHolder;
 EFI_STATUS
 RefiEntry(
     _In_ EFI_HANDLE ImageHandle,
@@ -34,6 +29,33 @@ RefiEntry(
     SystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
     RefiInitUI(SystemTable, gop);
     RefiDrawUIBackground();
+
+    /* Start file system, print using GOP since no font is loaded */
+    refiCheck = RefiInitializeUefiFilesystem(ImageHandle, SystemTable);
+    RefiColPrint(SystemTable, L"RefiInitalizeUefiFileSystem: ");
+    RefiColPrint(SystemTable, CheckStandardEFIError(refiCheck));
+    
+    //RefiItoa(0x600, CharHolder, 16);
+    RefiColPrint(SystemTable, CharHolder);
+    refiCheck = EFI_SUCCESS;
+    refiCheck = SystemTable->BootServices->AllocatePool(EfiLoaderData, (1000), (void**)&Font);
+    RefiColPrint(SystemTable, L"RefiInitalizeFont: ");
+    RefiColPrint(SystemTable, CheckStandardEFIError(refiCheck));
+    if (refiCheck != EFI_SUCCESS)
+    {
+        RefiTrollBSoD(SystemTable);
+    }
+
+    if (RefiLoadPSF1Font(SystemTable) == TRUE) 
+    {
+         RefiColPrint(SystemTable, L"Font is loaded");
+    }
+    else
+    {
+       RefiColPrint(SystemTable, L"Font signature failed"); 
+    }
+    RefiDrawUIBackground();
+    RefiPrintF("the quick brown fox jumped over the lazy dog", 96, 128, 0x0000FF, 1);
 #if 0
     InitializeFILESYSTEM(ImageHandle, SystemTable);
     RefiBaseDrawBox(32, 32, 128, 64, 0xF03F00);
@@ -110,6 +132,7 @@ PSF1_HEADER LoadPSF1Font(EFI_SYSTEM_TABLE *SystemTable)
     return Result;
 }
 #endif
+#if 0
 VOID
 InitializeFILESYSTEM(_In_ EFI_HANDLE ImageHandle,
                      _In_ EFI_SYSTEM_TABLE *SystemTable)
@@ -183,3 +206,5 @@ void readFile(EFI_SYSTEM_TABLE *SystemTable, CHAR16* FileName)
         closeFile(SystemTable, mytextfile);
     }
 }
+
+#endif

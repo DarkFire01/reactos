@@ -15,6 +15,8 @@ RefiInitUI(_In_ EFI_SYSTEM_TABLE *SystemTable,
     refiFbData->PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
     refiFbData->PixelFormat        = gop->Mode->Info->PixelFormat;
     Status = 0;
+
+    //RefiInitFonts(refiFbData);
 }
 
 VOID
@@ -22,7 +24,7 @@ RefiPrintUI(CHAR16* str, UINT32 x, UINT32 y, UINT32 Color)
 {
     /* TODO: adjust for.. literally everything */
     // For now we are passing the parameters to the font specific call 
-    RefiFontPrint(str, x, y, Color);
+  //  RefiFontPrint(str, x, y, Color);
 }
 
 VOID
@@ -40,28 +42,13 @@ RefiClearScreen(UINT32 Color)
 VOID
 RefiDrawRectangle(UINT32 x, UINT32 y, UINT32 width, UINT32 height, UINT32 Color)
 {
-    
     for(int  Newx = 0; Newx < width; Newx++)
     {
         for(int Newy = 0; Newy < height; Newy++)
         {
-           // RefiSetPixel(Newx + x, Newy + y, Color);
            *((UINT32*)(refiFbData->BaseAddress + 4 * refiFbData->PixelsPerScanLine * (Newy + y) + 4 * (Newx + x))) = Color;     
         } 
     }
-    #if 0
-    UCHAR *where = (PUCHAR)refiFbData->BaseAddress;
-    int i, j;
- 
-    for (i = 0; i < width; i++) {
-        for (j = 0; j < height; j++) {
-            //putpixel(vram, 64 + j, 64 + i, (r << 16) + (g << 8) + b);
-           // where[j*refiFbData->PixelFormat] = Color;
-           RefiSetPixel(i, j, Color);
-        }
-        where += (4 * refiFbData->PixelsPerScanLine);
-    }
-     #endif
 }
 
 /*
@@ -91,7 +78,8 @@ RefiDrawUIBackground()
     RefiClearScreen(0x000000);
     RefiDrawRectangle(32, 32, refiFbData->ScreenWidth - 64, 64, 0x555555);
     RefiDrawRectangle(32, refiFbData->ScreenHeight - 96, (refiFbData->ScreenWidth - 64) , 64, 0x555555);
-    RefiDrawRectangle(64, 128, (refiFbData->ScreenWidth - 128), (refiFbData->ScreenHeight - 256), 0x0000FF);
+    /* This represents the actual console area */
+    //RefiDrawRectangle(64, 128, (refiFbData->ScreenWidth - 128), (refiFbData->ScreenHeight - 256), 0x0000FF);
    // RefiDrawRectangle(32, 32, 32, 3200, 0x555555);
    // RefiDrawRectangle(32, refiFbData-256>ScreenHeight - 32, refiFbData->ScreenWidth - 32, 96, 0x555555);
 

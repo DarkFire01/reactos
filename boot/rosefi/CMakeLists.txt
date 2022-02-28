@@ -32,9 +32,10 @@ list(APPEND BOOTMGR_BASE_SOURCE
         lib/peloader.c
         lib/ui/ui.c
         lib/ui/font.c
-
-
         lib/mm/efimm.c
+
+        lib/fs/fs.c
+        lib/fs/uefifilesystem.c
         #COMM
     )
 

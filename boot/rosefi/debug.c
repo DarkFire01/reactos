@@ -201,16 +201,12 @@ RefiColSetColor(EFI_SYSTEM_TABLE* SystemTable, UINTN Attribute)
 /* 
  * Fuck Virtualbox
  */
-#if 0
+
 VOID
-RefiTrollBSoD(_In_ EFI_SYSTEM_TABLE *SystemTable, 
-              _In_ EFI_STATUS refiCheck,
-              _In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop)
+RefiTrollBSoD(_In_ EFI_SYSTEM_TABLE *SystemTable)
 {
-    RefiClearScreen(SystemTable);
-    RefiSetColor(SystemTable, EFI_BLUE);
-    CreateFilledBox(0, 0, 0, 0, SetGraphicsColor(BLUE), gop);
-    RefiSetColor(SystemTable, EFI_WHITE);
+    RefiClearScreen(0x0000FF);
+    RefiColSetColor(SystemTable, EFI_WHITE);
     RefiColPrint(SystemTable, L"A problem has been detected and ROSEFI has been shut down to prevent damage     to your computer.\r\n");
     RefiColPrint(SystemTable, L"\r\nVIRTUALBOX_SUCKS\r\n");
     RefiColPrint(SystemTable, L"\r\nIf this is the first time you've seen this Stop error screen,\r\n");
@@ -230,7 +226,7 @@ RefiTrollBSoD(_In_ EFI_SYSTEM_TABLE *SystemTable,
 
 
     RefiColPrint(SystemTable, L"\r\nRebooting in a few seconds...\r\n");
-    RefiStallProcessor(SystemTable, 5000);
+    RefiStallProcessor(SystemTable, 10000);
     SystemTable->RuntimeServices->ResetSystem(EfiResetCold, EFI_SUCCESS, 0, 0);
 }
-#endif
+

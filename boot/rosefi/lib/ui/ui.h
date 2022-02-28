@@ -38,7 +38,10 @@ RefiDrawUIBackground();
 /* Font commands ************************************************/
 
 VOID
-RefiFontPrint(CHAR16* str, UINT32 xOff, UINT32 yOff, UINT32 Color);
+RefiFontPrint(CHAR16 str, UINT32 xOff, UINT32 yOff, UINT32 Color);
 
 BOOLEAN
-RefiLoadPSF1Font();
+RefiLoadPSF1Font(EFI_SYSTEM_TABLE *SystemTable);
+
+VOID
+RefiPrintF(UCHAR* str, UINT32 xOff, UINT32 yOff, UINT32 Color, UINT32 Scale);

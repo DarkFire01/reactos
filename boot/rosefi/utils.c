@@ -19,47 +19,6 @@ memcmp(const void* aptr, const void* bptr, size_t n){
 	return 0;
 }
 
-PUCHAR hex_to_str(PUCHAR s, UINT32 v) {
-    char *end, *p;
-
-    if (v == 0) {
-        *s = '0';
-        s++;
-
-        *s = 0;
-        return s;
-    }
-
-    end = s;
-
-    {
-        UINT32 n = v;
-
-        while (n != 0) {
-            end++;
-            n >>= 4;
-        }
-    }
-
-    *end = 0;
-
-    p = end;
-
-    while (v != 0) {
-        p = &p[-1];
-
-        if ((v & 0xf) >= 10)
-            *p = (v & 0xf) - 10 + 'a';
-        else
-            *p = (v & 0xf) + '0';
-
-        v >>= 4;
-    }
-
-    return end;
-}
-
-
 VOID
 RefiItoa(unsigned long int n, unsigned short int* buffer, int basenumber)
 {
@@ -82,9 +41,9 @@ RefiItoa(unsigned long int n, unsigned short int* buffer, int basenumber)
 	}
 }
 
-#if 0
+
 ULONG32 
-RefiStrlen(UCHAR16* str)
+RefiStrlen(PUCHAR str)
 {
 	const char* strCount = str;
 
@@ -92,7 +51,6 @@ RefiStrlen(UCHAR16* str)
 	return strCount - str - 1;
 }
 
-#endif
 /* UEFI Specific *********************************************/
 VOID
 RefiStallProcessor(EFI_SYSTEM_TABLE* SystemTable, UINTN d)

@@ -7,17 +7,6 @@
 
 #pragma once
 
-    UINT32       PixelFormat;
-
-/* Include required header files */
-#include "rosefi.h"
-
-#include "../ntldr/winldr.h"
-#include "../lib/comm/debug.h"
-#include "../lib/mm/mm.h"
-#include "../lib/ui/ui.h"
-#include "../lib/input/input.h"
-
 typedef struct _ROSEFI_FRAMEBUFFER_DATA
 {
     ULONG_PTR    BaseAddress;
@@ -27,6 +16,16 @@ typedef struct _ROSEFI_FRAMEBUFFER_DATA
     UINT32       PixelsPerScanLine;
     UINT32       PixelFormat;
 } ROSEFI_FRAMEBUFFER_DATA, *PROSEFI_FRAMEBUFFER_DATA;
+
+/* Include required header files */
+#include "rosefi.h"
+
+#include "../ntldr/winldr.h"
+#include "../lib/comm/debug.h"
+#include "../lib/mm/mm.h"
+#include "../lib/ui/ui.h"
+#include "../lib/fs/fs.h"
+#include "../lib/input/input.h"
 
 #define ORANGE 0xffffa500
 #define CYAN   0xff00ffff
@@ -73,9 +72,7 @@ RefiCheckKey(EFI_SYSTEM_TABLE* SystemTable, EFI_INPUT_KEY CheckKeystroke);
 /* UTILS */
 
 VOID
-RefiTrollBSoD(_In_ EFI_SYSTEM_TABLE *SystemTable, 
-              _In_ EFI_STATUS refiCheck,
-              _In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop);
+RefiTrollBSoD(_In_ EFI_SYSTEM_TABLE *SystemTable);
 
 int 
 memcmp(const void* aptr, const void* bptr, size_t n);
@@ -90,3 +87,6 @@ UCHAR* hex_to_str(UCHAR* s, UINT32 v);
 
 /* DEBUG */
 unsigned short int* CheckStandardEFIError(unsigned long long s);
+
+ULONG32 
+RefiStrlen(PUCHAR str);
