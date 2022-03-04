@@ -98,7 +98,7 @@ NTAPI
 _MmLockSectionSegment(PMM_SECTION_SEGMENT Segment, const char *file, int line)
 {
     //DPRINT("MmLockSectionSegment(%p,%s:%d)\n", Segment, file, line);
-    ExAcquireFastMutex(&Segment->Lock);
+    ExAcquirePushLockExclusive(&Segment->Lock);
     Segment->Locked = TRUE;
 }
 
@@ -108,7 +108,7 @@ _MmUnlockSectionSegment(PMM_SECTION_SEGMENT Segment, const char *file, int line)
 {
     ASSERT(Segment->Locked);
     Segment->Locked = FALSE;
-    ExReleaseFastMutex(&Segment->Lock);
+    ExReleasePushLock(&Segment->Lock);
     //DPRINT("MmUnlockSectionSegment(%p,%s:%d)\n", Segment, file, line);
 }
 

@@ -1519,11 +1519,19 @@ XIPInit(
     IN PLOADER_PARAMETER_BLOCK LoaderBlock
 );
 
-#define InterlockedDecrementUL(Addend) \
-   (ULONG)InterlockedDecrement((PLONG)(Addend))
+FORCEINLINE
+ULONG
+InterlockedDecrementUL(volatile ULONG* Addend)
+{
+    return (ULONG)InterlockedDecrement((volatile LONG*)Addend);
+}
 
-#define InterlockedIncrementUL(Addend) \
-   (ULONG)InterlockedIncrement((PLONG)(Addend))
+FORCEINLINE
+ULONG
+InterlockedIncrementUL(volatile ULONG* Addend)
+{
+    return (ULONG)InterlockedIncrement((volatile LONG*)Addend);
+}
 
 #define InterlockedExchangeUL(Target, Value) \
    (ULONG)InterlockedExchange((PLONG)(Target), (LONG)(Value))

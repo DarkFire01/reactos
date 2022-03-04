@@ -46,8 +46,14 @@ MmInitializeRmapList(VOID)
                                      50);
 }
 
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+MmFreeRmap(_In_ __drv_freesMem(Mem) PMM_RMAP_ENTRY Rmap)
+{
+    ExFreeToNPagedLookasideList(&RmapLookasideList, Rmap);
+}
+
 NTSTATUS
-NTAPI
 MmPageOutPhysicalAddress(PFN_NUMBER Page)
 {
     PMM_RMAP_ENTRY entry;
@@ -56,11 +62,9 @@ MmPageOutPhysicalAddress(PFN_NUMBER Page)
     PVOID Address = NULL;
     PEPROCESS Process = NULL;
     NTSTATUS Status = STATUS_SUCCESS;
-    PMM_SECTION_SEGMENT Segment;
-    LARGE_INTEGER SegmentOffset;
     KIRQL OldIrql;
+    KAPC_STATE ApcState;
 
-GetEntry:
     OldIrql = MiAcquirePfnLock();
 
     entry = MmGetRmapListHeadPage(Page);
@@ -71,7 +75,8 @@ GetEntry:
     if (entry == NULL)
     {
         MiReleasePfnLock(OldIrql);
-        goto WriteSegment;
+        /* This page is not in any working set. Say we didn't do anything */
+        return STATUS_UNSUCCESSFUL;
     }
 
     Process = entry->Process;
@@ -82,23 +87,32 @@ GetEntry:
         KeBugCheck(MEMORY_MANAGEMENT);
     }
 
-    /* This is for user-mode address only */
-    ASSERT(Address < MmSystemRangeStart);
-
-    if (!ExAcquireRundownProtection(&Process->RundownProtect))
+    if (Process != NULL)
     {
-        MiReleasePfnLock(OldIrql);
-        return STATUS_PROCESS_IS_TERMINATING;
+        /* This is for user-mode address only */
+        if (Address >= MmSystemRangeStart)
+        {
+            DPRINT1("Got Kernel mode address to page out for process %p\n", Process);
+            KeBugCheck(MEMORY_MANAGEMENT);
+        }
+
+        if (!ExAcquireRundownProtection(&Process->RundownProtect))
+        {
+            MiReleasePfnLock(OldIrql);
+            return STATUS_PROCESS_IS_TERMINATING;
+        }
+
+        Status = ObReferenceObjectByPointer(Process, PROCESS_ALL_ACCESS, NULL, KernelMode);
     }
 
-    Status = ObReferenceObjectByPointer(Process, PROCESS_ALL_ACCESS, NULL, KernelMode);
     MiReleasePfnLock(OldIrql);
     if (!NT_SUCCESS(Status))
     {
-        ExReleaseRundownProtection(&Process->RundownProtect);
+        if (Process != NULL)
+            ExReleaseRundownProtection(&Process->RundownProtect);
         return Status;
     }
-    AddressSpace = &Process->Vm;
+    AddressSpace = Process ? &Process->Vm : MmGetKernelAddressSpace();
 
     MmLockAddressSpace(AddressSpace);
 
@@ -106,26 +120,31 @@ GetEntry:
     if (MemoryArea == NULL || MemoryArea->DeleteInProgress)
     {
         MmUnlockAddressSpace(AddressSpace);
-        ExReleaseRundownProtection(&Process->RundownProtect);
-        ObDereferenceObject(Process);
-        goto GetEntry;
+        if (Process)
+        {
+            ExReleaseRundownProtection(&Process->RundownProtect);
+            ObDereferenceObject(Process);
+        }
+        return STATUS_UNSUCCESSFUL;
     }
-
 
     /* Attach to it, if needed */
     ASSERT(PsGetCurrentProcess() == PsInitialSystemProcess);
-    if (Process != PsInitialSystemProcess)
-        KeAttachProcess(&Process->Pcb);
+    if ((Process != NULL) && (Process != PsInitialSystemProcess))
+        KeStackAttachProcess(&Process->Pcb, &ApcState);
 
     if (MmGetPfnForProcess(Process, Address) != Page)
     {
         /* This changed in the short window where we didn't have any locks */
-        if (Process != PsInitialSystemProcess)
-            KeDetachProcess();
+        if ((Process != NULL) && (Process != PsInitialSystemProcess))
+            KeUnstackDetachProcess(&ApcState);
         MmUnlockAddressSpace(AddressSpace);
-        ExReleaseRundownProtection(&Process->RundownProtect);
-        ObDereferenceObject(Process);
-        goto GetEntry;
+        if (Process != NULL)
+        {
+            ExReleaseRundownProtection(&Process->RundownProtect);
+            ObDereferenceObject(Process);
+        }
+        return STATUS_UNSUCCESSFUL;
     }
 
     if (MemoryArea->Type == MEMORY_AREA_SECTION_VIEW)
@@ -135,6 +154,7 @@ GetEntry:
         PFN_NUMBER MapPage;
         LARGE_INTEGER Offset;
         BOOLEAN Released;
+        PMM_SECTION_SEGMENT Segment;
 
         Offset.QuadPart = MemoryArea->SectionData.ViewOffset +
                  ((ULONG_PTR)Address - MA_GetStartingAddress(MemoryArea));
@@ -148,12 +168,17 @@ GetEntry:
         {
             /* The segment is being read or something. Give up */
             MmUnlockSectionSegment(Segment);
-            if (Process != PsInitialSystemProcess)
-                KeDetachProcess();
+            if ((Process != NULL) && (Process != PsInitialSystemProcess))
+                KeUnstackDetachProcess(&ApcState);
             MmUnlockAddressSpace(AddressSpace);
-            ExReleaseRundownProtection(&Process->RundownProtect);
-            ObDereferenceObject(Process);
-            return(STATUS_UNSUCCESSFUL);
+
+            if (Process != NULL)
+            {
+                ExReleaseRundownProtection(&Process->RundownProtect);
+                ObDereferenceObject(Process);
+            }
+
+            return STATUS_UNSUCCESSFUL;
         }
 
         /* Delete this virtual mapping in the process */
@@ -169,6 +194,9 @@ GetEntry:
 
             /* This page is private to the process */
             MmUnlockSectionSegment(Segment);
+
+            /* Only for user mode mappings */
+            ASSERT(Process != NULL);
 
             /* Check if we should write it back to the page file */
             SwapEntry = MmGetSavedSwapEntryPage(Page);
@@ -190,7 +218,7 @@ GetEntry:
 
                     MmUnlockAddressSpace(AddressSpace);
                     if (Process != PsInitialSystemProcess)
-                        KeDetachProcess();
+                        KeUnstackDetachProcess(&ApcState);
                     ExReleaseRundownProtection(&Process->RundownProtect);
                     ObDereferenceObject(Process);
 
@@ -230,7 +258,7 @@ GetEntry:
 
                     MmUnlockAddressSpace(AddressSpace);
                     if (Process != PsInitialSystemProcess)
-                        KeDetachProcess();
+                        KeUnstackDetachProcess(&ApcState);
                     ExReleaseRundownProtection(&Process->RundownProtect);
                     ObDereferenceObject(Process);
 
@@ -248,12 +276,13 @@ GetEntry:
             /* We can finally let this page go */
             MmUnlockAddressSpace(AddressSpace);
             if (Process != PsInitialSystemProcess)
-                KeDetachProcess();
+                KeUnstackDetachProcess(&ApcState);
 #if DBG
             OldIrql = MiAcquirePfnLock();
             ASSERT(MmGetRmapListHeadPage(Page) == NULL);
             MiReleasePfnLock(OldIrql);
 #endif
+            MmRemoveLRUUserPage(Page);
             MmReleasePageMemoryConsumer(MC_USER, Page);
 
             ExReleaseRundownProtection(&Process->RundownProtect);
@@ -263,17 +292,20 @@ GetEntry:
         }
 
         /* One less mapping referencing this segment */
-        Released = MmUnsharePageEntrySectionSegment(MemoryArea, Segment, &Offset, Dirty, TRUE, NULL);
+        Released = MmUnsharePageEntrySectionSegment(Segment, &Offset, Dirty, TRUE);
 
         MmUnlockSectionSegment(Segment);
-        if (Process != PsInitialSystemProcess)
-            KeDetachProcess();
+        if ((Process != NULL) && (Process != PsInitialSystemProcess))
+            KeUnstackDetachProcess(&ApcState);
         MmUnlockAddressSpace(AddressSpace);
 
-        ExReleaseRundownProtection(&Process->RundownProtect);
-        ObDereferenceObject(Process);
+        if (Process != NULL)
+        {
+            ExReleaseRundownProtection(&Process->RundownProtect);
+            ObDereferenceObject(Process);
+        }
 
-        if (Released) return STATUS_SUCCESS;
+        return Released ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
     }
 #ifdef NEWCC
     else if (Type == MEMORY_AREA_CACHE)
@@ -288,26 +320,6 @@ GetEntry:
         KeBugCheck(MEMORY_MANAGEMENT);
     }
 
-WriteSegment:
-    /* Now write this page to file, if needed */
-    Segment = MmGetSectionAssociation(Page, &SegmentOffset);
-    if (Segment)
-    {
-        BOOLEAN Released;
-
-        MmLockSectionSegment(Segment);
-
-        Released = MmCheckDirtySegment(Segment, &SegmentOffset, FALSE, TRUE);
-
-        MmUnlockSectionSegment(Segment);
-        MmDereferenceSegment(Segment);
-
-        if (Released)
-        {
-            return STATUS_SUCCESS;
-        }
-    }
-
     /* If we are here, then we didn't release the page */
     return STATUS_UNSUCCESSFUL;
 }
@@ -317,8 +329,7 @@ NTAPI
 MmInsertRmap(PFN_NUMBER Page, PEPROCESS Process,
              PVOID Address)
 {
-    PMM_RMAP_ENTRY current_entry;
-    PMM_RMAP_ENTRY new_entry;
+    PMM_RMAP_ENTRY previous_entry, new_entry;
     ULONG PrevSize;
     KIRQL OldIrql;
 
@@ -332,6 +343,7 @@ MmInsertRmap(PFN_NUMBER Page, PEPROCESS Process,
     }
     new_entry->Address = Address;
     new_entry->Process = (PEPROCESS)Process;
+    new_entry->Next = NULL;
 #if DBG
     new_entry->Caller = _ReturnAddress();
 #endif
@@ -349,47 +361,40 @@ MmInsertRmap(PFN_NUMBER Page, PEPROCESS Process,
     }
 
     OldIrql = MiAcquirePfnLock();
-    current_entry = MmGetRmapListHeadPage(Page);
+    previous_entry = MmGetRmapListHeadPage(Page);
 
-    PMM_RMAP_ENTRY previous_entry = NULL;
-    /* Keep the list sorted */
-    while (current_entry && (current_entry->Address < Address))
+    /* Put it at the end of the list so this isn't paged out immediately. */
+    if (previous_entry != NULL)
     {
-        previous_entry = current_entry;
-        current_entry = current_entry->Next;
-    }
-
-    /* In case of clash in the address, sort by process */
-    if (current_entry && (current_entry->Address == Address))
-    {
-        while (current_entry && (current_entry->Process < Process))
+        while (previous_entry->Next != NULL)
         {
-            previous_entry = current_entry;
-            current_entry = current_entry->Next;
+            if ((previous_entry->Process == Process) && (previous_entry->Address == Address))
+            {
+                ASSERT(previous_entry->Process != Process);
+                ASSERT(previous_entry->Address != Address);
+                KeBugCheck(MEMORY_MANAGEMENT);
+            }
+            previous_entry = previous_entry->Next;
         }
-    }
 
-    if (current_entry && (current_entry->Address == Address) && (current_entry->Process == Process))
-    {
-#if DBG
-        DbgPrint("MmInsertRmap tries to add a second rmap entry for address %p\n", current_entry->Address);
-        DbgPrint("    current caller  %p\n", new_entry->Caller);
-        DbgPrint("    previous caller %p\n", current_entry->Caller);
-#endif
-        KeBugCheck(MEMORY_MANAGEMENT);
-    }
+        if ((previous_entry->Process == Process) && (previous_entry->Address == Address))
+        {
+            ASSERT(previous_entry->Process != Process);
+            ASSERT(previous_entry->Address != Address);
+            KeBugCheck(MEMORY_MANAGEMENT);
+        }
 
-    new_entry->Next = current_entry;
-    if (previous_entry)
         previous_entry->Next = new_entry;
+    }
     else
+    {
         MmSetRmapListHeadPage(Page, new_entry);
+    }
 
     MiReleasePfnLock(OldIrql);
 
-    if (!RMAP_IS_SEGMENT(Address))
+    if (!RMAP_IS_SEGMENT(Address) && (Process != NULL))
     {
-        ASSERT(Process != NULL);
         PrevSize = InterlockedExchangeAddUL(&Process->Vm.WorkingSetSize, PAGE_SIZE);
         if (PrevSize >= Process->Vm.PeakWorkingSetSize)
         {
@@ -426,9 +431,8 @@ MmDeleteRmap(PFN_NUMBER Page, PEPROCESS Process,
             MiReleasePfnLock(OldIrql);
 
             ExFreeToNPagedLookasideList(&RmapLookasideList, current_entry);
-            if (!RMAP_IS_SEGMENT(Address))
+            if (!RMAP_IS_SEGMENT(Address) && (Process != NULL))
             {
-                ASSERT(Process != NULL);
                 (void)InterlockedExchangeAddUL(&Process->Vm.WorkingSetSize, -PAGE_SIZE);
             }
             return;
@@ -501,6 +505,9 @@ MmDeleteSectionAssociation(PFN_NUMBER Page)
     current_entry = MmGetRmapListHeadPage(Page);
     while (current_entry != NULL)
     {
+        /* We should be out of any list */
+        ASSERT(MiGetPfnEntry(Page)->LruEntry.Flink == NULL);
+
         if (RMAP_IS_SEGMENT(current_entry->Address))
         {
             if (previous_entry == NULL)

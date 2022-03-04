@@ -1968,7 +1968,7 @@ __INTRIN_INLINE void __writedr(unsigned reg, unsigned int value)
 
 __INTRIN_INLINE void __invlpg(void *Address)
 {
-	__asm__ __volatile__ ("invlpg (%[Address])" : : [Address] "b" (Address) : "memory");
+	__asm__ __volatile__ ("invlpg (%[Address])" : : [Address] "r" (Address) : "memory");
 }
 
 

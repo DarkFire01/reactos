@@ -35,128 +35,7 @@ SIZE_T MmPagedPoolCommit;
 SIZE_T MmPeakCommitment;
 SIZE_T MmtotalCommitLimitMaximum;
 
-PMMPFN FirstUserLRUPfn;
-PMMPFN LastUserLRUPfn;
-
-/* FUNCTIONS *************************************************************/
-
-PFN_NUMBER
-NTAPI
-MmGetLRUFirstUserPage(VOID)
-{
-    PFN_NUMBER Page;
-    KIRQL OldIrql;
-
-    /* Find the first user page */
-    OldIrql = MiAcquirePfnLock();
-
-    if (FirstUserLRUPfn == NULL)
-    {
-        MiReleasePfnLock(OldIrql);
-        return 0;
-    }
-
-    Page = MiGetPfnEntryIndex(FirstUserLRUPfn);
-    MmReferencePage(Page);
-
-    MiReleasePfnLock(OldIrql);
-
-    return Page;
-}
-
-static
-VOID
-MmInsertLRULastUserPage(PFN_NUMBER Page)
-{
-    MI_ASSERT_PFN_LOCK_HELD();
-
-    PMMPFN Pfn = MiGetPfnEntry(Page);
-
-    if (FirstUserLRUPfn == NULL)
-        FirstUserLRUPfn = Pfn;
-
-    Pfn->PreviousLRU = LastUserLRUPfn;
-
-    if (LastUserLRUPfn != NULL)
-        LastUserLRUPfn->NextLRU = Pfn;
-    LastUserLRUPfn = Pfn;
-}
-
-static
-VOID
-MmRemoveLRUUserPage(PFN_NUMBER Page)
-{
-    MI_ASSERT_PFN_LOCK_HELD();
-
-    /* Unset the page as a user page */
-    ASSERT(Page != 0);
-
-    PMMPFN Pfn = MiGetPfnEntry(Page);
-
-    ASSERT_IS_ROS_PFN(Pfn);
-
-    if (Pfn->PreviousLRU)
-    {
-        ASSERT(Pfn->PreviousLRU->NextLRU == Pfn);
-        Pfn->PreviousLRU->NextLRU = Pfn->NextLRU;
-    }
-    else
-    {
-        ASSERT(FirstUserLRUPfn == Pfn);
-        FirstUserLRUPfn = Pfn->NextLRU;
-    }
-
-    if (Pfn->NextLRU)
-    {
-        ASSERT(Pfn->NextLRU->PreviousLRU == Pfn);
-        Pfn->NextLRU->PreviousLRU = Pfn->PreviousLRU;
-    }
-    else
-    {
-        ASSERT(Pfn == LastUserLRUPfn);
-        LastUserLRUPfn = Pfn->PreviousLRU;
-    }
-
-    Pfn->PreviousLRU = Pfn->NextLRU = NULL;
-}
-
-PFN_NUMBER
-NTAPI
-MmGetLRUNextUserPage(PFN_NUMBER PreviousPage, BOOLEAN MoveToLast)
-{
-    PFN_NUMBER Page = 0;
-    KIRQL OldIrql;
-
-    /* Find the next user page */
-    OldIrql = MiAcquirePfnLock();
-
-    PMMPFN PreviousPfn = MiGetPfnEntry(PreviousPage);
-    PMMPFN NextPfn = PreviousPfn->NextLRU;
-
-    /*
-     * Move this one at the end of the list.
-     * It may be freed by MmDereferencePage below.
-     * If it's not, then it means it is still hanging in some process address space.
-     * This avoids paging-out e.g. ntdll early just because it's mapped first time.
-     */
-    if ((MoveToLast) && (MmGetReferenceCountPage(PreviousPage) > 1))
-    {
-        MmRemoveLRUUserPage(PreviousPage);
-        MmInsertLRULastUserPage(PreviousPage);
-    }
-
-    if (NextPfn)
-    {
-        Page = MiGetPfnEntryIndex(NextPfn);
-        MmReferencePage(Page);
-    }
-
-    MmDereferencePage(PreviousPage);
-
-    MiReleasePfnLock(OldIrql);
-
-    return Page;
-}
+/* FUNCTIONS **************************************************************/
 
 BOOLEAN
 NTAPI
@@ -577,18 +456,14 @@ MmDereferencePage(PFN_NUMBER Pfn)
     Pfn1->u3.e2.ReferenceCount--;
     if (Pfn1->u3.e2.ReferenceCount == 0)
     {
-        /* Apply LRU hack */
-        if (Pfn1->u4.MustBeCached)
-        {
-            MmRemoveLRUUserPage(Pfn);
-            Pfn1->u4.MustBeCached = 0;
-        }
-
         /* Mark the page temporarily as valid, we're going to make it free soon */
         Pfn1->u3.e1.PageLocation = ActiveAndValid;
 
         /* It's not a ROS PFN anymore */
         Pfn1->u4.AweAllocation = FALSE;
+
+        /* This should not be in any list */
+        ASSERT(Pfn1->LruEntry.Flink == NULL);
 
         /* Bring it back into the free list */
         DPRINT("Legacy free: %lx\n", Pfn);
@@ -637,15 +512,6 @@ MmAllocPage(ULONG Type)
     /* Allocate the extra ReactOS Data and zero it out */
     Pfn1->u1.SwapEntry = 0;
     Pfn1->RmapListHead = NULL;
-
-    Pfn1->NextLRU = NULL;
-    Pfn1->PreviousLRU = NULL;
-
-    if (Type == MC_USER)
-    {
-        Pfn1->u4.MustBeCached = 1; /* HACK again */
-        MmInsertLRULastUserPage(PfnOffset);
-    }
 
     MiReleasePfnLock(OldIrql);
     return PfnOffset;

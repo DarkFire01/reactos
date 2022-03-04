@@ -476,9 +476,8 @@ MiAddMappedPtes(IN PMMPTE FirstPte,
 }
 
 VOID
-NTAPI
-MiFillSystemPageDirectory(IN PVOID Base,
-                          IN SIZE_T NumberOfBytes)
+MiFillSystemPageDirectory(_In_ PVOID Base,
+                          _In_ SIZE_T NumberOfBytes)
 {
     PMMPDE PointerPde, LastPde, SystemMapPde;
     MMPDE TempPde;

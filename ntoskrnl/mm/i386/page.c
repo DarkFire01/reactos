@@ -109,11 +109,6 @@ ULONG MmProtectToValue[32] =
 
 /* FUNCTIONS ***************************************************************/
 
-NTSTATUS
-NTAPI
-MiFillSystemPageDirectory(IN PVOID Base,
-                          IN SIZE_T NumberOfBytes);
-
 static
 BOOLEAN
 MiIsPageTablePresent(PVOID Address)
@@ -191,29 +186,51 @@ MmGetPfnForProcess(PEPROCESS Process,
     PMMPTE PointerPte;
     PFN_NUMBER Page;
 
-    /* Must be called for user mode only */
-    ASSERT(Process != NULL);
-    ASSERT(Address < MmSystemRangeStart);
-
-    /* And for our process */
-    ASSERT(Process == PsGetCurrentProcess());
-
-    /* Lock for reading */
-    MiLockProcessWorkingSetShared(Process, PsGetCurrentThread());
-
-    if (!MiIsPageTablePresent(Address))
+    if (Process == NULL)
     {
-        MiUnlockProcessWorkingSetShared(Process, PsGetCurrentThread());
-        return 0;
+        if (Address < MmSystemRangeStart)
+        {
+            DPRINT1("NULL process given for user-mode mapping at %p\n", Address);
+            KeBugCheck(MEMORY_MANAGEMENT);
+        }
+#if (_MI_PAGING_LEVELS == 2)
+        if (!MiSynchronizeSystemPde(MiAddressToPde(Address)))
+#else
+        if (!MiIsPdeForAddressValid(Address))
+#endif
+        {
+            return 0;
+        }
     }
+    else
+    {
+        if (Address >= MmSystemRangeStart)
+        {
+            DPRINT1("Kernel space address %p given for process %p\n", Address, Process);
+            KeBugCheck(MEMORY_MANAGEMENT);
+        }
+        /* This must be our process */
+        ASSERT(Process == PsGetCurrentProcess());
 
-    /* Make sure we can read the PTE */
-    MiMakePdeExistAndMakeValid(MiAddressToPde(Address), Process, MM_NOIRQL);
+        /* Lock for reading */
+        MiLockProcessWorkingSetShared(Process, PsGetCurrentThread());
+
+        if (!MiIsPageTablePresent(Address))
+        {
+            MiUnlockProcessWorkingSetShared(Process, PsGetCurrentThread());
+            return 0;
+        }
+
+        /* Make sure we can read the PTE */
+        MiMakePdeExistAndMakeValid(MiAddressToPde(Address), Process, MM_NOIRQL);
+    }
 
     PointerPte = MiAddressToPte(Address);
     Page = PointerPte->u.Hard.Valid ? PFN_FROM_PTE(PointerPte) : 0;
 
-    MiUnlockProcessWorkingSetShared(Process, PsGetCurrentThread());
+    if (Process)
+        MiUnlockProcessWorkingSetShared(Process, PsGetCurrentThread());
+
     return Page;
 }
 
@@ -815,14 +832,28 @@ MmSetDirtyBit(PEPROCESS Process, PVOID Address, BOOLEAN Bit)
     DPRINT("MmSetDirtyBit(Process %p  Address %p  Bit %x)\n",
            Process, Address, Bit);
 
-    ASSERT(Process != NULL);
-    ASSERT(Address < MmSystemRangeStart);
+    if (Address < MmSystemRangeStart)
+    {
+        ASSERT(Address < MmSystemRangeStart);
 
-    ASSERT(Process == PsGetCurrentProcess());
+        ASSERT(Process == PsGetCurrentProcess());
 
-    MiLockProcessWorkingSetUnsafe(Process, PsGetCurrentThread());
+        MiLockProcessWorkingSetUnsafe(Process, PsGetCurrentThread());
 
-    MiMakePdeExistAndMakeValid(MiAddressToPde(Address), Process, MM_NOIRQL);
+        ASSERT(MiIsPageTablePresent(Address));
+
+        MiMakePdeExistAndMakeValid(MiAddressToPde(Address), Process, MM_NOIRQL);
+    }
+    else
+    {
+        ASSERT(Process == NULL);
+#if _MI_PAGING_LEVELS == 2
+        NT_VERIFY(MiSynchronizeSystemPde(MiAddressToPde(Address)));
+#else
+        ASSERT(MiIsPdeForAddressValid(Address));
+#endif
+    }
+
 
     PointerPte = MiAddressToPte(Address);
     // We shouldnl't set dirty bit on non-mapped adresses
@@ -837,7 +868,8 @@ MmSetDirtyBit(PEPROCESS Process, PVOID Address, BOOLEAN Bit)
     if (!Bit)
         KeInvalidateTlbEntry(Address);
 
-    MiUnlockProcessWorkingSetUnsafe(Process, PsGetCurrentThread());
+    if (Address < MmSystemRangeStart)
+        MiUnlockProcessWorkingSetUnsafe(Process, PsGetCurrentThread());
 }
 
 CODE_SEG("INIT")

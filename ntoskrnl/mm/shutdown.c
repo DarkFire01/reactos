@@ -22,7 +22,6 @@ MiShutdownSystem(VOID)
 {
     ULONG i;
     PFN_NUMBER Page;
-    BOOLEAN Dirty;
 
     /* Loop through all the paging files */
     for (i = 0; i < MmNumberOfPagingFiles; i++)
@@ -36,41 +35,20 @@ MiShutdownSystem(VOID)
         ZwClose(MmPagingFile[i]->FileHandle);
     }
 
-    /* Loop through all the pages owned by the legacy Mm and page them out, if needed. */
-    /* We do it as long as there are dirty pages, since flushing can cause the FS to dirtify new ones. */
-    do
+    /* Loop through all the pages owned by the legacy Mm and flush them to disk. */
+    while ((Page = MmGetLRUFirstModifiedPage()))
     {
-        Dirty = FALSE;
+        LARGE_INTEGER SegmentOffset;
+        PMM_SECTION_SEGMENT Segment = MmGetSectionAssociation(Page, &SegmentOffset);
 
-        Page = MmGetLRUFirstUserPage();
-        while (Page)
+        if (Segment)
         {
-            LARGE_INTEGER SegmentOffset;
-            PMM_SECTION_SEGMENT Segment = MmGetSectionAssociation(Page, &SegmentOffset);
-
-            if (Segment)
-            {
-                if ((*Segment->Flags) & MM_DATAFILE_SEGMENT)
-                {
-                    MmLockSectionSegment(Segment);
-
-                    ULONG_PTR Entry = MmGetPageEntrySectionSegment(Segment, &SegmentOffset);
-
-                    if (!IS_SWAP_FROM_SSE(Entry) && IS_DIRTY_SSE(Entry))
-                    {
-                        Dirty = TRUE;
-                        MmCheckDirtySegment(Segment, &SegmentOffset, FALSE, TRUE);
-                    }
-
-                    MmUnlockSectionSegment(Segment);
-                }
-
-                MmDereferenceSegment(Segment);
-            }
-
-            Page = MmGetLRUNextUserPage(Page, FALSE);
+            MmLockSectionSegment(Segment);
+            MmCheckDirtySegment(Segment, &SegmentOffset, TRUE);
+            MmUnlockSectionSegment(Segment);
+            MmDereferenceSegment(Segment);
         }
-    } while (Dirty);
+    }
 }
 
 VOID

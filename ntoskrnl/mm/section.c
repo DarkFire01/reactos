@@ -71,7 +71,7 @@ NTAPI
 _MmLockSectionSegment(PMM_SECTION_SEGMENT Segment, const char *file, int line)
 {
     //DPRINT("MmLockSectionSegment(%p,%s:%d)\n", Segment, file, line);
-    ExAcquireFastMutex(&Segment->Lock);
+    ExAcquirePushLockExclusive(&Segment->Lock);
     Segment->Locked = TRUE;
 }
 
@@ -81,7 +81,7 @@ _MmUnlockSectionSegment(PMM_SECTION_SEGMENT Segment, const char *file, int line)
 {
     ASSERT(Segment->Locked);
     Segment->Locked = FALSE;
-    ExReleaseFastMutex(&Segment->Lock);
+    ExReleasePushLockExclusive(&Segment->Lock);
     //DPRINT("MmUnlockSectionSegment(%p,%s:%d)\n", Segment, file, line);
 }
 #endif
@@ -948,6 +948,10 @@ MmpFreePageFileSegment(PMM_SECTION_SEGMENT Segment)
                     MmSetSavedSwapEntryPage(Page, 0);
                     MmFreeSwapPage(SavedSwapEntry);
                 }
+                if (IS_DIRTY_SSE(Entry))
+                    MmRemoveLRUModifiedPage(Page);
+                else
+                    MmRemoveLRUStandbyPage(Page);
                 MmReleasePageMemoryConsumer(MC_USER, Page);
             }
         }
@@ -982,7 +986,16 @@ FreeSegmentPage(PMM_SECTION_SEGMENT Segment, PLARGE_INTEGER Offset)
 
     /* Write the page */
     if (IS_DIRTY_SSE(Entry))
+    {
+        DPRINT1("Writing page at offset 0x%I64x for file %wZ\n",
+                Offset->QuadPart, &Segment->FileObject->FileName);
         MiWritePage(Segment, Offset->QuadPart, Page);
+        MmRemoveLRUModifiedPage(Page);
+    }
+    else
+    {
+        MmRemoveLRUStandbyPage(Page);
+    }
 
     MmReleasePageMemoryConsumer(MC_USER, Page);
 }
@@ -1083,19 +1096,29 @@ MmSharePageEntrySectionSegment(PMM_SECTION_SEGMENT Segment,
     {
         KeBugCheck(MEMORY_MANAGEMENT);
     }
+
+    /* Move list, if needed */
+    if (SHARE_COUNT_FROM_SSE(Entry) == 0)
+    {
+        PFN_NUMBER Page = PFN_FROM_SSE(Entry);
+        if (IS_DIRTY_SSE(Entry))
+            MmRemoveLRUModifiedPage(Page);
+        else
+            MmRemoveLRUStandbyPage(Page);
+        MmInsertLRULastUserPage(Page);
+    }
+
     MmSetPageEntrySectionSegment(Segment, Offset, BUMPREF_SSE(Entry));
 }
 
 BOOLEAN
 NTAPI
-MmUnsharePageEntrySectionSegment(PMEMORY_AREA MemoryArea,
-                                 PMM_SECTION_SEGMENT Segment,
+MmUnsharePageEntrySectionSegment(PMM_SECTION_SEGMENT Segment,
                                  PLARGE_INTEGER Offset,
                                  BOOLEAN Dirty,
-                                 BOOLEAN PageOut,
-                                 ULONG_PTR *InEntry)
+                                 BOOLEAN PageOut)
 {
-    ULONG_PTR Entry = InEntry ? *InEntry : MmGetPageEntrySectionSegment(Segment, Offset);
+    ULONG_PTR Entry = MmGetPageEntrySectionSegment(Segment, Offset);
     PFN_NUMBER Page = PFN_FROM_SSE(Entry);
     BOOLEAN IsDataMap = BooleanFlagOn(*Segment->Flags, MM_DATAFILE_SEGMENT);
     SWAPENTRY SwapEntry;
@@ -1117,23 +1140,38 @@ MmUnsharePageEntrySectionSegment(PMEMORY_AREA MemoryArea,
     Entry = DECREF_SSE(Entry);
     if (Dirty) Entry = DIRTY_SSE(Entry);
 
-    /* If we are paging-out, pruning the page for real will be taken care of in MmCheckDirtySegment */
-    if ((SHARE_COUNT_FROM_SSE(Entry) > 0) || PageOut)
+    /* Check if we should keep it. */
+    if ((SHARE_COUNT_FROM_SSE(Entry) > 0) || PageOut || IsDataMap)
     {
+        if (SHARE_COUNT_FROM_SSE(Entry) == 0)
+        {
+            /* If we're paging out, we already removed it from the list */
+            MmRemoveLRUUserPage(Page);
+
+            if (IS_DIRTY_SSE(Entry))
+            {
+                MmInsertLRULastModifiedPage(Page);
+                /* If we're not in page out path, we're unmapping. Flush to disk */
+                if (!PageOut)
+                {
+                    MmCheckDirtySegment(Segment, Offset, FALSE);
+                }
+            }
+            else
+            {
+                MmInsertLRULastStandbyPage(Page);
+            }
+        }
+
         /* Update the page mapping in the segment and we're done */
         MmSetPageEntrySectionSegment(Segment, Offset, Entry);
-        return FALSE;
+
+        /* Tell page-out code path we're not using it anymore */
+        return (SHARE_COUNT_FROM_SSE(Entry) == 0);
     }
 
-    /* We are pruning the last mapping on this page. See if we can keep it a bit more. */
-    ASSERT(!PageOut);
-
-    if (IsDataMap)
-    {
-        /* We can always keep memory in for data maps */
-        MmSetPageEntrySectionSegment(Segment, Offset, Entry);
-        return FALSE;
-    }
+    /* Whatever happens, this is not in any working set anymore */
+    MmRemoveLRUUserPage(Page);
 
     if (!FlagOn(Segment->Image.Characteristics, IMAGE_SCN_MEM_SHARED))
     {
@@ -1141,8 +1179,11 @@ MmUnsharePageEntrySectionSegment(PMEMORY_AREA MemoryArea,
         ASSERT(!IS_DIRTY_SSE(Entry));
         ASSERT(MmGetSavedSwapEntryPage(Page) == 0);
         /* So this must have been a read-only page. Keep it ! */
+        MmInsertLRULastStandbyPage(Page);
         MmSetPageEntrySectionSegment(Segment, Offset, Entry);
-        return FALSE;
+
+        /* Tell caller we're not using it anymore */
+        return TRUE;
     }
 
     /*
@@ -1152,8 +1193,11 @@ MmUnsharePageEntrySectionSegment(PMEMORY_AREA MemoryArea,
     SwapEntry = MmGetSavedSwapEntryPage(Page);
     if ((SwapEntry == 0) && !IS_DIRTY_SSE(Entry))
     {
+        MmInsertLRULastStandbyPage(Page);
         MmSetPageEntrySectionSegment(Segment, Offset, Entry);
-        return FALSE;
+
+        /* Tell caller we're not using it anymore */
+        return TRUE;
     }
 
     /* No more processes are referencing this shared dirty page. Ditch it. */
@@ -1162,8 +1206,11 @@ MmUnsharePageEntrySectionSegment(PMEMORY_AREA MemoryArea,
         MmSetSavedSwapEntryPage(Page, 0);
         MmFreeSwapPage(SwapEntry);
     }
+
     MmSetPageEntrySectionSegment(Segment, Offset, 0);
     MmReleasePageMemoryConsumer(MC_USER, Page);
+
+    /* Tell caller we're not using it anymore */
     return TRUE;
 }
 
@@ -1190,13 +1237,11 @@ MiCopyFromUserPage(PFN_NUMBER DestPage, const VOID *SrcAddress)
 
 static
 NTSTATUS
-NTAPI
 MmMakeSegmentResident(
     _In_ PMM_SECTION_SEGMENT Segment,
     _In_ LONGLONG Offset,
     _In_ ULONG Length,
-    _In_opt_ PLARGE_INTEGER ValidDataLength,
-    _In_ BOOLEAN SetDirty)
+    _In_opt_ PLARGE_INTEGER ValidDataLength)
 {
     /* Let's use a 64K granularity. */
     LONGLONG RangeStart, RangeEnd;
@@ -1263,9 +1308,6 @@ MmMakeSegmentResident(
 
             if (Entry != 0)
             {
-                /* Dirtify it if it's a resident page and we're asked to */
-                if (SetDirty && !IS_SWAP_FROM_SSE(Entry))
-                    MmSetPageEntrySectionSegment(Segment, &CurrentOffset, DIRTY_SSE(Entry));
                 continue;
             }
 
@@ -1337,7 +1379,7 @@ MmMakeSegmentResident(
             for (UINT i = 0; i < BYTES_TO_PAGES(ReadLength); i++)
             {
                 /* MmRequestPageMemoryConsumer succeeds or bugchecks */
-                (void)MmRequestPageMemoryConsumer(MC_USER, FALSE, &Pages[i]);
+                (void)MmRequestPageMemoryConsumer(MC_USER, TRUE, &Pages[i]);
             }
             Mdl->MdlFlags |= MDL_PAGES_LOCKED | MDL_IO_PAGE_READ;
 
@@ -1347,13 +1389,20 @@ MmMakeSegmentResident(
             /* Clamp to VDL */
             if (ValidDataLength && ((FileOffset.QuadPart + ReadLength) > ValidDataLength->QuadPart))
             {
-                if (FileOffset.QuadPart > ValidDataLength->QuadPart)
+                if (FileOffset.QuadPart >= ValidDataLength->QuadPart)
                 {
+                    DPRINT("Skipping read beyond VDL\n");
                     /* Great, nothing to read. */
                     goto AssignPagesToSegment;
                 }
 
-                Mdl->Size = (FileOffset.QuadPart + ReadLength) - ValidDataLength->QuadPart;
+                Mdl->ByteCount = ValidDataLength->QuadPart - FileOffset.QuadPart;
+
+                // Mdl->ByteCount = PAGE_ROUND_UP(Mdl->ByteCount);
+                ASSERT(Mdl->ByteCount > 0);
+                ASSERT(Mdl->ByteCount <= ReadLength);
+                ASSERT(Mdl->ByteCount <= ValidDataLength->QuadPart);
+                DPRINT("Clamping read of %wZ from %x to %x\n", &FileObject->FileName, ReadLength, Mdl->ByteCount);
             }
 
             KEVENT Event;
@@ -1367,6 +1416,7 @@ MmMakeSegmentResident(
             Status = IoPageRead(FileObject, Mdl, &FileOffset, &Event, &Iosb);
             if (Status == STATUS_PENDING)
             {
+                DPRINT1("Pending!\n");
                 KeWaitForSingleObject(&Event, WrPageIn, KernelMode, FALSE, NULL);
                 Status = Iosb.Status;
             }
@@ -1413,14 +1463,16 @@ AssignPagesToSegment:
 
             for (UINT i = 0; i < BYTES_TO_PAGES(ReadLength); i++)
             {
-                ULONG_PTR Entry = MAKE_SSE(Pages[i] << PAGE_SHIFT, 0);
+                ULONG_PTR Entry = MAKE_SSE(Pages[i], 0);
                 LARGE_INTEGER CurrentOffset;
                 CurrentOffset.QuadPart = ChunkOffset + (i * PAGE_SIZE);
 
                 ASSERT(MM_IS_WAIT_PTE(MmGetPageEntrySectionSegment(Segment, &CurrentOffset)));
 
-                if (SetDirty)
-                    Entry = DIRTY_SSE(Entry);
+                MmInsertLRULastStandbyPage(Pages[i]);
+
+                DPRINT("Read data from file %wZ, Offset %llx, page %lx\n",
+                       &Segment->FileObject->FileName, CurrentOffset.QuadPart, Pages[i]);
 
                 MmSetPageEntrySectionSegment(Segment, &CurrentOffset, Entry);
             }
@@ -1519,6 +1571,47 @@ MmAlterViewAttributes(PMMSUPPORT AddressSpace,
     }
 
     MmUnlockSectionSegment(Segment);
+}
+
+VOID
+NTAPI
+MiCopyPfnPartial(
+    _In_ PFN_NUMBER DestPage,
+    _In_ PFN_NUMBER SrcPage,
+    _In_ ULONG Length)
+{
+    PMMPTE SysPtes;
+    MMPTE TempPte;
+    PVOID DestAddress;
+    const VOID* SrcAddress;
+
+    ASSERT(Length <= PAGE_SIZE);
+
+    /* Grab 2 system PTEs */
+    SysPtes = MiReserveSystemPtes(2, SystemPteSpace);
+    ASSERT(SysPtes);
+
+    /* Initialize the destination PTE */
+    TempPte = ValidKernelPte;
+    TempPte.u.Hard.PageFrameNumber = DestPage;
+
+    /* Make the system PTE valid with our PFN */
+    MI_WRITE_VALID_PTE(&SysPtes[0], TempPte);
+
+    /* Initialize the source PTE */
+    TempPte = ValidKernelPte;
+    TempPte.u.Hard.PageFrameNumber = SrcPage;
+
+    /* Make the system PTE valid with our PFN */
+    MI_WRITE_VALID_PTE(&SysPtes[1], TempPte);
+
+    /* Get the addresses and perform the copy */
+    DestAddress = MiPteToAddress(&SysPtes[0]);
+    SrcAddress = MiPteToAddress(&SysPtes[1]);
+    RtlCopyMemory(DestAddress, SrcAddress, Length);
+
+    /* Now get rid of it */
+    MiReleaseSystemPtes(SysPtes, 2, SystemPteSpace);
 }
 
 NTSTATUS
@@ -1665,9 +1758,12 @@ MmNotPresentFaultSectionView(PMMSUPPORT AddressSpace,
         MmSetSavedSwapEntryPage(Page, SwapEntry);
 
         /*
-         * Add the page to the process's working set
+         * Add the page to the process's working set. No COW for kernel.
          */
-        if (Process) MmInsertRmap(Page, Process, Address);
+        ASSERT(Process != NULL);
+        MmInsertRmap(Page, Process, Address);
+        MmInsertLRULastUserPage(Page);
+
         /*
          * Finish the operation
          */
@@ -1738,7 +1834,8 @@ MmNotPresentFaultSectionView(PMMSUPPORT AddressSpace,
             if (Process) MI_SET_PROCESS2(Process->ImageFileName);
             if (!Process) MI_SET_PROCESS2("Kernel Section");
             MmRequestPageMemoryConsumer(MC_USER, FALSE, &Page);
-            MmSetPageEntrySectionSegment(Segment, &Offset, MAKE_SSE(Page << PAGE_SHIFT, 1));
+            MmSetPageEntrySectionSegment(Segment, &Offset, MAKE_SSE(Page, 1));
+            MmInsertLRULastUserPage(Page);
             MmUnlockSectionSegment(Segment);
 
             Status = MmCreateVirtualMapping(Process, PAddress, Attributes, Page);
@@ -1748,13 +1845,15 @@ MmNotPresentFaultSectionView(PMMSUPPORT AddressSpace,
                 KeBugCheck(MEMORY_MANAGEMENT);
             }
             ASSERT(MmIsPagePresent(Process, PAddress));
-            if (Process)
-                MmInsertRmap(Page, Process, Address);
+            MmInsertRmap(Page, Process, Address);
 
             DPRINT("Address 0x%p\n", Address);
             return STATUS_SUCCESS;
         }
 
+        /*
+         * We need to load the page. Release all lock before goin into FS.
+         */
         MmUnlockSectionSegment(Segment);
         MmUnlockAddressSpace(AddressSpace);
 
@@ -1763,7 +1862,7 @@ MmNotPresentFaultSectionView(PMMSUPPORT AddressSpace,
 
         PFSRTL_COMMON_FCB_HEADER FcbHeader = Segment->FileObject->FsContext;
 
-        Status = MmMakeSegmentResident(Segment, Offset.QuadPart, PAGE_SIZE, &FcbHeader->ValidDataLength, FALSE);
+        Status = MmMakeSegmentResident(Segment, Offset.QuadPart, PAGE_SIZE, &FcbHeader->ValidDataLength);
 
         FsRtlReleaseFile(Segment->FileObject);
 
@@ -1779,7 +1878,8 @@ MmNotPresentFaultSectionView(PMMSUPPORT AddressSpace,
         /* Everything went fine. Restart the operation */
         return STATUS_MM_RESTART_OPERATION;
     }
-    else if (IS_SWAP_FROM_SSE(Entry))
+
+    if (IS_SWAP_FROM_SSE(Entry))
     {
         SWAPENTRY SwapEntry;
 
@@ -1846,45 +1946,41 @@ MmNotPresentFaultSectionView(PMMSUPPORT AddressSpace,
             DPRINT1("Unable to create virtual mapping\n");
             KeBugCheck(MEMORY_MANAGEMENT);
         }
-        if (Process)
-            MmInsertRmap(Page, Process, Address);
+        MmInsertRmap(Page, Process, Address);
 
         /*
          * Mark the offset within the section as having valid, in-memory
-         * data
+         * data, user data.
          */
-        Entry = MAKE_SSE(Page << PAGE_SHIFT, 1);
+        Entry = MAKE_SSE(Page, 1);
         MmSetPageEntrySectionSegment(Segment, &Offset, Entry);
+        MmInsertLRULastUserPage(Page);
         MmUnlockSectionSegment(Segment);
 
         DPRINT("Address 0x%p\n", Address);
         return STATUS_SUCCESS;
     }
-    else
+    /* We already have a page on this section offset. Map it into the process address space. */
+    Page = PFN_FROM_SSE(Entry);
+
+    Status = MmCreateVirtualMapping(Process,
+                                    PAddress,
+                                    Attributes,
+                                    Page);
+    if (!NT_SUCCESS(Status))
     {
-        /* We already have a page on this section offset. Map it into the process address space. */
-        Page = PFN_FROM_SSE(Entry);
-
-        Status = MmCreateVirtualMapping(Process,
-                                        PAddress,
-                                        Attributes,
-                                        Page);
-        if (!NT_SUCCESS(Status))
-        {
-            DPRINT1("Unable to create virtual mapping\n");
-            KeBugCheck(MEMORY_MANAGEMENT);
-        }
-
-        if (Process)
-            MmInsertRmap(Page, Process, Address);
-
-        /* Take a reference on it */
-        MmSharePageEntrySectionSegment(Segment, &Offset);
-        MmUnlockSectionSegment(Segment);
-
-        DPRINT("Address 0x%p\n", Address);
-        return STATUS_SUCCESS;
+        DPRINT1("Unable to create virtual mapping\n");
+        KeBugCheck(MEMORY_MANAGEMENT);
     }
+
+    MmInsertRmap(Page, Process, Address);
+
+    /* Take a reference on it */
+    MmSharePageEntrySectionSegment(Segment, &Offset);
+    MmUnlockSectionSegment(Segment);
+
+    DPRINT("Address 0x%p\n", Address);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -1932,6 +2028,7 @@ MmAccessFaultSectionView(PMMSUPPORT AddressSpace,
     if (MmGetPageProtect(Process, Address) & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE))
     {
         DPRINT("Address 0x%p\n", Address);
+        MmSetDirtyPage(Process, Address);
         return STATUS_SUCCESS;
     }
 
@@ -1943,6 +2040,7 @@ MmAccessFaultSectionView(PMMSUPPORT AddressSpace,
     {
         /* Simply update page protection and we're done */
         MmSetPageProtect(Process, Address, Region->Protect);
+        MmSetDirtyPage(Process, Address);
         return STATUS_SUCCESS;
     }
 
@@ -1983,13 +2081,14 @@ MmAccessFaultSectionView(PMMSUPPORT AddressSpace,
         MmUnlockSectionSegment(Segment);
         /* This is a private page. We must only change the page protection. */
         MmSetPageProtect(Process, PAddress, NewProtect);
+        MmSetDirtyPage(Process, Address);
         return STATUS_SUCCESS;
     }
 
     /*
      * Allocate a page
      */
-    if (!NT_SUCCESS(MmRequestPageMemoryConsumer(MC_USER, TRUE, &NewPage)))
+    if (!NT_SUCCESS(MmRequestPageMemoryConsumer(MC_USER, FALSE, &NewPage)))
     {
         KeBugCheck(MEMORY_MANAGEMENT);
     }
@@ -2004,9 +2103,8 @@ MmAccessFaultSectionView(PMMSUPPORT AddressSpace,
      */
     DPRINT("Swapping page (Old %x New %x)\n", OldPage, NewPage);
     MmDeleteVirtualMapping(Process, PAddress, NULL, NULL);
-    if (Process)
-        MmDeleteRmap(OldPage, Process, PAddress);
-    MmUnsharePageEntrySectionSegment(MemoryArea, Segment, &Offset, FALSE, FALSE, NULL);
+    MmDeleteRmap(OldPage, Process, PAddress);
+    MmUnsharePageEntrySectionSegment(Segment, &Offset, FALSE, FALSE);
     MmUnlockSectionSegment(Segment);
 
     /*
@@ -2018,8 +2116,12 @@ MmAccessFaultSectionView(PMMSUPPORT AddressSpace,
         KeBugCheck(MEMORY_MANAGEMENT);
     }
 
-    if (Process)
-        MmInsertRmap(NewPage, Process, PAddress);
+    /* No Copy-On-Write for kernel file mappings */
+    ASSERT(Process != NULL);
+    MmInsertRmap(NewPage, Process, PAddress);
+    MmInsertLRULastUserPage(NewPage);
+
+    MmSetDirtyPage(Process, PAddress);
 
     DPRINT("Address 0x%p\n", Address);
     return STATUS_SUCCESS;
@@ -2228,7 +2330,7 @@ MmCreatePhysicalMemorySection(VOID)
     Segment->ReferenceCount = &Segment->RefCount;
     Segment->Flags = &Segment->SegFlags;
 
-    ExInitializeFastMutex(&Segment->Lock);
+    ExInitializePushLock(&Segment->Lock);
     Segment->Image.FileOffset = 0;
     Segment->Protection = PAGE_EXECUTE_READWRITE;
     Segment->RawLength = SectionSize;
@@ -2348,18 +2450,10 @@ MmCreateDataFileSection(PSECTION *SectionObject,
     }
     else
     {
-        LARGE_INTEGER FileSize;
-        Status = FsRtlGetFileSize(FileObject, &FileSize);
-        if (!NT_SUCCESS(Status))
-        {
-            ObDereferenceObject(Section);
-            return Status;
-        }
+        /* We can read the FCB header directly, since we locked the file */
+        PFSRTL_COMMON_FCB_HEADER FcbHeader = FileObject->FsContext;
+        LARGE_INTEGER FileSize = FcbHeader->FileSize;
 
-        /*
-         * FIXME: Revise this once a locking order for file size changes is
-         * decided
-         */
         if ((UMaximumSize != NULL) && (UMaximumSize->QuadPart != 0))
         {
             MaximumSize = *UMaximumSize;
@@ -2375,16 +2469,24 @@ MmCreateDataFileSection(PSECTION *SectionObject,
             }
         }
 
-        if (MaximumSize.QuadPart > FileSize.QuadPart)
+        /*
+         * Check if we must update File Information.
+         * Do not do this if we're not actually writing anything.
+         */
+        if ((SectionPageProtection == PAGE_READWRITE)
+            || (SectionPageProtection == PAGE_EXECUTE_READWRITE))
         {
-            Status = IoSetInformation(FileObject,
-                                      FileEndOfFileInformation,
-                                      sizeof(LARGE_INTEGER),
-                                      &MaximumSize);
-            if (!NT_SUCCESS(Status))
+            if (MaximumSize.QuadPart > FileSize.QuadPart)
             {
-                ObDereferenceObject(Section);
-                return STATUS_SECTION_NOT_EXTENDED;
+                Status = IoSetInformation(FileObject,
+                                          FileEndOfFileInformation,
+                                          sizeof(LARGE_INTEGER),
+                                          &MaximumSize);
+                if (!NT_SUCCESS(Status))
+                {
+                    ObDereferenceObject(Section);
+                    return STATUS_SECTION_NOT_EXTENDED;
+                }
             }
         }
     }
@@ -2465,7 +2567,7 @@ grab_segment:
 
         Segment->SectionCount = 1;
 
-        ExInitializeFastMutex(&Segment->Lock);
+        ExInitializePushLock(&Segment->Lock);
         Segment->FileObject = FileObject;
         ObReferenceObject(FileObject);
 
@@ -2586,10 +2688,11 @@ ExeFmtpReadFile(IN PVOID File,
     ULONG AdjustOffset;
     ULONG OffsetAdjustment;
     ULONG BufferSize;
-    ULONG UsedSize;
+    ULONG UsedSize = 0;
     PVOID Buffer;
     PFILE_OBJECT FileObject = File;
     IO_STATUS_BLOCK Iosb;
+    PMM_SECTION_SEGMENT DataFileSegment;
 
     ASSERT_IRQL_LESS(DISPATCH_LEVEL);
 
@@ -2613,18 +2716,91 @@ ExeFmtpReadFile(IN PVOID File,
     BufferSize = Length + OffsetAdjustment;
     BufferSize = PAGE_ROUND_UP(BufferSize);
 
-    /*
-     * It's ok to use paged pool, because this is a temporary buffer only used in
-     * the loading of executables. The assumption is that MmCreateSection is
-     * always called at low IRQLs and that these buffers don't survive a brief
-     * initialization phase
-     */
-    Buffer = ExAllocatePoolWithTag(PagedPool, BufferSize, 'rXmM');
+    /* Use Non-Paged pool because we might copy at high IRQL */
+    Buffer = ExAllocatePoolWithTag(NonPagedPool, BufferSize, 'rXmM');
     if (!Buffer)
     {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
+    /* Set this now because Buffer will move */
+    *AllocBase = Buffer;
+
+    /* See if we can use the data mapping. */
+    DataFileSegment = MiGrabDataSection(FileObject->SectionObjectPointer);
+    if (DataFileSegment != NULL)
+    {
+        while (TRUE)
+        {
+            /* Page the data in. Lock the file, so that the VDL doesn't get updated behind us. */
+            FsRtlAcquireFileExclusive(DataFileSegment->FileObject);
+
+            PFSRTL_COMMON_FCB_HEADER FcbHeader = DataFileSegment->FileObject->FsContext;
+
+            Status = MmMakeSegmentResident(DataFileSegment, FileOffset.QuadPart, BufferSize, &FcbHeader->ValidDataLength);
+
+            FsRtlReleaseFile(DataFileSegment->FileObject);
+
+            if (!NT_SUCCESS(Status))
+            {
+                goto Exit;
+            }
+
+            /* Now we can copy the paged in data to our buffer */
+            MmLockSectionSegment(DataFileSegment);
+            while (BufferSize)
+            {
+                KIRQL OldIrql;
+                PVOID PageMap;
+                ULONG_PTR Entry;
+
+                while (TRUE)
+                {
+                    Entry = MmGetPageEntrySectionSegment(DataFileSegment, &FileOffset);
+
+                    if (!IS_SWAP_FROM_SSE(Entry))
+                        break;
+
+                    MmUnlockSectionSegment(DataFileSegment);
+                    KeDelayExecutionThread(KernelMode, FALSE, &TinyTime);
+                    MmLockSectionSegment(DataFileSegment);
+                }
+
+                if (Entry == 0)
+                {
+                    /* Geez. Already paged out. */
+                    break;
+                }
+
+                PageMap = MiMapPageInHyperSpace(PsGetCurrentProcess(), PFN_FROM_SSE(Entry), &OldIrql);
+                if (PageMap == NULL)
+                {
+                    MmUnlockSectionSegment(DataFileSegment);
+                    Status = STATUS_NO_MEMORY;
+                    goto Exit;
+                }
+
+                RtlCopyMemory(Buffer, PageMap, PAGE_SIZE);
+                MiUnmapPageInHyperSpace(PsGetCurrentProcess(), PageMap, OldIrql);
+
+                UsedSize += PAGE_SIZE;
+                Buffer = Add2Ptr(Buffer, PAGE_SIZE);
+                FileOffset.QuadPart += PAGE_SIZE;
+                BufferSize -= PAGE_SIZE;
+            }
+
+            MmUnlockSectionSegment(DataFileSegment);
+
+            /* Are we done yet */
+            if (BufferSize == 0)
+            {
+                Status = STATUS_SUCCESS;
+                goto Exit;
+            }
+        }
+    }
+
+    /* We couldn't get data from data segment. Get it from file directly */
     Status = MiSimpleRead(FileObject, &FileOffset, Buffer, BufferSize, TRUE, &Iosb);
 
     UsedSize = (ULONG)Iosb.Information;
@@ -2635,15 +2811,21 @@ ExeFmtpReadFile(IN PVOID File,
         ASSERT(!NT_SUCCESS(Status));
     }
 
+Exit:
+    if (DataFileSegment != NULL)
+    {
+        MmDereferenceSegment(DataFileSegment);
+    }
+
     if(NT_SUCCESS(Status))
     {
-        *Data = (PVOID)((ULONG_PTR)Buffer + OffsetAdjustment);
-        *AllocBase = Buffer;
+        *Data = Add2Ptr(*AllocBase, OffsetAdjustment);
         *ReadSize = UsedSize - OffsetAdjustment;
     }
     else
     {
-        ExFreePoolWithTag(Buffer, 'rXmM');
+        ExFreePoolWithTag(*AllocBase, 'rXmM');
+        *AllocBase = NULL;
     }
 
     return Status;
@@ -3125,7 +3307,7 @@ ExeFmtpCreateImageSection(PFILE_OBJECT FileObject,
     /* And finish their initialization */
     for ( i = 0; i < ImageSectionObject->NrSegments; ++ i )
     {
-        ExInitializeFastMutex(&ImageSectionObject->Segments[i].Lock);
+        ExInitializePushLock(&ImageSectionObject->Segments[i].Lock);
         ImageSectionObject->Segments[i].ReferenceCount = &ImageSectionObject->RefCount;
         ImageSectionObject->Segments[i].Flags = &ImageSectionObject->SegFlags;
         MiInitializeSectionPageTable(&ImageSectionObject->Segments[i]);
@@ -3240,9 +3422,6 @@ grab_image_section_object:
         FileObject->SectionObjectPointer->ImageSectionObject = ImageSectionObject;
 
         MiReleasePfnLock(OldIrql);
-
-        /* Purge the cache */
-        CcFlushCache(FileObject->SectionObjectPointer, NULL, 0, NULL);
 
         StatusExeFmt = ExeFmtpCreateImageSection(FileObject, ImageSectionObject);
 
@@ -3458,6 +3637,9 @@ MmFreeSectionPage(PVOID Context, MEMORY_AREA* MemoryArea, PVOID Address,
     }
     else if (Page != 0)
     {
+        /* Delete from process working set */
+        MmDeleteRmap(Page, Process, Address);
+
         if (IS_SWAP_FROM_SSE(Entry) ||
                 Page != PFN_FROM_SSE(Entry))
         {
@@ -3472,18 +3654,13 @@ MmFreeSectionPage(PVOID Context, MEMORY_AREA* MemoryArea, PVOID Address,
                 MmFreeSwapPage(SavedSwapEntry);
                 MmSetSavedSwapEntryPage(Page, 0);
             }
-            MmDeleteRmap(Page, Process, Address);
+            MmRemoveLRUUserPage(Page);
             MmReleasePageMemoryConsumer(MC_USER, Page);
         }
         else
         {
-            if (Process)
-            {
-                MmDeleteRmap(Page, Process, Address);
-            }
-
             /* We don't dirtify for System Space Maps. We let Cc manage that */
-            MmUnsharePageEntrySectionSegment(MemoryArea, Segment, &Offset, Process ? Dirty : FALSE, FALSE, NULL);
+            MmUnsharePageEntrySectionSegment(Segment, &Offset, Process ? Dirty : FALSE, FALSE);
         }
     }
 }
@@ -3634,12 +3811,28 @@ MiRosUnmapViewOfSection(IN PEPROCESS Process,
     }
     else
     {
+        PFILE_OBJECT FileObject = MemoryArea->SectionData.Segment->FileObject;
+
+        /*
+         * This may be the last mapping for this file, meaning we'll flush it to disk.
+         * Forbid other operations on it, notably ones which modify ValidDataLength or file size.
+         */
+        if (FileObject != NULL)
+        {
+            FsRtlAcquireFileExclusive(FileObject);
+        }
+
         Status = MmUnmapViewOfSegment(AddressSpace, BaseAddress);
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("MmUnmapViewOfSegment failed for %p (Process %p) with %lx\n",
                     BaseAddress, Process, Status);
             ASSERT(NT_SUCCESS(Status));
+        }
+
+        if (FileObject != NULL)
+        {
+            FsRtlReleaseFile(FileObject);
         }
     }
 
@@ -4224,11 +4417,12 @@ MiPurgeImageSegment(PMM_SECTION_SEGMENT Segment)
             }
 
             /* Regular entry */
-            ASSERT(!IS_WRITE_SSE(Entry));
             ASSERT(MmGetSavedSwapEntryPage(PFN_FROM_SSE(Entry)) == 0);
+            ASSERT(IS_DIRTY_SSE(Entry) == 0);
 
             /* Properly remove using the used API */
             Offset.QuadPart = PageTable->FileOffset.QuadPart + (i << PAGE_SHIFT);
+            MmRemoveLRUStandbyPage(PFN_FROM_SSE(Entry));
             MmSetPageEntrySectionSegment(Segment, &Offset, 0);
             MmReleasePageMemoryConsumer(MC_USER, PFN_FROM_SSE(Entry));
         }
@@ -4775,15 +4969,6 @@ MmPurgeSegment(
             return FALSE;
         }
 
-        if (IS_WRITE_SSE(Entry))
-        {
-            /* We're trying to purge an entry which is being written. Restart this loop iteration */
-            MmUnlockSectionSegment(Segment);
-            KeDelayExecutionThread(KernelMode, FALSE, &TinyTime);
-            MmLockSectionSegment(Segment);
-            continue;
-        }
-
         if (SHARE_COUNT_FROM_SSE(Entry) > 0)
         {
             /* This page is currently in use. Bad luck */
@@ -4792,8 +4977,15 @@ MmPurgeSegment(
             return FALSE;
         }
 
+        /* Remove from lists */
+        if (IS_DIRTY_SSE(Entry))
+            MmRemoveLRUModifiedPage(PFN_FROM_SSE(Entry));
+        else
+            MmRemoveLRUStandbyPage(PFN_FROM_SSE(Entry));
+
         /* We can let this page go */
         MmSetPageEntrySectionSegment(Segment, &PurgeStart, 0);
+
         MmReleasePageMemoryConsumer(MC_USER, PFN_FROM_SSE(Entry));
 
         PurgeStart.QuadPart += PAGE_SIZE;
@@ -4818,7 +5010,7 @@ MmMakeDataSectionResident(
     /* There must be a segment for this call */
     ASSERT(Segment);
 
-    NTSTATUS Status = MmMakeSegmentResident(Segment, Offset, Length, ValidDataLength, FALSE);
+    NTSTATUS Status = MmMakeSegmentResident(Segment, Offset, Length, ValidDataLength);
 
     MmDereferenceSegment(Segment);
 
@@ -4863,24 +5055,7 @@ MmFlushSegment(
     if (!Offset)
     {
         FlushStart.QuadPart = 0;
-
-        /* FIXME: All of this is suboptimal */
-        ULONG ElemCount = RtlNumberGenericTableElements(&Segment->PageTable);
-        /* No page. Nothing to flush */
-        if (!ElemCount)
-        {
-            MmUnlockSectionSegment(Segment);
-            MmDereferenceSegment(Segment);
-            if (Iosb)
-            {
-                Iosb->Status = STATUS_SUCCESS;
-                Iosb->Information = 0;
-            }
-            return STATUS_SUCCESS;
-        }
-
-        PCACHE_SECTION_PAGE_TABLE PageTable = RtlGetElementGenericTable(&Segment->PageTable, ElemCount - 1);
-        FlushEnd.QuadPart = PageTable->FileOffset.QuadPart + _countof(PageTable->PageEntries) * PAGE_SIZE;
+        FlushEnd = Segment->RawLength;
     }
 
     FlushStart.QuadPart >>= PAGE_SHIFT;
@@ -4892,7 +5067,7 @@ MmFlushSegment(
 
         if (IS_DIRTY_SSE(Entry))
         {
-            MmCheckDirtySegment(Segment, &FlushStart, FALSE, FALSE);
+            MmCheckDirtySegment(Segment, &FlushStart, FALSE);
 
             if (Iosb)
                 Iosb->Information += PAGE_SIZE;
@@ -4912,11 +5087,9 @@ MmFlushSegment(
 
 _Requires_exclusive_lock_held_(Segment->Lock)
 BOOLEAN
-NTAPI
 MmCheckDirtySegment(
     PMM_SECTION_SEGMENT Segment,
     PLARGE_INTEGER Offset,
-    BOOLEAN ForceDirty,
     BOOLEAN PageOut)
 {
     ULONG_PTR Entry;
@@ -4934,9 +5107,9 @@ MmCheckDirtySegment(
         return FALSE;
 
     Page = PFN_FROM_SSE(Entry);
-    if ((IS_DIRTY_SSE(Entry)) || ForceDirty)
+    if (IS_DIRTY_SSE(Entry))
     {
-        BOOLEAN DirtyAgain;
+        BOOLEAN Standby;
 
         /*
          * We got a dirty entry. This path is for the shared data,
@@ -4945,10 +5118,27 @@ MmCheckDirtySegment(
         ASSERT(FlagOn(*Segment->Flags, MM_DATAFILE_SEGMENT) ||
                FlagOn(Segment->Image.Characteristics, IMAGE_SCN_MEM_SHARED));
 
-        /* Insert the cleaned entry back. Mark it as write in progress, and clear the dirty bit. */
-        Entry = MAKE_SSE(PAGE_FROM_SSE(Entry), SHARE_COUNT_FROM_SSE(Entry) + 1);
-        Entry = WRITE_SSE(Entry);
-        MmSetPageEntrySectionSegment(Segment, Offset, Entry);
+        /* This will be clean after we write the dirty data */
+        Entry = CLEAN_SSE(Entry);
+
+        /* In case it's in the modified list,
+         * just remove it from there and don't let others use the page */
+        if (SHARE_COUNT_FROM_SSE(Entry) == 0)
+        {
+            MmRemoveLRUModifiedPage(Page);
+            MmSetPageEntrySectionSegment(Segment, Offset, MAKE_SWAP_SSE(MM_WAIT_ENTRY));
+            /* This will go to standby after us */
+            Standby = TRUE;
+        }
+        else
+        {
+            /* Insert the cleaned entry back. Get a ref so this doesn't go away without us noticing. */
+            Entry = BUMPREF_SSE(Entry);
+            MmSetPageEntrySectionSegment(Segment, Offset, Entry);
+
+            /* This page is still active. */
+            Standby = FALSE;
+        }
 
         MmUnlockSectionSegment(Segment);
 
@@ -4959,8 +5149,8 @@ MmCheckDirtySegment(
                 IoSetTopLevelIrp((PIRP)FSRTL_MOD_WRITE_TOP_LEVEL_IRP);
 
             /* Go ahead and write the page */
-            DPRINT("Writing page at offset %I64d for file %wZ, Pageout: %s\n",
-                    Offset->QuadPart, &Segment->FileObject->FileName, PageOut ? "TRUE" : "FALSE");
+            DPRINT("Writing page at offset 0x%I64x for file %wZ, Pageout: %s\n",
+                   Offset->QuadPart, &Segment->FileObject->FileName, PageOut ? "TRUE" : "FALSE");
             Status = MiWritePage(Segment, Offset->QuadPart, Page);
 
             if (PageOut)
@@ -5001,48 +5191,28 @@ MmCheckDirtySegment(
 
         MmLockSectionSegment(Segment);
 
-        /* Get the entry again */
-        Entry = MmGetPageEntrySectionSegment(Segment, Offset);
-        ASSERT(PFN_FROM_SSE(Entry) == Page);
-
-        if (!NT_SUCCESS(Status))
+        if (Standby)
         {
-            /* Damn, this failed. Consider this page as still dirty */
-            DPRINT1("MiWritePage FAILED: Status 0x%08x!\n", Status);
-            DirtyAgain = TRUE;
+            /* Restore our entry. Check if we succeeded first */
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("Failed to write page at offset %llx, file %wZ, Status 0x%08x\n",
+                        Offset->QuadPart, &Segment->FileObject->FileName, Status);
+                /* Oh no. Then it's not clean at all */
+                Entry = DIRTY_SSE(Entry);
+                MmInsertLRULastModifiedPage(Page);
+            }
+            else
+            {
+                MmInsertLRULastStandbyPage(Page);
+            }
+            MmSetPageEntrySectionSegment(Segment, Offset, Entry);
         }
         else
         {
-            /* Check if someone dirtified this page while we were not looking */
-            DirtyAgain = IS_DIRTY_SSE(Entry);
+            /* Simply unshare it, dirtify again if we failed. */
+            MmUnsharePageEntrySectionSegment(Segment, Offset, !NT_SUCCESS(Status), PageOut);
         }
-
-        /* Drop the reference we got, deleting the write altogether. */
-        Entry = MAKE_SSE(Page << PAGE_SHIFT, SHARE_COUNT_FROM_SSE(Entry) - 1);
-        if (DirtyAgain)
-        {
-            Entry = DIRTY_SSE(Entry);
-        }
-        MmSetPageEntrySectionSegment(Segment, Offset, Entry);
-    }
-
-    /* Were this page hanging there just for the sake of being present ? */
-    if (!IS_DIRTY_SSE(Entry) && (SHARE_COUNT_FROM_SSE(Entry) == 0) && PageOut)
-    {
-        ULONG_PTR NewEntry = 0;
-        /* Restore the swap entry here */
-        if (!FlagOn(*Segment->Flags, MM_DATAFILE_SEGMENT))
-        {
-            SWAPENTRY SwapEntry = MmGetSavedSwapEntryPage(Page);
-            if (SwapEntry)
-                NewEntry = MAKE_SWAP_SSE(SwapEntry);
-        }
-
-        /* Yes. Release it */
-        MmSetPageEntrySectionSegment(Segment, Offset, NewEntry);
-        MmReleasePageMemoryConsumer(MC_USER, Page);
-        /* Tell the caller we released the page */
-        return TRUE;
     }
 
     return FALSE;
@@ -5106,6 +5276,12 @@ MmMakePagesDirty(
         /* If there is no page there, there is nothing to make dirty */
         if (Entry != 0)
         {
+            /* Make sure this wasn't stand-by */
+            if ((SHARE_COUNT_FROM_SSE(Entry) == 0) && !IS_DIRTY_SSE(Entry))
+            {
+                MmRemoveLRUStandbyPage(PFN_FROM_SSE(Entry));
+                MmInsertLRULastModifiedPage(PFN_FROM_SSE(Entry));
+            }
             /* Dirtify the entry */
             MmSetPageEntrySectionSegment(Segment, &SegmentOffset, DIRTY_SSE(Entry));
         }

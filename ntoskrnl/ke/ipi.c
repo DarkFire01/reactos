@@ -170,7 +170,7 @@ KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame,
 #if defined(_M_ARM) || defined(_M_AMD64)
         DbgBreakPoint();
 #else
-        (void)InterlockedDecrementUL(&Prcb->SignalDone->CurrentPacket[1]);
+        (void)InterlockedDecrementUL((ULONG*)&Prcb->SignalDone->CurrentPacket[1]);
         if (InterlockedCompareExchangeUL(&Prcb->SignalDone->CurrentPacket[2], 0, 0))
         {
             while (0 != InterlockedCompareExchangeUL(&Prcb->SignalDone->CurrentPacket[1], 0, 0));

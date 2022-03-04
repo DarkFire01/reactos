@@ -196,7 +196,7 @@ typedef struct _MM_SECTION_SEGMENT
     LONG64 RefCount;
     PFILE_OBJECT FileObject;
 
-    FAST_MUTEX Lock;		/* lock which protects the page directory */
+    EX_PUSH_LOCK Lock;		/* lock which protects the page directory */
     LARGE_INTEGER RawLength;		/* length of the segment which is part of the mapped file */
     LARGE_INTEGER Length;			/* absolute length of the segment */
     PLONG64 ReferenceCount;
@@ -432,8 +432,7 @@ typedef struct _MMPFN
 
     // HACK until WS lists are supported
     MMWSLE Wsle;
-    struct _MMPFN* NextLRU;
-    struct _MMPFN* PreviousLRU;
+    LIST_ENTRY LruEntry;
 } MMPFN, *PMMPFN;
 
 extern PMMPFN MmPfnDatabase;
@@ -455,8 +454,6 @@ extern MMPFNLIST MmModifiedNoWritePageListHead;
 typedef struct _MM_MEMORY_CONSUMER
 {
     ULONG PagesUsed;
-    ULONG PagesTarget;
-    NTSTATUS (*Trim)(ULONG Target, ULONG Priority, PULONG NrFreed);
 } MM_MEMORY_CONSUMER, *PMM_MEMORY_CONSUMER;
 
 typedef struct _MM_REGION
@@ -871,14 +868,6 @@ MmDeleteKernelStack(PVOID Stack,
 CODE_SEG("INIT")
 VOID
 NTAPI
-MmInitializeMemoryConsumer(
-    ULONG Consumer,
-    NTSTATUS (*Trim)(ULONG Target, ULONG Priority, PULONG NrFreed)
-);
-
-CODE_SEG("INIT")
-VOID
-NTAPI
 MmInitializeBalancer(
     ULONG NrAvailablePages,
     ULONG NrSystemPages
@@ -905,8 +894,13 @@ NTAPI
 MiInitBalancerThread(VOID);
 
 VOID
-NTAPI
 MmRebalanceMemoryConsumers(VOID);
+
+PFN_NUMBER
+MmPopStandbyPage(VOID);
+
+VOID
+MmShutdownBalancer(VOID);
 
 /* rmap.c **************************************************************/
 #define RMAP_SEGMENT_MASK ~((ULONG_PTR)0xff)
@@ -947,13 +941,16 @@ MmDeleteRmap(
     PVOID Address
 );
 
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+MmFreeRmap(_In_ __drv_freesMem(Mem) PMM_RMAP_ENTRY Rmap);
+
 CODE_SEG("INIT")
 VOID
 NTAPI
 MmInitializeRmapList(VOID);
 
 NTSTATUS
-NTAPI
 MmPageOutPhysicalAddress(PFN_NUMBER Page);
 
 PMM_SECTION_SEGMENT
@@ -1045,13 +1042,41 @@ MiGetPfnEntryIndex(IN PMMPFN Pfn1)
     return Pfn1 - MmPfnDatabase;
 }
 
+_IRQL_requires_max_(DISPATCH_LEVEL)
 PFN_NUMBER
-NTAPI
-MmGetLRUNextUserPage(PFN_NUMBER PreviousPage, BOOLEAN MoveToLast);
-
-PFN_NUMBER
-NTAPI
 MmGetLRUFirstUserPage(VOID);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+MmInsertLRULastUserPage(PFN_NUMBER Page);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+MmRemoveLRUUserPage(PFN_NUMBER Page);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+PFN_NUMBER
+MmGetLRUFirstModifiedPage(VOID);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+MmInsertLRULastModifiedPage(PFN_NUMBER Page);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+MmRemoveLRUModifiedPage(PFN_NUMBER Page);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+PFN_NUMBER
+MmGetLRUFirstStandbyPage(VOID);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+MmInsertLRULastStandbyPage(PFN_NUMBER Page);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+MmRemoveLRUStandbyPage(PFN_NUMBER Page);
 
 VOID
 NTAPI
@@ -1331,18 +1356,44 @@ MmFindRegion(
 #define DIRTY_SSE(E)             ((E) | 2)
 #define CLEAN_SSE(E)             ((E) & ~2)
 #define IS_DIRTY_SSE(E)          ((E) & 2)
-#define WRITE_SSE(E)             ((E) | 4)
-#define IS_WRITE_SSE(E)          ((E) & 4)
-#ifdef _WIN64
-#define PAGE_FROM_SSE(E)         ((E) & 0xFFFFFFF000ULL)
-#else
-#define PAGE_FROM_SSE(E)         ((E) & 0xFFFFF000)
-#endif
-#define SHARE_COUNT_FROM_SSE(E)  (((E) & 0x00000FFC) >> 3)
-#define MAX_SHARE_COUNT          0x1FF
-#define MAKE_SSE(P, C)           ((ULONG_PTR)((P) | ((C) << 3)))
-#define BUMPREF_SSE(E)           (PAGE_FROM_SSE(E) | ((SHARE_COUNT_FROM_SSE(E) + 1) << 3) | ((E) & 0x7))
-#define DECREF_SSE(E)            (PAGE_FROM_SSE(E) | ((SHARE_COUNT_FROM_SSE(E) - 1) << 3) | ((E) & 0x7))
+#define SHARE_COUNT_FROM_SSE(E)  (((E) & 0x00000FFC) >> 2)
+#define MAX_SHARE_COUNT          0x3FF
+
+FORCEINLINE
+ULONG_PTR
+MAKE_SSE(PFN_NUMBER Pfn, ULONG ShareCount)
+{
+    ASSERT(ShareCount <= MAX_SHARE_COUNT);
+    return (Pfn << PAGE_SHIFT) | (ShareCount << 2);
+}
+
+FORCEINLINE
+ULONG_PTR
+BUMPREF_SSE(ULONG_PTR Entry)
+{
+    ULONG ShareCount = SHARE_COUNT_FROM_SSE(Entry) + 1;
+    ULONG Flags = Entry & 0x3;
+    PFN_NUMBER Pfn = PFN_FROM_SSE(Entry);
+
+    /* Must not be swap entry */
+    ASSERT(!FlagOn(Flags, 0x1));
+
+    return MAKE_SSE(Pfn, ShareCount) | Flags;
+}
+
+FORCEINLINE
+ULONG_PTR
+DECREF_SSE(ULONG_PTR Entry)
+{
+    ULONG ShareCount = SHARE_COUNT_FROM_SSE(Entry) - 1;
+    ULONG Flags = Entry & 0x3;
+    PFN_NUMBER Pfn = PFN_FROM_SSE(Entry);
+
+    /* Must not be swap entry */
+    ASSERT(!FlagOn(Flags, 0x1));
+
+    return MAKE_SSE(Pfn, ShareCount) | Flags;
+}
 
 VOID
 NTAPI
@@ -1495,21 +1546,17 @@ MmPurgeSegment(
     _In_ ULONG Length);
 
 BOOLEAN
-NTAPI
 MmCheckDirtySegment(
     PMM_SECTION_SEGMENT Segment,
     PLARGE_INTEGER Offset,
-    BOOLEAN ForceDirty,
     BOOLEAN PageOut);
 
 BOOLEAN
 NTAPI
-MmUnsharePageEntrySectionSegment(PMEMORY_AREA MemoryArea,
-                                 PMM_SECTION_SEGMENT Segment,
+MmUnsharePageEntrySectionSegment(PMM_SECTION_SEGMENT Segment,
                                  PLARGE_INTEGER Offset,
                                  BOOLEAN Dirty,
-                                 BOOLEAN PageOut,
-                                 ULONG_PTR *InEntry);
+                                 BOOLEAN PageOut);
 
 _When_(OldIrql == MM_NOIRQL, _IRQL_requires_max_(DISPATCH_LEVEL))
 _When_(OldIrql == MM_NOIRQL, _Requires_lock_not_held_(MmPfnLock))

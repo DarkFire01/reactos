@@ -796,8 +796,8 @@ CcZeroData (
     CCTRACE(CC_API_DEBUG, "FileObject=%p StartOffset=%I64u EndOffset=%I64u Wait=%d\n",
         FileObject, StartOffset->QuadPart, EndOffset->QuadPart, Wait);
 
-    DPRINT("CcZeroData(FileObject 0x%p, StartOffset %I64x, EndOffset %I64x, "
-           "Wait %u)\n", FileObject, StartOffset->QuadPart, EndOffset->QuadPart,
+    DPRINT("CcZeroData(FileObject %wZ (0x%p), StartOffset %I64x, EndOffset %I64x, "
+           "Wait %u)\n", &FileObject->FileName, FileObject, StartOffset->QuadPart, EndOffset->QuadPart,
            Wait);
 
     Length = EndOffset->QuadPart - StartOffset->QuadPart;
@@ -812,6 +812,9 @@ CcZeroData (
         ULONG i;
         ULONG CurrentLength;
         PPFN_NUMBER PfnArray;
+
+        DPRINT("Non cached zeroing: FileObject %wZ (0x%p), StartOffset %I64x, EndOffset %I64x, Wait %u\n",
+               &FileObject->FileName, FileObject, StartOffset->QuadPart, EndOffset->QuadPart, Wait);
 
         /* Setup our Mdl */
         Mdl = IoAllocateMdl(NULL, min(Length, MAX_ZERO_LENGTH), FALSE, FALSE, NULL);

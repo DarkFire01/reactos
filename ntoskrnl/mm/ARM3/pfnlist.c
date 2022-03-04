@@ -64,7 +64,6 @@ ULONG MI_PFN_CURRENT_USAGE;
 CHAR MI_PFN_CURRENT_PROCESS_NAME[16] = "None yet";
 
 /* FUNCTIONS ******************************************************************/
-static
 VOID
 MiIncrementAvailablePages(
     VOID)
@@ -85,7 +84,6 @@ MiIncrementAvailablePages(
     }
 }
 
-static
 VOID
 MiDecrementAvailablePages(
     VOID)
@@ -110,7 +108,7 @@ MiDecrementAvailablePages(
     {
         /* FIXME: Should wake up the MPW and working set manager, if we had one */
 
-        DPRINT1("Running low on pages: %lu remaining\n", MmAvailablePages);
+        DPRINT("Running low on pages: %lu remaining\n", MmAvailablePages);
 
         /* Call RosMm and see if it can release any pages for us */
         MmRebalanceMemoryConsumers();
@@ -502,11 +500,13 @@ MiRemoveAnyPage(IN ULONG Color)
                 ASSERT_LIST_INVARIANT(&MmZeroedPageListHead);
                 PageIndex = MmZeroedPageListHead.Flink;
                 Color = PageIndex & MmSecondaryColorMask;
-                ASSERT(PageIndex != LIST_HEAD);
                 if (PageIndex == LIST_HEAD)
                 {
                     /* FIXME: Should check the standby list */
                     ASSERT(MmZeroedPageListHead.Total == 0);
+                    /* Get one from the Ros Mm instead */
+                    PageIndex = MmPopStandbyPage();
+                    Color = PageIndex & MmSecondaryColorMask;
                 }
             }
         }
@@ -562,11 +562,13 @@ MiRemoveZeroPage(IN ULONG Color)
                 ASSERT_LIST_INVARIANT(&MmFreePageListHead);
                 PageIndex = MmFreePageListHead.Flink;
                 Color = PageIndex & MmSecondaryColorMask;
-                ASSERT(PageIndex != LIST_HEAD);
                 if (PageIndex == LIST_HEAD)
                 {
                     /* FIXME: Should check the standby list */
                     ASSERT(MmZeroedPageListHead.Total == 0);
+                    /* Get one from the Ros Mm instead */
+                    PageIndex = MmPopStandbyPage();
+                    Color = PageIndex & MmSecondaryColorMask;
                 }
             }
         }

@@ -2408,6 +2408,10 @@ NTAPI
 MiWriteProtectSystemImage(
     _In_ PVOID ImageBase);
 
+VOID
+MiFillSystemPageDirectory(_In_ PVOID Base,
+                          _In_ SIZE_T NumberOfBytes);
+
 //
 // MiRemoveZeroPage will use inline code to zero out the page manually if only
 // free pages are available. In some scenarios, we don't/can't run that piece of
@@ -2436,6 +2440,9 @@ MiSynchronizeSystemPde(PMMPDE PointerPde)
 
     /* Copy the PDE from the double-mapped system page directory */
     SystemPde = MmSystemPagePtes[Index];
+
+    ASSERT((PointerPde->u.Long == 0) || (PointerPde->u.Long == SystemPde.u.Long));
+
     *PointerPde = SystemPde;
 
     /* Make sure we re-read the PDE and PTE */
