@@ -84,7 +84,6 @@ ApicRequestGlobalInterrupt(
 
 /* SMP SUPPORT FUNCTIONS ******************************************************/
 
-// Should be called by SMP version of HalRequestIpi
 VOID
 NTAPI
 HalpRequestIpi(KAFFINITY TargetProcessors)
@@ -93,4 +92,17 @@ HalpRequestIpi(KAFFINITY TargetProcessors)
     __debugbreak();
 }
 
-// APIC specific SMP code here
+VOID
+ApicStartApplicationProcessor(ULONG NTProcessorNumber, PHYSICAL_ADDRESS StartupLoc)
+{
+    /* Init IPI */
+    ApicRequestGlobalInterrupt(NTProcessorNumber, 0,
+        APIC_MT_INIT, APIC_TGM_Edge, APIC_DSH_Destination);
+
+    /* Stall execution for a bit to give APIC time */
+    KeStallExecutionProcessor(1000);
+
+    /* Startup IPI */
+    ApicRequestGlobalInterrupt(NTProcessorNumber, (StartupLoc.LowPart) >> 12,
+        APIC_MT_Startup, APIC_TGM_Edge, APIC_DSH_Destination);
+}

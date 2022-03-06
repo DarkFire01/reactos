@@ -3,6 +3,9 @@ list(APPEND HAL_HALMACPI_SOURCE
     #SMP
     generic/buildtype.c
     generic/spinlock.c
+    smp/smp.c
+    #smp/mpmemory.c
+    smp/ipi.c
     #Generic
     generic/beep.c
     generic/cmos.c
@@ -49,9 +52,19 @@ if(ARCH STREQUAL "amd64")
     add_definitions(-DWIN64)
 endif()
 
+if(ARCH STREQUAL "i386")
+    list(APPEND HAL_HALMACPI_ASM_SOURCE
+        smp/i386/apentry.S)
+endif()
+
+if(ARCH STREQUAL "amd64")
+    list(APPEND HAL_HALMACPI_ASM_SOURCE
+        smp/amd64/apentry.S)
+endif()
+
 add_asm_files(lib_hal_halmacpi_asm ${HAL_HALMACPI_ASM_SOURCE})
 add_library(lib_hal_halmacpi OBJECT ${HAL_HALMACPI_SOURCE} ${lib_hal_halmacpi_asm})
 #include_directories(include ${REACTOS_SOURCE_DIR}/drivers/bus/acpi/acpica/include)
 #add_pch(lib_hal_halmacpi ${REACTOS_SOURCE_DIR}/drivers/bus/acpi/acpica/include/acpi.h ${HAL_HALMACPI_SOURCE})
-add_dependencies(lib_hal_halmacpi bugcodes xdk)
+add_dependencies(lib_hal_halmacpi bugcodes xdk asm)
 target_compile_definitions(lib_hal_halmacpi PRIVATE CONFIG_SMP)

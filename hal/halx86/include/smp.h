@@ -39,3 +39,10 @@ HalpParseApicTables(
 
 VOID
 HalpPrintApicTables();
+
+VOID
+ApicStartApplicationProcessor(ULONG NTProcessorNumber, PHYSICAL_ADDRESS StartupLoc);
+
+VOID
+NTAPI
+HalpRequestIpi(KAFFINITY TargetProcessors);

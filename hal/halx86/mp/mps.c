@@ -18,7 +18,8 @@
 #define TEMP_CPUMAX 32
 UINT32 PhysicalProcessorCount = 0;
 PROCESSOR_IDENTITY HalpStaticProcessorIdentity[TEMP_CPUMAX] = {{0}};
-
+PHYSICAL_ADDRESS HalpLowStubPhysicalAddress;
+PVOID HalpLowStub;
 /* FUNCTIONS ******************************************************************/
 
 VOID

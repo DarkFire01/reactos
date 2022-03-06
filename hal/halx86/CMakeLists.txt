@@ -68,7 +68,7 @@ if(ARCH STREQUAL "i386")
     add_hal(halpc98 SOURCES pc98/halpc98.rc COMPONENTS pc98 up)
 
     add_hal(halmacpi SOURCES smp/halmacpi.rc COMPONENTS halmacpi)
-    add_hal(halmp SOURCES mp/halmp.rc COMPONENTS halmp)
+    #add_hal(halmp SOURCES smp/mps/halmp.rc COMPONENTS halmp)
 
 elseif(ARCH STREQUAL "amd64")
 
