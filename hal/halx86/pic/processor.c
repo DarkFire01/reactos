@@ -27,7 +27,6 @@ HaliHaltSystem(VOID)
 
 /* FUNCTIONS *****************************************************************/
 
-
 /*
  * @implemented
  */
@@ -42,18 +41,6 @@ HalAllProcessorsStarted(VOID)
 /*
  * @implemented
  */
-BOOLEAN
-NTAPI
-HalStartNextProcessor(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
-                      IN PKPROCESSOR_STATE ProcessorState)
-{
-    /* Ready to start */
-    return FALSE;
-}
-
-/*
- * @implemented
- */
 VOID
 NTAPI
 HalProcessorIdle(VOID)
@@ -61,17 +48,6 @@ HalProcessorIdle(VOID)
     /* Enable interrupts and halt the processor */
     _enable();
     __halt();
-}
-
-/*
- * @implemented
- */
-VOID
-NTAPI
-HalRequestIpi(KAFFINITY TargetProcessors)
-{
-    /* Not implemented on UP */
-    __debugbreak();
 }
 
 /* EOF */
