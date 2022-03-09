@@ -88,8 +88,7 @@ VOID
 NTAPI
 HalpRequestIpi(KAFFINITY TargetProcessors)
 {
-    UNIMPLEMENTED;
-    __debugbreak();
+    DPRINT1("KAFFINITY is %X\n", TargetProcessors);
 }
 
 VOID
