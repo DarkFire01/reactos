@@ -16,6 +16,7 @@
 /* GLOBALS *******************************************************************/
 
 extern PHYSICAL_ADDRESS HalpLowStubPhysicalAddress;
+extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
 extern PVOID HalpLowStub;
 
 // The data necessary for a boot (stored inside HalpLowStub)
@@ -28,7 +29,7 @@ extern PVOID TempPageTableAddr;
 extern PVOID APEntryCpuState;
 
 /* TODO: MaxAPCount should be assigned by a Multi APIC table */
-ULONG MaxAPCount = 8;
+ULONG MaxAPCount = 1;
 ULONG StartedProcessorCount = 1;
 
 #ifndef _M_AMD64
@@ -141,6 +142,7 @@ HalStartNextProcessor(
     IN PLOADER_PARAMETER_BLOCK LoaderBlock,
     IN PKPROCESSOR_STATE ProcessorState)
 {
+    MaxAPCount = HalpApicInfoTable.ProcessorCount;
     if (MaxAPCount > StartedProcessorCount)
     { 
         // Initalize the temporary page table
