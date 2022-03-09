@@ -675,11 +675,14 @@ KiGetCacheInformation(VOID)
 
     /* Set the cache line */
     if (CacheLine > KeLargestCacheLine) KeLargestCacheLine = CacheLine;
-    DPRINT1("Prefetch Cache: %lu bytes\tL2 Cache: %lu bytes\tL2 Cache Line: %lu bytes\tL2 Cache Associativity: %lu\n",
+    if (KeNumberProcessors < 1)
+    {
+        DPRINT1("Prefetch Cache: %lu bytes\tL2 Cache: %lu bytes\tL2 Cache Line: %lu bytes\tL2 Cache Associativity: %lu\n",
             KePrefetchNTAGranularity,
             Pcr->SecondLevelCacheSize,
             KeLargestCacheLine,
             Pcr->SecondLevelCacheAssociativity);
+    }
 }
 
 CODE_SEG("INIT")

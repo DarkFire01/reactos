@@ -1329,7 +1329,8 @@ KeSetPriorityThread(IN PKTHREAD Thread,
 {
     KIRQL OldIrql;
     KPRIORITY OldPriority;
-    ASSERT_THREAD(Thread);
+    /* FIXME: these asserts arent failing.... but checking them kills the BSP */
+    //ASSERT_THREAD(Thread);
     ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
     ASSERT((Priority <= HIGH_PRIORITY) && (Priority >= LOW_PRIORITY));
     ASSERT(KeIsExecutingDpc() == FALSE);

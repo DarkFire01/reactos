@@ -15,13 +15,13 @@
 typedef struct _APINFO
 {
     KIPCR Pcr;
-    ETHREAD Thread;
-    DECLSPEC_ALIGN(PAGE_SIZE) KGDTENTRY Gdt[128];
-    DECLSPEC_ALIGN(PAGE_SIZE) KIDTENTRY Idt[256];
     KTSS Tss;
+    ETHREAD Thread;
     KTSS TssDoubleFault;
     KTSS TssNMI;
-    DECLSPEC_ALIGN(16) UINT8 NMIStackData[DOUBLE_FAULT_STACK_SIZE];
+    DECLSPEC_ALIGN(16) UINT8 DoubleFaultStack[DOUBLE_FAULT_STACK_SIZE];
+    DECLSPEC_ALIGN(PAGE_SIZE) KGDTENTRY Gdt[128];/* TODO: Soften these hardcodes up */
+    DECLSPEC_ALIGN(PAGE_SIZE) KIDTENTRY Idt[256];
 } APINFO, *PAPINFO;
 
 /* GLOBALS *******************************************************************/
@@ -85,7 +85,7 @@ KeStartAllProcessors()
         DPCStack = NULL;
 
         // Allocate structures for a new CPU.
-        APInfo = ExAllocatePoolZero(NonPagedPool, sizeof(APINFO), '  eK');
+        APInfo = ExAllocatePoolZero(NonPagedPool, sizeof(APINFO), TAG_KERNEL);
         if (!APInfo)
         {
 
@@ -124,21 +124,19 @@ KeStartAllProcessors()
 
         KiSetGdtDescriptorBase(KiGetGdtEntry(&APInfo->Gdt, KGDT_TSS), (ULONG_PTR)&APInfo->Tss);
         // Clear TSS Busy flag (aka set the type to "TSS (Available)")
-        KiGetGdtEntry(&APInfo->Gdt, KGDT_TSS)->HighWord.Bits.Type = 0b1001;
+        KiGetGdtEntry(&APInfo->Gdt, KGDT_TSS)->HighWord.Bits.Type = I386_TSS;
 
-        APInfo->TssDoubleFault.Esp0 = (ULONG_PTR)&APInfo->NMIStackData;
-        APInfo->TssDoubleFault.Esp = (ULONG_PTR)&APInfo->NMIStackData;
+        APInfo->TssDoubleFault.Esp0 = (ULONG_PTR)&APInfo->DoubleFaultStack;
+        APInfo->TssDoubleFault.Esp = (ULONG_PTR)&APInfo->DoubleFaultStack;
 
-        APInfo->TssNMI.Esp0 = (ULONG_PTR)&APInfo->NMIStackData;
-        APInfo->TssNMI.Esp = (ULONG_PTR)&APInfo->NMIStackData;
+        APInfo->TssNMI.Esp0 = (ULONG_PTR)&APInfo->DoubleFaultStack;
+        APInfo->TssNMI.Esp = (ULONG_PTR)&APInfo->DoubleFaultStack;
 
         // Push LOADER_BLOCK on stack as a parameter
-        KernelStack = (PVOID)((ULONG_PTR)KernelStack - sizeof(PVOID));
-        *(PVOID *)KernelStack = KeLoaderBlock;
+        ((PULONG)KernelStack)[-1] = (ULONG)KeLoaderBlock;
 
         // Push NULL address on stack as a "return" addr
-        KernelStack = (PVOID)((ULONG_PTR)KernelStack - sizeof(PVOID));
-        *(PVOID *)KernelStack = NULL;
+        ((PULONG)KernelStack)[-2] = (ULONG)NULL;
         
         // Fill the processor state
         PKPROCESSOR_STATE ProcessorState = &APInfo->Pcr.Prcb->ProcessorState;
@@ -161,7 +159,7 @@ KeStartAllProcessors()
 
         ProcessorState->SpecialRegisters.Tr = KGDT_TSS;
 
-        ProcessorState->ContextFrame.Esp = (ULONG_PTR)KernelStack;
+        ProcessorState->ContextFrame.Esp = (ULONG_PTR)(&((PULONG)KernelStack)[-2]);
         ProcessorState->ContextFrame.Eip = (ULONG_PTR)KiSystemStartup;
         ProcessorState->ContextFrame.EFlags = __readeflags() & ~EFLAGS_INTERRUPT_MASK;
 
@@ -177,18 +175,19 @@ KeStartAllProcessors()
         }
 
         DPRINT("Waiting for init confirmation from AP CPU: #%u\n", ProcessorCount);
-        while (READ_PORT_ULONG(&KeLoaderBlock->Prcb) != 0)
+        while (KeNumberProcessors < (ProcessorCount + 1))
         {
             KeMemoryBarrier();
             YieldProcessor();
         }
+        DPRINT("CPU Startup sucessfull!\n");
     }
 
     // The last CPU didn't start - clean the data
     ProcessorCount--;
     
     if (APInfo)
-        ExFreePoolWithTag(APInfo, '  eK');
+        ExFreePoolWithTag(APInfo, TAG_KERNEL);
     if (KernelStack)
         MmDeleteKernelStack(KernelStack, FALSE);
     if (DPCStack)
