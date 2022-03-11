@@ -12,17 +12,27 @@
 #include <debug.h>
 
 PDC defaultDCstate = NULL;
+HSEMAPHORE hsemDriverMgmt = NULL;
 
 VOID FASTCALL
 IntGdiReferencePdev(PPDEVOBJ ppdev)
 {
-    UNIMPLEMENTED_ONCE;
+    if(!hsemDriverMgmt) hsemDriverMgmt = EngCreateSemaphore();
+    EngAcquireSemaphore(hsemDriverMgmt);
+    ppdev->cPdevRefs++;
+    EngReleaseSemaphore(hsemDriverMgmt);    
 }
 
 VOID FASTCALL
 IntGdiUnreferencePdev(PPDEVOBJ ppdev, DWORD CleanUpType)
 {
-    UNIMPLEMENTED_ONCE;
+    EngAcquireSemaphore(hsemDriverMgmt);
+    ppdev->cPdevRefs--;
+    if (!ppdev->cPdevRefs)
+    {
+       // Handle the destruction of pPDev or GDIDEVICE or PDEVOBJ or PDEV etc.
+    }
+    EngReleaseSemaphore(hsemDriverMgmt);
 }
 
 BOOL FASTCALL
