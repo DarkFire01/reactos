@@ -17,6 +17,7 @@
 
 extern PHYSICAL_ADDRESS HalpLowStubPhysicalAddress;
 extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
+extern PPROCESSOR_IDENTITY HalpProcessorIdentity;
 extern PVOID HalpLowStub;
 
 // The data necessary for a boot (stored inside HalpLowStub)
@@ -197,8 +198,7 @@ HalStartNextProcessor(
         };
 #endif
 
-        ApicStartApplicationProcessor(StartedProcessorCount, HalpLowStubPhysicalAddress);
-
+        ApicStartApplicationProcessor(HalpProcessorIdentity[StartedProcessorCount].LapicId, HalpLowStubPhysicalAddress);
         StartedProcessorCount++;
 
         return TRUE;
