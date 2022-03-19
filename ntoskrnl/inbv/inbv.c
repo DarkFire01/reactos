@@ -50,6 +50,34 @@ static BT_PROGRESS_INDICATOR InbvProgressIndicator = {0, 25, 0};
 static ULONG ResourceCount = 0;
 static PUCHAR ResourceList[1 + IDB_MAX_RESOURCE]; // First entry == NULL, followed by 'ResourceCount' entries.
 
+#ifdef INBV_ROTBAR_IMPLEMENTED
+/*
+ * Change this to modify progress bar behaviour
+ */
+#define ROT_BAR_DEFAULT_MODE    RB_SQUARE_CELLS// RB_PROGRESS_BAR
+
+/*
+ * Values for PltRotBarStatus:
+ * - PltRotBarStatus == 1, do palette fading-in (done elsewhere in ReactOS);
+ * - PltRotBarStatus == 2, do rotation bar animation;
+ * - PltRotBarStatus == 3, stop the animation thread.
+ * - Any other value is ignored and the animation thread continues to run.
+ */
+typedef enum _ROT_BAR_STATUS
+{
+    RBS_FADEIN = 1,
+    RBS_ANIMATE,
+    RBS_STOP_ANIMATE,
+    RBS_STATUS_MAX
+} ROT_BAR_STATUS;
+
+static BOOLEAN RotBarThreadActive = FALSE;
+static ROT_BAR_TYPE RotBarSelection = RB_UNSPECIFIED;
+static ROT_BAR_STATUS PltRotBarStatus = 0;
+static UCHAR RotBarBuffer[24 * 9];
+static UCHAR RotLineBuffer[SCREEN_WIDTH * 6];
+#endif
+
 
 /*
  * Headless terminal text colors

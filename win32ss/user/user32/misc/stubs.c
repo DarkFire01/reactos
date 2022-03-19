@@ -619,3 +619,28 @@ Win32PoolAllocationStats(DWORD dw1, DWORD dw2, DWORD dw3, DWORD dw4, DWORD dw5)
     return FALSE;
 }
 
+BOOL
+WINAPI
+ShutdownBlockReasonCreate(HWND hWnd, LPCWSTR pwszReason)
+{
+    UNIMPLEMENTED;
+    return 1;
+}
+
+BOOL
+WINAPI
+ShutdownBlockReasonQuery( HWND   hWnd,
+  LPWSTR pwszBuff,
+  DWORD  *pcchBuff)
+{
+    UNIMPLEMENTED;
+    return 1;
+}
+
+BOOL
+WINAPI
+ShutdownBlockReasonDestroy(HWND hWnd)
+{
+    UNIMPLEMENTED;
+    return 1;
+}

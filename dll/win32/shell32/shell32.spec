@@ -307,11 +307,13 @@
 308 stdcall SHGetIconOverlayIndexA(str long)
 309 stdcall SHGetIconOverlayIndexW(wstr long)
 310 stdcall SHGetInstanceExplorer(long)
+@   stdcall -version=0x600+ SHGetKnownFolderPath(ptr long ptr ptr)
 311 stdcall SHGetMalloc(ptr)
 312 stdcall SHGetNewLinkInfo(str str ptr long long) SHGetNewLinkInfoA
 313 stdcall SHGetPathFromIDList(ptr ptr) SHGetPathFromIDListA
 314 stdcall SHGetPathFromIDListA(ptr ptr)
 315 stdcall SHGetPathFromIDListW(ptr ptr)
+@   stdcall -stub -version=0x600+ SHGetPropertyStoreForWindow(ptr long ptr)
 316 stdcall SHGetSettings(ptr long)
 317 stdcall SHGetSpecialFolderLocation(long long ptr)
 318 stdcall SHGetSpecialFolderPathA(long ptr long long)
@@ -464,3 +466,4 @@
 754 stub -noname SHLimitInputEditWithFlags
 755 stdcall -noname PathIsEqualOrSubFolder(wstr wstr)
 756 stub -noname DeleteFileThumbnail
+757 stdcall -version=0x600+ SHGetStockIconInfo(long long ptr)

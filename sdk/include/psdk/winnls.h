@@ -165,7 +165,7 @@ extern "C" {
 #define LOCALE_SSORTLOCALE          0x007b
 //#endif /* (WINVER >= _WIN32_WINNT_WIN7) */
 
-#if (WINVER >= 0x0600)
+#if (WINVER >= 0x0499)
 #define LOCALE_NAME_USER_DEFAULT    NULL
 #define LOCALE_NAME_INVARIANT      L""
 #define LOCALE_NAME_SYSTEM_DEFAULT      L"!sys-default-locale"
@@ -503,7 +503,7 @@ extern "C" {
 typedef long LONG_PTR;
 #endif
 
-#if (WINVER >= 0x0600)
+#if (WINVER >= 0x0499)
 #define MUI_FULL_LANGUAGE             0x01
 #define MUI_LANGUAGE_ID               0x04
 #define MUI_LANGUAGE_NAME             0x08
@@ -1110,6 +1110,11 @@ INT  WINAPI LCMapStringEx(_In_ LPCWSTR, _In_ DWORD, _In_ LPCWSTR, _In_ INT, _Out
 LCID WINAPI LocaleNameToLCID(_In_ LPCWSTR, _In_ DWORD);
 
 #endif /* (WINVER >= 0x0600) */
+
+INT  WINAPI LCMapStringEx(_In_ LPCWSTR, _In_ DWORD, _In_ LPCWSTR, _In_ INT, _Out_opt_ LPWSTR, _In_ INT, _In_ LPNLSVERSIONINFO, _In_ LPVOID, _In_ LPARAM);
+LCID WINAPI LocaleNameToLCID(_In_ LPCWSTR, _In_ DWORD);
+INT  WINAPI LCIDToLocaleName(LCID,LPWSTR,INT,DWORD);
+BOOL WINAPI IsValidLocaleName(_In_ LPCWSTR lpLocaleName);
 
 #ifdef UNICODE
 #define CALINFO_ENUMPROC CALINFO_ENUMPROCW

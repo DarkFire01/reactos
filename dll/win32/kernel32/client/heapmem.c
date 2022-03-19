@@ -1365,6 +1365,27 @@ GlobalMemoryStatus(LPMEMORYSTATUS lpBuffer)
     }
 }
 
+/***********************************************************************
+ *           GetPhysicallyInstalledSystemMemory   (KERNEL32.@)
+ */
+BOOL WINAPI GetPhysicallyInstalledSystemMemory(ULONGLONG *total_memory)
+{
+    MEMORYSTATUSEX memstatus;
+
+    DPRINT1("stub: %p\n", total_memory);
+
+    if (!total_memory)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    memstatus.dwLength = sizeof(memstatus);
+    GlobalMemoryStatusEx(&memstatus);
+    *total_memory = memstatus.ullTotalPhys / 1024;
+    return TRUE;
+}
+
 /*
  * @implemented
  */

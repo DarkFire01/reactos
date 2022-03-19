@@ -41,3 +41,97 @@ ProcessTrace(IN PTRACEHANDLE HandleArray,
     return ERROR_NOACCESS;
 }
 
+
+
+typedef HANDLE REGHANDLE;
+
+typedef struct _EVENT_DESCRIPTOR {
+  USHORT    Id;
+  UCHAR     Version;
+  UCHAR     Channel;
+  UCHAR     Level;
+  UCHAR     Opcode;
+  USHORT    Task;
+  ULONGLONG Keyword;
+} EVENT_DESCRIPTOR, *PEVENT_DESCRIPTOR;
+
+typedef struct _EVENT_DATA_DESCRIPTOR {
+  ULONGLONG Ptr;
+  ULONG     Size;
+  union {
+    ULONG Reserved;
+    struct {
+      UCHAR  Type;
+      UCHAR  Reserved1;
+      USHORT Reserved2;
+    } DUMMYSTRUCTNAME;
+  } DUMMYUNIONNAME;
+} EVENT_DATA_DESCRIPTOR, *PEVENT_DATA_DESCRIPTOR;
+
+
+
+typedef void (WINAPI *PENABLECALLBACK)(
+  LPCGUID SourceId,
+  ULONG IsEnabled,
+  UCHAR Level,
+  ULONGLONG MatchAnyKeyword,
+  ULONGLONG MatchAllKeyword,
+  PEVENT_FILTER_DESCRIPTOR FilterData,
+  PVOID CallbackContext
+);
+
+ULONG 
+WINAPI 
+EventEnabled(
+  REGHANDLE              RegHandle,
+  PEVENT_DESCRIPTOR     EventDescriptor
+)
+{
+	UNIMPLEMENTED;
+    return ERROR_SUCCESS;
+};
+
+ULONG 
+WINAPI 
+EventWrite(
+  REGHANDLE              RegHandle,
+  PEVENT_DESCRIPTOR     EventDescriptor,
+  ULONG                  UserDataCount,
+  PEVENT_DATA_DESCRIPTOR UserData
+)
+{
+	UNIMPLEMENTED;
+    return ERROR_SUCCESS;
+};
+
+ULONG 
+WINAPI 
+EventWriteTransfer(
+  REGHANDLE              RegHandle,
+  PEVENT_DESCRIPTOR     EventDescriptor,
+  LPCGUID                ActivityId,
+  LPCGUID                RelatedActivityId,
+  ULONG                  UserDataCount,
+  PEVENT_DATA_DESCRIPTOR UserData
+)
+{
+	UNIMPLEMENTED;
+    return ERROR_SUCCESS;
+};
+
+ULONG WINAPI EventRegister(
+  LPCGUID         ProviderId,
+  PENABLECALLBACK EnableCallback,
+  PVOID           CallbackContext,
+  REGHANDLE*      RegHandle
+  )
+{
+	UNIMPLEMENTED;
+    return ERROR_SUCCESS;
+};
+  
+ULONG WINAPI EventUnregister(REGHANDLE RegHandle)
+{
+	UNIMPLEMENTED;
+    return ERROR_SUCCESS;
+};  

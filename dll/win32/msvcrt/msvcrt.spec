@@ -240,8 +240,8 @@
 @ cdecl -arch=i386,x86_64 -norelay __CxxFrameHandler(ptr ptr ptr ptr)
 @ cdecl -arch=i386 -norelay __CxxFrameHandler2(ptr ptr ptr ptr) __CxxFrameHandler
 @ cdecl -version=0x600+ -arch=x86_64 -norelay __CxxFrameHandler2(ptr ptr ptr ptr) __CxxFrameHandler
-@ cdecl -arch=arm -norelay __CxxFrameHandler3(ptr ptr ptr ptr)
-@ cdecl -version=0x600+ -arch=i386,x86_64 -norelay __CxxFrameHandler3(ptr ptr ptr ptr)
+@ cdecl -arch=arm -norelay __CxxFrameHandler3(ptr ptr ptr ptr) __CxxFrameHandler
+@ cdecl -version=0x600+ -arch=i386,x86_64 -norelay __CxxFrameHandler3(ptr ptr ptr ptr) __CxxFrameHandler
 @ stdcall -arch=i386 __CxxLongjmpUnwind(ptr)
 @ cdecl -arch=i386 __CxxQueryExceptionSize()
 @ cdecl -arch=i386 __CxxRegisterExceptionObject()
@@ -472,7 +472,7 @@
 @ cdecl _errno()
 @ cdecl -arch=i386 _except_handler2(ptr ptr ptr ptr)
 @ cdecl -arch=i386 _except_handler3(ptr ptr ptr ptr)
-@ cdecl -arch=i386 -version=0x600+ _except_handler4_common(ptr ptr ptr ptr ptr ptr)
+@ cdecl -version=0x600+ _except_handler4_common(ptr ptr ptr ptr ptr ptr)
 @ varargs _execl(str str)
 @ varargs _execle(str str)
 @ varargs _execlp(str str)
@@ -708,7 +708,7 @@
 @ cdecl -arch=x86_64 -version=0x502 _loaddll(str)
 @ cdecl -arch=x86_64 _local_unwind(ptr ptr)
 @ cdecl -arch=i386 _local_unwind2(ptr long)
-@ cdecl -arch=i386 -version=0x600+ _local_unwind4(ptr ptr long)
+@ cdecl -version=0x600+ _local_unwind4(ptr ptr long)
 @ stub -version=0x600+ _localtime32
 @ stub -version=0x600+ _localtime32_s
 @ cdecl _localtime64(ptr)
@@ -883,7 +883,7 @@
 @ stub -version=0x600+ -arch=i386 _msize_debug
 @ cdecl _nextafter(double double)
 @ stub -arch=x86_64 _nextafterf
-@ extern _onexit # Declaring it as extern let us use the symbol from msvcrtex while having the __imp_ symbol defined in the import lib
+@ cdecl _onexit(ptr) # Declaring it as extern let us use the symbol from msvcrtex while having the __imp_ symbol defined in the import lib
 @ varargs _open(str long)
 @ cdecl _open_osfhandle(long long)
 @ extern -arch=i386,x86_64 _osplatform
@@ -935,6 +935,7 @@
 @ cdecl -version=0x600+ _searchenv_s(str str ptr long)
 @ stub -version=0x600+ -arch=i386 _seh_longjmp_unwind4
 @ stdcall -arch=i386 _seh_longjmp_unwind(ptr)
+@ cdecl -arch=i386 -version=0x600+ _seh_filter_dll(long ptr)
 @ stub -arch=i386 _set_SSE2_enable
 @ stub -version=0x600+ _set_controlfp
 @ cdecl -version=0x600+ _set_doserrno(long)

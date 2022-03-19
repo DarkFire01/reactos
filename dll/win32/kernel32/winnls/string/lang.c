@@ -63,7 +63,7 @@ static const WCHAR szLangGroupsKeyName[] = {
     'L','a','n','g','u','a','g','e',' ','G','r','o','u','p','s',0
 };
 
-#if (WINVER >= 0x0600)
+#if (WINVER >= 0x0500)
 /* Charset to codepage map, sorted by name. */
 static const struct charset_entry
 {
@@ -269,7 +269,7 @@ static inline UINT get_lcid_codepage( LCID lcid )
     return ret;
 }
 
-#if (WINVER >= 0x0600)
+#if (WINVER >= 0x0500)
 /***********************************************************************
  *              charset_cmp (internal)
  */
@@ -795,6 +795,128 @@ LCID WINAPI GetSystemDefaultLCID(void)
     return lcid;
 }
 
+/***********************************************************************
+ *		GetSystemDefaultLocaleName (KERNEL32.@)
+ */
+INT WINAPI GetSystemDefaultLocaleName(LPWSTR localename, INT len)
+{
+    LCID lcid = GetSystemDefaultLCID();
+    return LCIDToLocaleName(lcid, localename, len, 0);
+}
+
+static BOOL get_dummy_preferred_ui_language( DWORD flags, ULONG *count, WCHAR *buffer, ULONG *size )
+{
+    LCTYPE type;
+    int lsize;
+
+    FIXME("(0x%x %p %p %p) returning a dummy value (current locale)\n", flags, count, buffer, size);
+
+    if (flags & MUI_LANGUAGE_ID)
+        type = LOCALE_ILANGUAGE;
+    else
+        type = LOCALE_SNAME;
+
+    lsize = GetLocaleInfoW(LOCALE_SYSTEM_DEFAULT, type, NULL, 0);
+    if (!lsize)
+    {
+        /* keep last error from callee */
+        return FALSE;
+    }
+    lsize++;
+    if (!*size)
+    {
+        *size = lsize;
+        *count = 1;
+        return TRUE;
+    }
+
+    if (lsize > *size)
+    {
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return FALSE;
+    }
+
+    if (!GetLocaleInfoW(LOCALE_SYSTEM_DEFAULT, type, buffer, *size))
+    {
+        /* keep last error from callee */
+        return FALSE;
+    }
+
+    buffer[lsize-1] = 0;
+    *size = lsize;
+    *count = 1;
+    TRACE("returned variable content: %d, \"%s\", %d\n", *count, debugstr_w(buffer), *size);
+    return TRUE;
+
+}
+
+/***********************************************************************
+ *             GetSystemPreferredUILanguages (KERNEL32.@)
+ */
+BOOL WINAPI GetSystemPreferredUILanguages(DWORD flags, ULONG* count, WCHAR* buffer, ULONG* size)
+{
+    if (flags & ~(MUI_LANGUAGE_NAME | MUI_LANGUAGE_ID | MUI_MACHINE_LANGUAGE_SETTINGS))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+    if ((flags & MUI_LANGUAGE_NAME) && (flags & MUI_LANGUAGE_ID))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+    if (*size && !buffer)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    return get_dummy_preferred_ui_language( flags, count, buffer, size );
+}
+
+/***********************************************************************
+ *              SetThreadPreferredUILanguages (KERNEL32.@)
+ */
+BOOL WINAPI SetThreadPreferredUILanguages( DWORD flags, PCZZWSTR buffer, PULONG count )
+{
+    FIXME( "%u, %p, %p\n", flags, buffer, count );
+    return TRUE;
+}
+
+/***********************************************************************
+ *              GetThreadPreferredUILanguages (KERNEL32.@)
+ */
+BOOL WINAPI GetThreadPreferredUILanguages( DWORD flags, ULONG *count, WCHAR *buf, ULONG *size )
+{
+    FIXME( "%08x, %p, %p %p\n", flags, count, buf, size );
+    return get_dummy_preferred_ui_language( flags, count, buf, size );
+}
+
+/******************************************************************************
+ *             GetUserPreferredUILanguages (KERNEL32.@)
+ */
+BOOL WINAPI GetUserPreferredUILanguages( DWORD flags, ULONG *count, WCHAR *buffer, ULONG *size )
+{
+    TRACE( "%u %p %p %p\n", flags, count, buffer, size );
+
+    if (flags & ~(MUI_LANGUAGE_NAME | MUI_LANGUAGE_ID))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+    if ((flags & MUI_LANGUAGE_NAME) && (flags & MUI_LANGUAGE_ID))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+    if (*size && !buffer)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    return get_dummy_preferred_ui_language( flags, count, buffer, size );
+}
 
 /***********************************************************************
  *		GetUserDefaultUILanguage (KERNEL32.@)
@@ -834,7 +956,7 @@ LANGID WINAPI GetSystemDefaultUILanguage(void)
     return lang;
 }
 
-#if (WINVER >= 0x0600)
+#if (WINVER >= 0x0500)
 /***********************************************************************
  *           LocaleNameToLCID  (KERNEL32.@)
  */
@@ -1260,7 +1382,7 @@ INT WINAPI GetLocaleInfoW( LCID lcid, LCTYPE lctype, LPWSTR buffer, INT len )
     return ret;
 }
 
-#if (WINVER >= 0x0600)
+#if (WINVER >= 0x0500)
 WINBASEAPI
 int
 WINAPI

@@ -3571,14 +3571,6 @@ RtlDeleteTimerQueue(HANDLE TimerQueue);
 //
 // SList functions
 //
-PSLIST_ENTRY
-FASTCALL
-InterlockedPushListSList(
-    _Inout_ PSLIST_HEADER ListHead,
-    _Inout_ __drv_aliasesMem PSLIST_ENTRY List,
-    _Inout_ PSLIST_ENTRY ListEnd,
-    _In_ ULONG Count
-);
 
 //
 // Range List functions
@@ -4640,6 +4632,33 @@ NTSYSAPI
 BOOLEAN
 NTAPI
 RtlGetNtProductType(_Out_ PNT_PRODUCT_TYPE ProductType);
+
+
+VOID
+NTAPI
+RtlInitializeConditionVariable(OUT PRTL_CONDITION_VARIABLE ConditionVariable);
+
+VOID
+NTAPI
+RtlWakeConditionVariable(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable);
+
+VOID
+NTAPI
+RtlWakeAllConditionVariable(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable);
+
+NTSYSAPI 
+NTSTATUS  
+NTAPI 
+RtlSleepConditionVariableCS(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
+                            IN OUT PRTL_CRITICAL_SECTION CriticalSection,
+                            IN const LARGE_INTEGER * TimeOut OPTIONAL);
+
+NTSTATUS
+NTAPI
+RtlSleepConditionVariableSRW(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
+                             IN OUT PRTL_SRWLOCK SRWLock,
+                             IN const LARGE_INTEGER * TimeOut  OPTIONAL,
+                             IN ULONG Flags);
 
 //
 // Secure Memory Functions

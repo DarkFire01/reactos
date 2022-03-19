@@ -21,6 +21,21 @@ BEGIN
     END
 END
 
+STRINGTABLE
+BEGIN
+    IDS_NOTIF_BEH_NAME          "Значок"
+    IDS_NOTIF_BEH_BEHAVIOR      "Поведение"
+    IDS_NOTIF_BEH_HIDE_INACTIVE "Показывать только уведомления"
+    IDS_NOTIF_BEH_HIDE          "Скрывать значок и уведомления"
+    IDS_NOTIF_BEH_SHOW          "Показывать значок и уведомления"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_NOTIF_BEH_CURRENT "Current Items"
+    IDS_NOTIF_BEH_PAST    "Past Items"
+END
+
 IDM_STARTMENU MENUEX
 BEGIN
     POPUP ""

@@ -8,7 +8,7 @@ LANGUAGE LANG_SLOVAK, SUBLANG_DEFAULT
 /* See also: dll/win32/shell32/lang */
 STRINGTABLE
 BEGIN
-    IDS_PROFILEPATH "%SystemDrive%\\Documents and Settings"
+    IDS_PROFILEPATH "%SystemDrive%\\Users"
     IDS_APPDATA "Application Data"
     IDS_DESKTOP "Desktop"
     IDS_FAVORITES "Favorites"

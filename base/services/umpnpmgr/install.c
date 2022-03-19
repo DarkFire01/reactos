@@ -432,6 +432,7 @@ Step2:
         }
         else
         {
+            showWizard = FALSE;
             ResetEvent(hNoPendingInstalls);
             Params = CONTAINING_RECORD(ListEntry, DeviceInstallParams, ListEntry);
             InstallDevice(Params->DeviceIds, showWizard && !IsUISuppressionAllowed());

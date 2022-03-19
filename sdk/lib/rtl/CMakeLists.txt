@@ -116,6 +116,7 @@ list(APPEND SOURCE_VISTA
     condvar.c
     runonce.c
     srw.c
+    threadpool.c
 )
 
 add_library(rtl_vista ${SOURCE_VISTA})

@@ -36,7 +36,7 @@
 
 #include "wine/unicode.h"
 #include "baseheap.h"
-
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define MAGIC(c1,c2,c3,c4)  ((c1) + ((c2)<<8) + ((c3)<<16) + ((c4)<<24))
 
 #define MAGIC_HEAP      MAGIC( 'H','E','A','P' )

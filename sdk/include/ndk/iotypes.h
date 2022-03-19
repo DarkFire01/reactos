@@ -323,6 +323,10 @@ typedef enum _FILE_INFORMATION_CLASS
     FileIdFullDirectoryInformation,
     FileValidDataLengthInformation,
     FileShortNameInformation,
+<<<<<<< HEAD
+=======
+#if 1//(NTDDI_VERSION < NTDDI_WIN7)
+>>>>>>> 429033c0052 (Grabbing Getequ NT6 branch as base)
     FileIoCompletionNotificationInformation,
 #if (NTDDI_VERSION >= NTDDI_VISTA)
     FileIoStatusBlockRangeInformation,

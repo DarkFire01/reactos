@@ -146,7 +146,7 @@ relocated:
     call writestr_early
 
     // Count down 5 seconds.
-    mov cx, 5
+    mov cx, 2
 
 .next_second:
     // Count in seconds using the BIOS Timer, which runs roughly at 19 ticks per second.

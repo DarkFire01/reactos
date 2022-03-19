@@ -8,7 +8,7 @@ LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL
 /* See also: dll/win32/shell32/lang */
 STRINGTABLE
 BEGIN
-    IDS_PROFILEPATH "%SystemDrive%\\Documents and Settings"
+    IDS_PROFILEPATH "%SystemDrive%\\Users"
     IDS_APPDATA "Application Data"
     IDS_DESKTOP "桌面"
     IDS_FAVORITES "我的最愛"
