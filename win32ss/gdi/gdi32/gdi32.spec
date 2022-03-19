@@ -629,8 +629,8 @@
 1413 stdcall -version=0x601+ EndGdiRendering()
 ; FIXME: Wine DX Dlls need these
 @ stdcall -version=0x600+ D3DKMTCloseAdapter(ptr)
-@ stdcall D3DKMTCreateDCFromMemory(ptr)
-@ stdcall D3DKMTDestroyDCFromMemory(ptr)
+@ stdcall D3DKMTCreateDCFromMemory(ptr) gdi32_vista.D3DKMTCreateDCFromMemory
+@ stdcall D3DKMTDestroyDCFromMemory(ptr) gdi32_vista.D3DKMTDestroyDCFromMemory
 @ stdcall -version=0x600+ D3DKMTGetPresentHistory(ptr)
 @ stdcall -version=0x600+ D3DKMTGetPresentQueueEvent(ptr ptr)
 @ stdcall -version=0x600+ D3DKMTOpenAdapterFromGdiDisplayName(ptr)
