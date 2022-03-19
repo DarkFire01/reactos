@@ -24,6 +24,7 @@
 #include <config.h>
 #include "iphlpapi_private.h"
 #include <strsafe.h>
+#include <netioapi.h>
 #include <psapi.h>
 
 WINE_DEFAULT_DEBUG_CHANNEL(iphlpapi);
@@ -1989,6 +1990,16 @@ DWORD WINAPI GetIpForwardTable(PMIB_IPFORWARDTABLE pIpForwardTable, PULONG pdwSi
   return ret;
 }
 
+/******************************************************************
+ *    GetIpForwardTable2 (IPHLPAPI.@)
+ */
+DWORD WINAPI GetIpForwardTable2(ADDRESS_FAMILY family, PMIB_IPFORWARD_TABLE2 *table)
+{
+    static int once;
+
+    if (!once++) FIXME("(%u %p): stub\n", family, table);
+    return ERROR_NOT_SUPPORTED;
+}
 
 static int IpNetTableSorter(const void *a, const void *b)
 {
@@ -2061,6 +2072,16 @@ DWORD WINAPI GetIpNetTable(PMIB_IPNETTABLE pIpNetTable, PULONG pdwSize, BOOL bOr
   return ret;
 }
 
+/******************************************************************
+ *    GetIpNetTable2 (IPHLPAPI.@)
+ */
+DWORD WINAPI GetIpNetTable2(ADDRESS_FAMILY family, PMIB_IPNET_TABLE2 *table)
+{
+    static int once;
+
+    if (!once++) FIXME("(%u %p): stub\n", family, table);
+    return ERROR_NOT_SUPPORTED;
+}
 
 /******************************************************************
  *    GetIpStatistics (IPHLPAPI.@)
@@ -2918,6 +2939,18 @@ DWORD WINAPI NotifyRouteChange(PHANDLE Handle, LPOVERLAPPED overlapped)
 }
 
 /******************************************************************
+ *    NotifyRouteChange2 (IPHLPAPI.@)
+ */
+DWORD WINAPI NotifyRouteChange2(ADDRESS_FAMILY family, PIPFORWARD_CHANGE_CALLBACK callback, VOID* context,
+                                BOOLEAN init_notify, HANDLE* handle)
+{
+    FIXME("(family %d, callback %p, context %p, init_notify %d, handle %p): stub\n",
+        family, callback, context, init_notify, handle);
+    if (handle) *handle = NULL;
+    return NO_ERROR;
+}
+
+/******************************************************************
  *    SendARP (IPHLPAPI.@)
  *
  * Send an ARP request.
@@ -3509,6 +3542,36 @@ NhGetInterfaceNameFromGuid(_In_ const GUID * pInterfaceGUID,
 }
 
 /******************************************************************
+ *    CancelMibChangeNotify2 (IPHLPAPI.@)
+ */
+DWORD WINAPI CancelMibChangeNotify2(HANDLE handle)
+{
+    FIXME("(handle %p): stub\n", handle);
+    return NO_ERROR;
+}
+
+/******************************************************************
+ *    ConvertInterfaceGuidToLuid (IPHLPAPI.@)
+ */
+DWORD WINAPI ConvertInterfaceGuidToLuid(const GUID *guid, NET_LUID *luid)
+{
+    DWORD ret;
+    MIB_IFROW row;
+
+    TRACE("(%s %p)\n", debugstr_guid(guid), luid);
+
+    if (!guid || !luid) return ERROR_INVALID_PARAMETER;
+
+    row.dwIndex = guid->Data1;
+    if ((ret = GetIfEntry( &row ))) return ret;
+
+    luid->Info.Reserved     = 0;
+    luid->Info.NetLuidIndex = guid->Data1;
+    luid->Info.IfType       = row.dwType;
+    return NO_ERROR;
+}
+
+/******************************************************************
  *    ConvertInterfaceIndexToLuid (IPHLPAPI.@)
  */
 DWORD WINAPI ConvertInterfaceIndexToLuid(NET_IFINDEX index, NET_LUID *luid)
@@ -3526,6 +3589,46 @@ DWORD WINAPI ConvertInterfaceIndexToLuid(NET_IFINDEX index, NET_LUID *luid)
     luid->Info.Reserved     = 0;
     luid->Info.NetLuidIndex = index;
     luid->Info.IfType       = row.dwType;
+    return NO_ERROR;
+}
+
+/******************************************************************
+ *    ConvertInterfaceLuidToGuid (IPHLPAPI.@)
+ */
+DWORD WINAPI ConvertInterfaceLuidToGuid(const NET_LUID *luid, GUID *guid)
+{
+    DWORD ret;
+    MIB_IFROW row;
+
+    TRACE("(%p %p)\n", luid, guid);
+
+    if (!luid || !guid) return ERROR_INVALID_PARAMETER;
+
+    row.dwIndex = luid->Info.NetLuidIndex;
+    if ((ret = GetIfEntry( &row ))) return ret;
+
+    memset( guid, 0, sizeof(*guid) );
+    guid->Data1 = luid->Info.NetLuidIndex;
+    memcpy( guid->Data4+2, "NetDev", 6 );
+    return NO_ERROR;
+}
+
+/******************************************************************
+ *    ConvertInterfaceLuidToIndex (IPHLPAPI.@)
+ */
+DWORD WINAPI ConvertInterfaceLuidToIndex(const NET_LUID *luid, NET_IFINDEX *index)
+{
+    DWORD ret;
+    MIB_IFROW row;
+
+    TRACE("(%p %p)\n", luid, index);
+
+    if (!luid || !index) return ERROR_INVALID_PARAMETER;
+
+    row.dwIndex = luid->Info.NetLuidIndex;
+    if ((ret = GetIfEntry( &row ))) return ret;
+
+    *index = luid->Info.NetLuidIndex;
     return NO_ERROR;
 }
 
@@ -3549,3 +3652,135 @@ DWORD WINAPI ConvertInterfaceLuidToNameW(const NET_LUID *luid, WCHAR *name, SIZE
     return NO_ERROR;
 }
 
+/******************************************************************
+ *    ConvertInterfaceNameToLuidA (IPHLPAPI.@)
+ */
+DWORD WINAPI ConvertInterfaceNameToLuidA(const char *name, NET_LUID *luid)
+{
+    DWORD ret;
+    IF_INDEX index;
+    MIB_IFROW row;
+
+    TRACE("(%s %p)\n", debugstr_a(name), luid);
+
+    if ((ret = getInterfaceIndexByName( name, &index ))) return ERROR_INVALID_NAME;
+    if (!luid) return ERROR_INVALID_PARAMETER;
+
+    row.dwIndex = index;
+    if ((ret = GetIfEntry( &row ))) return ret;
+
+    luid->Info.Reserved     = 0;
+    luid->Info.NetLuidIndex = index;
+    luid->Info.IfType       = row.dwType;
+    return NO_ERROR;
+}
+
+/******************************************************************
+ *    ConvertInterfaceNameToLuidW (IPHLPAPI.@)
+ */
+DWORD WINAPI ConvertInterfaceNameToLuidW(const WCHAR *name, NET_LUID *luid)
+{
+    DWORD ret;
+    IF_INDEX index;
+    MIB_IFROW row;
+    char nameA[IF_MAX_STRING_SIZE + 1];
+
+    TRACE("(%s %p)\n", debugstr_w(name), luid);
+
+    if (!luid) return ERROR_INVALID_PARAMETER;
+    memset( luid, 0, sizeof(*luid) );
+
+    if (!WideCharToMultiByte( CP_ACP, 0, name, -1, nameA, sizeof(nameA), NULL, NULL ))
+        return ERROR_INVALID_NAME;
+
+    if ((ret = getInterfaceIndexByName( nameA, &index ))) return ret;
+
+    row.dwIndex = index;
+    if ((ret = GetIfEntry( &row ))) return ret;
+
+    luid->Info.Reserved     = 0;
+    luid->Info.NetLuidIndex = index;
+    luid->Info.IfType       = row.dwType;
+    return NO_ERROR;
+}
+
+/******************************************************************
+ *    FreeMibTable (IPHLPAPI.@)
+ *
+ * Free buffer allocated by network functions
+ *
+ * PARAMS
+ *  ptr     [In] pointer to the buffer to free
+ *
+ */
+void WINAPI FreeMibTable(void *ptr)
+{
+    TRACE("(%p)\n", ptr);
+    HeapFree(GetProcessHeap(), 0, ptr);
+}
+
+/******************************************************************
+ *    if_nametoindex (IPHLPAPI.@)
+ */
+IF_INDEX WINAPI IPHLP_if_nametoindex(const char *name)
+{
+    IF_INDEX idx;
+
+    TRACE("(%s)\n", name);
+    if (getInterfaceIndexByName(name, &idx) == NO_ERROR)
+        return idx;
+
+    return 0;
+}
+
+/******************************************************************
+ *    GetIfEntry2 (IPHLPAPI.@)
+ */
+DWORD WINAPI GetIfEntry2( MIB_IF_ROW2 *row2 )
+{
+    DWORD ret, len = ARRAYSIZE(row2->Description);
+    const char /* buf[MAX_ADAPTER_NAME], */ *name;
+    MIB_IFROW row;
+
+    TRACE("%p\n", row2);
+
+    if (!row2 || (!(name = getInterfaceNameByIndex( row2->InterfaceIndex )) &&
+                  !(name = getInterfaceNameByIndex( row2->InterfaceLuid.Info.NetLuidIndex ))))
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+    if ((ret = getInterfaceEntryByName( name, &row ))) return ret;
+    if ((ret = getInterfaceStatsByName( name, &row ))) return ret;
+
+    memset( row2, 0, sizeof(*row2) );
+    row2->InterfaceLuid.Info.Reserved     = 0;
+    row2->InterfaceLuid.Info.NetLuidIndex = row.dwIndex;
+    row2->InterfaceLuid.Info.IfType       = row.dwType;
+    row2->InterfaceIndex                  = row.dwIndex;
+    ConvertInterfaceLuidToGuid( &row2->InterfaceLuid, &row2->InterfaceGuid );
+    row2->Type                            = row.dwType;
+    row2->Mtu                             = row.dwMtu;
+    MultiByteToWideChar( CP_UNIXCP, 0, (const char *)row.bDescr, -1, row2->Description, len );
+    row2->PhysicalAddressLength           = row.dwPhysAddrLen;
+    memcpy( &row2->PhysicalAddress, &row.bPhysAddr, row.dwPhysAddrLen );
+    memcpy( &row2->PermanentPhysicalAddress, &row.bPhysAddr, row.dwPhysAddrLen );
+    row2->OperStatus                      = IfOperStatusUp;
+    row2->AdminStatus                     = NET_IF_ADMIN_STATUS_UP;
+    row2->MediaConnectState               = MediaConnectStateConnected;
+    row2->ConnectionType                  = NET_IF_CONNECTION_DEDICATED;
+
+    /* stats */
+    row2->InOctets        = row.dwInOctets;
+    row2->InUcastPkts     = row.dwInUcastPkts;
+    row2->InNUcastPkts    = row.dwInNUcastPkts;
+    row2->InDiscards      = row.dwInDiscards;
+    row2->InErrors        = row.dwInErrors;
+    row2->InUnknownProtos = row.dwInUnknownProtos;
+    row2->OutOctets       = row.dwOutOctets;
+    row2->OutUcastPkts    = row.dwOutUcastPkts;
+    row2->OutNUcastPkts   = row.dwOutNUcastPkts;
+    row2->OutDiscards     = row.dwOutDiscards;
+    row2->OutErrors       = row.dwOutErrors;
+
+    return NO_ERROR;
+}

@@ -16,6 +16,9 @@
 
 #include <ws2_32.h>
 
+#define NDEBUG
+#include <debug.h>
+
 /* DATA **********************************************************************/
 
 HANDLE WsSockHeap;
@@ -124,4 +127,87 @@ WSASetLastError(IN INT iError)
 {
     /* Let the Windows Function do the work */
     SetLastError(iError);
+}
+
+/*
+ * @unimplemented
+ */
+PCSTR
+WSAAPI
+inet_ntop(INT Family,
+          const VOID *pAddr,
+          PSTR pStringBuf,
+          size_t StringBufSize)
+{
+    UNIMPLEMENTED;
+    return NULL;
+}
+
+/*
+ * @unimplemented
+ */
+INT
+WSAAPI
+inet_pton(INT Family,
+          PCSTR pszAddrString,
+          PVOID pAddrBuf)
+{
+    UNIMPLEMENTED;
+    return 1;
+}
+
+/*
+ * @unimplemented
+ */
+PCWSTR
+WSAAPI
+InetNtopW(INT Family,
+          const VOID *pAddr,
+          PWSTR pStringBuf,
+          size_t StringBufSize)
+{
+    UNIMPLEMENTED;
+    return NULL;
+}
+
+/*
+ * @unimplemented
+ */
+INT
+WSAAPI
+InetPtonW(INT Family,
+          PCWSTR pszAddrString,
+          PVOID pAddrBuf)
+{
+    UNIMPLEMENTED;
+    return 1;
+}
+
+/*
+ * @unimplemented
+ */
+int
+WSAAPI
+WSAPoll(PVOID fdArray, // LPWSAPOLLFD
+        ULONG fds,
+        INT timeout)
+{
+    UNIMPLEMENTED;
+    return 0;
+}
+
+/*
+ * @unimplemented
+ */
+int
+WSAAPI
+WSCGetProviderInfo(LPGUID lpProviderId,
+                   PVOID InfoType, // WSC_PROVIDER_INFO_TYPE
+                   PBYTE Info,
+                   size_t *InfoSize,
+                   DWORD Flags,
+                   LPINT lpErrno)
+{
+    UNIMPLEMENTED;
+    return ERROR_SUCCESS;
 }

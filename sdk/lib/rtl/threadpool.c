@@ -51,7 +51,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(threadpool);
 #define NDEBUG
 #include <debug.h>
 
-#include <wine\list.h>
+#include <wine/list.h>
 
 /* GLOBALS *******************************************************************/
 

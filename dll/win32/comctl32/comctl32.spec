@@ -126,6 +126,8 @@
 340 stdcall -noname DPA_CreateEx(long long)
 341 stdcall -noname SendNotify(long long long ptr)
 342 stdcall -noname SendNotifyEx(long long long ptr long)
+344 stdcall -ordinal TaskDialog(long long wstr wstr wstr long wstr ptr)
+345 stdcall -ordinal TaskDialogIndirect(ptr ptr ptr ptr)
 350 stdcall -noname -private StrChrA(str long)
 351 stdcall -noname -private StrRChrA(str str long)
 352 stdcall -noname -private StrCmpNA(str str long)
@@ -152,6 +154,8 @@
 375 stdcall -noname -private StrCSpnIW(wstr wstr)
 376 stdcall -noname -private IntlStrEqWorkerA(long str str long)
 377 stdcall -noname -private IntlStrEqWorkerW(long wstr wstr long)
+380 stdcall -ordinal -version=0x600+ LoadIconMetric(long wstr long long)
+381 stdcall -ordinal -version=0x600+ LoadIconWithScaleDown(long wstr long long long)
 382 stdcall -noname SmoothScrollWindow(ptr)
 383 stdcall -noname DoReaderMode(ptr)
 384 stdcall -noname SetPathWordBreakProc(ptr long)
@@ -161,6 +165,7 @@
 388 stdcall -ordinal DSA_DestroyCallback(ptr ptr ptr)
 #389 CControl::v_OnNotify
 390 stdcall -noname ImageList_SetColorTable(ptr long long ptr)
+392 stdcall -stub -noname -version=0x601+ PremultiplyAlphaChannel()
 400 stdcall -ordinal CreateMRUListW(ptr)
 401 stdcall -ordinal AddMRUStringW(long wstr)
 402 stdcall -noname FindMRUStringW(long wstr ptr)
@@ -181,5 +186,4 @@
 
 ; Exported in v6 but not v5
 @ stdcall DrawShadowText(long wstr long ptr long long long long long)
-@ stdcall -version=0x600+ LoadIconWithScaleDown(long wstr long long long)
-@ stdcall -version=0x600+ LoadIconMetric(long wstr long long)
+@ stdcall -version=0x600+ HIMAGELIST_QueryInterface(ptr ptr ptr)

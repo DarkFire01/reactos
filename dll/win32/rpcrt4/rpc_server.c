@@ -1745,3 +1745,22 @@ RPC_BINDING_HANDLE WINAPI I_RpcGetCurrentCallHandle(void)
     TRACE("\n");
     return RPCRT4_GetThreadCurrentCallHandle();
 }
+
+#ifdef __REACTOS__
+RPC_STATUS WINAPI RpcServerSubscribeForNotification(RPC_BINDING_HANDLE Binding,
+                                                    PVOID Notification, // RPC_NOTIFICATIONS
+                                                    RPC_NOTIFICATION_TYPES NotificationType,
+                                                    RPC_ASYNC_NOTIFICATION_INFO *NotificationInfo)
+{
+    FIXME("(%p,%p,%p,%p): stub\n", Binding, Notification, NotificationType, NotificationInfo);
+    return RPC_S_OK;
+}
+
+RPC_STATUS WINAPI RpcServerUnsubscribeForNotification(RPC_BINDING_HANDLE Binding,
+                                                      PVOID Notification, // RPC_NOTIFICATIONS
+                                                      unsigned long *NotificationsQueued)
+{
+    FIXME("(%p,%p,0x%x): stub\n", Binding, Notification, NotificationsQueued);
+    return RPC_S_OK;
+}
+#endif

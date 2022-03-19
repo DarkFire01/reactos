@@ -29,6 +29,7 @@
 29 stub I_RpcBindingCopy
 # I_RpcBindingHandleToAsyncHandle
 31 stub I_RpcBindingInqConnId
+@  stub -version=0x601+ I_RpcBindingInqCurrentModifiedId
 32 stub I_RpcBindingInqDynamicEndPoint
 33 stub I_RpcBindingInqDynamicEndPointA
 34 stub I_RpcBindingInqDynamicEndPointW
@@ -55,6 +56,8 @@
 55 stub I_RpcIfInqTransferSyntaxes
 56 stub I_RpcLogEvent
 57 stdcall I_RpcMapWin32Status(long)
+@  stub -version=0x601+ I_RpcMgmtEnableDedicatedThreadPool
+@  stub -version=0x601+ I_RpcMgmtQueryDedicatedThreadPool
 # I_RpcNDRCGetWireRepresentation
 # I_RpcNDRSContextEmergencyCleanup
 60 stdcall I_RpcNegotiateTransferSyntax(ptr)
@@ -88,6 +91,7 @@
 88 stub I_RpcServerUseProtseqEp2W
 # I_RpcSessionStrictContextHandle
 90 stub I_RpcSetAsyncHandle
+@  stub -version=0x600+ I_RpcSetDCOMAppId
 91 stub I_RpcSsDontSerializeContext
 92 stub I_RpcSystemFunction001
 93 stub I_RpcTransConnectionAllocatePacket
@@ -202,7 +206,8 @@
 202 stdcall NdrFullPointerQueryPointer(ptr ptr long ptr)
 203 stdcall NdrFullPointerQueryRefId(ptr long long ptr)
 204 stdcall NdrFullPointerXlatFree(ptr)
-205 stdcall NdrFullPointerXlatInit(long long) 
+205 stdcall NdrFullPointerXlatInit(long long)
+@   stub -version=0x600+ NdrGetBaseInterfaceFromStub
 206 stdcall NdrGetBuffer(ptr long ptr)
 207 stub NdrGetDcomProtocolVersion
 208 stub NdrGetSimpleTypeBufferAlignment
@@ -331,6 +336,9 @@
 330 stdcall RpcAsyncGetCallStatus(ptr)
 331 stdcall RpcAsyncInitializeHandle(ptr long)
 332 stub RpcAsyncRegisterInfo
+@   stdcall -version=0x600+ RpcBindingBind(ptr ptr ptr)
+@   stdcall -stub -version=0x600+ RpcBindingCreateA(ptr ptr ptr ptr)
+@   stdcall -stub -version=0x600+ RpcBindingCreateW(ptr ptr ptr ptr)
 333 stdcall RpcBindingCopy(ptr ptr)
 334 stdcall RpcBindingFree(ptr)
 335 stdcall RpcBindingFromStringBindingA(str  ptr)
@@ -355,6 +363,7 @@
 354 stdcall RpcBindingSetOption(ptr long long)
 355 stdcall RpcBindingToStringBindingA(ptr ptr)
 356 stdcall RpcBindingToStringBindingW(ptr ptr)
+@   stdcall -version=0x600+ RpcBindingUnbind(ptr)
 357 stdcall RpcBindingVectorFree(ptr)
 358 stdcall RpcCancelAsyncCall(ptr long) RpcAsyncCancelCall
 359 stdcall RpcCancelThread(ptr)
@@ -431,9 +440,11 @@
 430 stdcall RpcServerRegisterIf2(ptr ptr ptr long long long ptr)
 431 stdcall RpcServerRegisterIf(ptr ptr ptr)
 432 stdcall RpcServerRegisterIfEx(ptr ptr ptr long long ptr)
+@   stdcall RpcServerSubscribeForNotification(ptr ptr ptr ptr)
 433 stub RpcServerTestCancel
 434 stdcall RpcServerUnregisterIf(ptr ptr long)
 435 stdcall RpcServerUnregisterIfEx(ptr ptr long)
+@   stdcall RpcServerUnsubscribeForNotification(ptr ptr long)
 436 stub RpcServerUseAllProtseqs
 437 stub RpcServerUseAllProtseqsEx
 438 stub RpcServerUseAllProtseqsIf

@@ -35,3 +35,14 @@ unsigned int _get_output_format(void)
    return 0;
 }
 
+//#if _MSVCR_VER>=80
+
+/*********************************************************************
+ * _byteswap_ulong (MSVCR80.@)
+ */
+ULONG CDECL _byteswap_ulong(ULONG l)
+{
+    return (l<<24) + ((l<<8)&0xFF0000) + ((l>>8)&0xFF00) + (l>>24);
+}
+
+//#endif /* _MSVCR_VER>=80 */

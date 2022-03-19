@@ -2287,7 +2287,7 @@ MiRemoveMappedPtes(IN PVOID BaseAddress,
                    IN PCONTROL_AREA ControlArea,
                    IN PMMSUPPORT Ws)
 {
-    PMMPTE PointerPte, ProtoPte;//, FirstPte;
+    PMMPTE PointerPte; //, ProtoPte, FirstPte;
     PMMPDE PointerPde, SystemMapPde;
     PMMPFN Pfn1, Pfn2;
     MMPTE PteContents;
@@ -2353,10 +2353,10 @@ MiRemoveMappedPtes(IN PVOID BaseAddress,
             if (PteContents.u.Soft.Prototype == 1)
             {
                 /* Get the prototype PTE */
-                ProtoPte = MiProtoPteToPte(&PteContents);
+                //ProtoPte = MiProtoPteToPte(&PteContents);
 
                 /* We don't support anything else atm */
-                ASSERT(ProtoPte->u.Long == 0);
+                //ASSERT(ProtoPte->u.Long == 0);
             }
         }
 

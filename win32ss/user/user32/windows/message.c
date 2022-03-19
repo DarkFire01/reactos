@@ -3446,3 +3446,15 @@ BroadcastSystemMessageExW(
   return IntBroadcastSystemMessage( dwflags, lpdwRecipients, uiMessage, wParam, lParam , pBSMInfo, FALSE );
 }
 
+/*
+ * @unimplemented
+ */
+BOOL
+WINAPI
+ChangeWindowMessageFilter(
+    UINT  message,
+    DWORD dwFlag)
+{
+    UNIMPLEMENTED;
+    return TRUE;
+}

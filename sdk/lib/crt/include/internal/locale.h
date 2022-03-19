@@ -25,6 +25,7 @@ typedef struct MSVCRT_threadlocaleinfostruct {
     unsigned char *pclmap;
     unsigned char *pcumap;
     struct __lc_time_data *lc_time_curr;
+    wchar_t *lc_name[6];
 } MSVCRT_threadlocinfo;
 
 typedef struct MSVCRT_threadmbcinfostruct {

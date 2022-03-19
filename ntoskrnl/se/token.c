@@ -3367,6 +3367,37 @@ SeQueryInformationToken(
             break;
         }
 
+        case TokenIntegrityLevel:
+        case TokenUIAccess:
+        case TokenMandatoryPolicy:
+        case TokenLogonSid:
+        case TokenIsAppContainer:
+        case TokenCapabilities:
+        case TokenAppContainerSid:
+        case TokenAppContainerNumber:
+        case TokenUserClaimAttributes:
+        case TokenDeviceClaimAttributes:
+        case TokenRestrictedUserClaimAttributes:
+        case TokenRestrictedDeviceClaimAttributes:
+        case TokenDeviceGroups:
+        case TokenRestrictedDeviceGroups:
+        case TokenSecurityAttributes:
+        case TokenIsRestricted:
+        case TokenProcessTrustLevel:
+        case TokenPrivateNameSpace:
+        case TokenSingletonAttributes:
+        case TokenBnoIsolation:
+        case TokenChildProcessFlags:
+        case TokenIsLessPrivilegedAppContainer:
+        case TokenIsSandboxed:
+        case TokenOriginatingProcessTrustLevel:
+        case MaxTokenInfoClass:
+        {
+            DPRINT1("SeQueryInformationToken(%d) not implemented\n");
+            Status = STATUS_SUCCESS;
+            break;
+        }
+
         default:
             DPRINT1("SeQueryInformationToken(%d) invalid information class\n", TokenInformationClass);
             Status = STATUS_INVALID_INFO_CLASS;

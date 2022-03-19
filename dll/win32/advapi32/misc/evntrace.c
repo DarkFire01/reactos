@@ -80,6 +80,24 @@ typedef void (WINAPI *PENABLECALLBACK)(
   PVOID CallbackContext
 );
 
+ULONG
+WINAPI
+EnableTraceEx(
+  LPCGUID                  ProviderId,
+  LPCGUID                  SourceId,
+  TRACEHANDLE              TraceHandle,
+  ULONG                    IsEnabled,
+  UCHAR                    Level,
+  ULONGLONG                MatchAnyKeyword,
+  ULONGLONG                MatchAllKeyword,
+  ULONG                    EnableProperty,
+  PEVENT_FILTER_DESCRIPTOR EnableFilterDesc
+)
+{
+	UNIMPLEMENTED;
+    return ERROR_SUCCESS;
+};
+
 ULONG 
 WINAPI 
 EventEnabled(
@@ -89,6 +107,19 @@ EventEnabled(
 {
 	UNIMPLEMENTED;
     return ERROR_SUCCESS;
+};
+
+
+BOOL
+WINAPI
+EventProviderEnabled(
+  REGHANDLE RegHandle,
+  UCHAR Level,
+  ULONGLONG Keyword
+)
+{
+    UNIMPLEMENTED;
+    return TRUE;
 };
 
 ULONG 

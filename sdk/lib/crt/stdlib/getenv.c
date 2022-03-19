@@ -46,3 +46,54 @@ wchar_t *_wgetenv(const wchar_t *name)
    }
    return NULL;
 }
+
+/******************************************************************
+ *		getenv_s (MSVCRT.@)
+ */
+int CDECL getenv_s(size_t *pReturnValue, char* buffer, size_t numberOfElements, const char *varname)
+{
+    char *e;
+
+    if (!MSVCRT_CHECK_PMT(pReturnValue != NULL)) return EINVAL;
+    if (!MSVCRT_CHECK_PMT(!(buffer == NULL && numberOfElements > 0))) return EINVAL;
+    if (!MSVCRT_CHECK_PMT(varname != NULL)) return EINVAL;
+
+    if (!(e = getenv(varname)))
+    {
+        *pReturnValue = 0;
+        return *_errno() = EINVAL;
+    }
+    *pReturnValue = strlen(e) + 1;
+    if (numberOfElements < *pReturnValue)
+    {
+        return *_errno() = ERANGE;
+    }
+    strcpy(buffer, e);
+    return 0;
+}
+
+/******************************************************************
+ *		_wgetenv_s (MSVCRT.@)
+ */
+int CDECL _wgetenv_s(size_t *pReturnValue, wchar_t *buffer, size_t numberOfElements,
+                     const wchar_t *varname)
+{
+    wchar_t *e;
+
+    if (!MSVCRT_CHECK_PMT(pReturnValue != NULL)) return EINVAL;
+    if (!MSVCRT_CHECK_PMT(!(buffer == NULL && numberOfElements > 0))) return EINVAL;
+    if (!MSVCRT_CHECK_PMT(varname != NULL)) return EINVAL;
+
+    if (!(e = _wgetenv(varname)))
+    {
+        *pReturnValue = 0;
+        return *_errno() = EINVAL;
+    }
+    *pReturnValue = wcslen(e) + 1;
+    if (numberOfElements < *pReturnValue)
+    {
+        return *_errno() = ERANGE;
+    }
+    wcscpy(buffer, e);
+    return 0;
+}

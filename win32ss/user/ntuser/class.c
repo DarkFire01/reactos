@@ -371,7 +371,7 @@ IntRegisterClassAtom(IN PUNICODE_STRING ClassName,
     }
     else
     {
-        ASSERT(IS_ATOM(ClassName->Buffer));
+        //ASSERT(IS_ATOM(ClassName->Buffer));
         AtomName = ClassName->Buffer;
     }
 
@@ -1352,7 +1352,7 @@ IntGetAtomFromStringOrAtom(
     }
     else
     {
-        ASSERT(IS_ATOM(ClassName->Buffer));
+        //ASSERT(IS_ATOM(ClassName->Buffer));
         *Atom = (RTL_ATOM)((ULONG_PTR)ClassName->Buffer);
         Ret = TRUE;
     }

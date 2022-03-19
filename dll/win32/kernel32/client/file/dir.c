@@ -963,4 +963,15 @@ Cleanup:
     return FALSE;
 }
 
+/*
+ * @unimplemented
+ */
+BOOL
+WINAPI
+SetDefaultDllDirectories(DWORD DirectoryFlags)
+{
+    UNIMPLEMENTED;
+    return TRUE;
+}
+
 /* EOF */

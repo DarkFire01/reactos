@@ -11,9 +11,15 @@
 @ stdcall AllocateAndGetUdpExTableFromStack( ptr long long long long )
 @ stdcall AllocateAndGetUdpTableFromStack( ptr long long long )
 @ stdcall CancelIPChangeNotify(ptr)
+@ stdcall -version=0x600+ CancelMibChangeNotify2(ptr)
 @ stub CancelSecurityHealthChangeNotify
+@ stdcall -version=0x600+ ConvertInterfaceGuidToLuid( ptr ptr )
 @ stdcall -version=0x600+ ConvertInterfaceIndexToLuid( long ptr )
+@ stdcall -version=0x600+ ConvertInterfaceLuidToGuid( ptr ptr )
+@ stdcall -version=0x600+ ConvertInterfaceLuidToIndex( ptr ptr )
 @ stdcall -version=0x600+ ConvertInterfaceLuidToNameW( ptr ptr long )
+@ stdcall -version=0x600+ ConvertInterfaceNameToLuidA( str ptr )
+@ stdcall -version=0x600+ ConvertInterfaceNameToLuidW( wstr ptr )
 @ stdcall CreateIpForwardEntry( ptr )
 @ stdcall CreateIpNetEntry( ptr )
 @ stdcall CreateProxyArpEntry( long long long )
@@ -25,6 +31,7 @@
 @ stdcall EnableRouter( ptr ptr )
 @ stdcall FlushIpNetTable( long )
 @ stub FlushIpNetTableFromStack
+@ stdcall -version=0x600+ FreeMibTable( ptr )
 @ stdcall GetAdapterIndex( wstr ptr )
 @ stdcall GetAdapterOrderMap()
 @ stdcall GetAdaptersAddresses( long long ptr ptr ptr )
@@ -42,8 +49,10 @@
 @ stub GetIcmpStatsFromStack
 @ stub GetIcmpStatsFromStackEx
 @ stdcall GetIfEntry( ptr )
+@ stdcall -version=0x600+ GetIfEntry2( ptr )
 @ stub GetIfEntryFromStack
 @ stdcall GetIfTable( ptr ptr long )
+@ stdcall -stub -version=0x600+ GetIfTable2( ptr )
 @ stub GetIfTableFromStack
 @ stub GetIgmpList
 @ stdcall GetInterfaceInfo( ptr ptr )
@@ -51,8 +60,10 @@
 @ stub GetIpAddrTableFromStack
 @ stdcall GetIpErrorString(long ptr ptr)
 @ stdcall GetIpForwardTable( ptr ptr long )
+@ stdcall -version=0x600+ GetIpForwardTable2( long ptr )
 @ stub GetIpForwardTableFromStack
 @ stdcall GetIpNetTable( ptr ptr long )
+@ stdcall -version=0x600+ GetIpNetTable2( long ptr )
 @ stub GetIpNetTableFromStack
 @ stdcall GetIpStatistics( ptr )
 @ stdcall GetIpStatisticsEx(ptr long)
@@ -89,6 +100,8 @@
 @ stdcall IcmpParseReplies(ptr long)
 @ stdcall IcmpSendEcho2(ptr ptr ptr ptr long ptr long ptr ptr long long)
 @ stdcall IcmpSendEcho(ptr long ptr long ptr ptr long long)
+@ stdcall -stub -version=0x600+ if_indextoname(long ptr)
+@ stdcall -version=0x600+ if_nametoindex(str) IPHLP_if_nametoindex
 @ stub InternalCreateIpForwardEntry
 @ stub InternalCreateIpNetEntry
 @ stub InternalDeleteIpForwardEntry
@@ -114,8 +127,10 @@
 @ stdcall NhGetInterfaceNameFromGuid(ptr ptr ptr long long)
 @ stdcall NhpAllocateAndGetInterfaceInfoFromStack(ptr ptr long ptr long)
 @ stub NhpGetInterfaceIndexFromStack
-@ stdcall NotifyAddrChange( ptr ptr )
-@ stdcall NotifyRouteChange( ptr ptr )
+@ stdcall NotifyAddrChange(ptr ptr)
+@ stdcall -stub -version=0x600+ NotifyIpInterfaceChange(ptr ptr ptr long ptr)
+@ stdcall NotifyRouteChange(ptr ptr)
+@ stdcall -version=0x600+ NotifyRouteChange2( long ptr ptr long ptr )
 @ stub NotifyRouteChangeEx
 @ stub NotifySecurityHealthChange
 @ stdcall _PfAddFiltersToInterface@24()

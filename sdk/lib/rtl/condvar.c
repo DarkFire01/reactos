@@ -43,6 +43,18 @@ static HANDLE CondVarKeyedEventHandle = NULL;
 
 /* INTERNAL FUNCTIONS ********************************************************/
 
+static WCHAR casemap( USHORT *table, WCHAR ch )
+{
+    return ch + table[table[table[ch >> 8] + ((ch >> 4) & 0x0f)] + (ch & 0x0f)];
+}
+
+
+static WCHAR casemap_ascii( WCHAR ch )
+{
+    if (ch >= 'a' && ch <= 'z') ch -= 'a' - 'A';
+    return ch;
+}
+
 FORCEINLINE
 ULONG_PTR
 InternalCmpXChgCondVarAcq(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
@@ -518,6 +530,36 @@ RtlSleepConditionVariableSRW(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
                          SRWLock,
                          Flags,
                          TimeOut);
+}
+
+/******************************************************************************
+ *	RtlCompareUnicodeStrings   (NTDLL.@)
+ */
+LONG NTAPI RtlCompareUnicodeStrings( const WCHAR *s1, SIZE_T len1, const WCHAR *s2, SIZE_T len2,
+                                      BOOLEAN case_insensitive )
+{
+    LONG ret = 0;
+    SIZE_T len = min( len1, len2 );
+    NLSTABLEINFO nls_info;
+
+    if (case_insensitive)
+    {
+        if (nls_info.UpperCaseTable)
+        {
+            while (!ret && len--) ret = casemap( nls_info.UpperCaseTable, *s1++ ) -
+                                        casemap( nls_info.UpperCaseTable, *s2++ );
+        }
+        else  /* locale not setup yet */
+        {
+            while (!ret && len--) ret = casemap_ascii( *s1++ ) - casemap_ascii( *s2++ );
+        }
+    }
+    else
+    {
+        while (!ret && len--) ret = *s1++ - *s2++;
+    }
+    if (!ret) ret = len1 - len2;
+    return ret;
 }
 
 /* EOF */

@@ -633,6 +633,18 @@ BOOL WINAPI IsThemeActive(void)
     return bActive;
 }
 
+/************************************************************
+ *       IsCompositionActive   (UXTHEME.@)
+ */
+BOOL WINAPI IsCompositionActive(void)
+{
+    FIXME(": stub\n");
+
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+
+    return FALSE;
+}
+
 /***********************************************************************
  *      EnableTheming                                       (UXTHEME.@)
  *

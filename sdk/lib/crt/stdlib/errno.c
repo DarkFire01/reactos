@@ -165,3 +165,20 @@ _invalid_parameter_handler CDECL _set_invalid_parameter_handler(
     invalid_parameter_handler = handler;
     return old;
 }
+
+/*********************************************************************
+ * _invalid_parameter_noinfo (MSVCR80.@)
+ */
+void CDECL _invalid_parameter_noinfo(void)
+{
+    _invalid_parameter( NULL, NULL, NULL, 0, 0 );
+}
+
+/*********************************************************************
+ * _invalid_parameter_noinfo_noreturn (MSVCR80.@)
+ */
+void CDECL _invalid_parameter_noinfo_noreturn(void)
+{
+    _invalid_parameter( NULL, NULL, NULL, 0, 0 );
+    _exit( STATUS_INVALID_CRUNTIME_PARAMETER );
+}

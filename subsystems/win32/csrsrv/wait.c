@@ -433,4 +433,11 @@ CsrNotifyWait(IN PLIST_ENTRY WaitList,
     return NotifySuccess;
 }
 
+VOID
+NTAPI
+CsrReplyToMessage(VOID)
+{
+    UNIMPLEMENTED;
+}
+
 /* EOF */

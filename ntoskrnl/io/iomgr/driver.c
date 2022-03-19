@@ -1257,14 +1257,14 @@ IopUnloadDriver(PUNICODE_STRING DriverServiceName, BOOLEAN UnloadPnpDrivers)
     PAGED_CODE();
 
     PreviousMode = ExGetPreviousMode();
-
+#if 0
     /* Need the appropriate priviliege */
     if (!SeSinglePrivilegeCheck(SeLoadDriverPrivilege, PreviousMode))
     {
         DPRINT1("No unload privilege!\n");
         return STATUS_PRIVILEGE_NOT_HELD;
     }
-
+#endif
     /* Capture the service name */
     Status = ProbeAndCaptureUnicodeString(&CapturedServiceName,
                                           PreviousMode,

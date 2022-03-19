@@ -408,6 +408,27 @@ SetWaitableTimer(IN HANDLE hTimer,
  */
 BOOL
 WINAPI
+SetWaitableTimerEx(IN HANDLE hTimer,
+                   IN const LARGE_INTEGER *pDueTime,
+                   IN LONG lPeriod,
+                   IN PTIMERAPCROUTINE pfnCompletionRoutine,
+                   IN OPTIONAL LPVOID lpArgToCompletionRoutine,
+                   IN PVOID WakeContext, // PREASON_CONTEXT
+                   IN ULONG TolerableDelay)
+{
+    return SetWaitableTimer(hTimer,
+                            pDueTime,
+                            lPeriod,
+                            pfnCompletionRoutine,
+                            lpArgToCompletionRoutine,
+                            FALSE);
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
 CancelWaitableTimer(IN HANDLE hTimer)
 {
     NTSTATUS Status;
@@ -741,6 +762,135 @@ SetEvent(IN HANDLE hEvent)
     /* If we got here, then we failed */
     BaseSetLastNTError(Status);
     return FALSE;
+}
+
+/***********************************************************************
+ *              BaseGetNamedObjectDirectory  (kernelbase.@)
+ */
+NTSTATUS WINAPI BaseGetNamedObjectDirectory( HANDLE *dir )
+{
+    static HANDLE handle;
+    WCHAR buffer[64];
+    UNICODE_STRING str;
+    OBJECT_ATTRIBUTES attr;
+    NTSTATUS status = STATUS_SUCCESS;
+
+    if (!handle)
+    {
+        HANDLE dir;
+
+        swprintf( buffer, L"\\Sessions\\%u\\BaseNamedObjects",
+                  NtCurrentTeb()->ProcessEnvironmentBlock->SessionId );
+        RtlInitUnicodeString( &str, buffer );
+        InitializeObjectAttributes(&attr, &str, 0, 0, NULL);
+        status = NtOpenDirectoryObject( &dir, DIRECTORY_CREATE_OBJECT|DIRECTORY_TRAVERSE, &attr );
+        if (!status && InterlockedCompareExchangePointer( &handle, dir, 0 ) != 0)
+        {
+            /* someone beat us here... */
+            CloseHandle( dir );
+        }
+    }
+    *dir = handle;
+    return status;
+}
+
+/*
+ * @implemented
+ */
+HANDLE
+WINAPI
+CreateEventExA(LPSECURITY_ATTRIBUTES lpEventAttributes,
+               LPCSTR lpName,
+               DWORD dwFlags,
+               DWORD dwDesiredAccess)
+{
+    WCHAR Buffer[MAX_PATH];
+
+    if (!lpName) return CreateEventExW(lpEventAttributes, NULL, dwFlags, dwDesiredAccess);
+
+    if (!MultiByteToWideChar(CP_ACP, 0, lpName, -1, Buffer, MAX_PATH))
+    {
+        SetLastError(ERROR_FILENAME_EXCED_RANGE);
+        return 0;
+    }
+
+    return CreateEventExW(lpEventAttributes, Buffer, dwFlags, dwDesiredAccess);
+}
+
+/*
+ * @implemented
+ */
+HANDLE
+WINAPI
+CreateEventExW(LPSECURITY_ATTRIBUTES lpEventAttributes,
+               LPCWSTR lpName,
+               DWORD dwFlags,
+               DWORD dwDesiredAccess)
+{
+    HANDLE ret = 0;
+    PUNICODE_STRING Name;
+    POBJECT_ATTRIBUTES ObjectAttributes;
+    NTSTATUS Status;
+
+    _SEH2_TRY
+    {
+        ObjectAttributes->Length                   = sizeof(ObjectAttributes);
+        ObjectAttributes->RootDirectory            = 0;
+        ObjectAttributes->ObjectName               = NULL;
+        ObjectAttributes->Attributes               = OBJ_OPENIF | ((lpEventAttributes && lpEventAttributes->bInheritHandle) ? OBJ_INHERIT : 0);
+        ObjectAttributes->SecurityDescriptor       = lpEventAttributes ? lpEventAttributes->lpSecurityDescriptor : NULL;
+        ObjectAttributes->SecurityQualityOfService = NULL;
+
+        if (lpName)
+        {
+            RtlInitUnicodeString(Name, lpName);
+            ObjectAttributes->ObjectName = Name;
+            BaseGetNamedObjectDirectory(&ObjectAttributes->RootDirectory);
+        }
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+    _SEH2_END;
+
+    Status = NtCreateEvent(&ret, dwDesiredAccess, ObjectAttributes,
+                           (dwFlags & CREATE_EVENT_MANUAL_RESET) ? NotificationEvent : SynchronizationEvent,
+                           (dwFlags & CREATE_EVENT_INITIAL_SET) != 0);
+
+    if (Status == STATUS_OBJECT_NAME_EXISTS)
+    {
+        SetLastError(ERROR_ALREADY_EXISTS);
+    }
+    else
+    {
+        SetLastError(RtlNtStatusToDosError(Status));
+    }
+
+    return ret;
+}
+
+HANDLE
+WINAPI
+CreateMutexExA(LPSECURITY_ATTRIBUTES lpMutexAttributes,
+               LPCSTR lpName,
+               DWORD dwFlags,
+               DWORD dwDesiredAccess)
+{
+    UNIMPLEMENTED;
+    return NULL;
+}
+
+HANDLE
+WINAPI
+CreateMutexExW(LPSECURITY_ATTRIBUTES lpMutexAttributes,
+               LPCWSTR lpName,
+               DWORD dwFlags,
+               DWORD dwDesiredAccess)
+{
+    UNIMPLEMENTED;
+    return NULL;
 }
 
 /*

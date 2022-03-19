@@ -41,14 +41,14 @@
 @ stdcall EqualDomainSid() advapi32.EqualDomainSid
 @ stdcall EqualPrefixSid() advapi32.EqualPrefixSid
 @ stdcall EqualSid() advapi32.EqualSid
-@ stub EventActivityIdControl
-@ stub EventEnabled
-@ stub EventProviderEnabled
-@ stub EventRegister
-@ stub EventUnregister
-@ stub EventWrite
-@ stub EventWriteString
-@ stub EventWriteTransfer
+@ stdcall -version=0x600+ EventActivityIdControl() advapi32.EventActivityIdControl
+@ stdcall -version=0x600+ EventEnabled() advapi32.EventEnabled
+@ stdcall -version=0x600+ EventProviderEnabled() advapi32.EventProviderEnabled
+@ stdcall -version=0x600+ EventRegister() advapi32.EventRegister
+@ stdcall -version=0x600+ EventUnregister() advapi32.EventUnregister
+@ stdcall -version=0x600+ EventWrite() advapi32.EventWrite
+@ stdcall -version=0x600+ EventWriteString() advapi32.EventWriteString
+@ stdcall -version=0x600+ EventWriteTransfer() advapi32.EventWriteTransfer
 @ stdcall FindFirstFreeAce() advapi32.FindFirstFreeAce
 @ stdcall FreeSid() advapi32.FreeSid
 @ stdcall GetAce() advapi32.GetAce

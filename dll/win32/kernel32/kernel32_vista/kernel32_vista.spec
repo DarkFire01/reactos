@@ -23,6 +23,7 @@
 @ stdcall ApplicationRecoveryInProgress(ptr)
 @ stdcall CreateSymbolicLinkA(str str long)
 @ stdcall CreateSymbolicLinkW(wstr wstr long)
+@ stdcall CompareStringOrdinal(wstr long wstr long long)
 @ stdcall GetApplicationRecoveryCallback(ptr ptr ptr ptr ptr)
 @ stdcall GetApplicationRestart(ptr wstr ptr ptr)
 @ stdcall GetFileBandwidthReservation(ptr ptr ptr ptr ptr ptr)

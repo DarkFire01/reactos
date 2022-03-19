@@ -1080,4 +1080,15 @@ RtlGetTickCount(VOID)
                                   SharedUserData->TickCountMultiplier));
 }
 
+NTSTATUS
+NTAPI
+RtlGetLocaleFileMappingAddress(
+    _Out_ PVOID *BaseAddress,
+    _Out_ PLCID DefaultLocaleId,
+    _Out_ PLARGE_INTEGER DefaultCasingTableSize)
+{
+    UNIMPLEMENTED;
+    return STATUS_SUCCESS;
+}
+
 /* EOF */

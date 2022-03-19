@@ -90,3 +90,13 @@ HRESULT WINAPI CoGetCallerTID(LPDWORD lpdwTID)
   FIXME("stub!\n");
   return E_NOTIMPL;
 }
+
+#ifdef __REACTOS__
+void WINAPI ObjectStublessClient28()
+{
+}
+
+void WINAPI ObjectStublessClient29()
+{
+}
+#endif

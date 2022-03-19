@@ -1430,7 +1430,6 @@ __INTRIN_INLINE unsigned long long __cdecl _byteswap_uint64(unsigned long long v
 	return retval.int64part;
 }
 #endif
-
 #if !HAS_BUILTIN(__lzcnt)
 __INTRIN_INLINE unsigned int __lzcnt(unsigned int value)
 {

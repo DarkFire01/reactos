@@ -68,7 +68,7 @@ HRESULT WINAPI EndBufferedPaint(HPAINTBUFFER hPaintBuffer, BOOL fUpdateTarget)
     return S_OK;
 }
 
-#ifndef __REACTOS__
+//#ifndef __REACTOS__
 
 /***********************************************************************
  *      BufferedPaintClear                                 (UXTHEME.@)
@@ -169,4 +169,4 @@ HRESULT WINAPI EndBufferedAnimation(HANIMATIONBUFFER hbpAnimation, BOOL fUpdateT
     return E_NOTIMPL;
 }
 
-#endif /* __REACTOS__ */
+//#endif /* __REACTOS__ */

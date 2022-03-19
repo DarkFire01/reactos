@@ -1,4 +1,5 @@
 @ stub CredpValidateTargetName
+@ stub -version=0x600+ DavGetHTTPFromUNCPath
 @ stdcall DsAddressToSiteNamesA(str long ptr str)
 @ stdcall DsAddressToSiteNamesExA(str long ptr str str)
 @ stdcall DsAddressToSiteNamesExW(wstr long ptr wstr wstr)
