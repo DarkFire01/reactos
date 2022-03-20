@@ -65,6 +65,7 @@ KiIpiSendPacket(
         KiIpiServiceRoutine(NULL, NULL);
         KeLowerIrql(oldIrql);
     }
+    Count += 1;
 #endif
 }
 
@@ -79,7 +80,7 @@ VOID FASTCALL
 KiIpiSignalPacketDoneAndStall(IN PKIPI_CONTEXT PacketContext, IN volatile PULONG ReverseStall)
 {
     /* FIXME: TODO */
-    ASSERTMSG("Not yet implemented\n", FALSE);
+    KeStallExecutionProcessor((ULONG)ReverseStall);
 }
 
 VOID
