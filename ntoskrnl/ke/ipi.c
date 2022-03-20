@@ -34,8 +34,39 @@ FASTCALL
 KiIpiSend(IN KAFFINITY TargetProcessors,
           IN ULONG IpiRequest)
 {
-    /* FIXME: TODO */
-    ASSERTMSG("Not yet implemented\n", FALSE);
+#ifdef CONFIG_SMP
+    KAFFINITY Processor;
+    LONG i;
+    PKPRCB Prcb, CurrentPrcb;
+    KIRQL oldIrql;
+
+    ASSERT(KeGetCurrentIrql() == SYNCH_LEVEL);
+
+    CurrentPrcb = KeGetCurrentPrcb();
+    for (i = 0, Processor = 1; i < KeNumberProcessors; i++, Processor <<= 1)
+    {
+        if (TargetProcessors & Processor)
+        {
+            
+            Prcb = KiProcessorBlock[i];
+            #if 0
+            while (0 != InterlockedCompareExchangeUL(&Prcb->SignalDone, (LONG)CurrentPrcb, 0));
+            #endif
+            InterlockedBitTestAndSet((PLONG)&Prcb->IpiFrozen, IPI_SYNCH_REQUEST);
+            if (Processor != CurrentPrcb->SetMember)
+            {
+                HalRequestIpi(i);
+            }
+        }
+    }
+    if (TargetProcessors & CurrentPrcb->SetMember)
+    {
+        KeRaiseIrql(IPI_LEVEL, &oldIrql);
+        KiIpiServiceRoutine(NULL, NULL);
+        KeLowerIrql(oldIrql);
+    }
+    Count += 1;
+#endif
 }
 
 VOID
@@ -64,7 +95,7 @@ KiIpiSignalPacketDoneAndStall(IN PKIPI_CONTEXT PacketContext,
                               IN volatile PULONG ReverseStall)
 {
     /* FIXME: TODO */
-    ASSERTMSG("Not yet implemented\n", FALSE);
+    KeStallExecutionProcessor((ULONG)ReverseStall);
 }
 
 #if 0

@@ -26,7 +26,7 @@
 
 /* GLOBALS ********************************************************************/
 
-ULONG ApicVersion;
+APIC_VERSION_REGISTER ApicVersion;
 UCHAR HalpVectorToIndex[256];
 extern PROCESSOR_IDENTITY HalpStaticProcessorIdentity[];
 
@@ -311,10 +311,13 @@ ApicInitializeLocalApic(ULONG Cpu)
     ApicWrite(APIC_SIVR, SpIntRegister.Long);
 
     /* Read the version and save it globally */
-    if (Cpu == 0) ApicVersion = ApicRead(APIC_VER);
+    if (Cpu == 0)
+    {
+        ApicVersion.Long = ApicRead(APIC_VER);
 
-    /* Set the mode to flat (max 8 CPUs supported!) */
-    ApicWrite(APIC_DFR, APIC_DF_Flat);
+        /* Set the mode to flat (max 8 CPUs supported!) */
+        ApicWrite(APIC_DFR, APIC_DF_Flat);
+    }
 
     /* Set logical apic ID */
     ApicWrite(APIC_LDR, ApicLogicalId(Cpu) << 24);
