@@ -35,6 +35,7 @@ KiIpiSend(IN KAFFINITY TargetProcessors,
           IN ULONG IpiRequest)
 {
 #ifdef CONFIG_SMP
+    DPRINT1("KiIpiSendPacket: Attempting IPI on KAFFINITY of %X\n", TargetProcessors);
     KAFFINITY Processor;
     LONG i;
     PKPRCB Prcb, CurrentPrcb;
@@ -49,13 +50,14 @@ KiIpiSend(IN KAFFINITY TargetProcessors,
         {
             
             Prcb = KiProcessorBlock[i];
+
             #if 0
             while (0 != InterlockedCompareExchangeUL(&Prcb->SignalDone, (LONG)CurrentPrcb, 0));
             #endif
             InterlockedBitTestAndSet((PLONG)&Prcb->IpiFrozen, IPI_SYNCH_REQUEST);
             if (Processor != CurrentPrcb->SetMember)
             {
-                HalRequestIpi(i);
+               // DPRINT1("Count is %X\n", Count);
             }
         }
     }
@@ -65,7 +67,8 @@ KiIpiSend(IN KAFFINITY TargetProcessors,
         KiIpiServiceRoutine(NULL, NULL);
         KeLowerIrql(oldIrql);
     }
-    Count += 1;
+
+    HalRequestIpi(TargetProcessors);
 #endif
 }
 
@@ -85,8 +88,7 @@ VOID
 FASTCALL
 KiIpiSignalPacketDone(IN PKIPI_CONTEXT PacketContext)
 {
-    /* FIXME: TODO */
-    ASSERTMSG("Not yet implemented\n", FALSE);
+    UNIMPLEMENTED;
 }
 
 VOID
@@ -96,6 +98,7 @@ KiIpiSignalPacketDoneAndStall(IN PKIPI_CONTEXT PacketContext,
 {
     /* FIXME: TODO */
     KeStallExecutionProcessor((ULONG)ReverseStall);
+    UNIMPLEMENTED;
 }
 
 #if 0
@@ -243,7 +246,6 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
     /* Get current processor count and affinity */
     Count = KeNumberProcessors;
     Affinity = KeActiveProcessors;
-
     /* Exclude ourselves */
     Affinity &= ~Prcb->SetMember;
 #endif
@@ -265,6 +267,7 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
         /* Spin until the other processors are ready */
         while (Count != 1)
         {
+            Count = 1;
             YieldProcessor();
             KeMemoryBarrierWithoutFence();
         }
