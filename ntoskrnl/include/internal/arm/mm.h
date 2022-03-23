@@ -124,6 +124,9 @@
 #define MiIsPteOnPdeBoundary(PointerPte) \
     ((((ULONG_PTR)PointerPte) & (PAGE_SIZE - 1)) == 0)
 
+/* The size of the virtual memory area that is mapped using a single PDE */
+#define PDE_MAPPED_VA (PTE_PER_PAGE * PAGE_SIZE)
+
 //
 // Decodes a Prototype PTE into the underlying PTE
 //
