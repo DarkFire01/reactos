@@ -2912,7 +2912,9 @@ CallQS[] =
     SI_QX(SystemObjectSecurityMode),
     SI_XX(SystemWatchdogTimerHandler), /* FIXME: not implemented */
     SI_XX(SystemWatchdogTimerInformation), /* FIXME: not implemented */
-    SI_QX(SystemLogicalProcessorInformation),
+#if defined(_M_X86) || defined(_M_AMD64)
+    SI_QX(SystemLogicalProcessorInformation), /* Believe it or not Hyperthreading is a x86_(64) thing */
+#endif
     SI_XX(SystemWow64SharedInformation), /* FIXME: not implemented */
     SI_XX(SystemRegisterFirmwareTableInformationHandler), /* FIXME: not implemented */
     SI_QX(SystemFirmwareTableInformation),
