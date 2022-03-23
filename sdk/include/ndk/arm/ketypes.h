@@ -1016,6 +1016,8 @@ typedef struct _KPRCB
     volatile UCHAR DpcThreadActive;
     volatile ULONG TimerHand;
     volatile ULONG TimerRequest;
+    ULONG KeFirstLevelTbFills;
+    ULONG KeSecondLevelTbFills;
     ULONG DebugDpcTime;
     LONG Sleeping;
     KAFFINITY SetMember;

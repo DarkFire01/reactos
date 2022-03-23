@@ -2632,6 +2632,7 @@ QSI_DEF(SystemObjectSecurityMode)
     return STATUS_SUCCESS;
 }
 
+#if defined(_M_X86) || defined(_M_AMD64)
 /* Class 73 - Logical processor information */
 QSI_DEF(SystemLogicalProcessorInformation)
 {
@@ -2715,7 +2716,7 @@ QSI_DEF(SystemLogicalProcessorInformation)
 
     return Status;
 }
-
+#endif
 /* Class 76 - System firmware table information */
 QSI_DEF(SystemFirmwareTableInformation)
 {
