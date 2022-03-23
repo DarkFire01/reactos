@@ -172,7 +172,8 @@ typedef struct _MMPTE_HARDWARE
     ULONG Cached:1;
     ULONG Sbo:1;
     ULONG Owner:1;
-    ULONG CacheAttributes:3;
+    ULONG CacheAttributes:2;
+    ULONG Dirty:1;
     ULONG ReadOnly:1;
     ULONG Prototype:1;
     ULONG NonGlobal:1;
