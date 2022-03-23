@@ -197,4 +197,8 @@ typedef struct _MP_CONFIGURATION_INTLOCAL
 
 VOID HalpInitMPS(VOID);
 
+
+BOOLEAN
+HaliFindSmpConfig(VOID);
+
 /* EOF */

@@ -10,15 +10,47 @@
 
 #include <hal.h>
 #define NDEBUG
+#include <mps.h>
+#include <ioapic.h>
 #include <debug.h>
+
+#define LOCAL_APIC_BASE  0xFFFE0000
+
 
 /* GLOBALS ******************************************************************/
 
+#ifdef CONFIG_SMP
+PULONG BIOSBase;				/* Virtual address of BIOS data segment */
+PULONG CommonBase;				/* Virtual address of common area */
+#endif
+
+//PULONG APICBase = (PULONG)APIC_DEFAULT_BASE;	/* Virtual address of local APIC */
+
+ULONG APICMode;					/* APIC mode at startup */
+
+ULONG MAX_CPU = 32;
 MP_FLOATING_POINTER* Mpf = NULL;
+MP_CONFIGURATION_INTSRC IRQMap[MAX_IRQ_SOURCE]; /* Map of all IRQs */
+ULONG IRQCount = 0;                             /* Number of IRQs  */
+ULONG IrqApicMap[MAX_IRQ_SOURCE];
+
+UCHAR BUSMap[MAX_BUS];				/* Map of all buses in the system */
+UCHAR PCIBUSMap[MAX_BUS];			/* Map of all PCI buses in the system */
+
+IOAPIC_INFO IOAPICMap[MAX_IOAPIC];		/* Map of all I/O APICs in the system */
+ULONG IOAPICCount;				/* Number of I/O APICs in the system */
+
+ULONG IRQVectorMap[MAX_IRQ_SOURCE];             /* IRQ to vector map */
+
+
+ULONG CPUCount;					/* Total number of CPUs */
+ULONG BootCPU;					/* Bootstrap processor */
+ULONG OnlineCPUs;				/* Bitmask of online CPUs */
+//CPU_INFO CPUMap[MAX_CPU];			/* Map of all CPUs in the system */
 
 /* FUNCTIONS ****************************************************************/
 
-static UCHAR
+UCHAR
 MPChecksum(PUCHAR Base,
 	   ULONG Size)
 /*
@@ -33,7 +65,7 @@ MPChecksum(PUCHAR Base,
    return Sum;
 }
 
-static VOID
+VOID
 HaliMPIntSrcInfo(PMP_CONFIGURATION_INTSRC m)
 {
   DPRINT("Int: type %d, pol %d, trig %d, bus %d,"
@@ -79,7 +111,7 @@ HaliMPFamily(ULONG Family,
 }
 
 
-static VOID
+VOID
 HaliMPProcessorInfo(PMP_CONFIGURATION_PROCESSOR m)
 {
   UCHAR ver;
@@ -139,14 +171,14 @@ HaliMPProcessorInfo(PMP_CONFIGURATION_PROCESSOR m)
     DPRINT("    Thermal Monitor present.\n");
   /* 30, 31 Reserved */
 
-  CPUMap[CPUCount].APICId = m->ApicId;
+  //CPUMap[CPUCount].APICId = m->ApicId;
 
-  CPUMap[CPUCount].Flags = CPU_USABLE;
+  //CPUMap[CPUCount].Flags = CPU_USABLE;
 
   if (m->CpuFlags & CPU_FLAG_BSP)
   {
     DPRINT("    Bootup CPU\n");
-    CPUMap[CPUCount].Flags |= CPU_BSP;
+    //CPUMap[CPUCount].Flags |= CPU_BSP;
     BootCPU = m->ApicId;
   }
 
@@ -167,12 +199,12 @@ HaliMPProcessorInfo(PMP_CONFIGURATION_PROCESSOR m)
   }
 //  ApicVersion[m->ApicId] = Ver;
 //  BiosCpuApicId[CPUCount] = m->ApicId;
-  CPUMap[CPUCount].APICVersion = ver;
+ // CPUMap[CPUCount].APICVersion = ver;
 
   CPUCount++;
 }
 
-static VOID
+VOID
 HaliMPBusInfo(PMP_CONFIGURATION_BUS m)
 {
   static UCHAR CurrentPCIBusId = 0;
@@ -203,7 +235,7 @@ HaliMPBusInfo(PMP_CONFIGURATION_BUS m)
   }
 }
 
-static VOID
+VOID
 HaliMPIOApicInfo(PMP_CONFIGURATION_IOAPIC m)
 {
   if (!(m->ApicFlags & CPU_FLAG_ENABLED))
@@ -226,7 +258,7 @@ HaliMPIOApicInfo(PMP_CONFIGURATION_IOAPIC m)
 }
 
 
-static VOID
+VOID
 HaliMPIntLocalInfo(PMP_CONFIGURATION_INTLOCAL m)
 {
   DPRINT("Lint: type %d, pol %d, trig %d, bus %d,"
@@ -289,7 +321,7 @@ HaliReadMPConfigTable(PMP_CONFIGURATION_TABLE Table)
        return FALSE;
      }
 
-   if (Table->LocalAPICAddress != APIC_DEFAULT_BASE)
+   if (Table->LocalAPICAddress != LOCAL_APIC_BASE)
      {
        DPRINT1("APIC base address is at 0x%X. I cannot handle non-standard adresses\n",
 	       Table->LocalAPICAddress);
@@ -561,12 +593,12 @@ HaliGetSmpConfig(VOID)
    if (Mpf->Feature2 & FEATURE2_IMCRP)
    {
       DPRINT("Running in IMCR and PIC compatibility mode.\n");
-      APICMode = amPIC;
+      //APICMode = amPIC;
    }
    else
    {
       DPRINT("Running in Virtual Wire compatibility mode.\n");
-      APICMode = amVWIRE;
+      //APICMode = amVWIRE;
    }
 
    if (Mpf->Feature1 == 0 && Mpf->Address)

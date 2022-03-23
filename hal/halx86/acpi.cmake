@@ -3,6 +3,7 @@ list(APPEND HAL_ACPI_SOURCE
     acpi/halacpi.c
     acpi/halpnpdd.c
     acpi/busemul.c
+    acpi/madt.c
     legacy/bus/pcibus.c)
 
 add_library(lib_hal_acpi OBJECT ${HAL_ACPI_SOURCE})

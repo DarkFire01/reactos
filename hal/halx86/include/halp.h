@@ -529,6 +529,12 @@ HalpInitProcessor(
     IN PLOADER_PARAMETER_BLOCK LoaderBlock
 );
 
+VOID
+HalpInitializeInterruptLoc(IN PLOADER_PARAMETER_BLOCK LoaderBlock);
+
+VOID
+HalpParseApicTables();
+
 #if defined(SARCH_PC98)
 BOOLEAN
 NTAPI
