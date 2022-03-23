@@ -309,7 +309,7 @@ SIZE(MiniStackLength, KARM_MINI_STACK), // 0x20
 
 HEADER("KPCR offsets"),
 OFFSET(PcSelf, KIPCR, Self), //  0xc
-OFFSET(PcCurrentPrcb, KIPCR, CurrentPrcb), // 0x10
+OFFSET(PcCurrentPrcb, KIPCR, Prcb), // 0x10
 OFFSET(PcLockArray, KIPCR, LockArray), // 0x14
 OFFSET(PcTeb, KIPCR, Used_Self), // 0x18
 OFFSET(PcStallScaleFactor, KIPCR, StallScaleFactor), // 0x30
