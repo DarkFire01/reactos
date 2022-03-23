@@ -17,9 +17,9 @@
 VOID NTAPI RtlpBreakWithStatusInstruction(VOID);
 
 //
-// Apply the KIPCR WDK workaround for x86 and AMD64
+// Apply the KIPCR WDK workaround for x86 and AMD64 and ARM
 //
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_M_AMD64) || defined(_M_ARM)
 #define KPCR KIPCR
 #endif
 
