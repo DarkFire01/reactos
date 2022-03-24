@@ -3,6 +3,8 @@ list(APPEND HAL_HALMP_SOURCE
     #SMP
     generic/buildtype.c
     generic/spinlock.c
+    smp/smp.c
+    smp/ipi.c
     #Generic
     generic/beep.c
     generic/cmos.c
@@ -50,6 +52,11 @@ list(APPEND HAL_HALMP_SOURCE
 
 list(APPEND HAL_HALMP_ASM_SOURCE
     generic/v86.S)
+endif()
+
+if(ARCH STREQUAL "i386")
+    list(APPEND HAL_HALMP_ASM_SOURCE
+        smp/i386/apentry.S)
 endif()
 
 add_asm_files(lib_hal_halmp_asm ${HAL_HALMP_ASM_SOURCE})

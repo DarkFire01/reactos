@@ -23,3 +23,10 @@ VOID
 HalpParseApicTables(
     IN PLOADER_PARAMETER_BLOCK LoaderBlock
 );
+
+VOID
+ApicStartApplicationProcessor(ULONG NTProcessorNumber, PHYSICAL_ADDRESS StartupLoc);
+
+VOID
+NTAPI
+HalpRequestIpi(KAFFINITY TargetProcessors);
