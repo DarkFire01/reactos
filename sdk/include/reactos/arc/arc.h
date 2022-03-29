@@ -482,6 +482,16 @@ typedef struct _FIRMWARE_INFORMATION_LOADER_BLOCK
     } u;
 } FIRMWARE_INFORMATION_LOADER_BLOCK, *PFIRMWARE_INFORMATION_LOADER_BLOCK;
 
+typedef struct _ROSEFI_FRAMEBUFFER_DATA
+{
+    ULONG_PTR    BaseAddress;
+    ULONG64      BufferSize;
+    UINT32       ScreenWidth;
+    UINT32       ScreenHeight;
+    UINT32       PixelsPerScanLine;
+    UINT32       PixelFormat;
+} ROSEFI_FRAMEBUFFER_DATA, *PROSEFI_FRAMEBUFFER_DATA;
+
 //
 // Loader Parameter Block
 //
@@ -518,6 +528,7 @@ typedef struct _LOADER_PARAMETER_BLOCK
         PPC_LOADER_BLOCK PowerPC;
         ARM_LOADER_BLOCK Arm;
     } u;
+    //PROSEFI_FRAMEBUFFER_DATA BgContext;
     FIRMWARE_INFORMATION_LOADER_BLOCK FirmwareInformation;
 } LOADER_PARAMETER_BLOCK, *PLOADER_PARAMETER_BLOCK;
 

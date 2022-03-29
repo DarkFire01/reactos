@@ -10,10 +10,17 @@
 
 #include <arc/arc.h>
 
+BOOLEAN BootedWithUEFI;
+
 BOOLEAN
 NTAPI
 VidInitializeUefi(
     _In_ BOOLEAN SetMode);
+
+VOID
+NTAPI
+VidResetDisplayUefi(
+    _In_ BOOLEAN HalReset);
 
 VOID
 NTAPI
@@ -50,5 +57,24 @@ DisplayCharacterUefi(
     _In_ ULONG Top,
     _In_ ULONG TextColor,
     _In_ ULONG BackColor);
+
+VOID
+NTAPI
+VidScreenToBufferBltUefi(
+    _Out_writes_bytes_(Delta * Height) PUCHAR Buffer,
+    _In_ ULONG Left,
+    _In_ ULONG Top,
+    _In_ ULONG Width,
+    _In_ ULONG Height,
+    _In_ ULONG Delta);
+
+VOID
+NTAPI
+VidSolidColorFillUefi(
+    _In_ ULONG Left,
+    _In_ ULONG Top,
+    _In_ ULONG Right,
+    _In_ ULONG Bottom,
+    _In_ UCHAR Color);
 
 #endif /* _BOOTVID_UEFI_H_ */

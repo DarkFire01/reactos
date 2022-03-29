@@ -362,6 +362,14 @@ NTAPI
 VidInitialize(
     _In_ BOOLEAN SetMode)
 {
+    BootedWithUEFI = TRUE;
+    /* Let's check if we booted with UEFI */
+    if (BootedWithUEFI == TRUE)
+    {
+        VidInitializeUefi(SetMode);
+        goto VidInitializeEnd;
+    }
+
     ULONG_PTR Context = 0;
     PHYSICAL_ADDRESS TranslatedAddress;
     PHYSICAL_ADDRESS NullAddress = {{0, 0}}, VgaAddress;
@@ -456,7 +464,7 @@ VidInitialize(
             VgaInterpretCmdStream(VGA_640x480);
         }
     }
-
+VidInitializeEnd:
     /* VGA is ready */
     return TRUE;
 }
@@ -469,24 +477,31 @@ NTAPI
 VidResetDisplay(
     _In_ BOOLEAN HalReset)
 {
-    /* Clear the current position */
-    VidpCurrentX = 0;
-    VidpCurrentY = 0;
-
-    /* Clear the screen with HAL if we were asked to */
-    if (HalReset)
+    if (BootedWithUEFI == TRUE)
     {
-        if (!HalResetDisplay())
-        {
-            /* The HAL didn't handle the display, fully re-initialize the VGA */
-            VgaInterpretCmdStream(VGA_640x480);
-        }
+        VidResetDisplayUefi(HalReset);
     }
+    else
+    {
+        /* Clear the current position */
+        VidpCurrentX = 0;
+        VidpCurrentY = 0;
 
-    /* Always re-initialize the AC registers */
-    VgaInterpretCmdStream(AT_Initialization);
+        /* Clear the screen with HAL if we were asked to */
+        if (HalReset)
+        {
+            if (!HalResetDisplay())
+            {
+                /* The HAL didn't handle the display, fully re-initialize the VGA */
+                VgaInterpretCmdStream(VGA_640x480);
+            }
+        }
 
-    /* Re-initialize the palette and fill the screen black */
-    InitializePalette();
-    VidSolidColorFill(0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, BV_COLOR_BLACK);
+        /* Always re-initialize the AC registers */
+        VgaInterpretCmdStream(AT_Initialization);
+
+        /* Re-initialize the palette and fill the screen black */
+        InitializePalette();
+        VidSolidColorFill(0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, BV_COLOR_BLACK);
+    }
 }
