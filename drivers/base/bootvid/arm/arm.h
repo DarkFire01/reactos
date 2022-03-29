@@ -28,15 +28,7 @@ USHORT
 VidpBuildColor(
     _In_ UCHAR Color)
 {
-    UCHAR Red, Green, Blue;
-
-    /* Extract color components */
-    Red   = GetRValue(DefaultPalette[Color]) >> 3;
-    Green = GetGValue(DefaultPalette[Color]) >> 3;
-    Blue  = GetBValue(DefaultPalette[Color]) >> 3;
-
-    /* Build the 16-bit color mask */
-    return ((Red & 0x1F) << 11) | ((Green & 0x1F) << 6) | ((Blue & 0x1F));
+    return 0;
 }
 
 VOID
@@ -81,3 +73,6 @@ DisplayCharacter(
     _In_ ULONG Top,
     _In_ ULONG TextColor,
     _In_ ULONG BackColor);
+
+VOID
+PrepareForSetPixelUefi(VOID);

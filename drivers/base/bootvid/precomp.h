@@ -5,6 +5,9 @@
 #include <ndk/halfuncs.h>
 #include <drivers/bootvid/bootvid.h>
 
+/* UEFI / Framebuffer header */
+#include "uefi/uefi.h"
+
 /* Arch specific includes */
 #if defined(_M_IX86) || defined(_M_AMD64)
 #if defined(SARCH_PC98)

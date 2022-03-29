@@ -9,6 +9,12 @@ PHYSICAL_ADDRESS VgaPhysical;
 /* PRIVATE FUNCTIONS *********************************************************/
 
 VOID
+PrepareForSetPixelUefi(VOID)
+{
+    NOTHING;
+}
+
+VOID
 NTAPI
 DisplayCharacter(
     _In_ CHAR Character,
