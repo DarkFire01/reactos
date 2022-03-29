@@ -28,7 +28,9 @@ endif()
 list(APPEND SOURCE
     common.c
     fontdata.c
-    precomp.h)
+    precomp.h
+    uefi/uefi.h
+    uefi/uefi.c)
 
 add_library(bootvid MODULE
     ${SOURCE}
