@@ -7,37 +7,32 @@
 
 /* GLOBALS ********************************************************************/
 
+#include <debug.h>
+
 static ULONG_PTR FrameBufferStart = 0;
 static ULONG FrameBufferWidth, FrameBufferHeight, PanH, PanV;
 static UCHAR BytesPerPixel;
 static RGBQUAD CachedPalette[BV_MAX_COLORS];
 static PUCHAR BackBuffer = NULL;
-const UINT32 Pallet[BV_MAX_COLORS] =
-{
-    (0x000000), /* Black */
-    (0x800000), /* Red */
-    (0x008000), /* Green */
-    (0x808000), /* Brown */
-    (0x000080), /* Blue */
-    (0x800080), /* Magenta */
-    (0x008080), /* Cyan */
-    (0x808080), /* Dark Gray */
-    (0xC0C0C0), /* Light Gray */
-    (0xFF0000), /* Light Red */
-    (0x00FF00), /* Light Green */
-    (0xFFFF00), /* Yellow */
-    (0x0000FF), /* Light Blue */
-    (0xFF00FF), /* Light Magenta */
-    (0x00FFFF), /* Light Cyan */
-    (0xFFFFFF), /* White */
-};
 
 PUCHAR BackBuffer;
 PROSEFI_FRAMEBUFFER_DATA refiFbData;
 
 #define BB_OFFSET(x, y)    ((y) * SCREEN_WIDTH + (x))
-#define FB_OFFSET(x, y)    (((PanV + (y)) * FrameBufferWidth + PanH + (x)) * 1)
+#define FB_OFFSET(x, y)    (((PanV + (y)) * FrameBufferWidth + PanH + (x)) * 4)
 
+static VOID
+UEFIClearScreeen(VOID)
+{
+    /* Just fill the screen black */
+    for(int y = 0; y < refiFbData->ScreenHeight; y++)
+    {
+        for(int x = 0; x < refiFbData->ScreenWidth; x++)
+        {
+            *((UINT32*)(FrameBufferStart + 4 * refiFbData->PixelsPerScanLine * (y) + 4 * (x))) = 0x000000;
+        }
+    }
+}
 static VOID
 ApplyPalette(VOID)
 {
@@ -51,7 +46,7 @@ ApplyPalette(VOID)
     }
 
     /* Left panning */
-    for (y = 0; y < FrameBufferHeight; y++)
+    for (y = 0; y < SCREEN_HEIGHT; y++)
     {
         Frame = (PULONG)(FrameBufferStart + FB_OFFSET(-PanH, y));
 
@@ -63,20 +58,20 @@ ApplyPalette(VOID)
 
     /* Screen redraw */
     PUCHAR Back = BackBuffer;
-    for (y = 0; y < FrameBufferHeight; y++)
+    for (y = 0; y < SCREEN_HEIGHT; y++)
     {
         Frame = (PULONG)(FrameBufferStart + FB_OFFSET(0, y));
 
-        for (x = 0; x < FrameBufferWidth; x++)
+        for (x = 0; x < SCREEN_WIDTH; x++)
         {
             *Frame++ = CachedPalette[*Back++];
         }
     }
 
     /* Right panning */
-    for (y = 0; y < FrameBufferHeight; y++)
+    for (y = 0; y < SCREEN_HEIGHT; y++)
     {
-        Frame = (PULONG)(FrameBufferStart + FB_OFFSET(FrameBufferWidth, y));
+        Frame = (PULONG)(FrameBufferStart + FB_OFFSET(SCREEN_WIDTH, y));
 
         for (x = 0; x < PanH; x++)
         {
@@ -85,7 +80,7 @@ ApplyPalette(VOID)
     }
 
     /* Bottom panning */
-    Frame = (PULONG)(FrameBufferStart + FB_OFFSET(-PanH, FrameBufferHeight));
+    Frame = (PULONG)(FrameBufferStart + FB_OFFSET(-PanH, SCREEN_HEIGHT));
     for (x = 0; x < PanV * FrameBufferWidth; x++)
     {
         *Frame++ = CachedPalette[0];
@@ -102,11 +97,11 @@ VidInitializeUefi(
 
     /* Hard coding go brr */
     refiFbData = ExAllocatePoolWithTag(NonPagedPool, sizeof(ROSEFI_FRAMEBUFFER_DATA), 'IFEU');
-    refiFbData->BaseAddress        = 0x80000000;
+    refiFbData->BaseAddress        = 0xd0000000;
     refiFbData->BufferSize         = 0x21c0000;
     refiFbData->ScreenWidth        = 3840;
     refiFbData->ScreenHeight       = 2160;
-    refiFbData->PixelsPerScanLine  = 3840;
+    refiFbData->PixelsPerScanLine  = 4096;
     refiFbData->PixelFormat        = 1;
 
     /* MAP FRAMEBUFFER */
@@ -115,11 +110,10 @@ VidInitializeUefi(
     if (!FrameBufferStart)
     {
         DPRINT1("Out of memory!\n");
-        goto cleanup;
     }
 
     /* Setup framebuffer */
-    FrameBufferWidth = refiFbData->ScreenWidth;
+    FrameBufferWidth = refiFbData->PixelsPerScanLine;
     FrameBufferHeight = refiFbData->ScreenHeight;
 
     /*
@@ -132,13 +126,8 @@ VidInitializeUefi(
     /* Calculate panning values */
     PanH = (FrameBufferWidth - SCREEN_WIDTH) / 2;
     PanV = (FrameBufferHeight - SCREEN_HEIGHT) / 2;
-
+    UEFIClearScreeen();
     InitializePalette();
-
-    
-cleanup:
-    if (ControlStart)
-        MmUnmapIoSpace((PVOID)ControlStart, ControlLength);
 
     return TRUE;
 }
@@ -147,8 +136,16 @@ VOID
 NTAPI
 VidResetDisplayUefi(
     _In_ BOOLEAN HalReset)
-{    /* Just fill the screen black */
+{
 
+    /* Clear the current position */
+    VidpCurrentX = 0;
+    VidpCurrentY = 0;
+    UEFIClearScreeen();
+    /* Re-initialize the palette and fill the screen black */
+    RtlZeroMemory((PULONG)FrameBufferStart, refiFbData->BufferSize);
+    InitializePalette();
+    VidSolidColorFill(0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, BV_COLOR_BLACK);
 }
 
 VOID
@@ -157,6 +154,13 @@ InitPaletteWithTableUefi(
     _In_ PULONG Table,
     _In_ ULONG Count)
 {
+    PULONG Entry = Table;
+
+    for (ULONG i = 0; i < Count; i++, Entry++)
+    {
+        CachedPalette[i] = *Entry | 0xFF000000;
+    }
+    ApplyPalette();
 }
 
 VOID
@@ -172,6 +176,11 @@ SetPixelUefi(
     _In_ ULONG Top,
     _In_ UCHAR Color)
 {
+    PUCHAR Back = BackBuffer + BB_OFFSET(Left, Top);
+    PULONG Frame = (PULONG)(FrameBufferStart + FB_OFFSET(Left, Top));
+
+    *Back = Color;
+    *Frame = CachedPalette[Color];
 }
 
 VOID
@@ -181,7 +190,43 @@ PreserveRowUefi(
     _In_ ULONG TopDelta,
     _In_ BOOLEAN Restore)
 {
+    PUCHAR NewPosition, OldPosition;
 
+    /* Calculate the position in memory for the row */
+    if (Restore)
+    {
+        /* Restore the row by copying back the contents saved off-screen */
+        NewPosition = BackBuffer + BB_OFFSET(0, CurrentTop);
+        OldPosition = BackBuffer + BB_OFFSET(0, SCREEN_HEIGHT);
+    }
+    else
+    {
+        /* Preserve the row by saving its contents off-screen */
+        NewPosition = BackBuffer + BB_OFFSET(0, SCREEN_HEIGHT);
+        OldPosition = BackBuffer + BB_OFFSET(0, CurrentTop);
+    }
+
+    /* Set the count and loop every pixel of backbuffer */
+    ULONG Count = TopDelta * SCREEN_WIDTH;
+
+    RtlCopyMemory(NewPosition, OldPosition, Count);
+
+    if (Restore)
+    {
+        NewPosition = BackBuffer + BB_OFFSET(0, CurrentTop);
+
+        /* Set the count and loop every pixel of framebuffer */
+        for (ULONG y = 0; y < TopDelta; y++)
+        {
+            PULONG Frame = (PULONG)(FrameBufferStart + FB_OFFSET(0, CurrentTop + y));
+
+            Count = SCREEN_WIDTH;
+            while (Count--)
+            {
+                *Frame++ = CachedPalette[*NewPosition++];
+            }
+        }
+    }
 }
 
 VOID
@@ -189,7 +234,28 @@ NTAPI
 DoScrollUefi(
     _In_ ULONG Scroll)
 {
+  ULONG RowSize = VidpScrollRegion[2] - VidpScrollRegion[0] + 1;
 
+    /* Calculate the position in memory for the row */
+    PUCHAR OldPosition = BackBuffer + BB_OFFSET(VidpScrollRegion[0], VidpScrollRegion[1] + Scroll);
+    PUCHAR NewPosition = BackBuffer + BB_OFFSET(VidpScrollRegion[0], VidpScrollRegion[1]);
+
+    /* Start loop */
+    for (ULONG Top = VidpScrollRegion[1]; Top <= VidpScrollRegion[3]; ++Top)
+    {
+        ULONG i;
+
+        /* Scroll the row */
+        RtlCopyMemory(NewPosition, OldPosition, RowSize);
+
+        PULONG Frame = (PULONG)(FrameBufferStart + FB_OFFSET(VidpScrollRegion[0], Top));
+
+        for (i = 0; i < RowSize; ++i)
+            Frame[i] = CachedPalette[NewPosition[i]];
+
+        OldPosition += SCREEN_WIDTH;
+        NewPosition += SCREEN_WIDTH;
+    }
 }
 
 VOID
@@ -201,6 +267,33 @@ DisplayCharacterUefi(
     _In_ ULONG TextColor,
     _In_ ULONG BackColor)
 {
+     /* Get the font and pixel pointer */
+    PUCHAR FontChar = GetFontPtr(Character);
+
+    /* Loop each pixel height */
+    for (ULONG y = Top; y < Top + BOOTCHAR_HEIGHT; y++, FontChar += FONT_PTR_DELTA)
+    {
+        /* Loop each pixel width */
+        ULONG x = Left;
+
+        for (UCHAR bit = 1 << (BOOTCHAR_WIDTH - 1); bit > 0; bit >>= 1, x++)
+        {
+            /* Check if we should draw this pixel */
+            if (*FontChar & bit)
+            {
+                /* We do, use the given Text Color */
+                SetPixel(x, y, (UCHAR)TextColor);
+            }
+            else if (BackColor < BV_COLOR_NONE)
+            {
+                /*
+                 * This is a background pixel. We're drawing it
+                 * unless it's transparent.
+                 */
+                SetPixel(x, y, (UCHAR)BackColor);
+            }
+        }
+    }
 }
 
 VOID
@@ -213,6 +306,25 @@ VidScreenToBufferBltUefi(
     _In_ ULONG Height,
     _In_ ULONG Delta)
 {
+ /* Clear the destination buffer */
+    RtlZeroMemory(Buffer, Delta * Height);
+
+    /* Start the outer Y height loop */
+    for (ULONG y = 0; y < Height; y++)
+    {
+        /* Set current scanline */
+        PUCHAR Back = BackBuffer + BB_OFFSET(Left, Top + y);
+        PUCHAR Buf = Buffer + y * Delta;
+
+        /* Start the X inner loop */
+        for (ULONG x = 0; x < Width; x += sizeof(USHORT))
+        {
+            /* Read the current value */
+            *Buf = (*Back++ & 0xF) << 4;
+            *Buf |= *Back++ & 0xF;
+            Buf++;
+        }
+    }
 }
 
 VOID
@@ -224,5 +336,17 @@ VidSolidColorFillUefi(
     _In_ ULONG Bottom,
     _In_ UCHAR Color)
 {
+    while (Top <= Bottom)
+    {
+        PUCHAR Back = BackBuffer + BB_OFFSET(Left, Top);
+        PULONG Frame = (PULONG)(FrameBufferStart + FB_OFFSET(Left, Top));
+        ULONG L = Left;
 
+        while (L++ <= Right)
+        {
+            *Back++ = Color;
+            *Frame++ = CachedPalette[Color];
+        }
+        Top++;
+    }
 }

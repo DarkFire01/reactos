@@ -291,7 +291,6 @@ PreserveRow(
 {
     if (BootedWithUEFI == TRUE)
     {
-        __debugbreak();
         PreserveRowUefi(CurrentTop,TopDelta,Restore);
     }
     else
