@@ -10,7 +10,6 @@
 
 #include <arc/arc.h>
 
-BOOLEAN BootedWithUEFI;
 
 BOOLEAN
 NTAPI

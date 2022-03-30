@@ -1201,6 +1201,7 @@ LoadAndBootWindowsCommon(
     /* Cleanup INI file */
     IniCleanup();
 #ifdef UEFIBOOT
+    //TODO THIS IS TEMPORARY
     LoaderBlock->BgContext.BaseAddress       = BgContext.BaseAddress;
     LoaderBlock->BgContext.BufferSize        = BgContext.BufferSize;
     LoaderBlock->BgContext.ScreenWidth       = BgContext.ScreenWidth;
@@ -1240,14 +1241,6 @@ LoadAndBootWindowsCommon(
 
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
-#ifdef UEFIBOOT
-#if 0
-   __asm{
-        mov esp, EndOfStack
-    };
-#endif
-    asm("movl $0x4000, %esp");
-#endif
 
     /* Debugging... */
     //DumpMemoryAllocMap();

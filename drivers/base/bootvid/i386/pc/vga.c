@@ -109,7 +109,7 @@ DisplayCharacter(
     _In_ ULONG TextColor,
     _In_ ULONG BackColor)
 {
-    if (BootedWithUEFI == TRUE)
+    if (1 == TRUE)
     {
         DisplayCharacterUefi(Character,Left,Top,TextColor,BackColor);
     }
@@ -219,8 +219,8 @@ InitPaletteWithTable(
     _In_ PULONG Table,
     _In_ ULONG Count)
 {
-    if (BootedWithUEFI == TRUE)
-    { 
+    if (1 == TRUE)
+    {
         InitPaletteWithTableUefi(Table,Count);
     }
     else
@@ -240,7 +240,7 @@ NTAPI
 DoScroll(
     _In_ ULONG Scroll)
 {
-    if (BootedWithUEFI == TRUE)
+    if (1 == TRUE)
     {
         DoScrollUefi(Scroll);
     }
@@ -289,9 +289,8 @@ PreserveRow(
     _In_ ULONG TopDelta,
     _In_ BOOLEAN Restore)
 {
-    if (BootedWithUEFI == TRUE)
+    if (1 == TRUE)
     {
-        __debugbreak();
         PreserveRowUefi(CurrentTop,TopDelta,Restore);
     }
     else
@@ -349,7 +348,7 @@ VOID
 NTAPI
 VidCleanUp(VOID)
 {
-    if (BootedWithUEFI == TRUE)
+    if (1 == TRUE)
     {
         VidResetDisplayUefi(FALSE);
     }
@@ -374,7 +373,7 @@ VidScreenToBufferBlt(
     _In_ ULONG Height,
     _In_ ULONG Delta)
 {
-    if (BootedWithUEFI == TRUE)
+    if (1 == TRUE)
     {
         VidScreenToBufferBltUefi(Buffer, Left, Top , Width, Height, Delta);
     }
@@ -480,7 +479,7 @@ VidSolidColorFill(
     _In_ ULONG Bottom,
     _In_ UCHAR Color)
 {
-    if (BootedWithUEFI == TRUE)
+    if (1 == TRUE)
     {
         VidSolidColorFillUefi(Left, Top, Right, Bottom, Color);
     }

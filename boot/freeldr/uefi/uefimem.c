@@ -243,6 +243,7 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
         MapEntry = NEXT_MEMORY_DESCRIPTOR(MapEntry, DescriptorSize);
     }
 
+  ReserveMemory(FreeldrMem, 0x1000, 0x1000, LoaderOsloaderStack, "Stack Space");
     ReserveMemory(FreeldrMem, framebufferData.BaseAddress, framebufferData.BufferSize, LoaderFirmwarePermanent, "VideoMemory");
     *MemoryMapSize = FreeldrDescCount;
     return FreeldrMem;
@@ -276,6 +277,17 @@ PVOID EndOfStack;
 VOID
 UefiPrepareForReactOS(VOID)
 {
+    #if defined(__GNUC__) || defined(__clang__)
+        asm("movl $0x2000, %esp");
+    #elif defined(_MSC_VER)
+        /* We cannot express the above in MASM so we use this far return instead */
+        __asm
+        {
+            mov esp, 0x2000
+        };
+    #else
+    #error
+    #endif
     UefiExitBootServices();
     NewStack = MmAllocateMemoryWithType(0x1000, LoaderOsloaderStack);
     EndOfStack = (PVOID)((ULONG_PTR)NewStack + 0x1000);

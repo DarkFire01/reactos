@@ -362,9 +362,8 @@ NTAPI
 VidInitialize(
     _In_ BOOLEAN SetMode)
 {
-    BootedWithUEFI = TRUE;
     /* Let's check if we booted with UEFI */
-    if (BootedWithUEFI == TRUE)
+    if (1 == TRUE)
     {
         VidInitializeUefi(SetMode);
         goto VidInitializeEnd;
@@ -477,7 +476,7 @@ NTAPI
 VidResetDisplay(
     _In_ BOOLEAN HalReset)
 {
-    if (BootedWithUEFI == TRUE)
+    if (1 == TRUE)
     {
         VidResetDisplayUefi(HalReset);
     }
