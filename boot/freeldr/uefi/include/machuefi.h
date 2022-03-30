@@ -1,3 +1,6 @@
+VOID
+UefiMachInit(const char *CmdLine);
+
 /* Console */
 
 VOID
@@ -18,3 +21,87 @@ VOID
 UefiInitalizeVideo(_In_ EFI_HANDLE ImageHandle,
                    _In_ EFI_SYSTEM_TABLE *SystemTable,
                    _In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop);
+
+VOID
+UefiVideoClearScreen(UCHAR Attr);
+
+VIDEODISPLAYMODE
+UefiVideoSetDisplayMode(char *DisplayMode, BOOLEAN Init);
+
+VOID
+UefiVideoGetDisplaySize(PULONG Width, PULONG Height, PULONG Depth);
+
+ULONG
+UefiVideoGetBufferSize(VOID);
+
+VOID
+UefiVideoGetFontsFromFirmware(PULONG RomFontPointers);
+
+VOID
+UefiVideoSetTextCursorPosition(UCHAR X, UCHAR Y);
+VOID
+UefiVideoHideShowTextCursor(BOOLEAN Show);
+
+VOID
+UefiVideoOutputChar(UCHAR Char, unsigned X, unsigned Y, ULONG FgColor, ULONG BgColor);
+
+VOID
+UefiVideoPutChar(int Ch, UCHAR Attr, unsigned X, unsigned Y);
+
+
+VOID
+UefiVideoCopyOffScreenBufferToVRAM(PVOID Buffer);
+
+BOOLEAN
+UefiVideoIsPaletteFixed(VOID);
+VOID
+UefiVideoSetPaletteColor(UCHAR Color, UCHAR Red, UCHAR Green, UCHAR Blue);
+VOID
+UefiVideoGetPaletteColor(UCHAR Color, UCHAR* Red, UCHAR* Green, UCHAR* Blue);
+VOID
+UefiVideoSync(VOID);
+
+/* Arch specific / Other */
+
+VOID UefiPcBeep(VOID);
+
+PFREELDR_MEMORY_DESCRIPTOR
+UefiMemGetMemoryMap(ULONG *MemoryMapSize);
+
+VOID
+UefiGetExtendedBIOSData(PULONG ExtendedBIOSDataArea, PULONG ExtendedBIOSDataSize);
+
+UCHAR
+UefiGetFloppyCount(VOID);
+
+BOOLEAN
+UefiDiskReadLogicalSectors(
+    IN UCHAR DriveNumber,
+    IN ULONGLONG SectorNumber,
+    IN ULONG SectorCount,
+    OUT PVOID Buffer);
+
+BOOLEAN
+UefiDiskGetDriveGeometry(UCHAR DriveNumber, PGEOMETRY Geometry);
+
+ULONG
+UefiDiskGetCacheableBlockCount(UCHAR DriveNumber);
+
+TIMEINFO*
+UefiGetTime(VOID);
+
+BOOLEAN
+UefiInitializeBootDevices(VOID);
+
+PCONFIGURATION_COMPONENT_DATA
+UefiHwDetect(VOID);
+
+VOID
+UefiPrepareForReactOS(VOID);
+
+VOID UefiHwIdle(VOID);
+
+/* Private to UEFI */
+
+VOID
+UefiPrintF(PUCHAR String, unsigned X, unsigned Y, ULONG FgColor, ULONG BgColor);

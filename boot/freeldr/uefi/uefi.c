@@ -28,7 +28,7 @@ EfiEntry(
 {
     SystemTable->ConOut->OutputString(SystemTable->ConOut, L"UEFI EntryPoint: Starting freeldr from UEFI");
 
-    MachInit(0);
+    UefiMachInit(0);
 
     FrLdrCheckCpuCompatibility();
 
@@ -36,6 +36,9 @@ EfiEntry(
     EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
     SystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
     UefiInitalizeVideo(ImageHandle, SystemTable, gop);
+
+    UefiVideoClearScreen(0);
+    UefiPrintF("Graphics initalization Complete", 1, 1, 0xFFFFFF, 0x000000);
 
     for(;;)
     {

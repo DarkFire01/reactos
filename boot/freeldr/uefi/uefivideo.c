@@ -20,21 +20,44 @@ UefiInitalizeVideo(_In_ EFI_HANDLE ImageHandle,
     refiFbData->PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
     refiFbData->PixelFormat        = gop->Mode->Info->PixelFormat;
     Status = 0;
-
-    //RefiInitFonts(refiFbData);
 }
 
 VOID
-RefiClearScreen(UINT32 Color)
+UefiVideoClearScreen(UCHAR Attr)
 {
     for(int y = 0; y < refiFbData->ScreenHeight; y++)
     {
         for(int x = 0; x < refiFbData->ScreenWidth; x++)
         {
-            *((UINT32*)(refiFbData->BaseAddress + 4 * refiFbData->PixelsPerScanLine * (y) + 4 * (x))) = Color;
+            *((UINT32*)(refiFbData->BaseAddress + 4 * refiFbData->PixelsPerScanLine * (y) + 4 * (x))) = 0x000000;
         }
     }
 }
+
+VIDEODISPLAYMODE
+UefiVideoSetDisplayMode(char *DisplayMode, BOOLEAN Init)
+{
+    /* We only have one mode, semi-text */
+    return VideoTextMode;
+}
+
+VOID
+UefiVideoGetDisplaySize(PULONG Width, PULONG Height, PULONG Depth)
+{
+
+    //(UINT64)Width =  refiFbData->ScreenWidth;
+    //(UINT64)Height = refiFbData->ScreenHeight;
+    //(UINT64)Depth =  refiFbData->PixelsPerScanLine;
+
+}
+
+ULONG
+UefiVideoGetBufferSize(VOID)
+{
+    return refiFbData->BufferSize;
+}
+
+
 
 VOID
 RefiDrawRectangle(UINT32 x, UINT32 y, UINT32 width, UINT32 height, UINT32 Color)
@@ -60,29 +83,11 @@ RefiSetPixel(UINT32 x, UINT32 y, UINT32 Color)
 VOID
 RefiDrawUIBackground()
 {
-    RefiClearScreen(0x000000);
+  //  RefiClearScreen(0x000000);
     RefiDrawRectangle(32, 32, refiFbData->ScreenWidth - 64, 64, 0x555555);
     RefiDrawRectangle(32, refiFbData->ScreenHeight - 96, (refiFbData->ScreenWidth - 64) , 64, 0x555555);
 
 }
-
-VOID
-UefiVideoGetDisplaySize(PULONG Width, PULONG Height, PULONG Depth)
-{
-
-    Width =  (PULONG)refiFbData->ScreenWidth;
-    Height = (PULONG)refiFbData->ScreenHeight;
-    Depth =  (PULONG)refiFbData->PixelsPerScanLine;
-
-}
-
-VIDEODISPLAYMODE
-UefiVideoSetDisplayMode(char *DisplayMode, BOOLEAN Init)
-{
-  /* We only have one mode, semi-text */
-  return VideoTextMode;
-}
-
 
 #define CHAR_WIDTH  8
 #define CHAR_HEIGHT 16
@@ -376,6 +381,12 @@ UefiVideoOutputChar(UCHAR Char, unsigned X, unsigned Y, ULONG FgColor, ULONG BgC
     }
 }
 
+VOID
+UefiVideoPutChar(int Ch, UCHAR Attr, unsigned X, unsigned Y)
+{
+    UefiVideoOutputChar(Ch, X, Y, 0xFFFFFF, 0x000000);
+}
+
 UINT32 
 RefiStrlen(PUCHAR str)
 {
@@ -417,13 +428,6 @@ UefiPrintF(PUCHAR String, unsigned X, unsigned Y, ULONG FgColor, ULONG BgColor)
         UefiVideoOutputChar(String[i], X + i, Y, FgColor, BgColor);
     }
 }
-
-VOID
-UefiVideoPutChar(int Ch, UCHAR Attr, unsigned X, unsigned Y)
-{
-    RefiSetPixel(X, Y, 0x000000);
-}
-
 
 FREELDR_MEMORY_DESCRIPTOR PcMemoryMap[MAX_BIOS_DESCRIPTORS + 1];
 

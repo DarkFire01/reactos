@@ -3,7 +3,7 @@
 #include <debug.h>
 
 VOID
-MachInit(const char *CmdLine)
+UefiMachInit(const char *CmdLine)
 {
     /* Setup vtbl */
     RtlZeroMemory(&MachVtbl, sizeof(MachVtbl));
@@ -29,7 +29,7 @@ MachInit(const char *CmdLine)
     MachVtbl.Beep = UefiPcBeep;
     MachVtbl.PrepareForReactOS = UefiPrepareForReactOS;
     MachVtbl.GetMemoryMap = UefiMemGetMemoryMap;
-    MachVtbl.GetExtendedBIOSData = UefixGetExtendedBIOSData;
+    MachVtbl.GetExtendedBIOSData = UefiGetExtendedBIOSData;
     MachVtbl.GetFloppyCount = UefiGetFloppyCount;
     MachVtbl.DiskReadLogicalSectors = UefiDiskReadLogicalSectors;
     MachVtbl.DiskGetDriveGeometry = UefiDiskGetDriveGeometry;

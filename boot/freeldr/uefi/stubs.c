@@ -5,25 +5,6 @@
 /* Video */
 
 VOID
-UefiVideoClearScreen(UCHAR Attr)
-{
-
-}
-
-VIDEODISPLAYMODE
-UefiVideoSetDisplayMode(char *DisplayMode, BOOLEAN Init)
-{
-  /* We only have one mode, semi-text */
-  return VideoTextMode;
-}
-
-ULONG
-UefiVideoGetBufferSize(VOID)
-{
-  return 0;
-}
-
-VOID
 UefiVideoGetFontsFromFirmware(PULONG RomFontPointers)
 {
 
@@ -40,13 +21,6 @@ UefiVideoHideShowTextCursor(BOOLEAN Show)
 {
   /* We don't have a cursor yet */
 }
-
-VOID
-UefiVideoPutChar(int Ch, UCHAR Attr, unsigned X, unsigned Y)
-{
-
-}
-
 
 VOID
 UefiVideoCopyOffScreenBufferToVRAM(PVOID Buffer)
@@ -85,12 +59,6 @@ VOID UefiPcBeep(VOID)
     /* uefi sound support wen */
 }
 
-PFREELDR_MEMORY_DESCRIPTOR
-UefiMemGetMemoryMap(ULONG *MemoryMapSize)
-{
-    return 0;
-}
-
 VOID
 UefiGetExtendedBIOSData(PULONG ExtendedBIOSDataArea, PULONG ExtendedBIOSDataSize)
 {
@@ -99,7 +67,6 @@ UefiGetExtendedBIOSData(PULONG ExtendedBIOSDataArea, PULONG ExtendedBIOSDataSize
     *ExtendedBIOSDataSize = 0;
 }
 
-static
 UCHAR
 UefiGetFloppyCount(VOID)
 {

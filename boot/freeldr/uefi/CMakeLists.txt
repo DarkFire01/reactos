@@ -115,7 +115,6 @@ list(APPEND FREELDR_ARC_SOURCE
     ../freeldr/arch/i386/hwdisk.c
     ../freeldr/arch/i386/hwpci.c
     ../freeldr/arch/i386/i386bug.c
-    ../freeldr/arch/i386/pc/machpc.c
     ../freeldr/arch/i386/pc/pcbeep.c
     ../freeldr/arch/i386/pc/pccons.c
     ../freeldr/arch/i386/pc/pcdisk.c
