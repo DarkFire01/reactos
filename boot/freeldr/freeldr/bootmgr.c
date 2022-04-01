@@ -167,7 +167,7 @@ BuildArgvForOsLoader(
     /* Dump the argument vector for debugging */
     for (i = 0; i < Argc; ++i)
     {
-        TRACE("Argv[%lu]: '%s'\n", i, Argv[i]);
+      //  TRACE("Argv[%lu]: '%s'\n", i, Argv[i]);
     }
 #endif
 
@@ -335,7 +335,7 @@ VOID RunLoader(VOID)
     }
 
     /* Debugger main initialization */
-    DebugInit(SectionId);
+   // DebugInit(SectionId);
 
     /* Retrieve the default timeout */
     TimeOut = GetTimeOut(SectionId);

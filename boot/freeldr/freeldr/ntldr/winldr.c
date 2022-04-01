@@ -12,7 +12,7 @@
 #include "registry.h"
 #include <internal/cmboot.h>
 
-#include <debug.h>
+#include "../include/debug.h"
 DBG_DEFAULT_CHANNEL(WINDOWS);
 
 // FIXME: Find a better way to retrieve ARC disk information

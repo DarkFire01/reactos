@@ -78,7 +78,7 @@
 #include <ver.h>
 
 /* NTOS loader */
-#include <include/ntldr/winldr.h>
+#include "ntldr/winldr.h"
 #include <conversion.h> // More-or-less related to MM also...
 #include <peloader.h>
 

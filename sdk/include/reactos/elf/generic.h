@@ -61,7 +61,7 @@
 #define __ElfN(x)	__ELF_CONCAT(__ELF_CONCAT(__ELF_CONCAT(Elf,__ELF_WORD_SIZE),_),x)
 #define __ELFN(x)	__ELF_CONCAT(__ELF_CONCAT(__ELF_CONCAT(ELF,__ELF_WORD_SIZE),_),x)
 #define __ElfType(x)	typedef __ElfN(x) __ELF_CONCAT(Elf_,x)
-
+#if 0
 __ElfType(Addr);
 __ElfType(Half);
 __ElfType(Off);
@@ -76,7 +76,7 @@ __ElfType(Dyn);
 __ElfType(Rel);
 __ElfType(Rela);
 __ElfType(Sym);
-
+#endif
 #define ELF_R_SYM	__ELFN(R_SYM)
 #define ELF_R_TYPE	__ELFN(R_TYPE)
 #define ELF_R_INFO	__ELFN(R_INFO)

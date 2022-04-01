@@ -24,6 +24,8 @@
 #include "mm.h"
 #endif
 
+#include "../../machine.h"
+
 VOID PcBeep(VOID);
 
 VOID PcConsPutChar(int Ch);
