@@ -12,7 +12,7 @@
 #include "inffile.h"
 #include "ntldropts.h"
 
-#include <debug.h>
+#include "../include/debug.h"
 DBG_DEFAULT_CHANNEL(WINDOWS);
 
 // TODO: Move to .h
