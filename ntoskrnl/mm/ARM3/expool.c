@@ -2318,6 +2318,7 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
     Entry = MiAllocatePoolPages(OriginalType, PAGE_SIZE);
     if (!Entry)
     {
+        DPRINT1("SIMONE - POOL - 1");
 #if DBG
         //
         // Out of memory, display current consumption
@@ -2919,7 +2920,11 @@ ExFreePool(PVOID P)
     //
     // Just free without checking for the tag
     //
-    ExFreePoolWithTag(P, 0);
+    ULONG_PTR UP = (ULONG_PTR)P;
+    if(UP % POOL_BLOCK_SIZE != 0)
+        return;
+    //PVOID Entry = (PVOID)(UP - (UP % POOL_BLOCK_SIZE));
+    ExFreePoolWithTag((PVOID)UP, 0);
 }
 
 /*
