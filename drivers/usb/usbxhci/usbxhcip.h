@@ -34,3 +34,46 @@ VOID
 NTAPI
 XHCI_Write64bitReg(IN PULONG BaseAddr,
                    IN ULONGLONG Data);
+
+
+/* Transfer type functions ************************************************************************/
+
+MPSTATUS
+NTAPI
+PXHCI_InitTransferBulk(PVOID xhciExtension);
+
+MPSTATUS
+NTAPI
+PXHCI_InitTransferInterrupt(PVOID xhciExtension);
+
+MPSTATUS
+NTAPI
+PXHCI_InitTransferIso(PVOID xhciExtension);
+
+MPSTATUS
+NTAPI
+PXHCI_InitTransferControl(PVOID xhciExtension);
+
+/* endpoint type functions ************************************************************************/
+
+MPSTATUS
+NTAPI
+XHCI_OpenIsoEndpoint(IN PXHCI_EXTENSION XhciExtension,
+                     IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
+                     IN PXHCI_ENDPOINT  XhciEndpoint);
+
+MPSTATUS
+NTAPI
+XHCI_OpenControlEndpoint(IN PXHCI_EXTENSION XhciExtension,
+                         IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
+                         IN PXHCI_ENDPOINT  XhciEndpoint);
+MPSTATUS
+NTAPI
+XHCI_OpenBulkEndpoint(IN PXHCI_EXTENSION XhciExtension,
+                      IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
+                      IN PXHCI_ENDPOINT  XhciEndpoint);
+MPSTATUS
+NTAPI
+XHCI_OpenInterruptEndpoint(IN PXHCI_EXTENSION XhciExtension,
+                           IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
+                           IN PXHCI_ENDPOINT  XhciEndpoint);

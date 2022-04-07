@@ -5,7 +5,7 @@
  * PROGRAMMER:      Rama Teja Gampa <ramateja.g@gmail.com>
 */
 #include "usbxhcip.h"
-//#define NDEBUG
+#define NDEBUG
 #include <debug.h>
 #define NDEBUG_XHCI_TRACE
 #include "dbg_xhci.h"
@@ -31,8 +31,46 @@ XHCI_OpenEndpoint(IN PVOID xhciExtension,
                   IN PUSBPORT_ENDPOINT_PROPERTIES  endpointParameters,
                   IN PVOID xhciEndpoint)
 {
-    DPRINT("XHCI_OpenEndpoint: function initiated\n");
-    return MP_STATUS_SUCCESS;
+    PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties = endpointParameters;
+    PXHCI_EXTENSION XhciExtension = (PXHCI_EXTENSION)xhciExtension;
+    PXHCI_ENDPOINT XhciEndpoint = xhciEndpoint;
+    ULONG TransferType;
+    MPSTATUS MPStatus;
+
+    DPRINT1("XHCI_OpenEndpoint: function initiated\n");
+    TransferType = EndpointProperties->TransferType;
+
+    switch (TransferType)
+    {
+        case USBPORT_TRANSFER_TYPE_ISOCHRONOUS:
+            MPStatus = XHCI_OpenIsoEndpoint(XhciExtension,
+                                            EndpointProperties,
+                                            XhciEndpoint);
+            break;
+
+        case USBPORT_TRANSFER_TYPE_CONTROL:
+            MPStatus = XHCI_OpenControlEndpoint(XhciExtension,
+                                                EndpointProperties,
+                                                XhciEndpoint);
+            break;
+
+        case USBPORT_TRANSFER_TYPE_BULK:
+            MPStatus = XHCI_OpenBulkEndpoint(XhciExtension,
+                                             EndpointProperties,
+                                             XhciEndpoint);
+            break;
+
+        case USBPORT_TRANSFER_TYPE_INTERRUPT:
+            MPStatus = XHCI_OpenInterruptEndpoint(XhciExtension,
+                                                  EndpointProperties,
+                                                  XhciEndpoint);
+            break;
+        default:
+            return MP_STATUS_NOT_SUPPORTED;
+            break;
+    }
+
+    return MPStatus;
 }
 
 MPSTATUS
@@ -41,7 +79,7 @@ XHCI_ReopenEndpoint(IN PVOID xhciExtension,
                     IN PUSBPORT_ENDPOINT_PROPERTIES  endpointParameters,
                     IN PVOID  xhciEndpoint)
 {
-    DPRINT("XHCI_ReopenEndpoint: function initiated\n");
+    DPRINT1("XHCI_ReopenEndpoint: function initiated\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -52,31 +90,46 @@ XHCI_QueryEndpointRequirements(IN PVOID xhciExtension,
                                IN PUSBPORT_ENDPOINT_REQUIREMENTS EndpointRequirements)
 {
     PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties = endpointParameters;
-    ULONG TransferType;
-    
-    DPRINT("XHCI_QueryEndpointRequirements: function initiated\n");
-    TransferType = EndpointProperties->TransferType;
+    PXHCI_EXTENSION XhciExtension;
 
+    ULONG TransferType;
+
+    DPRINT1("XHCI_QueryEndpointRequirements: function initiated\n");
+    TransferType = EndpointProperties->TransferType;
+     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
+    XHCI_ProcessEvent (XhciExtension);
     switch (TransferType)
     {
         case USBPORT_TRANSFER_TYPE_ISOCHRONOUS:
-            DPRINT("XHCI_QueryEndpointRequirements: IsoTransfer\n");
+            DPRINT1("XHCI_QueryEndpointRequirements: IsoTransfer\n");
+            EndpointRequirements->MaxTransferSize = EHCI_MAX_HS_ISO_TRANSFER_SIZE;
             break;
 
         case USBPORT_TRANSFER_TYPE_CONTROL:
-            DPRINT("XHCI_QueryEndpointRequirements: ControlTransfer\n");
+            EndpointRequirements->HeaderBufferSize = sizeof(XHCI_HCD_TD) +
+                                                     sizeof(XHCI_TRANSFER_RING) +
+                                                     EHCI_MAX_CONTROL_TD_COUNT * sizeof(XHCI_HCD_TD);
+            EndpointRequirements->MaxTransferSize = EHCI_MAX_CONTROL_TRANSFER_SIZE;
             break;
 
         case USBPORT_TRANSFER_TYPE_BULK:
-            DPRINT("XHCI_QueryEndpointRequirements: BulkTransfer\n");
+            EndpointRequirements->HeaderBufferSize = sizeof(XHCI_HCD_TD) +
+                                                     sizeof(XHCI_TRANSFER_RING) +
+                                                     EHCI_MAX_BULK_TD_COUNT * sizeof(XHCI_HCD_TD);
+
+            EndpointRequirements->MaxTransferSize = EHCI_MAX_BULK_TRANSFER_SIZE;
             break;
 
         case USBPORT_TRANSFER_TYPE_INTERRUPT:
-            DPRINT("XHCI_QueryEndpointRequirements: InterruptTransfer\n");
+            EndpointRequirements->HeaderBufferSize = sizeof(XHCI_HCD_TD) +
+                                                     sizeof(XHCI_TRANSFER_RING) +
+                                                     EHCI_MAX_INTERRUPT_TD_COUNT * sizeof(XHCI_HCD_TD);
+
+            EndpointRequirements->MaxTransferSize = EHCI_MAX_INTERRUPT_TRANSFER_SIZE;
             break;
 
         default:
-            DPRINT("XHCI_QueryEndpointRequirements: Unknown TransferType - %x\n",
+            DPRINT1("XHCI_QueryEndpointRequirements: Unknown TransferType - %x\n",
                     TransferType);
             DbgBreakPoint();
             break;
@@ -89,7 +142,7 @@ XHCI_CloseEndpoint(IN PVOID xhciExtension,
                    IN PVOID xhciEndpoint,
                    IN BOOLEAN IsDoDisablePeriodic)
 {
-    DPRINT("XHCI_CloseEndpoint: UNIMPLEMENTED. FIXME\n");
+    DPRINT1("XHCI_CloseEndpoint: UNIMPLEMENTED. FIXME\n");
 }
 
 MPSTATUS
@@ -103,14 +156,14 @@ XHCI_ProcessEvent (IN PXHCI_EXTENSION XhciExtension)
     PXHCI_TRB dequeue_pointer;
     ULONG TRBType;
     XHCI_EVENT_TRB eventTRB;
-    
+
     HcResourcesVA = XhciExtension -> HcResourcesVA;
     HcResourcesPA = XhciExtension -> HcResourcesPA;
-    
+
     RunTimeRegisterBase = XhciExtension-> RunTimeRegisterBase;
     dequeue_pointer = HcResourcesVA-> EventRing.dequeue_pointer;
-    
-    while (TRUE) 
+
+    while (TRUE)
     {
         eventTRB = (*dequeue_pointer).EventTRB;
         if (eventTRB.EventGenericTRB.CycleBit != HcResourcesVA->EventRing.ConsumerCycleState)
@@ -128,33 +181,33 @@ XHCI_ProcessEvent (IN PXHCI_EXTENSION XhciExtension)
                 DPRINT("XHCI_ProcessEvent: COMMAND_COMPLETION_EVENT\n");
                 if (eventTRB.CommandCompletionTRB.CompletionCode == SUCCESS)
                 {
-                    DPRINT("XHCI_ProcessEvent: COMMAND_COMPLETION_EVENT,  successful command completion\n");
+                    DPRINT1("XHCI_ProcessEvent: COMMAND_COMPLETION_EVENT,  successful command completion\n");
                 }
-                else DPRINT("XHCI_ProcessEvent: COMMAND_COMPLETION_EVENT,  unsuccessful command completion %i \n",
+                else DPRINT1("XHCI_ProcessEvent: COMMAND_COMPLETION_EVENT,  unsuccessful command completion %i \n",
                              eventTRB.CommandCompletionTRB.CompletionCode);
                 break;
             case PORT_STATUS_CHANGE_EVENT: 
-                DPRINT("XHCI_ProcessEvent: Port Status change event\n");
+                DPRINT1("XHCI_ProcessEvent: Port Status change event\n");
                 /* Call a private function to handle port status events */
                 PXHCI_PortStatusChange(XhciExtension, eventTRB.PortStatusChangeTRB.PortID);
                 break;
             case BANDWIDTH_RESET_REQUEST_EVENT:
-                DPRINT("XHCI_ProcessEvent: BANDWIDTH_RESET_REQUEST_EVENT\n");
+                DPRINT1("XHCI_ProcessEvent: BANDWIDTH_RESET_REQUEST_EVENT\n");
                 break;
             case DOORBELL_EVENT:
-                DPRINT("XHCI_ProcessEvent: DOORBELL_EVENT\n");
+                DPRINT1("XHCI_ProcessEvent: DOORBELL_EVENT\n");
                 break;
             case HOST_CONTROLLER_EVENT:
-                DPRINT("XHCI_ProcessEvent: HOST_CONTROLLER_EVENT\n");
+                DPRINT1("XHCI_ProcessEvent: HOST_CONTROLLER_EVENT\n");
                 break;
             case DEVICE_NOTIFICATION_EVENT:
-                DPRINT("XHCI_ProcessEvent: DEVICE_NOTIFICATION_EVENT\n");
+                DPRINT1("XHCI_ProcessEvent: DEVICE_NOTIFICATION_EVENT\n");
                 break;
             case MF_INDEX_WARP_EVENT:
-                DPRINT("XHCI_ProcessEvent: MF_INDEX_WARP_EVENT\n");
+                DPRINT1("XHCI_ProcessEvent: MF_INDEX_WARP_EVENT\n");
                 break;
             default:
-                DPRINT("XHCI_ProcessEvent: Unknown TRBType - %x\n",
+                DPRINT1("XHCI_ProcessEvent: Unknown TRBType - %x\n",
                         TRBType);
                 DbgBreakPoint(); 
                 break;
@@ -200,7 +253,7 @@ XHCI_SendCommand (IN XHCI_TRB CommandTRB,
     // check if ring is full
     if ((enqueue_pointer + 1) == dequeue_pointer) 
     {
-        DPRINT ("XHCI_SendCommand : Command ring is full \n");
+        DPRINT1 ("XHCI_SendCommand : Command ring is full \n");
         return MP_STATUS_FAILURE;
     }
     // check if the trb is link trb.
@@ -215,7 +268,7 @@ XHCI_SendCommand (IN XHCI_TRB CommandTRB,
         enqueue_pointer = (PXHCI_TRB)(HcResourcesVA + LinkPointer.QuadPart - HcResourcesPA.QuadPart);
         if ((enqueue_pointer == dequeue_pointer) || (enqueue_pointer == dequeue_pointer + 1))
         { // it can't move ahead break out of function
-                DPRINT ("XHCI_SendCommand : Command ring is full \n");
+                DPRINT1 ("XHCI_SendCommand : Command ring is full \n");
                 return MP_STATUS_FAILURE;
         }
         // now the link trb is valid. set its cycle state to Producer cycle state for the command ring to read
@@ -247,7 +300,7 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
                          IN ULONG_PTR resourcesStartVA,
                          IN ULONG  resourcesStartPA)
 {
-    
+    /* This function is fucked, rework later*/
     
     PXHCI_HC_RESOURCES HcResourcesVA;
     PHYSICAL_ADDRESS HcResourcesPA;
@@ -272,8 +325,8 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     PMDL ScratchPadBufferMDL;
     int i = 0;
     
-    DPRINT("XHCI_InitializeResources: function initiated\n");
-    DPRINT_XHCI("XHCI_InitializeResources: BaseVA - %p, BasePA - %p\n",
+    DPRINT1("XHCI_InitializeResources: function initiated\n");
+    DPRINT1_XHCI("XHCI_InitializeResources: BaseVA - %p, BasePA - %p\n",
                 resourcesStartVA,
                 resourcesStartPA);
                 
@@ -287,7 +340,7 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     
     //DCBAA init
     DCBAAPointer.AsULONGLONG =  HcResourcesPA.QuadPart + FIELD_OFFSET(XHCI_HC_RESOURCES, DCBAA);
-    DPRINT("XHCI_InitializeResources  : DCBAAPointer   %p\n", DCBAAPointer.AsULONGLONG );
+    DPRINT1("XHCI_InitializeResources  : DCBAAPointer   %p\n", DCBAAPointer.AsULONGLONG );
 
     XHCI_Write64bitReg(OperationalRegs + XHCI_DCBAAP, DCBAAPointer.AsULONGLONG);
 
@@ -307,7 +360,7 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     HcResourcesVA->CommandRing.ProducerCycleState = 1;
     HcResourcesVA->CommandRing.ConsumerCycleState = 1;
     CommandRingControlRegister.RsvdP = CommandRingControlRegister_temp.RsvdP;  
-    DPRINT("XHCI_InitializeResources  : CommandRingControlRegister   %p\n", CommandRingControlRegister.AsULONGLONG );
+    DPRINT1("XHCI_InitializeResources  : CommandRingControlRegister   %p\n", CommandRingControlRegister.AsULONGLONG );
     XHCI_Write64bitReg(OperationalRegs + XHCI_CRCR, CommandRingControlRegister.AsULONGLONG);
     
     // Place link trb with toggle cycle state in the last link trb.
@@ -333,11 +386,11 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     
     //Primary Interrupter init
     RunTimeRegisterBase =  XhciExtension -> RunTimeRegisterBase;
-    
+
     // dont change imod now
     erstz.AsULONG = READ_REGISTER_ULONG(RunTimeRegisterBase + XHCI_ERSTSZ) ;
     erstz.EventRingSegTableSize = 1;
-    DPRINT("XHCI_InitializeResources  : erstz.AsULONG   %p\n", erstz.AsULONG );
+    DPRINT1("XHCI_InitializeResources  : erstz.AsULONG   %p\n", erstz.AsULONG );
     WRITE_REGISTER_ULONG(RunTimeRegisterBase + XHCI_ERSTSZ, erstz.AsULONG);
     // event ring dequeue pointer.
     erstdp.AsULONGLONG = HcResourcesPA.QuadPart + FIELD_OFFSET(XHCI_HC_RESOURCES, EventRing.firstSeg.XhciTrb[0]);
@@ -349,7 +402,7 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     HcResourcesVA->EventRing.ConsumerCycleState = 1;
     
     erstdp.DequeueERSTIndex =0;
-    DPRINT("XHCI_InitializeResources  : erstdp.AsULONGLONG %p\n", erstdp.AsULONGLONG );
+    DPRINT1("XHCI_InitializeResources  : erstdp.AsULONGLONG %p\n", erstdp.AsULONGLONG );
     XHCI_Write64bitReg(RunTimeRegisterBase + XHCI_ERSTDP, erstdp.AsULONGLONG);
     // event ring segment table base address array
     
@@ -358,7 +411,7 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     EventRingSegTable.RingSegmentSize = 256;
     EventRingSegTable.RsvdZ = 0;
     HcResourcesVA->EventRingSegTable = EventRingSegTable;
-    DPRINT("XHCI_InitializeResources  : erstba.AsULONGLONG   %p\n", erstba.AsULONGLONG );
+    DPRINT1("XHCI_InitializeResources  : erstba.AsULONGLONG   %p\n", erstba.AsULONGLONG );
     XHCI_Write64bitReg(RunTimeRegisterBase + XHCI_ERSTBA, erstba.AsULONGLONG);
     // intially enque and deque are equal. 
 
@@ -395,7 +448,7 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     }
     if ((PageSize & (1 << 0)) == 0) 
     {
-        DPRINT("XHCI_InitializeResources  : fail. does not support 4k page size   %p\n",PageSize);
+        DPRINT1("XHCI_InitializeResources  : fail. does not support 4k page size   %p\n",PageSize);
         return MP_STATUS_FAILURE;
     }
     // allocate scratchpad buffer array
@@ -406,13 +459,13 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     BufferArrayPointer = MmAllocateContiguousMemory(MaxScratchPadBuffers * sizeof(XHCI_SCRATCHPAD_BUFFER_ARRAY), Max);
     if (BufferArrayPointer == NULL)
     {
-        DPRINT("XHCI_InitializeResources  : Scratch pad array ContiguousMemory allcoation fail NULL\n");
+        DPRINT1("XHCI_InitializeResources  : Scratch pad array ContiguousMemory allcoation fail NULL\n");
         return MP_STATUS_FAILURE;
     }
     ScratchPadArrayMDL = IoAllocateMdl(BufferArrayPointer, MaxScratchPadBuffers * sizeof(XHCI_SCRATCHPAD_BUFFER_ARRAY), FALSE, FALSE, NULL);
     if (ScratchPadArrayMDL == NULL) 
     {
-        DPRINT("XHCI_InitializeResources  : Scratch pad array could not be allocated. it is NULL\n");
+        DPRINT1("XHCI_InitializeResources  : Scratch pad array could not be allocated. it is NULL\n");
         MmFreeContiguousMemory(BufferArrayPointer);
         return MP_STATUS_FAILURE;
     }
@@ -420,7 +473,7 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
 
     HcResourcesVA->DCBAA.ContextBaseAddr[0].QuadPart = MmGetMdlPfnArray(ScratchPadArrayMDL)[0] << PAGE_SHIFT; 
     //allocate scratchpad buffers
-    
+    /////////////////////////////////////////////////////////// First File
     ScratchPadBufferMDL = MmAllocatePagesForMdlEx(Zero, Max, Zero, MaxScratchPadBuffers*PAGE_SIZE, MmNonCached, 0);
     if (ScratchPadBufferMDL == NULL) 
     { 
@@ -460,8 +513,8 @@ XHCI_InitializeHardware(IN PXHCI_EXTENSION XhciExtension)
     XHCI_HC_STRUCTURAL_PARAMS_1 StructuralParams_1;
     XHCI_CONFIGURE Config;
 
-    DPRINT("XHCI_InitializeHardware: function initiated\n");
-    DPRINT("XHCI_InitializeHardware: ... \n");
+    DPRINT1("XHCI_InitializeHardware: function initiated\n");
+    DPRINT1("XHCI_InitializeHardware: ... \n");
 
     OperationalRegs = XhciExtension->OperationalRegs;
     BaseIoAdress = XhciExtension->BaseIoAdress;
@@ -487,11 +540,11 @@ XHCI_InitializeHardware(IN PXHCI_EXTENSION XhciExtension)
 
         if (LastTime.QuadPart >= CurrentTime.QuadPart)
         {
-            DPRINT("XHCI_InitializeHardware: Software Reset failed!\n");
+            DPRINT1("XHCI_InitializeHardware: Software Reset failed!\n");
             return MP_STATUS_FAILURE;
         }
     }
-    DPRINT("XHCI_InitializeHardware: Reset - OK\n");
+    DPRINT1("XHCI_InitializeHardware: Reset - OK\n");
 
     StructuralParams_1.AsULONG = READ_REGISTER_ULONG(BaseIoAdress + XHCI_HCSP1); // HCSPARAMS1 register
 
@@ -529,11 +582,11 @@ XHCI_StartController(IN PVOID xhciExtension,
     USHORT MaxScratchPadBuffers;
     XHCI_HC_STRUCTURAL_PARAMS_2 HCSPARAMS2;
 
-    DPRINT("XHCI_StartController: function initiated\n");
+    DPRINT1("XHCI_StartController: function initiated\n");
     if ((Resources->ResourcesTypes & (USBPORT_RESOURCES_MEMORY | USBPORT_RESOURCES_INTERRUPT)) !=
                                      (USBPORT_RESOURCES_MEMORY | USBPORT_RESOURCES_INTERRUPT))
     {
-        DPRINT("XHCI_StartController: Resources->ResourcesTypes - %x\n",
+        DPRINT1("XHCI_StartController: Resources->ResourcesTypes - %x\n",
                 Resources->ResourcesTypes);
 
         return MP_STATUS_ERROR;
@@ -567,12 +620,12 @@ XHCI_StartController(IN PVOID xhciExtension,
     MaxScratchPadBuffers = MaxScratchPadBuffers + HCSPARAMS2.MaxSPBuffersLo;
     XhciExtension->MaxScratchPadBuffers = MaxScratchPadBuffers;
 
-    DPRINT("XHCI_StartController: BaseIoAdress    - %p\n", BaseIoAdress);
-    DPRINT("XHCI_StartController: OperationalRegs - %p\n", OperationalRegs);
-    DPRINT("XHCI_StartController: DoorBellRegisterBase - %p\n", DoorBellRegisterBase);
-    DPRINT("XHCI_StartController: RunTimeRegisterBase - %p\n", RunTimeRegisterBase);
-    DPRINT("XHCI_StartController: PageSize - %p\n", XhciExtension->PageSize);
-    DPRINT("XHCI_StartController: MaxScratchPadBuffers - %p\n", MaxScratchPadBuffers);
+    DPRINT1("XHCI_StartController: BaseIoAdress    - %p\n", BaseIoAdress);
+    DPRINT1("XHCI_StartController: OperationalRegs - %p\n", OperationalRegs);
+    DPRINT1("XHCI_StartController: DoorBellRegisterBase - %p\n", DoorBellRegisterBase);
+    DPRINT1("XHCI_StartController: RunTimeRegisterBase - %p\n", RunTimeRegisterBase);
+    DPRINT1("XHCI_StartController: PageSize - %p\n", XhciExtension->PageSize);
+    DPRINT1("XHCI_StartController: MaxScratchPadBuffers - %p\n", MaxScratchPadBuffers);
 
     RegPacket.UsbPortReadWriteConfigSpace(XhciExtension,
                                           1,
@@ -586,7 +639,7 @@ XHCI_StartController(IN PVOID xhciExtension,
 
     if (MPStatus)
     {
-        DPRINT("XHCI_StartController: Unsuccessful InitializeHardware()\n");
+        DPRINT1("XHCI_StartController: Unsuccessful InitializeHardware()\n");
         return MPStatus;
     }
 
@@ -596,13 +649,26 @@ XHCI_StartController(IN PVOID xhciExtension,
 
     if (MPStatus)
     {
-        DPRINT("XHCI_StartController: Unsuccessful InitializeSchedule()\n");
+        DPRINT1("XHCI_StartController: Unsuccessful InitializeSchedule()\n");
         return MPStatus;
     }
 
     // starting the controller
-    Command.AsULONG = READ_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD);
+  //  Command.AsULONG = 0;
+  //  DPRINT1("Value of command is %X\n",Command.AsULONG);
     Command.RunStop = 1;
+   // Command.HCReset = 0;
+   // Command.InterrupterEnable     = 0;
+   // Command.HostSystemErrorEnable = 0;
+   // Command.RsvdP1                = 0;
+   // Command.LightHCReset          = 0;
+   // Command.ControllerSaveState   = 0;
+   // Command.ControllerRestoreState = 0;
+   // Command.EnableWrapEvent       = 0;
+   // Command.EnableU3Stop          = 0;
+   // Command.RsvdP2                = 0;
+   // Command.CEMEnable             = 0;
+   // Command.RsvdP3                = 0;
     WRITE_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD, Command.AsULONG);
 
 
@@ -629,7 +695,7 @@ XHCI_StopController(IN PVOID xhciExtension,
     LARGE_INTEGER CurrentTime = {{0, 0}};
     LARGE_INTEGER LastTime = {{0, 0}};
 
-    DPRINT("XHCI_StopController: Function initiated. \n");
+    DPRINT1("XHCI_StopController: Function initiated. \n");
     XhciExtension = (PXHCI_EXTENSION) xhciExtension;
     MaxScratchPadBuffers = XhciExtension->MaxScratchPadBuffers;
     // free memory allocated to scratchpad buffers.
@@ -669,7 +735,7 @@ XHCI_StopController(IN PVOID xhciExtension,
 
         if (LastTime.QuadPart >= CurrentTime.QuadPart)
         {
-            DPRINT("XHCI_StopController: controller stop  failed!\n");
+            DPRINT1("XHCI_StopController: controller stop  failed!\n");
         }
     }
 
@@ -681,7 +747,7 @@ XHCI_SuspendController(IN PVOID xhciExtension)
 {
     
     PXHCI_EXTENSION XhciExtension;
-    DPRINT("XHCI_SuspendController: function initiated\n");
+    DPRINT1("XHCI_SuspendController: function initiated\n");
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
     
     XhciExtension->Flags |= XHCI_FLAGS_CONTROLLER_SUSPEND;
@@ -694,7 +760,7 @@ XHCI_ResumeController(IN PVOID xhciExtension)
 {
     
     PXHCI_EXTENSION XhciExtension;
-    DPRINT("XHCI_ResumeController: function initiated\n");
+    DPRINT1("XHCI_ResumeController: function initiated\n");
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
     
     XhciExtension->Flags &= ~XHCI_FLAGS_CONTROLLER_SUSPEND;
@@ -706,7 +772,7 @@ NTAPI
 XHCI_HardwarePresent(IN PXHCI_EXTENSION xhciExtension,
                      IN BOOLEAN IsInvalidateController)
 {
-    DPRINT("XHCI_HardwarePresent: function initiated\n");
+    DPRINT1("XHCI_HardwarePresent: function initiated\n");
     return TRUE;
 }
 
@@ -718,11 +784,29 @@ XHCI_InterruptService(IN PVOID xhciExtension)
     PULONG  RunTimeRegisterBase;
     XHCI_INTERRUPTER_MANAGEMENT Iman;
     PXHCI_EXTENSION XhciExtension;
-    
-    DPRINT("XHCI_InterruptService: function initiated\n");
-    XhciExtension = (PXHCI_EXTENSION)xhciExtension;
-    
+    PULONG  OperationalRegs;
+
+    XHCI_USB_COMMAND Command;
+
+        XhciExtension = (PXHCI_EXTENSION)xhciExtension;
+        OperationalRegs = XhciExtension->OperationalRegs;
     RunTimeRegisterBase = XhciExtension->RunTimeRegisterBase; 
+    Command.RunStop = 1;
+    Command.HCReset = 0;
+    Command.InterrupterEnable     = 1;
+    Command.HostSystemErrorEnable = 0;
+    Command.RsvdP1                = 0;
+    Command.LightHCReset          = 0;
+    Command.ControllerSaveState   = 0;
+    Command.ControllerRestoreState = 0;
+    Command.EnableWrapEvent       = 0;
+    Command.EnableU3Stop          = 0;
+    Command.RsvdP2                = 0;
+    Command.CEMEnable             = 0;
+    Command.RsvdP3                = 0;
+    
+    WRITE_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD, Command.AsULONG);
+    DPRINT1("XHCI_InterruptService: function initiated\n");
     Iman.AsULONG = READ_REGISTER_ULONG(RunTimeRegisterBase + XHCI_IMAN);
     if (Iman.InterruptPending == 0)
     {
@@ -730,9 +814,8 @@ XHCI_InterruptService(IN PVOID xhciExtension)
     }
     Iman.InterruptPending = 1; 
     WRITE_REGISTER_ULONG(RunTimeRegisterBase + XHCI_IMAN, Iman.AsULONG);
-    DPRINT("XHCI_InterruptService: Succesful Interupt\n");
+    DPRINT1("XHCI_InterruptService: Succesful Interupt\n");
     // changing the enque pointer
-
     return TRUE;
 }
 
@@ -741,7 +824,7 @@ NTAPI
 XHCI_InterruptDpc(IN PVOID xhciExtension,
                   IN BOOLEAN IsDoEnableInterrupts)
 {
-    DPRINT("XHCI_InterruptDpc: function initiated\n");
+    DPRINT1("XHCI_InterruptDpc: function initiated\n");
     XHCI_ProcessEvent(xhciExtension);
 }
 
@@ -753,7 +836,7 @@ XHCI_SubmitTransfer(IN PVOID xhciExtension,
                     IN PVOID xhciTransfer,
                     IN PUSBPORT_SCATTER_GATHER_LIST  sgList)
 {
-    DPRINT("XHCI_SubmitTransfer: function initiated\n");
+    DPRINT1("XHCI_SubmitTransfer: function initiated\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -765,7 +848,7 @@ XHCI_SubmitIsoTransfer(IN PVOID xhciExtension,
                        IN PVOID xhciTransfer,
                        IN PVOID isoParameters)
 {
-    DPRINT("XHCI_SubmitIsoTransfer: UNIMPLEMENTED. FIXME\n");
+    DPRINT1("XHCI_SubmitIsoTransfer: UNIMPLEMENTED. FIXME\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -775,7 +858,7 @@ XHCI_AbortIsoTransfer(IN PXHCI_EXTENSION xhciExtension,
                       IN PXHCI_ENDPOINT xhciEndpoint,
                       IN PXHCI_TRANSFER xhciTransfer)
 {
-    DPRINT("XHCI_AbortIsoTransfer: UNIMPLEMENTED. FIXME\n");
+    DPRINT1("XHCI_AbortIsoTransfer: UNIMPLEMENTED. FIXME\n");
 }
 
 VOID
@@ -784,7 +867,7 @@ XHCI_AbortAsyncTransfer(IN PXHCI_EXTENSION xhciExtension,
                         IN PXHCI_ENDPOINT xhciEndpoint,
                         IN PXHCI_TRANSFER xhciTransfer)
 {
-    DPRINT("XHCI_AbortAsyncTransfer: function initiated\n");
+    DPRINT1("XHCI_AbortAsyncTransfer: function initiated\n");
 }
 
 VOID
@@ -794,7 +877,7 @@ XHCI_AbortTransfer(IN PVOID xhciExtension,
                    IN PVOID xhciTransfer,
                    IN PULONG CompletedLength)
 {
-    DPRINT("XHCI_AbortTransfer: function initiated\n");
+    DPRINT1("XHCI_AbortTransfer: function initiated\n");
 }
 
 ULONG
@@ -802,8 +885,9 @@ NTAPI
 XHCI_GetEndpointState(IN PVOID xhciExtension,
                       IN PVOID xhciEndpoint)
 {
-    DPRINT("XHCI_GetEndpointState: UNIMPLEMENTED. FIXME\n");
-    return 0;
+    DPRINT1("XHCI_GetEndpointState: function initiated\n");
+    PXHCI_ENDPOINT XhciEndpoint = xhciEndpoint;
+    return XhciEndpoint->EndpointState;
 }
 
 VOID
@@ -812,7 +896,9 @@ XHCI_SetEndpointState(IN PVOID xhciExtension,
                       IN PVOID xhciEndpoint,
                       IN ULONG EndpointState)
 {
-    DPRINT("XHCI_SetEndpointState: function initiated\n");
+    DPRINT1("XHCI_SetEndpointState: function initiated\n");
+    PXHCI_ENDPOINT XhciEndpoint = xhciEndpoint;
+    XhciEndpoint->EndpointState = EndpointState;
 }
 
 VOID
@@ -820,7 +906,7 @@ NTAPI
 XHCI_PollEndpoint(IN PVOID xhciExtension,
                   IN PVOID xhciEndpoint)
 {
-    DPRINT("XHCI_PollEndpoint: function initiated\n");
+    DPRINT1("XHCI_PollEndpoint: function initiated\n");
 }
 
 VOID
@@ -835,7 +921,6 @@ ULONG
 NTAPI
 XHCI_Get32BitFrameNumber(IN PVOID xhciExtension)
 {
-    DPRINT("XHCI_Get32BitFrameNumber: function initiated\n"); 
     return 0;
 }
 
@@ -843,7 +928,24 @@ VOID
 NTAPI
 XHCI_InterruptNextSOF(IN PVOID xhciExtension)
 {
+    PULONG  RunTimeRegisterBase;
+    XHCI_INTERRUPTER_MANAGEMENT Iman;
+    PXHCI_EXTENSION XhciExtension;
+    
     DPRINT("XHCI_InterruptNextSOF: function initiated\n");
+    XhciExtension = (PXHCI_EXTENSION)xhciExtension;
+    
+    RunTimeRegisterBase = XhciExtension->RunTimeRegisterBase; 
+    Iman.AsULONG = READ_REGISTER_ULONG(RunTimeRegisterBase + XHCI_IMAN);
+    if (Iman.InterruptPending == 0)
+    {
+
+    }
+    Iman.InterruptPending = 1; 
+    WRITE_REGISTER_ULONG(RunTimeRegisterBase + XHCI_IMAN, Iman.AsULONG);
+    DPRINT("XHCI_InterruptNextSOF: Succesful Interupt\n");
+
+
 }
 
 VOID
@@ -855,14 +957,14 @@ XHCI_EnableInterrupts(IN PVOID xhciExtension)
     PULONG  RunTimeRegisterBase;
     XHCI_INTERRUPTER_MANAGEMENT Iman;
 
-    DPRINT("XHCI_EnableInterrupts: function initiated\n");
+    DPRINT1("XHCI_EnableInterrupts: function initiated\n");
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
 
     RunTimeRegisterBase =  XhciExtension->RunTimeRegisterBase;
     Iman.AsULONG = READ_REGISTER_ULONG(RunTimeRegisterBase + XHCI_IMAN);
     Iman.InterruptEnable = 1;
     WRITE_REGISTER_ULONG(RunTimeRegisterBase + XHCI_IMAN, Iman.AsULONG);
-    DPRINT("XHCI_EnableInterrupts: Interrupts enabled\n");
+    DPRINT1("XHCI_EnableInterrupts: Interrupts enabled\n");
 }
 
 VOID
@@ -873,7 +975,7 @@ XHCI_DisableInterrupts(IN PVOID xhciExtension)
     PXHCI_EXTENSION XhciExtension;
     PULONG  RunTimeRegisterBase;
     XHCI_INTERRUPTER_MANAGEMENT Iman;
-    DPRINT("XHCI_DisableInterrupts: function initiated\n");
+    DPRINT1("XHCI_DisableInterrupts: function initiated\n");
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
 
     RunTimeRegisterBase =  XhciExtension -> RunTimeRegisterBase;
@@ -881,7 +983,7 @@ XHCI_DisableInterrupts(IN PVOID xhciExtension)
     Iman.InterruptEnable = 0;
     WRITE_REGISTER_ULONG(RunTimeRegisterBase + XHCI_IMAN,Iman.AsULONG);
 
-    DPRINT("XHCI_EnableInterrupts: Interrupts enabled\n");
+    DPRINT1("XHCI_EnableInterrupts: Interrupts enabled\n");
 }
 
 VOID
@@ -907,7 +1009,7 @@ XHCI_SetEndpointDataToggle(IN PVOID xhciExtension,
                            IN PVOID xhciEndpoint,
                            IN ULONG DataToggle)
 {
-    DPRINT("XHCI_SetEndpointDataToggle: function initiated\n");
+    DPRINT1("XHCI_SetEndpointDataToggle: function initiated\n");
 }
 
 ULONG
@@ -915,7 +1017,7 @@ NTAPI
 XHCI_GetEndpointStatus(IN PVOID xhciExtension,
                        IN PVOID xhciEndpoint)
 {
-    DPRINT("XHCI_GetEndpointStatus: function initiated\n");
+    DPRINT1("XHCI_GetEndpointStatus: function initiated\n");
     return 0;
 }
 
@@ -925,7 +1027,7 @@ XHCI_SetEndpointStatus(IN PVOID xhciExtension,
                        IN PVOID xhciEndpoint,
                        IN ULONG EndpointStatus)
 {
-    DPRINT("XHCI_SetEndpointStatus: function initiated\n");
+    DPRINT1("XHCI_SetEndpointStatus: function initiated\n");
 }
 
 MPSTATUS
@@ -939,7 +1041,7 @@ XHCI_StartSendOnePacket(IN PVOID xhciExtension,
                         IN ULONG BufferLength,
                         IN USBD_STATUS * pUSBDStatus)
 {
-    DPRINT("XHCI_StartSendOnePacket: UNIMPLEMENTED. FIXME\n");
+    DPRINT1("XHCI_StartSendOnePacket: UNIMPLEMENTED. FIXME\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -954,7 +1056,7 @@ XHCI_EndSendOnePacket(IN PVOID xhciExtension,
                       IN ULONG BufferLength,
                       IN USBD_STATUS * pUSBDStatus)
 {
-    DPRINT("XHCI_EndSendOnePacket: UNIMPLEMENTED. FIXME\n");
+    DPRINT1("XHCI_EndSendOnePacket: UNIMPLEMENTED. FIXME\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -965,7 +1067,7 @@ XHCI_PassThru(IN PVOID xhciExtension,
               IN ULONG ParameterLength,
               IN PVOID pParameters)
 {
-    DPRINT("XHCI_PassThru: UNIMPLEMENTED. FIXME\n");
+    DPRINT1("XHCI_PassThru: UNIMPLEMENTED. FIXME\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -975,14 +1077,14 @@ XHCI_RebalanceEndpoint(IN PVOID ohciExtension,
                        IN PUSBPORT_ENDPOINT_PROPERTIES endpointParameters,
                        IN PVOID ohciEndpoint)
 {
-    DPRINT("XHCI_RebalanceEndpoint: UNIMPLEMENTED. FIXME\n");
+    DPRINT1("XHCI_RebalanceEndpoint: UNIMPLEMENTED. FIXME\n");
 }
 
 VOID
 NTAPI
 XHCI_FlushInterrupts(IN PVOID xhciExtension)
 {
-    DPRINT("XHCI_FlushInterrupts: function initiated\n");
+    DPRINT1("XHCI_FlushInterrupts: function initiated\n");
 }
 
 MPSTATUS
@@ -990,7 +1092,7 @@ NTAPI
 XHCI_RH_ChirpRootPort(IN PVOID xhciExtension,
                       IN USHORT Port)
 {
-    DPRINT("XHCI_RH_ChirpRootPort: UNIMPLEMENTED. FIXME\n");
+    DPRINT1("XHCI_RH_ChirpRootPort: UNIMPLEMENTED. FIXME\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -998,14 +1100,14 @@ VOID
 NTAPI
 XHCI_TakePortControl(IN PVOID ohciExtension)
 {
-    DPRINT("XHCI_TakePortControl: UNIMPLEMENTED. FIXME\n");
+    DPRINT1("XHCI_TakePortControl: UNIMPLEMENTED. FIXME\n");
 }
 
 VOID
 NTAPI
 XHCI_Unload(PDRIVER_OBJECT DriverObject)
 {
-    DPRINT("XHCI_Unload: UNIMPLEMENTED. FIXME\n");
+    DPRINT1("XHCI_Unload: UNIMPLEMENTED. FIXME\n");
 }
 
 NTSTATUS
@@ -1013,14 +1115,14 @@ NTAPI
 DriverEntry(IN PDRIVER_OBJECT DriverObject,
             IN PUNICODE_STRING RegistryPath)
 {
-    DPRINT("DriverEntry: DriverObject - %p, RegistryPath - %wZ\n",
+    DPRINT1("DriverEntry: DriverObject - %p, RegistryPath - %wZ\n",
            DriverObject,
            RegistryPath);
     if (USBPORT_GetHciMn() != USBPORT_HCI_MN) 
     {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-    
+    __debugbreak();
     RtlZeroMemory(&RegPacket, sizeof(USBPORT_REGISTRATION_PACKET));
     
     RegPacket.MiniPortVersion = USB_MINIPORT_VERSION_XHCI;
@@ -1089,10 +1191,10 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
     RegPacket.RH_ChirpRootPort = XHCI_RH_ChirpRootPort;
     RegPacket.TakePortControl = XHCI_TakePortControl;
     
-    DPRINT("XHCI_DriverEntry: before driver unload. FIXME\n");
+    DPRINT1("XHCI_DriverEntry: before driver unload. FIXME\n");
     DriverObject->DriverUnload = XHCI_Unload;
     
-    DPRINT("XHCI_DriverEntry: after driver unload, before usbport_reg call. FIXME\n");
+    DPRINT1("XHCI_DriverEntry: after driver unload, before usbport_reg call. FIXME\n");
 
     return USBPORT_RegisterUSBPortDriver(DriverObject, USB30_MINIPORT_INTERFACE_VERSION, &RegPacket);
 

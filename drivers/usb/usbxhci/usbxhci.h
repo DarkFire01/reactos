@@ -11,9 +11,15 @@
 #include <usbdlib.h>
 #include "hardware.h"
 
-typedef struct _XHCI_TRANSFER 
-{
-    ULONG Reserved;
+/* XHCI Transfer follows USBPORT Transfer */
+typedef struct _XHCI_TRANSFER {
+  ULONG Reserved;
+  PUSBPORT_TRANSFER_PARAMETERS TransferParameters;
+  ULONG USBDStatus;
+  ULONG TransferLen;
+  PXHCI_ENDPOINT XhciEndpoint;
+  ULONG PendingTDs;
+  ULONG TransferOnAsyncList;
 } XHCI_TRANSFER, *PXHCI_TRANSFER;
 
 /* Roothub Functions ******************************************************************************/
