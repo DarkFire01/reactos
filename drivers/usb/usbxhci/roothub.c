@@ -19,7 +19,7 @@ XHCI_RH_GetRootHubData(IN PVOID xhciExtension,
     
     PXHCI_EXTENSION XhciExtension;
     PUSBPORT_ROOT_HUB_DATA RootHubData;
-    DPRINT("XHCI_RH_GetRootHubData: function initiated\n");
+    DPRINT1("XHCI_RH_GetRootHubData: function initiated\n");
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
 
     DPRINT_RH("XHCI_RH_GetRootHubData: XhciExtension - %p, rootHubData - %p\n",
@@ -45,7 +45,7 @@ NTAPI
 XHCI_RH_GetStatus(IN PVOID xhciExtension,
                   IN PUSHORT Status)
 {
-    DPRINT("XHCI_RH_GetStatus: function initiated\n");
+    DPRINT1("XHCI_RH_GetStatus: function initiated\n");
     *Status = USB_GETSTATUS_SELF_POWERED;
     return MP_STATUS_SUCCESS;
 }
@@ -106,7 +106,7 @@ NTAPI
 XHCI_RH_FinishReset(IN PVOID xhciExtension,
                     IN PUSHORT Port)
 {
-    DPRINT("XHCI_RH_FinishReset: function initiated\n");
+    DPRINT1("XHCI_RH_FinishReset: function initiated\n");
 }
 
 ULONG
@@ -114,7 +114,7 @@ NTAPI
 XHCI_RH_PortResetComplete(IN PVOID xhciExtension,
                           IN PUSHORT Port)
 {
-    DPRINT("XHCI_RH_PortResetComplete: function initiated\n");
+    DPRINT1("XHCI_RH_PortResetComplete: function initiated\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -128,7 +128,7 @@ XHCI_RH_SetFeaturePortReset(IN PVOID xhciExtension,
     PULONG PortStatusRegPointer;
     XHCI_PORT_STATUS_CONTROL PortStatusRegister;
     
-    DPRINT("XHCI_RH_SetFeaturePortReset: function initiated\n");
+    DPRINT1("XHCI_RH_SetFeaturePortReset: function initiated\n");
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
     ASSERT(Port != 0 && Port <= XhciExtension->NumberOfPorts);
     PortStatusRegPointer = (XhciExtension->OperationalRegs) + (XHCI_PORTSC + (Port - 1)*4);  
@@ -151,7 +151,7 @@ XHCI_RH_SetFeaturePortPower(IN PVOID xhciExtension,
     PXHCI_EXTENSION XhciExtension;
     PULONG PortStatusRegPointer;
     XHCI_PORT_STATUS_CONTROL PortStatusRegister;
-    DPRINT("XHCI_RH_SetFeaturePortPower: function initiated\n");
+    DPRINT1("XHCI_RH_SetFeaturePortPower: function initiated\n");
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
     ASSERT(Port != 0 && Port <= XhciExtension->NumberOfPorts);
     PortStatusRegPointer = (XhciExtension->OperationalRegs) + (XHCI_PORTSC + (Port - 1)*4);  
@@ -178,7 +178,7 @@ NTAPI
 XHCI_RH_SetFeaturePortSuspend(IN PVOID xhciExtension,
                               IN USHORT Port)
 {
-    DPRINT("XHCI_RH_SetFeaturePortSuspend: function initiated\n");
+    DPRINT1("XHCI_RH_SetFeaturePortSuspend: function initiated\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -191,7 +191,7 @@ XHCI_RH_ClearFeaturePortEnable(IN PVOID xhciExtension,
     PXHCI_EXTENSION XhciExtension;
     PULONG PortStatusRegPointer;
     XHCI_PORT_STATUS_CONTROL PortStatusRegister;
-    DPRINT("XHCI_RH_ClearFeaturePortEnable: function initiated\n");
+    DPRINT1("XHCI_RH_ClearFeaturePortEnable: function initiated\n");
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
     ASSERT(Port != 0 && Port <= XhciExtension->NumberOfPorts);
     PortStatusRegPointer = (XhciExtension->OperationalRegs) + (XHCI_PORTSC + (Port - 1)*4);  
@@ -213,7 +213,7 @@ NTAPI
 XHCI_RH_ClearFeaturePortPower(IN PVOID xhciExtension,
                               IN USHORT Port)
 {
-    DPRINT("XHCI_RH_ClearFeaturePortPower: function initiated\n");
+    DPRINT1("XHCI_RH_ClearFeaturePortPower: function initiated\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -222,7 +222,7 @@ NTAPI
 XHCI_RH_PortResumeComplete(IN PULONG xhciExtension,
                            IN PUSHORT Port)
 {
-   DPRINT("XHCI_RH_PortResumeComplete: function initiated\n");
+   DPRINT1("XHCI_RH_PortResumeComplete: function initiated\n");
 }
 
 MPSTATUS
@@ -230,7 +230,7 @@ NTAPI
 XHCI_RH_ClearFeaturePortSuspend(IN PVOID xhciExtension,
                                 IN USHORT Port)
 {
-    DPRINT("XHCI_RH_ClearFeaturePortSuspend: function initiated\n");
+    DPRINT1("XHCI_RH_ClearFeaturePortSuspend: function initiated\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -239,7 +239,7 @@ NTAPI
 XHCI_RH_ClearFeaturePortEnableChange(IN PVOID xhciExtension,
                                      IN USHORT Port)
 {
-    DPRINT("XHCI_RH_ClearFeaturePortEnableChange: function initiated\n");
+    DPRINT1("XHCI_RH_ClearFeaturePortEnableChange: function initiated\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -252,7 +252,7 @@ XHCI_RH_ClearFeaturePortConnectChange(IN PVOID xhciExtension,
     PXHCI_EXTENSION XhciExtension;
     PULONG PortStatusRegPointer;
     XHCI_PORT_STATUS_CONTROL PortStatusRegister;
-    DPRINT("XHCI_RH_ClearFeaturePortConnectChange: function initiated\n");
+    DPRINT1("XHCI_RH_ClearFeaturePortConnectChange: function initiated\n");
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
     ASSERT(Port != 0 && Port <= XhciExtension->NumberOfPorts);
     PortStatusRegPointer = (XhciExtension->OperationalRegs) + (XHCI_PORTSC + (Port - 1)*4);  
@@ -278,7 +278,7 @@ XHCI_RH_ClearFeaturePortResetChange(IN PVOID xhciExtension,
     PXHCI_EXTENSION XhciExtension;
     PULONG PortStatusRegPointer;
     XHCI_PORT_STATUS_CONTROL PortStatusRegister;
-    DPRINT("XHCI_RH_ClearFeaturePortResetChange: function initiated\n");
+    DPRINT1("XHCI_RH_ClearFeaturePortResetChange: function initiated\n");
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
     ASSERT(Port != 0 && Port <= XhciExtension->NumberOfPorts);
     PortStatusRegPointer = (XhciExtension->OperationalRegs) + (XHCI_PORTSC + (Port - 1)*4);  
@@ -301,7 +301,7 @@ NTAPI
 XHCI_RH_ClearFeaturePortSuspendChange(IN PVOID xhciExtension,
                                       IN USHORT Port)
 {
-    DPRINT("XHCI_RH_ClearFeaturePortSuspendChange: function initiated\n");
+    DPRINT1("XHCI_RH_ClearFeaturePortSuspendChange: function initiated\n");
     return MP_STATUS_SUCCESS;
 }
 
@@ -310,7 +310,7 @@ NTAPI
 XHCI_RH_ClearFeaturePortOvercurrentChange(IN PVOID xhciExtension,
                                           IN USHORT Port)
 {
-    DPRINT("XHCI_RH_ClearFeaturePortOvercurrentChange: function initiated\n");
+    DPRINT1("XHCI_RH_ClearFeaturePortOvercurrentChange: function initiated\n");
     return MP_STATUS_SUCCESS;
 }
 

@@ -18,6 +18,17 @@
 #define XHCI_MAX_ENDPOINTS 32;
 #define XHCI_FLAGS_CONTROLLER_SUSPEND 0x01
 
+#define EHCI_MAX_CONTROL_TRANSFER_SIZE    0x10000
+#define EHCI_MAX_INTERRUPT_TRANSFER_SIZE  0x1000
+#define EHCI_MAX_BULK_TRANSFER_SIZE       0x400000
+#define EHCI_MAX_FS_ISO_TRANSFER_SIZE     0x40000
+#define EHCI_MAX_HS_ISO_TRANSFER_SIZE     0x180000
+
+
+#define EHCI_MAX_CONTROL_TD_COUNT    6
+#define EHCI_MAX_INTERRUPT_TD_COUNT  4
+#define EHCI_MAX_BULK_TD_COUNT       209
+
 /* Generic TRBs ***********************************************************************************/
 
 typedef struct _XHCI_GENERIC_TRB {
@@ -194,7 +205,7 @@ C_ASSERT(sizeof(XHCI_SCRATCHPAD_BUFFER_ARRAY) == 8);
 /* Endpoint Context *******************************************************************************/
 
 /* 6.2.3 */
-typedef struct _XHCI_ENDPOINT
+typedef struct _XHCI_ENDPOINT_CONTEXT
 {
     /* Offset 00h */
     struct 
@@ -220,20 +231,31 @@ typedef struct _XHCI_ENDPOINT
 
     };
     /* Offset 08h */
-    struct 
+    struct
     {
         ULONG DCS                            : 1;
         ULONG Rsvdz4                         : 3;
         ULONGLONG TRDeqPtr                   : 60;
     };
-    
+
     /* Offset 10h */
-    struct 
+    struct
     {
         ULONG AverageTRBLength               : 16;
         ULONG MaxESITPayload                 : 16;
     };
-} XHCI_ENDPOINT, *PXHCI_ENDPOINT;
+} XHCI_ENDPOINT_CONTEXT, *PXHCI_ENDPOINT_CONTEXT;
+
+typedef struct _XHCI_ISO_ENDPOINT
+{
+    UINT32 temp : 1;
+} XHCI_ISO_ENDPOINT, *PXHCI_ISO_ENDPOINT;
+
+typedef struct _XHCI_ENDPOINT_TYPE
+{
+    XHCI_ISO_ENDPOINT   IsoEndpoint;
+
+} XHCI_ENDPOINT_TYPE, *PXHCI_ENDPOINT_TYPE;
 
 
 /* Slot Context ***********************************************************************************/
@@ -353,6 +375,33 @@ typedef struct _XHCI_DEVICE_CONTEXT
     };
 } XHCI_DEVICE_CONTEXT, *PXHCI_DEVICE_CONTEXT;
 
+typedef struct _XHCI_ENDPOINT
+{
+    ULONG EndpointStatus;
+    ULONG EndpointState;
+    /* xhci_device */
+    /*xhci_slot*/
+    USBPORT_ENDPOINT_PROPERTIES EndpointProperties;
+    UINT32 ContextIndex;
+    XHCI_ENDPOINT_TYPE EndpointType;
+    UINT32 Interval;
+    XHCI_ENDPOINT_CONTEXT *Context;
+    XHCI_RING TransferRing;
+
+    PVOID DmaBufferVA;
+    ULONG DmaBufferPA;
+    PVOID FirstTD;
+    ULONG MaxTDs;
+    ULONG PendingTDs;
+    ULONG RemainTDs;
+ // PEHCI_HCD_QH QH;
+ // PEHCI_HCD_TD HcdHeadP;
+  //PEHCI_HCD_TD HcdTailP;
+   LIST_ENTRY ListTDs;
+ // const EHCI_PERIOD * PeriodTable;
+//  PEHCI_STATIC_QH StaticQH;
+} XHCI_ENDPOINT, *PXHCI_ENDPOINT;
+
 /* Input Context **********************************************************************************/
 
 /* 6.2.5 */
@@ -368,6 +417,7 @@ typedef struct _XHCI_INPUT_CONTEXT
 /* 6.2.5 */
 typedef struct _XHCI_OUTPUT_DEVICE_CONTEXT
 {
-    XHCI_SLOT_CONTEXT SlotContext;
+    PXHCI_SLOT_CONTEXT SlotContext;
     XHCI_ENDPOINT EndpointList[31]; /* Hard value in spec */
 } XHCI_OUTPUT_DEVICE_CONTEXT, *PXHCI_OUTPUT_DEVICE_CONTEXT;
+

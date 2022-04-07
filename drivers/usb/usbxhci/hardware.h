@@ -371,3 +371,24 @@ typedef volatile union _XHCI_DOORBELL
     };
     ULONG AsULONG;
 } XHCI_DOORBELL;
+
+typedef struct _XHCI_HCD_TD {
+  /* Hardware*/
+  //EHCI_QUEUE_TD HwTD;
+  /* Software */
+  ULONG PhysicalAddress;
+  ULONG TdFlags;
+  struct _XHCI_ENDPOINT * XhciEndpoint;
+  struct _XHCI_TRANSFER * XhciTransfer;
+  struct _XHCI_HCD_TD * NextHcdTD;
+  struct _XHCI_HCD_TD * AltNextHcdTD;
+  USB_DEFAULT_PIPE_SETUP_PACKET SetupPacket;
+  ULONG LengthThisTD;
+  LIST_ENTRY DoneLink;
+#ifdef _WIN64
+  ULONG Pad[31];
+#else
+  ULONG Pad[40];
+#endif
+} XHCI_HCD_TD, *PXHCI_HCD_TD;
+
