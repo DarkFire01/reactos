@@ -135,6 +135,8 @@ XHCI_ProcessEvent (IN PXHCI_EXTENSION XhciExtension)
                 break;
             case PORT_STATUS_CHANGE_EVENT:
                 DPRINT("XHCI_ProcessEvent: Port Status change event\n");
+                /* Call a private function to handle port status events */
+                PXHCI_PortStatusChange(XhciExtension, eventTRB.PortStatusChangeTRB.PortID);
                 break;
             case BANDWIDTH_RESET_REQUEST_EVENT:
                 DPRINT("XHCI_ProcessEvent: BANDWIDTH_RESET_REQUEST_EVENT\n");
@@ -366,6 +368,20 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
         HcResourcesVA->EventRing.firstSeg.XhciTrb[i].GenericTRB.Word2 = 0;
         HcResourcesVA->EventRing.firstSeg.XhciTrb[i].GenericTRB.Word3 = 0;
     }
+
+    /* Initalize Transfer Ring */
+
+    HcResourcesVA->TransferRing.enqueue_pointer = &(HcResourcesVA->TransferRing.firstSeg.XhciTrb[0]);
+    HcResourcesVA->TransferRing.dequeue_pointer = &(HcResourcesVA->TransferRing.firstSeg.XhciTrb[0]);
+    for (i=0; i<256; i++)
+    {
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word0 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word1 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word2 = 0;
+        HcResourcesVA->TransferRing.firstSeg.XhciTrb[i].GenericTRB.Word3 = 0;
+    }
+    HcResourcesVA->TransferRing.ProducerCycleState = 1;
+    HcResourcesVA->TransferRing.ConsumerCycleState = 1;
 
     // check if the controller supports 4k page size or quit.
     PageSize = XhciExtension-> PageSize;
@@ -809,6 +825,8 @@ NTAPI
 XHCI_CheckController(IN PVOID xhciExtension)
 {
     DPRINT("XHCI_CheckController: function initiated\n");
+    /* Todo: Change the logic here */
+    XHCI_ProcessEvent(xhciExtension);
 }
 
 ULONG

@@ -21,3 +21,22 @@ MPSTATUS
 NTAPI
 XHCI_SendCommand (IN XHCI_TRB CommandTRB,
                   IN PXHCI_EXTENSION XhciExtension);
+
+
+VOID
+NTAPI
+PXHCI_PortStatusChange(IN PXHCI_EXTENSION XhciExtension,
+                       IN ULONG PortID);
+
+VOID
+NTAPI
+PXHCI_AssignSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID);
+
+VOID
+NTAPI
+PXHCI_InitSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID, ULONG SlotID);
+
+VOID
+NTAPI
+XHCI_Write64bitReg(IN PULONG BaseAddr,
+                   IN ULONGLONG Data);
