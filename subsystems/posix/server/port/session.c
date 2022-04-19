@@ -52,7 +52,7 @@ ProcessConnectionRequest (PLPC_MAX_MESSAGE pRequest)
         Status = NtAcceptConnectPort (
                     & hConnectedPort,
 		    NULL,
-		    & pRequest->Header,
+		    (PPORT_MESSAGE)& pRequest->Header,
 		    FALSE, /* reject connection request */
 		    NULL,
 		    NULL
@@ -71,7 +71,7 @@ ProcessConnectionRequest (PLPC_MAX_MESSAGE pRequest)
     Status = NtAcceptConnectPort (
                 & hConnectedPort,
 		& ulPortIdentifier,
-	        & pRequest->Header,
+	        (PPORT_MESSAGE)& pRequest->Header,
 		TRUE, /* accept connection request */
 		NULL,
 		NULL
@@ -132,7 +132,7 @@ SessionPortListener (PVOID pArg)
     ULONG            ulIndex = (ULONG) pArg;
     NTSTATUS         Status;
     LPC_TYPE         RequestType;
-    ULONG            PortIdentifier;
+    //ULONG            PortIdentifier;
     PSX_MAX_MESSAGE  Request;
     PPSX_MAX_MESSAGE Reply = NULL;
     BOOL             NullReply = FALSE;
@@ -148,14 +148,14 @@ SessionPortListener (PVOID pArg)
             Status = NtReplyWaitReceivePort (
                         Server.Port[ulIndex].hObject,
                         0,
-                        (PLPC_MESSAGE) Reply,
-                        (PLPC_MESSAGE) & Request
+                        (PPORT_MESSAGE) Reply,
+                        (PPORT_MESSAGE) & Request
                         );
             if (!NT_SUCCESS(Status))
             {
                 break;
             }
-            RequestType = PORT_MESSAGE_TYPE(Request);
+            RequestType = (LPC_TYPE)Request.Header.MessageType;
             switch (RequestType)
             {
             case LPC_CONNECTION_REQUEST:

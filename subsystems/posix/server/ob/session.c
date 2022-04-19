@@ -26,11 +26,12 @@
  * --------------------------------------------------------------------
  */
 #include "../include/psxss.h"
+#include <windows.h>
 
-#define   LOCK_ALL_SESSIONS RtlEnterCriticalSection(& Sessions.Lock)
-#define UNLOCK_ALL_SESSIONS RtlLeaveCriticalSection(& Sessions.Lock)
-#define   LOCK_THIS_SESSION RtlEnterCriticalSection(& Session->Lock)
-#define UNLOCK_THIS_SESSION RtlLeaveCriticalSection(& Session->Lock)
+#define   LOCK_ALL_SESSIONS RtlEnterCriticalSection((PRTL_CRITICAL_SECTION)& Sessions.Lock)
+#define UNLOCK_ALL_SESSIONS RtlLeaveCriticalSection((PRTL_CRITICAL_SECTION)& Sessions.Lock)
+#define   LOCK_THIS_SESSION RtlEnterCriticalSection((PRTL_CRITICAL_SECTION)& Session->Lock)
+#define UNLOCK_THIS_SESSION RtlLeaveCriticalSection((PRTL_CRITICAL_SECTION)& Session->Lock)
 
 
 /* A double-linked list for the PSX_SESSION instances */
@@ -64,7 +65,7 @@ PsxInitializeSessions (VOID)
     Sessions.NextFreeId = 0;
     Sessions.Count = 0;
     Sessions.List = NULL;
-    RtlInitializeCriticalSection (& Sessions.Lock);
+    RtlInitializeCriticalSection ((PRTL_CRITICAL_SECTION)& Sessions.Lock);
     return STATUS_SUCCESS;
 }
 /**********************************************************************
@@ -84,7 +85,7 @@ PsxCreateSessionObjects (
     SECURITY_QUALITY_OF_SERVICE Sqos;
     PSX_CONNECT_PORT_DATA	ConnectData;
     ULONG			ConnectDataSize = sizeof ConnectData;
-
+#if 0
     /* Port */
     swprintf (
         NameBuffer,
@@ -93,6 +94,7 @@ PsxCreateSessionObjects (
         PSX_NS_SESSION_DIRECTORY_NAME,
         pRequest->Header.ClientId.UniqueProcess
         );
+#endif
     debug_print (L"PSXSS: %s: %s", __FUNCTION__, NameBuffer);
     RtlInitUnicodeString (& Name, NameBuffer);
     InitializeObjectAttributes (& Oa, & Name, 0, NULL, NULL);
@@ -117,13 +119,15 @@ PsxCreateSessionObjects (
     }
     /* TODO:  */
     /* Section */
+    #if 0
     swprintf (
         NameBuffer,
-        PSX_NS_SESSION_DATA_TEMPLATE,
-        PSX_NS_SUBSYSTEM_DIRECTORY_NAME,
-        PSX_NS_SESSION_DIRECTORY_NAME,
+        ()PSX_NS_SESSION_DATA_TEMPLATE,
+        ()PSX_NS_SUBSYSTEM_DIRECTORY_NAME,
+        ()PSX_NS_SESSION_DIRECTORY_NAME,
         pRequest->Header.ClientId.UniqueProcess
-    );
+    );.
+    #endif
     debug_print (L"PSXSS: : %s", __FUNCTION__, NameBuffer);
     RtlInitUnicodeString (& Name, NameBuffer); 
     InitializeObjectAttributes (& Oa, & Name, 0, 0, 0);
@@ -213,7 +217,7 @@ PsxCreateSession (
         debug_print (L"PSX: %s: failed to create a new heap for session # %d", __FUNCTION__, Session->Id);
         return STATUS_MEMORY_NOT_ALLOCATED;
     }
-    RtlInitializeCriticalSection (& Session->Lock);
+    RtlInitializeCriticalSection ((PRTL_CRITICAL_SECTION)& Session->Lock);
     /* TODO: open the terminal's shared section */
     /* TODO: connect to the terminal's port */        
     /* Inset the new PSX_SESSION object in the sessions table */
@@ -287,6 +291,7 @@ PsxWriteTerminalSession (
     /* TODO: request a WRITE operation to the session terminal */
     /* TODO: unlock this session's section */
     UNLOCK_THIS_SESSION;
+    return 0;
 }
 
 NTSTATUS NTAPI
@@ -303,5 +308,6 @@ PsxReadTerminalSession (
     /* TODO: copy the data from this session's section */
     /* TODO: unlock this session's section */
     UNLOCK_THIS_SESSION;
+    return 0;
 }
 /* EOF */

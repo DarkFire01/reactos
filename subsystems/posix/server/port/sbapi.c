@@ -58,9 +58,10 @@ VOID NTAPI
 SbApiPortListener (PVOID pArg)
 {
     NTSTATUS         Status;
-    ULONG            PortIdentifier;
+    Status = 0;
+   // ULONG            PortIdentifier;
     PSX_MAX_MESSAGE  Request;
-    PPSX_MAX_MESSAGE Reply = NULL;
+    //PPSX_MAX_MESSAGE Reply = NULL;
 
     debug_print (L"PSXSS: ->%s pArg=%d", TEXT(__FUNCTION__), (ULONG) pArg);
 

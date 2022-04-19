@@ -30,17 +30,17 @@ SERVER Server =
         {   INVALID_HANDLE_VALUE,
             L"\\"PSX_NS_SUBSYSTEM_DIRECTORY_NAME"\\"PSX_NS_API_PORT_NAME,
             {0,0,NULL},
-            ApiPortListener
+            (PTHREAD_START_ROUTINE)ApiPortListener
         },
         {   INVALID_HANDLE_VALUE,
             L"\\"PSX_NS_SUBSYSTEM_DIRECTORY_NAME"\\"PSX_NS_SBAPI_PORT_NAME,
             {0,0,NULL},
-            SbApiPortListener
+            (PTHREAD_START_ROUTINE)SbApiPortListener
         },
         {   INVALID_HANDLE_VALUE,
             L"\\"PSX_NS_SUBSYSTEM_DIRECTORY_NAME"\\"PSX_NS_SESSIONAPI_PORT_NAME,
             {0,0,NULL},
-            SessionPortListener
+            (PTHREAD_START_ROUTINE)SessionPortListener
         }
     }
 };

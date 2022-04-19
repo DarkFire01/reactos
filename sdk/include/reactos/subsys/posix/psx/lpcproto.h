@@ -19,6 +19,7 @@
 #include <ndk/lpcfuncs.h>
 #include <ndk/umfuncs.h>
 #include <ndk/psfuncs.h>
+#include <ndk/lpctypes.h>
 //#include <wine/winternl.h>
 #include <ndk/rtlfuncs.h>
 
@@ -87,6 +88,15 @@ typedef struct _PSX_MAX_MESSAGE
     PSX_MESSAGE_HEADER PsxHeader;
     BYTE               Data [PSX_MAX_LPC_DATA_SIZE];
 } PSX_MAX_MESSAGE, * PPSX_MAX_MESSAGE;
+
+/* i have no fucking clue why.,.. */
+typedef struct _LPC_MAX_MESSAGE
+{
+    //LPC_MESSAGE_HEADER Header;
+    LPC_MESSAGE Header;
+    PSX_MESSAGE_HEADER PsxHeader;
+    BYTE               Data [PSX_MAX_LPC_DATA_SIZE];
+} LPC_MAX_MESSAGE, * PLPC_MAX_MESSAGE;
 
 /* Terminal I/O */
 

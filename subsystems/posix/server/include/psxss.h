@@ -4,17 +4,24 @@
 /* PSDK/NDK Headers */
 #include <stdio.h>
 #define WIN32_NO_STATUS
+/* SDK/DDK/NDK Headers. */
+#define WIN32_NO_STATUS
 #include <windef.h>
 #include <winbase.h>
+#include <winreg.h>
+#include <winuser.h>
+#include <dpfilter.h>
 #define NTOS_MODE_USER
-#include <ndk/setypes.h>
-#include <ndk/sefuncs.h>
+#include <ndk/cmfuncs.h>
 #include <ndk/exfuncs.h>
+#include <ndk/iofuncs.h>
+#include <ndk/kefuncs.h>
+#include <ndk/ldrfuncs.h>
+#include <ndk/mmfuncs.h>
 #include <ndk/obfuncs.h>
-#include <ndk/lpcfuncs.h>
-#include <ndk/umfuncs.h>
 #include <ndk/psfuncs.h>
 #include <ndk/rtlfuncs.h>
+#include <ndk/umfuncs.h>
 
 #include <psx/lpcproto.h>
 
@@ -69,7 +76,7 @@ typedef struct _SERVER
 #define PSX_DIRECTORY_SYSTEM   2
 
 extern SERVER Server; /* server/misc/init.c */
-#if 0
+
 /* System call type */
 typedef NTSTATUS (NTAPI *PSX_SYSTEM_CALL)(PPSX_MAX_MESSAGE);
 
@@ -78,10 +85,10 @@ typedef NTSTATUS (NTAPI *PSX_SYSTEM_CALL)(PPSX_MAX_MESSAGE);
 extern PSX_SYSTEM_CALL SystemCall []; /* server/call/syscall.c */
 
 /* Listener's Threads */
-//VOID NTAPI ApiPortListener (PVOID);
-//VOID NTAPI SbApiPortListener (PVOID);
-//VOID NTAPI SessionPortListener (PVOID);
-#endif
+VOID NTAPI ApiPortListener (PVOID);
+VOID NTAPI SbApiPortListener (PVOID);
+VOID NTAPI SessionPortListener (PVOID);
+
 /* TERMINAL OBJECT */
 
 typedef struct _PSX_TERMINAL
@@ -156,10 +163,26 @@ typedef struct _PSX_SESSION
 } PSX_SESSION, * PPSX_SESSION;
 
 /* prototypes */
+NTSTATUS NTAPI
+PsxCreateSession (
+    IN    PLPC_MAX_MESSAGE    pRequest,
+    IN    HANDLE              hConnectedPort,
+    IN    ULONG               ulPortIdentifier
+    );
 
 VOID NTAPI debug_print (LPWSTR Template, ...);
 NTSTATUS NTAPI PsxInitializeSessions (VOID); /* ob/session.c */
-NTSTATUS NTAPI PsxCreateSession (PLPC_MAX_MESSAGE,HANDLE,ULONG);
+NTSTATUS NTAPI
+PsxCreateProcess (
+    PLPC_MAX_MESSAGE pRequest,
+    HANDLE           hConnectedPort,
+    ULONG            ulPortIdentifier
+    );
 NTSTATUS NTAPI PsxInitializeProcesses (VOID); /* ob/process.c */
-NTSTATUS NTAPI PsxCreateProcess (PLPC_MAX_MESSAGE,HANDLE,ULONG);
+NTSTATUS NTAPI
+PsxCreateProcess (
+    PLPC_MAX_MESSAGE pRequest,
+    HANDLE           hConnectedPort,
+    ULONG            ulPortIdentifier
+    );
 #endif /* ndef _PSX_PSXSS_H */
