@@ -1,0 +1,8 @@
+; PCIIde IDE Minidriver
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\PCIIde","ErrorControl",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\PCIIde","Group",0x00000000,"System Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\PCIIde","ImagePath",0x00020000,"system32\drivers\pciide.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\PCIIde","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\PCIIde","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\PCIIde","Tag",0x00010001,0x00000010
