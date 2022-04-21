@@ -1,0 +1,10 @@
+
+#define REACTOS_VERSION_DLL
+    #ifdef _M_AMD64
+#define REACTOS_STR_FILE_DESCRIPTION  "X64 X11R6 client library for the POSIX+ Subsystem"
+    #else
+#define REACTOS_STR_FILE_DESCRIPTION  "X86 X11R6 client library for the POSIX+ Subsystem"
+    #endif
+#define REACTOS_STR_INTERNAL_NAME     "psxx"
+#define REACTOS_STR_ORIGINAL_FILENAME "psxx.dll"
+#include <reactos/version.rc>
