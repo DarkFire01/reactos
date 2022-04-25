@@ -13,11 +13,10 @@ DriverVer  = 12/24/2021,1.00
 DefaultDestDir = 12
 
 [Manufacturer]
-%BroadcomMfg% = BroadcomMfg
+%IntelMfg% = IntelMfg
 
-[BroadcomMfg]
-%Broadcom5752.DeviceDesc% = I21X_Inst.ndi,PCI\VEN_14E4&DEV_1600
-; %Broadcom5752M.DeviceDesc% = I21X_Inst.ndi,PCI\VEN_14E4&DEV_1601
+[IntelMfg]
+%IntelI211.DeviceDesc% = I21X_Inst.ndi,PCI\VEN_8086&DEV_1539
 
 ;----------------------------- I21X DRIVER -----------------------------
 
@@ -46,4 +45,4 @@ ReactOS = "ReactOS Team"
 
 IntelMfg = "Intel"
 
-Broadcom5752.DeviceDesc = "Broadcom NetXtreme 5752 Gigabit Controller"
+IntelI211.DeviceDesc.DeviceDesc = Intel I211 Gigabit Ethernet Controller"

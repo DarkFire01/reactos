@@ -1,6 +1,7 @@
 
 add_subdirectory(b57xx)
 add_subdirectory(e1000)
+add_subdirectory(i210)
 add_subdirectory(ne2000)
 add_subdirectory(netkvm)
 if(ARCH STREQUAL "i386" OR ARCH STREQUAL "amd64")

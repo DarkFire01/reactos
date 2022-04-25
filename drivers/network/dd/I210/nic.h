@@ -2,7 +2,7 @@
  * PROJECT:     ReactOS Intel I21X Driver
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     Hardware driver definitions
- * COPYRIGHT:   Copyright 2021 Scott Maday <coldasdryice1@gmail.com>
+ * COPYRIGHT:   Copyright 2022 Justin Miller <justinmiller100@gmai.com>
  */
 #pragma once
 
