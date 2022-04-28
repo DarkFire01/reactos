@@ -307,7 +307,7 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     CommandRingControlRegister.RsvdP = CommandRingControlRegister_temp.RsvdP;  
     DPRINT("XHCI_InitializeResources  : CommandRingControlRegister   %p\n", CommandRingControlRegister.AsULONGLONG );
     XHCI_Write64bitReg(OperationalRegs + XHCI_CRCR, CommandRingControlRegister.AsULONGLONG);
-
+#if 0
     // Place link trb with toggle cycle state in the last link trb.
 
     CommandLinkTRB.GenericTRB.Word0 = 0;
@@ -325,7 +325,7 @@ XHCI_InitializeResources(IN PXHCI_EXTENSION XhciExtension,
     CommandLinkTRB.LinkTRB.ChainBit = 0;
     CommandLinkTRB.LinkTRB.InterruptOnCompletion = 1; //  NOT NECESSARY
     CommandLinkTRB.LinkTRB.TRBType = LINK;
-
+#endif
     HcResourcesVA->CommandRing.firstSeg.XhciTrb[255] = CommandLinkTRB;
     // end of command ring init
 
@@ -599,7 +599,6 @@ XHCI_StartController(IN PVOID xhciExtension,
     }
 
     // starting the controller
-    Command.AsULONG = READ_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD);
     Command.RunStop = 1;
     WRITE_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD, Command.AsULONG);
 
