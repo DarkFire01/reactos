@@ -8,7 +8,8 @@ DBG_DEFAULT_CHANNEL(WARNING);
 
 #define TOSTRING_(X) #X
 #define TOSTRING(X) TOSTRING_(X)
-
+#define UefiBoot FALSE
+EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 const PCSTR FrLdrVersionString =
 #if (FREELOADER_PATCH_VERSION == 0)
     "FreeLoader v" TOSTRING(FREELOADER_MAJOR_VERSION) "." TOSTRING(FREELOADER_MINOR_VERSION);
@@ -18,13 +19,36 @@ const PCSTR FrLdrVersionString =
 
 CCHAR FrLdrBootPath[MAX_PATH] = "";
 
-
 EFI_STATUS
 EfiEntry(
     _In_ EFI_HANDLE ImageHandle,
     _In_ EFI_SYSTEM_TABLE *SystemTable)
 {
-    SystemTable->ConOut->OutputString(SystemTable->ConOut, L"Hello from freeldr, on UEFI!");
+    MachInit(0);
+
+    FrLdrCheckCpuCompatibility();
+
+    UefiInitConsole(SystemTable);
+
+    EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
+    SystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
+    UefiInitalizeVideo(ImageHandle, SystemTable, gop);
+    //RefiDrawUIBackground();
+#if 0
+    /* Initialize memory manager */
+    if (!MmInitializeMemoryManager())
+    {
+        UiMessageBoxCritical("Unable to initialize memory manager.");
+        goto Quit;
+    }
+
+    /* Initialize I/O subsystem */
+    FsInit();
+
+    RunLoader();
+#endif
+Quit:
+    /* If we reach this point, something went wrong before, therefore freeze */
     for(;;)
     {
 

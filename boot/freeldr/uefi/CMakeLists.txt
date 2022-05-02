@@ -97,17 +97,17 @@ list(APPEND FREELDR_ARC_SOURCE
     ../freeldr/disk/scsiport.c)
     # These machine types require built-in bitmap font
 list(APPEND FREELDR_ARC_SOURCE
-../freeldr/arch/vgafont.c)
-    list(APPEND FREELDR_ARC_SOURCE
-        ../freeldr/arch/i386/pc/machpc.c
-        ../freeldr/arch/i386/pc/pcbeep.c
-        ../freeldr/arch/i386/pc/pccons.c
-        ../freeldr/arch/i386/pc/pcdisk.c
-        ../freeldr/arch/i386/pc/pchw.c
-        ../freeldr/arch/i386/pc/pcmem.c
-        ../freeldr/arch/i386/pc/pcrtc.c
-        ../freeldr/arch/i386/pc/pcvesa.c
-        ../freeldr/arch/i386/pc/pcvideo.c)
+    ../freeldr/arch/vgafont.c)
+list(APPEND FREELDR_ARC_SOURCE
+   # $../freeldr/arch/i386/pc/machpc.c
+    ../freeldr/arch/i386/pc/pcbeep.c
+    ../freeldr/arch/i386/pc/pccons.c
+    ../freeldr/arch/i386/pc/pcdisk.c
+    ../freeldr/arch/i386/pc/pchw.c
+    ../freeldr/arch/i386/pc/pcmem.c
+    ../freeldr/arch/i386/pc/pcrtc.c
+    ../freeldr/arch/i386/pc/pcvesa.c
+    ../freeldr/arch/i386/pc/pcvideo.c)
 
 
 elseif(ARCH STREQUAL "amd64")
@@ -129,7 +129,7 @@ list(APPEND FREELDR_ARC_SOURCE
     ../freeldr/arch/i386/hwdisk.c
     ../freeldr/arch/i386/hwpci.c
     ../freeldr/arch/i386/i386bug.c
-    ../freeldr/arch/i386/pc/machpc.c
+    #../freeldr/arch/i386/pc/machpc.c
     ../freeldr/arch/i386/pc/pcbeep.c
     ../freeldr/arch/i386/pc/pccons.c
     ../freeldr/arch/i386/pc/pcdisk.c
@@ -148,7 +148,8 @@ list(APPEND FREELDR_NTLDR_SOURCE
 
 list(APPEND FREELDR_ARC_SOURCE
    ../freeldr/arch/arm/entry.c
-   ../freeldr/arch/arm/macharm.c)
+   arch/arm/macharm.c)
+   #../freeldr/arch/arm/macharm.c)
 else()
 #TBD
 endif()
@@ -217,6 +218,11 @@ add_asm_files(freeldr_base_asm ${FREELDR_BASE_ASM_SOURCE})
 list(APPEND UEFILDR_BASE_SOURCE
     include/uefildr.h
     uefi.c
+    gui.c
+    arch/i386/pc/machpc.c
+    arch/i386/pc/ueficon.c
+    arch/i386/pc/uefimem.c
+    arch/i386/pc/uefivideo.c
    ${freeldr_base_asm}
    ../freeldr/bootmgr.c# This file is compiled with custom definitions
    #../freeldr/freeldr.c

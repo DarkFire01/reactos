@@ -482,6 +482,16 @@ typedef struct _FIRMWARE_INFORMATION_LOADER_BLOCK
     } u;
 } FIRMWARE_INFORMATION_LOADER_BLOCK, *PFIRMWARE_INFORMATION_LOADER_BLOCK;
 
+typedef struct _ROSEFI_FRAMEBUFFER_DATA
+{
+    ULONG_PTR    BaseAddress;
+    ULONG64      BufferSize;
+    UINT32       ScreenWidth;
+    UINT32       ScreenHeight;
+    UINT32       PixelsPerScanLine;
+    UINT32       PixelFormat;
+} ROSEFI_FRAMEBUFFER_DATA, *PROSEFI_FRAMEBUFFER_DATA;
+
 //
 // Loader Parameter Block
 //
