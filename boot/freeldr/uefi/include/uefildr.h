@@ -45,6 +45,12 @@ UefiVideoOutputChar(UCHAR Char, unsigned X, unsigned Y, ULONG FgColor, ULONG BgC
 VOID
 UefiPrintF(PUCHAR String, unsigned X, unsigned Y, ULONG FgColor, ULONG BgColor);
 
+BOOLEAN
+UefiMmInitializeMemoryManager(VOID);
+
+PFREELDR_MEMORY_DESCRIPTOR
+UefiMemGetMemoryMap(ULONG *MemoryMapSize);
+
 #define ERR(fmt, ...)
 #define FIXME(fmt, ...)
 #define WARN(fmt, ...)

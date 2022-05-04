@@ -218,6 +218,7 @@ add_asm_files(freeldr_base_asm ${FREELDR_BASE_ASM_SOURCE})
 list(APPEND UEFILDR_BASE_SOURCE
     include/uefildr.h
     uefi.c
+    uefimm.c
     gui.c
     arch/i386/pc/machpc.c
     arch/i386/pc/ueficon.c

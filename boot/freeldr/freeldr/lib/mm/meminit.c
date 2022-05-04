@@ -322,7 +322,10 @@ BOOLEAN MmInitializeMemoryManager(VOID)
     MmCheckFreeldrImageFile();
 
     BiosMemoryMap = MachVtbl.GetMemoryMap(&BiosMemoryMapEntryCount);
-
+    for(;;)
+    {
+        
+    }
 #if DBG
     // Dump the system memory map
     TRACE("System Memory Map (Base Address, Length, Type):\n");

@@ -1452,7 +1452,7 @@ MachInit(const char *CmdLine)
     MachVtbl.VideoSync = PcVideoSync;
     MachVtbl.Beep = PcBeep;
     MachVtbl.PrepareForReactOS = PcPrepareForReactOS;
-    MachVtbl.GetMemoryMap = PcMemGetMemoryMap;
+    MachVtbl.GetMemoryMap = UefiMemGetMemoryMap;
     MachVtbl.GetExtendedBIOSData = PcGetExtendedBIOSData;
     MachVtbl.GetFloppyCount = PcGetFloppyCount;
     MachVtbl.DiskReadLogicalSectors = PcDiskReadLogicalSectors;

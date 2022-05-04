@@ -2,7 +2,6 @@
 
 
 #include <debug.h>
-DBG_DEFAULT_CHANNEL(WARNING);
 
 /* GLOBALS ********************************************************************/
 
@@ -33,20 +32,11 @@ EfiEntry(
     EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
     SystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
     UefiInitalizeVideo(ImageHandle, SystemTable, gop);
-    //RefiDrawUIBackground();
-#if 0
-    /* Initialize memory manager */
-    if (!MmInitializeMemoryManager())
-    {
-        UiMessageBoxCritical("Unable to initialize memory manager.");
-        goto Quit;
-    }
+
 
     /* Initialize I/O subsystem */
     FsInit();
-
     RunLoader();
-#endif
 Quit:
     /* If we reach this point, something went wrong before, therefore freeze */
     for(;;)

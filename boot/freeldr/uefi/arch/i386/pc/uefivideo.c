@@ -388,6 +388,30 @@ RefiStrlen(PUCHAR str)
 }
 
 VOID
+RefiItoa(unsigned long int n, unsigned short int* buffer, int basenumber)
+{
+	unsigned long int hold;
+	int i, j;
+	hold = n;
+	i = 0;
+
+	do{
+		hold = n % basenumber;
+		buffer[i++] = (hold < 10) ? (hold + '0') : (hold + 'a' - 10);
+	} while(n /= basenumber);
+	buffer[i--] = 0;
+	
+	for(j = 0; j < i; j++, i--)
+	{
+		hold = buffer[j];
+		buffer[j] = buffer[i];
+		buffer[i] = hold;
+	}
+}
+
+
+
+VOID
 UefiPrintF(PUCHAR String, unsigned X, unsigned Y, ULONG FgColor, ULONG BgColor)
 {
     for (UINT32 i = 0; i < RefiStrlen(String); i++)
@@ -400,4 +424,32 @@ VOID
 UefiVideoPutChar(int Ch, UCHAR Attr, unsigned X, unsigned Y)
 {
     RefiSetPixel(X, Y, 0x000000);
+}
+
+
+FREELDR_MEMORY_DESCRIPTOR PcMemoryMap[MAX_BIOS_DESCRIPTORS + 1];
+
+PFREELDR_MEMORY_DESCRIPTOR
+UefiMemGetMemoryMap(ULONG *MemoryMapSize)
+{
+
+    /* Use the power of UEFI to get the memory map */
+    EFI_MEMORY_DESCRIPTOR* Map = NULL;
+	UINTN MapSize, MapKey;
+	UINTN DescriptorSize;
+	UINT32 DescriptorVersion;
+    unsigned short int* buffer = 0;
+    LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(int), (void**)buffer);
+	{
+		
+		LocSystemTable->BootServices->GetMemoryMap(&MapSize, Map, &MapKey, &DescriptorSize, &DescriptorVersion);
+		LocSystemTable->BootServices->AllocatePool(EfiLoaderData, MapSize, (void**)&Map);
+		LocSystemTable->BootServices->GetMemoryMap(&MapSize, Map, &MapKey, &DescriptorSize, &DescriptorVersion);
+
+	}
+
+    
+    //EFI_MEMORY_TYPE
+    return 0;
+
 }
