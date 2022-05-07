@@ -13,6 +13,26 @@ $if (_WDMDDK_)
 #define PROFILE_LEVEL           15
 #define HIGH_LEVEL              15
 
+#define KIP0PCRADDRESS          0xFFDFF000
+#define KI_USER_SHARED_DATA     0xFFFF9000
+#define SharedUserData          ((KUSER_SHARED_DATA * const)KI_USER_SHARED_DATA)
+
+#define PAGE_SIZE               0x1000
+#define PAGE_SHIFT              12L
+
+#define PAUSE_PROCESSOR YieldProcessor();
+
+#define KERNEL_STACK_SIZE         0x3000
+#define KERNEL_LARGE_STACK_SIZE   0xF000
+#define KERNEL_LARGE_STACK_COMMIT KERNEL_STACK_SIZE
+
+#define KERNEL_MCA_EXCEPTION_STACK_SIZE 0x2000
+
+#define EXCEPTION_READ_FAULT    0
+#define EXCEPTION_WRITE_FAULT   1
+#define EXCEPTION_EXECUTE_FAULT 8
+
+
 NTSYSAPI
 PKTHREAD
 NTAPI

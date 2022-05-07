@@ -1214,11 +1214,13 @@ typedef struct _KTHREAD
     };
     KSPIN_LOCK ApcQueueLock;
 #ifndef _M_AMD64 // [
+#ifndef _M_ARM64 // [
     ULONG ContextSwitches;
     volatile UCHAR State;
     UCHAR NpxState;
     KIRQL WaitIrql;
     KPROCESSOR_MODE WaitMode;
+#endif
 #endif // ]
     LONG_PTR WaitStatus;
 #if (NTDDI_VERSION >= NTDDI_WIN7) // [
@@ -1264,6 +1266,7 @@ typedef struct _KTHREAD
     };
     PKQUEUE Queue;
 #ifndef _M_AMD64 // [
+#ifndef _M_ARM64 // [
     ULONG WaitTime;
     union
     {
@@ -1274,6 +1277,7 @@ typedef struct _KTHREAD
         };
         ULONG CombinedApcDisable;
     };
+#endif
 #endif // ]
     struct _TEB *Teb;
 
