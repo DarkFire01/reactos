@@ -306,8 +306,7 @@ VOID RunLoader(VOID)
     ULONG     DefaultOperatingSystem;
     ULONG     SelectedOperatingSystem;
     ULONG     i;
-#if 0 
-?????
+#if 0
     if (!MachInitializeBootDevices())
     {
         UiMessageBoxCritical("Error when detecting hardware.");

@@ -67,45 +67,11 @@ UefiGetExtendedBIOSData(PULONG ExtendedBIOSDataArea, PULONG ExtendedBIOSDataSize
     *ExtendedBIOSDataSize = 0;
 }
 
-UCHAR
-UefiGetFloppyCount(VOID)
-{
-    /* no floppy for you */
-    return 0;
-}
-
-BOOLEAN
-UefiDiskReadLogicalSectors(
-    IN UCHAR DriveNumber,
-    IN ULONGLONG SectorNumber,
-    IN ULONG SectorCount,
-    OUT PVOID Buffer)
-{
-    return FALSE;
-}
-
-BOOLEAN
-UefiDiskGetDriveGeometry(UCHAR DriveNumber, PGEOMETRY Geometry)
-{
-    return FALSE;
-}
-
-ULONG
-UefiDiskGetCacheableBlockCount(UCHAR DriveNumber)
-{
-    return 0;
-}
 
 TIMEINFO*
 UefiGetTime(VOID)
 {
     return 0;
-}
-
-BOOLEAN
-UefiInitializeBootDevices(VOID)
-{
-    return FALSE;
 }
 
 PCONFIGURATION_COMPONENT_DATA

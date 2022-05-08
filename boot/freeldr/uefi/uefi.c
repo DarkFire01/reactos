@@ -46,12 +46,25 @@ EfiEntry(
         goto Quit;
     }
 
+#if 0
     /* Initialize memory manager */
     if (!MmInitializeMemoryManager())
     {
         UiMessageBoxCritical("Unable to initialize memory manager.");
         goto Quit;
     }
+#endif
+
+
+    UefiInitializeFileSystemSupport(ImageHandle, SystemTable);
+    FsInit();
+
+    if (!MachInitializeBootDevices())
+    {
+        UiMessageBoxCritical("Error when detecting hardware.");
+    }
+
+    RunLoader();
 
     Quit:
     /* If we reach this point, something went wrong before, therefore reboot */

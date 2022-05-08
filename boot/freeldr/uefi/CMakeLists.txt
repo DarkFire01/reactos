@@ -209,6 +209,7 @@ list(APPEND UEFILDR_BASE_SOURCE
     machuefi.c
     ueficon.c
     uefivideo.c
+    uefidisk.c
    ${freeldr_base_asm}
    ../freeldr/bootmgr.c# This file is compiled with custom definitions
    #../freeldr/freeldr.c

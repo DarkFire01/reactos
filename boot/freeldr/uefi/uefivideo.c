@@ -450,12 +450,10 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 
 	}
 
+    UefiVideoClearScreen(0);
+    UefiPrintF("MemoryManager SetupComplete", 1, 1, 0xFFFFFF, 0x000000);
+
     //UINT32 offset = Map->NumberOfPages * EFI_PAGE_SIZE;
-
-    for(;;)
-    {
-
-    }
     //EFI_MEMORY_TYPE
     return 0;
 
