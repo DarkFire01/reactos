@@ -13,7 +13,7 @@ UefiInitConsole(_In_ EFI_SYSTEM_TABLE *SystemTable)
 VOID
 UefiConsPutChar(int Ch)
 {
-    LocSystemTable->ConOut->OutputString(LocSystemTable->ConOut, L"h");
+    LocSystemTable->ConOut->OutputString(LocSystemTable->ConOut, (CHAR16*)&Ch);
 }
 
 BOOLEAN
@@ -31,3 +31,10 @@ UefiConsGetCh(void)
 
     return 0;
 }
+
+VOID
+UefiConsSetCursor(UINT32 Col, UINT32 Row)
+{
+    LocSystemTable->ConOut->SetCursorPosition(LocSystemTable->ConOut, Col, Row);
+}
+

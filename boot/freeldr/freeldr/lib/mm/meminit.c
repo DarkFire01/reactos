@@ -283,7 +283,6 @@ MmCheckFreeldrImageFile(VOID)
     /* Check the optional header */
     OptionalHeader = &NtHeaders->OptionalHeader;
     if ((OptionalHeader->Magic != IMAGE_NT_OPTIONAL_HDR_MAGIC) ||
-        (OptionalHeader->Subsystem != IMAGE_SUBSYSTEM_NATIVE) ||
         (OptionalHeader->ImageBase != FREELDR_PE_BASE) ||
         (OptionalHeader->SizeOfImage > MAX_FREELDR_PE_SIZE) ||
         (OptionalHeader->SectionAlignment != OptionalHeader->FileAlignment))
@@ -364,7 +363,6 @@ BOOLEAN MmInitializeMemoryManager(VOID)
 
     return TRUE;
 }
-
 
 PFN_NUMBER MmGetPageNumberFromAddress(PVOID Address)
 {

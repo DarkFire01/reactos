@@ -12,6 +12,10 @@ UefiConsPutChar(int Ch);
 BOOLEAN
 UefiConsKbHit(VOID);
 
+
+VOID
+UefiConsSetCursor(UINT32 Col, UINT32 Row);
+
 int
 UefiConsGetCh(void);
 

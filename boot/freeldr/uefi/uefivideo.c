@@ -29,7 +29,7 @@ UefiVideoClearScreen(UCHAR Attr)
     {
         for(int x = 0; x < refiFbData->ScreenWidth; x++)
         {
-            *((UINT32*)(refiFbData->BaseAddress + 4 * refiFbData->PixelsPerScanLine * (y) + 4 * (x))) = 0x000000;
+            *((UINT32*)(refiFbData->BaseAddress + 4 * refiFbData->PixelsPerScanLine * (y) + 4 * (x))) = Attr << 2;
         }
     }
 }
@@ -450,7 +450,18 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 
 	}
 
-    
+    UINT32 offset = Map->NumberOfPages * EFI_PAGE_SIZE;
+    printf("Value Type is %X\n", (Map + offset)->Type);
+    printf("Value PhysicalStart is %X\n", (Map->PhysicalStart + offset));
+    printf("Value is VirtualStart %X\n", (Map->VirtualStart + offset));
+    printf("Value is NumberOfPages %X\n", (Map->NumberOfPages + offset));
+    printf("Value is Attribute %X\n", (Map->Attribute + offset));
+
+
+    for(;;)
+    {
+
+    }
     //EFI_MEMORY_TYPE
     return 0;
 

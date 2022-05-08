@@ -26,6 +26,7 @@ EfiEntry(
     _In_ EFI_HANDLE ImageHandle,
     _In_ EFI_SYSTEM_TABLE *SystemTable)
 {
+    EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
     SystemTable->ConOut->OutputString(SystemTable->ConOut, L"UEFI EntryPoint: Starting freeldr from UEFI");
 
     UefiMachInit(0);
@@ -33,17 +34,28 @@ EfiEntry(
     FrLdrCheckCpuCompatibility();
 
     UefiInitConsole(SystemTable);
-    EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
     SystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
     UefiInitalizeVideo(ImageHandle, SystemTable, gop);
 
     UefiVideoClearScreen(0);
     UefiPrintF("Graphics initalization Complete", 1, 1, 0xFFFFFF, 0x000000);
 
-    for(;;)
+    if (!UiInitialize(FALSE))
     {
-
+        UiMessageBoxCritical("Unable to initialize UI.");
+        goto Quit;
     }
+
+    /* Initialize memory manager */
+    if (!MmInitializeMemoryManager())
+    {
+        UiMessageBoxCritical("Unable to initialize memory manager.");
+        goto Quit;
+    }
+
+    Quit:
+    /* If we reach this point, something went wrong before, therefore reboot */
+        return EFI_SUCCESS;
 }
 
 // We need to emulate these, because the original ones don't work in freeldr
