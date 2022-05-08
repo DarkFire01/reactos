@@ -35,7 +35,7 @@ endfunction()
 include(generic.cmake)
 include(acpi.cmake)
 include(gic.cmake)
-
+include(aic.cmake)
 # the ACPI GIC hal is default due to existing on qemu (arm32, arm64) with a GIC interrupt controller.
 add_hal(hal SOURCES gic/halagic.rc COMPONENTS generic gic) #Acpi, GIC, UP #HALAGIC
 
@@ -45,5 +45,6 @@ if(ARCH STREQUAL "arm")
     #ARM32 Specific HALs
     add_hal(halvic SOURCES vic/halvic.rc COMPONENTS generic vic) #VIC, UP
 elseif(ARCH STREQUAL "arm64") 
+    add_hal(haljobs SOURCES apple/aic.rc COMPONENTS aic) #Acpi, GIC, UP #HALAGIC
     #ARM64 Specific HALs
 endif()
