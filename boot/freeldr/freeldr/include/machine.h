@@ -129,7 +129,6 @@ VOID MachInit(const char *CmdLine);
     MachVtbl.DiskGetDriveGeometry((Drive), (Geom))
 #define MachDiskGetCacheableBlockCount(Drive)   \
     MachVtbl.DiskGetCacheableBlockCount(Drive)
-
 #define MachInitializeBootDevices() \
     MachVtbl.InitializeBootDevices()
 
@@ -140,5 +139,8 @@ VOID MachInit(const char *CmdLine);
 
 TIMEINFO* ArcGetTime(VOID);
 ULONG ArcGetRelativeTime(VOID);
+
+VOID StallExecutionProcessor(ULONG Microseconds);
+VOID HalpCalibrateStallExecution(VOID);
 
 /* EOF */

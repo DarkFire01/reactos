@@ -20,7 +20,7 @@
  */
 
 #ifndef _M_ARM
-
+#ifndef _M_ARM64
 /* INCLUDES *******************************************************************/
 
 #include <freeldr.h>
@@ -134,9 +134,9 @@ VOID Rs232PortPutByte(UCHAR ByteToSend)
     if (Rs232ComPort == 0) return;
     CpPutByte(&Rs232ComPortInfo, ByteToSend);
 }
-
+#endif
 #endif /* DBG */
-
+#ifndef _M_ARM64
 BOOLEAN Rs232PortInUse(PUCHAR Base)
 {
 #if DBG
@@ -145,5 +145,5 @@ BOOLEAN Rs232PortInUse(PUCHAR Base)
     return FALSE;
 #endif
 }
-
+#endif
 #endif /* not _M_ARM */

@@ -33,7 +33,9 @@ PFN_NUMBER MmHighestPhysicalPage = 0;
 PFREELDR_MEMORY_DESCRIPTOR BiosMemoryMap;
 ULONG BiosMemoryMapEntryCount;
 SIZE_T FrLdrImageSize;
-
+#ifdef _M_ARM64
+#define IMAGE_FILE_MACHINE_NATIVE IMAGE_FILE_MACHINE_ARM64
+#endif
 #if DBG
 typedef struct
 {
@@ -238,6 +240,7 @@ static
 VOID
 MmCheckFreeldrImageFile(VOID)
 {
+    #ifndef _M_ARM64
     PIMAGE_NT_HEADERS NtHeaders;
     PIMAGE_FILE_HEADER FileHeader;
     PIMAGE_OPTIONAL_HEADER OptionalHeader;
@@ -304,9 +307,9 @@ MmCheckFreeldrImageFile(VOID)
             OptionalHeader->SizeOfImage, MAX_FREELDR_PE_SIZE,
             OptionalHeader->SectionAlignment, OptionalHeader->FileAlignment);
     }
-
     /* Calculate the full image size */
     FrLdrImageSize = (ULONG_PTR)&__ImageBase + OptionalHeader->SizeOfImage - FREELDR_BASE;
+    #endif
 }
 
 BOOLEAN MmInitializeMemoryManager(VOID)

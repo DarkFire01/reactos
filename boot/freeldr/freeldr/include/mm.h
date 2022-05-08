@@ -63,7 +63,7 @@ typedef struct _FREELDR_MEMORY_DESCRIPTOR
 
 #endif // defined __i386__ or _PPC_ or _MIPS_
 
-#if defined (_AMD64_)
+#if defined (_AMD64_) || defined(_ARM64_)
 
 #define MM_PAGE_SIZE    4096
 #define MM_PAGE_MASK    0xFFF

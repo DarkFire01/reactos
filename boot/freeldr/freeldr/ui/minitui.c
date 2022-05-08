@@ -13,8 +13,6 @@
 // #define NTLDR_PROGRESSBAR
 // #define BTMGR_PROGRESSBAR /* Default style */
 
-#ifndef _M_ARM
-
 BOOLEAN MiniTuiInitialize(VOID)
 {
     /* Initialize main TUI */
@@ -71,7 +69,6 @@ VOID MiniTuiDrawStatusText(PCSTR StatusText)
     /* Minimal UI doesn't have a status bar */
 }
 
-#endif // _M_ARM
 
 /*static*/ VOID
 MiniTuiSetProgressBarText(
@@ -143,10 +140,9 @@ MiniTuiTickProgressBar(
                 UiProgressBar.Right, UiProgressBar.Bottom,
                 ' ', ATTR(UiTextColor, UiMenuBgColor));
 
-#ifndef _M_ARM
     TuiUpdateDateTime();
     VideoCopyOffScreenBufferToVRAM();
-#endif
+
 }
 
 VOID
@@ -191,10 +187,8 @@ MiniTuiDrawMenu(
 {
     ULONG i;
 
-#ifndef _M_ARM
     /* Draw the backdrop */
     UiDrawBackdrop();
-#endif
 
     /* No GUI status bar text, just minimal text. Show the menu header. */
     if (MenuInfo->MenuHeader)
@@ -239,12 +233,10 @@ MiniTuiDrawMenu(
         DisplayBootTimeOptions();
     }
 
-#ifndef _M_ARM
     VideoCopyOffScreenBufferToVRAM();
-#endif
+
 }
 
-#ifndef _M_ARM
 
 const UIVTBL MiniTuiVtbl =
 {
@@ -274,4 +266,3 @@ const UIVTBL MiniTuiVtbl =
     MiniTuiDrawMenu,
 };
 
-#endif // _M_ARM

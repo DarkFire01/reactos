@@ -1395,7 +1395,7 @@
 @ cdecl localtime(ptr)
 @ cdecl log(double)
 @ cdecl log10(double)
-@ cdecl -arch=x86_64,arm log10f(long)
+@ cdecl -arch=x86_64,arm,arm64 log10f(long)
 @ cdecl -arch=x86_64,arm logf(long)
 @ cdecl longjmp(ptr long)
 @ cdecl malloc(long)

@@ -1,3 +1,6 @@
+
+#include "../../freeldr/include/machine.h"
+
 VOID
 UefiMachInit(const char *CmdLine);
 

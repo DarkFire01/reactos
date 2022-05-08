@@ -5,7 +5,6 @@
  * COPYRIGHT:   Copyright 1998-2003 Brian Palmer <brianp@sginet.com>
  */
 
-#ifndef _M_ARM
 #include <freeldr.h>
 
 #define RGB_MAX                 64
@@ -172,5 +171,3 @@ VOID VideoFadeOut(ULONG ColorCount)
         }
     }
 }
-
-#endif

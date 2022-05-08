@@ -123,6 +123,8 @@
 #include <arch/powerpc/hardware.h>
 #elif defined(_M_ARM)
 #include <arch/arm/hardware.h>
+#elif defined(_M_ARM64)
+#include <arch/arm64/hardware.h>
 #elif defined(_M_MIPS)
 #include <arch/mips/arcbios.h>
 #endif

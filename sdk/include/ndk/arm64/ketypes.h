@@ -50,6 +50,11 @@ extern "C" {
 #define MM_HAL_VA_END           0xFFFFFFFF
 
 //
+// Static Kernel-Mode Address start (use MM_KSEG0_BASE for actual)
+//
+#define KSEG0_BASE 0xfffff80000000000ULL
+
+//
 // Structure for CPUID info
 //
 typedef union _CPU_INFO

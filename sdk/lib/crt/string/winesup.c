@@ -62,6 +62,13 @@ threadlocinfo _LIBCNT_locinfo =
 
 #define _SET_NUMBER_(type) *va_arg((*ap), type*) = negative ? -cur : cur
 
+#ifdef _M_ARM
+unsigned int CDECL _controlfp(unsigned int newval, unsigned int mask)
+{
+  return _control87( newval, mask & ~_EM_DENORMAL );
+}
+#endif
+
 void
 __declspec(noinline)
 _internal_handle_float(

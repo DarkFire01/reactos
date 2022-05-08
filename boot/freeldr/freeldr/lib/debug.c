@@ -20,7 +20,7 @@
 #include <freeldr.h>
 #include <debug.h>
 
-#if DBG && !defined(_M_ARM)
+#if DBG && !defined(_M_ARM) && !defined(_M_ARM64)
 
 // #define DEBUG_ALL
 // #define DEBUG_WARN
@@ -420,7 +420,6 @@ DbgParseDebugChannels(PCHAR Value)
         str = separator + 1;
     } while (separator != NULL);
 }
-
 #else
 
 ULONG

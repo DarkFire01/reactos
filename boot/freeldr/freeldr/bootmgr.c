@@ -306,13 +306,14 @@ VOID RunLoader(VOID)
     ULONG     DefaultOperatingSystem;
     ULONG     SelectedOperatingSystem;
     ULONG     i;
-
+#if 0 
+?????
     if (!MachInitializeBootDevices())
     {
         UiMessageBoxCritical("Error when detecting hardware.");
         return;
     }
-
+#endif
 #ifdef _M_IX86
     /* Load additional SCSI driver (if any) */
     if (LoadBootDeviceDriver() != ESUCCESS)

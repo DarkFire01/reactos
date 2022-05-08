@@ -31,7 +31,7 @@ EfiEntry(
 
     UefiMachInit(0);
 
-    FrLdrCheckCpuCompatibility();
+   // FrLdrCheckCpuCompatibility();
 
     UefiInitConsole(SystemTable);
     SystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
@@ -84,3 +84,57 @@ VOID __cdecl BootMain(IN PCCH CmdLine)
 {
     NOTHING;
 }
+
+#ifdef _M_ARM
+
+UCHAR MachDefaultTextColor = COLOR_GRAY;
+
+static unsigned int delay_count = 1;
+
+static
+VOID
+__StallExecutionProcessor(ULONG Loops)
+{
+    register volatile unsigned int i;
+    for (i = 0; i < Loops; i++);
+}
+
+VOID StallExecutionProcessor(ULONG Microseconds)
+{
+    ULONGLONG LoopCount = ((ULONGLONG)delay_count * (ULONGLONG)Microseconds) / 1000ULL;
+    __StallExecutionProcessor((ULONG)LoopCount);
+}
+
+VOID
+HalpCalibrateStallExecution(VOID)
+{
+}
+
+#endif
+
+#ifdef _M_ARM64
+
+
+VOID
+FrLdrBugCheckWithMessage(
+    ULONG BugCode,
+    PCHAR File,
+    ULONG Line,
+    PSTR Format,
+    ...)
+{
+
+}
+
+
+VOID
+DbgBreakPoint(VOID)
+{
+
+}
+VOID
+HalpCalibrateStallExecution(VOID)
+{
+}
+
+#endif

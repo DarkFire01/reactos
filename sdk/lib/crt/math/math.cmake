@@ -115,6 +115,36 @@ elseif(ARCH STREQUAL "arm")
     list(APPEND CRT_MATH_ASM_SOURCE
         math/arm/_logb.s
     )
+elseif(ARCH STREQUAL "arm64")
+    list(APPEND LIBCNTPR_MATH_SOURCE
+        math/cos.c
+        math/floorf.c
+        math/sin.c
+        math/sqrt.c
+        math/arm/__rt_sdiv.c
+        math/arm/__rt_sdiv64_worker.c
+        math/arm/__rt_udiv.c
+        math/arm/__rt_udiv64_worker.c
+        math/arm/__rt_div_worker.h
+        math/arm/__dtoi64.c
+        math/arm/__dtou64.c
+        math/arm/__stoi64.c
+        math/arm/__stou64.c
+        math/arm/__fto64.h
+        math/arm/__i64tod.c
+        math/arm/__u64tod.c
+        math/arm/__i64tos.c
+        math/arm/__u64tos.c
+        math/arm/__64tof.h
+    )
+    list(APPEND CRT_MATH_SOURCE
+        math/fabsf.c
+    )
+    list(APPEND LIBCNTPR_MATH_ASM_SOURCE
+        math/arm64/floor.s
+        math/arm64/log10.s
+        math/arm64/pow.s
+    )
 endif()
 
 if(NOT ARCH STREQUAL "i386")

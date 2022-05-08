@@ -19,9 +19,8 @@
 
 #include <freeldr.h>
 
-#ifndef _M_ARM
 PVOID TextVideoBuffer = NULL;
-#endif
+
 
 /* GENERIC TUI UTILS *********************************************************/
 
@@ -93,9 +92,8 @@ TuiDrawText2(
     _In_reads_or_z_(MaxNumChars) PCSTR Text,
     _In_ UCHAR Attr)
 {
-#ifndef _M_ARM
-    PUCHAR ScreenMemory = (PUCHAR)TextVideoBuffer;
-#endif
+   // PUCHAR ScreenMemory = (PUCHAR)TextVideoBuffer;
+
     ULONG i, j;
 
     /* Don't display anything if we are out of the screen */
@@ -105,13 +103,9 @@ TuiDrawText2(
     /* Draw the text, not exceeding the width */
     for (i = X, j = 0; Text[j] && i < UiScreenWidth && (MaxNumChars > 0 ? j < MaxNumChars : TRUE); i++, j++)
     {
-#ifndef _M_ARM
-        ScreenMemory[((Y*2)*UiScreenWidth)+(i*2)]   = (UCHAR)Text[j];
-        ScreenMemory[((Y*2)*UiScreenWidth)+(i*2)+1] = Attr;
-#else
         /* Write the character */
         MachVideoPutChar(Text[j], Attr, i, Y);
-#endif
+
     }
 }
 
@@ -195,8 +189,6 @@ TuiDrawCenteredText(
 }
 
 /* FULL TUI THEME ************************************************************/
-
-#ifndef _M_ARM
 
 #define TAG_TUI_SCREENBUFFER 'SiuT'
 #define TAG_TUI_PALETTE      'PiuT'
@@ -802,10 +794,8 @@ TuiTickProgressBar(
                 UiProgressBar.Right, UiProgressBar.Bottom,
                 '\xB2', ATTR(UiTextColor, UiMenuBgColor));
 
-#ifndef _M_ARM
     TuiUpdateDateTime();
     VideoCopyOffScreenBufferToVRAM();
-#endif
 }
 
 static VOID
@@ -1242,4 +1232,3 @@ const UIVTBL TuiVtbl =
     TuiDrawMenu,
 };
 
-#endif // _M_ARM

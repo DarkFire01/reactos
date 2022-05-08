@@ -429,7 +429,7 @@ UefiPrintF(PUCHAR String, unsigned X, unsigned Y, ULONG FgColor, ULONG BgColor)
     }
 }
 
-FREELDR_MEMORY_DESCRIPTOR PcMemoryMap[MAX_BIOS_DESCRIPTORS + 1];
+FREELDR_MEMORY_DESCRIPTOR PcMemoryMap[80 + 1];
 
 PFREELDR_MEMORY_DESCRIPTOR
 UefiMemGetMemoryMap(ULONG *MemoryMapSize)
@@ -450,13 +450,7 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 
 	}
 
-    UINT32 offset = Map->NumberOfPages * EFI_PAGE_SIZE;
-    printf("Value Type is %X\n", (Map + offset)->Type);
-    printf("Value PhysicalStart is %X\n", (Map->PhysicalStart + offset));
-    printf("Value is VirtualStart %X\n", (Map->VirtualStart + offset));
-    printf("Value is NumberOfPages %X\n", (Map->NumberOfPages + offset));
-    printf("Value is Attribute %X\n", (Map->Attribute + offset));
-
+    //UINT32 offset = Map->NumberOfPages * EFI_PAGE_SIZE;
 
     for(;;)
     {

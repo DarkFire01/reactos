@@ -130,7 +130,14 @@ list(APPEND FREELDR_COMMON_UEFI_ASM_SOURCE
 
 list(APPEND FREELDR_NTLDR_SOURCE
     ../freeldr/ntldr/arch/arm/winldr.c)
+
+elseif(ARCH STREQUAL "arm64")
+
+list(APPEND FREELDR_NTLDR_SOURCE
+    ../freeldr/ntldr/arch/arm64/winldr.c)
 else()
+list(APPEND FREELDR_NTLDR_SOURCE
+    ../freeldr/ntldr/arch/arm64/winldr.c)
 #TBD
 endif()
 
@@ -222,7 +229,9 @@ endif()
 add_executable(uefildr ${UEFILDR_BASE_SOURCE})
 
 if(MSVC)
-    if(ARCH STREQUAL "arm")
+    if(ARCH STREQUAL "arm") 
+        target_link_options(uefildr PRIVATE /ignore:4078 /ignore:4254 /DRIVER)
+    elseif(ARCH STREQUAL "arm64")
         target_link_options(uefildr PRIVATE /ignore:4078 /ignore:4254 /DRIVER)
     else()
         target_link_options(uefildr PRIVATE /ignore:4078 /ignore:4254 /DYNAMICBASE:NO /FIXED /FILEALIGN:512 /ALIGN:512 /DRIVER)

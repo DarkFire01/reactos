@@ -7,7 +7,7 @@
  */
 
 #ifdef _M_ARM
-
+#if 0
 #include <freeldr.h>
 
 /* GLOBALS ********************************************************************/
@@ -159,5 +159,5 @@ UiDisplayMenu(
                           KeyPressFilter,
                           Context);
 }
-
+#endif
 #endif // _M_ARM
