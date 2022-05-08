@@ -2,29 +2,6 @@
 
 #include <debug.h>
 
-/* Console */
-VOID
-UefiConsPutChar(int c)
-{
-
-}
-
-BOOLEAN
-UefiConsKbHit(VOID)
-{
-    /* No keyboard support yet */
-    return FALSE;
-}
-
-int
-UefiConsGetCh(void)
-{
-    /* No keyboard support yet */
-    while (1) ;
-
-    return 0;
-}
-
 /* Video */
 
 VOID
@@ -38,12 +15,6 @@ UefiVideoSetDisplayMode(char *DisplayMode, BOOLEAN Init)
 {
   /* We only have one mode, semi-text */
   return VideoTextMode;
-}
-
-VOID
-UefiVideoGetDisplaySize(PULONG Width, PULONG Height, PULONG Depth)
-{
-
 }
 
 ULONG
@@ -117,6 +88,7 @@ VOID UefiPcBeep(VOID)
 PFREELDR_MEMORY_DESCRIPTOR
 UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 {
+    return 0;
 }
 
 VOID
@@ -142,31 +114,37 @@ UefiDiskReadLogicalSectors(
     IN ULONG SectorCount,
     OUT PVOID Buffer)
 {
+    return FALSE;
 }
 
 BOOLEAN
 UefiDiskGetDriveGeometry(UCHAR DriveNumber, PGEOMETRY Geometry)
 {
+    return FALSE;
 }
 
 ULONG
 UefiDiskGetCacheableBlockCount(UCHAR DriveNumber)
 {
+    return 0;
 }
 
 TIMEINFO*
 UefiGetTime(VOID)
 {
+    return 0;
 }
 
 BOOLEAN
 UefiInitializeBootDevices(VOID)
 {
+    return FALSE;
 }
 
 PCONFIGURATION_COMPONENT_DATA
 UefiHwDetect(VOID)
 {
+    return 0;
 }
 
 VOID

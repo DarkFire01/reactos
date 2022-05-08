@@ -199,6 +199,10 @@ add_asm_files(freeldr_base_asm ${FREELDR_BASE_ASM_SOURCE})
 list(APPEND UEFILDR_BASE_SOURCE
     include/uefildr.h
     uefi.c
+    stubs.c
+    machuefi.c
+    ueficon.c
+    uefivideo.c
    ${freeldr_base_asm}
    ../freeldr/bootmgr.c# This file is compiled with custom definitions
    #../freeldr/freeldr.c

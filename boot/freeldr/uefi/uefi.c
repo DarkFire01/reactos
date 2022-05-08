@@ -9,6 +9,8 @@ DBG_DEFAULT_CHANNEL(WARNING);
 #define TOSTRING_(X) #X
 #define TOSTRING(X) TOSTRING_(X)
 
+EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
+
 const PCSTR FrLdrVersionString =
 #if (FREELOADER_PATCH_VERSION == 0)
     "FreeLoader v" TOSTRING(FREELOADER_MAJOR_VERSION) "." TOSTRING(FREELOADER_MINOR_VERSION);
@@ -25,6 +27,16 @@ EfiEntry(
     _In_ EFI_SYSTEM_TABLE *SystemTable)
 {
     SystemTable->ConOut->OutputString(SystemTable->ConOut, L"UEFI EntryPoint: Starting freeldr from UEFI");
+
+    MachInit(0);
+
+    FrLdrCheckCpuCompatibility();
+
+    UefiInitConsole(SystemTable);
+    EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
+    SystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
+    UefiInitalizeVideo(ImageHandle, SystemTable, gop);
+
     for(;;)
     {
 

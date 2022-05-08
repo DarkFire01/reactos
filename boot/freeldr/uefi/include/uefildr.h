@@ -13,5 +13,7 @@
 #include <efi/Acpi.h>
 #include <efi/GlobalVariable.h>
 
+#include "machuefi.h"
+
 VOID
 DebugInit(IN ULONG_PTR FrLdrSectionId);
