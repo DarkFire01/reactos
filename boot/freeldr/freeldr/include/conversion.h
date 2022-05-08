@@ -8,7 +8,7 @@
 
 #pragma once
 
-#ifndef _ZOOM2_
+#ifndef _M_ARM64 || _M_ARM
 /* Arch-specific addresses translation implementation */
 FORCEINLINE
 PVOID
