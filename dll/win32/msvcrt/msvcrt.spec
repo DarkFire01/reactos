@@ -240,7 +240,7 @@
 @ cdecl -arch=i386,x86_64 -norelay __CxxFrameHandler(ptr ptr ptr ptr)
 @ cdecl -arch=i386 -norelay __CxxFrameHandler2(ptr ptr ptr ptr) __CxxFrameHandler
 @ cdecl -version=0x600+ -arch=x86_64 -norelay __CxxFrameHandler2(ptr ptr ptr ptr) __CxxFrameHandler
-@ cdecl -arch=arm -norelay __CxxFrameHandler3(ptr ptr ptr ptr)
+@ cdecl -arch=arm,arm64 -norelay __CxxFrameHandler3(ptr ptr ptr ptr)
 @ cdecl -version=0x600+ -arch=i386,x86_64 -norelay __CxxFrameHandler3(ptr ptr ptr ptr)
 @ stdcall -arch=i386 __CxxLongjmpUnwind(ptr)
 @ cdecl -arch=i386 __CxxQueryExceptionSize()
