@@ -1,15 +1,14 @@
 /*
- * PROJECT:     ReactOS Universal Serial Bus Bulk Enhanced Host Controller Interface
- * LICENSE:     GPL - See COPYING in the top level directory
- * FILE:        drivers/usb/hidparse/hidparse.c
- * PURPOSE:     HID Parser
- * PROGRAMMERS:
- *              Michael Martin (michael.martin@reactos.org)
- *              Johannes Anderwald (johannes.anderwald@reactos.org)
+ * PROJECT:     ReactOS HID Parser Library
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
+ * FILE:        drivers/hid/hidparse/hidparse.c
+ * PURPOSE:     HID Parser kernel mode
+ * COPYRIGHT:   Copyright (C) Michael Martin (michael.martin@reactos.org)
+ *              Copyright (C) Johannes Anderwald (johannes.anderwald@reactos.org)
  */
 
 #include "hidparse.h"
-#include "hidp.h"
+#include <hidpmem.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -22,15 +21,10 @@ AllocFunction(
     PVOID Item = ExAllocatePoolWithTag(NonPagedPool, ItemSize, HIDPARSE_TAG);
     if (Item)
     {
-        //
         // zero item
-        //
         RtlZeroMemory(Item, ItemSize);
     }
 
-    //
-    // done
-    //
     return Item;
 }
 
@@ -39,9 +33,6 @@ NTAPI
 FreeFunction(
     IN PVOID Item)
 {
-    //
-    // free item
-    //
     ExFreePoolWithTag(Item, HIDPARSE_TAG);
 }
 
@@ -51,9 +42,6 @@ ZeroFunction(
     IN PVOID Item,
     IN ULONG ItemSize)
 {
-    //
-    // zero item
-    //
     RtlZeroMemory(Item, ItemSize);
 }
 
@@ -64,27 +52,7 @@ CopyFunction(
     IN PVOID Source,
     IN ULONG Length)
 {
-    //
-    // copy item
-    //
     RtlCopyMemory(Target, Source, Length);
-}
-
-VOID
-__cdecl
-DebugFunction(
-    IN LPCSTR FormatStr, ...)
-{
-#if HID_DBG
-    va_list args;
-    char printbuffer[1024];
-
-    va_start(args, FormatStr);
-    vsprintf(printbuffer, FormatStr, args);
-    va_end(args);
-
-    DbgPrint(printbuffer);
-#endif
 }
 
 NTSTATUS
