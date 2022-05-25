@@ -132,15 +132,12 @@ PropSheetProc(HWND hwndDlg, UINT uMsg, LPARAM lParam)
 {
     // NOTE: This callback is needed to set large icon correctly.
     HICON hIcon;
-    RECT rcRect;
     switch (uMsg)
     {
         case PSCB_INITIALIZED:
         {
             hIcon = LoadIconW(hApplet, MAKEINTRESOURCEW(IDI_CPLSYSTEM));
             SendMessageW(hwndDlg, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
-            if (GetWindowRect(hwndDlg, &rcRect))
-                MoveWindow(hwndDlg, 320, 0, (rcRect.right - rcRect.left), (rcRect.bottom - rcRect.top), TRUE);
             break;
         }
     }
