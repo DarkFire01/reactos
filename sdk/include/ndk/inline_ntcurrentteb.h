@@ -12,6 +12,12 @@ FORCEINLINE struct _TEB * NtCurrentTeb(void)
     __debugbreak();
     return (struct _TEB *)0;
 }
+#elif defined(_M_ARM64)
+FORCEINLINE struct _TEB * NtCurrentTeb(void)
+{
+    __debugbreak();
+    return (struct _TEB *)0;
+}
 #elif defined(_M_AMD64)
 FORCEINLINE struct _TEB * NtCurrentTeb(void)
 {

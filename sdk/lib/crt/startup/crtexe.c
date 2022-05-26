@@ -222,7 +222,7 @@ __tmainCRTStartup (void)
     GetStartupInfo (&StartupInfo);
   {
     void *lock_free = NULL;
-    void *fiberid = ((PNT_TIB)NtCurrentTeb())->StackBase;
+    void *fiberid = 0;
     int nested = FALSE;
     while((lock_free = InterlockedCompareExchangePointer ((volatile PVOID *) &__native_startup_lock,
 							  fiberid, 0)) != 0)

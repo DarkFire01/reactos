@@ -178,9 +178,6 @@
 @ cdecl -arch=arm ?unexpected@@YAXXZ() MSVCRT_unexpected # void __cdecl unexpected(void)
 @ cdecl -arch=arm ?what@exception@@UBAPBDXZ() MSVCRT_what_exception # public: virtual char const * __cdecl exception::what(void)const
 
-# **************** ARM64 C++ functions ****************
-@ cdecl -stub -arch=arm64 ??3@YAXPEAX_K@Z() MSVCRT_operator_delete
-
 # **************** Common functions ****************
 @ cdecl -arch=i386 $I10_OUTPUT() MSVCRT_I10_OUTPUT
 @ cdecl -arch=i386 _CIacos()
@@ -232,7 +229,7 @@
 @ extern _HUGE
 @ cdecl _Strftime(str long str ptr ptr)
 @ cdecl _XcptFilter(long ptr)
-@ stdcall -arch=x86_64,arm __C_specific_handler(ptr long ptr ptr)
+@ stdcall -arch=x86_64,arm,arm64 __C_specific_handler(ptr long ptr ptr)
 @ cdecl __CppXcptFilter(long ptr)
 @ stub -version=0x600+ -arch=i386 __CxxCallUnwindDelDtor
 @ stub -arch=i386 __CxxCallUnwindDtor

@@ -229,8 +229,8 @@
 @ stdcall XLATEOBJ_hGetColorTransform(ptr)
 @ stdcall XLATEOBJ_iXlate(ptr long)
 @ stdcall XLATEOBJ_piVector(ptr)
-@ cdecl -arch=x86_64,arm __C_specific_handler(ptr long ptr ptr) NTOSKRNL.__C_specific_handler
-@ cdecl -arch=x86_64,arm __chkstk(ptr long ptr ptr) NTOSKRNL.__chkstk
+@ cdecl -arch=x86_64,arm,arm64 __C_specific_handler(ptr long ptr ptr) NTOSKRNL.__C_specific_handler
+@ cdecl -arch=x86_64,arm,arm64 __chkstk(ptr long ptr ptr) NTOSKRNL.__chkstk
 @ cdecl -arch=arm __jump_unwind() NTOSKRNL.__jump_unwind
 @ cdecl -arch=i386 _abnormal_termination() NTOSKRNL._abnormal_termination
 @ cdecl -arch=i386 _except_handler2() NTOSKRNL._except_handler2

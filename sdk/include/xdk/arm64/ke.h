@@ -34,7 +34,7 @@ NTSYSAPI
 PKTHREAD
 NTAPI
 KeGetCurrentThread(VOID);
-
+#define KeGetPcr()                      PCR
 #define DbgRaiseAssertionFailure() __break(0xf001)
 
 $endif (_WDMDDK_)
