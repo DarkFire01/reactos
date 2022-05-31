@@ -69,5 +69,3 @@ DllMain(HINSTANCE hinstDLL,
   }
   return TRUE;
 }
-
-/* EOF */
