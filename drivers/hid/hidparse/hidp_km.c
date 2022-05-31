@@ -1,11 +1,10 @@
 /*
  * PROJECT:     ReactOS HID Parser Library
  * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
- * FILE:        drivers/hid/hidparse/hidp_km.c
  * PURPOSE:     HID Parser kernel mode
- * COPYRIGHT:   Copyright (C) Michael Martin (michael.martin@reactos.org)
- *              Copyright (C) Johannes Anderwald (johannes.anderwald@reactos.org)
- *              Copyright (C) Roman Masanin (36927roma@gmail.com) 2022
+ * COPYRIGHT:   Copyright  Michael Martin <michael.martin@reactos.org>
+ *              Copyright  Johannes Anderwald <johannes.anderwald@reactos.org>
+ *              Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 #include "parser.h"

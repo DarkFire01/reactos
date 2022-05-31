@@ -1,9 +1,8 @@
 /*
  * PROJECT:     ReactOS HID Parser Library
  * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
- * FILE:        lib/drivers/hidparser/hidparser.c
  * PURPOSE:     HID Parser common functions implementation
- * COPYRIGHT:   Copyright (C) Roman Masanin (36927roma@gmail.com) 2022
+ * COPYRIGHT:   Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 #include "hidparser.h"
@@ -541,7 +540,11 @@ HidParser_GetUsages(
             dataPtr = buffer;
         }
 
-        status = HidParser_GetValuesForCap(valueCap, Report, ReportLength, dataPtr, valueCap->ReportCount);
+        status = HidParser_GetValuesForCap(valueCap,
+                                           (PUCHAR)Report,
+                                           ReportLength,
+                                           dataPtr,
+                                           valueCap->ReportCount);
 
         if (status != HIDP_STATUS_SUCCESS)
         {
@@ -705,7 +708,11 @@ HidParser_GetScaledUsageValue(
     }
 
     // read one usage from the report
-    status = HidParser_GetValuesForCap(valueCap, Report, ReportLength, UsageValue, 1);
+    status = HidParser_GetValuesForCap(valueCap,
+                                       (PUCHAR)Report,
+                                       ReportLength,
+                                       (PULONG)UsageValue,
+                                       1);
     if (status != HIDP_STATUS_SUCCESS)
     {
         return status;
@@ -824,7 +831,11 @@ HidParser_GetUsagesEx(
             dataPtr = buffer;
         }
 
-        status = HidParser_GetValuesForCap(&PreparsedData->ValueCaps[i], Report, ReportLength, dataPtr, PreparsedData->ValueCaps[i].ReportCount);
+        status = HidParser_GetValuesForCap(&PreparsedData->ValueCaps[i],
+                                           (PUCHAR)Report,
+                                           ReportLength,
+                                           dataPtr,
+                                           PreparsedData->ValueCaps[i].ReportCount);
         if (status != HIDP_STATUS_SUCCESS)
         {
             if (buffer != NULL)
@@ -986,7 +997,11 @@ HidParser_GetData(
             dataPtr = buffer;
         }
 
-        status = HidParser_GetValuesForCap(&PreparsedData->ValueCaps[i], Report, ReportLength, dataPtr, PreparsedData->ValueCaps[i].ReportCount);
+        status = HidParser_GetValuesForCap(&PreparsedData->ValueCaps[i],
+                                           (PUCHAR)Report,
+                                           ReportLength,
+                                           dataPtr,
+                                           PreparsedData->ValueCaps[i].ReportCount);
 
         if (status != HIDP_STATUS_SUCCESS)
         {
@@ -1280,7 +1295,11 @@ HidParser_GetUsageValue(
         }
 
         // read one usage from the report
-        return HidParser_GetValuesForCap(&PreparsedData->ValueCaps[index], Report, ReportLength, UsageValue, 1);
+        return HidParser_GetValuesForCap(&PreparsedData->ValueCaps[index],
+                                         (PUCHAR)Report,
+                                         ReportLength,
+                                         UsageValue,
+                                         1);
     }
 
     return HIDP_STATUS_USAGE_NOT_FOUND;
@@ -1365,7 +1384,7 @@ HidParser_GetUsageValueArray(
 
     // read usage from the report
     status = HidParser_GetValuesForCap(valueCap,
-                                       Report,
+                                       (PUCHAR)Report,
                                        ReportLength,
                                        buffer,
                                        valueCap->ReportCount);

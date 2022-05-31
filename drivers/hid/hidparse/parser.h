@@ -1,9 +1,8 @@
 /*
  * PROJECT:     ReactOS HID Parser Library
  * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
- * FILE:        drivers/hid/hidparse/parser.h
  * PURPOSE:     HID Parser internal structures
- * COPYRIGHT:   Copyright (C) Roman Masanin (36927roma@gmail.com) 2022
+ * COPYRIGHT:   Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 #ifndef _HIDPARSER_H_
@@ -19,29 +18,29 @@
 
 typedef enum _ITEM_SIZE
 {
-    ITEM_SIZE_0 = 0, // 0b00
-    ITEM_SIZE_1 = 1, // 0b01
-    ITEM_SIZE_2 = 2, // 0b10
-    ITEM_SIZE_4 = 3, // 0b11
+    ITEM_SIZE_0 = 0,
+    ITEM_SIZE_1 = 1,
+    ITEM_SIZE_2 = 2,
+    ITEM_SIZE_4 = 3
 } ITEM_SIZE;
 
 typedef enum _ITEM_TYPE
 {
-    ITEM_TYPE_MAIN = 0,     // 0b00
-    ITEM_TYPE_GLOBAL = 1,   // 0b01
-    ITEM_TYPE_LOCAL = 2,    // 0b10
-    ITEM_TYPE_RESERVED = 3, // 0b11
+    ITEM_TYPE_MAIN = 0,
+    ITEM_TYPE_GLOBAL = 1,
+    ITEM_TYPE_LOCAL = 2,
+    ITEM_TYPE_RESERVED = 3
 } ITEM_TYPE;
 
 typedef enum _MAIN_ITEM_TYPE
 {
-    MAIN_ITEM_TAG_INPUT = 0x8,          // 0b1000
-    MAIN_ITEM_TAG_OUTPUT = 0x9,         // 0b1001
-    MAIN_ITEM_TAG_FEATURE = 0xb,        // 0b1011
-    MAIN_ITEM_TAG_COLLECTION = 0xa,     // 0b1010
-    MAIN_ITEM_TAG_END_COLLECTION = 0xc, // 0b1100
-    MAIN_ITEM_TAG_END_RESERVED1 = 0xd,  // 0b1101
-    MAIN_ITEM_TAG_END_RESERVED2 = 0xf   // 0b1111
+    MAIN_ITEM_TAG_INPUT = 0x8,
+    MAIN_ITEM_TAG_OUTPUT = 0x9,
+    MAIN_ITEM_TAG_FEATURE = 0xb,
+    MAIN_ITEM_TAG_COLLECTION = 0xa,
+    MAIN_ITEM_TAG_END_COLLECTION = 0xc,
+    MAIN_ITEM_TAG_END_RESERVED1 = 0xd,
+    MAIN_ITEM_TAG_END_RESERVED2 = 0xf
 } MAIN_ITEM_TYPE;
 
 typedef enum _GLOBAL_ITEM_TYPE

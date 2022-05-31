@@ -1,9 +1,8 @@
 /*
  * PROJECT:     ReactOS HID Parser Library
  * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
- * FILE:        drivers/hid/hidparse/parser.c
  * PURPOSE:     HID Parser
- * COPYRIGHT:   Copyright (C) Roman Masanin (36927roma@gmail.com) 2022
+ * COPYRIGHT:   Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 /* Purpose of this file is to parse the HID report descriptor into preparsed data

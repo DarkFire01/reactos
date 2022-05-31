@@ -1,10 +1,9 @@
 /*
  * PROJECT:     ReactOS HID Parser Library
  * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
- * FILE:        lib/drivers/hidparser/hidpmem.h
  * PURPOSE:     HID Parser km/um memory functions wrapper
- * COPYRIGHT:   Copyright (C) Michael Martin (michael.martin@reactos.org)
- *              Copyright (C) Johannes Anderwald (johannes.anderwald@reactos.org)
+ * COPYRIGHT:   Copyright  Michael Martin <michael.martin@reactos.org>
+ *              Copyright  Johannes Anderwald <johannes.anderwald@reactos.org>
  */
 
 PVOID NTAPI AllocFunction(ULONG Size);

@@ -1,9 +1,8 @@
 /*
  * PROJECT:     ReactOS HID Parser Library
  * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
- * FILE:        drivers/hid/hidparse/listhelper.h
  * PURPOSE:     common dual linked list operattions
- * COPYRIGHT:   Copyright (C) Roman Masanin (36927roma@gmail.com) 2022
+ * COPYRIGHT:   Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 #include "parser.h"

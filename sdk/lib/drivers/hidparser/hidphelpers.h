@@ -1,9 +1,8 @@
 /*
  * PROJECT:     ReactOS HID Parser Library
  * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
- * FILE:        lib/drivers/hidparser/hidphelpers.h
  * PURPOSE:     HID Parser helper functions
- * COPYRIGHT:   Copyright (C) Roman Masanin (36927roma@gmail.com) 2022
+ * COPYRIGHT:   Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 #include "preparsed.h"
