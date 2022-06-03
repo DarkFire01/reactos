@@ -6,7 +6,8 @@
  */
 
 #pragma once
-
+/* sussy baka for arm ports
+ */
 typedef
 ARC_STATUS
 (__cdecl *ARC_ENTRY_POINT)(

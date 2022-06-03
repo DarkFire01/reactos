@@ -28,13 +28,12 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 #define EFI_DISK_IO_PROTOCOL_GUID \
  {0xCE345171,0xBA0B,0x11d2,\
  {0x8e,0x4F,0x00,0xa0,0xc9,0x69,0x72,0x3b}}
- 
+ #if 0
 typedef struct _EFI_DISK_IO_PROTOCOL {
- UINT64 Revision;
- EFI_DISK_READ ReadDisk;
- EFI_DISK_WRITE WriteDisk;
+    UINT64 Revision;
+    EFI_DISK_READ ReadDisk;
+    EFI_DISK_WRITE WriteDisk;
 } EFI_DISK_IO_PROTOCOL;
-
 typedef
 EFI_STATUS
 (EFIAPI *EFI_DISK_READ) (
@@ -44,6 +43,6 @@ EFI_STATUS
  IN UINTN BufferSize,
  OUT VOID *Buffer
  );
-
+#endif
 #endif
 

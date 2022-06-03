@@ -8,7 +8,7 @@
 
 #pragma once
 
-#ifndef _M_ARM64 || _M_ARM
+#ifndef _M_ARM /* ARM64 too */
 /* Arch-specific addresses translation implementation */
 FORCEINLINE
 PVOID
