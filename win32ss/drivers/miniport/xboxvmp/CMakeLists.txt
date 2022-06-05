@@ -1,6 +1,7 @@
 
 list(APPEND SOURCE
     xboxvmp.c
+    nv2a.c
     xboxvmp.h)
 
 add_library(xboxvmp MODULE

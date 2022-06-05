@@ -128,4 +128,21 @@ XboxVmpSetColorRegisters(
     PVIDEO_CLUT ColorLookUpTable,
     PSTATUS_BLOCK StatusBlock);
 
+UCHAR
+NvGetCrtc(
+    PXBOXVMP_DEVICE_EXTENSION DeviceExtension,
+    UCHAR Index);
+
+VOID
+NvSetCrtc(
+    PXBOXVMP_DEVICE_EXTENSION DeviceExtension,
+    UCHAR Index,
+    UCHAR value);
+
+/* PRIVATE ------------ */
+#include "nv2a_temp.h"
+
+VOID
+NV2A_InitGPU(PXBOXVMP_DEVICE_EXTENSION XboxVmpDeviceExtension);
+
 /* EOF */

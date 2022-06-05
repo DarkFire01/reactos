@@ -15,11 +15,11 @@
 /* INCLUDES *******************************************************************/
 
 #include "xboxvmp.h"
-
-#include <debug.h>
 #include <dpfilter.h>
 
 #include <drivers/xbox/xgpu.h>
+#define NDEBUG
+#include <debug.h>
 
 /* PUBLIC AND PRIVATE FUNCTIONS ***********************************************/
 
@@ -121,6 +121,8 @@ XboxVmpInitialize(
         XboxVmpDeviceExtension->PhysControlStart.u.LowPart,
         XboxVmpDeviceExtension->VirtControlStart);
 
+    /* Let's do some one time GPU init */
+    NV2A_InitGPU(HwDeviceExtension);
     return TRUE;
 }
 
@@ -133,11 +135,11 @@ XboxVmpInitialize(
 BOOLEAN
 NTAPI
 XboxVmpStartIO(
+
     PVOID HwDeviceExtension,
     PVIDEO_REQUEST_PACKET RequestPacket)
 {
     BOOLEAN Result;
-
     RequestPacket->StatusBlock->Status = ERROR_INVALID_PARAMETER;
 
     switch (RequestPacket->IoControlCode)
@@ -253,6 +255,12 @@ XboxVmpStartIO(
                 (PXBOXVMP_DEVICE_EXTENSION)HwDeviceExtension,
                 (PVIDEO_MODE_INFORMATION)RequestPacket->OutputBuffer,
                 RequestPacket->StatusBlock);
+            break;
+        }
+
+        case IOCTL_VIDEO_QUERY_PUBLIC_ACCESS_RANGES:
+        {
+            DPRINT1("Fuck");
             break;
         }
 
