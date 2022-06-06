@@ -58,6 +58,8 @@ ExcludeFromSelect = *
 %ac97_GB.DeviceDesc%=ac97, PCI\VEN_8086&DEV_27DE
 %ac97_6300ESB.DeviceDesc%=ac97, PCI\VEN_8086&DEV_25A6
 %ac97_63xxESB.DeviceDesc%=ac97, PCI\VEN_8086&DEV_2698
+;temp
+%ac97_NV.DeviceDesc%=ac97, PCI\VEN_10DE&DEV_01B1
 
 ;; This section enables installing on x64 systems
 
@@ -353,7 +355,7 @@ ac97_GB.DeviceDesc="Intel 82801GB/GR/GDH/GBM/GHM AC'97 Audio Controller"
 ac97_6300ESB.DeviceDesc="Intel 6300ESB AC'97 Audio Controller"
 ac97_63xxESB.DeviceDesc="Intel 631xESB/632xESB AC'97 Audio Controller"
 ac97.DeviceDesc="Intel 82801 AC'97 Audio Controller"
-
+ac97_NV.DeviceDesc= "NVIDIA Corporation nForce AC'97 Audio Controller"
 ac97.Wave.szPname="AC'97 Sound Card"
 ac97.Topology.szPname="AC'97 Mixer"
 
@@ -449,6 +451,7 @@ ac97_GB.DeviceDesc="Intel 82801GB/GR/GDH/GBM/GHM AC'97 Audiocontroller"
 ac97_6300ESB.DeviceDesc="Intel 6300ESB AC'97 Audiocontroller"
 ac97_63xxESB.DeviceDesc="Intel 631xESB/632xESB AC'97 Audiocontroller"
 ac97.DeviceDesc="Intel 82801 AC'97 Audiocontroller"
+
 
 ac97.Wave.szPname="AC'97 Musikkarte"
 ac97.Topology.szPname="AC'97 Mixer"
