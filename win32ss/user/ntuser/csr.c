@@ -15,6 +15,7 @@ DBG_DEFAULT_CHANNEL(UserCsr);
 PEPROCESS gpepCSRSS = NULL;
 PVOID CsrApiPort = NULL;
 DWORD gdwPendingSystemThreads = 0;
+USHORT gusLanguageID;
 
 VOID
 InitCsrProcess(VOID /*IN PEPROCESS CsrProcess*/)
@@ -61,6 +62,29 @@ ResetCsrApiPort(VOID)
         ObDereferenceObject(CsrApiPort);
 
     CsrApiPort = NULL;
+}
+
+BOOL
+InitializeGreCSRSS(VOID)
+{
+    /* Initialize DirectX graphics driver */
+    if (DxDdStartupDxGraphics(0, NULL, 0, NULL, NULL, gpepCSRSS) != STATUS_SUCCESS)
+    {
+        ERR("Unable to initialize DirectX graphics\n");
+        return FALSE;
+    }
+
+    /* Get global language ID */
+    gusLanguageID = UserGetLanguageID();
+
+    /* Initialize FreeType library */
+    if (!InitFontSupport())
+    {
+        ERR("Unable to initialize font support\n");
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 /*

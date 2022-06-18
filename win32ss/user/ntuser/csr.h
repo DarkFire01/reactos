@@ -22,6 +22,7 @@ extern PVOID CsrApiPort;
 
 VOID InitCsrProcess(VOID /*IN PEPROCESS CsrProcess*/);
 VOID ResetCsrProcess(VOID);
+BOOL InitializeGreCSRSS(VOID);
 NTSTATUS InitCsrApiPort(IN HANDLE CsrPortHandle);
 VOID ResetCsrApiPort(VOID);
 
