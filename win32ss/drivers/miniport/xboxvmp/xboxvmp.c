@@ -121,8 +121,7 @@ XboxVmpInitialize(
         XboxVmpDeviceExtension->PhysControlStart.u.LowPart,
         XboxVmpDeviceExtension->VirtControlStart);
 
-    /* Let's do some one time GPU init */
-    NV2A_InitGPU(HwDeviceExtension);
+    XboxVmpDeviceExtension->EncoderID = Encoder_Detect();
     return TRUE;
 }
 
@@ -353,6 +352,7 @@ XboxVmpSetCurrentMode(
     PVIDEO_MODE RequestedMode,
     PSTATUS_BLOCK StatusBlock)
 {
+    Conexant_AdjustVideoMode(DeviceExtension);
     if (RequestedMode->RequestedMode != 0)
     {
         return FALSE;
@@ -378,7 +378,7 @@ XboxVmpResetDevice(
     PSTATUS_BLOCK StatusBlock)
 {
     /* There is nothing to be done here */
-
+    Encoder_Reset(DeviceExtension);
     return TRUE;
 }
 
@@ -497,7 +497,8 @@ XboxVmpQueryAvailModes(
     PVIDEO_MODE_INFORMATION VideoMode,
     PSTATUS_BLOCK StatusBlock)
 {
-    return XboxVmpQueryCurrentMode(DeviceExtension, VideoMode, StatusBlock);
+    Encoder_QueryVideoModes(DeviceExtension);
+    return TRUE;
 }
 
 UCHAR

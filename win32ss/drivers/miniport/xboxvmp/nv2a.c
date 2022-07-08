@@ -9,7 +9,5 @@
 VOID
 NV2A_InitGPU(PXBOXVMP_DEVICE_EXTENSION XboxVmpDeviceExtension)
 {
-
     WRITE_REGISTER_ULONG((ULONG_PTR)XboxVmpDeviceExtension->VirtControlStart + NV_PMC_ENABLE, NV_PMC_ENABLE_PGRAPH_ENABLED);
-
 }

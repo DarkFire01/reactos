@@ -29,6 +29,7 @@ typedef struct
     ULONG ControlLength;
     PVOID VirtControlStart;
     PHYSICAL_ADDRESS PhysFrameBufferStart;
+    ULONG32 EncoderID;
 } XBOXVMP_DEVICE_EXTENSION, *PXBOXVMP_DEVICE_EXTENSION;
 
 VP_STATUS
@@ -145,4 +146,18 @@ NvSetCrtc(
 VOID
 NV2A_InitGPU(PXBOXVMP_DEVICE_EXTENSION XboxVmpDeviceExtension);
 
+BOOLEAN
+ReadfromSMBus(
+    UCHAR Address,
+    UCHAR bRegister,
+    UCHAR Size,
+    ULONG *Data_to_smbus);
+
+BOOLEAN
+I2CTransmitByteGetReturn(
+    UCHAR bPicAddressI2cFormat,
+    UCHAR bDataToWrite,
+    ULONG *Return);
 /* EOF */
+
+#include "encoder/encoder.h"
