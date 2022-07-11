@@ -1,0 +1,48 @@
+/*
+ * PROJECT:         ReactOS xHCI Driver
+ * LICENSE:         GPLv2+ - See COPYING in the top level directory
+ * PURPOSE:         debug header files
+ * COPYRIGHT:       Rama Teja Gampa <ramateja.g@gmail.com>
+ */
+
+#pragma once
+
+#if DBG
+
+    #ifndef NDEBUG_XHCI_TRACE
+        #define DPRINT1_XHCI(fmt, ...) do { \
+            if (DbgPrint("(%s:%d) " fmt, __RELFILE__, __LINE__, ##__VA_ARGS__))  \
+                DbgPrint("(%s:%d) DbgPrint() failed!\n", __RELFILE__, __LINE__); \
+        } while (0)
+    #else
+        #if defined(_MSC_VER)
+            #define DPRINT1_XHCI __noop
+        #else
+            #define DPRINT1_XHCI(...) do {if(0) {DbgPrint(__VA_ARGS__);}} while(0)
+        #endif
+    #endif
+
+    #ifndef NDEBUG_XHCI_ROOT_HUB
+        #define DPRINT_RH(fmt, ...) do { \
+            if (DbgPrint("(%s:%d) " fmt, __RELFILE__, __LINE__, ##__VA_ARGS__))  \
+                DbgPrint("(%s:%d) DbgPrint() failed!\n", __RELFILE__, __LINE__); \
+        } while (0)
+    #else
+        #if defined(_MSC_VER)
+            #define DPRINT_RH __noop
+        #else
+            #define DPRINT_RH(...) do {if(0) {DbgPrint(__VA_ARGS__);}} while(0)
+        #endif
+    #endif
+
+#else /* not DBG */
+
+    #if defined(_MSC_VER)
+        #define DPRINT1_XHCI __noop
+        #define DPRINT_RH __noop
+    #else
+        #define DPRINT1_XHCI(...) do {if(0) {DbgPrint(__VA_ARGS__);}} while(0)
+        #define DPRINT_RH(...) do {if(0) {DbgPrint(__VA_ARGS__);}} while(0)
+    #endif /* _MSC_VER */
+
+#endif /* not DBG */
