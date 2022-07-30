@@ -39,7 +39,10 @@ EfiEntry(
 
     UefiVideoClearScreen(0);
     UefiPrintF("Graphics initalization Complete", 1, 1, 0xFFFFFF, 0x000000);
-
+for(;;)
+{
+    
+}
     if (!UiInitialize(FALSE))
     {
         UiMessageBoxCritical("Unable to initialize UI.");

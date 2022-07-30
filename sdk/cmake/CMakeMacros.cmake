@@ -1,4 +1,19 @@
 
+# EFI platform ID, used in environ/CMakelists.txt for bootmgfw filename naming also.
+if(ARCH STREQUAL "amd64")
+    set(EFI_PLATFORM_ID "x64")
+elseif(ARCH STREQUAL "i386")
+    set(EFI_PLATFORM_ID "ia32")
+elseif(ARCH STREQUAL "ia64")
+    set(EFI_PLATFORM_ID "ia64")
+elseif(ARCH STREQUAL "arm")
+    set(EFI_PLATFORM_ID "arm")
+elseif(ARCH STREQUAL "arm64")
+    set(EFI_PLATFORM_ID "aa64")
+else()
+    message(FATAL_ERROR "Unknown ARCH '" ${ARCH} "', cannot generate a valid UEFI boot filename.")
+endif()
+
 function(add_dependency_node _node)
     if(GENERATE_DEPENDENCY_GRAPH)
         get_target_property(_type ${_node} TYPE)
@@ -850,6 +865,15 @@ function(create_registry_hives)
         DESTINATION efi/boot
         NO_CAB
         FOR bootcd regtest livecd)
+    
+    add_cd_file(
+        FILE ${CMAKE_BINARY_DIR}/boot/freeldr/uefi/uefildr.efi
+        TARGET uefildr
+        DESTINATION efi/boot
+        NO_CAB
+        NAME_ON_CD boot${EFI_PLATFORM_ID}.efi
+        FOR bootcd regtest livecd)
+
 
 endfunction()
 

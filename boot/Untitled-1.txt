@@ -1,0 +1,5 @@
+cd C:\Users\The_DarkFire_\Desktop\UefiBringup\reactos\output-VS-amd64\boot\freeldr\uefi
+copy uefildr.efi E:\efi\boot
+E:
+cd efi/boot
+rename uefildr.efi BOOTX64.efi

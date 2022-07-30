@@ -278,5 +278,4 @@ if(RUNTIME_CHECKS)
 endif()
 
 add_dependencies(uefildr asm xdk)
-
 #add_custom_target(freeldr ALL DEPENDS uefildr)
