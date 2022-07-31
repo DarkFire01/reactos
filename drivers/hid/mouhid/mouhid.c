@@ -510,6 +510,8 @@ MouHid_Create(
          }
     }
 
+    InterlockedIncrement(&DeviceExtension->ReferenceCount);
+
     /* complete request */
     Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -528,9 +530,9 @@ MouHid_Close(
     /* get device extension */
     DeviceExtension = DeviceObject->DeviceExtension;
 
-    DPRINT("[MOUHID] IRP_MJ_CLOSE ReadReportActive %x\n", DeviceExtension->ReadReportActive);
+    DPRINT("[MOUHID] IRP_MJ_CLOSE ReferenceCount %x\n", DeviceExtension->ReferenceCount);
 
-    if (DeviceExtension->ReadReportActive)
+    if (InterlockedDecrement(&DeviceExtension->ReferenceCount) < 1)
     {
         /* request stopping of the report cycle */
         DeviceExtension->StopReadReport = TRUE;
@@ -542,7 +544,7 @@ MouHid_Close(
         IoCancelIrp(DeviceExtension->Irp);
     }
 
-    DPRINT("[MOUHID] IRP_MJ_CLOSE ReadReportActive %x\n", DeviceExtension->ReadReportActive);
+    DPRINT("[MOUHID] IRP_MJ_CLOSE ReferenceCount %x\n", DeviceExtension->ReferenceCount);
 
     /* remove file object */
     DeviceExtension->FileObject = NULL;
@@ -1168,6 +1170,8 @@ MouHid_AddDevice(
     PMOUHID_DEVICE_EXTENSION DeviceExtension;
     POWER_STATE State;
 
+    DPRINT("[MOUHID] MouHid_AddDevice\n");
+
     /* create device object */
     Status = IoCreateDevice(DriverObject,
                             sizeof(MOUHID_DEVICE_EXTENSION),
@@ -1203,6 +1207,7 @@ MouHid_AddDevice(
     DeviceExtension->NextDeviceObject = NextDeviceObject;
     KeInitializeEvent(&DeviceExtension->ReadCompletionEvent, NotificationEvent, FALSE);
     DeviceExtension->Irp = IoAllocateIrp(NextDeviceObject->StackSize, FALSE);
+    DeviceExtension->ReferenceCount = 0;
 
     /* FIXME handle allocation error */
     ASSERT(DeviceExtension->Irp);

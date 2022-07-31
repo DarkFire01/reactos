@@ -11,6 +11,7 @@
 #include "precomp.h"
 
 #include <wdmguid.h>
+#include "cyclicbuffer.h"
 
 #define NDEBUG
 #include <debug.h>
@@ -453,6 +454,21 @@ HidClassPDO_PnP(
                 Status = STATUS_DEVICE_CONFIGURATION_ERROR;
                 break;
             }
+            PHIDP_COLLECTION_DESC ColDesc;
+            ColDesc = HidClassPDO_GetCollectionDescription(&PDODeviceExtension->Common.DeviceDescription,
+                                                           PDODeviceExtension->CollectionNumber);
+            if (ColDesc->UsagePage == HID_USAGE_PAGE_GENERIC &&
+                (ColDesc->Usage == HID_USAGE_GENERIC_MOUSE ||
+                 ColDesc->Usage == HID_USAGE_GENERIC_KEYBOARD))
+            {
+                // Disable raw access for mouses and keybords
+                PDODeviceExtension->Capabilities.RawDeviceOK = FALSE;
+            }
+            else
+            {
+                // And enable for others
+                PDODeviceExtension->Capabilities.RawDeviceOK = TRUE;
+            }
 
             //
             // copy capabilities
@@ -537,30 +553,27 @@ HidClassPDO_PnP(
         {
             //
             // FIXME: support polled devices
+            // FIXME: START LOOPS
             //
+            HidClassFDO_InitiateRead(PDODeviceExtension->FDODeviceExtension);
+
+
             ASSERT(PDODeviceExtension->Common.DriverExtension->DevicesArePolled == FALSE);
 
-            //
             // now register the device interface
-            //
-            Status = IoRegisterDeviceInterface(PDODeviceExtension->Common.HidDeviceExtension.PhysicalDeviceObject,
+            Status = IoRegisterDeviceInterface(
+                DeviceObject,
+                //PDODeviceExtension->Common.HidDeviceExtension.PhysicalDeviceObject,
                                                &GUID_DEVINTERFACE_HID,
                                                NULL,
                                                &PDODeviceExtension->DeviceInterface);
             DPRINT("[HIDCLASS] IoRegisterDeviceInterfaceState Status %x\n", Status);
             if (NT_SUCCESS(Status))
             {
-                //
                 // enable device interface
-                //
                 Status = IoSetDeviceInterfaceState(&PDODeviceExtension->DeviceInterface, TRUE);
                 DPRINT("[HIDCLASS] IoSetDeviceInterFaceState %x\n", Status);
             }
-
-            //
-            // done
-            //
-            Status = STATUS_SUCCESS;
             break;
         }
         case IRP_MN_REMOVE_DEVICE:
@@ -750,7 +763,11 @@ HidClassPDO_CreatePDO(
         //
         // set device flags
         //
-        PDODeviceObject->Flags |= DO_MAP_IO_BUFFER;
+        PDODeviceObject->Flags |= DO_DIRECT_IO;
+
+        HidClass_CyclicBufferInitialize(&PDODeviceExtension->InputBuffer, FDODeviceExtension->Common.DeviceDescription.CollectionDesc[Index].InputLength);
+        InitializeListHead(&PDODeviceExtension->PendingIRPList);
+        KeInitializeSpinLock(&PDODeviceExtension->ReadLock);
 
         //
         // device is initialized

@@ -719,6 +719,87 @@ HidUsb_GetReportDescriptor(
 }
 
 NTSTATUS
+HidUsb_GetStringDescriptor(
+    IN PDEVICE_OBJECT DeviceObject,
+    IN PIRP Irp,
+    IN USHORT Index,
+    IN USHORT Lang)
+{
+    ULONG BufferLength, Length;
+    PIO_STACK_LOCATION IoStack;
+    NTSTATUS Status;
+
+    USB_STRING_DESCRIPTOR USD;
+    PVOID Report = &USD;
+
+    //
+    // FIXME: support old hid version
+    //
+    BufferLength = sizeof(USB_STRING_DESCRIPTOR);
+    Status = Hid_GetDescriptor(DeviceObject,
+                               URB_FUNCTION_GET_DESCRIPTOR_FROM_INTERFACE,
+                               sizeof(struct _URB_CONTROL_DESCRIPTOR_REQUEST),
+                               &Report,
+                               &BufferLength,
+                               USB_STRING_DESCRIPTOR_TYPE,
+                               Index,
+                               Lang);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT("[HIDUSB] failed to get report descriptor with %x\n", Status);
+        return Status;
+    }
+
+    Report = NULL;
+    BufferLength = USD.bLength;
+    Status = Hid_GetDescriptor(DeviceObject,
+                               URB_FUNCTION_GET_DESCRIPTOR_FROM_INTERFACE,
+                               sizeof(struct _URB_CONTROL_DESCRIPTOR_REQUEST),
+                               &Report,
+                               &BufferLength,
+                               USB_STRING_DESCRIPTOR_TYPE,
+                               Index,
+                               Lang);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT("[HIDUSB] failed to get report descriptor with %x\n", Status);
+        return Status;
+    }
+
+    //
+    // get current stack location
+    //
+    IoStack = IoGetCurrentIrpStackLocation(Irp);
+
+    //
+    // get length to copy
+    //
+    Length = min(IoStack->Parameters.DeviceIoControl.OutputBufferLength, BufferLength);
+    ASSERT(Length);
+
+    //
+    // copy result
+    //
+    RtlCopyMemory(Irp->UserBuffer, ((USB_STRING_DESCRIPTOR*)Report)->bString, Length);
+
+    //
+    // store result length
+    //
+    Irp->IoStatus.Information = Length;
+
+    //
+    // free the report buffer
+    //
+    ExFreePoolWithTag(Report, HIDUSB_TAG);
+
+    //
+    // done
+    //
+    return Status;
+
+}
+
+NTSTATUS
 NTAPI
 HidInternalDeviceControl(
     IN PDEVICE_OBJECT DeviceObject,
@@ -888,6 +969,32 @@ HidInternalDeviceControl(
             Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_NOT_IMPLEMENTED;
+        }
+        case IOCTL_HID_GET_STRING:
+        {
+            USHORT index = ((UINT32)IoStack->Parameters.DeviceIoControl.Type3InputBuffer) & 0xFF;
+            USHORT lang = (((UINT32)IoStack->Parameters.DeviceIoControl.Type3InputBuffer) >> 16);
+            switch (index)
+            {
+                case HID_STRING_ID_IMANUFACTURER:
+                    index = HidDeviceExtension->DeviceDescriptor->iManufacturer;
+                    break;
+                case HID_STRING_ID_ISERIALNUMBER:
+                    index = HidDeviceExtension->DeviceDescriptor->iSerialNumber;
+                    break;
+                case HID_STRING_ID_IPRODUCT:
+                    index = HidDeviceExtension->DeviceDescriptor->iProduct;
+                    break;
+                default:
+                    ASSERT(FALSE);
+                    break;
+            }
+
+            Status = HidUsb_GetStringDescriptor(DeviceObject, Irp, index, lang);
+            DPRINT("[HIDUSB] IOCTL_HID_GET_STRING Status %x\n", Status);
+            Irp->IoStatus.Status = Status;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return Status;
         }
         default:
         {
