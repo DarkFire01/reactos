@@ -16,7 +16,7 @@ static RGBQUAD CachedPalette[BV_MAX_COLORS];
 static PUCHAR BackBuffer = NULL;
 
 PUCHAR BackBuffer;
-PROSEFI_FRAMEBUFFER_DATA refiFbData;
+PREACTOS_INTERNAL_BGCONTEXT refiFbData;
 
 #define BB_OFFSET(x, y)    ((y) * SCREEN_WIDTH + (x))
 #define FB_OFFSET(x, y)    (((PanV + (y)) * FrameBufferWidth + PanH + (x)) * 4)
@@ -96,12 +96,12 @@ VidInitializeUefi(
 
 
     /* Hard coding go brr */
-    refiFbData = ExAllocatePoolWithTag(NonPagedPool, sizeof(ROSEFI_FRAMEBUFFER_DATA), 'IFEU');
-    refiFbData->BaseAddress        = 0xd0000000;
-    refiFbData->BufferSize         = 0x21c0000;
-    refiFbData->ScreenWidth        = 3840;
-    refiFbData->ScreenHeight       = 2160;
-    refiFbData->PixelsPerScanLine  = 4096;
+    refiFbData = ExAllocatePoolWithTag(NonPagedPool, sizeof(PREACTOS_INTERNAL_BGCONTEXT), 'IFEU');
+    refiFbData->BaseAddress        = 0x4000000000;
+    refiFbData->BufferSize         = 0xCF1800;
+    refiFbData->ScreenWidth        = 2256;
+    refiFbData->ScreenHeight       = 1504;
+    refiFbData->PixelsPerScanLine  = 2256;
     refiFbData->PixelFormat        = 1;
 
     /* MAP FRAMEBUFFER */

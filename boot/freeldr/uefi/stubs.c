@@ -34,39 +34,6 @@ UefiVideoIsPaletteFixed(VOID)
   return FALSE;
 }
 
-VOID
-UefiVideoSetPaletteColor(UCHAR Color, UCHAR Red, UCHAR Green, UCHAR Blue)
-{
-  /* Not supported */
-}
-
-VOID
-UefiVideoGetPaletteColor(UCHAR Color, UCHAR* Red, UCHAR* Green, UCHAR* Blue)
-{
-  /* Not supported */
-}
-
-VOID
-UefiVideoSync(VOID)
-{
-  /* Not supported */
-}
-
-/* Arch specific / Other */
-
-VOID UefiPcBeep(VOID)
-{
-    /* uefi sound support wen */
-}
-
-VOID
-UefiGetExtendedBIOSData(PULONG ExtendedBIOSDataArea, PULONG ExtendedBIOSDataSize)
-{
-    /* lol what the fuck */
-    *ExtendedBIOSDataArea = 0;
-    *ExtendedBIOSDataSize = 0;
-}
-
 
 TIMEINFO*
 UefiGetTime(VOID)

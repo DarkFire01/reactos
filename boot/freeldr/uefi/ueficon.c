@@ -19,17 +19,28 @@ UefiConsPutChar(int Ch)
 BOOLEAN
 UefiConsKbHit(VOID)
 {
-    /* No keyboard support yet */
+    EFI_INPUT_KEY Key;
+    LocSystemTable->ConIn->ReadKeyStroke(LocSystemTable->ConIn, &Key);
+    if(Key.UnicodeChar != 0)
+    {
+        return TRUE;
+    }
+    else
+    {
+        LocSystemTable->ConIn->Reset(LocSystemTable->ConIn, FALSE);
+    }
+
     return FALSE;
 }
 
 int
 UefiConsGetCh(void)
 {
-    /* No keyboard support yet */
-    while (1) ;
-
-    return 0;
+    EFI_INPUT_KEY Key;
+    LocSystemTable->ConIn->ReadKeyStroke(LocSystemTable->ConIn, &Key);
+    int keystroke = Key.UnicodeChar;
+    LocSystemTable->ConIn->Reset(LocSystemTable->ConIn, FALSE);
+    return keystroke;
 }
 
 VOID

@@ -1,7 +1,7 @@
 /*
  *  FreeLoader
  *  Copyright (C) 1998-2003  Brian Palmer  <brianp@sginet.com>
- *  Copyright (C) 2008-2009  Hervé Poussineau  <hpoussin@reactos.org>
+ *  Copyright (C) 2008-2009  Hervï¿½ Poussineau  <hpoussin@reactos.org>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -52,7 +52,7 @@ static FILEDATA FileData[MAX_FDS];
 static LIST_ENTRY DeviceListHead;
 
 /* ARC FUNCTIONS **************************************************************/
-
+#if 1
 ARC_STATUS ArcOpen(CHAR* Path, OPENMODE OpenMode, ULONG* FileId)
 {
     ARC_STATUS Status;
@@ -214,7 +214,7 @@ ARC_STATUS ArcOpen(CHAR* Path, OPENMODE OpenMode, ULONG* FileId)
     }
     return Status;
 }
-
+#endif
 ARC_STATUS ArcClose(ULONG FileId)
 {
     ARC_STATUS Status;

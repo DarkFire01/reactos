@@ -204,19 +204,23 @@ add_asm_files(freeldr_base_asm ${FREELDR_BASE_ASM_SOURCE})
 
 list(APPEND UEFILDR_BASE_SOURCE
     include/uefildr.h
-    uefi.c
+    freeldr.c
+    misc.c
+    utils.c
     stubs.c
-    machuefi.c
+    uefisetup.c
     ueficon.c
-    uefivideo.c
+    uefivid.c
+    uefimem.c
     uefidisk.c
+    uefiux.c
+    uefidebug.c
    ${freeldr_base_asm}
    ../freeldr/bootmgr.c# This file is compiled with custom definitions
-   #../freeldr/freeldr.c
    ../freeldr/ntldr/setupldr.c ## Strangely enough this file is needed in GCC builds
-   #                 ## even if ${FREELDR_NTLDR_SOURCE} is not added,
-   #                 ## otherwise we get linking errors with Rtl**Bitmap** APIs.
-   #                 ## Do not happen on MSVC builds however...
+   # even if ${FREELDR_NTLDR_SOURCE} is not added,
+   # otherwise we get linking errors with Rtl**Bitmap** APIs.
+   # Do not happen on MSVC builds however...
    ../freeldr/ntldr/inffile.c
    ../freeldr/ntldr/ntldropts.c
    ../freeldr/lib/rtl/libsupp.c)

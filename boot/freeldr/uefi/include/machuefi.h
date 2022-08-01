@@ -1,8 +1,15 @@
+/*
+ * PROJECT:     Freeldr UEFI Extension
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     UEFI "mach" header
+ * COPYRIGHT:   Copyright 2022 Justin Miller <justinmiller100@gmail.com>
+ */
 
 #include "../../freeldr/include/machine.h"
 
-VOID
-UefiMachInit(const char *CmdLine);
+EFI_STATUS
+UefiMachInit(_In_ EFI_HANDLE ImageHandle,
+             _In_ EFI_SYSTEM_TABLE *SystemTable);
 
 /* Console */
 
