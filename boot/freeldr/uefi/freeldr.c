@@ -38,7 +38,6 @@ EfiEntry(
         goto Quit;
     }
 
-    printf("hellos");
     /* Initialize memory manager */
     if (!MmInitializeMemoryManager())
     {

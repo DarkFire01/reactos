@@ -10,7 +10,7 @@
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WARNING);
 
-FREELDR_MEMORY_DESCRIPTOR PcMemoryMap[80 + 1];
+FREELDR_MEMORY_DESCRIPTOR PcMemoryMap[256 + 1];
 EFI_SYSTEM_TABLE *LocSystemTable;
 
 VOID
@@ -35,7 +35,7 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 {
     UefiVideoClearScreen(0);
 
-    LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(FreeldrMem) * 80, (void**)&FreeldrMem);
+    LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(FreeldrMem) * 256, (void**)&FreeldrMem);
 
     /* Use the power of UEFI to get the memory map */
     EFI_MEMORY_DESCRIPTOR* Map = NULL;
@@ -68,16 +68,39 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
      * We *COULD* add in UEFI entries but that isn't.. what i think is the right path for now/
      * EFI_MEMORY_TYPE is the enum that decides what type of memory it is
      */
-    UINTN FreeMem = 0;
     for(count = 0; count < EntryCount; count++)
     {
         MapOffset = Map[count];
 
+        switch(Map->Type)
+        {
+            case EfiConventionalMemory:
+                AddMemoryDescriptor(FreeldrMem,
+                                    256,
+                                    (MapOffset.VirtualStart / EFI_PAGE_SIZE),
+                                    MapOffset.NumberOfPages,
+                                    LoaderFree);
+                break;
+            case EfiLoaderCode:
+                AddMemoryDescriptor(FreeldrMem,
+                                    256,
+                                    (MapOffset.VirtualStart / EFI_PAGE_SIZE),
+                                    MapOffset.NumberOfPages,
+                                    LoaderLoadedProgram);
+                break;
+            default:
+                AddMemoryDescriptor(FreeldrMem,
+                                256,
+                                MapOffset.VirtualStart / EFI_PAGE_SIZE,
+                                MapOffset.NumberOfPages,
+                                LoaderReserve);
+        }
+        #if 0
         if (Map->Type == EfiConventionalMemory)
         {
             AddMemoryDescriptor(FreeldrMem,
-                                EntryCount,
-                                MapOffset.PhysicalStart,
+                                128,
+                                (MapOffset.VirtualStart / EFI_PAGE_SIZE),
                                 MapOffset.NumberOfPages,
                                 LoaderFree);
             //printf("NumberOfPages: %X\r\n", MapOffset.NumberOfPages);
@@ -85,6 +108,15 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
             FreeMem += (MapOffset.NumberOfPages * EFI_PAGE_SIZE);
             /* This guy is easy! Free memory :D poggers */
         }
+        else
+        {
+                        AddMemoryDescriptor(FreeldrMem,
+                                128,
+                                MapOffset.VirtualStart / EFI_PAGE_SIZE,
+                                MapOffset.NumberOfPages,
+                                LoaderReserve);
+        }
+    #endif
         //printf("Memory Desc: %d\r\nType: %X\r\n", count, MapOffset.Type);
        // printf("PhysicalStart: %X\r\n", MapOffset.PhysicalStart);
        // printf("VirtualStart: %X\r\n", MapOffset.VirtualStart);

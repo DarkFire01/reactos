@@ -306,16 +306,12 @@ VOID RunLoader(VOID)
     ULONG     DefaultOperatingSystem;
     ULONG     SelectedOperatingSystem;
     ULONG     i;
-#if 0
+
     if (!MachInitializeBootDevices())
     {
         UiMessageBoxCritical("Error when detecting hardware.");
         return;
     }
-#endif
-#ifdef _M_IX86
-
-#endif
 /* STUCK HERE */
 
     if (!IniFileInitialize())
@@ -323,10 +319,11 @@ VOID RunLoader(VOID)
         UiMessageBoxCritical("Error initializing .ini file.");
         for(;;)
         {
-
+            
         }
         return;
     }
+
     /* Dont even try to go past this line --------- */
 
     /* Open the [FreeLoader] section */

@@ -323,7 +323,6 @@ BOOLEAN MmInitializeMemoryManager(VOID)
     MmCheckFreeldrImageFile();
     BiosMemoryMap = MachVtbl.GetMemoryMap(&BiosMemoryMapEntryCount);
 
-#if DBG
     // Dump the system memory map
     TRACE("System Memory Map (Base Address, Length, Type):\n");
     while ((MemoryDescriptor = ArcGetMemoryDescriptor(MemoryDescriptor)) != NULL)
@@ -333,11 +332,11 @@ BOOLEAN MmInitializeMemoryManager(VOID)
             MemoryDescriptor->PageCount * MM_PAGE_SIZE,
             MmGetSystemMemoryMapTypeString(MemoryDescriptor->MemoryType));
     }
-#endif
 
     // Find address for the page lookup table
     TotalPagesInLookupTable = MmGetAddressablePageCountIncludingHoles();
     PageLookupTableAddress = MmFindLocationForPageLookupTable(TotalPagesInLookupTable);
+
     LastFreePageHint = MmHighestPhysicalPage;
 
     if (PageLookupTableAddress == 0)
@@ -356,10 +355,9 @@ BOOLEAN MmInitializeMemoryManager(VOID)
 
     FreePagesInLookupTable = MmCountFreePagesInLookupTable(PageLookupTableAddress,
                                                         TotalPagesInLookupTable);
-printf("im here!");
+
     MmInitializeHeap(PageLookupTableAddress);
-printf("im heretwo!");
-    TRACE("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
+    printf("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
 
 
     return TRUE;
