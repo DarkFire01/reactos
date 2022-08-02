@@ -24,7 +24,7 @@ UefiInitalizeVideo(_In_ EFI_HANDLE ImageHandle,
     SystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(refiFbData), (void**)&refiFbData);
     refiFbData->BaseAddress        = (ULONG_PTR)gop->Mode->FrameBufferBase;
     
-    gop->SetMode(gop,0);
+    gop->SetMode(gop,1);
     refiFbData->BufferSize         = gop->Mode->FrameBufferSize;
     refiFbData->ScreenWidth        = gop->Mode->Info->HorizontalResolution;
     refiFbData->ScreenHeight       = gop->Mode->Info->VerticalResolution;

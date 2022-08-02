@@ -52,3 +52,17 @@ UefiWaitForAnyKey();
 
 VOID
 UefiPollAndDrawKeyboardInput();
+
+
+VOID
+UefiMemInit(_In_ EFI_HANDLE ImageHandle,
+             _In_ EFI_SYSTEM_TABLE *SystemTable);
+
+
+             ULONG
+AddMemoryDescriptor(
+    IN OUT PFREELDR_MEMORY_DESCRIPTOR List,
+    IN ULONG MaxCount,
+    IN PFN_NUMBER BasePage,
+    IN PFN_NUMBER PageCount,
+    IN TYPE_OF_MEMORY MemoryType);

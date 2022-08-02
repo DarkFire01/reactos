@@ -314,18 +314,20 @@ VOID RunLoader(VOID)
     }
 #endif
 #ifdef _M_IX86
-    /* Load additional SCSI driver (if any) */
-    if (LoadBootDeviceDriver() != ESUCCESS)
-    {
-        UiMessageBoxCritical("Unable to load additional boot device drivers.");
-    }
+
 #endif
+/* STUCK HERE */
 
     if (!IniFileInitialize())
     {
         UiMessageBoxCritical("Error initializing .ini file.");
+        for(;;)
+        {
+
+        }
         return;
     }
+    /* Dont even try to go past this line --------- */
 
     /* Open the [FreeLoader] section */
     if (!IniOpenSection("FreeLoader", &SectionId))

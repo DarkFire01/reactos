@@ -25,20 +25,9 @@ UefiMachInit(_In_ EFI_HANDLE ImageHandle,
     /* Temporary code */
     UefiVideoClearScreen(0);
     UefiInitializeInputSupport(ImageHandle, SystemTable);
-    UefiPrintF("Press any key to continue", 0, 0, 0xFFFFFF, 0x000000);
-    while(UefiConsKbHit() ==  FALSE)
-    {
 
-    }
-    UefiVideoClearScreen(0);
-    UefiPollAndDrawKeyboardInput();
-    /* Now wait until a key becomes available.  This is a simple
-       polling implementation.  You could try and use the WaitForKey
-       event instead if you like */
-    UefiPrintF("Keypressed!", 0, 2, 0xFFFFFF, 0x000000);
-  
     /* Setup vtbl */
-    RtlZeroMemory(&MachVtbl, sizeof(MachVtbl));
+    //RtlZeroMemory(&MachVtbl, sizeof(MachVtbl));
     /* Universal */
     MachVtbl.ConsPutChar = UefiConsPutChar;
     MachVtbl.ConsKbHit = UefiConsKbHit;
