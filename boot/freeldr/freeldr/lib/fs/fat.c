@@ -3,7 +3,7 @@
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     FAT filesystem driver for FreeLoader
  * COPYRIGHT:   Copyright 1998-2003 Brian Palmer (brianp@sginet.com)
- *              Copyright 2009 Hervé Poussineau
+ *              Copyright 2009 Hervï¿½ Poussineau
  *              Copyright 2019 Victor Perevertkin (victor.perevertkin@reactos.org)
  */
 
@@ -1560,7 +1560,7 @@ const DEVVTBL* FatMount(ULONG DeviceId)
     ULARGE_INTEGER SectorCount;
     ARC_STATUS Status;
 
-    TRACE("Enter FatMount(%lu)\n", DeviceId);
+    printf("Enter FatMount(%lu)\n", DeviceId);
 
     //
     // Allocate data for volume information

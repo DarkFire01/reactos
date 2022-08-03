@@ -1,6 +1,6 @@
 /*
  *  FreeLoader
- *  Copyright (C) 2009     Hervé Poussineau  <hpoussin@reactos.org>
+ *  Copyright (C) 2009     Hervï¿½ Poussineau  <hpoussin@reactos.org>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -35,6 +35,11 @@ BOOLEAN IniFileInitialize(VOID)
 
     /* Try to open freeldr.ini */
     Status = FsOpenFile("freeldr.ini", FrLdrBootPath, OpenReadOnly, &FileId);
+    printf("tried to open freeldr\r\n");
+    for(;;)
+    {
+
+    }
     if (Status != ESUCCESS)
     {
         ERR("Error while opening freeldr.ini, Status: %d\n", Status);

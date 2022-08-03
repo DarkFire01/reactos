@@ -45,7 +45,10 @@ EfiEntry(
         UiMessageBoxCritical("Unable to initialize memory manager.");
         goto Quit;
     }
+
     FsInit();
+    UefiConsSetCursor(0,0);
+    UefiVideoClearScreen(0);
     RunLoader();
 
 Quit:

@@ -68,7 +68,7 @@ ARC_STATUS ArcOpen(CHAR* Path, OPENMODE OpenMode, ULONG* FileId)
     ULONG DeviceId;
 
     /* Print status message */
-    TRACE("Opening file '%s'...\n", Path);
+    printf("Opening file '%s'...\n", Path);
 
     *FileId = MAX_FDS;
 
