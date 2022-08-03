@@ -10,7 +10,7 @@
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WARNING);
 
-FREELDR_MEMORY_DESCRIPTOR PcMemoryMap[256 + 1];
+FREELDR_MEMORY_DESCRIPTOR PcMemoryMap[80 + 1];
 EFI_SYSTEM_TABLE *LocSystemTable;
 
 VOID
@@ -34,7 +34,6 @@ PFREELDR_MEMORY_DESCRIPTOR
 UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 {
     UefiVideoClearScreen(0);
-
     LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(FreeldrMem) * 256, (void**)&FreeldrMem);
 
     /* Use the power of UEFI to get the memory map */
@@ -56,9 +55,7 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
     EntryCount = (MapSize / DescriptorSize);
     UefiConsSetCursor(0,0);
     UefiVideoClearScreen(0);
-
-    EFI_MEMORY_DESCRIPTOR MapOffset;
-
+ EFI_MEMORY_DESCRIPTOR* MapOffset;
 
     /*
      * Now here is where things get fun / they suck
@@ -68,62 +65,39 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
      * We *COULD* add in UEFI entries but that isn't.. what i think is the right path for now/
      * EFI_MEMORY_TYPE is the enum that decides what type of memory it is
      */
-    for(count = 0; count < EntryCount; count++)
+    for(count = 0; count < 4; count++)
     {
-        MapOffset = Map[count];
-
+        MapOffset = &Map[count];
+           // EFI_MEMORYa_DESCRIPTOR* MapOffset = (EFI_MEMORY_DESCRIPTOR*)(Map + (count * DescriptorSize));
+#if 1
         switch(Map->Type)
         {
             case EfiConventionalMemory:
                 AddMemoryDescriptor(FreeldrMem,
-                                    256,
-                                    (MapOffset.VirtualStart / EFI_PAGE_SIZE),
-                                    MapOffset.NumberOfPages,
+                                    MAX_BIOS_DESCRIPTORS,
+                                    (MapOffset->PhysicalStart / MM_PAGE_SIZE),
+                                    MapOffset->NumberOfPages,
                                     LoaderFree);
                 break;
             case EfiLoaderCode:
                 AddMemoryDescriptor(FreeldrMem,
-                                    256,
-                                    (MapOffset.VirtualStart / EFI_PAGE_SIZE),
-                                    MapOffset.NumberOfPages,
+                                    MAX_BIOS_DESCRIPTORS,
+                                    (MapOffset->PhysicalStart / MM_PAGE_SIZE),
+                                    MapOffset->NumberOfPages,
                                     LoaderLoadedProgram);
                 break;
             default:
                 AddMemoryDescriptor(FreeldrMem,
-                                256,
-                                MapOffset.VirtualStart / EFI_PAGE_SIZE,
-                                MapOffset.NumberOfPages,
+                                MAX_BIOS_DESCRIPTORS,
+                                MapOffset->PhysicalStart / MM_PAGE_SIZE,
+                                MapOffset->NumberOfPages,
                                 LoaderReserve);
-        }
-        #if 0
-        if (Map->Type == EfiConventionalMemory)
-        {
-            AddMemoryDescriptor(FreeldrMem,
-                                128,
-                                (MapOffset.VirtualStart / EFI_PAGE_SIZE),
-                                MapOffset.NumberOfPages,
-                                LoaderFree);
-            //printf("NumberOfPages: %X\r\n", MapOffset.NumberOfPages);
-           // printf("memory in bytes is: %d\r\n",(MapOffset.NumberOfPages * EFI_PAGE_SIZE));
-            FreeMem += (MapOffset.NumberOfPages * EFI_PAGE_SIZE);
-            /* This guy is easy! Free memory :D poggers */
-        }
-        else
-        {
-                        AddMemoryDescriptor(FreeldrMem,
-                                128,
-                                MapOffset.VirtualStart / EFI_PAGE_SIZE,
-                                MapOffset.NumberOfPages,
-                                LoaderReserve);
+                break;
         }
     #endif
-        //printf("Memory Desc: %d\r\nType: %X\r\n", count, MapOffset.Type);
-       // printf("PhysicalStart: %X\r\n", MapOffset.PhysicalStart);
-       // printf("VirtualStart: %X\r\n", MapOffset.VirtualStart);
-       // printf("NumberOfPages: %X\r\n", MapOffset.NumberOfPages);
-       // printf("Attribute: %X\r\n", MapOffset.Attribute);
-       //  printf("Memory Map EntryCount: %d\r\n", EntryCount);
+      //  UefiVideoClearScreen(0);
     }
+    UefiVideoClearScreen(0);
     printf("leaving func");
     return FreeldrMem;
 }

@@ -317,10 +317,6 @@ VOID RunLoader(VOID)
     if (!IniFileInitialize())
     {
         UiMessageBoxCritical("Error initializing .ini file.");
-        for(;;)
-        {
-            
-        }
         return;
     }
 

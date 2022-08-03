@@ -321,6 +321,7 @@ BOOLEAN MmInitializeMemoryManager(VOID)
     TRACE("Initializing Memory Manager.\n");
     /* Check the freeldr binary */
     MmCheckFreeldrImageFile();
+
     BiosMemoryMap = MachVtbl.GetMemoryMap(&BiosMemoryMapEntryCount);
 
     // Dump the system memory map
@@ -445,7 +446,6 @@ PVOID MmFindLocationForPageLookupTable(PFN_NUMBER TotalPageCount)
     // Calculate the end address for the lookup table
     PageLookupTableEndPage = min(CandidateBasePage + CandidatePageCount,
                                  MM_MAX_PAGE_LOADER);
-
     // Calculate the virtual address
     PageLookupTableMemAddress = (PVOID)((PageLookupTableEndPage * PAGE_SIZE)
                                         - PageLookupTableSize);

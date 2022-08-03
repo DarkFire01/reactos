@@ -37,6 +37,7 @@ EfiEntry(
         UiMessageBoxCritical("Unable to initialize UI.");
         goto Quit;
     }
+    printf("stop");
 
     /* Initialize memory manager */
     if (!MmInitializeMemoryManager())
@@ -44,9 +45,7 @@ EfiEntry(
         UiMessageBoxCritical("Unable to initialize memory manager.");
         goto Quit;
     }
-
     FsInit();
-
     RunLoader();
 
 Quit:

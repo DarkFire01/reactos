@@ -66,13 +66,16 @@ UefiDiskReadLogicalSectors(
     IN ULONG SectorCount,
     OUT PVOID Buffer)
 {
+    printf("DiskReadLogicalSectors: Sector Count %d Drive Number: %d", SectorCount, DriveNumber);
+
     return FALSE;
 }
 
 BOOLEAN
 UefiDiskGetDriveGeometry(UCHAR DriveNumber, PGEOMETRY Geometry)
 {
-    return FALSE;
+    /* Nothing ..? */
+    return TRUE;
 }
 
 ULONG
