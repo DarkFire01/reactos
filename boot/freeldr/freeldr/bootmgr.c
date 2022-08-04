@@ -393,7 +393,10 @@ VOID RunLoader(VOID)
         }
 
         TimeOut = -1;
-
+    for(;;)
+    {
+        
+    }
         /* Load the chosen operating system */
         LoadOperatingSystem(&OperatingSystemList[SelectedOperatingSystem]);
 

@@ -97,6 +97,8 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
     #endif
       //  UefiVideoClearScreen(0);
     }
+
+
     UefiVideoClearScreen(0);
     printf("leaving func");
     return FreeldrMem;
