@@ -47,12 +47,6 @@ UefiHwDetect(VOID)
     return 0;
 }
 
-VOID
-UefiPrepareForReactOS(VOID)
-{
-
-}
-
 VOID UefiHwIdle(VOID)
 {
     /* UNIMPLEMENTED */

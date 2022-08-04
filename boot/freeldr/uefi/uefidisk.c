@@ -62,7 +62,7 @@ UefiInitializeFileSystemSupport(_In_ EFI_HANDLE ImageHandle,
 static ARC_STATUS
 UefiDiskClose(ULONG FileId)
 {
-        printf("UefiDiskClose\r\n");
+       // printf("UefiDiskClose\r\n");
     DISKCONTEXT* Context = FsGetDeviceSpecific(FileId);
     FrLdrTempFree(Context, TAG_HW_DISK_CONTEXT);
     return ESUCCESS;
@@ -71,7 +71,7 @@ UefiDiskClose(ULONG FileId)
 static ARC_STATUS
 UefiDiskGetFileInformation(ULONG FileId, FILEINFORMATION *Information)
 {
-        printf("UefiDiskGetFileInformation\r\n");
+      //  printf("UefiDiskGetFileInformation\r\n");
     DISKCONTEXT* Context = FsGetDeviceSpecific(FileId);
 
     RtlZeroMemory(Information, sizeof(*Information));
@@ -99,7 +99,7 @@ UefiDiskOpen(CHAR *Path, OPENMODE OpenMode, ULONG *FileId)
     ULONGLONG SectorOffset = 0;
     ULONGLONG SectorCount = 0;
  //   PARTITION_TABLE_ENTRY PartitionTableEntry;
-        printf("UefiDiskOpen\r\n");
+     //   printf("UefiDiskOpen\r\n");
     SectorSize = 512;
     GEOMETRY Geometry;
     if (!MachDiskGetDriveGeometry(0, &Geometry))
@@ -129,7 +129,7 @@ UefiDiskOpen(CHAR *Path, OPENMODE OpenMode, ULONG *FileId)
 static ARC_STATUS
 UefiDiskRead(ULONG FileId, VOID *Buffer, ULONG N, ULONG *Count)
 {
-    printf("UefiDiskRead\r\n");
+   // printf("UefiDiskRead\r\n");
     DISKCONTEXT* Context = FsGetDeviceSpecific(FileId);
     UCHAR* Ptr = (UCHAR*)Buffer;
     ULONG Length, TotalSectors, MaxSectors, ReadSectors;
@@ -141,11 +141,11 @@ UefiDiskRead(ULONG FileId, VOID *Buffer, ULONG N, ULONG *Count)
     TotalSectors = (N + Context->SectorSize - 1) / Context->SectorSize;
     MaxSectors   = DiskReadBufferSize / Context->SectorSize;
     SectorOffset = Context->SectorOffset + Context->SectorNumber;
-    printf("SectorOffset: %X\r\n", SectorOffset);
+  //  printf("SectorOffset: %X\r\n", SectorOffset);
     // If MaxSectors is 0, this will lead to infinite loop.
     // In release builds assertions are disabled, however we also have sanity checks in DiskOpen()
  //   ASSERT(MaxSectors > 0);
-    printf("Loop\r\n");
+ //   printf("Loop\r\n");
     ret = TRUE;
 
     while (TotalSectors)
@@ -158,7 +158,7 @@ UefiDiskRead(ULONG FileId, VOID *Buffer, ULONG N, ULONG *Count)
                                          SectorOffset,
                                          ReadSectors,
                                          DiskReadBuffer);
-        printf("got out of read sectors \r\n");
+      ///  printf("got out of read sectors \r\n");
         Length = ReadSectors * Context->SectorSize;
         if (Length > N)
             Length = N;
@@ -173,14 +173,14 @@ UefiDiskRead(ULONG FileId, VOID *Buffer, ULONG N, ULONG *Count)
 
     *Count = (ULONG)((ULONG_PTR)Ptr - (ULONG_PTR)Buffer);
     Context->SectorNumber = SectorOffset - Context->SectorOffset;
-    printf("UefiDiskRead : Success\r\n");
+ //   printf("UefiDiskRead : Success\r\n");
     return (!ret) ? EIO : ESUCCESS;
 }
 
 static ARC_STATUS
 UefiDiskSeek(ULONG FileId, LARGE_INTEGER *Position, SEEKMODE SeekMode)
 {
-    printf("UefiDiskSeek\r\n");
+   // printf("UefiDiskSeek\r\n");
     DISKCONTEXT* Context = FsGetDeviceSpecific(FileId);
     LARGE_INTEGER NewPosition = *Position;
 
@@ -207,7 +207,7 @@ UefiDiskSeek(ULONG FileId, LARGE_INTEGER *Position, SEEKMODE SeekMode)
         return EINVAL;
 
     Context->SectorNumber = NewPosition.QuadPart;
-    printf("UefiDiskSeek : Success \r\n");
+//    printf("UefiDiskSeek : Success \r\n");
     return ESUCCESS;
 }
 
@@ -268,12 +268,12 @@ UefiSetupBlockDevices()
 
 
     /* Now lets play around */
-    printf("Attempting read\r\n");
+  //  printf("Attempting read\r\n");
 
         /* Read the MBR */
     if (!MachDiskReadLogicalSectors(0, 0ULL, 1, DiskReadBuffer))
     {
-        printf("Reading MBR failed\n");
+       // printf("Reading MBR failed\n");
 
     }
 
@@ -281,7 +281,7 @@ UefiSetupBlockDevices()
     Mbr = (PMASTER_BOOT_RECORD)DiskReadBuffer;
 
     Signature = Mbr->Signature;
-    printf("Signature: %x\n", Signature);
+  //  printf("Signature: %x\n", Signature);
 
     /* Calculate the MBR checksum */
     Checksum = 0;
@@ -408,7 +408,7 @@ UefiDiskReadLogicalSectors(
     OUT PVOID Buffer)
 {
     //EFI_STATUS status;
-    printf("DiskReadLogicalSectors: Sector Count %d Drive Number: %d\r\n", SectorCount, DriveNumber);
+    //printf("DiskReadLogicalSectors: Sector Count %d Drive Number: %d\r\n", SectorCount, DriveNumber);
 
     /* TODO: do something with that device. */
 

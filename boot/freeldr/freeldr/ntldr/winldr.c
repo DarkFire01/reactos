@@ -1228,7 +1228,6 @@ LoadAndBootWindowsCommon(
 
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
-
     /* Debugging... */
     //DumpMemoryAllocMap();
 

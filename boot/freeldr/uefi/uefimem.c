@@ -12,12 +12,13 @@ DBG_DEFAULT_CHANNEL(WARNING);
 
 FREELDR_MEMORY_DESCRIPTOR PcMemoryMap[80 + 1];
 EFI_SYSTEM_TABLE *LocSystemTable;
-
+EFI_HANDLE LocImageHandle;
 VOID
 UefiMemInit(_In_ EFI_HANDLE ImageHandle,
              _In_ EFI_SYSTEM_TABLE *SystemTable)
 {
     LocSystemTable = SystemTable;
+    LocImageHandle = ImageHandle;
 }
  PFREELDR_MEMORY_DESCRIPTOR FreeldrMem;
 VOID
@@ -100,6 +101,31 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 
 
     UefiVideoClearScreen(0);
-    printf("leaving func");
+    //printf("leaving func");
     return FreeldrMem;
+}
+
+
+VOID
+UefiPrepareForReactOS(VOID)
+{
+
+     EFI_MEMORY_DESCRIPTOR* Map = NULL;
+
+
+
+	UINT32 DescriptorVersion;
+   // unsigned short int* buffer = 0;
+    LocSystemTable->BootServices->GetMemoryMap(&MapSize, Map, &MapKey, &DescriptorSize, &DescriptorVersion);
+
+    EFI_STATUS status;
+    printf("TIME TOO BOOT MOTHER FRUCKLERS");
+    status = LocSystemTable->BootServices->ExitBootServices(LocImageHandle, MapKey);
+    if (status != EFI_SUCCESS)
+    {
+        printf("Dead\r\n");
+        printf("status is: %d", status);
+
+    } 
+
 }
