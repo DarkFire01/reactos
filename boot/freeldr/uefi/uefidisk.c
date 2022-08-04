@@ -4,6 +4,17 @@
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WARNING);
 
+typedef struct tagDISKCONTEXT
+{
+    UCHAR DriveNumber;
+    ULONG SectorSize;
+    ULONGLONG SectorOffset;
+    ULONGLONG SectorCount;
+    ULONGLONG SectorNumber;
+} DISKCONTEXT;
+
+PVOID DiskReadBuffer;
+SIZE_T DiskReadBufferSize;
 //struct EFI_GUID EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID = {0x964e5b22, 0x6459, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b}};
 
 EFI_SYSTEM_TABLE* LocSystemTable;
@@ -42,12 +53,175 @@ UefiInitializeFileSystemSupport(_In_ EFI_HANDLE ImageHandle,
 #endif
 }
 
+static ARC_STATUS
+UefiDiskClose(ULONG FileId)
+{
+    for(;;)
+    {
+        printf("UefiDiskClose");
+    }
+
+    return ESUCCESS;
+}
+
+static ARC_STATUS
+UefiDiskGetFileInformation(ULONG FileId, FILEINFORMATION *Information)
+{
+    for(;;)
+    {
+        printf("UefiDiskGetFileInformation");
+    }
+
+    return ESUCCESS;
+}
+
+static ARC_STATUS
+UefiDiskOpen(CHAR *Path, OPENMODE OpenMode, ULONG *FileId)
+{
+    for(;;)
+    {
+        printf("UefiDiskOpen");
+    }
+
+    return ESUCCESS;
+}
+
+static ARC_STATUS
+UefiDiskRead(ULONG FileId, VOID *Buffer, ULONG N, ULONG *Count)
+{
+    for(;;)
+    {
+        printf("UefiDiskRead");
+    }
+
+    return ESUCCESS;
+}
+
+static ARC_STATUS
+UefiDiskSeek(ULONG FileId, LARGE_INTEGER *Position, SEEKMODE SeekMode)
+{
+    for(;;)
+    {
+        printf("UefiDiskSeek");
+    }
+
+    return ESUCCESS;
+}
+
+static const DEVVTBL UefiDiskVtbl =
+{
+    UefiDiskClose,
+    UefiDiskGetFileInformation,
+    UefiDiskOpen,
+    UefiDiskRead,
+    UefiDiskSeek,
+};
+
+BOOLEAN
+UefiGetBootPartitionEntry(
+    IN UCHAR DriveNumber,
+    OUT PPARTITION_TABLE_ENTRY PartitionTableEntry,
+    OUT PULONG BootPartition)
+    {
+        BootPartition = 0;
+        return TRUE;
+    }
+
+
+VOID
+UefiSetupBlockDevices()
+{
+    PMASTER_BOOT_RECORD Mbr;
+    PULONG Buffer;
+    ULONG i;
+    ULONG Checksum;
+    ULONG Signature;
+    /* Now lets play around */
+    printf("Attempting read\r\n");
+
+        /* Read the MBR */
+    if (!MachDiskReadLogicalSectors(0, 0ULL, 1, DiskReadBuffer))
+    {
+        printf("Reading MBR failed\n");
+
+    }
+
+    Buffer = (ULONG*)DiskReadBuffer;
+    Mbr = (PMASTER_BOOT_RECORD)DiskReadBuffer;
+
+    Signature = Mbr->Signature;
+    printf("Signature: %x\n", Signature);
+
+    /* Calculate the MBR checksum */
+    Checksum = 0;
+    for (i = 0; i < 512 / sizeof(ULONG); i++)
+    {
+        Checksum += Buffer[i];
+    }
+    Checksum = ~Checksum + 1;
+    printf("Checksum: %x\n", Checksum);
+
+}
+
+BOOLEAN
+UefiSetBootpath()
+{
+    if (*FrLdrBootPath)
+        return TRUE;
+
+    /* 0x49 is our magic ramdisk drive, so try to detect it first */
+    if (FrldrBootDrive == 0x49)
+    {
+        /* This is the ramdisk. See ArmInitializeBootDevices() too... */
+        // RtlStringCbPrintfA(FrLdrBootPath, sizeof(FrLdrBootPath), "ramdisk(%u)", 0);
+        RtlStringCbCopyA(FrLdrBootPath, sizeof(FrLdrBootPath), "ramdisk(0)");
+    }
+    else if (FrldrBootDrive < 0x80)
+    {
+        /* This is a floppy */
+        RtlStringCbPrintfA(FrLdrBootPath, sizeof(FrLdrBootPath),
+                           "multi(0)disk(0)fdisk(%u)", FrldrBootDrive);
+    }
+    else if (FrldrBootPartition == 0xFF)
+    {
+        /* Boot Partition 0xFF is the magic value that indicates booting from CD-ROM (see isoboot.S) */
+        RtlStringCbPrintfA(FrLdrBootPath, sizeof(FrLdrBootPath),
+                           "multi(0)disk(0)cdrom(%u)", FrldrBootDrive - 0x80);
+    }
+    else
+    {
+        ULONG BootPartition;
+        PARTITION_TABLE_ENTRY PartitionEntry;
+
+        /* This is a hard disk */
+        if (!UefiGetBootPartitionEntry(FrldrBootDrive, &PartitionEntry, &BootPartition))
+        {
+            printf("Failed to get boot partition entry\n");
+            return FALSE;
+        }
+
+        //FrldrBootPartition = BootPartition;
+        FrldrBootPartition = 0;
+        RtlStringCbPrintfA(FrLdrBootPath, sizeof(FrLdrBootPath),
+                           "multi(0)disk(0)rdisk(%u)partition(%lu)",
+                           FrldrBootDrive - 0x80, FrldrBootPartition);
+    }
+
+    return TRUE;
+}
+
 BOOLEAN
 UefiInitializeBootDevices(VOID)
 {
-
     UefiVideoClearScreen(0);
-   // UefiPrintF("Starting up UEFI Disk access\r\n", 1, 1, 0xFFFFFF, 0x000000);
+    UefiPrintF("Starting up UEFI Disk access\r\n", 1, 1, 0xFFFFFF, 0x000000);
+    UefiSetupBlockDevices();
+    for(;;)
+    {
+
+    }
+    FrldrBootDrive = 0x80;
+    UefiSetBootpath();
     return TRUE;
 }
 
@@ -59,6 +233,11 @@ UefiGetFloppyCount(VOID)
     return 0;
 }
 
+
+EFI_GUID bioGuid = BLOCK_IO_PROTOCOL;
+EFI_BLOCK_IO *bio;
+EFI_HANDLE *handles = NULL;
+UINTN handle_size = 0;
 BOOLEAN
 UefiDiskReadLogicalSectors(
     IN UCHAR DriveNumber,
@@ -66,9 +245,58 @@ UefiDiskReadLogicalSectors(
     IN ULONG SectorCount,
     OUT PVOID Buffer)
 {
-    printf("DiskReadLogicalSectors: Sector Count %d Drive Number: %d", SectorCount, DriveNumber);
+    EFI_STATUS status;
+        ULONG Signature;
+            ULONG Checksum;
+    PMASTER_BOOT_RECORD MbrCheck;
+    printf("DiskReadLogicalSectors: Sector Count %d Drive Number: %d\r\n", SectorCount, DriveNumber);
+    LocSystemTable->BootServices->LocateHandle(ByProtocol, &bioGuid, NULL, &handle_size, handles);
+    handles = MmAllocateMemoryWithType((handle_size + EFI_PAGE_SIZE - 1 )/ EFI_PAGE_SIZE, LoaderFirmwareTemporary);
+    LocSystemTable->BootServices->LocateHandle(ByProtocol, &bioGuid, NULL, &handle_size, handles);
+    for (ULONG i = 0; i < handle_size / sizeof(EFI_HANDLE); i++) {
+    status = LocSystemTable->BootServices->HandleProtocol(handles[i], &bioGuid, (void **) &bio);
+    /* if unsuccessful, skip and go over to the next device */
+    if (EFI_ERROR(status) || bio == NULL || bio->Media->BlockSize==0){
+            printf("Failed");
+            continue;
+        }
+        else{
+            printf("Sucess!, Block size: %d\r\n", bio->Media->BlockSize);
+        }
+    }
 
-    return FALSE;
+
+    status = LocSystemTable->BootServices->HandleProtocol(handles[1], &bioGuid, (void **) &bio);
+
+    /* TODO: do something with that device. */
+
+    #if 0
+    IN EFI_BLOCK_IO_PROTOCOL          *This,
+  IN UINT32                         MediaId,
+  IN EFI_LBA                        Lba,
+  IN UINTN                          BufferSize,
+  OUT VOID                          *Buffer
+    #endif
+    UINT8 mbr[512];
+    /* Devices setup */
+    bio->ReadBlocks(bio, bio->Media->MediaId, SectorCount - 1, (bio->Media->BlockSize * SectorCount),  &mbr);
+
+    MbrCheck = (PMASTER_BOOT_RECORD)mbr;
+    Signature = MbrCheck->Signature;
+    printf("Signature: %X\n", Signature);
+
+       /* Calculate the MBR checksum */
+    Checksum = 0;
+    for (ULONG i = 0; i < 512 / sizeof(ULONG); i++)
+    {
+        Checksum += mbr[i];
+    }
+    Checksum = ~Checksum + 1;
+    printf("Checksum: %x\n", Checksum);
+    printf("MBR magic: %X\n", MbrCheck->MasterBootRecordMagic);
+    RtlCopyMemory(Buffer, mbr, SectorCount * bio->Media->BlockSize);
+
+    return TRUE;
 }
 
 BOOLEAN
@@ -83,192 +311,3 @@ UefiDiskGetCacheableBlockCount(UCHAR DriveNumber)
 {
     return 0;
 }
-
-typedef struct tagFILEDATA
-{
-    ULONG DeviceId;
-    ULONG ReferenceCount;
-    const DEVVTBL* FuncTable;
-    const DEVVTBL* FileFuncTable;
-    VOID* Specific;
-} FILEDATA; 
-
-typedef struct tagDEVICE
-{
-    LIST_ENTRY ListEntry;
-    const DEVVTBL* FuncTable;
-    CHAR* Prefix;
-    ULONG DeviceId;
-    ULONG ReferenceCount;
-} DEVICE;
-
-const DEVVTBL* UefiMount(ULONG DeviceId)
-{
-     UefiVideoClearScreen(0);
-       UefiPrintF("ARC opened", 1, 1, 0xFFFFFF, 0x000000);
-
-    /* lol what is this */
-    for(;;)
-    {
-
-    }
-    return NULL;
-}
-static FILEDATA FileData[MAX_FDS];
-static LIST_ENTRY DeviceListHead;
-#define TAG_DEVICE_NAME 'NDsF'
-#define TAG_DEVICE 'vDsF'
-#if 0 
-/* File ID is literally just the fucking offset of the FileData Array */
-ARC_STATUS ArcOpen(CHAR* Path, OPENMODE OpenMode, ULONG* FileId)
-{
-       UefiVideoClearScreen(0);
-       UefiPrintF("Opening ARC", 1, 1, 0xFFFFFF, 0x000000);
-
-    ARC_STATUS Status;
-    ULONG Count, i;
-    PLIST_ENTRY pEntry;
-    DEVICE* pDevice;
-    CHAR* DeviceName;
-    CHAR* FileName;
-    CHAR* p;
-    CHAR* q;
-    SIZE_T Length;
-    OPENMODE DeviceOpenMode;
-    ULONG DeviceId;
-
-    /* Print status message */
-   // TRACE("Opening file '%s'...\n", Path);
-
-    *FileId = MAX_FDS;
-
-    /* Search last ')', which delimits device and path */
-    FileName = strrchr(Path, ')');
-    if (!FileName)
-        return EINVAL;
-    FileName++;
-
-    /* Count number of "()", which needs to be replaced by "(0)" */
-    Count = 0;
-    for (p = Path; p != FileName; p++)
-    {
-        if (*p == '(' && *(p + 1) == ')')
-            Count++;
-    }
-
-    /* Duplicate device name, and replace "()" by "(0)" (if required) */
-    Length = FileName - Path + Count;
-    if (Count != 0)
-    {
-        DeviceName = FrLdrTempAlloc(FileName - Path + Count, TAG_DEVICE_NAME);
-        if (!DeviceName)
-            return ENOMEM;
-        for (p = Path, q = DeviceName; p != FileName; p++)
-        {
-            *q++ = *p;
-            if (*p == '(' && *(p + 1) == ')')
-                *q++ = '0';
-        }
-    }
-    else
-    {
-        DeviceName = Path;
-    }
-
-    /* Search for the device */
-    if (OpenMode == OpenReadOnly || OpenMode == OpenWriteOnly)
-        DeviceOpenMode = OpenMode;
-    else
-        DeviceOpenMode = OpenReadWrite;
-
-    pEntry = DeviceListHead.Flink;
-    while (pEntry != &DeviceListHead)
-    {
-        pDevice = CONTAINING_RECORD(pEntry, DEVICE, ListEntry);
-        if (strncmp(pDevice->Prefix, DeviceName, Length) == 0)
-        {
-            /* OK, device found. It is already opened? */
-            if (pDevice->ReferenceCount == 0)
-            {
-                /* Search some room for the device */
-                for (DeviceId = 0; DeviceId < MAX_FDS; DeviceId++)
-                {
-                    if (!FileData[DeviceId].FuncTable)
-                        break;
-                }
-                if (DeviceId == MAX_FDS)
-                    return EMFILE;
-
-                /* Try to open the device */
-                FileData[DeviceId].FuncTable = pDevice->FuncTable;
-                Status = pDevice->FuncTable->Open(pDevice->Prefix, DeviceOpenMode, &DeviceId);
-                if (Status != ESUCCESS)
-                {
-                    FileData[DeviceId].FuncTable = NULL;
-                    return Status;
-                }
-                else if (!*FileName)
-                {
-                    /* Done, caller wanted to open the raw device */
-                    *FileId = DeviceId;
-                    pDevice->ReferenceCount++;
-                    return ESUCCESS;
-                }
-
-                /* Try to detect the file system */
-                FileData[DeviceId].FileFuncTable = UefiMount(DeviceId);
-                if (!FileData[DeviceId].FileFuncTable)
-
-                if (!FileData[DeviceId].FileFuncTable)
-                {
-                    /* Error, unable to detect file system */
-                    pDevice->FuncTable->Close(DeviceId);
-                    FileData[DeviceId].FuncTable = NULL;
-                    return ENODEV;
-                }
-
-                pDevice->DeviceId = DeviceId;
-            }
-            else
-            {
-                DeviceId = pDevice->DeviceId;
-            }
-            pDevice->ReferenceCount++;
-            break;
-        }
-        pEntry = pEntry->Flink;
-    }
-    if (pEntry == &DeviceListHead)
-        return ENODEV;
-
-    /* At this point, device is found and opened. Its file id is stored
-     * in DeviceId, and FileData[DeviceId].FileFuncTable contains what
-     * needs to be called to open the file */
-
-    /* Search some room for the device */
-    for (i = 0; i < MAX_FDS; i++)
-    {
-        if (!FileData[i].FuncTable)
-            break;
-    }
-    if (i == MAX_FDS)
-        return EMFILE;
-
-    /* Skip leading path separator, if any */
-    if (*FileName == '\\' || *FileName == '/')
-        FileName++;
-
-    /* Open the file */
-    FileData[i].FuncTable = FileData[DeviceId].FileFuncTable;
-    FileData[i].DeviceId = DeviceId;
-    *FileId = i;
-    Status = FileData[i].FuncTable->Open(FileName, OpenMode, FileId);
-    if (Status != ESUCCESS)
-    {
-        FileData[i].FuncTable = NULL;
-        *FileId = MAX_FDS;
-    }
-    return Status;
-}
-
-#endif

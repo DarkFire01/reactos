@@ -35,11 +35,6 @@ BOOLEAN IniFileInitialize(VOID)
 
     /* Try to open freeldr.ini */
     Status = FsOpenFile("freeldr.ini", FrLdrBootPath, OpenReadOnly, &FileId);
-    printf("tried to open freeldr\r\n");
-    for(;;)
-    {
-
-    }
     if (Status != ESUCCESS)
     {
         ERR("Error while opening freeldr.ini, Status: %d\n", Status);
