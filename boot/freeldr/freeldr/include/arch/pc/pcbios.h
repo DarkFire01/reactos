@@ -9,7 +9,7 @@
 
 #ifndef __ASM__
 
-#define MAX_BIOS_DESCRIPTORS 80
+#define MAX_BIOS_DESCRIPTORS 81
 
 typedef enum
 {

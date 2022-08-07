@@ -307,21 +307,14 @@ VOID RunLoader(VOID)
     ULONG     SelectedOperatingSystem;
     ULONG     i;
 
-    if (!MachInitializeBootDevices())
-    {
-        UiMessageBoxCritical("Error when detecting hardware.");
-        return;
-    }
 /* STUCK HERE */
-
+ 
     if (!IniFileInitialize())
     {
         UiMessageBoxCritical("Error initializing .ini file.");
-        return;
+       // return;
     }
-
     /* Dont even try to go past this line --------- */
-
     /* Open the [FreeLoader] section */
     if (!IniOpenSection("FreeLoader", &SectionId))
     {

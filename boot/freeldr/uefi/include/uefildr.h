@@ -22,6 +22,9 @@
 
 #include "machuefi.h"
 
+#define MAX_BIOS_DESCRIPTORS 81
+#define TAG_HW_RESOURCE_LIST    'lRwH'
+#define TAG_HW_DISK_CONTEXT     'cDwH'
 VOID
 DebugInit(IN ULONG_PTR FrLdrSectionId);
 

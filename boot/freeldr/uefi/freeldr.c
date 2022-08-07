@@ -32,23 +32,23 @@ EfiEntry(
     _In_ EFI_SYSTEM_TABLE *SystemTable)
 {
     UefiMachInit(ImageHandle, SystemTable);
+
     if (!UiInitialize(FALSE))
     {
         UiMessageBoxCritical("Unable to initialize UI.");
         goto Quit;
     }
-    //printf("stop");
 
     /* Initialize memory manager */
     if (!MmInitializeMemoryManager())
     {
         UiMessageBoxCritical("Unable to initialize memory manager.");
-        goto Quit;
+       // goto Quit;
     }
-
     FsInit();
     UefiConsSetCursor(0,0);
     UefiVideoClearScreen(0);
+    UefiInitializeBootDevices();
     RunLoader();
 
 Quit:

@@ -2,7 +2,7 @@
 
 
 #include <debug.h>
-DBG_DEFAULT_CHANNEL(WARNING);
+//DBG_DEFAULT_CHANNEL(WARNING);
 
 typedef struct tagDISKCONTEXT
 {
@@ -13,8 +13,9 @@ typedef struct tagDISKCONTEXT
     ULONGLONG SectorNumber;
 } DISKCONTEXT;
 
-extern PVOID DiskReadBuffer;
-extern SIZE_T DiskReadBufferSize;
+UCHAR FrldrBootDrive;
+ULONG FrldrBootPartition;
+SIZE_T DiskReadBufferSize;
 //struct EFI_GUID EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID = {0x964e5b22, 0x6459, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b}};
 
 EFI_SYSTEM_TABLE* LocSystemTable;
@@ -273,7 +274,7 @@ UefiSetupBlockDevices()
         /* Read the MBR */
     if (!MachDiskReadLogicalSectors(0, 0ULL, 1, DiskReadBuffer))
     {
-       // printf("Reading MBR failed\n");
+        printf("Reading MBR failed\n");
 
     }
 
@@ -419,7 +420,7 @@ UefiDiskReadLogicalSectors(
   IN UINTN                          BufferSize,
   OUT VOID                          *Buffer
     #endif
-    PVOID mbr[512];
+    PVOID mbr[2048];
     /* Devices setup */
     bio->ReadBlocks(bio, bio->Media->MediaId, SectorNumber, (bio->Media->BlockSize * SectorCount),  &mbr);
  //   printf("Reading...\r\n");

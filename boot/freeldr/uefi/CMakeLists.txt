@@ -252,9 +252,9 @@ else()
                     COMMAND ${CMAKE_STRIP} --remove-section=.rossym $<TARGET_FILE:uefildr>
                     COMMAND ${CMAKE_STRIP} --strip-all $<TARGET_FILE:uefildr>)
 endif()
-
+if(ARCH STREQUAL "amd64")
 set_image_base(uefildr 0x10000)
-
+endif()
 if(MSVC)
     set_subsystem(uefildr EFI_APPLICATION)
 else()
