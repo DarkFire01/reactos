@@ -25,7 +25,6 @@ UefiMachInit(_In_ EFI_HANDLE ImageHandle,
     /* Temporary code */
     UefiVideoClearScreen(0);
     UefiInitializeInputSupport(ImageHandle, SystemTable);
-
     /* Setup vtbl */
     //RtlZeroMemory(&MachVtbl, sizeof(MachVtbl));
     /* Universal */

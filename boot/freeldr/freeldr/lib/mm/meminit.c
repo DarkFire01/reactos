@@ -33,9 +33,7 @@ PFN_NUMBER MmHighestPhysicalPage = 0;
 PFREELDR_MEMORY_DESCRIPTOR BiosMemoryMap;
 ULONG BiosMemoryMapEntryCount;
 SIZE_T FrLdrImageSize;
-#ifdef _M_ARM64
-#define IMAGE_FILE_MACHINE_NATIVE IMAGE_FILE_MACHINE_ARM64
-#endif
+
 #if DBG
 typedef struct
 {
@@ -240,7 +238,6 @@ static
 VOID
 MmCheckFreeldrImageFile(VOID)
 {
-    #ifndef _M_ARM64
     PIMAGE_NT_HEADERS NtHeaders;
     PIMAGE_FILE_HEADER FileHeader;
     PIMAGE_OPTIONAL_HEADER OptionalHeader;
@@ -286,6 +283,7 @@ MmCheckFreeldrImageFile(VOID)
     /* Check the optional header */
     OptionalHeader = &NtHeaders->OptionalHeader;
     if ((OptionalHeader->Magic != IMAGE_NT_OPTIONAL_HDR_MAGIC) ||
+        (OptionalHeader->Subsystem != IMAGE_SUBSYSTEM_NATIVE) ||
         (OptionalHeader->ImageBase != FREELDR_PE_BASE) ||
         (OptionalHeader->SizeOfImage > MAX_FREELDR_PE_SIZE) ||
         (OptionalHeader->SectionAlignment != OptionalHeader->FileAlignment))
@@ -307,9 +305,9 @@ MmCheckFreeldrImageFile(VOID)
             OptionalHeader->SizeOfImage, MAX_FREELDR_PE_SIZE,
             OptionalHeader->SectionAlignment, OptionalHeader->FileAlignment);
     }
+
     /* Calculate the full image size */
     FrLdrImageSize = (ULONG_PTR)&__ImageBase + OptionalHeader->SizeOfImage - FREELDR_BASE;
-    #endif
 }
 
 BOOLEAN MmInitializeMemoryManager(VOID)
@@ -319,25 +317,39 @@ BOOLEAN MmInitializeMemoryManager(VOID)
 #endif
 
     TRACE("Initializing Memory Manager.\n");
+
     /* Check the freeldr binary */
    // MmCheckFreeldrImageFile();
 
-    BiosMemoryMap = MachVtbl.GetMemoryMap(&BiosMemoryMapEntryCount);\
+    BiosMemoryMap = MachVtbl.GetMemoryMap(&BiosMemoryMapEntryCount);
+    for(;;)
+    {
+        printf("hello");
+    }
+#if DBG
     // Dump the system memory map
-    printf("System Memory Map (Base Address, Length, Type):\n");
+    TRACE("System Memory Map (Base Address, Length, Type):\n");
     while ((MemoryDescriptor = ArcGetMemoryDescriptor(MemoryDescriptor)) != NULL)
     {
-        printf("%x\t %x\t %s\n",
+        TRACE("%x\t %x\t %s\n",
             MemoryDescriptor->BasePage * MM_PAGE_SIZE,
             MemoryDescriptor->PageCount * MM_PAGE_SIZE,
             MmGetSystemMemoryMapTypeString(MemoryDescriptor->MemoryType));
     }
-
+#endif
+    for(;;)
+    {
+        
+    }
     // Find address for the page lookup table
     TotalPagesInLookupTable = MmGetAddressablePageCountIncludingHoles();
+    for(;;)
+    {
+
+    }
     PageLookupTableAddress = MmFindLocationForPageLookupTable(TotalPagesInLookupTable);
-    printf("hello there");
     LastFreePageHint = MmHighestPhysicalPage;
+
     if (PageLookupTableAddress == 0)
     {
         // If we get here then we probably couldn't
@@ -346,6 +358,7 @@ BOOLEAN MmInitializeMemoryManager(VOID)
         printf("Error initializing memory manager!\n");
         return FALSE;
     }
+
     // Initialize the page lookup table
     MmInitPageLookupTable(PageLookupTableAddress, TotalPagesInLookupTable);
 
@@ -355,14 +368,13 @@ BOOLEAN MmInitializeMemoryManager(VOID)
                                                         TotalPagesInLookupTable);
 
     MmInitializeHeap(PageLookupTableAddress);
-    printf("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
-   for(;;)
-   {
-       
-   }
+
+    TRACE("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
+
 
     return TRUE;
 }
+
 
 PFN_NUMBER MmGetPageNumberFromAddress(PVOID Address)
 {
@@ -446,6 +458,7 @@ PVOID MmFindLocationForPageLookupTable(PFN_NUMBER TotalPageCount)
     // Calculate the end address for the lookup table
     PageLookupTableEndPage = min(CandidateBasePage + CandidatePageCount,
                                  MM_MAX_PAGE_LOADER);
+
     // Calculate the virtual address
     PageLookupTableMemAddress = (PVOID)((PageLookupTableEndPage * PAGE_SIZE)
                                         - PageLookupTableSize);

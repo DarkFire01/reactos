@@ -9,7 +9,8 @@
 
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WARNING);
-
+#define NEXT_MEMORY_DESCRIPTOR(Descriptor, DescriptorSize) \
+    (EFI_MEMORY_DESCRIPTOR*)((UINTN*)(Descriptor) + (DescriptorSize))
 EFI_SYSTEM_TABLE *LocSystemTable;
 EFI_HANDLE LocImageHandle;
 VOID
@@ -25,164 +26,110 @@ UefiMemConfigure()
 {
 
 }
-PFREELDR_MEMORY_DESCRIPTOR FreeldrMem;
-UINTN MapSizeStatic;
-UINTN DescriptorSizeStatic;
-UINTN *MapSize;
-UINTN *MapKey;
-UINTN *DescriptorSize;
-UINTN *DescriptorVersion;
+PFREELDR_MEMORY_DESCRIPTOR FreeldrMem = NULL;
+ULONG FreeldrEntryCount = 0;
 PFREELDR_MEMORY_DESCRIPTOR
 UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 {
-    EFI_MEMORY_TYPE Type;
-    UINT32 EntryCount, count;
-    EFI_STATUS Status = 0;
-    MapSizeStatic = MapSize[0];
-    DescriptorSizeStatic = DescriptorSize[0];
-    UefiVideoClearScreen(0);
-    //EFI_MEMORY_DESCRIPTOR* ActiveDesc = NULL;
-    LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(UINTN), (void**)MapSize);
-    LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(UINTN), (void**)MapKey);
-    LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(UINTN), (void**)DescriptorSize);
-    LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(UINTN), (void**)DescriptorVersion);
-    RtlZeroMemory(MapSize, sizeof(UINTN));
-    RtlZeroMemory(MapKey, sizeof(UINTN));
-    RtlZeroMemory(DescriptorSize, sizeof(UINTN));
-    RtlZeroMemory(DescriptorVersion, sizeof(UINTN));
-    
-    /*
-     * 1) Obtain memory map size but getting a porition of the memory map
-     * 2) ALlocate pool big enough to fit memory map detected at runtime
-     * 3) Obtain full memory map
-     */
-    EFI_MEMORY_DESCRIPTOR* Map = NULL;
-    Status = LocSystemTable->BootServices->GetMemoryMap(MapSize, Map, MapKey, DescriptorSize, DescriptorVersion);
-  // Status = LocSystemTable->BootServices->GetMemoryMap(NULL, Map, NULL, NULL, NULL);
-    printf("Memorymap Startus %d\r\n", Status);
-    LocSystemTable->BootServices->AllocatePool(EfiLoaderData, MapSizeStatic, (void**)&Map);
-    Status = LocSystemTable->BootServices->GetMemoryMap(MapSize, Map, MapKey, DescriptorSize, DescriptorVersion);
-    printf("Memorymap Startus %d\r\n", Status);
-    //ActiveDesc = Map;
-    EntryCount = (MapSizeStatic / DescriptorSizeStatic);
-    LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(FreeldrMem) * (EntryCount), (void**)&FreeldrMem);
-    printf("EntryCount:%d", EntryCount);
-    for(count = 0; count < EntryCount; count++)
-    {
-        Type = Map->Type;
-
-        switch(Type)
-        {
-            case EfiConventionalMemory:
-                AddMemoryDescriptor(FreeldrMem,
-                                    MAX_BIOS_DESCRIPTORS,
-                                    (Map->PhysicalStart / EFI_PAGE_SIZE),
-                                    Map->NumberOfPages,
-                                    LoaderFree);
-                                    printf("hi! Free mem");
-                break;
-            case EfiLoaderCode:
-                AddMemoryDescriptor(FreeldrMem,
-                                    MAX_BIOS_DESCRIPTORS,
-                                    (Map->PhysicalStart / EFI_PAGE_SIZE),
-                                    Map->NumberOfPages,
-                                    LoaderLoadedProgram);
-                break;
-            default:
-                AddMemoryDescriptor(FreeldrMem,
-                                MAX_BIOS_DESCRIPTORS,
-                                Map->PhysicalStart / EFI_PAGE_SIZE,
-                                Map->NumberOfPages,
-                                LoaderReserve);
-                break;
-        }
-
-        Map = (EFI_MEMORY_DESCRIPTOR*)((UINTN*)Map + DescriptorSizeStatic);
-    }
-    for(;;) 
-    {
-
-    }
-    #if 0
-    //LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(FreeldrMem) * 256, (void**)&FreeldrMem);
-
-    /* Use the power of UEFI to get the memory map */
-    EFI_MEMORY_DESCRIPTOR* Map = NULL;
-    UINT32 EntryCount, count;
-
-
-    EFI_MEMORY_DESCRIPTOR* buffer = 0;
-
-   // LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(EFI_MEMORY_DESCRIPTOR)  * 80, (void**)Map);
-    LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(int), (void**)buffer);
-	LocSystemTable->BootServices->GetMemoryMap(&MapSize, buffer, &MapKey, &DescriptorSize, &DescriptorVersion);
-    LocSystemTable->BootServices->AllocatePool(EfiLoaderData, MapSize, (void**)&Map);
-    //RtlZeroMemory(&Map, MapSize);
-	LocSystemTable->BootServices->GetMemoryMap(&MapSize, Map, &MapKey, &DescriptorSize, &DescriptorVersion);
-    //&DescriptorSizeStatic = (UINT32*)DescriptorSize;
-
-    /* Number of map entries */
-    EntryCount = (MapSize / DescriptorSize);
-    UefiConsSetCursor(0,0);
-    UefiVideoClearScreen(0);
-    EFI_MEMORY_DESCRIPTOR* MapOffset;
-    //printf("EntryCount %d\r\n", EntryCount);
-    /*
-     * Now here is where things get fun / they suck
-     * Freeldr is built to load memory in a way that's specific
-     * to BIOS. But here freeldr is going to be using UEFI, So for now we must make some kind of
-     * ... Translation chart i guess. 
-     * We *COULD* add in UEFI entries but that isn't.. what i think is the right path for now/
-     * EFI_MEMORY_TYPE is the enum that decides what type of memory it is
-     */
-    for(count = 0; count < EntryCount; count++)
-    {
-       MapOffset = &Map[count];
-       //  MapOffset = (EFI_MEMORY_DESCRIPTOR*)(Map + (count * DescriptorSize));
-
-      // printf("MemType: 0x%X", Map[count].Type);
-      // printf("Attribute: 0x%X", Map[count].Attribute);
-      // printf("NumberOfPages: 0x%X", Map[count].NumberOfPages);
-      // printf("PhysicalStart: 0x%X", Map[count].PhysicalStart);
-      // printf("VirtualStart: 0x%X\r\n", Map[count].VirtualStart);
+    EFI_STATUS Status;
+    UINTN MapSize = 0;
+    EFI_MEMORY_DESCRIPTOR* MemoryMap = NULL;
+    EFI_MEMORY_DESCRIPTOR* MapEntry;
+    UINTN MapKey = 0;
+    UINTN DescriptorSize = 0;
+    UINT32 DescriptorVersion = 0;
+    UINT32 EntryCount, Index; // Replaced "count" by "Index".
  
+    /* Retrieve the initial needed memory map size */
+    Status = LocSystemTable->BootServices->GetMemoryMap(&MapSize,
+                                                        MemoryMap,
+                                                        &MapKey,
+                                                        &DescriptorSize,
+                                                        &DescriptorVersion);
 
-        // if(MapOffset->Attribute)
-#if 1
-        switch(MapOffset->Type)
-        {
-            case EfiConventionalMemory:
-                   printf("EfiConventionalMemory: %X\r\n", MapOffset->NumberOfPages);
-                AddMemoryDescriptor(FreeldrMem,
-                                    MAX_BIOS_DESCRIPTORS,
-                                    (MapOffset->PhysicalStart / MM_PAGE_SIZE),
-                                    MapOffset->NumberOfPages,
-                                    LoaderFree);
-                printf("EfiConventionalMemory: %X\r\n", MapOffset->NumberOfPages);
-                break;
-            case EfiLoaderCode:
-                AddMemoryDescriptor(FreeldrMem,
-                                    MAX_BIOS_DESCRIPTORS,
-                                    (MapOffset->PhysicalStart / MM_PAGE_SIZE),
-                                    MapOffset->NumberOfPages,
-                                    LoaderLoadedProgram);
-                printf("EfiLoaderCode: %X\r\n", MapOffset->NumberOfPages);
-                break;
-            default:
-                AddMemoryDescriptor(FreeldrMem,
-                                MAX_BIOS_DESCRIPTORS,
-                                MapOffset->PhysicalStart / MM_PAGE_SIZE,
-                                MapOffset->NumberOfPages,
-                                LoaderReserve);
-                printf("Other Memory: %X\r\n", MapOffset->NumberOfPages);
-                break;
-        }
-    #endif
-      //  UefiVideoClearScreen(0);
+    /* Reallocate and retrieve again the needed memory map size (since memory
+     * allocated by AllocatePool() counts in the map), until it's OK. */
+    do
+    {
+        /* Reallocate the memory map buffer */
+        if (MemoryMap)
+            LocSystemTable->BootServices->FreePool(MemoryMap);
+        LocSystemTable->BootServices->AllocatePool(EfiLoaderData, MapSize, &MemoryMap);
+        ASSERT(MemoryMap != NULL); // FIXME Error Handling with graceful exit!
+ 
+        Status = LocSystemTable->BootServices->GetMemoryMap(&MapSize,
+                                                            MemoryMap,
+                                                            &MapKey,
+                                                            &DescriptorSize,
+                                                            &DescriptorVersion);
+    } while (Status == EFI_BUFFER_TOO_SMALL);
+
+    if (EFI_ERROR(Status))
+    {
+        LocSystemTable->BootServices->FreePool(MemoryMap);
+        *MemoryMapSize = 0;
+        return NULL;
     }
-#endif
-  //  UefiVideoClearScreen(0);
-    UefiVideoClearScreen(0);
+
+    EntryCount = MapSize / DescriptorSize;
+    MapEntry = MemoryMap;
+
+    Status = LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(FreeldrMem) * EntryCount, &FreeldrMem);
+    if (EFI_ERROR(Status))
+    {
+        LocSystemTable->BootServices->FreePool(MemoryMap);
+        *MemoryMapSize = 0;
+        return NULL;
+    }
+
+    for (Index = 0; Index < EntryCount; ++Index)
+    {
+        switch (MapEntry->Type)
+        {
+            //
+            // Note: The following code is repetitive and can be simplified.
+            //
+            case EfiConventionalMemory:
+            {
+                FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
+                                                        EntryCount,
+                                                        (MapEntry->PhysicalStart / EFI_PAGE_SIZE),
+                                                        MapEntry->NumberOfPages,
+                                                        LoaderFree);
+                //printf("EfiConventionalMemory: %X\r\n", MapEntry->NumberOfPages);
+                //printf("EfiConventionalMemory Physical Start: %X\r\n", MapEntry->PhysicalStart);
+                break;
+            }
+ 
+            case EfiLoaderCode:
+            {
+                FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
+                                                        EntryCount,
+                                                        (MapEntry->PhysicalStart / EFI_PAGE_SIZE),
+                                                        MapEntry->NumberOfPages,
+                                                        LoaderLoadedProgram);
+                //printf("EfiLoaderCode: %X\r\n", MapEntry->NumberOfPages);
+                //printf("EfiLoaderCode Physical Start: %X\r\n", MapEntry->PhysicalStart);
+                break;
+            }
+ 
+            default:
+            {
+                FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
+                                                        EntryCount,
+                                                        MapEntry->PhysicalStart / EFI_PAGE_SIZE,
+                                                        MapEntry->NumberOfPages,
+                                                        LoaderReserve);
+                //printf("Other Memory: %X\r\n", MapEntry->NumberOfPages);
+                //printf("Other Memory Physical Start: %X\r\n", MapEntry->PhysicalStart);
+                break;
+            }
+        }
+ 
+        MapEntry = NEXT_MEMORY_DESCRIPTOR(MapEntry, DescriptorSize);
+    }
+
+    printf("Exiting func");
     return FreeldrMem;
 }
 

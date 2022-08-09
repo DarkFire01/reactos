@@ -326,9 +326,7 @@ FrLdrHeapAllocateEx(
     PHEAP_BLOCK Block, NextBlock;
     USHORT BlockSize, Remaining;
 #if DBG && !defined(_M_ARM)
-#ifndef _M_ARM64
     ULONGLONG Time = __rdtsc();
-#endif
 #endif
 
 #ifdef FREELDR_HEAP_VERIFIER
@@ -410,9 +408,7 @@ FrLdrHeapAllocateEx(
         Heap->LargestAllocation = max(Heap->LargestAllocation,
                                       Block->Size * sizeof(HEAP_BLOCK));
 #if DBG && !defined(_M_ARM)
-#ifndef _M_ARM64
         Heap->AllocationTime += (__rdtsc() - Time);
-#endif
 #endif
         TRACE("HeapAllocate(%p, %ld, %.4s) -> return %p\n",
               HeapHandle, ByteSize, &Tag, Block->Data);
@@ -447,9 +443,7 @@ FrLdrHeapFreeEx(
     PHEAP Heap = HeapHandle;
     PHEAP_BLOCK Block, PrevBlock, NextBlock;
 #if DBG && !defined(_M_ARM)
-#ifndef _M_ARM64
     ULONGLONG Time = __rdtsc();
-#endif
 #endif
     TRACE("HeapFree(%p, %p)\n", HeapHandle, Pointer);
     ASSERT(Tag != 'dnE#');
@@ -529,9 +523,7 @@ FrLdrHeapFreeEx(
     /* Update the next block's back link */
     NextBlock->PreviousSize = Block->Size;
 #if DBG && !defined(_M_ARM)
-#ifndef _M_ARM64
     Heap->FreeTime += (__rdtsc() - Time);
-#endif
 #endif
 }
 
@@ -619,4 +611,3 @@ RtlFreeHeap(
     FrLdrHeapFreeEx(FrLdrDefaultHeap, HeapBase, ' ltR');
     return TRUE;
 }
-
