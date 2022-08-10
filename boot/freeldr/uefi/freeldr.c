@@ -38,7 +38,6 @@ EfiEntry(
         UiMessageBoxCritical("Unable to initialize UI.");
         goto Quit;
     }
-
     /* Initialize memory manager */
     if (!MmInitializeMemoryManager())
     {
@@ -49,6 +48,9 @@ EfiEntry(
     UefiConsSetCursor(0,0);
     UefiVideoClearScreen(0);
     UefiInitializeBootDevices();
+    UefiConsSetCursor(0,0);
+    UefiVideoClearScreen(0);
+    printf("Running loader...\r\n");
     RunLoader();
 
 Quit:

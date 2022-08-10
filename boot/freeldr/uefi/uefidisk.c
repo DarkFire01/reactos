@@ -100,8 +100,8 @@ UefiDiskOpen(CHAR *Path, OPENMODE OpenMode, ULONG *FileId)
     ULONGLONG SectorOffset = 0;
     ULONGLONG SectorCount = 0;
  //   PARTITION_TABLE_ENTRY PartitionTableEntry;
-     //   printf("UefiDiskOpen\r\n");
-    SectorSize = 512;
+     //   printf("UefiDiskOpe n\r\n");
+    SectorSize = 2048;
     GEOMETRY Geometry;
     if (!MachDiskGetDriveGeometry(0, &Geometry))
         return EINVAL;
@@ -264,7 +264,7 @@ UefiSetupBlockDevices()
         }
     }
 
-    status = LocSystemTable->BootServices->HandleProtocol(handles[1], &bioGuid, (void **) &bio);
+    status = LocSystemTable->BootServices->HandleProtocol(handles[0], &bioGuid, (void **) &bio);
 
 
 
@@ -286,7 +286,7 @@ UefiSetupBlockDevices()
 
     /* Calculate the MBR checksum */
     Checksum = 0;
-    for (i = 0; i < 512 / sizeof(ULONG); i++)
+    for (i = 0; i < 2048 / sizeof(ULONG); i++)
     {
         Checksum += Buffer[i];
     }

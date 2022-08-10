@@ -57,6 +57,10 @@ VOID
 NTAPI
 KiSystemStartupBootStack(VOID)
 {
+    for(;;)
+    {
+        
+    }
     PLOADER_PARAMETER_BLOCK LoaderBlock = KeLoaderBlock; // hack
     PKPRCB Prcb = KeGetCurrentPrcb();
     PKTHREAD Thread = (PKTHREAD)KeLoaderBlock->Thread;

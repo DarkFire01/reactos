@@ -312,7 +312,7 @@ VOID RunLoader(VOID)
     if (!IniFileInitialize())
     {
         UiMessageBoxCritical("Error initializing .ini file.");
-       // return;
+        return;
     }
     /* Dont even try to go past this line --------- */
     /* Open the [FreeLoader] section */
@@ -328,13 +328,16 @@ VOID RunLoader(VOID)
     /* Retrieve the default timeout */
     TimeOut = GetTimeOut(SectionId);
 
+    printf("Got inifile");
+#if 0
     /* UI main initialization */
     if (!UiInitialize(TRUE))
     {
         UiMessageBoxCritical("Unable to initialize UI.");
         return;
     }
-
+#endif
+    printf("freeeeedom");
     OperatingSystemList = InitOperatingSystemList(SectionId,
                                                   &OperatingSystemCount,
                                                   &DefaultOperatingSystem);
@@ -351,6 +354,8 @@ VOID RunLoader(VOID)
 
     /* Create list of display names */
     OperatingSystemDisplayNames = FrLdrTempAlloc(sizeof(PCSTR) * OperatingSystemCount, 'mNSO');
+       printf("Got inifile");
+
     if (!OperatingSystemDisplayNames)
         goto Reboot;
 
@@ -386,6 +391,7 @@ VOID RunLoader(VOID)
         }
 
         TimeOut = -1;
+          // printf("booting..");
         /* Load the chosen operating system */
         LoadOperatingSystem(&OperatingSystemList[SelectedOperatingSystem]);
 

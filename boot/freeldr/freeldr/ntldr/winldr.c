@@ -389,7 +389,7 @@ WinLdrLoadBootDrivers(PLOADER_PARAMETER_BLOCK LoaderBlock,
         // Paths are relative (FIXME: Are they always relative?)
 
         /* Load it */
-        UiIndicateProgress();
+      //  UiIndicateProgress();
         Success = WinLdrLoadDeviceDriver(&LoaderBlock->LoadOrderListHead,
                                          BootPath,
                                          &BootDriver->FilePath,
@@ -409,8 +409,8 @@ WinLdrLoadBootDrivers(PLOADER_PARAMETER_BLOCK LoaderBlock,
         else
         {
             /* Loading failed: cry loudly */
-            ERR("Cannot load boot driver '%wZ'!\n", &BootDriver->FilePath);
-            UiMessageBox("Cannot load boot driver '%wZ'!", &BootDriver->FilePath);
+            printf("Cannot load boot driver '%wZ'!\n", &BootDriver->FilePath);
+           // UiMessageBox("Cannot load boot driver '%wZ'!", &BootDriver->FilePath);
             ret = FALSE;
 
             /* Remove it from the list and try to continue */
@@ -1011,13 +1011,11 @@ LoadAndBootWindows(
     UiDrawBackdrop();
     UiDrawStatusText("Loading...");
     UiDrawProgressBarCenter("Loading NT...");
-
     /* Retrieve the system path */
     *BootPath = ANSI_NULL;
     ArgValue = GetArgumentValue(Argc, Argv, "SystemPath");
     if (ArgValue)
         RtlStringCbCopyA(BootPath, sizeof(BootPath), ArgValue);
-
     /*
      * Check whether BootPath is a full path
      * and if not, create a full boot path.
@@ -1104,23 +1102,23 @@ LoadAndBootWindows(
             return Status;
         }
     }
-
+#if 0
     /* Handle the SOS option */
     SosEnabled = !!NtLdrGetOption(BootOptions, "SOS");
     if (SosEnabled)
         UiResetForSOS();
+#endif
 
     /* Allocate and minimally-initialize the Loader Parameter Block */
     AllocateAndInitLPB(OperatingSystemVersion, &LoaderBlock);
-
     /* Load the system hive */
-    UiUpdateProgressBar(15, "Loading system hive...");
+    //UiUpdateProgressBar(15, "Loading system hive...");
     Success = WinLdrInitSystemHive(LoaderBlock, BootPath, FALSE);
     TRACE("SYSTEM hive %s\n", (Success ? "loaded" : "not loaded"));
     /* Bail out if failure */
     if (!Success)
         return ENOEXEC;
-
+  
     /* Fixup the version number using data from the registry */
     if (OperatingSystemVersion == 0)
         OperatingSystemVersion = WinLdrDetectVersion();
@@ -1138,7 +1136,6 @@ LoadAndBootWindows(
     Success = WinLdrInitErrataInf(LoaderBlock, OperatingSystemVersion, BootPath);
     TRACE("Firmware Errata file %s\n", (Success ? "loaded" : "not loaded"));
     /* Not necessarily fatal if not found - carry on going */
-
     /* Finish loading */
     return LoadAndBootWindowsCommon(OperatingSystemVersion,
                                     LoaderBlock,
@@ -1172,7 +1169,7 @@ LoadAndBootWindowsCommon(
     SystemRoot = strstr(BootPath, "\\");
 
     /* Detect hardware */
-    UiUpdateProgressBar(20, "Detecting hardware...");
+    //UiUpdateProgressBar(20, "Detecting hardware...");
     LoaderBlock->ConfigurationRoot = MachHwDetect();
 
     /* Initialize the PE loader import-DLL callback, so that we can obtain
@@ -1201,14 +1198,11 @@ LoadAndBootWindowsCommon(
  **** WE HAVE NOW REACHED THE POINT OF NO RETURN !!
  ****/
 
-    UiSetProgressBarSubset(40, 90); // NTOS goes from 25 to 75%
-
+    //UiSetProgressBarSubset(40, 90); // NTOS goes from 25 to 75%
     /* Load boot drivers */
-    UiSetProgressBarText("Loading boot drivers...");
+    //UiSetProgressBarText("Loading boot drivers...");
     Success = WinLdrLoadBootDrivers(LoaderBlock, BootPath);
     TRACE("Boot drivers loading %s\n", Success ? "successful" : "failed");
-
-    UiSetProgressBarSubset(0, 100);
 
     /* Reset the PE loader import-DLL callback */
     PeLdrImportDllLoadCallback = NULL;
@@ -1220,7 +1214,7 @@ LoadAndBootWindowsCommon(
                            BootPath,
                            OperatingSystemVersion);
 
-    UiUpdateProgressBar(100, NULL);
+    //UiUpdateProgressBar(100, NULL);
 
     /* Save entry-point pointer and Loader block VAs */
     KiSystemStartup = (KERNEL_ENTRY_POINT)KernelDTE->EntryPoint;
@@ -1233,31 +1227,32 @@ LoadAndBootWindowsCommon(
 
     /* Do the machine specific initialization */
     WinLdrSetupMachineDependent(LoaderBlock);
-
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
-
     /* Set processor context */
-    WinLdrSetProcessorContext();
+    //WinLdrSetProcessorContext();
 
     /* Save final value of LoaderPagesSpanned */
-    LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
+   // LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
 
-    TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
+    printf("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
           KiSystemStartup, LoaderBlockVA);
 
     /* Zero KI_USER_SHARED_DATA page */
-    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
+    //RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
 
-    WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
-    WinLdrpDumpBootDriver(LoaderBlockVA);
+   // WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
+   // WinLdrpDumpBootDriver(LoaderBlockVA);
 #ifndef _M_AMD64
-    WinLdrpDumpArcDisks(LoaderBlockVA);
+  //  WinLdrpDumpArcDisks(LoaderBlockVA);
 #endif
 
     /* Pass control */
     (*KiSystemStartup)(LoaderBlockVA);
-
+    for(;;)
+    {
+        printf("Fucccccccc");
+    }
     UNREACHABLE; // return ESUCCESS;
 }
 

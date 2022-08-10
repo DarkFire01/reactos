@@ -8,10 +8,6 @@ EXTERN BootMain:PROC
 
 EXTERN DiskStopFloppyMotor:PROC
 
-#ifdef _USE_ML
-EXTERN __bss_start__:FWORD
-EXTERN __bss_end__:FWORD
-#endif
 
 .code64
 
@@ -38,28 +34,6 @@ ContinueAddress:
 
 FrldrStartup:
 
-    /* Store BootDrive and BootPartition */
-    mov al, byte ptr [BSS_BootDrive]
-    mov byte ptr [FrldrBootDrive], al
-    xor eax, eax
-    mov al, byte ptr [BSS_BootPartition]
-    mov dword ptr [FrldrBootPartition], eax
-
-    /* Patch long jump with real mode entry point */
-    mov eax, dword ptr [BSS_RealModeEntry]
-    mov dword ptr [AddressOfRealModeEntryPoint], eax
-
-    /* Clean out BSS */
-    xor rax, rax
-    mov rdi, offset __bss_start__
-    mov rcx, offset __bss_end__ + 7
-    sub rcx, rdi
-    shr rcx, 3
-    rep stosq
-
-    /* Pass the command line to BootMain */
-    // mov rcx, offset cmdline
-    xor rcx, rcx
 
     /* GO! */
     call BootMain
@@ -180,26 +154,7 @@ SwitchToReal:
     /* Save 64-bit stack pointer */
     mov qword ptr [stack64], rsp
 
-    /* Step 1 - jump to compatibility segment */
-    jmp fword ptr [jumpvector]
 
-jumpvector:
-    .long SwitchToRealCompSegment
-    .word CMODE_CS
-
-SwitchToRealCompSegment:
-    /* Note: In fact the CPU is in 32 bit mode here. But it will interpret
-       the generated instructions accordingly. rax will become eax */
-
-    /* Step 2 - deactivate long mode, by disabling paging */
-    mov rax, cr0
-    and eax, HEX(7fffffff) //~0x80000000, upper bits cleared
-    mov cr0, rax
-
-//    mov word ptr [HEX(0b800a)], HEX(0e00) + '5'
-
-    /* Step 3 - jump to 16-bit segment to set the limit correctly */
-    .byte HEX(0EA) // 32bit long jmp
 AddressOfRealModeEntryPoint:
     .long 0 // receives address of RealModeEntryPoint
     .word HEX(20)//RMODE_CS

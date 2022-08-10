@@ -70,14 +70,9 @@ list(APPEND FREELDR_BOOTMGR_SOURCE
 ../freeldr/ui/ui.c
 ../freeldr/ui/video.c)
 
-list(APPEND FREELDR_BASE_ASM_SOURCE)
 
 if(ARCH STREQUAL "i386")
-list(APPEND FREELDR_BASE_ASM_SOURCE
-../freeldr/arch/i386/multiboot.S)
 
-list(APPEND FREELDR_COMMON_UEFI_ASM_SOURCE
-    )
 
 list(APPEND FREELDR_NTLDR_SOURCE
     ../freeldr/ntldr/arch/i386/winldr.c
@@ -97,11 +92,6 @@ list(APPEND FREELDR_ARC_SOURCE
     ../freeldr/disk/scsiport.c)
 
 elseif(ARCH STREQUAL "amd64")
-list(APPEND FREELDR_COMMON_UEFI_ASM_SOURCE
-    #../freeldr/arch/amd64/entry.S
-    ../freeldr/arch/amd64/int386.S
-    ../freeldr/arch/amd64/pnpbios.S
-    ../freeldr/arch/amd64/linux.S)
 
 list(APPEND FREELDR_NTLDR_SOURCE
 ../freeldr/ntldr/arch/amd64/winldr.c)
@@ -125,8 +115,7 @@ list(APPEND FREELDR_ARC_SOURCE
     ../freeldr/arch/i386/pc/pcvideo.c)
 
 elseif(ARCH STREQUAL "arm")
-list(APPEND FREELDR_COMMON_UEFI_ASM_SOURCE
-    arch/arm/boot.S)
+list(APPEND FREELDR_COMMON_UEFI_ASM_SOURCE)
 
 list(APPEND FREELDR_NTLDR_SOURCE
     ../freeldr/ntldr/arch/arm/winldr.c)
@@ -141,10 +130,10 @@ list(APPEND FREELDR_NTLDR_SOURCE
 #TBD
 endif()
 
-add_asm_files(freeldr_common_uefi_asm ${FREELDR_COMMON_UEFI_ASM_SOURCE})
+#add_asm_files(freeldr_common_uefi_asm ${FREELDR_COMMON_UEFI_ASM_SOURCE})
 
 add_library(freeldr_common_uefi
-${freeldr_common_uefi_asm}
+#${freeldr_common_uefi_asm}
 ${FREELDR_BOOTLIB_SOURCE}
 ${FREELDR_ARC_SOURCE}
 ${FREELDR_NTLDR_SOURCE}
@@ -170,7 +159,7 @@ ${FREELDR_NTLDR_SOURCE}
 ${FREELDR_BOOTMGR_SOURCE})
 
 add_pch(freeldr_common_uefi include/freeldr.h PCH_SOURCE)
-add_dependencies(freeldr_common_uefi bugcodes asm xdk)
+add_dependencies(freeldr_common_uefi bugcodes xdk)
 
 ## GCC builds need this extra thing for some reason...
 if(ARCH STREQUAL "i386" AND NOT MSVC)
@@ -198,7 +187,6 @@ include_directories(${REACTOS_SOURCE_DIR}/boot/freeldr/freeldr/include/arch/pc)
 include_directories(${REACTOS_SOURCE_DIR}/boot/freeldr/uefi/include/efi)
 add_definitions(-D_NTHAL_ -D_BLDR_ -D_NTSYSTEM_)
 
-add_asm_files(freeldr_base_asm ${FREELDR_BASE_ASM_SOURCE})
 
 
 
@@ -215,7 +203,7 @@ list(APPEND UEFILDR_BASE_SOURCE
     uefidisk.c
     uefiux.c
     uefidebug.c
-   ${freeldr_base_asm}
+   #${freeldr_base_asm}
    ../freeldr/bootmgr.c# This file is compiled with custom definitions
    ../freeldr/ntldr/setupldr.c ## Strangely enough this file is needed in GCC builds
    # even if ${FREELDR_NTLDR_SOURCE} is not added,
@@ -234,14 +222,7 @@ endif()
 add_executable(uefildr ${UEFILDR_BASE_SOURCE})
 
 if(MSVC)
-    if(ARCH STREQUAL "arm") 
         target_link_options(uefildr PRIVATE /ignore:4078 /ignore:4254 /DRIVER)
-    elseif(ARCH STREQUAL "arm64")
-        target_link_options(uefildr PRIVATE /ignore:4078 /ignore:4254 /DRIVER)
-    else()
-        target_link_options(uefildr PRIVATE /ignore:4078 /ignore:4254 /DYNAMICBASE:NO /FIXED /FILEALIGN:512 /ALIGN:512 /DRIVER)
-        add_linker_script(uefildr ../freeldr/freeldr_i386.msvc.lds)
-    endif()
     # We don't need hotpatching
     remove_target_compile_option(uefildr "/hotpatch")
 else()
@@ -252,8 +233,9 @@ else()
                     COMMAND ${CMAKE_STRIP} --remove-section=.rossym $<TARGET_FILE:uefildr>
                     COMMAND ${CMAKE_STRIP} --strip-all $<TARGET_FILE:uefildr>)
 endif()
+
 if(ARCH STREQUAL "amd64")
-set_image_base(uefildr 0x10000)
+#set_image_base(uefildr 0x10000)
 endif()
 if(MSVC)
     set_subsystem(uefildr EFI_APPLICATION)
@@ -281,5 +263,5 @@ if(RUNTIME_CHECKS)
     target_link_options(uefildr PRIVATE "/MERGE:.rtc=.text")
 endif()
 
-add_dependencies(uefildr asm xdk)
+add_dependencies(uefildr xdk)
 #add_custom_target(freeldr ALL DEPENDS uefildr)

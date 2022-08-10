@@ -333,22 +333,18 @@ BOOLEAN MmInitializeMemoryManager(VOID)
             MmGetSystemMemoryMapTypeString(MemoryDescriptor->MemoryType));
     }
 #endif
-
     // Find address for the page lookup table
     TotalPagesInLookupTable = MmGetAddressablePageCountIncludingHoles();
-    printf("TotalPages%X", TotalPagesInLookupTable);
     PageLookupTableAddress = MmFindLocationForPageLookupTable(TotalPagesInLookupTable);
-    printf("Freedom%X", TotalPagesInLookupTable);
     LastFreePageHint = MmHighestPhysicalPage;
     if (PageLookupTableAddress == 0)
     {
         // If we get here then we probably couldn't
         // find a contiguous chunk of memory big
         // enough to hold the page lookup table
-        printf("Error initializing memory manager!\n");
+        TRACE("Error initializing memory manager!\n");
         return FALSE;
     }
-
     // Initialize the page lookup table
     MmInitPageLookupTable(PageLookupTableAddress, TotalPagesInLookupTable);
     MmUpdateLastFreePageHint(PageLookupTableAddress, TotalPagesInLookupTable);
@@ -357,12 +353,7 @@ BOOLEAN MmInitializeMemoryManager(VOID)
 
     MmInitializeHeap(PageLookupTableAddress);
 
-    printf("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
-
-    for(;;)
-    {
-
-    }
+    TRACE("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
     return TRUE;
 }
 

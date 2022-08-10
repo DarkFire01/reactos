@@ -533,7 +533,10 @@ WinLdrSetProcessorContext(void)
 
     /* Enable paging by modifying CR0 */
     __writecr0(__readcr0() | CR0_PG);
-
+    for(;;)
+    {
+        
+    }
     /* The Kernel expects the boot processor PCR to be zero-filled on startup */
     RtlZeroMemory((PVOID)Pcr, MM_PAGE_SIZE);
 
