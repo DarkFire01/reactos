@@ -25,13 +25,13 @@ EXTERN _BootMain:PROC
 EXTERN _InitIdt:PROC
 EXTERN _i386Idt:DWORD
 //EXTERN _i386idtptr:FWORD
-EXTERN cmdline:DWORD
+//EXTERN cmdline:DWORD
 
 EXTERN _DiskStopFloppyMotor:PROC
 
 #ifdef _USE_ML
-EXTERN __bss_start__:DWORD
-EXTERN __bss_end__:DWORD
+//EXTERN __bss_start__:DWORD
+//EXTERN __bss_end__:DWORD
 #endif
 
 .code32
@@ -78,8 +78,8 @@ _FrldrStartup:
 
     /* Clean out BSS */
     xor eax, eax
-    mov edi, offset __bss_start__
-    mov ecx, offset __bss_end__ + 3
+    //mov edi, offset __bss_start__
+    //mov ecx, offset __bss_end__ + 3
     sub ecx, edi
     shr ecx, 2
     rep stosd
@@ -88,7 +88,7 @@ _FrldrStartup:
     call _InitIdt
 
     /* Pass the command line to BootMain */
-    mov eax, offset cmdline
+  //  mov eax, offset cmdline
 
     /* GO! */
     push eax

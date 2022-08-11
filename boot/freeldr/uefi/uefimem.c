@@ -98,7 +98,6 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 	PFREELDR_MEMORY_DESCRIPTOR FreeldrMem = NULL;
 	EFI_MEMORY_DESCRIPTOR* MapEntry;
 	EFI_MEMORY_MAP_OUTPUT MapOutput;
-	TYPE_OF_MEMORY FrldrMemoryType;
 	EFI_STATUS Status = 0;
     UINT32 EntryCount = 0;
 	UINT32 Index = 0;
@@ -118,10 +117,42 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
         {
             case EfiConventionalMemory:
             {
-                FrldrMemoryType = LoaderFree;
+                FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
+                                                EntryCount,
+                                                ((MapOutput.EfiMemoryMap->PhysicalStart >> EFI_PAGE_SHIFT) / MM_PAGE_SIZE),
+                                                MapOutput.EfiMemoryMap->NumberOfPages,
+                                                LoaderFree);
+            }
+			case EfiUnusableMemory:
+            {
+				#if 0
+                FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
+                                                EntryCount,
+                                                (MapOutput.EfiMemoryMap->VirtualStart / EFI_PAGE_SIZE),
+                                                MapOutput.EfiMemoryMap->NumberOfPages,
+                                                LoaderFree);
+				#endif
             }
             case EfiLoaderCode:
             {
+				#if 0
+				FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
+                                                EntryCount,
+                                                (MapOutput.EfiMemoryMap->PhysicalStart / EFI_PAGE_SIZE),
+                                                MapOutput.EfiMemoryMap->NumberOfPages,
+                                                LoaderLoadedProgram);
+				#endif
+               // FrldrMemoryType = LoaderLoadedProgram;
+            }
+			case EfiPalCode:
+            {
+				#if 0
+				FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
+                                                EntryCount,
+                                                (MapOutput.EfiMemoryMap->PhysicalStart / EFI_PAGE_SIZE),
+                                                MapOutput.EfiMemoryMap->NumberOfPages,
+                                                LoaderSpecialMemory);
+				#endif
                // FrldrMemoryType = LoaderLoadedProgram;
             }
             default:
@@ -129,13 +160,13 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 				//FrldrMemoryType = LoaderReserve;
             }
         }
-		
+		#if 0
 		FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
                                                 EntryCount,
                                                 (MapOutput.EfiMemoryMap->VirtualStart / EFI_PAGE_SIZE),
                                                 MapOutput.EfiMemoryMap->NumberOfPages,
                                                 FrldrMemoryType);
-
+		#endif
 		MapOutput.EfiMemoryMap = (EFI_MEMORY_DESCRIPTOR*)((char*)MapOutput.EfiMemoryMap + MapOutput.DescriptorSize);
 	}
 
@@ -151,13 +182,17 @@ UefiPrepareForReactOS()
 	MapOutput = PUEFI_LoadMemoryMap();
 	UINTN MapKeyLoc = MapOutput.MapKey;
 	Status = LocSystemTable->BootServices->ExitBootServices(LocImageHandle,MapKeyLoc);
-
+    //UefiConsSetCursor(0,0);
+    //UefiVideoClearScreen(0);
 	if (EFI_ERROR(Status))
     {
         Status = LocSystemTable->BootServices->ExitBootServices(LocImageHandle,MapKeyLoc);
     }
 	if (Status != EFI_SUCCESS)
 	{
-		printf("Boot Services failed");
+		//printf("Boot Services failed");
+		for(;;)
+		{//printf("Boot Services failed");
+		}
 	}
 }

@@ -1220,7 +1220,7 @@ LoadAndBootWindowsCommon(
     KiSystemStartup = (KERNEL_ENTRY_POINT)KernelDTE->EntryPoint;
     LoaderBlockVA = PaToVa(LoaderBlock);
 
-    /* "Stop all motors", change videomode */
+    /* "Stop all motors", change videomode exit boot services */
     MachPrepareForReactOS();
     /* Debugging... */
     //DumpMemoryAllocMap();
@@ -1229,30 +1229,32 @@ LoadAndBootWindowsCommon(
     WinLdrSetupMachineDependent(LoaderBlock);
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
+	
+	for(;;)
+	{
+	}
+	
     /* Set processor context */
-    //WinLdrSetProcessorContext();
-
+    WinLdrSetProcessorContext();
+	for(;;)
+	{
+	}
     /* Save final value of LoaderPagesSpanned */
-   // LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
+    LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
 
-    printf("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
-          KiSystemStartup, LoaderBlockVA);
 
     /* Zero KI_USER_SHARED_DATA page */
-    //RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
+    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
 
-   // WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
-   // WinLdrpDumpBootDriver(LoaderBlockVA);
+    WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
+    WinLdrpDumpBootDriver(LoaderBlockVA);
 #ifndef _M_AMD64
-  //  WinLdrpDumpArcDisks(LoaderBlockVA);
+    WinLdrpDumpArcDisks(LoaderBlockVA);
 #endif
 
     /* Pass control */
     (*KiSystemStartup)(LoaderBlockVA);
-    for(;;)
-    {
-        printf("Fucccccccc");
-    }
+
     UNREACHABLE; // return ESUCCESS;
 }
 
