@@ -101,7 +101,7 @@ UefiDiskOpen(CHAR *Path, OPENMODE OpenMode, ULONG *FileId)
     ULONGLONG SectorCount = 0;
  //   PARTITION_TABLE_ENTRY PartitionTableEntry;
      //   printf("UefiDiskOpe n\r\n");
-    SectorSize = 2048;
+    SectorSize = bio->Media->BlockSize ;
     GEOMETRY Geometry;
     if (!MachDiskGetDriveGeometry(0, &Geometry))
         return EINVAL;

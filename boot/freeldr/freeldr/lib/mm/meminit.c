@@ -320,8 +320,8 @@ BOOLEAN MmInitializeMemoryManager(VOID)
 
     /* Check the freeldr binary */
    // MmCheckFreeldrImageFile();
-
     BiosMemoryMap = MachVtbl.GetMemoryMap(&BiosMemoryMapEntryCount);
+
 #if DBG
     // Dump the system memory map
     TRACE("System Memory Map (Base Address, Length, Type):\n");
@@ -353,8 +353,11 @@ BOOLEAN MmInitializeMemoryManager(VOID)
 
     MmInitializeHeap(PageLookupTableAddress);
 
-    TRACE("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
-    return TRUE;
+    printf("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
+	for(;;)
+	{
+	}
+	return TRUE;
 }
 
 
