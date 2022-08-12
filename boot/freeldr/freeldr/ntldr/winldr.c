@@ -1220,7 +1220,7 @@ LoadAndBootWindowsCommon(
     KiSystemStartup = (KERNEL_ENTRY_POINT)KernelDTE->EntryPoint;
     LoaderBlockVA = PaToVa(LoaderBlock);
 
-    /* "Stop all motors", change videomode exit boot services */
+    /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
     /* Debugging... */
     //DumpMemoryAllocMap();
@@ -1229,16 +1229,13 @@ LoadAndBootWindowsCommon(
     WinLdrSetupMachineDependent(LoaderBlock);
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
-	
-	for(;;)
-	{
-	}
-	
+    for(;;)
+    {
+
+    }
     /* Set processor context */
     WinLdrSetProcessorContext();
-	for(;;)
-	{
-	}
+
     /* Save final value of LoaderPagesSpanned */
     LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
 
@@ -1251,10 +1248,16 @@ LoadAndBootWindowsCommon(
 #ifndef _M_AMD64
     WinLdrpDumpArcDisks(LoaderBlockVA);
 #endif
-
+    for(;;)
+    {
+       // printf("Fucccccccc");
+    }
     /* Pass control */
     (*KiSystemStartup)(LoaderBlockVA);
-
+    for(;;)
+    {
+        printf("Fucccccccc");
+    }
     UNREACHABLE; // return ESUCCESS;
 }
 

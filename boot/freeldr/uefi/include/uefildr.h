@@ -69,3 +69,7 @@ AddMemoryDescriptor(
     IN PFN_NUMBER BasePage,
     IN PFN_NUMBER PageCount,
     IN TYPE_OF_MEMORY MemoryType);
+
+
+    VOID
+UefiVideoOutputChar(UCHAR Char, unsigned X, unsigned Y, ULONG FgColor, ULONG BgColor);

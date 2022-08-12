@@ -382,7 +382,7 @@ BOOLEAN
 UefiInitializeBootDevices(VOID)
 {
      DiskReadBufferSize = PAGE_SIZE;
-    /* Default to 1 page above freeldr for the disk read buffer */
+
     DiskReadBuffer = MmAllocateMemoryWithType(DiskReadBufferSize, LoaderFirmwareTemporary);
     UefiVideoClearScreen(0);
     UefiPrintF("Starting up UEFI Disk access\r\n", 1, 1, 0xFFFFFF, 0x000000);

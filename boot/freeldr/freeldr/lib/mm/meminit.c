@@ -354,7 +354,6 @@ BOOLEAN MmInitializeMemoryManager(VOID)
     MmInitializeHeap(PageLookupTableAddress);
 
     printf("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
-
 	return TRUE;
 }
 

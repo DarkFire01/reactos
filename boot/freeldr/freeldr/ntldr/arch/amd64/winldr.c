@@ -357,7 +357,10 @@ WinLdrSetProcessorContext(void)
 
     /* Set the new PML4 */
     __writecr3((ULONG64)PxeBase);
-
+  for(;;)
+    {
+       // printf("Fucccccccc");
+    }
     /* Get kernel mode address of gdt / idt */
     GdtIdt = (PVOID)((ULONG64)GdtIdt + KSEG0_BASE);
 
@@ -366,7 +369,10 @@ WinLdrSetProcessorContext(void)
 
     /* Copy old Idt and set idtr */
     Amd64SetupIdt((PVOID)((ULONG64)GdtIdt + NUM_GDT * sizeof(KGDTENTRY)));
-
+  for(;;)
+    {
+       // printf("Fucccccccc");
+    }
     /* LDT is unused */
 //    __lldt(0);
 
@@ -384,8 +390,11 @@ void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     LoaderBlock->u.I386.CommonDataArea = (PVOID)DbgPrint; // HACK
     LoaderBlock->u.I386.MachineType = MACHINE_TYPE_ISA;
-
-    /* Allocate 2 pages for PCR */
+    for(;;)
+    {
+           // printf("Hello");
+    }
+   /* Allocate 2 pages for PCR */
     Pcr = (ULONG_PTR)MmAllocateMemoryWithType(2 * MM_PAGE_SIZE, LoaderStartupPcrPage);
     PcrBasePage = Pcr >> MM_PAGE_SHIFT;
     if (Pcr == 0)

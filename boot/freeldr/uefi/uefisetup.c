@@ -12,9 +12,6 @@ UefiMachInit(_In_ EFI_HANDLE ImageHandle,
     SystemTable->ConOut->OutputString(SystemTable->ConOut, L"UEFI EntryPoint: Starting freeldr from UEFI");
     Status = SystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(MachVtbl), (void**)&MachVtbl);
 
-    /* Pass SystemTable ptr to console */
-    UefiInitConsole(SystemTable);
-
     /* Setup GOP mode */
     EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
     SystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
@@ -22,6 +19,8 @@ UefiMachInit(_In_ EFI_HANDLE ImageHandle,
     UefiVideoClearScreen(0);
     UefiPrintF("GOP setup sucessful", 0, 0, 0xFFFFFF, 0x000000);
   
+    /* Pass SystemTable ptr to console */
+    UefiInitConsole(SystemTable);
     /* Temporary code */
     UefiVideoClearScreen(0);
     UefiInitializeInputSupport(ImageHandle, SystemTable);

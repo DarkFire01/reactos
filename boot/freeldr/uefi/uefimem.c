@@ -20,7 +20,9 @@ DBG_DEFAULT_CHANNEL(WARNING);
 extern EFI_SYSTEM_TABLE* LocSystemTable;
 extern EFI_HANDLE LocImageHandle;
 extern PFREELDR_MEMORY_DESCRIPTOR BiosMemoryMap;
-
+extern PVOID DiskReadBuffer;
+extern SIZE_T DiskReadBufferSize;
+extern PREACTOS_INTERNAL_BGCONTEXT refiFbData;
 ULONG FreeldrEntryCount = 0;
 
 typedef struct _EFI_MEMORY_MAP_OUTPUT
@@ -90,6 +92,63 @@ PUEFI_FinalizeMemoryMap()
 {
 	return 0;
 }
+
+VOID
+UefiSetMemory(
+    PFREELDR_MEMORY_DESCRIPTOR MemoryMap,
+    ULONG_PTR BaseAddress,
+    SIZE_T Size,
+    TYPE_OF_MEMORY MemoryType)
+{
+    ULONG_PTR BasePage, PageCount;
+
+    BasePage = BaseAddress / PAGE_SIZE;
+    PageCount = ADDRESS_AND_SIZE_TO_SPAN_PAGES(BaseAddress, Size);
+
+    /* Add the memory descriptor */
+    FreeldrEntryCount = AddMemoryDescriptor(MemoryMap,
+                                     MAX_BIOS_DESCRIPTORS,
+                                     BasePage,
+                                     PageCount,
+                                     MemoryType);
+}
+
+VOID
+UefiReserveMemory(
+    PFREELDR_MEMORY_DESCRIPTOR MemoryMap,
+    ULONG_PTR BaseAddress,
+    SIZE_T Size,
+    TYPE_OF_MEMORY MemoryType,
+    PCHAR Usage)
+{
+    ULONG_PTR BasePage, PageCount;
+    ULONG i;
+
+    BasePage = BaseAddress / PAGE_SIZE;
+    PageCount = ADDRESS_AND_SIZE_TO_SPAN_PAGES(BaseAddress, Size);
+
+    for (i = 0; i < FreeldrEntryCount; i++)
+    {
+        /* Check for conflicting descriptor */
+        if ((MemoryMap[i].BasePage < BasePage + PageCount) &&
+            (MemoryMap[i].BasePage + MemoryMap[i].PageCount > BasePage))
+        {
+            /* Check if the memory is free */
+            if (MemoryMap[i].MemoryType != LoaderFree)
+            {
+               // printf("Fuck");
+            }
+        }
+    }
+
+        /* Add the memory descriptor */
+    FreeldrEntryCount = AddMemoryDescriptor(MemoryMap,
+                                     MAX_BIOS_DESCRIPTORS,
+                                     BasePage,
+                                     PageCount,
+                                     MemoryType);
+}
+
 /**** Public Functions ***************************************************************************/
 
 PFREELDR_MEMORY_DESCRIPTOR
@@ -101,14 +160,14 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 	EFI_STATUS Status = 0;
     UINT32 EntryCount = 0;
 	UINT32 Index = 0;
-
+    //ULONG_PTR FreeldrPtr;
 	MapOutput = PUEFI_LoadMemoryMap();
 	MapEntry = MapOutput.EfiMemoryMap;
 	EntryCount = MapOutput.MapSize / MapOutput.DescriptorSize;
 	
 	Status = LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(*FreeldrMem) * EntryCount, &FreeldrMem);
 	Status = LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(*BiosMemoryMap) * EntryCount, &BiosMemoryMap);
-
+   
 	for (Index = 0; Index < EntryCount; ++Index)
     {
 
@@ -117,60 +176,61 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
         {
             case EfiConventionalMemory:
             {
+               // UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderFree, "FREE");
+                #if 1
                 FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
                                                 EntryCount,
-                                                ((MapOutput.EfiMemoryMap->PhysicalStart >> EFI_PAGE_SHIFT) / MM_PAGE_SIZE),
+                                                (MapOutput.EfiMemoryMap->PhysicalStart / PAGE_SIZE),
                                                 MapOutput.EfiMemoryMap->NumberOfPages,
                                                 LoaderFree);
+                #endif
             }
 			case EfiUnusableMemory:
-            {
-				#if 0
-                FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
-                                                EntryCount,
-                                                (MapOutput.EfiMemoryMap->VirtualStart / EFI_PAGE_SIZE),
-                                                MapOutput.EfiMemoryMap->NumberOfPages,
-                                                LoaderFree);
-				#endif
+            {                
+               // UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages * EFI_PAGE_SIZE, LoaderBad, "Dead");
+
             }
             case EfiLoaderCode:
             {
-				#if 0
-				FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
-                                                EntryCount,
-                                                (MapOutput.EfiMemoryMap->PhysicalStart / EFI_PAGE_SIZE),
-                                                MapOutput.EfiMemoryMap->NumberOfPages,
-                                                LoaderLoadedProgram);
-				#endif
-               // FrldrMemoryType = LoaderLoadedProgram;
+                UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderLoadedProgram, "FreeLdr image");
+              //  FreeldrPtr = MapOutput.EfiMemoryMap->PhysicalStart;
+            }
+            case EfiACPIReclaimMemory:
+            {    
+                UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderFirmwareTemporary, "ACPI Reclaim");
+
+            }
+            case EfiACPIMemoryNVS:
+            {
+                UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderFirmwarePermanent, "ACPI Perm");
+
+            }
+            case  EfiMemoryMappedIOPortSpace:
+            {
+               UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderFirmwarePermanent, "");
+
+            }
+            case EfiMemoryMappedIO:
+            {
+               UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderSpecialMemory, "FreeLdr image");
+
             }
 			case EfiPalCode:
             {
-				#if 0
-				FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
-                                                EntryCount,
-                                                (MapOutput.EfiMemoryMap->PhysicalStart / EFI_PAGE_SIZE),
-                                                MapOutput.EfiMemoryMap->NumberOfPages,
-                                                LoaderSpecialMemory);
-				#endif
-               // FrldrMemoryType = LoaderLoadedProgram;
+              // UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderSpecialMemory, "FreeLdr image");
             }
             default:
             {										
-				//FrldrMemoryType = LoaderReserve;
+			   // UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderReserve, "Misc");
+
             }
         }
-		#if 0
-		FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
-                                                EntryCount,
-                                                (MapOutput.EfiMemoryMap->VirtualStart / EFI_PAGE_SIZE),
-                                                MapOutput.EfiMemoryMap->NumberOfPages,
-                                                FrldrMemoryType);
-		#endif
 		MapOutput.EfiMemoryMap = (EFI_MEMORY_DESCRIPTOR*)((char*)MapOutput.EfiMemoryMap + MapOutput.DescriptorSize);
 	}
+    UefiReserveMemory(FreeldrMem, refiFbData->BaseAddress, refiFbData->BufferSize, LoaderFirmwarePermanent, "Framebuffer");
 
-	printf("Exiting\r\n");
+   // UefiReserveMemory(FreeldrMem, STACKLOW, STACKADDR - STACKLOW, LoaderOsloaderStack, "FreeLdr stack");
+    printf("Exiting\r\n");
 	return FreeldrMem;
 }
 

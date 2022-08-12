@@ -12,7 +12,8 @@ UefiInitConsole(_In_ EFI_SYSTEM_TABLE *SystemTable)
 
 VOID
 UefiConsPutChar(int Ch)
-{
+{   
+  //  UefiVideoOutputChar(Ch, 0, 0, 0xFFFFFF, 0x000000);
     LocSystemTable->ConOut->OutputString(LocSystemTable->ConOut, (CHAR16*)&Ch);
 }
 
