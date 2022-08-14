@@ -13,19 +13,19 @@ DBG_DEFAULT_CHANNEL(WARNING);
 EFI_SYSTEM_TABLE * LocSystemTable;
 PREACTOS_INTERNAL_BGCONTEXT refiFbData;
 CHAR16* buffer;
-
+EFI_GRAPHICS_OUTPUT_PROTOCOL* Locgop;
 VOID
 UefiInitalizeVideo(_In_ EFI_HANDLE ImageHandle,
                    _In_ EFI_SYSTEM_TABLE *SystemTable,
                    _In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop)
 {
     LocSystemTable = SystemTable;
-
+	Locgop = gop;
+	 gop->SetMode(gop,1);
     SystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(refiFbData), (void**)&refiFbData);
     refiFbData->BaseAddress        = (ULONG_PTR)gop->Mode->FrameBufferBase;
     
-    gop->SetMode(gop,1);
-    refiFbData->BufferSize         = gop->Mode->FrameBufferSize;
+     refiFbData->BufferSize         = gop->Mode->FrameBufferSize;
     refiFbData->ScreenWidth        = gop->Mode->Info->HorizontalResolution;
     refiFbData->ScreenHeight       = gop->Mode->Info->VerticalResolution;
     refiFbData->PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
@@ -33,7 +33,14 @@ UefiInitalizeVideo(_In_ EFI_HANDLE ImageHandle,
 
     UefiVideoClearScreen(0);
 }
-
+/*
+ * Set a pixel directly on the framebuffer
+ */
+VOID
+RefiSetPixel(UINT32 x, UINT32 y, UINT32 Color)
+{
+    *((UINT32*)((ULONG_PTR)refiFbData->BaseAddress + 4 * refiFbData->PixelsPerScanLine * (y) + 4 * (x))) = Color;     
+}
 VOID
 UefiVideoClearScreen(UCHAR Attr)
 {

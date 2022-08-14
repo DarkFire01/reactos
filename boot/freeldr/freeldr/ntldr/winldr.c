@@ -1223,19 +1223,20 @@ LoadAndBootWindowsCommon(
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
     /* Debugging... */
-    //DumpMemoryAllocMap();
-
+//.. DumpMemoryAllocMap();
+	
     /* Do the machine specific initialization */
     WinLdrSetupMachineDependent(LoaderBlock);
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
-    for(;;)
-    {
 
-    }
     /* Set processor context */
     WinLdrSetProcessorContext();
-
+	
+    for(;;)
+    {
+		
+    }
     /* Save final value of LoaderPagesSpanned */
     LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
 

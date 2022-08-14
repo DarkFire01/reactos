@@ -260,7 +260,7 @@ WinLdrMapSpecialPages(VOID)
     }
 
     /* Map the APIC page */
-    WinLdrpMapApic();
+ //   WinLdrpMapApic();
 
     /* Map the page tables for 4 MB HAL address space. */
     PpeBase = MempGetOrCreatePageDir(PxeBase, VAtoPXI(MM_HAL_VA_START));
@@ -357,10 +357,10 @@ WinLdrSetProcessorContext(void)
 
     /* Set the new PML4 */
     __writecr3((ULONG64)PxeBase);
-  for(;;)
-    {
-       // printf("Fucccccccc");
-    }
+
+	for(;;)
+	{
+	}
     /* Get kernel mode address of gdt / idt */
     GdtIdt = (PVOID)((ULONG64)GdtIdt + KSEG0_BASE);
 
@@ -368,11 +368,7 @@ WinLdrSetProcessorContext(void)
     Amd64SetupGdt(GdtIdt, KSEG0_BASE | (TssBasePage << MM_PAGE_SHIFT));
 
     /* Copy old Idt and set idtr */
-    Amd64SetupIdt((PVOID)((ULONG64)GdtIdt + NUM_GDT * sizeof(KGDTENTRY)));
-  for(;;)
-    {
-       // printf("Fucccccccc");
-    }
+
     /* LDT is unused */
 //    __lldt(0);
 
@@ -390,10 +386,6 @@ void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     LoaderBlock->u.I386.CommonDataArea = (PVOID)DbgPrint; // HACK
     LoaderBlock->u.I386.MachineType = MACHINE_TYPE_ISA;
-    for(;;)
-    {
-           // printf("Hello");
-    }
    /* Allocate 2 pages for PCR */
     Pcr = (ULONG_PTR)MmAllocateMemoryWithType(2 * MM_PAGE_SIZE, LoaderStartupPcrPage);
     PcrBasePage = Pcr >> MM_PAGE_SHIFT;

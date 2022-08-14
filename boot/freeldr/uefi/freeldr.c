@@ -38,6 +38,7 @@ EfiEntry(
         UiMessageBoxCritical("Unable to initialize UI.");
         goto Quit;
     }
+
     /* Initialize memory manager */
     if (!MmInitializeMemoryManager())
     {

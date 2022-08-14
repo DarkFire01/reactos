@@ -23,6 +23,7 @@ extern PFREELDR_MEMORY_DESCRIPTOR BiosMemoryMap;
 extern PVOID DiskReadBuffer;
 extern SIZE_T DiskReadBufferSize;
 extern PREACTOS_INTERNAL_BGCONTEXT refiFbData;
+extern EFI_GRAPHICS_OUTPUT_PROTOCOL* Locgop;
 ULONG FreeldrEntryCount = 0;
 
 typedef struct _EFI_MEMORY_MAP_OUTPUT
@@ -62,7 +63,8 @@ PUEFI_LoadMemoryMap()
                                                         MapOutput.EfiMemoryMap,
                                                         &LocMapKey,
                                                         &LocDescriptorSize,
-                                                        &LocDescriptorVersion);
+                                                        &LocDescriptorVersion);											
+				
     /* Reallocate and retrieve again the needed memory map size (since memory
      * allocated by AllocatePool() counts in the map), until it's OK. */
     do
@@ -107,7 +109,7 @@ UefiSetMemory(
 
     /* Add the memory descriptor */
     FreeldrEntryCount = AddMemoryDescriptor(MemoryMap,
-                                     MAX_BIOS_DESCRIPTORS,
+                                     MAX_BIOS_DESCRIPTORS * 21,
                                      BasePage,
                                      PageCount,
                                      MemoryType);
@@ -143,7 +145,7 @@ UefiReserveMemory(
 
         /* Add the memory descriptor */
     FreeldrEntryCount = AddMemoryDescriptor(MemoryMap,
-                                     MAX_BIOS_DESCRIPTORS,
+                                     MAX_BIOS_DESCRIPTORS * 20,
                                      BasePage,
                                      PageCount,
                                      MemoryType);
@@ -167,7 +169,7 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 	
 	Status = LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(*FreeldrMem) * EntryCount, &FreeldrMem);
 	Status = LocSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(*BiosMemoryMap) * EntryCount, &BiosMemoryMap);
-   
+
 	for (Index = 0; Index < EntryCount; ++Index)
     {
 
@@ -179,7 +181,7 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
                // UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderFree, "FREE");
                 #if 1
                 FreeldrEntryCount = AddMemoryDescriptor(FreeldrMem,
-                                                EntryCount,
+                                                EntryCount * 80,
                                                 (MapOutput.EfiMemoryMap->PhysicalStart / PAGE_SIZE),
                                                 MapOutput.EfiMemoryMap->NumberOfPages,
                                                 LoaderFree);
@@ -192,27 +194,27 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
             }
             case EfiLoaderCode:
             {
-                UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderLoadedProgram, "FreeLdr image");
+                UefiSetMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderLoadedProgram);
               //  FreeldrPtr = MapOutput.EfiMemoryMap->PhysicalStart;
             }
             case EfiACPIReclaimMemory:
             {    
-                UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderFirmwareTemporary, "ACPI Reclaim");
+                UefiSetMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderFirmwareTemporary);
 
             }
             case EfiACPIMemoryNVS:
             {
-                UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderFirmwarePermanent, "ACPI Perm");
+                UefiSetMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderFirmwarePermanent);
 
             }
             case  EfiMemoryMappedIOPortSpace:
             {
-               UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderFirmwarePermanent, "");
+               UefiSetMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderFirmwarePermanent);
 
             }
             case EfiMemoryMappedIO:
             {
-               UefiReserveMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderSpecialMemory, "FreeLdr image");
+               UefiSetMemory(FreeldrMem, MapOutput.EfiMemoryMap->PhysicalStart, MapOutput.EfiMemoryMap->NumberOfPages, LoaderSpecialMemory);
 
             }
 			case EfiPalCode:
@@ -227,10 +229,12 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
         }
 		MapOutput.EfiMemoryMap = (EFI_MEMORY_DESCRIPTOR*)((char*)MapOutput.EfiMemoryMap + MapOutput.DescriptorSize);
 	}
-    UefiReserveMemory(FreeldrMem, refiFbData->BaseAddress, refiFbData->BufferSize, LoaderFirmwarePermanent, "Framebuffer");
 
+     UefiSetMemory(FreeldrMem, refiFbData->BaseAddress, refiFbData->BufferSize, LoaderSpecialMemory);
+	 UefiSetMemory(FreeldrMem, (ULONG_PTR)&refiFbData, sizeof(&refiFbData), LoaderFirmwarePermanent);
+	UefiReserveMemory(FreeldrMem, STACKLOW, STACKADDR - STACKLOW, LoaderOsloaderStack, "FreeLdr stack");
    // UefiReserveMemory(FreeldrMem, STACKLOW, STACKADDR - STACKLOW, LoaderOsloaderStack, "FreeLdr stack");
-    printf("Exiting\r\n");
+//   UefiPrepareForReactOS();
 	return FreeldrMem;
 }
 
@@ -243,11 +247,12 @@ UefiPrepareForReactOS()
 	UINTN MapKeyLoc = MapOutput.MapKey;
 	Status = LocSystemTable->BootServices->ExitBootServices(LocImageHandle,MapKeyLoc);
     //UefiConsSetCursor(0,0);
-    //UefiVideoClearScreen(0);
+   // UefiVideoClearScreen(0);
 	if (EFI_ERROR(Status))
     {
         Status = LocSystemTable->BootServices->ExitBootServices(LocImageHandle,MapKeyLoc);
     }
+
 	if (Status != EFI_SUCCESS)
 	{
 		//printf("Boot Services failed");
@@ -255,4 +260,5 @@ UefiPrepareForReactOS()
 		{//printf("Boot Services failed");
 		}
 	}
+
 }

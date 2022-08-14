@@ -30,14 +30,6 @@ RefiDrawRectangle(UINT32 x, UINT32 y, UINT32 width, UINT32 height, UINT32 Color)
     }
 }
 
-/*
- * Set a pixel directly on the framebuffer
- */
-VOID
-RefiSetPixel(UINT32 x, UINT32 y, UINT32 Color)
-{
-    *((UINT32*)(refiFbData->BaseAddress + 4 * refiFbData->PixelsPerScanLine * (y) + 4 * (x))) = Color;     
-}
 
 VOID
 RefiDrawUIBackground()
