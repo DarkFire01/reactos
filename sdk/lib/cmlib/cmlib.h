@@ -209,6 +209,13 @@
 
 #define CMAPI NTAPI
 
+//
+// Self Heal and Boot Type indicators
+//
+extern BOOLEAN CmSelfHeal;
+extern BOOLEAN CmpSelfHeal;
+extern ULONG CmpBootType;
+
 #include <wine/unicode.h>
 #include <wchar.h>
 #include "hivedata.h"
@@ -478,6 +485,71 @@ HvpCreateHiveFreeCellList(
 ULONG CMAPI
 HvpHiveHeaderChecksum(
    PHBASE_BLOCK HiveHeader);
+
+//
+// Registry Self-Heal Routines
+//
+BOOLEAN
+CMAPI
+CmIsSelfHealEnabled(VOID);
+
+BOOLEAN
+CMAPI
+CmpRepairParentKey(
+    _Inout_ PHHIVE Hive,
+    _In_ HCELL_INDEX TargetKey,
+    _In_ HCELL_INDEX ParentKey);
+
+BOOLEAN
+CMAPI
+CmpRepairParentNode(
+    _Inout_ PHHIVE Hive,
+    _In_ HCELL_INDEX DirtyCell,
+    _In_ HCELL_INDEX ParentCell,
+    _Inout_ PCELL_DATA CellData);
+
+BOOLEAN
+CMAPI
+CmpRepairKeyNodeSignature(
+    _Inout_ PHHIVE Hive,
+    _In_ HCELL_INDEX DirtyCell,
+    _Inout_ PCELL_DATA CellData);
+
+BOOLEAN
+CMAPI
+CmpRepairClassOfNodeKey(
+    _Inout_ PHHIVE Hive,
+    _In_ HCELL_INDEX DirtyCell,
+    _Inout_ PCELL_DATA CellData);
+
+BOOLEAN
+CMAPI
+CmpRepairValueList(
+    _Inout_ PHHIVE Hive,
+    _In_ HCELL_INDEX CurrentCell);
+
+BOOLEAN
+CMAPI
+CmpRepairValueListCount(
+    _Inout_ PHHIVE Hive,
+    _In_ HCELL_INDEX CurrentCell,
+    _In_ ULONG ListCountIndex,
+    _Inout_ PCELL_DATA ValueListData);
+
+BOOLEAN
+CMAPI
+CmpRepairSubKeyCounts(
+    _Inout_ PHHIVE Hive,
+    _In_ HCELL_INDEX CurrentCell,
+    _In_ ULONG Count,
+    _Inout_ PCELL_DATA CellData);
+
+BOOLEAN
+CMAPI
+CmpRepairSubKeyList(
+    _Inout_ PHHIVE Hive,
+    _In_ HCELL_INDEX CurrentCell,
+    _Inout_ PCELL_DATA CellData);
 
 /* Old-style Public "Cmlib" functions */
 
