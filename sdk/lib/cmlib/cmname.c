@@ -1,9 +1,9 @@
 /*
- * PROJECT:         ReactOS Registry Library
- * LICENSE:         GPL - See COPYING in the top level directory
- * FILE:            lib/cmlib/cmname.c
- * PURPOSE:         Configuration Manager - Name Management
- * PROGRAMMERS:     Alex Ionescu (alex.ionescu@reactos.org)
+ * PROJECT:         ReactOS Kernel
+ * LICENSE:         GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:         Configuration Manager Library - Name Management
+ * COPYRIGHT:       Copyright Alex Ionescu <alex.ionescu@reactos.org>
+ *                  Copyright 2022 George Bișoc <george.bisoc@reactos.org>
  */
 
 /* INCLUDES ******************************************************************/
@@ -11,8 +11,6 @@
 #include "cmlib.h"
 #define NDEBUG
 #include <debug.h>
-
-/* GLOBALS *******************************************************************/
 
 /* FUNCTIONS *****************************************************************/
 
@@ -102,6 +100,134 @@ CmpCompressedNameSize(IN PWCHAR Name,
      * below internally!
      */
     return (USHORT)Length * sizeof(WCHAR);
+}
+
+/**
+ * @brief
+ * Compares two compressed names. This routine is used
+ * exclusively for lexicographical order validation checks.
+ *
+ * @param[in] FirstCompressedName
+ * The first compressed name.
+ *
+ * @param[in] FirstCompressedNameLength
+ * The length of the first compressed name.
+ *
+ * @param[in] SecondCompressedName
+ * The second compressed name.
+ *
+ * @param[in] SecondCompressedNameLength
+ * The length of the second compressed name.
+ *
+ * @return
+ * Returns the result difference of the names that
+ * have been compared. Result == 0 indicates that
+ * the first name is equal to that of the second name.
+ * Result > 0 indicates the first name is greater
+ * than the second. Result < 0 indicates the first name
+ * is less than that of the second.
+ */
+LONG
+NTAPI
+CmpCompareBothCompressedNames(
+    _In_ PWCHAR FirstCompressedName,
+    _In_ ULONG FirstCompressedNameLength,
+    _In_ PWCHAR SecondCompressedName,
+    _In_ ULONG SecondCompressedNameLength)
+{
+    PUCHAR FirstNamePointer, SecondNamePointer;
+    WCHAR FirstCharacter, SecondCharacter;
+    LONG FirstLength, SecondLength;
+    LONG Result;
+
+    /* Sanity checks */
+    ASSERT(FirstCompressedNameLength != 0);
+    ASSERT(SecondCompressedNameLength != 0);
+
+    /* Cache the names and lengths and compare them */
+    FirstLength = FirstCompressedNameLength;
+    SecondLength = SecondCompressedNameLength;
+    FirstNamePointer = (PUCHAR)FirstCompressedName;
+    SecondNamePointer = (PUCHAR)SecondCompressedName;
+    while (FirstLength > 0 && SecondLength > 0)
+    {
+        /* Get the characters */
+        FirstCharacter = (WCHAR)(*FirstNamePointer++);
+        SecondCharacter = (WCHAR)(*SecondNamePointer++);
+
+        /* Check if we have a direct match */
+        if (FirstCharacter != SecondCharacter)
+        {
+            /* See if they match and return result if they don't */
+            Result = (LONG)RtlUpcaseUnicodeChar(FirstCharacter) -
+                     (LONG)RtlUpcaseUnicodeChar(SecondCharacter);
+            if (Result)
+            {
+                /* They don't match */
+                return Result;
+            }
+        }
+
+        /* Next chars */
+        FirstCompressedNameLength--;
+        SecondCompressedNameLength--;
+    }
+
+    /* Return the difference directly */
+    return FirstLength - SecondLength;
+}
+
+/**
+ * @brief
+ * Compares two Unicode string names, non compressed. This routine
+ * is used exclusively for leixographical order validation checks.
+ *
+ * @param[in] FirstName
+ * The first Unicode name.
+ *
+ * @param[in] FirstNameLength
+ * The length of the first name.
+ *
+ * @param[in] SecondName
+ * The second Unicode name.
+ *
+ * @param[in] SecondNameLength
+ * The length of the second name.
+ *
+ * @return
+ * Returns the result difference of the names that
+ * have been compared. Result == 0 indicates that
+ * the first name is equal to that of the second name.
+ * Result > 0 indicates the first name is greater
+ * than the second. Result < 0 indicates the first name
+ * is less than that of the second.
+ */
+LONG
+NTAPI
+CmpCompareDistinctNames(
+    _In_ PWSTR FirstName,
+    _In_ ULONG FirstNameLength,
+    _In_ PWSTR SecondName,
+    _In_ ULONG SecondNameLength)
+{
+    UNICODE_STRING FirstString, SecondString;
+
+    /* Sanity checks */
+    ASSERT(FirstNameLength != 0);
+    ASSERT(SecondNameLength != 0);
+
+    /* Build the first unicode string */
+    FirstString.Buffer = FirstName;
+    FirstString.Length = FirstNameLength;
+    FirstString.MaximumLength = FirstNameLength;
+
+    /* Build the second unicode string */
+    SecondString.Buffer = SecondName;
+    SecondString.Length = SecondNameLength;
+    SecondString.MaximumLength = SecondNameLength;
+
+    /* And compare them and return the result to caller */
+    return RtlCompareUnicodeString(&FirstString, &SecondString, TRUE);
 }
 
 LONG

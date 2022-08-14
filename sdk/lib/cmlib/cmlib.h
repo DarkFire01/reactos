@@ -479,7 +479,6 @@ ULONG CMAPI
 HvpHiveHeaderChecksum(
    PHBASE_BLOCK HiveHeader);
 
-
 /* Old-style Public "Cmlib" functions */
 
 BOOLEAN CMAPI
@@ -549,6 +548,24 @@ CmpMarkIndexDirty(
 //
 // Name Functions
 //
+LONG
+NTAPI
+CmpCompareBothCompressedNames(
+    _In_ PWCHAR FirstCompressedName,
+    _In_ ULONG FirstCompressedNameLength,
+    _In_ PWCHAR SecondCompressedName,
+    _In_ ULONG SecondCompressedNameLength
+);
+
+LONG
+NTAPI
+CmpCompareDistinctNames(
+    _In_ PWSTR FirstName,
+    _In_ ULONG FirstNameLength,
+    _In_ PWSTR SecondName,
+    _In_ ULONG SecondNameLength
+);
+
 LONG
 NTAPI
 CmpCompareCompressedName(
