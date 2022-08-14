@@ -70,6 +70,12 @@
 //
 #define HTYPE_COUNT                     2
 
+//
+// Hive boot types
+//
+#define HBOOT_TYPE_REGULAR         0
+#define HBOOT_TYPE_SELF_HEAL       4
+
 /**
  * @name HCELL_INDEX
  *
