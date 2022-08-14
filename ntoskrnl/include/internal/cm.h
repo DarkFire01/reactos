@@ -563,16 +563,6 @@ CmpCompareNewValueDataAgainstKCBCache(
 );
 
 //
-// Registry Validation Functions
-//
-ULONG
-NTAPI
-CmCheckRegistry(
-    IN PCMHIVE Hive,
-    IN ULONG Flags
-);
-
-//
 // Hive List Routines
 //
 BOOLEAN
@@ -1408,9 +1398,6 @@ extern HIVE_LIST_ENTRY CmpMachineHiveList[];
 extern UNICODE_STRING CmSymbolicLinkValueName;
 extern UNICODE_STRING CmpSystemStartOptions;
 extern UNICODE_STRING CmpLoadOptions;
-extern BOOLEAN CmSelfHeal;
-extern BOOLEAN CmpSelfHeal;
-extern ULONG CmpBootType;
 extern HANDLE CmpRegistryRootHandle;
 extern BOOLEAN ExpInTextModeSetup;
 extern BOOLEAN InitIsWinPEMode;
