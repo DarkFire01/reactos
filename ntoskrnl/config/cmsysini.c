@@ -914,7 +914,7 @@ CmpInitializeSystemHive(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                                NULL,
                                NULL,
                                &HiveName,
-                               HiveBase ? 2 : 0);
+                               HiveBase ? CM_CHECK_REGISTRY_PURGE_VOLATILES : CM_CHECK_REGISTRY_DONT_PURGE_VOLATILES);
     if (!NT_SUCCESS(Status))
     {
         return FALSE;
@@ -1250,7 +1250,7 @@ CmpLoadHiveThread(IN PVOID StartContext)
                                      CmpMachineHiveList[i].HHiveFlags,
                                      &CmHive,
                                      &CmpMachineHiveList[i].Allocate,
-                                     0);
+                                     CM_CHECK_REGISTRY_PURGE_VOLATILES);
         if (!(NT_SUCCESS(Status)) ||
             (!(CmpShareSystemHives) && !(CmHive->FileHandles[HFILE_TYPE_LOG])))
         {
@@ -1570,7 +1570,7 @@ CmInitSystem1(VOID)
                                NULL,
                                NULL,
                                NULL,
-                               0);
+                               CM_CHECK_REGISTRY_DONT_PURGE_VOLATILES);
     if (!NT_SUCCESS(Status))
     {
         /* Bugcheck */
@@ -1661,7 +1661,7 @@ CmInitSystem1(VOID)
                                NULL,
                                NULL,
                                NULL,
-                               0);
+                               CM_CHECK_REGISTRY_DONT_PURGE_VOLATILES);
     if (!NT_SUCCESS(Status))
     {
         /* Bugcheck */
