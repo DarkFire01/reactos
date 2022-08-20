@@ -5,9 +5,21 @@
  *            Copyright 2001 - 2005 Eric Kohl
  */
 
+/* INCLUDES *****************************************************************/
+
 #include "cmlib.h"
 #define NDEBUG
 #include <debug.h>
+
+/* DECLARATIONS *************************************************************/
+
+#if !defined(CMLIB_HOST) && !defined(_BLDR_)
+VOID
+NTAPI
+CmpLazyFlush(VOID);
+#endif
+
+/* FUNCTIONS ******************************************************************/
 
 static __inline PHCELL CMAPI
 HvpGetCellHeader(
@@ -118,6 +130,24 @@ HvMarkCellDirty(
     RtlSetBits(&RegistryHive->DirtyVector,
                CellBlock, CellLastBlock - CellBlock);
     RegistryHive->DirtyCount++;
+
+    /*
+     * FIXME: Querying a lazy flush operation is needed to
+     * ensure that the dirty data is being flushed to disk
+     * accordingly. However, this operation has to be done
+     * in a helper like HvMarkDirty that marks specific parts
+     * of the hive as dirty. Since we do not have such kind
+     * of helper we have to perform an eventual lazy flush
+     * when marking cells as dirty here for the moment being,
+     * so that not only we flush dirty data but also write
+     * logs.
+     */
+#if !defined(CMLIB_HOST) && !defined(_BLDR_)
+    if (!(RegistryHive->HiveFlags & HIVE_NOLAZYFLUSH))
+    {
+        CmpLazyFlush();
+    }
+#endif
     return TRUE;
 }
 
