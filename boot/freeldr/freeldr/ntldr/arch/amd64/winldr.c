@@ -357,8 +357,7 @@ WinLdrSetProcessorContext(void)
 
     /* Set the new PML4 */
     __writecr3((ULONG64)PxeBase);
-
-	for(;;)
+for(;;)
 	{
 	}
     /* Get kernel mode address of gdt / idt */
@@ -374,7 +373,9 @@ WinLdrSetProcessorContext(void)
 
     /* Load TSR */
     __ltr(KGDT64_SYS_TSS);
-
+	for(;;)
+	{
+	}
     TRACE("leave WinLdrSetProcessorContext\n");
 }
 
@@ -419,6 +420,12 @@ void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
     if (MempAllocatePageTables() == FALSE)
     {
         // FIXME: bugcheck
+     //   printf("testing")
+        for(;;)
+        {
+
+
+        }
     }
 
     /* Map stuff like PCR, KI_USER_SHARED_DATA and Apic */

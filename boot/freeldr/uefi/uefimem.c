@@ -235,6 +235,7 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 	UefiReserveMemory(FreeldrMem, STACKLOW, STACKADDR - STACKLOW, LoaderOsloaderStack, "FreeLdr stack");
    // UefiReserveMemory(FreeldrMem, STACKLOW, STACKADDR - STACKLOW, LoaderOsloaderStack, "FreeLdr stack");
 //   UefiPrepareForReactOS();
+
 	return FreeldrMem;
 }
 
@@ -244,21 +245,16 @@ UefiPrepareForReactOS()
 	EFI_MEMORY_MAP_OUTPUT MapOutput;
 	EFI_STATUS Status = 0;
 	MapOutput = PUEFI_LoadMemoryMap();
+	printf("Finished");
 	UINTN MapKeyLoc = MapOutput.MapKey;
 	Status = LocSystemTable->BootServices->ExitBootServices(LocImageHandle,MapKeyLoc);
     //UefiConsSetCursor(0,0);
    // UefiVideoClearScreen(0);
-	if (EFI_ERROR(Status))
-    {
-        Status = LocSystemTable->BootServices->ExitBootServices(LocImageHandle,MapKeyLoc);
-    }
+      Status = LocSystemTable->BootServices->ExitBootServices(LocImageHandle,MapKeyLoc);
 
 	if (Status != EFI_SUCCESS)
 	{
-		//printf("Boot Services failed");
-		for(;;)
-		{//printf("Boot Services failed");
-		}
-	}
+		printf("Failed: %X\r\n", Status);
 
+	}
 }

@@ -264,7 +264,7 @@ UefiSetupBlockDevices()
         }
     }
 
-    status = LocSystemTable->BootServices->HandleProtocol(handles[0], &bioGuid, (void **) &bio);
+    status = LocSystemTable->BootServices->HandleProtocol(handles[1], &bioGuid, (void **) &bio);
 
 
 

@@ -1223,8 +1223,7 @@ LoadAndBootWindowsCommon(
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
     /* Debugging... */
-//.. DumpMemoryAllocMap();
-	
+   DumpMemoryAllocMap();
     /* Do the machine specific initialization */
     WinLdrSetupMachineDependent(LoaderBlock);
     /* Map pages and create memory descriptors */
@@ -1233,13 +1232,8 @@ LoadAndBootWindowsCommon(
     /* Set processor context */
     WinLdrSetProcessorContext();
 	
-    for(;;)
-    {
-		
-    }
     /* Save final value of LoaderPagesSpanned */
     LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
-
 
     /* Zero KI_USER_SHARED_DATA page */
     RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
@@ -1249,10 +1243,9 @@ LoadAndBootWindowsCommon(
 #ifndef _M_AMD64
     WinLdrpDumpArcDisks(LoaderBlockVA);
 #endif
-    for(;;)
-    {
-       // printf("Fucccccccc");
-    }
+	for(;;)
+	{
+	}
     /* Pass control */
     (*KiSystemStartup)(LoaderBlockVA);
     for(;;)

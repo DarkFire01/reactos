@@ -719,7 +719,7 @@ DECLSPEC_NORETURN
 VOID
 NTAPI
 KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
-{
+{	
     ULONG Cpu;
     PKTHREAD InitialThread;
     ULONG InitialStack;

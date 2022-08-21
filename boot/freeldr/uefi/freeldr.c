@@ -45,6 +45,7 @@ EfiEntry(
         UiMessageBoxCritical("Unable to initialize memory manager.");
        // goto Quit;
     }
+
     FsInit();
     UefiConsSetCursor(0,0);
     UefiVideoClearScreen(0);
@@ -52,6 +53,7 @@ EfiEntry(
     UefiConsSetCursor(0,0);
     UefiVideoClearScreen(0);
     printf("Running loader...\r\n");
+	
     RunLoader();
 
 Quit:
