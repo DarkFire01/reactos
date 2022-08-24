@@ -942,9 +942,16 @@ CmpInitializeSystemHive(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     {
         /* Disable self-healing internally and check if boot type wanted it */
         CmpSelfHeal = FALSE;
-        if (CmpBootType & 4)
+        if (CmpBootType & HBOOT_TYPE_SELF_HEAL)
         {
-            /* We're disabled, so bugcheck */
+            /*
+             * Whoever asked for self healing means that the
+             * system hive we are initializing it is so toast
+             * we can't repair it if self healing is not allowed.
+             * So the bottom line is that... we have a broken
+             * hive with no hope or salvation to heal it so
+             * crash the system.
+             */
             KeBugCheckEx(BAD_SYSTEM_CONFIG_INFO,
                          3,
                          3,

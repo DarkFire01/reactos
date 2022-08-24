@@ -191,7 +191,7 @@ HvpCreateHive(
     BaseBlock->CheckSum = 0;
 
     /* Set default boot type */
-    BaseBlock->BootType = 0;
+    BaseBlock->BootType = HBOOT_TYPE_REGULAR;
 
     /* Setup hive data */
     RegistryHive->BaseBlock = BaseBlock;
@@ -357,7 +357,7 @@ HvpInitializeFlatHive(
     Hive->StorageTypeCount = 1;
 
     /* Set default boot type */
-    ChunkBase->BootType = 0;
+    ChunkBase->BootType = HBOOT_TYPE_REGULAR;
 
     return STATUS_SUCCESS;
 }
