@@ -7,8 +7,6 @@ include_directories(
     ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/hidparser)
 
 list(APPEND SOURCE
-    listhelper.c
-    listhelper.h
     hidp_km.c
     parser.c
     parser.h

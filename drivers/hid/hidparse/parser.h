@@ -80,9 +80,16 @@ typedef enum _LOCAL_ITEM_TYPE
 #include <pshpack1.h>
 typedef struct _REPORT_ITEM
 {
-    UCHAR Size : 2;
-    UCHAR Type : 2;
-    UCHAR Tag : 4;
+    union
+    {
+        struct
+        {
+            UCHAR Size : 2;
+            UCHAR Type : 2;
+            UCHAR Tag : 4;
+        };
+        UCHAR RawTag;
+    };
     union
     {
         struct {
@@ -182,15 +189,13 @@ typedef struct _HIDPARSER_GLOBAL_STACK {
 } HIDPARSER_GLOBAL_STACK, * PHIDPARSER_GLOBAL_STACK;
 
 typedef struct _HIDPARSER_VALUE_CAPS_LIST {
-    struct _HIDPARSER_VALUE_CAPS_LIST* Prev;
-    struct _HIDPARSER_VALUE_CAPS_LIST* Next;
+    LIST_ENTRY Entry;
     HIDPARSER_VALUE_CAPS Value;
     HIDP_REPORT_TYPE ReportType;
 } HIDPARSER_VALUE_CAPS_LIST, * PHIDPARSER_VALUE_CAPS_LIST;
 
 typedef struct _HIDPARSER_NODES_LIST {
-    struct _HIDPARSER_NODES_LIST* Prev;
-    struct _HIDPARSER_NODES_LIST* Next;
+    LIST_ENTRY Entry;
     HIDPARSER_LINK_COLLECTION_NODE Value;
     UINT32 Index;
     UINT32 Depth;
