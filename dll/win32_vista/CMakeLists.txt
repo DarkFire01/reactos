@@ -1,0 +1,7 @@
+add_subdirectory(avrt)
+add_subdirectory(clbcatq)
+add_subdirectory(cryptbase)
+add_subdirectory(dwmapi)
+#add_subdirectory(KernelBase)
+add_subdirectory(rstrtmgr)
+add_subdirectory(wsdapi)
