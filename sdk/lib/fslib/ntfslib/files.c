@@ -14,6 +14,8 @@
 #define NDEBUG
 #include <debug.h>
 
+extern NtfsFormatData NtfsData;
+
 
 /* STRUCTURES ****************************************************************/
 
@@ -216,7 +218,7 @@ WriteZerosToClusters(IN  LONGLONG                Address,
 
     RtlZeroMemory(Zeros, Size);
 
-    Status = NtWriteFile(DISK_HANDLE,
+    Status = NtWriteFile(NtfsData.DiskHandle,
                          NULL,
                          NULL,
                          NULL,
@@ -243,7 +245,7 @@ WriteMetafile(IN  PFILE_RECORD_HEADER      FileRecord,
         ((LONGLONG)MFT_ADDRESS * BYTES_PER_CLUSTER) +
         (LONGLONG)(FileRecord->MFTRecordNumber * MFT_RECORD_SIZE);
 
-    return NtWriteFile(DISK_HANDLE,
+    return NtWriteFile(NtfsData.DiskHandle,
                        NULL,
                        NULL,
                        NULL,
@@ -266,7 +268,7 @@ WriteMetafileMirror(IN  PFILE_RECORD_HEADER      FileRecord,
         ((LONGLONG)MFT_MIRR_ADDRESS * BYTES_PER_CLUSTER) +
         (LONGLONG)(FileRecord->MFTRecordNumber * MFT_RECORD_SIZE);
 
-    return NtWriteFile(DISK_HANDLE,
+    return NtWriteFile(NtfsData.DiskHandle,
                        NULL,
                        NULL,
                        NULL,
@@ -663,7 +665,7 @@ static NTSTATUS WriteMftBitmap()
     Offset.QuadPart = MFT_BITMAP_ADDRESS * BYTES_PER_CLUSTER;
 
     // Write file
-    Status = NtWriteFile(DISK_HANDLE,
+    Status = NtWriteFile(NtfsData.DiskHandle,
                          NULL,
                          NULL,
                          NULL,
@@ -781,7 +783,7 @@ static NTSTATUS WriteAttributesTable()
     RtlCopyBytes(Table, &ATTRIBUTES_TABLE, sizeof(ATTRIBUTES_TABLE));
 
     // Write table to disk
-    Status = NtWriteFile(DISK_HANDLE,
+    Status = NtWriteFile(NtfsData.DiskHandle,
                          NULL,
                          NULL,
                          NULL,
@@ -832,7 +834,7 @@ static NTSTATUS WriteUpCaseTable()
     RtlCopyBytes(Table, &UPCASE_TABLE, sizeof(UPCASE_TABLE));
 
     // Write table to disk
-    Status = NtWriteFile(DISK_HANDLE,
+    Status = NtWriteFile(NtfsData.DiskHandle,
                          NULL,
                          NULL,
                          NULL,

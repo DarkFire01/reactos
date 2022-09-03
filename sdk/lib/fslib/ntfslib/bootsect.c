@@ -13,6 +13,8 @@
 #define NDEBUG
 #include <debug.h>
 
+extern NtfsFormatData NtfsData;
+
 
 /* FUNCTIONS *****************************************************************/
 
@@ -111,7 +113,7 @@ WriteBootSector()
 
     BootSector->EndSector = BOOT_SECTOR_END;
 
-    Status = NtWriteFile(DISK_HANDLE,
+    Status = NtWriteFile(NtfsData.DiskHandle,
                          NULL,
                          NULL,
                          NULL,
