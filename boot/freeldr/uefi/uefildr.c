@@ -30,8 +30,8 @@ EfiEntry(
     _In_ EFI_HANDLE ImageHandle,
     _In_ EFI_SYSTEM_TABLE *SystemTable)
 {
-    SystemTable->ConOut->OutputString(SystemTable->ConOut, L"UEFI EntryPoint: Starting freeldr from UEFI\n");
 
+    UefiMachInit(ImageHandle, SystemTable);
     Reboot();
 
     return 0;

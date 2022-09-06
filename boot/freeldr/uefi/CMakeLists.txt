@@ -72,7 +72,9 @@ list(APPEND FREELDR_BOOTMGR_SOURCE
 list(APPEND FREELDR_ARC_SOURCE
     ../freeldr/lib/fs/pxe.c
     stubs.c
+    utils.c
     uefiacpi.c
+    uefisetup.c
     uefivid.c)
 
 list(APPEND FREELDR_BASE_ASM_SOURCE)
