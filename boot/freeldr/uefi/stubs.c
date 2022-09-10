@@ -29,17 +29,6 @@ StallExecutionProcessor(ULONG Microseconds)
 
 }
 
-VOID
-FrLdrBugCheckWithMessage(
-    ULONG BugCode,
-    PCHAR File,
-    ULONG Line,
-    PSTR Format,
-    ...)
-{
-
-}
-
 USHORT
 __cdecl PxeCallApi(USHORT Segment, USHORT Offset, USHORT Service, VOID* Parameter)
 {

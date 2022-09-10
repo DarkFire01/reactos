@@ -43,6 +43,13 @@ EfiEntry(
         goto Quit;
     }
 
+    /* Initialize memory manager */
+    if (!MmInitializeMemoryManager())
+    {
+        UiMessageBoxCritical("Unable to initialize memory manager.");
+        goto Quit;
+    }
+
 Quit:
     Reboot();
 

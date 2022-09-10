@@ -81,8 +81,10 @@ list(APPEND FREELDR_ARC_SOURCE
 list(APPEND FREELDR_BASE_ASM_SOURCE)
 
 if(ARCH STREQUAL "i386")
+    list(APPEND FREELDR_ARC_SOURCE
+        ../freeldr/arch/i386/i386bug.c)
     list(APPEND FREELDR_BASE_ASM_SOURCE)
-            #../freeldr/arch/i386/multiboot.S)
+        #../freeldr/arch/i386/multiboot.S)
 
     list(APPEND FREELDR_COMMON_ASM_SOURCE
         ../freeldr/arch/i386/drvmap.S
@@ -96,6 +98,8 @@ if(ARCH STREQUAL "i386")
         ../freeldr/ntldr/arch/i386/winldr.c
         ../freeldr/ntldr/headless.c)
 elseif(ARCH STREQUAL "amd64")
+    list(APPEND FREELDR_ARC_SOURCE
+        ../freeldr/arch/i386/i386bug.c)
     list(APPEND FREELDR_COMMON_ASM_SOURCE
         arch/amd64/misc.S
         #arch/amd64/entry.S #We don't use bootsectors for UEFI

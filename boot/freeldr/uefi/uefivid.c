@@ -43,6 +43,26 @@ UefiVideoClearScreen(UCHAR Attr)
     }
 }
 
+ULONG
+UefiVideoAttrToSingleColor(UCHAR Attr)
+{
+  UCHAR Intensity;
+
+  Intensity = (0 == (Attr & 0x08) ? 127 : 255);
+
+  return 0xff000000 |
+         (0 == (Attr & 0x04) ? 0 : (Intensity << 16)) |
+         (0 == (Attr & 0x02) ? 0 : (Intensity << 8)) |
+         (0 == (Attr & 0x01) ? 0 : Intensity);
+}
+
+VOID
+UefiVideoAttrToColors(UCHAR Attr, ULONG *FgColor, ULONG *BgColor)
+{
+  *FgColor = UefiVideoAttrToSingleColor(Attr & 0xf);
+  *BgColor = UefiVideoAttrToSingleColor((Attr >> 4) & 0xf);
+}
+
 #include "font.c"
 
 VOID
@@ -73,7 +93,10 @@ UefiVideoOutputChar(UCHAR Char, unsigned X, unsigned Y, ULONG FgColor, ULONG BgC
 VOID
 UefiVideoPutChar(int Ch, UCHAR Attr, unsigned X, unsigned Y)
 {
-    UefiVideoOutputChar(Ch, X, Y, 0xFFFFFF, 0x000000);
+    ULONG FgColor = 0;
+    ULONG BgColor = 0;
+    UefiVideoAttrToColors(Attr, &FgColor, &BgColor);
+    UefiVideoOutputChar(Ch, X, Y, FgColor, BgColor);
 }
 
 VOID
