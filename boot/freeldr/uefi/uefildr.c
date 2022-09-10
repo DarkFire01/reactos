@@ -31,7 +31,19 @@ EfiEntry(
     _In_ EFI_SYSTEM_TABLE *SystemTable)
 {
 
-    UefiMachInit(ImageHandle, SystemTable);
+    if(UefiMachInit(ImageHandle, SystemTable) != EFI_SUCCESS)
+    {
+        SystemTable->ConOut->OutputString(SystemTable->ConOut, L"Failed to start GOP");
+        goto Quit;
+    }
+
+    if (!UiInitialize(FALSE))
+    {
+        UiMessageBoxCritical("Unable to initialize UI.");
+        goto Quit;
+    }
+
+Quit:
     Reboot();
 
     return 0;

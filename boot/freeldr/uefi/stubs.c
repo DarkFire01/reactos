@@ -71,33 +71,7 @@ UefiConsGetCh(void)
 {
     return 0;
 }
-VOID
-UefiInitalizeVideo(_In_ EFI_HANDLE ImageHandle,
-                   _In_ EFI_SYSTEM_TABLE *SystemTable,
-                   _In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop)
-{
 
-}
-VOID
-UefiVideoClearScreen(UCHAR Attr)
-{
-
-}
-VIDEODISPLAYMODE
-UefiVideoSetDisplayMode(char *DisplayMode, BOOLEAN Init)
-{
-    return 0;
-}
-VOID
-UefiVideoGetDisplaySize(PULONG Width, PULONG Height, PULONG Depth)
-{
-
-}
-ULONG
-UefiVideoGetBufferSize(VOID)
-{
-    return 0;
-}
 VOID
 UefiVideoGetFontsFromFirmware(PULONG RomFontPointers)
 {
@@ -110,18 +84,6 @@ UefiVideoSetTextCursorPosition(UCHAR X, UCHAR Y)
 }
 VOID
 UefiVideoHideShowTextCursor(BOOLEAN Show)
-{
-
-}
-VOID
-UefiVideoOutputChar(UCHAR Char, unsigned X,
-                    unsigned Y, ULONG FgColor, ULONG BgColor)
-{
-
-}
-VOID
-UefiVideoPutChar(int Ch, UCHAR Attr,
-                 unsigned X, unsigned Y)
 {
 
 }
