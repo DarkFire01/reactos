@@ -29,8 +29,6 @@ UefiInitalizeVideo(_In_ EFI_HANDLE ImageHandle,
     refiFbData->ScreenHeight       = gop->Mode->Info->VerticalResolution;
     refiFbData->PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
     refiFbData->PixelFormat        = gop->Mode->Info->PixelFormat;
-
-    UefiVideoPutChar('C', 0, 0 ,0);
 }
 
 VOID
