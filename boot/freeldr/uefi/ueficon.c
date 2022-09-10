@@ -21,5 +21,5 @@ UefiConsPutChar(int Ch)
 VOID
 UefiConsSetCursor(UINT32 Col, UINT32 Row)
 {
-    GlobalSystemTable->ConOut->SetCursorPosition(GlobalSystemTable->ConOut, Col * 8, Row * 16);
+    GlobalSystemTable->ConOut->SetCursorPosition(GlobalSystemTable->ConOut, Col, Row);
 }
