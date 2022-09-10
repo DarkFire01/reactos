@@ -1,11 +1,10 @@
 /*
  * PROJECT:     ReactOS HID Stack
- * LICENSE:     GPL - See COPYING in the top level directory
- * FILE:        drivers/hid/mouhid/mouhid.c
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
  * PURPOSE:     Mouse HID Driver
- * PROGRAMMERS:
- *              Michael Martin (michael.martin@reactos.org)
- *              Johannes Anderwald (johannes.anderwald@reactos.org)
+ * COPYRIGHT:   Copyright  Michael Martin <michael.martin@reactos.org>
+ *              Copyright  Johannes Anderwald <johannes.anderwald@reactos.org>
+ *              Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 #include "mouhid.h"
@@ -30,6 +29,20 @@ static USHORT MouHid_ButtonDownFlags[] =
     MOUSE_BUTTON_5_UP
 };
 
+IO_COMPLETION_ROUTINE MouHid_ReadCompletion;
+IO_COMPLETION_ROUTINE MouHid_StartDeviceCompletion;
+IO_COMPLETION_ROUTINE MouHid_CreateCompletion;
+
+DRIVER_DISPATCH MouHid_Create;
+DRIVER_DISPATCH MouHid_Close;
+DRIVER_DISPATCH MouHid_Flush;
+DRIVER_DISPATCH MouHid_DeviceControl;
+DRIVER_DISPATCH MouHid_InternalDeviceControl;
+DRIVER_DISPATCH MouHid_Power;
+DRIVER_DISPATCH MouHid_Pnp;
+DRIVER_DISPATCH MouHid_SystemControl;
+DRIVER_UNLOAD MouHid_Unload;
+DRIVER_ADD_DEVICE MouHid_AddDevice;
 
 VOID
 MouHid_GetButtonMove(
@@ -301,9 +314,9 @@ MouHid_DispatchInputData(
 NTSTATUS
 NTAPI
 MouHid_ReadCompletion(
-    IN PDEVICE_OBJECT  DeviceObject,
-    IN PIRP  Irp,
-    IN PVOID  Context)
+    IN PDEVICE_OBJECT DeviceObject,
+    IN PIRP Irp,
+    IN PVOID Context)
 {
     PMOUHID_DEVICE_EXTENSION DeviceExtension;
     USHORT ButtonFlags;
@@ -313,8 +326,12 @@ MouHid_ReadCompletion(
     MOUSE_INPUT_DATA MouseInputData;
     USHORT Flags;
 
+    UNREFERENCED_PARAMETER(DeviceObject);
+
     /* get device extension */
     DeviceExtension = Context;
+
+    ASSERT(DeviceExtension != NULL);
 
     if (Irp->IoStatus.Status == STATUS_PRIVILEGE_NOT_HELD ||
         Irp->IoStatus.Status == STATUS_DEVICE_NOT_CONNECTED ||
@@ -432,11 +449,16 @@ MouHid_InitiateRead(
 NTSTATUS
 NTAPI
 MouHid_CreateCompletion(
-    IN PDEVICE_OBJECT  DeviceObject,
-    IN PIRP  Irp,
-    IN PVOID  Context)
+    IN PDEVICE_OBJECT DeviceObject,
+    IN PIRP Irp,
+    IN PVOID Context)
 {
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
+
+    ASSERT(Context != NULL);
     KeSetEvent(Context, 0, FALSE);
+
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
@@ -895,7 +917,7 @@ MouHid_StartDevice(
     DeviceExtension->PreparsedData = PreparsedData;
 
     ValueCapsLength = 1;
-    HidP_GetSpecificValueCaps(HidP_Input,
+    (VOID)HidP_GetSpecificValueCaps(HidP_Input,
                               HID_USAGE_PAGE_GENERIC,
                               HIDP_LINK_COLLECTION_UNSPECIFIED,
                               HID_USAGE_GENERIC_X,
@@ -904,7 +926,7 @@ MouHid_StartDevice(
                               PreparsedData);
 
     ValueCapsLength = 1;
-    HidP_GetSpecificValueCaps(HidP_Input,
+    (VOID)HidP_GetSpecificValueCaps(HidP_Input,
                               HID_USAGE_PAGE_GENERIC,
                               HIDP_LINK_COLLECTION_UNSPECIFIED,
                               HID_USAGE_GENERIC_Y,
@@ -967,7 +989,12 @@ MouHid_StartDeviceCompletion(
     IN PIRP  Irp,
     IN PVOID  Context)
 {
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
+
+    ASSERT(Context != NULL);
     KeSetEvent(Context, 0, FALSE);
+
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
@@ -1231,9 +1258,10 @@ NTAPI
 MouHid_Unload(
     IN PDRIVER_OBJECT DriverObject)
 {
+    UNREFERENCED_PARAMETER(DriverObject);
+
     UNIMPLEMENTED;
 }
-
 
 NTSTATUS
 NTAPI
@@ -1242,6 +1270,7 @@ DriverEntry(
     IN PUNICODE_STRING RegPath)
 {
     /* FIXME check for parameters 'UseOnlyMice', 'TreatAbsoluteAsRelative', 'TreatAbsolutePointerAsAbsolute' */
+    UNREFERENCED_PARAMETER(RegPath);
 
     /* initialize driver object */
     DriverObject->MajorFunction[IRP_MJ_CREATE] = MouHid_Create;

@@ -1,3 +1,10 @@
+/*
+ * PROJECT:     ReactOS Universal Serial Bus Human Interface Device Driver
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
+ * PURPOSE:     Ring buffer
+ * COPYRIGHT:   Copyright 2022 Roman Masanin <36927roma@gmail.com>
+ */
+
 #include "precomp.h"
 
 NTSTATUS HidClass_CyclicBufferUpdateSize(IN PHIDCHASS_CYCLIC_BUFFER buffer, IN UINT32 elementCount)

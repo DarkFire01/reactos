@@ -1,11 +1,10 @@
 /*
  * PROJECT:     ReactOS Universal Serial Bus Human Interface Device Driver
- * LICENSE:     GPL - See COPYING in the top level directory
- * FILE:        drivers/hid/hidclass/fdo.c
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
  * PURPOSE:     HID Class Driver
- * PROGRAMMERS:
- *              Michael Martin (michael.martin@reactos.org)
- *              Johannes Anderwald (johannes.anderwald@reactos.org)
+ * COPYRIGHT:   Copyright  Michael Martin <michael.martin@reactos.org>
+ *              Copyright  Johannes Anderwald <johannes.anderwald@reactos.org>
+ *              Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 #include "precomp.h"
@@ -24,9 +23,10 @@ HidClassFDO_QueryCapabilitiesCompletionRoutine(
     IN PIRP Irp,
     IN PVOID Context)
 {
-    //
-    // set event
-    //
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
+    ASSERT(Context != NULL);
+
     KeSetEvent(Context, 0, FALSE);
 
     //
@@ -135,17 +135,12 @@ HidClassFDO_DispatchRequestSynchronousCompletion(
     IN PIRP Irp,
     IN PVOID Context)
 {
-    //
-    // signal event
-    //
-    if (Context != NULL)
-    {
-        KeSetEvent(Context, 0, FALSE);
-    }
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
+    ASSERT(Context != NULL);
 
-    //
-    // done
-    //
+    KeSetEvent(Context, 0, FALSE);
+
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
@@ -397,7 +392,6 @@ HidClassFDO_GetDescriptors(
 
 PIRP HidClassPDO_DequeueIrp(PHIDCLASS_PDO_DEVICE_EXTENSION deviceContext)
 {
-    KIRQL oldIrql;
     PIRP nextIrp = NULL;
     PDRIVER_CANCEL oldCancelRoutine;
     PLIST_ENTRY listEntry;
@@ -433,10 +427,12 @@ HidClassFDO_ReadCompletion(
     IN PVOID Context)
 {
     PHIDCLASS_FDO_EXTENSION DeviceExtension;
-    PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension;
+    PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension = NULL;
     ULONG CollectionNumber;
     KIRQL CurrentIRQL;
     LIST_ENTRY completeIRP;
+
+    UNREFERENCED_PARAMETER(DeviceObject);
 
     /* get device extension */
     DeviceExtension = Context;
@@ -482,7 +478,7 @@ HidClassFDO_ReadCompletion(
 
             KeAcquireSpinLock(&PDODeviceExtension->ReadLock, &CurrentIRQL);
 
-            // check if any IRP waiting data 
+            // check if any IRP waiting data
             if (IsListEmpty(&PDODeviceExtension->PendingIRPList) == FALSE)
             {
                 PUCHAR address = NULL;
@@ -596,7 +592,7 @@ HidClassFDO_InitiateRead(IN PHIDCLASS_FDO_EXTENSION DeviceExtension)
             DeviceExtension->InputBufferSize--;
         }
 
-        DPRINT1("[HIDCLASS] HidClassFDO_InitiateRead for address %x and size %x\n", (ULONG)DeviceExtension->InputWriteAddress, DeviceExtension->InputBufferSize);
+        DPRINT1("[HIDCLASS] HidClassFDO_InitiateRead for address %p and size %x\n", DeviceExtension->InputWriteAddress, DeviceExtension->InputBufferSize);
 
         HidClassFDO_SubmitRead(DeviceExtension);
     }

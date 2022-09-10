@@ -1,14 +1,25 @@
 /*
  * PROJECT:     ReactOS Universal Serial Bus Human Interface Device Driver
- * LICENSE:     GPL - See COPYING in the top level directory
- * FILE:        drivers/usb/hidusb/hidusb.c
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
  * PURPOSE:     HID USB Interface Driver
- * PROGRAMMERS:
- *              Michael Martin (michael.martin@reactos.org)
- *              Johannes Anderwald (johannes.anderwald@reactos.org)
+ * COPYRIGHT:   Copyright  Michael Martin <michael.martin@reactos.org>
+ *              Copyright  Johannes Anderwald <johannes.anderwald@reactos.org>
+ *              Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 #include "hidusb.h"
+
+IO_WORKITEM_ROUTINE HidUsb_ResetWorkerRoutine;
+IO_COMPLETION_ROUTINE HidUsb_ReadReportCompletion;
+IO_COMPLETION_ROUTINE Hid_PnpCompletion;
+
+DRIVER_DISPATCH HidCreate;
+DRIVER_DISPATCH HidInternalDeviceControl;
+DRIVER_DISPATCH HidPower;
+DRIVER_DISPATCH HidSystemControl;
+DRIVER_DISPATCH HidPnp;
+DRIVER_ADD_DEVICE HidAddDevice;
+DRIVER_UNLOAD Hid_Unload;
 
 PUSBD_PIPE_INFORMATION
 HidUsb_GetInputInterruptInterfaceHandle(
@@ -301,6 +312,8 @@ HidCreate(
 {
     PIO_STACK_LOCATION IoStack;
 
+    UNREFERENCED_PARAMETER(DeviceObject);
+
     //
     // get current irp stack location
     //
@@ -341,6 +354,8 @@ HidUsb_ResetWorkerRoutine(
     PHID_DEVICE_EXTENSION DeviceExtension;
 
     DPRINT("[HIDUSB] ResetWorkerRoutine\n");
+
+    UNREFERENCED_PARAMETER(DeviceObject);
 
     //
     // get context
@@ -742,7 +757,7 @@ HidUsb_GetStringDescriptor(
                                &Report,
                                &BufferLength,
                                USB_STRING_DESCRIPTOR_TYPE,
-                               Index,
+                               (UCHAR)Index,
                                Lang);
     if (!NT_SUCCESS(Status))
     {
@@ -758,7 +773,7 @@ HidUsb_GetStringDescriptor(
                                &Report,
                                &BufferLength,
                                USB_STRING_DESCRIPTOR_TYPE,
-                               Index,
+                               (UCHAR)Index,
                                Lang);
     if (!NT_SUCCESS(Status))
     {
@@ -972,8 +987,9 @@ HidInternalDeviceControl(
         }
         case IOCTL_HID_GET_STRING:
         {
-            USHORT index = ((UINT32)IoStack->Parameters.DeviceIoControl.Type3InputBuffer) & 0xFF;
-            USHORT lang = (((UINT32)IoStack->Parameters.DeviceIoControl.Type3InputBuffer) >> 16);
+            UINT_PTR data = (UINT_PTR)IoStack->Parameters.DeviceIoControl.Type3InputBuffer;
+            USHORT index = data & 0xFF;
+            USHORT lang = (data >> 16) & 0xFF;
             switch (index)
             {
                 case HID_STRING_ID_IMANUFACTURER:
@@ -1052,14 +1068,13 @@ Hid_PnpCompletion(
     IN PIRP Irp,
     IN PVOID Context)
 {
-    //
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
+    ASSERT(Context != NULL);
+
     // signal event
-    //
     KeSetEvent(Context, 0, FALSE);
 
-    //
-    // done
-    //
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
@@ -1996,6 +2011,8 @@ HidAddDevice(
     PHID_USB_DEVICE_EXTENSION HidDeviceExtension;
     PHID_DEVICE_EXTENSION DeviceExtension;
 
+    UNREFERENCED_PARAMETER(DriverObject);
+
     //
     // get device extension
     //
@@ -2018,9 +2035,9 @@ NTAPI
 Hid_Unload(
     IN PDRIVER_OBJECT DriverObject)
 {
+    UNREFERENCED_PARAMETER(DriverObject);
     UNIMPLEMENTED;
 }
-
 
 NTSTATUS
 NTAPI

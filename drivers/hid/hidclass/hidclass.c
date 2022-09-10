@@ -1,11 +1,10 @@
 /*
  * PROJECT:     ReactOS Universal Serial Bus Human Interface Device Driver
- * LICENSE:     GPL - See COPYING in the top level directory
- * FILE:        drivers/hid/hidclass/hidclass.c
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
  * PURPOSE:     HID Class Driver
- * PROGRAMMERS:
- *              Michael Martin (michael.martin@reactos.org)
- *              Johannes Anderwald (johannes.anderwald@reactos.org)
+ * COPYRIGHT:   Copyright  Michael Martin <michael.martin@reactos.org>
+ *              Copyright  Johannes Anderwald <johannes.anderwald@reactos.org>
+ *              Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 #include "precomp.h"
@@ -14,13 +13,19 @@
 #include <debug.h>
 
 static LPWSTR ClientIdentificationAddress = L"HIDCLASS";
-static ULONG HidClassDeviceNumber = 0;
+static LONG HidClassDeviceNumber = 0;
+
+DRIVER_DISPATCH HidClassDispatch;
+DRIVER_UNLOAD HidClassDriverUnload;
+DRIVER_ADD_DEVICE HidClassAddDevice;
 
 NTSTATUS
 NTAPI
 DllInitialize(
     IN PUNICODE_STRING RegistryPath)
 {
+    UNREFERENCED_PARAMETER(RegistryPath);
+
     return STATUS_SUCCESS;
 }
 
@@ -46,7 +51,7 @@ HidClassAddDevice(
     PHIDCLASS_DRIVER_EXTENSION DriverExtension;
 
     /* increment device number */
-    LONG hidclassDevNum = InterlockedIncrement((PLONG)&HidClassDeviceNumber);
+    UINT32 hidclassDevNum = InterlockedIncrement(&HidClassDeviceNumber) & 0xFFFFFFFF;
 
     /* construct device name */
     swprintf(CharDeviceName, L"\\Device\\_HID%08x", hidclassDevNum);
@@ -126,6 +131,8 @@ NTAPI
 HidClassDriverUnload(
     IN PDRIVER_OBJECT DriverObject)
 {
+    UNREFERENCED_PARAMETER(DriverObject);
+
     UNIMPLEMENTED;
 }
 
@@ -137,7 +144,6 @@ HidClass_Create(
 {
     PIO_STACK_LOCATION IoStack;
     PHIDCLASS_COMMON_DEVICE_EXTENSION CommonDeviceExtension;
-    PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension;
 
     DPRINT("[HIDCLASS] HidClass_Create\n");
 
@@ -162,11 +168,6 @@ HidClass_Create(
     ASSERT(CommonDeviceExtension->IsFDO == FALSE);
 
     //
-    // get device extension
-    //
-    PDODeviceExtension = DeviceObject->DeviceExtension;
-
-    //
     // get stack location
     //
     IoStack = IoGetCurrentIrpStackLocation(Irp);
@@ -189,9 +190,7 @@ HidClass_Close(
     IN PDEVICE_OBJECT DeviceObject,
     IN PIRP Irp)
 {
-    PIO_STACK_LOCATION IoStack;
     PHIDCLASS_COMMON_DEVICE_EXTENSION CommonDeviceExtension;
-    BOOLEAN IsRequestPending = FALSE;
 
     //
     // get device extension
@@ -210,11 +209,6 @@ HidClass_Close(
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_INVALID_PARAMETER_1;
     }
-
-    //
-    // get stack location
-    //
-    IoStack = IoGetCurrentIrpStackLocation(Irp);
 
     //
     // complete request
@@ -287,17 +281,11 @@ HidClass_Read(
 {
     NTSTATUS status = STATUS_SUCCESS;
     BOOLEAN isCompletionRequired = TRUE;
-    PIO_STACK_LOCATION IoStack;
     PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension;
     PUCHAR Address;
     KIRQL CurrentIRQL;
 
     //DPRINT("[HIDCLASS] HidClass_Read\n");
-
-    //
-    // get current stack location
-    //
-    IoStack = IoGetCurrentIrpStackLocation(Irp);
 
     //
     // get device extension
@@ -370,6 +358,7 @@ HidClass_Write(
     XferPacket.reportId = XferPacket.reportBuffer[0];
 
     CommonDeviceExtension = DeviceObject->DeviceExtension;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     SubIrp = IoBuildDeviceIoControlRequest(
         IOCTL_HID_WRITE_REPORT,
         CommonDeviceExtension->HidDeviceExtension.NextDeviceObject,
@@ -385,7 +374,6 @@ HidClass_Write(
         return STATUS_NOT_IMPLEMENTED;
     }
     SubIrp->UserBuffer = &XferPacket;
-    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     Status = IoCallDriver(CommonDeviceExtension->HidDeviceExtension.NextDeviceObject, SubIrp);
     if (Status == STATUS_PENDING)
     {
@@ -557,6 +545,7 @@ HidClass_DeviceControl(
                 return STATUS_INSUFFICIENT_RESOURCES;
             }
 
+            KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
             SubIrp = IoBuildDeviceIoControlRequest(
                 IOCTL_HID_GET_FEATURE,
                 CommonDeviceExtension->HidDeviceExtension.NextDeviceObject,
@@ -572,7 +561,6 @@ HidClass_DeviceControl(
                 return STATUS_NOT_IMPLEMENTED;
             }
             SubIrp->UserBuffer = &XferPacket;
-            KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
             Status = IoCallDriver(CommonDeviceExtension->HidDeviceExtension.NextDeviceObject, SubIrp);
             if (Status == STATUS_PENDING)
             {
@@ -611,6 +599,7 @@ HidClass_DeviceControl(
             XferPacket.reportBuffer = Irp->AssociatedIrp.SystemBuffer;
             XferPacket.reportId = XferPacket.reportBuffer[0];
 
+            KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
             SubIrp = IoBuildDeviceIoControlRequest(
                 IOCTL_HID_SET_FEATURE,
                 CommonDeviceExtension->HidDeviceExtension.NextDeviceObject,
@@ -626,7 +615,6 @@ HidClass_DeviceControl(
                 return STATUS_NOT_IMPLEMENTED;
             }
             SubIrp->UserBuffer = &XferPacket;
-            KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
             Status = IoCallDriver(CommonDeviceExtension->HidDeviceExtension.NextDeviceObject, SubIrp);
             if (Status == STATUS_PENDING)
             {
@@ -642,8 +630,8 @@ HidClass_DeviceControl(
         case IOCTL_HID_GET_SERIALNUMBER_STRING:
         {
             NTSTATUS Status;
-            USHORT StringId;
-            UINT32 Lang = 0;
+            UINT_PTR StringId;
+            UINT_PTR Lang = 0;
             PIO_STACK_LOCATION SubIoStack;
             PIRP SubIrp;
 
@@ -711,6 +699,8 @@ HidClass_InternalDeviceControl(
     IN PDEVICE_OBJECT DeviceObject,
     IN PIRP Irp)
 {
+    UNREFERENCED_PARAMETER(DeviceObject);
+
     UNIMPLEMENTED;
     ASSERT(FALSE);
     Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;

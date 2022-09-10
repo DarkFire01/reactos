@@ -1,11 +1,10 @@
 /*
  * PROJECT:     ReactOS Universal Serial Bus Human Interface Device Driver
- * LICENSE:     GPL - See COPYING in the top level directory
- * FILE:        drivers/hid/hidclass/fdo.c
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
  * PURPOSE:     HID Class Driver
- * PROGRAMMERS:
- *              Michael Martin (michael.martin@reactos.org)
- *              Johannes Anderwald (johannes.anderwald@reactos.org)
+ * COPYRIGHT:   Copyright  Michael Martin <michael.martin@reactos.org>
+ *              Copyright  Johannes Anderwald <johannes.anderwald@reactos.org>
+ *              Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 #include "precomp.h"
@@ -99,6 +98,7 @@ HidClassPDO_HandleQueryDeviceId(
     IN PDEVICE_OBJECT DeviceObject,
     IN PIRP Irp)
 {
+    const WCHAR HidBusName[] = L"HID\\";
     NTSTATUS Status;
     LPWSTR Buffer;
     LPWSTR NewBuffer, Ptr;
@@ -125,12 +125,18 @@ HidClassPDO_HandleQueryDeviceId(
     // get buffer
     //
     Buffer = (LPWSTR)Irp->IoStatus.Information;
-    Length = wcslen(Buffer);
+    Length = wcslen(Buffer) + 1;
+
+    // Make sure busName fit
+    Length *= sizeof(WCHAR);
+    Length += sizeof(HidBusName);
+
+    ASSERT(Length > 10);
 
     //
     // allocate new buffer
     //
-    NewBuffer = ExAllocatePoolWithTag(NonPagedPool, (Length + 1) * sizeof(WCHAR), HIDCLASS_TAG);
+    NewBuffer = ExAllocatePoolWithTag(NonPagedPool, Length, HIDCLASS_TAG);
     if (!NewBuffer)
     {
         //
@@ -142,7 +148,7 @@ HidClassPDO_HandleQueryDeviceId(
     //
     // replace bus
     //
-    wcscpy(NewBuffer, L"HID\\");
+    wcscpy(NewBuffer, HidBusName);
 
     //
     // get offset to first '\\'
@@ -338,7 +344,7 @@ HidClassPDO_HandleQueryInstanceId(
     //
     // write device id
     //
-    swprintf(Buffer, L"%04x", PDODeviceExtension->CollectionNumber);
+    swprintf(Buffer, L"%04x", (UINT16)(PDODeviceExtension->CollectionNumber & 0xFFFF));
     Irp->IoStatus.Information = (ULONG_PTR)Buffer;
 
     //
@@ -353,6 +359,8 @@ HidClassPDO_HandleQueryCompatibleId(
     IN PIRP Irp)
 {
     LPWSTR Buffer;
+
+    UNREFERENCED_PARAMETER(DeviceObject);
 
     Buffer = ExAllocatePoolWithTag(NonPagedPool, 2 * sizeof(WCHAR), HIDCLASS_TAG);
     if (!Buffer)
@@ -485,6 +493,8 @@ HidClassPDO_PnP(
             //
             //
             BusInformation = ExAllocatePoolWithTag(NonPagedPool, sizeof(PNP_BUS_INFORMATION), HIDCLASS_TAG);
+            // TODO: handle error
+            ASSERT(BusInformation != NULL);
 
             //
             // fill in result
@@ -567,12 +577,12 @@ HidClassPDO_PnP(
                                                &GUID_DEVINTERFACE_HID,
                                                NULL,
                                                &PDODeviceExtension->DeviceInterface);
-            DPRINT("[HIDCLASS] IoRegisterDeviceInterfaceState Status %x\n", Status);
+            DPRINT("[HIDCLASS] IRP_MN_START_DEVICE IoRegisterDeviceInterfaceState Status %x\n", Status);
             if (NT_SUCCESS(Status))
             {
                 // enable device interface
                 Status = IoSetDeviceInterfaceState(&PDODeviceExtension->DeviceInterface, TRUE);
-                DPRINT("[HIDCLASS] IoSetDeviceInterFaceState %x\n", Status);
+                DPRINT("[HIDCLASS] IRP_MN_START_DEVICE IoSetDeviceInterFaceState %x\n", Status);
             }
             break;
         }
@@ -580,7 +590,10 @@ HidClassPDO_PnP(
         {
             /* Disable the device interface */
             if (PDODeviceExtension->DeviceInterface.Length != 0)
-                IoSetDeviceInterfaceState(&PDODeviceExtension->DeviceInterface, FALSE);
+            {
+                Status = IoSetDeviceInterfaceState(&PDODeviceExtension->DeviceInterface, FALSE);
+                DPRINT("[HIDCLASS] IRP_MN_REMOVE_DEVICE IoSetDeviceInterFaceState %x\n", Status);
+            }
 
             //
             // remove us from the fdo's pdo list
