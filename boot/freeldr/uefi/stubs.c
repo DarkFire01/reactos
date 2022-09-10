@@ -46,26 +46,12 @@ __cdecl PxeCallApi(USHORT Segment, USHORT Offset, USHORT Service, VOID* Paramete
     return 0;
 }
 
-VOID
-UefiInitConsole(_In_ EFI_SYSTEM_TABLE *SystemTable)
-{
-
-}
-VOID
-UefiConsPutChar(int Ch)
-{
-
-}
 BOOLEAN
 UefiConsKbHit(VOID)
 {
     return 0;
 }
-VOID
-UefiConsSetCursor(UINT32 Col, UINT32 Row)
-{
 
-}
 int
 UefiConsGetCh(void)
 {

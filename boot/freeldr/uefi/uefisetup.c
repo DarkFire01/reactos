@@ -34,6 +34,8 @@ UefiMachInit(_In_ EFI_HANDLE ImageHandle,
         return Status;
 
     UefiInitalizeVideo(ImageHandle, SystemTable, gop);
+    UefiConsSetCursor(0,0);
+
     /* Setup vtbl */
     RtlZeroMemory(&MachVtbl, sizeof(MachVtbl));
 
