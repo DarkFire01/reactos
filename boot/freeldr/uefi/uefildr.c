@@ -42,7 +42,15 @@ EfiEntry(
         UiMessageBoxCritical("Unable to initialize UI.");
         goto Quit;
     }
+                    FrLdrBugCheckWithMessage(
+                    MEMORY_INIT_FAILURE,
+                    __FILE__,
+                    __LINE__,
+                    "Failed to reserve memory in the range 0x%Ix - 0x%Ix for");
+    for(;;)
+    {
 
+    }
     /* Initialize memory manager */
     if (!MmInitializeMemoryManager())
     {

@@ -262,6 +262,7 @@ MmCheckFreeldrImageFile(VOID)
         (FileHeader->NumberOfSymbols != 0) ||       //    ""      ""
         (FileHeader->SizeOfOptionalHeader != sizeof(IMAGE_OPTIONAL_HEADER)))
     {
+    #ifndef UEFIBOOT
         ERR("FreeLdr FileHeader is invalid.\n");
         FrLdrBugCheckWithMessage(
             FREELDR_IMAGE_CORRUPTION,
@@ -278,6 +279,7 @@ MmCheckFreeldrImageFile(VOID)
             FileHeader->PointerToSymbolTable,
             FileHeader->NumberOfSymbols,
             FileHeader->SizeOfOptionalHeader, sizeof(IMAGE_OPTIONAL_HEADER));
+    #endif
     }
 
     /* Check the optional header */
@@ -288,6 +290,7 @@ MmCheckFreeldrImageFile(VOID)
         (OptionalHeader->SizeOfImage > MAX_FREELDR_PE_SIZE) ||
         (OptionalHeader->SectionAlignment != OptionalHeader->FileAlignment))
     {
+    #ifndef UEFIBOOT
         ERR("FreeLdr OptionalHeader is invalid.\n");
         FrLdrBugCheckWithMessage(
             FREELDR_IMAGE_CORRUPTION,
@@ -304,6 +307,7 @@ MmCheckFreeldrImageFile(VOID)
             OptionalHeader->ImageBase, FREELDR_PE_BASE,
             OptionalHeader->SizeOfImage, MAX_FREELDR_PE_SIZE,
             OptionalHeader->SectionAlignment, OptionalHeader->FileAlignment);
+    #endif
     }
 
     /* Calculate the full image size */
@@ -328,7 +332,7 @@ BOOLEAN MmInitializeMemoryManager(VOID)
     TRACE("System Memory Map (Base Address, Length, Type):\n");
     while ((MemoryDescriptor = ArcGetMemoryDescriptor(MemoryDescriptor)) != NULL)
     {
-        TRACE("%x\t %x\t %s\n",
+        printf("%x\t %x\t %s\n",
             MemoryDescriptor->BasePage * MM_PAGE_SIZE,
             MemoryDescriptor->PageCount * MM_PAGE_SIZE,
             MmGetSystemMemoryMapTypeString(MemoryDescriptor->MemoryType));
@@ -359,7 +363,7 @@ BOOLEAN MmInitializeMemoryManager(VOID)
 
     MmInitializeHeap(PageLookupTableAddress);
 
-    TRACE("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
+    printf("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
 
 
     return TRUE;
