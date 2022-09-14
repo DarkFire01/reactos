@@ -243,7 +243,7 @@ IopInitializeDevice(
         Status = STATUS_INSUFFICIENT_RESOURCES;
         goto done;
     }
-
+    Status = 0;
     /* Set the device instance of the device node */
     Status = RtlDuplicateUnicodeString(0, &DeviceInstance, &DeviceNode->InstancePath);
     if (!NT_SUCCESS(Status))
