@@ -7,6 +7,17 @@ extern "C" {
 #endif
 
 //
+// User space range limit
+//
+#define MI_HIGHEST_USER_ADDRESS                 (PVOID)0x7FFEFFFF
+
+//
+// Address of the shared user page
+//
+#define MM_SHARED_USER_DATA_VA 0x7FFE0000
+
+
+//
 // Page-related Macros
 //
 #ifndef PAGE_SIZE

@@ -29,11 +29,19 @@ $if (_WDMDDK_)
 #define EXCEPTION_READ_FAULT    0
 #define EXCEPTION_WRITE_FAULT   1
 #define EXCEPTION_EXECUTE_FAULT 8
-
+#define KI_USER_SHARED_DATA     0xFFFF9000
 NTSYSAPI
 PKTHREAD
 NTAPI
 KeGetCurrentThread(VOID);
+
+
+_IRQL_requires_max_(HIGH_LEVEL)
+_IRQL_saves_
+NTHALAPI
+KIRQL
+NTAPI
+KeGetCurrentIrql(VOID);
 
 #define DbgRaiseAssertionFailure() __break(0xf001)
 

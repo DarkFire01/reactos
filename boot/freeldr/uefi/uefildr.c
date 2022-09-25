@@ -59,20 +59,10 @@ EfiEntry(
     }
 
 Quit:
-    Reboot();
 
     return 0;
 }
 
-VOID
-Reboot()
-{
-    /* Stall until we deal with actual rebooting */
-    for(;;)
-    {
-
-    }
-}
 
 // We need to emulate these, because the original ones don't work in freeldr
 // These functions are here, because they need to be in the main compilation unit

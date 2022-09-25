@@ -10,23 +10,19 @@
 #include <debug.h>
 
 /* TODO: Handle this with custom Disk / partition setup */
-UCHAR
-DriveMapGetBiosDriveNumber(PCSTR DeviceName)
-{
-    return 0;
-}
-
 VOID
 NTAPI
 KeStallExecutionProcessor(ULONG Microseconds)
 {
     StallExecutionProcessor(Microseconds);
 }
-
-VOID
-StallExecutionProcessor(ULONG Microseconds)
+static VOID
+__StallExecutionProcessor(ULONG Loops)
 {
+}
 
+VOID StallExecutionProcessor(ULONG Microseconds)
+{
 }
 
 USHORT

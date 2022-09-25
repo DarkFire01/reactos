@@ -21,7 +21,6 @@ ULONG FreeldrEntryCount = 0;
 extern EFI_SYSTEM_TABLE * GlobalSystemTable;
 extern EFI_HANDLE GlobalImageHandle;
 extern PFREELDR_MEMORY_DESCRIPTOR BiosMemoryMap;
-extern PVOID DiskReadBuffer;
 extern SIZE_T DiskReadBufferSize;
 extern PREACTOS_INTERNAL_BGCONTEXT refiFbData;
 
