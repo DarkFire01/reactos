@@ -65,8 +65,6 @@ PUEFI_LoadMemoryMap()
 	MapOutput.DescriptorSize = 0;
 	MapOutput.DescriptorVersion = 0;
 
-    UefiVideoPutChar('C', 0xFF, 32, 32);
-
     Status = GlobalSystemTable->BootServices->GetMemoryMap(&LocMapSize,
                                                            MapOutput.EfiMemoryMap,
                                                            &LocMapKey,

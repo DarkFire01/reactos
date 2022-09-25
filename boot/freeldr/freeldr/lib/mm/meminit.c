@@ -253,7 +253,7 @@ MmCheckFreeldrImageFile(VOID)
             __LINE__,
             "Could not get NtHeaders!\n");
     }
-
+#define IMAGE_FILE_MACHINE_ARM64      0xAA64
     /* Check the file header */
     FileHeader = &NtHeaders->FileHeader;
     if ((FileHeader->Machine != IMAGE_FILE_MACHINE_NATIVE) ||

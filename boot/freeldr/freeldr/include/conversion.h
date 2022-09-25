@@ -9,6 +9,7 @@
 #pragma once
 
 #ifndef _ZOOM2_
+#ifndef _ARM64_
 /* Arch-specific addresses translation implementation */
 FORCEINLINE
 PVOID
@@ -23,6 +24,21 @@ PaToVa(PVOID Pa)
 {
     return (PVOID)((ULONG_PTR)Pa | KSEG0_BASE);
 }
+#else
+FORCEINLINE
+PVOID
+VaToPa(PVOID Va)
+{
+    return Va;
+}
+
+FORCEINLINE
+PVOID
+PaToVa(PVOID Pa)
+{
+    return Pa;
+}
+#endif
 #else
 FORCEINLINE
 PVOID

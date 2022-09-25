@@ -69,7 +69,7 @@ list(APPEND FREELDR_BOOTMGR_SOURCE
     ../freeldr/ui/video.c)
 
 list(APPEND FREELDR_ARC_SOURCE
-    ../freeldr/lib/fs/pxe.c
+   # ../freeldr/lib/fs/pxe.c
     stubs.c
     ueficon.c
     uefisetup.c

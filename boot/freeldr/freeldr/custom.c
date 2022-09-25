@@ -708,7 +708,7 @@ EditCustomBootReactOS(
 VOID OptionMenuReboot(VOID)
 {
     UiMessageBox("The system will now reboot.");
-    Reboot();
+    //Reboot();
 }
 
 #endif // HAS_OPTION_MENU_REBOOT
