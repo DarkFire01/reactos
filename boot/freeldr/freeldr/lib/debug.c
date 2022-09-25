@@ -20,7 +20,7 @@
 #include <freeldr.h>
 #include <debug.h>
 
-#if DBG && !defined(_M_ARM)
+#if DBG && !defined(_M_ARM64)
 
 #define DEBUG_ALL
 // #define DEBUG_WARN
@@ -521,3 +521,24 @@ char *BugCodeStrings[] =
 };
 
 ULONG_PTR BugCheckInfo[5];
+
+VOID
+DbgPrint2(ULONG Mask, ULONG Level, const char *File, ULONG Line, char *Format, ...)
+{
+}
+
+
+VOID DebugInit(IN ULONG_PTR FrLdrSectionId)
+{
+}
+
+VOID
+DebugDumpBuffer(ULONG Mask, PVOID Buffer, ULONG Length)
+{
+}
+
+
+VOID
+DbgParseDebugChannels(PCHAR Value)
+{
+}

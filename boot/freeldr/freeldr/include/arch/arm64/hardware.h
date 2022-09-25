@@ -11,3 +11,5 @@ VOID HalpCalibrateStallExecution(VOID);
 #define KSEG0_BASE              (ULONG_PTR)0x80000000
 #define DriveMapGetBiosDriveNumber(DeviceName) 0
 #define KI_USER_SHARED_DATA     0xFFFFF78000000000ULL
+
+#define DbgBreakPoint __debugbreak

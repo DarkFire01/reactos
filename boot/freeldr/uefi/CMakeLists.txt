@@ -111,6 +111,10 @@ elseif(ARCH STREQUAL "arm")
         list(APPEND FREELDR_NTLDR_SOURCE
             ../freeldr/ntldr/arch/arm/winldr.c)
 elseif(ARCH STREQUAL "arm64")
+        list(APPEND FREELDR_ARC_SOURCE
+            ../freeldr/arch/arm64/mach.c)
+        list(APPEND FREELDR_NTLDR_SOURCE
+            ../freeldr/ntldr/arch/arm64/winldr.c)
     #TBD
 else()
     #TBD
@@ -172,7 +176,7 @@ endif()
 add_executable(uefildr ${UEFILDR_BASE_SOURCE})
 
 if(MSVC)
-    target_link_options(uefildr PRIVATE /DYNAMICBASE:NO /NXCOMPAT:NO /ignore:4078 /ignore:4254 /DRIVER)
+    target_link_options(uefildr PRIVATE /NXCOMPAT:NO /ignore:4078 /ignore:4254 /DRIVER)
     # We don't need hotpatching
     remove_target_compile_option(uefildr "/hotpatch")
 else()

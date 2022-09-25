@@ -13,7 +13,7 @@
 
 #define NDEBUG
 #include <debug.h>
-
+#define RtlFillMemoryUlong 
 // FIXME: hack
 #undef ASSERT
 #define ASSERT(...)
