@@ -92,7 +92,7 @@ TuiDisplayMenu(
 
     /* Draw the menu */
 #ifdef _M_ARM
-    UiDrawMenu(&MenuInformation);
+    //UiDrawMenu(&MenuInformation);
 #else
     UiVtbl.DrawMenu(&MenuInformation);
 #endif
@@ -557,7 +557,7 @@ TuiProcessMenuKeyboardEvent(
     {
         /* It processed the key character, so redraw and exit */
 #ifdef _M_ARM
-        UiDrawMenu(MenuInfo);
+        //UiDrawMenu(MenuInfo);
 #else
         UiVtbl.DrawMenu(MenuInfo);
 #endif

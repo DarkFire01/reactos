@@ -14,11 +14,11 @@
 
 #include "../../../../../armllb/inc/osloader.h"
 #include "../../../../../armllb/inc/machtype.h"
-
+#define MAX_BIOS_DESCRIPTORS 80
 #define FREELDR_BASE       0x0001F000
 #define FREELDR_PE_BASE    0x0001F000
 #define MAX_FREELDR_PE_SIZE 0xFFFFFF
-
+VOID StallExecutionProcessor(ULONG Microseconds);
 extern PARM_BOARD_CONFIGURATION_BLOCK ArmBoardBlock;
 extern ULONG FirstLevelDcacheSize;
 extern ULONG FirstLevelDcacheFillSize;
