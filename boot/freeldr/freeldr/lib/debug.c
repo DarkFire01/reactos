@@ -521,7 +521,7 @@ char *BugCodeStrings[] =
 };
 
 ULONG_PTR BugCheckInfo[5];
-
+#ifdef _M_ARM64
 VOID
 DbgPrint2(ULONG Mask, ULONG Level, const char *File, ULONG Line, char *Format, ...)
 {
@@ -545,3 +545,5 @@ DbgParseDebugChannels(PCHAR Value)
 {
 
 }
+
+#endif

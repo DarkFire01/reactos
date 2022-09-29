@@ -77,7 +77,7 @@ _internal_handle_float(
     BOOL negexp;
 #ifdef _M_ARM
     DbgBreakPoint();
-    fpcontrol = _controlfp(0, 0);
+    fpcontrol = 0;
 #else
     fpcontrol = _control87(0, 0);
     _control87(_EM_DENORMAL|_EM_INVALID|_EM_ZERODIVIDE
@@ -97,7 +97,6 @@ _internal_handle_float(
 
 #ifdef _M_ARM
     DbgBreakPoint();
-    _controlfp(fpcontrol, 0xffffffff);
 #else
     _control87(fpcontrol, 0xffffffff);
 #endif

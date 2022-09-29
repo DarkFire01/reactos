@@ -52,13 +52,16 @@ KeMemoryBarrier(
 
 #define KeMemoryBarrierWithoutFence() _ReadWriteBarrier()
 
+
 _IRQL_requires_max_(HIGH_LEVEL)
 _IRQL_saves_
-NTHALAPI
+FORCEINLINE
 KIRQL
-NTAPI
-KeGetCurrentIrql(
-    VOID);
+KeGetCurrentIrql(VOID)
+{
+    return (KIRQL)0;
+}
+
 
 _IRQL_requires_max_(HIGH_LEVEL)
 NTHALAPI

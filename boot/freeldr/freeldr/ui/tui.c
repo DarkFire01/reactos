@@ -195,6 +195,12 @@ TuiDrawCenteredText(
 }
 
 /* FULL TUI THEME ************************************************************/
+#ifdef _M_ARM
+VOID    TuiFillArea(ULONG Left, ULONG Top, ULONG Right, ULONG Bottom, CHAR FillChar, UCHAR Attr /* Color Attributes */)
+{
+
+}
+#endif
 
 #ifndef _M_ARM
 
