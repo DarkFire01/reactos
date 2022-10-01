@@ -88,7 +88,7 @@ DbgDumpMemoryMap(
     DbgPrint("Dumping Memory map:\n");
     for (i = 0; List[i].PageCount != 0; i++)
     {
-        DbgPrint("%02d %08x - %08x: %s\n",
+        TRACE("%02d %08x - %08x: %s\n",
                  i,
                  List[i].BasePage * PAGE_SIZE,
                  (List[i].BasePage + List[i].PageCount) * PAGE_SIZE,
@@ -213,7 +213,7 @@ AddMemoryDescriptor(
     List[Index].MemoryType = MemoryType;
     DescriptCount++;
 
-#if 0 // only enable on demand!
+#if 0// only enable on demand!
     DbgDumpMemoryMap(List);
 #endif
     return DescriptCount;
@@ -332,18 +332,16 @@ BOOLEAN MmInitializeMemoryManager(VOID)
     TRACE("System Memory Map (Base Address, Length, Type):\n");
     while ((MemoryDescriptor = ArcGetMemoryDescriptor(MemoryDescriptor)) != NULL)
     {
-        printf("%x\t %x\t %s\n",
+        TRACE("%x\t %x\t %s\n",
             MemoryDescriptor->BasePage * MM_PAGE_SIZE,
             MemoryDescriptor->PageCount * MM_PAGE_SIZE,
             MmGetSystemMemoryMapTypeString(MemoryDescriptor->MemoryType));
     }
 #endif
-
     // Find address for the page lookup table
     TotalPagesInLookupTable = MmGetAddressablePageCountIncludingHoles();
     PageLookupTableAddress = MmFindLocationForPageLookupTable(TotalPagesInLookupTable);
     LastFreePageHint = MmHighestPhysicalPage;
-
     if (PageLookupTableAddress == 0)
     {
         // If we get here then we probably couldn't
@@ -355,17 +353,12 @@ BOOLEAN MmInitializeMemoryManager(VOID)
 
     // Initialize the page lookup table
     MmInitPageLookupTable(PageLookupTableAddress, TotalPagesInLookupTable);
-
     MmUpdateLastFreePageHint(PageLookupTableAddress, TotalPagesInLookupTable);
-
     FreePagesInLookupTable = MmCountFreePagesInLookupTable(PageLookupTableAddress,
                                                         TotalPagesInLookupTable);
-
     MmInitializeHeap(PageLookupTableAddress);
-
     printf("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
-
-
+       for(;;){}
     return TRUE;
 }
 
@@ -473,8 +466,10 @@ VOID MmInitPageLookupTable(PVOID PageLookupTable, PFN_NUMBER TotalPageCount)
     // Mark every page as allocated initially
     // We will go through and mark pages again according to the memory map
     // But this will mark any holes not described in the map as allocated
-    MmMarkPagesInLookupTable(PageLookupTable, MmLowestPhysicalPage, TotalPageCount, LoaderFirmwarePermanent);
-
+#ifndef UEFIBOOT
+    MmMarkPagesInLookupTable(PageLookupTable, MmLowestPhysicalPage, TotalPageCount, LoaderFree);
+#endif
+    /* SUSSSSSSY */
     // Parse the whole memory map
     while ((MemoryDescriptor = ArcGetMemoryDescriptor(MemoryDescriptor)) != NULL)
     {
@@ -482,7 +477,7 @@ VOID MmInitPageLookupTable(PVOID PageLookupTable, PFN_NUMBER TotalPageCount)
 
         if (MemoryDescriptor->BasePage + MemoryDescriptor->PageCount <= TotalPageCount)
         {
-            TRACE("Marking pages 0x%lx-0x%lx as type %s\n",
+            printf("Marking pages 0x%lx-0x%lx as type %s\n",
                   MemoryDescriptor->BasePage,
                   MemoryDescriptor->BasePage + MemoryDescriptor->PageCount,
                   MmGetSystemMemoryMapTypeString(MemoryDescriptor->MemoryType));
@@ -563,7 +558,7 @@ PFN_NUMBER MmCountFreePagesInLookupTable(PVOID PageLookupTable, PFN_NUMBER Total
         }
     }
 
-    return FreePageCount;
+    return TotalPageCount;
 }
 
 PFN_NUMBER MmFindAvailablePages(PVOID PageLookupTable, PFN_NUMBER TotalPageCount, PFN_NUMBER PagesNeeded, BOOLEAN FromEnd)
@@ -662,7 +657,6 @@ VOID MmUpdateLastFreePageHint(PVOID PageLookupTable, PFN_NUMBER TotalPageCount)
 {
     PPAGE_LOOKUP_TABLE_ITEM        RealPageLookupTable = (PPAGE_LOOKUP_TABLE_ITEM)PageLookupTable;
     PFN_NUMBER                            Index;
-
     for (Index=TotalPageCount-1; Index>0; Index--)
     {
         if (RealPageLookupTable[Index].PageAllocated == LoaderFree)

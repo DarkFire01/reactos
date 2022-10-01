@@ -43,10 +43,6 @@ EfiEntry(
         goto Quit;
     }
 
-    for(;;)
-    {
-
-    }
     /* Initialize memory manager */
     if (!MmInitializeMemoryManager())
     {
@@ -54,6 +50,10 @@ EfiEntry(
         goto Quit;
     }
 
+    for(;;)
+    {
+
+    }
 Quit:
 
     return 0;

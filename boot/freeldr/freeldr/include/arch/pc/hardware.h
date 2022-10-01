@@ -28,7 +28,7 @@
 /* hardware.c */
 VOID StallExecutionProcessor(ULONG Microseconds);
 VOID HalpCalibrateStallExecution(VOID);
-
+#define MAX_BIOS_DESCRIPTORS 80
 /* PCI Type 1 Ports */
 #define PCI_TYPE1_ADDRESS_PORT      (PULONG)0xCF8
 #define PCI_TYPE1_DATA_PORT         0xCFC

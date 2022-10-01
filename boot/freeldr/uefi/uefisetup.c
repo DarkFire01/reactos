@@ -6,9 +6,11 @@
  */
 
 #include <uefildr.h>
+#ifdef _M_ARM
 #include <internal/arm/intrin_i.h>
+#endif
 #include <debug.h>
-
+#ifdef _M_ARM
 ULONG FirstLevelDcacheSize;
 ULONG FirstLevelDcacheFillSize;
 ULONG FirstLevelIcacheSize;
@@ -43,7 +45,7 @@ ULONG LenBits[] =
     -1,      // INVALID
     8        // 8 words per line (32 bytes)
 };
-
+#endif
 
 EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 EFI_SYSTEM_TABLE * GlobalSystemTable;
