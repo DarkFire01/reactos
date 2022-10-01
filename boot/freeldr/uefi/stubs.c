@@ -98,40 +98,13 @@ UefiGetExtendedBIOSData(PULONG ExtendedBIOSDataArea,
 {
 
 }
-UCHAR
-UefiGetFloppyCount(VOID)
-{
-    return 0;
-}
-BOOLEAN
-UefiDiskReadLogicalSectors(IN UCHAR DriveNumber,
-                           IN ULONGLONG SectorNumber,
-                           IN ULONG SectorCount,
-                           OUT PVOID Buffer)
-{
-    return 0;
-}
-BOOLEAN
-UefiDiskGetDriveGeometry(UCHAR DriveNumber,
-                         PGEOMETRY Geometry)
-{
-    return 0;
-}
-ULONG
-UefiDiskGetCacheableBlockCount(UCHAR DriveNumber)
-{
-    return 0;
-}
+
 TIMEINFO*
 UefiGetTime(VOID)
 {
     return 0;
 }
-BOOLEAN
-UefiInitializeBootDevices(VOID)
-{
-    return 0;
-}
+
 PCONFIGURATION_COMPONENT_DATA
 UefiHwDetect(VOID)
 {
@@ -140,16 +113,14 @@ UefiHwDetect(VOID)
 VOID
 UefiPrepareForReactOS(VOID)
 {
-
+    printf("UefiPrepareForReactOS: Exiting BootServices...");
+    for(;;)
+    {
+        
+    }
 }
 VOID
 UefiHwIdle(VOID)
-{
-
-}
-VOID
-UefiInitializeFileSystemSupport(_In_ EFI_HANDLE ImageHandle,
-                                _In_ EFI_SYSTEM_TABLE *SystemTable)
 {
 
 }

@@ -50,6 +50,19 @@ EfiEntry(
         goto Quit;
     }
 
+    FsInit();
+
+    RunLoader();
+Quit:
+    Reboot();
+
+    return 0;
+}
+
+VOID
+Reboot()
+{
+    /* Stall until we deal with actual rebooting */
     for(;;)
     {
 
