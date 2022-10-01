@@ -50,27 +50,18 @@ EfiEntry(
         goto Quit;
     }
 
+    printf("Start FS....");
     FsInit();
-
+    printf("Running Loader...");
     RunLoader();
 Quit:
-    Reboot();
-
-    return 0;
-}
-
-VOID
-Reboot()
-{
-    /* Stall until we deal with actual rebooting */
     for(;;)
     {
 
     }
-Quit:
-
     return 0;
 }
+
 
 
 // We need to emulate these, because the original ones don't work in freeldr

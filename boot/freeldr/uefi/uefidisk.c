@@ -6,6 +6,8 @@
 extern EFI_SYSTEM_TABLE * GlobalSystemTable;
 extern EFI_HANDLE GlobalImageHandle;
 
+#define TAG_HW_RESOURCE_LIST    'lRwH'
+#define TAG_HW_DISK_CONTEXT     'cDwH'
 typedef struct tagDISKCONTEXT
 {
     UCHAR DriveNumber;
@@ -18,7 +20,7 @@ typedef struct tagDISKCONTEXT
 UCHAR FrldrBootDrive;
 ULONG FrldrBootPartition;
 SIZE_T DiskReadBufferSize;
-PVOID DiskReadBuffer;
+void* DiskReadBuffer;
 PVOID Buffer;
 UINT64* LoaderFileSize;
 
@@ -220,7 +222,7 @@ UefiSetupBlockDevices()
         }
     }
 
-    status = GlobalSystemTable->BootServices->HandleProtocol(handles[1], &bioGuid, (void **) &bio);
+    status = GlobalSystemTable->BootServices->HandleProtocol(handles[2], &bioGuid, (void **) &bio);
 
     /* Read the MBR */
     if (!MachDiskReadLogicalSectors(0, 0ULL, 1, DiskReadBuffer))

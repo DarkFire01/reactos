@@ -120,7 +120,7 @@ FrLdrHeapCreate(
 
         TRACE("Remaining = %ld\n", Remaining);
     }
-
+   printf("allocating mem sucessfultwo:");
     /* Now finish with a terminating block */
     Heap->TerminatingBlock = Block - &Heap->Blocks;
     Block->Size = 0;

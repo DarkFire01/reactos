@@ -347,7 +347,7 @@ BOOLEAN MmInitializeMemoryManager(VOID)
         // If we get here then we probably couldn't
         // find a contiguous chunk of memory big
         // enough to hold the page lookup table
-        printf("Error initializing memory manager!\n");
+        TRACE("Error initializing memory manager!\n");
         return FALSE;
     }
 
@@ -356,9 +356,9 @@ BOOLEAN MmInitializeMemoryManager(VOID)
     MmUpdateLastFreePageHint(PageLookupTableAddress, TotalPagesInLookupTable);
     FreePagesInLookupTable = MmCountFreePagesInLookupTable(PageLookupTableAddress,
                                                         TotalPagesInLookupTable);
+                                                        printf("Creatnig heap..");
     MmInitializeHeap(PageLookupTableAddress);
     printf("Memory Manager initialized. 0x%x pages available.\n", FreePagesInLookupTable);
-       for(;;){}
     return TRUE;
 }
 
@@ -465,10 +465,9 @@ VOID MmInitPageLookupTable(PVOID PageLookupTable, PFN_NUMBER TotalPageCount)
 
     // Mark every page as allocated initially
     // We will go through and mark pages again according to the memory map
-    // But this will mark any holes not described in the map as allocated
-#ifndef UEFIBOOT
+
     MmMarkPagesInLookupTable(PageLookupTable, MmLowestPhysicalPage, TotalPageCount, LoaderFree);
-#endif
+
     /* SUSSSSSSY */
     // Parse the whole memory map
     while ((MemoryDescriptor = ArcGetMemoryDescriptor(MemoryDescriptor)) != NULL)
@@ -477,7 +476,7 @@ VOID MmInitPageLookupTable(PVOID PageLookupTable, PFN_NUMBER TotalPageCount)
 
         if (MemoryDescriptor->BasePage + MemoryDescriptor->PageCount <= TotalPageCount)
         {
-            printf("Marking pages 0x%lx-0x%lx as type %s\n",
+            TRACE("Marking pages 0x%lx-0x%lx as type %s\n",
                   MemoryDescriptor->BasePage,
                   MemoryDescriptor->BasePage + MemoryDescriptor->PageCount,
                   MmGetSystemMemoryMapTypeString(MemoryDescriptor->MemoryType));

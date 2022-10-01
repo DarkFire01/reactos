@@ -332,7 +332,7 @@ VOID RunLoader(VOID)
         UiMessageBoxCritical("Error initializing .ini file.");
         return;
     }
-
+    printf("Freeldr.ini has been loaded");
     /* Open the [FreeLoader] section */
     if (!IniOpenSection("FreeLoader", &SectionId))
     {

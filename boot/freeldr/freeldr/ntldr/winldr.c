@@ -525,7 +525,7 @@ LoadModule(
         ERR("PeLdrLoadImage('%s') failed\n", File);
         return NULL;
     }
-    TRACE("%s loaded successfully at %p\n", File, BaseAddress);
+    printf("%s loaded successfully at %p\n", File, BaseAddress);
 
     Success = PeLdrAllocateDataTableEntry(&LoaderBlock->LoadOrderListHead,
                                           ImportName,

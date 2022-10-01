@@ -801,7 +801,7 @@ PeLdrLoadImage(
 
         if (PhysicalBase == NULL)
         {
-            ERR("Failed to alloc %lu bytes for image %s\n", NtHeaders->OptionalHeader.SizeOfImage, FileName);
+            printf("Failed to alloc %lu bytes for image %s\n", NtHeaders->OptionalHeader.SizeOfImage, FileName);
             ArcClose(FileId);
             return FALSE;
         }
@@ -900,7 +900,7 @@ PeLdrLoadImage(
     /* Relocate the image, if it needs it */
     if (NtHeaders->OptionalHeader.ImageBase != (ULONG_PTR)VirtualBase)
     {
-        WARN("Relocating %p -> %p\n", NtHeaders->OptionalHeader.ImageBase, VirtualBase);
+        printf("Relocating %p -> %p\n", NtHeaders->OptionalHeader.ImageBase, VirtualBase);
         Status = LdrRelocateImageWithBias(PhysicalBase,
                                           (ULONG_PTR)VirtualBase - (ULONG_PTR)PhysicalBase,
                                           "FreeLdr",
@@ -914,7 +914,7 @@ PeLdrLoadImage(
     /* Fill output parameters */
     *ImageBasePA = PhysicalBase;
 
-    TRACE("PeLdrLoadImage() done, PA = %p\n", *ImageBasePA);
+    printf("PeLdrLoadImage() done, PA = %p\n", *ImageBasePA);
     return TRUE;
 
 Failure:
