@@ -13,6 +13,12 @@
 extern EFI_SYSTEM_TABLE * GlobalSystemTable;
 
 VOID
+ArmWriteChar(int Ch)
+{
+    GlobalSystemTable->ConOut->OutputString(GlobalSystemTable->ConOut, (CHAR16*)&Ch);
+}
+
+VOID
 UefiConsPutChar(int Ch)
 {
     GlobalSystemTable->ConOut->OutputString(GlobalSystemTable->ConOut, (CHAR16*)&Ch);

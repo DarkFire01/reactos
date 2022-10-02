@@ -422,13 +422,45 @@ DbgParseDebugChannels(PCHAR Value)
 }
 
 #else
+VOID
+ArmWriteChar(int Ch);
+
+VOID DebugPrintChar(UCHAR Character)
+{
+    if (Character == '\n')
+        ArmWriteChar('\r');
+
+    ArmWriteChar(Character);
+}
 
 ULONG
 DbgPrint(PCCH Format, ...)
 {
+    va_list ap;
+    int Length;
+    char* ptr;
+    CHAR Buffer[512];
+
+    va_start(ap, Format);
+    Length = _vsnprintf(Buffer, sizeof(Buffer), Format, ap);
+    va_end(ap);
+
+    /* Check if we went past the buffer */
+    if (Length == -1)
+    {
+        /* Terminate it if we went over-board */
+        Buffer[sizeof(Buffer) - 1] = '\n';
+
+        /* Put maximum */
+        Length = sizeof(Buffer);
+    }
+
+    ptr = Buffer;
+    while (Length--)
+        DebugPrintChar(*ptr++);
+
     return 0;
 }
-
 #endif // DBG
 
 ULONG

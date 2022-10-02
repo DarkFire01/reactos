@@ -444,6 +444,12 @@ LdrProcessRelocationBlockLongLong(
 
         case IMAGE_REL_BASED_HIGHADJ:
         case IMAGE_REL_BASED_MIPS_JMPADDR:
+#ifdef _M_ARM
+        case IMAGE_REL_BASED_THUMB_MOV32:
+            LongPtr = (PULONG)RVA(Address, Offset);
+            *LongPtr = SWAPD(*LongPtr) + (Delta & 0xFFFFFFFF);
+            break;
+#endif
         default:
             DPRINT1("Unknown/unsupported fixup type %hu.\n", Type);
             DPRINT1("Address %p, Current %u, Count %u, *TypeOffset %x\n",

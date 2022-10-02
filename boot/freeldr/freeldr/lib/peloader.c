@@ -554,7 +554,7 @@ PeLdrScanImportDescriptorTable(
     {
         /* Get pointer to the name */
         ImportName = (PCH)VaToPa(RVA(ScanDTE->DllBase, ImportTable->Name));
-        TRACE("PeLdrScanImportDescriptorTable(): Looking at %s\n", ImportName);
+        printf("PeLdrScanImportDescriptorTable(): Looking at %s\n", ImportName);
 
         /* In case we get a reference to ourselves - just skip it */
         if (PeLdrpCompareDllName(ImportName, &ScanDTE->BaseDllName))
@@ -570,7 +570,7 @@ PeLdrScanImportDescriptorTable(
                                                      &DataTableEntry);
             if (!Success)
             {
-                ERR("PeLdrpLoadAndScanReferencedDll() failed\n");
+                printf("PeLdrpLoadAndScanReferencedDll() failed\n");
                 return Success;
             }
         }
@@ -585,7 +585,7 @@ PeLdrScanImportDescriptorTable(
 
         if (!Success)
         {
-            ERR("PeLdrpScanImportAddressTable() failed: ImportName = '%s', DirectoryPath = '%s'\n",
+            printf("PeLdrpScanImportAddressTable() failed: ImportName = '%s', DirectoryPath = '%s'\n",
                 ImportName, DirectoryPath);
             return Success;
         }

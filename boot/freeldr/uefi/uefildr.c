@@ -50,15 +50,14 @@ EfiEntry(
         goto Quit;
     }
 
-    printf("Start FS....");
+
     FsInit();
-    printf("Running Loader...");
     RunLoader();
 Quit:
     for(;;)
     {
 
-    }
+    } 
     return 0;
 }
 
