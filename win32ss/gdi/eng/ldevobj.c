@@ -688,9 +688,11 @@ LDEVOBJ_bGetClosestMode(
     dmDiff.dmPelsHeight = 0xffffffff;
     dmDiff.dmBitsPerPel = 0xffffffff;
     dmDiff.dmDisplayFrequency = 0xffffffff;
+    dmDiff.dmDisplayOrientation = 0xffffffff;
 
     /* Search the closest mode */
 #define DM_DIFF(field) (RequestedMode->field > pdmCurrent->field ? (RequestedMode->field - pdmCurrent->field) : (pdmCurrent->field - RequestedMode->field))
+#define DM_DIFF_ORIENTATION(field) (RequestedMode->field == pdmCurrent->field ? 0 : (RequestedMode->field ^ pdmCurrent->field) & 1 ? 1 : 2)
     for (i = 0; i < pGraphicsDevice->cDevModes; i++)
     {
         pdmCurrent = pGraphicsDevice->pDevModeList[i].pdm;
@@ -704,12 +706,15 @@ LDEVOBJ_bGetClosestMode(
             continue;
         if (RequestedMode->dmDisplayFrequency != 0 && DM_DIFF(dmDisplayFrequency) > dmDiff.dmDisplayFrequency)
             continue;
+        if (DM_DIFF_ORIENTATION(dmDisplayOrientation) > dmDiff.dmDisplayOrientation)
+            continue;
 
         /* Better (or equivalent) mode found. Update differences */
         dmDiff.dmPelsWidth = DM_DIFF(dmPelsWidth);
         dmDiff.dmPelsHeight = DM_DIFF(dmPelsHeight);
         dmDiff.dmBitsPerPel = DM_DIFF(dmBitsPerPel);
         dmDiff.dmDisplayFrequency = DM_DIFF(dmDisplayFrequency);
+        dmDiff.dmDisplayOrientation = DM_DIFF_ORIENTATION(dmDisplayOrientation);
         pdmBest = pdmCurrent;
     }
 #undef DM_DIFF
