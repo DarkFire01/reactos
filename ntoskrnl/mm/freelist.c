@@ -317,8 +317,8 @@ MiAllocatePagesForMdl(IN PHYSICAL_ADDRESS LowAddress,
                 // Get the PFN entry for this page
                 //
                 Pfn1 = MiGetPfnEntry(Page);
-                ASSERT(Pfn1);
-
+                //ASSERT(Pfn1);
+                if (!Pfn1) continue;
                 //
                 // Make sure it's free and if this is our first pass, zeroed
                 //
