@@ -38,10 +38,11 @@ HalpInitProcessor(
 
     /* Initialize the local APIC for this cpu */
     ApicInitializeLocalApic(ProcessorNumber);
-
+    if(ProcessorNumber == 0)
+    {
     /* Initialize profiling data (but don't start it) */
-    HalInitializeProfiling();
-
+        HalInitializeProfiling();
+    }
     /* Initialize the timer */
     //ApicInitializeTimer(ProcessorNumber);
 }

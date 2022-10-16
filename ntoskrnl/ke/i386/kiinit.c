@@ -803,7 +803,6 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     RtlCopyMemory(&Idt[2], &NmiEntry, sizeof(KIDTENTRY));
     RtlCopyMemory(&Idt[8], &DoubleFaultEntry, sizeof(KIDTENTRY));
 
-AppCpuInit:
     /* Loop until we can release the freeze lock */
     do
     {
@@ -811,14 +810,16 @@ AppCpuInit:
         while (*(volatile PKSPIN_LOCK*)&KiFreezeExecutionLock == (PVOID)1);
     } while(InterlockedBitTestAndSet((PLONG)&KiFreezeExecutionLock, 0));
 
+AppCpuInit:
     /* Setup CPU-related fields */
     __writefsdword(KPCR_NUMBER, Cpu);
     __writefsdword(KPCR_SET_MEMBER, 1 << Cpu);
     __writefsdword(KPCR_SET_MEMBER_COPY, 1 << Cpu);
     __writefsdword(KPCR_PRCB_SET_MEMBER, 1 << Cpu);
-
-    KiVerifyCpuFeatures(Pcr->Prcb);
-
+    if (!Cpu)
+    {
+        KiVerifyCpuFeatures(Pcr->Prcb);
+    }
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);
 
@@ -838,6 +839,15 @@ AppCpuInit:
         /* Make the lowest page of the boot and double fault stack read-only */
         KiMarkPageAsReadOnly(P0BootStackData);
         KiMarkPageAsReadOnly(KiDoubleFaultStackData);
+    }
+
+        /* Check if this is the boot CPU */
+    if (Cpu)
+    {
+        for(;;)
+        {
+            
+        }
     }
 
     /* Raise to HIGH_LEVEL */
