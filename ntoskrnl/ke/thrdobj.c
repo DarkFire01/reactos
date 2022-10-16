@@ -1329,10 +1329,10 @@ KeSetPriorityThread(IN PKTHREAD Thread,
 {
     KIRQL OldIrql;
     KPRIORITY OldPriority;
-    ASSERT_THREAD(Thread);
-    ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
-    ASSERT((Priority <= HIGH_PRIORITY) && (Priority >= LOW_PRIORITY));
-    ASSERT(KeIsExecutingDpc() == FALSE);
+   // ASSERT_THREAD(Thread);
+   // ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
+   // ASSERT((Priority <= HIGH_PRIORITY) && (Priority >= LOW_PRIORITY));
+   // ASSERT(KeIsExecutingDpc() == FALSE);
 
     /* Lock the Dispatcher Database */
     OldIrql = KiAcquireDispatcherLock();

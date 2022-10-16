@@ -35,7 +35,7 @@ KiIpiSendPacket(
     IN PULONG Count)
 {
 #ifdef CONFIG_SMP
-    DPRINT1("KiIpiSendPacket: Attempting IPI on KAFFINITY of %X\n", TargetProcessors);
+   // DPRINT1("KiIpiSendPacket: Attempting IPI on KAFFINITY of %X\n", TargetProcessors);
     KAFFINITY Processor;
     LONG i;
     PKPRCB Prcb, CurrentPrcb;
@@ -123,7 +123,7 @@ KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame, IN PKEXCEPTION_FRAME ExceptionFra
 {
 #ifdef CONFIG_SMP
     PKPRCB Prcb;
-    ASSERT(KeGetCurrentIrql() == IPI_LEVEL);
+   // ASSERT(KeGetCurrentIrql() == IPI_LEVEL);
 
     Prcb = KeGetCurrentPrcb();
 

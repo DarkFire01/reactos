@@ -68,8 +68,11 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 VOID
 HalpInitPhase1(VOID)
 {
+    if(KeNumberProcessors < 2)
+    {
+        HalpInitDma();
+    }
     /* Initialize DMA. NT does this in Phase 0 */
-    HalpInitDma();
 }
 
 /* EOF */
