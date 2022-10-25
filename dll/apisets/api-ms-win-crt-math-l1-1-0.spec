@@ -238,7 +238,7 @@
 @ stub expm1f
 @ stub expm1l
 @ stdcall fabs() msvcrt.fabs
-@ stdcall -arch=arm fabsf() msvcrt.fabsf
+@ stdcall -arch=arm,arm64 fabsf() msvcrt.fabsf
 @ stub fdim
 @ stub fdimf
 @ stub fdiml

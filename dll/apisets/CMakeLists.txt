@@ -22,7 +22,8 @@ function (add_apiset apiset_name baseaddress)
         ${CMAKE_CURRENT_BINARY_DIR}/${apiset_name}.def)
 
     add_dependencies(${apiset_name} xdk)
-    set_module_type(${apiset_name} module UNICODE IMAGEBASE ${baseaddress})
+    #set_module_type(${apiset_name} module UNICODE IMAGEBASE ${baseaddress})
+    set_module_type(${apiset_name} module UNICODE) #Yeah yeah arm64 is fucken weird, i gotta figure out a better solution..
 
     if(NOT MSVC)
         target_compile_options(${apiset_name} PRIVATE -fno-builtin)
