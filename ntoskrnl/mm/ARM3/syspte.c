@@ -248,6 +248,10 @@ MiReserveSystemPtes(IN ULONG NumberOfPtes,
 {
     PMMPTE PointerPte;
 
+    if( NumberOfPtes > 16768 )
+    {
+        return NULL;
+    }
     //
     // Use the extended function
     //
