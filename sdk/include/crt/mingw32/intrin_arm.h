@@ -44,7 +44,7 @@ __INTRIN_INLINE unsigned short _byteswap_ushort(unsigned short value)
 	return (value >> 8) | (value << 8);
 }
 
-__INTRIN_INLINE unsigned _CountLeadingZeros(long Mask)
+unsigned int _CountLeadingZeros(unsigned long Mask)
 {
     return Mask ? __builtin_clz(Mask) : 32;
 }
@@ -345,15 +345,14 @@ __INTRIN_INLINE long _InterlockedIncrement(volatile long * const lpAddend)
 {
 	return _InterlockedExchangeAdd(lpAddend, 1) + 1;
 }
-
-__INTRIN_INLINE long _InterlockedDecrement16(volatile short * const lpAddend)
+short _InterlockedDecrement16(_Interlocked_operand_ short volatile * _Addend)
 {
-	return _InterlockedExchangeAdd16(lpAddend, -1) - 1;
+	return _InterlockedExchangeAdd16(_Addend, -1) - 1;
 }
 
-__INTRIN_INLINE long _InterlockedIncrement16(volatile short * const lpAddend)
+short _InterlockedIncrement16(_Interlocked_operand_ short volatile * _Addend)
 {
-	return _InterlockedExchangeAdd16(lpAddend, 1) + 1;
+	return _InterlockedExchangeAdd16(_Addend, 1) + 1;
 }
 
 __INTRIN_INLINE long _InterlockedAddLargeStatistic(volatile long long * const Addend, const long Value)

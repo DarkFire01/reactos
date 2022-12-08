@@ -96,9 +96,9 @@ void __dmb(unsigned int Type);
 void __dsb(unsigned int Type);
 void __isb(unsigned int Type);
 
-#pragma intrinsic(__dmb)
-#pragma intrinsic(__dsb)
-#pragma intrinsic(__isb)
+//#pragma intrinsic(__dmb)
+//#pragma intrinsic(__dsb)
+//#pragma intrinsic(__isb)
 
 
 #if defined(__cplusplus)
