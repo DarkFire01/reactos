@@ -29,7 +29,7 @@ function(add_hal _halname)
     else()
         target_link_libraries(${_halname} -lgcc)
     endif()
-endfunction()
+endfunction() 
 
 # The components
 include(generic.cmake)

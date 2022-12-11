@@ -151,6 +151,10 @@ NTSTATUS
 NTAPI
 KdDebuggerInitialize0(IN PLOADER_PARAMETER_BLOCK LoaderBlock OPTIONAL)
 {
+    for(;;)
+    {
+        
+    }
     ULONG ComPortNumber   = DEFAULT_DEBUG_PORT;
     ULONG ComPortBaudRate = DEFAULT_DEBUG_BAUD_RATE;
 

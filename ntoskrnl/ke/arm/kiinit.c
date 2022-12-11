@@ -327,10 +327,35 @@ KiInitializeMachineType(VOID)
     }
 }
 
+volatile unsigned int * const UART0DR = (unsigned int *) 0x09000000;
+
+void print_uart0(const char *s) {
+    while(*s != '\0') { 		/* Loop until end of string */
+         *UART0DR = (unsigned int)(*s); /* Transmit char */
+          s++;			        /* Next char */
+    }
+}
+
+
+DECLSPEC_NORETURN
+VOID
+KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock);
+CODE_SEG("INIT")
+DECLSPEC_NORETURN
+VOID
+NTAPI
+KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+        print_uart0("kernel says hello\n");
+        KiInitializeSystem(LoaderBlock);
+
+}
+
 DECLSPEC_NORETURN
 VOID
 KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    print_uart0("KiInitializeSystem....\n");
     ULONG Cpu;
     PKTHREAD InitialThread;
     PKPROCESS InitialProcess;
@@ -351,12 +376,13 @@ KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     /* Clean the APC List Head */
     InitializeListHead(&InitialThread->ApcState.ApcListHead[KernelMode]);
-
+ //   print_uart0("Created listHead\n");
     /* Initialize the machine type */
     KiInitializeMachineType();
+        print_uart0("passed KiInitializeMachineType\n");
 
     /* Skip initial setup if this isn't the Boot CPU */
-    if (Cpu) goto AppCpuInit;
+   // if (Cpu) goto AppCpuInit;
 
     /* Initialize the PCR */
     RtlZeroMemory(Pcr, PAGE_SIZE);
@@ -365,36 +391,39 @@ KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                     InitialThread,
                     (PVOID)LoaderBlock->u.Arm.PanicStack,
                     (PVOID)LoaderBlock->u.Arm.InterruptStack);
-
     /* Now sweep caches */
-    HalSweepIcache();
-    HalSweepDcache();
+  //  HalSweepIcache();
+   // HalSweepDcache();
 
-    /* Set us as the current process */
-    InitialThread->ApcState.Process = InitialProcess;
 
-AppCpuInit:
-    /* Setup CPU-related fields */
-    Pcr->PrcbData.Number = Cpu;
-    Pcr->PrcbData.SetMember = 1 << Cpu;
 
     /* Initialize the Processor with HAL */
-    HalInitializeProcessor(Cpu, KeLoaderBlock);
+  //  HalInitializeProcessor(Cpu, KeLoaderBlock);
 
     /* Set active processors */
     KeActiveProcessors |= Pcr->PrcbData.SetMember;
     KeNumberProcessors++;
+    
+    print_uart0("passed KiInitializePcr\n");
 
-    /* Check if this is the boot CPU */
-    if (!Cpu)
-    {
+   //     KdInitSystem(0, KeLoaderBlock);
+for(;;)
+{
+    
+}
         /* Initialize debugging system */
         KdInitSystem(0, KeLoaderBlock);
+for(;;)
+{
 
+}
         /* Check for break-in */
         if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
-    }
+    
+for(;;)
+{
 
+}
     /* Raise to HIGH_LEVEL */
     KfRaiseIrql(HIGH_LEVEL);
 

@@ -277,6 +277,10 @@ NTAPI
 KdDebuggerInitialize0(
     _In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    for(;;)
+    {
+    
+    }
     PCHAR CommandLine, PortString;
     NTSTATUS Status;
 

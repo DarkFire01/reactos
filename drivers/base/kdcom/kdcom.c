@@ -146,6 +146,14 @@ KdpPortInitialize(IN ULONG ComPortNumber,
         return STATUS_SUCCESS;
     }
 }
+volatile unsigned int * const UART0DR = (unsigned int *) 0x09000000;
+
+void print_uart0(const char *s) {
+    while(*s != '\0') { 		/* Loop until end of string */
+         *UART0DR = (unsigned int)(*s); /* Transmit char */
+          s++;			        /* Next char */
+    }
+}
 
 /******************************************************************************
  * \name KdDebuggerInitialize0
@@ -157,6 +165,11 @@ NTSTATUS
 NTAPI
 KdDebuggerInitialize0(IN PLOADER_PARAMETER_BLOCK LoaderBlock OPTIONAL)
 {
+   // print_uart0("hello from kdcom in arm");
+    for(;;)
+    {
+
+    }
     ULONG ComPortNumber   = DEFAULT_DEBUG_PORT;
     ULONG ComPortBaudRate = DEFAULT_DEBUG_BAUD_RATE;
 

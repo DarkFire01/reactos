@@ -99,12 +99,12 @@ KdRegisterDebuggerDataBlock(IN ULONG Tag,
                             IN PDBGKD_DEBUG_DATA_HEADER64 DataHeader,
                             IN ULONG Size)
 {
-    KIRQL OldIrql;
+  //  KIRQL OldIrql;
     PLIST_ENTRY NextEntry;
     PDBGKD_DEBUG_DATA_HEADER64 CurrentHeader;
 
     /* Acquire the Data Lock */
-    KeAcquireSpinLock(&KdpDataSpinLock, &OldIrql);
+  //  KeAcquireSpinLock(&KdpDataSpinLock, &OldIrql);
 
     /* Loop the debugger data list */
     NextEntry = KdpDebuggerDataListHead.Flink;
@@ -122,7 +122,7 @@ KdRegisterDebuggerDataBlock(IN ULONG Tag,
         if ((CurrentHeader == DataHeader) || (CurrentHeader->OwnerTag == Tag))
         {
             /* Release the lock and fail */
-            KeReleaseSpinLock(&KdpDataSpinLock, OldIrql);
+          //  KeReleaseSpinLock(&KdpDataSpinLock, OldIrql);
             return FALSE;
         }
     }
@@ -133,7 +133,7 @@ KdRegisterDebuggerDataBlock(IN ULONG Tag,
 
     /* Insert it into the list and release the lock */
     InsertTailList(&KdpDebuggerDataListHead, (PLIST_ENTRY)&DataHeader->List);
-    KeReleaseSpinLock(&KdpDataSpinLock, OldIrql);
+   // KeReleaseSpinLock(&KdpDataSpinLock, OldIrql);
     return TRUE;
 }
 
@@ -144,6 +144,7 @@ KdInitSystem(IN ULONG BootPhase,
 {
     BOOLEAN EnableKd, DisableKdAfterInit = FALSE, BlockEnable;
     LPSTR CommandLine, DebugLine, DebugOptionStart, DebugOptionEnd;
+
     STRING ImageName;
     PLDR_DATA_TABLE_ENTRY LdrEntry;
     PLIST_ENTRY NextEntry;
@@ -158,29 +159,20 @@ KdInitSystem(IN ULONG BootPhase,
     BlockEnable = FALSE;
 #endif
 
-    /* Check if this is Phase 1 */
-    if (BootPhase)
-    {
-        /* Just query the performance counter */
-        KeQueryPerformanceCounter(&KdPerformanceCounterRate);
-        return TRUE;
-    }
-
     /* Check if we already initialized once */
-    if (KdDebuggerEnabled) return TRUE;
+   // if (KdDebuggerEnabled) return TRUE;
 
     /* Set the Debug Routine as the Stub for now */
     KiDebugRoutine = KdpStub;
 
     /* Disable break after symbol load for now */
     KdBreakAfterSymbolLoad = FALSE;
-
+ 
     /* Check if the Debugger Data Block was already initialized */
     if (!KdpDebuggerDataListHead.Flink)
     {
         /* It wasn't...Initialize the KD Data Listhead */
         InitializeListHead(&KdpDebuggerDataListHead);
-
         /* Register the Debugger Data Block */
         KdRegisterDebuggerDataBlock(KDBG_TAG,
                                     &KdDebuggerDataBlock.Header,
@@ -210,6 +202,7 @@ KdInitSystem(IN ULONG BootPhase,
         KeGetPcr()->KdVersionBlock =  &KdVersionBlock;
     }
 
+#if 1
     /* Check if we have a loader block */
     if (LoaderBlock)
     {
@@ -346,13 +339,24 @@ KdInitSystem(IN ULONG BootPhase,
         /* Unconditionally enable KD */
         EnableKd = TRUE;
     }
-
+    #endif
+   KdPitchDebugger = TRUE;
+    EnableKd = TRUE;
     /* Set the Kernel Base in the Data Block */
     KdDebuggerDataBlock.KernBase = (ULONG_PTR)KdVersionBlock.KernBase;
 
+   KdDebuggerInitialize0(LoaderBlock);
+for(;;)
+{
+
+}
     /* Initialize the debugger if requested */
     if (EnableKd && (NT_SUCCESS(KdDebuggerInitialize0(LoaderBlock))))
     {
+            for(;;)
+            {
+
+             }
         /* Now set our real KD routine */
         KiDebugRoutine = KdpTrap;
 
