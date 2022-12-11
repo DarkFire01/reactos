@@ -22,7 +22,8 @@ const PCSTR FrLdrVersionString =
 #endif
 
 CCHAR FrLdrBootPath[MAX_PATH] = "";
-
+ULONG_PTR stackSpace;
+extern void _changestack();
 /* FUNCTIONS ******************************************************************/
 
 EFI_STATUS
@@ -31,17 +32,25 @@ EfiEntry(
     _In_ EFI_SYSTEM_TABLE *SystemTable)
 {
 
+    /* Debugger pre-initialization */
+    DebugInit(0);
+
     if(UefiMachInit(ImageHandle, SystemTable) != EFI_SUCCESS)
     {
         SystemTable->ConOut->OutputString(SystemTable->ConOut, L"Failed to start GOP");
         goto Quit;
     }
+    SystemTable->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData, 1, (EFI_PHYSICAL_ADDRESS*)stackSpace);
 
+
+ //   _changestack();
     if (!UiInitialize(FALSE))
     {
         UiMessageBoxCritical("Unable to initialize UI.");
         goto Quit;
     }
+
+    UefiVideoPutChar('m', 0xFF, 0,0);
 
     /* Initialize memory manager */
     if (!MmInitializeMemoryManager())
@@ -49,7 +58,7 @@ EfiEntry(
         UiMessageBoxCritical("Unable to initialize memory manager.");
         goto Quit;
     }
-
+    UefiVideoPutChar('C', 0xFF, 32, 32);
 
     FsInit();
     RunLoader();

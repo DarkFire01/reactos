@@ -12,6 +12,7 @@
 #include "registry.h"
 #include <internal/cmboot.h>
 
+volatile unsigned int * const UART0DR = (unsigned int *) 0x09000000;
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WINDOWS);
 
@@ -956,18 +957,19 @@ WinLdrInitErrataInf(
 
     return TRUE;
 }
-
+   PCSTR FileName;
+    ULONG FileNameLength;
+    ARC_STATUS Status;
 ARC_STATUS
 LoadAndBootWindows(
     IN ULONG Argc,
     IN PCHAR Argv[],
     IN PCHAR Envp[])
 {
-    ARC_STATUS Status;
+
     PCSTR ArgValue;
     PCSTR SystemPartition;
-    PCSTR FileName;
-    ULONG FileNameLength;
+
     BOOLEAN Success;
     USHORT OperatingSystemVersion;
     PLOADER_PARAMETER_BLOCK LoaderBlock;
@@ -1089,7 +1091,8 @@ LoadAndBootWindows(
     }
 
     TRACE("BootOptions: '%s'\n", BootOptions);
-
+   // TRACE("test %X%X%X",Status,  FileNameLength, FileName);
+#if 0
     /* Check if a RAM disk file was given */
     FileName = NtLdrGetOptionEx(BootOptions, "RDPATH=", &FileNameLength);
     if (FileName && (FileNameLength > 7))
@@ -1104,12 +1107,10 @@ LoadAndBootWindows(
             return Status;
         }
     }
-
+#endif
     /* Handle the SOS option */
-    SosEnabled = !!NtLdrGetOption(BootOptions, "SOS");
-    if (SosEnabled)
-        UiResetForSOS();
 
+TRACE("Test");
     /* Allocate and minimally-initialize the Loader Parameter Block */
     AllocateAndInitLPB(OperatingSystemVersion, &LoaderBlock);
 
@@ -1144,6 +1145,14 @@ LoadAndBootWindows(
                                     LoaderBlock,
                                     BootOptions,
                                     BootPath);
+}
+
+ extern PREACTOS_INTERNAL_BGCONTEXT refiFbData;
+void print_uart0(const char *s) {
+    while(*s != '\0') { 		/* Loop until end of string */
+         *UART0DR = (unsigned int)(*s); /* Transmit char */
+          s++;			        /* Next char */
+    }
 }
 
 ARC_STATUS
@@ -1185,6 +1194,7 @@ LoadAndBootWindowsCommon(
                               BootOptions,
                               BootPath,
                               &KernelDTE);
+#if 1
     if (!Success)
     {
         /* Reset the PE loader import-DLL callback */
@@ -1193,7 +1203,7 @@ LoadAndBootWindowsCommon(
         UiMessageBox("Error loading NTOS core.");
         return ENOEXEC;
     }
-
+#endif
     /* Cleanup INI file */
     IniCleanup();
 
@@ -1205,7 +1215,7 @@ LoadAndBootWindowsCommon(
 
     /* Load boot drivers */
     UiSetProgressBarText("Loading boot drivers...");
-    Success = WinLdrLoadBootDrivers(LoaderBlock, BootPath);
+  //  Success = WinLdrLoadBootDrivers(LoaderBlock, BootPath);
     TRACE("Boot drivers loading %s\n", Success ? "successful" : "failed");
 
     UiSetProgressBarSubset(0, 100);
@@ -1228,6 +1238,7 @@ LoadAndBootWindowsCommon(
 
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
+      // __writecr0(__readcr0() | ~CR0_PG);
 
     /* Debugging... */
     //DumpMemoryAllocMap();
@@ -1237,28 +1248,33 @@ LoadAndBootWindowsCommon(
 
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
+    /*
+    {
 
-    /* Set processor context */
+for(
+    } Set processor context */
     WinLdrSetProcessorContext();
 
     /* Save final value of LoaderPagesSpanned */
     LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
 
-    TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
-          KiSystemStartup, LoaderBlockVA);
+
+   //int_uart0("Hello from paged mode\n");
 
     /* Zero KI_USER_SHARED_DATA page */
-    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
+    //RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
 
-    WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
-    WinLdrpDumpBootDriver(LoaderBlockVA);
+  //  WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
+   // WinLdrpDumpBootDriver(LoaderBlockVA);
 #ifndef _M_AMD64
-    WinLdrpDumpArcDisks(LoaderBlockVA);
+    //WinLdrpDumpArcDisks(LoaderBlockVA);
 #endif
+print_uart0("hello from pages mode");
+//print_uart0("Success! attempting to jump to kernel\n");
 
     /* Pass control */
     (*KiSystemStartup)(LoaderBlockVA);
-
+print_uart0("this shouldnt fucking happen");
     UNREACHABLE; // return ESUCCESS;
 }
 

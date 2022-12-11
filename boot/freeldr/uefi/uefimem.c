@@ -65,6 +65,8 @@ PUEFI_LoadMemoryMap()
 	MapOutput.DescriptorSize = 0;
 	MapOutput.DescriptorVersion = 0;
 
+    UefiVideoPutChar('C', 0xFF, 32, 32);
+
     Status = GlobalSystemTable->BootServices->GetMemoryMap(&LocMapSize,
                                                            MapOutput.EfiMemoryMap,
                                                            &LocMapKey,
@@ -86,6 +88,7 @@ PUEFI_LoadMemoryMap()
                                                         &LocDescriptorSize,
                                                         &LocDescriptorVersion);
     } while (Status == EFI_BUFFER_TOO_SMALL);
+        UefiVideoPutChar('d', 0xFF, 32, 32);
 
 	MapOutput.MapSize = LocMapSize;
 	MapOutput.MapKey = LocMapKey;
@@ -165,4 +168,24 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
     }
 
     return FreeldrMem;
+}
+
+EFI_MEMORY_MAP_OUTPUT MapOutput;
+UINTN MapKeyLoc;
+EFI_STATUS Status;
+VOID
+UefiPrepareForReactOS(VOID)
+{
+    printf("UefiPrepareForReactOS: Exiting BootServices...");
+	MapOutput = PUEFI_LoadMemoryMap();
+	Status = 0;
+	MapKeyLoc = MapOutput.MapKey;
+	GlobalSystemTable->BootServices->ExitBootServices(GlobalImageHandle,MapOutput.MapKey);
+    /* UEFI spec demands twice! */
+	if (Status != EFI_SUCCESS)
+	{
+		GlobalSystemTable->BootServices->ExitBootServices(GlobalImageHandle,MapOutput.MapKey);
+	}
+	//TRACE("ExitBootServices Sucessful");
+
 }

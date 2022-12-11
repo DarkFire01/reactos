@@ -22,12 +22,12 @@
 
 #if DBG && !defined(_M_ARM64) && !defined(_M_ARM)
 
-// #define DEBUG_ALL
+ //#define DEBUG_ALL
 // #define DEBUG_WARN
-// #define DEBUG_ERR
+ #define DEBUG_ERR
 // #define DEBUG_INIFILE
-// #define DEBUG_REACTOS
-// #define DEBUG_CUSTOM
+ #define DEBUG_REACTOS
+ #define DEBUG_CUSTOM
 #define DEBUG_NONE
 
 #define DBG_DEFAULT_LEVELS (ERR_LEVEL|FIXME_LEVEL)
@@ -422,6 +422,7 @@ DbgParseDebugChannels(PCHAR Value)
 }
 
 #else
+
 VOID
 ArmWriteChar(int Ch);
 

@@ -11,11 +11,13 @@
 #include <debug.h>
 
 extern EFI_SYSTEM_TABLE * GlobalSystemTable;
+volatile unsigned int * const UART0DRS = (unsigned int *) 0x09000000;
 
 VOID
 ArmWriteChar(int Ch)
 {
-    GlobalSystemTable->ConOut->OutputString(GlobalSystemTable->ConOut, (CHAR16*)&Ch);
+    *UART0DRS = (unsigned int)(Ch);
+   // GlobalSystemTable->ConOut->OutputString(GlobalSystemTable->ConOut, (CHAR16*)&Ch);
 }
 
 VOID

@@ -112,6 +112,8 @@ elseif(ARCH STREQUAL "amd64")
     list(APPEND FREELDR_NTLDR_SOURCE
             ../freeldr/ntldr/arch/amd64/winldr.c)
 elseif(ARCH STREQUAL "arm")
+    list(APPEND FREELDR_COMMON_ASM_SOURCE
+                arm.S)
         list(APPEND FREELDR_ARC_SOURCE
             ../freeldr/arch/arm/mach.c)
         list(APPEND FREELDR_NTLDR_SOURCE

@@ -13,12 +13,15 @@
 /* INCLUDES *****************************************************************/
 
 #include <rtl.h>
-
 #define NDEBUG
 #include <debug.h>
 
 #define RVA(m, b) ((PVOID)((ULONG_PTR)(b) + (ULONG_PTR)(m)))
 
+#ifdef _M_ARM
+extern long* RelocThumb();
+ULONG_PTR AsmAddr;
+#endif
 /* FUNCTIONS *****************************************************************/
 
 FORCEINLINE
@@ -401,7 +404,6 @@ LdrProcessRelocationBlockLongLong(
     PUSHORT ShortPtr;
     PULONG LongPtr;
     PULONGLONG LongLongPtr;
-
     for (i = 0; i < Count; i++)
     {
         Offset = SWAPW(*TypeOffset) & 0xFFF;
@@ -447,7 +449,8 @@ LdrProcessRelocationBlockLongLong(
 #ifdef _M_ARM
         case IMAGE_REL_BASED_THUMB_MOV32:
             LongPtr = (PULONG)RVA(Address, Offset);
-            *LongPtr = SWAPD(*LongPtr) + (Delta & 0xFFFFFFFF);
+            AsmAddr = *LongPtr;
+            *LongPtr = SWAPD(*RelocThumb()) + (Delta & 0xFFFFFFFF);
             break;
 #endif
         default:

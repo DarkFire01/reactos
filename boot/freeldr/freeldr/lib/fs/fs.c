@@ -159,10 +159,6 @@ ARC_STATUS ArcOpen(CHAR* Path, OPENMODE OpenMode, ULONG* FileId)
                 if (!FileData[DeviceId].FileFuncTable)
                     FileData[DeviceId].FileFuncTable = Ext2Mount(DeviceId);
 #endif
-#if defined(_M_IX86) || defined(_M_AMD64)
-                if (!FileData[DeviceId].FileFuncTable)
-                    FileData[DeviceId].FileFuncTable = PxeMount(DeviceId);
-#endif
                 if (!FileData[DeviceId].FileFuncTable)
                 {
                     /* Error, unable to detect file system */

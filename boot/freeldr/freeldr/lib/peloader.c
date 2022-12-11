@@ -423,7 +423,7 @@ PeLdrpScanImportAddressTable(
     /* Obtain the export table from the DLL's base */
     if (DllBase == NULL)
     {
-        ERR("Error, DllBase == NULL!\n");
+        printf("Error, DllBase == NULL!\n");
         return FALSE;
     }
     else
@@ -435,12 +435,12 @@ PeLdrpScanImportAddressTable(
                 &ExportSize);
     }
 
-    TRACE("PeLdrpScanImportAddressTable(): ExportDirectory 0x%X\n", ExportDirectory);
+    printf("PeLdrpScanImportAddressTable(): ExportDirectory 0x%X\n", ExportDirectory);
 
     /* If pointer to Export Directory is */
     if (ExportDirectory == NULL)
     {
-        ERR("DllBase=%p(%p)\n", DllBase, VaToPa(DllBase));
+        printf("DllBase=%p(%p)\n", DllBase, VaToPa(DllBase));
         return FALSE;
     }
 
@@ -463,7 +463,10 @@ PeLdrpScanImportAddressTable(
 
         /* Return error if binding was unsuccessful */
         if (!Success)
+        {
+            printf("Fuck binding failed");
             return Success;
+        }
     }
 
     /* Return success */
@@ -587,7 +590,7 @@ PeLdrScanImportDescriptorTable(
         {
             printf("PeLdrpScanImportAddressTable() failed: ImportName = '%s', DirectoryPath = '%s'\n",
                 ImportName, DirectoryPath);
-            return Success;
+            //return Success;
         }
     }
 
@@ -900,6 +903,7 @@ PeLdrLoadImage(
     /* Relocate the image, if it needs it */
     if (NtHeaders->OptionalHeader.ImageBase != (ULONG_PTR)VirtualBase)
     {
+        #if 1
         printf("Relocating %p -> %p\n", NtHeaders->OptionalHeader.ImageBase, VirtualBase);
         Status = LdrRelocateImageWithBias(PhysicalBase,
                                           (ULONG_PTR)VirtualBase - (ULONG_PTR)PhysicalBase,
@@ -909,6 +913,7 @@ PeLdrLoadImage(
                                           ENOEXEC);
         if (Status != ESUCCESS)
             goto Failure;
+        #endif
     }
 
     /* Fill output parameters */

@@ -100,7 +100,7 @@ elseif(ARCH STREQUAL "amd64")
         amd64/stubs.c
         mem.c)
 elseif(ARCH STREQUAL "arm")
-    list(APPEND ASM_SOURCE arm/debug_asm.S)
+    list(APPEND ASM_SOURCE arm/debug_asm.S arm/reloc.S)
     list(APPEND SOURCE
         arm/except.c
         byteswap.c

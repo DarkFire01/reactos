@@ -9,6 +9,14 @@
 #include <ksarm.h>
 
     TEXTAREA
+    EXTERN AsmAddr
+    EXPORT  RelocThumb
+
+    LEAF_ENTRY RelocThumb
+    EOR r0,r0 /* Zero out */
+    MOV32 r0, AsmAddr /* Split move MOVT/MOVW pair */
+    bx lr /* Return */
+    LEAF_END RelocThumb
 
     LEAF_ENTRY DbgBreakPoint
     __debugbreak

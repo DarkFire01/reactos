@@ -182,7 +182,7 @@ __FuncEndLabel SETS ""
 .endm
 
 .macro TEXTAREA
-    .section .text, "rx"
+    .section .code, "rx"
 #if defined(_CONTROL_FLOW_GUARD)
     .align 4
 #else
