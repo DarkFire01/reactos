@@ -1239,6 +1239,9 @@
   TT_MulFix14_arm( FT_Int32  a,
                    FT_Int    b )
   {
+#ifdef __REACTOS__
+  /* This doesn't work with ARM32 MSVC */
+#else
     FT_Int32  t, t2;
 
 
@@ -1274,7 +1277,7 @@
       : "cc" );
 
 #endif
-
+#endif
     return a;
   }
 
