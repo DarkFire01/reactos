@@ -49,6 +49,65 @@ C_ASSERT(MM_ALLOCATION_GRANULARITY &&
 C_ASSERT(MM_ALLOCATION_GRANULARITY >= PAGE_SIZE);
 #endif
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+//
+// Page Table Entry Definitions
+//
+
+typedef struct _HARDWARE_LARGE_PTE_ARMV6
+{
+    ULONG Valid:1;     // Only for small pages
+    ULONG LargePage:1; // Note, if large then Valid = 0
+    ULONG Buffered:1;
+    ULONG Cached:1;
+    ULONG NoExecute:1;
+    ULONG Domain:4;
+    ULONG Ecc:1;
+    ULONG Sbo:1; // ULONG Accessed:1;?
+    ULONG Owner:1;
+    ULONG CacheAttributes:3;
+    ULONG ReadOnly:1;
+    ULONG Shared:1;
+    ULONG NonGlobal:1;
+    ULONG SuperLagePage:1;
+    ULONG Reserved:1;
+    ULONG PageFrameNumber:12;
+} HARDWARE_LARGE_PTE_ARMV6, *PHARDWARE_LARGE_PTE_ARMV6;
+
+typedef struct _HARDWARE_PTE_ARMV6
+{
+    ULONG NoExecute:1;
+    ULONG Valid:1;
+    ULONG Buffered:1;
+    ULONG Cached:1;
+    ULONG Sbo:1; // ULONG Accessed:1;?
+    ULONG Owner:1;
+    ULONG CacheAttributes:3;
+    ULONG ReadOnly:1;
+    ULONG Shared:1;
+    ULONG NonGlobal:1;
+    ULONG PageFrameNumber:20;
+} HARDWARE_PTE_ARMV6, *PHARDWARE_PTE_ARMV6;
+C_ASSERT(sizeof(HARDWARE_LARGE_PTE_ARMV6) == sizeof(ULONG));
+C_ASSERT(sizeof(HARDWARE_PTE_ARMV6) == sizeof(ULONG));
+
+
+
+
+
+
 //
 // Page Table Entry Definitions
 //
