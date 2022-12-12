@@ -46,6 +46,7 @@ VideoPortQueryServices(
 
    switch (ServicesType)
    {
+   #ifndef _M_ARM
       case VideoPortServicesInt10:
          if (Interface->Version >= VIDEO_PORT_INT10_INTERFACE_VERSION_1 ||
              Interface->Size >= sizeof(VIDEO_PORT_INT10_INTERFACE))
@@ -63,7 +64,7 @@ VideoPortQueryServices(
             return NO_ERROR;
          }
          break;
-
+      #endif
       case VideoPortServicesAGP:
          if ((Interface->Version == VIDEO_PORT_AGP_INTERFACE_VERSION_2 &&
               Interface->Size >= sizeof(VIDEO_PORT_AGP_INTERFACE_2)) ||

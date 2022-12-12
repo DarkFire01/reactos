@@ -386,7 +386,7 @@ IntVideoPortDispatchOpen(
         CsrProcess = (PKPROCESS)PsGetCurrentProcess();
         ObReferenceObject(CsrProcess);
         INFO_(VIDEOPRT, "CsrProcess 0x%p\n", CsrProcess);
-
+    #ifndef _M_ARM
         Status = IntInitializeVideoAddressSpace();
         if (!NT_SUCCESS(Status))
         {
@@ -395,6 +395,7 @@ IntVideoPortDispatchOpen(
             CsrProcess = NULL;
             return Status;
         }
+    #endif
     }
 
     DeviceExtension = (PVIDEO_PORT_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
