@@ -23,3 +23,6 @@
 #include <machuefi.h>
 
 VOID __cdecl BootMain(IN PCCH CmdLine);
+
+EFI_STATUS
+UefiHandleService(EFI_STATUS Status);

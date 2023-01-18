@@ -17,12 +17,6 @@ DriveMapGetBiosDriveNumber(PCSTR DeviceName)
 }
 
 VOID
-StallExecutionProcessor(ULONG Microseconds)
-{
-
-}
-
-VOID
 NTAPI
 KeStallExecutionProcessor(ULONG Microseconds)
 {
