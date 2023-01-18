@@ -27,9 +27,7 @@ int
 UefiConsGetCh(void);
 
 VOID
-UefiInitalizeVideo(_In_ EFI_HANDLE ImageHandle,
-                   _In_ EFI_SYSTEM_TABLE *SystemTable,
-                   _In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop);
+UefiInitalizeVideo(_In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop);
 
 VOID
 UefiVideoClearScreen(UCHAR Attr);
@@ -122,3 +120,6 @@ UefiHwIdle(VOID);
 VOID
 UefiInitializeFileSystemSupport(_In_ EFI_HANDLE ImageHandle,
                                 _In_ EFI_SYSTEM_TABLE *SystemTable);
+
+VOID
+UefiVideoScrollUp(VOID);
