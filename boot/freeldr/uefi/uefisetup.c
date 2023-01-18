@@ -12,8 +12,10 @@ DBG_DEFAULT_CHANNEL(WARNING);
 
 /* GLOBALS ********************************************************************/
 
+EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 extern EFI_SYSTEM_TABLE *GlobalSystemTable;
 extern EFI_HANDLE GlobalImageHandle;
+EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
 BOOLEAN AcpiPresent = FALSE;
 
 /* FUNCTIONS ******************************************************************/
@@ -25,6 +27,12 @@ MachInit(const char *CmdLine)
     Status = GlobalSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(MachVtbl), (void**)&MachVtbl);
     if (UefiHandleService(Status) != EFI_SUCCESS)
         ERR("UefiMachInit: Could not allocated memory for MachVtbl");
+
+    /* Setup GOP */
+    Status = GlobalSystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
+    if (Status != EFI_SUCCESS)
+        ERR("UefiMachInit: Cannot setup GOP");
+    UefiInitalizeVideo(gop);
 
     /* Setup Vtbl */
     RtlZeroMemory(&MachVtbl, sizeof(MachVtbl));
