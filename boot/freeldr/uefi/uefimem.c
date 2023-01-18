@@ -1,0 +1,241 @@
+/*
+ * PROJECT:     Freeldr UEFI Extension
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     UEFI Memory Managment Functions
+ * COPYRIGHT:   Copyright 2022 Justin Miller <justinmiller100@gmail.com>
+ */
+
+/**** Includes ***********************************************************************************/
+
+#include <uefildr.h>
+
+#include <debug.h>
+DBG_DEFAULT_CHANNEL(WARNING);
+
+#define NEXT_MEMORY_DESCRIPTOR(Descriptor, DescriptorSize) \
+    (EFI_MEMORY_DESCRIPTOR*)((char*)(Descriptor) + (DescriptorSize))
+
+ULONG
+AddMemoryDescriptor(
+    IN OUT PFREELDR_MEMORY_DESCRIPTOR List,
+    IN ULONG MaxCount,
+    IN PFN_NUMBER BasePage,
+    IN PFN_NUMBER PageCount,
+    IN TYPE_OF_MEMORY MemoryType);
+
+/**** Global Variables ***************************************************************************/
+
+extern EFI_SYSTEM_TABLE * GlobalSystemTable;
+extern EFI_HANDLE GlobalImageHandle;
+extern REACTOS_INTERNAL_BGCONTEXT framebufferData;
+
+UINT32 FreeldrDescCount;
+
+EFI_MEMORY_DESCRIPTOR* EfiMemoryMap = NULL;
+
+/**** Private Functions **************************************************************************/
+VOID
+PUEFI_LoadMemoryMap(UINTN* LocMapKey,
+                    UINTN* LocMapSize,
+                    UINTN* LocDescriptorSize,
+                    UINT32* LocDescriptorVersion)
+{
+    EFI_STATUS Status;
+    Status = GlobalSystemTable->BootServices->GetMemoryMap(LocMapSize,
+                                                           EfiMemoryMap,
+                                                           LocMapKey,
+                                                           LocDescriptorSize,
+                                                           LocDescriptorVersion);
+
+    /* Reallocate and retrieve again the needed memory map size (since memory
+     * allocated by AllocatePool() counts in the map), until it's OK. */
+    do
+    {
+        /* Reallocate the memory map buffer */
+        if (EfiMemoryMap)
+            GlobalSystemTable->BootServices->FreePool(EfiMemoryMap);
+
+        GlobalSystemTable->BootServices->AllocatePool(EfiLoaderData, *LocMapSize, (VOID**)&EfiMemoryMap);
+        Status = GlobalSystemTable->BootServices->GetMemoryMap(LocMapSize,
+                                                               EfiMemoryMap,
+                                                               LocMapKey,
+                                                               LocDescriptorSize,
+                                                               LocDescriptorVersion);
+    } while (Status == EFI_BUFFER_TOO_SMALL);
+
+}
+
+VOID
+UefiSetMemory(
+    PFREELDR_MEMORY_DESCRIPTOR MemoryMap,
+    ULONG_PTR BaseAddress,
+    PFN_COUNT Size,
+    TYPE_OF_MEMORY MemoryType)
+{
+    ULONG_PTR BasePage, PageCount;
+
+    BasePage = BaseAddress / EFI_PAGE_SIZE;
+    PageCount = Size;
+
+    /* Add the memory descriptor */
+    FreeldrDescCount = AddMemoryDescriptor(MemoryMap,
+                                           FreeldrDescCount + 1,
+                                           BasePage,
+                                           PageCount,
+                                           MemoryType);
+}
+
+/**** Public Functions ***************************************************************************/
+VOID
+ReserveMemory(
+    PFREELDR_MEMORY_DESCRIPTOR MemoryMap,
+    ULONG_PTR BaseAddress,
+    PFN_NUMBER Size,
+    TYPE_OF_MEMORY MemoryType,
+    PCHAR Usage)
+{
+    ULONG_PTR BasePage, PageCount;
+    ULONG i;
+
+    BasePage = BaseAddress / PAGE_SIZE;
+    PageCount = ADDRESS_AND_SIZE_TO_SPAN_PAGES(BaseAddress, Size);
+
+    for (i = 0; i < FreeldrDescCount; i++)
+    {
+        /* Check for conflicting descriptor */
+        if ((MemoryMap[i].BasePage < BasePage + PageCount) &&
+            (MemoryMap[i].BasePage + MemoryMap[i].PageCount > BasePage))
+        {
+            /* Check if the memory is free */
+            if (MemoryMap[i].MemoryType != LoaderFree)
+            {
+                FrLdrBugCheckWithMessage(
+                    MEMORY_INIT_FAILURE,
+                    __FILE__,
+                    __LINE__,
+                    "Failed to reserve memory in the range 0x%Ix - 0x%Ix for %s",
+                    BaseAddress,
+                    Size,
+                    Usage);
+            }
+        }
+    }
+
+    /* Add the memory descriptor */
+    FreeldrDescCount = AddMemoryDescriptor(MemoryMap,
+                                           FreeldrDescCount + 1,
+                                           BasePage,
+                                           PageCount,
+                                           MemoryType);
+}
+
+TYPE_OF_MEMORY
+UefiConvertToFreeldrDesc(EFI_MEMORY_TYPE EfiMemoryType)
+{
+    switch (EfiMemoryType)
+    {
+        case EfiReservedMemoryType:
+            return LoaderReserve;
+        case EfiLoaderCode:
+            return LoaderLoadedProgram;
+        case EfiLoaderData:
+            return LoaderLoadedProgram;
+        case EfiBootServicesCode:
+            return LoaderFirmwareTemporary;
+        case EfiBootServicesData:
+            return LoaderFirmwareTemporary;
+        case EfiRuntimeServicesCode:
+            return LoaderFirmwarePermanent;
+        case EfiRuntimeServicesData:
+            return LoaderFirmwarePermanent;
+        case EfiConventionalMemory:
+            return LoaderFree;
+        case EfiUnusableMemory:
+            return LoaderBad;
+        case EfiACPIReclaimMemory:
+            return LoaderFirmwareTemporary;
+        case EfiACPIMemoryNVS:
+            return LoaderFirmwarePermanent;
+        case EfiMemoryMappedIO:
+            return LoaderFirmwarePermanent;
+        case EfiMemoryMappedIOPortSpace:
+            return LoaderFirmwarePermanent;
+        default:
+            break;
+    }
+    return LoaderFirmwarePermanent;
+}
+
+PFREELDR_MEMORY_DESCRIPTOR
+UefiMemGetMemoryMap(ULONG *MemoryMapSize)
+{
+    UINT32 DescriptorVersion;
+    SIZE_T FreeldrMemMapSize;
+    UINTN DescriptorSize;
+    EFI_STATUS Status;
+    UINTN MapSize;
+    UINTN MapKey;
+    UINT32 Index;
+
+    PFREELDR_MEMORY_DESCRIPTOR FreeldrMem = NULL;
+    EFI_MEMORY_DESCRIPTOR* MapEntry = NULL;
+    UINT32 EntryCount = 0;
+    FreeldrDescCount = 0;
+
+    TRACE("UefiMemGetMemoryMap: Gather memory map\n");
+    PUEFI_LoadMemoryMap(&MapKey,
+                        &MapSize,
+                        &DescriptorSize,
+                        &DescriptorVersion);
+
+    TRACE("Value of MapKey: %d\n", MapKey);
+    TRACE("Value of MapSize: %d\n", MapSize);
+    TRACE("Value of DescriptorSize: %d\n", DescriptorSize);
+    TRACE("Value of DescriptorVersion: %d\n", DescriptorVersion);
+
+    EntryCount = (MapSize / DescriptorSize);
+    FreeldrMemMapSize = (sizeof(FREELDR_MEMORY_DESCRIPTOR) * EntryCount * 2);
+
+	Status = GlobalSystemTable->BootServices->AllocatePool(EfiLoaderData, FreeldrMemMapSize, (void**)&FreeldrMem);
+    if (UefiHandleService(Status) != EFI_SUCCESS)
+    {
+        UiMessageBoxCritical("Unable to initialize memory manager.");
+    }
+
+    RtlZeroMemory(FreeldrMem, FreeldrMemMapSize);
+    MapEntry = EfiMemoryMap;
+	for (Index = 0; Index < EntryCount; ++Index)
+    {
+        if (UefiConvertToFreeldrDesc(MapEntry->Type) == LoaderFree)
+        {
+            Status = GlobalSystemTable->BootServices->AllocatePages(AllocateAddress, EfiLoaderData,
+                                                                    MapEntry->NumberOfPages, &MapEntry->PhysicalStart);
+            if (UefiHandleService(Status) == EFI_SUCCESS)
+            {
+                UefiSetMemory(FreeldrMem, MapEntry->PhysicalStart, MapEntry->NumberOfPages,
+                              LoaderFree);
+            }
+            else
+            {
+                UefiSetMemory(FreeldrMem, MapEntry->PhysicalStart, MapEntry->NumberOfPages,
+                              LoaderReserve);
+            }
+        }
+        else
+        {
+            UefiSetMemory(FreeldrMem, MapEntry->PhysicalStart, MapEntry->NumberOfPages,
+                          UefiConvertToFreeldrDesc(MapEntry->Type));
+        }
+        MapEntry = NEXT_MEMORY_DESCRIPTOR(MapEntry, DescriptorSize);
+    }
+
+    ReserveMemory(FreeldrMem, framebufferData.BaseAddress, framebufferData.BufferSize, LoaderFirmwarePermanent, "VideoMemory");
+    *MemoryMapSize = FreeldrDescCount;
+    return FreeldrMem;
+}
+
+VOID
+UefiPrepareForReactOS(VOID)
+{
+
+}

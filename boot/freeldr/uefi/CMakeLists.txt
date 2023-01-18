@@ -73,6 +73,7 @@ list(APPEND FREELDR_ARC_SOURCE
     stubs.c
     ueficon.c
     uefisetup.c
+    uefimem.c
     utils.c
     uefivid.c)
 
