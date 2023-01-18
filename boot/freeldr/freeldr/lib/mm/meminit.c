@@ -262,6 +262,7 @@ MmCheckFreeldrImageFile(VOID)
         (FileHeader->NumberOfSymbols != 0) ||       //    ""      ""
         (FileHeader->SizeOfOptionalHeader != sizeof(IMAGE_OPTIONAL_HEADER)))
     {
+    #ifndef UEFIBOOT
         ERR("FreeLdr FileHeader is invalid.\n");
         FrLdrBugCheckWithMessage(
             FREELDR_IMAGE_CORRUPTION,
@@ -278,6 +279,7 @@ MmCheckFreeldrImageFile(VOID)
             FileHeader->PointerToSymbolTable,
             FileHeader->NumberOfSymbols,
             FileHeader->SizeOfOptionalHeader, sizeof(IMAGE_OPTIONAL_HEADER));
+    #endif
     }
 
     /* Check the optional header */
@@ -288,6 +290,7 @@ MmCheckFreeldrImageFile(VOID)
         (OptionalHeader->SizeOfImage > MAX_FREELDR_PE_SIZE) ||
         (OptionalHeader->SectionAlignment != OptionalHeader->FileAlignment))
     {
+    #ifndef UEFIBOOT
         ERR("FreeLdr OptionalHeader is invalid.\n");
         FrLdrBugCheckWithMessage(
             FREELDR_IMAGE_CORRUPTION,
@@ -304,6 +307,7 @@ MmCheckFreeldrImageFile(VOID)
             OptionalHeader->ImageBase, FREELDR_PE_BASE,
             OptionalHeader->SizeOfImage, MAX_FREELDR_PE_SIZE,
             OptionalHeader->SectionAlignment, OptionalHeader->FileAlignment);
+    #endif
     }
 
     /* Calculate the full image size */
