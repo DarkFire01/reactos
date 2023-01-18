@@ -45,7 +45,7 @@ UefiConsPutChar(int c)
     NeedScroll = (CurrentCursorY >= Height);
     if (NeedScroll)
     {
-       // XboxVideoScrollUp();
+        UefiVideoScrollUp();
         --CurrentCursorY;
     }
 

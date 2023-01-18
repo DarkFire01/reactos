@@ -224,6 +224,7 @@ MempAllocatePageTables(VOID)
     // Zero all this memory block
     RtlZeroMemory(Buffer, TotalSize);
 
+    //Ah yes, thanks UEFI. Spec demands that page table is allocated with the routine UEFI provides
     // Set up pointers correctly now
     PDE = (PHARDWARE_PTE)Buffer;
 
@@ -501,7 +502,7 @@ void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
     WinLdrSetupSpecialDataPointers();
 }
 
-
+  ULONG ptr;
 VOID
 WinLdrSetProcessorContext(void)
 {
@@ -533,7 +534,10 @@ WinLdrSetProcessorContext(void)
 
     /* Enable paging by modifying CR0 */
     __writecr0(__readcr0() | CR0_PG);
+    for(;;)
+    {
 
+    }
     /* The Kernel expects the boot processor PCR to be zero-filled on startup */
     RtlZeroMemory((PVOID)Pcr, MM_PAGE_SIZE);
 
@@ -675,6 +679,9 @@ WinLdrSetProcessorContext(void)
     Ke386SetGlobalDescriptorTable(&GdtDesc);
     __lidt(&IdtDesc);
 
+    /* Enable paging by modifying CR0 */
+    __writecr0(__readcr0() | CR0_PG);
+
     /* Jump to proper CS and clear prefetch queue */
 #if defined(__GNUC__) || defined(__clang__)
     asm("ljmp    $0x08, $1f\n"
@@ -694,7 +701,10 @@ WinLdrSetProcessorContext(void)
 
     /* Set SS selector */
     Ke386SetSs(KGDT_R0_DATA);
+       for(;;)
+    {
 
+    }
     /* Set DS and ES selectors */
     Ke386SetDs(KGDT_R0_DATA);
     Ke386SetEs(KGDT_R0_DATA); // This is vital for rep stosd
@@ -720,6 +730,10 @@ WinLdrSetProcessorContext(void)
     pop ebp;
     ret
     */
+       for(;;)
+    {
+
+    }
 }
 
 #if DBG

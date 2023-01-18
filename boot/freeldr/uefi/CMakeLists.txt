@@ -88,6 +88,7 @@ if(ARCH STREQUAL "i386")
 
     list(APPEND FREELDR_COMMON_ASM_SOURCE
         ../freeldr/arch/i386/drvmap.S
+        arch/i386/xtra.S
         ../freeldr/arch/i386/int386.S
         ../freeldr/arch/i386/pnpbios.S
         ../freeldr/arch/i386/i386trap.S
@@ -102,8 +103,8 @@ elseif(ARCH STREQUAL "amd64")
     list(APPEND FREELDR_COMMON_ASM_SOURCE
         arch/amd64/misc.S
         ../freeldr/arch/amd64/int386.S
-        ../freeldr/arch/amd64/pnpbios.S
-        ../freeldr/arch/amd64/linux.S)
+        ../freeldr/arch/amd64/pnpbios.S)
+        #../freeldr/arch/amd64/linux.S)
 
     list(APPEND FREELDR_NTLDR_SOURCE
             ../freeldr/ntldr/arch/amd64/winldr.c)

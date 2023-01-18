@@ -267,7 +267,7 @@ LoadAndBootLinux(
 
     UiUnInitialize("Booting Linux...");
     IniCleanup();
-
+    MachPrepareForReactOS();
     BootLinuxKernel(LinuxKernelSize, LinuxKernelLoadAddress,
                     (LinuxSetupSector->LoadFlags & LINUX_FLAG_LOAD_HIGH)
                         ? (PVOID)LINUX_KERNEL_LOAD_ADDRESS /* == 0x100000 */

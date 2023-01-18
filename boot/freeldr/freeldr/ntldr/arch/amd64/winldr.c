@@ -372,7 +372,6 @@ WinLdrSetProcessorContext(void)
 
     /* Load TSR */
     __ltr(KGDT64_SYS_TSS);
-
     TRACE("leave WinLdrSetProcessorContext\n");
 }
 

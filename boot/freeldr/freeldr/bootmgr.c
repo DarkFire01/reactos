@@ -58,9 +58,7 @@ static const struct
     {"Drive"       , EditCustomBootDisk      , LoadAndBootDevice},
     {"Partition"   , EditCustomBootPartition , LoadAndBootDevice},
     {"BootSector"  , EditCustomBootSectorFile, LoadAndBootDevice},
-#ifndef UEFIBOOT
-    {"Linux"       , EditCustomBootLinux, LoadAndBootLinux  },
-#endif
+    //{"Linux"       , EditCustomBootLinux, LoadAndBootLinux  },
 #endif
 #ifdef _M_IX86
     {"WindowsNT40" , EditCustomBootNTOS , LoadAndBootWindows},

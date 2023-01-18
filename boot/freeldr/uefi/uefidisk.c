@@ -192,7 +192,7 @@ UefiGetBootPartitionEntry(
         BootPartition = 0;
         return TRUE;
     }
-
+void* mbr;
 static const CHAR Hex[] = "0123456789abcdef";
 static CHAR PcDiskIdentifier[32][20];
 VOID
@@ -280,6 +280,7 @@ UefiSetupBlockDevices()
     Identifier[18] = (ValidPartitionTable ? 'A' : 'X');
     Identifier[19] = 0;
     UefiConsSetCursor(0,0);
+    mbr = MmAllocateMemoryWithType(2048, LoaderFirmwareTemporary);
 }
 
 BOOLEAN
@@ -347,7 +348,7 @@ UefiGetFloppyCount(VOID)
     /* no floppy for you */
     return 0;
 }
-
+void* mbr;
 BOOLEAN
 UefiDiskReadLogicalSectors(
     IN UCHAR DriveNumber,
@@ -355,11 +356,11 @@ UefiDiskReadLogicalSectors(
     IN ULONG SectorCount,
     OUT PVOID Buffer)
 {
-    PVOID mbr[2048];
 
+    RtlZeroMemory(mbr, 2048);
     /* Devices setup */
     bio->ReadBlocks(bio, bio->Media->MediaId, SectorNumber, (bio->Media->BlockSize * SectorCount),  &mbr);
-    RtlCopyMemory(Buffer, mbr, SectorCount * bio->Media->BlockSize);
+    memcpy(Buffer, mbr, SectorCount * bio->Media->BlockSize);
 
     return TRUE;
 }

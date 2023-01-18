@@ -120,6 +120,9 @@ MempSetupPagingForRegion(
     {
         /* Pages used by the loader */
         case LoaderLoadedProgram:
+            /* Map these pages into user mode */
+            Status = MempSetupPaging(BasePage, PageCount, FALSE);
+            break;
         case LoaderOsloaderStack:
         case LoaderFirmwareTemporary:
             /* Map these pages into user mode */

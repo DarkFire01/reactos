@@ -83,3 +83,11 @@ UefiHwDetect(VOID)
 {
     return 0;
 }
+
+
+#if defined(__i386__) || defined(_M_AMD64)
+VOID __cdecl DiskStopFloppyMotor(VOID)
+{
+    //WRITE_PORT_UCHAR((PUCHAR)0x3F2, 0); // DOR_FDC_ENABLE | DOR_DMA_IO_INTERFACE_ENABLE 0x0C // we changed 0x0C->0 to workaround CORE-16469
+}
+#endif // defined __i386__ || defined(_M_AMD64)

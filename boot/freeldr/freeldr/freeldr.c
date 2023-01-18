@@ -76,8 +76,12 @@ VOID __cdecl BootMain(IN PCCH CmdLine)
     RunLoader();
 
 Quit:
+    for(;;)
+    {
+
+    }
     /* If we reach this point, something went wrong before, therefore reboot */
-    Reboot();
+//    Reboot();
 }
 
 // We need to emulate these, because the original ones don't work in freeldr
@@ -107,14 +111,13 @@ int __cdecl iswctype(wint_t wc, wctype_t wctypeFlags)
 #pragma function(log)
 #pragma function(log10)
 #endif
-
+#ifndef _M_ARM64
 // Stubs to avoid pulling in data from CRT
 double pow(double x, double y)
 {
     __debugbreak();
     return 0.0;
 }
-
 double log(double x)
 {
     __debugbreak();
@@ -126,3 +129,4 @@ double log10(double x)
     __debugbreak();
     return 0.0;
 }
+#endif
