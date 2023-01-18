@@ -46,29 +46,11 @@ UefiInitConsole(_In_ EFI_SYSTEM_TABLE *SystemTable)
 }
 
 VOID
-UefiConsPutChar(int Ch)
-{
-
-}
-
-VOID
-UefiConsSetCursor(UINT32 Col, UINT32 Row)
-{
-
-}
-
-
-
-VOID
 UefiVideoGetFontsFromFirmware(PULONG RomFontPointers)
 {
 
 }
-VOID
-UefiVideoSetTextCursorPosition(UCHAR X, UCHAR Y)
-{
 
-}
 VOID
 UefiVideoHideShowTextCursor(BOOLEAN Show)
 {
@@ -99,12 +81,6 @@ VOID
 UefiVideoSync(VOID)
 {
 
-}
-
-PFREELDR_MEMORY_DESCRIPTOR
-UefiMemGetMemoryMap(ULONG *MemoryMapSize)
-{
-    return 0;
 }
 
 VOID
@@ -152,12 +128,6 @@ PCONFIGURATION_COMPONENT_DATA
 UefiHwDetect(VOID)
 {
     return 0;
-}
-
-VOID
-UefiPrepareForReactOS(VOID)
-{
-
 }
 
 VOID
