@@ -3,7 +3,6 @@
 #define FREELDR_PE_BASE    0x0001F000
 #define MAX_FREELDR_PE_SIZE 0xFFFFFF
 
-#define DiskReadBuffer 0
 
 VOID StallExecutionProcessor(ULONG Microseconds);
 VOID HalpCalibrateStallExecution(VOID);

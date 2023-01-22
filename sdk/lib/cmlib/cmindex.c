@@ -1474,7 +1474,7 @@ CmpAddSubKey(IN PHHIVE Hive,
     PHCELL_INDEX RootPointer = NULL;
     ULONG Type, i;
     BOOLEAN IsCompressed;
-    PAGED_CODE();
+    //PAGED_CODE();
 
     /* Get the key node */
     KeyNode = (PCM_KEY_NODE)HvGetCell(Hive, Child);

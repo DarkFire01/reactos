@@ -7,9 +7,9 @@
 /* CODE **********************************************************************/
     TEXTAREA
 
-    LEAF_ENTRY __chkstk
+    LEAF_ENTRY _chkstk
     /* TODO: add an assert fail call, as this is unimplemented */
-    LEAF_END __chkstk
+    LEAF_END _chkstk
 
     LEAF_ENTRY __alloca_probe
     /* TODO: add an assert fail call, as this is unimplemented */
