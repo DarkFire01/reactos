@@ -1,7 +1,7 @@
 /*
 	Compatibility <intrin_x86.h> header for GCC -- GCC equivalents of intrinsic
 	Microsoft Visual C++ functions. Originally developed for the ReactOS
-	(<http://www.reactos.org/>) and TinyKrnl (<http://www.tinykrnl.org/>)
+	(<https://reactos.org/>) and TinyKrnl (<http://www.tinykrnl.org/>)
 	projects.
 
 	Copyright (c) 2006 KJK::Hyperion <hackbunny@reactos.com>
@@ -698,6 +698,14 @@ __INTRIN_INLINE long long _InterlockedCompareExchange64(volatile long long * Des
 }
 #endif /* (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__) > 40100 && defined(__x86_64__) */
 #endif /* !HAS_BUILTIN(_InterlockedCompareExchange64) */
+
+#if defined(__x86_64__) && !HAS_BUILTIN(_InterlockedCompareExchange128)
+__INTRIN_INLINE unsigned char _InterlockedCompareExchange128(_Interlocked_operand_ __int64 volatile* Destination, __int64 ExchangeHigh, __int64 ExchangeLow, __int64* ComparandResult)
+{
+    __int64 xchg[2] = { ExchangeLow, ExchangeHigh };
+    return __sync_bool_compare_and_swap((__uint128_t*)Destination, *((__uint128_t*)ComparandResult), *((__uint128_t*)xchg));
+}
+#endif
 
 #ifdef __i386__
 __INTRIN_INLINE long _InterlockedAddLargeStatistic(volatile long long * Addend, long Value)

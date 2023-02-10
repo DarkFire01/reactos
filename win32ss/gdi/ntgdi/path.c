@@ -1442,9 +1442,8 @@ PATH_FlattenPath(PPATH pPath)
 
 /* PATH_PathToRegion
  *
- * Creates a region from the specified path using the specified polygon
- * filling mode. The path is left unchanged. A handle to the region that
- * was created is stored in *pHrgn.
+ * Fills Rgn from the specified path using the specified polygon
+ * filling mode. The path is left unchanged.
  */
 BOOL
 FASTCALL
@@ -1459,7 +1458,7 @@ PATH_PathToRegion(
 
     if (!pPath->numEntriesUsed) return FALSE;
 
-    counts = ExAllocatePoolWithTag(PagedPool, (pPath->numEntriesUsed / 2) * sizeof(counts), TAG_PATH);
+    counts = ExAllocatePoolWithTag(PagedPool, (pPath->numEntriesUsed / 2) * sizeof(*counts), TAG_PATH);
     if (!counts)
     {
         ERR("Failed to allocate %lu strokes\n", (pPath->numEntriesUsed / 2) * sizeof(*counts));
@@ -2893,6 +2892,14 @@ NtGdiPathToRegion(HDC  hDC)
         hrgnRval = Rgn->BaseObject.hHmgr;
 
         pNewPath = PATH_FlattenPath(pPath);
+        if (pNewPath == NULL)
+        {
+            ERR("Failed to flatten path %p\n", pDc->dclevel.hPath);
+            REGION_Delete(Rgn);
+            PATH_UnlockPath(pPath);
+            DC_UnlockDc(pDc);
+            return NULL;
+        }
 
         Ret = PATH_PathToRegion(pNewPath, pdcattr->jFillMode, Rgn);
 

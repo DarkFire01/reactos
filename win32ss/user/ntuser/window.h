@@ -4,6 +4,7 @@ extern ATOM AtomMessage;
 extern ATOM AtomWndObj; /* WNDOBJ list */
 extern ATOM AtomLayer;
 extern ATOM AtomFlashWndState;
+extern BOOL g_bWindowSnapEnabled;
 
 #define HAS_DLGFRAME(Style, ExStyle) \
             (((ExStyle) & WS_EX_DLGMODALFRAME) || \
@@ -122,5 +123,25 @@ BOOL FASTCALL IntImeCanDestroyDefIMEforChild(PWND pImeWnd, PWND pwndTarget);
 BOOL FASTCALL IntImeCanDestroyDefIME(PWND pImeWnd, PWND pwndTarget);
 BOOL FASTCALL IntBroadcastImeShowStatusChange(PWND pImeWnd, BOOL bShow);
 VOID FASTCALL IntNotifyImeShowStatus(PWND pImeWnd);
+VOID FASTCALL IntCheckImeShowStatusInThread(PWND pImeWnd);
+
+static inline
+VOID
+WndSetOwner(_Inout_ PWND pwnd, _In_opt_ PWND pwndOwner)
+{
+    /* First reference the new owner window */
+    if (pwndOwner != NULL)
+    {
+        UserReferenceObject(pwndOwner);
+    }
+
+    /* Now dereference the previous owner window */
+    if (pwnd->spwndOwner != NULL)
+    {
+        UserDereferenceObject(pwnd->spwndOwner);
+    }
+
+    pwnd->spwndOwner = pwndOwner;
+}
 
 /* EOF */

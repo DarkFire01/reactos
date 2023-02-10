@@ -73,7 +73,7 @@ CAPTION "ReactOS-Installation"
 FONT 8, "MS Shell Dlg"
 BEGIN
     ICON IDI_ICON4, IDC_STATIC, 21, 7, 20, 20
-    LTEXT "Die Spracheinstellungen des Systems sollten mit der Sprache der Anwendungen, die Sie nutzen wollen übereinstimmen. Die Nutzereinstellungen geben vor, wie Zahlen, Währungen und Datumsangaben dargestellt werden.", IDC_STATIC, 53, 6, 253, 30
+    LTEXT "Die Spracheinstellungen des Systems sollten mit der Sprache der Anwendungen übereinstimmen, die Sie nutzen wollen. Die Nutzereinstellungen geben vor, wie Zahlen, Währungen und Datumsangaben dargestellt werden.", IDC_STATIC, 53, 6, 253, 30
     LTEXT "%s", IDC_LOCALETEXT, 53, 34, 250, 16
     LTEXT "Klicken Sie auf Einstellen, um die regionalen Einstellungen zu ändern.", IDC_STATIC, 53, 57, 188, 16
     PUSHBUTTON "&Einstellen...", IDC_CUSTOMLOCALE, 245, 57, 50, 14
@@ -92,10 +92,10 @@ BEGIN
     ICON IDI_ICON3, IDC_STATIC, 21, 10, 20, 20
     LTEXT "Datum und Uhrzeit", IDC_STATIC, 53, 7, 253, 8
     CONTROL "", IDC_DATEPICKER, "SysDateTimePick32", DTS_LONGDATEFORMAT | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 53, 17, 137, 14
-    CONTROL "", IDC_TIMEPICKER, "SysDateTimePick32", DTS_TIMEFORMAT | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 200, 17, 54, 14
+    CONTROL "", IDC_TIMEPICKER, "SysDateTimePick32", DTS_TIMEFORMAT | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 220, 17, 74, 14
     LTEXT "Zeitzone", IDC_STATIC, 53, 42, 253, 8
-    COMBOBOX IDC_TIMEZONELIST, 53, 52, 201, 93, CBS_DROPDOWNLIST | CBS_NOINTEGRALHEIGHT | WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL
-    AUTOCHECKBOX "&Uhr automatisch auf Sommer-/Winterzeit umstellen", IDC_AUTODAYLIGHT, 53, 124, 201, 10
+    COMBOBOX IDC_TIMEZONELIST, 53, 52, 241, 93, CBS_DROPDOWNLIST | CBS_NOINTEGRALHEIGHT | WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL
+    AUTOCHECKBOX "&Uhr automatisch auf Sommer-/Winterzeit umstellen", IDC_AUTODAYLIGHT, 53, 124, 230, 10
 END
 
 IDD_THEMEPAGE DIALOGEX 0, 0, 317, 143

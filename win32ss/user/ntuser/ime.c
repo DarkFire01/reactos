@@ -562,7 +562,7 @@ DWORD FASTCALL UserBuildHimcList(PTHREADINFO pti, DWORD dwCount, HIMC *phList)
     }
     else
     {
-        for (pti = GetW32ThreadInfo()->ppi->ptiList; pti; pti = pti->ptiSibling)
+        for (pti = gptiCurrent->ppi->ptiList; pti; pti = pti->ptiSibling)
         {
             for (pIMC = pti->spDefaultImc; pIMC; pIMC = pIMC->pImcNext)
             {
@@ -716,7 +716,7 @@ NtUserBuildHimcList(DWORD dwThreadId, DWORD dwCount, HIMC *phList, LPDWORD pdwCo
 
     if (dwThreadId == 0)
     {
-        pti = GetW32ThreadInfo();
+        pti = gptiCurrent;
     }
     else if (dwThreadId == INVALID_THREAD_ID)
     {
@@ -1192,7 +1192,7 @@ VOID FASTCALL IntImeSetFutureOwner(PWND pImeWnd, PWND pwndOwner)
     pwndParent = pwndNode->spwndParent;
     if (!pwndParent || pwndOwner != pwndNode)
     {
-        pImeWnd->spwndOwner = pwndNode;
+        WndSetOwner(pImeWnd, pwndNode);
         return;
     }
 
@@ -1218,7 +1218,7 @@ VOID FASTCALL IntImeSetFutureOwner(PWND pImeWnd, PWND pwndOwner)
         }
     }
 
-    pImeWnd->spwndOwner = pwndNode;
+    WndSetOwner(pImeWnd, pwndNode);
 }
 
 // Get the last non-IME-like top-most window on the desktop.
@@ -1401,7 +1401,7 @@ NtUserSetImeOwnerWindow(HWND hImeWnd, HWND hwndFocus)
             }
         }
 
-        pImeWnd->spwndOwner = pwndTopLevel;
+        WndSetOwner(pImeWnd, pwndTopLevel);
         IntImeCheckTopmost(pImeWnd);
     }
     else
@@ -1413,7 +1413,7 @@ NtUserSetImeOwnerWindow(HWND hImeWnd, HWND hwndFocus)
         {
             if (pwndActive && ptiIme == pwndActive->head.pti && !IS_WND_IMELIKE(pwndActive))
             {
-                pImeWnd->spwndOwner = pwndActive;
+                WndSetOwner(pImeWnd, pwndActive);
             }
             else
             {
@@ -2127,7 +2127,7 @@ BOOL FASTCALL IntImeCanDestroyDefIME(PWND pImeWnd, PWND pwndTarget)
     if (pImeWnd->spwndOwner && pwndTarget != pImeWnd->spwndOwner)
         return FALSE;
 
-    pImeWnd->spwndOwner = NULL;
+    WndSetOwner(pImeWnd, NULL);
     return TRUE;
 }
 
@@ -2393,6 +2393,13 @@ BOOL FASTCALL IntBroadcastImeShowStatusChange(PWND pImeWnd, BOOL bShow)
     gfIMEShowStatus = bShow;
     IntNotifyImeShowStatus(pImeWnd);
     return TRUE;
+}
+
+/* Win: xxxCheckImeShowStatusInThread */
+VOID FASTCALL IntCheckImeShowStatusInThread(PWND pImeWnd)
+{
+    if (IS_IMM_MODE() && !(pImeWnd->state2 & WNDS2_INDESTROY))
+        IntCheckImeShowStatus(pImeWnd, pImeWnd->head.pti);
 }
 
 /* EOF */

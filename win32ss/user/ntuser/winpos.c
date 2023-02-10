@@ -436,12 +436,12 @@ co_WinPosActivateOtherWindow(PWND Wnd)
 
    // Find any window to bring to top. Works Okay for wine since it does not see X11 windows.
    WndTo = UserGetDesktopWindow();
-   WndTo = WndTo->spwndChild;
-   if ( WndTo == NULL )
+   if ((WndTo == NULL) || (WndTo->spwndChild == NULL))
    {
       //ERR("WinPosActivateOtherWindow No window!\n");
       return;
    }
+   WndTo = WndTo->spwndChild;
    for (;;)
    {
       if (WndTo == Wnd)
@@ -1945,9 +1945,12 @@ co_WinPosSetWindowPos(
           (!(Window->ExStyle & WS_EX_TOOLWINDOW) && !Window->spwndOwner &&
            (!Window->spwndParent || UserIsDesktopWindow(Window->spwndParent))))
       {
-         co_IntShellHookNotify(HSHELL_WINDOWCREATED, (WPARAM)Window->head.h, 0);
-         if (!(WinPos.flags & SWP_NOACTIVATE))
-            UpdateShellHook(Window);
+         if (!UserIsDesktopWindow(Window))
+         {
+            co_IntShellHookNotify(HSHELL_WINDOWCREATED, (WPARAM)Window->head.h, 0);
+            if (!(WinPos.flags & SWP_NOACTIVATE))
+               UpdateShellHook(Window);
+         }
       }
 
       Window->style |= WS_VISIBLE; //IntSetStyle( Window, WS_VISIBLE, 0 );
@@ -2097,7 +2100,8 @@ co_WinPosSetWindowPos(
       }
 
       /* We need to redraw what wasn't visible before or force a redraw */
-      if (VisAfter != NULL)
+      if ((WinPos.flags & (SWP_FRAMECHANGED | SWP_SHOWWINDOW)) ||
+          (((WinPos.flags & SWP_AGG_NOGEOMETRYCHANGE) != SWP_AGG_NOGEOMETRYCHANGE) && VisAfter != NULL))
       {
          PREGION DirtyRgn = IntSysCreateRectpRgn(0, 0, 0, 0);
          if (DirtyRgn)

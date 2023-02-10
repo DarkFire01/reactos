@@ -16,19 +16,6 @@
 #define MODULE_INVOLVED_IN_ARM3
 #include <mm/ARM3/miarm.h>
 
-static
-inline
-VOID
-sprintf_nt(IN PCHAR Buffer,
-           IN PCHAR Format,
-           IN ...)
-{
-    va_list ap;
-    va_start(ap, Format);
-    vsprintf(Buffer, Format, ap);
-    va_end(ap);
-}
-
 /* GLOBALS ********************************************************************/
 
 LIST_ENTRY PsLoadedModuleList;
@@ -2908,19 +2895,19 @@ MmLoadSystemImage(IN PUNICODE_STRING FileName,
     OBJECT_ATTRIBUTES ObjectAttributes;
     IO_STATUS_BLOCK IoStatusBlock;
     PIMAGE_NT_HEADERS NtHeader;
-    UNICODE_STRING BaseName, BaseDirectory, PrefixName, UnicodeTemp;
+    UNICODE_STRING BaseName, BaseDirectory, PrefixName;
     PLDR_DATA_TABLE_ENTRY LdrEntry = NULL;
     ULONG EntrySize, DriverSize;
     PLOAD_IMPORTS LoadedImports = MM_SYSLDR_NO_IMPORTS;
     PCHAR MissingApiName, Buffer;
-    PWCHAR MissingDriverName;
+    PWCHAR MissingDriverName, PrefixedBuffer = NULL;
     HANDLE SectionHandle;
     ACCESS_MASK DesiredAccess;
     PSECTION Section = NULL;
     BOOLEAN LockOwned = FALSE;
     PLIST_ENTRY NextEntry;
     IMAGE_INFO ImageInfo;
-    STRING AnsiTemp;
+
     PAGED_CODE();
 
     /* Detect session-load */
@@ -2977,7 +2964,52 @@ MmLoadSystemImage(IN PUNICODE_STRING FileName,
     PrefixName = *FileName;
 
     /* Check if we have a prefix */
-    if (NamePrefix) DPRINT1("Prefixed images are not yet supported!\n");
+    if (NamePrefix)
+    {
+        /* Check if "directory + prefix" is too long for the string */
+        Status = RtlUShortAdd(BaseDirectory.Length,
+                              NamePrefix->Length,
+                              &PrefixName.MaximumLength);
+        if (!NT_SUCCESS(Status))
+        {
+            Status = STATUS_INVALID_PARAMETER;
+            goto Quickie;
+        }
+
+        /* Check if "directory + prefix + basename" is too long for the string */
+        Status = RtlUShortAdd(PrefixName.MaximumLength,
+                              BaseName.Length,
+                              &PrefixName.MaximumLength);
+        if (!NT_SUCCESS(Status))
+        {
+            Status = STATUS_INVALID_PARAMETER;
+            goto Quickie;
+        }
+
+        /* Allocate the buffer exclusively used for prefixed name */
+        PrefixedBuffer = ExAllocatePoolWithTag(PagedPool,
+                                               PrefixName.MaximumLength,
+                                               TAG_LDR_WSTR);
+        if (!PrefixedBuffer)
+        {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto Quickie;
+        }
+
+        /* Clear out the prefixed name string */
+        PrefixName.Buffer = PrefixedBuffer;
+        PrefixName.Length = 0;
+
+        /* Concatenate the strings */
+        RtlAppendUnicodeStringToString(&PrefixName, &BaseDirectory);
+        RtlAppendUnicodeStringToString(&PrefixName, NamePrefix);
+        RtlAppendUnicodeStringToString(&PrefixName, &BaseName);
+
+        /* Now the base name of the image becomes the prefixed version */
+        BaseName.Buffer = &(PrefixName.Buffer[BaseDirectory.Length / sizeof(WCHAR)]);
+        BaseName.Length += NamePrefix->Length;
+        BaseName.MaximumLength = (PrefixName.MaximumLength - BaseDirectory.Length);
+    }
 
     /* Check if we already have a name, use it instead */
     if (LoadedName) BaseName = *LoadedName;
@@ -3364,6 +3396,9 @@ LoaderScan:
     if (MiCacheImageSymbols(LdrEntry->DllBase))
 #endif
     {
+        UNICODE_STRING UnicodeTemp;
+        STRING AnsiTemp;
+
         /* Check if the system root is present */
         if ((PrefixName.Length > (11 * sizeof(WCHAR))) &&
             !(_wcsnicmp(PrefixName.Buffer, L"\\SystemRoot", 11)))
@@ -3372,18 +3407,20 @@ LoaderScan:
             UnicodeTemp = PrefixName;
             UnicodeTemp.Buffer += 11;
             UnicodeTemp.Length -= (11 * sizeof(WCHAR));
-            sprintf_nt(Buffer,
-                       "%ws%wZ",
-                       &SharedUserData->NtSystemRoot[2],
-                       &UnicodeTemp);
+            RtlStringCbPrintfA(Buffer,
+                               MAXIMUM_FILENAME_LENGTH,
+                               "%ws%wZ",
+                               &SharedUserData->NtSystemRoot[2],
+                               &UnicodeTemp);
         }
         else
         {
             /* Build the name */
-            sprintf_nt(Buffer, "%wZ", &BaseName);
+            RtlStringCbPrintfA(Buffer, MAXIMUM_FILENAME_LENGTH,
+                               "%wZ", &BaseName);
         }
 
-        /* Setup the ansi string */
+        /* Setup the ANSI string */
         RtlInitString(&AnsiTemp, Buffer);
 
         /* Notify the debugger */
@@ -3414,8 +3451,8 @@ Quickie:
     /* If we have a file handle, close it */
     if (FileHandle) ZwClose(FileHandle);
 
-    /* Check if we had a prefix (not supported yet - PrefixName == *FileName now) */
-    /* if (NamePrefix) ExFreePool(PrefixName.Buffer); */
+    /* If we have allocated a prefixed name buffer, free it */
+    if (PrefixedBuffer) ExFreePoolWithTag(PrefixedBuffer, TAG_LDR_WSTR);
 
     /* Free the name buffer and return status */
     ExFreePoolWithTag(Buffer, TAG_LDR_WSTR);
@@ -3523,7 +3560,7 @@ MmGetSystemRoutineAddress(IN PUNICODE_STRING SystemRoutineName)
     UNICODE_STRING HalName = RTL_CONSTANT_STRING(L"hal.dll");
     ULONG Modules = 0;
 
-    /* Convert routine to ansi name */
+    /* Convert routine to ANSI name */
     Status = RtlUnicodeStringToAnsiString(&AnsiRoutineName,
                                           SystemRoutineName,
                                           TRUE);

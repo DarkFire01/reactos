@@ -395,26 +395,14 @@ FUNC KiGeneralProtectionFault
 
     /* Dispatch privileged instruction fault */
     DispatchException eax, 0, 0, 0, 0
-    jmp KiGpfFatal
+    jmp KiGpfExit
 
 DispatchAccessViolation:
 
     /* Dispatch access violation */
     DispatchException eax, 2, 0, -1, 0
 
-KiGpfFatal:
-
-    /* Bugcheck */
-    mov ecx, UNEXPECTED_KERNEL_MODE_TRAP
-    mov rdx, HEX(000D) // EXCEPTION_GP_FAULT
-    xor r8, r8
-    mov r9, [rbp + KTRAP_FRAME_ErrorCode] // error code
-    sub rsp, 8
-    mov [rsp + KTRAP_FRAME_P5+8], rbp // trap frame
-    call KeBugCheckWithTf
-
 KiGpfExit:
-    /* Return */
     /* Return */
     ExitTrap TF_SAVE_ALL
 ENDFUNC
@@ -429,12 +417,14 @@ FUNC KiPageFault
     mov rdx, cr2
     mov [rbp  + KTRAP_FRAME_FaultAddress], rdx
     
-    /* If interrupts are off, treat this as an access violation */
+    /* If interrupts are off, do not enable them */
     test dword ptr [rbp + KTRAP_FRAME_EFlags], EFLAGS_IF_MASK
-    jz AccessViolation
+    jz IntsDisabled
 
     /* Enable interrupts for the page fault handler */
     sti
+
+IntsDisabled:
 
     /* Call page fault handler */
     mov ecx, [rbp + KTRAP_FRAME_ErrorCode] // FaultCode
@@ -455,13 +445,10 @@ FUNC KiPageFault
 
 PageFaultError:
 
-    /* Disable interrupts again for the debugger */
-    cli
-
     /* Set parameter 1 to error code */
     mov r9d, [rbp + KTRAP_FRAME_ErrorCode]
 
-    /* Set parameter2 to faulting address */
+    /* Set parameter 2 to faulting address */
     mov r10, cr2  // Param2 = faulting address
 
     cmp eax, STATUS_ACCESS_VIOLATION
@@ -489,6 +476,10 @@ SpecialCode:
     call InternalDispatchException
 
 PageFaultReturn:
+
+    /* Disable interrupts for the return */
+    cli
+
     /* Return */
     ExitTrap (TF_SAVE_ALL or TF_CHECKUSERAPC)
 ENDFUNC
@@ -590,7 +581,7 @@ ENDFUNC
 PUBLIC KiApcInterrupt
 .PROC KiApcInterrupt
    /* No error code */
-    EnterTrap (TF_VOLATILES or TF_IRQL)
+    EnterTrap (TF_SAVE_ALL or TF_IRQL)
 
     /* Raise to APC_LEVEL */
     mov rax, APC_LEVEL
@@ -617,7 +608,7 @@ PUBLIC KiApcInterrupt
     mov cr8, rax
 
     /* Return */
-    ExitTrap (TF_VOLATILES or TF_IRQL)
+    ExitTrap (TF_SAVE_ALL or TF_IRQL)
 .ENDP
 
 /*
@@ -659,20 +650,20 @@ PUBLIC KiRetireDpcListInDpcStack
 PUBLIC KiDpcInterrupt
 .PROC KiDpcInterrupt
    /* No error code */
-    EnterTrap (TF_VOLATILES or TF_IRQL)
+    EnterTrap (TF_SAVE_ALL or TF_IRQL)
 
     /* Call the worker routine */
     call KiDpcInterruptHandler
 
     /* Return, but don't send an EOI! */
-    ExitTrap (TF_VOLATILES or TF_IRQL)
+    ExitTrap (TF_SAVE_ALL or TF_IRQL)
 .ENDP
 
 
 PUBLIC KiIpiInterrupt
 .PROC KiIpiInterrupt
    /* No error code */
-    EnterTrap (TF_VOLATILES or TF_IRQL)
+    EnterTrap (TF_SAVE_ALL or TF_IRQL)
 
     /* Raise to IPI_LEVEL */
     mov rax, IPI_LEVEL
@@ -684,7 +675,7 @@ PUBLIC KiIpiInterrupt
     int 3
 
     /* Return */
-    ExitTrap (TF_VOLATILES or TF_IRQL)
+    ExitTrap (TF_SAVE_ALL or TF_IRQL)
 .ENDP
 
 
@@ -930,16 +921,27 @@ PUBLIC KiServiceExit2
 .PROC KiServiceExit2
     .ENDPROLOG
 
+    // FIXME: this should probably also restore an exception frame
+
+    mov rsp, rcx
+.ENDP
+
+PUBLIC KiServiceExit3
+.PROC KiServiceExit3
+    .PUSHFRAME
+    .ALLOCSTACK (KTRAP_FRAME_LENGTH - MachineFrameLength)
+    .ENDPROLOG
+
 #if DBG
     /* Get the current IRQL and compare it to the trap frame */
     mov rax, cr8
-    cmp byte ptr [rcx + KTRAP_FRAME_PreviousIrql], al
+    cmp byte ptr [rsp + KTRAP_FRAME_PreviousIrql], al
     je KiServiceExit2_ok1
     int HEX(2C)
 
 KiServiceExit2_ok1:
     /* Check if this is a user mode exit */
-    mov ah, byte ptr [rcx + KTRAP_FRAME_SegCs]
+    mov ah, byte ptr [rsp + KTRAP_FRAME_SegCs]
     test ah, 1
     jz KiServiceExit2_kernel
 
@@ -951,10 +953,8 @@ KiServiceExit2_ok1:
 KiServiceExit2_kernel:
 #endif
 
-    mov rbp, rcx
-    mov rsp, rcx
-
     /* Return */
+    mov rbp, rsp
     ExitTrap TF_SAVE_ALL
 .ENDP
 

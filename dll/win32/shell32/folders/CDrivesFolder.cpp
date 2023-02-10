@@ -286,38 +286,52 @@ HRESULT CALLBACK DrivesContextMenuCallback(IShellFolder *psf,
     GetVolumeInformationA(szDrive, NULL, 0, NULL, NULL, &dwFlags, NULL, 0);
 
 // custom command IDs
+#if 0 // Disabled until our menu building system is fixed
+#define CMDID_FORMAT        0
+#define CMDID_EJECT         1
+#define CMDID_DISCONNECT    2
+#else
+/* FIXME: These IDs should start from 0, however there is difference
+ * between ours and Windows' menu building systems, which should be fixed. */
 #define CMDID_FORMAT        1
 #define CMDID_EJECT         2
 #define CMDID_DISCONNECT    3
+#endif
 
     if (uMsg == DFM_MERGECONTEXTMENU)
     {
         QCMINFO *pqcminfo = (QCMINFO *)lParam;
 
         UINT idCmdFirst = pqcminfo->idCmdFirst;
+        UINT idCmd = 0;
         if (!(dwFlags & FILE_READ_ONLY_VOLUME) && nDriveType != DRIVE_REMOTE)
         {
             /* add separator and Format */
-            UINT idCmd = idCmdFirst + CMDID_FORMAT;
+            idCmd = idCmdFirst + CMDID_FORMAT;
             _InsertMenuItemW(pqcminfo->hmenu, pqcminfo->indexMenu++, TRUE, 0, MFT_SEPARATOR, NULL, 0);
             _InsertMenuItemW(pqcminfo->hmenu, pqcminfo->indexMenu++, TRUE, idCmd, MFT_STRING, MAKEINTRESOURCEW(IDS_FORMATDRIVE), MFS_ENABLED);
         }
         if (nDriveType == DRIVE_REMOVABLE || nDriveType == DRIVE_CDROM)
         {
             /* add separator and Eject */
-            UINT idCmd = idCmdFirst + CMDID_EJECT;
+            idCmd = idCmdFirst + CMDID_EJECT;
             _InsertMenuItemW(pqcminfo->hmenu, pqcminfo->indexMenu++, TRUE, 0, MFT_SEPARATOR, NULL, 0);
             _InsertMenuItemW(pqcminfo->hmenu, pqcminfo->indexMenu++, TRUE, idCmd, MFT_STRING, MAKEINTRESOURCEW(IDS_EJECT), MFS_ENABLED);
         }
         if (nDriveType == DRIVE_REMOTE)
         {
             /* add separator and Disconnect */
-            UINT idCmd = idCmdFirst + CMDID_DISCONNECT;
+            idCmd = idCmdFirst + CMDID_DISCONNECT;
             _InsertMenuItemW(pqcminfo->hmenu, pqcminfo->indexMenu++, TRUE, 0, MFT_SEPARATOR, NULL, 0);
             _InsertMenuItemW(pqcminfo->hmenu, pqcminfo->indexMenu++, TRUE, idCmd, MFT_STRING, MAKEINTRESOURCEW(IDS_DISCONNECT), MFS_ENABLED);
         }
 
-        pqcminfo->idCmdFirst += 3;
+        if (idCmd)
+#if 0 // see FIXME above
+            pqcminfo->idCmdFirst = ++idCmd;
+#else
+            pqcminfo->idCmdFirst = (idCmd + 2);
+#endif
     }
     else if (uMsg == DFM_INVOKECOMMAND)
     {
@@ -331,7 +345,7 @@ HRESULT CALLBACK DrivesContextMenuCallback(IShellFolder *psf,
         {
             // pdtobj should be valid at this point!
             ATLASSERT(pdtobj);
-            hr = SH_ShowDriveProperties(wszBuf, pdtobj);
+            hr = SH_ShowDriveProperties(wszBuf, pdtobj) ? S_OK : E_UNEXPECTED;
             if (FAILED(hr))
             {
                 dwError = ERROR_CAN_NOT_COMPLETE;
@@ -443,6 +457,28 @@ getIconLocationForDrive(IShellFolder *psf, PCITEMID_CHILD pidl, UINT uFlags,
         // wszPath --> szIconFile
         GetFullPathNameW(wszPath, cchMax, szIconFile, NULL);
 
+        return S_OK;
+    }
+
+    return E_FAIL;
+}
+
+static HRESULT
+getLabelForDrive(LPWSTR wszPath, LPWSTR wszLabel)
+{
+    WCHAR wszAutoRunInfPath[MAX_PATH];
+    WCHAR wszTemp[MAX_PATH];
+
+    if (!PathIsDirectoryW(wszPath))
+        return E_FAIL;
+
+    StringCchCopyW(wszAutoRunInfPath, _countof(wszAutoRunInfPath), wszPath);
+    PathAppendW(wszAutoRunInfPath, L"autorun.inf");
+
+    if (GetPrivateProfileStringW(L"autorun", L"label", NULL, wszTemp, _countof(wszTemp),
+                                 wszAutoRunInfPath) && wszTemp[0] != 0)
+    {
+        StringCchCopyW(wszLabel, _countof(wszTemp), wszTemp);
         return S_OK;
     }
 
@@ -965,38 +1001,46 @@ HRESULT WINAPI CDrivesFolder::GetDisplayNameOf(PCUITEMID_CHILD pidl, DWORD dwFla
     if (!(dwFlags & SHGDN_FORPARSING))
     {
         WCHAR wszDrive[18] = {0};
-        DWORD dwVolumeSerialNumber, dwMaximumComponentLength, dwFileSystemFlags;
 
         lstrcpynW(wszDrive, pszPath, 4);
         pszPath[0] = L'\0';
-        GetVolumeInformationW(wszDrive, pszPath,
-                                MAX_PATH - 7,
-                                &dwVolumeSerialNumber,
-                                &dwMaximumComponentLength, &dwFileSystemFlags, NULL, 0);
-        pszPath[MAX_PATH-1] = L'\0';
-        if (!wcslen(pszPath))
+
+        if (!SUCCEEDED(getLabelForDrive(wszDrive, pszPath)))
         {
-            UINT DriveType, ResourceId;
-            DriveType = GetDriveTypeW(wszDrive);
-            switch(DriveType)
+            DWORD dwVolumeSerialNumber, dwMaximumComponentLength, dwFileSystemFlags;
+
+            GetVolumeInformationW(wszDrive, pszPath,
+                                    MAX_PATH - 7,
+                                    &dwVolumeSerialNumber,
+                                    &dwMaximumComponentLength, &dwFileSystemFlags, NULL, 0);
+            pszPath[MAX_PATH-1] = L'\0';
+
+            if (!wcslen(pszPath))
             {
-                case DRIVE_FIXED:
-                    ResourceId = IDS_DRIVE_FIXED;
-                    break;
-                case DRIVE_REMOTE:
-                    ResourceId = IDS_DRIVE_NETWORK;
-                    break;
-                case DRIVE_CDROM:
-                    ResourceId = IDS_DRIVE_CDROM;
-                    break;
-                default:
-                    ResourceId = 0;
-            }
-            if (ResourceId)
-            {
-                dwFileSystemFlags = LoadStringW(shell32_hInstance, ResourceId, pszPath, MAX_PATH);
-                if (dwFileSystemFlags > MAX_PATH - 7)
-                    pszPath[MAX_PATH-7] = L'\0';
+                UINT DriveType, ResourceId;
+                DriveType = GetDriveTypeW(wszDrive);
+
+                switch (DriveType)
+                {
+                    case DRIVE_FIXED:
+                        ResourceId = IDS_DRIVE_FIXED;
+                        break;
+                    case DRIVE_REMOTE:
+                        ResourceId = IDS_DRIVE_NETWORK;
+                        break;
+                    case DRIVE_CDROM:
+                        ResourceId = IDS_DRIVE_CDROM;
+                        break;
+                    default:
+                        ResourceId = 0;
+                }
+
+                if (ResourceId)
+                {
+                    dwFileSystemFlags = LoadStringW(shell32_hInstance, ResourceId, pszPath, MAX_PATH);
+                    if (dwFileSystemFlags > MAX_PATH - 7)
+                        pszPath[MAX_PATH-7] = L'\0';
+                }
             }
         }
         wcscat (pszPath, L" (");

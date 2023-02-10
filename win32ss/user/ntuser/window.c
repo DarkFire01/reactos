@@ -117,8 +117,16 @@ PWND FASTCALL VerifyWnd(PWND pWnd)
 
 PWND FASTCALL ValidateHwndNoErr(HWND hWnd)
 {
-   if (hWnd) return (PWND)UserGetObjectNoErr(gHandleTable, hWnd, TYPE_WINDOW);
-   return NULL;
+    PWND Window;
+
+    if (!hWnd)
+        return NULL;
+
+    Window = (PWND)UserGetObjectNoErr(gHandleTable, hWnd, TYPE_WINDOW);
+    if (!Window || (Window->state & WNDS_DESTROYED))
+        return NULL;
+
+    return Window;
 }
 
 /* Temp HACK */
@@ -493,7 +501,7 @@ static void IntSendDestroyMsg(HWND hWnd)
       }
 
       /* If the window being destroyed is currently tracked... */
-      if (ti->rpdesk->spwndTrack == Window)
+      if (ti->rpdesk && ti->rpdesk->spwndTrack == Window)
       {
           IntRemoveTrackMouseEvent(ti->rpdesk);
       }
@@ -588,6 +596,7 @@ LRESULT co_UserFreeWindow(PWND Window,
    Window->style &= ~WS_VISIBLE;
    Window->head.pti->cVisWindows--;
 
+   WndSetOwner(Window, NULL);
 
    /* remove the window already at this point from the thread window list so we
       don't get into trouble when destroying the thread windows while we're still
@@ -662,7 +671,7 @@ LRESULT co_UserFreeWindow(PWND Window,
    if (ThreadData->spwndDefaultIme &&
        ThreadData->spwndDefaultIme->spwndOwner == Window)
    {
-      ThreadData->spwndDefaultIme->spwndOwner = NULL;
+      WndSetOwner(ThreadData->spwndDefaultIme, NULL);
    }
 
    if (IS_IMM_MODE() && Window == ThreadData->spwndDefaultIme)
@@ -1091,6 +1100,7 @@ IntProcessOwnerSwap(PWND Wnd, PWND WndNewOwner, PWND WndOldOwner)
    // FIXME: System Tray checks.
 }
 
+static
 HWND FASTCALL
 IntSetOwner(HWND hWnd, HWND hWndNewOwner)
 {
@@ -1119,14 +1129,7 @@ IntSetOwner(HWND hWnd, HWND hWndNewOwner)
 
    if (IntValidateOwnerDepth(Wnd, WndNewOwner))
    {
-      if (WndNewOwner)
-      {
-         Wnd->spwndOwner= WndNewOwner;
-      }
-      else
-      {
-         Wnd->spwndOwner = NULL;
-      }
+      WndSetOwner(Wnd, WndNewOwner);
    }
    else
    {
@@ -1869,7 +1872,7 @@ PWND FASTCALL IntCreateWindow(CREATESTRUCTW* Cs,
     */
    /* Remember, pWnd->head is setup in object.c ... */
    pWnd->spwndParent = ParentWindow;
-   pWnd->spwndOwner = OwnerWindow;
+   WndSetOwner(pWnd, OwnerWindow);
    pWnd->fnid = 0;
    pWnd->spwndLastActive = pWnd;
    // Ramp up compatible version sets.
@@ -2045,33 +2048,6 @@ PWND FASTCALL IntCreateWindow(CREATESTRUCTW* Cs,
       pWnd->strName.Buffer[WindowName->Length / sizeof(WCHAR)] = L'\0';
       pWnd->strName.Length = WindowName->Length;
       pWnd->strName.MaximumLength = WindowName->Length + sizeof(UNICODE_NULL);
-   }
-
-   /* Create the IME window for pWnd */
-   if (IS_IMM_MODE() && !(pti->spwndDefaultIme) && IntWantImeWindow(pWnd))
-   {
-      PWND pwndDefaultIme = co_IntCreateDefaultImeWindow(pWnd, pWnd->hModule);
-      UserAssignmentLock((PVOID*)&(pti->spwndDefaultIme), pwndDefaultIme);
-
-      if (pwndDefaultIme)
-      {
-         HWND hImeWnd;
-         USER_REFERENCE_ENTRY Ref;
-         UserRefObjectCo(pwndDefaultIme, &Ref);
-
-         hImeWnd = UserHMGetHandle(pwndDefaultIme);
-
-         co_IntSendMessage(hImeWnd, WM_IME_SYSTEM, IMS_LOADTHREADLAYOUT, 0);
-
-         if (pti->pClientInfo->CI_flags & CI_IMMACTIVATE)
-         {
-            HKL hKL = pti->KeyboardLayout->hkl;
-            co_IntSendMessage(hImeWnd, WM_IME_SYSTEM, IMS_ACTIVATELAYOUT, (LPARAM)hKL);
-            pti->pClientInfo->CI_flags &= ~CI_IMMACTIVATE;
-         }
-
-         UserDerefObjectCo(pwndDefaultIme);
-      }
    }
 
    /* Correct the window style. */
@@ -2445,6 +2421,33 @@ co_UserCreateWindowEx(CREATESTRUCTW* Cs,
           IntLinkHwnd(Window, HWND_BOTTOM);
       else
           IntLinkHwnd(Window, hwndInsertAfter);
+   }
+
+   /* Create the IME window for pWnd */
+   if (IS_IMM_MODE() && !pti->spwndDefaultIme && IntWantImeWindow(Window))
+   {
+      PWND pwndDefaultIme = co_IntCreateDefaultImeWindow(Window, Window->hModule);
+      UserAssignmentLock((PVOID*)&pti->spwndDefaultIme, pwndDefaultIme);
+
+      if (pwndDefaultIme)
+      {
+         HWND hImeWnd;
+         USER_REFERENCE_ENTRY Ref;
+         UserRefObjectCo(pwndDefaultIme, &Ref);
+
+         hImeWnd = UserHMGetHandle(pwndDefaultIme);
+
+         co_IntSendMessage(hImeWnd, WM_IME_SYSTEM, IMS_LOADTHREADLAYOUT, 0);
+
+         if (pti->pClientInfo->CI_flags & CI_IMMACTIVATE)
+         {
+            HKL hKL = pti->KeyboardLayout->hkl;
+            co_IntSendMessage(hImeWnd, WM_IME_SYSTEM, IMS_ACTIVATELAYOUT, (LPARAM)hKL);
+            pti->pClientInfo->CI_flags &= ~CI_IMMACTIVATE;
+         }
+
+         UserDerefObjectCo(pwndDefaultIme);
+      }
    }
 
    /* Send the WM_NCCALCSIZE message */
@@ -2825,7 +2828,7 @@ VOID FASTCALL IntDestroyOwnedWindows(PWND Window)
             continue;
         }
 
-        pWnd->spwndOwner = NULL;
+        WndSetOwner(pWnd, NULL);
         if (IntWndBelongsToThread(pWnd, PsGetCurrentThreadWin32Thread()))
         {
             UserRefObjectCo(pWnd, &Ref); // Temp HACK?
@@ -2950,7 +2953,7 @@ BOOLEAN co_UserDestroyWindow(PVOID Object)
     * Check if this window is the Shell's Desktop Window. If so set hShellWindow to NULL
     */
 
-   if ((ti != NULL) && (ti->pDeskInfo != NULL))
+   if (ti->pDeskInfo != NULL)
    {
       if (ti->pDeskInfo->hShellWindow == hWnd)
       {
@@ -2984,9 +2987,10 @@ BOOLEAN co_UserDestroyWindow(PVOID Object)
    /* Send destroy messages */
    IntSendDestroyMsg(UserHMGetHandle(Window));
 
-   // Destroy the default IME window if necessary
+   /* Destroy the default IME window if necessary */
    if (IS_IMM_MODE() && !(ti->TIF_flags & TIF_INCLEANUP) &&
-       ti->spwndDefaultIme && !IS_WND_IMELIKE(Window) && !(Window->state & WNDS_DESTROYED))
+       ti->spwndDefaultIme && (ti->spwndDefaultIme != Window) &&
+       !(Window->state & WNDS_DESTROYED) && !IS_WND_IMELIKE(Window))
    {
        if (IS_WND_CHILD(Window))
        {

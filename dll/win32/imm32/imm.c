@@ -10,6 +10,7 @@
  */
 
 #include "precomp.h"
+#include <ndk/exfuncs.h>
 
 WINE_DEFAULT_DEBUG_CHANNEL(imm);
 
@@ -17,11 +18,13 @@ HMODULE ghImm32Inst = NULL; // Win: ghInst
 PSERVERINFO gpsi = NULL; // Win: gpsi
 SHAREDINFO gSharedInfo = { NULL }; // Win: gSharedInfo
 BYTE gfImmInitialized = FALSE; // Win: gfInitialized
+ULONG_PTR gHighestUserAddress = 0;
 
 // Win: ImmInitializeGlobals
 static BOOL APIENTRY ImmInitializeGlobals(HMODULE hMod)
 {
     NTSTATUS status;
+    SYSTEM_BASIC_INFORMATION SysInfo;
 
     if (hMod)
         ghImm32Inst = hMod;
@@ -35,6 +38,14 @@ static BOOL APIENTRY ImmInitializeGlobals(HMODULE hMod)
         ERR("\n");
         return FALSE;
     }
+
+    status = NtQuerySystemInformation(SystemBasicInformation, &SysInfo, sizeof(SysInfo), NULL);
+    if (NT_ERROR(status))
+    {
+        ERR("\n");
+        return FALSE;
+    }
+    gHighestUserAddress = SysInfo.MaximumUserModeAddress;
 
     gfImmInitialized = TRUE;
     return TRUE;
@@ -90,7 +101,10 @@ BOOL WINAPI ImmLoadLayout(HKL hKL, PIMEINFOEX pImeInfoEx)
 
     pImeInfoEx->fLoadFlag = 0;
 
-    if (IS_ERROR_UNEXPECTEDLY(error) || dwType != REG_SZ)
+    if (IS_ERROR_UNEXPECTEDLY(error))
+        return FALSE;
+
+    if (dwType != REG_SZ)
     {
         ERR("\n");
         return FALSE;
@@ -145,7 +159,7 @@ BOOL WINAPI ImmFreeLayout(DWORD dwUnknown)
         StringCchPrintfW(szKBD, _countof(szKBD), L"%08X", LangID);
         if (!LoadKeyboardLayoutW(szKBD, KLF_ACTIVATE))
         {
-            WARN("\n");
+            WARN("Default to English US\n");
             LoadKeyboardLayoutW(L"00000409", KLF_ACTIVATE | 0x200);
         }
     }
@@ -497,7 +511,7 @@ HIMC WINAPI ImmAssociateContext(HWND hWnd, HIMC hIMC)
 
     if (!IS_IMM_MODE())
     {
-        WARN("\n");
+        TRACE("\n");
         return NULL;
     }
 
@@ -546,7 +560,7 @@ BOOL WINAPI ImmAssociateContextEx(HWND hWnd, HIMC hIMC, DWORD dwFlags)
 
     if (!IS_IMM_MODE())
     {
-        WARN("\n");
+        TRACE("\n");
         return FALSE;
     }
 
@@ -594,7 +608,7 @@ HIMC WINAPI ImmCreateContext(void)
 
     if (!IS_IMM_MODE())
     {
-        WARN("\n");
+        TRACE("\n");
         return NULL;
     }
 
@@ -651,7 +665,7 @@ BOOL APIENTRY Imm32DestroyInputContext(HIMC hIMC, HKL hKL, BOOL bKeep)
 
     if (!IS_IMM_MODE())
     {
-        WARN("\n");
+        TRACE("\n");
         return FALSE;
     }
 
@@ -661,7 +675,7 @@ BOOL APIENTRY Imm32DestroyInputContext(HIMC hIMC, HKL hKL, BOOL bKeep)
 
     if (pIMC->head.pti != Imm32CurrentPti())
     {
-        ERR("\n");
+        ERR("Thread mismatch\n");
         return FALSE;
     }
 
@@ -674,7 +688,7 @@ BOOL APIENTRY Imm32DestroyInputContext(HIMC hIMC, HKL hKL, BOOL bKeep)
 
     if ((pClientImc->dwFlags & CLIENTIMC_UNKNOWN2) && !bKeep)
     {
-        ERR("\n");
+        ERR("Can't destroy for CLIENTIMC_UNKNOWN2\n");
         return FALSE;
     }
 
@@ -875,7 +889,7 @@ LPINPUTCONTEXT APIENTRY Imm32InternalLockIMC(HIMC hIMC, BOOL fSelect)
 
     if (!NtUserQueryInputContext(hIMC, QIC_DEFAULTWINDOWIME))
     {
-        ERR("\n");
+        ERR("No default IME window\n");
         goto Failure;
     }
 
@@ -891,7 +905,6 @@ LPINPUTCONTEXT APIENTRY Imm32InternalLockIMC(HIMC hIMC, BOOL fSelect)
     hNewKL = GetKeyboardLayout(dwThreadId);
     if (!Imm32CreateInputContext(hIMC, pIC, pClientImc, hNewKL, fSelect))
     {
-        ERR("\n");
         LocalUnlock(hIC);
         pClientImc->hInputContext = LocalFree(hIC);
         goto Failure;
@@ -920,7 +933,7 @@ BOOL WINAPI ImmDestroyContext(HIMC hIMC)
 
     if (!IS_IMM_MODE())
     {
-        WARN("\n");
+        TRACE("\n");
         return FALSE;
     }
 
@@ -1175,7 +1188,7 @@ BOOL WINAPI ImmSetActiveContext(HWND hWnd, HIMC hIMC, BOOL fActive)
 
     if (!IS_IMM_MODE())
     {
-        WARN("\n");
+        TRACE("\n");
         return FALSE;
     }
 
@@ -1309,7 +1322,7 @@ BOOL WINAPI User32InitializeImmEntryTable(DWORD);
 BOOL
 WINAPI
 ImmDllInitialize(
-    _In_ HANDLE hDll,
+    _In_ HINSTANCE hDll,
     _In_ ULONG dwReason,
     _In_opt_ PVOID pReserved)
 {

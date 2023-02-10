@@ -91,6 +91,7 @@ DefWndHandleWindowPosChanging(PWND pWnd, WINDOWPOS* Pos)
     return 0;
 }
 
+/* Win: xxxHandleWindowPosChanged */
 LRESULT FASTCALL
 DefWndHandleWindowPosChanged(PWND pWnd, WINDOWPOS* Pos)
 {
@@ -120,6 +121,7 @@ DefWndHandleWindowPosChanged(PWND pWnd, WINDOWPOS* Pos)
 //
 // Handle a WM_SYSCOMMAND message. Called from DefWindowProc().
 //
+// Win: xxxSysCommand
 LRESULT FASTCALL
 DefWndHandleSysCommand(PWND pWnd, WPARAM wParam, LPARAM lParam)
 {
@@ -360,6 +362,7 @@ DefWndHandleSetCursor(PWND pWnd, WPARAM wParam, LPARAM lParam)
    return FALSE;
 }
 
+/* Win: xxxDWPPrint */
 VOID FASTCALL DefWndPrint( PWND pwnd, HDC hdc, ULONG uFlags)
 {
   /*
@@ -430,6 +433,7 @@ UserPaintCaption(PWND pWnd, INT Flags)
 }
 
 // WM_SETICON
+/* Win: xxxDWP_SetIcon */
 LRESULT FASTCALL
 DefWndSetIcon(PWND pWnd, WPARAM wParam, LPARAM lParam)
 {
@@ -468,6 +472,7 @@ DefWndSetIcon(PWND pWnd, WPARAM wParam, LPARAM lParam)
     return (LRESULT)hIconOld;
 }
 
+/* Win: DWP_GetIcon */
 LRESULT FASTCALL
 DefWndGetIcon(PWND pWnd, WPARAM wParam, LPARAM lParam)
 {
@@ -527,6 +532,7 @@ DefWndScreenshot(PWND pWnd)
 /*
    Win32k counterpart of User DefWindowProc
  */
+/* Win: xxxRealDefWindowProc */
 LRESULT FASTCALL
 IntDefWindowProc(
    PWND Wnd,
@@ -732,7 +738,7 @@ IntDefWindowProc(
       {
             if (Wnd->style & WS_CHILD)
             {
-                co_IntSendMessage(UserHMGetHandle(IntGetParent(Wnd)), Msg, wParam, lParam);
+                co_IntSendMessage(UserHMGetHandle(IntGetParent(Wnd)), Msg, (WPARAM)UserHMGetHandle(Wnd), lParam);
             }
             else
             {
@@ -807,7 +813,7 @@ IntDefWindowProc(
 
             if (topWnd && !IsTaskBar)  /* Second test is so we are not touching the Taskbar */
             {
-               if ((topWnd->style & WS_THICKFRAME) == 0)
+               if ((topWnd->style & WS_THICKFRAME) == 0 || !g_bWindowSnapEnabled)
                {
                   return 0;
                }
@@ -960,7 +966,7 @@ IntDefWindowProc(
                     if (hwndSwitch)
                     {
 #define ID_NEXTLAYOUT 10003
-                        UserPostMessage(hwndSwitch, WM_COMMAND, ID_NEXTLAYOUT, 0);
+                        UserPostMessage(hwndSwitch, WM_COMMAND, ID_NEXTLAYOUT, (LPARAM)UserHMGetHandle(Wnd));
                     }
                 }
             }

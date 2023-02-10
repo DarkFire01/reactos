@@ -24,7 +24,7 @@ list(APPEND SOURCE
     #ntgdi/NtGdiFlushUserBatch.c
     ntgdi/NtGdiGetBitmapBits.c
     ntgdi/NtGdiGetDIBits.c
-    ntgdi/NtGdiGetFontResourceInfoInternalW.c
+    #ntgdi/NtGdiGetFontResourceInfoInternalW.c
     ntgdi/NtGdiGetRandomRgn.c
     ntgdi/NtGdiGetStockObject.c
     ntgdi/NtGdiIntersectClipRect.c
@@ -52,6 +52,7 @@ list(APPEND SOURCE
 #    ntuser/NtUserEnumDisplayMonitors.c
     ntuser/NtUserEnumDisplaySettings.c
     ntuser/NtUserFindExistingCursorIcon.c
+    ntuser/NtUserGetAsyncKeyState.c
     ntuser/NtUserGetClassInfo.c
 #    ntuser/NtUserGetIconInfo.c
     ntuser/NtUserGetKeyboardLayoutName.c
