@@ -55,7 +55,11 @@ DefaultDestDir = 12
 %IntelE1000_108A.DeviceDesc% = E1000_Inst.ndi,PCI\VEN_8086&DEV_108A
 %IntelE1000_1099.DeviceDesc% = E1000_Inst.ndi,PCI\VEN_8086&DEV_1099
 %IntelE1000_10B5.DeviceDesc% = E1000_Inst.ndi,PCI\VEN_8086&DEV_10B5
-
+%IntelE1000E_109A.DeviceDesc% = E1000_Inst.ndi,PCI\VEN_8086&DEV_153A
+%IntelE1000E_10BF.DeviceDesc% = E1000_Inst.ndi,PCI\VEN_8086&DEV_155A
+%IntelE1000E_1521.DeviceDesc% = E1000_Inst.ndi,PCI\VEN_8086&DEV_1521
+%IntelE1000E_1533.DeviceDesc% = E1000_Inst.ndi,PCI\VEN_8086&DEV_1533
+%IntelE1000E_1539.DeviceDesc% = E1000_Inst.ndi,PCI\VEN_8086&DEV_1539
 ;----------------------------- E1000 DRIVER -----------------------------
 
 [E1000_Inst.ndi.NT]
@@ -122,6 +126,11 @@ IntelE1000_107C.DeviceDesc = "Intel 82541PI PCI Ethernet Adapter"
 IntelE1000_108A.DeviceDesc = "Intel 82546GB PCI-E Ethernet Adapter"
 IntelE1000_1099.DeviceDesc = "Intel 82546GB Quad Copper PCI Ethernet Adapter"
 IntelE1000_10B5.DeviceDesc = "Intel 82546GB Quad Copper KSP3 PCI-X Ethernet Adapter"
+IntelE1000E_109A.DeviceDesc = "Intel I217-LM Ethernet Adapter"
+IntelE1000E_10BF.DeviceDesc = "Intel I218-LM Ethernet Adapter"
+IntelE1000E_1521.DeviceDesc = "Intel I350 Gigabit Network Connection"
+IntelE1000E_1533.DeviceDesc = "Intel I210 Gigabit Network Connection"
+IntelE1000E_1539.DeviceDesc = "Intel I211 Gigabit Network Connection"
 
 [Strings.0415]
 IntelE1000_1000.DeviceDesc = "Karta Intel 82542-based PCI Ethernet Adapter"
