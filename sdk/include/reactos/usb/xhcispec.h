@@ -375,6 +375,7 @@ typedef struct _XHCI_DEVICE_CONTEXT
     };
 } XHCI_DEVICE_CONTEXT, *PXHCI_DEVICE_CONTEXT;
 
+
 typedef struct _XHCI_ENDPOINT
 {
     ULONG EndpointStatus;

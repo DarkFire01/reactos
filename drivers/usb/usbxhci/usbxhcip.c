@@ -255,11 +255,13 @@ XHCI_OpenControlEndpoint(IN PXHCI_EXTENSION XhciExtension,
                          IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
                          IN PXHCI_ENDPOINT  XhciEndpoint)
 {
-    #if 0
+    DPRINT1("XHCI_OpenControlEndpoint\n");
+
+    #if 1
  //   PEHCI_HCD_QH QH;
   // ULONG QhPA;
    PXHCI_HCD_TD TdVA;
-  ///  PEHCI_HCD_TD TD;
+    // PEHCI_HCD_TD TD;
    ULONG TdCount;
    ULONG ix;
 
@@ -366,7 +368,8 @@ XHCI_OpenControlEndpoint(IN PXHCI_EXTENSION XhciExtension,
     QH->sqh.HwQH.Token.Status &= (UCHAR)~EHCI_TOKEN_STATUS_ACTIVE;
     QH->sqh.HwQH.Token.TransferBytes = 0;
 #endif
-    return MP_STATUS_FAILURE;
+DPRINT1("Exiting open endpoint \n");
+    return MP_STATUS_SUCCESS;
 }
 
 MPSTATUS

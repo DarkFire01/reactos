@@ -1084,10 +1084,9 @@ USBPORT_OpenPipe(IN PDEVICE_OBJECT FdoDevice,
                     KeReleaseSpinLock(&Endpoint->EndpointSpinLock,
                                       Endpoint->EndpointOldIrql);
 
-                    if (State == USBPORT_ENDPOINT_ACTIVE)
-                    {
+
                         break;
-                    }
+
 
                     USBPORT_Wait(FdoDevice, 1); // 1 msec.
                 }

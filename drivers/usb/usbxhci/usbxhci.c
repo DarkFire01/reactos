@@ -46,12 +46,14 @@ XHCI_OpenEndpoint(IN PVOID xhciExtension,
             MPStatus = XHCI_OpenIsoEndpoint(XhciExtension,
                                             EndpointProperties,
                                             XhciEndpoint);
+            return MP_STATUS_SUCCESS;
             break;
 
         case USBPORT_TRANSFER_TYPE_CONTROL:
             MPStatus = XHCI_OpenControlEndpoint(XhciExtension,
                                                 EndpointProperties,
                                                 XhciEndpoint);
+            return MP_STATUS_SUCCESS;
             break;
 
         case USBPORT_TRANSFER_TYPE_BULK:
@@ -70,7 +72,7 @@ XHCI_OpenEndpoint(IN PVOID xhciExtension,
             break;
     }
 
-    return MPStatus;
+    return MP_STATUS_SUCCESS;
 }
 
 MPSTATUS
@@ -162,7 +164,7 @@ XHCI_ProcessEvent (IN PXHCI_EXTENSION XhciExtension)
 
     RunTimeRegisterBase = XhciExtension-> RunTimeRegisterBase;
     dequeue_pointer = HcResourcesVA-> EventRing.dequeue_pointer;
-
+    DPRINT1("XHCI_ProcessEvent  Function entry\n");
     while (TRUE)
     {
         eventTRB = (*dequeue_pointer).EventTRB;
@@ -653,12 +655,8 @@ XHCI_StartController(IN PVOID xhciExtension,
         return MPStatus;
     }
 
-    // starting the controller
-  //  Command.AsULONG = 0;
-  //  DPRINT1("Value of command is %X\n",Command.AsULONG);
+    Command.AsULONG = READ_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD);
     Command.RunStop = 1;
-   // Command.HCReset = 0;
-   // Command.InterrupterEnable     = 0;
    // Command.HostSystemErrorEnable = 0;
    // Command.RsvdP1                = 0;
    // Command.LightHCReset          = 0;
@@ -785,28 +783,16 @@ XHCI_InterruptService(IN PVOID xhciExtension)
     XHCI_INTERRUPTER_MANAGEMENT Iman;
     PXHCI_EXTENSION XhciExtension;
     PULONG  OperationalRegs;
-
     XHCI_USB_COMMAND Command;
+    XhciExtension = (PXHCI_EXTENSION)xhciExtension;
 
-        XhciExtension = (PXHCI_EXTENSION)xhciExtension;
-        OperationalRegs = XhciExtension->OperationalRegs;
-    RunTimeRegisterBase = XhciExtension->RunTimeRegisterBase; 
-    Command.RunStop = 1;
-    Command.HCReset = 0;
-    Command.InterrupterEnable     = 1;
-    Command.HostSystemErrorEnable = 0;
-    Command.RsvdP1                = 0;
-    Command.LightHCReset          = 0;
-    Command.ControllerSaveState   = 0;
-    Command.ControllerRestoreState = 0;
-    Command.EnableWrapEvent       = 0;
-    Command.EnableU3Stop          = 0;
-    Command.RsvdP2                = 0;
-    Command.CEMEnable             = 0;
-    Command.RsvdP3                = 0;
-    
+    OperationalRegs = XhciExtension->OperationalRegs;
+    RunTimeRegisterBase = XhciExtension->RunTimeRegisterBase;
+
+       Command.AsULONG = READ_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD);
+Command.InterrupterEnable     = 1;
     WRITE_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD, Command.AsULONG);
-    DPRINT1("XHCI_InterruptService: function initiated\n");
+
     Iman.AsULONG = READ_REGISTER_ULONG(RunTimeRegisterBase + XHCI_IMAN);
     if (Iman.InterruptPending == 0)
     {
@@ -815,7 +801,6 @@ XHCI_InterruptService(IN PVOID xhciExtension)
     Iman.InterruptPending = 1; 
     WRITE_REGISTER_ULONG(RunTimeRegisterBase + XHCI_IMAN, Iman.AsULONG);
     DPRINT1("XHCI_InterruptService: Succesful Interupt\n");
-    // changing the enque pointer
     return TRUE;
 }
 
@@ -837,6 +822,11 @@ XHCI_SubmitTransfer(IN PVOID xhciExtension,
                     IN PUSBPORT_SCATTER_GATHER_LIST  sgList)
 {
     DPRINT1("XHCI_SubmitTransfer: function initiated\n");
+    //PXHCI_EXTENSION XhciExtension = (PXHCI_EXTENSION)xhciExtension;
+    //PXHCI_ENDPOINT XhciEndpoint = xhciEndpoint;
+    //PXHCI_TRANSFER XhciTransfer = xhciTransfer;
+    __debugbreak();
+
     return MP_STATUS_SUCCESS;
 }
 
@@ -899,14 +889,8 @@ XHCI_SetEndpointState(IN PVOID xhciExtension,
     DPRINT1("XHCI_SetEndpointState: function initiated\n");
     PXHCI_ENDPOINT XhciEndpoint = xhciEndpoint;
     XhciEndpoint->EndpointState = EndpointState;
-}
-
-VOID
-NTAPI
-XHCI_PollEndpoint(IN PVOID xhciExtension,
-                  IN PVOID xhciEndpoint)
-{
-    DPRINT1("XHCI_PollEndpoint: function initiated\n");
+     XhciEndpoint->EndpointStatus  &= ~USBPORT_ENDPOINT_HALT;
+    __debugbreak();
 }
 
 VOID
@@ -915,13 +899,6 @@ XHCI_CheckController(IN PVOID xhciExtension)
 {
     DPRINT("XHCI_CheckController: function initiated\n");
     XHCI_ProcessEvent(xhciExtension);
-}
-
-ULONG
-NTAPI
-XHCI_Get32BitFrameNumber(IN PVOID xhciExtension)
-{
-    return 0;
 }
 
 VOID
@@ -947,6 +924,55 @@ XHCI_InterruptNextSOF(IN PVOID xhciExtension)
 
 
 }
+#define XHCI_HCD_TD_FLAG_DONE      0x08
+VOID
+NTAPI
+XHCI_PollActiveAsyncEndpoint(IN PXHCI_EXTENSION XhciExtension,
+                             IN PXHCI_ENDPOINT XhciEndpoint)
+{
+    PXHCI_HCD_TD TD;
+    PXHCI_HCD_TD CurrentTD;
+     PXHCI_TRANSFER XhciTransfer;
+     TD = XhciEndpoint->FirstTD;
+    CurrentTD = RegPacket.UsbPortGetMappedVirtualAddress(TD->PhysicalAddress,
+                                                         XhciExtension,
+                                                         XhciEndpoint);
+    DPRINT1("XHCI_PollActiveAsyncEndpoint: function initiated\n");
+    XhciTransfer =   CurrentTD->XhciTransfer;
+    InsertTailList(&XhciEndpoint->ListTDs, &CurrentTD->DoneLink);
+    CurrentTD->TdFlags |= XHCI_HCD_TD_FLAG_DONE;
+
+     RegPacket.UsbPortCompleteTransfer(XhciExtension,
+                                          XhciEndpoint,
+                                          XhciTransfer->TransferParameters,
+                                          XhciTransfer->USBDStatus,
+                                          XhciTransfer->TransferLen);
+    __debugbreak();
+}
+
+VOID
+NTAPI
+XHCI_PollEndpoint(IN PVOID xhciExtension,
+                  IN PVOID xhciEndpoint)
+{
+    PXHCI_EXTENSION XhciExtension = xhciExtension;
+    PXHCI_ENDPOINT XhciEndpoint = xhciEndpoint;
+    ULONG TransferType;
+
+    TransferType = XhciEndpoint->EndpointProperties.TransferType;
+
+    XHCI_PollActiveAsyncEndpoint(XhciExtension,
+                                 XhciEndpoint);
+}
+
+
+ULONG
+NTAPI
+XHCI_Get32BitFrameNumber(IN PVOID xhciExtension)
+{
+    return 0;
+}
+
 
 VOID
 NTAPI
@@ -1017,8 +1043,21 @@ NTAPI
 XHCI_GetEndpointStatus(IN PVOID xhciExtension,
                        IN PVOID xhciEndpoint)
 {
-    DPRINT1("XHCI_GetEndpointStatus: function initiated\n");
-    return 0;
+    DPRINT1("XHCI_GetEndpointStatus\n");
+    PXHCI_ENDPOINT XhciEndpoint;
+    ULONG TransferType;
+    ULONG EndpointStatus = USBPORT_ENDPOINT_RUN;
+
+    XhciEndpoint = xhciEndpoint;
+
+    DPRINT("XHCI_GetEndpointStatus: EhciEndpoint - %p\n", XhciEndpoint);
+
+    TransferType = XhciEndpoint->EndpointProperties.TransferType;
+
+    if (TransferType == USBPORT_TRANSFER_TYPE_ISOCHRONOUS)
+        return EndpointStatus;
+
+    return EndpointStatus;
 }
 
 VOID
@@ -1027,7 +1066,32 @@ XHCI_SetEndpointStatus(IN PVOID xhciExtension,
                        IN PVOID xhciEndpoint,
                        IN ULONG EndpointStatus)
 {
-    DPRINT1("XHCI_SetEndpointStatus: function initiated\n");
+        DPRINT1("XHCI_SetEndpointStatus\n");
+   PXHCI_ENDPOINT XhciEndpoint;
+    ULONG TransferType;
+    //PEHCI_HCD_QH QH;
+
+    XhciEndpoint = xhciEndpoint;
+
+    DPRINT("EHCI_SetEndpointStatus: EhciEndpoint - %p, EndpointStatus - %x\n",
+                XhciEndpoint,
+                EndpointStatus);
+
+    TransferType = XhciEndpoint->EndpointProperties.TransferType;
+
+    if (TransferType != USBPORT_TRANSFER_TYPE_ISOCHRONOUS)
+    {
+
+        if (EndpointStatus == USBPORT_ENDPOINT_RUN)
+        {
+            XhciEndpoint->EndpointStatus &= ~USBPORT_ENDPOINT_HALT;
+
+            return;
+        }
+
+        if (EndpointStatus == USBPORT_ENDPOINT_HALT)
+            DbgBreakPoint();
+    }
 }
 
 MPSTATUS
@@ -1122,7 +1186,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
     {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-    __debugbreak();
+
     RtlZeroMemory(&RegPacket, sizeof(USBPORT_REGISTRATION_PACKET));
     
     RegPacket.MiniPortVersion = USB_MINIPORT_VERSION_XHCI;
