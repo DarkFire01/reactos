@@ -6,7 +6,7 @@
  */
 
 #include "usbxhcip.h"
-#define NDEBUG
+//NDEBUG
 #include <debug.h>
 
 VOID

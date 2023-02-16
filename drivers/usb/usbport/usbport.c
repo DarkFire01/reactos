@@ -7,12 +7,12 @@
 
 #include "usbport.h"
 
-#define NDEBUG
+//NDEBUG
 #include <debug.h>
 
-#define NDEBUG_USBPORT_CORE
-#define NDEBUG_USBPORT_INTERRUPT
-#define NDEBUG_USBPORT_TIMER
+//NDEBUG_USBPORT_CORE
+//NDEBUG_USBPORT_INTERRUPT
+//NDEBUG_USBPORT_TIMER
 #include "usbdebug.h"
 
 LIST_ENTRY USBPORT_MiniPortDrivers = {NULL, NULL};

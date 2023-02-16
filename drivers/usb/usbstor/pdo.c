@@ -11,7 +11,7 @@
 
 #include "usbstor.h"
 
-#define NDEBUG
+//NDEBUG
 #include <debug.h>
 
 
@@ -595,7 +595,7 @@ USBSTOR_PdoHandlePnp(
             {
                 Status = Irp->IoStatus.Status;
                 ASSERT(Status == STATUS_SUCCESS);
-                
+
                 if (NT_SUCCESS(Status))
                 {
                     // check if no unique id

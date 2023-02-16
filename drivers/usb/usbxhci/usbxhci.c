@@ -5,9 +5,9 @@
  * PROGRAMMER:      Rama Teja Gampa <ramateja.g@gmail.com>
 */
 #include "usbxhcip.h"
-#define NDEBUG
+//NDEBUG
 #include <debug.h>
-#define NDEBUG_XHCI_TRACE
+//NDEBUG_XHCI_TRACE
 #include "dbg_xhci.h"
 
 /* Globals ****************************************************************************************/
@@ -925,6 +925,7 @@ XHCI_InterruptNextSOF(IN PVOID xhciExtension)
 
 }
 #define XHCI_HCD_TD_FLAG_DONE      0x08
+    XHCI_TRB Trb;
 VOID
 NTAPI
 XHCI_PollActiveAsyncEndpoint(IN PXHCI_EXTENSION XhciExtension,
@@ -933,20 +934,65 @@ XHCI_PollActiveAsyncEndpoint(IN PXHCI_EXTENSION XhciExtension,
     PXHCI_HCD_TD TD;
     PXHCI_HCD_TD CurrentTD;
      PXHCI_TRANSFER XhciTransfer;
+    PULONG DoorBellRegisterBase;
+    XHCI_DOORBELL Doorbell_0;
+    LARGE_INTEGER CurrentTime = {{0, 0}};
+    LARGE_INTEGER LastTime = {{0, 0}};
+        XHCI_USB_STATUS Status;
+
      TD = XhciEndpoint->FirstTD;
     CurrentTD = RegPacket.UsbPortGetMappedVirtualAddress(TD->PhysicalAddress,
                                                          XhciExtension,
                                                          XhciEndpoint);
-    DPRINT1("XHCI_PollActiveAsyncEndpoint: function initiated\n");
-    XhciTransfer =   CurrentTD->XhciTransfer;
-    InsertTailList(&XhciEndpoint->ListTDs, &CurrentTD->DoneLink);
-    CurrentTD->TdFlags |= XHCI_HCD_TD_FLAG_DONE;
+    Trb.ControlTRB.SetupTRB.InterruptOnCompletion = 0;
+    Trb.ControlTRB.SetupTRB.CycleBit = 1;
 
+    XHCI_SendCommand(Trb,XhciExtension);
+    XHCI_ProcessEvent(XhciExtension);
+
+
+
+    XhciExtension->HcResourcesVA->TransferRing.firstSeg.XhciTrb[0] = Trb;
+
+
+    DoorBellRegisterBase = XhciExtension->DoorBellRegisterBase;
+    Doorbell_0.DoorBellTarget = 0;
+    Doorbell_0.RsvdZ = 0;
+    Doorbell_0.AsULONG = 0;
+    WRITE_REGISTER_ULONG(DoorBellRegisterBase, Doorbell_0.AsULONG);
+    // wait for some time.
+    KeQuerySystemTime(&CurrentTime);
+    CurrentTime.QuadPart += 100 * 100; // 100 msec
+    while(TRUE)
+    {
+        KeQuerySystemTime(&LastTime);
+        if (LastTime.QuadPart >= CurrentTime.QuadPart)
+        {
+            break;
+        }
+    }
+
+        // status check code
+    Status.AsULONG = READ_REGISTER_ULONG(XhciExtension->OperationalRegs + XHCI_USBSTS);
+    DPRINT1("PXHCI_ControllerWorkTest: Status HCHalted    - %p\n", Status.HCHalted);
+    DPRINT1("PXHCI_ControllerWorkTest: Status HostSystemError    - %p\n", Status.HostSystemError);
+    DPRINT1("PXHCI_ControllerWorkTest: Status EventInterrupt    - %p\n", Status.EventInterrupt);
+    DPRINT1("PXHCI_ControllerWorkTest: Status PortChangeDetect    - %p\n", Status.PortChangeDetect);
+    DPRINT1("PXHCI_ControllerWorkTest: Status ControllerNotReady    - %p\n", Status.ControllerNotReady);
+    DPRINT1("PXHCI_ControllerWorkTest: Status HCError    - %p\n", Status.HCError);
+    DPRINT1("PXHCI_ControllerWorkTest: Status     - %p\n", Status.AsULONG);
+    DPRINT1("XHCI_PollActiveAsyncEndpoint: function initiated\n");
+    DPRINT1("Test %X",  Trb.ControlTRB.SetupTRB.wIndex);
+    XhciTransfer =   CurrentTD->XhciTransfer;
+ //   InsertTailList(&XhciEndpoint->ListTDs, &CurrentTD->DoneLink);
+    CurrentTD->TdFlags |= XHCI_HCD_TD_FLAG_DONE;
+#if 0
      RegPacket.UsbPortCompleteTransfer(XhciExtension,
                                           XhciEndpoint,
                                           XhciTransfer->TransferParameters,
                                           XhciTransfer->USBDStatus,
                                           XhciTransfer->TransferLen);
+#endif
     __debugbreak();
 }
 

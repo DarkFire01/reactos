@@ -7,7 +7,7 @@
 
 #include "usbohci.h"
 
-#define NDEBUG
+//NDEBUG
 #include <debug.h>
 
 OHCI_REG_RH_DESCRIPTORA

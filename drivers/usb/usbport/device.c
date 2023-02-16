@@ -7,7 +7,7 @@
 
 #include "usbport.h"
 
-//#define NDEBUG
+////NDEBUG
 #include <debug.h>
 
 NTSTATUS
@@ -34,7 +34,6 @@ USBPORT_SendSetupPacket(IN PUSBPORT_DEVICE_HANDLE DeviceHandle,
            Length,
            TransferedLen,
            pUSBDStatus);
-    __debugbreak();
     KeInitializeEvent(&Event, NotificationEvent, FALSE);
 
     Urb = ExAllocatePoolWithTag(NonPagedPool,

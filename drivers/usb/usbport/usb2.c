@@ -7,7 +7,7 @@
 
 #include "usbport.h"
 
-#define NDEBUG
+//NDEBUG
 #include <debug.h>
 
 static const UCHAR CMASKS[USB2_MICROFRAMES] = {

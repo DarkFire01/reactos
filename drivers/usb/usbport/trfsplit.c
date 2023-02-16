@@ -7,7 +7,7 @@
 
 #include "usbport.h"
 
-#define NDEBUG
+//NDEBUG
 #include <debug.h>
 
 ULONG

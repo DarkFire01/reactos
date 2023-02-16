@@ -7,11 +7,11 @@
 
 #include "usbhub.h"
 
-#define NDEBUG
+//NDEBUG
 #include <debug.h>
 
-#define NDEBUG_USBHUB_PNP
-#define NDEBUG_USBHUB_ENUM
+//NDEBUG_USBHUB_PNP
+//NDEBUG_USBHUB_ENUM
 #include "dbg_uhub.h"
 
 NTSTATUS

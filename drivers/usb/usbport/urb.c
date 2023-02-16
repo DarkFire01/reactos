@@ -7,10 +7,10 @@
 
 #include "usbport.h"
 
-#define NDEBUG
+//NDEBUG
 #include <debug.h>
 
-#define NDEBUG_USBPORT_URB
+//NDEBUG_USBPORT_URB
 #include "usbdebug.h"
 
 NTSTATUS

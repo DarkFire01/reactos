@@ -7,10 +7,10 @@
 
 #include "usbport.h"
 
-#define NDEBUG
+//NDEBUG
 #include <debug.h>
 
-#define NDEBUG_USBPORT_CORE
+//NDEBUG_USBPORT_CORE
 #include "usbdebug.h"
 
 ULONG
@@ -1613,8 +1613,7 @@ USBPORT_DmaEndpointWorker(IN PUSBPORT_ENDPOINT Endpoint)
     else
     {
 #ifndef NDEBUG_USBPORT_CORE
-        DPRINT1("USBPORT_DmaEndpointWorker: DbgBreakPoint. EndpointState - %x\n",
-                EndpointState);
+
         DbgBreakPoint();
 #endif
         EndpointState = USBPORT_ENDPOINT_UNKNOWN;

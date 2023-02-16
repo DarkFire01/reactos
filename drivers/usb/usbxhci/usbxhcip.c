@@ -7,9 +7,9 @@
 
 #include "usbxhcip.h"
 #include "hardware.h"
-#define NDEBUG
+//NDEBUG
 #include <debug.h>
-#define NDEBUG_XHCI_TRACE
+//NDEBUG_XHCI_TRACE
 #include "dbg_xhci.h"
 
 VOID
@@ -60,9 +60,9 @@ PXHCI_PortStatusChange(IN PXHCI_EXTENSION XhciExtension, IN ULONG PortID)
     }
     else
     {
-        /* Detached: 
-         *    - CCS -> 0 
-         *    - CSC -> 1 
+        /* Detached:
+         *    - CCS -> 0
+         *    - CSC -> 1
          */
         DPRINT1("PXHCI_PortStatusChange: USB device has been removed from port: %X\n", PortID);
         /* Run de-escalation code */
@@ -237,7 +237,7 @@ PXHCI_InitTransferControl(PXHCI_EXTENSION XhciExtension)
 {
     __debugbreak();
     return MP_STATUS_FAILURE;
-} 
+}
 
 MPSTATUS
 NTAPI
