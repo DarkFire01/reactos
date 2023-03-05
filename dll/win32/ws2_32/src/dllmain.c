@@ -16,6 +16,9 @@
 
 #include <ws2_32.h>
 
+#define NDEBUG
+#include <debug.h>
+
 /* DATA **********************************************************************/
 
 HANDLE WsSockHeap;
@@ -136,7 +139,7 @@ inet_ntop(INT Family,
           PSTR pStringBuf,
           size_t StringBufSize)
 {
-   // UNIMPLEMENTED;
+    UNIMPLEMENTED;
     return NULL;
 }
 
@@ -176,6 +179,35 @@ InetPtonW(INT Family,
           PCWSTR pszAddrString,
           PVOID pAddrBuf)
 {
-    //UNIMPLEMENTED;
+    UNIMPLEMENTED;
     return 1;
+}
+
+/*
+ * @unimplemented
+ */
+int
+WSAAPI
+WSAPoll(PVOID fdArray, // LPWSAPOLLFD
+        ULONG fds,
+        INT timeout)
+{
+    UNIMPLEMENTED;
+    return 0;
+}
+
+/*
+ * @unimplemented
+ */
+int
+WSAAPI
+WSCGetProviderInfo(LPGUID lpProviderId,
+                   PVOID InfoType, // WSC_PROVIDER_INFO_TYPE
+                   PBYTE Info,
+                   size_t *InfoSize,
+                   DWORD Flags,
+                   LPINT lpErrno)
+{
+    UNIMPLEMENTED;
+    return ERROR_SUCCESS;
 }
