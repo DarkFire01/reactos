@@ -40,3 +40,6 @@ UefiHandleService(EFI_STATUS Status);
 
 VOID
 ArchSpecificExitUefi();
+
+VOID
+UefiPrintFramebufferData();

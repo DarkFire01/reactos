@@ -482,6 +482,17 @@ typedef struct _FIRMWARE_INFORMATION_LOADER_BLOCK
     } u;
 } FIRMWARE_INFORMATION_LOADER_BLOCK, *PFIRMWARE_INFORMATION_LOADER_BLOCK;
 
+typedef struct _REACTOS_BGCONTEXT
+{
+    ULONG_PTR    BaseAddress;
+    ULONG        BufferSize;
+    UINT32       ScreenWidth;
+    UINT32       ScreenHeight;
+    UINT32       PixelsPerScanLine;
+    UINT32       PixelFormat;
+} REACTOS_BGCONTEXT, *PREACTOS_BGCONTEXT;
+
+
 //
 // Loader Parameter Block
 //
@@ -519,6 +530,7 @@ typedef struct _LOADER_PARAMETER_BLOCK
         ARM_LOADER_BLOCK Arm;
     } u;
     FIRMWARE_INFORMATION_LOADER_BLOCK FirmwareInformation;
+    REACTOS_BGCONTEXT BgContext;
 } LOADER_PARAMETER_BLOCK, *PLOADER_PARAMETER_BLOCK;
 
 typedef int CONFIGTYPE;

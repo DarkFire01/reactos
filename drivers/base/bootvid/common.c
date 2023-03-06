@@ -541,3 +541,10 @@ VidBitBlt(
         }
     }
 }
+#include <arc/arc.h>
+VOID
+NTAPI
+VidSetupUefi(PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+
+}

@@ -1,0 +1,62 @@
+; GenericFramebuffer.inf
+;
+; Installation file for the intel HD 4000 display adapter
+;
+[Version]
+Signature  = "$Windows NT$"
+LayoutFile = layout.inf
+Class      = Display
+ClassGUID  = {4D36E968-E325-11CE-BFC1-08002BE10318}
+Provider   = %ReactOS%
+DriverVer  = 2/1/2023,1.00
+
+[DestinationDirs]
+DefaultDestDir = 12
+GenericFramebuffer.Display_CopyFiles = 11
+
+[Manufacturer]
+%GenericFramebuffer% = GenericFramebuffer
+
+[GenericFramebuffer] ;You gotta replace this with your GPU you're targetting
+%GenericFramebuffer.DeviceDesc% = GenericFramebuffer,PCI\VEN_80EE&DEV_BEEF
+
+;---------------------------- GenericFramebuffer DRIVER ----------------------------
+
+[GenericFramebuffer]
+CopyFiles = GenericFramebuffer.Miniport_CopyFiles, GenericFramebuffer.Display_CopyFiles
+
+[GenericFramebuffer.Miniport_CopyFiles]
+GenericFramebuffer.sys
+
+[GenericFramebuffer.Display_CopyFiles]
+framebuf.dll
+
+[GenericFramebuffer.SoftwareSettings]
+AddReg = GenericFramebuffer_SoftwareSettings
+
+[GenericFramebuffer_SoftwareSettings]
+HKR,, InstalledDisplayDrivers, %REG_MULTI_SZ%, framebuf
+HKR,, VgaCompatible,           %REG_DWORD%,    0
+
+[GenericFramebuffer.Services]
+AddService = GenericFramebuffer, 0x00000002, GenericFramebuffer_Service
+
+[GenericFramebuffer_Service]
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 0
+ServiceBinary = %12%\GenericFramebuffer.sys
+LoadOrderGroup = Video
+
+;-------------------------------- STRINGS -------------------------------
+
+[Strings]
+; Non-localizable
+ReactOS = "ReactOS Project"
+GenericFramebuffer = "GenericFramebuffer"
+
+REG_MULTI_SZ   = 0x00010000
+REG_DWORD      = 0x00010001
+
+; Localizable
+GenericFramebuffer.DeviceDesc = "Generic Framebuffer Miniport Adapter"
