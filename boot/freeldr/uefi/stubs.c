@@ -85,5 +85,23 @@ UefiGetExtendedBIOSData(PULONG ExtendedBIOSDataArea,
 PCONFIGURATION_COMPONENT_DATA
 UefiHwDetect(VOID)
 {
-    return 0;
+    PCONFIGURATION_COMPONENT_DATA SystemKey;
+  //ULONG BusNumber = 0;
+
+    /* Create the 'System' key */
+    FldrCreateSystemKey(&SystemKey);
+    // TODO: Discover and set the other machine types
+    FldrSetIdentifier(SystemKey, "AT/AT COMPATIBLE");
+#if 0
+    /* Detect buses */
+    DetectPciBios(SystemKey, &BusNumber);
+    DetectApmBios(SystemKey, &BusNumber);
+    DetectPnpBios(SystemKey, &BusNumber);
+    DetectIsaBios(SystemKey, &BusNumber); // TODO: Detect first EISA or MCA, before ISA
+    DetectAcpiBios(SystemKey, &BusNumber);
+#endif
+    // TODO: Collect the ROM blocks from 0xC0000 to 0xF0000 and append their
+    // CM_ROM_BLOCK data into the 'System' key's configuration data.
+
+    return SystemKey;
 }

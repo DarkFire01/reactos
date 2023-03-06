@@ -192,7 +192,7 @@ UefiGetBootPartitionEntry(
         BootPartition = 0;
         return TRUE;
     }
-
+extern EFI_HANDLE PublicBootHandle;
 static const CHAR Hex[] = "0123456789abcdef";
 static CHAR PcDiskIdentifier[32][20];
 VOID
@@ -207,7 +207,7 @@ UefiSetupBlockDevices()
     ULONG Signature;
     CHAR ArcName[MAX_PATH];
     PCHAR Identifier = PcDiskIdentifier[0];
-
+    ULONG OffsetToBoot = 0;
     GlobalSystemTable->BootServices->LocateHandle(ByProtocol, &bioGuid, NULL, &handle_size, handles);
     handles = MmAllocateMemoryWithType((handle_size + EFI_PAGE_SIZE - 1 )/ EFI_PAGE_SIZE, LoaderFirmwareTemporary);
     GlobalSystemTable->BootServices->LocateHandle(ByProtocol, &bioGuid, NULL, &handle_size, handles);
@@ -221,9 +221,28 @@ UefiSetupBlockDevices()
         else{
             TRACE("Sucess!, Block size: %d\r\n", bio->Media->BlockSize);
         }
-            status = GlobalSystemTable->BootServices->HandleProtocol(handles[0], &bioGuid, (void **) &bio);
-    }
 
+        if (handles[i] == PublicBootHandle)
+        {
+            OffsetToBoot = i;
+        }
+    }
+        ULONG RootHande = 0;
+    status = GlobalSystemTable->BootServices->HandleProtocol(PublicBootHandle, &bioGuid, (void **) &bio);
+    if (bio->Media->LogicalPartition == FALSE)
+    {
+        ULONG Count = 0;
+
+        do
+        {
+            RootHande = (OffsetToBoot - Count);
+            status = GlobalSystemTable->BootServices->HandleProtocol(handles[RootHande], &bioGuid, (void **) &bio);
+            handles[RootHande];
+            Count += 1;
+            /* code */
+        } while (bio->Media->LogicalPartition == FALSE);
+         status = GlobalSystemTable->BootServices->HandleProtocol(handles[RootHande], &bioGuid, (void **) &bio);
+    }
 
     /* Read the MBR */
     if (!MachDiskReadLogicalSectors(0, 0ULL, 1, DiskReadBuffer))

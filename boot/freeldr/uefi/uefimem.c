@@ -30,6 +30,8 @@ extern EFI_HANDLE GlobalImageHandle;
 extern REACTOS_INTERNAL_BGCONTEXT framebufferData;
 
 UINT32 FreeldrDescCount;
+PVOID ImageBaseAddress;
+SIZE_T ImageInBytes;
 
 EFI_MEMORY_DESCRIPTOR* EfiMemoryMap = NULL;
 
@@ -165,10 +167,11 @@ UefiConvertToFreeldrDesc(EFI_MEMORY_TYPE EfiMemoryType)
     }
     return LoaderFirmwarePermanent;
 }
-
+EFI_HANDLE PublicBootHandle;
 PFREELDR_MEMORY_DESCRIPTOR
 UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 {
+    EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
     UINT32 DescriptorVersion;
     SIZE_T FreeldrMemMapSize;
     UINTN DescriptorSize;
@@ -177,11 +180,22 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
     UINTN MapKey;
     UINT32 Index;
 
+    EFI_GUID EfiLoadedImageProtocol = EFI_LOADED_IMAGE_PROTOCOL_GUID;
     PFREELDR_MEMORY_DESCRIPTOR FreeldrMem = NULL;
     EFI_MEMORY_DESCRIPTOR* MapEntry = NULL;
     UINT32 EntryCount = 0;
     FreeldrDescCount = 0;
 
+    Status = GlobalSystemTable->BootServices->HandleProtocol(GlobalImageHandle,
+                                                             &EfiLoadedImageProtocol,
+                                                             (VOID**)&LoadedImage);
+    if (UefiHandleService(Status) != EFI_SUCCESS)
+    {
+        UiMessageBoxCritical("Unable to initialize memory manager.");
+    }
+    ImageBaseAddress = LoadedImage->ImageBase;
+    ImageInBytes = LoadedImage->ImageSize;
+    PublicBootHandle = LoadedImage->DeviceHandle;
     TRACE("UefiMemGetMemoryMap: Gather memory map\n");
     PUEFI_LoadMemoryMap(&MapKey,
                         &MapSize,
@@ -235,7 +249,36 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 }
 
 VOID
+UefiExitBootServices()
+{
+    UINTN MapKey;
+    UINTN MapSize;
+    UINTN DescriptorSize;
+    UINT32 DescriptorVersion;
+
+    EFI_STATUS Status = 0;
+    printf("UefiPrepareForReactOS: Attempting to exit bootservices..\n");
+    PUEFI_LoadMemoryMap(&MapKey,
+                        &MapSize,
+                        &DescriptorSize,
+                        &DescriptorVersion);
+
+    Status = GlobalSystemTable->BootServices->ExitBootServices(GlobalImageHandle,MapKey);
+    /* UEFI spec demands twice! */
+	if (UefiHandleService(Status) != EFI_SUCCESS)
+	{
+		Status = GlobalSystemTable->BootServices->ExitBootServices(GlobalImageHandle,MapKey);
+	}
+    UefiHandleService(Status);
+}
+PVOID NewStack;
+PVOID EndOfStack;
+VOID
 UefiPrepareForReactOS(VOID)
 {
-
+    UefiExitBootServices();
+    NewStack = MmAllocateMemoryWithType(0x1000, LoaderOsloaderStack);
+    EndOfStack = (PVOID)((ULONG_PTR)NewStack + 0x1000);
+    ArchSpecificExitUefi();
+    printf("UefiPrepareForReactOS: exited bootservices.\n");
 }

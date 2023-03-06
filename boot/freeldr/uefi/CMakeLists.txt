@@ -50,7 +50,8 @@ list(APPEND FREELDR_ARC_SOURCE
     ../freeldr/arch/archwsup.c
     ../freeldr/disk/disk.c
     ../freeldr/disk/partition.c
-    ../freeldr/disk/ramdisk.c)
+    ../freeldr/disk/ramdisk.c
+    ../freeldr/lib/fs/pxe.c)
 
 list(APPEND FREELDR_BOOTMGR_SOURCE
     ../freeldr/include/freeldr.h
@@ -69,7 +70,6 @@ list(APPEND FREELDR_BOOTMGR_SOURCE
     ../freeldr/ui/video.c)
 
 list(APPEND FREELDR_ARC_SOURCE
-    ../freeldr/lib/fs/pxe.c
     stubs.c
     ueficon.c
     uefisetup.c
@@ -82,11 +82,14 @@ list(APPEND FREELDR_BASE_ASM_SOURCE)
 
 if(ARCH STREQUAL "i386")
     list(APPEND FREELDR_BOOTMGR_SOURCE
-        ../freeldr/arch/i386/i386bug.c)
+        arch/i386/arch.c
+        ../freeldr/arch/i386/i386bug.c
+        ../freeldr/arch/i386/i386idt.c)
     list(APPEND FREELDR_BASE_ASM_SOURCE
         ../freeldr/arch/i386/multiboot.S)
 
     list(APPEND FREELDR_COMMON_ASM_SOURCE
+        arch/i386/misc.S
         ../freeldr/arch/i386/drvmap.S
         ../freeldr/arch/i386/int386.S
         ../freeldr/arch/i386/pnpbios.S
@@ -98,6 +101,7 @@ if(ARCH STREQUAL "i386")
         ../freeldr/ntldr/headless.c)
 elseif(ARCH STREQUAL "amd64")
     list(APPEND FREELDR_BOOTMGR_SOURCE
+        arch/amd64/arch.c
         ../freeldr/arch/i386/i386bug.c)
     list(APPEND FREELDR_COMMON_ASM_SOURCE
         arch/amd64/misc.S

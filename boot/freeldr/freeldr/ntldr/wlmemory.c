@@ -176,7 +176,10 @@ MempSetupPagingForRegion(
 #ifdef _M_ARM
 #define PKTSS PVOID
 #endif
-
+#ifdef UEFIBOOT
+extern PVOID ImageBaseAddress;
+extern SIZE_T ImageInBytes;
+#endif
 BOOLEAN
 WinLdrSetupMemoryLayout(IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
@@ -329,14 +332,10 @@ WinLdrSetupMemoryLayout(IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock)
     TRACE("MadCount: %d\n", MadCount);
 
     WinLdrpDumpMemoryDescriptors(LoaderBlock); //FIXME: Delete!
-
+#ifdef UEFIBOOT
     // Map our loader image, so we can continue running
-    /*Status = MempSetupPaging(OsLoaderBase >> MM_PAGE_SHIFT, OsLoaderSize >> MM_PAGE_SHIFT);
-    if (!Status)
-    {
-        UiMessageBox("Error during MempSetupPaging.");
-        return;
-    }*/
+    MempSetupPaging((ULONG_PTR)ImageBaseAddress >> MM_PAGE_SHIFT, ImageInBytes >> MM_PAGE_SHIFT, FALSE);
+#endif
 
     // Fill the memory descriptor list and
     //PrepareMemoryDescriptorList();

@@ -1145,7 +1145,10 @@ LoadAndBootWindows(
                                     BootOptions,
                                     BootPath);
 }
-
+#ifdef UEFIBOOT
+extern PVOID EndOfStack;
+ULONG_PTR NewEndOfStack;
+#endif
 ARC_STATUS
 LoadAndBootWindowsCommon(
     IN USHORT OperatingSystemVersion,
@@ -1228,6 +1231,14 @@ LoadAndBootWindowsCommon(
 
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
+#ifdef UEFIBOOT
+#if 0
+   __asm{
+        mov esp, EndOfStack
+    };
+#endif
+    asm("movl $0x4000, %esp");
+#endif
 
     /* Debugging... */
     //DumpMemoryAllocMap();
