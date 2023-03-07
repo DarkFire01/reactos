@@ -197,7 +197,7 @@ typedef signed char         CHAR8;
 typedef signed char         INT8;
 #endif
 
-#ifdef WIN64
+#ifdef _M_AMD64
 //
 /// Unsigned value of native width.
 ///

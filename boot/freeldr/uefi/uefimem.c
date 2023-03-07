@@ -29,20 +29,20 @@ extern EFI_SYSTEM_TABLE * GlobalSystemTable;
 extern EFI_HANDLE GlobalImageHandle;
 extern REACTOS_INTERNAL_BGCONTEXT framebufferData;
 
+EFI_MEMORY_DESCRIPTOR* EfiMemoryMap = NULL;
 UINT32 FreeldrDescCount;
 PVOID ImageBaseAddress;
 SIZE_T ImageInBytes;
 
-EFI_MEMORY_DESCRIPTOR* EfiMemoryMap = NULL;
-
 /**** Private Functions **************************************************************************/
 VOID
-PUEFI_LoadMemoryMap(UINTN* LocMapKey,
-                    UINTN* LocMapSize,
-                    UINTN* LocDescriptorSize,
+PUEFI_LoadMemoryMap(UINTN*  LocMapKey,
+                    UINTN*  LocMapSize,
+                    UINTN*  LocDescriptorSize,
                     UINT32* LocDescriptorVersion)
 {
     EFI_STATUS Status;
+    ULONG Count = 0;
     Status = GlobalSystemTable->BootServices->GetMemoryMap(LocMapSize,
                                                            EfiMemoryMap,
                                                            LocMapKey,
@@ -51,20 +51,21 @@ PUEFI_LoadMemoryMap(UINTN* LocMapKey,
 
     /* Reallocate and retrieve again the needed memory map size (since memory
      * allocated by AllocatePool() counts in the map), until it's OK. */
-    do
+    while (Status != EFI_SUCCESS)
     {
+        Count += 1;
+
         /* Reallocate the memory map buffer */
         if (EfiMemoryMap)
             GlobalSystemTable->BootServices->FreePool(EfiMemoryMap);
 
-        GlobalSystemTable->BootServices->AllocatePool(EfiLoaderData, *LocMapSize, (VOID**)&EfiMemoryMap);
+        GlobalSystemTable->BootServices->AllocatePool(EfiLoaderData, ((*LocMapSize) * Count), (VOID**)&EfiMemoryMap);
         Status = GlobalSystemTable->BootServices->GetMemoryMap(LocMapSize,
                                                                EfiMemoryMap,
                                                                LocMapKey,
                                                                LocDescriptorSize,
                                                                LocDescriptorVersion);
-    } while (Status == EFI_BUFFER_TOO_SMALL);
-
+    }
 }
 
 VOID
@@ -81,7 +82,7 @@ UefiSetMemory(
 
     /* Add the memory descriptor */
     FreeldrDescCount = AddMemoryDescriptor(MemoryMap,
-                                           FreeldrDescCount + 1,
+                                           10000,
                                            BasePage,
                                            PageCount,
                                            MemoryType);
@@ -125,7 +126,7 @@ ReserveMemory(
 
     /* Add the memory descriptor */
     FreeldrDescCount = AddMemoryDescriptor(MemoryMap,
-                                           FreeldrDescCount + 1,
+                                            1000,
                                            BasePage,
                                            PageCount,
                                            MemoryType);
@@ -196,6 +197,9 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
     ImageBaseAddress = LoadedImage->ImageBase;
     ImageInBytes = LoadedImage->ImageSize;
     PublicBootHandle = LoadedImage->DeviceHandle;
+    EfiMemoryMap = NULL;
+
+
     TRACE("UefiMemGetMemoryMap: Gather memory map\n");
     PUEFI_LoadMemoryMap(&MapKey,
                         &MapSize,
@@ -243,8 +247,8 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
         MapEntry = NEXT_MEMORY_DESCRIPTOR(MapEntry, DescriptorSize);
     }
 
-  ReserveMemory(FreeldrMem, 0x1000, 0x1000, LoaderOsloaderStack, "Stack Space");
-    ReserveMemory(FreeldrMem, framebufferData.BaseAddress, framebufferData.BufferSize, LoaderFirmwarePermanent, "VideoMemory");
+   // ReserveMemory(FreeldrMem, 0x1000, 0x1000, LoaderOsloaderStack, "Stack Space");
+    ReserveMemory(FreeldrMem, framebufferData.BaseAddress, framebufferData.BufferSize, LoaderFirmwarePermanent, "Video Memory");
     *MemoryMapSize = FreeldrDescCount;
     return FreeldrMem;
 }
@@ -277,17 +281,6 @@ PVOID EndOfStack;
 VOID
 UefiPrepareForReactOS(VOID)
 {
-    #if defined(__GNUC__) || defined(__clang__)
-        asm("movl $0x2000, %esp");
-    #elif defined(_MSC_VER)
-        /* We cannot express the above in MASM so we use this far return instead */
-        __asm
-        {
-            mov esp, 0x2000
-        };
-    #else
-    #error
-    #endif
     UefiExitBootServices();
     NewStack = MmAllocateMemoryWithType(0x1000, LoaderOsloaderStack);
     EndOfStack = (PVOID)((ULONG_PTR)NewStack + 0x1000);

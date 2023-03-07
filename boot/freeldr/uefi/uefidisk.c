@@ -244,7 +244,7 @@ UefiSetupBlockDevices()
          status = GlobalSystemTable->BootServices->HandleProtocol(handles[RootHande], &bioGuid, (void **) &bio);
     }
 
- status = GlobalSystemTable->BootServices->HandleProtocol(PublicBootHandle, &bioGuid, (void **) &bio);
+ status = GlobalSystemTable->BootServices->HandleProtocol(handles[RootHande], &bioGuid, (void **) &bio);
     /* Read the MBR */
     if (!MachDiskReadLogicalSectors(0, 0ULL, 1, DiskReadBuffer))
     {

@@ -7,6 +7,10 @@ PUBLIC _i386idtptr
 EXTERN _i386Idt:DWORD
 
 .code32
+
+PUBLIC __ChangeStack
+__ChangeStack:
+
 // void __reloadsegment(VOID)
 PUBLIC __reloadsegment
 __reloadsegment:

@@ -38,7 +38,7 @@ HKR, , Installer32,     0, "desk.cpl,DisplayClassInstaller"
 CopyFiles = VGA.Miniport_CopyFiles.NT, VGA.Display_CopyFiles.NT
 
 [VGA.Miniport_CopyFiles.NT]
-vgapnp.sys
+GenericFramebuffer.sys
 
 [VGA.Display_CopyFiles.NT]
 vgaddi.dll
@@ -52,7 +52,7 @@ AddService = vga, 0x00000003, VBE_Service_Inst ; SPSVCINST_TAGTOFRONT + SPSVCINS
 ServiceType   = 1
 StartType     = 1
 ErrorControl  = 0
-ServiceBinary = %12%\vgapnp.sys
+ServiceBinary = %12%\GenericFramebuffer.sys
 LoadOrderGroup = Video Save
 
 ;-------------------------------- STRINGS -------------------------------

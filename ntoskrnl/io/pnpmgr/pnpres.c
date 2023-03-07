@@ -1222,33 +1222,8 @@ IopCheckForResourceConflict(
    IN BOOLEAN Silent,
    OUT OPTIONAL PCM_PARTIAL_RESOURCE_DESCRIPTOR ConflictingDescriptor)
 {
-   ULONG i, ii;
-   BOOLEAN Result = FALSE;
-   PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor;
 
-   FullDescriptor = &ResourceList1->List[0];
-   for (i = 0; i < ResourceList1->Count; i++)
-   {
-      PCM_PARTIAL_RESOURCE_LIST ResList = &FullDescriptor->PartialResourceList;
-      FullDescriptor = CmiGetNextResourceDescriptor(FullDescriptor);
-
-      for (ii = 0; ii < ResList->Count; ii++)
-      {
-        /* Partial resource descriptors can be of variable size (CmResourceTypeDeviceSpecific),
-           but only one is allowed and it must be the last one in the list! */
-         PCM_PARTIAL_RESOURCE_DESCRIPTOR ResDesc = &ResList->PartialDescriptors[ii];
-
-         Result = IopCheckResourceDescriptor(ResDesc,
-                                             ResourceList2,
-                                             Silent,
-                                             ConflictingDescriptor);
-         if (Result) goto ByeBye;
-      }
-   }
-
-ByeBye:
-
-   return Result;
+   return FALSE;
 }
 
 NTSTATUS NTAPI

@@ -1,62 +1,62 @@
 ; GenericFramebuffer.inf
 ;
-; Installation file for the intel HD 4000 display adapter
+; Installation file for the display adapter on PC-9821
 ;
 [Version]
 Signature  = "$Windows NT$"
+;Signature  = "$ReactOS$"
 LayoutFile = layout.inf
 Class      = Display
 ClassGUID  = {4D36E968-E325-11CE-BFC1-08002BE10318}
 Provider   = %ReactOS%
-DriverVer  = 2/1/2023,1.00
+DriverVer  = 08/11/2020,5.2
 
 [DestinationDirs]
 DefaultDestDir = 12
-GenericFramebuffer.Display_CopyFiles = 11
 
 [Manufacturer]
-%GenericFramebuffer% = GenericFramebuffer
+%NecMfg% = NecMfg
 
-[GenericFramebuffer] ;You gotta replace this with your GPU you're targetting
-%GenericFramebuffer.DeviceDesc% = GenericFramebuffer,PCI\VEN_80EE&DEV_BEEF
+[NecMfg]
+%pc98vid.DeviceDesc% = GenericFramebufferVid_Inst
+%PCI\VEN_1033&DEV_0009.DeviceDesc% = GenericFramebufferVid_Inst,PCI\VEN_1033&DEV_0009
 
-;---------------------------- GenericFramebuffer DRIVER ----------------------------
+;---------------------------- PC98VID DRIVER ----------------------------
 
-[GenericFramebuffer]
-CopyFiles = GenericFramebuffer.Miniport_CopyFiles, GenericFramebuffer.Display_CopyFiles
+[GenericFramebufferVid_Inst.NT]
+CopyFiles = GenericFramebuffervid_CopyFiles.NT
 
-[GenericFramebuffer.Miniport_CopyFiles]
+[GenericFramebuffervid_CopyFiles.NT]
 GenericFramebuffer.sys
 
-[GenericFramebuffer.Display_CopyFiles]
-framebuf.dll
+[GenericFramebufferVid_Inst.NT.Services]
+AddService = GenericFramebuffer, 0x00000002, GenericFramebuffer_Service_Inst
 
-[GenericFramebuffer.SoftwareSettings]
-AddReg = GenericFramebuffer_SoftwareSettings
-
-[GenericFramebuffer_SoftwareSettings]
-HKR,, InstalledDisplayDrivers, %REG_MULTI_SZ%, framebuf
-HKR,, VgaCompatible,           %REG_DWORD%,    0
-
-[GenericFramebuffer.Services]
-AddService = GenericFramebuffer, 0x00000002, GenericFramebuffer_Service
-
-[GenericFramebuffer_Service]
+[GenericFramebuffer_Service_Inst]
 ServiceType   = 1
-StartType     = 3
+StartType     = 1
 ErrorControl  = 0
 ServiceBinary = %12%\GenericFramebuffer.sys
 LoadOrderGroup = Video
+
+[GenericFramebuffer.SoftwareSettings]
+AddReg = GenericFramebuffer_SoftwareDeviceSettings
+
+[GenericFramebuffer_SoftwareDeviceSettings]
+HKR,, InstalledDisplayDrivers, 0x00010000, framebuf
+HKR,, GenericFramebufferCompatible,           0x00010001, 1
+HKR,, VideoDebugLevel,         0x00010001, 0
 
 ;-------------------------------- STRINGS -------------------------------
 
 [Strings]
 ; Non-localizable
 ReactOS = "ReactOS Project"
-GenericFramebuffer = "GenericFramebuffer"
-
-REG_MULTI_SZ   = 0x00010000
-REG_DWORD      = 0x00010001
+NecMfg = "NEC"
 
 ; Localizable
-GenericFramebuffer.DeviceDesc = "Generic Framebuffer Miniport Adapter"
+PCI\VEN_1033&DEV_0009.DeviceDesc = "NEC PCI to Core-Graph Bridge"
+pc98vid.DeviceDesc = "Graphic controller for PC-9821"
+
+[Strings.0419]
+pc98vid.DeviceDesc = "Графический контроллер для PC-9821"

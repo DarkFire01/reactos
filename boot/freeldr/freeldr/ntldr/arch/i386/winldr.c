@@ -409,6 +409,7 @@ WinLdrMapSpecialPages(void)
 
     /* Map APIC */
     WinLdrpMapApic();
+    printf("done this apic");
 
     /* Map VGA memory */
     //VideoMemoryBase = MmMapIoSpace(0xb8000, 4000, MmNonCached);
@@ -501,7 +502,10 @@ void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
     WinLdrSetupSpecialDataPointers();
 }
 
-
+#ifdef UEFIBOOT
+  extern KERNEL_ENTRY_POINT KiSystemStartup;
+  extern   PLOADER_PARAMETER_BLOCK LoaderBlockVA;
+#endif
 VOID
 WinLdrSetProcessorContext(void)
 {
@@ -720,6 +724,22 @@ WinLdrSetProcessorContext(void)
     pop ebp;
     ret
     */
+   #ifdef UEFIBOOT
+       /* Save final value of LoaderPagesSpanned */
+    TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
+          KiSystemStartup, LoaderBlockVA);
+
+    /* Zero KI_USER_SHARED_DATA page */
+    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
+
+    WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
+    WinLdrpDumpBootDriver(LoaderBlockVA);
+#ifndef _M_AMD64
+    WinLdrpDumpArcDisks(LoaderBlockVA);
+#endif
+
+       (*KiSystemStartup)(LoaderBlockVA);
+    #endif
 }
 
 #if DBG

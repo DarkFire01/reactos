@@ -1149,7 +1149,10 @@ LoadAndBootWindows(
 extern PVOID EndOfStack;
 ULONG_PTR NewEndOfStack;
 extern REACTOS_BGCONTEXT BgContext;
+void __ExitUefi();
 #endif
+   KERNEL_ENTRY_POINT KiSystemStartup;
+    PLOADER_PARAMETER_BLOCK LoaderBlockVA;
 ARC_STATUS
 LoadAndBootWindowsCommon(
     IN USHORT OperatingSystemVersion,
@@ -1157,10 +1160,10 @@ LoadAndBootWindowsCommon(
     IN PCSTR BootOptions,
     IN PCSTR BootPath)
 {
-    PLOADER_PARAMETER_BLOCK LoaderBlockVA;
+
     BOOLEAN Success;
     PLDR_DATA_TABLE_ENTRY KernelDTE;
-    KERNEL_ENTRY_POINT KiSystemStartup;
+   // KERNEL_ENTRY_POINT KiSystemStartup;
     PCSTR SystemRoot;
 
     TRACE("LoadAndBootWindowsCommon()\n");
@@ -1202,7 +1205,7 @@ LoadAndBootWindowsCommon(
     IniCleanup();
 #ifdef UEFIBOOT
     //TODO THIS IS TEMPORARY
-    LoaderBlock->BgContext.BaseAddress       = BgContext.BaseAddress;
+    LoaderBlock->BgContext.BaseAddress       = (UINT64*)BgContext.BaseAddress;
     LoaderBlock->BgContext.BufferSize        = BgContext.BufferSize;
     LoaderBlock->BgContext.ScreenWidth       = BgContext.ScreenWidth;
     LoaderBlock->BgContext.ScreenHeight      = BgContext.ScreenHeight;
@@ -1241,7 +1244,14 @@ LoadAndBootWindowsCommon(
 
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
-
+#ifndef _M_AMD64
+#ifdef UEFIBOOT
+    __asm{
+        mov esp, 0x2000
+    };
+#endif
+#endif
+	printf("testing...");
     /* Debugging... */
     //DumpMemoryAllocMap();
 
@@ -1251,9 +1261,24 @@ LoadAndBootWindowsCommon(
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
 
+
+#ifdef UEFIBOOT
+
+    //__lgdt(&_gdtptr);
+	//__writecr3((ULONG64)PxeBase);
+#ifdef _M_AMD64
+	__ExitUefi();
+#endif
+#endif
     /* Set processor context */
     WinLdrSetProcessorContext();
+for(;;)
+{
 
+}
+#ifdef UEFIBOOT
+endboot:
+#endif
     /* Save final value of LoaderPagesSpanned */
     LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
 

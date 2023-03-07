@@ -258,6 +258,7 @@ WinLdrMapSpecialPages(VOID)
         ERR("Could not map KI_USER_SHARED_DATA\n");
         return FALSE;
     }
+    printf("mapping special");
 
     /* Map the APIC page */
     WinLdrpMapApic();
@@ -270,13 +271,12 @@ WinLdrMapSpecialPages(VOID)
 
     return TRUE;
 }
-
 static
 VOID
 Amd64SetupGdt(PVOID GdtBase, ULONG64 TssBase)
 {
     PKGDTENTRY64 Entry;
-    KDESCRIPTOR GdtDesc;
+   KDESCRIPTOR GdtDesc;
     TRACE("Amd64SetupGdt(GdtBase = %p, TssBase = %p)\n", GdtBase, TssBase);
 
     /* Setup KGDT64_NULL */
@@ -316,7 +316,8 @@ Amd64SetupGdt(PVOID GdtBase, ULONG64 TssBase)
     GdtDesc.Limit = NUM_GDT * sizeof(KGDTENTRY) - 1;
 
     /* Set the new Gdt */
-    __lgdt(&GdtDesc.Limit);
+	__lgdt(&GdtDesc.Limit);
+
     TRACE("Leave Amd64SetupGdt()\n");
 }
 
@@ -343,7 +344,16 @@ Amd64SetupIdt(PVOID IdtBase)
     __lidt(&IdtDesc.Limit);
     TRACE("Leave Amd64SetupIdt()\n");
 }
+#ifdef UEFIBOOT
+void __ExitUefi();
+extern PVOID _gdtptr;
 
+#endif
+
+#ifdef UEFIBOOT
+  extern KERNEL_ENTRY_POINT KiSystemStartup;
+  extern   PLOADER_PARAMETER_BLOCK LoaderBlockVA;
+#endif
 VOID
 WinLdrSetProcessorContext(void)
 {
@@ -354,37 +364,77 @@ WinLdrSetProcessorContext(void)
 
     /* Re-initialize EFLAGS */
     __writeeflags(0);
+	   #ifdef UEFIBOOT
 
-    /* Set the new PML4 */
-    __writecr3((ULONG64)PxeBase);
-
+    //__lgdt(&_gdtptr);
+	//__writecr3((ULONG64)PxeBase);
+	__ExitUefi();
+	#endif
     /* Get kernel mode address of gdt / idt */
     GdtIdt = (PVOID)((ULONG64)GdtIdt + KSEG0_BASE);
-
+	printf("setting up gdt");
     /* Create gdt entries and load gdtr */
-    Amd64SetupGdt(GdtIdt, KSEG0_BASE | (TssBasePage << MM_PAGE_SHIFT));
-
+   // Amd64SetupGdt(GdtIdt, KSEG0_BASE | (TssBasePage << MM_PAGE_SHIFT));
+   #ifdef UEFIBOOT
+  
+	Amd64SetupGdt(GdtIdt, KSEG0_BASE | (TssBasePage << MM_PAGE_SHIFT));
+	#endif
+	//  printf("testing");
     /* Copy old Idt and set idtr */
-    Amd64SetupIdt((PVOID)((ULONG64)GdtIdt + NUM_GDT * sizeof(KGDTENTRY)));
-
+    //Amd64SetupIdt((PVOID)((ULONG64)GdtIdt + NUM_GDT * sizeof(KGDTENTRY)));
+   /* Set the new PML4 */
+    //__writecr3((ULONG64)PxeBase);
+	for(;;)
+	{
+	}
+		
     /* LDT is unused */
 //    __lldt(0);
 
     /* Load TSR */
     __ltr(KGDT64_SYS_TSS);
+        printf("acquried paging");
+    #ifdef UEFIBOOT
+	    /* Zero KI_USER_SHARED_DATA page */
+    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
 
+    WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
+    WinLdrpDumpBootDriver(LoaderBlockVA);
+#ifndef _M_AMD64
+    WinLdrpDumpArcDisks(LoaderBlockVA);
+#endif
+      (*KiSystemStartup)(LoaderBlockVA);
+      #endif
+    for(;;)
+    {
+
+    }
     TRACE("leave WinLdrSetProcessorContext\n");
 }
 
+
+VOID
+WinLdrSetProcessorContextTwo(void)
+{
+	printf("Enteringcontexttwo");
+	#ifdef UEFIBOOT
+	 __lgdt(&_gdtptr);
+	__writecr3((ULONG64)PxeBase);
+	 GdtIdt = (PVOID)((ULONG64)GdtIdt + KSEG0_BASE);
+	 Amd64SetupGdt(GdtIdt, KSEG0_BASE | (TssBasePage << MM_PAGE_SHIFT));
+	 Amd64SetupIdt((PVOID)((ULONG64)GdtIdt + NUM_GDT * sizeof(KGDTENTRY)));
+	    __ltr(KGDT64_SYS_TSS);
+		  (*KiSystemStartup)(LoaderBlockVA);
+	#endif
+	for(;;)
+	{
+	}
+}
 void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
     ULONG_PTR Pcr = 0;
     ULONG_PTR Tss = 0;
     ULONG BlockSize, NumPages;
-
-    LoaderBlock->u.I386.CommonDataArea = (PVOID)DbgPrint; // HACK
-    LoaderBlock->u.I386.MachineType = MACHINE_TYPE_ISA;
-
     /* Allocate 2 pages for PCR */
     Pcr = (ULONG_PTR)MmAllocateMemoryWithType(2 * MM_PAGE_SIZE, LoaderStartupPcrPage);
     PcrBasePage = Pcr >> MM_PAGE_SHIFT;
@@ -393,6 +443,7 @@ void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
         UiMessageBox("Can't allocate PCR.");
         return;
     }
+
     RtlZeroMemory((PVOID)Pcr, 2 * MM_PAGE_SIZE);
 
     /* Allocate TSS */

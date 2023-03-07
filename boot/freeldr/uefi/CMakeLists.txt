@@ -75,6 +75,7 @@ list(APPEND FREELDR_ARC_SOURCE
     uefisetup.c
     uefimem.c
     uefidisk.c
+    uefibus.c
     utils.c
     uefivid.c)
 

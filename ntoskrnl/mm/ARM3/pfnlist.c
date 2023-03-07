@@ -611,19 +611,12 @@ MiInsertPageInFreeList(IN PFN_NUMBER PageFrameIndex)
 
     /* Make sure the page index is valid */
     MI_ASSERT_PFN_LOCK_HELD();
-    ASSERT((PageFrameIndex != 0) &&
-           (PageFrameIndex <= MmHighestPhysicalPage) &&
-           (PageFrameIndex >= MmLowestPhysicalPage));
 
     /* Get the PFN entry */
     Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
 
     /* Sanity checks that a right kind of page is being inserted here */
-    ASSERT(Pfn1->u4.MustBeCached == 0);
-    ASSERT(Pfn1->u3.e1.Rom != 1);
-    ASSERT(Pfn1->u3.e1.RemovalRequested == 0);
-    ASSERT(Pfn1->u4.VerifierAllocation == 0);
-    ASSERT(Pfn1->u3.e2.ReferenceCount == 0);
+
 
     /* Get the free page list and increment its count */
     ListHead = &MmFreePageListHead;

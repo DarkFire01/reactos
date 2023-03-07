@@ -394,7 +394,7 @@ KdInitSystem(
 
         /* Display separator + ReactOS version at start of the debug log */
         MemSizeMBs = KdpGetMemorySizeInMBs(KeLoaderBlock);
-        KdpPrintBanner(MemSizeMBs);
+      //  KdpPrintBanner(MemSizeMBs);
 
         /* Check if the debugger should be disabled initially */
         if (DisableKdAfterInit)

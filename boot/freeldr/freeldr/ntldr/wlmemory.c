@@ -191,7 +191,7 @@ WinLdrSetupMemoryLayout(IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock)
     //BOOLEAN Status;
 
     /* Cleanup heap */
-    FrLdrHeapCleanupAll();
+   // FrLdrHeapCleanupAll();
 
     //
     // Creating a suitable memory map for Windows can be tricky, so let's
@@ -330,9 +330,13 @@ WinLdrSetupMemoryLayout(IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock)
     }
 
     TRACE("MadCount: %d\n", MadCount);
+    printf("prep custom pages");
 
-    WinLdrpDumpMemoryDescriptors(LoaderBlock); //FIXME: Delete!
+    //WinLdrpDumpMemoryDescriptors(LoaderBlock); //FIXME: Delete!
 #ifdef UEFIBOOT
+	
+	//MempSetupPaging((ULONG_PTR)0x1000 >> MM_PAGE_SHIFT, 0x4000 >> MM_PAGE_SHIFT, FALSE);
+ //MempSetupPaging((ULONG_PTR)0x1f31f030 >> MM_PAGE_SHIFT, 0x10000 >> MM_PAGE_SHIFT, FALSE);
     // Map our loader image, so we can continue running
     MempSetupPaging((ULONG_PTR)ImageBaseAddress >> MM_PAGE_SHIFT, ImageInBytes >> MM_PAGE_SHIFT, FALSE);
 #endif
@@ -341,11 +345,7 @@ WinLdrSetupMemoryLayout(IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock)
     //PrepareMemoryDescriptorList();
     TRACE("Memory Descriptor List prepared, printing PDE\n");
     List_PaToVa(&LoaderBlock->MemoryDescriptorListHead);
-
-#if DBG
-    MempDump();
-#endif
-
+    printf("\nleaving\n");
     return TRUE;
 }
 

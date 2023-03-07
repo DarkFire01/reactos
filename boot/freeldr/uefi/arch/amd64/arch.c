@@ -11,9 +11,15 @@
 
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WARNING);
+void __ExitUefi();
 
 VOID
 ArchSpecificExitUefi()
 {
+    _disable();
+
+    __writeeflags(0);
+
+   // __ExitUefi();
 
 }

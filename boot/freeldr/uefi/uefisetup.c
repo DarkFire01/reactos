@@ -16,7 +16,6 @@ EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 extern EFI_SYSTEM_TABLE *GlobalSystemTable;
 extern EFI_HANDLE GlobalImageHandle;
 EFI_GRAPHICS_OUTPUT_PROTOCOL* gop;
-BOOLEAN AcpiPresent = FALSE;
 
 /* FUNCTIONS ******************************************************************/
 
