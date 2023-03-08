@@ -41,12 +41,6 @@ UefiVideoSync(VOID)
 
 }
 
-PFREELDR_MEMORY_DESCRIPTOR
-UefiMemGetMemoryMap(ULONG *MemoryMapSize)
-{
-    return 0;
-}
-
 VOID
 UefiGetExtendedBIOSData(PULONG ExtendedBIOSDataArea,
                         PULONG ExtendedBIOSDataSize)
@@ -92,12 +86,6 @@ PCONFIGURATION_COMPONENT_DATA
 UefiHwDetect(VOID)
 {
     return 0;
-}
-
-VOID
-UefiPrepareForReactOS(VOID)
-{
-
 }
 
 VOID
