@@ -259,6 +259,7 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
         MapEntry = NEXT_MEMORY_DESCRIPTOR(MapEntry, DescriptorSize);
     }
 
+    ReserveMemory(FreeldrMem, 0x1000, 0x2000, LoaderOsloaderStack, "Stack");
     ReserveMemory(FreeldrMem, framebufferData.BaseAddress, framebufferData.BufferSize, LoaderFirmwarePermanent, "Video Memory");
     *MemoryMapSize = FreeldrDescCount;
     return FreeldrMem;

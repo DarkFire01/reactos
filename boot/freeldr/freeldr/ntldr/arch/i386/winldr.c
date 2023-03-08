@@ -744,3 +744,64 @@ MempDump(VOID)
     }
 }
 #endif
+#ifdef UEFIBOOT
+extern PVOID gdtptr;
+extern PVOID i386idtptr;
+void _reloadsegment();
+void _UefiExit(VOID);
+    PLOADER_PARAMETER_BLOCK LocLoaderBlockVA;
+    KERNEL_ENTRY_POINT      LocKiSystemStartup;
+VOID
+WinLdrExitUefi(IN KERNEL_ENTRY_POINT KiSystemStartup,
+               IN PLOADER_PARAMETER_BLOCK LoaderBlockVA)
+{
+    LocLoaderBlockVA = LoaderBlockVA;
+    LocKiSystemStartup = KiSystemStartup;
+
+       /* Disable Interrupts */
+    _disable();
+
+    /* Re-initialize EFLAGS */
+    __writeeflags(0);
+    Ke386SetGlobalDescriptorTable(&gdtptr);
+    __lidt(&i386idtptr);
+    #if defined(__GNUC__) || defined(__clang__)
+        asm("ljmp    $0x08, $1f\n"
+            "1:\n");
+    #elif defined(_MSC_VER)
+        /* We cannot express the above in MASM so we use this far return instead */
+        __asm
+        {
+            push 8
+            push offset resume
+            retf
+            resume:
+        };
+    #else
+    #error
+    #endif
+   __asm{
+        mov esp, 0x2000
+    };
+     WinLdrSetProcessorContext();
+
+
+    /* Zero KI_USER_SHARED_DATA page */
+    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
+
+    WinLdrpDumpMemoryDescriptors(LocLoaderBlockVA);
+    WinLdrpDumpBootDriver(LocLoaderBlockVA);
+#ifndef _M_AMD64
+    WinLdrpDumpArcDisks(LocLoaderBlockVA);
+#endif
+
+
+    /* Pass control */
+    (* LocKiSystemStartup)(LocLoaderBlockVA);
+    for(;;)
+    {
+
+    }
+
+}
+#endif

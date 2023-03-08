@@ -78,7 +78,8 @@ list(APPEND FREELDR_ARC_SOURCE
 
 if(ARCH STREQUAL "i386")
     list(APPEND FREELDR_BOOTMGR_SOURCE
-         ../i386/i386bug.c)
+         ../i386/i386bug.c
+         ../i386/i386idt.c)
     list(APPEND FREELDR_BASE_ASM_SOURCE
          ../i386/multiboot.S)
 
@@ -87,7 +88,8 @@ if(ARCH STREQUAL "i386")
          ../i386/int386.S
          ../i386/pnpbios.S
          ../i386/i386trap.S
-         ../i386/linux.S)
+         ../i386/linux.S
+         arch/i386/exit.S)
 
     list(APPEND FREELDR_NTLDR_SOURCE
         ../../ntldr/arch/i386/winldr.c

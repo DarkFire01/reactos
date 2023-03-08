@@ -1237,7 +1237,12 @@ LoadAndBootWindowsCommon(
 
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
-
+      /* Save final value of LoaderPagesSpanned */
+    LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
+#ifdef UEFIBOOT
+    WinLdrExitUefi(KiSystemStartup,
+                LoaderBlockVA);
+#endif
     /* Set processor context */
     WinLdrSetProcessorContext();
 
