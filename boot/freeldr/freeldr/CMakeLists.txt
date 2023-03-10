@@ -135,3 +135,4 @@ list(APPEND FREELDR_BASE_SOURCE
 # endif()
 
 include(pcat.cmake)
+include(uefi.cmake)

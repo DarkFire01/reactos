@@ -34,3 +34,100 @@ __cdecl PxeCallApi(USHORT Segment, USHORT Offset, USHORT Service, VOID* Paramete
 {
     return 0;
 }
+
+//TODOS
+
+VOID
+UefiVideoGetFontsFromFirmware(PULONG RomFontPointers)
+{
+
+}
+
+VOID
+UefiVideoSync(VOID)
+{
+
+}
+
+PFREELDR_MEMORY_DESCRIPTOR
+UefiMemGetMemoryMap(ULONG *MemoryMapSize)
+{
+    return 0;
+}
+
+VOID
+UefiGetExtendedBIOSData(PULONG ExtendedBIOSDataArea,
+                        PULONG ExtendedBIOSDataSize)
+{
+
+}
+
+UCHAR
+UefiGetFloppyCount(VOID)
+{
+    return 0;
+}
+
+BOOLEAN
+UefiDiskReadLogicalSectors(IN UCHAR DriveNumber,
+                           IN ULONGLONG SectorNumber,
+                           IN ULONG SectorCount,
+                           OUT PVOID Buffer)
+{
+    return 0;
+}
+
+BOOLEAN
+UefiDiskGetDriveGeometry(UCHAR DriveNumber,
+                         PGEOMETRY Geometry)
+{
+    return 0;
+}
+
+ULONG
+UefiDiskGetCacheableBlockCount(UCHAR DriveNumber)
+{
+    return 0;
+}
+
+BOOLEAN
+UefiInitializeBootDevices(VOID)
+{
+    return 0;
+}
+
+PCONFIGURATION_COMPONENT_DATA
+UefiHwDetect(VOID)
+{
+    return 0;
+}
+
+VOID
+UefiPrepareForReactOS(VOID)
+{
+
+}
+
+VOID
+UefiPcBeep(VOID)
+{
+    /* Not possible on UEFI, for now */
+}
+
+BOOLEAN
+UefiConsKbHit(VOID)
+{
+    return FALSE;
+}
+
+int
+UefiConsGetCh(void)
+{
+    return 0;
+}
+
+VOID
+UefiHwIdle(VOID)
+{
+
+}

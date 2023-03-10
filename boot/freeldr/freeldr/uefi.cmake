@@ -14,7 +14,10 @@ include_directories(BEFORE
 list(APPEND UEFILDR_ARC_SOURCE
     ${FREELDR_ARC_SOURCE}
     arch/uefi/stubs.c
+    arch/uefi/ueficon.c
+    arch/uefi/uefildr.c
     arch/uefi/uefisetup.c
+    arch/uefi/uefiutil.c
     arch/uefi/uefivid.c
     arch/vgafont.c)
 
