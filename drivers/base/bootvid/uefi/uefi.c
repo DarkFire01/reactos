@@ -98,7 +98,7 @@ VidInitializeUefi(
 
     /* Hard coding go brr */
     /* MAP FRAMEBUFFER */
-    FrameBufferPhyLoc.QuadPart = (ULONGLONG)refiFbData->BaseAddress;
+    FrameBufferPhyLoc.QuadPart = 0;
     FrameBufferStart = (ULONG_PTR)MmMapIoSpace(FrameBufferPhyLoc, refiFbData->BufferSize, MmNonCached);
     if (!FrameBufferStart)
     {

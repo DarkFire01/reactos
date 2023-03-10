@@ -1205,7 +1205,7 @@ LoadAndBootWindowsCommon(
     IniCleanup();
 #ifdef UEFIBOOT
     //TODO THIS IS TEMPORARY
-    LoaderBlock->BgContext.BaseAddress       = (UINT64*)BgContext.BaseAddress;
+    LoaderBlock->BgContext.BaseAddress       = BgContext.BaseAddress;
     LoaderBlock->BgContext.BufferSize        = BgContext.BufferSize;
     LoaderBlock->BgContext.ScreenWidth       = BgContext.ScreenWidth;
     LoaderBlock->BgContext.ScreenHeight      = BgContext.ScreenHeight;
@@ -1246,9 +1246,7 @@ LoadAndBootWindowsCommon(
     MachPrepareForReactOS();
 #ifndef _M_AMD64
 #ifdef UEFIBOOT
-    __asm{
-        mov esp, 0x2000
-    };
+    asm("movl $0x2000, %esp");
 #endif
 #endif
 	printf("testing...");
@@ -1262,23 +1260,9 @@ LoadAndBootWindowsCommon(
     WinLdrSetupMemoryLayout(LoaderBlock);
 
 
-#ifdef UEFIBOOT
-
-    //__lgdt(&_gdtptr);
-	//__writecr3((ULONG64)PxeBase);
-#ifdef _M_AMD64
-	__ExitUefi();
-#endif
-#endif
     /* Set processor context */
     WinLdrSetProcessorContext();
-for(;;)
-{
 
-}
-#ifdef UEFIBOOT
-endboot:
-#endif
     /* Save final value of LoaderPagesSpanned */
     LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
 

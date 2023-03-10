@@ -29,7 +29,7 @@ UefiInitalizeVideo(_In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop)
 {
     gop->SetMode(gop,1);
 
-    framebufferData.BaseAddress        = (ULONG_PTR)gop->Mode->FrameBufferBase;
+    framebufferData.BaseAddress        = gop->Mode->FrameBufferBase;
     framebufferData.BufferSize         = gop->Mode->FrameBufferSize;
     framebufferData.ScreenWidth        = gop->Mode->Info->HorizontalResolution;
     framebufferData.ScreenHeight       = gop->Mode->Info->VerticalResolution;
@@ -37,12 +37,7 @@ UefiInitalizeVideo(_In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop)
     framebufferData.PixelFormat        = gop->Mode->Info->PixelFormat;
 
 
-    BgContext.BaseAddress        = (UINT64*)gop->Mode->FrameBufferBase;
-    BgContext.BufferSize         = gop->Mode->FrameBufferSize;
-    BgContext.ScreenWidth        = gop->Mode->Info->HorizontalResolution;
-    BgContext.ScreenHeight       = gop->Mode->Info->VerticalResolution;
-    BgContext.PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
-    BgContext.PixelFormat        = gop->Mode->Info->PixelFormat;
+
 }
 
 VOID

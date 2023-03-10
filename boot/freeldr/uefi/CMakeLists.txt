@@ -86,16 +86,12 @@ if(ARCH STREQUAL "i386")
         arch/i386/arch.c
         ../freeldr/arch/i386/i386bug.c
         ../freeldr/arch/i386/i386idt.c)
-    list(APPEND FREELDR_BASE_ASM_SOURCE
-        ../freeldr/arch/i386/multiboot.S)
+    list(APPEND FREELDR_BASE_ASM_SOURCE)
 
     list(APPEND FREELDR_COMMON_ASM_SOURCE
         arch/i386/misc.S
-        ../freeldr/arch/i386/drvmap.S
-        ../freeldr/arch/i386/int386.S
-        ../freeldr/arch/i386/pnpbios.S
-        ../freeldr/arch/i386/i386trap.S
-        ../freeldr/arch/i386/linux.S)
+
+        ../freeldr/arch/i386/i386trap.S)
 
     list(APPEND FREELDR_NTLDR_SOURCE
         ../freeldr/ntldr/arch/i386/winldr.c
@@ -181,12 +177,7 @@ if(MSVC)
     # We don't need hotpatching
     remove_target_compile_option(uefildr "/hotpatch")
 else()
-    target_link_options(uefildr PRIVATE -Wl,--exclude-all-symbols,--file-alignment,0x200,--section-alignment,0x200)
-    # Strip everything, including rossym data
-    add_custom_command(TARGET uefildr
-                    POST_BUILD
-                    COMMAND ${CMAKE_STRIP} --remove-section=.rossym $<TARGET_FILE:uefildr>
-                    COMMAND ${CMAKE_STRIP} --strip-all $<TARGET_FILE:uefildr>)
+
 endif()
 
 if(MSVC)

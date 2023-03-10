@@ -724,7 +724,7 @@ WinLdrSetProcessorContext(void)
     pop ebp;
     ret
     */
-   #ifdef UEFIBOOT
+ #ifdef UEFIBOOT
        /* Save final value of LoaderPagesSpanned */
     TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
           KiSystemStartup, LoaderBlockVA);
@@ -738,7 +738,7 @@ WinLdrSetProcessorContext(void)
     WinLdrpDumpArcDisks(LoaderBlockVA);
 #endif
 
-       (*KiSystemStartup)(LoaderBlockVA);
+    (*KiSystemStartup)(LoaderBlockVA);
     #endif
 }
 

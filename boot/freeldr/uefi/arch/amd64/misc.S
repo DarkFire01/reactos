@@ -45,6 +45,7 @@ _gdtptr:
 
 PUBLIC __ExitUefi
 __ExitUefi:
+    cli
     mov rsp, HEX(2000)
 	call WinLdrSetProcessorContextTwo
 	hlt

@@ -60,7 +60,7 @@ VOID
 UefiVideoSetPaletteColor(UCHAR Color, UCHAR Red,
                          UCHAR Green, UCHAR Blue)
 {
-
+    TRACE("Hi");
 }
 
 VOID
