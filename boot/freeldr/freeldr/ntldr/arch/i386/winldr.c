@@ -501,10 +501,12 @@ void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
     WinLdrSetupSpecialDataPointers();
 }
 
-
+extern KERNEL_ENTRY_POINT KiSystemStartup;
+extern PLOADER_PARAMETER_BLOCK LoaderBlockVA;
 VOID
 WinLdrSetProcessorContext(void)
 {
+    printf("Setting processor context\n");
     GDTIDT GdtDesc, IdtDesc, OldIdt;
     PKGDTENTRY    pGdt;
     PKIDTENTRY    pIdt;
@@ -692,6 +694,7 @@ WinLdrSetProcessorContext(void)
 #error
 #endif
 
+
     /* Set SS selector */
     Ke386SetSs(KGDT_R0_DATA);
 
@@ -720,6 +723,16 @@ WinLdrSetProcessorContext(void)
     pop ebp;
     ret
     */
+
+       RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
+
+    WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
+    WinLdrpDumpBootDriver(LoaderBlockVA);
+#ifndef _M_AMD64
+    WinLdrpDumpArcDisks(LoaderBlockVA);
+#endif
+    /* Pass control */
+    (*KiSystemStartup)(LoaderBlockVA);
 }
 
 #if DBG

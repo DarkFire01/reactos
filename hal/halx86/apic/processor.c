@@ -70,7 +70,7 @@ NTAPI
 HalRequestIpi(KAFFINITY TargetProcessors)
 {
     UNIMPLEMENTED;
-    __debugbreak();
+    //debug
 }
 
 /* EOF */

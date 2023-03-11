@@ -334,7 +334,7 @@ WinLdrSetupMemoryLayout(IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock)
 //WinLdrpDumpMemoryDescriptors(LoaderBlock); //FIXME: Delete!
 #ifdef UEFIBOOT
 
- // MempSetupPaging((ULONG_PTR)0x1000 >> MM_PAGE_SHIFT, 0x3500 >> MM_PAGE_SHIFT, FALSE);
+  //MempSetupPaging((ULONG_PTR)0x1000 >> MM_PAGE_SHIFT, 0x8000 >> MM_PAGE_SHIFT, FALSE);
 //  RtlZeroMemory((PVOID)Loc, (SIZE_T)0x1000);
     // Map our loader image, so we can continue running
     MempSetupPaging((ULONG_PTR)OsLoaderBase >> MM_PAGE_SHIFT, OsLoaderSize >> MM_PAGE_SHIFT, FALSE);

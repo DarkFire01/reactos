@@ -25,7 +25,7 @@ HalpInitProcessor(
     IN ULONG ProcessorNumber,
     IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    __debugbreak();
+    //debug
 #ifdef CONFIG_SMP
     if (ProcessorNumber == 0)
     {
@@ -50,7 +50,7 @@ HalpInitProcessor(
 VOID
 HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    __debugbreak();
+    //debug
     DPRINT1("Using HAL: APIC %s %s\n",
             (HalpBuildType & PRCB_BUILD_UNIPROCESSOR) ? "UP" : "SMP",
             (HalpBuildType & PRCB_BUILD_DEBUG) ? "DBG" : "REL");

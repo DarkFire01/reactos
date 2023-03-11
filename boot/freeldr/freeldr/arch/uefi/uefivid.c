@@ -51,7 +51,7 @@ UefiInitalizeVideo(VOID)
     framebufferData.PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
     framebufferData.PixelFormat        = gop->Mode->Info->PixelFormat;
 
-    BgContext.BaseAddress        = (ULONGLONG*)gop->Mode->FrameBufferBase;
+    BgContext.BaseAddress        = gop->Mode->FrameBufferBase;
     BgContext.BufferSize         = gop->Mode->FrameBufferSize;
     BgContext.ScreenWidth        = gop->Mode->Info->HorizontalResolution;
     BgContext.ScreenHeight       = gop->Mode->Info->VerticalResolution;

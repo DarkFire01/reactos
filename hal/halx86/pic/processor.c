@@ -71,7 +71,7 @@ NTAPI
 HalRequestIpi(KAFFINITY TargetProcessors)
 {
     /* Not implemented on UP */
-    __debugbreak();
+    //debug
 }
 
 /* EOF */

@@ -23,18 +23,6 @@ extern REACTOS_BGCONTEXT refiFbData;
 #define FB_OFFSET(x, y)    (((PanV + (y)) * FrameBufferWidth + PanH + (x)) * 4)
 
 static VOID
-UEFIClearScreeen(VOID)
-{
-    /* Just fill the screen black */
-    for(int y = 0; y < refiFbData.ScreenHeight; y++)
-    {
-        for(int x = 0; x < refiFbData.ScreenWidth; x++)
-        {
-            *((UINT32*)(FrameBufferStart + 4 * refiFbData.PixelsPerScanLine * (y) + 4 * (x))) = 0x000000;
-        }
-    }
-}
-static VOID
 ApplyPalette(VOID)
 {
     PULONG Frame = (PULONG)FrameBufferStart;

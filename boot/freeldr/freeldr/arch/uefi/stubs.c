@@ -808,6 +808,56 @@ DetectPS2Mouse(PCONFIGURATION_COMPONENT_DATA BusKey)
     }
 }
 
+extern REACTOS_BGCONTEXT BgContext;
+
+static VOID
+DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
+{
+    CHAR Buffer[80];
+    PCONFIGURATION_COMPONENT_DATA ControllerKey;
+    PCM_PARTIAL_RESOURCE_LIST PartialResourceList;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor;
+    ULONG Size;
+
+    strcpy(Buffer, "UEFI Provided Framebuffer");
+
+    Size = sizeof(CM_PARTIAL_RESOURCE_LIST);
+    PartialResourceList = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
+    if (PartialResourceList == NULL)
+    {
+        ERR("Failed to allocate resource descriptor\n");
+        return;
+    }
+
+    /* Initialize resource descriptor */
+    RtlZeroMemory(PartialResourceList, Size);
+    PartialResourceList->Version = 1;
+    PartialResourceList->Revision = 1;
+    PartialResourceList->Count = 1;
+
+    /* Set Memory */
+    PartialDescriptor = &PartialResourceList->PartialDescriptors[0];
+    PartialDescriptor->Type = CmResourceTypeMemory;
+    PartialDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+    PartialDescriptor->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
+    PartialDescriptor->u.Memory.Start.LowPart = (ULONG_PTR)BgContext.BaseAddress & 0x0FFFFFFF;
+    PartialDescriptor->u.Memory.Length = BgContext.BufferSize;
+
+    FldrCreateComponentKey(BusKey,
+                           ControllerClass,
+                           DisplayController,
+                           0x0,
+                           0x0,
+                           0xFFFFFFFF,
+                           Buffer,
+                           PartialResourceList,
+                           Size,
+                           &ControllerKey);
+
+    TRACE("Created key: DisplayController\\0\n");
+}
+
+
 static
 VOID
 DetectIsaBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
@@ -849,6 +899,7 @@ DetectIsaBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
 
         DetectKeyboardController(BusKey);
     DetectPS2Mouse(BusKey);
+    DetectDisplayController(BusKey);
     /* Detect ISA/BIOS devices */
    // DetectBiosDisks(SystemKey, BusKey);
    // DetectSerialPorts(BusKey, XboxGetSerialPort, MAX_XBOX_COM_PORTS);
@@ -873,9 +924,10 @@ UefiHwDetect(VOID)
 
 
     /* Detect buses */
-    // /DetectPci(SystemKey, &BusNumber);
+    DetectPci(SystemKey, &BusNumber);
     DetectAcpiBios(SystemKey, &BusNumber);
-  //  DetectIsaBios(SystemKey, &BusNumber);
+    DetectIsaBios(SystemKey, &BusNumber);
+
 
     // TODO: Collect the ROM blocks from 0xC0000 to 0xF0000 and append their
     // CM_ROM_BLOCK data into the 'System' key's configuration data.

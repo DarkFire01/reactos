@@ -568,11 +568,6 @@ PeLdrScanImportDescriptorTable(
                                                      ImportName,
                                                      &ScanDTE->InLoadOrderLinks,
                                                      &DataTableEntry);
-            if (!Success)
-            {
-                ERR("PeLdrpLoadAndScanReferencedDll() failed\n");
-                return Success;
-            }
         }
 
         /* Scan its import address table */

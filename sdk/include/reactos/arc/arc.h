@@ -484,7 +484,7 @@ typedef struct _FIRMWARE_INFORMATION_LOADER_BLOCK
 
 typedef struct _REACTOS_BGCONTEXT
 {
-    ULONGLONG*   BaseAddress;
+    ULONG_PTR     BaseAddress;
     ULONG        BufferSize;
     UINT32       ScreenWidth;
     UINT32       ScreenHeight;

@@ -260,14 +260,12 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
         MapEntry = NEXT_MEMORY_DESCRIPTOR(MapEntry, DescriptorSize);
     }
     UefiPrintFramebufferData();
-
-
-  // ReserveMemory(FreeldrMem, 0x4000,0x10000, LoaderOsloaderStack, "Stack");
-    ReserveMemory(FreeldrMem, (ULONG_PTR)framebufferData.BaseAddress, framebufferData.BufferSize, LoaderFirmwarePermanent, "Video Memory");
+  // ReserveMemory(FreeldrMem, 0x1000,0x1000, LoaderOsloaderStack, "Stack");
+   // ReserveMemory(FreeldrMem, (ULONG_PTR)framebufferData.BaseAddress, framebufferData.BufferSize, LoaderFirmwarePermanent, "Video Memory");
     *MemoryMapSize = FreeldrDescCount;
     return FreeldrMem;
 }
-
+extern PVOID _gdtptr;
 VOID
 UefiExitBootServices()
 {
@@ -291,19 +289,61 @@ UefiExitBootServices()
 	}
     TRACE("UefiExitBootServices: exited bootservices\n");
 }
-extern PVOID _gdtptr;
-extern PVOID _i386idtptr;
-extern PVOID  _i386ldtptr;
+
 PVOID NewStack;
 PVOID EndOfStack;
+
+
+#ifdef _M_IX86
+
+void _reloadsegment(VOID);
+
+extern PVOID EndOfStack;
+extern PVOID _gdtptr;
+extern PVOID i386idtptr;
+
+VOID
+ArchSpecificExitUefi()
+{
+    TRACE("Launching Arch Specific code");
+
+    _disable();
+
+    __writeeflags(0);
+
+              /* Re-initialize EFLAGS */
+    Ke386SetGlobalDescriptorTable(&gdtptr);
+    __lidt(&i386idtptr);
+    #if defined(__GNUC__) || defined(__clang__)
+        asm("ljmp    $0x08, $1f\n"
+            "1:\n");
+    #elif defined(_MSC_VER)
+        /* We cannot express the above in MASM so we use this far return instead */
+        __asm
+        {
+            push 8
+            push offset resume
+            retf
+            resume:
+        };
+    #else
+    #error
+    #endif
+    _reloadsegment();
+}
+#endif
+
 VOID
 UefiPrepareForReactOS(VOID)
 {
     MmAllocateMemoryWithType(0x8000, LoaderOsloaderStack);
     EndOfStack = (PVOID)((ULONG_PTR)NewStack + 0x8000);
     UefiExitBootServices();
+    #ifdef _M_AMD64
     __lgdt(&_gdtptr);
-
+    #else
+    ArchSpecificExitUefi();
+    #endif
    // __lidt(&_i386idtptr);
 
 }

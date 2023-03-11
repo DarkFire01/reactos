@@ -442,11 +442,11 @@ DriverEntry(PVOID Context1, PVOID Context2)
     VideoInitData.HwGetPowerState = GenericFramebufferGetPowerState;
     VideoInitData.HwGetVideoChildDescriptor = GenericFramebufferGetVideoChildDescriptor;
 
-    refiFbData.BaseAddress        = 0xE0000000;
-    refiFbData.BufferSize         = 0x1E7800;
-    refiFbData.ScreenWidth        = 800;
-    refiFbData.ScreenHeight       = 600;
-    refiFbData.PixelsPerScanLine  = 832;
+    refiFbData.BaseAddress        = 0xA8000000;
+    refiFbData.BufferSize         = 0x300000;
+    refiFbData.ScreenWidth        = 1024;
+    refiFbData.ScreenHeight       = 768;
+    refiFbData.PixelsPerScanLine  = 1024;
     refiFbData.PixelFormat        = 1;
 
     return VideoPortInitialize(Context1, Context2, &VideoInitData, NULL);

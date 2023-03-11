@@ -1240,6 +1240,17 @@ LoadAndBootWindowsCommon(
       //  LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
+#ifndef _M_AMD64
+#ifdef UEFIBOOT
+  #if defined(__GNUC__) || defined(__clang__)
+    asm("movl $0x2000, %esp");
+#else
+    __asm{
+        mov esp, 0x2000
+    };
+#endif
+#endif
+#endif
 
     /* Debugging... */
     //DumpMemoryAllocMap();
@@ -1251,25 +1262,17 @@ LoadAndBootWindowsCommon(
     WinLdrSetupMemoryLayout(LoaderBlock);
 
     #ifdef UEFIBOOT
+    #ifdef _M_AMD64
         __ExitUefi();
+    #endif
     #endif
     /* Set processor context */
     WinLdrSetProcessorContext();
 
     /* Save final value of LoaderPagesSpanned */
-    LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
-
-    TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
-          KiSystemStartup, LoaderBlockVA);
-
+  //  LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
     /* Zero KI_USER_SHARED_DATA page */
     RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
-
-    WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
-    WinLdrpDumpBootDriver(LoaderBlockVA);
-#ifndef _M_AMD64
-    WinLdrpDumpArcDisks(LoaderBlockVA);
-#endif
 
     /* Pass control */
     (*KiSystemStartup)(LoaderBlockVA);

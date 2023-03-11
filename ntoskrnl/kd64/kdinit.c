@@ -142,7 +142,7 @@ KdInitSystem(
     PLIST_ENTRY NextEntry;
     ULONG i, j, Length;
     SIZE_T DebugOptionLength;
-   // SIZE_T MemSizeMBs;
+    SIZE_T MemSizeMBs;
     CHAR NameBuffer[256];
     PWCHAR Name;
 
@@ -385,8 +385,8 @@ KdInitSystem(
         SharedUserData->KdDebuggerEnabled = TRUE;
 
         /* Display separator + ReactOS version at start of the debug log */
-        //MemSizeMBs = KdpGetMemorySizeInMBs(KeLoaderBlock);
-        ///KdpPrintBanner(MemSizeMBs);
+        MemSizeMBs = KdpGetMemorySizeInMBs(KeLoaderBlock);
+        KdpPrintBanner(MemSizeMBs);
 
         /* Check if the debugger should be disabled initially */
         if (DisableKdAfterInit)

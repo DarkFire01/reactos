@@ -36,7 +36,7 @@
             local APIC(s) specified in Destination field. Vector specifies
             the startup address.
         APIC_MT_ExtInt - Delivers an external interrupt to the target local
-            APIC specified in Destination field. 
+            APIC specified in Destination field.
 
     \param TriggerMode - The trigger mode of the interrupt. Can be:
         APIC_TGM_Edge - The interrupt is edge triggered.
@@ -90,7 +90,7 @@ NTAPI
 HalpRequestIpi(KAFFINITY TargetProcessors)
 {
     UNIMPLEMENTED;
-    __debugbreak();
+    //debug
 }
 
 // APIC specific SMP code here
