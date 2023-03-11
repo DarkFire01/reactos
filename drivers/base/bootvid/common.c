@@ -541,3 +541,17 @@ VidBitBlt(
         }
     }
 }
+#include <arc/arc.h>
+REACTOS_BGCONTEXT refiFbData;
+VOID
+NTAPI
+VidSetupUefi(PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+    refiFbData.BaseAddress        = LoaderBlock->  BgContext.BaseAddress      ;
+    refiFbData.BufferSize         = LoaderBlock->  BgContext.BufferSize       ;
+    refiFbData.ScreenWidth        = LoaderBlock->  BgContext.ScreenWidth      ;
+    refiFbData.ScreenHeight       = LoaderBlock->  BgContext.ScreenHeight     ;
+    refiFbData.PixelsPerScanLine  = LoaderBlock->  BgContext.PixelsPerScanLine;
+    refiFbData.PixelFormat        = LoaderBlock->  BgContext.PixelFormat      ;
+   // __debugbreak();
+}

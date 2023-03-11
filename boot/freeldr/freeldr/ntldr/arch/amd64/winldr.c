@@ -343,10 +343,12 @@ Amd64SetupIdt(PVOID IdtBase)
     __lidt(&IdtDesc.Limit);
     TRACE("Leave Amd64SetupIdt()\n");
 }
-
+extern KERNEL_ENTRY_POINT KiSystemStartup;
+extern PLOADER_PARAMETER_BLOCK LoaderBlockVA;
 VOID
 WinLdrSetProcessorContext(void)
 {
+    printf("test\n");
     TRACE("WinLdrSetProcessorContext\n");
 
     /* Disable Interrupts */
@@ -368,11 +370,18 @@ WinLdrSetProcessorContext(void)
     Amd64SetupIdt((PVOID)((ULONG64)GdtIdt + NUM_GDT * sizeof(KGDTENTRY)));
 
     /* LDT is unused */
-//    __lldt(0);
+    //__lldt(0);
+
 
     /* Load TSR */
     __ltr(KGDT64_SYS_TSS);
 
+   /* Zero KI_USER_SHARED_DATA page */
+    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
+
+    WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
+    WinLdrpDumpBootDriver(LoaderBlockVA);
+   (*KiSystemStartup)(LoaderBlockVA);
     TRACE("leave WinLdrSetProcessorContext\n");
 }
 
@@ -429,3 +438,39 @@ VOID
 MempDump(VOID)
 {
 }
+
+#ifdef UEFIBOOT
+extern PVOID _gdtptr;
+extern PVOID _i386idtptr;
+extern KERNEL_ENTRY_POINT KiSystemStartup;
+extern PLOADER_PARAMETER_BLOCK LoaderBlockVA;
+VOID
+WinLdrSetProcessorContextTwo()
+{
+
+	printf("Enteringcontexttwo\n");
+
+	 __lgdt(&_gdtptr);
+
+     __writecr3((ULONG64)PxeBase);
+	 GdtIdt = (PVOID)((ULONG64)GdtIdt + KSEG0_BASE);
+	 Amd64SetupGdt(GdtIdt, KSEG0_BASE | (TssBasePage << MM_PAGE_SHIFT));
+	 Amd64SetupIdt((PVOID)((ULONG64)GdtIdt + NUM_GDT * sizeof(KGDTENTRY)));
+	__ltr(KGDT64_SYS_TSS);
+
+
+    /* Zero KI_USER_SHARED_DATA page */
+    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
+
+    WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
+    WinLdrpDumpBootDriver(LoaderBlockVA);
+#ifndef _M_AMD64
+    WinLdrpDumpArcDisks(LoaderBlockVA);
+#endif
+	(*KiSystemStartup)(LoaderBlockVA);
+    for(;;)
+    {
+
+    }
+}
+#endif

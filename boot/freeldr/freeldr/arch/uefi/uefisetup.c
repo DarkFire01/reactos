@@ -14,7 +14,7 @@ DBG_DEFAULT_CHANNEL(WARNING);
 
 extern EFI_SYSTEM_TABLE* GlobalSystemTable;
 extern EFI_HANDLE GlobalImageHandle;
-BOOLEAN AcpiPresent = FALSE;
+//BOOLEAN AcpiPresent = FALSE;
 
 /* FUNCTIONS ******************************************************************/
 

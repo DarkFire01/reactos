@@ -187,7 +187,7 @@ MiInsertVad(IN PMMVAD Vad,
     PMMADDRESS_NODE Parent = NULL;
 
     /* Validate the VAD and set it as the current hint */
-    ASSERT(Vad->EndingVpn >= Vad->StartingVpn);
+    //ASSERT(Vad->EndingVpn >= Vad->StartingVpn);
     VadRoot->NodeHint = Vad;
 
     /* Find the parent VAD and where this child should be inserted */

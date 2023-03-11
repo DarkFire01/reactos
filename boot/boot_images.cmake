@@ -170,4 +170,4 @@ add_cd_file(
     DESTINATION efi/boot
     NO_CAB
     NAME_ON_CD boot${EFI_PLATFORM_ID}.efi
-    FOR livecd)
+    FOR livecd hybridcd bootcd)

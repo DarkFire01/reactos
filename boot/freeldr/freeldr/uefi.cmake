@@ -28,6 +28,8 @@ if(ARCH STREQUAL "i386")
         arch/i386/i386trap.S)
 
 elseif(ARCH STREQUAL "amd64")
+    list(APPEND UEFILDR_COMMON_ASM_SOURCE
+        arch/uefi/amd64/uefiasm.S)
     #TBD
 elseif(ARCH STREQUAL "arm")
     #TBD

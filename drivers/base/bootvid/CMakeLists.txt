@@ -28,7 +28,9 @@ endif()
 list(APPEND SOURCE
     common.c
     fontdata.c
-    precomp.h)
+    precomp.h
+    uefi/uefi.h
+    uefi/uefi.c)
 
 add_library(bootvid MODULE
     ${SOURCE}
@@ -37,6 +39,6 @@ add_library(bootvid MODULE
 
 set_module_type(bootvid kerneldll ENTRYPOINT 0)
 add_importlibs(bootvid ntoskrnl hal)
-add_pch(bootvid precomp.h SOURCE)
+#add_pch(bootvid precomp.h SOURCE)
 add_dependencies(bootvid psdk)
 add_cd_file(TARGET bootvid DESTINATION reactos/system32 NO_CAB FOR all)

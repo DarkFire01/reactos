@@ -147,9 +147,9 @@ UefiConvertToFreeldrDesc(EFI_MEMORY_TYPE EfiMemoryType)
         case EfiReservedMemoryType:
             return LoaderReserve;
         case EfiLoaderCode:
-            return LoaderLoadedProgram;
+            return LoaderFirmwarePermanent;
         case EfiLoaderData:
-            return LoaderLoadedProgram;
+            return LoaderFirmwarePermanent;
         case EfiBootServicesCode:
             return LoaderFirmwareTemporary;
         case EfiBootServicesData:
@@ -171,9 +171,9 @@ UefiConvertToFreeldrDesc(EFI_MEMORY_TYPE EfiMemoryType)
         case EfiMemoryMappedIOPortSpace:
             return LoaderFirmwarePermanent;
         default:
+            return LoaderFirmwarePermanent;
             break;
     }
-    return LoaderFirmwarePermanent;
 }
 
 VOID
@@ -259,8 +259,10 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
         }
         MapEntry = NEXT_MEMORY_DESCRIPTOR(MapEntry, DescriptorSize);
     }
+    UefiPrintFramebufferData();
 
-    ReserveMemory(FreeldrMem, 0x1000, 0x4000, LoaderOsloaderStack, "Stack");
+
+  // ReserveMemory(FreeldrMem, 0x4000,0x10000, LoaderOsloaderStack, "Stack");
     ReserveMemory(FreeldrMem, (ULONG_PTR)framebufferData.BaseAddress, framebufferData.BufferSize, LoaderFirmwarePermanent, "Video Memory");
     *MemoryMapSize = FreeldrDescCount;
     return FreeldrMem;
@@ -289,9 +291,19 @@ UefiExitBootServices()
 	}
     TRACE("UefiExitBootServices: exited bootservices\n");
 }
-
+extern PVOID _gdtptr;
+extern PVOID _i386idtptr;
+extern PVOID  _i386ldtptr;
+PVOID NewStack;
+PVOID EndOfStack;
 VOID
 UefiPrepareForReactOS(VOID)
 {
+    MmAllocateMemoryWithType(0x8000, LoaderOsloaderStack);
+    EndOfStack = (PVOID)((ULONG_PTR)NewStack + 0x8000);
     UefiExitBootServices();
+    __lgdt(&_gdtptr);
+
+   // __lidt(&_i386idtptr);
+
 }

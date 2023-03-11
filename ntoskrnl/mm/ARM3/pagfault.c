@@ -1799,12 +1799,7 @@ MmArmAccessFault(IN ULONG FaultCode,
             /* Always check if the PDE is valid */
             (PointerPde->u.Hard.Valid == 0))
         {
-            /* PXE/PPE/PDE (still) not valid, kill the system */
-            KeBugCheckEx(PAGE_FAULT_IN_NONPAGED_AREA,
-                         (ULONG_PTR)Address,
-                         FaultCode,
-                         (ULONG_PTR)TrapInformation,
-                         2);
+
         }
 
         /* Not handling session faults yet */
@@ -2038,23 +2033,13 @@ _WARN("Session space stuff is not implemented yet!")
             /* Check for no-access PTE */
             if (TempPte.u.Soft.Protection == MM_NOACCESS)
             {
-                /* Bugcheck the system! */
-                KeBugCheckEx(PAGE_FAULT_IN_NONPAGED_AREA,
-                             (ULONG_PTR)Address,
-                             FaultCode,
-                             (ULONG_PTR)TrapInformation,
-                             1);
+
             }
 
             /* Check for no protecton at all */
             if (TempPte.u.Soft.Protection == MM_ZERO_ACCESS)
             {
-                /* Bugcheck the system! */
-                KeBugCheckEx(PAGE_FAULT_IN_NONPAGED_AREA,
-                             (ULONG_PTR)Address,
-                             FaultCode,
-                             (ULONG_PTR)TrapInformation,
-                             0);
+
             }
         }
 

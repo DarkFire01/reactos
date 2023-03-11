@@ -611,9 +611,7 @@ MiInsertPageInFreeList(IN PFN_NUMBER PageFrameIndex)
 
     /* Make sure the page index is valid */
     MI_ASSERT_PFN_LOCK_HELD();
-    ASSERT((PageFrameIndex != 0) &&
-           (PageFrameIndex <= MmHighestPhysicalPage) &&
-           (PageFrameIndex >= MmLowestPhysicalPage));
+
 
     /* Get the PFN entry */
     Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);

@@ -15,7 +15,10 @@
 DBG_DEFAULT_CHANNEL(WINDOWS);
 
 extern ULONG LoaderPagesSpanned;
-
+#ifdef UEFIBOOT
+extern PVOID OsLoaderBase;
+extern SIZE_T OsLoaderSize;
+#endif
 static const PCSTR MemTypeDesc[] = {
     "ExceptionBlock    ", // ?
     "SystemBlock       ", // ?
@@ -328,16 +331,14 @@ WinLdrSetupMemoryLayout(IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     TRACE("MadCount: %d\n", MadCount);
 
-    WinLdrpDumpMemoryDescriptors(LoaderBlock); //FIXME: Delete!
+//WinLdrpDumpMemoryDescriptors(LoaderBlock); //FIXME: Delete!
+#ifdef UEFIBOOT
 
+ // MempSetupPaging((ULONG_PTR)0x1000 >> MM_PAGE_SHIFT, 0x3500 >> MM_PAGE_SHIFT, FALSE);
+//  RtlZeroMemory((PVOID)Loc, (SIZE_T)0x1000);
     // Map our loader image, so we can continue running
-    /*Status = MempSetupPaging(OsLoaderBase >> MM_PAGE_SHIFT, OsLoaderSize >> MM_PAGE_SHIFT);
-    if (!Status)
-    {
-        UiMessageBox("Error during MempSetupPaging.");
-        return;
-    }*/
-
+    MempSetupPaging((ULONG_PTR)OsLoaderBase >> MM_PAGE_SHIFT, OsLoaderSize >> MM_PAGE_SHIFT, FALSE);
+#endif
     // Fill the memory descriptor list and
     //PrepareMemoryDescriptorList();
     TRACE("Memory Descriptor List prepared, printing PDE\n");

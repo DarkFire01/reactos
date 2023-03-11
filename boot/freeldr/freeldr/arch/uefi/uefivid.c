@@ -24,7 +24,7 @@ extern UCHAR BitmapFont8x16[256 * 16];
 UCHAR MachDefaultTextColor = COLOR_GRAY;
 REACTOS_INTERNAL_BGCONTEXT framebufferData;
 EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
-
+REACTOS_BGCONTEXT BgContext;
 /* FUNCTIONS ******************************************************************/
 
 EFI_STATUS
@@ -42,27 +42,33 @@ UefiInitalizeVideo(VOID)
     }
 
     /* We don't need high resolutions for freeldr */
-    gop->SetMode(gop, LOWEST_SUPPORTED_RES);
+   // gop->SetMode(gop, LOWEST_SUPPORTED_RES);
 
-    framebufferData.BaseAddress        = (ULONG_PTR)gop->Mode->FrameBufferBase;
+    framebufferData.BaseAddress        = gop->Mode->FrameBufferBase;
     framebufferData.BufferSize         = gop->Mode->FrameBufferSize;
     framebufferData.ScreenWidth        = gop->Mode->Info->HorizontalResolution;
     framebufferData.ScreenHeight       = gop->Mode->Info->VerticalResolution;
     framebufferData.PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
     framebufferData.PixelFormat        = gop->Mode->Info->PixelFormat;
 
+    BgContext.BaseAddress        = (ULONGLONG*)gop->Mode->FrameBufferBase;
+    BgContext.BufferSize         = gop->Mode->FrameBufferSize;
+    BgContext.ScreenWidth        = gop->Mode->Info->HorizontalResolution;
+    BgContext.ScreenHeight       = gop->Mode->Info->VerticalResolution;
+    BgContext.PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
+    BgContext.PixelFormat        = gop->Mode->Info->PixelFormat;
     return Status;
 }
 
 VOID
 UefiPrintFramebufferData(VOID)
 {
-    TRACE("Framebuffer BaseAddress       : %X\n", framebufferData.BaseAddress);
-    TRACE("Framebuffer BufferSize        : %X\n", framebufferData.BufferSize);
-    TRACE("Framebuffer ScreenWidth       : %d\n", framebufferData.ScreenWidth);
-    TRACE("Framebuffer ScreenHeight      : %d\n", framebufferData.ScreenHeight);
-    TRACE("Framebuffer PixelsPerScanLine : %d\n", framebufferData.PixelsPerScanLine);
-    TRACE("Framebuffer PixelFormat       : %d\n", framebufferData.PixelFormat);
+    printf("Framebuffer BaseAddress       : %X\n", framebufferData.BaseAddress);
+    printf("Framebuffer BufferSize        : %X\n", framebufferData.BufferSize);
+    printf("Framebuffer ScreenWidth       : %d\n", framebufferData.ScreenWidth);
+    printf("Framebuffer ScreenHeight      : %d\n", framebufferData.ScreenHeight);
+    printf("Framebuffer PixelsPerScanLine : %d\n", framebufferData.PixelsPerScanLine);
+    printf("Framebuffer PixelFormat       : %d\n", framebufferData.PixelFormat);
 }
 
 static ULONG

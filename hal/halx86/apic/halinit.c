@@ -25,15 +25,16 @@ HalpInitProcessor(
     IN ULONG ProcessorNumber,
     IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    __debugbreak();
 #ifdef CONFIG_SMP
     if (ProcessorNumber == 0)
     {
 #endif
-        HalpParseApicTables(LoaderBlock);
+        //HalpParseApicTables(LoaderBlock);
 #ifdef CONFIG_SMP
     }
 
-    HalpSetupProcessorsTable(ProcessorNumber);
+   // HalpSetupProcessorsTable(ProcessorNumber);
 #endif
 
     /* Initialize the local APIC for this cpu */
@@ -49,11 +50,12 @@ HalpInitProcessor(
 VOID
 HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    __debugbreak();
     DPRINT1("Using HAL: APIC %s %s\n",
             (HalpBuildType & PRCB_BUILD_UNIPROCESSOR) ? "UP" : "SMP",
             (HalpBuildType & PRCB_BUILD_DEBUG) ? "DBG" : "REL");
 
-    HalpPrintApicTables();
+  //  HalpPrintApicTables();
 
     /* Enable clock interrupt handler */
     HalpEnableInterruptHandler(IDT_INTERNAL,

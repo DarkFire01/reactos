@@ -95,6 +95,7 @@ HalInitSystem(IN ULONG BootPhase,
             /* No match, bugcheck */
             KeBugCheckEx(MISMATCHED_HAL, 2, Prcb->BuildType, HalpBuildType, 0);
         }
+        __debugbreak();
 
         /* Initialize ACPI */
         HalpSetupAcpiPhase0(LoaderBlock);

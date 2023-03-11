@@ -1145,7 +1145,12 @@ LoadAndBootWindows(
                                     BootOptions,
                                     BootPath);
 }
-
+#ifdef UEFIBOOT
+extern REACTOS_BGCONTEXT BgContext;
+void __ExitUefi();
+#endif
+KERNEL_ENTRY_POINT KiSystemStartup;
+PLOADER_PARAMETER_BLOCK LoaderBlockVA;
 ARC_STATUS
 LoadAndBootWindowsCommon(
     IN USHORT OperatingSystemVersion,
@@ -1153,10 +1158,8 @@ LoadAndBootWindowsCommon(
     IN PCSTR BootOptions,
     IN PCSTR BootPath)
 {
-    PLOADER_PARAMETER_BLOCK LoaderBlockVA;
     BOOLEAN Success;
     PLDR_DATA_TABLE_ENTRY KernelDTE;
-    KERNEL_ENTRY_POINT KiSystemStartup;
     PCSTR SystemRoot;
 
     TRACE("LoadAndBootWindowsCommon()\n");
@@ -1196,7 +1199,16 @@ LoadAndBootWindowsCommon(
 
     /* Cleanup INI file */
     IniCleanup();
-
+#ifdef UEFIBOOT
+    //TODO THIS IS TEMPORARY
+    LoaderBlock->BgContext.BaseAddress       = BgContext.BaseAddress;
+    LoaderBlock->BgContext.BufferSize        = BgContext.BufferSize;
+    LoaderBlock->BgContext.ScreenWidth       = BgContext.ScreenWidth;
+    LoaderBlock->BgContext.ScreenHeight      = BgContext.ScreenHeight;
+    LoaderBlock->BgContext.PixelsPerScanLine = BgContext.PixelsPerScanLine;
+    LoaderBlock->BgContext.PixelFormat       = BgContext.PixelFormat;
+   // LoaderBlock->BgContext.BaseAddress = BgContext.BaseAddress;
+#endif
 /****
  **** WE HAVE NOW REACHED THE POINT OF NO RETURN !!
  ****/
@@ -1225,7 +1237,7 @@ LoadAndBootWindowsCommon(
     /* Save entry-point pointer and Loader block VAs */
     KiSystemStartup = (KERNEL_ENTRY_POINT)KernelDTE->EntryPoint;
     LoaderBlockVA = PaToVa(LoaderBlock);
-
+      //  LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
 
@@ -1238,6 +1250,9 @@ LoadAndBootWindowsCommon(
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
 
+    #ifdef UEFIBOOT
+        __ExitUefi();
+    #endif
     /* Set processor context */
     WinLdrSetProcessorContext();
 

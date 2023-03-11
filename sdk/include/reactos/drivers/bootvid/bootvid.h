@@ -87,5 +87,8 @@ VidSolidColorFill(
     _In_ ULONG Right,
     _In_ ULONG Bottom,
     _In_ UCHAR Color);
-
+#include <arc/arc.h>
+VOID
+NTAPI
+VidSetupUefi(PLOADER_PARAMETER_BLOCK LoaderBlock);
 #endif // _BOOTVID_

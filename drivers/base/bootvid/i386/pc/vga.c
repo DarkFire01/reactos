@@ -109,6 +109,12 @@ DisplayCharacter(
     _In_ ULONG TextColor,
     _In_ ULONG BackColor)
 {
+    if (1 == TRUE)
+    {
+        DisplayCharacterUefi(Character,Left,Top,TextColor,BackColor);
+    }
+    else
+    {
     PUCHAR FontChar, PixelPtr;
     ULONG Height;
     UCHAR Shift;
@@ -189,6 +195,7 @@ DisplayCharacter(
             FontChar += FONT_PTR_DELTA;
         }
     }
+    }
 }
 
 static VOID
@@ -212,12 +219,19 @@ InitPaletteWithTable(
     _In_ PULONG Table,
     _In_ ULONG Count)
 {
+    if (1 == TRUE)
+    {
+        InitPaletteWithTableUefi(Table,Count);
+    }
+    else
+    {
     ULONG i;
     PULONG Entry = Table;
 
     for (i = 0; i < Count; i++, Entry++)
     {
         SetPaletteEntryRGB(i, *Entry);
+    }
     }
 }
 
@@ -226,6 +240,12 @@ NTAPI
 DoScroll(
     _In_ ULONG Scroll)
 {
+    if (1 == TRUE)
+    {
+        DoScrollUefi(Scroll);
+    }
+    else
+    {
     ULONG Top, RowSize;
     PUCHAR OldPosition, NewPosition;
 
@@ -259,6 +279,7 @@ DoScroll(
         OldPosition += (SCREEN_WIDTH / 8);
         NewPosition += (SCREEN_WIDTH / 8);
     }
+    }
 }
 
 VOID
@@ -268,6 +289,12 @@ PreserveRow(
     _In_ ULONG TopDelta,
     _In_ BOOLEAN Restore)
 {
+    if (1 == TRUE)
+    {
+        PreserveRowUefi(CurrentTop,TopDelta,Restore);
+    }
+    else
+    {
     PUCHAR Position1, Position2;
     ULONG Count;
 
@@ -309,6 +336,7 @@ PreserveRow(
         Position2++;
     }
 #endif
+    }
 }
 
 /* PUBLIC FUNCTIONS **********************************************************/
@@ -320,9 +348,16 @@ VOID
 NTAPI
 VidCleanUp(VOID)
 {
+    if (1 == TRUE)
+    {
+        VidResetDisplayUefi(FALSE);
+    }
+    else
+    {
     /* Select bit mask register and clear it */
     __outpb(VGA_BASE_IO_PORT + GRAPH_ADDRESS_PORT, IND_BIT_MASK);
     __outpb(VGA_BASE_IO_PORT + GRAPH_DATA_PORT, BIT_MASK_DEFAULT);
+    }
 }
 
 /*
@@ -338,6 +373,12 @@ VidScreenToBufferBlt(
     _In_ ULONG Height,
     _In_ ULONG Delta)
 {
+    if (1 == TRUE)
+    {
+        VidScreenToBufferBltUefi(Buffer, Left, Top , Width, Height, Delta);
+    }
+    else
+    {
     ULONG Plane;
     ULONG XDistance;
     ULONG LeftDelta, RightDelta;
@@ -423,6 +464,7 @@ VidScreenToBufferBlt(
             i += Delta;
         }
     }
+    }
 }
 
 /*
@@ -437,6 +479,12 @@ VidSolidColorFill(
     _In_ ULONG Bottom,
     _In_ UCHAR Color)
 {
+    if (1 == TRUE)
+    {
+        VidSolidColorFillUefi(Left, Top, Right, Bottom, Color);
+    }
+    else
+    {
     ULONG rMask, lMask;
     ULONG LeftOffset, RightOffset, Distance;
     PUCHAR Offset;
@@ -525,5 +573,6 @@ VidSolidColorFill(
                 }
             }
         }
+    }
     }
 }
