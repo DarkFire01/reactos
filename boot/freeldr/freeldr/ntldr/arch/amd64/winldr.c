@@ -348,8 +348,6 @@ extern PLOADER_PARAMETER_BLOCK LoaderBlockVA;
 VOID
 WinLdrSetProcessorContext(void)
 {
-    printf("test\n");
-    TRACE("WinLdrSetProcessorContext\n");
 
     /* Disable Interrupts */
     _disable();
@@ -363,8 +361,11 @@ WinLdrSetProcessorContext(void)
     /* Get kernel mode address of gdt / idt */
     GdtIdt = (PVOID)((ULONG64)GdtIdt + KSEG0_BASE);
 
+
+
     /* Create gdt entries and load gdtr */
     Amd64SetupGdt(GdtIdt, KSEG0_BASE | (TssBasePage << MM_PAGE_SHIFT));
+    //FRAME WORK DIES ABOVE
 
     /* Copy old Idt and set idtr */
     Amd64SetupIdt((PVOID)((ULONG64)GdtIdt + NUM_GDT * sizeof(KGDTENTRY)));
@@ -448,25 +449,15 @@ VOID
 WinLdrSetProcessorContextTwo()
 {
 
-	printf("Enteringcontexttwo\n");
-
 	 __lgdt(&_gdtptr);
 
      __writecr3((ULONG64)PxeBase);
 	 GdtIdt = (PVOID)((ULONG64)GdtIdt + KSEG0_BASE);
+
 	 Amd64SetupGdt(GdtIdt, KSEG0_BASE | (TssBasePage << MM_PAGE_SHIFT));
 	 Amd64SetupIdt((PVOID)((ULONG64)GdtIdt + NUM_GDT * sizeof(KGDTENTRY)));
 	__ltr(KGDT64_SYS_TSS);
 
-
-    /* Zero KI_USER_SHARED_DATA page */
-    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
-
-    WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
-    WinLdrpDumpBootDriver(LoaderBlockVA);
-#ifndef _M_AMD64
-    WinLdrpDumpArcDisks(LoaderBlockVA);
-#endif
 	(*KiSystemStartup)(LoaderBlockVA);
     for(;;)
     {

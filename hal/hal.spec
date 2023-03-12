@@ -106,3 +106,4 @@
 @ stdcall -arch=x86_64 x86BiosFreeBuffer()
 @ stdcall -arch=x86_64 x86BiosReadMemory()
 @ stdcall -arch=x86_64 x86BiosWriteMemory()
+@ stdcall HalGrabUefiContext()

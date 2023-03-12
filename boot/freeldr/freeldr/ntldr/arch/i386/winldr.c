@@ -506,7 +506,7 @@ extern PLOADER_PARAMETER_BLOCK LoaderBlockVA;
 VOID
 WinLdrSetProcessorContext(void)
 {
-    printf("Setting processor context\n");
+        /* Enable paging by modifying CR0 */
     GDTIDT GdtDesc, IdtDesc, OldIdt;
     PKGDTENTRY    pGdt;
     PKIDTENTRY    pIdt;
@@ -542,7 +542,10 @@ WinLdrSetProcessorContext(void)
     /* Get old values of GDT and IDT */
     Ke386GetGlobalDescriptorTable(&GdtDesc);
     __sidt(&IdtDesc);
+for(;;)
+{
 
+}
     /* Save old IDT */
     OldIdt.Base  = IdtDesc.Base;
     OldIdt.Limit = IdtDesc.Limit;
@@ -724,13 +727,10 @@ WinLdrSetProcessorContext(void)
     ret
     */
 
-       RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
+   for(;;)
+   {
 
-    WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
-    WinLdrpDumpBootDriver(LoaderBlockVA);
-#ifndef _M_AMD64
-    WinLdrpDumpArcDisks(LoaderBlockVA);
-#endif
+   }
     /* Pass control */
     (*KiSystemStartup)(LoaderBlockVA);
 }

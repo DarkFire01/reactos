@@ -249,7 +249,7 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
             else
             {
                 UefiSetMemory(FreeldrMem, MapEntry->PhysicalStart, MapEntry->NumberOfPages,
-                              LoaderFirmwareTemporary);
+                              LoaderFree);
             }
         }
         else
@@ -336,8 +336,8 @@ ArchSpecificExitUefi()
 VOID
 UefiPrepareForReactOS(VOID)
 {
-    MmAllocateMemoryWithType(0x8000, LoaderOsloaderStack);
-    EndOfStack = (PVOID)((ULONG_PTR)NewStack + 0x8000);
+    MmAllocateMemoryWithType(0x4000, LoaderOsloaderStack);
+    EndOfStack = (PVOID)((ULONG_PTR)NewStack + 0x4000);
     UefiExitBootServices();
     #ifdef _M_AMD64
     __lgdt(&_gdtptr);

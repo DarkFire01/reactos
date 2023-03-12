@@ -195,6 +195,16 @@ UefiGetBootPartitionEntry(
 extern EFI_HANDLE PublicBootHandle;
 static const CHAR Hex[] = "0123456789abcdef";
 static CHAR PcDiskIdentifier[32][20];
+UCHAR PcBiosDiskCount = 0;
+
+
+
+PCHAR
+GetHarddiskIdentifier(UCHAR DriveNumber)
+{
+    return PcDiskIdentifier[DriveNumber - 0x80];
+}
+
 VOID
 UefiSetupBlockDevices()
 {
@@ -219,6 +229,7 @@ UefiSetupBlockDevices()
             continue;
         }
         else{
+                PcBiosDiskCount += 1;
             TRACE("Sucess!, Block size: %d\r\n", bio->Media->BlockSize);
         }
 

@@ -425,12 +425,13 @@ GenericFramebufferGetVideoChildDescriptor(
     /* Unused */
     return NO_ERROR;
 }
-
+REACTOS_BGCONTEXT
+HalGrabUefiContext();
 ULONG NTAPI
 DriverEntry(PVOID Context1, PVOID Context2)
 {
     VIDEO_HW_INITIALIZATION_DATA VideoInitData;
-
+    REACTOS_BGCONTEXT HalContext = HalGrabUefiContext();
     VideoDebugPrint((Info, "GenericFramebuffer: DriverEntry\n"));
     VideoPortZeroMemory(&VideoInitData, sizeof(VideoInitData));
     VideoInitData.HwInitDataSize = sizeof(VideoInitData);
@@ -442,12 +443,12 @@ DriverEntry(PVOID Context1, PVOID Context2)
     VideoInitData.HwGetPowerState = GenericFramebufferGetPowerState;
     VideoInitData.HwGetVideoChildDescriptor = GenericFramebufferGetVideoChildDescriptor;
 
-    refiFbData.BaseAddress        = 0xA8000000;
-    refiFbData.BufferSize         = 0x300000;
-    refiFbData.ScreenWidth        = 1024;
-    refiFbData.ScreenHeight       = 768;
-    refiFbData.PixelsPerScanLine  = 1024;
-    refiFbData.PixelFormat        = 1;
+    refiFbData.BaseAddress        = (ULONG_PTR)HalContext.BaseAddress      ;
+    refiFbData.BufferSize         = HalContext.BufferSize       ;
+    refiFbData.ScreenWidth        = HalContext.ScreenWidth      ;
+    refiFbData.ScreenHeight       = HalContext.ScreenHeight     ;
+    refiFbData.PixelsPerScanLine  = HalContext.PixelsPerScanLine;
+    refiFbData.PixelFormat        = HalContext.PixelFormat      ;
 
     return VideoPortInitialize(Context1, Context2, &VideoInitData, NULL);
 }

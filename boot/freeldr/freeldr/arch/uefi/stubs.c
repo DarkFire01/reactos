@@ -11,7 +11,7 @@
 DBG_DEFAULT_CHANNEL(WARNING);
 extern EFI_SYSTEM_TABLE * GlobalSystemTable;
 extern EFI_HANDLE GlobalImageHandle;
-
+extern UCHAR PcBiosDiskCount;
 
 /* Maximum number of COM and LPT ports */
 #define MAX_COM_PORTS   4
@@ -856,7 +856,165 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
 
     TRACE("Created key: DisplayController\\0\n");
 }
+PCHAR
+GetHarddiskIdentifier(UCHAR DriveNumber);
+PCONFIGURATION_COMPONENT_DATA ControllerKey;
 
+static
+PCM_PARTIAL_RESOURCE_LIST
+XboxGetHarddiskConfigurationData(UCHAR DriveNumber, ULONG* pSize)
+{
+    PCM_PARTIAL_RESOURCE_LIST PartialResourceList;
+    PCM_DISK_GEOMETRY_DEVICE_DATA DiskGeometry;
+    //EXTENDED_GEOMETRY ExtGeometry;
+    GEOMETRY Geometry;
+    ULONG Size;
+
+    //
+    // Initialize returned size
+    //
+    *pSize = 0;
+
+    /* Set 'Configuration Data' value */
+    Size = sizeof(CM_PARTIAL_RESOURCE_LIST) +
+           sizeof(CM_DISK_GEOMETRY_DEVICE_DATA);
+    PartialResourceList = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
+    if (PartialResourceList == NULL)
+    {
+        ERR("Failed to allocate resource descriptor\n");
+        return NULL;
+    }
+
+    RtlZeroMemory(PartialResourceList, Size);
+    PartialResourceList->Version = 1;
+    PartialResourceList->Revision = 1;
+    PartialResourceList->Count = 1;
+    PartialResourceList->PartialDescriptors[0].Type =
+        CmResourceTypeDeviceSpecific;
+//  PartialResourceList->PartialDescriptors[0].ShareDisposition =
+//  PartialResourceList->PartialDescriptors[0].Flags =
+    PartialResourceList->PartialDescriptors[0].u.DeviceSpecificData.DataSize =
+        sizeof(CM_DISK_GEOMETRY_DEVICE_DATA);
+
+    /* Get pointer to geometry data */
+    DiskGeometry = (PVOID)(((ULONG_PTR)PartialResourceList) + sizeof(CM_PARTIAL_RESOURCE_LIST));
+
+    /* Get the disk geometry */
+    //ExtGeometry.Size = sizeof(EXTENDED_GEOMETRY);
+
+    if (MachDiskGetDriveGeometry(DriveNumber, &Geometry))
+    {
+        DiskGeometry->BytesPerSector = Geometry.BytesPerSector;
+        DiskGeometry->NumberOfCylinders = Geometry.Cylinders;
+        DiskGeometry->SectorsPerTrack = Geometry.Sectors;
+        DiskGeometry->NumberOfHeads = Geometry.Heads;
+    }
+    else
+    {
+        ERR("Reading disk geometry failed\n");
+        FrLdrHeapFree(PartialResourceList, TAG_HW_RESOURCE_LIST);
+        return NULL;
+    }
+    TRACE("Disk %x: %u Cylinders  %u Heads  %u Sectors  %u Bytes\n",
+          DriveNumber,
+          DiskGeometry->NumberOfCylinders,
+          DiskGeometry->NumberOfHeads,
+          DiskGeometry->SectorsPerTrack,
+          DiskGeometry->BytesPerSector);
+
+    //
+    // Return configuration data
+    //
+    *pSize = Size;
+    return PartialResourceList;
+}
+
+VOID
+DetectBiosDisks(PCONFIGURATION_COMPONENT_DATA SystemKey,
+                PCONFIGURATION_COMPONENT_DATA BusKey)
+{
+    PCONFIGURATION_COMPONENT_DATA DiskKey;
+    PCM_PARTIAL_RESOURCE_LIST PartialResourceList;
+    PCM_INT13_DRIVE_PARAMETER Int13Drives;
+    GEOMETRY Geometry;
+    UCHAR DiskCount, DriveNumber;
+    USHORT i;
+    ULONG Size;
+
+    /* The pre-enumeration of the BIOS disks was already done in InitializeBootDevices() */
+    DiskCount = PcBiosDiskCount;
+
+    /* Allocate resource descriptor */
+    Size = sizeof(CM_PARTIAL_RESOURCE_LIST) +
+           sizeof(CM_INT13_DRIVE_PARAMETER) * DiskCount;
+    PartialResourceList = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
+    if (PartialResourceList == NULL)
+    {
+        ERR("Failed to allocate resource descriptor\n");
+        return;
+    }
+
+    /* Initialize resource descriptor */
+    RtlZeroMemory(PartialResourceList, Size);
+    PartialResourceList->Version = 1;
+    PartialResourceList->Revision = 1;
+    PartialResourceList->Count = 1;
+    PartialResourceList->PartialDescriptors[0].Type = CmResourceTypeDeviceSpecific;
+    PartialResourceList->PartialDescriptors[0].ShareDisposition = 0;
+    PartialResourceList->PartialDescriptors[0].Flags = 0;
+    PartialResourceList->PartialDescriptors[0].u.DeviceSpecificData.DataSize =
+        sizeof(CM_INT13_DRIVE_PARAMETER) * DiskCount;
+
+    /* Get harddisk Int13 geometry data */
+    Int13Drives = (PVOID)(((ULONG_PTR)PartialResourceList) + sizeof(CM_PARTIAL_RESOURCE_LIST));
+    for (i = 0; i < DiskCount; i++)
+    {
+        DriveNumber = 0x80 + i;
+
+        if (MachDiskGetDriveGeometry(DriveNumber, &Geometry))
+        {
+            Int13Drives[i].DriveSelect = DriveNumber;
+            Int13Drives[i].MaxCylinders = Geometry.Cylinders - 1;
+            Int13Drives[i].SectorsPerTrack = (USHORT)Geometry.Sectors;
+            Int13Drives[i].MaxHeads = (USHORT)Geometry.Heads - 1;
+            Int13Drives[i].NumberDrives = DiskCount;
+
+            TRACE("Disk %x: %u Cylinders  %u Heads  %u Sectors  %u Bytes\n",
+                  DriveNumber,
+                  Geometry.Cylinders - 1,
+                  Geometry.Heads - 1,
+                  Geometry.Sectors,
+                  Geometry.BytesPerSector);
+        }
+    }
+
+    /* Update the 'System' key's configuration data with BIOS INT13h information */
+    FldrSetConfigurationData(SystemKey, PartialResourceList, Size);
+
+    /* Create and fill subkey for each harddisk */
+    for (i = 0; i < DiskCount; i++)
+    {
+        PCHAR Identifier;
+
+        DriveNumber = 0x80 + i;
+
+        /* Get disk values */
+        PartialResourceList = XboxGetHarddiskConfigurationData(DriveNumber, &Size);
+        Identifier = GetHarddiskIdentifier(DriveNumber);
+
+        /* Create disk key */
+        FldrCreateComponentKey(ControllerKey,
+                               PeripheralClass,
+                               DiskPeripheral,
+                               Output | Input,
+                               i,
+                               0xFFFFFFFF,
+                               Identifier,
+                               PartialResourceList,
+                               Size,
+                               &DiskKey);
+    }
+}
 
 static
 VOID
@@ -901,12 +1059,13 @@ DetectIsaBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
     DetectPS2Mouse(BusKey);
     DetectDisplayController(BusKey);
     /* Detect ISA/BIOS devices */
-   // DetectBiosDisks(SystemKey, BusKey);
+    DetectBiosDisks(SystemKey, BusKey);
    // DetectSerialPorts(BusKey, XboxGetSerialPort, MAX_XBOX_COM_PORTS);
    // DetectDisplayController(BusKey);
 
     /* FIXME: Detect more ISA devices */
 }
+
 
 
 PCONFIGURATION_COMPONENT_DATA

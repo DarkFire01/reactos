@@ -9,6 +9,7 @@
 /* INCLUDES ******************************************************************/
 
 #include <hal.h>
+#include <arc/arc.h>
 #define NDEBUG
 #include <debug.h>
 
@@ -62,6 +63,14 @@ HalInitializeProcessor(
     HalpRegisterKdSupportFunctions();
 }
 
+REACTOS_BGCONTEXT BgContextLoc;
+
+
+REACTOS_BGCONTEXT
+HalGrabUefiContext()
+{
+    return BgContextLoc;
+}
 /*
  * @implemented
  */
@@ -72,7 +81,7 @@ HalInitSystem(IN ULONG BootPhase,
               IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
     PKPRCB Prcb = KeGetCurrentPrcb();
-
+    BgContextLoc = LoaderBlock->BgContext;
     /* Check the boot phase */
     if (BootPhase == 0)
     {

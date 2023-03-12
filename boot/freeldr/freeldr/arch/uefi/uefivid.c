@@ -26,12 +26,11 @@ REACTOS_INTERNAL_BGCONTEXT framebufferData;
 EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 REACTOS_BGCONTEXT BgContext;
 /* FUNCTIONS ******************************************************************/
-
 EFI_STATUS
 UefiInitalizeVideo(VOID)
 {
     EFI_STATUS Status;
-    EFI_GRAPHICS_OUTPUT_PROTOCOL* gop = NULL;
+     EFI_GRAPHICS_OUTPUT_PROTOCOL* gop = NULL;
 
     RtlZeroMemory(&framebufferData, sizeof(framebufferData));
     Status = GlobalSystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
@@ -51,7 +50,7 @@ UefiInitalizeVideo(VOID)
     framebufferData.PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
     framebufferData.PixelFormat        = gop->Mode->Info->PixelFormat;
 
-    BgContext.BaseAddress        = gop->Mode->FrameBufferBase;
+    BgContext.BaseAddress        = (ULONGLONG*)gop->Mode->FrameBufferBase;
     BgContext.BufferSize         = gop->Mode->FrameBufferSize;
     BgContext.ScreenWidth        = gop->Mode->Info->HorizontalResolution;
     BgContext.ScreenHeight       = gop->Mode->Info->VerticalResolution;
@@ -63,7 +62,7 @@ UefiInitalizeVideo(VOID)
 VOID
 UefiPrintFramebufferData(VOID)
 {
-    printf("Framebuffer BaseAddress       : %X\n", framebufferData.BaseAddress);
+    printf("Framebuffer BaseAddress       : %X\n",     framebufferData.BaseAddress  );
     printf("Framebuffer BufferSize        : %X\n", framebufferData.BufferSize);
     printf("Framebuffer ScreenWidth       : %d\n", framebufferData.ScreenWidth);
     printf("Framebuffer ScreenHeight      : %d\n", framebufferData.ScreenHeight);
