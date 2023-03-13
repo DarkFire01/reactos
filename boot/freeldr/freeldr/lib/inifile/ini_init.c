@@ -1,6 +1,6 @@
 /*
  *  FreeLoader
- *  Copyright (C) 2009     Hervé Poussineau  <hpoussin@reactos.org>
+ *  Copyright (C) 2009     Hervï¿½ Poussineau  <hpoussin@reactos.org>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -39,7 +39,11 @@ BOOLEAN IniFileInitialize(VOID)
     {
         ERR("Error while opening freeldr.ini, Status: %d\n", Status);
         UiMessageBoxCritical("Error opening freeldr.ini or file not found.\nYou need to re-install FreeLoader.");
-        return FALSE;
+      //  return FALSE;
+      for(;;)
+      {
+
+      }
     }
 
     /* Get the file size */
