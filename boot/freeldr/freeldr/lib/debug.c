@@ -39,7 +39,7 @@ static UCHAR DbgChannels[DBG_CHANNELS_COUNT];
 
 #define BOCHS_OUTPUT_PORT   0xE9
 
-ULONG DebugPort = RS232;
+ULONG DebugPort = SCREEN;
 
 /* Serial debug connection */
 #if defined(SARCH_PC98)

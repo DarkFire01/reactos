@@ -305,6 +305,7 @@ extern PVOID i386idtptr;
 VOID
 ArchSpecificExitUefi()
 {
+    #if 0
     TRACE("Launching Arch Specific code");
 
     _disable();
@@ -330,6 +331,7 @@ ArchSpecificExitUefi()
     #error
     #endif
     _reloadsegment();
+    #endif
 }
 #endif
 
