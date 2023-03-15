@@ -5,6 +5,7 @@
  * COPYRIGHT:   Copyright 2022 Justin Miller <justinmiller100@gmail.com>
  */
 
+
 #include <uefildr.h>
 
 #include <debug.h>
@@ -13,8 +14,6 @@ DBG_DEFAULT_CHANNEL(WARNING);
 #define CHAR_WIDTH  8
 #define CHAR_HEIGHT 16
 #define TOP_BOTTOM_LINES 0
-#define FB_SIZE_MB 4
-#define MAKE_COLOR(Red, Green, Blue) (0xff000000 | (((Red) & 0xff) << 16) | (((Green) & 0xff) << 8) | ((Blue) & 0xff))
 
 /* GLOBALS ********************************************************************/
 
@@ -22,25 +21,32 @@ extern EFI_SYSTEM_TABLE * GlobalSystemTable;
 extern EFI_HANDLE GlobalImageHandle;
 
 UCHAR MachDefaultTextColor = COLOR_GRAY;
-REACTOS_INTERNAL_BGCONTEXT refiFbData;
+REACTOS_INTERNAL_BGCONTEXT framebufferData;
 
 /* FUNCTIONS ******************************************************************/
 
 VOID
 UefiInitalizeVideo(_In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop)
 {
-    EFI_STATUS Status = 0;
-    Status = GlobalSystemTable->BootServices->AllocatePool(EfiLoaderData, sizeof(refiFbData), (void**)&refiFbData);
-    if (Status != EFI_SUCCESS)
-        ERR("UefiMachInit: Could not allocated memory for MachVtbl");
-
     gop->SetMode(gop,1);
-    refiFbData.BaseAddress        = (ULONG_PTR)gop->Mode->FrameBufferBase;
-    refiFbData.BufferSize         = gop->Mode->FrameBufferSize;
-    refiFbData.ScreenWidth        = gop->Mode->Info->HorizontalResolution;
-    refiFbData.ScreenHeight       = gop->Mode->Info->VerticalResolution;
-    refiFbData.PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
-    refiFbData.PixelFormat        = gop->Mode->Info->PixelFormat;
+
+    framebufferData.BaseAddress        = (ULONG_PTR)gop->Mode->FrameBufferBase;
+    framebufferData.BufferSize         = gop->Mode->FrameBufferSize;
+    framebufferData.ScreenWidth        = gop->Mode->Info->HorizontalResolution;
+    framebufferData.ScreenHeight       = gop->Mode->Info->VerticalResolution;
+    framebufferData.PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
+    framebufferData.PixelFormat        = gop->Mode->Info->PixelFormat;
+}
+
+VOID
+UefiPrintFramebufferData()
+{
+    printf("\nFramebuffer BaseAddress       : %X\n", framebufferData.BaseAddress);
+    printf("\nFramebuffer BufferSize        : %X\n", framebufferData.BufferSize);
+    printf("\nFramebuffer ScreenWidth       : %d\n", framebufferData.ScreenWidth);
+    printf("\nFramebuffer ScreenHeight      : %d\n", framebufferData.ScreenHeight);
+    printf("\nFramebuffer PixelsPerScanLine : %d\n", framebufferData.PixelsPerScanLine);
+    printf("\nFramebuffer PixelFormat       : %d\n", framebufferData.PixelFormat);
 }
 
 ULONG
@@ -69,11 +75,11 @@ UefiVideoClearScreen(UCHAR Attr)
     ULONG FgColor, BgColor;
 
     UefiVideoAttrToColors(Attr, &FgColor, &BgColor);
-    for(int y = 0; y < refiFbData.ScreenHeight; y++)
+    for(int y = 0; y < framebufferData.ScreenHeight; y++)
     {
-        for(int x = 0; x < refiFbData.ScreenWidth; x++)
+        for(int x = 0; x < framebufferData.ScreenWidth; x++)
         {
-            *((UINT32*)(refiFbData.BaseAddress + 4 * refiFbData.PixelsPerScanLine * (y) + 4 * (x))) = BgColor;
+            *((UINT32*)(framebufferData.BaseAddress + 4 * framebufferData.PixelsPerScanLine * (y) + 4 * (x))) = BgColor;
         }
     }
 }
@@ -89,9 +95,9 @@ UefiVideoOutputChar(UCHAR Char, unsigned X, unsigned Y, ULONG FgColor, ULONG BgC
     unsigned Line;
     unsigned Col;
     ULONG Delta;
-    Delta = (refiFbData.PixelsPerScanLine * 4 + 3) & ~ 0x3;
+    Delta = (framebufferData.PixelsPerScanLine * 4 + 3) & ~ 0x3;
     FontPtr = BitmapFont8x16 + Char * 16;
-    Pixel = (PULONG) ((char *) refiFbData.BaseAddress +
+    Pixel = (PULONG) ((char *) framebufferData.BaseAddress +
             (Y * CHAR_HEIGHT + TOP_BOTTOM_LINES) *  Delta + X * CHAR_WIDTH * 4);
 
     for (Line = 0; Line < CHAR_HEIGHT; Line++)
@@ -121,8 +127,8 @@ UefiVideoPutChar(int Ch, UCHAR Attr, unsigned X, unsigned Y)
 VOID
 UefiVideoGetDisplaySize(PULONG Width, PULONG Height, PULONG Depth)
 {
-    *Width =  refiFbData.ScreenWidth / CHAR_WIDTH;
-    *Height = (refiFbData.ScreenHeight - 2) / CHAR_HEIGHT;
+    *Width =  framebufferData.ScreenWidth / CHAR_WIDTH;
+    *Height = (framebufferData.ScreenHeight - 2) / CHAR_HEIGHT;
     *Depth =  0;
 }
 
@@ -135,7 +141,7 @@ UefiVideoSetDisplayMode(char *DisplayMode, BOOLEAN Init)
 ULONG
 UefiVideoGetBufferSize(VOID)
 {
-    return ((refiFbData.ScreenHeight - 2) / CHAR_HEIGHT * (refiFbData.ScreenWidth / CHAR_WIDTH) * 2);
+    return ((framebufferData.ScreenHeight - 2) / CHAR_HEIGHT * (framebufferData.ScreenWidth / CHAR_WIDTH) * 2);
 }
 
 VOID
@@ -144,9 +150,9 @@ UefiVideoCopyOffScreenBufferToVRAM(PVOID Buffer)
     PUCHAR OffScreenBuffer = (PUCHAR) Buffer;
 
     ULONG Col, Line;
-    for (Line = 0; Line < (refiFbData.ScreenHeight - 2) / CHAR_HEIGHT; Line++)
+    for (Line = 0; Line < (framebufferData.ScreenHeight - 2) / CHAR_HEIGHT; Line++)
     {
-        for (Col = 0; Col < refiFbData.ScreenWidth / CHAR_WIDTH; Col++)
+        for (Col = 0; Col < framebufferData.ScreenWidth / CHAR_WIDTH; Col++)
         {
             UefiVideoPutChar(OffScreenBuffer[0], OffScreenBuffer[1], Col, Line);
             OffScreenBuffer += 2;
@@ -159,17 +165,17 @@ UefiVideoScrollUp(VOID)
 {
     ULONG BgColor, Dummy;
     ULONG Delta;
-    Delta = (refiFbData.PixelsPerScanLine * 4 + 3) & ~ 0x3;
-    ULONG PixelCount = refiFbData.ScreenWidth * CHAR_HEIGHT *
-                       (((refiFbData.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT) - 1);
-    PULONG Src = (PULONG)((PUCHAR)refiFbData.BaseAddress + (CHAR_HEIGHT + TOP_BOTTOM_LINES) * Delta);
-    PULONG Dst = (PULONG)((PUCHAR)refiFbData.BaseAddress + TOP_BOTTOM_LINES * Delta);
+    Delta = (framebufferData.PixelsPerScanLine * 4 + 3) & ~ 0x3;
+    ULONG PixelCount = framebufferData.ScreenWidth * CHAR_HEIGHT *
+                       (((framebufferData.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT) - 1);
+    PULONG Src = (PULONG)((PUCHAR)framebufferData.BaseAddress + (CHAR_HEIGHT + TOP_BOTTOM_LINES) * Delta);
+    PULONG Dst = (PULONG)((PUCHAR)framebufferData.BaseAddress + TOP_BOTTOM_LINES * Delta);
 
     UefiVideoAttrToColors(ATTR(COLOR_WHITE, COLOR_BLACK), &Dummy, &BgColor);
 
     while (PixelCount--)
         *Dst++ = *Src++;
 
-    for (PixelCount = 0; PixelCount < refiFbData.ScreenWidth * CHAR_HEIGHT; PixelCount++)
+    for (PixelCount = 0; PixelCount < framebufferData.ScreenWidth * CHAR_HEIGHT; PixelCount++)
         *Dst++ = BgColor;
 }

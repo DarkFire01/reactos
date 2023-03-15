@@ -194,7 +194,6 @@ if(MSVC)
 else()
     set_subsystem(uefildr 10)
 endif()
-
 set_target_properties(uefildr PROPERTIES SUFFIX ".efi")
 
 set_entrypoint(uefildr EfiEntry)

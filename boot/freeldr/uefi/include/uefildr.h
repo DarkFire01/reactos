@@ -23,3 +23,10 @@
 #include <machuefi.h>
 
 VOID __cdecl BootMain(IN PCCH CmdLine);
+
+//TODO: this version of the struct is temporary
+
+
+
+EFI_STATUS
+UefiHandleService(EFI_STATUS Status);

@@ -38,7 +38,6 @@
 #define DPRINT_HEAP         15  // messages in a bottle
 #define DBG_CHANNELS_COUNT  16
 
-#if DBG && !defined(_M_ARM)
 
     VOID    DebugInit(IN ULONG_PTR FrLdrSectionId);
     ULONG   DbgPrint(const char *Format, ...);
@@ -97,31 +96,6 @@ void    MEMORY_READWRITE_BREAKPOINT4(unsigned long addr);
 void    MEMORY_WRITE_BREAKPOINT4(unsigned long addr);
 
 #endif // defined __i386__
-
-#else
-
-    #define DBG_DEFAULT_CHANNEL(ch)
-
-    #define ERR_CH(ch, fmt, ...)
-    #define FIXME_CH(ch, fmt, ...)
-    #define WARN_CH(ch, fmt, ...)
-    #define TRACE_CH(ch, fmt, ...)
-
-    #define ERR(fmt, ...)
-    #define FIXME(fmt, ...)
-    #define WARN(fmt, ...)
-    #define TRACE(fmt, ...)
-
-    #define UNIMPLEMENTED
-
-    #define DebugInit(FrLdrSectionId)
-    #define BugCheck(fmt, ...)
-    #define DbgDumpBuffer(mask, buf, len)
-    #define DebugDisableScreenPort()
-    #define DbgParseDebugChannels(val)
-
-#endif // DBG
-
 void
 NTAPI
 FrLdrBugCheck(ULONG BugCode);

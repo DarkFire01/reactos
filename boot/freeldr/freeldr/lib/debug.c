@@ -20,9 +20,26 @@
 #include <freeldr.h>
 #include <debug.h>
 
-#if DBG && !defined(_M_ARM64)
 
-#define DEBUG_ALL
+static ULONG Rs232ComPort = 0;
+
+BOOLEAN Rs232PortInitialize(IN ULONG ComPort,
+                            IN ULONG BaudRate)
+{
+
+    Rs232ComPort = ComPort;
+
+    return TRUE;
+}
+ULONG_PTR PINEUARTBASE =   0xFF1A0000 ;
+VOID Rs232PortPutByte(UCHAR ByteToSend)
+{
+    *(volatile UINT32*)(PINEUARTBASE) = ByteToSend;
+}
+
+#if DBG && !defined(_M_ARM)
+
+// #define DEBUG_ALL
 // #define DEBUG_WARN
 // #define DEBUG_ERR
 // #define DEBUG_INIFILE
@@ -40,7 +57,7 @@ static UCHAR DbgChannels[DBG_CHANNELS_COUNT];
 
 #define BOCHS_OUTPUT_PORT   0xE9
 
-ULONG DebugPort = RS232;
+ULONG DebugPort = SCREEN;
 
 /* Serial debug connection */
 #if defined(SARCH_PC98)
@@ -254,36 +271,6 @@ DbgPrint2(ULONG Mask, ULONG Level, const char *File, ULONG Line, char *Format, .
     char Buffer[2096];
     char *ptr = Buffer;
 
-    /* Mask out unwanted debug messages */
-    if (!(DbgChannels[Mask] & Level) && !(Level & DBG_DEFAULT_LEVELS))
-    {
-        return;
-    }
-
-    /* Print the header if we have started a new line */
-    if (DebugStartOfLine)
-    {
-        DbgPrint("(%s:%lu) ", File, Line);
-
-        switch (Level)
-        {
-            case ERR_LEVEL:
-                DbgPrint("err: ");
-                break;
-            case FIXME_LEVEL:
-                DbgPrint("fixme: ");
-                break;
-            case WARN_LEVEL:
-                DbgPrint("warn: ");
-                break;
-            case TRACE_LEVEL:
-                DbgPrint("trace: ");
-                break;
-        }
-
-        DebugStartOfLine = FALSE;
-    }
-
     va_start(ap, Format);
     vsprintf(Buffer, Format, ap);
     va_end(ap);
@@ -424,10 +411,34 @@ DbgParseDebugChannels(PCHAR Value)
 #else
 
 ULONG
-DbgPrint(PCCH Format, ...)
+DbgPrint(const char *Format, ...)
 {
+    va_list ap;
+    int Length;
+    char* ptr;
+    CHAR Buffer[512];
+
+    va_start(ap, Format);
+    Length = _vsnprintf(Buffer, sizeof(Buffer), Format, ap);
+    va_end(ap);
+
+    /* Check if we went past the buffer */
+    if (Length == -1)
+    {
+        /* Terminate it if we went over-board */
+        Buffer[sizeof(Buffer) - 1] = '\n';
+
+        /* Put maximum */
+        Length = sizeof(Buffer);
+    }
+
+    ptr = Buffer;
+    while (Length--)
+        DebugPrintChar(*ptr++);
+
     return 0;
 }
+
 
 #endif // DBG
 
@@ -521,24 +532,3 @@ char *BugCodeStrings[] =
 };
 
 ULONG_PTR BugCheckInfo[5];
-
-VOID
-DbgPrint2(ULONG Mask, ULONG Level, const char *File, ULONG Line, char *Format, ...)
-{
-}
-
-
-VOID DebugInit(IN ULONG_PTR FrLdrSectionId)
-{
-}
-
-VOID
-DebugDumpBuffer(ULONG Mask, PVOID Buffer, ULONG Length)
-{
-}
-
-
-VOID
-DbgParseDebugChannels(PCHAR Value)
-{
-}

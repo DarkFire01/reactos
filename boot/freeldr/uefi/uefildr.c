@@ -8,14 +8,14 @@
 #include <uefildr.h>
 
 #include <debug.h>
-
+DBG_DEFAULT_CHANNEL(WARNING);
 /* GLOBALS ********************************************************************/
 
 EFI_HANDLE GlobalImageHandle;
 EFI_SYSTEM_TABLE *GlobalSystemTable;
 
 /* FUNCTIONS ******************************************************************/
-
+extern ULONG_PTR PINEUARTBASE;
 EFI_STATUS
 EfiEntry(
     _In_ EFI_HANDLE ImageHandle,
@@ -24,7 +24,33 @@ EfiEntry(
     SystemTable->ConOut->OutputString(SystemTable->ConOut, L"UEFI EntryPoint: Starting freeldr from UEFI");
     GlobalImageHandle = ImageHandle;
     GlobalSystemTable = SystemTable;
+    DebugInit(0);
+    MachInit(NULL);
 
+        /* UI pre-initialization */
+    if (!UiInitialize(FALSE))
+    {
+        UiMessageBoxCritical("Unable to initialize UI.");
+
+    }
+
+
+    /* Initialize memory manager */
+    if (!MmInitializeMemoryManager())
+    {
+        UiMessageBoxCritical("Unable to initialize memory manager.");
+        //goto Quit;
+    }
+    printf("Setting up boot now...\n");
+      FsInit();
+
+    RunLoader();
+
+   // TRACE("okay that worked.. trying to setup mach now\n");
+    for(;;)
+    {
+
+    }
     BootMain(NULL);
 
     //UNREACHABLE

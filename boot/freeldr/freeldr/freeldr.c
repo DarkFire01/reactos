@@ -42,14 +42,14 @@ CCHAR FrLdrBootPath[MAX_PATH] = "";
 
 VOID __cdecl BootMain(IN PCCH CmdLine)
 {
-    CmdLineParse(CmdLine);
+ //   CmdLineParse(CmdLine);
 
     /* Debugger pre-initialization */
-    DebugInit(0);
+    //DebugInit(0);
 
     MachInit(CmdLine);
 
-    TRACE("BootMain() called.\n");
+    //TRACE("BootMain() called.\n");
 
 #ifndef UEFIBOOT
     /* Check if the CPU is new enough */
@@ -70,6 +70,10 @@ VOID __cdecl BootMain(IN PCCH CmdLine)
         goto Quit;
     }
 
+    for(;;)
+    {
+
+    }
     /* Initialize I/O subsystem */
     FsInit();
 

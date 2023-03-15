@@ -450,8 +450,7 @@ PVOID MmFindLocationForPageLookupTable(PFN_NUMBER TotalPageCount)
     }
 
     // Calculate the end address for the lookup table
-    PageLookupTableEndPage = min(CandidateBasePage + CandidatePageCount,
-                                 MM_MAX_PAGE_LOADER);
+    PageLookupTableEndPage = CandidateBasePage + CandidatePageCount;
 
     // Calculate the virtual address
     PageLookupTableMemAddress = (PVOID)((PageLookupTableEndPage * PAGE_SIZE)

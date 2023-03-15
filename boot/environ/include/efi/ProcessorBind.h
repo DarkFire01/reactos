@@ -201,12 +201,12 @@ typedef signed char         INT8;
 /// Unsigned value of native width.  (4 bytes on supported 32-bit processor instructions;
 /// 8 bytes on supported 64-bit processor instructions.)
 ///
-typedef UINT32  UINTN;
+typedef UINT64  UINTN;
 ///
 /// Signed value of native width.  (4 bytes on supported 32-bit processor instructions;
 /// 8 bytes on supported 64-bit processor instructions.)
 ///
-typedef INT32   INTN;
+typedef INT64   INTN;
 
 //
 // Processor specific defines

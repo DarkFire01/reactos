@@ -69,6 +69,18 @@ UefiConsKbHit(VOID)
     return 0;
 }
 
+/* I got tired of typing this over and over */
+EFI_STATUS
+UefiHandleService(EFI_STATUS Status)
+{
+    if (Status != EFI_SUCCESS)
+    {
+        TRACE("UEFIServices call has failed with status: %X\n", Status);
+    }
+
+    return Status;
+}
+
 int
 UefiConsGetCh(void)
 {
