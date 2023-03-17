@@ -254,12 +254,12 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
         }
         else
         {
-            UefiSetMemory(FreeldrMem, MapEntry->PhysicalStart, MapEntry->NumberOfPages,
-                          UefiConvertToFreeldrDesc(MapEntry->Type));
+         //   UefiSetMemory(FreeldrMem, MapEntry->PhysicalStart, MapEntry->NumberOfPages,
+              //            UefiConvertToFreeldrDesc(MapEntry->Type));
         }
         MapEntry = NEXT_MEMORY_DESCRIPTOR(MapEntry, DescriptorSize);
     }
-    UefiPrintFramebufferData();
+ //   UefiPrintFramebufferData();
   // ReserveMemory(FreeldrMem, 0x1000,0x1000, LoaderOsloaderStack, "Stack");
    // ReserveMemory(FreeldrMem, (ULONG_PTR)framebufferData.BaseAddress, framebufferData.BufferSize, LoaderFirmwarePermanent, "Video Memory");
     *MemoryMapSize = FreeldrDescCount;
@@ -338,8 +338,8 @@ ArchSpecificExitUefi()
 VOID
 UefiPrepareForReactOS(VOID)
 {
-    MmAllocateMemoryWithType(0x4000, LoaderOsloaderStack);
-    EndOfStack = (PVOID)((ULONG_PTR)NewStack + 0x4000);
+    MmAllocateMemoryWithType(0x8000, LoaderOsloaderStack);
+    EndOfStack = (PVOID)((ULONG_PTR)NewStack + 0x6000);
     UefiExitBootServices();
     #ifdef _M_AMD64
     __lgdt(&_gdtptr);

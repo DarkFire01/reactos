@@ -423,7 +423,7 @@ HalpInitBusHandler(VOID)
     KeInitializeSpinLock(&HalpBusDatabaseSpinLock);
 
     /* Setup the bus event */
-    //KeInitializeEvent(&HalpBusDatabaseEvent, SynchronizationEvent, TRUE);
+    KeInitializeEvent(&HalpBusDatabaseEvent, SynchronizationEvent, TRUE);
 
     /* Setup the bus configuration and bus table */
     HalpBusTable = HalpAllocateArray(0);

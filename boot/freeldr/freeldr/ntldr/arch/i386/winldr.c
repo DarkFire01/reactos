@@ -542,10 +542,7 @@ WinLdrSetProcessorContext(void)
     /* Get old values of GDT and IDT */
     Ke386GetGlobalDescriptorTable(&GdtDesc);
     __sidt(&IdtDesc);
-for(;;)
-{
 
-}
     /* Save old IDT */
     OldIdt.Base  = IdtDesc.Base;
     OldIdt.Limit = IdtDesc.Limit;

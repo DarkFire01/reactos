@@ -11,7 +11,7 @@ extern EFI_HANDLE PublicBootHandle;
 
 #define TAG_HW_RESOURCE_LIST    'lRwH'
 #define TAG_HW_DISK_CONTEXT     'cDwH'
-#define FIRST_BIOS_DISK 0x81
+#define FIRST_BIOS_DISK 0x80
 #define FIRST_PARTITION 1
 typedef struct tagDISKCONTEXT
 {
@@ -236,7 +236,7 @@ UefiGetBootPartitionEntry(
     OUT PULONG BootPartition)
 {
     TRACE("UefiGetBootPartitionEntry: DriveNumber: %d\n", DriveNumber);
-    *BootPartition = (OffsetToBoot - UefiBootRootIdentifier + FIRST_PARTITION);
+    *BootPartition = (OffsetToBoot - UefiBootRootIdentifier);
     TRACE("Boot Partition %d", OffsetToBoot);
     return TRUE;
 }
@@ -358,9 +358,9 @@ UefiSetupBlockDevices()
     SystemHandleCount = handle_size / sizeof(EFI_HANDLE);
 
     /* 2) Parse through block devicel list */
-    for (i = 0; i < SystemHandleCount; ++i) {
+    for (i = 0; i <= SystemHandleCount; ++i) {
         Status = GlobalSystemTable->BootServices->HandleProtocol(handles[i], &bioGuid, (void **) &bio);
-          if (EFI_ERROR(Status) || bio == NULL || bio->Media->BlockSize==0){
+        if (EFI_ERROR(Status) || bio == NULL || bio->Media->BlockSize==0){
             TRACE("UefiSetupBlockDevices: UEFI Has found a block device thats failed, Skipping\n");
             continue;
         }
@@ -368,38 +368,36 @@ UefiSetupBlockDevices()
         {
             TRACE("UefiSetupBlockDevices: Found a block device with size %d\n", bio->Media->BlockSize);
         }
-
         if (handles[i] == PublicBootHandle)
         {
             OffsetToBoot = i;
             TRACE("\nUefiSetupBlockDevices: Found the BootHandle, Array Offset:%d\n", OffsetToBoot);
         }
-
         // For every device, make sure it's a Root Block device
         if (bio->Media->LogicalPartition == FALSE)
         {
+            PcBiosDiskCount += 1;
             TRACE("UefiSetupBlockDevices: Found Root of drive %d\nSectorSize: %d\n", i, bio->Media->BlockSize);
             GetHarddiskInformation(i + FIRST_BIOS_DISK);
 
         }
         else if(handles[i] == PublicBootHandle)
         {
+
             ULONG increment = 0;
-            TRACE("UefiSetupBlockDevices: Attempting to find root of boot drive\n");
-            increment = OffsetToBoot;
-            GlobalSystemTable->BootServices->HandleProtocol(handles[increment], &bioGuid, (void **) &bio);
-            while(bio->Media->LogicalPartition != TRUE)
+            for(increment = OffsetToBoot; increment >= 0; increment--)
             {
-                increment -= 1;
-                TRACE("CurrentOffset %d\n", OffsetToBoot);
                 GlobalSystemTable->BootServices->HandleProtocol(handles[increment], &bioGuid, (void **) &bio);
+                if (bio->Media->LogicalPartition == FALSE)
+                {
+                    TRACE("Found root at increment %u", increment);
+                    UefiBootRootIdentifier = increment;
+                    break;
+                }
             }
-            increment -= 1;
-            UefiBootRootIdentifier = increment;
-            TRACE("UefiSetupBlockDevices: Found boot drive: %d\n", UefiBootRootIdentifier);
 
+            //HACK: Sometimes UEFI doesn't define the Root drive properly
         }
-
     }
 }
 
@@ -444,11 +442,7 @@ UefiInitializeBootDevices(VOID)
     DiskReadBufferSize = PAGE_SIZE;
     DiskReadBuffer = MmAllocateMemoryWithType(DiskReadBufferSize, LoaderFirmwareTemporary);
     UefiSetupBlockDevices();
-
     UefiSetBootpath();
-
-
-
 
     /* Add it, if it's a floppy or cdrom */
     GlobalSystemTable->BootServices->HandleProtocol(handles[UefiBootRootIdentifier], &bioGuid, (void **) &bio);

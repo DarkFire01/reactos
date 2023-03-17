@@ -361,8 +361,6 @@ WinLdrSetProcessorContext(void)
     /* Get kernel mode address of gdt / idt */
     GdtIdt = (PVOID)((ULONG64)GdtIdt + KSEG0_BASE);
 
-
-
     /* Create gdt entries and load gdtr */
     Amd64SetupGdt(GdtIdt, KSEG0_BASE | (TssBasePage << MM_PAGE_SHIFT));
     //FRAME WORK DIES ABOVE
@@ -372,7 +370,6 @@ WinLdrSetProcessorContext(void)
 
     /* LDT is unused */
     //__lldt(0);
-
 
     /* Load TSR */
     __ltr(KGDT64_SYS_TSS);
