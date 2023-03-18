@@ -22,4 +22,15 @@
 #include <debug.h>
 #include <machuefi.h>
 
+//TODO: this version of the struct is temporary
+typedef struct _REACTOS_INTERNAL_BGCONTEXT
+{
+    ULONG_PTR    BaseAddress;
+    ULONG        BufferSize;
+    UINT32       ScreenWidth;
+    UINT32       ScreenHeight;
+    UINT32       PixelsPerScanLine;
+    UINT32       PixelFormat;
+} REACTOS_INTERNAL_BGCONTEXT, *PREACTOS_INTERNAL_BGCONTEXT;
+
 VOID __cdecl BootMain(IN PCCH CmdLine);

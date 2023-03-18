@@ -8,6 +8,7 @@
 #include <uefildr.h>
 
 #include <debug.h>
+DBG_DEFAULT_CHANNEL(WARNING);
 
 /* GLOBALS ********************************************************************/
 
@@ -50,4 +51,10 @@ MachInit(const char *CmdLine)
     MachVtbl.InitializeBootDevices = UefiInitializeBootDevices;
     MachVtbl.HwDetect = UefiHwDetect;
     MachVtbl.HwIdle = UefiHwIdle;
+
+    /* Setup GOP */
+    if (UefiInitalizeVideo() != EFI_SUCCESS)
+    {
+        ERR("Failed to setup GOP\n");
+    }
 }
