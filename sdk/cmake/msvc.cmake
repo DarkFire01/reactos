@@ -412,7 +412,7 @@ set(PSEH_LIB "pseh")
 # Use a full path for the x86 version of ml when using x64 VS.
 # It's not a problem when using the DDK/WDK because, in x64 mode,
 # both the x86 and x64 versions of ml are available.
-if(ARCH STREQUAL "amd64")
+if(NOT ARCH STREQUAL "i386")
     if((MSVC_VERSION LESS_EQUAL 1900) AND (DEFINED ENV{VCINSTALLDIR}))
         set(CMAKE_ASM16_COMPILER $ENV{VCINSTALLDIR}/bin/ml.exe)
     elseif(DEFINED ENV{VCToolsInstallDir})
@@ -420,10 +420,6 @@ if(ARCH STREQUAL "amd64")
     else()
         set(CMAKE_ASM16_COMPILER ml.exe)
     endif()
-elseif(ARCH STREQUAL "arm")
-    set(CMAKE_ASM16_COMPILER armasm.exe)
-elseif(ARCH STREQUAL "arm64")
-    set(CMAKE_ASM16_COMPILER armasm64.exe)
 else()
     set(CMAKE_ASM16_COMPILER ml.exe)
 endif()
@@ -446,11 +442,7 @@ function(CreateBootSectorTarget _target_name _asm_file _binary_file _base_addres
         COMMAND ${CMAKE_C_COMPILER} /nologo ${_no_std_includes_flag} /I${REACTOS_SOURCE_DIR}/sdk/include/asm /I${REACTOS_BINARY_DIR}/sdk/include/asm ${_includes} ${_defines} /D__ASM__ /D_USE_ML /EP /c ${_asm_file} > ${_temp_file}
         DEPENDS ${_asm_file})
 
-    if(ARCH STREQUAL "arm" OR ARCH STREQUAL "arm64")
-        set(_asm16_command ${CMAKE_ASM16_COMPILER} -nologo -o ${_object_file} ${_temp_file})
-    else()
-        set(_asm16_command ${CMAKE_ASM16_COMPILER} /nologo /Cp /Fo${_object_file} /c /Ta ${_temp_file})
-    endif()
+    set(_asm16_command ${CMAKE_ASM16_COMPILER} /nologo /Cp /Fo${_object_file} /c /Ta ${_temp_file})
 
     add_custom_command(
         OUTPUT ${_object_file}
