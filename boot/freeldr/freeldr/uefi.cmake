@@ -15,6 +15,7 @@ list(APPEND UEFILDR_ARC_SOURCE
     ${FREELDR_ARC_SOURCE}
     arch/uefi/stubs.c
     arch/uefi/uefisetup.c
+    arch/uefi/uefidisk.c
     arch/uefi/uefivid.c
     arch/uefi/uefiutil.c
     arch/uefi/ueficon.c
