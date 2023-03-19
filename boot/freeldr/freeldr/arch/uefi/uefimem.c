@@ -255,12 +255,13 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
                 MemoryType = LoaderFirmwareTemporary;
             }
         }
-
-        UefiSetMemory(FreeldrMem,
+		if (MemoryType != LoaderReserve)
+		{
+			UefiSetMemory(FreeldrMem,
                       MapEntry->PhysicalStart,
                       MapEntry->NumberOfPages,
                       MemoryType);
-
+		}
         MapEntry = NEXT_MEMORY_DESCRIPTOR(MapEntry, DescriptorSize);
     }
 
