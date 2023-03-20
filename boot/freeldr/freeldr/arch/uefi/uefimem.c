@@ -294,34 +294,4 @@ UefiPrepareForReactOS(VOID)
     UefiExitBootServices();
     ExitStack = MmAllocateMemoryWithType(EXIT_STACK_SIZE, LoaderOsloaderStack);
     EndofExitStack = (PVOID)((ULONG_PTR)ExitStack + EXIT_STACK_SIZE);
-
-   #ifdef _M_AMD64
-    __lgdt(&gdtptr);
-    #endif
-    #ifdef _M_IX86
-
-    _disable();
-
-    __writeeflags(0);
-
-              /* Re-initialize EFLAGS */
-    Ke386SetGlobalDescriptorTable(&gdtptr);
-    __lidt(&i386idtptr);
-    #if defined(__GNUC__) || defined(__clang__)
-        asm("ljmp    $0x08, $1f\n"
-            "1:\n");
-    #elif defined(_MSC_VER)
-        /* We cannot express the above in MASM so we use this far return instead */
-        __asm
-        {
-            push 8
-            push offset resume
-            retf
-            resume:
-        };
-    #else
-    #error
-    #endif
-    _reloadsegment();
-    #endif
 }

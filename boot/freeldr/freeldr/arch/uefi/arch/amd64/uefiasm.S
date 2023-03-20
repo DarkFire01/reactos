@@ -37,6 +37,11 @@ _i386ldtptr:
 
 PUBLIC __ExitUefi
 __ExitUefi:
+#ifdef _USE_ML
+    lgdt fword ptr gdtptr
+#else
+    lgdt cs:gdtptr
+#endif
     mov rsp, EndofExitStack
 	call UefiExitToKernel
 	hlt

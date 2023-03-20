@@ -12,6 +12,13 @@ EXTERN _UefiExitToKernel:PROC
 // VOID _LeaveUEFIStack(VOID);
 PUBLIC __LeaveUEFIStack
 __LeaveUEFIStack:
+#ifdef _USE_ML
+    lgdt fword ptr _gdtptr
+    lidt fword ptr ds:[_i386idtptr]
+#else
+    lgdt cs:_gdtptr
+    lidt _i386idtptr
+#endif
     mov esp, _EndofExitStack
     call _UefiExitToKernel
 

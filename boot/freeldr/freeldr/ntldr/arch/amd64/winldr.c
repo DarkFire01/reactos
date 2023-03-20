@@ -427,8 +427,8 @@ void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
 #ifdef UEFIBOOT
 PLOADER_PARAMETER_BLOCK PubLoaderBlockVA;
 KERNEL_ENTRY_POINT PubKiSystemStartup;
-
 void __ExitUefi(VOID);
+
 VOID
 WinldrFinalizeBoot(PLOADER_PARAMETER_BLOCK LoaderBlockVA,
                    KERNEL_ENTRY_POINT KiSystemStartup)
