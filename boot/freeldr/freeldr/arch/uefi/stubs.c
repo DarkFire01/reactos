@@ -60,18 +60,6 @@ UefiPcBeep(VOID)
     /* Not possible on UEFI, for now */
 }
 
-BOOLEAN
-UefiConsKbHit(VOID)
-{
-    return FALSE;
-}
-
-int
-UefiConsGetCh(void)
-{
-    return 0;
-}
-
 VOID
 UefiHwIdle(VOID)
 {
