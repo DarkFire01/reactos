@@ -45,9 +45,6 @@ __ExitUefi:
     mov rsp, EndofExitStack
 	call UefiExitToKernel
 	hlt
-ldt:
-idt:
-
 
 
 
