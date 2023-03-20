@@ -9,3 +9,4 @@
 @ stdcall VidSetScrollRegion(long long long long)
 @ stdcall VidSetTextColor(long)
 @ stdcall VidSolidColorFill(long long long long long)
+@ stdcall VidSetupUefi(ptr)

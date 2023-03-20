@@ -35,19 +35,8 @@ SetPixel(
     _In_ ULONG Top,
     _In_ UCHAR Color)
 {
-    PUCHAR PixelPosition;
+        SetPixelUefi(Left, Top, Color);
 
-    /* Calculate the pixel position */
-    PixelPosition = (PUCHAR)(VgaBase + (Left >> 3) + (Top * (SCREEN_WIDTH / 8)));
-
-    /* Select the bitmask register and write the mask */
-    __outpw(VGA_BASE_IO_PORT + GRAPH_ADDRESS_PORT, (PixelMask[Left & 7] << 8) | IND_BIT_MASK);
-
-    /* Dummy read to load latch registers */
-    (VOID)READ_REGISTER_UCHAR(PixelPosition);
-
-    /* Set the new color */
-    WRITE_REGISTER_UCHAR(PixelPosition, Color);
 }
 
 VOID

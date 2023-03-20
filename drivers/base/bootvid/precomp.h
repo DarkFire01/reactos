@@ -5,6 +5,9 @@
 #include <ndk/halfuncs.h>
 #include <drivers/bootvid/bootvid.h>
 
+/* UEFI / Framebuffer header */
+#include "uefi/uefi.h"
+
 /* Arch specific includes */
 #if defined(_M_IX86) || defined(_M_AMD64)
 #if defined(SARCH_PC98)
@@ -74,5 +77,8 @@ extern const RGBQUAD VidpDefaultPalette[BV_MAX_COLORS];
 # define GetFontPtr(_Char) &VidpFontData[_Char * BOOTCHAR_HEIGHT];
 # define FONT_PTR_DELTA (1)
 #endif
+
+//TODO: this version of the struct is temporary
+
 
 #endif /* _BOOTVID_PCH_ */

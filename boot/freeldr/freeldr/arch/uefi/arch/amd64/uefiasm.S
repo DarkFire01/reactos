@@ -6,8 +6,7 @@
 EXTERN UefiExitToKernel:PROC
 EXTERN EndofExitStack:QWORD
 PUBLIC gdtptr
-PUBLIC _i386idtptr
-PUBLIC _i386ldtptr
+
 .align 8
 gdt:
     .word HEX(0000), HEX(0000), HEX(0000), HEX(0000) /* 00: NULL descriptor */
@@ -26,14 +25,6 @@ gdtptr:
 #else
     .long gdt, 0           /* Base Address */
 #endif
-
-_i386idtptr:
-    .word 255           /* Limit */
-    .quad idt     /* Base Address */
-
-_i386ldtptr:
-    .word 255           /* Limit */
-    .quad ldt     /* Base Address */
 
 PUBLIC __ExitUefi
 __ExitUefi:
