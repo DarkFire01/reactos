@@ -424,6 +424,21 @@ void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
     WinLdrMapSpecialPages();
 }
 
+#ifdef UEFIBOOT
+PLOADER_PARAMETER_BLOCK PubLoaderBlockVA;
+KERNEL_ENTRY_POINT PubKiSystemStartup;
+
+VOID
+WinldrFinalizeBoot(PLOADER_PARAMETER_BLOCK LoaderBlockVA,
+                   KERNEL_ENTRY_POINT KiSystemStartup)
+{
+    printf("test");
+    for(;;)
+    {
+
+    }
+}
+#endif
 
 VOID
 MempDump(VOID)

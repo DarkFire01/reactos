@@ -177,3 +177,11 @@ MempUnmapPage(PFN_NUMBER Page);
 
 VOID
 MempDump(VOID);
+
+#ifdef UEFIBOOT
+VOID
+WinldrFinalizeBoot(PLOADER_PARAMETER_BLOCK LoaderBlockVA,
+                   KERNEL_ENTRY_POINT KiSystemStartup);
+VOID
+UefiExitBoot(VOID);
+#endif

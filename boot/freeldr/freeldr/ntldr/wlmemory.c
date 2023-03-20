@@ -51,7 +51,10 @@ extern PFREELDR_MEMORY_DESCRIPTOR BiosMemoryMap;
 extern ULONG BiosMemoryMapEntryCount;
 extern PFN_NUMBER MmLowestPhysicalPage;
 extern PFN_NUMBER MmHighestPhysicalPage;
-
+#ifdef UEFIBOOT
+extern PVOID OsLoaderBase;
+extern SIZE_T OsLoaderSize;
+#endif
 /* GLOBALS ***************************************************************/
 
 MEMORY_ALLOCATION_DESCRIPTOR *Mad;
@@ -330,13 +333,10 @@ WinLdrSetupMemoryLayout(IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     WinLdrpDumpMemoryDescriptors(LoaderBlock); //FIXME: Delete!
 
+#ifdef UEFIBOOT
     // Map our loader image, so we can continue running
-    /*Status = MempSetupPaging(OsLoaderBase >> MM_PAGE_SHIFT, OsLoaderSize >> MM_PAGE_SHIFT);
-    if (!Status)
-    {
-        UiMessageBox("Error during MempSetupPaging.");
-        return;
-    }*/
+    MempSetupPaging((ULONG_PTR)OsLoaderBase >> MM_PAGE_SHIFT, OsLoaderSize >> MM_PAGE_SHIFT, FALSE);
+#endif
 
     // Fill the memory descriptor list and
     //PrepareMemoryDescriptorList();

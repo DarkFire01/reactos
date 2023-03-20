@@ -24,9 +24,14 @@ list(APPEND UEFILDR_ARC_SOURCE
 
 if(ARCH STREQUAL "i386")
     list(APPEND UEFILDR_COMMON_ASM_SOURCE
-        arch/i386/i386trap.S)
+        arch/i386/i386trap.S
+        arch/uefi/arch/i386/uefiasm.S)
+    list(APPEND UEFILDR_ARC_SOURCE
+        arch/i386/i386idt.c)
 
 elseif(ARCH STREQUAL "amd64")
+    list(APPEND UEFILDR_COMMON_ASM_SOURCE
+        arch/uefi/arch/amd64/uefiasm.S)
     #TBD
 elseif(ARCH STREQUAL "arm")
     #TBD
