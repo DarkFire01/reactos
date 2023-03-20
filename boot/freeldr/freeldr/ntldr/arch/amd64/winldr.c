@@ -428,15 +428,37 @@ void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
 PLOADER_PARAMETER_BLOCK PubLoaderBlockVA;
 KERNEL_ENTRY_POINT PubKiSystemStartup;
 
+void __ExitUefi(VOID);
 VOID
 WinldrFinalizeBoot(PLOADER_PARAMETER_BLOCK LoaderBlockVA,
                    KERNEL_ENTRY_POINT KiSystemStartup)
 {
-    printf("test");
+    printf("Jumping to kernel\n");
+    PubLoaderBlockVA = LoaderBlockVA;
+    PubKiSystemStartup = KiSystemStartup;
+    __ExitUefi();
     for(;;)
     {
 
     }
+}
+
+VOID
+UefiExitToKernel(VOID)
+{
+    WinLdrSetProcessorContext();
+
+    TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
+          PubKiSystemStartup, PubLoaderBlockVA);
+
+    /* Zero KI_USER_SHARED_DATA page */
+    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
+
+    WinLdrpDumpMemoryDescriptors(PubLoaderBlockVA);
+    WinLdrpDumpBootDriver(PubLoaderBlockVA);
+
+    /* Pass control */
+    (*PubKiSystemStartup)(PubLoaderBlockVA);
 }
 #endif
 

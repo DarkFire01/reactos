@@ -295,7 +295,9 @@ UefiPrepareForReactOS(VOID)
     ExitStack = MmAllocateMemoryWithType(EXIT_STACK_SIZE, LoaderOsloaderStack);
     EndofExitStack = (PVOID)((ULONG_PTR)ExitStack + EXIT_STACK_SIZE);
 
-
+   #ifdef _M_AMD64
+    __lgdt(&gdtptr);
+    #endif
     #ifdef _M_IX86
 
     _disable();

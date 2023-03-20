@@ -3,9 +3,9 @@
 #include <arch/pc/pcbios.h>
 
 .code64
-EXTERN WinLdrSetProcessorContext:PROC
-EXTERN EndOfStack:QWORD
-PUBLIC _gdtptr
+EXTERN UefiExitToKernel:PROC
+EXTERN EndofExitStack:QWORD
+PUBLIC gdtptr
 PUBLIC _i386idtptr
 PUBLIC _i386ldtptr
 .align 8
@@ -19,7 +19,7 @@ gdt:
     .word HEX(FFFF), HEX(0000), HEX(9B00), HEX(00CF) /* 30: compat mode CS */
 
 /* GDT table pointer */
-_gdtptr:
+gdtptr:
     .word HEX(37)       /* Limit */
 #ifdef _USE_ML
     .quad gdt    /* Base Address */
@@ -37,8 +37,8 @@ _i386ldtptr:
 
 PUBLIC __ExitUefi
 __ExitUefi:
-    mov rsp, EndOfStack
-	call WinLdrSetProcessorContext
+    mov rsp, EndofExitStack
+	call UefiExitToKernel
 	hlt
 ldt:
 idt:
