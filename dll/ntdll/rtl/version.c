@@ -99,6 +99,20 @@ RtlGetNtProductType(_Out_ PNT_PRODUCT_TYPE ProductType)
     return TRUE;
 }
 
+
+#define DONT_RESOLVE_DLL_REFERENCES         0x00000001
+#define LOAD_LIBRARY_AS_DATAFILE            0x00000002
+ #define LOAD_WITH_ALTERED_SEARCH_PATH       0x00000008
+ #define LOAD_IGNORE_CODE_AUTHZ_LEVEL        0x00000010
+#define LOAD_LIBRARY_AS_IMAGE_RESOURCE      0x00000020
+ #define LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE  0x00000040
+ #define LOAD_LIBRARY_REQUIRE_SIGNED_TARGET  0x00000080
+#define LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR    0x00000100
+#define LOAD_LIBRARY_SEARCH_APPLICATION_DIR 0x00000200
+#define LOAD_LIBRARY_SEARCH_USER_DIRS       0x00000400
+ #define LOAD_LIBRARY_SEARCH_SYSTEM32        0x00000800
+ #define LOAD_LIBRARY_SEARCH_DEFAULT_DIRS    0x00001000
+
 /**********************************************************************
  * NAME                         EXPORTED
  *  RtlGetNtVersionNumbers
@@ -203,5 +217,55 @@ RtlGetVersion(IN OUT PRTL_OSVERSIONINFOW lpVersionInformation)
 
     return STATUS_SUCCESS;
 }
+
+
+static DWORD default_search_flags;  /* default flags set by LdrSetDefaultDllDirectories */
+
+NTSTATUS
+NTAPI
+LdrSetDefaultDllDirectories( ULONG flags )
+{
+   /* LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR doesn't make sense in default dirs */
+ const ULONG load_library_search_flags = (LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
+                                             LOAD_LIBRARY_SEARCH_USER_DIRS |
+                                            LOAD_LIBRARY_SEARCH_SYSTEM32 |
+                                            LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+        if (!flags || (flags & ~load_library_search_flags)) return STATUS_INVALID_PARAMETER;
+    default_search_flags = flags;
+  return STATUS_SUCCESS;
+ }
+
+
+/***********************************************************************
+ *           RtlGetProductInfo    (NTDLL.@)
+ *
+ * Gives info about the current Windows product type, in a format compatible
+ * with the given Windows version
+ *
+ * Returns TRUE if the input is valid, FALSE otherwise
+ */
+BOOLEAN WINAPI RtlGetProductInfo(DWORD dwOSMajorVersion, DWORD dwOSMinorVersion, DWORD dwSpMajorVersion,
+                                 DWORD dwSpMinorVersion, PDWORD pdwReturnedProductType)
+{
+    //TRACE("(%d, %d, %d, %d, %p)\n", dwOSMajorVersion, dwOSMinorVersion,
+    //      dwSpMajorVersion, dwSpMinorVersion, pdwReturnedProductType);
+
+    if (!pdwReturnedProductType)
+        return FALSE;
+
+    if (dwOSMajorVersion < 6)
+    {
+        *pdwReturnedProductType = PRODUCT_UNDEFINED;
+        return FALSE;
+    }
+
+    //if (current_version->wProductType == VER_NT_WORKSTATION)
+        *pdwReturnedProductType = PRODUCT_ULTIMATE_N;
+    //else
+    //    *pdwReturnedProductType = PRODUCT_STANDARD_SERVER;
+
+    return TRUE;
+}
+
 
 /* EOF */
