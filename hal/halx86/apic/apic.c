@@ -380,7 +380,7 @@ HalpAllocateSystemInterrupt(
     /* Setup a redirection entry */
     ReDirReg.Vector = Vector;
     ReDirReg.DeliveryMode = APIC_MT_LowestPriority;
-    ReDirReg.DestinationMode = APIC_DM_Logical;
+    ReDirReg.DestinationMode = APIC_DM_Physical;
     ReDirReg.DeliveryStatus = 0;
     ReDirReg.Polarity = 0;
     ReDirReg.RemoteIRR = 0;
@@ -510,7 +510,7 @@ ApicInitializeIOApic(VOID)
     ReDirReg.Destination = ApicRead(APIC_ID);
     ApicWriteIORedirectionEntry(APIC_CLOCK_INDEX, ReDirReg);
 }
-
+ #define APIC_IPI_VECTOR      0xE1
 VOID
 NTAPI
 HalpInitializePICs(IN BOOLEAN EnableInterrupts)
@@ -532,18 +532,20 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
     HalpVectorToIndex[DISPATCH_VECTOR] = APIC_RESERVED_VECTOR;
     HalpVectorToIndex[APIC_CLOCK_VECTOR] = 8;
     HalpVectorToIndex[APIC_SPURIOUS_VECTOR] = APIC_RESERVED_VECTOR;
+    HalpVectorToIndex[APIC_IPI_VECTOR] = APIC_RESERVED_VECTOR;
 
     /* Set interrupt handlers in the IDT */
     KeRegisterInterruptHandler(APIC_CLOCK_VECTOR, HalpClockInterrupt);
 #ifndef _M_AMD64
     KeRegisterInterruptHandler(APC_VECTOR, HalpApcInterrupt);
     KeRegisterInterruptHandler(DISPATCH_VECTOR, HalpDispatchInterrupt);
+    KeRegisterInterruptHandler(APIC_IPI_VECTOR, HalpIpiInterrupt);
 #endif
 
     /* Register the vectors for APC and dispatch interrupts */
     HalpRegisterVector(IDT_INTERNAL, 0, APC_VECTOR, APC_LEVEL);
     HalpRegisterVector(IDT_INTERNAL, 0, DISPATCH_VECTOR, DISPATCH_LEVEL);
-
+    HalpRegisterVector(IDT_INTERNAL, 0, APIC_IPI_VECTOR, IPI_LEVEL);
     /* Restore interrupt state */
     if (EnableInterrupts) EFlags |= EFLAGS_INTERRUPT_MASK;
     __writeeflags(EFlags);
@@ -642,6 +644,44 @@ HalpDispatchInterruptHandler(IN PKTRAP_FRAME TrapFrame)
     /* Exit the interrupt */
     KiEoiHelper(TrapFrame);
 }
+
+VOID
+DECLSPEC_NORETURN
+FASTCALL
+HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
+{
+
+   // DPRINT1("AP has entered IpiInterruptHandler\n");
+
+    KIRQL Irql;
+
+    /* Enter trap */
+    KiEnterInterruptTrap(TrapFrame);
+
+
+    /* Start the interrupt */
+    if (!HalBeginSystemInterrupt(IPI_LEVEL, APIC_IPI_VECTOR, &Irql))
+    {
+        /* Spurious, just end the interrupt */
+        KiEoiHelper(TrapFrame);
+    }
+    /* Raise to DISPATCH_LEVEL */
+    ApicRaiseIrql(DISPATCH_LEVEL);
+
+    KiIpiServiceRoutine(NULL, NULL);
+    __asm {
+        mov eax, 0xDEADBEEF
+    };
+    for(;;)
+    {
+
+    }
+    /* Restore the old IRQL */
+    ApicLowerIrql(Irql);
+
+    /* Exit the interrupt */
+    KiEoiHelper(TrapFrame);
+}
 #endif
 
 
@@ -698,7 +738,7 @@ HalEnableSystemInterrupt(
     {
         ReDirReg.Vector = Vector;
         ReDirReg.DeliveryMode = APIC_MT_LowestPriority;
-        ReDirReg.DestinationMode = APIC_DM_Logical;
+        ReDirReg.DestinationMode = APIC_DM_Physical;
         ReDirReg.Destination = 0;
     }
 

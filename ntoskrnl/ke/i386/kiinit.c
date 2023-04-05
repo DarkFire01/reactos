@@ -841,15 +841,6 @@ AppCpuInit:
         KiMarkPageAsReadOnly(KiDoubleFaultStackData);
     }
 
-        /* Check if this is the boot CPU */
-    if (Cpu)
-    {
-        for(;;)
-        {
-            
-        }
-    }
-
     /* Raise to HIGH_LEVEL */
     KeRaiseIrql(HIGH_LEVEL, &DummyIrql);
 

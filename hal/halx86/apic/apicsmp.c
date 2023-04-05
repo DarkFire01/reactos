@@ -104,7 +104,7 @@ HalpRequestIpi(KAFFINITY TargetProcessors)
         if (TargetProcessors & Current)
         {
             DPRINT1("Sending IPI to CPU: %X\n", i);
-            ApicRequestGlobalInterrupt(i, 0, APIC_MT_Fixed,
+            ApicRequestGlobalInterrupt(i, APIC_IPI_VECTOR, APIC_MT_Fixed,
                 APIC_TGM_Edge, APIC_DSH_Destination);
         }
     }

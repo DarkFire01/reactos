@@ -20,12 +20,32 @@ KIRQL KiOldIrql;
 ULONG KiFreezeFlag;
 
 /* FUNCTIONS ******************************************************************/
+//TODO: Replace with finish func
+VOID
+NTAPI
+KiIdleMultiprocessor(IN PKIPI_CONTEXT PacketContext,
+                     IN PVOID Ignored1,
+                     IN PVOID Ignored2,
+                     IN PVOID Ignored3)
+{
+    while (KiFreezeFlag != 4){
+        __asm {
+            mov eax, 0xDEADBEEF
+        };
+    }
+
+}
+
 
 BOOLEAN
 NTAPI
 KeFreezeExecution(IN PKTRAP_FRAME TrapFrame,
                   IN PKEXCEPTION_FRAME ExceptionFrame)
 {
+    #ifdef CONFIG_SMP
+    KAFFINITY TargetAffinity;
+    PKPRCB Prcb = KeGetCurrentPrcb();
+    #endif
     BOOLEAN Enable;
     KIRQL OldIrql;
 
@@ -49,7 +69,32 @@ KeFreezeExecution(IN PKTRAP_FRAME TrapFrame,
 #endif
 
 #ifdef CONFIG_SMP
-    // TODO: Add SMP support.
+    UNREFERENCED_PARAMETER(TargetAffinity);
+    UNREFERENCED_PARAMETER(Prcb);
+#if 1
+    if (KeNumberProcessors > 1)
+    {
+
+    /* Raise the IRQL for the TB Flush */
+        OldIrql = KeRaiseIrqlToSynchLevel();
+
+
+        /* Get the current processor affinity, and exclude ourselves */
+         TargetAffinity = KeActiveProcessors;
+         TargetAffinity &= ~Prcb->SetMember;
+
+    /* Make sure this is MP */
+         if (TargetAffinity)
+         {
+            /* Send an IPI TB flush to the other processors */
+               KiIpiSendPacket(TargetAffinity,
+                        KiIdleMultiprocessor,
+                        NULL,
+                        0,
+                        NULL);
+         }
+        }
+    #endif
 #endif
 
     /* Save the old IRQL to be restored on unfreeze */

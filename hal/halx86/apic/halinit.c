@@ -38,6 +38,11 @@ HalpInitProcessor(
 
     /* Initialize the local APIC for this cpu */
     ApicInitializeLocalApic(ProcessorNumber);
+     if(ProcessorNumber != 0)
+    {
+             /* Initialize the PICs */
+         HalpInitializePICs(TRUE);
+    }
     if(ProcessorNumber == 0)
     {
     /* Initialize profiling data (but don't start it) */
@@ -63,6 +68,15 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                                CLOCK2_LEVEL,
                                HalpClockInterrupt,
                                Latched);
+   /* Enable clock interrupt handler */
+    HalpEnableInterruptHandler(IDT_INTERNAL,
+                               0,
+                               APIC_IPI_VECTOR,
+                               IPI_LEVEL,
+                               HalpIpiInterrupt,
+                               Latched);
+
+
 }
 
 VOID
