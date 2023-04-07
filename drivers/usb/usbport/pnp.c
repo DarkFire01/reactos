@@ -7,10 +7,10 @@
 
 #include "usbport.h"
 
-#define NDEBUG
+//debug
 #include <debug.h>
 
-#define NDEBUG_USBPORT_CORE
+//debug_USBPORT_CORE
 #include "usbdebug.h"
 
 IO_COMPLETION_ROUTINE USBPORT_FdoStartCompletion;

@@ -12,7 +12,7 @@
 
 #include "usbstor.h"
 
-#define NDEBUG
+//debug
 #include <debug.h>
 
 /* PUBLIC AND PRIVATE FUNCTIONS **********************************************/

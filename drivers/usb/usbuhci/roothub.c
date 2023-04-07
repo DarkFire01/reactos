@@ -7,7 +7,7 @@
 
 #include "usbuhci.h"
 
-#define NDEBUG
+//debug
 #include <debug.h>
 
 VOID

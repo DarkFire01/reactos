@@ -7,10 +7,10 @@
 
 #include "usbehci.h"
 
-#define NDEBUG
+//debug
 #include <debug.h>
 
-#define NDEBUG_EHCI_ROOT_HUB
+//debug_EHCI_ROOT_HUB
 #include "dbg_ehci.h"
 
 MPSTATUS

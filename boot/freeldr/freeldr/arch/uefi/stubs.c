@@ -8,7 +8,6 @@
 #include <uefildr.h>
 
 #include <debug.h>
-
 /* TODO: Handle this with custom Disk / partition setup */
 UCHAR
 DriveMapGetBiosDriveNumber(PCSTR DeviceName)
@@ -35,6 +34,7 @@ UefiVideoGetFontsFromFirmware(PULONG RomFontPointers)
 
 }
 
+
 VOID
 UefiVideoSync(VOID)
 {
@@ -48,12 +48,6 @@ UefiGetExtendedBIOSData(PULONG ExtendedBIOSDataArea,
 
 }
 
-PCONFIGURATION_COMPONENT_DATA
-UefiHwDetect(VOID)
-{
-    return 0;
-}
-
 VOID
 UefiPcBeep(VOID)
 {
@@ -65,3 +59,5 @@ UefiHwIdle(VOID)
 {
 
 }
+
+

@@ -197,7 +197,7 @@ typedef signed char         CHAR8;
 typedef signed char         INT8;
 #endif
 
-#ifdef WIN32
+#ifndef _WIN64
 ///
 /// Unsigned value of native width.  (4 bytes on supported 32-bit processor instructions;
 /// 8 bytes on supported 64-bit processor instructions.)

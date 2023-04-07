@@ -1145,7 +1145,9 @@ LoadAndBootWindows(
                                     BootOptions,
                                     BootPath);
 }
-
+#ifdef UEFIBOOT
+extern REACTOS_BGCONTEXT BgContext;
+#endif
 ARC_STATUS
 LoadAndBootWindowsCommon(
     IN USHORT OperatingSystemVersion,
@@ -1196,7 +1198,16 @@ LoadAndBootWindowsCommon(
 
     /* Cleanup INI file */
     IniCleanup();
-
+#ifdef UEFIBOOT
+    //TODO THIS IS TEMPORARY
+    LoaderBlock->BgContext.BaseAddress       = BgContext.BaseAddress;
+    LoaderBlock->BgContext.BufferSize        = BgContext.BufferSize;
+    LoaderBlock->BgContext.ScreenWidth       = BgContext.ScreenWidth;
+    LoaderBlock->BgContext.ScreenHeight      = BgContext.ScreenHeight;
+    LoaderBlock->BgContext.PixelsPerScanLine = BgContext.PixelsPerScanLine;
+    LoaderBlock->BgContext.PixelFormat       = BgContext.PixelFormat;
+   // LoaderBlock->BgContext.BaseAddress = BgContext.BaseAddress;
+#endif
 /****
  **** WE HAVE NOW REACHED THE POINT OF NO RETURN !!
  ****/

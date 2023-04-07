@@ -3738,7 +3738,7 @@ KdbpCliMainLoop(
         KdbOutputAborted = FALSE;
 
         /* Call the command */
-        Continue = KdbpDoCommand(Command);
+        Continue = KdbpDoCommand("bt");
         KdbOutputAborted = FALSE;
     }
     while (Continue);

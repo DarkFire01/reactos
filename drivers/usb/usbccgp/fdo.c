@@ -11,7 +11,7 @@
 
 #include "usbccgp.h"
 
-#define NDEBUG
+//debug
 #include <debug.h>
 
 NTSTATUS

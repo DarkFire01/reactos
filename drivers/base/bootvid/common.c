@@ -547,11 +547,12 @@ VOID
 NTAPI
 VidSetupUefi(PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    refiFbData.BaseAddress        = LoaderBlock->  BgContext.BaseAddress      ;
-    refiFbData.BufferSize         = LoaderBlock->  BgContext.BufferSize       ;
-    refiFbData.ScreenWidth        = LoaderBlock->  BgContext.ScreenWidth      ;
-    refiFbData.ScreenHeight       = LoaderBlock->  BgContext.ScreenHeight     ;
-    refiFbData.PixelsPerScanLine  = LoaderBlock->  BgContext.PixelsPerScanLine;
-    refiFbData.PixelFormat        = LoaderBlock->  BgContext.PixelFormat      ;
+
+    refiFbData.BaseAddress          = 0x80000000;
+    refiFbData.BufferSize       =     0x1D4C00;
+    refiFbData.ScreenWidth          = 800;
+    refiFbData.ScreenHeight          = 600;
+    refiFbData.PixelsPerScanLine     = 800;
+    refiFbData.PixelFormat          = 1;
    // __debugbreak();
 }

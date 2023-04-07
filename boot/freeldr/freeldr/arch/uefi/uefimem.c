@@ -287,7 +287,7 @@ UefiExitBootServices(VOID)
 extern PVOID EndOfStack;
 extern PVOID gdtptr;
 extern PVOID i386idtptr;
-void _reloadsegment(VOID);
+
 VOID
 UefiPrepareForReactOS(VOID)
 {

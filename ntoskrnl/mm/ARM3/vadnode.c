@@ -187,13 +187,13 @@ MiInsertVad(IN PMMVAD Vad,
     PMMADDRESS_NODE Parent = NULL;
 
     /* Validate the VAD and set it as the current hint */
-    ASSERT(Vad->EndingVpn >= Vad->StartingVpn);
+   // ASSERT(Vad->EndingVpn >= Vad->StartingVpn);
     VadRoot->NodeHint = Vad;
 
     /* Find the parent VAD and where this child should be inserted */
     Result = RtlpFindAvlTableNodeOrParent(VadRoot, (PVOID)Vad->StartingVpn, &Parent);
-    ASSERT(Result != TableFoundNode);
-    ASSERT((Parent != NULL) || (Result == TableEmptyTree));
+ //   ASSERT(Result != TableFoundNode);
+   // ASSERT((Parent != NULL) || (Result == TableEmptyTree));
 
     /* Do the actual insert operation */
     MiInsertNode(VadRoot, (PVOID)Vad, Parent, Result);

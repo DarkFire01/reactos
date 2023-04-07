@@ -7,12 +7,12 @@
 
 #include "usbport.h"
 
-#define NDEBUG
+//debug
 #include <debug.h>
 
-#define NDEBUG_USBPORT_CORE
-#define NDEBUG_USBPORT_QUEUE
-#define NDEBUG_USBPORT_URB
+//debug_USBPORT_CORE
+//debug_USBPORT_QUEUE
+//debug_USBPORT_URB
 #include "usbdebug.h"
 
 VOID
