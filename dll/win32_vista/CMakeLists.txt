@@ -1,4 +1,5 @@
 add_subdirectory(avrt)
+add_subdirectory(bluetoothapis)
 add_subdirectory(clbcatq)
 add_subdirectory(cryptbase)
 add_subdirectory(dwmapi)
