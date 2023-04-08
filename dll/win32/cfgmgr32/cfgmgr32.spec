@@ -194,7 +194,7 @@
 @ stdcall CM_Unregister_Device_InterfaceW(wstr long) setupapi.CM_Unregister_Device_InterfaceW
 @ stdcall CM_Unregister_Device_Interface_ExA(str long long) setupapi.CM_Unregister_Device_Interface_ExA
 @ stdcall CM_Unregister_Device_Interface_ExW(wstr long long) setupapi.CM_Unregister_Device_Interface_ExW
-
+@ stdcall -version=0x600+ CM_GetDevNode_PropertyW() setupapi.SetupDiGetDevicePropertyW
 # Deprecated functions, they are not present in Win2003 SP1
 @ stub CM_Remove_Unmarked_Children # setupapi.CM_Remove_Unmarked_Children
 @ stub CM_Remove_Unmarked_Children_Ex # setupapi.CM_Remove_Unmarked_Children_Ex

@@ -10,6 +10,7 @@
 @ stdcall IsPwrHibernateAllowed ()
 @ stdcall IsPwrShutdownAllowed ()
 @ stdcall IsPwrSuspendAllowed ()
+@ stdcall -version=0x600+ PowerDeterminePlatformRoleEx(long)
 @ stdcall PowerGetActiveScheme (ptr ptr)
 @ stdcall -stub PowerSetActiveScheme (ptr)
 @ stdcall PowerReadDCValue (ptr ptr ptr ptr ptr ptr ptr)

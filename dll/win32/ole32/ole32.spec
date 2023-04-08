@@ -73,6 +73,7 @@
 @ stdcall CoIsOle1Class (ptr)
 @ stdcall CoLoadLibrary(wstr long)
 @ stdcall CoLockObjectExternal(ptr long long)
+@ stdcall -version=0x600+ CoGetApartmentType(ptr ptr)
 @ stdcall CoMarshalHresult(ptr long)
 @ stdcall CoMarshalInterThreadInterfaceInStream(ptr ptr ptr)
 @ stdcall CoMarshalInterface(ptr ptr ptr long ptr long)

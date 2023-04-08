@@ -1317,3 +1317,22 @@ DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
     }
     return TRUE;
 }
+
+typedef enum _POWER_PLATFORM_ROLE {
+    PlatformRoleUnspecified = 0,
+    PlatformRoleDesktop,
+    PlatformRoleMobile,
+    PlatformRoleWorkstation,
+    PlatformRoleEnterpriseServer,
+    PlatformRoleSOHOServer,
+    PlatformRoleAppliancePC,
+    PlatformRolePerformanceServer, // v1 last supported
+    PlatformRoleSlate,             // v2 last supported
+    PlatformRoleMaximum
+} POWER_PLATFORM_ROLE, *PPOWER_PLATFORM_ROLE;
+
+POWER_PLATFORM_ROLE
+PowerDeterminePlatformRoleEx(ULONG Version)
+{
+    return PlatformRoleDesktop;
+}

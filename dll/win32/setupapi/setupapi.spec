@@ -346,6 +346,7 @@
 @ stdcall SetupDiGetSelectedDriverA(ptr ptr ptr)
 @ stdcall SetupDiGetSelectedDriverW(ptr ptr ptr)
 @ stub SetupDiGetWizardPage
+@ stdcall -stub -version=0x600+ SetupDiGetDevicePropertyW(ptr ptr ptr ptr ptr long long long);
 @ stdcall SetupDiInstallClassA(long str long ptr)
 @ stdcall SetupDiInstallClassExA(long str long ptr ptr ptr ptr)
 @ stdcall SetupDiInstallClassExW(long wstr long ptr ptr ptr ptr)
