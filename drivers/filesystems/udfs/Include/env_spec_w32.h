@@ -701,7 +701,7 @@ UDFInterlockedExchangeAdd(PLONG addr, LONG i) {
 #define IPI_LEVEL 29                // Interprocessor interrupt level
 #define POWER_LEVEL 30              // Power failure level
 #define HIGH_LEVEL 31               // Highest interrupt level
-#define SYNCH_LEVEL (IPI_LEVEL-1)   // synchronization level
+#define SYNCH_LEVEL (IPI_LEVEL-2)   // synchronization level
 
 #define KeGetCurrentIrql()      PASSIVE_LEVEL
 
