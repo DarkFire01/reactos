@@ -5,15 +5,12 @@
  * PURPOSE:         Implements cache clean, invalidate routines for ARM machines
  * PROGRAMMERS:     Copyright (C) 2005 ARM Ltd.
  */
+#include <ksarm.h>
 
-/* INCLUDES ******************************************************************/
-
-	#include <kxarm.h>
-
-/* CODE **********************************************************************/
     TEXTAREA
 
-    LEAF_ENTRY v7_flush_dcache_all
+    NESTED_ENTRY v7_flush_dcache_all
+    PROLOG_END v7_flush_dcache_all
 
 	mrc	p15, 1, r0, c0, c0, 1		// read clidr
 	ands	r3, r0, #0x7000000		// extract loc from clidr
@@ -39,8 +36,8 @@ loop1
 loop2
 	mov	r9, r4                      // create working copy of max way size
 loop3
-	orr	r11, r10, r9, lsl r5		// factor way and cache number into r11
-	orr	r11, r11, r7, lsl r2		// factor index number into r11
+	orr	r11, r10, r9		// factor way and cache number into r11
+	orr	r11, r11, r7		// factor index number into r11
 	mcr	p15, 0, r11, c7, c14, 2		// clean & invalidate by set/way
 	subs	r9, r9, #1              // decrement the way
 	bge	loop3
@@ -56,6 +53,5 @@ finished
 	isb
 	mov	pc, lr
 
-    LEAF_END v7_flush_dcache_all
-    END
-/* EOF */
+    NESTED_END v7_flush_dcache_all
+ 	END

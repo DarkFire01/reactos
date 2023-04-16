@@ -19,7 +19,8 @@ function(add_hal _halname)
     endforeach()
     add_library(${_halname} MODULE
         ${_haldata_SOURCES}
-        ${CMAKE_CURRENT_BINARY_DIR}/hal.def)
+        ${CMAKE_CURRENT_BINARY_DIR}/hal.def
+        ${CMAKE_CURRENT_BINARY_DIR}/hal_stubs.c)
 
     add_importlibs(${_halname} ntoskrnl)
     add_dependencies(${_halname} psdk asm)
@@ -34,11 +35,14 @@ endfunction()
 
 # The components
 include(generic.cmake)
+include(gic.cmake)
+
+# the ACPI UP GIC hal is default due to existing on qemu (arm32, arm64) with the same GIC revision.
+add_hal(hal SOURCES gic/halagic.rc COMPONENTS generic gic) #Acpi, UP #HALAGIC
 
 if(ARCH STREQUAL "arm")
-    include(versa.cmake)
-    # hal
-    add_hal(hal SOURCES versa/halup.rc COMPONENTS generic versa)
-elseif(ARCH STREQUAL "arm64")
-    add_hal(halapple SOURCES apple/halapple.rc COMPONENTS generic apple)
+    #ARM32 Specific HALs
+	#add_hal(hal SOURCES vic/halvic.rc COMPONENTS generic vic) 
+elseif(ARCH STREQUAL "arm64") 
+    #ARM64 Specific HALs
 endif()
