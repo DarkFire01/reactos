@@ -518,11 +518,14 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
     EFlags = __readeflags();
     _disable();
 
-    /* Initialize and mask the PIC */
-    HalpInitializeLegacyPICs();
+    if (KeGetCurrentProcessorNumber() == 0)
+    {
+        /* Initialize and mask the PIC */
+        HalpInitializeLegacyPICs();
 
-    /* Initialize the I/O APIC */
-    ApicInitializeIOApic();
+        /* Initialize the I/O APIC */
+        ApicInitializeIOApic();
+    }
 
     /* Manually reserve some vectors */
     HalpVectorToIndex[APC_VECTOR] = APIC_RESERVED_VECTOR;
@@ -532,6 +535,7 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
 
     /* Set interrupt handlers in the IDT */
     KeRegisterInterruptHandler(APIC_CLOCK_VECTOR, HalpClockInterrupt);
+    KeRegisterInterruptHandler(APIC_IPI_VECTOR, HalpIpiInterrupt);
 #ifndef _M_AMD64
     KeRegisterInterruptHandler(APC_VECTOR, HalpApcInterrupt);
     KeRegisterInterruptHandler(DISPATCH_VECTOR, HalpDispatchInterrupt);
@@ -540,6 +544,7 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
     /* Register the vectors for APC and dispatch interrupts */
     HalpRegisterVector(IDT_INTERNAL, 0, APC_VECTOR, APC_LEVEL);
     HalpRegisterVector(IDT_INTERNAL, 0, DISPATCH_VECTOR, DISPATCH_LEVEL);
+
 
     /* Restore interrupt state */
     if (EnableInterrupts) EFlags |= EFLAGS_INTERRUPT_MASK;
@@ -635,6 +640,33 @@ HalpDispatchInterruptHandler(IN PKTRAP_FRAME TrapFrame)
 
     /* Restore the old IRQL */
     ApicLowerIrql(OldIrql);
+
+    /* Exit the interrupt */
+    KiEoiHelper(TrapFrame);
+}
+
+VOID
+FASTCALL
+HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
+{
+    KIRQL Irql;
+
+    /* Enter trap */
+    KiEnterInterruptTrap(TrapFrame);
+
+    /* Start the interrupt */
+    if (!HalBeginSystemInterrupt(IPI_LEVEL, APIC_IPI_VECTOR, &Irql))
+    {
+        /* Spurious, just end the interrupt */
+        KiEoiHelper(TrapFrame);
+    }
+    /* Raise to DISPATCH_LEVEL */
+    ApicRaiseIrql(DISPATCH_LEVEL);
+
+    KiIpiServiceRoutine(TrapFrame, NULL);
+
+    /* Restore the old IRQL */
+    ApicLowerIrql(Irql);
 
     /* Exit the interrupt */
     KiEoiHelper(TrapFrame);

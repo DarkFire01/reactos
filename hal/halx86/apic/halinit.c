@@ -38,7 +38,15 @@ HalpInitProcessor(
 
     /* Initialize the local APIC for this cpu */
     ApicInitializeLocalApic(ProcessorNumber);
-
+    if(ProcessorNumber != 0)
+    {
+        HalpInitializePICs(TRUE);
+    }
+    else
+    {
+        /* Initialize profiling data (but don't start it) */
+         HalInitializeProfiling();
+    }
     /* Initialize profiling data (but don't start it) */
     HalInitializeProfiling();
 
@@ -67,8 +75,12 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 VOID
 HalpInitPhase1(VOID)
 {
+     if (KeGetCurrentProcessorNumber() == 0)
+    {
     /* Initialize DMA. NT does this in Phase 0 */
-    HalpInitDma();
+     HalpInitDma();
+    }
+
 }
 
 /* EOF */

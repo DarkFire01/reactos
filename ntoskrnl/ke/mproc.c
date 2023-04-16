@@ -168,8 +168,6 @@ KeStartAllProcessors(VOID)
         {
             break;
         }
-
-        DPRINT("Waiting for init confirmation from AP CPU: #%u\n", ProcessorCount);
         while (READ_PORT_ULONG(&KeLoaderBlock->Prcb) != 0)
         {
             KeMemoryBarrier();

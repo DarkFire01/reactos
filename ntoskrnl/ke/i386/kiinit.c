@@ -532,6 +532,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
         /* FIXME */
         DPRINT1("Starting CPU#%u - you are brave!\n", Number);
         KeLowerIrql(DISPATCH_LEVEL);
+        __debugbreak();
     }
 
     /* Setup the Idle Thread */
@@ -819,7 +820,11 @@ AppCpuInit:
     __writefsdword(KPCR_SET_MEMBER_COPY, 1 << Cpu);
     __writefsdword(KPCR_PRCB_SET_MEMBER, 1 << Cpu);
 
-    KiVerifyCpuFeatures(Pcr->Prcb);
+    if (!Cpu)
+    {
+        /* Let's only do this on BSP */
+        KiVerifyCpuFeatures(Pcr->Prcb);
+    }
 
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);
@@ -827,7 +832,6 @@ AppCpuInit:
     /* Set active processors */
     KeActiveProcessors |= __readfsdword(KPCR_SET_MEMBER);
     KeNumberProcessors++;
-
     /* Check if this is the boot CPU */
     if (!Cpu)
     {
