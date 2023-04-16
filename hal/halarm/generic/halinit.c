@@ -109,13 +109,13 @@ HalInitSystem(
         //HalpCalibrateStallExecution();
 
         /* Initialize the clock */
-        HalpInitializeClock();
+        //HalpInitializeClock();
 
         /* Setup time increments to 10ms and 1ms */
-        HalpCurrentTimeIncrement = 100000;
-        HalpNextTimeIncrement = 100000;
-        HalpNextIntervalCount = 0;
-        KeSetTimeIncrement(100000, 10000);
+        //HalpCurrentTimeIncrement = 100000;
+        //HalpNextTimeIncrement = 100000;
+        //HalpNextIntervalCount = 0;
+        //KeSetTimeIncrement(100000, 10000);
 
         /*
          * We could be rebooting with a pending profile interrupt,
@@ -128,6 +128,7 @@ HalInitSystem(
     }
     else if (BootPhase == 1)
     {
+#if 0		
         /* Enable timer interrupt */
         HalpEnableInterruptHandler(IDT_DEVICE,
                                    0,
@@ -135,7 +136,7 @@ HalInitSystem(
                                    CLOCK2_LEVEL,
                                    HalpClockInterrupt,
                                    Latched);
-#if 0
+
         /* Enable IRQ 8 */
         HalpEnableInterruptHandler(IDT_DEVICE,
                                    0,
@@ -154,32 +155,4 @@ HalInitSystem(
     /* All done, return */
     return TRUE;
 }
-
-#include <internal/kd.h>
-ULONG
-DbgPrintEarly(const char *fmt, ...)
-{
-    va_list args;
-    unsigned int i;
-    char Buffer[1024];
-    PCHAR String = Buffer;
-
-    va_start(args, fmt);
-    i = vsprintf(Buffer, fmt, args);
-    va_end(args);
-
-    /* Output the message */
-    while (*String != 0)
-    {
-        if (*String == '\n')
-        {
-            KdPortPutByteEx(NULL, '\r');
-        }
-        KdPortPutByteEx(NULL, *String);
-        String++;
-    }
-
-    return STATUS_SUCCESS;
-}
-
 /* EOF */
