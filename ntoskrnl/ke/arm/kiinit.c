@@ -446,9 +446,9 @@ DbgPrintEarly(const char *fmt, ...)
     {
         if (*String == '\n')
         {
-            KdPortPutByteEx(NULL, '\r');
+            //KdPortPutByteEx(NULL, '\r');
         }
-        KdPortPutByteEx(NULL, *String);
+        //KdPortPutByteEx(NULL, *String);
         String++;
     }
 

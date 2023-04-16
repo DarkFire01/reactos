@@ -7,10 +7,18 @@
 #include <debug.h>
 
 #undef KeGetCurrentIrql
-
+PUCHAR KdComPortInUse;
 /* GLOBALS ********************************************************************/
 
 /* FUNCTIONS ******************************************************************/
+
+KIRQL
+NTAPI
+KeGetCurrentIrql(VOID)
+{
+    /* Return the IRQL */
+    return 0;
+}
 
 VOID
 HalpInitializeInterrupts(VOID)
@@ -18,6 +26,15 @@ HalpInitializeInterrupts(VOID)
    UNIMPLEMENTED;
    while (TRUE);
 }
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+HalReportResourceUsage(VOID)
+{
+
+}
+
 
 /* IRQL MANAGEMENT ************************************************************/
 
