@@ -493,7 +493,7 @@ BOOLEAN
 UefiInitializeBootDevices(VOID)
 {
 	ULONG i = 0;
-    DiskReadBufferSize = EFI_PAGE_SIZE;
+    DiskReadBufferSize = 2048;
     DiskReadBuffer = MmAllocateMemoryWithType(DiskReadBufferSize, LoaderFirmwareTemporary);
     UefiSetupBlockDevices();
     UefiSetBootpath();

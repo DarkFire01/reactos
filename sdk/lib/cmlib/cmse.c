@@ -21,7 +21,7 @@ CmpRemoveSecurityCellList(IN PHHIVE Hive,
 {
     PCM_KEY_SECURITY SecurityData, FlinkCell, BlinkCell;
 
-    PAGED_CODE();
+    //PAGED_CODE();
 
     // ASSERT( (((PCMHIVE)Hive)->HiveSecurityLockOwner == KeGetCurrentThread()) || (CmpTestRegistryLockExclusive() == TRUE) );
 
@@ -68,7 +68,7 @@ CmpFreeSecurityDescriptor(IN PHHIVE Hive,
     PCM_KEY_NODE CellData;
     PCM_KEY_SECURITY SecurityData;
 
-    PAGED_CODE();
+    //PAGED_CODE();
 
     // ASSERT( (((PCMHIVE)Hive)->HiveSecurityLockOwner == KeGetCurrentThread()) || (CmpTestRegistryLockExclusive() == TRUE) );
 

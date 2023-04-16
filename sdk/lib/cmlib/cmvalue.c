@@ -20,7 +20,7 @@ CmpMarkValueDataDirty(IN PHHIVE Hive,
                       IN PCM_KEY_VALUE Value)
 {
     ULONG KeySize;
-    PAGED_CODE();
+    //PAGED_CODE();
 
     /* Make sure there's actually any data */
     if (Value->Data != HCELL_NIL)
@@ -46,7 +46,7 @@ CmpFreeValueData(IN PHHIVE Hive,
                  IN ULONG DataLength)
 {
     ULONG KeySize;
-    PAGED_CODE();
+    //PAGED_CODE();
 
     /* If this is a small key, the data is built-in */
     if (!CmpIsKeyValueSmall(&KeySize, DataLength))
@@ -74,7 +74,7 @@ CmpFreeValue(IN PHHIVE Hive,
              IN HCELL_INDEX Cell)
 {
     PCM_KEY_VALUE Value;
-    PAGED_CODE();
+    //PAGED_CODE();
 
     /* Get the cell data */
     Value = (PCM_KEY_VALUE)HvGetCell(Hive, Cell);
@@ -129,7 +129,7 @@ CmpGetValueData(IN PHHIVE Hive,
                 OUT PBOOLEAN BufferAllocated,
                 OUT PHCELL_INDEX CellToRelease)
 {
-    PAGED_CODE();
+    //PAGED_CODE();
 
     /* Sanity check */
     ASSERT(Value->Signature == CM_KEY_VALUE_SIGNATURE);
@@ -171,7 +171,7 @@ CmpValueToData(IN PHHIVE Hive,
     PCELL_DATA Buffer;
     BOOLEAN BufferAllocated;
     HCELL_INDEX CellToRelease;
-    PAGED_CODE();
+    //PAGED_CODE();
 
     /* Sanity check */
     ASSERT(Hive->ReleaseCellRoutine == NULL);
@@ -213,7 +213,7 @@ CmpAddValueToList(IN PHHIVE Hive,
     HCELL_INDEX ListCell;
     ULONG ChildCount, Length, i;
     PCELL_DATA CellData;
-    PAGED_CODE();
+    //PAGED_CODE();
 
     /* Sanity check */
     ASSERT((((LONG)Index) >= 0) && (Index <= ChildList->Count));
@@ -294,7 +294,7 @@ CmpSetValueDataNew(IN PHHIVE Hive,
                    OUT PHCELL_INDEX DataCell)
 {
     PCELL_DATA CellData;
-    PAGED_CODE();
+    //PAGED_CODE();
     ASSERT(DataSize > CM_KEY_VALUE_SMALL);
 
     /* Check if this is a big key */
@@ -324,7 +324,7 @@ CmpRemoveValueFromList(IN PHHIVE Hive,
     ULONG Count;
     PCELL_DATA CellData;
     HCELL_INDEX NewCell;
-    PAGED_CODE();
+    //PAGED_CODE();
 
     /* Sanity check */
     ASSERT((((LONG)Index) >= 0) && (Index <= ChildList->Count));
@@ -383,7 +383,7 @@ CmpCopyCell(IN PHHIVE SourceHive,
     HCELL_INDEX DestinationCell = HCELL_NIL;
     LONG DataSize;
 
-    PAGED_CODE();
+    //PAGED_CODE();
 
     /* Get the data and the size of the source cell */
     SourceData = HvGetCell(SourceHive, SourceCell);
@@ -426,7 +426,7 @@ CmpCopyValue(IN PHHIVE SourceHive,
     ULONG DataSize;
     BOOLEAN IsSmall;
 
-    PAGED_CODE();
+    //PAGED_CODE();
 
     /* Get the actual source data */
     Value = (PCM_KEY_VALUE)HvGetCell(SourceHive, SourceValueCell);
@@ -529,7 +529,7 @@ CmpCopyKeyValueList(IN PHHIVE SourceHive,
     HCELL_INDEX NewValue;
     ULONG Index;
 
-    PAGED_CODE();
+    //PAGED_CODE();
 
     /* Reset the destination value list */
     DestValueList->Count = 0;

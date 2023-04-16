@@ -558,7 +558,7 @@ HvTrackCellRef(
 {
     PHV_HIVE_CELL_PAIR NewCellArray;
 
-    PAGED_CODE();
+    //PAGED_CODE();
 
     /* Sanity checks */
     ASSERT(CellRef);
@@ -636,7 +636,7 @@ HvReleaseFreeCellRefArray(
 {
     ULONG i;
 
-    PAGED_CODE();
+    //PAGED_CODE();
 
     ASSERT(CellRef);
 
