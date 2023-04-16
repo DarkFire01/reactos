@@ -389,8 +389,7 @@ public:
     {
         ASSERT(m_PoolToFree != NULL);
 
-        GetProcessorDriverEntryRef(
-            KeGetCurrentProcessorIndex())->FxDriverGlobals =
+        GetProcessorDriverEntryRef(0)->FxDriverGlobals =
                 FxDriverGlobals;
     }
 
@@ -408,8 +407,7 @@ public:
 
         ASSERT(m_PoolToFree != NULL);
 
-        fxDriverGlobals = GetProcessorDriverEntryRef(
-            KeGetCurrentProcessorIndex())->FxDriverGlobals;
+        fxDriverGlobals = GetProcessorDriverEntryRef(0)->FxDriverGlobals;
 
         return fxDriverGlobals;
     }
