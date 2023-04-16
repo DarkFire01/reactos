@@ -18,7 +18,8 @@ function(add_hal _halname)
         list(APPEND _haldata_SOURCES "$<TARGET_OBJECTS:lib_hal_${_component}>")
     endforeach()
     add_library(${_halname} MODULE
-        ${_haldata_SOURCES})
+        ${_haldata_SOURCES}
+        ${CMAKE_CURRENT_BINARY_DIR}/hal.def)
 
     add_importlibs(${_halname} ntoskrnl)
     add_dependencies(${_halname} psdk asm)
@@ -33,10 +34,11 @@ endfunction()
 
 # The components
 include(generic.cmake)
+
 if(ARCH STREQUAL "arm")
     include(versa.cmake)
     # hal
-    add_hal(halversa SOURCES versa/halup.rc COMPONENTS generic versa)
+    add_hal(hal SOURCES versa/halup.rc COMPONENTS generic versa)
 elseif(ARCH STREQUAL "arm64")
     add_hal(halapple SOURCES apple/halapple.rc COMPONENTS generic apple)
 endif()
