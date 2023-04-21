@@ -7,10 +7,10 @@
 
 #include "usbohci.h"
 
-//NDEBUG
+#define NDEBUG
 #include <debug.h>
 
-//NDEBUG_OHCI_TRACE
+#define NDEBUG_OHCI_TRACE
 #include "dbg_ohci.h"
 
 USBPORT_REGISTRATION_PACKET RegPacket;
@@ -273,9 +273,12 @@ OHCI_OpenControlEndpoint(IN POHCI_EXTENSION OhciExtension,
 
     DPRINT_OHCI("OHCI_OpenControlEndpoint: ... \n");
 
+    /* Virtual Address */
     ED = (POHCI_HCD_ED)EndpointProperties->BufferVA;
 
+    /* Oh mah gawd its virtual address + a TD whoa */
     OhciEndpoint->FirstTD = (POHCI_HCD_TD)((ULONG_PTR)ED + sizeof(OHCI_HCD_ED));
+    /* i dont know what this is */
     OhciEndpoint->HeadED = &OhciExtension->ControlStaticED;
 
     OHCI_InitializeTDs(OhciEndpoint, EndpointProperties);

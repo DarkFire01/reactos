@@ -318,7 +318,7 @@ VOID
 NTAPI
 XHCI_RH_DisableIrq(IN PVOID xhciExtension)
 {
-
+#if 0
    PXHCI_EXTENSION XhciExtension;
    PULONG OperationalRegs;
    XHCI_USB_COMMAND usbCommand;
@@ -331,6 +331,7 @@ XHCI_RH_DisableIrq(IN PVOID xhciExtension)
    usbCommand.InterrupterEnable = 0;
 
    WRITE_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD,usbCommand.AsULONG);
+#endif
 }
 
 VOID
@@ -338,6 +339,7 @@ NTAPI
 XHCI_RH_EnableIrq(IN PVOID xhciExtension)
 {
 
+#if 0
    PXHCI_EXTENSION XhciExtension;
    PULONG OperationalRegs;
    XHCI_USB_COMMAND usbCommand;
@@ -350,4 +352,5 @@ XHCI_RH_EnableIrq(IN PVOID xhciExtension)
    usbCommand.InterrupterEnable = 1;
 
    WRITE_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD,usbCommand.AsULONG);
+   #endif
 }

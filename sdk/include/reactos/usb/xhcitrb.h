@@ -37,6 +37,48 @@
 #define FORCE_HEADER_COMMAND            22
 #define NO_OP_COMMAND                   23
 
+//
+// 6.4.6 TRB Types
+//
+#define TRB_TYPE_NORMAL                    1
+#define TRB_TYPE_SETUP_STAGE               2
+#define TRB_TYPE_DATA_STAGE                3
+#define TRB_TYPE_STATUS_STAGE              4
+#define TRB_TYPE_ISOCH                     5
+#define TRB_TYPE_LINK                      6
+#define TRB_TYPE_EVENT_DATA                7
+#define TRB_TYPE_NO_OP                     8
+#define TRB_TYPE_EN_SLOT                   9
+#define TRB_TYPE_DIS_SLOT                  10
+#define TRB_TYPE_ADDRESS_DEV               11
+#define TRB_TYPE_CON_ENDPOINT              12
+#define TRB_TYPE_EVALU_CONTXT              13
+#define TRB_TYPE_RESET_ENDPOINT            14
+#define TRB_TYPE_STOP_ENDPOINT             15
+#define TRB_TYPE_SET_TR_DEQUE              16
+#define TRB_TYPE_RESET_DEV                 17
+#define TRB_TYPE_GET_PORT_BANW             21
+#define TRB_TYPE_FORCE_HEADER              22
+#define TRB_TYPE_NO_OP_COMMAND             23
+#define TRB_TYPE_TRANS_EVENT               32
+#define TRB_TYPE_COMMAND_COMPLT_EVENT      33
+#define TRB_TYPE_PORT_STATUS_CHANGE_EVENT  34
+#define TRB_TYPE_HOST_CONTROLLER_EVENT     37
+#define TRB_TYPE_DEVICE_NOTIFI_EVENT       38
+#define TRB_TYPE_MFINDEX_WRAP_EVENT        39
+
+//
+// Endpoint Type (EP Type).
+//
+#define ED_NOT_VALID      0
+#define ED_ISOCH_OUT      1
+#define ED_BULK_OUT       2
+#define ED_INTERRUPT_OUT  3
+#define ED_CONTROL_BIDIR  4
+#define ED_ISOCH_IN       5
+#define ED_BULK_IN        6
+#define ED_INTERRUPT_IN   7
+
 /* Event TRB IDs **********************************************************************************/
 
 #define TRANSFER_EVENT                  32

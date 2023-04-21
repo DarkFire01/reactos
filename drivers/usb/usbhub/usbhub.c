@@ -7,11 +7,11 @@
 
 #include "usbhub.h"
 
-//NDEBUG
+#define NDEBUG
 #include <debug.h>
 
-//NDEBUG_USBHUB_SCE
-//NDEBUG_USBHUB_PNP
+#define NDEBUG_USBHUB_SCE
+#define NDEBUG_USBHUB_PNP
 #include "dbg_uhub.h"
 
 #include <ntddstor.h>

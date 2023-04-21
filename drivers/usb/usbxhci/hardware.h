@@ -33,6 +33,23 @@
 #define XHCI_ERSTBA           12
 #define XHCI_ERSTDP           14
 
+#define XHC_PORTSC_CCS    BIT0                      // Current Connect Status
+#define XHC_PORTSC_PED    BIT1                      // Port Enabled/Disabled
+#define XHC_PORTSC_OCA    BIT3                      // Over-current Active
+#define XHC_PORTSC_RESET  BIT4                      // Port Reset
+#define XHC_PORTSC_PLS    (BIT5|BIT6|BIT7|BIT8)     // Port Link State
+#define XHC_PORTSC_PP     BIT9                      // Port Power
+#define XHC_PORTSC_PS     (BIT10|BIT11|BIT12|BIT13) // Port Speed
+#define XHC_PORTSC_LWS    BIT16                     // Port Link State Write Strobe
+#define XHC_PORTSC_CSC    BIT17                     // Connect Status Change
+#define XHC_PORTSC_PEC    BIT18                     // Port Enabled/Disabled Change
+#define XHC_PORTSC_WRC    BIT19                     // Warm Port Reset Change
+#define XHC_PORTSC_OCC    BIT20                     // Over-Current Change
+#define XHC_PORTSC_PRC    BIT21                     // Port Reset Change
+#define XHC_PORTSC_PLC    BIT22                     // Port Link State Change
+#define XHC_PORTSC_CEC    BIT23                     // Port Config Error Change
+#define XHC_PORTSC_CAS    BIT24                     // Cold Attach Status
+
 /* Hardware Structs *******************************************************************************/
 
 /* 5.4.8 */
@@ -372,23 +389,4 @@ typedef volatile union _XHCI_DOORBELL
     ULONG AsULONG;
 } XHCI_DOORBELL;
 
-typedef struct _XHCI_HCD_TD {
-  /* Hardware*/
-  //EHCI_QUEUE_TD HwTD;
-  /* Software */
-  ULONG PhysicalAddress;
-  ULONG TdFlags;
-  struct _XHCI_ENDPOINT * XhciEndpoint;
-  struct _XHCI_TRANSFER * XhciTransfer;
-  struct _XHCI_HCD_TD * NextHcdTD;
-  struct _XHCI_HCD_TD * AltNextHcdTD;
-  USB_DEFAULT_PIPE_SETUP_PACKET SetupPacket;
-  ULONG LengthThisTD;
-  LIST_ENTRY DoneLink;
-#ifdef _WIN64
-  ULONG Pad[31];
-#else
-  ULONG Pad[40];
-#endif
-} XHCI_HCD_TD, *PXHCI_HCD_TD;
 

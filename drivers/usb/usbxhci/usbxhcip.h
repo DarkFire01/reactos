@@ -77,3 +77,15 @@ NTAPI
 XHCI_OpenInterruptEndpoint(IN PXHCI_EXTENSION XhciExtension,
                            IN PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties,
                            IN PXHCI_ENDPOINT  XhciEndpoint);
+
+XHCI_ENDPOINT
+NTAPI
+PXHCI_CreateCmdTrb (_In_ PXHCI_EXTENSION XhciExtension,
+                    _In_ PXHCI_TRB       CmdTrb
+  );
+
+VOID
+NTAPI
+PXHCI_ExecTransfer (_In_  PXHCI_EXTENSION XhciExtension,
+                 _In_  BOOLEAN            CmdTransfer,
+                 _In_  XHCI_ENDPOINT YourLocalEndpoint);

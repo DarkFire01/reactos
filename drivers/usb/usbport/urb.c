@@ -18,7 +18,7 @@ NTAPI
 USBPORT_HandleGetConfiguration(IN PURB Urb)
 {
     PUSB_DEFAULT_PIPE_SETUP_PACKET SetupPacket;
-
+  //  __debugbreak();
     DPRINT_URB("USBPORT_HandleGetConfiguration: Urb - %p\n", Urb);
 
     SetupPacket = (PUSB_DEFAULT_PIPE_SETUP_PACKET)

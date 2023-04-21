@@ -7,10 +7,10 @@
 
 #include "usbhub.h"
 
-//NDEBUG
+#define NDEBUG
 #include <debug.h>
 
-//NDEBUG_USBHUB_POWER
+#define NDEBUG_USBHUB_POWER
 #include "dbg_uhub.h"
 
 VOID

@@ -7,10 +7,10 @@
 
 #include "usbehci.h"
 
-//NDEBUG
+#define NDEBUG
 #include <debug.h>
 
-//NDEBUG_EHCI_TRACE
+#define NDEBUG_EHCI_TRACE
 #include "dbg_ehci.h"
 
 USBPORT_REGISTRATION_PACKET RegPacket;

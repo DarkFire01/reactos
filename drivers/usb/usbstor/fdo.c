@@ -10,7 +10,7 @@
 
 #include "usbstor.h"
 
-//NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 

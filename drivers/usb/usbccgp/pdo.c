@@ -13,7 +13,7 @@
 
 #include <ntddk.h>
 
-//NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 NTSTATUS

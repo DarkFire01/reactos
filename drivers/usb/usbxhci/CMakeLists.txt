@@ -6,6 +6,7 @@ list(APPEND SOURCE
     roothub.c
     usbxhci.c
     usbxhcip.c
+    utils.c
     usbxhci.h)
 
 add_library(usbxhci SHARED
