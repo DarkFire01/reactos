@@ -408,6 +408,10 @@ typedef struct _USB_DEV_CONTEXT {
   // Whether this entry in UsbDevContext array is used or not.
   //
   BOOLEAN          Enabled;
+   //
+  // The PortID given
+  //
+  BOOLEAN         CurrentlyInserted;
   //
   // The slot id assigned to the new device through XHCI's Enable_Slot cmd.
   //

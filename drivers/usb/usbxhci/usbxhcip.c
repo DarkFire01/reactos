@@ -38,9 +38,10 @@ PXHCI_PortStatusChange(IN PXHCI_EXTENSION XhciExtension, IN ULONG PortID)
          */
         DPRINT1("PXHCI_PortStatusChange: USB device has been inserted from port: %X\n", PortID);
         DPRINT1("PXHCI_PortStatusChange: Port speed is %d\n", PortStatus.PortSpeed);
+        XhciExtension->DeviceContext[PortID].CurrentlyInserted = TRUE;
         //TODO: Turn on USB2.0 SLOT
         //TODO: test xhci auto config.
-        PXHCI_AssignSlot(XhciExtension, PortID);
+        //PXHCI_AssignSlot(XhciExtension, PortID);
     }
     else if(PortStatus.ConnectStatusChange == 1 &&
             PortStatus.CurrentConnectStatus == 0)
@@ -50,7 +51,7 @@ PXHCI_PortStatusChange(IN PXHCI_EXTENSION XhciExtension, IN ULONG PortID)
          *    - CSC -> 1
          */
         DPRINT1("PXHCI_PortStatusChange: USB device has been removed from port: %X\n", PortID);
-        SlotTracker.PortIndex[PortID] = 0; //REMOVE SLOT TRACKER
+        XhciExtension->DeviceContext[PortID].CurrentlyInserted = FALSE;
         /* Run de-escalation code */
         /*
          * -> Submit a disable slot command
@@ -69,9 +70,14 @@ PXHCI_AssignSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID)
     PXHCI_HC_RESOURCES HcResourcesVA;
     ULONG SlotID, CheckCompletion;
     PXHCI_EXTENSION XhciExtension;
+    PULONG DoorBellRegisterBase;
     PXHCI_TRB dequeue_pointer;
+    XHCI_DOORBELL Doorbell_0;
     XHCI_EVENT_TRB eventTRB;
     XHCI_TRB Trb;
+
+    LARGE_INTEGER CurrentTime = {{0, 0}};
+    LARGE_INTEGER LastTime = {{0, 0}};
 
     SlotID = 0;
     CheckCompletion = INVALID;
@@ -80,32 +86,49 @@ PXHCI_AssignSlot(IN PXHCI_EXTENSION xhciExtension, ULONG PortID)
     HcResourcesVA = XhciExtension -> HcResourcesVA;
     dequeue_pointer = HcResourcesVA-> EventRing.dequeue_pointer;
     eventTRB = (*dequeue_pointer).EventTRB;
-
+    eventTRB.CommandCompletionTRB.SlotID = 0xFF;
     /* Send enable slot command properly */
     Trb.CommandTRB.SlotEnable.RsvdZ1 = 0;
     Trb.CommandTRB.SlotEnable.RsvdZ2 = 0;
     Trb.CommandTRB.SlotEnable.RsvdZ3 = 0;
     Trb.CommandTRB.SlotEnable.RsvdZ4 = 0;
-    Trb.CommandTRB.SlotEnable.CycleBit = 0;
+    Trb.CommandTRB.SlotEnable.CycleBit = 1;
     Trb.CommandTRB.SlotEnable.RsvdZ5 = 0;
     Trb.CommandTRB.SlotEnable.SlotType = 0;
     Trb.CommandTRB.SlotEnable.TRBType = ENABLE_SLOT_COMMAND;
-    XHCI_SendCommand(Trb,XhciExtension);
     /* Check for completion and grab the Slot ID */
     DPRINT1("PXHCI_AssignSlot: Assigning Slot.\n");
-    while (!CheckCompletion)
+    XHCI_SendCommand(Trb,XhciExtension);
+    XHCI_ProcessEvent(XhciExtension);
+
+    HcResourcesVA -> CommandRing.firstSeg.XhciTrb[0] = Trb;
+    // ring the commmand ring door bell register
+    DoorBellRegisterBase = XhciExtension->DoorBellRegisterBase;
+    Doorbell_0.DoorBellTarget = 0;
+    Doorbell_0.RsvdZ = 0;
+    Doorbell_0.AsULONG = 0;
+    WRITE_REGISTER_ULONG(DoorBellRegisterBase, Doorbell_0.AsULONG);
+    // wait for some time.
+    KeQuerySystemTime(&CurrentTime);
+    CurrentTime.QuadPart += 100 * 100; // 100 msec
+    while(TRUE)
     {
-        SlotID = eventTRB.CommandCompletionTRB.SlotID;
-        CheckCompletion = eventTRB.CommandCompletionTRB.CompletionCode;
-        if(CheckCompletion == SUCCESS)
+        KeQuerySystemTime(&LastTime);
+        if (LastTime.QuadPart >= CurrentTime.QuadPart)
         {
-            KeStallExecutionProcessor(10);
             break;
         }
     }
 
+    // check for event completion trb
+    eventTRB =  HcResourcesVA -> EventRing.firstSeg.XhciTrb[0].EventTRB;
+    SlotID = eventTRB.CommandCompletionTRB.SlotID;
+    CheckCompletion = eventTRB.CommandCompletionTRB.CompletionCode;
     DPRINT1("PXHCI_AssignSlot: The Slot ID assigned is %X\n", SlotID);
-    PXHCI_InitSlot(xhciExtension, PortID, SlotID);
+    DPRINT1("PXHCI_AssignSlot: The CheckCompletion assigned is %X\n", CheckCompletion);
+    xhciExtension->DeviceContext[PortID].Enabled = TRUE;
+    //PXHCI_InitSlot(xhciExtension, PortID, SlotID);
+    __debugbreak();
 }
 PXHCI_HC_RESOURCES HcResourcesVA;
 PXHCI_TRB dequeue_pointer;

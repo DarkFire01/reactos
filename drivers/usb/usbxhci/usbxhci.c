@@ -102,10 +102,22 @@ XHCI_QueryEndpointRequirements(IN PVOID xhciExtension,
     PXHCI_EXTENSION XhciExtension;
 
     ULONG TransferType;
+    ULONG PortId;
 
-    DPRINT1("XHCI_QueryEndpointRequirements: function initiated\n");
-    TransferType = EndpointProperties->TransferType;
+      TransferType = EndpointProperties->TransferType;
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
+    PortId = endpointParameters->PortNumber;
+    DPRINT1("XHCI_QueryEndpointRequirements: function initiated\n");
+    DPRINT1("XHCI_QueryEndpointRequirements: Port Number :%X\n", endpointParameters->PortNumber);
+    DPRINT1("XHCI_QueryEndpointRequirements: Is Device attached? :%X\n", XhciExtension->DeviceContext[PortId].CurrentlyInserted);
+    DPRINT1("XHCI_QueryEndpointRequirements: Is Device enabled? :%X\n", XhciExtension->DeviceContext[PortId].Enabled);
+    if (XhciExtension->DeviceContext[PortId].Enabled != 1)
+    {
+        DPRINT1("Device Is not enabled on xHCI Controller... setting it up\n");
+        PXHCI_AssignSlot(XhciExtension, PortId);
+    }
+    __debugbreak();
+
 
     XHCI_ProcessEvent (XhciExtension);
     switch (TransferType)
