@@ -414,6 +414,59 @@ C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,EventRing)% 16 == 0);
 C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,CommandRing)% 64 == 0); 
 C_ASSERT (FIELD_OFFSET(XHCI_HC_RESOURCES,EventRingSegTable)% 64 == 0);
 
+/*
+ * Each USB drive in the system needs to have some kind of tracking from software
+ * infomation on this struture often gets synced with hardware
+ * It's based off of EDK2
+ */
+typedef struct _USB_DEV_CONTEXT {
+  //
+  // Whether this entry in UsbDevContext array is used or not.
+  //
+  BOOLEAN          Enabled;
+  //
+  // Is the device inserted on the hardware
+  //
+  BOOLEAN         CurrentlyInserted;
+  //
+  // The slot id assigned to the new device through XHCI's Enable_Slot cmd.
+  //
+  UINT8            SlotId;
+  //
+  // The actual device address assigned by XHCI through Address_Device command.
+  //
+  UINT8            XhciDevAddr;
+  //
+  // The requested device address from UsbBus driver through Set_Address standard usb request.
+  // As XHCI spec replaces this request with Address_Device command, we have to record the
+  // requested device address and establish a mapping relationship with the actual device address.
+  // Then UsbBus driver just need to be aware of the requested device address to access usb device
+  // through EFI_USB2_HC_PROTOCOL. Xhci driver would be responsible for translating it to actual
+  // device address and access the actual device.
+  //
+  UINT8                        BusDevAddr;
+  //
+  // The pointer to the input device context.
+  //
+  VOID                         *InputContext;
+  //
+  // The pointer to the output device context.
+  //
+  VOID                         *OutputContext;
+  //
+  // The transfer queue for every endpoint.
+  //
+  VOID                         *EndpointTransferRing[31];
+
+  // A device has an active Configuration.
+  //
+  UINT8                        ActiveConfiguration;
+  //
+  // Every interface has an active AlternateSetting.
+  //
+  UINT8                        *ActiveAlternateSetting;
+} USB_DEV_CONTEXT;
+
 typedef struct _XHCI_EXTENSION 
 {
     ULONG Reserved;
@@ -434,6 +487,7 @@ typedef struct _XHCI_EXTENSION
     PMDL ScratchPadBufferMDL;
     PXHCI_HC_RESOURCES HcResourcesVA;
     PHYSICAL_ADDRESS HcResourcesPA;
+      USB_DEV_CONTEXT DeviceContext[255]; /* Globally track every USB state in the system */
 } XHCI_EXTENSION, *PXHCI_EXTENSION;
 
 
@@ -458,6 +512,8 @@ typedef union _XHCI_SCRATCHPAD_BUFFER_ARRAY
     ULONGLONG AsULONGLONG;
 } XHCI_SCRATCHPAD_BUFFER_ARRAY, *PXHCI_SCRATCHPAD_BUFFER_ARRAY;
 C_ASSERT(sizeof(XHCI_SCRATCHPAD_BUFFER_ARRAY) == 8);
+
+#include "usbxhcip.h"
 
 /* Roothub Functions ******************************************************************************/
 

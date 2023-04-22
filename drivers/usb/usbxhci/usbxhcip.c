@@ -108,3 +108,53 @@ PXHCI_ControllerWorkTest(IN PXHCI_EXTENSION XhciExtension,
     __debugbreak();
     return MP_STATUS_SUCCESS;
 }
+
+/*
+ *  Private API to handle PSC events.
+ */
+VOID
+NTAPI
+PXHCI_PortStatusChange(_Inout_ PXHCI_EXTENSION XhciExtension,
+                       _In_ ULONG PortID)
+{
+    XHCI_PORT_STATUS_CONTROL PortStatus;
+    PULONG OperationalRegs;
+
+    OperationalRegs = XhciExtension->OperationalRegs;
+    PortStatus.AsULONG = 0;
+
+    /* 5.4.8 */
+    PortStatus.AsULONG = READ_REGISTER_ULONG(OperationalRegs + (XHCI_PORTSC + (0x10 * (PortID - 1))));
+    if(PortStatus.ConnectStatusChange == 1 &&
+       PortStatus.CurrentConnectStatus == 1)
+    {
+        /* Attached:
+         *  - CSC -> 1
+         *  - CCS -> 1
+         */
+        DPRINT1("PXHCI_PortStatusChange: USB device has been inserted from port: %X\n", PortID);
+        DPRINT1("PXHCI_PortStatusChange: Port speed is %d\n", PortStatus.PortSpeed);
+        XhciExtension->DeviceContext[PortID].CurrentlyInserted = TRUE;
+        //TODO: Turn on USB2.0 SLOT?
+        //TODO: test xhci auto config?
+    }
+    else if(PortStatus.ConnectStatusChange == 1 &&
+            PortStatus.CurrentConnectStatus == 0)
+    {
+        /* Detached:
+         *    - CCS -> 0
+         *    - CSC -> 1
+         */
+        DPRINT1("PXHCI_PortStatusChange: USB device has been removed from port: %X\n", PortID);
+        XhciExtension->DeviceContext[PortID].CurrentlyInserted = FALSE;
+        //TODO: This is technically a hack, we should run some code to clena up
+        XhciExtension->DeviceContext[PortID].Enabled = FALSE;
+        /* Run de-escalation code */
+        /*
+         * -> Submit a disable slot command
+         * -> clear transfer rings of all TDs associated with device post deattach
+         */
+    }
+
+    //TODO: maybe some other handling would be cool yeah very poggy woggy.
+}

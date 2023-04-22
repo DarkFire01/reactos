@@ -16,3 +16,7 @@ NTAPI
 PXHCI_ControllerWorkTest(IN PXHCI_EXTENSION XhciExtension,
                          IN PXHCI_HC_RESOURCES HcResourcesVA,
                          IN PVOID resourcesStartPA);
+VOID
+NTAPI
+PXHCI_PortStatusChange(_Inout_ PXHCI_EXTENSION XhciExtension,
+                       _In_ ULONG PortID);

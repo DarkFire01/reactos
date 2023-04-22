@@ -115,6 +115,7 @@ XHCI_ProcessEvent (IN PXHCI_EXTENSION XhciExtension)
         eventTRB = (*dequeue_pointer).EventTRB;
         if (eventTRB.EventGenericTRB.CycleBit != HcResourcesVA->EventRing.ConsumerCycleState)
         {
+            /* if this occurs the xHC at the hardware level has finished dealing with all the TRBs in the ring*/
             DPRINT("XHCI_ProcessEvent: cycle bit mismatch. end of processing\n");
             break;
         }
@@ -135,6 +136,7 @@ XHCI_ProcessEvent (IN PXHCI_EXTENSION XhciExtension)
                 break;
             case PORT_STATUS_CHANGE_EVENT: 
                 DPRINT("XHCI_ProcessEvent: Port Status change event\n");
+                PXHCI_PortStatusChange(XhciExtension, eventTRB.PortStatusChangeTRB.PortID);
                 break;
             case BANDWIDTH_RESET_REQUEST_EVENT:
                 DPRINT("XHCI_ProcessEvent: BANDWIDTH_RESET_REQUEST_EVENT\n");
@@ -703,11 +705,11 @@ XHCI_InterruptService(IN PVOID xhciExtension)
     PULONG  RunTimeRegisterBase;
     XHCI_INTERRUPTER_MANAGEMENT Iman;
     PXHCI_EXTENSION XhciExtension;
-    
+
     DPRINT("XHCI_InterruptService: function initiated\n");
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
-    
-    RunTimeRegisterBase = XhciExtension->RunTimeRegisterBase; 
+
+    RunTimeRegisterBase = XhciExtension->RunTimeRegisterBase;
     Iman.AsULONG = READ_REGISTER_ULONG(RunTimeRegisterBase + XHCI_IMAN);
     if (Iman.InterruptPending == 0)
     {
