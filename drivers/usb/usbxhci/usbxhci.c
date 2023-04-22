@@ -12,6 +12,20 @@
 
 /* Globals ****************************************************************************************/
 
+#define XHCI_MAX_ENDPOINTS 32;
+#define XHCI_FLAGS_CONTROLLER_SUSPEND 0x01
+
+//TODO: let's remove these fucken EHCI defs later
+#define EHCI_MAX_CONTROL_TRANSFER_SIZE    0x10000
+#define EHCI_MAX_INTERRUPT_TRANSFER_SIZE  0x1000
+#define EHCI_MAX_BULK_TRANSFER_SIZE       0x400000
+#define EHCI_MAX_FS_ISO_TRANSFER_SIZE     0x40000
+#define EHCI_MAX_HS_ISO_TRANSFER_SIZE     0x180000
+
+#define EHCI_MAX_CONTROL_TD_COUNT    6
+#define EHCI_MAX_INTERRUPT_TD_COUNT  4
+#define EHCI_MAX_BULK_TD_COUNT       209
+
 USBPORT_REGISTRATION_PACKET RegPacket;
 
 /* Public Functions *******************************************************************************/
@@ -32,7 +46,7 @@ XHCI_OpenEndpoint(IN PVOID xhciExtension,
                   IN PVOID xhciEndpoint)
 {
     DPRINT("XHCI_OpenEndpoint: function initiated\n");
-    return MP_STATUS_SUCCESS;
+    return MP_STATUS_FAILURE;
 }
 
 MPSTATUS
@@ -52,27 +66,57 @@ XHCI_QueryEndpointRequirements(IN PVOID xhciExtension,
                                IN PUSBPORT_ENDPOINT_REQUIREMENTS EndpointRequirements)
 {
     PUSBPORT_ENDPOINT_PROPERTIES EndpointProperties = endpointParameters;
+    PXHCI_EXTENSION XhciExtension;
+
     ULONG TransferType;
-    
+    ULONG PortId;
+
+    TransferType = EndpointProperties->TransferType;
+    XhciExtension = (PXHCI_EXTENSION)xhciExtension;
+    PortId = endpointParameters->PortNumber;
+    DPRINT1("XHCI_QueryEndpointRequirements: function initiated\n");
+    DPRINT1("XHCI_QueryEndpointRequirements: Port Number :%X\n", endpointParameters->PortNumber);
+    DPRINT1("XHCI_QueryEndpointRequirements: Is Device attached? :%X\n", XhciExtension->DeviceContext[PortId].CurrentlyInserted);
+    DPRINT1("XHCI_QueryEndpointRequirements: Is Device enabled? :%X\n", XhciExtension->DeviceContext[PortId].Enabled);
+    if (XhciExtension->DeviceContext[PortId].Enabled != 1 && XhciExtension->DeviceContext[PortId].CurrentlyInserted == 1)
+    {
+        ASSERT(XhciExtension->DeviceContext[PortId].CurrentlyInserted == 1);
+        DPRINT1("Device Is not enabled on xHCI Controller... setting it up\n");
+        PXHCI_AssignSlot(XhciExtension, PortId);
+    }
+
     DPRINT("XHCI_QueryEndpointRequirements: function initiated\n");
     TransferType = EndpointProperties->TransferType;
 
     switch (TransferType)
     {
         case USBPORT_TRANSFER_TYPE_ISOCHRONOUS:
-            DPRINT("XHCI_QueryEndpointRequirements: IsoTransfer\n");
+            DPRINT1("XHCI_QueryEndpointRequirements: IsoTransfer\n");
+            EndpointRequirements->MaxTransferSize = EHCI_MAX_HS_ISO_TRANSFER_SIZE;
             break;
 
         case USBPORT_TRANSFER_TYPE_CONTROL:
-            DPRINT("XHCI_QueryEndpointRequirements: ControlTransfer\n");
+              DPRINT1("XHCI_QueryEndpointRequirements Control\n");
+            EndpointRequirements->HeaderBufferSize = sizeof(XHCI_HCD_TD) +
+                                                     sizeof(XHCI_TRANSFER_RING) +
+                                                     EHCI_MAX_CONTROL_TD_COUNT * sizeof(XHCI_HCD_TD);
+            EndpointRequirements->MaxTransferSize = EHCI_MAX_CONTROL_TRANSFER_SIZE;
             break;
 
         case USBPORT_TRANSFER_TYPE_BULK:
-            DPRINT("XHCI_QueryEndpointRequirements: BulkTransfer\n");
+            EndpointRequirements->HeaderBufferSize = sizeof(XHCI_HCD_TD) +
+                                                     sizeof(XHCI_TRANSFER_RING) +
+                                                     EHCI_MAX_BULK_TD_COUNT * sizeof(XHCI_HCD_TD);
+
+            EndpointRequirements->MaxTransferSize = EHCI_MAX_BULK_TRANSFER_SIZE;
             break;
 
         case USBPORT_TRANSFER_TYPE_INTERRUPT:
-            DPRINT("XHCI_QueryEndpointRequirements: InterruptTransfer\n");
+            EndpointRequirements->HeaderBufferSize = sizeof(XHCI_HCD_TD) +
+                                                     sizeof(XHCI_TRANSFER_RING) +
+                                                     EHCI_MAX_INTERRUPT_TD_COUNT * sizeof(XHCI_HCD_TD);
+
+            EndpointRequirements->MaxTransferSize = EHCI_MAX_INTERRUPT_TRANSFER_SIZE;
             break;
 
         default:
