@@ -173,19 +173,24 @@ jobs:
         path: src
     - name: Configure
       run: cmake -S src -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE:FILEPATH=toolchain-msvc.cmake -DARCH:STRING=${{matrix.arch}} -DCMAKE_BUILD_TYPE=${{matrix.config}} -DENABLE_ROSTESTS=1 -DENABLE_ROSAPPS=1
-    - name: Build base module
+    - name: Build
       if: ${{ matrix.arch == 'arm' }}
-      run: cmake --build build --target base/all
-    - name: Build control panel applets
+      run: cmake --build build -- -k0
+    - name: Generate ISOs
       if: ${{ matrix.arch == 'arm' }}
-      run: cmake --build build --target dll/cpl/all
-    - name: Build rosapps
+      run: cmake --build build --target livecd
+    - name: Upload ISOs
       if: ${{ matrix.arch == 'arm' }}
-      run: cmake --build build --target modules/rosapps/all
+      uses: actions/upload-artifact@v2
+      with:
+        name: reactos-msvc${{matrix.toolset}}-${{matrix.arch}}-${{matrix.config}}-${{github.sha}}
+        path: |
+          build/livecd.iso
     - name: Build some applications (arm64)
       if: ${{ matrix.arch == 'arm64' }}
       run: cmake --build build --target calc magnify mstsc notepad osk regedit taskmgr winmine wordpad base/applications/screensavers/all -- -k0
     - name: Upload compiled binaries
+      if: ${{ matrix.arch == 'arm64' }}
       uses: actions/upload-artifact@v2
       with:
         name: reactos-msvc${{matrix.toolset}}-${{matrix.arch}}-${{matrix.config}}-${{github.sha}}
