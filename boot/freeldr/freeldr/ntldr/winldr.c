@@ -1238,6 +1238,10 @@ LoadAndBootWindowsCommon(
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
 
+#ifdef UEFIBOOT
+    WinldrFinalizeBoot(LoaderBlockVA, KiSystemStartup);
+#endif
+
     /* Set processor context */
     WinLdrSetProcessorContext();
 

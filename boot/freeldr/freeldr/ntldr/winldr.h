@@ -173,6 +173,10 @@ MempSetupPaging(IN PFN_NUMBER StartPage,
                 IN BOOLEAN KernelMapping);
 
 VOID
+WinldrFinalizeBoot(PLOADER_PARAMETER_BLOCK LoaderBlockVA,
+                   KERNEL_ENTRY_POINT KiSystemStartup);
+
+VOID
 MempUnmapPage(PFN_NUMBER Page);
 
 VOID

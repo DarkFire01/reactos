@@ -744,3 +744,45 @@ MempDump(VOID)
     }
 }
 #endif
+
+#ifdef UEFIBOOT
+PLOADER_PARAMETER_BLOCK PubLoaderBlockVA;
+KERNEL_ENTRY_POINT PubKiSystemStartup;
+
+extern ULONG LoaderPagesSpanned;
+
+VOID _LeaveUEFIStack(VOID);
+
+VOID
+WinldrFinalizeBoot(PLOADER_PARAMETER_BLOCK LoaderBlockVA,
+                   KERNEL_ENTRY_POINT KiSystemStartup)
+{
+    TRACE("Preparing to jump to kernel\n");
+    PubLoaderBlockVA = LoaderBlockVA;
+    PubKiSystemStartup = KiSystemStartup;
+    _LeaveUEFIStack();
+}
+
+VOID
+UefiExitToKernel(VOID)
+{
+    WinLdrSetProcessorContext();
+
+    /* Save final value of LoaderPagesSpanned */
+    PubLoaderBlockVA->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
+
+    TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
+          PubKiSystemStartup, PubLoaderBlockVA);
+
+    /* Zero KI_USER_SHARED_DATA page */
+    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
+
+    WinLdrpDumpMemoryDescriptors(PubLoaderBlockVA);
+    WinLdrpDumpBootDriver(PubLoaderBlockVA);
+    WinLdrpDumpArcDisks(PubLoaderBlockVA);
+
+    /* Pass control */
+    (*PubKiSystemStartup)(PubLoaderBlockVA);
+}
+
+#endif
