@@ -440,7 +440,7 @@ PVOID MmFindLocationForPageLookupTable(PFN_NUMBER TotalPageCount)
         if (MemoryDescriptor->BasePage < CandidateBasePage) continue;
 
         // Continue, if the address is too high
-        if (MemoryDescriptor->BasePage + RequiredPages >= MM_MAX_PAGE_LOADER) continue;
+        if (MemoryDescriptor->BasePage + RequiredPages >= TotalPageCount) continue;
 
         // Memory block is more suitable than the previous one
         CandidateBasePage = MemoryDescriptor->BasePage;
@@ -449,7 +449,7 @@ PVOID MmFindLocationForPageLookupTable(PFN_NUMBER TotalPageCount)
 
     // Calculate the end address for the lookup table
     PageLookupTableEndPage = min(CandidateBasePage + CandidatePageCount,
-                                 MM_MAX_PAGE_LOADER);
+                                 TotalPageCount);
 
     // Calculate the virtual address
     PageLookupTableMemAddress = (PVOID)((PageLookupTableEndPage * PAGE_SIZE)

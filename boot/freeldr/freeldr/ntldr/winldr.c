@@ -1238,11 +1238,25 @@ LoadAndBootWindowsCommon(
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
 
+#ifdef UEFIBOOT
+    WinldrFinalizeBoot(LoaderBlockVA, KiSystemStartup);
+#endif
+
+    /* Unify UEFI and BIOS back to the same exit point */
+    WinLdrExitToNtoskrnl(LoaderBlockVA, KiSystemStartup);
+
+    UNREACHABLE; // return ESUCCESS;
+}
+
+VOID
+WinLdrExitToNtoskrnl(PLOADER_PARAMETER_BLOCK LoaderBlockVA,
+                     KERNEL_ENTRY_POINT KiSystemStartup)
+{
     /* Set processor context */
     WinLdrSetProcessorContext();
 
-    /* Save final value of LoaderPagesSpanned */
-    LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
+   /* Save final value of LoaderPagesSpanned */
+   LoaderBlockVA->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
 
     TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
           KiSystemStartup, LoaderBlockVA);
@@ -1258,8 +1272,6 @@ LoadAndBootWindowsCommon(
 
     /* Pass control */
     (*KiSystemStartup)(LoaderBlockVA);
-
-    UNREACHABLE; // return ESUCCESS;
 }
 
 VOID

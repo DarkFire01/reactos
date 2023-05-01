@@ -744,3 +744,29 @@ MempDump(VOID)
     }
 }
 #endif
+
+#ifdef UEFIBOOT
+PLOADER_PARAMETER_BLOCK PubLoaderBlockVA;
+KERNEL_ENTRY_POINT PubKiSystemStartup;
+
+extern ULONG LoaderPagesSpanned;
+
+VOID _ExitUefi(VOID);
+
+VOID
+WinldrFinalizeBoot(PLOADER_PARAMETER_BLOCK LoaderBlockVA,
+                   KERNEL_ENTRY_POINT KiSystemStartup)
+{
+    TRACE("Preparing to jump to kernel\n");
+    PubLoaderBlockVA = LoaderBlockVA;
+    PubKiSystemStartup = KiSystemStartup;
+    _ExitUefi();
+}
+
+VOID
+UefiExitToKernel(VOID)
+{
+    WinLdrExitToNtoskrnl(PubLoaderBlockVA, PubKiSystemStartup);
+}
+
+#endif
