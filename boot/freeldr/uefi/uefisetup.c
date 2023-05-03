@@ -28,7 +28,7 @@ MachInit(const char *CmdLine)
     Status = GlobalSystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
     UefiInitalizeVideo(gop);
 
-  MachVtbl.ConsPutChar = UefiConsPutChar;
+       MachVtbl.ConsPutChar = UefiConsPutChar;
     MachVtbl.ConsKbHit = UefiConsKbHit;
     MachVtbl.ConsGetCh = UefiConsGetCh;
     MachVtbl.VideoClearScreen = UefiVideoClearScreen;

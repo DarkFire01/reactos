@@ -39,7 +39,7 @@ VOID Rs232PortPutByte(UCHAR ByteToSend)
 
 #if DBG && !defined(_M_ARM)
 
-// #define DEBUG_ALL
+ #define DEBUG_ALL
 // #define DEBUG_WARN
 // #define DEBUG_ERR
 // #define DEBUG_INIFILE

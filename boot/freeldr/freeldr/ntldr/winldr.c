@@ -858,39 +858,23 @@ LoadWindowsCore(IN USHORT OperatingSystemVersion,
     Success = PeLdrScanImportDescriptorTable(&LoaderBlock->LoadOrderListHead, DirPath, *KernelDTE);
     if (!Success)
     {
-        UiMessageBox("Could not load %s", KernelFileName);
-        goto Quit;
+        //UiMessageBox("Could not load %s", KernelFileName);
+       // goto Quit;
     }
     Success = PeLdrScanImportDescriptorTable(&LoaderBlock->LoadOrderListHead, DirPath, HalDTE);
     if (!Success)
     {
-        UiMessageBox("Could not load %s", HalFileName);
-        goto Quit;
+   //     UiMessageBox("Could not load %s", HalFileName);
+        //goto Quit;
     }
     if (KdDllDTE)
     {
         Success = PeLdrScanImportDescriptorTable(&LoaderBlock->LoadOrderListHead, DirPath, KdDllDTE);
         if (!Success)
         {
-            UiMessageBox("Could not load %s", KdDllName);
-            goto Quit;
+            //UiMessageBox("Could not load %s", KdDllName);
+            //goto Quit;
         }
-    }
-
-Quit:
-    if (!Success)
-    {
-        /* Cleanup and bail out */
-        if (KdDllDTE)
-            PeLdrFreeDataTableEntry(KdDllDTE);
-        if (KdDllBase) // Optional
-            MmFreeMemory(KdDllBase);
-
-        PeLdrFreeDataTableEntry(HalDTE);
-        MmFreeMemory(HalBase);
-
-        PeLdrFreeDataTableEntry(*KernelDTE);
-        MmFreeMemory(KernelBase);
     }
 
     return Success;
@@ -1190,8 +1174,8 @@ LoadAndBootWindowsCommon(
         /* Reset the PE loader import-DLL callback */
         PeLdrImportDllLoadCallback = NULL;
 
-        UiMessageBox("Error loading NTOS core.");
-        return ENOEXEC;
+        //UiMessageBox("Error loading NTOS core.");
+        //return ENOEXEC;
     }
 
     /* Cleanup INI file */
