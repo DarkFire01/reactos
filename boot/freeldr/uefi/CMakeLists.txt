@@ -76,7 +76,8 @@ list(APPEND FREELDR_ARC_SOURCE
     uefimem.c
     uefidisk.c
     utils.c
-    uefivid.c)
+    uefivid.c
+    ../freeldr/arch/vgafont.c)
 
 list(APPEND FREELDR_BASE_ASM_SOURCE)
 

@@ -40,32 +40,6 @@ UefiVideoGetFontsFromFirmware(PULONG RomFontPointers)
 }
 
 VOID
-UefiVideoHideShowTextCursor(BOOLEAN Show)
-{
-
-}
-
-BOOLEAN
-UefiVideoIsPaletteFixed(VOID)
-{
-    return 0;
-}
-
-VOID
-UefiVideoSetPaletteColor(UCHAR Color, UCHAR Red,
-                         UCHAR Green, UCHAR Blue)
-{
-
-}
-
-VOID
-UefiVideoGetPaletteColor(UCHAR Color, UCHAR* Red,
-                         UCHAR* Green, UCHAR* Blue)
-{
-
-}
-
-VOID
 UefiVideoSync(VOID)
 {
 

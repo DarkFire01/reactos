@@ -42,7 +42,7 @@ EfiEntry(
         //goto Quit;
     }
     printf("Setting up boot now...\n");
-      FsInit();
+    FsInit();
 
     RunLoader();
 

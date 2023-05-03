@@ -44,10 +44,10 @@ extern EFI_HANDLE PublicBootHandle; /* Freeldr itself */
 PVOID DiskReadBuffer;
 UCHAR PcBiosDiskCount;
 
-static UCHAR FrldrBootDrive;
-static ULONG FrldrBootPartition;
-static SIZE_T DiskReadBufferSize;
-static PVOID Buffer;
+UCHAR FrldrBootDrive;
+ULONG FrldrBootPartition;
+SIZE_T DiskReadBufferSize;
+PVOID Buffer;
 
 static const CHAR Hex[] = "0123456789abcdef";
 static CHAR PcDiskIdentifier[32][20];
@@ -91,9 +91,9 @@ UefiGetBootPartitionEntry(
     ULONG PartitionNum;
 
     TRACE("UefiGetBootPartitionEntry: DriveNumber: %d\n", DriveNumber - FIRST_BIOS_DISK);
-    /* UefiBootRoot is the offset into the array of handles where the raw disk of the boot drive is */
+    /* UefiBootRoot is the offset into the array of handles where the raw disk of the boot drive is.
+     * Partitions start with 1 in ARC, but UEFI root drive identitfier is also first partition. */
     PartitionNum = (OffsetToBoot - UefiBootRootIdentifier);
-    /* Partitions start with 1 in ARC, but, UEFI root drive identifier is also the first partition */
     if (PartitionNum == 0)
     {
         TRACE("Boot PartitionNumber is 0\n");
@@ -417,7 +417,7 @@ UefiSetupBlockDevices(VOID)
             bio->Media->BlockSize == 0 ||
             bio->Media->BlockSize > 2048)
         {
-            TRACE("UefiSetupBlockDevices: UEFI Has found a block device thats failed, skipping\n");
+            TRACE("UefiSetupBlockDevices: UEFI has found a block device that failed, skipping\n");
             continue;
         }
         if (bio->Media->LogicalPartition == FALSE)
@@ -434,7 +434,7 @@ UefiSetupBlockDevices(VOID)
             ULONG increment = 0;
             ULONG i;
 
-            /* 3) Grab the offset into the array of handles and decrement per volume (valid partition)*/
+            /* 3) Grab the offset into the array of handles and decrement per volume (valid partition) */
             for (increment = OffsetToBoot; increment > 0; increment--)
             {
                 GlobalSystemTable->BootServices->HandleProtocol(handles[increment], &bioGuid, (void**)&bio);

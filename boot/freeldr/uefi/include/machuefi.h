@@ -12,9 +12,6 @@ UefiMachInit(_In_ EFI_HANDLE ImageHandle,
              _In_ EFI_SYSTEM_TABLE *SystemTable);
 
 VOID
-UefiInitConsole(_In_ EFI_SYSTEM_TABLE *SystemTable);
-
-VOID
 UefiConsPutChar(int Ch);
 
 BOOLEAN
@@ -26,8 +23,8 @@ UefiConsSetCursor(UINT32 Col, UINT32 Row);
 int
 UefiConsGetCh(void);
 
-VOID
-UefiInitalizeVideo(_In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop);
+EFI_STATUS
+UefiInitalizeVideo(VOID);
 
 VOID
 UefiVideoClearScreen(UCHAR Attr);

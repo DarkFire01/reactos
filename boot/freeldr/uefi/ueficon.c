@@ -23,12 +23,6 @@ static unsigned CurrentAttr = 0x0f;
 /* FUNCTIONS ******************************************************************/
 
 VOID
-UefiVideoSetTextCursorPosition(UCHAR X, UCHAR Y)
-{
-    GlobalSystemTable->ConOut->SetCursorPosition(GlobalSystemTable->ConOut, X, Y);
-}
-
-VOID
 UefiConsSetCursor(UINT32 Col, UINT32 Row)
 {
     GlobalSystemTable->ConOut->SetCursorPosition(GlobalSystemTable->ConOut, Col, Row);

@@ -1,10 +1,9 @@
 /*
- * PROJECT:     Freeldr UEFI Extension
+ * PROJECT:     FreeLoader UEFI Support
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
- * PURPOSE:     UEFI Video output
+ * PURPOSE:     Video output
  * COPYRIGHT:   Copyright 2022 Justin Miller <justinmiller100@gmail.com>
  */
-
 
 #include <uefildr.h>
 
@@ -14,21 +13,36 @@ DBG_DEFAULT_CHANNEL(WARNING);
 #define CHAR_WIDTH  8
 #define CHAR_HEIGHT 16
 #define TOP_BOTTOM_LINES 0
+#define LOWEST_SUPPORTED_RES 1
 
 /* GLOBALS ********************************************************************/
 
-extern EFI_SYSTEM_TABLE * GlobalSystemTable;
+extern EFI_SYSTEM_TABLE* GlobalSystemTable;
 extern EFI_HANDLE GlobalImageHandle;
+extern UCHAR BitmapFont8x16[256 * 16];
 
 UCHAR MachDefaultTextColor = COLOR_GRAY;
 REACTOS_INTERNAL_BGCONTEXT framebufferData;
+EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 
 /* FUNCTIONS ******************************************************************/
 
-VOID
-UefiInitalizeVideo(_In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop)
+EFI_STATUS
+UefiInitalizeVideo(VOID)
 {
-    gop->SetMode(gop,1);
+    EFI_STATUS Status;
+    EFI_GRAPHICS_OUTPUT_PROTOCOL* gop = NULL;
+
+    RtlZeroMemory(&framebufferData, sizeof(framebufferData));
+    Status = GlobalSystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
+    if (Status != EFI_SUCCESS)
+    {
+        TRACE("Failed to find GOP with status %d\n", Status);
+        return Status;
+    }
+
+    /* We don't need high resolutions for freeldr */
+    gop->SetMode(gop, LOWEST_SUPPORTED_RES);
 
     framebufferData.BaseAddress        = (ULONG_PTR)gop->Mode->FrameBufferBase;
     framebufferData.BufferSize         = gop->Mode->FrameBufferSize;
@@ -36,55 +50,67 @@ UefiInitalizeVideo(_In_ EFI_GRAPHICS_OUTPUT_PROTOCOL* gop)
     framebufferData.ScreenHeight       = gop->Mode->Info->VerticalResolution;
     framebufferData.PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
     framebufferData.PixelFormat        = gop->Mode->Info->PixelFormat;
+
+    return Status;
 }
 
 VOID
-UefiPrintFramebufferData()
+UefiPrintFramebufferData(VOID)
 {
-    printf("\nFramebuffer BaseAddress       : %X\n", framebufferData.BaseAddress);
-    printf("\nFramebuffer BufferSize        : %X\n", framebufferData.BufferSize);
-    printf("\nFramebuffer ScreenWidth       : %d\n", framebufferData.ScreenWidth);
-    printf("\nFramebuffer ScreenHeight      : %d\n", framebufferData.ScreenHeight);
-    printf("\nFramebuffer PixelsPerScanLine : %d\n", framebufferData.PixelsPerScanLine);
-    printf("\nFramebuffer PixelFormat       : %d\n", framebufferData.PixelFormat);
+    TRACE("Framebuffer BaseAddress       : %X\n", framebufferData.BaseAddress);
+    TRACE("Framebuffer BufferSize        : %X\n", framebufferData.BufferSize);
+    TRACE("Framebuffer ScreenWidth       : %d\n", framebufferData.ScreenWidth);
+    TRACE("Framebuffer ScreenHeight      : %d\n", framebufferData.ScreenHeight);
+    TRACE("Framebuffer PixelsPerScanLine : %d\n", framebufferData.PixelsPerScanLine);
+    TRACE("Framebuffer PixelFormat       : %d\n", framebufferData.PixelFormat);
 }
 
-ULONG
+static ULONG
 UefiVideoAttrToSingleColor(UCHAR Attr)
 {
     UCHAR Intensity;
     Intensity = (0 == (Attr & 0x08) ? 127 : 255);
 
     return 0xff000000 |
-         (0 == (Attr & 0x04) ? 0 : (Intensity << 16)) |
-         (0 == (Attr & 0x02) ? 0 : (Intensity << 8)) |
-         (0 == (Attr & 0x01) ? 0 : Intensity);
+           (0 == (Attr & 0x04) ? 0 : (Intensity << 16)) |
+           (0 == (Attr & 0x02) ? 0 : (Intensity << 8)) |
+           (0 == (Attr & 0x01) ? 0 : Intensity);
 }
 
-VOID
+static VOID
 UefiVideoAttrToColors(UCHAR Attr, ULONG *FgColor, ULONG *BgColor)
 {
     *FgColor = UefiVideoAttrToSingleColor(Attr & 0xf);
     *BgColor = UefiVideoAttrToSingleColor((Attr >> 4) & 0xf);
 }
 
-VOID
-UefiVideoClearScreen(UCHAR Attr)
+
+static VOID
+UefiVideoClearScreenColor(ULONG Color, BOOLEAN FullScreen)
 {
+    ULONG Delta;
+    ULONG Line, Col;
+    PULONG p;
 
-    ULONG FgColor, BgColor;
-
-    UefiVideoAttrToColors(Attr, &FgColor, &BgColor);
-    for(int y = 0; y < framebufferData.ScreenHeight; y++)
+    Delta = (framebufferData.PixelsPerScanLine * 4 + 3) & ~ 0x3;
+    for (Line = 0; Line < framebufferData.ScreenHeight - (FullScreen ? 0 : 2 * TOP_BOTTOM_LINES); Line++)
     {
-        for(int x = 0; x < framebufferData.ScreenWidth; x++)
+        p = (PULONG) ((char *) framebufferData.BaseAddress + (Line + (FullScreen ? 0 : TOP_BOTTOM_LINES)) * Delta);
+        for (Col = 0; Col < framebufferData.ScreenWidth; Col++)
         {
-            *((UINT32*)(framebufferData.BaseAddress + 4 * framebufferData.PixelsPerScanLine * (y) + 4 * (x))) = BgColor;
+            *p++ = Color;
         }
     }
 }
 
-#include "../freeldr/arch/vgafont.c"
+VOID
+UefiVideoClearScreen(UCHAR Attr)
+{
+    ULONG FgColor, BgColor;
+
+    UefiVideoAttrToColors(Attr, &FgColor, &BgColor);
+    UefiVideoClearScreenColor(BgColor, FALSE);
+}
 
 VOID
 UefiVideoOutputChar(UCHAR Char, unsigned X, unsigned Y, ULONG FgColor, ULONG BgColor)
@@ -128,7 +154,7 @@ VOID
 UefiVideoGetDisplaySize(PULONG Width, PULONG Height, PULONG Depth)
 {
     *Width =  framebufferData.ScreenWidth / CHAR_WIDTH;
-    *Height = (framebufferData.ScreenHeight - 2) / CHAR_HEIGHT;
+    *Height = (framebufferData.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT;
     *Depth =  0;
 }
 
@@ -138,19 +164,20 @@ UefiVideoSetDisplayMode(char *DisplayMode, BOOLEAN Init)
     /* We only have one mode, semi-text */
     return VideoTextMode;
 }
+
 ULONG
 UefiVideoGetBufferSize(VOID)
 {
-    return ((framebufferData.ScreenHeight - 2) / CHAR_HEIGHT * (framebufferData.ScreenWidth / CHAR_WIDTH) * 2);
+    return ((framebufferData.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT * (framebufferData.ScreenWidth / CHAR_WIDTH) * 2);
 }
 
 VOID
 UefiVideoCopyOffScreenBufferToVRAM(PVOID Buffer)
 {
-    PUCHAR OffScreenBuffer = (PUCHAR) Buffer;
+    PUCHAR OffScreenBuffer = (PUCHAR)Buffer;
 
     ULONG Col, Line;
-    for (Line = 0; Line < (framebufferData.ScreenHeight - 2) / CHAR_HEIGHT; Line++)
+    for (Line = 0; Line < (framebufferData.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT; Line++)
     {
         for (Col = 0; Col < framebufferData.ScreenWidth / CHAR_WIDTH; Col++)
         {
@@ -178,4 +205,36 @@ UefiVideoScrollUp(VOID)
 
     for (PixelCount = 0; PixelCount < framebufferData.ScreenWidth * CHAR_HEIGHT; PixelCount++)
         *Dst++ = BgColor;
+}
+
+VOID
+UefiVideoSetTextCursorPosition(UCHAR X, UCHAR Y)
+{
+    /* We don't have a cursor yet */
+}
+
+VOID
+UefiVideoHideShowTextCursor(BOOLEAN Show)
+{
+    /* We don't have a cursor yet */
+}
+
+BOOLEAN
+UefiVideoIsPaletteFixed(VOID)
+{
+    return 0;
+}
+
+VOID
+UefiVideoSetPaletteColor(UCHAR Color, UCHAR Red,
+                         UCHAR Green, UCHAR Blue)
+{
+    /* Not supported */
+}
+
+VOID
+UefiVideoGetPaletteColor(UCHAR Color, UCHAR* Red,
+                         UCHAR* Green, UCHAR* Blue)
+{
+    /* Not supported */
 }

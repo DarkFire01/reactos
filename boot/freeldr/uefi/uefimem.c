@@ -1,11 +1,11 @@
 /*
- * PROJECT:     Freeldr UEFI Extension
+ * PROJECT:     FreeLoader UEFI Support
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
- * PURPOSE:     UEFI Memory Managment Functions
+ * PURPOSE:     Memory Management Functions
  * COPYRIGHT:   Copyright 2022 Justin Miller <justinmiller100@gmail.com>
  */
 
-/**** Includes ***********************************************************************************/
+/* INCLUDES ******************************************************************/
 
 #include <uefildr.h>
 
@@ -19,36 +19,37 @@ DBG_DEFAULT_CHANNEL(WARNING);
 
 ULONG
 AddMemoryDescriptor(
-    IN OUT PFREELDR_MEMORY_DESCRIPTOR List,
-    IN ULONG MaxCount,
-    IN PFN_NUMBER BasePage,
-    IN PFN_NUMBER PageCount,
-    IN TYPE_OF_MEMORY MemoryType);
+    _Inout_ PFREELDR_MEMORY_DESCRIPTOR List,
+    _In_ ULONG MaxCount,
+    _In_ PFN_NUMBER BasePage,
+    _In_ PFN_NUMBER PageCount,
+    _In_ TYPE_OF_MEMORY MemoryType);
 
-/**** Global Variables ***************************************************************************/
+/* GLOBALS *******************************************************************/
 
-extern EFI_SYSTEM_TABLE * GlobalSystemTable;
+extern EFI_SYSTEM_TABLE* GlobalSystemTable;
 extern EFI_HANDLE GlobalImageHandle;
 extern REACTOS_INTERNAL_BGCONTEXT framebufferData;
 
 EFI_MEMORY_DESCRIPTOR* EfiMemoryMap = NULL;
 UINT32 FreeldrDescCount;
-
 PVOID OsLoaderBase;
 SIZE_T OsLoaderSize;
 EFI_HANDLE PublicBootHandle;
 PVOID ExitStack;
 PVOID EndofExitStack;
 
-/**** Private Functions **************************************************************************/
+/* FUNCTIONS *****************************************************************/
+
+static
 VOID
-PUEFI_LoadMemoryMap(UINTN*  LocMapKey,
-                    UINTN*  LocMapSize,
-                    UINTN*  LocDescriptorSize,
-                    UINT32* LocDescriptorVersion)
+PUEFI_LoadMemoryMap(
+    _Out_ UINTN*  LocMapKey,
+    _Out_ UINTN*  LocMapSize,
+    _Out_ UINTN*  LocDescriptorSize,
+    _Out_ UINT32* LocDescriptorVersion)
 {
     EFI_STATUS Status;
-
     UINTN AllocationSize = 0;
     ULONG Count = 0;
 
@@ -66,24 +67,26 @@ PUEFI_LoadMemoryMap(UINTN*  LocMapKey,
         if (EfiMemoryMap)
             GlobalSystemTable->BootServices->FreePool(EfiMemoryMap);
 
-        /* On the instance that MapSize never reports the correct size after the first time; Increment */
+        /* If MapSize never reports the correct size after the first time, increment */
         AllocationSize = *LocMapSize + (*LocDescriptorSize * Count);
-        GlobalSystemTable->BootServices->AllocatePool(EfiLoaderData, AllocationSize, (VOID**)&EfiMemoryMap);
+        GlobalSystemTable->BootServices->AllocatePool(EfiLoaderData, AllocationSize,
+                                                      (VOID**)&EfiMemoryMap);
         Status = GlobalSystemTable->BootServices->GetMemoryMap(LocMapSize,
                                                                EfiMemoryMap,
                                                                LocMapKey,
                                                                LocDescriptorSize,
                                                                LocDescriptorVersion);
-        Count += 1;
+        Count++;
     }
 }
 
+static
 VOID
 UefiSetMemory(
-    PFREELDR_MEMORY_DESCRIPTOR MemoryMap,
-    ULONG_PTR BaseAddress,
-    PFN_COUNT Size,
-    TYPE_OF_MEMORY MemoryType)
+    _Inout_ PFREELDR_MEMORY_DESCRIPTOR MemoryMap,
+    _In_ ULONG_PTR BaseAddress,
+    _In_ PFN_COUNT Size,
+    _In_ TYPE_OF_MEMORY MemoryType)
 {
     ULONG_PTR BasePage, PageCount;
 
@@ -98,14 +101,13 @@ UefiSetMemory(
                                            MemoryType);
 }
 
-/**** Public Functions ***************************************************************************/
 VOID
 ReserveMemory(
-    PFREELDR_MEMORY_DESCRIPTOR MemoryMap,
-    ULONG_PTR BaseAddress,
-    PFN_NUMBER Size,
-    TYPE_OF_MEMORY MemoryType,
-    PCHAR Usage)
+    _Inout_ PFREELDR_MEMORY_DESCRIPTOR MemoryMap,
+    _In_ ULONG_PTR BaseAddress,
+    _In_ PFN_NUMBER Size,
+    _In_ TYPE_OF_MEMORY MemoryType,
+    _In_ PCHAR Usage)
 {
     ULONG_PTR BasePage, PageCount;
     ULONG i;
@@ -142,6 +144,7 @@ ReserveMemory(
                                            MemoryType);
 }
 
+static
 TYPE_OF_MEMORY
 UefiConvertToFreeldrDesc(EFI_MEMORY_TYPE EfiMemoryType)
 {
@@ -168,15 +171,15 @@ UefiConvertToFreeldrDesc(EFI_MEMORY_TYPE EfiMemoryType)
         case EfiACPIReclaimMemory:
             return LoaderFirmwareTemporary;
         case EfiACPIMemoryNVS:
-            return LoaderFirmwarePermanent;
+            return LoaderReserve;
         case EfiMemoryMappedIO:
-            return LoaderFirmwarePermanent;
+            return LoaderReserve;
         case EfiMemoryMappedIOPortSpace:
-            return LoaderFirmwarePermanent;
+            return LoaderReserve;
         default:
             break;
     }
-    return LoaderFirmwarePermanent;
+    return LoaderReserve;
 }
 
 PFREELDR_MEMORY_DESCRIPTOR
@@ -202,14 +205,14 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
                                                              (VOID**)&LoadedImage);
     if (Status != EFI_SUCCESS)
     {
-        TRACE("Failed to find LoadedImageHandlewith status: %d", Status);
+        TRACE("Failed to find LoadedImageHandle with status: %d\n", Status);
         UiMessageBoxCritical("Unable to initialize memory manager.");
+        return NULL;
     }
     OsLoaderBase = LoadedImage->ImageBase;
     OsLoaderSize = LoadedImage->ImageSize;
     PublicBootHandle = LoadedImage->DeviceHandle;
     EfiMemoryMap = NULL;
-
 
     TRACE("UefiMemGetMemoryMap: Gather memory map\n");
     PUEFI_LoadMemoryMap(&MapKey,
@@ -225,67 +228,74 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
     EntryCount = (MapSize / DescriptorSize);
 
     FreeldrMemMapSize = (sizeof(FREELDR_MEMORY_DESCRIPTOR) * EntryCount);
-	Status = GlobalSystemTable->BootServices->AllocatePool(EfiLoaderData, FreeldrMemMapSize, &FreeldrMem);
+    Status = GlobalSystemTable->BootServices->AllocatePool(EfiLoaderData,
+                                                           FreeldrMemMapSize,
+                                                           (void**)&FreeldrMem);
     if (Status != EFI_SUCCESS)
     {
-        TRACE("Failed to allocate pool with status %d", Status);
+        TRACE("Failed to allocate pool with status %d\n", Status);
         UiMessageBoxCritical("Unable to initialize memory manager.");
+        return NULL;
     }
 
     RtlZeroMemory(FreeldrMem, FreeldrMemMapSize);
     MapEntry = EfiMemoryMap;
 	for (Index = 0; Index < EntryCount; ++Index)
     {
-        if (UefiConvertToFreeldrDesc(MapEntry->Type) == LoaderFree)
+        TYPE_OF_MEMORY MemoryType = UefiConvertToFreeldrDesc(MapEntry->Type);
+        if (MemoryType == LoaderFree)
         {
-            Status = GlobalSystemTable->BootServices->AllocatePages(AllocateAddress, EfiLoaderData,
-                                                                    MapEntry->NumberOfPages, &MapEntry->PhysicalStart);
-            if (Status == EFI_SUCCESS)
+            Status = GlobalSystemTable->BootServices->AllocatePages(AllocateAddress,
+                                                                    EfiLoaderData,
+                                                                    MapEntry->NumberOfPages,
+                                                                    &MapEntry->PhysicalStart);
+            if (Status != EFI_SUCCESS)
             {
-                UefiSetMemory(FreeldrMem, MapEntry->PhysicalStart, MapEntry->NumberOfPages,
-                              LoaderFree);
-            }
-            else
-            {
-               UefiSetMemory(FreeldrMem, MapEntry->PhysicalStart, MapEntry->NumberOfPages,
-                              LoaderFree);
+                /* We failed to reserve the page, so change its type */
+                MemoryType = LoaderFirmwareTemporary;
             }
         }
-        else
-        {
-           // UefiSetMemory(FreeldrMem, MapEntry->PhysicalStart, MapEntry->NumberOfPages,
-             //             UefiConvertToFreeldrDesc(MapEntry->Type));
-        }
+
+        UefiSetMemory(FreeldrMem,
+                      MapEntry->PhysicalStart,
+                      MapEntry->NumberOfPages,
+                      MemoryType);
+
         MapEntry = NEXT_MEMORY_DESCRIPTOR(MapEntry, DescriptorSize);
     }
 
-  ///  ReserveMemory(FreeldrMem, framebufferData.BaseAddress, framebufferData.BufferSize, LoaderFirmwarePermanent, "Video Memory");
     *MemoryMapSize = FreeldrDescCount;
     return FreeldrMem;
 }
 
-VOID
-UefiExitBootServices()
+static VOID
+UefiExitBootServices(VOID)
 {
     UINTN MapKey;
     UINTN MapSize;
+    EFI_STATUS Status;
     UINTN DescriptorSize;
     UINT32 DescriptorVersion;
 
-    EFI_STATUS Status = 0;
-    TRACE("Attempting to exit bootservices..\n");
+    TRACE("Attempting to exit bootsevices\n");
     PUEFI_LoadMemoryMap(&MapKey,
                         &MapSize,
                         &DescriptorSize,
                         &DescriptorVersion);
 
-    Status = GlobalSystemTable->BootServices->ExitBootServices(GlobalImageHandle,MapKey);
+    Status = GlobalSystemTable->BootServices->ExitBootServices(GlobalImageHandle, MapKey);
     /* UEFI spec demands twice! */
-	if (Status != EFI_SUCCESS)
-	{
-		Status = GlobalSystemTable->BootServices->ExitBootServices(GlobalImageHandle,MapKey);
-	}
-    TRACE("exited bootservices\n");
+    if (Status != EFI_SUCCESS)
+        Status = GlobalSystemTable->BootServices->ExitBootServices(GlobalImageHandle, MapKey);
+
+    if (Status != EFI_SUCCESS)
+    {
+        TRACE("Failed to exit boot services with status: %d\n", Status);
+    }
+    else
+    {
+        TRACE("Exited bootservices\n");
+    }
 }
 
 VOID
