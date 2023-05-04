@@ -103,8 +103,11 @@ if(ARCH STREQUAL "i386" OR ARCH STREQUAL "amd64")
         ${CMAKE_CURRENT_BINARY_DIR}/freeldr.def)
 endif()
 
+if(ARCH STREQUAL "i386" OR ARCH STREQUAL "amd64")
 include(pcat.cmake)
 include(rosload.cmake)
+endif()
+
 if(NOT ARCH STREQUAL "i386" OR NOT (SARCH STREQUAL "pc98" OR SARCH STREQUAL "xbox"))
     include(uefi.cmake)
 endif()
