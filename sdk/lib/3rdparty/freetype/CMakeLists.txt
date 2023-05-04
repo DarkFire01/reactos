@@ -53,6 +53,11 @@ if(CMAKE_C_COMPILER_ID STREQUAL "MSVC" AND (ARCH STREQUAL "amd64" OR ARCH STREQU
     remove_target_compile_option(freetype "/we4312")
 endif()
 
+if(CMAKE_C_COMPILER_ID STREQUAL "MSVC" AND ARCH STREQUAL "arm")
+    # error C4101: 't2': unreferenced local variable # FIXME
+    remove_target_compile_option(freetype "/we4101")
+endif()
+
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
     target_compile_options(freetype PRIVATE -fno-builtin-malloc)
 endif()
