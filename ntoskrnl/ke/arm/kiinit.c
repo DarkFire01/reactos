@@ -429,6 +429,16 @@ AppCpuInit:
     KiIdleLoop();
 }
 
+#define QEMUUART 0x09000000
+volatile unsigned int * UART0DR = (unsigned int *) QEMUUART;
+
+/* Forcefully shove UART data through qemu */
+VOID
+Rs232PortPutByte(UCHAR ByteToSend)
+{
+    *UART0DR = ByteToSend;
+}
+
 ULONG
 DbgPrintEarly(const char *fmt, ...)
 {
@@ -446,9 +456,9 @@ DbgPrintEarly(const char *fmt, ...)
     {
         if (*String == '\n')
         {
-            KdPortPutByteEx(NULL, '\r');
+            Rs232PortPutByte('\r');
         }
-        KdPortPutByteEx(NULL, *String);
+        Rs232PortPutByte(*String);
         String++;
     }
 
