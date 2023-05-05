@@ -309,6 +309,15 @@ KdReceivePacket(
     return KDP_PACKET_RECEIVED;
 }
 
+#define QEMUUART 0x09000000
+volatile unsigned int * UART0DR = (unsigned int *) QEMUUART;
+
+/* Forcefully shove UART data through qemu */
+VOID
+Rs232PortPutByte(UCHAR ByteToSend)
+{
+    *UART0DR = ByteToSend;
+}
 VOID
 NTAPI
 KdSendPacket(
@@ -317,6 +326,11 @@ KdSendPacket(
     IN PSTRING MessageData,
     IN OUT PKD_CONTEXT KdContext)
 {
+    Rs232PortPutByte('C');
+    for(;;)
+    {
+
+    }
     KD_PACKET Packet;
     KDP_STATUS KdStatus;
     ULONG Retries;

@@ -114,23 +114,9 @@ KdDebuggerInitialize0(
     ULONG i;
     BOOLEAN Success = FALSE;
 
-    if (LoaderBlock)
-    {
-        /* Check if we have a command line */
-        CommandLine = LoaderBlock->LoadOptions;
-        if (CommandLine)
-        {
-            /* Upcase it */
-            _strupr(CommandLine);
+    Port = "DEBUGPORT=COM1";
 
-            /* Get terminal settings */
-            KdpGetTerminalSettings(CommandLine);
-
-            /* Get the port */
-            Port = strstr(CommandLine, "DEBUGPORT");
-        }
-    }
-
+    DbgPrintEarly("got terminal settings\n");
     /* Check if we got the /DEBUGPORT parameter(s) */
     while (Port)
     {
@@ -142,8 +128,7 @@ KdDebuggerInitialize0(
         Port++;
 
         /* Get the debug mode and wrapper */
-        Port = KdpGetDebugMode(Port);
-        Port = strstr(Port, "DEBUGPORT");
+        Port = "1";
     }
 
     /* Use serial port then */

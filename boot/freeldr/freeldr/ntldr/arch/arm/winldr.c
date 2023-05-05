@@ -10,6 +10,8 @@
 
 #include <freeldr.h>
 #include <debug.h>
+DBG_DEFAULT_CHANNEL(WINDOWS);
+
 #include <internal/arm/mm.h>
 #include <internal/arm/intrin_i.h>
 #include "../../winldr.h"
@@ -22,13 +24,9 @@
 #define PDR_BASE                    0xFFD00000
 #define VECTOR_BASE                 0xFFFF0000
 
-#ifdef _ZOOM2_
+
 #define IDMAP_BASE                  0x81000000
 #define MMIO_BASE                   0x10000000
-#else
-#define IDMAP_BASE                  0x00000000
-#define MMIO_BASE                   0x10000000
-#endif
 
 #define LowMemPageTableIndex        (IDMAP_BASE >> PDE_SHIFT)
 #define MmioPageTableIndex          (MMIO_BASE >> PDE_SHIFT)
@@ -38,13 +36,18 @@
 #define PdrPageTableIndex           (PDR_BASE >> PDE_SHIFT)
 #define VectorPageTableIndex        (VECTOR_BASE >> PDE_SHIFT)
 
-#ifndef _ZOOM2_
 PVOID MempPdrBaseAddress = (PVOID)0x70000;
 PVOID MempKernelBaseAddress = (PVOID)0;
-#else
-PVOID MempPdrBaseAddress = (PVOID)0x81100000;
-PVOID MempKernelBaseAddress = (PVOID)0x80000000;
-#endif
+
+PHARDWARE_PTE PDE;
+PHARDWARE_PTE HalPageTable;
+
+PUCHAR PhysicalPageTablesBuffer;
+PUCHAR KernelPageTablesBuffer;
+ULONG PhysicalPageTables;
+ULONG KernelPageTables;
+
+ULONG PcrBasePage;
 
 /* Converts a Physical Address into a Page Frame Number */
 #define PaToPfn(p)                  ((p) >> PFN_SHIFT)
@@ -80,11 +83,102 @@ PKPDR_PAGE PdrPage;
 
 /* FUNCTIONS **************************************************************/
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+FORCEINLINE
+ARM_STATUS_REGISTER
+ArmStatusRegisterGet(VOID)
+{
+    ARM_STATUS_REGISTER Value;
+#ifdef _MSC_VER
+    Value.AsUlong = _ReadStatusReg(0);
+#else
+    __asm__ __volatile__ ("mrs %0, cpsr" : "=r"(Value.AsUlong) : : "cc");
+#endif
+    return Value;
+}
+
+pArmControlRegisterSet(ULONG Ttb);
+FORCEINLINE
+VOID
+ArmControlRegisterSet(IN ARM_CONTROL_REGISTER ControlRegister)
+{
+#ifdef _MSC_VER
+    pArmControlRegisterSet(ControlRegister.AsUlong);
+#else
+    __asm__ __volatile__ ("mcr p15, 0, %0, c1, c0, 0" : : "r"(ControlRegister.AsUlong) : "cc");
+#endif
+}
+
+void pArmControlRegisterGet(ULONG* value);
+FORCEINLINE
+ARM_CONTROL_REGISTER
+ArmControlRegisterGet(VOID)
+{
+    ARM_CONTROL_REGISTER Value;
+#ifdef _MSC_VER
+    Value.AsUlong = 0;
+    pArmControlRegisterGet(&Value.AsUlong);
+#else
+    __asm__ __volatile__ ("mrc p15, 0, %0, c1, c0, 0" : "=r"(Value.AsUlong) : : "cc");
+#endif
+    return Value;
+}
+
+void pArmTranslationTableRegisterSet(ULONG Ttb);
+FORCEINLINE
+VOID
+ArmTranslationTableRegisterSet(IN ARM_TTB_REGISTER Ttb)
+{
+#ifdef _MSC_VER
+    pArmTranslationTableRegisterSet(Ttb.AsUlong);
+#else
+    __asm__ __volatile__ ("mcr p15, 0, %0, c2, c0, 0" : : "r"(Ttb.AsUlong) : "cc");
+#endif
+}
+
+void pArmDomainRegisterSet(ULONG Ttb);
+FORCEINLINE
+VOID
+ArmDomainRegisterSet(IN ARM_DOMAIN_REGISTER DomainRegister)
+{
+#ifdef _MSC_VER
+    pArmDomainRegisterSet(DomainRegister.AsUlong);
+#else
+    __asm__ __volatile__ ("mcr p15, 0, %0, c3, c0, 0" : : "r"(DomainRegister.AsUlong) : "cc");
+#endif
+}
+
+
+
+
+
+
+
+
 BOOLEAN
 MempSetupPaging(IN PFN_NUMBER StartPage,
                 IN PFN_NUMBER NumberOfPages,
                 IN BOOLEAN KernelMapping)
 {
+    TRACE("base Page %X\n", StartPage);
     return TRUE;
 }
 
@@ -197,6 +291,7 @@ static
 BOOLEAN
 MempAllocatePageTables(VOID)
 {
+    TRACE("Setting up page tables\n");
     ULONG i;
     PHARDWARE_PTE_ARMV6 PointerPte;
     PHARDWARE_PDE_ARMV6 PointerPde;
@@ -207,9 +302,7 @@ MempAllocatePageTables(VOID)
     TempPte.Sbo = TempPte.Valid = TempLargePte.LargePage = TempLargePte.Sbo = TempPde.Valid = 1;
 
     /* Allocate the 1MB "PDR" (Processor Data Region). Must be 1MB aligned */
-    PdrPage = MmAllocateMemoryAtAddress(sizeof(KPDR_PAGE),
-                                        MempPdrBaseAddress,
-                                        LoaderMemoryData);
+    PdrPage = MmAllocateMemoryWithType(sizeof(KPDR_PAGE), LoaderFirmwareTemporary);
 
     /* Setup the Low Memory PDE as an identity-mapped Large Page (1MB) */
     LargePte = &PdrPage->PageDir.Pte[LowMemPageTableIndex];
@@ -244,39 +337,82 @@ MempAllocatePageTables(VOID)
         *PointerPte++ = TempPte;
     }
 
+
     /* Done */
     return TRUE;
 }
-
+extern PLOADER_PARAMETER_BLOCK PubLoaderBlockVA;
+extern KERNEL_ENTRY_POINT PubKiSystemStartup;
 VOID
 WinLdrSetProcessorContext(VOID)
 {
-    ARM_CONTROL_REGISTER ControlRegister;
+        ARM_CONTROL_REGISTER ControlRegister;
     ARM_TTB_REGISTER TtbRegister;
     ARM_DOMAIN_REGISTER DomainRegister;
+        /* Enable ARMv6+ paging (MMU), caches and the access bit */
+    ControlRegister = ArmControlRegisterGet();
+    ControlRegister.MmuEnabled = FALSE;
+    ControlRegister.ICacheEnabled = TRUE;
+    ControlRegister.DCacheEnabled = TRUE;
+    ControlRegister.ForceAp = TRUE;
+    ControlRegister.ExtendedPageTables = TRUE;
+    ArmControlRegisterSet(ControlRegister);
+    TRACE("WinldrSetProessorContext for ARM\n");
 
     /* Set the TTBR */
     TtbRegister.AsUlong = (ULONG_PTR)&PdrPage->PageDir;
-    ASSERT(TtbRegister.Reserved == 0);
-    KeArmTranslationTableRegisterSet(TtbRegister);
+    if (&PdrPage->PageDir == NULL)
+    {
+        TRACE("The page tables are null\n");
+    }
+    ArmTranslationTableRegisterSet(TtbRegister);
 
     /* Disable domains and simply use access bits on PTEs */
     DomainRegister.AsUlong = 0;
     DomainRegister.Domain0 = ClientDomain;
     KeArmDomainRegisterSet(DomainRegister);
 
+    TRACE("Enabling paging\n");
     /* Enable ARMv6+ paging (MMU), caches and the access bit */
-    ControlRegister = KeArmControlRegisterGet();
+    ControlRegister = ArmControlRegisterGet();
     ControlRegister.MmuEnabled = TRUE;
     ControlRegister.ICacheEnabled = TRUE;
     ControlRegister.DCacheEnabled = TRUE;
     ControlRegister.ForceAp = TRUE;
     ControlRegister.ExtendedPageTables = TRUE;
-    KeArmControlRegisterSet(ControlRegister);
-}
+    ArmControlRegisterSet(ControlRegister);
 
+    TRACE("Jumping to kernel\n");
+    (*PubKiSystemStartup)(PubLoaderBlockVA);
+     TRACE("failed to jump to kernel\n");
+#if 1
+#endif
+}
+extern PVOID OsLoaderBase;
+extern SIZE_T OsLoaderSize;
 VOID
 WinLdrSetupMachineDependent(
     PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    TRACE("Preperaing for paging\n");
+    ULONG_PTR Pcr = 0;
+
+    /* Allocate 2 pages for PCR: one for the boot processor PCR and one for KI_USER_SHARED_DATA */
+    Pcr = (ULONG_PTR)MmAllocateMemoryWithType(OsLoaderSize + MM_PAGE_SIZE, LoaderStartupPcrPage);
+    PcrBasePage = (ULONG_PTR)OsLoaderBase >> MM_PAGE_SHIFT;
+    if (Pcr == 0)
+    {
+        UiMessageBox("Could not allocate PCR.");
+        return;
+    }
+
+    // Before we start mapping pages, create a block of memory, which will contain
+    // PDE and PTEs
+    if (MempAllocatePageTables() == FALSE)
+    {
+        BugCheck("MempAllocatePageTables failed!\n");
+    }
+
+    /* Map stuff like PCR, KI_USER_SHARED_DATA and Apic */
+    WinLdrMapSpecialPages(PcrBasePage);
 }

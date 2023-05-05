@@ -339,7 +339,7 @@ KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     PKTHREAD Thread;
 
     /* Flush the TLB */
-    KeFlushTb();
+  //  KeFlushTb();
 
     /* Save the loader block and get the current CPU */
     KeLoaderBlock = LoaderBlock;
@@ -367,8 +367,8 @@ KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                     (PVOID)LoaderBlock->u.Arm.InterruptStack);
 
     /* Now sweep caches */
-    HalSweepIcache();
-    HalSweepDcache();
+   // HalSweepIcache();
+    //HalSweepDcache();
 
     /* Set us as the current process */
     InitialThread->ApcState.Process = InitialProcess;
@@ -377,12 +377,12 @@ AppCpuInit:
     /* Setup CPU-related fields */
     Pcr->PrcbData.Number = Cpu;
     Pcr->PrcbData.SetMember = 1 << Cpu;
-
+        DbgPrintEarly("Starting HAL\n");
     /* Initialize the Processor with HAL */
-    HalInitializeProcessor(Cpu, KeLoaderBlock);
-
+   // HalInitializeProcessor(Cpu, KeLoaderBlock);
+     //  DbgPrintEarly("left HAL\n");
     /* Set active processors */
-    KeActiveProcessors |= Pcr->PrcbData.SetMember;
+    KeActiveProcessors |= 1;
     KeNumberProcessors++;
 
     /* Check if this is the boot CPU */
@@ -392,12 +392,16 @@ AppCpuInit:
         KdInitSystem(0, KeLoaderBlock);
 
         /* Check for break-in */
-        if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
+    //    if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
     }
-
+    DPRINT1("testing IRRQL change\n");
     /* Raise to HIGH_LEVEL */
     KfRaiseIrql(HIGH_LEVEL);
+ DPRINT1("finish testing IRRQL change\n");
+ for(;;)
+ {
 
+ }
     /* Set the exception address to high */
     ControlRegister = KeArmControlRegisterGet();
     ControlRegister.HighVectors = TRUE;
@@ -463,4 +467,20 @@ DbgPrintEarly(const char *fmt, ...)
     }
 
     return STATUS_SUCCESS;
+}
+
+
+
+CODE_SEG("INIT")
+DECLSPEC_NORETURN
+VOID
+NTAPI
+KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+    DbgPrintEarly("hello from armport two \n");
+    KiInitializeSystem(LoaderBlock);
+    for(;;)
+    {
+
+    }
 }

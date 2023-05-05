@@ -171,6 +171,10 @@ HalSweepIcache(
     VOID
 );
 
+
+ULONG
+DbgPrintEarly(const char *fmt, ...);
+
 #define Ki386PerfEnd()
 #define KiEndInterrupt(x,y)
 

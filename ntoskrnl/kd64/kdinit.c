@@ -99,12 +99,12 @@ KdRegisterDebuggerDataBlock(IN ULONG Tag,
                             IN PDBGKD_DEBUG_DATA_HEADER64 DataHeader,
                             IN ULONG Size)
 {
-    KIRQL OldIrql;
+    //KIRQL OldIrql;
     PLIST_ENTRY NextEntry;
     PDBGKD_DEBUG_DATA_HEADER64 CurrentHeader;
 
     /* Acquire the Data Lock */
-    KeAcquireSpinLock(&KdpDataSpinLock, &OldIrql);
+    //KeAcquireSpinLock(&KdpDataSpinLock, &OldIrql);
 
     /* Loop the debugger data list */
     NextEntry = KdpDebuggerDataListHead.Flink;
@@ -122,7 +122,7 @@ KdRegisterDebuggerDataBlock(IN ULONG Tag,
         if ((CurrentHeader == DataHeader) || (CurrentHeader->OwnerTag == Tag))
         {
             /* Release the lock and fail */
-            KeReleaseSpinLock(&KdpDataSpinLock, OldIrql);
+           // KeReleaseSpinLock(&KdpDataSpinLock, OldIrql);
             return FALSE;
         }
     }
@@ -133,7 +133,7 @@ KdRegisterDebuggerDataBlock(IN ULONG Tag,
 
     /* Insert it into the list and release the lock */
     InsertTailList(&KdpDebuggerDataListHead, (PLIST_ENTRY)&DataHeader->List);
-    KeReleaseSpinLock(&KdpDataSpinLock, OldIrql);
+    //KeReleaseSpinLock(&KdpDataSpinLock, OldIrql);
     return TRUE;
 }
 
@@ -349,11 +349,13 @@ KdInitSystem(
     }
 
     /* Set the Kernel Base in the Data Block */
-    KdDebuggerDataBlock.KernBase = (ULONG_PTR)KdVersionBlock.KernBase;
+  //  KdDebuggerDataBlock.KernBase = (ULONG_PTR)KdVersionBlock.KernBase;
+
+
 
     /* Initialize the debugger if requested */
-    if (EnableKd && (NT_SUCCESS(KdDebuggerInitialize0(LoaderBlock))))
-    {
+
+
         /* Now set our real KD routine */
         KiDebugRoutine = KdpTrap;
 
@@ -390,26 +392,16 @@ KdInitSystem(
         KdDebuggerEnabled = TRUE;
 
         /* Let user-mode know that it's enabled as well */
-        SharedUserData->KdDebuggerEnabled = TRUE;
+      //  SharedUserData->KdDebuggerEnabled = TRUE;
 
         /* Display separator + ReactOS version at start of the debug log */
         MemSizeMBs = KdpGetMemorySizeInMBs(KeLoaderBlock);
         KdpPrintBanner(MemSizeMBs);
+    return TRUE;
+    for(;;)
+    {
 
-        /* Check if the debugger should be disabled initially */
-        if (DisableKdAfterInit)
-        {
-            /* Disable it */
-            KdDisableDebuggerWithLock(FALSE);
-
-            /*
-             * Save the enable block state and return initialized
-             * (the debugger is active but disabled).
-             */
-            KdBlockEnable = BlockEnable;
-            return TRUE;
-        }
-
+    }
         /* Check if we have a loader block */
         if (LoaderBlock)
         {
@@ -447,15 +439,6 @@ KdInitSystem(
                 i++;
             }
         }
-
-        /* Check for incoming breakin and break on symbol load if we have it */
-        KdBreakAfterSymbolLoad = KdPollBreakIn();
-    }
-    else
-    {
-        /* Disable debugger */
-        KdDebuggerNotPresent = TRUE;
-    }
 
     /* Return initialized */
     return TRUE;
