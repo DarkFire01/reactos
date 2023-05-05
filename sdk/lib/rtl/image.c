@@ -441,7 +441,8 @@ LdrProcessRelocationBlockLongLong(
             LongLongPtr = (PUINT64)RVA(Address, Offset);
             *LongLongPtr = SWAPQ(*LongLongPtr) + Delta;
             break;
-
+        case 7: //The thing is.. we are operating in THUMb2
+            break;
         case IMAGE_REL_BASED_HIGHADJ:
         case IMAGE_REL_BASED_MIPS_JMPADDR:
         default:
