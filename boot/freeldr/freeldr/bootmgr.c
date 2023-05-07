@@ -24,6 +24,10 @@
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WARNING);
 
+VOID
+EditCustomBootEFI(
+    IN OUT OperatingSystemItem* OperatingSystem);
+
 /* GLOBALS ********************************************************************/
 
 typedef
@@ -65,6 +69,9 @@ static const struct
 #endif
     {"Windows"     , EditCustomBootNTOS , LoadAndBootWindows},
     {"Windows2003" , EditCustomBootNTOS , LoadAndBootWindows},
+#ifdef UEFIBOOT
+    {"EFI" , EditCustomBootEFI , LoadAndBootEFI},
+#endif
 };
 
 /* FUNCTIONS ******************************************************************/

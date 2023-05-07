@@ -55,6 +55,6 @@ MachInit(const char *CmdLine)
     /* Setup GOP */
     if (UefiInitalizeVideo() != EFI_SUCCESS)
     {
-        ERR("Failed to setup GOP\n");
+      //  ERR("Failed to setup GOP\n");
     }
 }

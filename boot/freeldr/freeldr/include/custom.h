@@ -45,6 +45,10 @@ VOID
 EditCustomBootLinux(
     IN OUT OperatingSystemItem* OperatingSystem);
 
+VOID
+EditCustomBootEFI(
+    IN OUT OperatingSystemItem* OperatingSystem);
+
 #endif /* _M_IX86 || _M_AMD64 */
 
 VOID

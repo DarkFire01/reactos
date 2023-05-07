@@ -37,12 +37,12 @@ UefiInitalizeVideo(VOID)
     Status = GlobalSystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
     if (Status != EFI_SUCCESS)
     {
-        TRACE("Failed to find GOP with status %d\n", Status);
+      //  TRACE("Failed to find GOP with status %d\n", Status);
         return Status;
     }
 
     /* We don't need high resolutions for freeldr */
-    gop->SetMode(gop, LOWEST_SUPPORTED_RES);
+  //  gop->SetMode(gop, LOWEST_SUPPORTED_RES);
 
     framebufferData.BaseAddress        = (ULONG_PTR)gop->Mode->FrameBufferBase;
     framebufferData.BufferSize         = gop->Mode->FrameBufferSize;
