@@ -54,7 +54,8 @@ VOID OptionMenuCustomBoot(VOID)
         "Linux",
 #endif
         "ReactOS",
-        "ReactOS Setup"
+        "ReactOS Setup",
+        "EFI"
         };
     ULONG SelectedMenuItem;
     OperatingSystemItem OperatingSystem;
@@ -95,12 +96,18 @@ VOID OptionMenuCustomBoot(VOID)
         case 5: // ReactOS Setup
             EditCustomBootReactOS(&OperatingSystem, TRUE);
             break;
+        case 6: // ReactOS EFI
+            EditCustomBootEFI(&OperatingSystem);
+            break;
 #else
         case 0: // ReactOS
             EditCustomBootReactOS(&OperatingSystem, FALSE);
             break;
         case 1: // ReactOS Setup
             EditCustomBootReactOS(&OperatingSystem, TRUE);
+            break;
+        case 2: // EFI
+            EditCustomBootEFI(&OperatingSystem);
             break;
 #endif /* _M_IX86 || _M_AMD64 */
     }
@@ -614,6 +621,21 @@ EditCustomBootLinux(
 }
 
 #endif /* _M_IX86 || _M_AMD64 */
+
+VOID
+EditCustomBootEFI(
+    IN OUT OperatingSystemItem* OperatingSystem)
+{
+#ifndef UEFIBOOT
+    //TODO: replace with more correct error
+    printf("NOT UEFI SYSTEM\n");
+    for(;;)
+    {
+
+    }
+#endif
+    //TRACE("EditCustomBootEFI: Entry\n");
+}
 
 VOID
 EditCustomBootReactOS(

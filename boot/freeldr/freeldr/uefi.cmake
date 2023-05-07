@@ -11,6 +11,9 @@ include_directories(BEFORE
     ${REACTOS_SOURCE_DIR}/boot/freeldr/freeldr/include
     ${REACTOS_SOURCE_DIR}/boot/freeldr/freeldr/include/arch/uefi)
 
+list(APPEND FREELDR_BASE_SOURCE
+    efiboot.c)
+
 list(APPEND UEFILDR_ARC_SOURCE
     ${FREELDR_ARC_SOURCE}
     arch/uefi/stubs.c

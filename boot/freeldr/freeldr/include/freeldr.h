@@ -66,6 +66,9 @@
 #include <fs.h>
 #include <inifile.h>
 #include <keycodes.h>
+#ifdef UEFIBOOT
+#include <efichainload.h>
+#endif
 #include <linux.h>
 #include <custom.h>
 #include <miscboot.h>
