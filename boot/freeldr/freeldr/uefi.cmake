@@ -112,7 +112,7 @@ else()
 endif()
 
 if(MSVC)
-    set_subsystem(uefildr EFI_APPLICATION)
+    set_subsystem(uefildr BOOT_APPLICATION)
 else()
     set_subsystem(uefildr 10)
 endif()

@@ -10,7 +10,7 @@
 #define _BL_H
 
 /* INCLUDES ******************************************************************/
-
+#if 0
 /* C Headers */
 #include <stdlib.h>
 #include <stdio.h>
@@ -43,7 +43,7 @@
 
 /* Registry Headers */
 #include <cmlib.h>
-
+#endif
 /* DEFINES *******************************************************************/
 
 DEFINE_GUID(BadMemoryGuid, 0x54B8275B, 0xD431, 0x473F, 0xAC, 0xFB, 0xE5, 0x36, 0xA0, 0x84, 0x94, 0xA3);
@@ -888,7 +888,7 @@ typedef struct _BL_MENU_STATUS
 
 typedef enum _BL_BOOT_ERROR_STATUS
 {
-    Reboot = 1,
+    RebootTwo = 1,
     Recover = 2,
     RecoverOem = 3,
     OsSelection = 4,
@@ -1348,7 +1348,7 @@ typedef struct _BL_PD_DATA_BLOB
 } BL_PD_DATA_BLOB, *PBL_PD_DATA_BLOB;
 
 /* INLINE ROUTINES ***********************************************************/
-
+#if 0
 FORCEINLINE
 VOID
 BlSetupDefaultParameters (
@@ -2858,5 +2858,5 @@ extern PBL_MM_FLUSH_TLB BlMmFlushTlb;
 extern PBL_MM_MOVE_VIRTUAL_ADDRESS_RANGE BlMmMoveVirtualAddressRange;
 extern PBL_MM_ZERO_VIRTUAL_ADDRESS_RANGE BlMmZeroVirtualAddressRange;
 extern PBL_STATUS_ERROR_HANDLER BlpStatusErrorHandler;
-
+#endif
 #endif
