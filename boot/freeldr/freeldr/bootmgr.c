@@ -49,6 +49,12 @@ EditCustomBootNTOS(
     EditCustomBootReactOS(OperatingSystem, FALSE);
 }
 
+ARC_STATUS
+LoadAndBootEFI(
+    IN ULONG Argc,
+    IN PCHAR Argv[],
+    IN PCHAR Envp[]);
+
 static const struct
 {
     PCSTR BootType;

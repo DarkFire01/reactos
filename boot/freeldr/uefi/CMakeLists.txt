@@ -51,10 +51,10 @@ list(APPEND FREELDR_ARC_SOURCE
     ../freeldr/disk/disk.c
     ../freeldr/disk/partition.c
     ../freeldr/disk/ramdisk.c)
-list(APPEND FREELDR_BASE_SOURCE
-    efiboot.c)
+
 list(APPEND FREELDR_BOOTMGR_SOURCE
     ../freeldr/include/freeldr.h
+    ../freeldr/efiboot.c
     ../freeldr/cmdline.c
     ../freeldr/custom.c
     ../freeldr/linuxboot.c

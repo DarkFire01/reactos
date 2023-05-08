@@ -162,7 +162,7 @@ LoadAndBootEFI(
     //TODO Autogenerate:
     //BOOTIA32
     //cdrom(0)
-    EfiAppName = "BOOT.efi";
+    EfiAppName = "dude";
     /* Fall back to using the system partition as default path */
     BootPath = GetArgumentValue(Argc, Argv, "SystemPartition");
     TRACE("EFiAppName: %s\n", EfiAppName);
