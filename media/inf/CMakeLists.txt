@@ -13,6 +13,8 @@ list(APPEND INF_FILES
     input.inf
     keyboard.inf
     ks.inf
+    rtlnet.inf
+    intel.inf
     kscaptur.inf
     legcydrv.inf
     machine.inf
@@ -28,6 +30,8 @@ list(APPEND INF_FILES
     usbport.inf
     volume.inf
     wdmaudio.inf
+    Netrtuw.inf
+    NETw5x32.inf
     wmiacpi.inf)
 
 list(APPEND UTF8_INF_FILES

@@ -1,0 +1,1796 @@
+
+;=============================================================================
+;
+; Copyright (c) Intel Corporation (2009).
+;
+; INTEL MAKES NO WARRANTY OF ANY KIND REGARDING THE CODE.  THIS CODE IS
+; LICENSED ON AN "AS IS" BASIS AND INTEL WILL NOT PROVIDE ANY SUPPORT,
+; ASSISTANCE, INSTALLATION, TRAINING OR OTHER SERVICES.  INTEL DOES NOT
+; PROVIDE ANY UPDATES, ENHANCEMENTS OR EXTENSIONS.  INTEL SPECIFICALLY
+; DISCLAIMS ANY WARRANTY OF MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR ANY
+; PARTICULAR PURPOSE, OR ANY OTHER WARRANTY.  Intel disclaims all liability,
+; including liability for infringement of any proprietary rights, relating to
+; use of the code. No license, express or implied, by estoppel or otherwise,
+; to any intellectual property rights is granted herein.
+;
+;=============================================================================
+
+; Installation inf for the Intel Corporation graphics adapter.
+
+[Version]
+Signature="$WINDOWS NT$"
+Provider=%Intel%
+ClassGUID={4D36E968-E325-11CE-BFC1-08002BE10318}
+Class=Display
+CatalogFile=kit47725.cat
+
+DriverVer=07/23/2012,6.14.10.5420
+;
+; Package Info for Co-Installer
+;
+[PackageInfo]
+Name=Graphics
+INFSource=%1%
+
+[DestinationDirs]
+DefaultDestDir  = 11  ; system32
+ialm.Miniport   = 12  ; drivers
+ialm.Display    = 11  ; system32
+Copp.Copy       = 11  ; system32
+MedKrnG500.Copy = 11  ; system32
+MedKrnG575.Copy = 11  ; system32
+
+CUI.Copy        = 11  ; system32
+Resource.Copy   = 11  ; system32
+CUISDK.Copy     = 11  ; system32
+
+OpenGL.Copy.Gen4    = 11  ; OpenGL Drivers in System32
+
+;
+; Driver information
+;
+
+[Manufacturer]
+%Intel%   = Intel.Mfg
+
+[Intel.Mfg]
+
+%iCNTG0% = iCNT0, PCI\VEN_8086&DEV_2A42
+%iCNTG1% = iCNT1, PCI\VEN_8086&DEV_2A43
+%iEGLG0% = iEGL0, PCI\VEN_8086&DEV_2E02
+%iEGLG1% = iEGL1, PCI\VEN_8086&DEV_2E03
+%iEGLQ4G0%  = iEGL0, PCI\VEN_8086&DEV_2E12
+%iEGLQ4G1%  = iEGL1, PCI\VEN_8086&DEV_2E13
+%iEGLG4G0%  = iEGL0, PCI\VEN_8086&DEV_2E22
+%iEGLG4G1%  = iEGL1, PCI\VEN_8086&DEV_2E23
+%iEGLGVG0%  = iEGL0, PCI\VEN_8086&DEV_2E32
+%iEGLGVG1%  = iEGL1, PCI\VEN_8086&DEV_2E33
+%iEGLGB0%  = iEGL0, PCI\VEN_8086&DEV_2E42
+%iEGLGB1%  = iEGL1, PCI\VEN_8086&DEV_2E43
+%iEGLGBU0%  = iEGL0, PCI\VEN_8086&DEV_2E92
+%iEGLGBU1%  = iEGL1, PCI\VEN_8086&DEV_2E93
+
+;
+; General installation section
+;
+
+[iCNT0]
+DelFiles=CUI.DelFiles
+CopyFiles=ialm.Miniport, ialm.Display, Copp.Copy, MedKrnG500.Copy , CUI.Copy , Resource.Copy , CUISDK.Copy , OpenGL.Copy.Gen4
+AddReg = CUI.AddReg , CUISDK.AddReg , OpenGL.AddReg.Gen4  
+DelReg =  CUI.DelReg , OpenGL.DelReg, CUISDK.DelReg
+
+DriverVer=07/23/2012,6.14.10.5420
+
+[iCNT1]
+DelFiles=CUI.DelFiles
+CopyFiles=ialm.Miniport, ialm.Display, Copp.Copy, MedKrnG500.Copy , CUI.Copy , Resource.Copy , CUISDK.Copy , OpenGL.Copy.Gen4
+AddReg =  CUI.AddReg , CUISDK.AddReg , OpenGL.AddReg.Gen4
+DelReg =  CUI.DelReg , OpenGL.DelReg, CUISDK.DelReg
+
+DriverVer=07/23/2012,6.14.10.5420
+
+[iEGL0]
+DelFiles=CUI.DelFiles
+CopyFiles=ialm.Miniport, ialm.Display, Copp.Copy, MedKrnG500.Copy , CUI.Copy , Resource.Copy , CUISDK.Copy , OpenGL.Copy.Gen4
+AddReg =  CUI.AddReg , CUISDK.AddReg , OpenGL.AddReg.Gen4
+DelReg =  CUI.DelReg , OpenGL.DelReg, CUISDK.DelReg
+
+DriverVer=07/23/2012,6.14.10.5420
+
+[iEGL1]
+DelFiles=CUI.DelFiles
+CopyFiles=ialm.Miniport, ialm.Display, Copp.Copy, MedKrnG500.Copy , CUI.Copy , Resource.Copy , CUISDK.Copy , OpenGL.Copy.Gen4
+AddReg =  CUI.AddReg , CUISDK.AddReg , OpenGL.AddReg.Gen4
+DelReg =  CUI.DelReg , OpenGL.DelReg, CUISDK.DelReg
+
+DriverVer=07/23/2012,6.14.10.5420
+
+[iCNT0.CoInstallers]
+AddReg = CoInst.AddReg
+CopyFiles = CoInst.CopyFiles
+
+[iCNT1.CoInstallers]
+AddReg = CoInst.AddReg
+CopyFiles = CoInst.CopyFiles
+
+[iEGL0.CoInstallers]
+AddReg = CoInst.AddReg
+CopyFiles = CoInst.CopyFiles
+
+[iEGL1.CoInstallers]
+AddReg = CoInst.AddReg
+CopyFiles = CoInst.CopyFiles
+
+[CoInst.AddReg]
+
+HKR,,CoInstallers32,0x10000,"igfxCoIn_v5420.dll,CoDeviceInstall"
+
+[CoInst.CopyFiles]
+
+igfxCoIn_v5420.dll,igxpco32.dll,,0x00000010
+;
+; File sections
+;
+[ialm.Miniport]
+igxpmp32.sys
+
+[ialm.Display]
+igxprd32.dll
+igxpgd32.dll
+igxpdv32.dll
+igxpdx32.dll
+
+[OpenGL.Copy.Gen4]
+ig4icd32.dll
+
+[Copp.Copy]
+igxpxk32.vp
+igxpxs32.vp
+igxpxa32.vp
+igxpxa32.cpa
+
+[MedKrnG500.Copy]
+igkrng500.bin
+igcompkrng500.bin
+
+[MedKrnG575.Copy]
+igkrng575.bin
+igcompkrng575.bin
+
+[CUI.DelFiles]
+igfxrarb.lrc,,,1
+igfxreng.lrc,,,1
+igfxrfrc.lrc,,,1
+igfxres.dll,,,1
+
+;
+; Start CUI Copy Sections
+;
+[CUI.Copy]
+hccutils.dll
+igfxsrvc.dll
+igfxsrvc.exe
+igfxpph.dll
+igfxcpl.cpl
+igfxdev.dll
+igfxdo.dll
+igfxtray.exe
+hkcmd.exe
+igfxress.dll	; Generic language resource file
+igfxpers.exe
+
+gfxSrvc.dll
+GfxUI.exe
+GfxUI.exe.config
+IGFXDEVLib.dll
+
+[Resource.Copy]
+igfxrara.lrc    ; Arabic language resource file
+igfxrchs.lrc    ; Simplified Chinese language resource file
+igfxrcht.lrc    ; Traditional Chinese language resource file
+igfxrdan.lrc    ; Danish language resource file
+igfxrdeu.lrc    ; German language resource file
+igfxrenu.lrc    ; American English language resource file
+igfxresn.lrc    ; Spanish language resource file
+igfxrfin.lrc    ; Finish language resource file
+igfxrfra.lrc    ; French language resource file
+igfxrheb.lrc    ; Hebrew Language Resource file
+igfxrita.lrc    ; Italian language resource file
+igfxrjpn.lrc    ; Japanese language resource file
+igfxrkor.lrc    ; Korean language resource file
+igfxrnld.lrc    ; Netherland language resource file
+igfxrnor.lrc    ; Norwegian language resource file
+igfxrplk.lrc    ; Polish language resource file
+igfxrptb.lrc    ; Brazilian Portuguese language resource file
+igfxrptg.lrc    ; Portuguese language resource file
+igfxrrus.lrc    ; Russian language resource file
+igfxrsky.lrc    ; Slovakian language resource file
+igfxrslv.lrc    ; Slovenian language resource file
+igfxrsve.lrc    ; Swedish language resource file
+igfxrtha.lrc    ; Thai language resource file
+igfxrcsy.lrc    ; Czechoslovakian language resource file
+igfxrell.lrc    ; Greek language resource file
+igfxrhun.lrc    ; Hungarian language resource file
+igfxrtrk.lrc    ; Turkish language resource file
+Gfxres.ar-SA.resources 
+Gfxres.cs-CZ.resources 
+Gfxres.da-DK.resources 
+Gfxres.de-DE.resources 
+Gfxres.el-GR.resources 
+Gfxres.es-ES.resources 
+Gfxres.en-US.resources 
+Gfxres.fi-FI.resources 
+Gfxres.fr-FR.resources 
+Gfxres.he-IL.resources 
+Gfxres.hu-HU.resources 
+Gfxres.it-IT.resources 
+Gfxres.ja-JP.resources 
+Gfxres.ko-KR.resources 
+Gfxres.nb-NO.resources 
+Gfxres.nl-NL.resources 
+Gfxres.pl-PL.resources 
+Gfxres.pt-BR.resources 
+Gfxres.pt-PT.resources 
+Gfxres.ru-RU.resources 
+Gfxres.sk-SK.resources 
+Gfxres.sl-SI.resources 
+Gfxres.sv-SE.resources 
+Gfxres.th-TH.resources 
+Gfxres.tr-TR.resources 
+Gfxres.zh-CN.resources 
+Gfxres.zh-TW.resources 
+;
+; End CUI Copy Sections
+; 
+
+[CUI.DelReg]
+HKLM,%CUIDeviceIndependentKey%
+HKLM,%DisplayKey%
+; Delete old style cui/driver share key
+HKLM,%CUIDriverOldShareKey%
+; Delete old style cui keys which are device dependent
+HKLM,Software\INTEL\igfxcui
+HKR,igfxdiag
+HKR,igfxeud
+HKR,igfxcfg
+HKR,igfxcpl
+HKR,igfxpph
+HKR,igfxsrvc
+HKR,igfxhk
+HKR,hkcmd
+HKR,igfxtray
+HKR,shellex\PropertySheetHandlers
+;
+; Delete the CUI registry entry which registers for winlogon events
+;
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify\igfxcui"
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;CUIService
+
+HKCR,"igfx.CUIService\CLSID"
+HKCR,"igfx.CUIService\CurVer"
+HKCR,"igfx.CUIService"
+HKCR,"igfx.CUIService.1\CLSID"
+HKCR,"igfx.CUIService.1"
+HKCR,"CLSID\{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}\InProcServer32\ThreadingModel"
+HKCR,"CLSID\{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}\InProcServer32"
+HKCR,"CLSID\{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}\ProgID"
+HKCR,"CLSID\{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}\Programmable"
+HKCR,"CLSID\{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}\VersionIndependentProgID"
+HKCR,"CLSID\{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}"
+
+;CUITestConfig
+
+HKCR,"igfx.CUITestConfig\CLSID"
+HKCR,"igfx.CUITestConfig\CurVer"
+HKCR,"igfx.CUITestConfig"
+HKCR,"igfx.CUITestConfig.1\CLSID"
+HKCR,"igfx.CUITestConfig.1"
+HKCR,"CLSID\{97DC3661-693D-11d4-B561-00A0C92E6848}\InProcServer32\ThreadingModel"
+HKCR,"CLSID\{97DC3661-693D-11d4-B561-00A0C92E6848}\InProcServer32"
+HKCR,"CLSID\{97DC3661-693D-11d4-B561-00A0C92E6848}\ProgID"
+HKCR,"CLSID\{97DC3661-693D-11d4-B561-00A0C92E6848}\Programmable"
+HKCR,"CLSID\{97DC3661-693D-11d4-B561-00A0C92E6848}\VersionIndependentProgID"
+HKCR,"CLSID\{97DC3661-693D-11d4-B561-00A0C92E6848}"
+
+;igfxeud.EndUserShellExt
+
+HKCR,"igfxeud.EndUserShellExt\CLSID"
+HKCR,"igfxeud.EndUserShellExt\CurVer"
+HKCR,"igfxeud.EndUserShellExt"
+HKCR,"igfxeud.EndUserShellExt.1"
+HKCR,"igfxeud.EndUserShellExt.1\CLSID"
+HKCR,"CLSID\{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}\InProcServer32\ThreadingModel"
+HKCR,"CLSID\{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}\InProcServer32"
+HKCR,"CLSID\{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}\ProgID"
+HKCR,"CLSID\{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}\Programmable"
+HKCR,"CLSID\{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}\VersionIndependentProgID"
+HKCR,"CLSID\{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}"
+
+;igfxdiag.DiagServices
+
+HKCR,"igfx.DiagServices\CLSID"
+HKCR,"igfx.DiagServices\CurVer"
+HKCR,"igfx.DiagServices"
+HKCR,"igfx.DiagServices.1\CLSID"
+HKCR,"igfx.DiagServices.1"
+HKCR,"CLSID\{0EF91A8E-03D5-11D3-B995-00A0C9AD54B5}\LocalServer32"
+HKCR,"CLSID\{0EF91A8E-03D5-11D3-B995-00A0C9AD54B5}\ProgID"
+HKCR,"CLSID\{0EF91A8E-03D5-11D3-B995-00A0C9AD54B5}\VersionIndependentProgID"
+HKCR,"CLSID\{0EF91A8E-03D5-11D3-B995-00A0C9AD54B5}"
+
+;igfxdiag.ICUIAGP
+
+HKCR, "Interface\{E0BA4EE2-03D5-11d3-B995-00A0C9AD54B5}\NumMethods"
+HKCR, "Interface\{E0BA4EE2-03D5-11d3-B995-00A0C9AD54B5}\ProxyStubClsid32"
+HKCR, "Interface\{E0BA4EE2-03D5-11d3-B995-00A0C9AD54B5}"
+
+;igfxdiag.ICUIDiagController
+
+HKCR,"Interface\{48E57D01-53BD-11D3-8EE0-00A0C984F371}\NumMethods"
+HKCR,"Interface\{48E57D01-53BD-11D3-8EE0-00A0C984F371}\ProxyStubClsid32"
+HKCR,"Interface\{48E57D01-53BD-11D3-8EE0-00A0C984F371}"
+
+;igfxdiag.ICUIDriverInfo
+
+HKCR, "Interface\{C562A581-4989-11D3-8EE0-00A0C984F371}\ProxyStubClsid32"
+HKCR, "Interface\{C562A581-4989-11D3-8EE0-00A0C984F371}\NumMethods"
+HKCR, "Interface\{C562A581-4989-11D3-8EE0-00A0C984F371}"
+
+;igfxdiag.ICUIMonitor
+
+HKCR,"Interface\{E0BA4EE3-03D5-11D3-B995-00A0C9AD54B5}\NumMethods"
+HKCR,"Interface\{E0BA4EE3-03D5-11D3-B995-00A0C9AD54B5}ProxyStubClsid32"
+HKCR,"Interface\{E0BA4EE3-03D5-11D3-B995-00A0C9AD54B5}"
+
+;igfxdiag.ICUIMonitor2
+
+HKCR,"Interface\{7D8A8461-25C2-11D4-ACA5-00A0C9AD5629}\ProxyStubClsid32"
+HKCR,"Interface\{7D8A8461-25C2-11D4-ACA5-00A0C9AD5629}\NumMethods"
+HKCR,"Interface\{7D8A8461-25C2-11D4-ACA5-00A0C9AD5629}"
+
+;igfxdiag.ICUIPCI
+
+HKCR,"Interface\{E0BA4EE1-03D5-11D3-B995-00A0C9AD54B5}\NumMethods"
+HKCR,"Interface\{E0BA4EE1-03D5-11D3-B995-00A0C9AD54B5}\ProxyStubClsid32"
+HKCR,"Interface\{E0BA4EE1-03D5-11D3-B995-00A0C9AD54B5}"
+
+;igfxdiag.ICUIReport
+
+HKCR,"Interface\{E0BA4EE5-03D5-11D3-B995-00A0C9AD54B5}\NumMethods"
+HKCR,"Interface\{E0BA4EE5-03D5-11D3-B995-00A0C9AD54B5}ProxyStubClsid32"
+HKCR,"Interface\{E0BA4EE5-03D5-11D3-B995-00A0C9AD54B5}"
+
+;igfxdiag.ICUITests
+
+HKCR,"Interface\{E0BA4EE4-03D5-11D3-B995-00A0C9AD54B5}\NumMethods"
+HKCR,"Interface\{E0BA4EE4-03D5-11D3-B995-00A0C9AD54B5}ProxyStubClsid32"
+HKCR,"Interface\{E0BA4EE4-03D5-11D3-B995-00A0C9AD54B5}"
+
+;igfxdiag.IDiagServices
+
+HKCR,"Interface\{0EF91A8D-03D5-11D3-B995-00A0C9AD54B5}\NumMethods"
+HKCR,"Interface\{0EF91A8D-03D5-11D3-B995-00A0C9AD54B5}\ProxyStubClsid32"
+HKCR,"Interface\{0EF91A8D-03D5-11D3-B995-00A0C9AD54B5}"
+
+;igfxdiag.IDiagServices2
+
+HKCR,"Interface\{1D775861-25C6-11D4-ACA5-00A0C9AD5629}\NumMethods"
+HKCR,"Interface\{1D775861-25C6-11D4-ACA5-00A0C9AD5629}\ProxyStubClsid32"
+HKCR,"Interface\{1D775861-25C6-11D4-ACA5-00A0C9AD5629}"
+
+;igfxhk.Hotkey
+
+HKCR,"igfxhk.HotKey\CLSID"
+HKCR,"igfxhk.HotKey\CurVer"
+HKCR,"igfxhk.HotKey"
+HKCR,"igfxhk.HotKey.1\CLSID"
+HKCR,"igfxhk.HotKey.1"
+HKCR,"CLSID\{235CC099-CFB4-44D9-8228-270FEE479D8A}\InProcServer32\ThreadingModel"
+HKCR,"CLSID\{235CC099-CFB4-44D9-8228-270FEE479D8A}\InProcServer32"
+HKCR,"CLSID\{235CC099-CFB4-44D9-8228-270FEE479D8A}\ProgID"
+HKCR,"CLSID\{235CC099-CFB4-44D9-8228-270FEE479D8A}\VersionIndependentProgID"
+HKCR,"CLSID\{235CC099-CFB4-44D9-8228-270FEE479D8A}"
+
+;igfxdgps.dll entry
+
+HKCR,"CLSID\{48E57D01-53BD-11D3-8EE0-00A0C984F371}\InProcServer32\ThreadingModel"
+HKCR,"CLSID\{48E57D01-53BD-11D3-8EE0-00A0C984F371}\InProcServer32"
+HKCR,"CLSID\{48E57D01-53BD-11D3-8EE0-00A0C984F371}"
+
+;Remove HKLM\Software\Microsoft\Windows\Currentversion\Run CUI entries
+HKLM,"SOFTWARE\Microsoft\Windows\CurrentVersion\Run","HotKeysCmds"
+HKLM,"SOFTWARE\Microsoft\Windows\CurrentVersion\Run","Persistence"
+HKLM,"SOFTWARE\Microsoft\Windows\CurrentVersion\Run","igfxtray"
+HKLM,"SOFTWARE\Microsoft\Windows\CurrentVersion\Run","igfxhkcmd"
+HKLM,"SOFTWARE\Microsoft\Windows\CurrentVersion\Run","igfxpers"
+
+;
+; Service Installation
+;
+
+[iCNT0.Services]
+AddService = ialm, 0x00000002, ialm_Service_Inst, ialm_EventLog_Inst
+
+[iCNT1.Services]
+AddService = ialm, 0x00000002, ialm_Service_Inst, ialm_EventLog_Inst
+
+[iEGL0.Services]
+AddService = ialm, 0x00000002, ialm_Service_Inst, ialm_EventLog_Inst
+
+[iEGL1.Services]
+AddService = ialm, 0x00000002, ialm_Service_Inst, ialm_EventLog_Inst
+
+[ialm_Service_Inst]
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 0                ; SERVICE_ERROR_IGNORE
+LoadOrderGroup = Video
+ServiceBinary  = %12%\igxpmp32.sys
+DelReg = PC_DelReg
+AddReg = PC_AddReg
+
+[PC_AddReg]
+HKR,"Device0","PC",0x00000000,"14.41"
+
+[PC_DelReg]
+HKR, "Device0", "PC"
+
+[ialm_EventLog_Inst]
+AddReg = ialm_EventLog_AddReg
+
+[ialm_EventLog_AddReg]
+HKR,,EventMessageFile,0x00020000,"%SystemRoot%"\System32\IoLogMsg.dll;%SystemRoot%"\System32\drivers\igxpmp32.sys"
+HKR,,TypesSupported,0x00010001,7
+
+;
+; Software Installation
+;
+
+[iCNT0.SoftwareSettings]
+AddReg = iCNTG_SoftwareDeviceSettings
+AddReg = General_AddSwSettings
+DelReg = General_DelSwSettings
+AddReg = Rotation_AddSwSettings
+DelReg = Rotation_DelSwSettings
+AddReg = OpenGL_AddSwSettings
+DelReg = OpenGL_DelSwSettings
+AddReg = PwrCons_Cantiga_AddSwSettings
+DelReg = PwrCons_Cantiga_DelSwSettings
+AddReg = PwrCons_DPS_AddSwSettings
+DelReg = PwrCons_DPS_DelSwSettings
+AddReg = HotPlug_AddSwSettings
+DelReg = HotPlug_DelSwSettings
+AddReg = PERF_AddSwSettings
+DelReg = PERF_DelSwSettings
+AddReg = CEAModesXP_AddSwSettings
+DelReg = CEAModesXP_DelSwSettings
+AddReg = CRTHotPlugDefaultVrefVoltage_AddSwSettings
+DelReg = CRTHotPlugDefaultVrefVoltage_DelSwSettings
+AddReg = DynamicScaling_AddSwSettings
+DelReg = DynamicScaling_DelSwSettings
+AddReg = VPExtendedDesktopXP_AddSwSettings
+DelReg = VPExtendedDesktopXP_DelSwSettings
+AddReg = EnableInterlacedModeRemoval_AddSwSettings
+DelReg = EnableInterlacedModeRemoval_DelSwSettings
+AddReg = Display_Priority_AddSwSettings
+DelReg = Display_Priority_DelSwSettings
+AddReg = INTTV_AddUnderscanSettings
+DelReg = INTTV_DelUnderscanSettings
+AddReg = HDMI_AddUnderscanSettings
+DelReg = HDMI_DelUnderscanSettings
+AddReg = SdvoDdcEdidRead_AddSwSettings
+DelReg = SdvoDdcEdidRead_DelSwSettings
+AddReg = HDMICEATimings_AddSwSettings
+DelReg = HDMICEATimings_DelSwSettings
+AddReg = NonEDIDMode_AddSwSettings
+DelReg = NonEDIDMode_DelSwSettings
+AddReg = OEMStaticMode_AddSwSettings
+DelReg = OEMStaticMode_DelSwSettings
+AddReg = SDVOHDMI_VSI_AddSwSettings
+DelReg = SDVOHDMI_VSI_DelSwSettings
+AddReg = Default_Legacy_EDID_CRTMode_AddSwSettings
+DelReg = Default_Legacy_EDID_CRTMode_DelSwSettings
+AddReg = MediaScaling_AddSwSettings
+DelReg = MediaScaling_DelSwSettings
+AddReg = MediaSrcMode_AddSwSettings
+DelReg = MediaSrcMode_DelSwSettings
+AddReg = DPLLTurnOff_AddSwSettings
+DelReg = DPLLTurnOff_DelSwSettings
+AddReg = ForceBorderForMAR_AddSwSettings
+DelReg = ForceBorderForMAR_DelSwSettings
+AddReg = IntLVDSSwing_AddSwSettings
+DelReg = IntLVDSSwing_DelSwSettings
+AddReg = INFDriverPersistence_AddSwSettings
+DelReg = INFDriverPersistence_DelSwSettings
+AddReg = INFBlockDisplaySwitching_AddSwSettings
+DelReg = INFBlockDisplaySwitching_DelSwSettings
+AddReg = INFHotPlug_AddSwSettings
+DelReg = INFHotPlug_DelSwSettings
+AddReg = INFVBTOverride_AddSwSettings
+DelReg = INFVBTOverride_DelSwSettings
+AddReg = CRTScaler_AddSwSettings
+DelReg = CRTScaler_DelSwSettings
+AddReg = PNM_AddSwSettings
+DelReg = PNM_DelSwSettings
+AddReg = RedBlankingPnl_AddSwSettings
+DelReg = RedBlankingPnl_DelSwSettings
+AddReg = BitBashingSupport_AddSwSettings
+DelReg = BitBashingSupport_DelSwSettings
+AddReg = RemoteDesktopWA_AddSwSettings
+DelReg = RemoteDesktopWA_DelSwSettings
+AddReg = PanelFitterOnDP_AddSwSettings
+DelReg = PanelFitterOnDP_DelSwSettings
+AddReg = MediaRefreshRateMode_AddSwSettings
+DelReg  = MediaRefreshRateMode_DelSwSettings
+AddReg = CompensationsForDVI_AddSwSettings
+DelReg = CompensationsForDVI_DelSwSettings
+AddReg = SystemPopUpWA_AddSwSettings
+DelReg = SystemPopUpWA_DelSwSettings
+AddReg = HotDockWA_AddSwSettings
+DelReg = HotDockWA_DelSwSettings
+
+[iCNT1.SoftwareSettings]
+AddReg = iCNTG_SoftwareDeviceSettings
+AddReg = General_AddSwSettings
+DelReg = General_DelSwSettings
+AddReg = Rotation_AddSwSettings
+DelReg = Rotation_DelSwSettings
+AddReg = OpenGL_AddSwSettings
+DelReg = OpenGL_DelSwSettings
+AddReg = PwrCons_Cantiga_AddSwSettings
+DelReg = PwrCons_Cantiga_DelSwSettings
+AddReg = PwrCons_DPS_AddSwSettings
+DelReg = PwrCons_DPS_DelSwSettings
+AddReg = HotPlug_AddSwSettings
+DelReg = HotPlug_DelSwSettings
+AddReg = PERF_AddSwSettings
+DelReg = PERF_DelSwSettings
+AddReg = CEAModesXP_AddSwSettings
+DelReg = CEAModesXP_DelSwSettings
+AddReg = CRTHotPlugDefaultVrefVoltage_AddSwSettings
+DelReg = CRTHotPlugDefaultVrefVoltage_DelSwSettings
+AddReg = DynamicScaling_AddSwSettings
+DelReg = DynamicScaling_DelSwSettings
+AddReg = VPExtendedDesktopXP_AddSwSettings
+DelReg = VPExtendedDesktopXP_DelSwSettings
+AddReg = EnableInterlacedModeRemoval_AddSwSettings
+DelReg = EnableInterlacedModeRemoval_DelSwSettings
+AddReg = Display_Priority_AddSwSettings
+DelReg = Display_Priority_DelSwSettings
+AddReg = INTTV_AddUnderscanSettings
+DelReg = INTTV_DelUnderscanSettings
+AddReg = HDMI_AddUnderscanSettings
+DelReg = HDMI_DelUnderscanSettings
+AddReg = SdvoDdcEdidRead_AddSwSettings
+DelReg = SdvoDdcEdidRead_DelSwSettings
+AddReg = HDMICEATimings_AddSwSettings
+DelReg = HDMICEATimings_DelSwSettings
+AddReg = NonEDIDMode_AddSwSettings
+DelReg = NonEDIDMode_DelSwSettings
+AddReg = OEMStaticMode_AddSwSettings
+DelReg = OEMStaticMode_DelSwSettings
+AddReg = SDVOHDMI_VSI_AddSwSettings
+DelReg = SDVOHDMI_VSI_DelSwSettings
+AddReg = Default_Legacy_EDID_CRTMode_AddSwSettings
+DelReg = Default_Legacy_EDID_CRTMode_DelSwSettings
+AddReg = MediaScaling_AddSwSettings
+DelReg = MediaScaling_DelSwSettings
+AddReg = MediaSrcMode_AddSwSettings
+DelReg = MediaSrcMode_DelSwSettings
+AddReg = DPLLTurnOff_AddSwSettings
+DelReg = DPLLTurnOff_DelSwSettings
+AddReg = ForceBorderForMAR_AddSwSettings
+DelReg = ForceBorderForMAR_DelSwSettings
+AddReg = IntLVDSSwing_AddSwSettings
+DelReg = IntLVDSSwing_DelSwSettings
+AddReg = INFDriverPersistence_AddSwSettings
+DelReg = INFDriverPersistence_DelSwSettings
+AddReg = INFBlockDisplaySwitching_AddSwSettings
+DelReg = INFBlockDisplaySwitching_DelSwSettings
+AddReg = INFHotPlug_AddSwSettings
+DelReg = INFHotPlug_DelSwSettings
+AddReg = INFVBTOverride_AddSwSettings
+DelReg = INFVBTOverride_DelSwSettings
+AddReg = CRTScaler_AddSwSettings
+DelReg = CRTScaler_DelSwSettings
+AddReg = PNM_AddSwSettings
+DelReg = PNM_DelSwSettings
+AddReg = RedBlankingPnl_AddSwSettings
+DelReg = RedBlankingPnl_DelSwSettings
+AddReg = RemoteDesktopWA_AddSwSettings
+DelReg = RemoteDesktopWA_DelSwSettings
+AddReg = BitBashingSupport_AddSwSettings
+DelReg = BitBashingSupport_DelSwSettings
+AddReg = PanelFitterOnDP_AddSwSettings
+DelReg = PanelFitterOnDP_DelSwSettings
+AddReg = MediaRefreshRateMode_AddSwSettings
+DelReg  = MediaRefreshRateMode_DelSwSettings
+AddReg = CompensationsForDVI_AddSwSettings
+DelReg = CompensationsForDVI_DelSwSettings
+AddReg = HotDockWA_AddSwSettings
+DelReg = HotDockWA_DelSwSettings
+
+[iEGL0.SoftwareSettings]
+AddReg = iEGLG_SoftwareDeviceSettings
+AddReg = Rotation_AddSwSettings
+DelReg = Rotation_DelSwSettings
+AddReg = OpenGL_AddSwSettings
+DelReg = OpenGL_DelSwSettings
+AddReg = HotPlug_AddSwSettings
+DelReg = HotPlug_DelSwSettings
+AddReg = PERF_AddSwSettings
+DelReg = PERF_DelSwSettings
+AddReg = CEAModesXP_AddSwSettings
+DelReg = CEAModesXP_DelSwSettings
+AddReg = CRTHotPlugDefaultVrefVoltage_AddSwSettings
+DelReg = CRTHotPlugDefaultVrefVoltage_DelSwSettings
+AddReg = DynamicScaling_AddSwSettings
+DelReg = DynamicScaling_DelSwSettings
+AddReg = VPExtendedDesktopXP_AddSwSettings
+DelReg = VPExtendedDesktopXP_DelSwSettings
+AddReg = EnableInterlacedModeRemoval_AddSwSettings
+DelReg = EnableInterlacedModeRemoval_DelSwSettings
+AddReg = Display_Priority_AddSwSettings
+DelReg = Display_Priority_DelSwSettings
+AddReg = INTTV_AddUnderscanSettings
+DelReg = INTTV_DelUnderscanSettings
+AddReg = HDMI_AddUnderscanSettings
+DelReg = HDMI_DelUnderscanSettings
+AddReg = SdvoDdcEdidRead_AddSwSettings
+DelReg = SdvoDdcEdidRead_DelSwSettings
+AddReg = HDMICEATimings_AddSwSettings
+DelReg = HDMICEATimings_DelSwSettings
+AddReg = NonEDIDMode_AddSwSettings
+DelReg = NonEDIDMode_DelSwSettings
+AddReg = OEMStaticMode_AddSwSettings
+DelReg = OEMStaticMode_DelSwSettings
+AddReg = SDVOHDMI_VSI_AddSwSettings
+DelReg = SDVOHDMI_VSI_DelSwSettings
+AddReg = Default_Legacy_EDID_CRTMode_AddSwSettings
+DelReg = Default_Legacy_EDID_CRTMode_DelSwSettings
+AddReg = MediaScaling_AddSwSettings
+DelReg = MediaScaling_DelSwSettings
+AddReg = MediaSrcMode_AddSwSettings
+DelReg = MediaSrcMode_DelSwSettings
+AddReg = DPLLTurnOff_AddSwSettings
+DelReg = DPLLTurnOff_DelSwSettings
+AddReg = ForceBorderForMAR_AddSwSettings
+DelReg = ForceBorderForMAR_DelSwSettings
+AddReg = CRTScaler_AddSwSettings
+DelReg = CRTScaler_DelSwSettings
+AddReg = InternalScaler_AddSwSettings
+DelReg = InternalScaler_DelSwSettings
+AddReg = BitBashingSupport_AddSwSettings
+DelReg = BitBashingSupport_DelSwSettings
+AddReg = PanelFitterOnDP_AddSwSettings
+DelReg = PanelFitterOnDP_DelSwSettings
+AddReg = MediaRefreshRateMode_AddSwSettings
+DelReg  = MediaRefreshRateMode_DelSwSettings
+AddReg = CompensationsForDVI_AddSwSettings
+DelReg = CompensationsForDVI_DelSwSettings
+AddReg = Persistence_AddSwSettings
+DelReg = Persistence_DelSwSettings
+AddReg = NoDispLoginWA_AddSwSettings
+DelReg = NoDispLoginWA_DelSwSettings
+
+AddReg = OpenGL.AddRegSmch.EGL
+
+DelReg = OpenGL.DelRegSmch
+
+[iEGL1.SoftwareSettings]
+AddReg = iEGLG_SoftwareDeviceSettings
+AddReg = Rotation_AddSwSettings
+DelReg = Rotation_DelSwSettings
+AddReg = OpenGL_AddSwSettings
+DelReg = OpenGL_DelSwSettings
+AddReg = HotPlug_AddSwSettings
+DelReg = HotPlug_DelSwSettings
+AddReg = PERF_AddSwSettings
+DelReg = PERF_DelSwSettings
+AddReg = CEAModesXP_AddSwSettings
+DelReg = CEAModesXP_DelSwSettings
+AddReg = CRTHotPlugDefaultVrefVoltage_AddSwSettings
+DelReg = CRTHotPlugDefaultVrefVoltage_DelSwSettings
+AddReg = DynamicScaling_AddSwSettings
+DelReg = DynamicScaling_DelSwSettings
+AddReg = VPExtendedDesktopXP_AddSwSettings
+DelReg = VPExtendedDesktopXP_DelSwSettings
+AddReg = EnableInterlacedModeRemoval_AddSwSettings
+DelReg = EnableInterlacedModeRemoval_DelSwSettings
+AddReg = Display_Priority_AddSwSettings
+DelReg = Display_Priority_DelSwSettings
+AddReg = INTTV_AddUnderscanSettings
+DelReg = INTTV_DelUnderscanSettings
+AddReg = HDMI_AddUnderscanSettings
+DelReg = HDMI_DelUnderscanSettings
+AddReg = SdvoDdcEdidRead_AddSwSettings
+DelReg = SdvoDdcEdidRead_DelSwSettings
+AddReg = HDMICEATimings_AddSwSettings
+DelReg = HDMICEATimings_DelSwSettings
+AddReg = NonEDIDMode_AddSwSettings
+DelReg = NonEDIDMode_DelSwSettings
+AddReg = OEMStaticMode_AddSwSettings
+DelReg = OEMStaticMode_DelSwSettings
+AddReg = SDVOHDMI_VSI_AddSwSettings
+DelReg = SDVOHDMI_VSI_DelSwSettings
+AddReg = Default_Legacy_EDID_CRTMode_AddSwSettings
+DelReg = Default_Legacy_EDID_CRTMode_DelSwSettings
+AddReg = MediaScaling_AddSwSettings
+DelReg = MediaScaling_DelSwSettings
+AddReg = MediaSrcMode_AddSwSettings
+DelReg = MediaSrcMode_DelSwSettings
+AddReg = DPLLTurnOff_AddSwSettings
+DelReg = DPLLTurnOff_DelSwSettings
+AddReg = ForceBorderForMAR_AddSwSettings
+DelReg = ForceBorderForMAR_DelSwSettings
+AddReg = CRTScaler_AddSwSettings
+DelReg = CRTScaler_DelSwSettings
+AddReg = InternalScaler_AddSwSettings
+DelReg = InternalScaler_DelSwSettings
+AddReg = BitBashingSupport_AddSwSettings
+DelReg = BitBashingSupport_DelSwSettings
+AddReg = PanelFitterOnDP_AddSwSettings
+DelReg = PanelFitterOnDP_DelSwSettings
+AddReg = MediaRefreshRateMode_AddSwSettings
+DelReg  = MediaRefreshRateMode_DelSwSettings
+AddReg = CompensationsForDVI_AddSwSettings
+DelReg = CompensationsForDVI_DelSwSettings
+AddReg = Persistence_AddSwSettings
+DelReg = Persistence_DelSwSettings
+AddReg = NoDispLoginWA_AddSwSettings
+DelReg = NoDispLoginWA_DelSwSettings
+
+AddReg = OpenGL.AddRegSmch.EGL
+
+DelReg = OpenGL.DelRegSmch
+
+[SDVOHDMI_VSI_AddSwSettings]
+HKR,, SPDIFVendorName,%REG_SZ%, "Intel" ; max 8 characters
+HKR,, SPDIFVendorDesc,%REG_SZ%, "9xxxx" ; max 16 characters
+HKR,, SDVOHDMI_OptionalIFPriority,%REG_DWORD%, 0x21 ; default to priority 1 for SPD Infoframe and priority 2 for VS Infoframe
+HKR,, SDVOHDMI_SupportCEA861D,%REG_DWORD%, 0 ;To enable support for 861D spec, 1-Support IT Content and RGB Quantization, 0- No 861D support. Default to 0.
+
+[SDVOHDMI_VSI_DelSwSettings]
+HKR,, SPDIFVendorName
+HKR,, SPDIFVendorDesc
+HKR,, SDVOHDMI_OptionalIFPriority
+HKR,, SDVOHDMI_SupportCEA861D
+
+[Display_Priority_AddSwSettings]
+;Driver Display Priority in Descending Order
+;HKR,, DisplayPriority, 0x00000001, 0x08, 0x80, 0x081, 0x01, 0x10, 0x04, 0x40, 0x41, 0x042, 0x43, 0x044, 0x02, 0x20
+;Above Priority should be interpreted like this; LFP1, LFP2, LFP3, CRT1, CRT2, DFP1, DFP2, DFP3, DFP4, DFP5, DFP6, TV1, TV2
+
+[Display_Priority_DelSwSettings]
+HKR,, DisplayPriority
+
+[PwrCons_Cantiga_AddSwSettings]
+HKR,, FeatureTestControl,%REG_DWORD%, 0x200  ; Disable GPMT
+
+[PwrCons_Cantiga_DelSwSettings]
+HKR,, FeatureTestControl
+
+[PwrCons_DPS_AddSwSettings]
+HKR,, DPSCheckboxDefault,%REG_DWORD%, 0x1
+HKR,, DPSBaseLoRRValue,%REG_DWORD%, 0x0
+HKR,, Display1_DPSPanel_Type,%REG_DWORD%, 0xFF ; Normal/Static DRRS = 0, Seamless = 2, or Disable INF option = 0xFF
+HKR,, DPSMotionArtifactMitigation,%REG_DWORD%, 0x1
+
+[PwrCons_DPS_DelSwSettings]
+HKR,, DPSCheckboxDefault
+HKR,, DPSControlMode
+HKR,, DPSBaseLoRRValue
+HKR,, Display1_DPSPanel_Type
+HKR,, DPSMotionArtifactMitigation
+
+[PERF_AddSwSettings]
+HKR,, LogResumeTime,%REG_DWORD%, 0 ; Enables or Disables Resume analysis,  0 - disable 1 - enable
+HKR,, MaxRuns,%REG_DWORD%, 9 ; The maximum number of runs after which old resumeTime values over-written.
+
+[PERF_DelSwSettings]
+HKR,, LogResumeTime ; Enables or Disables Resume analysis
+HKR,, MaxRuns ; The maximum number of runs after which old resumeTime values over-written.
+
+[Default_Legacy_EDID_CRTMode_AddSwSettings]
+;Default Mode to be applied in case of EDID display with preferred mode bit = 0 on a first time event
+;HKR,, EDIDDefaultXX,%REG_DWORD%,0x320
+;HKR,, EDIDDefaultYY,%REG_DWORD%,0x258
+;HKR,, EDIDDefaultRR,%REG_DWORD%,0x3c
+;HKR,, EDIDDefaultBPP,%REG_DWORD%,0x20
+
+;Default Mode to be applied in case of Legacy display on a first time event
+;HKR,, LegacyDefaultXX,%REG_DWORD%,0x320
+;HKR,, LegacyDefaultYY,%REG_DWORD%,0x258
+;HKR,, LegacyDefaultRR,%REG_DWORD%,0x3c
+;HKR,, LegacyDefaultBPP,%REG_DWORD%,0x20
+
+[Default_Legacy_EDID_CRTMode_DelSwSettings]
+HKR,, EDIDDefaultXX
+HKR,, EDIDDefaultYY
+HKR,, EDIDDefaultRR
+HKR,, EDIDDefaultBPP
+
+HKR,, LegacyDefaultXX
+HKR,, LegacyDefaultYY
+HKR,, LegacyDefaultRR
+HKR,, LegacyDefaultBPP
+
+[RemoteDesktopWA_AddSwSettings]
+;Key to determine if the work around of Turning LVDS On and Off in a Remote Desktop connection scenario
+;has to be enabled.
+HKR,, RemoteDesktopWa,%REG_DWORD%,0x0
+
+[RemoteDesktopWA_DelSwSettings]
+HKR,, RemoteDesktopWa
+
+[HotDockWA_AddSwSettings]
+;Key to determine if the work around of skipping _DGS calls needs to enabled.
+;0x1 -- skips _DGS fix 0x0 -- handles _DGS calls by OS
+HKR,, HotDockWa,%REG_DWORD%,0x0
+
+[HotDockWA_DelSwSettings]
+HKR,, HotDockWa
+
+[NoDispLoginWA_AddSwSettings]
+;Key to enable the WA to get the display of login screen on DP when it is turned on after the system has booted with DP turned off.
+;0x1 WA enabled
+HKR,, NoDisplayLoginWa,%REG_DWORD%,0x0
+
+[NoDispLoginWA_DelSwSettings]
+HKR,, NoDisplayLoginWa
+
+[SystemPopUpWA_AddSwSettings]
+;Key to determine if the work around for SystemPopupMenu issue to be enabled or not.
+;Value 1 is for enabling. Default is disabled which is value 0.
+HKR,, SystemPopUpWa,%REG_DWORD%,0x0
+
+[SystemPopUpWA_DelSwSettings]
+HKR,, SystemPopUpWa
+
+[INTTV_AddUnderscanSettings]
+HKR,, Display1_UnderScanPercentageIntTvOut,%REG_DWORD%, 0  ; 0 - default 7.5% under scan and OEM's can give under scan like 8,9 an 10 ..upto 25
+
+[INTTV_DelUnderscanSettings]
+HKR,, Display1_UnderScanPercentageIntTvOut
+
+[HDMI_AddUnderscanSettings]
+HKR,, Display1_AddUnderscanPercentageHDMI,%REG_DWORD%, 0  ; 0 - default 7.5% under scan and OEM's can give under scan like 8,9 an 10 ..
+
+[HDMI_DelUnderscanSettings]
+HKR,, Display1_AddUnderscanPercentageHDMI
+
+[CEAModesXP_AddSwSettings]
+HKR,, Display1_EnableNoPruneFlag,%REG_DWORD%, 1  		; 1 - Enable and 0 - Disable
+HKR,, Display1_EnableNoPruneSizeFlag,%REG_DWORD%, 1  		; 1 - Enable and 0 - Disable
+
+[CEAModesXP_DelSwSettings]
+HKR,, Display1_EnableNoPruneFlag
+HKR,, Display1_EnableNoPruneSizeFlag
+
+[HDMICEATimings_AddSwSettings]
+HKR,, Display1_EnableHDMICEATimingsOnly,%REG_DWORD%, 0  		; 1 - Enable and 0 - Disable
+
+[HDMICEATimings_DelSwSettings]
+HKR,, Display1_EnableHDMICEATimingsOnly
+
+[CRTHotPlugDefaultVrefVoltage_AddSwSettings]
+HKR,, Display1_EnableCRTHotPlugDefaultVrefVoltage,	%REG_DWORD%, 1  	; 1 - Enable(Default Value) and 0 - Disable(Customized Value)
+
+[CRTHotPlugDefaultVrefVoltage_DelSwSettings]
+HKR,, Display1_EnableCRTHotPlugDefaultVrefVoltage
+
+[DynamicScaling_AddSwSettings]
+HKR,, Display1_EnableDynamicScaling,%REG_DWORD%, 0  		; 1 - Enable and 0 - Disable
+
+[DynamicScaling_DelSwSettings]
+HKR,, Display1_EnableDynamicScaling
+
+[eDPNoFLT_AddSwSettings]
+;If this Registry is set to 1 then it will ignore the Fast Link Training and will always do Normal Link Training everytime
+HKR,, NoFastLinkTrainingForeDP, %REG_DWORD%, 0
+
+[eDPNoFLT_DelSwSettings]
+HKR,, NoFastLinkTrainingForeDP
+
+[VPExtendedDesktopXP_AddSwSettings]
+HKR,, VPExtendedDesktop,%REG_DWORD%, 0  		; 1 - Enable and 0 - Disable
+
+[VPExtendedDesktopXP_DelSwSettings]
+HKR,, VPExtendedDesktop
+
+[EnableInterlacedModeRemoval_AddSwSettings]
+HKR,, EnableInterlacedModeRemoval,%REG_DWORD%, 1		    ; 1 - Enable and 0 - Disable
+
+[EnableInterlacedModeRemoval_DelSwSettings]
+HKR,, EnableInterlacedModeRemoval
+
+[ForceBorderForMAR_AddSwSettings]
+HKR,, ForceBorderForMAR,%REG_DWORD%, 0					    ; 1 - Enable and 0 - Disable
+
+[ForceBorderForMAR_DelSwSettings]
+HKR,, ForceBorderForMAR
+
+[IntLVDSSwing_AddSwSettings]
+HKR,, IntLVDSSwingSetting,%REG_DWORD%, 0x00 ;0x00- Medium(Default), 0x80-High, 0x20-Low1, 0x10-Low2, 0x08-Low3, 0x04-Low4
+
+[IntLVDSSwing_DelSwSettings]
+HKR,, IntLVDSSwingSetting
+
+[Gen6IntLVDSSwing_AddSwSettings]
+;0x00 - Medium - Data and Clk Swing set to 298 mV
+;0x01 - High - Data and Clk Swing set to 320 mV
+;0x02 - Low1 - Data and Clk Swing set to 144 mV
+;0x04 - Low2 - Data and Clk Swing set to 170 mV
+;0x08 - Low3 - Data and Clk Swing set to 196 mV
+;0x10 - Low4 - Data and Clk Swing set to 220 mV
+;0x20 - Low5 - Data and Clk Swing set to 247 mV
+;0x40 - Low6 - Data and Clk Swing set to 273 mV
+HKR,, IntLVDSSwingSetting,%REG_DWORD%, 0x00 
+
+[Gen6IntLVDSSwing_DelSwSettings]
+HKR,, IntLVDSSwingSetting
+
+[RedBlankingPnl_AddSwSettings]
+HKR,, EnableReducedBlankingPnlWA,%REG_DWORD%, 0x00 ; 0x00- Disable, 0x01 - Enable
+
+[RedBlankingPnl_DelSwSettings]
+HKR,, EnableReducedBlankingPnlWA
+
+[MediaScaling_AddSwSettings]
+HKR,, Display1_EnableMediaScaling,%REG_DWORD%, 0  		; 1 - Enable and 0 - Disable
+
+[MediaScaling_DelSwSettings]
+HKR,, Display1_EnableMediaScaling
+
+[SdvoDdcEdidRead_AddSwSettings]
+HKR,, Display1_DisableSdvoCrtEdidRead ,%REG_DWORD%, 0  		; 1 - Enable and 0 - Disable
+
+[SdvoDdcEdidRead_DelSwSettings]
+HKR,, Display1_DisableSdvoCrtEdidRead
+
+[HotPlug_AddSwSettings]
+HKR,, Display1_DVIHotPlugWAFlag,%REG_DWORD%, 0  ; 1 - Enable and 0 - Disable
+
+[HotPlug_DelSwSettings]
+HKR,, Display1_DVIHotPlugWAFlag
+
+[Rotation_AddSwSettings]
+
+HKR,, Display1_RotationCaps,%REG_DWORD%, 7  ; Portrait, Inverted LandScape, Inverted Portrait
+HKR,, Display2_RotationCaps,%REG_DWORD%, 7  ; Portrait, Inverted LandScape, Inverted Portrait
+HKR,, Display1_RotationPolicy,%REG_DWORD%, 0  ; default policy
+HKR,, Display2_RotationPolicy,%REG_DWORD%, 0  ; default policy
+HKR,, Display1_RotationConfig,%REG_DWORD%, 0  ; default configuration
+HKR,, Display2_RotationConfig,%REG_DWORD%, 0  ; default configuration
+HKR,, Display1_IndependentRotationCaps,%REG_DWORD%, 3  ; default:-enable all, 01:-0/180 IND_ROT, 02:-90/270 IND_ROT
+
+[Rotation_DelSwSettings]
+HKR,, Display1_RotationCaps
+HKR,, Display2_RotationCaps
+HKR,, Display1_RotationPolicy
+HKR,, Display2_RotationPolicy
+HKR,, Display1_IndependentRotationCaps
+HKR,, Display1_EnableRotation
+
+[Persistence_AddSwSettings]
+HKR,, DriverDefaultAlgoSettings,%REG_DWORD%, 15 ; bit mask - Desktop Persistence enabled
+HKR,, DriverUpgradeWA,%REG_DWORD%, 0 ; 0 - disable, 1- enable
+
+[Persistence_DelSwSettings]
+HKR,, DriverDefaultAlgoSettings
+HKR,, DriverUpgradeWA
+
+[OpenGL_AddSwSettings]
+
+HKR,, OpenGLInstalled,%REG_DWORD%, 1  ; Open GL drivers installed
+
+[OpenGL_DelSwSettings]
+HKR,, OpenGLInstalled
+
+[NonEDIDMode_AddSwSettings]
+HKR,, TotalDTDCount, %REG_DWORD%, 0  	; This shows number of DTDs to be used. ;  0-->Disable the feature.
+;Following keys have 20 bytes (18 byte DTD + 2 Byte flags).
+HKR,, DTD_1,%REG_BINARY%, 01,1D,80,18,71,1C,16,20,58,2C,1A,00,00,00,00,00,00,86,37,01		;1920x1080@60...Interlaced
+HKR,, DTD_2, %REG_BINARY%, 01,1D,80,D0,72,1C,16,20,10,2C,1A,80,00,00,00,00,00,86,37, 01		;1920x1080@50...Interlaced
+HKR,, DTD_3,%REG_BINARY%, 01,1D,00,BC,52,D0,1E,20,B8,28,25,40,00,00,00,00,00,04,37, 01		;1280x720@50....Non-interlaced
+HKR,, DTD_4, %REG_BINARY%, 01,1D,00,72,51,D0,1E,20,6E,28,25,00,00,00,00,00,00,06,37,01		;1280x720@60....Non-interlaced
+HKR,, DTD_5,%REG_BINARY%, 00, 00, 00 ,00, 00, 00,00, 00, 00,00, 00, 00,00, 00, 00,00, 00, 00,00, 00	;Fifth DTD
+
+[NonEDIDMode_DelSwSettings]
+HKR,, TotalDTDCount
+HKR,, DTD_1
+HKR,, DTD_2
+HKR,, DTD_3
+HKR,, DTD_4
+HKR,, DTD_5
+
+;To enable VBT override through INF
+[INFVBTOverride_AddSwSettings]
+HKR,, INF_VBT_Override_EnableFeature,%REG_DWORD%, 0
+
+[INFVBTOverride_DelSwSettings]
+HKR,, INF_VBT_Override_EnableFeature
+
+;    OPTIONS FOR PERSISTENCE THROUGH INF
+;2 - Apply logic selected in VBT
+;0 - OS Default Algorithm
+;1 - Driver Persistence Algorithm
+;NOTE: Enable "INF_VBT_Override_EnableFeature" flag to use below given INF entries
+
+[INFDriverPersistence_AddSwSettings]
+HKR,, ModeDriverPersistence_PowerManagementEvent,%REG_DWORD%, 2
+HKR,, ModeDriverPersistence_LidSwitchEvent,%REG_DWORD%, 2
+HKR,, ModeDriverPersistence_HotKeyEvent,%REG_DWORD%, 2
+HKR,, ModeDriverPersistence_DockUndockEvent,%REG_DWORD%, 2
+
+[INFDriverPersistence_DelSwSettings]
+HKR,, ModeDriverPersistence_PowerManagementEvent
+HKR,, ModeDriverPersistence_LidSwitchEvent
+HKR,, ModeDriverPersistence_HotKeyEvent
+HKR,, ModeDriverPersistence_DockUndockEvent
+
+;    OPTIONS FOR DISPLAY SWITCH BLOCKING THROUGH INF
+;2 - Apply logic selected in VBT
+;0 - Block Display Switch
+;1 - Allow Display Switch
+;NOTE: Enable "INF_VBT_Override_EnableFeature" flag to use below given INF entries
+
+[INFBlockDisplaySwitching_AddSwSettings]
+HKR,, BlockDisplaySwitching_OverlayActive,%REG_DWORD%, 2
+HKR,, BlockDisplaySwitching_FSDOS,%REG_DWORD%, 2
+
+[INFBlockDisplaySwitching_DelSwSettings]
+HKR,,BlockDisplaySwitching_OverlayActive
+HKR,,BlockDisplaySwitching_FSDOS
+
+;    OPTIONS FOR HOTPLUG THROUGH INF
+;2 - Apply logic selected in VBT
+;0 - Disable Hot Plug
+;1 - Enable Hot Plug
+;NOTE: Enable "INF_VBT_Override_EnableFeature" flag to use below given INF entries
+
+[INFHotPlug_AddSwSettings]
+HKR,, HotPlug_DVO_SDVO,%REG_DWORD%, 2
+HKR,, HotPlug_CRT,%REG_DWORD%, 2
+
+[INFHotPlug_DelSwSettings]
+HKR,,HotPlug_DVO_SDVO
+HKR,,HotPlug_CRT
+
+[OEMStaticMode_AddSwSettings]
+HKR,, TotalStaticModes, %REG_DWORD%, 0	; This shows number of Static modes to be used.
+;TotalStaticModes = 0-->Disable the feature.
+;Following keys have 8 bytes:
+; 2B XRes + 2B YRes
+; + 2B RRMask (Bit 0 - 60, 1 -70, 2 - 72, 3 - 75, 4 - 85,5 - 100,6 - 120,7-15 reserved)
+; + 1B BppMask(Bit 0 - 8bpp,1 - 16bpp,2 - 32bpp, 3-7 reserved)
+; + 1B reserved.
+; all values in Hex; l->low byte, h->high byte
+;Examples:
+;								   xl xh yl yh rl rh bp Rv
+;HKR,, STATIC_MODE_1,%REG_BINARY%, 20,03,58,02,03,00,07,0F ;8x6 60,70
+;HKR,, STATIC_MODE_2,%REG_BINARY%, 20,03,58,02,20,00,04,0F ;8x6 100 : 32bpp
+
+[OEMStaticMode_DelSwSettings]
+;HKR,, STATIC_MODE_1
+;HKR,, STATIC_MODE_2
+
+[MediaSrcMode_AddSwSettings]
+HKR,, TotalMediaSrcModes, %REG_DWORD%, 0; This shows number of Media Source to be used.
+;TotalMediaSrcModes = 0-->No Modes Added.
+;Modes added must be < 10x7
+;Following keys have 8 bytes:
+; 2B XRes + 2B YRes
+; + 1B reserved.
+; all values in Hex; l->low byte, h->high byte
+;Examples:
+;								   xl xh yl yh Rv
+;HKR,, MEDIA_MODE_1,%REG_BINARY%, D0,02,E0,01,0F ;720x480
+;HKR,, MEDIA_MODE_2,%REG_BINARY%, 20,03,58,02,0F ;800x600
+
+[MediaSrcMode_DelSwSettings]
+;HKR,, MEDIA_MODE_1
+;HKR,, MEDIA_MODE_2
+
+[MediaRefreshRateMode_AddSwSettings]
+HKR,, MediaRefreshRateMask, %REG_DWORD%, 0 ; Mask to enable media refresh rates BIT0 - LFP BIT1-7 :Reserved
+
+[MediaRefreshRateMode_DelSwSettings]
+HKR,, MediaRefreshRateMask
+
+[BitBashingSupport_AddSwSettings]
+; This is used to enable Bit Bashing instead of GMBUS to read monitor EDID for each
+; Display Type.
+; CRTType - BIT0, DFPType - BIT1, LFPType - BIT2, BIT[3:7] - Reserved.
+HKR,, BitBashingSupport, %REG_BINARY%, 0
+
+[BitBashingSupport_DelSwSettings]
+HKR,, BitBashingSupport
+
+[DPLLTurnOff_AddSwSettings]
+; This is used to enable DPLL turn off on monitor D3 event.
+; CRTType - BIT0, DFPType - BIT1, BIT[2:7] - Reserved.
+HKR,, DPLLTurnOffFeature, %REG_BINARY%, 1
+
+[DPLLTurnoff_DelSwSettings]
+HKR,, DPLLTurnOffFeature
+
+[CRTScaler_AddSwSettings]
+; This is used to enable Scaler on CRT
+HKR,, EnableCRTScaler, %REG_DWORD%, 1
+
+[CRTScaler_DelSwSettings]
+HKR,, EnableCRTScaler
+
+[InternalScaler_AddSwSettings]
+; This is used to enable Scaler on CRT
+HKR,, EnableInternalScalar, %REG_DWORD%, 0
+
+[InternalScaler_DelSwSettings]
+HKR,, EnableInternalScalar
+
+[PanelFitterOnDP_AddSwSettings]
+HKR,, DisablePFonDP,%REG_DWORD%, 0x00 ; 0x00- Enable, 0x01 - Disable... Not applicable for eDP panels.
+
+[PanelFitterOnDP_DelSwSettings]
+HKR,, DisablePFonDP
+
+[HwMBMCTRL_AddSwSettings]
+HKR,, Display1_ENABLEMBM,%REG_DWORD%, 0
+HKR,, PrefCUIMBM,%REG_DWORD%, 0
+HKR,, PanelLUTTableValidSize,%REG_DWORD%, 0 ; 63 -need to put 63 here i.e size has to be 63
+HKR,, PanelLUTTable,%REG_BINARY%, 0 ; default sample- 33,30,38,10,13,3,17,0,0,70,71,64,56,51,48,4,35,24,114,116,103,96,88,81,72,59,44,155,152,145,137,128,117,105,86,61,194,191,188,181,173,160,145,120,83,225,225,223,219,215,207,192,163,119,248,248,248,246,244,240,237,224,170  Default sample
+
+[HwMBMCTRL_DelSwSettings]
+HKR,, Display1_ENABLEMBM
+HKR,, PrefCUIMBM
+HKR,, PanelLUTTableValidSize
+HKR,, PanelLUTTable
+
+[CompensationsForDVI_AddSwSettings]
+HKR,, EnableCompensationForDVI, %REG_DWORD%, 1
+
+[CompensationsForDVI_DelSwSettings]
+HKR,, EnableCompensationForDVI
+
+[PNM_AddSwSettings]
+HKR,, PNMClkDeviation, %REG_DWORD%, 0   ;Clock deviation value which is multiplied by 10.
+HKR,, PNMFlags, %REG_DWORD%, 0   ; Bit0:Downward Deviation, Bit1: Upward Deviation. Bit2-31: Reserved.
+
+[PNM_DelSwSettings]
+HKR,, PNMClkDeviation
+HKR,, PNMFlags
+
+[General_AddSwSettings]
+HKR,, ModeEnumerationPreference,%REG_DWORD%, 0xFFFFFFFF  ; BitMask for Displays. If Set to 1, it indicates OEM Mode is preferred over EDID.
+						    ; Default Value is OEM is preferred over EDID
+		     	                                    ; Bit 0- CRT:Bit 2- DFP:Bit 1 and 3 reserved.
+
+[General_DelSwSettings]
+HKR,, ModeEnumerationPreference
+
+[iCNTG_SoftwareDeviceSettings]
+HKR,, InstalledDisplayDrivers,     %REG_MULTI_SZ%, igxprd32
+HKR,, VgaCompatible,                 %REG_DWORD%,    0
+;Enable Multifunction support
+HKR,,MultifunctionSupported, %REG_DWORD%, 1
+HKR,,NativeResolution, %REG_DWORD%, 1
+HKR,,NativeBPP, %REG_DWORD%, 1
+HKR,,ConfigID, %REG_DWORD%, 0
+
+HKLM,"System\CurrentControlSet\Control\Session Manager\Memory Management","SessionImageSize",%REG_DWORD%,0x18; 24MB in size
+
+[iEGLG_SoftwareDeviceSettings]
+HKR,, InstalledDisplayDrivers,     %REG_MULTI_SZ%, igxprd32
+HKR,, VgaCompatible,                 %REG_DWORD%,    0
+;Enable Multifunction support
+HKR,,MultifunctionSupported, %REG_DWORD%, 1
+HKR,,NativeResolution, %REG_DWORD%, 1
+HKR,,NativeBPP, %REG_DWORD%, 1
+HKR,,ConfigID, %REG_DWORD%, 0
+
+HKLM,"System\CurrentControlSet\Control\Session Manager\Memory Management","SessionImageSize",%REG_DWORD%,0x18; 24MB in size
+
+[iCNT0.GeneralConfigData]
+MaximumNumberOfDevices = 2
+MaximumDeviceMemoryConfiguration = 256
+
+[iCNT1.GeneralConfigData]
+MaximumNumberOfDevices = 2
+MaximumDeviceMemoryConfiguration = 256
+
+[iEGL0.GeneralConfigData]
+MaximumNumberOfDevices = 2
+MaximumDeviceMemoryConfiguration = 256
+
+[iEGL1.GeneralConfigData]
+MaximumNumberOfDevices = 2
+MaximumDeviceMemoryConfiguration = 256
+
+[OpenGL.AddReg.Gen4]
+HKLM,"Software\Microsoft\Windows NT\CurrentVersion\OpenGLDrivers\Intel","dll",%REG_SZ%,"ig4icd32"
+HKLM,"Software\Microsoft\Windows NT\CurrentVersion\OpenGLDrivers\Intel","Version",%REG_DWORD%,0x2
+HKLM,"Software\Microsoft\Windows NT\CurrentVersion\OpenGLDrivers\Intel","DriverVersion",%REG_DWORD%,0x1
+HKLM,"Software\Microsoft\Windows NT\CurrentVersion\OpenGLDrivers\Intel","Flags",%REG_DWORD%,0x3
+
+[OpenGL.AddRegSmch.EGL]
+HKR,, _oglapp_CNEXT.exe, %REG_DWORD%, 0x00000002
+HKR,, _oglapp_DMU.exe, %REG_DWORD%, 0x00000002
+
+[OpenGL.DelReg]
+HKLM,"Software\Microsoft\Windows NT\CurrentVersion\OpenGLDrivers\Intel"
+
+[OpenGL.DelRegSmch]
+HKR,, _oglapp_CNEXT.exe
+HKR,, _oglapp_DMU.exe
+
+;
+; Source file information
+;
+
+[SourceDisksNames.x86]
+1 = %DiskId%,,,""
+
+[SourceDisksFiles]
+igxpmp32.sys  = 1
+igxpco32.dll = 1
+
+igxprd32.dll = 1
+
+igxpgd32.dll = 1
+igxpdv32.dll = 1
+igxpdx32.dll = 1
+ig4icd32.dll = 1
+igkrng500.bin=1
+igkrng575.bin=1
+igcompkrng500.bin=1
+igcompkrng575.bin=1
+igxpxk32.vp  = 1
+igxpxs32.vp  = 1
+igxpxa32.vp  = 1
+igxpxa32.cpa = 1
+
+hccutils.dll=1
+igfxsrvc.dll=1
+igfxsrvc.exe=1
+igfxpph.dll=1
+igfxcpl.cpl=1
+igfxcfg.exe=1
+igfxdev.dll=1
+igfxdo.dll=1
+igfxtray.exe=1
+hkcmd.exe=1
+igfxext.exe=1
+igfxexps.dll=1
+igfxpers.exe=1
+
+igfxress.dll=1	; Generic language resource file
+igfxrenu.lrc=1  ; American English language resource file
+igfxrara.lrc=1  ; Arabic language resource file
+igfxrchs.lrc=1  ; Simplified Chinese language resource file
+igfxrcht.lrc=1  ; Traditional Chinese language resource file
+igfxrdan.lrc=1  ; Danish language resource file
+igfxrdeu.lrc=1  ; German language resource file
+igfxresn.lrc=1  ; Spanish language resource file
+igfxrfin.lrc=1  ; Finish language resource file
+igfxrfra.lrc=1  ; French language resource file
+igfxrheb.lrc=1  ; Hebrew Language Resource file
+igfxrita.lrc=1  ; Italian language resource file
+igfxrjpn.lrc=1  ; Japanese language resource file
+igfxrkor.lrc=1  ; Korean language resource file
+igfxrnld.lrc=1  ; Netherlands language resource file
+igfxrnor.lrc=1  ; Norwegian language resource file
+igfxrplk.lrc=1  ; Polish language resource file
+igfxrptb.lrc=1  ; Brazilian Portuguese language resource file
+igfxrptg.lrc=1  ; Portuguese language resource file
+igfxrrus.lrc=1  ; Russian language resource file
+igfxrsky.lrc=1  ; Slovakian language resource file
+igfxrslv.lrc=1  ; Slovenian language resource file
+igfxrsve.lrc=1  ; Swedish language resource file
+igfxrtha.lrc=1  ; Thai language resource file
+igfxrcsy.lrc=1  ; Czechoslovakian language resource file
+igfxrell.lrc=1  ; Greek language resource file
+igfxrhun.lrc=1  ; Hungarian language resource file
+igfxrtrk.lrc=1  ; Turkish language resource file
+
+Gfxres.ar-SA.resources = 1 
+Gfxres.cs-CZ.resources = 1 
+Gfxres.da-DK.resources = 1 
+Gfxres.de-DE.resources = 1 
+Gfxres.el-GR.resources = 1 
+Gfxres.es-ES.resources = 1 
+Gfxres.en-US.resources = 1 
+Gfxres.fi-FI.resources = 1 
+Gfxres.fr-FR.resources = 1 
+Gfxres.he-IL.resources = 1 
+Gfxres.hu-HU.resources = 1 
+Gfxres.it-IT.resources = 1 
+Gfxres.ja-JP.resources = 1 
+Gfxres.ko-KR.resources = 1 
+Gfxres.nb-NO.resources = 1 
+Gfxres.nl-NL.resources = 1 
+Gfxres.pl-PL.resources = 1 
+Gfxres.pt-BR.resources = 1 
+Gfxres.pt-PT.resources = 1 
+Gfxres.ru-RU.resources = 1 
+Gfxres.sk-SK.resources = 1 
+Gfxres.sl-SI.resources = 1 
+Gfxres.sv-SE.resources = 1 
+Gfxres.th-TH.resources = 1 
+Gfxres.tr-TR.resources = 1 
+Gfxres.zh-CN.resources = 1 
+Gfxres.zh-TW.resources = 1 
+
+gfxSrvc.dll = 1    ; 3.0 UI
+GfxUI.exe = 1 
+GfxUI.exe.config = 1   
+IGFXDEVLib.dll = 1    
+
+;
+; Start CUI Registry Sections
+;
+
+[CUI.AddReg]
+;Add INTEL/CUI keys
+HKLM,"Software\INTEL"
+HKLM,%DisplayKey%
+HKLM,%CUIDeviceIndependentKey%
+
+; Device Independent registry location
+HKCR,"CLSID\{280A8F40-E382-11D2-B561-00A0C92E6848}",,,%CUIDeviceIndependentKey%
+
+; Add Diagnostic Pages with the rest of the pages
+HKLM,"SOFTWARE\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\igfxcui",,,"{3AB1675A-CCFF-11D2-8B20-00A0C93CB1F4}"
+HKCR,"CLSID\{280A8F40-E382-11D2-B561-00A0C92E6848}\shellex\PropertyPageHandlers\igfxcfg\diagHandler",,,"{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}"
+
+;Hide Graphics Property String for SG
+;HKLM,"%CUIDeviceIndependentKey%\igfxpph\resources","3060",%REG_SZ%,""
+
+;Intel Application Name
+HKLM,"%CUIDeviceIndependentKey%\igfxcfg\resources","Application",%REG_SZ%,"GfxUI.exe"
+
+; Store resource information under %CUIDeviceIndependentKey%
+; as these all will come under device independent keys
+; Control panel resource
+HKLM,"%CUIDeviceIndependentKey%\igfxcpl\resources","468",,%11%"\igfxcfg.exe"
+; static pages resource
+HKLM,"%CUIDeviceIndependentKey%\igfxpph\resources","468",,%11%"\igfxcfg.exe"
+; Diagnostics resource
+HKLM,"%CUIDeviceIndependentKey%\igfxcfg\resources","2945",,%11%"\igfxdiag.exe"
+; cfg resource
+HKLM,"%CUIDeviceIndependentKey%\igfxcfg\resources","468",,%11%"\igfxcfg.exe"
+HKLM,"%CUIDeviceIndependentKey%\igfxcfg\resources","829",,""
+; service resource
+HKLM,"%CUIDeviceIndependentKey%\igfxsrvc\resources","468",,%11%"\igfxcfg.exe"
+HKLM,"%CUIDeviceIndependentKey%\igfxsrvc\TrayIcon","ShowTrayIcon",%REG_DWORD%,1
+; tray resource
+HKLM,"%CUIDeviceIndependentKey%\igfxtray","ShowOptimalBalloon",%REG_DWORD%,1
+HKLM,"%CUIDeviceIndependentKey%\igfxtray\resources","468",,%11%"\igfxcfg.exe"
+HKLM,"%CUIDeviceIndependentKey%\igfxtray\resources","467",,%11%"\igfxtray.exe"
+; hotkey resource
+HKLM,"%CUIDeviceIndependentKey%\hkcmd\resources","468",,%11%"\igfxcfg.exe"
+;For RCR 220898
+HKLM,"%CUIDeviceIndependentKey%\hkcmd","EnableResDialog",%REG_DWORD%,0x0
+;CUI Aspect Scaling hotkey expansion RCR 942979
+HKLM,"%CUIDeviceIndependentKey%\hkcmd","ExpansionAllDisplay",%REG_DWORD%,0x1
+;CUI Moving Window to extended desktop RCR 1002102
+HKLM,"%CUIDeviceIndependentKey%\hkcmd","EnableMovingWindow",%REG_DWORD%,0x0
+;static pages resource
+HKLM,"%CUIDeviceIndependentKey%\igfxpph\resources","467",,%11%"\igfxtray.exe"
+;Tray Notification
+HKLM,"%CUIDeviceIndependentKey%\igfxtray\TrayIcon","ShowOptimalBalloon",%REG_DWORD%,1
+;CUI AC/DC Rotation uncomment the below line to enable this feature
+;HKLM,"%CUIDeviceIndependentKey%\igfxcfg","DCRotationCaps",%REG_DWORD%,0x1
+;=============================================================================
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify\igfxcui"
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify\igfxcui","DLLName",%REG_SZ%,"igfxdev.dll"
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify\igfxcui","Asynchronous",%REG_DWORD%,1
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify\igfxcui","Impersonate",%REG_DWORD%,1
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify\igfxcui","Unlock",%REG_SZ%,"WinlogonUnlockEvent"
+;=============================================================================
+
+; Class ID of the CUIDriver component.
+HKR,"DEFAULT","CUIDriver",,"{9CEE304E-DC6C-11D2-B561-00A0C92E6848}"
+
+; Context menu handler entry.
+HKCR, "Directory\Background\shellex\ContextMenuHandlers\igfxcui",,,"{3AB1675A-CCFF-11D2-8B20-00A0C93CB1F4}"
+;
+; Registration of CUI dll's:            These will not self-register through the have-disk install.
+;                                       Does not register TypeLibs or Interfaces.
+;
+; igfxcfg.exe self registration entries
+;
+HKCR,"AppID\{3D62E9A1-D243-11D2-B561-00A0C92E6848}",,,"igfxcfg"
+HKCR,"AppID\igfxcfg.EXE","AppID",,"{3D62E9A1-D243-11D2-B561-00A0C92E6848}"
+HKCR,"CLSID\{A354BD60-4C0A-11d3-B561-00A0C92E6848}",,,"DataObject Class"
+HKCR,"CLSID\{A354BD60-4C0A-11d3-B561-00A0C92E6848}","AppID",,"{3D62E9A1-D243-11D2-B561-00A0C92E6848}"
+HKCR,"CLSID\{A354BD60-4C0A-11d3-B561-00A0C92E6848}\ProgID",,,"igfxcfg.DataObject.1"
+HKCR,"CLSID\{A354BD60-4C0A-11d3-B561-00A0C92E6848}\VersionIndependentProgID",,,"igfxcfg.DataObject"
+HKCR,"CLSID\{A354BD60-4C0A-11d3-B561-00A0C92E6848}\LocalServer32",,,%11%"\igfxcfg.exe"
+HKCR,"CLSID\{EE2D6561-D63C-11D2-B561-00A0C92E6848}",,,"ShellExt Class"
+HKCR,"CLSID\{EE2D6561-D63C-11D2-B561-00A0C92E6848}","AppID",,"{3D62E9A1-D243-11D2-B561-00A0C92E6848}"
+HKCR,"CLSID\{EE2D6561-D63C-11D2-B561-00A0C92E6848}\ProgID",,,"igfxcfg.ShellExt.1"
+HKCR,"CLSID\{EE2D6561-D63C-11D2-B561-00A0C92E6848}\VersionIndependentProgID",,,"igfxcfg.ShellExt"
+HKCR,"CLSID\{EE2D6561-D63C-11D2-B561-00A0C92E6848}\Programmable",,,
+HKCR,"CLSID\{EE2D6561-D63C-11D2-B561-00A0C92E6848}\LocalServer32",,,%11%"\igfxcfg.exe"
+HKCR,"igfxcfg.DataObject.1",,,"DataObject Class"
+HKCR,"igfxcfg.DataObject.1\CLSID",,,"{A354BD60-4C0A-11d3-B561-00A0C92E6848}"
+HKCR,"igfxcfg.DataObject",,,"DataObject Class"
+HKCR,"igfxcfg.DataObject\CurVer",,,"igfxcfg.DataObject.1"
+HKCR,"igfxcfg.DataObject\CLSID",,,"{A354BD60-4C0A-11d3-B561-00A0C92E6848}"
+HKCR,"igfxcfg.ShellExt.1",,,"ShellExt Class"
+HKCR,"igfxcfg.ShellExt.1\CLSID",,,"{EE2D6561-D63C-11D2-B561-00A0C92E6848}"
+HKCR,"igfxcfg.ShellExt",,,"ShellExt Class"
+HKCR,"igfxcfg.ShellExt\CurVer",,,"igfxcfg.ShellExt.1"
+HKCR,"igfxcfg.ShellExt\CLSID",,,"{EE2D6561-D63C-11D2-B561-00A0C92E6848}"
+;
+; igfxdev.dll self registration entries
+;
+HKCR,"igfxdev.CUIDriver",,,"CUIDriver Class"
+HKCR,"igfxdev.CUIDriver\CLSID",,,"{9CEE304E-DC6C-11D2-B561-00A0C92E6848}"
+HKCR,"igfxdev.CUIDriver\CurVer",,,"igfxdev.CUIDriver.1"
+HKCR,"igfxdev.CUIDriver.1",,,"CUIDriver Class"
+HKCR,"igfxdev.CUIDriver.1\CLSID",,,"{9CEE304E-DC6C-11D2-B561-00A0C92E6848}"
+HKCR,"CLSID\{9CEE304E-DC6C-11D2-B561-00A0C92E6848}",,,"CUIDriver Class"
+HKCR,"CLSID\{9CEE304E-DC6C-11D2-B561-00A0C92E6848}\InProcServer32",,,%11%"\igfxdev.dll"
+HKCR,"CLSID\{9CEE304E-DC6C-11D2-B561-00A0C92E6848}\InProcServer32","ThreadingModel",,"Apartment"
+HKCR,"CLSID\{9CEE304E-DC6C-11D2-B561-00A0C92E6848}\ProgID",,,"igfxdev.CUIDriver.1"
+HKCR,"CLSID\{9CEE304E-DC6C-11D2-B561-00A0C92E6848}\VersionIndependentProgID",,,"igfxdev.CUIDriver"
+;
+; igfxsrvc.exe self registration entries
+;
+HKCR,"igfxsrvc.Settings\CLSID",,,"{078AEF33-C48A-49F7-AFF3-A0EE810BFE7C}"
+HKCR,"igfxsrvc.Settings\CurVer",,,"igfxsrvc.Settings.1"
+HKCR,"igfxsrvc.Settings.1\CLSID",,,"{078AEF33-C48A-49F7-AFF3-A0EE810BFE7C}"
+HKCR,"CLSID\{078AEF33-C48A-49F7-AFF3-A0EE810BFE7C}",,,"Settings Class"
+HKCR,"CLSID\{078AEF33-C48A-49F7-AFF3-A0EE810BFE7C}\LocalServer32",,,%11%"\igfxsrvc.exe"
+HKCR,"CLSID\{078AEF33-C48A-49F7-AFF3-A0EE810BFE7C}\ProgID",,,"igfxsrvc.Settings.1"
+HKCR,"CLSID\{078AEF33-C48A-49F7-AFF3-A0EE810BFE7C}\VersionIndependentProgID",,,"igfxsrvc.Settings"
+HKCR,"Interface\{916FEC45-8FAB-460F-9BD1-325055E3DEC9}",,,"ISettings"
+
+HKCR,"igfxsrvc.DisplayConfig\CLSID",,,"{C2BFE331-6739-4270-86C9-493D9A04CD38}"
+HKCR,"igfxsrvc.DisplayConfig\CurVer",,,"igfxsrvc.DisplayConfig.1"
+HKCR,"igfxsrvc.DispayConfig.1\CLSID",,,"{C2BFE331-6739-4270-86C9-493D9A04CD38}"
+HKCR,"CLSID\{C2BFE331-6739-4270-86C9-493D9A04CD38}",,,"DisplayConfig Class"
+HKCR,"CLSID\{C2BFE331-6739-4270-86C9-493D9A04CD38}\LocalServer32",,,%11%"\igfxsrvc.exe"
+HKCR,"CLSID\{C2BFE331-6739-4270-86C9-493D9A04CD38}\ProgID",,,"igfxsrvc.DisplayConfig.1"
+HKCR,"CLSID\{C2BFE331-6739-4270-86C9-493D9A04CD38}\VersionIndependentProgID",,,"igfxsrvc.DisplayConfig"
+HKCR,"Interface\{DC61FD6D-FB60-4ABC-BF2E-4DF75C90C601}",,,"IDisplayConfig"
+
+HKCR,"igfxsrvc.EDID\CLSID",,,"{40CB6EA0-AB2A-45F8-BA45-2DC7756A7B49}"
+HKCR,"igfxsrvc.EDID\CurVer",,,"igfxsrvc.EDID.1"
+HKCR,"igfx.EDID.1\CLSID",,,"{40CB6EA0-AB2A-45F8-BA45-2DC7756A7B49}"
+HKCR,"CLSID\{40CB6EA0-AB2A-45F8-BA45-2DC7756A7B49}",,,"EDID Class"
+HKCR,"CLSID\{40CB6EA0-AB2A-45F8-BA45-2DC7756A7B49}\LocalServer32",,,%11%"\igfxsrvc.exe"
+HKCR,"CLSID\{40CB6EA0-AB2A-45F8-BA45-2DC7756A7B49}\ProgID",,,"igfxsrvc.EDID.1"
+HKCR,"CLSID\{40CB6EA0-AB2A-45F8-BA45-2DC7756A7B49}\VersionIndependentProgID",,,"igfxsrvc.EDID"
+HKCR,"Interface\{B7C4F4C9-EE21-4042-9C11-BEA5E039B1F9}",,,"IEDID"
+
+HKCR,"igfxsrvc.Color\CLSID",,,"{FE9617F6-E606-42AA-BECC-0E9CDA246D63}"
+HKCR,"igfxsrvc.Color\CurVer",,,"igfxsrvc.Color.1"
+HKCR,"igfx.Color.1\CLSID",,,"{FE9617F6-E606-42AA-BECC-0E9CDA246D63}"
+HKCR,"CLSID\{FE9617F6-E606-42AA-BECC-0E9CDA246D63}",,,"Color Class"
+HKCR,"CLSID\{FE9617F6-E606-42AA-BECC-0E9CDA246D63}\LocalServer32",,,%11%"\igfxsrvc.exe"
+HKCR,"CLSID\{FE9617F6-E606-42AA-BECC-0E9CDA246D63}\ProgID",,,"igfxsrvc.Color.1"
+HKCR,"CLSID\{FE9617F6-E606-42AA-BECC-0E9CDA246D63}\VersionIndependentProgID",,,"igfxsrvc.Color"
+HKCR,"Interface\{63CDDDB9-A85B-411E-AA78-101B3BC17261}",,,"IColor"
+
+HKCR,"igfxsrvc.CUIService",,,"CUIService Class"
+HKCR,"igfxsrvc.CUIService\CLSID",,,"{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}"
+HKCR,"igfxsrvc.CUIService\CurVer",,,"igfxsrvc.CUIService.1"
+HKCR,"igfxsrvc.CUIService.1",,,"CUIService Class"
+HKCR,"igfx.CUIService.1\CLSID",,,"{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}"
+HKCR,"CLSID\{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}",,,"CUIService Class"
+HKCR,"CLSID\{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}\InProcServer32",,,%11%"\igfxsrvc.exe"
+HKCR,"CLSID\{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}\InProcServer32","ThreadingModel",,"Apartment"
+HKCR,"CLSID\{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}\ProgID",,,"igfxsrvc.CUIService.1"
+HKCR,"CLSID\{0F195FA1-CCF0-11D2-8B20-00A0C93CB1F4}\VersionIndependentProgID",,,"igfxsrvc.CUIService"
+
+HKCR,"igfxsrvc.CUIPower\CLSID",,,"{C332C124-340D-4430-AA0D-C75602876FCC}"
+HKCR,"igfxsrvc.CUIPower\CurVer",,,"igfxsrvc.CUIPower.1"
+HKCR,"igfx.CUIPower.1\CLSID",,,"{C332C124-340D-4430-AA0D-C75602876FCC}"
+HKCR,"CLSID\{C332C124-340D-4430-AA0D-C75602876FCC}",,,"CUIPower Class"
+HKCR,"CLSID\{C332C124-340D-4430-AA0D-C75602876FCC}\LocalServer32",,,%11%"\igfxsrvc.exe"
+HKCR,"CLSID\{C332C124-340D-4430-AA0D-C75602876FCC}\ProgID",,,"igfxsrvc.CUIPower.1"
+HKCR,"CLSID\{C332C124-340D-4430-AA0D-C75602876FCC}\VersionIndependentProgID",,,"igfxsrvc.CUIPower"
+HKCR,"Interface\{299D88F9-2CBD-4225-BF19-FCD164C54C3F}",,,"ICUIPower"
+
+HKCR,"igfxsrvc.MCCS\CLSID",,,"{999276E0-DA71-4743-8F02-0AB0A2D65558}"
+HKCR,"igfxsrvc.MCCS\CurVer",,,"igfxsrvc.MCCS.1"
+HKCR,"igfx.MCCS.1\CLSID",,,"{999276E0-DA71-4743-8F02-0AB0A2D65558}"
+HKCR,"CLSID\{999276E0-DA71-4743-8F02-0AB0A2D65558}",,,"MCCS Class"
+HKCR,"CLSID\{999276E0-DA71-4743-8F02-0AB0A2D65558}\LocalServer32",,,%11%"\igfxsrvc.exe"
+HKCR,"CLSID\{999276E0-DA71-4743-8F02-0AB0A2D65558}\ProgID",,,"igfxsrvc.MCCS.1"
+HKCR,"CLSID\{999276E0-DA71-4743-8F02-0AB0A2D65558}\VersionIndependentProgID",,,"igfxsrvc.MCCS"
+HKCR,"Interface\{D80D344A-0CCD-4B2F-B379-56DE3EC2C4D1}",,,"IMCCS"
+
+HKCR,"igfxsrvc.OpenGL\CLSID",,,"{DCB2D492-5F4F-4378-8FF4-DA87062D42E3}"
+HKCR,"igfxsrvc.OpenGL\CurVer",,,"igfxsrvc.OpenGL.1"
+HKCR,"igfx.OpenGL.1\CLSID",,,"{DCB2D492-5F4F-4378-8FF4-DA87062D42E3}"
+HKCR,"CLSID\{DCB2D492-5F4F-4378-8FF4-DA87062D42E3}",,,"OpenGL Class"
+HKCR,"CLSID\{DCB2D492-5F4F-4378-8FF4-DA87062D42E3}\LocalServer32",,,%11%"\igfxsrvc.exe"
+HKCR,"CLSID\{DCB2D492-5F4F-4378-8FF4-DA87062D42E3}\ProgID",,,"igfxsrvc.OpenGL.1"
+HKCR,"CLSID\{DCB2D492-5F4F-4378-8FF4-DA87062D42E3}\VersionIndependentProgID",,,"igfxsrvc.OpenGL"
+HKCR,"Interface\{965FD393-C149-45F1-863C-402C4E2E38C5}",,,"IOpenGL"
+
+HKCR,"igfxsrvc.Overlay\CLSID",,,"{016B931D-8430-4988-8510-C69C214CFF32}"
+HKCR,"igfxsrvc.Overlay\CurVer",,,"igfxsrvc.Overlay.1"
+HKCR,"igfx.Overlay.1\CLSID",,,"{016B931D-8430-4988-8510-C69C214CFF32}"
+HKCR,"CLSID\{016B931D-8430-4988-8510-C69C214CFF32}",,,"Overlay Class"
+HKCR,"CLSID\{016B931D-8430-4988-8510-C69C214CFF32}\LocalServer32",,,%11%"\igfxsrvc.exe"
+HKCR,"CLSID\{016B931D-8430-4988-8510-C69C214CFF32}\ProgID",,,"igfxsrvc.Overlay.1"
+HKCR,"CLSID\{016B931D-8430-4988-8510-C69C214CFF32}\VersionIndependentProgID",,,"igfxsrvc.Overlay"
+HKCR,"Interface\{25824158-68E7-4A6F-A2FD-F6AD1D6845D4}",,,"IOverlay"
+
+HKCR,"igfxsrvc.Rotation\CLSID",,,"{9B908879-E03F-4D0C-ACB3-9065B1155460}"
+HKCR,"igfxsrvc.Rotation\CurVer",,,"igfxsrvc.Rotation.1"
+HKCR,"igfx.Rotation.1\CLSID",,,"{9B908879-E03F-4D0C-ACB3-9065B1155460}"
+HKCR,"CLSID\{9B908879-E03F-4D0C-ACB3-9065B1155460}",,,"Rotation Class"
+HKCR,"CLSID\{9B908879-E03F-4D0C-ACB3-9065B1155460}\LocalServer32",,,%11%"\igfxsrvc.exe"
+HKCR,"CLSID\{9B908879-E03F-4D0C-ACB3-9065B1155460}\ProgID",,,"igfxsrvc.Rotation.1"
+HKCR,"CLSID\{9B908879-E03F-4D0C-ACB3-9065B1155460}\VersionIndependentProgID",,,"igfxsrvc.Rotation"
+HKCR,"Interface\{72DC5954-069D-43C4-9B8B-19B59269DC74}",,,"IRotation"
+
+HKCR,"igfxsrvc.Scheme\CLSID",,,"{C071C982-2EB2-4D3A-9821-E4B31B0142C8}"
+HKCR,"igfxsrvc.Scheme\CurVer",,,"igfxsrvc.Scheme.1"
+HKCR,"igfx.Scheme.1\CLSID",,,"{C071C982-2EB2-4D3A-9821-E4B31B0142C8}"
+HKCR,"CLSID\{C071C982-2EB2-4D3A-9821-E4B31B0142C8}",,,"Scheme Class"
+HKCR,"CLSID\{C071C982-2EB2-4D3A-9821-E4B31B0142C8}\LocalServer32",,,%11%"\igfxsrvc.exe"
+HKCR,"CLSID\{C071C982-2EB2-4D3A-9821-E4B31B0142C8}\ProgID",,,"igfxsrvc.Scheme.1"
+HKCR,"CLSID\{C071C982-2EB2-4D3A-9821-E4B31B0142C8}\VersionIndependentProgID",,,"igfxsrvc.Scheme"
+HKCR,"Interface\{D5393CA5-EF8F-49E0-B180-212C903C652C}",,,"IScheme"
+
+HKCR,"igfxsrvc.TVParam\CLSID",,,"{12E3793C-7C3C-4C00-BC4E-C79849B3F430}"
+HKCR,"igfxsrvc.TVParam\CurVer",,,"igfxsrvc.TVParam.1"
+HKCR,"igfx.TVParam.1\CLSID",,,"{12E3793C-7C3C-4C00-BC4E-C79849B3F430}"
+HKCR,"CLSID\{12E3793C-7C3C-4C00-BC4E-C79849B3F430}",,,"TVParam Class"
+HKCR,"CLSID\{12E3793C-7C3C-4C00-BC4E-C79849B3F430}\LocalServer32",,,%11%"\igfxsrvc.exe"
+HKCR,"CLSID\{12E3793C-7C3C-4C00-BC4E-C79849B3F430}\ProgID",,,"igfxsrvc.TVParam.1"
+HKCR,"CLSID\{12E3793C-7C3C-4C00-BC4E-C79849B3F430}\VersionIndependentProgID",,,"igfxsrvc.TVParam"
+HKCR,"Interface\{DDA11344-AB20-4AEC-94C4-6AA091574CD0}",,,"ITVParam"
+;
+;proxy stub for igfxsrvc.exe
+;
+HKCR,"CLSID\{DDA11344-AB20-4AEC-94C4-6AA091574CD0}",,,"PSFactoryBuffer"
+HKCR,"CLSID\{DDA11344-AB20-4AEC-94C4-6AA091574CD0}\InProcServer32",,,%11%"\igfxsrvc.dll"
+HKCR,"CLSID\{DDA11344-AB20-4AEC-94C4-6AA091574CD0}\InProcServer32","ThreadingModel",,"Both"
+
+HKCR,"Interface\{DDA11344-AB20-4AEC-94C4-6AA091574CD0}",,,"ITVParam"
+HKCR,"Interface\{DDA11344-AB20-4AEC-94C4-6AA091574CD0}\ProxyStubClsid32",,,"{DDA11344-AB20-4AEC-94C4-6AA091574CD0}"
+HKCR,"Interface\{DDA11344-AB20-4AEC-94C4-6AA091574CD0}\NumMethods",,,"9"
+
+HKCR,"Interface\{916FEC45-8FAB-460F-9BD1-325055E3DEC9}",,,"ISettings"
+HKCR,"Interface\{916FEC45-8FAB-460F-9BD1-325055E3DEC9}\ProxyStubClsid32",,,"{DDA11344-AB20-4AEC-94C4-6AA091574CD0}"
+HKCR,"Interface\{916FEC45-8FAB-460F-9BD1-325055E3DEC9}\NumMethods",,,"13"
+
+HKCR,"Interface\{D5393CA5-EF8F-49E0-B180-212C903C652C}",,,"IScheme"
+HKCR,"Interface\{D5393CA5-EF8F-49E0-B180-212C903C652C}\ProxyStubClsid32",,,"{DDA11344-AB20-4AEC-94C4-6AA091574CD0}"
+HKCR,"Interface\{D5393CA5-EF8F-49E0-B180-212C903C652C}\NumMethods",,,"7"
+
+HKCR,"Interface\{72DC5954-069D-43C4-9B8B-19B59269DC74}",,,"IRotation"
+HKCR,"Interface\{72DC5954-069D-43C4-9B8B-19B59269DC74}\ProxyStubClsid32",,,"{DDA11344-AB20-4AEC-94C4-6AA091574CD0}"
+HKCR,"Interface\{72DC5954-069D-43C4-9B8B-19B59269DC74}\NumMethods",,,"9"
+
+HKCR,"Interface\{25824158-68E7-4A6F-A2FD-F6AD1D6845D4}",,,"IOverlay"
+HKCR,"Interface\{25824158-68E7-4A6F-A2FD-F6AD1D6845D4}\ProxyStubClsid32",,,"{DDA11344-AB20-4AEC-94C4-6AA091574CD0}"
+HKCR,"Interface\{25824158-68E7-4A6F-A2FD-F6AD1D6845D4}\NumMethods",,,"13"
+
+HKCR,"Interface\{965FD393-C149-45F1-863C-402C4E2E38C5}",,,"IOpenGL"
+HKCR,"Interface\{965FD393-C149-45F1-863C-402C4E2E38C5}\ProxyStubClsid32",,,"{DDA11344-AB20-4AEC-94C4-6AA091574CD0}"
+HKCR,"Interface\{965FD393-C149-45F1-863C-402C4E2E38C5}\NumMethods",,,"7"
+
+HKCR,"Interface\{D80D344A-0CCD-4B2F-B379-56DE3EC2C4D1}",,,"IMCCS"
+HKCR,"Interface\{D80D344A-0CCD-4B2F-B379-56DE3EC2C4D1}\ProxyStubClsid32",,,"{DDA11344-AB20-4AEC-94C4-6AA091574CD0}"
+HKCR,"Interface\{D80D344A-0CCD-4B2F-B379-56DE3EC2C4D1}\NumMethods",,,"9"
+
+HKCR,"Interface\{B7C4F4C9-EE21-4042-9C11-BEA5E039B1F9}",,,"IEDID"
+HKCR,"Interface\{B7C4F4C9-EE21-4042-9C11-BEA5E039B1F9}\ProxyStubClsid32",,,"{DDA11344-AB20-4AEC-94C4-6AA091574CD0}"
+HKCR,"Interface\{B7C4F4C9-EE21-4042-9C11-BEA5E039B1F9}\NumMethods",,,"12"
+
+HKCR,"Interface\{DC61FD6D-FB60-4ABC-BF2E-4DF75C90C601}",,,"IDisplayConfig"
+HKCR,"Interface\{DC61FD6D-FB60-4ABC-BF2E-4DF75C90C601}\ProxyStubClsid32",,,"{DDA11344-AB20-4AEC-94C4-6AA091574CD0}"
+HKCR,"Interface\{DC61FD6D-FB60-4ABC-BF2E-4DF75C90C601}\NumMethods",,,"15"
+
+HKCR,"Interface\{299D88F9-2CBD-4225-BF19-FCD164C54C3F}",,,"ICUIPower"
+HKCR,"Interface\{299D88F9-2CBD-4225-BF19-FCD164C54C3F}\ProxyStubClsid32",,,"{DDA11344-AB20-4AEC-94C4-6AA091574CD0}"
+HKCR,"Interface\{299D88F9-2CBD-4225-BF19-FCD164C54C3F}\NumMethods",,,"7"
+
+HKCR,"Interface\{63CDDDB9-A85B-411E-AA78-101B3BC17261}",,,"IColor"
+HKCR,"Interface\{63CDDDB9-A85B-411E-AA78-101B3BC17261}\ProxyStubClsid32",,,"{DDA11344-AB20-4AEC-94C4-6AA091574CD0}"
+HKCR,"Interface\{63CDDDB9-A85B-411E-AA78-101B3BC17261}\NumMethods",,,"14"
+;
+; igfxpph.dll self registration entries
+;
+HKCR,"igfxpph.GraphicsShellExt",,,"GraphicsShellExt Class"
+HKCR,"igfxpph.GraphicsShellExt\CLSID",,,"{3AB1675A-CCFF-11D2-8B20-00A0C93CB1F4}"
+HKCR,"igfxpph.GraphicsShellExt\CurVer",,,"igfxpph.GraphicsShellExt.1"
+HKCR,"igfxpph.GraphicsShellExt.1",,,"GraphicsShellExt Class"
+HKCR,"igfxpph.GraphicsShellExt.1\CLSID",,,"{3AB1675A-CCFF-11D2-8B20-00A0C93CB1F4}"
+HKCR,"CLSID\{3AB1675A-CCFF-11D2-8B20-00A0C93CB1F4}",,,"GraphicsShellExt Class"
+HKCR,"CLSID\{3AB1675A-CCFF-11D2-8B20-00A0C93CB1F4}\InProcServer32",,,%11%"\igfxpph.dll"
+HKCR,"CLSID\{3AB1675A-CCFF-11D2-8B20-00A0C93CB1F4}\InProcServer32","ThreadingModel",,"Apartment"
+HKCR,"CLSID\{3AB1675A-CCFF-11D2-8B20-00A0C93CB1F4}\ProgID",,,"igfxpph.GraphicsShellExt.1"
+HKCR,"CLSID\{3AB1675A-CCFF-11D2-8B20-00A0C93CB1F4}\VersionIndependentProgID",,,"igfxpph.GraphicsShellExt"
+HKCR,"CLSID\{3AB1675A-CCFF-11D2-8B20-00A0C93CB1F4}\Programmable",,,
+;
+; igfxeud.dll self registration entries
+;
+;HKCR,"igfxeud.EndUserShellExt",,,"EndUserShellExt Class"
+;HKCR,"igfxeud.EndUserShellExt\CLSID",,,"{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}"
+;HKCR,"igfxeud.EndUserShellExt\CurVer",,,"igfxeud.EndUserShellExt.1"
+;HKCR,"igfxeud.EndUserShellExt.1",,,"EndUserShellExt Class"
+;HKCR,"igfxeud.EndUserShellExt.1\CLSID",,,"{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}"
+;HKCR,"CLSID\{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}",,,"EndUserShellExt Class"
+;HKCR,"CLSID\{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}\InProcServer32",,,%11%"\igfxeud.dll"
+;HKCR,"CLSID\{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}\InProcServer32","ThreadingModel",,"Apartment"
+;HKCR,"CLSID\{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}\ProgID",,,"igfxeud.EndUserShellExt.1"
+;HKCR,"CLSID\{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}\VersionIndependentProgID",,,"igfxeud.EndUserShellExt"
+;HKCR,"CLSID\{3AB167A5-CCFF-11D2-8B20-00A0C93CB1F4}\Programmable",,,
+
+; Igfxdo.dll self registration entries
+;
+HKCR,"Igfxdo.DataObject",,,"DataObject Class"
+HKCR,"Igfxdo.DataObject\CLSID",,,"{D4FA3D4E-BE69-11D4-AA30-00902704C6BF}"
+HKCR,"Igfxdo.DataObject\CurVer",,,"Igfxdo.DataObject.1"
+HKCR,"Igfxdo.DataObject.1",,,"DataObject Class"
+HKCR,"Igfxdo.DataObject.1\CLSID",,,"{D4FA3D4E-BE69-11D4-AA30-00902704C6BF}"
+HKCR,"CLSID\{D4FA3D4E-BE69-11D4-AA30-00902704C6BF}",,,"DataObject Class"
+HKCR,"CLSID\{D4FA3D4E-BE69-11D4-AA30-00902704C6BF}\InProcServer32",,,%11%"\igfxdo.dll"
+HKCR,"CLSID\{D4FA3D4E-BE69-11D4-AA30-00902704C6BF}\InProcServer32","ThreadingModel",,"Apartment"
+HKCR,"CLSID\{D4FA3D4E-BE69-11D4-AA30-00902704C6BF}\ProgID",,,"Igfxdo.DataObject.1"
+HKCR,"CLSID\{D4FA3D4E-BE69-11D4-AA30-00902704C6BF}\VersionIndependentProgID",,,"Igfxdo.DataObject"
+HKCR,"CLSID\{D4FA3D4E-BE69-11D4-AA30-00902704C6BF}\Programmable",,,
+
+HKCR,"Igfxdo.DataObjectInit",,,"DataObjectInit Class"
+HKCR,"Igfxdo.DataObjectInit\CLSID",,,"{4501A903-BF07-11D4-AA30-00902704C6BF}"
+HKCR,"Igfxdo.DataObjectInit\CurVer",,,"Igfxdo.DataObjectInit.1"
+HKCR,"Igfxdo.DataObjectInit.1",,,"DataObjectInit Class"
+HKCR,"Igfxdo.DataObjectInit.1\CLSID",,,"{4501A903-BF07-11D4-AA30-00902704C6BF}"
+HKCR,"CLSID\{4501A903-BF07-11D4-AA30-00902704C6BF}",,,"DataObjectInit Class"
+HKCR,"CLSID\{4501A903-BF07-11D4-AA30-00902704C6BF}\InProcServer32",,,%11%"\igfxdo.dll"
+HKCR,"CLSID\{4501A903-BF07-11D4-AA30-00902704C6BF}\InProcServer32","ThreadingModel",,"Apartment"
+HKCR,"CLSID\{4501A903-BF07-11D4-AA30-00902704C6BF}\ProgID",,,"Igfxdo.DataObjectInit.1"
+HKCR,"CLSID\{4501A903-BF07-11D4-AA30-00902704C6BF}\VersionIndependentProgID",,,"Igfxdo.DataObjectInit"
+HKCR,"CLSID\{4501A903-BF07-11D4-AA30-00902704C6BF}\Programmable",,,
+;
+; igfxtray.exe execution on startup
+;
+HKLM,Software\Microsoft\Windows\CurrentVersion\Run,IgfxTray,,%11%"\igfxtray.exe"
+HKLM,Software\Microsoft\Windows\CurrentVersion\Run,HotKeysCmds,,%11%"\hkcmd.exe"
+HKLM,Software\Microsoft\Windows\CurrentVersion\Run,Persistence,,%11%"\igfxpers.exe"
+;
+;
+; Entries for receiving winlogon unlock event
+;
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify\igfxcui","DLLName",%REG_SZ%,"igfxdev.dll"
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify\igfxcui","Asynchronous",%REG_DWORD%,1
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify\igfxcui","Impersonate",%REG_DWORD%,1
+HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify\igfxcui","Unlock",%REG_SZ%,"WinlogonUnlockEvent"
+
+; Disable Hot Key action
+;HKLM,"%CUIDeviceIndependentKey%\igfxsrvc\resources","2658",,"Disable"
+
+;Hide Custom Mode Blade
+;HKLM,"%CUIDeviceIndependentKey%\igfxcfg\resources","MainWindowDisplayCustomModes",,""
+
+;
+; Begin of CUISDK Sections
+;
+
+[CUISDK.Copy]
+igfxext.exe	; CUI SDK
+igfxexps.dll  ; CUI SDK proxy stub
+
+[CUISDK.AddReg]
+;
+; igfxext.exe self registration entries
+;
+HKCR,"IgfxExt.CUIExternal\CLSID",,,"{7160A13D-73DA-4CEA-95B9-37356478588A}"
+HKCR,"IgfxExt.CUIExternal\CurVer",,,"IgfxExt.CUIExternal.1"
+HKCR,"IgfxExt.CUIExternal.1\CLSID",,,"{7160A13D-73DA-4CEA-95B9-37356478588A}"
+HKCR,"CLSID\{7160A13D-73DA-4CEA-95B9-37356478588A}",,,"CUIExternal Class"
+HKCR,"CLSID\{7160A13D-73DA-4CEA-95B9-37356478588A}\LocalServer32",,,%11%"\igfxext.exe"
+HKCR,"CLSID\{7160A13D-73DA-4CEA-95B9-37356478588A}\ProgID",,,"IgfxExt.CUIExternal.1"
+HKCR,"CLSID\{7160A13D-73DA-4CEA-95B9-37356478588A}\VersionIndependentProgID",,,"IgfxExt.CUIExternal"
+;
+
+;
+;proxy stub for igfxext.exe (igfxexps.dll)
+;
+HKCR,"CLSID\{27E7234F-429F-4787-AC8F-8AADDED01355}",,,"PSFactoryBuffer"
+HKCR,"CLSID\{27E7234F-429F-4787-AC8F-8AADDED01355}\InProcServer32",,,%11%"\IGFXEXPS.DLL"
+HKCR,"CLSID\{27E7234F-429F-4787-AC8F-8AADDED01355}\InProcServer32","ThreadingModel",,"Both"
+
+HKCR,"Interface\{F4C4B98D-F59E-4a0c-AEE9-801E0CDB671E}",,,"ICUIExtClientNotify"
+HKCR,"Interface\{F4C4B98D-F59E-4a0c-AEE9-801E0CDB671E}\ProxyStubClsid32",,,"{27E7234F-429F-4787-AC8F-8AADDED01355}"
+HKCR,"Interface\{F4C4B98D-F59E-4a0c-AEE9-801E0CDB671E}\NumMethods",,,"1"
+
+HKCR,"Interface\{27E7234F-429F-4787-AC8F-8AADDED01355}",,,"ICUIExternal2"
+HKCR,"Interface\{27E7234F-429F-4787-AC8F-8AADDED01355}\ProxyStubClsid32",,,"{27E7234F-429F-4787-AC8F-8AADDED01355}"
+HKCR,"Interface\{27E7234F-429F-4787-AC8F-8AADDED01355}\NumMethods",,,"8"
+
+HKCR,"Interface\{70F8C65F-06AA-443b-9E6B-7C73808F07E5}",,,"ICUIExternal3"
+HKCR,"Interface\{70F8C65F-06AA-443b-9E6B-7C73808F07E5}\ProxyStubClsid32",,,"{27E7234F-429F-4787-AC8F-8AADDED01355}"
+HKCR,"Interface\{70F8C65F-06AA-443b-9E6B-7C73808F07E5}\NumMethods",,,"2"
+
+HKCR,"Interface\{3473E05A-3317-4df5-9098-E5387C94D1B0}",,,"ICUIExternalDual"
+HKCR,"Interface\{3473E05A-3317-4df5-9098-E5387C94D1B0}\ProxyStubClsid32",,,"{27E7234F-429F-4787-AC8F-8AADDED01355}"
+HKCR,"Interface\{3473E05A-3317-4df5-9098-E5387C94D1B0}\NumMethods",,,"0"
+
+HKCR,"Interface\{5DC5B31E-0C28-4679-B8D8-32CF2F9BACED}",,,"ICUIExternal4"
+HKCR,"Interface\{5DC5B31E-0C28-4679-B8D8-32CF2F9BACED}\ProxyStubClsid32",,,"{27E7234F-429F-4787-AC8F-8AADDED01355}"
+HKCR,"Interface\{5DC5B31E-0C28-4679-B8D8-32CF2F9BACED}\NumMethods",,,"7"
+
+HKCR,"Interface\{A05C525D-B4CB-4108-BFF7-1ACF1A14F00A}",,,"ICUIExternal5"
+HKCR,"Interface\{A05C525D-B4CB-4108-BFF7-1ACF1A14F00A}\ProxyStubClsid32",,,"{27E7234F-429F-4787-AC8F-8AADDED01355}"
+HKCR,"Interface\{A05C525D-B4CB-4108-BFF7-1ACF1A14F00A}\NumMethods",,,"5"
+
+HKCR,"Interface\{AFB6489F-4515-44AA-8DF7-ED28EA46283C}",,,"ICUIExternal6"
+HKCR,"Interface\{AFB6489F-4515-44AA-8DF7-ED28EA46283C}\ProxyStubClsid32",,,"{27E7234F-429F-4787-AC8F-8AADDED01355}"
+HKCR,"Interface\{AFB6489F-4515-44AA-8DF7-ED28EA46283C}\NumMethods",,,"12"
+
+HKCR,"Interface\{2CED2F89-627B-4E5D-840F-B126EE858CD8}",,,"ICUIExternal7"
+HKCR,"Interface\{2CED2F89-627B-4E5D-840F-B126EE858CD8}\ProxyStubClsid32",,,"{27E7234F-429F-4787-AC8F-8AADDED01355}"
+HKCR,"Interface\{2CED2F89-627B-4E5D-840F-B126EE858CD8}\NumMethods",,,"2"
+
+HKCR,"Interface\{F932C038-6484-45ca-8FA1-7C8C279F7AEE}",,,"ICUIExternal8"
+HKCR,"Interface\{F932C038-6484-45ca-8FA1-7C8C279F7AEE}\ProxyStubClsid32",,,"{27E7234F-429F-4787-AC8F-8AADDED01355}"
+HKCR,"Interface\{F932C038-6484-45ca-8FA1-7C8C279F7AEE}\NumMethods",,,"2"
+
+HKCR,"Interface\{86709F66-89C5-4b19-A83F-E4995E21599A}",,,"ICUIDownScale"
+HKCR,"Interface\{86709F66-89C5-4b19-A83F-E4995E21599A}\ProxyStubClsid32",,,"{27E7234F-429F-4787-AC8F-8AADDED01355}"
+HKCR,"Interface\{86709F66-89C5-4b19-A83F-E4995E21599A}\NumMethods",,,"4"
+
+[CUISDK.DelReg]
+HKR,Igfxext
+;
+; End CUI SDK section 
+; End CUI Registry Sections
+;
+[Strings]
+;
+; Customizable Strings
+;
+CUIDeviceIndependentKey="Software\Intel\Display\igfxcui"
+DisplayKey="Software\Intel\Display"
+CUIDriverOldShareKey="Software\Intel\CUI"
+
+;
+; Non-Localizable Strings
+;
+
+REG_SZ         = 0x00000000
+REG_MULTI_SZ   = 0x00010000
+REG_DWORD      = 0x00010001
+REG_BINARY 	= 0x00000001
+SERVICEROOT    = "System\CurrentControlSet\Services"
+
+;
+; Localizable Strings
+;
+
+DiskId      = "Intel(R) Graphics Media Accelerator Driver"
+Intel       = "Intel Corporation"
+iCNTG0      = "Mobile Intel(R) 4 Series Express Chipset Family"
+iCNTG1      = "Mobile Intel(R) 4 Series Express Chipset Family"
+iEGLG0      = "Intel(R) 4 Series Internal Chipset"
+iEGLG1      = "Intel(R) 4 Series Internal Chipset"
+iEGLQ4G0    = "Intel(R) Q45/Q43 Express Chipset"
+iEGLQ4G1    = "Intel(R) Q45/Q43 Express Chipset"
+iEGLG4G0    = "Intel(R) G45/G43 Express Chipset"
+iEGLG4G1    = "Intel(R) G45/G43 Express Chipset"
+iEGLGVG0    = "Intel(R) G41 Express Chipset"
+iEGLGVG1    = "Intel(R) G41 Express Chipset"
+iEGLGB0      = "Intel(R) B43 Express Chipset"
+iEGLGB1      = "Intel(R) B43 Express Chipset"
+iEGLGBU0    = "Intel(R) B43 Express Chipset"
+iEGLGBU1    = "Intel(R) B43 Express Chipset"
+
+;
+; Do not modify or copy the following line
+; set SIGNING_KEY_VERSION=2
+;
