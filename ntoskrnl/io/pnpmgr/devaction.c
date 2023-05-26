@@ -248,12 +248,12 @@ IopCreateDeviceInstancePath(
 
     DPRINT("Sending IRP_MN_QUERY_CAPABILITIES to device stack (after enumeration)\n");
 
-    Status = IopQueryDeviceCapabilities(DeviceNode, &DeviceCapabilities);
+    Status = PiIrpQueryPnPDeviceCapabilities(DeviceNode, &DeviceCapabilities);
     if (!NT_SUCCESS(Status))
     {
         if (Status != STATUS_NOT_SUPPORTED)
         {
-            DPRINT1("IopQueryDeviceCapabilities() failed (Status 0x%08lx)\n", Status);
+            DPRINT1("PiIrpQueryPnPDeviceCapabilities() failed (Status 0x%08lx)\n", Status);
         }
         RtlFreeUnicodeString(&DeviceId);
         return Status;
@@ -851,39 +851,13 @@ Cleanup:
 
 NTSTATUS
 NTAPI
-IopQueryDeviceCapabilities(PDEVICE_NODE DeviceNode,
-                           PDEVICE_CAPABILITIES DeviceCaps)
+PiSetDeviceCapabilities(
+    _In_ PDEVICE_NODE DeviceNode,
+    _Out_ PDEVICE_CAPABILITIES DeviceCaps)
 {
-    IO_STATUS_BLOCK StatusBlock;
-    IO_STACK_LOCATION Stack;
     NTSTATUS Status;
     HANDLE InstanceKey;
     UNICODE_STRING ValueName;
-
-    /* Set up the Header */
-    RtlZeroMemory(DeviceCaps, sizeof(DEVICE_CAPABILITIES));
-    DeviceCaps->Size = sizeof(DEVICE_CAPABILITIES);
-    DeviceCaps->Version = 1;
-    DeviceCaps->Address = -1;
-    DeviceCaps->UINumber = -1;
-
-    /* Set up the Stack */
-    RtlZeroMemory(&Stack, sizeof(IO_STACK_LOCATION));
-    Stack.Parameters.DeviceCapabilities.Capabilities = DeviceCaps;
-
-    /* Send the IRP */
-    Status = IopInitiatePnpIrp(DeviceNode->PhysicalDeviceObject,
-                               &StatusBlock,
-                               IRP_MN_QUERY_CAPABILITIES,
-                               &Stack);
-    if (!NT_SUCCESS(Status))
-    {
-        if (Status != STATUS_NOT_SUPPORTED)
-        {
-            DPRINT1("IRP_MN_QUERY_CAPABILITIES failed with status 0x%lx\n", Status);
-        }
-        return Status;
-    }
 
     /* Map device capabilities to capability flags */
     DeviceNode->CapabilityFlags = 0;
@@ -957,25 +931,19 @@ NTSTATUS
 IopQueryHardwareIds(PDEVICE_NODE DeviceNode,
                     HANDLE InstanceKey)
 {
-    IO_STACK_LOCATION Stack;
-    IO_STATUS_BLOCK IoStatusBlock;
+    PZZWSTR HwIds;
     PWSTR Ptr;
     UNICODE_STRING ValueName;
     NTSTATUS Status;
     ULONG Length, TotalLength;
     BOOLEAN IsValidID;
 
-    DPRINT("Sending IRP_MN_QUERY_ID.BusQueryHardwareIDs to device stack\n");
+    DPRINT("IopQueryHardwareIds() query BusQueryHardwareIDs from device stack\n");
 
-    RtlZeroMemory(&Stack, sizeof(Stack));
-    Stack.Parameters.QueryId.IdType = BusQueryHardwareIDs;
-    Status = IopInitiatePnpIrp(DeviceNode->PhysicalDeviceObject,
-                               &IoStatusBlock,
-                               IRP_MN_QUERY_ID,
-                               &Stack);
+    Status = PiIrpQueryPnPDeviceId(DeviceNode, BusQueryHardwareIDs, &HwIds);
     if (NT_SUCCESS(Status))
     {
-        IsValidID = IopValidateID((PWCHAR)IoStatusBlock.Information, BusQueryHardwareIDs);
+        IsValidID = IopValidateID(HwIds, BusQueryHardwareIDs);
 
         if (!IsValidID)
         {
@@ -984,7 +952,7 @@ IopQueryHardwareIds(PDEVICE_NODE DeviceNode,
 
         TotalLength = 0;
 
-        Ptr = (PWSTR)IoStatusBlock.Information;
+        Ptr = (PWSTR)HwIds;
         DPRINT("Hardware IDs:\n");
         while (*Ptr)
         {
@@ -1002,16 +970,19 @@ IopQueryHardwareIds(PDEVICE_NODE DeviceNode,
                                &ValueName,
                                0,
                                REG_MULTI_SZ,
-                               (PVOID)IoStatusBlock.Information,
+                               (PVOID)HwIds,
                                (TotalLength + 1) * sizeof(WCHAR));
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("ZwSetValueKey() failed (Status %lx)\n", Status);
         }
+
+        if (HwIds)
+            ExFreePool(HwIds);
     }
     else
     {
-        DPRINT("IopInitiatePnpIrp() failed (Status %x)\n", Status);
+        DPRINT1("PiIrpQueryPnPDeviceId() failed (Status %x)\n", Status);
     }
 
     return Status;
@@ -1022,25 +993,19 @@ NTSTATUS
 IopQueryCompatibleIds(PDEVICE_NODE DeviceNode,
                       HANDLE InstanceKey)
 {
-    IO_STACK_LOCATION Stack;
-    IO_STATUS_BLOCK IoStatusBlock;
+    PWCHAR CompIds;
     PWSTR Ptr;
     UNICODE_STRING ValueName;
     NTSTATUS Status;
     ULONG Length, TotalLength;
     BOOLEAN IsValidID;
 
-    DPRINT("Sending IRP_MN_QUERY_ID.BusQueryCompatibleIDs to device stack\n");
+    DPRINT("IopQueryCompatibleIds() query BusQueryCompatibleIDs from device stack\n");
 
-    RtlZeroMemory(&Stack, sizeof(Stack));
-    Stack.Parameters.QueryId.IdType = BusQueryCompatibleIDs;
-    Status = IopInitiatePnpIrp(DeviceNode->PhysicalDeviceObject,
-                               &IoStatusBlock,
-                               IRP_MN_QUERY_ID,
-                               &Stack);
-    if (NT_SUCCESS(Status) && IoStatusBlock.Information)
+    Status = PiIrpQueryPnPDeviceId(DeviceNode, BusQueryCompatibleIDs, &CompIds);
+    if (NT_SUCCESS(Status))
     {
-        IsValidID = IopValidateID((PWCHAR)IoStatusBlock.Information, BusQueryCompatibleIDs);
+        IsValidID = IopValidateID(CompIds, BusQueryCompatibleIDs);
 
         if (!IsValidID)
         {
@@ -1049,7 +1014,7 @@ IopQueryCompatibleIds(PDEVICE_NODE DeviceNode,
 
         TotalLength = 0;
 
-        Ptr = (PWSTR)IoStatusBlock.Information;
+        Ptr = (PWSTR)CompIds;
         DPRINT("Compatible IDs:\n");
         while (*Ptr)
         {
@@ -1067,16 +1032,19 @@ IopQueryCompatibleIds(PDEVICE_NODE DeviceNode,
                                &ValueName,
                                0,
                                REG_MULTI_SZ,
-                               (PVOID)IoStatusBlock.Information,
+                               (PVOID)CompIds,
                                (TotalLength + 1) * sizeof(WCHAR));
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("ZwSetValueKey() failed (Status %lx) or no Compatible ID returned\n", Status);
         }
+
+        if (CompIds)
+            ExFreePool(CompIds);
     }
     else
     {
-        DPRINT("IopInitiatePnpIrp() failed (Status %x)\n", Status);
+        DPRINT1("PiIrpQueryPnPDeviceId() failed (Status %x)\n", Status);
     }
 
     return Status;
@@ -1195,6 +1163,7 @@ PiInitializeDevNode(
     HANDLE InstanceKey = NULL;
     UNICODE_STRING InstancePathU;
     PDEVICE_OBJECT OldDeviceObject;
+    DEVICE_CAPABILITIES DeviceCaps;
 
     DPRINT("PiProcessNewDevNode(%p)\n", DeviceNode);
     DPRINT("PDO 0x%p\n", DeviceNode->PhysicalDeviceObject);
@@ -1255,6 +1224,15 @@ PiInitializeDevNode(
 
     // Set the device's DeviceDesc and LocationInformation fields
     PiSetDevNodeText(DeviceNode, InstanceKey);
+
+    /*
+     * Query device capabilities and save them if there are some.
+     */
+    Status = PiIrpQueryPnPDeviceCapabilities(DeviceNode, &DeviceCaps);
+    if (NT_SUCCESS(Status))
+    {
+        PiSetDeviceCapabilities(DeviceNode, &DeviceCaps);
+    }
 
     DPRINT("Sending IRP_MN_QUERY_BUS_INFORMATION to device stack\n");
 
@@ -1612,10 +1590,14 @@ PiStartDeviceFinal(
 
     DPRINT("Sending IRP_MN_QUERY_CAPABILITIES to device stack (after start)\n");
 
-    Status = IopQueryDeviceCapabilities(DeviceNode, &DeviceCapabilities);
-    if (!NT_SUCCESS(Status))
+    Status = PiIrpQueryPnPDeviceCapabilities(DeviceNode, &DeviceCapabilities);
+    if (NT_SUCCESS(Status))
     {
-        DPRINT("IopInitiatePnpIrp() failed (Status 0x%08lx)\n", Status);
+        PiSetDeviceCapabilities(DeviceNode, &DeviceCapabilities);
+    }
+    else
+    {
+        DPRINT("PiIrpQueryPnPDeviceCapabilities() failed (Status 0x%08lx)\n", Status);
     }
 
     // Query the device state (IRP_MN_QUERY_PNP_DEVICE_STATE)
@@ -2212,7 +2194,7 @@ IoRequestDeviceEject(IN PDEVICE_OBJECT PhysicalDeviceObject)
     IopQueueTargetDeviceEvent(&GUID_DEVICE_KERNEL_INITIATED_EJECT,
                               &DeviceNode->InstancePath);
 
-    if (IopQueryDeviceCapabilities(DeviceNode, &Capabilities) != STATUS_SUCCESS)
+    if (PiIrpQueryPnPDeviceCapabilities(DeviceNode, &Capabilities) != STATUS_SUCCESS)
     {
         goto cleanup;
     }
