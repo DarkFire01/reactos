@@ -163,6 +163,7 @@
 164 stdcall Win32DeleteFile(wstr) Win32DeleteFileW
 165 stdcall SHCreateDirectory(long ptr)
 166 stdcall CallCPLEntry16(long long long long long long)
+@ stdcall -version=0x600+ -stub SHAddDefaultPropertiesByExt(ptr)
 167 stdcall SHAddFromPropSheetExtArray(long long long)
 168 stdcall SHCreatePropSheetExtArray(long wstr long)
 169 stdcall SHDestroyPropSheetExtArray(long)
@@ -467,6 +468,11 @@
 756 stub -noname DeleteFileThumbnail
 757 stdcall -stub -version=0x600+ SHGetStockIconInfo(long long ptr)
 760 stub -noname -version=0x600+ SHConfirmOperation
+761 stub -noname -version=0x600+ SHChangeNotifyDeregisterWindow
+764 stdcall -version=0x600+ AssocCreateElement(long long ptr)
+777 stdcall -noname -version=0x600+ SHGetAssocKeys(ptr ptr long)
+778 stdcall -noname -version=0x600+ AssocGetPropListForExt(wstr ptr long ptr)
+@ stub -version=0x600+ AssocGetDetailsOfPropKey ;TODO:Figure me out please
 781 stub -noname -version=0x600+ SHApplyPropertiesToItem
 787 stub -version=0x600+ SHMapIDListToSystemImageListIndexAsync
 790 stub -version=0x600+ SHMapIDListToSystemImageListIndex
