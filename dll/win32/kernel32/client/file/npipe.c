@@ -1094,6 +1094,57 @@ GetNamedPipeHandleStateW(HANDLE hNamedPipe,
     return TRUE;
 }
 
+#define FSCTL_PIPE_SET_PIPE_ATTRIBUTE       CTL_CODE(FILE_DEVICE_NAMED_PIPE, 11, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_GET_CONNECTION_ATTRIBUTE CTL_CODE(FILE_DEVICE_NAMED_PIPE, 12, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+/***********************************************************************
+ *           GetNamedPipeClientProcessId  (KERNEL32.@)
+ */
+BOOL WINAPI GetNamedPipeClientProcessId( HANDLE pipe, ULONG *id )
+{
+    IO_STATUS_BLOCK iosb;
+
+    return NtFsControlFile( pipe, NULL, NULL, NULL, &iosb,
+                                          FSCTL_PIPE_GET_CONNECTION_ATTRIBUTE, (void *)"ClientProcessId",
+                                          sizeof("ClientProcessId"), id, sizeof(*id) );
+}
+
+/***********************************************************************
+ *           GetNamedPipeServerProcessId  (KERNEL32.@)
+ */
+BOOL WINAPI GetNamedPipeServerProcessId( HANDLE pipe, ULONG *id )
+{
+    IO_STATUS_BLOCK iosb;
+
+    return  NtFsControlFile( pipe, NULL, NULL, NULL, &iosb,
+                                          FSCTL_PIPE_GET_CONNECTION_ATTRIBUTE, (void *)"ServerProcessId",
+                                          sizeof("ServerProcessId"), id, sizeof(*id) );
+}
+
+/***********************************************************************
+ *           GetNamedPipeClientSessionId  (KERNEL32.@)
+ */
+BOOL WINAPI GetNamedPipeClientSessionId( HANDLE pipe, ULONG *id )
+{
+    //FIXME( "%p, %p\n", pipe, id );
+
+    if (!id) return FALSE;
+    *id = NtCurrentTeb()->ProcessEnvironmentBlock->SessionId;
+    return TRUE;
+}
+
+/***********************************************************************
+ *           GetNamedPipeServerSessionId  (KERNEL32.@)
+ */
+BOOL WINAPI GetNamedPipeServerSessionId( HANDLE pipe, ULONG *id )
+{
+  //  FIXME( "%p, %p\n", pipe, id );
+
+    if (!id) return FALSE;
+    *id = NtCurrentTeb()->ProcessEnvironmentBlock->SessionId;
+    return TRUE;
+}
+
 
 /*
  * @implemented

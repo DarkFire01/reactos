@@ -518,16 +518,16 @@
 @ stdcall GetModuleHandleW(wstr)
 @ stdcall GetNLSVersion(long long ptr)
 @ stdcall GetNLSVersionEx(long wstr ptr)
-@ stub -version=0x600+ GetNamedPipeAttribute
-@ stub -version=0x600+ GetNamedPipeClientComputerNameA
-@ stub -version=0x600+ GetNamedPipeClientComputerNameW
-@ stub -version=0x600+ GetNamedPipeClientProcessId
-@ stub -version=0x600+ GetNamedPipeClientSessionId
+@ stdcall -stub -version=0x600+ GetNamedPipeAttribute(ptr long str ptr ptr)
+@ stdcall -stub -version=0x600+ GetNamedPipeClientComputerNameA(ptr str long)
+@ stdcall -stub -version=0x600+ GetNamedPipeClientComputerNameW(ptr wstr long)
+@ stdcall -version=0x600+ GetNamedPipeClientProcessId(ptr ptr)
+@ stdcall -version=0x600+ GetNamedPipeClientSessionId(ptr ptr)
 @ stdcall GetNamedPipeHandleStateA(long ptr ptr ptr ptr str long)
 @ stdcall GetNamedPipeHandleStateW(long ptr ptr ptr ptr wstr long)
 @ stdcall GetNamedPipeInfo(long ptr ptr ptr ptr)
-@ stub -version=0x600+ GetNamedPipeServerProcessId
-@ stub -version=0x600+ GetNamedPipeServerSessionId
+@ stdcall -version=0x600+ GetNamedPipeServerProcessId(ptr ptr)
+@ stdcall -version=0x600+ GetNamedPipeServerSessionId(ptr ptr)
 @ stdcall GetNativeSystemInfo(ptr)
 @ stdcall GetNextVDMCommand(long)
 @ stdcall -version=0x500-0x502 GetNlsSectionName(long long long str str long)
