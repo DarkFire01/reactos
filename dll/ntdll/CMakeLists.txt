@@ -26,6 +26,7 @@ list(APPEND SOURCE
     ldr/verifier.c
     rtl/libsupp.c
     rtl/uilist.c
+    rtl/smlib
     rtl/version.c
     etw/trace.c)
 
