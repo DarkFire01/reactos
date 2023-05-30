@@ -1,0 +1,8 @@
+
+
+
+#define REACTOS_VERSION_DLL
+#define REACTOS_STR_FILE_DESCRIPTION  "ReactOS Hardware Safe Removal Support"
+#define REACTOS_STR_INTERNAL_NAME     "bthprops"
+#define REACTOS_STR_ORIGINAL_FILENAME "bthprops.dll"
+#include <reactos/version.rc>
