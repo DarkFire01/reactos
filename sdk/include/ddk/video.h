@@ -948,10 +948,10 @@ VPAPI
 VP_STATUS
 NTAPI
 VideoPortGetDeviceData(
-  IN PVOID HwDeviceExtension,
-  IN VIDEO_DEVICE_DATA_TYPE DeviceDataType,
-  IN PMINIPORT_QUERY_DEVICE_ROUTINE CallbackRoutine,
-  IN PVOID Context);
+  _In_ PVOID HwDeviceExtension,
+  _In_ VIDEO_DEVICE_DATA_TYPE DeviceDataType,
+  _In_ PMINIPORT_QUERY_DEVICE_ROUTINE CallbackRoutine,
+  _In_ PVOID Context);
 
 VPAPI
 VP_STATUS
