@@ -1404,7 +1404,7 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
                            Output | ConsoleOut,
                            0,
                            0xFFFFFFFF,
-                           NULL,
+                           "1024x768",
                            (PCM_PARTIAL_RESOURCE_LIST)MonitorData, // Pointer to MONITOR_CONFIGURATION_DATA
                            Size,
                            &PeripheralKey);
