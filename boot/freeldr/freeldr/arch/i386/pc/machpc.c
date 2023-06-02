@@ -1302,7 +1302,9 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
 {
     PCSTR Identifier;
     PCONFIGURATION_COMPONENT_DATA ControllerKey;
+    PCONFIGURATION_COMPONENT_DATA PeripheralKey;
     USHORT VesaVersion;
+    PMONITOR_CONFIGURATION_DATA MonitorData;
 
     PCM_PARTIAL_RESOURCE_LIST PartialResourceList;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor;
@@ -1373,6 +1375,39 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
             }
         }
     }
+
+
+    Size = sizeof(MONITOR_CONFIGURATION_DATA);
+    MonitorData = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
+    if (MonitorData == NULL)
+    {
+        ERR("Failed to allocate resource descriptor\n");
+        return;
+    }
+
+    RtlZeroMemory(MonitorData, sizeof(MonitorData));
+    MonitorData->HorizontalResolution = 1024;
+    MonitorData->HorizontalDisplayTime = 16000;
+    MonitorData->HorizontalBackPorch = 2000;
+    MonitorData->HorizontalFrontPorch = 1000;
+    MonitorData->HorizontalSync = 1500;
+    MonitorData->VerticalResolution = 768;
+    MonitorData->VerticalBackPorch = 39;
+    MonitorData->VerticalFrontPorch = 1;
+    MonitorData->VerticalSync = 1;
+    MonitorData->HorizontalScreenSize = 343;
+    MonitorData->VerticalScreenSize = 274;
+
+    FldrCreateComponentKey(ControllerKey,
+                           PeripheralClass,
+                           MonitorPeripheral,
+                           Output | ConsoleOut,
+                           0,
+                           0xFFFFFFFF,
+                           NULL,
+                           (PCM_PARTIAL_RESOURCE_LIST)MonitorData, // Pointer to MONITOR_CONFIGURATION_DATA
+                           Size,
+                           &PeripheralKey);
 }
 
 static
