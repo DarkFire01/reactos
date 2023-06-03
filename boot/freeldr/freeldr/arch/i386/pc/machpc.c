@@ -1304,7 +1304,8 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
     PCONFIGURATION_COMPONENT_DATA ControllerKey;
     PCONFIGURATION_COMPONENT_DATA PeripheralKey;
     USHORT VesaVersion;
-    PMONITOR_CONFIGURATION_DATA MonitorData;
+    // PMONITOR_CONFIGURATION_DATA MonitorData;
+    PCM_MONITOR_DEVICE_DATA MonitorData;
 
     PCM_PARTIAL_RESOURCE_LIST PartialResourceList;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor;
@@ -1376,6 +1377,7 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
         }
     }
 
+#if 0 // Using "old" configuration data
 
     Size = sizeof(MONITOR_CONFIGURATION_DATA);
     MonitorData = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
@@ -1408,6 +1410,75 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
                            (PCM_PARTIAL_RESOURCE_LIST)MonitorData, // Pointer to MONITOR_CONFIGURATION_DATA
                            Size,
                            &PeripheralKey);
+
+#else // Using "new" configuration list
+
+    Size = sizeof(CM_PARTIAL_RESOURCE_LIST) +
+           sizeof(CM_MONITOR_DEVICE_DATA);
+    PartialResourceList = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
+    if (PartialResourceList == NULL)
+    {
+        ERR("Failed to allocate resource descriptor\n");
+        return;
+    }
+
+    /* Initialize resource descriptor */
+    RtlZeroMemory(PartialResourceList, Size);
+    PartialResourceList->Version = 1;
+    PartialResourceList->Revision = 1;
+    PartialResourceList->Count = 1;
+
+    /* Set monitor-specific data */
+    PartialDescriptor = &PartialResourceList->PartialDescriptors[0];
+    PartialDescriptor->Type = CmResourceTypeDeviceSpecific;
+    PartialDescriptor->ShareDisposition = CmResourceShareUndetermined;
+    PartialDescriptor->Flags = 0;
+    PartialDescriptor->u.DeviceSpecificData.DataSize =
+        sizeof(CM_MONITOR_DEVICE_DATA);
+
+
+    /* Get pointer to geometry data */
+    MonitorData = (PVOID)(((ULONG_PTR)PartialResourceList) + sizeof(CM_PARTIAL_RESOURCE_LIST));
+
+    MonitorData->Version = 2;
+    MonitorData->Revision = 0;
+    MonitorData->HorizontalScreenSize = 343;
+    MonitorData->VerticalScreenSize = 274;
+    MonitorData->HorizontalResolution = 1024;
+    MonitorData->VerticalResolution = 768;
+    MonitorData->HorizontalDisplayTimeLow = 0;
+    MonitorData->HorizontalDisplayTime = 16000;
+    MonitorData->HorizontalDisplayTimeHigh = 0;
+    MonitorData->HorizontalBackPorchLow = 0;
+    MonitorData->HorizontalBackPorch = 2000;
+    MonitorData->HorizontalBackPorchHigh = 0;
+    MonitorData->HorizontalFrontPorchLow = 0;
+    MonitorData->HorizontalFrontPorch = 1000;
+    MonitorData->HorizontalFrontPorchHigh = 0;
+    MonitorData->HorizontalSyncLow = 0;
+    MonitorData->HorizontalSync = 1500;
+    MonitorData->HorizontalSyncHigh = 0;
+    MonitorData->VerticalBackPorchLow = 0;
+    MonitorData->VerticalBackPorch = 39;
+    MonitorData->VerticalBackPorchHigh = 0;
+    MonitorData->VerticalFrontPorchLow = 0;
+    MonitorData->VerticalFrontPorch = 1;
+    MonitorData->VerticalFrontPorchHigh = 0;
+    MonitorData->VerticalSyncLow = 0;
+    MonitorData->VerticalSync = 1;
+    MonitorData->VerticalSyncHigh = 0;
+
+    FldrCreateComponentKey(ControllerKey,
+                           PeripheralClass,
+                           MonitorPeripheral,
+                           Output | ConsoleOut,
+                           0,
+                           0xFFFFFFFF,
+                           "1024x768",
+                           PartialResourceList,
+                           Size,
+                           &PeripheralKey);
+#endif
 }
 
 static
