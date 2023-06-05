@@ -1304,6 +1304,10 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
     PCONFIGURATION_COMPONENT_DATA ControllerKey;
     USHORT VesaVersion;
 
+    PCM_PARTIAL_RESOURCE_LIST PartialResourceList;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor;
+    ULONG Size;
+
     /* FIXME: Set 'ComponentInformation' value */
 
     VesaVersion = BiosIsVesaSupported();
@@ -1323,6 +1327,29 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
     else
         Identifier = "VGA Display";
 
+
+    Size = sizeof(CM_PARTIAL_RESOURCE_LIST);
+    PartialResourceList = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
+    if (PartialResourceList == NULL)
+    {
+        ERR("Failed to allocate resource descriptor\n");
+        return;
+    }
+
+    /* Initialize resource descriptor */
+    RtlZeroMemory(PartialResourceList, Size);
+    PartialResourceList->Version = 1;
+    PartialResourceList->Revision = 1;
+    PartialResourceList->Count = 1;
+
+    /* Set Memory */
+    PartialDescriptor = &PartialResourceList->PartialDescriptors[0];
+    PartialDescriptor->Type = CmResourceTypeMemory;
+    PartialDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+    PartialDescriptor->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
+    PartialDescriptor->u.Memory.Start.LowPart = (ULONG_PTR)0xDEADBEEF;
+    PartialDescriptor->u.Memory.Length = 65536;
+
     FldrCreateComponentKey(BusKey,
                            ControllerClass,
                            DisplayController,
@@ -1330,8 +1357,8 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
                            0,
                            0xFFFFFFFF,
                            Identifier,
-                           NULL,
-                           0,
+                           PartialResourceList,
+                           Size,
                            &ControllerKey);
 
     /* FIXME: Add display peripheral (monitor) data */
