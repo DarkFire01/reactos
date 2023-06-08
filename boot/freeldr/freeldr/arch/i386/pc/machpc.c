@@ -18,6 +18,7 @@
 
 #include <freeldr.h>
 #include <cportlib/cportlib.h>
+#include <drivers/bootvid/framebuf.h>
 
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(HWDETECT);
@@ -1304,6 +1305,7 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
     PCONFIGURATION_COMPONENT_DATA ControllerKey;
     PCONFIGURATION_COMPONENT_DATA PeripheralKey;
     USHORT VesaVersion;
+    PCM_FRAMEBUF_DEVICE_DATA FramebufferData;
     // PMONITOR_CONFIGURATION_DATA MonitorData;
     PCM_MONITOR_DEVICE_DATA MonitorData;
 
@@ -1331,7 +1333,9 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
         Identifier = "VGA Display";
 
 
-    Size = sizeof(CM_PARTIAL_RESOURCE_LIST);
+    Size = sizeof(CM_PARTIAL_RESOURCE_LIST) +
+           1 * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) +
+           sizeof(CM_FRAMEBUF_DEVICE_DATA);
     PartialResourceList = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
     if (PartialResourceList == NULL)
     {
@@ -1343,15 +1347,44 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
     RtlZeroMemory(PartialResourceList, Size);
     PartialResourceList->Version = 1;
     PartialResourceList->Revision = 1;
-    PartialResourceList->Count = 1;
+    PartialResourceList->Count = 2;
 
     /* Set Memory */
     PartialDescriptor = &PartialResourceList->PartialDescriptors[0];
     PartialDescriptor->Type = CmResourceTypeMemory;
     PartialDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
     PartialDescriptor->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
-    PartialDescriptor->u.Memory.Start.LowPart = (ULONG_PTR)0xDEADBEEF;
-    PartialDescriptor->u.Memory.Length = 65536;
+    PartialDescriptor->u.Memory.Start.LowPart = (ULONG_PTR)0xA0000;
+    PartialDescriptor->u.Memory.Length = 256*1024;
+
+    /* Set framebuffer-specific data */
+    PartialDescriptor = &PartialResourceList->PartialDescriptors[1];
+    PartialDescriptor->Type = CmResourceTypeDeviceSpecific;
+    PartialDescriptor->ShareDisposition = CmResourceShareUndetermined;
+    PartialDescriptor->Flags = 0;
+    PartialDescriptor->u.DeviceSpecificData.DataSize =
+        sizeof(CM_FRAMEBUF_DEVICE_DATA);
+
+    /* Get pointer to framebuffer-specific data */
+    FramebufferData = (PVOID)(PartialDescriptor + 1);
+    FramebufferData->Version  = 2; // ARC_VERSION;
+    FramebufferData->Revision = 0; // ARC_REVISION;
+
+    RtlZeroMemory(FramebufferData, sizeof(*FramebufferData));
+    FramebufferData->VideoClock = 0; // FIXME
+
+    /* NOTE: FrameBufferSize == PixelsPerScanLine x VerticalResolution x PixelElementSize */
+
+    FramebufferData->ScreenWidth  = 640;
+    FramebufferData->ScreenHeight = 480;
+
+    /* Number of pixel elements per video memory line */
+    // FramebufferData->PixelsPerScanLine;
+
+    /* Physical format of the pixel */
+    // FramebufferData->PixelFormat;
+    // PIXEL_BITMASK PixelInformation;
+    FramebufferData->BitsPerPixel /*PixelDepth*/ = 16;
 
     FldrCreateComponentKey(BusKey,
                            ControllerClass,

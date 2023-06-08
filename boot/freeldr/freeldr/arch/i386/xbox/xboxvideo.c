@@ -27,9 +27,9 @@ DBG_DEFAULT_CHANNEL(UI);
 ULONG NvBase = 0xFD000000;
 PVOID FrameBuffer;
 ULONG FrameBufferSize;
-static ULONG ScreenWidth;
-static ULONG ScreenHeight;
-static ULONG BytesPerPixel;
+ULONG ScreenWidth;
+ULONG ScreenHeight;
+ULONG BytesPerPixel;
 static ULONG Delta;
 extern multiboot_info_t * MultibootInfoPtr;
 
