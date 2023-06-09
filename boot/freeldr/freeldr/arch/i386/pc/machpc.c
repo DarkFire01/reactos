@@ -1382,9 +1382,8 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
     // FramebufferData->PixelsPerScanLine;
 
     /* Physical format of the pixel */
-    // FramebufferData->PixelFormat;
-    // PIXEL_BITMASK PixelInformation;
     FramebufferData->BitsPerPixel /*PixelDepth*/ = 16;
+    FramebufferData->PixelInformation = {0};
 
     FldrCreateComponentKey(BusKey,
                            ControllerClass,
