@@ -85,24 +85,25 @@ typedef struct _CM_FRAMEBUF_DEVICE_DATA
     /* Number of pixel elements per video memory line */
     ULONG PixelsPerScanLine;
 
-    /* Physical format of the pixel */
-    // PIXEL_FORMAT PixelFormat; // RGBX or BGRX 8-bit per color, or BitMask
-    ULONG PixelFormat;
-
-    // /*
-    //  * This bit-mask is only valid if PixelFormat is set to PixelPixelBitMask.
-    //  * A bit being set defines what bits are used for what purpose such as
-    //  * Red, Green, Blue, or Reserved.
-    //  */
-    // struct
-    // {
-    //     ULONG RedMask;
-    //     ULONG GreenMask;
-    //     ULONG BlueMask;
-    //     ULONG ReservedMask;
-    // } /*PIXEL_BITMASK*/ PixelInformation;
-
     ULONG BitsPerPixel; // PixelDepth
+
+    /*
+     * Physical format of the pixel for BPP > 8, specified by bit-mask.
+     * A bit being set defines what bits are used for what purpose
+     * such as Red, Green, Blue, or Reserved.
+     */
+    typedef struct
+    {
+        // UCHAR NumberRedBits;
+        // UCHAR NumberGreenBits;
+        // UCHAR NumberBlueBits;
+        // UCHAR NumberReservedBits;
+        ULONG RedMask;
+        ULONG GreenMask;
+        ULONG BlueMask;
+        ULONG ReservedMask;
+    } PIXEL_BITMASK;
+    PIXEL_BITMASK PixelInformation;
 
 } CM_FRAMEBUF_DEVICE_DATA, *PCM_FRAMEBUF_DEVICE_DATA;
 
