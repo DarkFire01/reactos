@@ -186,13 +186,24 @@ static ULONG vmpMaskByBpp(UCHAR Bpp, COLOR_CHANNEL Channel)
 
 #endif
 
+static inline unsigned int _vid_popcount(unsigned int x)
+{
+#ifdef HAVE___BUILTIN_POPCOUNT
+    return __popcount(x);
+#else
+    x -= (x >> 1) & 0x55555555;
+    x = (x & 0x33333333) + ((x >> 2) & 0x33333333);
+    return ((x + (x >> 4)) & 0x0f0f0f0f) * 0x01010101 >> 24;
+#endif
+}
+
 static BOOLEAN
 GenFbVmpSetupCurrentMode(
     _In_ PGENFB_DEVICE_EXTENSION DeviceExtension)
 {
     PVIDEO_MODE_INFORMATION VideoMode = &DeviceExtension->CurrentVideoMode;
-    PBOOT_FRAMEBUF_DATA FrameBufData = &DeviceExtension->FrameBufData;
-    PCM_FRAMEBUF_DEVICE_DATA VideoData = &DeviceExtension->VideoConfigData;
+    PBOOT_FRAMEBUF_DATA FrameBufData  = &DeviceExtension->FrameBufData;
+    PCM_FRAMEBUF_DEVICE_DATA VideoData  = &DeviceExtension->VideoConfigData;
     PCM_MONITOR_DEVICE_DATA MonitorData = &DeviceExtension->MonitorConfigData;
     UCHAR BytesPerPixel;
 
@@ -233,20 +244,20 @@ GenFbVmpSetupCurrentMode(
     VideoMode->ScreenStride = VideoMode->VisScreenWidth * BytesPerPixel; // == PixelsPerScanLine
 
     VideoMode->NumberOfPlanes = 1;
-    VideoMode->BitsPerPlane = VideoData->BitsPerPixel; // BytesPerPixel * 8;
+    VideoMode->BitsPerPlane = VideoData->BitsPerPixel;
 
     /* Video frequency in Hertz */
-    VideoMode->Frequency = DeviceExtension->VideoConfigData.VideoClock;
+    VideoMode->Frequency = VideoData->VideoClock;
     if (VideoMode->Frequency == 0) // or 1 ?
         VideoMode->Frequency = 60; // Default value.
 
     /* Use metrics from the monitor, if any */
-    VideoMode->XMillimeter = DeviceExtension->MonitorConfigData.HorizontalScreenSize;
-    VideoMode->YMillimeter = DeviceExtension->MonitorConfigData.VerticalScreenSize;
+    VideoMode->XMillimeter = MonitorData->HorizontalScreenSize;
+    VideoMode->YMillimeter = MonitorData->VerticalScreenSize;
     if ((VideoMode->XMillimeter == 0) || (VideoMode->YMillimeter == 0))
     {
         /* Assume 96 DPI and 25.4 millimeters per inch, round to nearest */
-        ULONG dpi = 96;
+        static const ULONG dpi = 96;
         // VideoMode->XMillimeter = FrameBufData->ScreenWidth  * 254 / 960;
         // VideoMode->YMillimeter = FrameBufData->ScreenHeight * 254 / 960;
         VideoMode->XMillimeter = ((ULONGLONG)FrameBufData->ScreenWidth  * 254 + (dpi * 5)) / (dpi * 10);
@@ -254,26 +265,65 @@ GenFbVmpSetupCurrentMode(
     }
 
     // FrameBufData->PixelFormat;
-    if (BytesPerPixel >= 3)
+    if (VideoData->BitsPerPixel > 8) // (BytesPerPixel > 1)
     {
-        VideoMode->NumberRedBits   = 8;
-        VideoMode->NumberGreenBits = 8;
-        VideoMode->NumberBlueBits  = 8;
-        VideoMode->RedMask   = 0xFF0000;
-        VideoMode->GreenMask = 0x00FF00;
-        VideoMode->BlueMask  = 0x0000FF;
+        if (VideoData->PixelInformation.RedMask   == 0 &&
+            VideoData->PixelInformation.GreenMask == 0 &&
+            VideoData->PixelInformation.BlueMask  == 0)
+        {
+            switch (VideoData->BitsPerPixel)
+            {
+                case 32:
+                case 24: /* 8:8:8 */
+                    VideoMode->RedMask   = 0x00FF0000;
+                    VideoMode->GreenMask = 0x0000FF00;
+                    VideoMode->BlueMask  = 0x000000FF;
+                    break;
+                case 15: /* 5:5:5 */
+                    VideoMode->RedMask   = 0x00007C00;
+                    VideoMode->GreenMask = 0x000003E0;
+                    VideoMode->BlueMask  = 0x0000001F;
+                    break;
+                case 16: /* 5:6:5 */
+                    VideoMode->RedMask   = 0x0000F800;
+                    VideoMode->GreenMask = 0x000007E0;
+                    VideoMode->BlueMask  = 0x0000001F;
+                    break;
+                case 8:
+                case 4:
+                default:
+                    /* Palettized modes don't have a mask */
+                    VideoMode->RedMask   = 0;
+                    VideoMode->GreenMask = 0;
+                    VideoMode->BlueMask  = 0;
+            }
+        }
+        else
+        {
+            VideoMode->RedMask   = VideoData->PixelInformation.RedMask;
+            VideoMode->GreenMask = VideoData->PixelInformation.GreenMask;
+            VideoMode->BlueMask  = VideoData->PixelInformation.BlueMask;
+        }
+
+        VideoMode->NumberRedBits   = _vid_popcount(VideoMode->RedMask);   // 8;
+            // VideoData->PixelInformation.NumberRedBits;
+        VideoMode->NumberGreenBits = _vid_popcount(VideoMode->GreenMask); // 8;
+            // VideoData->PixelInformation.NumberGreenBits;
+        VideoMode->NumberBlueBits  = _vid_popcount(VideoMode->BlueMask);  // 8;
+            // VideoData->PixelInformation.NumberBlueBits;
     }
     else
     {
         /* FIXME: not implemented */
-        DPRINT1("BytesPerPixel %d - not implemented\n", BytesPerPixel);
+        DPRINT1("BitsPerPixel %d - not implemented\n", VideoData->BitsPerPixel);
     }
 
     VideoMode->VideoMemoryBitmapWidth  = VideoMode->VisScreenWidth;
     VideoMode->VideoMemoryBitmapHeight = VideoMode->VisScreenHeight;
 
-    VideoMode->AttributeFlags = VIDEO_MODE_GRAPHICS | VIDEO_MODE_COLOR |
-        VIDEO_MODE_NO_OFF_SCREEN;
+    VideoMode->AttributeFlags =
+        VIDEO_MODE_GRAPHICS | VIDEO_MODE_COLOR | VIDEO_MODE_NO_OFF_SCREEN |
+        ((VideoData->BitsPerPixel <= 8) ? VIDEO_MODE_PALETTE_DRIVEN : 0);
     VideoMode->DriverSpecificAttributeFlags = 0;
 
     return TRUE;
