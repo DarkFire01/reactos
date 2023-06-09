@@ -22,6 +22,8 @@
 // #define DPRINT(fmt, ...)    VideoDebugPrint((Info, fmt, ##__VA_ARGS__))
 // #define DPRINT1(fmt, ...)   VideoDebugPrint((Error, fmt, ##__VA_ARGS__))
 
+//#define __debugbreak()
+
 #include <drivers/bootvid/framebuf.h>
 #include <drivers/bootvid/cfgconv.h>
 
@@ -521,7 +523,7 @@ GenFbGetDeviceDataCallback(
     PVIDEO_PORT_CONFIG_INFO ConfigInfo = Context;
     PWCHAR identifier = Identifier;
     PCM_COMPONENT_INFORMATION CompInfo = ComponentInformation;
-    VIDEO_ACCESS_RANGE accessRanges[1]; // [3];
+    VIDEO_ACCESS_RANGE accessRanges[1]; // [2];
     VP_STATUS status;
 
     switch (DeviceDataType)
@@ -574,8 +576,8 @@ GenFbGetDeviceDataCallback(
                 /* The legacy video controller configuration data does not
                  * contain any information regarding framebuffer format, etc.
                  * so set them to zero. We will later calculate default values. */
-                RtlZeroMemory(&hwDeviceExtension->VideoConfigData,
-                              sizeof(hwDeviceExtension->VideoConfigData));
+                VideoPortZeroMemory(&hwDeviceExtension->VideoConfigData,
+                                    sizeof(hwDeviceExtension->VideoConfigData));
             }
             else if ((ConfigurationDataLength == sizeof(configData->video)) &&
                      configData->video.cmResDescriptorLength >= sizeof(*configData->video.cmDescriptor))
@@ -619,8 +621,8 @@ GenFbGetDeviceDataCallback(
                     /* The configuration does not contain any information
                      * regarding framebuffer format, etc. so set them to zero.
                      * We will later calculate default values. */
-                    RtlZeroMemory(&hwDeviceExtension->VideoConfigData,
-                                  sizeof(hwDeviceExtension->VideoConfigData));
+                    VideoPortZeroMemory(&hwDeviceExtension->VideoConfigData,
+                                        sizeof(hwDeviceExtension->VideoConfigData));
                 }
             }
 
@@ -704,23 +706,13 @@ GenFbGetDeviceDataCallback(
             if (!hwDeviceExtension->VideoAddress)
                 return ERROR_INVALID_PARAMETER;
 
-            /* Map the cursor memory into the system virtual
-             * address space so we can talk to it. */
-            hwDeviceExtension->CursorAddress =
-                VideoPortGetDeviceBase(hwDeviceExtension,
-                                       accessRanges[1].RangeStart, // cursor
-                                       accessRanges[1].RangeLength,
-                                       accessRanges[1].RangeInIoSpace);
-            if (!hwDeviceExtension->CursorAddress)
-                return ERROR_INVALID_PARAMETER;
-
             /* Map the video memory into the system virtual
              * address space so we can clear it out. */
             hwDeviceExtension->FrameAddress =
                 VideoPortGetDeviceBase(hwDeviceExtension,
-                                       accessRanges[2].RangeStart, // Frame
-                                       accessRanges[2].RangeLength,
-                                       accessRanges[2].RangeInIoSpace);
+                                       accessRanges[1].RangeStart, // Frame
+                                       accessRanges[1].RangeLength,
+                                       accessRanges[1].RangeInIoSpace);
             if (!hwDeviceExtension->FrameAddress)
                 return ERROR_INVALID_PARAMETER;
 #else
@@ -731,6 +723,9 @@ GenFbGetDeviceDataCallback(
                                        accessRanges[0].RangeInIoSpace);
             if (!hwDeviceExtension->FrameAddress)
                 return ERROR_INVALID_PARAMETER;
+
+            DPRINT1("GenFbVmpFindAdapter: Mapped framebuffer 0x%I64x to 0x%p - size %lu\n",
+                accessRanges[0].RangeStart, hwDeviceExtension->FrameAddress, accessRanges[0].RangeLength);
 #endif
 
             return NO_ERROR;
@@ -791,8 +786,8 @@ GenFbGetDeviceDataCallback(
                     /* The configuration does not contain any information
                      * regarding the monitor so set them to zero.
                      * We will later calculate default values. */
-                    RtlZeroMemory(&hwDeviceExtension->MonitorConfigData,
-                                  sizeof(hwDeviceExtension->MonitorConfigData));
+                    VideoPortZeroMemory(&hwDeviceExtension->MonitorConfigData,
+                                        sizeof(hwDeviceExtension->MonitorConfigData));
                 }
             }
 
@@ -1256,9 +1251,9 @@ GenFbVmpStartIO(
 
             /* Copy back our existing current mode */
             VideoMode = (PVIDEO_MODE_INFORMATION)RequestPacket->OutputBuffer;
-            RtlCopyMemory(VideoMode,
-                          &DeviceExtension->CurrentVideoMode,
-                          sizeof(VIDEO_MODE_INFORMATION));
+            VideoPortMoveMemory(VideoMode,
+                                &DeviceExtension->CurrentVideoMode,
+                                sizeof(VIDEO_MODE_INFORMATION));
             StatusBlock->Information = sizeof(VIDEO_MODE_INFORMATION);
             Status = NO_ERROR;
             break;
