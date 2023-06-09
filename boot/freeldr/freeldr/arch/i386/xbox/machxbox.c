@@ -231,7 +231,8 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
 
     /* Physical format of the pixel */
     FramebufferData->BitsPerPixel /*PixelDepth*/ = (8 * BytesPerPixel);
-    FramebufferData->PixelInformation = {0};
+    RtlZeroMemory(&FramebufferData->PixelInformation,
+                  sizeof(FramebufferData->PixelInformation));
 
     FldrCreateComponentKey(BusKey,
                            ControllerClass,
@@ -287,7 +288,7 @@ DetectIsaBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
     /* Detect ISA/BIOS devices */
     DetectBiosDisks(SystemKey, BusKey);
     DetectSerialPorts(BusKey, XboxGetSerialPort, MAX_XBOX_COM_PORTS);
-    DetectDisplayController(BusKey);
+    // DetectDisplayController(BusKey);
 
     /* FIXME: Detect more ISA devices */
 }
@@ -325,6 +326,46 @@ XboxHwDetect(VOID)
     /* TODO: Build actual xbox's hardware configuration tree */
     DetectPciBios(SystemKey, &BusNumber);
     DetectIsaBios(SystemKey, &BusNumber);
+
+// FIXME Investigate: on XBOX, display controller is on PCI
+    {
+    PCONFIGURATION_COMPONENT_DATA BusKey = SystemKey;
+    ULONG NumPciBus = 0;
+    ULONG PciBusToFind = 1;
+
+    /* PCI buses are under the System Key (i.e. siblings) */
+    BusKey = SystemKey->Child;
+    while (BusKey)
+    {
+        ERR("** XBOX: Current bus '%s' **\n", BusKey->ComponentEntry.Identifier);
+
+        /* Try to get a match */
+        if ((BusKey->ComponentEntry.Class == AdapterClass) &&
+            (BusKey->ComponentEntry.Type  == MultiFunctionAdapter) &&
+            /* Verify it's a PCI key */
+            (BusKey->ComponentEntry.Identifier &&
+             !_stricmp(BusKey->ComponentEntry.Identifier, "PCI")))
+        {
+            /* Got a PCI bus, check whether it's the one to find */
+            if (NumPciBus == PciBusToFind)
+            {
+                ERR("** XBOX: PCI bus #1 found!\n **\n");
+                break;
+            }
+            /* Nope, continue */
+            ++NumPciBus;
+        }
+
+        /* Next sibling */
+        BusKey = BusKey->Sibling;
+    }
+
+    if (BusKey)
+    {
+        ERR("** XBOX: Adding Display Controller on PCI #1 **\n");
+        DetectDisplayController(BusKey);
+    }
+    }
 
     TRACE("DetectHardware() Done\n");
     return SystemKey;

@@ -200,6 +200,8 @@ XboxVideoInit(VOID)
   /* Verify that framebuffer address is page-aligned */
   ASSERT((ULONG_PTR)FrameBuffer % PAGE_SIZE == 0);
 
+ERR("XBOX framebuffer at 0x%p\n", FrameBuffer);
+
   /* Obtain framebuffer memory size from multiboot memory map */
   if ((FrameBufferSize = XboxGetFramebufferSize(FrameBuffer)) == 0)
   {
