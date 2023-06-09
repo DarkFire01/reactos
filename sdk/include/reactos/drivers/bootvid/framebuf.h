@@ -92,7 +92,7 @@ typedef struct _CM_FRAMEBUF_DEVICE_DATA
      * A bit being set defines what bits are used for what purpose
      * such as Red, Green, Blue, or Reserved.
      */
-    typedef struct
+    struct
     {
         // UCHAR NumberRedBits;
         // UCHAR NumberGreenBits;
@@ -102,8 +102,7 @@ typedef struct _CM_FRAMEBUF_DEVICE_DATA
         ULONG GreenMask;
         ULONG BlueMask;
         ULONG ReservedMask;
-    } PIXEL_BITMASK;
-    PIXEL_BITMASK PixelInformation;
+    } PixelInformation;
 
 } CM_FRAMEBUF_DEVICE_DATA, *PCM_FRAMEBUF_DEVICE_DATA;
 
