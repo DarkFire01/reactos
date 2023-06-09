@@ -8,7 +8,7 @@
 /* INCLUDES ******************************************************************/
 
 #include <uefildr.h>
-
+#include <drivers/bootvid/framebuf.h>
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WARNING);
 
@@ -23,6 +23,131 @@ extern UINT32 FreeldrDescCount;
 BOOLEAN AcpiPresent = FALSE;
 
 /* FUNCTIONS *****************************************************************/
+extern REACTOS_INTERNAL_BGCONTEXT framebufferDatatwo;
+
+static VOID
+DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
+{
+    PCONFIGURATION_COMPONENT_DATA ControllerKey;
+    PCM_PARTIAL_RESOURCE_LIST PartialResourceList;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor;
+    PCM_FRAMEBUF_DEVICE_DATA FramebufferData;
+    ULONG Size;
+
+
+    Size = sizeof(CM_PARTIAL_RESOURCE_LIST) +
+           2 * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) +
+           sizeof(CM_FRAMEBUF_DEVICE_DATA);
+    PartialResourceList = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
+    if (PartialResourceList == NULL)
+    {
+        ERR("Failed to allocate resource descriptor\n");
+        return;
+    }
+
+    /* Initialize resource descriptor */
+    RtlZeroMemory(PartialResourceList, Size);
+    PartialResourceList->Version = 1;
+    PartialResourceList->Revision = 1;
+    PartialResourceList->Count = 3;
+
+    /* Set Memory */
+    PartialDescriptor = &PartialResourceList->PartialDescriptors[1];
+    PartialDescriptor->Type = CmResourceTypeMemory;
+    PartialDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+    PartialDescriptor->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
+    PartialDescriptor->u.Memory.Start.QuadPart = ((ULONG_PTR)framebufferDatatwo.BaseAddress & 0x0FFFFFFF);
+    PartialDescriptor->u.Memory.Length = framebufferDatatwo.BufferSize;
+
+    /* Set framebuffer-specific data */
+    PartialDescriptor = &PartialResourceList->PartialDescriptors[2];
+    PartialDescriptor->Type = CmResourceTypeDeviceSpecific;
+    PartialDescriptor->ShareDisposition = CmResourceShareUndetermined;
+    PartialDescriptor->Flags = 0;
+    PartialDescriptor->u.DeviceSpecificData.DataSize =
+        sizeof(CM_FRAMEBUF_DEVICE_DATA);
+
+    /* Get pointer to framebuffer-specific data */
+    FramebufferData = (PVOID)(PartialDescriptor + 1);
+    FramebufferData->Version  = 2; // ARC_VERSION;
+    FramebufferData->Revision = 0; // ARC_REVISION;
+
+    RtlZeroMemory(FramebufferData, sizeof(*FramebufferData));
+    FramebufferData->VideoClock = 0; // FIXME
+
+    /* NOTE: FrameBufferSize == PixelsPerScanLine x VerticalResolution x PixelElementSize */
+
+    FramebufferData->ScreenWidth  = framebufferDatatwo.ScreenWidth;
+    FramebufferData->ScreenHeight = framebufferDatatwo.ScreenHeight;
+
+    /* Number of pixel elements per video memory line */
+    // FramebufferData->PixelsPerScanLine;
+
+    /* Physical format of the pixel */
+    FramebufferData->BitsPerPixel /*PixelDepth*/ = (8 * 4);
+    RtlZeroMemory(&FramebufferData->PixelInformation,
+                  sizeof(FramebufferData->PixelInformation));
+
+    FldrCreateComponentKey(BusKey,
+                           ControllerClass,
+                           DisplayController,
+                           Output | ConsoleOut,
+                           0,
+                           0xFFFFFFFF,
+                           "UEFI Framebuffer",
+                           PartialResourceList,
+                           Size,
+                           &ControllerKey);
+}
+
+
+static
+VOID
+DetectIsaBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
+{
+    PCM_PARTIAL_RESOURCE_LIST PartialResourceList;
+    PCONFIGURATION_COMPONENT_DATA BusKey;
+    ULONG Size;
+
+    /* Set 'Configuration Data' value */
+    Size = sizeof(CM_PARTIAL_RESOURCE_LIST) -
+           sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
+    PartialResourceList = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
+    if (PartialResourceList == NULL)
+    {
+        ERR("Failed to allocate resource descriptor\n");
+        return;
+    }
+
+    /* Initialize resource descriptor */
+    RtlZeroMemory(PartialResourceList, Size);
+    PartialResourceList->Version = 1;
+    PartialResourceList->Revision = 1;
+    PartialResourceList->Count = 0;
+
+    /* Create new bus key */
+    FldrCreateComponentKey(SystemKey,
+                           AdapterClass,
+                           MultiFunctionAdapter,
+                           0,
+                           0,
+                           0xFFFFFFFF,
+                           "ISA",
+                           PartialResourceList,
+                           Size,
+                           &BusKey);
+
+    /* Increment bus number */
+    (*BusNumber)++;
+    DetectDisplayController(BusKey);
+    /* Detect ISA/BIOS devices */
+    //DetectBiosDisks(SystemKey, BusKey);
+    //DetectSerialPorts(BusKey, XboxGetSerialPort, MAX_XBOX_COM_PORTS);
+    // DetectDisplayController(BusKey);
+
+    /* FIXME: Detect more ISA devices */
+}
+
 
 static
 PRSDP_DESCRIPTOR
@@ -144,6 +269,7 @@ UefiHwDetect(VOID)
 
     /* Detect ACPI */
     DetectAcpiBios(SystemKey, &BusNumber);
+    DetectIsaBios(SystemKey, &BusNumber);
 
     TRACE("DetectHardware() Done\n");
     return SystemKey;

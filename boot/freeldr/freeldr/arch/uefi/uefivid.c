@@ -22,7 +22,7 @@ extern EFI_HANDLE GlobalImageHandle;
 extern UCHAR BitmapFont8x16[256 * 16];
 
 UCHAR MachDefaultTextColor = COLOR_GRAY;
-REACTOS_INTERNAL_BGCONTEXT framebufferData;
+REACTOS_INTERNAL_BGCONTEXT framebufferDatatwo;
 EFI_GUID EfiGraphicsOutputProtocol = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 
 /* FUNCTIONS ******************************************************************/
@@ -33,7 +33,7 @@ UefiInitalizeVideo(VOID)
     EFI_STATUS Status;
     EFI_GRAPHICS_OUTPUT_PROTOCOL* gop = NULL;
 
-    RtlZeroMemory(&framebufferData, sizeof(framebufferData));
+    RtlZeroMemory(&framebufferDatatwo, sizeof(framebufferDatatwo));
     Status = GlobalSystemTable->BootServices->LocateProtocol(&EfiGraphicsOutputProtocol, 0, (void**)&gop);
     if (Status != EFI_SUCCESS)
     {
@@ -44,12 +44,12 @@ UefiInitalizeVideo(VOID)
     /* We don't need high resolutions for freeldr */
     gop->SetMode(gop, LOWEST_SUPPORTED_RES);
 
-    framebufferData.BaseAddress        = (ULONG_PTR)gop->Mode->FrameBufferBase;
-    framebufferData.BufferSize         = gop->Mode->FrameBufferSize;
-    framebufferData.ScreenWidth        = gop->Mode->Info->HorizontalResolution;
-    framebufferData.ScreenHeight       = gop->Mode->Info->VerticalResolution;
-    framebufferData.PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
-    framebufferData.PixelFormat        = gop->Mode->Info->PixelFormat;
+    framebufferDatatwo.BaseAddress        = (ULONG_PTR)gop->Mode->FrameBufferBase;
+    framebufferDatatwo.BufferSize         = gop->Mode->FrameBufferSize;
+    framebufferDatatwo.ScreenWidth        = gop->Mode->Info->HorizontalResolution;
+    framebufferDatatwo.ScreenHeight       = gop->Mode->Info->VerticalResolution;
+    framebufferDatatwo.PixelsPerScanLine  = gop->Mode->Info->PixelsPerScanLine;
+    framebufferDatatwo.PixelFormat        = gop->Mode->Info->PixelFormat;
 
     return Status;
 }
@@ -57,12 +57,12 @@ UefiInitalizeVideo(VOID)
 VOID
 UefiPrintFramebufferData(VOID)
 {
-    TRACE("Framebuffer BaseAddress       : %X\n", framebufferData.BaseAddress);
-    TRACE("Framebuffer BufferSize        : %X\n", framebufferData.BufferSize);
-    TRACE("Framebuffer ScreenWidth       : %d\n", framebufferData.ScreenWidth);
-    TRACE("Framebuffer ScreenHeight      : %d\n", framebufferData.ScreenHeight);
-    TRACE("Framebuffer PixelsPerScanLine : %d\n", framebufferData.PixelsPerScanLine);
-    TRACE("Framebuffer PixelFormat       : %d\n", framebufferData.PixelFormat);
+    TRACE("Framebuffer BaseAddress       : %X\n", framebufferDatatwo.BaseAddress);
+    TRACE("Framebuffer BufferSize        : %X\n", framebufferDatatwo.BufferSize);
+    TRACE("Framebuffer ScreenWidth       : %d\n", framebufferDatatwo.ScreenWidth);
+    TRACE("Framebuffer ScreenHeight      : %d\n", framebufferDatatwo.ScreenHeight);
+    TRACE("Framebuffer PixelsPerScanLine : %d\n", framebufferDatatwo.PixelsPerScanLine);
+    TRACE("Framebuffer PixelFormat       : %d\n", framebufferDatatwo.PixelFormat);
 }
 
 static ULONG
@@ -92,11 +92,11 @@ UefiVideoClearScreenColor(ULONG Color, BOOLEAN FullScreen)
     ULONG Line, Col;
     PULONG p;
 
-    Delta = (framebufferData.PixelsPerScanLine * 4 + 3) & ~ 0x3;
-    for (Line = 0; Line < framebufferData.ScreenHeight - (FullScreen ? 0 : 2 * TOP_BOTTOM_LINES); Line++)
+    Delta = (framebufferDatatwo.PixelsPerScanLine * 4 + 3) & ~ 0x3;
+    for (Line = 0; Line < framebufferDatatwo.ScreenHeight - (FullScreen ? 0 : 2 * TOP_BOTTOM_LINES); Line++)
     {
-        p = (PULONG) ((char *) framebufferData.BaseAddress + (Line + (FullScreen ? 0 : TOP_BOTTOM_LINES)) * Delta);
-        for (Col = 0; Col < framebufferData.ScreenWidth; Col++)
+        p = (PULONG) ((char *) framebufferDatatwo.BaseAddress + (Line + (FullScreen ? 0 : TOP_BOTTOM_LINES)) * Delta);
+        for (Col = 0; Col < framebufferDatatwo.ScreenWidth; Col++)
         {
             *p++ = Color;
         }
@@ -121,9 +121,9 @@ UefiVideoOutputChar(UCHAR Char, unsigned X, unsigned Y, ULONG FgColor, ULONG BgC
     unsigned Line;
     unsigned Col;
     ULONG Delta;
-    Delta = (framebufferData.PixelsPerScanLine * 4 + 3) & ~ 0x3;
+    Delta = (framebufferDatatwo.PixelsPerScanLine * 4 + 3) & ~ 0x3;
     FontPtr = BitmapFont8x16 + Char * 16;
-    Pixel = (PULONG) ((char *) framebufferData.BaseAddress +
+    Pixel = (PULONG) ((char *) framebufferDatatwo.BaseAddress +
             (Y * CHAR_HEIGHT + TOP_BOTTOM_LINES) *  Delta + X * CHAR_WIDTH * 4);
 
     for (Line = 0; Line < CHAR_HEIGHT; Line++)
@@ -153,8 +153,8 @@ UefiVideoPutChar(int Ch, UCHAR Attr, unsigned X, unsigned Y)
 VOID
 UefiVideoGetDisplaySize(PULONG Width, PULONG Height, PULONG Depth)
 {
-    *Width =  framebufferData.ScreenWidth / CHAR_WIDTH;
-    *Height = (framebufferData.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT;
+    *Width =  framebufferDatatwo.ScreenWidth / CHAR_WIDTH;
+    *Height = (framebufferDatatwo.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT;
     *Depth =  0;
 }
 
@@ -168,7 +168,7 @@ UefiVideoSetDisplayMode(char *DisplayMode, BOOLEAN Init)
 ULONG
 UefiVideoGetBufferSize(VOID)
 {
-    return ((framebufferData.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT * (framebufferData.ScreenWidth / CHAR_WIDTH) * 2);
+    return ((framebufferDatatwo.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT * (framebufferDatatwo.ScreenWidth / CHAR_WIDTH) * 2);
 }
 
 VOID
@@ -177,9 +177,9 @@ UefiVideoCopyOffScreenBufferToVRAM(PVOID Buffer)
     PUCHAR OffScreenBuffer = (PUCHAR)Buffer;
 
     ULONG Col, Line;
-    for (Line = 0; Line < (framebufferData.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT; Line++)
+    for (Line = 0; Line < (framebufferDatatwo.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT; Line++)
     {
-        for (Col = 0; Col < framebufferData.ScreenWidth / CHAR_WIDTH; Col++)
+        for (Col = 0; Col < framebufferDatatwo.ScreenWidth / CHAR_WIDTH; Col++)
         {
             UefiVideoPutChar(OffScreenBuffer[0], OffScreenBuffer[1], Col, Line);
             OffScreenBuffer += 2;
@@ -192,18 +192,18 @@ UefiVideoScrollUp(VOID)
 {
     ULONG BgColor, Dummy;
     ULONG Delta;
-    Delta = (framebufferData.PixelsPerScanLine * 4 + 3) & ~ 0x3;
-    ULONG PixelCount = framebufferData.ScreenWidth * CHAR_HEIGHT *
-                       (((framebufferData.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT) - 1);
-    PULONG Src = (PULONG)((PUCHAR)framebufferData.BaseAddress + (CHAR_HEIGHT + TOP_BOTTOM_LINES) * Delta);
-    PULONG Dst = (PULONG)((PUCHAR)framebufferData.BaseAddress + TOP_BOTTOM_LINES * Delta);
+    Delta = (framebufferDatatwo.PixelsPerScanLine * 4 + 3) & ~ 0x3;
+    ULONG PixelCount = framebufferDatatwo.ScreenWidth * CHAR_HEIGHT *
+                       (((framebufferDatatwo.ScreenHeight - 2 * TOP_BOTTOM_LINES) / CHAR_HEIGHT) - 1);
+    PULONG Src = (PULONG)((PUCHAR)framebufferDatatwo.BaseAddress + (CHAR_HEIGHT + TOP_BOTTOM_LINES) * Delta);
+    PULONG Dst = (PULONG)((PUCHAR)framebufferDatatwo.BaseAddress + TOP_BOTTOM_LINES * Delta);
 
     UefiVideoAttrToColors(ATTR(COLOR_WHITE, COLOR_BLACK), &Dummy, &BgColor);
 
     while (PixelCount--)
         *Dst++ = *Src++;
 
-    for (PixelCount = 0; PixelCount < framebufferData.ScreenWidth * CHAR_HEIGHT; PixelCount++)
+    for (PixelCount = 0; PixelCount < framebufferDatatwo.ScreenWidth * CHAR_HEIGHT; PixelCount++)
         *Dst++ = BgColor;
 }
 
