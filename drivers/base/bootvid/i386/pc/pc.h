@@ -27,7 +27,7 @@ InitPaletteWithTable(
 
 VOID
 PrepareForSetPixel(VOID);
-
+#if 0
 FORCEINLINE
 VOID
 SetPixel(
@@ -49,7 +49,14 @@ SetPixel(
     /* Set the new color */
     WRITE_REGISTER_UCHAR(PixelPosition, Color);
 }
-
+#else
+FORCEINLINE
+VOID
+SetPixel(
+    _In_ ULONG Left,
+    _In_ ULONG Top,
+    _In_ UCHAR Color);
+#endif
 VOID
 NTAPI
 PreserveRow(

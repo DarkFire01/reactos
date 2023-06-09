@@ -131,9 +131,9 @@ UefiHwDetect(VOID)
     TRACE("DetectHardware()\n");
 
     /* Create the 'System' key */
-    FldrCreateSystemKey(&SystemKey);
+    FldrCreateSystemKey(&SystemKey, "AT/AT COMPATIBLE");
 #if defined(_M_IX86) || defined(_M_AMD64) /* Taken from Windows 11 */
-    FldrSetIdentifier(SystemKey, "AT/AT COMPATIBLE");
+  //  FldrSetIdentifier(SystemKey, "AT/AT COMPATIBLE");
 #elif defined(_M_IA64) /* Taken from Windows XP 64-bit*/
     FldrSetIdentifier(SystemKey, "Intel Itanium processor family");
 #elif defined(_M_ARM) || defined(_M_ARM64) /* Taken from Windows RT/11 */

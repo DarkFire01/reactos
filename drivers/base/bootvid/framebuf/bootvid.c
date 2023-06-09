@@ -9,10 +9,22 @@
 
 //#include <drivers/bootvid/cfgconv.h>
 //#include <drivers/bootvid/framebuf.h>
+#include "framebuf.h"
 
+#include <arc/arc.h>
 #include <debug.h>
 
 /* GLOBALS ********************************************************************/
+
+PCONFIGURATION_COMPONENT_DATA
+NTAPI
+KeFindConfigurationNextEntry(
+    _In_ PCONFIGURATION_COMPONENT_DATA Child,
+    _In_ CONFIGURATION_CLASS Class,
+    _In_ CONFIGURATION_TYPE Type,
+    _In_opt_ PULONG ComponentKey,
+    _In_ PCONFIGURATION_COMPONENT_DATA *NextLink
+);
 
 static ULONG_PTR FrameBufferStart = 0;
 static ULONG FrameBufferWidth, FrameBufferHeight, PanH, PanV;
@@ -316,7 +328,7 @@ VidInitialize(
         return FALSE;
     }
 
-    ULONG_PTR FrameBuffer = gBootFbData.BaseAddress;
+    ULONG_PTR FrameBuffer = gBootFbData.BaseAddress.QuadPart;
     FrameBufferWidth  = gBootFbData.ScreenWidth;
     FrameBufferHeight = gBootFbData.ScreenHeight;
 
@@ -605,7 +617,7 @@ VidScreenToBufferBlt(
     RtlZeroMemory(Buffer, Delta * Height);
 
     /* Start the outer Y height loop */
-    for (ULONG y = 0; y < Height; y++)
+    for (y = 0; y < Height; y++)
     {
         /* Set current scanline */
         PUCHAR Back = BackBuffer + BB_OFFSET(Left, Top + y);
