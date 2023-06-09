@@ -61,23 +61,32 @@ XboxVmpFindAdapter(
     OUT PUCHAR Again)
 {
     PXBOXVMP_DEVICE_EXTENSION XboxVmpDeviceExtension;
-    VIDEO_ACCESS_RANGE AccessRanges[3];
+    VIDEO_ACCESS_RANGE AccessRanges[3] = {0};
     VP_STATUS Status;
     USHORT VendorId = 0x10DE; /* NVIDIA Corporation */
     USHORT DeviceId = 0x02A0; /* NV2A XGPU */
+    ULONG Slot = 0;
 
     TRACE_(IHVVIDEO, "XboxVmpFindAdapter\n");
 
     XboxVmpDeviceExtension = (PXBOXVMP_DEVICE_EXTENSION)HwDeviceExtension;
 
     Status = VideoPortGetAccessRanges(HwDeviceExtension, 0, NULL, 3, AccessRanges,
-                                      &VendorId, &DeviceId, NULL);
-
+                                      &VendorId, &DeviceId, &Slot);
     if (Status == NO_ERROR)
     {
         XboxVmpDeviceExtension->PhysControlStart = AccessRanges[0].RangeStart;
         XboxVmpDeviceExtension->ControlLength = AccessRanges[0].RangeLength;
         XboxVmpDeviceExtension->PhysFrameBufferStart = AccessRanges[1].RangeStart;
+
+// (hal/halx86/legacy/bussupp.c:1304) Slot assignment for 5 on bus 1
+// (hal/halx86/legacy/bus/pcibus.c:816) WARNING: PCI Slot Resource Assignment is FOOBAR
+// (win32ss/drivers/miniport/xboxvmp/xboxvmp.c:85) PhysControlStart 0xfd000000 - PhysFrameBufferStart 0xf0000000 length 134217728
+
+        ERR_(IHVVIDEO, "PhysControlStart 0x%I64x - PhysFrameBufferStart 0x%I64x length %lu\n",
+            XboxVmpDeviceExtension->PhysControlStart,
+            XboxVmpDeviceExtension->PhysFrameBufferStart,
+            AccessRanges[1].RangeLength);
     }
 
     return Status;
@@ -394,8 +403,16 @@ XboxVmpMapVideoMemory(
 
     StatusBlock->Information = sizeof(VIDEO_MEMORY_INFORMATION);
 
+// (win32ss/drivers/miniport/xboxvmp/xboxvmp.c:405) XboxVmpMapVideoMemory: GPU framebuffer 0x3c00000
+// (win32ss/drivers/miniport/xboxvmp/xboxvmp.c:419) XboxVmpMapVideoMemory: Filtered framebuffer address 0x3c00000
+// (win32ss/drivers/miniport/xboxvmp/xboxvmp.c:428) XboxVmpMapVideoMemory: Going to map fb 0xf3c00000 - size 4194304
+// (win32ss/drivers/miniport/xboxvmp/xboxvmp.c:444) Mapped 0x400000 bytes of phys mem at 0xf3c00000 to virt addr 0xFC03E000
+
     /* Reuse framebuffer that was set up by firmware */
     FrameBuffer.QuadPart = READ_REGISTER_ULONG((ULONG_PTR)DeviceExtension->VirtControlStart + NV2A_CRTC_FRAMEBUFFER_START);
+
+    ERR_(IHVVIDEO, "XboxVmpMapVideoMemory: GPU framebuffer 0x%I64x\n", FrameBuffer.QuadPart);
+
     /* Framebuffer address offset value is coming from the GPU within
      * memory mapped I/O address space, so we're comparing only low
      * 28 bits of the address within actual RAM address space */
@@ -408,11 +425,16 @@ XboxVmpMapVideoMemory(
     /* Verify that framebuffer address is page-aligned */
     ASSERT(FrameBuffer.QuadPart % PAGE_SIZE == 0);
 
+    ERR_(IHVVIDEO, "XboxVmpMapVideoMemory: Filtered framebuffer address 0x%I64x\n", FrameBuffer.QuadPart);
+
     /* Return the address back to GPU memory mapped I/O */
     FrameBuffer.QuadPart += DeviceExtension->PhysFrameBufferStart.QuadPart;
     MapInformation->VideoRamBase = RequestedAddress->RequestedVirtualAddress;
     /* FIXME: obtain fb size from firmware somehow (Cromwell reserves high 4 MB of RAM) */
     MapInformation->VideoRamLength = NV2A_VIDEO_MEMORY_SIZE;
+
+    ERR_(IHVVIDEO, "XboxVmpMapVideoMemory: Going to map fb 0x%I64x - size %lu\n",
+        FrameBuffer.QuadPart, MapInformation->VideoRamLength);
 
     VideoPortMapMemory(
         DeviceExtension,
@@ -427,7 +449,7 @@ XboxVmpMapVideoMemory(
     /* Tell the nVidia controller about the framebuffer */
     WRITE_REGISTER_ULONG((ULONG_PTR)DeviceExtension->VirtControlStart + NV2A_CRTC_FRAMEBUFFER_START, FrameBuffer.u.LowPart);
 
-    INFO_(IHVVIDEO, "Mapped 0x%x bytes of phys mem at 0x%lx to virt addr 0x%p\n",
+    ERR_(IHVVIDEO, "Mapped 0x%x bytes of phys mem at 0x%lx to virt addr 0x%p\n",
         MapInformation->VideoRamLength, FrameBuffer.u.LowPart, MapInformation->VideoRamBase);
 
     return TRUE;
