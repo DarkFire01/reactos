@@ -2,9 +2,7 @@
  * PROJECT:     ReactOS Boot Video Driver
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     Precompiled header
- * COPYRIGHT:   Copyright 2007 Alex Ionescu <alex.ionescu@reactos.org>
- *              Copyright 2020 Dmitry Borisov <di.sean@protonmail.com>
- *              Copyright 2020 Stanislav Motylkov <x86corez@gmail.com>
+ * COPYRIGHT:   ??
  */
 
 #ifndef _BOOTVID_PCH_
@@ -15,20 +13,21 @@
 #include <drivers/bootvid/bootvid.h>
 
 /* Arch specific includes */
-#if defined(_M_IX86) || defined(_M_AMD64)
-#if defined(SARCH_PC98)
-#include "i386/pc98/pc98.h"
-#elif defined(SARCH_XBOX)
-#include "i386/xbox/xbox.h"
-#else
-#include "i386/pc/vga.h"
-#include "i386/pc/pc.h"
-#endif
-#elif defined(_M_ARM)
-#include "arm/arm.h"
-#else
-#error Unknown architecture
-#endif
+// #if defined(_M_IX86) || defined(_M_AMD64)
+// #if defined(SARCH_PC98)
+// #include "i386/pc98/pc98.h"
+// #elif defined(SARCH_XBOX)
+// #include "i386/xbox/xbox.h"
+// #else
+// #include "i386/pc/vga.h"
+// #include "i386/pc/pc.h"
+// #endif
+// #elif defined(_M_ARM)
+// #include "arm/arm.h"
+// #else
+// #error Unknown architecture
+// #endif
+#include "framebuf/framebuf.h"
 
 /* Define if FontData has upside down characters */
 #undef CHAR_GEN_UPSIDE_DOWN

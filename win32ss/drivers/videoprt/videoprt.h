@@ -35,9 +35,12 @@
 /* PSEH for SEH Support */
 #include <pseh/pseh2.h>
 
-#define TAG_VIDEO_PORT          'PDIV'
+#define TAG_VIDEO_PORT          'trpV'      // Internal allocation
 #define TAG_VIDEO_PORT_BUFFER   '\0mpV'
 #define TAG_REQUEST_PACKET      'qRpV'
+
+// VidL - videoprt.sys - VideoPort Allocation List (FDO_EXTENSION)
+// VidR - videoprt.sys - VideoPort Allocation on behalf of Miniport
 
 #define GUID_STRING_LENGTH (38 * sizeof(WCHAR))
 
@@ -81,36 +84,44 @@ typedef struct _VIDEO_PORT_COMMON_EXTENSION
 
 typedef struct _VIDEO_PORT_DEVICE_EXTENSTION
 {
-   VIDEO_PORT_COMMON_EXTENSION Common;
-   ULONG DeviceNumber;
-   PDRIVER_OBJECT DriverObject;
-   PDEVICE_OBJECT PhysicalDeviceObject;
-   PDEVICE_OBJECT FunctionalDeviceObject;
-   PDEVICE_OBJECT NextDeviceObject;
-   UNICODE_STRING RegistryPath;
-   UNICODE_STRING NewRegistryPath;
-   PKINTERRUPT InterruptObject;
-   KSPIN_LOCK InterruptSpinLock;
-   PCM_RESOURCE_LIST AllocatedResources;
-   ULONG InterruptVector;
-   ULONG InterruptLevel;
-   BOOLEAN InterruptShared;
-   INTERFACE_TYPE AdapterInterfaceType;
-   ULONG SystemIoBusNumber;
-   ULONG SystemIoSlotNumber;
-   LIST_ENTRY AddressMappingListHead;
-   KDPC DpcObject;
-   VIDEO_PORT_DRIVER_EXTENSION *DriverExtension;
-   ULONG DeviceOpened;
-   AGP_BUS_INTERFACE_STANDARD AgpInterface;
-   KMUTEX DeviceLock;
-   LIST_ENTRY DmaAdapterList, ChildDeviceList;
-   LIST_ENTRY HwResetListEntry;
-   ULONG SessionId;
-   USHORT AdapterNumber;
-   USHORT DisplayNumber;
-   ULONG NumberOfSecondaryDisplays;
-   CHAR POINTER_ALIGNMENT MiniPortDeviceExtension[1];
+    VIDEO_PORT_COMMON_EXTENSION Common;
+    ULONG DeviceNumber;
+    PDRIVER_OBJECT DriverObject;
+    PDEVICE_OBJECT PhysicalDeviceObject;
+    PDEVICE_OBJECT FunctionalDeviceObject;
+    PDEVICE_OBJECT NextDeviceObject;
+    UNICODE_STRING RegistryPath;
+    UNICODE_STRING NewRegistryPath;
+    PKINTERRUPT InterruptObject;
+    KSPIN_LOCK InterruptSpinLock;
+    PCM_RESOURCE_LIST AllocatedResources;
+    ULONG InterruptVector;
+    ULONG InterruptLevel;
+    BOOLEAN InterruptShared;
+    INTERFACE_TYPE AdapterInterfaceType;
+    ULONG SystemIoBusNumber;
+    ULONG SystemIoSlotNumber;
+    LIST_ENTRY AddressMappingListHead;
+    KDPC DpcObject;
+    VIDEO_PORT_DRIVER_EXTENSION *DriverExtension;
+    ULONG DeviceOpened;
+    AGP_BUS_INTERFACE_STANDARD AgpInterface;
+    KMUTEX DeviceLock;
+    LIST_ENTRY DmaAdapterList, ChildDeviceList;
+    LIST_ENTRY HwResetListEntry;
+    ULONG SessionId;
+    USHORT AdapterNumber;
+    USHORT DisplayNumber;
+    ULONG NumberOfSecondaryDisplays;
+
+    /* State variables for VideoPortGetDeviceData() enumeration */
+    struct
+    {
+        ULONG ControllerNumber;
+        ULONG PeripheralNumber;
+    } EnumDevice;
+
+    CHAR POINTER_ALIGNMENT MiniPortDeviceExtension[1];
 } VIDEO_PORT_DEVICE_EXTENSION, *PVIDEO_PORT_DEVICE_EXTENSION;
 
 typedef struct _VIDEO_PORT_CHILD_EXTENSION
@@ -231,7 +242,7 @@ IntVideoPortSetupInterrupt(
 
 /* resource.c */
 
-NTSTATUS NTAPI
+NTSTATUS
 IntVideoPortFilterResourceRequirements(
    IN PDEVICE_OBJECT DeviceObject,
    IN PIO_STACK_LOCATION IrpStack,
@@ -241,13 +252,13 @@ VOID
 IntVideoPortReleaseResources(
     _In_ PVIDEO_PORT_DEVICE_EXTENSION DeviceExtension);
 
-NTSTATUS NTAPI
+NTSTATUS
 IntVideoPortMapPhysicalMemory(
    IN HANDLE Process,
    IN PHYSICAL_ADDRESS PhysicalAddress,
    IN ULONG SizeInBytes,
    IN ULONG Protect,
-   IN OUT PVOID *VirtualAddress  OPTIONAL);
+   IN OUT PVOID *VirtualAddress OPTIONAL);
 
 /* videoprt.c */
 
