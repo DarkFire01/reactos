@@ -2124,6 +2124,10 @@ OHCI_CheckController(IN PVOID ohciExtension)
     ULONG FmNumber;
     USHORT FmDiff;
     POHCI_HCCA HcHCCA;
+    PULONG InterruptEnableReg = (PULONG)&OhciExtension->OperationalRegs->HcInterruptEnable;
+    PULONG InterruptStatusReg = (PULONG)&OhciExtension->OperationalRegs->HcInterruptStatus;
+    OHCI_REG_INTERRUPT_STATUS IntStatus;
+    OHCI_REG_INTERRUPT_ENABLE_DISABLE IntEnable;
 
     //DPRINT_OHCI("OHCI_CheckController: ...\n");
 
@@ -2131,6 +2135,14 @@ OHCI_CheckController(IN PVOID ohciExtension)
 
     if (!OHCI_HardwarePresent(OhciExtension, TRUE))
         return;
+
+    /* Clear all bits in HcInterruptStatus register */
+    IntStatus.AsULONG = 0xFFFFFFFF;
+    WRITE_REGISTER_ULONG(InterruptStatusReg, IntStatus.AsULONG);
+    /* Setup HcInterruptEnable register */
+    IntEnable.AsULONG = 0xFFFFFFFF;
+    IntEnable.Reserved1 = 0;
+    WRITE_REGISTER_ULONG(InterruptEnableReg, IntEnable.AsULONG);
 
     HcControlReg = (PULONG)&OperationalRegs->HcControl;
     HcControl.AsULONG = READ_REGISTER_ULONG(HcControlReg);
