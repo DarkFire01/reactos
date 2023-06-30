@@ -1,16 +1,17 @@
 
 include_directories(${REACTOS_SOURCE_DIR}/sdk/include/reactos/drivers)
 
+#TODO: Let's make this into an actual lib
+list(APPEND XHCILIB
+    xhcilib/xhci.cpp)
+
 list(APPEND SOURCE
-    #debug.c
-    roothub.c
-    usbxhci.c
-    hwhacks.c
-    usbxhcip.c
+    usbxhci.cpp
     usbxhci.h)
 
 add_library(usbxhci SHARED
     ${SOURCE}
+    ${XHCILIB}
     guid.c
     usbxhci.rc)
 
