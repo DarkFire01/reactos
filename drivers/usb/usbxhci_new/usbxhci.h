@@ -7,6 +7,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 #include <ntddk.h>
 #include <windef.h>
 #include <stdio.h>
@@ -15,6 +19,9 @@
 #include <usbdlib.h>
 #include <drivers/usbport/usbmport.h>
 #include "xhcilib/xhci.hpp"
+#ifdef __cplusplus
+}
+#endif
 
 /* Windows Types ******************************************************************************/
 
@@ -36,6 +43,7 @@ typedef struct _XHCI_EXTENSION
     USHORT MaxScratchPadBuffers;
     PMDL ScratchPadArrayMDL;
     PMDL ScratchPadBufferMDL;
+    XHCI *XhciLib;
 } XHCI_EXTENSION, *PXHCI_EXTENSION;
 
 

@@ -6,11 +6,6 @@
  */
 
 #pragma once
-extern "C" {
-    #include <ntddk.h>
-    #include <windef.h>
-    #include <stdio.h>
-}
 
 class XHCI {
 public:

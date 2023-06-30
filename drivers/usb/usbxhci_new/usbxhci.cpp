@@ -289,13 +289,13 @@ NTAPI
 XHCI_StartController(IN PVOID xhciExtension,
                      IN PUSBPORT_RESOURCES Resources)
 {
-    XHCI xhcilib;
+    XHCI xHCI;
     PXHCI_EXTENSION XhciExtension;
 
     DPRINT("XHCI_StartController: function initiated\n");
 
     XhciExtension = (PXHCI_EXTENSION)xhciExtension;
-    XhciExtension->XhciLib = &xhcilib;
+    XhciExtension->XhciLib = &xHCI;
 
     if ((Resources->ResourcesTypes & (USBPORT_RESOURCES_MEMORY | USBPORT_RESOURCES_INTERRUPT)) !=
                                      (USBPORT_RESOURCES_MEMORY | USBPORT_RESOURCES_INTERRUPT))
@@ -358,7 +358,6 @@ XHCI_InterruptDpc(IN PVOID xhciExtension,
                   IN BOOLEAN IsDoEnableInterrupts)
 {
     DPRINT("XHCI_InterruptDpc: function initiated\n");
-    XHCI_ProcessEvent(xhciExtension);
 }
 
 MPSTATUS
@@ -589,6 +588,7 @@ XHCI_Unload(PDRIVER_OBJECT DriverObject)
     DPRINT("XHCI_Unload: UNIMPLEMENTED. FIXME\n");
 }
 
+extern "C" {
 NTSTATUS
 NTAPI
 DriverEntry(IN PDRIVER_OBJECT DriverObject,
@@ -677,4 +677,5 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     return USBPORT_RegisterUSBPortDriver(DriverObject, USB30_MINIPORT_INTERFACE_VERSION, &RegPacket);
 
+}
 }

@@ -7,7 +7,9 @@
 
 #include "../usbxhci.h"
 #include <debug.h>
-XCHI::Noop()
+
+NTSTATUS
+XHCI::NoOp()
 {
     /* Do nothing for now */
     return MP_STATUS_SUCCESS;
