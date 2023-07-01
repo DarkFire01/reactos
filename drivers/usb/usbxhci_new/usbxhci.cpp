@@ -6,12 +6,60 @@
 */
 
 #include "usbxhci.h"
+#include "xhcilib/xhci.hpp"
+
 //#define NDEBUG
 #include <debug.h>
 #define NDEBUG_XHCI_TRACE
 #include "dbg_xhci.h"
+// base io addr register offsets
 
+// base io addr register offsets
+#define XHCI_HCSP1            1
+#define XHCI_HCSP2            2
+#define XHCI_HCSP3            3
+#define XHCI_HCCP1            4
+#define XHCI_DBOFF            5
+#define XHCI_RTSOFF           6
+#define XHCI_HCCP2            7
+// operational register offsets
+#define XHCI_USBCMD           0
+#define XHCI_USBSTS           1
+#define XHCI_PGSZ             2
+#define XHCI_DNCTRL           5
+#define XHCI_CRCR             6
+#define XHCI_DCBAAP           12
+#define XHCI_CONFIG           14
+#define XHCI_PORTSC           256
+// runtime register offsets
+#define XHCI_IMAN             8
+#define XHCI_IMOD             9
+#define XHCI_ERSTSZ           10
+#define XHCI_ERSTBA           12
+#define XHCI_ERSTDP           14
 /* Globals ****************************************************************************************/
+
+
+typedef struct _XHCI_EXTENSION
+{
+    ULONG Reserved;
+    ULONG Flags;
+    PULONG BaseIoAddress;
+    PULONG OperationalRegs;
+    PULONG RunTimeRegisterBase;
+    PULONG DoorBellRegisterBase;
+    UCHAR FrameLengthAdjustment;
+    BOOLEAN IsStarted;
+    USHORT HcSystemErrors;
+    ULONG PortRoutingControl;
+    USHORT NumberOfPorts; // HCSPARAMS1 => N_PORTS
+    USHORT PortPowerControl; // HCSPARAMS => Port Power Control (PPC)
+    USHORT PageSize;
+    USHORT MaxScratchPadBuffers;
+    PMDL ScratchPadArrayMDL;
+    PMDL ScratchPadBufferMDL;
+    XHCI* XhciLib;
+} XHCI_EXTENSION, *PXHCI_EXTENSION;
 
 #define XHCI_MAX_ENDPOINTS 32;
 #define XHCI_FLAGS_CONTROLLER_SUSPEND 0x01
@@ -289,14 +337,25 @@ NTAPI
 XHCI_StartController(IN PVOID xhciExtension,
                      IN PUSBPORT_RESOURCES Resources)
 {
-    XHCI xHCI;
+
     PXHCI_EXTENSION XhciExtension;
+    PULONG BaseIoAddress;
+    PULONG OperationalRegs;
+    PULONG RunTimeRegisterBase;
+    PULONG DoorBellRegisterBase;
+    XHCI_CAPLENGHT_INTERFACE_VERSION CapLenReg;
+    XHCI_DOORBELL_OFFSET DoorBellOffsetRegister;
+   // MPSTATUS MPStatus;
+    //XHCI_USB_COMMAND Command;
+    XHCI_RT_REGISTER_SPACE_OFFSET RTSOffsetRegister;
+    UCHAR CapabilityRegLength;
+    UCHAR Fladj;
+    XHCI_PAGE_SIZE PageSizeReg;
+    USHORT MaxScratchPadBuffers;
+    XHCI_HC_STRUCTURAL_PARAMS_2 HCSPARAMS2;
+    
 
     DPRINT("XHCI_StartController: function initiated\n");
-
-    XhciExtension = (PXHCI_EXTENSION)xhciExtension;
-    XhciExtension->XhciLib = &xHCI;
-
     if ((Resources->ResourcesTypes & (USBPORT_RESOURCES_MEMORY | USBPORT_RESOURCES_INTERRUPT)) !=
                                      (USBPORT_RESOURCES_MEMORY | USBPORT_RESOURCES_INTERRUPT))
     {
@@ -305,6 +364,62 @@ XHCI_StartController(IN PVOID xhciExtension,
 
         return MP_STATUS_ERROR;
     }
+       
+    XhciExtension = (PXHCI_EXTENSION)xhciExtension;
+    BaseIoAddress = (PULONG)Resources->ResourceBase;
+    XhciExtension->BaseIoAddress = BaseIoAddress;
+
+    CapLenReg.AsULONG = READ_REGISTER_ULONG(BaseIoAddress);
+    CapLenReg.Rsvd = 0;
+    CapLenReg.HostControllerInterfaceVersion = 0;
+    CapabilityRegLength = (UCHAR)CapLenReg.CapabilityRegistersLength;
+    OperationalRegs = (PULONG)((ULONG_PTR)BaseIoAddress + CapabilityRegLength);
+    XhciExtension->OperationalRegs = OperationalRegs;
+    
+    DoorBellOffsetRegister.AsULONG = READ_REGISTER_ULONG(BaseIoAddress + XHCI_DBOFF);
+    DoorBellRegisterBase = (PULONG)((PBYTE)BaseIoAddress + DoorBellOffsetRegister.AsULONG);
+    XhciExtension->DoorBellRegisterBase = DoorBellRegisterBase;
+    
+    RTSOffsetRegister.AsULONG = READ_REGISTER_ULONG(BaseIoAddress + XHCI_RTSOFF);
+    RunTimeRegisterBase = (PULONG)((PBYTE)BaseIoAddress + RTSOffsetRegister.AsULONG);
+    XhciExtension->RunTimeRegisterBase = RunTimeRegisterBase;
+    
+    PageSizeReg.AsULONG =  READ_REGISTER_ULONG(OperationalRegs + XHCI_PGSZ);
+    XhciExtension->PageSize = PageSizeReg.PageSize;
+    HCSPARAMS2.AsULONG = READ_REGISTER_ULONG(BaseIoAddress + XHCI_HCSP2);
+    MaxScratchPadBuffers = 0;
+    MaxScratchPadBuffers = HCSPARAMS2.MaxSPBuffersHi;
+    MaxScratchPadBuffers = MaxScratchPadBuffers << 5;
+    MaxScratchPadBuffers = MaxScratchPadBuffers + HCSPARAMS2.MaxSPBuffersLo;
+    XhciExtension->MaxScratchPadBuffers = MaxScratchPadBuffers;
+    
+    DPRINT("XHCI_StartController: BaseIoAddress    - %p\n",     BaseIoAddress);
+    DPRINT("XHCI_StartController: OperationalRegs - %p\n",      OperationalRegs);
+    DPRINT("XHCI_StartController: DoorBellRegisterBase - %p\n", DoorBellRegisterBase);
+    DPRINT("XHCI_StartController: RunTimeRegisterBase - %p\n",  RunTimeRegisterBase);
+    DPRINT("XHCI_StartController: PageSize - %p\n",             XhciExtension->PageSize);
+    DPRINT("XHCI_StartController: MaxScratchPadBuffers - %p\n", MaxScratchPadBuffers);
+    
+  
+    RegPacket.UsbPortReadWriteConfigSpace(XhciExtension,
+                                          1,
+                                          &Fladj,
+                                          0x61,
+                                          1);
+
+    XhciExtension->FrameLengthAdjustment = Fladj;
+    
+
+
+    /* Create a instance of XHCILIB */
+    XHCI xHCI(BaseIoAddress,
+              OperationalRegs,
+              DoorBellRegisterBase,
+              RunTimeRegisterBase,
+              XhciExtension->PageSize,
+              MaxScratchPadBuffers);
+    XhciExtension->XhciLib = &xHCI;//new XHCI((PVOID)Resources, (PVOID)XhciExtension);
+
 
     __debugbreak();
     return MP_STATUS_SUCCESS;
@@ -323,7 +438,11 @@ VOID
 NTAPI
 XHCI_SuspendController(IN PVOID xhciExtension)
 {
+    PXHCI_EXTENSION XhciExtension;
+
     DPRINT("XHCI_SuspendController: function initiated\n");
+    XhciExtension = (PXHCI_EXTENSION)xhciExtension;
+    XhciExtension->XhciLib->ControllerHalt();
 }
 
 MPSTATUS

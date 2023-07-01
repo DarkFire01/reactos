@@ -18,33 +18,11 @@ extern "C"
 #include <usbbusif.h>
 #include <usbdlib.h>
 #include <drivers/usbport/usbmport.h>
-#include "xhcilib/xhci.hpp"
 #ifdef __cplusplus
 }
 #endif
 
 /* Windows Types ******************************************************************************/
-
-typedef struct _XHCI_EXTENSION
-{
-    ULONG Reserved;
-    ULONG Flags;
-    PULONG BaseIoAdress;
-    PULONG OperationalRegs;
-    PULONG RunTimeRegisterBase;
-    PULONG DoorBellRegisterBase;
-    UCHAR FrameLengthAdjustment;
-    BOOLEAN IsStarted;
-    USHORT HcSystemErrors;
-    ULONG PortRoutingControl;
-    USHORT NumberOfPorts; // HCSPARAMS1 => N_PORTS
-    USHORT PortPowerControl; // HCSPARAMS => Port Power Control (PPC)
-    USHORT PageSize;
-    USHORT MaxScratchPadBuffers;
-    PMDL ScratchPadArrayMDL;
-    PMDL ScratchPadBufferMDL;
-    XHCI *XhciLib;
-} XHCI_EXTENSION, *PXHCI_EXTENSION;
 
 
 typedef struct _XHCI_HC_RESOURCES
@@ -247,17 +225,6 @@ XHCI_SubmitIsoTransfer(IN PVOID xhciExtension,
                        IN PVOID xhciTransfer,
                        IN PVOID isoParameters);
 
-VOID
-NTAPI
-XHCI_AbortIsoTransfer(IN PXHCI_EXTENSION xhciExtension,
-                      IN PXHCI_ENDPOINT xhciEndpoint,
-                      IN PXHCI_TRANSFER xhciTransfer);
-
-VOID
-NTAPI
-XHCI_AbortAsyncTransfer(IN PXHCI_EXTENSION xhciExtension,
-                        IN PXHCI_ENDPOINT xhciEndpoint,
-                        IN PXHCI_TRANSFER xhciTransfer);
 
 VOID
 NTAPI

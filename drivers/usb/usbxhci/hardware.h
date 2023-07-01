@@ -26,12 +26,7 @@
 #define XHCI_DCBAAP           12
 #define XHCI_CONFIG           14
 #define XHCI_PORTSC           256
-// runtime register offsets
-#define XHCI_IMAN             8
-#define XHCI_IMOD             9
-#define XHCI_ERSTSZ           10
-#define XHCI_ERSTBA           12
-#define XHCI_ERSTDP           14
+
 
 /* Hardware Structs *******************************************************************************/
 
