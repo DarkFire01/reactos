@@ -7,6 +7,7 @@ list(APPEND XHCILIB
 
 list(APPEND SOURCE
     usbxhci.cpp
+    roothub.cpp
     usbxhci.h)
 
 add_library(usbxhci SHARED

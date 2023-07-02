@@ -206,6 +206,7 @@ XHCI::XHCI(PULONG LocBaseIoAddress,
 		   USHORT LocMaxScratchPadBuffers)
 {
 
+    XHCI_USB_COMMAND Command;
     //XHCI_USB_STATUS Status;
 	BaseIoAddress = LocBaseIoAddress;
 	OperationalRegs = LocOperationalRegs;
@@ -243,7 +244,6 @@ XHCI::XHCI(PULONG LocBaseIoAddress,
 
 	if ((ReadOpReg(XHCI_PAGESIZE) & (1 << 0)) == 0) {
 		DPRINT1("controller does not support 4K page size\n");
-		//return B_ERROR;
 	}
 
 	
@@ -265,42 +265,28 @@ XHCI::XHCI(PULONG LocBaseIoAddress,
 		SlotCount = XHCI_MAX_DEVICES;
 	WriteOpReg(XHCI_CONFIG, SlotCount);
 
-	// find out which protocol is used for each port
-	UINT32 portFound = 0;
-	UINT32 cparams = ReadCapReg32(XHCI_HCCPARAMS);
-	UINT32 eec = 0xffffffff;
-	UINT32 eecp = HCS0_XECP(cparams) << 2;
-	for (; eecp != 0 && XECP_NEXT(eec) && portFound < NumberOfPorts;
-		eecp += XECP_NEXT(eec) << 2) {
-		eec = ReadCapReg32(eecp);
-		if (XECP_ID(eec) != XHCI_SUPPORTED_PROTOCOLS_CAPID)
-			continue;
-		if (XHCI_SUPPORTED_PROTOCOLS_0_MAJOR(eec) > 3)
-			continue;
-		UINT32 temp = ReadCapReg32(eecp + 8);
-		UINT32 offset = XHCI_SUPPORTED_PROTOCOLS_1_OFFSET(temp);
-		UINT32 count = XHCI_SUPPORTED_PROTOCOLS_1_COUNT(temp);
-		if (offset == 0 || count == 0)
-			continue;
-		offset--;
-		for (UINT32 i = offset; i < offset + count; i++) {
-			if (XHCI_SUPPORTED_PROTOCOLS_0_MAJOR(eec) == 0x3)
-				PortSpeeds[i] = LOC_USB_SPEED_SUPERSPEED;
-			else
-				PortSpeeds[i] = LOC_USB_SPEED_HIGHSPEED;
-
-			DPRINT1("speed for port %d is %X\n", i,
-				PortSpeeds[i] == LOC_USB_SPEED_SUPERSPEED ? "super" : "high");
-		}
-		portFound += count;
-	}
-
 	
 	// clear interrupts & disable device notifications
 	WriteOpReg(XHCI_STS, ReadOpReg(XHCI_STS));
 	WriteOpReg(XHCI_DNCTRL, 0);
 
-    __debugbreak();
+    /* grab port counts */
+
+    /* Get DCBAA */
+
+    /* Setup Scratchpad */
+
+    /* Setup Event Ring */
+
+    /* Setup command ring */
+
+    /* Enable Interrupts */
+
+    /* write controller start */
+    Command.AsULONG = READ_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD);
+    Command.RunStop = 1;
+    WRITE_REGISTER_ULONG(OperationalRegs + XHCI_USBCMD, Command.AsULONG);
+    DPRINT1("The HC is now active\n");
 }
 
 XHCI::~XHCI()

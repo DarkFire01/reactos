@@ -32,7 +32,7 @@ public:
 								~XHCI();
 
     inline void                 WriteOpReg(UINT32 reg, UINT32 value);
-    inline  UINT32               ReadOpReg(UINT32 reg);
+    inline  UINT32              ReadOpReg(UINT32 reg);
     inline  UINT32              ReadCapReg32(ULONG32 reg);
     inline  void                WriteCapReg32(ULONG32 reg, ULONG32 value);
 	inline	UINT32				ReadDoorReg32(ULONG32 reg);
