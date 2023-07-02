@@ -12,7 +12,29 @@
 #include <debug.h>
 #define NDEBUG_XHCI_TRACE
 #include "dbg_xhci.h"
-
+// operational register offsets
+#define XHCI_USBCMD           0
+typedef struct _XHCI_EXTENSION
+{
+    ULONG Reserved;
+    ULONG Flags;
+    PULONG BaseIoAddress;
+    PULONG OperationalRegs;
+    PULONG RunTimeRegisterBase;
+    PULONG DoorBellRegisterBase;
+    UCHAR FrameLengthAdjustment;
+    BOOLEAN IsStarted;
+    USHORT HcSystemErrors;
+    ULONG PortRoutingControl;
+    USHORT NumberOfPorts; // HCSPARAMS1 => N_PORTS
+    USHORT PortPowerControl; // HCSPARAMS => Port Power Control (PPC)
+    USHORT PageSize;
+    USHORT MaxScratchPadBuffers;
+    PMDL ScratchPadArrayMDL;
+    PMDL ScratchPadBufferMDL;
+    XHCI* XhciLib;
+} XHCI_EXTENSION, *PXHCI_EXTENSION;
+#define XHCI_PORTSC           256
 
 VOID
 NTAPI

@@ -45,6 +45,10 @@ public:
 
     NTSTATUS                    ControllerHalt();
     NTSTATUS                    ControllerReset();
+
+    /* reactos specific */
+    
+    UINT32                      GetNumOfPorts();
 private:
 	/* hehehehehehehehehheeheheh - kekw */
  	PULONG BaseIoAddress; /* mapped registers*/

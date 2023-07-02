@@ -198,6 +198,13 @@ XHCI::NoOp()
     return MP_STATUS_SUCCESS;
 }
 
+UINT32
+XHCI::GetNumOfPorts()
+{
+	return NumberOfPorts;
+}
+#define XHCI_HCSP1            1
+
 XHCI::XHCI(PULONG LocBaseIoAddress,
 		   PULONG LocOperationalRegs,
 		   PULONG LocRunTimeRegisterBase,
@@ -259,11 +266,48 @@ XHCI::XHCI(PULONG LocBaseIoAddress,
 		DPRINT1("Port Count %d\n", NumberOfPorts);
 	}
 
-	
 	SlotCount = HCS_MAX_SLOTS(capabilities);
 	if (SlotCount > XHCI_MAX_DEVICES)
 		SlotCount = XHCI_MAX_DEVICES;
 	WriteOpReg(XHCI_CONFIG, SlotCount);
+
+	XHCI_HC_STRUCTURAL_PARAMS_1 StructuralParams_1;
+	StructuralParams_1.AsULONG = READ_REGISTER_ULONG(BaseIoAddress + XHCI_HCSPARAMS1); // HCSPARAMS1 register
+
+    NumberOfPorts = StructuralParams_1.NumberOfPorts;
+    DPRINT1("Port Count %d\n", NumberOfPorts);
+
+		__debugbreak();
+	// find out which protocol is used for each port
+	UINT32 portFound = 0;
+	UINT32 cparams = READ_REGISTER_ULONG(BaseIoAddress + XHCI_HCSP1);
+	UINT32 eec = 0xffffffff;
+	UINT32 eecp = HCS0_XECP(cparams) << 2;
+	for (; eecp != 0 && XECP_NEXT(eec) && portFound < NumberOfPorts;
+		eecp += XECP_NEXT(eec) << 2) {
+		eec = ReadCapReg32(eecp);
+		if (XECP_ID(eec) != XHCI_SUPPORTED_PROTOCOLS_CAPID)
+			continue;
+		if (XHCI_SUPPORTED_PROTOCOLS_0_MAJOR(eec) > 3)
+			continue;
+		UINT32 temp = ReadCapReg32(eecp + 8);
+		UINT32 offset = XHCI_SUPPORTED_PROTOCOLS_1_OFFSET(temp);
+		UINT32 count = XHCI_SUPPORTED_PROTOCOLS_1_COUNT(temp);
+		if (offset == 0 || count == 0)
+			continue;
+		offset--;
+		for (UINT32 i = offset; i < offset + count; i++) {
+			if (XHCI_SUPPORTED_PROTOCOLS_0_MAJOR(eec) == 0x3)
+				PortSpeeds[i] = LOC_USB_SPEED_SUPERSPEED;
+			else
+				PortSpeeds[i] = LOC_USB_SPEED_HIGHSPEED;
+
+			DPRINT1("speed for port %d is %X\n", i,
+				PortSpeeds[i] == LOC_USB_SPEED_SUPERSPEED ? "super" : "high");
+		}
+		portFound += count;
+	}
+	__debugbreak();
 
 	
 	// clear interrupts & disable device notifications

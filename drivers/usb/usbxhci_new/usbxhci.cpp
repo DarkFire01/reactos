@@ -235,6 +235,7 @@ XHCI_StartController(IN PVOID xhciExtension,
               XhciExtension->PageSize,
               MaxScratchPadBuffers);
     XhciExtension->XhciLib = &xHCI;
+    XhciExtension->NumberOfPorts = XhciExtension->XhciLib->GetNumOfPorts();
     __debugbreak();
     return MP_STATUS_SUCCESS;
 }

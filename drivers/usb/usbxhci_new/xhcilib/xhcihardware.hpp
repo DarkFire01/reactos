@@ -320,6 +320,39 @@ typedef enum {
 #define XHCI_MAX_TRANSFERS		8
 
 
+#define PORT_STATUS_MASK    0x4F01FFE9  // 0100 1111 0000 0001 1111 1111 1110 1001 // RW 1, RW1C/RW1S 0, RO 1
+typedef volatile union _XHCI_PORT_STATUS_CONTROL 
+{
+    struct 
+    {
+        ULONG CurrentConnectStatus                  : 1;
+        ULONG PortEnableDisable                     : 1;
+        ULONG RsvdZ1                                : 1;
+        ULONG OverCurrentActive                     : 1;
+        ULONG PortReset                             : 1;
+        ULONG PortLinkState                         : 4;
+        ULONG PortPower                             : 1;
+        ULONG PortSpeed                             : 4;
+        ULONG PortIndicatorControl                  : 2;
+        ULONG LinkWriteStrobe                       : 1;
+        ULONG ConnectStatusChange                   : 1;
+        ULONG PortEnableDisableChange               : 1;
+        ULONG WarmResetChange                       : 1;
+        ULONG OverCurrentChange                     : 1;
+        ULONG PortResetChange                       : 1;
+        ULONG PortLinkStateChange                   : 1;
+        ULONG ConfigErrorChange                     : 1;
+        ULONG ColdAttachStatus                      : 1;
+        ULONG WakeONConnectEnable                   : 1;
+        ULONG WakeONDisconnectEnable                : 1;
+        ULONG WakeONOverCurrentEnable               : 1;
+        ULONG RsvdZ2                                : 2;
+        ULONG DeviceRemovable                       : 1;
+        ULONG WarmPortReset                         : 1;
+    };
+    ULONG AsULONG;
+} XHCI_PORT_STATUS_CONTROL;
+
 typedef volatile union _XHCI_CAPLENGHT_INTERFACE_VERSION 
 {
     struct 
