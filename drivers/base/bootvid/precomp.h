@@ -2,9 +2,7 @@
  * PROJECT:     ReactOS Boot Video Driver
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     Precompiled header
- * COPYRIGHT:   Copyright 2007 Alex Ionescu <alex.ionescu@reactos.org>
- *              Copyright 2020 Dmitry Borisov <di.sean@protonmail.com>
- *              Copyright 2020 Stanislav Motylkov <x86corez@gmail.com>
+ * COPYRIGHT:   ??
  */
 
 #ifndef _BOOTVID_PCH_
