@@ -292,3 +292,10 @@ BOOL WINAPI DECLSPEC_HOTPATCH UpdateProcThreadAttribute( struct _PROC_THREAD_ATT
     list->count++;
     return TRUE;
 }
+
+void
+WINAPI
+DECLSPEC_HOTPATCH DeleteProcThreadAttributeList( struct _PROC_THREAD_ATTRIBUTE_LIST *list )
+{
+    return;
+}
