@@ -956,6 +956,18 @@ UnregisterWait(IN HANDLE WaitHandle)
     return TRUE;
 }
 
+BOOL
+WINAPI
+DECLSPEC_HOTPATCH
+GetQueuedCompletionStatusEx( HANDLE port, OVERLAPPED_ENTRY *entries,
+                             ULONG count, ULONG *written,
+                             DWORD timeout, BOOL alertable )
+{
+    DPRINT1("GetQueuedCompletionStatusEx: Is an awful stub\n");
+    return TRUE;
+}
+
+
 /*
  * @implemented
  */
