@@ -750,6 +750,5 @@
 741 stdcall wvsprintfW(ptr wstr ptr)
 @ stdcall -version=0x600+ RegisterPowerSettingNotification(ptr ptr long)
 @ stdcall -version=0x600+ UnregisterPowerSettingNotification(ptr)
-
 @ stdcall AddClipboardFormatListener(ptr)
 @ stdcall RemoveClipboardFormatListener(ptr)

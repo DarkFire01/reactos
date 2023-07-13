@@ -11,6 +11,7 @@ list(APPEND SOURCE
     GetTickCount64.c
     InitOnce.c
     sync.c
+    proc.c
     k32.c
     vista.c)
 

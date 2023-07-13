@@ -1140,8 +1140,8 @@
 @ stdcall UnregisterConsoleIME()
 @ stdcall UnregisterWait(long)
 @ stdcall UnregisterWaitEx(long long)
-@ stub -version=0x600+ UpdateCalendarDayOfWeek
-@ stdcall -stub -version=0x600+ UpdateProcThreadAttribute(ptr long ptr ptr ptr ptr ptr)
+@ stdcall -stub -version=0x600+ UpdateCalendarDayOfWeek(ptr)
+@ stdcall -version=0x600+ UpdateProcThreadAttribute(ptr long ptr ptr long ptr ptr) ;kernel32_vista.UpdateProcThreadAttribute
 @ stdcall UpdateResourceA(long str str long ptr long)
 @ stdcall UpdateResourceW(long wstr wstr long ptr long)
 @ stdcall VDMConsoleOperation(long long)

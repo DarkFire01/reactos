@@ -290,3 +290,4 @@
 290 stub JetUpgradeDatabase
 291 stub ese
 292 stub esent
+@ stub JetSetSystemParameterW
