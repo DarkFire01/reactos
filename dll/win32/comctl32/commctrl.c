@@ -3,7 +3,7 @@
  *
  * Copyright 1997 Dimitrie O. Paun
  * Copyright 1998,2000 Eric Kohl
- * Copyright 2014-2015 Michael Müller
+ * Copyright 2014-2015 Michael Mï¿½ller
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -1949,6 +1949,13 @@ int WINAPI DrawShadowText(HDC hdc, LPCWSTR pszText, UINT cch, RECT *prc, DWORD d
     SetTextColor(hdc, crOldText);
 
     return iRet;
+}
+
+HRESULT
+WINAPI
+UnknownFunctionComctl(void * test)
+{
+    return 0;
 }
 
 /***********************************************************************
