@@ -542,6 +542,7 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
     HalpRegisterVector(IDT_INTERNAL, 0, APC_VECTOR, APC_LEVEL);
     HalpRegisterVector(IDT_INTERNAL, 0, DISPATCH_VECTOR, DISPATCH_LEVEL);
     HalpRegisterVector(IDT_INTERNAL, 0, APIC_IPI_VECTOR, IPI_LEVEL);
+
     /* Restore interrupt state */
     if (EnableInterrupts) EFlags |= EFLAGS_INTERRUPT_MASK;
     __writeeflags(EFlags);
@@ -656,8 +657,9 @@ HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
         /* Spurious, just end the interrupt */
         KiEoiHelper(TrapFrame);
     }
+
     /* Raise to DISPATCH_LEVEL */
-    ApicRaiseIrql(DISPATCH_LEVEL);
+    ApicRaiseIrql(IPI_LEVEL);
 
     /* End the interrupt */
     ApicSendEOI();
@@ -671,9 +673,7 @@ HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
 
     /* Exit the interrupt */
     KiEoiHelper(TrapFrame);
-
 }
-
 #endif
 
 

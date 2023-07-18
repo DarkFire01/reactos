@@ -38,11 +38,11 @@ HalpInitProcessor(
 
     /* Initialize the local APIC for this cpu */
     ApicInitializeLocalApic(ProcessorNumber);
-    if(ProcessorNumber == 0)
+    if(ProcessorNumber != 0)
     {
         ULONG_PTR EFlags;
 
-    /* Save EFlags and disable interrupts */
+        /* Save EFlags and disable interrupts */
         EFlags = __readeflags();
         _disable();
 

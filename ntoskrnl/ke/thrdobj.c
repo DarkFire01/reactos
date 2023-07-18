@@ -782,6 +782,11 @@ KeInitThread(IN OUT PKTHREAD Thread,
     Thread->Header.ThreadControlFlags = 0;
     Thread->Header.DebugActive = FALSE;
     Thread->Header.SignalState = 0;
+
+    if (KeNumberProcessors >= 2)
+        __debugbreak();
+
+    /* CHECKPOINT - SMP seems to break when an AP runs this below, something else is CRITICALLY BROKEN!!!!!!*/
     InitializeListHead(&(Thread->Header.WaitListHead));
 
     /* Initialize the Mutant List */

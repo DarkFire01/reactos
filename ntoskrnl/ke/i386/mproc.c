@@ -170,13 +170,13 @@ KeStartAllProcessors()
         KeLoaderBlock->Prcb = (ULONG_PTR)&APInfo->Pcr.Prcb;
         KeLoaderBlock->Thread = (ULONG_PTR)&APInfo->Pcr.Prcb->IdleThread;
 
+        DPRINT("Starting CPU: #%u\n", ProcessorCount);
         // Start the CPU
         if (!HalStartNextProcessor(KeLoaderBlock, ProcessorState))
         {
             break;
         }
 
-        DPRINT("Waiting for init confirmation from AP CPU: #%u\n", ProcessorCount);
         while (READ_PORT_ULONG(&KeLoaderBlock->Prcb) != 0)
         {
             KeMemoryBarrier();

@@ -825,7 +825,11 @@ AppCpuInit:
     __writefsdword(KPCR_SET_MEMBER_COPY, 1 << Cpu);
     __writefsdword(KPCR_PRCB_SET_MEMBER, 1 << Cpu);
 
-    KiVerifyCpuFeatures(Pcr->Prcb);
+    if (!Cpu)
+    {
+        //TODO: This causes a bug check when ran on APs
+        KiVerifyCpuFeatures(Pcr->Prcb);
+    }
 
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);
