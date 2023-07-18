@@ -31,9 +31,9 @@ HalpInitProcessor(
 #endif
         HalpParseApicTables(LoaderBlock);
 #ifdef CONFIG_SMP
-        HalpSetupProcessorsTable(ProcessorNumber);
     }
 
+    HalpSetupProcessorsTable(ProcessorNumber);
 #endif
 
     /* Initialize the local APIC for this cpu */

@@ -299,6 +299,64 @@ KdpRestoreBreakpoint(IN PDBGKD_MANIPULATE_STATE64 State,
                  &KdpContext);
 }
 
+#if 0
+ KAFFINITY TargetAffinity;
+    PKPRCB TargetPrcb;
+    KAFFINITY Current;
+    PKPRCB Prcb;
+    LONG i;
+
+    Prcb = KeGetCurrentPrcb();
+    TargetAffinity = KeActiveProcessors;
+    TargetAffinity &= ~Prcb->SetMember;
+
+    /* Loop through every processor */
+    for (i = 0, Current = 1; i < KeNumberProcessors; i++, Current <<= 1)
+    {
+        if (TargetAffinity & Current)
+        {
+            TargetPrcb = KiProcessorBlock[i];
+
+            /* Multiple processors can write this value */
+            InterlockedExchange((LONG*)&TargetPrcb->IpiFrozen, IPI_FROZEN_THAWING);
+            while (Prcb->IpiFrozen != IPI_FROZEN_RUNNING)
+            {
+                /* Do nothing we're waiting for ready */
+            }
+        }
+    }
+#endif
+KCONTINUE_STATUS
+NTAPI
+KeSwitchFrozenProcessor(IN USHORT ProcessorNumber)
+{
+    PKPRCB Prcb, TargetPrcb;
+    Prcb = KeGetCurrentPrcb();
+
+    if (ProcessorNumber <= KeNumberProcessors)
+    {
+        KdpDprintf("Processor Switch triggered Procesor: %d\n", ProcessorNumber);
+        /* Multiple processors can write this value */
+        TargetPrcb = KiProcessorBlock[ProcessorNumber];
+         KdpDprintf("Processor Prcb: %d\n", TargetPrcb->IpiFrozen);
+        InterlockedExchange((LONG*)&TargetPrcb->IpiFrozen, IPI_FROZEN_RUNNING);
+        KdpDprintf("Processor Prcb: %d\n", TargetPrcb->IpiFrozen);
+
+         KdpDprintf("Processor Prcb: %d\n", Prcb->IpiFrozen);
+        InterlockedExchange((LONG*)&Prcb->IpiFrozen, IPI_FROZEN_HALTED);
+        KdpDprintf("Processor Prcb: %d\n", Prcb->IpiFrozen);
+
+        for(;;)
+        {
+
+        }
+    }
+    else
+    {
+        return ContinueProcessorReselected;
+    }
+}
+
 NTSTATUS
 NTAPI
 KdpWriteBreakPointEx(IN PDBGKD_MANIPULATE_STATE64 State,
@@ -1271,6 +1329,7 @@ KdpSendWaitContinue(IN ULONG PacketType,
     DBGKD_MANIPULATE_STATE64 ManipulateState;
     ULONG Length;
     KDSTATUS RecvCode;
+    KCONTINUE_STATUS StatusCheck;
 
     /* Setup the Manipulate State structure */
     Header.MaximumLength = sizeof(DBGKD_MANIPULATE_STATE64);
@@ -1469,10 +1528,10 @@ SendPacket:
                 break;
 
             case DbgKdSwitchProcessor:
-
-                /* TODO */
-                KdpDprintf("Processor Switch support is unimplemented!\n");
-                KdpNotSupported(&ManipulateState);
+                KdRestore(FALSE);
+                StatusCheck = KeSwitchFrozenProcessor(ManipulateState.Processor);
+                KdSave(FALSE);
+                return StatusCheck;
                 break;
 
             case DbgKdPageInApi:

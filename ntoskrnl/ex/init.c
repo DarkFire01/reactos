@@ -1564,7 +1564,10 @@ Phase1InitializationDiscard(IN PVOID Context)
     /* Start Application Processors */
     KeStartAllProcessors();
 #endif
+    for(;;)
+    {
 
+    }
     /* Initialize all processors */
     if (!HalAllProcessorsStarted()) KeBugCheck(HAL1_INITIALIZATION_FAILED);
 
@@ -1616,6 +1619,7 @@ Phase1InitializationDiscard(IN PVOID Context)
 
     /* Display RAM and CPU count */
     InbvDisplayString(StringBuffer);
+    __debugbreak();
 
     /* Update the progress bar */
     InbvUpdateProgressBar(5);

@@ -485,8 +485,9 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     if (Number == 0)
     {
         KiReportCpuFeatures();
-            /* Get cache line information for this CPU */
-        KiGetCacheInformation();
+
+    /* Get cache line information for this CPU */
+    KiGetCacheInformation();
     }
 #endif
 
@@ -536,9 +537,11 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     }
     else
     {
-        /* FIXME */
-        //DPRINT1("Starting CPU#%u - you are brave!\n", Number);
         KeLowerIrql(DISPATCH_LEVEL);
+        for(;;)
+        {
+
+        }
     }
 
     /* Setup the Idle Thread */
@@ -626,13 +629,6 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     /* Raise back to HIGH_LEVEL and clear the PRCB for the loader block */
     KeRaiseIrql(HIGH_LEVEL, &DummyIrql);
     LoaderBlock->Prcb = 0;
-    if (KeGetCurrentProcessorNumber() > 0)
-    {
-        for(;;)
-        {
-
-        }
-    }
 }
 
 CODE_SEG("INIT")
