@@ -1137,6 +1137,15 @@ HalpApcInterrupt2ndEntry(IN PKTRAP_FRAME TrapFrame)
     _HalpApcInterruptHandler(TrapFrame);
 }
 
+#ifndef CONFIG_SMP
+VOID
+FASTCALL
+HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
+{
+    /* DO nothing */
+}
+#endif
+
 DECLSPEC_NORETURN
 VOID
 FASTCALL

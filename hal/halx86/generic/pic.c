@@ -82,3 +82,4 @@ HalpInitializeLegacyPICs(VOID)
     /* Mask all interrupts */
     __outbyte(PIC2_DATA_PORT, 0xFF);
 }
+

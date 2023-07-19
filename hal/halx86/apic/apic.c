@@ -532,6 +532,7 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
 
     /* Set interrupt handlers in the IDT */
     KeRegisterInterruptHandler(APIC_CLOCK_VECTOR, HalpClockInterrupt);
+    KeRegisterInterruptHandler(APIC_IPI_VECTOR, HalpIpiInterrupt);
 #ifndef _M_AMD64
     KeRegisterInterruptHandler(APC_VECTOR, HalpApcInterrupt);
     KeRegisterInterruptHandler(DISPATCH_VECTOR, HalpDispatchInterrupt);
@@ -540,7 +541,7 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
     /* Register the vectors for APC and dispatch interrupts */
     HalpRegisterVector(IDT_INTERNAL, 0, APC_VECTOR, APC_LEVEL);
     HalpRegisterVector(IDT_INTERNAL, 0, DISPATCH_VECTOR, DISPATCH_LEVEL);
-
+    HalpRegisterVector(IDT_INTERNAL, 0, APIC_IPI_VECTOR, IPI_LEVEL);
     /* Restore interrupt state */
     if (EnableInterrupts) EFlags |= EFLAGS_INTERRUPT_MASK;
     __writeeflags(EFlags);
@@ -639,6 +640,40 @@ HalpDispatchInterruptHandler(IN PKTRAP_FRAME TrapFrame)
     /* Exit the interrupt */
     KiEoiHelper(TrapFrame);
 }
+
+VOID
+FASTCALL
+HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
+{
+    KIRQL Irql;
+
+    /* Enter trap */
+    KiEnterInterruptTrap(TrapFrame);
+
+    /* Start the interrupt */
+    if (!HalBeginSystemInterrupt(IPI_LEVEL, APIC_IPI_VECTOR, &Irql))
+    {
+        /* Spurious, just end the interrupt */
+        KiEoiHelper(TrapFrame);
+    }
+    /* Raise to DISPATCH_LEVEL */
+    ApicRaiseIrql(DISPATCH_LEVEL);
+
+    /* End the interrupt */
+    ApicSendEOI();
+
+    _enable();
+    KiIpiServiceRoutine(TrapFrame, NULL);
+    _disable();
+
+    /* Restore the old IRQL */
+    ApicLowerIrql(Irql);
+
+    /* Exit the interrupt */
+    KiEoiHelper(TrapFrame);
+
+}
+
 #endif
 
 

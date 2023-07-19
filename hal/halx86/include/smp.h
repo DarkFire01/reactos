@@ -50,3 +50,7 @@ ApicStartApplicationProcessor(ULONG NTProcessorNumber, PHYSICAL_ADDRESS StartupL
 VOID
 NTAPI
 HalpRequestIpi(KAFFINITY TargetProcessors);
+
+VOID
+FASTCALL
+HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame);
