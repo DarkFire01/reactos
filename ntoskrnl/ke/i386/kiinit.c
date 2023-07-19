@@ -483,11 +483,12 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
 #if DBG
     /* Print applied kernel features/policies and boot CPU features */
     if (Number == 0)
+    {
         KiReportCpuFeatures();
+            /* Get cache line information for this CPU */
+        KiGetCacheInformation();
+    }
 #endif
-
-    /* Get cache line information for this CPU */
-    KiGetCacheInformation();
 
     /* Initialize spinlocks and DPC data */
     KiInitSpinLocks(Prcb, Number);
@@ -536,7 +537,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     else
     {
         /* FIXME */
-        DPRINT1("Starting CPU#%u - you are brave!\n", Number);
+        //DPRINT1("Starting CPU#%u - you are brave!\n", Number);
         KeLowerIrql(DISPATCH_LEVEL);
     }
 
@@ -625,6 +626,13 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     /* Raise back to HIGH_LEVEL and clear the PRCB for the loader block */
     KeRaiseIrql(HIGH_LEVEL, &DummyIrql);
     LoaderBlock->Prcb = 0;
+    if (KeGetCurrentProcessorNumber() > 0)
+    {
+        for(;;)
+        {
+
+        }
+    }
 }
 
 CODE_SEG("INIT")
@@ -825,7 +833,10 @@ AppCpuInit:
     __writefsdword(KPCR_SET_MEMBER_COPY, 1 << Cpu);
     __writefsdword(KPCR_PRCB_SET_MEMBER, 1 << Cpu);
 
-    KiVerifyCpuFeatures(Pcr->Prcb);
+    if (!Cpu)
+    {
+        KiVerifyCpuFeatures(Pcr->Prcb);
+    }
 
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);

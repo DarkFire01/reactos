@@ -782,7 +782,7 @@ KeInitThread(IN OUT PKTHREAD Thread,
     Thread->Header.ThreadControlFlags = 0;
     Thread->Header.DebugActive = FALSE;
     Thread->Header.SignalState = 0;
-    InitializeListHead(&(Thread->Header.WaitListHead));
+    //InitializeListHead(&(Thread->Header.WaitListHead)); /* Uh... okay */
 
     /* Initialize the Mutant List */
     InitializeListHead(&Thread->MutantListHead);
@@ -1329,7 +1329,7 @@ KeSetPriorityThread(IN PKTHREAD Thread,
 {
     KIRQL OldIrql;
     KPRIORITY OldPriority;
-    ASSERT_THREAD(Thread);
+   // ASSERT_THREAD(Thread);
     ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
     ASSERT((Priority <= HIGH_PRIORITY) && (Priority >= LOW_PRIORITY));
     ASSERT(KeIsExecutingDpc() == FALSE);

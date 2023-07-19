@@ -31,14 +31,14 @@ HalpInitProcessor(
 #endif
         HalpParseApicTables(LoaderBlock);
 #ifdef CONFIG_SMP
+        HalpSetupProcessorsTable(ProcessorNumber);
     }
 
-    HalpSetupProcessorsTable(ProcessorNumber);
 #endif
 
     /* Initialize the local APIC for this cpu */
     ApicInitializeLocalApic(ProcessorNumber);
-    if(ProcessorNumber == 0)
+    if(ProcessorNumber > 0)
     {
         ULONG_PTR EFlags;
 
@@ -98,8 +98,11 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 VOID
 HalpInitPhase1(VOID)
 {
-    /* Initialize DMA. NT does this in Phase 0 */
-    HalpInitDma();
+    if (KeGetCurrentProcessorNumber() == 0)
+    {
+        /* Initialize DMA. NT does this in Phase 0 */
+        HalpInitDma();
+    }
 }
 
 /* EOF */

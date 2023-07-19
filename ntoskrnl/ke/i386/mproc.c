@@ -15,13 +15,13 @@
 typedef struct _APINFO
 {
     KIPCR Pcr;
-    ETHREAD Thread;
-    DECLSPEC_ALIGN(PAGE_SIZE) KGDTENTRY Gdt[128];
-    DECLSPEC_ALIGN(PAGE_SIZE) KIDTENTRY Idt[256];
     KTSS Tss;
+    ETHREAD Thread;
     KTSS TssDoubleFault;
     KTSS TssNMI;
     DECLSPEC_ALIGN(16) UINT8 NMIStackData[DOUBLE_FAULT_STACK_SIZE];
+    DECLSPEC_ALIGN(PAGE_SIZE) KGDTENTRY Gdt[128];/* TODO: Soften these hardcodes up */
+    DECLSPEC_ALIGN(PAGE_SIZE) KIDTENTRY Idt[256];
 } APINFO, *PAPINFO;
 
 /* GLOBALS *******************************************************************/
@@ -85,7 +85,7 @@ KeStartAllProcessors()
         DPCStack = NULL;
 
         // Allocate structures for a new CPU.
-        APInfo = ExAllocatePoolZero(NonPagedPool, sizeof(APINFO), '  eK');
+        APInfo = ExAllocatePoolZero(NonPagedPool, sizeof(APINFO), TAG_KERNEL);
         if (!APInfo)
         {
 
@@ -176,12 +176,14 @@ KeStartAllProcessors()
             break;
         }
 
-        DPRINT("Waiting for init confirmation from AP CPU: #%u\n", ProcessorCount);
+       // DPRINT("Waiting for init confirmation from AP CPU: #%u\n", ProcessorCount);
         while (READ_PORT_ULONG(&KeLoaderBlock->Prcb) != 0)
         {
             KeMemoryBarrier();
             YieldProcessor();
         }
+
+        __debugbreak();
     }
 
     // The last CPU didn't start - clean the data
