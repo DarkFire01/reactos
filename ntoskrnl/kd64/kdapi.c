@@ -338,18 +338,9 @@ KeSwitchFrozenProcessor(IN USHORT ProcessorNumber)
         KdpDprintf("Processor Switch triggered Procesor: %d\n", ProcessorNumber);
         /* Multiple processors can write this value */
         TargetPrcb = KiProcessorBlock[ProcessorNumber];
-         KdpDprintf("Processor Prcb: %d\n", TargetPrcb->IpiFrozen);
         InterlockedExchange((LONG*)&TargetPrcb->IpiFrozen, IPI_FROZEN_RUNNING);
-        KdpDprintf("Processor Prcb: %d\n", TargetPrcb->IpiFrozen);
-
-         KdpDprintf("Processor Prcb: %d\n", Prcb->IpiFrozen);
         InterlockedExchange((LONG*)&Prcb->IpiFrozen, IPI_FROZEN_HALTED);
-        KdpDprintf("Processor Prcb: %d\n", Prcb->IpiFrozen);
-
-        for(;;)
-        {
-
-        }
+        return 0;
     }
     else
     {

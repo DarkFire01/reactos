@@ -38,7 +38,7 @@ HalpInitProcessor(
 
     /* Initialize the local APIC for this cpu */
     ApicInitializeLocalApic(ProcessorNumber);
-    if(ProcessorNumber > 0)
+    if(ProcessorNumber >= 1)
     {
         ULONG_PTR EFlags;
 
@@ -61,7 +61,9 @@ HalpInitProcessor(
         /* Restore interrupt state */
         EFlags |= EFLAGS_INTERRUPT_MASK;
         __writeeflags(EFlags);
+
     }
+
     /* Initialize profiling data (but don't start it) */
     HalInitializeProfiling();
 
@@ -86,13 +88,6 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                                HalpClockInterrupt,
                                Latched);
 
-    /* Enable IPI interrupt handler */
-    HalpEnableInterruptHandler(IDT_INTERNAL,
-                               0,
-                               APIC_IPI_VECTOR,
-                               IPI_LEVEL,
-                               HalpIpiInterruptHandler,
-                               Latched);
 }
 
 VOID

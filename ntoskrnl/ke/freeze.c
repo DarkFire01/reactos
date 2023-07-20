@@ -24,22 +24,24 @@ KIRQL KiOldIrql;
 ULONG KiFreezeFlag;
 
 /* PRIVATE FUNCTIONS ***********************************************************/
+BOOLEAN
+NTAPI
+KdpSwitchProcessor(IN PEXCEPTION_RECORD ExceptionRecord,
+                   IN OUT PCONTEXT ContextRecord,
+                   IN BOOLEAN SecondChanceException);
+
 
 VOID
 NTAPI
 KiFreezeTargetExecution(_In_ PKTRAP_FRAME TrapFrame,
                         _In_ PKEXCEPTION_FRAME ExceptionFrame)
 {
-           KdpDprintf("Procesor: %d is preparing to swap context in windbg\n");
-            for(;;)
-            {
-
-            }
+    EXCEPTION_RECORD ExceptionRecord;
     PKPRCB Prcb;
     Prcb = KeGetCurrentPrcb();
 
-//    if (TrapFrame)
-//        KiSaveProcessorState(TrapFrame, ExceptionFrame);
+    if (TrapFrame)
+        KiSaveProcessorState(TrapFrame, ExceptionFrame);
 
     /* Multiple processors can write this value */
     InterlockedExchange((LONG*)&Prcb->IpiFrozen, IPI_FROZEN_HALTED);
@@ -49,16 +51,15 @@ KiFreezeTargetExecution(_In_ PKTRAP_FRAME TrapFrame,
         /* Do nothing */
         if (Prcb->IpiFrozen == IPI_FROZEN_RUNNING)
         {
-            KdpDprintf("Procesor: %d is preparing to swap context in windbg\n");
-            for(;;)
-            {
-
-            }
+            RtlZeroMemory(&ExceptionRecord, sizeof(EXCEPTION_RECORD));
+            ExceptionRecord.ExceptionAddress = (PVOID)Prcb->ProcessorState.ContextFrame.Eip;
+            KdpSwitchProcessor(&ExceptionRecord,
+                               (PCONTEXT)&Prcb->ProcessorState, FALSE);
         }
     }
-
-   // KiRestoreProcessorControlState(TrapFrame, ExceptionFrame);
-
+  //  if (TrapFrame)
+      // KiRestoreProcessorControlState(TrapFrame, ExceptionFrame);
+    ///KeFlushCurrentTb();
     /* Notify AP we're running once again */
     InterlockedExchange((LONG*)&Prcb->IpiFrozen, IPI_FROZEN_RUNNING);
 }
@@ -110,8 +111,6 @@ KeFreezeExecution(IN PKTRAP_FRAME TrapFrame,
         {
             if (TargetAffinity & Current)
             {
-                KdpDprintf("wait for Procesor: %d to freeze\n", i);
-
                 /* stop target processor */
                 KiIpiSend(Current, IPI_FREEZE);
                 TargetPrcb = KiProcessorBlock[i];

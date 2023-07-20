@@ -1564,10 +1564,7 @@ Phase1InitializationDiscard(IN PVOID Context)
     /* Start Application Processors */
     KeStartAllProcessors();
 #endif
-    for(;;)
-    {
 
-    }
     /* Initialize all processors */
     if (!HalAllProcessorsStarted()) KeBugCheck(HAL1_INITIALIZATION_FAILED);
 
@@ -1619,8 +1616,10 @@ Phase1InitializationDiscard(IN PVOID Context)
 
     /* Display RAM and CPU count */
     InbvDisplayString(StringBuffer);
-    __debugbreak();
-
+    for(;;)
+    {
+        DPRINT1("test\n");
+    }
     /* Update the progress bar */
     InbvUpdateProgressBar(5);
 
@@ -1641,7 +1640,7 @@ Phase1InitializationDiscard(IN PVOID Context)
     }
 
     /* Initialize the SRM in Phase 1 */
-    if (!SeInitSystem()) KeBugCheck(SECURITY1_INITIALIZATION_FAILED);
+   // if (!SeInitSystem()) KeBugCheck(SECURITY1_INITIALIZATION_FAILED);
 
     /* Update the progress bar */
     InbvUpdateProgressBar(10);

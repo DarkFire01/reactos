@@ -413,7 +413,7 @@ KiVerifyCpuFeatures(PKPRCB Prcb)
     Cr0 &= ~(CR0_EM | CR0_MP);
     // Enable FPU exceptions.
     Cr0 |= CR0_NE;
-    
+
     __writecr0(Cr0);
 
     // Check for Pentium FPU bug.
@@ -537,13 +537,11 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     }
     else
     {
+        DPRINT1("Starting CPU %d - You are brave!\n", Number);
+        __debugbreak();
         KeLowerIrql(DISPATCH_LEVEL);
-        for(;;)
-        {
-
-        }
     }
-
+    //__debugbreak();
     /* Setup the Idle Thread */
     KeInitializeThread(InitProcess,
                        InitThread,
@@ -618,8 +616,12 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     /* Raise to Dispatch */
     KeRaiseIrql(DISPATCH_LEVEL, &DummyIrql);
 
-    /* Set the Idle Priority to 0. This will jump into Phase 1 */
-    KeSetPriorityThread(InitThread, 0);
+    if (Number == 0)
+    {
+        /* Set the Idle Priority to 0. This will jump into Phase 1 */
+        KeSetPriorityThread(InitThread, 0);
+    }
+
 
     /* If there's no thread scheduled, put this CPU in the Idle summary */
     KiAcquirePrcbLock(Prcb);

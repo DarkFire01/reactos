@@ -169,21 +169,19 @@ KeStartAllProcessors()
         KeLoaderBlock->KernelStack = (ULONG_PTR)KernelStack;
         KeLoaderBlock->Prcb = (ULONG_PTR)&APInfo->Pcr.Prcb;
         KeLoaderBlock->Thread = (ULONG_PTR)&APInfo->Pcr.Prcb->IdleThread;
+        DPRINT1("Waiting for init confirmation from AP CPU: #%u\n", ProcessorCount);
 
         // Start the CPU
         if (!HalStartNextProcessor(KeLoaderBlock, ProcessorState))
         {
             break;
         }
-      //  KeStallExecutionProcessor(1000);
-    //    __debugbreak();
-       // DPRINT("Waiting for init confirmation from AP CPU: #%u\n", ProcessorCount);
-        while (KeNumberProcessors > 1)
-        {
-            KeMemoryBarrier();
-            YieldProcessor();
-        }
 
+        while (KeLoaderBlock->Prcb != 0)
+        {
+          //  KeMemoryBarrier();
+          //  YieldProcessor();
+        }
     }
 
     // The last CPU didn't start - clean the data
@@ -195,6 +193,5 @@ KeStartAllProcessors()
         MmDeleteKernelStack(KernelStack, FALSE);
     if (DPCStack)
         MmDeleteKernelStack(DPCStack, FALSE);
-
    // DPRINT1("KeStartAllProcessors: Sucessful AP startup count is %u\n", ProcessorCount);
 }
