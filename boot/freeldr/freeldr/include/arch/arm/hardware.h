@@ -30,8 +30,9 @@ extern ULONG SecondLevelIcacheSize;
 extern ULONG SecondLevelIcacheFillSize;
 
 extern ULONG gDiskReadBuffer, gFileSysBuffer;
+#ifndef UEFIBOOT
 #define DiskReadBuffer ((PVOID)gDiskReadBuffer)
-
+#endif
 #define DriveMapGetBiosDriveNumber(DeviceName) 0
 
 FORCEINLINE VOID Reboot(VOID)
