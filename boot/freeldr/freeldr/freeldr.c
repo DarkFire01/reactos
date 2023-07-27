@@ -42,7 +42,7 @@ CCHAR FrLdrBootPath[MAX_PATH] = "";
 
 VOID __cdecl BootMain(IN PCCH CmdLine)
 {
-    CmdLineParse(CmdLine);
+   // CmdLineParse(CmdLine);
 
     /* Debugger pre-initialization */
     DebugInit(0);

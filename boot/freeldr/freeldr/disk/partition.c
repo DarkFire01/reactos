@@ -17,7 +17,7 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef _M_ARM
+#if 1
 #include <freeldr.h>
 
 #include <debug.h>

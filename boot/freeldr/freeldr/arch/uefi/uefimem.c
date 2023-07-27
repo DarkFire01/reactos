@@ -247,19 +247,18 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
             }
             else
             {
-                UefiSetMemory(FreeldrMem, MapEntry->PhysicalStart, MapEntry->NumberOfPages,
-                              LoaderFirmwareTemporary);
+
             }
         }
         else
         {
-            UefiSetMemory(FreeldrMem, MapEntry->PhysicalStart, MapEntry->NumberOfPages,
-                          UefiConvertToFreeldrDesc(MapEntry->Type));
+           // UefiSetMemory(FreeldrMem, MapEntry->PhysicalStart, MapEntry->NumberOfPages,
+              //            UefiConvertToFreeldrDesc(MapEntry->Type));
         }
         MapEntry = NEXT_MEMORY_DESCRIPTOR(MapEntry, DescriptorSize);
     }
 
-    ReserveMemory(FreeldrMem, framebufferData.BaseAddress, framebufferData.BufferSize, LoaderFirmwarePermanent, "Video Memory");
+  //  ReserveMemory(FreeldrMem, framebufferData.BaseAddress, framebufferData.BufferSize, LoaderFirmwarePermanent, "Video Memory");
     *MemoryMapSize = FreeldrDescCount;
     return FreeldrMem;
 }
