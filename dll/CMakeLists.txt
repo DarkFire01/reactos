@@ -11,3 +11,7 @@ add_subdirectory(ntdll)
 add_subdirectory(opengl)
 add_subdirectory(shellext)
 add_subdirectory(win32)
+
+if(DLL_EXPORT_VERSION GREATER_EQUAL 0x600)
+    add_subdirectory(win32_vista)
+endif()
