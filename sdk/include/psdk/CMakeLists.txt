@@ -122,6 +122,7 @@ list(APPEND SOURCE
     txcoord.idl
     txdtc.idl
     unknwn.idl
+    uianimation.idl
     urlhist.idl
     urlmon.idl
     vmr9.idl
