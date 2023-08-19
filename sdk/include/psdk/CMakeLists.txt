@@ -123,6 +123,8 @@ list(APPEND SOURCE
     txdtc.idl
     unknwn.idl
     uianimation.idl
+    uiautomationclient.idl
+    uiautomationcore.idl
     urlhist.idl
     urlmon.idl
     vmr9.idl
