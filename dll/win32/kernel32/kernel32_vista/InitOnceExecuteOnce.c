@@ -5,15 +5,19 @@
 #include <wine/config.h>
 #include <wine/port.h>
 
-DWORD WINAPI RtlRunOnceExecuteOnce( RTL_RUN_ONCE *once, PRTL_RUN_ONCE_INIT_FN func,
-                                           void *param, void **context );
-
-/* Taken from Wine kernel32/sync.c */
-
 /*
  * @implemented
  */
-BOOL NTAPI InitOnceExecuteOnce( INIT_ONCE *once, PINIT_ONCE_FN func, void *param, void **context )
+BOOL
+WINAPI
+InitOnceExecuteOnce(
+    _Inout_ PINIT_ONCE InitOnce,
+    _In_ __callback PINIT_ONCE_FN InitFn,
+    _Inout_opt_ PVOID Parameter,
+    _Outptr_opt_result_maybenull_ LPVOID *Context)
 {
-    return !RtlRunOnceExecuteOnce( once, (PRTL_RUN_ONCE_INIT_FN)func, param, context );
+    return NT_SUCCESS(RtlRunOnceExecuteOnce(InitOnce,
+                                            (PRTL_RUN_ONCE_INIT_FN)InitFn,
+                                            Parameter,
+                                            Context));
 }
