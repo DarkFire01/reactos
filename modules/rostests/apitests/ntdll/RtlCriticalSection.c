@@ -11,6 +11,7 @@
 SYSTEM_INFO g_SysInfo;
 OSVERSIONINFOEXA g_VerInfo;
 ULONG g_Version;
+ULONG g_DefaultSpinCount;
 
 typedef
 NTSTATUS
@@ -30,17 +31,7 @@ void
 Test_Init(void)
 {
     NTSTATUS Status;
-    ULONG DefaultSpinCount;
     BOOL HasDebugInfo = (g_Version <= 0x600);
-
-    if ((g_Version >= 0x600) && (g_SysInfo.dwNumberOfProcessors > 1))
-    {
-        DefaultSpinCount = 0x20007d0;
-    }
-    else
-    {
-        DefaultSpinCount = 0;
-    }
 
     _SEH2_TRY
     {
@@ -60,7 +51,7 @@ Test_Init(void)
     ok_long(CritSect.RecursionCount, 0);
     ok_ptr(CritSect.OwningThread, NULL);
     ok_ptr(CritSect.LockSemaphore, NULL);
-    ok_size_t(CritSect.SpinCount, DefaultSpinCount);
+    ok_size_t(CritSect.SpinCount, g_DefaultSpinCount);
     if (HasDebugInfo)
     {
         ok(CritSect.DebugInfo != NULL, "DebugInfo is %p\n", CritSect.DebugInfo);
@@ -77,7 +68,7 @@ Test_Init(void)
     ok_long(CritSect.RecursionCount, 0);
     ok_ptr(CritSect.OwningThread, NULL);
     ok_ptr(CritSect.LockSemaphore, NULL);
-    ok_size_t(CritSect.SpinCount, DefaultSpinCount);
+    ok_size_t(CritSect.SpinCount, g_DefaultSpinCount);
     if (HasDebugInfo)
     {
         ok(CritSect.DebugInfo != NULL, "DebugInfo is %p\n", CritSect.DebugInfo);
@@ -90,11 +81,11 @@ Test_Init(void)
 
     Status = RtlInitializeCriticalSectionAndSpinCount(&CritSect, 0xFF000000);
     ok_ntstatus(Status, STATUS_SUCCESS);
-    ok_size_t(CritSect.SpinCount, DefaultSpinCount);
+    ok_size_t(CritSect.SpinCount, g_DefaultSpinCount);
 
     Status = RtlInitializeCriticalSectionAndSpinCount(&CritSect, 0x1234);
     ok_ntstatus(Status, STATUS_SUCCESS);
-    ok_size_t(CritSect.SpinCount, 0x1234);
+    ok_size_t(CritSect.SpinCount, (g_SysInfo.dwNumberOfProcessors > 1) ? 0x1234 : 0);
 
     if (pfnRtlInitializeCriticalSectionEx != NULL)
     {
@@ -116,7 +107,7 @@ Test_Init(void)
         ok_long(CritSect.RecursionCount, 0);
         ok_ptr(CritSect.OwningThread, NULL);
         ok_ptr(CritSect.LockSemaphore, NULL);
-        ok_size_t(CritSect.SpinCount, DefaultSpinCount);
+        ok_size_t(CritSect.SpinCount, g_DefaultSpinCount);
         if (HasDebugInfo)
         {
             ok(CritSect.DebugInfo != NULL, "DebugInfo is %p\n", CritSect.DebugInfo);
@@ -171,9 +162,9 @@ Test_Init(void)
         for (ULONG i = 0; i < 32; i++)
         {
             ULONG Flags = 1UL << i;
-            ULONG AllowedFlags = 0x07000000;
+            ULONG AllowedFlags = 0x07FFFFFF;
             if (g_Version > 0x600) AllowedFlags |= 0x18000000;
-            NTSTATUS ExpectedStatus = (Flags & ~(AllowedFlags | 0xFFFFFF)) ?
+            NTSTATUS ExpectedStatus = (Flags & ~AllowedFlags) ?
                 STATUS_INVALID_PARAMETER_3 : STATUS_SUCCESS;
             Status = pfnRtlInitializeCriticalSectionEx(&CritSect, 0, Flags);
             ok(Status == ExpectedStatus, "Wrong Status (0x%lx) for Flags 0x%lx\n",
@@ -182,7 +173,7 @@ Test_Init(void)
             {
                 ULONG SetFlags = Flags & 0x08000000;
                 if (g_Version > 0x600) SetFlags |= (Flags & 0x03000000);
-                ok_size_t(CritSect.SpinCount, (g_SysInfo.dwNumberOfProcessors > 1) ? DefaultSpinCount | SetFlags : SetFlags);
+                ok_size_t(CritSect.SpinCount, (g_SysInfo.dwNumberOfProcessors > 1) ? g_DefaultSpinCount | SetFlags : SetFlags);
             }
         }
 
@@ -202,9 +193,9 @@ Test_Init(void)
         Status = pfnRtlInitializeCriticalSectionEx(&CritSect, 0x12345678, 0xFFFFFFFF);
         ok_ntstatus(Status, STATUS_INVALID_PARAMETER_3);
 
+        Status = pfnRtlInitializeCriticalSectionEx(&CritSect, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
         if (g_Version > 0x600)
         {
-            Status = pfnRtlInitializeCriticalSectionEx(&CritSect, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
             ok_ntstatus(Status, STATUS_SUCCESS);
             ok(CritSect.DebugInfo != NULL, "DebugInfo is %p\n", CritSect.DebugInfo);
             ok(CritSect.DebugInfo != LongToPtr(-1), "DebugInfo is %p\n", CritSect.DebugInfo);
@@ -229,6 +220,10 @@ Test_Init(void)
                 ok_long(CritSect.DebugInfo->Flags, 0);
                 ok_int(CritSect.DebugInfo->SpareWORD, 0);
             }
+        }
+        else
+        {
+            ok_ntstatus(Status, STATUS_INVALID_PARAMETER_3);
         }
     }
     else
@@ -282,6 +277,7 @@ void
 Test_Acquire(void)
 {
     DWORD dwThreadId1, dwThreadId2;
+    HANDLE hThread1, hThread2;
 
     RtlInitializeCriticalSection(&CritSect);
 
@@ -291,7 +287,7 @@ Test_Acquire(void)
     ok_long(CritSect.RecursionCount, 1);
     ok_ptr(CritSect.OwningThread, UlongToHandle(GetCurrentThreadId()));
     ok_ptr(CritSect.LockSemaphore, NULL);
-    //ok_size_t(CritSect.SpinCount, 0x20007d0);
+    ok_size_t(CritSect.SpinCount, g_DefaultSpinCount);
 
     // Acquire recursively
     RtlEnterCriticalSection(&CritSect);
@@ -299,7 +295,7 @@ Test_Acquire(void)
     ok_long(CritSect.RecursionCount, 2);
     ok_ptr(CritSect.OwningThread, UlongToHandle(GetCurrentThreadId()));
     ok_ptr(CritSect.LockSemaphore, NULL);
-    //ok_size_t(CritSect.SpinCount, 0x20007d0);
+    ok_size_t(CritSect.SpinCount, g_DefaultSpinCount);
 
     hEventThread1Ready = CreateEvent(NULL, TRUE, FALSE, NULL);
     hEventThread1Cont = CreateEvent(NULL, TRUE, FALSE, NULL);
@@ -307,26 +303,38 @@ Test_Acquire(void)
     hEventThread2Cont = CreateEvent(NULL, TRUE, FALSE, NULL);
 
     // Create thread 1 and wait to it time to try to acquire the critical section
-    CreateThread(NULL, 0, ThreadProc1, NULL, 0, &dwThreadId1);
-    Sleep(10);
+    hThread1 = CreateThread(NULL, 0, ThreadProc1, NULL, 0, &dwThreadId1);
+
+    // Wait up to 10 s
+    for (ULONG i = 0; (CritSect.LockCount == -2) && (i < 1000); i++)
+    {
+        Sleep(10);
+    }
 
     ok_long(CritSect.LockCount, -6);
     ok_long(CritSect.RecursionCount, 2);
     ok_ptr(CritSect.OwningThread, UlongToHandle(GetCurrentThreadId()));
-    //ok_ptr(CritSect.LockSemaphore, LongToPtr(-1));
-    //ok_size_t(CritSect.SpinCount, 0x20007d0);
+    //ok_ptr(CritSect.LockSemaphore, LongToPtr(-1)); // TODO: this behaves differently on different OS versions
+    ok_size_t(CritSect.SpinCount, g_DefaultSpinCount);
 
     // Create thread 2 and wait to it time to try to acquire the critical section
-    CreateThread(NULL, 0, ThreadProc2, NULL, 0, &dwThreadId2);
-    Sleep(10);
+    hThread2 = CreateThread(NULL, 0, ThreadProc2, NULL, 0, &dwThreadId2);
+
+    // Wait up to 10 s
+    for (ULONG i = 0; (CritSect.LockCount == -6) && (i < 1000); i++)
+    {
+        Sleep(10);
+    }
 
     ok_long(CritSect.LockCount, -10);
     ok_long(CritSect.RecursionCount, 2);
     ok_ptr(CritSect.OwningThread, UlongToHandle(GetCurrentThreadId()));
     //ok_ptr(CritSect.LockSemaphore, LongToPtr(-1));
-    //ok_size_t(CritSect.SpinCount, 0x20007d0);
+    ok_size_t(CritSect.SpinCount, g_DefaultSpinCount);
 
     RtlLeaveCriticalSection(&CritSect);
+    ok_long(CritSect.LockCount, -10);
+    ok_long(CritSect.RecursionCount, 1);
     RtlLeaveCriticalSection(&CritSect);
 
     // Wait until thread 1 has acquired the critical section
@@ -336,7 +344,16 @@ Test_Acquire(void)
     ok_long(CritSect.RecursionCount, 1);
     ok_ptr(CritSect.OwningThread, UlongToHandle(dwThreadId1));
     //ok_ptr(CritSect.LockSemaphore, LongToPtr(-1));
-    //ok_size_t(CritSect.SpinCount, 0x20007cf);
+    if (g_DefaultSpinCount != 0)
+    {
+        ok(CritSect.SpinCount <= g_DefaultSpinCount, "SpinCount increased\n");
+    }
+    else
+    {
+        ok_size_t(CritSect.SpinCount, g_DefaultSpinCount);
+    }
+
+    ok_size_t(CritSect.SpinCount, g_DefaultSpinCount ? g_DefaultSpinCount - 1 : 0);
 
     // Release thread 1, wait for thread 2 to acquire the critical section
     SetEvent(hEventThread1Cont);
@@ -346,10 +363,21 @@ Test_Acquire(void)
     ok_long(CritSect.RecursionCount, 1);
     ok_ptr(CritSect.OwningThread, UlongToHandle(dwThreadId2));
     //ok_ptr(CritSect.LockSemaphore, LongToPtr(-1));
-    //ok_size_t(CritSect.SpinCount, 0x20007cf);
+    if (g_DefaultSpinCount != 0)
+    {
+        ok(CritSect.SpinCount <= g_DefaultSpinCount, "SpinCount increased\n");
+    }
+    else
+    {
+        ok_size_t(CritSect.SpinCount, g_DefaultSpinCount);
+    }
 
     // Release thread 2
     SetEvent(hEventThread2Cont);
+
+    // To make Thomas happy :)
+    WaitForSingleObject(hThread1, INFINITE);
+    WaitForSingleObject(hThread2, INFINITE);
 }
 
 START_TEST(RtlCriticalSection)
@@ -368,6 +396,15 @@ START_TEST(RtlCriticalSection)
         g_VerInfo.szCSDVersion);
     GetSystemInfo(&g_SysInfo);
     printf("g_SysInfo.dwNumberOfProcessors = %lu\n", g_SysInfo.dwNumberOfProcessors);
+
+    if ((g_Version >= 0x600) && (g_SysInfo.dwNumberOfProcessors > 1))
+    {
+        g_DefaultSpinCount = 0x20007d0;
+    }
+    else
+    {
+        g_DefaultSpinCount = 0;
+    }
 
     Test_Init();
     Test_Acquire();
