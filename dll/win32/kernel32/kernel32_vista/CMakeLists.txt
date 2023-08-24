@@ -11,6 +11,7 @@ list(APPEND SOURCE
     GetTickCount64.c
     InitOnce.c
     sync.c
+    k32.c
     vista.c)
 
 add_library(kernel32_vista_static ${SOURCE})
