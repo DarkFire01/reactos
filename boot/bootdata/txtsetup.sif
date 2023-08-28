@@ -137,6 +137,7 @@ wmilib.sys   = 1,,,,,,,4,,,,1,4
 ksecdd.sys   = 1,,,,,,,4,,,,1,4
 mountmgr.sys = 1,,,,,,x,4,,,,1,4
 partmgr.sys  = 1,,,,,,x,4,,,,1,4
+dxgkrnl.sys  = 1,,,,,,x,4,,,,1,4
 
 [SourceDisksFiles.x86]
 
