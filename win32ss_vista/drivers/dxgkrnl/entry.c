@@ -9,6 +9,8 @@
 //#define NDEBUG
 #include <debug.h>
 
+static UNICODE_STRING DxgkRegistryPath;
+
 /*
  * @ HALF-IMPLEMENTED
  * Internal Device Control Handler
@@ -115,10 +117,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 {
     NTSTATUS Status;
     UNICODE_STRING DxgKrnlUnicode;
-
-    //TODO: These might become global later, we'll see.
     PDEVICE_OBJECT DxgkDeviceObject;
-    UNICODE_STRING DxgkRegistryPath;
 
     PAGED_CODE();
     if (!DriverObject || !RegistryPath)
