@@ -1592,6 +1592,7 @@
 @ cdecl mbtowc()
 @ cdecl memchr()
 @ cdecl -arch=x86_64 memcmp()
+@ cdecl -arch=i386 memcmp() ; This is vista+
 @ cdecl memcpy()
 @ cdecl memmove()
 @ cdecl memset()

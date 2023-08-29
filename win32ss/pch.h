@@ -87,6 +87,8 @@ extern "C" {
 
 /* Public Win32K headers */
 #include <include/ntgdityp.h>
+#include <d3dukmdt.h>
+#include <d3dkmthk.h>
 #include <ntgdi.h>
 #include <include/ntgdihdl.h>
 #include <include/ntgdibad.h>

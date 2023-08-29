@@ -1,6 +1,6 @@
 remove_definitions(-D_WIN32_WINNT=0x502)
 add_definitions(-D_WIN32_WINNT=0x602)
-
+include_directories("../../../../win32ss_vista/include/")
 add_definitions(-D_NTSYSTEM_)
 
 list(APPEND SOURCE

@@ -26,7 +26,7 @@ DxgkInitialize(_In_ PDRIVER_OBJECT              DriverObject,
                _In_ PDRIVER_INITIALIZATION_DATA DriverInitializationData)
 {
     NTSTATUS Status;
-    DXGKPORT_INITIALIZE DxgkPortInitialize;
+    PDXGKPORT_INITIALIZE DxgkPortInitialize;
 
     DPRINT("Displib: DxgkInitialize entry - Starting a WDDM Driver\n");
     if (!DriverObject,

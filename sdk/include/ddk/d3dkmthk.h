@@ -15,7 +15,7 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
-
+#ifndef WINE_D3DK
 #ifndef __WINE_D3DKMTHK_H
 #define __WINE_D3DKMTHK_H
 
@@ -341,3 +341,4 @@ DWORD APIENTRY D3DKMTDestroyDCFromMemory(_In_ CONST D3DKMT_DESTROYDCFROMMEMORY*)
 #endif /* __cplusplus */
 
 #endif /* __WINE_D3DKMTHK_H */
+#endif

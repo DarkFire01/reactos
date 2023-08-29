@@ -15,7 +15,7 @@
 NTSTATUS
 NTAPI
 DisplibLoadDxgkrnl(_In_  ULONG IoControlCode,
-                   _Out_ DXGKPORT_INITIALIZE* DxgkInitPfn)
+                   _Out_ PDXGKPORT_INITIALIZE* DxgkInitPfn)
 {
     IRP *Irp;
     KEVENT Event;
@@ -51,7 +51,7 @@ DisplibLoadDxgkrnl(_In_  ULONG IoControlCode,
                                         DxgkrnlDeviceObject,
                                         NULL,
                                         0,
-                                        &DxgkInitPfn,
+                                        DxgkInitPfn,
                                         sizeof(DxgkInitPfn),
                                         TRUE,
                                         &Event,

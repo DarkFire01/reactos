@@ -9,7 +9,7 @@
 
 #ifndef _BDD_HXX_
 #define _BDD_HXX_
-
+#define WINE_D3DK
 extern "C"
 {
     #define __CPLUSPLUS
@@ -39,10 +39,10 @@ extern "C"
     #include <winddi.h>
     #include <ntddvdeo.h>
 
-    #include <d3dkmddi.h>
-    #include <d3dkmthk.h>
-
-    #include <dispmprt.h>
+    #include "../../../include/newerrors.h"
+    #include "../../../include/d3dkmddi.h"
+    #include "../../../include/d3dkmthk.h"
+    #include "../../../include/dispmprt.h"
 };
 
 #define EDID_V1_BLOCK_SIZE 128
