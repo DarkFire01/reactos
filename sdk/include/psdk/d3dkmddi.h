@@ -1,6 +1,8 @@
 #pragma once
 
+#include <windef.h>
 #include <d3dukmdt.h>
+#include <d3dkmdt.h>
 
 typedef struct _DXGK_SEGMENTBANKPREFERENCE
 {
@@ -138,3 +140,60 @@ typedef struct _DXGK_ALLOCATIONINFO
     DXGK_ALLOCATIONINFOFLAGS2         Flags2;
 #endif
 } DXGK_ALLOCATIONINFO;
+
+typedef enum _DXGK_PRESENT_DISPLAY_ONLY_PROGRESS_ID
+{
+    DXGK_PRESENT_DISPLAYONLY_PROGRESS_ID_COMPLETE  = 0,
+    DXGK_PRESENT_DISPLAYONLY_PROGRESS_ID_FAILED    = 1,
+} DXGK_PRESENT_DISPLAY_ONLY_PROGRESS_ID;
+
+typedef struct _DXGKARGCB_PRESENT_DISPLAYONLY_PROGRESS
+{
+    D3DDDI_VIDEO_PRESENT_SOURCE_ID        VidPnSourceId;
+    DXGK_PRESENT_DISPLAY_ONLY_PROGRESS_ID ProgressId;
+} DXGKARGCB_PRESENT_DISPLAYONLY_PROGRESS, *PDXGKARGCB_PRESENT_DISPLAYONLY_PROGRESS;
+
+typedef struct _D3DKMT_PRESENT_DISPLAY_ONLY_FLAGS
+{
+    union
+    {
+        struct
+        {
+            UINT    Rotate                      :  1;       // 0x00000001
+            UINT    Reserved                    : 31;       // 0xFFFFFFFE
+        };
+        UINT    Value;
+    };
+} D3DKMT_PRESENT_DISPLAY_ONLY_FLAGS;
+
+typedef
+VOID (APIENTRY CALLBACK *DXGKCB_PRESENT_DISPLAYONLY_PROGRESS)(
+    _In_ HANDLE hAdapter, _In_ PDXGKARGCB_PRESENT_DISPLAYONLY_PROGRESS
+    );
+
+typedef struct _DXGKARG_PRESENT_DISPLAYONLY
+{
+    D3DDDI_VIDEO_PRESENT_SOURCE_ID      VidPnSourceId;                  // in:  VidPn where the image is presented
+    VOID*                               pSource;                        // in:  Start address of source image
+    ULONG                               BytesPerPixel;                  // in:  Bytes per pixel in source image
+    LONG                                Pitch;                          // in:  Bytes per line in source image
+    D3DKMT_PRESENT_DISPLAY_ONLY_FLAGS   Flags;                          // in:  Flags of current present,
+    ULONG                               NumMoves;                       // in:  Number of screen to screen moves
+    _Field_size_(NumMoves)
+    D3DKMT_MOVE_RECT*                   pMoves;                         // in:  Point to the list of moves
+    ULONG                               NumDirtyRects;                  // in:  Number of direct rects
+    _Field_size_(NumDirtyRects)
+    RECT*                               pDirtyRect;                     // in:  Point to the list of dirty rects
+    DXGKCB_PRESENT_DISPLAYONLY_PROGRESS pfnPresentDisplayOnlyProgress;  // in:  Point to present progress callback
+} DXGKARG_PRESENT_DISPLAYONLY, *PDXGKARG_PRESENT_DISPLAYONLY;
+
+
+typedef
+NTSTATUS
+APIENTRY
+DXGKDDI_PRESENTDISPLAYONLY(_In_ HANDLE                        hAdapter,
+                           _In_ PDXGKARG_PRESENT_DISPLAYONLY  pPresentDisplayOnly);
+
+#if (DXGKDDI_INTERFACE_VERSION >= DXGKDDI_INTERFACE_VERSION_WIN8)
+typedef DXGKDDI_PRESENTDISPLAYONLY              *PDXGKDDI_PRESENTDISPLAYONLY;
+#endif
