@@ -47,22 +47,22 @@ DxgkHandleInternalDeviceControl(_In_ DEVICE_OBJECT *DeviceObject, _Inout_ IRP *I
         case IOCTL_VIDEO_KMDOD_DDI_REGISTER:
             DPRINT("DxgkInternalDeviceControl: IOCTL_VIDEO_KMDOD_DDI_REGISTER\n");
             Irp->IoStatus.Information = 0;
-            UNIMPLEMENTED;
-            Irp->IoStatus.Status = STATUS_UNSUCCESSFUL;
+            *OutputBuffer = (PVOID)DxgkPortInitializeDodMiniport;
+            Irp->IoStatus.Status = STATUS_SUCCESS;
             break;
         case IOCTL_VIDEO_DDI_FUNC_REGISTER:
             DPRINT("DxgkInternalDeviceControl: IOCTL_VIDEO_DDI_FUNC_REGISTER\n");
             Irp->IoStatus.Information = 0;
-            UNIMPLEMENTED;
-            Irp->IoStatus.Status = STATUS_UNSUCCESSFUL;
+            *OutputBuffer = (PVOID)DxgkPortInitializeMiniport;
+            Irp->IoStatus.Status = STATUS_SUCCESS;
             break;
         case IOCTL_VIDEO_ROS_START_ADAPTER:
             DPRINT("DxgkInternalDeviceControl: IOCTL_VIDEO_I_AM_REACTOS\n");
             /* Call Start Adapter */
             //TODO: StartAdapterThread();
             //HACK: This is NOT how windows does this!
-            UNIMPLEMENTED;
-            Irp->IoStatus.Status = STATUS_UNSUCCESSFUL;
+            DxgkPortStartAdapter();
+            Irp->IoStatus.Status = STATUS_SUCCESS;
             break;
         default:
             DPRINT("DxgkInternalDeviceControl: unknown IOCTRL Code: %X", IoControlCode);
@@ -151,5 +151,6 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
     }
 
     //TODO: Setup global instances here.
+    DxgkpSetupDxgkrnl(DriverObject, RegistryPath);
     return Status;
 }

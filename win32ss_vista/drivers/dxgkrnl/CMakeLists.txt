@@ -7,7 +7,25 @@ include_directories("include/")
 spec2def(dxgkrnl.sys dxgkrnl.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
-    entry.c)
+    entry.c
+    registry.cpp
+    resource.cpp
+    dxgkinterface.cpp
+    dxgkinterrupts.cpp
+    miniport/dxgkport.cpp
+    miniport/miniport.cpp
+    vidpnss/vidpnmgr.cpp
+    vidpnss/vidpninterface.cpp
+    vidpnss/vidpnsourcemodset.cpp
+    vidpnss/vidpntargetmodeset.cpp
+    vidpnss/vidpntopology.cpp
+    services/dxgkagp.cpp
+    services/dxgkbdd.cpp
+    services/dxgkbugreport.cpp
+    services/dxgkfirmwaretable.cpp
+    services/dxgkidd.cpp
+    services/dxgkspb.cpp
+    services/dxgktimedoperation.cpp)
 
 add_library(dxgkrnl MODULE
     ${SOURCE}
