@@ -266,7 +266,7 @@ InternalWake(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
     LARGE_INTEGER Timeout;
     PCOND_VAR_WAIT_ENTRY RemoveOnUnlockEntry;
 
-    //ASSERT(CondVarKeyedEventHandle != NULL);
+  //  ASSERT(CondVarKeyedEventHandle != NULL);
 
     if (HeadEntry == NULL)
     {
@@ -456,7 +456,7 @@ InternalSleep(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
 VOID
 RtlpInitializeKeyedEvent(VOID)
 {
-   // ASSERT(CondVarKeyedEventHandle == NULL);
+  //  ASSERT(CondVarKeyedEventHandle == NULL);
     NtCreateKeyedEvent(&CondVarKeyedEventHandle, EVENT_ALL_ACCESS, NULL, 0);
 }
 

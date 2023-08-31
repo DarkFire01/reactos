@@ -26,6 +26,8 @@ PVOID g_pfnSE_InstallBeforeInit;
 PVOID g_pfnSE_InstallAfterInit;
 PVOID g_pfnSE_ProcessDying;
 
+
+
 /* FUNCTIONS *****************************************************************/
 
 NTSTATUS
@@ -466,68 +468,6 @@ LdrpUpdateLoadCount2(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
     /* Setup the string and call the extended API */
     RtlInitEmptyUnicodeString(&UpdateString, Buffer, sizeof(Buffer));
     LdrpUpdateLoadCount3(LdrEntry, Flags, &UpdateString);
-}
-
-VOID
-NTAPI
-LdrpCallTlsInitializers(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
-                        IN ULONG Reason)
-{
-    PIMAGE_TLS_DIRECTORY TlsDirectory;
-    PIMAGE_TLS_CALLBACK *Array, Callback;
-    ULONG Size;
-
-    /* Get the TLS Directory */
-    TlsDirectory = RtlImageDirectoryEntryToData(LdrEntry->DllBase,
-                                                TRUE,
-                                                IMAGE_DIRECTORY_ENTRY_TLS,
-                                                &Size);
-
-    /* Protect against invalid pointers */
-    _SEH2_TRY
-    {
-        /* Make sure it's valid */
-        if (TlsDirectory)
-        {
-            /* Get the array */
-            Array = (PIMAGE_TLS_CALLBACK *)TlsDirectory->AddressOfCallBacks;
-            if (Array)
-            {
-                /* Display debug */
-                if (ShowSnaps)
-                {
-                    DPRINT1("LDR: Tls Callbacks Found. Imagebase %p Tls %p CallBacks %p\n",
-                            LdrEntry->DllBase, TlsDirectory, Array);
-                }
-
-                /* Loop the array */
-                while (*Array)
-                {
-                    /* Get the TLS Entrypoint */
-                    Callback = *Array++;
-
-                    /* Display debug */
-                    if (ShowSnaps)
-                    {
-                        DPRINT1("LDR: Calling Tls Callback Imagebase %p Function %p\n",
-                                LdrEntry->DllBase, Callback);
-                    }
-
-                    /* Call it */
-                    LdrpCallInitRoutine((PDLL_INIT_ROUTINE)Callback,
-                                        LdrEntry->DllBase,
-                                        Reason,
-                                        NULL);
-                }
-            }
-        }
-    }
-    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
-    {
-        DPRINT1("LDR: Exception 0x%x during Tls Callback(%u) for %wZ\n",
-                _SEH2_GetExceptionCode(), Reason, &LdrEntry->BaseDllName);
-    }
-    _SEH2_END;
 }
 
 NTSTATUS
@@ -2548,6 +2488,9 @@ LdrpLoadDll(IN BOOLEAN Redirected,
                 if (LdrEntry->LoadCount != 0xFFFF) LdrEntry->LoadCount++;
                 LdrpUpdateLoadCount2(LdrEntry, LDRP_UPDATE_REFCOUNT);
 
+                if (!LdrEntry->TlsIndex)
+                    Status = LdrpHandleTlsData(LdrEntry);
+
                 /* Check if we failed */
                 if (!NT_SUCCESS(Status))
                 {
@@ -2801,5 +2744,3 @@ LdrpUnloadShimEngine()
     LdrUnloadDll(g_pShimEngineModule);
     g_pShimEngineModule = NULL;
 }
-
-/* EOF */
