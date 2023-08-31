@@ -15,8 +15,11 @@
 
 #define NDEBUG
 #include <debug.h>
-
-
+extern TLS_RECLAIM_TABLE_ENTRY LdrpDelayedTlsReclaimTable;
+extern RTL_SRWLOCK LdrpTlsLock;
+extern LIST_ENTRY LdrpTlsList;
+extern RTL_BITMAP LdrpTlsBitmap;
+extern LdrpActiveThreadCount;
 /* GLOBALS *******************************************************************/
 
 HANDLE ImageExecOptionsKey;
@@ -1249,167 +1252,8 @@ LdrShutdownThread(VOID)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS
-NTAPI
-LdrpInitializeTls(VOID)
-{
-    PLIST_ENTRY NextEntry, ListHead;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
-    PIMAGE_TLS_DIRECTORY TlsDirectory;
-    PLDRP_TLS_DATA TlsData;
-    ULONG Size;
 
-    /* Initialize the TLS List */
-    InitializeListHead(&LdrpTlsList);
 
-    /* Loop all the modules */
-    ListHead = &NtCurrentPeb()->Ldr->InLoadOrderModuleList;
-    NextEntry = ListHead->Flink;
-    while (ListHead != NextEntry)
-    {
-        /* Get the entry */
-        LdrEntry = CONTAINING_RECORD(NextEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
-        NextEntry = NextEntry->Flink;
-
-        /* Get the TLS directory */
-        TlsDirectory = RtlImageDirectoryEntryToData(LdrEntry->DllBase,
-                                                    TRUE,
-                                                    IMAGE_DIRECTORY_ENTRY_TLS,
-                                                    &Size);
-
-        /* Check if we have a directory */
-        if (!TlsDirectory) continue;
-
-        /* Check if the image has TLS */
-        if (!LdrpImageHasTls) LdrpImageHasTls = TRUE;
-
-        /* Show debug message */
-        if (ShowSnaps)
-        {
-            DPRINT1("LDR: Tls Found in %wZ at %p\n",
-                    &LdrEntry->BaseDllName,
-                    TlsDirectory);
-        }
-
-        /* Allocate an entry */
-        TlsData = RtlAllocateHeap(RtlGetProcessHeap(), 0, sizeof(LDRP_TLS_DATA));
-        if (!TlsData) return STATUS_NO_MEMORY;
-
-        /* Lock the DLL and mark it for TLS Usage */
-        LdrEntry->LoadCount = -1;
-        LdrEntry->TlsIndex = -1;
-
-        /* Save the cached TLS data */
-        TlsData->TlsDirectory = *TlsDirectory;
-        InsertTailList(&LdrpTlsList, &TlsData->TlsLinks);
-
-        /* Update the index */
-        *(PLONG)TlsData->TlsDirectory.AddressOfIndex = LdrpNumberOfTlsEntries;
-        TlsData->TlsDirectory.Characteristics = LdrpNumberOfTlsEntries++;
-    }
-
-    /* Done setting up TLS, allocate entries */
-    return LdrpAllocateTls();
-}
-
-NTSTATUS
-NTAPI
-LdrpAllocateTls(VOID)
-{
-    PTEB Teb = NtCurrentTeb();
-    PLIST_ENTRY NextEntry, ListHead;
-    PLDRP_TLS_DATA TlsData;
-    SIZE_T TlsDataSize;
-    PVOID *TlsVector;
-
-    /* Check if we have any entries */
-    if (!LdrpNumberOfTlsEntries)
-        return STATUS_SUCCESS;
-
-    /* Allocate the vector array */
-    TlsVector = RtlAllocateHeap(RtlGetProcessHeap(),
-                                    0,
-                                    LdrpNumberOfTlsEntries * sizeof(PVOID));
-    if (!TlsVector) return STATUS_NO_MEMORY;
-    Teb->ThreadLocalStoragePointer = TlsVector;
-
-    /* Loop the TLS Array */
-    ListHead = &LdrpTlsList;
-    NextEntry = ListHead->Flink;
-    while (NextEntry != ListHead)
-    {
-        /* Get the entry */
-        TlsData = CONTAINING_RECORD(NextEntry, LDRP_TLS_DATA, TlsLinks);
-        NextEntry = NextEntry->Flink;
-
-        /* Allocate this vector */
-        TlsDataSize = TlsData->TlsDirectory.EndAddressOfRawData -
-                      TlsData->TlsDirectory.StartAddressOfRawData;
-        TlsVector[TlsData->TlsDirectory.Characteristics] = RtlAllocateHeap(RtlGetProcessHeap(),
-                                                                           0,
-                                                                           TlsDataSize);
-        if (!TlsVector[TlsData->TlsDirectory.Characteristics])
-        {
-            /* Out of memory */
-            return STATUS_NO_MEMORY;
-        }
-
-        /* Show debug message */
-        if (ShowSnaps)
-        {
-            DPRINT1("LDR: TlsVector %p Index %lu = %p copied from %x to %p\n",
-                    TlsVector,
-                    TlsData->TlsDirectory.Characteristics,
-                    &TlsVector[TlsData->TlsDirectory.Characteristics],
-                    TlsData->TlsDirectory.StartAddressOfRawData,
-                    TlsVector[TlsData->TlsDirectory.Characteristics]);
-        }
-
-        /* Copy the data */
-        RtlCopyMemory(TlsVector[TlsData->TlsDirectory.Characteristics],
-                      (PVOID)TlsData->TlsDirectory.StartAddressOfRawData,
-                      TlsDataSize);
-    }
-
-    /* Done */
-    return STATUS_SUCCESS;
-}
-
-VOID
-NTAPI
-LdrpFreeTls(VOID)
-{
-    PLIST_ENTRY ListHead, NextEntry;
-    PLDRP_TLS_DATA TlsData;
-    PVOID *TlsVector;
-    PTEB Teb = NtCurrentTeb();
-
-    /* Get a pointer to the vector array */
-    TlsVector = Teb->ThreadLocalStoragePointer;
-    if (!TlsVector) return;
-
-    /* Loop through it */
-    ListHead = &LdrpTlsList;
-    NextEntry = ListHead->Flink;
-    while (NextEntry != ListHead)
-    {
-        TlsData = CONTAINING_RECORD(NextEntry, LDRP_TLS_DATA, TlsLinks);
-        NextEntry = NextEntry->Flink;
-
-        /* Free each entry */
-        if (TlsVector[TlsData->TlsDirectory.Characteristics])
-        {
-            RtlFreeHeap(RtlGetProcessHeap(),
-                        0,
-                        TlsVector[TlsData->TlsDirectory.Characteristics]);
-        }
-    }
-
-    /* Free the array itself */
-    RtlFreeHeap(RtlGetProcessHeap(),
-                0,
-                TlsVector);
-}
 
 NTSTATUS
 NTAPI
@@ -2300,6 +2144,15 @@ LdrpInitializeProcess(IN PCONTEXT Context,
 
     }
 
+    /* Initialize TLS */
+    Status = LdrpInitializeTls();
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("LDR: LdrpProcessInitialization failed to initialize TLS slots; status %x\n",
+                Status);
+        return Status;
+    }
+
     if (IsDotNetImage)
     {
         /* FIXME */
@@ -2402,15 +2255,6 @@ LdrpInitializeProcess(IN PCONTEXT Context,
 
     /* Check whether all static imports were properly loaded and return here */
     if (!NT_SUCCESS(ImportStatus)) return ImportStatus;
-
-    /* Initialize TLS */
-    Status = LdrpInitializeTls();
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("LDR: LdrpProcessInitialization failed to initialize TLS slots; status %x\n",
-                Status);
-        return Status;
-    }
 
     /* FIXME Mark the DLL Ranges for Stack Traces later */
 

@@ -24,6 +24,7 @@ list(APPEND SOURCE
     ldr/ldrpe.c
     ldr/ldrutils.c
     ldr/verifier.c
+    ldr/ldrtls.cpp
     rtl/libsupp.c
     rtl/uilist.c
     rtl/version.c

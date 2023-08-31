@@ -932,6 +932,10 @@ LdrpLoadImportModule(IN PWSTR DllPath OPTIONAL,
     /* Walk its import descriptor table */
     Status = LdrpWalkImportDescriptor(DllPath,
                                       *DataTableEntry);
+    PLDR_DATA_TABLE_ENTRY TableEntry = *DataTableEntry;
+    if (!TableEntry->TlsIndex)
+        Status = LdrpHandleTlsData(TableEntry);
+
     if (!NT_SUCCESS(Status))
     {
         /* Add it to the in-init-order list in case of failure */
