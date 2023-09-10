@@ -500,7 +500,7 @@ PoInitializePrcb(IN PKPRCB Prcb)
     /* Initialize the Power State */
     RtlZeroMemory(&Prcb->PowerState, sizeof(Prcb->PowerState));
     Prcb->PowerState.Idle0KernelTimeLimit = 0xFFFFFFFF;
-    Prcb->PowerState.CurrentThrottle = 100;
+    Prcb->PowerState.CurrentThrottle = 80;
     Prcb->PowerState.CurrentThrottleIndex = 0;
     Prcb->PowerState.IdleFunction = PopIdle0;
 
