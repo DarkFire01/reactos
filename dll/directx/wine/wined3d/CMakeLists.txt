@@ -13,6 +13,8 @@ include_directories(BEFORE ${REACTOS_SOURCE_DIR}/sdk/include/reactos/wine)
 spec2def(d3dwine.dll wined3d.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
+    adapter_gl.c
+    adapter_vk.c
     arb_program_shader.c
     ati_fragment_shader.c
     buffer.c
@@ -20,7 +22,6 @@ list(APPEND SOURCE
     cs.c
     device.c
     directx.c
-    dxtn.c
     gl_compat.c
     glsl_shader.c
     nvidia_texture_shader.c

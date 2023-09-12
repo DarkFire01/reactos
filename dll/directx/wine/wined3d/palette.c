@@ -86,15 +86,7 @@ HRESULT CDECL wined3d_palette_get_entries(const struct wined3d_palette *palette,
 void CDECL wined3d_palette_apply_to_dc(const struct wined3d_palette *palette, HDC dc)
 {
     if (SetDIBColorTable(dc, 0, 256, palette->colors) != 256)
-#ifdef __REACTOS__
-    {
-        static int warn_once;
-        if (!warn_once++)
-            ERR("Failed to set DIB color table. (Only printing once)\n");
-    }
-#else
         ERR("Failed to set DIB color table.\n");
-#endif
 }
 
 HRESULT CDECL wined3d_palette_set_entries(struct wined3d_palette *palette,
@@ -105,6 +97,8 @@ HRESULT CDECL wined3d_palette_set_entries(struct wined3d_palette *palette,
     TRACE("palette %p, flags %#x, start %u, count %u, entries %p.\n",
             palette, flags, start, count, entries);
     TRACE("Palette flags: %#x.\n", palette->flags);
+
+    wined3d_cs_finish(palette->device->cs, WINED3D_CS_QUEUE_DEFAULT);
 
     if (palette->flags & WINED3D_PALETTE_8BIT_ENTRIES)
     {
