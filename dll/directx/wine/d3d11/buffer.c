@@ -17,9 +17,6 @@
  *
  */
 
-#include "config.h"
-#include "wine/port.h"
-
 #include "d3d11_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d11);
@@ -71,7 +68,7 @@ static ULONG STDMETHODCALLTYPE d3d11_buffer_AddRef(ID3D11Buffer *iface)
 
     if (refcount == 1)
     {
-        ID3D11Device_AddRef(buffer->device);
+        ID3D11Device2_AddRef(buffer->device);
         wined3d_mutex_lock();
         wined3d_buffer_incref(buffer->wined3d_buffer);
         wined3d_mutex_unlock();
@@ -89,14 +86,14 @@ static ULONG STDMETHODCALLTYPE d3d11_buffer_Release(ID3D11Buffer *iface)
 
     if (!refcount)
     {
-        ID3D11Device *device = buffer->device;
+        ID3D11Device2 *device = buffer->device;
 
         wined3d_mutex_lock();
         wined3d_buffer_decref(buffer->wined3d_buffer);
         wined3d_mutex_unlock();
         /* Release the device last, it may cause the wined3d device to be
          * destroyed. */
-        ID3D11Device_Release(device);
+        ID3D11Device2_Release(device);
     }
 
     return refcount;
@@ -108,7 +105,7 @@ static void STDMETHODCALLTYPE d3d11_buffer_GetDevice(ID3D11Buffer *iface, ID3D11
 
     TRACE("iface %p, device %p.\n", iface, device);
 
-    *device = buffer->device;
+    *device = (ID3D11Device *)buffer->device;
     ID3D11Device_AddRef(*device);
 }
 
@@ -242,7 +239,7 @@ static void STDMETHODCALLTYPE d3d10_buffer_GetDevice(ID3D10Buffer *iface, ID3D10
 
     TRACE("iface %p, device %p.\n", iface, device);
 
-    ID3D11Device_QueryInterface(buffer->device, &IID_ID3D10Device, (void **)device);
+    ID3D11Device2_QueryInterface(buffer->device, &IID_ID3D10Device, (void **)device);
 }
 
 static HRESULT STDMETHODCALLTYPE d3d10_buffer_GetPrivateData(ID3D10Buffer *iface,
@@ -450,8 +447,8 @@ static HRESULT d3d_buffer_init(struct d3d_buffer *buffer, struct d3d_device *dev
         return E_INVALIDARG;
 
     wined3d_desc.byte_width = buffer->desc.ByteWidth;
-    wined3d_desc.usage = wined3d_usage_from_d3d11(0, buffer->desc.Usage);
-    wined3d_desc.bind_flags = buffer->desc.BindFlags;
+    wined3d_desc.usage = wined3d_usage_from_d3d11(buffer->desc.Usage);
+    wined3d_desc.bind_flags = wined3d_bind_flags_from_d3d11(buffer->desc.BindFlags);
     wined3d_desc.access = wined3d_access_from_d3d11(buffer->desc.Usage, buffer->desc.CPUAccessFlags);
     wined3d_desc.misc_flags = buffer->desc.MiscFlags;
     wined3d_desc.structure_byte_stride = buffer->desc.StructureByteStride;
@@ -470,8 +467,7 @@ static HRESULT d3d_buffer_init(struct d3d_buffer *buffer, struct d3d_device *dev
     }
     wined3d_mutex_unlock();
 
-    buffer->device = &device->ID3D11Device_iface;
-    ID3D11Device_AddRef(buffer->device);
+    ID3D11Device2_AddRef(buffer->device = &device->ID3D11Device2_iface);
 
     return S_OK;
 }

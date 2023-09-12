@@ -4,14 +4,15 @@
 @ stdcall D3D11CoreRegisterLayers()
 @ stdcall D3D11CreateDevice(ptr long ptr long ptr long long ptr ptr ptr)
 @ stdcall D3D11CreateDeviceAndSwapChain(ptr long ptr long ptr long long ptr ptr ptr ptr ptr)
-@ stub D3DKMTCloseAdapter
+@ stdcall D3D11On12CreateDevice(ptr long ptr long ptr long long ptr ptr ptr)
+@ stdcall -stub D3DKMTCloseAdapter(ptr) ;gdi32.D3DKMTCloseAdapter
 @ stub D3DKMTCreateAllocation
 @ stub D3DKMTCreateContext
-@ stub D3DKMTCreateDevice
+@ stdcall -stub D3DKMTCreateDevice(ptr) ;gdi32.D3DKMTCreateDevice
 @ stub D3DKMTCreateSynchronizationObject
 @ stub D3DKMTDestroyAllocation
 @ stub D3DKMTDestroyContext
-@ stub D3DKMTDestroyDevice
+@ stdcall -stub D3DKMTDestroyDevice(ptr) ;gdi32.D3DKMTDestroyDevice
 @ stub D3DKMTDestroySynchronizationObject
 @ stub D3DKMTEscape
 @ stub D3DKMTGetContextSchedulingPriority
@@ -21,6 +22,7 @@
 @ stub D3DKMTGetRuntimeData
 @ stub D3DKMTGetSharedPrimaryHandle
 @ stub D3DKMTLock
+@ stdcall -stub D3DKMTOpenAdapterFromGdiDisplayName(ptr); gdi32.D3DKMTOpenAdapterFromGdiDisplayName
 @ stub D3DKMTOpenAdapterFromHdc
 @ stub D3DKMTOpenResource
 @ stub D3DKMTPresent

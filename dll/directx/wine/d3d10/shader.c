@@ -18,9 +18,6 @@
  *
  */
 
-#include "config.h"
-#include "wine/port.h"
-
 #include "d3d10_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d10);
@@ -34,10 +31,9 @@ static inline struct d3d10_shader_reflection *impl_from_ID3D10ShaderReflection(I
 
 static HRESULT STDMETHODCALLTYPE d3d10_shader_reflection_QueryInterface(ID3D10ShaderReflection *iface, REFIID riid, void **object)
 {
-    GUID Reflection = {0xd40e20b6, 0xf8f7, 0x42ad, 0xab, 0x20, 0x4b, 0xaf, 0x8f, 0x15, 0xdf, 0xaa};
     TRACE("iface %p, riid %s, object %p\n", iface, debugstr_guid(riid), object);
 
-    if (IsEqualGUID(riid, &Reflection)
+    if (IsEqualGUID(riid, &IID_ID3D10ShaderReflection)
             || IsEqualGUID(riid, &IID_IUnknown))
     {
         IUnknown_AddRef(iface);

@@ -20,9 +20,6 @@
  *
  */
 
-#include "config.h"
-#include "wine/port.h"
-
 #define D3D11_INIT_GUID
 #include "d3d11_private.h"
 
@@ -95,27 +92,11 @@ static HRESULT WINAPI layer_create(enum dxgi_device_layer_id id, void **layer_ba
     return S_OK;
 }
 
-static void WINAPI layer_set_feature_level(enum dxgi_device_layer_id id, void *device,
-        D3D_FEATURE_LEVEL feature_level)
-{
-    struct d3d_device *d3d_device = device;
-
-    TRACE("id %#x, device %p, feature_level %#x.\n", id, device, feature_level);
-
-    if (id != DXGI_DEVICE_LAYER_D3D10_DEVICE)
-    {
-        WARN("Unknown layer id %#x.\n", id);
-        return;
-    }
-
-    d3d_device->feature_level = feature_level;
-}
-
 HRESULT WINAPI D3D11CoreRegisterLayers(void)
 {
     static const struct dxgi_device_layer layers[] =
     {
-        {DXGI_DEVICE_LAYER_D3D10_DEVICE, layer_init, layer_get_size, layer_create, layer_set_feature_level},
+        {DXGI_DEVICE_LAYER_D3D10_DEVICE, layer_init, layer_get_size, layer_create},
     };
 
     DXGID3D10RegisterLayers(layers, ARRAY_SIZE(layers));
@@ -152,7 +133,7 @@ HRESULT WINAPI D3D11CoreCreateDevice(IDXGIFactory *factory, IDXGIAdapter *adapte
     return S_OK;
 }
 
-HRESULT WINAPI D3D11CreateDevice(IDXGIAdapter *adapter, D3D_DRIVER_TYPE driver_type, HMODULE swrast, UINT flags,
+static HRESULT d3d11_create_device(IDXGIAdapter *adapter, D3D_DRIVER_TYPE driver_type, HMODULE swrast, UINT flags,
         const D3D_FEATURE_LEVEL *feature_levels, UINT levels, UINT sdk_version, ID3D11Device **device_out,
         D3D_FEATURE_LEVEL *obtained_feature_level, ID3D11DeviceContext **immediate_context)
 {
@@ -202,6 +183,8 @@ HRESULT WINAPI D3D11CreateDevice(IDXGIAdapter *adapter, D3D_DRIVER_TYPE driver_t
 
         switch(driver_type)
         {
+            case D3D_DRIVER_TYPE_WARP:
+                FIXME("WARP driver not implemented, falling back to hardware.\n");
             case D3D_DRIVER_TYPE_HARDWARE:
             {
                 hr = IDXGIFactory_EnumAdapters(factory, 0, &adapter);
@@ -292,6 +275,14 @@ HRESULT WINAPI D3D11CreateDevice(IDXGIAdapter *adapter, D3D_DRIVER_TYPE driver_t
     return (device_out || immediate_context) ? S_OK : S_FALSE;
 }
 
+HRESULT WINAPI D3D11CreateDevice(IDXGIAdapter *adapter, D3D_DRIVER_TYPE driver_type, HMODULE swrast, UINT flags,
+        const D3D_FEATURE_LEVEL *feature_levels, UINT levels, UINT sdk_version, ID3D11Device **device_out,
+        D3D_FEATURE_LEVEL *obtained_feature_level, ID3D11DeviceContext **immediate_context)
+{
+    return d3d11_create_device(adapter, driver_type, swrast, flags, feature_levels,
+            levels, sdk_version, device_out, obtained_feature_level, immediate_context);
+}
+
 HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *adapter, D3D_DRIVER_TYPE driver_type,
         HMODULE swrast, UINT flags, const D3D_FEATURE_LEVEL *feature_levels, UINT levels,
         UINT sdk_version, const DXGI_SWAP_CHAIN_DESC *swapchain_desc, IDXGISwapChain **swapchain,
@@ -313,8 +304,10 @@ HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *adapter, D3D_DRIVER_T
     if (device_out)
         *device_out = NULL;
 
-    if (FAILED(hr = D3D11CreateDevice(adapter, driver_type, swrast, flags, feature_levels, levels, sdk_version,
-                    &device, obtained_feature_level, immediate_context)))
+    /* Avoid forwarding to D3D11CreateDevice(), since it breaks applications
+     * hooking these entry-points. */
+    if (FAILED(hr = d3d11_create_device(adapter, driver_type, swrast, flags, feature_levels,
+            levels, sdk_version, &device, obtained_feature_level, immediate_context)))
     {
         WARN("Failed to create a device, returning %#x.\n", hr);
         return hr;
@@ -374,4 +367,19 @@ cleanup:
     }
 
     return hr;
+}
+
+HRESULT WINAPI D3D11On12CreateDevice(IUnknown *device, UINT flags,
+        const D3D_FEATURE_LEVEL *feature_levels, UINT feature_level_count,
+        IUnknown * const *queues, UINT queue_count, UINT node_mask,
+        ID3D11Device **d3d11_device, ID3D11DeviceContext **d3d11_immediate_context,
+        D3D_FEATURE_LEVEL *obtained_feature_level)
+{
+    FIXME("device %p, flags %#x, feature_levels %p, feature_level_count %u, "
+            "queues %p, queue_count %u, node_mask 0x%08x, "
+            "d3d11_device %p, d3d11_immediate_context %p, obtained_feature_level %p stub!\n",
+            device, flags, feature_levels, feature_level_count, queues, queue_count,
+            node_mask, d3d11_device, d3d11_immediate_context, obtained_feature_level);
+
+    return E_NOTIMPL;
 }

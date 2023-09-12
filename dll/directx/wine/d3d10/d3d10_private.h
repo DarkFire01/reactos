@@ -43,7 +43,7 @@ const char *debug_d3d10_driver_type(D3D10_DRIVER_TYPE driver_type) DECLSPEC_HIDD
 const char *debug_d3d10_shader_variable_class(D3D10_SHADER_VARIABLE_CLASS c) DECLSPEC_HIDDEN;
 const char *debug_d3d10_shader_variable_type(D3D10_SHADER_VARIABLE_TYPE t) DECLSPEC_HIDDEN;
 const char *debug_d3d10_device_state_types(D3D10_DEVICE_STATE_TYPES t) DECLSPEC_HIDDEN;
-//GUID IID_IDXGIFactory = {0x7b7166ec,0x21c7,0x44ae,0xb2,0x1a,0xc9,0xae,0x32,0x1a,0xe3,0x69};
+
 enum d3d10_effect_object_type
 {
     D3D10_EOT_RASTERIZER_STATE = 0x0,

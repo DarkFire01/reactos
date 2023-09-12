@@ -27,7 +27,7 @@ if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
 endif()
 
 set_module_type(d3d10 win32dll)
-target_link_libraries(d3d10 wine uuid)
+target_link_libraries(d3d10 wine dxguid uuid)
 add_importlibs(d3d10 d3d11 d3dwine msvcrt d3dcompiler_43 d3d10core dxgi kernel32 ntdll)
 add_pch(d3d10 d3d10_private.h SOURCE)
 add_dependencies(d3d10 wineheaders d3d_idl_headers)

@@ -24,19 +24,20 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d11);
 
-static HRESULT isgn_handler(const char *data, DWORD data_size, DWORD tag, void *ctx)
+static struct wined3d_shader_signature_element *shader_find_signature_element(const struct wined3d_shader_signature *s,
+        const char *semantic_name, unsigned int semantic_idx, unsigned int stream_idx)
 {
-    struct wined3d_shader_signature *is = ctx;
+    struct wined3d_shader_signature_element *e = s->elements;
+    unsigned int i;
 
-    if (tag != TAG_ISGN)
-        return S_OK;
-
-    if (is->elements)
+    for (i = 0; i < s->element_count; ++i)
     {
-        FIXME("Multiple input signatures.\n");
-        shader_free_signature(is);
+        if (!_strnicmp(e[i].semantic_name, semantic_name, -1) && e[i].semantic_idx == semantic_idx
+                && e[i].stream_idx == stream_idx)
+            return &e[i];
     }
-    return shader_parse_signature(tag, data, data_size, is);
+
+    return NULL;
 }
 
 static HRESULT d3d11_input_layout_to_wined3d_declaration(const D3D11_INPUT_ELEMENT_DESC *element_descs,
@@ -47,17 +48,16 @@ static HRESULT d3d11_input_layout_to_wined3d_declaration(const D3D11_INPUT_ELEME
     unsigned int i;
     HRESULT hr;
 
-    memset(&is, 0, sizeof(is));
-    if (FAILED(hr = parse_dxbc(shader_byte_code, shader_byte_code_length, isgn_handler, &is)))
+    if (FAILED(hr = wined3d_extract_shader_input_signature_from_dxbc(&is, shader_byte_code, shader_byte_code_length)))
     {
-        ERR("Failed to parse input signature.\n");
+        ERR("Failed to extract input signature.\n");
         return E_FAIL;
     }
 
     if (!(*wined3d_elements = heap_calloc(element_count, sizeof(**wined3d_elements))))
     {
         ERR("Failed to allocate wined3d vertex element array memory.\n");
-        shader_free_signature(&is);
+        heap_free(is.elements);
         return E_OUTOFMEMORY;
     }
 
@@ -83,7 +83,7 @@ static HRESULT d3d11_input_layout_to_wined3d_declaration(const D3D11_INPUT_ELEME
             WARN("Unused input element %u.\n", i);
     }
 
-    shader_free_signature(&is);
+    heap_free(is.elements);
 
     return S_OK;
 }
@@ -134,7 +134,7 @@ static ULONG STDMETHODCALLTYPE d3d11_input_layout_AddRef(ID3D11InputLayout *ifac
 
     if (refcount == 1)
     {
-        ID3D11Device_AddRef(layout->device);
+        ID3D11Device2_AddRef(layout->device);
         wined3d_mutex_lock();
         wined3d_vertex_declaration_incref(layout->wined3d_decl);
         wined3d_mutex_unlock();
@@ -152,13 +152,13 @@ static ULONG STDMETHODCALLTYPE d3d11_input_layout_Release(ID3D11InputLayout *ifa
 
     if (!refcount)
     {
-        ID3D11Device *device = layout->device;
+        ID3D11Device2 *device = layout->device;
 
         wined3d_mutex_lock();
         wined3d_vertex_declaration_decref(layout->wined3d_decl);
         wined3d_mutex_unlock();
 
-        ID3D11Device_Release(device);
+        ID3D11Device2_Release(device);
     }
 
     return refcount;
@@ -171,7 +171,7 @@ static void STDMETHODCALLTYPE d3d11_input_layout_GetDevice(ID3D11InputLayout *if
 
     TRACE("iface %p, device %p.\n", iface, device);
 
-    ID3D11Device_AddRef(*device = layout->device);
+    ID3D11Device_AddRef(*device = (ID3D11Device *)layout->device);
 }
 
 static HRESULT STDMETHODCALLTYPE d3d11_input_layout_GetPrivateData(ID3D11InputLayout *iface,
@@ -262,7 +262,7 @@ static void STDMETHODCALLTYPE d3d10_input_layout_GetDevice(ID3D10InputLayout *if
 
     TRACE("iface %p, device %p.\n", iface, device);
 
-    ID3D11Device_QueryInterface(layout->device, &IID_ID3D10Device, (void **)device);
+    ID3D11Device2_QueryInterface(layout->device, &IID_ID3D10Device, (void **)device);
 }
 
 static HRESULT STDMETHODCALLTYPE d3d10_input_layout_GetPrivateData(ID3D10InputLayout *iface,
@@ -357,7 +357,7 @@ static HRESULT d3d_input_layout_init(struct d3d_input_layout *layout, struct d3d
     }
     wined3d_mutex_unlock();
 
-    ID3D11Device_AddRef(layout->device = &device->ID3D11Device_iface);
+    ID3D11Device2_AddRef(layout->device = &device->ID3D11Device2_iface);
 
     return S_OK;
 }

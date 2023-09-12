@@ -18,9 +18,6 @@
  *
  */
 
-#include "config.h"
-#include "wine/port.h"
-
 #include "d3d10_private.h"
 
 #include <float.h>
@@ -373,8 +370,13 @@ static HRESULT shader_parse_signature(const char *data, DWORD data_size, struct 
             return E_INVALIDARG;
         }
         read_dword(&ptr, &e[i].SemanticIndex);
+#ifdef __REACTOS__
         read_dword(&ptr, (DWORD *)&e[i].SystemValueType);
         read_dword(&ptr, (DWORD *)&e[i].ComponentType);
+#else
+        read_dword(&ptr, &e[i].SystemValueType);
+        read_dword(&ptr, &e[i].ComponentType);
+#endif
         read_dword(&ptr, &e[i].Register);
         read_dword(&ptr, &mask);
 
@@ -1139,7 +1141,7 @@ static const struct d3d10_effect_state_property_info *get_property_info(UINT id)
 {
     unsigned int i;
 
-    for (i = 0; i < sizeof(property_info) / sizeof(*property_info); ++i)
+    for (i = 0; i < ARRAY_SIZE(property_info); ++i)
     {
         if (property_info[i].id == id)
             return &property_info[i];
@@ -1152,7 +1154,7 @@ static const struct d3d10_effect_state_storage_info *get_storage_info(D3D_SHADER
 {
     unsigned int i;
 
-    for (i = 0; i < sizeof(d3d10_effect_state_storage_info) / sizeof(*d3d10_effect_state_storage_info); ++i)
+    for (i = 0; i < ARRAY_SIZE(d3d10_effect_state_storage_info); ++i)
     {
         if (d3d10_effect_state_storage_info[i].id == id)
             return &d3d10_effect_state_storage_info[i];
@@ -1350,14 +1352,20 @@ static HRESULT parse_fx10_object(const char *data, size_t data_size,
         WARN("Invalid offset %#lx (data size %#lx).\n", (long)(*ptr - data), (long)data_size);
         return E_FAIL;
     }
-
-    read_dword(ptr, (DWORD *)&o->type);
+#ifdef __REACTOS__
+    read_dword(ptr, (DWORD*)&o->type);
+#else
+    read_dword(ptr, &o->type);
+#endif
     TRACE("Effect object is of type %#x.\n", o->type);
 
     read_dword(ptr, &tmp);
     TRACE("Effect object index %#x.\n", tmp);
-
+#ifdef __REACTOS__
     read_dword(ptr, (DWORD *)&operation);
+#else
+    read_dword(ptr, &operation);
+#endif
     TRACE("Effect object operation %#x.\n", operation);
 
     read_dword(ptr, &offset);
@@ -1945,7 +1953,11 @@ static HRESULT parse_fx10_local_buffer(const char *data, size_t data_size,
     read_dword(ptr, &l->data_size);
     TRACE("Local buffer data size: %#x.\n", l->data_size);
 
-    read_dword(ptr, (DWORD *)&d3d10_cbuffer_type);
+#ifdef __REACTOS__
+    read_dword(ptr, (DWORD*)&d3d10_cbuffer_type);
+#else
+    read_dword(ptr, &d3d10_cbuffer_type);
+#endif
     TRACE("Local buffer type: %#x.\n", d3d10_cbuffer_type);
 
     switch(d3d10_cbuffer_type)
@@ -2588,10 +2600,9 @@ static inline struct d3d10_effect *impl_from_ID3D10Effect(ID3D10Effect *iface)
 
 static HRESULT STDMETHODCALLTYPE d3d10_effect_QueryInterface(ID3D10Effect *iface, REFIID riid, void **object)
 {
-    GUID effect = {0x51b0ca8b, 0xec0b, 0x4519, 0x87, 0x0d, 0x8e, 0xe1, 0xcb, 0x50, 0x17, 0xc7};
     TRACE("iface %p, riid %s, object %p\n", iface, debugstr_guid(riid), object);
 
-    if (IsEqualGUID(riid, &effect)
+    if (IsEqualGUID(riid, &IID_ID3D10Effect)
             || IsEqualGUID(riid, &IID_IUnknown))
     {
         IUnknown_AddRef(iface);
@@ -2720,14 +2731,14 @@ static struct ID3D10EffectConstantBuffer * STDMETHODCALLTYPE d3d10_effect_GetCon
     if (index >= This->local_buffer_count)
     {
         WARN("Invalid index specified\n");
-        return (ID3D10EffectConstantBuffer *)&null_local_buffer;
+        return (ID3D10EffectConstantBuffer *)&null_local_buffer.ID3D10EffectVariable_iface;
     }
 
     l = &This->local_buffers[index];
 
     TRACE("Returning buffer %p, %s.\n", l, debugstr_a(l->name));
 
-    return (ID3D10EffectConstantBuffer *)l;
+    return (ID3D10EffectConstantBuffer *)&l->ID3D10EffectVariable_iface;
 }
 
 static struct ID3D10EffectConstantBuffer * STDMETHODCALLTYPE d3d10_effect_GetConstantBufferByName(ID3D10Effect *iface,
@@ -2745,13 +2756,13 @@ static struct ID3D10EffectConstantBuffer * STDMETHODCALLTYPE d3d10_effect_GetCon
         if (l->name && !strcmp(l->name, name))
         {
             TRACE("Returning buffer %p.\n", l);
-            return (ID3D10EffectConstantBuffer *)l;
+            return (ID3D10EffectConstantBuffer *)&l->ID3D10EffectVariable_iface;
         }
     }
 
     WARN("Invalid name specified\n");
 
-    return (ID3D10EffectConstantBuffer *)&null_local_buffer;
+    return (ID3D10EffectConstantBuffer *)&null_local_buffer.ID3D10EffectVariable_iface;
 }
 
 static struct ID3D10EffectVariable * STDMETHODCALLTYPE d3d10_effect_GetVariableByIndex(ID3D10Effect *iface, UINT index)
@@ -3533,7 +3544,7 @@ static struct ID3D10EffectConstantBuffer * STDMETHODCALLTYPE d3d10_effect_variab
 
     TRACE("iface %p\n", iface);
 
-    return (ID3D10EffectConstantBuffer *)This->buffer;
+    return (ID3D10EffectConstantBuffer *)&This->buffer->ID3D10EffectVariable_iface;
 }
 
 static struct ID3D10EffectScalarVariable * STDMETHODCALLTYPE d3d10_effect_variable_AsScalar(

@@ -17,9 +17,6 @@
  *
  */
 
-#include "config.h"
-#include "wine/port.h"
-
 #include "d3d10_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d10);
@@ -234,14 +231,13 @@ static void stateblock_cleanup(struct d3d10_stateblock *stateblock)
 
 static HRESULT STDMETHODCALLTYPE d3d10_stateblock_QueryInterface(ID3D10StateBlock *iface, REFIID iid, void **object)
 {
-    GUID State = {0x0803425a, 0x57f5, 0x4dd6, 0x94, 0x65, 0xa8, 0x75, 0x70, 0x83, 0x4a, 0x08};
     struct d3d10_stateblock *stateblock;
 
     TRACE("iface %p, iid %s, object %p.\n", iface, debugstr_guid(iid), object);
 
     stateblock = impl_from_ID3D10StateBlock(iface);
 
-    if (IsEqualGUID(iid, &State)
+    if (IsEqualGUID(iid, &IID_ID3D10StateBlock)
             || IsEqualGUID(iid, &IID_IUnknown))
     {
         IUnknown_AddRef(&stateblock->ID3D10StateBlock_iface);
