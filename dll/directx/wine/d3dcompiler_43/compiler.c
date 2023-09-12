@@ -955,10 +955,8 @@ HRESULT WINAPI D3DCompileFromFile(const WCHAR *filename, const D3D_SHADER_MACRO 
     return E_NOTIMPL;
 }
 
-#ifndef __REACTOS__
 HRESULT WINAPI D3DLoadModule(const void *data, SIZE_T size, ID3D11Module **module)
 {
     FIXME("data %p, size %lu, module %p stub!\n", data, size, module);
     return E_NOTIMPL;
 }
-#endif
