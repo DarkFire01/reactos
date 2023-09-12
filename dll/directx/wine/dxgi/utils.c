@@ -23,7 +23,6 @@
 #include "dxgi_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(dxgi);
-WINE_DECLARE_DEBUG_CHANNEL(winediag);
 
 #define WINE_DXGI_TO_STR(x) case x: return #x
 
@@ -381,10 +380,24 @@ enum wined3d_format_id wined3dformat_from_dxgi_format(DXGI_FORMAT format)
 
 const char *debug_dxgi_mode(const DXGI_MODE_DESC *desc)
 {
+    if (!desc)
+        return "(null)";
+
     return wine_dbg_sprintf("resolution %ux%u, refresh rate %u / %u, "
             "format %s, scanline ordering %#x, scaling %#x",
             desc->Width, desc->Height, desc->RefreshRate.Numerator, desc->RefreshRate.Denominator,
             debug_dxgi_format(desc->Format), desc->ScanlineOrdering, desc->Scaling);
+}
+
+const char *debug_dxgi_mode1(const DXGI_MODE_DESC1 *desc)
+{
+    if (!desc)
+        return "(null)";
+
+    return wine_dbg_sprintf("resolution %ux%u, refresh rate %u / %u, "
+            "format %s, scanline ordering %#x, scaling %#x, stereo %#x",
+            desc->Width, desc->Height, desc->RefreshRate.Numerator, desc->RefreshRate.Denominator,
+            debug_dxgi_format(desc->Format), desc->ScanlineOrdering, desc->Scaling, desc->Stereo);
 }
 
 void dump_feature_levels(const D3D_FEATURE_LEVEL *feature_levels, unsigned int level_count)
@@ -402,7 +415,7 @@ void dump_feature_levels(const D3D_FEATURE_LEVEL *feature_levels, unsigned int l
         TRACE("    [%u] = %s.\n", i, debug_feature_level(feature_levels[i]));
 }
 
-UINT dxgi_rational_to_uint(const DXGI_RATIONAL *rational)
+static unsigned int dxgi_rational_to_uint(const DXGI_RATIONAL *rational)
 {
     if (rational->Denominator)
         return rational->Numerator / rational->Denominator;
@@ -456,38 +469,49 @@ void wined3d_display_mode_from_dxgi(struct wined3d_display_mode *wined3d_mode,
     wined3d_mode->scanline_ordering = wined3d_scanline_ordering_from_dxgi(mode->ScanlineOrdering);
 }
 
-DXGI_USAGE dxgi_usage_from_wined3d_usage(DWORD wined3d_usage)
+void wined3d_display_mode_from_dxgi1(struct wined3d_display_mode *wined3d_mode,
+        const DXGI_MODE_DESC1 *mode)
+{
+    wined3d_mode->width = mode->Width;
+    wined3d_mode->height = mode->Height;
+    wined3d_mode->refresh_rate = dxgi_rational_to_uint(&mode->RefreshRate);
+    wined3d_mode->format_id = wined3dformat_from_dxgi_format(mode->Format);
+    wined3d_mode->scanline_ordering = wined3d_scanline_ordering_from_dxgi(mode->ScanlineOrdering);
+    FIXME("Ignoring stereo %#x.\n", mode->Stereo);
+}
+
+DXGI_USAGE dxgi_usage_from_wined3d_bind_flags(unsigned int wined3d_bind_flags)
 {
     DXGI_USAGE dxgi_usage = 0;
 
-    if (wined3d_usage & WINED3DUSAGE_TEXTURE)
+    if (wined3d_bind_flags & WINED3D_BIND_SHADER_RESOURCE)
         dxgi_usage |= DXGI_USAGE_SHADER_INPUT;
-    if (wined3d_usage & WINED3DUSAGE_RENDERTARGET)
+    if (wined3d_bind_flags & WINED3D_BIND_RENDER_TARGET)
         dxgi_usage |= DXGI_USAGE_RENDER_TARGET_OUTPUT;
 
-    wined3d_usage &= ~(WINED3DUSAGE_TEXTURE | WINED3DUSAGE_RENDERTARGET);
-    if (wined3d_usage)
-        FIXME("Unhandled wined3d usage %#x.\n", wined3d_usage);
+    wined3d_bind_flags &= ~(WINED3D_BIND_SHADER_RESOURCE | WINED3D_BIND_RENDER_TARGET);
+    if (wined3d_bind_flags)
+        FIXME("Unhandled wined3d bind flags %#x.\n", wined3d_bind_flags);
     return dxgi_usage;
 }
 
-DWORD wined3d_usage_from_dxgi_usage(DXGI_USAGE dxgi_usage)
+unsigned int wined3d_bind_flags_from_dxgi_usage(DXGI_USAGE dxgi_usage)
 {
-    DWORD wined3d_usage = 0;
+    unsigned int wined3d_bind_flags = 0;
 
     if (dxgi_usage & DXGI_USAGE_SHADER_INPUT)
-        wined3d_usage |= WINED3DUSAGE_TEXTURE;
+        wined3d_bind_flags |= WINED3D_BIND_SHADER_RESOURCE;
     if (dxgi_usage & DXGI_USAGE_RENDER_TARGET_OUTPUT)
-        wined3d_usage |= WINED3DUSAGE_RENDERTARGET;
+        wined3d_bind_flags |= WINED3D_BIND_RENDER_TARGET;
 
     dxgi_usage &= ~(DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_RENDER_TARGET_OUTPUT);
     if (dxgi_usage)
         FIXME("Unhandled DXGI usage %#x.\n", dxgi_usage);
-    return wined3d_usage;
+    return wined3d_bind_flags;
 }
 
 #define DXGI_WINED3D_SWAPCHAIN_FLAGS \
-        (WINED3D_SWAPCHAIN_USE_CLOSEST_MATCHING_MODE | WINED3D_SWAPCHAIN_RESTORE_WINDOW_RECT)
+        (WINED3D_SWAPCHAIN_USE_CLOSEST_MATCHING_MODE | WINED3D_SWAPCHAIN_RESTORE_WINDOW_RECT | WINED3D_SWAPCHAIN_HOOK)
 
 unsigned int dxgi_swapchain_flags_from_wined3d(unsigned int wined3d_flags)
 {
@@ -513,7 +537,7 @@ unsigned int dxgi_swapchain_flags_from_wined3d(unsigned int wined3d_flags)
     return flags;
 }
 
-unsigned int wined3d_swapchain_flags_from_dxgi(unsigned int flags)
+static unsigned int wined3d_swapchain_flags_from_dxgi(unsigned int flags)
 {
     unsigned int wined3d_flags = DXGI_WINED3D_SWAPCHAIN_FLAGS; /* WINED3D_SWAPCHAIN_DISCARD_DEPTHSTENCIL? */
 
@@ -533,6 +557,55 @@ unsigned int wined3d_swapchain_flags_from_dxgi(unsigned int flags)
         FIXME("Unhandled flags %#x.\n", flags);
 
     return wined3d_flags;
+}
+
+HRESULT wined3d_swapchain_desc_from_dxgi(struct wined3d_swapchain_desc *wined3d_desc, HWND window,
+        const DXGI_SWAP_CHAIN_DESC1 *dxgi_desc, const DXGI_SWAP_CHAIN_FULLSCREEN_DESC *dxgi_fullscreen_desc)
+{
+    if (dxgi_desc->Scaling != DXGI_SCALING_STRETCH)
+        FIXME("Ignoring scaling %#x.\n", dxgi_desc->Scaling);
+    if (dxgi_desc->AlphaMode != DXGI_ALPHA_MODE_IGNORE)
+        FIXME("Ignoring alpha mode %#x.\n", dxgi_desc->AlphaMode);
+    if (dxgi_fullscreen_desc && dxgi_fullscreen_desc->ScanlineOrdering)
+        FIXME("Unhandled scanline ordering %#x.\n", dxgi_fullscreen_desc->ScanlineOrdering);
+    if (dxgi_fullscreen_desc && dxgi_fullscreen_desc->Scaling)
+        FIXME("Unhandled mode scaling %#x.\n", dxgi_fullscreen_desc->Scaling);
+
+    switch (dxgi_desc->SwapEffect)
+    {
+        case DXGI_SWAP_EFFECT_DISCARD:
+            wined3d_desc->swap_effect = WINED3D_SWAP_EFFECT_DISCARD;
+            break;
+        case DXGI_SWAP_EFFECT_SEQUENTIAL:
+            wined3d_desc->swap_effect = WINED3D_SWAP_EFFECT_SEQUENTIAL;
+            break;
+        case DXGI_SWAP_EFFECT_FLIP_DISCARD:
+            wined3d_desc->swap_effect = WINED3D_SWAP_EFFECT_FLIP_DISCARD;
+            break;
+        case DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL:
+            wined3d_desc->swap_effect = WINED3D_SWAP_EFFECT_FLIP_SEQUENTIAL;
+            break;
+        default:
+            WARN("Invalid swap effect %#x.\n", dxgi_desc->SwapEffect);
+            return DXGI_ERROR_INVALID_CALL;
+    }
+
+    wined3d_desc->backbuffer_width = dxgi_desc->Width;
+    wined3d_desc->backbuffer_height = dxgi_desc->Height;
+    wined3d_desc->backbuffer_format = wined3dformat_from_dxgi_format(dxgi_desc->Format);
+    wined3d_desc->backbuffer_count = dxgi_desc->BufferCount;
+    wined3d_desc->backbuffer_bind_flags = wined3d_bind_flags_from_dxgi_usage(dxgi_desc->BufferUsage);
+    wined3d_sample_desc_from_dxgi(&wined3d_desc->multisample_type,
+            &wined3d_desc->multisample_quality, &dxgi_desc->SampleDesc);
+    wined3d_desc->device_window = window;
+    wined3d_desc->windowed = dxgi_fullscreen_desc ? dxgi_fullscreen_desc->Windowed : TRUE;
+    wined3d_desc->enable_auto_depth_stencil = FALSE;
+    wined3d_desc->auto_depth_stencil_format = 0;
+    wined3d_desc->flags = wined3d_swapchain_flags_from_dxgi(dxgi_desc->Flags);
+    wined3d_desc->refresh_rate = dxgi_fullscreen_desc ? dxgi_rational_to_uint(&dxgi_fullscreen_desc->RefreshRate) : 0;
+    wined3d_desc->auto_restore_display_mode = TRUE;
+
+    return S_OK;
 }
 
 HRESULT dxgi_get_private_data(struct wined3d_private_store *store,
@@ -619,69 +692,4 @@ HRESULT dxgi_set_private_data_interface(struct wined3d_private_store *store,
     wined3d_mutex_unlock();
 
     return hr;
-}
-
-D3D_FEATURE_LEVEL dxgi_check_feature_level_support(struct dxgi_factory *factory, struct dxgi_adapter *adapter,
-        const D3D_FEATURE_LEVEL *feature_levels, unsigned int level_count)
-{
-    static const struct
-    {
-        D3D_FEATURE_LEVEL feature_level;
-        unsigned int sm;
-    }
-    feature_levels_sm[] =
-    {
-        {D3D_FEATURE_LEVEL_11_1, 5},
-        {D3D_FEATURE_LEVEL_11_0, 5},
-        {D3D_FEATURE_LEVEL_10_1, 4},
-        {D3D_FEATURE_LEVEL_10_0, 4},
-        {D3D_FEATURE_LEVEL_9_3,  3},
-        {D3D_FEATURE_LEVEL_9_2,  2},
-        {D3D_FEATURE_LEVEL_9_1,  2},
-    };
-    D3D_FEATURE_LEVEL selected_feature_level = 0;
-    unsigned int shader_model;
-    unsigned int i, j;
-    WINED3DCAPS caps;
-    HRESULT hr;
-
-    FIXME("Ignoring adapter type.\n");
-
-    wined3d_mutex_lock();
-    hr = wined3d_get_device_caps(factory->wined3d, adapter->ordinal, WINED3D_DEVICE_TYPE_HAL, &caps);
-    wined3d_mutex_unlock();
-
-    if (FAILED(hr))
-        level_count = 0;
-
-    shader_model = min(caps.VertexShaderVersion, caps.PixelShaderVersion);
-    for (i = 0; i < level_count; ++i)
-    {
-        for (j = 0; j < sizeof(feature_levels_sm) / sizeof(feature_levels_sm[0]); ++j)
-        {
-            if (feature_levels[i] == feature_levels_sm[j].feature_level)
-            {
-                if (shader_model >= feature_levels_sm[j].sm)
-                {
-                    selected_feature_level = feature_levels[i];
-                    TRACE("Choosing supported feature level %s (SM%u).\n",
-                            debug_feature_level(selected_feature_level), feature_levels_sm[j].sm);
-                }
-                break;
-            }
-        }
-        if (selected_feature_level)
-            break;
-
-        if (j == sizeof(feature_levels_sm) / sizeof(feature_levels_sm[0]))
-            FIXME("Unexpected feature level %#x.\n", feature_levels[i]);
-        else
-            TRACE("Feature level %s not supported, trying next fallback if available.\n",
-                    debug_feature_level(feature_levels[i]));
-    }
-    if (!selected_feature_level)
-        FIXME_(winediag)("None of the requested D3D feature levels is supported on this GPU "
-                "with the current shader backend.\n");
-
-    return selected_feature_level;
 }

@@ -155,6 +155,7 @@ add_custom_target(stdole2 DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/stdole2.tlb)
 
 list(APPEND D3D
     d3dcommon.idl
+    dcommon.idl
     d3d10.idl
     dxgi.idl
     dxgiformat.idl
@@ -165,6 +166,7 @@ list(APPEND D3D
     dxgi1_4.idl
     dxgi1_5.idl
     dxgi1_6.idl
+    dxva2api.idl
     d3d10sdklayers.idl
     d3d10_1.idl
     d3d11_1.idl

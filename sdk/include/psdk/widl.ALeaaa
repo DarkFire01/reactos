@@ -1,20 +1,21 @@
-/*
- * Copyright 2012 Nikolay Sivov for CodeWeavers
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
- */
+# 1 "dwrite.idl" 1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import "unknwn.idl";
 import "dcommon.idl";
@@ -29,7 +30,7 @@ interface ID2D1SimplifiedGeometrySink;
 typedef ID2D1SimplifiedGeometrySink IDWriteGeometrySink;
 
 cpp_quote("#ifndef _WINDEF_")
-/* already defined in windef.h but needed for WIDL */
+
 typedef void *HMONITOR;
 cpp_quote("#endif /* _WINDEF_ */")
 
@@ -234,87 +235,87 @@ cpp_quote("     (UINT32)(UINT8)(a))")
 
 typedef enum DWRITE_FONT_FEATURE_TAG
 {
-    DWRITE_FONT_FEATURE_TAG_ALTERNATIVE_FRACTIONS           = 0x63726661, /* 'afrc' */
-    DWRITE_FONT_FEATURE_TAG_PETITE_CAPITALS_FROM_CAPITALS   = 0x63703263, /* 'c2pc' */
-    DWRITE_FONT_FEATURE_TAG_SMALL_CAPITALS_FROM_CAPITALS    = 0x63733263, /* 'c2sc' */
-    DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_ALTERNATES           = 0x746c6163, /* 'calt' */
-    DWRITE_FONT_FEATURE_TAG_CASE_SENSITIVE_FORMS            = 0x65736163, /* 'case' */
-    DWRITE_FONT_FEATURE_TAG_GLYPH_COMPOSITION_DECOMPOSITION = 0x706d6363, /* 'ccmp' */
-    DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_LIGATURES            = 0x67696c63, /* 'clig' */
-    DWRITE_FONT_FEATURE_TAG_CAPITAL_SPACING                 = 0x70737063, /* 'cpsp' */
-    DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_SWASH                = 0x68777363, /* 'cswh' */
-    DWRITE_FONT_FEATURE_TAG_CURSIVE_POSITIONING             = 0x73727563, /* 'curs' */
-    DWRITE_FONT_FEATURE_TAG_DEFAULT                         = 0x746c6664, /* 'dflt' */
-    DWRITE_FONT_FEATURE_TAG_DISCRETIONARY_LIGATURES         = 0x67696c64, /* 'dlig' */
-    DWRITE_FONT_FEATURE_TAG_EXPERT_FORMS                    = 0x74707865, /* 'expt' */
-    DWRITE_FONT_FEATURE_TAG_FRACTIONS                       = 0x63617266, /* 'frac' */
-    DWRITE_FONT_FEATURE_TAG_FULL_WIDTH                      = 0x64697766, /* 'fwid' */
-    DWRITE_FONT_FEATURE_TAG_HALF_FORMS                      = 0x666c6168, /* 'half' */
-    DWRITE_FONT_FEATURE_TAG_HALANT_FORMS                    = 0x6e6c6168, /* 'haln' */
-    DWRITE_FONT_FEATURE_TAG_ALTERNATE_HALF_WIDTH            = 0x746c6168, /* 'halt' */
-    DWRITE_FONT_FEATURE_TAG_HISTORICAL_FORMS                = 0x74736968, /* 'hist' */
-    DWRITE_FONT_FEATURE_TAG_HORIZONTAL_KANA_ALTERNATES      = 0x616e6b68, /* 'hkna' */
-    DWRITE_FONT_FEATURE_TAG_HISTORICAL_LIGATURES            = 0x67696c68, /* 'hlig' */
-    DWRITE_FONT_FEATURE_TAG_HALF_WIDTH                      = 0x64697768, /* 'hwid' */
-    DWRITE_FONT_FEATURE_TAG_HOJO_KANJI_FORMS                = 0x6f6a6f68, /* 'hojo' */
-    DWRITE_FONT_FEATURE_TAG_JIS04_FORMS                     = 0x3430706a, /* 'jp04' */
-    DWRITE_FONT_FEATURE_TAG_JIS78_FORMS                     = 0x3837706a, /* 'jp78' */
-    DWRITE_FONT_FEATURE_TAG_JIS83_FORMS                     = 0x3338706a, /* 'jp83' */
-    DWRITE_FONT_FEATURE_TAG_JIS90_FORMS                     = 0x3039706a, /* 'jp90' */
-    DWRITE_FONT_FEATURE_TAG_KERNING                         = 0x6e72656b, /* 'kern' */
-    DWRITE_FONT_FEATURE_TAG_STANDARD_LIGATURES              = 0x6167696c, /* 'liga' */
-    DWRITE_FONT_FEATURE_TAG_LINING_FIGURES                  = 0x6d756e6c, /* 'lnum' */
-    DWRITE_FONT_FEATURE_TAG_LOCALIZED_FORMS                 = 0x6c636f6c, /* 'locl' */
-    DWRITE_FONT_FEATURE_TAG_MARK_POSITIONING                = 0x6b72616d, /* 'mark' */
-    DWRITE_FONT_FEATURE_TAG_MATHEMATICAL_GREEK              = 0x6b72676d, /* 'mgrk' */
-    DWRITE_FONT_FEATURE_TAG_MARK_TO_MARK_POSITIONING        = 0x6b6d6b6d, /* 'mkmk' */
-    DWRITE_FONT_FEATURE_TAG_ALTERNATE_ANNOTATION_FORMS      = 0x746c616e, /* 'nalt' */
-    DWRITE_FONT_FEATURE_TAG_NLC_KANJI_FORMS                 = 0x6b636c6e, /* 'nlck' */
-    DWRITE_FONT_FEATURE_TAG_OLD_STYLE_FIGURES               = 0x6d756e6f, /* 'onum' */
-    DWRITE_FONT_FEATURE_TAG_ORDINALS                        = 0x6e64726f, /* 'ordn' */
-    DWRITE_FONT_FEATURE_TAG_PROPORTIONAL_ALTERNATE_WIDTH    = 0x746c6170, /* 'palt' */
-    DWRITE_FONT_FEATURE_TAG_PETITE_CAPITALS                 = 0x70616370, /* 'pcap' */
-    DWRITE_FONT_FEATURE_TAG_PROPORTIONAL_FIGURES            = 0x6d756e70, /* 'pnum' */
-    DWRITE_FONT_FEATURE_TAG_PROPORTIONAL_WIDTHS             = 0x64697770, /* 'pwid' */
-    DWRITE_FONT_FEATURE_TAG_QUARTER_WIDTHS                  = 0x64697771, /* 'qwid' */
-    DWRITE_FONT_FEATURE_TAG_REQUIRED_LIGATURES              = 0x67696c72, /* 'rlig' */
-    DWRITE_FONT_FEATURE_TAG_RUBY_NOTATION_FORMS             = 0x79627572, /* 'ruby' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_ALTERNATES            = 0x746c6173, /* 'salt' */
-    DWRITE_FONT_FEATURE_TAG_SCIENTIFIC_INFERIORS            = 0x666e6973, /* 'sinf' */
-    DWRITE_FONT_FEATURE_TAG_SMALL_CAPITALS                  = 0x70636d73, /* 'smcp' */
-    DWRITE_FONT_FEATURE_TAG_SIMPLIFIED_FORMS                = 0x6c706d73, /* 'smpl' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_1                 = 0x31307373, /* 'ss01' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_2                 = 0x32307373, /* 'ss02' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_3                 = 0x33307373, /* 'ss03' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_4                 = 0x34307373, /* 'ss04' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_5                 = 0x35307373, /* 'ss05' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_6                 = 0x36307373, /* 'ss06' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_7                 = 0x37307373, /* 'ss07' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_8                 = 0x38307373, /* 'ss08' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_9                 = 0x39307373, /* 'ss09' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_10                = 0x30317373, /* 'ss10' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_11                = 0x31317373, /* 'ss11' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_12                = 0x32317373, /* 'ss12' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_13                = 0x33317373, /* 'ss13' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_14                = 0x34317373, /* 'ss14' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_15                = 0x35317373, /* 'ss15' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_16                = 0x36317373, /* 'ss16' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_17                = 0x37317373, /* 'ss17' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_18                = 0x38317373, /* 'ss18' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_19                = 0x39317373, /* 'ss19' */
-    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_20                = 0x30327373, /* 'ss20' */
-    DWRITE_FONT_FEATURE_TAG_SUBSCRIPT                       = 0x73627573, /* 'subs' */
-    DWRITE_FONT_FEATURE_TAG_SUPERSCRIPT                     = 0x73707573, /* 'sups' */
-    DWRITE_FONT_FEATURE_TAG_SWASH                           = 0x68737773, /* 'swsh' */
-    DWRITE_FONT_FEATURE_TAG_TITLING                         = 0x6c746974, /* 'titl' */
-    DWRITE_FONT_FEATURE_TAG_TRADITIONAL_NAME_FORMS          = 0x6d616e74, /* 'tnam' */
-    DWRITE_FONT_FEATURE_TAG_TABULAR_FIGURES                 = 0x6d756e74, /* 'tnum' */
-    DWRITE_FONT_FEATURE_TAG_TRADITIONAL_FORMS               = 0x64617274, /* 'trad' */
-    DWRITE_FONT_FEATURE_TAG_THIRD_WIDTHS                    = 0x64697774, /* 'twid' */
-    DWRITE_FONT_FEATURE_TAG_UNICASE                         = 0x63696e75, /* 'unic' */
-    DWRITE_FONT_FEATURE_TAG_VERTICAL_WRITING                = 0x74726576, /* 'vert' */
-    DWRITE_FONT_FEATURE_TAG_VERTICAL_ALTERNATES_AND_ROTATION= 0x32747276, /* 'vrt2' */
-    DWRITE_FONT_FEATURE_TAG_SLASHED_ZERO                    = 0x6f72657a, /* 'zero' */
+    DWRITE_FONT_FEATURE_TAG_ALTERNATIVE_FRACTIONS           = 0x63726661, 
+    DWRITE_FONT_FEATURE_TAG_PETITE_CAPITALS_FROM_CAPITALS   = 0x63703263, 
+    DWRITE_FONT_FEATURE_TAG_SMALL_CAPITALS_FROM_CAPITALS    = 0x63733263, 
+    DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_ALTERNATES           = 0x746c6163, 
+    DWRITE_FONT_FEATURE_TAG_CASE_SENSITIVE_FORMS            = 0x65736163, 
+    DWRITE_FONT_FEATURE_TAG_GLYPH_COMPOSITION_DECOMPOSITION = 0x706d6363, 
+    DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_LIGATURES            = 0x67696c63, 
+    DWRITE_FONT_FEATURE_TAG_CAPITAL_SPACING                 = 0x70737063, 
+    DWRITE_FONT_FEATURE_TAG_CONTEXTUAL_SWASH                = 0x68777363, 
+    DWRITE_FONT_FEATURE_TAG_CURSIVE_POSITIONING             = 0x73727563, 
+    DWRITE_FONT_FEATURE_TAG_DEFAULT                         = 0x746c6664, 
+    DWRITE_FONT_FEATURE_TAG_DISCRETIONARY_LIGATURES         = 0x67696c64, 
+    DWRITE_FONT_FEATURE_TAG_EXPERT_FORMS                    = 0x74707865, 
+    DWRITE_FONT_FEATURE_TAG_FRACTIONS                       = 0x63617266, 
+    DWRITE_FONT_FEATURE_TAG_FULL_WIDTH                      = 0x64697766, 
+    DWRITE_FONT_FEATURE_TAG_HALF_FORMS                      = 0x666c6168, 
+    DWRITE_FONT_FEATURE_TAG_HALANT_FORMS                    = 0x6e6c6168, 
+    DWRITE_FONT_FEATURE_TAG_ALTERNATE_HALF_WIDTH            = 0x746c6168, 
+    DWRITE_FONT_FEATURE_TAG_HISTORICAL_FORMS                = 0x74736968, 
+    DWRITE_FONT_FEATURE_TAG_HORIZONTAL_KANA_ALTERNATES      = 0x616e6b68, 
+    DWRITE_FONT_FEATURE_TAG_HISTORICAL_LIGATURES            = 0x67696c68, 
+    DWRITE_FONT_FEATURE_TAG_HALF_WIDTH                      = 0x64697768, 
+    DWRITE_FONT_FEATURE_TAG_HOJO_KANJI_FORMS                = 0x6f6a6f68, 
+    DWRITE_FONT_FEATURE_TAG_JIS04_FORMS                     = 0x3430706a, 
+    DWRITE_FONT_FEATURE_TAG_JIS78_FORMS                     = 0x3837706a, 
+    DWRITE_FONT_FEATURE_TAG_JIS83_FORMS                     = 0x3338706a, 
+    DWRITE_FONT_FEATURE_TAG_JIS90_FORMS                     = 0x3039706a, 
+    DWRITE_FONT_FEATURE_TAG_KERNING                         = 0x6e72656b, 
+    DWRITE_FONT_FEATURE_TAG_STANDARD_LIGATURES              = 0x6167696c, 
+    DWRITE_FONT_FEATURE_TAG_LINING_FIGURES                  = 0x6d756e6c, 
+    DWRITE_FONT_FEATURE_TAG_LOCALIZED_FORMS                 = 0x6c636f6c, 
+    DWRITE_FONT_FEATURE_TAG_MARK_POSITIONING                = 0x6b72616d, 
+    DWRITE_FONT_FEATURE_TAG_MATHEMATICAL_GREEK              = 0x6b72676d, 
+    DWRITE_FONT_FEATURE_TAG_MARK_TO_MARK_POSITIONING        = 0x6b6d6b6d, 
+    DWRITE_FONT_FEATURE_TAG_ALTERNATE_ANNOTATION_FORMS      = 0x746c616e, 
+    DWRITE_FONT_FEATURE_TAG_NLC_KANJI_FORMS                 = 0x6b636c6e, 
+    DWRITE_FONT_FEATURE_TAG_OLD_STYLE_FIGURES               = 0x6d756e6f, 
+    DWRITE_FONT_FEATURE_TAG_ORDINALS                        = 0x6e64726f, 
+    DWRITE_FONT_FEATURE_TAG_PROPORTIONAL_ALTERNATE_WIDTH    = 0x746c6170, 
+    DWRITE_FONT_FEATURE_TAG_PETITE_CAPITALS                 = 0x70616370, 
+    DWRITE_FONT_FEATURE_TAG_PROPORTIONAL_FIGURES            = 0x6d756e70, 
+    DWRITE_FONT_FEATURE_TAG_PROPORTIONAL_WIDTHS             = 0x64697770, 
+    DWRITE_FONT_FEATURE_TAG_QUARTER_WIDTHS                  = 0x64697771, 
+    DWRITE_FONT_FEATURE_TAG_REQUIRED_LIGATURES              = 0x67696c72, 
+    DWRITE_FONT_FEATURE_TAG_RUBY_NOTATION_FORMS             = 0x79627572, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_ALTERNATES            = 0x746c6173, 
+    DWRITE_FONT_FEATURE_TAG_SCIENTIFIC_INFERIORS            = 0x666e6973, 
+    DWRITE_FONT_FEATURE_TAG_SMALL_CAPITALS                  = 0x70636d73, 
+    DWRITE_FONT_FEATURE_TAG_SIMPLIFIED_FORMS                = 0x6c706d73, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_1                 = 0x31307373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_2                 = 0x32307373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_3                 = 0x33307373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_4                 = 0x34307373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_5                 = 0x35307373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_6                 = 0x36307373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_7                 = 0x37307373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_8                 = 0x38307373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_9                 = 0x39307373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_10                = 0x30317373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_11                = 0x31317373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_12                = 0x32317373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_13                = 0x33317373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_14                = 0x34317373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_15                = 0x35317373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_16                = 0x36317373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_17                = 0x37317373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_18                = 0x38317373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_19                = 0x39317373, 
+    DWRITE_FONT_FEATURE_TAG_STYLISTIC_SET_20                = 0x30327373, 
+    DWRITE_FONT_FEATURE_TAG_SUBSCRIPT                       = 0x73627573, 
+    DWRITE_FONT_FEATURE_TAG_SUPERSCRIPT                     = 0x73707573, 
+    DWRITE_FONT_FEATURE_TAG_SWASH                           = 0x68737773, 
+    DWRITE_FONT_FEATURE_TAG_TITLING                         = 0x6c746974, 
+    DWRITE_FONT_FEATURE_TAG_TRADITIONAL_NAME_FORMS          = 0x6d616e74, 
+    DWRITE_FONT_FEATURE_TAG_TABULAR_FIGURES                 = 0x6d756e74, 
+    DWRITE_FONT_FEATURE_TAG_TRADITIONAL_FORMS               = 0x64617274, 
+    DWRITE_FONT_FEATURE_TAG_THIRD_WIDTHS                    = 0x64697774, 
+    DWRITE_FONT_FEATURE_TAG_UNICASE                         = 0x63696e75, 
+    DWRITE_FONT_FEATURE_TAG_VERTICAL_WRITING                = 0x74726576, 
+    DWRITE_FONT_FEATURE_TAG_VERTICAL_ALTERNATES_AND_ROTATION= 0x32747276, 
+    DWRITE_FONT_FEATURE_TAG_SLASHED_ZERO                    = 0x6f72657a, 
 } DWRITE_FONT_FEATURE_TAG;
 
 typedef enum DWRITE_SCRIPT_SHAPES
@@ -404,18 +405,14 @@ struct DWRITE_GLYPH_RUN
     UINT32 bidiLevel;
 };
 
-cpp_quote("#ifndef __d2d1_1_h__")
-typedef struct DWRITE_GLYPH_RUN_DESCRIPTION DWRITE_GLYPH_RUN_DESCRIPTION;
-cpp_quote("#endif /* __d2d1_1_h__ */")
-
-struct DWRITE_GLYPH_RUN_DESCRIPTION
+typedef struct DWRITE_GLYPH_RUN_DESCRIPTION
 {
     WCHAR const* localeName;
     WCHAR const* string;
     UINT32 stringLength;
     UINT16 const* clusterMap;
     UINT32 textPosition;
-};
+} DWRITE_GLYPH_RUN_DESCRIPTION;
 
 typedef struct DWRITE_UNDERLINE
 {
@@ -975,8 +972,8 @@ interface IDWriteBitmapRenderTarget : IUnknown
 }
 
 cpp_quote("#ifndef _WINGDI_")
-/* already defined in wingdi.h but needed for WIDL */
-#define LF_FACESIZE     32
+
+
 
     typedef struct tagLOGFONTW
     {
@@ -993,7 +990,7 @@ cpp_quote("#ifndef _WINGDI_")
         BYTE   lfClipPrecision;
         BYTE   lfQuality;
         BYTE   lfPitchAndFamily;
-        WCHAR  lfFaceName[LF_FACESIZE];
+        WCHAR  lfFaceName[32];
     } LOGFONTW, *PLOGFONTW, *LPLOGFONTW;
 cpp_quote("#endif /* _WINGDI_ */")
 
@@ -1446,7 +1443,7 @@ interface IDWriteFactory : IUnknown
 
 cpp_quote("HRESULT WINAPI DWriteCreateFactory(DWRITE_FACTORY_TYPE,REFIID,IUnknown**);")
 
-/* error codes */
+
 cpp_quote("#define FACILITY_DWRITE 0x898")
 cpp_quote("#define DWRITE_ERR_BASE 0x5000")
 cpp_quote("#define MAKE_DWRITE_HR(severity, code) MAKE_HRESULT(severity, FACILITY_DWRITE, (DWRITE_ERR_BASE + code))")

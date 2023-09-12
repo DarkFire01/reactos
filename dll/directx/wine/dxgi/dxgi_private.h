@@ -1,21 +1,3 @@
-/*
- * Copyright 2008 Henri Verbeet for CodeWeavers
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
- */
-
 #ifndef __WINE_DXGI_PRIVATE_H
 #define __WINE_DXGI_PRIVATE_H
 
@@ -37,15 +19,9 @@
 #ifdef DXGI_INIT_GUID
 #include "initguid.h"
 #endif
-#include <config.h>
 #include "wine/wined3d.h"
 #include "wine/winedxgi.h"
 
-#if 0
-DEFINE_GUID(IID_IWineDXGIDevice, 0x3e1ff30b, 0xc951, 0x48c3, 0xb0,0x10, 0x0f,0xb4,0x9f,0x3d,0xca,0x71);
-DEFINE_GUID(IID_IWineDXGIDeviceParent, 0xf2b918f3, 0x603f, 0x430a, 0x9c,0xcd, 0x55,0x87,0x2b,0x6e,0x85,0xdf);
-#endif
-#if 1
 DEFINE_GUID(IID_ID3D10BlendState1,0xEDAD8D99,0x8A35,0x4d6d,0x85,0x66,0x2E,0xA2,0x76,0xCD,0xE1,0x61);
 DEFINE_GUID(IID_ID3D10ShaderResourceView1,0x9B7E4C87,0x342C,0x4106,0xA1,0x9F,0x4F,0x27,0x04,0xF6,0x89,0xF0);
 DEFINE_GUID(IID_ID3D10Device1,0x9B7E4C8F,0x342C,0x4106,0xA1,0x9F,0x4F,0x27,0x04,0xF6,0x89,0xF0);
@@ -73,8 +49,6 @@ DEFINE_GUID(IID_ID3D10Predicate,0x9B7E4C10,0x342C,0x4106,0xA1,0x9F,0x4F,0x27,0x0
 DEFINE_GUID(IID_ID3D10Counter,0x9B7E4C11,0x342C,0x4106,0xA1,0x9F,0x4F,0x27,0x04,0xF6,0x89,0xF0);
 DEFINE_GUID(IID_ID3D10Device,0x9B7E4C0F,0x342C,0x4106,0xA1,0x9F,0x4F,0x27,0x04,0xF6,0x89,0xF0);
 DEFINE_GUID(IID_ID3D10Multithread,0x9B7E4E00,0x342C,0x4106,0xA1,0x9F,0x4F,0x27,0x04,0xF6,0x89,0xF0);
-#endif
-#if 1
 DEFINE_GUID(IID_IDXGIObject,0xaec22fb8,0x76f3,0x4639,0x9b,0xe0,0x28,0xeb,0x43,0xa6,0x7a,0x2e);
 DEFINE_GUID(IID_IDXGIDeviceSubObject,0x3d3e0379,0xf9de,0x4d58,0xbb,0x6c,0x18,0xd6,0x29,0x92,0xf1,0xa6);
 DEFINE_GUID(IID_IDXGIResource,0x035f3ab4,0x482e,0x4e50,0xb4,0x1f,0x8a,0x7f,0x8b,0xd8,0x96,0x0b);
@@ -89,7 +63,6 @@ DEFINE_GUID(IID_IDXGIDevice,0x54ec77fa,0x1377,0x44e6,0x8c,0x32,0x88,0xfd,0x5f,0x
 DEFINE_GUID(IID_IDXGIFactory1,0x770aae78,0xf26f,0x4dba,0xa8,0x29,0x25,0x3c,0x83,0xd1,0xb3,0x87);
 DEFINE_GUID(IID_IDXGIAdapter1,0x29038f61,0x3839,0x4626,0x91,0xfd,0x08,0x68,0x79,0x01,0x1a,0x05);
 DEFINE_GUID(IID_IDXGIDevice1,0x77db970f,0x6276,0x48ba,0xba,0x28,0x07,0x01,0x43,0xb4,0x39,0x2c);
-
 DEFINE_GUID(IID_IDXGIDisplayControl,0xea9dbf1a,0xc88e,0x4486,0x85,0x4a,0x98,0xaa,0x01,0x38,0xf3,0x0c);
 DEFINE_GUID(IID_IDXGIOutputDuplication,0x191cfac3,0xa341,0x470d,0xb2,0x6e,0xa8,0x64,0xf4,0x28,0x31,0x9c);
 DEFINE_GUID(IID_IDXGISurface2,0xaba496dd,0xb617,0x4cb8,0xa8,0x66,0xbc,0x44,0xd7,0xeb,0x1f,0xa2);
@@ -106,30 +79,9 @@ DEFINE_GUID(IID_IDXGIAdapter3,0x645967A4,0x1392,0x4310,0xA7,0x98,0x80,0x53,0xCE,
 DEFINE_GUID(IID_IDXGIFactory3,0x25483823,0xcd46,0x4c7d,0x86,0xca,0x47,0xaa,0x95,0xb8,0x37,0xbd);
 DEFINE_GUID(IID_IDXGIFactory5,0x7632e1f5,0xee65,0x4dca,0x87,0xfd,0x84,0xcd,0x75,0xf8,0x83,0x8d);
 
-#endif
-
-/*
- * Copyright 2008 Henri Verbeet for CodeWeavers
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
- */
-
 
 enum dxgi_frame_latency
 {
-    DXGI_FRAME_LATENCY_DEFAULT =  3,
     DXGI_FRAME_LATENCY_MAX     = 16,
 };
 
@@ -163,28 +115,31 @@ struct dxgi_device_layer
     UINT (WINAPI *get_size)(enum dxgi_device_layer_id id, struct layer_get_size_args *args, DWORD unknown0);
     HRESULT (WINAPI *create)(enum dxgi_device_layer_id id, void **layer_base, DWORD unknown0,
             void *device_object, REFIID riid, void **device_layer);
-    void (WINAPI *set_feature_level)(enum dxgi_device_layer_id id, void *device,
-            D3D_FEATURE_LEVEL feature_level);
 };
 
 /* TRACE helper functions */
 const char *debug_dxgi_format(DXGI_FORMAT format) DECLSPEC_HIDDEN;
 const char *debug_dxgi_mode(const DXGI_MODE_DESC *desc) DECLSPEC_HIDDEN;
+const char *debug_dxgi_mode1(const DXGI_MODE_DESC1 *desc) DECLSPEC_HIDDEN;
 void dump_feature_levels(const D3D_FEATURE_LEVEL *feature_levels, unsigned int level_count) DECLSPEC_HIDDEN;
 
 DXGI_FORMAT dxgi_format_from_wined3dformat(enum wined3d_format_id format) DECLSPEC_HIDDEN;
 enum wined3d_format_id wined3dformat_from_dxgi_format(DXGI_FORMAT format) DECLSPEC_HIDDEN;
-UINT dxgi_rational_to_uint(const DXGI_RATIONAL *rational) DECLSPEC_HIDDEN;
 void dxgi_sample_desc_from_wined3d(DXGI_SAMPLE_DESC *desc,
         enum wined3d_multisample_type wined3d_type, unsigned int wined3d_quality) DECLSPEC_HIDDEN;
 void wined3d_sample_desc_from_dxgi(enum wined3d_multisample_type *wined3d_type,
         unsigned int *wined3d_quality, const DXGI_SAMPLE_DESC *dxgi_desc) DECLSPEC_HIDDEN;
 void wined3d_display_mode_from_dxgi(struct wined3d_display_mode *wined3d_mode,
         const DXGI_MODE_DESC *mode) DECLSPEC_HIDDEN;
-DXGI_USAGE dxgi_usage_from_wined3d_usage(DWORD wined3d_usage) DECLSPEC_HIDDEN;
-DWORD wined3d_usage_from_dxgi_usage(DXGI_USAGE usage) DECLSPEC_HIDDEN;
+void wined3d_display_mode_from_dxgi1(struct wined3d_display_mode *wined3d_mode,
+        const DXGI_MODE_DESC1 *mode) DECLSPEC_HIDDEN;
+DXGI_USAGE dxgi_usage_from_wined3d_bind_flags(unsigned int wined3d_bind_flags) DECLSPEC_HIDDEN;
+unsigned int wined3d_bind_flags_from_dxgi_usage(DXGI_USAGE usage) DECLSPEC_HIDDEN;
 unsigned int dxgi_swapchain_flags_from_wined3d(unsigned int wined3d_flags) DECLSPEC_HIDDEN;
-unsigned int wined3d_swapchain_flags_from_dxgi(unsigned int flags) DECLSPEC_HIDDEN;
+HRESULT wined3d_swapchain_desc_from_dxgi(struct wined3d_swapchain_desc *wined3d_desc,
+        HWND window, const DXGI_SWAP_CHAIN_DESC1 *dxgi_desc,
+        const DXGI_SWAP_CHAIN_FULLSCREEN_DESC *dxgi_fullscreen_desc) DECLSPEC_HIDDEN;
+
 HRESULT dxgi_get_private_data(struct wined3d_private_store *store,
         REFGUID guid, UINT *data_size, void *data) DECLSPEC_HIDDEN;
 HRESULT dxgi_set_private_data(struct wined3d_private_store *store,
@@ -211,10 +166,12 @@ struct dxgi_factory *unsafe_impl_from_IDXGIFactory(IDXGIFactory *iface) DECLSPEC
 struct dxgi_device
 {
     IWineDXGIDevice IWineDXGIDevice_iface;
+    IWineDXGISwapChainFactory IWineDXGISwapChainFactory_iface;
     IUnknown *child_layer;
     LONG refcount;
     struct wined3d_private_store private_store;
     struct wined3d_device *wined3d_device;
+    struct wined3d_swapchain *implicit_swapchain;
     IWineDXGIAdapter *adapter;
 };
 
@@ -232,6 +189,7 @@ struct dxgi_output
 };
 
 HRESULT dxgi_output_create(struct dxgi_adapter *adapter, struct dxgi_output **output) DECLSPEC_HIDDEN;
+struct dxgi_output *unsafe_impl_from_IDXGIOutput(IDXGIOutput *iface) DECLSPEC_HIDDEN;
 
 /* IDXGIAdapter */
 struct dxgi_adapter
@@ -248,7 +206,7 @@ HRESULT dxgi_adapter_create(struct dxgi_factory *factory, UINT ordinal,
 struct dxgi_adapter *unsafe_impl_from_IDXGIAdapter(IDXGIAdapter *iface) DECLSPEC_HIDDEN;
 
 /* IDXGISwapChain */
-struct dxgi_swapchain
+struct d3d11_swapchain
 {
     IDXGISwapChain1 IDXGISwapChain1_iface;
     LONG refcount;
@@ -257,12 +215,17 @@ struct dxgi_swapchain
     IWineDXGIDevice *device;
     IDXGIFactory *factory;
 
-    BOOL fullscreen;
     IDXGIOutput *target;
 };
 
-HRESULT dxgi_swapchain_init(struct dxgi_swapchain *swapchain, struct dxgi_device *device,
-        struct wined3d_swapchain_desc *desc, BOOL implicit) DECLSPEC_HIDDEN;
+HRESULT d3d11_swapchain_init(struct d3d11_swapchain *swapchain, struct dxgi_device *device,
+        struct wined3d_swapchain_desc *desc) DECLSPEC_HIDDEN;
+
+HRESULT d3d12_swapchain_create(IWineDXGIFactory *factory, ID3D12CommandQueue *queue, HWND window,
+        const DXGI_SWAP_CHAIN_DESC1 *swapchain_desc, const DXGI_SWAP_CHAIN_FULLSCREEN_DESC *fullscreen_desc,
+        IDXGISwapChain1 **swapchain) DECLSPEC_HIDDEN;
+
+BOOL dxgi_validate_swapchain_desc(const DXGI_SWAP_CHAIN_DESC1 *desc) DECLSPEC_HIDDEN;
 
 /* IDXGISurface */
 struct dxgi_surface
@@ -279,8 +242,5 @@ struct dxgi_surface
 
 HRESULT dxgi_surface_init(struct dxgi_surface *surface, IDXGIDevice *device,
         IUnknown *outer, struct wined3d_texture *wined3d_texture) DECLSPEC_HIDDEN;
-
-D3D_FEATURE_LEVEL dxgi_check_feature_level_support(struct dxgi_factory *factory, struct dxgi_adapter *adapter,
-        const D3D_FEATURE_LEVEL *feature_levels, unsigned int level_count) DECLSPEC_HIDDEN;
 
 #endif /* __WINE_DXGI_PRIVATE_H */

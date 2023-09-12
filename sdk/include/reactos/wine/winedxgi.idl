@@ -18,14 +18,31 @@
 
 #pragma makedep header
 
-import "dxgi1_5.idl";
+import "dxgi1_6.idl";
+
+[
+    object,
+    local,
+    uuid(53cb4ff0-c25a-4164-a891-0e83db0a7aac)
+]
+interface IWineDXGISwapChainFactory : IUnknown
+{
+    HRESULT create_swapchain(
+        [in] IDXGIFactory *factory,
+        [in] HWND window,
+        [in] const DXGI_SWAP_CHAIN_DESC1 *desc,
+        [in] const DXGI_SWAP_CHAIN_FULLSCREEN_DESC *fullscreen_desc,
+        [in] IDXGIOutput *output,
+        [out] IDXGISwapChain1 **swapchain
+    );
+}
 
 [
     object,
     local,
     uuid(3e1ff30b-c951-48c3-b010-0fb49f3dca71)
 ]
-interface IWineDXGIDevice : IDXGIDevice1
+interface IWineDXGIDevice : IDXGIDevice3
 {
     HRESULT create_surface(
         [in] struct wined3d_texture *wined3d_texture,
@@ -33,11 +50,6 @@ interface IWineDXGIDevice : IDXGIDevice1
         [in] const DXGI_SHARED_RESOURCE *shared_resource,
         [in] IUnknown *outer,
         [out] void **surface
-    );
-    HRESULT create_swapchain(
-        [in] struct wined3d_swapchain_desc *desc,
-        [in] BOOL implicit,
-        [out] struct wined3d_swapchain **wined3d_swapchain
     );
 }
 
@@ -51,13 +63,25 @@ interface IWineDXGIDeviceParent : IUnknown
     struct wined3d_device_parent *get_wined3d_device_parent();
 }
 
+struct wine_dxgi_adapter_info
+{
+    GUID driver_uuid;
+    GUID device_uuid;
+
+    DWORD vendor_id;
+    DWORD device_id;
+
+    LUID luid;
+};
+
 [
     object,
     local,
     uuid(17399d75-964e-4c03-99f8-9d4fd196dd62)
 ]
-interface IWineDXGIAdapter : IDXGIAdapter3
+interface IWineDXGIAdapter : IDXGIAdapter4
 {
+    HRESULT get_adapter_info([out] struct wine_dxgi_adapter_info *info);
 }
 
 [
