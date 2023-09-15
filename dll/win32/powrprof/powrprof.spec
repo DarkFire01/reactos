@@ -13,7 +13,7 @@
 @ stdcall -version=0x600+ PowerDeterminePlatformRole()
 @ stdcall -version=0x600+ PowerDeterminePlatformRoleEx(long)
 @ stdcall PowerGetActiveScheme (ptr ptr)
-@ stdcall -stub PowerSetActiveScheme (ptr)
+@ stdcall PowerSetActiveScheme (ptr)
 @ stdcall PowerReadDCValue (ptr ptr ptr ptr ptr ptr ptr)
 @ stdcall ReadGlobalPwrPolicy (ptr)
 @ stdcall ReadProcessorPwrScheme (long ptr)

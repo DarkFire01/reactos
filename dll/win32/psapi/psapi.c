@@ -1659,4 +1659,17 @@ QueryWorkingSetEx(IN HANDLE hProcess,
     return TRUE;
 }
 
+BOOL EnumProcessModulesEx(
+    HANDLE  hProcess,
+    HMODULE *lphModule,
+    DWORD   cb,
+    LPDWORD lpcbNeeded,
+    DWORD   dwFilterFlag
+)
+{
+    return EnumProcessModules(hProcess, lphModule,
+                cb,
+                  lpcbNeeded);
+}
+
 /* EOF */

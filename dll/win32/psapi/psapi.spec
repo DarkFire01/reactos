@@ -23,3 +23,4 @@
 @ stdcall InitializeProcessForWsWatch(ptr)
 @ stdcall QueryWorkingSet(ptr ptr long)
 @ stdcall QueryWorkingSetEx(ptr ptr long)
+@ stdcall EnumProcessModulesEx(ptr ptr long ptr long)

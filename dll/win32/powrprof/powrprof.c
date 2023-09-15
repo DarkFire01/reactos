@@ -1343,3 +1343,10 @@ PowerDeterminePlatformRole()
 {
     return PlatformRoleDesktop;
 }
+
+VOID
+WINAPI
+PowerSetActiveScheme(DWORD* x1)
+{
+
+}
