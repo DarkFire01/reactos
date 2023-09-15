@@ -1,0 +1,21 @@
+VKD3D_1_0
+{
+global:
+    D3D12CreateDevice;
+    D3D12CreateDeviceVKD3D;
+    D3D12CreateRootSignatureDeserializer;
+    D3D12CreateVersionedRootSignatureDeserializer;
+    D3D12GetDebugInterface;
+    D3D12SerializeRootSignature;
+    D3D12SerializeVersionedRootSignature;
+    D3DCompile;
+    D3DCompile2;
+    D3DCreateBlob;
+    D3DPreprocess;
+    vkd3d_create_event;
+    vkd3d_destroy_event;
+    vkd3d_signal_event;
+    vkd3d_wait_event;
+
+local: *;
+};
