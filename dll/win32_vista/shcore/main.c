@@ -70,20 +70,20 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
 
 HRESULT WINAPI GetProcessDpiAwareness(HANDLE process, PROCESS_DPI_AWARENESS *value)
 {
-    if (GetProcessDpiAwarenessInternal( process, (DPI_AWARENESS *)value )) return S_OK;
-    return HRESULT_FROM_WIN32( GetLastError() );
+   // if (GetProcessDpiAwarenessInternal( process, (DPI_AWARENESS *)value )) return S_OK;
+    return 0;//HRESULT_FROM_WIN32( GetLastError() );
 }
 
 HRESULT WINAPI SetProcessDpiAwareness(PROCESS_DPI_AWARENESS value)
 {
-    if (SetProcessDpiAwarenessInternal( value )) return S_OK;
-    return HRESULT_FROM_WIN32( GetLastError() );
+   // if (SetProcessDpiAwarenessInternal( value )) return S_OK;
+    return 0;//HRESULT_FROM_WIN32( GetLastError() );
 }
 
 HRESULT WINAPI GetDpiForMonitor(HMONITOR monitor, MONITOR_DPI_TYPE type, UINT *x, UINT *y)
 {
-    if (GetDpiForMonitorInternal( monitor, type, x, y )) return S_OK;
-    return HRESULT_FROM_WIN32( GetLastError() );
+  //  if (GetDpiForMonitorInternal( monitor, type, x, y )) return S_OK;
+    return 1;//HRESULT_FROM_WIN32( GetLastError() );
 }
 
 HRESULT 

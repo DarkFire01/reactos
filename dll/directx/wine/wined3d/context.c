@@ -5660,7 +5660,7 @@ void wined3d_context_gl_draw_shaded_quad(struct wined3d_context_gl *context_gl, 
         GL_EXTCALL(glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STREAM_DRAW));
         GL_EXTCALL(glVertexAttribPointer(0, 2, GL_FLOAT, FALSE, sizeof(*quad), NULL));
         GL_EXTCALL(glVertexAttribPointer(1, 3, GL_FLOAT, FALSE, sizeof(*quad),
-                (void *)FIELD_OFFSET(struct blit_vertex, texcoord)));
+            (PVOID)(ULONG_PTR)FIELD_OFFSET(struct blit_vertex, texcoord)));
 
         GL_EXTCALL(glEnableVertexAttribArray(0));
         GL_EXTCALL(glEnableVertexAttribArray(1));

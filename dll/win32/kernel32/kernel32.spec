@@ -715,7 +715,7 @@
 @ stdcall InitializeCriticalSection(ptr)
 @ stdcall InitializeCriticalSectionAndSpinCount(ptr long)
 @ stdcall -version=0x600+ InitializeCriticalSectionEx(ptr long long)
-@ stdcall -stub -version=0x600+ InitializeProcThreadAttributeList(ptr long long ptr)
+@ stdcall -version=0x600+ InitializeProcThreadAttributeList(ptr long long ptr)
 @ stdcall InitializeSListHead(ptr) ntdll.RtlInitializeSListHead
 @ stdcall -version=0x600+ InitializeSRWLock(ptr) ntdll.RtlInitializeSRWLock
 @ stdcall -arch=i386 -ret64 InterlockedCompareExchange64(ptr double double) ntdll.RtlInterlockedCompareExchange64
@@ -1286,8 +1286,6 @@
 @ stdcall -version=0x600+ K32QueryWorkingSet(ptr ptr long)
 @ stdcall -version=0x600+ K32QueryWorkingSetEx(ptr ptr long)
 @ stdcall -version=0x600+ K32GetMappedFileNameW(ptr ptr ptr long)
-@ stdcall -stub -version=0x600+ K32GetProcessImageFileNameW(ptr ptr long)
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 #Vista Functions
