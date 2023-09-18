@@ -1659,7 +1659,9 @@ QueryWorkingSetEx(IN HANDLE hProcess,
     return TRUE;
 }
 
-BOOL EnumProcessModulesEx(
+BOOL
+WINAPI
+EnumProcessModulesEx(
     HANDLE  hProcess,
     HMODULE *lphModule,
     DWORD   cb,

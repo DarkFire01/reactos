@@ -146,6 +146,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH InitializeProcThreadAttributeList( struct _PROC_TH
 }
 
 BOOL 
+WINAPI
 K32QueryWorkingSet(
         HANDLE hProcess,
         PVOID  pv,
@@ -157,6 +158,7 @@ K32QueryWorkingSet(
 }
 
 BOOL 
+WINAPI
 K32QueryWorkingSetEx(
         HANDLE hProcess,
         PVOID  pv,

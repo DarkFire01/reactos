@@ -1332,6 +1332,7 @@ typedef enum _POWER_PLATFORM_ROLE {
 } POWER_PLATFORM_ROLE, *PPOWER_PLATFORM_ROLE;
 
 POWER_PLATFORM_ROLE
+WINAPI
 PowerDeterminePlatformRoleEx(ULONG Version)
 {
     return PlatformRoleDesktop;
