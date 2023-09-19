@@ -119,7 +119,7 @@ HRESULT vdecl_convert_fvf(
                 case 3: elements[idx].Type = D3DDECLTYPE_FLOAT3; break;
                 case 4: elements[idx].Type = D3DDECLTYPE_FLOAT4; break;
                 default:
-                    ERR("Unexpected amount of blend values: %u\n", num_blends);
+                    ERR("Unexpected amount of blend values: %lu\n", num_blends);
             }
         }
         elements[idx].Usage = D3DDECLUSAGE_BLENDWEIGHT;
@@ -220,14 +220,12 @@ static ULONG WINAPI d3d9_vertex_declaration_AddRef(IDirect3DVertexDeclaration9 *
     struct d3d9_vertex_declaration *declaration = impl_from_IDirect3DVertexDeclaration9(iface);
     ULONG refcount = InterlockedIncrement(&declaration->refcount);
 
-    TRACE("%p increasing refcount to %u.\n", iface, refcount);
+    TRACE("%p increasing refcount to %lu.\n", iface, refcount);
 
     if (refcount == 1)
     {
         IDirect3DDevice9Ex_AddRef(declaration->parent_device);
-        wined3d_mutex_lock();
         wined3d_vertex_declaration_incref(declaration->wined3d_declaration);
-        wined3d_mutex_unlock();
     }
 
     return refcount;
@@ -238,14 +236,12 @@ static ULONG WINAPI d3d9_vertex_declaration_Release(IDirect3DVertexDeclaration9 
     struct d3d9_vertex_declaration *declaration = impl_from_IDirect3DVertexDeclaration9(iface);
     ULONG refcount = InterlockedDecrement(&declaration->refcount);
 
-    TRACE("%p decreasing refcount to %u.\n", iface, refcount);
+    TRACE("%p decreasing refcount to %lu.\n", iface, refcount);
 
     if (!refcount)
     {
         IDirect3DDevice9Ex *parent_device = declaration->parent_device;
-        wined3d_mutex_lock();
         wined3d_vertex_declaration_decref(declaration->wined3d_declaration);
-        wined3d_mutex_unlock();
 
         /* Release the device last, as it may cause the device to be destroyed. */
         IDirect3DDevice9Ex_Release(parent_device);
@@ -380,7 +376,7 @@ static HRESULT vertexdeclaration_init(struct d3d9_vertex_declaration *declaratio
             &declaration->stream_map);
     if (FAILED(hr))
     {
-        WARN("Failed to create wined3d vertex declaration elements, hr %#x.\n", hr);
+        WARN("Failed to create wined3d vertex declaration elements, hr %#lx.\n", hr);
         return hr;
     }
 
@@ -405,7 +401,9 @@ static HRESULT vertexdeclaration_init(struct d3d9_vertex_declaration *declaratio
     if (FAILED(hr))
     {
         heap_free(declaration->elements);
-        WARN("Failed to create wined3d vertex declaration, hr %#x.\n", hr);
+        WARN("Failed to create wined3d vertex declaration, hr %#lx.\n", hr);
+        if (hr == E_INVALIDARG)
+            hr = E_FAIL;
         return hr;
     }
 
@@ -427,7 +425,7 @@ HRESULT d3d9_vertex_declaration_create(struct d3d9_device *device,
     hr = vertexdeclaration_init(object, device, elements);
     if (FAILED(hr))
     {
-        WARN("Failed to initialize vertex declaration, hr %#x.\n", hr);
+        WARN("Failed to initialize vertex declaration, hr %#lx.\n", hr);
         heap_free(object);
         return hr;
     }

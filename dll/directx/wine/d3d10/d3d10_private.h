@@ -19,9 +19,11 @@
 #ifndef __WINE_D3D10_PRIVATE_H
 #define __WINE_D3D10_PRIVATE_H
 
+#include <math.h>
+#include <stdint.h>
+
 #include "wine/debug.h"
 #include "wine/rbtree.h"
-#include "wine/heap.h"
 
 #define COBJMACROS
 #include "winbase.h"
@@ -30,6 +32,7 @@
 
 #include "d3d10.h"
 #include "d3dcompiler.h"
+#include "utils.h"
 
 /*
  * This doesn't belong here, but for some functions it is possible to return that value,
@@ -38,66 +41,74 @@
  */
 #define D3DERR_INVALIDCALL 0x8876086c
 
-/* TRACE helper functions */
-const char *debug_d3d10_driver_type(D3D10_DRIVER_TYPE driver_type) DECLSPEC_HIDDEN;
-const char *debug_d3d10_shader_variable_class(D3D10_SHADER_VARIABLE_CLASS c) DECLSPEC_HIDDEN;
-const char *debug_d3d10_shader_variable_type(D3D10_SHADER_VARIABLE_TYPE t) DECLSPEC_HIDDEN;
-const char *debug_d3d10_device_state_types(D3D10_DEVICE_STATE_TYPES t) DECLSPEC_HIDDEN;
-
-enum d3d10_effect_object_type
+enum d3d10_effect_object_type_flags
 {
-    D3D10_EOT_RASTERIZER_STATE = 0x0,
-    D3D10_EOT_DEPTH_STENCIL_STATE = 0x1,
-    D3D10_EOT_BLEND_STATE = 0x2,
-    D3D10_EOT_VERTEXSHADER = 0x6,
-    D3D10_EOT_PIXELSHADER = 0x7,
-    D3D10_EOT_GEOMETRYSHADER = 0x8,
-    D3D10_EOT_STENCIL_REF = 0x9,
-    D3D10_EOT_BLEND_FACTOR = 0xa,
-    D3D10_EOT_SAMPLE_MASK = 0xb,
+    D3D10_EOT_FLAG_GS_SO = 0x1,
 };
 
 enum d3d10_effect_object_operation
 {
-    D3D10_EOO_VALUE = 1,
-    D3D10_EOO_PARSED_OBJECT = 2,
-    D3D10_EOO_PARSED_OBJECT_INDEX = 3,
+    D3D10_EOO_CONST = 1,
+    D3D10_EOO_VAR = 2,
+    D3D10_EOO_CONST_INDEX = 3,
+    D3D10_EOO_VAR_INDEX = 4,
+    D3D10_EOO_INDEX_EXPRESSION = 5,
+    D3D10_EOO_VALUE_EXPRESSION = 6,
     D3D10_EOO_ANONYMOUS_SHADER = 7,
 };
 
-struct d3d10_effect_object
+struct d3d10_matrix
 {
-    struct d3d10_effect_pass *pass;
-    enum d3d10_effect_object_type type;
-    union
-    {
-        ID3D10RasterizerState *rs;
-        ID3D10DepthStencilState *ds;
-        ID3D10BlendState *bs;
-        ID3D10VertexShader *vs;
-        ID3D10PixelShader *ps;
-        ID3D10GeometryShader *gs;
-    } object;
+    float m[4][4];
+};
+
+struct d3d10_effect_shader_resource
+{
+    D3D10_SHADER_INPUT_TYPE in_type;
+    unsigned int bind_point;
+    unsigned int bind_count;
+
+    struct d3d10_effect_variable *variable;
 };
 
 struct d3d10_effect_shader_signature
 {
     char *signature;
-    UINT signature_size;
-    UINT element_count;
+    unsigned int signature_size;
+    unsigned int element_count;
     D3D10_SIGNATURE_PARAMETER_DESC *elements;
 };
 
 struct d3d10_effect_shader_variable
 {
-    struct d3d10_effect_shader_signature input_signature;
-    struct d3d10_effect_shader_signature output_signature;
+    ID3D10ShaderReflection *reflection;
+    ID3D10Blob *input_signature;
+    ID3D10Blob *bytecode;
     union
     {
         ID3D10VertexShader *vs;
         ID3D10PixelShader *ps;
         ID3D10GeometryShader *gs;
+        IUnknown *object;
     } shader;
+
+    unsigned int resource_count;
+    struct d3d10_effect_shader_resource *resources;
+    char *stream_output_declaration;
+    unsigned int isinline : 1;
+};
+
+struct d3d10_effect_prop_dependencies
+{
+    struct d3d10_effect_prop_dependency *entries;
+    SIZE_T count;
+    SIZE_T capacity;
+};
+
+struct d3d10_effect_sampler_desc
+{
+    D3D10_SAMPLER_DESC desc;
+    struct d3d10_effect_variable *texture;
 };
 
 struct d3d10_effect_state_object_variable
@@ -107,7 +118,7 @@ struct d3d10_effect_state_object_variable
         D3D10_RASTERIZER_DESC rasterizer;
         D3D10_DEPTH_STENCIL_DESC depth_stencil;
         D3D10_BLEND_DESC blend;
-        D3D10_SAMPLER_DESC sampler;
+        struct d3d10_effect_sampler_desc sampler;
     } desc;
     union
     {
@@ -115,7 +126,25 @@ struct d3d10_effect_state_object_variable
         ID3D10DepthStencilState *depth_stencil;
         ID3D10BlendState *blend;
         ID3D10SamplerState *sampler;
+        IUnknown *object;
     } object;
+    unsigned int index;
+    struct d3d10_effect_prop_dependencies dependencies;
+};
+
+struct d3d10_effect_resource_variable
+{
+    ID3D10ShaderResourceView **srv;
+    BOOL parent;
+};
+
+struct d3d10_effect_buffer_variable
+{
+    ID3D10Buffer *buffer;
+    ID3D10ShaderResourceView *resource_view;
+
+    BOOL changed;
+    BYTE *local_buffer;
 };
 
 /* ID3D10EffectType */
@@ -126,18 +155,19 @@ struct d3d10_effect_type
     char *name;
     D3D10_SHADER_VARIABLE_TYPE basetype;
     D3D10_SHADER_VARIABLE_CLASS type_class;
+    unsigned int flags;
 
     DWORD id;
     struct wine_rb_entry entry;
     struct d3d10_effect *effect;
 
-    DWORD element_count;
-    DWORD size_unpacked;
-    DWORD stride;
-    DWORD size_packed;
-    DWORD member_count;
-    DWORD column_count;
-    DWORD row_count;
+    unsigned int element_count;
+    unsigned int size_unpacked;
+    unsigned int stride;
+    unsigned int size_packed;
+    unsigned int member_count;
+    unsigned int column_count;
+    unsigned int row_count;
     struct d3d10_effect_type *elementtype;
     struct d3d10_effect_type_member *members;
 };
@@ -146,8 +176,14 @@ struct d3d10_effect_type_member
 {
     char *name;
     char *semantic;
-    DWORD buffer_offset;
+    uint32_t buffer_offset;
     struct d3d10_effect_type *type;
+};
+
+struct d3d10_effect_annotations
+{
+    struct d3d10_effect_variable *elements;
+    unsigned int count;
 };
 
 /* ID3D10EffectVariable */
@@ -160,20 +196,28 @@ struct d3d10_effect_variable
 
     char *name;
     char *semantic;
-    DWORD buffer_offset;
-    DWORD annotation_count;
-    DWORD flag;
-    DWORD data_size;
+    uint32_t buffer_offset;
+    uint32_t flag;
+    uint32_t data_size;
+    unsigned int explicit_bind_point;
     struct d3d10_effect *effect;
     struct d3d10_effect_variable *elements;
     struct d3d10_effect_variable *members;
-    struct d3d10_effect_variable *annotations;
+    struct d3d10_effect_annotations annotations;
 
     union
     {
         struct d3d10_effect_state_object_variable state;
         struct d3d10_effect_shader_variable shader;
+        struct d3d10_effect_buffer_variable buffer;
+        struct d3d10_effect_resource_variable resource;
     } u;
+};
+
+struct d3d10_effect_pass_shader_desc
+{
+    struct d3d10_effect_variable *shader;
+    unsigned int index;
 };
 
 /* ID3D10EffectPass */
@@ -183,15 +227,15 @@ struct d3d10_effect_pass
 
     struct d3d10_effect_technique *technique;
     char *name;
-    DWORD start;
-    DWORD object_count;
-    DWORD annotation_count;
-    struct d3d10_effect_object *objects;
-    struct d3d10_effect_variable *annotations;
+    struct d3d10_effect_annotations annotations;
 
-    D3D10_PASS_SHADER_DESC vs;
-    D3D10_PASS_SHADER_DESC ps;
-    D3D10_PASS_SHADER_DESC gs;
+    struct d3d10_effect_prop_dependencies dependencies;
+    struct d3d10_effect_pass_shader_desc vs;
+    struct d3d10_effect_pass_shader_desc ps;
+    struct d3d10_effect_pass_shader_desc gs;
+    struct d3d10_effect_variable *rasterizer;
+    struct d3d10_effect_variable *depth_stencil;
+    struct d3d10_effect_variable *blend;
     UINT stencil_ref;
     UINT sample_mask;
     float blend_factor[4];
@@ -204,10 +248,9 @@ struct d3d10_effect_technique
 
     struct d3d10_effect *effect;
     char *name;
-    DWORD pass_count;
-    DWORD annotation_count;
+    struct d3d10_effect_annotations annotations;
+    unsigned int pass_count;
     struct d3d10_effect_pass *passes;
-    struct d3d10_effect_variable *annotations;
 };
 
 struct d3d10_effect_anonymous_shader
@@ -216,87 +259,60 @@ struct d3d10_effect_anonymous_shader
     struct d3d10_effect_type type;
 };
 
+enum d3d10_effect_flags
+{
+    D3D10_EFFECT_OPTIMIZED = 0x1,
+    D3D10_EFFECT_IS_POOL   = 0x2,
+};
+
+struct d3d10_effect_var_array
+{
+    struct d3d10_effect_variable **v;
+    unsigned int current;
+    unsigned int count;
+};
+
 /* ID3D10Effect */
-extern const struct ID3D10EffectVtbl d3d10_effect_vtbl DECLSPEC_HIDDEN;
 struct d3d10_effect
 {
     ID3D10Effect ID3D10Effect_iface;
+    ID3D10EffectPool ID3D10EffectPool_iface;
     LONG refcount;
 
     ID3D10Device *device;
-    DWORD version;
-    DWORD local_buffer_count;
-    DWORD variable_count;
-    DWORD local_variable_count;
-    DWORD sharedbuffers_count;
-    DWORD sharedobjects_count;
-    DWORD technique_count;
-    DWORD index_offset;
-    DWORD texture_count;
-    DWORD depthstencilstate_count;
-    DWORD blendstate_count;
-    DWORD rasterizerstate_count;
-    DWORD samplerstate_count;
-    DWORD rendertargetview_count;
-    DWORD depthstencilview_count;
-    DWORD used_shader_count;
-    DWORD anonymous_shader_count;
+    struct d3d10_effect *pool;
+    uint32_t version;
+    unsigned int local_buffer_count;
+    unsigned int variable_count;
+    unsigned int local_variable_count;
+    unsigned int shared_buffer_count;
+    unsigned int shared_object_count;
+    unsigned int technique_count;
+    uint32_t index_offset;
+    unsigned int texture_count;
+    unsigned int anonymous_shader_count;
+    uint32_t flags;
 
-    DWORD used_shader_current;
-    DWORD anonymous_shader_current;
+    unsigned int anonymous_shader_current;
 
     struct wine_rb_tree types;
     struct d3d10_effect_variable *local_buffers;
     struct d3d10_effect_variable *local_variables;
     struct d3d10_effect_anonymous_shader *anonymous_shaders;
-    struct d3d10_effect_variable **used_shaders;
+    struct d3d10_effect_var_array shaders;
+    struct d3d10_effect_var_array samplers;
+    struct d3d10_effect_var_array rtvs;
+    struct d3d10_effect_var_array dsvs;
+    struct d3d10_effect_var_array blend_states;
+    struct d3d10_effect_var_array ds_states;
+    struct d3d10_effect_var_array rs_states;
     struct d3d10_effect_technique *techniques;
 };
 
-/* ID3D10ShaderReflection */
-extern const struct ID3D10ShaderReflectionVtbl d3d10_shader_reflection_vtbl DECLSPEC_HIDDEN;
-struct d3d10_shader_reflection
-{
-    ID3D10ShaderReflection ID3D10ShaderReflection_iface;
-    LONG refcount;
-};
-
-HRESULT d3d10_effect_parse(struct d3d10_effect *This, const void *data, SIZE_T data_size) DECLSPEC_HIDDEN;
+HRESULT d3d10_effect_parse(struct d3d10_effect *effect, const void *data, SIZE_T data_size);
 
 /* D3D10Core */
 HRESULT WINAPI D3D10CoreCreateDevice(IDXGIFactory *factory, IDXGIAdapter *adapter,
         unsigned int flags, D3D_FEATURE_LEVEL feature_level, ID3D10Device **device);
-
-#define MAKE_TAG(ch0, ch1, ch2, ch3) \
-    ((DWORD)(ch0) | ((DWORD)(ch1) << 8) | \
-    ((DWORD)(ch2) << 16) | ((DWORD)(ch3) << 24 ))
-#define TAG_DXBC MAKE_TAG('D', 'X', 'B', 'C')
-#define TAG_FX10 MAKE_TAG('F', 'X', '1', '0')
-#define TAG_ISGN MAKE_TAG('I', 'S', 'G', 'N')
-#define TAG_OSGN MAKE_TAG('O', 'S', 'G', 'N')
-#define TAG_SHDR MAKE_TAG('S', 'H', 'D', 'R')
-
-HRESULT parse_dxbc(const char *data, SIZE_T data_size,
-        HRESULT (*chunk_handler)(const char *data, DWORD data_size, DWORD tag, void *ctx), void *ctx) DECLSPEC_HIDDEN;
-
-static inline void read_dword(const char **ptr, DWORD *d)
-{
-    memcpy(d, *ptr, sizeof(*d));
-    *ptr += sizeof(*d);
-}
-
-static inline void write_dword(char **ptr, DWORD d)
-{
-    memcpy(*ptr, &d, sizeof(d));
-    *ptr += sizeof(d);
-}
-
-static inline BOOL require_space(size_t offset, size_t count, size_t size, size_t data_size)
-{
-    return !count || (data_size - offset) / count >= size;
-}
-
-void skip_dword_unknown(const char *location, const char **ptr, unsigned int count) DECLSPEC_HIDDEN;
-void write_dword_unknown(char **ptr, DWORD d) DECLSPEC_HIDDEN;
 
 #endif /* __WINE_D3D10_PRIVATE_H */

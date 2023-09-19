@@ -17,9 +17,6 @@
  *
  */
 
-#include "config.h"
-#include "wine/port.h"
-
 #include "dxgi_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(dxgi);
@@ -36,6 +33,8 @@ static HRESULT STDMETHODCALLTYPE dxgi_factory_QueryInterface(IWineDXGIFactory *i
     TRACE("iface %p, iid %s, out %p.\n", iface, debugstr_guid(iid), out);
 
     if (IsEqualGUID(iid, &IID_IWineDXGIFactory)
+            || IsEqualGUID(iid, &IID_IDXGIFactory7)
+            || IsEqualGUID(iid, &IID_IDXGIFactory6)
             || IsEqualGUID(iid, &IID_IDXGIFactory5)
             || IsEqualGUID(iid, &IID_IDXGIFactory4)
             || IsEqualGUID(iid, &IID_IDXGIFactory3)
@@ -61,7 +60,7 @@ static ULONG STDMETHODCALLTYPE dxgi_factory_AddRef(IWineDXGIFactory *iface)
     struct dxgi_factory *factory = impl_from_IWineDXGIFactory(iface);
     ULONG refcount = InterlockedIncrement(&factory->refcount);
 
-    TRACE("%p increasing refcount to %u.\n", iface, refcount);
+    TRACE("%p increasing refcount to %lu.\n", iface, refcount);
 
     return refcount;
 }
@@ -71,16 +70,14 @@ static ULONG STDMETHODCALLTYPE dxgi_factory_Release(IWineDXGIFactory *iface)
     struct dxgi_factory *factory = impl_from_IWineDXGIFactory(iface);
     ULONG refcount = InterlockedDecrement(&factory->refcount);
 
-    TRACE("%p decreasing refcount to %u.\n", iface, refcount);
+    TRACE("%p decreasing refcount to %lu.\n", iface, refcount);
 
     if (!refcount)
     {
         if (factory->device_window)
             DestroyWindow(factory->device_window);
 
-        wined3d_mutex_lock();
         wined3d_decref(factory->wined3d);
-        wined3d_mutex_unlock();
         wined3d_private_store_cleanup(&factory->private_store);
         heap_free(factory);
     }
@@ -253,7 +250,12 @@ static HRESULT STDMETHODCALLTYPE dxgi_factory_CreateSoftwareAdapter(IWineDXGIFac
 
 static BOOL STDMETHODCALLTYPE dxgi_factory_IsCurrent(IWineDXGIFactory *iface)
 {
-    FIXME("iface %p stub!\n", iface);
+    static BOOL once = FALSE;
+
+    if (!once++)
+        FIXME("iface %p stub!\n", iface);
+    else
+        WARN("iface %p stub!\n", iface);
 
     return TRUE;
 }
@@ -351,7 +353,7 @@ static HRESULT STDMETHODCALLTYPE dxgi_factory_RegisterStereoStatusEvent(IWineDXG
 
 static void STDMETHODCALLTYPE dxgi_factory_UnregisterStereoStatus(IWineDXGIFactory *iface, DWORD cookie)
 {
-    FIXME("iface %p, cookie %#x stub!\n", iface, cookie);
+    FIXME("iface %p, cookie %#lx stub!\n", iface, cookie);
 }
 
 static HRESULT STDMETHODCALLTYPE dxgi_factory_RegisterStereoStatusWindow(IWineDXGIFactory *iface,
@@ -373,7 +375,7 @@ static HRESULT STDMETHODCALLTYPE dxgi_factory_RegisterOcclusionStatusEvent(IWine
 
 static void STDMETHODCALLTYPE dxgi_factory_UnregisterOcclusionStatus(IWineDXGIFactory *iface, DWORD cookie)
 {
-    FIXME("iface %p, cookie %#x stub!\n", iface, cookie);
+    FIXME("iface %p, cookie %#lx stub!\n", iface, cookie);
 }
 
 static HRESULT STDMETHODCALLTYPE dxgi_factory_CreateSwapChainForComposition(IWineDXGIFactory *iface,
@@ -400,15 +402,18 @@ static HRESULT STDMETHODCALLTYPE dxgi_factory_EnumAdapterByLuid(IWineDXGIFactory
     IDXGIAdapter1 *adapter1;
     HRESULT hr;
 
-    TRACE("iface %p, luid %08x:%08x, iid %s, adapter %p.\n",
+    TRACE("iface %p, luid %08lx:%08lx, iid %s, adapter %p.\n",
             iface, luid.HighPart, luid.LowPart, debugstr_guid(iid), adapter);
+
+    if (!adapter)
+        return DXGI_ERROR_INVALID_CALL;
 
     adapter_index = 0;
     while ((hr = dxgi_factory_EnumAdapters1(iface, adapter_index, &adapter1)) == S_OK)
     {
         if (FAILED(hr = IDXGIAdapter1_GetDesc1(adapter1, &desc)))
         {
-            WARN("Failed to get adapter %u desc, hr %#x.\n", adapter_index, hr);
+            WARN("Failed to get adapter %u desc, hr %#lx.\n", adapter_index, hr);
             ++adapter_index;
             continue;
         }
@@ -425,7 +430,7 @@ static HRESULT STDMETHODCALLTYPE dxgi_factory_EnumAdapterByLuid(IWineDXGIFactory
         ++adapter_index;
     }
     if (hr != DXGI_ERROR_NOT_FOUND)
-        WARN("Failed to enumerate adapters, hr %#x.\n", hr);
+        WARN("Failed to enumerate adapters, hr %#lx.\n", hr);
 
     WARN("Adapter could not be found.\n");
     return DXGI_ERROR_NOT_FOUND;
@@ -442,8 +447,55 @@ static HRESULT STDMETHODCALLTYPE dxgi_factory_EnumWarpAdapter(IWineDXGIFactory *
 static HRESULT STDMETHODCALLTYPE dxgi_factory_CheckFeatureSupport(IWineDXGIFactory *iface,
         DXGI_FEATURE feature, void *feature_data, UINT data_size)
 {
-    FIXME("iface %p, feature %#x, feature_data %p, data_size %u stub!\n",
+    TRACE("iface %p, feature %#x, feature_data %p, data_size %u.\n",
             iface, feature, feature_data, data_size);
+
+    switch (feature)
+    {
+        case DXGI_FEATURE_PRESENT_ALLOW_TEARING:
+            if (data_size != sizeof(BOOL))
+                return DXGI_ERROR_INVALID_CALL;
+            *(BOOL *)feature_data = TRUE;
+            return S_OK;
+
+        default:
+            WARN("Unsupported feature %#x.\n", feature);
+            return DXGI_ERROR_INVALID_CALL;
+    }
+}
+
+static HRESULT STDMETHODCALLTYPE dxgi_factory_EnumAdapterByGpuPreference(IWineDXGIFactory *iface,
+        UINT adapter_idx, DXGI_GPU_PREFERENCE gpu_preference, REFIID iid, void **adapter)
+{
+    IDXGIAdapter1 *adapter_object;
+    HRESULT hr;
+
+    TRACE("iface %p, adapter_idx %u, gpu_preference %#x, iid %s, adapter %p.\n",
+            iface, adapter_idx, gpu_preference, debugstr_guid(iid), adapter);
+
+    if (gpu_preference != DXGI_GPU_PREFERENCE_UNSPECIFIED)
+        FIXME("Ignoring GPU preference %#x.\n", gpu_preference);
+
+    if (FAILED(hr = dxgi_factory_EnumAdapters1(iface, adapter_idx, &adapter_object)))
+        return hr;
+
+    hr = IDXGIAdapter1_QueryInterface(adapter_object, iid, adapter);
+    IDXGIAdapter1_Release(adapter_object);
+    return hr;
+}
+
+static HRESULT STDMETHODCALLTYPE dxgi_factory_RegisterAdaptersChangedEvent(IWineDXGIFactory *iface,
+        HANDLE event, DWORD *cookie)
+{
+    FIXME("iface %p, event %p, cookie %p stub!\n", iface, event, cookie);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT STDMETHODCALLTYPE dxgi_factory_UnregisterAdaptersChangedEvent(IWineDXGIFactory *iface,
+        DWORD cookie)
+{
+    FIXME("iface %p, cookie %#lx stub!\n", iface, cookie);
 
     return E_NOTIMPL;
 }
@@ -470,10 +522,10 @@ static const struct IWineDXGIFactoryVtbl dxgi_factory_vtbl =
     dxgi_factory_CreateSwapChainForHwnd,
     dxgi_factory_CreateSwapChainForCoreWindow,
     dxgi_factory_GetSharedResourceAdapterLuid,
-    dxgi_factory_RegisterOcclusionStatusWindow,
+    dxgi_factory_RegisterStereoStatusWindow,
     dxgi_factory_RegisterStereoStatusEvent,
     dxgi_factory_UnregisterStereoStatus,
-    dxgi_factory_RegisterStereoStatusWindow,
+    dxgi_factory_RegisterOcclusionStatusWindow,
     dxgi_factory_RegisterOcclusionStatusEvent,
     dxgi_factory_UnregisterOcclusionStatus,
     dxgi_factory_CreateSwapChainForComposition,
@@ -484,6 +536,11 @@ static const struct IWineDXGIFactoryVtbl dxgi_factory_vtbl =
     dxgi_factory_EnumWarpAdapter,
     /* IDXIGFactory5 methods */
     dxgi_factory_CheckFeatureSupport,
+    /* IDXGIFactory6 methods */
+    dxgi_factory_EnumAdapterByGpuPreference,
+    /* IDXGIFactory7 methods */
+    dxgi_factory_RegisterAdaptersChangedEvent,
+    dxgi_factory_UnregisterAdaptersChangedEvent,
 };
 
 struct dxgi_factory *unsafe_impl_from_IDXGIFactory(IDXGIFactory *iface)
@@ -496,7 +553,7 @@ struct dxgi_factory *unsafe_impl_from_IDXGIFactory(IDXGIFactory *iface)
         return NULL;
     if (FAILED(hr = IDXGIFactory_QueryInterface(iface, &IID_IWineDXGIFactory, (void **)&wine_factory)))
     {
-        ERR("Failed to get IWineDXGIFactory interface, hr %#x.\n", hr);
+        ERR("Failed to get IWineDXGIFactory interface, hr %#lx.\n", hr);
         return NULL;
     }
     assert(wine_factory->lpVtbl == &dxgi_factory_vtbl);
@@ -535,7 +592,7 @@ HRESULT dxgi_factory_create(REFIID riid, void **factory, BOOL extended)
 
     if (FAILED(hr = dxgi_factory_init(object, extended)))
     {
-        WARN("Failed to initialize factory, hr %#x.\n", hr);
+        WARN("Failed to initialize factory, hr %#lx.\n", hr);
         heap_free(object);
         return hr;
     }

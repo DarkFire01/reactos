@@ -49,17 +49,15 @@ static ULONG WINAPI d3d8_vertexbuffer_AddRef(IDirect3DVertexBuffer8 *iface)
     struct d3d8_vertexbuffer *buffer = impl_from_IDirect3DVertexBuffer8(iface);
     ULONG refcount = InterlockedIncrement(&buffer->resource.refcount);
 
-    TRACE("%p increasing refcount to %u.\n", iface, refcount);
+    TRACE("%p increasing refcount to %lu.\n", iface, refcount);
 
     if (refcount == 1)
     {
         IDirect3DDevice8_AddRef(buffer->parent_device);
-        wined3d_mutex_lock();
         if (buffer->draw_buffer)
             wined3d_buffer_incref(buffer->draw_buffer);
         else
             wined3d_buffer_incref(buffer->wined3d_buffer);
-        wined3d_mutex_unlock();
     }
 
     return refcount;
@@ -70,19 +68,17 @@ static ULONG WINAPI d3d8_vertexbuffer_Release(IDirect3DVertexBuffer8 *iface)
     struct d3d8_vertexbuffer *buffer = impl_from_IDirect3DVertexBuffer8(iface);
     ULONG refcount = InterlockedDecrement(&buffer->resource.refcount);
 
-    TRACE("%p decreasing refcount to %u.\n", iface, refcount);
+    TRACE("%p decreasing refcount to %lu.\n", iface, refcount);
 
     if (!refcount)
     {
         struct wined3d_buffer *draw_buffer = buffer->draw_buffer;
         IDirect3DDevice8 *device = buffer->parent_device;
 
-        wined3d_mutex_lock();
         if (draw_buffer)
             wined3d_buffer_decref(draw_buffer);
         else
             wined3d_buffer_decref(buffer->wined3d_buffer);
-        wined3d_mutex_unlock();
 
         /* Release the device last, as it may cause the device to be destroyed. */
         IDirect3DDevice8_Release(device);
@@ -110,7 +106,7 @@ static HRESULT WINAPI d3d8_vertexbuffer_SetPrivateData(IDirect3DVertexBuffer8 *i
         REFGUID guid, const void *data, DWORD data_size, DWORD flags)
 {
     struct d3d8_vertexbuffer *buffer = impl_from_IDirect3DVertexBuffer8(iface);
-    TRACE("iface %p, guid %s, data %p, data_size %u, flags %#x.\n",
+    TRACE("iface %p, guid %s, data %p, data_size %lu, flags %#lx.\n",
             iface, debugstr_guid(guid), data, data_size, flags);
 
     return d3d8_resource_set_private_data(&buffer->resource, guid, data, data_size, flags);
@@ -140,7 +136,7 @@ static DWORD WINAPI d3d8_vertexbuffer_SetPriority(IDirect3DVertexBuffer8 *iface,
     struct wined3d_resource *resource;
     DWORD previous;
 
-    TRACE("iface %p, priority %u.\n", iface, priority);
+    TRACE("iface %p, priority %lu.\n", iface, priority);
 
     wined3d_mutex_lock();
     resource = wined3d_buffer_get_resource(buffer->wined3d_buffer);
@@ -193,16 +189,19 @@ static HRESULT WINAPI d3d8_vertexbuffer_Lock(IDirect3DVertexBuffer8 *iface, UINT
     struct wined3d_box wined3d_box = {0};
     HRESULT hr;
 
-    TRACE("iface %p, offset %u, size %u, data %p, flags %#x.\n",
+    TRACE("iface %p, offset %u, size %u, data %p, flags %#lx.\n",
             iface, offset, size, data, flags);
+
+    if (buffer->discarded)
+        flags &= ~D3DLOCK_DISCARD;
+    if (flags & D3DLOCK_DISCARD)
+        buffer->discarded = true;
 
     wined3d_box.left = offset;
     wined3d_box.right = offset + size;
-    wined3d_mutex_lock();
     wined3d_resource = wined3d_buffer_get_resource(buffer->wined3d_buffer);
     hr = wined3d_resource_map(wined3d_resource, 0, &wined3d_map_desc, &wined3d_box,
             wined3dmapflags_from_d3dmapflags(flags, buffer->usage));
-    wined3d_mutex_unlock();
     *data = wined3d_map_desc.data;
 
     return hr;
@@ -214,9 +213,7 @@ static HRESULT WINAPI d3d8_vertexbuffer_Unlock(IDirect3DVertexBuffer8 *iface)
 
     TRACE("iface %p.\n", iface);
 
-    wined3d_mutex_lock();
     wined3d_resource_unmap(wined3d_buffer_get_resource(buffer->wined3d_buffer), 0);
-    wined3d_mutex_unlock();
 
     return D3D_OK;
 }
@@ -304,7 +301,7 @@ HRESULT vertexbuffer_init(struct d3d8_vertexbuffer *buffer, struct d3d8_device *
     buffer->usage = usage;
 
     desc.byte_width = size;
-    desc.usage = usage & WINED3DUSAGE_MASK;
+    desc.usage = wined3d_usage_from_d3d(pool, usage);
     desc.bind_flags = 0;
     desc.access = wined3daccess_from_d3dpool(pool, usage) | map_access_from_usage(usage);
     /* Buffers are always readable. */
@@ -332,7 +329,7 @@ HRESULT vertexbuffer_init(struct d3d8_vertexbuffer *buffer, struct d3d8_device *
     wined3d_mutex_unlock();
     if (FAILED(hr))
     {
-        WARN("Failed to create wined3d buffer, hr %#x.\n", hr);
+        WARN("Failed to create wined3d buffer, hr %#lx.\n", hr);
         return hr;
     }
 
@@ -380,17 +377,12 @@ static ULONG WINAPI d3d8_indexbuffer_AddRef(IDirect3DIndexBuffer8 *iface)
     struct d3d8_indexbuffer *buffer = impl_from_IDirect3DIndexBuffer8(iface);
     ULONG refcount = InterlockedIncrement(&buffer->resource.refcount);
 
-    TRACE("%p increasing refcount to %u.\n", iface, refcount);
+    TRACE("%p increasing refcount to %lu.\n", iface, refcount);
 
     if (refcount == 1)
     {
         IDirect3DDevice8_AddRef(buffer->parent_device);
-        wined3d_mutex_lock();
-        if (buffer->draw_buffer)
-            wined3d_buffer_incref(buffer->draw_buffer);
-        else
-            wined3d_buffer_incref(buffer->wined3d_buffer);
-        wined3d_mutex_unlock();
+        wined3d_buffer_incref(buffer->wined3d_buffer);
     }
 
     return refcount;
@@ -401,19 +393,13 @@ static ULONG WINAPI d3d8_indexbuffer_Release(IDirect3DIndexBuffer8 *iface)
     struct d3d8_indexbuffer *buffer = impl_from_IDirect3DIndexBuffer8(iface);
     ULONG refcount = InterlockedDecrement(&buffer->resource.refcount);
 
-    TRACE("%p decreasing refcount to %u.\n", iface, refcount);
+    TRACE("%p decreasing refcount to %lu.\n", iface, refcount);
 
     if (!refcount)
     {
-        struct wined3d_buffer *draw_buffer = buffer->draw_buffer;
         IDirect3DDevice8 *device = buffer->parent_device;
 
-        wined3d_mutex_lock();
-        if (draw_buffer)
-            wined3d_buffer_decref(draw_buffer);
-        else
-            wined3d_buffer_decref(buffer->wined3d_buffer);
-        wined3d_mutex_unlock();
+        wined3d_buffer_decref(buffer->wined3d_buffer);
 
         /* Release the device last, as it may cause the device to be destroyed. */
         IDirect3DDevice8_Release(device);
@@ -441,7 +427,7 @@ static HRESULT WINAPI d3d8_indexbuffer_SetPrivateData(IDirect3DIndexBuffer8 *ifa
         REFGUID guid, const void *data, DWORD data_size, DWORD flags)
 {
     struct d3d8_indexbuffer *buffer = impl_from_IDirect3DIndexBuffer8(iface);
-    TRACE("iface %p, guid %s, data %p, data_size %u, flags %#x.\n",
+    TRACE("iface %p, guid %s, data %p, data_size %lu, flags %#lx.\n",
             iface, debugstr_guid(guid), data, data_size, flags);
 
     return d3d8_resource_set_private_data(&buffer->resource, guid, data, data_size, flags);
@@ -471,7 +457,7 @@ static DWORD WINAPI d3d8_indexbuffer_SetPriority(IDirect3DIndexBuffer8 *iface, D
     struct wined3d_resource *resource;
     DWORD previous;
 
-    TRACE("iface %p, priority %u.\n", iface, priority);
+    TRACE("iface %p, priority %lu.\n", iface, priority);
 
     wined3d_mutex_lock();
     resource = wined3d_buffer_get_resource(buffer->wined3d_buffer);
@@ -524,16 +510,19 @@ static HRESULT WINAPI d3d8_indexbuffer_Lock(IDirect3DIndexBuffer8 *iface, UINT o
     struct wined3d_box wined3d_box = {0};
     HRESULT hr;
 
-    TRACE("iface %p, offset %u, size %u, data %p, flags %#x.\n",
+    TRACE("iface %p, offset %u, size %u, data %p, flags %#lx.\n",
             iface, offset, size, data, flags);
+
+    if (buffer->discarded)
+        flags &= ~D3DLOCK_DISCARD;
+    if (flags & D3DLOCK_DISCARD)
+        buffer->discarded = true;
 
     wined3d_box.left = offset;
     wined3d_box.right = offset + size;
-    wined3d_mutex_lock();
     wined3d_resource = wined3d_buffer_get_resource(buffer->wined3d_buffer);
     hr = wined3d_resource_map(wined3d_resource, 0, &wined3d_map_desc, &wined3d_box,
             wined3dmapflags_from_d3dmapflags(flags, buffer->usage));
-    wined3d_mutex_unlock();
     *data = wined3d_map_desc.data;
 
     return hr;
@@ -545,9 +534,7 @@ static HRESULT WINAPI d3d8_indexbuffer_Unlock(IDirect3DIndexBuffer8 *iface)
 
     TRACE("iface %p.\n", iface);
 
-    wined3d_mutex_lock();
     wined3d_resource_unmap(wined3d_buffer_get_resource(buffer->wined3d_buffer), 0);
-    wined3d_mutex_unlock();
 
     return D3D_OK;
 }
@@ -600,8 +587,6 @@ static void STDMETHODCALLTYPE d3d8_indexbuffer_wined3d_object_destroyed(void *pa
 {
     struct d3d8_indexbuffer *buffer = parent;
 
-    if (buffer->draw_buffer)
-        wined3d_buffer_decref(buffer->wined3d_buffer);
     d3d8_resource_cleanup(&buffer->resource);
     heap_free(buffer);
 }
@@ -614,7 +599,6 @@ static const struct wined3d_parent_ops d3d8_indexbuffer_wined3d_parent_ops =
 HRESULT indexbuffer_init(struct d3d8_indexbuffer *buffer, struct d3d8_device *device,
         UINT size, DWORD usage, D3DFORMAT format, D3DPOOL pool)
 {
-    const struct wined3d_parent_ops *parent_ops = &d3d8_null_wined3d_parent_ops;
     struct wined3d_buffer_desc desc;
     HRESULT hr;
 
@@ -626,7 +610,7 @@ HRESULT indexbuffer_init(struct d3d8_indexbuffer *buffer, struct d3d8_device *de
         return D3DERR_INVALIDCALL;
 
     desc.byte_width = size;
-    desc.usage = (usage & WINED3DUSAGE_MASK) | WINED3DUSAGE_STATICDECL;
+    desc.usage = wined3d_usage_from_d3d(pool, usage) | WINED3DUSAGE_STATICDECL;
     desc.bind_flags = 0;
     desc.access = wined3daccess_from_d3dpool(pool, usage) | map_access_from_usage(usage);
     /* Buffers are always readable. */
@@ -636,30 +620,21 @@ HRESULT indexbuffer_init(struct d3d8_indexbuffer *buffer, struct d3d8_device *de
     desc.structure_byte_stride = 0;
 
     if (desc.access & WINED3D_RESOURCE_ACCESS_GPU)
-    {
         desc.bind_flags = WINED3D_BIND_INDEX_BUFFER;
-        parent_ops = &d3d8_indexbuffer_wined3d_parent_ops;
-    }
 
     buffer->IDirect3DIndexBuffer8_iface.lpVtbl = &d3d8_indexbuffer_vtbl;
     d3d8_resource_init(&buffer->resource);
     buffer->format = wined3dformat_from_d3dformat(format);
     buffer->usage = usage;
+    buffer->sysmem = !(desc.access & WINED3D_RESOURCE_ACCESS_GPU);
 
     wined3d_mutex_lock();
-    hr = wined3d_buffer_create(device->wined3d_device, &desc, NULL, buffer, parent_ops, &buffer->wined3d_buffer);
-    if (SUCCEEDED(hr) && !(desc.access & WINED3D_RESOURCE_ACCESS_GPU))
-    {
-        desc.bind_flags = WINED3D_BIND_INDEX_BUFFER;
-        desc.access = WINED3D_RESOURCE_ACCESS_GPU;
-        if (FAILED(hr = wined3d_buffer_create(device->wined3d_device, &desc, NULL, buffer,
-                &d3d8_indexbuffer_wined3d_parent_ops, &buffer->draw_buffer)))
-            wined3d_buffer_decref(buffer->wined3d_buffer);
-    }
+    hr = wined3d_buffer_create(device->wined3d_device, &desc, NULL, buffer,
+            &d3d8_indexbuffer_wined3d_parent_ops, &buffer->wined3d_buffer);
     wined3d_mutex_unlock();
     if (FAILED(hr))
     {
-        WARN("Failed to create wined3d buffer, hr %#x.\n", hr);
+        WARN("Failed to create wined3d buffer, hr %#lx.\n", hr);
         return hr;
     }
 

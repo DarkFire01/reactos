@@ -17,12 +17,18 @@
  *
  */
 
-#include "config.h"
-#include "wine/port.h"
-
 #include "dxgi_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(dxgi);
+
+static void dxgi_video_memory_info_from_wined3d(DXGI_QUERY_VIDEO_MEMORY_INFO *info,
+        const struct wined3d_video_memory_info *wined3d_info)
+{
+    info->Budget = wined3d_info->budget;
+    info->CurrentUsage = wined3d_info->current_usage;
+    info->CurrentReservation = wined3d_info->current_reservation;
+    info->AvailableForReservation = wined3d_info->available_reservation;
+}
 
 static inline struct dxgi_adapter *impl_from_IWineDXGIAdapter(IWineDXGIAdapter *iface)
 {
@@ -58,7 +64,7 @@ static ULONG STDMETHODCALLTYPE dxgi_adapter_AddRef(IWineDXGIAdapter *iface)
     struct dxgi_adapter *adapter = impl_from_IWineDXGIAdapter(iface);
     ULONG refcount = InterlockedIncrement(&adapter->refcount);
 
-    TRACE("%p increasing refcount to %u.\n", iface, refcount);
+    TRACE("%p increasing refcount to %lu.\n", iface, refcount);
 
     return refcount;
 }
@@ -68,7 +74,7 @@ static ULONG STDMETHODCALLTYPE dxgi_adapter_Release(IWineDXGIAdapter *iface)
     struct dxgi_adapter *adapter = impl_from_IWineDXGIAdapter(iface);
     ULONG refcount = InterlockedDecrement(&adapter->refcount);
 
-    TRACE("%p decreasing refcount to %u.\n", iface, refcount);
+    TRACE("%p decreasing refcount to %lu.\n", iface, refcount);
 
     if (!refcount)
     {
@@ -124,23 +130,28 @@ static HRESULT STDMETHODCALLTYPE dxgi_adapter_EnumOutputs(IWineDXGIAdapter *ifac
 {
     struct dxgi_adapter *adapter = impl_from_IWineDXGIAdapter(iface);
     struct dxgi_output *output_object;
+    unsigned int output_count;
     HRESULT hr;
 
     TRACE("iface %p, output_idx %u, output %p.\n", iface, output_idx, output);
 
-    if (output_idx > 0)
+    if (!output)
+        return E_INVALIDARG;
+
+    output_count = wined3d_adapter_get_output_count(adapter->wined3d_adapter);
+    if (output_idx >= output_count)
     {
         *output = NULL;
         return DXGI_ERROR_NOT_FOUND;
     }
 
-    if (FAILED(hr = dxgi_output_create(adapter, &output_object)))
+    if (FAILED(hr = dxgi_output_create(adapter, output_idx, &output_object)))
     {
         *output = NULL;
         return hr;
     }
 
-    *output = (IDXGIOutput *)&output_object->IDXGIOutput4_iface;
+    *output = (IDXGIOutput *)&output_object->IDXGIOutput6_iface;
 
     TRACE("Returning output %p.\n", *output);
 
@@ -156,15 +167,14 @@ static HRESULT dxgi_adapter_get_desc(struct dxgi_adapter *adapter, DXGI_ADAPTER_
     adapter_id.driver_size = 0;
     adapter_id.description = description;
     adapter_id.description_size = sizeof(description);
-    adapter_id.device_name_size = 0;
 
-    if (FAILED(hr = wined3d_get_adapter_identifier(adapter->factory->wined3d, adapter->ordinal, 0, &adapter_id)))
+    if (FAILED(hr = wined3d_adapter_get_identifier(adapter->wined3d_adapter, 0, &adapter_id)))
         return hr;
 
     if (!MultiByteToWideChar(CP_ACP, 0, description, -1, desc->Description, ARRAY_SIZE(description)))
     {
         DWORD err = GetLastError();
-        ERR("Failed to translate description %s (%#x).\n", debugstr_a(description), err);
+        ERR("Failed to translate description %s (%#lx).\n", debugstr_a(description), err);
         hr = E_FAIL;
     }
 
@@ -206,7 +216,6 @@ static HRESULT STDMETHODCALLTYPE dxgi_adapter_CheckInterfaceSupport(IWineDXGIAda
     struct dxgi_adapter *adapter = impl_from_IWineDXGIAdapter(iface);
     struct wined3d_adapter_identifier adapter_id;
     struct wined3d_caps caps;
-    struct wined3d *wined3d;
     HRESULT hr;
 
     TRACE("iface %p, guid %s, umd_version %p.\n", iface, debugstr_guid(guid), umd_version);
@@ -222,13 +231,11 @@ static HRESULT STDMETHODCALLTYPE dxgi_adapter_CheckInterfaceSupport(IWineDXGIAda
 
     adapter_id.driver_size = 0;
     adapter_id.description_size = 0;
-    adapter_id.device_name_size = 0;
 
     wined3d_mutex_lock();
-    wined3d = adapter->factory->wined3d;
-    hr = wined3d_get_device_caps(wined3d, adapter->ordinal, WINED3D_DEVICE_TYPE_HAL, &caps);
+    hr = wined3d_get_device_caps(adapter->wined3d_adapter, WINED3D_DEVICE_TYPE_HAL, &caps);
     if (SUCCEEDED(hr))
-        hr = wined3d_get_adapter_identifier(wined3d, adapter->ordinal, 0, &adapter_id);
+        hr = wined3d_adapter_get_identifier(adapter->wined3d_adapter, 0, &adapter_id);
     wined3d_mutex_unlock();
 
     if (FAILED(hr))
@@ -287,52 +294,29 @@ static HRESULT STDMETHODCALLTYPE dxgi_adapter_RegisterHardwareContentProtectionT
 static void STDMETHODCALLTYPE dxgi_adapter_UnregisterHardwareContentProtectionTeardownStatus(
         IWineDXGIAdapter *iface, DWORD cookie)
 {
-    FIXME("iface %p, cookie %#x stub!\n", iface, cookie);
+    FIXME("iface %p, cookie %#lx stub!\n", iface, cookie);
 }
 
 static HRESULT STDMETHODCALLTYPE dxgi_adapter_QueryVideoMemoryInfo(IWineDXGIAdapter *iface,
         UINT node_index, DXGI_MEMORY_SEGMENT_GROUP segment_group, DXGI_QUERY_VIDEO_MEMORY_INFO *info)
 {
     struct dxgi_adapter *adapter = impl_from_IWineDXGIAdapter(iface);
-    struct wined3d_adapter_identifier adapter_id;
-    static unsigned int once;
+    struct wined3d_video_memory_info wined3d_info;
     HRESULT hr;
 
     TRACE("iface %p, node_index %u, segment_group %#x, info %p.\n",
             iface, node_index, segment_group, info);
 
-    if (!once++)
-        FIXME("Returning fake video memory info.\n");
-
-    if (node_index)
-        FIXME("Ignoring node index %u.\n", node_index);
-
-    adapter_id.driver_size = 0;
-    adapter_id.description_size = 0;
-    adapter_id.device_name_size = 0;
-
-    if (FAILED(hr = wined3d_get_adapter_identifier(adapter->factory->wined3d, adapter->ordinal, 0, &adapter_id)))
-        return hr;
-
-    switch (segment_group)
+    if (SUCCEEDED(hr = wined3d_adapter_get_video_memory_info(adapter->wined3d_adapter, node_index,
+            (enum wined3d_memory_segment_group)segment_group, &wined3d_info)))
     {
-        case DXGI_MEMORY_SEGMENT_GROUP_LOCAL:
-            info->Budget = adapter_id.video_memory;
-            info->CurrentUsage = 0;
-            info->AvailableForReservation = adapter_id.video_memory / 2;
-            info->CurrentReservation = 0;
-            break;
-        case DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL:
-            memset(info, 0, sizeof(*info));
-            break;
-        default:
-            WARN("Invalid memory segment group %#x.\n", segment_group);
-            return E_INVALIDARG;
-    }
+        dxgi_video_memory_info_from_wined3d(info, &wined3d_info);
 
-    TRACE("Budget 0x%s, usage 0x%s, available for reservation 0x%s, reservation 0x%s.\n",
-            wine_dbgstr_longlong(info->Budget), wine_dbgstr_longlong(info->CurrentUsage),
-            wine_dbgstr_longlong(info->AvailableForReservation), wine_dbgstr_longlong(info->CurrentReservation));
+        TRACE("Budget 0x%s, usage 0x%s, available for reservation 0x%s, reservation 0x%s.\n",
+                wine_dbgstr_longlong(info->Budget), wine_dbgstr_longlong(info->CurrentUsage),
+                wine_dbgstr_longlong(info->AvailableForReservation),
+                wine_dbgstr_longlong(info->CurrentReservation));
+    }
 
     return hr;
 }
@@ -349,15 +333,22 @@ static HRESULT STDMETHODCALLTYPE dxgi_adapter_SetVideoMemoryReservation(IWineDXG
 static HRESULT STDMETHODCALLTYPE dxgi_adapter_RegisterVideoMemoryBudgetChangeNotificationEvent(
         IWineDXGIAdapter *iface, HANDLE event, DWORD *cookie)
 {
-    FIXME("iface %p, event %p, cookie %p stub!\n", iface, event, cookie);
+    struct dxgi_adapter *adapter = impl_from_IWineDXGIAdapter(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, event %p, cookie %p.\n", iface, event, cookie);
+
+    if (!event || !cookie)
+        return DXGI_ERROR_INVALID_CALL;
+
+    return wined3d_adapter_register_budget_change_notification(adapter->wined3d_adapter, event, cookie);
 }
 
 static void STDMETHODCALLTYPE dxgi_adapter_UnregisterVideoMemoryBudgetChangeNotification(
         IWineDXGIAdapter *iface, DWORD cookie)
 {
-    FIXME("iface %p, cookie %#x stub!\n", iface, cookie);
+    TRACE("iface %p, cookie %#lx.\n", iface, cookie);
+
+    wined3d_adapter_unregister_budget_change_notification(cookie);
 }
 
 static HRESULT STDMETHODCALLTYPE dxgi_adapter_GetDesc3(IWineDXGIAdapter *iface, DXGI_ADAPTER_DESC3 *desc)
@@ -382,7 +373,7 @@ static HRESULT STDMETHODCALLTYPE dxgi_adapter_get_adapter_info(IWineDXGIAdapter 
     TRACE("iface %p, info %p.\n", iface, info);
 
     memset(&adapter_id, 0, sizeof(adapter_id));
-    if (SUCCEEDED(hr = wined3d_get_adapter_identifier(adapter->factory->wined3d, adapter->ordinal, 0, &adapter_id)))
+    if (SUCCEEDED(hr = wined3d_adapter_get_identifier(adapter->wined3d_adapter, 0, &adapter_id)))
     {
         info->driver_uuid = adapter_id.driver_uuid;
         info->device_uuid = adapter_id.device_uuid;
@@ -434,7 +425,7 @@ struct dxgi_adapter *unsafe_impl_from_IDXGIAdapter(IDXGIAdapter *iface)
         return NULL;
     if (FAILED(hr = IDXGIAdapter_QueryInterface(iface, &IID_IWineDXGIAdapter, (void **)&wine_adapter)))
     {
-        ERR("Failed to get IWineDXGIAdapter interface, hr %#x.\n", hr);
+        ERR("Failed to get IWineDXGIAdapter interface, hr %#lx.\n", hr);
         return NULL;
     }
     assert(wine_adapter->lpVtbl == &dxgi_adapter_vtbl);
@@ -447,6 +438,7 @@ static void dxgi_adapter_init(struct dxgi_adapter *adapter, struct dxgi_factory 
 {
     adapter->IWineDXGIAdapter_iface.lpVtbl = &dxgi_adapter_vtbl;
     adapter->refcount = 1;
+    adapter->wined3d_adapter = wined3d_get_adapter(factory->wined3d, ordinal);
     wined3d_private_store_init(&adapter->private_store);
     adapter->ordinal = ordinal;
     adapter->factory = factory;

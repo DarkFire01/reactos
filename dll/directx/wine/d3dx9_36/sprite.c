@@ -1,6 +1,3 @@
-#ifdef __REACTOS__
-#include "precomp.h"
-#else
 /*
  * Copyright (C) 2008 Tony Wasserka
  *
@@ -22,7 +19,6 @@
 
 
 #include "d3dx9_private.h"
-#endif /* __REACTOS__ */
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3dx);
 
@@ -98,7 +94,7 @@ static ULONG WINAPI d3dx9_sprite_AddRef(ID3DXSprite *iface)
     struct d3dx9_sprite *sprite = impl_from_ID3DXSprite(iface);
     ULONG refcount = InterlockedIncrement(&sprite->ref);
 
-    TRACE("%p increasing refcount to %u.\n", sprite, refcount);
+    TRACE("%p increasing refcount to %lu.\n", sprite, refcount);
 
     return refcount;
 }
@@ -108,7 +104,7 @@ static ULONG WINAPI d3dx9_sprite_Release(ID3DXSprite *iface)
     struct d3dx9_sprite *sprite = impl_from_ID3DXSprite(iface);
     ULONG refcount = InterlockedDecrement(&sprite->ref);
 
-    TRACE("%p decreasing refcount to %u.\n", sprite, refcount);
+    TRACE("%p decreasing refcount to %lu.\n", sprite, refcount);
 
     if (!refcount)
     {
@@ -283,7 +279,7 @@ static HRESULT WINAPI d3dx9_sprite_Begin(ID3DXSprite *iface, DWORD flags)
     struct d3dx9_sprite *This = impl_from_ID3DXSprite(iface);
     HRESULT hr;
 
-    TRACE("iface %p, flags %#x.\n", iface, flags);
+    TRACE("iface %p, flags %#lx.\n", iface, flags);
 
     if(flags>D3DXSPRITE_FLAGLIMIT || This->ready) return D3DERR_INVALIDCALL;
 
@@ -299,10 +295,10 @@ D3DXSPRITE_SORT_TEXTURE: sort by texture (so that it doesn't change too often)
     if(flags & (D3DXSPRITE_BILLBOARD |
                 D3DXSPRITE_DONOTMODIFY_RENDERSTATE | D3DXSPRITE_OBJECTSPACE |
                 D3DXSPRITE_SORT_DEPTH_BACKTOFRONT))
-        FIXME("Flags unsupported: %#x\n", flags);
+        FIXME("Flags unsupported: %#lx.\n", flags);
     /* These flags should only matter to performance */
     else if(flags & (D3DXSPRITE_SORT_DEPTH_FRONTTOBACK | D3DXSPRITE_SORT_TEXTURE))
-        TRACE("Flags unsupported: %#x\n", flags);
+        TRACE("Flags unsupported: %#lx.\n", flags);
 
     if(This->vdecl==NULL) {
         static const D3DVERTEXELEMENT9 elements[] =
@@ -349,7 +345,7 @@ static HRESULT WINAPI d3dx9_sprite_Draw(ID3DXSprite *iface, IDirect3DTexture9 *t
     struct sprite *new_sprites;
     D3DSURFACE_DESC texdesc;
 
-    TRACE("iface %p, texture %p, rect %s, center %p, position %p, color 0x%08x.\n",
+    TRACE("iface %p, texture %p, rect %s, center %p, position %p, color 0x%08lx.\n",
             iface, texture, wine_dbgstr_rect(rect), center, position, color);
 
     if(texture==NULL) return D3DERR_INVALIDCALL;

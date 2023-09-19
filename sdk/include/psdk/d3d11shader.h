@@ -21,6 +21,11 @@
 
 #include "d3dcommon.h"
 
+/* If not defined set d3dcompiler_47 by default. */
+#ifndef D3D_COMPILER_VERSION
+#define D3D_COMPILER_VERSION 47
+#endif
+
 /* These are defined as version-neutral in d3dcommon.h */
 typedef D3D_CBUFFER_TYPE D3D11_CBUFFER_TYPE;
 
@@ -130,6 +135,9 @@ typedef struct _D3D11_SIGNATURE_PARAMETER_DESC
     BYTE Mask;
     BYTE ReadWriteMask;
     UINT Stream;
+#if D3D_COMPILER_VERSION >= 46
+    D3D_MIN_PRECISION MinPrecision;
+#endif
 } D3D11_SIGNATURE_PARAMETER_DESC;
 
 DEFINE_GUID(IID_ID3D11ShaderReflectionType, 0x6e6ffa6a, 0x9bae, 0x4613, 0xa5, 0x1e, 0x91, 0x65, 0x2d, 0x50, 0x8c, 0x21);

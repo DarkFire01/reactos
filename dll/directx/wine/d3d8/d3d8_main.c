@@ -55,11 +55,54 @@ IDirect3D8 * WINAPI DECLSPEC_HOTPATCH Direct3DCreate8(UINT sdk_version)
     return &object->IDirect3D8_iface;
 }
 
-/***********************************************************************
- *              ValidateVertexShader (D3D8.@)
- */
-HRESULT WINAPI ValidateVertexShader(const DWORD *ps_code,
-       const D3DCAPS8 *caps, BOOL return_error, char **errors)
+/* FIXME: We should probably use libvkd3d-shader for validation. */
+HRESULT WINAPI ValidateVertexShader(const DWORD *vs_code, const DWORD *declaration,
+        const D3DCAPS8 *caps, BOOL return_error, char **errors)
+{
+    const char *message = "";
+    SIZE_T message_size;
+    HRESULT hr = E_FAIL;
+
+    TRACE("vs_code %p, declaration %p, caps %p, return_error %#x, errors %p.\n",
+            vs_code, declaration, caps, return_error, errors);
+
+    if (!vs_code)
+    {
+        message = "Invalid code pointer.\n";
+        goto done;
+    }
+
+    switch (*vs_code)
+    {
+        case D3DVS_VERSION(1, 1):
+        case D3DVS_VERSION(1, 0):
+            break;
+
+        default:
+            message = "Unsupported shader version.\n";
+            goto done;
+    }
+
+    if (caps && *vs_code > caps->VertexShaderVersion)
+    {
+        message = "Shader version not supported by caps.\n";
+        goto done;
+    }
+
+    hr = S_OK;
+
+done:
+    if (!return_error)
+        message = "";
+    message_size = strlen(message) + 1;
+    if (errors && (*errors = heap_alloc(message_size)))
+        memcpy(*errors, message, message_size);
+
+    return hr;
+}
+
+HRESULT WINAPI ValidatePixelShader(const DWORD *ps_code,
+        const D3DCAPS8 *caps, BOOL return_error, char **errors)
 {
     const char *message = "";
     SIZE_T message_size;
@@ -99,40 +142,6 @@ done:
     message_size = strlen(message) + 1;
     if (errors && (*errors = heap_alloc(message_size)))
         memcpy(*errors, message, message_size);
-
-    return hr;
-}
-
-/***********************************************************************
- *              ValidatePixelShader (D3D8.@)
- */
-HRESULT WINAPI ValidatePixelShader(DWORD *pixelshader, DWORD *reserved1, BOOL boolean, char **errors)
-{
-    const char *message = "";
-    HRESULT hr = E_FAIL;
-
-    TRACE("(%p %p %d %p): semi-stub\n", pixelshader, reserved1, boolean, errors);
-
-    if (!pixelshader)
-        return E_FAIL;
-
-   switch (*pixelshader)
-   {
-        case 0xFFFF0100:
-        case 0xFFFF0101:
-        case 0xFFFF0102:
-        case 0xFFFF0103:
-        case 0xFFFF0104:
-            hr = S_OK;
-            break;
-        default:
-            WARN("Invalid shader version token %#x.\n", *pixelshader);
-            message = "(Global Validation Error) Version Token: Unsupported pixel shader version.\n";
-    }
-
-    if (!boolean) message = "";
-    if (errors && (*errors = HeapAlloc(GetProcessHeap(), 0, strlen(message) + 1)))
-        strcpy(*errors, message);
 
     return hr;
 }

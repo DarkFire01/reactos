@@ -252,6 +252,13 @@ cpp_quote("#define MAKE_D3D10_STATUS(code)                    MAKE_HRESULT( 0, _
 cpp_quote("#define D3D10_ERROR_TOO_MANY_UNIQUE_STATE_OBJECTS  MAKE_D3D10_HRESULT(1)")
 cpp_quote("#define D3D10_ERROR_FILE_NOT_FOUND                 MAKE_D3D10_HRESULT(2)")
 
+cpp_quote("#if defined(__cplusplus) && !defined(D3D10_NO_HELPERS)")
+cpp_quote("inline unsigned int D3D10CalcSubresource(unsigned int level, unsigned int layer, unsigned int level_count)")
+cpp_quote("{")
+cpp_quote("    return layer * level_count + level;")
+cpp_quote("}")
+cpp_quote("#endif")
+
 typedef enum D3D10_BLEND {
     D3D10_BLEND_ZERO             = 1,
     D3D10_BLEND_ONE              = 2,
@@ -660,8 +667,14 @@ typedef enum D3D10_RTV_DIMENSION {
 } D3D10_RTV_DIMENSION;
 
 typedef struct D3D10_BUFFER_RTV {
-    UINT ElementOffset;
-    UINT ElementWidth;
+    union {
+        UINT FirstElement;
+        UINT ElementOffset;
+    };
+    union {
+        UINT NumElements;
+        UINT ElementWidth;
+    };
 } D3D10_BUFFER_RTV;
 
 typedef struct D3D10_TEX1D_RTV {
@@ -717,8 +730,14 @@ typedef struct D3D10_RENDER_TARGET_VIEW_DESC {
 typedef D3D_SRV_DIMENSION D3D10_SRV_DIMENSION;
 
 typedef struct D3D10_BUFFER_SRV {
-    UINT ElementOffset;
-    UINT ElementWidth;
+    union {
+        UINT FirstElement;
+        UINT ElementOffset;
+    };
+    union {
+        UINT NumElements;
+        UINT ElementWidth;
+    };
 } D3D10_BUFFER_SRV;
 
 typedef struct D3D10_TEX1D_SRV {
@@ -879,6 +898,10 @@ typedef enum D3D10_MAP_FLAG {
     D3D10_MAP_FLAG_DO_NOT_WAIT = 0x100000,
 } D3D10_MAP_FLAG;
 
+typedef enum D3D10_RAISE_FLAG {
+    D3D10_RAISE_FLAG_DRIVER_INTERNAL_ERROR = 0x1,
+} D3D10_RAISE_FLAG;
+
 typedef enum D3D10_CLEAR_FLAG {
     D3D10_CLEAR_DEPTH   = 0x1,
     D3D10_CLEAR_STENCIL = 0x2
@@ -972,7 +995,9 @@ typedef enum D3D10_CREATE_DEVICE_FLAG {
     D3D10_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS = 0x8,
     D3D10_CREATE_DEVICE_ALLOW_NULL_FROM_MAP                      = 0x10,
     D3D10_CREATE_DEVICE_BGRA_SUPPORT                             = 0x20,
-    D3D10_CREATE_DEVICE_STRICT_VALIDATION                        = 0x0200
+    D3D10_CREATE_DEVICE_PREVENT_ALTERING_LAYER_SETTINGS_FROM_REGISTRY = 0x80,
+    D3D10_CREATE_DEVICE_STRICT_VALIDATION                             = 0x200,
+    D3D10_CREATE_DEVICE_DEBUGGABLE                                    = 0x400,
 } D3D10_CREATE_DEVICE_FLAG;
 
 /* Core */

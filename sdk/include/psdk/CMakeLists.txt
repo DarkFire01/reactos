@@ -179,6 +179,7 @@ list(APPEND D3D
     d3d12.idl
     d3dx10core.idl
     d3dx11core.idl
+    dxgidebug.idl
     dwrite.idl
     dwrite_1.idl
     dwrite_2.idl
