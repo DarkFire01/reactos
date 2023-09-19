@@ -6,6 +6,7 @@ add_definitions(
     -D__ROS_LONG64__
     -Dcopysignf=_copysignf)
 
+include_directories(BEFORE ${REACTOS_SOURCE_DIR}/dll/directx/wine/vkd3d/include)
 include_directories(BEFORE ${REACTOS_SOURCE_DIR}/sdk/include/reactos/wine)
 
 # We name this d3dwine.dll, because the Virtualbox additions ship with a custom wined3d.dll
@@ -18,11 +19,13 @@ list(APPEND SOURCE
     arb_program_shader.c
     ati_fragment_shader.c
     buffer.c
+    context_gl.c
+    context_vk.c
     context.c
     cs.c
     device.c
     directx.c
-    dxtn.c
+    #dxtn.c
     gl_compat.c
     glsl_shader.c
     nvidia_texture_shader.c
@@ -32,6 +35,7 @@ list(APPEND SOURCE
     sampler.c
     shader_sm1.c
     shader_sm4.c
+    #shader_spirv.c
     shader.c
     state.c
     stateblock.c
@@ -51,6 +55,7 @@ add_library(d3dwine MODULE
 
 set_module_type(d3dwine win32dll)
 target_link_libraries(d3dwine wine)
+add_dependencies(d3dwine wineheaders d3d_idl_headers)
 add_importlibs(d3dwine user32 opengl32 gdi32 gdi32_vista advapi32 msvcrt kernel32 ntdll)
 add_pch(d3dwine precomp.h SOURCE)
 add_cd_file(TARGET d3dwine DESTINATION reactos/system32 FOR all)

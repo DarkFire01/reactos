@@ -18,12 +18,10 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "config.h"
-#include "wine/port.h"
-
 #include <stdio.h>
 
 #include "wined3d_private.h"
+#include "wined3d_gl.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d_shader);
 WINE_DECLARE_DEBUG_CHANNEL(d3d);
@@ -260,7 +258,7 @@ static void wrap_op3(const struct wined3d_gl_info *gl_info, GLuint op, GLuint ds
     }
 }
 
-static GLuint register_for_arg(DWORD arg, const struct wined3d_gl_info *gl_info,
+static GLuint register_for_arg(unsigned int arg, const struct wined3d_gl_info *gl_info,
         unsigned int stage, GLuint *mod, GLuint *rep, GLuint tmparg)
 {
     GLenum ret;
@@ -1024,7 +1022,7 @@ static void set_tex_op_atifs(struct wined3d_context *context, const struct wined
     DWORD mapped_stage;
     unsigned int i;
 
-    gen_ffp_frag_op(context, state, &settings, TRUE);
+    wined3d_ffp_get_fs_settings(context, state, &settings, TRUE);
     desc = (const struct atifs_ffp_desc *)find_ffp_frag_shader(&priv->fragment_shaders, &settings);
     if (!desc)
     {
@@ -1318,7 +1316,7 @@ static void atifs_get_caps(const struct wined3d_adapter *adapter, struct fragmen
     caps->MaxSimultaneousTextures = 6;
 }
 
-static DWORD atifs_get_emul_mask(const struct wined3d_gl_info *gl_info)
+static unsigned int atifs_get_emul_mask(const struct wined3d_adapter *adapter)
 {
     return GL_EXT_EMUL_ARB_MULTITEXTURE | GL_EXT_EMUL_EXT_FOG_COORD;
 }

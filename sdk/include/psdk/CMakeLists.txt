@@ -174,6 +174,8 @@ list(APPEND D3D
     d3d11_4.idl
     d3d11.idl
     d3d11sdklayers.idl
+    d3d12sdklayers.idl
+    d3d12shader.idl
     d3d12.idl
     d3dx10core.idl
     d3dx11core.idl

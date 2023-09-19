@@ -16,17 +16,23 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "config.h"
-#include "wine/port.h"
-
 #include "wined3d_private.h"
+#define LIBVKD3D_SHADER_SOURCE
+#include <vkd3d_shader.h>
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d_shader);
 WINE_DECLARE_DEBUG_CHANNEL(d3d_bytecode);
 
 #define WINED3D_SM4_INSTRUCTION_MODIFIER        (0x1u << 31)
 
-#define WINED3D_SM4_MODIFIER_AOFFIMMI           0x1
+#define WINED3D_SM4_MODIFIER_MASK               0x3fu
+
+#define WINED3D_SM5_MODIFIER_DATA_TYPE_SHIFT    6
+#define WINED3D_SM5_MODIFIER_DATA_TYPE_MASK     (0xffffu << WINED3D_SM5_MODIFIER_DATA_TYPE_SHIFT)
+
+#define WINED3D_SM5_MODIFIER_RESOURCE_TYPE_SHIFT 6
+#define WINED3D_SM5_MODIFIER_RESOURCE_TYPE_MASK (0xfu << WINED3D_SM5_MODIFIER_RESOURCE_TYPE_SHIFT)
+
 #define WINED3D_SM4_AOFFIMMI_U_SHIFT            9
 #define WINED3D_SM4_AOFFIMMI_U_MASK             (0xfu << WINED3D_SM4_AOFFIMMI_U_SHIFT)
 #define WINED3D_SM4_AOFFIMMI_V_SHIFT            13
@@ -42,6 +48,9 @@ WINE_DECLARE_DEBUG_CHANNEL(d3d_bytecode);
 
 #define WINED3D_SM4_RESOURCE_TYPE_SHIFT         11
 #define WINED3D_SM4_RESOURCE_TYPE_MASK          (0xfu << WINED3D_SM4_RESOURCE_TYPE_SHIFT)
+
+#define WINED3D_SM4_RESOURCE_SAMPLE_COUNT_SHIFT 16
+#define WINED3D_SM4_RESOURCE_SAMPLE_COUNT_MASK  (0xfu << WINED3D_SM4_RESOURCE_SAMPLE_COUNT_SHIFT)
 
 #define WINED3D_SM4_PRIMITIVE_TYPE_SHIFT        11
 #define WINED3D_SM4_PRIMITIVE_TYPE_MASK         (0x3fu << WINED3D_SM4_PRIMITIVE_TYPE_SHIFT)
@@ -98,8 +107,8 @@ WINE_DECLARE_DEBUG_CHANNEL(d3d_bytecode);
 #define WINED3D_SM4_SWIZZLE_TYPE_SHIFT          2
 #define WINED3D_SM4_SWIZZLE_TYPE_MASK           (0x3u << WINED3D_SM4_SWIZZLE_TYPE_SHIFT)
 
-#define WINED3D_SM4_IMMCONST_TYPE_SHIFT         0
-#define WINED3D_SM4_IMMCONST_TYPE_MASK          (0x3u << WINED3D_SM4_IMMCONST_TYPE_SHIFT)
+#define WINED3D_SM4_DIMENSION_SHIFT             0
+#define WINED3D_SM4_DIMENSION_MASK              (0x3u << WINED3D_SM4_DIMENSION_SHIFT)
 
 #define WINED3D_SM4_WRITEMASK_SHIFT             4
 #define WINED3D_SM4_WRITEMASK_MASK              (0xfu << WINED3D_SM4_WRITEMASK_SHIFT)
@@ -301,7 +310,15 @@ enum wined3d_sm4_opcode
     WINED3D_SM5_OP_IMM_ATOMIC_UMIN                  = 0xbd,
     WINED3D_SM5_OP_SYNC                             = 0xbe,
     WINED3D_SM5_OP_EVAL_SAMPLE_INDEX                = 0xcc,
+    WINED3D_SM5_OP_EVAL_CENTROID                    = 0xcd,
     WINED3D_SM5_OP_DCL_GS_INSTANCES                 = 0xce,
+};
+
+enum wined3d_sm4_instruction_modifier
+{
+    WINED3D_SM4_MODIFIER_AOFFIMMI       = 0x1,
+    WINED3D_SM5_MODIFIER_RESOURCE_TYPE  = 0x2,
+    WINED3D_SM5_MODIFIER_DATA_TYPE      = 0x3,
 };
 
 enum wined3d_sm4_register_type
@@ -397,10 +414,10 @@ enum wined3d_sm4_swizzle_type
     WINED3D_SM4_SWIZZLE_SCALAR          = 0x2,
 };
 
-enum wined3d_sm4_immconst_type
+enum wined3d_sm4_dimension
 {
-    WINED3D_SM4_IMMCONST_SCALAR = 0x1,
-    WINED3D_SM4_IMMCONST_VEC4   = 0x2,
+    WINED3D_SM4_DIMENSION_SCALAR    = 0x1,
+    WINED3D_SM4_DIMENSION_VEC4      = 0x2,
 };
 
 enum wined3d_sm4_resource_type
@@ -566,7 +583,7 @@ static void shader_sm4_read_dcl_resource(struct wined3d_shader_instruction *ins,
     enum wined3d_sm4_resource_type resource_type;
     enum wined3d_sm4_data_type data_type;
     enum wined3d_data_type reg_data_type;
-    DWORD components;
+    uint32_t components;
 
     resource_type = (opcode_token & WINED3D_SM4_RESOURCE_TYPE_MASK) >> WINED3D_SM4_RESOURCE_TYPE_SHIFT;
     if (!resource_type || (resource_type >= ARRAY_SIZE(resource_type_table)))
@@ -578,6 +595,13 @@ static void shader_sm4_read_dcl_resource(struct wined3d_shader_instruction *ins,
     {
         ins->declaration.semantic.resource_type = resource_type_table[resource_type];
     }
+
+    if (ins->declaration.semantic.resource_type == WINED3D_SHADER_RESOURCE_TEXTURE_2DMS
+            || ins->declaration.semantic.resource_type == WINED3D_SHADER_RESOURCE_TEXTURE_2DMSARRAY)
+    {
+        ins->declaration.semantic.sample_count = (opcode_token & WINED3D_SM4_RESOURCE_SAMPLE_COUNT_MASK) >> WINED3D_SM4_RESOURCE_SAMPLE_COUNT_SHIFT;
+    }
+
     reg_data_type = opcode == WINED3D_SM4_OP_DCL_RESOURCE ? WINED3D_DATA_RESOURCE : WINED3D_DATA_UAV;
     shader_sm4_read_dst_param(priv, &tokens, &tokens[token_count], reg_data_type, &ins->declaration.semantic.reg);
 
@@ -746,7 +770,7 @@ static void shader_sm5_read_dcl_function_table(struct wined3d_shader_instruction
         struct wined3d_sm4_data *priv)
 {
     ins->declaration.index = *tokens++;
-    FIXME("Ignoring set of function bodies (count %u).\n", *tokens);
+    FIXME("Ignoring set of function bodies (count %lu).\n", *tokens);
 }
 
 static void shader_sm5_read_dcl_interface(struct wined3d_shader_instruction *ins,
@@ -1113,6 +1137,7 @@ static const struct wined3d_sm4_opcode_info opcode_table[] =
     {WINED3D_SM5_OP_SYNC,                             WINED3DSIH_SYNC,                             "",     "",
             shader_sm5_read_sync},
     {WINED3D_SM5_OP_EVAL_SAMPLE_INDEX,                WINED3DSIH_EVAL_SAMPLE_INDEX,                "f",    "fi"},
+    {WINED3D_SM5_OP_EVAL_CENTROID,                    WINED3DSIH_EVAL_CENTROID,                    "f",    "f"},
     {WINED3D_SM5_OP_DCL_GS_INSTANCES,                 WINED3DSIH_DCL_GS_INSTANCES,                 "",     "",
             shader_sm4_read_declaration_count},
 };
@@ -1224,7 +1249,7 @@ static enum wined3d_data_type map_data_type(char t)
 
 static enum wined3d_shader_type wined3d_get_sm4_shader_type(const DWORD *byte_code, size_t byte_code_size)
 {
-    DWORD shader_type;
+    unsigned int shader_type;
 
     if (byte_code_size / sizeof(*byte_code) < 1)
     {
@@ -1262,7 +1287,7 @@ static enum wined3d_shader_type wined3d_get_sm4_shader_type(const DWORD *byte_co
 static void *shader_sm4_init(const DWORD *byte_code, size_t byte_code_size,
         const struct wined3d_shader_signature *output_signature)
 {
-    DWORD version_token, token_count;
+    unsigned int version_token, token_count;
     struct wined3d_sm4_data *priv;
     unsigned int i;
 
@@ -1307,6 +1332,9 @@ static void *shader_sm4_init(const DWORD *byte_code, size_t byte_code_size,
     {
         struct wined3d_shader_signature_element *e = &output_signature->elements[i];
 
+        if (priv->shader_version.type == WINED3D_SHADER_TYPE_PIXEL
+                && stricmp(e->semantic_name, "SV_TARGET"))
+            continue;
         if (e->register_idx >= ARRAY_SIZE(priv->output_map))
         {
             WARN("Invalid output index %u.\n", e->register_idx);
@@ -1398,7 +1426,7 @@ static BOOL shader_sm4_read_param(struct wined3d_sm4_data *priv, const DWORD **p
         enum wined3d_shader_src_modifier *modifier)
 {
     enum wined3d_sm4_register_type register_type;
-    DWORD token, order;
+    uint32_t token, order;
 
     if (*ptr >= end)
     {
@@ -1422,7 +1450,7 @@ static BOOL shader_sm4_read_param(struct wined3d_sm4_data *priv, const DWORD **p
 
     if (token & WINED3D_SM4_REGISTER_MODIFIER)
     {
-        DWORD m;
+        unsigned int m;
 
         if (*ptr >= end)
         {
@@ -1447,6 +1475,7 @@ static BOOL shader_sm4_read_param(struct wined3d_sm4_data *priv, const DWORD **p
 
             default:
                 FIXME("Skipping modifier 0x%08x.\n", m);
+            case 0x01:
                 *modifier = WINED3DSPSM_NONE;
                 break;
         }
@@ -1487,12 +1516,11 @@ static BOOL shader_sm4_read_param(struct wined3d_sm4_data *priv, const DWORD **p
 
     if (register_type == WINED3D_SM4_RT_IMMCONST)
     {
-        enum wined3d_sm4_immconst_type immconst_type =
-                (token & WINED3D_SM4_IMMCONST_TYPE_MASK) >> WINED3D_SM4_IMMCONST_TYPE_SHIFT;
+        enum wined3d_sm4_dimension dimension = (token & WINED3D_SM4_DIMENSION_MASK) >> WINED3D_SM4_DIMENSION_SHIFT;
 
-        switch (immconst_type)
+        switch (dimension)
         {
-            case WINED3D_SM4_IMMCONST_SCALAR:
+            case WINED3D_SM4_DIMENSION_SCALAR:
                 param->immconst_type = WINED3D_IMMCONST_SCALAR;
                 if (end - *ptr < 1)
                 {
@@ -1503,7 +1531,7 @@ static BOOL shader_sm4_read_param(struct wined3d_sm4_data *priv, const DWORD **p
                 *ptr += 1;
                 break;
 
-            case WINED3D_SM4_IMMCONST_VEC4:
+            case WINED3D_SM4_DIMENSION_VEC4:
                 param->immconst_type = WINED3D_IMMCONST_VEC4;
                 if (end - *ptr < 4)
                 {
@@ -1515,7 +1543,7 @@ static BOOL shader_sm4_read_param(struct wined3d_sm4_data *priv, const DWORD **p
                 break;
 
             default:
-                FIXME("Unhandled immediate constant type %#x.\n", immconst_type);
+                FIXME("Unhandled dimension %#x.\n", dimension);
                 break;
         }
     }
@@ -1608,42 +1636,71 @@ static BOOL shader_sm4_read_dst_param(struct wined3d_sm4_data *priv, const DWORD
     return TRUE;
 }
 
-static void shader_sm4_read_instruction_modifier(DWORD modifier, struct wined3d_shader_instruction *ins)
+static void shader_sm4_read_instruction_modifier(uint32_t modifier, struct wined3d_shader_instruction *ins)
 {
-    static const DWORD recognized_bits = WINED3D_SM4_INSTRUCTION_MODIFIER
-            | WINED3D_SM4_MODIFIER_AOFFIMMI
-            | WINED3D_SM4_AOFFIMMI_U_MASK
-            | WINED3D_SM4_AOFFIMMI_V_MASK
-            | WINED3D_SM4_AOFFIMMI_W_MASK;
+    enum wined3d_sm4_instruction_modifier modifier_type = modifier & WINED3D_SM4_MODIFIER_MASK;
 
-    if (modifier & ~recognized_bits)
+    switch (modifier_type)
     {
-        FIXME("Unhandled modifier 0x%08x.\n", modifier);
-    }
-    else
-    {
-        /* Bit fields are used for sign extension */
-        struct
+        case WINED3D_SM4_MODIFIER_AOFFIMMI:
         {
-            int u : 4;
-            int v : 4;
-            int w : 4;
+            static const DWORD recognized_bits = WINED3D_SM4_INSTRUCTION_MODIFIER
+                    | WINED3D_SM4_MODIFIER_MASK
+                    | WINED3D_SM4_AOFFIMMI_U_MASK
+                    | WINED3D_SM4_AOFFIMMI_V_MASK
+                    | WINED3D_SM4_AOFFIMMI_W_MASK;
+
+            /* Bit fields are used for sign extension. */
+            struct
+            {
+                int u : 4;
+                int v : 4;
+                int w : 4;
+            } aoffimmi;
+
+            if (modifier & ~recognized_bits)
+                FIXME("Unhandled instruction modifier %#x.\n", modifier);
+
+            aoffimmi.u = (modifier & WINED3D_SM4_AOFFIMMI_U_MASK) >> WINED3D_SM4_AOFFIMMI_U_SHIFT;
+            aoffimmi.v = (modifier & WINED3D_SM4_AOFFIMMI_V_MASK) >> WINED3D_SM4_AOFFIMMI_V_SHIFT;
+            aoffimmi.w = (modifier & WINED3D_SM4_AOFFIMMI_W_MASK) >> WINED3D_SM4_AOFFIMMI_W_SHIFT;
+            ins->texel_offset.u = aoffimmi.u;
+            ins->texel_offset.v = aoffimmi.v;
+            ins->texel_offset.w = aoffimmi.w;
+            break;
         }
-        aoffimmi;
-        aoffimmi.u = (modifier & WINED3D_SM4_AOFFIMMI_U_MASK) >> WINED3D_SM4_AOFFIMMI_U_SHIFT;
-        aoffimmi.v = (modifier & WINED3D_SM4_AOFFIMMI_V_MASK) >> WINED3D_SM4_AOFFIMMI_V_SHIFT;
-        aoffimmi.w = (modifier & WINED3D_SM4_AOFFIMMI_W_MASK) >> WINED3D_SM4_AOFFIMMI_W_SHIFT;
-        ins->texel_offset.u = aoffimmi.u;
-        ins->texel_offset.v = aoffimmi.v;
-        ins->texel_offset.w = aoffimmi.w;
+
+        case WINED3D_SM5_MODIFIER_DATA_TYPE:
+        {
+            uint32_t components = (modifier & WINED3D_SM5_MODIFIER_DATA_TYPE_MASK) >> WINED3D_SM5_MODIFIER_DATA_TYPE_SHIFT;
+            enum wined3d_sm4_data_type data_type = components & 0xf;
+
+            if ((components & 0xfff0) != (components & 0xf) * 0x1110)
+                FIXME("Components (%#x) have different data types.\n", components);
+            ins->resource_data_type = data_type_table[data_type];
+            break;
+        }
+
+        case WINED3D_SM5_MODIFIER_RESOURCE_TYPE:
+        {
+            enum wined3d_sm4_resource_type resource_type
+                    = (modifier & WINED3D_SM5_MODIFIER_RESOURCE_TYPE_MASK) >> WINED3D_SM5_MODIFIER_RESOURCE_TYPE_SHIFT;
+
+            ins->resource_type = resource_type_table[resource_type];
+            break;
+        }
+
+        default:
+            FIXME("Unhandled instruction modifier %#x.\n", modifier);
     }
 }
 
 static void shader_sm4_read_instruction(void *data, const DWORD **ptr, struct wined3d_shader_instruction *ins)
 {
     const struct wined3d_sm4_opcode_info *opcode_info;
-    DWORD opcode_token, opcode, previous_token;
+    uint32_t opcode_token, previous_token;
     struct wined3d_sm4_data *priv = data;
+    unsigned int opcode;
     unsigned int i, len;
     SIZE_T remaining;
     const DWORD *p;
@@ -1673,7 +1730,7 @@ static void shader_sm4_read_instruction(void *data, const DWORD **ptr, struct wi
     }
     if (!len || remaining < len)
     {
-        WARN("Read invalid length %u (remaining %lu).\n", len, remaining);
+        WARN("Read invalid length %u (remaining %Iu).\n", len, remaining);
         goto fail;
     }
     --len;
@@ -1683,7 +1740,7 @@ static void shader_sm4_read_instruction(void *data, const DWORD **ptr, struct wi
         TRACE_(d3d_bytecode)("[ %08x ", opcode_token);
         for (i = 0; i < len; ++i)
         {
-            TRACE_(d3d_bytecode)("%08x ", (*ptr)[i]);
+            TRACE_(d3d_bytecode)("%08lx ", (*ptr)[i]);
         }
         TRACE_(d3d_bytecode)("]\n");
     }
@@ -1704,6 +1761,8 @@ static void shader_sm4_read_instruction(void *data, const DWORD **ptr, struct wi
     ins->dst = priv->dst_param;
     ins->src_count = strlen(opcode_info->src_info);
     ins->src = priv->src_param;
+    ins->resource_type = WINED3D_SHADER_RESOURCE_NONE;
+    ins->resource_data_type = WINED3D_DATA_FLOAT;
     memset(&ins->texel_offset, 0, sizeof(ins->texel_offset));
 
     p = *ptr;
@@ -1776,30 +1835,25 @@ const struct wined3d_shader_frontend sm4_shader_frontend =
 };
 
 #define TAG_AON9 WINEMAKEFOURCC('A', 'o', 'n', '9')
-#define TAG_DXBC WINEMAKEFOURCC('D', 'X', 'B', 'C')
+#define TAG_ISG1 WINEMAKEFOURCC('I', 'S', 'G', '1')
 #define TAG_ISGN WINEMAKEFOURCC('I', 'S', 'G', 'N')
+#define TAG_OSG1 WINEMAKEFOURCC('O', 'S', 'G', '1')
 #define TAG_OSG5 WINEMAKEFOURCC('O', 'S', 'G', '5')
 #define TAG_OSGN WINEMAKEFOURCC('O', 'S', 'G', 'N')
 #define TAG_PCSG WINEMAKEFOURCC('P', 'C', 'S', 'G')
+#define TAG_PSG1 WINEMAKEFOURCC('P', 'S', 'G', '1')
 #define TAG_SHDR WINEMAKEFOURCC('S', 'H', 'D', 'R')
 #define TAG_SHEX WINEMAKEFOURCC('S', 'H', 'E', 'X')
 
 struct aon9_header
 {
     DWORD chunk_size;
-    DWORD shader_version;
+    unsigned int shader_version;
     DWORD unknown;
-    DWORD byte_code_offset;
+    unsigned int byte_code_offset;
 };
 
-struct shader_handler_context
-{
-    struct wined3d_shader *shader;
-    enum wined3d_shader_byte_code_format *format;
-    unsigned int max_version;
-};
-
-static void read_dword(const char **ptr, DWORD *d)
+static void read_dword(const char **ptr, unsigned int *d)
 {
     memcpy(d, *ptr, sizeof(*d));
     *ptr += sizeof(*d);
@@ -1813,7 +1867,7 @@ static BOOL require_space(size_t offset, size_t count, size_t size, size_t data_
 static void skip_dword_unknown(const char **ptr, unsigned int count)
 {
     unsigned int i;
-    DWORD d;
+    unsigned int d;
 
     WARN("Skipping %u unknown DWORDs:\n", count);
     for (i = 0; i < count; ++i)
@@ -1823,108 +1877,28 @@ static void skip_dword_unknown(const char **ptr, unsigned int count)
     }
 }
 
-static HRESULT parse_dxbc(const char *data, SIZE_T data_size,
-        HRESULT (*chunk_handler)(const char *data, DWORD data_size, DWORD tag, void *ctx), void *ctx)
+static const char *shader_get_string(const char *data, size_t data_size, unsigned int offset)
 {
-    const char *ptr = data;
-    HRESULT hr = S_OK;
-    DWORD chunk_count;
-    DWORD total_size;
-    unsigned int i;
-    DWORD version;
-    DWORD tag;
-
-    read_dword(&ptr, &tag);
-    TRACE("tag: %s.\n", debugstr_an((const char *)&tag, 4));
-
-    if (tag != TAG_DXBC)
-    {
-        WARN("Wrong tag.\n");
-        return E_INVALIDARG;
-    }
-
-    WARN("Ignoring DXBC checksum.\n");
-    skip_dword_unknown(&ptr, 4);
-
-    read_dword(&ptr, &version);
-    TRACE("version: %#x.\n", version);
-    if (version != 0x00000001)
-    {
-        WARN("Got unexpected DXBC version %#x.\n", version);
-        return E_INVALIDARG;
-    }
-
-    read_dword(&ptr, &total_size);
-    TRACE("total size: %#x\n", total_size);
-
-    read_dword(&ptr, &chunk_count);
-    TRACE("chunk count: %#x\n", chunk_count);
-
-    for (i = 0; i < chunk_count; ++i)
-    {
-        DWORD chunk_tag, chunk_size;
-        const char *chunk_ptr;
-        DWORD chunk_offset;
-
-        read_dword(&ptr, &chunk_offset);
-        TRACE("chunk %u at offset %#x\n", i, chunk_offset);
-
-        if (chunk_offset >= data_size || !require_space(chunk_offset, 2, sizeof(DWORD), data_size))
-        {
-            WARN("Invalid chunk offset %#x (data size %#lx).\n", chunk_offset, data_size);
-            return E_FAIL;
-        }
-
-        chunk_ptr = data + chunk_offset;
-
-        read_dword(&chunk_ptr, &chunk_tag);
-        read_dword(&chunk_ptr, &chunk_size);
-
-        if (!require_space(chunk_ptr - data, 1, chunk_size, data_size))
-        {
-            WARN("Invalid chunk size %#x (data size %#lx, chunk offset %#x).\n",
-                    chunk_size, data_size, chunk_offset);
-            return E_FAIL;
-        }
-
-        if (FAILED(hr = chunk_handler(chunk_ptr, chunk_size, chunk_tag, ctx)))
-            break;
-    }
-
-    return hr;
-}
-
-const char *shader_get_string(const char *data, size_t data_size, DWORD offset)
-{
-    size_t len, max_len;
-
     if (offset >= data_size)
     {
         WARN("Invalid offset %#x (data size %#lx).\n", offset, (long)data_size);
         return NULL;
     }
 
-    max_len = data_size - offset;
-
-#ifdef __REACTOS__
-    len = strlen(data + offset);
-#else
-    len = strnlen(data + offset, max_len);
-#endif
-
-    if (len == max_len)
+    if (!memchr( data + offset, 0, data_size - offset ))
         return NULL;
 
     return data + offset;
 }
 
-static HRESULT shader_parse_signature(DWORD tag, const char *data, DWORD data_size,
+static HRESULT shader_parse_signature(DWORD tag, const char *data, unsigned int data_size,
         struct wined3d_shader_signature *s)
 {
     struct wined3d_shader_signature_element *e;
+    bool has_stream_index, has_min_precision;
     const char *ptr = data;
     unsigned int i;
-    DWORD count;
+    unsigned int count;
 
     if (!require_space(0, 2, sizeof(DWORD), data_size))
     {
@@ -1949,11 +1923,14 @@ static HRESULT shader_parse_signature(DWORD tag, const char *data, DWORD data_si
         return E_OUTOFMEMORY;
     }
 
+    has_min_precision = tag == TAG_OSG1 || tag == TAG_PSG1 || tag == TAG_ISG1;
+    has_stream_index = tag == TAG_OSG5 || has_min_precision;
+
     for (i = 0; i < count; ++i)
     {
-        DWORD name_offset;
+        unsigned int name_offset;
 
-        if (tag == TAG_OSG5)
+        if (has_stream_index)
             read_dword(&ptr, &e[i].stream_idx);
         else
             e[i].stream_idx = 0;
@@ -1975,10 +1952,15 @@ static HRESULT shader_parse_signature(DWORD tag, const char *data, DWORD data_si
         read_dword(&ptr, &e[i].register_idx);
         read_dword(&ptr, &e[i].mask);
 
+        if (has_min_precision)
+            read_dword(&ptr, &e[i].min_precision);
+        else
+            e[i].min_precision = 0;
+
         TRACE("Stream: %u, semantic: %s, semantic idx: %u, sysval_semantic %#x, "
-                "type %u, register idx: %u, use_mask %#x, input_mask %#x.\n",
+                "type %u, register idx: %u, use_mask %#x, input_mask %#x, min_precision %u.\n",
                 e[i].stream_idx, debugstr_a(e[i].semantic_name), e[i].semantic_idx, e[i].sysval_semantic,
-                e[i].component_type, e[i].register_idx, (e[i].mask >> 8) & 0xff, e[i].mask & 0xff);
+                e[i].component_type, e[i].register_idx, (e[i].mask >> 8) & 0xff, e[i].mask & 0xff, e[i].min_precision);
     }
 
     s->elements = e;
@@ -1987,16 +1969,19 @@ static HRESULT shader_parse_signature(DWORD tag, const char *data, DWORD data_si
     return S_OK;
 }
 
-static HRESULT shader_dxbc_chunk_handler(const char *data, DWORD data_size, DWORD tag, void *context)
+static HRESULT shader_dxbc_process_section(struct wined3d_shader *shader, unsigned int max_version,
+        enum vkd3d_shader_source_type *source_type, const struct vkd3d_shader_dxbc_section_desc *section)
 {
-    struct shader_handler_context *ctx = context;
-    struct wined3d_shader *shader = ctx->shader;
+    unsigned int data_size = section->data.size;
+    const void *data = section->data.code;
+    uint32_t tag = section->tag;
     HRESULT hr;
 
     switch (tag)
     {
         case TAG_ISGN:
-            if (ctx->max_version < 4)
+        case TAG_ISG1:
+            if (max_version < 4)
             {
                 TRACE("Skipping shader input signature.\n");
                 break;
@@ -2011,8 +1996,9 @@ static HRESULT shader_dxbc_chunk_handler(const char *data, DWORD data_size, DWOR
             break;
 
         case TAG_OSGN:
+        case TAG_OSG1:
         case TAG_OSG5:
-            if (ctx->max_version < 4)
+            if (max_version < 4)
             {
                 TRACE("Skipping shader output signature.\n");
                 break;
@@ -2027,6 +2013,7 @@ static HRESULT shader_dxbc_chunk_handler(const char *data, DWORD data_size, DWOR
             break;
 
         case TAG_PCSG:
+        case TAG_PSG1:
             if (shader->patch_constant_signature.elements)
             {
                 FIXME("Multiple patch constant signatures.\n");
@@ -2038,22 +2025,22 @@ static HRESULT shader_dxbc_chunk_handler(const char *data, DWORD data_size, DWOR
 
         case TAG_SHDR:
         case TAG_SHEX:
-            if (ctx->max_version < 4)
+            if (max_version < 4)
             {
                 TRACE("Skipping SM4+ shader.\n");
                 break;
             }
             if (shader->function)
                 FIXME("Multiple shader code chunks.\n");
-            shader->function = (const DWORD *)data;
+            shader->function = data;
             shader->functionLength = data_size;
-            *ctx->format = WINED3D_SHADER_BYTE_CODE_FORMAT_SM4;
+            *source_type = VKD3D_SHADER_SOURCE_DXBC_TPF;
             break;
 
         case TAG_AON9:
-            if (ctx->max_version < 4)
+            if (max_version < 4)
             {
-                const struct aon9_header *header = (const struct aon9_header *)data;
+                const struct aon9_header *header = data;
                 unsigned int unknown_dword_count;
                 const char *byte_code;
 
@@ -2062,7 +2049,8 @@ static HRESULT shader_dxbc_chunk_handler(const char *data, DWORD data_size, DWOR
                     WARN("Invalid Aon9 data size %#x.\n", data_size);
                     return E_FAIL;
                 }
-                byte_code = data + header->byte_code_offset;
+                byte_code = data;
+                byte_code += header->byte_code_offset;
                 unknown_dword_count = (header->byte_code_offset - sizeof(*header)) / sizeof(DWORD);
 
                 if (data_size - 2 * sizeof(DWORD) < header->byte_code_offset)
@@ -2076,8 +2064,8 @@ static HRESULT shader_dxbc_chunk_handler(const char *data, DWORD data_size, DWOR
                     FIXME("Multiple shader code chunks.\n");
                 shader->function = (const DWORD *)byte_code;
                 shader->functionLength = data_size - header->byte_code_offset;
-                *ctx->format = WINED3D_SHADER_BYTE_CODE_FORMAT_SM1;
-                TRACE("Feature level 9 shader version 0%08x, 0%08x.\n",
+                *source_type = VKD3D_SHADER_SOURCE_D3D_BYTECODE;
+                TRACE("Feature level 9 shader version 0%08x, 0%08lx.\n",
                         header->shader_version, *shader->function);
             }
             else
@@ -2094,45 +2082,37 @@ static HRESULT shader_dxbc_chunk_handler(const char *data, DWORD data_size, DWOR
     return S_OK;
 }
 
-HRESULT shader_extract_from_dxbc(struct wined3d_shader *shader,
-        unsigned int max_shader_version, enum wined3d_shader_byte_code_format *format)
+HRESULT wined3d_shader_extract_from_dxbc(struct wined3d_shader *shader,
+        unsigned int max_shader_version, enum vkd3d_shader_source_type *source_type)
 {
-    struct shader_handler_context ctx;
-    HRESULT hr;
+    ERR("TODO:Vulkan\n");
+#ifndef __REACTOS__
+    const struct vkd3d_shader_code dxbc = {.code = shader->byte_code, .size = shader->byte_code_size};
+    struct vkd3d_shader_dxbc_desc dxbc_desc;
+    HRESULT hr = WINED3D_OK;
+    unsigned int i;
+    int ret;
 
-    ctx.shader = shader;
-    ctx.format = format;
-    ctx.max_version = max_shader_version;
+    if ((ret = vkd3d_shader_parse_dxbc(&dxbc, 0, &dxbc_desc, NULL)) < 0)
+    {
+        WARN("Failed to parse DXBC, ret %d.\n", ret);
+        return E_INVALIDARG;
+    }
 
-    hr = parse_dxbc(shader->byte_code, shader->byte_code_size, shader_dxbc_chunk_handler, &ctx);
+    for (i = 0; i < dxbc_desc.section_count; ++i)
+    {
+        if (FAILED(hr = shader_dxbc_process_section(shader, max_shader_version, source_type, &dxbc_desc.sections[i])))
+            break;
+    }
+    vkd3d_shader_free_dxbc(&dxbc_desc);
+
     if (!shader->function)
         hr = E_INVALIDARG;
 
     if (FAILED(hr))
-        WARN("Failed to parse DXBC, hr %#x.\n", hr);
+        WARN("Failed to parse DXBC, hr %#lx.\n", hr);
 
     return hr;
-}
-
-static HRESULT shader_isgn_chunk_handler(const char *data, DWORD data_size, DWORD tag, void *ctx)
-{
-    struct wined3d_shader_signature *is = ctx;
-
-    if (tag != TAG_ISGN)
-        return S_OK;
-
-    if (is->elements)
-    {
-        FIXME("Multiple shader signatures.\n");
-        return S_OK;
-    }
-
-    return shader_parse_signature(tag, data, data_size, is);
-}
-
-HRESULT CDECL wined3d_extract_shader_input_signature_from_dxbc(struct wined3d_shader_signature *signature,
-        const void *code, SIZE_T code_size)
-{
-    memset(signature, 0, sizeof(*signature));
-    return parse_dxbc(code, code_size, shader_isgn_chunk_handler, signature);
+#endif
+    return 1;
 }
