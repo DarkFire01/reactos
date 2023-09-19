@@ -1,7 +1,7 @@
 /*
  * SetupAPI driver-related functions
  *
- * Copyright 2005-2006 Hervé Poussineau (hpoussin@reactos.org)
+ * Copyright 2005-2006 Hervï¿½ Poussineau (hpoussin@reactos.org)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public

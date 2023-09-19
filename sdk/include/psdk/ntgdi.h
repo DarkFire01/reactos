@@ -934,6 +934,71 @@ __kernel_entry
 W32KAPI
 DWORD
 APIENTRY
+NtGdiDdDDICheckVidPnExclusiveOwnership( const D3DKMT_CHECKVIDPNEXCLUSIVEOWNERSHIP *desc );
+
+__kernel_entry
+W32KAPI
+DWORD
+APIENTRY
+NtGdiDdDDICloseAdapter( const D3DKMT_CLOSEADAPTER *desc );
+__kernel_entry
+W32KAPI
+DWORD
+APIENTRY
+NtGdiDdDDICreateDevice( D3DKMT_CREATEDEVICE *desc );
+
+__kernel_entry
+W32KAPI
+DWORD
+APIENTRY
+NtGdiDdDDIDestroyDevice( const D3DKMT_DESTROYDEVICE *desc );
+
+__kernel_entry
+W32KAPI
+DWORD
+APIENTRY
+NtGdiDdDDIOpenAdapterFromLuid( D3DKMT_OPENADAPTERFROMLUID *desc );
+
+__kernel_entry
+W32KAPI
+DWORD
+APIENTRY
+NtGdiDdDDIQueryVideoMemoryInfo( D3DKMT_QUERYVIDEOMEMORYINFO *desc );
+
+__kernel_entry
+W32KAPI
+DWORD
+APIENTRY
+NtGdiDdDDISetVidPnSourceOwner( const D3DKMT_SETVIDPNSOURCEOWNER *desc );
+
+__kernel_entry
+W32KAPI
+DWORD
+APIENTRY
+NtGdiDdDDIEscape( const D3DKMT_ESCAPE *desc );
+
+__kernel_entry
+W32KAPI
+DWORD
+APIENTRY
+NtGdiDdDDIOpenAdapterFromHdc( D3DKMT_OPENADAPTERFROMHDC *desc );
+
+__kernel_entry
+W32KAPI
+DWORD
+APIENTRY
+NtGdiDdDDIQueryStatistics( D3DKMT_QUERYSTATISTICS *stats );
+
+__kernel_entry
+W32KAPI
+DWORD
+APIENTRY
+NtGdiDdDDISetQueuedLimit( D3DKMT_SETQUEUEDLIMIT *desc );
+
+__kernel_entry
+W32KAPI
+DWORD
+APIENTRY
 NtGdiDvpCanCreateVideoPort(
     _In_ HANDLE hDirectDraw,
     _Inout_ PDD_CANCREATEVPORTDATA puCanCreateVPortData);

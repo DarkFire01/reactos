@@ -694,3 +694,15 @@
 // For Wine DX
     SVC_(GdiDdDDICreateDCFromMemory, 1)
     SVC_(GdiDdDDIDestroyDCFromMemory, 1)
+    SVC_(GdiDdDDICheckVidPnExclusiveOwnership, 1)
+    SVC_(GdiDdDDICloseAdapter, 1)
+    SVC_(GdiDdDDICreateDevice, 1)
+    SVC_(GdiDdDDIDestroyDevice, 1)
+    SVC_(GdiDdDDIOpenAdapterFromLuid, 1)
+    SVC_(GdiDdDDIQueryVideoMemoryInfo, 1)
+    SVC_(GdiDdDDISetVidPnSourceOwner, 1)
+    SVC_(GdiDdDDIEscape, 1)
+    SVC_(GdiDdDDIOpenAdapterFromHdc, 1)
+    SVC_(GdiDdDDIQueryStatistics, 1)
+    SVC_(GdiDdDDISetQueuedLimit, 1)
+

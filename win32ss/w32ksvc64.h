@@ -671,8 +671,19 @@
     SVC_(UserWin32PoolAllocationStats, 6)	//	 0x1299 
     SVC_(UserYieldTask, 0)	//	 0x129a 
     SVC_(DxEngGetRedirectionBitmap, 1)	//	
-    SVC_(GdiDdDDICreateDCFromMemory, 1)	//	
-    SVC_(GdiDdDDIDestroyDCFromMemory, 1)	//	
+	SVC_(GdiDdDDICreateDCFromMemory, 1)
+    SVC_(GdiDdDDIDestroyDCFromMemory, 1)
+    SVC_(GdiDdDDICheckVidPnExclusiveOwnership, 1)
+    SVC_(GdiDdDDICloseAdapter, 1)
+    SVC_(GdiDdDDICreateDevice, 1)
+    SVC_(GdiDdDDIDestroyDevice, 1)
+    SVC_(GdiDdDDIOpenAdapterFromLuid, 1)
+    SVC_(GdiDdDDIQueryVideoMemoryInfo, 1)
+    SVC_(GdiDdDDISetVidPnSourceOwner, 1)
+    SVC_(GdiDdDDIEscape, 1)
+    SVC_(GdiDdDDIOpenAdapterFromHdc, 1)
+    SVC_(GdiDdDDIQueryStatistics, 1)
+    SVC_(GdiDdDDISetQueuedLimit, 1)
     SVC_(GdiGetFontFamilyInfo, 4)	//	
     SVC_(GdiOffsetViewportOrgEx, 4)	//	
     SVC_(GdiOffsetWindowOrgEx, 4)	//	

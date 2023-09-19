@@ -58,6 +58,7 @@ list(APPEND SOURCE
     gdi/dib/dib32bpp.c
     gdi/dib/floodfill.c
     gdi/dib/stretchblt.c
+    gdi/eng/vista/dxgkrnl_ddi.c
     gdi/eng/alphablend.c
     gdi/eng/bitblt.c
     gdi/eng/engbrush.c
