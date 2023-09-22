@@ -190,7 +190,7 @@ VOID intDdEnableDriver(PEDD_DIRECTDRAW_GLOBAL peDdGl)
             intDdGetAllDriverInfo(peDdGl);
 
             // enable DirectDraw acceleration
-            peDdGl->fl |= 1;
+            peDdGl->fl = peDdGl->fl & 0xFFFFFFFE;
         }
         else
         {
@@ -503,6 +503,7 @@ BOOL
 NTAPI
 DxDdEnableDirectDraw(HANDLE hDev, BOOL arg2/*What for?*/)
 {
+
     PEDD_DIRECTDRAW_GLOBAL peDdGl = NULL;
 
     if (gpEngFuncs.DxEngGetHdevData(hDev, DxEGShDevData_display))
