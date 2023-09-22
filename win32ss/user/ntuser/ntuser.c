@@ -198,9 +198,12 @@ NtUserInitialize(
 // Initialize Power Request List (use hPowerRequestEvent).
 // Initialize Media Change (use hMediaRequestEvent).
 
-    /* Initialize various GDI stuff (DirectX, fonts, language ID etc.) */
-    if (!InitializeGreCSRSS())
-        return STATUS_UNSUCCESSFUL;
+// InitializeGreCSRSS();
+// {
+//    Startup DxGraphics.
+//    calls ** UserGetLanguageID() and sets it **.
+//    Enables Fonts drivers, Initialize Font table & Stock Fonts.
+// }
 
     /* Initialize USER */
     Status = UserInitialize();
