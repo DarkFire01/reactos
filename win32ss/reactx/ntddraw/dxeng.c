@@ -464,8 +464,8 @@ DxEngGetDCState(HDC hDC,
                 retVal = (DWORD_PTR) pDC->fs & DC_FULLSCREEN;
                 break;
             case 2:
-                /* Return the complexity of the visible region. */
-                retVal = (DWORD_PTR) REGION_Complexity(pDC->prgnVis);
+                /* Return the number of rectangles in the visible region. */
+                retVal = (DWORD_PTR) pDC->prgnRao ? pDC->prgnRao->rdh.nCount : pDC->prgnVis->rdh.nCount;
                 break;
             case 3:
             {
@@ -480,8 +480,6 @@ DxEngGetDCState(HDC hDC,
         }
         DC_UnlockDc(pDC);
     }
-
-    DPRINT1("Return value %08lx\n", retVal);
 
     return retVal;
 }
