@@ -637,11 +637,20 @@ HalpAcpiFindRsdtPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
     return STATUS_SUCCESS;
 }
 
+PACPI_BIOS_MULTI_NODE AcpiMultiNodeLoc;
+
+PHYSICAL_ADDRESS
+NTAPI
+HalFindRsdtPub()
+{
+    return AcpiMultiNodeLoc->RsdtAddress;
+}
+
 NTSTATUS
 NTAPI
 HalpAcpiTableCacheInit(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    PACPI_BIOS_MULTI_NODE AcpiMultiNode;
+    //PACPI_BIOS_MULTI_NODE AcpiMultiNode;
     NTSTATUS Status = STATUS_SUCCESS;
     PHYSICAL_ADDRESS PhysicalAddress;
     PVOID MappedAddress;
@@ -657,10 +666,10 @@ HalpAcpiTableCacheInit(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     InitializeListHead(&HalpAcpiTableCacheList);
 
     /* Find the RSDT */
-    Status = HalpAcpiFindRsdtPhase0(LoaderBlock, &AcpiMultiNode);
+    Status = HalpAcpiFindRsdtPhase0(LoaderBlock, &AcpiMultiNodeLoc);
     if (!NT_SUCCESS(Status)) return Status;
 
-    PhysicalAddress.QuadPart = AcpiMultiNode->RsdtAddress.QuadPart;
+    PhysicalAddress.QuadPart = AcpiMultiNodeLoc->RsdtAddress.QuadPart;
 
     /* Map the RSDT */
     if (LoaderBlock)

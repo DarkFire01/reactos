@@ -27,10 +27,14 @@ InitPaletteWithTable(
 
 VOID
 PrepareForSetPixel(VOID);
-
-FORCEINLINE
 VOID
 SetPixel(
+    _In_ ULONG Left,
+    _In_ ULONG Top,
+    _In_ UCHAR Color);
+FORCEINLINE
+VOID
+SetPixelVga(
     _In_ ULONG Left,
     _In_ ULONG Top,
     _In_ UCHAR Color)

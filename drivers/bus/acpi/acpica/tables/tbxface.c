@@ -125,6 +125,7 @@ AcpiInitializeTables (
         Status = AcpiAllocateRootTable (InitialTableCount);
         if (ACPI_FAILURE (Status))
         {
+            __debugbreak();
             return_ACPI_STATUS (Status);
         }
     }
@@ -149,6 +150,7 @@ AcpiInitializeTables (
     RsdpAddress = AcpiOsGetRootPointer ();
     if (!RsdpAddress)
     {
+        __debugbreak();
         return_ACPI_STATUS (AE_NOT_FOUND);
     }
 

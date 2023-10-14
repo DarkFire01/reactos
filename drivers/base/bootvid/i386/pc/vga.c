@@ -78,7 +78,7 @@ ReadWriteMode(
 }
 
 VOID
-PrepareForSetPixel(VOID)
+PrepareForSetPixelVga(VOID)
 {
     /* Switch to mode 10 */
     ReadWriteMode(10);
@@ -102,7 +102,7 @@ do {                                                        \
 
 VOID
 NTAPI
-DisplayCharacter(
+DisplayCharacterVga(
     _In_ CHAR Character,
     _In_ ULONG Left,
     _In_ ULONG Top,
@@ -193,7 +193,7 @@ DisplayCharacter(
 
 static VOID
 NTAPI
-SetPaletteEntryRGB(
+SetPaletteEntryRGBVga(
     _In_ ULONG Id,
     _In_ RGBQUAD Rgb)
 {
@@ -208,7 +208,7 @@ SetPaletteEntryRGB(
 
 VOID
 NTAPI
-InitPaletteWithTable(
+InitPaletteWithTableVga(
     _In_ PULONG Table,
     _In_ ULONG Count)
 {
@@ -217,13 +217,13 @@ InitPaletteWithTable(
 
     for (i = 0; i < Count; i++, Entry++)
     {
-        SetPaletteEntryRGB(i, *Entry);
+     //   SetPaletteEntryRGB(i, *Entry);
     }
 }
 
 VOID
 NTAPI
-DoScroll(
+DoScrollVga(
     _In_ ULONG Scroll)
 {
     ULONG Top, RowSize;
@@ -263,7 +263,7 @@ DoScroll(
 
 VOID
 NTAPI
-PreserveRow(
+PreserveRowVga(
     _In_ ULONG CurrentTop,
     _In_ ULONG TopDelta,
     _In_ BOOLEAN Restore)
@@ -321,8 +321,8 @@ NTAPI
 VidCleanUp(VOID)
 {
     /* Select bit mask register and clear it */
-    __outpb(VGA_BASE_IO_PORT + GRAPH_ADDRESS_PORT, IND_BIT_MASK);
-    __outpb(VGA_BASE_IO_PORT + GRAPH_DATA_PORT, BIT_MASK_DEFAULT);
+   // __outpb(VGA_BASE_IO_PORT + GRAPH_ADDRESS_PORT, IND_BIT_MASK);
+   // __outpb(VGA_BASE_IO_PORT + GRAPH_DATA_PORT, BIT_MASK_DEFAULT);
 }
 
 /*
@@ -330,7 +330,7 @@ VidCleanUp(VOID)
  */
 VOID
 NTAPI
-VidScreenToBufferBlt(
+VidScreenToBufferBltVga(
     _Out_writes_bytes_(Delta * Height) PUCHAR Buffer,
     _In_ ULONG Left,
     _In_ ULONG Top,
@@ -430,7 +430,7 @@ VidScreenToBufferBlt(
  */
 VOID
 NTAPI
-VidSolidColorFill(
+VidSolidColorFillBVga(
     _In_ ULONG Left,
     _In_ ULONG Top,
     _In_ ULONG Right,

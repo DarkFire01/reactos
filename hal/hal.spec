@@ -111,3 +111,5 @@
 @ stdcall -version=0x0600+ -arch=i386,x86_64 x86BiosReadMemory(long long ptr long)
 @ stdcall -version=0x0502 -arch=x86_64 x86BiosWriteMemory(long long ptr long)
 @ stdcall -version=0x0600+ -arch=i386,x86_64 x86BiosWriteMemory(long long ptr long)
+@ stdcall LoadUefiData()
+@ stdcall HalFindRsdtPub()

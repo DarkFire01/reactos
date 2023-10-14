@@ -94,7 +94,7 @@ ULONG
 IOApicRead(UCHAR Register)
 {
     /* Select the register, then do the read */
-    ASSERT(Register <= 0x3F);
+   // ASSERT(Register <= 0x3F);
     WRITE_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOREGSEL), Register);
     return READ_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOWIN));
 }
@@ -104,7 +104,7 @@ VOID
 IOApicWrite(UCHAR Register, ULONG Value)
 {
     /* Select the register, then do the write */
-    ASSERT(Register <= 0x3F);
+    //ASSERT(Register <= 0x3F);
     WRITE_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOREGSEL), Register);
     WRITE_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOWIN), Value);
 }

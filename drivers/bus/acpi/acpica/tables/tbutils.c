@@ -297,6 +297,7 @@ AcpiTbParseRootTable (
     Rsdp = AcpiOsMapMemory (RsdpAddress, sizeof (ACPI_TABLE_RSDP));
     if (!Rsdp)
     {
+        __debugbreak();
         return_ACPI_STATUS (AE_NO_MEMORY);
     }
 
@@ -336,6 +337,7 @@ AcpiTbParseRootTable (
     Table = AcpiOsMapMemory (Address, sizeof (ACPI_TABLE_HEADER));
     if (!Table)
     {
+        __debugbreak();
         return_ACPI_STATUS (AE_NO_MEMORY);
     }
 
@@ -358,6 +360,7 @@ AcpiTbParseRootTable (
     Table = AcpiOsMapMemory (Address, Length);
     if (!Table)
     {
+        __debugbreak();
         return_ACPI_STATUS (AE_NO_MEMORY);
     }
 
@@ -366,6 +369,7 @@ AcpiTbParseRootTable (
     Status = AcpiUtVerifyChecksum (Table, Length);
     if (ACPI_FAILURE (Status))
     {
+        __debugbreak();
         AcpiOsUnmapMemory (Table, Length);
         return_ACPI_STATUS (Status);
     }

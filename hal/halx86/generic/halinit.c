@@ -62,6 +62,33 @@ HalInitializeProcessor(
     HalpRegisterKdSupportFunctions();
 }
 
+typedef struct _REACTOS_INTERNAL_BGCONTEXT
+{
+    ULONG_PTR    BaseAddress;
+    ULONG        BufferSize;
+    UINT32       ScreenWidth;
+    UINT32       ScreenHeight;
+    UINT32       PixelsPerScanLine;
+    UINT32       PixelFormat;
+} REACTOS_INTERNAL_BGCONTEXT, *PREACTOS_INTERNAL_BGCONTEXT;
+
+REACTOS_INTERNAL_BGCONTEXT gfx; 
+
+CODE_SEG("INIT")
+REACTOS_INTERNAL_BGCONTEXT
+NTAPI
+LoadUefiData()
+{
+    REACTOS_INTERNAL_BGCONTEXT framebuffer = {0};
+    framebuffer.BaseAddress       =  gfx.BaseAddress      ;
+    framebuffer.BufferSize        =  gfx.BufferSize       ;
+    framebuffer.ScreenWidth       =  gfx.ScreenWidth      ;
+    framebuffer.ScreenHeight      =  gfx.ScreenHeight     ;
+    framebuffer.PixelsPerScanLine =  gfx.PixelsPerScanLine;
+    framebuffer.PixelFormat       =  gfx.PixelFormat      ;
+    return framebuffer;
+}
+
 /*
  * @implemented
  */
@@ -74,6 +101,12 @@ HalInitSystem(IN ULONG BootPhase,
     PKPRCB Prcb = KeGetCurrentPrcb();
     NTSTATUS Status;
 
+    gfx.BaseAddress       =  LoaderBlock->BaseAddress  ;
+    gfx.BufferSize        =  LoaderBlock->BufferSize     ;
+    gfx.ScreenWidth       =  LoaderBlock->ScreenWidth     ;
+    gfx.ScreenHeight      =  LoaderBlock->ScreenHeight  ;
+    gfx.PixelsPerScanLine =  LoaderBlock->PixelsPerScanLine ;
+    gfx.PixelFormat       =  LoaderBlock->PixelFormat    ;
     /* Check the boot phase */
     if (BootPhase == 0)
     {

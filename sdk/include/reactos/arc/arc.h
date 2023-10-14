@@ -566,6 +566,12 @@ typedef struct _LOADER_PARAMETER_BLOCK
         ARM_LOADER_BLOCK Arm;
     } u;
     FIRMWARE_INFORMATION_LOADER_BLOCK FirmwareInformation;
+    ULONG_PTR    BaseAddress;
+    ULONG        BufferSize;
+    UINT32       ScreenWidth;
+    UINT32       ScreenHeight;
+    UINT32       PixelsPerScanLine;
+    UINT32       PixelFormat;
 } LOADER_PARAMETER_BLOCK, *PLOADER_PARAMETER_BLOCK;
 
 typedef int CONFIGTYPE;

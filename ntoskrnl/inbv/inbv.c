@@ -169,6 +169,9 @@ InbvGetResourceAddress(
     return ResourceList[ResourceNumber];
 }
 
+VOID
+NTAPI
+VidSetupUefi(PLOADER_PARAMETER_BLOCK LoaderBlock);
 CODE_SEG("INIT")
 BOOLEAN
 NTAPI
@@ -176,6 +179,7 @@ InbvDriverInitialize(
     _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
     _In_ ULONG Count)
 {
+    VidSetupUefi(LoaderBlock);
     PCHAR CommandLine;
     BOOLEAN ResetMode = FALSE; // By default do not reset the video mode
     ULONG i;

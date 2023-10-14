@@ -1146,6 +1146,10 @@ LoadAndBootWindows(
                                     BootPath);
 }
 
+#ifdef UEFIBOOT
+extern REACTOS_INTERNAL_BGCONTEXT framebufferData;
+#endif
+
 ARC_STATUS
 LoadAndBootWindowsCommon(
     IN USHORT OperatingSystemVersion,
@@ -1196,6 +1200,15 @@ LoadAndBootWindowsCommon(
 
     /* Cleanup INI file */
     IniCleanup();
+
+#ifdef UEFIBOOT
+     LoaderBlock->BaseAddress =        framebufferData.BaseAddress       ;
+     LoaderBlock->BufferSize =         framebufferData.BufferSize       ;
+     LoaderBlock->ScreenWidth =        framebufferData.ScreenWidth       ;
+     LoaderBlock->ScreenHeight =       framebufferData.ScreenHeight       ;
+     LoaderBlock->PixelsPerScanLine =  framebufferData.PixelsPerScanLine       ;
+     LoaderBlock->PixelFormat =        framebufferData.PixelFormat       ;
+#endif
 
 /****
  **** WE HAVE NOW REACHED THE POINT OF NO RETURN !!
