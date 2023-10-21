@@ -152,9 +152,11 @@ HalInitSystem(IN ULONG BootPhase,
 
         /* Do some HAL-specific initialization */
         HalpInitPhase1();
-
-        /* Initialize Phase 1 of the x86 emulator */
-        HalInitializeBios(1, LoaderBlock);
+        if (KeNumberProcessors < 2)
+        {
+            /* Initialize Phase 1 of the x86 emulator */
+            HalInitializeBios(1, LoaderBlock);
+        }
     }
 
     /* All done, return */
