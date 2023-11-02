@@ -24,6 +24,11 @@
 
 /* GLOBALS ********************************************************************/
 
+extern KIRQL HalpIrqlSynchLevel;
+
+#undef SYNCH_LEVEL
+#define SYNCH_LEVEL HalpIrqlSynchLevel
+
 ULONG ApicVersion;
 UCHAR HalpVectorToIndex[256];
 

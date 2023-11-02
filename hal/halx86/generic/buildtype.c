@@ -12,3 +12,9 @@
 /* GLOBALS ******************************************************************/
 
 const USHORT HalpBuildType = HAL_BUILD_TYPE;
+
+#ifdef CONFIG_SMP
+KIRQL HalpIrqlSynchLevel = (IPI_LEVEL - 2);
+#else
+KIRQL HalpIrqlSynchLevel = DISPATCH_LEVEL;
+#endif
