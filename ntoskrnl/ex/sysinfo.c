@@ -675,6 +675,7 @@ QSI_DEF(SystemProcessorInformation)
 /* Class 2 - Performance Information */
 QSI_DEF(SystemPerformanceInformation)
 {
+#ifndef _M_ARM64
     LONG i;
     ULONG IdleUser, IdleKernel;
     PKPRCB Prcb;
@@ -817,7 +818,8 @@ QSI_DEF(SystemPerformanceInformation)
             Spi->SystemCalls += Prcb->KeSystemCalls;
         }
     }
-
+#else
+#endif
     return STATUS_SUCCESS;
 }
 
@@ -1796,7 +1798,9 @@ QSI_DEF(SystemExceptionInformation)
             AlignmentFixupCount += Prcb->KeAlignmentFixupCount;
             ExceptionDispatchCount += Prcb->KeExceptionDispatchCount;
 #ifndef _M_ARM
+#ifndef _M_ARM64
             FloatingEmulationCount += Prcb->KeFloatingEmulationCount;
+#endif
 #endif // _M_ARM
         }
     }
@@ -2636,6 +2640,7 @@ QSI_DEF(SystemObjectSecurityMode)
 /* Class 73 - Logical processor information */
 QSI_DEF(SystemLogicalProcessorInformation)
 {
+#ifndef _M_ARM64
     LONG i;
     PKPRCB Prcb;
     KAFFINITY CurrentProc;
@@ -2715,6 +2720,9 @@ QSI_DEF(SystemLogicalProcessorInformation)
     *ReqSize = DataSize;
 
     return Status;
+#else
+    return 1;
+#endif
 }
 
 /* Class 76 - System firmware table information */

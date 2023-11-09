@@ -189,6 +189,28 @@ KfRaiseIrql(_In_ KIRQL NewIrql);
 #define KeLowerIrql(a) KfLowerIrql(a)
 #define KeRaiseIrql(a,b) *(b) = KfRaiseIrql(a)
 
+
+FORCEINLINE
+KIRQL
+KeRaiseIrqlToSynchLevel(VOID)
+{
+#ifdef CONFIG_SMP
+    return KfRaiseIrql(12); // SYNCH_LEVEL = IPI_LEVEL - 2
+#else
+    return KfRaiseIrql(2); // SYNCH_LEVEL = DISPATCH_LEVEL
+#endif
+}
+
+FORCEINLINE
+KIRQL
+KeRaiseIrqlToDpcLevel (
+    VOID
+    )
+{
+
+    return KfRaiseIrql(DISPATCH_LEVEL);
+}
+
 $endif (_WDMDDK_)
 $if (_NTDDK_)
 

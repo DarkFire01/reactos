@@ -43,7 +43,7 @@ extern "C" {
 //
 #define LDT_ENTRY              ULONG
 
-
+#define NUMBER_POOL_LOOKASIDE_LISTS 32
 //
 // HAL Variables
 //

@@ -35,10 +35,10 @@
     ((TrapFrame)->Pc)
 
 #define KeGetContextReturnRegister(Context) \
-    ((Context)->R0)
+    ((Context)->X0)
 
 #define KeSetContextReturnRegister(Context, ReturnValue) \
-    ((Context)->R0 = (ReturnValue))
+    ((Context)->X0 = (ReturnValue))
 
 //
 // Macro to get trap and exception frame from a thread stack
@@ -69,6 +69,56 @@
 // ON = TRUE, OFF = FALSE
 //
 #define KeGetTrapFrameInterruptState(TrapFrame) 0
+
+FORCEINLINE
+BOOLEAN
+KeDisableInterrupts(VOID)
+{
+    return 1;
+}
+
+FORCEINLINE
+VOID
+KeRestoreInterrupts(BOOLEAN WereEnabled)
+{
+    if (WereEnabled) _enable();
+}
+
+#define Ki386PerfEnd()
+#define KiEndInterrupt(x,y)
+
+#define KiGetLinkedTrapFrame(x) \
+    (PKTRAP_FRAME)((x)->TrapFrame)
+
+FORCEINLINE
+VOID
+KiRundownThread(IN PKTHREAD Thread)
+{
+    /* FIXME */
+}
+
+FORCEINLINE
+VOID
+KeSweepICache(IN PVOID BaseAddress,
+              IN SIZE_T FlushSize)
+{
+    //
+    // Always sweep the whole cache
+    //
+    UNREFERENCED_PARAMETER(BaseAddress);
+    UNREFERENCED_PARAMETER(FlushSize);
+ ///   UNIMPLEMENTED;
+}
+
+// win64 uses DMA macros, this one is not defined
+NTHALAPI
+NTSTATUS
+NTAPI
+HalAllocateAdapterChannel(
+  IN PADAPTER_OBJECT  AdapterObject,
+  IN PWAIT_CONTEXT_BLOCK  Wcb,
+  IN ULONG  NumberOfMapRegisters,
+  IN PDRIVER_CONTROL  ExecutionRoutine);
 
 // HACK
 extern NTKERNELAPI volatile KSYSTEM_TIME KeTickCount;

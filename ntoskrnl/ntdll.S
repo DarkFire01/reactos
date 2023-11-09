@@ -11,6 +11,7 @@
 
     END
 
+#elif _M_ARM64
 #else
 
 .code

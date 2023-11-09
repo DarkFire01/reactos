@@ -1330,6 +1330,8 @@ typedef struct _EPROCESS
     PVOID SecurityPort;
 #ifdef _M_AMD64
     struct _WOW64_PROCESS *Wow64Process;
+#elif _M_ARM64
+    struct _WOW64_PROCESS *Wow64Process;
 #else
     PVOID PaeTop;
 #endif
