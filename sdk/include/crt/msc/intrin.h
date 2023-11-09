@@ -30,6 +30,15 @@ extern "C" {
 #pragma intrinsic(__iso_volatile_store32)
 #pragma intrinsic(__iso_volatile_store64)
 #pragma intrinsic(__iso_volatile_store8)
+#elif defined(_M_ARM64)
+#pragma intrinsic(__iso_volatile_load16)
+#pragma intrinsic(__iso_volatile_load32)
+#pragma intrinsic(__iso_volatile_load64)
+#pragma intrinsic(__iso_volatile_load8)
+#pragma intrinsic(__iso_volatile_store16)
+#pragma intrinsic(__iso_volatile_store32)
+#pragma intrinsic(__iso_volatile_store64)
+#pragma intrinsic(__iso_volatile_store8)
 #endif
 
 /*** Atomic operations ***/
@@ -91,7 +100,46 @@ extern "C" {
 #pragma intrinsic(_InterlockedOr64_np)
 #elif defined(_M_ARM)
 #elif defined(_M_ARM64)
+#pragma intrinsic(_InterlockedAdd)
+#pragma intrinsic(_InterlockedAdd64)
+#pragma intrinsic(_InterlockedAdd64_acq)
+#pragma intrinsic(_InterlockedAdd64_nf)
+#pragma intrinsic(_InterlockedAdd64_rel)
+#pragma intrinsic(_InterlockedAdd_acq)
+#pragma intrinsic(_InterlockedAdd_nf)
+#pragma intrinsic(_InterlockedAdd_rel)
+#pragma intrinsic(_InterlockedAnd16_acq)
+#pragma intrinsic(_InterlockedAnd16_nf)
+#pragma intrinsic(_InterlockedAnd16_rel)
+#pragma intrinsic(_InterlockedAnd64)
+#pragma intrinsic(_InterlockedAnd64_acq)
+#pragma intrinsic(_InterlockedAnd64_nf)
+#pragma intrinsic(_InterlockedAnd64_rel)
+#pragma intrinsic(_InterlockedAnd8_acq)
+#pragma intrinsic(_InterlockedAnd8_nf)
+#pragma intrinsic(_InterlockedAnd8_rel)
+#pragma intrinsic(_InterlockedAnd_acq)
+#pragma intrinsic(_InterlockedAnd_nf)
+#pragma intrinsic(_InterlockedAnd_rel)
+#pragma intrinsic(_InterlockedCompareExchange_acq)
+#pragma intrinsic(_InterlockedCompareExchange_nf)
+#pragma intrinsic(_InterlockedCompareExchange_rel)
+#pragma intrinsic(_InterlockedCompareExchange16_acq)
+#pragma intrinsic(_InterlockedCompareExchange16_nf)
+#pragma intrinsic(_InterlockedCompareExchange16_rel)
+#pragma intrinsic(_InterlockedCompareExchange64_acq)
+#pragma intrinsic(_InterlockedCompareExchange64_nf)
+#pragma intrinsic(_InterlockedCompareExchange64_rel)
+#pragma intrinsic(_InterlockedCompareExchange8_acq)
+#pragma intrinsic(_InterlockedCompareExchange8_nf)
+#pragma intrinsic(_InterlockedCompareExchange8_rel)
+#pragma intrinsic(_InterlockedCompareExchangePointer)
+#pragma intrinsic(_InterlockedCompareExchangePointer_acq)
+#pragma intrinsic(_InterlockedCompareExchangePointer_nf)
+#pragma intrinsic(_InterlockedCompareExchangePointer_rel)
 #pragma intrinsic(_InterlockedCompareExchange128)
+#pragma intrinsic(_InterlockedDecrement64)
+#pragma intrinsic(_InterlockedExchange64)
 #endif
 
 #if defined(_M_AMD64) || defined(_M_ARM)
@@ -149,6 +197,22 @@ extern "C" {
 #endif
 
 #if defined _M_ARM64
+#pragma intrinsic(__readx18byte)
+#pragma intrinsic(__readx18word)
+#pragma intrinsic(__readx18dword)
+#pragma intrinsic(__readx18qword)
+#pragma intrinsic(__writex18byte)
+#pragma intrinsic(__writex18word)
+#pragma intrinsic(__writex18dword)
+#pragma intrinsic(__writex18qword)
+#pragma intrinsic(__addx18byte)
+#pragma intrinsic(__addx18word)
+#pragma intrinsic(__addx18dword)
+#pragma intrinsic(__addx18qword)
+#pragma intrinsic(__incx18byte)
+#pragma intrinsic(__incx18word)
+#pragma intrinsic(__incx18dword)
+#pragma intrinsic(__incx18qword)
 #pragma intrinsic(__getReg)
 #endif
 /*** Bit manipulation ***/
@@ -260,7 +324,10 @@ extern "C" {
 #pragma intrinsic(__writeeflags)
 #pragma intrinsic(__readeflags)
 #endif
-
+#if defined(_M_ARM64)
+#pragma intrinsic(_ReadStatusReg)
+#pragma intrinsic(_WriteStatusReg)
+#endif
 /*** Interrupts and traps ***/
 #pragma intrinsic(__debugbreak)
 #pragma intrinsic(_disable)
@@ -335,6 +402,9 @@ void  __forceinline __invlpg_fixed(void * Address)
 #pragma intrinsic(__writedr)
 #elif defined(_M_ARM)
 #pragma intrinsic(__prefetch)
+#elif defined(_M_ARM64)
+#pragma intrinsic(__prefetch)
+#pragma intrinsic(__prefetch2)
 #endif
 
 /*** System operations ***/

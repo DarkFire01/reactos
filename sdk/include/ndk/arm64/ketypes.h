@@ -504,7 +504,7 @@ typedef struct _KIPCR
             ULONG TibPad0[2];
             PVOID Spare1;
             struct _KPCR *Self;
-            PVOID  PcrReserved0;
+            struct _KPRCB *CurrentPrcb;
             struct _KSPIN_LOCK_QUEUE* LockArray;
             PVOID Used_Self;
         };
