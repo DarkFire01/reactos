@@ -33,19 +33,21 @@
     EXTERN BasicStack
 
     NESTED_ENTRY KiSwapContext
-    PROLOG_END KiSwapContext
+    ;PROLOG_END KiSwapContext
     /* We're a LONG way from remotely trying to implement this */
     b KiSwapContext
     NESTED_END KiSwapContext
 
 
     NESTED_ENTRY KiThreadStartup
-    PROLOG_END KiThreadStartup
+    ;PROLOG_END KiThreadStartup
+    ret
     NESTED_END KiThreadStartup
 
 
     NESTED_ENTRY KiSwitchThreads
-    PROLOG_END KiSwitchThreads
+    ;PROLOG_END KiSwitchThreads
+    ret
     NESTED_END KiSwitchThreads
 
     END

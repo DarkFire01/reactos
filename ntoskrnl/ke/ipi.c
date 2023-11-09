@@ -69,6 +69,7 @@ NTAPI
 KiIpiSendRequest(IN KAFFINITY TargetSet,
                  IN ULONG IpiRequest)
 {
+#ifndef _M_ARM64
 #ifdef CONFIG_SMP
     LONG i;
     PKPRCB Prcb;
@@ -87,6 +88,7 @@ KiIpiSendRequest(IN KAFFINITY TargetSet,
 
     /* HalRequestIpi does its own mask check =*/
     HalRequestIpi(TargetSet);
+#endif
 #endif
 }
 
@@ -155,6 +157,7 @@ BOOLEAN
 NTAPI
 KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame, IN PKEXCEPTION_FRAME ExceptionFrame)
 {
+    #ifndef _M_ARM64
 #ifdef CONFIG_SMP
     PKPRCB Prcb;
     ASSERT(KeGetCurrentIrql() == IPI_LEVEL);
@@ -201,6 +204,7 @@ KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame, IN PKEXCEPTION_FRAME ExceptionFra
 #endif // _M_ARM
     }
 #endif
+#endif
     return TRUE;
 }
 
@@ -212,6 +216,7 @@ NTAPI
 KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
                  IN ULONG_PTR Argument)
 {
+#ifndef _M_ARM64
     /* TODO: merge rest of IPI code */
     __debugbreak();
     ULONG_PTR Status;
@@ -287,4 +292,7 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
     /* Lower IRQL back */
     KeLowerIrql(OldIrql);
     return Status;
+#else
+    return 0;
+#endif
 }

@@ -7,6 +7,45 @@
 
 /* FUNCTIONS *****************************************************************/
 
+VOID
+NTAPI
+KeContextToTrapFrame(IN PCONTEXT Context,
+                     IN OUT PKEXCEPTION_FRAME ExceptionFrame,
+                     IN OUT PKTRAP_FRAME TrapFrame,
+                     IN ULONG ContextFlags,
+                     IN KPROCESSOR_MODE PreviousMode)
+{
+}
+
+VOID
+NTAPI
+KiSaveProcessorControlState(OUT PKPROCESSOR_STATE ProcessorState)
+{
+    //
+    // Save some critical stuff we use
+    //
+    __debugbreak();
+#if 0
+    ProcessorState->SpecialRegisters.ControlRegister = KeArmControlRegisterGet();
+    ProcessorState->SpecialRegisters.LockdownRegister = KeArmLockdownRegisterGet();
+    ProcessorState->SpecialRegisters.CacheRegister = KeArmCacheRegisterGet();
+    ProcessorState->SpecialRegisters.StatusRegister = KeArmStatusRegisterGet();
+#endif
+}
+
+VOID
+NTAPI
+KiRestoreProcessorControlState(PKPROCESSOR_STATE ProcessorState)
+{
+    __debugbreak();
+#if 0
+    KeArmControlRegisterSet(ProcessorState->SpecialRegisters.ControlRegister);
+    KeArmLockdownRegisterSet(ProcessorState->SpecialRegisters.LockdownRegister);
+    KeArmCacheRegisterSet(ProcessorState->SpecialRegisters.CacheRegister);
+    KeArmStatusRegisterSet(ProcessorState->SpecialRegisters.StatusRegister);
+#endif
+}
+
 
 ULONG
 NTAPI

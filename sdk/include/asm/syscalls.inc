@@ -45,7 +45,51 @@ $ZwFuncName
 $NtFuncEndName
 $ZwFuncEndName
     MEND
+#elif _M_ARM64
 
+#include <ksarm64.h>
+
+    GBLA SyscallId
+
+SyscallId SETA 0
+
+	MACRO
+	STUB_K $Name
+	LCLS ZwFuncName
+	LCLS ZwFuncEndName
+ZwFuncName    SETS "Zw$Name"
+ZwFuncEndName SETS "$ZwFuncName":CC:"_end"
+	ALIGN 2
+	EXPORT $ZwFuncName [FUNC]
+$ZwFuncName
+    mov x8, #SyscallId
+    svc #1
+    ret
+$ZwFuncEndName
+    MEND
+
+	MACRO
+	STUB_U $Name
+	LCLS NtFuncName
+	LCLS NtFuncEndName
+	LCLS ZwFuncName
+	LCLS ZwFuncEndName
+NtFuncName    SETS "Nt$Name"
+NtFuncEndName SETS "$NtFuncName":CC:"_end"
+ZwFuncName    SETS "Zw$Name"
+ZwFuncEndName SETS "$ZwFuncName":CC:"_end"
+	ALIGN 2
+	EXPORT $NtFuncName [FUNC]
+$NtFuncName
+	EXPORT $ZwFuncName [FUNC]
+$ZwFuncName
+	ROUT
+    mov r12, #SyscallId
+    svc #1
+    bx lr
+$NtFuncEndName
+$ZwFuncEndName
+    MEND
 #else
 
 #include <asm.inc>

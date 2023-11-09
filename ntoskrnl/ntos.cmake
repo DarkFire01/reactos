@@ -389,15 +389,17 @@ elseif(ARCH STREQUAL "arm64")
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/ctxswitch.S
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/trap.S)
     list(APPEND SOURCE
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/cpu.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/interrupt.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/spinlock.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/stubs.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/config/arm64/cmhardwr.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/page.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/arm64/init.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/kd64/arm64/kdarm64.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/kiinit.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/arm/rtlexcpt.c)
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/cpu.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/interrupt.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/spinlock.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/stubs.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/arm/rtlexcpt.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/arm64/psctx.c)
 endif()
 
 if(NOT _WINKD_)

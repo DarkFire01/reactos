@@ -1560,7 +1560,7 @@ Phase1InitializationDiscard(IN PVOID Context)
 
 #ifdef CONFIG_SMP
     /* Start Application Processors */
-    KeStartAllProcessors();
+   // KeStartAllProcessors();
 #endif
 
     /* Initialize all processors */

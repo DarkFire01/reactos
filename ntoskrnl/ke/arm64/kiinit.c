@@ -56,7 +56,6 @@ KiInitializePcr(IN ULONG ProcessorNumber,
                 IN PKTHREAD IdleThread)
 {
     DbgPrintEarly("KiInitializePcr: Entry\n");
-    ULONG i;
 
     /* Set the Current Thread */
     Pcr->Prcb.CurrentThread = IdleThread;
@@ -97,25 +96,18 @@ KiInitializePcr(IN ULONG ProcessorNumber,
 
 }
 
-VOID
-KiInitializeMachineType(VOID)
-{
-    DbgPrintEarly("KiInitializeMachineType: Entry - TODO: ARM64\n");
-}
-
-
 CODE_SEG("INIT")
 DECLSPEC_NORETURN
-VOID4
+VOID
 NTAPI
 KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
     DbgPrintEarly("KiSystemStartup: Entry\n");
     DbgPrintEarly("ReactOS ARM64 Port\n");
     ULONG Cpu;
+    PKIPCR Pcr = (PKIPCR)KeGetPcr();
     PKTHREAD InitialThread;
     PKPROCESS InitialProcess;
-    PKTHREAD Thread;
 
     /* Flush the TLB */
     //KeFlushTb(); //TODO:
@@ -134,7 +126,7 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     DbgPrintEarly("return from ListHead\n");
 
     /* Initialize the machine type */
-    KiInitializeMachineType();
+   // KiInitializeMachineType(); //TODO: ARM64
 
     /* Skip initial setup if this isn't the Boot CPU */
     if (Cpu) goto AppCpuInit;

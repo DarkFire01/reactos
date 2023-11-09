@@ -16,55 +16,10 @@
 #include <mm/ARM3/miarm.h>
 
 /* GLOBALS ********************************************************************/
-
-const
-ULONG
-MmProtectToPteMask[32] =
+const ULONG_PTR MmProtectToPteMask[32] = 
 {
-    //
-    // These are the base MM_ protection flags
-    //
-    0,
-    PTE_READONLY            | PTE_ENABLE_CACHE,
-    PTE_EXECUTE             | PTE_ENABLE_CACHE,
-    PTE_EXECUTE_READ        | PTE_ENABLE_CACHE,
-    PTE_READWRITE           | PTE_ENABLE_CACHE,
-    PTE_WRITECOPY           | PTE_ENABLE_CACHE,
-    PTE_EXECUTE_READWRITE   | PTE_ENABLE_CACHE,
-    PTE_EXECUTE_WRITECOPY   | PTE_ENABLE_CACHE,
-    //
-    // These OR in the MM_NOCACHE flag
-    //
-    0,
-    PTE_READONLY            | PTE_DISABLE_CACHE,
-    PTE_EXECUTE             | PTE_DISABLE_CACHE,
-    PTE_EXECUTE_READ        | PTE_DISABLE_CACHE,
-    PTE_READWRITE           | PTE_DISABLE_CACHE,
-    PTE_WRITECOPY           | PTE_DISABLE_CACHE,
-    PTE_EXECUTE_READWRITE   | PTE_DISABLE_CACHE,
-    PTE_EXECUTE_WRITECOPY   | PTE_DISABLE_CACHE,
-    //
-    // These OR in the MM_DECOMMIT flag, which doesn't seem supported on x86/64/ARM
-    //
-    0,
-    PTE_READONLY            | PTE_ENABLE_CACHE,
-    PTE_EXECUTE             | PTE_ENABLE_CACHE,
-    PTE_EXECUTE_READ        | PTE_ENABLE_CACHE,
-    PTE_READWRITE           | PTE_ENABLE_CACHE,
-    PTE_WRITECOPY           | PTE_ENABLE_CACHE,
-    PTE_EXECUTE_READWRITE   | PTE_ENABLE_CACHE,
-    PTE_EXECUTE_WRITECOPY   | PTE_ENABLE_CACHE,
-    //
-    // These OR in the MM_NOACCESS flag, which seems to enable WriteCombining?
-    //
-    0,
-    PTE_READONLY            | PTE_WRITECOMBINED_CACHE,
-    PTE_EXECUTE             | PTE_WRITECOMBINED_CACHE,
-    PTE_EXECUTE_READ        | PTE_WRITECOMBINED_CACHE,
-    PTE_READWRITE           | PTE_WRITECOMBINED_CACHE,
-    PTE_WRITECOPY           | PTE_WRITECOMBINED_CACHE,
-    PTE_EXECUTE_READWRITE   | PTE_WRITECOMBINED_CACHE,
-    PTE_EXECUTE_WRITECOPY   | PTE_WRITECOMBINED_CACHE,
+    (ULONG_PTR)NULL,
+    (ULONG_PTR)NULL
 };
 
 const
@@ -108,7 +63,7 @@ ULONG MmGlobalKernelPageDirectory[4096];
 
 /* Template PTE and PDE for a kernel page */
 MMPDE ValidKernelPde = {.u.Hard.Valid = 1};
-MMPTE ValidKernelPte = {.u.Hard.Valid = 1, .u.Hard.Sbo = 1};
+MMPTE ValidKernelPte = {.u.Hard.Valid = 1};
 
 /* Template PDE for a demand-zero page */
 MMPDE DemandZeroPde  = {.u.Long = (MM_READWRITE << MM_PTE_SOFTWARE_PROTECTION_BITS)};
@@ -125,44 +80,26 @@ MMPTE MmDecommittedPte = {{0}};
 
 VOID
 NTAPI
+MmSetDirtyBit(PEPROCESS Process, PVOID Address, BOOLEAN Bit)
+{
+}
+
+NTSTATUS
+NTAPI
+MmCreatePhysicalMapping(
+    _Inout_opt_ PEPROCESS Process,
+    _In_ PVOID Address,
+    _In_ ULONG flProtect,
+    _In_ PFN_NUMBER Page)
+{
+    return 0;
+}
+VOID
+NTAPI
 MiFlushTlb(IN PMMPTE PointerPte,
            IN PVOID Address)
 {
     UNIMPLEMENTED_DBGBREAK();
-}
-
-BOOLEAN
-NTAPI
-MmCreateProcessAddressSpace(IN ULONG MinWs,
-                            IN PEPROCESS Process,
-                            IN PULONG DirectoryTableBase)
-{
-    UNIMPLEMENTED_DBGBREAK();
-    return FALSE;
-}
-
-NTSTATUS
-NTAPI
-MmCreateVirtualMappingUnsafe(IN PEPROCESS Process,
-                             IN PVOID Address,
-                             IN ULONG Protection,
-                             IN PPFN_NUMBER Pages,
-                             IN ULONG PageCount)
-{
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS
-NTAPI
-MmCreateVirtualMapping(IN PEPROCESS Process,
-                       IN PVOID Address,
-                       IN ULONG Protection,
-                       IN PPFN_NUMBER Pages,
-                       IN ULONG PageCount)
-{
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_SUCCESS;
 }
 
 VOID
@@ -172,14 +109,11 @@ MmRawDeleteVirtualMapping(IN PVOID Address)
     UNIMPLEMENTED_DBGBREAK();
 }
 
+CODE_SEG("INIT")
 VOID
 NTAPI
-MmDeleteVirtualMapping(IN PEPROCESS Process,
-                       IN PVOID Address,
-                       OUT PBOOLEAN WasDirty,
-                       OUT PPFN_NUMBER Page)
+MmInitGlobalKernelPageDirectory(VOID)
 {
-    UNIMPLEMENTED_DBGBREAK();
 }
 
 VOID
@@ -190,6 +124,50 @@ MmDeletePageFileMapping(IN PEPROCESS Process,
 {
     UNIMPLEMENTED_DBGBREAK();
 }
+
+NTSTATUS
+NTAPI
+MmCreateVirtualMapping(
+    struct _EPROCESS* Process,
+    PVOID Address,
+    ULONG flProtect,
+    PFN_NUMBER Page
+)
+{
+    return 1;
+}
+
+BOOLEAN
+MiArchCreateProcessAddressSpace(
+    _In_ PEPROCESS Process,
+    _In_ PULONG_PTR DirectoryTableBase)
+{
+    return 0;
+}
+
+BOOLEAN
+MmDeletePhysicalMapping(
+    _Inout_opt_ PEPROCESS Process,
+    _In_ PVOID Address,
+    _Out_opt_ BOOLEAN * WasDirty,
+    _Out_opt_ PPFN_NUMBER Page)
+{
+    return 0;
+}
+
+_Success_(return)
+BOOLEAN
+MmDeleteVirtualMapping(
+    _Inout_opt_ PEPROCESS Process,
+    _In_ PVOID Address,
+    _Out_opt_ BOOLEAN* WasDirty,
+    _Out_opt_ PPFN_NUMBER Page
+)
+{
+    return 1;
+}
+
+
 
 NTSTATUS
 NTAPI
@@ -210,30 +188,6 @@ MmGetPfnForProcess(IN PEPROCESS Process,
     return 0;
 }
 
-BOOLEAN
-NTAPI
-MmIsDirtyPage(IN PEPROCESS Process,
-              IN PVOID Address)
-{
-    UNIMPLEMENTED_DBGBREAK();
-    return FALSE;
-}
-
-VOID
-NTAPI
-MmSetCleanPage(IN PEPROCESS Process,
-               IN PVOID Address)
-{
-    UNIMPLEMENTED_DBGBREAK();
-}
-
-VOID
-NTAPI
-MmSetDirtyPage(IN PEPROCESS Process,
-               IN PVOID Address)
-{
-    UNIMPLEMENTED_DBGBREAK();
-}
 
 BOOLEAN
 NTAPI
@@ -270,28 +224,6 @@ MmSetPageProtect(IN PEPROCESS Process,
 {
     /* We don't enforce any protection on the pages -- they are all RWX */
     return;
-}
-
-VOID
-NTAPI
-MmInitGlobalKernelPageDirectory(VOID)
-{
-    ULONG i;
-    PULONG CurrentPageDirectory = (PULONG)PDE_BASE;
-
-    /* Loop the 2GB of address space which belong to the kernel */
-    for (i = MiGetPdeOffset(MmSystemRangeStart); i < 2048; i++)
-    {
-        /* Check if we have an entry for this already */
-        if ((i != MiGetPdeOffset(PTE_BASE)) &&
-            (i != MiGetPdeOffset(HYPER_SPACE)) &&
-            (!MmGlobalKernelPageDirectory[i]) &&
-            (CurrentPageDirectory[i]))
-        {
-            /* We don't, link it in our global page directory */
-            MmGlobalKernelPageDirectory[i] = CurrentPageDirectory[i];
-        }
-    }
 }
 
 VOID

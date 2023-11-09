@@ -10,9 +10,6 @@
 
 /* GLOBALS ********************************************************************/
 
-ULONG MmMaximumNonPagedPoolPercent;
-ULONG MmSizeOfNonPagedPoolInBytes;
-ULONG MmMaximumNonPagedPoolInBytes;
 PVOID MmNonPagedSystemStart;
 PVOID MmNonPagedPoolStart;
 PVOID MmNonPagedPoolExpansionStart;
@@ -24,25 +21,16 @@ PVOID MiSessionViewStart;
 PVOID MiSessionPoolEnd;
 PVOID MiSessionPoolStart;
 PVOID MmSessionBase;
-ULONG MmSessionSize;
-ULONG MmSessionViewSize;
-ULONG MmSessionPoolSize;
-ULONG MmSessionImageSize;
 PVOID MiSystemViewStart;
-ULONG MmSystemViewSize;
 PFN_NUMBER MmSystemPageDirectory[PPE_PER_PAGE];
 PMMPDE MmSystemPagePtes;
 ULONG MmNumberOfSystemPtes;
-ULONG MxPfnAllocation;
 RTL_BITMAP MiPfnBitMap;
 PPHYSICAL_MEMORY_DESCRIPTOR MmPhysicalMemoryBlock;
 PMEMORY_ALLOCATION_DESCRIPTOR MxFreeDescriptor;
 MEMORY_ALLOCATION_DESCRIPTOR MxOldFreeDescriptor;
-ULONG MmNumberOfPhysicalPages, MmHighestPhysicalPage;
-ULONG MmBootImageSize;
-ULONG MmUserProbeAddress;
+ULONG MmNumberOfPhysicalPages;
 PVOID MmHighestUserAddress;
-PVOID MmSystemRangeStart;
 PVOID MmSystemCacheStart;
 PVOID MmSystemCacheEnd;
 MMSUPPORT MmSystemCacheWs;

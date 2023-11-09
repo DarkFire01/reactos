@@ -191,9 +191,13 @@ int main(int argc, char* argv[])
                     {
                         fprintf(output, "%s equ 0x%"PRIx64"\n", data.Name, data.Value);
                     }
+                    else if (Machine == IMAGE_FILE_MACHINE_ARM64)
+                    {
+                        fprintf(output, "%s equ 0x%"PRIx64"\n", data.Name, data.Value);
+                    }
                     else
                     {
-                        fprintf(output, "%s equ 0%"PRIx64"h\n", data.Name, data.Value);
+                        fprintf(output, "%s:\n    dcd 0%"PRIx64"h\n", data.Name, data.Value);
                     }
                 }
                 else

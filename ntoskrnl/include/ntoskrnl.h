@@ -26,7 +26,6 @@
 #ifdef _M_ARM64
 #define IoAllocateAdapterChannel _IoAllocateAdapterChannel
 //#define KeGetCurrentThread _KeGetCurrentThread //TODO: Investigate me
-#define RtlFillMemoryUlong _RtlFillMemoryUlong
 #endif
 
 /* Version Data */

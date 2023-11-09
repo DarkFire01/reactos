@@ -533,6 +533,8 @@ KeStartThread(IN OUT PKTHREAD Thread)
 #ifdef _M_ARM
     DbgBreakPoint();
     Set = 0;
+#elif _M_ARM64
+    Set = 0;
 #else
     Set = ~NodePrcb->MultiThreadProcessorSet;
 #endif

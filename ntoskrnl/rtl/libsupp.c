@@ -508,7 +508,7 @@ RtlWalkFrameChain(OUT PVOID *Callers,
 
 #endif
 
-#if defined(_M_AMD64) || defined(_M_ARM)
+#if defined(_M_AMD64) || defined(_M_ARM) || defined(_M_ARM64)
 VOID
 NTAPI
 RtlpGetStackLimits(
