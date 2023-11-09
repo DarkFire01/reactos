@@ -10,6 +10,7 @@
 #define KeGetCurrentThread  _KeGetCurrentThread
 #define KeGetPreviousMode   _KeGetPreviousMode
 #endif
+
 #undef  PsGetCurrentProcess
 #define PsGetCurrentProcess _PsGetCurrentProcess
 

@@ -1,5 +1,14 @@
  #include <kxarm64.h>
 
+    NESTED_ENTRY ExpInterlockedPopEntrySList
+    PROLOG_END ExpInterlockedPopEntrySList
+    ret
+    NESTED_END ExpInterlockedPopEntrySList
+
+    NESTED_ENTRY ExpInterlockedPushEntrySList
+    PROLOG_END ExpInterlockedPushEntrySList
+    ret
+    NESTED_END ExpInterlockedPushEntrySList
 
     NESTED_ENTRY DbgBreakPointNoBugCheck
     PROLOG_END DbgBreakPointNoBugCheck

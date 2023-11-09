@@ -20,6 +20,13 @@ KeFlushEntireTb(IN BOOLEAN Invalid,
 {
 }
 
+VOID
+NTAPI
+KeFlushCurrentTb(VOID)
+{
+    //
+}
+
 ULONG
 NTAPI
 KeGetRecommendedSharedDataAlignment(VOID)
