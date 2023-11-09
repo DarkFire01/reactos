@@ -120,13 +120,22 @@ typedef struct _KPCR
             UCHAR DispatchInterrupt;     // 0x01 if dispatch int pending
         };
     };
+    UCHAR Number;
     USHORT InterruptPad;
     ULONG HalReserved[32];
     PVOID KdVersionBlock;
     PVOID Unused3;
     ULONG PcrAlign1[8];
 } KPCR, *PKPCR;
-
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+_CRT_DEPRECATE_TEXT("KeGetCurrentProcessorNumber is deprecated. Use KeGetCurrentProcessorNumberEx or KeGetCurrentProcessorIndex instead.")
+#endif
+FORCEINLINE
+ULONG
+KeGetCurrentProcessorNumber(VOID)
+{
+    return (ULONG)__readx18byte(FIELD_OFFSET(KPCR, Number));
+}
 
 /* this isn't correct.. There's a far better way to do this then this static address. */
 #define KIP0PCRADDRESS                      0xFFFFF78000001000ULL /* FIXME!!! */
@@ -144,6 +153,23 @@ NTSYSAPI
 PKTHREAD
 NTAPI
 KeGetCurrentThread(VOID);
+
+VOID
+KeFlushIoBuffers(
+    _In_ PMDL Mdl,
+    _In_ BOOLEAN ReadOperation,
+    _In_ BOOLEAN DmaOperation);
+
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+FORCEINLINE
+ULONG
+NTAPI
+KeGetCurrentProcessorIndex(VOID)
+{
+    return 1;
+    //TODO:
+}
+#endif
 
 #define DbgRaiseAssertionFailure() __break(0xf001)
 

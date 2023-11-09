@@ -1,7 +1,10 @@
 
 #ifdef _M_ARM
 
+#elif _M_ARM64
+
 #else
+
 
 #include <asm.inc>
 
