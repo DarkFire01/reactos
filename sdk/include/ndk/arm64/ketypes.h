@@ -543,15 +543,15 @@ typedef struct _KIPCR
     PVOID PcrAlign[15];
     KPRCB Prcb;
 } KIPCR, *PKIPCR;
+
 //
 // Macro to get current KPRCB
 //
 FORCEINLINE
 struct _KPRCB *
 KeGetCurrentPrcb(VOID)
-{  
-    //UNIMPLEMENTED;
-    return 0;
+{
+    return (struct _KPRCB *)__readx18qword(FIELD_OFFSET(KIPCR, CurrentPrcb));
 }
 
 //
