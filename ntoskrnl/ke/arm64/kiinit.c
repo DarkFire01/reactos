@@ -6,347 +6,181 @@
 #define NDEBUG
 #include <debug.h>
 
-#undef KeAcquireSpinLock
-#undef KeReleaseSpinLock
+/* PRIVATE FUNCTIONS *********************************************************/
 
-MMPTE ValidKernelPte = {0};
+/* This is just a small hack for QEMU */
 
-
-/* FUNCTIONS *****************************************************************/
+#define QEMUUART 0x09000000
+volatile unsigned int * UART0DR = (unsigned int *) QEMUUART;
 VOID
 NTAPI
-KeFlushEntireTb(IN BOOLEAN Invalid,
-                IN BOOLEAN AllProcessors)
+QemuWriteByteToUart(UCHAR ByteToSend)
 {
+    *UART0DR = ByteToSend;
 }
 
-VOID
-NTAPI
-KeFlushCurrentTb(VOID)
-{
-    //
-}
+/* End of bad hack ********************/
 
 ULONG
-NTAPI
-KeGetRecommendedSharedDataAlignment(VOID)
+DbgPrintEarly(const char *fmt, ...)
 {
-    /* Return the global variable */
-    return 0;
+    va_list args;
+    unsigned int i;
+    char Buffer[1024];
+    PCHAR String = Buffer;
+
+    va_start(args, fmt);
+    i = vsprintf(Buffer, fmt, args);
+    va_end(args);
+
+    /* Output the message */
+    while (*String != 0)
+    {
+        if (*String == '\n')
+        {
+            QemuWriteByteToUart('\r');
+        }
+        QemuWriteByteToUart(*String);
+        String++;
+    }
+
+    return STATUS_SUCCESS;
 }
+
+/* FUNCTIONS *****************************************************************/
 
 VOID
 NTAPI
-KeFlushIoBuffers(
-    _In_ PMDL Mdl,
-    _In_ BOOLEAN ReadOperation,
-    _In_ BOOLEAN DmaOperation)
+KiInitializePcr(IN ULONG ProcessorNumber,
+                IN PKIPCR Pcr,
+                IN PKTHREAD IdleThread)
 {
-    DbgBreakPoint();
-}
+    DbgPrintEarly("KiInitializePcr: Entry\n");
+    ULONG i;
 
-BOOLEAN
-NTAPI
-KeConnectInterrupt(IN PKINTERRUPT Interrupt)
-{
-    return 0;
-}
+    /* Set the Current Thread */
+    Pcr->Prcb.CurrentThread = IdleThread;
 
-BOOLEAN
-NTAPI
-KeDisconnectInterrupt(IN PKINTERRUPT Interrupt)
-{
-    return 0;
-}
+    /* Set pointers to ourselves */
+    Pcr->Self = (PKPCR)Pcr;
+    Pcr->CurrentPrcb = &Pcr->Prcb;
 
+    /* Set the PCR Version */
+    Pcr->MajorVersion = PCR_MAJOR_VERSION;
+    Pcr->MinorVersion = PCR_MINOR_VERSION;
 
-/*
- * @implemented
- */
-KIRQL
-KeAcquireSpinLockRaiseToSynch(PKSPIN_LOCK SpinLock)
-{
-    KIRQL OldIrql;
+    /* Set the PCRB Version */
+    Pcr->Prcb.MajorVersion = PRCB_MAJOR_VERSION;
+    Pcr->Prcb.MinorVersion = PRCB_MINOR_VERSION;
 
-    /* Raise to sync */
-    KeRaiseIrql(SYNCH_LEVEL, &OldIrql);
-
-    /* Acquire the lock and return */
-    KxAcquireSpinLock(SpinLock);
-    return OldIrql;
-}
-
-/*
- * @implemented
- */
-KIRQL
-NTAPI
-KeAcquireSpinLockRaiseToDpc(PKSPIN_LOCK SpinLock)
-{
-    KIRQL OldIrql;
-
-    /* Raise to dispatch */
-    KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
-
-    /* Acquire the lock and return */
-    KxAcquireSpinLock(SpinLock);
-    return OldIrql;
-}
-
-/*
- * @implemented
- */
-VOID
-NTAPI
-KeReleaseSpinLock(PKSPIN_LOCK SpinLock,
-                  KIRQL OldIrql)
-{
-    /* Release the lock and lower IRQL back */
-    KxReleaseSpinLock(SpinLock);
-    KeLowerIrql(OldIrql);
-}
-
-/*
- * @implemented
- */
-KIRQL
-KeAcquireQueuedSpinLock(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber)
-{
-    KIRQL OldIrql;
-
-    /* Raise to dispatch */
-    KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
-
-    /* Acquire the lock */
-    KxAcquireSpinLock(KeGetCurrentPrcb()->LockQueue[LockNumber].Lock); // HACK
-    return OldIrql;
-}
-
-/*
- * @implemented
- */
-KIRQL
-KeAcquireQueuedSpinLockRaiseToSynch(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber)
-{
-    KIRQL OldIrql;
-
-    /* Raise to synch */
-    KeRaiseIrql(SYNCH_LEVEL, &OldIrql);
-
-    /* Acquire the lock */
-    KxAcquireSpinLock(KeGetCurrentPrcb()->LockQueue[LockNumber].Lock); // HACK
-    return OldIrql;
-}
-
-/*
- * @implemented
- */
-VOID
-KeAcquireInStackQueuedSpinLock(IN PKSPIN_LOCK SpinLock,
-                               IN PKLOCK_QUEUE_HANDLE LockHandle)
-{
-    /* Set up the lock */
-    LockHandle->LockQueue.Next = NULL;
-    LockHandle->LockQueue.Lock = SpinLock;
-
-    /* Raise to dispatch */
-    KeRaiseIrql(DISPATCH_LEVEL, &LockHandle->OldIrql);
-
-    /* Acquire the lock */
-    KxAcquireSpinLock(LockHandle->LockQueue.Lock); // HACK
-}
-
-BOOLEAN
-NTAPI
-KeInvalidateAllCaches(VOID)
-{
-    return FALSE;
-}
-
-NTSTATUS
-NTAPI
-NtVdmControl(IN ULONG ControlCode,
-             IN PVOID ControlData)
-{
-    /* Not supported */
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-VOID
-__cdecl
-KeSaveStateForHibernate(IN PKPROCESSOR_STATE State)
-{
-}
-
-NTSTATUS
-NTAPI
-KeUserModeCallback(
-    IN ULONG RoutineIndex,
-    IN PVOID Argument,
-    IN ULONG ArgumentLength,
-    OUT PVOID *Result,
-    OUT PULONG ResultLength)
-{
-    return 1;
-}
-
-BOOLEAN
-NTAPI
-KeSynchronizeExecution(IN OUT PKINTERRUPT Interrupt,
-                       IN PKSYNCHRONIZE_ROUTINE SynchronizeRoutine,
-                       IN PVOID SynchronizeContext OPTIONAL)
-{
-    return 0;
-}
-
-
-VOID
-NTAPI
-KeSetDmaIoCoherency(IN ULONG Coherency)
-{
-    /* Save the coherency globally */
-    KiDmaIoCoherency = Coherency;
-}
-
-
-NTSTATUS
-NTAPI
-KeRaiseUserException(IN NTSTATUS ExceptionCode)
-{
-    UNIMPLEMENTED;
-    return STATUS_UNSUCCESSFUL;
-}
-
-KAFFINITY
-NTAPI
-KeQueryActiveProcessors(VOID)
-{
-    PAGED_CODE();
-
-    /* Simply return the number of active processors */
-    return KeActiveProcessors;
-}
-
-VOID
-NTAPI
-KeInitializeInterrupt(
-    IN PKINTERRUPT Interrupt,
-    IN PKSERVICE_ROUTINE ServiceRoutine,
-    IN PVOID ServiceContext,
-    IN PKSPIN_LOCK SpinLock,
-    IN ULONG Vector,
-    IN KIRQL Irql,
-    IN KIRQL SynchronizeIrql,
-    IN KINTERRUPT_MODE InterruptMode,
-    IN BOOLEAN ShareVector,
-    IN CHAR ProcessorNumber,
-    IN BOOLEAN FloatingSave)
-{
-
-}
-
-/*
- * @implemented
- */
-VOID
-KeAcquireInStackQueuedSpinLockRaiseToSynch(IN PKSPIN_LOCK SpinLock,
-                                           IN PKLOCK_QUEUE_HANDLE LockHandle)
-{
-    /* Set up the lock */
-    LockHandle->LockQueue.Next = NULL;
-    LockHandle->LockQueue.Lock = SpinLock;
-
-    /* Raise to synch */
-    KeRaiseIrql(SYNCH_LEVEL, &LockHandle->OldIrql);
-
-    /* Acquire the lock */
-    KxAcquireSpinLock(LockHandle->LockQueue.Lock); // HACK
-}
-
-
-/*
- * @implemented
- */
-VOID
-KeReleaseQueuedSpinLock(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
-                        IN KIRQL OldIrql)
-{
-    /* Release the lock */
-    KxReleaseSpinLock(KeGetCurrentPrcb()->LockQueue[LockNumber].Lock); // HACK
-
-    /* Lower IRQL back */
-    KeLowerIrql(OldIrql);
-}
-
-
-/*
- * @implemented
- */
-VOID
-KeReleaseInStackQueuedSpinLock(IN PKLOCK_QUEUE_HANDLE LockHandle)
-{
-    /* Simply lower IRQL back */
-    KxReleaseSpinLock(LockHandle->LockQueue.Lock); // HACK
-    KeLowerIrql(LockHandle->OldIrql);
-}
-
-
-/*
- * @implemented
- */
-BOOLEAN
-KeTryToAcquireQueuedSpinLockRaiseToSynch(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
-                                         IN PKIRQL OldIrql)
-{
-    /* Raise to synch level */
-    KeRaiseIrql(SYNCH_LEVEL, OldIrql);
-
-#ifdef CONFIG_SMP
-    // HACK
-    return KeTryToAcquireSpinLockAtDpcLevel(KeGetCurrentPrcb()->LockQueue[LockNumber].Lock);
-#else
-    /* Add an explicit memory barrier to prevent the compiler from reordering
-       memory accesses across the borders of spinlocks */
-    KeMemoryBarrierWithoutFence();
-
-    /* Always return true on UP Machines */
-    return TRUE;
+    /* Set the Build Type */
+    Pcr->Prcb.BuildType = 0;
+#ifndef CONFIG_SMP
+    Pcr->Prcb.BuildType |= PRCB_BUILD_UNIPROCESSOR;
 #endif
-}
-
-/*
- * @implemented
- */
-LOGICAL
-KeTryToAcquireQueuedSpinLock(IN KSPIN_LOCK_QUEUE_NUMBER LockNumber,
-                             OUT PKIRQL OldIrql)
-{
-    /* Raise to dispatch level */
-    KeRaiseIrql(DISPATCH_LEVEL, OldIrql);
-
-#ifdef CONFIG_SMP
-    // HACK
-    return KeTryToAcquireSpinLockAtDpcLevel(KeGetCurrentPrcb()->LockQueue[LockNumber].Lock);
-#else
-
-    /* Add an explicit memory barrier to prevent the compiler from reordering
-       memory accesses across the borders of spinlocks */
-    KeMemoryBarrierWithoutFence();
-
-    /* Always return true on UP Machines */
-    return TRUE;
+#if DBG
+    Pcr->Prcb.BuildType |= PRCB_BUILD_DEBUG;
 #endif
+
+    /* Set the Processor Number and current Processor Mask */
+    Pcr->Prcb.Number = (UCHAR)ProcessorNumber;
+    Pcr->Prcb.SetMember = 1 << ProcessorNumber;
+
+    /* Set the PRCB for this Processor */
+    KiProcessorBlock[ProcessorNumber] = Pcr->CurrentPrcb;
+
+    /* Start us out at PASSIVE_LEVEL */
+    Pcr->CurrentIrql = PASSIVE_LEVEL;
+
+    /* Set default stall factor */
+    Pcr->StallScaleFactor = 50;
+
 }
 
-/* EOF */
+VOID
+KiInitializeMachineType(VOID)
+{
+    DbgPrintEarly("KiInitializeMachineType: Entry - TODO: ARM64\n");
+}
 
 
 CODE_SEG("INIT")
 DECLSPEC_NORETURN
-VOID
+VOID4
 NTAPI
 KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    DbgPrintEarly("KiSystemStartup: Entry\n");
+    DbgPrintEarly("ReactOS ARM64 Port\n");
+    ULONG Cpu;
+    PKTHREAD InitialThread;
+    PKPROCESS InitialProcess;
+    PKTHREAD Thread;
+
+    /* Flush the TLB */
+    //KeFlushTb(); //TODO:
+
+    /* Save the loader block and get the current CPU */
+    KeLoaderBlock = LoaderBlock;
+    Cpu = KeNumberProcessors;
+
+    /* Save the initial thread and process */
+    InitialThread = (PKTHREAD)LoaderBlock->Thread;
+    InitialProcess = (PKPROCESS)LoaderBlock->Process;
+
+    DbgPrintEarly("Going into first ListHead\n");
+    /* Clean the APC List Head */
+    InitializeListHead(&InitialThread->ApcState.ApcListHead[KernelMode]);
+    DbgPrintEarly("return from ListHead\n");
+
+    /* Initialize the machine type */
+    KiInitializeMachineType();
+
+    /* Skip initial setup if this isn't the Boot CPU */
+    if (Cpu) goto AppCpuInit;
+
+    /* Initialize the PCR */
+    RtlZeroMemory(Pcr, PAGE_SIZE);
+
+    //TODO: Add more stuff
+    KiInitializePcr(Cpu,
+                    Pcr,
+                    InitialThread);
+
+
+    /* Set us as the current process */
+    InitialThread->ApcState.Process = InitialProcess;
+
+AppCpuInit:
+    /* Setup CPU-related fields */
+    Pcr->Prcb.Number = Cpu;
+    Pcr->Prcb.SetMember = 1 << Cpu;
+
+    DbgPrintEarly("Going into First HAL call\n");
+    /* Initialize the Processor with HAL */
+    HalInitializeProcessor(Cpu, KeLoaderBlock);
+    DbgPrintEarly("returned from first HAL call\n");
+
+    /* Set active processors */
+    KeActiveProcessors |= Pcr->Prcb.SetMember;
+    KeNumberProcessors++;
+
+    /* Check if this is the boot CPU */
+    if (!Cpu)
+    {
+        DbgPrintEarly("Starting primary debugging system\n");
+
+        /* Initialize debugging system */
+        KdInitSystem(0, KeLoaderBlock);
+
+        /* Check for break-in */
+        if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
+    }
+
+    /* Raise to HIGH_LEVEL */
+    KfRaiseIrql(HIGH_LEVEL);
+    DPRINT1("That's all for now folks! - TODO: KiInitializeKernel for ARM64\n");
+    __debugbreak();
     for(;;)
     {
 

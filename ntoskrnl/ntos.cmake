@@ -385,8 +385,16 @@ elseif(ARCH STREQUAL "arm")
         ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/arm/rtlexcpt.c)
 elseif(ARCH STREQUAL "arm64")
     list(APPEND ASM_SOURCE
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/cpu.S)
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/cpu.S
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/ctxswitch.S
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/trap.S)
     list(APPEND SOURCE
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/cpu.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/interrupt.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/spinlock.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/stubs.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/page.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/arm64/init.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/kd64/arm64/kdarm64.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/kiinit.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/arm/rtlexcpt.c)
