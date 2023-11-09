@@ -733,6 +733,34 @@ MiIsUserPte(PVOID Address)
 {
     return ((ULONG_PTR)Address >> 34) == 0x3FFFFDA0ULL;
 }
+#elif _M_ARM64
+FORCEINLINE
+BOOLEAN
+MiIsUserPxe(PVOID Address)
+{
+    return ((ULONG_PTR)Address >> 7) == 0x1FFFFEDF6FB7DA0ULL;
+}
+
+FORCEINLINE
+BOOLEAN
+MiIsUserPpe(PVOID Address)
+{
+    return ((ULONG_PTR)Address >> 16) == 0xFFFFF6FB7DA0ULL;
+}
+
+FORCEINLINE
+BOOLEAN
+MiIsUserPde(PVOID Address)
+{
+    return ((ULONG_PTR)Address >> 25) == 0x7FFFFB7DA0ULL;
+}
+
+FORCEINLINE
+BOOLEAN
+MiIsUserPte(PVOID Address)
+{
+    return ((ULONG_PTR)Address >> 34) == 0x3FFFFDA0ULL;
+}
 #else
 FORCEINLINE
 BOOLEAN
@@ -867,7 +895,7 @@ MI_MAKE_HARDWARE_PTE_USER(IN PMMPTE NewPte,
     NewPte->u.Long |= MmProtectToPteMask[ProtectionMask];
 }
 
-#ifndef _M_AMD64
+#ifndef _M_ARM64
 //
 // Builds a Prototype PTE for the address of the PTE
 //
@@ -970,7 +998,11 @@ MI_IS_PHYSICAL_ADDRESS(IN PVOID Address)
 
     /* Large pages are never paged out, always physically resident */
     PointerPde = MiAddressToPde(Address);
+#ifdef _M_ARM64
+    return (PointerPde->u.Hard.Valid);
+#else
     return ((PointerPde->u.Hard.LargePage) && (PointerPde->u.Hard.Valid));
+#endif
 }
 
 //

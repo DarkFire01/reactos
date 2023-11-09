@@ -876,6 +876,8 @@ VOID
 NTAPI
 MiBuildPfnDatabaseZeroPage(VOID)
 {
+    //TODO:
+    UNIMPLEMENTED;
     PMMPFN Pfn1;
     PMMPDE PointerPde;
 
@@ -884,7 +886,7 @@ MiBuildPfnDatabaseZeroPage(VOID)
     if (!(MmLowestPhysicalPage) && !(Pfn1->u3.e2.ReferenceCount))
     {
         /* Make it a bogus page to catch errors */
-        PointerPde = MiAddressToPde(0xFFFFFFFF);
+        PointerPde = NULL;///MiAddressToPde(0xFFFFFFFF);
         Pfn1->u4.PteFrame = PFN_FROM_PTE(PointerPde);
         Pfn1->PteAddress = (PMMPTE)PointerPde;
         Pfn1->u2.ShareCount++;

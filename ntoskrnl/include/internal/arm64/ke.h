@@ -99,6 +99,22 @@ KiRundownThread(IN PKTHREAD Thread)
 
 FORCEINLINE
 VOID
+KeFlushProcessTb(VOID)
+{
+    //TODO: ARM64
+}
+
+//
+FORCEINLINE
+VOID
+KeInvalidateTlbEntry(IN PVOID Address)
+{
+    //TODO: ARM64
+}
+
+
+FORCEINLINE
+VOID
 KeSweepICache(IN PVOID BaseAddress,
               IN SIZE_T FlushSize)
 {

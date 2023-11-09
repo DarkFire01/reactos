@@ -265,7 +265,7 @@ KiInitSpinLocks(IN PKPRCB Prcb,
     }
 
     /* Initialize the PRCB lock */
-    KeInitializeSpinLock(&Prcb->PrcbLock);
+    KeInitializeSpinLock((PKSPIN_LOCK)&Prcb->PrcbLock);
 
     /* Check if this is the boot CPU */
     if (!Number)

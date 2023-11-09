@@ -30,12 +30,12 @@ typedef struct _HARDWARE_PTE
 {
     /* 8 Byte struct */
     ULONG64 Valid:1;
-    ULONG64 NotLargePage:1;
+    ULONG64 LargePage:1;
     ULONG64 CacheType:2;
     ULONG64 OsAvailable2:1;
     ULONG64 NonSecure:1;
     ULONG64 Owner:1;
-    ULONG64 NotDirty:1;
+    ULONG64 Dirty:1;
     ULONG64 Shareability:2;
     ULONG64 Accessed:1;
     ULONG64 NonGlobal:1;
@@ -44,7 +44,7 @@ typedef struct _HARDWARE_PTE
     ULONG64 ContigousBit:1;
     ULONG64 PrivilegedNoExecute:1;
     ULONG64 UserNoExecute:1;
-    ULONG64 Writable:1;
+    ULONG64 Write:1;
     ULONG64 CopyOnWrite:1;
     ULONG64 OsAvailable:2;
     ULONG64 PxnTable:1;

@@ -210,6 +210,9 @@ typedef struct _KPROCESSOR_STATE
     CONTEXT ContextFrame;                // 800
 } KPROCESSOR_STATE, *PKPROCESSOR_STATE;
 
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
+#define GENERAL_LOOKASIDE_POOL PP_LOOKASIDE_LIST
+#endif
 
 //
 // Processor Region Control Block
