@@ -4339,12 +4339,15 @@ FORCEINLINE PVOID GetCurrentFiber(VOID)
 #elif defined (_M_ARM64)
 FORCEINLINE struct _TEB * NtCurrentTeb(void)
 {
-    return (struct _TEB *)__getReg(18);
+    return (struct _TEB *)__readx18qword(FIELD_OFFSET(NT_TIB, Self));
 }
 FORCEINLINE PVOID GetCurrentFiber(VOID)
 {
-    //UNIMPLEMENTED;
-    return 0;
+  #ifdef NONAMELESSUNION
+    return (PVOID)__readx18qword(FIELD_OFFSET(NT_TIB, DUMMYUNIONNAME.FiberData));
+  #else
+    return (PVOID)__readx18qword(FIELD_OFFSET(NT_TIB, FiberData));
+  #endif
 }
 #elif defined(_M_PPC)
 FORCEINLINE unsigned long _read_teb_dword(const unsigned long Offset)
