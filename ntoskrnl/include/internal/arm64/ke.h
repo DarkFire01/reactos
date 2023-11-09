@@ -69,3 +69,6 @@
 // ON = TRUE, OFF = FALSE
 //
 #define KeGetTrapFrameInterruptState(TrapFrame) 0
+
+// HACK
+extern NTKERNELAPI volatile KSYSTEM_TIME KeTickCount;

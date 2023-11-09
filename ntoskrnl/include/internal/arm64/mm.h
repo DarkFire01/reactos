@@ -27,7 +27,6 @@
 #define MI_NONPAGED_POOL_END            (PVOID)0xFFFFFFFFFFBFFFFFULL
 //#define MM_HAL_VA_START                      0xFFFFFFFFFFC00000ULL // 4 MB HAL mappings, defined in NDK [MiVaHal]
 #define MI_HIGHEST_SYSTEM_ADDRESS       (PVOID)0xFFFFFFFFFFFFFFFFULL
-#define MmSystemRangeStart              ((PVOID)MI_REAL_SYSTEM_RANGE_START)
 
 /* WOW64 address definitions */
 #define MM_HIGHEST_USER_ADDRESS_WOW64   0x7FFEFFFF

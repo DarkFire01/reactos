@@ -324,10 +324,7 @@ extern "C" {
 #pragma intrinsic(__writeeflags)
 #pragma intrinsic(__readeflags)
 #endif
-#if defined(_M_ARM64)
-#pragma intrinsic(_ReadStatusReg)
-#pragma intrinsic(_WriteStatusReg)
-#endif
+
 /*** Interrupts and traps ***/
 #pragma intrinsic(__debugbreak)
 #pragma intrinsic(_disable)
@@ -453,6 +450,12 @@ void _sgdt(void *Destination);
 #pragma intrinsic(__rdpmccntr64)
 #pragma intrinsic(__sev)
 #endif
+#if defined(_M_ARM64)
+#pragma intrinsic(_ReadStatusReg)
+#pragma intrinsic(_WriteStatusReg)
+#pragma intrinsic(__yield)
+#endif
+
 
 /** Secure virtual machine **/
 #if defined(_M_IX86) || defined(_M_AMD64)

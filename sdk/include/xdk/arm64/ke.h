@@ -20,8 +20,29 @@ $if (_WDMDDK_)
 #define SharedSystemTime (KI_USER_SHARED_DATA + 0x14)
 #define SharedTickCount (KI_USER_SHARED_DATA + 0x320)
 
-#if 0
-//TODO: Fix instrinsics
+FORCEINLINE
+LONG64
+ReadNoFence64 (
+    _In_ _Interlocked_operand_ LONG64 const volatile *Source
+    )
+
+{
+
+    LONG64 Value;
+
+    Value = __iso_volatile_load64(Source);
+    return Value;
+}
+
+FORCEINLINE
+VOID
+YieldProcessor(
+    VOID)
+{
+    __dmb(_ARM64_BARRIER_ISHST);
+    __yield();
+}
+
 #define KeQueryInterruptTime() ((ULONG64)ReadNoFence64((const volatile LONG64 *)(SharedInterruptTime)))
 
 #define KeQuerySystemTime(CurrentCount)                                     \
@@ -29,7 +50,22 @@ $if (_WDMDDK_)
 
 #define KeQueryTickCount(CurrentCount)                                      \
     *((PULONG64)(CurrentCount)) = ReadNoFence64((const volatile LONG64 *)(SharedTickCount))
-#endif
+
+#define MemoryBarrier()         __dmb(_ARM64_BARRIER_SY)
+#define PreFetchCacheLine(l,a)  __prefetch((const void *) (a))
+#define PrefetchForWrite(p)     __prefetch((const void *) (p))
+#define ReadForWriteAccess(p)   (*(p))
+
+FORCEINLINE
+VOID
+KeMemoryBarrier(
+    VOID)
+{
+    _ReadWriteBarrier();
+    MemoryBarrier();
+}
+
+#define KeMemoryBarrierWithoutFence() _ReadWriteBarrier()
 
 #define PAGE_SIZE               0x1000
 #define PAGE_SHIFT              12L

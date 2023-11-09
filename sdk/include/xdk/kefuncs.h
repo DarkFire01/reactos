@@ -171,7 +171,7 @@ $if (_WDMDDK_ || _NTDDK_)
 $endif (_WDMDDK_ || _NTDDK_)
 
 $if (_WDMDDK_)
-#if !defined(_M_AMD64)
+#if !defined(_M_AMD64) && !defined(_M_ARM64)
 NTKERNELAPI
 ULONGLONG
 NTAPI

@@ -150,8 +150,11 @@ typedef struct _MMPTE
         MMPTE_SUBSECTION Subsect;
         MMPTE_LIST List;
     } u;
-} MMPTE, *PMMPTE;
-
+} MMPTE, *PMMPTE,
+  MMPDE, *PMMPDE,
+  MMPPE, *PMMPPE,
+  MMPXE, *PMMPXE;
+  
 #ifdef __cplusplus
 }; // extern "C"
 #endif

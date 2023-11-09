@@ -23,6 +23,12 @@
 #include <armintr.h>
 #endif /* _M_ARM */
 
+
+#if defined(_M_ARM64)
+//#include <arm_neon.h>
+#include <arm64intr.h>
+#endif /* _M_ARM */
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -1002,10 +1008,13 @@ int _isunorderedf(float, float);
 #endif /* _M_ARM */
 
 #ifdef _M_ARM64
+void __yield(void);
 unsigned __int64 __getReg(int);
 unsigned __int64 __readx18qword(unsigned long);
 unsigned char _InterlockedCompareExchange128(__int64 volatile * _Destination, __int64 _ExchangeHigh, __int64 _ExchangeLow, __int64 * _ComparandResult);
 void __break(int);
+__int64 __iso_volatile_load64(const volatile __int64 *);
+__int64 _InterlockedAdd64(__int64 volatile *, __int64);
 #endif
 
 #if defined(_M_CEE_PURE)
