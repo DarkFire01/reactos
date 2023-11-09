@@ -56,11 +56,9 @@ EfiEntry(
     /* Initialize I/O subsystem */
     FsInit();
 
-    /* 0x32000 is what UEFI defines, but we can go smaller if we want */
-    BasicStack = (PVOID)((ULONG_PTR)0x32000 + (ULONG_PTR)MmAllocateMemoryWithType(0x32000, LoaderOsloaderStack));
-    _changestack();
-
+    RunLoader();
 Quit:
+
     /* If we reach this point, something went wrong before, therefore reboot */
     Reboot();
 
