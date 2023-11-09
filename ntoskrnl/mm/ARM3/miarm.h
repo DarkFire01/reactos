@@ -150,6 +150,24 @@ C_ASSERT(SYSTEM_PD_SIZE == PAGE_SIZE);
 #define PTE_DISABLE_CACHE       0x10
 #define PTE_WRITECOMBINED_CACHE 0x10
 #define PTE_PROTECT_MASK        0x610
+#elif defined(_M_ARM64)
+
+#define PTE_READONLY            0x200
+#define PTE_EXECUTE             0 // Not worrying about NX yet
+#define PTE_EXECUTE_READ        0 // Not worrying about NX yet
+#define PTE_READWRITE           0 // Doesn't exist on ARM
+#define PTE_WRITECOPY           0 // Doesn't exist on ARM
+#define PTE_EXECUTE_READWRITE   0 // Not worrying about NX yet
+#define PTE_EXECUTE_WRITECOPY   0 // Not worrying about NX yet
+#define PTE_PROTOTYPE           0x400 // Using the Shared bit
+
+//
+// Cache flags
+//
+#define PTE_ENABLE_CACHE        0
+#define PTE_DISABLE_CACHE       0x10
+#define PTE_WRITECOMBINED_CACHE 0x10
+#define PTE_PROTECT_MASK        0x610
 #else
 #error Define these please!
 #endif
@@ -219,6 +237,10 @@ extern const ULONG MmProtectToValue[32];
 //
 #define COLORED_LIST_HEAD ((1 << 25) - 1) // 0x1FFFFFF
 #elif defined(_M_AMD64)
+#define LIST_HEAD 0xFFFFFFFFFFFFFFFFLL
+#define COLORED_LIST_HEAD ((1ULL << 57) - 1) // 0x1FFFFFFFFFFFFFFLL
+#elif defined(_M_ARM64)
+/* Stealing AMD64 since we're using the same memory map*/
 #define LIST_HEAD 0xFFFFFFFFFFFFFFFFLL
 #define COLORED_LIST_HEAD ((1ULL << 57) - 1) // 0x1FFFFFFFFFFFFFFLL
 #else
