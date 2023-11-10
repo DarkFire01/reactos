@@ -8,6 +8,9 @@
 #undef KeAcquireSpinLock
 #undef KeReleaseSpinLock
 
+ULONG
+DbgPrintEarly(const char *fmt, ...);
+
 /*
  * @implemented
  */
@@ -15,14 +18,15 @@ KIRQL
 KeAcquireSpinLockRaiseToSynch(PKSPIN_LOCK SpinLock)
 {
     KIRQL OldIrql;
-
+    DbgPrintEarly("Rasing IRQL\n");
     /* Raise to sync */
     KeRaiseIrql(SYNCH_LEVEL, &OldIrql);
-
+    DbgPrintEarly("Rasing IRQL done\n");
     /* Acquire the lock and return */
     KxAcquireSpinLock(SpinLock);
     return OldIrql;
 }
+
 
 /*
  * @implemented
@@ -32,10 +36,10 @@ NTAPI
 KeAcquireSpinLockRaiseToDpc(PKSPIN_LOCK SpinLock)
 {
     KIRQL OldIrql;
-
+    DbgPrintEarly("Rasing IRQL\n");
     /* Raise to dispatch */
     KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
-
+    DbgPrintEarly("Rasing IRQL done\n");
     /* Acquire the lock and return */
     KxAcquireSpinLock(SpinLock);
     return OldIrql;

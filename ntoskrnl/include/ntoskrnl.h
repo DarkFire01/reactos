@@ -12,7 +12,7 @@
 /* INCLUDES ******************************************************************/
 
 /* ARM Bringup Hack */
-#ifdef _M_ARM
+#ifdef _M_ARM64
 #define DbgPrint DbgPrintEarly
 #endif
 

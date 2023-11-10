@@ -483,6 +483,11 @@ typedef struct _ARM_LOADER_BLOCK
 #endif
 } ARM_LOADER_BLOCK, *PARM_LOADER_BLOCK;
 
+typedef struct _ARM64_LOADER_BLOCK
+{
+    PVOID PcrPage;
+} ARM64_LOADER_BLOCK, *PARM64_LOADER_BLOCK;
+
 //
 // Firmware information block (NT6+)
 //
@@ -564,6 +569,7 @@ typedef struct _LOADER_PARAMETER_BLOCK
         IA64_LOADER_BLOCK IA64;
         PPC_LOADER_BLOCK PowerPC;
         ARM_LOADER_BLOCK Arm;
+        ARM64_LOADER_BLOCK Arm64;
     } u;
     FIRMWARE_INFORMATION_LOADER_BLOCK FirmwareInformation;
 } LOADER_PARAMETER_BLOCK, *PLOADER_PARAMETER_BLOCK;

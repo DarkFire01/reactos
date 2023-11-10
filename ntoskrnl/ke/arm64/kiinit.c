@@ -19,8 +19,6 @@ QemuWriteByteToUart(UCHAR ByteToSend)
     *UART0DR = ByteToSend;
 }
 
-/* End of bad hack ********************/
-
 ULONG
 DbgPrintEarly(const char *fmt, ...)
 {
@@ -38,6 +36,7 @@ DbgPrintEarly(const char *fmt, ...)
     {
         if (*String == '\n')
         {
+
             QemuWriteByteToUart('\r');
         }
         QemuWriteByteToUart(*String);
@@ -46,6 +45,7 @@ DbgPrintEarly(const char *fmt, ...)
 
     return STATUS_SUCCESS;
 }
+
 
 /* FUNCTIONS *****************************************************************/
 
@@ -59,11 +59,11 @@ KiInitializePcr(IN ULONG ProcessorNumber,
 
     /* Set the Current Thread */
     Pcr->Prcb.CurrentThread = IdleThread;
-
+        DbgPrintEarly("Setting IdleThread\n");
     /* Set pointers to ourselves */
     Pcr->Self = (PKPCR)Pcr;
     Pcr->CurrentPrcb = &Pcr->Prcb;
-
+        DbgPrintEarly("Setting version\n");
     /* Set the PCR Version */
     Pcr->MajorVersion = PCR_MAJOR_VERSION;
     Pcr->MinorVersion = PCR_MINOR_VERSION;
@@ -84,7 +84,7 @@ KiInitializePcr(IN ULONG ProcessorNumber,
     /* Set the Processor Number and current Processor Mask */
     Pcr->Prcb.Number = (UCHAR)ProcessorNumber;
     Pcr->Prcb.SetMember = 1 << ProcessorNumber;
-
+          DbgPrintEarly("Setting processor block\n");
     /* Set the PRCB for this Processor */
     KiProcessorBlock[ProcessorNumber] = Pcr->CurrentPrcb;
 
@@ -96,16 +96,139 @@ KiInitializePcr(IN ULONG ProcessorNumber,
 
 }
 
+#define PROCESSOR_ARCHITECTURE_ARM64            12
+
+VOID
+NTAPI
+KiInitializeKernel(IN PKPROCESS InitProcess,
+                   IN PKTHREAD InitThread,
+                   IN PVOID IdleStack,
+                   IN PKPRCB Prcb,
+                   IN CCHAR Number,
+                   IN PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+    PKIPCR Pcr = (PKIPCR)LoaderBlock->u.Arm64.PcrPage;
+    ULONG PageDirectory[2];
+
+    /* Set the default NX policy (opt-in) */
+    //SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_OPTIN;
+    DPRINT1("Setting up spinlocks\n");
+    /* Initialize spinlocks and DPC data */
+    KiInitSpinLocks(Prcb, Number);
+
+    /* Set stack pointers */
+    //Pcr->InitialStack = IdleStack;
+    Pcr->Prcb.SpBase = IdleStack; // ???
+
+    /* Check if this is the Boot CPU */
+    if (!Number)
+    {
+        /* Set DMA coherency */
+        KiDmaIoCoherency = 0;
+
+        /* Sweep D-Cache */
+        DPRINT1("Setting up Globals\n");
+        /* Set boot-level flags */
+        KeProcessorArchitecture = PROCESSOR_ARCHITECTURE_ARM64;
+        KeFeatureBits = 0;
+        /// FIXME: just a wild guess
+#if 0
+        /* Set the current MP Master KPRCB to the Boot PRCB */
+        Prcb->MultiThreadSetMaster = Prcb;
+#endif
+        DPRINT1("Lowering IRQL\n\n");
+        /* Lower to APC_LEVEL */
+        KeLowerIrql(APC_LEVEL);
+        DPRINT1("Lowering Irql Success\n");
+        /* Initialize portable parts of the OS */
+        KiInitSystem();
+
+        DPRINT1("KiInitSystem success\n");
+        /* Initialize the Idle Process and the Process Listhead */
+        InitializeListHead(&KiProcessListHead);
+        PageDirectory[0] = 0;
+        PageDirectory[1] = 0;
+        KeInitializeProcess(InitProcess,
+                            0,
+                            0xFFFFFFFF,
+                            (PLONG_PTR)PageDirectory,
+                            FALSE);
+        DPRINT1("Initial Processo success\n");
+        InitProcess->QuantumReset = MAXCHAR;
+    }
+    else
+    {
+        DPRINT1("SMP for ARM64 Not yet supported\n");
+    }
+    DPRINT1("Setting up idle thread\n");
+    /* Setup the Idle Thread */
+    KeInitializeThread(InitProcess,
+                       InitThread,
+                       NULL,
+                       NULL,
+                       NULL,
+                       NULL,
+                       NULL,
+                       IdleStack);
+    DPRINT1("Setting up idle thread success\n");
+    InitThread->NextProcessor = Number;
+    InitThread->Priority = HIGH_PRIORITY;
+    InitThread->State = Running;
+    InitThread->Affinity = 1 << Number;
+    InitThread->WaitIrql = DISPATCH_LEVEL;
+    InitProcess->ActiveProcessors = 1 << Number;
+
+    /* HACK for MmUpdatePageDir */
+    ((PETHREAD)InitThread)->ThreadsProcess = (PEPROCESS)InitProcess;
+
+    /* Set up the thread-related fields in the PRCB */
+    Prcb->CurrentThread = InitThread;
+    Prcb->NextThread = NULL;
+    Prcb->IdleThread = InitThread;
+    DPRINT1("Going to executive\n");
+    /* Initialize the Kernel Executive */
+    ExpInitializeExecutive(Number, LoaderBlock);
+
+    /* Only do this on the boot CPU */
+    if (!Number)
+    {
+        /* Calculate the time reciprocal */
+        KiTimeIncrementReciprocal =
+            KiComputeReciprocal(KeMaximumIncrement,
+                                &KiTimeIncrementShiftCount);
+
+        /* Update DPC Values in case they got updated by the executive */
+        Prcb->MaximumDpcQueueDepth = KiMaximumDpcQueueDepth;
+        Prcb->MinimumDpcRate = KiMinimumDpcRate;
+        Prcb->AdjustDpcThreshold = KiAdjustDpcThreshold;
+    }
+
+    /* Raise to Dispatch */
+    KfRaiseIrql(DISPATCH_LEVEL);
+
+    /* Set the Idle Priority to 0. This will jump into Phase 1 */
+    KeSetPriorityThread(InitThread, 0);
+
+    /* If there's no thread scheduled, put this CPU in the Idle summary */
+    KiAcquirePrcbLock(Prcb);
+    if (!Prcb->NextThread) KiIdleSummary |= 1 << Number;
+    KiReleasePrcbLock(Prcb);
+
+    /* Raise back to HIGH_LEVEL and clear the PRCB for the loader block */
+    KfRaiseIrql(HIGH_LEVEL);
+    LoaderBlock->Prcb = 0;
+}
+
 CODE_SEG("INIT")
 DECLSPEC_NORETURN
 VOID
 NTAPI
 KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    DbgPrintEarly("KiSystemStartup: Entry\n");
     DbgPrintEarly("ReactOS ARM64 Port\n");
+    DbgPrintEarly("KiSystemStartup: Entry\n");
     ULONG Cpu;
-    PKIPCR Pcr = (PKIPCR)KeGetPcr();
+    PKIPCR Pcr = (PKIPCR)LoaderBlock->u.Arm64.PcrPage;
     PKTHREAD InitialThread;
     PKPROCESS InitialProcess;
 
@@ -120,11 +243,10 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     InitialThread = (PKTHREAD)LoaderBlock->Thread;
     InitialProcess = (PKPROCESS)LoaderBlock->Process;
 
-    DbgPrintEarly("Going into first ListHead\n");
     /* Clean the APC List Head */
     InitializeListHead(&InitialThread->ApcState.ApcListHead[KernelMode]);
-    DbgPrintEarly("return from ListHead\n");
 
+    DbgPrintEarly("TODO: KiInitializeMachineType\n");
     /* Initialize the machine type */
    // KiInitializeMachineType(); //TODO: ARM64
 
@@ -139,7 +261,7 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                     Pcr,
                     InitialThread);
 
-
+    DbgPrintEarly("Return from Init PCR\n");
     /* Set us as the current process */
     InitialThread->ApcState.Process = InitialProcess;
 
@@ -166,13 +288,16 @@ AppCpuInit:
         KdInitSystem(0, KeLoaderBlock);
 
         /* Check for break-in */
-        if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
+       /// if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
     }
 
-    /* Raise to HIGH_LEVEL */
-    KfRaiseIrql(HIGH_LEVEL);
-    DPRINT1("That's all for now folks! - TODO: KiInitializeKernel for ARM64\n");
-    __debugbreak();
+    KiInitializeKernel(InitialProcess,
+                       InitialThread,
+                       NULL,
+                       &Pcr->Prcb,
+                       Cpu,
+                       LoaderBlock);
+    DPRINT1("That's all for now folks!\n");
     for(;;)
     {
 

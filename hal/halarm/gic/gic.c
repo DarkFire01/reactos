@@ -52,6 +52,11 @@ KIRQL
 FASTCALL
 KfRaiseIrql(IN KIRQL NewIrql)
 {
+    DPRINT1("KfRaiseIrql Entry\n");
+    for(;;)
+    {
+
+    }
     PKPCR Pcr = KeGetPcr();
     KIRQL CurrentIrql;
     /* Read current IRQL */
@@ -77,8 +82,13 @@ VOID
 FASTCALL
 KfLowerIrql(IN KIRQL NewIrql)
 {
+    for(;;)
+    {
 
+    }
+    DPRINT1("KfLowerIrql Entry\n");
     PKPCR Pcr = KeGetPcr();
+    DPRINT1("KfLowerIrql Grabbed PCR\n");
 #ifdef IRQL_DEBUG
     /* Validate correct lower */
     if (OldIrql > Pcr->CurrentIrql)

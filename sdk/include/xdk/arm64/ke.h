@@ -146,7 +146,7 @@ PKPCR
 KeGetPcr(
     VOID)
 {
-    return (PKPCR)(PCR);
+    return ((KPCR *)__readx18byte(FIELD_OFFSET(KPCR, Self)));
 }
 
 NTSYSAPI
