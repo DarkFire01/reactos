@@ -101,6 +101,7 @@ ApicStartApplicationProcessor(ULONG NTProcessorNumber, PHYSICAL_ADDRESS StartupL
 {
     ASSERT(StartupLoc.HighPart == 0);
     ASSERT((StartupLoc.QuadPart & 0xFFF) == 0);
+    ASSERT((StartupLoc.QuadPart & 0xFFF00FFF) == 0);
 
     /* Init IPI */
     ApicRequestGlobalInterrupt(HalpProcessorIdentity[NTProcessorNumber].LapicId, 0,

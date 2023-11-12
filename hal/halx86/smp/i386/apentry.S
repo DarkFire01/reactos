@@ -9,163 +9,115 @@
 #include <asm.inc>
 #include <ks386.inc>
 
-#define ZERO_OFFSET(f) (f - _APEntry16)
-#define PS(f) (f - _APEntryCpuState)
+#define ZERO_OFFSET(f) (f - _HalpAPEntry16)
+#define PS(f) (f - _HalpAPEntryData)
 
-PUBLIC _APEntry16
-PUBLIC _APEntry16End
-PUBLIC _APEntryJump32Offset
-PUBLIC _APEntryJump32Segment
-PUBLIC _TempPageTableAddr
-PUBLIC _APEntryCpuState
-PUBLIC _APEntry32
+PUBLIC _HalpAPEntry16
+PUBLIC _HalpAPEntryData
+PUBLIC _HalpAPEntry32
+PUBLIC _HalpAPEntry16End
 
 .code16
-_APEntry16:
+_HalpAPEntry16:
     cli
 
-    /* Load final descriptor tables */
+    /* Calculate the flat base address */
+    mov ebp, cs
+    shl ebp, 4
+
+    /* Use flat addressing */
+    xor eax, eax
+    mov ds, eax
+
 #ifdef _USE_ML
-    data32 lgdt fword ptr cs:[ZERO_OFFSET(PS_Gdtr)]
-    data32 lidt fword ptr cs:[ZERO_OFFSET(PS_Idtr)]
+    data32 lgdt fword ptr cs:[ZERO_OFFSET(Gdtr)]
 #else
-    data32 lgdt cs:[ZERO_OFFSET(PS_Gdtr)]
-    data32 lidt cs:[ZERO_OFFSET(PS_Idtr)]
+    data32 lgdt cs:[ZERO_OFFSET(Gdtr)]
 #endif
-
-    /* Processor state base address */
-    mov ebx, cs:[ZERO_OFFSET(PS_SelfPtr)]
-    mov esi, cs:[ZERO_OFFSET(PS_SegDs)]
-
+    
     /* Load temp page table */
-    mov eax, cs:[ZERO_OFFSET(_TempPageTableAddr)]
+    mov eax, cs:[ZERO_OFFSET(PageTableRoot)]
     mov cr3, eax
 
-    /* Enable paging and protected mode */
-    mov eax, cs:[ZERO_OFFSET(PS_Cr0)]
+    mov eax, cr0
+    or eax, HEX(80000001)
     mov cr0, eax
 
+.align 4
     /* Long jump, 32bit address */
     .byte HEX(66)
     .byte HEX(EA)
+_HalpAPEntryData:
 _APEntryJump32Offset:
     .long 0
 _APEntryJump32Segment:
-    .word 0
-
-_APEntry16End:
-
-.align 4
-_TempPageTableAddr:
+    .long 8
+SelfPtr:
     .long 0
-// Processor state
-_APEntryCpuState:
-PS_SelfPtr:
-    .long 0 // self pointer (for use in protected mode)
-PS_Esp:
+PageTableRoot:
     .long 0
-PS_Eip:
+ProcessorState:
     .long 0
-PS_Eflags:
-    .long 0
-PS_SegCs:
-    .long 0
-PS_SegDs:
-    .long 0
-PS_SegEs:
-    .long 0
-PS_SegSs:
-    .long 0
-PS_SegFs:
-    .long 0
-PS_SegGs:
-    .long 0
-// KSPECIAL_REGISTERS
-PS_Cr0:
-    .long 0
-PS_Cr2:
-    .long 0
-PS_Cr3:
-    .long 0
-PS_Cr4:
-    .long 0
-PS_KernelDr0:
-    .long 0
-PS_KernelDr1:
-    .long 0
-PS_KernelDr2:
-    .long 0
-PS_KernelDr3:
-    .long 0
-PS_KernelDr6:
-    .long 0
-PS_KernelDr7:
-    .long 0
-    .space 2
-PS_Gdtr:
-    .word 0
-    .long 0
-    .space 2
-PS_Idtr:
-    .word 0
-    .long 0
-PS_Tr:
-    .word 0
-PS_Ldtr:
-    .word 0
-    .space 4*6 // reserved
+Gdtr_Pad:
+    .short 0 // Pad
+Gdtr:
+    .short 0 // Limit
+    .long 0 // Base
+_HalpAPEntry16End:  
 .endcode16
 
 .code32
-_APEntry32:
-    cli
+_HalpAPEntry32: 
+    /* Set the Ring 0 DS/ES/SS Segment */
+    mov ax, HEX(10)
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov gs, ax
 
-    /* Load segment registers from ProcessorState values */
-    /* DS should be the first one */
-    mov ds, esi
+    /* Load ProcessorState pointer */
+    mov esi, [ebp + ZERO_OFFSET(ProcessorState)]
 
-    mov eax, [ebx + PS(PS_SegEs)]
+    mov eax, [esi + PsContextFrame + CsSegDs]
+    mov ds, eax
+    mov eax, [esi + PsContextFrame + CsSegEs]
     mov es, eax
-    mov eax, [ebx + PS(PS_SegSs)]
+    mov eax, [esi + PsContextFrame + CsSegSs]
     mov ss, eax
-    mov eax, [ebx + PS(PS_SegFs)]
+    mov eax, [esi + PsContextFrame + CsSegFs]
     mov fs, eax
-    mov eax, [ebx + PS(PS_SegGs)]
+    mov eax, [esi + PsContextFrame + CsSegGs]
     mov gs, eax
 
     /* Write CR registers with ProcessorState values */
-    mov eax, [ebx + PS(PS_Cr3)]
+    mov eax, [esi + PsSpecialRegisters + SrCr3]
     mov cr3, eax
-    mov eax, [ebx + PS(PS_Cr4)]
+    mov eax, [esi + PsSpecialRegisters + SrCr4]
     mov cr4, eax
 
     /* Load debug registers */
-    mov eax, [ebx + PS(PS_KernelDr0)]
+    mov eax, [esi + PsSpecialRegisters + SrKernelDr0]
     mov dr0, eax
-    mov eax, [ebx + PS(PS_KernelDr1)]
+    mov eax, [esi + PsSpecialRegisters + SrKernelDr1]
     mov dr1, eax
-    mov eax, [ebx + PS(PS_KernelDr2)]
+    mov eax, [esi + PsSpecialRegisters + SrKernelDr2]
     mov dr2, eax
-    mov eax, [ebx + PS(PS_KernelDr3)]
+    mov eax, [esi + PsSpecialRegisters + SrKernelDr3]
     mov dr3, eax
-    mov eax, [ebx + PS(PS_KernelDr6)]
+    mov eax, [esi + PsSpecialRegisters + SrKernelDr6]
     mov dr6, eax
-    mov eax, [ebx + PS(PS_KernelDr7)]
+    mov eax, [esi + PsSpecialRegisters + SrKernelDr7]
     mov dr7, eax
 
     /* Load TSS */
-    ltr word ptr [ebx + PS(PS_Tr)]
+    ltr word ptr [esi + PsSpecialRegisters + SrTr]
 
-    /* Load AP Stack*/
-    mov esp, [ebx + PS(PS_Esp)]
+    /* Load AP Stack */
+    mov esp, [esi + PsContextFrame + CsEsp]
 
     /* Load Eip and push it as a "return" address */
-    mov eax, [ebx + PS(PS_Eip)]
+    mov eax, [esi + PsContextFrame + CsEip]
     push eax
-
-    /* Load flags */
-    mov eax, [ebx + PS(PS_Eflags)]
-    sahf
 
     /* Set up all GP registers */
     xor edi, edi

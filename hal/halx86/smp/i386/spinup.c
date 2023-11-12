@@ -20,31 +20,23 @@ extern PHYSICAL_ADDRESS HalpLowStubPhysicalAddress;
 extern PVOID HalpLowStub;
 
 // The data necessary for a boot (stored inside HalpLowStub)
-extern PVOID APEntry16;
-extern PVOID APEntry16End;
-extern PVOID APEntry32;
-extern PVOID APEntryJump32Offset;
-extern PVOID APEntryJump32Segment;
-extern PVOID TempPageTableAddr;
-extern PVOID APEntryCpuState;
+extern PVOID HalpAPEntry16;
+extern PVOID HalpAPEntryData;
+extern PVOID HalpAPEntry32;
+extern PVOID HalpAPEntry16End;
 extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
 
-ULONG StartedProcessorCount = 1;
+ULONG HalpStartedProcessorCount = 1;
 
-typedef struct _AP_ENTRY_CPU_STATE
+typedef struct _AP_ENTRY_DATA
 {
+    ULONG Jump32Offset;
+    ULONG Jump32Segment;
     PVOID SelfPtr;
-    UINT32 Esp;
-    UINT32 Eip;
-    UINT32 Eflags;
-    UINT32 SegCs;
-    UINT32 SegDs;
-    UINT32 SegEs;
-    UINT32 SegSs;
-    UINT32 SegFs;
-    UINT32 SegGs;
-    KSPECIAL_REGISTERS SpecialRegisters; 
-} AP_ENTRY_CPU_STATE, *PAP_ENTRY_CPU_STATE;
+    PFN_NUMBER PageTableRoot;
+    PKPROCESSOR_STATE ProcessorState;
+    KDESCRIPTOR Gdtr;
+} AP_ENTRY_DATA, *PAP_ENTRY_DATA;
 
 typedef struct _AP_SETUP_STACK
 {
@@ -99,24 +91,18 @@ HalpMapAddressFlat(
 
 static
 PHYSICAL_ADDRESS
-HalpInitTempPageTable(
+HalpSetupTemporaryMappings(
     _In_ PKPROCESSOR_STATE ProcessorState)
 {
-    PMMPDE pageDirectory = ExAllocatePoolZero(NonPagedPool, PAGE_SIZE, TAG_HAL);
+    PHYSICAL_ADDRESS Cr3PhysicalAddress;
+    Cr3PhysicalAddress.QuadPart = ProcessorState->SpecialRegisters.Cr3;
+
+    PMMPDE pageDirectory = MmMapIoSpace(Cr3PhysicalAddress, PAGE_SIZE, MmCached);
     ASSERT(pageDirectory);
 
     // Map the low stub
     HalpMapAddressFlat(pageDirectory, HalpLowStub, (PVOID)(ULONG_PTR)HalpLowStubPhysicalAddress.QuadPart);
     HalpMapAddressFlat(pageDirectory, HalpLowStub, NULL);
-
-    // Map 32bit mode entry point
-    HalpMapAddressFlat(pageDirectory, &APEntry32, NULL);
-
-    // Map GDT
-    HalpMapAddressFlat(pageDirectory, (PVOID)ProcessorState->SpecialRegisters.Gdtr.Base, NULL);
-
-    // Map IDT
-    HalpMapAddressFlat(pageDirectory, (PVOID)ProcessorState->SpecialRegisters.Idtr.Base, NULL);
 
     return MmGetPhysicalAddress(pageDirectory);
 }
@@ -134,47 +120,27 @@ HalStartNextProcessor(
     ApStack->KxLoaderBlock = KeLoaderBlock;
     ApStack->ReturnAddr = NULL;
 
-    if (StartedProcessorCount == HalpApicInfoTable.ProcessorCount)
+    if (HalpStartedProcessorCount == HalpApicInfoTable.ProcessorCount)
         return FALSE;
 
-    // Initalize the temporary page table
-    // TODO: clean it up after an AP boots successfully
-    ULONG_PTR initialCr3 = HalpInitTempPageTable(ProcessorState).QuadPart;
-
     // Put the bootstrap code into low memory
-    RtlCopyMemory(HalpLowStub, &APEntry16,  ((ULONG_PTR)&APEntry16End - (ULONG_PTR)&APEntry16));
+    RtlCopyMemory(HalpLowStub, &HalpAPEntry16,  ((ULONG_PTR)&HalpAPEntry16End - (ULONG_PTR)&HalpAPEntry16));
 
-    // Set the data for 16bit entry code
-    PUINT32 APEntryJump32OffsetPtr = (PUINT32)((ULONG_PTR)HalpLowStub + (ULONG_PTR)&APEntryJump32Offset - (ULONG_PTR)&APEntry16);
-    PUINT32 APEntryJump32SegmentPtr = (PUINT32)((ULONG_PTR)HalpLowStub + (ULONG_PTR)&APEntryJump32Segment - (ULONG_PTR)&APEntry16);
-    PUINT32 TempPageTableAddrPtr = (PUINT32)((ULONG_PTR)HalpLowStub + (ULONG_PTR)&TempPageTableAddr - (ULONG_PTR)&APEntry16);
+    // Get a pointer to apEntryData 
+    PAP_ENTRY_DATA apEntryData = (PVOID)((ULONG_PTR)HalpLowStub + ((ULONG_PTR)&HalpAPEntryData - (ULONG_PTR)&HalpAPEntry16));
 
-    PVOID buf = &APEntry32;
-
-    RtlCopyMemory(APEntryJump32OffsetPtr, &buf, sizeof(buf));
-    RtlCopyMemory(APEntryJump32SegmentPtr, &ProcessorState->ContextFrame.SegCs, sizeof(UINT16));
-    RtlCopyMemory(TempPageTableAddrPtr, &initialCr3, sizeof(initialCr3));
-
-    // Write processor state stuff
-    PAP_ENTRY_CPU_STATE apCpuState = (PVOID)((ULONG_PTR)HalpLowStub + ((ULONG_PTR)&APEntryCpuState - (ULONG_PTR)&APEntry16));
-
-    *apCpuState = (AP_ENTRY_CPU_STATE){
-        .SelfPtr = apCpuState,
-        .Esp = ProcessorState->ContextFrame.Esp,
-        .Eip = ProcessorState->ContextFrame.Eip,
-        .Eflags = ProcessorState->ContextFrame.EFlags,
-        .SegCs = ProcessorState->ContextFrame.SegCs,
-        .SegDs = ProcessorState->ContextFrame.SegDs,
-        .SegEs = ProcessorState->ContextFrame.SegEs,
-        .SegSs = ProcessorState->ContextFrame.SegSs,
-        .SegFs = ProcessorState->ContextFrame.SegFs,
-        .SegGs = ProcessorState->ContextFrame.SegGs,
-        .SpecialRegisters = ProcessorState->SpecialRegisters,
+    *apEntryData = (AP_ENTRY_DATA){
+        .Jump32Offset = (ULONG)&HalpAPEntry32,
+        .Jump32Segment = (ULONG)ProcessorState->ContextFrame.SegCs,
+        .SelfPtr = (PVOID)apEntryData,
+        .PageTableRoot = HalpSetupTemporaryMappings(ProcessorState).QuadPart,
+        .ProcessorState = ProcessorState,
+        .Gdtr = ProcessorState->SpecialRegisters.Gdtr,
     };
 
-    ApicStartApplicationProcessor(StartedProcessorCount, HalpLowStubPhysicalAddress);
+    ApicStartApplicationProcessor(HalpStartedProcessorCount, HalpLowStubPhysicalAddress);
 
-    StartedProcessorCount++;
+    HalpStartedProcessorCount++;
 
     return TRUE;
 }
