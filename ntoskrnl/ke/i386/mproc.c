@@ -26,45 +26,6 @@ typedef struct _APINFO
 
 /* FUNCTIONS *****************************************************************/
 
-FORCEINLINE
-PKGDTENTRY
-KiGetGdtEntry(
-    IN PVOID pGdt,
-    IN USHORT Selector)
-{
-    return (PKGDTENTRY)((ULONG_PTR)pGdt + (Selector & ~RPL_MASK));
-}
-
-FORCEINLINE
-VOID
-KiSetGdtDescriptorBase(
-    IN OUT PKGDTENTRY Entry,
-    IN UINT32 Base)
-{
-    Entry->BaseLow = (UINT16)(Base & 0xffff);
-    Entry->HighWord.Bytes.BaseMid = (UINT8)((Base >> 16) & 0xff);
-    Entry->HighWord.Bytes.BaseHi  = (UINT8)((Base >> 24) & 0xff);
-}
-
-FORCEINLINE
-VOID
-KiSetGdtDescriptorLimit(
-    IN OUT PKGDTENTRY Entry,
-    IN UINT32 Limit)
-{
-    if (Limit < 0x100000)
-    {
-        Entry->HighWord.Bits.Granularity = 0;
-    }
-    else
-    {
-        Limit >>= 12;
-        Entry->HighWord.Bits.Granularity = 1;
-    }
-    Entry->LimitLow = (UINT16)(Limit & 0xffff);
-    Entry->HighWord.Bits.LimitHi = ((Limit >> 16) & 0x0f);
-}
-
 CODE_SEG("INIT")
 VOID
 NTAPI
