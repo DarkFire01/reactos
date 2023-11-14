@@ -319,6 +319,7 @@ typedef enum
 #define MM_HAL_VA_START         0xFFFFFFFFFFC00000ULL /* This is Vista+ */
 #define MM_HAL_VA_END           0xFFFFFFFFFFFFFFFFULL
 #define APIC_BASE               0xFFFFFFFFFFFE0000ULL
+#define HALP_LOW_STUB_SIZE_IN_PAGES 3 //TODO:
 
 //
 // IOPM Definitions

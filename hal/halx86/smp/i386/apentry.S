@@ -1,7 +1,7 @@
 /*
  * PROJECT:     ReactOS HAL
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
- * PURPOSE:     Application processor startup code for i386
+ * PURPOSE:     i386 Application Processor (AP) spinup setup
  * COPYRIGHT:   Copyright 2021 Justin Miller <justinmiller100@gmail.com>
  *              Copyright 2021 Victor Perevertkin <victor.perevertkin@reactos.org>
  */
@@ -34,7 +34,7 @@ _HalpAPEntry16:
 #else
     data32 lgdt cs:[ZERO_OFFSET(Gdtr)]
 #endif
-    
+
     /* Load temp page table */
     mov eax, cs:[ZERO_OFFSET(PageTableRoot)]
     mov cr3, eax
@@ -63,11 +63,11 @@ Gdtr_Pad:
 Gdtr:
     .short 0 // Limit
     .long 0 // Base
-_HalpAPEntry16End:  
+_HalpAPEntry16End:
 .endcode16
 
 .code32
-_HalpAPEntry32: 
+_HalpAPEntry32:
     /* Set the Ring 0 DS/ES/SS Segment */
     mov ax, HEX(10)
     mov ds, ax

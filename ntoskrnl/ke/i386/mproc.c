@@ -9,7 +9,7 @@
 /* INCLUDES *****************************************************************/
 
 #include <ntoskrnl.h>
-// #define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 typedef struct _APINFO
@@ -62,8 +62,8 @@ KeStartAllProcessors(VOID)
         /* Initalize a new PCR for the specific AP */
         KiInitializePcr(ProcessorCount,
                         &APInfo->Pcr,
-                        &APInfo->Idt[0], 
-                        &APInfo->Gdt[0], 
+                        &APInfo->Idt[0],
+                        &APInfo->Gdt[0],
                         &APInfo->Tss,
                         (PKTHREAD)&APInfo->Thread,
                         DPCStack);
@@ -114,29 +114,30 @@ KeStartAllProcessors(VOID)
         ProcessorState->ContextFrame.Eip = (ULONG_PTR)KiSystemStartup;
         ProcessorState->ContextFrame.EFlags = __readeflags() & ~EFLAGS_INTERRUPT_MASK;
 
-        // Prepare the LOADER_PARAMETER_BLOCK structure
+        // Update the LOADER_PARAMETER_BLOCK structure for the new processor
         KeLoaderBlock->KernelStack = (ULONG_PTR)KernelStack;
         KeLoaderBlock->Prcb = (ULONG_PTR)&APInfo->Pcr.Prcb;
         KeLoaderBlock->Thread = (ULONG_PTR)&APInfo->Pcr.Prcb->IdleThread;
 
         // Start the CPU
-        DPRINT("Starting CPU: #%u\n", ProcessorCount);
+        DPRINT("Attempting to Start a CPU with number: %u\n", ProcessorCount);
         if (!HalStartNextProcessor(KeLoaderBlock, ProcessorState))
         {
             break;
         }
 
+        // And wait for it to start
         while (KeLoaderBlock->Prcb != 0)
         {
+            //TODO: Add a time out so we don't wait forever
             KeMemoryBarrier();
             YieldProcessor();
         }
-        DPRINT1("Escape\n");
     }
 
     // The last CPU didn't start - clean the data
     ProcessorCount--;
-    
+
     if (APInfo)
         ExFreePoolWithTag(APInfo, '  eK');
     if (KernelStack)

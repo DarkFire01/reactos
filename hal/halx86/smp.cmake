@@ -10,10 +10,7 @@ if(ARCH STREQUAL "i386")
         smp/i386/apentry.S)
     list(APPEND HAL_SMP_SOURCE
         smp/i386/spinup.c)
-endif()
-
-
-if(ARCH STREQUAL "amd64")
+elseif(ARCH STREQUAL "amd64")
     list(APPEND HAL_SMP_ASM_SOURCE
         smp/amd64/apentry.S)
     list(APPEND HAL_SMP_SOURCE

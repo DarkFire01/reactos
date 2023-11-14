@@ -1,7 +1,7 @@
 /*
  * PROJECT:     ReactOS Kernel
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
- * PURPOSE:     i386 AP spinup setup
+ * PURPOSE:     i386 Application Processor (AP) spinup setup
  * COPYRIGHT:   Copyright 2021 Justin Miller <justinmiller100@gmail.com>
  *              Copyright 2021 Victor Perevertkin <victor.perevertkin@reactos.org>
  */
@@ -10,6 +10,7 @@
 
 #include <hal.h>
 #include <smp.h>
+
 #define NDEBUG
 #include <debug.h>
 
@@ -28,12 +29,19 @@ extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
 
 ULONG HalpStartedProcessorCount = 1;
 
+#ifndef Add2Ptr
+#define Add2Ptr(P,I) ((PVOID)((PUCHAR)(P) + (I)))
+#endif
+#ifndef PtrOffset
+#define PtrOffset(B,O) ((ULONG)((ULONG_PTR)(O) - (ULONG_PTR)(B)))
+#endif
+
 typedef struct _AP_ENTRY_DATA
 {
     ULONG Jump32Offset;
     ULONG Jump32Segment;
     PVOID SelfPtr;
-    PFN_NUMBER PageTableRoot;
+    ULONG PageTableRoot;
     PKPROCESSOR_STATE ProcessorState;
     KDESCRIPTOR Gdtr;
 } AP_ENTRY_DATA, *PAP_ENTRY_DATA;
@@ -47,64 +55,36 @@ typedef struct _AP_SETUP_STACK
 /* FUNCTIONS *****************************************************************/
 
 static
-VOID
-HalpMapAddressFlat(
-    _Inout_ PMMPDE PageDirectory,
-    _In_ PVOID VirtAddress,
-    _In_ PVOID TargetVirtAddress)
-{
-    if (TargetVirtAddress == NULL)
-        TargetVirtAddress = VirtAddress;
-
-    PMMPDE currentPde;
-
-    currentPde = &PageDirectory[MiAddressToPdeOffset(TargetVirtAddress)];
-
-    // Allocate a Page Table if there is no one for this address
-    if (currentPde->u.Long == 0)
-    {
-        PMMPTE pageTable = ExAllocatePoolZero(NonPagedPoolMustSucceed , PAGE_SIZE, TAG_HAL);
-
-        currentPde->u.Hard.PageFrameNumber = MmGetPhysicalAddress(pageTable).QuadPart >> PAGE_SHIFT;
-        currentPde->u.Hard.Valid = TRUE;
-        currentPde->u.Hard.Write = TRUE;
-    }
-    
-    // Map the Page Table so we can add our VirtAddress there (hack around I/O memory mapper for that)
-    PHYSICAL_ADDRESS b = {.QuadPart = (ULONG_PTR)currentPde->u.Hard.PageFrameNumber << PAGE_SHIFT};
-
-    PMMPTE pageTable = MmMapIoSpace(b, PAGE_SIZE, MmCached);
-
-    PMMPTE currentPte = &pageTable[MiAddressToPteOffset(TargetVirtAddress)];
-    currentPte->u.Hard.PageFrameNumber = MmGetPhysicalAddress(VirtAddress).QuadPart >> PAGE_SHIFT;
-    currentPte->u.Hard.Valid = TRUE;
-    currentPte->u.Hard.Write = TRUE;
-
-    MmUnmapIoSpace(pageTable, PAGE_SIZE);
-
-    DPRINT("Map %p -> %p, PDE %u PTE %u\n",
-           TargetVirtAddress,
-           MmGetPhysicalAddress(VirtAddress).LowPart,
-           MiAddressToPdeOffset(TargetVirtAddress),
-           MiAddressToPteOffset(TargetVirtAddress));
-}
-
-static
-PHYSICAL_ADDRESS
+ULONG
 HalpSetupTemporaryMappings(
     _In_ PKPROCESSOR_STATE ProcessorState)
 {
-    PHYSICAL_ADDRESS Cr3PhysicalAddress;
-    Cr3PhysicalAddress.QuadPart = ProcessorState->SpecialRegisters.Cr3;
+    PMMPDE RootPageTable = Add2Ptr(HalpLowStub, PAGE_SIZE);
+    PMMPDE LowMapPde = Add2Ptr(HalpLowStub, 2 * PAGE_SIZE);
+    PMMPTE LowStubPte = MiAddressToPte(HalpLowStub);
+    PHYSICAL_ADDRESS PhysicalAddress;
+    ULONG StartPti;
 
-    PMMPDE pageDirectory = MmMapIoSpace(Cr3PhysicalAddress, PAGE_SIZE, MmCached);
-    ASSERT(pageDirectory);
+    /* Copy current mappings */
+    RtlCopyMemory(RootPageTable, MiAddressToPde(NULL), PAGE_SIZE);
 
-    // Map the low stub
-    HalpMapAddressFlat(pageDirectory, HalpLowStub, (PVOID)(ULONG_PTR)HalpLowStubPhysicalAddress.QuadPart);
-    HalpMapAddressFlat(pageDirectory, HalpLowStub, NULL);
+    /* Set up low PDE */
+    PhysicalAddress = MmGetPhysicalAddress(LowMapPde);
+    RootPageTable[0].u.Hard.PageFrameNumber = PhysicalAddress.QuadPart >> PAGE_SHIFT;
+    RootPageTable[0].u.Hard.Valid = 1;
+    RootPageTable[0].u.Hard.Write = 1;
 
-    return MmGetPhysicalAddress(pageDirectory);
+    /* Copy low stub PTEs */
+    StartPti = MiAddressToPteOffset(HalpLowStubPhysicalAddress.QuadPart);
+    ASSERT(StartPti + 10 < 1024);
+    for (ULONG i = 0; i < HALP_LOW_STUB_SIZE_IN_PAGES; i++)
+    {
+        LowMapPde[StartPti + i] = LowStubPte[i];
+    }
+
+    PhysicalAddress = MmGetPhysicalAddress(RootPageTable);
+    ASSERT(PhysicalAddress.QuadPart < 0x100000000);
+    return (ULONG)PhysicalAddress.QuadPart;
 }
 
 BOOLEAN
@@ -113,7 +93,6 @@ HalStartNextProcessor(
     _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
     _In_ PKPROCESSOR_STATE ProcessorState)
 {
-    
     /* Write KeLoaderBlock into Stack */
     ProcessorState->ContextFrame.Esp = (ULONG)((ULONG_PTR)ProcessorState->ContextFrame.Esp - sizeof(AP_SETUP_STACK));
     PAP_SETUP_STACK ApStack = (PAP_SETUP_STACK)ProcessorState->ContextFrame.Esp;
@@ -123,17 +102,23 @@ HalStartNextProcessor(
     if (HalpStartedProcessorCount == HalpApicInfoTable.ProcessorCount)
         return FALSE;
 
-    // Put the bootstrap code into low memory
-    RtlCopyMemory(HalpLowStub, &HalpAPEntry16,  ((ULONG_PTR)&HalpAPEntry16End - (ULONG_PTR)&HalpAPEntry16));
+    // Initalize the temporary page table
+    // TODO: clean it up after an AP boots successfully
+    ULONG initialCr3 = HalpSetupTemporaryMappings(ProcessorState);
+    if (!initialCr3)
+        return FALSE;
 
-    // Get a pointer to apEntryData 
+    // Put the bootstrap code into low memory
+    RtlCopyMemory(HalpLowStub, &HalpAPEntry16, (ULONG_PTR)&HalpAPEntry16End - (ULONG_PTR)&HalpAPEntry16);
+
+    // Get a pointer to apEntryData
     PAP_ENTRY_DATA apEntryData = (PVOID)((ULONG_PTR)HalpLowStub + ((ULONG_PTR)&HalpAPEntryData - (ULONG_PTR)&HalpAPEntry16));
 
     *apEntryData = (AP_ENTRY_DATA){
         .Jump32Offset = (ULONG)&HalpAPEntry32,
         .Jump32Segment = (ULONG)ProcessorState->ContextFrame.SegCs,
         .SelfPtr = (PVOID)apEntryData,
-        .PageTableRoot = HalpSetupTemporaryMappings(ProcessorState).QuadPart,
+        .PageTableRoot = initialCr3,
         .ProcessorState = ProcessorState,
         .Gdtr = ProcessorState->SpecialRegisters.Gdtr,
     };

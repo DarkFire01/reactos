@@ -1,7 +1,7 @@
 /*
  * PROJECT:     ReactOS Kernel
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
- * PURPOSE:     Source file for IPI management
+ * PURPOSE:     Source file for Inter-Processor Interrupts management
  * COPYRIGHT:   Copyright 2021 Justin Miller <justinmiller100@gmail.com>
  */
 
@@ -9,6 +9,7 @@
 
 #include <hal.h>
 #include <smp.h>
+
 #define NDEBUG
 #include <debug.h>
 
@@ -16,7 +17,8 @@
 
 VOID
 NTAPI
-HalRequestIpi(KAFFINITY TargetProcessors)
+HalRequestIpi(
+    _In_ KAFFINITY TargetProcessors)
 {
     HalpRequestIpi(TargetProcessors);
 }

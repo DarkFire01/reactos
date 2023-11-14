@@ -3,7 +3,7 @@
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     SMP specific APIC code
  * COPYRIGHT:   Copyright 2021 Timo Kreuzer <timo.kreuzer@reactos.org>
- *              Copyright 2021 Justin Miller <justinmiller100@gmail.com>
+ *              Copyright 2023 Justin Miller <justinmiller100@gmail.com>
  */
 
 /* INCLUDES *******************************************************************/
@@ -11,6 +11,7 @@
 #include <hal.h>
 #include "apicp.h"
 #include <smp.h>
+
 #define NDEBUG
 #include <debug.h>
 
@@ -40,7 +41,7 @@ extern PPROCESSOR_IDENTITY HalpProcessorIdentity;
             local APIC(s) specified in Destination field. Vector specifies
             the startup address.
         APIC_MT_ExtInt - Delivers an external interrupt to the target local
-            APIC specified in Destination field. 
+            APIC specified in Destination field.
 
     \param TriggerMode - The trigger mode of the interrupt. Can be:
         APIC_TGM_Edge - The interrupt is edge triggered.
@@ -68,6 +69,12 @@ ApicRequestGlobalInterrupt(
 {
     APIC_INTERRUPT_COMMAND_REGISTER Icr;
 
+    /* Wait for the APIC to be idle */
+    do
+    {
+        Icr.Long0 = ApicRead(APIC_ICR0);
+    } while (Icr.DeliveryStatus);
+
     /* Setup the command register */
     Icr.LongLong = 0;
     Icr.Vector = Vector;
@@ -90,14 +97,16 @@ ApicRequestGlobalInterrupt(
 
 VOID
 NTAPI
-HalpRequestIpi(KAFFINITY TargetProcessors)
+HalpRequestIpi(_In_ KAFFINITY TargetProcessors)
 {
     UNIMPLEMENTED;
     __debugbreak();
 }
 
 VOID
-ApicStartApplicationProcessor(ULONG NTProcessorNumber, PHYSICAL_ADDRESS StartupLoc)
+ApicStartApplicationProcessor(
+    _In_ ULONG NTProcessorNumber,
+    _In_ PHYSICAL_ADDRESS StartupLoc)
 {
     ASSERT(StartupLoc.HighPart == 0);
     ASSERT((StartupLoc.QuadPart & 0xFFF) == 0);
@@ -106,6 +115,10 @@ ApicStartApplicationProcessor(ULONG NTProcessorNumber, PHYSICAL_ADDRESS StartupL
     /* Init IPI */
     ApicRequestGlobalInterrupt(HalpProcessorIdentity[NTProcessorNumber].LapicId, 0,
         APIC_MT_INIT, APIC_TGM_Edge, APIC_DSH_Destination);
+
+    /* De-Assert Init IPI */
+    ApicRequestGlobalInterrupt(HalpProcessorIdentity[NTProcessorNumber].LapicId, 0,
+        APIC_MT_INIT, APIC_TGM_Level, APIC_DSH_Destination);
 
     /* Stall execution for a bit to give APIC time: MPS Spec - B.4 */
     KeStallExecutionProcessor(200);

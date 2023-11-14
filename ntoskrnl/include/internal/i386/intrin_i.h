@@ -18,18 +18,19 @@ FORCEINLINE
 VOID
 KiSetGdtDescriptorBase(
     IN OUT PKGDTENTRY Entry,
-    IN UINT32 Base)
+    IN ULONG32 Base)
 {
-    Entry->BaseLow = (UINT16)(Base & 0xffff);
-    Entry->HighWord.Bytes.BaseMid = (UINT8)((Base >> 16) & 0xff);
-    Entry->HighWord.Bytes.BaseHi  = (UINT8)((Base >> 24) & 0xff);
+    Entry->BaseLow = (USHORT)(Base & 0xffff);
+    Entry->HighWord.Bytes.BaseMid = (UCHAR)((Base >> 16) & 0xff);
+    Entry->HighWord.Bytes.BaseHi  = (UCHAR)((Base >> 24) & 0xff);
+    // Entry->BaseUpper = (ULONG)(Base >> 32);
 }
 
 FORCEINLINE
 VOID
 KiSetGdtDescriptorLimit(
-    IN OUT PKGDTENTRY Entry,
-    IN UINT32 Limit)
+    _Inout_ PKGDTENTRY Entry,
+    _In_ ULONG Limit)
 {
     if (Limit < 0x100000)
     {
@@ -40,8 +41,44 @@ KiSetGdtDescriptorLimit(
         Limit >>= 12;
         Entry->HighWord.Bits.Granularity = 1;
     }
-    Entry->LimitLow = (UINT16)(Limit & 0xffff);
+    Entry->LimitLow = (USHORT)(Limit & 0xffff);
     Entry->HighWord.Bits.LimitHi = ((Limit >> 16) & 0x0f);
+}
+
+FORCEINLINE
+VOID
+KiSetGdtEntryEx(
+    _Inout_ PKGDTENTRY Entry,
+    _In_ ULONG32 Base,
+    _In_ ULONG Limit,
+    _In_ UCHAR Type,
+    _In_ UCHAR Dpl,
+    _In_ BOOLEAN Granularity,
+    _In_ UCHAR SegMode) // 0: 16-bit, 1: 32-bit, 2: 64-bit
+{
+    KiSetGdtDescriptorBase(Entry, Base);
+    KiSetGdtDescriptorLimit(Entry, Limit);
+    Entry->HighWord.Bits.Type = (Type & 0x1f);
+    Entry->HighWord.Bits.Dpl  = (Dpl & 0x3);
+    Entry->HighWord.Bits.Pres = (Type != 0); // Present, must be 1 when the GDT entry is valid.
+    Entry->HighWord.Bits.Sys  = 0;           // System
+    Entry->HighWord.Bits.Reserved_0  = 0;    // LongMode = !!(SegMode & 1);
+    Entry->HighWord.Bits.Default_Big = !!(SegMode & 2);
+    Entry->HighWord.Bits.Granularity |= !!Granularity; // The flag may have been already set by KiSetGdtDescriptorLimit().
+    // Entry->MustBeZero = 0;
+}
+
+FORCEINLINE
+VOID
+KiSetGdtEntry(
+    _Inout_ PKGDTENTRY Entry,
+    _In_ ULONG32 Base,
+    _In_ ULONG Limit,
+    _In_ UCHAR Type,
+    _In_ UCHAR Dpl,
+    _In_ UCHAR SegMode) // 0: 16-bit, 1: 32-bit, 2: 64-bit
+{
+    KiSetGdtEntryEx(Entry, Base, Limit, Type, Dpl, FALSE, SegMode);
 }
 
 #if defined(__GNUC__)

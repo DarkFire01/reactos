@@ -64,41 +64,6 @@ typedef struct
 #define TYPE_CODE   (0x10 | DESCRIPTOR_CODE | DESCRIPTOR_EXECUTE_READ)
 #define TYPE_DATA   (0x10 | DESCRIPTOR_READ_WRITE)
 
-VOID
-KiSetGdtEntryEx(
-    IN OUT PKGDTENTRY Entry,
-    IN ULONG32 Base,
-    IN ULONG Limit,
-    IN UCHAR Type,
-    IN UCHAR Dpl,
-    IN BOOLEAN Granularity,
-    IN UCHAR SegMode) // 0: 16-bit, 1: 32-bit, 2: 64-bit
-{
-    KiSetGdtDescriptorBase(Entry, Base);
-    KiSetGdtDescriptorLimit(Entry, Limit);
-    Entry->HighWord.Bits.Type = (Type & 0x1f);
-    Entry->HighWord.Bits.Dpl  = (Dpl & 0x3);
-    Entry->HighWord.Bits.Pres = (Type != 0); // Present, must be 1 when the GDT entry is valid.
-    Entry->HighWord.Bits.Sys  = 0;           // System
-    Entry->HighWord.Bits.Reserved_0  = 0;    // LongMode = !!(SegMode & 1);
-    Entry->HighWord.Bits.Default_Big = !!(SegMode & 2);
-    Entry->HighWord.Bits.Granularity |= !!Granularity; // The flag may have been already set by KiSetGdtDescriptorLimit().
-    // Entry->MustBeZero = 0;
-}
-
-FORCEINLINE
-VOID
-KiSetGdtEntry(
-    IN OUT PKGDTENTRY Entry,
-    IN ULONG32 Base,
-    IN ULONG Limit,
-    IN UCHAR Type,
-    IN UCHAR Dpl,
-    IN UCHAR SegMode) // 0: 16-bit, 1: 32-bit, 2: 64-bit
-{
-    KiSetGdtEntryEx(Entry, Base, Limit, Type, Dpl, FALSE, SegMode);
-}
-
 #if 0
 VOID
 DumpGDTEntry(ULONG_PTR Base, ULONG Selector)

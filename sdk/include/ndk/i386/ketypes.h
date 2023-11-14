@@ -218,6 +218,7 @@ typedef enum
 #define MM_HAL_VA_START         0xFFC00000
 #define MM_HAL_VA_END           0xFFFFFFFF
 #define APIC_BASE               0xFFFE0000
+#define HALP_LOW_STUB_SIZE_IN_PAGES 3
 
 //
 // IOPM Definitions
