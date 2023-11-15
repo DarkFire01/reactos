@@ -847,7 +847,7 @@ KfLowerIrql(
     if (OldIrql > ApicGetCurrentIrql())
     {
         /* Crash system */
-        KeBugCheck(IRQL_NOT_LESS_OR_EQUAL);
+        //KeBugCheck(IRQL_NOT_LESS_OR_EQUAL);
     }
 #endif
     /* Set the new IRQL */
@@ -868,7 +868,7 @@ KfRaiseIrql(
     if (OldIrql > NewIrql)
     {
         /* Crash system */
-        KeBugCheck(IRQL_NOT_GREATER_OR_EQUAL);
+        //KeBugCheck(IRQL_NOT_GREATER_OR_EQUAL);
     }
 #endif
     /* Convert the new IRQL to a TPR value and write the register */

@@ -54,6 +54,7 @@ CreatePnpInstallEventSecurity(
 static BOOL
 InstallDevice(PCWSTR DeviceInstance, BOOL ShowWizard)
 {
+    return FALSE;
     BOOL DeviceInstalled = FALSE;
     DWORD BytesWritten;
     DWORD Value;

@@ -824,6 +824,16 @@ AppCpuInit:
     __writefsdword(KPCR_SET_MEMBER_COPY, 1 << Cpu);
     __writefsdword(KPCR_PRCB_SET_MEMBER, 1 << Cpu);;
 
+    if (!Cpu)
+        KiVerifyCpuFeatures(Pcr->Prcb);
+
+    /* Initialize the Processor with HAL */
+    HalInitializeProcessor(Cpu, KeLoaderBlock);
+
+    /* Set active processors */
+    //KeActiveProcessors |= __readfsdword(KPCR_SET_MEMBER);
+    KeNumberProcessors++;
+
     //TODO: We don't setup IPIs yet so freeze other processors here.
     if (Cpu)
     {
@@ -836,15 +846,6 @@ AppCpuInit:
             YieldProcessor();
         }
     }
-
-    KiVerifyCpuFeatures(Pcr->Prcb);
-
-    /* Initialize the Processor with HAL */
-    HalInitializeProcessor(Cpu, KeLoaderBlock);
-
-    /* Set active processors */
-    KeActiveProcessors |= __readfsdword(KPCR_SET_MEMBER);
-    KeNumberProcessors++;
 
     /* Check if this is the boot CPU */
     if (!Cpu)
