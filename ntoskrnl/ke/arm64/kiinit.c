@@ -6,6 +6,12 @@
 #define NDEBUG
 #include <debug.h>
 
+UCHAR DECLSPEC_ALIGN(PAGE_SIZE) P0BootStackData[KERNEL_STACK_SIZE] = {0};
+UCHAR DECLSPEC_ALIGN(PAGE_SIZE) KiDoubleFaultStackData[KERNEL_STACK_SIZE] = {0};
+ULONG_PTR P0BootStack = (ULONG_PTR)&P0BootStackData[KERNEL_STACK_SIZE];
+ULONG_PTR KiDoubleFaultStack = (ULONG_PTR)&KiDoubleFaultStackData[KERNEL_STACK_SIZE];
+
+
 /* PRIVATE FUNCTIONS *********************************************************/
 
 /* This is just a small hack for QEMU */
@@ -112,7 +118,8 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
 
     /* Set the default NX policy (opt-in) */
     //SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_OPTIN;
-    DPRINT1("Setting up spinlocks\n");
+    DPRINT1("SharedUserData->NXSupportPolicy ::TODO SHARED_USER_DATA writes\n");
+
     /* Initialize spinlocks and DPC data */
     KiInitSpinLocks(Prcb, Number);
 
@@ -125,21 +132,14 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     {
         /* Set DMA coherency */
         KiDmaIoCoherency = 0;
-
-        /* Sweep D-Cache */
-        DPRINT1("Setting up Globals\n");
         /* Set boot-level flags */
         KeProcessorArchitecture = PROCESSOR_ARCHITECTURE_ARM64;
         KeFeatureBits = 0;
-        /// FIXME: just a wild guess
-#if 0
-        /* Set the current MP Master KPRCB to the Boot PRCB */
-        Prcb->MultiThreadSetMaster = Prcb;
-#endif
-        DPRINT1("Lowering IRQL\n\n");
+
         /* Lower to APC_LEVEL */
         KeLowerIrql(APC_LEVEL);
-        DPRINT1("Lowering Irql Success\n");
+
+        DPRINT1("Going to first Portable Parts of OS\n");
         /* Initialize portable parts of the OS */
         KiInitSystem();
 
@@ -193,9 +193,8 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     if (!Number)
     {
         /* Calculate the time reciprocal */
-        KiTimeIncrementReciprocal =
-            KiComputeReciprocal(KeMaximumIncrement,
-                                &KiTimeIncrementShiftCount);
+        KiTimeIncrementReciprocal =  KiComputeReciprocal(KeMaximumIncrement,
+                                                         &KiTimeIncrementShiftCount);
 
         /* Update DPC Values in case they got updated by the executive */
         Prcb->MaximumDpcQueueDepth = KiMaximumDpcQueueDepth;
@@ -239,6 +238,10 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     KeLoaderBlock = LoaderBlock;
     Cpu = KeNumberProcessors;
 
+    if (!Cpu)
+    {
+        LoaderBlock->KernelStack = P0BootStack;
+    }
     /* Save the initial thread and process */
     InitialThread = (PKTHREAD)LoaderBlock->Thread;
     InitialProcess = (PKPROCESS)LoaderBlock->Process;
@@ -261,7 +264,6 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                     Pcr,
                     InitialThread);
 
-    DbgPrintEarly("Return from Init PCR\n");
     /* Set us as the current process */
     InitialThread->ApcState.Process = InitialProcess;
 
@@ -270,10 +272,8 @@ AppCpuInit:
     Pcr->Prcb.Number = Cpu;
     Pcr->Prcb.SetMember = 1 << Cpu;
 
-    DbgPrintEarly("Going into First HAL call\n");
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);
-    DbgPrintEarly("returned from first HAL call\n");
 
     /* Set active processors */
     KeActiveProcessors |= Pcr->Prcb.SetMember;
@@ -285,15 +285,17 @@ AppCpuInit:
         DbgPrintEarly("Starting primary debugging system\n");
 
         /* Initialize debugging system */
-        KdInitSystem(0, KeLoaderBlock);
+       // KdInitSystem(0, KeLoaderBlock);
 
         /* Check for break-in */
        /// if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
     }
 
+    KfRaiseIrql(HIGH_LEVEL);
+
     KiInitializeKernel(InitialProcess,
                        InitialThread,
-                       NULL,
+                       (PVOID)P0BootStack,
                        &Pcr->Prcb,
                        Cpu,
                        LoaderBlock);

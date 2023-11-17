@@ -43,17 +43,6 @@ NtCallbackReturn(
 CODE_SEG("INIT")
 VOID
 NTAPI
-KiInitializeContextThread(IN PKTHREAD Thread,
-                          IN PKSYSTEM_ROUTINE SystemRoutine,
-                          IN PKSTART_ROUTINE StartRoutine,
-                          IN PVOID StartContext,
-                          IN PCONTEXT ContextPointer)
-{
-}
-
-CODE_SEG("INIT")
-VOID
-NTAPI
 KiInitMachineDependent(VOID)
 {
     /* There is nothing to do on ARM */
@@ -121,5 +110,19 @@ KeRaiseUserException(IN NTSTATUS ExceptionCode)
 {
     UNIMPLEMENTED;
     return STATUS_UNSUCCESSFUL;
+}
+
+
+/* threads ****************/
+CODE_SEG("INIT")
+VOID
+NTAPI
+KiInitializeContextThread(IN PKTHREAD Thread,
+                          IN PKSYSTEM_ROUTINE SystemRoutine,
+                          IN PKSTART_ROUTINE StartRoutine,
+                          IN PVOID StartContext,
+                          IN PCONTEXT ContextPointer)
+{
+    DPRINT1("KiInitializeContextThread: For ARM64 WIP\n");
 }
 

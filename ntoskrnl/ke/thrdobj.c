@@ -497,6 +497,7 @@ VOID
 NTAPI
 KeStartThread(IN OUT PKTHREAD Thread)
 {
+    DPRINT1("KeStartThread: Entry\n");
     KLOCK_QUEUE_HANDLE LockHandle;
 #ifdef CONFIG_SMP
     PKNODE Node;
@@ -518,6 +519,7 @@ KeStartThread(IN OUT PKTHREAD Thread)
     /* Lock the process */
     KiAcquireProcessLockRaiseToSynch(Process, &LockHandle);
 
+    DPRINT1("Setting up volatile data\n");
     /* Setup volatile data */
     Thread->Priority = Process->BasePriority;
     Thread->BasePriority = Process->BasePriority;
@@ -550,20 +552,24 @@ KeStartThread(IN OUT PKTHREAD Thread)
     ASSERT((Thread->UserAffinity & AFFINITY_MASK(IdealProcessor)));
 #endif
 
+    DPRINT1("Setting ideal processon\n");
     /* Set the Ideal Processor */
     Thread->IdealProcessor = IdealProcessor;
     Thread->UserIdealProcessor = IdealProcessor;
 
+    DPRINT1("Locking Dispatcher\n");
     /* Lock the Dispatcher Database */
     KiAcquireDispatcherLockAtSynchLevel();
 
+    DPRINT1("Setting taillist\n");
     /* Insert the thread into the process list */
     InsertTailList(&Process->ThreadListHead, &Thread->ThreadListEntry);
 
     /* Increase the stack count */
-    ASSERT(Process->StackCount != MAXULONG_PTR);
+   // ASSERT(Process->StackCount != MAXULONG_PTR);
     Process->StackCount++;
 
+    DPRINT1("incremented stacks\n");
     /* Release locks and return */
     KiReleaseDispatcherLockFromSynchLevel();
     KiReleaseProcessLock(&LockHandle);
@@ -884,6 +890,7 @@ KeInitThread(IN OUT PKTHREAD Thread,
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
+        DPRINT1("::EXCEPTION_EXECUTE_HANDLER::ARM64::TRIGGERED\n");
         /* Set failure status */
         Status = STATUS_UNSUCCESSFUL;
 
@@ -923,8 +930,10 @@ KeInitializeThread(IN PKPROCESS Process,
                                 Teb,
                                 Process)))
     {
+        DPRINT1("KeInitThread: heading into\n");
         /* Start it */
         KeStartThread(Thread);
+        DPRINT1("keInitThread: left\n");
     }
 }
 
