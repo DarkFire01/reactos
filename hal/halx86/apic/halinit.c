@@ -66,6 +66,15 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                                CLOCK2_LEVEL,
                                HalpClockInterrupt,
                                Latched);
+    
+
+    /* Enable IPI interrupt handler */
+    HalpEnableInterruptHandler(IDT_INTERNAL,
+                               0,
+                               APIC_IPI_VECTOR,
+                               IPI_LEVEL,
+                               HalpIpiInterruptHandler,
+                               Latched);
 }
 
 VOID

@@ -28,7 +28,7 @@ KiIpiGenericCallTarget(IN PKIPI_CONTEXT PacketContext,
                        IN PVOID Count)
 {
     /* FIXME: TODO */
-   // ASSERTMSG("Not yet implemented\n", FALSE);
+    ASSERTMSG("Not yet implemented\n", FALSE);
 }
 
 VOID
@@ -37,7 +37,7 @@ KiIpiSend(IN KAFFINITY TargetProcessors,
           IN ULONG IpiRequest)
 {
     /* FIXME: TODO */
-  //  ASSERTMSG("Not yet implemented\n", FALSE);
+    ASSERTMSG("Not yet implemented\n", FALSE);
 }
 
 VOID
@@ -48,7 +48,7 @@ KiIpiSendPacket(IN KAFFINITY TargetProcessors,
                 IN ULONG_PTR Context,
                 IN PULONG Count)
 {
-  //  /* FIXME: TODO */
+    /* FIXME: TODO */
     ASSERTMSG("Not yet implemented\n", FALSE);
 }
 
@@ -57,7 +57,7 @@ FASTCALL
 KiIpiSignalPacketDone(IN PKIPI_CONTEXT PacketContext)
 {
     /* FIXME: TODO */
-   // ASSERTMSG("Not yet implemented\n", FALSE);
+    ASSERTMSG("Not yet implemented\n", FALSE);
 }
 
 VOID
@@ -66,7 +66,7 @@ KiIpiSignalPacketDoneAndStall(IN PKIPI_CONTEXT PacketContext,
                               IN volatile PULONG ReverseStall)
 {
     /* FIXME: TODO */
-   // ASSERTMSG("Not yet implemented\n", FALSE);
+    ASSERTMSG("Not yet implemented\n", FALSE);
 }
 
 #if 0
@@ -232,6 +232,13 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
                         Function,
                         Argument,
                         &Count);
+
+        /* Spin until the other processors are ready */
+        while (Count != 1)
+        {
+            YieldProcessor();
+            KeMemoryBarrierWithoutFence();
+        }
     }
 #endif
 
@@ -254,7 +261,7 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
         ASSERT(Prcb == KeGetCurrentPrcb());
 
         /* FIXME: TODO */
-      //  ASSERTMSG("Not yet implemented\n", FALSE);
+        ASSERTMSG("Not yet implemented\n", FALSE);
     }
 #endif
 
