@@ -810,6 +810,13 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     RtlCopyMemory(&Idt[8], &DoubleFaultEntry, sizeof(KIDTENTRY));
 
 AppCpuInit:
+    /* Acquire lock */
+    while (InterlockedBitTestAndSet((PLONG)&KiFreezeExecutionLock, 0))
+    {
+        /* Loop until lock is free */
+        while ((*(volatile KSPIN_LOCK*)&KiFreezeExecutionLock) & 1);
+    }
+
     //TODO: We don't setup IPIs yet so freeze other processors here.
     if (Cpu)
     {
@@ -822,13 +829,6 @@ AppCpuInit:
         }
     }
 
-    /* Loop until we can release the freeze lock */
-    do
-    {
-        /* Loop until execution can continue */
-        while (*(volatile PKSPIN_LOCK*)&KiFreezeExecutionLock == (PVOID)1);
-    } while(InterlockedBitTestAndSet((PLONG)&KiFreezeExecutionLock, 0));
-
     /* Setup CPU-related fields */
     __writefsdword(KPCR_NUMBER, Cpu);
     __writefsdword(KPCR_SET_MEMBER, 1 << Cpu);
@@ -839,6 +839,9 @@ AppCpuInit:
 
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);
+
+    /* Release lock */
+    InterlockedAnd((PLONG)&KiFreezeExecutionLock, 0);
 
     /* Set active processors */
     KeActiveProcessors |= __readfsdword(KPCR_SET_MEMBER);
