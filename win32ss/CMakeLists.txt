@@ -6,6 +6,10 @@ PROJECT(WIN32SS)
 
 add_subdirectory(drivers)
 
+if (NATIVE_REACTX)
+    add_definitions(-DNATIVE_REACTX)
+endif()
+
 if(USE_DIBLIB)
     add_subdirectory(gdi/diblib)
 endif()
