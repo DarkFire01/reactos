@@ -40,23 +40,23 @@ KiInitMachineDependent(VOID)
     BOOLEAN FbCaching = FALSE;
     NTSTATUS Status;
     ULONG ReturnLength;
-    ULONG i, Affinity, Sample = 0;
-    PFX_SAVE_AREA FxSaveArea;
-    ULONG MXCsrMask = 0xFFBF;
-    CPU_INFO CpuInfo;
-    KI_SAMPLE_MAP Samples[10];
-    PKI_SAMPLE_MAP CurrentSample = Samples;
-    LARGE_IDENTITY_MAP IdentityMap;
+  //  ULONG i, Affinity, Sample = 0;
+  //  PFX_SAVE_AREA FxSaveArea;
+    //ULONG MXCsrMask = 0xFFBF;
+ //  CPU_INFO CpuInfo;
+ //  KI_SAMPLE_MAP Samples[10];
+ //  PKI_SAMPLE_MAP CurrentSample = Samples;
+   LARGE_IDENTITY_MAP IdentityMap;
 
     /* Check for large page support */
     if (KeFeatureBits & KF_LARGE_PAGE)
     {
         /* Do an IPI to enable it on all CPUs */
         if (Ki386CreateIdentityMap(&IdentityMap, Ki386EnableCurrentLargePage, 2))
-            KeIpiGenericCall(Ki386EnableTargetLargePage, (ULONG_PTR)&IdentityMap);
-
-        /* Free the pages allocated for identity map */
-        Ki386FreeIdentityMap(&IdentityMap);
+            Ki386EnableTargetLargePage( (ULONG_PTR)&IdentityMap);
+            
+        if (KeGetCurrentProcessorNumber() == 0)
+            Ki386FreeIdentityMap(&IdentityMap);
     }
 
     /* Check for global page support */
@@ -64,7 +64,8 @@ KiInitMachineDependent(VOID)
     {
         /* Do an IPI to enable it on all CPUs */
         CpuCount = KeNumberProcessors;
-        KeIpiGenericCall(Ki386EnableGlobalPage, (ULONG_PTR)&CpuCount);
+        Ki386EnableGlobalPage( (ULONG_PTR)&CpuCount);
+   //     KeIpiGenericCall(Ki386EnableGlobalPage, (ULONG_PTR)&CpuCount);
     }
 
     /* Check for PAT and/or MTRR support */
@@ -90,7 +91,7 @@ KiInitMachineDependent(VOID)
     {
         /* Do an IPI call to enable the Debug Exceptions */
         CpuCount = KeNumberProcessors;
-        KeIpiGenericCall(Ki386EnableDE, (ULONG_PTR)&CpuCount);
+        Ki386EnableDE((ULONG_PTR)&CpuCount);
     }
 
     /* Check if FXSR was found */
@@ -98,15 +99,14 @@ KiInitMachineDependent(VOID)
     {
         /* Do an IPI call to enable the FXSR */
         CpuCount = KeNumberProcessors;
-        KeIpiGenericCall(Ki386EnableFxsr, (ULONG_PTR)&CpuCount);
-
+        Ki386EnableFxsr((ULONG_PTR)&CpuCount);
+    
         /* Check if XMM was found too */
         if (KeFeatureBits & KF_XMMI)
         {
             /* Do an IPI call to enable XMMI exceptions */
             CpuCount = KeNumberProcessors;
-            KeIpiGenericCall(Ki386EnableXMMIExceptions, (ULONG_PTR)&CpuCount);
-
+            Ki386EnableXMMIExceptions((ULONG_PTR)&CpuCount);
             /* FIXME: Implement and enable XMM Page Zeroing for Mm */
 
             /* Patch the RtlPrefetchMemoryNonTemporal routine to enable it */
@@ -116,7 +116,7 @@ KiInitMachineDependent(VOID)
 
     /* Check for, and enable SYSENTER support */
     KiRestoreFastSyscallReturnState();
-
+#if 0
     /* Loop every CPU */
     i = KeActiveProcessors;
     for (Affinity = 1; i; Affinity <<= 1)
@@ -266,7 +266,7 @@ KiInitMachineDependent(VOID)
 
     /* Return affinity back to where it was */
     KeRevertToUserAffinityThread();
-
+#endif
     /* NT allows limiting the duration of an ISR with a registry key */
     if (KiTimeLimitIsrMicroseconds)
     {
@@ -536,6 +536,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     {
         /* FIXME */
         DPRINT1("Starting CPU#%u - you are brave\n", Number);
+        KeLowerIrql(DISPATCH_LEVEL);
     }
 
     /* Setup the Idle Thread */
@@ -608,6 +609,10 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
             KeBugCheckEx(NO_PAGES_AVAILABLE, 2, IOPM_SIZE, 0, 0);
         }
     }
+    else
+    {
+        KiInitMachineDependent();
+    }
 
     /* Raise to Dispatch */
     KeRaiseIrql(DISPATCH_LEVEL, &DummyIrql);
@@ -676,7 +681,7 @@ KiSystemStartupBootStack(VOID)
 
     /* Initialize the kernel for the current CPU */
     KiInitializeKernel(&KiInitialProcess.Pcb,
-                       (PKTHREAD)KeLoaderBlock->Thread,
+                       (PKTHREAD)__readfsdword(KPCR_CURRENT_THREAD),
                        (PVOID)(KeLoaderBlock->KernelStack & ~3),
                        (PKPRCB)__readfsdword(KPCR_PRCB),
                        KeNumberProcessors - 1,
@@ -810,13 +815,12 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     RtlCopyMemory(&Idt[8], &DoubleFaultEntry, sizeof(KIDTENTRY));
 
 AppCpuInit:
-    //TODO: We don't setup IPIs yet so freeze other processors here.
-    /* Loop until we can release the freeze lock */
-    do
+    /* Acquire lock */
+    while (InterlockedBitTestAndSet((PLONG)&KiFreezeExecutionLock, 0))
     {
-        /* Loop until execution can continue */
-        while (*(volatile PKSPIN_LOCK*)&KiFreezeExecutionLock == (PVOID)1);
-    } while(InterlockedBitTestAndSet((PLONG)&KiFreezeExecutionLock, 0));
+        /* Loop until lock is free */
+        while ((*(volatile KSPIN_LOCK*)&KiFreezeExecutionLock) & 1);
+    }
 
     /* Setup CPU-related fields */
     __writefsdword(KPCR_NUMBER, Cpu);
@@ -831,6 +835,9 @@ AppCpuInit:
 
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);
+
+    /* Release lock */
+    InterlockedAnd((PLONG)&KiFreezeExecutionLock, 0);
 
     /* Set active processors */
     KeActiveProcessors |= __readfsdword(KPCR_SET_MEMBER);

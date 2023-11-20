@@ -1044,8 +1044,7 @@ KiRestoreFastSyscallReturnState(VOID)
         else
         {
             /* Do an IPI to enable it */
-            KeIpiGenericCall(KiLoadFastSyscallMachineSpecificRegisters, 0);
-
+            KiLoadFastSyscallMachineSpecificRegisters(0);
             /* It's enabled, so use the proper exit stub */
             KiFastCallExitHandler = KiSystemCallSysExitReturn;
             DPRINT("Support for SYSENTER detected.\n");
