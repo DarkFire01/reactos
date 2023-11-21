@@ -23,3 +23,6 @@
 @ stdcall WdStopDeferredWatch(ptr)
 @ stdcall WdStopWatch(ptr long)
 @ stdcall WdSuspendWatch(ptr)
+
+@ stdcall -version=0x600+ SMgrNotifySessionChange(long)
+@ stdcall -version=0x600+ SMgrRegisterGdiCallout(ptr)
