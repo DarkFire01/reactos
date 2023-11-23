@@ -425,15 +425,15 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     FrLdrDbgPrint = LoaderBlock->u.I386.CommonDataArea;
     //FrLdrDbgPrint("Hello from KiSystemStartup!!!\n");
 
-    /* Save the loader block */
-    KeLoaderBlock = LoaderBlock;
-
     /* Get the current CPU number */
     Cpu = KeNumberProcessors++; // FIXME
 
     /* LoaderBlock initialization for Cpu 0 */
     if (Cpu == 0)
     {
+        /* Save the loader block */
+        KeLoaderBlock = LoaderBlock;
+
         /* Set the initial stack, idle thread and process */
         LoaderBlock->KernelStack = (ULONG_PTR)P0BootStack;
         LoaderBlock->Thread = (ULONG_PTR)&KiInitialThread;
@@ -482,8 +482,8 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
     }
 
-    DPRINT1("Pcr = %p, Gdt = %p, Idt = %p, Tss = %p\n",
-           Pcr, Pcr->GdtBase, Pcr->IdtBase, Pcr->TssBase);
+    DPRINT1("Cpu %u: Pcr = %p, Gdt = %p, Idt = %p, Tss = %p\n",
+            Cpu, Pcr, Pcr->GdtBase, Pcr->IdtBase, Pcr->TssBase);
 
     /* Acquire lock */
     while (InterlockedBitTestAndSet64((PLONG64)&KiFreezeExecutionLock, 0))
@@ -503,6 +503,21 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     /* Raise to HIGH_LEVEL */
     KfRaiseIrql(HIGH_LEVEL);
+
+    //TODO: We don't setup IPIs yet so freeze other processors here.
+    if (Cpu)
+    {
+        __debugbreak();
+        KeNumberProcessors = 1;
+        KeActiveProcessors = 1;
+        KeMemoryBarrier();
+        LoaderBlock->Prcb = 0;
+
+        for (;;)
+        {
+            YieldProcessor();
+        }
+    }
 
     /* Machine specific kernel initialization */
     if (Cpu == 0) KiInitializeKernelMachineDependent(&Pcr->Prcb, LoaderBlock);
