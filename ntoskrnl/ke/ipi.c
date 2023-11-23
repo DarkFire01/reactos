@@ -17,6 +17,7 @@
 extern KSPIN_LOCK KiReverseStallIpiLock;
 
 /* PRIVATE FUNCTIONS *********************************************************/
+#ifndef _M_AMD64
 
 VOID
 NTAPI
@@ -187,6 +188,15 @@ KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame,
 #endif
    return TRUE;
 }
+#else
+VOID
+NTAPI
+KiIpiGenericCallTarget(
+    _In_ PKIPI_CONTEXT PacketContext,
+    _In_ PVOID BroadcastFunction,
+    _In_ PVOID Argument,
+    _In_ PULONG Count);
+#endif
 
 /*
  * @implemented
