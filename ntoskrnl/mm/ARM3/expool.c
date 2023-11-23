@@ -765,6 +765,9 @@ ExpRemovePoolTracker(IN ULONG Key,
     PPOOL_TRACKER_TABLE Table, TableEntry;
     SIZE_T TableMask, TableSize;
 
+    // HACK!
+    if (KeGetCurrentProcessorNumber() != 0) return;
+
     //
     // Remove the PROTECTED_POOL flag which is not part of the tag
     //
@@ -856,6 +859,9 @@ ExpInsertPoolTracker(IN ULONG Key,
     KIRQL OldIrql;
     PPOOL_TRACKER_TABLE Table, TableEntry;
     SIZE_T TableMask, TableSize;
+
+    // HACK!
+    if (KeGetCurrentProcessorNumber() != 0) return;
 
     //
     // Remove the PROTECTED_POOL flag which is not part of the tag
