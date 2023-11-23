@@ -422,6 +422,8 @@ KiVerifyCpuFeatures(PKPRCB Prcb)
         KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x2, 0x00000001, 0, 0);
     }
 
+    if (KeGetCurrentProcessorNumber() > 0)
+        Ke386FnInit();
     // 5. Save feature bits.
     Prcb->FeatureBits = FeatureBits;
 }
