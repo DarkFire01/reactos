@@ -58,8 +58,11 @@ HalInitializeProcessor(
     InterlockedBitTestAndSet((PLONG)&HalpDefaultInterruptAffinity,
                              ProcessorNumber);
 
-    /* Register routines for KDCOM */
-    HalpRegisterKdSupportFunctions();
+    if (ProcessorNumber == 0)
+    {
+        /* Register routines for KDCOM */
+        HalpRegisterKdSupportFunctions();
+    }
 }
 
 /*

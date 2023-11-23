@@ -32,3 +32,9 @@ HalStartNextProcessor(
     /* Always return false on UP systems */
     return FALSE;
 }
+
+VOID
+HalpSetupProcessorsTable(
+    _In_ UINT32 NTProcessorNumber)
+{
+}
