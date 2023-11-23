@@ -18,6 +18,34 @@ extern KSPIN_LOCK KiReverseStallIpiLock;
 /* FUNCTIONS *****************************************************************/
 
 VOID
+NTAPI
+KiIpiSendRequest(
+    _In_ KAFFINITY TargetSet,
+    _In_ PKIPI_WORKER WorkerRoutine,
+    _In_ PVOID Parameter1,
+    _In_ PVOID Parameter2,
+    _In_ PVOID Parameter3)
+{
+    KIRQL OldIrql;
+
+    if (KeNumberProcessors > 1)
+    {
+        ASSERT(FALSE);
+    }
+
+    KeRaiseIrql(IPI_LEVEL, &OldIrql);
+
+    if (TargetSet & KeGetCurrentPrcb()->SetMember)
+    {
+        WorkerRoutine(NULL, Parameter1, Parameter2, Parameter3);
+    }
+    else
+        __debugbreak();
+
+    KeLowerIrql(OldIrql);
+}
+
+VOID
 FASTCALL
 KiIpiSend(
     _In_ KAFFINITY TargetSet,
