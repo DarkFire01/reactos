@@ -574,6 +574,7 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     /* Raise to HIGH_LEVEL */
     KfRaiseIrql(HIGH_LEVEL);
 
+
     /* Machine specific kernel initialization */
     if (Cpu == 0) KiInitializeKernelMachineDependent(&Pcr->Prcb, LoaderBlock);
 
