@@ -611,7 +611,10 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     }
     else
     {
+        KFLOATING_SAVE Save;
         KiInitMachineDependent();
+        KeSaveFloatingPointState(&Save);
+        UNREFERENCED_PARAMETER(Save);
     }
 
     /* Raise to Dispatch */
