@@ -914,29 +914,43 @@ KeRemoveQueueDpc(IN PKDPC Dpc)
 /*
  * @implemented
  */
+_IRQL_requires_max_(APC_LEVEL)
 VOID
 NTAPI
 KeFlushQueuedDpcs(VOID)
 {
-    PKPRCB CurrentPrcb = KeGetCurrentPrcb();
+#if DBG
+    KIRQL OldIrql = KeGetCurrentIrql();
+#endif
+
     PAGED_CODE();
 
-    /* Check if this is an UP machine */
-    if (KeActiveProcessors == 1)
+#ifdef CONFIG_SMP
+    /* Loop all processors */
+    for (ULONG Processor = 0; Processor < KeNumberProcessors; Processor++)
     {
-        /* Check if there are DPCs on either queues */
-        if ((CurrentPrcb->DpcData[DPC_NORMAL].DpcQueueDepth > 0) ||
-            (CurrentPrcb->DpcData[DPC_THREADED].DpcQueueDepth > 0))
-        {
-            /* Request an interrupt */
-            HalRequestSoftwareInterrupt(DISPATCH_LEVEL);
-        }
+        /* Attach to the target processor. This will result in entering and
+           exiting the dispatcher, which will flush all DPCs */
+        KeSetSystemAffinityThread(AFFINITY_MASK(Processor));
+
+        /* Make sure things are as expected. */
+        ASSERT(KeGetCurrentProcessorNumber() == Processor);
+        ASSERT(KeGetCurrentIrql() == OldIrql);
+
+        /* There must not be any DPCs queued. */
+        ASSERT(KeGetCurrentPrcb()->DpcData[DPC_NORMAL].DpcQueueDepth == 0);
+        ASSERT(KeGetCurrentPrcb()->DpcData[DPC_THREADED].DpcQueueDepth == 0);
     }
-    else
-    {
-        /* FIXME: SMP support required */
-        ASSERT(FALSE);
-    }
+
+    /* Revert back to user affinity */
+    KeRevertToUserAffinityThread();
+#else
+    /* We are below DISPATCH_LEVEL, so we cannot have any DPCs queued. */
+    ASSERT(KeGetCurrentPrcb()->DpcData[DPC_NORMAL].DpcQueueDepth == 0);
+    ASSERT(KeGetCurrentPrcb()->DpcData[DPC_THREADED].DpcQueueDepth == 0);
+#endif
+
+    ASSERT(KeGetCurrentIrql() == OldIrql);
 }
 
 /*
