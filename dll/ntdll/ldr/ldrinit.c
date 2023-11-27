@@ -1538,7 +1538,23 @@ VOID
 NTAPI
 LdrpValidateImageForMp(IN PLDR_DATA_TABLE_ENTRY LdrDataTableEntry)
 {
-    UNIMPLEMENTED;
+    PIMAGE_NT_HEADERS NtHeaders;
+
+    /* Get the NT Headers */
+    NtHeaders = RtlImageNtHeader(LdrDataTableEntry->DllBase);
+
+    /* Check if we have a valid image */
+    if (!NtHeaders)
+    {
+        //???
+    }
+
+    /* Check if the image is SMP ready */
+    if (NtHeaders->FileHeader.Characteristics & IMAGE_FILE_UP_SYSTEM_ONLY)
+    {
+    }
+
+    //UNIMPLEMENTED;
 }
 
 BOOLEAN
