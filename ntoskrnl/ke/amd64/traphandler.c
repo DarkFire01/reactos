@@ -84,11 +84,24 @@ KiDpcInterruptHandler(VOID)
     KeLowerIrql(OldIrql);
 }
 
+BOOLEAN
+KiProcessorFreezeHandler(
+    _In_ PKTRAP_FRAME TrapFrame,
+    _In_ PKEXCEPTION_FRAME ExceptionFrame);
+
 VOID
 KiNmiInterruptHandler(
     _In_ PKTRAP_FRAME TrapFrame,
     _In_ PKEXCEPTION_FRAME ExceptionFrame)
 {
+    /* Check if this is a freeze */
+    if (KiProcessorFreezeHandler(TrapFrame, ExceptionFrame))
+    {
+        /* NMI was handled */
+        return;
+    }
+
+    /* Handle the NMI */
     KiHandleNmi();
 }
 
