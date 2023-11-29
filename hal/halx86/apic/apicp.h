@@ -20,9 +20,9 @@
     #define CLOCK_IPI_VECTOR     0xD2 // IRQL 13 (CLOCK_LEVEL) - HalpTimerClockIpiRoutine
     #define REBOOT_VECTOR        0xD7 // IRQL 15 (PROFILE_LEVEL) - HalpInterruptRebootService
     #define STUB_VECTOR          0xD8 // IRQL 15 (PROFILE_LEVEL) - HalpInterruptStubService
-    #define APIC_SPURIOUS_VECTOR 0xDF // IRQL 13 (CLOCK_LEVEL) - HalpInterruptSpuriousService
+    #define APIC_SPURIOUS_VECTOR 0xDF // IRQL 15 (PROFILE_LEVEL) - HalpInterruptSpuriousService
     #define APIC_IPI_VECTOR      0xE1 // IRQL 14 (IPI_LEVEL) - KiIpiInterrupt
-    #define APIC_ERROR_VECTOR    0xE2 // IRQL 14 (IPI_LEVEL) - HalpInterruptLocalErrorService
+    #define APIC_ERROR_VECTOR    0xE2 // IRQL 15 (PROFILE_LEVEL) - HalpInterruptLocalErrorService
     #define POWERFAIL_VECTOR     0xE3 // IRQL 14 (POWER_LEVEL) : HalpInterruptDeferredRecoveryService
     #define APIC_PROFILE_VECTOR  0xFD // IRQL 15 (PROFILE_LEVEL) - HalpTimerProfileInterrupt
     #define APIC_PERF_VECTOR     0xFE // IRQL 15 (PROFILE_LEVEL) - HalpPerfInterrupt
