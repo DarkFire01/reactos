@@ -177,7 +177,6 @@ InbvDriverInitialize(
     _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
     _In_ ULONG Count)
 {
-    return FALSE;
     PCHAR CommandLine;
     BOOLEAN ResetMode = FALSE; // By default do not reset the video mode
     ULONG i;
