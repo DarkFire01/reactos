@@ -79,15 +79,21 @@ ULONG
 KiSelectBestProcessor(
     _In_ PKTHREAD Thread)
 {
-    KAFFINITY Affinity;
+    KAFFINITY Affinity, PreferredSet;
     ULONG Processor;
 
     /* Get the affinity */
     Affinity = Thread->Affinity;
 
-    /* For now just return the first set bit */
-    Processor = RtlFindLeastSignificantBit(Affinity);
-    ASSERT(Processor < MAXIMUM_PROCESSORS);
+    PreferredSet = Affinity & KiIdleSummary;
+    if (PreferredSet == 0)
+    {
+        PreferredSet = Affinity;
+    }
+
+    /* Return the first set bit */
+    NT_VERIFY(BitScanForwardAffinity(&Processor, PreferredSet) != FALSE);
+    ASSERT(Processor < KeNumberProcessors);
 
     return Processor;
 }
@@ -254,11 +260,11 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
     Prcb = KiProcessorBlock[Processor];
     KiAcquirePrcbLock(Prcb);
 
-    /* Check if we have an idle summary */
-    if (KiIdleSummary)
+    /* Check if the processor is idle */
+    if (KiIdleSummary & Prcb->SetMember)
     {
         /* Clear it and set this thread as the next one */
-        KiIdleSummary = 0;
+        InterlockedBitTestAndResetAffinity(&KiIdleSummary, Prcb->Number);
         Thread->State = Standby;
         Prcb->NextThread = Thread;
 
