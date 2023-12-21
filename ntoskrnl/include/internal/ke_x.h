@@ -424,6 +424,16 @@ KiSetThreadSwapBusy(IN PKTHREAD Thread)
     /* Make sure nobody already set it */
     ASSERT(Thread->SwapBusy == FALSE);
 
+    ASSERT(KeGetCurrentIrql() >= DISPATCH_LEVEL);
+    ASSERT(Thread == KeGetCurrentThread());
+#if 0
+    if (Thread == KiProcessorBlock[Thread->NextProcessor]->IdleThread)
+    {
+        /* We can't set it on the idle thread */
+        __debugbreak();
+        return;
+    }
+#endif
     /* Set it ourselves */
     Thread->SwapBusy = TRUE;
 }
