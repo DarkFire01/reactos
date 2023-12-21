@@ -107,6 +107,7 @@ KiIdleLoop(VOID)
     /* Now loop forever */
     while (TRUE)
     {
+        if (KeGetCurrentThread()->SwapBusy) __debugbreak();
         /* Start of the idle loop: disable interrupts */
         _enable();
         YieldProcessor();
@@ -131,6 +132,14 @@ KiIdleLoop(VOID)
             /* Enable interrupts */
             _enable();
 
+            // Do we need this?
+            KiSetThreadSwapBusy(Prcb->IdleThread);
+
+            /* Do the swap at SYNCH_LEVEL */
+            KfRaiseIrql(SYNCH_LEVEL);
+
+            KiAcquirePrcbLock(Prcb);
+
             /* Capture current thread data */
             OldThread = Prcb->CurrentThread;
             NewThread = Prcb->NextThread;
@@ -139,24 +148,23 @@ KiIdleLoop(VOID)
             Prcb->NextThread = NULL;
             Prcb->CurrentThread = NewThread;
 
+            KiReleasePrcbLock(Prcb);
+
             /* The thread is now running */
             NewThread->State = Running;
-
-#ifdef CONFIG_SMP
-            /* Do the swap at SYNCH_LEVEL */
-            KfRaiseIrql(SYNCH_LEVEL);
-#endif
 
             /* Clear idle summary bit */
             InterlockedBitTestAndResetAffinity(&KiIdleSummary, Prcb->Number);
 
             /* Switch away from the idle thread */
             KiSwapContext(APC_LEVEL, OldThread);
+           // if (KeGetCurrentThread()->SwapBusy) __debugbreak();
+            /* Set idle summary bit */
+            InterlockedBitTestAndSetAffinity(&KiIdleSummary, Prcb->Number);
 
-#ifdef CONFIG_SMP
             /* Go back to DISPATCH_LEVEL */
             KeLowerIrql(DISPATCH_LEVEL);
-#endif
+
         }
         else
         {
