@@ -535,7 +535,7 @@ KiTryThreadLock(IN PKTHREAD Thread)
     /* Otherwise, try to acquire it and check the result */
     Value = 1;
     Value = InterlockedExchange((PLONG)&Thread->ThreadLock, Value);
-
+    if (Value != 0 && Value != 1) __debugbreak();
     /* Return the lock state */
     return (Value == 1);
 }
