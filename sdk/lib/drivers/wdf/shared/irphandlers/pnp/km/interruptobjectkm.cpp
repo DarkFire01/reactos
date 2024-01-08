@@ -132,6 +132,7 @@ FxInterrupt::ConnectInternal(
     )
 {
     IO_CONNECT_INTERRUPT_PARAMETERS connectParams;
+#ifndef __REACTOS__
     FxPkgPnp* fxPkgPnp;
 
     fxPkgPnp = m_Device->m_PkgPnp;
@@ -140,6 +141,7 @@ FxInterrupt::ConnectInternal(
     // Tell the PnP Manager to connect the interrupt.
     //
     ASSERT(fxPkgPnp->m_IoConnectInterruptEx != NULL);
+#endif
 
     //
     // We're running on Longhorn or later (or somebody backported the new
@@ -170,7 +172,21 @@ FxInterrupt::ConnectInternal(
         m_InterruptInfo.ShareDisposition == CmResourceShareShared ? TRUE : FALSE;
     connectParams.FullySpecified.SynchronizeIrql      = m_SynchronizeIrql;
 
+#ifndef __REACTOS__
     return fxPkgPnp->m_IoConnectInterruptEx(&connectParams);
+#else
+    return IoConnectInterrupt(connectParams.FullySpecified.InterruptObject,
+                              connectParams.FullySpecified.ServiceRoutine,
+                              connectParams.FullySpecified.ServiceContext,
+                              connectParams.FullySpecified.SpinLock,
+                              connectParams.FullySpecified.Vector,
+                              connectParams.FullySpecified.Irql,
+                              connectParams.FullySpecified.SynchronizeIrql,
+                              connectParams.FullySpecified.InterruptMode,
+                              connectParams.FullySpecified.ShareVector,
+                              connectParams.FullySpecified.ProcessorEnableMask,
+                              connectParams.FullySpecified.FloatingSave);
+#endif
 }
 
 VOID
@@ -180,9 +196,11 @@ FxInterrupt::DisconnectInternal(
 {
     IO_DISCONNECT_INTERRUPT_PARAMETERS params;
     PKINTERRUPT interruptObject;
+#ifndef __REACTOS__
     FxPkgPnp* fxPkgPnp;
 
     fxPkgPnp = m_Device->m_PkgPnp;
+#endif
 
     //
     // Now null these pointers so that we can catch anyone trying to use them
@@ -191,10 +209,12 @@ FxInterrupt::DisconnectInternal(
     interruptObject = m_Interrupt;
     m_Interrupt = NULL;
 
+#ifndef __REACTOS__
     //
     // Disconnect the interrupt.
     //
     ASSERT(fxPkgPnp->m_IoDisconnectInterruptEx != NULL);
+#endif
 
     RtlZeroMemory(&params, sizeof(params));
 
@@ -207,7 +227,11 @@ FxInterrupt::DisconnectInternal(
 
     params.ConnectionContext.InterruptObject = interruptObject;
 
+#ifndef __REACTOS__
     fxPkgPnp->m_IoDisconnectInterruptEx(&params);
+#else
+    IoDisconnectInterrupt(params.ConnectionContext.InterruptObject);
+#endif
 
     return;
 }
