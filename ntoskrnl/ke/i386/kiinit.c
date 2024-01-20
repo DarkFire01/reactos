@@ -536,6 +536,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     {
         /* FIXME */
         DPRINT1("Starting CPU#%u - you are brave\n", Number);
+        KeLowerIrql(DISPATCH_LEVEL);
     }
 
     /* Setup the Idle Thread */
@@ -676,7 +677,7 @@ KiSystemStartupBootStack(VOID)
 
     /* Initialize the kernel for the current CPU */
     KiInitializeKernel(&KiInitialProcess.Pcb,
-                       (PKTHREAD)KeLoaderBlock->Thread,
+                       (PKTHREAD)__readfsdword(KPCR_CURRENT_THREAD),
                        (PVOID)(KeLoaderBlock->KernelStack & ~3),
                        (PKPRCB)__readfsdword(KPCR_PRCB),
                        KeNumberProcessors - 1,
@@ -817,25 +818,16 @@ AppCpuInit:
         while ((*(volatile KSPIN_LOCK*)&KiFreezeExecutionLock) & 1);
     }
 
-    //TODO: We don't setup IPIs yet so freeze other processors here.
-    if (Cpu)
-    {
-        KeMemoryBarrier();
-        LoaderBlock->Prcb = 0;
-
-        for (;;)
-        {
-            YieldProcessor();
-        }
-    }
-
     /* Setup CPU-related fields */
     __writefsdword(KPCR_NUMBER, Cpu);
     __writefsdword(KPCR_SET_MEMBER, 1 << Cpu);
     __writefsdword(KPCR_SET_MEMBER_COPY, 1 << Cpu);
     __writefsdword(KPCR_PRCB_SET_MEMBER, 1 << Cpu);
 
-    KiVerifyCpuFeatures(Pcr->Prcb);
+    if (!Cpu)
+    {
+        KiVerifyCpuFeatures(Pcr->Prcb);
+    }
 
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);

@@ -105,12 +105,7 @@ KeAcquireQueuedSpinLockAtDpcLevel(_Inout_ PKSPIN_LOCK_QUEUE LockHandle)
     /* Make sure we are at DPC or above! */
     if (KeGetCurrentIrql() < DISPATCH_LEVEL)
     {
-        /* We aren't -- bugcheck */
-        KeBugCheckEx(IRQL_NOT_GREATER_OR_EQUAL,
-                     (ULONG_PTR)LockHandle->Lock,
-                     KeGetCurrentIrql(),
-                     0,
-                     0);
+
     }
 #endif
 
@@ -129,12 +124,7 @@ KeReleaseQueuedSpinLockFromDpcLevel(_Inout_ PKSPIN_LOCK_QUEUE LockHandle)
     /* Make sure we are at DPC or above! */
     if (KeGetCurrentIrql() < DISPATCH_LEVEL)
     {
-        /* We aren't -- bugcheck */
-        KeBugCheckEx(IRQL_NOT_GREATER_OR_EQUAL,
-                     (ULONG_PTR)LockHandle->Lock,
-                     KeGetCurrentIrql(),
-                     0,
-                     0);
+
     }
 #endif
 
@@ -200,12 +190,7 @@ KeAcquireSpinLockAtDpcLevel(IN PKSPIN_LOCK SpinLock)
     /* Make sure we are at DPC or above! */
     if (KeGetCurrentIrql() < DISPATCH_LEVEL)
     {
-        /* We aren't -- bugcheck */
-        KeBugCheckEx(IRQL_NOT_GREATER_OR_EQUAL,
-                     (ULONG_PTR)SpinLock,
-                     KeGetCurrentIrql(),
-                     0,
-                     0);
+
     }
 
     /* Do the inlined function */
@@ -223,12 +208,7 @@ KeReleaseSpinLockFromDpcLevel(IN PKSPIN_LOCK SpinLock)
     /* Make sure we are at DPC or above! */
     if (KeGetCurrentIrql() < DISPATCH_LEVEL)
     {
-        /* We aren't -- bugcheck */
-        KeBugCheckEx(IRQL_NOT_GREATER_OR_EQUAL,
-                     (ULONG_PTR)SpinLock,
-                     KeGetCurrentIrql(),
-                     0,
-                     0);
+
     }
 
     /* Do the inlined function */
@@ -245,12 +225,7 @@ KefAcquireSpinLockAtDpcLevel(IN PKSPIN_LOCK SpinLock)
     /* Make sure we are at DPC or above! */
     if (KeGetCurrentIrql() < DISPATCH_LEVEL)
     {
-        /* We aren't -- bugcheck */
-        KeBugCheckEx(IRQL_NOT_GREATER_OR_EQUAL,
-                     (ULONG_PTR)SpinLock,
-                     KeGetCurrentIrql(),
-                     0,
-                     0);
+
     }
 
     /* Do the inlined function */
@@ -267,12 +242,7 @@ KefReleaseSpinLockFromDpcLevel(IN PKSPIN_LOCK SpinLock)
     /* Make sure we are at DPC or above! */
     if (KeGetCurrentIrql() < DISPATCH_LEVEL)
     {
-        /* We aren't -- bugcheck */
-        KeBugCheckEx(IRQL_NOT_GREATER_OR_EQUAL,
-                     (ULONG_PTR)SpinLock,
-                     KeGetCurrentIrql(),
-                     0,
-                     0);
+
     }
 
     /* Do the inlined function */
