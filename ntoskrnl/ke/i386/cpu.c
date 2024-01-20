@@ -1622,6 +1622,7 @@ KeFlushEntireTb(IN BOOLEAN Invalid,
     KeFlushCurrentTb();
 
 #ifdef CONFIG_SMP
+    __debugbreak();
     /* If this is MP, wait for the other processors to finish */
     if (TargetAffinity)
     {
