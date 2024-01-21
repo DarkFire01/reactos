@@ -707,7 +707,7 @@ HalEnableSystemInterrupt(
 
     /* Set up the redirection entry */
     ReDirReg.Vector = Vector;
-    ReDirReg.DeliveryMode = APIC_MT_Fixed;
+    ReDirReg.MessageType = APIC_MT_Fixed;
     ReDirReg.DestinationMode = APIC_DM_Physical;
     ReDirReg.Destination = 0;
     ReDirReg.TriggerMode = (InterruptMode == LevelSensitive) ?
