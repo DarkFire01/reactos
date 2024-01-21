@@ -536,6 +536,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     {
         /* FIXME */
         DPRINT1("Starting CPU#%u - you are brave\n", Number);
+        KeLowerIrql(DISPATCH_LEVEL);
     }
 
     /* Setup the Idle Thread */
@@ -676,7 +677,7 @@ KiSystemStartupBootStack(VOID)
 
     /* Initialize the kernel for the current CPU */
     KiInitializeKernel(&KiInitialProcess.Pcb,
-                       (PKTHREAD)KeLoaderBlock->Thread,
+                       (PKTHREAD)__readfsdword(KPCR_CURRENT_THREAD),
                        (PVOID)(KeLoaderBlock->KernelStack & ~3),
                        (PKPRCB)__readfsdword(KPCR_PRCB),
                        KeNumberProcessors - 1,
