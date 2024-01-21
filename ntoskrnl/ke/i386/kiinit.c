@@ -818,18 +818,6 @@ AppCpuInit:
         while ((*(volatile KSPIN_LOCK*)&KiFreezeExecutionLock) & 1);
     }
 
-    //TODO: We don't setup IPIs yet so freeze other processors here.
-    if (Cpu)
-    {
-        KeMemoryBarrier();
-        LoaderBlock->Prcb = 0;
-
-        for (;;)
-        {
-            YieldProcessor();
-        }
-    }
-
     /* Setup CPU-related fields */
     __writefsdword(KPCR_NUMBER, Cpu);
     __writefsdword(KPCR_SET_MEMBER, 1 << Cpu);
