@@ -60,20 +60,6 @@
 #define APIC_FREE_VECTOR 0xFF
 #define APIC_RESERVED_VECTOR 0xFE
 
-/* The IMCR is supported by two read/writable or write-only I/O ports,
-   22h and 23h, which receive address and data respectively.
-   To access the IMCR, write a value of 70h to I/O port 22h, which selects the IMCR.
-   Then write the data to I/O port 23h. The power-on default value is zero,
-   which connects the NMI and 8259 INTR lines directly to the BSP.
-   Writing a value of 01h forces the NMI and 8259 INTR signals to pass through the APIC.
-*/
-#define IMCR_ADDRESS_PORT  (PUCHAR)0x0022
-#define IMCR_DATA_PORT     (PUCHAR)0x0023
-#define IMCR_SELECT        0x70
-#define IMCR_PIC_DIRECT    0x00
-#define IMCR_PIC_VIA_APIC  0x01
-
-
 /* APIC Register Address Map */
 typedef enum _APIC_REGISTER
 {
