@@ -1264,7 +1264,7 @@ KiFlushNPXState(IN PFLOATING_SAVE_AREA SaveArea)
 
         /* Get the NPX thread and check its FPU state */
         NpxThread = KeGetCurrentPrcb()->NpxThread;
-        if ((NpxThread) && (NpxThread->NpxState == NPX_STATE_LOADED))
+        if ((NpxThread) && (NpxThread->NpxState == NPX_STATE_LOADED) && (NpxThread->InitialStack != NULL))
         {
             /* Get the FX frame and store the state there */
             FxSaveArea = KiGetThreadNpxArea(NpxThread);
