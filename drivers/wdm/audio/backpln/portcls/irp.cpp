@@ -42,7 +42,6 @@ PortClsPnp(
     PIO_STACK_LOCATION IoStack;
     POWER_STATE PowerState;
     IResourceList* resource_list = NULL;
-    UNICODE_STRING GuidString;
     //ULONG Index;
     //PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor, UnPartialDescriptor;
 
