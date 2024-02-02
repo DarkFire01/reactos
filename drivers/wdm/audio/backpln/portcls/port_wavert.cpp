@@ -116,6 +116,7 @@ CPortWaveRT::QueryInterface(
     UNICODE_STRING GuidString;
 
     if (IsEqualGUIDAligned(refiid, IID_IPortWaveRT) ||
+        IsEqualGUIDAligned(refiid, IID_IPort) ||
         IsEqualGUIDAligned(refiid, IID_IUnknown))
     {
         *Output = PVOID(PPORTWAVERT(this));
@@ -197,7 +198,8 @@ CPortWaveRT::Init(
     PPINCOUNT PinCount;
     PPOWERNOTIFY PowerNotify;
 
-    DPRINT("IPortWaveRT_Init entered %p\n", this);
+    DPRINT("IPortWaveRT_Init entered %p DevObject %p Irp %p UnknownMiniport %p UnknownAdapter %p ResourceList %p\n", this,
+        DeviceObject, Irp, UnknownMiniport, UnknownAdapter, ResourceList);
     PC_ASSERT_IRQL_EQUAL(PASSIVE_LEVEL);
 
     if (m_bInitialized)
@@ -282,7 +284,10 @@ CPortWaveRT::Init(
     }
 
     // increment reference on resource list
-    ResourceList->AddRef();
+    if (ResourceList)
+    {
+        ResourceList->AddRef();
+    }
 
     DPRINT("IPortWaveRT successfully initialized\n");
     return STATUS_SUCCESS;

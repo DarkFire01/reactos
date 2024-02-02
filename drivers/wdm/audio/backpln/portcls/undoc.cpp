@@ -164,7 +164,7 @@ PropertyItemDispatch(
 
     // sanity check
     PC_ASSERT(Descriptor);
-    PC_ASSERT(Descriptor->UnknownMiniport);
+    //PC_ASSERT(Descriptor->UnknownMiniport);
 
     // get instance / value size
     InstanceSize = IoStack->Parameters.DeviceIoControl.InputBufferLength;

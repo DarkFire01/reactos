@@ -42,6 +42,7 @@ PortClsPnp(
     PIO_STACK_LOCATION IoStack;
     POWER_STATE PowerState;
     IResourceList* resource_list = NULL;
+    UNICODE_STRING GuidString;
     //ULONG Index;
     //PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor, UnPartialDescriptor;
 
@@ -153,6 +154,14 @@ PortClsPnp(
             return PcCompleteIrp(DeviceObject, Irp, Status);
        case IRP_MN_READ_CONFIG:
             DPRINT("IRP_MN_READ_CONFIG\n");
+            Status = PcForwardIrpSynchronous(DeviceObject, Irp);
+            return PcCompleteIrp(DeviceObject, Irp, Status);
+      case IRP_MN_QUERY_CAPABILITIES:
+            DPRINT("IRP_MN_QUERY_CAPABILITIES\n");
+            Status = PcForwardIrpSynchronous(DeviceObject, Irp);
+            return PcCompleteIrp(DeviceObject, Irp, Status);
+      case IRP_MN_QUERY_PNP_DEVICE_STATE:
+            DPRINT("IRP_MN_QUERY_PNP_DEVICE_STATE\n");
             Status = PcForwardIrpSynchronous(DeviceObject, Irp);
             return PcCompleteIrp(DeviceObject, Irp, Status);
     }

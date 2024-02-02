@@ -8,7 +8,7 @@
 
 #include "private.hpp"
 
-#define NDEBUG
+#define YDEBUG
 #include <debug.h>
 
 PVOID
