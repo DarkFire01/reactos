@@ -52,6 +52,7 @@ KspCreatePDO(
     if (!NT_SUCCESS(Status))
     {
         /* failed to create pdo */
+        DPRINT1("KspCreatePDO failed with %x\n", Status);
         return Status;
     }
 
@@ -1723,9 +1724,6 @@ KsCreateBusEnumObject(
 
             /* acquire device entry lock */
             KeAcquireSpinLock(&BusDeviceExtension->Lock, &OldLevel);
-
-            /* done */
-            break;
         }
         /* move to next entry */
         Entry = Entry->Flink;

@@ -114,6 +114,7 @@ InsertAudioDevice(
 
     if (!NT_SUCCESS(Status))
     {
+        DPRINT("Failed to open device %wZ", &DeviceEntry->DeviceName);
         goto cleanup;
     }
 
