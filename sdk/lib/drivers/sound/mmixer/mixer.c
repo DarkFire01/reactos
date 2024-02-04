@@ -836,10 +836,11 @@ MMixerInitialize(
             }
             else
             {
-                DPRINT1("Failed to enumerate device %lu\n", DeviceIndex);
+                DPRINT1("Failed to enumerate device %lu, Status %x\n", DeviceIndex, Status);
 
-                /* TODO cleanup */
-                return Status;
+                /* ignore error and continue */
+                DeviceIndex++;
+                continue;
             }
         }
         else

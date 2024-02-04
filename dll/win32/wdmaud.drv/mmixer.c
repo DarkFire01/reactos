@@ -346,10 +346,10 @@ WdmAudInitUserModeMixer()
 
 
     /* create a device list */
-    DeviceHandle = SetupDiGetClassDevs(&CategoryGuid,
+    DeviceHandle = SetupDiGetClassDevsW(&CategoryGuid,
                                        NULL,
                                        NULL,
-                                       DIGCF_DEVICEINTERFACE/* FIXME |DIGCF_PRESENT*/);
+                                       DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);
 
     if (DeviceHandle == INVALID_HANDLE_VALUE)
     {
