@@ -1834,16 +1834,11 @@ AfdConnectAPC(
 {
     PAFDCONNECTAPCCONTEXT Context = ApcContext;
 
+    /* Wait for WSPConnect call */
+    WaitForSingleObject(Context->hSockEvent, INFINITE);
+    NtClose(Context->hSockEvent);
+
     TRACE("AfdConnectAPC %p %lx %lx\n", ApcContext, IoStatusBlock->Status, IoStatusBlock->Information);
-
-    /* Free IOCTL buffer */
-    HeapFree(GlobalHeap, 0, Context->lpConnectInfo);
-
-    if (!Context->lpSocket)
-    {
-        HeapFree(GlobalHeap, 0, ApcContext);
-        return;
-    }
 
     Context->lpSocket->SharedData->SocketLastError = TranslateNtStatusError(IoStatusBlock->Status);
     if (IoStatusBlock->Status == STATUS_SUCCESS)
@@ -1876,6 +1871,9 @@ AfdConnectAPC(
                                                  WSH_NOTIFY_CONNECT_ERROR);
     }
 
+    /* Free IOCTL buffer */
+    HeapFree(GlobalHeap, 0, Context->lpConnectInfo);
+
     HeapFree(GlobalHeap, 0, ApcContext);
 }
 
@@ -1899,6 +1897,7 @@ WSPConnect(SOCKET Handle,
     ULONG                   ConnectDataLength;
     ULONG                   InConnectDataLength;
     HANDLE                  SockEvent;
+    HANDLE                  SockEvent2 = NULL;
     int                     SocketDataLength;
     PAFDCONNECTAPCCONTEXT   APCContext = NULL;
     PIO_APC_ROUTINE         APCFunction = NULL;
@@ -1967,7 +1966,7 @@ WSPConnect(SOCKET Handle,
         }
 
         if (Status != STATUS_SUCCESS)
-            goto notify;
+            goto Leave;
     }
 
     /* Calculate the size of SocketAddress->sa_data */
@@ -1980,7 +1979,7 @@ WSPConnect(SOCKET Handle,
     if (!ConnectInfo)
     {
         Status = STATUS_INSUFFICIENT_RESOURCES;
-        goto notify;
+        goto Leave;
     }
 
     /* Set up Address in TDI Format */
@@ -2025,7 +2024,7 @@ WSPConnect(SOCKET Handle,
         }
 
         if (Status != STATUS_SUCCESS)
-            goto notify;
+            goto Leave;
     }
 
     /* AFD doesn't seem to care if these are invalid, but let's 0 them anyways */
@@ -2033,18 +2032,29 @@ WSPConnect(SOCKET Handle,
     ConnectInfo->UseSAN = FALSE;
     ConnectInfo->Unknown = 0;
 
+    /* Verify if we should use APC */
     if (Socket->SharedData->NonBlocking)
     {
-        APCFunction = &AfdConnectAPC; // should be a private io completition function inside us
+        Status = NtCreateEvent(&SockEvent2,
+                               EVENT_ALL_ACCESS,
+                               NULL,
+                               SynchronizationEvent,
+                               FALSE);
+        if (!NT_SUCCESS(Status))
+            goto Leave;
+
         APCContext = HeapAlloc(GlobalHeap, 0, sizeof(AFDCONNECTAPCCONTEXT));
         if (!APCContext)
         {
             ERR("Not enough memory for APC Context\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
-            goto notify;
+            goto Leave;
         }
         APCContext->lpConnectInfo = ConnectInfo;
         APCContext->lpSocket = Socket;
+        APCContext->hSockEvent = SockEvent2;
+        APCFunction = &AfdConnectAPC; // should be a private io completition function inside us
+
         IOSB = &APCContext->IoStatusBlock;
     }
 
@@ -2061,25 +2071,31 @@ WSPConnect(SOCKET Handle,
                                    0x22,
                                    NULL,
                                    0);
-    if (Status == STATUS_PENDING && Socket->SharedData->NonBlocking)
+    if (Status == STATUS_PENDING)
     {
-        Socket->SharedData->State = SocketConnected;
-        Status = STATUS_CANT_WAIT;
-        goto notify;
-    }
-
-    if (!Socket->SharedData->NonBlocking)
-    {
-        if (Status == STATUS_PENDING)
+        if (Socket->SharedData->NonBlocking)
+        {
+            Status = IOSB->Status;
+            if (Status == STATUS_PENDING)
+            {
+                Socket->SharedData->State = SocketConnected;
+                Status = STATUS_CANT_WAIT; // WSAEWOULDBLOCK
+                goto Leave;
+            }
+        }
+        else
         {
             /* Wait for completion of blocking mode */
             WaitForSingleObject(SockEvent, INFINITE);
             Status = IOSB->Status;
         }
+    }
 
+    if (!Socket->SharedData->NonBlocking)
+    {
         Socket->SharedData->SocketLastError = TranslateNtStatusError(Status);
         if (Status != STATUS_SUCCESS)
-            goto notify;
+            goto Leave;
 
         Socket->SharedData->State = SocketConnected;
         Socket->TdiConnectionHandle = (HANDLE)IOSB->Information;
@@ -2108,12 +2124,16 @@ WSPConnect(SOCKET Handle,
         }
     }
 
-notify:
+Leave:
     TRACE("Ending %lx\n", Status);
 
     if (!APCFunction)
     {
-        /* When using APC, this will be freed by the APC function */
+        /* When using APC, this will be closed/freed by the APC function */
+        if (SockEvent2)
+        {
+            NtClose(SockEvent2);
+        }
         HeapFree(GlobalHeap, 0, ConnectInfo);
     }
     NtClose(SockEvent);
@@ -2151,6 +2171,12 @@ notify:
             if (lpErrno) *lpErrno = Errno;
             return SOCKET_ERROR;
         }
+    }
+
+    if (APCFunction)
+    {
+        /* Allow APC to be processed */
+        NtSetEvent(SockEvent2, NULL);
     }
 
     return MsafdReturnWithErrno(Status, lpErrno, 0, NULL);
