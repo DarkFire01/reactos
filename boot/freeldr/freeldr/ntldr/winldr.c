@@ -1145,7 +1145,8 @@ LoadAndBootWindows(
                                     BootOptions,
                                     BootPath);
 }
-
+KERNEL_ENTRY_POINT PubKiSystemStartup;
+PLOADER_PARAMETER_BLOCK PubLoaderBlock;
 ARC_STATUS
 LoadAndBootWindowsCommon(
     IN USHORT OperatingSystemVersion,
@@ -1204,9 +1205,9 @@ LoadAndBootWindowsCommon(
     UiSetProgressBarSubset(40, 90); // NTOS goes from 25 to 75%
 
     /* Load boot drivers */
-    UiSetProgressBarText("Loading boot drivers...");
-    Success = WinLdrLoadBootDrivers(LoaderBlock, BootPath);
-    TRACE("Boot drivers loading %s\n", Success ? "successful" : "failed");
+   // UiSetProgressBarText("Loading boot drivers...");
+   // Success = WinLdrLoadBootDrivers(LoaderBlock, BootPath);
+   // TRACE("Boot drivers loading %s\n", Success ? "successful" : "failed");
 
     UiSetProgressBarSubset(0, 100);
 
@@ -1225,7 +1226,8 @@ LoadAndBootWindowsCommon(
     /* Save entry-point pointer and Loader block VAs */
     KiSystemStartup = (KERNEL_ENTRY_POINT)KernelDTE->EntryPoint;
     LoaderBlockVA = PaToVa(LoaderBlock);
-
+    PubLoaderBlock = LoaderBlockVA;
+    PubKiSystemStartup = KiSystemStartup;
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
 
@@ -1242,11 +1244,17 @@ LoadAndBootWindowsCommon(
     WinLdrSetProcessorContext();
 
     /* Save final value of LoaderPagesSpanned */
-    LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
+  //  LoaderBlock->Extension->LoaderPagesSpanned = LoaderPagesSpanned;
 
     TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
           KiSystemStartup, LoaderBlockVA);
 
+    /* Pass control */
+    (*KiSystemStartup)(LoaderBlockVA);
+    for(;;)
+{
+
+}
     /* Zero KI_USER_SHARED_DATA page */
     RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
 

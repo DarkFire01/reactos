@@ -115,6 +115,8 @@ elseif(ARCH STREQUAL "arm")
 elseif(ARCH STREQUAL "arm64")
     list(APPEND FREELDR_NTLDR_SOURCE
             ntldr/arch/arm64/winldr.c)
+    list(APPEND FREELDR_COMMON_ASM_SOURCE
+            ntldr/arch/arm64/arm64.S)
 else()
     #TBD
 endif()

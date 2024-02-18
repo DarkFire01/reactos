@@ -218,12 +218,20 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     LoaderBlock->Prcb = 0;
 }
 
+void KxHoldArm64();
+
+
 CODE_SEG("INIT")
 DECLSPEC_NORETURN
 VOID
 NTAPI
 KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    KxHoldArm64();
+    for(;;)
+    {
+
+    }
     DbgPrintEarly("ReactOS ARM64 Port\n");
     DbgPrintEarly("KiSystemStartup: Entry\n");
     ULONG Cpu;

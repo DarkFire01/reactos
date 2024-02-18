@@ -83,3 +83,21 @@ FrLdrBugCheckWithMessage(
     va_end(argptr);
     for (;;);
 }
+
+
+
+#define QEMUUART 0x09000000
+volatile unsigned int * UART0DR = (unsigned int *) QEMUUART;
+
+BOOLEAN
+Rs232PortInitialize(IN ULONG ComPort,
+                    IN ULONG BaudRate)
+{
+    return TRUE;
+}
+
+VOID
+Rs232PortPutByte(UCHAR ByteToSend)
+{
+    *UART0DR = ByteToSend;
+}

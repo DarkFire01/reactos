@@ -1,0 +1,30 @@
+In Armv8.0-A, the maximum size for a physical address is 48 bits.
+#define MAX_PHYISCALADDRESS 48 (bits)
+
+if VA[63:42] = 1 then TTBR1 is used for the base address for the first translation table. When 
+VA[63:42] = 0, TTBR0 is used for the base address for the first translation table. 
+
+PAGING LEVELS:
+		case 0:
+		{
+			Shift = 39;
+			break;
+		}
+
+		case 1:
+		{
+			Shift = 30;
+			break;
+		}
+
+		case 2:
+		{
+			Shift = 21;
+			break;
+		}
+
+		case 3:
+		{
+			Shift = 12;
+			break;
+		}

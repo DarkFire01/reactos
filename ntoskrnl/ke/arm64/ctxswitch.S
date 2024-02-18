@@ -45,6 +45,23 @@
     NESTED_END KiThreadStartup
 
 
+
+    NESTED_ENTRY KxHoldArm64
+    mov x20, #0x0001
+    mov x21, #0xDEAD
+    mov x22, #0xBEEF
+    mov x23, #0xAAAA
+    mov x24, #0xBBBB
+    mov x25, #0xCCCC
+    mov x26, #0xDDDD
+    mov x27, #0xEEEE
+    mov x28, #0xFFFF
+    mov x29, #0xBEEF
+    mov x30, #0xDEAD
+    wfi
+    ret
+    NESTED_END KxHoldArm64
+   
     NESTED_ENTRY KiSwitchThreads
     ;PROLOG_END KiSwitchThreads
     ret
