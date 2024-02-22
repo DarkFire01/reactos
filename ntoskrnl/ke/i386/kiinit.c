@@ -613,8 +613,11 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     /* Raise to Dispatch */
     KeRaiseIrql(DISPATCH_LEVEL, &DummyIrql);
 
-    /* Set the Idle Priority to 0. This will jump into Phase 1 */
-    KeSetPriorityThread(InitThread, 0);
+    if (KeGetCurrentProcessorNumber() == 0)
+    {
+        /* Set the Idle Priority to 0. This will jump into Phase 1 */
+        KeSetPriorityThread(InitThread, 0);
+    }
 
     /* If there's no thread scheduled, put this CPU in the Idle summary */
     KiAcquirePrcbLock(Prcb);
