@@ -453,6 +453,8 @@ KiSwapContextEntry(IN PKSWITCHFRAME SwitchFrame,
     /* Now enable interrupts and do the switch */
     _enable();
     KiSwitchThreads(OldThread, NewThread->KernelStack);
+    if (KeGetCurrentProcessorNumber() > 0)
+        __debugbreak();
 }
 
 VOID

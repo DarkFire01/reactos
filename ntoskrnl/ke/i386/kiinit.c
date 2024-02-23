@@ -118,7 +118,7 @@ KiInitMachineDependent(VOID)
     KiRestoreFastSyscallReturnState();
 
     /* Loop every CPU */
-    i = KeActiveProcessors;
+    i = 1;
     for (Affinity = 1; i; Affinity <<= 1)
     {
         /* Check if this is part of the set */

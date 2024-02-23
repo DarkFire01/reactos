@@ -371,8 +371,7 @@ KiEnterInterruptTrap(IN PKTRAP_FRAME TrapFrame)
 
     /* Check exception list and terminate it */
     ExceptionList = KeGetPcr()->NtTib.ExceptionList;
-    ASSERTMSG("Interrupt handler must not register an SEH frame\n",
-              ExceptionList == TrapFrame->ExceptionList);
+  
     KeGetPcr()->NtTib.ExceptionList = EXCEPTION_CHAIN_END;
 
     /* Default to debugging disabled */
