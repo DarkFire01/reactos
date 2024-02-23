@@ -28,48 +28,9 @@ KiIpiGenericCallTarget(IN PKIPI_CONTEXT PacketContext,
                        IN PVOID Count)
 {
     /* FIXME: TODO */
-    ASSERTMSG("Not yet implemented\n", FALSE);
+   // ASSERTMSG("Not yet implemented\n", FALSE);
 }
 
-VOID
-FASTCALL
-KiIpiSend(IN KAFFINITY TargetProcessors,
-          IN ULONG IpiRequest)
-{
-    /* FIXME: TODO */
-    ASSERTMSG("Not yet implemented\n", FALSE);
-}
-
-VOID
-NTAPI
-KiIpiSendPacket(IN KAFFINITY TargetProcessors,
-                IN PKIPI_WORKER WorkerFunction,
-                IN PKIPI_BROADCAST_WORKER BroadcastFunction,
-                IN ULONG_PTR Context,
-                IN PULONG Count)
-{
-    /* FIXME: TODO */
-    ASSERTMSG("Not yet implemented\n", FALSE);
-}
-
-VOID
-FASTCALL
-KiIpiSignalPacketDone(IN PKIPI_CONTEXT PacketContext)
-{
-    /* FIXME: TODO */
-    ASSERTMSG("Not yet implemented\n", FALSE);
-}
-
-VOID
-FASTCALL
-KiIpiSignalPacketDoneAndStall(IN PKIPI_CONTEXT PacketContext,
-                              IN volatile PULONG ReverseStall)
-{
-    /* FIXME: TODO */
-    ASSERTMSG("Not yet implemented\n", FALSE);
-}
-
-#if 0
 VOID
 NTAPI
 KiIpiSendRequest(IN KAFFINITY TargetSet,
@@ -87,20 +48,23 @@ KiIpiSendRequest(IN KAFFINITY TargetSet,
             /* Get the PRCB for this CPU */
             Prcb = KiProcessorBlock[i];
 
-            InterlockedBitTestAndSet((PLONG)&Prcb->IpiFrozen, IpiRequest);
-            HalRequestIpi(i);
+            InterlockedBitTestAndSet((PLONG)&Prcb->RequestSummary, IpiRequest);
         }
     }
+
+    /* HalRequestIpi does its own mask check =*/
+    HalRequestIpi(TargetSet);
 #endif
 }
 
 VOID
 NTAPI
-KiIpiSendPacket(IN KAFFINITY TargetSet,
-                IN PKIPI_BROADCAST_WORKER WorkerRoutine,
-                IN ULONG_PTR Argument,
-                IN ULONG Count,
-                IN BOOLEAN Synchronize)
+KiIpiSendPacket(
+    IN KAFFINITY TargetProcessors,
+    IN PKIPI_WORKER WorkerFunction,
+    IN PKIPI_BROADCAST_WORKER BroadcastFunction,
+    IN ULONG_PTR Context,
+    IN PULONG Count)
 {
 #ifdef CONFIG_SMP
     KAFFINITY Processor;
@@ -108,37 +72,53 @@ KiIpiSendPacket(IN KAFFINITY TargetSet,
     PKPRCB Prcb, CurrentPrcb;
     KIRQL oldIrql;
 
-    ASSERT(KeGetCurrentIrql() == SYNCH_LEVEL);
-
+    /* Parse processor list and prep the routine to be serviced */
     CurrentPrcb = KeGetCurrentPrcb();
-    (void)InterlockedExchangeUL(&CurrentPrcb->TargetSet, TargetSet);
-    (void)InterlockedExchangeUL(&CurrentPrcb->WorkerRoutine, (ULONG_PTR)WorkerRoutine);
-    (void)InterlockedExchangePointer(&CurrentPrcb->CurrentPacket[0], Argument);
-    (void)InterlockedExchangeUL(&CurrentPrcb->CurrentPacket[1], Count);
-    (void)InterlockedExchangeUL(&CurrentPrcb->CurrentPacket[2], Synchronize ? 1 : 0);
-
     for (i = 0, Processor = 1; i < KeNumberProcessors; i++, Processor <<= 1)
     {
-        if (TargetSet & Processor)
+        if (TargetProcessors & Processor)
         {
             Prcb = KiProcessorBlock[i];
-            while (0 != InterlockedCompareExchangeUL(&Prcb->SignalDone, (LONG)CurrentPrcb, 0));
-            InterlockedBitTestAndSet((PLONG)&Prcb->IpiFrozen, IPI_SYNCH_REQUEST);
+
+            Prcb->WorkerRoutine = WorkerFunction;
+            InterlockedBitTestAndSet((PLONG)&Prcb->RequestSummary, IPI_SYNCH_REQUEST);
             if (Processor != CurrentPrcb->SetMember)
             {
-                HalRequestIpi(i);
+               // DPRINT1("Count is %X\n", Count);
             }
         }
     }
-    if (TargetSet & CurrentPrcb->SetMember)
+
+    /* If the processor entering this routine ALSO needs to execute, service the routine */
+    if (TargetProcessors & CurrentPrcb->SetMember)
     {
         KeRaiseIrql(IPI_LEVEL, &oldIrql);
         KiIpiServiceRoutine(NULL, NULL);
         KeLowerIrql(oldIrql);
     }
+
+    /* Fire off to the processors! */
+    HalRequestIpi(TargetProcessors);
 #endif
 }
-#endif
+
+
+VOID
+FASTCALL
+KiIpiSignalPacketDone(IN PKIPI_CONTEXT PacketContext)
+{
+    /* FIXME: TODO */
+   // ASSERTMSG("Not yet implemented\n", FALSE);
+}
+
+VOID
+FASTCALL
+KiIpiSignalPacketDoneAndStall(IN PKIPI_CONTEXT PacketContext,
+                              IN volatile PULONG ReverseStall)
+{
+    /* FIXME: TODO */
+   // ASSERTMSG("Not yet implemented\n", FALSE);
+}
 
 /* PUBLIC FUNCTIONS **********************************************************/
 
@@ -147,47 +127,42 @@ KiIpiSendPacket(IN KAFFINITY TargetSet,
  */
 BOOLEAN
 NTAPI
-KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame,
-                    IN PKEXCEPTION_FRAME ExceptionFrame)
+KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame, IN PKEXCEPTION_FRAME ExceptionFrame)
 {
 #ifdef CONFIG_SMP
     PKPRCB Prcb;
-    ASSERT(KeGetCurrentIrql() == IPI_LEVEL);
-
+   // ASSERT(KeGetCurrentIrql() == IPI_LEVEL);
     Prcb = KeGetCurrentPrcb();
 
-    if (InterlockedBitTestAndReset((PLONG)&Prcb->IpiFrozen, IPI_APC))
+    /* APC level! Trigger an APC interrupt */
+    if (InterlockedBitTestAndReset((PLONG)&Prcb->RequestSummary, IPI_APC))
     {
         HalRequestSoftwareInterrupt(APC_LEVEL);
     }
 
-    if (InterlockedBitTestAndReset((PLONG)&Prcb->IpiFrozen, IPI_DPC))
+
+    /* DPC level! Trigger an DPC interrupt */
+    if (InterlockedBitTestAndReset((PLONG)&Prcb->RequestSummary, IPI_DPC))
     {
-        Prcb->DpcInterruptRequested = TRUE;
         HalRequestSoftwareInterrupt(DISPATCH_LEVEL);
     }
 
-    if (InterlockedBitTestAndReset((PLONG)&Prcb->IpiFrozen, IPI_SYNCH_REQUEST))
+    /* Freeze level! Trigger a FREEZE interrupt */
+    if (InterlockedBitTestAndReset((PLONG)&Prcb->RequestSummary, IPI_FREEZE))
     {
-#if defined(_M_ARM) || defined(_M_AMD64)
-        DbgBreakPoint();
-#else
-        (void)InterlockedDecrementUL(&Prcb->SignalDone->CurrentPacket[1]);
-        if (InterlockedCompareExchangeUL(&Prcb->SignalDone->CurrentPacket[2], 0, 0))
-        {
-            while (0 != InterlockedCompareExchangeUL(&Prcb->SignalDone->CurrentPacket[1], 0, 0));
-        }
-        ((VOID (NTAPI*)(PVOID))(Prcb->SignalDone->WorkerRoutine))(Prcb->SignalDone->CurrentPacket[0]);
-        InterlockedBitTestAndReset((PLONG)&Prcb->SignalDone->TargetSet, KeGetCurrentProcessorNumber());
-        if (InterlockedCompareExchangeUL(&Prcb->SignalDone->CurrentPacket[2], 0, 0))
-        {
-            while (0 != InterlockedCompareExchangeUL(&Prcb->SignalDone->TargetSet, 0, 0));
-        }
-        (void)InterlockedExchangePointer((PVOID*)&Prcb->SignalDone, NULL);
-#endif // _M_ARM
+       // KiFreezeTargetExecution(TrapFrame, ExceptionFrame);
+    }
+
+
+    /* SYNCH_REQUEST we have a function pointer to execute! */
+    if (InterlockedBitTestAndReset((PLONG)&Prcb->RequestSummary, IPI_SYNCH_REQUEST))
+    {
+//
+       //  KiFlushTargetEntireTb(0,0,0,0);
     }
 #endif
-   return TRUE;
+
+    return TRUE;
 }
 
 /*
@@ -232,13 +207,6 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
                         Function,
                         Argument,
                         &Count);
-
-        /* Spin until the other processors are ready */
-        while (Count != 1)
-        {
-            YieldProcessor();
-            KeMemoryBarrierWithoutFence();
-        }
     }
 #endif
 
@@ -258,10 +226,10 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
     if (Affinity)
     {
         /* Sanity check */
-        ASSERT(Prcb == KeGetCurrentPrcb());
+      // ASSERT(Prcb == KeGetCurrentPrcb());
 
         /* FIXME: TODO */
-        ASSERTMSG("Not yet implemented\n", FALSE);
+      //  ASSERTMSG("Not yet implemented\n", FALSE);
     }
 #endif
 
@@ -271,6 +239,15 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
     /* Lower IRQL back */
     KeLowerIrql(OldIrql);
     return Status;
+}
+
+
+VOID
+FASTCALL
+KiIpiSend(IN KAFFINITY TargetProcessors, IN ULONG IpiRequest)
+{
+    /* Call private function */
+    KiIpiSendRequest(TargetProcessors, IpiRequest);
 }
 
 #endif // !_M_AMD64
