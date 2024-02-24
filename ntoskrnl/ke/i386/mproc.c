@@ -33,6 +33,16 @@ typedef struct _AP_SETUP_STACK
 /* FUNCTIONS *****************************************************************/
 
 CODE_SEG("INIT")
+ULONG_PTR
+NTAPI
+KiIpiSanityCheck(IN ULONG_PTR Context)
+{
+    if (KeGetCurrentProcessorNumber() > 0)
+        __debugbreak();
+    return 0;
+}
+
+CODE_SEG("INIT")
 VOID
 NTAPI
 KeStartAllProcessors(VOID)
@@ -137,6 +147,14 @@ KeStartAllProcessors(VOID)
         while (KeLoaderBlock->Prcb != 0)
         {
             //TODO: Add a time out so we don't wait forever
+            KeMemoryBarrier();
+            YieldProcessor();
+        }
+
+
+        KeIpiGenericCall(KiIpiSanityCheck, 0);
+        for(;;)
+        {
             KeMemoryBarrier();
             YieldProcessor();
         }
