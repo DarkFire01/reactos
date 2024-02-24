@@ -662,8 +662,8 @@ HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
         /* Spurious, just end the interrupt */
         KiEoiHelper(TrapFrame);
     }
-    /* Raise to DISPATCH_LEVEL */
-    ApicRaiseIrql(DISPATCH_LEVEL);
+    /* Raise to IPI_LEVEL */
+    ApicRaiseIrql(IPI_LEVEL);
 
     /* End the interrupt */
     ApicSendEOI();
