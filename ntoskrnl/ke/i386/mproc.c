@@ -33,6 +33,15 @@ typedef struct _AP_SETUP_STACK
 /* FUNCTIONS *****************************************************************/
 
 CODE_SEG("INIT")
+ULONG_PTR
+NTAPI
+KiIpiSanityCheck(IN ULONG_PTR Context)
+{
+    DPRINT1("hello from CPU %d", KeGetCurrentProcessorNumber());
+    return 0;
+}
+
+CODE_SEG("INIT")
 VOID
 NTAPI
 KeStartAllProcessors(VOID)
@@ -140,6 +149,9 @@ KeStartAllProcessors(VOID)
             KeMemoryBarrier();
             YieldProcessor();
         }
+
+
+       // KeIpiGenericCall(KiIpiSanityCheck, 0);
     }
 
     // The last CPU didn't start - clean the data
