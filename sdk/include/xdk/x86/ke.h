@@ -283,7 +283,7 @@ typedef struct _CONTEXT {
 } CONTEXT;
 #include "poppack.h"
 
-#define KeGetPcr()                      PCR
+#define KeGetPcr()              ((KPCR *)__readfsdword(FIELD_OFFSET(KPCR, SelfPcr)))
 
 #define PCR_MINOR_VERSION 1
 #define PCR_MAJOR_VERSION 1
