@@ -37,8 +37,7 @@ ULONG_PTR
 NTAPI
 KiIpiSanityCheck(IN ULONG_PTR Context)
 {
-    if (KeGetCurrentProcessorNumber() > 0)
-        __debugbreak();
+    DPRINT1("hello from CPU %d", KeGetCurrentProcessorNumber());
     return 0;
 }
 
@@ -152,12 +151,7 @@ KeStartAllProcessors(VOID)
         }
 
 
-        KeIpiGenericCall(KiIpiSanityCheck, 0);
-        for(;;)
-        {
-            KeMemoryBarrier();
-            YieldProcessor();
-        }
+       // KeIpiGenericCall(KiIpiSanityCheck, 0);
     }
 
     // The last CPU didn't start - clean the data

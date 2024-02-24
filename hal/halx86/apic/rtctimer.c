@@ -212,6 +212,8 @@ HalpClockIpiHandler(IN PKTRAP_FRAME TrapFrame)
 
     /* Call the kernel to update runtimes */
     KeUpdateRunTime(TrapFrame, Irql);
+
+    KiEndInterrupt(Irql, TrapFrame);
 }
 
 ULONG
