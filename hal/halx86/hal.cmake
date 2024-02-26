@@ -1,5 +1,6 @@
 include(up.cmake)
 include(generic.cmake)
+include(pcidata.cmake)
 include(legacy.cmake)
 include(pic.cmake)
 
