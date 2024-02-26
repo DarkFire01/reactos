@@ -170,10 +170,13 @@ KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame, IN PKEXCEPTION_FRAME ExceptionFra
     {
         PKIPI_WORKER WorkerCall;
         WorkerCall = Prcb->WorkerRoutine;
-        WorkerCall(Prcb->CurrentPacket[0],  //PKIPI_CONTEXT PacketContext,
+        if (Prcb->WorkerRoutine)
+        {
+            WorkerCall(Prcb->CurrentPacket[0],  //PKIPI_CONTEXT PacketContext,
                    Prcb->CurrentPacket[1],  //PVOID BroadcastFunction,
                    Prcb->CurrentPacket[2],  //PVOID Argument,
                    Prcb->CurrentPacket[3]); //PULONG Count)
+        }
     }
 #endif
 
