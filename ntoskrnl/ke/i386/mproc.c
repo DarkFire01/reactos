@@ -40,7 +40,17 @@ KiIpiSanityCheck(IN ULONG_PTR Context)
     DPRINT1("hello from CPU %d", KeGetCurrentProcessorNumber());
     return 0;
 }
-
+VOID
+FASTCALL
+KiGetMachineBootPointers(IN PKGDTENTRY *Gdt,
+                         IN PKIDTENTRY *Idt,
+                         IN PKIPCR *Pcr,
+                         IN PKTSS *Tss);
+VOID
+FASTCALL
+Ki386InitializeTss(IN PKTSS Tss,
+                   IN PKIDTENTRY Idt,
+                   IN PKGDTENTRY Gdt);
 CODE_SEG("INIT")
 VOID
 NTAPI
@@ -69,7 +79,13 @@ KeStartAllProcessors(VOID)
         DPCStack = MmCreateKernelStack(FALSE, 0);
         if (!DPCStack)
             break;
-
+        // Prepare descriptor tables
+        KDESCRIPTOR bspGdt, bspIdt;
+        __sgdt(&bspGdt.Limit);
+        __sidt(&bspIdt.Limit);
+        RtlCopyMemory(&APInfo->Gdt, (PVOID)bspGdt.Base, bspGdt.Limit + 1);
+        RtlCopyMemory(&APInfo->Idt, (PVOID)bspIdt.Base, bspIdt.Limit + 1);
+   
         // Initalize a new PCR for the specific AP
         KiInitializePcr(ProcessorCount,
                         &APInfo->Pcr,
@@ -78,13 +94,6 @@ KeStartAllProcessors(VOID)
                         &APInfo->Tss,
                         (PKTHREAD)&APInfo->Thread,
                         DPCStack);
-
-        // Prepare descriptor tables
-        KDESCRIPTOR bspGdt, bspIdt;
-        __sgdt(&bspGdt.Limit);
-        __sidt(&bspIdt.Limit);
-        RtlCopyMemory(&APInfo->Gdt, (PVOID)bspGdt.Base, bspGdt.Limit + 1);
-        RtlCopyMemory(&APInfo->Idt, (PVOID)bspIdt.Base, bspIdt.Limit + 1);
 
         KiSetGdtDescriptorBase(KiGetGdtEntry(&APInfo->Gdt, KGDT_R0_PCR), (ULONG_PTR)&APInfo->Pcr);
         KiSetGdtDescriptorBase(KiGetGdtEntry(&APInfo->Gdt, KGDT_DF_TSS), (ULONG_PTR)&APInfo->TssDoubleFault);

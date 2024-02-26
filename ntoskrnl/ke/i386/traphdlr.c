@@ -722,7 +722,7 @@ FASTCALL
 KiTrap07Handler(IN PKTRAP_FRAME TrapFrame)
 {
     PKTHREAD Thread, NpxThread;
-    PFX_SAVE_AREA SaveArea, NpxSaveArea;
+    PFX_SAVE_AREA SaveArea;
     ULONG Cr0;
 
     /* Save trap frame */
@@ -757,13 +757,13 @@ KiTrap07Handler(IN PKTRAP_FRAME TrapFrame)
             if (NpxThread)
             {
                 /* Get the NPX frame */
-                NpxSaveArea = KiGetThreadNpxArea(NpxThread);
+                //NpxSaveArea = KiGetThreadNpxArea(NpxThread);
 
                 /* Save FPU state */
-                Ke386SaveFpuState(NpxSaveArea);
+              //  Ke386SaveFpuState(NpxSaveArea);
 
                 /* Update NPX state */
-                NpxThread->NpxState = NPX_STATE_NOT_LOADED;
+              //  NpxThread->NpxState = NPX_STATE_NOT_LOADED;
            }
 
             /* Load FPU state */

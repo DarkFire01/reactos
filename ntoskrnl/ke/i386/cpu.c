@@ -829,9 +829,12 @@ Ki386InitializeTss(IN PKTSS Tss,
     TssEntry->HighWord.Bits.Dpl = 0;
     KiInitializeTSS2(Tss, TssEntry);
     KiInitializeTSS(Tss);
-
-    /* Load the task register */
-    Ke386SetTr(KGDT_TSS);
+    
+    if (KeGetCurrentProcessorNumber() == 0)
+    {
+        /* Load the task register */
+        Ke386SetTr(KGDT_TSS);
+    }
 
     /* Setup the Task Gate for Double Fault Traps */
     TaskGateEntry = (PKGDTENTRY)&Idt[8];

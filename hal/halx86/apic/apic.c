@@ -664,8 +664,6 @@ HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
         /* Spurious, just end the interrupt */
         KiEoiHelper(TrapFrame);
     }
-    /* Raise to IPI_LEVEL */
-    ApicRaiseIrql(IPI_LEVEL);
 
     /* End the interrupt */
     ApicSendEOI();
@@ -674,11 +672,8 @@ HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
     KiIpiServiceRoutine(TrapFrame, NULL);
     _disable();
 
-    /* Restore the old IRQL */
-    ApicLowerIrql(Irql);
-
     /* Exit the interrupt */
-    KiEoiHelper(TrapFrame);
+    KiEndInterrupt(Irql, TrapFrame);
 
 }
 

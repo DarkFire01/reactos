@@ -76,11 +76,12 @@ _HalpAPEntry16End:
 .code32
 _HalpAPEntry32:
     /* Set the Ring 0 DS/ES/SS Segment */
-    mov ax, HEX(10)
+    mov ax, KGDT_R0_DATA
     mov ds, ax
     mov es, ax
-    mov ss, ax
+    mov fs, ax
     mov gs, ax
+    mov ss, ax
 
     /* Load ProcessorState pointer */
     mov esi, [ebp + ZERO_OFFSET(ProcessorState)]

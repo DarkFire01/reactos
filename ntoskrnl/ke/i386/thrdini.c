@@ -254,7 +254,7 @@ KiInitializeContextThread(IN PKTHREAD Thread,
     /* Save back the new value of the kernel stack. */
     Thread->KernelStack = (PVOID)CtxSwitchFrame;
 }
-
+extern BOOLEAN AreWeReadyToFuckWucky;
 DECLSPEC_NORETURN
 VOID
 KiIdleLoop(VOID)
