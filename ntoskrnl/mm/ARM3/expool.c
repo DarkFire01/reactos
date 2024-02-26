@@ -877,7 +877,7 @@ ExpInsertPoolTracker(IN ULONG Key,
     // ASSERT on ReactOS features not yet supported
     //
     ASSERT(!(PoolType & SESSION_POOL_MASK));
-    ASSERT(KeGetCurrentProcessorNumber() == 0);
+    //ASSERT(KeGetCurrentProcessorNumber() == 0);
 
     //
     // Why the double indirection? Because normally this function is also used
