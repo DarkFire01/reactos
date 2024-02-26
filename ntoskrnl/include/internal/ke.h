@@ -982,6 +982,16 @@ VOID
 NTAPI
 KiInitMachineDependent(VOID);
 
+VOID
+NTAPI
+KxFreezeExecution(
+    VOID);
+
+VOID
+NTAPI
+KxThawExecution(
+    VOID);
+
 BOOLEAN
 NTAPI
 KeFreezeExecution(IN PKTRAP_FRAME TrapFrame,
@@ -1024,9 +1034,14 @@ KiSaveProcessorControlState(
 VOID
 NTAPI
 KiSaveProcessorState(
-    IN PKTRAP_FRAME TrapFrame,
-    IN PKEXCEPTION_FRAME ExceptionFrame
-);
+    _In_ PKTRAP_FRAME TrapFrame,
+    _In_ PKEXCEPTION_FRAME ExceptionFrame);
+
+VOID
+NTAPI
+KiRestoreProcessorState(
+    _Inout_ PKTRAP_FRAME TrapFrame,
+    _Inout_ PKEXCEPTION_FRAME ExceptionFrame);
 
 VOID
 FASTCALL
