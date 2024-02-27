@@ -762,14 +762,14 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     /* Initialize the machine type */
     KiInitializeMachineType();
 
-    /* Skip initial setup if this isn't the Boot CPU */
-    if (Cpu) goto AppCpuInit;
-
     /* Get GDT, IDT, PCR and TSS pointers */
     KiGetMachineBootPointers(&Gdt, &Idt, &Pcr, &Tss);
 
     /* Setup the TSS descriptors and entries */
     Ki386InitializeTss(Tss, Idt, Gdt);
+
+    /* Skip initial setup if this isn't the Boot CPU */
+    if (Cpu) goto AppCpuInit;
 
     /* Initialize the PCR */
     RtlZeroMemory(Pcr, PAGE_SIZE);
