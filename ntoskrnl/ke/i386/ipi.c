@@ -170,7 +170,7 @@ KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame, IN PKEXCEPTION_FRAME ExceptionFra
     {
         PKIPI_WORKER WorkerCall;
         WorkerCall = Prcb->WorkerRoutine;
-        if (Prcb->WorkerRoutine)
+        if (Prcb->WorkerRoutine && Prcb->CurrentPacket[1])
         {
             WorkerCall(Prcb->CurrentPacket[0],  //PKIPI_CONTEXT PacketContext,
                    Prcb->CurrentPacket[1],  //PVOID BroadcastFunction,
