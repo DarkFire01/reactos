@@ -2461,6 +2461,9 @@ MiProtectVirtualMemory(IN PEPROCESS Process,
                 if ((NewAccessProtection & PAGE_NOACCESS) ||
                     (NewAccessProtection & PAGE_GUARD))
                 {
+#ifdef CONFIG_SMP
+                    ULONG i, Affinity;
+#endif
                     KIRQL OldIrql = MiAcquirePfnLock();
 
                     /* Mark the PTE as transition and change its protection */
@@ -2471,11 +2474,34 @@ MiProtectVirtualMemory(IN PEPROCESS Process,
                     MiDecrementShareCount(Pfn1, PFN_FROM_PTE(&PteContents));
                     // FIXME: remove the page from the WS
                     MI_WRITE_INVALID_PTE(PointerPte, PteContents);
+
+                    /* Ivalidate entry in TLB on every processor*/
 #ifdef CONFIG_SMP
-                    // FIXME: Should invalidate entry in every CPU TLB
-                    ASSERT(KeNumberProcessors == 1);
-#endif
+                    /* Loop every CPU */
+                    i = KeActiveProcessors;
+                    for (Affinity = 1; i; Affinity <<= 1)
+                    {
+                        /* Check if this is part of the set */
+                        if (i & Affinity)
+                        {
+                            /* Run on this CPU */
+                            i &= ~Affinity;
+                            KeSetSystemAffinityThread(Affinity);
+
+                            KeInvalidateTlbEntry(MiPteToAddress(PointerPte));
+
+                            /* Flush the TB for the Current CPU, and update the flush stamp */
+                            KeFlushCurrentTb();
+                        }
+                    }
+#else
                     KeInvalidateTlbEntry(MiPteToAddress(PointerPte));
+#endif
+
+#ifdef CONFIG_SMP
+                    /* Return affinity back to where it was */
+                    KeRevertToUserAffinityThread();
+#endif
 
                     /* We are done for this PTE */
                     MiReleasePfnLock(OldIrql);
