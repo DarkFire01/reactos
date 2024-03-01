@@ -47,6 +47,7 @@ KeI386VdmInitialize(VOID)
     UNICODE_STRING Name;
     UCHAR KeyValueInfo[sizeof(KEY_VALUE_BASIC_INFORMATION) + 30];
     ULONG ReturnLength;
+    ULONG i, Affinity;
 
     /* Make sure that there is a WOW key */
     RtlInitUnicodeString(&Name,
@@ -73,8 +74,22 @@ KeI386VdmInitialize(VOID)
         /* Not present, so check if the CPU supports VME */
         if (KeGetPcr()->Prcb->FeatureBits & KF_V86_VIS)
         {
-            /* Enable them. FIXME: Use IPI */
-            Ki386VdmEnablePentiumExtentions(TRUE);
+            /* Loop every CPU */
+            i = KeActiveProcessors;
+            for (Affinity = 1; i; Affinity <<= 1)
+            {
+                /* Check if this is part of the set */
+                if (i & Affinity)
+                {
+                    /* Run on this CPU */
+                    i &= ~Affinity;
+                    KeSetSystemAffinityThread(Affinity);
+                    Ki386VdmEnablePentiumExtentions(TRUE);
+                }
+            }
+
+            /* Return affinity back to where it was */
+            KeRevertToUserAffinityThread();
             KeI386VirtualIntExtensions = TRUE;
         }
     }
