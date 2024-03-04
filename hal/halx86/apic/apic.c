@@ -480,8 +480,8 @@ ApicInitializeIOApic(VOID)
 
     /* Setup a redirection entry */
     ReDirReg.Vector = APIC_FREE_VECTOR;
-    ReDirReg.MessageType = APIC_MT_Fixed;
-    ReDirReg.DestinationMode = APIC_DM_Physical;
+    ReDirReg.DeliveryMode = APIC_MT_Fixed;
+    ReDirReg.DestinationMode = APIC_DM_Logical;
     ReDirReg.DeliveryStatus = 0;
     ReDirReg.Polarity = 0;
     ReDirReg.RemoteIRR = 0;
@@ -505,8 +505,8 @@ ApicInitializeIOApic(VOID)
 
     /* Enable the timer interrupt (but keep it masked) */
     ReDirReg.Vector = APIC_CLOCK_VECTOR;
-    ReDirReg.MessageType = APIC_MT_Fixed;
-    ReDirReg.DestinationMode = APIC_DM_Physical;
+    ReDirReg.DeliveryMode = APIC_MT_Fixed;
+    ReDirReg.DestinationMode = APIC_DM_Logical;
     ReDirReg.TriggerMode = APIC_TGM_Edge;
     ReDirReg.Mask = 1;
     ReDirReg.Destination = ApicRead(APIC_ID);
@@ -733,6 +733,14 @@ HalEnableSystemInterrupt(
     /* Read the redirection entry */
     ReDirReg = ApicReadIORedirectionEntry(Index);
 
+    /* Check if the interrupt is already enabled */
+    if (ReDirReg.Mask == FALSE)
+    {
+        /* If the vector matches, there is nothing more to do,
+           otherwise something is wrong. */
+        return (ReDirReg.Vector == Vector);
+    }
+
     /* Check if the interrupt was unused */
     if (ReDirReg.Vector != Vector)
     {
@@ -750,7 +758,8 @@ HalEnableSystemInterrupt(
     }
 
     /* Set the trigger mode */
-    ReDirReg.TriggerMode = 1 - InterruptMode;
+    ReDirReg.TriggerMode = (InterruptMode == LevelSensitive) ?
+        APIC_TGM_Level : APIC_TGM_Edge;
 
     /* Now unmask it */
     ReDirReg.Mask = FALSE;
