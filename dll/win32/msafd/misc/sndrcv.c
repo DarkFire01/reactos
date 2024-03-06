@@ -122,12 +122,17 @@ WSPGetOverlappedResult(
     }
     Ret = GetOverlappedResult((HANDLE)Handle, lpOverlapped, lpdwBytes, fWait);
 
+    /* Allow APC to be processed */
+    SleepEx(0, TRUE);
+
     if (Ret)
     {
         *lpdwFlags = 0;
 
-        /* Allow APC to be processed */
-        SleepEx(0, TRUE);
+        /* Re-enable Async Event */
+        SockReenableAsyncSelectEvent(Socket, FD_OOB);
+        SockReenableAsyncSelectEvent(Socket, FD_WRITE);
+        SockReenableAsyncSelectEvent(Socket, FD_READ);
     }
 
     return Ret;
@@ -360,12 +365,7 @@ WSPRecv(SOCKET Handle,
     NumberOfBytesRead = (DWORD)IOSB->Information;
 
     NtClose(SockEvent);
-    if (lpOverlapped && Status != STATUS_PENDING)
-    {
-        /* Allow APC to be processed */
-        SleepEx(0, TRUE);
-    }
-    else if (!lpOverlapped)
+    if (!APCFunction)
     {
         /* When using APC, this will be freed by the APC function */
         HeapFree(GlobalHeap, 0, RecvInfo);
@@ -608,12 +608,7 @@ WSPRecvFrom(SOCKET Handle,
     NumberOfBytesRead = (DWORD)IOSB->Information;
 
     NtClose(SockEvent);
-    if (lpOverlapped && Status != STATUS_PENDING)
-    {
-        /* Allow APC to be processed */
-        SleepEx(0, TRUE);
-    }
-    else if (!lpOverlapped)
+    if (!APCFunction)
     {
         /* When using APC, this will be freed by the APC function */
         HeapFree(GlobalHeap, 0, RecvInfo);
@@ -814,12 +809,7 @@ WSPSend(SOCKET Handle,
     NumberOfBytesSent = (DWORD)IOSB->Information;
 
     NtClose(SockEvent);
-    if (lpOverlapped && Status != STATUS_PENDING)
-    {
-        /* Allow APC to be processed */
-        SleepEx(0, TRUE);
-    }
-    else if (!lpOverlapped)
+    if (!APCFunction)
     {
         /* When using APC, this will be freed by the APC function */
         HeapFree(GlobalHeap, 0, SendInfo);
@@ -1036,12 +1026,7 @@ WSPSendTo(SOCKET Handle,
     NumberOfBytesSent = (DWORD)IOSB->Information;
 
     NtClose(SockEvent);
-    if (lpOverlapped && Status != STATUS_PENDING)
-    {
-        /* Allow APC to be processed */
-        SleepEx(0, TRUE);
-    }
-    else if (!lpOverlapped)
+    if (!APCFunction)
     {
         /* When using APC, this will be freed by the APC function */
         HeapFree(GlobalHeap, 0, SendInfo);
