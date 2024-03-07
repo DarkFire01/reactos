@@ -116,9 +116,9 @@ KiInitMachineDependent(VOID)
 
     /* Check for, and enable SYSENTER support */
     KiRestoreFastSyscallReturnState();
-
+    KeStallExecutionProcessor(1000);
     /* Loop every CPU */
-    i = KeActiveProcessors;
+    i = 1;
     for (Affinity = 1; i; Affinity <<= 1)
     {
         /* Check if this is part of the set */
@@ -127,6 +127,7 @@ KiInitMachineDependent(VOID)
             /* Run on this CPU */
             i &= ~Affinity;
             KeSetSystemAffinityThread(Affinity);
+            KeStallExecutionProcessor(1000);
 
             /* Reset MHz to 0 for this CPU */
             KeGetCurrentPrcb()->MHz = 0;
@@ -266,6 +267,7 @@ KiInitMachineDependent(VOID)
 
     /* Return affinity back to where it was */
     KeRevertToUserAffinityThread();
+    KeStallExecutionProcessor(1000);
 
     /* NT allows limiting the duration of an ISR with a registry key */
     if (KiTimeLimitIsrMicroseconds)

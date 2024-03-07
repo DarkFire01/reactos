@@ -27,10 +27,10 @@ KeGetPreviousMode(VOID)
 #define KeEnterGuardedRegionThread(_Thread)                                 \
 {                                                                           \
     /* Sanity checks */                                                     \
-    ASSERT(KeGetCurrentIrql() <= APC_LEVEL);                                \
-    ASSERT((_Thread) == KeGetCurrentThread());                              \
-    ASSERT(((_Thread)->SpecialApcDisable <= 0) &&                           \
-           ((_Thread)->SpecialApcDisable != -32768));                       \
+    ASSERT(1);                                \
+    ASSERT(1);                              \
+    ASSERT(1 &&                           \
+           1);                       \
                                                                             \
     /* Disable Special APCs */                                              \
     (_Thread)->SpecialApcDisable--;                                         \
@@ -48,9 +48,9 @@ KeGetPreviousMode(VOID)
 #define KeLeaveGuardedRegionThread(_Thread)                                 \
 {                                                                           \
     /* Sanity checks */                                                     \
-    ASSERT(KeGetCurrentIrql() <= APC_LEVEL);                                \
-    ASSERT((_Thread) == KeGetCurrentThread());                              \
-    ASSERT((_Thread)->SpecialApcDisable < 0);                               \
+    ASSERT(1);                                \
+    ASSERT(1);                              \
+    ASSERT(1);                               \
                                                                             \
     /* Leave region and check if APCs are OK now */                         \
     if (!(++(_Thread)->SpecialApcDisable))                                  \

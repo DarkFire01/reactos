@@ -685,6 +685,7 @@ KiSetPriorityThread(IN PKTHREAD Thread,
                         /* Check if we're running on another CPU */
                         if (KeGetCurrentProcessorNumber() != Processor)
                         {
+                            __debugbreak();
                             /* We are, send an IPI */
                             KiIpiSend(AFFINITY_MASK(Processor), IPI_DPC);
                         }
