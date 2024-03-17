@@ -1145,7 +1145,9 @@ LoadAndBootWindows(
                                     BootOptions,
                                     BootPath);
 }
-
+#ifdef UEFIBOOT
+extern RSDP_DESCRIPTOR* rsdpGlboal;
+#endif
 ARC_STATUS
 LoadAndBootWindowsCommon(
     IN USHORT OperatingSystemVersion,
@@ -1237,7 +1239,9 @@ LoadAndBootWindowsCommon(
 
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
-
+#ifdef UEFIBOOT
+     LoaderBlock->rsdp =   rsdpGlboal;
+#endif
     /* Set processor context */
     WinLdrSetProcessorContext();
 

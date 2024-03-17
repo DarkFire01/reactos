@@ -39,17 +39,27 @@ AcpiOsTerminate(void)
     return AE_OK;
 }
 
+PHYSICAL_ADDRESS
+NTAPI
+HalReturnAcpiPtr(VOID);
+
+////////////////////
 ACPI_PHYSICAL_ADDRESS
 AcpiOsGetRootPointer (
     void)
 {
-    ACPI_PHYSICAL_ADDRESS pa = 0;
+    PHYSICAL_ADDRESS PubPa;
+    PubPa = HalReturnAcpiPtr();
+
+    ACPI_PHYSICAL_ADDRESS pa = PubPa.QuadPart;
 
     DPRINT("AcpiOsGetRootPointer\n");
 
-    AcpiFindRootPointer(&pa);
+   // AcpiFindRootPointer(&pa);
     return pa;
 }
+////////////////////////
+
 
 ACPI_STATUS
 AcpiOsPredefinedOverride(

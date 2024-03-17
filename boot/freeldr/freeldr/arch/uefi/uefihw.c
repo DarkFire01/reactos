@@ -785,8 +785,8 @@ DetectIsaBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
     /* Increment bus number */
     (*BusNumber)++;
 
-        DetectKeyboardController(BusKey);
-    DetectPS2Mouse(BusKey);
+     //   DetectKeyboardController(BusKey);
+   // DetectPS2Mouse(BusKey);
   //  DetectDisplayController(BusKey);
     /* Detect ISA/BIOS devices */
     DetectBiosDisks(SystemKey, BusKey);
@@ -795,7 +795,7 @@ DetectIsaBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
 
     /* FIXME: Detect more ISA devices */
 }
-
+RSDP_DESCRIPTOR* rsdpGlboal;
 
 static
 PRSDP_DESCRIPTOR
@@ -829,7 +829,7 @@ DetectAcpiBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
     ULONG TableSize;
 
     Rsdp = FindAcpiBios();
-
+    rsdpGlboal = Rsdp;
     if (Rsdp)
     {
         /* Set up the flag in the loader block */
@@ -1111,7 +1111,7 @@ UefiHwDetect(
     DetectAcpiBios(SystemKey, &BusNumber);
     DetectInternal(SystemKey, &BusNumber);
 
-     DetectPci(SystemKey, &BusNumber);
+    // DetectPci(SystemKey, &BusNumber);
    // DetectAcpiBios(SystemKey, &BusNumber);
     DetectIsaBios(SystemKey, &BusNumber);
     TRACE("DetectHardware() Done\n");

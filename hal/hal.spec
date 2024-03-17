@@ -17,6 +17,7 @@
 @ fastcall HalClearSoftwareInterrupt(long)
 @ stdcall HalDisableSystemInterrupt(long long)
 @ stdcall HalDisplayString(str)
+@ stdcall HalReturnAcpiPtr()
 @ stdcall HalEnableSystemInterrupt(long long long)
 @ stdcall -arch=i386,arm HalEndSystemInterrupt(long long)
 @ stdcall HalFlushCommonBuffer(long long long long long)

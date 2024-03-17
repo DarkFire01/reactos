@@ -205,6 +205,10 @@ IopFindInterruptResource(
         if (!IopCheckDescriptorForConflict(CmDesc, NULL))
         {
             DPRINT1("Satisfying interrupt requirement with IRQ 0x%x\n", Vector);
+            if (Vector >= 0x1F)
+            {
+                return FALSE;
+            }
             return TRUE;
         }
     }

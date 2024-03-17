@@ -45,6 +45,14 @@ PWCHAR HalHardwareIdString = L"acpipic_up";
 PWCHAR HalName = L"ACPI Compatible Eisa/Isa HAL";
 
 /* PRIVATE FUNCTIONS **********************************************************/
+PHYSICAL_ADDRESS PhysicalAddressAcpiPub;
+
+PHYSICAL_ADDRESS
+NTAPI
+HalReturnAcpiPtr(VOID)
+{
+    return PhysicalAddressAcpiPub;
+}
 
 PDESCRIPTION_HEADER
 NTAPI
@@ -547,6 +555,8 @@ NTAPI
 HalpAcpiFindRsdtPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
                        OUT PACPI_BIOS_MULTI_NODE* AcpiMultiNode)
 {
+    PhysicalAddressAcpiPub.QuadPart = (LONGLONG)LoaderBlock->rsdp;
+
     PCONFIGURATION_COMPONENT_DATA ComponentEntry;
     PCONFIGURATION_COMPONENT_DATA Next = NULL;
     PCM_PARTIAL_RESOURCE_LIST ResourceList;
