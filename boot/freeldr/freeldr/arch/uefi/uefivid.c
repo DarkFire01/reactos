@@ -43,7 +43,7 @@ UefiInitializeVideo(VOID)
     }
 
     /* We don't need high resolutions for freeldr */
-    gop->SetMode(gop, LOWEST_SUPPORTED_RES);
+   // gop->SetMode(gop, LOWEST_SUPPORTED_RES);
 
     framebufferData.BaseAddress        = (ULONG_PTR)gop->Mode->FrameBufferBase;
     framebufferData.BufferSize         = gop->Mode->FrameBufferSize;
