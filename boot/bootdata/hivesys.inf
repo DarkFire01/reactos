@@ -1560,7 +1560,7 @@ HKLM,"SYSTEM\CurrentControlSet\Control\ProductOptions","ProductSuite",0x00010002
 HKLM,"SYSTEM\CurrentControlSet\Control\ReactOS\Settings\Version","ReportAsWorkstation",0x00010001,0x00000000
 ; Some installers check for SP2
 HKLM,"SYSTEM\CurrentControlSet\Control\Windows","CSDReleaseType",0x00010001,0x00000000
-HKLM,"SYSTEM\CurrentControlSet\Control\Windows","CSDVersion",0x00010001,0x00000200
+HKLM,"SYSTEM\CurrentControlSet\Control\Windows","CSDVersion",0x00010001,0x00000100
 
 HKLM,"SYSTEM\CurrentControlSet\Control\Windows","Directory",0x00020002,"%SystemRoot%"
 HKLM,"SYSTEM\CurrentControlSet\Control\Windows","ErrorMode",0x00010003,0x00000000
@@ -2382,6 +2382,14 @@ HKLM,"SYSTEM\CurrentControlSet\Control\FontAssoc\Associated Charset","OEM(FF)",0
 HKLM,"SYSTEM\CurrentControlSet\Control\FontAssoc\Associated Charset","SYMBOL(02)",0x00000000,"NO"
 HKLM,"SYSTEM\CurrentControlSet\Control\FontAssoc\Associated DefaultFonts","AssocSystemFont",0x00000000,"DroidSansFallback.ttf"
 HKLM,"SYSTEM\CurrentControlSet\Control\FontAssoc\Associated DefaultFonts","FontPackage",0x00000000,"Droid Sans Fallback"
+
+; MUI (?)
+HKLM,"SYSTEM\CurrentControlSet\Control\MUI","CacheConfig",0x00010001,0x00000001
+
+;en-US
+HKLM,"SYSTEM\CurrentControlSet\Control\MUI\UILanguages\en-US","LCID",0x00010001,0x00000409
+HKLM,"SYSTEM\CurrentControlSet\Control\MUI\UILanguages\en-US","Type",0x00010001,0x00000091
+
 
 [AddReg.NTarm]
 ; RAM Disk class driver
