@@ -2280,6 +2280,8 @@ HKLM,"SYSTEM\CurrentControlSet\Control\MUI","CacheConfig",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Control\MUI\UILanguages\en-US","LCID",0x00010001,0x00000409
 HKLM,"SYSTEM\CurrentControlSet\Control\MUI\UILanguages\en-US","Type",0x00010001,0x00000091
 
+; Debug filter Vista+
+HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager\Debug Print Filter","DEFAULT",0x00010001,0xFFFFFFFF
 
 [AddReg.NTarm]
 ; RAM Disk class driver
