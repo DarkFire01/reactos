@@ -21,5 +21,5 @@ add_library(usbstor MODULE
 set_module_type(usbstor kernelmodedriver)
 add_importlibs(usbstor ntoskrnl hal usbd)
 add_pch(usbstor usbstor.h "${PCH_SKIP_SOURCE}")
-add_cd_file(TARGET usbstor DESTINATION reactos/system32/drivers NO_CAB FOR all)
+#add_cd_file(TARGET usbstor DESTINATION reactos/system32/drivers NO_CAB FOR all)
 add_driver_inf(usbstor usbstor.inf)
