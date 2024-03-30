@@ -2391,15 +2391,6 @@ RamdiskAddDevice(IN PDRIVER_OBJECT DriverObject,
         /* Bus FDO is initialized */
         RamdiskBusFdo = DeviceObject;
 
-        /* Loop for loader block */
-        if (KeLoaderBlock)
-        {
-            /* Are we being booted from setup? Not yet supported */
-            if (KeLoaderBlock->SetupLdrBlock)
-                DPRINT1("FIXME: RamdiskAddDevice is UNSUPPORTED when being started from SETUPLDR!\n");
-            // ASSERT(!KeLoaderBlock->SetupLdrBlock);
-        }
-
         /* All done */
         DeviceObject->Flags &= DO_DEVICE_INITIALIZING;
         Status = STATUS_SUCCESS;
@@ -2483,11 +2474,6 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
         }
     }
-
-    /* Installing from Ramdisk isn't supported yet */
-    if (KeLoaderBlock->SetupLdrBlock)
-        DPRINT1("FIXME: Installing from RamDisk is UNSUPPORTED!\n");
-    // ASSERT(!KeLoaderBlock->SetupLdrBlock);
 
     /* Are we reporting the device */
     if (ReportDetectedDevice)
