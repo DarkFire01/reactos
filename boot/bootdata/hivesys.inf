@@ -2282,7 +2282,8 @@ HKLM,"SYSTEM\CurrentControlSet\Control\MUI\UILanguages\en-US","Type",0x00010001,
 
 ; Debug filter Vista+
 HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager\Debug Print Filter","DEFAULT",0x00010001,0xFFFFFFFF
-
+; Vista WMI
+HKLM,"SYSTEM\CurrentControlSet\Control\WMI\Security","DEFAULT",0x00010001,0x0
 [AddReg.NTarm]
 ; RAM Disk class driver
 HKLM,"SYSTEM\CurrentControlSet\Services\Disk","ErrorControl",0x00010001,0x00000000
