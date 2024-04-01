@@ -359,6 +359,7 @@ Enable this if the module uses typeid or dynamic_cast. You will probably need to
     add_subdirectory(dll)
     add_subdirectory(drivers)
     add_subdirectory(hal)
+    add_subdirectory(hal_new)
     add_subdirectory(sdk/lib)
     add_subdirectory(media)
     add_subdirectory(modules)

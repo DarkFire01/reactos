@@ -1,0 +1,2 @@
+$
+{CMAKE_SOURCE_DIR}
