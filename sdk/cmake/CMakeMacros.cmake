@@ -817,8 +817,7 @@ function(create_registry_hives)
                ${CMAKE_BINARY_DIR}/boot/bootdata/software
                ${CMAKE_BINARY_DIR}/boot/bootdata/default
                ${CMAKE_BINARY_DIR}/boot/bootdata/sam
-               ${CMAKE_BINARY_DIR}/boot/bootdata/security
-        COMMAND native-mkhive -h:SYSTEM,SOFTWARE,DEFAULT,SAM,SECURITY -d:${CMAKE_BINARY_DIR}/boot/bootdata ${_livecd_inf_files}
+        COMMAND native-mkhive -h:SYSTEM,SOFTWARE,DEFAULT,SAM -d:${CMAKE_BINARY_DIR}/boot/bootdata ${_livecd_inf_files}
         DEPENDS native-mkhive ${_livecd_inf_files})
 
     add_custom_target(livecd_hives
