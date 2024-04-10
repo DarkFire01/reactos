@@ -94,7 +94,7 @@ KxFreezeExecution(
     }
 
     /* Try to acquire the freeze owner */
-    while (InterlockedCompareExchangePointer(&KiFreezeOwner, CurrentPrcb, NULL))
+    while (InterlockedCompareExchangePointer(( volatile PVOID *)&KiFreezeOwner, CurrentPrcb, NULL))
     {
         /* Someone else was faster. We expect an NMI to freeze any time.
            Spin here until the freeze owner is available. */
@@ -182,7 +182,7 @@ KxThawExecution(
     CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_RUNNING;
 
     /* Release the freeze owner */
-    InterlockedExchangePointer(&KiFreezeOwner, NULL);
+    InterlockedExchangePointer(( volatile PVOID *)&KiFreezeOwner, NULL);
 }
 
 KCONTINUE_STATUS

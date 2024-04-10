@@ -226,7 +226,7 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
     {
         /* Send an IPI */
         KiIpiSendPacket(Affinity,
-                        KiIpiGenericCallTarget,
+                        (PKIPI_WORKER)KiIpiGenericCallTarget,
                         Function,
                         Argument,
                         &Count);
