@@ -460,11 +460,9 @@ static HRESULT register_inf(BOOL doregister)
     HRESULT (WINAPI *pRegInstall)(HMODULE hm, LPCSTR pszSection, const STRTABLEA* pstTable);
     HMODULE hAdvpack;
 
-    static const WCHAR wszAdvpack[] = {'a','d','v','p','a','c','k','.','d','l','l',0};
-
-    hAdvpack = LoadLibraryW(wszAdvpack);
+    hAdvpack = LoadLibraryW(L"advpack.dll");
     pRegInstall = (void *)GetProcAddress(hAdvpack, "RegInstall");
-
+    __debugbreak();
     return pRegInstall(hProxyDll, doregister ? "RegisterDll" : "UnregisterDll", NULL);
 }
 
@@ -476,7 +474,7 @@ HRESULT WINAPI DllRegisterServer(void)
     HRESULT hr;
 
     TRACE("\n");
-
+    __debugbreak();
     hr = URLMON_DllRegisterServer();
     return SUCCEEDED(hr) ? register_inf(TRUE) : hr;
 }
@@ -499,9 +497,12 @@ HRESULT WINAPI DllUnregisterServer(void)
  */
 HRESULT WINAPI DllRegisterServerEx(void)
 {
-    FIXME("(void): stub\n");
+    HRESULT hr;
 
-    return E_FAIL;
+    TRACE("\n");
+
+    hr = URLMON_DllRegisterServer();
+    return SUCCEEDED(hr) ? register_inf(TRUE) : hr;
 }
 
 /**************************************************************************

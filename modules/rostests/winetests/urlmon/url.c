@@ -36,6 +36,23 @@
 
 #include "wine/test.h"
 
+#ifdef __REACTOS__
+static const char *debugstr_guid(REFIID riid)
+{
+    static char buf[50];
+
+    if(!riid)
+        return "(null)";
+
+    sprintf(buf, "{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+            riid->Data1, riid->Data2, riid->Data3, riid->Data4[0],
+            riid->Data4[1], riid->Data4[2], riid->Data4[3], riid->Data4[4],
+            riid->Data4[5], riid->Data4[6], riid->Data4[7]);
+
+    return buf;
+}
+#endif
+
 static HRESULT (WINAPI *pCreateAsyncBindCtxEx)(IBindCtx *, DWORD,
                 IBindStatusCallback *, IEnumFORMATETC *, IBindCtx **, DWORD);
 static HRESULT (WINAPI *pCreateUri)(LPCWSTR, DWORD, DWORD_PTR, IUri**);
@@ -1626,9 +1643,11 @@ static HRESULT WINAPI statusclb_OnProgress(IBindStatusCallbackEx *iface, ULONG u
 {
     ok(GetCurrentThreadId() == thread_id, "wrong thread %d\n", GetCurrentThreadId());
 
+#ifndef __REACTOS__
     if (winetest_debug > 1)
         trace("IBindStatusCallbackEx::OnProgress(progress %u/%u, code %u, text %s)\n",
                 ulProgress, ulProgressMax, ulStatusCode, debugstr_w(szStatusText));
+#endif
 
     switch(ulStatusCode) {
     case BINDSTATUS_FINDINGRESOURCE:
