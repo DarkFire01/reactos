@@ -395,11 +395,11 @@ StartSearch:
     pop   ax
 
     xor   ax, ax
-    mov   ebx, HEX(80)
+    mov   bx, HEX(80)
     call  FindAttributeHdr
     mov   si, ax
     add   ax, word ptr es:[si + HEX(20)]
-    xor   ecx, ecx
+    xor   cx, cx
     xor   bx, bx
     push  FREELDR_BASE / 16
     pop   fs
@@ -413,7 +413,7 @@ StartSearch:
         xor   bx, bx
         inc   cx
         cmp   cx, dx
-        jbe   FreeLdrLoad
+        jnbe   FreeLdrLoad
 
     mov    dl, byte ptr [BootDrive]
     mov    dh, byte ptr [BootPartition]

@@ -89,7 +89,7 @@ static const METAFILE METAFILES[] =
     { METAFILE_BOOT   , L"$Boot"   , CreateBoot   , NULL                  },
     { METAFILE_BADCLUS, L"$BadClus", NULL         , NULL                  },  // Unimplemented
     { METAFILE_SECURE , L"$Secure" , NULL         , NULL                  },  // Unimplemented
-    { METAFILE_UPCASE , L"$UpCase" , CreateUpCase , WriteUpCaseTable      },
+    { METAFILE_UPCASE , L"$UpCase" , NULL , NULL      },
     { 11              , L""        , NULL         , NULL                  },  // Reserved
     { 12              , L""        , NULL         , NULL                  },  // Reserved
     { 13              , L""        , NULL         , NULL                  },  // Reserved
