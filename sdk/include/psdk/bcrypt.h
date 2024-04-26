@@ -69,6 +69,7 @@ typedef NTSTATUS *PNTSTATUS;
 #define MS_PRIMITIVE_PROVIDER L"Microsoft Primitive Provider"
 #define MS_PLATFORM_CRYPTO_PROVIDER L"Microsoft Platform Crypto Provider"
 
+#define BCRYPT_AES_ALGORITHM        L"AES
 #define BCRYPT_MD5_ALGORITHM        L"MD5"
 #define BCRYPT_RNG_ALGORITHM        L"RNG"
 #define BCRYPT_SHA1_ALGORITHM       L"SHA1"
@@ -85,6 +86,10 @@ typedef NTSTATUS *PNTSTATUS;
 #define BCRYPT_ECDSA_PRIVATE_P384_MAGIC 0x34534345
 #define BCRYPT_ECDSA_PUBLIC_P521_MAGIC  0x35534345
 #define BCRYPT_ECDSA_PRIVATE_P521_MAGIC 0x36534345
+
+#define BCRYPT_CHAIN_MODE_NA        (const WCHAR []){'C','h','a','i','n','i','n','g','M','o','d','e','N','/','A',0}
+#define BCRYPT_CHAIN_MODE_CBC       (const WCHAR []){'C','h','a','i','n','i','n','g','M','o','d','e','C','B','C',0}
+#define BCRYPT_CHAIN_MODE_ECB       (const WCHAR []){'C','h','a','i','n','i','n','g','M','o','d','e','E','C','B',0}
 
 typedef struct _BCRYPT_ALGORITHM_IDENTIFIER
 {
