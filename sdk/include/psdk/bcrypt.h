@@ -69,7 +69,7 @@ typedef NTSTATUS *PNTSTATUS;
 #define MS_PRIMITIVE_PROVIDER L"Microsoft Primitive Provider"
 #define MS_PLATFORM_CRYPTO_PROVIDER L"Microsoft Platform Crypto Provider"
 
-#define BCRYPT_AES_ALGORITHM        L"AES
+#define BCRYPT_AES_ALGORITHM        L"AES"
 #define BCRYPT_MD5_ALGORITHM        L"MD5"
 #define BCRYPT_RNG_ALGORITHM        L"RNG"
 #define BCRYPT_SHA1_ALGORITHM       L"SHA1"
