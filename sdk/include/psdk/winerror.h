@@ -2903,6 +2903,7 @@
 #define NTE_TOKEN_KEYSET_STORAGE_FULL                      _HRESULT_TYPEDEF_(0x80090023L)
 #define NTE_TEMPORARY_PROFILE                              _HRESULT_TYPEDEF_(0x80090024L)
 #define NTE_FIXEDPARAMETER                                 _HRESULT_TYPEDEF_(0x80090025L)
+#define NTE_NOT_SUPPORTED                                  _HRESULT_TYPEDEF_(0x80090029L)
 #define NTE_OP_OK                                          _HRESULT_TYPEDEF_(0)
 /* #define NTE_TOKEN_KEYSET_STORAGE ??? */
 
