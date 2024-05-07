@@ -499,7 +499,7 @@ NTSTATUS
 NTAPI
 RtlSleepConditionVariableCS(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
                             IN OUT PRTL_CRITICAL_SECTION CriticalSection,
-                            IN const PLARGE_INTEGER TimeOut OPTIONAL)
+                            IN PLARGE_INTEGER TimeOut OPTIONAL)
 {
     return InternalSleep(ConditionVariable,
                          CriticalSection,
