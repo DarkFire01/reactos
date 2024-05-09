@@ -6,7 +6,7 @@
  * PROGRAMMERS: Copyright Victor Kirhenshtein (sauros@iname.com)
                 Copyright Jason Filby (jasonfilby@yahoo.com)
                 Copyright Martijn Vernooij (o112w8r02@sneakemail.com)
-                Copyright 2006-2007 Hervé Poussineau (hpoussin@reactos.org)
+                Copyright 2006-2007 Hervï¿½ Poussineau (hpoussin@reactos.org)
  */
 
 /* INCLUDES ******************************************************************/
@@ -27,12 +27,6 @@ i8042Flush(
 	while (NT_SUCCESS(i8042ReadData(DeviceExtension, KBD_OBF /* | MOU_OBF*/, &Ignore))) {
 		KeStallExecutionProcessor(50);
 		TRACE_(I8042PRT, "Output data flushed\n");
-	}
-
-	/* Flush input buffer */
-	while (NT_SUCCESS(i8042ReadData(DeviceExtension, KBD_IBF, &Ignore))) {
-		KeStallExecutionProcessor(50);
-		TRACE_(I8042PRT, "Input data flushed\n");
 	}
 }
 
