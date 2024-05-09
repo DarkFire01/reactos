@@ -629,9 +629,8 @@ IopFreeDeviceNode(
 
 NTSTATUS
 NTAPI
-PiSetDeviceCapabilities(
-    _In_ PDEVICE_NODE DeviceNode,
-    _Out_ PDEVICE_CAPABILITIES DeviceCaps);
+IopQueryDeviceCapabilities(PDEVICE_NODE DeviceNode,
+                           PDEVICE_CAPABILITIES DeviceCaps);
 
 NTSTATUS
 IopSynchronousCall(
@@ -1442,17 +1441,6 @@ NTSTATUS
 PiIrpQueryPnPDeviceState(
     _In_ PDEVICE_NODE DeviceNode,
     _Out_ PPNP_DEVICE_STATE DeviceState);
-
-NTSTATUS
-PiIrpQueryPnPDeviceCapabilities(
-    _In_ PDEVICE_NODE DeviceNode,
-    _Out_ PDEVICE_CAPABILITIES DeviceCaps);
-
-NTSTATUS
-PiIrpQueryPnPDeviceId(
-    _In_ PDEVICE_NODE DeviceNode,
-    _In_ BUS_QUERY_ID_TYPE IdType,
-    _Out_ PZZWSTR *Id);
 
 //
 // Global I/O Data

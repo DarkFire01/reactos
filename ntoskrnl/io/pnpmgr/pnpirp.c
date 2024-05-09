@@ -196,34 +196,6 @@ PiIrpQueryDeviceRelations(
     return status;
 }
 
-// IRP_MN_QUERY_CAPABILITIES (0x09)
-NTSTATUS
-PiIrpQueryPnPDeviceCapabilities(
-    _In_ PDEVICE_NODE DeviceNode,
-    _Out_ PDEVICE_CAPABILITIES DeviceCaps)
-{
-    PAGED_CODE();
-
-    ASSERT(DeviceNode);
-    ASSERT(DeviceCaps);
-    
-    IO_STACK_LOCATION stack = {
-        .MajorFunction = IRP_MJ_PNP,
-        .MinorFunction = IRP_MN_QUERY_CAPABILITIES,
-        .Parameters.DeviceCapabilities.Capabilities = DeviceCaps,
-    };
-
-    *DeviceCaps = (DEVICE_CAPABILITIES) {
-        .Size = sizeof(DEVICE_CAPABILITIES),
-        .Version = 1,
-        .Address = -1,
-        .UINumber = -1,
-    };
-
-    PVOID dummy;
-    return IopSynchronousCall(DeviceNode->PhysicalDeviceObject, &stack, &dummy);
-}
-
 // IRP_MN_QUERY_RESOURCES (0x0A)
 NTSTATUS
 PiIrpQueryResources(
@@ -302,37 +274,6 @@ PiIrpQueryDeviceText(
     if (NT_SUCCESS(status))
     {
         *DeviceText = (PVOID)longText;
-    }
-
-    return status;
-}
-
-// IRP_MN_QUERY_ID (0x13)
-NTSTATUS
-PiIrpQueryPnPDeviceId(
-    _In_ PDEVICE_NODE DeviceNode,
-    _In_ BUS_QUERY_ID_TYPE IdType,
-    _Out_ PWSTR *Id)
-{
-    PAGED_CODE();
-
-    ASSERT(DeviceNode);
-    ASSERT(IdType == BusQueryDeviceID || IdType == BusQueryHardwareIDs ||
-           IdType == BusQueryCompatibleIDs || IdType == BusQueryInstanceID ||
-           IdType == BusQueryDeviceSerialNumber || IdType == BusQueryContainerID);
-
-    ULONG_PTR longId;
-    IO_STACK_LOCATION stack = {
-        .MajorFunction = IRP_MJ_PNP,
-        .MinorFunction = IRP_MN_QUERY_ID,
-        .Parameters.QueryId.IdType = IdType,
-    };
-
-    NTSTATUS status;
-    status = IopSynchronousCall(DeviceNode->PhysicalDeviceObject, &stack, (PVOID)&longId);
-    if (NT_SUCCESS(status))
-    {
-        *Id = (PVOID)longId;
     }
 
     return status;
