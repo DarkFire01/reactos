@@ -1193,11 +1193,14 @@ PiInitializeDevNode(
         DPRINT1("Current instance parent: '%wZ'\n", &DeviceNode->Parent->InstancePath);
         DPRINT1("Old instance parent: '%wZ'\n", &OldDeviceNode->Parent->InstancePath);
 
+        DPRINT1("Continuing with duplicate!\r\n");
+#if 0
         KeBugCheckEx(PNP_DETECTED_FATAL_ERROR,
                      0x01,
                      (ULONG_PTR)DeviceNode->PhysicalDeviceObject,
                      (ULONG_PTR)OldDeviceObject,
                      0);
+#endif
     }
 
     DeviceNode->InstancePath = InstancePathU;
