@@ -35,7 +35,6 @@ BISON_TARGET(pp_parser ppy.y ${CMAKE_CURRENT_BINARY_DIR}/ppy.tab.c COMPILE_FLAGS
 ADD_FLEX_BISON_DEPENDENCY(pp_scanner pp_parser)
 
 list(APPEND SOURCE
-    preproc.c
     wpp.c)
 
 if(CMAKE_CROSSCOMPILING)
