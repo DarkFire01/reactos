@@ -453,7 +453,7 @@ static HRESULT d3d12_root_signature_info_from_desc(struct d3d12_root_signature_i
         {
             case D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE:
                 if (FAILED(hr = d3d12_root_signature_info_count_descriptors(info,
-                        &p->u.DescriptorTable, use_array)))
+                        &p->DescriptorTable, use_array)))
                     return hr;
                 ++info->cost;
                 break;
@@ -479,7 +479,7 @@ static HRESULT d3d12_root_signature_info_from_desc(struct d3d12_root_signature_i
 
             case D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS:
                 ++info->root_constant_count;
-                info->cost += p->u.Constants.Num32BitValues;
+                info->cost += p->Constants.Num32BitValues;
                 break;
 
             default:
@@ -515,7 +515,7 @@ static HRESULT d3d12_root_signature_init_push_constants(struct d3d12_root_signat
         assert(p->ShaderVisibility <= D3D12_SHADER_VISIBILITY_PIXEL);
         push_constants[p->ShaderVisibility].stageFlags = use_vk_heaps ? VK_SHADER_STAGE_ALL
                 : stage_flags_from_visibility(p->ShaderVisibility);
-        push_constants[p->ShaderVisibility].size += align(p->u.Constants.Num32BitValues, 4) * sizeof(uint32_t);
+        push_constants[p->ShaderVisibility].size += align(p->Constants.Num32BitValues, 4) * sizeof(uint32_t);
     }
     if (push_constants[D3D12_SHADER_VISIBILITY_ALL].size)
     {
@@ -564,19 +564,19 @@ static HRESULT d3d12_root_signature_init_push_constants(struct d3d12_root_signat
 
         idx = push_constant_count == 1 ? 0 : p->ShaderVisibility;
         offset = push_constants_offset[idx];
-        push_constants_offset[idx] += align(p->u.Constants.Num32BitValues, 4) * sizeof(uint32_t);
+        push_constants_offset[idx] += align(p->Constants.Num32BitValues, 4) * sizeof(uint32_t);
 
         root_signature->parameters[i].parameter_type = p->ParameterType;
         root_constant->stage_flags = push_constant_count == 1
                 ? push_constants[0].stageFlags : stage_flags_from_visibility(p->ShaderVisibility);
         root_constant->offset = offset;
 
-        root_signature->root_constants[j].register_space = p->u.Constants.RegisterSpace;
-        root_signature->root_constants[j].register_index = p->u.Constants.ShaderRegister;
+        root_signature->root_constants[j].register_space = p->Constants.RegisterSpace;
+        root_signature->root_constants[j].register_index = p->Constants.ShaderRegister;
         root_signature->root_constants[j].shader_visibility
                 = vkd3d_shader_visibility_from_d3d12(p->ShaderVisibility);
         root_signature->root_constants[j].offset = offset;
-        root_signature->root_constants[j].size = p->u.Constants.Num32BitValues * sizeof(uint32_t);
+        root_signature->root_constants[j].size = p->Constants.Num32BitValues * sizeof(uint32_t);
 
         ++j;
     }
@@ -1028,7 +1028,7 @@ static HRESULT d3d12_root_signature_init_root_descriptor_tables(struct d3d12_roo
         root_signature->descriptor_table_mask |= 1ull << i;
 
         table = &root_signature->parameters[i].u.descriptor_table;
-        range_count = p->u.DescriptorTable.NumDescriptorRanges;
+        range_count = p->DescriptorTable.NumDescriptorRanges;
         shader_visibility = vkd3d_shader_visibility_from_d3d12(p->ShaderVisibility);
 
         root_signature->parameters[i].parameter_type = p->ParameterType;
@@ -1040,7 +1040,7 @@ static HRESULT d3d12_root_signature_init_root_descriptor_tables(struct d3d12_roo
 
         for (j = 0; j < range_count; ++j)
         {
-            const D3D12_DESCRIPTOR_RANGE *range = &p->u.DescriptorTable.pDescriptorRanges[j];
+            const D3D12_DESCRIPTOR_RANGE *range = &p->DescriptorTable.pDescriptorRanges[j];
 
             if (range->OffsetInDescriptorsFromTableStart != D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND)
                 offset = range->OffsetInDescriptorsFromTableStart;
@@ -1190,7 +1190,7 @@ static HRESULT d3d12_root_signature_init_root_descriptors(struct d3d12_root_sign
 
         cur_binding->binding = d3d12_root_signature_assign_vk_bindings(root_signature,
                 vkd3d_descriptor_type_from_d3d12_root_parameter_type(p->ParameterType),
-                p->u.Descriptor.RegisterSpace, p->u.Descriptor.ShaderRegister, 1, true, false,
+                p->Descriptor.RegisterSpace, p->Descriptor.ShaderRegister, 1, true, false,
                 vkd3d_shader_visibility_from_d3d12(p->ShaderVisibility), context);
         cur_binding->descriptorType = vk_descriptor_type_from_d3d12_root_parameter(p->ParameterType);
         cur_binding->descriptorCount = 1;
@@ -1549,7 +1549,7 @@ HRESULT d3d12_root_signature_create(struct d3d12_device *device,
         return E_OUTOFMEMORY;
     }
 
-    hr = d3d12_root_signature_init(object, device, &root_signature_desc.d3d12.u.Desc_1_0);
+    hr = d3d12_root_signature_init(object, device, &root_signature_desc.d3d12.Desc_1_0);
     vkd3d_shader_free_root_signature(&root_signature_desc.vkd3d);
     if (FAILED(hr))
     {
@@ -1827,6 +1827,7 @@ static void pipeline_state_desc_from_d3d12_compute_desc(struct d3d12_pipeline_st
 static HRESULT pipeline_state_desc_from_d3d12_stream_desc(struct d3d12_pipeline_state_desc *desc,
         const D3D12_PIPELINE_STATE_STREAM_DESC *d3d12_desc, VkPipelineBindPoint *vk_bind_point)
 {
+    
     D3D12_PIPELINE_STATE_SUBOBJECT_TYPE subobject_type;
     uint64_t defined_subobjects = 0;
     const uint8_t *stream_ptr;
@@ -1842,7 +1843,7 @@ static HRESULT pipeline_state_desc_from_d3d12_stream_desc(struct d3d12_pipeline_
     }
     subobject_info[] =
     {
-#define DCL_SUBOBJECT_INFO(type, field) {__alignof__(type), sizeof(type), offsetof(struct d3d12_pipeline_state_desc, field)}
+#define DCL_SUBOBJECT_INFO(type, field) {__alignof(type), sizeof(type), offsetof(struct d3d12_pipeline_state_desc, field)}
         [D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE]  = DCL_SUBOBJECT_INFO(ID3D12RootSignature *, root_signature),
         [D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VS]              = DCL_SUBOBJECT_INFO(D3D12_SHADER_BYTECODE, vs),
         [D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS]              = DCL_SUBOBJECT_INFO(D3D12_SHADER_BYTECODE, ps),

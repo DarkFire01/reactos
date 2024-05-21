@@ -20,7 +20,6 @@
 #define __VKD3D_PRIVATE_H
 
 #define COBJMACROS
-#define NONAMELESSUNION
 #define VK_NO_PROTOTYPES
 #define CONST_VTABLE
 
@@ -1049,7 +1048,7 @@ struct d3d12_descriptor_heap
 
     unsigned int volatile dirty_list_head;
 
-    uint8_t DECLSPEC_ALIGN(sizeof(void *)) descriptors[];
+    uint8_t descriptors[sizeof(PVOID)]; //HACK: CHECKME
 };
 
 void d3d12_desc_flush_vk_heap_updates_locked(struct d3d12_descriptor_heap *descriptor_heap, struct d3d12_device *device);

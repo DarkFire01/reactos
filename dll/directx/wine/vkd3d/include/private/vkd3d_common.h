@@ -20,12 +20,7 @@
 #define __VKD3D_COMMON_H
 
 
-#ifdef __REACTOS__
-#include "wine/config.h"
-#else
 #include "config.h"
-#endif
-
 #define WIN32_LEAN_AND_MEAN
 #include "windows.h"
 #include "vkd3d_types.h"

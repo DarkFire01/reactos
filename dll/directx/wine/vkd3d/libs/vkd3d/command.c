@@ -3788,9 +3788,9 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyTextureRegion(ID3D12Graphic
         assert(d3d12_resource_is_texture(src_resource));
 
         if (!(dst_format = vkd3d_format_from_d3d12_resource_desc(list->device,
-                &src_resource->desc, dst->u.PlacedFootprint.Footprint.Format)))
+                &src_resource->desc, dst->PlacedFootprint.Footprint.Format)))
         {
-            WARN("Invalid format %#x.\n", dst->u.PlacedFootprint.Footprint.Format);
+            WARN("Invalid format %#x.\n", dst->PlacedFootprint.Footprint.Format);
             return;
         }
 
@@ -3804,8 +3804,8 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyTextureRegion(ID3D12Graphic
                 && (dst_format->vk_aspect_mask & VK_IMAGE_ASPECT_STENCIL_BIT))
             FIXME("Depth-stencil format %#x not fully supported yet.\n", dst_format->dxgi_format);
 
-        vk_image_buffer_copy_from_d3d12(&buffer_image_copy, &dst->u.PlacedFootprint,
-                src->u.SubresourceIndex, &src_resource->desc, dst_format, src_box, dst_x, dst_y, dst_z);
+        vk_image_buffer_copy_from_d3d12(&buffer_image_copy, &dst->PlacedFootprint,
+                src->SubresourceIndex, &src_resource->desc, dst_format, src_box, dst_x, dst_y, dst_z);
         VK_CALL(vkCmdCopyImageToBuffer(list->vk_command_buffer,
                 src_resource->u.vk_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 dst_resource->u.vk_buffer, 1, &buffer_image_copy));
@@ -3817,9 +3817,9 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyTextureRegion(ID3D12Graphic
         assert(d3d12_resource_is_buffer(src_resource));
 
         if (!(src_format = vkd3d_format_from_d3d12_resource_desc(list->device,
-                &dst_resource->desc, src->u.PlacedFootprint.Footprint.Format)))
+                &dst_resource->desc, src->PlacedFootprint.Footprint.Format)))
         {
-            WARN("Invalid format %#x.\n", src->u.PlacedFootprint.Footprint.Format);
+            WARN("Invalid format %#x.\n", src->PlacedFootprint.Footprint.Format);
             return;
         }
 
@@ -3833,8 +3833,8 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyTextureRegion(ID3D12Graphic
                 && (src_format->vk_aspect_mask & VK_IMAGE_ASPECT_STENCIL_BIT))
             FIXME("Depth-stencil format %#x not fully supported yet.\n", src_format->dxgi_format);
 
-        vk_buffer_image_copy_from_d3d12(&buffer_image_copy, &src->u.PlacedFootprint,
-                dst->u.SubresourceIndex, &dst_resource->desc, src_format, src_box, dst_x, dst_y, dst_z);
+        vk_buffer_image_copy_from_d3d12(&buffer_image_copy, &src->PlacedFootprint,
+                dst->SubresourceIndex, &dst_resource->desc, src_format, src_box, dst_x, dst_y, dst_z);
         VK_CALL(vkCmdCopyBufferToImage(list->vk_command_buffer,
                 src_resource->u.vk_buffer, dst_resource->u.vk_image,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy));
@@ -3858,12 +3858,12 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyTextureRegion(ID3D12Graphic
         if (dst_format->vk_aspect_mask != src_format->vk_aspect_mask)
         {
             d3d12_command_list_copy_incompatible_texture_region(list,
-                    dst_resource, dst->u.SubresourceIndex, dst_format,
-                    src_resource, src->u.SubresourceIndex, src_format, 1);
+                    dst_resource, dst->SubresourceIndex, dst_format,
+                    src_resource, src->SubresourceIndex, src_format, 1);
             return;
         }
 
-        vk_image_copy_from_d3d12(&image_copy, src->u.SubresourceIndex, dst->u.SubresourceIndex,
+        vk_image_copy_from_d3d12(&image_copy, src->SubresourceIndex, dst->SubresourceIndex,
                  &src_resource->desc, &dst_resource->desc, src_format, dst_format,
                  src_box, dst_x, dst_y, dst_z);
         VK_CALL(vkCmdCopyImage(list->vk_command_buffer, src_resource->u.vk_image,
@@ -4156,25 +4156,25 @@ static bool is_ds_multiplanar_resolvable(unsigned int first_state, unsigned int 
 static unsigned int d3d12_find_ds_multiplanar_transition(const D3D12_RESOURCE_BARRIER *barriers,
         unsigned int i, unsigned int barrier_count, unsigned int sub_resource_count)
 {
-    unsigned int sub_resource_idx = barriers[i].u.Transition.Subresource;
+    unsigned int sub_resource_idx = barriers[i].Transition.Subresource;
     unsigned int j;
 
     for (j = i + 1; j < barrier_count; ++j)
     {
         if (barriers[j].Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION
-                && barriers[j].u.Transition.pResource == barriers[i].u.Transition.pResource
-                && sub_resource_idx % sub_resource_count == barriers[j].u.Transition.Subresource % sub_resource_count)
+                && barriers[j].Transition.pResource == barriers[i].Transition.pResource
+                && sub_resource_idx % sub_resource_count == barriers[j].Transition.Subresource % sub_resource_count)
         {
             /* Second barrier must be for a different plane. */
-            if (barriers[j].u.Transition.Subresource == sub_resource_idx)
+            if (barriers[j].Transition.Subresource == sub_resource_idx)
                 return 0;
 
             /* Validate the second barrier and check if the combination of two states is supported. */
-            if (!is_valid_resource_state(barriers[j].u.Transition.StateBefore)
-                    || !is_ds_multiplanar_resolvable(barriers[i].u.Transition.StateBefore, barriers[j].u.Transition.StateBefore)
-                    || !is_valid_resource_state(barriers[j].u.Transition.StateAfter)
-                    || !is_ds_multiplanar_resolvable(barriers[i].u.Transition.StateAfter, barriers[j].u.Transition.StateAfter)
-                    || barriers[j].u.Transition.Subresource >= sub_resource_count * 2u)
+            if (!is_valid_resource_state(barriers[j].Transition.StateBefore)
+                    || !is_ds_multiplanar_resolvable(barriers[i].Transition.StateBefore, barriers[j].Transition.StateBefore)
+                    || !is_valid_resource_state(barriers[j].Transition.StateAfter)
+                    || !is_ds_multiplanar_resolvable(barriers[i].Transition.StateAfter, barriers[j].Transition.StateAfter)
+                    || barriers[j].Transition.Subresource >= sub_resource_count * 2u)
                 return 0;
 
             return j;
@@ -4221,7 +4221,7 @@ static void STDMETHODCALLTYPE d3d12_command_list_ResourceBarrier(ID3D12GraphicsC
             case D3D12_RESOURCE_BARRIER_TYPE_TRANSITION:
             {
                 unsigned int state_before, state_after, stencil_state_before = 0, stencil_state_after = 0;
-                const D3D12_RESOURCE_TRANSITION_BARRIER *transition = &current->u.Transition;
+                const D3D12_RESOURCE_TRANSITION_BARRIER *transition = &current->Transition;
 
                 if (!is_valid_resource_state(transition->StateBefore))
                 {
@@ -4262,16 +4262,16 @@ static void STDMETHODCALLTYPE d3d12_command_list_ResourceBarrier(ID3D12GraphicsC
                         {
                             sub_resource_idx -= sub_resource_count;
                             /* The stencil barrier is at i, depth at j. */
-                            state_before = barriers[j].u.Transition.StateBefore;
-                            state_after = barriers[j].u.Transition.StateAfter;
+                            state_before = barriers[j].Transition.StateBefore;
+                            state_after = barriers[j].Transition.StateAfter;
                             stencil_state_before = transition->StateBefore;
                             stencil_state_after = transition->StateAfter;
                         }
                         else
                         {
                             /* Depth at i, stencil at j. */
-                            stencil_state_before = barriers[j].u.Transition.StateBefore;
-                            stencil_state_after = barriers[j].u.Transition.StateAfter;
+                            stencil_state_before = barriers[j].Transition.StateBefore;
+                            stencil_state_after = barriers[j].Transition.StateAfter;
                         }
                     }
                     else if (sub_resource_idx >= sub_resource_count)
@@ -4301,7 +4301,7 @@ static void STDMETHODCALLTYPE d3d12_command_list_ResourceBarrier(ID3D12GraphicsC
 
             case D3D12_RESOURCE_BARRIER_TYPE_UAV:
             {
-                const D3D12_RESOURCE_UAV_BARRIER *uav = &current->u.UAV;
+                const D3D12_RESOURCE_UAV_BARRIER *uav = &current->UAV;
                 VkPipelineStageFlags stage_mask;
                 VkImageLayout image_layout;
                 VkAccessFlags access_mask;
@@ -7408,7 +7408,7 @@ void vkd3d_release_vk_queue(ID3D12CommandQueue *queue)
 {
     struct d3d12_command_queue *d3d12_queue = impl_from_ID3D12CommandQueue(queue);
 
-    return vkd3d_queue_release(d3d12_queue->vkd3d_queue);
+    vkd3d_queue_release(d3d12_queue->vkd3d_queue);
 }
 
 /* ID3D12CommandSignature */
