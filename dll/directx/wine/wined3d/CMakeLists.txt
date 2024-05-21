@@ -53,7 +53,7 @@ add_library(d3dwine MODULE
     ${CMAKE_CURRENT_BINARY_DIR}/d3dwine.def)
 
 set_module_type(d3dwine win32dll)
-target_link_libraries(d3dwine wine)
+target_link_libraries(d3dwine vkd3d vkd3d-common wine)
 add_importlibs(d3dwine user32 opengl32 gdi32 gdi32_vista advapi32 msvcrt kernel32 kernel32_vista ntdll)
 add_pch(d3dwine precomp.h SOURCE)
 add_cd_file(TARGET d3dwine DESTINATION reactos/system32 FOR all)
