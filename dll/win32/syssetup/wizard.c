@@ -1226,6 +1226,7 @@ SetUserLocaleName(HWND hwnd)
 static VOID
 SetKeyboardLayoutName(HWND hwnd)
 {
+    return;
     HKL hkl;
     BOOL LayoutSpecial = FALSE;
     WCHAR LayoutPath[256];
