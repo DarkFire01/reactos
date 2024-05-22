@@ -3351,7 +3351,7 @@ static bool lower_discard_neg(struct hlsl_ctx *ctx, struct hlsl_ir_node *instr, 
             return false;
 
         if (!(or = hlsl_new_binary_expr(ctx, HLSL_OP2_LOGIC_OR, or, load)))
-                return NULL;
+                return 0;
         hlsl_block_add_instr(&block, or);
     }
 
@@ -3447,6 +3447,7 @@ static char get_regset_name(enum hlsl_regset regset)
             vkd3d_unreachable();
     }
     vkd3d_unreachable();
+    return 0;
 }
 
 static void allocate_register_reservations(struct hlsl_ctx *ctx)

@@ -572,6 +572,8 @@ static enum vkd3d_sm4_dimension sm4_dimension_from_vsir_dimension(enum vsir_dime
             vkd3d_unreachable();
     }
     vkd3d_unreachable();
+
+    return 0;
 }
 
 enum vkd3d_sm4_resource_type
@@ -3009,6 +3011,8 @@ static D3D_SHADER_VARIABLE_CLASS sm4_class(const struct hlsl_type *type)
             ERR("Invalid class %#x.\n", type->class);
             vkd3d_unreachable();
     }
+
+    return 0;
 }
 
 static D3D_SHADER_VARIABLE_TYPE sm4_base_type(const struct hlsl_type *type)
@@ -3089,6 +3093,7 @@ static D3D_SHADER_VARIABLE_TYPE sm4_base_type(const struct hlsl_type *type)
         default:
             vkd3d_unreachable();
     }
+    return 0;
 }
 
 static void write_sm4_type(struct hlsl_ctx *ctx, struct vkd3d_bytecode_buffer *buffer, struct hlsl_type *type)
@@ -3162,6 +3167,7 @@ static D3D_SHADER_INPUT_TYPE sm4_resource_type(const struct hlsl_type *type)
         case HLSL_TYPE_UAV:
             return D3D_SIT_UAV_RWTYPED;
         default:
+            return 0;
             vkd3d_unreachable();
     }
 }
@@ -3189,6 +3195,7 @@ static D3D_RESOURCE_RETURN_TYPE sm4_resource_format(const struct hlsl_type *type
             return D3D_RETURN_TYPE_UINT;
 
         default:
+            return 0;
             vkd3d_unreachable();
     }
 }
@@ -3222,6 +3229,7 @@ static D3D_SRV_DIMENSION sm4_rdef_resource_dimension(const struct hlsl_type *typ
         case HLSL_SAMPLER_DIM_STRUCTURED_BUFFER:
             return D3D_SRV_DIMENSION_BUFFER;
         default:
+            return 0;
             vkd3d_unreachable();
     }
 }
@@ -3635,6 +3643,7 @@ static enum vkd3d_sm4_resource_type sm4_resource_dimension(const struct hlsl_typ
         case HLSL_SAMPLER_DIM_STRUCTURED_BUFFER:
             return VKD3D_SM4_RESOURCE_BUFFER;
         default:
+            return 0;
             vkd3d_unreachable();
     }
 }
@@ -3670,6 +3679,7 @@ static uint32_t sm4_encode_instruction_modifier(const struct sm4_instruction_mod
             break;
 
         default:
+            return 0;
             vkd3d_unreachable();
     }
 

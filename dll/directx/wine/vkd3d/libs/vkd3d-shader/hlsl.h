@@ -1153,6 +1153,7 @@ static inline unsigned int hlsl_sampler_dim_count(enum hlsl_sampler_dim dim)
         default:
             vkd3d_unreachable();
     }
+    return 0;
 }
 
 static inline bool hlsl_var_has_buffer_offset_register_reservation(struct hlsl_ctx *ctx, const struct hlsl_ir_var *var)

@@ -623,7 +623,7 @@ static void add_special_defines(void)
 }
 
 /* add a define to the preprocessor list */
-static void wpp_add_define( const char *name, const char *value )
+void wpp_add_define( const char *name, const char *value )
 {
     struct define *def;
 
@@ -645,6 +645,18 @@ static void wpp_add_define( const char *name, const char *value )
     list_add_head( &cmdline_defines, &def->entry );
 }
 
+/* add a command-line define of the form NAME=VALUE */
+void wpp_add_cmdline_define( const char *value )
+{
+    char *p;
+    char *str = pp_xstrdup(value);
+
+    p = strchr( str, '=' );
+    if (p) *p++ = 0;
+    wpp_add_define( str, p );
+    free( str );
+}
+
 
 /* undefine a previously added definition */
 void wpp_del_define( const char *name )
@@ -661,20 +673,6 @@ void wpp_del_define( const char *name )
         }
     }
 }
-
-
-/* add a command-line define of the form NAME=VALUE */
-void wpp_add_cmdline_define( const char *value )
-{
-    char *p;
-    char *str = pp_xstrdup(value);
-
-    p = strchr( str, '=' );
-    if (p) *p++ = 0;
-    wpp_add_define( str, p );
-    free( str );
-}
-
 
 /* set the various debug flags */
 void wpp_set_debug( int lex_debug, int parser_debug, int msg_debug )

@@ -780,6 +780,8 @@ static unsigned int shader_signature_find_element_for_reg(const struct shader_si
         return shader_signature_find_element_for_reg(signature, reg_idx, base_write_mask);
 
     vkd3d_unreachable();
+
+    return 0;
 }
 
 struct signature_element *vsir_signature_find_element_for_reg(const struct shader_signature *signature,
@@ -2699,6 +2701,8 @@ static const struct vkd3d_shader_src_param *materialize_ssas_to_temps_compute_so
     }
 
     vkd3d_unreachable();
+
+    return NULL;
 }
 
 static bool materialize_ssas_to_temps_synthesize_mov(struct vkd3d_shader_parser *parser,
@@ -3833,6 +3837,8 @@ static const char *name_from_cf_type(enum cf_type type)
         default:
             vkd3d_unreachable();
     }
+
+    return "null";
 }
 
 static void vsir_validate_cf_type(struct validation_context *ctx,

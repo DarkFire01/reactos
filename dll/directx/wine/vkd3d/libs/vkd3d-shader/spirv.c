@@ -705,13 +705,13 @@ static void vkd3d_spirv_build_op3v(struct vkd3d_spirv_stream *stream,
 static void vkd3d_spirv_build_op2(struct vkd3d_spirv_stream *stream,
         SpvOp op, uint32_t operand0, uint32_t operand1)
 {
-    return vkd3d_spirv_build_op2v(stream, op, operand0, operand1, NULL, 0);
+    vkd3d_spirv_build_op2v(stream, op, operand0, operand1, NULL, 0);
 }
 
 static void vkd3d_spirv_build_op3(struct vkd3d_spirv_stream *stream,
         SpvOp op, uint32_t operand0, uint32_t operand1, uint32_t operand2)
 {
-    return vkd3d_spirv_build_op2v(stream, op, operand0, operand1, &operand2, 1);
+    vkd3d_spirv_build_op2v(stream, op, operand0, operand1, &operand2, 1);
 }
 
 static uint32_t vkd3d_spirv_build_op_rv(struct vkd3d_spirv_builder *builder,
@@ -951,7 +951,7 @@ static void vkd3d_spirv_build_op_decorate(struct vkd3d_spirv_builder *builder,
 static void vkd3d_spirv_build_op_decorate1(struct vkd3d_spirv_builder *builder,
         uint32_t target_id, SpvDecoration decoration, uint32_t operand0)
 {
-    return vkd3d_spirv_build_op_decorate(builder, target_id, decoration, &operand0, 1);
+    vkd3d_spirv_build_op_decorate(builder, target_id, decoration, &operand0, 1);
 }
 
 static void vkd3d_spirv_build_op_member_decorate(struct vkd3d_spirv_builder *builder,
@@ -1332,10 +1332,10 @@ static void vkd3d_spirv_build_op_store(struct vkd3d_spirv_builder *builder,
         uint32_t pointer_id, uint32_t object_id, uint32_t memory_access)
 {
     if (!memory_access)
-        return vkd3d_spirv_build_op2(&builder->function_stream, SpvOpStore,
+        vkd3d_spirv_build_op2(&builder->function_stream, SpvOpStore,
                 pointer_id, object_id);
     else
-        return vkd3d_spirv_build_op3(&builder->function_stream, SpvOpStore,
+        vkd3d_spirv_build_op3(&builder->function_stream, SpvOpStore,
                 pointer_id, object_id, memory_access);
 }
 
@@ -1343,10 +1343,10 @@ static void vkd3d_spirv_build_op_copy_memory(struct vkd3d_spirv_builder *builder
         uint32_t target_id, uint32_t source_id, uint32_t memory_access)
 {
     if (!memory_access)
-        return vkd3d_spirv_build_op2(&builder->function_stream, SpvOpCopyMemory,
+        vkd3d_spirv_build_op2(&builder->function_stream, SpvOpCopyMemory,
                 target_id, source_id);
     else
-        return vkd3d_spirv_build_op3(&builder->function_stream, SpvOpCopyMemory,
+        vkd3d_spirv_build_op3(&builder->function_stream, SpvOpCopyMemory,
                 target_id, source_id, memory_access);
 }
 
@@ -1703,12 +1703,12 @@ static uint32_t vkd3d_spirv_build_op_image_query_lod(struct vkd3d_spirv_builder 
 
 static void vkd3d_spirv_build_op_emit_vertex(struct vkd3d_spirv_builder *builder)
 {
-    return vkd3d_spirv_build_op(&builder->function_stream, SpvOpEmitVertex);
+    vkd3d_spirv_build_op(&builder->function_stream, SpvOpEmitVertex);
 }
 
 static void vkd3d_spirv_build_op_end_primitive(struct vkd3d_spirv_builder *builder)
 {
-    return vkd3d_spirv_build_op(&builder->function_stream, SpvOpEndPrimitive);
+    vkd3d_spirv_build_op(&builder->function_stream, SpvOpEndPrimitive);
 }
 
 static void vkd3d_spirv_build_op_control_barrier(struct vkd3d_spirv_builder *builder,
@@ -4198,8 +4198,9 @@ static void spirv_compiler_emit_store(struct spirv_compiler *compiler,
 
     if (component_count == 1)
     {
-        return spirv_compiler_emit_store_scalar(compiler,
+        spirv_compiler_emit_store_scalar(compiler,
                 dst_id, dst_write_mask, component_type, storage_class, write_mask, val_id);
+        return;
     }
 
     if (dst_component_count != component_count)

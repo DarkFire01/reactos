@@ -31,7 +31,7 @@ static const uint64_t GLOBALVAR_FLAG_EXPLICIT_TYPE = 2;
 static const unsigned int GLOBALVAR_ADDRESS_SPACE_SHIFT = 2;
 static const uint64_t ALLOCA_FLAG_IN_ALLOCA = 0x20;
 static const uint64_t ALLOCA_FLAG_EXPLICIT_TYPE = 0x40;
-static const uint64_t ALLOCA_ALIGNMENT_MASK = ALLOCA_FLAG_IN_ALLOCA - 1;
+static const uint64_t ALLOCA_ALIGNMENT_MASK = (0x19); //ALLOCA_FLAG_IN_ALLOCA - 1
 static const unsigned int SHADER_DESCRIPTOR_TYPE_COUNT = 4;
 static const size_t MAX_IR_INSTRUCTIONS_PER_DXIL_INSTRUCTION = 11;
 
@@ -1895,6 +1895,8 @@ static const struct sm6_type *sm6_type_get_element_type_at_index(const struct sm
         default:
             vkd3d_unreachable();
     }
+
+    return 0;
 }
 
 /* Never returns null for elem_idx 0. */
@@ -3823,6 +3825,8 @@ static enum vkd3d_shader_opcode map_dx_unary_op(enum dx_intrinsic_opcode op)
         default:
             vkd3d_unreachable();
     }
+
+    return 0;
 }
 
 static void sm6_parser_emit_dx_unary(struct sm6_parser *sm6, enum dx_intrinsic_opcode op,
@@ -3858,6 +3862,8 @@ static enum vkd3d_shader_opcode map_dx_binary_op(enum dx_intrinsic_opcode op, co
         default:
             vkd3d_unreachable();
     }
+
+    return 0;
 }
 
 static void sm6_parser_emit_dx_binary(struct sm6_parser *sm6, enum dx_intrinsic_opcode op,
@@ -4150,6 +4156,8 @@ static enum vkd3d_shader_opcode sm6_dx_map_tertiary_op(enum dx_intrinsic_opcode 
         default:
             vkd3d_unreachable();
     }
+
+    return 0;
 }
 
 static void sm6_parser_emit_dx_tertiary(struct sm6_parser *sm6, enum dx_intrinsic_opcode op,
@@ -4329,7 +4337,8 @@ static void sm6_parser_emit_dx_buffer_load(struct sm6_parser *sm6, enum dx_intri
     if (resource->u.handle.d->kind == RESOURCE_KIND_RAWBUFFER
             || resource->u.handle.d->kind == RESOURCE_KIND_STRUCTUREDBUFFER)
     {
-        return sm6_parser_emit_dx_raw_buffer_load(sm6, op, operands, state);
+        sm6_parser_emit_dx_raw_buffer_load(sm6, op, operands, state);
+        return;
     }
 
     if (resource->u.handle.d->kind != RESOURCE_KIND_TYPEDBUFFER)
@@ -4374,7 +4383,8 @@ static void sm6_parser_emit_dx_buffer_store(struct sm6_parser *sm6, enum dx_intr
     if (resource->u.handle.d->kind == RESOURCE_KIND_RAWBUFFER
             || resource->u.handle.d->kind == RESOURCE_KIND_STRUCTUREDBUFFER)
     {
-        return sm6_parser_emit_dx_raw_buffer_store(sm6, op, operands, state);
+        sm6_parser_emit_dx_raw_buffer_store(sm6, op, operands, state);
+        return;
     }
 
     if (resource->u.handle.d->kind != RESOURCE_KIND_TYPEDBUFFER)

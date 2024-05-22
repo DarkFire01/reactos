@@ -880,12 +880,16 @@ static void shader_print_untyped_literal(struct vkd3d_d3d_asm_compiler *compiler
     value.u = u;
 
     if (exponent != 0 && exponent != 0xff)
-        return shader_print_float_literal(compiler, prefix, value.f, suffix);
-
+    {
+        shader_print_float_literal(compiler, prefix, value.f, suffix);
+        return;
+    }
     if (u <= 10000)
-        return shader_print_uint_literal(compiler, prefix, value.u, suffix);
-
-    return shader_print_hex_literal(compiler, prefix, value.u, suffix);
+    {
+        shader_print_uint_literal(compiler, prefix, value.u, suffix);
+        return;
+    }
+    shader_print_hex_literal(compiler, prefix, value.u, suffix);
 }
 
 static void shader_print_subscript(struct vkd3d_d3d_asm_compiler *compiler,

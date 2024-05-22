@@ -963,4 +963,6 @@ int hlsl_emit_effect_binary(struct hlsl_ctx *ctx, struct vkd3d_shader_code *out)
     {
         vkd3d_unreachable();
     }
+
+    return 0;
 }

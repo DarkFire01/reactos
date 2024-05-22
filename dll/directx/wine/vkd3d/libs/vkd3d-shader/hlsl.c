@@ -248,6 +248,8 @@ static enum hlsl_regset type_get_regset(const struct hlsl_type *type)
     }
 
     vkd3d_unreachable();
+
+    return 0;
 }
 
 enum hlsl_regset hlsl_deref_get_regset(struct hlsl_ctx *ctx, const struct hlsl_deref *deref)
@@ -450,6 +452,8 @@ static unsigned int traverse_path_from_component_index(struct hlsl_ctx *ctx,
         default:
             vkd3d_unreachable();
     }
+
+    return 0;
 }
 
 struct hlsl_type *hlsl_type_get_component_type(struct hlsl_ctx *ctx, struct hlsl_type *type,
@@ -696,6 +700,8 @@ struct hlsl_type *hlsl_get_element_type_from_path_index(struct hlsl_ctx *ctx, co
         default:
             vkd3d_unreachable();
     }
+
+    return 0;
 }
 
 struct hlsl_type *hlsl_new_array_type(struct hlsl_ctx *ctx, struct hlsl_type *basic_type, unsigned int array_size)
@@ -871,6 +877,8 @@ unsigned int hlsl_type_component_count(const struct hlsl_type *type)
         default:
             vkd3d_unreachable();
     }
+
+    return 0;
 }
 
 bool hlsl_types_are_equal(const struct hlsl_type *t1, const struct hlsl_type *t2)
@@ -1679,6 +1687,8 @@ static struct hlsl_ir_node *map_instr(const struct clone_instr_map *map, struct 
     /* The block passed to hlsl_clone_block() should have been free of external
      * references. */
     vkd3d_unreachable();
+
+    return 0;
 }
 
 static bool clone_deref(struct hlsl_ctx *ctx, struct clone_instr_map *map,
@@ -1966,6 +1976,8 @@ static struct hlsl_ir_node *clone_instr(struct hlsl_ctx *ctx,
     }
 
     vkd3d_unreachable();
+
+    return NULL;
 }
 
 bool hlsl_clone_block(struct hlsl_ctx *ctx, struct hlsl_block *dst_block, const struct hlsl_block *src_block)

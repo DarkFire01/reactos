@@ -56,6 +56,42 @@
 #include <stdbool.h>
 #include <string.h>
 
+#ifdef __REACTOS__
+#define rb_entry wine_rb_entry
+#define rb_tree wine_rb_tree
+#define rb_put wine_rb_put
+#define rb_get wine_rb_get
+#define rb_remove wine_rb_remove
+#define rb_init wine_rb_init
+#define rb_destroy wine_rb_destroy
+#define RB_FOR_EACH_ENTRY WINE_RB_FOR_EACH_ENTRY
+#define rb_for_each_entry wine_rb_for_each_entry
+#define RB_FOR_EACH_ENTRY_DESTRUCTOR WINE_RB_FOR_EACH_ENTRY_DESTRUCTOR
+#define RB_ENTRY_VALUE WINE_RB_ENTRY_VALUE
+#define ssize_t size_t
+int __cdecl __signbit (double);
+BOOL WINAPI InitializeCriticalSectionEx(OUT LPCRITICAL_SECTION lpCriticalSection,
+                                        IN DWORD dwSpinCount,
+                                        IN DWORD flags);
+
+
+#define signbit __signbit
+#define fminf min
+#define fmaxf max
+                                        
+#define fmin min
+#define fmax max
+#define RTL_CRITICAL_SECTION_DEBUG CRITICAL_SECTION_DEBUG
+int isfinite(double x);
+float __cdecl log2f (float);
+float __cdecl exp2f(float);
+int
+__cdecl
+_isnan(
+  _In_ double);
+  #define isnan _isnan
+#endif
+
 #define VKD3D_VEC4_SIZE 4
 #define VKD3D_DVEC2_SIZE 2
 

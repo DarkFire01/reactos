@@ -1523,6 +1523,8 @@ static D3DXPARAMETER_CLASS sm1_class(const struct hlsl_type *type)
             ERR("Invalid class %#x.\n", type->class);
             vkd3d_unreachable();
     }
+
+    return 0;
 }
 
 static D3DXPARAMETER_TYPE sm1_base_type(const struct hlsl_type *type)
@@ -1584,6 +1586,8 @@ static D3DXPARAMETER_TYPE sm1_base_type(const struct hlsl_type *type)
         default:
             vkd3d_unreachable();
     }
+
+    return 0;
 }
 
 static void write_sm1_type(struct vkd3d_bytecode_buffer *buffer, struct hlsl_type *type, unsigned int ctab_start)
