@@ -23,10 +23,6 @@
 #define VK_NO_PROTOTYPES
 #define CONST_VTABLE
 
-#ifdef _WIN32
-# define _WIN32_WINNT 0x0600  /* for condition variables */
-#endif
-
 #include "vkd3d_common.h"
 #include "vkd3d_blob.h"
 #include "vkd3d_memory.h"

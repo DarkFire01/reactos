@@ -52,6 +52,11 @@
 #include "wine/rbtree.h"
 
 #ifdef __REACTOS__
+
+#ifndef DCX_USESTYLE
+#define DCX_USESTYLE         0x00010000
+#endif
+
 #define rb_entry wine_rb_entry
 #define rb_tree wine_rb_tree
 #define rb_put wine_rb_put
