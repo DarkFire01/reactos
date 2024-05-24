@@ -18,13 +18,14 @@
 
 #include "mshtml_private.h"
 
-typedef struct {
-    HTMLElement element;
-
-    IHTMLAnchorElement IHTMLAnchorElement_iface;
-
-    nsIDOMHTMLAnchorElement *nsanchor;
-} HTMLAnchorElement;
+struct HTMLAnchorElement {
+     HTMLElement element;
+ 
+     IHTMLAnchorElement IHTMLAnchorElement_iface;
+ 
+     nsIDOMHTMLAnchorElement *nsanchor;
+};
+ 
 
 static HRESULT navigate_href_new_window(HTMLElement *element, nsAString *href_str, const WCHAR *target)
 {
@@ -762,13 +763,13 @@ static void HTMLAnchorElement_unlink(HTMLDOMNode *iface)
 }
 
 static const NodeImplVtbl HTMLAnchorElementImplVtbl = {
+    &CLSID_HTMLAnchorElement,
     HTMLAnchorElement_QI,
     HTMLElement_destructor,
     HTMLElement_cpc,
     HTMLElement_clone,
     HTMLAnchorElement_handle_event,
     HTMLElement_get_attr_col,
-    NULL,
     NULL,
     NULL,
     NULL,
@@ -784,18 +785,17 @@ static const NodeImplVtbl HTMLAnchorElementImplVtbl = {
 static const tid_t HTMLAnchorElement_iface_tids[] = {
     IHTMLAnchorElement_tid,
     HTMLELEMENT_TIDS,
-    IHTMLUniqueName_tid,
     0
 };
 
 static dispex_static_data_t HTMLAnchorElement_dispex = {
     NULL,
     DispHTMLAnchorElement_tid,
-    NULL,
-    HTMLAnchorElement_iface_tids
+    HTMLAnchorElement_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
-HRESULT HTMLAnchorElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)
+HRESULT HTMLAnchorElement_Create(HTMLDocumentNode *doc, nsIDOMElement *nselem, HTMLElement **elem)
 {
     HTMLAnchorElement *ret;
     nsresult nsres;
@@ -809,7 +809,7 @@ HRESULT HTMLAnchorElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nsele
 
     HTMLElement_Init(&ret->element, doc, nselem, &HTMLAnchorElement_dispex);
 
-    nsres = nsIDOMHTMLElement_QueryInterface(nselem, &IID_nsIDOMHTMLAnchorElement, (void**)&ret->nsanchor);
+    nsres = nsIDOMElement_QueryInterface(nselem, &IID_nsIDOMHTMLAnchorElement, (void**)&ret->nsanchor);
     assert(nsres == NS_OK);
 
     *elem = &ret->element;

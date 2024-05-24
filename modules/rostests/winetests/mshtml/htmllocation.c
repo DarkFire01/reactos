@@ -162,10 +162,15 @@ static void test_host(IHTMLLocation *loc, const struct location_test *test)
 
     hres = IHTMLLocation_get_host(loc, &str);
     ok(hres == S_OK, "%s: get_host failed: 0x%08x\n", test->name, hres);
-    if(hres == S_OK)
+    if(hres == S_OK){
+        int len = test->host ? strlen(test->host) : 0;
         ok(str_eq_wa(str, test->host),
                 "%s: expected retrieved host to be L\"%s\", was: %s\n",
                 test->name, test->host, wine_dbgstr_w(str));
+        ok(SysStringLen(str) == len, "%s: unexpected string length %u, expected %u\n",
+                test->name, SysStringLen(str), len);
+    }
+
     SysFreeString(str);
 }
 
@@ -209,7 +214,8 @@ static void test_port(IHTMLLocation *loc, const struct location_test *test)
     hres = IHTMLLocation_get_port(loc, &str);
     ok(hres == S_OK, "%s: get_port failed: 0x%08x\n", test->name, hres);
     if(hres == S_OK)
-        ok(str_eq_wa(str, test->port),
+        ok(str_eq_wa(str, test->port)
+           || (!str && !*test->port), /* IE11 */
                 "%s: expected retrieved port to be L\"%s\", was: %s\n",
                 test->name, test->port, wine_dbgstr_w(str));
     SysFreeString(str);
@@ -288,7 +294,7 @@ static void perform_test(const struct location_test* test)
     if(FAILED(hres))
         return;
 
-    MultiByteToWideChar(CP_ACP, 0, test->url, -1, url, sizeof(url)/sizeof(WCHAR));
+    MultiByteToWideChar(CP_ACP, 0, test->url, -1, url, ARRAY_SIZE(url));
     hres = CreateURLMoniker(NULL, url, &url_mon);
     ok(hres == S_OK, "%s: CreateURLMoniker failed: 0x%08x\n", test->name, hres);
     if(FAILED(hres)){
@@ -369,7 +375,7 @@ START_TEST(htmllocation)
 
     CoInitialize(NULL);
 
-    for(i=0; i < sizeof(location_tests)/sizeof(*location_tests); i++)
+    for(i=0; i < ARRAY_SIZE(location_tests); i++)
         perform_test(location_tests+i);
 
     CoUninitialize();

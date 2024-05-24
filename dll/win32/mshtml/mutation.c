@@ -18,8 +18,15 @@
 
 #include "mshtml_private.h"
 
-#define IE_MAJOR_VERSION 7
-#define IE_MINOR_VERSION 0
+const compat_mode_info_t compat_mode_info[] = {
+    { 5, 7 },   /* DOCMODE_QUIRKS */
+    { 5, 5 },   /* DOCMODE_IE5 */
+    { 7, 7 },   /* DOCMODE_IE7 */
+    { 8, 8 },   /* DOCMODE_IE8 */
+    { 9, 9 },   /* DOCMODE_IE8 */
+    { 10, 10 }, /* DOCMODE_IE10 */
+    { 11, 11 }  /* DOCMODE_IE11 */
+};
 
 static const IID NS_ICONTENTUTILS_CID =
     {0x762C4AE7,0xB923,0x422F,{0xB9,0x7E,0xB9,0xBF,0xC1,0xEF,0x7B,0xF0}};
@@ -28,7 +35,7 @@ static nsIContentUtils *content_utils;
 
 static PRUnichar *handle_insert_comment(HTMLDocumentNode *doc, const PRUnichar *comment)
 {
-    int majorv = 0, minorv = 0;
+    unsigned majorv = 0, minorv = 0, compat_version;
     const PRUnichar *ptr, *end;
     PRUnichar *buf;
     DWORD len;
@@ -102,40 +109,34 @@ static PRUnichar *handle_insert_comment(HTMLDocumentNode *doc, const PRUnichar *
     ptr += 2;
 
     len = strlenW(ptr);
-    if(len < sizeof(endifW)/sizeof(WCHAR))
+    if(len < ARRAY_SIZE(endifW))
         return NULL;
 
-    end = ptr + len-sizeof(endifW)/sizeof(WCHAR);
+    end = ptr + len - ARRAY_SIZE(endifW);
     if(memcmp(end, endifW, sizeof(endifW)))
         return NULL;
 
+    compat_version = compat_mode_info[doc->document_mode].ie_version;
+
     switch(cmpt) {
     case CMP_EQ:
-        if(majorv == IE_MAJOR_VERSION && minorv == IE_MINOR_VERSION)
+        if(compat_version == majorv && !minorv)
             break;
         return NULL;
     case CMP_LT:
-        if(majorv > IE_MAJOR_VERSION)
-            break;
-        if(majorv == IE_MAJOR_VERSION && minorv > IE_MINOR_VERSION)
+        if(compat_version < majorv || (compat_version == majorv && minorv))
             break;
         return NULL;
     case CMP_LTE:
-        if(majorv > IE_MAJOR_VERSION)
-            break;
-        if(majorv == IE_MAJOR_VERSION && minorv >= IE_MINOR_VERSION)
+        if(compat_version <= majorv)
             break;
         return NULL;
     case CMP_GT:
-        if(majorv < IE_MAJOR_VERSION)
-            break;
-        if(majorv == IE_MAJOR_VERSION && minorv < IE_MINOR_VERSION)
+        if(compat_version > majorv)
             break;
         return NULL;
     case CMP_GTE:
-        if(majorv < IE_MAJOR_VERSION)
-            break;
-        if(majorv == IE_MAJOR_VERSION && minorv <= IE_MINOR_VERSION)
+        if(compat_version >= majorv || (compat_version == majorv && !minorv))
             break;
         return NULL;
     }
@@ -200,7 +201,7 @@ static nsresult run_bind_to_tree(HTMLDocumentNode *doc, nsISupports *nsiface, ns
     if(NS_FAILED(nsres))
         return nsres;
 
-    hres = get_node(doc, nsnode, TRUE, &node);
+    hres = get_node(nsnode, TRUE, &node);
     nsIDOMNode_Release(nsnode);
     if(FAILED(hres)) {
         ERR("Could not get node\n");
@@ -304,7 +305,7 @@ static nsresult run_insert_script(HTMLDocumentNode *doc, nsISupports *script_ifa
         }
     }
 
-    hres = script_elem_from_nsscript(doc, nsscript, &script_elem);
+    hres = script_elem_from_nsscript(nsscript, &script_elem);
     nsIDOMHTMLScriptElement_Release(nsscript);
     if(FAILED(hres))
         return NS_ERROR_FAILURE;
@@ -316,13 +317,13 @@ static nsresult run_insert_script(HTMLDocumentNode *doc, nsISupports *script_ifa
 
     IHTMLWindow2_AddRef(&window->base.IHTMLWindow2_iface);
 
-    doc_insert_script(window, script_elem);
+    doc_insert_script(window, script_elem, TRUE);
 
     while(!list_empty(&window->script_queue)) {
         iter = LIST_ENTRY(list_head(&window->script_queue), script_queue_entry_t, entry);
         list_remove(&iter->entry);
         if(!iter->script->parsed)
-            doc_insert_script(window, iter->script);
+            doc_insert_script(window, iter->script, TRUE);
         IHTMLScriptElement_Release(&iter->script->IHTMLScriptElement_iface);
         heap_free(iter);
     }
@@ -338,6 +339,162 @@ static nsresult run_insert_script(HTMLDocumentNode *doc, nsISupports *script_ifa
     IHTMLScriptElement_Release(&script_elem->IHTMLScriptElement_iface);
 
     return NS_OK;
+}
+
+/*
+ * We may change document mode only in early stage of document lifetime.
+ * Later attempts will not have an effect.
+ */
+compat_mode_t lock_document_mode(HTMLDocumentNode *doc)
+{
+    TRACE("%p: %d\n", doc, doc->document_mode);
+
+    doc->document_mode_locked = TRUE;
+    return doc->document_mode;
+}
+
+static void set_document_mode(HTMLDocumentNode *doc, compat_mode_t document_mode, BOOL lock)
+{
+    compat_mode_t max_compat_mode;
+
+    if(doc->document_mode_locked) {
+        WARN("attempting to set document mode %d on locked document %p\n", document_mode, doc);
+        return;
+    }
+
+    TRACE("%p: %d\n", doc, document_mode);
+
+    max_compat_mode = doc->window && doc->window->base.outer_window
+        ? get_max_compat_mode(doc->window->base.outer_window->uri)
+        : COMPAT_MODE_IE11;
+    if(max_compat_mode < document_mode) {
+        WARN("Tried to set compat mode %u higher than maximal configured %u\n",
+             document_mode, max_compat_mode);
+        document_mode = max_compat_mode;
+    }
+
+    doc->document_mode = document_mode;
+    if(lock)
+        lock_document_mode(doc);
+}
+
+BOOL parse_compat_version(const WCHAR *version_string, compat_mode_t *r)
+{
+    DWORD version = 0;
+    const WCHAR *p;
+
+    for(p = version_string; '0' <= *p && *p <= '9'; p++)
+        version = version * 10 + *p-'0';
+    if(*p || p == version_string)
+        return FALSE;
+
+    switch(version){
+    case 5:
+    case 6:
+        *r = COMPAT_MODE_IE5;
+        break;
+    case 7:
+        *r = COMPAT_MODE_IE7;
+        break;
+    case 8:
+        *r = COMPAT_MODE_IE8;
+        break;
+    case 9:
+        *r = COMPAT_MODE_IE9;
+        break;
+    case 10:
+        *r = COMPAT_MODE_IE10;
+        break;
+    default:
+        *r = version < 5 ? COMPAT_MODE_QUIRKS : COMPAT_MODE_IE11;
+    }
+    return TRUE;
+}
+
+static BOOL parse_ua_compatible(const WCHAR *p, compat_mode_t *r)
+{
+    static const WCHAR ie_eqW[] = {'I','E','='};
+    static const WCHAR edgeW[] = {'e','d','g','e',0};
+
+    TRACE("%s\n", debugstr_w(p));
+
+    if(strncmpiW(ie_eqW, p, ARRAY_SIZE(ie_eqW)))
+        return FALSE;
+    p += 3;
+
+    if(!strcmpiW(p, edgeW)) {
+        *r = COMPAT_MODE_IE11;
+        return TRUE;
+    }
+
+    return parse_compat_version(p, r);
+}
+
+void process_document_response_headers(HTMLDocumentNode *doc, IBinding *binding)
+{
+    IWinInetHttpInfo *http_info;
+    char buf[1024];
+    DWORD size;
+    HRESULT hres;
+
+    hres = IBinding_QueryInterface(binding, &IID_IWinInetHttpInfo, (void**)&http_info);
+    if(FAILED(hres)) {
+        TRACE("No IWinInetHttpInfo\n");
+        return;
+    }
+
+    size = sizeof(buf);
+    strcpy(buf, "X-UA-Compatible");
+    hres = IWinInetHttpInfo_QueryInfo(http_info, HTTP_QUERY_CUSTOM, buf, &size, NULL, NULL);
+    if(hres == S_OK && size) {
+        compat_mode_t document_mode;
+        WCHAR *header;
+
+        TRACE("size %u\n", size);
+
+        header = heap_strdupAtoW(buf);
+        if(header && parse_ua_compatible(header, &document_mode)) {
+            TRACE("setting document mode %d\n", document_mode);
+            set_document_mode(doc, document_mode, FALSE);
+        }
+        heap_free(header);
+    }
+
+    IWinInetHttpInfo_Release(http_info);
+}
+
+static void process_meta_element(HTMLDocumentNode *doc, nsIDOMHTMLMetaElement *meta_element)
+{
+    nsAString http_equiv_str, content_str;
+    nsresult nsres;
+
+    static const WCHAR x_ua_compatibleW[] = {'x','-','u','a','-','c','o','m','p','a','t','i','b','l','e',0};
+
+    nsAString_Init(&http_equiv_str, NULL);
+    nsAString_Init(&content_str, NULL);
+    nsres = nsIDOMHTMLMetaElement_GetHttpEquiv(meta_element, &http_equiv_str);
+    if(NS_SUCCEEDED(nsres))
+        nsres = nsIDOMHTMLMetaElement_GetContent(meta_element, &content_str);
+
+    if(NS_SUCCEEDED(nsres)) {
+        const PRUnichar *http_equiv, *content;
+
+        nsAString_GetData(&http_equiv_str, &http_equiv);
+        nsAString_GetData(&content_str, &content);
+
+        TRACE("%s: %s\n", debugstr_w(http_equiv), debugstr_w(content));
+
+        if(!strcmpiW(http_equiv, x_ua_compatibleW)) {
+            compat_mode_t document_mode;
+            if(parse_ua_compatible(content, &document_mode))
+                set_document_mode(doc, document_mode, TRUE);
+            else
+                FIXME("Unsupported document mode %s\n", debugstr_w(content));
+        }
+    }
+
+    nsAString_Finish(&http_equiv_str);
+    nsAString_Finish(&content_str);
 }
 
 typedef struct nsRunnable nsRunnable;
@@ -505,12 +662,17 @@ static void NSAPI nsDocumentObserver_CharacterDataChanged(nsIDocumentObserver *i
 }
 
 static void NSAPI nsDocumentObserver_AttributeWillChange(nsIDocumentObserver *iface, nsIDocument *aDocument,
-        nsIContent *aContent, LONG aNameSpaceID, nsIAtom *aAttribute, LONG aModType)
+        void *aElement, LONG aNameSpaceID, nsIAtom *aAttribute, LONG aModType, const nsAttrValue *aNewValue)
 {
 }
 
 static void NSAPI nsDocumentObserver_AttributeChanged(nsIDocumentObserver *iface, nsIDocument *aDocument,
-        nsIContent *aContent, LONG aNameSpaceID, nsIAtom *aAttribute, LONG aModType)
+        void *aElement, LONG aNameSpaceID, nsIAtom *aAttribute, LONG aModType, const nsAttrValue *aOldValue)
+{
+}
+
+static void NSAPI nsDocumentObserver_NativeAnonymousChildListChange(nsIDocumentObserver *iface, nsIDocument *aDocument,
+        nsIContent *aContent, cpp_bool aIsRemove)
 {
 }
 
@@ -580,33 +742,30 @@ static void NSAPI nsDocumentObserver_DocumentStatesChanged(nsIDocumentObserver *
 {
 }
 
-static void NSAPI nsDocumentObserver_StyleSheetAdded(nsIDocumentObserver *iface, nsIDocument *aDocument,
-        nsIStyleSheet *aStyleSheet, cpp_bool aDocumentSheet)
+static void NSAPI nsDocumentObserver_StyleSheetAdded(nsIDocumentObserver *iface, mozilla_StyleSheetHandle aStyleSheet,
+        cpp_bool aDocumentSheet)
 {
 }
 
-static void NSAPI nsDocumentObserver_StyleSheetRemoved(nsIDocumentObserver *iface, nsIDocument *aDocument,
-        nsIStyleSheet *aStyleSheet, cpp_bool aDocumentSheet)
+static void NSAPI nsDocumentObserver_StyleSheetRemoved(nsIDocumentObserver *iface, mozilla_StyleSheetHandle aStyleSheet,
+        cpp_bool aDocumentSheet)
 {
 }
 
 static void NSAPI nsDocumentObserver_StyleSheetApplicableStateChanged(nsIDocumentObserver *iface,
-        nsIDocument *aDocument, nsIStyleSheet *aStyleSheet, cpp_bool aApplicable)
+        mozilla_StyleSheetHandle aStyleSheet)
 {
 }
 
-static void NSAPI nsDocumentObserver_StyleRuleChanged(nsIDocumentObserver *iface, nsIDocument *aDocument,
-        nsIStyleSheet *aStyleSheet, nsIStyleRule *aOldStyleRule, nsIStyleSheet *aNewStyleRule)
+static void NSAPI nsDocumentObserver_StyleRuleChanged(nsIDocumentObserver *iface, mozilla_StyleSheetHandle aStyleSheet)
 {
 }
 
-static void NSAPI nsDocumentObserver_StyleRuleAdded(nsIDocumentObserver *iface, nsIDocument *aDocument,
-        nsIStyleSheet *aStyleSheet, nsIStyleRule *aStyleRule)
+static void NSAPI nsDocumentObserver_StyleRuleAdded(nsIDocumentObserver *iface, mozilla_StyleSheetHandle aStyleSheet)
 {
 }
 
-static void NSAPI nsDocumentObserver_StyleRuleRemoved(nsIDocumentObserver *iface, nsIDocument *aDocument,
-        nsIStyleSheet *aStyleSheet, nsIStyleRule *aStyleRule)
+static void NSAPI nsDocumentObserver_StyleRuleRemoved(nsIDocumentObserver *iface, mozilla_StyleSheetHandle aStyleSheet)
 {
 }
 
@@ -617,26 +776,59 @@ static void NSAPI nsDocumentObserver_BindToDocument(nsIDocumentObserver *iface, 
     nsIDOMHTMLIFrameElement *nsiframe;
     nsIDOMHTMLFrameElement *nsframe;
     nsIDOMHTMLScriptElement *nsscript;
-    nsIDOMHTMLElement *nselem;
+    nsIDOMHTMLMetaElement *nsmeta;
+    nsIDOMElement *nselem;
     nsIDOMComment *nscomment;
     nsresult nsres;
 
     TRACE("(%p)->(%p %p)\n", This, aDocument, aContent);
 
-    nsres = nsIContent_QueryInterface(aContent, &IID_nsIDOMHTMLElement, (void**)&nselem);
-    if(NS_SUCCEEDED(nsres)) {
-        check_event_attr(This, nselem);
-        nsIDOMHTMLElement_Release(nselem);
+    if(This->document_mode < COMPAT_MODE_IE10) {
+        nsres = nsIContent_QueryInterface(aContent, &IID_nsIDOMComment, (void**)&nscomment);
+        if(NS_SUCCEEDED(nsres)) {
+            TRACE("comment node\n");
+
+            add_script_runner(This, run_insert_comment, (nsISupports*)nscomment, NULL);
+            nsIDOMComment_Release(nscomment);
+            return;
+        }
     }
 
-    nsres = nsIContent_QueryInterface(aContent, &IID_nsIDOMComment, (void**)&nscomment);
-    if(NS_SUCCEEDED(nsres)) {
-        TRACE("comment node\n");
+    if(This->document_mode == COMPAT_MODE_QUIRKS) {
+        nsIDOMDocumentType *nsdoctype;
+        nsres = nsIContent_QueryInterface(aContent, &IID_nsIDOMDocumentType, (void**)&nsdoctype);
+        if(NS_SUCCEEDED(nsres)) {
+            compat_mode_t mode = COMPAT_MODE_IE7;
 
-        add_script_runner(This, run_insert_comment, (nsISupports*)nscomment, NULL);
-        nsIDOMComment_Release(nscomment);
+            TRACE("doctype node\n");
+
+            if(This->window && This->window->base.outer_window) {
+                HTMLOuterWindow *window = This->window->base.outer_window;
+                DWORD zone;
+                HRESULT hres;
+
+                /*
+                 * Internet URL zone is treated differently. Native defaults to latest supported
+                 * mode. We default to IE8. Ideally, we'd sync that with version used for IE=edge
+                 * X-UA-Compatible version, allow configuration and default to higher version
+                 * (once it's well supported).
+                 */
+                hres = IInternetSecurityManager_MapUrlToZone(window->secmgr, window->url, &zone, 0);
+                if(SUCCEEDED(hres) && zone == URLZONE_INTERNET)
+                    mode = COMPAT_MODE_IE8;
+            }
+
+            set_document_mode(This, mode, FALSE);
+            nsIDOMDocumentType_Release(nsdoctype);
+        }
+    }
+
+    nsres = nsIContent_QueryInterface(aContent, &IID_nsIDOMElement, (void**)&nselem);
+    if(NS_FAILED(nsres))
         return;
-    }
+
+    check_event_attr(This, nselem);
+    nsIDOMElement_Release(nselem);
 
     nsres = nsIContent_QueryInterface(aContent, &IID_nsIDOMHTMLIFrameElement, (void**)&nsiframe);
     if(NS_SUCCEEDED(nsres)) {
@@ -658,20 +850,17 @@ static void NSAPI nsDocumentObserver_BindToDocument(nsIDocumentObserver *iface, 
 
     nsres = nsIContent_QueryInterface(aContent, &IID_nsIDOMHTMLScriptElement, (void**)&nsscript);
     if(NS_SUCCEEDED(nsres)) {
-        HTMLScriptElement *script_elem;
-        HRESULT hres;
-
         TRACE("script element\n");
 
-        hres = script_elem_from_nsscript(This, nsscript, &script_elem);
+        add_script_runner(This, run_bind_to_tree, (nsISupports*)nsscript, NULL);
         nsIDOMHTMLScriptElement_Release(nsscript);
-        if(FAILED(hres))
-            return;
+        return;
+    }
 
-        if(script_elem->parse_on_bind)
-            add_script_runner(This, run_insert_script, (nsISupports*)nsscript, NULL);
-
-        IHTMLScriptElement_Release(&script_elem->IHTMLScriptElement_iface);
+    nsres = nsIContent_QueryInterface(aContent, &IID_nsIDOMHTMLMetaElement, (void**)&nsmeta);
+    if(NS_SUCCEEDED(nsres)) {
+        process_meta_element(This, nsmeta);
+        nsIDOMHTMLMetaElement_Release(nsmeta);
     }
 }
 
@@ -688,6 +877,7 @@ static void NSAPI nsDocumentObserver_AttemptToExecuteScript(nsIDocumentObserver 
     if(NS_SUCCEEDED(nsres)) {
         TRACE("script node\n");
 
+        lock_document_mode(This);
         add_script_runner(This, run_insert_script, (nsISupports*)nsscript, (nsISupports*)aParser);
         nsIDOMHTMLScriptElement_Release(nsscript);
     }
@@ -701,6 +891,7 @@ static const nsIDocumentObserverVtbl nsDocumentObserverVtbl = {
     nsDocumentObserver_CharacterDataChanged,
     nsDocumentObserver_AttributeWillChange,
     nsDocumentObserver_AttributeChanged,
+    nsDocumentObserver_NativeAnonymousChildListChange,
     nsDocumentObserver_AttributeSetToCurrentValue,
     nsDocumentObserver_ContentAppended,
     nsDocumentObserver_ContentInserted,

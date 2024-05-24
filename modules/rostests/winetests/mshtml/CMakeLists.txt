@@ -29,10 +29,19 @@ list(APPEND mshtml_winetest_rc_deps
     ${CMAKE_CURRENT_SOURCE_DIR}/blank.html
     ${CMAKE_CURRENT_SOURCE_DIR}/exectest.html
     ${CMAKE_CURRENT_SOURCE_DIR}/jstest.html
-    ${CMAKE_CURRENT_SOURCE_DIR}/nav_test.html
     ${CMAKE_CURRENT_SOURCE_DIR}/vbtest.html
     ${CMAKE_CURRENT_SOURCE_DIR}/events.html
-    ${CMAKE_CURRENT_SOURCE_DIR}/externscr.js)
+    ${CMAKE_CURRENT_SOURCE_DIR}/externscr.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/winetest.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/xhr.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/navigation.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/asyncscriptload.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/elements.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/events.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/frame.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/runscript.html
+    ${CMAKE_CURRENT_SOURCE_DIR}/es5.js
+    ${CMAKE_CURRENT_SOURCE_DIR}/documentmode.js)
 
 set_source_files_properties(rsrc.rc PROPERTIES OBJECT_DEPENDS "${mshtml_winetest_rc_deps}")
 target_link_libraries(mshtml_winetest uuid strmiids)

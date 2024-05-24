@@ -69,6 +69,10 @@ static HRESULT WINAPI HTMLLocation_QueryInterface(IHTMLLocation *iface, REFIID r
         *ppv = &This->IHTMLLocation_iface;
     }else if(IsEqualGUID(&IID_IHTMLLocation, riid)) {
         *ppv = &This->IHTMLLocation_iface;
+    }else if(IsEqualGUID(&IID_IMarshal, riid)) {
+        *ppv = NULL;
+        FIXME("(%p)->(IID_IMarshal %p)\n", This, ppv);
+        return E_NOINTERFACE;
     }else if(dispex_query_interface(&This->dispex, riid, ppv)) {
         return *ppv ? S_OK : E_NOINTERFACE;
     }else {
@@ -328,14 +332,17 @@ static HRESULT WINAPI HTMLLocation_get_host(IHTMLLocation *iface, BSTR *p)
 
     if(url.nPort) {
         /* <hostname>:<port> */
-        const WCHAR format[] = {'%','u',0};
-        DWORD len = url.dwHostNameLength + 1 + 5;
+        static const WCHAR format[] = {'%','u',0};
+        DWORD len, port_len;
+        WCHAR portW[6];
         WCHAR *buf;
 
+        port_len = snprintfW(portW, ARRAY_SIZE(portW), format, url.nPort);
+        len = url.dwHostNameLength + 1 /* ':' */ + port_len;
         buf = *p = SysAllocStringLen(NULL, len);
         memcpy(buf, url.lpszHostName, url.dwHostNameLength * sizeof(WCHAR));
         buf[url.dwHostNameLength] = ':';
-        snprintfW(buf + url.dwHostNameLength + 1, 6, format, url.nPort);
+        memcpy(buf + url.dwHostNameLength + 1, portW, port_len * sizeof(WCHAR));
     }else
         *p = SysAllocStringLen(url.lpszHostName, url.dwHostNameLength);
 
@@ -614,7 +621,6 @@ static const tid_t HTMLLocation_iface_tids[] = {
 static dispex_static_data_t HTMLLocation_dispex = {
     NULL,
     DispHTMLLocation_tid,
-    NULL,
     HTMLLocation_iface_tids
 };
 

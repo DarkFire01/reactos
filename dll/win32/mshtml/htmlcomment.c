@@ -155,11 +155,26 @@ static void HTMLCommentElement_destructor(HTMLDOMNode *iface)
     HTMLElement_destructor(&This->element.node);
 }
 
+static HRESULT HTMLCommentElement_clone(HTMLDOMNode *iface, nsIDOMNode *nsnode, HTMLDOMNode **ret)
+{
+    HTMLCommentElement *This = impl_from_HTMLDOMNode(iface);
+    HTMLElement *new_elem;
+    HRESULT hres;
+
+    hres = HTMLCommentElement_Create(This->element.node.doc, nsnode, &new_elem);
+    if(FAILED(hres))
+        return hres;
+
+    *ret = &new_elem->node;
+    return S_OK;
+}
+
 static const NodeImplVtbl HTMLCommentElementImplVtbl = {
+    &CLSID_HTMLCommentElement,
     HTMLCommentElement_QI,
     HTMLCommentElement_destructor,
     HTMLElement_cpc,
-    HTMLElement_clone,
+    HTMLCommentElement_clone,
     HTMLElement_handle_event,
     HTMLElement_get_attr_col
 };
@@ -172,8 +187,8 @@ static const tid_t HTMLCommentElement_iface_tids[] = {
 static dispex_static_data_t HTMLCommentElement_dispex = {
     NULL,
     DispHTMLCommentElement_tid,
-    NULL,
-    HTMLCommentElement_iface_tids
+    HTMLCommentElement_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
 HRESULT HTMLCommentElement_Create(HTMLDocumentNode *doc, nsIDOMNode *nsnode, HTMLElement **elem)
@@ -188,7 +203,7 @@ HRESULT HTMLCommentElement_Create(HTMLDocumentNode *doc, nsIDOMNode *nsnode, HTM
     ret->IHTMLCommentElement_iface.lpVtbl = &HTMLCommentElementVtbl;
 
     HTMLElement_Init(&ret->element, doc, NULL, &HTMLCommentElement_dispex);
-    HTMLDOMNode_Init(doc, &ret->element.node, nsnode);
+    HTMLDOMNode_Init(doc, &ret->element.node, nsnode, &HTMLCommentElement_dispex);
 
     *elem = &ret->element;
     return S_OK;

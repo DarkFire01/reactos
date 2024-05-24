@@ -18,7 +18,7 @@
 
 #pragma once
 
-typedef struct {
+struct HTMLScriptElement {
     HTMLElement element;
 
     IHTMLScriptElement IHTMLScriptElement_iface;
@@ -28,19 +28,22 @@ typedef struct {
     BOOL parse_on_bind;
     BOOL pending_readystatechange_event;
     READYSTATE readystate;
-} HTMLScriptElement;
+    WCHAR *src_text; /* sctipt text downloaded from src */
+    BSCallback *binding; /* weak reference to current binding */
+};
 
 typedef struct {
     struct list entry;
     HTMLScriptElement *script;
 } script_queue_entry_t;
 
-HRESULT script_elem_from_nsscript(HTMLDocumentNode*,nsIDOMHTMLScriptElement*,HTMLScriptElement**) DECLSPEC_HIDDEN;
+HRESULT script_elem_from_nsscript(nsIDOMHTMLScriptElement*,HTMLScriptElement**) DECLSPEC_HIDDEN;
 void bind_event_scripts(HTMLDocumentNode*) DECLSPEC_HIDDEN;
+HRESULT load_script(HTMLScriptElement*,const WCHAR*,BOOL) DECLSPEC_HIDDEN;
 
 void release_script_hosts(HTMLInnerWindow*) DECLSPEC_HIDDEN;
 void connect_scripts(HTMLInnerWindow*) DECLSPEC_HIDDEN;
-void doc_insert_script(HTMLInnerWindow*,HTMLScriptElement*) DECLSPEC_HIDDEN;
+void doc_insert_script(HTMLInnerWindow*,HTMLScriptElement*,BOOL) DECLSPEC_HIDDEN;
 IDispatch *script_parse_event(HTMLInnerWindow*,LPCWSTR) DECLSPEC_HIDDEN;
 HRESULT exec_script(HTMLInnerWindow*,const WCHAR*,const WCHAR*,VARIANT*) DECLSPEC_HIDDEN;
 void set_script_mode(HTMLOuterWindow*,SCRIPTMODE) DECLSPEC_HIDDEN;

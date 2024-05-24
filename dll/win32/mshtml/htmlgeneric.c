@@ -18,12 +18,12 @@
 
 #include "mshtml_private.h"
 
-typedef struct {
-    HTMLElement element;
-
-    IHTMLGenericElement IHTMLGenericElement_iface;
-} HTMLGenericElement;
-
+struct HTMLGenericElement {
+     HTMLElement element;
+ 
+     IHTMLGenericElement IHTMLGenericElement_iface;
+};
+ 
 static inline HTMLGenericElement *impl_from_IHTMLGenericElement(IHTMLGenericElement *iface)
 {
     return CONTAINING_RECORD(iface, HTMLGenericElement, IHTMLGenericElement_iface);
@@ -138,6 +138,7 @@ static void HTMLGenericElement_destructor(HTMLDOMNode *iface)
 }
 
 static const NodeImplVtbl HTMLGenericElementImplVtbl = {
+    &CLSID_HTMLGenericElement,
     HTMLGenericElement_QI,
     HTMLGenericElement_destructor,
     HTMLElement_cpc,
@@ -155,11 +156,11 @@ static const tid_t HTMLGenericElement_iface_tids[] = {
 static dispex_static_data_t HTMLGenericElement_dispex = {
     NULL,
     DispHTMLGenericElement_tid,
-    NULL,
-    HTMLGenericElement_iface_tids
+    HTMLGenericElement_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
-HRESULT HTMLGenericElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)
+HRESULT HTMLGenericElement_Create(HTMLDocumentNode *doc, nsIDOMElement *nselem, HTMLElement **elem)
 {
     HTMLGenericElement *ret;
 

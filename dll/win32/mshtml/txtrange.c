@@ -520,7 +520,7 @@ HRESULT get_node_text(HTMLDOMNode *node, BSTR *ret)
     if (!wstrbuf_init(&buf))
         return E_OUTOFMEMORY;
     wstrbuf_append_node_rec(&buf, node->nsnode);
-    if(buf.buf) {
+    if(buf.buf && *buf.buf) {
         *ret = SysAllocString(buf.buf);
         if(!*ret)
             hres = E_OUTOFMEMORY;
@@ -923,7 +923,7 @@ static HRESULT WINAPI HTMLTxtRange_get_htmlText(IHTMLTxtRange *iface, BSTR *p)
     }
 
     if(!*p) {
-        const WCHAR emptyW[] = {0};
+        static const WCHAR emptyW[] = {0};
         *p = SysAllocString(emptyW);
     }
 
@@ -1008,7 +1008,7 @@ static HRESULT WINAPI HTMLTxtRange_parentElement(IHTMLTxtRange *iface, IHTMLElem
         return S_OK;
     }
 
-    hres = get_node(This->doc, nsnode, TRUE, &node);
+    hres = get_node(nsnode, TRUE, &node);
     nsIDOMNode_Release(nsnode);
     if(FAILED(hres))
         return hres;
@@ -1646,7 +1646,7 @@ static HRESULT WINAPI RangeCommandTarget_QueryStatus(IOleCommandTarget *iface, c
 
 static HRESULT exec_indent(HTMLTxtRange *This, VARIANT *in, VARIANT *out)
 {
-    nsIDOMHTMLElement *blockquote_elem, *p_elem;
+    nsIDOMElement *blockquote_elem, *p_elem;
     nsIDOMDocumentFragment *fragment;
     nsIDOMNode *tmp;
 
@@ -1664,16 +1664,16 @@ static HRESULT exec_indent(HTMLTxtRange *This, VARIANT *in, VARIANT *out)
     create_nselem(This->doc, pW, &p_elem);
 
     nsIDOMRange_ExtractContents(This->nsrange, &fragment);
-    nsIDOMHTMLElement_AppendChild(p_elem, (nsIDOMNode*)fragment, &tmp);
+    nsIDOMElement_AppendChild(p_elem, (nsIDOMNode*)fragment, &tmp);
     nsIDOMDocumentFragment_Release(fragment);
     nsIDOMNode_Release(tmp);
 
-    nsIDOMHTMLElement_AppendChild(blockquote_elem, (nsIDOMNode*)p_elem, &tmp);
-    nsIDOMHTMLElement_Release(p_elem);
+    nsIDOMElement_AppendChild(blockquote_elem, (nsIDOMNode*)p_elem, &tmp);
+    nsIDOMElement_Release(p_elem);
     nsIDOMNode_Release(tmp);
 
     nsIDOMRange_InsertNode(This->nsrange, (nsIDOMNode*)blockquote_elem);
-    nsIDOMHTMLElement_Release(blockquote_elem);
+    nsIDOMElement_Release(blockquote_elem);
 
     return S_OK;
 }
@@ -1715,7 +1715,6 @@ static const tid_t HTMLTxtRange_iface_tids[] = {
 static dispex_static_data_t HTMLTxtRange_dispex = {
     NULL,
     IHTMLTxtRange_tid,
-    NULL,
     HTMLTxtRange_iface_tids
 };
 

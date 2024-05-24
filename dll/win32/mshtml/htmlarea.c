@@ -18,13 +18,13 @@
 
 #include "mshtml_private.h"
 
-typedef struct {
-    HTMLElement element;
-
-    IHTMLAreaElement IHTMLAreaElement_iface;
-
-    nsIDOMHTMLAreaElement *nsarea;
-} HTMLAreaElement;
+struct HTMLAreaElement {
+     HTMLElement element;
+ 
+     IHTMLAreaElement IHTMLAreaElement_iface;
+ 
+     nsIDOMHTMLAreaElement *nsarea;
+};
 
 static inline HTMLAreaElement *impl_from_IHTMLAreaElement(IHTMLAreaElement *iface)
 {
@@ -420,6 +420,7 @@ fallback:
 }
 
 static const NodeImplVtbl HTMLAreaElementImplVtbl = {
+    &CLSID_HTMLAreaElement,
     HTMLAreaElement_QI,
     HTMLElement_destructor,
     HTMLElement_cpc,
@@ -436,11 +437,11 @@ static const tid_t HTMLAreaElement_iface_tids[] = {
 static dispex_static_data_t HTMLAreaElement_dispex = {
     NULL,
     DispHTMLAreaElement_tid,
-    NULL,
-    HTMLAreaElement_iface_tids
+    HTMLAreaElement_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
-HRESULT HTMLAreaElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)
+HRESULT HTMLAreaElement_Create(HTMLDocumentNode *doc, nsIDOMElement *nselem, HTMLElement **elem)
 {
     HTMLAreaElement *ret;
     nsresult nsres;
@@ -454,7 +455,7 @@ HRESULT HTMLAreaElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem,
 
     HTMLElement_Init(&ret->element, doc, nselem, &HTMLAreaElement_dispex);
 
-    nsres = nsIDOMHTMLElement_QueryInterface(nselem, &IID_nsIDOMHTMLAreaElement, (void**)&ret->nsarea);
+    nsres = nsIDOMElement_QueryInterface(nselem, &IID_nsIDOMHTMLAreaElement, (void**)&ret->nsarea);
     assert(nsres == NS_OK);
 
     *elem = &ret->element;

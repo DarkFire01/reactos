@@ -128,6 +128,8 @@ DEFINE_EXPECT(ChangeType);
 #define DISPID_EXTERNAL_REPORTSUCCESS  0x300002
 #define DISPID_EXTERNAL_TODO_WINE_OK   0x300003
 #define DISPID_EXTERNAL_BROKEN         0x300004
+#define DISPID_EXTERNAL_WIN_SKIP       0x300005
+#define DISPID_EXTERNAL_WRITESTREAM    0x300006
 
 static const GUID CLSID_TestScript =
     {0x178fc163,0xf585,0x4e24,{0x9c,0x13,0x4b,0xb7,0xfa,0xf8,0x07,0x46}};
@@ -580,10 +582,20 @@ static HRESULT WINAPI externalDisp_GetDispID(IDispatchEx *iface, BSTR bstrName, 
         *pid = DISPID_EXTERNAL_BROKEN;
         return S_OK;
     }
+    if(!strcmp_wa(bstrName, "win_skip")) {
+        *pid = DISPID_EXTERNAL_WIN_SKIP;
+        return S_OK;
+    }
+    if(!strcmp_wa(bstrName, "writeStream")) {
+        *pid = DISPID_EXTERNAL_WRITESTREAM;
+        return S_OK;
+    }
 
     ok(0, "unexpected name %s\n", wine_dbgstr_w(bstrName));
     return DISP_E_UNKNOWNNAME;
 }
+
+static void stream_write(const WCHAR*,const WCHAR*);
 
 static HRESULT WINAPI externalDisp_InvokeEx(IDispatchEx *iface, DISPID id, LCID lcid, WORD wFlags, DISPPARAMS *pdp,
         VARIANT *pvarRes, EXCEPINFO *pei, IServiceProvider *pspCaller)
@@ -671,6 +683,38 @@ static HRESULT WINAPI externalDisp_InvokeEx(IDispatchEx *iface, DISPID id, LCID 
         ok(V_VT(pdp->rgvarg) == VT_BOOL, "V_VT(psp->rgvargs) = %d\n", V_VT(pdp->rgvarg));
         V_VT(pvarRes) = VT_BOOL;
         V_BOOL(pvarRes) = broken(V_BOOL(pdp->rgvarg)) ? VARIANT_TRUE : VARIANT_FALSE;
+        return S_OK;
+
+     case DISPID_EXTERNAL_WIN_SKIP:
+        ok(wFlags == INVOKE_FUNC, "wFlags = %x\n", wFlags);
+        ok(pdp != NULL, "pdp == NULL\n");
+        ok(pdp->rgvarg != NULL, "rgvarg == NULL\n");
+        ok(!pdp->rgdispidNamedArgs, "rgdispidNamedArgs != NULL\n");
+        ok(pdp->cArgs == 1, "cArgs = %d\n", pdp->cArgs);
+        ok(!pdp->cNamedArgs, "cNamedArgs = %d\n", pdp->cNamedArgs);
+        ok(!pvarRes, "pvarRes != NULL\n");
+        ok(pei != NULL, "pei == NULL\n");
+
+        ok(V_VT(pdp->rgvarg) == VT_BSTR, "V_VT(psp->rgvargs) = %d\n", V_VT(pdp->rgvarg));
+        if(V_VT(pdp->rgvarg) == VT_BSTR)
+            win_skip("%s\n", wine_dbgstr_w(V_BSTR(pdp->rgvarg)));
+
+        return S_OK;
+
+     case DISPID_EXTERNAL_WRITESTREAM:
+        ok(wFlags == INVOKE_FUNC, "wFlags = %x\n", wFlags);
+        ok(pdp != NULL, "pdp == NULL\n");
+        ok(pdp->rgvarg != NULL, "rgvarg == NULL\n");
+        ok(!pdp->rgdispidNamedArgs, "rgdispidNamedArgs != NULL\n");
+        ok(pdp->cArgs == 2, "cArgs = %d\n", pdp->cArgs);
+        ok(!pdp->cNamedArgs, "cNamedArgs = %d\n", pdp->cNamedArgs);
+        ok(!pvarRes, "pvarRes != NULL\n");
+        ok(pei != NULL, "pei == NULL\n");
+
+        ok(V_VT(pdp->rgvarg) == VT_BSTR, "V_VT(psp->rgvargs) = %d\n", V_VT(pdp->rgvarg));
+        ok(V_VT(pdp->rgvarg+1) == VT_BSTR, "V_VT(psp->rgvargs) = %d\n", V_VT(pdp->rgvarg));
+
+        stream_write(V_BSTR(pdp->rgvarg+1), V_BSTR(pdp->rgvarg));
         return S_OK;
 
     default:
@@ -1196,6 +1240,7 @@ static void load_string(IHTMLDocument2 *doc, const char *str)
 {
     IPersistStreamInit *init;
     IStream *stream;
+    HRESULT hres;
     HGLOBAL mem;
     SIZE_T len;
 
@@ -1203,9 +1248,11 @@ static void load_string(IHTMLDocument2 *doc, const char *str)
     len = strlen(str);
     mem = GlobalAlloc(0, len);
     memcpy(mem, str, len);
-    CreateStreamOnHGlobal(mem, TRUE, &stream);
+    hres = CreateStreamOnHGlobal(mem, TRUE, &stream);
+    ok(hres == S_OK, "Failed to create a stream, hr %#x.\n", hres);
 
-    IHTMLDocument2_QueryInterface(doc, &IID_IPersistStreamInit, (void**)&init);
+    hres = IHTMLDocument2_QueryInterface(doc, &IID_IPersistStreamInit, (void**)&init);
+    ok(hres == S_OK, "Failed to get IPersistStreamInit, hr %#x.\n", hres);
 
     IPersistStreamInit_Load(init, stream);
     IPersistStreamInit_Release(init);
@@ -1905,8 +1952,25 @@ static void test_func(IDispatchEx *obj)
     memset(&ei, 0, sizeof(ei));
     VariantInit(&var);
     hres = IDispatchEx_Invoke(dispex, DISPID_VALUE, &IID_NULL, LOCALE_NEUTRAL, DISPATCH_METHOD, &dp, &var, &ei, NULL);
-    ok(hres == S_OK || broken(E_ACCESSDENIED), "InvokeEx failed: %08x\n", hres);
+    ok(hres == S_OK || broken(hres == E_ACCESSDENIED), "InvokeEx failed: %08x\n", hres);
     if(SUCCEEDED(hres)) {
+        DISPID named_args[2] = { DISPID_THIS, 0xdeadbeef };
+        VARIANT args[2];
+
+        ok(V_VT(&var) == VT_BSTR, "V_VT(var)=%d\n", V_VT(&var));
+        ok(!strcmp_wa(V_BSTR(&var), "[object]"), "V_BSTR(var) = %s\n", wine_dbgstr_w(V_BSTR(&var)));
+        VariantClear(&var);
+
+        dp.rgdispidNamedArgs = named_args;
+        dp.cNamedArgs = 2;
+        dp.cArgs = 2;
+        dp.rgvarg = &var;
+        V_VT(args) = VT_DISPATCH;
+        V_DISPATCH(args) = (IDispatch*)obj;
+        V_VT(args+1) = VT_I4;
+        V_I4(args+1) = 3;
+        hres = IDispatchEx_Invoke(dispex, DISPID_VALUE, &IID_NULL, LOCALE_NEUTRAL, DISPATCH_METHOD, &dp, &var, &ei, NULL);
+        ok(hres == S_OK, "InvokeEx failed: %08x\n", hres);
         ok(V_VT(&var) == VT_BSTR, "V_VT(var)=%d\n", V_VT(&var));
         ok(!strcmp_wa(V_BSTR(&var), "[object]"), "V_BSTR(var) = %s\n", wine_dbgstr_w(V_BSTR(&var)));
         VariantClear(&var);
@@ -2245,7 +2309,8 @@ static void test_script_run(void)
 
     V_VT(&var) = VT_BSTR;
     V_BSTR(&var) = NULL;
-    dispex_propput(document, id, 0, &var, NULL);
+    hres = dispex_propput(document, id, 0, &var, NULL);
+    ok(hres == S_OK, "dispex_propput failed: %08x\n", hres);
 
     VariantInit(&var);
     memset(&dp, 0, sizeof(dp));
@@ -2469,7 +2534,7 @@ static HRESULT WINAPI ActiveScript_SetScriptSite(IActiveScript *iface, IActiveSc
 
     hres = IActiveScriptSite_QueryInterface(pass, &IID_IActiveScriptSiteInterruptPoll, (void**)&poll);
     ok(hres == S_OK, "Could not get IActiveScriptSiteInterruptPoll interface: %08x\n", hres);
-    if(FAILED(hres))
+    if(SUCCEEDED(hres))
         IActiveScriptSiteInterruptPoll_Release(poll);
 
     hres = IActiveScriptSite_GetLCID(pass, &lcid);
@@ -2709,6 +2774,454 @@ static const IClassFactoryVtbl ClassFactoryVtbl = {
 
 static IClassFactory script_cf = { &ClassFactoryVtbl };
 
+typedef struct {
+    IInternetProtocolEx IInternetProtocolEx_iface;
+    IWinInetHttpInfo IWinInetHttpInfo_iface;
+
+    LONG ref;
+
+    IInternetProtocolSink *sink;
+    BINDINFO bind_info;
+
+    IStream *stream;
+    char *data;
+    size_t size;
+    char *ptr;
+
+    IUri *uri;
+} ProtocolHandler;
+
+static void report_data(ProtocolHandler *This)
+{
+    IServiceProvider *service_provider;
+    IHttpNegotiate *http_negotiate;
+    WCHAR *addl_headers = NULL;
+    BSTR headers, url;
+    HRESULT hres;
+
+    static const WCHAR emptyW[] = {0};
+
+    hres = IInternetProtocolSink_QueryInterface(This->sink, &IID_IServiceProvider, (void**)&service_provider);
+    ok(hres == S_OK, "Could not get IServiceProvider iface: %08x\n", hres);
+
+    hres = IServiceProvider_QueryService(service_provider, &IID_IHttpNegotiate, &IID_IHttpNegotiate, (void**)&http_negotiate);
+    IServiceProvider_Release(service_provider);
+    ok(hres == S_OK, "Could not get IHttpNegotiate interface: %08x\n", hres);
+
+    hres = IUri_GetDisplayUri(This->uri, &url);
+    ok(hres == S_OK, "Failed to get display uri: %08x\n", hres);
+    hres = IHttpNegotiate_BeginningTransaction(http_negotiate, url, emptyW, 0, &addl_headers);
+    ok(hres == S_OK, "BeginningTransaction failed: %08x\n", hres);
+    SysFreeString(url);
+
+    CoTaskMemFree(addl_headers);
+
+    headers = a2bstr("HTTP/1.1 200 OK\r\n\r\n");
+    hres = IHttpNegotiate_OnResponse(http_negotiate, 200, headers, NULL, NULL);
+    ok(hres == S_OK, "OnResponse failed: %08x\n", hres);
+    SysFreeString(headers);
+
+    IHttpNegotiate_Release(http_negotiate);
+
+    hres = IInternetProtocolSink_ReportData(This->sink, BSCF_FIRSTDATANOTIFICATION | BSCF_LASTDATANOTIFICATION,
+                                            This->size, This->size);
+    ok(hres == S_OK, "ReportData failed: %08x\n", hres);
+
+    hres = IInternetProtocolSink_ReportResult(This->sink, S_OK, 0, NULL);
+    ok(hres == S_OK, "ReportResult failed: %08x\n", hres);
+}
+
+typedef struct js_stream_t {
+    struct js_stream_t *next;
+    ProtocolHandler *protocol_handler;
+    WCHAR name[1];
+} js_stream_t;
+
+static js_stream_t *registered_stream_list;
+
+static void register_stream(ProtocolHandler *protocol_handler, const WCHAR *name)
+{
+    js_stream_t *stream;
+    size_t len;
+
+    len = lstrlenW(name)+1;
+    stream = HeapAlloc(GetProcessHeap(), 0, offsetof(js_stream_t, name[len+1]));
+
+    IInternetProtocolEx_AddRef(&protocol_handler->IInternetProtocolEx_iface);
+    stream->protocol_handler = protocol_handler;
+    memcpy(stream->name, name, len*sizeof(WCHAR));
+
+    stream->next = registered_stream_list;
+    registered_stream_list = stream;
+}
+
+static void free_registered_streams(void)
+{
+    js_stream_t *iter;
+
+    while((iter = registered_stream_list)) {
+        ok(!iter->protocol_handler, "protocol handler still pending for %s\n", wine_dbgstr_w(iter->name));
+        if(iter->protocol_handler)
+            IInternetProtocolEx_Release(&iter->protocol_handler->IInternetProtocolEx_iface);
+
+        registered_stream_list = iter->next;
+        HeapFree(GetProcessHeap(), 0, iter);
+    }
+}
+
+static DWORD WINAPI async_switch_proc(void *arg)
+{
+    PROTOCOLDATA protocol_data = {PI_FORCE_ASYNC};
+    ProtocolHandler *protocol_handler = arg;
+
+    IInternetProtocolSink_Switch(protocol_handler->sink, &protocol_data);
+    return 0;
+}
+
+static void async_switch(ProtocolHandler *protocol_handler)
+{
+    IInternetProtocolEx_AddRef(&protocol_handler->IInternetProtocolEx_iface);
+    QueueUserWorkItem(async_switch_proc, protocol_handler, 0);
+}
+
+static void stream_write(const WCHAR *name, const WCHAR *data)
+{
+    ProtocolHandler *protocol_handler;
+    LARGE_INTEGER large_zero;
+    js_stream_t *stream;
+    HRESULT hres;
+
+    static const BYTE bom_utf16[] = {0xff,0xfe};
+
+    for(stream = registered_stream_list; stream; stream = stream->next) {
+        if(!lstrcmpW(stream->name, name))
+            break;
+    }
+    ok(stream != NULL, "stream %s not found\n", wine_dbgstr_w(name));
+    if(!stream)
+        return;
+
+    protocol_handler = stream->protocol_handler;
+    ok(protocol_handler != NULL, "protocol_handler is NULL\n");
+    if(!protocol_handler)
+        return;
+    stream->protocol_handler = NULL;
+
+    hres = CreateStreamOnHGlobal(NULL, TRUE, &protocol_handler->stream);
+    ok(hres == S_OK, "CreateStreamOnHGlobal failed: %08x\n", hres);
+
+    hres = IStream_Write(protocol_handler->stream, bom_utf16, sizeof(bom_utf16), NULL);
+    ok(hres == S_OK, "Write failed: %08x\n", hres);
+
+    hres = IStream_Write(protocol_handler->stream, data, lstrlenW(data)*sizeof(WCHAR), NULL);
+    ok(hres == S_OK, "Write failed: %08x\n", hres);
+
+    U(large_zero).QuadPart = 0;
+    hres = IStream_Seek(protocol_handler->stream, large_zero, STREAM_SEEK_SET, NULL);
+    ok(hres == S_OK, "Seek failed: %08x\n", hres);
+
+    async_switch(protocol_handler);
+    IInternetProtocolEx_Release(&protocol_handler->IInternetProtocolEx_iface);
+}
+
+static char index_html_data[4096];
+
+static inline ProtocolHandler *impl_from_IInternetProtocolEx(IInternetProtocolEx *iface)
+{
+    return CONTAINING_RECORD(iface, ProtocolHandler, IInternetProtocolEx_iface);
+}
+
+static HRESULT WINAPI Protocol_QueryInterface(IInternetProtocolEx *iface, REFIID riid, void **ppv)
+{
+    ProtocolHandler *This = impl_from_IInternetProtocolEx(iface);
+
+    if(IsEqualGUID(&IID_IUnknown, riid) || IsEqualGUID(&IID_IInternetProtocol, riid) || IsEqualGUID(&IID_IInternetProtocolEx, riid)) {
+        *ppv = &This->IInternetProtocolEx_iface;
+    }else if(IsEqualGUID(&IID_IWinInetInfo, riid) || IsEqualGUID(&IID_IWinInetHttpInfo, riid)) {
+        *ppv = &This->IWinInetHttpInfo_iface;
+    }else {
+        *ppv = NULL;
+        return E_NOINTERFACE;
+    }
+
+    IUnknown_AddRef((IUnknown*)*ppv);
+    return S_OK;
+}
+
+static ULONG WINAPI Protocol_AddRef(IInternetProtocolEx *iface)
+{
+    ProtocolHandler *This = impl_from_IInternetProtocolEx(iface);
+    return InterlockedIncrement(&This->ref);
+}
+
+static ULONG WINAPI Protocol_Release(IInternetProtocolEx *iface)
+{
+    ProtocolHandler *This = impl_from_IInternetProtocolEx(iface);
+    LONG ref = InterlockedDecrement(&This->ref);
+
+    if(!ref) {
+        if(This->sink)
+            IInternetProtocolSink_Release(This->sink);
+        if(This->stream)
+            IStream_Release(This->stream);
+        if(This->uri)
+            IUri_Release(This->uri);
+        ReleaseBindInfo(&This->bind_info);
+        HeapFree(GetProcessHeap(), 0, This);
+    }
+
+    return ref;
+}
+
+static HRESULT WINAPI Protocol_Start(IInternetProtocolEx *iface, LPCWSTR szUrl, IInternetProtocolSink *pOIProtSink,
+        IInternetBindInfo *pOIBindInfo, DWORD grfPI, HANDLE_PTR dwReserved)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI Protocol_Continue(IInternetProtocolEx *iface, PROTOCOLDATA *pProtocolData)
+{
+    ProtocolHandler *This = impl_from_IInternetProtocolEx(iface);
+    report_data(This);
+    IInternetProtocolEx_Release(&This->IInternetProtocolEx_iface);
+    return S_OK;
+}
+
+static HRESULT WINAPI Protocol_Abort(IInternetProtocolEx *iface, HRESULT hrReason, DWORD dwOptions)
+{
+    trace("Abort(%08x %x)\n", hrReason, dwOptions);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI Protocol_Terminate(IInternetProtocolEx *iface, DWORD dwOptions)
+{
+    return S_OK;
+}
+
+static HRESULT WINAPI Protocol_Suspend(IInternetProtocolEx *iface)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI Protocol_Resume(IInternetProtocolEx *iface)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI Protocol_Read(IInternetProtocolEx *iface, void *pv, ULONG cb, ULONG *pcbRead)
+{
+    ProtocolHandler *This = impl_from_IInternetProtocolEx(iface);
+    ULONG read;
+    HRESULT hres;
+
+    if(This->stream) {
+        hres = IStream_Read(This->stream, pv, cb, &read);
+        ok(SUCCEEDED(hres), "Read failed: %08x\n", hres);
+        if(FAILED(hres))
+            return hres;
+        if(pcbRead)
+            *pcbRead = read;
+        return read ? S_OK : S_FALSE;
+    }
+
+    read = This->size - (This->ptr - This->data);
+    if(read > cb)
+        read = cb;
+
+    if(read) {
+        memcpy(pv, This->ptr, read);
+        This->ptr += read;
+    }
+
+    *pcbRead = read;
+    return This->ptr == This->data+This->size ? S_FALSE : S_OK;
+}
+
+static HRESULT WINAPI Protocol_Seek(IInternetProtocolEx *iface,
+        LARGE_INTEGER dlibMove, DWORD dwOrigin, ULARGE_INTEGER *plibNewPosition)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI Protocol_LockRequest(IInternetProtocolEx *iface, DWORD dwOptions)
+{
+    return S_OK;
+}
+
+static HRESULT WINAPI Protocol_UnlockRequest(IInternetProtocolEx *iface)
+{
+    return S_OK;
+}
+
+static HRESULT WINAPI ProtocolEx_StartEx(IInternetProtocolEx *iface, IUri *uri, IInternetProtocolSink *pOIProtSink,
+        IInternetBindInfo *pOIBindInfo, DWORD grfPI, HANDLE *dwReserved)
+{
+    ProtocolHandler *This = impl_from_IInternetProtocolEx(iface);
+    BOOL block = FALSE;
+    DWORD bindf;
+    BSTR path;
+    HRSRC src;
+    HRESULT hres;
+
+    hres = IInternetBindInfo_GetBindInfo(pOIBindInfo, &bindf, &This->bind_info);
+    ok(hres == S_OK, "GetBindInfo failed: %08x\n", hres);
+
+    hres = IUri_GetPath(uri, &path);
+    if(FAILED(hres))
+        return hres;
+
+    if(!strcmp_wa(path, "/index.html")) {
+        This->data = index_html_data;
+        This->size = strlen(This->data);
+    }else if(!strcmp_wa(path, "/echo.php")) {
+        ok(This->bind_info.dwBindVerb == BINDVERB_POST, "unexpected bind verb %d\n", This->bind_info.dwBindVerb == BINDVERB_POST);
+        todo_wine ok(This->bind_info.stgmedData.tymed == TYMED_ISTREAM, "tymed = %x\n", This->bind_info.stgmedData.tymed);
+        switch(This->bind_info.stgmedData.tymed) {
+        case TYMED_HGLOBAL:
+            This->size = This->bind_info.cbstgmedData;
+            This->data = U(This->bind_info.stgmedData).hGlobal;
+            break;
+        case TYMED_ISTREAM:
+            This->stream = U(This->bind_info.stgmedData).pstm;
+            IStream_AddRef(This->stream);
+            break;
+        default:
+            ok(0, "unexpected tymed %d\n", This->bind_info.stgmedData.tymed);
+        }
+    }else if(!strcmp_wa(path, "/jsstream.php")) {
+        BSTR query;
+
+        hres = IUri_GetQuery(uri, &query);
+        ok(hres == S_OK, "GetQuery failed: %08x\n", hres);
+        ok(SysStringLen(query) > 1 && *query == '?', "unexpected query %s\n", wine_dbgstr_w(query));
+        register_stream(This, query+1);
+        SysFreeString(query);
+        block = TRUE;
+    }else {
+        src = FindResourceW(NULL, *path == '/' ? path+1 : path, (const WCHAR*)RT_HTML);
+        ok(src != NULL, "Could not find resource for path %s\n", wine_dbgstr_w(path));
+        if(src) {
+            This->size = SizeofResource(NULL, src);
+            This->data = LoadResource(NULL, src);
+        }else {
+            hres = E_FAIL;
+        }
+    }
+
+    SysFreeString(path);
+    if(FAILED(hres))
+        return hres;
+
+    IInternetProtocolSink_AddRef(This->sink = pOIProtSink);
+    IUri_AddRef(This->uri = uri);
+
+    This->ptr = This->data;
+    if(!block)
+        async_switch(This);
+    return E_PENDING;
+}
+
+static const IInternetProtocolExVtbl ProtocolExVtbl = {
+    Protocol_QueryInterface,
+    Protocol_AddRef,
+    Protocol_Release,
+    Protocol_Start,
+    Protocol_Continue,
+    Protocol_Abort,
+    Protocol_Terminate,
+    Protocol_Suspend,
+    Protocol_Resume,
+    Protocol_Read,
+    Protocol_Seek,
+    Protocol_LockRequest,
+    Protocol_UnlockRequest,
+    ProtocolEx_StartEx
+};
+
+static inline ProtocolHandler *impl_from_IWinInetHttpInfo(IWinInetHttpInfo *iface)
+{
+    return CONTAINING_RECORD(iface, ProtocolHandler, IWinInetHttpInfo_iface);
+}
+
+static HRESULT WINAPI HttpInfo_QueryInterface(IWinInetHttpInfo *iface, REFIID riid, void **ppv)
+{
+    ProtocolHandler *This = impl_from_IWinInetHttpInfo(iface);
+    return IInternetProtocolEx_QueryInterface(&This->IInternetProtocolEx_iface, riid, ppv);
+}
+
+static ULONG WINAPI HttpInfo_AddRef(IWinInetHttpInfo *iface)
+{
+    ProtocolHandler *This = impl_from_IWinInetHttpInfo(iface);
+    return IInternetProtocolEx_AddRef(&This->IInternetProtocolEx_iface);
+}
+
+static ULONG WINAPI HttpInfo_Release(IWinInetHttpInfo *iface)
+{
+    ProtocolHandler *This = impl_from_IWinInetHttpInfo(iface);
+    return IInternetProtocolEx_Release(&This->IInternetProtocolEx_iface);
+}
+
+static HRESULT WINAPI HttpInfo_QueryOption(IWinInetHttpInfo *iface, DWORD dwOption,
+        void *pBuffer, DWORD *pcbBuffer)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI HttpInfo_QueryInfo(IWinInetHttpInfo *iface, DWORD dwOption,
+        void *pBuffer, DWORD *pcbBuffer, DWORD *pdwFlags, DWORD *pdwReserved)
+{
+    return E_NOTIMPL;
+}
+
+static const IWinInetHttpInfoVtbl WinInetHttpInfoVtbl = {
+    HttpInfo_QueryInterface,
+    HttpInfo_AddRef,
+    HttpInfo_Release,
+    HttpInfo_QueryOption,
+    HttpInfo_QueryInfo
+};
+
+static HRESULT WINAPI ProtocolCF_QueryInterface(IClassFactory *iface, REFIID riid, void **ppv)
+{
+    if(IsEqualGUID(&IID_IUnknown, riid) || IsEqualGUID(&IID_IClassFactory, riid)) {
+        *ppv = iface;
+        return S_OK;
+    }
+
+    *ppv = NULL;
+    return E_NOINTERFACE;
+}
+
+static HRESULT WINAPI ProtocolCF_CreateInstance(IClassFactory *iface, IUnknown *outer, REFIID riid, void **ppv)
+{
+    ProtocolHandler *protocol;
+    HRESULT hres;
+
+    protocol = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*protocol));
+    protocol->IInternetProtocolEx_iface.lpVtbl = &ProtocolExVtbl;
+    protocol->IWinInetHttpInfo_iface.lpVtbl = &WinInetHttpInfoVtbl;
+    protocol->ref = 1;
+    protocol->bind_info.cbSize = sizeof(protocol->bind_info);
+
+    hres = IInternetProtocolEx_QueryInterface(&protocol->IInternetProtocolEx_iface, riid, ppv);
+    IInternetProtocolEx_Release(&protocol->IInternetProtocolEx_iface);
+    return hres;
+}
+
+static const IClassFactoryVtbl ProtocolCFVtbl = {
+    ProtocolCF_QueryInterface,
+    ClassFactory_AddRef,
+    ClassFactory_Release,
+    ProtocolCF_CreateInstance,
+    ClassFactory_LockServer
+};
+
+static IClassFactory protocol_cf = { &ProtocolCFVtbl };
+
 static const char simple_script_str[] =
     "<html><head></head><body>"
     "<div id=\"divid\"></div>"
@@ -2801,19 +3314,12 @@ static void test_simple_script(void)
     CHECK_CALLED(Close);
 }
 
-static void run_js_script(const char *test_name)
+static void run_from_moniker(IMoniker *mon)
 {
-    WCHAR url[INTERNET_MAX_URL_LENGTH];
-    char urlA[INTERNET_MAX_URL_LENGTH];
     IPersistMoniker *persist;
     IHTMLDocument2 *doc;
-    IMoniker *mon;
     MSG msg;
     HRESULT hres;
-
-    static const char res[] = "res://";
-
-    trace("running %s...\n", test_name);
 
     doc = create_document();
     if(!doc)
@@ -2822,22 +3328,12 @@ static void run_js_script(const char *test_name)
     set_client_site(doc, TRUE);
     do_advise(doc, &IID_IPropertyNotifySink, (IUnknown*)&PropertyNotifySink);
 
-    lstrcpyA(urlA, res);
-    GetModuleFileNameA(NULL, urlA + lstrlenA(res), sizeof(urlA) - lstrlenA(res));
-    lstrcatA(urlA, "/");
-    lstrcatA(urlA, test_name);
-    MultiByteToWideChar(CP_ACP, 0, urlA, -1, url, sizeof(url)/sizeof(WCHAR));
-
-    hres = CreateURLMoniker(NULL, url, &mon);
-    ok(hres == S_OK, "CreateURLMoniker failed: %08x\n", hres);
-
     hres = IHTMLDocument2_QueryInterface(doc, &IID_IPersistMoniker, (void**)&persist);
     ok(hres == S_OK, "Could not get IPersistMoniker iface: %08x\n", hres);
 
     hres = IPersistMoniker_Load(persist, FALSE, mon, NULL, 0);
     ok(hres == S_OK, "Load failed: %08x\n", hres);
 
-    IMoniker_Release(mon);
     IPersistMoniker_Release(persist);
 
     SET_EXPECT(external_success);
@@ -2849,8 +3345,89 @@ static void run_js_script(const char *test_name)
 
     CHECK_CALLED(external_success);
 
+    free_registered_streams();
     set_client_site(doc, FALSE);
     IHTMLDocument2_Release(doc);
+}
+
+static void run_js_script(const char *test_name)
+{
+    WCHAR url[INTERNET_MAX_URL_LENGTH] = {'r','e','s',':','/','/'}, *ptr;
+    IMoniker *mon;
+    HRESULT hres;
+
+    trace("running %s...\n", test_name);
+
+    ptr = url + lstrlenW(url);
+    ptr += GetModuleFileNameW(NULL, ptr, url + ARRAY_SIZE(url) - ptr);
+    *ptr++ = '/';
+    MultiByteToWideChar(CP_ACP, 0, test_name, -1, ptr, url + ARRAY_SIZE(url) - ptr);
+
+    hres = CreateURLMoniker(NULL, url, &mon);
+    ok(hres == S_OK, "CreateURLMoniker failed: %08x\n", hres);
+    run_from_moniker(mon);
+
+    IMoniker_Release(mon);
+}
+
+static void run_from_path(const char *path, const char *opt)
+{
+    char buf[255] = "http://winetest.example.org";
+    IMoniker *mon;
+    BSTR url;
+    HRESULT hres;
+
+    strcat(buf, path);
+    if(opt)
+        strcat(buf, opt);
+    url = a2bstr(buf);
+    hres = CreateURLMoniker(NULL, url, &mon);
+    SysFreeString(url);
+    ok(hres == S_OK, "CreateUrlMoniker failed: %08x\n", hres);
+
+    run_from_moniker(mon);
+
+    IMoniker_Release(mon);
+}
+
+static void run_script_as_http_with_mode(const char *script, const char *opt, const char *document_mode)
+{
+    trace("Running %s script in %s mode...\n", script, document_mode ? document_mode : "quirks");
+
+    sprintf(index_html_data,
+            "%s"
+            "<html>\n"
+            "  <head>\n"
+            "    %s%s%s\n"
+            "    <script src=\"winetest.js\" type=\"text/javascript\"></script>\n"
+            "    <script src=\"%s\" type=\"text/javascript\"></script>\n"
+            "  </head>\n"
+            "  <body onload=\"run_tests();\">\n"
+            "  </body>\n"
+            "</html>\n",
+            document_mode ? "<!DOCTYPE html>\n" : "",
+            document_mode ? "<meta http-equiv=\"x-ua-compatible\" content=\"Ie=" : "",
+            document_mode ? document_mode : "",
+            document_mode ? "\">" : "",
+            script);
+
+    run_from_path("/index.html", opt);
+}
+
+static void init_protocol_handler(void)
+{
+    IInternetSession *internet_session;
+    HRESULT hres;
+
+    static const WCHAR httpW[] = {'h','t','t','p',0};
+
+    hres = CoInternetGetSession(0, &internet_session, 0);
+    ok(hres == S_OK, "CoInternetGetSession failed: %08x\n", hres);
+
+    hres = IInternetSession_RegisterNameSpace(internet_session, &protocol_cf, &CLSID_HttpProtocol, httpW, 0, NULL, 0);
+    ok(hres == S_OK, "RegisterNameSpace failed: %08x\n", hres);
+
+    IInternetSession_Release(internet_session);
 }
 
 static void run_js_tests(void)
@@ -2859,10 +3436,32 @@ static void run_js_tests(void)
     run_js_script("exectest.html");
     run_js_script("vbtest.html");
     run_js_script("events.html");
-    if(is_ie9plus)
-        run_js_script("nav_test.html");
-    else
-        win_skip("Skipping nav_test.html on IE older than 9 (for broken ieframe onload).\n");
+
+    if(!is_ie9plus) {
+        win_skip("Skipping some script tests on IE older than 9.\n");
+        return;
+    }
+
+    init_protocol_handler();
+
+    run_script_as_http_with_mode("xhr.js", NULL, "11");
+    run_script_as_http_with_mode("elements.js", NULL, "11");
+    run_script_as_http_with_mode("es5.js", NULL, "11");
+    run_script_as_http_with_mode("events.js", NULL, "9");
+    run_script_as_http_with_mode("navigation.js", NULL, NULL);
+    run_script_as_http_with_mode("navigation.js", NULL, "11");
+
+    run_script_as_http_with_mode("documentmode.js", "?0", NULL);
+    run_script_as_http_with_mode("documentmode.js", "?5", "5");
+    run_script_as_http_with_mode("documentmode.js", "?5", "6");
+    run_script_as_http_with_mode("documentmode.js", "?7", "7");
+    run_script_as_http_with_mode("documentmode.js", "?8", "8");
+    run_script_as_http_with_mode("documentmode.js", "?9", "9");
+    run_script_as_http_with_mode("documentmode.js", "?10", "10");
+    run_script_as_http_with_mode("documentmode.js", "?11", "11");
+    run_script_as_http_with_mode("documentmode.js", "?11", "edge");
+
+    run_script_as_http_with_mode("asyncscriptload.js", NULL, "9");
 }
 
 static BOOL init_registry(BOOL init)

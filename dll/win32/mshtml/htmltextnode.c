@@ -155,7 +155,7 @@ static HRESULT WINAPI HTMLDOMTextNode_splitText(IHTMLDOMTextNode *iface, LONG of
         return S_OK;
     }
 
-    hres = get_node(This->node.doc, (nsIDOMNode*)text, TRUE, &node);
+    hres = get_node((nsIDOMNode*)text, TRUE, &node);
     nsIDOMText_Release(text);
     if(FAILED(hres))
         return hres;
@@ -329,6 +329,7 @@ static HRESULT HTMLDOMTextNode_clone(HTMLDOMNode *iface, nsIDOMNode *nsnode, HTM
 static const cpc_entry_t HTMLDOMTextNode_cpc[] = {{NULL}};
 
 static const NodeImplVtbl HTMLDOMTextNodeImplVtbl = {
+    NULL,
     HTMLDOMTextNode_QI,
     HTMLDOMNode_destructor,
     HTMLDOMTextNode_cpc,
@@ -345,8 +346,8 @@ static const tid_t HTMLDOMTextNode_iface_tids[] = {
 static dispex_static_data_t HTMLDOMTextNode_dispex = {
     NULL,
     DispHTMLDOMTextNode_tid,
-    0,
-    HTMLDOMTextNode_iface_tids
+    HTMLDOMTextNode_iface_tids,
+    HTMLDOMNode_init_dispex_info
 };
 
 HRESULT HTMLDOMTextNode_Create(HTMLDocumentNode *doc, nsIDOMNode *nsnode, HTMLDOMNode **node)
@@ -362,10 +363,7 @@ HRESULT HTMLDOMTextNode_Create(HTMLDocumentNode *doc, nsIDOMNode *nsnode, HTMLDO
     ret->IHTMLDOMTextNode_iface.lpVtbl = &HTMLDOMTextNodeVtbl;
     ret->IHTMLDOMTextNode2_iface.lpVtbl = &HTMLDOMTextNode2Vtbl;
 
-    init_dispex(&ret->node.event_target.dispex, (IUnknown*)&ret->IHTMLDOMTextNode_iface,
-            &HTMLDOMTextNode_dispex);
-
-    HTMLDOMNode_Init(doc, &ret->node, nsnode);
+    HTMLDOMNode_Init(doc, &ret->node, nsnode, &HTMLDOMTextNode_dispex);
 
     nsres = nsIDOMNode_QueryInterface(nsnode, &IID_nsIDOMText, (void**)&ret->nstext);
     assert(nsres == NS_OK && (nsIDOMNode*)ret->nstext == ret->node.nsnode);

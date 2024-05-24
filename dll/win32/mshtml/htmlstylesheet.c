@@ -178,7 +178,6 @@ static const tid_t HTMLStyleSheetRulesCollection_iface_tids[] = {
 static dispex_static_data_t HTMLStyleSheetRulesCollection_dispex = {
     NULL,
     DispHTMLStyleSheetRulesCollection_tid,
-    NULL,
     HTMLStyleSheetRulesCollection_iface_tids
 };
 
@@ -368,7 +367,6 @@ static const tid_t HTMLStyleSheetsCollection_iface_tids[] = {
 static dispex_static_data_t HTMLStyleSheetsCollection_dispex = {
     NULL,
     DispHTMLStyleSheetsCollection_tid,
-    NULL,
     HTMLStyleSheetsCollection_iface_tids
 };
 
@@ -739,7 +737,6 @@ static const tid_t HTMLStyleSheet_iface_tids[] = {
 static dispex_static_data_t HTMLStyleSheet_dispex = {
     NULL,
     DispHTMLStyleSheet_tid,
-    NULL,
     HTMLStyleSheet_iface_tids
 };
 

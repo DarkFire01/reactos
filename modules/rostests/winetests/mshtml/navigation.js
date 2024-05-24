@@ -1,9 +1,20 @@
-<html>
-<head>
-<script>
-function ok(b,m) {
-    return external.ok(b, m);
-}
+/*
+ * Copyright 2016 Jacek Caban for CodeWeavers
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
+ */
 
 function nav_parent_test() {
     external.trace("Running _parent navigation tests...");
@@ -74,19 +85,19 @@ function detached_src_test() {
     ok(onload_called === false, "called onload too early?");
 }
 
+function init_test_iframe() {
+    var iframe = document.createElement("iframe");
+
+    iframe.onload = next_test;
+    iframe.id = "testframe";
+    iframe.src = "about:blank";
+    document.body.appendChild(iframe);
+}
+
 var tests = [
+    init_test_iframe,
     nav_parent_test,
     window_navigate_test,
     window_open_self_test,
-    detached_src_test,
-    function() { external.reportSuccess(); }
+    detached_src_test
 ];
-
-function next_test() {
-   window.setTimeout(tests.shift(), 0);
-}
-</script>
-<body onload="next_test()">
-<iframe src="about:blank" id="testframe"></iframe>
-</body>
-</html>
