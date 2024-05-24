@@ -294,8 +294,14 @@ static HRESULT WINAPI HTMLSelectionObject2_createRangeCollection(IHTMLSelectionO
 static HRESULT WINAPI HTMLSelectionObject2_get_typeDetail(IHTMLSelectionObject2 *iface, BSTR *p)
 {
     HTMLSelectionObject *This = impl_from_IHTMLSelectionObject2(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+
+    static const WCHAR undefinedW[] = {'u','n','d','e','f','i','n','e','d',0};
+
+    FIXME("(%p)->(%p) semi-stub\n", This, p);
+
+    /* FIXME: We should try to use ISelectionServicesListener::GetTypeDetail here. */
+    *p = SysAllocString(undefinedW);
+    return *p ? S_OK : E_OUTOFMEMORY;
 }
 
 static const IHTMLSelectionObject2Vtbl HTMLSelectionObject2Vtbl = {
@@ -318,7 +324,6 @@ static const tid_t HTMLSelectionObject_iface_tids[] = {
 static dispex_static_data_t HTMLSelectionObject_dispex = {
     NULL,
     IHTMLSelectionObject_tid, /* FIXME: We have a test for that, but it doesn't expose IHTMLSelectionObject2 iface. */
-    NULL,
     HTMLSelectionObject_iface_tids
 };
 

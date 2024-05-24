@@ -37,7 +37,7 @@ void do_ns_command(HTMLDocument *This, const char *cmd, nsICommandParams *nspara
         return;
     }
 
-    nsres = nsICommandManager_DoCommand(cmdmgr, cmd, nsparam, This->window->nswindow);
+    nsres = nsICommandManager_DoCommand(cmdmgr, cmd, nsparam, This->window->window_proxy);
     if(NS_FAILED(nsres))
         ERR("DoCommand(%s) failed: %08x\n", debugstr_a(cmd), nsres);
 
@@ -209,13 +209,10 @@ static void set_default_templates(nsIPrintSettings *settings)
     nsIPrintSettings_SetFooterStrRight(settings, empty);
     nsIPrintSettings_SetFooterStrCenter(settings, empty);
 
-    if(LoadStringW(get_shdoclc(), IDS_PRINT_HEADER_TEMPLATE, buf,
-                   sizeof(buf)/sizeof(WCHAR)))
+    if(LoadStringW(get_shdoclc(), IDS_PRINT_HEADER_TEMPLATE, buf, ARRAY_SIZE(buf)))
         set_print_template(settings, buf, TRUE);
 
-
-    if(LoadStringW(get_shdoclc(), IDS_PRINT_FOOTER_TEMPLATE, buf,
-                   sizeof(buf)/sizeof(WCHAR)))
+    if(LoadStringW(get_shdoclc(), IDS_PRINT_FOOTER_TEMPLATE, buf, ARRAY_SIZE(buf)))
         set_print_template(settings, buf, FALSE);
 
 }
@@ -384,7 +381,7 @@ static HRESULT exec_select_all(HTMLDocument *This, DWORD nCmdexecopt, VARIANT *i
     if(This->doc_obj->nscontainer)
         do_ns_command(This, NSCMD_SELECTALL, NULL);
 
-    update_doc(This, UPDATE_UI);
+    update_doc(This->doc_obj, UPDATE_UI);
     return S_OK;
 }
 
@@ -549,12 +546,17 @@ static HRESULT exec_optical_zoom(HTMLDocument *This, DWORD nCmdexecopt, VARIANT 
 {
     TRACE("(%p)->(%d %s %p)\n", This, nCmdexecopt, debugstr_variant(pvaIn), pvaOut);
 
-    if(!pvaIn || V_VT(pvaIn) != VT_I4) {
+    if(pvaIn && V_VT(pvaIn) != VT_I4) {
         FIXME("Unsupported argument %s\n", debugstr_variant(pvaIn));
         return E_NOTIMPL;
     }
 
-    set_viewer_zoom(This->doc_obj->nscontainer, (float)V_I4(pvaIn)/100);
+    if(pvaIn)
+        set_viewer_zoom(This->doc_obj->nscontainer, (float)V_I4(pvaIn)/100);
+    if(pvaOut) {
+        V_VT(pvaOut) = VT_I4;
+        V_I4(pvaOut) = get_viewer_zoom(This->doc_obj->nscontainer)*100;
+    }
     return S_OK;
 }
 
@@ -826,7 +828,7 @@ static HRESULT WINAPI OleCommandTarget_QueryStatus(IOleCommandTarget *iface, con
         ULONG i;
 
         for(i=0; i<cCmds; i++) {
-            if(prgCmds[i].cmdID < OLECMDID_OPEN || prgCmds[i].cmdID >= sizeof(exec_table)/sizeof(*exec_table)) {
+            if(prgCmds[i].cmdID < OLECMDID_OPEN || prgCmds[i].cmdID >= ARRAY_SIZE(exec_table)) {
                 WARN("Unsupported cmdID = %d\n", prgCmds[i].cmdID);
                 prgCmds[i].cmdf = 0;
             }else {
@@ -897,7 +899,7 @@ static HRESULT WINAPI OleCommandTarget_Exec(IOleCommandTarget *iface, const GUID
     HTMLDocument *This = impl_from_IOleCommandTarget(iface);
 
     if(!pguidCmdGroup) {
-        if(nCmdID < OLECMDID_OPEN || nCmdID >= sizeof(exec_table)/sizeof(*exec_table) || !exec_table[nCmdID].func) {
+        if(nCmdID < OLECMDID_OPEN || nCmdID >= ARRAY_SIZE(exec_table) || !exec_table[nCmdID].func) {
             WARN("Unsupported cmdID = %d\n", nCmdID);
             return OLECMDERR_E_NOTSUPPORTED;
         }

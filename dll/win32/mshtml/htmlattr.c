@@ -68,6 +68,7 @@ static ULONG WINAPI HTMLDOMAttribute_Release(IHTMLDOMAttribute *iface)
     if(!ref) {
         assert(!This->elem);
         release_dispex(&This->dispex);
+        VariantClear(&This->value);
         heap_free(This->name);
         heap_free(This);
     }
@@ -135,10 +136,8 @@ static HRESULT WINAPI HTMLDOMAttribute_put_nodeValue(IHTMLDOMAttribute *iface, V
 
     TRACE("(%p)->(%s)\n", This, debugstr_variant(&v));
 
-    if(!This->elem) {
-        FIXME("NULL This->elem\n");
-        return E_UNEXPECTED;
-    }
+    if(!This->elem)
+        return VariantCopy(&This->value, &v);
 
     memset(&ei, 0, sizeof(ei));
 
@@ -152,12 +151,10 @@ static HRESULT WINAPI HTMLDOMAttribute_get_nodeValue(IHTMLDOMAttribute *iface, V
 
     TRACE("(%p)->(%p)\n", This, p);
 
-    if(!This->elem) {
-        FIXME("NULL This->elem\n");
-        return E_UNEXPECTED;
-    }
+    if(!This->elem)
+        return VariantCopy(p, &This->value);
 
-    return get_elem_attr_value_by_dispid(This->elem, This->dispid, 0, p);
+    return get_elem_attr_value_by_dispid(This->elem, This->dispid, p);
 }
 
 static HRESULT WINAPI HTMLDOMAttribute_get_specified(IHTMLDOMAttribute *iface, VARIANT_BOOL *p)
@@ -171,7 +168,7 @@ static HRESULT WINAPI HTMLDOMAttribute_get_specified(IHTMLDOMAttribute *iface, V
 
     TRACE("(%p)->(%p)\n", This, p);
 
-    if(!This->elem || !This->elem->nselem) {
+    if(!This->elem || !This->elem->dom_element) {
         FIXME("NULL This->elem\n");
         return E_UNEXPECTED;
     }
@@ -187,7 +184,7 @@ static HRESULT WINAPI HTMLDOMAttribute_get_specified(IHTMLDOMAttribute *iface, V
 
     /* FIXME: This is not exactly right, we have some attributes that don't map directly to Gecko attributes. */
     nsAString_InitDepend(&nsname, name);
-    nsres = nsIDOMHTMLElement_GetAttributeNode(This->elem->nselem, &nsname, &nsattr);
+    nsres = nsIDOMElement_GetAttributeNode(This->elem->dom_element, &nsname, &nsattr);
     nsAString_Finish(&nsname);
     SysFreeString(name);
     if(NS_FAILED(nsres))
@@ -281,8 +278,13 @@ static HRESULT WINAPI HTMLDOMAttribute2_get_name(IHTMLDOMAttribute2 *iface, BSTR
 static HRESULT WINAPI HTMLDOMAttribute2_put_value(IHTMLDOMAttribute2 *iface, BSTR v)
 {
     HTMLDOMAttribute *This = impl_from_IHTMLDOMAttribute2(iface);
-    FIXME("(%p)->(%s)\n", This, debugstr_w(v));
-    return E_NOTIMPL;
+    VARIANT var;
+
+    TRACE("(%p)->(%s)\n", This, debugstr_w(v));
+
+    V_VT(&var) = VT_BSTR;
+    V_BSTR(&var) = v;
+    return IHTMLDOMAttribute_put_nodeValue(&This->IHTMLDOMAttribute_iface, var);
 }
 
 static HRESULT WINAPI HTMLDOMAttribute2_get_value(IHTMLDOMAttribute2 *iface, BSTR *p)
@@ -293,12 +295,13 @@ static HRESULT WINAPI HTMLDOMAttribute2_get_value(IHTMLDOMAttribute2 *iface, BST
 
     TRACE("(%p)->(%p)\n", This, p);
 
-    if(!This->elem) {
-        FIXME("NULL This->elem\n");
-        return E_UNEXPECTED;
-    }
-
-    hres = get_elem_attr_value_by_dispid(This->elem, This->dispid, ATTRFLAG_ASSTRING, &val);
+    V_VT(&val) = VT_EMPTY;
+    if(This->elem)
+        hres = get_elem_attr_value_by_dispid(This->elem, This->dispid, &val);
+    else
+        hres = VariantCopy(&val, &This->value);
+    if(SUCCEEDED(hres))
+        hres = attr_value_to_string(&val);
     if(FAILED(hres))
         return hres;
 
@@ -315,7 +318,7 @@ static HRESULT WINAPI HTMLDOMAttribute2_get_expando(IHTMLDOMAttribute2 *iface, V
 
     TRACE("(%p)->(%p)\n", This, p);
 
-    *p = get_dispid_type(This->dispid) == DISPEXPROP_BUILTIN ? VARIANT_FALSE : VARIANT_TRUE;
+    *p = variant_bool(This->elem && get_dispid_type(This->dispid) != DISPEXPROP_BUILTIN);
     return S_OK;
 }
 
@@ -329,8 +332,11 @@ static HRESULT WINAPI HTMLDOMAttribute2_get_nodeType(IHTMLDOMAttribute2 *iface, 
 static HRESULT WINAPI HTMLDOMAttribute2_get_parentNode(IHTMLDOMAttribute2 *iface, IHTMLDOMNode **p)
 {
     HTMLDOMAttribute *This = impl_from_IHTMLDOMAttribute2(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    *p = NULL;
+    return S_OK;
 }
 
 static HRESULT WINAPI HTMLDOMAttribute2_get_childNodes(IHTMLDOMAttribute2 *iface, IDispatch **p)
@@ -466,9 +472,13 @@ static const tid_t HTMLDOMAttribute_iface_tids[] = {
 static dispex_static_data_t HTMLDOMAttribute_dispex = {
     NULL,
     DispHTMLDOMAttribute_tid,
-    0,
     HTMLDOMAttribute_iface_tids
 };
+
+HTMLDOMAttribute *unsafe_impl_from_IHTMLDOMAttribute(IHTMLDOMAttribute *iface)
+{
+    return iface->lpVtbl == &HTMLDOMAttributeVtbl ? impl_from_IHTMLDOMAttribute(iface) : NULL;
+}
 
 HRESULT HTMLDOMAttribute_Create(const WCHAR *name, HTMLElement *elem, DISPID dispid, HTMLDOMAttribute **attr)
 {

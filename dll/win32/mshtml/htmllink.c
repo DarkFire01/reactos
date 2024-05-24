@@ -18,12 +18,12 @@
 
 #include "mshtml_private.h"
 
-typedef struct {
+struct HTMLLinkElement{
     HTMLElement element;
     IHTMLLinkElement IHTMLLinkElement_iface;
 
     nsIDOMHTMLLinkElement *nslink;
-} HTMLLinkElement;
+};
 
 static inline HTMLLinkElement *impl_from_IHTMLLinkElement(IHTMLLinkElement *iface)
 {
@@ -228,15 +228,19 @@ static HRESULT WINAPI HTMLLinkElement_get_onreadystatechange(IHTMLLinkElement *i
 static HRESULT WINAPI HTMLLinkElement_put_onload(IHTMLLinkElement *iface, VARIANT v)
 {
     HTMLLinkElement *This = impl_from_IHTMLLinkElement(iface);
-    FIXME("(%p)->(%s)\n", This, debugstr_variant(&v));
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%s)\n", This, debugstr_variant(&v));
+
+    return set_node_event(&This->element.node, EVENTID_LOAD, &v);
 }
 
 static HRESULT WINAPI HTMLLinkElement_get_onload(IHTMLLinkElement *iface, VARIANT *p)
 {
     HTMLLinkElement *This = impl_from_IHTMLLinkElement(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    return get_node_event(&This->element.node, EVENTID_LOAD, p);
 }
 
 static HRESULT WINAPI HTMLLinkElement_put_onerror(IHTMLLinkElement *iface, VARIANT v)
@@ -283,7 +287,7 @@ static HRESULT WINAPI HTMLLinkElement_get_disabled(IHTMLLinkElement *iface, VARI
     if(NS_FAILED(nsres))
         return E_FAIL;
 
-    *p = ret ? VARIANT_TRUE : VARIANT_FALSE;
+    *p = variant_bool(ret);
     return S_OK;
 }
 
@@ -403,13 +407,13 @@ static void HTMLLinkElement_unlink(HTMLDOMNode *iface)
     }
 }
 static const NodeImplVtbl HTMLLinkElementImplVtbl = {
+    &CLSID_HTMLLinkElement,
     HTMLLinkElement_QI,
     HTMLElement_destructor,
     HTMLElement_cpc,
     HTMLElement_clone,
     HTMLElement_handle_event,
     HTMLElement_get_attr_col,
-    NULL,
     NULL,
     HTMLLinkElementImpl_put_disabled,
     HTMLLinkElementImpl_get_disabled,
@@ -430,11 +434,11 @@ static const tid_t HTMLLinkElement_iface_tids[] = {
 static dispex_static_data_t HTMLLinkElement_dispex = {
     NULL,
     DispHTMLLinkElement_tid,
-    NULL,
-    HTMLLinkElement_iface_tids
+    HTMLLinkElement_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
-HRESULT HTMLLinkElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)
+HRESULT HTMLLinkElement_Create(HTMLDocumentNode *doc, nsIDOMElement *nselem, HTMLElement **elem)
 {
     HTMLLinkElement *ret;
     nsresult nsres;
@@ -448,7 +452,7 @@ HRESULT HTMLLinkElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem,
 
     HTMLElement_Init(&ret->element, doc, nselem, &HTMLLinkElement_dispex);
 
-    nsres = nsIDOMHTMLElement_QueryInterface(nselem, &IID_nsIDOMHTMLLinkElement, (void**)&ret->nslink);
+    nsres = nsIDOMElement_QueryInterface(nselem, &IID_nsIDOMHTMLLinkElement, (void**)&ret->nslink);
     assert(nsres == NS_OK);
 
     *elem = &ret->element;

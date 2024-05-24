@@ -22,6 +22,7 @@
 #include <tlogstg.h>
 #include <winreg.h>
 #include <wininet.h>
+#include <mscoree.h>
 
 #include "mshtml_test.h"
 

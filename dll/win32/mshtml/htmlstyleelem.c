@@ -18,14 +18,14 @@
 
 #include "mshtml_private.h"
 
-typedef struct {
-    HTMLElement element;
-
-    IHTMLStyleElement IHTMLStyleElement_iface;
-
-    nsIDOMHTMLStyleElement *nsstyle;
-    IHTMLStyleSheet *style_sheet;
-} HTMLStyleElement;
+struct HTMLStyleElement {
+     HTMLElement element;
+ 
+     IHTMLStyleElement IHTMLStyleElement_iface;
+ 
+     nsIDOMHTMLStyleElement *nsstyle;
+     IHTMLStyleSheet *style_sheet;
+};
 
 static inline HTMLStyleElement *impl_from_IHTMLStyleElement(IHTMLStyleElement *iface)
 {
@@ -325,13 +325,13 @@ static void HTMLStyleElement_unlink(HTMLDOMNode *iface)
 }
 
 static const NodeImplVtbl HTMLStyleElementImplVtbl = {
+    &CLSID_HTMLStyleElement,
     HTMLStyleElement_QI,
     HTMLStyleElement_destructor,
     HTMLElement_cpc,
     HTMLElement_clone,
     HTMLElement_handle_event,
     HTMLElement_get_attr_col,
-    NULL,
     NULL,
     NULL,
     NULL,
@@ -352,11 +352,11 @@ static const tid_t HTMLStyleElement_iface_tids[] = {
 static dispex_static_data_t HTMLStyleElement_dispex = {
     NULL,
     DispHTMLStyleElement_tid,
-    NULL,
-    HTMLStyleElement_iface_tids
+    HTMLStyleElement_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
-HRESULT HTMLStyleElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)
+HRESULT HTMLStyleElement_Create(HTMLDocumentNode *doc, nsIDOMElement *nselem, HTMLElement **elem)
 {
     HTMLStyleElement *ret;
     nsresult nsres;
@@ -370,7 +370,7 @@ HRESULT HTMLStyleElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem
 
     HTMLElement_Init(&ret->element, doc, nselem, &HTMLStyleElement_dispex);
 
-    nsres = nsIDOMHTMLElement_QueryInterface(nselem, &IID_nsIDOMHTMLStyleElement, (void**)&ret->nsstyle);
+    nsres = nsIDOMElement_QueryInterface(nselem, &IID_nsIDOMHTMLStyleElement, (void**)&ret->nsstyle);
     assert(nsres == NS_OK);
 
     *elem = &ret->element;

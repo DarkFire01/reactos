@@ -22,6 +22,7 @@
 
 /* Package names */
 #define UNISP_NAME_A "Microsoft Unified Security Protocol Provider"
+#ifndef UNISP_NAME_W
 #if defined(__GNUC__)
 #define UNISP_NAME_W (const WCHAR []){ 'M','i','c','r','o','s','o','f','t',\
  ' ','U','n','i','f','i','e','d',' ','S','e','c','u','r','i','t','y',' ',\
@@ -32,6 +33,7 @@
 static const WCHAR UNISP_NAME_W[] = { 'M','i','c','r','o','s','o','f','t',
  ' ','U','n','i','f','i','e','d',' ','S','e','c','u','r','i','t','y',' ',
  'P','r','o','t','o','c','o','l',' ','P','r','o','v','i','d','e','r',0 };
+#endif
 #endif
 #define UNISP_NAME WINELIB_NAME_AW(UNISP_NAME_)
 

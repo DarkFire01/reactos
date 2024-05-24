@@ -57,6 +57,8 @@ typedef struct {
     REQUEST_METHOD request_method;
     struct list response_headers;
     struct list request_headers;
+
+    nsChannelBSC *binding;
 } nsChannel;
 
 typedef struct {
@@ -69,10 +71,11 @@ typedef struct {
 typedef struct BSCallbackVtbl BSCallbackVtbl;
 
 struct BSCallback {
-    IBindStatusCallback IBindStatusCallback_iface;
-    IServiceProvider    IServiceProvider_iface;
-    IHttpNegotiate2     IHttpNegotiate2_iface;
-    IInternetBindInfo   IInternetBindInfo_iface;
+    IBindStatusCallback   IBindStatusCallback_iface;
+    IServiceProvider      IServiceProvider_iface;
+    IHttpNegotiate2       IHttpNegotiate2_iface;
+    IInternetBindInfo     IInternetBindInfo_iface;
+    IBindCallbackRedirect IBindCallbackRedirect_iface;
 
     const BSCallbackVtbl          *vtbl;
 
@@ -81,6 +84,7 @@ struct BSCallback {
     request_data_t request_data;
     ULONG readed;
     DWORD bindf;
+    DWORD bindinfo_options;
     BOOL bindinfo_ready;
     binding_bom_t bom;
 
@@ -145,6 +149,7 @@ HRESULT load_uri(HTMLOuterWindow*,IUri*,DWORD) DECLSPEC_HIDDEN;
 HRESULT navigate_new_window(HTMLOuterWindow*,IUri*,const WCHAR*,request_data_t*,IHTMLWindow2**) DECLSPEC_HIDDEN;
 HRESULT navigate_url(HTMLOuterWindow*,const WCHAR*,IUri*,DWORD) DECLSPEC_HIDDEN;
 HRESULT submit_form(HTMLOuterWindow*,const WCHAR*,IUri*,nsIInputStream*) DECLSPEC_HIDDEN;
+void process_document_response_headers(HTMLDocumentNode*,IBinding*) DECLSPEC_HIDDEN;
 
 void init_bscallback(BSCallback*,const BSCallbackVtbl*,IMoniker*,DWORD) DECLSPEC_HIDDEN;
 HRESULT create_channelbsc(IMoniker*,const WCHAR*,BYTE*,DWORD,BOOL,nsChannelBSC**) DECLSPEC_HIDDEN;

@@ -15,7 +15,6 @@ list(APPEND SOURCE
     conpoint.c
     dispex.c
     editor.c
-    hlink.c
     htmlanchor.c
     htmlarea.c
     htmlattr.c
@@ -25,40 +24,28 @@ list(APPEND SOURCE
     htmldoc.c
     htmlelem.c
     htmlelemcol.c
-    htmlembed.c
     htmlevent.c
     htmlform.c
     htmlframe.c
-    htmlframebase.c
     htmlgeneric.c
     htmlhead.c
-    htmliframe.c
     htmlimg.c
     htmlinput.c
     htmllink.c
     htmllocation.c
-    htmlmeta.c
     htmlnode.c
     htmlobject.c
-    htmloption.c
-    htmlscreen.c
     htmlscript.c
     htmlselect.c
     htmlstorage.c
     htmlstyle.c
-    htmlstyle2.c
-    htmlstyle3.c
     htmlstyleelem.c
     htmlstylesheet.c
     htmltable.c
-    htmltablecell.c
-    htmltablerow.c
     htmltextarea.c
-    htmltextcont.c
     htmltextnode.c
     htmlwindow.c
     ifacewrap.c
-    ipwindow.c
     loadopts.c
     main.c
     mutation.c
@@ -70,11 +57,9 @@ list(APPEND SOURCE
     nsservice.c
     olecmd.c
     oleobj.c
-    olewnd.c
     omnavigator.c
     persist.c
     pluginhost.c
-    propbag.c
     protocol.c
     script.c
     secmgr.c

@@ -137,7 +137,7 @@ void set_current_mon(HTMLOuterWindow *This, IMoniker *mon, DWORD flags)
         if(SUCCEEDED(hres)) {
             hres = create_uri(url, 0, &uri);
             if(FAILED(hres)) {
-                WARN("CrateUri failed: %08x\n", hres);
+                WARN("CreateUri failed: %08x\n", hres);
                 set_current_uri(This, NULL);
                 This->url = SysAllocString(url);
                 CoTaskMemFree(url);
@@ -294,9 +294,9 @@ void prepare_for_binding(HTMLDocument *This, IMoniker *mon, DWORD flags)
     }
 
     if(This->window->mon) {
-        update_doc(This, UPDATE_TITLE|UPDATE_UI);
+        update_doc(This->doc_obj, UPDATE_TITLE|UPDATE_UI);
     }else {
-        update_doc(This, UPDATE_TITLE);
+        update_doc(This->doc_obj, UPDATE_TITLE);
         set_current_mon(This->window, mon, flags);
     }
 
@@ -398,7 +398,7 @@ HRESULT set_moniker(HTMLOuterWindow *window, IMoniker *mon, IUri *nav_uri, IBind
 
             task = heap_alloc(sizeof(docobj_task_t));
             task->doc = doc_obj;
-            hres = push_task(&task->header, set_progress_proc, NULL, doc_obj->basedoc.task_magic);
+            hres = push_task(&task->header, set_progress_proc, NULL, doc_obj->task_magic);
             if(FAILED(hres)) {
                 CoTaskMemFree(url);
                 return hres;
@@ -409,7 +409,7 @@ HRESULT set_moniker(HTMLOuterWindow *window, IMoniker *mon, IUri *nav_uri, IBind
         download_task->doc = doc_obj;
         download_task->set_download = set_download;
         download_task->url = url;
-        return push_task(&download_task->header, set_downloading_proc, set_downloading_task_destr, doc_obj->basedoc.task_magic);
+        return push_task(&download_task->header, set_downloading_proc, set_downloading_task_destr, doc_obj->task_magic);
     }
 
     return S_OK;
@@ -417,17 +417,28 @@ HRESULT set_moniker(HTMLOuterWindow *window, IMoniker *mon, IUri *nav_uri, IBind
 
 static void notif_readystate(HTMLOuterWindow *window)
 {
+    DOMEvent *event;
+    HRESULT hres;
+
     window->readystate_pending = FALSE;
 
     if(window->doc_obj && window->doc_obj->basedoc.window == window)
         call_property_onchanged(&window->doc_obj->basedoc.cp_container, DISPID_READYSTATE);
 
-    fire_event(window->base.inner_window->doc, EVENTID_READYSTATECHANGE, FALSE,
-            window->base.inner_window->doc->node.nsnode, NULL, NULL);
+    hres = create_document_event(window->base.inner_window->doc, EVENTID_READYSTATECHANGE, &event);
+    if(SUCCEEDED(hres)) {
+        event->no_event_obj = TRUE;
+        dispatch_event(&window->base.inner_window->doc->node.event_target, event);
+        IDOMEvent_Release(&event->IDOMEvent_iface);
+    }
 
-    if(window->frame_element)
-        fire_event(window->frame_element->element.node.doc, EVENTID_READYSTATECHANGE,
-                   TRUE, window->frame_element->element.node.nsnode, NULL, NULL);
+    if(window->frame_element) {
+        hres = create_document_event(window->frame_element->element.node.doc, EVENTID_READYSTATECHANGE, &event);
+        if(SUCCEEDED(hres)) {
+            dispatch_event(&window->frame_element->element.node.event_target, event);
+            IDOMEvent_Release(&event->IDOMEvent_iface);
+        }
+    }
 }
 
 typedef struct {
@@ -562,6 +573,7 @@ static HRESULT WINAPI PersistMoniker_Load(IPersistMoniker *iface, BOOL fFullyAva
         IMoniker *pimkName, LPBC pibc, DWORD grfMode)
 {
     HTMLDocument *This = impl_from_IPersistMoniker(iface);
+    IMoniker *mon;
     HRESULT hres;
 
     TRACE("(%p)->(%x %p %p %08x)\n", This, fFullyAvailable, pimkName, pibc, grfMode);
@@ -595,9 +607,22 @@ static HRESULT WINAPI PersistMoniker_Load(IPersistMoniker *iface, BOOL fFullyAva
         }
     }
 
-    prepare_for_binding(This, pimkName, FALSE);
+    if(This->doc_obj->is_mhtml) {
+        IUnknown *unk;
+
+        hres = MimeOleObjectFromMoniker(0, pimkName, pibc, &IID_IUnknown, (void**)&unk, &mon);
+        if(FAILED(hres))
+            return hres;
+        IUnknown_Release(unk);
+        pibc = NULL;
+    }else {
+        IMoniker_AddRef(mon = pimkName);
+    }
+
+    prepare_for_binding(This, mon, FALSE);
     call_docview_84(This->doc_obj);
-    hres = set_moniker(This->window, pimkName, NULL, pibc, NULL, TRUE);
+    hres = set_moniker(This->window, mon, NULL, pibc, NULL, TRUE);
+    IMoniker_Release(mon);
     if(FAILED(hres))
         return hres;
 
@@ -851,7 +876,7 @@ static HRESULT WINAPI PersistStreamInit_IsDirty(IPersistStreamInit *iface)
     return S_FALSE;
 }
 
-static HRESULT WINAPI PersistStreamInit_Load(IPersistStreamInit *iface, LPSTREAM pStm)
+static HRESULT WINAPI PersistStreamInit_Load(IPersistStreamInit *iface, IStream *pStm)
 {
     HTMLDocument *This = impl_from_IPersistStreamInit(iface);
     IMoniker *mon;
@@ -867,15 +892,14 @@ static HRESULT WINAPI PersistStreamInit_Load(IPersistStreamInit *iface, LPSTREAM
 
     prepare_for_binding(This, mon, FALSE);
     hres = set_moniker(This->window, mon, NULL, NULL, NULL, TRUE);
-    if(FAILED(hres))
-        return hres;
+    if(SUCCEEDED(hres))
+        hres = channelbsc_load_stream(This->window->pending_window, mon, pStm);
 
-    hres = channelbsc_load_stream(This->window->pending_window, mon, pStm);
     IMoniker_Release(mon);
     return hres;
 }
 
-static HRESULT WINAPI PersistStreamInit_Save(IPersistStreamInit *iface, LPSTREAM pStm,
+static HRESULT WINAPI PersistStreamInit_Save(IPersistStreamInit *iface, IStream *pStm,
                                              BOOL fClearDirty)
 {
     HTMLDocument *This = impl_from_IPersistStreamInit(iface);
@@ -925,10 +949,9 @@ static HRESULT WINAPI PersistStreamInit_InitNew(IPersistStreamInit *iface)
 
     prepare_for_binding(This, mon, FALSE);
     hres = set_moniker(This->window, mon, NULL, NULL, NULL, FALSE);
-    if(FAILED(hres))
-        return hres;
+    if(SUCCEEDED(hres))
+        hres = channelbsc_load_stream(This->window->pending_window, mon, NULL);
 
-    hres = channelbsc_load_stream(This->window->pending_window, mon, NULL);
     IMoniker_Release(mon);
     return hres;
 }
@@ -1086,6 +1109,91 @@ static const IPersistHistoryVtbl PersistHistoryVtbl = {
     PersistHistory_GetPositionCookie
 };
 
+/**********************************************************
+ * IHlinkTarget implementation
+ */
+
+static inline HTMLDocument *impl_from_IHlinkTarget(IHlinkTarget *iface)
+{
+    return CONTAINING_RECORD(iface, HTMLDocument, IHlinkTarget_iface);
+}
+
+static HRESULT WINAPI HlinkTarget_QueryInterface(IHlinkTarget *iface, REFIID riid, void **ppv)
+{
+    HTMLDocument *This = impl_from_IHlinkTarget(iface);
+    return htmldoc_query_interface(This, riid, ppv);
+}
+
+static ULONG WINAPI HlinkTarget_AddRef(IHlinkTarget *iface)
+{
+    HTMLDocument *This = impl_from_IHlinkTarget(iface);
+    return htmldoc_addref(This);
+}
+
+static ULONG WINAPI HlinkTarget_Release(IHlinkTarget *iface)
+{
+    HTMLDocument *This = impl_from_IHlinkTarget(iface);
+    return htmldoc_release(This);
+}
+
+static HRESULT WINAPI HlinkTarget_SetBrowseContext(IHlinkTarget *iface, IHlinkBrowseContext *pihlbc)
+{
+    HTMLDocument *This = impl_from_IHlinkTarget(iface);
+    FIXME("(%p)->(%p)\n", This, pihlbc);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI HlinkTarget_GetBrowseContext(IHlinkTarget *iface, IHlinkBrowseContext **ppihlbc)
+{
+    HTMLDocument *This = impl_from_IHlinkTarget(iface);
+    FIXME("(%p)->(%p)\n", This, ppihlbc);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI HlinkTarget_Navigate(IHlinkTarget *iface, DWORD grfHLNF, LPCWSTR pwzJumpLocation)
+{
+    HTMLDocument *This = impl_from_IHlinkTarget(iface);
+
+    TRACE("(%p)->(%08x %s)\n", This, grfHLNF, debugstr_w(pwzJumpLocation));
+
+    if(grfHLNF)
+        FIXME("Unsupported grfHLNF=%08x\n", grfHLNF);
+    if(pwzJumpLocation)
+        FIXME("JumpLocation not supported\n");
+
+    if(!This->doc_obj->client)
+        return navigate_new_window(This->window, This->window->uri, NULL, NULL, NULL);
+
+    return IOleObject_DoVerb(&This->IOleObject_iface, OLEIVERB_SHOW, NULL, NULL, -1, NULL, NULL);
+}
+
+static HRESULT WINAPI HlinkTarget_GetMoniker(IHlinkTarget *iface, LPCWSTR pwzLocation, DWORD dwAssign,
+        IMoniker **ppimkLocation)
+{
+    HTMLDocument *This = impl_from_IHlinkTarget(iface);
+    FIXME("(%p)->(%s %08x %p)\n", This, debugstr_w(pwzLocation), dwAssign, ppimkLocation);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI HlinkTarget_GetFriendlyName(IHlinkTarget *iface, LPCWSTR pwzLocation,
+        LPWSTR *ppwzFriendlyName)
+{
+    HTMLDocument *This = impl_from_IHlinkTarget(iface);
+    FIXME("(%p)->(%s %p)\n", This, debugstr_w(pwzLocation), ppwzFriendlyName);
+    return E_NOTIMPL;
+}
+
+static const IHlinkTargetVtbl HlinkTargetVtbl = {
+    HlinkTarget_QueryInterface,
+    HlinkTarget_AddRef,
+    HlinkTarget_Release,
+    HlinkTarget_SetBrowseContext,
+    HlinkTarget_GetBrowseContext,
+    HlinkTarget_Navigate,
+    HlinkTarget_GetMoniker,
+    HlinkTarget_GetFriendlyName
+};
+
 void HTMLDocument_Persist_Init(HTMLDocument *This)
 {
     This->IPersistMoniker_iface.lpVtbl = &PersistMonikerVtbl;
@@ -1093,4 +1201,5 @@ void HTMLDocument_Persist_Init(HTMLDocument *This)
     This->IMonikerProp_iface.lpVtbl = &MonikerPropVtbl;
     This->IPersistStreamInit_iface.lpVtbl = &PersistStreamInitVtbl;
     This->IPersistHistory_iface.lpVtbl = &PersistHistoryVtbl;
+    This->IHlinkTarget_iface.lpVtbl = &HlinkTargetVtbl;
 }

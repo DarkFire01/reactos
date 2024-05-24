@@ -26,6 +26,38 @@ struct HTMLFormElement {
     nsIDOMHTMLFormElement *nsform;
 };
 
+HRESULT return_nsform(nsresult nsres, nsIDOMHTMLFormElement *form, IHTMLFormElement **p)
+{
+    nsIDOMNode *form_node;
+    HTMLDOMNode *node;
+    HRESULT hres;
+
+    if (NS_FAILED(nsres)) {
+        ERR("GetForm failed: %08x\n", nsres);
+        return E_FAIL;
+    }
+
+    if(!form) {
+        *p = NULL;
+        TRACE("NULL\n");
+        return S_OK;
+    }
+
+    nsres = nsIDOMHTMLFormElement_QueryInterface(form, &IID_nsIDOMNode, (void**)&form_node);
+    nsIDOMHTMLFormElement_Release(form);
+    assert(nsres == NS_OK);
+
+    hres = get_node(form_node, TRUE, &node);
+    nsIDOMNode_Release(form_node);
+    if (FAILED(hres))
+        return hres;
+
+    TRACE("node %p\n", node);
+    hres = IHTMLDOMNode_QueryInterface(&node->IHTMLDOMNode_iface, &IID_IHTMLFormElement, (void**)p);
+    node_release(node);
+    return hres;
+}
+
 static HRESULT htmlform_item(HTMLFormElement *This, int i, IDispatch **ret)
 {
     nsIDOMHTMLCollection *elements;
@@ -48,7 +80,7 @@ static HRESULT htmlform_item(HTMLFormElement *This, int i, IDispatch **ret)
     }
 
     if(item) {
-        hres = get_node(This->element.node.doc, item, TRUE, &node);
+        hres = get_node(item, TRUE, &node);
         if(FAILED(hres))
             return hres;
 
@@ -259,11 +291,24 @@ static HRESULT WINAPI HTMLFormElement_get_method(IHTMLFormElement *iface, BSTR *
 static HRESULT WINAPI HTMLFormElement_get_elements(IHTMLFormElement *iface, IDispatch **p)
 {
     HTMLFormElement *This = impl_from_IHTMLFormElement(iface);
+    nsIDOMHTMLCollection *elements;
+    nsresult nsres;
 
     TRACE("(%p)->(%p)\n", This, p);
 
-    *p = (IDispatch*)&This->IHTMLFormElement_iface;
-    IDispatch_AddRef(*p);
+    if(dispex_compat_mode(&This->element.node.event_target.dispex) < COMPAT_MODE_IE9) {
+        IDispatch_AddRef(*p = (IDispatch*)&This->IHTMLFormElement_iface);
+        return S_OK;
+    }
+
+    nsres = nsIDOMHTMLFormElement_GetElements(This->nsform, &elements);
+    if(NS_FAILED(nsres)) {
+        ERR("GetElements failed: %08x\n", nsres);
+        return E_FAIL;
+    }
+
+    *p = (IDispatch*)create_collection_from_htmlcol(elements, dispex_compat_mode(&This->element.node.event_target.dispex));
+    nsIDOMHTMLCollection_Release(elements);
     return S_OK;
 }
 
@@ -511,8 +556,11 @@ static HRESULT WINAPI HTMLFormElement_item(IHTMLFormElement *iface, VARIANT name
     *pdisp = NULL;
 
     if(V_VT(&name) == VT_I4) {
-        if(V_I4(&name) < 0)
-            return E_INVALIDARG;
+        if(V_I4(&name) < 0) {
+            *pdisp = NULL;
+            return dispex_compat_mode(&This->element.node.event_target.dispex) >= COMPAT_MODE_IE9
+                ? S_OK : E_INVALIDARG;
+        }
         return htmlform_item(This, V_I4(&name), pdisp);
     }
 
@@ -639,7 +687,7 @@ static HRESULT HTMLFormElement_get_dispid(HTMLDOMNode *iface,
     nsAString_Init(&nsstr, NULL);
     for(i = 0; i < len; ++i) {
         nsIDOMNode *nsitem;
-        nsIDOMHTMLElement *nshtml_elem;
+        nsIDOMElement *elem;
         const PRUnichar *str;
 
         nsres = nsIDOMHTMLCollection_Item(elements, i, &nsitem);
@@ -649,7 +697,7 @@ static HRESULT HTMLFormElement_get_dispid(HTMLDOMNode *iface,
             break;
         }
 
-        nsres = nsIDOMNode_QueryInterface(nsitem, &IID_nsIDOMHTMLElement, (void**)&nshtml_elem);
+        nsres = nsIDOMNode_QueryInterface(nsitem, &IID_nsIDOMElement, (void**)&elem);
         nsIDOMNode_Release(nsitem);
         if(NS_FAILED(nsres)) {
             FIXME("Failed to get nsIDOMHTMLNode interface: 0x%08x\n", nsres);
@@ -658,16 +706,16 @@ static HRESULT HTMLFormElement_get_dispid(HTMLDOMNode *iface,
         }
 
         /* compare by id attr */
-        nsres = nsIDOMHTMLElement_GetId(nshtml_elem, &nsstr);
+        nsres = nsIDOMElement_GetId(elem, &nsstr);
         if(NS_FAILED(nsres)) {
             FIXME("GetId failed: 0x%08x\n", nsres);
-            nsIDOMHTMLElement_Release(nshtml_elem);
+            nsIDOMElement_Release(elem);
             hres = E_FAIL;
             break;
         }
         nsAString_GetData(&nsstr, &str);
         if(!strcmpiW(str, name)) {
-            nsIDOMHTMLElement_Release(nshtml_elem);
+            nsIDOMElement_Release(elem);
             /* FIXME: using index for dispid */
             *pid = MSHTML_DISPID_CUSTOM_MIN + i;
             hres = S_OK;
@@ -675,8 +723,8 @@ static HRESULT HTMLFormElement_get_dispid(HTMLDOMNode *iface,
         }
 
         /* compare by name attr */
-        nsres = get_elem_attr_value(nshtml_elem, nameW, &name_str, &str);
-        nsIDOMHTMLElement_Release(nshtml_elem);
+        nsres = get_elem_attr_value(elem, nameW, &name_str, &str);
+        nsIDOMElement_Release(elem);
         if(NS_SUCCEEDED(nsres)) {
             if(!strcmpiW(str, name)) {
                 nsAString_Finish(&name_str);
@@ -750,13 +798,13 @@ static void HTMLFormElement_unlink(HTMLDOMNode *iface)
 }
 
 static const NodeImplVtbl HTMLFormElementImplVtbl = {
+    &CLSID_HTMLFormElement,
     HTMLFormElement_QI,
     HTMLElement_destructor,
     HTMLElement_cpc,
     HTMLElement_clone,
     HTMLFormElement_handle_event,
     HTMLElement_get_attr_col,
-    NULL,
     NULL,
     NULL,
     NULL,
@@ -778,11 +826,11 @@ static const tid_t HTMLFormElement_iface_tids[] = {
 static dispex_static_data_t HTMLFormElement_dispex = {
     NULL,
     DispHTMLFormElement_tid,
-    NULL,
-    HTMLFormElement_iface_tids
+    HTMLFormElement_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
-HRESULT HTMLFormElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)
+HRESULT HTMLFormElement_Create(HTMLDocumentNode *doc, nsIDOMElement *nselem, HTMLElement **elem)
 {
     HTMLFormElement *ret;
     nsresult nsres;
@@ -796,7 +844,7 @@ HRESULT HTMLFormElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem,
 
     HTMLElement_Init(&ret->element, doc, nselem, &HTMLFormElement_dispex);
 
-    nsres = nsIDOMHTMLElement_QueryInterface(nselem, &IID_nsIDOMHTMLFormElement, (void**)&ret->nsform);
+    nsres = nsIDOMElement_QueryInterface(nselem, &IID_nsIDOMHTMLFormElement, (void**)&ret->nsform);
     assert(nsres == NS_OK);
 
     *elem = &ret->element;
