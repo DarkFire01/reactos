@@ -779,6 +779,10 @@ static LRESULT RichEditWndProc_common( HWND hwnd, UINT msg, WPARAM wparam,
     editor = host->editor;
     switch (msg)
     {
+    case WM_DESTROY:
+        ITextHost_Release( &host->ITextHost_iface );
+        return 0;
+
     case WM_ERASEBKGND:
     {
         HDC hdc = (HDC)wparam;
