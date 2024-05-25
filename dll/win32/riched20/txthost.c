@@ -32,30 +32,31 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(richedit);
 
-typedef struct ITextHostImpl {
+struct host
+{
     ITextHost ITextHost_iface;
     LONG ref;
-    HWND hWnd;
-    BOOL bEmulateVersion10;
+    HWND window;
+    BOOL emulate_10;
     PARAFORMAT2 para_fmt;
-} ITextHostImpl;
+};
 
 static const ITextHostVtbl textHostVtbl;
 
 static BOOL listbox_registered;
 static BOOL combobox_registered;
 
-static ITextHost *host_create( HWND hwnd, CREATESTRUCTW *cs, BOOL bEmulateVersion10 )
+static ITextHost *host_create( HWND hwnd, CREATESTRUCTW *cs, BOOL emulate_10 )
 {
-    ITextHostImpl *texthost;
+    struct host *texthost;
 
     texthost = CoTaskMemAlloc(sizeof(*texthost));
     if (!texthost) return NULL;
 
     texthost->ITextHost_iface.lpVtbl = &textHostVtbl;
     texthost->ref = 1;
-    texthost->hWnd = hwnd;
-    texthost->bEmulateVersion10 = bEmulateVersion10;
+    texthost->window = hwnd;
+    texthost->emulate_10 = emulate_10;
     memset( &texthost->para_fmt, 0, sizeof(texthost->para_fmt) );
     texthost->para_fmt.cbSize = sizeof(texthost->para_fmt);
     texthost->para_fmt.dwMask = PFM_ALIGNMENT;
@@ -68,18 +69,19 @@ static ITextHost *host_create( HWND hwnd, CREATESTRUCTW *cs, BOOL bEmulateVersio
     return &texthost->ITextHost_iface;
 }
 
-static inline ITextHostImpl *impl_from_ITextHost(ITextHost *iface)
+static inline struct host *impl_from_ITextHost( ITextHost *iface )
 {
-    return CONTAINING_RECORD(iface, ITextHostImpl, ITextHost_iface);
+    return CONTAINING_RECORD( iface, struct host, ITextHost_iface );
 }
 
-static HRESULT WINAPI ITextHostImpl_QueryInterface(ITextHost *iface, REFIID riid, void **ppvObject)
+static HRESULT WINAPI ITextHostImpl_QueryInterface( ITextHost *iface, REFIID riid, void **obj )
 {
-    ITextHostImpl *This = impl_from_ITextHost(iface);
+    struct host *host = impl_from_ITextHost( iface );
 
-    if (IsEqualIID(riid, &IID_IUnknown) || IsEqualIID(riid, &IID_ITextHost)) {
-        *ppvObject = &This->ITextHost_iface;
-        ITextHost_AddRef((ITextHost *)*ppvObject);
+    if (IsEqualIID(riid, &IID_IUnknown) || IsEqualIID(riid, &IID_ITextHost))
+    {
+        *obj = &host->ITextHost_iface;
+        ITextHost_AddRef( (ITextHost *)*obj );
         return S_OK;
     }
 
@@ -89,20 +91,20 @@ static HRESULT WINAPI ITextHostImpl_QueryInterface(ITextHost *iface, REFIID riid
 
 static ULONG WINAPI ITextHostImpl_AddRef(ITextHost *iface)
 {
-    ITextHostImpl *This = impl_from_ITextHost(iface);
-    ULONG ref = InterlockedIncrement(&This->ref);
+    struct host *host = impl_from_ITextHost( iface );
+    ULONG ref = InterlockedIncrement( &host->ref );
     return ref;
 }
 
 static ULONG WINAPI ITextHostImpl_Release(ITextHost *iface)
 {
-    ITextHostImpl *This = impl_from_ITextHost(iface);
-    ULONG ref = InterlockedDecrement(&This->ref);
+    struct host *host = impl_from_ITextHost( iface );
+    ULONG ref = InterlockedDecrement( &host->ref );
 
     if (!ref)
     {
-        SetWindowLongPtrW(This->hWnd, 0, 0);
-        CoTaskMemFree(This);
+        SetWindowLongPtrW( host->window, 0, 0 );
+        CoTaskMemFree( host );
     }
     return ref;
 }
@@ -358,7 +360,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall ITextHostImpl_TxGetPropertyBits(ITextHost *if
     } else {
         DWORD dwScrollBar;
 
-        style = GetWindowLongW(This->hWnd, GWL_STYLE);
+        style = GetWindowLongW( host->window, GWL_STYLE );
         ITextHostImpl_TxGetScrollBars(iface, &dwScrollBar);
 
         dwBits |= TXTBIT_RICHTEXT|TXTBIT_AUTOWORDSEL;
