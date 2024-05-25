@@ -162,7 +162,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetHScroll( ITextServices *iface,
     if (max_pos) *max_pos = services->editor->horz_si.nMax;
     if (pos) *pos = services->editor->horz_si.nPos;
     if (page) *page = services->editor->horz_si.nPage;
-    if (enabled) *enabled = (services->editor->styleFlags & WS_HSCROLL) != 0;
+    if (enabled) *enabled = (services->editor->scrollbars & WS_HSCROLL) != 0;
     return S_OK;
 }
 
@@ -175,7 +175,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetVScroll( ITextServices *iface,
     if (max_pos) *max_pos = services->editor->vert_si.nMax;
     if (pos) *pos = services->editor->vert_si.nPos;
     if (page) *page = services->editor->vert_si.nPage;
-    if (enabled) *enabled = (services->editor->styleFlags & WS_VSCROLL) != 0;
+    if (enabled) *enabled = (services->editor->scrollbars & WS_VSCROLL) != 0;
     return S_OK;
 }
 
@@ -308,10 +308,27 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetDropTarget(ITextServices *ifac
 DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxPropertyBitsChange( ITextServices *iface, DWORD mask, DWORD bits )
 {
     struct text_services *services = impl_from_ITextServices( iface );
+    DWORD scrollbars;
+    HRESULT hr;
 
     TRACE( "%p, mask %08x, bits %08x\n", services, mask, bits );
 
     services->editor->props = (services->editor->props & ~mask) | (bits & mask);
+
+    if (mask & TXTBIT_SCROLLBARCHANGE)
+    {
+        hr = ITextHost_TxGetScrollBars( services->host, &scrollbars );
+        if (SUCCEEDED( hr ))
+        {
+            if ((services->editor->scrollbars ^ scrollbars) & WS_HSCROLL)
+                ITextHost_TxShowScrollBar( services->host, SB_HORZ, (scrollbars & WS_HSCROLL) &&
+                                           services->editor->nTotalWidth > services->editor->sizeWindow.cx );
+            if ((services->editor->scrollbars ^ scrollbars) & WS_VSCROLL)
+                ITextHost_TxShowScrollBar( services->host, SB_VERT, (scrollbars & WS_VSCROLL) &&
+                                           services->editor->nTotalLength > services->editor->sizeWindow.cy );
+            services->editor->scrollbars = scrollbars;
+        }
+    }
 
     return S_OK;
 }

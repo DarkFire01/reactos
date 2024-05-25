@@ -41,7 +41,7 @@ struct host
     HWND window;
     BOOL emulate_10;
     PARAFORMAT2 para_fmt;
-    DWORD props;
+    DWORD props, scrollbars;
 };
 
 static const ITextHostVtbl textHostVtbl;
@@ -51,12 +51,16 @@ static BOOL combobox_registered;
 
 static void host_init_props( struct host *host )
 {
-    DWORD style, scrollbar;
-
-    host->props = TXTBIT_RICHTEXT | TXTBIT_AUTOWORDSEL | TXTBIT_ALLOWBEEP;
+    DWORD style;
 
     style = GetWindowLongW( host->window, GWL_STYLE );
 
+    host->scrollbars = style & (WS_VSCROLL | WS_HSCROLL | ES_AUTOVSCROLL |
+                                ES_AUTOHSCROLL | ES_DISABLENOSCROLL);
+    if (style & WS_VSCROLL) host->scrollbars |= ES_AUTOVSCROLL;
+    if ((style & WS_HSCROLL) && !host->emulate_10) host->scrollbars |= ES_AUTOHSCROLL;
+
+    host->props = TXTBIT_RICHTEXT | TXTBIT_AUTOWORDSEL | TXTBIT_ALLOWBEEP;
     if (style & ES_MULTILINE)     host->props |= TXTBIT_MULTILINE;
     if (style & ES_READONLY)      host->props |= TXTBIT_READONLY;
     if (style & ES_PASSWORD)      host->props |= TXTBIT_USEPASSWORD;
@@ -65,8 +69,7 @@ static void host_init_props( struct host *host )
     if (style & ES_VERTICAL)      host->props |= TXTBIT_VERTICAL;
     if (style & ES_NOOLEDRAGDROP) host->props |= TXTBIT_DISABLEDRAG;
 
-    ITextHost_TxGetScrollBars( &host->ITextHost_iface, &scrollbar );
-    if (!(scrollbar & ES_AUTOHSCROLL)) host->props |= TXTBIT_WORDWRAP;
+    if (!(host->scrollbars & ES_AUTOHSCROLL)) host->props |= TXTBIT_WORDWRAP;
 }
 
 struct host *host_create( HWND hwnd, CREATESTRUCTW *cs, BOOL emulate_10 )
@@ -306,33 +309,10 @@ DECLSPEC_HIDDEN HRESULT __thiscall ITextHostImpl_TxGetMaxLength( ITextHost *ifac
     return S_OK;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall ITextHostImpl_TxGetScrollBars( ITextHost *iface, DWORD *scrollbar )
+DECLSPEC_HIDDEN HRESULT __thiscall ITextHostImpl_TxGetScrollBars( ITextHost *iface, DWORD *scrollbars )
 {
     struct host *host = impl_from_ITextHost( iface );
-    const DWORD mask = WS_VSCROLL|
-                       WS_HSCROLL|
-                       ES_AUTOVSCROLL|
-                       ES_AUTOHSCROLL|
-                       ES_DISABLENOSCROLL;
-    if (host->editor)
-    {
-        *scrollbar = host->editor->styleFlags & mask;
-    }
-    else
-    {
-        DWORD style = GetWindowLongW( host->window, GWL_STYLE );
-        if (style & WS_VSCROLL)
-            style |= ES_AUTOVSCROLL;
-        if (!host->emulate_10 && (style & WS_HSCROLL))
-            style |= ES_AUTOHSCROLL;
-        *scrollbar = style & mask;
-    }
-    return S_OK;
-}
-
-DECLSPEC_HIDDEN HRESULT __thiscall ITextHostImpl_TxGetPasswordChar( ITextHost *iface, WCHAR *c )
-{
-    *c = '*';
+    *scrollbars = host->scrollbars;
     return S_OK;
 }
 
@@ -471,7 +451,6 @@ DEFINE_THISCALL_WRAPPER(ITextHostImpl_TxGetSysColor,8)
 DEFINE_THISCALL_WRAPPER(ITextHostImpl_TxGetBackStyle,8)
 DEFINE_THISCALL_WRAPPER(ITextHostImpl_TxGetMaxLength,8)
 DEFINE_THISCALL_WRAPPER(ITextHostImpl_TxGetScrollBars,8)
-DEFINE_THISCALL_WRAPPER(ITextHostImpl_TxGetPasswordChar,8)
 DEFINE_THISCALL_WRAPPER(ITextHostImpl_TxGetAcceleratorPos,8)
 DEFINE_THISCALL_WRAPPER(ITextHostImpl_TxGetExtent,8)
 DEFINE_THISCALL_WRAPPER(ITextHostImpl_OnTxCharFormatChange,8)
@@ -535,7 +514,6 @@ DEFINE_STDCALL_WRAPPER(28,ITextHostImpl_TxGetSysColor,8)
 DEFINE_STDCALL_WRAPPER(29,ITextHostImpl_TxGetBackStyle,8)
 DEFINE_STDCALL_WRAPPER(30,ITextHostImpl_TxGetMaxLength,8)
 DEFINE_STDCALL_WRAPPER(31,ITextHostImpl_TxGetScrollBars,8)
-DEFINE_STDCALL_WRAPPER(32,ITextHostImpl_TxGetPasswordChar,8)
 DEFINE_STDCALL_WRAPPER(33,ITextHostImpl_TxGetAcceleratorPos,8)
 DEFINE_STDCALL_WRAPPER(34,ITextHostImpl_TxGetExtent,8)
 DEFINE_STDCALL_WRAPPER(35,ITextHostImpl_OnTxCharFormatChange,8)
@@ -580,7 +558,6 @@ const ITextHostVtbl text_host_stdcall_vtbl =
     STDCALL(ITextHostImpl_TxGetBackStyle),
     STDCALL(ITextHostImpl_TxGetMaxLength),
     STDCALL(ITextHostImpl_TxGetScrollBars),
-    STDCALL(ITextHostImpl_TxGetPasswordChar),
     STDCALL(ITextHostImpl_TxGetAcceleratorPos),
     STDCALL(ITextHostImpl_TxGetExtent),
     STDCALL(ITextHostImpl_OnTxCharFormatChange),
@@ -628,7 +605,6 @@ static const ITextHostVtbl textHostVtbl =
     THISCALL(ITextHostImpl_TxGetBackStyle),
     THISCALL(ITextHostImpl_TxGetMaxLength),
     THISCALL(ITextHostImpl_TxGetScrollBars),
-    THISCALL(ITextHostImpl_TxGetPasswordChar),
     THISCALL(ITextHostImpl_TxGetAcceleratorPos),
     THISCALL(ITextHostImpl_TxGetExtent),
     THISCALL(ITextHostImpl_OnTxCharFormatChange),
@@ -779,7 +755,7 @@ static HRESULT set_options( struct host *host, DWORD op, DWORD value, LRESULT *r
     DWORD style, old_options, new_options, change, props_mask = 0;
     const DWORD mask = ECO_AUTOVSCROLL | ECO_AUTOHSCROLL | ECO_NOHIDESEL | ECO_READONLY | ECO_WANTRETURN |
         ECO_SELECTIONBAR | ECO_VERTICAL;
-    const DWORD host_mask = ECO_READONLY;
+    const DWORD host_mask = ECO_AUTOVSCROLL | ECO_AUTOHSCROLL | ECO_READONLY;
     HRESULT hr = S_OK;
 
     new_options = old_options = SendMessageW( host->window, EM_GETOPTIONS, 0, 0 );
@@ -802,6 +778,16 @@ static HRESULT set_options( struct host *host, DWORD op, DWORD value, LRESULT *r
 
     change = (new_options ^ old_options);
 
+    if (change & ECO_AUTOVSCROLL)
+    {
+        host->scrollbars ^= WS_VSCROLL;
+        props_mask |= TXTBIT_SCROLLBARCHANGE;
+    }
+    if (change & ECO_AUTOHSCROLL)
+    {
+        host->scrollbars ^= WS_HSCROLL;
+        props_mask |= TXTBIT_SCROLLBARCHANGE;
+    }
     if (change & ECO_READONLY)
     {
         host->props ^= TXTBIT_READONLY;
@@ -928,6 +914,8 @@ static LRESULT RichEditWndProc_common( HWND hwnd, UINT msg, WPARAM wparam,
     case EM_GETOPTIONS:
         hr = ITextServices_TxSendMessage( host->text_srv, EM_GETOPTIONS, 0, 0, &res );
         if (host->props & TXTBIT_READONLY) res |= ECO_READONLY;
+        if (host->scrollbars & ES_AUTOHSCROLL) res |= ECO_AUTOHSCROLL;
+        if (host->scrollbars & ES_AUTOVSCROLL) res |= ECO_AUTOVSCROLL;
         break;
 
     case WM_GETTEXT:
@@ -1037,6 +1025,28 @@ static LRESULT RichEditWndProc_common( HWND hwnd, UINT msg, WPARAM wparam,
             text = ME_ToUnicode( CP_ACP, textA, &len );
         hr = ITextServices_TxSendMessage( host->text_srv, msg, wparam, (LPARAM)text, &res );
         if (text != (WCHAR *)lparam) ME_EndToUnicode( CP_ACP, text );
+        break;
+    }
+    case EM_SHOWSCROLLBAR:
+    {
+        DWORD mask = 0, new;
+
+        if (wparam == SB_HORZ) mask = WS_HSCROLL;
+        else if (wparam == SB_VERT) mask = WS_VSCROLL;
+        else if (wparam == SB_BOTH) mask = WS_HSCROLL | WS_VSCROLL;
+
+        if (mask)
+        {
+            new = lparam ? mask : 0;
+            if ((host->scrollbars & mask) != new)
+            {
+                host->scrollbars &= ~mask;
+                host->scrollbars |= new;
+                ITextServices_OnTxPropertyBitsChange( host->text_srv, TXTBIT_SCROLLBARCHANGE, 0 );
+            }
+        }
+
+        res = 0;
         break;
     }
     default:
