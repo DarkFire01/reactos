@@ -3126,20 +3126,13 @@ ME_TextEditor *ME_MakeEditor(ITextHost *texthost, BOOL bEmulateVersion10)
   if (ed->props & TXTBIT_USEPASSWORD)
     ITextHost_TxGetPasswordChar(texthost, &ed->cPasswordMask);
 
-  if (ed->props & TXTBIT_AUTOWORDSEL)
-    ed->styleFlags |= ECO_AUTOWORDSELECTION;
   if (ed->props & TXTBIT_MULTILINE) {
     ed->styleFlags |= ES_MULTILINE;
     ed->bWordWrap = (ed->props & TXTBIT_WORDWRAP) != 0;
   } else {
     ed->bWordWrap = FALSE;
   }
-  if (!(ed->props & TXTBIT_HIDESELECTION))
-    ed->styleFlags |= ES_NOHIDESEL;
-  if (ed->props & TXTBIT_SAVESELECTION)
-    ed->styleFlags |= ES_SAVESEL;
-  if (ed->props & TXTBIT_VERTICAL)
-    ed->styleFlags |= ES_VERTICAL;
+
   if (ed->props & TXTBIT_DISABLEDRAG)
     ed->styleFlags |= ES_NOOLEDRAGDROP;
 
@@ -3452,7 +3445,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
       editor->bDialogMode = TRUE;
     if (editor->styleFlags & ES_MULTILINE)
       code |= DLGC_WANTMESSAGE;
-    if (!(editor->styleFlags & ES_SAVESEL))
+    if (!(editor->props & TXTBIT_SAVESELECTION))
       code |= DLGC_HASSETSEL;
     return code;
   }
@@ -3500,8 +3493,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
   case EM_GETOPTIONS:
   {
     /* these flags are equivalent to the ES_* counterparts */
-    DWORD mask = ECO_VERTICAL |
-                 ECO_NOHIDESEL | ECO_WANTRETURN | ECO_SELECTIONBAR;
+    DWORD mask = ECO_WANTRETURN | ECO_SELECTIONBAR;
     DWORD settings = editor->styleFlags & mask;
 
     return settings;
@@ -3552,9 +3544,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
     /* these flags are equivalent to ES_* counterparts, except for
      * ECO_AUTOWORDSELECTION that doesn't have an ES_* counterpart,
      * but is still stored in editor->styleFlags. */
-    const DWORD mask = ECO_VERTICAL |
-                       ECO_NOHIDESEL | ECO_WANTRETURN |
-                       ECO_SELECTIONBAR | ECO_AUTOWORDSELECTION;
+    const DWORD mask = ECO_WANTRETURN | ECO_SELECTIONBAR;
     DWORD settings = mask & editor->styleFlags;
     DWORD oldSettings = settings;
     DWORD changedSettings;
@@ -3592,15 +3582,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
         ME_RewrapRepaint(editor);
       }
 
-      if ((changedSettings & settings & ES_NOHIDESEL) && !editor->bHaveFocus)
-          ME_InvalidateSelection( editor );
 
-      if (changedSettings & settings & ECO_VERTICAL)
-        FIXME("ECO_VERTICAL not implemented yet!\n");
-      if (changedSettings & settings & ECO_AUTOHSCROLL)
-        FIXME("ECO_WANTRETURN not implemented yet!\n");
-      if (changedSettings & settings & ECO_AUTOWORDSELECTION)
-        FIXME("ECO_AUTOWORDSELECTION not implemented yet!\n");
     }
 
     return settings;
@@ -4232,7 +4214,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
     create_caret(editor);
     update_caret(editor);
     ME_SendOldNotify(editor, EN_SETFOCUS);
-    if (!editor->bHideSelection && !(editor->styleFlags & ES_NOHIDESEL))
+    if (!editor->bHideSelection && (editor->props & TXTBIT_HIDESELECTION))
         ME_InvalidateSelection( editor );
     return 0;
   case WM_KILLFOCUS:
@@ -4242,7 +4224,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
     hide_caret(editor);
     DestroyCaret();
     ME_SendOldNotify(editor, EN_KILLFOCUS);
-    if (!editor->bHideSelection && !(editor->styleFlags & ES_NOHIDESEL))
+    if (!editor->bHideSelection && (editor->props & TXTBIT_HIDESELECTION))
         ME_InvalidateSelection( editor );
     return 0;
   case WM_COMMAND:
