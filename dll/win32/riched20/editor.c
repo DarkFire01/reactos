@@ -4183,24 +4183,6 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
   {
     return editor->nTextLimit;
   }
-  case EM_FINDTEXT:
-  {
-    LRESULT r;
-    if(!unicode){
-      FINDTEXTA *ft = (FINDTEXTA *)lParam;
-      int nChars = MultiByteToWideChar(CP_ACP, 0, ft->lpstrText, -1, NULL, 0);
-      WCHAR *tmp;
-
-      if ((tmp = heap_alloc(nChars * sizeof(*tmp))) != NULL)
-        MultiByteToWideChar(CP_ACP, 0, ft->lpstrText, -1, tmp, nChars);
-      r = ME_FindText(editor, wParam, &ft->chrg, tmp, NULL);
-      heap_free(tmp);
-    }else{
-      FINDTEXTW *ft = (FINDTEXTW *)lParam;
-      r = ME_FindText(editor, wParam, &ft->chrg, ft->lpstrText, NULL);
-    }
-    return r;
-  }
   case EM_FINDTEXTEX:
   {
     LRESULT r;
@@ -4219,6 +4201,7 @@ LRESULT ME_HandleMessage(ME_TextEditor *editor, UINT msg, WPARAM wParam,
     }
     return r;
   }
+  case EM_FINDTEXT:
   case EM_FINDTEXTW:
   {
     FINDTEXTW *ft = (FINDTEXTW *)lParam;
