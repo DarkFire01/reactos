@@ -37,7 +37,6 @@ struct host
     ITextHost2 ITextHost_iface;
     LONG ref;
     ITextServices *text_srv;
-    ME_TextEditor *editor; /* to be removed */
     HWND window, parent;
     unsigned int emulate_10 : 1;
     unsigned int dialog_mode : 1;
@@ -113,7 +112,6 @@ struct host *host_create( HWND hwnd, CREATESTRUCTW *cs, BOOL emulate_10 )
         texthost->para_fmt.wAlignment = PFA_RIGHT;
     if (cs->style & ES_CENTER)
         texthost->para_fmt.wAlignment = PFA_CENTER;
-    texthost->editor = NULL;
     host_init_props( texthost );
     texthost->event_mask = 0;
     texthost->use_set_rect = 0;
@@ -873,7 +871,7 @@ static BOOL create_windowed_editor( HWND hwnd, CREATESTRUCTW *create, BOOL emula
 
     if (!host) return FALSE;
 
-    hr = create_text_services( NULL, (ITextHost *)&host->ITextHost_iface, &unk, emulate_10, &host->editor );
+    hr = create_text_services( NULL, (ITextHost *)&host->ITextHost_iface, &unk, emulate_10 );
     if (FAILED( hr ))
     {
         ITextHost2_Release( &host->ITextHost_iface );
@@ -881,9 +879,6 @@ static BOOL create_windowed_editor( HWND hwnd, CREATESTRUCTW *create, BOOL emula
     }
     IUnknown_QueryInterface( unk, &IID_ITextServices, (void **)&host->text_srv );
     IUnknown_Release( unk );
-
-    host->editor->hWnd = hwnd; /* FIXME: Remove editor's dependence on hWnd */
-    host->editor->hwndParent = create->hwndParent;
 
     SetWindowLongPtrW( hwnd, 0, (LONG_PTR)host );
 
