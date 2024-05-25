@@ -1803,7 +1803,6 @@ static LRESULT ME_StreamIn(ME_TextEditor *editor, DWORD format, EDITSTREAM *stre
   if (!(format & SFF_SELECTION)) {
     ME_ClearTempStyle(editor);
   }
-  update_caret(editor);
   ME_SendSelChange(editor);
   ME_SendRequestResize(editor, FALSE);
 
