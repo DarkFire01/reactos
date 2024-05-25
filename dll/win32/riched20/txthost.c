@@ -28,7 +28,6 @@
 #include "wine/debug.h"
 #include "editstr.h"
 #include "rtf.h"
-#include "res.h"
 #include "undocuser.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(richedit);
@@ -1205,6 +1204,20 @@ static LRESULT RichEditWndProc_common( HWND hwnd, UINT msg, WPARAM wparam,
         InvalidateRect( hwnd, NULL, TRUE );
         break;
 
+    case WM_SETCURSOR:
+    {
+        POINT pos;
+        RECT rect;
+
+        if (hwnd != (HWND)wparam) break;
+        GetCursorPos( &pos );
+        ScreenToClient( hwnd, &pos );
+        ITextHost_TxGetClientRect( &host->ITextHost_iface, &rect );
+        if (PtInRect( &rect, pos ))
+            ITextServices_OnTxSetCursor( host->text_srv, DVASPECT_CONTENT, 0, NULL, NULL, NULL, NULL, NULL, pos.x, pos.y );
+        else ITextHost_TxSetCursor( &host->ITextHost_iface, LoadCursorW( NULL, MAKEINTRESOURCEW( IDC_ARROW ) ), FALSE );
+        break;
+    }
     case EM_SETEVENTMASK:
         host->event_mask = lparam;
         hr = ITextServices_TxSendMessage( host->text_srv, msg, wparam, lparam, &res );
@@ -1466,10 +1479,10 @@ BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, void *reserved )
     switch (reason)
     {
     case DLL_PROCESS_ATTACH:
+        dll_instance = instance;
         DisableThreadLibraryCalls( instance );
         me_heap = HeapCreate( 0, 0x10000, 0 );
         if (!register_classes( instance )) return FALSE;
-        cursor_reverse = LoadCursorW( instance, MAKEINTRESOURCEW( OCR_REVERSE ) );
         LookupInit();
         break;
 
