@@ -299,7 +299,7 @@ void update_caret(ME_TextEditor *editor)
       POINT pt = { x, y };
 
       CompForm.ptCurrentPos = pt;
-      if (editor->styleFlags & ES_MULTILINE)
+      if (editor->props & ES_MULTILINE)
       {
         CompForm.dwStyle = CFS_RECT;
         CompForm.rcArea = editor->rcFormat;
