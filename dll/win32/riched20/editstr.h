@@ -424,7 +424,6 @@ typedef struct tagME_TextEditor
   BOOL AutoURLDetect_bEnable;
   WCHAR cPasswordMask;
   BOOL bHaveFocus;
-  BOOL bDialogMode; /* Indicates that we are inside a dialog window */
 #ifndef __REACTOS__
   /*for IME */
   int imeStartIndex;
