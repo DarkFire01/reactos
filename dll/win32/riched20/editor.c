@@ -635,10 +635,9 @@ void ME_RTFParAttrHook(RTF_Info *info)
         else
         {
           ME_Cursor cursor;
-          WCHAR endl = '\r';
           cursor = info->editor->pCursors[0];
           if (cursor.nOffset || cursor.run->nCharOfs)
-            ME_InsertTextFromCursor(info->editor, 0, &endl, 1, info->style);
+            ME_InsertTextFromCursor(info->editor, 0, L"\r", 1, info->style);
           tableDef->row_start = table_insert_row_start( info->editor, info->editor->pCursors );
         }
 
@@ -1087,8 +1086,6 @@ void ME_RTFSpecialCharHook(RTF_Info *info)
       }
       else /* v1.0 - v3.0 */
       {
-        WCHAR endl = '\r';
-
         para = info->editor->pCursors[0].para;
         para->fmt.dxOffset = info->tableDef->gapH;
         para->fmt.dxStartIndent = info->tableDef->leftEdge;
@@ -1102,7 +1099,7 @@ void ME_RTFSpecialCharHook(RTF_Info *info)
         }
         para->fmt.cTabCount = min(tableDef->numCellsDefined, MAX_TAB_STOPS);
         if (!tableDef->numCellsDefined) para->fmt.wEffects &= ~PFE_TABLE;
-        ME_InsertTextFromCursor(info->editor, 0, &endl, 1, info->style);
+        ME_InsertTextFromCursor(info->editor, 0, L"\r", 1, info->style);
         tableDef->numCellsInserted = 0;
       }
       break;
@@ -2496,8 +2493,6 @@ static BOOL handle_enter(ME_TextEditor *editor)
 
     if (editor->styleFlags & ES_MULTILINE)
     {
-        static const WCHAR endl = '\r';
-        static const WCHAR endlv10[] = {'\r','\n'};
         ME_Cursor cursor = editor->pCursors[0];
         ME_Paragraph *para = cursor.para;
         int from, to;
@@ -2538,7 +2533,7 @@ static BOOL handle_enter(ME_TextEditor *editor)
                     editor->pCursors[0].para = para;
                     editor->pCursors[0].run = para_first_run( para );
                     editor->pCursors[1] = editor->pCursors[0];
-                    ME_InsertTextFromCursor( editor, 0, &endl, 1, editor->pCursors[0].run->style );
+                    ME_InsertTextFromCursor( editor, 0, L"\r", 1, editor->pCursors[0].run->style );
                     para = editor_first_para( editor );
                     editor_set_default_para_fmt( editor, &para->fmt );
                     para->nFlags = 0;
@@ -2587,7 +2582,7 @@ static BOOL handle_enter(ME_TextEditor *editor)
                             }
                             editor->pCursors[0].nOffset = 0;
                             editor->pCursors[1] = editor->pCursors[0];
-                            ME_InsertTextFromCursor( editor, 0, &endl, 1, editor->pCursors[0].run->style );
+                            ME_InsertTextFromCursor( editor, 0, L"\r", 1, editor->pCursors[0].run->style );
                         }
                         else
                         {
@@ -2619,9 +2614,9 @@ static BOOL handle_enter(ME_TextEditor *editor)
                 ME_InsertEndRowFromCursor(editor, 0);
             else
                 if (!editor->bEmulateVersion10)
-                    ME_InsertTextFromCursor(editor, 0, &endl, 1, eop_style);
+                    ME_InsertTextFromCursor(editor, 0, L"\r", 1, eop_style);
                 else
-                    ME_InsertTextFromCursor(editor, 0, endlv10, 2, eop_style);
+                    ME_InsertTextFromCursor(editor, 0, L"\r\n", 2, eop_style);
             ME_CommitCoalescingUndo(editor);
             SetCursor(NULL);
 
