@@ -117,7 +117,7 @@ void ME_UpdateRepaint(ME_TextEditor *editor, BOOL update_now)
     ME_UpdateScrollBar(editor);
 
   /* Ensure that the cursor is visible */
-  ME_EnsureVisible(editor, &editor->pCursors[0]);
+  editor_ensure_visible( editor, &editor->pCursors[0] );
 
   ITextHost_TxViewChange(editor->texthost, update_now);
 
@@ -1297,14 +1297,15 @@ void ME_EnsureVisible(ME_TextEditor *editor, ME_Cursor *pCursor)
       ME_HScrollAbs(editor, x);
       return;
     }
-  } else {
-    if (~editor->styleFlags & ES_AUTOVSCROLL)
-      return;
+  }
+  else
+  {
+    if (~editor->styleFlags & ES_AUTOVSCROLL) return;
     x = editor->horz_si.nPos;
   }
 
-  y = pPara->member.para.pt.y + pRow->member.row.pt.y;
-  yheight = pRow->member.row.nHeight;
+  y = para->pt.y + row->pt.y;
+  yheight = row->nHeight;
 
   if (y < editor->vert_si.nPos)
     ME_ScrollAbs(editor, x, y);
