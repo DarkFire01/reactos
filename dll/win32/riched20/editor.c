@@ -974,7 +974,7 @@ void ME_RTFSpecialCharHook(RTF_Info *info)
             tableDef->row_start = table_insert_row_start_at_para( info->editor, para );
             info->nestingLevel = 1;
           }
-          ME_InsertTableCellFromCursor(info->editor);
+          table_insert_cell( info->editor, info->editor->pCursors );
         }
       }
       else /* v1.0 - v3.0 */
@@ -1026,7 +1026,7 @@ void ME_RTFSpecialCharHook(RTF_Info *info)
             nRightBoundary += defaultCellSize;
             cell->member.cell.nRightBoundary = nRightBoundary;
           }
-          para = &ME_InsertTableCellFromCursor(info->editor)->member.para;
+          para = table_insert_cell( info->editor, info->editor->pCursors );
           cell = para->pCell;
           cell->member.cell.nRightBoundary = nRightBoundary;
         }
@@ -1041,7 +1041,7 @@ void ME_RTFSpecialCharHook(RTF_Info *info)
             cell = cell->member.cell.next_cell;
             if (!cell)
             {
-              para = &ME_InsertTableCellFromCursor(info->editor)->member.para;
+              para = table_insert_cell( info->editor, info->editor->pCursors );
               cell = para->pCell;
             }
           }
@@ -1064,7 +1064,7 @@ void ME_RTFSpecialCharHook(RTF_Info *info)
                                 nChars, TRUE);
         }
 
-        para = &ME_InsertTableRowEndFromCursor(info->editor)->member.para;
+        para = table_insert_row_end( info->editor, info->editor->pCursors );
         para->fmt.dxOffset = abs(info->tableDef->gapH);
         para->fmt.dxStartIndent = info->tableDef->leftEdge;
         ME_ApplyBorderProperties( info, &para->border, tableDef->border );
