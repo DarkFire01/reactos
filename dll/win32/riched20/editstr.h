@@ -398,7 +398,6 @@ typedef struct tagME_TextEditor
   int total_rows;
   COLORREF rgbBackColor;
   HBRUSH hbrBackground;
-  BOOL bCaretAtEnd;
   int nEventMask;
   int nModifyStep;
   struct list undo_stack;
@@ -434,7 +433,6 @@ typedef struct tagME_TextEditor
 #endif
   DWORD selofs; /* The size of the selection bar on the left side of control */
   ME_SelectionType nSelectionType;
-  ME_DisplayItem *first_marked_para;
 
   /* Track previous notified selection */
   CHARRANGE notified_cr;
