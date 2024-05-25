@@ -38,7 +38,6 @@ struct text_services
     ITextServices ITextServices_iface;
     IUnknown *outer_unk;
     LONG ref;
-    ITextHost *host;
     ME_TextEditor *editor;
     char spare[256]; /* for bug #12179 */
 };
@@ -149,7 +148,7 @@ static HRESULT update_client_rect( struct text_services *services, const RECT *c
     if (!client)
     {
         if (!services->editor->in_place_active) return E_INVALIDARG;
-        hr = ITextHost_TxGetClientRect( services->host, &rect );
+        hr = ITextHost_TxGetClientRect( services->editor->texthost, &rect );
         if (FAILED( hr )) return hr;
     }
     else rect = *client;
@@ -184,7 +183,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxDraw( ITextServices *iface, DWORD
     if (hr == S_OK) rewrap = TRUE;
 
     if (!dc && services->editor->in_place_active)
-        dc = ITextHost_TxGetDC( services->host );
+        dc = ITextHost_TxGetDC( services->editor->texthost );
     if (!dc) return E_FAIL;
 
     if (rewrap)
@@ -194,7 +193,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxDraw( ITextServices *iface, DWORD
     }
     editor_draw( services->editor, dc, update );
 
-    if (!draw) ITextHost_TxReleaseDC( services->host, dc );
+    if (!draw) ITextHost_TxReleaseDC( services->editor->texthost, dc );
     return S_OK;
 }
 
@@ -374,7 +373,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetNaturalSize( ITextServices *if
     if (hr == S_OK) rewrap = TRUE;
 
     if (!dc && services->editor->in_place_active)
-        dc = ITextHost_TxGetDC( services->host );
+        dc = ITextHost_TxGetDC( services->editor->texthost );
     if (!dc) return E_FAIL;
 
     if (rewrap)
@@ -386,7 +385,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetNaturalSize( ITextServices *if
     *width = services->editor->nTotalWidth;
     *height = services->editor->nTotalLength;
 
-    if (!draw) ITextHost_TxReleaseDC( services->host, dc );
+    if (!draw) ITextHost_TxReleaseDC( services->editor->texthost, dc );
     return S_OK;
 }
 
@@ -413,14 +412,14 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxPropertyBitsChange( ITextServic
 
     if (mask & TXTBIT_SCROLLBARCHANGE)
     {
-        hr = ITextHost_TxGetScrollBars( services->host, &scrollbars );
+        hr = ITextHost_TxGetScrollBars( services->editor->texthost, &scrollbars );
         if (SUCCEEDED( hr ))
         {
             if ((services->editor->scrollbars ^ scrollbars) & WS_HSCROLL)
-                ITextHost_TxShowScrollBar( services->host, SB_HORZ, (scrollbars & WS_HSCROLL) &&
+                ITextHost_TxShowScrollBar( services->editor->texthost, SB_HORZ, (scrollbars & WS_HSCROLL) &&
                                            services->editor->nTotalWidth > services->editor->sizeWindow.cx );
             if ((services->editor->scrollbars ^ scrollbars) & WS_VSCROLL)
-                ITextHost_TxShowScrollBar( services->host, SB_VERT, (scrollbars & WS_VSCROLL) &&
+                ITextHost_TxShowScrollBar( services->editor->texthost, SB_VERT, (scrollbars & WS_VSCROLL) &&
                                            services->editor->nTotalLength > services->editor->sizeWindow.cy );
             services->editor->scrollbars = scrollbars;
         }
@@ -432,10 +431,10 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxPropertyBitsChange( ITextServic
     {
         LONG width;
 
-        hr = ITextHost_TxGetSelectionBarWidth( services->host, &width );
+        hr = ITextHost_TxGetSelectionBarWidth( services->editor->texthost, &width );
         if (hr == S_OK)
         {
-            ITextHost_TxInvalidateRect( services->host, &services->editor->rcFormat, TRUE );
+            ITextHost_TxInvalidateRect( services->editor->texthost, &services->editor->rcFormat, TRUE );
             services->editor->rcFormat.left -= services->editor->selofs;
             services->editor->selofs = width ? SELECTIONBAR_WIDTH : 0; /* FIXME: convert from HIMETRIC */
             services->editor->rcFormat.left += services->editor->selofs;
@@ -451,7 +450,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxPropertyBitsChange( ITextServic
 
     if (mask & TXTBIT_USEPASSWORD)
     {
-        if (bits & TXTBIT_USEPASSWORD) ITextHost_TxGetPasswordChar( services->host, &services->editor->password_char );
+        if (bits & TXTBIT_USEPASSWORD) ITextHost_TxGetPasswordChar( services->editor->texthost, &services->editor->password_char );
         else services->editor->password_char = 0;
         repaint = TRUE;
     }
@@ -594,7 +593,6 @@ HRESULT create_text_services( IUnknown *outer, ITextHost *text_host, IUnknown **
     services = CoTaskMemAlloc( sizeof(*services) );
     if (services == NULL) return E_OUTOFMEMORY;
     services->ref = 1;
-    services->host = text_host; /* Don't take a ref of the host - this would lead to a mutual dependency */
     services->IUnknown_inner.lpVtbl = &textservices_inner_vtbl;
     services->ITextServices_iface.lpVtbl = &textservices_vtbl;
     services->editor = ME_MakeEditor( text_host, emulate_10 );
