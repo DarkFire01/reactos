@@ -1269,24 +1269,21 @@ void ME_UpdateScrollBar(ME_TextEditor *editor)
   }
 }
 
-void ME_EnsureVisible(ME_TextEditor *editor, ME_Cursor *pCursor)
+void editor_ensure_visible( ME_TextEditor *editor, ME_Cursor *cursor )
 {
-  ME_Run *pRun = &pCursor->pRun->member.run;
-  ME_DisplayItem *pRow = ME_FindItemBack(pCursor->pRun, diStartRow);
-  ME_DisplayItem *pPara = pCursor->pPara;
+  ME_Run *run = &cursor->pRun->member.run;
+  ME_Row *row = row_from_cursor( cursor );
+  ME_Paragraph *para = &cursor->pPara->member.para;
   int x, y, yheight;
 
 #ifdef __REACTOS__
-  if (!pRow || !pPara)
+  if (!row || !para)
     return;
-#else
-  assert(pRow);
-  assert(pPara);
 #endif
 
   if (editor->styleFlags & ES_AUTOHSCROLL)
   {
-    x = pRun->pt.x + ME_PointFromChar(editor, pRun, pCursor->nOffset, TRUE);
+    x = run->pt.x + ME_PointFromChar( editor, run, cursor->nOffset, TRUE );
     if (x > editor->horz_si.nPos + editor->sizeWindow.cx)
       x = x + 1 - editor->sizeWindow.cx;
     else if (x > editor->horz_si.nPos)
