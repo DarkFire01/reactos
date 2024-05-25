@@ -377,6 +377,9 @@ typedef struct tagME_InStream ME_InStream;
 
 typedef struct tagME_TextEditor
 {
+  #ifdef __REACTOS__ //FIXME: REMOVED IN WINE cc3a86d86b527d354b52e5645769cd94560577fe 
+  HWND hWnd, hwndParent;
+  #endif
   ITextHost2 *texthost;
   IUnknown *reOle;
   unsigned int bEmulateVersion10 : 1;
