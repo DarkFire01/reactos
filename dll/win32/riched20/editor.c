@@ -252,9 +252,6 @@ WINE_DEFAULT_DEBUG_CHANNEL(richedit);
 
 static BOOL ME_RegisterEditorClass(HINSTANCE);
 static BOOL ME_UpdateLinkAttribute(ME_TextEditor *editor, ME_Cursor *start, int nChars);
-
-static const WCHAR REListBox20W[] = {'R','E','L','i','s','t','B','o','x','2','0','W', 0};
-static const WCHAR REComboBox20W[] = {'R','E','C','o','m','b','o','B','o','x','2','0','W', 0};
 static HCURSOR hLeft;
 
 BOOL me_debug = FALSE;
@@ -2230,8 +2227,6 @@ static DWORD CALLBACK ME_ReadFromHGLOBALRTF(DWORD_PTR dwCookie, LPBYTE lpBuff, L
   return 0;
 }
 
-static const WCHAR rtfW[] = {'R','i','c','h',' ','T','e','x','t',' ','F','o','r','m','a','t',0};
-
 static HRESULT paste_rtf(ME_TextEditor *editor, FORMATETC *fmt, STGMEDIUM *med)
 {
     EDITSTREAM es;
@@ -2286,7 +2281,7 @@ static struct paste_format
     const WCHAR *name;
 } paste_formats[] =
 {
-    {{ -1,             NULL, DVASPECT_CONTENT, -1, TYMED_HGLOBAL }, paste_rtf, rtfW },
+    {{ -1,             NULL, DVASPECT_CONTENT, -1, TYMED_HGLOBAL }, paste_rtf, L"Rich Text Format" },
     {{ CF_UNICODETEXT, NULL, DVASPECT_CONTENT, -1, TYMED_HGLOBAL }, paste_text },
     {{ CF_ENHMETAFILE, NULL, DVASPECT_CONTENT, -1, TYMED_ENHMF },   paste_emf },
     {{ 0 }}
@@ -3281,9 +3276,9 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
       UnregisterClassA(RICHEDIT_CLASS20A, 0);
       UnregisterClassA("RichEdit50A", 0);
       if (ME_ListBoxRegistered)
-          UnregisterClassW(REListBox20W, 0);
+          UnregisterClassW(L"REListBox20W", 0);
       if (ME_ComboBoxRegistered)
-          UnregisterClassW(REComboBox20W, 0);
+          UnregisterClassW(L"REComboBox20W", 0);
       LookupCleanup();
       HeapDestroy (me_heap);
       release_typelib();
@@ -5211,7 +5206,6 @@ int ME_GetTextW(ME_TextEditor *editor, WCHAR *buffer, int buflen,
 {
   ME_Run *run, *next_run;
   const WCHAR *pStart = buffer;
-  const WCHAR cr_lf[] = {'\r', '\n', 0};
   const WCHAR *str;
   int nLen;
 
@@ -5234,7 +5228,7 @@ int ME_GetTextW(ME_TextEditor *editor, WCHAR *buffer, int buflen,
        *        also uses this function. */
       srcChars -= min(nLen, srcChars);
       nLen = 2;
-      str = cr_lf;
+      str = L"\r\n";
     }
     else
     {
@@ -5352,7 +5346,7 @@ LRESULT WINAPI REExtendedRegisterClass(void)
   {
       wcW.style = CS_PARENTDC | CS_DBLCLKS | CS_GLOBALCLASS;
       wcW.lpfnWndProc = REListWndProc;
-      wcW.lpszClassName = REListBox20W;
+      wcW.lpszClassName = L"REListBox20W";
       if (RegisterClassW(&wcW)) ME_ListBoxRegistered = TRUE;
   }
 
@@ -5360,7 +5354,7 @@ LRESULT WINAPI REExtendedRegisterClass(void)
   {
       wcW.style = CS_PARENTDC | CS_DBLCLKS | CS_GLOBALCLASS | CS_VREDRAW | CS_HREDRAW;
       wcW.lpfnWndProc = REComboWndProc;
-      wcW.lpszClassName = REComboBox20W;
+      wcW.lpszClassName = L"REComboBox20W";
       if (RegisterClassW(&wcW)) ME_ComboBoxRegistered = TRUE;  
   }
 
