@@ -287,6 +287,11 @@ ME_Paragraph *editor_end_para( ME_TextEditor *editor )
     return &editor->pBuffer->pLast->member.para;
 }
 
+static BOOL editor_beep( ME_TextEditor *editor, UINT type )
+{
+    return editor->props & TXTBIT_ALLOWBEEP && MessageBeep( type );
+}
+
 static LRESULT ME_StreamInText(ME_TextEditor *editor, DWORD dwFormat, ME_InStream *stream, ME_Style *style)
 {
   WCHAR *pText;
@@ -2289,7 +2294,7 @@ static BOOL paste_special(ME_TextEditor *editor, UINT cf, REPASTESPECIAL *ps, BO
     /* Protect read-only edit control from modification */
     if (editor->props & TXTBIT_READONLY)
     {
-        if (!check_only) MessageBeep(MB_ICONERROR);
+        if (!check_only) editor_beep( editor, MB_ICONERROR );
         return FALSE;
     }
 
@@ -2387,7 +2392,7 @@ static BOOL copy_or_cut( ME_TextEditor *editor, BOOL cut )
 
     count -= offs;
     hr = editor_copy_or_cut( editor, cut, sel_start, count, NULL );
-    if (FAILED( hr )) MessageBeep( MB_ICONERROR );
+    if (FAILED( hr )) editor_beep( editor, MB_ICONERROR );
 
     return SUCCEEDED( hr );
 }
@@ -2430,7 +2435,7 @@ static BOOL handle_enter(ME_TextEditor *editor)
 
         if (editor->props & TXTBIT_READONLY)
         {
-            MessageBeep(MB_ICONERROR);
+            editor_beep( editor, MB_ICONERROR );
             return TRUE;
         }
 
@@ -2691,7 +2696,7 @@ static LRESULT handle_wm_char( ME_TextEditor *editor, WCHAR wstr, LPARAM flags )
 
   if (editor->props & TXTBIT_READONLY)
   {
-    MessageBeep(MB_ICONERROR);
+    editor_beep( editor, MB_ICONERROR );
     return 0; /* FIXME really 0 ? */
   }
 
@@ -2745,7 +2750,7 @@ static LRESULT handle_wm_char( ME_TextEditor *editor, WCHAR wstr, LPARAM flags )
       if (para_in_table( para ) && cursor.run->nFlags & MERF_ENDPARA && from == to)
       {
         /* Text should not be inserted at the end of the table. */
-        MessageBeep(-1);
+        editor_beep( editor, -1 );
         return 0;
       }
     }
@@ -2959,7 +2964,8 @@ ME_TextEditor *ME_MakeEditor(ITextHost *texthost, BOOL bEmulateVersion10)
   ed->total_rows = 0;
   ITextHost_TxGetPropertyBits( ed->texthost, TXTBIT_RICHTEXT | TXTBIT_MULTILINE | TXTBIT_READONLY |
                                TXTBIT_USEPASSWORD | TXTBIT_HIDESELECTION | TXTBIT_SAVESELECTION |
-                               TXTBIT_AUTOWORDSEL | TXTBIT_VERTICAL | TXTBIT_WORDWRAP | TXTBIT_DISABLEDRAG,
+                               TXTBIT_AUTOWORDSEL | TXTBIT_VERTICAL | TXTBIT_WORDWRAP | TXTBIT_ALLOWBEEP |
+                               TXTBIT_DISABLEDRAG,
                                &ed->props );
   ITextHost_TxGetScrollBars( ed->texthost, &ed->scrollbars );
   ed->pBuffer = ME_MakeText();
