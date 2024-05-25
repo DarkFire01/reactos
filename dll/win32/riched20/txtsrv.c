@@ -162,7 +162,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetHScroll( ITextServices *iface,
     if (max_pos) *max_pos = services->editor->horz_si.nMax;
     if (pos) *pos = services->editor->horz_si.nPos;
     if (page) *page = services->editor->horz_si.nPage;
-    if (enabled) *enabled = (services->editor->scrollbars & WS_HSCROLL) != 0;
+    if (enabled) *enabled = services->editor->horz_sb_enabled;
     return S_OK;
 }
 
@@ -175,7 +175,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetVScroll( ITextServices *iface,
     if (max_pos) *max_pos = services->editor->vert_si.nMax;
     if (pos) *pos = services->editor->vert_si.nPos;
     if (page) *page = services->editor->vert_si.nPage;
-    if (enabled) *enabled = (services->editor->scrollbars & WS_VSCROLL) != 0;
+    if (enabled) *enabled = services->editor->vert_sb_enabled;
     return S_OK;
 }
 
