@@ -4193,6 +4193,8 @@ LRESULT editor_handle_message( ME_TextEditor *editor, UINT msg, WPARAM wParam,
         if (dwIndex == GCS_COMPSTR)
           set_selection_cursors(editor,editor->imeStartIndex,
                           editor->imeStartIndex + dwBufLen/sizeof(WCHAR));
+        else
+          editor->imeStartIndex = ME_GetCursorOfs(&editor->pCursors[0]);
 #endif
     }
     ME_ReleaseStyle(style);
