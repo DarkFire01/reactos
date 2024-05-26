@@ -432,6 +432,7 @@ typedef struct tagME_TextEditor
   BOOL AutoURLDetect_bEnable;
   WCHAR password_char;
   BOOL bHaveFocus;
+  DWORD freeze_count;
 #ifndef __REACTOS__
   /*for IME */
   int imeStartIndex;
