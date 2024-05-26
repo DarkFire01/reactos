@@ -94,7 +94,7 @@ struct host *host_create( HWND hwnd, CREATESTRUCTW *cs, BOOL emulate_10 )
 {
     struct host *texthost;
 
-    texthost = CoTaskMemAlloc(sizeof(*texthost));
+    texthost = heap_alloc(sizeof(*texthost));
     if (!texthost) return NULL;
 
     texthost->ITextHost_iface.lpVtbl = &textHostVtbl;
@@ -159,7 +159,7 @@ static ULONG WINAPI ITextHostImpl_Release( ITextHost2 *iface )
     {
         SetWindowLongPtrW( host->window, 0, 0 );
         ITextServices_Release( host->text_srv );
-        CoTaskMemFree( host );
+        heap_free( host );
     }
     return ref;
 }
