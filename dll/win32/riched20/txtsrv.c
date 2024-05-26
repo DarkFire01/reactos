@@ -116,7 +116,7 @@ static ULONG WINAPI fnTextSrv_Release(ITextServices *iface)
     return IUnknown_Release( services->outer_unk );
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxSendMessage( ITextServices *iface, UINT msg, WPARAM wparam,
+HRESULT __thiscall fnTextSrv_TxSendMessage( ITextServices *iface, UINT msg, WPARAM wparam,
                                                             LPARAM lparam, LRESULT *result )
 {
     struct text_services *services = impl_from_ITextServices( iface );
@@ -148,7 +148,7 @@ static HRESULT update_client_rect( struct text_services *services, const RECT *c
     return S_OK;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxDraw( ITextServices *iface, DWORD aspect, LONG index, void *aspect_info,
+HRESULT __thiscall fnTextSrv_TxDraw( ITextServices *iface, DWORD aspect, LONG index, void *aspect_info,
                                                      DVTARGETDEVICE *td, HDC draw, HDC target,
                                                      const RECTL *bounds, const RECTL *mf_bounds, RECT *update,
                                                      BOOL (CALLBACK *continue_fn)(DWORD), DWORD continue_param,
@@ -191,7 +191,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxDraw( ITextServices *iface, DWORD
     return S_OK;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetHScroll( ITextServices *iface, LONG *min_pos, LONG *max_pos, LONG *pos,
+HRESULT __thiscall fnTextSrv_TxGetHScroll( ITextServices *iface, LONG *min_pos, LONG *max_pos, LONG *pos,
                                                            LONG *page, BOOL *enabled )
 {
     struct text_services *services = impl_from_ITextServices( iface );
@@ -204,7 +204,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetHScroll( ITextServices *iface,
     return S_OK;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetVScroll( ITextServices *iface, LONG *min_pos, LONG *max_pos, LONG *pos,
+HRESULT __thiscall fnTextSrv_TxGetVScroll( ITextServices *iface, LONG *min_pos, LONG *max_pos, LONG *pos,
                                                            LONG *page, BOOL *enabled )
 {
     struct text_services *services = impl_from_ITextServices( iface );
@@ -217,7 +217,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetVScroll( ITextServices *iface,
     return S_OK;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxSetCursor( ITextServices *iface, DWORD aspect, LONG index,
+HRESULT __thiscall fnTextSrv_OnTxSetCursor( ITextServices *iface, DWORD aspect, LONG index,
                                                             void *aspect_info, DVTARGETDEVICE *td, HDC draw,
                                                             HDC target, const RECT *client, INT x, INT y )
 {
@@ -234,7 +234,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxSetCursor( ITextServices *iface
     return S_OK;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxQueryHitPoint(ITextServices *iface, DWORD dwDrawAspect, LONG lindex,
+HRESULT __thiscall fnTextSrv_TxQueryHitPoint(ITextServices *iface, DWORD dwDrawAspect, LONG lindex,
                                                              void *pvAspect, DVTARGETDEVICE *ptd, HDC hdcDraw,
                                                              HDC hicTargetDev, LPCRECT lprcClient, INT x, INT y,
                                                              DWORD *pHitResult)
@@ -245,7 +245,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxQueryHitPoint(ITextServices *ifac
     return E_NOTIMPL;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxInPlaceActivate( ITextServices *iface, const RECT *client )
+HRESULT __thiscall fnTextSrv_OnTxInPlaceActivate( ITextServices *iface, const RECT *client )
 {
     struct text_services *services = impl_from_ITextServices( iface );
     HRESULT hr;
@@ -264,7 +264,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxInPlaceActivate( ITextServices 
     return S_OK;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxInPlaceDeactivate(ITextServices *iface)
+HRESULT __thiscall fnTextSrv_OnTxInPlaceDeactivate(ITextServices *iface)
 {
     struct text_services *services = impl_from_ITextServices( iface );
 
@@ -273,7 +273,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxInPlaceDeactivate(ITextServices
     return S_OK;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxUIActivate(ITextServices *iface)
+HRESULT __thiscall fnTextSrv_OnTxUIActivate(ITextServices *iface)
 {
     struct text_services *services = impl_from_ITextServices( iface );
 
@@ -281,7 +281,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxUIActivate(ITextServices *iface
     return E_NOTIMPL;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxUIDeactivate(ITextServices *iface)
+HRESULT __thiscall fnTextSrv_OnTxUIDeactivate(ITextServices *iface)
 {
     struct text_services *services = impl_from_ITextServices( iface );
 
@@ -289,7 +289,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxUIDeactivate(ITextServices *ifa
     return E_NOTIMPL;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetText( ITextServices *iface, BSTR *text )
+HRESULT __thiscall fnTextSrv_TxGetText( ITextServices *iface, BSTR *text )
 {
     struct text_services *services = impl_from_ITextServices( iface );
     int length;
@@ -311,7 +311,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetText( ITextServices *iface, BS
     return S_OK;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxSetText( ITextServices *iface, const WCHAR *text )
+HRESULT __thiscall fnTextSrv_TxSetText( ITextServices *iface, const WCHAR *text )
 {
     struct text_services *services = impl_from_ITextServices( iface );
     ME_Cursor cursor;
@@ -328,7 +328,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxSetText( ITextServices *iface, co
     return S_OK;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetCurTargetX(ITextServices *iface, LONG *x)
+HRESULT __thiscall fnTextSrv_TxGetCurTargetX(ITextServices *iface, LONG *x)
 {
     struct text_services *services = impl_from_ITextServices( iface );
 
@@ -336,7 +336,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetCurTargetX(ITextServices *ifac
     return E_NOTIMPL;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetBaseLinePos(ITextServices *iface, LONG *x)
+HRESULT __thiscall fnTextSrv_TxGetBaseLinePos(ITextServices *iface, LONG *x)
 {
     struct text_services *services = impl_from_ITextServices( iface );
 
@@ -344,7 +344,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetBaseLinePos(ITextServices *ifa
     return E_NOTIMPL;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetNaturalSize( ITextServices *iface, DWORD aspect, HDC draw,
+HRESULT __thiscall fnTextSrv_TxGetNaturalSize( ITextServices *iface, DWORD aspect, HDC draw,
                                                                HDC target, DVTARGETDEVICE *td, DWORD mode,
                                                                const SIZEL *extent, LONG *width, LONG *height )
 {
@@ -383,7 +383,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetNaturalSize( ITextServices *if
     return S_OK;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetDropTarget(ITextServices *iface, IDropTarget **ppDropTarget)
+HRESULT __thiscall fnTextSrv_TxGetDropTarget(ITextServices *iface, IDropTarget **ppDropTarget)
 {
     struct text_services *services = impl_from_ITextServices( iface );
 
@@ -391,7 +391,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetDropTarget(ITextServices *ifac
     return E_NOTIMPL;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxPropertyBitsChange( ITextServices *iface, DWORD mask, DWORD bits )
+HRESULT __thiscall fnTextSrv_OnTxPropertyBitsChange( ITextServices *iface, DWORD mask, DWORD bits )
 {
     struct text_services *services = impl_from_ITextServices( iface );
     DWORD scrollbars;
@@ -454,7 +454,7 @@ DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_OnTxPropertyBitsChange( ITextServic
     return S_OK;
 }
 
-DECLSPEC_HIDDEN HRESULT __thiscall fnTextSrv_TxGetCachedSize(ITextServices *iface, DWORD *pdwWidth, DWORD *pdwHeight)
+HRESULT __thiscall fnTextSrv_TxGetCachedSize(ITextServices *iface, DWORD *pdwWidth, DWORD *pdwHeight)
 {
     struct text_services *services = impl_from_ITextServices( iface );
 
