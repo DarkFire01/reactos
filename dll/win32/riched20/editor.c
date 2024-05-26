@@ -4148,8 +4148,8 @@ LRESULT editor_handle_message( ME_TextEditor *editor, UINT msg, WPARAM wParam,
 #ifdef __REACTOS__
     return DefWindowProcW(editor->hWnd, msg, wParam, lParam);
 #else
-    editor->imeStartIndex=ME_GetCursorOfs(&editor->pCursors[0]);
     ME_DeleteSelection(editor);
+    editor->imeStartIndex=ME_GetCursorOfs(&editor->pCursors[0]);
     ME_CommitUndo(editor);
     ME_UpdateRepaint(editor, FALSE);
 #endif
