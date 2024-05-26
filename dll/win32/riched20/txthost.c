@@ -1314,7 +1314,7 @@ static LRESULT RichEditWndProc_common( HWND hwnd, UINT msg, WPARAM wparam,
         HDC hdc;
         RECT rc, client, update;
         PAINTSTRUCT ps;
-        HBRUSH brush = CreateSolidBrush( ITextHost_TxGetSysColor( &host->ITextHost_iface, COLOR_WINDOW ) );
+        HBRUSH brush, old_brush;
 
         ITextHost_TxGetClientRect( &host->ITextHost_iface, &client );
 
@@ -1329,7 +1329,8 @@ static LRESULT RichEditWndProc_common( HWND hwnd, UINT msg, WPARAM wparam,
             update = client;
         }
 
-        brush = SelectObject( hdc, brush );
+        brush = CreateSolidBrush( ITextHost_TxGetSysColor( &host->ITextHost_iface, COLOR_WINDOW ) );
+        old_brush = SelectObject( hdc, brush );
 
         /* Erase area outside of the formatting rectangle */
         if (update.top < client.top)
@@ -1363,7 +1364,8 @@ static LRESULT RichEditWndProc_common( HWND hwnd, UINT msg, WPARAM wparam,
 
         ITextServices_TxDraw( host->text_srv, DVASPECT_CONTENT, 0, NULL, NULL, hdc, NULL, NULL, NULL,
                               &update, NULL, 0, TXTVIEW_ACTIVE );
-        DeleteObject( SelectObject( hdc, brush ) );
+        SelectObject( hdc, old_brush );
+        DeleteObject( brush );
         if (msg == WM_PAINT) EndPaint( hwnd, &ps );
         return 0;
     }
