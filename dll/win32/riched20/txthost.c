@@ -96,7 +96,7 @@ struct host *host_create( HWND hwnd, CREATESTRUCTW *cs, BOOL emulate_10 )
 {
     struct host *texthost;
 
-    texthost = heap_alloc(sizeof(*texthost));
+    texthost = malloc( sizeof(*texthost) );
     if (!texthost) return NULL;
 
     texthost->ITextHost_iface.lpVtbl = &textHostVtbl;
@@ -163,7 +163,7 @@ static ULONG WINAPI ITextHostImpl_Release( ITextHost2 *iface )
     {
         SetWindowLongPtrW( host->window, 0, 0 );
         ITextServices_Release( host->text_srv );
-        heap_free( host );
+        free( host );
     }
     return ref;
 }
@@ -900,7 +900,7 @@ static HRESULT get_lineA( ITextServices *text_srv, WPARAM wparam, LPARAM lparam,
     sizeA = *(WORD *)lparam;
     *(WORD *)lparam = 0;
     if (!sizeA) return S_OK;
-    buf = heap_alloc( len * sizeof(WCHAR) );
+    buf = malloc( len * sizeof(WCHAR) );
     if (!buf) return E_OUTOFMEMORY;
     *(WORD *)buf = len;
     hr = ITextServices_TxSendMessage( text_srv, EM_GETLINE, wparam, (LPARAM)buf, &len );
@@ -911,7 +911,7 @@ static HRESULT get_lineA( ITextServices *text_srv, WPARAM wparam, LPARAM lparam,
         if (len < sizeA) ((char *)lparam)[len] = '\0';
         *res = len;
     }
-    heap_free( buf );
+    free( buf );
     return hr;
 }
 
@@ -930,7 +930,7 @@ static HRESULT get_text_rangeA( struct host *host, TEXTRANGEA *rangeA, LRESULT *
         range.chrg.cpMax = len;
     if (range.chrg.cpMin >= range.chrg.cpMax) return S_OK;
     count = range.chrg.cpMax - range.chrg.cpMin + 1;
-    range.lpstrText = heap_alloc( count * sizeof(WCHAR) );
+    range.lpstrText = malloc( count * sizeof(WCHAR) );
     if (!range.lpstrText) return E_OUTOFMEMORY;
     hr = ITextServices_TxSendMessage( host->text_srv, EM_GETTEXTRANGE, 0, (LPARAM)&range, &len );
     if (hr == S_OK && len)
@@ -944,7 +944,7 @@ static HRESULT get_text_rangeA( struct host *host, TEXTRANGEA *rangeA, LRESULT *
             rangeA->lpstrText[*res] = '\0';
         }
     }
-    heap_free( range.lpstrText );
+    free( range.lpstrText );
     return hr;
 }
 
