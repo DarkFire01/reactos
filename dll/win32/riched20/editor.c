@@ -3307,6 +3307,7 @@ LRESULT editor_handle_message( ME_TextEditor *editor, UINT msg, WPARAM wParam,
   }
   case EM_SETUNDOLIMIT:
   {
+    editor_enable_undo(editor);
     if ((int)wParam < 0)
       editor->nUndoLimit = STACK_SIZE_DEFAULT;
     else
