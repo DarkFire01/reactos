@@ -487,7 +487,7 @@ BOOL ME_DeleteTextAtCursor(ME_TextEditor *editor, int nCursor, int nChars)
                                nChars, FALSE);
 }
 
-static struct re_object* create_re_object(const REOBJECT *reo)
+static struct re_object* create_re_object(const REOBJECT *reo, ME_Run *run)
 {
   struct re_object *reobj = heap_alloc(sizeof(*reobj));
 
@@ -497,6 +497,7 @@ static struct re_object* create_re_object(const REOBJECT *reo)
     return NULL;
   }
   ME_CopyReObject(&reobj->obj, reo, REO_GETOBJ_ALL_INTERFACES);
+  reobj->run = run;
   return reobj;
 }
 
@@ -522,7 +523,7 @@ void editor_insert_oleobj(ME_TextEditor *editor, const REOBJECT *reo)
 
   run = run_insert( editor, cursor, style, &space, 1, MERF_GRAPHICS );
 
-  run->reobj = create_re_object( reo );
+  run->reobj = create_re_object( reo, run );
 
   prev = run;
   while ((prev = run_prev_all_paras( prev )))
