@@ -8,22 +8,22 @@
  *       19/1-2006   Magnus Olsen
  */
 
-/* Comment 
- *   NtGdiDdLock and NtGdiDdLockD3D ultimately call the same function in dxg.sys 
- *   NtGdiDdUnlock and NtGdiDdUnlockD3D ultimately call the same function in dxg.sys 
+/* Comment
+ *   NtGdiDdLock and NtGdiDdLockD3D ultimately call the same function in dxg.sys
+ *   NtGdiDdUnlock and NtGdiDdUnlockD3D ultimately call the same function in dxg.sys
  */
 
 #include <win32k.h>
 
-// #define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 /*++
 * @name NtGdiDdCanCreateD3DBuffer
 * @implemented
 *
-* The function NtGdiDdCanCreateD3DBuffer checks if you can create a 
-* surface for DirectX. it redirects to dxg.sys in windows XP/2003, 
+* The function NtGdiDdCanCreateD3DBuffer checks if you can create a
+* surface for DirectX. it redirects to dxg.sys in windows XP/2003,
 * dxkrnl.sys in vista and is fully implemented in win32k.sys in windows 2000 and below
 *
 * @param HANDLE hDirectDraw
@@ -34,11 +34,11 @@
 * surfaces, textures and vertexes, and how many of each the driver can create.
 
 *
-* @return 
-* Depending on if the driver supports this function or not, DDHAL_DRIVER_HANDLED 
+* @return
+* Depending on if the driver supports this function or not, DDHAL_DRIVER_HANDLED
 * or DDHAL_DRIVER_NOTHANDLED is returned.
-* To check if the function has been successful, do a full check. 
-* A full check is done by checking if the return value is DDHAL_DRIVER_HANDLED 
+* To check if the function has been successful, do a full check.
+* A full check is done by checking if the return value is DDHAL_DRIVER_HANDLED
 * and puCanCreateSurfaceData->ddRVal is set to DD_OK.
 *
 * @remarks.
@@ -47,7 +47,7 @@
 * table and you will see they are pointed to the same memory address.
 *
 * Before calling this function please set the puCanCreateSurfaceData->ddRVal to an error value such as DDERR_NOTUSPORTED,
-* for the ddRVal will otherwise be unchanged even if an error occurs inside the driver. 
+* for the ddRVal will otherwise be unchanged even if an error occurs inside the driver.
 * puCanCreateSurfaceData->lpDD  is a pointer to DDRAWI_DIRECTDRAW_GBL, not PDD_DIRECTDRAW_GLOBAL as MSDN claims.
 * puCanCreateSurfaceData->lpDD->hDD also needs be filled in with the handle we got from NtGdiDdCreateDirectDrawObject.
 * puCreateSurfaceData->CanCreateSurface is a pointer to the real functions in the HAL or HEL, that you need fill in.
@@ -76,8 +76,8 @@ NtGdiDdCanCreateD3DBuffer(HANDLE hDirectDraw,
 * @name NtGdiD3dContextCreate
 * @implemented
 *
-* The Function NtGdiD3dContextCreate checks if you can create a 
-* context for Directx. It redirects to dxg.sys in windows XP/2003, 
+* The Function NtGdiD3dContextCreate checks if you can create a
+* context for Directx. It redirects to dxg.sys in windows XP/2003,
 * dxkrnl.sys in vista and is fully implemented in win32k.sys in windows 2000 and below
 *
 * @param HANDLE hDirectDrawLocal
@@ -92,9 +92,9 @@ NtGdiDdCanCreateD3DBuffer(HANDLE hDirectDraw,
 * @param LPD3DNTHAL_CONTEXTCREATEDATA pdcci
 * The buffer to create the context data
 *
-* @return 
+* @return
 * DDHAL_DRIVER_HANDLED or DDHAL_DRIVER_NOTHANDLED if the driver supports this function.
-* A full check is done by checking if the return value is DDHAL_DRIVER_HANDLED 
+* A full check is done by checking if the return value is DDHAL_DRIVER_HANDLED
 * and pdcci->ddRVal is set to DD_OK.
 *
 *
@@ -102,7 +102,7 @@ NtGdiDdCanCreateD3DBuffer(HANDLE hDirectDraw,
 * dxg.sys NtGdiD3dContextCreate calls are redirected to the same function in the dxg.sys. As such they all work the same way.
 *
 * Before calling this function please set the pdcci->ddRVal to an error value such as DDERR_NOTSUPORTED,
-* for the ddRVal will otherwise be unchanged even if an error occurs inside the driver. 
+* for the ddRVal will otherwise be unchanged even if an error occurs inside the driver.
 *
 * pdcci->lpDDLcl is a pointer to DDRAWI_DIRECTDRAW_LCL, not DD_DIRECTDRAW_LOCAL  as MSDN claims.
 * pdcci->lpDDSLcl is a pointer to DDRAWI_DDRAWSURFACE_LCL, not DD_DDDRAWSURFACE_LOCAL as MSDN claims.
@@ -136,7 +136,7 @@ NtGdiD3dContextCreate(HANDLE hDirectDrawLocal,
 * @implemented
 *
 * The Function NtGdiD3dContextDestroy destroys the context data we got from NtGdiD3dContextCreate
-* It redirects to dxg.sys in windows XP/2003,  dxkrnl.sys in vista and is fully implemented 
+* It redirects to dxg.sys in windows XP/2003,  dxkrnl.sys in vista and is fully implemented
 * in win32k.sys in windows 2000 and below
 *
 * @param LPD3DNTHAL_CONTEXTDESTROYDATA pContextDestroyData
@@ -146,7 +146,7 @@ NtGdiD3dContextCreate(HANDLE hDirectDrawLocal,
 * dxg.sys NtGdiD3dContextDestroy calls are redirected to the same functions in the dxg.sys. As such they all work the same way.
 *
 * Before calling this function please set the pContextDestroyData->ddRVal to an error value such DDERR_NOTUSPORTED,
-* for the ddRVal will otherwise be unchanged even if an error occurs inside the driver. 
+* for the ddRVal will otherwise be unchanged even if an error occurs inside the driver.
 * pContextDestroyData->dwhContext also needs to be filled in with the handle we got from NtGdiDdCreateDirectDrawObject
 *
 *--*/
@@ -172,7 +172,7 @@ NtGdiD3dContextDestroy(LPD3DNTHAL_CONTEXTDESTROYDATA pContextDestroyData)
 *
 * The Function NtGdiD3dContextDestroyAll destroys all the context data in a process
 * The data having been allocated with NtGdiD3dContextCreate
-* It redirects to dxg.sys in windows XP/2003,  dxkrnl.sys in vista and is fully implemented 
+* It redirects to dxg.sys in windows XP/2003,  dxkrnl.sys in vista and is fully implemented
 * in win32k.sys in windows 2000 and below
 *
 * @param LPD3DNTHAL_CONTEXTDESTROYALLDATA pdcad
@@ -182,7 +182,7 @@ NtGdiD3dContextDestroy(LPD3DNTHAL_CONTEXTDESTROYDATA pContextDestroyData)
 * dxg.sys NtGdiD3dContextDestroy calls are redirected to the same function in the dxg.sys. As such they all work the same way.
 *
 * Before calling this function please set the pdcad->ddRVal to an error value such as DDERR_NOTUSPORTED,
-* for the ddRVal will otherwise be unchanged even if an error occurs inside the driver. 
+* for the ddRVal will otherwise be unchanged even if an error occurs inside the driver.
 * pdcad->dwPID also needs to be filled in with the ID of the process that needs its context data destroyed.
 *
 * Warning: MSDN is wrong about this function. It claims the function queries free memory and does not accept
@@ -208,8 +208,8 @@ NtGdiD3dContextDestroyAll(LPD3DNTHAL_CONTEXTDESTROYALLDATA pdcad)
 * @name NtGdiDdCreateD3DBuffer
 * @implemented
 *
-* The function NtGdiDdCreateD3DBuffer creates a surface for DirectX. 
-* It redirects to dxg.sys in windows XP/2003,  dxkrnl.sys in vista and is fully implemented 
+* The function NtGdiDdCreateD3DBuffer creates a surface for DirectX.
+* It redirects to dxg.sys in windows XP/2003,  dxkrnl.sys in vista and is fully implemented
 * in win32k.sys in windows 2000 and below
 *
 * @param HANDLE hDirectDraw
@@ -237,11 +237,11 @@ NtGdiD3dContextDestroyAll(LPD3DNTHAL_CONTEXTDESTROYALLDATA pdcad)
 * @param HANDLE *puhSurface
 * <FILLMEIN>
 *
-* @return 
-* Depending on if the driver supports this function or not, DDHAL_DRIVER_HANDLED 
+* @return
+* Depending on if the driver supports this function or not, DDHAL_DRIVER_HANDLED
 * or DDHAL_DRIVER_NOTHANDLED is returned.
-* To check if the function was successful, do a full check. 
-* A full check is done by checking if the return value is DDHAL_DRIVER_HANDLED 
+* To check if the function was successful, do a full check.
+* A full check is done by checking if the return value is DDHAL_DRIVER_HANDLED
 * and puCanCreateSurfaceData->ddRVal is set to DD_OK.
 *
 * @remarks.
@@ -250,7 +250,7 @@ NtGdiD3dContextDestroyAll(LPD3DNTHAL_CONTEXTDESTROYALLDATA pdcad)
 * table and you will see they are pointed to the same memory address.
 *
 * Before calling this function please set the puCreateSurfaceData->ddRVal to an error value such as DDERR_NOTUSPORTED,
-* for the ddRVal will otherwise be unchanged even if an error occurs inside the driver. 
+* for the ddRVal will otherwise be unchanged even if an error occurs inside the driver.
 * puCreateSurfaceData->lpDD  is a pointer to DDRAWI_DIRECTDRAW_GBL. MSDN claims it is PDD_DIRECTDRAW_GLOBAL but it is not.
 * puCreateSurfaceData->lpDD->hDD also needs to be filled in with the handle we got from NtGdiDdCreateDirectDrawObject
 * puCreateSurfaceData->CreateSurface is a pointer to the real functions in the HAL or HEL, that you need fill in
