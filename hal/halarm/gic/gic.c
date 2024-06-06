@@ -52,9 +52,7 @@ KIRQL
 FASTCALL
 KfRaiseIrql(IN KIRQL NewIrql)
 {
-    DPRINT1("KfRaiseIrql Entry\n");
     PKPCR Pcr = KeGetPcr();
-    DPRINT1("KfRaiseIrql Grabbed PCR\n");
     KIRQL CurrentIrql;
     /* Read current IRQL */
     CurrentIrql = Pcr->CurrentIrql;
@@ -64,14 +62,13 @@ KfRaiseIrql(IN KIRQL NewIrql)
     if (CurrentIrql > NewIrql)
     {
         /* Crash system */
-        Pcr->CurrentIrql = PASSIVE_LEVEL;
+       // Pcr->CurrentIrql = PASSIVE_LEVEL;
         //KeBugCheck(IRQL_NOT_GREATER_OR_EQUAL);
     }
 #endif
     /* Set new IRQL */
     Pcr->CurrentIrql = NewIrql;
 
-           DPRINT1("KfRaiseIrql exit\n");
     /* Return old IRQL */
     return CurrentIrql;
 }
@@ -80,22 +77,19 @@ VOID
 FASTCALL
 KfLowerIrql(IN KIRQL NewIrql)
 {
-    DPRINT1("KfLowerIrql Entry\n");
     PKPCR Pcr = KeGetPcr();
-    DPRINT1("KfLowerIrql Grabbed PCR\n");
 #ifdef IRQL_DEBUG
     /* Validate correct lower */
     if (OldIrql > Pcr->CurrentIrql)
     {
         /* Crash system */
-        Pcr->CurrentIrql = HIGH_LEVEL;
+        //Pcr->CurrentIrql = HIGH_LEVEL;
         //KeBugCheck(IRQL_NOT_LESS_OR_EQUAL);
     }
 #endif
 
     /* Save the new IRQL and restore interrupt state */
     Pcr->CurrentIrql = NewIrql;
-       DPRINT1("KfLowerIrql exit\n");
 }
 
 /* SOFTWARE INTERRUPTS ********************************************************/

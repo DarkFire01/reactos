@@ -19,3 +19,6 @@
 #include <arc/arc.h>
 #include <ntdddisk.h>
 #include <internal/hal.h>
+
+ULONG
+DbgPrintEarly(const char *fmt, ...);

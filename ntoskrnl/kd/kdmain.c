@@ -115,6 +115,7 @@ NTAPI
 KdDebuggerInitialize0(
     _In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+           DbgPrintEarly("Ld legacy init\n");
     PCHAR CommandLine, Port = NULL;
     ULONG i;
     BOOLEAN Success = FALSE;

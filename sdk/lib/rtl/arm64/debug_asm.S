@@ -39,14 +39,42 @@
     ret
     NESTED_END DebugService2
 
+
+
+
+
+
+
+
+
+
+   NESTED_ENTRY HoldForExe
+   wfi
+   NESTED_END HoldForExe
+
+
+
     NESTED_ENTRY DebugService
-    /* Prepare registers for interrupt */
-     /* Call the Interrupt */
-    brk #0xF00
-    ret
+
+   ; implementme
+   brk #0xF00
+   wfi
+   b HoldForExe
 
    /* Return */
     NESTED_END DebugService
+
+
+
+
+
+
+
+
+
+
+
+
 
     NESTED_ENTRY RtlCaptureContext
     ;PROLOG_END RtlCaptureContext

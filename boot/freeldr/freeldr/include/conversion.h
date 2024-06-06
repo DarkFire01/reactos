@@ -13,12 +13,12 @@ FORCEINLINE
 PVOID
 VaToPa(PVOID Va)
 {
-    return (PVOID)((ULONG_PTR)Va & ~KSEG0_BASE);
+    return (PVOID)((ULONG_PTR)Va);
 }
 
 FORCEINLINE
 PVOID
 PaToVa(PVOID Pa)
 {
-    return (PVOID)((ULONG_PTR)Pa | KSEG0_BASE);
+    return (PVOID)((ULONG_PTR)Pa);
 }

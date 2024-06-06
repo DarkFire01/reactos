@@ -66,9 +66,7 @@
     NESTED_END GetSCTLREL1
 
     NESTED_ENTRY SetSCTLREL1
-    mov x29, #0xDEAD
     msr sctlr_el1, x0
-    mov x30, #0xBEEF
     ret
     NESTED_END SetSCTLREL1
 

@@ -227,11 +227,6 @@ VOID
 NTAPI
 KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    KxHoldArm64();
-    for(;;)
-    {
-
-    }
     DbgPrintEarly("ReactOS ARM64 Port\n");
     DbgPrintEarly("KiSystemStartup: Entry\n");
     ULONG Cpu;
@@ -293,7 +288,7 @@ AppCpuInit:
         DbgPrintEarly("Starting primary debugging system\n");
 
         /* Initialize debugging system */
-       // KdInitSystem(0, KeLoaderBlock);
+        KdInitSystem(0, KeLoaderBlock);
 
         /* Check for break-in */
        /// if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);

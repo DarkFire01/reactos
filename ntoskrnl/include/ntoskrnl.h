@@ -12,9 +12,6 @@
 /* INCLUDES ******************************************************************/
 
 /* ARM Bringup Hack */
-#ifdef _M_ARM64
-#define DbgPrint DbgPrintEarly
-#endif
 
 /* WDK hacks */
 #ifdef _M_AMD64
@@ -145,5 +142,8 @@ C_ASSERT(MAX_WIN32_PATH == MAX_PATH);
 #ifdef _MSC_VER
 # pragma section("INITDATA", read,write,discard)
 #endif
+
+ULONG
+DbgPrintEarly(const char *fmt, ...);
 
 #endif /* _NTOSKRNL_PCH */

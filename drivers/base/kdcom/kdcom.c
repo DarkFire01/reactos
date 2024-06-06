@@ -47,6 +47,44 @@ const ULONG BaseArray[] = {0, 0x90000000};
 #error Unknown architecture
 #endif
 
+
+#define QEMUUART 0x09000000
+volatile unsigned int * UART0DR = (unsigned int *) QEMUUART;
+VOID
+NTAPI
+QemuWriteByteToUart(UCHAR ByteToSend)
+{
+    *UART0DR = ByteToSend;
+}
+
+ULONG
+Arm64KdPrint(const char *fmt, ...)
+{
+    va_list args;
+    unsigned int i;
+    char Buffer[1024];
+    PCHAR String = Buffer;
+
+    va_start(args, fmt);
+    i = vsprintf(Buffer, fmt, args);
+    va_end(args);
+
+    /* Output the message */
+    while (*String != 0)
+    {
+        if (*String == '\n')
+        {
+
+            QemuWriteByteToUart('\r');
+        }
+        QemuWriteByteToUart(*String);
+        String++;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+
 #define MAX_COM_PORTS   (sizeof(BaseArray) / sizeof(BaseArray[0]) - 1)
 
 /* GLOBALS ********************************************************************/
@@ -131,22 +169,14 @@ NTAPI
 KdpPortInitialize(IN ULONG ComPortNumber,
                   IN ULONG ComPortBaudRate)
 {
-    NTSTATUS Status;
 
-    KDDBGPRINT("KdpPortInitialize, Port = COM%ld\n", ComPortNumber);
+    Arm64KdPrint("KdpPortInitialize, Port = COM%ld\n", ComPortNumber);
 
-    Status = CpInitialize(&KdComPort,
-                          UlongToPtr(BaseArray[ComPortNumber]),
-                          ComPortBaudRate);
-    if (!NT_SUCCESS(Status))
-    {
-        return STATUS_INVALID_PARAMETER;
-    }
-    else
-    {
-        KdComPortInUse = KdComPort.Address;
-        return STATUS_SUCCESS;
-    }
+    KdComPortInUse = (PUCHAR)(ULONG_PTR)0x90000000;
+
+        Arm64KdPrint("Setup UART\n" );
+    return STATUS_SUCCESS;
+
 }
 
 /******************************************************************************
@@ -159,12 +189,13 @@ NTSTATUS
 NTAPI
 KdDebuggerInitialize0(IN PLOADER_PARAMETER_BLOCK LoaderBlock OPTIONAL)
 {
+    Arm64KdPrint("kdcom \n");
     ULONG ComPortNumber   = DEFAULT_DEBUG_PORT;
     ULONG ComPortBaudRate = DEFAULT_DEBUG_BAUD_RATE;
 
     PCHAR CommandLine, PortString, BaudString, IrqString;
     ULONG Value;
-
+       Arm64KdPrint("reading loaderblock...\n");
     /* Check if we have a LoaderBlock */
     if (LoaderBlock)
     {
@@ -173,7 +204,7 @@ KdDebuggerInitialize0(IN PLOADER_PARAMETER_BLOCK LoaderBlock OPTIONAL)
 
         /* Upcase it */
         _strupr(CommandLine);
-
+           Arm64KdPrint("Values:\n");
         /* Get the port and baud rate */
         PortString = strstr(CommandLine, "DEBUGPORT");
         BaudString = strstr(CommandLine, "BAUDRATE");
@@ -244,31 +275,7 @@ KdDebuggerInitialize0(IN PLOADER_PARAMETER_BLOCK LoaderBlock OPTIONAL)
         }
     }
 
-#ifdef KDDEBUG
-    /*
-     * Try to find a free COM port and use it as the KD debugging port.
-     * NOTE: Inspired by reactos/boot/freeldr/freeldr/comm/rs232.c, Rs232PortInitialize(...)
-     */
-    {
-    /*
-     * Start enumerating COM ports from the last one to the first one,
-     * and break when we find a valid port.
-     * If we reach the first element of the list, the invalid COM port,
-     * then it means that no valid port was found.
-     */
-    ULONG ComPort;
-    for (ComPort = MAX_COM_PORTS; ComPort > 0; ComPort--)
-    {
-        /* Check if the port exist; skip the KD port */
-        if ((ComPort != ComPortNumber) && CpDoesPortExist(UlongToPtr(BaseArray[ComPort])))
-            break;
-    }
-    if (ComPort != 0)
-        CpInitialize(&KdDebugComPort, UlongToPtr(BaseArray[ComPort]), DEFAULT_BAUD_RATE);
-    }
-#endif
-
-    KDDBGPRINT("KdDebuggerInitialize0\n");
+    Arm64KdPrint("KdDebuggerInitialize0\n");
 
     /* Initialize the port */
     return KdpPortInitialize(ComPortNumber, ComPortBaudRate);

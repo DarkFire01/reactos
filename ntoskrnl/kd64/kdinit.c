@@ -71,7 +71,13 @@ static CODE_SEG("INIT")
 VOID
 KdpPrintBanner(IN SIZE_T MemSizeMBs)
 {
+
+    DbgPrintEarly("KdpPrintBanner: Entry\n");
     DPRINT1("-----------------------------------------------------\n");
+    for(;;)
+    {
+
+    }
     DPRINT1("ReactOS " KERNEL_VERSION_STR " (Build " KERNEL_VERSION_BUILD_STR ") (Commit " KERNEL_VERSION_COMMIT_HASH ")\n");
     DPRINT1("%u System Processor [%u MB Memory]\n", KeNumberProcessors, MemSizeMBs);
 
@@ -158,7 +164,7 @@ KdInitSystem(
     /* Make gcc happy */
     BlockEnable = FALSE;
 #endif
-
+    DbgPrintEarly("kdInitSyste: Phase: %d\n", BootPhase);
     /* Check if this is Phase 1 */
     if (BootPhase)
     {
@@ -222,6 +228,7 @@ KdInitSystem(
         /* Save the Kernel Base */
         PsNtosImageBase = (ULONG_PTR)LdrEntry->DllBase;
         KdVersionBlock.KernBase = (ULONG64)(LONG_PTR)LdrEntry->DllBase;
+        DbgPrintEarly("Obtained Loader block\n");
 
         /* Check if we have a command line */
         CommandLine = LoaderBlock->LoadOptions;
@@ -347,23 +354,25 @@ KdInitSystem(
         /* Unconditionally enable KD */
         EnableKd = TRUE;
     }
-
+        DbgPrintEarly("Parsed Command Line\n");
     /* Set the Kernel Base in the Data Block */
     KdDebuggerDataBlock.KernBase = (ULONG_PTR)KdVersionBlock.KernBase;
-
+        DbgPrintEarly("Setup kernel base\n");
     /* Initialize the debugger if requested */
+           DbgPrintEarly("Jumping to kdcom\n");
     if (EnableKd && (NT_SUCCESS(KdDebuggerInitialize0(LoaderBlock))))
     {
         /* Now set our real KD routine */
         KiDebugRoutine = KdpTrap;
-
+           DbgPrintEarly("setting kd routine\n");
         /* Check if we've already initialized our structures */
         if (!KdpDebuggerStructuresInitialized)
         {
+                       DbgPrintEarly("setting kd structures\n");
             /* Set the Debug Switch Routine and Retries */
             KdpContext.KdpDefaultRetries = 20;
             KiDebugSwitchRoutine = KdpSwitchProcessor;
-
+                   DbgPrintEarly("setting up break points\n");
             /* Initialize breakpoints owed flag and table */
             KdpOweBreakpoint = FALSE;
             for (i = 0; i < KD_BREAKPOINT_MAX; i++)
@@ -372,30 +381,33 @@ KdInitSystem(
                 KdpBreakpointTable[i].DirectoryTableBase = 0;
                 KdpBreakpointTable[i].Address = NULL;
             }
-
+                   DbgPrintEarly("setting u DPC\n");
             /* Initialize the Time Slip DPC */
             KeInitializeDpc(&KdpTimeSlipDpc, KdpTimeSlipDpcRoutine, NULL);
             KeInitializeTimer(&KdpTimeSlipTimer);
             ExInitializeWorkItem(&KdpTimeSlipWorkItem, KdpTimeSlipWork, NULL);
-
+                   DbgPrintEarly("first iinit done\n");
             /* First-time initialization done! */
             KdpDebuggerStructuresInitialized = TRUE;
         }
 
         /* Initialize the timer */
         KdTimerStart.QuadPart = 0;
-
+                   DbgPrintEarly("enabling kd\n");
         /* Officially enable KD */
         KdPitchDebugger = FALSE;
         KdDebuggerEnabled = TRUE;
 
         /* Let user-mode know that it's enabled as well */
-        SharedUserData->KdDebuggerEnabled = TRUE;
-
+        //SharedUserData->KdDebuggerEnabled = TRUE;
+                   DbgPrintEarly("first print\n");
         /* Display separator + ReactOS version at start of the debug log */
         MemSizeMBs = KdpGetMemorySizeInMBs(KeLoaderBlock);
-        KdpPrintBanner(MemSizeMBs);
+        KdpPrintBanner(512);
+          for(;;)
+          {
 
+          }
         /* Check if the debugger should be disabled initially */
         if (DisableKdAfterInit)
         {

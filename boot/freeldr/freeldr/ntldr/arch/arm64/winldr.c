@@ -97,145 +97,15 @@ void SetSCTLREL1_hold(UINT64 Value);\
 #define TTBR_CNP    1
 void TriggerIsb();
 void HoldForArmTests();
-void  write_tcr(UINT64 tcr);
-UINT64  read_tcr();
+void write_tcr(UINT64 tcr);
+UINT64 read_tcr();
 void set_mair_el1(UINT64 mair);
 void DisalbeMMU();
-static
-BOOLEAN
-MempAllocatePageTables(VOID)
-{
-    TRACE(">>> MempAllocatePageTables\n");
-  /* Allocate a page for the PML4 */
-    PxeBase = (PVOID)MmAllocateMemoryWithType(PAGE_SIZE * 1024, LoaderMemoryData);
-
-    if (!PxeBase)
-    {
-        ERR("failed to allocate PML4\n");
-        return FALSE;
-    }
-
-
-
-
-    /* Zero the PML4 */
-    RtlZeroMemory(PxeBase, PAGE_SIZE);
-
-    /* The page tables are located at 0xfffff68000000000
-*/
-    (ULONG_PTR)PxeBase[VAtoPXI(PXE_BASE)].Valid = 1;
-                 PxeBase[VAtoPXI(PXE_BASE)].Valid = 1;
-     PxeBase[VAtoPXI(PXE_BASE)].Valid = 1;
-        PxeBase[VAtoPXI(PXE_BASE)].Valid = 1;
-    PxeBase[VAtoPXI(PXE_BASE)].PageFrameNumber = PtrToPfn(PxeBase);
-
-    return TRUE;
-}
-
-static
-PHARDWARE_PTE
-MempGetOrCreatePageDir(PHARDWARE_PTE PdeBase, ULONG Index)
-{
-    PHARDWARE_PTE SubDir;
-
-    if (!PdeBase)
-        return NULL;
-
-    if (!PdeBase[Index].Valid)
-    {
-        SubDir = MmAllocateMemoryWithType(PAGE_SIZE, LoaderMemoryData);
-        if (!SubDir)
-            return NULL;
-        RtlZeroMemory(SubDir, PAGE_SIZE);
-        PdeBase[Index].PageFrameNumber = PtrToPfn(SubDir);
-             PdeBase[Index].Valid = 1;
-     PdeBase[Index].Write = 1;
-        PdeBase[Index].Accessed = 1;
-    }
-    else
-    {
-        SubDir = (PVOID)((ULONG64)(PdeBase[Index].PageFrameNumber) * PAGE_SIZE);
-    }
-    return SubDir;
-}
-
-static
-BOOLEAN
-MempMapSinglePage(ULONG64 VirtualAddress, ULONG64 PhysicalAddress)
-{
-    PHARDWARE_PTE PpeBase, PdeBase, PteBase;
-    ULONG Index;
-
-    PpeBase = MempGetOrCreatePageDir(PxeBase, VAtoPXI(VirtualAddress));
-    PdeBase = MempGetOrCreatePageDir(PpeBase, VAtoPPI(VirtualAddress));
-    PteBase = MempGetOrCreatePageDir(PdeBase, VAtoPDI(VirtualAddress));
-
-    if (!PteBase)
-    {
-        ERR("!!!No Dir %p, %p, %p, %p\n", PxeBase, PpeBase, PdeBase, PteBase);
-        return FALSE;
-    }
-
-    Index = VAtoPTI(VirtualAddress);
-    if (PteBase[Index].Valid)
-    {
-        ERR("!!!Already mapped %ld\n", Index);
-        return FALSE;
-    }
-
-     PteBase[Index].PageFrameNumber = (PhysicalAddress / PAGE_SIZE);
-     PteBase[Index].Valid = 1;
-     PteBase[Index].Write = 1;
-        PteBase[Index].Accessed = 1;
-    return TRUE;
-}
 
 BOOLEAN
 MempIsPageMapped(PVOID VirtualAddress)
 {
-    PHARDWARE_PTE PpeBase, PdeBase, PteBase;
-    ULONG Index;
-
-    Index = VAtoPXI(VirtualAddress);
-    if (!PxeBase[Index].Valid)
-        return FALSE;
-
-    PpeBase = (PVOID)((ULONG64)(PxeBase[Index].PageFrameNumber) * PAGE_SIZE);
-    Index = VAtoPPI(VirtualAddress);
-    if (!PpeBase[Index].Valid)
-        return FALSE;
-
-    PdeBase = (PVOID)((ULONG64)(PpeBase[Index].PageFrameNumber) * PAGE_SIZE);
-    Index = VAtoPDI(VirtualAddress);
-    if (!PdeBase[Index].Valid)
-        return FALSE;
-
-    PteBase = (PVOID)((ULONG64)(PdeBase[Index].PageFrameNumber) * PAGE_SIZE);
-    Index = VAtoPTI(VirtualAddress);
-    if (!PteBase[Index].Valid)
-        return FALSE;
-
     return TRUE;
-}
-
-static
-PFN_NUMBER
-MempMapRangeOfPages(ULONG64 VirtualAddress, ULONG64 PhysicalAddress, PFN_NUMBER cPages)
-{
-    PFN_NUMBER i;
-
-    for (i = 0; i < cPages; i++)
-    {
-        if (!MempMapSinglePage(VirtualAddress, PhysicalAddress))
-        {
-            ERR("Failed to map page %ld from %p to %p\n",
-                    i, (PVOID)VirtualAddress, (PVOID)PhysicalAddress);
-            return i;
-        }
-        VirtualAddress += PAGE_SIZE;
-        PhysicalAddress += PAGE_SIZE;
-    }
-    return i;
 }
 
 BOOLEAN
@@ -243,32 +113,6 @@ MempSetupPaging(IN PFN_NUMBER StartPage,
                 IN PFN_NUMBER NumberOfPages,
                 IN BOOLEAN KernelMapping)
 {
-    TRACE(">>> MempSetupPaging(0x%lx, %ld, %p)\n",
-            StartPage, NumberOfPages, StartPage * PAGE_SIZE + KSEG0_BASE);
-
-    /* Identity mapping */
-    if (MempMapRangeOfPages(StartPage * PAGE_SIZE,
-                            StartPage * PAGE_SIZE,
-                            NumberOfPages) != NumberOfPages)
-    {
-        ERR("Failed to map pages %ld, %ld\n",
-                StartPage, NumberOfPages);
-        return FALSE;
-    }
-
-    /* Kernel mapping */
-    if (KernelMapping)
-    {
-        if (MempMapRangeOfPages(StartPage * PAGE_SIZE + KSEG0_BASE,
-                                StartPage * PAGE_SIZE,
-                                NumberOfPages) != NumberOfPages)
-        {
-            ERR("Failed to map pages %ld, %ld\n",
-                    StartPage, NumberOfPages);
-            return FALSE;
-        }
-    }
-
     return TRUE;
 }
 
@@ -276,12 +120,6 @@ MempSetupPaging(IN PFN_NUMBER StartPage,
 void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
     TRACE("IMage Base Addr %p\n",OsLoaderBase);
-    // Before we start mapping pages, create a block of memory, which will contain
-    // PDE and PTEs
-    if (MempAllocatePageTables() == FALSE)
-    {
-        // FIXME: bugcheck
-    }
 }
 
 /* ************************************************************************/
@@ -290,18 +128,16 @@ void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
 VOID
 WinLdrSetProcessorContext(VOID)
 {
-    
-     DisalbeMMU();
+    DisalbeMMU();
     UINT64 r, b;
-        b=0x90000000>>21;
+    b=0x90000000>>21; //UART_BA >> 21
     TRACE("WinLdrSetProcessorContext: Entry\n");
 
-   // TRACE("Paging enabled\n");
        // first, set Memory Attributes array, indexed by PT_MEM, PT_DEV, PT_NC in our example
     r=  (0xFF << 0) |    // AttrIdx=0: normal, IWBWA, OWBWA, NTR
         (0x04 << 8) |    // AttrIdx=1: device, nGnRE (must be OSH too)
         (0x44 <<16);     // AttrIdx=2: non cacheable
-   // asm volatile ("msr mair_el1, %0" : : "r" (r));
+
     set_mair_el1(r);
     // next, specify mapping characteristics in translate control register
     r = read_tcr();
@@ -322,10 +158,8 @@ WinLdrSetProcessorContext(VOID)
     write_tcr(r);
     // tell the MMU where our translation tables are. TTBR_CNP bit not documented, but required
     // lower half, user space
-   // asm volatile ("msr ttbr0_el1, %0" : : "r" ((unsigned long)&PageTablesBase + TTBR_CNP));
+  //  write_ttbr0_el1((UINT64)((ULONG_PTR)PxeBase) + TTBR_CNP);
     // upper half, kernel space
-   // asm volatile ("msr ttbr1_el1, %0" : : "r" ((unsigned long)&PageTablesBase + TTBR_CNP + PAGESIZE));
-   write_ttbr0_el1((UINT64)((ULONG_PTR)PxeBase) + TTBR_CNP);
    // write_ttbr1_el1((UINT64)&PageTablesBase + TTBR_CNP + PAGESIZE);
     // finally, toggle some bits in system control register to enable page translation
     r = GetSCTLREL1();
@@ -340,10 +174,6 @@ WinLdrSetProcessorContext(VOID)
          (1<<1));    // clear A, no aligment check
     r|=  (1<<0);     // set M, enable MMU
     SetSCTLREL1(r);
-    for(;;)
-    {
-
-    }
     /* enable paging */
 }
 extern KERNEL_ENTRY_POINT PubKiSystemStartup;

@@ -24,6 +24,7 @@ DebugPrint(IN PSTRING DebugString,
            IN ULONG ComponentId,
            IN ULONG Level)
 {
+    /* THIS IS WHERE WE ARE ->>>>>>>>>>>>>>>>>>>>> */
     /* Call the Debug Service */
     return DebugService(BREAKPOINT_PRINT,
                         DebugString->Buffer,

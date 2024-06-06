@@ -2106,7 +2106,7 @@ KdDisableDebuggerWithLock(IN BOOLEAN NeedLock)
 
             /* We are disabled now */
             KdDebuggerEnabled = FALSE;
-            SharedUserData->KdDebuggerEnabled = FALSE;
+       //     SharedUserData->KdDebuggerEnabled = FALSE;
         }
      }
 
