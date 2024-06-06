@@ -1,5 +1,5 @@
  #include <kxarm64.h>
-
+    EXTERN ContinueExecution
 #define CURRENT_EL_EL_MASK #2_1100
 #define CURRENT_EL_1 #2_0100
 
@@ -14,6 +14,12 @@
     mrs x0, id_aa64mmfr0_el1
     ret
     NESTED_END read_id_aa64mmfr0_el1
+
+    NESTED_ENTRY set_mair_el1
+    msr mair_el1, x0
+    ret
+    NESTED_END set_mair_el1
+
 
     NESTED_ENTRY read_id_aa64mmfr1_el1
     mrs x0, id_aa64mmfr1_el1
@@ -30,37 +36,62 @@
     ret
     NESTED_END write_hcr_el2
 
+    NESTED_ENTRY write_ttbr0_el1
+    msr ttbr0_el1, x0
+    ret
+    NESTED_END write_ttbr0_el1
 
+    NESTED_ENTRY write_ttbr1_el1
+    msr ttbr1_el1, x0
+    ret
+    NESTED_END write_ttbr1_el1
 
-    NESTED_ENTRY holdme
-    b holdme
-    NESTED_END holdme
+    NESTED_ENTRY TriggerIsb
+    isb
+    ret
+    NESTED_END TriggerIsb
 
+    NESTED_ENTRY SmashTlb
+    isb
+	tlbi vmalle1
+	dsb ish
+	dsb sy
+	isb
+    ret
+    NESTED_END SmashTlb
+
+    NESTED_ENTRY GetSCTLREL1
+    mrs x0, sctlr_el1
+    ret
+    NESTED_END GetSCTLREL1
+
+    NESTED_ENTRY SetSCTLREL1
+    mov x29, #0xDEAD
+    msr sctlr_el1, x0
+    mov x30, #0xBEEF
+    ret
+    NESTED_END SetSCTLREL1
+
+    NESTED_ENTRY SetSCTLREL1_hold
+    msr sctlr_el1, x0
+    mov x22, #0xDEAD
+    b ContinueExecution
+    NESTED_END SetSCTLREL1_hold
 #define SCTLR_M 2_1
-#define SPSEL_ELX 2_1
-#define handover_info_aarch64_arg0 0
-#define handover_info_aarch64_arg1 8
-#define handover_info_aarch64_entrypoint 16
-#define handover_info_aarch64_stack 24
-#define handover_info_aarch64_direct_map_base 32
+    NESTED_ENTRY write_tcr
+    MSR TCR_EL1, X0
+    mov x28, #0xDEAD
+    ret
+    NESTED_END write_tcr
 
-#define handover_info_aarch64_ttbr0 40
-#define handover_info_aarch64_ttbr1 48
-#define handover_info_aarch64_mair 56
-#define handover_info_aarch64_tcr 64
-#define handover_info_aarch64_sctlr 72
 
-#define handover_info_aarch64_unmap_lower_half 80
+    NESTED_ENTRY read_tcr
+    mrs X0, TCR_EL1
+    ret
+    NESTED_END read_tcr
 
-    NESTED_ENTRY kernel_handover_aarch64
-    msr daifset, #2_1111
 
-    ldr x1, [x0, handover_info_aarch64_ttbr0]
-    ldr x2, [x0, handover_info_aarch64_ttbr1]
-    ldr x3, [x0, handover_info_aarch64_mair]
-    ldr x4, [x0, handover_info_aarch64_tcr]
-    ldr x5, [x0, handover_info_aarch64_sctlr]
-
+    NESTED_ENTRY DisalbeMMU
     isb
     dsb nsh
 
@@ -71,46 +102,10 @@
 
     isb
     dsb nsh
+    ret
 
-    msr mair_el1, x3
-    msr TCR_EL1, x4
-    msr ttbr0_el1, x1
-    msr ttbr1_el1, x2
-
-    isb
-    tlbi vmalle1
-    dsb nsh
-
-    // Finally enable the MMU again with the provided configuration
-    msr sctlr_el1, x5
-
-// HOLD
-    mov x20, #0x0001
-    mov x21, #0xDEAD
-    mov x22, #0xBEEF
-    mov x23, #0xAAAA
-    mov x24, #0xBBBB
-    mov x25, #0xCCCC
-    mov x26, #0xDDDD
-    mov x27, #0xEEEE
-    mov x28, #0xFFFF
-    mov x29, #0xBEEF
-    mov x30, #0xDEAD
-    wfi
-    b holdme 
-// HOLD
-    isb
-    dsb nsh
-
-    ldr x3, [x0, handover_info_aarch64_stack]
-    msr spsel, #SPSEL_ELX
-    mov sp, x3
-
-    ldr x30, [x0, handover_info_aarch64_entrypoint]
-
-    ldr x3, [x0, handover_info_aarch64_direct_map_base]
-    add x0, x0, x3
-
-    NESTED_END kernel_handover_aarch64
-
+    NESTED_END DisalbeMMU
+    NESTED_ENTRY HoldForArmTests
+    mov x20, #0xDEAF
+    NESTED_END HoldForArmTests
     END
