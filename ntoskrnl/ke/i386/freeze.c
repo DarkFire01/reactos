@@ -16,7 +16,7 @@ NTAPI
 KxFreezeExecution(
     VOID)
 {
-    UNIMPLEMENTED;
+   // UNIMPLEMENTED;
 }
 
 VOID
@@ -24,7 +24,7 @@ NTAPI
 KxThawExecution(
     VOID)
 {
-    UNIMPLEMENTED;
+  //  UNIMPLEMENTED;
 }
 
 KCONTINUE_STATUS
@@ -32,6 +32,6 @@ NTAPI
 KxSwitchKdProcessor(
     _In_ ULONG ProcessorIndex)
 {
-    UNIMPLEMENTED;
-    return ContinueError;
+    //UNIMPLEMENTED;
+    return ContinueProcessorReselected;
 }

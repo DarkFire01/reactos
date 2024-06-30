@@ -360,7 +360,7 @@ KiVerifyCpuFeatures(PKPRCB Prcb)
     if (NewEFlags == EFlags)
     {
         /* The modification did not work, so CPUID is not supported. */
-        KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x1, 0, 0, 0);
+        ///KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x1, 0, 0, 0);
     }
     else
     {
@@ -374,14 +374,14 @@ KiVerifyCpuFeatures(PKPRCB Prcb)
     if (CpuInfo.Eax == 0)
     {
         // 0x1 - missing CPUID instruction
-        KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x1, 0, 0, 0);
+       /// KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x1, 0, 0, 0);
     }
 
     // 2. Detect and set the CPU Type
     KiSetProcessorType();
 
-    if (Prcb->CpuType == 3)
-        KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x386, 0, 0, 0);
+ ///   if (Prcb->CpuType == 3)
+      ///  KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x386, 0, 0, 0);
 
     // 3. Finally, obtain CPU features.
     ULONG FeatureBits = KiGetFeatureBits();
@@ -391,12 +391,12 @@ KiVerifyCpuFeatures(PKPRCB Prcb)
     {
         // 0x2 - missing CPUID features
         // second paramenter - edx flag which is missing
-        KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x2, 0x00000010, 0, 0);
+       /// KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x2, 0x00000010, 0, 0);
     }
 
     if (!(FeatureBits & KF_CMPXCHG8B))
     {
-        KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x2, 0x00000100, 0, 0);
+       /// KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x2, 0x00000100, 0, 0);
     }
 
     // Check x87 FPU is present. FIXME: put this into FeatureBits?
@@ -404,7 +404,7 @@ KiVerifyCpuFeatures(PKPRCB Prcb)
 
     if (!(CpuInfo.Edx & 0x00000001))
     {
-        KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x2, 0x00000001, 0, 0);
+       /// KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x2, 0x00000001, 0, 0);
     }
 
     // Set up FPU-related CR0 flags.
@@ -419,7 +419,7 @@ KiVerifyCpuFeatures(PKPRCB Prcb)
     // Check for Pentium FPU bug.
     if (KiIsNpxErrataPresent())
     {
-        KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x2, 0x00000001, 0, 0);
+      //  KeBugCheckEx(UNSUPPORTED_PROCESSOR, 0x2, 0x00000001, 0, 0);
     }
 
     // 5. Save feature bits.
@@ -811,17 +811,6 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
 AppCpuInit:
     //TODO: We don't setup IPIs yet so freeze other processors here.
-    if (Cpu)
-    {
-        KeMemoryBarrier();
-        LoaderBlock->Prcb = 0;
-
-        for (;;)
-        {
-            YieldProcessor();
-        }
-    }
-
     /* Loop until we can release the freeze lock */
     do
     {
@@ -835,7 +824,10 @@ AppCpuInit:
     __writefsdword(KPCR_SET_MEMBER_COPY, 1 << Cpu);
     __writefsdword(KPCR_PRCB_SET_MEMBER, 1 << Cpu);
 
-    KiVerifyCpuFeatures(Pcr->Prcb);
+    if (!Cpu)
+    {
+        KiVerifyCpuFeatures(Pcr->Prcb);
+    }
 
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);
@@ -843,6 +835,11 @@ AppCpuInit:
     /* Set active processors */
     KeActiveProcessors |= __readfsdword(KPCR_SET_MEMBER);
     KeNumberProcessors++;
+
+    if (Cpu)
+    {
+        KiVerifyCpuFeatures(KeGetPcr()->Prcb);
+    }
 
     /* Check if this is the boot CPU */
     if (!Cpu)

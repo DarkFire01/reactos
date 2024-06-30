@@ -132,27 +132,27 @@ KiGetCpuVendor(VOID)
     }
     else if (!strcmp(Prcb->VendorString, CmpCyrixID))
     {
-        DPRINT1("Cyrix CPU support not fully tested!\n");
+      //  DPRINT1("Cyrix CPU support not fully tested!\n");
         return CPU_CYRIX;
     }
     else if (!strcmp(Prcb->VendorString, CmpTransmetaID))
     {
-        DPRINT1("Transmeta CPU support not fully tested!\n");
+       // DPRINT1("Transmeta CPU support not fully tested!\n");
         return CPU_TRANSMETA;
     }
     else if (!strcmp(Prcb->VendorString, CmpCentaurID))
     {
-        DPRINT1("Centaur CPU support not fully tested!\n");
+       // DPRINT1("Centaur CPU support not fully tested!\n");
         return CPU_CENTAUR;
     }
     else if (!strcmp(Prcb->VendorString, CmpRiseID))
     {
-        DPRINT1("Rise CPU support not fully tested!\n");
+      //  DPRINT1("Rise CPU support not fully tested!\n");
         return CPU_RISE;
     }
 
     /* Unknown CPU */
-    DPRINT1("%s CPU support not fully tested!\n", Prcb->VendorString);
+//    DPRINT1("%s CPU support not fully tested!\n", Prcb->VendorString);
     return CPU_UNKNOWN;
 }
 
