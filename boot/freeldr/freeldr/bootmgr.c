@@ -449,6 +449,9 @@ RunLoader(VOID)
             goto Reboot;
         }
 
+        /* Display the "Red Screen of Hell" if ROS previously shutdown due to thermal event */
+        //TuiDisplayThermalScreen();
+
         /* Load the chosen operating system */
         LoadOperatingSystem(&OperatingSystemList[SelectedOperatingSystem]);
 
