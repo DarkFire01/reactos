@@ -11,8 +11,6 @@ list(APPEND SOURCE
     fsrtl.c
     io.c
     ob.c
-    po.c
-    pofx.c
     ke.c
     mm.c
     ${REACTOS_SOURCE_DIR}/sdk/lib/rtl/utf8.c)
