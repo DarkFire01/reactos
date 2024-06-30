@@ -1,10 +1,19 @@
+/*
+ * PROJECT:     ReactOS Kernel
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     Power Manager Framework API (PoFx) support routines
+ * COPYRIGHT:   Copyright 2023 George Bișoc <george.bisoc@reactos.org>
+ */
 
-#include <ntdef.h>
-#include <ntifs.h>
+/* INCLUDES *******************************************************************/
+
+#include <ntoskrnl.h>
+#define NDEBUG
 #include <debug.h>
 
+/* PUBLIC FUNCTIONS ***********************************************************/
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 NTSTATUS
 NTAPI
 PoFxRegisterDevice(
@@ -18,7 +27,7 @@ PoFxRegisterDevice(
     return STATUS_SUCCESS;
 }
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 VOID
 NTAPI
 PoFxUnregisterDevice(
@@ -27,7 +36,7 @@ PoFxUnregisterDevice(
     UNIMPLEMENTED;
 }
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 VOID
 NTAPI
 PoFxStartDevicePowerManagement(
@@ -36,7 +45,7 @@ PoFxStartDevicePowerManagement(
     UNIMPLEMENTED;
 }
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 VOID
 NTAPI
 PoFxActivateComponent(
@@ -47,7 +56,7 @@ PoFxActivateComponent(
     UNIMPLEMENTED;
 }
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 VOID
 NTAPI
 PoFxCompleteDevicePowerNotRequired(
@@ -56,7 +65,7 @@ PoFxCompleteDevicePowerNotRequired(
     UNIMPLEMENTED;
 }
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 VOID
 NTAPI
 PoFxIdleComponent(
@@ -67,7 +76,7 @@ PoFxIdleComponent(
     UNIMPLEMENTED;
 }
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 VOID
 NTAPI
 PoFxCompleteIdleCondition(
@@ -77,7 +86,7 @@ PoFxCompleteIdleCondition(
     UNIMPLEMENTED;
 }
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 VOID
 NTAPI
 PoFxCompleteIdleState(
@@ -87,7 +96,7 @@ PoFxCompleteIdleState(
     UNIMPLEMENTED;
 }
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 VOID
 NTAPI
 PoFxSetDeviceIdleTimeout(
@@ -97,7 +106,7 @@ PoFxSetDeviceIdleTimeout(
     UNIMPLEMENTED;
 }
 
-NTKRNLVISTAAPI
+NTKERNELAPI
 VOID
 NTAPI
 PoFxReportDevicePoweredOn(
