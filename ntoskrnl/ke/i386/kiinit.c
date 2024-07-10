@@ -537,6 +537,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
         /* FIXME */
         DPRINT1("Starting CPU#%u - you are brave\n", Number);
         KeLowerIrql(DISPATCH_LEVEL);
+        __debugbreak();
     }
 
     /* Setup the Idle Thread */

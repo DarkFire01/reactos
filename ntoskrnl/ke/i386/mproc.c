@@ -150,7 +150,6 @@ KeStartAllProcessors(VOID)
             YieldProcessor();
         }
 
-
        // KeIpiGenericCall(KiIpiSanityCheck, 0);
     }
 

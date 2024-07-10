@@ -7,6 +7,10 @@
 
 extern KSPIN_LOCK KiReverseStallIpiLock;
 
+BOOLEAN
+KiProcessorFreezeHandler(
+    _In_ PKTRAP_FRAME TrapFrame,
+    _In_ PKEXCEPTION_FRAME ExceptionFrame);
 VOID
 NTAPI
 KiIpiGenericCallTarget(_Inout_ PKIPI_CONTEXT PacketContext,
@@ -135,7 +139,11 @@ KiIpiSignalPacketDoneAndStall(IN PKIPI_CONTEXT PacketContext,
 }
 
 /* PUBLIC FUNCTIONS **********************************************************/
-
+VOID
+__cdecl
+KdpDprintf(
+    _In_ PCSTR Format,
+    ...);
 /*
  * @implemented
  */
@@ -161,7 +169,7 @@ KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame, IN PKEXCEPTION_FRAME ExceptionFra
     /* Freeze level! Trigger a FREEZE interrupt */
     if (InterlockedBitTestAndReset((PLONG)&Prcb->RequestSummary, IPI_FREEZE))
     {
-       // KiFreezeTargetExecution(TrapFrame, ExceptionFrame);
+          KiProcessorFreezeHandler( TrapFrame,  ExceptionFrame);
     }
 
 
