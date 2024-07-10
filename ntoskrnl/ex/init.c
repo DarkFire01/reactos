@@ -1562,8 +1562,8 @@ Phase1InitializationDiscard(IN PVOID Context)
 #ifdef CONFIG_SMP
     /* Start Application Processors */
     KeStartAllProcessors();
-
-   // KeSetAffinityProcess(&PsInitialSystemProcess->Pcb, KeActiveProcessors);
+   
+    KeSetAffinityProcess(&PsInitialSystemProcess->Pcb, KeActiveProcessors);
 #endif
 
     /* Initialize all processors */
@@ -1981,7 +1981,6 @@ Phase1InitializationDiscard(IN PVOID Context)
 
     /* Launch initial process */
     ProcessInfo = &InitBuffer->ProcessInfo;
-    __debugbreak();
     ExpLoadInitialProcess(InitBuffer, &ProcessParameters, &Environment);
 
     /* Wait 5 seconds for initial process to initialize */

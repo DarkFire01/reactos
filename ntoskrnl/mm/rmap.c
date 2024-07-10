@@ -446,7 +446,6 @@ MmDeleteRmap(PFN_NUMBER Page, PEPROCESS Process,
         previous_entry = current_entry;
         current_entry = current_entry->Next;
     }
-    KeBugCheck(MEMORY_MANAGEMENT);
 }
 
 /*

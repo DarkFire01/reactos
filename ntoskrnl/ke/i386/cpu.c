@@ -1031,10 +1031,10 @@ NTAPI
 KiRestoreFastSyscallReturnState(VOID)
 {
     /* Check if the CPU Supports fast system call */
-    if (KeFeatureBits & KF_FAST_SYSCALL)
+    if (1)
     {
         /* Check if it has been disabled */
-        if (KiFastSystemCallDisable)
+        if (0)
         {
             /* Disable fast system call */
             KeFeatureBits &= ~KF_FAST_SYSCALL;
@@ -1267,7 +1267,8 @@ KiFlushNPXState(IN PFLOATING_SAVE_AREA SaveArea)
         {
             /* Get the FX frame and store the state there */
             FxSaveArea = KiGetThreadNpxArea(NpxThread);
-            Ke386FxSave(FxSaveArea);
+            if ((PULONG)FxSaveArea < (PULONG)0xfffff0f0)
+                Ke386FxSave(FxSaveArea);
 
             /* NPX thread has lost its state */
             NpxThread->NpxState = NPX_STATE_NOT_LOADED;
