@@ -1979,6 +1979,7 @@ Phase1InitializationDiscard(IN PVOID Context)
     /* Allow strings to be displayed */
     InbvEnableDisplayString(TRUE);
 
+    KeSetAffinityProcess(&PsInitialSystemProcess->Pcb, 1);
     /* Launch initial process */
     ProcessInfo = &InitBuffer->ProcessInfo;
     ExpLoadInitialProcess(InitBuffer, &ProcessParameters, &Environment);
