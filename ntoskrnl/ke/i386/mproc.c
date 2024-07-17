@@ -78,6 +78,11 @@ KeStartAllProcessors(VOID)
                         &APInfo->Tss,
                         (PKTHREAD)&APInfo->Thread,
                         DPCStack);
+        
+        // Update the LOADER_PARAMETER_BLOCK structure for the new processor
+        KeLoaderBlock->KernelStack = (ULONG_PTR)KernelStack;
+        KeLoaderBlock->Prcb = (ULONG_PTR)&APInfo->Pcr.Prcb;
+        KeLoaderBlock->Thread = (ULONG_PTR)&APInfo->Pcr.Prcb->IdleThread;
 
         // Prepare descriptor tables
         KDESCRIPTOR bspGdt, bspIdt;
@@ -129,11 +134,6 @@ KeStartAllProcessors(VOID)
         PAP_SETUP_STACK ApStack = (PAP_SETUP_STACK)ProcessorState->ContextFrame.Esp;
         ApStack->KxLoaderBlock = KeLoaderBlock;
         ApStack->ReturnAddr = NULL;
-
-        // Update the LOADER_PARAMETER_BLOCK structure for the new processor
-        KeLoaderBlock->KernelStack = (ULONG_PTR)KernelStack;
-        KeLoaderBlock->Prcb = (ULONG_PTR)&APInfo->Pcr.Prcb;
-        KeLoaderBlock->Thread = (ULONG_PTR)&APInfo->Pcr.Prcb->IdleThread;
 
         // Start the CPU
         DPRINT("Attempting to Start a CPU with number: %u\n", ProcessorCount);

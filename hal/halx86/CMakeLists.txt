@@ -45,21 +45,19 @@ endfunction()
 if(ARCH STREQUAL "i386")
     add_subdirectory(minihal)
 
-    #include(hal.cmake)
     include(halmacpi.cmake)
-
+    include(hal.cmake)
     remove_definitions(-DSARCH_XBOX)
     remove_definitions(-DSARCH_PC98)
 
     # hal
-   # add_hal(hal SOURCES pic/halpic.rc COMPONENTS hal)
-   #add_hal(halacpi SOURCES acpi/halacpi.rc COMPONENTS generic acpi up pic)
-   #add_hal(halaacpi SOURCES apic/halaacpi.rc COMPONENTS generic acpi up apic)
    #add_hal(halapic SOURCES apic/halapic.rc COMPONENTS generic legacy up apic)
    #add_hal(halxbox SOURCES xbox/halxbox.rc COMPONENTS xbox up)
    #add_hal(halpc98 SOURCES pc98/halpc98.rc COMPONENTS pc98 up)
 
     add_hal(hal SOURCES smp/halmacpi.rc COMPONENTS halmacpi)
+   # add_hal(hal SOURCES apic/halaacpi.rc COMPONENTS hal)
+   
     #add_hal(halmp SOURCES mp/halmp.rc COMPONENTS generic legacy smp apic)
 
 elseif(ARCH STREQUAL "amd64")
