@@ -17,6 +17,10 @@ VOID
 NTAPI
 ApicInitializeLocalApic(ULONG Cpu);
 
+VOID
+NTAPI
+ApicInitializeIOApic(VOID);
+
 /* FUNCTIONS ****************************************************************/
 
 VOID
@@ -40,6 +44,10 @@ HalpInitProcessor(
 
     /* Initialize the timer */
     //ApicInitializeTimer(ProcessorNumber);
+    if (ProcessorNumber != 0)
+    {
+        ApicInitializeIOApic();
+    }
 }
 
 VOID
@@ -63,7 +71,11 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 VOID
 HalpInitPhase1(VOID)
 {
-
+    if (KeGetCurrentProcessorNumber() == 0)
+    {
+        /* Initialize DMA. NT does this in Phase 0 */
+        HalpInitDma();
+    }
 }
 
 /* EOF */

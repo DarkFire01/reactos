@@ -87,3 +87,8 @@ HalpSendSoftwareInterrupt(
     _In_ KIRQL Irql);
 
 #endif // _M_AMD64
+
+VOID
+FASTCALL
+HalpIpiInterruptHandler(
+        _In_ PKTRAP_FRAME TrapFrame);
