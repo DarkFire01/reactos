@@ -325,7 +325,7 @@ typedef struct _KPCR {
 
 /* NOTE: This macro is not exposed in the DDK/WDK for _M_IX86.
  * If it were, this would be its definition. */
-#if 0
+#if 1
 // #define KeGetPcr()      ((PKPCR)__readfsdword(FIELD_OFFSET(KPCR, SelfPcr)))
 FORCEINLINE
 PKPCR

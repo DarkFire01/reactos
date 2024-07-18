@@ -732,8 +732,20 @@ FORCEINLINE
 PFX_SAVE_AREA
 KiGetThreadNpxArea(IN PKTHREAD Thread)
 {
+    struct _AlignHack
+    {
+        UCHAR Hack[15];
+        FLOATING_SAVE_AREA UnalignedArea;
+    } FloatSaveBuffer;
     ASSERT((ULONG_PTR)Thread->InitialStack % 16 == 0);
-    return (PFX_SAVE_AREA)((ULONG_PTR)Thread->InitialStack - sizeof(FX_SAVE_AREA));
+    if (!Thread->InitialStack){
+        __debugbreak();
+        return (PFX_SAVE_AREA)((ULONG_PTR)&FloatSaveBuffer.UnalignedArea &~ 0xF);
+    }
+    else
+    {
+        return (PFX_SAVE_AREA)((ULONG_PTR)Thread->InitialStack - sizeof(FX_SAVE_AREA));
+    }
 }
 
 //

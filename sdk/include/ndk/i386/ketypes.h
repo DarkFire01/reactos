@@ -72,14 +72,8 @@ Author:
 //
 // KPCR Access for non-IA64 builds
 //
-#define K0IPCR                  ((ULONG_PTR)(KIP0PCRADDRESS))
-#define PCR                     ((KPCR *)K0IPCR)
-#if defined(CONFIG_SMP) || defined(NT_BUILD)
-//#undef  KeGetPcr
+#define PCR                     ((KPCR *)__readfsdword(FIELD_OFFSET(KPCR, SelfPcr)))
 #define KeGetPcr()              ((KPCR *)__readfsdword(FIELD_OFFSET(KPCR, SelfPcr)))
-#else
-#define KeGetPcr()              PCR
-#endif
 
 //
 // CPU Vendors

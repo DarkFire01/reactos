@@ -1563,7 +1563,7 @@ Phase1InitializationDiscard(IN PVOID Context)
     /* Start Application Processors */
     KeStartAllProcessors();
 
-    KeSetAffinityProcess(&PsInitialSystemProcess->Pcb, KeActiveProcessors);
+    //KeSetAffinityProcess(&PsInitialSystemProcess->Pcb, KeActiveProcessors);
 #endif
 
     /* Initialize all processors */
@@ -1979,7 +1979,6 @@ Phase1InitializationDiscard(IN PVOID Context)
     /* Allow strings to be displayed */
     InbvEnableDisplayString(TRUE);
 
-    KeSetAffinityProcess(&PsInitialSystemProcess->Pcb, 1);
     /* Launch initial process */
     ProcessInfo = &InitBuffer->ProcessInfo;
     ExpLoadInitialProcess(InitBuffer, &ProcessParameters, &Environment);
