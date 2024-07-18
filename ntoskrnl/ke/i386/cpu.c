@@ -1173,6 +1173,21 @@ KiSaveProcessorState(IN PKTRAP_FRAME TrapFrame,
     KiSaveProcessorControlState(&Prcb->ProcessorState);
 }
 
+VOID
+NTAPI
+KiRestoreProcessorState(IN PKTRAP_FRAME TrapFrame, 
+                        IN PKEXCEPTION_FRAME ExceptionFrame)
+{
+    PKPRCB Prcb = KeGetCurrentPrcb();
+    KeContextToTrapFrame(
+        &Prcb->ProcessorState.ContextFrame,
+        NULL,
+        TrapFrame,
+        Prcb->ProcessorState.ContextFrame.ContextFlags,
+        Prcb->ProcessorState.ContextFrame.SegCs & 1);
+    KiRestoreProcessorControlState(&Prcb->ProcessorState);
+}
+
 CODE_SEG("INIT")
 BOOLEAN
 NTAPI
