@@ -668,13 +668,13 @@ HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
 
     /* Raise to DISPATCH_LEVEL */
     ApicRaiseIrql(IPI_LEVEL);
-    
-    /* End the interrupt */
-    ApicSendEOI();
 
     _enable();
     KiIpiServiceRoutine(TrapFrame, NULL);
     _disable();
+    
+    /* End the interrupt */
+    ApicSendEOI();
 
     /* Restore the old IRQL */
     ApicLowerIrql(Irql);
