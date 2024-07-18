@@ -1642,9 +1642,6 @@ KeFlushEntireTb(IN BOOLEAN Invalid,
     {
         /* Sanity check */
         ASSERT(Prcb == KeGetCurrentPrcb());
-
-        /* FIXME: TODO */
-        ASSERTMSG("Not yet implemented\n", FALSE);
     }
 #endif
 
