@@ -1563,7 +1563,7 @@ Phase1InitializationDiscard(IN PVOID Context)
     /* Start Application Processors */
     KeStartAllProcessors();
 
-    KeSetAffinityProcess(&PsInitialSystemProcess->Pcb, KeActiveProcessors);
+    KeSetAffinityProcess(&PsInitialSystemProcess->Pcb, 1);
 #endif
 
     /* Initialize all processors */

@@ -461,8 +461,6 @@ CmpInitializeMachineDependentConfiguration(IN PLOADER_PARAMETER_BLOCK LoaderBloc
                 /* Close this new handle */
                 NtClose(FpuHandle);
 
-                /* Stay on this CPU only */
-                KeSetSystemAffinityThread(Prcb->SetMember);
                 if (!Prcb->CpuID)
                 {
                     /* Uh oh, no CPUID! Should not happen as we don't support 80386 and older 80486 */
@@ -494,9 +492,6 @@ CmpInitializeMachineDependentConfiguration(IN PLOADER_PARAMETER_BLOCK LoaderBloc
                         CpuString[47] = ANSI_NULL;
                     }
                 }
-
-                /* Go back to user affinity */
-                KeRevertToUserAffinityThread();
 
                 /* Check if we have a CPU Name */
                 if (PartialString)
