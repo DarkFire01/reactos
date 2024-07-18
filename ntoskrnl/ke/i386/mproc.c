@@ -9,7 +9,7 @@
 /* INCLUDES *****************************************************************/
 
 #include <ntoskrnl.h>
-#define NDEBUG
+//#define NDEBUG
 #include <debug.h>
 
 typedef struct _APINFO
@@ -141,6 +141,8 @@ KeStartAllProcessors(VOID)
             YieldProcessor();
         }
     }
+
+    __debugbreak();
 
     // The last CPU didn't start - clean the data
     ProcessorCount--;
