@@ -33,6 +33,90 @@ ULONGLONG BootCycles, BootCyclesEnd;
 
 CODE_SEG("INIT")
 VOID
+KiCalculateCpuFrequency(
+    IN PKPRCB Prcb)
+{
+    if (Prcb->FeatureBits & KF_RDTSC)
+    {
+        ULONG Sample = 0;
+        CPU_INFO CpuInfo;
+        KI_SAMPLE_MAP Samples[10];
+        PKI_SAMPLE_MAP CurrentSample = Samples;
+
+        DPRINT1("KiCalculateCpuFrequency: For CPU %u\n\n", KeGetCurrentProcessorNumber());
+        /* Start sampling loop */
+        for (;;)
+        {
+            /* Do a dummy CPUID to start the sample */
+            KiCpuId(&CpuInfo, 0);
+
+            /* Fill out the starting data */
+            CurrentSample->PerfStart = KeQueryPerformanceCounter(NULL);
+            CurrentSample->TSCStart = __rdtsc();
+            CurrentSample->PerfFreq.QuadPart = -50000;
+
+            /* Sleep for this sample */
+            KeStallExecutionProcessor(CurrentSample->PerfFreq.QuadPart * -1 / 10);
+
+            /* Do another dummy CPUID */
+            KiCpuId(&CpuInfo, 0);
+
+            /* Fill out the ending data */
+            CurrentSample->PerfEnd =
+                KeQueryPerformanceCounter(&CurrentSample->PerfFreq);
+            CurrentSample->TSCEnd = __rdtsc();
+
+            /* Calculate the differences */
+            CurrentSample->PerfDelta = CurrentSample->PerfEnd.QuadPart -
+                                       CurrentSample->PerfStart.QuadPart;
+            CurrentSample->TSCDelta = CurrentSample->TSCEnd -
+                                      CurrentSample->TSCStart;
+
+            /* Compute CPU Speed */
+            CurrentSample->MHz = (ULONG)((CurrentSample->TSCDelta *
+                                          CurrentSample->
+                                          PerfFreq.QuadPart + 500000) /
+                                         (CurrentSample->PerfDelta *
+                                          1000000));
+
+            /* Check if this isn't the first sample */
+            if (Sample)
+            {
+                /* Check if we got a good precision within 1MHz */
+                if ((CurrentSample->MHz == CurrentSample[-1].MHz) ||
+                    (CurrentSample->MHz == CurrentSample[-1].MHz + 1) ||
+                    (CurrentSample->MHz == CurrentSample[-1].MHz - 1))
+                {
+                    /* We did, stop sampling */
+                    break;
+                }
+            }
+
+            /* Move on */
+            CurrentSample++;
+            Sample++;
+
+            if (Sample == RTL_NUMBER_OF(Samples))
+            {
+                /* No luck. Average the samples and be done */
+                ULONG TotalMHz = 0;
+                while (Sample--)
+                {
+                    TotalMHz += Samples[Sample].MHz;
+                }
+                CurrentSample[-1].MHz = TotalMHz / RTL_NUMBER_OF(Samples);
+                DPRINT1("Sampling CPU frequency failed. Using average of %lu MHz\n", CurrentSample[-1].MHz);
+                break;
+            }
+        }
+
+        /* Save the CPU Speed */
+        Prcb->MHz = CurrentSample[-1].MHz;
+    }
+}
+
+CODE_SEG("INIT")
+VOID
 NTAPI
 KiInitMachineDependent(VOID)
 {
@@ -40,12 +124,9 @@ KiInitMachineDependent(VOID)
     BOOLEAN FbCaching = FALSE;
     NTSTATUS Status;
     ULONG ReturnLength;
-    ULONG i, Affinity, Sample = 0;
+    ULONG i, Affinity;
     PFX_SAVE_AREA FxSaveArea;
     ULONG MXCsrMask = 0xFFBF;
-    CPU_INFO CpuInfo;
-    KI_SAMPLE_MAP Samples[10];
-    PKI_SAMPLE_MAP CurrentSample = Samples;
     LARGE_IDENTITY_MAP IdentityMap;
 
     /* Check for large page support */
@@ -128,83 +209,7 @@ KiInitMachineDependent(VOID)
             i &= ~Affinity;
             KeSetSystemAffinityThread(Affinity);
 
-            /* Reset MHz to 0 for this CPU */
-            KeGetCurrentPrcb()->MHz = 0;
-
-            /* Check if we can use RDTSC */
-            if (KeFeatureBits & KF_RDTSC)
-            {
-                /* Start sampling loop */
-                for (;;)
-                {
-                    /* Do a dummy CPUID to start the sample */
-                    KiCpuId(&CpuInfo, 0);
-
-                    /* Fill out the starting data */
-                    CurrentSample->PerfStart = KeQueryPerformanceCounter(NULL);
-                    CurrentSample->TSCStart = __rdtsc();
-                    CurrentSample->PerfFreq.QuadPart = -50000;
-
-                    /* Sleep for this sample */
-                    KeDelayExecutionThread(KernelMode,
-                                           FALSE,
-                                           &CurrentSample->PerfFreq);
-
-                    /* Do another dummy CPUID */
-                    KiCpuId(&CpuInfo, 0);
-
-                    /* Fill out the ending data */
-                    CurrentSample->PerfEnd =
-                        KeQueryPerformanceCounter(&CurrentSample->PerfFreq);
-                    CurrentSample->TSCEnd = __rdtsc();
-
-                    /* Calculate the differences */
-                    CurrentSample->PerfDelta = CurrentSample->PerfEnd.QuadPart -
-                                               CurrentSample->PerfStart.QuadPart;
-                    CurrentSample->TSCDelta = CurrentSample->TSCEnd -
-                                              CurrentSample->TSCStart;
-
-                    /* Compute CPU Speed */
-                    CurrentSample->MHz = (ULONG)((CurrentSample->TSCDelta *
-                                                  CurrentSample->
-                                                  PerfFreq.QuadPart + 500000) /
-                                                 (CurrentSample->PerfDelta *
-                                                  1000000));
-
-                    /* Check if this isn't the first sample */
-                    if (Sample)
-                    {
-                        /* Check if we got a good precision within 1MHz */
-                        if ((CurrentSample->MHz == CurrentSample[-1].MHz) ||
-                            (CurrentSample->MHz == CurrentSample[-1].MHz + 1) ||
-                            (CurrentSample->MHz == CurrentSample[-1].MHz - 1))
-                        {
-                            /* We did, stop sampling */
-                            break;
-                        }
-                    }
-
-                    /* Move on */
-                    CurrentSample++;
-                    Sample++;
-
-                    if (Sample == RTL_NUMBER_OF(Samples))
-                    {
-                        /* No luck. Average the samples and be done */
-                        ULONG TotalMHz = 0;
-                        while (Sample--)
-                        {
-                            TotalMHz += Samples[Sample].MHz;
-                        }
-                        CurrentSample[-1].MHz = TotalMHz / RTL_NUMBER_OF(Samples);
-                        DPRINT1("Sampling CPU frequency failed. Using average of %lu MHz\n", CurrentSample[-1].MHz);
-                        break;
-                    }
-                }
-
-                /* Save the CPU Speed */
-                KeGetCurrentPrcb()->MHz = CurrentSample[-1].MHz;
-            }
+            KiCalculateCpuFrequency(KeGetCurrentPrcb());
 
             /* Check if we have MTRR */
             if (KeFeatureBits & KF_MTRR)
@@ -763,14 +768,14 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     /* Initialize the machine type */
     KiInitializeMachineType();
 
-    /* Skip initial setup if this isn't the Boot CPU */
-    if (Cpu) goto AppCpuInit;
-
     /* Get GDT, IDT, PCR and TSS pointers */
     KiGetMachineBootPointers(&Gdt, &Idt, &Pcr, &Tss);
 
     /* Setup the TSS descriptors and entries */
     Ki386InitializeTss(Tss, Idt, Gdt);
+
+    /* Skip initial setup if this isn't the Boot CPU */
+    if (Cpu) goto AppCpuInit;
 
     /* Initialize the PCR */
     RtlZeroMemory(Pcr, PAGE_SIZE);
@@ -832,7 +837,7 @@ AppCpuInit:
     InterlockedAnd((PLONG)&KiFreezeExecutionLock, 0);
 
     /* Set active processors */
-    KeActiveProcessors |= __readfsdword(KPCR_SET_MEMBER);
+    KeActiveProcessors |= 1ULL << Cpu;
     KeNumberProcessors++;
 
     KiVerifyCpuFeatures(KeGetCurrentPrcb());
