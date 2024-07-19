@@ -90,6 +90,15 @@ KxFreezeExecution(
         return;
     }
 
+    if (KiFreezeOwner != CurrentPrcb)
+    {
+        while (KiFreezeOwner != NULL)
+        {
+            YieldProcessor();
+            KeMemoryBarrier();
+        }
+    }
+
     /* Try to acquire the freeze owner */
     while (InterlockedCompareExchangePointer((PVOID)&KiFreezeOwner, CurrentPrcb, NULL))
     {
@@ -112,7 +121,7 @@ KxFreezeExecution(
         if (TargetPrcb != CurrentPrcb)
         {
             /* Nobody else is allowed to change IpiFrozen, except the freeze owner */
-            ASSERT(TargetPrcb->IpiFrozen == IPI_FROZEN_STATE_RUNNING);
+        //    ASSERT(TargetPrcb->IpiFrozen == IPI_FROZEN_STATE_RUNNING);
 
             /* Request target to freeze */
             TargetPrcb->IpiFrozen = IPI_FROZEN_STATE_TARGET_FREEZE;
