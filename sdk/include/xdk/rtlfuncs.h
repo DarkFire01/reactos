@@ -110,14 +110,7 @@ RemoveEntryList(
 
   OldFlink = Entry->Flink;
   OldBlink = Entry->Blink;
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS)
-#ifdef EXTRA_KERNEL_LIST_ENTRY_CHECKS
-  if (OldFlink == Entry || OldBlink == Entry)
-    FatalListEntryError(OldBlink, Entry, OldFlink);
-#endif
-  if (OldFlink->Blink != Entry || OldBlink->Flink != Entry)
-    FatalListEntryError(OldBlink, Entry, OldFlink);
-#endif
+
   OldFlink->Blink = OldBlink;
   OldBlink->Flink = OldFlink;
   return (BOOLEAN)(OldFlink == OldBlink);
