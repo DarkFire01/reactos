@@ -71,7 +71,7 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 VOID
 HalpInitPhase1(VOID)
 {
-    
+
 }
 
 /* EOF */
