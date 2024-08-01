@@ -5,3 +5,5 @@ if((ARCH STREQUAL "i386") OR (ARCH STREQUAL "amd64"))
 elseif(ARCH STREQUAL "arm")
     add_subdirectory(halarm)
 endif()
+
+add_subdirectory(hal_new)

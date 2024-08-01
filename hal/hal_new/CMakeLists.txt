@@ -12,7 +12,7 @@ function(add_hal _halname)
     cmake_parse_arguments(_haldata "" "" "SOURCES;COMPONENTS" ${ARGN})
 
     # Handle the spec file for the dll name
-    spec2def(${_halname}.dll ../hal.spec ADD_IMPORTLIB)
+    spec2def(${_halname}.dll hal_new.spec ADD_IMPORTLIB)
 
     # Create the actual target
     foreach(_component ${_haldata_COMPONENTS})
@@ -20,12 +20,12 @@ function(add_hal _halname)
     endforeach()
     add_library(${_halname} MODULE
         ${_haldata_SOURCES}
-        ${CMAKE_CURRENT_BINARY_DIR}/hal.def)
+        ${CMAKE_CURRENT_BINARY_DIR}/halmacpi.def)
 
     if(${_halname} STREQUAL "hal")
         target_link_libraries(${_halname} libcntpr arbiter fast486)
     else()
-        target_link_libraries(${_halname} libcntpr fast486)
+        target_link_libraries(${_halname} libcntpr arbiter fast486)
     endif()
 
     add_importlibs(${_halname} ntoskrnl)
@@ -41,13 +41,23 @@ function(add_hal _halname)
 endfunction()
 
 # The components
+include(generic.cmake)
+include(up.cmake)
+include(efi.cmake)
+include(acpi.cmake)
+
+include(apic.cmake)
+include(x86.cmake)
+
 include(halmacpi.cmake)
 include(halaacpi.cmake)
 
 if(ARCH STREQUAL "i386")
-    add_hal(halaacpi SOURCES apic/halaacpi.rc COMPONENTS generic acpi up apic)
-    add_hal(halmacpi SOURCES smp/halmacpi.rc COMPONENTS halmacpi)
+    add_hal(halaacpi SOURCES halaacpi.rc COMPONENTS halaacpi)
+    #add_hal(halmacpi SOURCES halmacpi.rc COMPONENTS halmacpi)
 elseif(ARCH STREQUAL "amd64")
     add_hal(hal SOURCES ${HAL_SOURCE} COMPONENTS halaacpi)
-    add_hal(halmp SOURCES ${HAL_SOURCE} smp/halmacpi.rc COMPONENTS halmacpi)
+   # add_hal(halmp SOURCES ${HAL_SOURCE} COMPONENTS halmacpi)
+elseif(ARCH STREQUAL "arm64")
+
 endif()

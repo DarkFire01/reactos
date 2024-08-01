@@ -42,10 +42,7 @@ endfunction()
 
 # The components
 include(generic.cmake)
-include(acpi.cmake)
-include(apic.cmake)
 include(up.cmake)
-include(smp.cmake)
 
 if(ARCH STREQUAL "i386")
     include(pcidata.cmake)
@@ -60,19 +57,7 @@ if(ARCH STREQUAL "i386")
 
     # hal
     add_hal(hal SOURCES pic/halpic.rc COMPONENTS generic legacy up pic)
-    add_hal(halacpi SOURCES acpi/halacpi.rc COMPONENTS generic acpi up pic)
-    add_hal(halaacpi SOURCES apic/halaacpi.rc COMPONENTS generic acpi up apic)
-    add_hal(halapic SOURCES apic/halapic.rc COMPONENTS generic legacy up apic)
     add_hal(halxbox SOURCES xbox/halxbox.rc COMPONENTS xbox up)
     add_hal(halpc98 SOURCES pc98/halpc98.rc COMPONENTS pc98 up)
-
-    include(halmacpi.cmake)
-    add_hal(halmacpi SOURCES smp/halmacpi.rc COMPONENTS halmacpi)
-    #add_hal(halmp SOURCES mp/halmp.rc COMPONENTS generic legacy smp apic)
-
 elseif(ARCH STREQUAL "amd64")
-
-    add_hal(hal SOURCES ${HAL_SOURCE} COMPONENTS generic acpi up apic)
-    add_hal(halmp SOURCES ${HAL_SOURCE} COMPONENTS generic acpi smp apic)
-
 endif()
