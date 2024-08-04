@@ -13,7 +13,12 @@
 #include <debug.h>
 
 /* FUNCTIONS ****************************************************************/
-
+VOID
+NTAPI
+HalArchDetectInterrupts(PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+    
+}
 VOID
 NTAPI
 HalpInitProcessor(

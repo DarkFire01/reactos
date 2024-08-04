@@ -26,6 +26,12 @@ HaliHaltSystem(VOID)
 }
 
 /* FUNCTIONS *****************************************************************/
+VOID
+NTAPI
+HalArchDetectInterrupts(PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+
+}
 
 /*
  * @implemented

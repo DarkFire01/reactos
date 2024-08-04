@@ -226,7 +226,7 @@ HalGetBusDataByOffset(IN BUS_DATA_TYPE BusDataType,
     /* Invalid bus */
     return 0;
 }
-
+extern ULONG HalpPicVectorRedirect[];
 /*
  * @implemented
  */
