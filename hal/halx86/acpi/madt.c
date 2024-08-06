@@ -43,6 +43,62 @@ HALP_APIC_INFO_TABLE HalpApicInfoTable;
 
 static PROCESSOR_IDENTITY HalpStaticProcessorIdentity[MAXIMUM_PROCESSORS];
 PPROCESSOR_IDENTITY HalpProcessorIdentity; 
+#define MAX_IOAPICS      64
+#define MAX_CPUS         32
+typedef union _IO_APIC_VERSION_REGISTER
+{
+    struct
+    {
+        UCHAR ApicVersion;
+        UCHAR Reserved0;
+        UCHAR MaxRedirectionEntry;
+        UCHAR Reserved2;
+    };
+    ULONG AsULONG;
+
+} IO_APIC_VERSION_REGISTER, *PIO_APIC_VERSION_REGISTER;
+typedef struct _IO_APIC_REGISTERS
+{
+    volatile ULONG IoRegisterSelect;
+    volatile ULONG Reserved[3];
+    volatile ULONG IoWindow;
+
+} IO_APIC_REGISTERS, *PIO_APIC_REGISTERS;
+IO_APIC_VERSION_REGISTER HalpIOApicVersion[MAX_IOAPICS];
+UCHAR HalpIoApicId[MAX_IOAPICS] = {0};
+
+#define IOAPIC_ID     0x00
+#define IOAPIC_VER    0x01
+#define IOAPIC_ARB    0x02
+#define IOAPIC_REDTBL 0x10
+
+
+
+
+typedef union _APIC_INTI_INFO
+{
+    struct
+    {
+        UCHAR Enabled      :1;
+        UCHAR Type         :3;
+        UCHAR TriggerMode  :2;
+        UCHAR Polarity     :2;
+        UCHAR Destinations;
+        USHORT Entry;
+    };
+    ULONG AsULONG;
+
+} APIC_INTI_INFO, *PAPIC_INTI_INFO;
+#define MAX_INTI         (32 * MAX_IOAPICS)
+
+#define HAL_PIC_VECTORS  16
+
+extern APIC_INTI_INFO HalpIntiInfo[MAX_INTI];
+//extern USHORT HalpMaxApicInti[MAX_IOAPICS];
+
+/* ACPI */
+extern ULONG HalpPicVectorRedirect[HAL_PIC_VECTORS];
+extern ULONG HalpPicVectorFlags[HAL_PIC_VECTORS];
 
 #if 0
 extern ULONG HalpPicVectorRedirect[16];
@@ -59,6 +115,7 @@ HalpParseApicTables(
     ACPI_TABLE_MADT *MadtTable;
     ACPI_SUBTABLE_HEADER *AcpiHeader;
     ULONG_PTR TableEnd;
+           ULONG Index = 0;
     HalpProcessorIdentity = HalpStaticProcessorIdentity;
     MadtTable = HalAcpiGetTable(LoaderBlock, APIC_SIGNATURE);
     if (!MadtTable)
@@ -165,7 +222,7 @@ HalpParseApicTables(
             case ACPI_MADT_TYPE_IO_APIC:
             {
                 ACPI_MADT_IO_APIC *IoApic = (ACPI_MADT_IO_APIC *)AcpiHeader;
-
+        
                 if (AcpiHeader->Length != sizeof(*IoApic))
                 {
                     DPRINT01("Type/Length mismatch: %p, %u\n", AcpiHeader, AcpiHeader->Length);
@@ -181,13 +238,32 @@ HalpParseApicTables(
                     DPRINT01("Id duplication: %p, %u\n", IoApic, IoApic->Id);
                     return;
                 }
+        
 
                 // Note: Address and GlobalIrqBase are not validated in any way (yet).
-                HalpApicInfoTable.IoApicPA[IoApic->Id] = IoApic->Address;
-                HalpApicInfoTable.IoApicIrqBase[IoApic->Id] = IoApic->GlobalIrqBase;
+                HalpApicInfoTable.IoApicPA[Index] = IoApic->Address;
+                HalpApicInfoTable.IoApicIrqBase[Index] = IoApic->GlobalIrqBase;
 
                 HalpApicInfoTable.IOAPICCount++;
 
+                PHYSICAL_ADDRESS PhysicalAddr;
+                PIO_APIC_REGISTERS IoApicRegs;
+                  IO_APIC_VERSION_REGISTER IoApicVersion;
+                // MAP IOAPIC
+                
+                PhysicalAddr.QuadPart = HalpApicInfoTable.IoApicPA[Index];
+                HalpApicInfoTable.IoApicVA[Index] = (ULONG)HalpMapPhysicalMemory64(PhysicalAddr, 1);
+                IoApicRegs = (PIO_APIC_REGISTERS)HalpApicInfoTable.IoApicVA[Index];
+    
+                IoApicRegs->IoRegisterSelect = IOAPIC_VER;
+                IoApicRegs->IoWindow = 0;
+
+                IoApicRegs->IoRegisterSelect = IOAPIC_VER;
+                IoApicVersion.AsULONG = IoApicRegs->IoWindow;
+                HalpIOApicVersion[Index] = IoApicVersion;
+
+               // HalpMaxApicInti[Index] = (IoApicVersion.MaxRedirectionEntry + 1);
+                Index++;
                 break;
             }
             case ACPI_MADT_TYPE_INTERRUPT_OVERRIDE:
@@ -210,10 +286,7 @@ HalpParseApicTables(
                     DPRINT01("Invalid Bus: %p, %u\n", InterruptOverride, InterruptOverride->Bus);
                     return;
                 }
-
-#if 1
-                // TODO: Implement it.
-#else // TODO: Is that correct?
+                
                 if (InterruptOverride->SourceIrq > _countof(HalpPicVectorRedirect))
                 {
                     DPRINT01("Invalid SourceIrq: %p, %u\n",
@@ -222,9 +295,10 @@ HalpParseApicTables(
                 }
 
                 // Note: GlobalIrq is not validated in any way (yet).
-                HalpPicVectorRedirect[InterruptOverride->SourceIrq] = InterruptOverride->GlobalIrq;
+                ULONG Idx = InterruptOverride->SourceIrq;
+                HalpPicVectorRedirect[Idx] = InterruptOverride->GlobalIrq;
+                HalpPicVectorFlags[Idx] = InterruptOverride->IntiFlags;
                 // TODO: What about 'InterruptOverride->IntiFlags'?
-#endif
 
                 break;
             }

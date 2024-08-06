@@ -37,8 +37,8 @@ LIST_ENTRY HalpAcpiTableMatchList;
 
 ULONG HalpInvalidAcpiTable;
 #define HAL_PIC_VECTORS  16
-ULONG HalpPicVectorRedirect[HAL_PIC_VECTORS] = {0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15};
-
+ULONG HalpPicVectorRedirect[HAL_PIC_VECTORS] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+ULONG HalpPicVectorFlags[HAL_PIC_VECTORS] = {0};
 /* This determines the HAL type */
 BOOLEAN HalDisableFirmwareMapper = TRUE;
 PWCHAR HalHardwareIdString = L"acpipic_up";

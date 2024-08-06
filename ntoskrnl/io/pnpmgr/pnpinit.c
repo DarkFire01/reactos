@@ -303,8 +303,8 @@ IopInitializePlugPlayServices(VOID)
     PnpDefaultInterfaceType = IopDetermineDefaultInterfaceType();
 
     /* Initialize arbiters */
-    Status = IopInitializeArbiters();
-    if (!NT_SUCCESS(Status)) return Status;
+ //  Status = IopInitializeArbiters();
+ //  if (!NT_SUCCESS(Status)) return Status;
 
     /* Setup the group cache */
     Status = PiInitCacheGroupInformation();

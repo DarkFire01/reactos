@@ -1563,7 +1563,7 @@ Phase1InitializationDiscard(IN PVOID Context)
     /* Start Application Processors */
     KeStartAllProcessors();
 
-    //KeSetAffinityProcess(&PsInitialSystemProcess->Pcb, 1);
+    KeSetAffinityProcess(&PsInitialSystemProcess->Pcb, 1);
 #endif
 
     /* Initialize all processors */
@@ -1626,7 +1626,7 @@ Phase1InitializationDiscard(IN PVOID Context)
 
     /* Initialize Basic System Objects and Worker Threads */
     if (!ExInitSystem()) KeBugCheckEx(PHASE1_INITIALIZATION_FAILED, 0, 0, 1, 0);
-
+    __debugbreak();
     /* Initialize the later stages of the kernel */
     if (!KeInitSystem()) KeBugCheckEx(PHASE1_INITIALIZATION_FAILED, 0, 0, 2, 0);
 
