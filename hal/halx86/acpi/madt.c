@@ -72,9 +72,6 @@ UCHAR HalpIoApicId[MAX_IOAPICS] = {0};
 #define IOAPIC_ARB    0x02
 #define IOAPIC_REDTBL 0x10
 
-
-
-
 typedef union _APIC_INTI_INFO
 {
     struct
