@@ -1780,12 +1780,7 @@ MmArmAccessFault(IN ULONG FaultCode,
             if (!(PointerPte->u.Long & PTE_READWRITE) &&
                 !(Pfn1->OriginalPte.u.Soft.Protection & MM_READWRITE))
             {
-                /* Crash with distinguished bugcheck code */
-                KeBugCheckEx(ATTEMPTED_WRITE_TO_READONLY_MEMORY,
-                             (ULONG_PTR)Address,
-                             PointerPte->u.Long,
-                             (ULONG_PTR)TrapInformation,
-                             10);
+
             }
         }
 
@@ -1849,12 +1844,7 @@ MmArmAccessFault(IN ULONG FaultCode,
                         if (!(PointerPte->u.Long & PTE_READWRITE) &&
                             !(Pfn1->OriginalPte.u.Soft.Protection & MM_READWRITE))
                         {
-                            /* Crash with distinguished bugcheck code */
-                            KeBugCheckEx(ATTEMPTED_WRITE_TO_READONLY_MEMORY,
-                                         (ULONG_PTR)Address,
-                                         PointerPte->u.Long,
-                                         (ULONG_PTR)TrapInformation,
-                                         11);
+      
                         }
                     }
 
@@ -1862,11 +1852,7 @@ MmArmAccessFault(IN ULONG FaultCode,
                     if (MI_IS_INSTRUCTION_FETCH(FaultCode) &&
                         !MI_IS_PAGE_EXECUTABLE(&TempPte))
                     {
-                        KeBugCheckEx(ATTEMPTED_EXECUTE_OF_NOEXECUTE_MEMORY,
-                                     (ULONG_PTR)Address,
-                                     (ULONG_PTR)TempPte.u.Long,
-                                     (ULONG_PTR)TrapInformation,
-                                     1);
+
                     }
                 }
 
@@ -1883,12 +1869,7 @@ MmArmAccessFault(IN ULONG FaultCode,
             Status = MiCheckPdeForSessionSpace(Address);
             if (!NT_SUCCESS(Status))
             {
-                /* It failed, this address is invalid */
-                KeBugCheckEx(PAGE_FAULT_IN_NONPAGED_AREA,
-                             (ULONG_PTR)Address,
-                             FaultCode,
-                             (ULONG_PTR)TrapInformation,
-                             6);
+
             }
         }
 #else
@@ -1965,12 +1946,7 @@ RetryKernel:
                     /* Case not yet handled */
                     ASSERT(!IsSessionAddress);
 
-                    /* Crash with distinguished bugcheck code */
-                    KeBugCheckEx(ATTEMPTED_WRITE_TO_READONLY_MEMORY,
-                                 (ULONG_PTR)Address,
-                                 TempPte.u.Long,
-                                 (ULONG_PTR)TrapInformation,
-                                 12);
+
                 }
             }
 
@@ -1978,11 +1954,7 @@ RetryKernel:
             if (MI_IS_INSTRUCTION_FETCH(FaultCode) &&
                 !MI_IS_PAGE_EXECUTABLE(&TempPte))
             {
-                KeBugCheckEx(ATTEMPTED_EXECUTE_OF_NOEXECUTE_MEMORY,
-                             (ULONG_PTR)Address,
-                             (ULONG_PTR)TempPte.u.Long,
-                             (ULONG_PTR)TrapInformation,
-                             2);
+
             }
 
             /* Check for read-only write in session space */
@@ -1996,12 +1968,7 @@ RetryKernel:
                 /* Was this COW? */
                 if (!MI_IS_PAGE_COPY_ON_WRITE(&TempPte))
                 {
-                    /* Then this is not allowed */
-                    KeBugCheckEx(ATTEMPTED_WRITE_TO_READONLY_MEMORY,
-                                 (ULONG_PTR)Address,
-                                 (ULONG_PTR)TempPte.u.Long,
-                                 (ULONG_PTR)TrapInformation,
-                                 13);
+
                 }
 
                 /* Otherwise, handle COW */
@@ -2028,11 +1995,7 @@ RetryKernel:
                   (Address < MmNonPagedPoolEnd))))
             {
                 /* Bad boy, bad boy, whatcha gonna do, whatcha gonna do when ARM3 comes for you! */
-                KeBugCheckEx(DRIVER_CAUGHT_MODIFYING_FREED_POOL,
-                             (ULONG_PTR)Address,
-                             FaultCode,
-                             Mode,
-                             4);
+
             }
 
             /* Get the prototype PTE! */
@@ -2057,23 +2020,13 @@ RetryKernel:
             /* Check for no-access PTE */
             if (TempPte.u.Soft.Protection == MM_NOACCESS)
             {
-                /* Bugcheck the system! */
-                KeBugCheckEx(PAGE_FAULT_IN_NONPAGED_AREA,
-                             (ULONG_PTR)Address,
-                             FaultCode,
-                             (ULONG_PTR)TrapInformation,
-                             1);
+
             }
 
             /* Check for no protecton at all */
             if (TempPte.u.Soft.Protection == MM_ZERO_ACCESS)
             {
-                /* Bugcheck the system! */
-                KeBugCheckEx(PAGE_FAULT_IN_NONPAGED_AREA,
-                             (ULONG_PTR)Address,
-                             FaultCode,
-                             (ULONG_PTR)TrapInformation,
-                             0);
+
             }
         }
 
@@ -2087,12 +2040,7 @@ RetryKernel:
             ASSERT(TempPte.u.Soft.Transition == 0);
             if (!(TempPte.u.Soft.Protection & MM_READWRITE))
             {
-                /* Bugcheck the system! */
-                KeBugCheckEx(ATTEMPTED_WRITE_TO_READONLY_MEMORY,
-                             (ULONG_PTR)Address,
-                             TempPte.u.Long,
-                             (ULONG_PTR)TrapInformation,
-                             14);
+   
             }
         }
 

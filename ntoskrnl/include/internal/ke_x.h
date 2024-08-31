@@ -1158,7 +1158,7 @@ KxSetTimerForThreadWait(IN PKTIMER Timer,
     Swappable = KiCheckThreadStackSwap(Thread, WaitMode);                   \
                                                                             \
     /* Set the wait time */                                                 \
-    Thread->WaitTime = KeTickCount.LowPart;
+    Thread->WaitTime = 0;
 
 #define KxSingleThreadWait()                                                \
     /* Setup the Wait Block */                                              \

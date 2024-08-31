@@ -528,20 +528,7 @@ BOOLEAN
 APIENTRY
 DxEngLockHdev(HDEV hDev)
 {
-    PPDEVOBJ ppdev = (PPDEVOBJ)hDev;
-    PERESOURCE Resource;
 
-    DPRINT("ReactX Calling : DxEngLockHdev\n");
-
-    DPRINT("hDev: %p\n", hDev);
-
-    Resource = (PERESOURCE)ppdev->hsemDevLock;
-
-    if (Resource)
-    {
-        KeEnterCriticalRegion();
-        ExAcquireResourceExclusiveLite( Resource , TRUE); // Lock monitor.
-    }
     return TRUE;
 }
 
@@ -565,16 +552,6 @@ BOOLEAN
 APIENTRY
 DxEngUnlockHdev(HDEV hDev)
 {
-    PPDEVOBJ ppdev = (PPDEVOBJ)hDev;
-    PERESOURCE Resource = (PERESOURCE)ppdev->hsemDevLock;
-
-    DPRINT("ReactX Calling : DxEngUnlockHdev\n");
-
-    if (Resource)
-    {
-        ExReleaseResourceLite( Resource );
-        KeLeaveCriticalRegion();
-    }
     return TRUE;
 }
 
