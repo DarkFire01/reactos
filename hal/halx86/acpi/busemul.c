@@ -263,7 +263,7 @@ HalGetInterruptVector(IN INTERFACE_TYPE InterfaceType,
         Level = BusInterruptLevel;
     }
 
-    if (Level > 0x1F || Vector > 0x1F)
+    if (Level >= 0x17 || Vector >= 0x17)
     {
 
         //TODO: This is a hack, we have memory corruption due to Level and vector not having a override

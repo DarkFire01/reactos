@@ -229,7 +229,7 @@ DetectPci(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
     PCONFIGURATION_COMPONENT_DATA BusKey;
     ULONG i;
 
-PcFindPciBios(&BusData);
+        PcFindPciBios(&BusData);
      /* Set 'Configuration Data' value */
         Size = FIELD_OFFSET(CM_PARTIAL_RESOURCE_LIST, PartialDescriptors);
         PartialResourceList = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
@@ -257,7 +257,7 @@ PcFindPciBios(&BusData);
         /* Increment bus number */
         (*BusNumber)++;
 
-       // DetectPciIrqRoutingTable(BiosKey);
+        DetectPciIrqRoutingTable(BiosKey);
 
         /* Report PCI buses */
         for (i = 0; i < (ULONG)BusData.NoBuses; i++)
@@ -1111,9 +1111,9 @@ UefiHwDetect(
     DetectAcpiBios(SystemKey, &BusNumber);
     DetectInternal(SystemKey, &BusNumber);
 
-     DetectPci(SystemKey, &BusNumber);
+    // DetectPci(SystemKey, &BusNumber);
    // DetectAcpiBios(SystemKey, &BusNumber);
-    DetectIsaBios(SystemKey, &BusNumber);
+  //  DetectIsaBios(SystemKey, &BusNumber);
     TRACE("DetectHardware() Done\n");
     return SystemKey;
 }

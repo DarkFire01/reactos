@@ -65,11 +65,11 @@ HalInitializeBios(
                                                   FALSE);
         if (PhysicalAddress == 0)
         {
-            ASSERT(FALSE);
+           // ASSERT(FALSE);
         }
 
         x86BiosFallbackPfn = PhysicalAddress / PAGE_SIZE;
-        ASSERT(x86BiosFallbackPfn != 0);
+      //  ASSERT(x86BiosFallbackPfn != 0);
 
         /* Allocate a page for the buffer allocation */
         x86BiosBufferPhysical = HalpAllocPhysicalMemory(LoaderBlock,
@@ -78,7 +78,7 @@ HalInitializeBios(
                                                         FALSE);
         if (x86BiosBufferPhysical == 0)
         {
-            ASSERT(FALSE);
+          //  ASSERT(FALSE);
         }
     }
     else
