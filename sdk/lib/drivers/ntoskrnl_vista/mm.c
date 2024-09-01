@@ -47,7 +47,7 @@ MmAllocateContiguousNodeMemory(
         case PAGE_WRITECOMBINE:
             CacheType = MmWriteCombined;
             break;
-        case NULL:
+        case 0:
             CacheType = 0;
             break;
         default:

@@ -21,4 +21,4 @@ target_link_libraries(usbaudio
 set_module_type(usbaudio kernelmodedriver)
 add_importlibs(usbaudio ntoskrnl hal usbd ks)
 
-add_cd_file(TARGET usbaudio DESTINATION reactos/system32/drivers NO_CAB FOR all)
+#add_cd_file(TARGET usbaudio DESTINATION reactos/system32/drivers NO_CAB FOR all)

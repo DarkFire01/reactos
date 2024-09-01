@@ -78,6 +78,16 @@ elseif(ARCH STREQUAL "amd64")
         file(GLOB_RECURSE EXTRA_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/x64/drivers/ ${CMAKE_CURRENT_SOURCE_DIR}/x64/drivers/*)
         foreach(item ${EXTRA_FILES})
             add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/x64/drivers/${item} DESTINATION reactos/system32/drivers NO_CAB NAME_ON_CD ${item} FOR all)
-        endforeach(item)
-    endif()
-endif()
+        endforeach(item)#
+    endif()#
+endif()##
+#
+
+
+## Slipstreaming drivers
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/system32/)
+    file(GLOB_RECURSE EXTRA_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/system32/ ${CMAKE_CURRENT_SOURCE_DIR}/system32/*)
+    foreach(item ${EXTRA_FILES})
+        add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/system32/${item} DESTINATION reactos/system32 NAME_ON_CD ${item} FOR all)
+    endforeach(item)
+endif()####

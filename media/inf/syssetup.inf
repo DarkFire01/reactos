@@ -26,6 +26,11 @@ scsi.inf
 unknown.inf
 usbport.inf
 volume.inf
+sdbus.inf
+sdstor.inf
+usbhub3.inf
+usbxhci.inf
+uaspstor.inf
 audio.inf
 ks.inf
 c_image.inf

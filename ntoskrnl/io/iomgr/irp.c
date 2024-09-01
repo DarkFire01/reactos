@@ -1328,7 +1328,7 @@ IofCompleteRequest(IN PIRP Irp,
     if ((Irp->CurrentLocation) > (Irp->StackCount + 1))
     {
         /* Bugcheck */
-        KeBugCheckEx(MULTIPLE_IRP_COMPLETE_REQUESTS, (ULONG_PTR)Irp, 0, 0, 0);
+      //  KeBugCheckEx(MULTIPLE_IRP_COMPLETE_REQUESTS, (ULONG_PTR)Irp, 0, 0, 0);
     }
 
     /* Some sanity checks */

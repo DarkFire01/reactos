@@ -14,6 +14,33 @@
 
 /* FUNCTIONS *****************************************************************/
 
+
+NTSTATUS
+NTAPI
+ExSetFirmwareEnvironmentVariable(
+  _In_ PUNICODE_STRING VariableName,
+  _In_ LPGUID          VendorGuid,
+  _In_ PVOID           Value,
+  _In_ ULONG           ValueLength,
+  _In_ ULONG           Attributes
+)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+NTAPI
+ExGetFirmwareEnvironmentVariable(
+  _In_    PUNICODE_STRING VariableName,
+  _In_    LPGUID          VendorGuid,
+  _Out_   PVOID           Value,
+  _Inout_ PULONG          ValueLength,
+  _Out_   PULONG          Attributes
+)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
 NTSTATUS
 NTAPI
 NtAddBootEntry(IN PBOOT_ENTRY Entry,

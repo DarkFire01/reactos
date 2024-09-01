@@ -69,7 +69,7 @@
 @ stub -version=0x600+ EtwEnumerateProcessRegGuids
 @ stdcall -stub -version=0x502 EtwEnumerateTraceGuids(ptr long ptr)
 @ stub -version=0x600+ EtwEventActivityIdControl
-@ stdcall -version=0x600+ EtwEventEnabled(ptr ptr)
+@ stdcall -version=0x600+ EtwEventEnabled(int64 ptr)
 @ stub -version=0x600+ EtwEventProviderEnabled
 @ stub -version=0x600+ EtwEventRegister
 @ stub -version=0x600+ EtwEventUnregister
@@ -627,7 +627,7 @@
 @ stdcall RtlAddAuditAccessObjectAce(ptr long long long ptr ptr ptr long long)
 @ stdcall -stub RtlAddCompoundAce(ptr long long long ptr ptr)
 @ stdcall -arch=x86_64 RtlAddFunctionTable(ptr long long)
-@ stub -version=0x600+ RtlAddMandatoryAce
+@ stdcall -version=0x600+ RtlAddMandatoryAce(ptr long long long long ptr)
 @ stdcall RtlAddRefActivationContext(ptr)
 @ stdcall RtlAddRefMemoryStream(ptr)
 @ stub -version=0x600+ RtlAddSIDToBoundaryDescriptor
@@ -883,7 +883,7 @@
 @ stdcall RtlGetFullPathName_UstrEx(ptr ptr ptr ptr ptr ptr ptr ptr)
 @ stdcall -arch=x86_64 RtlGetFunctionTableListHead()
 @ stdcall RtlGetGroupSecurityDescriptor(ptr ptr ptr)
-@ stub -version=0x600+ RtlGetIntegerAtom
+@ stdcall -version=0x600+ RtlGetIntegerAtom(wstr long)
 @ stdcall RtlGetLastNtStatus()
 @ stdcall RtlGetLastWin32Error()
 @ stdcall RtlGetLengthWithoutLastFullDosOrNtPathElement(long ptr ptr)

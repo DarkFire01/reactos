@@ -31,6 +31,9 @@ list(APPEND INF_FILES
     usbxhci.inf
     volume.inf
     wdmaudio.inf
+    sdbus.inf
+    sdstor.inf
+    wdma_usb.inf
     wmiacpi.inf)
 
 list(APPEND UTF8_INF_FILES
@@ -39,7 +42,7 @@ list(APPEND UTF8_INF_FILES
     intl.inf
     layout.inf)
 
-# module name is used for a custom target creation, so we can put any unique name here
+# module #used for a custom target creation, so we can put any unique name here
 add_driver_inf(media_inf ${INF_FILES})
 
 foreach(item ${UTF8_INF_FILES})
