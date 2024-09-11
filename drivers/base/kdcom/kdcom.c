@@ -40,7 +40,7 @@ const ULONG BaseArray[] = {0, 0x800003F8};
 #elif defined(_M_MIPS)
 const ULONG BaseArray[] = {0, 0x80006000, 0x80007000};
 #elif defined(_M_ARM)
-const ULONG BaseArray[] = {0, 0xF1012000};
+const ULONG BaseArray[] = {0, 0x09000000};
 #else
 #error Unknown architecture
 #endif
@@ -129,22 +129,11 @@ NTAPI
 KdpPortInitialize(IN ULONG ComPortNumber,
                   IN ULONG ComPortBaudRate)
 {
-    NTSTATUS Status;
-
-    KDDBGPRINT("KdpPortInitialize, Port = COM%ld\n", ComPortNumber);
-
-    Status = CpInitialize(&KdComPort,
-                          UlongToPtr(BaseArray[ComPortNumber]),
-                          ComPortBaudRate);
-    if (!NT_SUCCESS(Status))
-    {
-        return STATUS_INVALID_PARAMETER;
-    }
-    else
-    {
-        KdComPortInUse = KdComPort.Address;
-        return STATUS_SUCCESS;
-    }
+    KdComPort.Address = (PUCHAR)0x09000000;
+    KdComPort.BaudRate = 115200;
+    KdComPortInUse = KdComPort.Address;
+    return STATUS_SUCCESS;
+    
 }
 
 /******************************************************************************
@@ -157,6 +146,7 @@ NTSTATUS
 NTAPI
 KdDebuggerInitialize0(IN PLOADER_PARAMETER_BLOCK LoaderBlock OPTIONAL)
 {
+
     ULONG ComPortNumber   = DEFAULT_DEBUG_PORT;
     ULONG ComPortBaudRate = DEFAULT_DEBUG_BAUD_RATE;
 

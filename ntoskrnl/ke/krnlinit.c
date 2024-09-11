@@ -70,6 +70,7 @@ VOID
 NTAPI
 KiInitSystem(VOID)
 {
+    DPRINT1("KiInitSystem: enter\n");
     ULONG i;
 
     /* Initialize Bugcheck Callback data */
@@ -115,6 +116,8 @@ KiInitSystem(VOID)
     RtlCopyMemory(KeServiceDescriptorTableShadow,
                   KeServiceDescriptorTable,
                   sizeof(KeServiceDescriptorTable));
+    
+     DPRINT1("KiInitSystem: exit\n");
 }
 
 CODE_SEG("INIT")

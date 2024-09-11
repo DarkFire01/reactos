@@ -19,6 +19,9 @@ KdPortPutByteEx(
     UCHAR ByteToSend
 );
 
+ULONG
+DbgPrintEarly(const char *fmt, ...);
+
 /* GLOBALS ********************************************************************/
 
 KINTERRUPT KxUnexpectedInterrupt;
@@ -54,7 +57,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     ULONG i;
 
     /* Set the default NX policy (opt-in) */
-    SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_OPTIN;
+//    SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_OPTIN;
 
     /* Initialize spinlocks and DPC data */
     KiInitSpinLocks(Prcb, Number);
@@ -64,7 +67,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     Pcr->PrcbData.SpBase = IdleStack; // ???
 
     /* Check if this is the Boot CPU */
-    if (!Number)
+    if (1)
     {
         /* Setup the unexpected interrupt */
         KxUnexpectedInterrupt.DispatchAddress = KiUnexpectedInterrupt;
@@ -100,11 +103,13 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
         InitializeListHead(&KiProcessListHead);
         PageDirectory[0] = 0;
         PageDirectory[1] = 0;
+        DPRINT1("KeInitializeProcess: enter\n");
         KeInitializeProcess(InitProcess,
                             0,
                             MAXULONG_PTR,
                             PageDirectory,
                             FALSE);
+        DPRINT1("KeInitializeProcess: Exits\n");
         InitProcess->QuantumReset = MAXCHAR;
     }
     else
@@ -112,7 +117,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
         /* FIXME-V6: See if we want to support MP */
         DPRINT1("ARM MPCore not supported\n");
     }
-
+    DPRINT1("KeInitializeThread: Initializing Idle Thread\n");
     /* Setup the Idle Thread */
     KeInitializeThread(InitProcess,
                        InitThread,
@@ -128,7 +133,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     InitThread->Affinity = 1 << Number;
     InitThread->WaitIrql = DISPATCH_LEVEL;
     InitProcess->ActiveProcessors = 1 << Number;
-
+    DPRINT1("KeInitializeThread: IdleThread Is initialized\n");
     /* HACK for MmUpdatePageDir */
     ((PETHREAD)InitThread)->ThreadsProcess = (PEPROCESS)InitProcess;
 
@@ -136,7 +141,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     Prcb->CurrentThread = InitThread;
     Prcb->NextThread = NULL;
     Prcb->IdleThread = InitThread;
-
+        DPRINT1("KeInitializeThread: Jumping to executive\n");
     /* Initialize the Kernel Executive */
     ExpInitializeExecutive(Number, LoaderBlock);
 
@@ -331,6 +336,7 @@ DECLSPEC_NORETURN
 VOID
 KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+     DbgPrintEarly("KiInitializeSystem Entry\n");
     ULONG Cpu;
     PKTHREAD InitialThread;
     PKPROCESS InitialProcess;
@@ -370,6 +376,8 @@ KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     HalSweepIcache();
     HalSweepDcache();
 
+
+     DbgPrintEarly("Return From HAL\n");
     /* Set us as the current process */
     InitialThread->ApcState.Process = InitialProcess;
 
@@ -380,31 +388,29 @@ AppCpuInit:
 
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);
-
+     DbgPrintEarly("Hal is setup\n");
     /* Set active processors */
     KeActiveProcessors |= Pcr->PrcbData.SetMember;
     KeNumberProcessors++;
 
     /* Check if this is the boot CPU */
     if (!Cpu)
-    {
+    {   
+        DbgPrintEarly("Enter KDINITp\n");
         /* Initialize debugging system */
         KdInitSystem(0, KeLoaderBlock);
-
+        DPRINT1("Exit KDINIT\n");
         /* Check for break-in */
-        if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
+       // if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
     }
-
+    DPRINT1("IRQL Raising to HIGHLEVEL\n - First attempt of the sytem");
     /* Raise to HIGH_LEVEL */
     KfRaiseIrql(HIGH_LEVEL);
-
+   DPRINT1(" - Success\n");
     /* Set the exception address to high */
     ControlRegister = KeArmControlRegisterGet();
     ControlRegister.HighVectors = TRUE;
     KeArmControlRegisterSet(ControlRegister);
-
-    /* Setup the exception vector table */
-    RtlCopyMemory((PVOID)0xFFFF0000, &KiArmVectorTable, 14 * sizeof(PVOID));
 
     /* Initialize the rest of the kernel now */
     KiInitializeKernel((PKPROCESS)LoaderBlock->Process,
@@ -464,3 +470,15 @@ DbgPrintEarly(const char *fmt, ...)
 
     return STATUS_SUCCESS;
 }
+
+#if 1
+CODE_SEG("INIT")
+DECLSPEC_NORETURN
+VOID
+NTAPI
+KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+    DbgPrintEarly("KiSystemStartup: ARMv7 Entry\n");
+    KiInitializeSystem(LoaderBlock);
+}
+#endif

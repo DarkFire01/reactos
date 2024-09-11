@@ -137,6 +137,12 @@ KdRegisterDebuggerDataBlock(IN ULONG Tag,
     return TRUE;
 }
 
+
+ULONG
+DbgPrintEarly(const char *fmt, ...);
+
+
+
 BOOLEAN
 NTAPI
 KdInitSystem(
@@ -153,7 +159,7 @@ KdInitSystem(
     SIZE_T MemSizeMBs;
     CHAR NameBuffer[256];
     PWCHAR Name;
-
+    DbgPrintEarly("Enter KDInitSysten\n");
 #if defined(__GNUC__)
     /* Make gcc happy */
     BlockEnable = FALSE;
@@ -172,10 +178,10 @@ KdInitSystem(
 
     /* Set the Debug Routine as the Stub for now */
     KiDebugRoutine = KdpStub;
-
+      DbgPrintEarly("setting up debug routine\n");
     /* Disable break after symbol load for now */
     KdBreakAfterSymbolLoad = FALSE;
-
+      DbgPrintEarly("setting up symbol after load\n");
     /* Check if the Debugger Data Block was already initialized */
     if (!KdpDebuggerDataListHead.Flink)
     {
@@ -208,9 +214,10 @@ KdInitSystem(
         KdVersionBlock.Unused[0] = 0;
 
         /* Link us in the KPCR */
-        KeGetPcr()->KdVersionBlock =  &KdVersionBlock;
+      //  KeGetPcr()->KdVersionBlock =  &KdVersionBlock;
     }
 
+      DbgPrintEarly("checking ldrblock\n");
     /* Check if we have a loader block */
     if (LoaderBlock)
     {
@@ -347,13 +354,14 @@ KdInitSystem(
         /* Unconditionally enable KD */
         EnableKd = TRUE;
     }
-
+      DbgPrintEarly("post check ldrblock\n");
     /* Set the Kernel Base in the Data Block */
-    KdDebuggerDataBlock.KernBase = (ULONG_PTR)KdVersionBlock.KernBase;
+   // KdDebuggerDataBlock.KernBase = (ULONG_PTR)KdVersionBlock.KernBase;
 
     /* Initialize the debugger if requested */
     if (EnableKd && (NT_SUCCESS(KdDebuggerInitialize0(LoaderBlock))))
     {
+          DbgPrintEarly("E post kddebugger init\n");
         /* Now set our real KD routine */
         KiDebugRoutine = KdpTrap;
 
@@ -389,8 +397,8 @@ KdInitSystem(
         KdDebuggerEnabled = TRUE;
 
         /* Let user-mode know that it's enabled as well */
-        SharedUserData->KdDebuggerEnabled = TRUE;
-
+///SharedUserData->KdDebuggerEnabled = TRUE;
+          DbgPrintEarly("enter mem detect\n");
         /* Display separator + ReactOS version at start of the debug log */
         MemSizeMBs = KdpGetMemorySizeInMBs(KeLoaderBlock);
         KdpPrintBanner(MemSizeMBs);

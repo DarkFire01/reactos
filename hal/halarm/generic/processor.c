@@ -48,11 +48,6 @@ NTAPI
 HalInitializeProcessor(IN ULONG ProcessorNumber,
                        IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    /* Do nothing */
-    for(;;)
-    {
-
-    }
     return;
 }
 
@@ -148,15 +143,7 @@ VOID v7_flush_dcache_all(VOID);
 VOID
 HalSweepDcache(VOID)
 {
-    DbgPrintEarly("HalSweepDcache: try dcache sweep");
-    /*
-     * We get called very early on, before HalInitSystem or any of the Hal*
-     * processor routines, so we need to figure out what CPU we're on.
-     */
-    if (!HalpProcessorIdentified) HalpIdentifyProcessor();
-
-    /* We need to do it it by set/way. For now always call ARMv7 function */
-    v7_flush_dcache_all();
+ 
 }
 
 /*
