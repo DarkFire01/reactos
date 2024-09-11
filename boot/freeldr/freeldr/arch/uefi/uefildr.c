@@ -19,6 +19,9 @@ PVOID BasicStack;
 
 void _changestack(VOID);
 
+void
+ExecuteLoaderCleanly(PVOID PreviousStack);
+
 /* FUNCTIONS ******************************************************************/
 
 EFI_STATUS
@@ -59,7 +62,7 @@ EfiEntry(
 
     /* 0x32000 is what UEFI defines, but we can go smaller if we want */
     BasicStack = (PVOID)((ULONG_PTR)0x32000 + (ULONG_PTR)MmAllocateMemoryWithType(0x32000, LoaderOsloaderStack));
-    _changestack();
+    ExecuteLoaderCleanly(BasicStack);
 
 Quit:
     /* If we reach this point, something went wrong before, therefore reboot */

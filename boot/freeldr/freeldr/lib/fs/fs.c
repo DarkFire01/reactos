@@ -146,10 +146,8 @@ ARC_STATUS ArcOpen(CHAR* Path, OPENMODE OpenMode, ULONG* FileId)
                 }
 
                 /* Try to detect the file system */
-#ifndef _M_ARM
                 FileData[DeviceId].FileFuncTable = IsoMount(DeviceId);
                 if (!FileData[DeviceId].FileFuncTable)
-#endif
                     FileData[DeviceId].FileFuncTable = FatMount(DeviceId);
                 if (!FileData[DeviceId].FileFuncTable)
                     FileData[DeviceId].FileFuncTable = BtrFsMount(DeviceId);

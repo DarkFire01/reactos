@@ -6,7 +6,7 @@
  */
 
 #include <ksarm.h>
-
+    EXTERN ExecuteLoaderCleanly
     NESTED_ENTRY _exituefi
     PROLOG_END _exituefi
 
@@ -16,9 +16,8 @@
 
     NESTED_ENTRY _changestack
     PROLOG_END _changestack
-
-    __assertfail
-
+    mov sp, r0
+    b ExecuteLoaderCleanly
     NESTED_END _changestack
 
     END
