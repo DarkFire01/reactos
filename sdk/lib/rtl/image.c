@@ -387,6 +387,71 @@ RtlImageRvaToVa(
                    (ULONG_PTR)SWAPD(Section->VirtualAddress));
 }
 
+//*****************************************************************************
+//  Deposit the 16-bit immediate into ARM Thumb2 Instruction (format T2_N)
+//*****************************************************************************
+static FORCEINLINE void PutThumb2Imm16(UINT16 * p, UINT16 imm16)
+{
+   // LIMITED_METHOD_CONTRACT;
+
+    USHORT Opcode0 = p[0];
+    USHORT Opcode1 = p[1];
+    Opcode0 &= ~((0xf000 >> 12) | (0x0800 >> 1));
+    Opcode1 &= ~((0x0700 <<  4) | (0x00ff << 0));
+    Opcode0 |= (imm16 & 0xf000) >> 12;
+    Opcode0 |= (imm16 & 0x0800) >>  1;
+    Opcode1 |= (imm16 & 0x0700) <<  4;
+    Opcode1 |= (imm16 & 0x00ff) <<  0;
+    p[0] = Opcode0;
+    p[1] = Opcode1;
+}
+#define IMAGE_REL_BASED_THUMB_MOV32           7
+//*****************************************************************************
+//  Deposit the 32-bit immediate into movw/movt Thumb2 sequence
+//*****************************************************************************
+void PutThumb2Mov32(UINT16 * p, UINT32 imm32)
+{
+
+
+    PutThumb2Imm16(p, (UINT16)imm32);
+    PutThumb2Imm16(p + 2, (UINT16)(imm32 >> 16));
+}
+
+INT32 GetThumb2BlRel24(UINT16 * p)
+{
+
+    USHORT Opcode0 = p[0];
+    USHORT Opcode1 = p[1];
+
+    UINT32 S  = Opcode0 >> 10;
+    UINT32 J2 = Opcode1 >> 11;
+    UINT32 J1 = Opcode1 >> 13;
+
+    INT32 ret =
+        ((S << 24)              & 0x1000000) |
+        (((J1 ^ S ^ 1) << 23)   & 0x0800000) |
+        (((J2 ^ S ^ 1) << 22)   & 0x0400000) |
+        ((Opcode0 << 12)        & 0x03FF000) |
+        ((Opcode1 <<  1)        & 0x0000FFE);
+
+    // Sign-extend and return
+    return (ret << 7) >> 7;
+}
+
+static FORCEINLINE UINT16 GetThumb2Imm16(UINT16 * p)
+{
+
+    return ((p[0] << 12) & 0xf000) |
+           ((p[0] <<  1) & 0x0800) |
+           ((p[1] >>  4) & 0x0700) |
+           ((p[1] >>  0) & 0x00ff);
+}
+
+UINT32 GetThumb2Mov32(UINT16 * p)
+{
+    return (UINT32)GetThumb2Imm16(p) + ((UINT32)GetThumb2Imm16(p + 2) << 16);
+}
+
 PIMAGE_BASE_RELOCATION
 NTAPI
 LdrProcessRelocationBlockLongLong(
@@ -441,6 +506,10 @@ LdrProcessRelocationBlockLongLong(
             LongLongPtr = (PUINT64)RVA(Address, Offset);
             *LongLongPtr = SWAPQ(*LongLongPtr) + Delta;
             break;
+        case IMAGE_REL_BASED_THUMB_MOV32:
+                LongPtr = (PULONG)RVA(Address, Offset);
+                PutThumb2Mov32((UINT16 *)ShortPtr, GetThumb2Mov32((UINT16 *)ShortPtr) + (INT32)Delta);
+                break;
 
         case IMAGE_REL_BASED_HIGHADJ:
         case IMAGE_REL_BASED_MIPS_JMPADDR:
