@@ -374,6 +374,7 @@ elseif(ARCH STREQUAL "arm")
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/arm/ioport.s
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm/boot.s
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm/ctxswtch.s
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm/intrin_i.s
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm/stubs_asm.s
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm/trap.s)
     list(APPEND SOURCE

@@ -8,11 +8,16 @@ KeArmHaltProcessor(VOID)
     // Enter Wait-For-Interrupt Mode
     //
 #ifdef _MSC_VER
+    for(;;)
+    {
+
+    }
 #else
     __asm__ __volatile__ ("mcr p15, 0, %0, c7, c0, 4" : : "r"(0) : "cc");
 #endif
 }
 
+void pArmControlRegisterGet(ULONG* value);
 FORCEINLINE
 ARM_CONTROL_REGISTER
 KeArmControlRegisterGet(VOID)
@@ -20,6 +25,7 @@ KeArmControlRegisterGet(VOID)
     ARM_CONTROL_REGISTER Value;
 #ifdef _MSC_VER
     Value.AsUlong = 0;
+    pArmControlRegisterGet(&Value.AsUlong);
 #else
     __asm__ __volatile__ ("mrc p15, 0, %0, c1, c0, 0" : "=r"(Value.AsUlong) : : "cc");
 #endif
@@ -130,11 +136,13 @@ KeArmStatusRegisterGet(VOID)
     return Value;
 }
 
+void pArmControlRegisterSet(ULONG Ttb);
 FORCEINLINE
 VOID
 KeArmControlRegisterSet(IN ARM_CONTROL_REGISTER ControlRegister)
 {
 #ifdef _MSC_VER
+    pArmControlRegisterSet(ControlRegister.AsUlong);
 #else
     __asm__ __volatile__ ("mcr p15, 0, %0, c1, c0, 0" : : "r"(ControlRegister.AsUlong) : "cc");
 #endif
