@@ -26,14 +26,6 @@ typedef struct tagDISKCONTEXT
     ULONGLONG SectorNumber;
 } DISKCONTEXT;
 
-typedef struct _INTERNAL_UEFI_DISK
-{
-    UCHAR ArcDriveNumber;
-    UCHAR NumOfPartitions;
-    UCHAR UefiRootNumber;
-    BOOLEAN IsThisTheBootDrive;
-} INTERNAL_UEFI_DISK, *PINTERNAL_UEFI_DISK;
-
 /* GLOBALS *******************************************************************/
 
 extern EFI_SYSTEM_TABLE* GlobalSystemTable;
@@ -53,10 +45,7 @@ static const CHAR Hex[] = "0123456789abcdef";
 static CHAR PcDiskIdentifier[32][20];
 
 /* UEFI-specific */
-static ULONG UefiBootRootIdentifier;
-static ULONG OffsetToBoot;
 static ULONG PublicBootArcDisk;
-static INTERNAL_UEFI_DISK* InternalUefiDisk = NULL;
 static EFI_GUID bioGuid = BLOCK_IO_PROTOCOL;
 static EFI_BLOCK_IO* bio;
 static EFI_HANDLE* handles = NULL;
@@ -91,15 +80,9 @@ UefiGetBootPartitionEntry(
     ULONG PartitionNum;
 
     TRACE("UefiGetBootPartitionEntry: DriveNumber: %d\n", DriveNumber - FIRST_BIOS_DISK);
-    /* UefiBootRoot is the offset into the array of handles where the raw disk of the boot drive is.
-     * Partitions start with 1 in ARC, but UEFI root drive identitfier is also first partition. */
-    PartitionNum = (OffsetToBoot - UefiBootRootIdentifier);
-    if (PartitionNum == 0)
-    {
-        TRACE("Boot PartitionNumber is 0\n");
-        /* The OffsetToBoot is equal to the RootIdentifier */
-        PartitionNum = FIRST_PARTITION;
-    }
+
+    //TODO
+    PartitionNum = 0;
 
     *BootPartition = PartitionNum;
     TRACE("UefiGetBootPartitionEntry: Boot Partition is: %d\n", PartitionNum);
@@ -160,8 +143,8 @@ UefiDiskOpen(CHAR *Path, OPENMODE OpenMode, ULONG *FileId)
         return EINVAL;
 
     TRACE("Opening disk: DriveNumber: %d, DrivePartition: %d\n", DriveNumber, DrivePartition);
-    UefiDriveNumber = DriveNumber - FIRST_BIOS_DISK;
-    GlobalSystemTable->BootServices->HandleProtocol(handles[UefiDriveNumber], &bioGuid, (void**)&bio);
+    UefiDriveNumber = (DriveNumber - FIRST_BIOS_DISK);
+    GlobalSystemTable->BootServices->HandleProtocol(handles[UefiDriveNumber], &bioGuid, (void**)&bio); //TODO
     SectorSize = bio->Media->BlockSize;
 
     if (DrivePartition != 0xff && DrivePartition != 0)
@@ -357,7 +340,6 @@ GetHarddiskInformation(UCHAR DriveNumber)
     }
     DiskReportError(TRUE);
 
-    InternalUefiDisk[DriveNumber].NumOfPartitions = i;
     /* Convert checksum and signature to identifier string */
     Identifier[0] = Hex[(Checksum >> 28) & 0x0F];
     Identifier[1] = Hex[(Checksum >> 24) & 0x0F];
@@ -390,28 +372,20 @@ UefiSetupBlockDevices(VOID)
     ULONG SystemHandleCount;
     EFI_STATUS Status;
     ULONG i;
-
     UINTN handle_size = 0;
-    PcBiosDiskCount = 0;
-    UefiBootRootIdentifier = 0;
+    UINTN HandleCount = 0;
 
     /* 1) Setup a list of boot handles by using the LocateHandle protocol */
     Status = GlobalSystemTable->BootServices->LocateHandle(ByProtocol, &bioGuid, NULL, &handle_size, handles);
     handles = MmAllocateMemoryWithType(handle_size, LoaderFirmwareTemporary);
     Status = GlobalSystemTable->BootServices->LocateHandle(ByProtocol, &bioGuid, NULL, &handle_size, handles);
     SystemHandleCount = handle_size / sizeof(EFI_HANDLE);
-    InternalUefiDisk = MmAllocateMemoryWithType(sizeof(INTERNAL_UEFI_DISK) * SystemHandleCount, LoaderFirmwareTemporary);
-
     BlockDeviceIndex = 0;
+    TRACE("BLOCKIO HandleCount %d\n", HandleCount);
     /* 2) Parse the handle list */
     for (i = 0; i < SystemHandleCount; ++i)
     {
         Status = GlobalSystemTable->BootServices->HandleProtocol(handles[i], &bioGuid, (void**)&bio);
-        if (handles[i] == PublicBootHandle)
-        {
-            OffsetToBoot = i; /* Drive offset in the handles list */
-        }
-
         if (EFI_ERROR(Status) || 
             bio == NULL ||
             bio->Media->BlockSize == 0 ||
@@ -420,45 +394,18 @@ UefiSetupBlockDevices(VOID)
             TRACE("UefiSetupBlockDevices: UEFI has found a block device that failed, skipping\n");
             continue;
         }
-        if (bio->Media->LogicalPartition == FALSE)
+
+        //TODO: This can be any kind of storage medium.
+        GetHarddiskInformation(i + FIRST_BIOS_DISK);
+        PcBiosDiskCount++;
+        if (handles[i] == PublicBootHandle)
         {
-            TRACE("Found root of a HDD\n");
-            PcBiosDiskCount++;
-            InternalUefiDisk[BlockDeviceIndex].ArcDriveNumber = BlockDeviceIndex;
-            InternalUefiDisk[BlockDeviceIndex].UefiRootNumber = i;
-            GetHarddiskInformation(BlockDeviceIndex + FIRST_BIOS_DISK);
-            BlockDeviceIndex++;
-        }
-        else if (handles[i] == PublicBootHandle)
-        {
-            ULONG increment = 0;
-            ULONG i;
-
-            /* 3) Grab the offset into the array of handles and decrement per volume (valid partition) */
-            for (increment = OffsetToBoot; increment > 0; increment--)
-            {
-                GlobalSystemTable->BootServices->HandleProtocol(handles[increment], &bioGuid, (void**)&bio);
-                if (bio->Media->LogicalPartition == FALSE)
-                {
-                    TRACE("Found root at increment %u\n", increment);
-                    UefiBootRootIdentifier = increment;
-
-                    for (i = 0; i <= PcBiosDiskCount; ++i)
-                    {
-                        /* Now only of the root drive number is equal to this drive we found above */
-                        if (InternalUefiDisk[i].UefiRootNumber == UefiBootRootIdentifier)
-                        {
-                            InternalUefiDisk[i].IsThisTheBootDrive = TRUE;
-                            PublicBootArcDisk = i;
-                            TRACE("Found Boot drive\n");
-                        }
-                    }
-
-                    break;
-                }
-            }
+            TRACE("Found the BootDrive\n");
+            PublicBootArcDisk = i;
         }
     }
+
+    TRACE("Valid BlockDeviceCount %d\n", PcBiosDiskCount);
 }
 
 static
@@ -466,7 +413,7 @@ BOOLEAN
 UefiSetBootpath(VOID)
 {
    TRACE("UefiSetBootpath: Setting up boot path\n");
-   GlobalSystemTable->BootServices->HandleProtocol(handles[UefiBootRootIdentifier], &bioGuid, (void**)&bio);
+   GlobalSystemTable->BootServices->HandleProtocol(handles[PublicBootArcDisk], &bioGuid, (void**)&bio);
    FrldrBootDrive = (FIRST_BIOS_DISK + PublicBootArcDisk);
    if (bio->Media->RemovableMedia == TRUE && bio->Media->BlockSize == 2048)
    {
@@ -506,7 +453,7 @@ UefiInitializeBootDevices(VOID)
     UefiSetBootpath();
 
     /* Add it, if it's a cdrom */
-    GlobalSystemTable->BootServices->HandleProtocol(handles[UefiBootRootIdentifier], &bioGuid, (void**)&bio);
+    GlobalSystemTable->BootServices->HandleProtocol(handles[PublicBootArcDisk], &bioGuid, (void**)&bio);
     if (bio->Media->RemovableMedia == TRUE && bio->Media->BlockSize == 2048)
     {
         PMASTER_BOOT_RECORD Mbr;
@@ -561,7 +508,7 @@ UefiDiskReadLogicalSectors(
 {
     ULONG UefiDriveNumber;
 
-    UefiDriveNumber = InternalUefiDisk[DriveNumber - FIRST_BIOS_DISK].UefiRootNumber;
+    UefiDriveNumber = (DriveNumber - FIRST_BIOS_DISK);
     TRACE("UefiDiskReadLogicalSectors: DriveNumber: %d\n", UefiDriveNumber);
     GlobalSystemTable->BootServices->HandleProtocol(handles[UefiDriveNumber], &bioGuid, (void**)&bio);
 
@@ -575,8 +522,8 @@ UefiDiskGetDriveGeometry(UCHAR DriveNumber, PGEOMETRY Geometry)
 {
     ULONG UefiDriveNumber;
 
-    UefiDriveNumber = InternalUefiDisk[DriveNumber - FIRST_BIOS_DISK].UefiRootNumber;
-    GlobalSystemTable->BootServices->HandleProtocol(handles[UefiDriveNumber], &bioGuid, (void**)&bio);
+    UefiDriveNumber = (DriveNumber - FIRST_BIOS_DISK);
+    GlobalSystemTable->BootServices->HandleProtocol(handles[UefiDriveNumber], &bioGuid, (void**)&bio);  //TODO: Switch to proper thing instead
     Geometry->Cylinders = 1;      // Not relevant for the UEFI BIO protocol
     Geometry->Heads = 1;          // Not relevant for the UEFI BIO protocol
     Geometry->Sectors = bio->Media->LastBlock;        // Number of sectors per track
@@ -588,7 +535,7 @@ UefiDiskGetDriveGeometry(UCHAR DriveNumber, PGEOMETRY Geometry)
 ULONG
 UefiDiskGetCacheableBlockCount(UCHAR DriveNumber)
 {
-    ULONG UefiDriveNumber = InternalUefiDisk[DriveNumber - FIRST_BIOS_DISK].UefiRootNumber;
+    ULONG UefiDriveNumber = (DriveNumber - FIRST_BIOS_DISK);
     TRACE("UefiDiskGetCacheableBlockCount: DriveNumber: %d\n", UefiDriveNumber);
 
     GlobalSystemTable->BootServices->HandleProtocol(handles[UefiDriveNumber], &bioGuid, (void**)&bio);
