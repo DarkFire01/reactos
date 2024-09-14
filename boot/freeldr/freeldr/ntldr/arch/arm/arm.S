@@ -8,11 +8,15 @@
 #include <ksarm.h>
 
     TEXTAREA
-
+    IMPORT PubKiSystemStartup
+    
+    IMPORT FuncTest
+    EXTERN stackfuntwo
     NESTED_ENTRY pArmTranslationTableRegisterSet
     PROLOG_END pArmTranslationTableRegisterSet
-
-    mcr p15, 0, r0, c2, c0, 0
+    ldr     r4, =2
+    MCR p15, 0, r4, c2, c0, 2 ; Write RT to TTBCR
+    mcr p15, 0, r0, c2, c0, 1
     bx lr
 
     NESTED_END pArmTranslationTableRegisterSet
@@ -35,4 +39,13 @@
     mcr p15, 0, r0, c1, c0, 0
     bx lr
     NESTED_END pArmControlRegisterSet
+
+_PubKiSystemStartup    DCD PubKiSystemStartup
+    NESTED_ENTRY  pArmControlRegisterSetTwo
+    PROLOG_END pArmControlRegisterSetTwo
+
+    mcr p15, 0, r0, c1, c0, 0
+
+    b FuncTest
+    NESTED_END pArmControlRegisterSetTwo
  	END

@@ -1165,6 +1165,8 @@ LoadAndBootWindows(
                                     BootPath);
 }
 
+    KERNEL_ENTRY_POINT PubKiSystemStartup;
+    PLOADER_PARAMETER_BLOCK PubLoaderBlockVA;
 ARC_STATUS
 LoadAndBootWindowsCommon(
     IN USHORT OperatingSystemVersion,
@@ -1244,7 +1246,8 @@ LoadAndBootWindowsCommon(
     /* Save entry-point pointer and Loader block VAs */
     KiSystemStartup = (KERNEL_ENTRY_POINT)KernelDTE->EntryPoint;
     LoaderBlockVA = PaToVa(LoaderBlock);
-
+    PubKiSystemStartup = KiSystemStartup;
+    PubLoaderBlockVA = LoaderBlockVA ;
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
 
@@ -1267,7 +1270,7 @@ LoadAndBootWindowsCommon(
           KiSystemStartup, LoaderBlockVA);
 
     /* Zero KI_USER_SHARED_DATA page */
-    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
+// RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
 
     WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
     WinLdrpDumpBootDriver(LoaderBlockVA);

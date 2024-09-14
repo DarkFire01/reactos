@@ -15,7 +15,7 @@ add_registry_inf(
     hivesft.inf
     hivesys.inf
     hivebcd.inf)
-
+#
 
 # Regtest
 add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/bootcdregtest/regtest.cmd DESTINATION reactos/bin FOR all)

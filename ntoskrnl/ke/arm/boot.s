@@ -15,6 +15,7 @@
     NESTED_ENTRY KiSystemStartup
     PROLOG_END KiSystemStartup
 
+    b KiSystemStartup 
     /* Put us in FIQ mode, set IRQ stack */
     b .
     mrs r3, cpsr

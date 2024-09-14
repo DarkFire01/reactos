@@ -64,6 +64,21 @@ C_ASSERT(MM_ALLOCATION_GRANULARITY >= PAGE_SIZE);
     ULONG PageFrameNumber:22;
 } HARDWARE_PDE_ARMV6, *PHARDWARE_PDE_ARMV6;
 
+typedef struct _HARDWARE_PTE_ARMV6
+{
+    ULONG NoExecute:1;
+    ULONG Valid:1;
+    ULONG Buffered:1;
+    ULONG Cached:1;
+    ULONG Sbo:1; // ULONG Accessed:1;?
+    ULONG Owner:1;
+    ULONG CacheAttributes:3;
+    ULONG ReadOnly:1;
+    ULONG Shared:1;
+    ULONG NonGlobal:1;
+    ULONG PageFrameNumber:20;
+} HARDWARE_PTE_ARMV6, *PHARDWARE_PTE_ARMV6;
+
 typedef struct _HARDWARE_LARGE_PTE
 {
     ULONG Valid:1;     // Only for small pages
