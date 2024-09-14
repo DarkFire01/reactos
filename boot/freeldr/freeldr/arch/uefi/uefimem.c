@@ -283,5 +283,5 @@ UefiExitBootServices(VOID)
 VOID
 UefiPrepareForReactOS(VOID)
 {
-    _exituefi();
+    //_exituefi();
 }
