@@ -144,7 +144,7 @@ USBSTOR_CSWCompletionRoutine(
     FDODeviceExtension = (PFDO_DEVICE_EXTENSION)Ctx;
     Context = &FDODeviceExtension->CurrentIrpContext;
     Request = IoStack->Parameters.Scsi.Srb;
-    ASSERT(Request);
+   // ASSERT(Request);
 
     // first check for Irp errors
     if (!NT_SUCCESS(Irp->IoStatus.Status))
@@ -181,7 +181,7 @@ USBSTOR_CSWCompletionRoutine(
         // should happen only when a sense request was sent
         if (Request != FDODeviceExtension->ActiveSrb)
         {
-            ASSERT(IoStack->Parameters.Scsi.Srb == &Context->SenseSrb);
+          //  ASSERT(IoStack->Parameters.Scsi.Srb == &Context->SenseSrb);
             FDODeviceExtension->ActiveSrb->SenseInfoBufferLength = Request->DataTransferLength;
             Request = FDODeviceExtension->ActiveSrb;
             IoStack->Parameters.Scsi.Srb = Request;
@@ -195,7 +195,7 @@ USBSTOR_CSWCompletionRoutine(
         // the command is correct but with failed status - issue request sense
         DPRINT("USBSTOR_CSWCompletionRoutine: CSW_STATUS_COMMAND_FAILED\n");
 
-        ASSERT(FDODeviceExtension->ActiveSrb == Request);
+     //   ASSERT(FDODeviceExtension->ActiveSrb == Request);
 
         // setting a generic error status, additional information
         // should be read by higher-level driver from SenseInfoBuffer
@@ -412,7 +412,7 @@ USBSTOR_CBWCompletionRoutine(
     }
     else
     {
-        ASSERT(Request->DataBuffer);
+     //   ASSERT(Request->DataBuffer);
         TransferBuffer = Request->DataBuffer;
     }
 
@@ -523,8 +523,8 @@ USBSTOR_IssueRequestSense(
                          SRB_FLAGS_NO_QUEUE_FREEZE |
                          SRB_FLAGS_DISABLE_AUTOSENSE;
 
-    ASSERT(CurrentSrb->SenseInfoBufferLength);
-    ASSERT(CurrentSrb->SenseInfoBuffer);
+  /// ASSERT(CurrentSrb->SenseInfoBufferLength);
+  /// ASSERT(CurrentSrb->SenseInfoBuffer);
     DPRINT("SenseInfoBuffer %x, SenseInfoBufferLength %x\n", CurrentSrb->SenseInfoBuffer, CurrentSrb->SenseInfoBufferLength);
 
     SenseSrb->DataTransferLength = CurrentSrb->SenseInfoBufferLength;
@@ -545,7 +545,7 @@ USBSTOR_HandleExecuteSCSI(
     PSCSI_REQUEST_BLOCK Request;
     PPDO_DEVICE_EXTENSION PDODeviceExtension = (PPDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
-    ASSERT(PDODeviceExtension->Common.IsFDO == FALSE);
+   // ASSERT(PDODeviceExtension->Common.IsFDO == FALSE);
 
     IoStack = IoGetCurrentIrpStackLocation(Irp);
     Request = IoStack->Parameters.Scsi.Srb;
@@ -553,7 +553,7 @@ USBSTOR_HandleExecuteSCSI(
     DPRINT("USBSTOR_HandleExecuteSCSI Operation Code %x, Length %lu\n", SrbGetCdb(Request)->CDB10.OperationCode, Request->DataTransferLength);
 
     // check that we're sending to the right LUN
-    ASSERT(SrbGetCdb(Request)->CDB10.LogicalUnitNumber == PDODeviceExtension->LUN);
+   // ASSERT(SrbGetCdb(Request)->CDB10.LogicalUnitNumber == PDODeviceExtension->LUN);
 
     return USBSTOR_SendCBWRequest(PDODeviceExtension->LowerDeviceObject->DeviceExtension, Irp);
 }

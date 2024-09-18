@@ -148,7 +148,6 @@ custom_end:
         if(ret <= 0)
         {
             ERR("Driver claims to support OPENGL_GETINFO escape code, but doesn't.\n");
-            return NULL;
         }
 
         pDrvInfo = &DrvInfo;

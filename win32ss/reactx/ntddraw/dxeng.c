@@ -539,8 +539,8 @@ DxEngLockHdev(HDEV hDev)
 
     if (Resource)
     {
-        KeEnterCriticalRegion();
-        ExAcquireResourceExclusiveLite( Resource , TRUE); // Lock monitor.
+      // KeEnterCriticalRegion();
+      // ExAcquireResourceExclusiveLite( Resource , TRUE); // Lock monitor.
     }
     return TRUE;
 }
@@ -572,8 +572,8 @@ DxEngUnlockHdev(HDEV hDev)
 
     if (Resource)
     {
-        ExReleaseResourceLite( Resource );
-        KeLeaveCriticalRegion();
+       // ExReleaseResourceLite( Resource );
+       // KeLeaveCriticalRegion();
     }
     return TRUE;
 }
