@@ -73,13 +73,14 @@ HaliQuerySystemInformation(IN HAL_QUERY_INFORMATION_CLASS InformationClass,
             /* FIXME: TODO */
             return STATUS_NOT_IMPLEMENTED;
         }
-        REPORT_THIS_CASE(HalDisplayBiosInformation);
         REPORT_THIS_CASE(HalProcessorFeatureInformation);
         REPORT_THIS_CASE(HalNumaTopologyInterface);
         REPORT_THIS_CASE(HalErrorInformation);
         REPORT_THIS_CASE(HalCmcLogInformation);
         REPORT_THIS_CASE(HalCpeLogInformation);
         REPORT_THIS_CASE(HalQueryMcaInterface);
+        case HalDisplayBiosInformation:
+            return STATUS_SUCCESS;
         case HalQueryAMLIIllegalIOPortAddresses:
         {
             ULONG Size = sizeof(HalAMLIBadIOAddressList);

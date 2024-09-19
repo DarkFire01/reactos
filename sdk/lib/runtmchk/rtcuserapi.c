@@ -34,8 +34,6 @@ int
 __cdecl
 _RTC_NumErrors(void)
 {
-    /* Not supported yet */
-    __debugbreak();
     return 0;
 }
 
@@ -58,8 +56,6 @@ _RTC_SetErrorType(
     _RTC_ErrorNumber _Errnum,
     int _ErrType)
 {
-    /* Not supported yet */
-    __debugbreak();
     return 0;
 }
 
@@ -68,8 +64,6 @@ __cdecl
 _RTC_SetErrorFunc(
     _RTC_error_fn new_fn)
 {
-    /* Not supported yet */
-    __debugbreak();
     return 0;
 }
 

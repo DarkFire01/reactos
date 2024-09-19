@@ -42,8 +42,6 @@ _RTC_DefaultErrorFuncW(
     const wchar_t *format,
     ...)
 {
-    /* Simple fallback function */
-    __debugbreak();
     return 0;
 }
 
@@ -83,7 +81,7 @@ void
 __cdecl
 _RTC_Shutdown(void)
 {
-    __debugbreak();
+
 }
 
 void

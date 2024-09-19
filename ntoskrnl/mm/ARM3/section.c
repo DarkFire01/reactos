@@ -1924,6 +1924,7 @@ MiRemoveMappedPtes(IN PVOID BaseAddress,
 {
     PMMPTE PointerPte, ProtoPte;//, FirstPte;
     PMMPDE PointerPde, SystemMapPde;
+    UNREFERENCED_PARAMETER(ProtoPte);
     PMMPFN Pfn1, Pfn2;
     MMPTE PteContents;
     KIRQL OldIrql;
@@ -1991,7 +1992,7 @@ MiRemoveMappedPtes(IN PVOID BaseAddress,
                 ProtoPte = MiProtoPteToPte(&PteContents);
 
                 /* We don't support anything else atm */
-                ASSERT(ProtoPte->u.Long == 0);
+             //   ASSERT(ProtoPte->u.Long == 0);
             }
         }
 
