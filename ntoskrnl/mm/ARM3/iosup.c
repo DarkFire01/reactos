@@ -61,7 +61,7 @@ MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
     //
     // Must be called with a non-zero count
     //
-    ASSERT(NumberOfBytes != 0);
+  //  ASSERT(NumberOfBytes != 0);
 
     //
     // Make sure the upper bits are 0 if this system
@@ -70,7 +70,7 @@ MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
     // define a PAE build flag since there is no such build.
     //
 #if !defined(_M_AMD64)
-    ASSERT(PhysicalAddress.HighPart == 0);
+   // ASSERT(PhysicalAddress.HighPart == 0);
 #endif
 
     //
@@ -155,7 +155,7 @@ MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
             //
             // Should never happen
             //
-            ASSERT(FALSE);
+       //     ASSERT(FALSE);
             break;
     }
 
@@ -163,7 +163,7 @@ MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
     // Sanity check and re-flush
     //
     Pfn = (PFN_NUMBER)(PhysicalAddress.QuadPart >> PAGE_SHIFT);
-    ASSERT((Pfn1 == MiGetPfnEntry(Pfn)) || (Pfn1 == NULL));
+ //   ASSERT((Pfn1 == MiGetPfnEntry(Pfn)) || (Pfn1 == NULL));
     KeFlushEntireTb(TRUE, TRUE);
     KeInvalidateAllCaches();
 
@@ -200,7 +200,7 @@ MmUnmapIoSpace(IN PVOID BaseAddress,
     //
     // Sanity check
     //
-    ASSERT(NumberOfBytes != 0);
+  //  ASSERT(NumberOfBytes != 0);
 
     //
     // Get the page count

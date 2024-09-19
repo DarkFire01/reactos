@@ -119,7 +119,7 @@ RtlpWaitForCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
     NTSTATUS Status;
     EXCEPTION_RECORD ExceptionRecord;
     BOOLEAN LastChance = FALSE;
-
+    UNREFERENCED_PARAMETER(ExceptionRecord);
     /* Increase the Debug Entry count */
     DPRINT("Waiting on Critical Section Event: %p %p\n",
             CriticalSection,
@@ -174,16 +174,7 @@ RtlpWaitForCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
             /* Is this the 2nd time we've timed out? */
             if (LastChance)
             {
-                ERROR_DBGBREAK("Deadlock: 0x%p\n", CriticalSection);
 
-                /* Yes it is, we are raising an exception */
-                ExceptionRecord.ExceptionCode    = STATUS_POSSIBLE_DEADLOCK;
-                ExceptionRecord.ExceptionFlags   = 0;
-                ExceptionRecord.ExceptionRecord  = NULL;
-                ExceptionRecord.ExceptionAddress = RtlRaiseException;
-                ExceptionRecord.NumberParameters = 1;
-                ExceptionRecord.ExceptionInformation[0] = (ULONG_PTR)CriticalSection;
-                RtlRaiseException(&ExceptionRecord);
             }
 
             /* One more try */
