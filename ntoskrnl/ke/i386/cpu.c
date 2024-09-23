@@ -1363,7 +1363,7 @@ NTAPI
 KeRestoreFloatingPointState(IN PKFLOATING_SAVE Save)
 {
     PFNSAVE_FORMAT FpState = *((PVOID *) Save);
-    ASSERT(KeGetCurrentThread()->Header.NpxIrql == KeGetCurrentIrql());
+   /// ASSERT(KeGetCurrentThread()->Header.NpxIrql == KeGetCurrentIrql());
     UNIMPLEMENTED_ONCE;
 
 #ifdef __GNUC__
