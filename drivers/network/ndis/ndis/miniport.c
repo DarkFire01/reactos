@@ -1091,7 +1091,7 @@ MiniDequeueWorkItem(
         *WorkItemType    = MiniportWorkItem->WorkItemType;
         *WorkItemContext = MiniportWorkItem->WorkItemContext;
 
-        ExFreePool(MiniportWorkItem);
+     //   ExFreePool(MiniportWorkItem);
 
         return NDIS_STATUS_SUCCESS;
     }

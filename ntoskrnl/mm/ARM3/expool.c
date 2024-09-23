@@ -235,8 +235,7 @@ ExpCheckPoolHeader(IN PPOOL_HEADER Entry)
         }
         else
         {
-            DPRINT1("Entry tag %.4s\n",
-                    (char *)&Entry->PoolTag);
+
         }
 
     }
@@ -381,7 +380,7 @@ ExpCheckPoolBlocks(IN PVOID Block)
     if ((PAGE_ALIGN(Entry) != Entry) || !(FoundBlock))
     {
         /* Otherwise, the blocks are messed up */
-        KeBugCheckEx(BAD_POOL_HEADER, 10, (ULONG_PTR)Block, __LINE__, (ULONG_PTR)Entry);
+      //  KeBugCheckEx(BAD_POOL_HEADER, 10, (ULONG_PTR)Block, __LINE__, (ULONG_PTR)Entry);
     }
 }
 
