@@ -154,7 +154,7 @@ DllMain(HINSTANCE hinstDLL,
 
 /* See https://www.geoffchappell.com/studies/windows/win32/services/svchost/dll/svchostpushserviceglobals.htm */
 VOID WINAPI
-SvchostPushServiceGlobals(SVCHOST_GLOBALS *lpGlobals)
+SvchostPushServiceGlobals(PVOID lpGlobals)
 {
     UNIMPLEMENTED;
 }
