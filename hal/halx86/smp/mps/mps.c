@@ -20,8 +20,20 @@ ULONG PhysicalProcessorCount;
 
 static PROCESSOR_IDENTITY HalpStaticProcessorIdentity[MAXIMUM_PROCESSORS];
 const PPROCESSOR_IDENTITY HalpProcessorIdentity = HalpStaticProcessorIdentity;
+ISA_IRQ_TO_GSI_OVERRIDE HalpIRQToGSIOverride[MAX_PIC_IRQs];
 
 /* FUNCTIONS ******************************************************************/
+
+VOID
+HalpInitIrqOverride()
+{
+    for(ULONG i = 0; i < MAX_PIC_IRQs; i++)
+    {
+        HalpIRQToGSIOverride[i].SourceIRQ = i;
+        HalpIRQToGSIOverride[i].Flags = 0;
+        HalpIRQToGSIOverride[i].GlobalIRQ  = i;
+    }
+}
 
 VOID
 HalpParseApicTables(

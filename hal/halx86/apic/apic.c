@@ -27,6 +27,14 @@
 ULONG ApicVersion;
 UCHAR HalpVectorToIndex[256];
 
+extern ISA_IRQ_TO_GSI_OVERRIDE HalpIRQToGSIOverride[MAX_PIC_IRQs];
+
+ULONG
+HalpGetCurrentProcessorHwID()
+{
+    return ApicRead(APIC_ID);
+}
+
 #ifndef _M_AMD64
 const UCHAR
 HalpIRQLtoTPR[32] =

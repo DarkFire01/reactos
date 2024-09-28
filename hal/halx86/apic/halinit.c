@@ -17,6 +17,9 @@ VOID
 NTAPI
 ApicInitializeLocalApic(ULONG Cpu);
 
+VOID
+HalpInitIrqOverride();
+
 /* FUNCTIONS ****************************************************************/
 /* PRIVATE FUNCTIONS **********************************************************/
 PLOADER_PARAMETER_BLOCK LocLoaderBlock;
@@ -30,6 +33,12 @@ HalpInitProcessor(
 
     LocLoaderBlock = LoaderBlock;
     
+    if (ProcessorNumber == 0)
+    {
+        /* Setup IRQ ovveride for use with MADT table logic. */
+        HalpInitIrqOverride();
+    }
+
     HalpSetupProcessorsTable(ProcessorNumber);
 
     /* Initialize the local APIC for this cpu */
