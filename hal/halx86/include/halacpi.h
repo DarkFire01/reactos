@@ -1,5 +1,14 @@
 #pragma once
 
+#define MAX_PIC_IRQs 16
+
+typedef struct _ISA_IRQ_TO_GSI_OVERRIDE {
+    ULONG SourceIRQ;
+    ULONG GlobalIRQ;
+    ULONG Flags;
+    ULONG HandledIrq;
+} ISA_IRQ_TO_GSI_OVERRIDE, *PISA_IRQ_TO_GSI_OVERRIDE;
+
 //
 // Internal HAL structure
 //

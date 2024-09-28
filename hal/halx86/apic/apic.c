@@ -27,6 +27,8 @@
 ULONG ApicVersion;
 UCHAR HalpVectorToIndex[256];
 
+extern ISA_IRQ_TO_GSI_OVERRIDE HalpIRQToGSIOverride[MAX_PIC_IRQs];
+
 ULONG
 HalpGetCurrentProcessorHwID()
 {
