@@ -19,20 +19,7 @@ extern EFI_SYSTEM_TABLE *GlobalSystemTable;
 TIMEINFO*
 UefiGetTime(VOID)
 {
-    static TIMEINFO TimeInfo;
-    EFI_STATUS Status;
-    EFI_TIME time = {0};
-
-    Status = GlobalSystemTable->RuntimeServices->GetTime(&time, NULL);
-    if (Status != EFI_SUCCESS)
-        ERR("UefiGetTime: cannot get time status %d\n", Status);
-
-    TimeInfo.Year = time.Year;
-    TimeInfo.Month = time.Month;
-    TimeInfo.Day = time.Day;
-    TimeInfo.Hour = time.Hour;
-    TimeInfo.Minute = time.Minute;
-    TimeInfo.Second = time.Second;
+    static TIMEINFO TimeInfo = {0};
     return &TimeInfo;
 }
 
