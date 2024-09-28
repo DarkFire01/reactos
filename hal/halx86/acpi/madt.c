@@ -29,9 +29,23 @@ HALP_APIC_INFO_TABLE HalpApicInfoTable;
 static PROCESSOR_IDENTITY HalpStaticProcessorIdentity[MAXIMUM_PROCESSORS];
 const PPROCESSOR_IDENTITY HalpProcessorIdentity = HalpStaticProcessorIdentity;
 
-#if 0
-extern ULONG HalpPicVectorRedirect[16];
-#endif
+ISA_IRQ_TO_GSI_OVERRIDE HalpIRQToGSIOverride[MAX_PIC_IRQs];
+
+
+ULONG
+HalpGetCurrentProcessorHwID();
+
+VOID
+HalpInitIrqOverride()
+{
+    for(ULONG i = 0; i < MAX_PIC_IRQs; i++)
+    {
+        HalpIRQToGSIOverride[i].SourceIRQ = i;
+        HalpIRQToGSIOverride[i].Flags = 0;
+        HalpIRQToGSIOverride[i].GlobalIRQ  = i;
+    }
+}
+
 
 /* FUNCTIONS ******************************************************************/
 
@@ -165,10 +179,22 @@ HalpParseApicTables(
                          InterruptOverride->Bus, InterruptOverride->SourceIrq,
                          InterruptOverride->GlobalIrq, InterruptOverride->IntiFlags);
 
-                if (InterruptOverride->Bus != 0) // 0 = ISA
+                if (InterruptOverride->Bus != 0) // 0 = ISA, actbl2.h, line-1068
                 {
                     DPRINT("Invalid Bus: %p, %u\n", InterruptOverride, InterruptOverride->Bus);
                     return;
+                }
+
+                if (InterruptOverride->SourceIrq > MAX_PIC_IRQs)
+                {
+                    DPRINT("Invalid SourceIrq: %p, %u\n",
+                             InterruptOverride, InterruptOverride->SourceIrq);
+                    return;
+                }
+
+                if (InterruptOverride->GlobalIrq)
+                {
+                    HalpIRQToGSIOverride[InterruptOverride->SourceIrq].GlobalIRQ = InterruptOverride->GlobalIrq;
                 }
 
                 break;

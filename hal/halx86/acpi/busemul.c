@@ -14,6 +14,8 @@
 
 /* GLOBALS ********************************************************************/
 
+ISA_IRQ_TO_GSI_OVERRIDE HalpIRQToGSIOverride[MAX_PIC_IRQs];
+
 /* PRIVATE FUNCTIONS **********************************************************/
 
 CODE_SEG("INIT")
@@ -239,9 +241,23 @@ HalGetInterruptVector(IN INTERFACE_TYPE InterfaceType,
                       OUT PKIRQL Irql,
                       OUT PKAFFINITY Affinity)
 {
+    ULONG Vector;
+    ULONG Level;
+
+    if (InterfaceType == Isa && BusInterruptVector <= MAX_PIC_IRQs)
+    {
+        Vector = HalpIRQToGSIOverride[BusInterruptVector].GlobalIRQ;
+        Level = HalpIRQToGSIOverride[BusInterruptLevel].GlobalIRQ;
+    }
+    else
+    {
+        Vector = BusInterruptVector;
+        Level = BusInterruptLevel;
+    }
+
     /* Call the system bus translator */
-    return HalpGetRootInterruptVector(BusInterruptLevel,
-                                      BusInterruptVector,
+    return HalpGetRootInterruptVector(Level,
+                                      Vector,
                                       Irql,
                                       Affinity);
 }
