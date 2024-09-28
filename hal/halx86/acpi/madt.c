@@ -26,8 +26,7 @@ HALP_APIC_INFO_TABLE HalpApicInfoTable;
 #define LAPIC_FLAG_ONLINE_CAPABLE   0x00000002
 // Bits 2-31 are reserved.
 
-static PROCESSOR_IDENTITY HalpStaticProcessorIdentity[MAXIMUM_PROCESSORS];
-PPROCESSOR_IDENTITY HalpProcessorIdentity;
+PROCESSOR_IDENTITY HalpProcessorIdentity[MAXIMUM_PROCESSORS];
 
 ISA_IRQ_TO_GSI_OVERRIDE HalpIRQToGSIOverride[MAX_PIC_IRQs];
 
@@ -58,7 +57,6 @@ HalpParseApicTables(
     ACPI_SUBTABLE_HEADER *AcpiHeader;
     ULONG_PTR TableEnd;
 
-    HalpProcessorIdentity = HalpStaticProcessorIdentity;
     MadtTable = HalAcpiGetTable(LoaderBlock, APIC_SIGNATURE);
     if (!MadtTable)
     {
@@ -117,7 +115,7 @@ HalpParseApicTables(
                     break;
                 }
 
-                if (HalpApicInfoTable.ProcessorCount == _countof(HalpStaticProcessorIdentity))
+                if (HalpApicInfoTable.ProcessorCount == MAXIMUM_PROCESSORS)
                 {
                     DPRINT("  Skipped: array is full\n");
                     // We assume ignoring this processor is acceptable, until proven otherwise.
