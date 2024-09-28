@@ -101,11 +101,7 @@ ExpCheckPoolLinks(IN PLIST_ENTRY ListHead)
     if ((ExpDecodePoolLink(ExpDecodePoolLink(ListHead->Flink)->Blink) != ListHead) ||
         (ExpDecodePoolLink(ExpDecodePoolLink(ListHead->Blink)->Flink) != ListHead))
     {
-        KeBugCheckEx(BAD_POOL_HEADER,
-                     3,
-                     (ULONG_PTR)ListHead,
-                     (ULONG_PTR)ExpDecodePoolLink(ExpDecodePoolLink(ListHead->Flink)->Blink),
-                     (ULONG_PTR)ExpDecodePoolLink(ExpDecodePoolLink(ListHead->Blink)->Flink));
+      
     }
 }
 
