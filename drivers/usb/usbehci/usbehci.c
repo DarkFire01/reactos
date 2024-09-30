@@ -2920,6 +2920,7 @@ EHCI_InterruptNextSOF(IN PVOID ehciExtension)
 {
     PEHCI_EXTENSION EhciExtension = ehciExtension;
 
+    EhciExtension->InterruptStatus.AsULONG = 0;
     DPRINT_EHCI("EHCI_InterruptNextSOF: ... \n");
 
     RegPacket.UsbPortInvalidateController(EhciExtension,

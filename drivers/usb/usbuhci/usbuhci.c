@@ -2530,6 +2530,8 @@ UhciEnableInterrupts(IN PVOID uhciExtension)
 
     BaseRegister = UhciExtension->BaseRegister;
 
+    WRITE_PORT_USHORT(&BaseRegister->HcStatus.AsUSHORT,
+                      0xFFFFFFF);
     RegPacket.UsbPortReadWriteConfigSpace(UhciExtension,
                                           TRUE,
                                           &LegacySupport.AsUSHORT,

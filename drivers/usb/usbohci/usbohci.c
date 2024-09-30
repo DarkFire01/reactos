@@ -2195,8 +2195,9 @@ OHCI_InterruptNextSOF(IN PVOID ohciExtension)
 {
     POHCI_EXTENSION OhciExtension = ohciExtension;
     POHCI_OPERATIONAL_REGISTERS OperationalRegs;
-    PULONG InterruptEnableReg;
+    PULONG InterruptStatusReg, InterruptEnableReg;
     OHCI_REG_INTERRUPT_ENABLE_DISABLE IntEnable;
+    OHCI_REG_INTERRUPT_STATUS IntStatus;
 
     DPRINT_OHCI("OHCI_InterruptNextSOF: OhciExtension - %p\n",
                 OhciExtension);
@@ -2204,8 +2205,15 @@ OHCI_InterruptNextSOF(IN PVOID ohciExtension)
     OperationalRegs = OhciExtension->OperationalRegs;
     InterruptEnableReg = (PULONG)&OperationalRegs->HcInterruptEnable;
 
+    InterruptStatusReg = (PULONG)&OhciExtension->OperationalRegs->HcInterruptStatus;
+
+    /* Clear all bits in HcInterruptStatus register */
+    IntStatus.AsULONG = 0xFFFFFFFF;
+    WRITE_REGISTER_ULONG(InterruptStatusReg, IntStatus.AsULONG);
+
     /* Enable interrupt generation due to Start of Frame */
-    IntEnable.AsULONG = 0;
+    IntEnable.AsULONG = 0xFFFFFFFF;
+    IntEnable.Reserved1 = 0;
     IntEnable.StartofFrame = 1;
 
     WRITE_REGISTER_ULONG(InterruptEnableReg, IntEnable.AsULONG);
@@ -2219,15 +2227,22 @@ OHCI_EnableInterrupts(IN PVOID ohciExtension)
     POHCI_OPERATIONAL_REGISTERS OperationalRegs;
     PULONG InterruptEnableReg;
     OHCI_REG_INTERRUPT_ENABLE_DISABLE IntEnable;
+    OHCI_REG_INTERRUPT_STATUS IntStatus;
 
+    PULONG InterruptStatusReg = (PULONG)&OhciExtension->OperationalRegs->HcInterruptStatus;
     DPRINT_OHCI("OHCI_EnableInterrupts: OhciExtension - %p\n",
                 OhciExtension);
+
+    /* Clear all bits in HcInterruptStatus register */
+    IntStatus.AsULONG = 0xFFFFFFFF;
+    WRITE_REGISTER_ULONG(InterruptStatusReg, IntStatus.AsULONG);
 
     OperationalRegs = OhciExtension->OperationalRegs;
     InterruptEnableReg = (PULONG)&OperationalRegs->HcInterruptEnable;
 
     /*  Enable interrupt generation */
-    IntEnable.AsULONG = 0;
+    IntEnable.AsULONG = 0xFFFFFFFF;
+    IntEnable.Reserved1 = 0;
     IntEnable.MasterInterruptEnable = 1;
 
     WRITE_REGISTER_ULONG(InterruptEnableReg, IntEnable.AsULONG);
