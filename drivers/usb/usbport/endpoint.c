@@ -1592,7 +1592,7 @@ USBPORT_DmaEndpointWorker(IN PUSBPORT_ENDPOINT Endpoint)
 {
     PDEVICE_OBJECT FdoDevice;
     ULONG PrevState;
-    ULONG EndpointState;
+    ULONG EndpointState = 0;
     BOOLEAN IsPaused = FALSE;
 
     DPRINT_CORE("USBPORT_DmaEndpointWorker ... \n");
