@@ -1161,7 +1161,6 @@ HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT DeviceObject,
         Irp,
         ScatterGatherList,
         AdapterListControlContext);
-    
 	return DeallocateObjectKeepRegisters;
 }
 

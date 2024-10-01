@@ -454,7 +454,10 @@ IopFixupResourceListWithRequirements(
                             FoundResource = FALSE;
                         }
                         break;
-
+                    case CmResourceTypeDevicePrivate:
+                        // What's suppose to happen here?
+                        __debugbreak();
+                        break;
                     default:
                         DPRINT1("Unsupported resource type: %x\n", IoDesc->Type);
                         FoundResource = FALSE;
