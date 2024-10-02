@@ -38,6 +38,7 @@
 @ stdcall HalQueryRealTimeClock(ptr)
 @ stdcall HalReadDmaCounter(ptr)
 @ stdcall HalReportResourceUsage()
+@ stdcall HalpGetAcpiTables()
 @ stdcall HalRequestIpi(long)
 @ fastcall HalRequestSoftwareInterrupt(long)
 @ stdcall HalReturnToFirmware(long)

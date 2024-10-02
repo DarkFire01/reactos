@@ -38,7 +38,7 @@ AcpiOsTerminate(void)
 
     return AE_OK;
 }
-
+ UINT64 HalpGetAcpiTables();
 ACPI_PHYSICAL_ADDRESS
 AcpiOsGetRootPointer (
     void)
@@ -47,7 +47,8 @@ AcpiOsGetRootPointer (
 
     DPRINT("AcpiOsGetRootPointer\n");
 
-    AcpiFindRootPointer(&pa);
+    pa = HalpGetAcpiTables();
+    //AcpiFindRootPointer(&pa);
     return pa;
 }
 

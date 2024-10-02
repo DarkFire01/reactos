@@ -785,8 +785,8 @@ DetectIsaBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
     /* Increment bus number */
     (*BusNumber)++;
 
-        DetectKeyboardController(BusKey);
-    DetectPS2Mouse(BusKey);
+  //     DetectKeyboardController(BusKey);
+  // DetectPS2Mouse(BusKey);
   //  DetectDisplayController(BusKey);
     /* Detect ISA/BIOS devices */
     DetectBiosDisks(SystemKey, BusKey);
@@ -796,11 +796,12 @@ DetectIsaBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
     /* FIXME: Detect more ISA devices */
 }
 
-
+    PLOADER_PARAMETER_BLOCK PubLoaderBlock;
 static
 PRSDP_DESCRIPTOR
 FindAcpiBios(VOID)
 {
+        PLOADER_PARAMETER_EXTENSION Extension;
     UINTN i;
     RSDP_DESCRIPTOR* rsdp = NULL;
     EFI_GUID acpi2_guid = EFI_ACPI_20_TABLE_GUID;
@@ -814,6 +815,18 @@ FindAcpiBios(VOID)
             break;
         }
     }
+
+
+    Extension = PubLoaderBlock->Extension;
+
+    /* FIXME! HACK value for docking profile */
+    Extension->Profile.Status = 2;
+
+    /* Check if FreeLdr detected a ACPI table */
+        /* Set the pointer to something for compatibility */
+        Extension->AcpiTable = (PVOID)rsdp;
+        // FIXME: Extension->AcpiTableSize;
+
 
     return rsdp;
 }
@@ -1112,7 +1125,7 @@ UefiHwDetect(
     DetectInternal(SystemKey, &BusNumber);
 
      DetectPci(SystemKey, &BusNumber);
-
+    DetectIsaBios(SystemKey, &BusNumber);
     TRACE("DetectHardware() Done\n");
     return SystemKey;
 }

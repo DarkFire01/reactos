@@ -18,7 +18,8 @@ NTAPI
 ApicInitializeLocalApic(ULONG Cpu);
 
 /* FUNCTIONS ****************************************************************/
-
+/* PRIVATE FUNCTIONS **********************************************************/
+PLOADER_PARAMETER_BLOCK LocLoaderBlock;
 VOID
 NTAPI
 HalpInitProcessor(
@@ -30,6 +31,8 @@ HalpInitProcessor(
         HalpParseApicTables(LoaderBlock);
     }
 
+    LocLoaderBlock = LoaderBlock;
+    
     HalpSetupProcessorsTable(ProcessorNumber);
 
     /* Initialize the local APIC for this cpu */

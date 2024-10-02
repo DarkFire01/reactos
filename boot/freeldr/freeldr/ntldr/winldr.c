@@ -251,7 +251,7 @@ WinLdrInitializePhase1(PLOADER_PARAMETER_BLOCK LoaderBlock,
     if (AcpiPresent)
     {
         /* Set the pointer to something for compatibility */
-        Extension->AcpiTable = (PVOID)1;
+    //    Extension->AcpiTable = (PVOID)1;
         // FIXME: Extension->AcpiTableSize;
     }
 
@@ -1165,6 +1165,9 @@ LoadAndBootWindows(
                                     BootPath);
 }
 
+#ifdef UEFIBOOT
+extern PLOADER_PARAMETER_BLOCK PubLoaderBlock;
+#endif
 ARC_STATUS
 LoadAndBootWindowsCommon(
     IN USHORT OperatingSystemVersion,
@@ -1189,6 +1192,11 @@ LoadAndBootWindowsCommon(
 
     /* Convert BootPath to SystemRoot */
     SystemRoot = strstr(BootPath, "\\");
+
+
+#ifdef UEFIBOOT
+    PubLoaderBlock = LoaderBlock;
+#endif
 
     /* Detect hardware */
     UiUpdateProgressBar(20, "Detecting hardware...");
