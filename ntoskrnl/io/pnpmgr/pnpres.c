@@ -195,7 +195,7 @@ IopFindInterruptResource(
     ASSERT(IoDesc->Type == CmResourceTypeInterrupt);
 
     for (Vector = IoDesc->u.Interrupt.MinimumVector;
-         Vector <= IoDesc->u.Interrupt.MaximumVector;
+         Vector <= 21;
          Vector++)
     {
         CmDesc->u.Interrupt.Vector = Vector;

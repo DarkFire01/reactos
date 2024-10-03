@@ -102,7 +102,6 @@ ULONG
 IOApicRead(UCHAR Register)
 {
     /* Select the register, then do the read */
-    DPRINT1("Register <= 0x3F");
     WRITE_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOREGSEL), Register);
     return READ_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOWIN));
 }
@@ -112,7 +111,6 @@ VOID
 IOApicWrite(UCHAR Register, ULONG Value)
 {
     /* Select the register, then do the write */
-    DPRINT1("Register <= 0x3F");
     WRITE_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOREGSEL), Register);
     WRITE_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOWIN), Value);
 }
@@ -123,7 +121,6 @@ ApicWriteIORedirectionEntry(
     UCHAR Index,
     IOAPIC_REDIRECTION_REGISTER ReDirReg)
 {
-    DPRINT1("Index < APIC_MAX_IRQ");
     IOApicWrite(IOAPIC_REDTBL + 2 * Index, ReDirReg.Long0);
     IOApicWrite(IOAPIC_REDTBL + 2 * Index + 1, ReDirReg.Long1);
 }
@@ -134,8 +131,6 @@ ApicReadIORedirectionEntry(
     UCHAR Index)
 {
     IOAPIC_REDIRECTION_REGISTER ReDirReg;
-
-    DPRINT1("Index < APIC_MAX_IRQ");
     ReDirReg.Long0 = IOApicRead(IOAPIC_REDTBL + 2 * Index);
     ReDirReg.Long1 = IOApicRead(IOAPIC_REDTBL + 2 * Index + 1);
 
@@ -378,9 +373,14 @@ HalpAllocateSystemInterrupt(
     _In_ UCHAR Vector)
 {
     IOAPIC_REDIRECTION_REGISTER ReDirReg;
-
-    DPRINT1("Irq < APIC_MAX_IRQ");
-    DPRINT1("HalpVectorToIndex[Vector] == APIC_FREE_VECTOR");
+    if (Irq > APIC_MAX_IRQ)
+    {
+        DPRINT1("HalpAllocateSystemInterrupt: Failed %X\n", Irq);
+        __debugbreak();
+        KeStallExecutionProcessor(10000);
+    }
+   // DPRINT1("Irq < APIC_MAX_IRQ");
+   // DPRINT1("HalpVectorToIndex[Vector] == APIC_FREE_VECTOR");
 
     /* Setup a redirection entry */
     ReDirReg.Vector = Vector;

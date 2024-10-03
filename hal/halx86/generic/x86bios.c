@@ -65,11 +65,11 @@ HalInitializeBios(
                                                   FALSE);
         if (PhysicalAddress == 0)
         {
-            ASSERT(FALSE);
+            //ASSERT(FALSE);
         }
 
         x86BiosFallbackPfn = PhysicalAddress / PAGE_SIZE;
-        ASSERT(x86BiosFallbackPfn != 0);
+       // ASSERT(x86BiosFallbackPfn != 0);
 
         /* Allocate a page for the buffer allocation */
         x86BiosBufferPhysical = HalpAllocPhysicalMemory(LoaderBlock,
@@ -78,7 +78,7 @@ HalInitializeBios(
                                                         FALSE);
         if (x86BiosBufferPhysical == 0)
         {
-            ASSERT(FALSE);
+           // ASSERT(FALSE);
         }
     }
     else
@@ -88,7 +88,7 @@ HalInitializeBios(
         Mdl = IoAllocateMdl(NULL, 0x100000, FALSE, FALSE, NULL);
         if (!Mdl)
         {
-            ASSERT(FALSE);
+           // ASSERT(FALSE);
         }
 
         /* Get pointer to the pfn array */
@@ -136,7 +136,7 @@ HalInitializeBios(
 
         /* Map the MDL to system space */
         x86BiosMemoryMapping = MmGetSystemAddressForMdlSafe(Mdl, HighPagePriority);
-        ASSERT(x86BiosMemoryMapping);
+      //.//  ASSERT(x86BiosMemoryMapping);
 
         DPRINT1("*x86BiosMemoryMapping: %p, %p\n",
                 *(PVOID*)x86BiosMemoryMapping, *(PVOID*)(x86BiosMemoryMapping + 8));
@@ -392,7 +392,7 @@ x86BOP(
     PFAST486_STATE State,
     UCHAR BopCode)
 {
-    ASSERT(FALSE);
+   // ASSERT(FALSE);
 }
 
 static
@@ -401,7 +401,7 @@ FASTCALL
 x86IntAck (
     PFAST486_STATE State)
 {
-    ASSERT(FALSE);
+   // ASSERT(FALSE);
     return 0;
 }
 

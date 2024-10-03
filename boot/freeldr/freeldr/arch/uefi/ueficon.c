@@ -148,8 +148,5 @@ UefiConsGetCh(VOID)
         KeyOutput = KEY_EXTENDED;
     }
 
-    /* UEFI will stack input requests, we have to clear it */
-    Key.UnicodeChar = 0;
-    Key.ScanCode = 0;
     return KeyOutput;
 }

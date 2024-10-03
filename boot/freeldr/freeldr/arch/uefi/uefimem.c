@@ -212,7 +212,7 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
             if (Status != EFI_SUCCESS)
             {
                 /* We failed to reserve the page, so change its type */
-                MemoryType = LoaderFirmwareTemporary;
+                MemoryType = LoaderReserve;
             }
         }
 
