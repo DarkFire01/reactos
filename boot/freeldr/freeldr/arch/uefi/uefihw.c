@@ -796,6 +796,49 @@ DetectIsaBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
     /* FIXME: Detect more ISA devices */
 }
 
+NTSTATUS
+EfipGetSystemTable (
+    _In_ EFI_GUID *TableGuid,
+    _Out_ PPHYSICAL_ADDRESS TableAddress
+    )
+{
+    ULONG i;
+    NTSTATUS Status;
+
+    /* Assume failure */
+    Status = STATUS_NOT_FOUND;
+
+    /* Loop through the configuration tables */
+    for (i = 0; i < GlobalSystemTable->NumberOfTableEntries; i++)
+    {
+        /* Check if this one matches the one we want */
+        if (RtlEqualMemory(&GlobalSystemTable->ConfigurationTable[i].VendorGuid,
+                           TableGuid,
+                           sizeof(*TableGuid)))
+        {
+            /* Return its address */
+            TableAddress->QuadPart = (ULONG_PTR)GlobalSystemTable->ConfigurationTable[i].VendorTable;
+            Status = STATUS_SUCCESS;
+            printf("success %X ", TableGuid[0]);
+            break;
+        }
+    }
+
+   printf("failed %X ", TableGuid[0]);
+    /* Return the search result */
+    return Status;
+}
+
+#define SMBIOS3_TABLE_GUID \
+  { \
+    0xf2fd1544, 0x9794, 0x4a2c, {0x99, 0x2e, 0xe5, 0xbb, 0xcf, 0x20, 0xe3, 0x94 } \
+  }
+
+  #define SMBIOS_TABLE_GUID \
+  { \
+    0xeb9d2d31, 0x2d88, 0x11d3, {0x9a, 0x16, 0x0, 0x90, 0x27, 0x3f, 0xc1, 0x4d } \
+  }
+
     PLOADER_PARAMETER_BLOCK PubLoaderBlock;
 static
 PRSDP_DESCRIPTOR
@@ -825,8 +868,38 @@ FindAcpiBios(VOID)
     /* Check if FreeLdr detected a ACPI table */
         /* Set the pointer to something for compatibility */
         Extension->AcpiTable = (PVOID)rsdp;
-        // FIXME: Extension->AcpiTableSize;
 
+
+
+EFI_GUID TestGuidTwo = SMBIOS_TABLE_GUID;
+EFI_GUID TestGuid = SMBIOS3_TABLE_GUID;
+        for (i = 0; i < GlobalSystemTable->NumberOfTableEntries; i++)
+    {
+        if (!memcmp(&GlobalSystemTable->ConfigurationTable[i].VendorGuid,
+                    &TestGuid, sizeof(TestGuid)))
+        {
+             (PVOID)GlobalSystemTable->ConfigurationTable[i].VendorTable;
+            break;
+        }
+    }
+
+    if (GlobalSystemTable->ConfigurationTable[i].VendorTable == 0)
+
+        {
+                    for (i = 0; i < GlobalSystemTable->NumberOfTableEntries; i++)
+                     {
+                         if (!memcmp(&GlobalSystemTable->ConfigurationTable[i].VendorGuid,
+                                     &TestGuidTwo, sizeof(TestGuidTwo)))
+                         {
+                              (PVOID)GlobalSystemTable->ConfigurationTable[i].VendorTable;
+                             break;
+                         }
+                     }
+        }
+    
+
+        // FIXME: Extension->AcpiTableSize;
+    Extension->SmBios = (PVOID) GlobalSystemTable->ConfigurationTable[i].VendorTable;
 
     return rsdp;
 }
@@ -1124,7 +1197,7 @@ UefiHwDetect(
     DetectAcpiBios(SystemKey, &BusNumber);
     DetectInternal(SystemKey, &BusNumber);
 
-     DetectPci(SystemKey, &BusNumber);
+ //    DetectPci(SystemKey, &BusNumber);
     DetectIsaBios(SystemKey, &BusNumber);
     TRACE("DetectHardware() Done\n");
     return SystemKey;

@@ -423,6 +423,7 @@ typedef struct _LOADER_PARAMETER_EXTENSION
     ULONG_PTR LoaderPagesSpanned;   /* Not anymore present starting NT 6.2 */
     PHEADLESS_LOADER_BLOCK HeadlessLoaderBlock;
     PSMBIOS_TABLE_HEADER SMBiosEPSHeader;
+    PVOID SmBios;
     PVOID DrvDBImage;
     ULONG DrvDBSize;
     PNETWORK_LOADER_BLOCK NetworkLoaderBlock;

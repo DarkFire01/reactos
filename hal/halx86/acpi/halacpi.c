@@ -50,7 +50,6 @@ extern PLOADER_PARAMETER_BLOCK LocLoaderBlock;
  UINT64 NTAPI
  HalpGetAcpiTables()
 {
-    __debugbreak();
     return (UINT64)LocLoaderBlock->Extension->AcpiTable;
 }
 

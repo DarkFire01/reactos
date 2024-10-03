@@ -140,7 +140,14 @@ WmipGetRawSMBiosTableData(
     ULONG64 TableAddress = 0;
 
     /* This is where the range for the entry point starts */
-    PhysicalAddress.QuadPart = 0xF0000;
+    if (KeLoaderBlock->Extension->SmBios == 0)
+    {
+            PhysicalAddress.QuadPart = 0xF0000;
+    }
+    else
+    {
+         PhysicalAddress.QuadPart = (LONGLONG)KeLoaderBlock->Extension->SmBios;
+    }
 
     /* Map the range into the system address space */
     EntryPointMapping = MmMapIoSpace(PhysicalAddress, SearchSize, MmCached);
