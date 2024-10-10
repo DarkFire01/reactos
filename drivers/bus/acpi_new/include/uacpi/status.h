@@ -26,6 +26,9 @@ typedef enum uacpi_status {
     UACPI_STATUS_NO_RESOURCE_END_TAG = 15,
     UACPI_STATUS_COMPILED_OUT = 16,
     UACPI_STATUS_HARDWARE_TIMEOUT = 17,
+    UACPI_STATUS_TIMEOUT = 18,
+    UACPI_STATUS_OVERRIDDEN = 19,
+    UACPI_STATUS_DENIED = 20,
 
     // All errors that have bytecode-related origin should go here
     UACPI_STATUS_AML_UNDEFINED_REFERENCE = 0x0EFF0000,
@@ -37,6 +40,8 @@ typedef enum uacpi_status {
     UACPI_STATUS_AML_OUT_OF_BOUNDS_INDEX = 0x0EFF0006,
     UACPI_STATUS_AML_SYNC_LEVEL_TOO_HIGH = 0x0EFF0007,
     UACPI_STATUS_AML_INVALID_RESOURCE = 0x0EFF0008,
+    UACPI_STATUS_AML_LOOP_TIMEOUT = 0x0EFF0009,
+    UACPI_STATUS_AML_CALL_STACK_DEPTH_LIMIT = 0x0EFF000A,
 } uacpi_status;
 
 const uacpi_char *uacpi_status_to_string(uacpi_status);

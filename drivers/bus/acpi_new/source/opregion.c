@@ -16,9 +16,10 @@ void uacpi_trace_region_error(
     path = uacpi_namespace_node_generate_absolute_path(node);
     op_region = uacpi_namespace_node_get_object(node)->op_region;
 
-    uacpi_warn(
-        "%s operation region %s@%p: %s\n",
-        message, path, op_region, uacpi_status_to_string(ret)
+    uacpi_error(
+        "%s (%s) operation region %s: %s\n",
+        message, uacpi_address_space_to_string(op_region->space),
+        path, uacpi_status_to_string(ret)
     );
     uacpi_free_dynamic_string(path);
 }
@@ -35,7 +36,7 @@ void uacpi_trace_region_io(
     uacpi_operation_region *op_region;
     const uacpi_char *type_str;
 
-    if (!uacpi_rt_should_log(UACPI_LOG_TRACE))
+    if (!uacpi_should_log(UACPI_LOG_TRACE))
         return;
 
     switch (op) {
@@ -56,7 +57,7 @@ void uacpi_trace_region_io(
         "%s [%s] (%d bytes) %s[0x%016"UACPI_PRIX64"] = 0x%"UACPI_PRIX64"\n",
         type_str, path, byte_size,
         uacpi_address_space_to_string(op_region->space),
-        offset, ret
+        UACPI_FMT64(offset), UACPI_FMT64(ret)
     );
 
     uacpi_free_dynamic_string(path);
@@ -410,7 +411,7 @@ uacpi_status uacpi_reg_all_opregions(
         return UACPI_STATUS_NO_HANDLER;
 
     uacpi_namespace_for_each_node_depth_first(
-        device_node->child, do_run_reg, &ctx
+        device_node, do_run_reg, &ctx
     );
 
     uacpi_trace(
@@ -454,7 +455,7 @@ uacpi_status uacpi_install_address_space_handler(
     iter_ctx.action = OPREGION_ITER_ACTION_INSTALL;
 
     uacpi_namespace_for_each_node_depth_first(
-        device_node->child, do_install_or_uninstall_handler, &iter_ctx
+        device_node, do_install_or_uninstall_handler, &iter_ctx
     );
 
     if (!space_needs_reg(space))
@@ -505,7 +506,7 @@ uacpi_status uacpi_uninstall_address_space_handler(
     iter_ctx.action = OPREGION_ITER_ACTION_UNINSTALL;
 
     uacpi_namespace_for_each_node_depth_first(
-        device_node->child, do_install_or_uninstall_handler, &iter_ctx
+        device_node, do_install_or_uninstall_handler, &iter_ctx
     );
 
     prev_handler = handlers->head;

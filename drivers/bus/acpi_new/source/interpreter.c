@@ -15,6 +15,8 @@
 #include <uacpi/internal/notify.h>
 #include <uacpi/internal/resources.h>
 #include <uacpi/internal/event.h>
+#include <uacpi/internal/mutex.h>
+#include <uacpi/internal/osi.h>
 
 enum item_type {
     ITEM_NONE = 0,
@@ -89,7 +91,10 @@ enum code_block_type {
 struct code_block {
     enum code_block_type type;
     uacpi_u32 begin, end;
-    struct uacpi_namespace_node *node;
+    union {
+        struct uacpi_namespace_node *node;
+        uacpi_u64 expiration_point;
+    };
 };
 
 DYNAMIC_ARRAY_WITH_INLINE_STORAGE(code_block_array, struct code_block, 8)
@@ -198,6 +203,11 @@ static uacpi_status held_mutexes_array_remove_and_release(
         return UACPI_STATUS_OK;
     }
 
+    if (mutex->depth > 1 && force == FORCE_RELEASE_NO) {
+        uacpi_release_aml_mutex(mutex);
+        return UACPI_STATUS_OK;
+    }
+
     // Fast path for well-behaved AML that releases mutexes in descending order
     if (uacpi_likely(item == mutex)) {
         held_mutexes_array_pop(arr);
@@ -223,8 +233,10 @@ static uacpi_status held_mutexes_array_remove_and_release(
     held_mutexes_array_remove_idx(arr, i);
 
 do_release:
-    mutex->owner = UACPI_NULL;
-    uacpi_kernel_release_mutex(mutex->handle);
+    // This is either a force release, or depth was already 1 to begin with
+    mutex->depth = 1;
+    uacpi_release_aml_mutex(mutex);
+
     uacpi_mutex_unref(mutex);
     return UACPI_STATUS_OK;
 }
@@ -259,9 +271,12 @@ struct call_frame {
     struct code_block_array code_blocks;
     struct temp_namespace_node_array temp_nodes;
     struct code_block *last_while;
-    struct uacpi_namespace_node *cur_scope;
+    uacpi_u64 prev_while_expiration;
+    uacpi_u32 prev_while_code_offset;
 
     uacpi_u32 code_offset;
+
+    struct uacpi_namespace_node *cur_scope;
 
     // Only used if the method is serialized
     uacpi_u8 prev_sync_level;
@@ -277,7 +292,7 @@ static uacpi_size call_frame_code_bytes_left(struct call_frame *frame)
     return frame->method->size - frame->code_offset;
 }
 
-static bool call_frame_has_code(struct call_frame* frame)
+static uacpi_bool call_frame_has_code(struct call_frame *frame)
 {
     return call_frame_code_bytes_left(frame) > 0;
 }
@@ -681,7 +696,7 @@ static uacpi_status handle_buffer(struct execution_context *ctx)
     if (uacpi_unlikely(declared_size->integer > 0xE0000000)) {
         uacpi_error(
             "buffer is too large (%"UACPI_PRIu64"), assuming corrupted "
-            "bytestream\n", declared_size->integer
+            "bytestream\n", UACPI_FMT64(declared_size->integer)
         );
         return UACPI_STATUS_AML_BAD_ENCODING;
     }
@@ -761,7 +776,7 @@ static uacpi_status handle_package(struct execution_context *ctx)
         if (uacpi_unlikely(var_num_elements->integer > 0xE0000000)) {
             uacpi_error(
                 "package is too large (%"UACPI_PRIu64"), assuming "
-                "corrupted bytestream\n", var_num_elements->integer
+                "corrupted bytestream\n", UACPI_FMT64(var_num_elements->integer)
             );
             return UACPI_STATUS_AML_BAD_ENCODING;
         }
@@ -886,6 +901,7 @@ static uacpi_status get_object_storage(uacpi_object *obj,
         break;
     case UACPI_OBJECT_BUFFER:
         if (obj->buffer->size == 0) {
+            out_buf->ptr = UACPI_NULL;
             out_buf->len = 0;
             break;
         }
@@ -1090,8 +1106,8 @@ static uacpi_status handle_create_op_region(struct execution_context *ctx)
     } else if (uacpi_unlikely(op_region->offset > region_end)) {
         uacpi_error(
             "invalid operation region %.4s bounds: offset=0x%"UACPI_PRIX64
-            " length=0x%"UACPI_PRIX64"\n", node->name.text, op_region->offset,
-            op_region->length
+            " length=0x%"UACPI_PRIX64"\n", node->name.text,
+            UACPI_FMT64(op_region->offset), UACPI_FMT64(op_region->length)
         );
         return UACPI_STATUS_AML_BAD_ENCODING;
     }
@@ -1102,7 +1118,8 @@ static uacpi_status handle_create_op_region(struct execution_context *ctx)
     if (uacpi_unlikely(node->object == UACPI_NULL))
         return UACPI_STATUS_OUT_OF_MEMORY;
 
-    if (uacpi_opregion_find_and_install_handler(node) == UACPI_STATUS_OK)
+    if (uacpi_opregion_find_and_install_handler(node) == UACPI_STATUS_OK &&
+        uacpi_get_current_init_level() >= UACPI_INIT_LEVEL_NAMESPACE_LOADED)
         uacpi_opregion_reg(node);
 
     return UACPI_STATUS_OK;
@@ -1168,7 +1185,7 @@ static uacpi_status handle_create_data_region(struct execution_context *ctx)
     uacpi_status ret;
     struct item_array *items = &ctx->cur_op_ctx->items;
     struct uacpi_table_identifiers table_id;
-    struct uacpi_table *table;
+    uacpi_table table;
     uacpi_namespace_node *node;
     uacpi_object *obj;
     uacpi_operation_region *op_region;
@@ -1193,8 +1210,8 @@ static uacpi_status handle_create_data_region(struct execution_context *ctx)
     obj = item_array_at(items, 4)->obj;
     op_region = obj->op_region;
     op_region->space = UACPI_ADDRESS_SPACE_TABLE_DATA;
-    op_region->offset = table->virt_addr;
-    op_region->length = table->length;
+    op_region->offset = table.virt_addr;
+    op_region->length = table.hdr->length;
 
     node->object = uacpi_create_internal_reference(
         UACPI_REFERENCE_KIND_NAMED, obj
@@ -1208,76 +1225,50 @@ static uacpi_status handle_create_data_region(struct execution_context *ctx)
     return UACPI_STATUS_OK;
 }
 
-enum table_load_cause {
-    TABLE_LOAD_CAUSE_LOAD_OP,
-    TABLE_LOAD_CAUSE_LOAD_TABLE_OP,
-    TABLE_LOAD_CAUSE_API
-};
+static uacpi_bool is_dynamic_table_load(enum uacpi_table_load_cause cause)
+{
+    return cause != UACPI_TABLE_LOAD_CAUSE_INIT;
+}
 
-static uacpi_status prepare_table_load(
-    struct uacpi_table *table,
-    enum table_load_cause cause, uacpi_control_method *in_method
+static void prepare_table_load(
+    void *ptr, enum uacpi_table_load_cause cause, uacpi_control_method *in_method
 )
 {
-    struct acpi_dsdt *dsdt;
+    struct acpi_dsdt *dsdt = ptr;
     enum uacpi_log_level log_level = UACPI_LOG_TRACE;
     const uacpi_char *log_prefix = "load of";
 
-    /*
-     * Duplicate table loads are only disallowed for API loads. AML can load
-     * the same table multiple times, since this is allowed by NT.
-     */
-    if ((table->flags & UACPI_TABLE_LOADED) && cause == TABLE_LOAD_CAUSE_API)
-        return UACPI_STATUS_ALREADY_EXISTS;
-
-    if (cause != TABLE_LOAD_CAUSE_API) {
-        log_prefix = "dynamic load of";
+    if (is_dynamic_table_load(cause)) {
+        log_prefix = cause == UACPI_TABLE_LOAD_CAUSE_HOST ?
+               "host-invoked load of" : "dynamic load of";
         log_level = UACPI_LOG_INFO;
     }
 
     uacpi_log_lvl(
-        log_level,
-        "%s '%.4s' (OEM ID '%.6s' OEM Table ID '%.8s')\n",
-        log_prefix, table->signature.text, table->hdr->oemid,
-        table->hdr->oem_table_id
+        log_level, "%s "UACPI_PRI_TBL_HDR"\n",
+        log_prefix, UACPI_FMT_TBL_HDR(&dsdt->hdr)
     );
 
-    dsdt = UACPI_VIRT_ADDR_TO_PTR(table->virt_addr);
     in_method->code = dsdt->definition_block;
-    in_method->size = table->length - sizeof(dsdt->hdr);
+    in_method->size = dsdt->hdr.length - sizeof(dsdt->hdr);
     in_method->named_objects_persist = UACPI_TRUE;
-
-    table->flags |= UACPI_TABLE_LOADED;
-    return UACPI_STATUS_OK;
 }
 
 static uacpi_status do_load_table(
-    uacpi_namespace_node *parent, struct uacpi_table *table,
-    enum table_load_cause cause
+    uacpi_namespace_node *parent, struct acpi_sdt_hdr *tbl,
+    enum uacpi_table_load_cause cause
 )
 {
     struct uacpi_control_method method = { 0 };
     uacpi_status ret;
 
-    ret = prepare_table_load(table, cause, &method);
-    if (uacpi_unlikely_error(ret)) {
-        if (ret == UACPI_STATUS_ALREADY_EXISTS)
-            ret = UACPI_STATUS_OK;
-
-        return ret;
-    }
+    prepare_table_load(tbl, cause, &method);
 
     ret = uacpi_execute_control_method(parent, &method, UACPI_NULL, UACPI_NULL);
     if (uacpi_unlikely_error(ret))
         return ret;
 
-    /*
-     * NOTE:
-     * This will need to run if we define public API for loading additional
-     * SSDTs. Add a condition to run gpe match code for the new LOAD_CAUSE
-     * in that case.
-     */
-    if (cause != TABLE_LOAD_CAUSE_API)
+    if (is_dynamic_table_load(cause))
         ret = uacpi_events_match_post_dynamic_table_load();
 
     return ret;
@@ -1288,7 +1279,7 @@ static uacpi_status handle_load_table(struct execution_context *ctx)
     uacpi_status ret;
     struct item_array *items = &ctx->cur_op_ctx->items;
     struct uacpi_table_identifiers table_id;
-    struct uacpi_table *table;
+    uacpi_table table;
     uacpi_buffer *root_path, *param_path;
     uacpi_control_method *method;
     uacpi_namespace_node *root_node, *param_node = UACPI_NULL;
@@ -1367,16 +1358,19 @@ static uacpi_status handle_load_table(struct execution_context *ctx)
         report_table_id_find_error("LoadTable", &table_id, ret);
         return ret;
     }
+    uacpi_table_mark_as_loaded(table.index);
 
     method = item_array_at(items, 1)->obj->method;
-    return prepare_table_load(table, TABLE_LOAD_CAUSE_LOAD_TABLE_OP, method);
+    prepare_table_load(table.hdr, UACPI_TABLE_LOAD_CAUSE_LOAD_TABLE_OP, method);
+
+    return UACPI_STATUS_OK;
 }
 
 static uacpi_status handle_load(struct execution_context *ctx)
 {
     uacpi_status ret;
     struct item_array *items = &ctx->cur_op_ctx->items;
-    struct uacpi_table *table;
+    uacpi_table table;
     uacpi_control_method *method;
     uacpi_object *src;
     struct acpi_sdt_hdr *src_table;
@@ -1413,7 +1407,7 @@ static uacpi_status handle_load(struct execution_context *ctx)
         if (uacpi_unlikely(op_region->length < sizeof(struct acpi_sdt_hdr))) {
             uacpi_error(
                 "Load: operation region is too small: %"UACPI_PRIu64"\n",
-                op_region->length
+                UACPI_FMT64(op_region->length)
             );
             goto error_out;
         }
@@ -1423,7 +1417,8 @@ static uacpi_status handle_load(struct execution_context *ctx)
             uacpi_error(
                 "Load: failed to map operation region "
                 "0x%016"UACPI_PRIX64" -> 0x%016"UACPI_PRIX64"\n",
-                op_region->offset, op_region->offset + op_region->length
+                UACPI_FMT64(op_region->offset),
+                UACPI_FMT64(op_region->offset + op_region->length)
             );
             goto error_out;
         }
@@ -1483,17 +1478,21 @@ static uacpi_status handle_load(struct execution_context *ctx)
         unmap_src = UACPI_FALSE;
     }
 
-    ret = uacpi_table_append_mapped(UACPI_PTR_TO_VIRT_ADDR(table_buffer),
-                                    &table);
+    ret = uacpi_table_install_with_origin(
+        table_buffer, UACPI_TABLE_ORIGIN_FIRMWARE_VIRTUAL, &table
+    );
     if (uacpi_unlikely_error(ret)) {
         uacpi_free(table_buffer, src_table->length);
-        goto error_out;
+
+        if (ret != UACPI_STATUS_OVERRIDDEN)
+            goto error_out;
     }
+    uacpi_table_mark_as_loaded(table.index);
 
     item_array_at(items, 0)->node = uacpi_namespace_root();
 
     method = item_array_at(items, 1)->obj->method;
-    prepare_table_load(table, TABLE_LOAD_CAUSE_LOAD_OP, method);
+    prepare_table_load(table.ptr, UACPI_TABLE_LOAD_CAUSE_LOAD_OP, method);
 
     return UACPI_STATUS_OK;
 
@@ -1503,12 +1502,9 @@ error_out:
     return UACPI_STATUS_OK;
 }
 
-uacpi_status uacpi_load_table(struct uacpi_table *table)
+uacpi_status uacpi_execute_table(void *tbl, enum uacpi_table_load_cause cause)
 {
-    return do_load_table(
-        uacpi_namespace_root(), table,
-        TABLE_LOAD_CAUSE_API
-    );
+    return do_load_table(uacpi_namespace_root(), tbl, cause);
 }
 
 uacpi_u32 get_field_length(struct item *item)
@@ -1766,7 +1762,7 @@ static uacpi_status handle_create_field(struct execution_context *ctx)
             raw_value = item_array_at(&op_ctx->items, i++)->immediate;
 
             access_type = raw_value & 0b1111;
-            access_attrib = access_type >> 6;
+            access_attrib = (raw_value >> 6) & 0b11;
 
             raw_value = item_array_at(&op_ctx->items, i++)->immediate;
 
@@ -1913,6 +1909,8 @@ static void update_scope(struct call_frame *frame)
     frame->cur_scope = block->node;
 }
 
+#define TICKS_PER_SECOND (1000ull * 1000ull * 10ull)
+
 static uacpi_status begin_block_execution(struct execution_context *ctx)
 {
     struct call_frame *cur_frame = ctx->cur_frame;
@@ -1924,6 +1922,8 @@ static uacpi_status begin_block_execution(struct execution_context *ctx)
     if (uacpi_unlikely(block == UACPI_NULL))
         return UACPI_STATUS_OUT_OF_MEMORY;
 
+    pkg = &item_array_at(&op_ctx->items, 0)->pkg;
+
     switch (op_ctx->op->code) {
     case UACPI_AML_OP_IfOp:
         block->type = CODE_BLOCK_IF;
@@ -1933,6 +1933,29 @@ static uacpi_status begin_block_execution(struct execution_context *ctx)
         break;
     case UACPI_AML_OP_WhileOp:
         block->type = CODE_BLOCK_WHILE;
+
+        if (pkg->begin == cur_frame->prev_while_code_offset) {
+            uacpi_u64 cur_ticks;
+
+            cur_ticks = uacpi_kernel_get_ticks();
+
+            if (uacpi_unlikely(cur_ticks > block->expiration_point)) {
+                uacpi_error("loop time out after running for %u seconds\n",
+                            g_uacpi_rt_ctx.loop_timeout_seconds);
+                code_block_array_pop(&cur_frame->code_blocks);
+                return UACPI_STATUS_AML_LOOP_TIMEOUT;
+            }
+
+            block->expiration_point = cur_frame->prev_while_expiration;
+        } else {
+            /*
+             * Calculate the expiration point for this loop.
+             * If a loop is executed past this point, it will get aborted.
+             */
+            block->expiration_point = uacpi_kernel_get_ticks();
+            block->expiration_point +=
+                g_uacpi_rt_ctx.loop_timeout_seconds * TICKS_PER_SECOND;
+        }
         break;
     case UACPI_AML_OP_ScopeOp:
     case UACPI_AML_OP_DeviceOp:
@@ -1950,8 +1973,6 @@ static uacpi_status begin_block_execution(struct execution_context *ctx)
         return UACPI_STATUS_INVALID_ARGUMENT;
     }
 
-    pkg = &item_array_at(&op_ctx->items, 0)->pkg;
-
     // -1 because we want to re-evaluate at the start of the op next time
     block->begin = pkg->begin - 1;
     block->end = pkg->end;
@@ -1967,6 +1988,15 @@ static void frame_reset_post_end_block(struct execution_context *ctx,
                                        enum code_block_type type)
 {
     struct call_frame *frame = ctx->cur_frame;
+
+    if (type == CODE_BLOCK_WHILE) {
+        struct code_block *block = ctx->cur_block;
+
+        // + 1 here to skip the WhileOp and get to the PkgLength
+        frame->prev_while_code_offset = block->begin + 1;
+        frame->prev_while_expiration = block->expiration_point;
+    }
+
     code_block_array_pop(&frame->code_blocks);
     ctx->cur_block = code_block_array_last(&frame->code_blocks);
 
@@ -1989,11 +2019,12 @@ static void debug_store_no_recurse(const uacpi_char *prefix, uacpi_object *src)
     case UACPI_OBJECT_INTEGER:
         if (g_uacpi_rt_ctx.is_rev1) {
             uacpi_trace(
-                "%s Integer => 0x%08"UACPI_PRIX64"\n", prefix, src->integer
+                "%s Integer => 0x%08X\n", prefix, (uacpi_u32)src->integer
             );
         } else {
             uacpi_trace(
-                "%s Integer => 0x%016"UACPI_PRIX64"\n", prefix, src->integer
+                "%s Integer => 0x%016"UACPI_PRIX64"\n", prefix,
+                UACPI_FMT64(src->integer)
             );
         }
         break;
@@ -2016,8 +2047,8 @@ static void debug_store_no_recurse(const uacpi_char *prefix, uacpi_object *src)
         uacpi_trace(
             "%s OperationRegion (ASID %d) 0x%016"UACPI_PRIX64
             " -> 0x%016"UACPI_PRIX64"\n", prefix,
-            src->op_region->space, src->op_region->offset,
-            src->op_region->offset + src->op_region->length
+            src->op_region->space, UACPI_FMT64(src->op_region->offset),
+            UACPI_FMT64(src->op_region->offset + src->op_region->length)
         );
         break;
     case UACPI_OBJECT_POWER_RESOURCE:
@@ -2043,9 +2074,9 @@ static void debug_store_no_recurse(const uacpi_char *prefix, uacpi_object *src)
         break;
     case UACPI_OBJECT_MUTEX:
         uacpi_trace(
-            "%s Mutex @%p (%p => %p) sync level %d (owned by %p)\n",
+            "%s Mutex @%p (%p => %p) sync level %d\n",
             prefix, src, src->mutex, src->mutex->handle,
-            src->mutex->sync_level, src->mutex->owner
+            src->mutex->sync_level
         );
         break;
     case UACPI_OBJECT_METHOD:
@@ -2065,7 +2096,7 @@ static uacpi_status debug_store(uacpi_object *src)
      * Don't bother running the body if current log level is not set to trace.
      * All DebugOp logging is done as TRACE exclusively.
      */
-    if (!uacpi_rt_should_log(UACPI_LOG_TRACE))
+    if (!uacpi_should_log(UACPI_LOG_TRACE))
         return UACPI_STATUS_OK;
 
     src = uacpi_unwrap_internal_reference(src);
@@ -2278,7 +2309,7 @@ static uacpi_status handle_ref_or_deref_of(struct execution_context *ctx)
 
         if (!was_a_reference) {
             uacpi_error(
-                "Invalid DerefOf argument: %s, expected a reference\n",
+                "invalid DerefOf argument: %s, expected a reference\n",
                 uacpi_object_type_to_string(src->type)
             );
             return UACPI_STATUS_AML_INCOMPATIBLE_OBJECT_TYPE;
@@ -2359,7 +2390,7 @@ static uacpi_status do_binary_math(
         res = lhs % rhs;
         break;
     default:
-        break;
+        return UACPI_STATUS_INVALID_ARGUMENT;
     }
 
     if (should_negate)
@@ -2553,7 +2584,7 @@ static uacpi_status integer_to_string(
     repr_len = uacpi_snprintf(
         int_buf, sizeof(int_buf),
         is_hex ? "%"UACPI_PRIX64 : "%"UACPI_PRIu64,
-        integer
+        UACPI_FMT64(integer)
     );
     if (uacpi_unlikely(repr_len < 0))
         return UACPI_STATUS_INVALID_ARGUMENT;
@@ -2859,7 +2890,7 @@ static uacpi_status handle_concatenate(struct execution_context *ctx)
         case UACPI_OBJECT_INTEGER: {
             int size;
             size = uacpi_snprintf(int_buf, sizeof(int_buf), "%"UACPI_PRIx64,
-                                  arg1->integer);
+                                  UACPI_FMT64(arg1->integer));
             if (size < 0)
                 return UACPI_STATUS_INVALID_ARGUMENT;
 
@@ -3464,7 +3495,6 @@ static uacpi_status handle_mutex_ctl(struct execution_context *ctx)
 {
     struct op_context *op_ctx = ctx->cur_op_ctx;
     uacpi_object *obj;
-    uacpi_bool owned_by_us;
 
     obj = uacpi_unwrap_internal_reference(
         item_array_at(&op_ctx->items, 0)->obj
@@ -3477,15 +3507,12 @@ static uacpi_status handle_mutex_ctl(struct execution_context *ctx)
         return UACPI_STATUS_AML_INCOMPATIBLE_OBJECT_TYPE;
     }
 
-    // TODO: This should probably be a relaxed atomic load?
-    owned_by_us = obj->mutex->owner == ctx;
-
     switch (op_ctx->op->code)
     {
     case UACPI_AML_OP_AcquireOp: {
         uacpi_u64 timeout;
         uacpi_u64 *return_value;
-        uacpi_bool success;
+        uacpi_status ret;
 
         return_value = &item_array_at(&op_ctx->items, 2)->obj->integer;
 
@@ -3498,48 +3525,40 @@ static uacpi_status handle_mutex_ctl(struct execution_context *ctx)
             break;
         }
 
-        if (owned_by_us) {
-            obj->mutex->depth++;
-            *return_value = 0;
-            break;
-        }
-
         timeout = item_array_at(&op_ctx->items, 1)->immediate;
         if (timeout > 0xFFFF)
             timeout = 0xFFFF;
 
-        success = uacpi_kernel_acquire_mutex(obj->mutex->handle, timeout);
-        if (success) {
-            uacpi_status ret;
-
-            ret = held_mutexes_array_push(&ctx->held_mutexes, obj->mutex);
-            if (uacpi_unlikely_error(ret)) {
-                uacpi_kernel_release_mutex(obj->mutex->handle);
-                return ret;
-            }
-
-            // TODO: this should be a relaxed atomic store
-            obj->mutex->owner = ctx;
-            obj->mutex->depth = 1;
-            ctx->sync_level = obj->mutex->sync_level;
-            *return_value = 0;
+        if (uacpi_this_thread_owns_aml_mutex(obj->mutex)) {
+            if (uacpi_likely(uacpi_acquire_aml_mutex(obj->mutex, timeout)))
+                *return_value = 0;
+            break;
         }
+
+        if (!uacpi_acquire_aml_mutex(obj->mutex, timeout))
+            break;
+
+        ret = held_mutexes_array_push(&ctx->held_mutexes, obj->mutex);
+        if (uacpi_unlikely_error(ret)) {
+            uacpi_release_aml_mutex(obj->mutex);
+            return ret;
+        }
+
+        ctx->sync_level = obj->mutex->sync_level;
+        *return_value = 0;
         break;
     }
 
     case UACPI_AML_OP_ReleaseOp: {
         uacpi_status ret;
 
-        if (!owned_by_us) {
+        if (!uacpi_this_thread_owns_aml_mutex(obj->mutex)) {
             uacpi_warn(
                 "attempted to release not-previously-acquired mutex object "
                 "@%p (%p)\n", obj->mutex, obj->mutex->handle
             );
             break;
         }
-
-        if (obj->mutex->depth-- > 1)
-            break;
 
         ret = held_mutexes_array_remove_and_release(
             &ctx->held_mutexes, obj->mutex,
@@ -3586,7 +3605,7 @@ static uacpi_status handle_notify(struct execution_context *ctx)
         path = uacpi_namespace_node_generate_absolute_path(node);
         uacpi_warn(
             "ignoring firmware Notify(%s, 0x%"UACPI_PRIX64") request, "
-            "no listeners\n", path, value
+            "no listeners\n", path, UACPI_FMT64(value)
         );
         uacpi_free_dynamic_string(path);
 
@@ -3805,7 +3824,7 @@ static uacpi_status handle_control_flow(struct execution_context *ctx)
     struct op_context *op_ctx = ctx->cur_op_ctx;
 
     if (uacpi_unlikely(frame->last_while == UACPI_NULL)) {
-        uacpi_warn(
+        uacpi_error(
             "attempting to %s outside of a While block\n",
             op_ctx->op->code == UACPI_AML_OP_BreakOp ? "Break" : "Continue"
         );
@@ -3953,7 +3972,7 @@ static void refresh_ctx_pointers(struct execution_context *ctx)
     ctx->cur_block = code_block_array_last(&frame->code_blocks);
 }
 
-static bool ctx_has_non_preempted_op(struct execution_context *ctx)
+static uacpi_bool ctx_has_non_preempted_op(struct execution_context *ctx)
 {
     return ctx->cur_op_ctx && !ctx->cur_op_ctx->preempted;
 }
@@ -4204,14 +4223,13 @@ static uacpi_status enter_method(
 )
 {
     uacpi_status ret = UACPI_STATUS_OK;
-    uacpi_bool owned_by_us = UACPI_FALSE;
 
     if (!method->is_serialized)
         return ret;
 
     if (uacpi_unlikely(ctx->sync_level > method->sync_level)) {
         uacpi_error(
-            "Cannot invoke method @%p, sync level %d is too low "
+            "cannot invoke method @%p, sync level %d is too low "
             "(current is %d)\n",
             method, method->sync_level, ctx->sync_level
         );
@@ -4223,25 +4241,17 @@ static uacpi_status enter_method(
         if (uacpi_unlikely(method->mutex == UACPI_NULL))
             return UACPI_STATUS_OUT_OF_MEMORY;
         method->mutex->sync_level = method->sync_level;
-    } else {
-        // TODO: relaxed atomic load
-        owned_by_us = method->mutex->owner == ctx;
     }
 
-    if (!owned_by_us) {
-        if (uacpi_unlikely(!uacpi_kernel_acquire_mutex(
-            method->mutex->handle, 0xFFFF))) {
+    if (!uacpi_this_thread_owns_aml_mutex(method->mutex)) {
+        if (uacpi_unlikely(!uacpi_acquire_aml_mutex(method->mutex, 0xFFFF)))
             return UACPI_STATUS_INTERNAL_ERROR;
-        }
 
         ret = held_mutexes_array_push(&ctx->held_mutexes, method->mutex);
         if (uacpi_unlikely_error(ret)) {
-            uacpi_kernel_release_mutex(method->mutex->handle);
+            uacpi_release_aml_mutex(method->mutex);
             return ret;
         }
-
-        method->mutex->owner = ctx;
-        method->mutex->depth = 1;
     }
 
     new_frame->prev_sync_level = ctx->sync_level;
@@ -4369,12 +4379,17 @@ static uacpi_u8 op_decode_byte(struct op_context *ctx)
 }
 
 // MSVC doesn't support __VA_OPT__ so we do this weirdness
-#define EXEC_OP_DO_WARN(reason, ...)                                 \
-    uacpi_warn("Op 0x%04X ('%s'): "reason"\n",                       \
-               op_ctx->op->code, op_ctx->op->name __VA_ARGS__)
+#define EXEC_OP_DO_LVL(lvl, reason, ...)                              \
+    uacpi_##lvl("Op 0x%04X ('%s'): "reason"\n",                       \
+                op_ctx->op->code, op_ctx->op->name __VA_ARGS__)
 
-#define EXEC_OP_WARN_2(reason, arg0, arg1) EXEC_OP_DO_WARN(reason, ,arg0, arg1)
-#define EXEC_OP_WARN_1(reason, arg0) EXEC_OP_DO_WARN(reason, ,arg0)
+#define EXEC_OP_DO_ERR(reason, ...) EXEC_OP_DO_LVL(error, reason, __VA_ARGS__)
+#define EXEC_OP_DO_WARN(reason, ...) EXEC_OP_DO_LVL(warn, reason, __VA_ARGS__)
+
+#define EXEC_OP_ERR_2(reason, arg0, arg1) EXEC_OP_DO_ERR(reason, ,arg0, arg1)
+#define EXEC_OP_ERR_1(reason, arg0) EXEC_OP_DO_ERR(reason, ,arg0)
+#define EXEC_OP_ERR(reason) EXEC_OP_DO_ERR(reason)
+
 #define EXEC_OP_WARN(reason) EXEC_OP_DO_WARN(reason)
 
 #define SPEC_SIMPLE_NAME "SimpleName := NameString | ArgObj | LocalObj"
@@ -4478,11 +4493,13 @@ static uacpi_status op_typecheck(const struct op_context *op_ctx,
         expected_type_str = SPEC_TERM_ARG;
         ok_mask |= UACPI_OP_PROPERTY_TERM_ARG;
         break;
+    default:
+        return UACPI_STATUS_INVALID_ARGUMENT;
     }
 
     if (!(props & ok_mask)) {
-        EXEC_OP_WARN_2("invalid argument: '%s', expected a %s",
-                       cur_op_ctx->op->name, expected_type_str);
+        EXEC_OP_ERR_2("invalid argument: '%s', expected a %s",
+                      cur_op_ctx->op->name, expected_type_str);
         return UACPI_STATUS_AML_INCOMPATIBLE_OBJECT_TYPE;
     }
 
@@ -4499,8 +4516,8 @@ static uacpi_status typecheck_obj(
     if (uacpi_likely(obj->type == expected_type))
         return UACPI_STATUS_OK;
 
-    EXEC_OP_WARN_2("invalid argument type: %s, expected a %s",
-                   uacpi_object_type_to_string(obj->type), spec_desc);
+    EXEC_OP_ERR_2("invalid argument type: %s, expected a %s",
+                  uacpi_object_type_to_string(obj->type), spec_desc);
     return UACPI_STATUS_AML_INCOMPATIBLE_OBJECT_TYPE;
 }
 
@@ -4531,7 +4548,7 @@ static uacpi_status typecheck_computational_data(
     case UACPI_OBJECT_INTEGER:
         return UACPI_STATUS_OK;
     default:
-        EXEC_OP_WARN_2(
+        EXEC_OP_ERR_2(
             "invalid argument type: %s, expected a %s",
             uacpi_object_type_to_string(obj->type),
             SPEC_COMPUTATIONAL_DATA
@@ -4620,7 +4637,7 @@ static uacpi_status uninstalled_op_handler(struct execution_context *ctx)
 {
     struct op_context *op_ctx = ctx->cur_op_ctx;
 
-    EXEC_OP_WARN("no dedicated handler installed");
+    EXEC_OP_ERR("no dedicated handler installed");
     return UACPI_STATUS_UNIMPLEMENTED;
 }
 
@@ -4879,11 +4896,16 @@ enum method_call_type {
 
 static uacpi_status prepare_method_call(
     struct execution_context *ctx, uacpi_namespace_node *node,
-    uacpi_control_method *method, enum method_call_type type, uacpi_args *args
+    uacpi_control_method *method, enum method_call_type type,
+    const uacpi_args *args
 )
 {
     uacpi_status ret;
     struct call_frame *frame;
+
+    if (uacpi_unlikely(call_frame_array_size(&ctx->call_stack) >=
+                       g_uacpi_rt_ctx.max_call_stack_depth))
+        return UACPI_STATUS_AML_CALL_STACK_DEPTH_LIMIT;
 
     ret = push_new_frame(ctx, &frame);
     if (uacpi_unlikely_error(ret))
@@ -4898,7 +4920,7 @@ static uacpi_status prepare_method_call(
 
         arg_count = args ? args->count : 0;
         if (uacpi_unlikely(arg_count != method->args)) {
-            uacpi_warn(
+            uacpi_error(
                 "invalid number of arguments %zu to call %.4s, expected %d\n",
                 args ? args->count : 0, node->name.text, method->args
             );
@@ -5139,9 +5161,9 @@ static uacpi_status exec_op(struct execution_context *ctx)
             expected_type = op_decode_byte(op_ctx);
 
             if (uacpi_unlikely(item->obj->type != expected_type)) {
-                EXEC_OP_WARN_2("bad object type: expected %s, got %s!",
-                               uacpi_object_type_to_string(expected_type),
-                               uacpi_object_type_to_string(item->obj->type));
+                EXEC_OP_ERR_2("bad object type: expected %s, got %s!",
+                              uacpi_object_type_to_string(expected_type),
+                              uacpi_object_type_to_string(item->obj->type));
                 ret = UACPI_STATUS_AML_INCOMPATIBLE_OBJECT_TYPE;
             }
 
@@ -5150,7 +5172,7 @@ static uacpi_status exec_op(struct execution_context *ctx)
 
         case UACPI_PARSE_OP_BAD_OPCODE:
         case UACPI_PARSE_OP_UNREACHABLE:
-            EXEC_OP_WARN("invalid/unexpected opcode");
+            EXEC_OP_ERR("invalid/unexpected opcode");
             ret = UACPI_STATUS_AML_INVALID_OPCODE;
             break;
 
@@ -5183,7 +5205,7 @@ static uacpi_status exec_op(struct execution_context *ctx)
         case UACPI_PARSE_OP_IF_NOT_NULL:
         case UACPI_PARSE_OP_IF_NULL: {
             uacpi_u8 idx, bytes_skip;
-            bool is_null, skip_if_null;
+            uacpi_bool is_null, skip_if_null;
 
             idx = op_decode_byte(op_ctx);
             bytes_skip = op_decode_byte(op_ctx);
@@ -5328,8 +5350,8 @@ static uacpi_status exec_op(struct execution_context *ctx)
                 break;
 
             default:
-                EXEC_OP_WARN_1("don't know how to copy/transfer object to %d",
-                               prev_op);
+                EXEC_OP_ERR_1("don't know how to copy/transfer object to %d",
+                              prev_op);
                 ret = UACPI_STATUS_INVALID_ARGUMENT;
                 break;
             }
@@ -5486,7 +5508,7 @@ static uacpi_status exec_op(struct execution_context *ctx)
         }
 
         default:
-            EXEC_OP_WARN_1("unhandled parser op '%d'", op);
+            EXEC_OP_ERR_1("unhandled parser op '%d'", op);
             ret = UACPI_STATUS_UNIMPLEMENTED;
             break;
         }
@@ -5593,7 +5615,7 @@ static void execution_context_release(struct execution_context *ctx)
 
 uacpi_status uacpi_execute_control_method(
     uacpi_namespace_node *scope, uacpi_control_method *method,
-    uacpi_args *args, uacpi_object **out_obj
+    const uacpi_args *args, uacpi_object **out_obj
 )
 {
     uacpi_status ret = UACPI_STATUS_OK;
@@ -5679,45 +5701,18 @@ out:
     return ret;
 }
 
-// TODO: make this dynamically configurable
-static uacpi_char *supported_osi_strings[] = {
-    "Windows 2000",
-    "Windows 2001",
-    "Windows 2001 SP1",
-    "Windows 2001.1",
-    "Windows 2001 SP2",
-    "Windows 2001.1 SP1",
-    "Windows 2006",
-    "Windows 2006.1",
-    "Windows 2006 SP1",
-    "Windows 2006 SP2",
-    "Windows 2009",
-    "Windows 2012",
-    "Windows 2013",
-    "Windows 2015",
-    "Windows 2016",
-    "Windows 2017",
-    "Windows 2017.2",
-    "Windows 2018",
-    "Windows 2018.2",
-    "Windows 2019",
-    "Windows 2020",
-    "Windows 2021",
-    "Windows 2022",
-    "Extended Address Space Descriptor",
-};
-
 uacpi_status uacpi_osi(uacpi_handle handle, uacpi_object *retval)
 {
     struct execution_context *ctx = handle;
+    uacpi_bool is_supported;
+    uacpi_status ret;
     uacpi_object *arg;
-    uacpi_size i;
 
     arg = uacpi_unwrap_internal_reference(ctx->cur_frame->args[0]);
     if (arg->type != UACPI_OBJECT_STRING) {
-        uacpi_warn("_OSI: invalid argument type %s, expected a String\n",
-                   uacpi_object_type_to_string(arg->type));
-        return UACPI_STATUS_INVALID_ARGUMENT;
+        uacpi_error("_OSI: invalid argument type %s, expected a String\n",
+                    uacpi_object_type_to_string(arg->type));
+        return UACPI_STATUS_AML_INCOMPATIBLE_OBJECT_TYPE;
     }
 
     if (retval == UACPI_NULL)
@@ -5725,20 +5720,13 @@ uacpi_status uacpi_osi(uacpi_handle handle, uacpi_object *retval)
 
     retval->type = UACPI_OBJECT_INTEGER;
 
-    for (i = 0; i < UACPI_ARRAY_SIZE(supported_osi_strings); ++i) {
-        uacpi_char *str = supported_osi_strings[i];
+    ret = uacpi_handle_osi(arg->buffer->text, &is_supported);
+    if (uacpi_unlikely_error(ret))
+        return ret;
 
-        if (uacpi_strncmp(str, arg->buffer->text, arg->buffer->size) != 0)
-            continue;
+    retval->integer = is_supported ? ones() : 0;
 
-        retval->integer = ones();
-        goto out;
-    }
-
-    retval->integer = 0;
-
-out:
     uacpi_trace("_OSI(%s) => reporting as %ssupported\n",
-                arg->buffer->text, retval->integer ? "" : "un");
+                arg->buffer->text, is_supported ? "" : "un");
     return UACPI_STATUS_OK;
 }

@@ -5,27 +5,21 @@
 #include <uacpi/kernel_api.h>
 #include <uacpi/namespace.h>
 
-#ifndef UACPI_REDUCED_HARDWARE
-    #define UACPI_REDUCED_HARDWARE 0
-#endif
-
-#if UACPI_REDUCED_HARDWARE == 1
+#ifdef UACPI_REDUCED_HARDWARE
 #define UACPI_MAKE_STUB_FOR_REDUCED_HARDWARE(fn, ret) \
     UACPI_NO_UNUSED_PARAMETER_WARNINGS_BEGIN          \
-    static inline fn { return (ret); }                \
+    static inline fn { return ret; }                \
     UACPI_NO_UNUSED_PARAMETER_WARNINGS_END
 
+#define UACPI_STUB_IF_REDUCED_HARDWARE(fn) \
+    UACPI_MAKE_STUB_FOR_REDUCED_HARDWARE(fn,)
 #define UACPI_ALWAYS_ERROR_FOR_REDUCED_HARDWARE(fn) \
     UACPI_MAKE_STUB_FOR_REDUCED_HARDWARE(fn, UACPI_STATUS_COMPILED_OUT)
 #define UACPI_ALWAYS_OK_FOR_REDUCED_HARDWARE(fn) \
     UACPI_MAKE_STUB_FOR_REDUCED_HARDWARE(fn, UACPI_STATUS_OK)
 #else
 
-#if UACPI_REDUCED_HARDWARE != 0
-#error UACPI_REDUCED_HARDWARE must be set to either 0 or 1
-#endif
-
-#define UACPI_STUB_IF_REDUCED_HARDWARE(fn, ret) fn;
+#define UACPI_STUB_IF_REDUCED_HARDWARE(fn) fn;
 #define UACPI_ALWAYS_ERROR_FOR_REDUCED_HARDWARE(fn) fn;
 #define UACPI_ALWAYS_OK_FOR_REDUCED_HARDWARE(fn) fn;
 #endif
@@ -35,44 +29,72 @@ extern "C" {
 #endif
 
 /*
+ * Set up early access to the table subsystem. What this means is:
+ * - uacpi_table_find() and similar API becomes usable before the call to
+ *   uacpi_initialize().
+ * - No kernel API besides logging and map/unmap will be invoked at this stage,
+ *   allowing for heap and scheduling to still be fully offline.
+ * - The provided 'temporary_buffer' will be used as a temporary storage for the
+ *   internal metadata about the tables (list, reference count, addresses,
+ *   sizes, etc).
+ * - The 'temporary_buffer' is replaced with a normal heap buffer allocated via
+ *   uacpi_kernel_alloc() after the call to uacpi_initialize() and can therefore
+ *   be reclaimed by the kernel.
+ *
+ * The approximate overhead per table is 56 bytes, so a buffer of 4096 bytes
+ * yields about 73 tables in terms of capacity. uACPI also has an internal
+ * static buffer for tables, "UACPI_STATIC_TABLE_ARRAY_LEN", which is configured
+ * as 16 descriptors in length by default.
+ */
+uacpi_status uacpi_setup_early_table_access(
+    void *temporary_buffer, uacpi_size buffer_size
+);
+
+/*
  * Bad table checksum should be considered a fatal error
  * (table load is fully aborted in this case)
  */
-#define UACPI_PARAM_BAD_CSUM_FATAL (1 << 0)
+#define UACPI_FLAG_BAD_CSUM_FATAL (1ull << 0)
 
 /*
- * Bad table header should be considered a fatal error
+ * Unexpected table signature should be considered a fatal error
  * (table load is fully aborted in this case)
  */
-#define UACPI_PARAM_BAD_TBL_HDR_FATAL (1 << 1)
+#define UACPI_FLAG_BAD_TBL_SIGNATURE_FATAL (1ull << 1)
 
 /*
  * Force uACPI to use RSDT even for later revisions
  */
-#define UACPI_PARAM_BAD_XSDT (1 << 2)
+#define UACPI_FLAG_BAD_XSDT (1ull << 2)
 
-typedef struct uacpi_params {
-    enum uacpi_log_level log_level;
-    uacpi_u64 flags;
-} uacpi_params;
+/*
+ * If this is set, ACPI mode is not entered during the call to
+ * uacpi_initialize. The caller is expected to enter it later at their own
+ * discretion by using uacpi_enter_acpi_mode().
+ */
+#define UACPI_FLAG_NO_ACPI_MODE (1ull << 3)
 
-typedef struct uacpi_init_params {
-    uacpi_phys_addr rsdp;
-    uacpi_params rt_params;
+/*
+ * Don't create the \_OSI method when building the namespace.
+ * Only enable this if you're certain that having this method breaks your AML
+ * blob, a more atomic/granular interface management is available via osi.h
+ */
+#define UACPI_FLAG_NO_OSI (1ull << 4)
 
-    /*
-     * If this is set, ACPI mode is not entered during the call to
-     * uacpi_initialize. The caller is expected to enter it later at thier own
-     * discretion by using uacpi_enter_acpi_mode().
-     */
-    uacpi_bool no_acpi_mode;
-} uacpi_init_params;
+/*
+ * Validate table checksums at installation time instead of first use.
+ * Note that this makes uACPI map the entire table at once, which not all
+ * hosts are able to handle at early init.
+ */
+#define UACPI_FLAG_PROACTIVE_TBL_CSUM (1ull << 5)
 
 /*
  * Initializes the uACPI subsystem, iterates & records all relevant RSDT/XSDT
  * tables. Enters ACPI mode.
+ *
+ * 'flags' is any combination of UACPI_FLAG_* above
  */
-uacpi_status uacpi_initialize(struct uacpi_init_params*);
+uacpi_status uacpi_initialize(uacpi_u64 flags);
 
 /*
  * Parses & executes all of the DSDT/SSDT tables.
@@ -86,6 +108,9 @@ uacpi_status uacpi_namespace_load(void);
  */
 uacpi_status uacpi_namespace_initialize(void);
 
+// Returns the current subsystem initialization level
+uacpi_init_level uacpi_get_current_init_level(void);
+
 /*
  * Evaluate an object within the namespace and get back its value.
  * Either root or path must be valid.
@@ -93,7 +118,7 @@ uacpi_status uacpi_namespace_initialize(void);
  * lookups, unless 'path' is already absolute.
  */
 uacpi_status uacpi_eval(uacpi_namespace_node *parent, const uacpi_char *path,
-                        uacpi_args *args, uacpi_object **ret);
+                        const uacpi_args *args, uacpi_object **ret);
 
 /*
  * Same as uacpi_eval, but the return value type is validated against
@@ -101,7 +126,7 @@ uacpi_status uacpi_eval(uacpi_namespace_node *parent, const uacpi_char *path,
  */
 uacpi_status uacpi_eval_typed(
     uacpi_namespace_node *parent, const uacpi_char *path,
-    uacpi_args *args, uacpi_u32 ret_mask, uacpi_object **ret
+    const uacpi_args *args, uacpi_u32 ret_mask, uacpi_object **ret
 );
 
 /*
@@ -109,7 +134,7 @@ uacpi_status uacpi_eval_typed(
  */
 uacpi_status uacpi_eval_integer(
     uacpi_namespace_node *parent, const uacpi_char *path,
-    uacpi_args *args, uacpi_u64 *out_value
+    const uacpi_args *args, uacpi_u64 *out_value
 );
 
 /*
@@ -122,6 +147,27 @@ UACPI_ALWAYS_OK_FOR_REDUCED_HARDWARE(
 UACPI_ALWAYS_ERROR_FOR_REDUCED_HARDWARE(
     uacpi_status uacpi_leave_acpi_mode(void)
 )
+
+/*
+ * Attempt to acquire the global lock for 'timeout' milliseconds.
+ * 0xFFFF implies infinite wait.
+ *
+ * On success, 'out_seq' is set to a unique sequence number for the current
+ * acquire transaction. This number is used for validation during release.
+ */
+uacpi_status uacpi_acquire_global_lock(uacpi_u16 timeout, uacpi_u32 *out_seq);
+uacpi_status uacpi_release_global_lock(uacpi_u32 seq);
+
+/*
+ * Reset the global uACPI state by freeing all internally allocated data
+ * structures & resetting any global variables. After this call, uACPI must be
+ * re-initialized from scratch to be used again.
+ *
+ * This is called by uACPI automatically if a fatal error occurs during a call
+ * to uacpi_initialize/uacpi_namespace_load etc. in order to prevent accidental
+ * use of partially uninitialized subsystems.
+ */
+void uacpi_state_reset(void);
 
 #ifdef __cplusplus
 }

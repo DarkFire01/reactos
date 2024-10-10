@@ -8,6 +8,29 @@ extern "C" {
 #endif
 
 /*
+ * Convenience initialization/deinitialization hooks that will be called by
+ * uACPI automatically when appropriate if compiled-in.
+ */
+#ifdef UACPI_KERNEL_INITIALIZATION
+/*
+ * This API is invoked for each initialization level so that appropriate parts
+ * of the host kernel and/or glue code can be initialized at different stages.
+ *
+ * uACPI API that triggers calls to uacpi_kernel_initialize and the respective
+ * 'current_init_lvl' passed to the hook at that stage:
+ * 1. uacpi_initialize() -> UACPI_INIT_LEVEL_EARLY
+ * 2. uacpi_namespace_load() -> UACPI_INIT_LEVEL_SUBSYSTEM_INITIALIZED
+ * 3. (start of) uacpi_namespace_initialize() -> UACPI_INIT_LEVEL_NAMESPACE_LOADED
+ * 4. (end of) uacpi_namespace_initialize() -> UACPI_INIT_LEVEL_NAMESPACE_INITIALIZED
+ */
+uacpi_status uacpi_kernel_initialize(uacpi_init_level current_init_lvl);
+void uacpi_kernel_deinitialize(void);
+#endif
+
+// Returns the PHYSICAL address of the RSDP structure via *out_rsdp_address.
+uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rdsp_address);
+
+/*
  * Raw IO API, this is only used for accessing verified data from
  * "safe" code (aka not indirectly invoked by the AML interpreter),
  * e.g. programming FADT & FACS registers.
@@ -113,40 +136,13 @@ void uacpi_kernel_free(void *mem);
 void uacpi_kernel_free(void *mem, uacpi_size size_hint);
 #endif
 
-enum uacpi_log_level {
-    /*
-     * Super verbose logging, every op & uop being processed is logged.
-     * Mostly useful for tracking down hangs/lockups.
-     */
-    UACPI_LOG_DEBUG = 4,
-
-    /*
-     * A little verbose, every operation region access is traced with a bit of
-     * extra information on top.
-     */
-    UACPI_LOG_TRACE = 3,
-
-    /*
-     * Only logs the bare minimum information about state changes and/or
-     * initialization progress.
-     */
-    UACPI_LOG_INFO  = 2,
-
-    /*
-     * Logs recoverable errors and/or non-important aborts.
-     */
-    UACPI_LOG_WARN  = 1,
-
-    /*
-     * Logs only critical errors that might affect the ability to initialize or
-     * prevent stable runtime.
-     */
-    UACPI_LOG_ERROR = 0,
-};
-
+#ifndef UACPI_FORMATTED_LOGGING
+void uacpi_kernel_log(uacpi_log_level, const uacpi_char*);
+#else
 UACPI_PRINTF_DECL(2, 3)
-void uacpi_kernel_log(enum uacpi_log_level, const char*, ...);
-void uacpi_kernel_vlog(enum uacpi_log_level, const char*, uacpi_va_list);
+void uacpi_kernel_log(uacpi_log_level, const uacpi_char*, ...);
+void uacpi_kernel_vlog(uacpi_log_level, const uacpi_char*, uacpi_va_list);
+#endif
 
 /*
  * Returns the number of 100 nanosecond ticks elapsed since boot,
@@ -175,6 +171,13 @@ void uacpi_kernel_free_mutex(uacpi_handle);
  */
 uacpi_handle uacpi_kernel_create_event(void);
 void uacpi_kernel_free_event(uacpi_handle);
+
+/*
+ * Returns a unique identifier of the currently executing thread.
+ *
+ * The returned thread id cannot be UACPI_THREAD_ID_NONE.
+ */
+uacpi_thread_id uacpi_kernel_get_thread_id(void);
 
 /*
  * Try to acquire the mutex with a millisecond timeout.
@@ -249,8 +252,8 @@ void uacpi_kernel_free_spinlock(uacpi_handle);
  *
  * Note that lock is infalliable.
  */
-uacpi_cpu_flags uacpi_kernel_spinlock_lock(uacpi_handle);
-void uacpi_kernel_spinlock_unlock(uacpi_handle, uacpi_cpu_flags);
+uacpi_cpu_flags uacpi_kernel_lock_spinlock(uacpi_handle);
+void uacpi_kernel_unlock_spinlock(uacpi_handle, uacpi_cpu_flags);
 
 typedef enum uacpi_work_type {
     /*

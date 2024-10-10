@@ -1,7 +1,7 @@
 #pragma once
 
-#include <uacpi/internal/compiler.h>
-#include <uacpi/internal/helpers.h>
+#include <uacpi/platform/compiler.h>
+#include <uacpi/helpers.h>
 #include <uacpi/types.h>
 
 /*
@@ -537,6 +537,100 @@ UACPI_PACKED(struct acpi_slit {
 })
 UACPI_EXPECT_SIZEOF(struct acpi_slit, 44);
 
+/*
+ * acpi_gtdt->el*_flags
+ * acpi_gtdt_timer_entry->physical_flags
+ * acpi_gtdt_timer_entry->virtual_flags
+ * acpi_gtdt_watchdog->flags
+ */
+#define ACPI_GTDT_TRIGGERING (1 << 0)
+#define ACPI_GTDT_TRIGGERING_EDGE 1
+#define ACPI_GTDT_TRIGGERING_LEVEL 0
+
+/*
+ * acpi_gtdt->el*_flags
+ * acpi_gtdt_timer_entry->physical_flags
+ * acpi_gtdt_timer_entry->virtual_flags
+ * acpi_gtdt_watchdog->flags
+ */
+#define ACPI_GTDT_POLARITY (1 << 1)
+#define ACPI_GTDT_POLARITY_ACTIVE_LOW 1
+#define ACPI_GTDT_POLARITY_ACTIVE_HIGH 0
+
+// acpi_gtdt->el*_flags
+#define ACPI_GTDT_ALWAYS_ON_CAPABLE (1 << 2)
+
+UACPI_PACKED(struct acpi_gtdt {
+    struct acpi_sdt_hdr hdr;
+    uacpi_u64 cnt_control_base;
+    uacpi_u32 rsvd;
+    uacpi_u32 el1_secure_gsiv;
+    uacpi_u32 el1_secure_flags;
+    uacpi_u32 el1_non_secure_gsiv;
+    uacpi_u32 el1_non_secure_flags;
+    uacpi_u32 el1_virtual_gsiv;
+    uacpi_u32 el1_virtual_flags;
+    uacpi_u32 el2_gsiv;
+    uacpi_u32 el2_flags;
+    uacpi_u64 cnt_read_base;
+    uacpi_u32 platform_timer_count;
+    uacpi_u32 platform_timer_offset;
+
+    // revision >= 3
+    uacpi_u32 el2_virtual_gsiv;
+    uacpi_u32 el2_virtual_flags;
+})
+UACPI_EXPECT_SIZEOF(struct acpi_gtdt, 104);
+
+enum acpi_gtdt_entry_type {
+    ACPI_GTDT_ENTRY_TYPE_TIMER = 0,
+    ACPI_GTDT_ENTRY_TYPE_WATCHDOG = 1,
+};
+
+UACPI_PACKED(struct acpi_gtdt_entry_hdr {
+    uacpi_u8 type;
+    uacpi_u16 length;
+})
+
+UACPI_PACKED(struct acpi_gtdt_timer {
+    struct acpi_gtdt_entry_hdr hdr;
+    uacpi_u8 rsvd;
+    uacpi_u64 cnt_ctl_base;
+    uacpi_u32 timer_count;
+    uacpi_u32 timer_offset;
+})
+UACPI_EXPECT_SIZEOF(struct acpi_gtdt_timer, 20);
+
+// acpi_gtdt_timer_entry->common_flags
+#define ACPI_GTDT_TIMER_ENTRY_SECURE (1 << 0)
+#define ACPI_GTDT_TIMER_ENTRY_ALWAYS_ON_CAPABLE (1 << 1)
+
+UACPI_PACKED(struct acpi_gtdt_timer_entry {
+    uacpi_u8 frame_number;
+    uacpi_u8 rsvd[3];
+    uacpi_u64 cnt_base;
+    uacpi_u64 el0_cnt_base;
+    uacpi_u32 physical_gsiv;
+    uacpi_u32 physical_flags;
+    uacpi_u32 virtual_gsiv;
+    uacpi_u32 virtual_flags;
+    uacpi_u32 common_flags;
+})
+UACPI_EXPECT_SIZEOF(struct acpi_gtdt_timer_entry, 40);
+
+// acpi_gtdt_watchdog->flags
+#define ACPI_GTDT_WATCHDOG_SECURE (1 << 2)
+
+UACPI_PACKED(struct acpi_gtdt_watchdog {
+    struct acpi_gtdt_entry_hdr hdr;
+    uacpi_u8 rsvd;
+    uacpi_u64 refresh_frame;
+    uacpi_u64 control_frame;
+    uacpi_u32 gsiv;
+    uacpi_u32 flags;
+})
+UACPI_EXPECT_SIZEOF(struct acpi_gtdt_watchdog, 28);
+
 // acpi_fdt->iapc_flags
 #define ACPI_IA_PC_LEGACY_DEVS  (1 << 0)
 #define ACPI_IA_PC_8042         (1 << 1)
@@ -640,7 +734,7 @@ UACPI_EXPECT_SIZEOF(struct acpi_fadt, 276);
 // acpi_facs->ospm_flags
 #define ACPI_64BIT_WAKE_F           (1 << 0)
 
-UACPI_PACKED(struct acpi_facs {
+struct acpi_facs {
     uacpi_char signature[4];
     uacpi_u32 length;
     uacpi_u32 hardware_signature;
@@ -652,7 +746,7 @@ UACPI_PACKED(struct acpi_facs {
     uacpi_char rsvd0[3];
     uacpi_u32 ospm_flags;
     uacpi_char rsvd1[24];
-})
+};
 UACPI_EXPECT_SIZEOF(struct acpi_facs, 64);
 
 UACPI_PACKED(struct acpi_mcfg_allocation {
@@ -674,7 +768,7 @@ UACPI_EXPECT_SIZEOF(struct acpi_mcfg, 44);
 // acpi_hpet->block_id
 #define ACPI_HPET_PCI_VENDOR_ID_SHIFT 16
 #define ACPI_HPET_LEGACY_REPLACEMENT_IRQ_ROUTING_CAPABLE (1 << 15)
-#define ACPI_HPET_COUNT_SIZE_CAP_COUNTER_SIZE (1 << 13)
+#define ACPI_HPET_COUNT_SIZE_CAP (1 << 13)
 #define ACPI_HPET_NUMBER_OF_COMPARATORS_SHIFT 8
 #define ACPI_HPET_NUMBER_OF_COMPARATORS_MASK 0b11111
 #define ACPI_HPET_HARDWARE_REV_ID_MASK 0b11111111

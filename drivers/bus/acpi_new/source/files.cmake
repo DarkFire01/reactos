@@ -16,4 +16,6 @@ uacpi_add_sources(
     registers.c
     resources.c
     event.c
+    mutex.c
+    osi.c
 )

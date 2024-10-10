@@ -11,18 +11,24 @@
 #define UACPI_REV_VALUE 2
 #define UACPI_OS_VALUE "Microsoft Windows NT"
 
-uacpi_namespace_node
+#define MAKE_PREDEFINED(name_str)                \
+    {                                            \
+        .name.text = name_str,                   \
+        .flags = UACPI_NAMESPACE_NODE_PREDEFINED \
+    }
+
+static uacpi_namespace_node
 predefined_namespaces[UACPI_PREDEFINED_NAMESPACE_MAX + 1] = {
-    [UACPI_PREDEFINED_NAMESPACE_ROOT] = { .name.text = "\\" },
-    [UACPI_PREDEFINED_NAMESPACE_GPE] = { .name.text = "_GPE" },
-    [UACPI_PREDEFINED_NAMESPACE_PR] = { .name.text = "_PR_" },
-    [UACPI_PREDEFINED_NAMESPACE_SB] = { .name.text = "_SB_" },
-    [UACPI_PREDEFINED_NAMESPACE_SI] = { .name.text = "_SI_" },
-    [UACPI_PREDEFINED_NAMESPACE_TZ] = { .name.text = "_TZ_" },
-    [UACPI_PREDEFINED_NAMESPACE_GL] = { .name.text = "_GL_" },
-    [UACPI_PREDEFINED_NAMESPACE_OS] = { .name.text = "_OS_" },
-    [UACPI_PREDEFINED_NAMESPACE_OSI] = { .name.text = "_OSI" },
-    [UACPI_PREDEFINED_NAMESPACE_REV] = { .name.text = "_REV" },
+    [UACPI_PREDEFINED_NAMESPACE_ROOT] = MAKE_PREDEFINED("\\"),
+    [UACPI_PREDEFINED_NAMESPACE_GPE] = MAKE_PREDEFINED("_GPE"),
+    [UACPI_PREDEFINED_NAMESPACE_PR] = MAKE_PREDEFINED("_PR_"),
+    [UACPI_PREDEFINED_NAMESPACE_SB] = MAKE_PREDEFINED("_SB_"),
+    [UACPI_PREDEFINED_NAMESPACE_SI] = MAKE_PREDEFINED("_SI_"),
+    [UACPI_PREDEFINED_NAMESPACE_TZ] = MAKE_PREDEFINED("_TZ_"),
+    [UACPI_PREDEFINED_NAMESPACE_GL] = MAKE_PREDEFINED("_GL_"),
+    [UACPI_PREDEFINED_NAMESPACE_OS] = MAKE_PREDEFINED("_OS_"),
+    [UACPI_PREDEFINED_NAMESPACE_OSI] = MAKE_PREDEFINED("_OSI"),
+    [UACPI_PREDEFINED_NAMESPACE_REV] = MAKE_PREDEFINED("_REV"),
 };
 
 static uacpi_object *make_object_for_predefined(
@@ -70,6 +76,8 @@ static uacpi_object *make_object_for_predefined(
 
     case UACPI_PREDEFINED_NAMESPACE_GL:
         obj = uacpi_create_object(UACPI_OBJECT_MUTEX);
+        if (uacpi_likely(obj != UACPI_NULL))
+            g_uacpi_rt_ctx.global_lock_mutex = obj->mutex->handle;
         break;
 
     case UACPI_PREDEFINED_NAMESPACE_OSI:
@@ -90,7 +98,26 @@ static uacpi_object *make_object_for_predefined(
     return obj;
 }
 
-uacpi_status uacpi_namespace_initialize_predefined(void)
+static void free_namespace_node(uacpi_handle handle)
+{
+    uacpi_namespace_node *node = handle;
+
+    if (node->object)
+        uacpi_object_unref(node->object);
+
+    if (uacpi_likely(!uacpi_namespace_node_is_predefined(node))) {
+        uacpi_free(node, sizeof(*node));
+        return;
+    }
+
+    node->flags = UACPI_NAMESPACE_NODE_PREDEFINED;
+    node->object = UACPI_NULL;
+    node->parent = UACPI_NULL;
+    node->child = UACPI_NULL;
+    node->next = UACPI_NULL;
+}
+
+uacpi_status uacpi_initialize_namespace(void)
 {
     enum uacpi_predefined_namespace ns;
     uacpi_object *obj;
@@ -111,13 +138,79 @@ uacpi_status uacpi_namespace_initialize_predefined(void)
             uacpi_object_unref(obj);
             return UACPI_STATUS_OUT_OF_MEMORY;
         }
+
+        uacpi_object_unref(obj);
     }
 
     for (ns = UACPI_PREDEFINED_NAMESPACE_GPE;
-         ns <= UACPI_PREDEFINED_NAMESPACE_MAX; ns++)
+         ns <= UACPI_PREDEFINED_NAMESPACE_MAX; ns++) {
+
+        /*
+         * Skip the installation of \_OSI if it was disabled by user.
+         * We still create the object, but it's not attached to the namespace.
+         */
+        if (ns == UACPI_PREDEFINED_NAMESPACE_OSI &&
+            uacpi_check_flag(UACPI_FLAG_NO_OSI))
+            continue;
+
         uacpi_node_install(uacpi_namespace_root(), &predefined_namespaces[ns]);
+    }
 
     return UACPI_STATUS_OK;
+}
+
+void uacpi_deinitialize_namespace(void)
+{
+    uacpi_namespace_node *current, *next = UACPI_NULL;
+    uacpi_object *obj;
+    uacpi_u32 depth = 1;
+
+    current = uacpi_namespace_root();
+
+    while (depth) {
+        next = next == UACPI_NULL ? current->child : next->next;
+
+        /*
+         * The previous value of 'next' was the last child of this subtree,
+         * we can now remove the entire scope of 'current->child'
+         */
+        if (next == UACPI_NULL) {
+            depth--;
+
+            // Wipe the subtree
+            while (current->child != UACPI_NULL)
+                uacpi_node_uninstall(current->child);
+
+            // Reset the pointers back as if this iteration never happened
+            next = current;
+            current = current->parent;
+
+            continue;
+        }
+
+        /*
+         * We have more nodes to process, proceed to the next one, either the
+         * child of the 'next' node, if one exists, or its peer
+         */
+        if (next->child) {
+            depth++;
+            current = next;
+            next = UACPI_NULL;
+        }
+
+        // This node has no children, move on to its peer
+    }
+
+    /*
+     * Set the type back to DEVICE as that's what this node contained originally
+     * See make_object_for_predefined() for root for reasoning
+     */
+    current = uacpi_namespace_root();
+    obj = uacpi_namespace_node_get_object(current);
+    if (obj != UACPI_NULL && obj->type == UACPI_OBJECT_UNINITIALIZED)
+        obj->type = UACPI_OBJECT_DEVICE;
+
+    free_namespace_node(uacpi_namespace_root());
 }
 
 uacpi_namespace_node *uacpi_namespace_root(void)
@@ -148,16 +241,6 @@ uacpi_namespace_node *uacpi_namespace_node_alloc(uacpi_object_name name)
     uacpi_shareable_init(ret);
     ret->name = name;
     return ret;
-}
-
-static void free_namespace_node(uacpi_handle handle)
-{
-    uacpi_namespace_node *node = handle;
-
-    if (node->object)
-        uacpi_object_unref(node->object);
-
-    uacpi_free(node, sizeof(*node));
 }
 
 void uacpi_namespace_node_unref(uacpi_namespace_node *node)
@@ -199,6 +282,11 @@ uacpi_bool uacpi_namespace_node_is_dangling(uacpi_namespace_node *node)
     return node->flags & UACPI_NAMESPACE_NODE_FLAG_DANGLING;
 }
 
+uacpi_bool uacpi_namespace_node_is_predefined(uacpi_namespace_node *node)
+{
+    return node->flags & UACPI_NAMESPACE_NODE_PREDEFINED;
+}
+
 void uacpi_node_uninstall(uacpi_namespace_node *node)
 {
     uacpi_namespace_node *prev;
@@ -207,6 +295,14 @@ void uacpi_node_uninstall(uacpi_namespace_node *node)
     if (uacpi_unlikely(uacpi_namespace_node_is_dangling(node))) {
         uacpi_warn("attempting to uninstall a dangling namespace node %.4s\n",
                    node->name.text);
+        return;
+    }
+
+    if (uacpi_unlikely(node->child != UACPI_NULL)) {
+        uacpi_warn(
+            "BUG: refusing to uninstall node %.4s with a child (%.4s)\n",
+            node->name.text, node->child->name.text
+        );
         return;
     }
 
@@ -435,7 +531,7 @@ uacpi_namespace_node *uacpi_namespace_node_resolve_from_aml_namepath(
     );
 }
 
-uacpi_object *uacpi_namespace_node_get_object(uacpi_namespace_node *node)
+uacpi_object *uacpi_namespace_node_get_object(const uacpi_namespace_node *node)
 {
     if (node == UACPI_NULL || node->object == UACPI_NULL)
         return UACPI_NULL;
@@ -443,7 +539,7 @@ uacpi_object *uacpi_namespace_node_get_object(uacpi_namespace_node *node)
     return uacpi_unwrap_internal_reference(node->object);
 }
 
-uacpi_object_name uacpi_namespace_node_name(uacpi_namespace_node *node)
+uacpi_object_name uacpi_namespace_node_name(const uacpi_namespace_node *node)
 {
     return node->name;
 }
@@ -457,8 +553,10 @@ void uacpi_namespace_for_each_node_depth_first(
     uacpi_bool walking_up = UACPI_FALSE;
     uacpi_u32 depth = 1;
 
-    if (node == UACPI_NULL)
+    if (node == UACPI_NULL || node->child == UACPI_NULL)
         return;
+
+    node = node->child;
 
     while (depth) {
         if (walking_up) {
@@ -492,7 +590,7 @@ void uacpi_namespace_for_each_node_depth_first(
     }
 }
 
-uacpi_size uacpi_namespace_node_depth(uacpi_namespace_node *node)
+uacpi_size uacpi_namespace_node_depth(const uacpi_namespace_node *node)
 {
     uacpi_size depth = 0;
 
@@ -505,7 +603,7 @@ uacpi_size uacpi_namespace_node_depth(uacpi_namespace_node *node)
 }
 
 const uacpi_char *uacpi_namespace_node_generate_absolute_path(
-    uacpi_namespace_node *node
+    const uacpi_namespace_node *node
 )
 {
     uacpi_size depth, offset;

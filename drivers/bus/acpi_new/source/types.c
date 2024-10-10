@@ -171,6 +171,8 @@ uacpi_mutex *uacpi_create_mutex(void)
     if (uacpi_unlikely(mutex == UACPI_NULL))
         return UACPI_NULL;
 
+    mutex->owner = UACPI_THREAD_ID_NONE;
+
     mutex->handle = uacpi_kernel_create_mutex();
     if (mutex->handle == UACPI_NULL) {
         uacpi_free(mutex, sizeof(*mutex));
@@ -574,12 +576,18 @@ static void free_field_unit(uacpi_handle handle)
 {
     uacpi_field_unit *field_unit = handle;
 
+    if (field_unit->connection)
+        uacpi_object_unref(field_unit->connection);
+
     switch (field_unit->kind) {
     case UACPI_FIELD_UNIT_KIND_NORMAL:
         uacpi_namespace_node_unref(field_unit->region);
         break;
     case UACPI_FIELD_UNIT_KIND_BANK:
         uacpi_namespace_node_unref(field_unit->bank_region);
+        uacpi_shareable_unref_and_delete_if_last(
+            field_unit->bank_selection, free_field_unit
+        );
         break;
     case UACPI_FIELD_UNIT_KIND_INDEX:
         uacpi_shareable_unref_and_delete_if_last(

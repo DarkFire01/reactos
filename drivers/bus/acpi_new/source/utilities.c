@@ -6,60 +6,6 @@
 #include <uacpi/internal/log.h>
 #include <uacpi/uacpi.h>
 
-static uacpi_u8 uacpi_table_checksum(void *table, uacpi_size size)
-{
-    uacpi_u8 *bytes = table;
-    uacpi_u8 csum = 0;
-    uacpi_size i;
-
-    for (i = 0; i < size; ++i)
-        csum += bytes[i];
-
-    return csum;
-}
-
-uacpi_status uacpi_verify_table_checksum_with_warn(void *table, uacpi_size size)
-{
-    uacpi_status ret = UACPI_STATUS_OK;
-
-    if (uacpi_table_checksum(table, size) != 0) {
-        enum uacpi_log_level lvl = UACPI_LOG_WARN;
-
-        if (uacpi_rt_params_check(UACPI_PARAM_BAD_CSUM_FATAL)) {
-            ret = UACPI_STATUS_BAD_CHECKSUM;
-            lvl = UACPI_LOG_ERROR;
-        }
-
-        uacpi_log_lvl(
-            lvl, "invalid table '%.4s' checksum!\n", (const uacpi_char*)table
-        );
-    }
-
-    return ret;
-}
-
-uacpi_status uacpi_check_tbl_signature_with_warn(
-    void *table, const uacpi_char *expect
-)
-{
-    uacpi_status ret = UACPI_STATUS_OK;
-
-    if (uacpi_memcmp(table, expect, 4) != 0) {
-        enum uacpi_log_level lvl = UACPI_LOG_WARN;
-
-
-        if (uacpi_rt_params_check(UACPI_PARAM_BAD_TBL_HDR_FATAL)) {
-            ret = UACPI_STATUS_INVALID_SIGNATURE;
-            lvl = UACPI_LOG_ERROR;
-        }
-
-        uacpi_log_lvl(lvl, "invalid table signature '%.4s' (expected '%.4s')\n",
-                      (const uacpi_char*)table, expect);
-    }
-
-    return ret;
-}
-
 void uacpi_eisa_id_to_string(uacpi_u32 id, uacpi_char *out_string)
 {
     static uacpi_char hex_to_ascii[16] = {
@@ -303,7 +249,7 @@ static uacpi_char to_lower(uacpi_char c)
 }
 
 static uacpi_bool peek_one(
-    const uacpi_char **str, uacpi_size *size, uacpi_char *out_char
+    const uacpi_char **str, const uacpi_size *size, uacpi_char *out_char
 )
 {
     if (*size == 0)
@@ -423,7 +369,7 @@ uacpi_status uacpi_eval_hid(uacpi_namespace_node *node, uacpi_id_string **out_id
 {
     uacpi_status ret;
     uacpi_object *hid_ret;
-    uacpi_id_string *id;
+    uacpi_id_string *id = UACPI_NULL;
     uacpi_u32 size;
 
     ret = uacpi_eval_typed(
@@ -619,11 +565,9 @@ void uacpi_free_pnp_id_list(uacpi_pnp_id_list *list)
 uacpi_status uacpi_eval_sta(uacpi_namespace_node *node, uacpi_u32 *flags)
 {
     uacpi_status ret;
-    uacpi_object *obj;
+    uacpi_u64 value = 0;
 
-    ret = uacpi_eval_typed(
-        node, "_STA", UACPI_NULL, UACPI_OBJECT_INTEGER_BIT, &obj
-    );
+    ret = uacpi_eval_integer(node, "_STA", UACPI_NULL, &value);
 
     /*
      * ACPI 6.5 specification:
@@ -633,17 +577,11 @@ uacpi_status uacpi_eval_sta(uacpi_namespace_node *node, uacpi_u32 *flags)
      * and functioning).
      */
     if (ret == UACPI_STATUS_NOT_FOUND) {
-        *flags = 0xFFFFFFFF;
-        return UACPI_STATUS_OK;
+        value = 0xFFFFFFFF;
+        ret = UACPI_STATUS_OK;
     }
 
-    if (ret == UACPI_STATUS_OK) {
-        *flags = obj->integer;
-        uacpi_object_unref(obj);
-        return ret;
-    }
-
-    *flags = 0;
+    *flags = value;
     return ret;
 }
 
@@ -739,7 +677,9 @@ uacpi_status uacpi_eval_uid(
             goto out;
         }
     } else {
-        size = uacpi_snprintf(UACPI_NULL, 0, "%"PRIu64, obj->integer) + 1;
+        size = uacpi_snprintf(
+            UACPI_NULL, 0, "%"UACPI_PRIu64, UACPI_FMT64(obj->integer)
+        ) + 1;
     }
 
     id_string = uacpi_kernel_alloc(sizeof(uacpi_id_string) + size);
@@ -756,7 +696,8 @@ uacpi_status uacpi_eval_uid(
         id_string->value[size - 1] = '\0';
     } else {
         uacpi_snprintf(
-            id_string->value, id_string->size, "%"PRIu64, obj->integer
+            id_string->value, id_string->size, "%"UACPI_PRIu64,
+            UACPI_FMT64(obj->integer)
         );
     }
 
@@ -769,7 +710,7 @@ out:
 }
 
 static uacpi_bool matches_any(
-    uacpi_id_string *id, const uacpi_char **ids
+    uacpi_id_string *id, const uacpi_char *const *ids
 )
 {
     uacpi_size i;
@@ -828,15 +769,14 @@ static uacpi_status uacpi_eval_dstate_method_template(
         }                                                    \
     }
 
-#define NODE_INFO_COPY_ID(name)                        \
+#define NODE_INFO_COPY_ID(name, flag)                  \
     if (name != UACPI_NULL) {                          \
-        info->has_##name = 1;                          \
+        flags |= UACPI_NS_NODE_INFO_HAS_##flag;        \
         info->name.value = cursor;                     \
         info->name.size = name->size;                  \
         uacpi_memcpy(cursor, name->value, name->size); \
         cursor += name->size;                          \
     } else {                                           \
-        info->has_##name = 0;                          \
         uacpi_memzero(&info->name, sizeof(*name));     \
     }                                                  \
 
@@ -852,8 +792,7 @@ uacpi_status uacpi_get_namespace_node_info(
     uacpi_pnp_id_list *cid = UACPI_NULL;
     uacpi_char *cursor;
     uacpi_u64 adr = 0;
-    uacpi_bool has_adr = UACPI_FALSE;
-    uacpi_bool has_sxd = UACPI_FALSE, has_sxw = UACPI_FALSE;
+    uacpi_u8 flags = 0;
     uacpi_u8 sxd[4], sxw[5];
 
     obj = uacpi_namespace_node_get_object(node);
@@ -870,12 +809,12 @@ uacpi_status uacpi_get_namespace_node_info(
         NODE_INFO_EVAL_ADD_ID(cid)
 
         if (uacpi_eval_adr(node, &adr) == UACPI_STATUS_OK)
-            has_adr = UACPI_TRUE;
+            flags |= UACPI_NS_NODE_INFO_HAS_ADR;
 
         if (uacpi_eval_dstate_method_template(
                 node, dstate_method_template, sizeof(sxd), sxd
             ) == UACPI_STATUS_OK)
-            has_sxd = UACPI_TRUE;
+            flags |= UACPI_NS_NODE_INFO_HAS_SXD;
 
         dstate_method_template[2] = '0';
         dstate_method_template[3] = 'W';
@@ -883,7 +822,7 @@ uacpi_status uacpi_get_namespace_node_info(
         if (uacpi_eval_dstate_method_template(
                 node, dstate_method_template, sizeof(sxw), sxw
             ) == UACPI_STATUS_OK)
-            has_sxw = UACPI_TRUE;
+            flags |= UACPI_NS_NODE_INFO_HAS_SXW;
     }
 
     info = uacpi_kernel_alloc(size);
@@ -897,17 +836,13 @@ uacpi_status uacpi_get_namespace_node_info(
     info->type = obj->type;
     info->num_params = info->type == UACPI_OBJECT_METHOD ? obj->method->args : 0;
 
-    info->has_adr = has_adr;
     info->adr = adr;
-
-    info->has_sxd = has_sxd;
-    if (info->has_sxd)
+    if (flags & UACPI_NS_NODE_INFO_HAS_SXD)
         uacpi_memcpy(info->sxd, sxd, sizeof(sxd));
     else
         uacpi_memzero(info->sxd, sizeof(info->sxd));
 
-    info->has_sxw = has_sxw;
-    if (info->has_sxw)
+    if (flags & UACPI_NS_NODE_INFO_HAS_SXW)
         uacpi_memcpy(info->sxw, sxw, sizeof(sxw));
     else
         uacpi_memzero(info->sxw, sizeof(info->sxw));
@@ -923,19 +858,20 @@ uacpi_status uacpi_get_namespace_node_info(
             cursor += info->cid.ids[i].size;
         }
 
-        info->has_cid = 1;
+        flags |= UACPI_NS_NODE_INFO_HAS_CID;
     } else {
-        info->has_cid = 0;
         uacpi_memzero(&info->cid, sizeof(*cid));
     }
 
-    NODE_INFO_COPY_ID(hid)
-    NODE_INFO_COPY_ID(uid)
-    NODE_INFO_COPY_ID(cls)
+    NODE_INFO_COPY_ID(hid, HID)
+    NODE_INFO_COPY_ID(uid, UID)
+    NODE_INFO_COPY_ID(cls, CLS)
 
 out:
-    if (uacpi_likely_success(ret))
+    if (uacpi_likely_success(ret)) {
+        info->flags = flags;
         *out_info = info;
+    }
 
     uacpi_free_id_string(hid);
     uacpi_free_id_string(uid);
@@ -953,7 +889,7 @@ void uacpi_free_namespace_node_info(uacpi_namespace_node_info *info)
 }
 
 uacpi_bool uacpi_device_matches_pnp_id(
-    uacpi_namespace_node *node, const uacpi_char **ids
+    uacpi_namespace_node *node, const uacpi_char *const *ids
 )
 {
     uacpi_status st;
@@ -986,7 +922,7 @@ out:
 }
 
 struct device_find_ctx {
-    const uacpi_char **target_hids;
+    const uacpi_char *const *target_hids;
     void *user;
     uacpi_iteration_callback cb;
 };
@@ -1022,13 +958,11 @@ enum uacpi_ns_iteration_decision find_one_device(
 
 
 uacpi_status uacpi_find_devices_at(
-    uacpi_namespace_node *parent, const uacpi_char **hids,
+    uacpi_namespace_node *parent, const uacpi_char *const *hids,
     uacpi_iteration_callback cb, void *user
 )
 {
-    if (uacpi_unlikely(g_uacpi_rt_ctx.init_level <
-                       UACPI_INIT_LEVEL_NAMESPACE_LOADED))
-        return UACPI_STATUS_INIT_LEVEL_MISMATCH;
+    UACPI_ENSURE_INIT_LEVEL_AT_LEAST(UACPI_INIT_LEVEL_NAMESPACE_LOADED);
 
     struct device_find_ctx ctx = {
         .target_hids = hids,
@@ -1057,9 +991,7 @@ uacpi_status uacpi_set_interrupt_model(uacpi_interrupt_model model)
     uacpi_object *arg;
     uacpi_args args;
 
-    if (uacpi_unlikely(g_uacpi_rt_ctx.init_level <
-                       UACPI_INIT_LEVEL_NAMESPACE_LOADED))
-        return UACPI_STATUS_INIT_LEVEL_MISMATCH;
+    UACPI_ENSURE_INIT_LEVEL_AT_LEAST(UACPI_INIT_LEVEL_NAMESPACE_LOADED);
 
     arg = uacpi_create_object(UACPI_OBJECT_INTEGER);
     if (uacpi_unlikely(arg == UACPI_NULL))
@@ -1089,9 +1021,7 @@ uacpi_status uacpi_get_pci_routing_table(
     uacpi_pci_routing_table *table;
     uacpi_size size, i;
 
-    if (uacpi_unlikely(g_uacpi_rt_ctx.init_level <
-                       UACPI_INIT_LEVEL_NAMESPACE_LOADED))
-        return UACPI_STATUS_INIT_LEVEL_MISMATCH;
+    UACPI_ENSURE_INIT_LEVEL_AT_LEAST(UACPI_INIT_LEVEL_NAMESPACE_LOADED);
 
     obj = uacpi_namespace_node_get_object(parent);
     if (uacpi_unlikely(obj == UACPI_NULL || obj->type != UACPI_OBJECT_DEVICE))
@@ -1105,7 +1035,7 @@ uacpi_status uacpi_get_pci_routing_table(
 
     table_pkg = obj->package;
     if (uacpi_unlikely(table_pkg->count == 0 || table_pkg->count > 1024)) {
-        uacpi_warn("invalid number of _PRT entries: %zu\n", table_pkg->count);
+        uacpi_error("invalid number of _PRT entries: %zu\n", table_pkg->count);
         uacpi_object_unref(obj);
         return UACPI_STATUS_AML_BAD_ENCODING;
     }
@@ -1129,8 +1059,8 @@ uacpi_status uacpi_get_pci_routing_table(
 
         entry_pkg = entry_obj->package;
         if (uacpi_unlikely(entry_pkg->count != 4)) {
-            uacpi_warn("invalid _PRT sub-package entry count %zu\n",
-                       entry_pkg->count);
+            uacpi_error("invalid _PRT sub-package entry count %zu\n",
+                        entry_pkg->count);
             goto out_bad_encoding;
         }
 

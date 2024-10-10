@@ -12,7 +12,7 @@
 #define UACPI_EVENT_DISABLED 0
 #define UACPI_EVENT_ENABLED 1
 
-#if UACPI_REDUCED_HARDWARE == 0
+#ifndef UACPI_REDUCED_HARDWARE
 
 struct fixed_event {
     uacpi_u8 enable_field;
@@ -805,8 +805,8 @@ static uacpi_ns_iteration_decision do_match_gpe_methods(
         // This is okay, since we're re-running the detection code
         if (!ctx->post_dynamic_table_load) {
             uacpi_warn(
-                "GPE(%02"UACPI_PRIX64") already matched %.4s, skipping %.4s\n",
-                idx, event->aml_handler->name.text, node->name.text
+                "GPE(%02X) already matched %.4s, skipping %.4s\n",
+                (uacpi_u32)idx, event->aml_handler->name.text, node->name.text
             );
         }
         return UACPI_NS_ITERATION_DECISION_CONTINUE;
@@ -814,16 +814,16 @@ static uacpi_ns_iteration_decision do_match_gpe_methods(
     case GPE_HANDLER_TYPE_NATIVE_HANDLER:
     case GPE_HANDLER_TYPE_NATIVE_HANDLER_RAW:
         uacpi_trace(
-            "not assigning GPE(%02"UACPI_PRIX64") to %.4s, override "
-            "installed by user\n", idx, node->name.text
+            "not assigning GPE(%02X) to %.4s, override "
+            "installed by user\n", (uacpi_u32)idx, node->name.text
         );
         UACPI_FALLTHROUGH;
     default:
         return UACPI_NS_ITERATION_DECISION_CONTINUE;
     }
 
-    uacpi_trace("assigned GPE(%02"UACPI_PRIX64") -> %.4s\n",
-                idx, node->name.text);
+    uacpi_trace("assigned GPE(%02X) -> %.4s\n",
+                (uacpi_u32)idx, node->name.text);
     event->triggering = triggering;
     ctx->matched_count++;
 
@@ -1736,7 +1736,28 @@ uacpi_status uacpi_gpe_uninstall_block(
 
 static uacpi_interrupt_ret handle_global_lock(uacpi_handle ctx)
 {
+    uacpi_cpu_flags flags;
     UACPI_UNUSED(ctx);
+
+    if (uacpi_unlikely(!g_uacpi_rt_ctx.has_global_lock)) {
+        uacpi_warn("platform has no global lock but a release event "
+                   "was fired anyway?\n");
+        return UACPI_INTERRUPT_HANDLED;
+    }
+
+    flags = uacpi_kernel_lock_spinlock(g_uacpi_rt_ctx.global_lock_spinlock);
+    if (!g_uacpi_rt_ctx.global_lock_pending) {
+        uacpi_trace("spurious firmware global lock release notification\n");
+        goto out;
+    }
+
+    uacpi_trace("received a firmware global lock release notification\n");
+
+    uacpi_kernel_signal_event(g_uacpi_rt_ctx.global_lock_event);
+    g_uacpi_rt_ctx.global_lock_pending = UACPI_FALSE;
+
+out:
+    uacpi_kernel_unlock_spinlock(g_uacpi_rt_ctx.global_lock_spinlock, flags);
     return UACPI_INTERRUPT_HANDLED;
 }
 
@@ -1769,13 +1790,31 @@ uacpi_status uacpi_initialize_events(void)
         g_uacpi_rt_ctx.fadt.sci_int, handle_sci, gpe_interrupt_head,
         &g_uacpi_rt_ctx.sci_handle
     );
-    if (uacpi_unlikely_error(ret))
+    if (uacpi_unlikely_error(ret)) {
+        uacpi_error(
+            "unable to install SCI interrupt handler: %s\n",
+            uacpi_status_to_string(ret)
+        );
         return ret;
+    }
+
+    g_uacpi_rt_ctx.global_lock_event = uacpi_kernel_create_event();
+    if (uacpi_unlikely(g_uacpi_rt_ctx.global_lock_event == UACPI_NULL))
+        return UACPI_STATUS_OUT_OF_MEMORY;
+
+    g_uacpi_rt_ctx.global_lock_spinlock = uacpi_kernel_create_spinlock();
+    if (uacpi_unlikely(g_uacpi_rt_ctx.global_lock_spinlock == UACPI_NULL))
+        return UACPI_STATUS_OUT_OF_MEMORY;
 
     ret = uacpi_install_fixed_event_handler(
         UACPI_FIXED_EVENT_GLOBAL_LOCK, handle_global_lock, UACPI_NULL
     );
     if (uacpi_likely_success(ret)) {
+        if (uacpi_unlikely(g_uacpi_rt_ctx.facs == UACPI_NULL)) {
+            uacpi_uninstall_fixed_event_handler(UACPI_FIXED_EVENT_GLOBAL_LOCK);
+            uacpi_warn("platform has global lock but no FACS was provided\n");
+            return ret;
+        }
         g_uacpi_rt_ctx.has_global_lock = UACPI_TRUE;
     } else if (ret == UACPI_STATUS_HARDWARE_TIMEOUT) {
         // has_global_lock remains set to false
@@ -1784,6 +1823,31 @@ uacpi_status uacpi_initialize_events(void)
     }
 
     return ret;
+}
+
+void uacpi_deinitialize_events(void)
+{
+    struct gpe_interrupt_ctx *ctx, *next_ctx = gpe_interrupt_head;
+    uacpi_size i;
+
+    while (next_ctx) {
+        ctx = next_ctx;
+        next_ctx = ctx->next;
+
+        struct gpe_block *block, *next_block = ctx->gpe_head;
+        while (next_block) {
+            block = next_block;
+            next_block = block->next;
+            uninstall_gpe_block(block);
+        }
+    }
+
+    for (i = 0; i < UACPI_FIXED_EVENT_MAX; ++i) {
+        if (fixed_event_handlers[i].handler)
+            uacpi_uninstall_fixed_event_handler(i);
+    }
+
+    gpe_interrupt_head = UACPI_NULL;
 }
 
 uacpi_status uacpi_install_fixed_event_handler(

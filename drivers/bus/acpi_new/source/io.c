@@ -3,6 +3,7 @@
 #include <uacpi/internal/log.h>
 #include <uacpi/internal/opregion.h>
 #include <uacpi/internal/utilities.h>
+#include <uacpi/internal/mutex.h>
 
 uacpi_size uacpi_round_up_bits_to_bytes(uacpi_size bit_length)
 {
@@ -210,8 +211,9 @@ static uacpi_status dispatch_field_io(
         uacpi_error(
             "out-of-bounds access to opregion %s[0x%"UACPI_PRIX64"->"
             "0x%"UACPI_PRIX64"] at 0x%"UACPI_PRIX64" (idx=%u, width=%d)\n",
-            path, region->offset, region->offset + region->length, data.offset,
-            offset, byte_width
+            path, UACPI_FMT64(region->offset),
+            UACPI_FMT64(region->offset + region->length),
+            UACPI_FMT64(data.offset), offset, byte_width
         );
         uacpi_free_dynamic_string(path);
         return UACPI_STATUS_AML_OUT_OF_BOUNDS_INDEX;
@@ -246,6 +248,21 @@ static uacpi_status access_field_unit(
 {
     uacpi_status ret = UACPI_STATUS_OK;
     uacpi_namespace_node *region_node;
+    uacpi_mutex *gl = UACPI_NULL;
+
+    if (field->lock_rule) {
+        uacpi_namespace_node *gl_node;
+        uacpi_object *obj;
+
+        gl_node = uacpi_namespace_get_predefined(UACPI_PREDEFINED_NAMESPACE_GL);
+        obj = uacpi_namespace_node_get_object(gl_node);
+
+        if (uacpi_likely(obj != UACPI_NULL && obj->type == UACPI_OBJECT_MUTEX))
+            gl = obj->mutex;
+
+        if (uacpi_unlikely(!uacpi_acquire_aml_mutex(gl, 0xFFFF)))
+            return UACPI_STATUS_INTERNAL_ERROR;
+    }
 
     switch (field->kind) {
     case UACPI_FIELD_UNIT_KIND_BANK:
@@ -262,7 +279,7 @@ static uacpi_status access_field_unit(
             field->index, &offset, sizeof(offset)
         );
         if (uacpi_unlikely_error(ret))
-            return ret;
+            goto out;
 
         switch (op) {
         case UACPI_REGION_OP_READ:
@@ -274,7 +291,8 @@ static uacpi_status access_field_unit(
                 field->data, in_out, field->access_width_bytes
             );
         default:
-            return UACPI_STATUS_INVALID_ARGUMENT;
+            ret = UACPI_STATUS_INVALID_ARGUMENT;
+            goto out;
         }
 
     default:
@@ -283,11 +301,16 @@ static uacpi_status access_field_unit(
     }
 
     if (uacpi_unlikely_error(ret))
-        return ret;
+        goto out;
 
-    return dispatch_field_io(
+    ret = dispatch_field_io(
         region_node, offset, field->access_width_bytes, op, in_out
     );
+
+out:
+    if (gl != UACPI_NULL)
+        uacpi_release_aml_mutex(gl);
+    return ret;
 }
 
 static uacpi_status do_read_misaligned_field_unit(
