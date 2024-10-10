@@ -251,7 +251,7 @@ WinLdrInitializePhase1(PLOADER_PARAMETER_BLOCK LoaderBlock,
     if (AcpiPresent)
     {
         /* Set the pointer to something for compatibility */
-        Extension->AcpiTable = (PVOID)1;
+        Extension->AcpiTable = (PVOID)FindAcpiBios();
         // FIXME: Extension->AcpiTableSize;
     }
 

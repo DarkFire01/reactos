@@ -24,7 +24,6 @@ BOOLEAN AcpiPresent = FALSE;
 
 /* FUNCTIONS *****************************************************************/
 
-static
 PRSDP_DESCRIPTOR
 FindAcpiBios(VOID)
 {
