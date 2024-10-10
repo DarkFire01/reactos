@@ -19,7 +19,9 @@ list(APPEND UACPI_SOURCE
     source/sleep.c
     source/registers.c
     source/resources.c
-    source/event.c)
+    source/event.c
+    source/mutex.c
+    source/osi.c)
 
 add_library(uacpi ${UACPI_SOURCE})
 #add_pch(uacpi include/uacpi/acpi.h SOURCE) idk
@@ -27,13 +29,13 @@ add_library(uacpi ${UACPI_SOURCE})
 list(APPEND ACPI_SOURCE
     main.c)
 
-add_library(acpi_new MODULE
+add_library(acpi MODULE
     ${ACPI_SOURCE}
     acpi.rc)
 
-set_module_type(acpi_new kernelmodedriver)
-target_link_libraries(acpi_new uacpi)
-add_importlibs(acpi_new ntoskrnl hal)
-#add_pch(acpi_new precomp.h ACPI_SOURCE)
-add_cd_file(TARGET acpi_new DESTINATION reactos/system32/drivers NO_CAB FOR all)
-add_driver_inf(acpi_new acpi.inf)
+set_module_type(acpi kernelmodedriver)
+target_link_libraries(acpi uacpi)
+add_importlibs(acpi ntoskrnl hal)
+#add_pch(acpi precomp.h ACPI_SOURCE)
+add_cd_file(TARGET acpi DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_driver_inf(acpi acpi.inf)
