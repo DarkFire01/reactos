@@ -24,7 +24,8 @@
 
 #include "d3dukmdt.h"
 
-#define NTSTATUS                int32_t
+#ifndef __REACTOS__
+#define NTSTATUS int32_t
 
 /*
  * Some of the Windows return codes, which needs to be translated to Linux
@@ -74,6 +75,13 @@ typedef enum _DEVICE_POWER_STATE {
     PowerDeviceMaximum
 } DEVICE_POWER_STATE, *PDEVICE_POWER_STATE;
 
+#else
+
+#ifndef NTSTATUS
+typedef LONG NTSTATUS;
+#endif
+#endif
+
 #pragma region Desktop Family
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 
@@ -85,7 +93,7 @@ typedef enum _DEVICE_POWER_STATE {
 // Available only for Vista (LONGHORN) and later and for
 // multiplatform tools such as debugger extensions
 //
-#if (NTDDI_VERSION >= NTDDI_LONGHORN) || defined(D3DKMDT_SPECIAL_MULTIPLATFORM_TOOL)
+#if defined(__REACTOS__) || ((NTDDI_VERSION >= NTDDI_LONGHORN) || defined(D3DKMDT_SPECIAL_MULTIPLATFORM_TOOL))
 
 //
 // Hardcoded overlay count
@@ -599,13 +607,18 @@ typedef struct _D3DKMDT_VIDEO_SIGNAL_INFO
 #if (DXGKDDI_INTERFACE_VERSION >= DXGKDDI_INTERFACE_VERSION_WDDM1_3_M1)
         struct
         {
+#ifdef __REACTOS__
+            // Scan line ordering (e.g. progressive, interlaced).
+            UINT ScanLineOrdering : 3; // D3DDDI_VIDEO_SIGNAL_SCANLINE_ORDERING
+#else
             // Scan line ordering (e.g. progressive, interlaced).
             D3DDDI_VIDEO_SIGNAL_SCANLINE_ORDERING ScanLineOrdering : 3;
+#endif
 
             // Vertical refresh frequency divider
             UINT VSyncFreqDivider               : 6;
 
-            UINT Reserved                       : 23;
+            UINT Reserved : 23;
 
         } AdditionalSignalInfo;
 #endif // DXGKDDI_INTERFACE_VERSION_WDDM1_3_M1
