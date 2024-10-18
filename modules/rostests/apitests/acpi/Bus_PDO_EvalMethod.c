@@ -747,6 +747,14 @@ DrvCallAcpiDriver(
     return Bus_PDO_EvalMethod(&DeviceData, &Irp);
 }
 
+#undef ACPI_METHOD_SET_ARGUMENT_STRING
+#define ACPI_METHOD_SET_ARGUMENT_STRING( Argument, StrData )          \
+    { Argument->Type = ACPI_METHOD_ARGUMENT_STRING;                   \
+      Argument->DataLength = strlen(StrData) + sizeof(UCHAR); \
+      memcpy(&Argument->Data[0],                                    \
+               (PUCHAR)StrData,                                       \
+               Argument->DataLength); }
+
 static
 VOID
 DrvEvaluateStmObject(
@@ -819,7 +827,7 @@ DrvEvaluateStmObject(
 
     if (TestEntry->Flags & STM_TEST_FLAG_INVALID_ARG_3_1)
     {
-        ACPI_METHOD_SET_ARGUMENT_STRING(Argument3, IdBlock);
+        ACPI_METHOD_SET_ARGUMENT_STRING(Argument3, (PCHAR)IdBlock);
     }
     else if (TestEntry->Flags & STM_TEST_FLAG_INVALID_ARG_3_2)
     {

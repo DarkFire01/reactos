@@ -162,7 +162,13 @@ EvalGetElementSize(
 
     return STATUS_SUCCESS;
 }
-
+#undef ACPI_METHOD_SET_ARGUMENT_STRING
+#define ACPI_METHOD_SET_ARGUMENT_STRING( Argument, StrData )          \
+    { Argument->Type = ACPI_METHOD_ARGUMENT_STRING;                   \
+      Argument->DataLength = strlen(StrData) + sizeof(UCHAR); \
+      memcpy(&Argument->Data[0],                                    \
+               (PUCHAR)StrData,                                       \
+               Argument->DataLength); }
 /**
  * @brief Performs translation from the supplied ACPI_OBJECT structure into a method argument.
  */
