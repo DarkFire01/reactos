@@ -180,7 +180,6 @@ PUBLIC KiUserThreadStartupExit
 .SwapBusySet:
     cmp byte ptr [r8 + ThSwapBusy], 0
     je .SwapBusyClear
-    int 3
     pause
     jmp .SwapBusySet
 .SwapBusyClear:

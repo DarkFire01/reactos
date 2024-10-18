@@ -14,7 +14,7 @@
 #undef ACPI_BIOS_ERROR
 #include <smp.h>
 
-#define NDEBUG
+//#define NDEBUG
 #include <debug.h>
 
 /* GLOBALS ********************************************************************/

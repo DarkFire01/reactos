@@ -38,7 +38,7 @@ LIST_ENTRY HalpAcpiTableMatchList;
 ULONG HalpInvalidAcpiTable;
 
 ULONG HalpPicVectorRedirect[] = {0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15};
-
+extern ISA_IRQ_TO_GSI_OVERRIDE HalpIRQToGSIOverride[MAX_PIC_IRQs];
 /* This determines the HAL type */
 BOOLEAN HalDisableFirmwareMapper = TRUE;
 PWCHAR HalHardwareIdString = L"acpipic_up";
@@ -999,7 +999,7 @@ HalpBuildAcpiResourceList(IN PIO_RESOURCE_REQUIREMENTS_LIST ResourceList)
         ResourceList->List[0].Descriptors[0].ShareDisposition = CmResourceShareShared;
 
         /* Get the interrupt number */
-        Interrupt = HalpPicVectorRedirect[HalpFixedAcpiDescTable.sci_int_vector];
+        Interrupt = HalpIRQToGSIOverride[HalpFixedAcpiDescTable.sci_int_vector].GlobalIRQ;
         ResourceList->List[0].Descriptors[0].u.Interrupt.MinimumVector = Interrupt;
         ResourceList->List[0].Descriptors[0].u.Interrupt.MaximumVector = Interrupt;
 
