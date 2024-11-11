@@ -55,3 +55,11 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/optional/DroidSansFallback.ttf)
     add_cd_file(FILE "${CMAKE_CURRENT_SOURCE_DIR}/optional/DroidSansFallback.ttf" DESTINATION reactos/Fonts FOR livecd)
 endif()
+
+## Slipstreaming KDNET
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/kdnetfiles/)
+    file(GLOB_RECURSE EXTRA_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/kdnetfiles/ ${CMAKE_CURRENT_SOURCE_DIR}/kdnetfiles/*)
+    foreach(item ${EXTRA_FILES})
+        add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/kdnetfiles/${item} DESTINATION reactos/system32 NAME_ON_CD ${item} FOR all)
+    endforeach(item)
+endif()
