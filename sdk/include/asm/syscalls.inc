@@ -136,6 +136,21 @@ Zw\Name:
 SyscallId = 0
 
 #ifdef _M_IX86
+#define _WOW64
+#ifdef _WOW64
+#define KUSER_SHARED_SYSCALL HEX(7ffe0300)
+MACRO(STUBCODE_U, Name, SyscallId, ArgCount)
+    StackBytes = 4 * ArgCount
+    FPO 0, 0, 0, 0, 0, FRAME_FPO
+    mov eax, SyscallId
+    mov edx, KUSER_SHARED_SYSCALL
+    call dword ptr [edx]
+    ret StackBytes
+ENDM
+MACRO(STUBCODE_K, Name, SyscallId, ArgCount)
+    int 3
+ENDM
+#else
 #define KUSER_SHARED_SYSCALL HEX(7ffe0300)
 #define KGDT_R0_CODE 8
 MACRO(STUBCODE_U, Name, SyscallId, ArgCount)
@@ -156,6 +171,7 @@ MACRO(STUBCODE_K, Name, SyscallId, ArgCount)
     call _KiSystemService
     ret StackBytes
 ENDM
+#endif
 #elif defined(_M_AMD64)
 MACRO(STUBCODE_U, Name, SyscallId, ArgCount)
     .ENDPROLOG

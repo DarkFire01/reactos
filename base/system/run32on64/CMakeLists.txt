@@ -1,0 +1,5 @@
+add_asm_files(run32on64_asm srasm.S)
+add_executable(run32on64 run32on64.c ${run32on64_asm})
+set_module_type(run32on64 win32cui UNICODE)
+add_importlibs(run32on64 user32 msvcrt kernel32 ntdll)
+add_cd_file(TARGET run32on64 DESTINATION reactos/system32 FOR all)

@@ -2279,7 +2279,20 @@ NtSetInformationProcess(
             DPRINT1("Handle tracing not implemented\n");
             Status = STATUS_NOT_IMPLEMENTED;
             break;
+        
+        case ProcessWow64Information:
+            if (ProcessInformationLength != sizeof(ULONG_PTR))
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                break;
+            }
 
+#ifdef _WIN64
+            Process->Wow64Process = (struct _WOW64_PROCESS*) *((ULONG_PTR*)ProcessInformation);
+            Status = STATUS_SUCCESS;
+#endif
+            break;
+        
         /* Anything else is invalid */
         default:
 #if DBG

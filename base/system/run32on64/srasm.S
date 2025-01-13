@@ -1,0 +1,36 @@
+.code
+
+PUBLIC __readfsdword
+__readfsdword:
+    mov eax, fs:[rcx]
+    ret
+   
+PUBLIC Enter32
+Enter32:
+    // Push KGDT64_R3_CODE and exchange it with the return address
+    sub rsp, 8
+    mov rax, [rsp + 8]
+    mov [rsp], rax
+    mov rax, 0033h
+    mov [rsp + 8], rax
+    
+    // Push the return address for the 32 bit procedure
+    mov rax, retpoint
+    push rax
+    // KGDT64_R3_CMCODE
+    push 0023h
+    // Address of the 32 bit procedure to be called
+    push rcx
+    // REX.W prefix - the default size for far returns is 32 bit
+    db 48h
+    retf
+retpoint:
+    db 48h
+    retf
+
+PUBLIC SetupFs
+SetupFs:
+    mov fs, rcx
+    ret
+    
+END
