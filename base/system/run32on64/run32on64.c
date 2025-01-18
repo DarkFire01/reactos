@@ -9,27 +9,22 @@
  * PROGRAMMER:      Marcin Jabłoński
  */
 
-#ifdef UNICODE
-#ifndef _UNICODE
-#define _UNICODE
-#endif
-#else
-#ifdef _UNICODE
-#define UNICODE
-#endif
-#endif
-
 unsigned long __readfsdword(unsigned long);
 
-#define WIN32_NO_STATUS
-#include <Windows.h>
-#include <stdio.h>
+#include "ros_wow64_private.h"
 
-#include <ntndk.h>
+#include "sysfuncnum.h"
+
+typedef MEMORY_BASIC_INFORMATION32 *PMEMORY_BASIC_INFORMATION32;
 
 void PrintError(HRESULT hResult)
 {
     LPWSTR errorText = NULL;
+    
+    if (hResult == 0)
+    {
+        return;
+    }
     
     FormatMessageW(
         FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_IGNORE_INSERTS,  
@@ -42,7 +37,7 @@ void PrintError(HRESULT hResult)
        
     if (errorText != NULL)
     {
-        wprintf(L"Last error: '%ls'\n", errorText);
+        wprintf(L"Last error: %ls", errorText);
         LocalFree(errorText);
     }
     else
@@ -51,11 +46,294 @@ void PrintError(HRESULT hResult)
     }
 }
 
-int wmain(int argc, WCHAR* argv[])
+NTSTATUS QueryVirtualMemoryHandler(ULONG* pArgs)
 {
     NTSTATUS status;
     
-    HMODULE ntdll32 = LoadLibraryW(L"x:\\reactos\\syswow64\\ntdll.dll");
+    MEMORY_BASIC_INFORMATION basicInfo;
+    PMEMORY_BASIC_INFORMATION32 pBasicInfo32;
+    SIZE_T size, *pSize;
+ 
+    MEMORY_INFORMATION_CLASS infoclass = (MEMORY_INFORMATION_CLASS)pArgs[2];
+ 
+    if (infoclass != MemoryBasicInformation)
+    {
+        wprintf(L"Failing, invalid class: %X, expected %X\n", infoclass, MemoryBasicInformation);
+        return STATUS_INVALID_INFO_CLASS;
+    }
+    
+    if (pArgs[4] < sizeof(MEMORY_BASIC_INFORMATION32))
+    {
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
+ 
+    pBasicInfo32 = (PVOID)(ULONG_PTR)pArgs[3];
+    pSize = (pArgs[5] == 0) ? NULL : &size;
+ 
+    status = NtQueryVirtualMemory(
+                (HANDLE)(ULONG_PTR)(LONG)pArgs[0], 
+                (PVOID)(ULONG_PTR)pArgs[1], 
+                infoclass,  
+                &basicInfo,
+                sizeof(basicInfo),
+                pSize);
+                
+    if (NT_SUCCESS(status))
+    {
+        pBasicInfo32->BaseAddress = (ULONG)(ULONG_PTR)basicInfo.BaseAddress;
+        pBasicInfo32->AllocationBase = (ULONG)(ULONG_PTR)basicInfo.AllocationBase;
+        pBasicInfo32->AllocationProtect = basicInfo.AllocationProtect;
+        pBasicInfo32->RegionSize = basicInfo.RegionSize;
+        pBasicInfo32->State = basicInfo.State;
+        pBasicInfo32->Protect = basicInfo.Protect;
+        pBasicInfo32->Type = basicInfo.Type;
+        
+        if (pSize != NULL)
+        {
+            *(ULONG*)((ULONG_PTR)pArgs[5]) = size;
+        }
+    }
+                
+    return status;
+}
+
+/* WINE FUNCS */
+
+/**********************************************************************
+ *           wow64_NtQueryInformationProcess
+ */
+NTSTATUS WINAPI wow64_NtQueryInformationProcess( UINT *args )
+{
+    HANDLE handle = get_handle( &args );
+    PROCESSINFOCLASS class = get_ulong( &args );
+    void *ptr = get_ptr( &args );
+    ULONG len = get_ulong( &args );
+    ULONG *retlen = get_ptr( &args );
+
+    NTSTATUS status;
+
+    switch (class)
+    {
+    case ProcessBasicInformation:  /* PROCESS_BASIC_INFORMATION */
+        if (len == sizeof(PROCESS_BASIC_INFORMATION32))
+        {
+            PROCESS_BASIC_INFORMATION info;
+            PROCESS_BASIC_INFORMATION32 *info32 = ptr;
+
+            if (!(status = NtQueryInformationProcess( handle, class, &info, sizeof(info), NULL )))
+            {
+                if (is_process_wow64( handle ))
+                    info32->PebBaseAddress = PtrToUlong( info.PebBaseAddress ) + 0x1000;
+                else
+                    info32->PebBaseAddress = 0;
+                info32->ExitStatus = info.ExitStatus;
+                info32->AffinityMask = info.AffinityMask;
+                info32->BasePriority = info.BasePriority;
+                info32->UniqueProcessId = info.UniqueProcessId;
+                info32->InheritedFromUniqueProcessId = info.InheritedFromUniqueProcessId;
+                if (retlen) *retlen = sizeof(*info32);
+            }
+            return status;
+        }
+        if (retlen) *retlen = sizeof(PROCESS_BASIC_INFORMATION32);
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    case ProcessIoCounters:  /* IO_COUNTERS */
+    case ProcessTimes:  /* KERNEL_USER_TIMES */
+    case ProcessDefaultHardErrorMode:  /* ULONG */
+    case ProcessPriorityClass:  /* PROCESS_PRIORITY_CLASS */
+    case ProcessHandleCount:  /* ULONG */
+    case ProcessSessionInformation:  /* ULONG */
+    case ProcessDebugFlags:  /* ULONG */
+    case ProcessExecuteFlags:  /* ULONG */
+    case ProcessCookie:  /* ULONG */
+    case ProcessCycleTime:  /* PROCESS_CYCLE_TIME_INFORMATION */
+        /* FIXME: check buffer alignment */
+        return NtQueryInformationProcess( handle, class, ptr, len, retlen );
+
+    case ProcessQuotaLimits:  /* QUOTA_LIMITS */
+        if (len == sizeof(QUOTA_LIMITS32))
+        {
+            QUOTA_LIMITS info;
+            QUOTA_LIMITS32 *info32 = ptr;
+
+            if (!(status = NtQueryInformationProcess( handle, class, &info, sizeof(info), NULL )))
+            {
+                info32->PagedPoolLimit        = info.PagedPoolLimit;
+                info32->NonPagedPoolLimit     = info.NonPagedPoolLimit;
+                info32->MinimumWorkingSetSize = info.MinimumWorkingSetSize;
+                info32->MaximumWorkingSetSize = info.MaximumWorkingSetSize;
+                info32->PagefileLimit         = info.PagefileLimit;
+                info32->TimeLimit             = info.TimeLimit;
+                if (retlen) *retlen = len;
+            }
+            return status;
+        }
+        if (retlen) *retlen = sizeof(QUOTA_LIMITS32);
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    case ProcessVmCounters:  /* VM_COUNTERS_EX */
+        if (len == sizeof(VM_COUNTERS32) || len == sizeof(VM_COUNTERS_EX32))
+        {
+            VM_COUNTERS_EX info;
+            VM_COUNTERS_EX32 *info32 = ptr;
+
+            if (!(status = NtQueryInformationProcess( handle, class, &info, sizeof(info), NULL )))
+            {
+                put_vm_counters( info32, &info, len );
+                if (retlen) *retlen = len;
+            }
+            return status;
+        }
+        if (retlen) *retlen = sizeof(VM_COUNTERS_EX32);
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    case ProcessDebugPort:  /* ULONG_PTR */
+    case ProcessAffinityMask:  /* ULONG_PTR */
+    case ProcessWow64Information:  /* ULONG_PTR */
+    case ProcessDebugObjectHandle:  /* HANDLE */
+        if (len == sizeof(ULONG))
+        {
+            ULONG_PTR data;
+
+            if (!(status = NtQueryInformationProcess( handle, class, &data, sizeof(data), NULL )))
+            {
+                *(ULONG *)ptr = data;
+                if (retlen) *retlen = sizeof(ULONG);
+            }
+            else if (status == STATUS_PORT_NOT_SET)
+            {
+                *(ULONG *)ptr = 0;
+                if (retlen) *retlen = sizeof(ULONG);
+            }
+            return status;
+        }
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    case ProcessImageFileName:
+    case ProcessImageFileNameWin32:  /* UNICODE_STRING + string */
+        {
+            ULONG retsize, size = len + sizeof(UNICODE_STRING) - sizeof(UNICODE_STRING32);
+#ifndef __REACTOS__
+            UNICODE_STRING *str = Wow64AllocateTemp( size );
+#else
+            UNICODE_STRING *str = malloc(size);
+#endif
+            UNICODE_STRING32 *str32 = ptr;
+
+            if (!(status = NtQueryInformationProcess( handle, class, str, size, &retsize )))
+            {
+                str32->Length = str->Length;
+                str32->MaximumLength = str->MaximumLength;
+                str32->Buffer = PtrToUlong( str32 + 1 );
+                memcpy( str32 + 1, str->Buffer, str->MaximumLength );
+            }
+#ifdef __REACTOS__
+            free(str);
+#endif
+            if (retlen) *retlen = retsize + sizeof(UNICODE_STRING32) - sizeof(UNICODE_STRING);
+            return status;
+        }
+
+    case ProcessImageInformation:  /* SECTION_IMAGE_INFORMATION */
+        if (len == sizeof(SECTION_IMAGE_INFORMATION32))
+        {
+            SECTION_IMAGE_INFORMATION info;
+            SECTION_IMAGE_INFORMATION32 *info32 = ptr;
+
+            if (!(status = NtQueryInformationProcess( handle, class, &info, sizeof(info), NULL )))
+            {
+                put_section_image_info( info32, &info );
+                if (retlen) *retlen = sizeof(*info32);
+            }
+            return status;
+        }
+        if (retlen) *retlen = sizeof(SECTION_IMAGE_INFORMATION32);
+        return STATUS_INFO_LENGTH_MISMATCH;
+#ifndef __REACTOS__
+    case ProcessWineLdtCopy:
+        return STATUS_NOT_IMPLEMENTED;
+#endif
+    default:
+        FIXME( "unsupported class %u\n", class );
+        return STATUS_INVALID_INFO_CLASS;
+    }
+}
+
+/**********************************************************************
+ *           wow64_NtTestAlert
+ */
+NTSTATUS WINAPI wow64_NtTestAlert( UINT *args )
+{
+    return NtTestAlert();
+}
+
+/* END OF WINEFUNCS */
+
+NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
+{   
+    NTSTATUS status;
+
+    static const char* mapping[] = 
+    {
+#define SVC_(name, argc) ""#name ,
+#include "../../../ntoskrnl/include/sysfuncs.h"   
+#undef SVC_
+    };
+    
+    wprintf(L"[Syscall %lX:%hs]\n", syscallNum, mapping[syscallNum]);
+    status = STATUS_NOT_IMPLEMENTED;
+
+    switch (syscallNum)
+    {
+        case NumQueryVirtualMemory:
+            status = QueryVirtualMemoryHandler(pArgs);
+            break;
+        WINE_WOW_IMPL_CASE(QuerySystemInformation);
+        WINE_WOW_IMPL_CASE(OpenKey);
+        WINE_WOW_IMPL_CASE(QueryValueKey);
+        WINE_WOW_IMPL_CASE(DeleteValueKey);
+        WINE_WOW_IMPL_CASE(CreateKey);
+        WINE_WOW_IMPL_CASE(DeleteKey);
+        WINE_WOW_IMPL_CASE(QueryInformationProcess);
+        WINE_WOW_IMPL_CASE(PowerInformation);
+        WINE_WOW_IMPL_CASE(QuerySystemEnvironmentValue);
+        WINE_WOW_IMPL_CASE(QuerySystemEnvironmentValueEx);
+        WINE_WOW_IMPL_CASE(LoadDriver);
+        WINE_WOW_IMPL_CASE(DisplayString);
+        WINE_WOW_IMPL_CASE(InitiatePowerAction);
+        WINE_WOW_IMPL_CASE(QuerySystemTime);
+        WINE_WOW_IMPL_CASE(RaiseHardError);
+        WINE_WOW_IMPL_CASE(SetIntervalProfile);
+        WINE_WOW_IMPL_CASE(ShutdownSystem);
+        WINE_WOW_IMPL_CASE(SetSystemInformation);
+        WINE_WOW_IMPL_CASE(SetSystemTime);
+        WINE_WOW_IMPL_CASE(SystemDebugControl);
+        WINE_WOW_IMPL_CASE(UnloadDriver);
+        WINE_WOW_IMPL_CASE(TestAlert);
+    }
+    
+    if (status == STATUS_NOT_IMPLEMENTED)
+    {
+        wprintf(L"Unhandled 32-bit syscall 0x%lX(%ld args at %p)\n", syscallNum, numArgs, pArgs);
+        __debugbreak();
+    }
+    else
+    {
+        wprintf(L"32-bit syscall 0x%lX status %lX\n", syscallNum, status);
+    }
+    
+    return status;
+}
+
+#define TMP_TARGET_PROGRAM L"D:\\calc.exe"
+
+int wmain(int argc, WCHAR* argv[])
+{
+    NTSTATUS status;
+    PRTL_USER_PROCESS_PARAMETERS32 procParams;
+    
+    HMODULE ntdll32 = LoadLibraryW(L"D:\\ntdll.dll");
     PrintError(GetLastError());
     wprintf(L"LoadLibraryW result: %p\n", ntdll32);
     
@@ -63,10 +341,18 @@ int wmain(int argc, WCHAR* argv[])
     PrintError(GetLastError());
     wprintf(L"Result: %p ?= %p\n", ntdll32, ntdll64);
     
+    HMODULE clientProgram = LoadLibraryW(TMP_TARGET_PROGRAM);
+    PrintError(GetLastError());
+    wprintf(L"Client program: %p\n", clientProgram);
+    if (clientProgram == NULL || ntdll32 == NULL)
+    {
+        return -1;
+    }
+    
     if (ntdll32 == ntdll64)
     {
         wprintf(L"Remapping due to conflict.\n");
-        ntdll32 = LoadLibraryW(L"x:\\reactos\\syswow64\\ntdll32.dll");
+        ntdll32 = LoadLibraryW(L"D\\ntdll32.dll");
         PrintError(GetLastError());
     }
     
@@ -79,6 +365,7 @@ int wmain(int argc, WCHAR* argv[])
     
     wowTeb = NULL;
     wowPeb = NULL;
+    procParams = NULL;
     
     /* These allocations are undone on process exit (not explicitly, though). */
     size = sizeof(TEB32);
@@ -96,6 +383,17 @@ int wmain(int argc, WCHAR* argv[])
         wprintf(L"PEB32 Allocation failed: %lx\n", status);
         return -1;
     }
+    
+    size = sizeof(RTL_USER_PROCESS_PARAMETERS32);
+    status = NtAllocateVirtualMemory(NtCurrentProcess(), &procParams, 32, &size, MEM_COMMIT, PAGE_READWRITE);
+    if (!NT_SUCCESS(status))
+    {
+        wprintf(L"PEB32->ProcessParameters Allocation failed: %lx\n", status);
+        return -1;
+    }
+    
+    wowPeb->ProcessParameters = (ULONG)(ULONG_PTR)procParams;
+    wowPeb->ImageBaseAddress = (ULONG)(ULONG_PTR)clientProgram;
     
     /* Set the 64 bit Teb's TlsSlots[1] to the TEB32 before setting process information. */
     NtCurrentTeb()->TlsSlots[1] = wowTeb;
@@ -124,13 +422,23 @@ int wmain(int argc, WCHAR* argv[])
     void SetupFs(ULONG_PTR segSelector);
     SetupFs(0x0053);
     
+    procParams->ImagePathName.Buffer = (ULONG)(ULONG_PTR)TMP_TARGET_PROGRAM;
+    procParams->ImagePathName.Length = sizeof(TMP_TARGET_PROGRAM);
+    procParams->ImagePathName.MaximumLength = sizeof(TMP_TARGET_PROGRAM);
+    procParams->Flags |=  RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
+    
+    wowTeb->ProcessEnvironmentBlock = (ULONG)(ULONG_PTR)wowPeb;
+    
     FARPROC proc = GetProcAddress(ntdll32, "LdrInitializeThunk");
     wprintf(L"Getting init function ptr %p\n", proc);
     
     void Enter32(FARPROC where);
     
+    wprintf(L"Setting WOW32Reserved to local handler %p\n", handler);
+    assert((((ULONG_PTR)handler) & ~0xFFFFFFFF) == 0);
+    wowTeb->WOW32Reserved = (ULONG)(ULONG_PTR)handler;
+    
     wprintf(L"Entering\n");
-    __debugbreak();
     Enter32(proc);
     wprintf(L"Exiting\n");
     return 0;

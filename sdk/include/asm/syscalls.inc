@@ -140,11 +140,55 @@ SyscallId = 0
 #ifdef _WOW64
 #define KUSER_SHARED_SYSCALL HEX(7ffe0300)
 MACRO(STUBCODE_U, Name, SyscallId, ArgCount)
+LOCAL x, x2
     StackBytes = 4 * ArgCount
     FPO 0, 0, 0, 0, 0, FRAME_FPO
-    mov eax, SyscallId
-    mov edx, KUSER_SHARED_SYSCALL
-    call dword ptr [edx]
+    push ecx
+    push edx
+    
+    mov ecx, SyscallId
+    mov edx, ArgCount
+    
+    push ebp
+    mov ebp, esp
+    
+    ; Align the stack, and allocate shadow space for the x64 calling convention
+    sub esp, 48
+    and esp, 0FFFFFFF0h
+    
+    push 0
+    push ebp
+    
+    ljmp 33h, x
+x:
+    ; pop r8
+    db 41h
+    db 58h
+
+    ; add r8, 40
+    db 49h
+    db 81h
+    db 0c0h
+    dd 16
+
+    ; call dword ptr [fs:0xC0]
+    db 64h
+    db 0ffh
+    db 14h
+    db 25h
+    dd 000000c0h
+    
+    push 23h
+    push x2
+    db 48h
+    retf
+x2:
+    mov esp, ebp
+    pop ebp
+    
+    pop edx
+    pop ecx
+    
     ret StackBytes
 ENDM
 MACRO(STUBCODE_K, Name, SyscallId, ArgCount)
