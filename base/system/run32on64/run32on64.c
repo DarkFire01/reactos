@@ -9,10 +9,7 @@
  * PROGRAMMER:      Marcin Jabłoński
  */
 
-unsigned long __readfsdword(unsigned long);
-
 #include "ros_wow64_private.h"
-
 #include "sysfuncnum.h"
 
 typedef MEMORY_BASIC_INFORMATION32 *PMEMORY_BASIC_INFORMATION32;
@@ -44,57 +41,6 @@ void PrintError(HRESULT hResult)
     {
         wprintf(L"Format message failed\n");
     }
-}
-
-NTSTATUS QueryVirtualMemoryHandler(ULONG* pArgs)
-{
-    NTSTATUS status;
-    
-    MEMORY_BASIC_INFORMATION basicInfo;
-    PMEMORY_BASIC_INFORMATION32 pBasicInfo32;
-    SIZE_T size, *pSize;
- 
-    MEMORY_INFORMATION_CLASS infoclass = (MEMORY_INFORMATION_CLASS)pArgs[2];
- 
-    if (infoclass != MemoryBasicInformation)
-    {
-        wprintf(L"Failing, invalid class: %X, expected %X\n", infoclass, MemoryBasicInformation);
-        return STATUS_INVALID_INFO_CLASS;
-    }
-    
-    if (pArgs[4] < sizeof(MEMORY_BASIC_INFORMATION32))
-    {
-        return STATUS_INFO_LENGTH_MISMATCH;
-    }
- 
-    pBasicInfo32 = (PVOID)(ULONG_PTR)pArgs[3];
-    pSize = (pArgs[5] == 0) ? NULL : &size;
- 
-    status = NtQueryVirtualMemory(
-                (HANDLE)(ULONG_PTR)(LONG)pArgs[0], 
-                (PVOID)(ULONG_PTR)pArgs[1], 
-                infoclass,  
-                &basicInfo,
-                sizeof(basicInfo),
-                pSize);
-                
-    if (NT_SUCCESS(status))
-    {
-        pBasicInfo32->BaseAddress = (ULONG)(ULONG_PTR)basicInfo.BaseAddress;
-        pBasicInfo32->AllocationBase = (ULONG)(ULONG_PTR)basicInfo.AllocationBase;
-        pBasicInfo32->AllocationProtect = basicInfo.AllocationProtect;
-        pBasicInfo32->RegionSize = basicInfo.RegionSize;
-        pBasicInfo32->State = basicInfo.State;
-        pBasicInfo32->Protect = basicInfo.Protect;
-        pBasicInfo32->Type = basicInfo.Type;
-        
-        if (pSize != NULL)
-        {
-            *(ULONG*)((ULONG_PTR)pArgs[5]) = size;
-        }
-    }
-                
-    return status;
 }
 
 /* WINE FUNCS */
@@ -286,9 +232,6 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
 
     switch (syscallNum)
     {
-        case NumQueryVirtualMemory:
-            status = QueryVirtualMemoryHandler(pArgs);
-            break;
         WINE_WOW_IMPL_CASE(QuerySystemInformation);
         WINE_WOW_IMPL_CASE(OpenKey);
         WINE_WOW_IMPL_CASE(QueryValueKey);
@@ -311,6 +254,20 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
         WINE_WOW_IMPL_CASE(SystemDebugControl);
         WINE_WOW_IMPL_CASE(UnloadDriver);
         WINE_WOW_IMPL_CASE(TestAlert);
+        WINE_WOW_IMPL_CASE(AllocateVirtualMemory);
+        WINE_WOW_IMPL_CASE(FlushInstructionCache);
+        WINE_WOW_IMPL_CASE(FlushVirtualMemory);
+        WINE_WOW_IMPL_CASE(FreeVirtualMemory);
+        WINE_WOW_IMPL_CASE(GetWriteWatch);
+        WINE_WOW_IMPL_CASE(LockVirtualMemory);
+        WINE_WOW_IMPL_CASE(MapViewOfSection);
+        WINE_WOW_IMPL_CASE(ProtectVirtualMemory);
+        WINE_WOW_IMPL_CASE(QueryVirtualMemory);
+        WINE_WOW_IMPL_CASE(ReadVirtualMemory);
+        WINE_WOW_IMPL_CASE(ResetWriteWatch);
+        WINE_WOW_IMPL_CASE(UnlockVirtualMemory);
+        WINE_WOW_IMPL_CASE(UnmapViewOfSection);
+        WINE_WOW_IMPL_CASE(WriteVirtualMemory);
     }
     
     if (status == STATUS_NOT_IMPLEMENTED)
@@ -332,6 +289,8 @@ int wmain(int argc, WCHAR* argv[])
 {
     NTSTATUS status;
     PRTL_USER_PROCESS_PARAMETERS32 procParams;
+    
+    ULONG_PTR fixmeProcessHeaps[100];
     
     HMODULE ntdll32 = LoadLibraryW(L"D:\\ntdll.dll");
     PrintError(GetLastError());
@@ -393,9 +352,19 @@ int wmain(int argc, WCHAR* argv[])
     }
     
     wowPeb->ProcessParameters = (ULONG)(ULONG_PTR)procParams;
+    
+    /* FIXME: hack for process heaps */
+    wowPeb->MaximumNumberOfHeaps = sizeof(fixmeProcessHeaps) / sizeof(*fixmeProcessHeaps);
+    wowPeb->ProcessHeaps = (ULONG)(ULONG_PTR)fixmeProcessHeaps;
+    
     wowPeb->ImageBaseAddress = (ULONG)(ULONG_PTR)clientProgram;
     
-    /* Set the 64 bit Teb's TlsSlots[1] to the TEB32 before setting process information. */
+    /* Set the 64 bit Teb's TlsSlots[1] to the TEB32 before setting process 
+       information. */
+    /* FIXME: This is NOT Wine compatible! Wine uses Peb->WowTebOffsetwhich is 
+       only present for NTDDI_VERSION >= NTDDI_WIN10, and uses this TLS entry
+       for its own structures. Since we do not use them, this entry should be
+       free for now. */
     NtCurrentTeb()->TlsSlots[1] = wowTeb;
     
     wprintf(L"Initializing PEB32 and TEB32\n");

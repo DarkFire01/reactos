@@ -7,7 +7,8 @@
 #include <ntndk.h>
 #include "struct32.h"
 
-#define WOW64_TLS_CPURESERVED      1
+/* FIXME: See run32on64.c */
+// #define WOW64_TLS_CPURESERVED      1
 #define WOW64_TLS_TEMPLIST         3
 #define WOW64_TLS_USERCALLBACKDATA 5
 #define WOW64_TLS_APCLIST          7
@@ -21,6 +22,7 @@ static inline ULONG get_ulong( UINT **args ) { return *(*args)++; }
 static inline HANDLE get_handle( UINT **args ) { return LongToHandle( *(*args)++ ); }
 static inline void *get_ptr( UINT **args ) { return ULongToPtr( *(*args)++ ); }
 
+static ULONG_PTR highest_user_address = 0xFFFFFFFFULL;
 static ULONG_PTR args_alignment = 4;
 
 #define Wow64AllocateTemp(...) _alloca(__VA_ARGS__)
@@ -29,6 +31,13 @@ static ULONG_PTR args_alignment = 4;
     NTSTATUS WINAPI wow64_Nt ## name (UINT* pArgs); \
     status = wow64_Nt ## name (pArgs); \
     break;
+
+unsigned long __readfsdword(unsigned long);
+
+static inline PTEB32 NtCurrentTeb32()
+{
+    return (PTEB32)(ULONG_PTR)__readfsdword(0x18);
+}
 
 struct object_attr64
 {
@@ -59,6 +68,15 @@ static BOOL is_process_wow64( HANDLE handle )
     if (NtQueryInformationProcess( handle, ProcessWow64Information, &info, sizeof(info), NULL ))
         return FALSE;
     return !!info;
+}
+
+static inline ULONG_PTR get_zero_bits( ULONG_PTR zero_bits )
+{
+#ifdef __REACTOS__
+    return zero_bits ? zero_bits : 32;
+#else 
+    return zero_bits ? zero_bits : default_zero_bits;
+#endif
 }
 
 static inline ULONG64 get_ulong64( UINT **args )
