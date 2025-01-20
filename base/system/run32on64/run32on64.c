@@ -206,14 +206,6 @@ NTSTATUS WINAPI wow64_NtQueryInformationProcess( UINT *args )
     }
 }
 
-/**********************************************************************
- *           wow64_NtTestAlert
- */
-NTSTATUS WINAPI wow64_NtTestAlert( UINT *args )
-{
-    return NtTestAlert();
-}
-
 /* END OF WINEFUNCS */
 
 NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
@@ -232,12 +224,17 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
 
     switch (syscallNum)
     {
+        /* registry.c */
         WINE_WOW_IMPL_CASE(QuerySystemInformation);
         WINE_WOW_IMPL_CASE(OpenKey);
         WINE_WOW_IMPL_CASE(QueryValueKey);
         WINE_WOW_IMPL_CASE(DeleteValueKey);
         WINE_WOW_IMPL_CASE(CreateKey);
         WINE_WOW_IMPL_CASE(DeleteKey);
+        WINE_WOW_IMPL_CASE(EnumerateKey);
+        WINE_WOW_IMPL_CASE(EnumerateValueKey);
+        
+        /* system.c */
         WINE_WOW_IMPL_CASE(QueryInformationProcess);
         WINE_WOW_IMPL_CASE(PowerInformation);
         WINE_WOW_IMPL_CASE(QuerySystemEnvironmentValue);
@@ -253,7 +250,72 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
         WINE_WOW_IMPL_CASE(SetSystemTime);
         WINE_WOW_IMPL_CASE(SystemDebugControl);
         WINE_WOW_IMPL_CASE(UnloadDriver);
+        
+        /* sync.c */
+        WINE_WOW_IMPL_CASE(CancelTimer);
+        WINE_WOW_IMPL_CASE(ClearEvent);
+        WINE_WOW_IMPL_CASE(CompleteConnectPort);
+        WINE_WOW_IMPL_CASE(CreateDebugObject);
+        WINE_WOW_IMPL_CASE(CreateDirectoryObject);
+        WINE_WOW_IMPL_CASE(CreateEvent);
+        WINE_WOW_IMPL_CASE(CreateIoCompletion);
+        WINE_WOW_IMPL_CASE(CreateJobObject);
+        WINE_WOW_IMPL_CASE(CreateKeyedEvent);
+        WINE_WOW_IMPL_CASE(CreateMutant);
+        WINE_WOW_IMPL_CASE(CreatePort);
+        WINE_WOW_IMPL_CASE(CreateSection);
+        WINE_WOW_IMPL_CASE(CreateSemaphore);
+        WINE_WOW_IMPL_CASE(CreateSymbolicLinkObject);
+        WINE_WOW_IMPL_CASE(CreateTimer);
+        WINE_WOW_IMPL_CASE(DebugContinue);
+        WINE_WOW_IMPL_CASE(DelayExecution);
+        WINE_WOW_IMPL_CASE(DuplicateObject);
+        WINE_WOW_IMPL_CASE(MakePermanentObject);
+        WINE_WOW_IMPL_CASE(MakeTemporaryObject);
+        WINE_WOW_IMPL_CASE(OpenDirectoryObject);
+        WINE_WOW_IMPL_CASE(OpenEvent);
+        WINE_WOW_IMPL_CASE(OpenIoCompletion);
+        WINE_WOW_IMPL_CASE(OpenJobObject);
+        WINE_WOW_IMPL_CASE(OpenKeyedEvent);
+        WINE_WOW_IMPL_CASE(OpenMutant);
+        WINE_WOW_IMPL_CASE(OpenSection);
+        WINE_WOW_IMPL_CASE(OpenSemaphore);
+        WINE_WOW_IMPL_CASE(OpenSymbolicLinkObject);
+        WINE_WOW_IMPL_CASE(OpenTimer);
+        WINE_WOW_IMPL_CASE(PulseEvent);
+        WINE_WOW_IMPL_CASE(QueryEvent);
+        WINE_WOW_IMPL_CASE(QueryInformationJobObject);
+        WINE_WOW_IMPL_CASE(QueryIoCompletion);
+        WINE_WOW_IMPL_CASE(QueryMutant);
+        WINE_WOW_IMPL_CASE(QueryObject);
+        WINE_WOW_IMPL_CASE(QueryPerformanceCounter);
+        WINE_WOW_IMPL_CASE(QuerySection);
+        WINE_WOW_IMPL_CASE(QuerySemaphore);
+        WINE_WOW_IMPL_CASE(QuerySymbolicLinkObject);
+        WINE_WOW_IMPL_CASE(QueryTimer);
+        WINE_WOW_IMPL_CASE(QueryTimerResolution);
+        WINE_WOW_IMPL_CASE(RegisterThreadTerminatePort);
+        WINE_WOW_IMPL_CASE(ReleaseKeyedEvent);
+        WINE_WOW_IMPL_CASE(ReleaseMutant);
+        WINE_WOW_IMPL_CASE(ReleaseSemaphore);
+        WINE_WOW_IMPL_CASE(ResetEvent);
+        WINE_WOW_IMPL_CASE(SetEvent);
+        WINE_WOW_IMPL_CASE(SetInformationDebugObject);
+        WINE_WOW_IMPL_CASE(SetInformationJobObject);
+        WINE_WOW_IMPL_CASE(SetInformationObject);
+        WINE_WOW_IMPL_CASE(SetIoCompletion);
+        WINE_WOW_IMPL_CASE(SetTimer);
+        WINE_WOW_IMPL_CASE(SetTimerResolution);
+        WINE_WOW_IMPL_CASE(SignalAndWaitForSingleObject);
+        WINE_WOW_IMPL_CASE(TerminateJobObject);
         WINE_WOW_IMPL_CASE(TestAlert);
+        WINE_WOW_IMPL_CASE(WaitForDebugEvent);
+        WINE_WOW_IMPL_CASE(WaitForKeyedEvent);
+        WINE_WOW_IMPL_CASE(WaitForMultipleObjects);
+        WINE_WOW_IMPL_CASE(WaitForSingleObject);
+        WINE_WOW_IMPL_CASE(YieldExecution);
+        
+        /* virtual.c */
         WINE_WOW_IMPL_CASE(AllocateVirtualMemory);
         WINE_WOW_IMPL_CASE(FlushInstructionCache);
         WINE_WOW_IMPL_CASE(FlushVirtualMemory);

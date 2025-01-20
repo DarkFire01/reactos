@@ -1,5 +1,5 @@
 add_asm_files(run32on64_asm srasm.S)
-add_executable(run32on64 run32on64.c registry.c struct32.h system.c virtual.c ${run32on64_asm})
+add_executable(run32on64 run32on64.c registry.c struct32.h system.c sync.c virtual.c ${run32on64_asm})
 set_module_type(run32on64 win32cui UNICODE)
 # Later, code that has to live in 32 bit address space will be moved to a separate DLL
 set_image_base(run32on64 0xFF000000)

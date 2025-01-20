@@ -24,6 +24,8 @@ static inline void *get_ptr( UINT **args ) { return ULongToPtr( *(*args)++ ); }
 
 static ULONG_PTR highest_user_address = 0xFFFFFFFFULL;
 static ULONG_PTR args_alignment = 4;
+static USHORT current_machine = IMAGE_FILE_MACHINE_I386;
+static USHORT native_machine = IMAGE_FILE_MACHINE_AMD64;
 
 #define Wow64AllocateTemp(...) _alloca(__VA_ARGS__)
 
@@ -241,13 +243,9 @@ static inline void put_iosb( IO_STATUS_BLOCK32 *io32, const IO_STATUS_BLOCK *io 
     }
 }
 
-static void put_section_image_info( SECTION_IMAGE_INFORMATION32 *info32,
-                                    const SECTION_IMAGE_INFORMATION *info )
-{
-    wprintf(L"UNIMPLEMENTED");
-    __debugbreak();
-}
-
+extern void put_section_image_info( SECTION_IMAGE_INFORMATION32 *info32,
+                                    const SECTION_IMAGE_INFORMATION *info );
+                                    
 static void put_vm_counters( VM_COUNTERS_EX32 *info32, const VM_COUNTERS_EX *info,
                              ULONG size )
 {

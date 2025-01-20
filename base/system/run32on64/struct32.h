@@ -66,8 +66,10 @@ typedef struct
     ULONG            ValidAccessMask;
     BOOLEAN          SecurityRequired;
     BOOLEAN          MaintainHandleCount;
+#ifndef __REACTOS__
     UCHAR            TypeIndex;
     CHAR             ReservedByte;
+#endif
     ULONG            PoolType;
     ULONG            DefaultPagedPoolCharge;
     ULONG            DefaultNonPagedPoolCharge;
@@ -353,16 +355,28 @@ typedef struct
     ULONG   SubSystemType;
     USHORT  MinorSubsystemVersion;
     USHORT  MajorSubsystemVersion;
+#ifndef __REACTOS__
     USHORT  MajorOperatingSystemVersion;
     USHORT  MinorOperatingSystemVersion;
+#else
+    ULONG   GpValue;
+#endif
     USHORT  ImageCharacteristics;
     USHORT  DllCharacteristics;
     USHORT  Machine;
     BOOLEAN ImageContainsCode;
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
     UCHAR   ImageFlags;
+#else
+    BOOLEAN Spare1;
+#endif
     ULONG   LoaderFlags;
     ULONG   ImageFileSize;
-    ULONG   CheckSum;
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    ULONG CheckSum;
+#else
+    ULONG Reserved[1];
+#endif
 } SECTION_IMAGE_INFORMATION32;
 
 typedef struct
@@ -451,8 +465,6 @@ typedef struct
     ULONG PrivateUsage;
 } VM_COUNTERS_EX32;
 
-#ifndef __REACTOS__
-/* FIXME: this does not compile */
 typedef struct
 {
     DBG_STATE   NewState;
@@ -509,7 +521,6 @@ typedef struct
         } UnloadDll;
     } StateInfo;
 } DBGUI_WAIT_STATE_CHANGE32;
-#endif
 
 typedef struct
 {
