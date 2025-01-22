@@ -22,7 +22,9 @@ static inline ULONG get_ulong( UINT **args ) { return *(*args)++; }
 static inline HANDLE get_handle( UINT **args ) { return LongToHandle( *(*args)++ ); }
 static inline void *get_ptr( UINT **args ) { return ULongToPtr( *(*args)++ ); }
 
-static ULONG_PTR highest_user_address = 0xFFFFFFFFULL;
+extern ULONG_PTR highest_user_address;
+extern ULONG_PTR default_zero_bits;
+
 static ULONG_PTR args_alignment = 4;
 static USHORT current_machine = IMAGE_FILE_MACHINE_I386;
 static USHORT native_machine = IMAGE_FILE_MACHINE_AMD64;
@@ -48,17 +50,34 @@ struct object_attr64
     SECURITY_DESCRIPTOR sd;
 };
 
-static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr)
+static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer)
 {
-    /* UNIMPLEMENTED */
-    assert(FALSE);
+    WCHAR system32[] = L"\\??\\X:\\reactos\\system32";
+    WCHAR wow64[] = L"\\??\\D:";
+    
+    if (!attr || !attr->ObjectName || !attr->ObjectName->Buffer)
+    {
+        return FALSE;
+    }
+    
+    if (wcsncmp(attr->ObjectName->Buffer, system32, sizeof(system32) / sizeof(*system32)) == 0)
+    {
+        buffer->Length = attr->ObjectName->Length - sizeof(system32) + sizeof(wow64);
+        wcscpy(buffer->Buffer, wow64);
+        wcscat(buffer->Buffer,  (PWSTR)(((ULONG_PTR)attr->ObjectName->Buffer) + sizeof(system32) - sizeof(WCHAR)));
+        
+        wprintf(L"Redirecting %ls to %ls\n", attr->ObjectName->Buffer, buffer->Buffer);
+        attr->ObjectName = buffer;  
+        return TRUE;
+    }
+    
+    wprintf(L"Not redirecting %ls\n", attr->ObjectName->Buffer);
     return FALSE;
 }
 
 static inline void *apc_32to64( ULONG func )
 {
     /* UNIMPLEMENTED */
-    assert(FALSE);
     return NULL;
 }
 
@@ -74,11 +93,7 @@ static BOOL is_process_wow64( HANDLE handle )
 
 static inline ULONG_PTR get_zero_bits( ULONG_PTR zero_bits )
 {
-#ifdef __REACTOS__
-    return zero_bits ? zero_bits : 32;
-#else 
     return zero_bits ? zero_bits : default_zero_bits;
-#endif
 }
 
 static inline ULONG64 get_ulong64( UINT **args )
@@ -176,14 +191,24 @@ static inline OBJECT_ATTRIBUTES *objattr_32to64( struct object_attr64 *out, cons
     return &out->attr;
 }
 
-static inline OBJECT_ATTRIBUTES *objattr_32to64_redirect( struct object_attr64 *out,
-                                                          const OBJECT_ATTRIBUTES32 *in )
+static inline OBJECT_ATTRIBUTES *RosWow64RedirObjAttributes(struct object_attr64 *out,
+                                                            const OBJECT_ATTRIBUTES32 *in,
+                                                            UNICODE_STRING *buffer)
 {
     OBJECT_ATTRIBUTES *attr = objattr_32to64( out, in );
 
-    if (attr) get_file_redirect( attr );
+    if (attr) get_file_redirect( attr, buffer );
     return attr;
 }
+ 
+#define objattr_32to64_redirect(out, in) RosWow64RedirObjAttributes(out, in, &tmpStr)
+
+#define FIXME_DECLARE_TMP_BUF \
+    WCHAR tmpBuf[MAX_PATH]; \
+    UNICODE_STRING tmpStr;\
+    tmpStr.Buffer = tmpBuf;\
+    tmpStr.Length = 0;\
+    tmpStr.MaximumLength = sizeof(tmpBuf)\
 
 static inline TOKEN_USER *token_user_32to64( TOKEN_USER *out, const TOKEN_USER32 *in )
 {

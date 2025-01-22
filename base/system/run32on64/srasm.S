@@ -14,6 +14,10 @@ Enter32:
     mov rax, 0033h
     mov [rsp + 8], rax
     
+    // Hardcoded hacks for ntdll32!LdrInitializeThunk
+    push 0
+    push rdx
+    
     // Push the return address for the 32 bit procedure
     mov rax, retpoint
     push rax

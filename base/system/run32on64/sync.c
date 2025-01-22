@@ -745,7 +745,12 @@ NTSTATUS WINAPI wow64_NtOpenSection( UINT *args )
     NTSTATUS status;
 
     *handle_ptr = 0;
+#ifndef __REACTOS__
     status = NtOpenSection( &handle, access, objattr_32to64( &attr, attr32 ));
+#else
+    FIXME_DECLARE_TMP_BUF;
+    status = NtOpenSection(&handle, access, objattr_32to64_redirect(&attr, attr32));
+#endif
     put_handle( handle_ptr, handle );
     return status;
 }

@@ -14,6 +14,107 @@
 
 typedef MEMORY_BASIC_INFORMATION32 *PMEMORY_BASIC_INFORMATION32;
 
+/* From wine/dlls/ntdll/unix/env.c */
+static inline void dup_unicode_string( const UNICODE_STRING *src, WCHAR **dst, UNICODE_STRING32 *str )
+{
+    if (!src->Buffer) return;
+    str->Buffer = PtrToUlong( *dst );
+    str->Length = src->Length;
+    str->MaximumLength = src->MaximumLength;
+    memcpy( *dst, src->Buffer, src->MaximumLength );
+    *dst += (src->MaximumLength + 1) / sizeof(WCHAR);
+}
+
+/*
+typedef struct _RTL_USER_PROCESS_PARAMETERS
+{
+    ULONG MaximumLength;
+    ULONG Length;
+    ULONG Flags;
+    ULONG DebugFlags;
+    HANDLE ConsoleHandle;
+    ULONG ConsoleFlags;
+    HANDLE StandardInput;
+    HANDLE StandardOutput;
+    HANDLE StandardError;
+    CURDIR CurrentDirectory;
+    UNICODE_STRING DllPath;
+    UNICODE_STRING ImagePathName;
+    UNICODE_STRING CommandLine;
+    PWSTR Environment;
+    ULONG StartingX;
+    ULONG StartingY;
+    ULONG CountX;
+    ULONG CountY;
+    ULONG CountCharsX;
+    ULONG CountCharsY;
+    ULONG FillAttribute;
+    ULONG WindowFlags;
+    ULONG ShowWindowFlags;
+    UNICODE_STRING WindowTitle;
+    UNICODE_STRING DesktopInfo;
+    UNICODE_STRING ShellInfo;
+    UNICODE_STRING RuntimeData;
+    RTL_DRIVE_LETTER_CURDIR CurrentDirectories[RTL_MAX_DRIVE_LETTERS];
+
+} RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
+
+*/
+
+static void *build_wow64_parameters( const RTL_USER_PROCESS_PARAMETERS *params )
+{
+    RTL_USER_PROCESS_PARAMETERS32 *wow64_params = NULL;
+
+    NTSTATUS status;
+    WCHAR *dst;
+    SIZE_T size = (sizeof(*wow64_params)
+                   + params->CurrentDirectory.DosPath.MaximumLength
+                   + params->DllPath.MaximumLength
+                   + params->ImagePathName.MaximumLength
+                   + params->CommandLine.MaximumLength
+                   + params->WindowTitle.MaximumLength
+                   + params->DesktopInfo.MaximumLength
+                   + params->ShellInfo.MaximumLength
+                   + ((params->RuntimeData.MaximumLength + 1) & ~1));
+
+    status = NtAllocateVirtualMemory( NtCurrentProcess(), (void **)&wow64_params, 31, &size,
+                                      MEM_COMMIT, PAGE_READWRITE );
+    assert( !status );
+
+    wow64_params->MaximumLength   = size;
+    wow64_params->Length          = size;
+    wow64_params->Flags           = params->Flags;
+    wow64_params->DebugFlags      = params->DebugFlags;
+    wow64_params->ConsoleHandle   = HandleToULong( params->ConsoleHandle );
+    wow64_params->ConsoleFlags    = params->ConsoleFlags;
+    wow64_params->StandardInput   = HandleToULong( params->StandardInput );
+    wow64_params->StandardOutput  = HandleToULong( params->StandardOutput );
+    wow64_params->StandardError   = HandleToULong( params->StandardError );
+    wow64_params->StartingX       = params->StartingX;
+    wow64_params->StartingY       = params->StartingY;
+    wow64_params->CountX          = params->CountX;
+    wow64_params->CountY          = params->CountY;
+    wow64_params->CountCharsX     = params->CountCharsX;
+    wow64_params->CountCharsY     = params->CountCharsY;
+    wow64_params->FillAttribute   = params->FillAttribute;
+    wow64_params->WindowFlags     = params->WindowFlags;
+    wow64_params->ShowWindowFlags = params->ShowWindowFlags;
+
+    dst = (WCHAR *)(wow64_params + 1);
+    dup_unicode_string( &params->CurrentDirectory.DosPath, &dst, &wow64_params->CurrentDirectory.DosPath );
+    dup_unicode_string( &params->DllPath, &dst, &wow64_params->DllPath );
+    dup_unicode_string( &params->ImagePathName, &dst, &wow64_params->ImagePathName );
+    dup_unicode_string( &params->CommandLine, &dst, &wow64_params->CommandLine );
+    dup_unicode_string( &params->WindowTitle, &dst, &wow64_params->WindowTitle );
+    dup_unicode_string( &params->DesktopInfo, &dst, &wow64_params->DesktopInfo );
+    dup_unicode_string( &params->ShellInfo, &dst, &wow64_params->ShellInfo );
+    dup_unicode_string( &params->RuntimeData, &dst, &wow64_params->RuntimeData );
+
+    wow64_params->Environment = PtrToUlong( dst );
+    memcpy( dst, params->Environment, lstrlen(params->Environment) );
+    return wow64_params;
+}
+
 void PrintError(HRESULT hResult)
 {
     LPWSTR errorText = NULL;
@@ -224,6 +325,35 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
 
     switch (syscallNum)
     {
+        /* file.c */
+        WINE_WOW_IMPL_CASE(CancelIoFile);
+        WINE_WOW_IMPL_CASE(CreateFile);
+        WINE_WOW_IMPL_CASE(CreateMailslotFile);
+        WINE_WOW_IMPL_CASE(CreateNamedPipeFile);
+        WINE_WOW_IMPL_CASE(CreatePagingFile);
+        WINE_WOW_IMPL_CASE(DeleteFile);
+        WINE_WOW_IMPL_CASE(DeviceIoControlFile);
+        WINE_WOW_IMPL_CASE(FlushBuffersFile);
+        WINE_WOW_IMPL_CASE(FsControlFile);
+        WINE_WOW_IMPL_CASE(LockFile);
+        WINE_WOW_IMPL_CASE(NotifyChangeDirectoryFile);
+        WINE_WOW_IMPL_CASE(OpenFile);
+        WINE_WOW_IMPL_CASE(QueryAttributesFile);
+        WINE_WOW_IMPL_CASE(QueryDirectoryFile);
+        WINE_WOW_IMPL_CASE(QueryEaFile);
+        WINE_WOW_IMPL_CASE(QueryFullAttributesFile);
+        WINE_WOW_IMPL_CASE(QueryInformationFile);
+        WINE_WOW_IMPL_CASE(QueryVolumeInformationFile);
+        WINE_WOW_IMPL_CASE(ReadFile);
+        WINE_WOW_IMPL_CASE(ReadFileScatter);
+        WINE_WOW_IMPL_CASE(RemoveIoCompletion);
+        WINE_WOW_IMPL_CASE(SetEaFile);
+        WINE_WOW_IMPL_CASE(SetInformationFile);
+        WINE_WOW_IMPL_CASE(SetVolumeInformationFile);
+        WINE_WOW_IMPL_CASE(UnlockFile);
+        WINE_WOW_IMPL_CASE(WriteFile);
+        WINE_WOW_IMPL_CASE(WriteFileGather);
+        
         /* registry.c */
         WINE_WOW_IMPL_CASE(QuerySystemInformation);
         WINE_WOW_IMPL_CASE(OpenKey);
@@ -315,8 +445,26 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
         WINE_WOW_IMPL_CASE(WaitForSingleObject);
         WINE_WOW_IMPL_CASE(YieldExecution);
         
+        /* syscall.c */
+        WINE_WOW_IMPL_CASE(AddAtom);
+        WINE_WOW_IMPL_CASE(AllocateLocallyUniqueId);
+        WINE_WOW_IMPL_CASE(AllocateUuids);
+        WINE_WOW_IMPL_CASE(Close);
+        WINE_WOW_IMPL_CASE(DeleteAtom);
+        WINE_WOW_IMPL_CASE(FindAtom);
+        WINE_WOW_IMPL_CASE(GetCurrentProcessorNumber);
+        WINE_WOW_IMPL_CASE(QueryDefaultLocale);
+        WINE_WOW_IMPL_CASE(QueryDefaultUILanguage);
+        WINE_WOW_IMPL_CASE(QueryInformationAtom);
+        WINE_WOW_IMPL_CASE(QueryInstallUILanguage);
+        WINE_WOW_IMPL_CASE(RaiseException);
+        WINE_WOW_IMPL_CASE(SetDebugFilterState);
+        WINE_WOW_IMPL_CASE(SetDefaultLocale);
+        WINE_WOW_IMPL_CASE(SetDefaultUILanguage);
+        
         /* virtual.c */
         WINE_WOW_IMPL_CASE(AllocateVirtualMemory);
+        WINE_WOW_IMPL_CASE(AreMappedFilesTheSame);
         WINE_WOW_IMPL_CASE(FlushInstructionCache);
         WINE_WOW_IMPL_CASE(FlushVirtualMemory);
         WINE_WOW_IMPL_CASE(FreeVirtualMemory);
@@ -405,15 +553,8 @@ int wmain(int argc, WCHAR* argv[])
         return -1;
     }
     
-    size = sizeof(RTL_USER_PROCESS_PARAMETERS32);
-    status = NtAllocateVirtualMemory(NtCurrentProcess(), &procParams, 32, &size, MEM_COMMIT, PAGE_READWRITE);
-    if (!NT_SUCCESS(status))
-    {
-        wprintf(L"PEB32->ProcessParameters Allocation failed: %lx\n", status);
-        return -1;
-    }
-    
-    wowPeb->ProcessParameters = (ULONG)(ULONG_PTR)procParams;
+    procParams = build_wow64_parameters(currentTeb->ProcessEnvironmentBlock->ProcessParameters);
+    wowPeb->ProcessParameters = PtrToUlong(procParams);
     
     /* FIXME: hack for process heaps */
     wowPeb->MaximumNumberOfHeaps = sizeof(fixmeProcessHeaps) / sizeof(*fixmeProcessHeaps);
@@ -453,8 +594,9 @@ int wmain(int argc, WCHAR* argv[])
     void SetupFs(ULONG_PTR segSelector);
     SetupFs(0x0053);
     
+    /* Change image path name */
     procParams->ImagePathName.Buffer = (ULONG)(ULONG_PTR)TMP_TARGET_PROGRAM;
-    procParams->ImagePathName.Length = sizeof(TMP_TARGET_PROGRAM);
+    procParams->ImagePathName.Length = sizeof(TMP_TARGET_PROGRAM) - sizeof(WCHAR);
     procParams->ImagePathName.MaximumLength = sizeof(TMP_TARGET_PROGRAM);
     procParams->Flags |=  RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
     
@@ -463,14 +605,14 @@ int wmain(int argc, WCHAR* argv[])
     FARPROC proc = GetProcAddress(ntdll32, "LdrInitializeThunk");
     wprintf(L"Getting init function ptr %p\n", proc);
     
-    void Enter32(FARPROC where);
+    void Enter32(FARPROC where, ULONG_PTR);
     
     wprintf(L"Setting WOW32Reserved to local handler %p\n", handler);
     assert((((ULONG_PTR)handler) & ~0xFFFFFFFF) == 0);
     wowTeb->WOW32Reserved = (ULONG)(ULONG_PTR)handler;
     
     wprintf(L"Entering\n");
-    Enter32(proc);
+    Enter32(proc, (ULONG_PTR)ntdll32);
     wprintf(L"Exiting\n");
     return 0;
 }
