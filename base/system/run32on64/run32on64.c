@@ -25,42 +25,6 @@ static inline void dup_unicode_string( const UNICODE_STRING *src, WCHAR **dst, U
     *dst += (src->MaximumLength + 1) / sizeof(WCHAR);
 }
 
-/*
-typedef struct _RTL_USER_PROCESS_PARAMETERS
-{
-    ULONG MaximumLength;
-    ULONG Length;
-    ULONG Flags;
-    ULONG DebugFlags;
-    HANDLE ConsoleHandle;
-    ULONG ConsoleFlags;
-    HANDLE StandardInput;
-    HANDLE StandardOutput;
-    HANDLE StandardError;
-    CURDIR CurrentDirectory;
-    UNICODE_STRING DllPath;
-    UNICODE_STRING ImagePathName;
-    UNICODE_STRING CommandLine;
-    PWSTR Environment;
-    ULONG StartingX;
-    ULONG StartingY;
-    ULONG CountX;
-    ULONG CountY;
-    ULONG CountCharsX;
-    ULONG CountCharsY;
-    ULONG FillAttribute;
-    ULONG WindowFlags;
-    ULONG ShowWindowFlags;
-    UNICODE_STRING WindowTitle;
-    UNICODE_STRING DesktopInfo;
-    UNICODE_STRING ShellInfo;
-    UNICODE_STRING RuntimeData;
-    RTL_DRIVE_LETTER_CURDIR CurrentDirectories[RTL_MAX_DRIVE_LETTERS];
-
-} RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
-
-*/
-
 static void *build_wow64_parameters( const RTL_USER_PROCESS_PARAMETERS *params )
 {
     RTL_USER_PROCESS_PARAMETERS32 *wow64_params = NULL;
@@ -481,6 +445,24 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
         WINE_WOW_IMPL_CASE(UnmapViewOfSection);
         WINE_WOW_IMPL_CASE(WriteVirtualMemory);
         
+        case NumTerminateThread:
+        {
+            HANDLE hThread = get_handle(&pArgs);
+            ULONG uCode = get_ulong(&pArgs);
+            
+            status = NtTerminateThread(hThread, uCode);
+            break;
+        }
+        case NumTerminateProcess:
+        {
+            HANDLE hProcess = get_handle(&pArgs);
+            ULONG uCode = get_ulong(&pArgs);
+            
+            wprintf(L"Terminating process %p\n", hProcess);
+            
+            status = NtTerminateProcess(hProcess, uCode);
+            break;
+        }
         case NumQueryDebugFilterState:
         {
             ULONG u1 = get_ulong(&pArgs);
@@ -488,18 +470,12 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
             status = NtQueryDebugFilterState(u1, u2);
             break;
         }
-    }
-    
-    if (status == STATUS_NOT_IMPLEMENTED)
-    {
-        __debugbreak();
-        NtTerminateThread(NtCurrentThread(), status);
-        wprintf(L"[Syscall %lX:%hs]\n", syscallNum, mapping[syscallNum]);
-        wprintf(L"Unhandled 32-bit syscall 0x%lX(%ld args at %p)\n", syscallNum, numArgs, pArgs);
-    }
-    else
-    {
-        //wprintf(L"32-bit syscall 0x%lX status %lX\n", syscallNum, status);
+        
+        default:
+        {
+            //wprintf(L"[Syscall %lX:%hs]\n", syscallNum, mapping[syscallNum]);
+            //wprintf(L"Unhandled 32-bit syscall 0x%lX(%ld args at %p)\n", syscallNum, numArgs, pArgs);
+        }
     }
     
     return status;
@@ -518,6 +494,10 @@ int wmain(int argc, WCHAR* argv[])
     ULONG_PTR fixmeProcessHeaps[100];
     WCHAR fixmeStaticUnicodeString[256];
     
+    HMODULE clientProgram = LoadLibraryW(TMP_TARGET_PROGRAM);
+    PrintError(GetLastError());
+    wprintf(L"Client program: %p\n", clientProgram);
+    
     HMODULE ntdll32 = LoadLibraryW(L"D:\\ntdll.dll");
     PrintError(GetLastError());
     wprintf(L"LoadLibraryW result: %p\n", ntdll32);
@@ -526,12 +506,17 @@ int wmain(int argc, WCHAR* argv[])
     PrintError(GetLastError());
     wprintf(L"Result: %p ?= %p\n", ntdll32, ntdll64);
     
-    HMODULE clientProgram = LoadLibraryW(TMP_TARGET_PROGRAM);
-    PrintError(GetLastError());
-    wprintf(L"Client program: %p\n", clientProgram);
     if (clientProgram == NULL || ntdll32 == NULL)
     {
         return -1;
+    }
+    
+    if (clientProgram != (HMODULE)0x400000)
+    {
+        wprintf(L"Warning: the default test program for run32on64 has base address 0x400000, "
+                 "ReactOS ntdll!LdrpInitializeProcess is always called with Context != NULL, "
+                 "which means relocation is impossible? Are you loading a different image?\n"
+                 "(loaded image base 0x%p)\n", clientProgram);
     }
     
     if (ntdll32 == ntdll64)
@@ -636,25 +621,9 @@ int wmain(int argc, WCHAR* argv[])
     assert((((ULONG_PTR)handler) & ~0xFFFFFFFF) == 0);
     wowTeb->WOW32Reserved = (ULONG)(ULONG_PTR)handler;
     
-    __debugbreak();
+    //__debugbreak();
     wprintf(L"Entering\n");
     Enter32(proc, (ULONG_PTR)ntdll32);
-    
-    HANDLE hWorker;
-    status = RtlCreateUserThread(NtCurrentProcess(),
-                                 NULL,
-                                 FALSE,
-                                 0,
-                                 0,
-                                 0,
-                                 (PVOID)Enter32,
-                                 ntdll32,
-                                 &hWorker,
-                                 NULL);
-    
-    wprintf(L"RtlCreateUserThread: %lX\n", status);
-    
-    NtWaitForSingleObject(hWorker, FALSE, NULL);
     
     while(1);
     return 0;

@@ -25,12 +25,18 @@ Enter32:
     push 0023h
     // Address of the 32 bit procedure to be called
     push rcx
+    
+    xor eax, eax
+    
     // REX.W prefix - the default size for far returns is 32 bit
     db 48h
     retf
 retpoint:
-    db 48h
-    retf
+    push 00401010h
+    mov eax, 7C656FE0h
+    
+    db 0ffh
+    db 0d0h
 
 PUBLIC SetupFs
 SetupFs:

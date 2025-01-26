@@ -916,7 +916,7 @@ typedef struct _CONSOLE_API_MESSAGE
 {
     PORT_MESSAGE Header;
 
-    PCSR_CAPTURE_BUFFER CsrCaptureData;
+    LPC_PTR(CSR_CAPTURE_BUFFER) CsrCaptureData;
     CSR_API_NUMBER ApiNumber;
     NTSTATUS Status;
     ULONG Reserved;
