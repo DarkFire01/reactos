@@ -1840,14 +1840,14 @@ RegisterConsoleVDM(IN DWORD dwRegisterFlags,
     PCSR_CAPTURE_BUFFER CaptureBuffer = NULL;
 
     /* Set up the data to send to the Console Server */
-    RegisterVDMRequest->ConsoleHandle = NtCurrentPeb()->ProcessParameters->ConsoleHandle;
+    RegisterVDMRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
     RegisterVDMRequest->RegisterFlags = dwRegisterFlags;
 
     if (dwRegisterFlags != 0)
     {
-        RegisterVDMRequest->StartHardwareEvent = hStartHardwareEvent;
-        RegisterVDMRequest->EndHardwareEvent   = hEndHardwareEvent;
-        RegisterVDMRequest->ErrorHardwareEvent = hErrorHardwareEvent;
+        RegisterVDMRequest->StartHardwareEvent = TO_LPC_HANDLE(hStartHardwareEvent);
+        RegisterVDMRequest->EndHardwareEvent   = TO_LPC_HANDLE(hEndHardwareEvent);
+        RegisterVDMRequest->ErrorHardwareEvent = TO_LPC_HANDLE(hErrorHardwareEvent);
 
         RegisterVDMRequest->VDMBufferSize = dwVDMBufferSize;
 
@@ -1895,8 +1895,8 @@ RegisterConsoleVDM(IN DWORD dwRegisterFlags,
             _SEH2_TRY
             {
                 *lpVideoStateLength = RegisterVDMRequest->VideoStateLength;
-                *lpVideoState       = RegisterVDMRequest->VideoState;
-                *lpVDMBuffer        = RegisterVDMRequest->VDMBuffer;
+                *lpVideoState       = (PVOID)RegisterVDMRequest->VideoState;
+                *lpVDMBuffer        = (PVOID)RegisterVDMRequest->VDMBuffer;
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {

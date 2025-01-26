@@ -8,6 +8,8 @@
 #ifndef _CSRLIB_H_
 #define _CSRLIB_H_
 
+#define _WOW64
+
 /* INCLUDES ******************************************************************/
 
 /* PSDK/NDK Headers */

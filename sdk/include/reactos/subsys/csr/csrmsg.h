@@ -13,9 +13,16 @@
 
 #pragma once
 
-
 #define CSR_PORT_NAME L"ApiPort" // CSR_API_PORT_NAME
 
+#ifndef LPC_ULONG_PTR
+#define LPC_CLIENT_ID CLIENT_ID
+#define LPC_SIZE_T SIZE_T
+#define LPC_PVOID PVOID
+#define LPC_HANDLE HANDLE
+#define LPC_ULONG_PTR ULONG_PTR
+#define LPC_PTR(x) x*
+#endif
 
 #define CSRSRV_SERVERDLL_INDEX      0
 #define CSRSRV_FIRST_API_NUMBER     0
@@ -46,18 +53,18 @@ typedef ULONG CSR_API_NUMBER;
 
 typedef struct _CSR_API_CONNECTINFO
 {
-    HANDLE ObjectDirectory; // Unused on Windows >= 2k3
-    PVOID  SharedSectionBase;
-    PVOID  SharedStaticServerData;
-    PVOID  SharedSectionHeap;
-    ULONG  DebugFlags;
-    ULONG  SizeOfPebData;
-    ULONG  SizeOfTebData;
-    ULONG  NumberOfServerDllNames;
-    HANDLE ServerProcessId;
+    LPC_HANDLE ObjectDirectory; // Unused on Windows >= 2k3
+    LPC_PVOID  SharedSectionBase;
+    LPC_PVOID  SharedStaticServerData;
+    LPC_PVOID  SharedSectionHeap;
+    ULONG      DebugFlags;
+    ULONG      SizeOfPebData;
+    ULONG      SizeOfTebData;
+    ULONG      NumberOfServerDllNames;
+    LPC_HANDLE ServerProcessId;
 } CSR_API_CONNECTINFO, *PCSR_API_CONNECTINFO;
 
-#if defined(_M_IX86)
+#if defined(_M_IX86) && !defined(USE_LPC6432)
 C_ASSERT(sizeof(CSR_API_CONNECTINFO) == 0x24);
 #endif
 
@@ -69,12 +76,12 @@ C_ASSERT(sizeof(CSR_API_CONNECTINFO) <= LPC_MAX_DATA_LENGTH);
 
 typedef struct _CSR_IDENTIFY_ALERTABLE_THREAD
 {
-    CLIENT_ID Cid;
+    LPC_CLIENT_ID Cid;
 } CSR_IDENTIFY_ALERTABLE_THREAD, *PCSR_IDENTIFY_ALERTABLE_THREAD;
 
 typedef struct _CSR_SET_PRIORITY_CLASS
 {
-    HANDLE hProcess;
+    LPC_HANDLE hProcess;
     ULONG PriorityClass;
 } CSR_SET_PRIORITY_CLASS, *PCSR_SET_PRIORITY_CLASS;
 
@@ -83,17 +90,17 @@ typedef struct _CSR_SET_PRIORITY_CLASS
 typedef struct _CSR_CLIENT_CONNECT
 {
     ULONG ServerId;
-    PVOID ConnectionInfo;
+    LPC_PVOID ConnectionInfo;
     ULONG ConnectionInfoSize;
 } CSR_CLIENT_CONNECT, *PCSR_CLIENT_CONNECT;
 
 typedef struct _CSR_CAPTURE_BUFFER
 {
     ULONG Size;
-    struct _CSR_CAPTURE_BUFFER *PreviousCaptureBuffer;
+    LPC_PVOID /* struct _CSR_CAPTURE_BUFFER * */ PreviousCaptureBuffer;
     ULONG PointerCount;
-    PVOID BufferEnd;
-    ULONG_PTR PointerOffsetsArray[ANYSIZE_ARRAY];
+    LPC_PVOID BufferEnd;
+    LPC_ULONG_PTR PointerOffsetsArray[ANYSIZE_ARRAY];
 } CSR_CAPTURE_BUFFER, *PCSR_CAPTURE_BUFFER;
 
 
@@ -105,7 +112,7 @@ typedef struct _CSR_API_MESSAGE
         CSR_API_CONNECTINFO ConnectionInfo; // Uniquely used in CSRSRV for internal signaling (opening a new connection).
         struct
         {
-            PCSR_CAPTURE_BUFFER CsrCaptureData;
+            LPC_PTR(CSR_CAPTURE_BUFFER) CsrCaptureData;
             CSR_API_NUMBER ApiNumber;
             NTSTATUS Status; // ReturnValue;
             ULONG Reserved;
@@ -134,7 +141,7 @@ typedef struct _CSR_API_MESSAGE
                 // Finally, the overall message structure size must be at most
                 // equal to the maximum acceptable LPC message size.
                 //
-                ULONG_PTR ApiMessageData[39];
+                LPC_ULONG_PTR ApiMessageData[39];
             } Data;
         };
     };

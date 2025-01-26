@@ -81,13 +81,13 @@ C_ASSERT(sizeof(NLS_USER_INFO) == 0x1870);
 typedef struct _INIFILE_MAPPING_TARGET
 {
     struct _INIFILE_MAPPING_TARGET *Next;
-    UNICODE_STRING RegistryPath;
+    LPC_UNICODE_STRING RegistryPath;
 } INIFILE_MAPPING_TARGET, *PINIFILE_MAPPING_TARGET;
 
 typedef struct _INIFILE_MAPPING_VARNAME
 {
     struct _INIFILE_MAPPING_VARNAME *Next;
-    UNICODE_STRING Name;
+    LPC_UNICODE_STRING Name;
     ULONG MappingFlags;
     PINIFILE_MAPPING_TARGET MappingTarget;
 } INIFILE_MAPPING_VARNAME, *PINIFILE_MAPPING_VARNAME;
@@ -95,7 +95,7 @@ typedef struct _INIFILE_MAPPING_VARNAME
 typedef struct _INIFILE_MAPPING_APPNAME
 {
     struct _INIFILE_MAPPING_APPNAME *Next;
-    UNICODE_STRING Name;
+    LPC_UNICODE_STRING Name;
     PINIFILE_MAPPING_VARNAME VariableNames;
     PINIFILE_MAPPING_VARNAME DefaultVarNameMapping;
 } INIFILE_MAPPING_APPNAME, *PINIFILE_MAPPING_APPNAME;
@@ -103,7 +103,7 @@ typedef struct _INIFILE_MAPPING_APPNAME
 typedef struct _INIFILE_MAPPING_FILENAME
 {
     struct _INIFILE_MAPPING_FILENAME *Next;
-    UNICODE_STRING Name;
+    LPC_UNICODE_STRING Name;
     PINIFILE_MAPPING_APPNAME ApplicationNames;
     PINIFILE_MAPPING_APPNAME DefaultAppNameMapping;
 } INIFILE_MAPPING_FILENAME, *PINIFILE_MAPPING_FILENAME;
@@ -118,9 +118,9 @@ typedef struct _INIFILE_MAPPING
 
 typedef struct _BASE_STATIC_SERVER_DATA
 {
-    UNICODE_STRING WindowsDirectory;
-    UNICODE_STRING WindowsSystemDirectory;
-    UNICODE_STRING NamedObjectDirectory;
+    LPC_UNICODE_STRING WindowsDirectory;
+    LPC_UNICODE_STRING WindowsSystemDirectory;
+    LPC_UNICODE_STRING NamedObjectDirectory;
     USHORT WindowsMajorVersion;
     USHORT WindowsMinorVersion;
     USHORT BuildNumber;
@@ -133,7 +133,7 @@ typedef struct _BASE_STATIC_SERVER_DATA
     NLS_USER_INFO NlsUserInfo;
     BOOLEAN DefaultSeparateVDM;
     BOOLEAN IsWowTaskReady;
-    UNICODE_STRING WindowsSys32x86Directory;
+    LPC_UNICODE_STRING WindowsSys32x86Directory;
     BOOLEAN fTermsrvAppInstallMode;
     TIME_ZONE_INFORMATION tziTermsrvClientTimeZone;
     KSYSTEM_TIME ktTermsrvClientBias;
@@ -142,7 +142,7 @@ typedef struct _BASE_STATIC_SERVER_DATA
     ULONG TermsrvClientTimeZoneChangeNum;
 } BASE_STATIC_SERVER_DATA, *PBASE_STATIC_SERVER_DATA;
 
-#if defined(_M_IX86)
+#if defined(_M_IX86) && !defined(USE_LPC6432)
 C_ASSERT(sizeof(BASE_STATIC_SERVER_DATA) == 0x1AC8);
 #endif
 

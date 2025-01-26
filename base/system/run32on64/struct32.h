@@ -779,6 +779,23 @@ typedef struct
 
 #ifdef __REACTOS__
 
+typedef struct _PORT_VIEW32
+{
+    ULONG Length;
+    ULONG SectionHandle;
+    ULONG SectionOffset;
+    ULONG ViewSize;
+    ULONG ViewBase;
+    ULONG ViewRemoteBase;
+} PORT_VIEW32, *PPORT_VIEW32;
+
+typedef struct _REMOTE_PORT_VIEW32
+{
+    ULONG Length;
+    ULONG ViewSize;
+    ULONG ViewBase;
+} REMOTE_PORT_VIEW32, *PREMOTE_PORT_VIEW32;
+
 typedef struct _CURDIR32
 {
     UNICODE_STRING32 DosPath;

@@ -320,7 +320,6 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
 #undef SVC_
     };
     
-    wprintf(L"[Syscall %lX:%hs]\n", syscallNum, mapping[syscallNum]);
     status = STATUS_NOT_IMPLEMENTED;
 
     switch (syscallNum)
@@ -428,12 +427,15 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
         WINE_WOW_IMPL_CASE(ReleaseKeyedEvent);
         WINE_WOW_IMPL_CASE(ReleaseMutant);
         WINE_WOW_IMPL_CASE(ReleaseSemaphore);
+        WINE_WOW_IMPL_CASE(ReplyWaitReceivePort);
+        WINE_WOW_IMPL_CASE(RequestWaitReplyPort);
         WINE_WOW_IMPL_CASE(ResetEvent);
         WINE_WOW_IMPL_CASE(SetEvent);
         WINE_WOW_IMPL_CASE(SetInformationDebugObject);
         WINE_WOW_IMPL_CASE(SetInformationJobObject);
         WINE_WOW_IMPL_CASE(SetInformationObject);
         WINE_WOW_IMPL_CASE(SetIoCompletion);
+        WINE_WOW_IMPL_CASE(SecureConnectPort);
         WINE_WOW_IMPL_CASE(SetTimer);
         WINE_WOW_IMPL_CASE(SetTimerResolution);
         WINE_WOW_IMPL_CASE(SignalAndWaitForSingleObject);
@@ -478,16 +480,26 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
         WINE_WOW_IMPL_CASE(UnlockVirtualMemory);
         WINE_WOW_IMPL_CASE(UnmapViewOfSection);
         WINE_WOW_IMPL_CASE(WriteVirtualMemory);
+        
+        case NumQueryDebugFilterState:
+        {
+            ULONG u1 = get_ulong(&pArgs);
+            ULONG u2 = get_ulong(&pArgs);
+            status = NtQueryDebugFilterState(u1, u2);
+            break;
+        }
     }
     
     if (status == STATUS_NOT_IMPLEMENTED)
     {
-        wprintf(L"Unhandled 32-bit syscall 0x%lX(%ld args at %p)\n", syscallNum, numArgs, pArgs);
         __debugbreak();
+        NtTerminateThread(NtCurrentThread(), status);
+        wprintf(L"[Syscall %lX:%hs]\n", syscallNum, mapping[syscallNum]);
+        wprintf(L"Unhandled 32-bit syscall 0x%lX(%ld args at %p)\n", syscallNum, numArgs, pArgs);
     }
     else
     {
-        wprintf(L"32-bit syscall 0x%lX status %lX\n", syscallNum, status);
+        //wprintf(L"32-bit syscall 0x%lX status %lX\n", syscallNum, status);
     }
     
     return status;
@@ -499,8 +511,12 @@ int wmain(int argc, WCHAR* argv[])
 {
     NTSTATUS status;
     PRTL_USER_PROCESS_PARAMETERS32 procParams;
-    
+    PPEB32 wowPeb;
+    PTEB32 wowTeb;
+    SIZE_T size;
+    NLS_FILE_HEADER ansiCopy, oemCopy;
     ULONG_PTR fixmeProcessHeaps[100];
+    WCHAR fixmeStaticUnicodeString[256];
     
     HMODULE ntdll32 = LoadLibraryW(L"D:\\ntdll.dll");
     PrintError(GetLastError());
@@ -528,9 +544,7 @@ int wmain(int argc, WCHAR* argv[])
     PTEB currentTeb = NtCurrentTeb();
     wprintf(L"Current TEB %p\n", currentTeb);
     
-    PPEB32 wowPeb;
-    PTEB32 wowTeb;
-    SIZE_T size;
+    PPEB currentPeb = currentTeb->ProcessEnvironmentBlock;
     
     wowTeb = NULL;
     wowPeb = NULL;
@@ -558,13 +572,13 @@ int wmain(int argc, WCHAR* argv[])
     
     /* FIXME: hack for process heaps */
     wowPeb->MaximumNumberOfHeaps = sizeof(fixmeProcessHeaps) / sizeof(*fixmeProcessHeaps);
-    wowPeb->ProcessHeaps = (ULONG)(ULONG_PTR)fixmeProcessHeaps;
+    wowPeb->ProcessHeaps = PtrToUlong(fixmeProcessHeaps);
     
-    wowPeb->ImageBaseAddress = (ULONG)(ULONG_PTR)clientProgram;
+    wowPeb->ImageBaseAddress = PtrToUlong(clientProgram);
     
     /* Set the 64 bit Teb's TlsSlots[1] to the TEB32 before setting process 
        information. */
-    /* FIXME: This is NOT Wine compatible! Wine uses Peb->WowTebOffsetwhich is 
+    /* FIXME: This is NOT Wine compatible! Wine uses Peb->WowTebOffset which is 
        only present for NTDDI_VERSION >= NTDDI_WIN10, and uses this TLS entry
        for its own structures. Since we do not use them, this entry should be
        free for now. */
@@ -573,8 +587,19 @@ int wmain(int argc, WCHAR* argv[])
     wprintf(L"Initializing PEB32 and TEB32\n");
     wowTeb->NtTib.Self = (ULONG)(ULONG_PTR)wowTeb;
     
+    wowTeb->StaticUnicodeString.Length = 0;
+    wowTeb->StaticUnicodeString.MaximumLength = sizeof(fixmeStaticUnicodeString);
+    wowTeb->StaticUnicodeString.Buffer = PtrToUlong(fixmeStaticUnicodeString);
+    
+    /* CHECKME */
+    wowPeb->OemCodePageData = PtrToUlong(&oemCopy);
+    wowPeb->AnsiCodePageData = PtrToUlong(&ansiCopy);
+    RtlCopyMemory(&oemCopy, currentPeb->OemCodePageData, sizeof(oemCopy));
+    RtlCopyMemory(&ansiCopy, currentPeb->AnsiCodePageData, sizeof(ansiCopy));
+    
     /* TODO: Check types - _WOW64_PROCESS has only one field, is this supposed to be the PEB?
-       According to https://stackoverflow.com/a/69171561 - yes, it is */
+       According to https://stackoverflow.com/a/69171561 - yes, it is. This is, however, quite a hacky way 
+       to set it. */
     status = NtSetInformationProcess(NtCurrentProcess(), ProcessWow64Information, &wowPeb, sizeof(wowPeb));
     if (!NT_SUCCESS(status))
     {
@@ -611,8 +636,26 @@ int wmain(int argc, WCHAR* argv[])
     assert((((ULONG_PTR)handler) & ~0xFFFFFFFF) == 0);
     wowTeb->WOW32Reserved = (ULONG)(ULONG_PTR)handler;
     
+    __debugbreak();
     wprintf(L"Entering\n");
     Enter32(proc, (ULONG_PTR)ntdll32);
-    wprintf(L"Exiting\n");
+    
+    HANDLE hWorker;
+    status = RtlCreateUserThread(NtCurrentProcess(),
+                                 NULL,
+                                 FALSE,
+                                 0,
+                                 0,
+                                 0,
+                                 (PVOID)Enter32,
+                                 ntdll32,
+                                 &hWorker,
+                                 NULL);
+    
+    wprintf(L"RtlCreateUserThread: %lX\n", status);
+    
+    NtWaitForSingleObject(hWorker, FALSE, NULL);
+    
+    while(1);
     return 0;
 }

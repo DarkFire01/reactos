@@ -150,8 +150,12 @@ DllMain(HANDLE hDll,
 
             /* Get the server data */
             ASSERT(Peb->ReadOnlyStaticServerData);
-            BaseStaticServerData = Peb->ReadOnlyStaticServerData[BASESRV_SERVERDLL_INDEX];
-            ASSERT(BaseStaticServerData);
+            BaseStaticServerData = (PVOID)((LPC_ULONG_PTR*)Peb->ReadOnlyStaticServerData)[BASESRV_SERVERDLL_INDEX];
+            if (!BaseStaticServerData)
+            {
+                DPRINT1("BaseStaticServerData NULL\n");
+                __debugbreak();
+            }
 
             /* Check if we are running a CSR Server */
             if (!BaseRunningInServerProcess)
@@ -168,8 +172,12 @@ DllMain(HANDLE hDll,
             kernel32_handle = hCurrentModule = hDll;
 
             /* Set the directories */
-            BaseWindowsDirectory = BaseStaticServerData->WindowsDirectory;
-            BaseWindowsSystemDirectory = BaseStaticServerData->WindowsSystemDirectory;
+            BaseWindowsDirectory.Length = BaseStaticServerData->WindowsDirectory.Length;
+            BaseWindowsSystemDirectory.Length = BaseStaticServerData->WindowsSystemDirectory.Length;
+            BaseWindowsDirectory.MaximumLength = BaseStaticServerData->WindowsDirectory.MaximumLength;
+            BaseWindowsSystemDirectory.MaximumLength = BaseStaticServerData->WindowsSystemDirectory.MaximumLength;
+            BaseWindowsDirectory.Buffer = (PVOID)BaseStaticServerData->WindowsDirectory.Buffer;
+            BaseWindowsSystemDirectory.Buffer = (PVOID)BaseStaticServerData->WindowsSystemDirectory.Buffer;
 
             /* Construct the default path (using the static buffer) */
             Status = RtlStringCbPrintfW(BaseDefaultPathBuffer,

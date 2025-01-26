@@ -145,8 +145,8 @@ SetUpConsoleInfo(IN BOOLEAN CaptureTitle,
     /* Initialize the fields */
 
     ConsoleStartInfo->IconIndex = 0;
-    ConsoleStartInfo->hIcon   = NULL;
-    ConsoleStartInfo->hIconSm = NULL;
+    ConsoleStartInfo->hIcon   = (LPC_PTRTYPE(HICON))NULL;
+    ConsoleStartInfo->hIconSm = (LPC_PTRTYPE(HICON))NULL;
     ConsoleStartInfo->dwStartupFlags = Parameters->WindowFlags;
     ConsoleStartInfo->nFont = 0;
     ConsoleStartInfo->nInputBufferSize = 0;
@@ -262,13 +262,13 @@ SetUpHandles(IN PCONSOLE_START_INFO ConsoleStartInfo)
     }
 
     /* We got the handles, let's set them */
-    Parameters->ConsoleHandle = ConsoleStartInfo->ConsoleHandle;
+    Parameters->ConsoleHandle = FROM_LPC_HANDLE(ConsoleStartInfo->ConsoleHandle);
 
     if ((ConsoleStartInfo->dwStartupFlags & STARTF_USESTDHANDLES) == 0)
     {
-        Parameters->StandardInput  = ConsoleStartInfo->InputHandle;
-        Parameters->StandardOutput = ConsoleStartInfo->OutputHandle;
-        Parameters->StandardError  = ConsoleStartInfo->ErrorHandle;
+        Parameters->StandardInput  = FROM_LPC_HANDLE(ConsoleStartInfo->InputHandle);
+        Parameters->StandardOutput = FROM_LPC_HANDLE(ConsoleStartInfo->OutputHandle);
+        Parameters->StandardError  = FROM_LPC_HANDLE(ConsoleStartInfo->ErrorHandle);
     }
 }
 
@@ -289,6 +289,8 @@ ConnectConsole(IN PWSTR SessionDir,
 {
     NTSTATUS Status;
     ULONG ConnectInfoSize = sizeof(*ConnectInfo);
+    HANDLE Temp[MAX_INIT_EVENTS];
+    INT i;
 
     ASSERT(SessionDir);
 
@@ -311,10 +313,12 @@ ConnectConsole(IN PWSTR SessionDir,
     /* Nothing to do if this is not a console app */
     if (!ConnectInfo->IsConsoleApp) return TRUE;
 
+    for (i = 0; i < MAX_INIT_EVENTS; i++) Temp[i] = FROM_LPC_HANDLE(ConnectInfo->ConsoleStartInfo.InitEvents[i]);
+
     /* Wait for the connection to finish */
     // Is ConnectInfo->ConsoleStartInfo.InitEvents aligned on handle boundary ????
     Status = NtWaitForMultipleObjects(MAX_INIT_EVENTS,
-                                      ConnectInfo->ConsoleStartInfo.InitEvents,
+                                      Temp,
                                       WaitAny, FALSE, NULL);
     if (!NT_SUCCESS(Status))
     {
@@ -322,8 +326,8 @@ ConnectConsole(IN PWSTR SessionDir,
         return FALSE;
     }
 
-    NtClose(ConnectInfo->ConsoleStartInfo.InitEvents[INIT_SUCCESS]);
-    NtClose(ConnectInfo->ConsoleStartInfo.InitEvents[INIT_FAILURE]);
+    NtClose(FROM_LPC_HANDLE(ConnectInfo->ConsoleStartInfo.InitEvents[INIT_SUCCESS]));
+    NtClose(FROM_LPC_HANDLE(ConnectInfo->ConsoleStartInfo.InitEvents[INIT_FAILURE]));
     if (Status != INIT_SUCCESS)
     {
         NtCurrentPeb()->ProcessParameters->ConsoleHandle = NULL;
@@ -649,12 +653,12 @@ ConDllInitialize(IN ULONG Reason,
     }
 
     /* Now use the proper console handle */
-    ConnectInfo.ConsoleStartInfo.ConsoleHandle = Parameters->ConsoleHandle;
+    ConnectInfo.ConsoleStartInfo.ConsoleHandle = TO_LPC_HANDLE(Parameters->ConsoleHandle);
 
     /* Initialize the console dispatchers */
-    ConnectInfo.CtrlRoutine = ConsoleControlDispatcher;
-    ConnectInfo.PropRoutine = PropDialogHandler;
-    ConnectInfo.ImeRoutine  = ConsoleIMERoutine;
+    ConnectInfo.CtrlRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))ConsoleControlDispatcher;
+    ConnectInfo.PropRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))PropDialogHandler;
+    ConnectInfo.ImeRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))ConsoleIMERoutine;
 
     /* Set up the console properties */
     if (ConnectInfo.IsConsoleApp && Parameters->ConsoleHandle == NULL)
@@ -673,7 +677,7 @@ ConDllInitialize(IN ULONG Reason,
                          &ConnectInfo.TitleLength,
                          &ConsoleTitle,
                          &ConnectInfo.DesktopLength,
-                         &ConnectInfo.Desktop,
+                         (PVOID)&ConnectInfo.Desktop,
                          &ConnectInfo.ConsoleStartInfo);
         DPRINT("ConsoleTitle = '%S' - Desktop = '%S'\n",
                ConsoleTitle, ConnectInfo.Desktop);
@@ -731,7 +735,7 @@ ConDllInitialize(IN ULONG Reason,
         if (Parameters->ConsoleHandle == NULL)
             SetUpHandles(&ConnectInfo.ConsoleStartInfo);
 
-        InputWaitHandle = ConnectInfo.ConsoleStartInfo.InputWaitHandle;
+        InputWaitHandle = FROM_LPC_HANDLE(ConnectInfo.ConsoleStartInfo.InputWaitHandle);
 
         /* Sync the current thread's LangId with the console's one */
         SetTEBLangID();

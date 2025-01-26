@@ -53,6 +53,8 @@ struct object_attr64
 static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer)
 {
     WCHAR system32[] = L"\\??\\X:\\reactos\\system32";
+    WCHAR knownDll[] = L"\\KnownDlls";
+    WCHAR knownDll32[] = L"\\KnownDlls32";
     WCHAR wow64[] = L"\\??\\D:";
     
     if (!attr || !attr->ObjectName || !attr->ObjectName->Buffer)
@@ -66,12 +68,23 @@ static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer
         wcscpy(buffer->Buffer, wow64);
         wcscat(buffer->Buffer,  (PWSTR)(((ULONG_PTR)attr->ObjectName->Buffer) + sizeof(system32) - sizeof(WCHAR)));
         
-        wprintf(L"Redirecting %ls to %ls\n", attr->ObjectName->Buffer, buffer->Buffer);
+        //wprintf(L"Redirecting %ls to %ls\n", attr->ObjectName->Buffer, buffer->Buffer);
         attr->ObjectName = buffer;  
         return TRUE;
     }
     
-    wprintf(L"Not redirecting %ls\n", attr->ObjectName->Buffer);
+    if (wcsncmp(attr->ObjectName->Buffer, knownDll, sizeof(knownDll) / sizeof(*knownDll)) == 0)
+    {
+        buffer->Length = attr->ObjectName->Length - sizeof(knownDll) + sizeof(knownDll32);
+        wcscpy(buffer->Buffer, knownDll32);
+        wcscat(buffer->Buffer,  (PWSTR)(((ULONG_PTR)attr->ObjectName->Buffer) + sizeof(knownDll) - sizeof(WCHAR)));
+        
+        //wprintf(L"Redirecting %ls to %ls\n", attr->ObjectName->Buffer, buffer->Buffer);
+        attr->ObjectName = buffer;  
+        return TRUE;
+    }
+    
+    //wprintf(L"Not redirecting %ls\n", attr->ObjectName->Buffer);
     return FALSE;
 }
 
@@ -276,4 +289,46 @@ static void put_vm_counters( VM_COUNTERS_EX32 *info32, const VM_COUNTERS_EX *inf
 {
     wprintf(L"UNIMPLEMENTED");
     __debugbreak();
+}
+
+static PPORT_VIEW PortView32To64(PPORT_VIEW portView64, PPORT_VIEW32 portView32)
+{
+    portView64->Length = sizeof(*portView64);
+    portView64->SectionHandle = UlongToHandle(portView32->SectionHandle);
+    portView64->SectionOffset = portView32->SectionOffset;
+    portView64->ViewSize = portView32->ViewSize;
+    portView64->ViewBase = UlongToPtr(portView32->ViewBase);
+    portView64->ViewRemoteBase = UlongToPtr(portView32->ViewRemoteBase);
+    
+    return portView64;
+}
+
+static PREMOTE_PORT_VIEW RemotePortView32To64(PREMOTE_PORT_VIEW portView64, PREMOTE_PORT_VIEW32 portView32)
+{
+    portView64->Length = sizeof(*portView64);
+    portView64->ViewSize = portView32->ViewSize;
+    portView64->ViewBase = UlongToPtr(portView32->ViewBase);
+    
+    return portView64;
+}
+
+static PPORT_VIEW32 PortView64To32(PPORT_VIEW32 portView32, PPORT_VIEW portView64)
+{
+    portView32->Length = sizeof(*portView32);
+    portView32->SectionHandle = HandleToULong(portView64->SectionHandle);
+    portView32->SectionOffset = portView64->SectionOffset;
+    portView32->ViewSize = portView64->ViewSize;
+    portView32->ViewBase = PtrToUlong(portView64->ViewBase);
+    portView32->ViewRemoteBase = PtrToUlong(portView64->ViewRemoteBase);
+    
+    return portView32;
+}
+
+static PREMOTE_PORT_VIEW32 RemotePortView64To32(PREMOTE_PORT_VIEW32 portView32, PREMOTE_PORT_VIEW portView64)
+{
+    portView32->Length = sizeof(*portView32);
+    portView32->ViewSize = portView64->ViewSize;
+    portView32->ViewBase = PtrToUlong(portView64->ViewBase);
+    
+    return portView32;
 }

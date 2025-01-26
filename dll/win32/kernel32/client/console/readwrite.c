@@ -24,7 +24,6 @@
 #define ConioRectWidth(Rect) \
     (((Rect)->Left > (Rect)->Right) ? 0 : ((Rect)->Right - (Rect)->Left + 1))
 
-
 /* PRIVATE FUNCTIONS **********************************************************/
 
 /******************
@@ -49,8 +48,8 @@ IntReadConsole(IN HANDLE hConsoleInput,
     DPRINT("IntReadConsole\n");
 
     /* Set up the data to send to the Console Server */
-    ReadConsoleRequest->ConsoleHandle = NtCurrentPeb()->ProcessParameters->ConsoleHandle;
-    ReadConsoleRequest->InputHandle   = hConsoleInput;
+    ReadConsoleRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
+    ReadConsoleRequest->InputHandle   = TO_LPC_HANDLE(hConsoleInput);
     ReadConsoleRequest->Unicode       = bUnicode;
 
     /*
@@ -85,7 +84,7 @@ IntReadConsole(IN HANDLE hConsoleInput,
      */
     if (SizeBytes <= sizeof(ReadConsoleRequest->StaticBuffer))
     {
-        ReadConsoleRequest->Buffer = ReadConsoleRequest->StaticBuffer;
+        ReadConsoleRequest->Buffer = (LPC_PVOID)ReadConsoleRequest->StaticBuffer;
         // CaptureBuffer = NULL;
     }
     else
@@ -136,7 +135,7 @@ IntReadConsole(IN HANDLE hConsoleInput,
                      * stored in the static buffer because it was first grabbed when
                      * we started the first read.
                      */
-                    RtlCopyMemory(ReadConsoleRequest->Buffer,
+                    RtlCopyMemory((PVOID)(PVOID)ReadConsoleRequest->Buffer,
                                   lpBuffer,
                                   ReadConsoleRequest->InitialNumBytes);
                 }
@@ -193,7 +192,7 @@ IntReadConsole(IN HANDLE hConsoleInput,
                 pInputControl->dwControlKeyState = ReadConsoleRequest->ControlKeyState;
 
             RtlCopyMemory(lpBuffer,
-                          ReadConsoleRequest->Buffer,
+                          (PVOID)ReadConsoleRequest->Buffer,
                           ReadConsoleRequest->NumBytes);
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
@@ -259,8 +258,8 @@ IntGetConsoleInput(IN HANDLE hConsoleInput,
     DPRINT("IntGetConsoleInput: %lx %p\n", nLength, lpNumberOfEventsRead);
 
     /* Set up the data to send to the Console Server */
-    GetInputRequest->ConsoleHandle = NtCurrentPeb()->ProcessParameters->ConsoleHandle;
-    GetInputRequest->InputHandle   = hConsoleInput;
+    GetInputRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
+    GetInputRequest->InputHandle   = TO_LPC_HANDLE(hConsoleInput);
     GetInputRequest->NumRecords    = nLength;
     GetInputRequest->Flags         = wFlags;
     GetInputRequest->Unicode       = bUnicode;
@@ -273,7 +272,7 @@ IntGetConsoleInput(IN HANDLE hConsoleInput,
      */
     if (nLength <= sizeof(GetInputRequest->RecordStaticBuffer)/sizeof(INPUT_RECORD))
     {
-        GetInputRequest->RecordBufPtr = GetInputRequest->RecordStaticBuffer;
+        GetInputRequest->RecordBufPtr = (LPC_PVOID)(ULONG_PTR)GetInputRequest->RecordStaticBuffer;
         // CaptureBuffer = NULL;
     }
     else
@@ -313,7 +312,7 @@ IntGetConsoleInput(IN HANDLE hConsoleInput,
         if (Success)
         {
             RtlCopyMemory(lpBuffer,
-                          GetInputRequest->RecordBufPtr,
+                          (PVOID)GetInputRequest->RecordBufPtr,
                           GetInputRequest->NumRecords * sizeof(INPUT_RECORD));
         }
         else
@@ -354,8 +353,8 @@ IntReadConsoleOutput(IN HANDLE hConsoleOutput,
     ULONG NumCells;
 
     /* Set up the data to send to the Console Server */
-    ReadOutputRequest->ConsoleHandle = NtCurrentPeb()->ProcessParameters->ConsoleHandle;
-    ReadOutputRequest->OutputHandle  = hConsoleOutput;
+    ReadOutputRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
+    ReadOutputRequest->OutputHandle  = TO_LPC_HANDLE(hConsoleOutput);
     ReadOutputRequest->Unicode       = bUnicode;
 
     /* Update lpReadRegion */
@@ -391,7 +390,7 @@ IntReadConsoleOutput(IN HANDLE hConsoleOutput,
      */
     if (NumCells <= 1)
     {
-        ReadOutputRequest->CharInfo = &ReadOutputRequest->StaticBuffer;
+        ReadOutputRequest->CharInfo = (LPC_PVOID)&ReadOutputRequest->StaticBuffer;
         // CaptureBuffer = NULL;
     }
     else
@@ -441,7 +440,7 @@ IntReadConsoleOutput(IN HANDLE hConsoleOutput,
             for (y = 0, Y = ReadOutputRequest->ReadRegion.Top; Y <= ReadOutputRequest->ReadRegion.Bottom; ++y, ++Y)
             {
                 RtlCopyMemory(lpBuffer + (y + dwBufferCoord.Y) * dwBufferSize.X + dwBufferCoord.X,
-                              ReadOutputRequest->CharInfo + y * SizeX,
+                              (CHAR_INFO*)ReadOutputRequest->CharInfo + y * SizeX,
                               SizeX * sizeof(CHAR_INFO));
 #if 0
                 for (x = 0, X = ReadOutputRequest->ReadRegion.Left; X <= ReadOutputRequest->ReadRegion.Right; ++x, ++X)
@@ -498,8 +497,8 @@ IntReadConsoleOutputCode(IN HANDLE hConsoleOutput,
     }
 
     /* Set up the data to send to the Console Server */
-    ReadOutputCodeRequest->ConsoleHandle = NtCurrentPeb()->ProcessParameters->ConsoleHandle;
-    ReadOutputCodeRequest->OutputHandle  = hConsoleOutput;
+    ReadOutputCodeRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
+    ReadOutputCodeRequest->OutputHandle  = TO_LPC_HANDLE(hConsoleOutput);
     ReadOutputCodeRequest->Coord         = dwReadCoord;
     ReadOutputCodeRequest->NumCodes      = nLength;
 
@@ -529,7 +528,7 @@ IntReadConsoleOutputCode(IN HANDLE hConsoleOutput,
      */
     if (SizeBytes <= sizeof(ReadOutputCodeRequest->CodeStaticBuffer))
     {
-        ReadOutputCodeRequest->pCode = ReadOutputCodeRequest->CodeStaticBuffer;
+        ReadOutputCodeRequest->pCode = (LPC_PVOID)(ULONG_PTR)ReadOutputCodeRequest->CodeStaticBuffer;
         // CaptureBuffer = NULL;
     }
     else
@@ -566,7 +565,7 @@ IntReadConsoleOutputCode(IN HANDLE hConsoleOutput,
         if (Success)
         {
             RtlCopyMemory(pCode,
-                          ReadOutputCodeRequest->pCode,
+                          (PVOID)ReadOutputCodeRequest->pCode,
                           ReadOutputCodeRequest->NumCodes * CodeSize);
         }
         else
@@ -611,8 +610,8 @@ IntWriteConsole(IN HANDLE hConsoleOutput,
     DPRINT("IntWriteConsole\n");
 
     /* Set up the data to send to the Console Server */
-    WriteConsoleRequest->ConsoleHandle = NtCurrentPeb()->ProcessParameters->ConsoleHandle;
-    WriteConsoleRequest->OutputHandle  = hConsoleOutput;
+    WriteConsoleRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
+    WriteConsoleRequest->OutputHandle  = TO_LPC_HANDLE(hConsoleOutput);
     WriteConsoleRequest->Unicode       = bUnicode;
 
     /* Those members are unused by the client, on Windows */
@@ -633,13 +632,13 @@ IntWriteConsole(IN HANDLE hConsoleOutput,
      */
     if (SizeBytes <= sizeof(WriteConsoleRequest->StaticBuffer))
     {
-        WriteConsoleRequest->Buffer = WriteConsoleRequest->StaticBuffer;
+        WriteConsoleRequest->Buffer = (LPC_PVOID)(ULONG_PTR)WriteConsoleRequest->StaticBuffer;
         // CaptureBuffer = NULL;
         WriteConsoleRequest->UsingStaticBuffer = TRUE;
 
         _SEH2_TRY
         {
-            RtlCopyMemory(WriteConsoleRequest->Buffer,
+            RtlCopyMemory((PVOID)WriteConsoleRequest->Buffer,
                           lpBuffer,
                           SizeBytes);
         }
@@ -722,8 +721,8 @@ IntWriteConsoleInput(IN HANDLE hConsoleInput,
     DPRINT("IntWriteConsoleInput: %lx %p\n", nLength, lpNumberOfEventsWritten);
 
     /* Set up the data to send to the Console Server */
-    WriteInputRequest->ConsoleHandle = NtCurrentPeb()->ProcessParameters->ConsoleHandle;
-    WriteInputRequest->InputHandle   = hConsoleInput;
+    WriteInputRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
+    WriteInputRequest->InputHandle   = TO_LPC_HANDLE(hConsoleInput);
     WriteInputRequest->NumRecords    = nLength;
     WriteInputRequest->Unicode       = bUnicode;
     WriteInputRequest->AppendToEnd   = bAppendToEnd;
@@ -736,12 +735,12 @@ IntWriteConsoleInput(IN HANDLE hConsoleInput,
      */
     if (nLength <= sizeof(WriteInputRequest->RecordStaticBuffer)/sizeof(INPUT_RECORD))
     {
-        WriteInputRequest->RecordBufPtr = WriteInputRequest->RecordStaticBuffer;
+        WriteInputRequest->RecordBufPtr = (LPC_PVOID)(ULONG_PTR)WriteInputRequest->RecordStaticBuffer;
         // CaptureBuffer = NULL;
 
         _SEH2_TRY
         {
-            RtlCopyMemory(WriteInputRequest->RecordBufPtr,
+            RtlCopyMemory((PVOID)WriteInputRequest->RecordBufPtr,
                           lpBuffer,
                           nLength * sizeof(INPUT_RECORD));
         }
@@ -823,8 +822,8 @@ IntWriteConsoleOutput(IN HANDLE hConsoleOutput,
     ULONG NumCells;
 
     /* Set up the data to send to the Console Server */
-    WriteOutputRequest->ConsoleHandle = NtCurrentPeb()->ProcessParameters->ConsoleHandle;
-    WriteOutputRequest->OutputHandle  = hConsoleOutput;
+    WriteOutputRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
+    WriteOutputRequest->OutputHandle  = TO_LPC_HANDLE(hConsoleOutput);
     WriteOutputRequest->Unicode       = bUnicode;
 
     /* Update lpWriteRegion */
@@ -860,7 +859,7 @@ IntWriteConsoleOutput(IN HANDLE hConsoleOutput,
      */
     if (NumCells <= 1)
     {
-        WriteOutputRequest->CharInfo = &WriteOutputRequest->StaticBuffer;
+        WriteOutputRequest->CharInfo = (LPC_PVOID)(ULONG_PTR)&WriteOutputRequest->StaticBuffer;
         // CaptureBuffer = NULL;
         WriteOutputRequest->UseVirtualMemory = FALSE;
     }
@@ -889,11 +888,11 @@ IntWriteConsoleOutput(IN HANDLE hConsoleOutput,
              */
             DPRINT1("CsrAllocateCaptureBuffer failed with size %ld, let's use local heap buffer...\n", Size);
 
-            WriteOutputRequest->CharInfo = RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
+            WriteOutputRequest->CharInfo = (LPC_PVOID)(ULONG_PTR)RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
             WriteOutputRequest->UseVirtualMemory = TRUE;
 
             /* Bail out if we still cannot allocate memory */
-            if (WriteOutputRequest->CharInfo == NULL)
+            if (WriteOutputRequest->CharInfo == (LPC_PVOID)NULL)
             {
                 DPRINT1("Failed to allocate heap buffer with size %ld!\n", Size);
                 SetLastError(ERROR_NOT_ENOUGH_MEMORY);
@@ -916,7 +915,7 @@ IntWriteConsoleOutput(IN HANDLE hConsoleOutput,
 
         for (y = 0, Y = WriteOutputRequest->WriteRegion.Top; Y <= WriteOutputRequest->WriteRegion.Bottom; ++y, ++Y)
         {
-            RtlCopyMemory(WriteOutputRequest->CharInfo + y * SizeX,
+            RtlCopyMemory((CHAR_INFO*)WriteOutputRequest->CharInfo + y * SizeX,
                           lpBuffer + (y + dwBufferCoord.Y) * dwBufferSize.X + dwBufferCoord.X,
                           SizeX * sizeof(CHAR_INFO));
 #if 0
@@ -953,7 +952,7 @@ IntWriteConsoleOutput(IN HANDLE hConsoleOutput,
     {
         /* If we used a heap buffer, free it */
         if (WriteOutputRequest->UseVirtualMemory)
-            RtlFreeHeap(RtlGetProcessHeap(), 0, WriteOutputRequest->CharInfo);
+            RtlFreeHeap(RtlGetProcessHeap(), 0, (PVOID)(ULONG_PTR)WriteOutputRequest->CharInfo);
     }
 
     /* Retrieve the results */
@@ -1002,8 +1001,8 @@ IntWriteConsoleOutputCode(IN HANDLE hConsoleOutput,
     DPRINT("IntWriteConsoleOutputCode\n");
 
     /* Set up the data to send to the Console Server */
-    WriteOutputCodeRequest->ConsoleHandle = NtCurrentPeb()->ProcessParameters->ConsoleHandle;
-    WriteOutputCodeRequest->OutputHandle  = hConsoleOutput;
+    WriteOutputCodeRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
+    WriteOutputCodeRequest->OutputHandle  = TO_LPC_HANDLE(hConsoleOutput);
     WriteOutputCodeRequest->Coord         = dwWriteCoord;
     WriteOutputCodeRequest->NumCodes      = nLength;
 
@@ -1033,12 +1032,12 @@ IntWriteConsoleOutputCode(IN HANDLE hConsoleOutput,
      */
     if (SizeBytes <= sizeof(WriteOutputCodeRequest->CodeStaticBuffer))
     {
-        WriteOutputCodeRequest->pCode = WriteOutputCodeRequest->CodeStaticBuffer;
+        WriteOutputCodeRequest->pCode = (LPC_PVOID)(ULONG_PTR)WriteOutputCodeRequest->CodeStaticBuffer;
         // CaptureBuffer = NULL;
 
         _SEH2_TRY
         {
-            RtlCopyMemory(WriteOutputCodeRequest->pCode,
+            RtlCopyMemory((PVOID)WriteOutputCodeRequest->pCode,
                           pCode,
                           SizeBytes);
         }
@@ -1123,8 +1122,8 @@ IntFillConsoleOutputCode(IN HANDLE hConsoleOutput,
     }
 
     /* Set up the data to send to the Console Server */
-    FillOutputRequest->ConsoleHandle = NtCurrentPeb()->ProcessParameters->ConsoleHandle;
-    FillOutputRequest->OutputHandle  = hConsoleOutput;
+    FillOutputRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
+    FillOutputRequest->OutputHandle  = TO_LPC_HANDLE(hConsoleOutput);
     FillOutputRequest->WriteCoord    = dwWriteCoord;
     FillOutputRequest->CodeType = CodeType;
     FillOutputRequest->Code     = Code;

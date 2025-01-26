@@ -1,0 +1,25 @@
+/* Do not edit - Machine generated */
+#ifndef _INC_REACTOS_BUILDNO
+#define _INC_REACTOS_BUILDNO
+
+#define KERNEL_VERSION_BUILD        20240418
+#define KERNEL_VERSION_BUILD_STR    "20240418-0.4.15-dev-6251-g96a52db"
+#define KERNEL_VERSION_BUILD_RC     "20240418-0.4.15-dev-6251-g96a52db\0"
+
+#define KERNEL_VERSION_RC           "0.4.15-amd64-dev\0"
+#define KERNEL_VERSION_STR          "0.4.15-amd64-dev"
+
+#define KERNEL_VERSION_REVISION_RC  "0.4.15-dev-6251-g96a52db\0"
+#define KERNEL_VERSION_REVISION_STR "0.4.15-dev-6251-g96a52db"
+
+#define KERNEL_VERSION_COMMIT_HASH  "96a52db3541eb71d8f44a945fcb9d10a57e4e16d"
+
+#define REACTOS_DLL_VERSION_MAJOR   42
+#define REACTOS_DLL_VERSION_RC      "42.4.15-dev\0"
+#define REACTOS_DLL_VERSION_STR     "42.4.15-dev"
+
+#define REACTOS_COMPILER_NAME       "MSVC"
+#define REACTOS_COMPILER_VERSION    "19.29.30151.0"
+
+#endif
+/* EOF */

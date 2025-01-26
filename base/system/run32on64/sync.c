@@ -33,6 +33,12 @@
 WINE_DEFAULT_DEBUG_CHANNEL(wow);
 #else
 #include "ros_wow64_private.h"
+
+#define objattr_32to64 objattr_32to64_redirect
+
+/* FIXME!!! HORRIBLE HACK FOR OBJECT LIFETIME - IMPLEMENT Wow64AllocateTemp */
+#define object_attr64 UGLYHACK { int _; }; FIXME_DECLARE_TMP_BUF; struct object_attr64
+
 #endif
 
 
@@ -745,12 +751,9 @@ NTSTATUS WINAPI wow64_NtOpenSection( UINT *args )
     NTSTATUS status;
 
     *handle_ptr = 0;
-#ifndef __REACTOS__
+    
     status = NtOpenSection( &handle, access, objattr_32to64( &attr, attr32 ));
-#else
-    FIXME_DECLARE_TMP_BUF;
-    status = NtOpenSection(&handle, access, objattr_32to64_redirect(&attr, attr32));
-#endif
+    
     put_handle( handle_ptr, handle );
     return status;
 }
@@ -1329,7 +1332,6 @@ NTSTATUS WINAPI wow64_NtReleaseSemaphore( UINT *args )
 }
 
 
-#ifndef __REACTOS__
 /**********************************************************************
  *           wow64_NtReplyWaitReceivePort
  */
@@ -1337,11 +1339,23 @@ NTSTATUS WINAPI wow64_NtReplyWaitReceivePort( UINT *args )
 {
     HANDLE handle = get_handle( &args );
     ULONG *id = get_ptr( &args );
+#ifndef __REACTOS__
     LPC_MESSAGE *reply = get_ptr( &args );
     LPC_MESSAGE *msg = get_ptr( &args );
 
     FIXME( "%p %p %p %p: stub\n", handle, id, reply, msg );
     return STATUS_NOT_IMPLEMENTED;
+#else
+    PVOID reply = get_ptr( &args );
+    PVOID msg = get_ptr( &args );
+    
+    PVOID id64 = ULongToPtr(*id);
+    NTSTATUS status;
+    
+    status = NtReplyWaitReceivePort(handle, &id64, reply, msg);
+    *id = PtrToUlong(id64);
+    return status;
+#endif
 }
 
 
@@ -1351,13 +1365,18 @@ NTSTATUS WINAPI wow64_NtReplyWaitReceivePort( UINT *args )
 NTSTATUS WINAPI wow64_NtRequestWaitReplyPort( UINT *args )
 {
     HANDLE handle = get_handle( &args );
+#ifndef __REACTOS__
     LPC_MESSAGE *msg_in = get_ptr( &args );
     LPC_MESSAGE *msg_out = get_ptr( &args );
 
     FIXME( "%p %p %p: stub\n", handle, msg_in, msg_out );
     return STATUS_NOT_IMPLEMENTED;
-}
+#else
+    PVOID msg_in = get_ptr( &args );
+    PVOID msg_out = get_ptr( &args );
+    return NtRequestWaitReplyPort(handle, msg_in, msg_out);
 #endif
+}
 
 
 /**********************************************************************
@@ -1372,12 +1391,12 @@ NTSTATUS WINAPI wow64_NtResetEvent( UINT *args )
 }
 
 
-#ifndef __REACTOS__
 /**********************************************************************
  *           wow64_NtSecureConnectPort
  */
 NTSTATUS WINAPI wow64_NtSecureConnectPort( UINT *args )
 {
+#ifndef __REACTOS__
     ULONG *handle_ptr = get_ptr( &args );
     UNICODE_STRING32 *name32 = get_ptr( &args );
     SECURITY_QUALITY_OF_SERVICE *qos = get_ptr( &args );
@@ -1391,8 +1410,58 @@ NTSTATUS WINAPI wow64_NtSecureConnectPort( UINT *args )
     FIXME( "%p %p %p %p %p %p %p %p %p: stub\n",
            handle_ptr, name32, qos, write, sid, read, max_len, info, info_len );
     return STATUS_NOT_IMPLEMENTED;
-}
+#else
+    /*
+    OUT PHANDLE PortHandle,
+    IN PUNICODE_STRING PortName,
+    IN PSECURITY_QUALITY_OF_SERVICE SecurityQos,
+    IN OUT PPORT_VIEW ClientView OPTIONAL,
+    IN PSID ServerSid OPTIONAL,
+    IN OUT PREMOTE_PORT_VIEW ServerView OPTIONAL,
+    OUT PULONG MaxMessageLength OPTIONAL,
+    IN OUT PVOID ConnectionInformation OPTIONAL,
+    IN OUT PULONG ConnectionInformationLength OPTIONAL
+    */
+    
+    ULONG *PortHandle = get_ptr(&args);
+    UNICODE_STRING32 *PortName32 = get_ptr(&args);
+    PSECURITY_QUALITY_OF_SERVICE SecurityQos = get_ptr(&args);
+    PORT_VIEW *ClientView = get_ptr(&args);
+    SID* ServerSid = get_ptr(&args);
+    REMOTE_PORT_VIEW *SecureView = get_ptr(&args);
+    PULONG MaxMessageLength = get_ptr(&args);
+    PVOID ConnectionInformation = get_ptr(&args);
+    PULONG ConnectionInformationLength = get_ptr(&args);
+    
+    NTSTATUS status;
+    
+    HANDLE result;
+    WCHAR buffer[MAX_PATH];
+    UNICODE_STRING portName;
+    portName.MaximumLength = sizeof(buffer);
+    portName.Buffer = buffer;
+    
+    unicode_str_32to64(&portName, PortName32);
+    
+    wprintf(L"Port name %ls\n", portName.Buffer);
+    
+    status = NtSecureConnectPort(&result, 
+                                 &portName, 
+                                 SecurityQos, 
+                                 ClientView,
+                                 ServerSid, 
+                                 SecureView,
+                                 MaxMessageLength,
+                                 ConnectionInformation,
+                                 ConnectionInformationLength);
+    
+    *PortHandle = HandleToULong(result);
+    
+    wprintf(L"SecureConnectPort: %lX\n", status);
+    return status;
 #endif
+}
+
 
 
 /**********************************************************************

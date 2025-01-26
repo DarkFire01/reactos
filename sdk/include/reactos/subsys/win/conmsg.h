@@ -120,8 +120,8 @@ typedef enum _CONSRV_API_NUMBER
 typedef struct _CONSOLE_PROPERTIES
 {
     INT   IconIndex;
-    HICON hIcon;
-    HICON hIconSm;
+    LPC_PTRTYPE(HICON) hIcon;
+    LPC_PTRTYPE(HICON) hIconSm;
     DWORD dwHotKey;
     DWORD dwStartupFlags;
 
@@ -167,17 +167,17 @@ enum
 
 typedef struct _CONSOLE_START_INFO
 {
-    HANDLE ConsoleHandle;
-    HANDLE InputWaitHandle;
-    HANDLE InputHandle;
-    HANDLE OutputHandle;
-    HANDLE ErrorHandle;
-    HANDLE InitEvents[MAX_INIT_EVENTS];
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE InputWaitHandle;
+    LPC_HANDLE InputHandle;
+    LPC_HANDLE OutputHandle;
+    LPC_HANDLE ErrorHandle;
+    LPC_HANDLE InitEvents[MAX_INIT_EVENTS];
 
     CONSOLE_PROPERTIES;
 } CONSOLE_START_INFO, *PCONSOLE_START_INFO;
 
-#if defined(_M_IX86)
+#if defined(_M_IX86) && !defined(USE_LPC6432)
 C_ASSERT(sizeof(CONSOLE_START_INFO) == 0xFC);
 #endif
 
@@ -190,14 +190,14 @@ typedef struct _CONSRV_API_CONNECTINFO
 
     // USHORT Padding;
 
-    LPTHREAD_START_ROUTINE CtrlRoutine;
-    LPTHREAD_START_ROUTINE PropRoutine;
-    LPTHREAD_START_ROUTINE ImeRoutine;
+    LPC_PTRTYPE(LPTHREAD_START_ROUTINE) CtrlRoutine;
+    LPC_PTRTYPE(LPTHREAD_START_ROUTINE) PropRoutine;
+    LPC_PTRTYPE(LPTHREAD_START_ROUTINE) ImeRoutine;
 
     ULONG  TitleLength;
     WCHAR  ConsoleTitle[MAX_PATH + 1];  // Console title or full path to the startup shortcut
     ULONG  DesktopLength;
-    PWCHAR Desktop;                     // Contrary to the case of CONSOLE_ALLOCCONSOLE, the
+    LPC_PTR(WCHAR) Desktop;                     // Contrary to the case of CONSOLE_ALLOCCONSOLE, the
                                         // desktop string is allocated in the process' heap,
                                         // and CSR will read it via NtReadVirtualMemory.
     ULONG  AppNameLength;
@@ -206,38 +206,40 @@ typedef struct _CONSRV_API_CONNECTINFO
     WCHAR  CurDir[MAX_PATH + 1];
 } CONSRV_API_CONNECTINFO, *PCONSRV_API_CONNECTINFO;
 
-#if defined(_M_IX86)
+#if defined(_M_IX86) && !defined(USE_LPC6432)
 C_ASSERT(sizeof(CONSRV_API_CONNECTINFO) == 0x638);
+#elif defined(_M_IX86) || defined(_M_AMD64)
+C_ASSERT(sizeof(CONSRV_API_CONNECTINFO) == 0x680);
 #endif
 
 typedef struct _CONSOLE_GETPROCESSLIST
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     ULONG  ProcessCount;
-    PDWORD ProcessIdsList;
+    LPC_PTR(DWORD) ProcessIdsList;
 } CONSOLE_GETPROCESSLIST, *PCONSOLE_GETPROCESSLIST;
 
 typedef struct _CONSOLE_GENERATECTRLEVENT
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     ULONG  CtrlEvent;
     ULONG  ProcessGroupId;
 } CONSOLE_GENERATECTRLEVENT, *PCONSOLE_GENERATECTRLEVENT;
 
 typedef struct _CONSOLE_NOTIFYLASTCLOSE
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
 } CONSOLE_NOTIFYLASTCLOSE, *PCONSOLE_NOTIFYLASTCLOSE;
 
 
 
 typedef struct _CONSOLE_WRITECONSOLE
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
 
     CHAR  StaticBuffer[80];
-    PVOID Buffer; // BufPtr
+    LPC_PVOID Buffer; // BufPtr
     ULONG NumBytes;
 
     // On Windows, the client never uses this member
@@ -252,13 +254,13 @@ typedef struct _CONSOLE_WRITECONSOLE
 
 typedef struct _CONSOLE_READCONSOLE
 {
-    HANDLE ConsoleHandle;
-    HANDLE InputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE InputHandle;
 
     USHORT ExeLength;
 
     CHAR  StaticBuffer[80];
-    PVOID Buffer; // BufPtr
+    LPC_PVOID Buffer; // BufPtr
     ULONG NumBytes;
 
     ULONG CaptureBufferSize;
@@ -271,19 +273,19 @@ typedef struct _CONSOLE_READCONSOLE
 
 typedef struct _CONSOLE_ALLOCCONSOLE
 {
-    PCONSOLE_START_INFO ConsoleStartInfo;
+    LPC_PTR(CONSOLE_START_INFO) ConsoleStartInfo;
 
     ULONG  TitleLength;
-    PWCHAR ConsoleTitle;    // Console title or full path to the startup shortcut
+    LPC_PTR(WCHAR) ConsoleTitle;    // Console title or full path to the startup shortcut
     ULONG  DesktopLength;
-    PWCHAR Desktop;
+    LPC_PTR(WCHAR) Desktop;
     ULONG  AppNameLength;
-    PWCHAR AppName;         // Full path of the launched app
+    LPC_PTR(WCHAR) AppName;         // Full path of the launched app
     ULONG  CurDirLength;
-    PWCHAR CurDir;
+    LPC_PTR(WCHAR) CurDir;
 
-    LPTHREAD_START_ROUTINE CtrlRoutine;
-    LPTHREAD_START_ROUTINE PropRoutine;
+    LPC_PTRTYPE(LPTHREAD_START_ROUTINE) CtrlRoutine;
+    LPC_PTRTYPE(LPTHREAD_START_ROUTINE) PropRoutine;
 } CONSOLE_ALLOCCONSOLE, *PCONSOLE_ALLOCCONSOLE;
 
 typedef struct _CONSOLE_ATTACHCONSOLE
@@ -294,21 +296,21 @@ typedef struct _CONSOLE_ATTACHCONSOLE
      */
     ULONG ProcessId;
 
-    PCONSOLE_START_INFO ConsoleStartInfo;
+    LPC_PTR(CONSOLE_START_INFO) ConsoleStartInfo;
 
-    LPTHREAD_START_ROUTINE CtrlRoutine;
-    LPTHREAD_START_ROUTINE PropRoutine;
+    LPC_PTRTYPE(LPTHREAD_START_ROUTINE) CtrlRoutine;
+    LPC_PTRTYPE(LPTHREAD_START_ROUTINE) PropRoutine;
 } CONSOLE_ATTACHCONSOLE, *PCONSOLE_ATTACHCONSOLE;
 
 typedef struct _CONSOLE_FREECONSOLE
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
 } CONSOLE_FREECONSOLE, *PCONSOLE_FREECONSOLE;
 
 typedef struct _CONSOLE_GETSCREENBUFFERINFO
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     COORD  ScreenBufferSize;
     COORD  CursorPosition;
     COORD  ViewOrigin;
@@ -319,30 +321,30 @@ typedef struct _CONSOLE_GETSCREENBUFFERINFO
 
 typedef struct _CONSOLE_SETCURSORPOSITION
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     COORD  Position;
 } CONSOLE_SETCURSORPOSITION, *PCONSOLE_SETCURSORPOSITION;
 
 typedef struct _CONSOLE_SHOWCURSOR
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     BOOL   Show;
     INT    RefCount;
 } CONSOLE_SHOWCURSOR, *PCONSOLE_SHOWCURSOR;
 
 typedef struct _CONSOLE_SETCURSOR
 {
-    HANDLE  ConsoleHandle;
-    HANDLE  OutputHandle;
+    LPC_HANDLE  ConsoleHandle;
+    LPC_HANDLE  OutputHandle;
     HCURSOR CursorHandle;
 } CONSOLE_SETCURSOR, *PCONSOLE_SETCURSOR;
 
 typedef struct _CONSOLE_GETSETCURSORINFO
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     CONSOLE_CURSOR_INFO Info;
 /*
     ULONG   Size;
@@ -352,37 +354,37 @@ typedef struct _CONSOLE_GETSETCURSORINFO
 
 typedef struct _CONSOLE_GETMOUSEINFO
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     ULONG  NumButtons;
 } CONSOLE_GETMOUSEINFO, *PCONSOLE_GETMOUSEINFO;
 
 typedef struct _CONSOLE_SETTEXTATTRIB
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     WORD   Attributes;
 } CONSOLE_SETTEXTATTRIB, *PCONSOLE_SETTEXTATTRIB;
 
 typedef struct _CONSOLE_GETSETCONSOLEMODE
 {
-    HANDLE ConsoleHandle;
-    HANDLE Handle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE Handle;
     ULONG  Mode;
 } CONSOLE_GETSETCONSOLEMODE, *PCONSOLE_GETSETCONSOLEMODE;
 
 typedef struct _CONSOLE_GETDISPLAYMODE
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     ULONG  DisplayMode; // ModeFlags
 } CONSOLE_GETDISPLAYMODE, *PCONSOLE_GETDISPLAYMODE;
 
 typedef struct _CONSOLE_SETDISPLAYMODE
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     ULONG  DisplayMode; // ModeFlags
     COORD  NewSBDim;
-    HANDLE EventHandle;
+    LPC_HANDLE EventHandle;
 } CONSOLE_SETDISPLAYMODE, *PCONSOLE_SETDISPLAYMODE;
 
 /*
@@ -393,8 +395,8 @@ typedef struct _CONSOLE_SETDISPLAYMODE
 
 typedef struct _CONSOLE_GETSETHWSTATE
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     ULONG  Flags;
     ULONG  State;
 } CONSOLE_GETSETHWSTATE, *PCONSOLE_GETSETHWSTATE;
@@ -402,31 +404,31 @@ typedef struct _CONSOLE_GETSETHWSTATE
 
 typedef struct _CONSOLE_GETNUMFONTS
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     ULONG  NumFonts;
 } CONSOLE_GETNUMFONTS, *PCONSOLE_GETNUMFONTS;
 
 typedef struct _CONSOLE_GETFONTINFO
 {
-    HANDLE  ConsoleHandle;
-    HANDLE  OutputHandle;
+    LPC_HANDLE  ConsoleHandle;
+    LPC_HANDLE  OutputHandle;
     BOOLEAN MaximumWindow;
-    PCONSOLE_FONT_INFO FontInfo;
+    LPC_PTR(CONSOLE_FONT_INFO) FontInfo;
     ULONG   NumFonts;
 } CONSOLE_GETFONTINFO, *PCONSOLE_GETFONTINFO;
 
 typedef struct _CONSOLE_GETFONTSIZE
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     ULONG  FontIndex;
     COORD  FontSize;
 } CONSOLE_GETFONTSIZE, *PCONSOLE_GETFONTSIZE;
 
 typedef struct _CONSOLE_GETCURRENTFONT
 {
-    HANDLE  ConsoleHandle;
-    HANDLE  OutputHandle;
+    LPC_HANDLE  ConsoleHandle;
+    LPC_HANDLE  OutputHandle;
     BOOLEAN MaximumWindow;
     ULONG   FontIndex;
     COORD   FontSize;
@@ -434,8 +436,8 @@ typedef struct _CONSOLE_GETCURRENTFONT
 
 typedef struct _CONSOLE_SETFONT
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     ULONG  FontIndex;
 } CONSOLE_SETFONT, *PCONSOLE_SETFONT;
 
@@ -443,7 +445,7 @@ typedef struct _CONSOLE_SETFONT
 
 typedef struct _CONSOLE_CREATESCREENBUFFER
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     ULONG  DesiredAccess; // ACCESS_MASK
     BOOL   InheritHandle;
     ULONG  ShareMode;
@@ -454,50 +456,50 @@ typedef struct _CONSOLE_CREATESCREENBUFFER
      * for graphics screen buffers.
      */
     CONSOLE_GRAPHICS_BUFFER_INFO GraphicsBufferInfo;
-    HANDLE hMutex;
-    PVOID  lpBitMap;
-    HANDLE OutputHandle;     /* Handle to newly created screen buffer */
+    LPC_HANDLE hMutex;
+    LPC_PVOID  lpBitMap;
+    LPC_HANDLE OutputHandle;     /* Handle to newly created screen buffer */
 } CONSOLE_CREATESCREENBUFFER, *PCONSOLE_CREATESCREENBUFFER;
 
 typedef struct _CONSOLE_SETACTIVESCREENBUFFER
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;  /* Handle to screen buffer to switch to */
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;  /* Handle to screen buffer to switch to */
 } CONSOLE_SETACTIVESCREENBUFFER, *PCONSOLE_SETACTIVESCREENBUFFER;
 
 typedef struct _CONSOLE_INVALIDATEDIBITS
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     SMALL_RECT Region;
 } CONSOLE_INVALIDATEDIBITS, *PCONSOLE_INVALIDATEDIBITS;
 
 typedef struct _CONSOLE_SETPALETTE
 {
-    HANDLE   ConsoleHandle;
-    HANDLE   OutputHandle;
-    HPALETTE PaletteHandle;
+    LPC_HANDLE   ConsoleHandle;
+    LPC_HANDLE   OutputHandle;
+    LPC_PTRTYPE(HPALETTE) PaletteHandle;
     UINT     Usage;
 } CONSOLE_SETPALETTE, *PCONSOLE_SETPALETTE;
 
 typedef struct _CONSOLE_GETSETCONSOLETITLE
 {
-    HANDLE  ConsoleHandle;
+    LPC_HANDLE  ConsoleHandle;
     ULONG   Length;
-    PVOID   Title;
+    LPC_PVOID   Title;
     BOOLEAN Unicode;
 } CONSOLE_GETSETCONSOLETITLE, *PCONSOLE_GETSETCONSOLETITLE;
 
 typedef struct _CONSOLE_FLUSHINPUTBUFFER
 {
-    HANDLE ConsoleHandle;
-    HANDLE InputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE InputHandle;
 } CONSOLE_FLUSHINPUTBUFFER, *PCONSOLE_FLUSHINPUTBUFFER;
 
 typedef struct _CONSOLE_SCROLLSCREENBUFFER
 {
-    HANDLE     ConsoleHandle;
-    HANDLE     OutputHandle;
+    LPC_HANDLE     ConsoleHandle;
+    LPC_HANDLE     OutputHandle;
     SMALL_RECT ScrollRectangle;
     SMALL_RECT ClipRectangle;
     BOOL       UseClipRectangle;
@@ -528,18 +530,18 @@ typedef union _CODE_ELEMENT
 
 typedef struct _CONSOLE_OUTPUTCODE
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     COORD  Coord;
 
     CODE_TYPE CodeType;
     CHAR      CodeStaticBuffer[80]; // == 40 * sizeof(CODE_ELEMENT)
-    PVOID     pCode; // Either a pointer to a character or to an attribute.
+    LPC_PVOID     pCode; // Either a pointer to a character or to an attribute.
     // union
     // {
-        // PVOID  pCode;
+        // LPC_PVOID  pCode;
         // PCHAR  AsciiChar;
-        // PWCHAR UnicodeChar;
+        // LPC_PTR(WCHAR) UnicodeChar;
         // PWORD  Attribute;
     // } pCode;    // Either a pointer to a character or to an attribute.
 
@@ -549,8 +551,8 @@ typedef struct _CONSOLE_OUTPUTCODE
 
 typedef struct _CONSOLE_FILLOUTPUTCODE
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     COORD  WriteCoord;
 
     CODE_TYPE    CodeType;
@@ -561,10 +563,10 @@ typedef struct _CONSOLE_FILLOUTPUTCODE
 
 typedef struct _CONSOLE_GETINPUT
 {
-    HANDLE        ConsoleHandle;
-    HANDLE        InputHandle;
+    LPC_HANDLE        ConsoleHandle;
+    LPC_HANDLE        InputHandle;
     INPUT_RECORD  RecordStaticBuffer[5];
-    PINPUT_RECORD RecordBufPtr;
+    LPC_PTR(INPUT_RECORD) RecordBufPtr;
     ULONG         NumRecords;
     WORD          Flags;
     BOOLEAN       Unicode;
@@ -572,10 +574,10 @@ typedef struct _CONSOLE_GETINPUT
 
 typedef struct _CONSOLE_WRITEINPUT
 {
-    HANDLE        ConsoleHandle;
-    HANDLE        InputHandle;
+    LPC_HANDLE        ConsoleHandle;
+    LPC_HANDLE        InputHandle;
     INPUT_RECORD  RecordStaticBuffer[5];
-    PINPUT_RECORD RecordBufPtr;
+    LPC_PTR(INPUT_RECORD) RecordBufPtr;
     ULONG         NumRecords;
     BOOLEAN       Unicode;
     BOOLEAN       AppendToEnd;
@@ -583,11 +585,11 @@ typedef struct _CONSOLE_WRITEINPUT
 
 typedef struct _CONSOLE_READOUTPUT
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
 
     CHAR_INFO  StaticBuffer;
-    PCHAR_INFO CharInfo;
+    LPC_PTR(CHAR_INFO) CharInfo;
 
     SMALL_RECT ReadRegion;
     BOOLEAN Unicode;
@@ -595,11 +597,11 @@ typedef struct _CONSOLE_READOUTPUT
 
 typedef struct _CONSOLE_WRITEOUTPUT
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
 
     CHAR_INFO  StaticBuffer;
-    PCHAR_INFO CharInfo;
+    LPC_PTR(CHAR_INFO) CharInfo;
 
     SMALL_RECT WriteRegion;
     BOOLEAN Unicode;
@@ -614,8 +616,8 @@ typedef struct _CONSOLE_WRITEOUTPUT
 
 typedef struct _CONSOLE_GETNUMINPUTEVENTS
 {
-    HANDLE ConsoleHandle;
-    HANDLE InputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE InputHandle;
     ULONG  NumberOfEvents;
 } CONSOLE_GETNUMINPUTEVENTS, *PCONSOLE_GETNUMINPUTEVENTS;
 
@@ -623,38 +625,38 @@ typedef struct _CONSOLE_GETNUMINPUTEVENTS
 
 typedef struct _CONSOLE_CLOSEHANDLE
 {
-    HANDLE ConsoleHandle;
-    HANDLE Handle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE Handle;
 } CONSOLE_CLOSEHANDLE, *PCONSOLE_CLOSEHANDLE;
 
 typedef struct _CONSOLE_VERIFYHANDLE
 {
     BOOL   IsValid;
-    HANDLE ConsoleHandle;
-    HANDLE Handle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE Handle;
 } CONSOLE_VERIFYHANDLE, *PCONSOLE_VERIFYHANDLE;
 
 typedef struct _CONSOLE_DUPLICATEHANDLE
 {
-    HANDLE  ConsoleHandle;
-    HANDLE  SourceHandle;
+    LPC_HANDLE  ConsoleHandle;
+    LPC_HANDLE  SourceHandle;
     ULONG   DesiredAccess; // ACCESS_MASK
     BOOLEAN InheritHandle;
     ULONG   Options;
-    HANDLE  TargetHandle;
+    LPC_HANDLE  TargetHandle;
 } CONSOLE_DUPLICATEHANDLE, *PCONSOLE_DUPLICATEHANDLE;
 
 typedef struct _CONSOLE_GETHANDLEINFO
 {
-    HANDLE ConsoleHandle;
-    HANDLE Handle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE Handle;
     ULONG  Flags;
 } CONSOLE_GETHANDLEINFO, *PCONSOLE_GETHANDLEINFO;
 
 typedef struct _CONSOLE_SETHANDLEINFO
 {
-    HANDLE ConsoleHandle;
-    HANDLE Handle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE Handle;
     ULONG  Mask;
     ULONG  Flags;
 } CONSOLE_SETHANDLEINFO, *PCONSOLE_SETHANDLEINFO;
@@ -670,27 +672,27 @@ typedef enum _CONSOLE_HANDLE_TYPE
 
 typedef struct _CONSOLE_OPENCONSOLE
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     CONSOLE_HANDLE_TYPE HandleType;
     ULONG  DesiredAccess; // ACCESS_MASK
     BOOL   InheritHandle;
     ULONG  ShareMode;
-    HANDLE Handle;
+    LPC_HANDLE Handle;
 } CONSOLE_OPENCONSOLE, *PCONSOLE_OPENCONSOLE;
 
 
 
 typedef struct _CONSOLE_GETLARGESTWINDOWSIZE
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     COORD  Size;
 } CONSOLE_GETLARGESTWINDOWSIZE, *PCONSOLE_GETLARGESTWINDOWSIZE;
 
 typedef struct _CONSOLE_MENUCONTROL
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     ULONG  CmdIdLow;
     ULONG  CmdIdHigh;
     HMENU  MenuHandle;
@@ -698,14 +700,14 @@ typedef struct _CONSOLE_MENUCONTROL
 
 typedef struct _CONSOLE_SETMENUCLOSE
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     BOOL   Enable;
 } CONSOLE_SETMENUCLOSE, *PCONSOLE_SETMENUCLOSE;
 
 typedef struct _CONSOLE_SETWINDOWINFO
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     BOOL   Absolute;
     SMALL_RECT WindowRect; // New console window position in the screen-buffer frame (Absolute == TRUE)
                            // or in the old window position frame (Absolute == FALSE).
@@ -713,47 +715,47 @@ typedef struct _CONSOLE_SETWINDOWINFO
 
 typedef struct _CONSOLE_GETWINDOW
 {
-    HANDLE ConsoleHandle;
-    HWND   WindowHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_PTRTYPE(HWND) WindowHandle;
 } CONSOLE_GETWINDOW, *PCONSOLE_GETWINDOW;
 
 typedef struct _CONSOLE_SETICON
 {
-    HANDLE ConsoleHandle;
-    HICON  IconHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_PTRTYPE(HICON) IconHandle;
 } CONSOLE_SETICON, *PCONSOLE_SETICON;
 
 
 
 typedef struct _CONSOLE_ADDGETALIAS
 {
-    HANDLE  ConsoleHandle;
+    LPC_HANDLE  ConsoleHandle;
     USHORT  SourceLength;
     USHORT  TargetLength; // Also used for storing the number of bytes written.
     USHORT  ExeLength;
-    PVOID   Source;
-    PVOID   Target;
-    PVOID   ExeName;
+    LPC_PVOID   Source;
+    LPC_PVOID   Target;
+    LPC_PVOID   ExeName;
     BOOLEAN Unicode;
     BOOLEAN Unicode2;
 } CONSOLE_ADDGETALIAS, *PCONSOLE_ADDGETALIAS;
 
 typedef struct _CONSOLE_GETALLALIASES
 {
-    HANDLE  ConsoleHandle;
+    LPC_HANDLE  ConsoleHandle;
     USHORT  ExeLength;
-    PVOID   ExeName;
+    LPC_PVOID   ExeName;
     BOOLEAN Unicode;
     BOOLEAN Unicode2;
     ULONG   AliasesBufferLength;
-    PVOID   AliasesBuffer;
+    LPC_PVOID   AliasesBuffer;
 } CONSOLE_GETALLALIASES, *PCONSOLE_GETALLALIASES;
 
 typedef struct _CONSOLE_GETALLALIASESLENGTH
 {
-    HANDLE  ConsoleHandle;
+    LPC_HANDLE  ConsoleHandle;
     USHORT  ExeLength;
-    PVOID   ExeName;
+    LPC_PVOID   ExeName;
     ULONG   Length;
     BOOLEAN Unicode;
     BOOLEAN Unicode2;
@@ -761,15 +763,15 @@ typedef struct _CONSOLE_GETALLALIASESLENGTH
 
 typedef struct _CONSOLE_GETALIASESEXES
 {
-    HANDLE  ConsoleHandle;
+    LPC_HANDLE  ConsoleHandle;
     ULONG   Length ; // ExeLength; // ExesLength
-    PVOID   ExeNames;
+    LPC_PVOID   ExeNames;
     BOOLEAN Unicode;
 } CONSOLE_GETALIASESEXES, *PCONSOLE_GETALIASESEXES;
 
 typedef struct _CONSOLE_GETALIASESEXESLENGTH
 {
-    HANDLE  ConsoleHandle;
+    LPC_HANDLE  ConsoleHandle;
     ULONG   Length;
     BOOLEAN Unicode;
 } CONSOLE_GETALIASESEXESLENGTH, *PCONSOLE_GETALIASESEXESLENGTH;
@@ -778,30 +780,30 @@ typedef struct _CONSOLE_GETALIASESEXESLENGTH
 
 typedef struct _CONSOLE_GETCOMMANDHISTORY
 {
-    HANDLE  ConsoleHandle;
+    LPC_HANDLE  ConsoleHandle;
     ULONG   HistoryLength;
-    PVOID   History;
+    LPC_PVOID   History;
     USHORT  ExeLength;
-    PVOID   ExeName;
+    LPC_PVOID   ExeName;
     BOOLEAN Unicode;
     BOOLEAN Unicode2;
 } CONSOLE_GETCOMMANDHISTORY, *PCONSOLE_GETCOMMANDHISTORY;
 
 typedef struct _CONSOLE_GETCOMMANDHISTORYLENGTH
 {
-    HANDLE  ConsoleHandle;
+    LPC_HANDLE  ConsoleHandle;
     ULONG   HistoryLength;
     USHORT  ExeLength;
-    PVOID   ExeName;
+    LPC_PVOID   ExeName;
     BOOLEAN Unicode;
     BOOLEAN Unicode2;
 } CONSOLE_GETCOMMANDHISTORYLENGTH, *PCONSOLE_GETCOMMANDHISTORYLENGTH;
 
 typedef struct _CONSOLE_EXPUNGECOMMANDHISTORY
 {
-    HANDLE  ConsoleHandle;
+    LPC_HANDLE  ConsoleHandle;
     USHORT  ExeLength;
-    PVOID   ExeName;
+    LPC_PVOID   ExeName;
     BOOLEAN Unicode;
     BOOLEAN Unicode2;
 } CONSOLE_EXPUNGECOMMANDHISTORY, *PCONSOLE_EXPUNGECOMMANDHISTORY;
@@ -815,17 +817,17 @@ typedef struct _CONSOLE_GETSETHISTORYINFO
 
 typedef struct _CONSOLE_SETHISTORYNUMBERCOMMANDS
 {
-    HANDLE  ConsoleHandle;
+    LPC_HANDLE  ConsoleHandle;
     ULONG   NumCommands;
     USHORT  ExeLength;
-    PVOID   ExeName;
+    LPC_PVOID   ExeName;
     BOOLEAN Unicode;
     BOOLEAN Unicode2;
 } CONSOLE_SETHISTORYNUMBERCOMMANDS, *PCONSOLE_SETHISTORYNUMBERCOMMANDS;
 
 typedef struct _CONSOLE_SETHISTORYMODE
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     ULONG  Mode;
 } CONSOLE_SETHISTORYMODE, *PCONSOLE_SETHISTORYMODE;
 
@@ -833,71 +835,71 @@ typedef struct _CONSOLE_SETHISTORYMODE
 
 typedef struct _CONSOLE_SETSCREENBUFFERSIZE
 {
-    HANDLE ConsoleHandle;
-    HANDLE OutputHandle;
+    LPC_HANDLE ConsoleHandle;
+    LPC_HANDLE OutputHandle;
     COORD  Size;
 } CONSOLE_SETSCREENBUFFERSIZE, *PCONSOLE_SETSCREENBUFFERSIZE;
 
 typedef struct _CONSOLE_GETSELECTIONINFO
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     CONSOLE_SELECTION_INFO Info;
 } CONSOLE_GETSELECTIONINFO, *PCONSOLE_GETSELECTIONINFO;
 
 typedef struct _CONSOLE_GETINPUTOUTPUTCP
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     UINT   CodePage;
     BOOL   OutputCP;    // TRUE : Output Code Page ; FALSE : Input Code Page
 } CONSOLE_GETINPUTOUTPUTCP, *PCONSOLE_GETINPUTOUTPUTCP;
 
 typedef struct _CONSOLE_SETINPUTOUTPUTCP
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     UINT   CodePage;
     BOOL   OutputCP;    // TRUE : Output Code Page ; FALSE : Input Code Page
-    HANDLE EventHandle;
+    LPC_HANDLE EventHandle;
 } CONSOLE_SETINPUTOUTPUTCP, *PCONSOLE_SETINPUTOUTPUTCP;
 
 typedef struct _CONSOLE_GETLANGID
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     LANGID LangId;
 } CONSOLE_GETLANGID, *PCONSOLE_GETLANGID;
 
 typedef struct _CONSOLE_GETKBDLAYOUTNAME
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     CHAR   LayoutBuffer[KL_NAMELENGTH * sizeof(WCHAR)]; // Can hold up to 9 wchars
     BOOL   Ansi;
 } CONSOLE_GETKBDLAYOUTNAME, *PCONSOLE_GETKBDLAYOUTNAME;
 
 typedef struct _CONSOLE_REGISTERVDM
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     ULONG  RegisterFlags;
-    HANDLE StartHardwareEvent;
-    HANDLE EndHardwareEvent;
-    HANDLE ErrorHardwareEvent;
+    LPC_HANDLE StartHardwareEvent;
+    LPC_HANDLE EndHardwareEvent;
+    LPC_HANDLE ErrorHardwareEvent;
 
     /* Unused member */
     ULONG  UnusedVar;
 
     ULONG  VideoStateLength;
-    PVOID  VideoState;  // PVIDEO_HARDWARE_STATE_HEADER
+    LPC_PVOID  VideoState;  // PVIDEO_HARDWARE_STATE_HEADER
 
     /* Unused members */
-    PVOID  UnusedBuffer;
+    LPC_PVOID  UnusedBuffer;
     ULONG  UnusedBufferLength;
 
     COORD  VDMBufferSize;
-    PVOID  VDMBuffer;
+    LPC_PVOID  VDMBuffer;
 } CONSOLE_REGISTERVDM, *PCONSOLE_REGISTERVDM;
 
 typedef struct _CONSOLE_REGISTERCONSOLEIME
 {
-    HANDLE ConsoleHandle;
-    HWND hWnd;
+    LPC_HANDLE ConsoleHandle;
+    LPC_PTRTYPE(HWND) hWnd;
     DWORD dwThreadId;
     DWORD cbDesktop;
     LPWSTR pDesktop;
@@ -906,7 +908,7 @@ typedef struct _CONSOLE_REGISTERCONSOLEIME
 
 typedef struct _CONSOLE_UNREGISTERCONSOLEIME
 {
-    HANDLE ConsoleHandle;
+    LPC_HANDLE ConsoleHandle;
     DWORD dwThreadId;
 } CONSOLE_UNREGISTERCONSOLEIME, *PCONSOLE_UNREGISTERCONSOLEIME;
 

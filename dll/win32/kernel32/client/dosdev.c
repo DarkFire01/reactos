@@ -325,6 +325,7 @@ DefineDosDeviceW(
     DefineDosDeviceRequest->DeviceName.MaximumLength = CsrAllocateMessagePointer(CaptureBuffer,
                                                                                  DeviceNameU.MaximumLength,
                                                                                  (PVOID*)&DefineDosDeviceRequest->DeviceName.Buffer);
+    
     /* And copy it while upcasing it */
     RtlUpcaseUnicodeString(&DefineDosDeviceRequest->DeviceName, &DeviceNameU, FALSE);
 
@@ -334,6 +335,7 @@ DefineDosDeviceW(
         DefineDosDeviceRequest->TargetPath.MaximumLength = CsrAllocateMessagePointer(CaptureBuffer,
                                                                                      NtTargetPathU.MaximumLength,
                                                                                      (PVOID*)&DefineDosDeviceRequest->TargetPath.Buffer);
+        
         RtlCopyUnicodeString(&DefineDosDeviceRequest->TargetPath, &NtTargetPathU);
 
         if (!(dwFlags & DDD_RAW_TARGET_PATH))

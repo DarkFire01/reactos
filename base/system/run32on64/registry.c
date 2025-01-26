@@ -282,6 +282,8 @@ NTSTATUS WINAPI wow64_NtOpenKey( UINT *args )
     HANDLE handle = 0;
     NTSTATUS status;
 
+    wprintf(L"KEY %ls\n", (PWSTR)(ULONG_PTR)((UNICODE_STRING32*)(ULONG_PTR)attr32->ObjectName)->Buffer);
+
     *handle_ptr = 0;
     status = NtOpenKey( &handle, access, objattr_32to64( &attr, attr32 ));
     put_handle( handle_ptr, handle );

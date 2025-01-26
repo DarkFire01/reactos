@@ -179,6 +179,11 @@ CsrApiHandleConnectionRequest(IN PCSR_API_MESSAGE ApiMessage)
             CsrLockedDereferenceProcess(CsrProcess);
         }
     }
+    
+    if (AllowConnection == FALSE)
+    {
+        DPRINT1("CsrThread %p, CsrProcess %p, status %lX\n", CsrThread, CsrProcess, Status);
+    }
 
     /* Release the Process Lock */
     CsrReleaseProcessLock();
@@ -1146,7 +1151,7 @@ CsrCaptureArguments(IN PCSR_THREAD CsrThread,
         {
 #ifdef CSR_DBG
             DPRINT1("*** CSRSS: CaptureBuffer outside of ClientView 1\n");
-            if (NtCurrentPeb()->BeingDebugged) DbgBreakPoint();
+            __debugbreak();
 #endif
             /* Return failure */
             ApiMessage->Status = STATUS_INVALID_PARAMETER;
@@ -1166,7 +1171,7 @@ CsrCaptureArguments(IN PCSR_THREAD CsrThread,
         {
 #ifdef CSR_DBG
             DPRINT1("*** CSRSS: CaptureBuffer outside of ClientView 2\n");
-            if (NtCurrentPeb()->BeingDebugged) DbgBreakPoint();
+            __debugbreak();
 #endif
             /* Return failure */
             ApiMessage->Status = STATUS_INVALID_PARAMETER;
@@ -1188,7 +1193,7 @@ CsrCaptureArguments(IN PCSR_THREAD CsrThread,
         {
 #ifdef CSR_DBG
             DPRINT1("*** CSRSS: CaptureBuffer %p has bad length\n", ClientCaptureBuffer);
-            if (NtCurrentPeb()->BeingDebugged) DbgBreakPoint();
+            __debugbreak();
 #endif
             /* Return failure */
             ApiMessage->Status = STATUS_INVALID_PARAMETER;
@@ -1228,7 +1233,7 @@ CsrCaptureArguments(IN PCSR_THREAD CsrThread,
     {
 #ifdef CSR_DBG
         DPRINT1("*** CSRSS: Took exception during capture %x\n", _SEH2_GetExceptionCode());
-        if (NtCurrentPeb()->BeingDebugged) DbgBreakPoint();
+        __debugbreak();
 #endif
         /* Failure, free the buffer and return */
         RtlFreeHeap(CsrHeap, 0, ServerCaptureBuffer);
@@ -1265,7 +1270,7 @@ CsrCaptureArguments(IN PCSR_THREAD CsrThread,
             {
 #ifdef CSR_DBG
                 DPRINT1("*** CSRSS: CaptureBuffer MessagePointer outside of message\n");
-                if (NtCurrentPeb()->BeingDebugged) DbgBreakPoint();
+                __debugbreak();
 #endif
                 /* Invalid pointer, fail */
                 ApiMessage->Status = STATUS_INVALID_PARAMETER;
@@ -1287,7 +1292,7 @@ CsrCaptureArguments(IN PCSR_THREAD CsrThread,
             {
 #ifdef CSR_DBG
                 DPRINT1("*** CSRSS: CaptureBuffer MessagePointer outside of ClientView\n");
-                if (NtCurrentPeb()->BeingDebugged) DbgBreakPoint();
+                __debugbreak();
 #endif
                 /* Invalid pointer, fail */
                 ApiMessage->Status = STATUS_INVALID_PARAMETER;

@@ -332,8 +332,6 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
     ULONG len = get_ulong( &args );
     ULONG *retlen = get_ptr( &args );
 
-    __debugbreak();
-
     NTSTATUS status;
 
     switch (class)
@@ -695,6 +693,25 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
         return STATUS_INVALID_INFO_CLASS;
 #endif
 
+#ifdef __REACTOS__
+    case SystemRangeStartInformation:
+    {
+        ULONG *pRangeStart32 = ptr;
+        ULONG_PTR rangeStart;
+
+        if (retlen) *retlen = sizeof(*pRangeStart32);
+        if (len < sizeof(*pRangeStart32)) return STATUS_INFO_LENGTH_MISMATCH;
+
+        rangeStart = (ULONG_PTR) ptr;
+        
+        if (!(status = NtQuerySystemInformation( class, &rangeStart, sizeof(rangeStart), NULL )))
+        {
+            *pRangeStart32 = (ULONG) rangeStart;
+        }
+        return status;
+    }
+#endif
+
     default:
         FIXME( "unsupported class %u\n", class );
         return STATUS_INVALID_INFO_CLASS;
@@ -805,6 +822,7 @@ NTSTATUS WINAPI wow64_NtRaiseHardError( UINT *args )
     HARDERROR_RESPONSE *response = get_ptr( &args );
 
     FIXME( "%08lx %lu %lx %p %u %p: stub\n", status, count, params_mask, params, option, response );
+    assert(FALSE);
     return STATUS_NOT_IMPLEMENTED;
 }
 
