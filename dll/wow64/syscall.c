@@ -658,7 +658,7 @@ NTSTATUS WINAPI wow64_NtRaiseException( UINT *args )
     return STATUS_SUCCESS;
 #else
     __debugbreak();
-    assert(FALSE);
+    ASSERT(FALSE);
     return STATUS_NOT_IMPLEMENTED;
 #endif
 }

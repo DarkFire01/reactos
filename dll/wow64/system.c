@@ -822,7 +822,11 @@ NTSTATUS WINAPI wow64_NtRaiseHardError( UINT *args )
     HARDERROR_RESPONSE *response = get_ptr( &args );
 
     FIXME( "%08lx %lu %lx %p %u %p: stub\n", status, count, params_mask, params, option, response );
+#ifndef __REACTOS__
     assert(FALSE);
+#else
+    ASSERT(FALSE);
+#endif
     return STATUS_NOT_IMPLEMENTED;
 }
 

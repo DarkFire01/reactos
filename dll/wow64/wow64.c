@@ -1,16 +1,17 @@
 /*
- * run32on64
- * Copyright (C) 2003-2025 Marcin Jabłoński
+ * Wine WOW64 ReactOS port 
  *
  * COPYRIGHT:       See COPYING in the top level directory
- * PROJECT:         run32on64.exe
- * FILE:            base/system/run32on64/run32on64.c
- * PURPOSE:         Test utility for WOW64
+ * PROJECT:         wow64.dll
+ * FILE:            dll/wow64/wow64.c
  * PROGRAMMER:      Marcin Jabłoński
  */
 
 #include "ros_wow64_private.h"
 #include "sysfuncnum.h"
+
+//#define NDEBUG
+#include <debug.h>
 
 typedef MEMORY_BASIC_INFORMATION32 *PMEMORY_BASIC_INFORMATION32;
 
@@ -43,7 +44,7 @@ static void *build_wow64_parameters( const RTL_USER_PROCESS_PARAMETERS *params )
 
     status = NtAllocateVirtualMemory( NtCurrentProcess(), (void **)&wow64_params, 31, &size,
                                       MEM_COMMIT, PAGE_READWRITE );
-    assert( !status );
+    ASSERT( !status );
 
     wow64_params->MaximumLength   = size;
     wow64_params->Length          = size;
@@ -75,37 +76,8 @@ static void *build_wow64_parameters( const RTL_USER_PROCESS_PARAMETERS *params )
     dup_unicode_string( &params->RuntimeData, &dst, &wow64_params->RuntimeData );
 
     wow64_params->Environment = PtrToUlong( dst );
-    memcpy( dst, params->Environment, lstrlen(params->Environment) );
+    memcpy( dst, params->Environment, wcslen(params->Environment) );
     return wow64_params;
-}
-
-void PrintError(HRESULT hResult)
-{
-    LPWSTR errorText = NULL;
-    
-    if (hResult == 0)
-    {
-        return;
-    }
-    
-    FormatMessageW(
-        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_IGNORE_INSERTS,  
-        NULL,
-        hResult,
-        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        (LPWSTR) &errorText,
-        0,
-        NULL);
-       
-    if (errorText != NULL)
-    {
-        wprintf(L"Last error: %ls", errorText);
-        LocalFree(errorText);
-    }
-    else
-    {
-        wprintf(L"Format message failed\n");
-    }
 }
 
 /* WINE FUNCS */
@@ -225,11 +197,7 @@ NTSTATUS WINAPI wow64_NtQueryInformationProcess( UINT *args )
     case ProcessImageFileNameWin32:  /* UNICODE_STRING + string */
         {
             ULONG retsize, size = len + sizeof(UNICODE_STRING) - sizeof(UNICODE_STRING32);
-#ifndef __REACTOS__
             UNICODE_STRING *str = Wow64AllocateTemp( size );
-#else
-            UNICODE_STRING *str = malloc(size);
-#endif
             UNICODE_STRING32 *str32 = ptr;
 
             if (!(status = NtQueryInformationProcess( handle, class, str, size, &retsize )))
@@ -239,9 +207,6 @@ NTSTATUS WINAPI wow64_NtQueryInformationProcess( UINT *args )
                 str32->Buffer = PtrToUlong( str32 + 1 );
                 memcpy( str32 + 1, str->Buffer, str->MaximumLength );
             }
-#ifdef __REACTOS__
-            free(str);
-#endif
             if (retlen) *retlen = retsize + sizeof(UNICODE_STRING32) - sizeof(UNICODE_STRING);
             return status;
         }
@@ -458,7 +423,7 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
             HANDLE hProcess = get_handle(&pArgs);
             ULONG uCode = get_ulong(&pArgs);
             
-            wprintf(L"Terminating process %p\n", hProcess);
+            DPRINT("Terminating process %p with a WOW64 call from %p\n", hProcess, NtCurrentProcess());
             
             status = NtTerminateProcess(hProcess, uCode);
             break;
@@ -473,158 +438,181 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
         
         default:
         {
-            //wprintf(L"[Syscall %lX:%hs]\n", syscallNum, mapping[syscallNum]);
-            //wprintf(L"Unhandled 32-bit syscall 0x%lX(%ld args at %p)\n", syscallNum, numArgs, pArgs);
+            DPRINT1("[Syscall %lX:%hs]\n", syscallNum, mapping[syscallNum]);
+            DPRINT1("Unhandled 32-bit syscall 0x%lX(%ld args at %p)\n", syscallNum, numArgs, pArgs);
+            ASSERT(FALSE);
         }
     }
     
     return status;
 }
 
-#define TMP_TARGET_PROGRAM L"D:\\calc.exe"
+#define TMP_WOW_DIR "D:"
+#define TMP_TARGET_PROGRAM "wow64test.exe"
 
-int wmain(int argc, WCHAR* argv[])
+BOOL
+WINAPI
+DllMain(HANDLE hDll,
+        DWORD dwReason,
+        LPVOID lpReserved)
 {
-    NTSTATUS status;
-    PRTL_USER_PROCESS_PARAMETERS32 procParams;
-    PPEB32 wowPeb;
-    PTEB32 wowTeb;
-    SIZE_T size;
-    NLS_FILE_HEADER ansiCopy, oemCopy;
-    ULONG_PTR fixmeProcessHeaps[100];
-    WCHAR fixmeStaticUnicodeString[256];
-    
-    HMODULE clientProgram = LoadLibraryW(TMP_TARGET_PROGRAM);
-    PrintError(GetLastError());
-    wprintf(L"Client program: %p\n", clientProgram);
-    
-    HMODULE ntdll32 = LoadLibraryW(L"D:\\ntdll.dll");
-    PrintError(GetLastError());
-    wprintf(L"LoadLibraryW result: %p\n", ntdll32);
-    
-    HMODULE ntdll64 = LoadLibraryW(L"ntdll.dll");
-    PrintError(GetLastError());
-    wprintf(L"Result: %p ?= %p\n", ntdll32, ntdll64);
-    
-    if (clientProgram == NULL || ntdll32 == NULL)
+    switch (dwReason)
     {
-        return -1;
+        case DLL_PROCESS_ATTACH:
+        {
+            NTSTATUS status;
+            PRTL_USER_PROCESS_PARAMETERS32 procParams;
+            PPEB32 wowPeb;
+            PTEB32 wowTeb;
+            SIZE_T size;
+            NLS_FILE_HEADER ansiCopy, oemCopy;
+            ULONG_PTR fixmeProcessHeaps[100];
+            WCHAR fixmeStaticUnicodeString[256];
+            PVOID proc;
+            
+            UNICODE_STRING targetStr = RTL_CONSTANT_STRING(L"" TMP_TARGET_PROGRAM);
+            UNICODE_STRING ntdll32Str = RTL_CONSTANT_STRING(L"ntdll.dll");
+            
+            ANSI_STRING importStr = RTL_CONSTANT_STRING("LdrInitializeThunk");
+            
+            HMODULE clientProgram, ntdll32;
+            
+            status = LdrLoadDll(L"" TMP_WOW_DIR "\\ntdll.dll", 0, &ntdll32Str, &ntdll32);
+            if (!NT_SUCCESS(status))
+            {
+                return FALSE;
+            }
+            
+            status = LdrLoadDll(L"" TMP_WOW_DIR "\\" TMP_TARGET_PROGRAM, 0, &targetStr, &clientProgram);
+            if (!NT_SUCCESS(status))
+            {
+                return FALSE;
+            }
+            
+            if (clientProgram == NULL || ntdll32 == NULL)
+            {
+                return FALSE;
+            }
+            
+            if (clientProgram != (HMODULE)0x400000)
+            {
+                DPRINT("Warning: the default test program for run32on64 has base address 0x400000, "
+                       "ReactOS ntdll!LdrpInitializeProcess is always called with Context != NULL, "
+                       "which means relocation is impossible? Are you loading a different image?\n"
+                       "(loaded image base 0x%p)\n", clientProgram);
+            }
+            
+            
+            PTEB currentTeb = NtCurrentTeb();
+            DPRINT("Current TEB %p\n", currentTeb);
+            
+            PPEB currentPeb = currentTeb->ProcessEnvironmentBlock;
+            
+            wowTeb = NULL;
+            wowPeb = NULL;
+            procParams = NULL;
+            
+            /* These allocations are undone on process exit (not explicitly, though). */
+            size = sizeof(TEB32);
+            status = NtAllocateVirtualMemory(NtCurrentProcess(), &wowTeb, 32, &size, MEM_COMMIT, PAGE_READWRITE);
+            if (!NT_SUCCESS(status))
+            {
+                DPRINT("TEB32 Allocation failed: %lx\n", status);
+                return FALSE;
+            }
+            
+            size = sizeof(PEB32);
+            status = NtAllocateVirtualMemory(NtCurrentProcess(), &wowPeb, 32, &size, MEM_COMMIT, PAGE_READWRITE);
+            if (!NT_SUCCESS(status))
+            {
+                DPRINT("PEB32 Allocation failed: %lx\n", status);
+                return FALSE;
+            }
+            
+            procParams = build_wow64_parameters(currentTeb->ProcessEnvironmentBlock->ProcessParameters);
+            wowPeb->ProcessParameters = PtrToUlong(procParams);
+            
+            /* FIXME: hack for process heaps */
+            wowPeb->MaximumNumberOfHeaps = sizeof(fixmeProcessHeaps) / sizeof(*fixmeProcessHeaps);
+            wowPeb->ProcessHeaps = PtrToUlong(fixmeProcessHeaps);
+            
+            wowPeb->ImageBaseAddress = PtrToUlong(clientProgram);
+            
+            /* Set the 64 bit Teb's TlsSlots[1] to the TEB32 before setting process 
+               information. */
+            /* FIXME: This is NOT Wine compatible! Wine uses Peb->WowTebOffset which is 
+               only present for NTDDI_VERSION >= NTDDI_WIN10, and uses this TLS entry
+               for its own structures. Since we do not use them, this entry should be
+               free for now. */
+            NtCurrentTeb()->TlsSlots[1] = wowTeb;
+            
+            DPRINT("Initializing PEB32 and TEB32\n");
+            wowTeb->NtTib.Self = (ULONG)(ULONG_PTR)wowTeb;
+            
+            wowTeb->StaticUnicodeString.Length = 0;
+            wowTeb->StaticUnicodeString.MaximumLength = sizeof(fixmeStaticUnicodeString);
+            wowTeb->StaticUnicodeString.Buffer = PtrToUlong(fixmeStaticUnicodeString);
+            
+            /* CHECKME */
+            wowPeb->OemCodePageData = PtrToUlong(&oemCopy);
+            wowPeb->AnsiCodePageData = PtrToUlong(&ansiCopy);
+            RtlCopyMemory(&oemCopy, currentPeb->OemCodePageData, sizeof(oemCopy));
+            RtlCopyMemory(&ansiCopy, currentPeb->AnsiCodePageData, sizeof(ansiCopy));
+            
+            /* TODO: Check types - _WOW64_PROCESS has only one field, is this supposed to be the PEB?
+               According to https://stackoverflow.com/a/69171561 - yes, it is. This is, however, quite a hacky way 
+               to set it. */
+            status = NtSetInformationProcess(NtCurrentProcess(), ProcessWow64Information, &wowPeb, sizeof(wowPeb));
+            if (!NT_SUCCESS(status))
+            {
+                DPRINT("Setting info failed: %lx\n", status);
+                return FALSE;
+            }
+            
+            status = NtQueryInformationProcess(NtCurrentProcess(), ProcessWow64Information, &wowPeb, sizeof(wowPeb), NULL);
+            if (!NT_SUCCESS(status))
+            {
+                DPRINT("Getting info failed: %lx\n", status);
+                return FALSE;
+            }
+            
+            DPRINT("Got PEB32 address: %p, TEB32 %p\n", wowPeb, NtCurrentTeb()->TlsSlots[1]);
+            
+            void SetupFs(ULONG_PTR segSelector);
+            SetupFs(0x0053);
+            
+            /* Change image path name */
+            procParams->ImagePathName.Buffer = (ULONG)(ULONG_PTR)TMP_TARGET_PROGRAM;
+            procParams->ImagePathName.Length = sizeof(TMP_TARGET_PROGRAM) - sizeof(WCHAR);
+            procParams->ImagePathName.MaximumLength = sizeof(TMP_TARGET_PROGRAM);
+            procParams->Flags |=  RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
+            
+            wowTeb->ProcessEnvironmentBlock = (ULONG)(ULONG_PTR)wowPeb;
+            
+            status = LdrGetProcedureAddress(ntdll32, &importStr, 0, &proc);
+            if (!NT_SUCCESS(status)) 
+            {
+                DPRINT1("Couldn't find LdrInitializeThunk in 32-bit ntdll.dll.\n");
+                return FALSE;
+            }
+            DPRINT("Getting init function ptr %p\n", proc);
+            
+            void Enter32(PVOID where, ULONG_PTR);
+            
+            DPRINT("Setting WOW32Reserved to local handler %p\n", handler);
+            ASSERT((((ULONG_PTR)handler) & ~0xFFFFFFFF) == 0);
+            wowTeb->WOW32Reserved = (ULONG)(ULONG_PTR)handler;
+            
+            //__debugbreak();
+            
+            /* TODO: this should be in a thread */
+            DPRINT("Entering\n");
+            Enter32(proc, (ULONG_PTR)ntdll32);
+            
+            return TRUE;
+        }
+        
+        default: /* TODO */
+            return TRUE;
     }
-    
-    if (clientProgram != (HMODULE)0x400000)
-    {
-        wprintf(L"Warning: the default test program for run32on64 has base address 0x400000, "
-                 "ReactOS ntdll!LdrpInitializeProcess is always called with Context != NULL, "
-                 "which means relocation is impossible? Are you loading a different image?\n"
-                 "(loaded image base 0x%p)\n", clientProgram);
-    }
-    
-    if (ntdll32 == ntdll64)
-    {
-        wprintf(L"Remapping due to conflict.\n");
-        ntdll32 = LoadLibraryW(L"D\\ntdll32.dll");
-        PrintError(GetLastError());
-    }
-    
-    PTEB currentTeb = NtCurrentTeb();
-    wprintf(L"Current TEB %p\n", currentTeb);
-    
-    PPEB currentPeb = currentTeb->ProcessEnvironmentBlock;
-    
-    wowTeb = NULL;
-    wowPeb = NULL;
-    procParams = NULL;
-    
-    /* These allocations are undone on process exit (not explicitly, though). */
-    size = sizeof(TEB32);
-    status = NtAllocateVirtualMemory(NtCurrentProcess(), &wowTeb, 32, &size, MEM_COMMIT, PAGE_READWRITE);
-    if (!NT_SUCCESS(status))
-    {
-        wprintf(L"TEB32 Allocation failed: %lx\n", status);
-        return -1;
-    }
-    
-    size = sizeof(PEB32);
-    status = NtAllocateVirtualMemory(NtCurrentProcess(), &wowPeb, 32, &size, MEM_COMMIT, PAGE_READWRITE);
-    if (!NT_SUCCESS(status))
-    {
-        wprintf(L"PEB32 Allocation failed: %lx\n", status);
-        return -1;
-    }
-    
-    procParams = build_wow64_parameters(currentTeb->ProcessEnvironmentBlock->ProcessParameters);
-    wowPeb->ProcessParameters = PtrToUlong(procParams);
-    
-    /* FIXME: hack for process heaps */
-    wowPeb->MaximumNumberOfHeaps = sizeof(fixmeProcessHeaps) / sizeof(*fixmeProcessHeaps);
-    wowPeb->ProcessHeaps = PtrToUlong(fixmeProcessHeaps);
-    
-    wowPeb->ImageBaseAddress = PtrToUlong(clientProgram);
-    
-    /* Set the 64 bit Teb's TlsSlots[1] to the TEB32 before setting process 
-       information. */
-    /* FIXME: This is NOT Wine compatible! Wine uses Peb->WowTebOffset which is 
-       only present for NTDDI_VERSION >= NTDDI_WIN10, and uses this TLS entry
-       for its own structures. Since we do not use them, this entry should be
-       free for now. */
-    NtCurrentTeb()->TlsSlots[1] = wowTeb;
-    
-    wprintf(L"Initializing PEB32 and TEB32\n");
-    wowTeb->NtTib.Self = (ULONG)(ULONG_PTR)wowTeb;
-    
-    wowTeb->StaticUnicodeString.Length = 0;
-    wowTeb->StaticUnicodeString.MaximumLength = sizeof(fixmeStaticUnicodeString);
-    wowTeb->StaticUnicodeString.Buffer = PtrToUlong(fixmeStaticUnicodeString);
-    
-    /* CHECKME */
-    wowPeb->OemCodePageData = PtrToUlong(&oemCopy);
-    wowPeb->AnsiCodePageData = PtrToUlong(&ansiCopy);
-    RtlCopyMemory(&oemCopy, currentPeb->OemCodePageData, sizeof(oemCopy));
-    RtlCopyMemory(&ansiCopy, currentPeb->AnsiCodePageData, sizeof(ansiCopy));
-    
-    /* TODO: Check types - _WOW64_PROCESS has only one field, is this supposed to be the PEB?
-       According to https://stackoverflow.com/a/69171561 - yes, it is. This is, however, quite a hacky way 
-       to set it. */
-    status = NtSetInformationProcess(NtCurrentProcess(), ProcessWow64Information, &wowPeb, sizeof(wowPeb));
-    if (!NT_SUCCESS(status))
-    {
-        wprintf(L"Setting info failed: %lx\n", status);
-        return -1;
-    }
-    
-    status = NtQueryInformationProcess(NtCurrentProcess(), ProcessWow64Information, &wowPeb, sizeof(wowPeb), NULL);
-    if (!NT_SUCCESS(status))
-    {
-        wprintf(L"Getting info failed: %lx\n", status);
-        return -1;
-    }
-    
-    wprintf(L"Got PEB32 address: %p, TEB32 %p\n", wowPeb, NtCurrentTeb()->TlsSlots[1]);
-    
-    void SetupFs(ULONG_PTR segSelector);
-    SetupFs(0x0053);
-    
-    /* Change image path name */
-    procParams->ImagePathName.Buffer = (ULONG)(ULONG_PTR)TMP_TARGET_PROGRAM;
-    procParams->ImagePathName.Length = sizeof(TMP_TARGET_PROGRAM) - sizeof(WCHAR);
-    procParams->ImagePathName.MaximumLength = sizeof(TMP_TARGET_PROGRAM);
-    procParams->Flags |=  RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
-    
-    wowTeb->ProcessEnvironmentBlock = (ULONG)(ULONG_PTR)wowPeb;
-    
-    FARPROC proc = GetProcAddress(ntdll32, "LdrInitializeThunk");
-    wprintf(L"Getting init function ptr %p\n", proc);
-    
-    void Enter32(FARPROC where, ULONG_PTR);
-    
-    wprintf(L"Setting WOW32Reserved to local handler %p\n", handler);
-    assert((((ULONG_PTR)handler) & ~0xFFFFFFFF) == 0);
-    wowTeb->WOW32Reserved = (ULONG)(ULONG_PTR)handler;
-    
-    //__debugbreak();
-    wprintf(L"Entering\n");
-    Enter32(proc, (ULONG_PTR)ntdll32);
-    
-    while(1);
-    return 0;
 }

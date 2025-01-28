@@ -7,7 +7,9 @@
 #include <ntndk.h>
 #include "struct32.h"
 
-/* FIXME: See run32on64.c */
+#include <debug.h>
+
+/* FIXME: See wow64.c */
 // #define WOW64_TLS_CPURESERVED      1
 #define WOW64_TLS_TEMPLIST         3
 #define WOW64_TLS_USERCALLBACKDATA 5
@@ -16,7 +18,7 @@
 #define WOW64_TLS_WOW64INFO        10
 #define WOW64_TLS_MAX_NUMBER       19
 
-#define FIXME(...) do { printf(__VA_ARGS__); __debugbreak(); } while(0);
+#define FIXME(...) do { DPRINT1(__VA_ARGS__); __debugbreak(); } while(0);
 
 static inline ULONG get_ulong( UINT **args ) { return *(*args)++; }
 static inline HANDLE get_handle( UINT **args ) { return LongToHandle( *(*args)++ ); }
@@ -98,7 +100,7 @@ static BOOL is_process_wow64( HANDLE handle )
 {
     ULONG_PTR info;
 
-    if (handle == GetCurrentProcess()) return TRUE;
+    if (handle == NtCurrentProcess()) return TRUE;
     if (NtQueryInformationProcess( handle, ProcessWow64Information, &info, sizeof(info), NULL ))
         return FALSE;
     return !!info;
@@ -287,7 +289,7 @@ extern void put_section_image_info( SECTION_IMAGE_INFORMATION32 *info32,
 static void put_vm_counters( VM_COUNTERS_EX32 *info32, const VM_COUNTERS_EX *info,
                              ULONG size )
 {
-    wprintf(L"UNIMPLEMENTED");
+    DPRINT("UNIMPLEMENTED");
     __debugbreak();
 }
 

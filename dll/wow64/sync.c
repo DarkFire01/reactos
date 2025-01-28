@@ -1443,7 +1443,7 @@ NTSTATUS WINAPI wow64_NtSecureConnectPort( UINT *args )
     
     unicode_str_32to64(&portName, PortName32);
     
-    wprintf(L"Port name %ls\n", portName.Buffer);
+    DPRINT("Port name %ls\n", portName.Buffer);
     
     status = NtSecureConnectPort(&result, 
                                  &portName, 
@@ -1457,7 +1457,7 @@ NTSTATUS WINAPI wow64_NtSecureConnectPort( UINT *args )
     
     *PortHandle = HandleToULong(result);
     
-    wprintf(L"SecureConnectPort: %lX\n", status);
+    DPRINT("SecureConnectPort: %lX\n", status);
     return status;
 #endif
 }
