@@ -1151,7 +1151,7 @@ CsrCaptureArguments(IN PCSR_THREAD CsrThread,
         {
 #ifdef CSR_DBG
             DPRINT1("*** CSRSS: CaptureBuffer outside of ClientView 1\n");
-            __debugbreak();
+            if (NtCurrentPeb()->BeingDebugged) DbgBreakPoint();
 #endif
             /* Return failure */
             ApiMessage->Status = STATUS_INVALID_PARAMETER;
@@ -1171,7 +1171,7 @@ CsrCaptureArguments(IN PCSR_THREAD CsrThread,
         {
 #ifdef CSR_DBG
             DPRINT1("*** CSRSS: CaptureBuffer outside of ClientView 2\n");
-            __debugbreak();
+            if (NtCurrentPeb()->BeingDebugged) DbgBreakPoint();
 #endif
             /* Return failure */
             ApiMessage->Status = STATUS_INVALID_PARAMETER;
@@ -1193,7 +1193,7 @@ CsrCaptureArguments(IN PCSR_THREAD CsrThread,
         {
 #ifdef CSR_DBG
             DPRINT1("*** CSRSS: CaptureBuffer %p has bad length\n", ClientCaptureBuffer);
-            __debugbreak();
+            if (NtCurrentPeb()->BeingDebugged) DbgBreakPoint();
 #endif
             /* Return failure */
             ApiMessage->Status = STATUS_INVALID_PARAMETER;
@@ -1233,7 +1233,7 @@ CsrCaptureArguments(IN PCSR_THREAD CsrThread,
     {
 #ifdef CSR_DBG
         DPRINT1("*** CSRSS: Took exception during capture %x\n", _SEH2_GetExceptionCode());
-        __debugbreak();
+        if (NtCurrentPeb()->BeingDebugged) DbgBreakPoint();
 #endif
         /* Failure, free the buffer and return */
         RtlFreeHeap(CsrHeap, 0, ServerCaptureBuffer);
@@ -1270,7 +1270,7 @@ CsrCaptureArguments(IN PCSR_THREAD CsrThread,
             {
 #ifdef CSR_DBG
                 DPRINT1("*** CSRSS: CaptureBuffer MessagePointer outside of message\n");
-                __debugbreak();
+                if (NtCurrentPeb()->BeingDebugged) DbgBreakPoint();
 #endif
                 /* Invalid pointer, fail */
                 ApiMessage->Status = STATUS_INVALID_PARAMETER;
@@ -1292,7 +1292,7 @@ CsrCaptureArguments(IN PCSR_THREAD CsrThread,
             {
 #ifdef CSR_DBG
                 DPRINT1("*** CSRSS: CaptureBuffer MessagePointer outside of ClientView\n");
-                __debugbreak();
+                if (NtCurrentPeb()->BeingDebugged) DbgBreakPoint();
 #endif
                 /* Invalid pointer, fail */
                 ApiMessage->Status = STATUS_INVALID_PARAMETER;

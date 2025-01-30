@@ -19,6 +19,7 @@
 
 PCSR_SERVER_DLL CsrLoadedServerDll[CSR_SERVER_DLL_MAX];
 PVOID CsrSrvSharedSectionHeap = NULL;
+/* Hardcoded value for WOW64: FIXME!!! */
 PVOID CsrSrvSharedSectionBase = (PVOID)0xE120000ULL;
 PVOID *CsrSrvSharedStaticServerData = NULL;
 ULONG CsrSrvSharedSectionSize = 0;
@@ -501,25 +502,7 @@ CsrSrvAttachSharedSection(IN PCSR_PROCESS CsrProcess OPTIONAL,
                                     ViewUnmap,
                                     SEC_NO_CHANGE,
                                     PAGE_EXECUTE_READ);
-                                    
-        DPRINT1("mapping status %lX, %p for %p", Status, CsrSrvSharedSectionBase, CsrProcess->ProcessHandle);
-                                    
-        if (!NT_SUCCESS(Status) && 
-            /* FIXME: Until WOW64 process init is moved out of the temporary 
-               run32on64, there is a possibility, that this was called by
-               32-bit kernel32, and this is already mapped by run32on64.
-
-               This is bad, and probably creates a ton of race conditions. */
-            Status != STATUS_CONFLICTING_ADDRESSES)
-        {
-            DPRINT1("Status %lX: %p %p\n", Status, CsrSrvSharedSection, CsrSrvSharedSectionBase);
-            return Status;
-        }
-    }
-    else
-    {
-        DPRINT1("no process\n");
-        __debugbreak();
+        if (!NT_SUCCESS(Status)) return Status;
     }
 
     /* Write the values in the Connection Info structure */
