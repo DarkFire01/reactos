@@ -251,6 +251,8 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
     
     status = STATUS_NOT_IMPLEMENTED;
 
+    DPRINT1("[Syscall %lX:%hs]\n", syscallNum, mapping[syscallNum]);
+
     switch (syscallNum)
     {
         /* file.c */
@@ -415,6 +417,8 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
             HANDLE hThread = get_handle(&pArgs);
             ULONG uCode = get_ulong(&pArgs);
             
+            DPRINT1("Terminating thread %p with a WOW64 call from %p\n", hThread, NtCurrentProcess());
+            
             status = NtTerminateThread(hThread, uCode);
             break;
         }
@@ -423,7 +427,7 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
             HANDLE hProcess = get_handle(&pArgs);
             ULONG uCode = get_ulong(&pArgs);
             
-            DPRINT("Terminating process %p with a WOW64 call from %p\n", hProcess, NtCurrentProcess());
+            DPRINT1("Terminating process %p with a WOW64 call from %p\n", hProcess, NtCurrentProcess());
             
             status = NtTerminateProcess(hProcess, uCode);
             break;
@@ -438,9 +442,8 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
         
         default:
         {
-            DPRINT1("[Syscall %lX:%hs]\n", syscallNum, mapping[syscallNum]);
-            DPRINT1("Unhandled 32-bit syscall 0x%lX(%ld args at %p)\n", syscallNum, numArgs, pArgs);
-            ASSERT(FALSE);
+            DPRINT1("WARNING: Unhandled 32-bit syscall 0x%lX(%ld args at %p)\n", syscallNum, numArgs, pArgs);
+            status = STATUS_NOT_IMPLEMENTED;
         }
     }
     
@@ -448,7 +451,6 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
 }
 
 #define TMP_WOW_DIR "D:"
-#define TMP_TARGET_PROGRAM "wow64test.exe"
 
 BOOL
 WINAPI
@@ -456,44 +458,45 @@ DllMain(HANDLE hDll,
         DWORD dwReason,
         LPVOID lpReserved)
 {
-    return FALSE;
+    return TRUE;
 }
 
+__declspec(dllexport)
 void WINAPI Wow64LdrpInitialize(CONTEXT *context)
 {
+    /* FIXME: This is process initialization, this should only done once, not for every thread. */
     NTSTATUS status;
     PRTL_USER_PROCESS_PARAMETERS32 procParams;
     PPEB32 wowPeb;
     PTEB32 wowTeb;
     SIZE_T size;
     NLS_FILE_HEADER ansiCopy, oemCopy;
+    
+    /* FIXME: stack allocated variables for PEB/TEB contents */
     ULONG_PTR fixmeProcessHeaps[100];
     WCHAR fixmeStaticUnicodeString[256];
+    
     PVOID proc;
     
-    UNICODE_STRING targetStr = RTL_CONSTANT_STRING(L"" TMP_TARGET_PROGRAM);
-    UNICODE_STRING ntdll32Str = RTL_CONSTANT_STRING(L"ntdll.dll");
+    UNICODE_STRING ntdll32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR "\\ntdll.dll");
     
     ANSI_STRING importStr = RTL_CONSTANT_STRING("LdrInitializeThunk");
     
-    HMODULE clientProgram, ntdll32;
+    HMODULE ntdll32;
+    PVOID clientProgram = NtCurrentPeb()->ImageBaseAddress;
     
     status = LdrLoadDll(L"" TMP_WOW_DIR "\\ntdll.dll", 0, &ntdll32Str, &ntdll32);
     ASSERT(NT_SUCCESS(status));
     
-    status = LdrLoadDll(L"" TMP_WOW_DIR "\\" TMP_TARGET_PROGRAM, 0, &targetStr, &clientProgram);
-    ASSERT(NT_SUCCESS(status));
+    __debugbreak();
     
-    ASSERT(clientProgram == NULL || ntdll32 == NULL);
-    
-    if (clientProgram != (HMODULE)0x400000)
+    if ((ULONG_PTR)clientProgram != 0x400000)
     {
         DPRINT("Warning: the default test program for run32on64 has base address 0x400000, "
                "ReactOS ntdll!LdrpInitializeProcess is always called with Context != NULL, "
                "which means relocation is impossible? Are you loading a different image?\n"
                "(loaded image base 0x%p)\n", clientProgram);
     }
-    
     
     PTEB currentTeb = NtCurrentTeb();
     DPRINT("Current TEB %p\n", currentTeb);
@@ -504,7 +507,6 @@ void WINAPI Wow64LdrpInitialize(CONTEXT *context)
     wowPeb = NULL;
     procParams = NULL;
     
-    /* These allocations are undone on process exit (not explicitly, though). */
     size = sizeof(TEB32);
     status = NtAllocateVirtualMemory(NtCurrentProcess(), &wowTeb, 32, &size, MEM_COMMIT, PAGE_READWRITE);
     if (!NT_SUCCESS(status))
@@ -574,12 +576,12 @@ void WINAPI Wow64LdrpInitialize(CONTEXT *context)
     SetupFs(0x0053);
     
     /* Change image path name */
-    procParams->ImagePathName.Buffer = (ULONG)(ULONG_PTR)TMP_TARGET_PROGRAM;
-    procParams->ImagePathName.Length = sizeof(TMP_TARGET_PROGRAM) - sizeof(WCHAR);
-    procParams->ImagePathName.MaximumLength = sizeof(TMP_TARGET_PROGRAM);
+    procParams->ImagePathName.Buffer = PtrToUlong(currentTeb->ProcessEnvironmentBlock->ProcessParameters->ImagePathName.Buffer);
+    procParams->ImagePathName.Length = currentTeb->ProcessEnvironmentBlock->ProcessParameters->ImagePathName.Length;
+    procParams->ImagePathName.MaximumLength = currentTeb->ProcessEnvironmentBlock->ProcessParameters->ImagePathName.MaximumLength;
     procParams->Flags |=  RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
     
-    wowTeb->ProcessEnvironmentBlock = (ULONG)(ULONG_PTR)wowPeb;
+    wowTeb->ProcessEnvironmentBlock = PtrToUlong(wowPeb);
     
     status = LdrGetProcedureAddress(ntdll32, &importStr, 0, &proc);
     if (!NT_SUCCESS(status)) 

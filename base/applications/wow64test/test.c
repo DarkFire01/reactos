@@ -8,6 +8,8 @@ int wmainCRTStartup()
     
     WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE), wszHello, sizeof(wszHello) / sizeof(*wszHello) - 1, NULL, NULL);
     
+    while (1);
+    
     TerminateProcess(GetCurrentProcess(), 0);
     return 0;
 }

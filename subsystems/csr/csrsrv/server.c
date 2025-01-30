@@ -19,7 +19,7 @@
 
 PCSR_SERVER_DLL CsrLoadedServerDll[CSR_SERVER_DLL_MAX];
 PVOID CsrSrvSharedSectionHeap = NULL;
-PVOID CsrSrvSharedSectionBase = (PVOID)0xE1200000ULL;
+PVOID CsrSrvSharedSectionBase = (PVOID)0xE120000ULL;
 PVOID *CsrSrvSharedStaticServerData = NULL;
 ULONG CsrSrvSharedSectionSize = 0;
 HANDLE CsrSrvSharedSection = NULL;
@@ -490,63 +490,6 @@ CsrSrvAttachSharedSection(IN PCSR_PROCESS CsrProcess OPTIONAL,
     /* Check if we have a process */
     if (CsrProcess)
     {
-#if 0
-        ULONG_PTR Result;
-
-        /* Check if this is a WOW64 process */
-        Status = NtQueryInformationProcess(CsrProcess->ProcessHandle,
-                                           ProcessWow64Information,
-                                           &Result,
-                                           sizeof(Result),
-                                           NULL);
-                                           
-        DPRINT1("WowProcess : %lX\n", Result);
-                                           
-        if (Result != 0)
-        {
-            ULONG_PTR NewSectionAddress;
-            /* FIXME: ughhhh - why does NtMapViewOfSection only allow 21 zero bits?? */
-            NewSectionAddress = 0xE1200000;
-            
-            Status = NtMapViewOfSection(CsrSrvSharedSection,
-                                        CsrProcess->ProcessHandle,
-                                        (PVOID*)&NewSectionAddress,
-                                        0, 
-                                        0,
-                                        NULL,
-                                        &ViewSize,
-                                        ViewUnmap,
-                                        SEC_NO_CHANGE,
-                                        PAGE_EXECUTE_READ);
-            
-            DPRINT1("Mapping to 32 bit NewSectionAddress %p with status %lX\n", NewSectionAddress, Status);
-            
-            if (!NT_SUCCESS(Status) && 
-                /* FIXME: Until WOW64 process init is moved out of the temporary 
-                   run32on64, there is a possibility, that this was called by
-                   32-bit kernel32, and this is already mapped by run32on64.
-
-                   This is bad, and probably creates a ton of race conditions. */
-                Status != STATUS_CONFLICTING_ADDRESSES)
-            {
-                DPRINT1("Status %lX: %p %p\n", Status, CsrSrvSharedSection, CsrSrvSharedSectionBase);
-                return Status;
-            }
-            
-            /* Write the values in the Connection Info structure */
-            ConnectInfo->SharedSectionBase = (PVOID)NewSectionAddress;
-            /* This probably won't work :( */
-            ConnectInfo->SharedSectionHeap = (PVOID)((ULONG_PTR)CsrSrvSharedSectionHeap - (ULONG_PTR)CsrSrvSharedSectionBase + NewSectionAddress);
-            ConnectInfo->SharedStaticServerData = (PVOID)((ULONG_PTR)CsrSrvSharedStaticServerData - (ULONG_PTR)CsrSrvSharedSectionBase + NewSectionAddress);
-
-            DPRINT1("Mappings %p %p %p\n", CsrSrvSharedSectionBase, CsrSrvSharedSectionHeap, CsrSrvSharedStaticServerData);
-            DPRINT1("Mappings %p %p %p\n", ConnectInfo->SharedSectionBase, ConnectInfo->SharedSectionHeap, ConnectInfo->SharedStaticServerData);
-
-            /* Return success */
-            return STATUS_SUCCESS;
-        }
-#endif
-        
         /* Map the section into this process */
         Status = NtMapViewOfSection(CsrSrvSharedSection,
                                     CsrProcess->ProcessHandle,
@@ -558,6 +501,9 @@ CsrSrvAttachSharedSection(IN PCSR_PROCESS CsrProcess OPTIONAL,
                                     ViewUnmap,
                                     SEC_NO_CHANGE,
                                     PAGE_EXECUTE_READ);
+                                    
+        DPRINT1("mapping status %lX, %p for %p", Status, CsrSrvSharedSectionBase, CsrProcess->ProcessHandle);
+                                    
         if (!NT_SUCCESS(Status) && 
             /* FIXME: Until WOW64 process init is moved out of the temporary 
                run32on64, there is a possibility, that this was called by
@@ -569,6 +515,11 @@ CsrSrvAttachSharedSection(IN PCSR_PROCESS CsrProcess OPTIONAL,
             DPRINT1("Status %lX: %p %p\n", Status, CsrSrvSharedSection, CsrSrvSharedSectionBase);
             return Status;
         }
+    }
+    else
+    {
+        DPRINT1("no process\n");
+        __debugbreak();
     }
 
     /* Write the values in the Connection Info structure */

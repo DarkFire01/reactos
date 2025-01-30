@@ -657,6 +657,7 @@ NTSTATUS WINAPI wow64_NtRaiseException( UINT *args )
     raise_exception( rec32, context32, first_chance, exception_record_32to64( rec32 ));
     return STATUS_SUCCESS;
 #else
+    DPRINT1("NtRaiseException");
     __debugbreak();
     ASSERT(FALSE);
     return STATUS_NOT_IMPLEMENTED;

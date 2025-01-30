@@ -25,6 +25,7 @@ UNICODE_STRING ImageExecOptionsString = RTL_CONSTANT_STRING(L"\\Registry\\Machin
 UNICODE_STRING Wow64OptionsString = RTL_CONSTANT_STRING(L"");
 UNICODE_STRING NtDllString = RTL_CONSTANT_STRING(L"ntdll.dll");
 UNICODE_STRING Kernel32String = RTL_CONSTANT_STRING(L"kernel32.dll");
+UNICODE_STRING Wow64String = RTL_CONSTANT_STRING(L"wow64.dll");
 const UNICODE_STRING LdrpDotLocal = RTL_CONSTANT_STRING(L".Local");
 
 BOOLEAN LdrpInLdrInit;
@@ -1789,6 +1790,7 @@ LdrpInitializeProcess(IN PCONTEXT Context,
     ULONG ComSectionSize;
     ANSI_STRING BaseProcessInitPostImportName = RTL_CONSTANT_STRING("BaseProcessInitPostImport");
     ANSI_STRING BaseQueryModuleDataName = RTL_CONSTANT_STRING("BaseQueryModuleData");
+    ANSI_STRING Wow64LdrpInitializeImportName = RTL_CONSTANT_STRING("Wow64LdrpInitialize");
     PVOID OldShimData;
     OBJECT_ATTRIBUTES ObjectAttributes;
     //UNICODE_STRING LocalFileName, FullImageName;
@@ -1820,6 +1822,9 @@ LdrpInitializeProcess(IN PCONTEXT Context,
     PWCHAR Current;
     ULONG ExecuteOptions = 0;
     PVOID ViewBase;
+#if defined(_WOW64) && defined(_WIN64) 
+    VOID (*pWow64LdrpInitialize)(PVOID) = NULL;
+#endif
 
     /* Set a NULL SEH Filter */
     RtlSetUnhandledExceptionFilter(NULL);
@@ -2342,6 +2347,39 @@ LdrpInitializeProcess(IN PCONTEXT Context,
         DPRINT1("We don't support .NET applications yet\n");
     }
 
+#if defined(_WOW64) && defined(_WIN64) 
+    if (NtHeader->FileHeader.Machine == IMAGE_FILE_MACHINE_I386)
+    {
+        PVOID Wow64BaseAddress;
+
+        DPRINT1("Loading WOW64.DLL\n");
+        
+        Status = LdrLoadDll(NULL, NULL, &Wow64String, &Wow64BaseAddress);
+        
+        if (!NT_SUCCESS(Status))
+        {
+            if (ShowSnaps)
+                DPRINT1("LDR: Unable to load %wZ, Status=0x%08lx\n", &Wow64String, Status);
+            return Status;
+        }
+        
+        Status = LdrGetProcedureAddress(Wow64BaseAddress,
+                                        &Wow64LdrpInitializeImportName,
+                                        0,
+                                        (PVOID*)&pWow64LdrpInitialize);
+                                        
+        if (!NT_SUCCESS(Status))
+        {
+            if (ShowSnaps)
+                DPRINT1("LDR: Unable to find WOW64 init function, Status=0x%08lx\n", Status);
+            return Status;
+        }
+        
+        pWow64LdrpInitialize(Context);
+    }
+    /* Do not load subsystem DLLs, if this is a WOW64 image */
+    else
+#endif
     if (NtHeader->OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_WINDOWS_GUI ||
         NtHeader->OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI)
     {

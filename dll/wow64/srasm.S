@@ -32,8 +32,7 @@ Enter32:
     db 48h
     retf
 retpoint:
-    push 00401010h
-    mov eax, 7C656FE0h
+    mov eax, 00401010h
     
     db 0ffh
     db 0d0h
