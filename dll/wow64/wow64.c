@@ -471,6 +471,7 @@ void WINAPI Wow64LdrpInitialize(CONTEXT *context)
     PTEB32 wowTeb;
     SIZE_T size;
     NLS_FILE_HEADER ansiCopy, oemCopy;
+    IMAGE_NT_HEADERS32* ntHeaders;
     
     /* FIXME: stack allocated variables for PEB/TEB contents */
     ULONG_PTR fixmeProcessHeaps[100];
@@ -591,15 +592,17 @@ void WINAPI Wow64LdrpInitialize(CONTEXT *context)
     }
     DPRINT("Getting init function ptr %p\n", proc);
     
-    void Enter32(PVOID where, ULONG_PTR);
+    void Enter32(PVOID where, ULONG_PTR ntdll32Base, ULONG_PTR entrypoint);
     
     DPRINT("Setting WOW32Reserved to local handler %p\n", handler);
     ASSERT((((ULONG_PTR)handler) & ~0xFFFFFFFF) == 0);
     wowTeb->WOW32Reserved = (ULONG)(ULONG_PTR)handler;
     
+    ntHeaders = (IMAGE_NT_HEADERS32*)RtlImageNtHeader(currentPeb->ImageBaseAddress);
+    
     //__debugbreak();
     
     /* TODO: this should be in a thread */
     DPRINT("Entering\n");
-    Enter32(proc, (ULONG_PTR)ntdll32);
+    Enter32(proc, (ULONG_PTR)ntdll32, (ULONG_PTR)currentPeb->ImageBaseAddress + (ULONG_PTR)ntHeaders->OptionalHeader.AddressOfEntryPoint);
 }

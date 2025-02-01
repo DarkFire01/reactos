@@ -7,15 +7,7 @@ __readfsdword:
    
 PUBLIC Enter32
 Enter32:
-    // Push KGDT64_R3_CODE and exchange it with the return address
-    sub rsp, 8
-    mov rax, [rsp + 8]
-    mov [rsp], rax
-    mov rax, 0033h
-    mov [rsp + 8], rax
-    
-    // Hardcoded hacks for ntdll32!LdrInitializeThunk
-    push 0
+    push r8 
     push rdx
     
     // Push the return address for the 32 bit procedure
@@ -32,10 +24,7 @@ Enter32:
     db 48h
     retf
 retpoint:
-    mov eax, 00401010h
-    
-    db 0ffh
-    db 0d0h
+    ret
 
 PUBLIC SetupFs
 SetupFs:
