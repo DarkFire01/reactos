@@ -53,7 +53,7 @@ SetUpConsoleInfo(IN BOOLEAN CaptureTitle,
                  IN OUT LPDWORD pTitleLength,
                  IN OUT LPWSTR* lpTitle OPTIONAL,
                  IN OUT LPDWORD pDesktopLength,
-                 IN OUT LPWSTR* lpDesktop OPTIONAL,
+                 IN OUT LPC_PTRTYPE(LPWSTR)* lpDesktop OPTIONAL,
                  IN OUT PCONSOLE_START_INFO ConsoleStartInfo);
 
 VOID

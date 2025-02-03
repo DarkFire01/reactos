@@ -136,7 +136,7 @@ SetUpConsoleInfo(IN BOOLEAN CaptureTitle,
                  IN OUT LPDWORD pTitleLength,
                  IN OUT LPWSTR* lpTitle OPTIONAL,
                  IN OUT LPDWORD pDesktopLength,
-                 IN OUT LPWSTR* lpDesktop OPTIONAL,
+                 IN OUT LPC_PTRTYPE(LPWSTR)* lpDesktop OPTIONAL,
                  IN OUT PCONSOLE_START_INFO ConsoleStartInfo)
 {
     PRTL_USER_PROCESS_PARAMETERS Parameters = NtCurrentPeb()->ProcessParameters;
@@ -202,12 +202,12 @@ SetUpConsoleInfo(IN BOOLEAN CaptureTitle,
         *pDesktopLength = Length;
 
         /* Return a pointer to the data */
-        *lpDesktop = Parameters->DesktopInfo.Buffer;
+        *lpDesktop = (LPC_PTRTYPE(LPWSTR))Parameters->DesktopInfo.Buffer;
     }
     else
     {
         *pDesktopLength = 0;
-        if (lpDesktop) *lpDesktop = NULL;
+        if (lpDesktop) *lpDesktop = (LPC_PTRTYPE(LPWSTR))NULL;
     }
 
     if (Parameters->WindowFlags & STARTF_USEFILLATTRIBUTE)
@@ -677,7 +677,7 @@ ConDllInitialize(IN ULONG Reason,
                          &ConnectInfo.TitleLength,
                          &ConsoleTitle,
                          &ConnectInfo.DesktopLength,
-                         (PVOID)&ConnectInfo.Desktop,
+                         &ConnectInfo.Desktop,
                          &ConnectInfo.ConsoleStartInfo);
         DPRINT("ConsoleTitle = '%S' - Desktop = '%S'\n",
                ConsoleTitle, ConnectInfo.Desktop);
