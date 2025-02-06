@@ -515,6 +515,11 @@ LdrpInitializeThread(IN PCONTEXT Context)
     RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED ActCtx;
     NTSTATUS Status;
     PVOID EntryPoint;
+#if defined(_WOW64) && defined(_WIN64) 
+    PIMAGE_NT_HEADERS NtHeader;
+    VOID (*pWow64LdrpInitialize)(PVOID) = NULL;
+    ANSI_STRING Wow64LdrpInitializeImportName = RTL_CONSTANT_STRING("Wow64LdrpInitialize");
+#endif
 
     DPRINT("LdrpInitializeThread() called for %wZ (%p/%p)\n",
             &LdrpImageEntry->BaseDllName,
@@ -534,6 +539,42 @@ LdrpInitializeThread(IN PCONTEXT Context)
 
     /* Make sure we are not shutting down */
     if (LdrpShutdownInProgress) goto Exit;
+
+#if defined(_WOW64) && defined(_WIN64) 
+    /* Get the NT Headers */
+    NtHeader = RtlImageNtHeader(Peb->ImageBaseAddress);
+    
+    /* FIXME */
+    if (NtHeader->FileHeader.Machine == IMAGE_FILE_MACHINE_I386)
+    {
+        PVOID Wow64BaseAddress;
+
+        DPRINT1("Loading WOW64.DLL\n");
+        
+        Status = LdrLoadDll(NULL, NULL, &Wow64String, &Wow64BaseAddress);
+        
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("LDR: Unable to load %wZ, Status=0x%08lx\n", &Wow64String, Status);
+            ASSERT(FALSE);
+        }
+        
+        Status = LdrGetProcedureAddress(Wow64BaseAddress,
+                                        &Wow64LdrpInitializeImportName,
+                                        0,
+                                        (PVOID*)&pWow64LdrpInitialize);
+                                        
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("LDR: Unable to find WOW64 init function, Status=0x%08lx\n", Status);
+            ASSERT(FALSE);
+        }
+        
+        pWow64LdrpInitialize(Context);
+        __debugbreak();
+        return;
+    }
+#endif
 
     /* Allocate TLS */
     LdrpAllocateTls();
@@ -2375,6 +2416,7 @@ LdrpInitializeProcess(IN PCONTEXT Context,
             return Status;
         }
         
+        _InterlockedIncrement(&LdrpProcessInitialized);
         pWow64LdrpInitialize(Context);
     }
     /* Do not load subsystem DLLs, if this is a WOW64 image */
