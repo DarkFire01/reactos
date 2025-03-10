@@ -21,6 +21,7 @@
 #include <openssl/opensslv.h>
 #include <openssl/pkcs12.h>
 #include <openssl/x509v3.h>
+#include <openssl/rsa.h>
 #ifndef OPENSSL_NO_ENGINE
 #include <openssl/engine.h>
 #endif /* OPENSSL_NO_ENGINE */
@@ -517,7 +518,7 @@ static int cryptoapi_finish(RSA *rsa)
 	struct cryptoapi_rsa_data *priv =
 		(struct cryptoapi_rsa_data *) RSA_meth_get0_app_data(meth);
 	cryptoapi_free_data(priv);
-	RSA_meth_set0_app_data(meth, NULL);
+	//RSA_meth_set0_app_data(meth, 0);
 #endif
 	return 1;
 }

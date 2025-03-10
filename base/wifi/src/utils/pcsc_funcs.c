@@ -125,6 +125,12 @@ struct scard_data {
 
 /*#ifdef __MINGW32_VERSION*/
 #ifndef UNICODE
+#ifndef WINSCARDAPI
+#define WINSCARDAPI
+#endif
+#ifndef WINSCARDDATA
+#define WINSCARDDATA __declspec(dllimport)
+#endif
 /* MinGW does not yet support WinScard, so load the needed functions
  * dynamically from winscard.dll for now. */
 

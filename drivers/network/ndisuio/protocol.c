@@ -8,7 +8,7 @@
 
 #include "ndisuio.h"
 
-#define NDEBUG
+//#define NDEBUG
 #include <debug.h>
 
 VOID
@@ -529,6 +529,10 @@ BindAdapterByName(PNDIS_STRING DeviceName)
     ExInterlockedInsertTailList(&GlobalAdapterList,
                                 &AdapterContext->ListEntry,
                                 &GlobalAdapterListLock);
+
+    
+    /* Copy the device desc into the adapter context */
+    NdisQueryAdapterInstanceName(&AdapterContext->DeviceDesc, AdapterContext->BindingHandle);
 
     return STATUS_SUCCESS;
 }

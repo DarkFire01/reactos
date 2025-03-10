@@ -1053,7 +1053,7 @@ ndisBindMiniportsToProtocol(OUT PNDIS_STATUS Status, IN PPROTOCOL_BINDING Protoc
          */
 
         PathLength = sizeof(SERVICES_KEY) +                               /* \Registry\Machine\System\CurrentControlSet\Services\ */
-        wcslen( DeviceName.Buffer + 8 ) * sizeof(WCHAR) + /* Adapter1  (extracted from \Device\Adapter1)          */
+        wcslen( DeviceName.Buffer + 8 ) * sizeof(WCHAR) + /* Adapter1  (extracted from \DEVICE\Adapter1)          */
         sizeof(PARAMETERS_KEY) +                                      /* \Parameters\                                         */
         ProtocolCharacteristics->Name.Length + sizeof(WCHAR);                         /* Tcpip                                                */
 

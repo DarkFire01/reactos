@@ -11,7 +11,7 @@
 
 #include "includes.h"
 #include <stdio.h>
-#ifdef CONFIG_USE_NDISUIO
+#if 1
 #include <winsock2.h>
 #include <ntddndis.h>
 #else /* CONFIG_USE_NDISUIO */
@@ -19,7 +19,7 @@
 #include <winsock2.h>
 #endif /* CONFIG_USE_NDISUIO */
 
-#ifdef CONFIG_USE_NDISUIO
+#if 1
 
 /* from nuiouser.h */
 #define FSCTL_NDISUIO_BASE      FILE_DEVICE_NETWORK

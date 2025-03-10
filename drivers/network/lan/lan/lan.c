@@ -1446,7 +1446,7 @@ DriverEntry(
 {
     PDEVICE_OBJECT DeviceObject;
     PLAN_DEVICE_EXT DeviceExt;
-    UNICODE_STRING wstrDeviceName = RTL_CONSTANT_STRING(L"\\Device\\Lan");
+    UNICODE_STRING wstrDeviceName = RTL_CONSTANT_STRING(L"\\DEVICE\\Lan");
     UNICODE_STRING LanString = RTL_CONSTANT_STRING(L"LAN");
     NTSTATUS Status;
 

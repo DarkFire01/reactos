@@ -5,11 +5,10 @@ include_directories(
 )
 
 include_directories(
-    "openssl-1.1.1-x86"
-    "openssl-1.1.1-x86/include/"
-    "openssl-1.1.1-x86/include/openssl"
-    "openssl-1.1.1-x86/include/internal"
+    "openssl-1.1.1w-uni/openssl-1.1/x86/includeopenssl"
+    "openssl-1.1.1w-uni/openssl-1.1/x86/include"
 )
+
 set(COMMON_SOURCES
     "src/common/dragonfly.c"
     "src/common/hw_features_common.c"
@@ -44,7 +43,6 @@ set(COMMON_SOURCES
     "src/drivers/driver_common.c"
     "src/drivers/driver_ndis.c"
     "src/drivers/driver_ndis_.c"
-    "src/drivers/ndis_events.c"
     "src/eap_common/chap.c"
     "src/eap_common/eap_common.c"
     "src/eap_common/eap_eke_common.c"
@@ -89,7 +87,7 @@ set(COMMON_SOURCES
     "src/eap_peer/tncc.c"
     "src/eap_peer/tncc.c"
     "src/eapol_supp/eapol_supp_sm.c"
-    "src/l2_packet/l2_packet_winpcap.c"
+    "src/l2_packet/l2_packet_ndis.c"
     "src/pae/ieee802_1x_cp.c"
     "src/pae/ieee802_1x_kay.c"
     "src/pae/ieee802_1x_key.c"
@@ -109,6 +107,7 @@ set(COMMON_SOURCES
     "src/utils/pcsc_funcs.c"
     "src/utils/uuid.c"
     "src/utils/wpabuf.c"
+    "src/utils/wpa_debug.c"
     "src/wps/wps.c"
     "src/wps/wps_attr_build.c"
     "src/wps/wps_attr_parse.c"
@@ -140,6 +139,8 @@ set(COMMON_SOURCES
     "wpa_supplicant/wpas_glue.c"
     "wpa_supplicant/wpas_kay.c"
     "wpa_supplicant/wps_supplicant.c"
+    "wpa_supplicant/ctrl_iface_named_pipe.c"
+    "wpa_supplicant/ctrl_iface.c"
 )
 
 
@@ -155,7 +156,6 @@ set(COMPILE_DEFINITIONS
     PKCS12_FUNCS
     PCSC_FUNCS
     CONFIG_DRIVER_NDIS
-    CONFIG_NDIS_EVENTS_INTEGRATED
     CONFIG_USE_NDISUIO
     CONFIG_DEBUG_FILE
     EAP_MD5
@@ -214,9 +214,10 @@ set(COMPILE_DEFINITIONS
     CONFIG_SHA512
     CONFIG_SUITEB
     CONFIG_SUITEB192
+    CONFIG_CTRL_IFACE_NAMED_PIPE
     CONFIG_BGSCAN_LEARN
 )
-
+list(APPEND COMPILE_DEFINITIONS CONFIG_CTRL_IFACE CONFIG_CTRL_IFACE_NAMED_PIPE)
 add_executable(
     wpa_supplicant
     ${COMMON_SOURCES}
@@ -226,7 +227,20 @@ add_executable(
 )
 
 target_compile_definitions(wpa_supplicant PRIVATE ${COMPILE_DEFINITIONS})
-set_module_type(wpa_supplicant win32cui UNICODE)
+set_module_type(wpa_supplicant win32cui)
 target_link_libraries(wpa_supplicant conutils ${PSEH_LIB})
-add_importlibs(wpa_supplicant advapi32 msvcrt kernel32 ntdll)
+target_link_libraries(wpa_supplicant "${CMAKE_SOURCE_DIR}/base/wifi/openssl-1.1.1w-uni/openssl-1.1/x86/lib/libcrypto.lib"
+                                     "${CMAKE_SOURCE_DIR}/base/wifi/openssl-1.1.1w-uni/openssl-1.1/x86/lib/libssl.lib")
+add_importlibs(wpa_supplicant winscard iphlpapi ws2_32 crypt32 advapi32 msvcrt kernel32 ntdll)
 add_cd_file(TARGET wpa_supplicant DESTINATION reactos/system32 FOR all)
+
+
+add_executable(
+    win_if_list
+    "wpa_supplicant/win_if_list.c"
+)
+target_compile_definitions(win_if_list PRIVATE ${COMPILE_DEFINITIONS})
+set_module_type(win_if_list win32cui)
+target_link_libraries(win_if_list conutils ${PSEH_LIB})
+add_importlibs(win_if_list winscard iphlpapi ws2_32 crypt32 advapi32 msvcrt kernel32 ntdll)
+add_cd_file(TARGET win_if_list DESTINATION reactos/system32 FOR all)

@@ -1308,7 +1308,7 @@ NTSTATUS NTAPI
 DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 {
     PDEVICE_OBJECT DeviceObject;
-    UNICODE_STRING wstrDeviceName = RTL_CONSTANT_STRING(L"\\Device\\Afd");
+    UNICODE_STRING wstrDeviceName = RTL_CONSTANT_STRING(L"\\DEVICE\\Afd");
     PAFD_DEVICE_EXTENSION DeviceExt;
     NTSTATUS Status;
 

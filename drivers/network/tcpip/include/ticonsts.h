@@ -13,22 +13,22 @@
 
 #ifdef _NTTEST_
 /* Name of devices */
-#define DD_TCP_DEVICE_NAME      L"\\Device\\NTTcp"
-#define DD_UDP_DEVICE_NAME      L"\\Device\\NTUdp"
-#define DD_IP_DEVICE_NAME       L"\\Device\\NTIp"
-#define DD_RAWIP_DEVICE_NAME    L"\\Device\\NTRawIp"
+#define DD_TCP_DEVICE_NAME      L"\\DEVICE\\NTTcp"
+#define DD_UDP_DEVICE_NAME      L"\\DEVICE\\NTUdp"
+#define DD_IP_DEVICE_NAME       L"\\DEVICE\\NTIp"
+#define DD_RAWIP_DEVICE_NAME    L"\\DEVICE\\NTRawIp"
 
 /* For NDIS protocol registration */
-#define IP_DEVICE_NAME          L"\\Device\\NTIp"
+#define IP_DEVICE_NAME          L"\\DEVICE\\NTIp"
 #else
-#define DD_TCP_DEVICE_NAME      L"\\Device\\Tcp"
-#define DD_UDP_DEVICE_NAME      L"\\Device\\Udp"
-#define DD_IP_DEVICE_NAME       L"\\Device\\Ip"
-#define DD_RAWIP_DEVICE_NAME    L"\\Device\\RawIp"
+#define DD_TCP_DEVICE_NAME      L"\\DEVICE\\Tcp"
+#define DD_UDP_DEVICE_NAME      L"\\DEVICE\\Udp"
+#define DD_IP_DEVICE_NAME       L"\\DEVICE\\Ip"
+#define DD_RAWIP_DEVICE_NAME    L"\\DEVICE\\RawIp"
 
 /* For NDIS protocol registration */
 /* The DDK says you have to register with the name that's registered with SCM, e.g. tcpip */
-#define IP_DEVICE_NAME          L"\\Device\\Ip"
+#define IP_DEVICE_NAME          L"\\DEVICE\\Ip"
 #define TCPIP_PROTOCOL_NAME     L"Tcpip"
 #endif /* _NTTEST_ */
 

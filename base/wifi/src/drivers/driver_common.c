@@ -10,6 +10,12 @@
 #include "utils/common.h"
 #include "driver.h"
 
+#ifdef __REACTOS__
+static int isblank(int c)
+{
+    return c == ' ' || c == '\t';
+}
+#endif
 void wpa_scan_results_free(struct wpa_scan_results *res)
 {
 	size_t i;

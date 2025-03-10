@@ -24,6 +24,14 @@
 #include <winsmcrd.h>
 #include <scarderr.h>
 
+#define SCARD_SHARE_EXCLUSIVE 1
+#define SCARD_SHARE_SHARED    2
+#define SCARD_SHARE_DIRECT    3
+#define SCARD_LEAVE_CARD      0
+#define SCARD_RESET_CARD      1
+#define SCARD_UNPOWER_CARD    2
+#define SCARD_EJECT_CARD      3
+
 /* Valid scopes for contexts */
 #define SCARD_SCOPE_USER     0
 #define SCARD_SCOPE_TERMINAL 1
@@ -147,6 +155,19 @@ LONG        WINAPI SCardStatusA(SCARDHANDLE,LPSTR,LPDWORD,LPDWORD,LPDWORD,LPBYTE
 LONG        WINAPI SCardStatusW(SCARDHANDLE,LPWSTR,LPDWORD,LPDWORD,LPDWORD,LPBYTE,LPDWORD);
 #define     SCardStatus WINELIB_NAME_AW(SCardStatus)
 LONG        WINAPI SCardTransmit(SCARDHANDLE,LPCSCARD_IO_REQUEST,LPCBYTE,DWORD,LPSCARD_IO_REQUEST,LPBYTE,LPDWORD);
+
+#ifndef WINSCARDDATA
+#define WINSCARDDATA __declspec(dllimport)
+#endif
+
+WINSCARDDATA extern const SCARD_IO_REQUEST
+    g_rgSCardT0Pci,
+    g_rgSCardT1Pci,
+    g_rgSCardRawPci;
+
+#define SCARD_PCI_T0  (&g_rgSCardT0Pci)
+#define SCARD_PCI_T1  (&g_rgSCardT1Pci)
+#define SCARD_PCI_RAW (&g_rgSCardRawPci)
 
 #ifdef __cplusplus
 }

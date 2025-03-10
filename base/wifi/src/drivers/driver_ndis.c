@@ -39,7 +39,7 @@ int close(int fd);
 #include "driver_ndis.h"
 
 int wpa_driver_register_event_cb(struct wpa_driver_ndis_data *drv);
-#ifdef CONFIG_NDIS_EVENTS_INTEGRATED
+#if 0
 void wpa_driver_ndis_event_pipe_cb(void *eloop_data, void *user_data);
 #endif /* CONFIG_NDIS_EVENTS_INTEGRATED */
 
@@ -392,7 +392,7 @@ typedef struct _DOT11_SCAN_REQUEST_V2 {
 #ifdef CONFIG_USE_NDISUIO
 #ifndef _WIN32_WCE
 #ifdef __MINGW32_VERSION
-typedef ULONG NDIS_OID;
+typedef ULONG NDIS_OID, *PNDIS_OID;
 #endif /* __MINGW32_VERSION */
 /* from nuiouser.h */
 #define FSCTL_NDISUIO_BASE      FILE_DEVICE_NETWORK
@@ -448,6 +448,101 @@ typedef struct _NDISUIO_QUERY_BINDING
 #endif /* CONFIG_USE_NDISUIO */
 
 #ifdef __REACTOS__
+
+typedef struct NDIS_802_11_REMOVE_KEY {
+	ULONG Length;
+	ULONG KeyIndex;
+	NDIS_802_11_MAC_ADDRESS BSSID;
+} NDIS_802_11_REMOVE_KEY;
+
+typedef struct NDIS_802_11_AI_REQFI {
+	USHORT Capabilities;
+	USHORT ListenInterval;
+	NDIS_802_11_MAC_ADDRESS CurrentAPAddress;
+} NDIS_802_11_AI_REQFI;
+typedef struct NDIS_802_11_AUTHENTICATION_ENCRYPTION {
+	NDIS_802_11_AUTHENTICATION_MODE AuthModeSupported;
+	NDIS_802_11_ENCRYPTION_STATUS EncryptStatusSupported;
+} NDIS_802_11_AUTHENTICATION_ENCRYPTION;
+
+typedef struct NDIS_802_11_CAPABILITY {
+	ULONG Length;
+	ULONG Version;
+	ULONG NoOfPMKIDs;
+	ULONG NoOfAuthEncryptPairsSupported;
+	NDIS_802_11_AUTHENTICATION_ENCRYPTION
+		AuthenticationEncryptionSupported[1];
+} NDIS_802_11_CAPABILITY;
+typedef struct NDIS_802_11_AUTHENTICATION_REQUEST {
+	ULONG Length;
+	NDIS_802_11_MAC_ADDRESS Bssid;
+	ULONG Flags;
+} NDIS_802_11_AUTHENTICATION_REQUEST;
+
+typedef enum NDIS_802_11_STATUS_TYPE {
+	Ndis802_11StatusType_Authentication,
+	Ndis802_11StatusType_PMKID_CandidateList = 2,
+	Ndis802_11StatusTypeMax
+} NDIS_802_11_STATUS_TYPE;
+
+typedef struct NDIS_802_11_STATUS_INDICATION {
+	NDIS_802_11_STATUS_TYPE StatusType;
+} NDIS_802_11_STATUS_INDICATION;
+
+
+typedef struct NDIS_802_11_AI_RESFI {
+	USHORT Capabilities;
+	USHORT StatusCode;
+	USHORT AssociationId;
+} NDIS_802_11_AI_RESFI;
+
+typedef struct NDIS_802_11_ASSOCIATION_INFORMATION {
+	ULONG Length;
+	USHORT AvailableRequestFixedIEs;
+	NDIS_802_11_AI_REQFI RequestFixedIEs;
+	ULONG RequestIELength;
+	ULONG OffsetRequestIEs;
+	USHORT AvailableResponseFixedIEs;
+	NDIS_802_11_AI_RESFI ResponseFixedIEs;
+	ULONG ResponseIELength;
+	ULONG OffsetResponseIEs;
+} NDIS_802_11_ASSOCIATION_INFORMATION;
+
+typedef UCHAR NDIS_802_11_PMKID_VALUE[16];
+
+typedef struct BSSID_INFO {
+	NDIS_802_11_MAC_ADDRESS BSSID;
+	NDIS_802_11_PMKID_VALUE PMKID;
+} BSSID_INFO;
+
+typedef struct NDIS_802_11_PMKID {
+	ULONG Length;
+	ULONG BSSIDInfoCount;
+	BSSID_INFO BSSIDInfo[1];
+} NDIS_802_11_PMKID;
+
+typedef enum NDIS_802_11_PRIVACY_FILTER {
+	Ndis802_11PrivFilterAcceptAll,
+	Ndis802_11PrivFilter8021xWEP
+} NDIS_802_11_PRIVACY_FILTER;
+
+typedef struct PMKID_CANDIDATE {
+	NDIS_802_11_MAC_ADDRESS BSSID;
+	ULONG Flags;
+} PMKID_CANDIDATE;
+
+#define NDIS_802_11_PMKID_CANDIDATE_PREAUTH_ENABLED 0x01
+
+typedef struct NDIS_802_11_PMKID_CANDIDATE_LIST {
+	ULONG Version;
+	ULONG NumCandidates;
+	PMKID_CANDIDATE CandidateList[1];
+} NDIS_802_11_PMKID_CANDIDATE_LIST;
+
+
+#define NDIS_802_11_AUTH_REQUEST_PAIRWISE_ERROR         0x06
+#define NDIS_802_11_AUTH_REQUEST_GROUP_ERROR            0x0E
+
 typedef ULONG NDIS_802_11_KEY_INDEX;
 
 #define NDIS_802_11_LENGTH_SSID 32
@@ -456,12 +551,6 @@ typedef ULONG NDIS_802_11_KEY_INDEX;
 
 typedef UCHAR NDIS_802_11_RATES[NDIS_802_11_LENGTH_RATES];
 typedef UCHAR NDIS_802_11_RATES_EX[NDIS_802_11_LENGTH_RATES_EX];
-
-typedef struct NDIS_802_11_REMOVE_KEY {
-	ULONG Length;
-	ULONG KeyIndex;
-	NDIS_802_11_MAC_ADDRESS BSSID;
-} NDIS_802_11_REMOVE_KEY;
 
 typedef struct NDIS_WLAN_BSSID_EX {
 	ULONG Length;
@@ -508,7 +597,7 @@ static int ndis_get_oid(struct wpa_driver_ndis_data *drv, unsigned int oid,
 	o->ptcDeviceName = drv->adapter_name;
 #endif /* _WIN32_WCE */
 	if (!DeviceIoControl(drv->ndisuio, IOCTL_NDISUIO_QUERY_OID_VALUE,
-			     o, sizeof(NDISUIO_QUERY_OID), o, buflen, &written,
+			     o, buflen, o, buflen, &written,
 			     NULL)) {
 		wpa_printf(MSG_DEBUG, "NDIS: IOCTL_NDISUIO_QUERY_OID_VALUE "
 			   "failed (oid=%08x): %d", oid, (int) GetLastError());
@@ -2148,7 +2237,8 @@ static int wpa_driver_ndis_get_names(struct wpa_driver_ndis_data *drv)
 	}
 
 	os_strlcpy(drv->ifname,
-		   os_strncmp(name, "\\DEVICE\\", 8) == 0 ? name + 8 : name,
+		   os_strncmp(name, "\\DEVICE\\", 8) == 0 ? name + 8 : name ||
+		   os_strncmp(name, "\\Device\\", 8) == 0 ? name + 8 : name,
 		   sizeof(drv->ifname));
 #ifdef _WIN32_WCE
 	drv->adapter_name = wpa_strdup_tchar(drv->ifname);
@@ -2471,7 +2561,7 @@ static int wpa_driver_ndis_set_wzc(struct wpa_driver_ndis_data *drv,
 		}
 
 		wpa_printf(MSG_DEBUG, "NDIS: WZC re-enabled");
-		return wpa_driver_ndis_rebind_adapter(drv);
+		///return wpa_driver_ndis_rebind_adapter(drv);
 	}
 
 	/*
@@ -2550,7 +2640,7 @@ static int wpa_driver_ndis_set_wzc(struct wpa_driver_ndis_data *drv,
 
 	wpa_printf(MSG_DEBUG, "NDIS: Disabled WZC temporarily");
 	drv->wzc_disabled = 1;
-	return wpa_driver_ndis_rebind_adapter(drv);
+	//return wpa_driver_ndis_rebind_adapter(drv);
 
 #else /* _WIN32_WCE */
 
@@ -2809,6 +2899,9 @@ static int wpa_driver_ndis_adapter_open(struct wpa_driver_ndis_data *drv)
 		return -1;
 	}
 
+	wpa_hexdump_ascii(MSG_DEBUG, "NDIS: ifname",
+		(const u8 *) ifname, len * sizeof(WCHAR));
+
 	wpa_printf(MSG_DEBUG, "NDIS: Opened NDISUIO device successfully");
 
 	return 0;
@@ -2871,9 +2964,12 @@ static void * wpa_driver_ndis_init(void *ctx, const char *ifname)
 	 * interface name is now only the GUI. Both Packet32 and NDISUIO
 	 * prefixes are supported.
 	 */
+
 	if (os_strncmp(ifname, "\\Device\\NPF_", 12) == 0)
 		ifname += 12;
 	else if (os_strncmp(ifname, "\\DEVICE\\", 8) == 0)
+		ifname += 8;
+	else if (os_strncmp(ifname, "\\Device\\", 8) == 0)
 		ifname += 8;
 	os_strlcpy(drv->ifname, ifname, sizeof(drv->ifname));
 
@@ -2887,8 +2983,6 @@ static void * wpa_driver_ndis_init(void *ctx, const char *ifname)
 		os_free(drv);
 		return NULL;
 	}
-
-	wpa_driver_ndis_set_wzc(drv, 0);
 
 	if (wpa_driver_ndis_adapter_open(drv) < 0) {
 		wpa_driver_ndis_adapter_close(drv);
@@ -2923,7 +3017,7 @@ static void * wpa_driver_ndis_init(void *ctx, const char *ifname)
 
 	eloop_register_timeout(1, 0, wpa_driver_ndis_poll_timeout, drv, NULL);
 
-#ifdef CONFIG_NDIS_EVENTS_INTEGRATED
+#if 0
 	drv->events = ndis_events_init(&drv->events_pipe, &drv->event_avail,
 				       drv->ifname, drv->adapter_desc);
 	if (drv->events == NULL) {
@@ -2987,7 +3081,7 @@ static void wpa_driver_ndis_deinit(void *priv)
 {
 	struct wpa_driver_ndis_data *drv = priv;
 
-#ifdef CONFIG_NDIS_EVENTS_INTEGRATED
+#if 0
 	if (drv->events) {
 		eloop_unregister_event(drv->event_avail,
 				       sizeof(drv->event_avail));
@@ -3009,9 +3103,6 @@ static void wpa_driver_ndis_deinit(void *priv)
 	}
 
 	wpa_driver_ndis_adapter_close(drv);
-
-	if (drv->wzc_disabled)
-		wpa_driver_ndis_set_wzc(drv, 1);
 
 #ifdef _WIN32_WCE
 	os_free(drv->adapter_name);

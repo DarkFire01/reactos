@@ -8,7 +8,7 @@
 
 #include "ndisuio.h"
 
-//#define NDEBUG
+////#define NDEBUG
 #include <debug.h>
 
 NTSTATUS

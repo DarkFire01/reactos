@@ -9,7 +9,19 @@
 #include "includes.h"
 
 #include "common.h"
-
+#ifdef __REACTOS__
+#   define open _open
+#define O_RDONLY        _O_RDONLY
+#define O_BINARY        _O_BINARY
+#define O_CREAT         _O_CREAT
+#define O_WRONLY        _O_WRONLY
+#define O_TRUNC         _O_TRUNC
+#define S_IREAD         _S_IREAD
+#define S_IWRITE        _S_IWRITE
+#define S_IFDIR         _S_IFDIR
+#    define O_APPEND _O_APPEND
+#   define fdopen _fdopen
+#endif
 #ifdef CONFIG_DEBUG_SYSLOG
 #include <syslog.h>
 #endif /* CONFIG_DEBUG_SYSLOG */

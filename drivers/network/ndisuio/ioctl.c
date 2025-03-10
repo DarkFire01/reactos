@@ -8,7 +8,7 @@
 
 #include "ndisuio.h"
 
-//#define NDEBUG
+////#define NDEBUG
 #include <debug.h>
 
 static
@@ -31,17 +31,31 @@ WaitForBind(PIRP Irp, PIO_STACK_LOCATION IrpSp)
 
 static
 NTSTATUS
+SetEthType(PIRP Irp, PIO_STACK_LOCATION IrpSp)
+
+{
+    DPRINT1("SetEthType: Entry\n ");
+    Irp->IoStatus.Status = STATUS_SUCCESS;
+    Irp->IoStatus.Information = 0;
+
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
 QueryBinding(PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
     PNDISUIO_ADAPTER_CONTEXT AdapterContext = NULL;
     PNDISUIO_QUERY_BINDING QueryBinding = Irp->AssociatedIrp.SystemBuffer;
     ULONG BindingLength = IrpSp->Parameters.DeviceIoControl.InputBufferLength;
+    ULONG OutputSize = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
     NTSTATUS Status;
     PLIST_ENTRY CurrentEntry;
     KIRQL OldIrql;
     ULONG i;
-    ULONG BytesCopied = 0;
-
+    ULONG Remaining; 
     if (QueryBinding && BindingLength >= sizeof(NDISUIO_QUERY_BINDING))
     {
         KeAcquireSpinLock(&GlobalAdapterListLock, &OldIrql);
@@ -61,20 +75,31 @@ QueryBinding(PIRP Irp, PIO_STACK_LOCATION IrpSp)
         if (AdapterContext)
         {
             DPRINT("Query binding for index %d is adapter %wZ\n", i, &AdapterContext->DeviceName);
-            BytesCopied = sizeof(NDISUIO_QUERY_BINDING);
-            if (AdapterContext->DeviceName.Length <= BindingLength - BytesCopied)
+            Remaining = OutputSize - sizeof(NDISUIO_QUERY_BINDING);
+
+
+            // Okay let's start by NOT assuming that there's a zero terminator
+            QueryBinding->DeviceNameLength = AdapterContext->DeviceName.Length + sizeof(WCHAR);
+            QueryBinding->DeviceDescrLength = AdapterContext->DeviceDesc.Length + sizeof(WCHAR);
+
+            if (Remaining > (QueryBinding->DeviceNameLength + QueryBinding->DeviceDescrLength))
             {
-                QueryBinding->DeviceNameOffset = BytesCopied;
-                QueryBinding->DeviceNameLength = AdapterContext->DeviceName.Length;
+                // Zero out entire buffer.
+                RtlZeroMemory((PUCHAR)QueryBinding + sizeof(NDISUIO_QUERY_BINDING),
+                    QueryBinding->DeviceDescrLength + 
+                    QueryBinding->DeviceNameLength);
+
+                // Write device name offset then fill in device name.
+                QueryBinding->DeviceNameOffset = sizeof(NDISUIO_QUERY_BINDING);
                 RtlCopyMemory((PUCHAR)QueryBinding + QueryBinding->DeviceNameOffset,
-                              AdapterContext->DeviceName.Buffer,
-                              QueryBinding->DeviceNameLength);
-                BytesCopied += AdapterContext->DeviceName.Length;
+                    AdapterContext->DeviceName.Buffer,
+                    QueryBinding->DeviceNameLength);
 
-                /* FIXME: Copy description too */
-                QueryBinding->DeviceDescrOffset = BytesCopied;
-                QueryBinding->DeviceDescrLength = 0;
-
+                //Write device Desc.
+                QueryBinding->DeviceDescrOffset = QueryBinding->DeviceNameOffset + QueryBinding->DeviceNameLength;
+                RtlCopyMemory((PUCHAR)QueryBinding + QueryBinding->DeviceDescrOffset,
+                                AdapterContext->DeviceDesc.Buffer,
+                                QueryBinding->DeviceDescrLength);
                 /* Successful */
                 Status = STATUS_SUCCESS;
             }
@@ -97,7 +122,7 @@ QueryBinding(PIRP Irp, PIO_STACK_LOCATION IrpSp)
     }
 
     Irp->IoStatus.Status = Status;
-    Irp->IoStatus.Information = BytesCopied;
+    Irp->IoStatus.Information = QueryBinding->DeviceDescrOffset + QueryBinding->DeviceDescrLength;
 
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
@@ -471,7 +496,7 @@ NduDispatchDeviceControl(PDEVICE_OBJECT DeviceObject,
 {
     PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     PNDISUIO_OPEN_ENTRY OpenEntry;
-
+    DPRINT("NduDispatchDeviceControl: Entry\n");
     ASSERT(DeviceObject == GlobalDeviceObject);
 
     /* Handle open IOCTLs first */
@@ -505,7 +530,8 @@ NduDispatchDeviceControl(PDEVICE_OBJECT DeviceObject,
             {
                 case IOCTL_NDISUIO_SET_OID_VALUE:
                     return SetAdapterOid(Irp, IrpSp);
-
+                case IOCTL_NDISUIO_SET_ETHER_TYPE:
+                    return SetEthType(Irp, IrpSp);
                 default:
                     /* Check that we have read permissions */
                     OpenEntry = IrpSp->FileObject->FsContext2;
@@ -529,7 +555,7 @@ NduDispatchDeviceControl(PDEVICE_OBJECT DeviceObject,
                             return QueryAdapterOid(Irp, IrpSp);
 
                         default:
-                            DPRINT1("Unimplemented\n");
+                            DPRINT1("Unimplemented control code 0x%X\n", IrpSp->Parameters.DeviceIoControl.IoControlCode);
                             Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
                             Irp->IoStatus.Information = 0;
                             IoCompleteRequest(Irp, IO_NO_INCREMENT);

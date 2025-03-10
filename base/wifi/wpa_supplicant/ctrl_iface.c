@@ -10,7 +10,10 @@
 #ifdef CONFIG_TESTING_OPTIONS
 #include <netinet/ip.h>
 #endif /* CONFIG_TESTING_OPTIONS */
-
+static int isblank(int c)
+{
+    return c == ' ' || c == '\t';
+}
 #include "utils/common.h"
 #include "utils/eloop.h"
 #include "utils/uuid.h"

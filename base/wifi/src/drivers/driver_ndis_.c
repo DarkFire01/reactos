@@ -82,18 +82,3 @@ static void wpa_driver_ndis_event_process(struct wpa_driver_ndis_data *drv,
 	}
 }
 
-
-void wpa_driver_ndis_event_pipe_cb(void *eloop_data, void *user_data)
-{
-	struct wpa_driver_ndis_data *drv = eloop_data;
-	u8 buf[512];
-	DWORD len;
-
-	ResetEvent(drv->event_avail);
-	if (ReadFile(drv->events_pipe, buf, sizeof(buf), &len, NULL))
-		wpa_driver_ndis_event_process(drv, buf, len);
-	else {
-		wpa_printf(MSG_DEBUG, "%s: ReadFile() failed: %d", __func__,
-			   (int) GetLastError());
-	}
-}

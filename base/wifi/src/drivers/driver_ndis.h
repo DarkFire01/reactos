@@ -9,7 +9,7 @@
 #ifndef DRIVER_NDIS_H
 #define DRIVER_NDIS_H
 
-#ifdef CONFIG_NDIS_EVENTS_INTEGRATED
+#if 0
 struct ndis_events_data;
 struct ndis_events_data * ndis_events_init(HANDLE *read_pipe, HANDLE *event,
 					   const char *ifname,
@@ -50,7 +50,7 @@ struct wpa_driver_ndis_data {
 	int mode;
 	int wzc_disabled;
 	int oid_bssid_set;
-#ifdef CONFIG_NDIS_EVENTS_INTEGRATED
+#if 0
 	HANDLE events_pipe, event_avail;
 	struct ndis_events_data *events;
 #endif /* CONFIG_NDIS_EVENTS_INTEGRATED */
