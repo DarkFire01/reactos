@@ -55,3 +55,7 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/optional/DroidSansFallback.ttf)
     add_cd_file(FILE "${CMAKE_CURRENT_SOURCE_DIR}/optional/DroidSansFallback.ttf" DESTINATION reactos/Fonts FOR livecd)
 endif()
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/wpa_supp/)
+    add_subdirectory(wpa_supp)
+endif()
