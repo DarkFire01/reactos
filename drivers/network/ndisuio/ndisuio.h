@@ -43,6 +43,9 @@ typedef struct _NDISUIO_ADAPTER_CONTEXT
     /* Device name */
     UNICODE_STRING DeviceName;
 
+    /* Device Description */
+    UNICODE_STRING DeviceDesc;
+
     /* Global list entry */
     LIST_ENTRY ListEntry;
 

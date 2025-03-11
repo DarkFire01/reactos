@@ -530,6 +530,9 @@ BindAdapterByName(PNDIS_STRING DeviceName)
                                 &AdapterContext->ListEntry,
                                 &GlobalAdapterListLock);
 
+    /* Copy the device desc into the adapter context */
+    NdisQueryAdapterInstanceName(&AdapterContext->DeviceDesc, AdapterContext->BindingHandle);
+
     return STATUS_SUCCESS;
 }
 
