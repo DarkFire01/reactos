@@ -84,4 +84,3 @@ int CDECL strcpy_s( char* dst, size_t elem, const char* src )
     dst[0] = '\0';
     return ERANGE;
 }
-

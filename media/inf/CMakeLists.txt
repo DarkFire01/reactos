@@ -24,9 +24,13 @@ list(APPEND INF_FILES
     ports.inf
     scsi.inf
     shortcuts.inf
+    uaspstor.inf
     unknown.inf
     usb.inf
+    wdma_usb.inf
+    usbhub3.inf
     usbport.inf
+    usbxhci.inf
     volume.inf
     wdmaudio.inf
     wmiacpi.inf)
@@ -43,5 +47,5 @@ add_driver_inf(media_inf ${INF_FILES})
 foreach(item ${UTF8_INF_FILES})
     add_cd_file(FILE "${CMAKE_CURRENT_SOURCE_DIR}/${item}" DESTINATION reactos/inf FOR all)
 endforeach(item)
-
+#
 add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/syssetup.inf DESTINATION reactos/inf FOR all)

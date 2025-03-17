@@ -1028,4 +1028,20 @@ RtlValidAcl(IN PACL Acl)
     return TRUE;
 }
 
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+RtlAddMandatoryAce(IN OUT PACL pAcl,
+                   IN ULONG AceRevision,
+                   IN ULONG AceFlags,
+                   IN ULONG MandatoryFlags,
+                   IN UCHAR AceType,
+                   IN PSID pSid)
+{
+    UNIMPLEMENTED;
+    return STATUS_SUCCESS;
+}
+
 /* EOF */
