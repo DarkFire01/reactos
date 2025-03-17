@@ -12,6 +12,9 @@
 
 #include <rtl.h>
 
+#include <evntprov.h>
+#include <setypes.h>
+
 #define NDEBUG
 #include <debug.h>
 
@@ -509,4 +512,21 @@ RtlRosGetAppcompatVersion(VOID)
 
     /* Calculate OS version from PEB fields */
     return (Peb->OSMajorVersion << 8) | Peb->OSMinorVersion;
+}
+
+BOOLEAN
+NTAPI
+EtwEventEnabled(REGHANDLE RegHandle,
+                PCEVENT_DESCRIPTOR EventDescriptor)
+{
+    UNIMPLEMENTED;
+    return FALSE;
+}
+
+NTSTATUS
+NTAPI
+RtlQueryElevationFlags(DWORD* pFlags)
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
 }
