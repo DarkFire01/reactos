@@ -14,6 +14,10 @@ add_library(winscard MODULE
     winscard.rc
     ${CMAKE_CURRENT_BINARY_DIR}/winscard.def)
 
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(winscard PRIVATE -Wno-attributes)
+endif()
+
 set_module_type(winscard win32dll)
 target_link_libraries(winscard wine)
 add_importlibs(winscard msvcrt kernel32 ntdll)
