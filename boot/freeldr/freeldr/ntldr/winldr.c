@@ -250,7 +250,6 @@ WinLdrInitializePhase1(PLOADER_PARAMETER_BLOCK LoaderBlock,
     if (IsAcpiPresent())
     {
         /* Set the pointer to something for compatibility */
-        Extension->AcpiTable = (PVOID)1;
         // FIXME: Extension->AcpiTableSize;
     }
 
@@ -1168,6 +1167,9 @@ LoadAndBootWindows(
                                     BootPath);
 }
 
+PRSDP_DESCRIPTOR
+FindAcpiBios(VOID);
+
 ARC_STATUS
 LoadAndBootWindowsCommon(
     IN USHORT OperatingSystemVersion,
@@ -1196,6 +1198,7 @@ LoadAndBootWindowsCommon(
     /* Detect hardware */
     UiUpdateProgressBar(20, "Detecting hardware...");
     LoaderBlock->ConfigurationRoot = MachHwDetect(BootOptions);
+    LoaderBlock->Extension->AcpiTable = FindAcpiBios();
 
     /* Initialize the PE loader import-DLL callback, so that we can obtain
      * feedback (for example during SOS) on the PE images that get loaded. */

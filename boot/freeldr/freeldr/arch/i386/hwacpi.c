@@ -30,7 +30,7 @@ BOOLEAN IsAcpiPresent(VOID)
     return AcpiPresent;
 }
 
-static PRSDP_DESCRIPTOR
+PRSDP_DESCRIPTOR
 FindAcpiBios(VOID)
 {
     PUCHAR Ptr;

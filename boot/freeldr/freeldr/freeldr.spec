@@ -17,7 +17,7 @@
 @ cdecl DebugInit()
 @ cdecl FrLdrBugCheckWithMessage()
 @ stdcall KeBugCheckEx(long long long long long)
-
+@ cdecl FindAcpiBios()
 # Heap
 @ cdecl FrLdrHeapAllocateEx()
 @ cdecl FrLdrHeapFreeEx()
