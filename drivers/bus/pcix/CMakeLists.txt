@@ -36,27 +36,17 @@ list(APPEND SOURCE
     pdo.c
     power.c
     usage.c
-    utils.c)
+    utils.c
+    pci.h)
 
-list(APPEND PCH_SKIP_SOURCE
-    guid.c)
-
-add_library(pcix MODULE
+add_library(pci MODULE
     ${SOURCE}
-    ${PCH_SKIP_SOURCE}
+    guid.c
     pci.rc)
 
-set_module_type(pcix kernelmodedriver)
-target_link_libraries(pcix arbiter)
-if(MSVC)
-    target_link_options(pcix PRIVATE /SECTION:.rsrc,!D)
-else()
-    add_custom_command(
-        TARGET pcix POST_BUILD
-        COMMAND native-pefixup --section:.rsrc,!D $<TARGET_FILE:pcix>
-        VERBATIM)
-endif()
-add_importlibs(pcix ntoskrnl hal)
-add_pch(pcix pci.h "${PCH_SKIP_SOURCE}")
-add_dependencies(pcix pciclass)
-add_cd_file(TARGET pcix DESTINATION reactos/system32/drivers NO_CAB FOR all)
+set_module_type(pci kernelmodedriver)
+target_link_libraries(pci wdmguid arbiter)
+add_importlibs(pci ntoskrnl hal)
+add_pch(pci pci.h SOURCE)
+add_dependencies(pci pciclass)
+add_cd_file(TARGET pci DESTINATION reactos/system32/drivers NO_CAB FOR all)

@@ -4,6 +4,7 @@
  * FILE:            drivers/bus/pci/power.c
  * PURPOSE:         Bus/Device Power Management
  * PROGRAMMERS:     ReactOS Portable Systems Group
+ *                  Copyright 2023 Vadim Galyant <vgal@rambler.ru>
  */
 
 /* INCLUDES *******************************************************************/
@@ -38,7 +39,161 @@ ULONG PciPowerDelayTable[PowerDeviceD3 * PowerDeviceD3] =
     0       // D3 -> D3
 };
 
-/* FUNCTIONS ******************************************************************/
+/* PDO FUNCTIONS **************************************************************/
+
+NTSTATUS
+NTAPI
+PciPdoWaitWake(IN PIRP Irp,
+               IN PIO_STACK_LOCATION IoStackLocation,
+               IN PPCI_PDO_EXTENSION DeviceExtension)
+{
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(IoStackLocation);
+    UNREFERENCED_PARAMETER(DeviceExtension);
+
+    UNIMPLEMENTED_DBGBREAK();
+    return STATUS_NOT_SUPPORTED;
+}
+
+BOOLEAN
+NTAPI
+PciIsSameDevice(
+    _In_ PPCI_PDO_EXTENSION PdoExtension)
+{
+    UNIMPLEMENTED_DBGBREAK();
+    return FALSE;
+}
+
+NTSTATUS NTAPI KdPowerTransition(IN DEVICE_POWER_STATE NewState);
+
+NTSTATUS
+NTAPI
+PciPdoSetPowerState(
+    _In_ PIRP Irp,
+    _In_ PIO_STACK_LOCATION IoStack,
+    _In_ PPCI_PDO_EXTENSION PdoExtension)
+{
+    DEVICE_POWER_STATE DeviceState;
+    NTSTATUS Status;
+
+    DPRINT("PciPdoSetPowerState: %p\n", PdoExtension);
+
+    ASSERT((PdoExtension)->ExtensionType == PciPdoExtensionType);
+    UNREFERENCED_PARAMETER(Irp);
+
+    if (IoStack->Parameters.Power.Type == SystemPowerState)
+        return STATUS_SUCCESS;
+
+    if (IoStack->Parameters.Power.Type != DevicePowerState)
+    {
+        DPRINT1("PciPdoSetPowerState: STATUS_NOT_SUPPORTED\n");
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    DeviceState = IoStack->Parameters.Power.State.DeviceState;
+
+    if (DeviceState == PowerDeviceD0 && PdoExtension->PowerState.CurrentDeviceState == PowerDeviceD0)
+        return STATUS_SUCCESS;
+
+    if (DeviceState < PowerDeviceD0 || DeviceState > PowerDeviceD3)
+    {
+        DPRINT1("PciPdoSetPowerState: STATUS_INVALID_PARAMETER\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (DeviceState > PowerDeviceD0)
+    {
+        if (!PciIsSameDevice(PdoExtension))
+        {
+            DPRINT1("PciPdoSetPowerState: STATUS_NO_SUCH_DEVICE\n");
+            return STATUS_NO_SUCH_DEVICE;
+        }
+    }
+    else
+    {
+        if (PdoExtension->OnDebugPath)
+        {
+            DPRINT1("PciPdoSetPowerState: FIXME\n");
+            ASSERT(FALSE);
+            KdPowerTransition(DeviceState);
+        }
+
+        if (PdoExtension->PowerState.CurrentDeviceState == PowerDeviceD0)
+            PciReadDeviceConfig(PdoExtension, &PdoExtension->CommandEnables, 4, 2);
+
+        PdoExtension->PowerState.CurrentDeviceState = DeviceState;
+
+        if (PdoExtension->DisablePowerDown)
+        {
+            DPRINT1("PciPdoSetPowerState: power down of PDOx %X, disabled, ignored.\n", PdoExtension);
+            return STATUS_SUCCESS;
+        }
+
+        if (IoStack->Parameters.Power.ShutdownType == PowerActionHibernate &&
+            (PdoExtension->PowerState.Hibernate || PdoExtension->PowerState.CrashDump))
+        {
+            return STATUS_SUCCESS;
+        }
+
+        if (IoStack->Parameters.Power.State.DeviceState == PowerDeviceD3)
+        {
+            if (IoStack->Parameters.Power.ShutdownType == PowerActionShutdownReset ||
+                IoStack->Parameters.Power.ShutdownType == PowerActionShutdownOff ||
+                IoStack->Parameters.Power.ShutdownType == PowerActionShutdown)
+            {
+                if (PciIsOnVGAPath(PdoExtension))
+                    return STATUS_SUCCESS;
+            }
+        }
+
+        if (PdoExtension->OnDebugPath)
+            return STATUS_SUCCESS;
+    }
+
+    Status = PciSetPowerManagedDevicePowerState(PdoExtension, DeviceState, TRUE);
+
+    if (DeviceState != PowerDeviceD0)
+    {
+        PoSetPowerState(PdoExtension->PhysicalDeviceObject, DevicePowerState, IoStack->Parameters.Power.State);
+        PciDecodeEnable(PdoExtension, FALSE, NULL);
+        return STATUS_SUCCESS;
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("PciPdoSetPowerState: Status %X\n", Status);
+        return Status;
+    }
+
+    PdoExtension->PowerState.CurrentDeviceState = DeviceState;
+
+    PoSetPowerState(PdoExtension->PhysicalDeviceObject, DevicePowerState, IoStack->Parameters.Power.State);
+
+    if (PdoExtension->OnDebugPath)
+    {
+        DPRINT1("PciPdoSetPowerState: FIXME\n");
+        ASSERT(FALSE);
+        KdPowerTransition(PowerDeviceD0);
+    }
+
+    return Status;
+}
+
+NTSTATUS
+NTAPI
+PciPdoIrpQueryPower(IN PIRP Irp,
+                    IN PIO_STACK_LOCATION IoStackLocation,
+                    IN PPCI_PDO_EXTENSION DeviceExtension)
+{
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(IoStackLocation);
+    UNREFERENCED_PARAMETER(DeviceExtension);
+
+    UNIMPLEMENTED_DBGBREAK();
+    return STATUS_NOT_SUPPORTED;
+}
+
+/* FDO FUNCTIONS **************************************************************/
 
 NTSTATUS
 NTAPI
@@ -51,6 +206,8 @@ PciStallForPowerChange(IN PPCI_PDO_EXTENSION PdoExtension,
     LARGE_INTEGER Interval;
     PCI_PMCSR Pmcsr;
     KIRQL Irql;
+
+    DPRINT("PCIX: .. \n");
 
     /* Make sure the power state is valid, and the device can support it */
     ASSERT((PdoExtension->PowerState.CurrentDeviceState >= PowerDeviceD0) &&
@@ -118,32 +275,34 @@ PciStallForPowerChange(IN PPCI_PDO_EXTENSION PdoExtension,
 
 NTSTATUS
 NTAPI
-PciSetPowerManagedDevicePowerState(IN PPCI_PDO_EXTENSION DeviceExtension,
-                                   IN DEVICE_POWER_STATE DeviceState,
-                                   IN BOOLEAN IrpSet)
+PciSetPowerManagedDevicePowerState(
+    IN PPCI_PDO_EXTENSION PdoExtension,
+    IN DEVICE_POWER_STATE DeviceState,
+    IN BOOLEAN IsSetIrp)
 {
     NTSTATUS Status;
     PCI_PM_CAPABILITY PmCaps;
     ULONG CapsOffset;
 
+    DPRINT("PciSetPowerManagedDevicePowerState: %p, %X, %X\n", PdoExtension, DeviceState, IsSetIrp);
+
     /* Assume success */
     Status = STATUS_SUCCESS;
 
     /* Check if this device can support low power states */
-    if (!(PciCanDisableDecodes(DeviceExtension, NULL, 0, TRUE)) &&
-         (DeviceState != PowerDeviceD0))
+    if (!(PciCanDisableDecodes(PdoExtension, NULL, 0, TRUE)) && DeviceState != PowerDeviceD0)
     {
         /* Simply return success, ignoring this request */
-        DPRINT1("Cannot disable decodes on this device, ignoring PM request...\n");
+        DPRINT1("PciSetPowerManagedDevicePowerState: Cannot disable decodes on this device\n");
         return Status;
     }
 
     /* Does the device support power management at all? */
-    if (!(DeviceExtension->HackFlags & PCI_HACK_NO_PM_CAPS))
+    if (!(PdoExtension->HackFlags & PCI_HACK_NO_PM_CAPS))
     {
         /* Get the PM capabilities register */
-        CapsOffset = PciReadDeviceCapability(DeviceExtension,
-                                             DeviceExtension->CapabilitiesPtr,
+        CapsOffset = PciReadDeviceCapability(PdoExtension,
+                                             PdoExtension->CapabilitiesPtr,
                                              PCI_CAPABILITY_ID_POWER_MANAGEMENT,
                                              &PmCaps.Header,
                                              sizeof(PCI_PM_CAPABILITY));
@@ -158,43 +317,42 @@ PciSetPowerManagedDevicePowerState(IN PPCI_PDO_EXTENSION DeviceExtension,
 
             /* Check if the device supports Cold-D3 poweroff */
             if (PmCaps.PMC.Capabilities.Support.PMED3Cold)
-            {
                 /* If there was a pending PME, clear it */
                 PmCaps.PMCSR.ControlStatus.PMEStatus = 1;
-            }
         }
         else
         {
             /* Otherwise, just set the new power state, converting from NT */
-            PmCaps.PMCSR.ControlStatus.PowerState = DeviceState - 1;
+            PmCaps.PMCSR.ControlStatus.PowerState = (DeviceState - 1);
         }
 
         /* Write the new power state in the PMCSR */
-        PciWriteDeviceConfig(DeviceExtension,
+        PciWriteDeviceConfig(PdoExtension,
                              &PmCaps.PMCSR,
-                             CapsOffset + FIELD_OFFSET(PCI_PM_CAPABILITY, PMCSR),
+                             (CapsOffset + FIELD_OFFSET(PCI_PM_CAPABILITY, PMCSR)),
                              sizeof(PCI_PMCSR));
 
         /* Now wait for the change to "stick" based on the spec-mandated time */
-        Status = PciStallForPowerChange(DeviceExtension, DeviceState, CapsOffset);
-        if (!NT_SUCCESS(Status)) return Status;
+        Status = PciStallForPowerChange(PdoExtension, DeviceState, CapsOffset);
+        if (!NT_SUCCESS(Status))
+        {
+            /* Simply return success, ignoring this request */
+            DPRINT1("PciSetPowerManagedDevicePowerState: Status %X\n", Status);
+            return Status;
+        }
     }
     else
     {
         /* Nothing to do! */
-        DPRINT1("No PM on this device, ignoring request\n");
+        DPRINT("PciSetPowerManagedDevicePowerState: No PM on this device, ignoring request\n");
     }
 
     /* Check if new resources have to be assigned */
-    if (IrpSet)
+    if (IsSetIrp && DeviceState < PdoExtension->PowerState.CurrentDeviceState)
     {
-        /* Check if the new device state is lower (higher power) than now */
-        if (DeviceState < DeviceExtension->PowerState.CurrentDeviceState)
-        {
-            /* We would normally re-assign resources after powerup */
-            UNIMPLEMENTED_DBGBREAK();
-            Status = STATUS_NOT_IMPLEMENTED;
-        }
+        /* We would normally re-assign resources after powerup */
+        UNIMPLEMENTED_DBGBREAK();
+        Status = STATUS_NOT_IMPLEMENTED;
     }
 
     /* Return the power state change status */

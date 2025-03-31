@@ -17,14 +17,15 @@
 
 ULONG
 NTAPI
-PciBridgeIoBase(IN PPCI_COMMON_HEADER PciData)
+PciBridgeIoBase(
+    _In_ PPCI_COMMON_HEADER PciData)
 {
     BOOLEAN Is32Bit;
     ULONG Base, IoBase;
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
     /* Get the base */
-    Base = PciData->u.type1.IOLimit;
+    Base = PciData->u.type1.IOBase;
 
     /* Low bit specifies 32-bit address, top bits specify the base */
     Is32Bit = (Base & 0xF) == 1;
@@ -215,7 +216,7 @@ PciBridgeIsSubtractiveDecode(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 
     /* If we found subtractive decode, we'll need a resource update later */
-    DPRINT1("PCI : Subtractive decode on 0x%x\n", Current->u.type1.SecondaryBus);
+    DPRINT("PCI : Subtractive decode on 0x%x\n", Current->u.type1.SecondaryBus);
     PdoExtension->UpdateHardware = TRUE;
     return TRUE;
 }
@@ -241,6 +242,8 @@ PPBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
     PdoExtension = Context->PdoExtension;
     Resources = PdoExtension->Resources;
     Current = Context->Current;
+
+    DPRINT("PPBridge_SaveCurrentSettings: %p (%X)\n", PdoExtension, PdoExtension->DeviceId);
 
     /* Check if decodes are disabled */
     if (!(Context->Command & (PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE)))
@@ -279,7 +282,7 @@ PPBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 
                 /* Decode the base address, and write down the length */
                 Base.LowPart = Bar & BarMask;
-                DPRINT1("ROM BAR Base: %lx\n", Base.LowPart);
+                DPRINT("ROM BAR Base: %lx\n", Base.LowPart);
                 CmDescriptor->u.Memory.Length = IoDescriptor->u.Memory.Length;
             }
             else
@@ -302,15 +305,13 @@ PPBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 
                     /* IS this a 64-bit BAR? */
                     if ((Bar & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_64BIT)
-                    {
                         /* Read the next 32-bits as well, ie, the next BAR */
                         Base.HighPart = BarArray[i + 1];
-                    }
                 }
 
                 /* Decode the base address, and write down the length */
                 Base.LowPart = Bar & BarMask;
-                DPRINT1("BAR Base: %lx\n", Base.LowPart);
+                DPRINT("BAR Base: %lx\n", Base.LowPart);
                 CmDescriptor->u.Generic.Length = IoDescriptor->u.Generic.Length;
             }
         }
@@ -326,15 +327,12 @@ PPBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
                 /* I/O Port Requirements */
                 Base.LowPart = PciBridgeIoBase(Current);
                 Limit.LowPart = PciBridgeIoLimit(Current);
-                DPRINT1("Bridge I/O Base and Limit: %lx %lx\n",
-                         Base.LowPart, Limit.LowPart);
+                DPRINT("Bridge I/O Base and Limit: %lx %lx\n", Base.LowPart, Limit.LowPart);
 
                 /* Do we have any I/O Port data? */
                 if (!(Base.LowPart) && (Current->u.type1.IOLimit))
-                {
                     /* There's a limit */
                     HaveIoLimit = TRUE;
-                }
             }
             else if (i == 3)
             {
@@ -343,8 +341,7 @@ PPBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
                 Limit.LowPart = PciBridgeMemoryLimit(Current);
 
                 /* These should always be there, so check their alignment */
-                DPRINT1("Bridge MEM Base and Limit: %lx %lx\n",
-                         Base.LowPart, Limit.LowPart);
+                DPRINT("Bridge MEM Base and Limit: %lx %lx\n", Base.LowPart, Limit.LowPart);
                 CheckAlignment = TRUE;
             }
             else if (i == 4)
@@ -355,7 +352,7 @@ PPBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
                 Limit = PciBridgePrefetchMemoryLimit(Current);
 
                 /* If it's there, check the alignment */
-                DPRINT1("Bridge Prefetch MEM Base and Limit: %I64x %I64x\n", Base, Limit);
+                DPRINT("Bridge Prefetch MEM Base and Limit: %I64x %I64x\n", Base, Limit);
                 CheckAlignment = TRUE;
             }
 
@@ -386,8 +383,7 @@ PPBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
             {
                 /* Compute the required alignment for this length */
                 ASSERT(CmDescriptor->u.Memory.Length > 0);
-                IoDescriptor->u.Memory.Alignment =
-                    PciBridgeMemoryWorstCaseAlignment(CmDescriptor->u.Memory.Length);
+                IoDescriptor->u.Memory.Alignment = PciBridgeMemoryWorstCaseAlignment(CmDescriptor->u.Memory.Length);
             }
         }
 
@@ -404,11 +400,11 @@ PPBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
     if (PdoExtension->Dependent.type1.SubtractiveDecode)
     {
         /* Check if legacy VGA decodes are enabled */
-        DPRINT1("Subtractive decode bridge\n");
+        DPRINT("Subtractive decode bridge\n");
         if (Current->u.type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA)
         {
             /* Save this setting for later */
-            DPRINT1("VGA Bridge\n");
+            DPRINT("VGA Bridge\n");
             PdoExtension->Dependent.type1.VgaBitSet = TRUE;
         }
 
@@ -421,7 +417,7 @@ PPBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
         if (Current->u.type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA)
         {
             /* Save this setting for later */
-            DPRINT1("VGA Bridge\n");
+            DPRINT("VGA Bridge\n");
             PdoExtension->Dependent.type1.VgaBitSet = TRUE;
 
             /* And on positive decode, we'll also need extra resources locked */
@@ -432,7 +428,7 @@ PPBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
         if (Current->u.type1.BridgeControl & PCI_ENABLE_BRIDGE_ISA)
         {
             /* Save this setting for later */
-            DPRINT1("ISA Bridge\n");
+            DPRINT("ISA Bridge\n");
             PdoExtension->Dependent.type1.IsaBitSet = TRUE;
         }
     }
@@ -452,7 +448,7 @@ PPBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
         if (PdoExtension->Dependent.type1.SubtractiveDecode)
         {
             /* We're going to need a copy of the configuration for later use */
-            DPRINT1("apply config save hack to ICH subtractive decode\n");
+            DPRINT("apply config save hack to ICH subtractive decode\n");
             SavedConfig = ExAllocatePoolWithTag(0, PCI_COMMON_HDR_LENGTH, 'PciP');
             PdoExtension->ParentFdoExtension->PreservedConfig = SavedConfig;
             if (SavedConfig) RtlCopyMemory(SavedConfig, Current, PCI_COMMON_HDR_LENGTH);
@@ -474,6 +470,8 @@ PPBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     /* Get the pointers from the context */
     Working = Context->PciData;
     PdoExtension = Context->PdoExtension;
+
+    DPRINT("PPBridge_SaveLimits: %p (%X)\n", PdoExtension, PdoExtension->DeviceId);
 
     /* Scan the BARs into the limit descriptors */
     BarArray = Working->u.type1.BaseAddresses;
@@ -670,60 +668,63 @@ PPBridge_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
 
 VOID
 NTAPI
-PPBridge_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
-                     IN PPCI_COMMON_HEADER PciData)
+PPBridge_ResetDevice(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_ PPCI_COMMON_HEADER PciData)
 {
-    UNREFERENCED_PARAMETER(PdoExtension);
-    UNREFERENCED_PARAMETER(PciData);
-    UNIMPLEMENTED_DBGBREAK();
+    USHORT BridgeControl;
+
+    if (PciData->Command)
+        return;
+
+    if (!(PdoExtension->HackFlags & 0x400000000))
+        return;
+
+    ASSERT(!PdoExtension->OnDebugPath);
+
+    PciReadDeviceConfig(PdoExtension, &BridgeControl, FIELD_OFFSET(PCI_COMMON_HEADER, u.type1.BridgeControl), sizeof(USHORT));
+    BridgeControl |= 0x40;
+    PciWriteDeviceConfig(PdoExtension, &BridgeControl, FIELD_OFFSET(PCI_COMMON_HEADER, u.type1.BridgeControl), sizeof(USHORT));
+
+    KeStallExecutionProcessor(100);
+
+    BridgeControl &= ~0x40;
+    PciWriteDeviceConfig(PdoExtension, &BridgeControl, FIELD_OFFSET(PCI_COMMON_HEADER, u.type1.BridgeControl), sizeof(USHORT));
 }
 
 VOID
 NTAPI
-PPBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
-                                IN PPCI_COMMON_HEADER PciData)
+PPBridge_ChangeResourceSettings(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_ PPCI_COMMON_HEADER PciData)
 {
-    //BOOLEAN IoActive;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDescriptor;
     PPCI_FDO_EXTENSION FdoExtension;
-    PPCI_FUNCTION_RESOURCES PciResources;
-    ULONG i;
+    PHYSICAL_ADDRESS BigLimit;
+    ULONG LowPart;
+    ULONG Limit;
+    ULONG ix;
+    BOOLEAN Is32Bit;
 
-    /* Check if I/O Decodes are enabled */
-    //IoActive = (PciData->u.type1.IOBase & 0xF) == 1;
+    DPRINT("PPBridge_ChangeResourceSettings: %p, %p\n", PdoExtension, PciData);
 
-    /*
-     * Check for Intel ICH PCI-to-PCI (i82801) bridges (used on the i810,
-     * i820, i840, i845 Chipsets) that don't have subtractive decode broken.
-     * If they do have broken subtractive support, or if they are not ICH bridges,
-     * then check if the bridge supports subtractive decode at all.
-     */
-    if ((((PdoExtension->VendorId == 0x8086) &&
-         ((PdoExtension->DeviceId == 0x2418) ||
-          (PdoExtension->DeviceId == 0x2428) ||
-          (PdoExtension->DeviceId == 0x244E) ||
-          (PdoExtension->DeviceId == 0x2448))) &&
-         (!(PdoExtension->HackFlags & PCI_HACK_BROKEN_SUBTRACTIVE_DECODE) ||
-         (PdoExtension->Dependent.type1.SubtractiveDecode == FALSE))) ||
-        (PdoExtension->Dependent.type1.SubtractiveDecode == FALSE))
+    Is32Bit = ((PciData->u.type1.IOBase & 0xF) == 1);
+
+    /* Check for Intel ICH PCI-to-PCI (i82801) bridges (used on the i810, i820, i840, i845 Chipsets)
+       that don't have subtractive decode broken. If they do have broken subtractive support,
+       or if they are not ICH bridges, then check if the bridge supports subtractive decode at all.
+    */
+    if (((PdoExtension->VendorId == 0x8086 &&
+          (PdoExtension->DeviceId == 0x2418 ||
+           PdoExtension->DeviceId == 0x2428 ||
+           PdoExtension->DeviceId == 0x244E ||
+           PdoExtension->DeviceId == 0x2448)) ||
+         (PdoExtension->HackFlags & PCI_HACK_BROKEN_SUBTRACTIVE_DECODE)) &&
+        PdoExtension->Dependent.type1.SubtractiveDecode)
     {
-        /* No resources are needed on a subtractive decode bridge */
-        PciData->u.type1.MemoryBase = 0xFFFF;
-        PciData->u.type1.PrefetchBase = 0xFFFF;
-        PciData->u.type1.IOBase = 0xFF;
-        PciData->u.type1.IOLimit = 0;
-        PciData->u.type1.MemoryLimit = 0;
-        PciData->u.type1.PrefetchLimit = 0;
-        PciData->u.type1.PrefetchBaseUpper32 = 0;
-        PciData->u.type1.PrefetchLimitUpper32 = 0;
-        PciData->u.type1.IOBaseUpper16 = 0;
-        PciData->u.type1.IOLimitUpper16 = 0;
-    }
-    else
-    {
-        /*
-         * Otherwise, get the FDO to read the old PCI configuration header that
-         * had been saved by the hack in PPBridge_SaveCurrentSettings.
-         */
+        /* Get the FDO to read the old PCI configuration header that
+           had been saved by the hack in PPBridge_SaveCurrentSettings.
+        */
         FdoExtension = PdoExtension->ParentFdoExtension;
         ASSERT(PdoExtension->Resources == NULL);
 
@@ -739,15 +740,85 @@ PPBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
         PciData->u.type1.IOBaseUpper16 = FdoExtension->PreservedConfig->u.type1.IOBaseUpper16;
         PciData->u.type1.IOLimitUpper16 = FdoExtension->PreservedConfig->u.type1.IOLimitUpper16;
     }
+    else
+    {
+        /* No resources are needed on a subtractive decode bridge */
+        PciData->u.type1.IOBase = 0xFF;
+        PciData->u.type1.IOLimit = 0;
+        PciData->u.type1.MemoryBase = 0xFFFF;
+        PciData->u.type1.MemoryLimit = 0;
+        PciData->u.type1.PrefetchBase = 0xFFFF;
+        PciData->u.type1.PrefetchLimit = 0;
+        PciData->u.type1.PrefetchBaseUpper32 = 0;
+        PciData->u.type1.PrefetchLimitUpper32 = 0;
+        PciData->u.type1.IOBaseUpper16 = 0;
+        PciData->u.type1.IOLimitUpper16 = 0;
+    }
 
     /* Loop bus resources */
-    PciResources = PdoExtension->Resources;
-    if (PciResources)
+    if (PdoExtension->Resources)
     {
+        CmDescriptor = PdoExtension->Resources->Current;
+
         /* Loop each resource type (the BARs, ROM BAR and Prefetch) */
-        for (i = 0; i < 6; i++)
+        for (ix = 0; ix < 6; ix++, CmDescriptor++)
         {
-            UNIMPLEMENTED;
+            if (CmDescriptor->Type == 0)
+                continue;
+
+            LowPart = CmDescriptor->u.Generic.Start.LowPart;
+
+            if (ix == 0 || ix == 1)
+            {
+                DPRINT1("PPBridge_ChangeResourceSettings: ix %X\n", ix);
+                UNIMPLEMENTED_DBGBREAK();
+            }
+            else if (ix == 2)
+            {
+                Limit = (LowPart + CmDescriptor->u.Generic.Length - 1);
+                DPRINT("PPBridge_ChangeResourceSettings: [%X] %X, %X\n", ix, LowPart, Limit);
+
+                ASSERT(((LowPart & 0xFFF) == 0) && ((Limit & 0xFFF) == 0xFFF));
+
+                if (!Is32Bit)
+                {
+                    //ASSERT(((LowPart | Limit) & 0xFFFF0000) == 0);
+                    DPRINT1("PPBridge_ChangeResourceSettings: [%X] %X, %X\n", ix, LowPart, Limit);
+                }
+
+                PciData->u.type1.IOBaseUpper16 = (LowPart >> 0x10);
+                PciData->u.type1.IOLimitUpper16 = (Limit >> 0x10);
+                PciData->u.type1.IOBase = ((LowPart >> 8) & 0xF0);
+                PciData->u.type1.IOLimit = ((Limit >> 8) & 0xF0);
+            }
+            else if (ix == 3)
+            {
+                Limit = (LowPart + CmDescriptor->u.Generic.Length - 1);
+                DPRINT("PPBridge_ChangeResourceSettings: [%X] %X, %X\n", ix, LowPart, Limit);
+
+                ASSERT(((LowPart & 0xFFFFF) == 0) && ((Limit & 0xFFFFF) == 0xFFFFF));
+
+                PciData->u.type1.MemoryBase = (LowPart >> 0x10);
+                PciData->u.type1.MemoryLimit = ((Limit >> 0x10) & 0xFFF0);
+            }
+            else if (ix == 4)
+            {
+                Limit = (LowPart + CmDescriptor->u.Generic.Length - 1);
+                BigLimit.QuadPart = CmDescriptor->u.Generic.Start.QuadPart + CmDescriptor->u.Generic.Length - 1;
+                DPRINT("PPBridge_ChangeResourceSettings: [%X] %X, %X, %I64X\n", ix, LowPart, Limit, BigLimit.QuadPart);
+
+                ASSERT(((LowPart & 0xFFFFF) == 0) && (BigLimit.LowPart & 0xFFFFF) == 0xFFFFF);
+
+                PciData->u.type1.PrefetchLimit = ((BigLimit.LowPart >> 0x10) & 0xFFF0);
+                PciData->u.type1.PrefetchBase = (LowPart >> 0x10);
+                PciData->u.type1.PrefetchBaseUpper32 = CmDescriptor->u.Generic.Start.HighPart;
+                PciData->u.type1.PrefetchLimitUpper32 = BigLimit.HighPart;
+            }
+            else if (ix == 5)
+            {
+                DPRINT1("PPBridge_ChangeResourceSettings: ix %X\n", ix);
+                UNIMPLEMENTED_DBGBREAK();
+            }
         }
     }
 
@@ -758,14 +829,10 @@ PPBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
     /* Copy the decode flags */
     if (PdoExtension->Dependent.type1.IsaBitSet)
-    {
         PciData->u.type1.BridgeControl |= PCI_ENABLE_BRIDGE_ISA;
-    }
 
     if (PdoExtension->Dependent.type1.VgaBitSet)
-    {
         PciData->u.type1.BridgeControl |= PCI_ENABLE_BRIDGE_VGA;
-    }
 }
 
 /* EOF */

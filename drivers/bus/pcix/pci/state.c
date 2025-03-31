@@ -4,6 +4,7 @@
  * FILE:            drivers/bus/pci/pci/state.c
  * PURPOSE:         Bus/Device State Support
  * PROGRAMMERS:     ReactOS Portable Systems Group
+ *                  Copyright 2023 Vadim Galyant <vgal@rambler.ru>
  */
 
 /* INCLUDES *******************************************************************/
@@ -94,49 +95,50 @@ PciInitializeState(IN PPCI_FDO_EXTENSION DeviceExtension)
 
 NTSTATUS
 NTAPI
-PciBeginStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
-                        IN PCI_STATE NewState)
+PciBeginStateTransition(
+    _In_ PPCI_FDO_EXTENSION FdoExtension,
+    _In_ PCI_STATE NewState)
 {
     PCI_STATE CurrentState;
     NTSTATUS Status;
-    DPRINT1("PCI Request to begin transition of Extension %p to %s ->",
-            DeviceExtension,
-            PciTransitionText[NewState]);
+
+    DPRINT("PciBeginStateTransition: Request to begin transition of Extension %p to '%s' ->",
+            FdoExtension, PciTransitionText[NewState]);
 
     /* Assert the device isn't already in a pending transition */
-    ASSERT(DeviceExtension->TentativeNextState == DeviceExtension->DeviceState);
+    ASSERT(FdoExtension->TentativeNextState == FdoExtension->DeviceState);
 
     /* Assert this is a valid state */
-    CurrentState = DeviceExtension->DeviceState;
+    CurrentState = FdoExtension->DeviceState;
     ASSERT(CurrentState < PciMaxObjectState);
     ASSERT(NewState < PciMaxObjectState);
 
     /* Lookup if this state transition is valid */
     Status = PnpStateTransitionArray[CurrentState + 6 * NewState];
+
     if (Status == STATUS_FAIL_CHECK)
     {
         /* Invalid transition (logical fault) */
-        DPRINT1("ERROR\nPCI: Error trying to enter state \"%s\" "
-                "from state \"%s\"\n",
-                PciTransitionText[NewState],
-                PciTransitionText[CurrentState]);
+        DPRINT1("ERROR\nPciBeginStateTransition: Error trying to enter state '%s' from state '%s'\n",
+                PciTransitionText[NewState], PciTransitionText[CurrentState]);
+
         DbgBreakPoint();
     }
     else if (Status == STATUS_INVALID_DEVICE_REQUEST)
     {
         /* Invalid transition (illegal request) */
-        DPRINT1("ERROR\nPCI: Illegal request to try to enter state \"%s\" "
-                "from state \"%s\", rejecting",
-                PciTransitionText[NewState],
-                PciTransitionText[CurrentState]);
+        DPRINT1("ERROR\nPciBeginStateTransition: Illegal request to try to enter state '%s' from state '%s', rejecting",
+                PciTransitionText[NewState], PciTransitionText[CurrentState]);
     }
 
     /* New state must be different from current, unless request is at fault */
-    ASSERT((NewState != DeviceExtension->DeviceState) || (!NT_SUCCESS(Status)));
+    ASSERT((NewState != FdoExtension->DeviceState) || (!NT_SUCCESS(Status)));
 
     /* Enter the new state if successful, and return state status */
-    if (NT_SUCCESS(Status)) DeviceExtension->TentativeNextState = NewState;
-    DbgPrint("%x\n", Status);
+    if (NT_SUCCESS(Status))
+        FdoExtension->TentativeNextState = NewState;
+
+    DPRINT("%x\n", Status);
     return Status;
 }
 
@@ -146,9 +148,7 @@ PciCancelStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
                          IN PCI_STATE StateNotEntered)
 {
     NTSTATUS Status;
-    DPRINT1("PCI Request to cancel transition of Extension %p to %s ->",
-            DeviceExtension,
-            PciTransitionText[StateNotEntered]);
+    DPRINT("PCI Request to cancel transition of Extension %p to %s ->", DeviceExtension, PciTransitionText[StateNotEntered]);
 
     /* The next state can't be the state the device is already in */
     if (DeviceExtension->TentativeNextState == DeviceExtension->DeviceState)
@@ -159,7 +159,7 @@ PciCancelStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
 
         /* Return failure */
         Status = STATUS_INVALID_DEVICE_STATE;
-        DbgPrint("%x\n", Status);
+        DPRINT("%x\n", Status);
     }
     else
     {
@@ -169,7 +169,7 @@ PciCancelStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
 
         /* Return success */
         Status = STATUS_SUCCESS;
-        DbgPrint("%x\n", Status);
+        DPRINT("%x\n", Status);
     }
 
     /* Return the cancel state */
@@ -178,18 +178,18 @@ PciCancelStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
 
 VOID
 NTAPI
-PciCommitStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
-                         IN PCI_STATE NewState)
+PciCommitStateTransition(
+    _In_ PPCI_FDO_EXTENSION FdoExtension,
+    _In_ PCI_STATE NewState)
 {
-    DPRINT1("PCI Commit transition of Extension %p to %s\n",
-            DeviceExtension, PciTransitionText[NewState]);
+    DPRINT("PciCommitStateTransition: %p, '%s'\n", FdoExtension, PciTransitionText[NewState]);
 
     /* Make sure this is a valid commit */
     ASSERT(NewState != PciSynchronizedOperation);
-    ASSERT(DeviceExtension->TentativeNextState == NewState);
+    ASSERT(FdoExtension->TentativeNextState == NewState);
 
     /* Enter the new state */
-    DeviceExtension->DeviceState = NewState;
+    FdoExtension->DeviceState = NewState;
 }
 
 /* EOF */
