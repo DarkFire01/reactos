@@ -357,6 +357,156 @@ done:
     return Status;
 }
 
+VOID
+NTAPI
+ACPIUnload(
+    _In_ PDRIVER_OBJECT DriverObject)
+{
+    UNIMPLEMENTED_DBGBREAK();
+}
+
+NTSTATUS
+NTAPI
+ACPIDispatchIrp(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp)
+{
+    UNIMPLEMENTED_DBGBREAK();
+    return 0;
+}
+
+NTSTATUS
+NTAPI
+ACPIDispatchAddDevice(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PDEVICE_OBJECT TargetDevice)
+{
+    PDEVICE_EXTENSION DeviceExtension = NULL;
+    PDEVICE_OBJECT AttachedToDevice = NULL;
+    PDEVICE_OBJECT DeviceObject = NULL;
+    PACPI_POWER_INFO PowerInfo;
+    PCHAR InstanceID;
+    PCHAR Address;
+    KIRQL OldIrql;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+    DPRINT("ACPIDispatchAddDevice: %p, %p\n", DriverObject, TargetDevice);
+
+    Address = ExAllocatePoolWithTag(NonPagedPool, 0xE, 'SpcA');
+    if (!Address)
+    {
+        DPRINT1("ACPIDispatchAddDevice: STATUS_INSUFFICIENT_RESOURCES\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    RtlZeroMemory(Address, 0xE);
+    RtlCopyMemory(Address, "ACPI\\PNP0C08", sizeof("ACPI\\PNP0C08"));
+
+    InstanceID = ExAllocatePoolWithTag(NonPagedPool, 0xB, 'SpcA');
+    if (!InstanceID)
+    {
+        DPRINT1("ACPIDispatchAddDevice: STATUS_INSUFFICIENT_RESOURCES\n");
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Exit;
+    }
+    RtlZeroMemory(InstanceID, 0xB);
+    RtlCopyMemory(InstanceID, "0x5F534750", sizeof("0x5F534750"));
+
+    Status = IoCreateDevice(DriverObject, 0, NULL, FILE_DEVICE_ACPI, 0, FALSE, &DeviceObject);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("ACPIDispatchAddDevice: Status %X\n", Status);
+        goto Exit;
+    }
+
+    AttachedToDevice = IoAttachDeviceToDeviceStack(DeviceObject, TargetDevice);
+    if (!AttachedToDevice)
+    {
+        DPRINT1("ACPIDispatchAddDevice: STATUS_NO_SUCH_DEVICE\n");
+        Status = STATUS_NO_SUCH_DEVICE;
+        goto Exit;
+    }
+
+    DeviceExtension = ExAllocateFromNPagedLookasideList(&DeviceExtensionLookAsideList);
+    if (!DeviceExtension)
+    {
+        DPRINT1("ACPIDispatchAddDevice: STATUS_INSUFFICIENT_RESOURCES\n");
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Exit;
+    }
+
+    RtlZeroMemory(DeviceExtension, sizeof(*DeviceExtension));
+
+    InterlockedIncrement(&DeviceExtension->ReferenceCount);
+    InterlockedIncrement(&DeviceExtension->OutstandingIrpCount);
+
+    DeviceObject->DeviceExtension = DeviceExtension;
+    DeviceExtension->DeviceObject = DeviceObject;
+    DeviceExtension->PhysicalDeviceObject = TargetDevice;
+    DeviceExtension->TargetDeviceObject = AttachedToDevice;
+    DeviceExtension->Address = Address;
+    DeviceExtension->InstanceID = InstanceID;
+
+    PowerInfo = &DeviceExtension->PowerInfo;
+
+    DeviceExtension->Signature = '_SGP';
+    DeviceExtension->DispatchTable = &AcpiFdoIrpDispatch;
+
+    PowerInfo->DevicePowerMatrix[1] = 1;
+    PowerInfo->DevicePowerMatrix[2] = 1;
+    PowerInfo->DevicePowerMatrix[3] = 1;
+    PowerInfo->DevicePowerMatrix[4] = 1;
+    PowerInfo->DevicePowerMatrix[0] = 0;
+    PowerInfo->DevicePowerMatrix[5] = 4;
+    PowerInfo->DevicePowerMatrix[6] = 4;
+
+    PowerInfo->SystemWakeLevel = 0;
+    PowerInfo->DeviceWakeLevel = 0;
+
+    ACPIInternalUpdateFlags(&DeviceExtension->Flags, 0x0001E00000200010, FALSE);
+
+    InitializeListHead(&DeviceExtension->ChildDeviceList);
+    InitializeListHead(&DeviceExtension->SiblingDeviceList);
+    InitializeListHead(&DeviceExtension->EjectDeviceHead);
+    InitializeListHead(&DeviceExtension->EjectDeviceList);
+    InitializeListHead(&DeviceExtension->PowerInfo.PowerRequestListEntry);
+
+    // FIXME Interfaces and WMI ...
+
+    DeviceObject->Flags &= ~0x80;
+
+    if (NT_SUCCESS(Status))
+    {
+        DPRINT("ACPIDispatchAddDevice: Status %X\n", Status);
+        return Status;
+    }
+
+    DPRINT1("ACPIDispatchAddDevice: Status %X\n", Status);
+
+Exit:
+
+    ExFreePoolWithTag(Address, 'SpcA');
+
+    if (InstanceID)
+        ExFreePoolWithTag(InstanceID, 'SpcA');
+
+    if (AttachedToDevice)
+        IoDetachDevice(AttachedToDevice);
+
+    if (DeviceObject)
+        IoDeleteDevice(DeviceObject);
+
+    if (DeviceExtension)
+        ExFreeToNPagedLookasideList(&DeviceExtensionLookAsideList, DeviceExtension);
+
+    DPRINT("ACPIDispatchAddDevice: Status %X\n", Status);
+    return Status;
+}
+
+VOID
+NTAPI
+ACPISetupHalInterface(VOID);
+
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
@@ -366,6 +516,7 @@ DriverEntry (
     )
 {
     NTSTATUS Status;
+    /* This might have been changed with processor containers TOOD: Check this. */
     Status = GetProcessorInformation();
     if (!NT_SUCCESS(Status))
     {
@@ -373,7 +524,13 @@ DriverEntry (
         return Status;
     }
 
-    DPRINT("ACPI_NEW: Entry %X\n",  ACPIInitUACPI());
+    DriverObject->DriverUnload = ACPIUnload;
+    DriverObject->DriverExtension->AddDevice = ACPIDispatchAddDevice;
+
+    for (ULONG ix = 0; ix <= IRP_MJ_MAXIMUM_FUNCTION; ix++)
+        DriverObject->MajorFunction[ix] = ACPIDispatchIrp;
+    ACPISetupHalInterface();
     UNIMPLEMENTED;
+    __debugbreak();
     return 1;
 }

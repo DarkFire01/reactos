@@ -39,6 +39,7 @@ add_pch(uacpi uacpi/include/uacpi/acpi.h "${UACPI_SOURCE}")
 list(APPEND ACPI_SOURCE
     uacpiosl.c
     acpiutils.c
+    halinterface.c
     main.c)
 
 add_library(acpi MODULE
