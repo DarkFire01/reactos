@@ -32,7 +32,11 @@ UserSetLastNTError(IN NTSTATUS Status)
 }
 
 
+#if !(defined(_WOW64) && defined(_M_IX86))
 PTHREADINFO
+#else
+UINT64
+#endif
 GetW32ThreadInfo(VOID)
 {
     PTHREADINFO ti;
@@ -165,10 +169,10 @@ BOOL
 FASTCALL
 TestWindowProcess(PWND Wnd)
 {
-   if (Wnd->head.pti == (PTHREADINFO)NtCurrentTeb()->Win32ThreadInfo)
+   if (WOW64_CAST_TO_PTR(Wnd->head.pti) == (PTHREADINFO)NtCurrentTeb()->Win32ThreadInfo)
       return TRUE;
    else
-      return (NtUserQueryWindow(Wnd->head.h, QUERY_WINDOW_UNIQUE_PROCESS_ID) ==
+      return (NtUserQueryWindow(WOW64_CAST_TO_HANDLE(Wnd->head.h), QUERY_WINDOW_UNIQUE_PROCESS_ID) ==
               (DWORD_PTR)NtCurrentTeb()->ClientId.UniqueProcess );
 }
 
@@ -190,6 +194,7 @@ TestState(PWND pWnd, UINT Flag)
     return FALSE;
 }
 
+#if !(defined(_WOW64) && defined(_M_IX86))
 PUSER_HANDLE_ENTRY
 FASTCALL
 GetUser32Handle(HANDLE handle)
@@ -214,6 +219,39 @@ GetUser32Handle(HANDLE handle)
 
     return NULL;
 }
+#else
+UINT64
+FASTCALL
+GetUser32Handle(HANDLE handle)
+{
+    INT Index;
+    USHORT generation;
+
+    UINT64 elementAddress;
+
+    if (!handle) return 0;
+
+    Index = (((UINT_PTR)handle & 0xffff) - FIRST_USER_HANDLE) >> 1;
+    elementAddress = gHandleEntries + Index * sizeof(USER_HANDLE_ENTRY);
+
+    if (Index < 0 || Index >= WOW64_READ_ULONG_FIELD(gHandleTable, USER_HANDLE_TABLE, nb_handles))
+        return 0;
+
+    if (!WOW64_READ_BYTE_FIELD(elementAddress, USER_HANDLE_ENTRY, type) || 
+        !WOW64_READ_PTR_FIELD(elementAddress, USER_HANDLE_ENTRY, ptr))
+        return 0;
+
+    generation = (UINT_PTR)handle >> 16;
+
+    if (generation == WOW64_READ_WORD_FIELD(elementAddress, 
+                                            USER_HANDLE_ENTRY, 
+                                            generation) || 
+        !generation || generation == 0xffff)
+        return elementAddress;
+
+    return 0;
+}
+#endif
 
 /*
  * Decide whether an object is located on the desktop or shared heap
@@ -252,12 +290,17 @@ FASTCALL
 ValidateHandle(HANDLE handle, UINT uType)
 {
   PVOID ret;
+#if !(defined(_WOW64) && defined(_M_IX86))
   PUSER_HANDLE_ENTRY pEntry;
+#else
+  UINT64 pEntry;
+#endif
 
   ASSERT(uType < TYPE_CTYPES);
 
   pEntry = GetUser32Handle(handle);
 
+#if !(defined(_WOW64) && defined(_M_IX86))
   if (pEntry && uType == 0)
       uType = pEntry->type;
 
@@ -266,6 +309,17 @@ ValidateHandle(HANDLE handle, UINT uType)
         (pEntry->type != uType) ||
         !pEntry->ptr ||
         (pEntry->flags & HANDLEENTRY_DESTROY) || (pEntry->flags & HANDLEENTRY_INDESTROY) )
+#else
+  if (pEntry && uType == 0)
+      uType = WOW64_READ_BYTE_FIELD(pEntry, USER_HANDLE_ENTRY, type);
+
+// Must have an entry and must be the same type!
+  if ( (!pEntry) ||
+        (WOW64_READ_BYTE_FIELD(pEntry, USER_HANDLE_ENTRY, type) != uType) ||
+        !WOW64_READ_PTR_FIELD(pEntry, USER_HANDLE_ENTRY, ptr) ||
+        (WOW64_READ_BYTE_FIELD(pEntry, USER_HANDLE_ENTRY, flags) & HANDLEENTRY_DESTROY) || 
+        (WOW64_READ_BYTE_FIELD(pEntry, USER_HANDLE_ENTRY, flags) & HANDLEENTRY_INDESTROY) )
+#endif
   {
      switch ( uType )
      {  // Test (with wine too) confirms these results!
@@ -294,10 +348,18 @@ ValidateHandle(HANDLE handle, UINT uType)
     return NULL;
   }
 
+#if !(defined(_WOW64) && defined(_M_IX86))
   if (g_ObjectHeapTypeShared[uType])
     ret = SharedPtrToUser(pEntry->ptr);
   else
     ret = DesktopPtrToUser(pEntry->ptr);
+#else
+  if (g_ObjectHeapTypeShared[uType])
+    /* FIXME: truncation */
+    ret = (PVOID)(ULONG_PTR)SharedPtrToUser(WOW64_READ_PTR_FIELD(pEntry, USER_HANDLE_ENTRY, ptr));
+  else
+    ret = DesktopPtrToUser((PVOID)(ULONG_PTR)WOW64_READ_PTR_FIELD(pEntry, USER_HANDLE_ENTRY, ptr)); 
+#endif
 
   return ret;
 }
@@ -310,14 +372,19 @@ FASTCALL
 ValidateHandleNoErr(HANDLE handle, UINT uType)
 {
   PVOID ret;
+#if !(defined(_WOW64) && defined(_M_IX86))
   PUSER_HANDLE_ENTRY pEntry;
+#else
+  UINT64 pEntry;
+#endif
 
   ASSERT(uType < TYPE_CTYPES);
 
   pEntry = GetUser32Handle(handle);
 
+#if !(defined(_WOW64) && defined(_M_IX86))
   if (pEntry && uType == 0)
-      uType = pEntry->type;
+    uType = pEntry->type;
 
 // Must have an entry and must be the same type!
   if ( (!pEntry) || (pEntry->type != uType) || !pEntry->ptr )
@@ -327,6 +394,20 @@ ValidateHandleNoErr(HANDLE handle, UINT uType)
     ret = SharedPtrToUser(pEntry->ptr);
   else
     ret = DesktopPtrToUser(pEntry->ptr);
+#else
+  if (pEntry && uType == 0)
+    uType = WOW64_READ_BYTE_FIELD(pEntry, USER_HANDLE_ENTRY, type);
+
+  if ( (!pEntry) || (WOW64_READ_BYTE_FIELD(pEntry, USER_HANDLE_ENTRY, type) != uType) ||
+       !WOW64_READ_PTR_FIELD(pEntry, USER_HANDLE_ENTRY, ptr) )
+    return NULL;    
+
+  /* FIXME: address truncation */
+  if (g_ObjectHeapTypeShared[uType])
+    ret = (PVOID)(ULONG_PTR)SharedPtrToUser(WOW64_READ_PTR_FIELD(pEntry, USER_HANDLE_ENTRY, ptr));
+  else
+    ret = DesktopPtrToUser((PVOID)(ULONG_PTR)WOW64_READ_PTR_FIELD(pEntry, USER_HANDLE_ENTRY, ptr));
+#endif
 
   return ret;
 }
@@ -338,13 +419,20 @@ PCALLPROCDATA
 FASTCALL
 ValidateCallProc(HANDLE hCallProc)
 {
+#if !(defined(_WOW64) && defined(_M_IX86))
   PUSER_HANDLE_ENTRY pEntry;
+#else
+  UINT64 pEntry;
+#endif
 
   PCALLPROCDATA CallProc = ValidateHandle(hCallProc, TYPE_CALLPROC);
 
   pEntry = GetUser32Handle(hCallProc);
-
+#if !(defined(_WOW64) && defined(_M_IX86))
   if (CallProc != NULL && pEntry->ppi == g_ppi)
+#else
+  if (CallProc != NULL && WOW64_READ_PTR_FIELD(pEntry, USER_HANDLE_ENTRY, ppi) == (ULONG_PTR)g_ppi)
+#endif
      return CallProc;
 
   return NULL;

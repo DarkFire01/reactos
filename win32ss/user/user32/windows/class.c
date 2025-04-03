@@ -542,7 +542,7 @@ IntGetClsWndProc(PWND pWnd, PCLS Class, BOOL Ansi)
     {  // Always scan through the list due to wine class "deftest".
         for ( i = FNID_FIRST; i <= FNID_SWITCH; i++)
         {
-            if (GETPFNSERVER(i) == Class->lpfnWndProc)
+            if (GETPFNSERVER(i) == WOW64_CAST_TO_PTR(Class->lpfnWndProc))
             {
                 if (Ansi)
                     Ret = (ULONG_PTR)GETPFNCLIENTA(i);
@@ -559,12 +559,12 @@ IntGetClsWndProc(PWND pWnd, PCLS Class, BOOL Ansi)
     {
         if (Ansi)
         { // If match return the right proc by type.
-            if (GETPFNCLIENTW(Class->fnid) == Class->lpfnWndProc)
+            if (GETPFNCLIENTW(Class->fnid) == WOW64_CAST_TO_PTR(Class->lpfnWndProc))
                 Ret = (ULONG_PTR)GETPFNCLIENTA(Class->fnid);
         }
         else
         {
-            if (GETPFNCLIENTA(Class->fnid) == Class->lpfnWndProc)
+            if (GETPFNCLIENTA(Class->fnid) == WOW64_CAST_TO_PTR(Class->lpfnWndProc))
                Ret = (ULONG_PTR)GETPFNCLIENTW(Class->fnid);
         }
     }
@@ -598,7 +598,7 @@ IntGetWndProc(PWND pWnd, BOOL Ansi)
     {
         for ( i = FNID_FIRST; i <= FNID_SWITCH; i++)
         {
-            if (GETPFNSERVER(i) == pWnd->lpfnWndProc)
+            if (GETPFNSERVER(i) == WOW64_CAST_TO_PTR(pWnd->lpfnWndProc))
             {
                 if (Ansi)
                     Ret = GETPFNCLIENTA(i);
@@ -615,27 +615,27 @@ IntGetWndProc(PWND pWnd, BOOL Ansi)
         is treated specially.
      */
     if (Class->fnid == FNID_EDIT)
-        Ret = pWnd->lpfnWndProc;
+        Ret = WOW64_CAST_TO_PTR(pWnd->lpfnWndProc);
     else
     {
         // Set return proc.
-        Ret = pWnd->lpfnWndProc;
+        Ret = WOW64_CAST_TO_PTR(pWnd->lpfnWndProc);
 
         if (Class->fnid <= FNID_GHOST && Class->fnid >= FNID_BUTTON)
         {
             if (Ansi)
             {
-                if (GETPFNCLIENTW(Class->fnid) == pWnd->lpfnWndProc)
+                if (GETPFNCLIENTW(Class->fnid) == WOW64_CAST_TO_PTR(pWnd->lpfnWndProc))
                     Ret = GETPFNCLIENTA(Class->fnid);
             }
             else
             {
-                if (GETPFNCLIENTA(Class->fnid) == pWnd->lpfnWndProc)
+                if (GETPFNCLIENTA(Class->fnid) == WOW64_CAST_TO_PTR(pWnd->lpfnWndProc))
                     Ret = GETPFNCLIENTW(Class->fnid);
             }
         }
         // Return on the change.
-        if ( Ret != pWnd->lpfnWndProc)
+        if ( Ret != WOW64_CAST_TO_PTR(pWnd->lpfnWndProc))
             return Ret;
     }
 
@@ -699,6 +699,7 @@ IntGetClassLongA(PWND Wnd, PCLS Class, int nIndex)
                 Ret = (ULONG_PTR)Class->atomNVClassName;
                 break;
 
+#if !(defined(_WOW64) && defined(_M_IX86))
             case GCLP_HCURSOR:
                 Ret = Class->spcur ? (ULONG_PTR)((PPROCMARKHEAD)SharedPtrToUser(Class->spcur))->h : 0;
                 break;
@@ -710,6 +711,19 @@ IntGetClassLongA(PWND Wnd, PCLS Class, int nIndex)
             case GCLP_HICONSM:
                 Ret = Class->spicnSm ? (ULONG_PTR)((PPROCMARKHEAD)SharedPtrToUser(Class->spicnSm))->h : 0;
                 break;
+#else
+            case GCLP_HCURSOR:
+                /* FIXME */
+                break;
+
+            case GCLP_HICON:
+                /* FIXME */
+                break;
+
+            case GCLP_HICONSM:
+                /* FIXME */
+                break;
+#endif
 
             case GCLP_WNDPROC:
                 Ret = IntGetClsWndProc(Wnd, Class, TRUE);
@@ -773,6 +787,7 @@ IntGetClassLongW(PWND Wnd, PCLS Class, int nIndex)
                 Ret = (ULONG_PTR)Class->atomNVClassName;
                 break;
 
+#if !(defined(_WOW64) && defined(_M_IX86))
             case GCLP_HCURSOR:
                 Ret = Class->spcur ? (ULONG_PTR)((PPROCMARKHEAD)SharedPtrToUser(Class->spcur))->h : 0;
                 break;
@@ -784,6 +799,9 @@ IntGetClassLongW(PWND Wnd, PCLS Class, int nIndex)
             case GCLP_HICONSM:
                 Ret = Class->spicnSm ? (ULONG_PTR)((PPROCMARKHEAD)SharedPtrToUser(Class->spicnSm))->h : 0;
                 break;
+#else
+            /* TODO */
+#endif
 
             case GCLP_WNDPROC:
                 Ret = IntGetClsWndProc(Wnd, Class, FALSE);

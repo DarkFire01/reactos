@@ -139,7 +139,7 @@ DIALOGINFO *DIALOG_get_info( HWND hWnd, BOOL create )
        return NULL;
     }
 
-    dlgInfo = pWindow->DialogPointer;
+    dlgInfo = WOW64_CAST_TO_PTR(pWindow->DialogPointer);
 
     if (!dlgInfo && create)
     {
@@ -2713,14 +2713,24 @@ IsDialogMessageW(
      case WM_SYSKEYDOWN:
          /* If the ALT key is being pressed display the keyboard cues */
          if ( HIWORD(lpMsg->lParam) & KF_ALTDOWN &&
+#if !(defined(_WOW64) && defined(_M_IX86))
              !(gpsi->dwSRVIFlags & SRVINFO_KBDPREF) && !(gpsi->PUSIFlags & PUSIF_KEYBOARDCUES) )
+#else
+             !(WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwSRVIFlags) & SRVINFO_KBDPREF) && 
+             !(WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, PUSIFlags) & PUSIF_KEYBOARDCUES) )
+#endif
              SendMessageW(hDlg, WM_CHANGEUISTATE, MAKEWPARAM(UIS_CLEAR, UISF_HIDEACCEL | UISF_HIDEFOCUS), 0);
          break;
 
      case WM_SYSCOMMAND:
          /* If the ALT key is being pressed display the keyboard cues */
          if ( lpMsg->wParam == SC_KEYMENU &&
+#if !(defined(_WOW64) && defined(_M_IX86))
              !(gpsi->dwSRVIFlags & SRVINFO_KBDPREF) && !(gpsi->PUSIFlags & PUSIF_KEYBOARDCUES) )
+#else
+             !(WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwSRVIFlags) & SRVINFO_KBDPREF) && 
+             !(WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, PUSIFlags) & PUSIF_KEYBOARDCUES) )
+#endif
          {
             SendMessageW(hDlg, WM_CHANGEUISTATE, MAKEWPARAM(UIS_CLEAR, UISF_HIDEACCEL | UISF_HIDEFOCUS), 0);
          }

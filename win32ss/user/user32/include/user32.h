@@ -64,6 +64,9 @@
 /* Internal User32 Headers */
 #include "user32p.h"
 
+/* WOW64 NTDLL Functions */
+#include "../../../../dll/ntdll/wow64/ntdll32.h"
+
 /* User macros */
 #include "user_x.h"
 

@@ -776,7 +776,7 @@ BOOL GdiGetHandleUserData(HGDIOBJ hGdiObj, DWORD ObjectType, PVOID *UserData)
         return FALSE;
     }
 
-    *UserData = Entry->UserData;
+    *UserData = WOW64_CAST_TO_PTR(Entry->UserData);
     return TRUE;
 }
 

@@ -891,6 +891,7 @@ NTSTATUS WINAPI wow64_NtUnmapViewOfSectionEx( UINT *args )
     if (is_current && pBTCpuNotifyUnmapViewOfSection) pBTCpuNotifyUnmapViewOfSection( addr, TRUE, status );
     return status;
 }
+#endif
 
 /**********************************************************************
  *           wow64_NtWow64AllocateVirtualMemory64
@@ -930,14 +931,18 @@ NTSTATUS WINAPI wow64_NtWow64WriteVirtualMemory64( UINT *args )
 {
     HANDLE process = get_handle( &args );
     void *addr = (void *)(ULONG_PTR)get_ulong64( &args );
+#ifdef __REACTOS__
+#define const 
+#endif
     const void *buffer = get_ptr( &args );
+#ifdef __REACTOS__
+#undef const
+#endif
     SIZE_T size = get_ulong64( &args );
     SIZE_T *ret_size = get_ptr( &args );
 
     return NtWriteVirtualMemory( process, addr, buffer, size, ret_size );
 }
-#endif
-
 
 /**********************************************************************
  *           wow64_NtWriteVirtualMemory

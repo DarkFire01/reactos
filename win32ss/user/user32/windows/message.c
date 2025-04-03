@@ -1753,7 +1753,7 @@ IntCallMessageProc(IN PWND Wnd, IN HWND hWnd, IN UINT Msg, IN WPARAM wParam, IN 
     Class = DesktopPtrToUser(Wnd->pcls);
     WndProc = NULL;
 
-    if ( Wnd->head.pti != GetW32ThreadInfo())
+    if ( WOW64_CAST_TO_PTR(Wnd->head.pti) != GetW32ThreadInfo())
     {  // Must be inside the same thread!
        SetLastError( ERROR_MESSAGE_SYNC_ONLY );
        return 0;
@@ -1768,12 +1768,12 @@ IntCallMessageProc(IN PWND Wnd, IN HWND hWnd, IN UINT Msg, IN WPARAM wParam, IN 
     {
        if (Ansi)
        {
-          if (GETPFNCLIENTW(Class->fnid) == Wnd->lpfnWndProc)
+          if (GETPFNCLIENTW(Class->fnid) == WOW64_CAST_TO_PTR(Wnd->lpfnWndProc))
              WndProc = GETPFNCLIENTA(Class->fnid);
        }
        else
        {
-          if (GETPFNCLIENTA(Class->fnid) == Wnd->lpfnWndProc)
+          if (GETPFNCLIENTA(Class->fnid) == WOW64_CAST_TO_PTR(Wnd->lpfnWndProc))
              WndProc = GETPFNCLIENTW(Class->fnid);
        }
 
@@ -1782,13 +1782,13 @@ IntCallMessageProc(IN PWND Wnd, IN HWND hWnd, IN UINT Msg, IN WPARAM wParam, IN 
        if (!WndProc)
        {
           IsAnsi = !Wnd->Unicode;
-          WndProc = Wnd->lpfnWndProc;
+          WndProc = WOW64_CAST_TO_PTR(Wnd->lpfnWndProc);
        }
     }
     else
     {
        IsAnsi = !Wnd->Unicode;
-       WndProc = Wnd->lpfnWndProc;
+       WndProc = WOW64_CAST_TO_PTR(Wnd->lpfnWndProc);
     }
 /*
    Message caller can be Ansi/Unicode and the receiver can be Unicode/Ansi or
@@ -2386,7 +2386,7 @@ SendMessageW(HWND Wnd,
       Window = ValidateHwnd(Wnd);
 
       if ( Window != NULL &&
-           Window->head.pti == ti &&
+           WOW64_CAST_TO_PTR(Window->head.pti) == ti &&
           !ISITHOOKED(WH_CALLWNDPROC) &&
           !ISITHOOKED(WH_CALLWNDPROCRET) &&
           !(Window->state & WNDS_SERVERSIDEWINDOWPROC) )
@@ -2458,7 +2458,7 @@ SendMessageA(HWND Wnd, UINT Msg, WPARAM wParam, LPARAM lParam)
       Window = ValidateHwnd(Wnd);
 
       if ( Window != NULL &&
-           Window->head.pti == ti &&
+           WOW64_CAST_TO_PTR(Window->head.pti) == ti &&
           !ISITHOOKED(WH_CALLWNDPROC) &&
           !ISITHOOKED(WH_CALLWNDPROCRET) &&
           !(Window->state & WNDS_SERVERSIDEWINDOWPROC) )

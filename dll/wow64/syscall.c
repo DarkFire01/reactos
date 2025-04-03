@@ -469,7 +469,6 @@ NTSTATUS WINAPI wow64_NtAllocateUuids( UINT *args )
 }
 
 
-#ifndef __REACTOS__
 /***********************************************************************
  *           wow64_NtCallbackReturn
  */
@@ -489,7 +488,6 @@ NTSTATUS WINAPI wow64_NtCallbackReturn( UINT *args )
     longjmp( frame->jmpbuf, 1 );
     return STATUS_SUCCESS;
 }
-#endif
 
 
 /**********************************************************************
@@ -1231,7 +1229,6 @@ void WINAPI Wow64ApcRoutine( ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3, CON
         break;
     }
 }
-
 
 /**********************************************************************
  *           Wow64KiUserCallbackDispatcher  (wow64.@)

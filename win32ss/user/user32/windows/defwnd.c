@@ -20,7 +20,11 @@ GetSysColor(int nIndex)
 {
   if(nIndex >= 0 && nIndex < NUM_SYSCOLORS)
   {
+#if !(defined(_WOW64) && defined(_M_IX86))
     return gpsi->argbSystem[nIndex];
+#else
+    return WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, argbSystem[nIndex]);
+#endif
   }
 
   SetLastError(ERROR_INVALID_PARAMETER);
@@ -37,7 +41,11 @@ GetSysColorBrush(int nIndex)
 {
   if(nIndex >= 0 && nIndex < NUM_SYSCOLORS)
   {
+#if !(defined(_WOW64) && defined(_M_IX86))
     return gpsi->ahbrSystem[nIndex];
+#else
+    return (HBRUSH)(ULONG_PTR)WOW64_READ_PTR_FIELD(gpsi, SERVERINFO, ahbrSystem[nIndex]);
+#endif
   }
 
   return NULL;
@@ -97,7 +105,7 @@ IntFindChildWindowToOwner(HWND hRoot, HWND hOwner)
 
       if(OwnerWnd == Owner)
       {
-         Ret = Child->head.h;
+         Ret = WOW64_CAST_TO_HANDLE(Child->head.h);
          return Ret;
       }
    }
@@ -219,7 +227,11 @@ DefWndControlColor(HDC hDC, UINT ctlType)
        * look different from the window background.
        */
       if ( bk == GetSysColor(COLOR_WINDOW))
+#if !(defined(_WOW64) && defined(_M_IX86))
           return gpsi->hbrGray;
+#else
+          return (HBRUSH)(ULONG_PTR)WOW64_READ_PTR_FIELD(gpsi, SERVERINFO, hbrGray);
+#endif
 
       UnrealizeObject( hb );
       return hb;
@@ -263,7 +275,11 @@ UserPaintCaption(PWND pwnd, INT Flags)
      * This is solved by sending a themes specific message to notify the themes
      * engine that the caption needs to be redrawn 
      */
+#if !(defined(_WOW64) && defined(_M_IX86))
     if(gpsi->dwSRVIFlags & SRVINFO_APIHOOK)
+#else
+    if(WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwSRVIFlags) & SRVINFO_APIHOOK)
+#endif
     {
         /* 
          * This will cause uxtheme to either paint the themed caption or call
@@ -294,6 +310,7 @@ DefWndGetIcon(PWND pWnd, WPARAM wParam, LPARAM lParam)
     }
     switch(wParam)
     {
+#if !(defined(_WOW64) && defined(_M_IX86))
         case ICON_BIG:
             hIconRet = UserGetProp(UserHMGetHandle(pWnd), gpsi->atomIconProp, TRUE);
             break;
@@ -301,6 +318,15 @@ DefWndGetIcon(PWND pWnd, WPARAM wParam, LPARAM lParam)
         case ICON_SMALL2:
             hIconRet = UserGetProp(UserHMGetHandle(pWnd), gpsi->atomIconSmProp, TRUE);
             break;
+#else
+        case ICON_BIG:
+            hIconRet = UserGetProp(UserHMGetHandle(pWnd), WOW64_READ_WORD_FIELD(gpsi, SERVERINFO, atomIconProp), TRUE);
+            break;
+        case ICON_SMALL:
+        case ICON_SMALL2:
+            hIconRet = UserGetProp(UserHMGetHandle(pWnd), WOW64_READ_WORD_FIELD(gpsi, SERVERINFO, atomIconSmProp), TRUE);
+            break;
+#endif
         default:
             break;
     }
@@ -641,7 +667,7 @@ User32DefWindowProc(HWND hWnd,
                     break;
             }
 
-            if ((Wnd->style & WS_CHILD) && Wnd->spwndParent != NULL)
+            if ((Wnd->style & WS_CHILD) && WOW64_CAST_TO_PTR(Wnd->spwndParent) != NULL)
             {
                 /* We're a child window and we need to pass this message down until
                    we reach the root */
@@ -872,7 +898,7 @@ RealDefWindowProcA(HWND hWnd,
 
             if (Wnd != NULL && wParam != 0)
             {
-                if (Wnd->strName.Buffer != NULL)
+                if (WOW64_CAST_TO_PTR(Wnd->strName.Buffer) != NULL)
                     buf = DesktopPtrToUser(Wnd->strName.Buffer);
                 else
                     outbuf[0] = L'\0';
@@ -1097,7 +1123,7 @@ RealDefWindowProcW(HWND hWnd,
 
             if (Wnd != NULL && wParam != 0)
             {
-                if (Wnd->strName.Buffer != NULL)
+                if (WOW64_CAST_TO_PTR(Wnd->strName.Buffer) != NULL)
                     buf = DesktopPtrToUser(Wnd->strName.Buffer);
                 else
                     outbuf[0] = L'\0';

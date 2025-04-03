@@ -612,6 +612,9 @@ LdrpHandleOldFormatImportDescriptors(IN LPWSTR DllPath OPTIONAL,
     /* Check for Name and Thunk */
     while ((ImportEntry->Name) && (ImportEntry->FirstThunk))
     {
+#ifndef _M_AMD64
+        DPRINT1("%lp - %p - %p - %p\n", LdrEntry->DllBase, ImportEntry, ImportEntry->Name, ImportEntry->FirstThunk);
+#endif
         /* Parse this descriptor */
         Status = LdrpHandleOneOldFormatImportDescriptor(DllPath,
                                                         LdrEntry,

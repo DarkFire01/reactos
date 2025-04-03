@@ -1,5 +1,6 @@
 #pragma once
 
+#if !(defined(_WOW64) && defined(_M_IX86))
 static __inline PVOID
 SharedPtrToUser(PVOID Ptr)
 {
@@ -7,15 +8,35 @@ SharedPtrToUser(PVOID Ptr)
     ASSERT(gSharedInfo.ulSharedDelta != 0);
     return (PVOID)((ULONG_PTR)Ptr - gSharedInfo.ulSharedDelta);
 }
+#else
+static __inline UINT64
+SharedPtrToUser(UINT64 Ptr)
+{
+    ASSERT(Ptr != 0);
+    ASSERT(gSharedInfo.ulSharedDelta != 0);
+    return Ptr - gSharedInfo.ulSharedDelta;
+}
+#endif
 
 static __inline PVOID
+#if !(defined(_WOW64) && defined(_M_IX86))
 DesktopPtrToUser(PVOID Ptr)
+#else
+DesktopPtrToUserImpl(PVOID Ptr)
+#define DesktopPtrToUser(Ptr) DesktopPtrToUserImpl((PVOID)(ULONG_PTR)Ptr)
+#endif
 {
     PCLIENTINFO pci;
     PDESKTOPINFO pdi;
     GetW32ThreadInfo();
     pci = GetWin32ClientInfo();
     pdi = pci->pDeskInfo;
+
+    if (!Ptr || !pdi)
+    {
+        __debugbreak();
+        return NULL;
+    }
 
     ASSERT(Ptr != NULL);
     ASSERT(pdi != NULL);
@@ -84,6 +105,7 @@ static __inline BOOL STATIC_update_uistate(HWND hwnd, BOOL unicode)
 
 static __inline void LoadUserApiHook()
 {
+#if !(defined(_WOW64) && defined(_M_IX86))
    if (!gfServerProcess &&
        !IsInsideUserApiHook() &&
        (gpsi->dwSRVIFlags & SRVINFO_APIHOOK) &&
@@ -91,6 +113,9 @@ static __inline void LoadUserApiHook()
    {
       NtUserCallNoParam(NOPARAM_ROUTINE_LOADUSERAPIHOOK);
    }
+#else
+    /* FIXME */
+#endif
 }
 
 #define UserHasDlgFrameStyle(Style, ExStyle)                                   \

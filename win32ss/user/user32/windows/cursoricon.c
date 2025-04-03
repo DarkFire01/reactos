@@ -269,7 +269,11 @@ CURSORICON_ConvertPngToBmpIcon(
 
 VOID LoadSystemCursors(VOID)
 {
+#if !(defined(_WOW64) && defined(_M_IX86))
    if (!gpsi->hIconSmWindows)
+#else
+   if (!WOW64_READ_HANDLE_FIELD(gpsi, SERVERINFO, hIconSmWindows))
+#endif
    {
        ERR("Loading System Cursors\n");
        NtUserSetSystemCursor(LoadImageW( 0, IDC_ARROW,       IMAGE_CURSOR, 0, 0, LR_DEFAULTSIZE ), OCR_NORMAL);

@@ -594,7 +594,11 @@ static void UITOOLS_DrawCheckedRect( HDC dc, LPRECT rect )
 
         FillRect(dc, rect, GetSysColorBrush(COLOR_BTNFACE));
         bg = SetBkColor(dc, RGB(255, 255, 255));
-        hbsave = (HBRUSH)SelectObject(dc, gpsi->hbrGray);
+#if !(defined(_WOW64) && defined(_M_IX86))
+        hbsave = SelectObject(dc, gpsi->hbrGray);
+#else
+        hbsave = SelectObject(dc, WOW64_READ_HANDLE_FIELD(gpsi, SERVERINFO, hbrGray));
+#endif
         PatBlt(dc, rect->left, rect->top, rect->right-rect->left, rect->bottom-rect->top, 0x00FA0089);
         SelectObject(dc, hbsave);
         SetBkColor(dc, bg);
@@ -1148,7 +1152,11 @@ IntGrayString(
 
         if (! success) goto cleanup;
 
+#if !(defined(_WOW64) && defined(_M_IX86))
         hbsave = (HBRUSH)SelectObject(MemDC, gpsi->hbrGray);
+#else
+        hbsave = (HBRUSH)SelectObject(MemDC, WOW64_READ_HANDLE_FIELD(gpsi, SERVERINFO, hbrGray));
+#endif
         PatBlt(MemDC, 0, 0, nWidth, nHeight, 0x000A0329);
         SelectObject(MemDC, hbsave);
     }
@@ -1366,7 +1374,11 @@ IntDrawState(HDC hdc, HBRUSH hbr, DRAWSTATEPROC func, LPARAM lp, WPARAM wp,
     /* This state cause the image to be dithered */
     if(flags & DSS_UNION)
     {
+#if !(defined(_WOW64) && defined(_M_IX86))
         hbsave = (HBRUSH)SelectObject(memdc, gpsi->hbrGray);
+#else
+        hbsave = (HBRUSH)SelectObject(memdc, WOW64_READ_HANDLE_FIELD(gpsi, SERVERINFO, hbrGray));
+#endif
         if(!hbsave) goto cleanup;
         tmp = PatBlt(memdc, 0, 0, cx, cy, 0x00FA0089);
         SelectObject(memdc, hbsave);
@@ -1615,7 +1627,11 @@ DrawFocusRect(HDC hdc, CONST RECT *rect)
     NtUserSystemParametersInfo(SPI_GETFOCUSBORDERWIDTH, 0, &cx, 0);
     NtUserSystemParametersInfo(SPI_GETFOCUSBORDERHEIGHT, 0, &cy, 0);
 
+#if !(defined(_WOW64) && defined(_M_IX86))
     OldObj = SelectObject(hdc, gpsi->hbrGray);
+#else
+    OldObj = SelectObject(hdc, WOW64_READ_HANDLE_FIELD(gpsi, SERVERINFO, hbrGray));
+#endif
 
     /* top */
     PatBlt(hdc, rect->left, rect->top, rect->right - rect->left, cy, PATINVERT);

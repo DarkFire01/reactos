@@ -13,6 +13,8 @@
 
 #include <winddi.h>
 
+#include "../../dll/ntdll/wow64/ntdll32.h"
+
 /* DEFINES *******************************************************************/
 
 /* GDI handle table can hold 0x10000 handles */
@@ -202,7 +204,11 @@
 
 typedef struct _GDI_TABLE_ENTRY
 {
+#if !(defined(_WOW64) && defined(_M_IX86))
     PVOID KernelData; /* Points to the kernel mode structure */
+#else
+    UINT64 KernelData;
+#endif
     DWORD ProcessId;  /* process id that created the object, 0 for stock objects */
     union{            /* temp union structure. */
     LONG  Type;       /* the first 16 bit is the object type including the stock obj flag, the last 16 bits is just the object type */
@@ -211,7 +217,11 @@ typedef struct _GDI_TABLE_ENTRY
     UCHAR  ObjectType; /* objt */
     UCHAR  Flags;      /* Flags */
     };};
+#if !(defined(_WOW64) && defined(_M_IX86))
     PVOID UserData;   /* pUser Points to the user mode structure, usually NULL though */
+#else
+    UINT64 UserData;
+#endif
 } GDI_TABLE_ENTRY, *PGDI_TABLE_ENTRY;
 
 typedef struct _ENTRY
@@ -246,7 +256,11 @@ typedef struct __GDI_SHARED_HANDLE_TABLE /* Must match win32k/include/gdiobj.h *
     GDI_TABLE_ENTRY Entries[GDI_HANDLE_COUNT]; /* Handle table. */
     DEVCAPS         DevCaps;                   /* Shared device capabilities. */
     FLONG           flDeviceUniq;              /* Device settings uniqueness. */
+#if !(defined(_WOW64) && defined(_M_IX86))
     PVOID           pvLangPack;                /* Lanuage Pack. */
+#else
+    UINT64          pvLangPack;
+#endif
     CFONT           cfPublic[GDI_CFONT_MAX];   /* Public Fonts. */
     DWORD           dwCFCount;
 } GDI_SHARED_HANDLE_TABLE, *PGDI_SHARED_HANDLE_TABLE;

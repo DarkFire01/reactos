@@ -30,30 +30,6 @@
 #include "wow64win_private.h"
 #else
 
-#define WIN32_NO_STATUS
-#include <windef.h>
-#include <winbase.h>
-
-/* SDK/DDK/NDK Headers. */
-#include <wingdi.h>
-#include <objbase.h>
-#include <imm.h>
-#include <immdev.h>
-#include <imm32_undoc.h>
-
-#include <winddi.h>
-#include <prntfont.h>
-
-#include <ndk/rtlfuncs.h>
-#include <ndk/mmfuncs.h>
-
-/* Public Win32K Headers */
-#include <ntuser.h>
-#include <ntgdityp.h>
-#include <ntgdi.h>
-#include <ntgdihdl.h>
-
-
 #include "wow64win_private.h"
 
 /* FIXME */

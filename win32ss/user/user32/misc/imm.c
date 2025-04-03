@@ -342,7 +342,7 @@ static INT ImeWnd_OnCreate(PIMEUI pimeui, LPCREATESTRUCT lpCS)
     pParentWnd = ValidateHwnd(lpCS->hwndParent);
     if (pParentWnd)
     {
-        hIMC = pParentWnd->hImc;
+        hIMC = WOW64_CAST_TO_HANDLE(pParentWnd->hImc);
         if (hIMC && !User32CanSetImeWindowToImc(hIMC, UserHMGetHandle(pWnd)))
             hIMC = NULL;
     }
@@ -864,7 +864,7 @@ LRESULT ImeWnd_OnImeSetContext(PIMEUI pimeui, WPARAM wParam, LPARAM lParam)
             pwndOwner = ValidateHwnd(hwndOwner);
             if (pwndOwner)
             {
-                User32UpdateImcOfImeUI(pimeui, pwndOwner->hImc);
+                User32UpdateImcOfImeUI(pimeui, WOW64_CAST_TO_HANDLE(pwndOwner->hImc));
 
                 if (pimeui->hwndUI)
                     SetWindowLongPtrW(pimeui->hwndUI, IMMGWLP_IMC, (LONG_PTR)pwndOwner->hImc);
@@ -1163,7 +1163,11 @@ BOOL WINAPI UpdatePerUserImmEnabling(VOID)
     BOOL ret;
 
     ret = NtUserCallNoParam(NOPARAM_ROUTINE_UPDATEPERUSERIMMENABLING);
+#if !(defined(_WOW64) && defined(_M_IX86))
     if (!ret || !(gpsi->dwSRVIFlags & SRVINFO_IMM32))
+#else
+    if (!ret || !(WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwSRVIFlags) & SRVINFO_IMM32))
+#endif
         return FALSE;
 
     imm32 = GetModuleHandleW(L"imm32.dll");

@@ -295,3 +295,6 @@
 #define NumQueryPortInformationProcess 293
 #define NumGetCurrentProcessorNumber 294
 #define NumWaitForMultipleObjects32 295
+#define NumWow64AllocateVirtualMemory64 296
+#define NumWow64ReadVirtualMemory64 297
+#define NumWow64WriteVirtualMemory64 298

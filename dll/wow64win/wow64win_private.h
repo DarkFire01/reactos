@@ -21,6 +21,58 @@
 #ifndef __WOW64WIN_PRIVATE_H
 #define __WOW64WIN_PRIVATE_H
 
+#ifdef __REACTOS__
+#define WIN32_NO_STATUS
+#include <windef.h>
+#include <winbase.h>
+
+/* SDK/DDK/NDK Headers. */
+#include <wingdi.h>
+#include <objbase.h>
+#include <imm.h>
+#include <immdev.h>
+#include <imm32_undoc.h>
+
+#include <winddi.h>
+#include <prntfont.h>
+
+#include <ndk/rtlfuncs.h>
+#include <ndk/mmfuncs.h>
+
+/* Public Win32K Headers */
+#include <ntuser.h>
+#include <ntgdityp.h>
+#include <ntgdi.h>
+#include <ntgdihdl.h>
+
+extern NTSTATUS WINAPI (*UserCallbacks[])(PVOID Arguments, ULONG ArgumentLength);
+NTSTATUS WINAPI wow64_NtUserCallWinProc( void *arg, ULONG size );
+
+typedef struct _LARGE_STRING32
+{
+    ULONG Length;
+    ULONG MaximumLength:31;
+    ULONG bAnsi:1;
+    ULONG Buffer;
+} LARGE_STRING32, *PLARGE_STRING32;
+
+
+static inline LARGE_STRING *large_str_32to64( LARGE_STRING *str, const LARGE_STRING32 *str32 )
+{
+    if (!str32) return NULL;
+    str->Length = str32->Length;
+    str->MaximumLength = str32->MaximumLength;
+    str->bAnsi = str32->bAnsi;
+    str->Buffer = ULongToPtr( str32->Buffer );
+    return str;
+}
+
+#define DEFINE_USER32_CALLBACK(id, value, fn) static const ULONG Num ## fn = value;
+#include "u32cb.h"  
+#undef DEFINE_USER32_CALLBACK 
+
+#endif
+
 #ifndef __REACTOS__
 #include "../win32u/win32syscalls.h"
 #include "ntuser.h"
@@ -136,6 +188,316 @@ static inline void set_last_error32( DWORD err )
 #else
 
 #include "../wow64/ros_wow64_private.h"
+
+
+typedef struct
+{
+    DWORD cbSize;
+    DWORD fMask;
+    DWORD dwStyle;
+    UINT  cyMax;
+    ULONG hbrBack;
+    DWORD dwContextHelpID;
+    ULONG dwMenuData;
+} MENUINFO32;
+
+typedef struct
+{
+    UINT    cbSize;
+    UINT    fMask;
+    UINT    fType;
+    UINT    fState;
+    UINT    wID;
+    UINT32  hSubMenu;
+    UINT32  hbmpChecked;
+    UINT32  hbmpUnchecked;
+    UINT32  dwItemData;
+    UINT32  dwTypeData;
+    UINT    cch;
+    UINT32  hbmpItem;
+} MENUITEMINFOW32;
+
+typedef struct
+{
+    UINT32  hwnd;
+    UINT    message;
+    UINT32  wParam;
+    UINT32  lParam;
+    DWORD   time;
+    POINT   pt;
+} MSG32;
+
+typedef struct
+{
+    DWORD dwType;
+    DWORD dwSize;
+    UINT32 hDevice;
+    UINT32 wParam;
+} RAWINPUTHEADER32;
+
+typedef struct
+{
+    USHORT usUsagePage;
+    USHORT usUsage;
+    DWORD dwFlags;
+    UINT32 hwndTarget;
+} RAWINPUTDEVICE32;
+
+typedef struct
+{
+    UINT32 hDevice;
+    DWORD dwType;
+} RAWINPUTDEVICELIST32;
+
+typedef struct
+{
+    LONG    dx;
+    LONG    dy;
+    DWORD   mouseData;
+    DWORD   dwFlags;
+    DWORD   time;
+    ULONG   dwExtraInfo;
+} MOUSEINPUT32;
+
+typedef struct
+{
+    WORD    wVk;
+    WORD    wScan;
+    DWORD   dwFlags;
+    DWORD   time;
+    ULONG   dwExtraInfo;
+} KEYBDINPUT32;
+
+typedef struct
+{
+    DWORD type;
+    union
+    {
+        MOUSEINPUT32   mi;
+        KEYBDINPUT32   ki;
+        HARDWAREINPUT  hi;
+    } DUMMYUNIONNAME;
+} INPUT32;
+
+typedef struct
+{
+    int x;
+    int y;
+    DWORD time;
+    ULONG dwExtraInfo;
+} MOUSEMOVEPOINT32;
+
+typedef struct
+{
+    UINT32 hdc;
+    BOOL   fErase;
+    RECT   rcPaint;
+    BOOL   fRestore;
+    BOOL   fIncUpdate;
+    BYTE   rgbReserved[32];
+} PAINTSTRUCT32;
+
+typedef struct
+{
+    ULONG lpCreateParams;
+    ULONG hInstance;
+    ULONG hMenu;
+    ULONG hwndParent;
+    INT   cy;
+    INT   cx;
+    INT   y;
+    INT   x;
+    LONG  style;
+    ULONG lpszName;
+    ULONG lpszClass;
+    DWORD dwExStyle;
+} CREATESTRUCT32;
+
+typedef struct
+{
+    ULONG szClass;
+    ULONG szTitle;
+    ULONG hOwner;
+    INT   x;
+    INT   y;
+    INT   cx;
+    INT   cy;
+    DWORD style;
+    ULONG lParam;
+} MDICREATESTRUCT32;
+
+typedef struct
+{
+    ULONG hmenuIn;
+    ULONG hmenuNext;
+    ULONG hwndNext;
+} MDINEXTMENU32;
+
+typedef struct
+{
+    LONG  lResult;
+    LONG  lParam;
+    LONG  wParam;
+    DWORD message;
+    ULONG hwnd;
+} CWPRETSTRUCT32;
+
+typedef struct
+{
+    ULONG hwnd;
+    ULONG hwndInsertAfter;
+    INT   x;
+    INT   y;
+    INT   cx;
+    INT   cy;
+    UINT  flags;
+} WINDOWPOS32;
+
+typedef struct
+{
+    RECT  rgrc[3];
+    ULONG lppos;
+} NCCALCSIZE_PARAMS32;
+
+typedef struct
+{
+    UINT  CtlType;
+    UINT  CtlID;
+    ULONG hwndItem;
+    UINT  itemID1;
+    ULONG itemData1;
+    UINT  itemID2;
+    ULONG itemData2;
+    DWORD dwLocaleId;
+} COMPAREITEMSTRUCT32;
+
+typedef struct
+{
+    ULONG dwData;
+    DWORD cbData;
+    ULONG lpData;
+} COPYDATASTRUCT32;
+
+typedef struct
+{
+    UINT   cbSize;
+    INT    iContextType;
+    INT    iCtrlId;
+    ULONG  hItemHandle;
+    DWORD  dwContextId;
+    POINT  MousePos;
+} HELPINFO32;
+
+typedef struct
+{
+    UINT  CtlType;
+    UINT  CtlID;
+    UINT  itemID;
+    UINT  itemWidth;
+    UINT  itemHeight;
+    ULONG itemData;
+} MEASUREITEMSTRUCT32;
+
+typedef struct
+{
+    UINT  CtlType;
+    UINT  CtlID;
+    UINT  itemID;
+    UINT  itemAction;
+    UINT  itemState;
+    ULONG hwndItem;
+    ULONG hDC;
+    RECT  rcItem;
+    ULONG itemData;
+} DRAWITEMSTRUCT32;
+
+typedef struct
+{
+    DWORD cbSize;
+    RECT  rcItem;
+    RECT  rcButton;
+    DWORD stateButton;
+    ULONG hwndCombo;
+    ULONG hwndItem;
+    ULONG hwndList;
+} COMBOBOXINFO32;
+
+typedef struct
+{
+    ULONG lParam;
+    ULONG wParam;
+    UINT  message;
+    ULONG hwnd;
+} CWPSTRUCT32;
+
+typedef struct
+{
+    POINT pt;
+    ULONG hwnd;
+    UINT  wHitTestCode;
+    ULONG dwExtraInfo;
+    DWORD mouseData;
+} MOUSEHOOKSTRUCTEX32;
+
+typedef struct
+{
+    POINT pt;
+    DWORD mouseData;
+    DWORD flags;
+    DWORD time;
+    ULONG dwExtraInfo;
+} MSLLHOOKSTRUCT32;
+
+typedef struct
+{
+    DWORD  vkCode;
+    DWORD  scanCode;
+    DWORD  flags;
+    DWORD  time;
+    ULONG  dwExtraInfo;
+} KBDLLHOOKSTRUCT32;
+
+typedef struct
+{
+    UINT  message;
+    UINT  paramL;
+    UINT  paramH;
+    DWORD time;
+    ULONG hwnd;
+} EVENTMSG32;
+
+typedef struct
+{
+    BOOL  fMouse;
+    ULONG hWndActive;
+} CBTACTIVATESTRUCT32;
+
+typedef struct
+{
+    UINT  CtlType;
+    UINT  CtlID;
+    UINT  itemID;
+    ULONG hwndItem;
+    ULONG itemData;
+} DELETEITEMSTRUCT32;
+
+typedef struct
+{
+    UINT   cbSize;
+    UINT   style;
+    ULONG  lpfnWndProc;
+    INT    cbClsExtra;
+    INT    cbWndExtra;
+    ULONG  hInstance;
+    ULONG  hIcon;
+    ULONG  hCursor;
+    ULONG  hbrBackground;
+    ULONG  lpszMenuName;
+    ULONG  lpszClassName;
+    ULONG  hIconSm;
+} WNDCLASSEXW32;
+
+#include "callback32.h"
 
 #endif
 #endif /* __WOW64WIN_PRIVATE_H */

@@ -28,9 +28,15 @@ HINSTANCE User32Instance;
 
 PPROCESSINFO g_ppi = NULL;
 SHAREDINFO gSharedInfo = {0};
+#if !(defined(_WOW64) && defined(_M_IX86))
 PSERVERINFO gpsi = NULL;
 PUSER_HANDLE_TABLE gHandleTable = NULL;
 PUSER_HANDLE_ENTRY gHandleEntries = NULL;
+#else
+UINT64 gpsi = 0;
+UINT64 gHandleTable = 0;
+UINT64 gHandleEntries = 0;
+#endif
 BOOLEAN gfLogonProcess  = FALSE;
 BOOLEAN gfServerProcess = FALSE;
 BOOLEAN gfFirstThread   = TRUE;
@@ -268,7 +274,11 @@ ClientThreadSetupHelper(BOOL IsCallback)
         gSharedInfo = UserCon.siClient;
         gpsi = gSharedInfo.psi;
         gHandleTable = gSharedInfo.aheList;
+#if !(defined(_WOW64) && defined(_M_IX86))
         /* ReactOS-Specific! */ gHandleEntries = SharedPtrToUser(gHandleTable->handles);
+#else
+        /* ReactOS-Specific! */ gHandleEntries = SharedPtrToUser(WOW64_READ_PTR_FIELD(gHandleTable, USER_HANDLE_TABLE, handles));
+#endif
 
         // ERR("1 SI 0x%x : HT 0x%x : D 0x%x\n",
         //     gSharedInfo.psi, gSharedInfo.aheList, gSharedInfo.ulSharedDelta);
@@ -422,7 +432,11 @@ Init(PUSERCONNECT UserCon /*PUSERSRV_API_CONNECTINFO*/)
         gSharedInfo = UserCon->siClient;
         gpsi = gSharedInfo.psi;
         gHandleTable = gSharedInfo.aheList;
+#if !(defined(_WOW64) && defined(_M_IX86))
         /* ReactOS-Specific! */ gHandleEntries = SharedPtrToUser(gHandleTable->handles);
+#else
+        /* ReactOS-Specific! */ gHandleEntries = SharedPtrToUser(WOW64_READ_PTR_FIELD(gHandleTable, USER_HANDLE_TABLE, handles));
+#endif
     }
 
     // FIXME: Yet another hack... This call should normally not be done here, but
@@ -533,7 +547,11 @@ DllMain(
             {
                 HINSTANCE hImm32 = NULL;
 
+#if !(defined(_WOW64) && defined(_M_IX86))
                 if (gpsi && (gpsi->dwSRVIFlags & SRVINFO_IMM32))
+#else
+                if (gpsi && (WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwSRVIFlags) & SRVINFO_IMM32))
+#endif
                 {
                     WCHAR szImmFile[MAX_PATH];
                     InitializeImmEntryTable();
@@ -592,7 +610,11 @@ User32CallSetWndIconsFromKernel(PVOID Arguments, ULONG ArgumentLength)
 {
   PSETWNDICONS_CALLBACK_ARGUMENTS Common = Arguments;
 
+#if !(defined(_WOW64) && defined(_M_IX86))
   if (!gpsi->hIconSmWindows)
+#else
+  if (!WOW64_READ_PTR_FIELD(gpsi, SERVERINFO, hIconSmWindows))
+#endif
   {
       Common->hIconSample    = LoadImageW(0, IDI_APPLICATION, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE);
       Common->hIconHand      = LoadImageW(0, IDI_HAND,        IMAGE_ICON, 0, 0, LR_DEFAULTSIZE);

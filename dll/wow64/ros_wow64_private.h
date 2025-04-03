@@ -40,9 +40,101 @@ static USHORT native_machine = IMAGE_FILE_MACHINE_AMD64;
 
 unsigned long __readfsdword(unsigned long);
 
+#pragma section(".text")
+
+__declspec(allocate(".text"))
+static unsigned char FarReturn64Impl[] = 
+{
+    0x48, /* REX.W */
+    0xCB  /* retf*/
+};
+
+__declspec(allocate(".text"))
+static unsigned char FarReturn32Impl[] =
+{
+    0xCB  /* retf */
+};
+
+__declspec(allocate(".text"))
+static unsigned char Enter32Impl[] =
+{
+    0x48, 0x89, 0xCC, /* mov rsp, rcx */
+    0x48,             /* REX.W */
+    0xCB              /* retf*/
+};
+
+NTSTATUS 
+WINAPI 
+Wow64KiUserCallbackDispatcher(ULONG nCallback, 
+                              PVOID IN pArgs, 
+                              ULONG nArgLen, 
+                              PVOID* OUT ppReturn, 
+                              PULONG OUT pnRetLen);
+
+static
+ULONG_PTR
+Call32(ULONG Address, ULONG nArgc, PULONG Args)
+{    
+#define MAX_ARGS 32
+#pragma pack(push, 1)
+    struct Enter32
+    {
+        ULONG_PTR Rip32;
+        ULONG_PTR SegCs32;
+        ULONG     FarReturn32;
+        ULONG     Arguments[0];
+    };
+    
+    struct Leave32
+    {
+        ULONG Rip64;
+        ULONG SegCs64;
+    };        
+    
+    typedef ULONG_PTR(*Enter32ImplType)(struct Enter32* enter);
+    
+    Enter32ImplType pfnEnter32 = (Enter32ImplType)Enter32Impl;
+    struct Leave32* leave;
+    struct Enter32* enter;
+        
+    BYTE StackBuffer[sizeof(struct Enter32) + sizeof(struct Leave32) + MAX_ARGS * sizeof(ULONG)];
+    
+    leave = (struct Leave32*)(StackBuffer + sizeof(StackBuffer) - sizeof(*leave));
+    enter = (struct Enter32*)(StackBuffer + sizeof(StackBuffer) - sizeof(*leave) 
+                              - sizeof(*enter) - sizeof(ULONG) * nArgc);
+#pragma pack(pop)
+    
+    ASSERT(nArgc <= MAX_ARGS);
+    
+    for (int i = 0; i < nArgc; i++)
+    {
+        enter->Arguments[i] = Args[i];
+    }
+    
+    enter->Rip32 = (ULONG_PTR) Address;
+    enter->SegCs32 = 0x23;
+    
+    leave->Rip64 = PtrToUlong(_ReturnAddress());
+    leave->SegCs64 = 0x33;
+    
+    enter->FarReturn32 = (ULONG)(ULONG_PTR)FarReturn32Impl;
+    
+    pfnEnter32(enter);
+    
+    /* We should never get here. */
+    ASSERT(FALSE);
+    return 0;
+#undef MAX_ARGS
+}
+
 static inline PTEB32 NtCurrentTeb32()
 {
     return (PTEB32)(ULONG_PTR)__readfsdword(0x18);
+}
+
+static inline PPEB32 NtCurrentPeb32()
+{
+    return (PPEB32)UlongToPtr(NtCurrentTeb32()->ProcessEnvironmentBlock);
 }
 
 struct object_attr64
@@ -51,6 +143,26 @@ struct object_attr64
     UNICODE_STRING      str;
     SECURITY_DESCRIPTOR sd;
 };
+
+struct user_callback_frame
+{
+    struct user_callback_frame *prev_frame;
+    struct mem_header          *temp_list;
+    void                      **ret_ptr;
+    ULONG                      *ret_len;
+    NTSTATUS                    status;
+    jmp_buf                     jmpbuf;
+};
+
+typedef struct user_callback_frame USER_CALLBACK_FRAME, *PUSER_CALLBACK_FRAME;
+
+typedef struct tagSYSTEM_SERVICE_TABLE
+{
+    ULONG_PTR *ServiceTable;
+    ULONG_PTR *CounterTable;
+    ULONG_PTR ServiceLimit;
+    BYTE *ArgumentTable;
+} SYSTEM_SERVICE_TABLE, *PSYSTEM_SERVICE_TABLE;
 
 static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer)
 {

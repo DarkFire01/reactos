@@ -40,9 +40,15 @@ extern HINSTANCE User32Instance;
 #define user32_module User32Instance
 extern PPROCESSINFO g_ppi;
 extern SHAREDINFO gSharedInfo;
+#if !(defined(_M_IX86) && defined(_WOW64))
 extern PSERVERINFO gpsi;
 extern PUSER_HANDLE_TABLE gHandleTable;
 extern PUSER_HANDLE_ENTRY gHandleEntries;
+#else
+extern UINT64 gpsi;
+extern UINT64 gHandleTable;
+extern UINT64 gHandleEntries;
+#endif
 extern BOOLEAN gfLogonProcess;
 extern BOOLEAN gfServerProcess;
 extern CRITICAL_SECTION U32AccelCacheLock;
