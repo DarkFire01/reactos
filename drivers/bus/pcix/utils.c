@@ -173,7 +173,7 @@ PciAllowExtendedInterruptVectors(
 
         if (PciIsSuiteVersion(VER_SUITE_ENTERPRISE))
         {
-            ASSERT(FALSE);
+            return TRUE;
         }
 
         return FALSE;

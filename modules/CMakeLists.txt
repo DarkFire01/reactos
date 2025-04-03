@@ -79,3 +79,4 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/config/)
         add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/config/${item} DESTINATION reactos/system32/config NO_CAB NAME_ON_CD ${item} FOR all)
     endforeach(item)
 endif()
+##
