@@ -452,13 +452,6 @@ ACPIDispatchAddDevice(
     DeviceExtension->Signature = '_SGP';
     DeviceExtension->DispatchTable = &AcpiFdoIrpDispatch;
 
-    PowerInfo->DevicePowerMatrix[1] = 1;
-    PowerInfo->DevicePowerMatrix[2] = 1;
-    PowerInfo->DevicePowerMatrix[3] = 1;
-    PowerInfo->DevicePowerMatrix[4] = 1;
-    PowerInfo->DevicePowerMatrix[0] = 0;
-    PowerInfo->DevicePowerMatrix[5] = 4;
-    PowerInfo->DevicePowerMatrix[6] = 4;
 
     PowerInfo->SystemWakeLevel = 0;
     PowerInfo->DeviceWakeLevel = 0;
