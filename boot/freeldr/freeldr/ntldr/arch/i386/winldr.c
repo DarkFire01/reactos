@@ -123,12 +123,12 @@ MempAllocatePageTables(VOID)
     */
     if (!PaeModeOn)
     {
-        NumPageTables = (TotalPagesInLookupTable / PTE_PER_PAGE);
+        NumPageTables = (MmGetTotalPagesInLookupTable() / PTE_PER_PAGE);
         TotalSize = ((1 + 1 + (NumPageTables * 2)) * MM_PAGE_SIZE);
     }
     else
     {
-        NumPageTables = (TotalPagesInLookupTable / PAE_PTE_PER_PAGE);
+        NumPageTables = (MmGetTotalPagesInLookupTable() / PAE_PTE_PER_PAGE);
         TotalSize = (sizeof(PAE_TABLES) + ((NumPageTables * 2) * MM_PAGE_SIZE));
     }
 
