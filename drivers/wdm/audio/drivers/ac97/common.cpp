@@ -65,8 +65,13 @@ tAC97Registers CAC97AdapterCommon::m_stAC97Registers[] =
 {0xBB80, SHREG_NOCACHE, NULL,               0},         // AC97REG_LFE_SAMPLERATE
 {0xBB80, SHREG_NOCACHE, NULL,               0},         // AC97REG_RECORD_SAMPLERATE
 {0xBB80, SHREG_NOCACHE, NULL,               0},         // AC97REG_MIC_SAMPLERATE
+#ifdef SARCH_XBOX
+{0x8080, SHREG_INVALID,    L"CenterLFEVolume", 0x0000},    // AC97REG_CENTER_LFE_VOLUME
+{0x8080, SHREG_INVALID,    L"SurroundVolume",  0x0000},    // AC97REG_SURROUND_VOLUME
+#else
 {0x8080, SHREG_INIT,    L"CenterLFEVolume", 0x0000},    // AC97REG_CENTER_LFE_VOLUME
 {0x8080, SHREG_INIT,    L"SurroundVolume",  0x0000},    // AC97REG_SURROUND_VOLUME
+#endif
 {0x0000, SHREG_NOCACHE, NULL,               0}          // AC97REG_RESERVED2
 
 // We leave the other values blank.  There would be a huge gap with 31
@@ -147,6 +152,8 @@ STDMETHODIMP_(NTSTATUS) CAC97AdapterCommon::Init
     IN  PDEVICE_OBJECT  DeviceObject
 )
 {
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource0, Resource1;
+
     PAGED_CODE ();
 
     ASSERT (ResourceList);
@@ -169,13 +176,38 @@ STDMETHODIMP_(NTSTATUS) CAC97AdapterCommon::Init
     //
     // Get the base address for the AC97 codec and bus master.
     //
-    ASSERT (ResourceList->FindTranslatedPort (0));
-    m_pCodecBase = (PUSHORT)ResourceList->FindTranslatedPort (0)->
-                           u.Port.Start.QuadPart;
+    Resource0 = ResourceList->FindTranslatedPort (0);
+    Resource1 = ResourceList->FindTranslatedPort (1);
 
-    ASSERT (ResourceList->FindTranslatedPort (1));
-    m_pBusMasterBase = (PUCHAR)ResourceList->FindTranslatedPort (1)->
-                              u.Port.Start.QuadPart;
+    if (Resource0 && Resource1)
+    {
+        m_pCodecBase = (PUSHORT)Resource0->u.Port.Start.QuadPart;
+        m_pBusMasterBase = (PUCHAR)Resource1->u.Port.Start.QuadPart;
+        m_pfnREAD_UCHAR = READ_PORT_UCHAR;
+        m_pfnREAD_USHORT = READ_PORT_USHORT;
+        m_pfnREAD_ULONG = READ_PORT_ULONG;
+        m_pfnWRITE_UCHAR = WRITE_PORT_UCHAR;
+        m_pfnWRITE_USHORT = WRITE_PORT_USHORT;
+        m_pfnWRITE_ULONG = WRITE_PORT_ULONG;
+    }
+    else
+    {
+        Resource0 = ResourceList->FindTranslatedMemory (0);
+
+        ASSERT (Resource0);
+        m_pCodecBase = (PUSHORT)MmMapIoSpace(Resource0->u.Memory.Start,
+                                             Resource0->u.Memory.Length,
+                                             MmNonCached);
+        m_pBusMasterBase = (PUCHAR)m_pCodecBase + 0x100;
+        ASSERT(m_pCodecBase && m_pBusMasterBase);
+
+       m_pfnREAD_UCHAR = (PFN_READ_PORT_UCHAR)READ_REGISTER_UCHAR;
+       m_pfnREAD_USHORT = (PFN_READ_PORT_USHORT)READ_REGISTER_USHORT;
+       m_pfnREAD_ULONG = (PFN_READ_PORT_ULONG)READ_REGISTER_ULONG;
+       m_pfnWRITE_UCHAR = (PFN_WRITE_PORT_UCHAR)WRITE_REGISTER_UCHAR;
+       m_pfnWRITE_USHORT = (PFN_WRITE_PORT_USHORT)WRITE_REGISTER_USHORT;
+       m_pfnWRITE_ULONG = (PFN_WRITE_PORT_ULONG)WRITE_REGISTER_ULONG;
+    }
 
     DOUT (DBG_SYSINFO, ("Configuration:\n"
                         "   Bus Master = 0x%p\n"
@@ -1066,7 +1098,7 @@ NTSTATUS CAC97AdapterCommon::AcquireCodecSemiphore ()
     DOUT (DBG_PRINT, ("[CAC97AdapterCommon::AcquireCodecSemiphore]"));
 
     ULONG ulCount = 0;
-    while (READ_PORT_UCHAR (m_pBusMasterBase + CAS) & CAS_CAS)
+    while (m_pfnREAD_UCHAR (m_pBusMasterBase + CAS) & CAS_CAS)
     {
         //
         // Do we want to give up??
@@ -1132,18 +1164,18 @@ STDMETHODIMP_(NTSTATUS) CAC97AdapterCommon::ReadCodecRegister
         //
         // Read the data.
         //
-        *wData = READ_PORT_USHORT (m_pCodecBase + reg);
+        *wData = m_pfnREAD_USHORT (m_pCodecBase + reg);
 
         //
         // Check to see if the read was successful.
         //
-        Status = READ_PORT_ULONG ((PULONG)(m_pBusMasterBase + GLOB_STA));
+        Status = m_pfnREAD_ULONG ((PULONG)(m_pBusMasterBase + GLOB_STA));
         if (Status & GLOB_STA_RCS)
         {
             //
             // clear the timeout bit
             //
-            WRITE_PORT_ULONG ((PULONG)(m_pBusMasterBase + GLOB_STA), Status);
+            m_pfnWRITE_ULONG ((PULONG)(m_pBusMasterBase + GLOB_STA), Status);
             *wData = 0;
             DOUT (DBG_ERROR, ("ReadCodecRegister timed out for register %s",
                     reg <= AC97REG_RESERVED2 ? RegStrings[reg] :
@@ -1255,7 +1287,7 @@ STDMETHODIMP_(NTSTATUS) CAC97AdapterCommon::WriteCodecRegister
     //
     // Write the data.
     //
-    WRITE_PORT_USHORT (m_pCodecBase + reg, TempData);
+    m_pfnWRITE_USHORT (m_pCodecBase + reg, TempData);
 
     //
     // Update cache.
@@ -1308,7 +1340,7 @@ NTSTATUS CAC97AdapterCommon::PrimaryCodecReady (void)
 
     do
     {
-        if (READ_PORT_ULONG ((PULONG)(m_pBusMasterBase + GLOB_STA)) &
+        if (m_pfnREAD_ULONG ((PULONG)(m_pBusMasterBase + GLOB_STA)) &
             GLOB_STA_PCR)
         {
             return STATUS_SUCCESS;
@@ -2197,7 +2229,7 @@ STDMETHODIMP_(void) CAC97AdapterCommon::WriteBMControlRegister
 {
     DOUT (DBG_PRINT, ("[CAC97AdapterCommon::WriteBMControlRegister] (UCHAR)"));
 
-    WRITE_PORT_UCHAR ((PUCHAR)(m_pBusMasterBase + ulOffset), ucValue);
+    m_pfnWRITE_UCHAR ((PUCHAR)(m_pBusMasterBase + ulOffset), ucValue);
 
     DOUT (DBG_REGS, ("WriteBMControlRegister wrote 0x%2x to 0x%4p.",
                    ucValue, m_pBusMasterBase + ulOffset));
@@ -2216,7 +2248,7 @@ STDMETHODIMP_(void) CAC97AdapterCommon::WriteBMControlRegister
 {
     DOUT (DBG_PRINT, ("[CAC97AdapterCommon::WriteBMControlRegister (USHORT)]"));
 
-    WRITE_PORT_USHORT ((PUSHORT)(m_pBusMasterBase + ulOffset), usValue);
+    m_pfnWRITE_USHORT ((PUSHORT)(m_pBusMasterBase + ulOffset), usValue);
 
     DOUT (DBG_REGS, ("WriteBMControlRegister wrote 0x%4x to 0x%4p",
                    usValue, m_pBusMasterBase + ulOffset));
@@ -2235,7 +2267,7 @@ STDMETHODIMP_(void) CAC97AdapterCommon::WriteBMControlRegister
 {
     DOUT (DBG_PRINT, ("[CAC97AdapterCommon::WriteBMControlRegister (ULONG)]"));
 
-    WRITE_PORT_ULONG ((PULONG)(m_pBusMasterBase + ulOffset), ulValue);
+    m_pfnWRITE_ULONG ((PULONG)(m_pBusMasterBase + ulOffset), ulValue);
 
     DOUT (DBG_REGS, ("WriteBMControlRegister wrote 0x%8x to 0x%4p.",
                    ulValue, m_pBusMasterBase + ulOffset));
@@ -2255,7 +2287,7 @@ STDMETHODIMP_(UCHAR) CAC97AdapterCommon::ReadBMControlRegister8
 
     DOUT (DBG_PRINT, ("[CAC97AdapterCommon::ReadBMControlRegister8]"));
 
-    ucValue = READ_PORT_UCHAR ((PUCHAR)(m_pBusMasterBase + ulOffset));
+    ucValue = m_pfnREAD_UCHAR ((PUCHAR)(m_pBusMasterBase + ulOffset));
 
     DOUT (DBG_REGS, ("ReadBMControlRegister read 0x%2x from 0x%4p.", ucValue,
                    m_pBusMasterBase + ulOffset));
@@ -2277,7 +2309,7 @@ STDMETHODIMP_(USHORT) CAC97AdapterCommon::ReadBMControlRegister16
 
     DOUT (DBG_PRINT, ("[CAC97AdapterCommon::ReadBMControlRegister16]"));
 
-    usValue = READ_PORT_USHORT ((PUSHORT)(m_pBusMasterBase + ulOffset));
+    usValue = m_pfnREAD_USHORT ((PUSHORT)(m_pBusMasterBase + ulOffset));
 
     DOUT (DBG_REGS, ("ReadBMControlRegister read 0x%4x = 0x%4p", usValue,
                    m_pBusMasterBase + ulOffset));
@@ -2299,7 +2331,7 @@ STDMETHODIMP_(ULONG) CAC97AdapterCommon::ReadBMControlRegister32
 
     DOUT (DBG_PRINT, ("[CAC97AdapterCommon::ReadBMControlRegister32]"));
 
-    ulValue = READ_PORT_ULONG ((PULONG)(m_pBusMasterBase + ulOffset));
+    ulValue = m_pfnREAD_ULONG ((PULONG)(m_pBusMasterBase + ulOffset));
 
     DOUT (DBG_REGS, ("ReadBMControlRegister read 0x%8x = 0x%4p", ulValue,
                    m_pBusMasterBase + ulOffset));

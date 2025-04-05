@@ -98,6 +98,18 @@ private:
     DEVICE_POWER_STATE   m_PowerState;  // Current power state of the device.
     PAC97MINIPORTTOPOLOGY m_Topology;    // Miniport Topology pointer.
 
+    typedef UCHAR (NTAPI *PFN_READ_PORT_UCHAR)(PUCHAR Port);
+    typedef USHORT (NTAPI *PFN_READ_PORT_USHORT)(PUSHORT Port);
+    typedef ULONG (NTAPI *PFN_READ_PORT_ULONG)(PULONG Port);
+    typedef VOID (NTAPI *PFN_WRITE_PORT_UCHAR)(PUCHAR Port, UCHAR Value);
+    typedef VOID (NTAPI *PFN_WRITE_PORT_USHORT)(PUSHORT Port, USHORT Value);
+    typedef VOID (NTAPI *PFN_WRITE_PORT_ULONG)(PULONG Port, ULONG Value);
+    PFN_READ_PORT_UCHAR m_pfnREAD_UCHAR;
+    PFN_READ_PORT_USHORT m_pfnREAD_USHORT;
+    PFN_READ_PORT_ULONG m_pfnREAD_ULONG;
+    PFN_WRITE_PORT_UCHAR m_pfnWRITE_UCHAR;
+    PFN_WRITE_PORT_USHORT m_pfnWRITE_USHORT;
+    PFN_WRITE_PORT_ULONG m_pfnWRITE_ULONG;
 
     /*************************************************************************
      * CAC97AdapterCommon methods

@@ -181,12 +181,12 @@ NTSTATUS ValidateResources
     //
     // Get counts for the types of resources.
     //
-    ULONG countIO  = ResourceList->NumberOfPorts ();
+    ULONG countIO  = ResourceList->NumberOfPorts () + ResourceList->NumberOfMemories ();
     ULONG countIRQ = ResourceList->NumberOfInterrupts ();
     ULONG countDMA = ResourceList->NumberOfDmas ();
 
     // validate resources
-    if ((countIO != 2) || (countIRQ != 1) || (countDMA != 0))
+    if ((countIO < 0) || (countIRQ != 1) || (countDMA != 0))
     {
         DOUT (DBG_ERROR, ("Unknown configuration:\n"
                           "   IO  count: %d\n"

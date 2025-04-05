@@ -58,6 +58,7 @@ ExcludeFromSelect = *
 %ac97_GB.DeviceDesc%=ac97, PCI\VEN_8086&DEV_27DE
 %ac97_6300ESB.DeviceDesc%=ac97, PCI\VEN_8086&DEV_25A6
 %ac97_63xxESB.DeviceDesc%=ac97, PCI\VEN_8086&DEV_2698
+%ac97_63xxESB.DeviceDesc%=ac97, PCI\VEN_10de&DEV_01b1
 
 ;; This section enables installing on x64 systems
 
