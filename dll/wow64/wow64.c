@@ -670,6 +670,7 @@ Wow64InitThread(VOID)
     WowTeb->ProcessEnvironmentBlock = PtrToUlong(WowPeb);
     
     SetupFs(0x0053);
+    while(NtYieldExecution() == STATUS_NO_YIELD_PERFORMED);
     
     //DPRINT("Setting WOW32Reserved to local handler %p\n", handler);
     ASSERT((((ULONG_PTR)handler) & ~0xFFFFFFFF) == 0);
