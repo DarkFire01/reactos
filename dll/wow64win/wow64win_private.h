@@ -45,27 +45,11 @@
 #include <ntgdi.h>
 #include <ntgdihdl.h>
 
+#define IS_ATOM(x) \
+  (((ULONG_PTR)(x) > 0x0) && ((ULONG_PTR)(x) < 0x10000))
+
 extern NTSTATUS WINAPI (*UserCallbacks[])(PVOID Arguments, ULONG ArgumentLength);
 NTSTATUS WINAPI wow64_NtUserCallWinProc( void *arg, ULONG size );
-
-typedef struct _LARGE_STRING32
-{
-    ULONG Length;
-    ULONG MaximumLength:31;
-    ULONG bAnsi:1;
-    ULONG Buffer;
-} LARGE_STRING32, *PLARGE_STRING32;
-
-
-static inline LARGE_STRING *large_str_32to64( LARGE_STRING *str, const LARGE_STRING32 *str32 )
-{
-    if (!str32) return NULL;
-    str->Length = str32->Length;
-    str->MaximumLength = str32->MaximumLength;
-    str->bAnsi = str32->bAnsi;
-    str->Buffer = ULongToPtr( str32->Buffer );
-    return str;
-}
 
 #define DEFINE_USER32_CALLBACK(id, value, fn) static const ULONG Num ## fn = value;
 #include "u32cb.h"  
@@ -496,65 +480,57 @@ typedef struct
     ULONG  hIconSm;
 } WNDCLASSEXW32;
 
-typedef struct _PFNCLIENT32
+typedef struct _CLIENTINFO32
 {
-    ULONG pfnScrollBarWndProc;
-    ULONG pfnTitleWndProc;
-    ULONG pfnMenuWndProc;
-    ULONG pfnDesktopWndProc;
-    ULONG pfnDefWindowProc;
-    ULONG pfnMessageWindowProc;
-    ULONG pfnSwitchWindowProc;
-    ULONG pfnButtonWndProc;
-    ULONG pfnComboBoxWndProc;
-    ULONG pfnComboListBoxProc;
-    ULONG pfnDialogWndProc;
-    ULONG pfnEditWndProc;
-    ULONG pfnListBoxWndProc;
-    ULONG pfnMDIClientWndProc;
-    ULONG pfnStaticWndProc;
-    ULONG pfnImeWndProc;
-    ULONG pfnGhostWndProc;
-    ULONG pfnHkINLPCWPSTRUCT;
-    ULONG pfnHkINLPCWPRETSTRUCT;
-    ULONG pfnDispatchHook;
-    ULONG pfnDispatchDefWindowProc;
-    ULONG pfnDispatchMessage;
-    ULONG pfnMDIActivateDlgProc;
-} PFNCLIENT32, *PPFNCLIENT32;
+    ULONG  CI_flags;
+    ULONG  cSpins;
+    DWORD  dwExpWinVer;
+    DWORD  dwCompatFlags;
+    DWORD  dwCompatFlags2;
+    DWORD  dwTIFlags;
+    ULONG  pDeskInfo;
+    ULONG  ulClientDelta;
+    ULONG  phkCurrent;
+    ULONG  fsHooks;
+    ULONG  CallbackWnd[2];
+    DWORD  dwHookCurrent;
+    INT    cInDDEMLCallback;
+    ULONG  pClientThreadInfo;
+    ULONG  dwHookData;
+    DWORD  dwKeyCache;
+    BYTE   afKeyState[8];
+    DWORD  dwAsyncKeyCache;
+    BYTE   afAsyncKeyState[8];
+    BYTE   afAsyncKeyStateRecentDow[8];
+    ULONG  hKL;
+    USHORT CodePage;
+    UCHAR  achDbcsCF[2];
+    MSG32  msgDbcsCB;
+    ULONG  lpdwRegisteredClasses;
+    ULONG  Win32ClientInfo3[26];
+    ULONG  ppi;
+} CLIENTINFO32, *PCLIENTINFO32;
 
-    typedef struct _CLIENTINFO32
-    {
-        ULONG CI_flags;
-        ULONG cSpins;
-        DWORD dwExpWinVer;
-        DWORD dwCompatFlags;
-        DWORD dwCompatFlags2;
-        DWORD dwTIFlags; /* ThreadInfo TIF_Xxx flags for User space. */
-        ULONG pDeskInfo;
-        ULONG ulClientDelta;
-        ULONG phkCurrent;
-        ULONG fsHooks;
-        ULONG CallbackWnd[2];
-        DWORD dwHookCurrent;
-        INT cInDDEMLCallback;
-        ULONG pClientThreadInfo;
-        ULONG dwHookData;
-        DWORD dwKeyCache;
-        BYTE afKeyState[8];
-        DWORD dwAsyncKeyCache;
-        BYTE afAsyncKeyState[8];
-        BYTE afAsyncKeyStateRecentDow[8];
-        ULONG hKL;
-        USHORT CodePage;
-        UCHAR achDbcsCF[2];
-        MSG32 msgDbcsCB;
-        ULONG lpdwRegisteredClasses;
-        ULONG Win32ClientInfo3[26];
-        ULONG ppi;
-    } CLIENTINFO32, *PCLIENTINFO32;
-    
-    C_ASSERT(sizeof(CLIENTINFO32) == 61 * sizeof(ULONG));
+C_ASSERT(sizeof(CLIENTINFO32) == 61 * sizeof(ULONG));
+
+typedef struct _LARGE_STRING32
+{
+    ULONG Length;
+    ULONG MaximumLength:31;
+    ULONG bAnsi:1;
+    ULONG Buffer;
+} LARGE_STRING32, *PLARGE_STRING32;
+
+static inline LARGE_STRING *large_str_32to64( LARGE_STRING *str, const LARGE_STRING32 *str32 )
+{
+    if (!str32) return NULL;
+    if (IS_ATOM(str32)) return (PVOID)str32;
+    str->Length = str32->Length;
+    str->MaximumLength = str32->MaximumLength;
+    str->bAnsi = str32->bAnsi;
+    str->Buffer = ULongToPtr( str32->Buffer );
+    return str;
+}
 
 #include "callback32.h"
 

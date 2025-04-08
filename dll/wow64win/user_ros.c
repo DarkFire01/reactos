@@ -522,3 +522,69 @@ wow64_NtUserInitializeClientPfnArrays(UINT *pArgs)
        anyway. */
     return STATUS_SUCCESS;
 }
+
+NTSTATUS 
+WINAPI 
+wow64_NtUserBuildHwndList(UINT *pArgs)
+{
+    HDESK hDesktop   = get_handle(&pArgs);
+    HWND hParent = get_handle(&pArgs);
+    BOOLEAN bChildren = get_ulong(&pArgs);
+    ULONG dwThreadId = get_ulong(&pArgs);
+    ULONG cHwnd = get_ulong(&pArgs);
+    ULONG *phwndList32 = get_ptr(&pArgs);
+    ULONG *pcHwndNeeded = get_ptr(&pArgs);
+
+    HWND *phwndList = NULL;
+    ULONG i;
+    NTSTATUS Status;
+
+    if (phwndList32 != NULL)
+    {
+        phwndList = Wow64AllocateTemp(cHwnd * sizeof(*phwndList));
+    }
+    
+    Status = NtUserBuildHwndList(hDesktop, 
+                                 hParent,
+                                 bChildren, 
+                                 dwThreadId, 
+                                 cHwnd, 
+                                 phwndList, 
+                                 pcHwndNeeded);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+
+    if (phwndList32 != NULL)
+    {
+        for (i = 0; i < *pcHwndNeeded; i++)
+        {
+            phwndList32[i] = HandleToUlong(phwndList[i]);
+        }
+    }
+    
+    return Status;
+}
+
+BOOL 
+WINAPI
+wow64_NtUserSetWindowFNID(ULONG* pArgs)
+{
+    HANDLE hWnd = get_handle(&pArgs);
+    WORD fnId = get_ulong(&pArgs);
+    
+    return NtUserSetWindowFNID(hWnd, fnId);
+}
+
+BOOL
+WINAPI
+wow64_NtUserDefSetText(ULONG* pArgs)
+{
+    HWND hWnd = get_handle(&pArgs);
+    PLARGE_STRING32 pWindowText32 = get_ptr(&pArgs);
+
+    LARGE_STRING WindowText;
+
+    return NtUserDefSetText(hWnd, large_str_32to64(&WindowText, pWindowText32));
+}

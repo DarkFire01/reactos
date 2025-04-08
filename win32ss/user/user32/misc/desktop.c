@@ -656,7 +656,7 @@ GetShellWindow(VOID)
 {
    PDESKTOPINFO pdi;
    pdi = GetThreadDesktopInfo();
-   if (pdi) return pdi->hShellWindow;
+   if (pdi) return WOW64_CAST_TO_HANDLE(pdi->hShellWindow);
    return NULL;
 }
 

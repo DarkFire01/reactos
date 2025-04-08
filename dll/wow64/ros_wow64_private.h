@@ -164,6 +164,7 @@ typedef struct tagSYSTEM_SERVICE_TABLE
     BYTE *ArgumentTable;
 } SYSTEM_SERVICE_TABLE, *PSYSTEM_SERVICE_TABLE;
 
+/* FIXME */
 static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer)
 {
     WCHAR system32[] = L"\\??\\X:\\reactos\\system32";
@@ -176,29 +177,26 @@ static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer
         return FALSE;
     }
     
-    if (wcsncmp(attr->ObjectName->Buffer, system32, sizeof(system32) / sizeof(*system32)) == 0)
+    if (_wcsnicmp(attr->ObjectName->Buffer, system32, sizeof(system32) / sizeof(*system32) - 1) == 0)
     {
         buffer->Length = attr->ObjectName->Length - sizeof(system32) + sizeof(wow64);
         wcscpy(buffer->Buffer, wow64);
         wcscat(buffer->Buffer,  (PWSTR)(((ULONG_PTR)attr->ObjectName->Buffer) + sizeof(system32) - sizeof(WCHAR)));
         
-        //wprintf(L"Redirecting %ls to %ls\n", attr->ObjectName->Buffer, buffer->Buffer);
         attr->ObjectName = buffer;  
         return TRUE;
     }
     
-    if (wcsncmp(attr->ObjectName->Buffer, knownDll, sizeof(knownDll) / sizeof(*knownDll)) == 0)
+    if (_wcsnicmp(attr->ObjectName->Buffer, knownDll, sizeof(knownDll) / sizeof(*knownDll)) == 0)
     {
         buffer->Length = attr->ObjectName->Length - sizeof(knownDll) + sizeof(knownDll32);
         wcscpy(buffer->Buffer, knownDll32);
         wcscat(buffer->Buffer,  (PWSTR)(((ULONG_PTR)attr->ObjectName->Buffer) + sizeof(knownDll) - sizeof(WCHAR)));
         
-        //wprintf(L"Redirecting %ls to %ls\n", attr->ObjectName->Buffer, buffer->Buffer);
         attr->ObjectName = buffer;  
         return TRUE;
     }
     
-    //wprintf(L"Not redirecting %ls\n", attr->ObjectName->Buffer);
     return FALSE;
 }
 

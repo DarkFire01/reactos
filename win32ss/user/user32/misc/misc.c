@@ -480,7 +480,7 @@ PWND
 FASTCALL
 GetThreadDesktopWnd(VOID)
 {
-    PWND Wnd = GetThreadDesktopInfo()->spwnd;
+    PWND Wnd = WOW64_CAST_TO_PTR(GetThreadDesktopInfo()->spwnd);
     if (Wnd != NULL)
         Wnd = DesktopPtrToUser(Wnd);
     return Wnd;

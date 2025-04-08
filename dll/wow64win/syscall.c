@@ -136,7 +136,20 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserDestroyWindow);
     IMPLEMENT_SERVICE(UserThunkedMenuItemInfo);
     IMPLEMENT_SERVICE(GdiCreateSolidBrush);
-    
+    IMPLEMENT_SERVICE(UserGetAtomName);
+    IMPLEMENT_SERVICE(GdiGetTextMetricsW);
+    IMPLEMENT_SERVICE(GdiHfontCreate);
+    IMPLEMENT_SERVICE(UserGetDC);
+    IMPLEMENT_SERVICE(GdiSelectFont);
+    IMPLEMENT_SERVICE(UserCallHwndParam);
+    IMPLEMENT_SERVICE(UserCallHwnd);
+    IMPLEMENT_SERVICE(UserSetWindowLong);
+    IMPLEMENT_SERVICE(UserSetWindowLongPtr);
+    IMPLEMENT_SERVICE(UserBuildHwndList);
+    IMPLEMENT_SERVICE(UserCallTwoParam);
+    IMPLEMENT_SERVICE(UserSetWindowFNID);
+    IMPLEMENT_SERVICE(UserDefSetText);
+    IMPLEMENT_SERVICE(UserGetClassName);
 #undef IMPLEMENT_SERVICE
 }
 

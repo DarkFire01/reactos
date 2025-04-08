@@ -156,6 +156,7 @@ RtlLargeStringToUnicodeString(
  */
 typedef struct _DESKTOPINFO
 {
+#if !(defined(_WOW64) && defined(_M_IX86))
     PVOID pvDesktopBase;
     PVOID pvDesktopLimit;
     struct _WND *spwnd;
@@ -169,6 +170,21 @@ typedef struct _DESKTOPINFO
     struct _WND *spwndBkGnd;
 
     struct _PROCESSINFO *ppiShellProcess;
+#else
+    UINT64 pvDesktopBase;
+    UINT64 pvDesktopLimit;
+    UINT64 spwnd;
+    DWORD fsHooks;
+    UINT64 aphkStart[2 * NB_HOOKS];
+
+    UINT64 hTaskManWindow;
+    UINT64 hProgmanWindow;
+    UINT64 hShellWindow;
+    UINT64 spwndShell;
+    UINT64 spwndBkGnd;
+
+    UINT64 ppiShellProcess;
+#endif
 
     union
     {
@@ -3854,28 +3870,8 @@ RtlGetExpWinVer(_In_ PVOID BaseAddress);
 #ifdef _WOW64
 #ifdef _M_IX86
 
-#include "../../dll/ntdll/wow64/ntdll32.h"
-
-/* CHECKME: Should WNDPROCs be native width?? */
-static WNDPROC GETPFNCLIENTA(int fnid)
-{
-    UINT64 Wow64ReadNativePtr(UINT64);
-    extern UINT64 gpsi;
-    UINT64 ptr = Wow64ReadNativePtr(gpsi + (ULONG_PTR)(((ULONG_PTR *)&((SERVERINFO*)NULL)->apfnClientA) + (fnid - FNID_FIRST)));
-    if (ptr > 0xFFFFFFFF)
-        __debugbreak();
-    return (WNDPROC)(ULONG_PTR)ptr;
-}
-
-static WNDPROC GETPFNCLIENTW(int fnid)
-{
-    UINT64 Wow64ReadNativePtr(UINT64);
-    extern UINT64 gpsi;
-    UINT64 ptr = Wow64ReadNativePtr(gpsi + (ULONG_PTR)(((ULONG_PTR *)&((SERVERINFO*)NULL)->apfnClientW) + (fnid - FNID_FIRST)));
-    if (ptr > 0xFFFFFFFF)
-        __debugbreak();
-    return (WNDPROC)(ULONG_PTR)ptr;
-}
+WNDPROC GETPFNCLIENTA(int fnid);
+WNDPROC GETPFNCLIENTW(int fnid);
 
 #define GETPFNSERVER(fnid) (WNDPROC)WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, aStoCidPfn[fnid - FNID_FIRST])     
 

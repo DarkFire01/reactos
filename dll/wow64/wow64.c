@@ -545,6 +545,14 @@ Wow64Handler(ULONG syscallNum,
                 return Wow64WinHandler(syscallNum - 0x1000, numArgs, pArgs);
             }
             
+            if (syscallNum < sizeof(mapping) / sizeof(*mapping))
+            {
+                DPRINT1("[Syscall %lX:%hs] ", syscallNum, mapping[syscallNum]);
+            }
+            else
+            {
+                DPRINT1("[Syscall %lX:???] ", syscallNum);
+            }
             DPRINT1("WARNING: Unhandled 32-bit syscall 0x%lX(%ld args at %p)\n", syscallNum, numArgs, pArgs);
             status = STATUS_NOT_IMPLEMENTED;
         }
@@ -661,7 +669,7 @@ Wow64Trampoline(VOID)
     }
     _SEH2_EXCEPT(Wow64UnhandledExceptionHandler(_SEH2_GetExceptionInformation()))
     {
-        DPRINT1("Terminating WOW64 thread due to unhandled exception.");
+        DPRINT1("Terminating WOW64 thread due to unhandled exception.\n");
         NtTerminateProcess(NtCurrentProcess(), _SEH2_GetExceptionCode());
     }
 }
