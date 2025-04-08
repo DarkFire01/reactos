@@ -1070,11 +1070,6 @@ typedef LONG_PTR
 
 #else
 
-/* CHECKME: Should WNDPROCs be native width?? */
-#define GETPFNCLIENTA(fnid) (WNDPROC)(ULONG_PTR)Wow64ReadNativeULong(gpsi + (ULONG_PTR)(((ULONG_PTR *)&((SERVERINFO*)NULL)->apfnClientA) + (fnid - FNID_FIRST)))
-#define GETPFNCLIENTW(fnid) (WNDPROC)(ULONG_PTR)Wow64ReadNativeULong(gpsi + (ULONG_PTR)(((ULONG_PTR *)&((SERVERINFO*)NULL)->apfnClientW) + (fnid - FNID_FIRST)))
-
-#define GETPFNSERVER(fnid) (WNDPROC)WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, aStoCidPfn[fnid - FNID_FIRST])     
 
 #endif
 
@@ -3855,6 +3850,38 @@ NtUserSetScrollBarInfo(
 
 ULONG
 RtlGetExpWinVer(_In_ PVOID BaseAddress);
+
+#ifdef _WOW64
+#ifdef _M_IX86
+
+#include "../../dll/ntdll/wow64/ntdll32.h"
+
+/* CHECKME: Should WNDPROCs be native width?? */
+static WNDPROC GETPFNCLIENTA(int fnid)
+{
+    UINT64 Wow64ReadNativePtr(UINT64);
+    extern UINT64 gpsi;
+    UINT64 ptr = Wow64ReadNativePtr(gpsi + (ULONG_PTR)(((ULONG_PTR *)&((SERVERINFO*)NULL)->apfnClientA) + (fnid - FNID_FIRST)));
+    if (ptr > 0xFFFFFFFF)
+        __debugbreak();
+    return (WNDPROC)(ULONG_PTR)ptr;
+}
+
+static WNDPROC GETPFNCLIENTW(int fnid)
+{
+    UINT64 Wow64ReadNativePtr(UINT64);
+    extern UINT64 gpsi;
+    UINT64 ptr = Wow64ReadNativePtr(gpsi + (ULONG_PTR)(((ULONG_PTR *)&((SERVERINFO*)NULL)->apfnClientW) + (fnid - FNID_FIRST)));
+    if (ptr > 0xFFFFFFFF)
+        __debugbreak();
+    return (WNDPROC)(ULONG_PTR)ptr;
+}
+
+#define GETPFNSERVER(fnid) (WNDPROC)WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, aStoCidPfn[fnid - FNID_FIRST])     
+
+
+#endif
+#endif
 
 #endif /* __WIN32K_NTUSER_H */
 

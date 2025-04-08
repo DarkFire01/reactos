@@ -794,7 +794,7 @@ GdiGetLDC(HDC hdc)
     }
 
     /* Return the LDC pointer */
-    return pdcattr->pvLDC;
+    return WOW64_CAST_TO_PTR(pdcattr->pvLDC);
 }
 
 BOOL
@@ -811,7 +811,7 @@ GdiSetLDC(HDC hdc, PVOID pvLDC)
     }
 
     /* Set the LDC pointer */
-    pdcattr->pvLDC = pvLDC;
+    pdcattr->pvLDC = WOW64_CAST_FROM_PTR(pvLDC);
     return TRUE;
 }
 

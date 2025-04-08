@@ -450,13 +450,13 @@ GetCurrentObject(
     {
         case OBJ_EXTPEN:
         case OBJ_PEN:
-            return pdcattr->hpen;
+            return WOW64_CAST_TO_HANDLE(pdcattr->hpen);
 
         case OBJ_BRUSH:
-            return pdcattr->hbrush;
+            return WOW64_CAST_TO_HANDLE(pdcattr->hbrush);
 
         case OBJ_COLORSPACE:
-            return pdcattr->hColorSpace;
+            return WOW64_CAST_TO_HANDLE(pdcattr->hColorSpace);
 
         case OBJ_PAL:
             uObjectType = GDI_OBJECT_TYPE_PALETTE;
@@ -1416,7 +1416,7 @@ GetHFONT(HDC hdc)
     }
 
     /* Return the current font */
-    return pdcattr->hlfntNew;
+    return WOW64_CAST_TO_HANDLE(pdcattr->hlfntNew);
 }
 
 
@@ -1450,12 +1450,12 @@ GdiSelectBrush(
     }
 
     /* Get the current brush. If it matches the new brush, we're done */
-    hbrOld = pdcattr->hbrush;
+    hbrOld = WOW64_CAST_TO_HANDLE(pdcattr->hbrush);
     if (hbrOld == hbr)
         return hbrOld;
 
     /* Set the new brush and update dirty flags */
-    pdcattr->hbrush = hbr;
+    pdcattr->hbrush = WOW64_CAST_FROM_HANDLE(hbr);
     pdcattr->ulDirty_ |= DC_BRUSH_DIRTY;
     return hbrOld;
 }
@@ -1480,13 +1480,13 @@ GdiSelectPen(
     }
 
     /* Get the current pen. If it matches the new pen, we're done */
-    hpenOld = pdcattr->hpen;
+    hpenOld = WOW64_CAST_TO_HANDLE(pdcattr->hpen);
     if (hpenOld == hpen)
         return hpenOld;
 
     /* Set the new pen and update dirty flags */
     pdcattr->ulDirty_ |= DC_PEN_DIRTY;
-    pdcattr->hpen = hpen;
+    pdcattr->hpen = WOW64_CAST_FROM_HANDLE(hpen);
     return hpenOld;
 }
 
@@ -1510,12 +1510,12 @@ GdiSelectFont(
     }
 
     /* Get the current font. If it matches the new font, we're done */
-    hfontOld = pdcattr->hlfntNew;
+    hfontOld = WOW64_CAST_TO_HANDLE(pdcattr->hlfntNew);
     if (hfontOld == hfont)
         return hfontOld;
 
     /* Set the new font and update dirty flags */
-    pdcattr->hlfntNew = hfont;
+    pdcattr->hlfntNew = WOW64_CAST_FROM_HANDLE(hfont);
     pdcattr->ulDirty_ &= ~SLOW_WIDTHS;
     pdcattr->ulDirty_ |= DIRTY_CHARSET;
 

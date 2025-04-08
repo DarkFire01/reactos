@@ -189,7 +189,6 @@ static inline void set_last_error32( DWORD err )
 
 #include "../wow64/ros_wow64_private.h"
 
-
 typedef struct
 {
     DWORD cbSize;
@@ -497,7 +496,69 @@ typedef struct
     ULONG  hIconSm;
 } WNDCLASSEXW32;
 
+typedef struct _PFNCLIENT32
+{
+    ULONG pfnScrollBarWndProc;
+    ULONG pfnTitleWndProc;
+    ULONG pfnMenuWndProc;
+    ULONG pfnDesktopWndProc;
+    ULONG pfnDefWindowProc;
+    ULONG pfnMessageWindowProc;
+    ULONG pfnSwitchWindowProc;
+    ULONG pfnButtonWndProc;
+    ULONG pfnComboBoxWndProc;
+    ULONG pfnComboListBoxProc;
+    ULONG pfnDialogWndProc;
+    ULONG pfnEditWndProc;
+    ULONG pfnListBoxWndProc;
+    ULONG pfnMDIClientWndProc;
+    ULONG pfnStaticWndProc;
+    ULONG pfnImeWndProc;
+    ULONG pfnGhostWndProc;
+    ULONG pfnHkINLPCWPSTRUCT;
+    ULONG pfnHkINLPCWPRETSTRUCT;
+    ULONG pfnDispatchHook;
+    ULONG pfnDispatchDefWindowProc;
+    ULONG pfnDispatchMessage;
+    ULONG pfnMDIActivateDlgProc;
+} PFNCLIENT32, *PPFNCLIENT32;
+
+    typedef struct _CLIENTINFO32
+    {
+        ULONG CI_flags;
+        ULONG cSpins;
+        DWORD dwExpWinVer;
+        DWORD dwCompatFlags;
+        DWORD dwCompatFlags2;
+        DWORD dwTIFlags; /* ThreadInfo TIF_Xxx flags for User space. */
+        ULONG pDeskInfo;
+        ULONG ulClientDelta;
+        ULONG phkCurrent;
+        ULONG fsHooks;
+        ULONG CallbackWnd[2];
+        DWORD dwHookCurrent;
+        INT cInDDEMLCallback;
+        ULONG pClientThreadInfo;
+        ULONG dwHookData;
+        DWORD dwKeyCache;
+        BYTE afKeyState[8];
+        DWORD dwAsyncKeyCache;
+        BYTE afAsyncKeyState[8];
+        BYTE afAsyncKeyStateRecentDow[8];
+        ULONG hKL;
+        USHORT CodePage;
+        UCHAR achDbcsCF[2];
+        MSG32 msgDbcsCB;
+        ULONG lpdwRegisteredClasses;
+        ULONG Win32ClientInfo3[26];
+        ULONG ppi;
+    } CLIENTINFO32, *PCLIENTINFO32;
+    
+    C_ASSERT(sizeof(CLIENTINFO32) == 61 * sizeof(ULONG));
+
 #include "callback32.h"
+
+extern PSERVERINFO g_ServerInfo;
 
 #endif
 #endif /* __WOW64WIN_PRIVATE_H */

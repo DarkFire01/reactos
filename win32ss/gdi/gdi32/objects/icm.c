@@ -90,7 +90,7 @@ GetColorSpace(HDC hDC)
         SetLastError(ERROR_INVALID_HANDLE);
         return NULL;
     }
-    return pDc_Attr->hColorSpace;
+    return WOW64_CAST_TO_HANDLE(pDc_Attr->hColorSpace);
 }
 
 

@@ -14,6 +14,35 @@ static void (WINAPI *pEndPaint)(HWND, PAINTSTRUCT*);
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    LRESULT result;
+    
+    if (msg == WM_NCHITTEST)
+    {
+        result = pDefWindowProcW(hWnd, msg, wParam, lParam);
+        
+#if 0
+        printf("NCHITTEST: %z\n", result);
+#endif
+     
+        return result;
+    }
+    else if (msg == WM_CLOSE)
+    {
+        PostQuitMessage(0);
+    }
+    else if ((msg < WM_MOUSEFIRST || msg > WM_MOUSELAST) && msg != 0x7F)
+    {
+#if 0
+        printf("msg: 00%X", msg);
+        fflush(stdout);
+#endif
+        result = pDefWindowProcW(hWnd, msg, wParam, lParam);
+#if 0
+        printf(" - DONE\n");
+#endif
+        return result;
+    }
+    
     return pDefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
@@ -45,13 +74,12 @@ void Print(const wchar_t* wszBuffer)
 
 int wmainCRTStartup()
 {
-    WCHAR wszHello[] = L"Hello World!\n";
+    WCHAR wszHello[] = L"Hello World!";
     
     AllocConsole();
     
     SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS);
     
-    __debugbreak();
     Print(wszHello);
     
     DelayLoadUser32();

@@ -92,6 +92,9 @@ const SYSTEM_SERVICE_TABLE sdwhwin32 =
 }; 
 
 #ifdef __REACTOS__
+
+PSERVERINFO g_ServerInfo = NULL;
+
 static BOOL wow64_NtGdiInit(UINT* pArgs)
 {
     return NtGdiInit();
@@ -132,30 +135,9 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(GdiFlush);
     IMPLEMENT_SERVICE(UserDestroyWindow);
     IMPLEMENT_SERVICE(UserThunkedMenuItemInfo);
+    IMPLEMENT_SERVICE(GdiCreateSolidBrush);
     
 #undef IMPLEMENT_SERVICE
-}
-
-NTSTATUS WINAPI wow64_NtUserProcessConnect(UINT* pArgs)
-{  
-    HANDLE ProcessHandle = get_handle(&pArgs);    
-    PUSERCONNECT pUserConnect = get_ptr(&pArgs);
-    ULONG Size = get_ulong(&pArgs);
-    /* Copy the memory manually to prevent the kernel complaining about 
-       misaligned memory. */
-    USERCONNECT UserConnect;
-    
-    NTSTATUS Status;
-    
-    if (Size != sizeof(USERCONNECT) || pUserConnect == NULL)
-    {
-        return STATUS_UNSUCCESSFUL;
-    }
-    
-    Status = NtUserProcessConnect(ProcessHandle, &UserConnect, sizeof(UserConnect));
-    
-    *pUserConnect = UserConnect;
-    return Status;
 }
 
 #endif

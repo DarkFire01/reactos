@@ -16,6 +16,10 @@ NTSTATUS WINAPI (*UserCallbacks[])(PVOID Arguments, ULONG ArgumentLength) =
 #undef DEFINE_USER32_CALLBACK 
 };
 
+static ULONG     hUser32 = 0;
+static PFNCLIENT apfnClientProcs32W;
+static PFNCLIENT apfnClientProcs32A;
+
 static MSG32 *msg_64to32( const MSG *msg64, MSG32 *msg32 )
 {
     MSG32 msg;
@@ -52,6 +56,30 @@ GetKernelCallbackTable32()
     return UlongToPtr(((PPEB32)(ULONG_PTR)NtCurrentTeb32()->ProcessEnvironmentBlock)->KernelCallbackTable);
 }
 
+NTSTATUS WINAPI wow64_NtUserProcessConnect(UINT* pArgs)
+{  
+    HANDLE ProcessHandle = get_handle(&pArgs);    
+    PUSERCONNECT pUserConnect = get_ptr(&pArgs);
+    ULONG Size = get_ulong(&pArgs);
+    /* Copy the memory manually to prevent the kernel complaining about 
+       misaligned memory. */
+    USERCONNECT UserConnect;
+    
+    NTSTATUS Status;
+    
+    if (Size != sizeof(USERCONNECT) || pUserConnect == NULL)
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+    
+    Status = NtUserProcessConnect(ProcessHandle, &UserConnect, sizeof(UserConnect));
+    
+    g_ServerInfo = UserConnect.siClient.psi;
+    
+    *pUserConnect = UserConnect;
+    return Status;
+}
+
 /* TODO: move back to wow64.dll */
 NTSTATUS 
 WINAPI 
@@ -82,6 +110,72 @@ Wow64KiUserCallbackDispatcher(ULONG nCallback,
    
     NtCurrentTeb()->TlsSlots[WOW64_TLS_USERCALLBACKDATA] = frame.prev_frame;
     return frame.status;
+}
+
+/* FIXME: HACK: It is very unlikely that this is how Windows implements this.
+   Maybe Windows loads 64-bit user32.dll, so it can run native WndProcs? 
+   
+   Is there even a guarantee, that we can't get a 64 bit WndProc from places
+   other than PFNCLIENT tables? */
+static
+ULONG
+Translate64WndProc(WNDPROC WndProc)
+{
+    const WNDPROC* ClientA = (WNDPROC*)&g_ServerInfo->apfnClientA;
+    const WNDPROC* ClientW = (WNDPROC*)&g_ServerInfo->apfnClientW;
+    const size_t nWndProcsInClient = sizeof(PFNCLIENT) / sizeof(WNDPROC);
+    int i;
+    
+    if ((ULONG_PTR)PtrToUlong(WndProc) != (ULONG_PTR)WndProc)
+    {
+        for (i = 0; i < nWndProcsInClient; i++)
+        {
+            if (ClientW[i] == WndProc)
+            {
+                return PtrToUlong(((WNDPROC*)&apfnClientProcs32W)[i]);
+            }
+            
+            if (ClientA[i] == WndProc)
+            {
+                return PtrToUlong(((WNDPROC*)&apfnClientProcs32A)[i]);
+            }
+        }
+    }
+    
+    /* No mapping found - return as is. */
+    return PtrToUlong(WndProc);
+}
+
+VOID
+WndProcParams64To32(PWINDOWPROC_CALLBACK_ARGUMENTS CallbackArgs, 
+                    PWINDOWPROC_CALLBACK_ARGUMENTS32 Arguments32)
+{
+    Arguments32->Proc = Translate64WndProc(CallbackArgs->Proc);
+    Arguments32->IsAnsiProc = CallbackArgs->IsAnsiProc;
+    Arguments32->Wnd = HandleToUlong(CallbackArgs->Wnd);
+    Arguments32->Msg = CallbackArgs->Msg;
+    Arguments32->wParam = CallbackArgs->wParam;
+    Arguments32->lParam = (ULONG)CallbackArgs->lParam;
+    Arguments32->lParamBufferSize = CallbackArgs->lParamBufferSize;
+    Arguments32->Result = CallbackArgs->Result;
+}
+ 
+VOID
+WndProcParams32To64(PWINDOWPROC_CALLBACK_ARGUMENTS OutArguments, 
+                    PWINDOWPROC_CALLBACK_ARGUMENTS32 CallbackArgs)
+{
+    WINDOWPROC_CALLBACK_ARGUMENTS Data = { 0 }, *Arguments = &Data;
+    
+    Arguments->Proc = UlongToPtr(CallbackArgs->Proc);
+    Arguments->IsAnsiProc = CallbackArgs->IsAnsiProc;
+    Arguments->Wnd = UlongToHandle(CallbackArgs->Wnd);
+    Arguments->Msg = CallbackArgs->Msg;
+    Arguments->wParam = CallbackArgs->wParam;
+    Arguments->lParam = CallbackArgs->lParam;
+    Arguments->lParamBufferSize = CallbackArgs->lParamBufferSize;
+    Arguments->Result = CallbackArgs->Result;
+    
+    *OutArguments = *Arguments;
 }
 
 NTSTATUS
@@ -151,13 +245,16 @@ wow64win_NtUser32CallLoadMenuFromKernel(PVOID Arguments, ULONG ArgumentLength)
         return STATUS_UNSUCCESSFUL;
     }
     
-    /* FIXME */
+    /* FIXME: check if pLoadMenu->hModule really is 64-bit USER32 */
     if ((ULONG_PTR)pLoadMenu->hModule & 0xFFFFFFFF00000000)
     {
-        pLoadMenu->hModule = (PVOID)0x77a20000;
+        pLoadMenu32->hModule = hUser32;
+    }
+    else
+    {
+        pLoadMenu32->hModule = HandleToUlong(pLoadMenu->hModule);
     }
     
-    pLoadMenu32->hModule = HandleToUlong(pLoadMenu->hModule);
     pLoadMenu32->InterSource = PtrToUlong(pLoadMenu->InterSource);
     memcpy(pLoadMenu32->MenuName, 
            pLoadMenu->MenuName, ArgumentLength 
@@ -192,41 +289,6 @@ wow64win_NtUser32CallClientThreadSetupFromKernel(PVOID Arguments, ULONG Argument
     
     NtCurrentPeb32()->GdiSharedHandleTable = PtrToUlong(NtCurrentPeb()->GdiSharedHandleTable);
     NtCurrentPeb32()->GdiDCAttributeList = NtCurrentPeb()->GdiDCAttributeList;
-    
-    __debugbreak();
-    
-    typedef struct _CLIENTINFO32
-    {
-        ULONG CI_flags;
-        ULONG cSpins;
-        DWORD dwExpWinVer;
-        DWORD dwCompatFlags;
-        DWORD dwCompatFlags2;
-        DWORD dwTIFlags; /* ThreadInfo TIF_Xxx flags for User space. */
-        ULONG pDeskInfo;
-        ULONG ulClientDelta;
-        ULONG phkCurrent;
-        ULONG fsHooks;
-        ULONG CallbackWnd[2];
-        DWORD dwHookCurrent;
-        INT cInDDEMLCallback;
-        ULONG pClientThreadInfo;
-        ULONG dwHookData;
-        DWORD dwKeyCache;
-        BYTE afKeyState[8];
-        DWORD dwAsyncKeyCache;
-        BYTE afAsyncKeyState[8];
-        BYTE afAsyncKeyStateRecentDow[8];
-        ULONG hKL;
-        USHORT CodePage;
-        UCHAR achDbcsCF[2];
-        MSG32 msgDbcsCB;
-        ULONG lpdwRegisteredClasses;
-        ULONG Win32ClientInfo3[26];
-        ULONG ppi;
-    } CLIENTINFO32, *PCLIENTINFO32;
-    
-    C_ASSERT(sizeof(CLIENTINFO32) == 61 * sizeof(ULONG));
     
     pClientInfo = (PCLIENTINFO) &NtCurrentTeb()->Win32ClientInfo;
     pClientInfo32 = (PCLIENTINFO32) &NtCurrentTeb32()->Win32ClientInfo;
@@ -438,4 +500,25 @@ wow64_NtUserGetThreadState(UINT *pArgs)
         
     NtCurrentTeb32()->Win32ThreadInfo = PtrToUlong(NtCurrentTeb()->Win32ThreadInfo);
     return Status;
+}
+
+NTSTATUS 
+WINAPI 
+wow64_NtUserInitializeClientPfnArrays(UINT *pArgs)
+{
+    PPFNCLIENT pProcsA32 = get_ptr(&pArgs);
+    PPFNCLIENT pProcsW32 = get_ptr(&pArgs);
+    PVOID      pWorkers  = get_ptr(&pArgs);
+    
+    hUser32 = get_ulong(&pArgs);
+    
+    apfnClientProcs32A = *pProcsA32;
+    apfnClientProcs32W = *pProcsW32;
+    
+    UNREFERENCED_PARAMETER(pWorkers);
+    
+    /* Do not bother with calling win32k - highly unlikely that a WOW64 process 
+       is the first one to call this, so this syscall is essentialy a no-op 
+       anyway. */
+    return STATUS_SUCCESS;
 }

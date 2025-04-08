@@ -621,7 +621,7 @@ ExtTextOutW(
                     pgO->ulForegroundClr = pdcattr->ulForegroundClr;
                     pgO->ulBackgroundClr = pdcattr->ulBackgroundClr;
                     pgO->lBkMode         = pdcattr->lBkMode == OPAQUE ? OPAQUE : TRANSPARENT;
-                    pgO->hlfntNew        = pdcattr->hlfntNew;
+                    pgO->hlfntNew        = WOW64_CAST_TO_HANDLE(pdcattr->hlfntNew);
                     pgO->flTextAlign     = pdcattr->flTextAlign;
                     pgO->ptlViewportOrg  = pdcattr->ptlViewportOrg;
 

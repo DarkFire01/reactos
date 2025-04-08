@@ -14,13 +14,25 @@
 //#define NDEBUG
 #include <debug.h>
 
+/* FIXME: for now, the WOW64 directory path is hardcoded. 
+   It is currently set to D: for ease of debugging 
+   (for ease of swapping of 32 bit DLLs while the system is running). */
+#define TMP_WOW_DIR "D:"
+
 typedef MEMORY_BASIC_INFORMATION32 *PMEMORY_BASIC_INFORMATION32;
 
+/* PEB Data */
+static USHORT UnicodeCopy[2048]; /* ??? */
+static UCHAR AnsiCopy[512], OemCopy[512]; /* ??? */
+static ULONG_PTR FixmeProcessHeaps[100]; /* FIXME */
+
+static UNICODE_STRING NtDll32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR "\\ntdll.dll");
+static ANSI_STRING ImportStr = RTL_CONSTANT_STRING("LdrInitializeThunk");
 static PVOID NtDll32LdrpRoutine = NULL;
 static PVOID NtDll32 = NULL;
 
 void SetupFs(ULONG_PTR segSelector);
-void Enter32(PVOID where, ULONG_PTR ntdll32Base, ULONG_PTR entrypoint);
+void Enter32(PVOID where, PVOID ntdll32Base, ULONG_PTR entrypoint);
 
 /* From wine/dlls/ntdll/unix/env.c */
 static inline void dup_unicode_string( const UNICODE_STRING *src, WCHAR **dst, UNICODE_STRING32 *str )
@@ -86,8 +98,6 @@ static void *build_wow64_parameters( const RTL_USER_PROCESS_PARAMETERS *params )
     memcpy( dst, params->Environment, wcslen(params->Environment) );
     return wow64_params;
 }
-
-/* WINE FUNCS */
 
 /**********************************************************************
  *           wow64_NtQueryInformationProcess
@@ -243,7 +253,11 @@ NTSTATUS WINAPI wow64_NtQueryInformationProcess( UINT *args )
     }
 }
 
-NTSTATUS Wow64WinHandler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
+static
+NTSTATUS 
+Wow64WinHandler(ULONG syscallNum, 
+                ULONG numArgs, 
+                ULONG* pArgs)
 {
     ANSI_STRING ImportStr = RTL_CONSTANT_STRING("sdwhwin32");
     static PSYSTEM_SERVICE_TABLE pServiceTable = NULL; 
@@ -309,7 +323,11 @@ NTSTATUS Wow64WinHandler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
     return Service(pArgs);
 }
 
-NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
+static
+NTSTATUS 
+Wow64Handler(ULONG syscallNum, 
+             ULONG numArgs, 
+             ULONG* pArgs)
 {   
     NTSTATUS status;
 
@@ -535,8 +553,6 @@ NTSTATUS handler(ULONG syscallNum, ULONG numArgs, ULONG* pArgs)
     return status;
 }
 
-#define TMP_WOW_DIR "D:"
-
 BOOL
 WINAPI
 DllMain(HANDLE hDll,
@@ -545,13 +561,6 @@ DllMain(HANDLE hDll,
 {
     return TRUE;
 }
-
-/* PEB Data */
-static USHORT UnicodeCopy[2048];
-static UCHAR AnsiCopy[512], OemCopy[512];
-static ULONG_PTR FixmeProcessHeaps[100]; /* FIXME */
-static UNICODE_STRING NtDll32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR "\\ntdll.dll");
-static ANSI_STRING ImportStr = RTL_CONSTANT_STRING("LdrInitializeThunk");
 
 static
 VOID 
@@ -571,7 +580,12 @@ Wow64InitProcess(VOID)
     }
     
     Size = sizeof(PEB32);
-    Status = NtAllocateVirtualMemory(NtCurrentProcess(), &WowPeb, 32, &Size, MEM_COMMIT, PAGE_READWRITE);
+    Status = NtAllocateVirtualMemory(NtCurrentProcess(), 
+                                     &WowPeb, 
+                                     32, 
+                                     &Size, 
+                                     MEM_COMMIT,
+                                     PAGE_READWRITE);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("PEB32 Allocation failed: %lx\n", Status);
@@ -621,77 +635,111 @@ Wow64InitProcess(VOID)
 }
 
 static
+LONG
+Wow64UnhandledExceptionHandler(IN PEXCEPTION_POINTERS ExceptionInfo)
+{
+    __debugbreak();
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+static
+void
+Wow64Trampoline(VOID)
+{
+    IMAGE_NT_HEADERS32* NtHeaders = NULL;
+    PPEB Peb;
+    
+    Peb = NtCurrentPeb();
+    NtHeaders = (IMAGE_NT_HEADERS32*)RtlImageNtHeader(Peb->ImageBaseAddress);
+
+    _SEH2_TRY
+    {
+        Enter32(NtDll32LdrpRoutine,
+                NtDll32,
+                (ULONG_PTR)Peb->ImageBaseAddress
+                 + (ULONG_PTR)NtHeaders->OptionalHeader.AddressOfEntryPoint);
+    }
+    _SEH2_EXCEPT(Wow64UnhandledExceptionHandler(_SEH2_GetExceptionInformation()))
+    {
+        DPRINT1("Terminating WOW64 thread due to unhandled exception.");
+        NtTerminateProcess(NtCurrentProcess(), _SEH2_GetExceptionCode());
+    }
+}
+
+static
 VOID 
-Wow64InitThread(VOID)
+Wow64InitThread(PCONTEXT pContext)
 {
     NTSTATUS Status;
     SIZE_T Size;
     PTEB32 WowTeb = NULL;
     PPEB32 WowPeb = NULL;
     PTEB Teb = NtCurrentTeb();
-    IMAGE_NT_HEADERS32* NtHeaders = NULL;
-    PPEB Peb = NtCurrentPeb();
-
-    //DPRINT("Current TEB %p\n", Teb);
-
     WowTeb = NULL;
-    
+
+    /* Allocate memory for the 32 bit TEB. 
+       TODO: This should be done in kernel mode probably */
     Size = sizeof(TEB32);
-    Status = NtAllocateVirtualMemory(NtCurrentProcess(), &WowTeb, 32, &Size, MEM_COMMIT, PAGE_READWRITE);
+    Status = NtAllocateVirtualMemory(NtCurrentProcess(), 
+                                     &WowTeb, 
+                                     32, 
+                                     &Size, 
+                                     MEM_COMMIT, 
+                                     PAGE_READWRITE);
     if (!NT_SUCCESS(Status))
     {
         DPRINT("TEB32 Allocation failed: %lx\n", Status);
         ASSERT(FALSE);
     }
-    
+
     /* Set the 64 bit Teb's TlsSlots[1] to the TEB32 before setting process 
        information. */
     /* FIXME: This is NOT Wine compatible! Wine uses Peb->WowTebOffset which is 
        only present for NTDDI_VERSION >= NTDDI_WIN10, and uses this TLS entry
-       for its own structures. Since we do not use them, this entry should be
-       free for now. */
+       for its own structures. Since we do not use them (yet), this entry should 
+       be free for now. */
     Teb->TlsSlots[1] = WowTeb;
-    
-    //DPRINT("Initializing TEB32\n");
+
     WowTeb->NtTib.Self = PtrToUlong(WowTeb);
-    
+
     WowTeb->StaticUnicodeString.Length = 0;
     WowTeb->StaticUnicodeString.MaximumLength = sizeof(WowTeb->StaticUnicodeBuffer);
     WowTeb->StaticUnicodeString.Buffer = PtrToUlong(WowTeb->StaticUnicodeBuffer);
-    
-    Status = NtQueryInformationProcess(NtCurrentProcess(), ProcessWow64Information, &WowPeb, sizeof(WowPeb), NULL);
+
+    Status = NtQueryInformationProcess(NtCurrentProcess(), 
+                                       ProcessWow64Information, 
+                                       &WowPeb, 
+                                       sizeof(WowPeb), 
+                                       NULL);
     if (!NT_SUCCESS(Status))
     {
         DPRINT("Getting Wow64 info failed: %lx\n", Status);
         ASSERT(FALSE);
     }
-    
-    //DPRINT("Got PEB32 address: %p, TEB32 %p\n", WowPeb, WowTeb);
+
     WowTeb->ProcessEnvironmentBlock = PtrToUlong(WowPeb);
-    
+
+    /* Point the FS segment register to the CMTEB entry in the GDT */
     SetupFs(0x0053);
+
+    /* CMTEB GDT entry's fields are set on thread context switches, make sure 
+       correct values are loaded before executing. */
     while(NtYieldExecution() == STATUS_NO_YIELD_PERFORMED);
-    
-    //DPRINT("Setting WOW32Reserved to local handler %p\n", handler);
-    ASSERT((((ULONG_PTR)handler) & ~0xFFFFFFFF) == 0);
-    WowTeb->WOW32Reserved = (ULONG)(ULONG_PTR)handler;
-    
+
+    /* Make sure the handler routine pointer fits into the 32-bit TEB */
+    ASSERT((((ULONG_PTR)Wow64Handler) & ~0xFFFFFFFF) == 0);
+    WowTeb->WOW32Reserved = PtrToUlong(Wow64Handler);
+
     WowTeb->ClientId.UniqueProcess = HandleToULong(Teb->ClientId.UniqueProcess);
     WowTeb->ClientId.UniqueThread = HandleToULong(Teb->ClientId.UniqueThread);
-    
-    NtHeaders = (IMAGE_NT_HEADERS32*)RtlImageNtHeader(Peb->ImageBaseAddress);
-    
-    DPRINT("Entering %p at %p to %p, headers %p\n", NtDll32LdrpRoutine, NtDll32, Peb->ImageBaseAddress, NtHeaders);
-    //DPRINT("Access successful %X\n",(ULONG_PTR)NtHeaders->OptionalHeader.AddressOfEntryPoint);
-    Enter32(NtDll32LdrpRoutine, 
-            (ULONG_PTR)NtDll32, 
-            (ULONG_PTR)Peb->ImageBaseAddress + (ULONG_PTR)NtHeaders->OptionalHeader.AddressOfEntryPoint);
+
+    pContext->Rip = (ULONG_PTR)Wow64Trampoline;
 }
 
 __declspec(dllexport)
 void 
 WINAPI 
-Wow64LdrpInitialize(PCONTEXT Context)
+Wow64LdrpInitialize(PCONTEXT pContext)
 {
     static LONG ProcessInitialized = 0;
     
@@ -702,7 +750,8 @@ Wow64LdrpInitialize(PCONTEXT Context)
         Wow64InitProcess();
     }
     
-    Wow64InitThread();
-    
-    ASSERT(FALSE);
+    /* TODO: Parse Context to (somehow) get the start address for the new thread.
+       This is somewhat problematic, because the 64-bit side can give us 64-bit 
+       pointer to functions in 64-bit DLLs. */
+    Wow64InitThread(pContext);
 }

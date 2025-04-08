@@ -576,7 +576,7 @@ PatBlt(
             pgO->nHeight = nHeight;
             pgO->dwRop   = dwRop;
             /* Snapshot attributes */
-            pgO->hbrush          = pdcattr->hbrush;
+            pgO->hbrush          = WOW64_CAST_TO_HANDLE(pdcattr->hbrush);
             pgO->crForegroundClr = pdcattr->crForegroundClr;
             pgO->crBackgroundClr = pdcattr->crBackgroundClr;
             pgO->crBrushClr      = pdcattr->crBrushClr;

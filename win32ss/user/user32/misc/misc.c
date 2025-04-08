@@ -32,11 +32,7 @@ UserSetLastNTError(IN NTSTATUS Status)
 }
 
 
-#if !(defined(_WOW64) && defined(_M_IX86))
 PTHREADINFO
-#else
-UINT64
-#endif
 GetW32ThreadInfo(VOID)
 {
     PTHREADINFO ti;

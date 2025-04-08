@@ -1782,12 +1782,24 @@ IntCallMessageProc(IN PWND Wnd, IN HWND hWnd, IN UINT Msg, IN WPARAM wParam, IN 
        if (!WndProc)
        {
           IsAnsi = !Wnd->Unicode;
+#if (defined(_WOW64) && defined(_M_IX86))
+          if (Wnd->lpfnWndProc & 0xFFFFFFFF00000000)
+          {
+              __debugbreak();
+          }
+#endif
           WndProc = WOW64_CAST_TO_PTR(Wnd->lpfnWndProc);
        }
     }
     else
     {
        IsAnsi = !Wnd->Unicode;
+#if (defined(_WOW64) && defined(_M_IX86))
+       if (Wnd->lpfnWndProc & 0xFFFFFFFF00000000)
+       {
+           __debugbreak();
+       }
+#endif
        WndProc = WOW64_CAST_TO_PTR(Wnd->lpfnWndProc);
     }
 /*

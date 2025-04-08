@@ -304,6 +304,7 @@ typedef struct _LDC
  */
 typedef struct _DC_ATTR
 {
+#if !(defined(_WOW64) && defined(_M_IX86))
     PVOID pvLDC;
     ULONG ulDirty_;
     HANDLE hbrush;
@@ -362,6 +363,67 @@ typedef struct _DC_ATTR
     SIZEL szlVirtualDeviceSize;
     POINTL ptlBrushOrigin;
     RGN_ATTR VisRectRegion;
+#else
+    /* WIP */
+    UINT64 pvLDC;
+    ULONG ulDirty_;
+    UINT64 hbrush;
+    UINT64 hpen;
+    COLORREF crBackgroundClr;
+    ULONG ulBackgroundClr;
+    COLORREF crForegroundClr;
+    ULONG ulForegroundClr;
+    COLORREF crBrushClr;
+    ULONG ulBrushClr;
+    COLORREF crPenClr;
+    ULONG ulPenClr;
+    DWORD iCS_CP;
+    INT iGraphicsMode;
+    BYTE jROP2;
+    BYTE jBkMode;
+    BYTE jFillMode;
+    BYTE jStretchBltMode;
+    POINTL ptlCurrent;
+    POINTL ptfxCurrent;
+    LONG lBkMode;
+    LONG lFillMode;
+    LONG lStretchBltMode;
+    FLONG flFontMapper;
+    LONG lIcmMode;
+    UINT64 hcmXform;
+    UINT64 hColorSpace;
+    FLONG flIcmFlags;
+    INT IcmBrushColor;
+    INT IcmPenColor;
+    UINT64 pvLIcm;
+    FLONG flTextAlign;
+    LONG lTextAlign;
+    LONG lTextExtra;
+    LONG lRelAbs;
+    LONG lBreakExtra;
+    LONG cBreak;
+    UINT64 hlfntNew;
+    MATRIX mxWorldToDevice;
+    MATRIX mxDeviceToWorld;
+    MATRIX mxWorldToPage;
+    FLOATOBJ efM11PtoD;
+    FLOATOBJ efM22PtoD;
+    FLOATOBJ efDxPtoD;
+    FLOATOBJ efDyPtoD;
+    INT iMapMode;
+    DWORD dwLayout;
+    LONG lWindowOrgx;
+    POINTL ptlWindowOrg;
+    SIZEL szlWindowExt;
+    POINTL ptlViewportOrg;
+    SIZEL szlViewportExt;
+    FLONG flXform;
+    SIZEL szlVirtualDevicePixel;
+    SIZEL szlVirtualDeviceMm;
+    SIZEL szlVirtualDeviceSize;
+    POINTL ptlBrushOrigin;
+    RGN_ATTR VisRectRegion;
+#endif
 } DC_ATTR, *PDC_ATTR;
 
 typedef struct _BRUSH_ATTR /* Used with pen too. */

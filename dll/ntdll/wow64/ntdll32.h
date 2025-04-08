@@ -164,7 +164,8 @@ Wow64WriteNativePtr(UINT64 Address, UINT64 Value)
 
 #define WOW64_CAST_TO_PTR(Ptr) ((PVOID)(ULONG_PTR)(Ptr))
 #define WOW64_CAST_TO_HANDLE(H) ((HANDLE)(ULONG_PTR)(H))
-
+#define WOW64_CAST_FROM_PTR(Ptr) ((UINT64)((ULONG_PTR)(Ptr)))
+#define WOW64_CAST_FROM_HANDLE(H) ((UINT64)((ULONG_PTR)(H)))
 #else
 
 #define WOW64_READ_PTR_FIELD(Ptr, StructType, Field) (Ptr->Field)
@@ -181,5 +182,7 @@ Wow64WriteNativePtr(UINT64 Address, UINT64 Value)
 
 #define WOW64_CAST_TO_PTR(Ptr) (Ptr)
 #define WOW64_CAST_TO_HANDLE(H) (H)
+#define WOW64_CAST_FROM_PTR(Ptr) (Ptr)
+#define WOW64_CAST_FROM_HANDLE(H) (H)
 
 #endif

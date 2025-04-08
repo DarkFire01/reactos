@@ -518,40 +518,14 @@ static void win_proc_params_64to32( const struct win_proc_params *src, struct wi
     params.procW = PtrToUlong( src->procW );
     memcpy( dst, &params, sizeof(params) );
 }
-#else
-static 
-void 
+#else 
+VOID
 WndProcParams64To32(PWINDOWPROC_CALLBACK_ARGUMENTS CallbackArgs, 
-                    PWINDOWPROC_CALLBACK_ARGUMENTS32 Arguments32)
-{
-    Arguments32->Proc = PtrToUlong(CallbackArgs->Proc);
-    Arguments32->IsAnsiProc = CallbackArgs->IsAnsiProc;
-    Arguments32->Wnd = HandleToUlong(CallbackArgs->Wnd);
-    Arguments32->Msg = CallbackArgs->Msg;
-    Arguments32->wParam = CallbackArgs->wParam;
-    Arguments32->lParam = (ULONG)CallbackArgs->lParam;
-    Arguments32->lParamBufferSize = CallbackArgs->lParamBufferSize;
-    Arguments32->Result = CallbackArgs->Result;
-}
-
-static 
-void 
+                    PWINDOWPROC_CALLBACK_ARGUMENTS32 Arguments32);
+ 
+VOID 
 WndProcParams32To64(PWINDOWPROC_CALLBACK_ARGUMENTS OutArguments, 
-                    PWINDOWPROC_CALLBACK_ARGUMENTS32 CallbackArgs)
-{
-    WINDOWPROC_CALLBACK_ARGUMENTS Data = { 0 }, *Arguments = &Data;
-    
-    Arguments->Proc = UlongToPtr(CallbackArgs->Proc);
-    Arguments->IsAnsiProc = CallbackArgs->IsAnsiProc;
-    Arguments->Wnd = UlongToHandle(CallbackArgs->Wnd);
-    Arguments->Msg = CallbackArgs->Msg;
-    Arguments->wParam = CallbackArgs->wParam;
-    Arguments->lParam = CallbackArgs->lParam;
-    Arguments->lParamBufferSize = CallbackArgs->lParamBufferSize;
-    Arguments->Result = CallbackArgs->Result;
-    
-    *OutArguments = *Arguments;
-}
+                    PWINDOWPROC_CALLBACK_ARGUMENTS32 CallbackArgs);
 #endif
 
 static void createstruct_32to64( const CREATESTRUCT32 *from, CREATESTRUCTW *to )
@@ -978,13 +952,15 @@ static size_t packed_message_32to64(UINT message,
             NCCALCSIZE_PARAMS *ncp64 = params64;
 #else
             NCCALCSIZE_PARAMS ncp64Data, *ncp64 = &ncp64Data, *outNcp64 = params64;
+            WINDOWPOS32 windowPos32 = *(const WINDOWPOS32 *)(ncp32 + 1);
 #endif
-
             ncp64->rgrc[0] = ncp32->rgrc[0];
             ncp64->rgrc[1] = ncp32->rgrc[1];
             ncp64->rgrc[2] = ncp32->rgrc[2];
+#ifndef __REACTOS__
             winpos_32to64( (WINDOWPOS *)(ncp64 + 1), (const WINDOWPOS32 *)(ncp32 + 1) );
-#ifdef __REACTOS__
+#else
+            winpos_32to64((WINDOWPOS *)(outNcp64 + 1), &windowPos32);
             *outNcp64 = ncp64Data;
 #endif
             return sizeof(*ncp64) + sizeof(WINDOWPOS);
@@ -3367,38 +3343,6 @@ struct user_client_procs32
 
 static struct user_client_procs *user_client_procs_32to64( struct user_client_procs *procs,
                                                            const struct user_client_procs32 *procs32 )
-#else
-
-typedef struct _PFNCLIENT32
-{
-    ULONG pfnScrollBarWndProc;
-    ULONG pfnTitleWndProc;
-    ULONG pfnMenuWndProc;
-    ULONG pfnDesktopWndProc;
-    ULONG pfnDefWindowProc;
-    ULONG pfnMessageWindowProc;
-    ULONG pfnSwitchWindowProc;
-    ULONG pfnButtonWndProc;
-    ULONG pfnComboBoxWndProc;
-    ULONG pfnComboListBoxProc;
-    ULONG pfnDialogWndProc;
-    ULONG pfnEditWndProc;
-    ULONG pfnListBoxWndProc;
-    ULONG pfnMDIClientWndProc;
-    ULONG pfnStaticWndProc;
-    ULONG pfnImeWndProc;
-    ULONG pfnGhostWndProc;
-    ULONG pfnHkINLPCWPSTRUCT;
-    ULONG pfnHkINLPCWPRETSTRUCT;
-    ULONG pfnDispatchHook;
-    ULONG pfnDispatchDefWindowProc;
-    ULONG pfnDispatchMessage;
-    ULONG pfnMDIActivateDlgProc;
-} PFNCLIENT32, *PPFNCLIENT32;    
-
-static PFNCLIENT* user_client_procs_32to64(PFNCLIENT* procs,
-                                           const PFNCLIENT32 *procs32 )
-#endif
 {
     if (!procs32) return NULL;
 
@@ -3447,25 +3391,17 @@ static PFNCLIENT* user_client_procs_32to64(PFNCLIENT* procs,
 
 NTSTATUS WINAPI wow64_NtUserInitializeClientPfnArrays( UINT *args )
 {
-#ifndef __REACTOS__
     const struct user_client_procs32 *procsA32 = get_ptr( &args );
     const struct user_client_procs32 *procsW32 = get_ptr( &args );
-#else
-    PPFNCLIENT32 procsA32 = get_ptr( &args );
-    PPFNCLIENT32 procsW32 = get_ptr( &args );
-#endif
     void *workers = get_ptr( &args );
     HINSTANCE user_module = get_ptr( &args );
 
-#ifndef __REACTOS__
     struct user_client_procs procsA, procsW;
-#else
-    PFNCLIENT procsA, procsW;
-#endif
     return NtUserInitializeClientPfnArrays( user_client_procs_32to64( &procsA, procsA32 ),
                                             user_client_procs_32to64( &procsW, procsW32 ),
                                             workers, user_module );
 }
+#endif
 
 #ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserInternalGetWindowIcon( UINT *args )
