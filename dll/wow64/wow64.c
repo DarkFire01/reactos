@@ -14,11 +14,6 @@
 //#define NDEBUG
 #include <debug.h>
 
-/* FIXME: for now, the WOW64 directory path is hardcoded. 
-   It is currently set to D: for ease of debugging 
-   (for ease of swapping of 32 bit DLLs while the system is running). */
-#define TMP_WOW_DIR "D:"
-
 typedef MEMORY_BASIC_INFORMATION32 *PMEMORY_BASIC_INFORMATION32;
 
 /* PEB Data */

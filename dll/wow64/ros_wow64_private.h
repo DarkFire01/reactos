@@ -164,37 +164,76 @@ typedef struct tagSYSTEM_SERVICE_TABLE
     BYTE *ArgumentTable;
 } SYSTEM_SERVICE_TABLE, *PSYSTEM_SERVICE_TABLE;
 
-/* FIXME */
-static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer)
+/* FIXME: for now, the WOW64 directory path is hardcoded. 
+   It is currently set to D: for ease of debugging 
+   (for ease of swapping of 32 bit DLLs while the system is running). */
+#define TMP_WOW_DIR "D:"
+
+typedef struct _WOW64_PATH_REDIRECTION
 {
-    WCHAR system32[] = L"\\??\\X:\\reactos\\system32";
-    WCHAR knownDll[] = L"\\KnownDlls";
-    WCHAR knownDll32[] = L"\\KnownDlls32";
-    WCHAR wow64[] = L"\\??\\D:";
+    UNICODE_STRING From;
+    UNICODE_STRING To;
+} WOW64_PATH_REDIRECTION, *PWOW64_PATH_REDIRECTION;
+
+static 
+BOOLEAN 
+RedirectPath(const WOW64_PATH_REDIRECTION* Redirection, 
+             POBJECT_ATTRIBUTES ObjectAttributes,
+             PUNICODE_STRING Buffer)
+{
+    PUNICODE_STRING ObjectName = ObjectAttributes->ObjectName;
+    const UNICODE_STRING* From = &Redirection->From;
+    const UNICODE_STRING* To = &Redirection->To;
     
-    if (!attr || !attr->ObjectName || !attr->ObjectName->Buffer)
+    USHORT NewLength = ObjectName->Length - From->Length + To->Length;
+    
+    /* FIXME */
+    if (Buffer->MaximumLength < NewLength)
     {
         return FALSE;
     }
     
-    if (_wcsnicmp(attr->ObjectName->Buffer, system32, sizeof(system32) / sizeof(*system32) - 1) == 0)
+    if (_wcsnicmp(ObjectName->Buffer, From->Buffer, From->Length / sizeof(WCHAR)) == 0)
     {
-        buffer->Length = attr->ObjectName->Length - sizeof(system32) + sizeof(wow64);
-        wcscpy(buffer->Buffer, wow64);
-        wcscat(buffer->Buffer,  (PWSTR)(((ULONG_PTR)attr->ObjectName->Buffer) + sizeof(system32) - sizeof(WCHAR)));
+        Buffer->Length = NewLength;
         
-        attr->ObjectName = buffer;  
+        RtlCopyMemory(Buffer->Buffer, To->Buffer, To->Length);
+        
+        RtlCopyMemory(Buffer->Buffer + To->Length / sizeof(WCHAR), 
+                      ObjectName->Buffer + From->Length / sizeof(WCHAR),
+                      ObjectName->Length - From->Length);
+
+        ObjectAttributes->ObjectName = Buffer;  
         return TRUE;
     }
-    
-    if (_wcsnicmp(attr->ObjectName->Buffer, knownDll, sizeof(knownDll) / sizeof(*knownDll)) == 0)
+    return FALSE;
+}
+
+static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer)
+{
+    static const WOW64_PATH_REDIRECTION Redirections[] = 
     {
-        buffer->Length = attr->ObjectName->Length - sizeof(knownDll) + sizeof(knownDll32);
-        wcscpy(buffer->Buffer, knownDll32);
-        wcscat(buffer->Buffer,  (PWSTR)(((ULONG_PTR)attr->ObjectName->Buffer) + sizeof(knownDll) - sizeof(WCHAR)));
-        
-        attr->ObjectName = buffer;  
-        return TRUE;
+#define REDIRECTION(From, To) { RTL_CONSTANT_STRING(From), RTL_CONSTANT_STRING(To) }
+        REDIRECTION(L"\\??\\X:\\reactos\\system32", L"\\??\\" TMP_WOW_DIR),
+        REDIRECTION(L"\\??\\X:\\reactos\\winsxs", L"\\??\\" TMP_WOW_DIR "\\winsxs"),
+        REDIRECTION(L"\\KnownDlls", L"\\KnownDlls32")
+#undef  REDIRECTION
+    };
+    
+    size_t i;
+    PUNICODE_STRING ObjectName = attr->ObjectName;
+    
+    if (!attr || !ObjectName || !ObjectName->Buffer)
+    {
+        return FALSE;
+    }
+    
+    for (i = 0; i < sizeof(Redirections) / sizeof(*Redirections); i++)
+    {
+        if (RedirectPath(&Redirections[i], attr, buffer))
+        {
+            return TRUE;
+        }
     }
     
     return FALSE;
