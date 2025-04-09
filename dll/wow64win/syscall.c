@@ -93,6 +93,19 @@ const SYSTEM_SERVICE_TABLE sdwhwin32 =
 
 #ifdef __REACTOS__
 
+__declspec(allocate(".text"))
+static unsigned char ReadFsDwordImpl[] =
+{
+    0x64, 0x8B, 0x01, /* mov eax, fs:[rcx] */
+    0xC3              /* ret */
+};
+
+ULONG __readfsdword(ULONG x)
+{
+    typedef ULONG(*__readfsdwordImplType)(ULONG);
+    return ((__readfsdwordImplType)ReadFsDwordImpl)(x);
+}
+
 PSERVERINFO g_ServerInfo = NULL;
 
 static BOOL wow64_NtGdiInit(UINT* pArgs)
@@ -150,6 +163,67 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserSetWindowFNID);
     IMPLEMENT_SERVICE(UserDefSetText);
     IMPLEMENT_SERVICE(UserGetClassName);
+    IMPLEMENT_SERVICE(GdiTransformPoints);
+    IMPLEMENT_SERVICE(GdiGetOutlineTextMetricsInternalW);
+    IMPLEMENT_SERVICE(GdiCreatePatternBrushInternal);
+    
+    IMPLEMENT_SERVICE(GdiExtGetObjectW);
+    IMPLEMENT_SERVICE(GdiGetTextExtent);
+    IMPLEMENT_SERVICE(UserInternalGetWindowText);
+    
+    IMPLEMENT_SERVICE(GdiGetStockObject);
+    IMPLEMENT_SERVICE(GdiGetFontData);
+    IMPLEMENT_SERVICE(GdiOpenDCW);
+    IMPLEMENT_SERVICE(GdiGetDCObject);
+    IMPLEMENT_SERVICE(GdiGetCharABCWidthsW);
+    IMPLEMENT_SERVICE(GdiGetGlyphIndicesW);
+    IMPLEMENT_SERVICE(GdiGetTransform);
+    IMPLEMENT_SERVICE(GdiGetRandomRgn);
+    IMPLEMENT_SERVICE(GdiIntersectClipRect);
+    IMPLEMENT_SERVICE(GdiCreateRectRgn);
+    IMPLEMENT_SERVICE(GdiExtTextOutW);
+    IMPLEMENT_SERVICE(GdiExtSelectClipRgn);
+    IMPLEMENT_SERVICE(GdiCreateDIBitmapInternal);
+    IMPLEMENT_SERVICE(UserSetClassWord);
+    IMPLEMENT_SERVICE(UserSetClassLong);
+    IMPLEMENT_SERVICE(UserSetCapture);
+    IMPLEMENT_SERVICE(UserSetActiveWindow);
+    IMPLEMENT_SERVICE(UserGetControlBrush);
+    IMPLEMENT_SERVICE(GdiGetTextExtentExW);
+    IMPLEMENT_SERVICE(UserSystemParametersInfo);
+    IMPLEMENT_SERVICE(UserTrackMouseEvent);
+    IMPLEMENT_SERVICE(GdiRectangle);
+    IMPLEMENT_SERVICE(UserShowScrollBar);
+    IMPLEMENT_SERVICE(UserSetScrollInfo);
+    IMPLEMENT_SERVICE(GdiBitBlt);
+    IMPLEMENT_SERVICE(UserGetDCEx);
+    IMPLEMENT_SERVICE(UserSetParent);
+    IMPLEMENT_SERVICE(UserSetWindowPos);
+    IMPLEMENT_SERVICE(UserDestroyMenu);
+    IMPLEMENT_SERVICE(GdiSetLayout);
+    IMPLEMENT_SERVICE(GdiGetCharWidthW);
+    IMPLEMENT_SERVICE(UserAlterWindowStyle);
+    IMPLEMENT_SERVICE(UserSetWindowRgn);
+    
+    IMPLEMENT_SERVICE(UserSetCursorIconData);
+    
+    IMPLEMENT_SERVICE(UserMoveWindow);
+    IMPLEMENT_SERVICE(UserRedrawWindow);
+    IMPLEMENT_SERVICE(UserEnableMenuItem);
+    
+    IMPLEMENT_SERVICE(UserInvalidateRect);
+    IMPLEMENT_SERVICE(UserInvalidateRgn);
+    
+    IMPLEMENT_SERVICE(UserGetControlColor);
+    IMPLEMENT_SERVICE(UserDragDetect);
+    IMPLEMENT_SERVICE(UserDragObject);
+    IMPLEMENT_SERVICE(UserDrawCaptionTemp);
+    IMPLEMENT_SERVICE(UserDrawMenuBarTemp);
+    IMPLEMENT_SERVICE(UserEmptyClipboard);
+    IMPLEMENT_SERVICE(UserEnableMenuItem);
+    IMPLEMENT_SERVICE(UserEnableScrollBar);
+    IMPLEMENT_SERVICE(UserEndDeferWindowPosEx);
+    IMPLEMENT_SERVICE(UserEndMenu);
 #undef IMPLEMENT_SERVICE
 }
 

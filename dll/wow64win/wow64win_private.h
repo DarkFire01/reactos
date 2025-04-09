@@ -513,6 +513,31 @@ typedef struct _CLIENTINFO32
 
 C_ASSERT(sizeof(CLIENTINFO32) == 61 * sizeof(ULONG));
 
+typedef struct _CURSORDATA32
+{
+    ULONG lpName;
+    ULONG lpModName;
+    USHORT rt;
+    USHORT dummy;
+    ULONG CURSORF_flags;
+    SHORT xHotspot;
+    SHORT yHotspot;
+    ULONG hbmMask;
+    ULONG hbmColor;
+    ULONG hbmAlpha;
+    RECT rcBounds;
+    ULONG hbmUserAlpha;
+    ULONG bpp;
+    ULONG cx;
+    ULONG cy;
+    UINT cpcur;
+    UINT cicur;
+    ULONG aspcur;
+    ULONG aicur;
+    ULONG ajifRate;
+    UINT iicur;
+} CURSORDATA32, *PCURSORDATA32;
+
 typedef struct _LARGE_STRING32
 {
     ULONG Length;
@@ -530,6 +555,53 @@ static inline LARGE_STRING *large_str_32to64( LARGE_STRING *str, const LARGE_STR
     str->bAnsi = str32->bAnsi;
     str->Buffer = ULongToPtr( str32->Buffer );
     return str;
+}
+
+typedef struct _DRIVER_INFO_2W32
+{
+    DWORD  cVersion;
+    ULONG pName;
+    ULONG pEnvironment;
+    ULONG pDriverPath;
+    ULONG pDataFile;
+    ULONG pConfigFile;
+} DRIVER_INFO_2W32, *PDRIVER_INFO_2W32;
+
+static 
+inline 
+PDRIVER_INFO_2W 
+DriverInfo2W32To64(PDRIVER_INFO_2W         pDriverInfo64,
+                   const DRIVER_INFO_2W32* pDriverInfo32)
+{
+    pDriverInfo64->cVersion = pDriverInfo32->cVersion;
+    pDriverInfo64->pName = UlongToPtr(pDriverInfo32->pName);
+    pDriverInfo64->pEnvironment = UlongToPtr(pDriverInfo32->pEnvironment);
+    pDriverInfo64->pDriverPath = UlongToPtr(pDriverInfo32->pDriverPath);
+    pDriverInfo64->pDataFile = UlongToPtr(pDriverInfo32->pDataFile);
+    pDriverInfo64->pConfigFile = UlongToPtr(pDriverInfo32->pConfigFile);
+    
+    return pDriverInfo64;
+}
+
+static 
+inline 
+PDRIVER_INFO_2W32
+DriverInfo2W64To32(const DRIVER_INFO_2W* pDriverInfo64,
+                   PDRIVER_INFO_2W32     pDriverInfo32)
+{
+    pDriverInfo32->cVersion = pDriverInfo64->cVersion;
+    pDriverInfo32->pName = PtrToUlong(pDriverInfo64->pName);
+    pDriverInfo32->pEnvironment = PtrToUlong(pDriverInfo64->pEnvironment);
+    pDriverInfo32->pDriverPath = PtrToUlong(pDriverInfo64->pDriverPath);
+    pDriverInfo32->pDataFile = PtrToUlong(pDriverInfo64->pDataFile);
+    pDriverInfo32->pConfigFile = PtrToUlong(pDriverInfo64->pConfigFile);
+    
+    return pDriverInfo32;
+}
+
+static inline void set_last_error32(DWORD err)
+{
+    NtCurrentTeb32()->LastErrorValue = err;
 }
 
 #include "callback32.h"

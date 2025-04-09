@@ -36,19 +36,6 @@ static MSG32 *msg_64to32( const MSG *msg64, MSG32 *msg32 )
     return msg32;
 }
 
-__declspec(allocate(".text"))
-static unsigned char ReadFsDwordImpl[] =
-{
-    0x64, 0x8B, 0x01, /* mov eax, fs:[rcx] */
-    0xC3              /* ret */
-};
-
-static ULONG __readfsdword(ULONG x)
-{
-    typedef ULONG(*__readfsdwordImplType)(ULONG);
-    return ((__readfsdwordImplType)ReadFsDwordImpl)(x);
-}
-
 static
 PULONG
 GetKernelCallbackTable32()
@@ -587,4 +574,78 @@ wow64_NtUserDefSetText(ULONG* pArgs)
     LARGE_STRING WindowText;
 
     return NtUserDefSetText(hWnd, large_str_32to64(&WindowText, pWindowText32));
+}
+
+HBRUSH
+WINAPI
+wow64_NtUserGetControlColor(ULONG *pArgs)
+{
+    HWND hwndParent = get_handle(&pArgs);
+    HWND hwnd = get_handle(&pArgs);
+    HDC hdc = get_handle(&pArgs);
+    UINT CtlMsg = get_ulong(&pArgs);
+    
+    return NtUserGetControlColor(hwndParent, hwnd, hdc, CtlMsg);
+}
+
+HBRUSH
+WINAPI
+wow64_NtUserGetControlBrush(ULONG *pArgs)
+{
+    HWND hwnd = get_handle(&pArgs);
+    HDC hdc = get_handle(&pArgs);
+    UINT CtlMsg = get_ulong(&pArgs);
+    
+    return NtUserGetControlBrush(hwnd, hdc, CtlMsg);
+}
+
+NTSTATUS
+WINAPI
+wow64_NtUserAlterWindowStyle(ULONG* pArgs)
+{
+    HWND hWnd = get_handle(&pArgs);
+    DWORD Index = get_ulong(&pArgs);
+    LONG NewValue = get_ulong(&pArgs);
+    
+    return NtUserAlterWindowStyle(hWnd, Index, NewValue);
+}
+
+NTSTATUS 
+WINAPI 
+wow64_NtUserSetCursorIconData(UINT *pArgs)
+{
+    HCURSOR hCursor = get_handle(&pArgs);
+    PUNICODE_STRING32 pusModule32 = get_ptr(&pArgs);
+    PUNICODE_STRING32 pusResName32 = get_ptr(&pArgs);
+    PCURSORDATA32 pCursorData32 = get_ptr(&pArgs);
+
+    UNICODE_STRING usModule, usResName;
+    CURSORDATA CursorData;
+
+    CursorData.lpName = UlongToPtr(pCursorData32->lpName);
+    CursorData.lpModName = UlongToPtr(pCursorData32->lpModName);
+    CursorData.rt = pCursorData32->rt;
+    CursorData.dummy = pCursorData32->dummy;
+    CursorData.CURSORF_flags = pCursorData32->CURSORF_flags;
+    CursorData.xHotspot = pCursorData32->xHotspot;
+    CursorData.yHotspot = pCursorData32->yHotspot;
+    CursorData.hbmMask = UlongToHandle(pCursorData32->hbmMask);
+    CursorData.hbmColor = UlongToHandle(pCursorData32->hbmColor);
+    CursorData.hbmAlpha = UlongToHandle(pCursorData32->hbmAlpha);
+    CursorData.rcBounds = pCursorData32->rcBounds;
+    CursorData.hbmUserAlpha = UlongToHandle(pCursorData32->hbmUserAlpha);
+    CursorData.bpp = pCursorData32->bpp;
+    CursorData.cx = pCursorData32->cx;
+    CursorData.cy = pCursorData32->cy;
+    CursorData.cpcur = pCursorData32->cpcur;
+    CursorData.cicur = pCursorData32->cicur;
+    CursorData.aspcur = UlongToPtr(pCursorData32->aspcur);
+    CursorData.aicur = UlongToPtr(pCursorData32->aicur);
+    CursorData.ajifRate = UlongToPtr(pCursorData32->ajifRate);
+    CursorData.iicur = pCursorData32->iicur;
+
+    return NtUserSetCursorIconData(hCursor,
+                                   unicode_str_32to64(&usModule, pusModule32),
+                                   unicode_str_32to64(&usResName, pusResName32), 
+                                   &CursorData);
 }

@@ -21,7 +21,7 @@
 #define FIXME(...) do { DPRINT1(__VA_ARGS__); __debugbreak(); } while(0);
 
 static inline ULONG get_ulong( UINT **args ) { return *(*args)++; }
-static inline HANDLE get_handle( UINT **args ) { return LongToHandle( *(*args)++ ); }
+static inline HANDLE get_handle( UINT **args ) { return UlongToHandle( *(*args)++ ); }
 static inline void *get_ptr( UINT **args ) { return ULongToPtr( *(*args)++ ); }
 
 extern ULONG_PTR highest_user_address;

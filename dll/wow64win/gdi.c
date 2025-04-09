@@ -2125,6 +2125,23 @@ NTSTATUS WINAPI wow64_NtGdiGetTextExtentExW( UINT *args )
     return NtGdiGetTextExtentExW( hdc, str, count, max_ext, nfit, dxs, size, flags );
 }
 
+#ifdef __REACTOS__
+
+BOOL 
+WINAPI 
+wow64_NtGdiGetTextExtent(UINT *args)
+{
+    HDC hdc = get_handle(&args);
+    const WCHAR *str = get_ptr(&args);
+    INT count = get_ulong(&args);
+    SIZE *size = get_ptr(&args);
+    UINT flags = get_ulong(&args);
+    
+    return NtGdiGetTextExtent(hdc, str, count, size, flags);
+}
+
+#endif
+
 NTSTATUS WINAPI wow64_NtGdiGetTextFaceW( UINT *args )
 {
     HDC hdc = get_handle( &args );
@@ -2396,9 +2413,12 @@ NTSTATUS WINAPI wow64_NtGdiOpenDCW( UINT *args )
     ULONG type = get_ulong( &args );
     BOOL is_display = get_ulong( &args );
     HANDLE hspool = get_handle( &args );
-    DRIVER_INFO_2W *driver_info = get_ptr( &args );
 #ifndef __REACTOS__
+    DRIVER_INFO_2W *driver_info = get_ptr( &args );
     void *pdev = get_ptr( &args );
+#else
+    DRIVER_INFO_2W32 *driver_info32 = get_ptr( &args );
+    DRIVER_INFO_2W driverInfo;
 #endif
 
     UNICODE_STRING device, output;
@@ -2407,7 +2427,9 @@ NTSTATUS WINAPI wow64_NtGdiOpenDCW( UINT *args )
 #ifndef __REACTOS__
                             is_display, hspool, driver_info, pdev );
 #else
-                            is_display, hspool, driver_info);    
+                            is_display, hspool, DriverInfo2W32To64(&driverInfo, driver_info32));
+                        
+    DriverInfo2W64To32(&driverInfo, driver_info32);
 #endif
     return HandleToUlong( ret );
 }
@@ -2903,4 +2925,15 @@ NTSTATUS WINAPI wow64___wine_get_file_outline_text_metric( UINT *args )
 
     return __wine_get_file_outline_text_metric( path, otm, em_square, face_name );
 }
+#else
+    
+HANDLE
+WINAPI
+wow64_NtGdiGetStockObject(ULONG* pArgs)
+{
+    INT Type = get_ulong(&pArgs);
+    
+    return NtGdiGetStockObject(Type);
+}
+
 #endif

@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <stdio.h>
+#include <commctrl.h>
 
 static HWND (WINAPI *pCreateWindowExW)(ULONG, LPCWSTR className, LPCWSTR windowName, ULONG windowStyle, int, int, int, int, PVOID, PVOID, HINSTANCE, PVOID) = NULL;
 static ATOM (WINAPI *pRegisterClassW)(WNDCLASSW* pClass) = NULL;
@@ -19,12 +20,24 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     if (msg == WM_NCHITTEST)
     {
         result = pDefWindowProcW(hWnd, msg, wParam, lParam);
-        
-#if 0
-        printf("NCHITTEST: %z\n", result);
-#endif
      
         return result;
+    }
+    if (msg == WM_CREATE)
+    {
+        HWND hwndButton = CreateWindow(L"BUTTON",  // Predefined class; Unicode assumed 
+                                       L"OK",      // Button text 
+                                       WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,  // Styles 
+                                       10,         // x position 
+                                       10,         // y position 
+                                       100,        // Button width
+                                       100,        // Button height
+                                       hWnd,     // Parent window
+                                       NULL,       // No menu.
+                                       (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), 
+                                       NULL);      // Pointer not needed.
+                                       
+        printf("%p hwnd button\n", hwndButton);
     }
     else if (msg == WM_CLOSE)
     {
@@ -75,8 +88,15 @@ void Print(const wchar_t* wszBuffer)
 int wmainCRTStartup()
 {
     WCHAR wszHello[] = L"Hello World!";
+    INITCOMMONCONTROLSEX ic;
+    ic.dwSize = sizeof(ic);
+    ic.dwICC = 0x7FF;
     
     AllocConsole();
+    
+    __debugbreak();
+    
+    InitCommonControlsEx(&ic);
     
     SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS);
     
