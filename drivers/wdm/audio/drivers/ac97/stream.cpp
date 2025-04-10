@@ -429,6 +429,7 @@ STDMETHODIMP_(NTSTATUS) CMiniportStream::SetFormat
         Miniport->AdapterCommon->WriteBMControlRegister (GLOB_CNT, dwControlReg);
     }
 
+    #ifndef SARCH_XBOX
     //
     // Check for rate support by hardware.  If it is supported, then update
     // hardware registers else return not implemented and audio stack will
@@ -467,6 +468,7 @@ STDMETHODIMP_(NTSTATUS) CMiniportStream::SetFormat
                 ProgramSampleRate (AC97REG_LFE_SAMPLERATE, TempRate);
         }
     }
+    #endif
 
     if (NT_SUCCESS (ntStatus))
     {

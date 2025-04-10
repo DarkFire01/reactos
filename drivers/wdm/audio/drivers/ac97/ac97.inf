@@ -58,7 +58,7 @@ ExcludeFromSelect = *
 %ac97_GB.DeviceDesc%=ac97, PCI\VEN_8086&DEV_27DE
 %ac97_6300ESB.DeviceDesc%=ac97, PCI\VEN_8086&DEV_25A6
 %ac97_63xxESB.DeviceDesc%=ac97, PCI\VEN_8086&DEV_2698
-%ac97_63xxESB.DeviceDesc%=ac97, PCI\VEN_10de&DEV_01b1
+%ac97_xbox.DeviceDesc%=ac97, PCI\VEN_10de&DEV_01b1
 
 ;; This section enables installing on x64 systems
 
@@ -353,6 +353,7 @@ ac97_FB.DeviceDesc="Intel 82801FB/FBM/FR/FW/FRW AC'97 Audio Controller"
 ac97_GB.DeviceDesc="Intel 82801GB/GR/GDH/GBM/GHM AC'97 Audio Controller"
 ac97_6300ESB.DeviceDesc="Intel 6300ESB AC'97 Audio Controller"
 ac97_63xxESB.DeviceDesc="Intel 631xESB/632xESB AC'97 Audio Controller"
+ac97_xbox.DeviceDesc="XBOX WM9709 AC'97 Audio Controller"
 ac97.DeviceDesc="Intel 82801 AC'97 Audio Controller"
 
 ac97.Wave.szPname="AC'97 Sound Card"

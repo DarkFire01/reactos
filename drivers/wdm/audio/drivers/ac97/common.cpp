@@ -65,13 +65,8 @@ tAC97Registers CAC97AdapterCommon::m_stAC97Registers[] =
 {0xBB80, SHREG_NOCACHE, NULL,               0},         // AC97REG_LFE_SAMPLERATE
 {0xBB80, SHREG_NOCACHE, NULL,               0},         // AC97REG_RECORD_SAMPLERATE
 {0xBB80, SHREG_NOCACHE, NULL,               0},         // AC97REG_MIC_SAMPLERATE
-#ifdef SARCH_XBOX
-{0x8080, SHREG_INVALID,    L"CenterLFEVolume", 0x0000},    // AC97REG_CENTER_LFE_VOLUME
-{0x8080, SHREG_INVALID,    L"SurroundVolume",  0x0000},    // AC97REG_SURROUND_VOLUME
-#else
 {0x8080, SHREG_INIT,    L"CenterLFEVolume", 0x0000},    // AC97REG_CENTER_LFE_VOLUME
 {0x8080, SHREG_INIT,    L"SurroundVolume",  0x0000},    // AC97REG_SURROUND_VOLUME
-#endif
 {0x0000, SHREG_NOCACHE, NULL,               0}          // AC97REG_RESERVED2
 
 // We leave the other values blank.  There would be a huge gap with 31
@@ -245,7 +240,7 @@ STDMETHODIMP_(NTSTATUS) CAC97AdapterCommon::Init
     //
     // Restore the AC97 registers now.
     //
-#if (DBG)
+#if (DBG) && !defined(SARCH_XBOX)
     DumpConfig ();
 #endif
     ntStatus = SetAC97Default ();
@@ -588,7 +583,9 @@ NTSTATUS CAC97AdapterCommon::InitAC97 (void)
         //
         WriteCodecRegister (AC97REG_RESET, 0x00, 0xFFFF);
 
+#ifndef SARCH_XBOX
         ntStatus = PowerUpCodec ();
+#endif
     }
     else
     {
@@ -670,7 +667,9 @@ NTSTATUS CAC97AdapterCommon::ProbeHWConfig (void)
     PAGED_CODE ();
 
     NTSTATUS ntStatus = STATUS_SUCCESS;
+#ifndef SARCH_XBOX
     DWORD    dwGlobalStatus;
+#endif
     WORD     wCodecID;
     WORD     wCodecReg;
 
@@ -684,22 +683,23 @@ NTSTATUS CAC97AdapterCommon::ProbeHWConfig (void)
         return ntStatus;
 
     //
-    // Master volume is one of the supported registers on an AC97
-    //
-    ntStatus = ReadCodecRegister (AC97REG_MASTER_VOLUME, &wCodecReg);
-    if (!NT_SUCCESS (ntStatus))
-        return ntStatus;
-
-    // Default is x8000.
-    if (wCodecReg != 0x8000)
-        return STATUS_NO_SUCH_DEVICE;
-
-    //
     // This gives us information about the AC97 CoDec
     //
     ntStatus = ReadCodecRegister (AC97REG_RESET, &wCodecID);
     if (!NT_SUCCESS (ntStatus))
         return ntStatus;
+
+ #ifndef SARCH_XBOX
+    //
+    // Master volume is one of the supported registers on an AC97
+    //
+    ntStatus = ReadCodecRegister(AC97REG_MASTER_VOLUME, &wCodecReg);
+    if (!NT_SUCCESS(ntStatus))
+        return ntStatus;
+
+    // Default is x8000.
+    if (wCodecReg != 0x8000)
+        return STATUS_NO_SUCH_DEVICE;
 
     //
     // Fill out the configuration stuff.
@@ -1074,6 +1074,7 @@ NTSTATUS CAC97AdapterCommon::ProbeHWConfig (void)
 
     if (GetPinConfig (PINC_CENTER_LFE_PRESENT))
         Check6thBitSupport (AC97REG_CENTER_LFE_VOLUME, NODEC_6BIT_CENTER_LFE_VOLUME);
+#endif
 
     //
     // We read these registers because they are dependent on the codec.
@@ -1568,7 +1569,9 @@ STDMETHODIMP_(void) CAC97AdapterCommon::PowerChangeState
 {
     PAGED_CODE ();
 
+#ifndef SARCH_XBOX
     NTSTATUS ntStatus = STATUS_SUCCESS;
+#endif
 
     DOUT (DBG_PRINT, ("[CAC97AdapterCommon::PowerChangeNotify]"));
 
@@ -1595,6 +1598,7 @@ STDMETHODIMP_(void) CAC97AdapterCommon::PowerChangeState
     DOUT (DBG_POWER, ("Changing state to D%d.", (ULONG)NewState.DeviceState -
                     (ULONG)PowerDeviceD0));
 
+#ifndef SARCH_XBOX
     //
     // Switch on new state.
     //
@@ -1695,6 +1699,7 @@ STDMETHODIMP_(void) CAC97AdapterCommon::PowerChangeState
     // cache property accesses and when to permit the driver from accessing
     // the hardware.
     //
+#endif
     m_PowerState = NewState.DeviceState;
     DOUT (DBG_POWER, ("Entering D%d", (ULONG)m_PowerState -
                       (ULONG)PowerDeviceD0));
@@ -1779,7 +1784,9 @@ NTSTATUS CAC97AdapterCommon::SetAC97Default (void)
     PREGISTRYKEY    SettingsKey;
     UNICODE_STRING  sKeyName;
     ULONG           ulDisposition;
+#ifndef SARCH_XBOX
     ULONG           ulResultLength;
+#endif
     PVOID           KeyInfo = NULL;
 
     DOUT (DBG_PRINT, ("[CAC97AdapterCommon::SetAC97Default]"));
@@ -1815,6 +1822,7 @@ NTSTATUS CAC97AdapterCommon::SetAC97Default (void)
                                       sizeof(WORD), PoolTag);
             if (NULL != KeyInfo)
             {
+#ifndef SARCH_XBOX
                 // loop through all mixer settings
                 for (AC97Register i = AC97REG_RESET; i <= AC97REG_RESERVED2;
                     i = (AC97Register)(i + 1))
@@ -1858,6 +1866,7 @@ NTSTATUS CAC97AdapterCommon::SetAC97Default (void)
                         }
                     }
                 }
+#endif
 
                 // we want to return status success even if the last QueryValueKey
                 // failed.
@@ -1880,6 +1889,7 @@ NTSTATUS CAC97AdapterCommon::SetAC97Default (void)
     }
 
 
+#ifndef SARCH_XBOX
     // in case we did not query the registry (cause of lack of resources)
     // restore default values and return insufficient resources.
     if (!NT_SUCCESS (ntStatus))
@@ -1894,6 +1904,7 @@ NTSTATUS CAC97AdapterCommon::SetAC97Default (void)
             }
         }
     }
+#endif
 
     return ntStatus;
 }
@@ -2100,6 +2111,7 @@ STDMETHODIMP_(void) CAC97AdapterCommon::ReadChannelConfigDefault
                                    sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
                                         sizeof(DWORD),
                                    &ulResultLength );
+#ifndef SARCH_XBOX
                 if (NT_SUCCESS (ntStatus))
                 {
                     PKEY_VALUE_PARTIAL_INFORMATION PartialInfo =
@@ -2129,6 +2141,7 @@ STDMETHODIMP_(void) CAC97AdapterCommon::ReadChannelConfigDefault
                         }
                     }
                 }
+#endif
 
                 // free the key info
                 ExFreePoolWithTag (KeyInfo,PoolTag);
