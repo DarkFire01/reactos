@@ -2441,6 +2441,7 @@ NTSTATUS WINAPI wow64_NtUserFlashWindowEx( UINT *args )
     info.dwTimeout = info32->dwTimeout;
     return NtUserFlashWindowEx( &info );
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserGetAncestor( UINT *args )
 {
@@ -2456,7 +2457,6 @@ NTSTATUS WINAPI wow64_NtUserGetAsyncKeyState( UINT *args )
 
     return NtUserGetAsyncKeyState( key );
 }
-#endif
 
 NTSTATUS WINAPI wow64_NtUserGetAtomName( UINT *args )
 {
@@ -2803,6 +2803,7 @@ NTSTATUS WINAPI wow64_NtUserGetKeyboardLayoutName( UINT *args )
 
     return NtUserGetKeyboardLayoutName( name );
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserGetKeyboardState( UINT *args )
 {
@@ -2811,6 +2812,7 @@ NTSTATUS WINAPI wow64_NtUserGetKeyboardState( UINT *args )
     return NtUserGetKeyboardState( state );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserGetLayeredWindowAttributes( UINT *args )
 {
     HWND hwnd = get_handle( &args );
@@ -3474,7 +3476,6 @@ NTSTATUS WINAPI wow64_NtUserInvalidateRgn( UINT *args )
     return NtUserInvalidateRgn( hwnd, hrgn, erase );
 }
 
-#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserIsClipboardFormatAvailable( UINT *args )
 {
     UINT format = get_ulong( &args );
@@ -3482,6 +3483,7 @@ NTSTATUS WINAPI wow64_NtUserIsClipboardFormatAvailable( UINT *args )
     return NtUserIsClipboardFormatAvailable( format );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserIsMouseInPointerEnabled( UINT *args )
 {
     return NtUserIsMouseInPointerEnabled();
@@ -3509,16 +3511,25 @@ NTSTATUS WINAPI wow64_NtUserLogicalToPerMonitorDPIPhysicalPoint( UINT *args )
 
     return NtUserLogicalToPerMonitorDPIPhysicalPoint( hwnd, pt );
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserMapVirtualKeyEx( UINT *args )
 {
     UINT code = get_ulong( &args );
     UINT type = get_ulong( &args );
+#ifdef __REACTOS__
+    DWORD keyboardId = get_ulong( &args );
+#endif
     HKL layout = get_handle( &args );
 
+#ifndef __REACTOS__
     return NtUserMapVirtualKeyEx( code, type, layout );
+#else
+    return NtUserMapVirtualKeyEx(code, type, keyboardId, layout);
+#endif
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserMenuItemFromPoint( UINT *args )
 {
     HWND hwnd = get_handle( &args );
@@ -3984,6 +3995,7 @@ NTSTATUS WINAPI wow64_NtUserNotifyWinEvent( UINT *args )
     NtUserNotifyWinEvent( event, hwnd, object_id, child_id );
     return 0;
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserOpenClipboard( UINT *args )
 {
@@ -3993,6 +4005,7 @@ NTSTATUS WINAPI wow64_NtUserOpenClipboard( UINT *args )
     return NtUserOpenClipboard( hwnd, unk );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserOpenDesktop( UINT *args )
 {
     OBJECT_ATTRIBUTES32 *attr32 = get_ptr( &args );
@@ -4046,6 +4059,7 @@ NTSTATUS WINAPI wow64_NtUserPerMonitorDPIPhysicalToLogicalPoint( UINT *args )
 
     return NtUserPerMonitorDPIPhysicalToLogicalPoint( hwnd, pt );
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserPostMessage( UINT *args )
 {
@@ -4076,6 +4090,7 @@ NTSTATUS WINAPI wow64_NtUserPrintWindow( UINT *args )
     return NtUserPrintWindow( hwnd, hdc, flags );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserQueryDisplayConfig( UINT *args )
 {
     UINT32 flags = get_ulong( &args );
@@ -4983,12 +4998,15 @@ NTSTATUS WINAPI wow64_NtUserThunkedMenuItemInfo( UINT *args )
     return ret;
 }
 
-#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserToUnicodeEx( UINT *args )
 {
     UINT virt = get_ulong( &args );
     UINT scan = get_ulong( &args );
+#ifndef __REACTOS__
     const BYTE *state = get_ptr( &args );
+#else
+    BYTE *state = get_ptr( &args );
+#endif
     WCHAR *str = get_ptr( &args );
     int size = get_ulong( &args );
     UINT flags = get_ulong( &args );
@@ -4996,7 +5014,6 @@ NTSTATUS WINAPI wow64_NtUserToUnicodeEx( UINT *args )
 
     return NtUserToUnicodeEx( virt, scan, state, str, size, flags, layout );
 }
-#endif
 
 NTSTATUS WINAPI wow64_NtUserTrackMouseEvent( UINT *args )
 {
@@ -5027,7 +5044,6 @@ NTSTATUS WINAPI wow64_NtUserTrackMouseEvent( UINT *args )
     return ret;
 }
 
-#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserTrackPopupMenuEx( UINT *args )
 {
     HMENU handle = get_handle( &args );
@@ -5060,6 +5076,7 @@ NTSTATUS WINAPI wow64_NtUserTranslateMessage( UINT *args )
     return NtUserTranslateMessage( msg_32to64( &msg, msg32 ), flags );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserUnhookWinEvent( UINT *args )
 {
     HWINEVENTHOOK handle = get_handle( &args );

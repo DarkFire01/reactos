@@ -206,6 +206,18 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserSetWindowRgn);
     
     IMPLEMENT_SERVICE(UserSetCursorIconData);
+    IMPLEMENT_SERVICE(UserMapVirtualKeyEx);
+    IMPLEMENT_SERVICE(UserToUnicodeEx);
+    IMPLEMENT_SERVICE(UserGetKeyboardState);
+    IMPLEMENT_SERVICE(UserPostMessage);
+    IMPLEMENT_SERVICE(UserTranslateMessage);
+    IMPLEMENT_SERVICE(UserGetAsyncKeyState);
+    IMPLEMENT_SERVICE(UserGetAncestor);
+    IMPLEMENT_SERVICE(UserTranslateAccelerator);
+    IMPLEMENT_SERVICE(UserPrintWindow);
+    IMPLEMENT_SERVICE(UserPostThreadMessage);
+    IMPLEMENT_SERVICE(UserIsClipboardFormatAvailable);
+    IMPLEMENT_SERVICE(UserOpenClipboard);
     
     IMPLEMENT_SERVICE(UserMoveWindow);
     IMPLEMENT_SERVICE(UserRedrawWindow);
