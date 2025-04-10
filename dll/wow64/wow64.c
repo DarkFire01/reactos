@@ -18,7 +18,7 @@ typedef MEMORY_BASIC_INFORMATION32 *PMEMORY_BASIC_INFORMATION32;
 
 /* PEB Data */
 static USHORT UnicodeCopy[2048]; /* ??? */
-static UCHAR AnsiCopy[512], OemCopy[512]; /* ??? */
+static UCHAR AnsiCopy[1024], OemCopy[1024]; /* ??? */
 static ULONG_PTR FixmeProcessHeaps[100]; /* FIXME */
 
 static UNICODE_STRING NtDll32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR "\\ntdll.dll");
