@@ -204,7 +204,17 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(GdiGetCharWidthW);
     IMPLEMENT_SERVICE(UserAlterWindowStyle);
     IMPLEMENT_SERVICE(UserSetWindowRgn);
-    
+    IMPLEMENT_SERVICE(UserHideCaret);
+    IMPLEMENT_SERVICE(UserScrollWindowEx);
+    IMPLEMENT_SERVICE(UserGetScrollBarInfo);
+    IMPLEMENT_SERVICE(UserHiliteMenuItem);
+    IMPLEMENT_SERVICE(UserGetScrollBarInfo);
+    IMPLEMENT_SERVICE(UserSBGetParms);
+    IMPLEMENT_SERVICE(UserPeekMessage);
+    IMPLEMENT_SERVICE(GdiCreatePen);
+    IMPLEMENT_SERVICE(UserGetIconSize);
+    IMPLEMENT_SERVICE(GdiLineTo);
+    IMPLEMENT_SERVICE(UserSetScrollBarInfo);
     IMPLEMENT_SERVICE(UserSetCursorIconData);
     IMPLEMENT_SERVICE(UserMapVirtualKeyEx);
     IMPLEMENT_SERVICE(UserToUnicodeEx);
@@ -218,6 +228,10 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserPostThreadMessage);
     IMPLEMENT_SERVICE(UserIsClipboardFormatAvailable);
     IMPLEMENT_SERVICE(UserOpenClipboard);
+    IMPLEMENT_SERVICE(UserMonitorFromRect);
+    IMPLEMENT_SERVICE(UserGetMonitorInfo);
+    IMPLEMENT_SERVICE(UserSetMenu);
+    IMPLEMENT_SERVICE(UserDestroyCursor);
     
     IMPLEMENT_SERVICE(UserMoveWindow);
     IMPLEMENT_SERVICE(UserRedrawWindow);

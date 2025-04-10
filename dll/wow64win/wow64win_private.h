@@ -173,6 +173,18 @@ static inline void set_last_error32( DWORD err )
 
 #include "../wow64/ros_wow64_private.h"
 
+static HANDLE UlongToHandleNoSignExtend(ULONG ulong)
+{
+    if ((LONG)ulong == -1L)
+    {
+        return INVALID_HANDLE_VALUE;
+    }
+    return (HANDLE)(ULONG_PTR)ulong;
+}
+
+#define UlongToHandle(ulong) UlongToHandleNoSignExtend(ulong)
+#define get_handle(ppArgs) UlongToHandle(get_ulong(ppArgs))
+
 typedef struct
 {
     DWORD cbSize;

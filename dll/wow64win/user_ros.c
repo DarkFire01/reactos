@@ -649,3 +649,46 @@ wow64_NtUserSetCursorIconData(UINT *pArgs)
                                    unicode_str_32to64(&usResName, pusResName32), 
                                    &CursorData);
 }
+
+HMONITOR 
+WINAPI
+wow64_NtUserMonitorFromRect(UINT *pArgs)
+{
+    LPCRECT pRect = get_ptr(&pArgs);
+    DWORD dwFlags = get_ulong(&pArgs);
+    
+    return NtUserMonitorFromRect(pRect, dwFlags);
+}
+
+NTSTATUS 
+WINAPI
+wow64_NtUserGetMonitorInfo(UINT *pArgs)
+{
+    HANDLE hMonitor = get_handle(&pArgs);
+    LPMONITORINFO lpMi = get_ptr(&pArgs);
+    
+    return NtUserGetMonitorInfo(hMonitor, lpMi);
+}
+
+NTSTATUS 
+WINAPI 
+wow64_NtUserSetScrollBarInfo(UINT *pArgs)
+{
+    HWND hWnd = get_handle(&pArgs);
+    LONG id = get_ulong(&pArgs);
+    SETSCROLLBARINFO *pInfo = get_ptr(&pArgs);
+
+    return NtUserSetScrollBarInfo(hWnd, id, pInfo);
+}
+
+BOOL
+WINAPI
+wow64_NtUserSBGetParms(UINT *pArgs)
+{
+    HWND hWnd = get_handle(&pArgs);
+    int fnBar = get_ulong(&pArgs);
+    PSBDATA pSBData = get_ptr(&pArgs);
+    LPSCROLLINFO lpSi = get_ptr(&pArgs);
+    
+    return NtUserSBGetParms(hWnd, fnBar, pSBData, lpSi);
+}

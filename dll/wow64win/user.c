@@ -2738,6 +2738,7 @@ NTSTATUS WINAPI wow64_NtUserGetIconInfo( UINT *args )
     }
     return TRUE;
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserGetIconSize( UINT *args )
 {
@@ -2749,6 +2750,7 @@ NTSTATUS WINAPI wow64_NtUserGetIconSize( UINT *args )
     return NtUserGetIconSize( handle, step, width, height );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserGetInternalWindowPos( UINT *args )
 {
     HWND hwnd = get_handle( &args );
@@ -3248,6 +3250,7 @@ NTSTATUS WINAPI wow64_NtUserGetRegisteredRawInputDevices( UINT *args )
         return NtUserGetRegisteredRawInputDevices( NULL, count, sizeof(RAWINPUTDEVICE) );
     }
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserGetScrollBarInfo( UINT *args )
 {
@@ -3258,6 +3261,7 @@ NTSTATUS WINAPI wow64_NtUserGetScrollBarInfo( UINT *args )
     return NtUserGetScrollBarInfo( hwnd, id, info );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserGetSystemDpiForProcess( UINT *args )
 {
     HANDLE process = get_handle( &args );
@@ -3338,6 +3342,7 @@ NTSTATUS WINAPI wow64_NtUserGetWindowRgnEx( UINT *args )
 
     return NtUserGetWindowRgnEx( hwnd, hrgn, unk );
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserHideCaret( UINT *args )
 {
@@ -3355,7 +3360,6 @@ NTSTATUS WINAPI wow64_NtUserHiliteMenuItem( UINT *args )
 
     return NtUserHiliteMenuItem( hwnd, handle, item, hilite );
 }
-#endif
 
 #ifndef __REACTOS__
 
@@ -4037,6 +4041,7 @@ NTSTATUS WINAPI wow64_NtUserOpenWindowStation( UINT *args )
 
     return HandleToUlong( NtUserOpenWindowStation( objattr_32to64( &attr, attr32 ), access ));
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserPeekMessage( UINT *args )
 {
@@ -4052,6 +4057,7 @@ NTSTATUS WINAPI wow64_NtUserPeekMessage( UINT *args )
     return TRUE;
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserPerMonitorDPIPhysicalToLogicalPoint( UINT *args )
 {
     HWND hwnd = get_handle( &args );
@@ -4209,6 +4215,7 @@ NTSTATUS WINAPI wow64_NtUserScrollDC( UINT *args )
 
     return NtUserScrollDC( hdc, dx, dy, scroll, clip, ret_update_rgn, update_rect );
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserScrollWindowEx( UINT *args )
 {
@@ -4224,6 +4231,7 @@ NTSTATUS WINAPI wow64_NtUserScrollWindowEx( UINT *args )
     return NtUserScrollWindowEx( hwnd, dx, dy, rect, clip_rect, update_rgn, update_rect, flags );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserSelectPalette( UINT *args )
 {
     HDC hdc = get_handle( &args );
@@ -4476,15 +4484,23 @@ NTSTATUS WINAPI wow64_NtUserSetLayeredWindowAttributes( UINT *args )
 
     return NtUserSetLayeredWindowAttributes( hwnd, key, alpha, flags );
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserSetMenu( UINT *args )
 {
     HWND hwnd = get_handle( &args );
     HMENU menu = get_handle( &args );
+#ifndef __REACTOS__
 
     return NtUserSetMenu( hwnd, menu );
+#else
+    BOOLEAN flag = get_ulong(&args);
+
+    return NtUserSetMenu(hwnd, menu, flag);
+#endif
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserSetMenuContextHelpId( UINT *args )
 {
     HMENU menu = get_handle( &args );

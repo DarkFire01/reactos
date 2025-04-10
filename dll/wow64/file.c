@@ -571,9 +571,7 @@ NTSTATUS WINAPI wow64_NtOpenFile( UINT *args )
     *handle_ptr = 0;
     status = NtOpenFile( &handle, access, objattr_32to64_redirect( &attr, attr32 ),
                          iosb_32to64( &io, io32 ), sharing, options );
-#ifdef __REACTOS__
-    DPRINT1("%wZ\n", attr.attr.ObjectName);
-#endif
+
     put_handle( handle_ptr, handle );
     put_iosb( io32, &io );
     return status;

@@ -87,17 +87,11 @@ void Print(const wchar_t* wszBuffer)
 
 int wmainCRTStartup()
 {
-    WCHAR wszHello[] = L"Hello World!";
-    INITCOMMONCONTROLSEX ic;
-    ic.dwSize = sizeof(ic);
-    ic.dwICC = 0x7FF;
-    
     AllocConsole();
     
     __debugbreak();
     
-    InitCommonControlsEx(&ic);
-    
+    WCHAR wszHello[] = L"Hello World!";
     SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS);
     
     Print(wszHello);

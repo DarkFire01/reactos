@@ -265,6 +265,23 @@ typedef struct __GDI_SHARED_HANDLE_TABLE /* Must match win32k/include/gdiobj.h *
     DWORD           dwCFCount;
 } GDI_SHARED_HANDLE_TABLE, *PGDI_SHARED_HANDLE_TABLE;
 
+#if (defined(_WOW64) && defined(_M_IX86))
+    
+typedef struct _MATRIX64
+{
+    FLOAT efM11;
+    FLOAT efM12;
+    FLOAT efM21;
+    FLOAT efM22;
+    FLOAT efDx;
+    FLOAT efDy;
+    FIX fxDx;
+    FIX fxDy;
+    FLONG flAccel;
+} MATRIX64, *PMATRIX64;
+
+#endif
+
 typedef struct _RGN_ATTR
 {
     ULONG AttrFlags;
@@ -403,13 +420,13 @@ typedef struct _DC_ATTR
     LONG lBreakExtra;
     LONG cBreak;
     UINT64 hlfntNew;
-    MATRIX mxWorldToDevice;
-    MATRIX mxDeviceToWorld;
-    MATRIX mxWorldToPage;
-    FLOATOBJ efM11PtoD;
-    FLOATOBJ efM22PtoD;
-    FLOATOBJ efDxPtoD;
-    FLOATOBJ efDyPtoD;
+    MATRIX64 mxWorldToDevice;
+    MATRIX64 mxDeviceToWorld;
+    MATRIX64 mxWorldToPage;
+    FLOAT efM11PtoD;
+    FLOAT efM22PtoD;
+    FLOAT efDxPtoD;
+    FLOAT efDyPtoD;
     INT iMapMode;
     DWORD dwLayout;
     LONG lWindowOrgx;
