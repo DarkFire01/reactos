@@ -155,6 +155,7 @@ struct user_callback_frame
 };
 
 typedef struct user_callback_frame USER_CALLBACK_FRAME, *PUSER_CALLBACK_FRAME;
+typedef OBJECT_ATTRIBUTES32 *POBJECT_ATTRIBUTES32;
 
 typedef struct tagSYSTEM_SERVICE_TABLE
 {

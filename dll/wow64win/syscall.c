@@ -232,14 +232,27 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserGetMonitorInfo);
     IMPLEMENT_SERVICE(UserSetMenu);
     IMPLEMENT_SERVICE(UserDestroyCursor);
-    
+    IMPLEMENT_SERVICE(UserCreateCaret);
     IMPLEMENT_SERVICE(UserMoveWindow);
     IMPLEMENT_SERVICE(UserRedrawWindow);
     IMPLEMENT_SERVICE(UserEnableMenuItem);
-    
+    IMPLEMENT_SERVICE(UserShowCaret);
     IMPLEMENT_SERVICE(UserInvalidateRect);
     IMPLEMENT_SERVICE(UserInvalidateRgn);
-    
+    IMPLEMENT_SERVICE(UserSetProp);
+    IMPLEMENT_SERVICE(UserSetCursor);
+    IMPLEMENT_SERVICE(UserSetWindowPlacement);
+    IMPLEMENT_SERVICE(UserGetWindowPlacement);
+    IMPLEMENT_SERVICE(UserGetKeyState);
+    IMPLEMENT_SERVICE(GdiRectVisible);
+    IMPLEMENT_SERVICE(UserKillTimer);
+    IMPLEMENT_SERVICE(UserSetTimer);
+    IMPLEMENT_SERVICE(UserDeferWindowPos);
+    IMPLEMENT_SERVICE(GdiGetDIBitsInternal);
+    IMPLEMENT_SERVICE(GdiCreateDIBSection);
+    IMPLEMENT_SERVICE(UserMonitorFromWindow);
+    IMPLEMENT_SERVICE(GdiAlphaBlend);
+    IMPLEMENT_SERVICE(UserCreateAcceleratorTable);
     IMPLEMENT_SERVICE(UserGetControlColor);
     IMPLEMENT_SERVICE(UserDragDetect);
     IMPLEMENT_SERVICE(UserDragObject);

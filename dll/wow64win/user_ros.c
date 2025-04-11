@@ -692,3 +692,39 @@ wow64_NtUserSBGetParms(UINT *pArgs)
     
     return NtUserSBGetParms(hWnd, fnBar, pSBData, lpSi);
 }
+
+HMONITOR
+NTAPI
+wow64_NtUserMonitorFromWindow(UINT *pArgs)
+{
+    HWND hWnd = get_handle(&pArgs);
+    DWORD dwFlags = get_ulong(&pArgs);
+    
+    return NtUserMonitorFromWindow(hWnd, dwFlags);
+}
+
+ULONG 
+WINAPI 
+wow64_NtUserDeferWindowPos(UINT *pArgs)
+{
+    HDWP WinPosInfo = get_handle(&pArgs);
+    HWND Wnd = get_handle(&pArgs);
+    HWND WndInsertAfter = get_handle(&pArgs);
+    int x = get_ulong(&pArgs);
+    int y = get_ulong(&pArgs);
+    int cx = get_ulong(&pArgs);
+    int cy = get_ulong(&pArgs);
+    UINT Flags = get_ulong(&pArgs);
+    HDWP Result;
+
+    Result = NtUserDeferWindowPos(WinPosInfo,
+                                  Wnd,
+                                  WndInsertAfter,
+                                  x,
+                                  y,
+                                  cx,
+                                  cy,
+                                  Flags);
+    
+    return HandleToUlong(Result);
+}

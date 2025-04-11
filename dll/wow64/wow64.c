@@ -505,6 +505,13 @@ Wow64Handler(ULONG syscallNum,
         WINE_WOW_IMPL_CASE(UnmapViewOfSection);
         WINE_WOW_IMPL_CASE(WriteVirtualMemory);
         
+        /* wow64.c */
+        WINE_WOW_IMPL_CASE(OpenProcess);
+        WINE_WOW_IMPL_CASE(OpenProcessToken);
+        WINE_WOW_IMPL_CASE(OpenThreadToken);
+        WINE_WOW_IMPL_CASE(OpenThreadTokenEx);
+        WINE_WOW_IMPL_CASE(OpenProcessTokenEx);
+        
         case NumTerminateThread:
         {
             HANDLE hThread = get_handle(&pArgs);
@@ -555,6 +562,165 @@ Wow64Handler(ULONG syscallNum,
     
     return status;
 }
+
+static
+WINAPI
+NTSTATUS
+wow64_NtOpenProcess(UINT* pArgs)
+{
+    ULONG* pProcessHandle32 = get_ptr(&pArgs);
+    ACCESS_MASK DesiredAcces = get_ulong(&pArgs);
+    POBJECT_ATTRIBUTES32 pObjectAttributes32 = get_ptr(&pArgs);
+    PCLIENT_ID32 pClientId32 = get_ptr(&pArgs);
+    
+    CLIENT_ID ClientId;
+    struct object_attr64 ObjectAttributes;
+    NTSTATUS Status;
+    
+    HANDLE ProcessHandle; 
+    
+    if (pProcessHandle32 == NULL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+    
+    Status = NtOpenProcess(&ProcessHandle,
+                           DesiredAcces,
+                           objattr_32to64(&ObjectAttributes, pObjectAttributes32),
+                           client_id_32to64(&ClientId, pClientId32));
+
+    if (NT_SUCCESS(Status))
+    {
+        *pProcessHandle32 = HandleToULong(ProcessHandle);
+    }
+
+    return Status;
+}
+
+static
+WINAPI
+NTSTATUS
+wow64_NtOpenProcessTokenEx(UINT* pArgs)
+{
+    HANDLE ProcessHandle = get_handle(&pArgs);
+    ACCESS_MASK DesiredAccess = get_ulong(&pArgs);
+    ULONG HandleAttributes = get_ulong(&pArgs);
+    PULONG pTokenHandle32 = get_ptr(&pArgs);
+    
+    HANDLE TokenHandle;
+    NTSTATUS Status;
+    
+    if (pTokenHandle32 == NULL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+    
+    Status = NtOpenProcessTokenEx(ProcessHandle,
+                                  DesiredAccess,
+                                  HandleAttributes,
+                                  &TokenHandle);
+
+    if (NT_SUCCESS(Status))
+    {
+        *pTokenHandle32 = HandleToULong(TokenHandle);
+    }
+
+    return Status;
+}
+
+static
+WINAPI
+NTSTATUS
+wow64_NtOpenProcessToken(UINT* pArgs)
+{
+    HANDLE ProcessHandle = get_handle(&pArgs);
+    ACCESS_MASK DesiredAccess = get_ulong(&pArgs);
+    PULONG pTokenHandle32 = get_ptr(&pArgs);
+    
+    HANDLE TokenHandle;
+    NTSTATUS Status;
+    
+    if (pTokenHandle32 == NULL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+    
+    Status = NtOpenProcessToken(ProcessHandle,
+                                DesiredAccess,
+                                &TokenHandle);
+
+    if (NT_SUCCESS(Status))
+    {
+        *pTokenHandle32 = HandleToULong(TokenHandle);
+    }
+
+    return Status;
+}
+
+static
+WINAPI
+NTSTATUS
+wow64_NtOpenThreadTokenEx(UINT* pArgs)
+{
+    HANDLE ThreadHandle = get_handle(&pArgs);
+    ACCESS_MASK DesiredAccess = get_ulong(&pArgs);
+    BOOLEAN OpenAsSelf = get_ulong(&pArgs);
+    ULONG HandleAttributes = get_ulong(&pArgs);
+    PULONG pTokenHandle32 = get_ptr(&pArgs);
+    
+    HANDLE TokenHandle;
+    NTSTATUS Status;
+    
+    if (pTokenHandle32 == NULL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+    
+    Status = NtOpenThreadTokenEx(ThreadHandle,
+                                 DesiredAccess,
+                                 OpenAsSelf,
+                                 HandleAttributes,
+                                 &TokenHandle);
+
+    if (NT_SUCCESS(Status))
+    {
+        *pTokenHandle32 = HandleToULong(TokenHandle);
+    }
+
+    return Status;
+}
+
+static
+WINAPI
+NTSTATUS
+wow64_NtOpenThreadToken(UINT* pArgs)
+{
+    HANDLE ThreadHandle = get_handle(&pArgs);
+    ACCESS_MASK DesiredAccess = get_ulong(&pArgs);
+    BOOLEAN OpenAsSelf = get_ulong(&pArgs);
+    PULONG pTokenHandle32 = get_ptr(&pArgs);
+    
+    HANDLE TokenHandle;
+    NTSTATUS Status;
+    
+    if (pTokenHandle32 == NULL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+    
+    Status = NtOpenThreadToken(ThreadHandle,
+                               DesiredAccess,
+                               OpenAsSelf,
+                               &TokenHandle);
+
+    if (NT_SUCCESS(Status))
+    {
+        *pTokenHandle32 = HandleToULong(TokenHandle);
+    }
+
+    return Status;
+}
+
 
 BOOL
 WINAPI
