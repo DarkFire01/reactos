@@ -1,4 +1,30 @@
+/*
+ * WoW64 private definitions
+ *
+ * Copyright 2021 Alexandre Julliard
+ * Copyright 2025 Marcin Jabłoński
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
+ */
+
 #pragma once
+
+/* FIXME: for now, the WOW64 directory path is hardcoded. 
+   It is currently set to D: for ease of debugging 
+   (for ease of swapping of 32 bit DLLs while the system is running). */
+#define TMP_WOW_DIR "D:"
 
 #define WIN32_NO_STATUS
 #include <Windows.h>
@@ -26,6 +52,9 @@ static inline void *get_ptr( UINT **args ) { return ULongToPtr( *(*args)++ ); }
 
 extern ULONG_PTR highest_user_address;
 extern ULONG_PTR default_zero_bits;
+
+extern PVOID NtDll32LdrpRoutine;
+extern PVOID NtDll32KiUserExceptionDispatcher;
 
 static ULONG_PTR args_alignment = 4;
 static USHORT current_machine = IMAGE_FILE_MACHINE_I386;
@@ -71,9 +100,10 @@ Wow64KiUserCallbackDispatcher(ULONG nCallback,
                               PVOID* OUT ppReturn, 
                               PULONG OUT pnRetLen);
 
+/* TODO: Refactor, all of this could be done in a cleaner way */
 static
 ULONG_PTR
-Call32(ULONG Address, ULONG nArgc, PULONG Args)
+CallOrJump32(ULONG Address, ULONG nArgc, PULONG Args, BOOL bJump)
 {    
 #define MAX_ARGS 32
 #pragma pack(push, 1)
@@ -96,7 +126,10 @@ Call32(ULONG Address, ULONG nArgc, PULONG Args)
     Enter32ImplType pfnEnter32 = (Enter32ImplType)Enter32Impl;
     struct Leave32* leave;
     struct Enter32* enter;
-        
+    
+    /* Skip the return address for jumps */
+    nArgc -= bJump;
+    
     BYTE StackBuffer[sizeof(struct Enter32) + sizeof(struct Leave32) + MAX_ARGS * sizeof(ULONG)];
     
     leave = (struct Leave32*)(StackBuffer + sizeof(StackBuffer) - sizeof(*leave));
@@ -106,9 +139,14 @@ Call32(ULONG Address, ULONG nArgc, PULONG Args)
     
     ASSERT(nArgc <= MAX_ARGS);
     
-    for (int i = 0; i < nArgc; i++)
+    if (!bJump)
     {
-        enter->Arguments[i] = Args[i];
+        enter->FarReturn32 = (ULONG)(ULONG_PTR)FarReturn32Impl;
+    }
+    
+    for (int i = 0; i < nArgc + bJump; i++)
+    {
+        (enter->Arguments - bJump)[i] = Args[i];
     }
     
     enter->Rip32 = (ULONG_PTR) Address;
@@ -117,14 +155,22 @@ Call32(ULONG Address, ULONG nArgc, PULONG Args)
     leave->Rip64 = PtrToUlong(_ReturnAddress());
     leave->SegCs64 = 0x33;
     
-    enter->FarReturn32 = (ULONG)(ULONG_PTR)FarReturn32Impl;
-    
     pfnEnter32(enter);
     
     /* We should never get here. */
     ASSERT(FALSE);
     return 0;
 #undef MAX_ARGS
+}
+
+static inline Call32(ULONG Addr, ULONG nArgc, PULONG Args)
+{
+    return CallOrJump32(Addr, nArgc, Args, FALSE);
+}
+
+static inline Jump32(ULONG Addr, ULONG nArgc, PULONG Args)
+{
+    return CallOrJump32(Addr, nArgc, Args, TRUE);
 }
 
 static inline PTEB32 NtCurrentTeb32()
@@ -165,10 +211,49 @@ typedef struct tagSYSTEM_SERVICE_TABLE
     BYTE *ArgumentTable;
 } SYSTEM_SERVICE_TABLE, *PSYSTEM_SERVICE_TABLE;
 
-/* FIXME: for now, the WOW64 directory path is hardcoded. 
-   It is currently set to D: for ease of debugging 
-   (for ease of swapping of 32 bit DLLs while the system is running). */
-#define TMP_WOW_DIR "D:"
+typedef struct _I386_FLOATING_SAVE_AREA
+{
+    DWORD ControlWord;
+    DWORD StatusWord;
+    DWORD TagWord;
+    DWORD ErrorOffset;
+    DWORD ErrorSelector;
+    DWORD DataOffset;
+    DWORD DataSelector;
+    BYTE  RegisterArea[80];
+    DWORD Cr0NpxState;
+} I386_FLOATING_SAVE_AREA, *PI386_FLOATING_SAVE_AREA;
+
+#include "pshpack4.h"
+typedef struct _I386_CONTEXT 
+{
+    ULONG ContextFlags;
+    ULONG Dr0;
+    ULONG Dr1;
+    ULONG Dr2;
+    ULONG Dr3;
+    ULONG Dr6;
+    ULONG Dr7;
+    I386_FLOATING_SAVE_AREA FloatSave;
+    ULONG SegGs;
+    ULONG SegFs;
+    ULONG SegEs;
+    ULONG SegDs;
+    ULONG Edi;
+    ULONG Esi;
+    ULONG Ebx;
+    ULONG Edx;
+    ULONG Ecx;
+    ULONG Eax;
+    ULONG Ebp;
+    ULONG Eip;
+    ULONG SegCs;
+    ULONG EFlags;
+    ULONG Esp;
+    ULONG SegSs;
+    UCHAR ExtendedRegisters[512];
+} I386_CONTEXT, *PI386_CONTEXT;
+#include "poppack.h"
 
 typedef struct _WOW64_PATH_REDIRECTION
 {
@@ -443,7 +528,10 @@ static void put_vm_counters( VM_COUNTERS_EX32 *info32, const VM_COUNTERS_EX *inf
     __debugbreak();
 }
 
-static PPORT_VIEW PortView32To64(PPORT_VIEW portView64, PPORT_VIEW32 portView32)
+static 
+PPORT_VIEW 
+PortView32To64(PPORT_VIEW portView64, 
+               PPORT_VIEW32 portView32)
 {
     portView64->Length = sizeof(*portView64);
     portView64->SectionHandle = UlongToHandle(portView32->SectionHandle);
@@ -455,7 +543,10 @@ static PPORT_VIEW PortView32To64(PPORT_VIEW portView64, PPORT_VIEW32 portView32)
     return portView64;
 }
 
-static PREMOTE_PORT_VIEW RemotePortView32To64(PREMOTE_PORT_VIEW portView64, PREMOTE_PORT_VIEW32 portView32)
+static 
+PREMOTE_PORT_VIEW 
+RemotePortView32To64(PREMOTE_PORT_VIEW portView64,
+                     PREMOTE_PORT_VIEW32 portView32)
 {
     portView64->Length = sizeof(*portView64);
     portView64->ViewSize = portView32->ViewSize;
@@ -464,7 +555,10 @@ static PREMOTE_PORT_VIEW RemotePortView32To64(PREMOTE_PORT_VIEW portView64, PREM
     return portView64;
 }
 
-static PPORT_VIEW32 PortView64To32(PPORT_VIEW32 portView32, PPORT_VIEW portView64)
+static 
+PPORT_VIEW32 
+PortView64To32(PPORT_VIEW32 portView32, 
+               PPORT_VIEW portView64)
 {
     portView32->Length = sizeof(*portView32);
     portView32->SectionHandle = HandleToULong(portView64->SectionHandle);
@@ -476,11 +570,63 @@ static PPORT_VIEW32 PortView64To32(PPORT_VIEW32 portView32, PPORT_VIEW portView6
     return portView32;
 }
 
-static PREMOTE_PORT_VIEW32 RemotePortView64To32(PREMOTE_PORT_VIEW32 portView32, PREMOTE_PORT_VIEW portView64)
+static 
+PREMOTE_PORT_VIEW32 
+RemotePortView64To32(PREMOTE_PORT_VIEW32 portView32, 
+                     PREMOTE_PORT_VIEW portView64)
 {
     portView32->Length = sizeof(*portView32);
     portView32->ViewSize = portView64->ViewSize;
     portView32->ViewBase = PtrToUlong(portView64->ViewBase);
     
     return portView32;
+}
+
+/* FIXME: this is an incomplete implementation */
+static
+VOID
+CopyContext32To64(PCONTEXT pContext,
+                  PI386_CONTEXT pContext32)
+{
+    pContext->ContextFlags = pContext32->ContextFlags | CONTEXT_AMD64;
+    pContext->Rip = pContext32->Eip;
+    pContext->Rax = pContext32->Eax;
+    pContext->Rbx = pContext32->Ebx;
+    pContext->Rcx = pContext32->Ecx;
+    pContext->Rdx = pContext32->Edx;
+    pContext->Rsp = pContext32->Esp;
+    pContext->Rbp = pContext32->Ebp;
+    pContext->Rsi = pContext32->Esi;
+    pContext->Rdi = pContext32->Edi;
+    pContext->EFlags = pContext32->EFlags;
+    pContext->SegCs = pContext32->SegCs;
+    pContext->SegDs = pContext32->SegDs;
+    pContext->SegEs = pContext32->SegEs;
+    pContext->SegFs = pContext32->SegFs;
+    pContext->SegGs = pContext32->SegGs;
+    pContext->SegSs = pContext32->SegSs;
+}
+
+static
+VOID
+CopyContext64To32(PI386_CONTEXT pContext32,
+                  PCONTEXT pContext)
+{
+    pContext32->Eip = pContext->Rip;
+    pContext32->Eax = pContext->Rax;
+    pContext32->Ebx = pContext->Rbx;
+    pContext32->Ecx = pContext->Rcx;
+    pContext32->Edx = pContext->Rdx;
+    pContext32->Esi = pContext->Rdi;
+    pContext32->Edi = pContext->Rsi;
+    pContext32->Ebp = pContext->Rbp;
+    pContext32->Esp = pContext->Rsp;
+    pContext32->SegCs = pContext->SegCs;
+    pContext32->SegDs = pContext->SegDs;
+    pContext32->SegEs = pContext->SegEs;
+    pContext32->SegFs = pContext->SegFs;
+    pContext32->SegGs = pContext->SegGs;
+    pContext32->SegSs = pContext->SegSs;
+    pContext32->EFlags = pContext->EFlags;
+    pContext32->ContextFlags = pContext->ContextFlags;
 }

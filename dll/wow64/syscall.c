@@ -2,6 +2,7 @@
  * WoW64 syscall wrapping
  *
  * Copyright 2021 Alexandre Julliard
+ * Copyright 2025 Marcin Jabłoński
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -529,7 +530,6 @@ NTSTATUS WINAPI wow64_NtContinueEx( UINT *args )
     return status;
 }
 
-
 /**********************************************************************
  *           wow64_NtContinue
  */
@@ -640,13 +640,12 @@ NTSTATUS WINAPI wow64_NtQueryInstallUILanguage( UINT *args )
     return NtQueryInstallUILanguage( lang );
 }
 
-
+#ifndef __REACTOS__
 /**********************************************************************
  *           wow64_NtRaiseException
  */
 NTSTATUS WINAPI wow64_NtRaiseException( UINT *args )
 {
-#ifndef __REACTOS__
     EXCEPTION_RECORD32 *rec32 = get_ptr( &args );
     void *context32 = get_ptr( &args );
     BOOL first_chance = get_ulong( &args );
@@ -654,16 +653,8 @@ NTSTATUS WINAPI wow64_NtRaiseException( UINT *args )
     pBTCpuSetContext( GetCurrentThread(), GetCurrentProcess(), NULL, context32 );
     raise_exception( rec32, context32, first_chance, exception_record_32to64( rec32 ));
     return STATUS_SUCCESS;
-#else
-    DPRINT1("NtRaiseException");
-    __debugbreak();
-    ASSERT(FALSE);
-    return STATUS_NOT_IMPLEMENTED;
-#endif
 }
 
-
-#ifndef __REACTOS__
 /**********************************************************************
  *           wow64_NtSetContextThread
  */

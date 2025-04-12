@@ -1290,8 +1290,13 @@ typedef struct _PROPLISTITEM
 
 typedef struct _PROPERTY
 {
+#if !(defined(_WOW64) && defined(_M_IX86))
     LIST_ENTRY PropListEntry;
     HANDLE Data;
+#else
+    struct { UINT64 Flink; UINT64 Blink; } PropListEntry;
+    UINT64 Data;
+#endif
     ATOM Atom;
     WORD fs;
 } PROPERTY, *PPROPERTY;

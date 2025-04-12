@@ -2,6 +2,7 @@
  * WoW64 User functions
  *
  * Copyright 2021 Jacek Caban for CodeWeavers
+ * Copyright 2025 Marcin Jabłoński
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -2252,7 +2253,6 @@ NTSTATUS WINAPI wow64_NtUserDrawCaptionTemp( UINT *args )
 #endif
 }
 
-#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserDrawIconEx( UINT *args )
 {
     HDC hdc = get_handle( &args );
@@ -2264,10 +2264,43 @@ NTSTATUS WINAPI wow64_NtUserDrawIconEx( UINT *args )
     UINT istep = get_ulong( &args );
     HBRUSH hbr = get_handle( &args );
     UINT flags = get_ulong( &args );
+#ifdef __REACTOS__
+    BOOL bMetaHDC = get_ulong( &args );
+    typedef struct _DRAWICONEXDATA32
+    {
+        ULONG hbmMask;
+        ULONG hbmColor;
+        int cx;
+        int cy;
+    } DRAWICONEXDATA32, *PDRAWICONEXDATA32;
+    PDRAWICONEXDATA32 pDIXData32 = get_ptr( &args );
 
+    DRAWICONEXDATA DIXData;
+    
+    if (pDIXData32 != NULL)
+    {
+        DIXData.hbmMask = UlongToHandle(pDIXData32->hbmMask);
+        DIXData.hbmColor = UlongToHandle(pDIXData32->hbmColor);
+        DIXData.cx = pDIXData32->cx;
+        DIXData.cy = pDIXData32->cy;
+    }
+    
+    return NtUserDrawIconEx(hdc, 
+                            x0,
+                            y0,
+                            icon,
+                            width, 
+                            height, 
+                            istep, 
+                            hbr, 
+                            flags, 
+                            bMetaHDC, 
+                            (pDIXData32 == NULL) ? NULL : &DIXData);
+#else
+    
     return NtUserDrawIconEx( hdc, x0, y0, icon, width, height, istep, hbr, flags );
-}
 #endif
+}
 
 NTSTATUS WINAPI wow64_NtUserDrawMenuBarTemp( UINT *args )
 {
@@ -2356,6 +2389,7 @@ NTSTATUS WINAPI wow64_NtUserEnumDisplayMonitors( UINT *args )
 
     return NtUserEnumDisplayMonitors( hdc, rect, proc, lp );
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserEnumDisplaySettings( UINT *args )
 {
@@ -2370,6 +2404,7 @@ NTSTATUS WINAPI wow64_NtUserEnumDisplaySettings( UINT *args )
                                       mode, dev_mode, flags );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserExcludeUpdateRgn( UINT *args )
 {
     HDC hdc = get_handle( &args );
@@ -2394,7 +2429,6 @@ NTSTATUS WINAPI wow64_NtUserFindExistingCursorIcon( UINT *args )
     return HandleToUlong( ret );
 }
 
-#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserFindWindowEx( UINT *args )
 {
     HWND parent = get_handle( &args );
@@ -2411,6 +2445,8 @@ NTSTATUS WINAPI wow64_NtUserFindWindowEx( UINT *args )
     return HandleToUlong( ret );
 }
 
+
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserFlashWindowEx( UINT *args )
 {
     struct
@@ -2643,12 +2679,14 @@ NTSTATUS WINAPI wow64_NtUserGetDisplayConfigBufferSizes( UINT *args )
 
     return NtUserGetDisplayConfigBufferSizes( flags, num_path_info, num_mode_info );
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserGetDoubleClickTime( UINT *args )
 {
     return NtUserGetDoubleClickTime();
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserGetDpiForMonitor( UINT *args )
 {
     HMONITOR monitor = get_handle( &args );
@@ -4193,6 +4231,7 @@ NTSTATUS WINAPI wow64_NtUserRemoveClipboardFormatListener( UINT *args )
 
     return NtUserRemoveClipboardFormatListener( hwnd );
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserRemoveMenu( UINT *args )
 {
@@ -4206,11 +4245,16 @@ NTSTATUS WINAPI wow64_NtUserRemoveMenu( UINT *args )
 NTSTATUS WINAPI wow64_NtUserRemoveProp( UINT *args )
 {
     HWND hwnd = get_handle( &args );
+#ifndef __REACTOS__
     const WCHAR *str = get_ptr( &args );
+#else
+    ATOM str = get_ulong(&args);
+#endif
 
     return HandleToUlong( NtUserRemoveProp( hwnd, str ));
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserScrollDC( UINT *args )
 {
     HDC hdc = get_handle( &args );

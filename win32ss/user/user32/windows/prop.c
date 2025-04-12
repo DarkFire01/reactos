@@ -91,7 +91,7 @@ UserGetProp(HWND hWnd, ATOM Atom, BOOLEAN SystemProp)
 {
   PPROPERTY Prop;
   Prop = IntGetProp(hWnd, Atom, SystemProp);
-  return Prop ? Prop->Data : NULL;
+  return Prop ? WOW64_CAST_TO_HANDLE(Prop->Data) : NULL;
 }
 
 /* FUNCTIONS *****************************************************************/
@@ -410,7 +410,7 @@ GetPropW(HWND hWnd, LPCWSTR lpString)
      Atom = LOWORD((DWORD_PTR)lpString);
   }
   Prop = IntGetProp(hWnd, Atom, FALSE);
-  if (Prop != NULL) Data = Prop->Data;
+  if (Prop != NULL) Data = WOW64_CAST_TO_HANDLE(Prop->Data);
   return Data;
 }
 

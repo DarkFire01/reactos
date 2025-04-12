@@ -2,6 +2,7 @@
  * WoW64 syscall wrapping
  *
  * Copyright 2021 Alexandre Julliard
+ * Copyright 2025 Marcin Jabłoński
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -166,11 +167,18 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(GdiTransformPoints);
     IMPLEMENT_SERVICE(GdiGetOutlineTextMetricsInternalW);
     IMPLEMENT_SERVICE(GdiCreatePatternBrushInternal);
-    
+    IMPLEMENT_SERVICE(UserGetDoubleClickTime);
+    IMPLEMENT_SERVICE(GdiEllipse);
+    IMPLEMENT_SERVICE(GdiMaskBlt);
     IMPLEMENT_SERVICE(GdiExtGetObjectW);
     IMPLEMENT_SERVICE(GdiGetTextExtent);
     IMPLEMENT_SERVICE(UserInternalGetWindowText);
-    
+    IMPLEMENT_SERVICE(GdiSetPixel);
+    IMPLEMENT_SERVICE(GdiGetPixel);
+    IMPLEMENT_SERVICE(GdiExtFloodFill);
+    IMPLEMENT_SERVICE(GdiTransparentBlt);
+    IMPLEMENT_SERVICE(UserDrawIconEx);
+    IMPLEMENT_SERVICE(GdiPolyPolyDraw);
     IMPLEMENT_SERVICE(GdiGetStockObject);
     IMPLEMENT_SERVICE(GdiGetFontData);
     IMPLEMENT_SERVICE(GdiOpenDCW);
@@ -263,6 +271,16 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserEnableScrollBar);
     IMPLEMENT_SERVICE(UserEndDeferWindowPosEx);
     IMPLEMENT_SERVICE(UserEndMenu);
+    IMPLEMENT_SERVICE(GdiStretchBlt);
+    IMPLEMENT_SERVICE(UserFindWindowEx);
+    IMPLEMENT_SERVICE(UserDeleteMenu);
+    IMPLEMENT_SERVICE(UserRemoveMenu);
+    IMPLEMENT_SERVICE(GdiSaveDC);
+    IMPLEMENT_SERVICE(GdiRestoreDC);
+    IMPLEMENT_SERVICE(UserRemoveProp);
+    IMPLEMENT_SERVICE(UserEnumDisplaySettings);
+    IMPLEMENT_SERVICE(GdiExcludeClipRect);
+    IMPLEMENT_SERVICE(UserRegisterWindowMessage);
 #undef IMPLEMENT_SERVICE
 }
 

@@ -2,6 +2,7 @@
  * WoW64 file functions
  *
  * Copyright 2021 Alexandre Julliard
+ * Copyright 2025 Marcin Jabłoński
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -734,6 +735,22 @@ NTSTATUS WINAPI wow64_NtReadFile( UINT *args )
 #ifndef __REACTOS__
     if (pBTCpuNotifyReadFile) pBTCpuNotifyReadFile( handle, buffer, len, TRUE, status );
 #endif
+
+#ifdef __REACTOS__
+    /* FIXME: Implement proper handling of asynchronous IO. 
+       This hack is done to try to make taskmgr work. */
+       
+    if (status == STATUS_PENDING && event != NULL)
+    {
+        status = NtWaitForSingleObject(event, TRUE, NULL);
+        
+        if (!NT_SUCCESS(status))
+        {
+            return status;
+        }
+    }
+#endif
+
     put_iosb( io32, &io );
     return status;
 }

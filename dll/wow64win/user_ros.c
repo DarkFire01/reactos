@@ -1,3 +1,12 @@
+/*
+ * Wine WOW64 ReactOS port 
+ *
+ * COPYRIGHT:       See COPYING in the top level directory
+ * PROJECT:         wow64win.dll
+ * FILE:            dll/wow64win/user_ros.c
+ * PROGRAMMER:      Marcin Jabłoński
+ */
+
 #include "wow64win_private.h"
 
 #include <intrin.h>
@@ -727,4 +736,15 @@ wow64_NtUserDeferWindowPos(UINT *pArgs)
                                   Flags);
     
     return HandleToUlong(Result);
+}
+
+UINT
+NTAPI
+wow64_NtUserRegisterWindowMessage(UINT* pArgs)
+{
+    PUNICODE_STRING32 pMessageName32 = get_ptr(&pArgs);
+    UNICODE_STRING MessageName;
+    
+    return NtUserRegisterWindowMessage(unicode_str_32to64(&MessageName, 
+                                                          pMessageName32));
 }

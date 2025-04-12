@@ -2,6 +2,7 @@
  * WoW64 GDI functions
  *
  * Copyright 2021 Jacek Caban for CodeWeavers
+ * Copyright 2025 Marcin Jabłoński
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public

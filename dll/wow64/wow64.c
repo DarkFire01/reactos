@@ -22,9 +22,12 @@ static UCHAR AnsiCopy[1024], OemCopy[1024]; /* ??? */
 static ULONG_PTR FixmeProcessHeaps[100]; /* FIXME */
 
 static UNICODE_STRING NtDll32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR "\\ntdll.dll");
-static ANSI_STRING ImportStr = RTL_CONSTANT_STRING("LdrInitializeThunk");
-static PVOID NtDll32LdrpRoutine = NULL;
+static ANSI_STRING ImportLdrInitializeThunkStr = RTL_CONSTANT_STRING("LdrInitializeThunk");
+static ANSI_STRING ImportUserExceptionDispatcherStr = RTL_CONSTANT_STRING("KiUserExceptionDispatcher");
 static PVOID NtDll32 = NULL;
+
+PVOID NtDll32LdrpRoutine = NULL;
+PVOID NtDll32KiUserExceptionDispatcher = NULL;
 
 void SetupFs(ULONG_PTR segSelector);
 void Enter32(PVOID where, PVOID ntdll32Base, ULONG_PTR entrypoint);
@@ -280,7 +283,10 @@ Wow64WinHandler(ULONG syscallNum,
             return Status;
         }
         
-        Status = LdrGetProcedureAddress(Wow64WinDll, &ImportStr, 0, (PVOID*)&pServiceTable);
+        Status = LdrGetProcedureAddress(Wow64WinDll, 
+                                        &ImportStr,
+                                        0, 
+                                        (PVOID*)&pServiceTable);
         if (!NT_SUCCESS(Status)) 
         {
             DPRINT1("Couldn't find %hs in wow64win.dll.\n", ImportStr.Buffer);
@@ -377,11 +383,13 @@ Wow64Handler(ULONG syscallNum,
         WINE_WOW_IMPL_CASE(QuerySystemInformation);
         WINE_WOW_IMPL_CASE(OpenKey);
         WINE_WOW_IMPL_CASE(QueryValueKey);
+        WINE_WOW_IMPL_CASE(QueryKey);
         WINE_WOW_IMPL_CASE(DeleteValueKey);
         WINE_WOW_IMPL_CASE(CreateKey);
         WINE_WOW_IMPL_CASE(DeleteKey);
         WINE_WOW_IMPL_CASE(EnumerateKey);
         WINE_WOW_IMPL_CASE(EnumerateValueKey);
+        WINE_WOW_IMPL_CASE(SetValueKey);
         
         /* system.c */
         WINE_WOW_IMPL_CASE(QueryInformationProcess);
@@ -473,6 +481,7 @@ Wow64Handler(ULONG syscallNum,
         WINE_WOW_IMPL_CASE(AllocateUuids);
         WINE_WOW_IMPL_CASE(CallbackReturn);
         WINE_WOW_IMPL_CASE(Close);
+        WINE_WOW_IMPL_CASE(Continue);
         WINE_WOW_IMPL_CASE(DeleteAtom);
         WINE_WOW_IMPL_CASE(FindAtom);
         WINE_WOW_IMPL_CASE(GetCurrentProcessorNumber);
@@ -721,6 +730,22 @@ wow64_NtOpenThreadToken(UINT* pArgs)
     return Status;
 }
 
+NTSTATUS
+WINAPI
+wow64_NtContinue(UINT *pArgs)
+{
+    CONTEXT Context;
+    
+    PI386_CONTEXT pContext32 = get_ptr(&pArgs);
+    BOOLEAN bRasieAlert = get_ulong(&pArgs);
+    
+    /* TODO: APC handling here?
+       Wine has an implementation, port from there maybe. */
+    
+    CopyContext32To64(&Context, pContext32);
+    
+    return NtContinue(&Context, bRasieAlert);
+}
 
 BOOL
 WINAPI
@@ -794,22 +819,31 @@ Wow64InitProcess(VOID)
     ProcParams32->ImagePathName.MaximumLength = Peb->ProcessParameters->ImagePathName.MaximumLength;
     ProcParams32->Flags |=  RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
     
-    Status = LdrGetProcedureAddress(NtDll32, &ImportStr, 0, &NtDll32LdrpRoutine);
+    Status = LdrGetProcedureAddress(NtDll32, 
+                                    &ImportLdrInitializeThunkStr, 
+                                    0, 
+                                    &NtDll32LdrpRoutine);
     if (!NT_SUCCESS(Status)) 
     {
         DPRINT1("Couldn't find LdrInitializeThunk in 32-bit ntdll.dll.\n");
         ASSERT(FALSE);
     }
+    
+    Status = LdrGetProcedureAddress(NtDll32,
+                                    &ImportUserExceptionDispatcherStr,
+                                    0,
+                                    &NtDll32KiUserExceptionDispatcher);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Couldn't find KiUserExceptionDispatcher in 32-bit ntdll.dll.\n");
+        ASSERT(FALSE);
+    }
+    
     DPRINT("Getting init function ptr %p\n", NtDll32LdrpRoutine);
 }
 
-static
 LONG
-Wow64UnhandledExceptionHandler(IN PEXCEPTION_POINTERS ExceptionInfo)
-{
-    __debugbreak();
-    return EXCEPTION_EXECUTE_HANDLER;
-}
+Wow64UnhandledExceptionHandler(IN PEXCEPTION_POINTERS ExceptionInfo);
 
 static
 void
@@ -830,8 +864,7 @@ Wow64Trampoline(VOID)
     }
     _SEH2_EXCEPT(Wow64UnhandledExceptionHandler(_SEH2_GetExceptionInformation()))
     {
-        DPRINT1("Terminating WOW64 thread due to unhandled exception.\n");
-        NtTerminateProcess(NtCurrentProcess(), _SEH2_GetExceptionCode());
+        
     }
 }
 
@@ -870,6 +903,10 @@ Wow64InitThread(PCONTEXT pContext)
     Teb->TlsSlots[1] = WowTeb;
 
     WowTeb->NtTib.Self = PtrToUlong(WowTeb);
+    
+    WowTeb->NtTib.StackLimit = PtrToUlong(Teb->NtTib.StackLimit);
+    WowTeb->NtTib.StackBase = PtrToUlong(Teb->NtTib.StackBase);
+    WowTeb->NtTib.ExceptionList = PtrToUlong(EXCEPTION_CHAIN_END);
 
     WowTeb->StaticUnicodeString.Length = 0;
     WowTeb->StaticUnicodeString.MaximumLength = sizeof(WowTeb->StaticUnicodeBuffer);
