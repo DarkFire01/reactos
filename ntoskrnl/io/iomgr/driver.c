@@ -11,7 +11,7 @@
 /* INCLUDES *******************************************************************/
 
 #include <ntoskrnl.h>
-#define NDEBUG
+//#define NDEBUG
 #include <debug.h>
 #include <mm/ARM3/miarm.h>
 
@@ -464,7 +464,7 @@ IopInitializeDriverModule(
         return Status;
     }
 
-    DPRINT("Driver name: '%wZ'\n", &DriverName);
+    DPRINT1("IopInitializeDriverModule: '%wZ'\n", &DriverName);
 
     /*
      * Retrieve the driver's PE image NT header and perform some sanity checks.
@@ -514,6 +514,7 @@ IopInitializeDriverModule(
 
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("IopInitializeDriverModule failed to get info: 0x%lx\n", Status);
         RtlFreeUnicodeString(&ServiceName);
         RtlFreeUnicodeString(&DriverName);
         MmUnloadSystemImage(ModuleObject);
@@ -579,6 +580,7 @@ IopInitializeDriverModule(
     Status = ObInsertObject(driverObject, NULL, FILE_READ_DATA, 0, NULL, &hDriver);
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Error while inserting driver object \"%wZ\" status %x\n", &DriverName, Status);
         ExFreePoolWithTag(nameInfo, TAG_IO);
         RtlFreeUnicodeString(&ServiceName);
         RtlFreeUnicodeString(&DriverName);
@@ -598,6 +600,7 @@ IopInitializeDriverModule(
 
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Error while referencing driver object \"%wZ\" status %x\n", &DriverName, Status);
         ExFreePoolWithTag(nameInfo, TAG_IO); // container for RegistryPath
         RtlFreeUnicodeString(&ServiceName);
         RtlFreeUnicodeString(&DriverName);
@@ -614,6 +617,7 @@ IopInitializeDriverModule(
                                                   TAG_IO);
     if (!serviceKeyName.Buffer)
     {
+        DPRINT1("Error while allocating service key name buffer \"%wZ\" status %x\n", &DriverName, Status);
         ObMakeTemporaryObject(driverObject);
         ObDereferenceObject(driverObject);
         ExFreePoolWithTag(nameInfo, TAG_IO); // container for RegistryPath
@@ -637,6 +641,7 @@ IopInitializeDriverModule(
                                                    TAG_IO);
     if (!driverNamePaged.Buffer)
     {
+        DPRINT1("Error while allocating driver name buffer \"%wZ\" status %x\n", &DriverName, Status);
         ObMakeTemporaryObject(driverObject);
         ObDereferenceObject(driverObject);
         ExFreePoolWithTag(nameInfo, TAG_IO); // container for RegistryPath
@@ -692,6 +697,7 @@ IopInitializeDriverModule(
 
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Driver <%wZ> failed to initialize, unloading it\n", &driverObject->DriverName);
         // if the driver entry has been failed, clear the object
         ObMakeTemporaryObject(driverObject);
         ObDereferenceObject(driverObject);
@@ -700,12 +706,20 @@ IopInitializeDriverModule(
 
     *OutDriverObject = driverObject;
 
+    DPRINT1("Calling MmFreeDriverInitialization\n");
     MmFreeDriverInitialization((PLDR_DATA_TABLE_ENTRY)driverObject->DriverSection);
 
     /* Set the driver as initialized */
+    DPRINT1("Calling IopReadyDeviceObjects\n");
     IopReadyDeviceObjects(driverObject);
 
-    if (PnpSystemInit) IopReinitializeDrivers();
+    if (PnpSystemInit)
+    {
+        DPRINT("Calling IopReinitializeDrivers\n");
+        IopReinitializeDrivers();
+    }
+
+    DPRINT1("IopInitializeDriverModule: success\n");
 
     return STATUS_SUCCESS;
 }
@@ -821,6 +835,8 @@ IopInitializeBuiltinDriver(IN PLDR_DATA_TABLE_ENTRY BootLdrEntry)
     PLIST_ENTRY NextEntry;
     UNICODE_STRING ServiceName;
     BOOLEAN Success;
+
+    DPRINT1("IopInitializeBuiltinDriver: '%wZ'\n", ModuleName);
 
     /*
      * Display 'Loading XXX...' message
@@ -1015,6 +1031,7 @@ Cleanup:
     /* Remove extra reference from IopInitializeDriverModule */
     ObDereferenceObject(DriverObject);
 
+    DPRINT1("IopInitializeBuiltinDriver done: %u\n", deviceAdded);
     return deviceAdded;
 }
 
@@ -1051,6 +1068,7 @@ IopInitializeBootDrivers(VOID)
     if (!NT_SUCCESS(Status))
     {
         /* Fail */
+        DPRINT1("IoCreateDriver failed: 0x%lx\n", Status);
         return;
     }
 
@@ -1088,7 +1106,9 @@ IopInitializeBootDrivers(VOID)
         if (LdrEntry->Flags & LDRP_DRIVER_DEPENDENT_DLL)
         {
             /* Call its entrypoint */
+            DPRINT("calling DllInit for '%wZ'\n", &LdrEntry->BaseDllName);
             MmCallDllInitialize(LdrEntry, NULL);
+            DPRINT("DllInit for '%wZ' done\n", &LdrEntry->BaseDllName);
         }
     }
 
