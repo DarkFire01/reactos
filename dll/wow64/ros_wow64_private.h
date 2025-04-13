@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <ntndk.h>
-#include "struct32.h"
+#include "wine/struct32.h"
 
 #include <debug.h>
 
@@ -325,10 +325,108 @@ static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer
     return FALSE;
 }
 
-static inline void *apc_32to64( ULONG func )
+typedef IO_STATUS_BLOCK32 *PIO_STATUS_BLOCK32;
+
+typedef struct _WOW64_APC32_DATA
 {
-    /* UNIMPLEMENTED */
-    return NULL;
+    ULONG Apc32;
+    ULONG Apc32Param;
+    PIO_STATUS_BLOCK32 pIosb32;
+    IO_STATUS_BLOCK Iosb64;
+} WOW64_APC32_DATA, *PWOW64_APC32_DATA;
+
+static
+ULONG_PTR
+Wow64ApcHandler(PWOW64_APC32_DATA pApcData)
+{
+    ULONG_PTR Result = 0;
+    
+    __debugbreak();
+    
+    ASSERT(pApcData);
+    
+    if (pApcData->Apc32)
+    {
+        Result = Call32(pApcData->Apc32, 1, &pApcData->Apc32Param);
+    }
+    
+    if (pApcData->pIosb32)
+    {
+        pApcData->pIosb32->Status = pApcData->Iosb64.Status;
+        pApcData->pIosb32->Information = pApcData->Iosb64.Information;
+    }
+    
+    RtlFreeHeap(RtlGetProcessHeap(), 0, pApcData);
+    return Result;
+}
+
+static 
+inline 
+void* 
+GetApc64ForIoOperation(ULONG Apc32, 
+                       HANDLE hEvent)
+{
+    if (!Apc32 && !hEvent)
+    {
+        return NULL;
+    }
+    
+    return Wow64ApcHandler;
+}
+
+static 
+inline 
+void* 
+GetApcParam64ForIoOperation(ULONG Apc32,
+                            HANDLE hEvent,
+                            ULONG Param,
+                            PIO_STATUS_BLOCK32 pIosb32,
+                             /* This is serious preprocessor abuse*/
+                            PIO_STATUS_BLOCK pIosb64)
+{
+    PWOW64_APC32_DATA pApcData = NULL;
+   
+    if (Apc32 || hEvent)
+    {
+        pApcData = RtlAllocateHeap(RtlGetProcessHeap(), 
+                                   0, 
+                                   sizeof(WOW64_APC32_DATA));
+        
+        pApcData->Apc32 = Apc32;
+        pApcData->Apc32Param = Param;
+        pApcData->pIosb32 = pIosb32;
+    }
+    
+    pIosb64->Pointer = pApcData;
+    
+    return pApcData;
+}
+
+static inline IO_STATUS_BLOCK *iosb_32to64( IO_STATUS_BLOCK *io, IO_STATUS_BLOCK32 *io32 )
+{
+    if (!io32) return NULL;
+    if (io->Pointer)
+    {
+        __debugbreak();
+        return &(((PWOW64_APC32_DATA)io->Pointer)->Iosb64);
+    }
+    io->Pointer = io32;
+    return io;
+}
+
+/* TODO: refactor into less of a hack */
+#define apc_param_32to64(func, context) GetApcParam64ForIoOperation(func, event, context, io32, &io)
+#define apc_32to64(func) GetApc64ForIoOperation(func, event)
+
+static inline void put_iosb( IO_STATUS_BLOCK32 *io32, const IO_STATUS_BLOCK *io )
+{
+    /* sync I/O modifies the 64-bit iosb right away, so in that case we update the 32-bit one */
+    /* async I/O leaves the 64-bit one untouched and updates the 32-bit one directly later on */
+    if (io32 && io->Pointer != io32)
+    {
+        io32->Status = io->Status;
+        io32->Information = io->Information;
+    }
 }
 
 static BOOL is_process_wow64( HANDLE handle )
@@ -368,19 +466,6 @@ static inline SIZE_T *size_32to64( SIZE_T *size, ULONG *size32 )
     if (!size32) return NULL;
     *size = *size32;
     return size;
-}
-
-static inline void *apc_param_32to64( ULONG func, ULONG context )
-{
-    if (!func) return ULongToPtr( context );
-    return (void *)(ULONG_PTR)(((ULONG64)func << 32) | context);
-}
-
-static inline IO_STATUS_BLOCK *iosb_32to64( IO_STATUS_BLOCK *io, IO_STATUS_BLOCK32 *io32 )
-{
-    if (!io32) return NULL;
-    io->Pointer = io32;
-    return io;
 }
 
 static inline UNICODE_STRING *unicode_str_32to64( UNICODE_STRING *str, const UNICODE_STRING32 *str32 )
@@ -505,17 +590,6 @@ static inline void put_client_id( CLIENT_ID32 *id32, const CLIENT_ID *id )
     if (!id32) return;
     id32->UniqueProcess = HandleToLong( id->UniqueProcess );
     id32->UniqueThread = HandleToLong( id->UniqueThread );
-}
-
-static inline void put_iosb( IO_STATUS_BLOCK32 *io32, const IO_STATUS_BLOCK *io )
-{
-    /* sync I/O modifies the 64-bit iosb right away, so in that case we update the 32-bit one */
-    /* async I/O leaves the 64-bit one untouched and updates the 32-bit one directly later on */
-    if (io32 && io->Pointer != io32)
-    {
-        io32->Status = io->Status;
-        io32->Information = io->Information;
-    }
 }
 
 extern void put_section_image_info( SECTION_IMAGE_INFORMATION32 *info32,

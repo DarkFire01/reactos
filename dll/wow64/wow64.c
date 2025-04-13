@@ -97,9 +97,6 @@ static void *build_wow64_parameters( const RTL_USER_PROCESS_PARAMETERS *params )
     return wow64_params;
 }
 
-/**********************************************************************
- *           wow64_NtQueryInformationProcess
- */
 NTSTATUS WINAPI wow64_NtQueryInformationProcess( UINT *args )
 {
     HANDLE handle = get_handle( &args );

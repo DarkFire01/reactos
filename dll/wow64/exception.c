@@ -17,6 +17,8 @@ wow64_NtRaiseException(UINT* pArgs)
     PI386_CONTEXT pContext32 = get_ptr(&pArgs);
     BOOLEAN FirstChance = get_ulong(&pArgs);
     
+    __debugbreak();
+    
     EXCEPTION_RECORD Record;
     CONTEXT Context;
 
