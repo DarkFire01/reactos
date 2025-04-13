@@ -2737,6 +2737,7 @@ NTSTATUS WINAPI wow64_NtUserGetGUIThreadInfo( UINT *args )
     info32->rcCaret       = info.rcCaret;
     return TRUE;
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserGetIconInfo( UINT *args )
 {
@@ -2761,11 +2762,18 @@ NTSTATUS WINAPI wow64_NtUserGetIconInfo( UINT *args )
                             unicode_str_32to64( &res_name, res_name32 ), bpp, unk ))
         return FALSE;
 
+#ifdef __REACTOS__
+    if (info32 != NULL)
+    {
+#endif
     info32->fIcon    = info.fIcon;
     info32->xHotspot = info.xHotspot;
     info32->yHotspot = info.yHotspot;
     info32->hbmMask  = HandleToUlong( info.hbmMask );
     info32->hbmColor = HandleToUlong( info.hbmColor );
+#ifdef __REACTOS__
+    }
+#endif
     if (module32)
     {
         module32->Buffer = PtrToUlong( module.Buffer );
@@ -2778,7 +2786,6 @@ NTSTATUS WINAPI wow64_NtUserGetIconInfo( UINT *args )
     }
     return TRUE;
 }
-#endif
 
 NTSTATUS WINAPI wow64_NtUserGetIconSize( UINT *args )
 {

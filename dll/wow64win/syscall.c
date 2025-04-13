@@ -248,6 +248,7 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserInvalidateRect);
     IMPLEMENT_SERVICE(UserInvalidateRgn);
     IMPLEMENT_SERVICE(UserSetProp);
+    IMPLEMENT_SERVICE(UserGetIconInfo);
     IMPLEMENT_SERVICE(UserSetCursor);
     IMPLEMENT_SERVICE(UserSetWindowPlacement);
     IMPLEMENT_SERVICE(UserGetWindowPlacement);
