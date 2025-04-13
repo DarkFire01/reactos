@@ -1,5 +1,5 @@
 add_asm_files(wow64_asm srasm.S exception.S)
-add_library(wow64 MODULE wow64.c registry.c struct32.h file.c system.c syscall.c sync.c virtual.c exception.c ${wow64_asm})
+add_library(wow64 MODULE wow64.c wine/registry.c wine/struct32.h wine/file.c wine/system.c wine/syscall.c wine/sync.c wine/virtual.c exception.c ros_wow64_private.h ${wow64_asm})
 
 set_module_type(wow64 win32dll UNICODE ENTRYPOINT DllMain 12)
 #############################################
