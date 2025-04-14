@@ -24,7 +24,7 @@
 /* FIXME: for now, the WOW64 directory path is hardcoded. 
    It is currently set to D: for ease of debugging 
    (for ease of swapping of 32 bit DLLs while the system is running). */
-#define TMP_WOW_DIR "D:"
+#define TMP_WOW_DIR L"D:"
 
 #define WIN32_NO_STATUS
 #include <Windows.h>
@@ -62,10 +62,10 @@ static USHORT native_machine = IMAGE_FILE_MACHINE_AMD64;
 
 #define Wow64AllocateTemp(...) _alloca(__VA_ARGS__)
 
-#define WINE_WOW_IMPL_CASE(name) case Num ## name: \
+#define WINE_WOW_IMPL_CASE(name) case Num ## name: {\
     NTSTATUS WINAPI wow64_Nt ## name (UINT* pArgs); \
     status = wow64_Nt ## name (pArgs); \
-    break;
+    break; }
 
 unsigned long __readfsdword(unsigned long);
 
@@ -301,7 +301,7 @@ static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer
     {
 #define REDIRECTION(From, To) { RTL_CONSTANT_STRING(From), RTL_CONSTANT_STRING(To) }
         REDIRECTION(L"\\??\\X:\\reactos\\system32", L"\\??\\" TMP_WOW_DIR),
-        REDIRECTION(L"\\??\\X:\\reactos\\winsxs", L"\\??\\" TMP_WOW_DIR "\\winsxs"),
+        REDIRECTION(L"\\??\\X:\\reactos\\winsxs", L"\\??\\" TMP_WOW_DIR L"\\winsxs"),
         REDIRECTION(L"\\KnownDlls", L"\\KnownDlls32")
 #undef  REDIRECTION
     };
@@ -325,6 +325,25 @@ static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer
     return FALSE;
 }
 
+typedef struct _THREAD_BASIC_INFORMATION32
+{
+    LONG ExitStatus;
+    ULONG TebBaseAddress;
+    CLIENT_ID32 ClientId;
+    ULONG AffinityMask;
+    LONG Priority;
+    LONG BasePriority;
+} THREAD_BASIC_INFORMATION32, *PTHREAD_BASIC_INFORMATION32;
+
+typedef struct _INITIAL_TEB32
+{
+    ULONG PreviousStackBase;
+    ULONG PreviousStackLimit;
+    ULONG StackBase;
+    ULONG StackLimit;
+    ULONG AllocatedStackBase;
+} INITIAL_TEB32, *PINITIAL_TEB32;
+
 typedef IO_STATUS_BLOCK32 *PIO_STATUS_BLOCK32;
 
 typedef struct _WOW64_APC32_DATA
@@ -340,8 +359,6 @@ ULONG_PTR
 Wow64ApcHandler(PWOW64_APC32_DATA pApcData)
 {
     ULONG_PTR Result = 0;
-    
-    __debugbreak();
     
     ASSERT(pApcData);
     
@@ -391,7 +408,9 @@ GetApcParam64ForIoOperation(ULONG Apc32,
         pApcData = RtlAllocateHeap(RtlGetProcessHeap(), 
                                    0, 
                                    sizeof(WOW64_APC32_DATA));
-        
+
+        ASSERT(pApcData);
+
         pApcData->Apc32 = Apc32;
         pApcData->Apc32Param = Param;
         pApcData->pIosb32 = pIosb32;
@@ -407,7 +426,6 @@ static inline IO_STATUS_BLOCK *iosb_32to64( IO_STATUS_BLOCK *io, IO_STATUS_BLOCK
     if (!io32) return NULL;
     if (io->Pointer)
     {
-        __debugbreak();
         return &(((PWOW64_APC32_DATA)io->Pointer)->Iosb64);
     }
     io->Pointer = io32;

@@ -265,7 +265,6 @@ KiSwapContextResume(
           PKGDTENTRY64 CmTebEntry = KiGetGdtEntry(Pcr->GdtBase, KGDT64_R3_CMTEB);
           CmTebEntry->LimitLow = 0xFFFF;
           CmTebEntry->Bits.LimitHigh = 0xFFFF;
-
           CmTebEntry->BaseLow = Base & 0xFFFF;
           CmTebEntry->Bits.BaseMiddle = (Base & 0xFF0000) >> 16;
           CmTebEntry->Bits.BaseHigh = (Base & 0xFF000000) >> 24;

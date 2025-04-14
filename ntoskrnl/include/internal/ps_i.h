@@ -240,9 +240,7 @@ static const INFORMATION_CLASS_INFO PsProcessInfoClass[] =
     (
         ULONG_PTR,
         ULONG,
-        /* FIXME: ugly hack, 
-           NtSetInformationProcess is used to set Wow64Process */
-        ICIF_QUERY | ICIF_SET
+        ICIF_QUERY
     ),
 
     /* ProcessImageFileName */

@@ -21,7 +21,7 @@ static USHORT UnicodeCopy[2048]; /* ??? */
 static UCHAR AnsiCopy[1024], OemCopy[1024]; /* ??? */
 static ULONG_PTR FixmeProcessHeaps[100]; /* FIXME */
 
-static UNICODE_STRING NtDll32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR "\\ntdll.dll");
+static UNICODE_STRING NtDll32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR L"\\ntdll.dll");
 static ANSI_STRING ImportLdrInitializeThunkStr = RTL_CONSTANT_STRING("LdrInitializeThunk");
 static ANSI_STRING ImportUserExceptionDispatcherStr = RTL_CONSTANT_STRING("KiUserExceptionDispatcher");
 static PVOID NtDll32 = NULL;
@@ -31,6 +31,7 @@ PVOID NtDll32KiUserExceptionDispatcher = NULL;
 
 void SetupFs(ULONG_PTR segSelector);
 void Enter32(PVOID where, PVOID ntdll32Base, ULONG_PTR entrypoint);
+__declspec(dllexport) void WINAPI Wow64LdrpInitialize(PCONTEXT pContext);
 
 /* From wine/dlls/ntdll/unix/env.c */
 static inline void dup_unicode_string( const UNICODE_STRING *src, WCHAR **dst, UNICODE_STRING32 *str )
@@ -517,6 +518,8 @@ Wow64Handler(ULONG syscallNum,
         WINE_WOW_IMPL_CASE(OpenThreadToken);
         WINE_WOW_IMPL_CASE(OpenThreadTokenEx);
         WINE_WOW_IMPL_CASE(OpenProcessTokenEx);
+        WINE_WOW_IMPL_CASE(CreateThread);
+        WINE_WOW_IMPL_CASE(QueryInformationThread);
         
         case NumTerminateThread:
         {
@@ -744,6 +747,121 @@ wow64_NtContinue(UINT *pArgs)
     return NtContinue(&Context, bRasieAlert);
 }
 
+static
+NTSTATUS
+NTAPI
+wow64_NtCreateThread(UINT* pArgs)
+{
+    PULONG phThread32 = get_ptr(&pArgs);
+    ACCESS_MASK DesiredAccess = get_ulong(&pArgs);
+    POBJECT_ATTRIBUTES32 pObjectAttributes32 = get_ptr(&pArgs);
+    HANDLE hProcess = get_handle(&pArgs);
+    PCLIENT_ID32 pClientId32 = get_ptr(&pArgs);
+    PI386_CONTEXT pContext32 = get_ptr(&pArgs);
+    PINITIAL_TEB32 pInitialTeb = get_ptr(&pArgs);
+    BOOLEAN bCreateSuspended = get_ulong(&pArgs);
+
+    CLIENT_ID ClientId;
+    struct object_attr64 ObjAttr;
+    INITIAL_TEB InitialTeb;
+    CONTEXT Context;
+    NTSTATUS Status;
+    HANDLE hThread;
+
+    InitialTeb.AllocatedStackBase = UlongToPtr(pInitialTeb->AllocatedStackBase);
+    InitialTeb.PreviousStackBase = UlongToPtr(pInitialTeb->PreviousStackBase);
+    InitialTeb.PreviousStackLimit = UlongToPtr(pInitialTeb->PreviousStackLimit);
+    InitialTeb.StackBase = UlongToPtr(pInitialTeb->StackBase);
+    InitialTeb.StackLimit = UlongToPtr(pInitialTeb->StackLimit);
+
+    /* Convert the context to 64-bit */
+    CopyContext32To64(&Context, pContext32);
+
+    /* Copy the the context to the stack */
+    *((PCONTEXT)Context.Rsp - 1) = Context;
+    Context.Rsp -= sizeof(Context);
+
+    /* Replace the entrypoint with the init routine,
+       with the stack copy of the context as its param */
+    Context.Rcx = Context.Rsp;
+    Context.Rip = (ULONG_PTR)Wow64LdrpInitialize;
+    Context.SegCs = 0x33;
+
+    __debugbreak();
+    Status = NtCreateThread(&hThread,
+                            DesiredAccess,
+                            objattr_32to64(&ObjAttr,
+                                           pObjectAttributes32),
+                            hProcess,
+                            &ClientId,
+                            &Context,
+                            &InitialTeb,
+                            bCreateSuspended);
+
+    pClientId32->UniqueProcess = HandleToUlong(ClientId.UniqueProcess);
+    pClientId32->UniqueThread = HandleToUlong(ClientId.UniqueThread);
+    *phThread32 = HandleToUlong(hThread);
+
+    return Status;
+}
+
+static
+NTSTATUS
+NTAPI
+wow64_NtQueryInformationThread(UINT* pArgs)
+{
+    HANDLE hThread = get_handle(&pArgs);
+    THREADINFOCLASS InfoClass = get_ulong(&pArgs);
+    PVOID pThreadInfo32 = get_ptr(&pArgs);
+    ULONG uInfoLength32 = get_ulong(&pArgs);
+    PULONG pRetLen32 = get_ptr(&pArgs);
+
+    ULONG RetLen = 0;
+    NTSTATUS Status;
+    
+    switch (InfoClass)
+    {
+        case ThreadBasicInformation:
+        {
+            THREAD_BASIC_INFORMATION BasicInfo;
+            PTHREAD_BASIC_INFORMATION32 pBasicInfo32 = pThreadInfo32;
+
+            if (uInfoLength32 < sizeof(*pBasicInfo32))
+            {
+                return STATUS_BUFFER_TOO_SMALL;
+            }
+
+            Status = NtQueryInformationThread(hThread,
+                                              InfoClass,
+                                              &BasicInfo,
+                                              sizeof(BasicInfo),
+                                              &RetLen);
+
+            if (!NT_SUCCESS(Status))
+            {
+                return Status;
+            }
+
+            pBasicInfo32->AffinityMask = BasicInfo.AffinityMask;
+            pBasicInfo32->BasePriority = BasicInfo.BasePriority;
+            pBasicInfo32->ClientId.UniqueProcess = HandleToUlong(BasicInfo.ClientId.UniqueProcess);
+            pBasicInfo32->ClientId.UniqueThread = HandleToUlong(BasicInfo.ClientId.UniqueThread);
+            pBasicInfo32->ExitStatus = BasicInfo.ExitStatus;
+            pBasicInfo32->Priority = BasicInfo.Priority;
+            /* FIXME */
+            pBasicInfo32->TebBaseAddress = PtrToUlong(BasicInfo.TebBaseAddress);
+
+            *pRetLen32 = sizeof(*pBasicInfo32);
+
+            return Status;
+        }
+        /* TODO */
+    }
+
+    DPRINT1("Invalid class %X given to " __FUNCTION__ ", investigate. \n", InfoClass);
+    return STATUS_INVALID_INFO_CLASS;
+}
+
 BOOL
 WINAPI
 DllMain(HANDLE hDll,
@@ -761,25 +879,22 @@ Wow64InitProcess(VOID)
     PPEB32 WowPeb = NULL;
     PRTL_USER_PROCESS_PARAMETERS32 ProcParams32 = NULL;
     PPEB Peb = NtCurrentPeb();
-    SIZE_T Size;
     
-    Status = LdrLoadDll(L"" TMP_WOW_DIR "\\ntdll.dll", 0, &NtDll32Str, &NtDll32);
+    Status = LdrLoadDll(L"" TMP_WOW_DIR L"\\ntdll.dll", 0, &NtDll32Str, &NtDll32);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("32 bit NTDLL.DLL could not be loaded.\n");
         ASSERT(FALSE);
     }
     
-    Size = sizeof(PEB32);
-    Status = NtAllocateVirtualMemory(NtCurrentProcess(), 
-                                     &WowPeb, 
-                                     32, 
-                                     &Size, 
-                                     MEM_COMMIT,
-                                     PAGE_READWRITE);
+    Status = NtQueryInformationProcess(NtCurrentProcess(),
+                                       ProcessWow64Information,
+                                       &WowPeb,
+                                       sizeof(WowPeb),
+                                       NULL);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("PEB32 Allocation failed: %lx\n", Status);
+        DPRINT1("Getting PEB32 info failed: %lx\n", Status);
         ASSERT(FALSE);
     }
     
@@ -799,16 +914,6 @@ Wow64InitProcess(VOID)
     RtlCopyMemory(&OemCopy, Peb->OemCodePageData, sizeof(OemCopy));
     RtlCopyMemory(&AnsiCopy, Peb->AnsiCodePageData, sizeof(AnsiCopy));
     RtlCopyMemory(&UnicodeCopy, Peb->UnicodeCaseTableData, sizeof(UnicodeCopy));
-    
-    /* TODO: Check types - _WOW64_PROCESS has only one field, is this supposed to be the PEB?
-       According to https://stackoverflow.com/a/69171561 - yes, it is. This is, however, quite a hacky way 
-       to set it. */
-    Status = NtSetInformationProcess(NtCurrentProcess(), ProcessWow64Information, &WowPeb, sizeof(WowPeb));
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Setting info failed: %lx\n", Status);
-        ASSERT(FALSE);
-    }
     
     /* Change image path name */
     ProcParams32->ImagePathName.Buffer = PtrToUlong(Peb->ProcessParameters->ImagePathName.Buffer);
@@ -844,7 +949,8 @@ Wow64UnhandledExceptionHandler(IN PEXCEPTION_POINTERS ExceptionInfo);
 
 static
 void
-Wow64Trampoline(VOID)
+Wow64Trampoline(ULONG_PTR Rip,
+                PCONTEXT pContext)
 {
     IMAGE_NT_HEADERS32* NtHeaders = NULL;
     PPEB Peb;
@@ -863,6 +969,8 @@ Wow64Trampoline(VOID)
     {
         
     }
+
+    ASSERT(FALSE);
 }
 
 static
@@ -936,6 +1044,10 @@ Wow64InitThread(PCONTEXT pContext)
     WowTeb->ClientId.UniqueProcess = HandleToULong(Teb->ClientId.UniqueProcess);
     WowTeb->ClientId.UniqueThread = HandleToULong(Teb->ClientId.UniqueThread);
 
+    *((ULONG*)(pContext->Rsp -= 4)) = pContext->Rcx;
+    *((ULONG*)(pContext->Rsp -= 4)) = pContext->Rdx;
+    pContext->Rcx = pContext->Rip;
+    pContext->Rdx = (ULONG_PTR)pContext;
     pContext->Rip = (ULONG_PTR)Wow64Trampoline;
 }
 
@@ -945,7 +1057,8 @@ WINAPI
 Wow64LdrpInitialize(PCONTEXT pContext)
 {
     static LONG ProcessInitialized = 0;
-    
+    __debugbreak();
+
     if (_InterlockedCompareExchange(&ProcessInitialized,
                                     1,
                                     0) == 0)
