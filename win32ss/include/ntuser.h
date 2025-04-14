@@ -16,8 +16,6 @@ struct tagPOPUPMENU;
    to sweep the granted lists (see IntCleanupGrantedHandle) */
 #define HANDLEENTRY_GRANTED 4
 
-#define _WOW64
-
 typedef struct _USER_HANDLE_ENTRY
 {
 #if defined(_M_IX86) && defined(_WOW64)

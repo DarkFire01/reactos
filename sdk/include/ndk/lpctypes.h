@@ -19,7 +19,6 @@ Author:
 #ifndef _LPCTYPES_H
 #define _LPCTYPES_H
 
-#define _WOW64
 #if defined(_WOW64) && defined(_M_IX86)
 #define USE_LPC6432
 #endif
