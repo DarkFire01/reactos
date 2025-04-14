@@ -520,6 +520,7 @@ Wow64Handler(ULONG syscallNum,
         WINE_WOW_IMPL_CASE(OpenProcessTokenEx);
         WINE_WOW_IMPL_CASE(CreateThread);
         WINE_WOW_IMPL_CASE(QueryInformationThread);
+        WINE_WOW_IMPL_CASE(ResumeThread);
         
         case NumTerminateThread:
         {
@@ -777,17 +778,14 @@ wow64_NtCreateThread(UINT* pArgs)
     /* Convert the context to 64-bit */
     CopyContext32To64(&Context, pContext32);
 
-    /* Copy the the context to the stack */
-    *((PCONTEXT)Context.Rsp - 1) = Context;
-    Context.Rsp -= sizeof(Context);
+    /* For some reason, segment registers have bogus values in pContext32 */
+    Context.SegSs = 0x2b;
+    Context.SegEs = 0x2b;
+    Context.SegDs = 0x2b;
+    Context.SegFs = 0x53;
+    Context.SegGs = 0x2b;
+    Context.SegCs = 0x23;
 
-    /* Replace the entrypoint with the init routine,
-       with the stack copy of the context as its param */
-    Context.Rcx = Context.Rsp;
-    Context.Rip = (ULONG_PTR)Wow64LdrpInitialize;
-    Context.SegCs = 0x33;
-
-    __debugbreak();
     Status = NtCreateThread(&hThread,
                             DesiredAccess,
                             objattr_32to64(&ObjAttr,
@@ -803,6 +801,17 @@ wow64_NtCreateThread(UINT* pArgs)
     *phThread32 = HandleToUlong(hThread);
 
     return Status;
+}
+
+static
+NTSTATUS
+NTAPI
+wow64_NtResumeThread(UINT* pArgs)
+{
+    HANDLE hThread = get_handle(&pArgs);
+    PULONG pSuspendCount = get_ptr(&pArgs);
+
+    return NtResumeThread(hThread, pSuspendCount);
 }
 
 static
@@ -849,7 +858,7 @@ wow64_NtQueryInformationThread(UINT* pArgs)
             pBasicInfo32->ExitStatus = BasicInfo.ExitStatus;
             pBasicInfo32->Priority = BasicInfo.Priority;
             /* FIXME */
-            pBasicInfo32->TebBaseAddress = PtrToUlong(BasicInfo.TebBaseAddress);
+            pBasicInfo32->TebBaseAddress = ROUND_TO_PAGES((ULONG_PTR)((PTEB)BasicInfo.TebBaseAddress + 1));
 
             *pRetLen32 = sizeof(*pBasicInfo32);
 
@@ -978,34 +987,11 @@ VOID
 Wow64InitThread(PCONTEXT pContext)
 {
     NTSTATUS Status;
-    SIZE_T Size;
     PTEB32 WowTeb = NULL;
     PPEB32 WowPeb = NULL;
     PTEB Teb = NtCurrentTeb();
-    WowTeb = NULL;
 
-    /* Allocate memory for the 32 bit TEB. 
-       TODO: This should be done in kernel mode probably */
-    Size = sizeof(TEB32);
-    Status = NtAllocateVirtualMemory(NtCurrentProcess(), 
-                                     &WowTeb, 
-                                     32, 
-                                     &Size, 
-                                     MEM_COMMIT, 
-                                     PAGE_READWRITE);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT("TEB32 Allocation failed: %lx\n", Status);
-        ASSERT(FALSE);
-    }
-
-    /* Set the 64 bit Teb's TlsSlots[1] to the TEB32 before setting process 
-       information. */
-    /* FIXME: This is NOT Wine compatible! Wine uses Peb->WowTebOffset which is 
-       only present for NTDDI_VERSION >= NTDDI_WIN10, and uses this TLS entry
-       for its own structures. Since we do not use them (yet), this entry should 
-       be free for now. */
-    Teb->TlsSlots[1] = WowTeb;
+    WowTeb = (PTEB32)ROUND_TO_PAGES((ULONG_PTR)(Teb + 1));
 
     WowTeb->NtTib.Self = PtrToUlong(WowTeb);
     
