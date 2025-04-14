@@ -277,7 +277,7 @@ GetWindowRgn(
   if (!pWnd || !pWnd->hrgnClip || pWnd->state2 & WNDS2_MAXIMIZEDMONITORREGION)
      return ERROR;
 
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
   Ret = CombineRgn(hRgn, pWnd->hrgnClip, NULL, RGN_COPY);
 #else
   Ret = CombineRgn(hRgn, (HANDLE)(ULONG_PTR)pWnd->hrgnClip, NULL, RGN_COPY);
@@ -315,7 +315,7 @@ GetWindowRgnBox(
   if (!pWnd || !pWnd->hrgnClip || pWnd->state2 & WNDS2_MAXIMIZEDMONITORREGION)
      return ERROR;
 
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
   Ret = GetRgnBox(pWnd->hrgnClip, lprc);
 #else
   Ret = GetRgnBox((HRGN)(ULONG_PTR)pWnd->hrgnClip, lprc);

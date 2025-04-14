@@ -1782,7 +1782,7 @@ IntCallMessageProc(IN PWND Wnd, IN HWND hWnd, IN UINT Msg, IN WPARAM wParam, IN 
        if (!WndProc)
        {
           IsAnsi = !Wnd->Unicode;
-#if (defined(_WOW64) && defined(_M_IX86))
+#if defined(_WOW64)
           if (Wnd->lpfnWndProc & 0xFFFFFFFF00000000)
           {
               __debugbreak();
@@ -1794,7 +1794,7 @@ IntCallMessageProc(IN PWND Wnd, IN HWND hWnd, IN UINT Msg, IN WPARAM wParam, IN 
     else
     {
        IsAnsi = !Wnd->Unicode;
-#if (defined(_WOW64) && defined(_M_IX86))
+#if defined(_WOW64)
        if (Wnd->lpfnWndProc & 0xFFFFFFFF00000000)
        {
            __debugbreak();

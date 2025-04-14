@@ -20,7 +20,7 @@ GetSysColor(int nIndex)
 {
   if(nIndex >= 0 && nIndex < NUM_SYSCOLORS)
   {
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
     return gpsi->argbSystem[nIndex];
 #else
     return WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, argbSystem[nIndex]);
@@ -41,7 +41,7 @@ GetSysColorBrush(int nIndex)
 {
   if(nIndex >= 0 && nIndex < NUM_SYSCOLORS)
   {
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
     return gpsi->ahbrSystem[nIndex];
 #else
     return (HBRUSH)(ULONG_PTR)WOW64_READ_PTR_FIELD(gpsi, SERVERINFO, ahbrSystem[nIndex]);
@@ -227,7 +227,7 @@ DefWndControlColor(HDC hDC, UINT ctlType)
        * look different from the window background.
        */
       if ( bk == GetSysColor(COLOR_WINDOW))
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
           return gpsi->hbrGray;
 #else
           return (HBRUSH)(ULONG_PTR)WOW64_READ_PTR_FIELD(gpsi, SERVERINFO, hbrGray);
@@ -275,7 +275,7 @@ UserPaintCaption(PWND pwnd, INT Flags)
      * This is solved by sending a themes specific message to notify the themes
      * engine that the caption needs to be redrawn 
      */
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
     if(gpsi->dwSRVIFlags & SRVINFO_APIHOOK)
 #else
     if(WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwSRVIFlags) & SRVINFO_APIHOOK)
@@ -310,7 +310,7 @@ DefWndGetIcon(PWND pWnd, WPARAM wParam, LPARAM lParam)
     }
     switch(wParam)
     {
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
         case ICON_BIG:
             hIconRet = UserGetProp(UserHMGetHandle(pWnd), gpsi->atomIconProp, TRUE);
             break;

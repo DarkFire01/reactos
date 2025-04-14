@@ -28,7 +28,7 @@ HINSTANCE User32Instance;
 
 PPROCESSINFO g_ppi = NULL;
 SHAREDINFO gSharedInfo = {0};
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
 PSERVERINFO gpsi = NULL;
 PUSER_HANDLE_TABLE gHandleTable = NULL;
 PUSER_HANDLE_ENTRY gHandleEntries = NULL;
@@ -274,7 +274,7 @@ ClientThreadSetupHelper(BOOL IsCallback)
         gSharedInfo = UserCon.siClient;
         gpsi = gSharedInfo.psi;
         gHandleTable = gSharedInfo.aheList;
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
         /* ReactOS-Specific! */ gHandleEntries = SharedPtrToUser(gHandleTable->handles);
 #else
         /* ReactOS-Specific! */ gHandleEntries = SharedPtrToUser(WOW64_READ_PTR_FIELD(gHandleTable, USER_HANDLE_TABLE, handles));
@@ -432,7 +432,7 @@ Init(PUSERCONNECT UserCon /*PUSERSRV_API_CONNECTINFO*/)
         gSharedInfo = UserCon->siClient;
         gpsi = gSharedInfo.psi;
         gHandleTable = gSharedInfo.aheList;
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
         /* ReactOS-Specific! */ gHandleEntries = SharedPtrToUser(gHandleTable->handles);
 #else
         /* ReactOS-Specific! */ gHandleEntries = SharedPtrToUser(WOW64_READ_PTR_FIELD(gHandleTable, USER_HANDLE_TABLE, handles));
@@ -547,7 +547,7 @@ DllMain(
             {
                 HINSTANCE hImm32 = NULL;
 
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
                 if (gpsi && (gpsi->dwSRVIFlags & SRVINFO_IMM32))
 #else
                 if (gpsi && (WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwSRVIFlags) & SRVINFO_IMM32))
@@ -610,7 +610,7 @@ User32CallSetWndIconsFromKernel(PVOID Arguments, ULONG ArgumentLength)
 {
   PSETWNDICONS_CALLBACK_ARGUMENTS Common = Arguments;
 
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
   if (!gpsi->hIconSmWindows)
 #else
   if (!WOW64_READ_PTR_FIELD(gpsi, SERVERINFO, hIconSmWindows))

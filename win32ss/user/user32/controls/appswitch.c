@@ -212,7 +212,7 @@ BOOL CALLBACK EnumerateCallback(HWND window, LPARAM lParam)
             if (!hIcon)
             {
                 // using windows logo icon as default
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !defined(_WOW64)
                 hIcon = gpsi->hIconWindows;
 #else
                 hIcon = (HICON)WOW64_READ_HANDLE_FIELD(gpsi, SERVERINFO, hIconWindows);
