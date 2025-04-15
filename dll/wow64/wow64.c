@@ -26,11 +26,14 @@ static ANSI_STRING ImportLdrInitializeThunkStr = RTL_CONSTANT_STRING("LdrInitial
 static ANSI_STRING ImportUserExceptionDispatcherStr = RTL_CONSTANT_STRING("KiUserExceptionDispatcher");
 static PVOID NtDll32 = NULL;
 
+static UNICODE_STRING Kernel32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR L"\\kernel32.dll");
+static ANSI_STRING ImportBaseStr = RTL_CONSTANT_STRING("Base");
+
 PVOID NtDll32LdrpRoutine = NULL;
 PVOID NtDll32KiUserExceptionDispatcher = NULL;
 
 void SetupFs(ULONG_PTR segSelector);
-void Enter32(PVOID where, PVOID ntdll32Base, ULONG_PTR entrypoint);
+void Enter32(PVOID where, PVOID ntdll32Base, ULONG_PTR entrypoint, ULONG_PTR rax);
 __declspec(dllexport) void WINAPI Wow64LdrpInitialize(PCONTEXT pContext);
 
 /* From wine/dlls/ntdll/unix/env.c */
@@ -853,17 +856,26 @@ wow64_NtQueryInformationThread(UINT* pArgs)
 
             pBasicInfo32->AffinityMask = BasicInfo.AffinityMask;
             pBasicInfo32->BasePriority = BasicInfo.BasePriority;
-            pBasicInfo32->ClientId.UniqueProcess = HandleToUlong(BasicInfo.ClientId.UniqueProcess);
-            pBasicInfo32->ClientId.UniqueThread = HandleToUlong(BasicInfo.ClientId.UniqueThread);
+            pBasicInfo32->ClientId.UniqueProcess =
+                HandleToUlong(BasicInfo.ClientId.UniqueProcess);
+            pBasicInfo32->ClientId.UniqueThread =
+                HandleToUlong(BasicInfo.ClientId.UniqueThread);
             pBasicInfo32->ExitStatus = BasicInfo.ExitStatus;
             pBasicInfo32->Priority = BasicInfo.Priority;
             /* FIXME */
-            pBasicInfo32->TebBaseAddress = ROUND_TO_PAGES((ULONG_PTR)((PTEB)BasicInfo.TebBaseAddress + 1));
+            pBasicInfo32->TebBaseAddress =
+                ROUND_TO_PAGES((ULONG_PTR)((PTEB)BasicInfo.TebBaseAddress + 1));
 
             *pRetLen32 = sizeof(*pBasicInfo32);
 
             return Status;
         }
+        case ThreadAmILastThread:
+            return NtQueryInformationThread(hThread,
+                                            InfoClass,
+                                            pThreadInfo32,
+                                            uInfoLength32,
+                                            pRetLen32);
         /* TODO */
     }
 
@@ -961,18 +973,12 @@ void
 Wow64Trampoline(ULONG_PTR Rip,
                 PCONTEXT pContext)
 {
-    IMAGE_NT_HEADERS32* NtHeaders = NULL;
-    PPEB Peb;
-    
-    Peb = NtCurrentPeb();
-    NtHeaders = (IMAGE_NT_HEADERS32*)RtlImageNtHeader(Peb->ImageBaseAddress);
-
     _SEH2_TRY
     {
         Enter32(NtDll32LdrpRoutine,
                 NtDll32,
-                (ULONG_PTR)Peb->ImageBaseAddress
-                 + (ULONG_PTR)NtHeaders->OptionalHeader.AddressOfEntryPoint);
+                Rip,
+                pContext->Rax);
     }
     _SEH2_EXCEPT(Wow64UnhandledExceptionHandler(_SEH2_GetExceptionInformation()))
     {
@@ -990,14 +996,21 @@ Wow64InitThread(PCONTEXT pContext)
     PTEB32 WowTeb = NULL;
     PPEB32 WowPeb = NULL;
     PTEB Teb = NtCurrentTeb();
+    PPEB Peb = NtCurrentPeb();
+    IMAGE_NT_HEADERS32 *NtHeaders = NULL;
+
+    NtHeaders = (IMAGE_NT_HEADERS32 *)RtlImageNtHeader(Peb->ImageBaseAddress);
 
     WowTeb = (PTEB32)ROUND_TO_PAGES((ULONG_PTR)(Teb + 1));
+
+    DPRINT1("WOW64 TEB %p, TEB %p\n", WowTeb, Teb);
 
     WowTeb->NtTib.Self = PtrToUlong(WowTeb);
     
     WowTeb->NtTib.StackLimit = PtrToUlong(Teb->NtTib.StackLimit);
     WowTeb->NtTib.StackBase = PtrToUlong(Teb->NtTib.StackBase);
     WowTeb->NtTib.ExceptionList = PtrToUlong(EXCEPTION_CHAIN_END);
+    WowTeb->NtTib.Version = Teb->NtTib.Version;
 
     WowTeb->StaticUnicodeString.Length = 0;
     WowTeb->StaticUnicodeString.MaximumLength = sizeof(WowTeb->StaticUnicodeBuffer);
@@ -1030,9 +1043,20 @@ Wow64InitThread(PCONTEXT pContext)
     WowTeb->ClientId.UniqueProcess = HandleToULong(Teb->ClientId.UniqueProcess);
     WowTeb->ClientId.UniqueThread = HandleToULong(Teb->ClientId.UniqueThread);
 
-    *((ULONG*)(pContext->Rsp -= 4)) = pContext->Rcx;
-    *((ULONG*)(pContext->Rsp -= 4)) = pContext->Rdx;
+    /* FIXME */
+    if (pContext->Rip & (~0xFFFFFFFFULL))
+    {
+        DPRINT1("Thread initial program counter outside of 32-bit address space,"
+                " assuming it is 64-bit kernel32 init routine - use the program"
+                " entrypoint for now. (RIP=%p)\n", (PVOID)pContext->Rip);
+
+        pContext->Rip = (ULONG_PTR) Peb->ImageBaseAddress
+                         + NtHeaders->OptionalHeader.AddressOfEntryPoint;
+    }
+
+    pContext->Rsp -= 32;
     pContext->Rcx = pContext->Rip;
+    pContext->SegCs = 0x33;
     pContext->Rdx = (ULONG_PTR)pContext;
     pContext->Rip = (ULONG_PTR)Wow64Trampoline;
 }
@@ -1043,7 +1067,6 @@ WINAPI
 Wow64LdrpInitialize(PCONTEXT pContext)
 {
     static LONG ProcessInitialized = 0;
-    __debugbreak();
 
     if (_InterlockedCompareExchange(&ProcessInitialized,
                                     1,

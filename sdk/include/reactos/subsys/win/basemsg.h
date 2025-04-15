@@ -67,18 +67,18 @@ typedef struct _BASE_SXS_CREATEPROCESS_MSG
 {
     ULONG Flags;
     ULONG ProcessParameterFlags;
-    HANDLE FileHandle;
-    UNICODE_STRING SxsWin32ExePath;
-    UNICODE_STRING SxsNtExePath;
-    SIZE_T OverrideManifestOffset;
+    LPC_HANDLE FileHandle;
+    LPC_UNICODE_STRING SxsWin32ExePath;
+    LPC_UNICODE_STRING SxsNtExePath;
+    LPC_SIZE_T OverrideManifestOffset;
     ULONG OverrideManifestSize;
-    SIZE_T OverridePolicyOffset;
+    LPC_SIZE_T OverridePolicyOffset;
     ULONG OverridePolicySize;
-    PVOID PEManifestAddress;
+    LPC_PVOID PEManifestAddress;
     ULONG PEManifestSize;
-    UNICODE_STRING CultureFallbacks;
+    LPC_UNICODE_STRING CultureFallbacks;
     ULONG Unknown[7];
-    UNICODE_STRING AssemblyName;
+    LPC_UNICODE_STRING AssemblyName;
 } BASE_SXS_CREATEPROCESS_MSG, *PBASE_SXS_CREATEPROCESS_MSG;
 
 typedef struct _BASE_CREATE_PROCESS
@@ -86,23 +86,23 @@ typedef struct _BASE_CREATE_PROCESS
     //
     // NT-type structure (BASE_CREATEPROCESS_MSG)
     //
-    HANDLE ProcessHandle;
-    HANDLE ThreadHandle;
-    CLIENT_ID ClientId;
+    LPC_HANDLE ProcessHandle;
+    LPC_HANDLE ThreadHandle;
+    LPC_CLIENT_ID ClientId;
     ULONG CreationFlags;
     ULONG VdmBinaryType;
     ULONG VdmTask;
-    HANDLE hVDM;
+    LPC_HANDLE hVDM;
     BASE_SXS_CREATEPROCESS_MSG Sxs;
-    PVOID PebAddressNative;
+    LPC_PVOID PebAddressNative;
     ULONG PebAddressWow64;
     USHORT ProcessorArchitecture;
 } BASE_CREATE_PROCESS, *PBASE_CREATE_PROCESS;
 
 typedef struct _BASE_CREATE_THREAD
 {
-    HANDLE ThreadHandle;
-    CLIENT_ID ClientId;
+    LPC_HANDLE ThreadHandle;
+    LPC_CLIENT_ID ClientId;
 } BASE_CREATE_THREAD, *PBASE_CREATE_THREAD;
 
 typedef struct _BASE_GET_TEMP_FILE
@@ -274,7 +274,7 @@ typedef struct _BASE_API_MESSAGE
 {
     PORT_MESSAGE Header;
 
-    PCSR_CAPTURE_BUFFER CsrCaptureData;
+    LPC_PTR(CSR_CAPTURE_BUFFER) CsrCaptureData;
     CSR_API_NUMBER ApiNumber;
     NTSTATUS Status;
     ULONG Reserved;

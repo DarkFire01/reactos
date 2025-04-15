@@ -123,47 +123,81 @@ static void put_logical_proc_info_ex( SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX32 
     }
 }
 
-#ifndef __REACTOS__
 static NTSTATUS put_system_proc_info( SYSTEM_PROCESS_INFORMATION32 *info32,
                                       const SYSTEM_PROCESS_INFORMATION *info,
                                       BOOL ext_info, ULONG len, ULONG *retlen )
 {
     ULONG inpos = 0, outpos = 0, i;
     SYSTEM_PROCESS_INFORMATION32 *prev = NULL;
+#ifndef __REACTOS__
     ULONG ti_size = (ext_info ? sizeof(SYSTEM_EXTENDED_THREAD_INFORMATION) : sizeof(SYSTEM_THREAD_INFORMATION));
     ULONG ti_size32 = (ext_info ? sizeof(SYSTEM_EXTENDED_THREAD_INFORMATION32) : sizeof(SYSTEM_THREAD_INFORMATION32));
+#endif
 
     for (;;)
     {
+#ifndef __REACTOS__
         SYSTEM_EXTENDED_THREAD_INFORMATION *ti;
         SYSTEM_EXTENDED_THREAD_INFORMATION32 *ti32;
+#endif
         SYSTEM_PROCESS_INFORMATION *proc = (SYSTEM_PROCESS_INFORMATION *)((char *)info + inpos);
         SYSTEM_PROCESS_INFORMATION32 *proc32 = (SYSTEM_PROCESS_INFORMATION32 *)((char *)info32 + outpos);
+#ifndef __REACTOS__
         ULONG proc_len = offsetof( SYSTEM_PROCESS_INFORMATION32, ti ) + proc->dwThreadCount * ti_size32;
+#else
+        (VOID) i;
+        ULONG proc_len = offsetof(SYSTEM_PROCESS_INFORMATION32, ti);
+#endif
 
+#ifndef __REACTOS__
         if (outpos + proc_len + proc->ProcessName.MaximumLength <= len)
+#else
+        if (outpos + proc_len + proc->ImageName.MaximumLength <= len)
+#endif
         {
             memset( proc32, 0, proc_len );
 
+#ifndef __REACTOS__
             proc32->dwThreadCount                = proc->dwThreadCount;
+#else
+            proc32->dwThreadCount                = proc->NumberOfThreads;
+#endif
             proc32->WorkingSetPrivateSize        = proc->WorkingSetPrivateSize;
             proc32->HardFaultCount               = proc->HardFaultCount;
             proc32->NumberOfThreadsHighWatermark = proc->NumberOfThreadsHighWatermark;
             proc32->CycleTime                    = proc->CycleTime;
+#ifndef __REACTOS__
             proc32->CreationTime                 = proc->CreationTime;
+#else
+            proc32->CreationTime                 = proc->CreateTime;
+#endif
             proc32->UserTime                     = proc->UserTime;
             proc32->KernelTime                   = proc->KernelTime;
+#ifndef __REACTOS__
             proc32->ProcessName.Length           = proc->ProcessName.Length;
             proc32->ProcessName.MaximumLength    = proc->ProcessName.MaximumLength;
+#else
+            proc32->ProcessName.Length           = proc->ImageName.Length;
+            proc32->ProcessName.MaximumLength    = proc->ImageName.MaximumLength;
+#endif
             proc32->ProcessName.Buffer           = PtrToUlong( (char *)proc32 + proc_len );
+#ifndef __REACTOS__
             proc32->dwBasePriority               = proc->dwBasePriority;
             proc32->UniqueProcessId              = HandleToULong( proc->UniqueProcessId );
             proc32->ParentProcessId              = HandleToULong( proc->ParentProcessId );
+#else
+            proc32->dwBasePriority = proc->BasePriority;
+            proc32->UniqueProcessId = HandleToULong(proc->UniqueProcessId);
+            proc32->ParentProcessId = HandleToULong(proc->InheritedFromUniqueProcessId);
+#endif
             proc32->HandleCount                  = proc->HandleCount;
             proc32->SessionId                    = proc->SessionId;
+#ifndef __REACTOS__
             proc32->UniqueProcessKey             = proc->UniqueProcessKey;
             proc32->ioCounters                   = proc->ioCounters;
             put_vm_counters( &proc32->vmCounters, &proc->vmCounters, sizeof(proc32->vmCounters) );
+#endif
+#ifndef __REACTOS__
             for (i = 0; i < proc->dwThreadCount; i++)
             {
                 ti = (SYSTEM_EXTENDED_THREAD_INFORMATION *)((char *)proc->ti + i * ti_size);
@@ -190,13 +224,24 @@ static NTSTATUS put_system_proc_info( SYSTEM_PROCESS_INFORMATION32 *info32,
                     ti32->Reserved4         = ti->Reserved4;
                 }
             }
+#endif
+
+#ifndef __REACTOS__
             memcpy( (char *)proc32 + proc_len, proc->ProcessName.Buffer,
                     proc->ProcessName.MaximumLength );
+#else
+            memcpy((char *)proc32 + proc_len, proc->ImageName.Buffer, proc->ImageName.MaximumLength);
+#endif
 
             if (prev) prev->NextEntryOffset = (char *)proc32 - (char *)prev;
             prev = proc32;
         }
+
+#ifndef __REACTOS__
         outpos += proc_len + proc->ProcessName.MaximumLength;
+#else
+        outpos += proc_len + proc->ImageName.MaximumLength;
+#endif
         inpos += proc->NextEntryOffset;
         if (!proc->NextEntryOffset) break;
     }
@@ -204,7 +249,6 @@ static NTSTATUS put_system_proc_info( SYSTEM_PROCESS_INFORMATION32 *info32,
     if (outpos <= len) return STATUS_SUCCESS;
     else return STATUS_INFO_LENGTH_MISMATCH;
 }
-#endif
 
 /**********************************************************************
  *           wow64_NtDisplayString
@@ -337,9 +381,7 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
 
     switch (class)
     {
-#ifndef __REACTOS__
     case SystemPerformanceInformation:  /* SYSTEM_PERFORMANCE_INFORMATION */
-#endif
     case SystemTimeOfDayInformation:  /* SYSTEM_TIMEOFDAY_INFORMATION */
     case SystemProcessorPerformanceInformation:  /* SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION */
     case SystemInterruptInformation:  /* SYSTEM_INTERRUPT_INFORMATION */
@@ -357,6 +399,8 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
     case SystemProcessorBrandString:  /* char[] */
     case SystemProcessorFeaturesInformation:  /* SYSTEM_PROCESSOR_FEATURES_INFORMATION */
     case SystemWineVersionInformation:  /* char[] */
+#else
+    case SystemProcessorInformation:
 #endif
         return NtQuerySystemInformation( class, ptr, len, retlen );
 
@@ -383,7 +427,6 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
         if (retlen) *retlen = sizeof(SYSTEM_BASIC_INFORMATION32);
         return status;
 
-#ifndef __REACTOS__
     /* FIXME */
     case SystemProcessInformation:  /* SYSTEM_PROCESS_INFORMATION */
     case SystemExtendedProcessInformation:  /* SYSTEM_PROCESS_INFORMATION */
@@ -400,6 +443,7 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
         return put_system_proc_info( ptr, info, class == SystemExtendedProcessInformation, len, retlen );
     }
 
+#ifndef __REACTOS__
     case SystemModuleInformation:  /* RTL_PROCESS_MODULES */
         if (len >= sizeof(RTL_PROCESS_MODULES32))
         {
@@ -504,11 +548,14 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
             return status;
         }
         else return STATUS_INFO_LENGTH_MISMATCH;
-#ifndef __REACTOS__
     case SystemFileCacheInformation:   /* SYSTEM_CACHE_INFORMATION */
         if (len >= sizeof(SYSTEM_CACHE_INFORMATION32))
         {
+#ifndef __REACTOS__
             SYSTEM_CACHE_INFORMATION info;
+#else
+            SYSTEM_FILECACHE_INFORMATION info;
+#endif
             SYSTEM_CACHE_INFORMATION32 *info32 = ptr;
 
             if (!(status = NtQuerySystemInformation( class, &info, sizeof(info), NULL )))
@@ -527,7 +574,6 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
         else status = STATUS_INFO_LENGTH_MISMATCH;
         if (retlen) *retlen = sizeof(SYSTEM_CACHE_INFORMATION32);
         return status;
-#endif
     case SystemRegistryQuotaInformation:  /* SYSTEM_REGISTRY_QUOTA_INFORMATION */
         if (len >= sizeof(SYSTEM_REGISTRY_QUOTA_INFORMATION32))
         {

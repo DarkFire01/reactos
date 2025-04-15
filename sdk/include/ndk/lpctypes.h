@@ -125,8 +125,8 @@ typedef struct
 #define LPC_UNICODE_STRING UNICODE_STRING64
 #define LPC_PTR(x) LPC_PVOID
 #define LPC_PTRTYPE(x) LPC_PVOID
-#define TO_LPC_HANDLE(h) ((LPC_HANDLE)h)
-#define FROM_LPC_HANDLE(h) ((HANDLE)h)
+#define TO_LPC_HANDLE(h) ((LPC_HANDLE)(h))
+#define FROM_LPC_HANDLE(h) ((HANDLE)(h))
 
 #else
     

@@ -282,6 +282,7 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserEnumDisplaySettings);
     IMPLEMENT_SERVICE(GdiExcludeClipRect);
     IMPLEMENT_SERVICE(UserRegisterWindowMessage);
+    IMPLEMENT_SERVICE(UserQueryWindow);
 #undef IMPLEMENT_SERVICE
 }
 

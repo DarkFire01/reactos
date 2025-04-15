@@ -748,3 +748,13 @@ wow64_NtUserRegisterWindowMessage(UINT* pArgs)
     return NtUserRegisterWindowMessage(unicode_str_32to64(&MessageName, 
                                                           pMessageName32));
 }
+
+DWORD
+NTAPI
+wow64_NtUserQueryWindow(UINT* pArgs)
+{
+    HANDLE hWindow = get_handle(&pArgs);
+    DWORD nIndex = get_ulong(&pArgs);
+
+    return (DWORD)NtUserQueryWindow(hWindow, nIndex);
+}

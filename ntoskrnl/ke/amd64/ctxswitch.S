@@ -197,6 +197,10 @@ PUBLIC KiUserThreadStartupExit
     mov cl, [rsp + SwApcBypass]
 
     call KiSwapContextResume
+    
+    /* Force reloading of FS */
+    push fs
+    pop fs
 
     /* Cleanup and return */
     add rsp, 6 * 8

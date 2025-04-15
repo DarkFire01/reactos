@@ -4125,12 +4125,13 @@ StartScan:
     }
 
     /* Begin filling out the CSRSS message, first with our IDs and handles */
-    CreateProcessMsg->ProcessHandle = ProcessHandle;
-    CreateProcessMsg->ThreadHandle = ThreadHandle;
-    CreateProcessMsg->ClientId = ClientId;
+    CreateProcessMsg->ProcessHandle = TO_LPC_HANDLE(ProcessHandle);
+    CreateProcessMsg->ThreadHandle = TO_LPC_HANDLE(ThreadHandle);
+    CreateProcessMsg->ClientId.UniqueProcess = TO_LPC_HANDLE(ClientId.UniqueProcess);
+    CreateProcessMsg->ClientId.UniqueThread = TO_LPC_HANDLE(ClientId.UniqueThread);
 
     /* Write the remote PEB address and clear it locally, we no longer use it */
-    CreateProcessMsg->PebAddressNative = RemotePeb;
+    CreateProcessMsg->PebAddressNative = (LPC_PVOID)RemotePeb;
 #ifdef _WIN64
     DPRINT("TODO: WOW64 is not supported yet\n");
     CreateProcessMsg->PebAddressWow64 = 0;
@@ -4177,7 +4178,7 @@ StartScan:
          * (basesrv in particular) to know whether or not this is a GUI or a
          * TUI application.
          */
-        AddToHandle(CreateProcessMsg->ProcessHandle, 2);
+        AddToHandle(FROM_LPC_HANDLE(CreateProcessMsg->ProcessHandle), 2);
 
         /* Also check if the parent is also a GUI process */
         NtHeaders = RtlImageNtHeader(GetModuleHandle(NULL));
@@ -4185,7 +4186,7 @@ StartScan:
             (NtHeaders->OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_WINDOWS_GUI))
         {
             /* Let it know that it should display the hourglass mouse cursor */
-            AddToHandle(CreateProcessMsg->ProcessHandle, 1);
+            AddToHandle(FROM_LPC_HANDLE(CreateProcessMsg->ProcessHandle), 1);
         }
     }
 
@@ -4193,11 +4194,11 @@ StartScan:
      * Likewise, the opposite holds as well, and no-feedback has precedence. */
     if (StartupInfo.dwFlags & STARTF_FORCEONFEEDBACK)
     {
-        AddToHandle(CreateProcessMsg->ProcessHandle, 1);
+        AddToHandle(FROM_LPC_HANDLE(CreateProcessMsg->ProcessHandle), 1);
     }
     if (StartupInfo.dwFlags & STARTF_FORCEOFFFEEDBACK)
     {
-        RemoveFromHandle(CreateProcessMsg->ProcessHandle, 1);
+        RemoveFromHandle(FROM_LPC_HANDLE(CreateProcessMsg->ProcessHandle), 1);
     }
 
     /* Also store which kind of VDM app (if any) this is */
@@ -4207,7 +4208,7 @@ StartScan:
     if (VdmBinaryType)
     {
         /* Store the VDM console handle (none if inherited or WOW app) and the task ID */
-        CreateProcessMsg->hVDM = VdmTask ? NULL : Peb->ProcessParameters->ConsoleHandle;
+        CreateProcessMsg->hVDM = TO_LPC_HANDLE(VdmTask ? NULL : Peb->ProcessParameters->ConsoleHandle);
         CreateProcessMsg->VdmTask = VdmTask;
     }
     else if (VdmReserve)

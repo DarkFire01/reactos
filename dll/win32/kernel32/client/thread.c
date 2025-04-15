@@ -11,6 +11,12 @@
 
 #include <k32.h>
 
+#ifdef _M_IX86
+#include "i386/ketypes.h"
+#elif defined _M_AMD64
+#include "amd64/ketypes.h"
+#endif
+
 #define NDEBUG
 #include <debug.h>
 
@@ -34,8 +40,9 @@ BasepNotifyCsrOfThread(IN HANDLE ThreadHandle,
             ClientId->UniqueThread, ThreadHandle);
 
     /* Fill out the request */
-    CreateThreadRequest->ClientId = *ClientId;
-    CreateThreadRequest->ThreadHandle = ThreadHandle;
+    CreateThreadRequest->ClientId.UniqueProcess = TO_LPC_HANDLE(ClientId->UniqueProcess);
+    CreateThreadRequest->ClientId.UniqueThread = TO_LPC_HANDLE(ClientId->UniqueThread);
+    CreateThreadRequest->ThreadHandle = TO_LPC_HANDLE(ThreadHandle);
 
     /* Call CSR */
     CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage,
