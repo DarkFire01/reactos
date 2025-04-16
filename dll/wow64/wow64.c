@@ -391,7 +391,15 @@ Wow64Handler(ULONG syscallNum,
         WINE_WOW_IMPL_CASE(EnumerateKey);
         WINE_WOW_IMPL_CASE(EnumerateValueKey);
         WINE_WOW_IMPL_CASE(SetValueKey);
-        
+
+        /* security.c */
+        WINE_WOW_IMPL_CASE(QuerySecurityObject);
+        WINE_WOW_IMPL_CASE(QueryInformationToken);
+        WINE_WOW_IMPL_CASE(OpenProcessToken);
+        WINE_WOW_IMPL_CASE(OpenThreadToken);
+        WINE_WOW_IMPL_CASE(OpenThreadTokenEx);
+        WINE_WOW_IMPL_CASE(OpenProcessTokenEx);
+
         /* system.c */
         WINE_WOW_IMPL_CASE(QueryInformationProcess);
         WINE_WOW_IMPL_CASE(PowerInformation);
@@ -517,15 +525,10 @@ Wow64Handler(ULONG syscallNum,
         
         /* wow64.c */
         WINE_WOW_IMPL_CASE(OpenProcess);
-        WINE_WOW_IMPL_CASE(OpenProcessToken);
-        WINE_WOW_IMPL_CASE(OpenThreadToken);
-        WINE_WOW_IMPL_CASE(OpenThreadTokenEx);
-        WINE_WOW_IMPL_CASE(OpenProcessTokenEx);
         WINE_WOW_IMPL_CASE(CreateThread);
         WINE_WOW_IMPL_CASE(QueryInformationThread);
         WINE_WOW_IMPL_CASE(ResumeThread);
-        WINE_WOW_IMPL_CASE(QuerySecurityObject);
-        
+
         case NumTerminateThread:
         {
             HANDLE hThread = get_handle(&pArgs);
@@ -577,7 +580,6 @@ Wow64Handler(ULONG syscallNum,
     return status;
 }
 
-static
 WINAPI
 NTSTATUS
 wow64_NtOpenProcess(UINT* pArgs)
@@ -606,130 +608,6 @@ wow64_NtOpenProcess(UINT* pArgs)
     if (NT_SUCCESS(Status))
     {
         *pProcessHandle32 = HandleToULong(ProcessHandle);
-    }
-
-    return Status;
-}
-
-static
-WINAPI
-NTSTATUS
-wow64_NtOpenProcessTokenEx(UINT* pArgs)
-{
-    HANDLE ProcessHandle = get_handle(&pArgs);
-    ACCESS_MASK DesiredAccess = get_ulong(&pArgs);
-    ULONG HandleAttributes = get_ulong(&pArgs);
-    PULONG pTokenHandle32 = get_ptr(&pArgs);
-    
-    HANDLE TokenHandle;
-    NTSTATUS Status;
-    
-    if (pTokenHandle32 == NULL)
-    {
-        return STATUS_INVALID_PARAMETER;
-    }
-    
-    Status = NtOpenProcessTokenEx(ProcessHandle,
-                                  DesiredAccess,
-                                  HandleAttributes,
-                                  &TokenHandle);
-
-    if (NT_SUCCESS(Status))
-    {
-        *pTokenHandle32 = HandleToULong(TokenHandle);
-    }
-
-    return Status;
-}
-
-static
-WINAPI
-NTSTATUS
-wow64_NtOpenProcessToken(UINT* pArgs)
-{
-    HANDLE ProcessHandle = get_handle(&pArgs);
-    ACCESS_MASK DesiredAccess = get_ulong(&pArgs);
-    PULONG pTokenHandle32 = get_ptr(&pArgs);
-    
-    HANDLE TokenHandle;
-    NTSTATUS Status;
-    
-    if (pTokenHandle32 == NULL)
-    {
-        return STATUS_INVALID_PARAMETER;
-    }
-    
-    Status = NtOpenProcessToken(ProcessHandle,
-                                DesiredAccess,
-                                &TokenHandle);
-
-    if (NT_SUCCESS(Status))
-    {
-        *pTokenHandle32 = HandleToULong(TokenHandle);
-    }
-
-    return Status;
-}
-
-static
-WINAPI
-NTSTATUS
-wow64_NtOpenThreadTokenEx(UINT* pArgs)
-{
-    HANDLE ThreadHandle = get_handle(&pArgs);
-    ACCESS_MASK DesiredAccess = get_ulong(&pArgs);
-    BOOLEAN OpenAsSelf = get_ulong(&pArgs);
-    ULONG HandleAttributes = get_ulong(&pArgs);
-    PULONG pTokenHandle32 = get_ptr(&pArgs);
-    
-    HANDLE TokenHandle;
-    NTSTATUS Status;
-    
-    if (pTokenHandle32 == NULL)
-    {
-        return STATUS_INVALID_PARAMETER;
-    }
-    
-    Status = NtOpenThreadTokenEx(ThreadHandle,
-                                 DesiredAccess,
-                                 OpenAsSelf,
-                                 HandleAttributes,
-                                 &TokenHandle);
-
-    if (NT_SUCCESS(Status))
-    {
-        *pTokenHandle32 = HandleToULong(TokenHandle);
-    }
-
-    return Status;
-}
-
-static
-WINAPI
-NTSTATUS
-wow64_NtOpenThreadToken(UINT* pArgs)
-{
-    HANDLE ThreadHandle = get_handle(&pArgs);
-    ACCESS_MASK DesiredAccess = get_ulong(&pArgs);
-    BOOLEAN OpenAsSelf = get_ulong(&pArgs);
-    PULONG pTokenHandle32 = get_ptr(&pArgs);
-    
-    HANDLE TokenHandle;
-    NTSTATUS Status;
-    
-    if (pTokenHandle32 == NULL)
-    {
-        return STATUS_INVALID_PARAMETER;
-    }
-    
-    Status = NtOpenThreadToken(ThreadHandle,
-                               DesiredAccess,
-                               OpenAsSelf,
-                               &TokenHandle);
-
-    if (NT_SUCCESS(Status))
-    {
-        *pTokenHandle32 = HandleToULong(TokenHandle);
     }
 
     return Status;
@@ -807,7 +685,6 @@ wow64_NtCreateThread(UINT* pArgs)
     return Status;
 }
 
-static
 NTSTATUS
 NTAPI
 wow64_NtResumeThread(UINT* pArgs)
@@ -818,7 +695,6 @@ wow64_NtResumeThread(UINT* pArgs)
     return NtResumeThread(hThread, pSuspendCount);
 }
 
-static
 NTSTATUS
 NTAPI
 wow64_NtQueryInformationThread(UINT* pArgs)
@@ -882,23 +758,6 @@ wow64_NtQueryInformationThread(UINT* pArgs)
 
     DPRINT1("Invalid class %X given to " __FUNCTION__ ", investigate. \n", InfoClass);
     return STATUS_INVALID_INFO_CLASS;
-}
-
-NTSTATUS
-NTAPI
-wow64_NtQuerySecurityObject(UINT* pArgs)
-{
-    HANDLE hObject = get_handle(&pArgs);
-    SECURITY_INFORMATION SecurInfo = get_ulong(&pArgs);
-    SECURITY_DESCRIPTOR* pSecurDescr32 = get_ptr(&pArgs);
-    ULONG Length32 = get_ulong(&pArgs);
-    PULONG pLengthNeeded32 = get_ptr(&pArgs);
-
-    return NtQuerySecurityObject(hObject,
-                                 SecurInfo,
-                                 pSecurDescr32,
-                                 Length32,
-                                 pLengthNeeded32);
 }
 
 BOOL

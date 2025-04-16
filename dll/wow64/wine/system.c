@@ -960,11 +960,13 @@ NTSTATUS WINAPI wow64_NtSystemDebugControl( UINT *args )
     case SysDbgGetTriageDump:
     case SysDbgGetKdBlockEnable:
     case SysDbgSetKdBlockEnable:
+#ifndef __REACTOS__
     case SysDbgRegisterForUmBreakInfo:
     case SysDbgGetUmBreakPid:
     case SysDbgClearUmBreakPid:
     case SysDbgGetUmAttachPid:
     case SysDbgClearUmAttachPid:
+#endif
         return NtSystemDebugControl( command, in_buf, in_len, out_buf, out_len, retlen );
 
     default:
