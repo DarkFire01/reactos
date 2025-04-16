@@ -37,7 +37,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
                                        (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), 
                                        NULL);      // Pointer not needed.
                                        
-        printf("%p hwnd button\n", hwndButton);
+        //printf("%p hwnd button\n", hwndButton);
+        (VOID) hwndButton;
     }
     else if (msg == WM_CLOSE)
     {
@@ -85,19 +86,29 @@ void Print(const wchar_t* wszBuffer)
     WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE), wszBuffer, i, NULL, NULL);
 }
 
+static
+DWORD
+WINAPI
+ThreadTest(PVOID p)
+{
+    __debugbreak();
+    printf("ngutrgrgrgjnnrg\n");
+    return 69;
+}
+
 int wmainCRTStartup()
 {
     AllocConsole();
-    
-    __debugbreak();
+
+    printf("W");
+    CreateThread(NULL, 0x4000, ThreadTest, NULL, 0, NULL);
     
     WCHAR wszHello[] = L"Hello World!";
     SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS);
     
-    Print(wszHello);
+    //Print(wszHello);
     
     DelayLoadUser32();
-    Print(L"Hello2\n");
     
     WNDCLASSW wndClass = { 0 };
     wndClass.hInstance = (HINSTANCE)GetModuleHandle(NULL);
@@ -110,8 +121,6 @@ int wmainCRTStartup()
     
     HWND result = pCreateWindowExW(0, wszHello, wszHello, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, wndClass.hInstance, NULL);
     
-    Print(L"Hello2.5\n");
-    
     if (result == 0 || result == INVALID_HANDLE_VALUE)
     {
         return -1;
@@ -121,8 +130,6 @@ int wmainCRTStartup()
     pShowWindow(result, 1);
     
     MSG msg;
-    
-    Print(L"Hello3\n");
     
     while(pGetMessageW(&msg, 0, 0, 0))
     {

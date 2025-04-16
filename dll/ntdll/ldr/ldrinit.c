@@ -573,7 +573,6 @@ LdrpInitializeThread(IN PCONTEXT Context)
         }
         
         pWow64LdrpInitialize(Context);
-        __debugbreak();
         return;
     }
 #endif

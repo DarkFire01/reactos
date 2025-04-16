@@ -524,6 +524,7 @@ Wow64Handler(ULONG syscallNum,
         WINE_WOW_IMPL_CASE(CreateThread);
         WINE_WOW_IMPL_CASE(QueryInformationThread);
         WINE_WOW_IMPL_CASE(ResumeThread);
+        WINE_WOW_IMPL_CASE(QuerySecurityObject);
         
         case NumTerminateThread:
         {
@@ -881,6 +882,23 @@ wow64_NtQueryInformationThread(UINT* pArgs)
 
     DPRINT1("Invalid class %X given to " __FUNCTION__ ", investigate. \n", InfoClass);
     return STATUS_INVALID_INFO_CLASS;
+}
+
+NTSTATUS
+NTAPI
+wow64_NtQuerySecurityObject(UINT* pArgs)
+{
+    HANDLE hObject = get_handle(&pArgs);
+    SECURITY_INFORMATION SecurInfo = get_ulong(&pArgs);
+    SECURITY_DESCRIPTOR* pSecurDescr32 = get_ptr(&pArgs);
+    ULONG Length32 = get_ulong(&pArgs);
+    PULONG pLengthNeeded32 = get_ptr(&pArgs);
+
+    return NtQuerySecurityObject(hObject,
+                                 SecurInfo,
+                                 pSecurDescr32,
+                                 Length32,
+                                 pLengthNeeded32);
 }
 
 BOOL

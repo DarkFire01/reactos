@@ -758,3 +758,13 @@ wow64_NtUserQueryWindow(UINT* pArgs)
 
     return (DWORD)NtUserQueryWindow(hWindow, nIndex);
 }
+
+NTSTATUS
+NTAPI
+wow64_NtUserGetGuiResources(UINT* pArgs)
+{
+    HANDLE hProcess = get_handle(&pArgs);
+    DWORD uiFlags = get_ulong(&pArgs);
+
+    return NtUserGetGuiResources(hProcess, uiFlags);
+}

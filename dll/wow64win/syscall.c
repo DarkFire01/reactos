@@ -283,6 +283,7 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(GdiExcludeClipRect);
     IMPLEMENT_SERVICE(UserRegisterWindowMessage);
     IMPLEMENT_SERVICE(UserQueryWindow);
+    IMPLEMENT_SERVICE(UserGetGuiResources);
 #undef IMPLEMENT_SERVICE
 }
 
