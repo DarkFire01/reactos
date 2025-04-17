@@ -192,7 +192,7 @@ static BOOL GetMenuItemInfo_common ( HMENU hmenu,
 	lpmii->fType = pItem->fType & MENUITEMINFO_TYPE_MASK;
         if (pItem->hbmp && !IS_MAGIC_BITMAP(pItem->hbmp))
             lpmii->fType |= MFT_BITMAP;
-	lpmii->hbmpItem = pItem->hbmp; /* not on Win9x/ME */
+	lpmii->hbmpItem = WOW64_CAST_TO_HANDLE(pItem->hbmp); /* not on Win9x/ME */
         if( lpmii->fType & MFT_BITMAP)
         {
 	    lpmii->dwTypeData = (LPWSTR) pItem->hbmp;
@@ -257,7 +257,7 @@ static BOOL GetMenuItemInfo_common ( HMENU hmenu,
 	lpmii->fType = pItem->fType & MENUITEMINFO_TYPE_MASK;
 
     if (lpmii->fMask & MIIM_BITMAP)
-	lpmii->hbmpItem = pItem->hbmp;
+	lpmii->hbmpItem = WOW64_CAST_TO_HANDLE(pItem->hbmp);
 
     if (lpmii->fMask & MIIM_STATE)
 	lpmii->fState = pItem->fState & MENUITEMINFO_STATE_MASK;
@@ -280,8 +280,8 @@ static BOOL GetMenuItemInfo_common ( HMENU hmenu,
 
     if (lpmii->fMask & MIIM_CHECKMARKS)
     {
-	lpmii->hbmpChecked = pItem->hbmpChecked;
-	lpmii->hbmpUnchecked = pItem->hbmpUnchecked;
+	lpmii->hbmpChecked = WOW64_CAST_TO_HANDLE(pItem->hbmpChecked);
+    lpmii->hbmpUnchecked = WOW64_CAST_TO_HANDLE(pItem->hbmpUnchecked);
     }
     if (lpmii->fMask & MIIM_DATA)
 	lpmii->dwItemData = pItem->dwItemData;
@@ -932,7 +932,7 @@ GetMenuInfo(HMENU hmenu,
      return FALSE;
 
   if (lpcmi->fMask & MIM_BACKGROUND)
-      lpcmi->hbrBack = pMenu->hbrBack;
+      lpcmi->hbrBack = WOW64_CAST_TO_HANDLE(pMenu->hbrBack);
 
   if (lpcmi->fMask & MIM_HELPID)
       lpcmi->dwContextHelpID = pMenu->dwContextHelpId;

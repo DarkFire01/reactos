@@ -266,9 +266,15 @@ C_ASSERT(offsetof(IMC, hImeWnd) == 0x1c);
 typedef struct _PROCDESKHEAD
 {
     HEAD;
+#ifndef _WOW64
     DWORD_PTR hTaskWow;
     struct _DESKTOP *rpdesk;
     PVOID pSelf;
+#else
+    UINT64 hTaskWow;
+    UINT64 rpdesk;
+    UINT64 pSelf;
+#endif
 } PROCDESKHEAD, *PPROCDESKHEAD;
 
 typedef struct _PROCMARKHEAD
@@ -429,12 +435,23 @@ typedef struct tagITEM
     UINT fType;
     UINT fState;
     UINT wID;
+#ifndef _WOW64
     struct tagMENU *spSubMenu; /* Pop-up menu. */
     HANDLE hbmpChecked;
     HANDLE hbmpUnchecked;
     USHORT *Xlpstr; /* Item text pointer. */
+#else
+    UINT64 spSubMenu;
+    UINT64 hbmpChecked;
+    UINT64 hbmpUnchecked;
+    UINT64 Xlpstr;
+#endif
     ULONG cch;
+#ifndef _WOW64
     DWORD_PTR dwItemData;
+#else
+    UINT64 dwItemData;
+#endif
     ULONG xItem; /* Item position. left */
     ULONG yItem; /*     "          top */
     ULONG cxItem; /* Item Size Width */
@@ -442,11 +459,19 @@ typedef struct tagITEM
     ULONG dxTab; /* X position of text after Tab */
     ULONG ulX; /* underline.. start position */
     ULONG ulWidth; /* underline.. width */
+#ifndef _WOW64
     HBITMAP hbmp; /* bitmap */
+#else
+    UINT64 hbmp;
+#endif
     INT cxBmp; /* Width Maximum size of the bitmap items in MIIM_BITMAP state */
     INT cyBmp; /* Height " */
     /* ReactOS */
+#ifndef _WOW64
     UNICODE_STRING lpstr;
+#else
+    UNICODE_STRING64 lpstr;
+#endif
 } ITEM, *PITEM;
 
 typedef struct tagMENULIST
@@ -479,19 +504,39 @@ typedef struct tagMENU
     ULONG cxMenu; /* Width of the whole menu */
     ULONG cyMenu; /* Height of the whole menu */
     ULONG cxTextAlign; /* Offset of text when items have both bitmaps and text */
+#ifndef _WOW64
     struct _WND *spwndNotify; /* window receiving the messages for ownerdraw */
     PITEM rgItems; /* Array of menu items */
     struct tagMENULIST *pParentMenus; /* If this is SubMenu, list of parents. */
+#else
+    UINT64 spwndNotify;
+    UINT64 rgItems;
+    UINT64 pParentMenus;
+#endif
     DWORD dwContextHelpId;
     ULONG cyMax; /* max height of the whole menu, 0 is screen height */
+#ifndef _WOW64
     DWORD_PTR dwMenuData; /* application defined value */
     HBRUSH hbrBack; /* brush for menu background */
+#else
+    UINT64 dwMenuData;
+    UINT64 hbrBack;
+#endif
     INT iTop; /* Current scroll position Top */
     INT iMaxTop; /* Current scroll position Max Top */
+#ifndef _WOW64
     DWORD dwArrowsOn:2; /* Arrows: 0 off, 1 on, 2 to the top, 3 to the bottom. */
-    /* ReactOS */
+#else
+    UINT64 dwArrowsOn : 2;
+#endif
+/* ReactOS */
+#ifndef _WOW64
     LIST_ENTRY ListEntry;
     HWND hWnd; /* Window containing the menu, use POPUPMENU */
+#else
+    LIST_ENTRY64 ListEntry;
+    UINT64 hWnd;
+#endif
     BOOL TimeToHide;
 } MENU, *PMENU;
 
