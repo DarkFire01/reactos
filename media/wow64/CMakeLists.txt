@@ -1,5 +1,0 @@
-add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/ntdll.dll DESTINATION reactos/SysWOW64 FOR all)
-add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/ntdll32.dll DESTINATION reactos/SysWOW64 FOR all)
-#add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/kernel32.dll DESTINATION reactos/SysWOW64 FOR all)
-#add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/advapi32.dll DESTINATION reactos/SysWOW64 FOR all)
-#add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/user32.dll DESTINATION reactos/SysWOW64 FOR all)

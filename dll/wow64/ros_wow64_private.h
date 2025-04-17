@@ -299,7 +299,10 @@ static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer
 {
     static const WOW64_PATH_REDIRECTION Redirections[] = 
     {
+    /* TODO: system directory shouldn't be hardcoded here */
 #define REDIRECTION(From, To) { RTL_CONSTANT_STRING(From), RTL_CONSTANT_STRING(To) }
+        REDIRECTION(L"\\??\\C:\\reactos\\system32", L"\\??\\" TMP_WOW_DIR),
+        REDIRECTION(L"\\??\\C:\\reactos\\winsxs", L"\\??\\" TMP_WOW_DIR L"\\winsxs"),
         REDIRECTION(L"\\??\\X:\\reactos\\system32", L"\\??\\" TMP_WOW_DIR),
         REDIRECTION(L"\\??\\X:\\reactos\\winsxs", L"\\??\\" TMP_WOW_DIR L"\\winsxs"),
         REDIRECTION(L"\\KnownDlls", L"\\KnownDlls32")
