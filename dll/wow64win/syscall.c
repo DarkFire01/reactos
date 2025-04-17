@@ -284,6 +284,10 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserRegisterWindowMessage);
     IMPLEMENT_SERVICE(UserQueryWindow);
     IMPLEMENT_SERVICE(UserGetGuiResources);
+    IMPLEMENT_SERVICE(UserCheckMenuItem);
+    IMPLEMENT_SERVICE(UserShowWindowAsync);
+    IMPLEMENT_SERVICE(GdiExtCreatePen);
+    IMPLEMENT_SERVICE(UserWindowFromPoint);
 #undef IMPLEMENT_SERVICE
 }
 

@@ -1939,6 +1939,7 @@ NTSTATUS WINAPI wow64_NtUserChangeDisplaySettings( UINT *args )
     return NtUserChangeDisplaySettings( unicode_str_32to64( &devname, devname32 ),
                                         devmode, hwnd, flags, lparam );
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserCheckMenuItem( UINT *args )
 {
@@ -1949,6 +1950,7 @@ NTSTATUS WINAPI wow64_NtUserCheckMenuItem( UINT *args )
     return NtUserCheckMenuItem( handle, id, flags );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserChildWindowFromPointEx( UINT *args )
 {
     HWND parent = get_handle( &args );
@@ -4838,7 +4840,6 @@ NTSTATUS WINAPI wow64_NtUserShowWindow( UINT *args )
     return NtUserShowWindow( hwnd, cmd );
 }
 
-#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserShowWindowAsync( UINT *args )
 {
     HWND hwnd = get_handle( &args );
@@ -4847,6 +4848,7 @@ NTSTATUS WINAPI wow64_NtUserShowWindowAsync( UINT *args )
     return NtUserShowWindowAsync( hwnd, cmd );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserSwitchDesktop( UINT *args )
 {
     HDESK handle = get_handle( &args );
@@ -5267,6 +5269,7 @@ NTSTATUS WINAPI wow64_NtUserWindowFromDC( UINT *args )
 
     return HandleToUlong( NtUserWindowFromDC( hdc ));
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserWindowFromPoint( UINT *args )
 {
@@ -5276,6 +5279,7 @@ NTSTATUS WINAPI wow64_NtUserWindowFromPoint( UINT *args )
     return HandleToUlong( NtUserWindowFromPoint( x, y ));
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserDisplayConfigGetDeviceInfo( UINT *args )
 {
     DISPLAYCONFIG_DEVICE_INFO_HEADER *packet = get_ptr( &args );

@@ -401,7 +401,32 @@ NTSTATUS
 WINAPI
 wow64win_NtUser32CallLPKFromKernel(PVOID Arguments, ULONG ArgumentLength)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    PLPK_CALLBACK_ARGUMENTS32 pLpk32;
+    PLPK_CALLBACK_ARGUMENTS pLpk64;
+
+    NTSTATUS Status;
+    PVOID pResult;
+    ULONG nRetLen;
+
+    pLpk32 = (PLPK_CALLBACK_ARGUMENTS32)Arguments;
+    pLpk64 = (PLPK_CALLBACK_ARGUMENTS)Arguments;
+
+    pLpk32->lpString = PtrToUlong(pLpk64->lpString);
+    pLpk32->hdc = HandleToUlong(pLpk64->hdc);
+    pLpk32->x = pLpk64->x;
+    pLpk32->y = pLpk64->y;
+    pLpk32->flags = pLpk64->flags;
+    pLpk32->rect = pLpk64->rect;
+    pLpk32->count = pLpk64->count;
+    pLpk32->bRect = pLpk64->bRect;
+
+    Status = Wow64KiUserCallbackDispatcher(NumUser32CallLPKFromKernel,
+                                           pLpk32,
+                                           ArgumentLength,
+                                           &pResult,
+                                           &nRetLen);
+    
+    return NtCallbackReturn(pResult, nRetLen, Status);
 }
 
 NTSTATUS
