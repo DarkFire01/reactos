@@ -230,22 +230,12 @@ NTSTATUS WINAPI wow64_NtNotifyChangeKey( UINT *args )
     ULONG len = get_ulong( &args );
     BOOLEAN async = get_ulong( &args );
 
-#ifndef __REACTOS__
     IO_STATUS_BLOCK io;
-#else
-    PWOW64_APC32_DATA pApcData = Wow64PrepareApcData(apc, apc_param, io32);
-#endif
     NTSTATUS status;
 
-#ifndef __REACTOS__
     status = NtNotifyChangeKey( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
                                 iosb_32to64( &io, io32 ), filter, subtree, buffer, len, async );
     put_iosb( io32, &io );
-#else
-    status = NtNotifyChangeKey( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
-                                iosb_32to64( &pApcData->Iosb64, io32 ), filter, subtree, buffer, len, async );
-    put_iosb( io32, &pApcData->Iosb64 );
-#endif
     return status;
 }
 
@@ -269,24 +259,13 @@ NTSTATUS WINAPI wow64_NtNotifyChangeMultipleKeys( UINT *args )
     BOOLEAN async = get_ulong( &args );
 
     struct object_attr64 attr;
-#ifndef __REACTOS__
     IO_STATUS_BLOCK io;
-#else
-    PWOW64_APC32_DATA pApcData = Wow64PrepareApcData(apc, apc_param, io32);
-#endif
     NTSTATUS status;
 
-#ifndef __REACTOS__
     status = NtNotifyChangeMultipleKeys( handle, count, objattr_32to64( &attr, attr32 ), event,
                                          apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
                                          iosb_32to64( &io, io32 ), filter, subtree, buffer, len, async );
     put_iosb( io32, &io );
-#else
-    status = NtNotifyChangeMultipleKeys( handle, count, objattr_32to64( &attr, attr32 ), event,
-                                         apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
-                                         iosb_32to64( &pApcData->Iosb64, io32 ), filter, subtree, buffer, len, async );
-    put_iosb( io32, &pApcData->Iosb64 );
-#endif
     return status;
 }
 

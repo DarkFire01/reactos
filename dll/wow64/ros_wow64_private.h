@@ -349,75 +349,19 @@ typedef struct _INITIAL_TEB32
 
 typedef IO_STATUS_BLOCK32 *PIO_STATUS_BLOCK32;
 
-typedef struct _WOW64_APC32_DATA
+static inline void *
+apc_32to64(ULONG func)
 {
-    ULONG Apc32;
-    ULONG Apc32Param;
-    PIO_STATUS_BLOCK32 pIosb32;
-    IO_STATUS_BLOCK Iosb64;
-} WOW64_APC32_DATA, *PWOW64_APC32_DATA;
-
-static
-ULONG_PTR
-Wow64ApcHandler(PWOW64_APC32_DATA pApcData,
-                PIO_STATUS_BLOCK pIoStatusBlock,
-                ULONG Reserved)
-{
-    ULONG_PTR Result = 0;
-    IO_STATUS_BLOCK32 Iosb;
-    struct
-    {
-        ULONG Param;
-        PIO_STATUS_BLOCK32 Iosb;
-        ULONG Reserved;
-    } ApcParams;
-
-    ASSERT(pApcData);
-
-    if (pApcData->Apc32)
-    {
-        Iosb.Status = pIoStatusBlock->Status;
-        Iosb.Information = pIoStatusBlock->Information;
-        ApcParams.Iosb = &Iosb;
-        ApcParams.Param = pApcData->Apc32Param;
-        ApcParams.Reserved = Reserved;
-
-        Result = Call32(pApcData->Apc32, sizeof(ApcParams) / sizeof(ULONG), (PULONG)&ApcParams);
-    }
-    
-    if (pApcData->pIosb32)
-    {
-        pApcData->pIosb32->Status = pIoStatusBlock->Status;
-        pApcData->pIosb32->Information = pIoStatusBlock->Information;
-    }
-    
-    RtlFreeHeap(RtlGetProcessHeap(), 0, pApcData);
-    return Result;
+    /* UNIMPLEMENTED */
+    return NULL;
 }
 
-static
-PWOW64_APC32_DATA
-Wow64PrepareApcData(ULONG Apc32,
-                    ULONG Param,
-                    PIO_STATUS_BLOCK32 pIosb32)
+static inline void *
+apc_param_32to64(ULONG func, ULONG context)
 {
-    PWOW64_APC32_DATA pApcData = RtlAllocateHeap(RtlGetProcessHeap(), 0, sizeof(WOW64_APC32_DATA));
-
-    ASSERT(pApcData);
-
-    pApcData->Apc32 = Apc32;
-    pApcData->Apc32Param = Param;
-    pApcData->pIosb32 = pIosb32;
-
-    return pApcData;
-}
-
-static 
-inline 
-void* 
-GetApc64ForIoOperation(ULONG Apc32)
-{
-    return Wow64ApcHandler;
+    if (!func)
+        return ULongToPtr(context);
+    return (void *)(ULONG_PTR)(((ULONG64)func << 32) | context);
 }
 
 static inline IO_STATUS_BLOCK *iosb_32to64( IO_STATUS_BLOCK *io, IO_STATUS_BLOCK32 *io32 )
@@ -426,9 +370,6 @@ static inline IO_STATUS_BLOCK *iosb_32to64( IO_STATUS_BLOCK *io, IO_STATUS_BLOCK
     io->Pointer = io32;
     return io;
 }
-
-#define apc_param_32to64(func, context) (pApcData)
-#define apc_32to64(func) GetApc64ForIoOperation(func)
 
 static inline void put_iosb( IO_STATUS_BLOCK32 *io32, const IO_STATUS_BLOCK *io )
 {

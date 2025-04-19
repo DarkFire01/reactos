@@ -1628,9 +1628,6 @@ NTSTATUS WINAPI wow64_NtSetTimer( UINT *args )
     BOOLEAN resume = get_ulong( &args );
     ULONG period = get_ulong( &args );
     BOOLEAN *state = get_ptr( &args );
-#ifdef __REACTOS__
-    PWOW64_APC32_DATA pApcData = Wow64PrepareApcData(apc, apc_param, NULL);
-#endif
 
     return NtSetTimer( handle, when, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
                        resume, period, state );
