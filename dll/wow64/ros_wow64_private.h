@@ -372,8 +372,6 @@ Wow64ApcHandler(PWOW64_APC32_DATA pApcData,
         ULONG Reserved;
     } ApcParams;
 
-    __debugbreak();
-
     ASSERT(pApcData);
 
     if (pApcData->Apc32)
