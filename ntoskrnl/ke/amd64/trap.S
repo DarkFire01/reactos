@@ -830,6 +830,13 @@ PUBLIC KiSystemCallEntry64
     mov [rsp + MAX_SYSCALL_PARAM_SIZE + KTRAP_FRAME_EFlags], r11
     mov [rsp + MAX_SYSCALL_PARAM_SIZE + KTRAP_FRAME_Rbp], rbp
 
+    /* Set the trapframe cs register to a fixed 64-bit, usermode selector
+       (when returning with a sysret cs is loaded with this selector anyway,
+       but we have to make sure we're not writing garbage/outdated values to cs
+       when starting user APCs) */
+    mov rax, HEX(33)
+    mov [rsp + MAX_SYSCALL_PARAM_SIZE + KTRAP_FRAME_SegCs], rax
+
     /* Store user stack pointer in the trap frame */
     mov rax, gs:[PcUserRsp]
     mov [rsp + MAX_SYSCALL_PARAM_SIZE + KTRAP_FRAME_Rsp], rax

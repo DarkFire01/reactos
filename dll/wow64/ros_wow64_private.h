@@ -359,85 +359,78 @@ typedef struct _WOW64_APC32_DATA
 
 static
 ULONG_PTR
-Wow64ApcHandler(PWOW64_APC32_DATA pApcData)
+Wow64ApcHandler(PWOW64_APC32_DATA pApcData,
+                PIO_STATUS_BLOCK pIoStatusBlock,
+                ULONG Reserved)
 {
     ULONG_PTR Result = 0;
-    
+    IO_STATUS_BLOCK32 Iosb;
+    struct
+    {
+        ULONG Param;
+        PIO_STATUS_BLOCK32 Iosb;
+        ULONG Reserved;
+    } ApcParams;
+
+    __debugbreak();
+
     ASSERT(pApcData);
-    
+
     if (pApcData->Apc32)
     {
-        Result = Call32(pApcData->Apc32, 1, &pApcData->Apc32Param);
+        Iosb.Status = pIoStatusBlock->Status;
+        Iosb.Information = pIoStatusBlock->Information;
+        ApcParams.Iosb = &Iosb;
+        ApcParams.Param = pApcData->Apc32Param;
+        ApcParams.Reserved = Reserved;
+
+        Result = Call32(pApcData->Apc32, sizeof(ApcParams) / sizeof(ULONG), (PULONG)&ApcParams);
     }
     
     if (pApcData->pIosb32)
     {
-        pApcData->pIosb32->Status = pApcData->Iosb64.Status;
-        pApcData->pIosb32->Information = pApcData->Iosb64.Information;
+        pApcData->pIosb32->Status = pIoStatusBlock->Status;
+        pApcData->pIosb32->Information = pIoStatusBlock->Information;
     }
     
     RtlFreeHeap(RtlGetProcessHeap(), 0, pApcData);
     return Result;
 }
 
-static 
-inline 
-void* 
-GetApc64ForIoOperation(ULONG Apc32, 
-                       HANDLE hEvent)
+static
+PWOW64_APC32_DATA
+Wow64PrepareApcData(ULONG Apc32,
+                    ULONG Param,
+                    PIO_STATUS_BLOCK32 pIosb32)
 {
-    if (!Apc32 && !hEvent)
-    {
-        return NULL;
-    }
-    
-    return Wow64ApcHandler;
+    PWOW64_APC32_DATA pApcData = RtlAllocateHeap(RtlGetProcessHeap(), 0, sizeof(WOW64_APC32_DATA));
+
+    ASSERT(pApcData);
+
+    pApcData->Apc32 = Apc32;
+    pApcData->Apc32Param = Param;
+    pApcData->pIosb32 = pIosb32;
+
+    return pApcData;
 }
 
 static 
 inline 
 void* 
-GetApcParam64ForIoOperation(ULONG Apc32,
-                            HANDLE hEvent,
-                            ULONG Param,
-                            PIO_STATUS_BLOCK32 pIosb32,
-                             /* This is serious preprocessor abuse*/
-                            PIO_STATUS_BLOCK pIosb64)
+GetApc64ForIoOperation(ULONG Apc32)
 {
-    PWOW64_APC32_DATA pApcData = NULL;
-   
-    if (Apc32 || hEvent)
-    {
-        pApcData = RtlAllocateHeap(RtlGetProcessHeap(), 
-                                   0, 
-                                   sizeof(WOW64_APC32_DATA));
-
-        ASSERT(pApcData);
-
-        pApcData->Apc32 = Apc32;
-        pApcData->Apc32Param = Param;
-        pApcData->pIosb32 = pIosb32;
-    }
-    
-    pIosb64->Pointer = pApcData;
-    
-    return pApcData;
+    return Wow64ApcHandler;
 }
 
 static inline IO_STATUS_BLOCK *iosb_32to64( IO_STATUS_BLOCK *io, IO_STATUS_BLOCK32 *io32 )
 {
     if (!io32) return NULL;
-    if (io->Pointer)
-    {
-        return &(((PWOW64_APC32_DATA)io->Pointer)->Iosb64);
-    }
     io->Pointer = io32;
     return io;
 }
 
-/* TODO: refactor into less of a hack */
-#define apc_param_32to64(func, context) GetApcParam64ForIoOperation(func, event, context, io32, &io)
-#define apc_32to64(func) GetApc64ForIoOperation(func, event)
+#define apc_param_32to64(func, context) (pApcData)
+#define apc_32to64(func) GetApc64ForIoOperation(func)
 
 static inline void put_iosb( IO_STATUS_BLOCK32 *io32, const IO_STATUS_BLOCK *io )
 {

@@ -444,13 +444,19 @@ NTSTATUS WINAPI wow64_NtDeviceIoControlFile( UINT *args )
 #ifndef __REACTOS__
     IO_STATUS_BLOCK io;
 #else
-    IO_STATUS_BLOCK io = { 0 };
+    PWOW64_APC32_DATA pApcData = Wow64PrepareApcData(apc, apc_param, io32);
 #endif
     NTSTATUS status;
 
+#ifndef __REACTOS__
     status = NtDeviceIoControlFile( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
                                     iosb_32to64( &io, io32 ), code, in_buf, in_len, out_buf, out_len );
     put_iosb( io32, &io );
+#else
+    status = NtDeviceIoControlFile( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
+                                    iosb_32to64( &pApcData->Iosb64, io32 ), code, in_buf, in_len, out_buf, out_len );
+    put_iosb( io32, &pApcData->Iosb64 );
+#endif
     return status;
 }
 
@@ -521,13 +527,19 @@ NTSTATUS WINAPI wow64_NtFsControlFile( UINT *args )
 #ifndef __REACTOS__
     IO_STATUS_BLOCK io;
 #else
-    IO_STATUS_BLOCK io = { 0 };
+    PWOW64_APC32_DATA pApcData = Wow64PrepareApcData(apc, apc_param, io32);
 #endif
     NTSTATUS status;
 
+#ifndef __REACTOS__
     status = NtFsControlFile( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
                               iosb_32to64( &io, io32 ), code, in_buf, in_len, out_buf, out_len );
     put_iosb( io32, &io );
+#else
+    status = NtFsControlFile( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
+                              iosb_32to64( &pApcData->Iosb64, io32 ), code, in_buf, in_len, out_buf, out_len );
+    put_iosb( io32, &pApcData->Iosb64 );
+#endif
     return status;
 }
 
@@ -555,13 +567,20 @@ NTSTATUS WINAPI wow64_NtLockFile( UINT *args )
 #ifndef __REACTOS__
     IO_STATUS_BLOCK io;
 #else
-    IO_STATUS_BLOCK io = { 0 };
+    PWOW64_APC32_DATA pApcData = Wow64PrepareApcData(apc, apc_param, io32);
 #endif
     NTSTATUS status;
 
+#ifndef __REACTOS__
     status = NtLockFile( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
                          iosb_32to64( &io, io32 ), offset, count, key, dont_wait, exclusive );
     put_iosb( io32, &io );
+#else
+    status = NtLockFile( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
+                         iosb_32to64( &pApcData->Iosb64, io32 ), offset, count, key, dont_wait, exclusive );
+    put_iosb( io32, &pApcData->Iosb64 );
+
+#endif
     return status;
 }
 
@@ -584,14 +603,21 @@ NTSTATUS WINAPI wow64_NtNotifyChangeDirectoryFile( UINT *args )
 #ifndef __REACTOS__
     IO_STATUS_BLOCK io;
 #else
-    IO_STATUS_BLOCK io = { 0 };
+    PWOW64_APC32_DATA pApcData = Wow64PrepareApcData(apc, apc_param, io32);
 #endif
     NTSTATUS status;
 
+#ifndef __REACTOS__
     status = NtNotifyChangeDirectoryFile( handle, event, apc_32to64( apc ),
                                           apc_param_32to64( apc, apc_param ), iosb_32to64( &io, io32 ),
                                           buffer, len, filter, subtree );
     put_iosb( io32, &io );
+#else
+    status = NtNotifyChangeDirectoryFile( handle, event, apc_32to64( apc ),
+                                          apc_param_32to64( apc, apc_param ), iosb_32to64( &pApcData->Iosb64, io32 ),
+                                          buffer, len, filter, subtree );
+    put_iosb( io32, &pApcData->Iosb64 );
+#endif
     return status;
 }
 
@@ -670,14 +696,21 @@ NTSTATUS WINAPI wow64_NtQueryDirectoryFile( UINT *args )
 #ifndef __REACTOS__
     IO_STATUS_BLOCK io;
 #else
-    IO_STATUS_BLOCK io = { 0 };
+    PWOW64_APC32_DATA pApcData = Wow64PrepareApcData(apc, apc_param, io32);
 #endif
     NTSTATUS status;
 
+#ifndef __REACTOS__
     status = NtQueryDirectoryFile( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
                                    iosb_32to64( &io, io32 ), buffer, len, class, single_entry,
                                    unicode_str_32to64( &mask, mask32 ), restart_scan );
     put_iosb( io32, &io );
+#else
+    status = NtQueryDirectoryFile( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
+                                   iosb_32to64( &pApcData->Iosb64, io32 ), buffer, len, class, single_entry,
+                                   unicode_str_32to64( &mask, mask32 ), restart_scan );
+    put_iosb( io32, &pApcData->Iosb64 );
+#endif
     return status;
 }
 
@@ -795,17 +828,18 @@ NTSTATUS WINAPI wow64_NtReadFile( UINT *args )
 #ifndef __REACTOS__
     IO_STATUS_BLOCK io;
 #else
-    IO_STATUS_BLOCK io = { 0 };
+    PWOW64_APC32_DATA pApcData = Wow64PrepareApcData(apc, apc_param, io32);
 #endif
     NTSTATUS status;
 
 #ifndef __REACTOS__
     if (pBTCpuNotifyReadFile) pBTCpuNotifyReadFile( handle, buffer, len, FALSE, 0 );
-#endif
     status = NtReadFile( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
                          iosb_32to64( &io, io32 ), buffer, len, offset, key );
-#ifndef __REACTOS__
     if (pBTCpuNotifyReadFile) pBTCpuNotifyReadFile( handle, buffer, len, TRUE, status );
+#else
+    status = NtReadFile( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
+                         iosb_32to64( &pApcData->Iosb64, io32 ), buffer, len, offset, key );
 #endif
 
 #if 0
@@ -825,7 +859,11 @@ NTSTATUS WINAPI wow64_NtReadFile( UINT *args )
 #endif
 #endif
 
+#ifndef __REACTOS__
     put_iosb( io32, &io );
+#else
+    put_iosb(io32, &pApcData->Iosb64);
+#endif
     return status;
 }
 
@@ -848,13 +886,19 @@ NTSTATUS WINAPI wow64_NtReadFileScatter( UINT *args )
 #ifndef __REACTOS__
     IO_STATUS_BLOCK io;
 #else
-    IO_STATUS_BLOCK io = { 0 };
+    PWOW64_APC32_DATA pApcData = Wow64PrepareApcData(apc, apc_param, io32);
 #endif
     NTSTATUS status;
 
+#ifndef __REACTOS__
     status = NtReadFileScatter( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
                                 iosb_32to64( &io, io32 ), segments, len, offset, key );
     put_iosb( io32, &io );
+#else
+    status = NtReadFileScatter( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
+                                iosb_32to64( &pApcData->Iosb64, io32 ), segments, len, offset, key );
+    put_iosb( io32, &pApcData->Iosb64 );
+#endif
     return status;
 }
 
@@ -981,6 +1025,9 @@ NTSTATUS WINAPI wow64_NtSetInformationFile( UINT *args )
     case FileValidDataLengthInformation:   /* FILE_VALID_DATA_LENGTH_INFORMATION */
     case FileDispositionInformation:   /* FILE_DISPOSITION_INFORMATION */
     case FileDispositionInformationEx:   /* FILE_DISPOSITION_INFORMATION_EX */
+#ifdef __REACTOS__
+    case FileAllocationInformation: /* FILE_ALLOCATION_INFORMATION */
+#endif
         status = NtSetInformationFile( handle, iosb_32to64( &io, io32 ), ptr, len, class );
         break;
 
@@ -1036,7 +1083,6 @@ NTSTATUS WINAPI wow64_NtSetInformationFile( UINT *args )
         }
         else status = io.Status = STATUS_INVALID_PARAMETER_3;
         break;
-
     default:
         FIXME( "unsupported class %u\n", class );
         status = io.Status = STATUS_INVALID_INFO_CLASS;
@@ -1114,12 +1160,22 @@ NTSTATUS WINAPI wow64_NtWriteFile( UINT *args )
     LARGE_INTEGER *offset = get_ptr( &args );
     ULONG *key = get_ptr( &args );
 
+#ifndef __REACTOS__
     IO_STATUS_BLOCK io;
+#else
+    PWOW64_APC32_DATA pApcData = Wow64PrepareApcData(apc, apc_param, io32);
+#endif
     NTSTATUS status;
 
+#ifndef __REACTOS__
     status = NtWriteFile( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
                           iosb_32to64( &io, io32 ), buffer, len, offset, key );
     put_iosb( io32, &io );
+#else
+    status = NtWriteFile( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
+                          iosb_32to64( &pApcData->Iosb64, io32 ), buffer, len, offset, key );
+    put_iosb( io32, &pApcData->Iosb64 );
+#endif
     return status;
 }
 
@@ -1139,12 +1195,22 @@ NTSTATUS WINAPI wow64_NtWriteFileGather( UINT *args )
     LARGE_INTEGER *offset = get_ptr( &args );
     ULONG *key = get_ptr( &args );
 
+#ifndef __REACTOS__
     IO_STATUS_BLOCK io;
+#else
+    PWOW64_APC32_DATA pApcData = Wow64PrepareApcData(apc, apc_param, io32);
+#endif
     NTSTATUS status;
 
+#ifndef __REACTOS__
     status = NtWriteFileGather( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
                                 iosb_32to64( &io, io32 ), segments, len, offset, key );
     put_iosb( io32, &io );
+#else
+    status = NtWriteFileGather( handle, event, apc_32to64( apc ), apc_param_32to64( apc, apc_param ),
+                                iosb_32to64( &pApcData->Iosb64, io32 ), segments, len, offset, key );
+    put_iosb( io32, &pApcData->Iosb64 );
+#endif
     return status;
 }
 
