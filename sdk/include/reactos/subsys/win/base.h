@@ -127,9 +127,13 @@ typedef struct _BASE_STATIC_SERVER_DATA
     USHORT CSDNumber;
     USHORT RCNumber;
     WCHAR CSDVersion[128];
+#ifdef USE_LPC6432
+    ULONG Padding;
+#endif
+    /* FIXME: WOW64 */
     SYSTEM_BASIC_INFORMATION SysInfo;
     SYSTEM_TIMEOFDAY_INFORMATION TimeOfDay;
-    PVOID IniFileMapping;
+    LPC_PVOID IniFileMapping;
     NLS_USER_INFO NlsUserInfo;
     BOOLEAN DefaultSeparateVDM;
     BOOLEAN IsWowTaskReady;

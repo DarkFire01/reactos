@@ -13,9 +13,7 @@
 #include <compat_undoc.h>
 #include <compatguid_undoc.h>
 
-#ifndef _M_IX86
 #define NDEBUG
-#endif
 #include <debug.h>
 
 
