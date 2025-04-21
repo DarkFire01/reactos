@@ -61,7 +61,8 @@ static void *build_wow64_parameters( const RTL_USER_PROCESS_PARAMETERS *params )
                    + params->WindowTitle.MaximumLength
                    + params->DesktopInfo.MaximumLength
                    + params->ShellInfo.MaximumLength
-                   + ((params->RuntimeData.MaximumLength + 1) & ~1));
+                   + ((params->RuntimeData.MaximumLength + 1) & ~1))
+                   + wcslen(params->Environment) * sizeof(*params->Environment);
 
     status = NtAllocateVirtualMemory( NtCurrentProcess(), (void **)&wow64_params, 32, &size,
                                       MEM_COMMIT, PAGE_READWRITE );
@@ -96,8 +97,9 @@ static void *build_wow64_parameters( const RTL_USER_PROCESS_PARAMETERS *params )
     dup_unicode_string( &params->ShellInfo, &dst, &wow64_params->ShellInfo );
     dup_unicode_string( &params->RuntimeData, &dst, &wow64_params->RuntimeData );
 
-    wow64_params->Environment = PtrToUlong( dst );
-    memcpy( dst, params->Environment, wcslen(params->Environment) );
+    wow64_params->Environment = PtrToUlong( params->Environment );
+    //DPRINT1("Original enviroment %ls\n", params->Environment);
+    //memcpy(dst, params->Environment, wcslen(params->Environment) * sizeof(*params->Environment));
     return wow64_params;
 }
 
@@ -147,6 +149,9 @@ NTSTATUS WINAPI wow64_NtQueryInformationProcess( UINT *args )
     case ProcessExecuteFlags:  /* ULONG */
     case ProcessCookie:  /* ULONG */
     case ProcessCycleTime:  /* PROCESS_CYCLE_TIME_INFORMATION */
+#ifdef __REACTOS__
+    case ProcessDeviceMap:
+#endif
         /* FIXME: check buffer alignment */
         return NtQueryInformationProcess( handle, class, ptr, len, retlen );
 
@@ -526,6 +531,8 @@ Wow64Handler(ULONG syscallNum,
         /* wow64.c */
         WINE_WOW_IMPL_CASE(OpenProcess);
         WINE_WOW_IMPL_CASE(CreateThread);
+        WINE_WOW_IMPL_CASE(CreateProcess);
+        WINE_WOW_IMPL_CASE(CreateProcessEx);
         WINE_WOW_IMPL_CASE(QueryInformationThread);
         WINE_WOW_IMPL_CASE(ResumeThread);
 
@@ -681,6 +688,78 @@ wow64_NtCreateThread(UINT* pArgs)
     pClientId32->UniqueProcess = HandleToUlong(ClientId.UniqueProcess);
     pClientId32->UniqueThread = HandleToUlong(ClientId.UniqueThread);
     *phThread32 = HandleToUlong(hThread);
+
+    return Status;
+}
+
+NTSTATUS
+NTAPI
+wow64_NtCreateProcessEx(UINT *pArgs)
+{
+    HANDLE hProcessHandle;
+
+    PULONG phProcessHandle32 = get_ptr(&pArgs);
+    ACCESS_MASK DesiredAccess = get_ulong(&pArgs);
+    POBJECT_ATTRIBUTES32 pObjectAttributes32 = get_ptr(&pArgs);
+    HANDLE hParentProcess = get_handle(&pArgs);
+    ULONG ulFlags = get_ulong(&pArgs);
+    HANDLE hSectionHandle = get_handle(&pArgs);
+    HANDLE hDebugPort = get_handle(&pArgs);
+    HANDLE hExceptionPort = get_handle(&pArgs);
+    BOOLEAN bInJob = get_ulong(&pArgs);
+
+    struct object_attr64 attr;
+
+    NTSTATUS Status;
+
+    Status = NtCreateProcessEx(&hProcessHandle,
+                               DesiredAccess,
+                               objattr_32to64(&attr, pObjectAttributes32),
+                               hParentProcess,
+                               ulFlags,
+                               hSectionHandle,
+                               hDebugPort,
+                               hExceptionPort,
+                               bInJob);
+    if (NT_SUCCESS(Status))
+    {
+        *phProcessHandle32 = HandleToUlong(hProcessHandle);
+    }
+
+    return Status;
+}
+
+NTSTATUS
+NTAPI
+wow64_NtCreateProcess(UINT *pArgs)
+{
+    HANDLE hProcessHandle;
+
+    PULONG phProcessHandle32 = get_ptr(&pArgs);
+    ACCESS_MASK DesiredAccess = get_ulong(&pArgs);
+    POBJECT_ATTRIBUTES32 pObjectAttributes32 = get_ptr(&pArgs);
+    HANDLE hParentProcess = get_handle(&pArgs);
+    ULONG ulFlags = get_ulong(&pArgs);
+    HANDLE hSectionHandle = get_handle(&pArgs);
+    HANDLE hDebugPort = get_handle(&pArgs);
+    HANDLE hExceptionPort = get_handle(&pArgs);
+
+    struct object_attr64 attr;
+
+    NTSTATUS Status;
+
+    Status = NtCreateProcess(&hProcessHandle,
+                             DesiredAccess,
+                             objattr_32to64(&attr, pObjectAttributes32),
+                             hParentProcess,
+                             ulFlags,
+                             hSectionHandle,
+                             hDebugPort,
+                             hExceptionPort);
+    if (NT_SUCCESS(Status))
+    {
+        *phProcessHandle32 = HandleToUlong(hProcessHandle);
+    }
 
     return Status;
 }

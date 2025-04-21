@@ -21,10 +21,8 @@
 
 #pragma once
 
-/* FIXME: for now, the WOW64 directory path is hardcoded. 
-   It is currently set to D: for ease of debugging 
-   (for ease of swapping of 32 bit DLLs while the system is running). */
-#define TMP_WOW_DIR L"D:"
+/* FIXME: for now, the WOW64 directory path is hardcoded. */
+#define TMP_WOW_DIR L"C:\\ReactOS\\SysWOW64"
 
 #define WIN32_NO_STATUS
 #include <Windows.h>
@@ -324,7 +322,7 @@ static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer
             return TRUE;
         }
     }
-    
+
     return FALSE;
 }
 

@@ -849,6 +849,22 @@ typedef struct _RTL_USER_PROCESS_PARAMETERS32
 #endif
 } RTL_USER_PROCESS_PARAMETERS32, *PRTL_USER_PROCESS_PARAMETERS32;
 
-#endif
+typedef struct _PROCESS_DEVICEMAP_INFORMATION32
+{
+    union
+    {
+        struct
+        {
+            ULONG DirectoryHandle;
+        } Set;
+        struct
+        {
+            ULONG DriveMap;
+            UCHAR DriveType[32];
+        } Query;
+    };
+} PROCESS_DEVICEMAP_INFORMATION32, *PPROCESS_DEVICEMAP_INFORMATION32;
+
+#endif /* __REACTOS__ */
 
 #endif /* __WOW64_STRUCT32_H */
