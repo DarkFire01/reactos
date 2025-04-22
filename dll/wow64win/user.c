@@ -3851,9 +3851,9 @@ NTSTATUS WINAPI wow64_NtUserMessageCall( UINT *args )
     UINT type = get_ulong ( &args );
     BOOL ansi = get_ulong( &args );
 
-#ifndef __REACTOS__
     switch (type)
     {
+#ifndef __REACTOS__
     case NtUserGetDispatchParams:
     case NtUserCallWindowProc:
         {
@@ -3986,11 +3986,30 @@ NTSTATUS WINAPI wow64_NtUserMessageCall( UINT *args )
 
             return NtUserMessageCall( hwnd, msg, wparam, lparam, &params, type, ansi );
         }
-
         default:
             return NtUserMessageCall( hwnd, msg, wparam, lparam, result_info, type, ansi );
         }
+#endif
+        case FNID_SENDMESSAGEWTOOPTION:
+        {
+            struct
+            {
+                UINT uFlags;
+                UINT uTimeout;
+                DWORD Result;
+            } *Params32 = result_info;
+
+            DOSENDMESSAGE Params;
+            LRESULT Ret;
+
+            Params.uFlags = Params32->uFlags;
+            Params.uTimeout = Params32->uTimeout;
+            Ret = message_call_32to64(hwnd, msg, wparam, lparam, &Params, type, ansi);
+            Params32->Result = Params.Result;
+            return Ret;
+        }
     }
+#ifndef __REACTOS__
     return message_call_32to64( hwnd, msg, wparam, lparam, result_info, type, ansi );
 #else
     /* FIXME */
