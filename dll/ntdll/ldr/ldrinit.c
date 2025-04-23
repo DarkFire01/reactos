@@ -529,17 +529,6 @@ LdrpInitializeThread(IN PCONTEXT Context)
     /* Acquire the loader Lock */
     RtlEnterCriticalSection(&LdrpLoaderLock);
 
-    /* Allocate an Activation Context Stack */
-    DPRINT("ActivationContextStack %p\n", NtCurrentTeb()->ActivationContextStackPointer);
-    Status = RtlAllocateActivationContextStack(&NtCurrentTeb()->ActivationContextStackPointer);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Warning: Unable to allocate ActivationContextStack\n");
-    }
-
-    /* Make sure we are not shutting down */
-    if (LdrpShutdownInProgress) goto Exit;
-
 #ifdef _M_AMD64 
     /* Get the NT Headers */
     NtHeader = RtlImageNtHeader(Peb->ImageBaseAddress);
@@ -571,9 +560,22 @@ LdrpInitializeThread(IN PCONTEXT Context)
         }
         
         pWow64LdrpInitialize(Context);
+        RtlLeaveCriticalSection(&LdrpLoaderLock);
         goto Exit;
     }
 #endif
+
+    /* Allocate an Activation Context Stack */
+    DPRINT("ActivationContextStack %p\n", NtCurrentTeb()->ActivationContextStackPointer);
+    Status = RtlAllocateActivationContextStack(&NtCurrentTeb()->ActivationContextStackPointer);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Warning: Unable to allocate ActivationContextStack\n");
+    }
+
+    /* Make sure we are not shutting down */
+    if (LdrpShutdownInProgress)
+        goto Exit;
 
     /* Allocate TLS */
     LdrpAllocateTls();

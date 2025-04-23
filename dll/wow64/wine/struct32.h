@@ -865,6 +865,64 @@ typedef struct _PROCESS_DEVICEMAP_INFORMATION32
     };
 } PROCESS_DEVICEMAP_INFORMATION32, *PPROCESS_DEVICEMAP_INFORMATION32;
 
+typedef struct _CURDIR64
+{
+    UNICODE_STRING64 DosPath;
+    UINT64 Handle;
+} CURDIR64, *PCURDIR64;
+
+typedef struct _RTL_DRIVE_LETTER_CURDIR64
+{
+    USHORT Flags;
+    USHORT Length;
+    ULONG TimeStamp;
+    UNICODE_STRING64 DosPath;
+} RTL_DRIVE_LETTER_CURDIR64, *PRTL_DRIVE_LETTER_CURDIR64;
+
+typedef struct _RTL_USER_PROCESS_PARAMETERS64
+{
+    ULONG MaximumLength;
+    ULONG Length;
+    ULONG Flags;
+    ULONG DebugFlags;
+    UINT64 ConsoleHandle;
+    ULONG ConsoleFlags;
+    UINT64 StandardInput;
+    UINT64 StandardOutput;
+    UINT64 StandardError;
+    CURDIR64 CurrentDirectory;
+    UNICODE_STRING64 DllPath;
+    UNICODE_STRING64 ImagePathName;
+    UNICODE_STRING64 CommandLine;
+    UINT64 Environment;
+    ULONG StartingX;
+    ULONG StartingY;
+    ULONG CountX;
+    ULONG CountY;
+    ULONG CountCharsX;
+    ULONG CountCharsY;
+    ULONG FillAttribute;
+    ULONG WindowFlags;
+    ULONG ShowWindowFlags;
+    UNICODE_STRING64 WindowTitle;
+    UNICODE_STRING64 DesktopInfo;
+    UNICODE_STRING64 ShellInfo;
+    UNICODE_STRING64 RuntimeData;
+    RTL_DRIVE_LETTER_CURDIR64 CurrentDirectories[RTL_MAX_DRIVE_LETTERS];
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    UINT64 EnvironmentSize;
+#endif
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+    UINT64 EnvironmentVersion;
+#endif
+} RTL_USER_PROCESS_PARAMETERS64, *PRTL_USER_PROCESS_PARAMETERS64;
+
+#ifdef _WIN64
+C_ASSERT(sizeof(RTL_USER_PROCESS_PARAMETERS64) == sizeof(RTL_USER_PROCESS_PARAMETERS));
+#else
+C_ASSERT(sizeof(RTL_USER_PROCESS_PARAMETERS32) == sizeof(RTL_USER_PROCESS_PARAMETERS));
+#endif
+
 #endif /* __REACTOS__ */
 
 #endif /* __WOW64_STRUCT32_H */

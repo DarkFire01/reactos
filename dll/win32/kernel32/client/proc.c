@@ -479,11 +479,189 @@ BaseProcessStartup(
     _SEH2_END;
 }
 
+#ifdef _WOW64
+static
+VOID
+CopyParameterString(PWCHAR *Ptr,
+                    PUNICODE_STRING64 Destination,
+                    PUNICODE_STRING Source,
+                    USHORT Size)
+{
+    Destination->Length = Source->Length;
+    Destination->MaximumLength = Size ? Size : Source->MaximumLength;
+    Destination->Buffer = WOW64_CAST_FROM_PTR(*Ptr);
+    if (Source->Length)
+        memmove(WOW64_CAST_TO_PTR(Destination->Buffer), Source->Buffer, Source->Length);
+    ((LPWSTR)WOW64_CAST_TO_PTR(Destination->Buffer))[Destination->Length / sizeof(WCHAR)] = 0;
+    *Ptr += Destination->MaximumLength / sizeof(WCHAR);
+}
+
+/* TODO: This is duplicated code, find a better way to handle this. */
+static
+NTSTATUS
+CreateProcessParameters64(
+    PRTL_USER_PROCESS_PARAMETERS64 *ProcessParameters,
+    PUNICODE_STRING ImagePathName,
+    PUNICODE_STRING DllPath,
+    PUNICODE_STRING CurrentDirectory,
+    PUNICODE_STRING CommandLine,
+    PWSTR Environment,
+    PUNICODE_STRING WindowTitle,
+    PUNICODE_STRING DesktopInfo,
+    PUNICODE_STRING ShellInfo,
+    PUNICODE_STRING RuntimeData)
+{
+    PRTL_USER_PROCESS_PARAMETERS64 Param = NULL;
+    ULONG Length = 0;
+    PWCHAR Dest;
+    UNICODE_STRING EmptyString;
+    HANDLE CurrentDirectoryHandle;
+    HANDLE ConsoleHandle;
+    ULONG ConsoleFlags;
+
+    DPRINT("RtlCreateProcessParameters\n");
+
+    RtlAcquirePebLock();
+
+    EmptyString.Length = 0;
+    EmptyString.MaximumLength = sizeof(WCHAR);
+    EmptyString.Buffer = L"";
+
+    if (DllPath == NULL)
+        DllPath = &NtCurrentPeb()->ProcessParameters->DllPath;
+    if (Environment == NULL)
+        Environment = NtCurrentPeb()->ProcessParameters->Environment;
+    if (CurrentDirectory == NULL)
+        CurrentDirectory = &NtCurrentPeb()->ProcessParameters->CurrentDirectory.DosPath;
+    CurrentDirectoryHandle = NtCurrentPeb()->ProcessParameters->CurrentDirectory.Handle;
+    ConsoleHandle = NtCurrentPeb()->ProcessParameters->ConsoleHandle;
+    ConsoleFlags = NtCurrentPeb()->ProcessParameters->ConsoleFlags;
+
+
+    if (CommandLine == NULL)
+        CommandLine = &EmptyString;
+    if (WindowTitle == NULL)
+        WindowTitle = &EmptyString;
+    if (DesktopInfo == NULL)
+        DesktopInfo = &EmptyString;
+    if (ShellInfo == NULL)
+        ShellInfo = &EmptyString;
+    if (RuntimeData == NULL)
+        RuntimeData = &EmptyString;
+
+    /* size of process parameter block */
+    Length = sizeof(RTL_USER_PROCESS_PARAMETERS);
+
+    /* size of current directory buffer */
+    Length += (MAX_PATH * sizeof(WCHAR));
+
+    /* add string lengths */
+    Length += ALIGN_UP_BY(DllPath->MaximumLength, sizeof(ULONG));
+    Length += ALIGN_UP_BY(ImagePathName->Length + sizeof(WCHAR), sizeof(ULONG));
+    Length += ALIGN_UP_BY(CommandLine->Length + sizeof(WCHAR), sizeof(ULONG));
+    Length += ALIGN_UP_BY(WindowTitle->MaximumLength, sizeof(ULONG));
+    Length += ALIGN_UP_BY(DesktopInfo->MaximumLength, sizeof(ULONG));
+    Length += ALIGN_UP_BY(ShellInfo->MaximumLength, sizeof(ULONG));
+    Length += ALIGN_UP_BY(RuntimeData->MaximumLength, sizeof(ULONG));
+
+    /* Calculate the required block size */
+    Param = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Length);
+    if (!Param)
+    {
+        RtlReleasePebLock();
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    DPRINT("Process parameters allocated\n");
+
+    Param->MaximumLength = Length;
+    Param->Length = Length;
+    Param->Flags = RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
+    Param->Environment = WOW64_CAST_FROM_PTR(Environment);
+    Param->CurrentDirectory.Handle = WOW64_CAST_FROM_HANDLE(CurrentDirectoryHandle);
+    Param->ConsoleHandle = WOW64_CAST_FROM_HANDLE(ConsoleHandle);
+    Param->ConsoleFlags = ConsoleFlags;
+
+    Dest = (PWCHAR)(((PBYTE)Param) + sizeof(RTL_USER_PROCESS_PARAMETERS));
+
+    /* copy current directory */
+    CopyParameterString(&Dest, &Param->CurrentDirectory.DosPath, CurrentDirectory, MAX_PATH * sizeof(WCHAR));
+
+    /* make sure the current directory has a trailing backslash */
+    if (Param->CurrentDirectory.DosPath.Length > 0)
+    {
+        Length = Param->CurrentDirectory.DosPath.Length / sizeof(WCHAR);
+        if (((LPWSTR)WOW64_CAST_TO_PTR(Param->CurrentDirectory.DosPath.Buffer))[Length - 1] != L'\\')
+        {
+            ((LPWSTR)WOW64_CAST_TO_PTR(Param->CurrentDirectory.DosPath.Buffer))[Length] = L'\\';
+            ((LPWSTR)WOW64_CAST_TO_PTR(Param->CurrentDirectory.DosPath.Buffer))[Length + 1] = 0;
+            Param->CurrentDirectory.DosPath.Length += sizeof(WCHAR);
+        }
+    }
+
+    /* copy dll path */
+    CopyParameterString(&Dest, &Param->DllPath, DllPath, 0);
+
+    /* copy image path name */
+    CopyParameterString(&Dest, &Param->ImagePathName, ImagePathName, ImagePathName->Length + sizeof(WCHAR));
+
+    /* copy command line */
+    CopyParameterString(&Dest, &Param->CommandLine, CommandLine, CommandLine->Length + sizeof(WCHAR));
+
+    /* copy title */
+    CopyParameterString(&Dest, &Param->WindowTitle, WindowTitle, 0);
+
+    /* copy desktop */
+    CopyParameterString(&Dest, &Param->DesktopInfo, DesktopInfo, 0);
+
+    /* copy shell info */
+    CopyParameterString(&Dest, &Param->ShellInfo, ShellInfo, 0);
+
+    /* copy runtime info */
+    CopyParameterString(&Dest, &Param->RuntimeData, RuntimeData, 0);
+
+#define DENORMALIZE(x,addr) {if(x) x=(UINT64)((ULONG_PTR)(x)-(ULONG_PTR)(addr));}
+    if (Param && (Param->Flags & RTL_USER_PROCESS_PARAMETERS_NORMALIZED))
+    {
+        DENORMALIZE(Param->CurrentDirectory.DosPath.Buffer, Param);
+        DENORMALIZE(Param->DllPath.Buffer, Param);
+        DENORMALIZE(Param->ImagePathName.Buffer, Param);
+        DENORMALIZE(Param->CommandLine.Buffer, Param);
+        DENORMALIZE(Param->WindowTitle.Buffer, Param);
+        DENORMALIZE(Param->DesktopInfo.Buffer, Param);
+        DENORMALIZE(Param->ShellInfo.Buffer, Param);
+        DENORMALIZE(Param->RuntimeData.Buffer, Param);
+
+        Param->Flags &= ~RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
+    }
+#undef DENORMALIZE
+
+    *ProcessParameters = Param;
+    RtlReleasePebLock();
+
+    return STATUS_SUCCESS;
+}
+
+/* TODO: This is duplicated code, find a better way to handle this. */
+static
+NTSTATUS
+DestroyProcessParameters64(IN PRTL_USER_PROCESS_PARAMETERS64 ProcessParameters)
+{
+    RtlFreeHeap(RtlGetProcessHeap(), 0, ProcessParameters);
+    return STATUS_SUCCESS;
+}
+#endif
+
+
 BOOLEAN
 WINAPI
 BasePushProcessParameters(IN ULONG ParameterFlags,
                           IN HANDLE ProcessHandle,
+#ifndef _WOW64
                           IN PPEB RemotePeb,
+#else
+                          IN PPEB64 RemotePeb,
+#endif
                           IN LPCWSTR ApplicationPathName,
                           IN LPWSTR lpCurrentDirectory,
                           IN LPWSTR lpCommandLine,
@@ -497,7 +675,12 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
 {
     WCHAR FullPath[MAX_PATH + 5];
     PWCHAR Remaining, DllPathString, ScanChar;
+#ifndef _WOW64
     PRTL_USER_PROCESS_PARAMETERS ProcessParameters, RemoteParameters;
+#else
+    PRTL_USER_PROCESS_PARAMETERS64 ProcessParameters, RemoteParameters;
+#endif
+
     PVOID RemoteAppCompatData;
     UNICODE_STRING DllPath, ImageName, CommandLine, CurrentDirectory;
     UNICODE_STRING Desktop, Shell, Runtime, Title;
@@ -591,7 +774,11 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
     DPRINT("Desktop  : '%wZ'\n", &Desktop);
     DPRINT("Shell    : '%wZ'\n", &Shell);
     DPRINT("Runtime  : '%wZ'\n", &Runtime);
+#ifndef _WOW64
     Status = RtlCreateProcessParameters(&ProcessParameters,
+#else
+    Status = CreateProcessParameters64(&ProcessParameters,
+#endif
                                         &ImageName,
                                         &DllPath,
                                         lpCurrentDirectory ?
@@ -605,13 +792,14 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
     if (!NT_SUCCESS(Status)) goto FailPath;
 
     /* Clear the current directory handle if not inheriting */
-    if (!InheritHandles) ProcessParameters->CurrentDirectory.Handle = NULL;
+    if (!InheritHandles) ProcessParameters->CurrentDirectory.Handle = WOW64_CAST_FROM_HANDLE(NULL);
 
     /* Check if the user passed in an environment */
     if (lpEnvironment)
     {
         /* We should've made it part of the parameters block, enforce this */
-        lpEnvironment = ProcessParameters->Environment;
+        ASSERT(ProcessParameters->Environment == WOW64_CAST_FROM_PTR(lpEnvironment));
+        lpEnvironment = WOW64_CAST_TO_PTR(ProcessParameters->Environment);
     }
     else
     {
@@ -631,7 +819,7 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
 
         /* Allocate and Initialize new Environment Block */
         Size = EnviroSize;
-        ProcessParameters->Environment = NULL;
+        ProcessParameters->Environment = WOW64_CAST_FROM_PTR(NULL);
         Status = NtAllocateVirtualMemory(ProcessHandle,
                                          (PVOID*)&ProcessParameters->Environment,
                                          0,
@@ -642,7 +830,7 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
 
         /* Write the Environment Block */
         Status = NtWriteVirtualMemory(ProcessHandle,
-                                      ProcessParameters->Environment,
+                                      WOW64_CAST_TO_PTR(ProcessParameters->Environment),
                                       lpEnvironment,
                                       EnviroSize,
                                       NULL);
@@ -674,28 +862,28 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
     if (StartupInfo->dwFlags &
         (STARTF_USESTDHANDLES | STARTF_USEHOTKEY | STARTF_SHELLPRIVATE))
     {
-        ProcessParameters->StandardInput = StartupInfo->hStdInput;
-        ProcessParameters->StandardOutput = StartupInfo->hStdOutput;
-        ProcessParameters->StandardError = StartupInfo->hStdError;
+        ProcessParameters->StandardInput = WOW64_CAST_FROM_HANDLE(StartupInfo->hStdInput);
+        ProcessParameters->StandardOutput = WOW64_CAST_FROM_HANDLE(StartupInfo->hStdOutput);
+        ProcessParameters->StandardError = WOW64_CAST_FROM_HANDLE(StartupInfo->hStdError);
     }
 
     /* Use Special Flags for ConDllInitialize in Kernel32 */
     if (CreationFlags & DETACHED_PROCESS)
     {
-        ProcessParameters->ConsoleHandle = HANDLE_DETACHED_PROCESS;
+        ProcessParameters->ConsoleHandle = WOW64_CAST_FROM_HANDLE(HANDLE_DETACHED_PROCESS);
     }
     else if (CreationFlags & CREATE_NEW_CONSOLE)
     {
-        ProcessParameters->ConsoleHandle = HANDLE_CREATE_NEW_CONSOLE;
+        ProcessParameters->ConsoleHandle = WOW64_CAST_FROM_HANDLE(HANDLE_CREATE_NEW_CONSOLE);
     }
     else if (CreationFlags & CREATE_NO_WINDOW)
     {
-        ProcessParameters->ConsoleHandle = HANDLE_CREATE_NO_WINDOW;
+        ProcessParameters->ConsoleHandle = WOW64_CAST_FROM_HANDLE(HANDLE_CREATE_NO_WINDOW);
     }
     else
     {
         /* Inherit our Console Handle */
-        ProcessParameters->ConsoleHandle = Peb->ProcessParameters->ConsoleHandle;
+        ProcessParameters->ConsoleHandle = WOW64_CAST_FROM_HANDLE(Peb->ProcessParameters->ConsoleHandle);
 
         /* Make sure that the shell isn't trampling on our handles first */
         if (!(StartupInfo->dwFlags &
@@ -705,17 +893,17 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
             if ((InheritHandles) ||
                 (IsConsoleHandle(Peb->ProcessParameters->StandardInput)))
             {
-                ProcessParameters->StandardInput = Peb->ProcessParameters->StandardInput;
+                ProcessParameters->StandardInput = WOW64_CAST_FROM_HANDLE(Peb->ProcessParameters->StandardInput);
             }
             if ((InheritHandles) ||
                 (IsConsoleHandle(Peb->ProcessParameters->StandardOutput)))
             {
-                ProcessParameters->StandardOutput = Peb->ProcessParameters->StandardOutput;
+                ProcessParameters->StandardOutput = WOW64_CAST_FROM_HANDLE(Peb->ProcessParameters->StandardOutput);
             }
             if ((InheritHandles) ||
                 (IsConsoleHandle(Peb->ProcessParameters->StandardError)))
             {
-                ProcessParameters->StandardError = Peb->ProcessParameters->StandardError;
+                ProcessParameters->StandardError = WOW64_CAST_FROM_HANDLE(Peb->ProcessParameters->StandardError);
             }
         }
     }
@@ -827,7 +1015,11 @@ Quickie:
     /* Cleanup */
     if (HavePebLock) RtlReleasePebLock();
     RtlFreeHeap(RtlGetProcessHeap(), 0, DllPath.Buffer);
+#ifndef _WOW64
     if (ProcessParameters) RtlDestroyProcessParameters(ProcessParameters);
+#else
+    if (ProcessParameters) DestroyProcessParameters64(ProcessParameters);
+#endif
     return Result;
 FailPath:
     DPRINT1("Failure to create process parameters: %lx\n", Status);
@@ -2171,7 +2363,12 @@ CreateProcessInternalW(IN HANDLE hUserToken,
     ULONG ResumeCount;
     PROCESS_PRIORITY_CLASS PriorityClass;
     NTSTATUS Status, AppCompatStatus, SaferStatus, IFEOStatus, ImageDbgStatus;
-    PPEB Peb, RemotePeb;
+#ifndef _WOW64
+    PPEB RemotePeb;
+#else
+    PPEB64 RemotePeb;
+#endif
+    PPEB Peb;
     PTEB Teb;
     INITIAL_TEB InitialTeb;
     PVOID TibValue;
@@ -2713,6 +2910,7 @@ StartScan:
     ASSERT(FreeBuffer == NULL);
     FreeBuffer = PathName.Buffer;
 
+#ifndef WOW_EXPERIMENT_1
     /* Check what kind of path the application is, for SxS (Fusion) purposes */
     RtlInitUnicodeString(&SxsWin32ExePath, lpApplicationName);
     SxsPathType = RtlDetermineDosPathNameType_U(lpApplicationName);
@@ -2761,6 +2959,7 @@ StartScan:
         /* Otherwise, it's absolute, make sure no relative dir is used */
         SxsWin32RelativePath.ContainingDirectory = NULL;
     }
+#endif
 
     /* Now use the path name, and the root path, to try opening the app */
     DPRINT("Path: %wZ. Dir: %p\n", &PathName, SxsWin32RelativePath.ContainingDirectory);

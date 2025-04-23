@@ -723,6 +723,8 @@ wow64_NtCreateProcessEx(UINT *pArgs)
                                bInJob);
     if (NT_SUCCESS(Status))
     {
+        DPRINT1("Created process from WOW64\n");
+        NtCurrentTeb32()->NtTib.ArbitraryUserPointer = PtrToUlong(NtCurrentTeb()->NtTib.ArbitraryUserPointer);
         *phProcessHandle32 = HandleToUlong(hProcessHandle);
     }
 
@@ -758,6 +760,8 @@ wow64_NtCreateProcess(UINT *pArgs)
                              hExceptionPort);
     if (NT_SUCCESS(Status))
     {
+        DPRINT1("Created process from WOW64\n");
+        NtCurrentTeb32()->NtTib.ArbitraryUserPointer = PtrToUlong(NtCurrentTeb()->NtTib.ArbitraryUserPointer);
         *phProcessHandle32 = HandleToUlong(hProcessHandle);
     }
 
@@ -850,20 +854,40 @@ DllMain(HANDLE hDll,
 
 static
 VOID 
-Wow64InitProcess(VOID)
+Wow64InitProcess(PCONTEXT pContext)
 {
     NTSTATUS Status;
     PPEB32 WowPeb = NULL;
     PRTL_USER_PROCESS_PARAMETERS32 ProcParams32 = NULL;
     PPEB Peb = NtCurrentPeb();
-    
+    ULONG_PTR EntrypointAddress;
+    IMAGE_NT_HEADERS32 *NtHeaders = NULL;
+
+    NtHeaders = (IMAGE_NT_HEADERS32 *)RtlImageNtHeader(Peb->ImageBaseAddress);
+
     Status = LdrLoadDll(L"" TMP_WOW_DIR L"\\ntdll.dll", 0, &NtDll32Str, &NtDll32);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("32 bit NTDLL.DLL could not be loaded.\n");
         ASSERT(FALSE);
     }
-    
+
+    EntrypointAddress = (ULONG_PTR)Peb->ImageBaseAddress
+                          + NtHeaders->OptionalHeader.AddressOfEntryPoint;
+
+    Status = NtSetInformationThread(NtCurrentThread(),
+                                    ThreadQuerySetWin32StartAddress,
+                                    &EntrypointAddress,
+                                    sizeof(EntrypointAddress));
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Setting ThreadQuerySetWin32StartAddress failed. %lx\n", Status);
+        ASSERT(FALSE);
+    }
+
+    DPRINT1("Replacing old entrypoint %p with %p\n", pContext->Rip, EntrypointAddress);
+    pContext->Rip = EntrypointAddress;
+
     Status = NtQueryInformationProcess(NtCurrentProcess(),
                                        ProcessWow64Information,
                                        &WowPeb,
@@ -952,10 +976,6 @@ Wow64InitThread(PCONTEXT pContext)
     PTEB32 WowTeb = NULL;
     PPEB32 WowPeb = NULL;
     PTEB Teb = NtCurrentTeb();
-    PPEB Peb = NtCurrentPeb();
-    IMAGE_NT_HEADERS32 *NtHeaders = NULL;
-
-    NtHeaders = (IMAGE_NT_HEADERS32 *)RtlImageNtHeader(Peb->ImageBaseAddress);
 
     WowTeb = (PTEB32)ROUND_TO_PAGES((ULONG_PTR)(Teb + 1));
 
@@ -999,17 +1019,6 @@ Wow64InitThread(PCONTEXT pContext)
     WowTeb->ClientId.UniqueProcess = HandleToULong(Teb->ClientId.UniqueProcess);
     WowTeb->ClientId.UniqueThread = HandleToULong(Teb->ClientId.UniqueThread);
 
-    /* FIXME */
-    if (pContext->Rip & (~0xFFFFFFFFULL))
-    {
-        DPRINT1("Thread initial program counter outside of 32-bit address space,"
-                " assuming it is 64-bit kernel32 init routine - use the program"
-                " entrypoint for now. (RIP=%p)\n", (PVOID)pContext->Rip);
-
-        pContext->Rip = (ULONG_PTR) Peb->ImageBaseAddress
-                         + NtHeaders->OptionalHeader.AddressOfEntryPoint;
-    }
-
     pContext->Rsp -= 32;
     pContext->Rcx = pContext->Rip;
     pContext->SegCs = 0x33;
@@ -1028,7 +1037,7 @@ Wow64LdrpInitialize(PCONTEXT pContext)
                                     1,
                                     0) == 0)
     {
-        Wow64InitProcess();
+        Wow64InitProcess(pContext);
     }
     
     /* TODO: Parse Context to (somehow) get the start address for the new thread.

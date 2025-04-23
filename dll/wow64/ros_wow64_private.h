@@ -528,6 +528,8 @@ static inline void put_handle( ULONG *handle32, HANDLE handle )
 
 static inline void put_addr( ULONG *addr32, void *addr )
 {
+    if (addr != (PVOID)(ULONG_PTR)PtrToUlong(addr))
+        __debugbreak();
     if (addr32) *addr32 = PtrToUlong( addr );
 }
 

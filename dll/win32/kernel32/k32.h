@@ -92,4 +92,8 @@ static inline WCHAR toupperW( WCHAR ch )
     return ch + wine_casemap_upper[wine_casemap_upper[ch >> 8] + (ch & 0xff)];
 }
 
+/* WOW64 */
+#include "../../ntdll/wow64/ntdll32.h"
+#include "../../wow64/wine/struct32.h"
+
 #endif /* __K32_H */
