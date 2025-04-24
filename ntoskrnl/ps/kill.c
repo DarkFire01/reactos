@@ -389,6 +389,7 @@ PspDeleteProcess(IN PVOID ObjectBody)
     }
 #endif
 
+#ifdef _WIN64
     /* Check if this is a WOW64 process  */
     if (Process->Wow64Process)
     {
@@ -397,6 +398,7 @@ PspDeleteProcess(IN PVOID ObjectBody)
 
         PsReturnProcessNonPagedPoolQuota(Process, sizeof(WOW64_PROCESS));
     }
+#endif
 
     /*
      * Dereference the quota block, the function
