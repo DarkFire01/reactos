@@ -529,6 +529,14 @@ LdrpInitializeThread(IN PCONTEXT Context)
     /* Acquire the loader Lock */
     RtlEnterCriticalSection(&LdrpLoaderLock);
 
+    /* Allocate an Activation Context Stack */
+    DPRINT("ActivationContextStack %p\n", NtCurrentTeb()->ActivationContextStackPointer);
+    Status = RtlAllocateActivationContextStack(&NtCurrentTeb()->ActivationContextStackPointer);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Warning: Unable to allocate ActivationContextStack\n");
+    }
+
 #ifdef _M_AMD64 
     /* Get the NT Headers */
     NtHeader = RtlImageNtHeader(Peb->ImageBaseAddress);
@@ -564,14 +572,6 @@ LdrpInitializeThread(IN PCONTEXT Context)
         goto Exit;
     }
 #endif
-
-    /* Allocate an Activation Context Stack */
-    DPRINT("ActivationContextStack %p\n", NtCurrentTeb()->ActivationContextStackPointer);
-    Status = RtlAllocateActivationContextStack(&NtCurrentTeb()->ActivationContextStackPointer);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Warning: Unable to allocate ActivationContextStack\n");
-    }
 
     /* Make sure we are not shutting down */
     if (LdrpShutdownInProgress)
@@ -2347,7 +2347,9 @@ LdrpInitializeProcess(IN PCONTEXT Context,
     InsertHeadList(&Peb->Ldr->InInitializationOrderModuleList,
                    &LdrpNtDllDataTableEntry->InInitializationOrderLinks);
 
-    
+    /* Initialize Wine's active context implementation for the current process */
+    RtlpInitializeActCtx(&OldShimData);
+
 #ifdef _M_AMD64
     if (NtHeader->FileHeader.Machine == IMAGE_FILE_MACHINE_I386)
     {
@@ -2381,9 +2383,6 @@ LdrpInitializeProcess(IN PCONTEXT Context,
         return STATUS_SUCCESS;
     }
 #endif
-
-    /* Initialize Wine's active context implementation for the current process */
-    RtlpInitializeActCtx(&OldShimData);
 
     /* Set the current directory */
     Status = RtlSetCurrentDirectory_U(&CurrentDirectory);

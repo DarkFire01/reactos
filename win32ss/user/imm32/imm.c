@@ -16,7 +16,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(imm);
 
 HMODULE ghImm32Inst = NULL; /* The IMM32 instance */
 PSERVERINFO gpsi = NULL;
-SHAREDINFO gSharedInfo = { NULL };
+SHAREDINFO gSharedInfo = { 0 };
 BYTE gfImmInitialized = FALSE; /* Is IMM32 initialized? */
 ULONG_PTR gHighestUserAddress = 0;
 
@@ -60,7 +60,7 @@ ImmRegisterClient(
     _In_ HINSTANCE hMod)
 {
     gSharedInfo = *ptr;
-    gpsi = gSharedInfo.psi;
+    gpsi = WOW64_CAST_TO_PTR(gSharedInfo.psi);
     return ImmInitializeGlobals(hMod);
 }
 
@@ -521,7 +521,7 @@ ImmAssociateContext(
     if (hIMC && IS_CROSS_THREAD_HIMC(hIMC))
         return NULL;
 
-    hOldIMC = pWnd->hImc;
+    hOldIMC = WOW64_CAST_TO_HANDLE(pWnd->hImc);
     if (hOldIMC == hIMC)
         return hIMC;
 
@@ -573,7 +573,7 @@ ImmAssociateContextEx(
     hwndFocus = (HWND)NtUserQueryWindow(hWnd, QUERY_WINDOW_FOCUS);
     pFocusWnd = ValidateHwnd(hwndFocus);
     if (pFocusWnd)
-        hOldIMC = pFocusWnd->hImc;
+        hOldIMC = WOW64_CAST_TO_HANDLE(pFocusWnd->hImc);
 
     dwValue = NtUserAssociateInputContext(hWnd, hIMC, dwFlags);
     switch (dwValue)
@@ -585,7 +585,7 @@ ImmAssociateContextEx(
             pFocusWnd = ValidateHwnd(hwndFocus);
             if (pFocusWnd)
             {
-                hIMC = pFocusWnd->hImc;
+                hIMC = WOW64_CAST_TO_HANDLE(pFocusWnd->hImc);
                 if (hIMC != hOldIMC)
                 {
                     ImmSetActiveContext(hwndFocus, hOldIMC, FALSE);
@@ -677,7 +677,7 @@ Imm32DestroyInputContext(HIMC hIMC, HKL hKL, BOOL bKeep)
     if (IS_NULL_UNEXPECTEDLY(pIMC))
         return FALSE;
 
-    if (pIMC->head.pti != Imm32CurrentPti())
+    if (WOW64_CAST_TO_PTR(pIMC->head.pti) != Imm32CurrentPti())
     {
         ERR("Thread mismatch\n");
         return FALSE;
@@ -1043,7 +1043,7 @@ ImmGetSaveContext(
     if (IS_NULL_UNEXPECTEDLY(pWnd) || IS_CROSS_PROCESS_HWND(hWnd))
         return NULL;
 
-    hIMC = pWnd->hImc;
+    hIMC = WOW64_CAST_TO_HANDLE(pWnd->hImc);
     if (!hIMC && (dwContextFlags & 1))
         hIMC = (HIMC)NtUserQueryWindow(hWnd, QUERY_WINDOW_DEFAULT_ICONTEXT);
 

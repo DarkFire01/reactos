@@ -136,7 +136,6 @@ Zw\Name:
 SyscallId = 0
 
 #ifdef _M_IX86
-#define _WOW64
 #ifdef _WOW64
 #define KUSER_SHARED_SYSCALL HEX(7ffe0300)
 MACRO(STUBCODE_U, Name, SyscallId, ArgCount)

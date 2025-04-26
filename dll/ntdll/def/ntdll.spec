@@ -1933,6 +1933,3 @@
 @ stdcall -arch=arm __rt_udiv()
 @ stdcall -arch=arm __rt_udiv64()
 @ stdcall -arch=arm __rt_srsh()
-
-@ stdcall -arch=i386 NtWow64ReadVirtualMemory64(ptr long long ptr long long ptr)
-@ stdcall -arch=i386 NtWow64WriteVirtualMemory64(ptr long long ptr long long ptr)

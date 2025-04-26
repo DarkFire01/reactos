@@ -530,7 +530,7 @@ Imm32ProcessRequest(HIMC hIMC, PWND pWnd, DWORD dwCommand, LPVOID pData, BOOL bA
 
 DoIt:
     /* The main task */
-    hWnd = pWnd->head.h;
+    hWnd = WOW64_CAST_TO_HANDLE(pWnd->head.h);
     if (bAnsiWnd)
         ret = SendMessageA(hWnd, WM_IME_REQUEST, dwCommand, (LPARAM)pTempData);
     else
@@ -606,7 +606,7 @@ ImmRequestMessageAW(
     if (hWnd)
         pWnd = ValidateHwnd(hWnd);
 
-    if (pWnd && pWnd->head.pti == Imm32CurrentPti())
+    if (pWnd && WOW64_CAST_TO_PTR(pWnd->head.pti) == Imm32CurrentPti())
         ret = Imm32ProcessRequest(hIMC, pWnd, (DWORD)wParam, (LPVOID)lParam, bAnsi);
 
     ImmUnlockIMC(hIMC);
