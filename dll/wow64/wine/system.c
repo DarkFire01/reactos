@@ -192,6 +192,7 @@ static NTSTATUS put_system_proc_info( SYSTEM_PROCESS_INFORMATION32 *info32,
 #endif
             proc32->HandleCount                  = proc->HandleCount;
             proc32->SessionId                    = proc->SessionId;
+            put_vm_counters(&proc32->vmCounters, (VM_COUNTERS_EX*)&proc->PeakVirtualSize, sizeof(proc32->vmCounters));
 #ifndef __REACTOS__
             proc32->UniqueProcessKey             = proc->UniqueProcessKey;
             proc32->ioCounters                   = proc->ioCounters;

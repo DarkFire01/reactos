@@ -551,8 +551,18 @@ extern void put_section_image_info( SECTION_IMAGE_INFORMATION32 *info32,
 static void put_vm_counters( VM_COUNTERS_EX32 *info32, const VM_COUNTERS_EX *info,
                              ULONG size )
 {
-    DPRINT("UNIMPLEMENTED");
-    __debugbreak();
+    info32->PeakVirtualSize            = info->PeakVirtualSize;
+    info32->VirtualSize                = info->VirtualSize;
+    info32->PageFaultCount             = info->PageFaultCount;
+    info32->PeakWorkingSetSize         = info->PeakWorkingSetSize;
+    info32->WorkingSetSize             = info->WorkingSetSize;
+    info32->QuotaPeakPagedPoolUsage    = info->QuotaPeakPagedPoolUsage;
+    info32->QuotaPagedPoolUsage        = info->QuotaPagedPoolUsage;
+    info32->QuotaPeakNonPagedPoolUsage = info->QuotaPeakNonPagedPoolUsage;
+    info32->QuotaNonPagedPoolUsage     = info->QuotaNonPagedPoolUsage;
+    info32->PagefileUsage              = info->PagefileUsage;
+    info32->PeakPagefileUsage          = info->PeakPagefileUsage;
+    if (size == sizeof(VM_COUNTERS_EX32)) info32->PrivateUsage = info->PrivateUsage;
 }
 
 static 
