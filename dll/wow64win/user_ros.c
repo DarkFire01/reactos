@@ -793,3 +793,59 @@ wow64_NtUserGetGuiResources(UINT* pArgs)
 
     return NtUserGetGuiResources(hProcess, uiFlags);
 }
+
+HANDLE
+NTAPI
+wow64_NtUserGetClipboardData(UINT *pArgs)
+{
+    ULONG ulFormat = get_ulong(&pArgs);
+    PGETCLIPBDATA32 pClipData32 = get_ptr(&pArgs);
+
+    GETCLIPBDATA ClipData = { 0 };
+    HANDLE Result;
+
+    ClipData.uFmtRet = pClipData32->uFmtRet;
+    ClipData.fGlobalHandle = pClipData32->fGlobalHandle;
+    ClipData.hLocale = UlongToHandle(pClipData32->hLocale);
+
+    Result = NtUserGetClipboardData(ulFormat, &ClipData);
+
+    pClipData32->uFmtRet = ClipData.uFmtRet;
+    pClipData32->fGlobalHandle = ClipData.fGlobalHandle;
+    pClipData32->hLocale = HandleToUlong(ClipData.hLocale);
+
+    return Result;
+}
+
+HANDLE
+NTAPI
+wow64_NtUserSetClipboardData(UINT *pArgs)
+{
+    ULONG ulFormat = get_ulong(&pArgs);
+    HANDLE hMem = get_handle(&pArgs);
+    PSETCLIPBDATA pClipData = get_ptr(&pArgs);
+
+    return NtUserSetClipboardData(ulFormat, hMem, pClipData);
+}
+
+NTSTATUS
+NTAPI
+wow64_NtUserCreateLocalMemHandle(UINT* pArgs)
+{
+    HANDLE hMem = get_handle(&pArgs);
+    PVOID pData32 = get_ptr(&pArgs);
+    DWORD cbData32 = get_ulong(&pArgs);
+    PDWORD32 pcbData = get_ptr(&pArgs);
+
+    return NtUserCreateLocalMemHandle(hMem, pData32, cbData32, pcbData);
+}
+
+HANDLE
+NTAPI
+wow64_NtUserConvertMemHandle(UINT* pArgs)
+{
+    PVOID pData = get_ptr(&pArgs);
+    DWORD cbData = get_ulong(&pArgs);
+
+    return NtUserConvertMemHandle(pData, cbData);
+}

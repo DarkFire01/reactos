@@ -621,5 +621,16 @@ static inline void set_last_error32(DWORD err)
 
 extern PSERVERINFO g_ServerInfo;
 
-#endif
+typedef struct tagGETCLIPBDATA32
+{
+    UINT uFmtRet;
+    BOOL fGlobalHandle;
+    union
+    {
+        ULONG hLocale;
+        ULONG hPalette;
+    };
+} GETCLIPBDATA32, *PGETCLIPBDATA32;
+
+#endif /* __REACTOS__ */
 #endif /* __WOW64WIN_PRIVATE_H */

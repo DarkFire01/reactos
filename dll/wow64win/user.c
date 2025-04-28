@@ -1960,10 +1960,15 @@ NTSTATUS WINAPI wow64_NtUserChildWindowFromPointEx( UINT *args )
 
     return HandleToUlong( NtUserChildWindowFromPointEx( parent, x, y, flags ));
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserClipCursor( UINT *args )
 {
+#ifndef __REACTOS__
     const RECT *rect = get_ptr( &args );
+#else
+    RECT *rect = get_ptr(&args);
+#endif
 
     return NtUserClipCursor( rect );
 }
@@ -1987,6 +1992,7 @@ NTSTATUS WINAPI wow64_NtUserCloseWindowStation( UINT *args )
     return NtUserCloseWindowStation( handle );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserCopyAcceleratorTable( UINT *args )
 {
     HACCEL src = get_handle( &args );

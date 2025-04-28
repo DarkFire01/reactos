@@ -288,6 +288,15 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserShowWindowAsync);
     IMPLEMENT_SERVICE(GdiExtCreatePen);
     IMPLEMENT_SERVICE(UserWindowFromPoint);
+    IMPLEMENT_SERVICE(UserSetClipboardData);
+    IMPLEMENT_SERVICE(UserGetClipboardData);
+    IMPLEMENT_SERVICE(UserCreateLocalMemHandle);
+    IMPLEMENT_SERVICE(UserCloseClipboard);
+    IMPLEMENT_SERVICE(UserConvertMemHandle);
+    IMPLEMENT_SERVICE(UserClipCursor);
+    IMPLEMENT_SERVICE(UserCloseClipboard);
+    IMPLEMENT_SERVICE(UserCloseDesktop);
+    IMPLEMENT_SERVICE(UserCloseWindowStation);
 #undef IMPLEMENT_SERVICE
 }
 
