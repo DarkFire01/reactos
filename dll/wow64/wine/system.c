@@ -505,15 +505,12 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
             SYSTEM_HANDLE_INFORMATION *info;
             SYSTEM_HANDLE_INFORMATION32 *info32 = ptr;
             ULONG count = (len - offsetof(SYSTEM_HANDLE_INFORMATION32, Handle)) / sizeof(SYSTEM_HANDLE_ENTRY32);
-#ifndef __REACTOS__
-            ULONG i, size = offsetof( SYSTEM_HANDLE_INFORMATION, Handle[count] );
-#else
             ULONG i, size = offsetof( SYSTEM_HANDLE_INFORMATION, Handles[count] );
-#endif
+
             info = Wow64AllocateTemp( size );
-            if (!(status = NtQuerySystemInformation( class, info, size, retlen )))
-            {
 #ifndef __REACTOS__
+            if (!(status = NtQuerySystemInformation(class, info, size, retlen)))
+            {
                 info32->Count = info->Count;
                 for (i = 0; i < info->Count; i++)
                 {
@@ -524,9 +521,16 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
                     info32->Handle[i].ObjectPointer = PtrToUlong( info->Handle[i].ObjectPointer );
                     info32->Handle[i].AccessMask    = info->Handle[i].AccessMask;
                 }
+            }
 #else
+            status = NtQuerySystemInformation(class, info, size, retlen);
+            /* NtQuertSystemInformation can return STATUS_INFO_LENGTH_MISMATCH if less handles
+               are requested than there are in the system. We should still copy data for
+               the number of handles we did manage to capture. */
+            if (NT_SUCCESS(status) || status == STATUS_INFO_LENGTH_MISMATCH)
+            {
                 info32->Count = info->NumberOfHandles;
-                for (i = 0; i < info->NumberOfHandles; i++)
+                for (i = 0; i < min(count, info->NumberOfHandles); i++)
                 {
                     info32->Handle[i].OwnerPid      = info->Handles[i].UniqueProcessId;
                     info32->Handle[i].ObjectType    = info->Handles[i].ObjectTypeIndex;
@@ -535,8 +539,8 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
                     info32->Handle[i].ObjectPointer = PtrToUlong( info->Handles[i].Object );
                     info32->Handle[i].AccessMask    = info->Handles[i].GrantedAccess;
                 }
-#endif
             }
+#endif
             if (retlen)
             {
 #ifndef __REACTOS__
