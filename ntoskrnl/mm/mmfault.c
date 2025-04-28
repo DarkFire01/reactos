@@ -248,8 +248,18 @@ MmAccessFault(IN ULONG FaultCode,
         return MmArmAccessFault(FaultCode, Address, Mode, TrapInformation);
     }
 
+    if (KeGetCurrentIrql() >= DISPATCH_LEVEL)
+    {
+        /* Let ARM3 sort that out */
+        IsArm3Fault = TRUE;
+    }
+    else if (((ULONG_PTR)Address >= (ULONG_PTR)MmPagedPoolStart) &&
+             ((ULONG_PTR)Address < (ULONG_PTR)MmPagedPoolEnd))
+    {
+        IsArm3Fault = TRUE;
+    }
     /* Is there a ReactOS address space yet? */
-    if (MmGetKernelAddressSpace())
+    else if (MmGetKernelAddressSpace())
     {
         if (Address > MM_HIGHEST_USER_ADDRESS)
         {
@@ -278,13 +288,14 @@ MmAccessFault(IN ULONG FaultCode,
             MiUnlockProcessWorkingSetShared(PsGetCurrentProcess(), PsGetCurrentThread());
         }
     }
+    else
+    {
+        /* No ReactOS address space yet, let ARM3 handle it */
+        IsArm3Fault = TRUE;
+    }
 
-    /* Is this an ARM3 VAD, or is there no address space yet? */
-    if (IsArm3Fault ||
-        ((Vad == NULL) &&
-         ((ULONG_PTR)Address >= (ULONG_PTR)MmPagedPoolStart) &&
-         ((ULONG_PTR)Address < (ULONG_PTR)MmPagedPoolEnd)) ||
-        (!MmGetKernelAddressSpace()))
+    /* Is this an ARM3 fault? */
+    if (IsArm3Fault)
     {
         /* This is an ARM3 fault */
         DPRINT("ARM3 fault %p\n", Vad);
