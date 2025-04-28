@@ -40,7 +40,7 @@ extern HINSTANCE User32Instance;
 #define user32_module User32Instance
 extern PPROCESSINFO g_ppi;
 extern SHAREDINFO gSharedInfo;
-#if !(defined(_M_IX86) && defined(_WOW64))
+#if !(defined(_M_IX86) && defined(BUILD_WOW6432))
 extern PSERVERINFO gpsi;
 extern PUSER_HANDLE_TABLE gHandleTable;
 extern PUSER_HANDLE_ENTRY gHandleEntries;

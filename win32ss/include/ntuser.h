@@ -18,14 +18,14 @@ struct tagPOPUPMENU;
 
 typedef struct _USER_HANDLE_ENTRY
 {
-#if defined(_M_IX86) && defined(_WOW64)
+#if defined(_M_IX86) && defined(BUILD_WOW6432)
     UINT64 ptr;
 #else
     void *ptr; /* pointer to object */
 #endif
     union
     {
-#if defined(_M_IX86) && defined(_WOW64)
+#if defined(_M_IX86) && defined(BUILD_WOW6432)
         UINT64 pi;
         UINT64 pti;
         UINT64 ppi;
@@ -40,13 +40,13 @@ typedef struct _USER_HANDLE_ENTRY
     unsigned short generation; /* generation counter */
 } USER_HANDLE_ENTRY, *PUSER_HANDLE_ENTRY;
 
-#if defined(_M_IX86) && defined(_WOW64)
+#if defined(_M_IX86) && defined(BUILD_WOW6432)
 typedef UINT64 WOW64_HANDLE_ENTRY_POINTER, *PWOW_HANDLE_ENTRY_POINTER;
 #endif
 
 typedef struct _USER_HANDLE_TABLE
 {
-#if defined(_M_IX86) && defined(_WOW64)
+#if defined(_M_IX86) && defined(BUILD_WOW6432)
     WOW64_HANDLE_ENTRY_POINTER handles;
     WOW64_HANDLE_ENTRY_POINTER freelist;
 #else
@@ -154,7 +154,7 @@ RtlLargeStringToUnicodeString(
  */
 typedef struct _DESKTOPINFO
 {
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     PVOID pvDesktopBase;
     PVOID pvDesktopLimit;
     struct _WND *spwnd;
@@ -216,7 +216,7 @@ typedef struct _CLIENTTHREADINFO
 
 typedef struct _HEAD
 {
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     HANDLE h;
 #else
     UINT64 h;
@@ -227,7 +227,7 @@ typedef struct _HEAD
 typedef struct _THROBJHEAD
 {
     HEAD;
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     struct _THREADINFO *pti;
 #else
     UINT64 pti;
@@ -237,7 +237,7 @@ typedef struct _THROBJHEAD
 typedef struct _THRDESKHEAD
 {
     THROBJHEAD;
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     struct _DESKTOP *rpdesk;
     PVOID pSelf;
 #else
@@ -254,7 +254,7 @@ typedef struct tagIMC
     HWND           hImeWnd;
 } IMC, *PIMC;
 
-#if !(defined(_WIN64) || defined(_WOW64))
+#if !(defined(_WIN64) || defined(BUILD_WOW6432))
 C_ASSERT(offsetof(IMC, head.h) == 0x0);
 C_ASSERT(offsetof(IMC, head.cLockObj) == 0x4);
 C_ASSERT(offsetof(IMC, head.pti) == 0x8);
@@ -266,7 +266,7 @@ C_ASSERT(offsetof(IMC, hImeWnd) == 0x1c);
 typedef struct _PROCDESKHEAD
 {
     HEAD;
-#ifndef _WOW64
+#ifndef BUILD_WOW6432
     DWORD_PTR hTaskWow;
     struct _DESKTOP *rpdesk;
     PVOID pSelf;
@@ -284,7 +284,7 @@ typedef struct _PROCMARKHEAD
     struct _PROCESSINFO *ppi;
 } PROCMARKHEAD, *PPROCMARKHEAD;
 
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
 #define UserHMGetHandle(obj) ((obj)->head.h)
 #define UserHMSetHandle(obj, handle) ((obj)->head.h = (handle))
 #else
@@ -435,7 +435,7 @@ typedef struct tagITEM
     UINT fType;
     UINT fState;
     UINT wID;
-#ifndef _WOW64
+#ifndef BUILD_WOW6432
     struct tagMENU *spSubMenu; /* Pop-up menu. */
     HANDLE hbmpChecked;
     HANDLE hbmpUnchecked;
@@ -447,7 +447,7 @@ typedef struct tagITEM
     UINT64 Xlpstr;
 #endif
     ULONG cch;
-#ifndef _WOW64
+#ifndef BUILD_WOW6432
     DWORD_PTR dwItemData;
 #else
     UINT64 dwItemData;
@@ -459,7 +459,7 @@ typedef struct tagITEM
     ULONG dxTab; /* X position of text after Tab */
     ULONG ulX; /* underline.. start position */
     ULONG ulWidth; /* underline.. width */
-#ifndef _WOW64
+#ifndef BUILD_WOW6432
     HBITMAP hbmp; /* bitmap */
 #else
     UINT64 hbmp;
@@ -467,7 +467,7 @@ typedef struct tagITEM
     INT cxBmp; /* Width Maximum size of the bitmap items in MIIM_BITMAP state */
     INT cyBmp; /* Height " */
     /* ReactOS */
-#ifndef _WOW64
+#ifndef BUILD_WOW6432
     UNICODE_STRING lpstr;
 #else
     UNICODE_STRING64 lpstr;
@@ -504,7 +504,7 @@ typedef struct tagMENU
     ULONG cxMenu; /* Width of the whole menu */
     ULONG cyMenu; /* Height of the whole menu */
     ULONG cxTextAlign; /* Offset of text when items have both bitmaps and text */
-#ifndef _WOW64
+#ifndef BUILD_WOW6432
     struct _WND *spwndNotify; /* window receiving the messages for ownerdraw */
     PITEM rgItems; /* Array of menu items */
     struct tagMENULIST *pParentMenus; /* If this is SubMenu, list of parents. */
@@ -515,7 +515,7 @@ typedef struct tagMENU
 #endif
     DWORD dwContextHelpId;
     ULONG cyMax; /* max height of the whole menu, 0 is screen height */
-#ifndef _WOW64
+#ifndef BUILD_WOW6432
     DWORD_PTR dwMenuData; /* application defined value */
     HBRUSH hbrBack; /* brush for menu background */
 #else
@@ -524,13 +524,13 @@ typedef struct tagMENU
 #endif
     INT iTop; /* Current scroll position Top */
     INT iMaxTop; /* Current scroll position Max Top */
-#ifndef _WOW64
+#ifndef BUILD_WOW6432
     DWORD dwArrowsOn:2; /* Arrows: 0 off, 1 on, 2 to the top, 3 to the bottom. */
 #else
     UINT64 dwArrowsOn : 2;
 #endif
 /* ReactOS */
-#ifndef _WOW64
+#ifndef BUILD_WOW6432
     LIST_ENTRY ListEntry;
     HWND hWnd; /* Window containing the menu, use POPUPMENU */
 #else
@@ -666,7 +666,7 @@ typedef struct _CALLPROCDATA
 
 typedef struct _CLS
 {
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     struct _CLS *pclsNext;
 #else
     UINT64 pclsNext;
@@ -674,7 +674,7 @@ typedef struct _CLS
     RTL_ATOM atomClassName;
     ATOM atomNVClassName;
     DWORD fnid;
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     struct _DESKTOP *rpdeskParent;
     PVOID pdce;
 #else
@@ -682,7 +682,7 @@ typedef struct _CLS
     UINT64 pdce;
 #endif
     DWORD CSF_flags;
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     PSTR  lpszClientAnsiMenuName; /* For client use */
     PWSTR lpszClientUnicodeMenuName; /* "   "      " */
     PCALLPROCDATA spcpdFirst;
@@ -697,14 +697,14 @@ typedef struct _CLS
 #endif
     ULONG cWndReferenceCount;
     UINT style;
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     WNDPROC lpfnWndProc;
 #else
     UINT64 lpfnWndProc;
 #endif
     INT cbclsExtra;
     INT cbwndExtra;
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     HINSTANCE hModule;
     struct _CURICON_OBJECT *spicn;
     struct _CURICON_OBJECT *spcur;
@@ -838,14 +838,14 @@ typedef struct _WND
     /* Style. */
     DWORD style;
     /* Handle of the module that created the window. */
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     HINSTANCE hModule;
 #else
     UINT64 hModule;
 #endif
     DWORD fnid;
 #endif
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     struct _WND *spwndNext;
     struct _WND *spwndPrev;
     struct _WND *spwndParent;
@@ -860,7 +860,7 @@ typedef struct _WND
 #endif
     RECT rcWindow;
     RECT rcClient;
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     WNDPROC lpfnWndProc;
     /* Pointer to the window class. */
     PCLS pcls;
@@ -876,7 +876,7 @@ typedef struct _WND
     UINT64 PropListHead[2];
 #endif
     ULONG PropListItems;
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     /* Scrollbar info */
     PSBINFO pSBInfo;    
     /* system menu handle. */
@@ -907,7 +907,7 @@ typedef struct _WND
     /* Size of the extra data associated with the window. */
     ULONG cbwndExtra;
 
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     struct _WND *spwndLastActive;
     HIMC hImc; // Input context associated with this window.
     LONG_PTR dwUserData;
@@ -938,7 +938,7 @@ typedef struct _WND
     UINT HideFocus:1; /* WS_EX_UISTATEFOCUSRECTHIDDEN ? */
     UINT HideAccel:1; /* WS_EX_UISTATEKBACCELHIDDEN ? */
 
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     /* Scrollbar info */
     PSBINFOEX pSBInfoex; // convert to PSBINFO
     /* Entry in the list of thread windows. */
@@ -980,7 +980,7 @@ typedef struct _MENUWND
 typedef struct _PFNCLIENT
 {
     WNDPROC pfnScrollBarWndProc;
-#if (defined(_WOW64) && defined(_M_IX86))
+#if (defined(BUILD_WOW6432) && defined(_M_IX86))
 #define C(a, b) C2(a, b)
 #define C2(a, b) a ## b
 
@@ -1012,7 +1012,7 @@ typedef struct _PFNCLIENT
 #if (NTDDI_VERSION >= NTDDI_WIN10)
     WNDPROC pfnFilteredProcessRedirectingWndProc;
 #endif
-#if (defined(_WOW64) && defined(_M_IX86))
+#if (defined(BUILD_WOW6432) && defined(_M_IX86))
     PADDER;
 #undef WNDPROC 
 #undef PADDER
@@ -1037,7 +1037,7 @@ typedef LRESULT
 typedef struct _PFNCLIENTWORKER
 {
     WNDPROC_EX pfnButtonWndProc;
-#if (defined(_WOW64) && defined(_M_IX86))
+#if (defined(BUILD_WOW6432) && defined(_M_IX86))
 #define C(a, b) C2(a, b)
 #define C2(a, b) a ## b
 
@@ -1054,7 +1054,7 @@ typedef struct _PFNCLIENTWORKER
     WNDPROC_EX pfnImeWndProc;
     WNDPROC_EX pfnGhostWndProc;
     WNDPROC_EX pfnCtfHookProc;
-#if (defined(_WOW64) && defined(_M_IX86))
+#if (defined(BUILD_WOW6432) && defined(_M_IX86))
     PADDER;
 #undef WNDPROC_EX
 #undef PADDER
@@ -1118,7 +1118,7 @@ typedef LONG_PTR
 
 #define ICLASS_TO_MASK(iCls) (1 << ((iCls)))
 
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
 
 #define GETPFNCLIENTA(fnid) \
  (WNDPROC)(*(((ULONG_PTR *)&gpsi->apfnClientA) + (fnid - FNID_FIRST)))
@@ -1229,7 +1229,7 @@ typedef struct _PERUSERSERVERINFO
     INT aiSysMet[SM_CMETRICS];
     ULONG argbSystemUnmatched[NUM_SYSCOLORS];
     COLORREF argbSystem[NUM_SYSCOLORS];
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     HBRUSH ahbrSystem[NUM_SYSCOLORS];
     HBRUSH hbrGray;
 #else
@@ -1278,7 +1278,7 @@ typedef struct _PERUSERSERVERINFO
 typedef struct tagSERVERINFO
 {
     DWORD dwSRVIFlags;
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     ULONG_PTR cHandleEntries;
     PFN_FNID mpFnidPfn[FNID_NUM];
     WNDPROC aStoCidPfn[FNID_NUMSERVERPROC];
@@ -1308,7 +1308,7 @@ typedef struct tagSERVERINFO
     PERUSERSERVERINFO;
 } SERVERINFO, *PSERVERINFO;
 
-#if defined(_M_IX86) && !defined(_WOW64)
+#if defined(_M_IX86) && !defined(BUILD_WOW6432)
 C_ASSERT(sizeof(SERVERINFO) <= PAGE_SIZE);
 #endif
 
@@ -1333,7 +1333,7 @@ typedef struct _PROPLISTITEM
 
 typedef struct _PROPERTY
 {
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     LIST_ENTRY PropListEntry;
     HANDLE Data;
 #else
@@ -1359,7 +1359,7 @@ struct _PROCESSINFO *GetW32ProcessInfo(VOID);
 typedef struct _WNDMSG
 {
     DWORD maxMsgs;
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     PINT abMsgs;
 #else
     UINT64 abMsgs;
@@ -1372,7 +1372,7 @@ typedef struct _WNDMSG
  */
 typedef struct _SHAREDINFO
 {
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
     PSERVERINFO psi;         /* Global Server Info */
     PVOID aheList;           /* Handle Entry List */
     PVOID pDispInfo;         /* Global PDISPLAYINFO pointer */
@@ -1400,7 +1400,7 @@ typedef struct _USERCONNECT
 /* WinNT 5.0 compatible user32 / win32k */
 #define USER_VERSION MAKELONG(0x0000, 0x0005)
 
-#if defined(_M_IX86) && !defined(_WOW64)
+#if defined(_M_IX86) && !defined(BUILD_WOW6432)
 C_ASSERT(sizeof(USERCONNECT) == 0x124);
 #endif
 
@@ -1460,7 +1460,7 @@ typedef struct tagCURSORDATA
 
 #define COMPAT_FLAG_2_CICERO_DISABLED 2
 
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
 #define IS_IMM_MODE() (gpsi && (gpsi->dwSRVIFlags & SRVINFO_IMM32))
 #define IS_CICERO_MODE() (gpsi && (gpsi->dwSRVIFlags & SRVINFO_CTFIME_ENABLED))
 #else
@@ -3915,7 +3915,7 @@ NtUserSetScrollBarInfo(
 ULONG
 RtlGetExpWinVer(_In_ PVOID BaseAddress);
 
-#ifdef _WOW64
+#ifdef BUILD_WOW6432
 #ifdef _M_IX86
 
 WNDPROC GETPFNCLIENTA(int fnid);

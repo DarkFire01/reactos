@@ -699,7 +699,7 @@ IntGetClassLongA(PWND Wnd, PCLS Class, int nIndex)
                 Ret = (ULONG_PTR)Class->atomNVClassName;
                 break;
 
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
             case GCLP_HCURSOR:
                 Ret = Class->spcur ? (ULONG_PTR)((PPROCMARKHEAD)SharedPtrToUser(Class->spcur))->h : 0;
                 break;
@@ -787,7 +787,7 @@ IntGetClassLongW(PWND Wnd, PCLS Class, int nIndex)
                 Ret = (ULONG_PTR)Class->atomNVClassName;
                 break;
 
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
             case GCLP_HCURSOR:
                 Ret = Class->spcur ? (ULONG_PTR)((PPROCMARKHEAD)SharedPtrToUser(Class->spcur))->h : 0;
                 break;

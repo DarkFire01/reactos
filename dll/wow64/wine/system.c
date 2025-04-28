@@ -750,10 +750,14 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
         if (retlen) *retlen = sizeof(*pRangeStart32);
         if (len < sizeof(*pRangeStart32)) return STATUS_INFO_LENGTH_MISMATCH;
 
-        rangeStart = (ULONG_PTR) ptr;
+        rangeStart = *pRangeStart32;
         
         if (!(status = NtQuerySystemInformation( class, &rangeStart, sizeof(rangeStart), NULL )))
         {
+            if (rangeStart > ULONG_MAX)
+            {
+                rangeStart = ULONG_MAX;
+            }
             *pRangeStart32 = (ULONG) rangeStart;
         }
         return status;

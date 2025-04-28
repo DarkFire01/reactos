@@ -190,6 +190,10 @@ else()
         endfunction()
     endif()
 
+    if (SYSWOW64_BUILD)
+        add_definitions(-DBUILD_WOW6432)
+    endif()
+
     # We don't need CMake importlib handling.
     unset(CMAKE_IMPORT_LIBRARY_SUFFIX)
 

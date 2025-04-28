@@ -37,7 +37,7 @@ HANDLE
 FASTCALL
 IntGetProp(HWND hWnd, ATOM Atom, BOOLEAN SystemProp)
 {
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
   PLIST_ENTRY ListEntry, temp;
   PPROPERTY Property;
   PWND pWnd;

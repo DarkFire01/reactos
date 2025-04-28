@@ -945,7 +945,7 @@ typedef enum _APPCOMPAT_USERFLAGS_HIGHPART
 //
 #include "peb_teb.h"
 
-#if defined(_WIN64) || defined(_WOW64)
+#if defined(_WIN64) || defined(BUILD_WOW6432)
 //
 // Explicit 32 bit PEB/TEB
 //

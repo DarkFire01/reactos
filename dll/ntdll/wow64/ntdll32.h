@@ -8,7 +8,7 @@
 
 #pragma once
 
-#if defined(_WOW64) && defined(_M_IX86)
+#if defined(BUILD_WOW6432)
 
 /* Exported functions */
 NTSYSAPI

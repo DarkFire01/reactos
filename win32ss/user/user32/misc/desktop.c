@@ -129,7 +129,7 @@ RealGetSystemMetrics(int nIndex)
 {
   //FIXME("Global Server Data -> %x\n",gpsi);
   if (nIndex < 0 || nIndex >= SM_CMETRICS) return 0;
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
   return gpsi->aiSysMet[nIndex];
 #else
   return (signed int)WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, aiSysMet[nIndex]);

@@ -190,7 +190,7 @@ TestState(PWND pWnd, UINT Flag)
     return FALSE;
 }
 
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
 PUSER_HANDLE_ENTRY
 FASTCALL
 GetUser32Handle(HANDLE handle)
@@ -286,7 +286,7 @@ FASTCALL
 ValidateHandle(HANDLE handle, UINT uType)
 {
   PVOID ret;
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
   PUSER_HANDLE_ENTRY pEntry;
 #else
   UINT64 pEntry;
@@ -296,7 +296,7 @@ ValidateHandle(HANDLE handle, UINT uType)
 
   pEntry = GetUser32Handle(handle);
 
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
   if (pEntry && uType == 0)
       uType = pEntry->type;
 
@@ -344,7 +344,7 @@ ValidateHandle(HANDLE handle, UINT uType)
     return NULL;
   }
 
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
   if (g_ObjectHeapTypeShared[uType])
     ret = SharedPtrToUser(pEntry->ptr);
   else
@@ -368,7 +368,7 @@ FASTCALL
 ValidateHandleNoErr(HANDLE handle, UINT uType)
 {
   PVOID ret;
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
   PUSER_HANDLE_ENTRY pEntry;
 #else
   UINT64 pEntry;
@@ -378,7 +378,7 @@ ValidateHandleNoErr(HANDLE handle, UINT uType)
 
   pEntry = GetUser32Handle(handle);
 
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
   if (pEntry && uType == 0)
     uType = pEntry->type;
 
@@ -415,7 +415,7 @@ PCALLPROCDATA
 FASTCALL
 ValidateCallProc(HANDLE hCallProc)
 {
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
   PUSER_HANDLE_ENTRY pEntry;
 #else
   UINT64 pEntry;
@@ -424,7 +424,7 @@ ValidateCallProc(HANDLE hCallProc)
   PCALLPROCDATA CallProc = ValidateHandle(hCallProc, TYPE_CALLPROC);
 
   pEntry = GetUser32Handle(hCallProc);
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
   if (CallProc != NULL && pEntry->ppi == g_ppi)
 #else
   if (CallProc != NULL && WOW64_READ_PTR_FIELD(pEntry, USER_HANDLE_ENTRY, ppi) == (ULONG_PTR)g_ppi)

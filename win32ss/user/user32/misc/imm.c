@@ -1163,7 +1163,7 @@ BOOL WINAPI UpdatePerUserImmEnabling(VOID)
     BOOL ret;
 
     ret = NtUserCallNoParam(NOPARAM_ROUTINE_UPDATEPERUSERIMMENABLING);
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
     if (!ret || !(gpsi->dwSRVIFlags & SRVINFO_IMM32))
 #else
     if (!ret || !(WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwSRVIFlags) & SRVINFO_IMM32))

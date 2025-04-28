@@ -663,7 +663,7 @@ GetLastInputInfo(PLASTINPUTINFO plii)
         return FALSE;
     }
 
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
     plii->dwTime = gpsi->dwLastRITEventTickCount;
 #else
     plii->dwTime = WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwLastRITEventTickCount);

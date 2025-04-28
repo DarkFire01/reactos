@@ -269,7 +269,7 @@ CURSORICON_ConvertPngToBmpIcon(
 
 VOID LoadSystemCursors(VOID)
 {
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
    if (!gpsi->hIconSmWindows)
 #else
    if (!WOW64_READ_HANDLE_FIELD(gpsi, SERVERINFO, hIconSmWindows))

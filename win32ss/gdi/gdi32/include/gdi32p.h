@@ -412,7 +412,7 @@ GdiAllocBatchCommand(
     USHORT cjSize;
     PGDIBATCHHDR pHdr;
 
-#if defined(_WOW64) && defined(_M_IX86)
+#if defined(BUILD_WOW6432) && defined(_M_IX86)
     return NULL;
 #endif
 

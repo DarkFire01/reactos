@@ -123,7 +123,7 @@ IntNotifyWinEvent(
   ne.idObject = idObject;
   ne.idChild  = idChild;
   ne.flags    = flags;
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
   if (gpsi->dwInstalledEventHooks & GetMaskFromEvent(event))
 #else
   if (WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwInstalledEventHooks) & GetMaskFromEvent(event))
@@ -336,7 +336,7 @@ NotifyWinEvent(
 // "Servers call NotifyWinEvent to announce the event to the system after the
 // event has occurred; they must never notify the system of an event before
 // the event has occurred." msdn on NotifyWinEvent.
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
   if (gpsi->dwInstalledEventHooks & GetMaskFromEvent(event)) // Check to see.
 #else
   if (WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwInstalledEventHooks) & GetMaskFromEvent(event))
@@ -399,7 +399,7 @@ IsWinEventHookInstalled(
 {
   if ((PTHREADINFO)NtCurrentTeb()->Win32ThreadInfo)
   {
-#if defined(_WOW64)
+#if defined(BUILD_WOW6432)
      return (WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwInstalledEventHooks) & GetMaskFromEvent(event)) != 0;
 #else
      return (gpsi->dwInstalledEventHooks & GetMaskFromEvent(event)) != 0;

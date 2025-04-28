@@ -124,7 +124,7 @@ typedef struct _SM_API_MSG
 // This is the size that Server 2003 SP1 SMSS expects, so make sure we conform.
 //
 #ifndef _WIN64
-#ifndef _WOW64
+#ifndef BUILD_WOW6432
 C_ASSERT(sizeof(SM_API_MSG) == 0x130);
 #else
 /* TODO */
@@ -256,7 +256,7 @@ typedef struct _SB_API_MSG
 // This is the size that Server 2003 SP1 SMSS expects, so make sure we conform.
 //
 #ifndef _WIN64
-#ifndef _WOW64
+#ifndef BUILD_WOW6432
 C_ASSERT(sizeof(SB_API_MSG) == 0x110);
 #else
 /* TODO */

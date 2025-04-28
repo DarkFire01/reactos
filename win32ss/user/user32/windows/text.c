@@ -151,7 +151,7 @@ CharPrevA(LPCSTR start, LPCSTR ptr)
     if (ptr > start)
     {
         --ptr;
-#if !defined(_WOW64)
+#if !defined(BUILD_WOW6432)
         if (gpsi->dwSRVIFlags & SRVINFO_DBCSENABLED)
 #else
         if (WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, dwSRVIFlags) & SRVINFO_DBCSENABLED)

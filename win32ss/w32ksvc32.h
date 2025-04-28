@@ -544,7 +544,7 @@
     SVC_(UserSetTimer, 4)
     SVC_(UserSetWindowFNID, 2)
     SVC_(UserSetWindowLong, 4)
-#if defined(_WOW64) || defined(_WIN64)
+#if defined(BUILD_WOW6432) || defined(_WIN64)
     SVC_(UserSetWindowLongPtr, 4)
 #endif // _WIN64
     SVC_(UserSetWindowPlacement, 2)

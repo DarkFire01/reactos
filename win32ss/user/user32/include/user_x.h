@@ -1,6 +1,6 @@
 #pragma once
 
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
 static __inline PVOID
 SharedPtrToUser(PVOID Ptr)
 {
@@ -19,7 +19,7 @@ SharedPtrToUser(UINT64 Ptr)
 #endif
 
 static __inline PVOID
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
 DesktopPtrToUser(PVOID Ptr)
 #else
 DesktopPtrToUserImpl(PVOID Ptr)
@@ -105,7 +105,7 @@ static __inline BOOL STATIC_update_uistate(HWND hwnd, BOOL unicode)
 
 static __inline void LoadUserApiHook()
 {
-#if !(defined(_WOW64) && defined(_M_IX86))
+#if !(defined(BUILD_WOW6432) && defined(_M_IX86))
    if (!gfServerProcess &&
        !IsInsideUserApiHook() &&
        (gpsi->dwSRVIFlags & SRVINFO_APIHOOK) &&
