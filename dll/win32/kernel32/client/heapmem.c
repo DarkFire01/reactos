@@ -56,7 +56,7 @@ HeapCreate(DWORD flOptions,
     /* Check if heap is growable and ensure max size is correct */
     if (dwMaximumSize == 0)
         Flags |= HEAP_GROWABLE;
-    else if (dwMaximumSize < BaseStaticServerData->SysInfo.PageSize &&
+    else if (dwMaximumSize < WOW64_READ_ULONG_FIELD(BaseStaticServerData, BASE_STATIC_SERVER_DATA, SysInfo.PageSize) &&
             dwInitialSize > dwMaximumSize)
     {
         /* Max size is non-zero but less than page size which can't be correct.
@@ -1276,6 +1276,17 @@ GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer)
     QUOTA_LIMITS QuotaLimits;
     ULONGLONG PageFile, PhysicalMemory;
     NTSTATUS Status;
+    ULONG PageSize;
+    ULONG NumberOfPhysicalPages;
+
+    NumberOfPhysicalPages =
+        WOW64_READ_ULONG_FIELD(BaseStaticServerData,
+                               BASE_STATIC_SERVER_DATA,
+                               SysInfo.NumberOfPhysicalPages);
+    PageSize =
+        WOW64_READ_ULONG_FIELD(BaseStaticServerData,
+                               BASE_STATIC_SERVER_DATA,
+                               SysInfo.PageSize);
 
     if (lpBuffer->dwLength != sizeof(*lpBuffer))
     {
@@ -1295,18 +1306,18 @@ GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer)
     }
 
     /* Calculate memory load */
-    lpBuffer->dwMemoryLoad = ((DWORD)(BaseStaticServerData->SysInfo.NumberOfPhysicalPages -
+    lpBuffer->dwMemoryLoad = ((DWORD)(NumberOfPhysicalPages -
                                       PerformanceInfo.AvailablePages) * 100) /
-                                      BaseStaticServerData->SysInfo.NumberOfPhysicalPages;
+                                      NumberOfPhysicalPages;
 
     /* Save physical memory */
-    PhysicalMemory = BaseStaticServerData->SysInfo.NumberOfPhysicalPages *
-                     BaseStaticServerData->SysInfo.PageSize;
+    PhysicalMemory = NumberOfPhysicalPages *
+                     PageSize;
     lpBuffer->ullTotalPhys = PhysicalMemory;
 
     /* Now save available physical memory */
     PhysicalMemory = PerformanceInfo.AvailablePages *
-                     BaseStaticServerData->SysInfo.PageSize;
+                     PageSize;
     lpBuffer->ullAvailPhys = PhysicalMemory;
 
     /* Query VM and Quota Limits */
@@ -1335,7 +1346,7 @@ GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer)
     /* Save the commit limit */
     lpBuffer->ullTotalPageFile = min(QuotaLimits.PagefileLimit,
                                      PerformanceInfo.CommitLimit);
-    lpBuffer->ullTotalPageFile *= BaseStaticServerData->SysInfo.PageSize;
+    lpBuffer->ullTotalPageFile *= PageSize;
 
     /* Calculate how many pages are left */
     PageFile = PerformanceInfo.CommitLimit - PerformanceInfo.CommittedPages;
@@ -1344,11 +1355,15 @@ GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer)
     lpBuffer->ullAvailPageFile = min(PageFile,
                                      QuotaLimits.PagefileLimit -
                                      VmCounters.PagefileUsage);
-    lpBuffer->ullAvailPageFile *= BaseStaticServerData->SysInfo.PageSize;
+    lpBuffer->ullAvailPageFile *= PageSize;
 
     /* Now calculate the total virtual space */
-    lpBuffer->ullTotalVirtual = (BaseStaticServerData->SysInfo.MaximumUserModeAddress -
-                                 BaseStaticServerData->SysInfo.MinimumUserModeAddress) + 1;
+    lpBuffer->ullTotalVirtual = (WOW64_READ_PTR_FIELD(BaseStaticServerData,
+                                                      BASE_STATIC_SERVER_DATA,
+                                                      SysInfo.MaximumUserModeAddress) -
+                                 WOW64_READ_PTR_FIELD(BaseStaticServerData,
+                                                      BASE_STATIC_SERVER_DATA,
+                                                      SysInfo.MinimumUserModeAddress)) + 1;
 
     /* And finally the available virtual space */
     lpBuffer->ullAvailVirtual = lpBuffer->ullTotalVirtual - VmCounters.VirtualSize;

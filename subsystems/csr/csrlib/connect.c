@@ -19,6 +19,10 @@
 
 #include <csrsrv.h> // For CSR_CSRSS_SECTION_SIZE
 
+#ifdef BUILD_WOW6432
+#include "../../dll/ntdll/wow64/ntdll32.h"
+#endif
+
 #define NDEBUG
 #include <debug.h>
 
@@ -164,11 +168,17 @@ CsrpConnectToServer(
     CsrProcessId = (HANDLE)ConnectionInfo.ServerProcessId;
 
     /* Save CSR Section data */
+#ifndef BUILD_WOW6432
     NtCurrentPeb()->ReadOnlySharedMemoryBase = (PVOID)ConnectionInfo.SharedSectionBase;
 #if (NTDDI_VERSION < NTDDI_LONGHORN)
     NtCurrentPeb()->ReadOnlySharedMemoryHeap = (PVOID)ConnectionInfo.SharedSectionHeap;
 #endif
     NtCurrentPeb()->ReadOnlyStaticServerData = (PVOID)ConnectionInfo.SharedStaticServerData;
+#else
+    NtCurrentPeb64()->ReadOnlySharedMemoryBase = ConnectionInfo.SharedSectionBase;
+    NtCurrentPeb64()->ReadOnlySharedMemoryHeap = ConnectionInfo.SharedSectionHeap;
+    NtCurrentPeb64()->ReadOnlyStaticServerData = ConnectionInfo.SharedStaticServerData;
+#endif
 
     /* Create the port heap */
     CsrPortHeap = RtlCreateHeap(0,

@@ -19,12 +19,7 @@
 
 PCSR_SERVER_DLL CsrLoadedServerDll[CSR_SERVER_DLL_MAX];
 PVOID CsrSrvSharedSectionHeap = NULL;
-#ifdef _WIN64
-/* Hardcoded value for WOW64: FIXME!!! */
-PVOID CsrSrvSharedSectionBase = (PVOID)0xE120000ULL;
-#else
 PVOID CsrSrvSharedSectionBase = NULL;
-#endif
 PVOID *CsrSrvSharedStaticServerData = NULL;
 ULONG CsrSrvSharedSectionSize = 0;
 HANDLE CsrSrvSharedSection = NULL;

@@ -826,7 +826,7 @@ IsBadReadPtr(IN LPCVOID lp,
     if (!lp) return TRUE;
 
     /* Get the page size */
-    PageSize = BaseStaticServerData->SysInfo.PageSize;
+    PageSize = WOW64_READ_ULONG_FIELD(BaseStaticServerData, BASE_STATIC_SERVER_DATA, SysInfo.PageSize);
 
     /* Calculate start and end */
     Current = (volatile CHAR*)lp;
@@ -904,7 +904,7 @@ IsBadWritePtr(IN LPVOID lp,
     if (!lp) return TRUE;
 
     /* Get the page size */
-    PageSize = BaseStaticServerData->SysInfo.PageSize;
+    PageSize = WOW64_READ_ULONG_FIELD(BaseStaticServerData, BASE_STATIC_SERVER_DATA, SysInfo.PageSize);
 
     /* Calculate start and end */
     Current = (volatile CHAR*)lp;

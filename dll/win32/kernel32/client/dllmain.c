@@ -16,7 +16,7 @@
 
 /* GLOBALS *******************************************************************/
 
-PBASE_STATIC_SERVER_DATA BaseStaticServerData;
+LPC_PTRTYPE(PBASE_STATIC_SERVER_DATA) BaseStaticServerData;
 BOOLEAN BaseRunningInServerProcess = FALSE;
 
 WCHAR BaseDefaultPathBuffer[6140];
@@ -27,6 +27,11 @@ HMODULE kernel32_handle = NULL;
 PPEB Peb;
 ULONG SessionId;
 static BOOL DllInitialized = FALSE;
+
+#ifdef BUILD_WOW6432
+static WCHAR BaseWindowsSystemDirectoryBuffer[MAX_PATH];
+static WCHAR BaseWindowsDirectoryBuffer[MAX_PATH];
+#endif
 
 /* Critical section for various kernel32 data structures */
 RTL_CRITICAL_SECTION BaseDllDirectoryLock;
@@ -149,8 +154,15 @@ DllMain(HANDLE hDll,
             }
 
             /* Get the server data */
+#ifndef BUILD_WOW6432
             ASSERT(Peb->ReadOnlyStaticServerData);
-            BaseStaticServerData = (PVOID)((LPC_ULONG_PTR*)Peb->ReadOnlyStaticServerData)[BASESRV_SERVERDLL_INDEX];
+            BaseStaticServerData = Peb->ReadOnlyStaticServerData[BASESRV_SERVERDLL_INDEX];
+#else
+            ASSERT(NtCurrentPeb64()->ReadOnlyStaticServerData);
+            BaseStaticServerData =
+                Wow64ReadNativePtr((UINT64)NtCurrentPeb64()->ReadOnlyStaticServerData
+                                    + BASESRV_SERVERDLL_INDEX * sizeof(LPC_PVOID));
+#endif
             if (!BaseStaticServerData)
             {
                 DPRINT1("BaseStaticServerData NULL\n");
@@ -172,12 +184,56 @@ DllMain(HANDLE hDll,
             kernel32_handle = hCurrentModule = hDll;
 
             /* Set the directories */
+#ifndef BUILD_WOW6432
             BaseWindowsDirectory.Length = BaseStaticServerData->WindowsDirectory.Length;
             BaseWindowsSystemDirectory.Length = BaseStaticServerData->WindowsSystemDirectory.Length;
             BaseWindowsDirectory.MaximumLength = BaseStaticServerData->WindowsDirectory.MaximumLength;
             BaseWindowsSystemDirectory.MaximumLength = BaseStaticServerData->WindowsSystemDirectory.MaximumLength;
             BaseWindowsDirectory.Buffer = (PVOID)BaseStaticServerData->WindowsDirectory.Buffer;
             BaseWindowsSystemDirectory.Buffer = (PVOID)BaseStaticServerData->WindowsSystemDirectory.Buffer;
+#else
+            BaseWindowsDirectory.Length =
+                WOW64_READ_WORD_FIELD(BaseStaticServerData, BASE_STATIC_SERVER_DATA, WindowsDirectory.Length);
+            BaseWindowsSystemDirectory.Length =
+                WOW64_READ_WORD_FIELD(BaseStaticServerData, BASE_STATIC_SERVER_DATA, WindowsSystemDirectory.Length);
+            BaseWindowsDirectory.MaximumLength =
+                WOW64_READ_WORD_FIELD(BaseStaticServerData, BASE_STATIC_SERVER_DATA, WindowsDirectory.MaximumLength);
+            BaseWindowsSystemDirectory.MaximumLength =
+                WOW64_READ_WORD_FIELD(BaseStaticServerData, BASE_STATIC_SERVER_DATA, WindowsSystemDirectory.MaximumLength);
+            BaseWindowsDirectory.Buffer = BaseWindowsDirectoryBuffer;
+            BaseWindowsSystemDirectory.Buffer = BaseWindowsSystemDirectoryBuffer;
+
+            ASSERT(BaseWindowsDirectory.Length < MAX_PATH * sizeof(WCHAR));
+            ASSERT(BaseWindowsSystemDirectory.Length < MAX_PATH * sizeof(WCHAR));
+
+            Status = NtWow64ReadVirtualMemory64(NtCurrentProcess(),
+                                                WOW64_READ_PTR_FIELD(
+                                                    BaseStaticServerData,
+                                                    BASE_STATIC_SERVER_DATA,
+                                                    WindowsDirectory.Buffer),
+                                                BaseWindowsDirectoryBuffer,
+                                                BaseWindowsDirectory.Length,
+                                                NULL);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("WOW64: Failed to set up BaseWindowsDirectory\n");
+                return FALSE;
+            }
+
+            Status = NtWow64ReadVirtualMemory64(NtCurrentProcess(),
+                                                WOW64_READ_PTR_FIELD(
+                                                    BaseStaticServerData,
+                                                    BASE_STATIC_SERVER_DATA,
+                                                    WindowsSystemDirectory.Buffer),
+                                                BaseWindowsSystemDirectoryBuffer,
+                                                BaseWindowsSystemDirectory.Length,
+                                                NULL);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("WOW64: Failed to set up BaseWindowsSystemDirectory\n");
+                return FALSE;
+            }
+#endif
 
             /* Construct the default path (using the static buffer) */
             Status = RtlStringCbPrintfW(BaseDefaultPathBuffer,

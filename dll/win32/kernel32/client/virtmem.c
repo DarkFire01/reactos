@@ -30,7 +30,9 @@ VirtualAllocEx(IN HANDLE hProcess,
 
     /* Make sure the address is within the granularity of the system (64K) */
     if ((lpAddress != NULL) &&
-        (lpAddress < UlongToPtr(BaseStaticServerData->SysInfo.AllocationGranularity)))
+        (lpAddress < UlongToPtr(WOW64_READ_ULONG_FIELD(BaseStaticServerData,
+                                                       BASE_STATIC_SERVER_DATA,
+                                                       SysInfo.AllocationGranularity))))
     {
         /* Fail the call */
         SetLastError(ERROR_INVALID_PARAMETER);

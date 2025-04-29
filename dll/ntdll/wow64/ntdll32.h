@@ -6,6 +6,8 @@
  * PROGRAMMER:      Marcin Jabłoński
  */
 
+/* TODO: move to some sensible place - somewhere like /sdk/include/reactos/... */
+
 #pragma once
 
 #if defined(BUILD_WOW6432)
@@ -48,6 +50,7 @@ Wow64ReadNativeWord(UINT64 Address)
 
     if (!NT_SUCCESS(Status) || BytesRead != sizeof(Result))
     {
+        /* TODO: Throw an access violation exception or something */
         __debugbreak();
         ASSERT(FALSE);
     }
@@ -166,6 +169,10 @@ Wow64WriteNativePtr(UINT64 Address, UINT64 Value)
 #define WOW64_CAST_TO_HANDLE(H) ((HANDLE)(ULONG_PTR)(H))
 #define WOW64_CAST_FROM_PTR(Ptr) ((UINT64)((ULONG_PTR)(Ptr)))
 #define WOW64_CAST_FROM_HANDLE(H) ((UINT64)((ULONG_PTR)(H)))
+
+#define NtCurrentPeb64() ((PPEB64)(((ULONG_PTR)NtCurrentPeb()) - ALIGN_UP_BY(sizeof(PEB64), PAGE_SIZE)))
+#define NtCurrentTeb64() ((PPEB64)(((ULONG_PTR)NtCurrentTeb()) - ALIGN_UP_BY(sizeof(TEB64), PAGE_SIZE)))
+
 #else
 
 #define WOW64_READ_PTR_FIELD(Ptr, StructType, Field) (Ptr->Field)
