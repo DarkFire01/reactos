@@ -46,6 +46,11 @@ ULONG_PTR default_zero_bits = 0x7fffffff;
 #include "ros_wow64_private.h"
 ULONG_PTR highest_user_address = 0x7ffeffff;
 ULONG_PTR default_zero_bits = 32;
+
+#ifdef __REACTOS__
+#define GetProcessHeap() RtlGetProcessHeap()
+#endif
+
 #endif
 
 #ifndef __REACTOS__
@@ -953,12 +958,17 @@ static void thread_init(void)
         NtTerminateProcess( GetCurrentProcess(), STATUS_INVALID_IMAGE_FORMAT );
     }
 }
-
+#endif
 
 /**********************************************************************
  *           free_temp_data
  */
+#ifndef __REACTOS__
 static void free_temp_data(void)
+#else
+VOID
+Wow64FreeTempData(VOID)
+#endif
 {
     struct mem_header *next, *mem;
 
@@ -971,6 +981,7 @@ static void free_temp_data(void)
 }
 
 
+#ifndef __REACTOS__
 /**********************************************************************
  *           wow64_syscall
  */
@@ -1117,6 +1128,7 @@ __ASM_GLOBAL_FUNC( cpu_simulate_handler,
                    "call RtlUnwind\n\t"
                    "int3" )
 #endif
+#endif
 
 
 /**********************************************************************
@@ -1136,6 +1148,7 @@ void * WINAPI Wow64AllocateTemp( SIZE_T size )
 }
 
 
+#ifndef __REACTOS__
 /**********************************************************************
  *           Wow64ApcRoutine  (wow64.@)
  */

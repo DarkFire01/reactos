@@ -260,7 +260,6 @@ NTSTATUS WINAPI wow64_NtQueryInformationProcess( UINT *args )
 static
 NTSTATUS 
 Wow64WinHandler(ULONG syscallNum, 
-                ULONG numArgs, 
                 ULONG* pArgs)
 {
     ANSI_STRING ImportStr = RTL_CONSTANT_STRING("sdwhwin32");
@@ -315,7 +314,8 @@ Wow64WinHandler(ULONG syscallNum,
                 syscallNum, mapping[syscallNum]);
         return STATUS_NOT_IMPLEMENTED;
     }
-    
+
+#if 0
     if (pServiceTable->ArgumentTable != NULL)
     {
         if (pServiceTable->ArgumentTable[syscallNum] != numArgs)
@@ -325,16 +325,16 @@ Wow64WinHandler(ULONG syscallNum,
                     numArgs, syscallNum, mapping[syscallNum]);
         }
     }
+#endif
     
     Service = (PVOID)HandlerTable[syscallNum];
     return Service(pArgs);
 }
 
-static
-NTSTATUS 
-Wow64Handler(ULONG syscallNum, 
-             ULONG numArgs, 
-             ULONG* pArgs)
+NTSTATUS
+WINAPI
+Wow64SystemServiceEx(ULONG syscallNum, 
+                     ULONG* pArgs)
 {   
     NTSTATUS status;
 
@@ -568,7 +568,9 @@ Wow64Handler(ULONG syscallNum,
         {
             if (syscallNum >= 0x1000)
             {
-                return Wow64WinHandler(syscallNum - 0x1000, numArgs, pArgs);
+                status = Wow64WinHandler(syscallNum - 0x1000, pArgs);
+                Wow64FreeTempData();
+                return status;
             }
             
             if (syscallNum < sizeof(mapping) / sizeof(*mapping))
@@ -579,11 +581,12 @@ Wow64Handler(ULONG syscallNum,
             {
                 DPRINT1("[Syscall %lX:???] ", syscallNum);
             }
-            DPRINT1("WARNING: Unhandled 32-bit syscall 0x%lX(%ld args at %p)\n", syscallNum, numArgs, pArgs);
+            DPRINT1("WARNING: Unhandled 32-bit syscall 0x%lX(args at %p)\n", syscallNum, pArgs);
             status = STATUS_NOT_IMPLEMENTED;
         }
     }
-    
+
+    Wow64FreeTempData();
     return status;
 }
 
@@ -853,6 +856,46 @@ DllMain(HANDLE hDll,
 }
 
 static
+PULONG
+GetKernelCallbackTable32()
+{
+    return UlongToPtr(NtCurrentPeb32()->KernelCallbackTable);
+}
+
+NTSTATUS 
+WINAPI 
+Wow64KiUserCallbackDispatcher(ULONG nCallback, 
+                              PVOID IN pArgs, 
+                              ULONG nArgLen, 
+                              PVOID* OUT ppReturn, 
+                              PULONG OUT pnRetLen)
+{    
+    USER_CALLBACK_FRAME frame;
+    ULONG Args64[2];
+    
+    Args64[0] = PtrToUlong(pArgs);
+    Args64[1] = nArgLen;
+    
+    frame.prev_frame = NtCurrentTeb()->TlsSlots[WOW64_TLS_USERCALLBACKDATA];
+    frame.temp_list  = NtCurrentTeb()->TlsSlots[WOW64_TLS_TEMPLIST];
+    frame.ret_ptr    = ppReturn;
+    frame.ret_len    = pnRetLen;
+    frame.temp_list  = NULL;
+    
+    NtCurrentTeb()->TlsSlots[WOW64_TLS_USERCALLBACKDATA] = &frame;
+    NtCurrentTeb()->TlsSlots[WOW64_TLS_TEMPLIST] = NULL;
+    
+    if (!setjmp(frame.jmpbuf))
+    {
+        Call32(GetKernelCallbackTable32()[nCallback], 2, Args64);
+    }
+   
+    NtCurrentTeb()->TlsSlots[WOW64_TLS_USERCALLBACKDATA] = frame.prev_frame;
+    NtCurrentTeb()->TlsSlots[WOW64_TLS_TEMPLIST] = frame.temp_list;
+    return frame.status;
+}
+
+static
 VOID 
 Wow64InitProcess(PCONTEXT pContext)
 {
@@ -1012,9 +1055,14 @@ Wow64InitThread(PCONTEXT pContext)
        correct values are loaded before executing. */
     while(NtYieldExecution() == STATUS_NO_YIELD_PERFORMED);
 
+    /* Initialize WOW64 TLS entries in the 64-bit TEB */
+    NtCurrentTeb()->TlsSlots[WOW64_TLS_TEMPLIST] = NULL;
+    NtCurrentTeb()->TlsSlots[WOW64_TLS_APCLIST] = NULL;
+    NtCurrentTeb()->TlsSlots[WOW64_TLS_USERCALLBACKDATA] = NULL;
+
     /* Make sure the handler routine pointer fits into the 32-bit TEB */
-    ASSERT((((ULONG_PTR)Wow64Handler) & ~0xFFFFFFFF) == 0);
-    WowTeb->WOW32Reserved = PtrToUlong(Wow64Handler);
+    ASSERT((((ULONG_PTR)Wow64SystemServiceEx) & ~0xFFFFFFFF) == 0);
+    WowTeb->WOW32Reserved = PtrToUlong(Wow64SystemServiceEx);
 
     WowTeb->ClientId.UniqueProcess = HandleToULong(Teb->ClientId.UniqueProcess);
     WowTeb->ClientId.UniqueThread = HandleToULong(Teb->ClientId.UniqueThread);
@@ -1026,7 +1074,6 @@ Wow64InitThread(PCONTEXT pContext)
     pContext->Rip = (ULONG_PTR)Wow64Trampoline;
 }
 
-__declspec(dllexport)
 void 
 WINAPI 
 Wow64LdrpInitialize(PCONTEXT pContext)

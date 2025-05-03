@@ -9,6 +9,6 @@ set_subsystem(wow64win console)
 ################# END  HACK #################
 
 target_link_libraries(wow64win win32ksys)
-add_importlibs(wow64win ntdll)
+add_importlibs(wow64win ntdll wow64)
 add_dependencies(wow64win xdk)
 add_cd_file(TARGET wow64win DESTINATION reactos/system32 NO_CAB FOR all)

@@ -45,13 +45,6 @@ static MSG32 *msg_64to32( const MSG *msg64, MSG32 *msg32 )
     return msg32;
 }
 
-static
-PULONG
-GetKernelCallbackTable32()
-{
-    return UlongToPtr(((PPEB32)(ULONG_PTR)NtCurrentTeb32()->ProcessEnvironmentBlock)->KernelCallbackTable);
-}
-
 NTSTATUS WINAPI wow64_NtUserProcessConnect(UINT* pArgs)
 {  
     HANDLE ProcessHandle = get_handle(&pArgs);    
@@ -74,38 +67,6 @@ NTSTATUS WINAPI wow64_NtUserProcessConnect(UINT* pArgs)
     
     *pUserConnect = UserConnect;
     return Status;
-}
-
-/* TODO: move back to wow64.dll */
-NTSTATUS 
-WINAPI 
-Wow64KiUserCallbackDispatcher(ULONG nCallback, 
-                              PVOID IN pArgs, 
-                              ULONG nArgLen, 
-                              PVOID* OUT ppReturn, 
-                              PULONG OUT pnRetLen)
-{    
-    USER_CALLBACK_FRAME frame;
-    ULONG Args64[2];
-    
-    Args64[0] = PtrToUlong(pArgs);
-    Args64[1] = nArgLen;
-    
-    frame.prev_frame = NtCurrentTeb()->TlsSlots[WOW64_TLS_USERCALLBACKDATA];
-    frame.temp_list  = NtCurrentTeb()->TlsSlots[WOW64_TLS_TEMPLIST];
-    frame.ret_ptr    = ppReturn;
-    frame.ret_len    = pnRetLen;
-    frame.temp_list  = NULL;
-    
-    NtCurrentTeb()->TlsSlots[WOW64_TLS_USERCALLBACKDATA] = &frame;
-    
-    if (!setjmp(frame.jmpbuf))
-    {
-        Call32(GetKernelCallbackTable32()[nCallback], 2, Args64);
-    }
-   
-    NtCurrentTeb()->TlsSlots[WOW64_TLS_USERCALLBACKDATA] = frame.prev_frame;
-    return frame.status;
 }
 
 /* FIXME: HACK: It is very unlikely that this is how Windows implements this.

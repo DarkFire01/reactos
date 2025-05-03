@@ -273,10 +273,6 @@ NTSTATUS WINAPI wow64_NtCreateFile( UINT *args )
     void *ea_buffer = get_ptr( &args );
     ULONG ea_length = get_ulong( &args );
 
-#ifdef __REACTOS__
-    FIXME_DECLARE_TMP_BUF;
-#endif
-
     struct object_attr64 attr;
     IO_STATUS_BLOCK io;
     HANDLE handle = 0;
@@ -305,10 +301,6 @@ NTSTATUS WINAPI wow64_NtCreateMailslotFile( UINT *args )
     ULONG quota = get_ulong( &args );
     ULONG msg_size = get_ulong( &args );
     LARGE_INTEGER *timeout = get_ptr( &args );
-
-#ifdef __REACTOS__
-    FIXME_DECLARE_TMP_BUF;
-#endif
 
     struct object_attr64 attr;
     IO_STATUS_BLOCK io;
@@ -343,10 +335,6 @@ NTSTATUS WINAPI wow64_NtCreateNamedPipeFile( UINT *args )
     ULONG inbound_quota = get_ulong( &args );
     ULONG outbound_quota = get_ulong( &args );
     LARGE_INTEGER *timeout = get_ptr( &args );
-
-#ifdef __REACTOS__
-    FIXME_DECLARE_TMP_BUF;
-#endif
 
     struct object_attr64 attr;
     IO_STATUS_BLOCK io;
@@ -390,10 +378,6 @@ NTSTATUS WINAPI wow64_NtCreatePagingFile( UINT *args )
 NTSTATUS WINAPI wow64_NtDeleteFile( UINT *args )
 {
     OBJECT_ATTRIBUTES32 *attr32 = get_ptr( &args );
-
-#ifdef __REACTOS__
-    FIXME_DECLARE_TMP_BUF;
-#endif
 
     struct object_attr64 attr;
 
@@ -565,10 +549,6 @@ NTSTATUS WINAPI wow64_NtOpenFile( UINT *args )
     HANDLE handle = 0;
     NTSTATUS status;
 
-#ifdef __REACTOS__
-    FIXME_DECLARE_TMP_BUF;
-#endif
-
     *handle_ptr = 0;
     status = NtOpenFile( &handle, access, objattr_32to64_redirect( &attr, attr32 ),
                          iosb_32to64( &io, io32 ), sharing, options );
@@ -588,10 +568,6 @@ NTSTATUS WINAPI wow64_NtQueryAttributesFile( UINT *args )
     FILE_BASIC_INFORMATION *info = get_ptr( &args );
 
     struct object_attr64 attr;
-    
-#ifdef __REACTOS__
-    FIXME_DECLARE_TMP_BUF;
-#endif
 
     return NtQueryAttributesFile( objattr_32to64_redirect( &attr, attr32 ), info );
 }
@@ -660,10 +636,6 @@ NTSTATUS WINAPI wow64_NtQueryFullAttributesFile( UINT *args )
     FILE_NETWORK_OPEN_INFORMATION *info = get_ptr( &args );
 
     struct object_attr64 attr;
-
-#ifdef __REACTOS__
-    FIXME_DECLARE_TMP_BUF;
-#endif
 
     return NtQueryFullAttributesFile( objattr_32to64_redirect( &attr, attr32 ), info );
 }
@@ -910,15 +882,11 @@ NTSTATUS WINAPI wow64_NtSetInformationFile( UINT *args )
             FILE_RENAME_INFORMATION32 *info32 = ptr;
             FILE_RENAME_INFORMATION *info;
             ULONG size;
-            
-#ifdef __REACTOS__
-            FIXME_DECLARE_TMP_BUF;
-#endif
 
             name.Buffer = info32->FileName;
             name.Length = info32->FileNameLength;
             InitializeObjectAttributes( &attr, &name, 0, LongToHandle( info32->RootDirectory ), 0 );
-            get_file_redirect( &attr, &tmpStr );
+            get_file_redirect( &attr );
             size = offsetof( FILE_RENAME_INFORMATION, FileName[name.Length/sizeof(WCHAR)] );
             info = Wow64AllocateTemp( size );
 #ifndef __REACTOS__

@@ -160,22 +160,14 @@ LOCAL x, x2, x3
     
     ljmp 33h, x
 x:
-    ; pop r8
-    db 41h
-    db 58h
+    ; pop rdx
+    db 5ah
 
-    ; add r8, 40
-    db 49h
-    db 81h
-    db 0c0h
-    dd 16
-
-    ; call dword ptr [fs:0xC0]
-    ; db 64h
-    ; db 0ffh
-    ; db 14h
-    ; db 25h
-    ; dd 000000c0h
+    ; add rdx, 16
+    db 48h
+    db 83h
+    db 0c2h
+    db 10h
     
     call x3
     

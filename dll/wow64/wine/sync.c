@@ -37,9 +37,6 @@ WINE_DEFAULT_DEBUG_CHANNEL(wow);
 
 #define objattr_32to64 objattr_32to64_redirect
 
-/* FIXME!!! HORRIBLE HACK FOR OBJECT LIFETIME - IMPLEMENT Wow64AllocateTemp */
-#define object_attr64 UGLYHACK { int _; }; FIXME_DECLARE_TMP_BUF; struct object_attr64
-
 #endif
 
 

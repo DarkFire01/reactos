@@ -57,8 +57,6 @@ static ULONG_PTR args_alignment = 4;
 static USHORT current_machine = IMAGE_FILE_MACHINE_I386;
 static USHORT native_machine = IMAGE_FILE_MACHINE_AMD64;
 
-#define Wow64AllocateTemp(...) _alloca(__VA_ARGS__)
-
 #define WINE_WOW_IMPL_CASE(name) case Num ## name: {\
     NTSTATUS WINAPI wow64_Nt ## name (UINT* pArgs); \
     status = wow64_Nt ## name (pArgs); \
@@ -96,6 +94,21 @@ Wow64KiUserCallbackDispatcher(ULONG nCallback,
                               ULONG nArgLen, 
                               PVOID* OUT ppReturn, 
                               PULONG OUT pnRetLen);
+
+/* header for Wow64AllocTemp blocks; probably not the right layout */
+struct mem_header
+{
+    struct mem_header *next;
+    void *__pad;
+    BYTE data[1];
+};
+
+PVOID
+WINAPI
+Wow64AllocateTemp(SIZE_T size);
+
+VOID
+Wow64FreeTempData(VOID);
 
 /* TODO: Refactor, all of this could be done in a cleaner way */
 static
@@ -138,7 +151,7 @@ CallOrJump32(ULONG Address, ULONG nArgc, PULONG Args, BOOL bJump)
     
     if (!bJump)
     {
-        enter->FarReturn32 = (ULONG)(ULONG_PTR)FarReturn32Impl;
+        enter->FarReturn32 = PtrToUlong(FarReturn32Impl);
     }
     
     for (int i = 0; i < nArgc + bJump; i++)
@@ -261,20 +274,23 @@ typedef struct _WOW64_PATH_REDIRECTION
 static 
 BOOLEAN 
 RedirectPath(const WOW64_PATH_REDIRECTION* Redirection, 
-             POBJECT_ATTRIBUTES ObjectAttributes,
-             PUNICODE_STRING Buffer)
+             POBJECT_ATTRIBUTES ObjectAttributes)
 {
     PUNICODE_STRING ObjectName = ObjectAttributes->ObjectName;
     const UNICODE_STRING* From = &Redirection->From;
     const UNICODE_STRING* To = &Redirection->To;
+    PUNICODE_STRING Buffer = NULL;
     
     USHORT NewLength = ObjectName->Length - From->Length + To->Length;
-    
-    /* FIXME */
-    if (Buffer->MaximumLength < NewLength)
+
+    Buffer = Wow64AllocateTemp(sizeof(*Buffer) + NewLength);
+    if (Buffer == NULL)
     {
-        return FALSE;
+        DPRINT1("Error: allocation failed for WOW64 redirection.");
+        return FALSE; 
     }
+
+    Buffer->Buffer = (PWCHAR)(((ULONG_PTR)Buffer) + sizeof(*Buffer));
     
     if (_wcsnicmp(ObjectName->Buffer, From->Buffer, From->Length / sizeof(WCHAR)) == 0)
     {
@@ -292,7 +308,7 @@ RedirectPath(const WOW64_PATH_REDIRECTION* Redirection,
     return FALSE;
 }
 
-static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer)
+static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr)
 {
     static const WOW64_PATH_REDIRECTION Redirections[] = 
     {
@@ -316,7 +332,7 @@ static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr, UNICODE_STRING* buffer
     
     for (i = 0; i < sizeof(Redirections) / sizeof(*Redirections); i++)
     {
-        if (RedirectPath(&Redirections[i], attr, buffer))
+        if (RedirectPath(&Redirections[i], attr))
         {
             return TRUE;
         }
@@ -476,19 +492,22 @@ static inline OBJECT_ATTRIBUTES *objattr_32to64( struct object_attr64 *out, cons
     return &out->attr;
 }
 
-static inline OBJECT_ATTRIBUTES *RosWow64RedirObjAttributes(struct object_attr64 *out,
-                                                            const OBJECT_ATTRIBUTES32 *in,
-                                                            UNICODE_STRING *buffer)
+static inline OBJECT_ATTRIBUTES*
+RosWow64RedirObjAttributes(struct object_attr64 *out,
+                           const OBJECT_ATTRIBUTES32 *in)
 {
-    OBJECT_ATTRIBUTES *attr = objattr_32to64( out, in );
+    OBJECT_ATTRIBUTES *attr = objattr_32to64(out, in);
 
-    if (attr) get_file_redirect( attr, buffer );
+    if (attr)
+    {
+        get_file_redirect(attr);
+    }
     return attr;
 }
  
-#define objattr_32to64_redirect(out, in) RosWow64RedirObjAttributes(out, in, &tmpStr)
+#define objattr_32to64_redirect(out, in) RosWow64RedirObjAttributes(out, in)
 
-#define FIXME_DECLARE_TMP_BUF \
+#define FIXME_DECLARE_TMP_BUF1 \
     WCHAR tmpBuf[MAX_PATH]; \
     UNICODE_STRING tmpStr;\
     tmpStr.Buffer = tmpBuf;\
