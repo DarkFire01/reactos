@@ -243,7 +243,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetThreadId( HANDLE thread )
 }
 #endif
 
-
+#ifndef __REACTOS__
 /***********************************************************************
  *	GetThreadLocale   (kernelbase.@)
  */
@@ -254,7 +254,6 @@ LCID WINAPI /* DECLSPEC_HOTPATCH */ GetThreadLocale(void)
     return ret;
 }
 
-#ifndef __REACTOS__
 /**********************************************************************
  *           GetThreadPriority   (kernelbase.@)
  */
