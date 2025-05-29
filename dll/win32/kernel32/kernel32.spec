@@ -1101,7 +1101,7 @@
 @ stdcall ResetEvent(long)
 @ stdcall ResetWriteWatch(ptr long)
 @ stdcall -stub -version=0xA00+ ResizePseudoConsole(ptr long)
-@ stdcall -version=0x602+ ResolveDelayLoadedAPI(ptr ptr ptr ptr ptr long) NTDLL.LdrResolveDelayLoadedAPI
+@ stdcall -stub -version=0x602+ ResolveDelayLoadedAPI(ptr ptr ptr ptr ptr long)
 @ stdcall -stub -version=0x601+ ResolveLocaleName(wstr ptr long)
 @ stdcall RestoreLastError(long) ntdll.RtlRestoreLastWin32Error
 @ stdcall ResumeThread(long)
@@ -1121,7 +1121,7 @@
 @ stdcall RtlUnwind(ptr ptr ptr ptr) ntdll.RtlUnwind
 @ stdcall -arch=x86_64 RtlUnwindEx(ptr ptr ptr ptr ptr ptr) ntdll.RtlUnwindEx
 @ stdcall -arch=x86_64 RtlVirtualUnwind(ptr ptr ptr long) ntdll.RtlVirtualUnwind
-@ stdcall -version=0xA00+ -arch=x86_64 -norelay RtlIsEcCode(ptr) NTDLL.RtlIsEcCode
+@ stdcall -stub -version=0xA00+ -arch=x86_64 -norelay RtlIsEcCode(ptr)
 @ stdcall RtlZeroMemory(ptr long) ntdll.RtlZeroMemory
 @ stdcall ScrollConsoleScreenBufferA(long ptr ptr ptr ptr)
 @ stdcall ScrollConsoleScreenBufferW(long ptr ptr ptr ptr)

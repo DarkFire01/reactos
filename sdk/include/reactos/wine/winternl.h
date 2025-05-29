@@ -163,6 +163,50 @@ typedef struct _CLIENT_ID
    HANDLE UniqueThread;
 } CLIENT_ID, *PCLIENT_ID;
 
+typedef struct
+{
+    UINT      next;
+    UINT      id;
+    ULONGLONG addr;
+    ULONGLONG size;
+    UINT      args[4];
+} CROSS_PROCESS_WORK_ENTRY;
+
+typedef union
+{
+    struct
+    {
+        UINT first;
+        UINT counter;
+    };
+    volatile LONGLONG hdr;
+} CROSS_PROCESS_WORK_HDR;
+
+typedef struct
+{
+    CROSS_PROCESS_WORK_HDR   free_list;
+    CROSS_PROCESS_WORK_HDR   work_list;
+    ULONGLONG                unknown[4];
+    CROSS_PROCESS_WORK_ENTRY entries[1];
+} CROSS_PROCESS_WORK_LIST;
+
+typedef enum
+{
+    CrossProcessPreVirtualAlloc    = 0,
+    CrossProcessPostVirtualAlloc   = 1,
+    CrossProcessPreVirtualFree     = 2,
+    CrossProcessPostVirtualFree    = 3,
+    CrossProcessPreVirtualProtect  = 4,
+    CrossProcessPostVirtualProtect = 5,
+    CrossProcessFlushCache         = 6,
+    CrossProcessFlushCacheHeavy    = 7,
+    CrossProcessMemoryWrite        = 8,
+} CROSS_PROCESS_NOTIFICATION;
+
+#define CROSS_PROCESS_LIST_FLUSH 0x80000000
+#define CROSS_PROCESS_LIST_ENTRY(list,pos) \
+    ((CROSS_PROCESS_WORK_ENTRY *)((char *)(list) + ((pos) & ~CROSS_PROCESS_LIST_FLUSH)))
+
 typedef struct _CURDIR
 {
     UNICODE_STRING DosPath;
@@ -2393,6 +2437,25 @@ typedef struct _SYSTEM_MODULE
     BYTE                Name[MAXIMUM_FILENAME_LENGTH];  /* 1c/28 */
 } SYSTEM_MODULE, *PSYSTEM_MODULE;
 
+typedef struct _WOW64_CPURESERVED
+{
+    USHORT          Flags;
+    USHORT          Machine;
+    /* CONTEXT context */
+    /* CONTEXT_EX *context_ex */
+} WOW64_CPURESERVED, *PWOW64_CPURESERVED;
+
+#define WOW64_CPURESERVED_FLAG_RESET_STATE 1
+
+typedef struct _WOW64_CPU_AREA_INFO
+{
+    void              *Context;
+    void              *ContextEx;
+    void              *ContextFlagsLocation;
+    WOW64_CPURESERVED *CpuReserved;
+    ULONG              ContextFlag;
+    USHORT             Machine;
+} WOW64_CPU_AREA_INFO, *PWOW64_CPU_AREA_INFO;
 
 typedef struct _RTL_PROCESS_MODULE_INFORMATION
 {
