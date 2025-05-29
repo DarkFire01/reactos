@@ -36,6 +36,9 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(kernelbase);
 
+#ifdef __REACTOS__
+const GUID IID_IUnknown           = {0x00000000, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
+#endif
 
 BOOL is_wow64 = FALSE;
 
