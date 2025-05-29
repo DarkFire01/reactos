@@ -1,0 +1,11 @@
+wine/actctx.c - ours is better
+wine/comm.c ? maybe
+wine/lzexpand.c good - Kernel32
+wine/profile.c Good - kernel32
+wine/res.c - loader.c - kernelbase
+wine/timezone.c ?
+winnls/string/fold.c <-Locale
+winnls/string/format_msg.c <- Locale
+winnls/string/lcformat.c <- Locale
+winnls/string/locale.c <- Locale
+winnls/string/sortkey.c <- Locale

@@ -34,8 +34,10 @@
 #include "wincon.h"
 #include "fileapi.h"
 #include "shlwapi.h"
+#ifndef __REACTOS__
 #include "ddk/ntddk.h"
 #include "ddk/ntddser.h"
+#endif
 #include "ioringapi.h"
 
 #include "kernelbase.h"
@@ -602,7 +604,7 @@ HRESULT WINAPI CopyFile2( const WCHAR *source, const WCHAR *dest, COPYFILE2_EXTE
     return copy_file(source, dest, params) ? S_OK : HRESULT_FROM_WIN32(GetLastError());
 }
 
-
+#ifndef __REACTOS__
 /***********************************************************************
  *	CopyFileExW   (kernelbase.@)
  */
@@ -690,7 +692,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateDirectoryExW( LPCWSTR template, LPCWSTR path
 {
     return CreateDirectoryW( path, sa );
 }
-
+#endif
 
 /*************************************************************************
  *	CreateFile2   (kernelbase.@)
@@ -734,6 +736,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateFile2( LPCWSTR name, DWORD access, DWORD s
     return CreateFileW( name, access, sharing, sa, creation, flags | attributes, template );
 }
 
+#ifndef __REACTOS__
 
 /*************************************************************************
  *	CreateFileA   (kernelbase.@)
@@ -3005,8 +3008,11 @@ BOOL WINAPI DECLSPEC_HOTPATCH CancelIo( HANDLE handle )
 BOOL WINAPI DECLSPEC_HOTPATCH CancelIoEx( HANDLE handle, LPOVERLAPPED overlapped )
 {
     IO_STATUS_BLOCK io;
-
+#ifdef __REACTOS__
+    return set_ntstatus( NtCancelIoFile( handle, &io ) );
+#else
     return set_ntstatus( NtCancelIoFileEx( handle, (PIO_STATUS_BLOCK)overlapped, &io ) );
+#endif
 }
 
 
@@ -3662,7 +3668,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetEndOfFile( HANDLE file )
     }
     return set_ntstatus( status );
 }
-
+#endif
 
 /***********************************************************************
  *	SetFileInformationByHandle   (kernelbase.@)
@@ -3741,7 +3747,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetFileInformationByHandle( HANDLE file, FILE_INFO
     return set_ntstatus( status );
 }
 
-
+#ifndef __REACTOS__
 /***********************************************************************
  *	SetFilePointer   (kernelbase.@)
  */
@@ -4592,7 +4598,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH WaitCommEvent( HANDLE handle, DWORD *events, OVERL
     return DeviceIoControl( handle, IOCTL_SERIAL_WAIT_ON_MASK, NULL, 0, events, sizeof(*events),
                             NULL, overlapped );
 }
-
+#endif
 
 /***********************************************************************
  *	QueryIoRingCapabilities   (kernelbase.@)

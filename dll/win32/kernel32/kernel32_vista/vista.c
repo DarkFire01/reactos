@@ -729,10 +729,6 @@ GetUserPreferredUILanguages(
     return FALSE;
 }
 
-/*
- * @unimplemented
- */
-#if 0 // Tis is Windows 7+
 BOOL
 WINAPI
 SetProcessPreferredUILanguages(
@@ -744,7 +740,6 @@ SetProcessPreferredUILanguages(
     SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
     return FALSE;
 }
-#endif
 
 /*
  * @unimplemented
