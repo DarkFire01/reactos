@@ -3000,7 +3000,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH CancelIo( HANDLE handle )
 
     return set_ntstatus( NtCancelIoFile( handle, &io ) );
 }
-
+#endif
 
 /***********************************************************************
  *	CancelIoEx   (kernelbase.@)
@@ -3015,7 +3015,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH CancelIoEx( HANDLE handle, LPOVERLAPPED overlapped
 #endif
 }
 
-
+#ifndef __REACTOS__
 /***********************************************************************
  *	CancelSynchronousIo   (kernelbase.@)
  */

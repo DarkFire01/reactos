@@ -70,7 +70,7 @@
 @ stdcall CancelDeviceWakeupRequest(long)
 @ stdcall CancelIo(long)
 @ stdcall -version=0x600+ CancelIoEx(ptr ptr)
-@ stdcall -version=0x600+ CancelSynchronousIo(ptr)
+@ stdcall -stub -version=0x600+ CancelSynchronousIo(ptr)
 @ stdcall -version=0x600+ CancelThreadpoolIo(ptr) NTDLL.TpCancelAsyncIoOperation
 @ stdcall CancelTimerQueueTimer(long long)
 @ stdcall CancelWaitableTimer(long)
@@ -326,7 +326,7 @@
 @ stdcall FindFirstFileExA(str long ptr long ptr long)
 @ stdcall FindFirstFileExW(wstr long ptr long ptr long)
 @ stub -version=0x600+ FindFirstFileNameTransactedW
-@ stdcall -version=0x600+  FindFirstFileNameW(wstr long ptr ptr)
+@ stdcall -stub -version=0x600+  FindFirstFileNameW(wstr long ptr ptr)
 @ stdcall -version=0x600+  FindFirstFileTransactedA(str long ptr long ptr long ptr)
 @ stdcall -version=0x600+  FindFirstFileTransactedW(wstr long ptr long ptr long ptr)
 @ stdcall FindFirstFileW(wstr ptr)
@@ -336,8 +336,8 @@
 @ stdcall FindFirstVolumeMountPointA(str ptr long)
 @ stdcall FindFirstVolumeMountPointW(wstr ptr long)
 @ stdcall FindFirstVolumeW(ptr long)
-@ stdcall -version=0x600+ FindNLSString(long long wstr long wstr long ptr)
-@ stdcall -version=0x600+ FindNLSStringEx(wstr long wstr long wstr long ptr ptr ptr long)
+@ stdcall -stub -version=0x600+ FindNLSString(long long wstr long wstr long ptr)
+@ stdcall -stub -version=0x600+ FindNLSStringEx(wstr long wstr long wstr long ptr ptr ptr long)
 @ stdcall FindNextChangeNotification(long)
 @ stdcall FindNextFileA(long ptr)
 @ stub -version=0x600+ FindNextFileNameW
@@ -377,8 +377,8 @@
 @ stdcall FreeUserPhysicalPages(long long long)
 @ stdcall GenerateConsoleCtrlEvent(long long)
 @ stdcall GetACP()
-@ stdcall -version=0x601+ GetActiveProcessorCount(long)
-@ stdcall -version=0x601+ GetActiveProcessorGroupCount()
+@ stdcall -stub -version=0x601+ GetActiveProcessorCount(long)
+@ stdcall -stub -version=0x601+ GetActiveProcessorGroupCount()
 @ stdcall -version=0x600+ GetApplicationRecoveryCallback(ptr ptr ptr ptr ptr)
 @ stub -version=0x600+ GetApplicationRestartSettings
 @ stdcall GetAtomNameA(long ptr long)
@@ -494,7 +494,7 @@
 @ stdcall GetDriveTypeW(wstr)
 @ stub -version=0x600+ GetDurationFormat
 @ stub -version=0x600+ GetDurationFormatEx
-@ stdcall -version=0x600+ GetDynamicTimeZoneInformation(ptr)
+@ stdcall -stub -version=0x600+ GetDynamicTimeZoneInformation(ptr)
 @ stdcall -version=0x602+ GetDynamicTimeZoneInformationEffectiveYears(ptr ptr ptr)
 @ stdcall -stub -version=0x601+ -ret64 -arch=i386,x86_64 GetEnabledXStateFeatures()
 @ stdcall GetEnvironmentStrings()
@@ -655,7 +655,7 @@
 @ stdcall GetStringTypeExA(long long str long ptr)
 @ stdcall GetStringTypeExW(long long wstr long ptr)
 @ stdcall GetStringTypeW(long wstr long ptr)
-@ stub -version=0x600+ GetSystemDEPPolicy
+@ stdcall -version=0x600+ GetSystemDEPPolicy()
 @ stdcall -version=0xA00+ GetSystemCpuSetInformation(ptr long ptr ptr long)
 @ stdcall GetSystemDefaultLCID()
 @ stdcall GetSystemDefaultLangID()
@@ -1231,7 +1231,7 @@
 @ stdcall SetProcessAffinityMask(long long)
 @ stub -version=0x600+ SetProcessAffinityUpdateMode
 @ stdcall -version=0xA00+ SetProcessDefaultCpuSets(ptr ptr long)
-@ stub -version=0x600+ SetProcessDEPPolicy
+@ stdcall -version=0x600+ SetProcessDEPPolicy(ptr)
 @ stdcall -version=0x602+ SetProcessInformation(long long ptr long)
 @ stdcall -version=0x602+ SetProcessMitigationPolicy(long ptr long)
 @ stdcall -stub -version=0x601+ SetProcessPreferredUILanguages(long ptr ptr)
@@ -1255,7 +1255,7 @@
 @ stdcall -version=0xA00+ SetThreadDescription(ptr wstr)
 @ stdcall -version=0x600+ SetThreadErrorMode(long ptr)
 @ stdcall SetThreadExecutionState(long)
-@ stdcall -version=0x601+ SetThreadGroupAffinity(long ptr ptr)
+@ stdcall -stub -version=0x601+ SetThreadGroupAffinity(long ptr ptr)
 @ stdcall SetThreadIdealProcessor(long long)
 @ stdcall -version=0x601+ SetThreadIdealProcessorEx(long ptr ptr)
 @ stdcall -version=0x602+ SetThreadInformation(long long ptr long)

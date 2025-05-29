@@ -1234,7 +1234,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetCurrentActCtx( HANDLE *pcontext )
     return set_ntstatus( RtlGetActiveActivationContext( pcontext ));
 }
 
-
+#endif
 /***********************************************************************
  *          QueryActCtxSettingsW    (kernelbase.@)
  */
@@ -1245,7 +1245,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH QueryActCtxSettingsW( DWORD flags, HANDLE ctx, con
     return set_ntstatus( RtlQueryActivationContextApplicationSettings( flags, ctx, ns, settings,
                                                                        buffer, size, written ));
 }
-
+#ifndef __REACTOS__
 /***********************************************************************
  *          QueryActCtxW    (kernelbase.@)
  */

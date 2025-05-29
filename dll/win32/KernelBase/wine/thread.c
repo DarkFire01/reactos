@@ -483,8 +483,16 @@ BOOL WINAPI SetThreadErrorMode( DWORD mode, DWORD *old )
 }
 
 
+/***********************************************************************
+ *           SetThreadGroupAffinity   (kernelbase.@)
+ */
+BOOL WINAPI DECLSPEC_HOTPATCH SetThreadGroupAffinity( HANDLE thread, const GROUP_AFFINITY *new,
+                                                      GROUP_AFFINITY *old )
+{
+    if (old && !GetThreadGroupAffinity( thread, old )) return FALSE;
+    return set_ntstatus( NtSetInformationThread( thread, ThreadGroupInformation, new, sizeof(*new) ));
+}
 
-#ifndef __REACTOS__
 /**********************************************************************
  *           SetThreadIdealProcessor   (kernelbase.@)
  */
@@ -498,7 +506,17 @@ DWORD WINAPI DECLSPEC_HOTPATCH SetThreadIdealProcessor( HANDLE thread, DWORD pro
     SetLastError( RtlNtStatusToDosError( status ));
     return ~0u;
 }
-#endif
+
+/***********************************************************************
+ *           SetThreadIdealProcessorEx   (kernelbase.@)
+ */
+BOOL WINAPI DECLSPEC_HOTPATCH SetThreadIdealProcessorEx( HANDLE thread, PROCESSOR_NUMBER *ideal,
+                                                         PROCESSOR_NUMBER *previous )
+{
+    FIXME( "(%p %p %p): stub\n", thread, ideal, previous );
+    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
+    return FALSE;
+}
 
 #ifndef __REACTOS__
 

@@ -43,7 +43,7 @@ list(APPEND SOURCE_STATIC
     file.c
     loader.c
     main.c
-    #memory.c Use ReactOS for now.
+    memory.c
     process.c
     # registry.c use advapi32 lib instead for now.
     security.c

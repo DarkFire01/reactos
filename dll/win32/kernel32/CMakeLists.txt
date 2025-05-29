@@ -76,9 +76,11 @@ list(APPEND SOURCE
     wine/comm.c
     wine/lzexpand.c
     wine/muldiv.c
+    wine/process.c
     wine/profile.c
     wine/res.c
     wine/timezone.c
+    wine/transact.c
     winnls/string/casemap.c
     winnls/string/collation.c
     winnls/string/digitmap.c

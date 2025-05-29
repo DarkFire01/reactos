@@ -769,7 +769,7 @@ LONG WINAPI UnhandledExceptionFilter( EXCEPTION_POINTERS *epointers )
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-
+#endif
 /***********************************************************************
  *         WerGetFlags   (kernelbase.@)
  */
@@ -850,7 +850,7 @@ HRESULT WINAPI /* DECLSPEC_HOTPATCH */ WerUnregisterRuntimeExceptionModule( cons
     return S_OK;
 }
 
-
+#ifndef __REACTOS__
 /***********************************************************************
  * psapi functions
  ***********************************************************************/
