@@ -1718,7 +1718,6 @@ BOOL WINAPI QueryWorkingSetEx( HANDLE process, void *buffer, DWORD size )
     return set_ntstatus( NtQueryVirtualMemory( process, NULL, MemoryWorkingSetExInformation,
                                                buffer, size, NULL ));
 }
-#endif
 
 /******************************************************************
  *         QueryFullProcessImageNameA   (kernelbase.@)
@@ -1819,3 +1818,4 @@ cleanup:
     HeapFree( GetProcessHeap(), 0, dynamic_buffer );
     return set_ntstatus( status );
 }
+#endif

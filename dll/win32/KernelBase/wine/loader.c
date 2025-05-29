@@ -945,7 +945,7 @@ done:
     return ret;
 }
 
-
+#ifndef __REACTOS__
 /**********************************************************************
  *	EnumResourceNamesW	(kernelbase.@)
  */
@@ -954,7 +954,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH EnumResourceNamesW( HMODULE module, LPCWSTR type,
 {
     return EnumResourceNamesExW( module, type, func, param, 0, 0 );
 }
-
+#endif
 
 /**********************************************************************
  *	EnumResourceTypesExA	(kernelbase.@)

@@ -492,7 +492,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetThreadGroupAffinity( HANDLE thread, const GROUP
     if (old && !GetThreadGroupAffinity( thread, old )) return FALSE;
     return set_ntstatus( NtSetInformationThread( thread, ThreadGroupInformation, new, sizeof(*new) ));
 }
-
+#ifndef __REACTOS__
 /**********************************************************************
  *           SetThreadIdealProcessor   (kernelbase.@)
  */
@@ -506,7 +506,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH SetThreadIdealProcessor( HANDLE thread, DWORD pro
     SetLastError( RtlNtStatusToDosError( status ));
     return ~0u;
 }
-
+#endif
 /***********************************************************************
  *           SetThreadIdealProcessorEx   (kernelbase.@)
  */

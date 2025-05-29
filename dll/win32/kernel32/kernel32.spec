@@ -225,7 +225,7 @@
 @ stdcall -version=0x600+ DeleteFileTransactedA(str ptr)
 @ stdcall -version=0x600+ DeleteFileTransactedW(wstr ptr)
 @ stdcall DeleteFileW(wstr)
-@ stdcall -version=0x600+ -stub DeleteProcThreadAttributeList(ptr)
+@ stdcall -version=0x600+ DeleteProcThreadAttributeList(ptr)
 # @ stub -version=0x601+ DisableThreadProfiling
 @ stdcall -version=0xA00+ DiscardVirtualMemory(ptr long)
 @ stdcall DeleteTimerQueue(long)
@@ -793,7 +793,7 @@
 @ stdcall InitializeCriticalSection(ptr)
 @ stdcall InitializeCriticalSectionAndSpinCount(ptr long)
 @ stdcall -version=0x600+ InitializeCriticalSectionEx(ptr long long)
-@ stdcall -stub -version=0x600+ InitializeProcThreadAttributeList(ptr long long ptr)
+@ stdcall -version=0x600+ InitializeProcThreadAttributeList(ptr long long ptr)
 @ stdcall InitializeSListHead(ptr) ntdll.RtlInitializeSListHead
 @ stdcall -version=0x600+ InitializeSRWLock(ptr) ntdll.RtlInitializeSRWLock
 @ stdcall -arch=i386 -ret64 InterlockedCompareExchange64(ptr double double) ntdll.RtlInterlockedCompareExchange64
@@ -1234,7 +1234,7 @@
 @ stdcall -version=0x600+ SetProcessDEPPolicy(ptr)
 @ stdcall -version=0x602+ SetProcessInformation(long long ptr long)
 @ stdcall -version=0x602+ SetProcessMitigationPolicy(long ptr long)
-@ stdcall -stub -version=0x601+ SetProcessPreferredUILanguages(long ptr ptr)
+@ stdcall -version=0x601+ SetProcessPreferredUILanguages(long ptr ptr)
 @ stdcall SetProcessPriorityBoost(long long)
 @ stdcall SetProcessShutdownParameters(long long)
 # @ stub -version=0x601+ SetProcessUserModeExceptionPolicy
@@ -1255,7 +1255,7 @@
 @ stdcall -version=0xA00+ SetThreadDescription(ptr wstr)
 @ stdcall -version=0x600+ SetThreadErrorMode(long ptr)
 @ stdcall SetThreadExecutionState(long)
-@ stdcall -stub -version=0x601+ SetThreadGroupAffinity(long ptr ptr)
+@ stdcall -version=0x601+ SetThreadGroupAffinity(long ptr ptr)
 @ stdcall SetThreadIdealProcessor(long long)
 @ stdcall -version=0x601+ SetThreadIdealProcessorEx(long ptr ptr)
 @ stdcall -version=0x602+ SetThreadInformation(long long ptr long)
@@ -1331,7 +1331,7 @@
 @ stdcall UnregisterWait(long)
 @ stdcall UnregisterWaitEx(long long)
 @ stub -version=0x600+ UpdateCalendarDayOfWeek
-@ stdcall -stub -version=0x600+ UpdateProcThreadAttribute(ptr long ptr ptr ptr ptr ptr)
+@ stdcall -version=0x600+ UpdateProcThreadAttribute(ptr long ptr ptr ptr ptr ptr)
 @ stdcall UpdateResourceA(long str str long ptr long)
 @ stdcall UpdateResourceW(long wstr wstr long ptr long)
 @ stdcall VDMConsoleOperation(long long)

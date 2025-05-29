@@ -1463,8 +1463,12 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetLogicalProcessorInformationEx( LOGICAL_PROCESSO
         SetLastError( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
+#ifdef __REACTOS__
+    status = NtQuerySystemInformation( SystemLogicalProcessorInformationEx, buffer, *len, len ); //NtQuerySystemInformationEx is required.
+#else
     status = NtQuerySystemInformationEx( SystemLogicalProcessorInformationEx, &relationship,
                                          sizeof(relationship), buffer, *len, len );
+#endif
     if (status == STATUS_INFO_LENGTH_MISMATCH) status = STATUS_BUFFER_TOO_SMALL;
     return set_ntstatus( status );
 }

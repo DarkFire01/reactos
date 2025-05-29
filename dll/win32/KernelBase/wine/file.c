@@ -478,7 +478,7 @@ static BOOL is_same_file( HANDLE h1, HANDLE h2 )
             !memcmp( &id1.ObjectId, &id2.ObjectId, sizeof(id1.ObjectId) ));
 }
 
-
+#ifndef __REACTOS__
 /******************************************************************************
  *	AreFileApisANSI   (kernelbase.@)
  */
@@ -486,6 +486,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH AreFileApisANSI(void)
 {
     return !oem_file_apis;
 }
+#endif
 
 /******************************************************************************
  *  copy_file

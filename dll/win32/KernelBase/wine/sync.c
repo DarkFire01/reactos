@@ -66,9 +66,10 @@ static inline LARGE_INTEGER *get_nt_timeout( LARGE_INTEGER *time, DWORD timeout 
  *              BaseGetNamedObjectDirectory  (kernelbase.@)
  */
 #ifdef __REACTOS__
-NTSTATUS WINAPI BaseGetNamedObjectDirectory( HANDLE *dir );
+NTSTATUS WINAPI BaseGetNamedObjectDirectory_Base( HANDLE *dir )
 #else
 NTSTATUS WINAPI BaseGetNamedObjectDirectory( HANDLE *dir )
+#endif
 {
     static HANDLE handle;
     WCHAR buffer[64];
@@ -98,7 +99,7 @@ NTSTATUS WINAPI BaseGetNamedObjectDirectory( HANDLE *dir )
     *dir = handle;
     return status;
 }
-#endif
+
 static void get_create_object_attributes( OBJECT_ATTRIBUTES *attr, UNICODE_STRING *nameW,
                                           SECURITY_ATTRIBUTES *sa, const WCHAR *name )
 {
@@ -112,7 +113,11 @@ static void get_create_object_attributes( OBJECT_ATTRIBUTES *attr, UNICODE_STRIN
     {
         RtlInitUnicodeString( nameW, name );
         attr->ObjectName = nameW;
+#ifdef __REACTOS__
+        BaseGetNamedObjectDirectory_Base( &attr->RootDirectory );
+#else
         BaseGetNamedObjectDirectory( &attr->RootDirectory );
+#endif
     }
 }
 
@@ -127,7 +132,11 @@ static BOOL get_open_object_attributes( OBJECT_ATTRIBUTES *attr, UNICODE_STRING 
         return FALSE;
     }
     RtlInitUnicodeString( nameW, name );
+#ifdef __REACTOS__
+    BaseGetNamedObjectDirectory_Base( &dir );
+#else
     BaseGetNamedObjectDirectory( &dir );
+#endif
     InitializeObjectAttributes( attr, nameW, inherit ? OBJ_INHERIT : 0, dir, NULL );
     return TRUE;
 }
@@ -870,7 +879,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateWaitableTimerExW( SECURITY_ATTRIBUTES *sa,
         SetLastError( RtlNtStatusToDosError(status) );
     return handle;
 }
-
+#ifndef __REACTOS__
 
 /***********************************************************************
  *           OpenWaitableTimerW    (kernelbase.@)
@@ -901,7 +910,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetWaitableTimer( HANDLE handle, const LARGE_INTEG
     return set_ntstatus( status ) || status == STATUS_TIMER_RESUME_IGNORED;
 }
 
-
+#endif
 /***********************************************************************
  *           SetWaitableTimerEx    (kernelbase.@)
  */
@@ -916,7 +925,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetWaitableTimerEx( HANDLE handle, const LARGE_INT
     return SetWaitableTimer( handle, when, period, callback, arg, FALSE );
 }
 
-
+#ifndef __REACTOS__
 /***********************************************************************
  *           CancelWaitableTimer    (kernelbase.@)
  */
@@ -963,7 +972,6 @@ BOOL WINAPI DECLSPEC_HOTPATCH ChangeTimerQueueTimer( HANDLE queue, HANDLE timer,
     return set_ntstatus( RtlUpdateTimer( queue, timer, when, period ));
 }
 
-
 /***********************************************************************
  *           DeleteTimerQueueEx  (kernelbase.@)
  */
@@ -972,7 +980,6 @@ BOOL WINAPI DECLSPEC_HOTPATCH DeleteTimerQueueEx( HANDLE queue, HANDLE event )
     return set_ntstatus( RtlDeleteTimerQueueEx( queue, event ));
 }
 
-
 /***********************************************************************
  *           DeleteTimerQueueTimer  (kernelbase.@)
  */
@@ -980,7 +987,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH DeleteTimerQueueTimer( HANDLE queue, HANDLE timer,
 {
     return set_ntstatus( RtlDeleteTimer( queue, timer, event ));
 }
-
+#endif
 
 /***********************************************************************
  * Critical sections
