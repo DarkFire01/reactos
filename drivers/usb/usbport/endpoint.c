@@ -82,7 +82,19 @@ USBPORT_AllocateBandwidth(IN PDEVICE_OBJECT FdoDevice,
            FdoDevice,
            Endpoint);
 
+    if (!FdoDevice || !Endpoint)
+    {
+        DPRINT1("USBPORT_AllocateBandwidth: Invalid parameters\n");
+        return FALSE;
+    }
+
     FdoExtension = FdoDevice->DeviceExtension;
+    if (!FdoExtension)
+    {
+        DPRINT1("USBPORT_AllocateBandwidth: FdoExtension is NULL\n");
+        return FALSE;
+    }
+
     EndpointProperties = &Endpoint->EndpointProperties;
     TransferType = EndpointProperties->TransferType;
 
@@ -98,12 +110,32 @@ USBPORT_AllocateBandwidth(IN PDEVICE_OBJECT FdoDevice,
     EndpointBandwidth = EndpointProperties->UsbBandwidth;
 
     Period = EndpointProperties->Period;
-    ASSERT(Period != 0);
+    if (Period == 0)
+    {
+        DPRINT1("USBPORT_AllocateBandwidth: Period is zero\n");
+        return FALSE;
+    }
+    
+    if (Period > USB2_FRAMES)
+    {
+        DPRINT1("USBPORT_AllocateBandwidth: Period %lu exceeds maximum %d\n", 
+                Period, USB2_FRAMES);
+        return FALSE;
+    }
+
     Factor = USB2_FRAMES / Period;
 
     for (Offset = 0; Offset < Period; Offset++)
     {
         MinBandwidth = TotalBusBandwidth;
+        
+        // Bounds check before accessing bandwidth array
+        if ((Offset * Factor) >= USB2_FRAMES)
+        {
+            DPRINT1("USBPORT_AllocateBandwidth: Array index out of bounds\n");
+            continue;
+        }
+        
         Bandwidth = &FdoExtension->Bandwidth[Offset * Factor];
 
         for (ix = 1; *Bandwidth >= EndpointBandwidth; ix++)
@@ -134,11 +166,19 @@ USBPORT_AllocateBandwidth(IN PDEVICE_OBJECT FdoDevice,
     {
         EndpointProperties->ScheduleOffset = ScheduleOffset;
 
-        Bandwidth = &FdoExtension->Bandwidth[ScheduleOffset * Factor];
+        // Additional bounds check
+        if ((ScheduleOffset * Factor) >= USB2_FRAMES)
+        {
+            DPRINT1("USBPORT_AllocateBandwidth: Final array index out of bounds\n");
+            return FALSE;
+        }
 
         for (Factor = USB2_FRAMES / Period; Factor; Factor--)
         {
-            FdoExtension->Bandwidth[ScheduleOffset * Factor] -= EndpointBandwidth;
+            if ((ScheduleOffset * Factor) < USB2_FRAMES)
+            {
+                FdoExtension->Bandwidth[ScheduleOffset * Factor] -= EndpointBandwidth;
+            }
         }
 
         if (TransferType == USBPORT_TRANSFER_TYPE_INTERRUPT)
@@ -274,9 +314,8 @@ USBPORT_EndpointHasQueuedTransfers(IN PDEVICE_OBJECT FdoDevice,
         {
             *TransferCount = 0;
 
-            for (Entry = Endpoint->TransferList.Flink;
-                 Entry && Entry != &Endpoint->TransferList;
-                 Entry = Transfer->TransferLink.Flink)
+            Entry = Endpoint->TransferList.Flink;
+            while (Entry && Entry != &Endpoint->TransferList)
             {
                 Transfer = CONTAINING_RECORD(Entry,
                                              USBPORT_TRANSFER,
@@ -285,6 +324,15 @@ USBPORT_EndpointHasQueuedTransfers(IN PDEVICE_OBJECT FdoDevice,
                 if (Transfer->Flags & TRANSFER_FLAG_SUBMITED)
                 {
                     ++*TransferCount;
+                }
+
+                Entry = Entry->Flink;
+                
+                // Prevent infinite loop in case of circular corruption
+                if (*TransferCount > 1000)
+                {
+                    DPRINT1("USBPORT_EndpointHasQueuedTransfers: Potential infinite loop detected, breaking\n");
+                    break;
                 }
             }
         }

@@ -33,7 +33,8 @@ list(APPEND INF_FILES
     usbxhci.inf
     volume.inf
     wdmaudio.inf
-    wmiacpi.inf)
+    wmiacpi.inf
+    wdma_usb.inf)
 
 list(APPEND UTF8_INF_FILES
     defltwk.inf
