@@ -176,8 +176,10 @@ USBPORT_FindCompanionControllers(IN PDEVICE_OBJECT USB2FdoDevice,
         goto Exit;
     }
 
+    // Don't release spinlock to prevent race condition
     ControllersList = ExAllocatePoolWithTag(NonPagedPool,
-                                            NumControllers * sizeof(DEVICE_RELATIONS),
+                                            sizeof(DEVICE_RELATIONS) + 
+                                            (NumControllers - 1) * sizeof(PDEVICE_OBJECT),
                                             USB_PORT_TAG);
 
     if (!ControllersList)
@@ -185,7 +187,8 @@ USBPORT_FindCompanionControllers(IN PDEVICE_OBJECT USB2FdoDevice,
         goto Exit;
     }
 
-    RtlZeroMemory(ControllersList, NumControllers * sizeof(DEVICE_RELATIONS));
+    RtlZeroMemory(ControllersList, sizeof(DEVICE_RELATIONS) + 
+                  (NumControllers - 1) * sizeof(PDEVICE_OBJECT));
 
     ControllersList->Count = NumControllers;
 
@@ -733,9 +736,32 @@ USBPORT_DoneTransfer(IN PUSBPORT_TRANSFER Transfer)
 
     DPRINT_CORE("USBPORT_DoneTransfer: Transfer - %p\n", Transfer);
 
+    if (!Transfer)
+    {
+        DPRINT1("USBPORT_DoneTransfer: Transfer is NULL\n");
+        return;
+    }
+
     Endpoint = Transfer->Endpoint;
+    if (!Endpoint)
+    {
+        DPRINT1("USBPORT_DoneTransfer: Endpoint is NULL\n");
+        return;
+    }
+
     FdoDevice = Endpoint->FdoDevice;
+    if (!FdoDevice)
+    {
+        DPRINT1("USBPORT_DoneTransfer: FdoDevice is NULL\n");
+        return;
+    }
+
     FdoExtension = FdoDevice->DeviceExtension;
+    if (!FdoExtension)
+    {
+        DPRINT1("USBPORT_DoneTransfer: FdoExtension is NULL\n");
+        return;
+    }
 
     Urb = Transfer->Urb;
     Irp = Transfer->Irp;
@@ -753,8 +779,15 @@ USBPORT_DoneTransfer(IN PUSBPORT_TRANSFER Transfer)
 
     KeReleaseSpinLock(&FdoExtension->FlushTransferSpinLock, OldIrql);
 
-    USBPORT_USBDStatusToNtStatus(Transfer->Urb, Transfer->USBDStatus);
-    USBPORT_CompleteTransfer(Urb, Urb->UrbHeader.Status);
+    if (Urb)
+    {
+        USBPORT_USBDStatusToNtStatus(Transfer->Urb, Transfer->USBDStatus);
+        USBPORT_CompleteTransfer(Urb, Urb->UrbHeader.Status);
+    }
+    else
+    {
+        DPRINT1("USBPORT_DoneTransfer: URB is NULL, cannot complete transfer\n");
+    }
 
     DPRINT_CORE("USBPORT_DoneTransfer: exit\n");
 }
@@ -2039,9 +2072,21 @@ USBPORT_MiniportCompleteTransfer(IN PVOID MiniPortExtension,
                 USBDStatus,
                 TransferLength);
 
+    if (!TransferParameters)
+    {
+        DPRINT1("USBPORT_MiniportCompleteTransfer: TransferParameters is NULL\n");
+        return;
+    }
+
     Transfer = CONTAINING_RECORD(TransferParameters,
                                  USBPORT_TRANSFER,
                                  TransferParameters);
+
+    if (!Transfer)
+    {
+        DPRINT1("USBPORT_MiniportCompleteTransfer: Transfer is NULL\n");
+        return;
+    }
 
     Transfer->Flags |= TRANSFER_FLAG_COMPLETED;
     Transfer->CompletedTransferLen = TransferLength;
@@ -2053,18 +2098,24 @@ USBPORT_MiniportCompleteTransfer(IN PVOID MiniPortExtension,
     }
 
     ParentTransfer = Transfer->ParentTransfer;
+    if (!ParentTransfer)
+    {
+        DPRINT1("USBPORT_MiniportCompleteTransfer: ParentTransfer is NULL\n");
+        goto Exit;
+    }
 
     KeAcquireSpinLock(&ParentTransfer->TransferSpinLock, &OldIrql);
 
     if (IsListEmpty(&ParentTransfer->SplitTransfersList))
     {
+        KeReleaseSpinLock(&ParentTransfer->TransferSpinLock, OldIrql);
         goto Exit;
     }
 
     SplitHead = &ParentTransfer->SplitTransfersList;
     Entry = SplitHead->Flink;
 
-    while (Entry && !IsListEmpty(SplitHead))
+    while (Entry && Entry != SplitHead)
     {
         SplitTransfer = CONTAINING_RECORD(Entry,
                                           USBPORT_TRANSFER,
