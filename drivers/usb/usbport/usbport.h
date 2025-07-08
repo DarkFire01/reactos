@@ -138,6 +138,9 @@
 #define TRANSFER_FLAG_COMPLETED  0x00000200
 #define TRANSFER_FLAG_PARENT     0x00000400
 
+/* Transfer Parameter Flags */
+#define USBPORT_TRANSFER_FLAGS_ISO  0x00000001
+
 extern KSPIN_LOCK USBPORT_SpinLock;
 extern LIST_ENTRY USBPORT_MiniPortDrivers;
 
@@ -632,6 +635,15 @@ VOID
 NTAPI
 USBPORT_FlushMapTransfers(
   IN PDEVICE_OBJECT FdoDevice);
+
+VOID
+NTAPI
+USBPORT_MiniportCompleteTransfer(
+  IN PVOID MiniPortExtension,
+  IN PVOID MiniPortEndpoint,
+  IN PVOID TransferParameters,
+  IN USBD_STATUS USBDStatus,
+  IN ULONG TransferLength);
 
 VOID
 NTAPI
