@@ -1118,9 +1118,9 @@ MiResolveTransitionFault(IN BOOLEAN StoreInstruction,
     ASSERT(PointerPte->u.Hard.Valid == 0);
     ASSERT(PointerPte->u.Trans.Prototype == 0);
     ASSERT(PointerPte->u.Trans.Transition == 1);
-    TempPte.u.Long = (PointerPte->u.Long & ~0xFFF) |
-                     (MmProtectToPteMask[PointerPte->u.Trans.Protection]) |
+    TempPte.u.Long = (MmProtectToPteMask[PointerPte->u.Trans.Protection]) |
                      MiDetermineUserGlobalPteMask(PointerPte);
+    TempPte.u.Hard.PageFrameNumber = PointerPte->u.Hard.PageFrameNumber;
 
     /* A write makes any paged out copy stale */
     if (StoreInstruction &&
@@ -1558,8 +1558,8 @@ MiDispatchFault(IN ULONG FaultCode,
                     ASSERT(PointerProtoPte->u.Hard.Valid == 0);
                     ASSERT(PointerProtoPte->u.Trans.Prototype == 0);
                     ASSERT(PointerProtoPte->u.Trans.Transition == 1);
-                    TempPte.u.Long = (PointerProtoPte->u.Long & ~0xFFF) |
-                                     MmProtectToPteMask[PointerProtoPte->u.Trans.Protection];
+                    TempPte.u.Long = MmProtectToPteMask[PointerProtoPte->u.Trans.Protection];
+                    TempPte.u.Hard.PageFrameNumber = PointerProtoPte->u.Hard.PageFrameNumber;
                     TempPte.u.Hard.Valid = 1;
                     MI_MAKE_ACCESSED_PAGE(&TempPte);
 
@@ -1860,7 +1860,7 @@ MmAccessFault(IN ULONG FaultCode,
         {
             /* Was it to a read-only page? */
             Pfn1 = MI_PFN_ELEMENT(PointerPte->u.Hard.PageFrameNumber);
-            if (!(PointerPte->u.Long & PTE_READWRITE) &&
+            if (!PointerPte->u.Hard.Write &&
                 !(Pfn1->OriginalPte.u.Soft.Protection & MM_READWRITE))
             {
                 /* Crash with distinguished bugcheck code */
@@ -1929,7 +1929,7 @@ MmAccessFault(IN ULONG FaultCode,
                     {
                         /* Was it to a read-only page? */
                         Pfn1 = MI_PFN_ELEMENT(PointerPte->u.Hard.PageFrameNumber);
-                        if (!(PointerPte->u.Long & PTE_READWRITE) &&
+                        if (!TempPte.u.Hard.Write &&
                             !(Pfn1->OriginalPte.u.Soft.Protection & MM_READWRITE))
                         {
                             /* Crash with distinguished bugcheck code */
@@ -2041,7 +2041,7 @@ RetryKernel:
             {
                 /* Was it to a read-only page that is not copy on write? */
                 Pfn1 = MI_PFN_ELEMENT(PointerPte->u.Hard.PageFrameNumber);
-                if (!(TempPte.u.Long & PTE_READWRITE) &&
+                if (!TempPte.u.Hard.Write &&
                     !(Pfn1->OriginalPte.u.Soft.Protection & MM_READWRITE) &&
                     !MI_IS_PAGE_COPY_ON_WRITE(&TempPte))
                 {
