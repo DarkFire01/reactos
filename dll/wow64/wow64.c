@@ -951,6 +951,12 @@ Wow64InitProcess(PCONTEXT pContext)
     
     WowPeb->ImageBaseAddress = PtrToUlong(Peb->ImageBaseAddress);
     
+    /* PEB OS Version Data */
+    WowPeb->OSMajorVersion = Peb->OSMajorVersion;
+    WowPeb->OSMinorVersion = Peb->OSMinorVersion;
+    WowPeb->OSBuildNumber  = Peb->OSBuildNumber;
+    WowPeb->OSPlatformId   = Peb->OSPlatformId;
+    
     /* CHECKME */
     WowPeb->OemCodePageData = PtrToUlong(&OemCopy);
     WowPeb->AnsiCodePageData = PtrToUlong(&AnsiCopy);
@@ -998,6 +1004,7 @@ Wow64Trampoline(ULONG_PTR Rip,
 {
     _SEH2_TRY
     {
+        __debugbreak();
         Enter32(NtDll32LdrpRoutine,
                 NtDll32,
                 Rip,

@@ -297,6 +297,7 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserCloseClipboard);
     IMPLEMENT_SERVICE(UserCloseDesktop);
     IMPLEMENT_SERVICE(UserCloseWindowStation);
+    IMPLEMENT_SERVICE(GdiGetTextCharsetInfo);
 #undef IMPLEMENT_SERVICE
 }
 
