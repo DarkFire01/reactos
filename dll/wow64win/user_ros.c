@@ -76,26 +76,27 @@ NTSTATUS WINAPI wow64_NtUserProcessConnect(UINT* pArgs)
    other than PFNCLIENT tables? */
 static
 ULONG
-Translate64WndProc(WNDPROC WndProc)
+Translate64WndProc(WNDPROC WndProc, BOOLEAN bIsAnsi)
 {
     const WNDPROC* ClientA = (WNDPROC*)&g_ServerInfo->apfnClientA;
     const WNDPROC* ClientW = (WNDPROC*)&g_ServerInfo->apfnClientW;
+    const WNDPROC* ClientA32 = (WNDPROC*)&apfnClientProcs32A;
+    const WNDPROC* ClientW32 = (WNDPROC*)&apfnClientProcs32W;
+    const WNDPROC* Client32 = bIsAnsi ? ((WNDPROC*)&apfnClientProcs32A) : ((WNDPROC*)&apfnClientProcs32W);
+    
     const size_t nWndProcsInClient = sizeof(PFNCLIENT) / sizeof(WNDPROC);
     int i;
     
-    if ((ULONG_PTR)PtrToUlong(WndProc) != (ULONG_PTR)WndProc)
+    for (i = 0; i < nWndProcsInClient; i++)
     {
-        for (i = 0; i < nWndProcsInClient; i++)
+        if (ClientA[i] == WndProc || ClientW[i] == WndProc)
         {
-            if (ClientW[i] == WndProc)
-            {
-                return PtrToUlong(((WNDPROC*)&apfnClientProcs32W)[i]);
-            }
-            
-            if (ClientA[i] == WndProc)
-            {
-                return PtrToUlong(((WNDPROC*)&apfnClientProcs32A)[i]);
-            }
+            return PtrToUlong(Client32[i]);
+        }
+        
+        if (ClientA32[i] == WndProc || ClientW32[i] == WndProc)
+        {
+            return PtrToUlong(Client32[i]);
         }
     }
     
@@ -106,8 +107,8 @@ Translate64WndProc(WNDPROC WndProc)
 VOID
 WndProcParams64To32(PWINDOWPROC_CALLBACK_ARGUMENTS CallbackArgs, 
                     PWINDOWPROC_CALLBACK_ARGUMENTS32 Arguments32)
-{
-    Arguments32->Proc = Translate64WndProc(CallbackArgs->Proc);
+{   
+    Arguments32->Proc = Translate64WndProc(CallbackArgs->Proc, CallbackArgs->IsAnsiProc);
     Arguments32->IsAnsiProc = CallbackArgs->IsAnsiProc;
     Arguments32->Wnd = HandleToUlong(CallbackArgs->Wnd);
     Arguments32->Msg = CallbackArgs->Msg;

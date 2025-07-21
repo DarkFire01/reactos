@@ -249,11 +249,11 @@ BOOL WINAPI RegisterClientPFN(VOID)
 /* FIXME? */
 WNDPROC GETPFNCLIENTA(int fnid)
 {
-    return WOW64_CAST_TO_PTR(((UINT64*)&pfnClientA)[fnid]);
+    return WOW64_CAST_TO_PTR(((UINT64*)&pfnClientA)[fnid - FNID_FIRST]);
 }
 
 WNDPROC GETPFNCLIENTW(int fnid)
 {
-    return WOW64_CAST_TO_PTR(((UINT64*)&pfnClientW)[fnid]);
+    return WOW64_CAST_TO_PTR(((UINT64*)&pfnClientW)[fnid - FNID_FIRST]);
 }
 #endif
