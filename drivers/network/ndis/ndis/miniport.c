@@ -2249,6 +2249,18 @@ NdisIPnPStopDevice(
       Adapter->NdisMiniportBlock.AllocatedResourcesTranslated = NULL;
     }
 
+  /* Clean up bus interface if allocated */
+  if (Adapter->BusInterface)
+    {
+      /* Dereference the interface */
+      if (Adapter->BusInterface->InterfaceDereference)
+        {
+          Adapter->BusInterface->InterfaceDereference(Adapter->BusInterface->Context);
+        }
+      ExFreePoolWithTag(Adapter->BusInterface, NDIS_TAG);
+      Adapter->BusInterface = NULL;
+    }
+
   if (Adapter->NdisMiniportBlock.Resources)
     {
       ExFreePool(Adapter->NdisMiniportBlock.Resources);
@@ -2541,6 +2553,10 @@ NdisIAddDevice(
   Adapter = (PLOGICAL_ADAPTER)DeviceObject->DeviceExtension;
   KeInitializeSpinLock(&Adapter->NdisMiniportBlock.Lock);
   InitializeListHead(&Adapter->ProtocolListHead);
+
+  /* Initialize bus interface fields */
+  Adapter->BusInterface = NULL;
+  Adapter->BusInterfaceQueried = FALSE;
 
   Status = IoRegisterDeviceInterface(PhysicalDeviceObject,
                                      &GUID_DEVINTERFACE_NET,
