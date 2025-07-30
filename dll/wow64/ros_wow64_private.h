@@ -388,11 +388,11 @@ static inline void put_iosb( IO_STATUS_BLOCK32 *io32, const IO_STATUS_BLOCK *io 
 {
     /* sync I/O modifies the 64-bit iosb right away, so in that case we update the 32-bit one */
     /* async I/O leaves the 64-bit one untouched and updates the 32-bit one directly later on */
-    if (io32 && io->Pointer != io32)
-    {
-        io32->Status = io->Status;
-        io32->Information = io->Information;
-    }
+    // if (io32 && io->Pointer != io32)
+    // {
+    //    io32->Status = io->Status;
+    //    io32->Information = io->Information;
+    // }
 }
 
 static BOOL is_process_wow64( HANDLE handle )
