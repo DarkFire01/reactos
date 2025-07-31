@@ -876,15 +876,29 @@ NTSTATUS WINAPI wow64_NtRaiseHardError( UINT *args )
     ULONG *params = get_ptr( &args );
     HARDERROR_RESPONSE_OPTION option = get_ulong( &args );
     HARDERROR_RESPONSE *response = get_ptr( &args );
-
-    DPRINT1("NtRaiseHardError");
-    FIXME( "%08lx %lu %lx %p %u %p: stub\n", status, count, params_mask, params, option, response );
-#ifndef __REACTOS__
-    assert(FALSE);
-#else
-    ASSERT(FALSE);
+#ifdef __REACTOS__
+    ULONG_PTR *HardErrorParameters;
+    int i;
 #endif
+
+#ifndef __REACTOS__
+    FIXME( "%08lx %lu %lx %p %u %p: stub\n", status, count, params_mask, params, option, response );
+    assert(FALSE);
     return STATUS_NOT_IMPLEMENTED;
+#else
+    HardErrorParameters = Wow64AllocateTemp(count * sizeof(*HardErrorParameters));
+    for (i = 0; i < count; i++)
+    {
+        HardErrorParameters[i] = params[i];
+    }
+
+    return NtRaiseHardError(status, 
+                            count, 
+                            params_mask,
+                            HardErrorParameters,
+                            option,
+                            (PULONG)response);
+#endif
 }
 
 

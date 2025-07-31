@@ -366,6 +366,11 @@ static inline void *
 apc_32to64(ULONG func)
 {
     /* UNIMPLEMENTED */
+    if (func)
+    {
+        DPRINT1("Warning: WOW64 APCs are unimplemented\n");
+    }
+    
     return NULL;
 }
 

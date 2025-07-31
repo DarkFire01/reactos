@@ -4317,7 +4317,6 @@ NTSTATUS WINAPI wow64_NtUserScrollWindowEx( UINT *args )
     return NtUserScrollWindowEx( hwnd, dx, dy, rect, clip_rect, update_rgn, update_rect, flags );
 }
 
-#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserSelectPalette( UINT *args )
 {
     HDC hdc = get_handle( &args );
@@ -4327,6 +4326,7 @@ NTSTATUS WINAPI wow64_NtUserSelectPalette( UINT *args )
     return HandleToUlong( NtUserSelectPalette( hdc, hpal, bkg ));
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserSendInput( UINT *args )
 {
     UINT count = get_ulong( &args );

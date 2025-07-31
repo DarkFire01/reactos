@@ -9,6 +9,24 @@
 
 #include "ros_wow64_private.h"
 
+LONG
+Wow64UnhandledExceptionHandler(IN PEXCEPTION_POINTERS ExceptionInfo);
+
+BOOLEAN
+Wow64PassExceptionToGuest(IN PCONTEXT Context,
+                          IN PEXCEPTION_RECORD ExceptionRecord)
+{
+    EXCEPTION_POINTERS exceptionInfo;
+
+    exceptionInfo.ContextRecord = Context;
+    exceptionInfo.ExceptionRecord = ExceptionRecord;
+    
+    Wow64UnhandledExceptionHandler(&exceptionInfo);
+    
+    ASSERT(FALSE);
+    return FALSE;
+}
+
 NTSTATUS
 WINAPI
 wow64_NtRaiseException(UINT* pArgs)
@@ -74,7 +92,6 @@ Wow64UnhandledExceptionHandler(IN PEXCEPTION_POINTERS ExceptionInfo)
     DispatcherArgs[0] = PtrToUlong(&Record32);
     DispatcherArgs[1] = PtrToUlong(&Context32);
     
-    __debugbreak();
     Jump32(PtrToUlong(NtDll32KiUserExceptionDispatcher), 2, DispatcherArgs);
     
     return EXCEPTION_EXECUTE_HANDLER;

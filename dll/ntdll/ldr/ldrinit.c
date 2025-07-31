@@ -98,6 +98,11 @@ extern BOOLEAN RtlpUse16ByteSLists;
 
 #ifdef _M_AMD64
 extern ULONG NTAPI RtlGetCurrentDirectory_U_RtlpMsysDecoy(ULONG MaximumLength, PWSTR Buffer);
+VOID (*LdrpWow64LdrpInitialize)(PVOID) = NULL;
+BOOLEAN (*LdrpWow64PassExceptionToGuest)(PCONTEXT, PVOID) = NULL;
+ANSI_STRING LdrpWow64LdrpInitializeImportName = RTL_CONSTANT_STRING("Wow64LdrpInitialize");
+ANSI_STRING LdrpWow64PassExceptionToGuestImportName = RTL_CONSTANT_STRING("Wow64PassExceptionToGuest");
+PVOID LdrpWow64BaseAddress = NULL;
 #endif
 
 #ifdef _WIN64
@@ -107,6 +112,67 @@ extern ULONG NTAPI RtlGetCurrentDirectory_U_RtlpMsysDecoy(ULONG MaximumLength, P
 #endif
 
 /* FUNCTIONS *****************************************************************/
+
+#ifdef _M_AMD64
+
+BOOLEAN
+LdrpTryWow64Exception(PCONTEXT Context, PVOID Ptr2)
+{
+    if (LdrpWow64PassExceptionToGuest != NULL &&
+        Context->SegCs == 0x23)
+    {
+        return LdrpWow64PassExceptionToGuest(Context, Ptr2);
+    }
+    
+    return FALSE;
+}
+
+static
+NTSTATUS
+LdrpLoadWow64(VOID)
+{
+    NTSTATUS Status;
+    
+    DPRINT1("Loading WOW64.DLL\n");
+    
+    if (LdrpWow64LdrpInitialize != NULL)
+    {
+        return STATUS_SUCCESS;
+    }
+    
+    Status = LdrLoadDll(NULL, NULL, &Wow64String, &LdrpWow64BaseAddress);
+    
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("LDR: Unable to load %wZ, Status=0x%08lx\n", &Wow64String, Status);
+        return Status;
+    }
+    
+    Status = LdrGetProcedureAddress(LdrpWow64BaseAddress,
+                                    &LdrpWow64LdrpInitializeImportName,
+                                    0,
+                                    (PVOID*)&LdrpWow64LdrpInitialize);
+                                    
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("LDR: Unable to find WOW64 init function, Status=0x%08lx\n", Status);
+        return Status;
+    }
+    
+    Status = LdrGetProcedureAddress(LdrpWow64BaseAddress,
+                                    &LdrpWow64PassExceptionToGuestImportName,
+                                    0,
+                                    (PVOID*)&LdrpWow64PassExceptionToGuest);
+                                    
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("LDR: Unable to find WOW64 exception passing function, Status=0x%08lx\n", Status);
+        return Status;
+    }
+    
+    return STATUS_SUCCESS;
+}
+#endif
 
 /*
  * @implemented
@@ -517,8 +583,6 @@ LdrpInitializeThread(IN PCONTEXT Context)
     PVOID EntryPoint;
 #ifdef _M_AMD64
     PIMAGE_NT_HEADERS NtHeader;
-    VOID (*pWow64LdrpInitialize)(PVOID) = NULL;
-    ANSI_STRING Wow64LdrpInitializeImportName = RTL_CONSTANT_STRING("Wow64LdrpInitialize");
 #endif
 
     DPRINT("LdrpInitializeThread() called for %wZ (%p/%p)\n",
@@ -544,31 +608,14 @@ LdrpInitializeThread(IN PCONTEXT Context)
     /* FIXME */
     if (NtHeader->FileHeader.Machine == IMAGE_FILE_MACHINE_I386)
     {
-        PVOID Wow64BaseAddress;
-
-        DPRINT1("Loading WOW64.DLL\n");
-        
-        Status = LdrLoadDll(NULL, NULL, &Wow64String, &Wow64BaseAddress);
-        
+        Status = LdrpLoadWow64();
         if (!NT_SUCCESS(Status))
         {
-            DPRINT1("LDR: Unable to load %wZ, Status=0x%08lx\n", &Wow64String, Status);
+            DPRINT1("Loading WOW64 failed\n");
             ASSERT(FALSE);
         }
         
-        Status = LdrGetProcedureAddress(Wow64BaseAddress,
-                                        &Wow64LdrpInitializeImportName,
-                                        0,
-                                        (PVOID*)&pWow64LdrpInitialize);
-                                        
-        if (!NT_SUCCESS(Status))
-        {
-            DPRINT1("LDR: Unable to find WOW64 init function, Status=0x%08lx\n", Status);
-            ASSERT(FALSE);
-        }
-        
-        pWow64LdrpInitialize(Context);
-        RtlLeaveCriticalSection(&LdrpLoaderLock);
+        LdrpWow64LdrpInitialize(Context);
         goto Exit;
     }
 #endif
@@ -1832,9 +1879,6 @@ LdrpInitializeProcess(IN PCONTEXT Context,
     ULONG ComSectionSize;
     ANSI_STRING BaseProcessInitPostImportName = RTL_CONSTANT_STRING("BaseProcessInitPostImport");
     ANSI_STRING BaseQueryModuleDataName = RTL_CONSTANT_STRING("BaseQueryModuleData");
-#ifdef _M_AMD64
-    ANSI_STRING Wow64LdrpInitializeImportName = RTL_CONSTANT_STRING("Wow64LdrpInitialize");
-#endif
     PVOID OldShimData;
     OBJECT_ATTRIBUTES ObjectAttributes;
     //UNICODE_STRING LocalFileName, FullImageName;
@@ -1866,9 +1910,6 @@ LdrpInitializeProcess(IN PCONTEXT Context,
     PWCHAR Current;
     ULONG ExecuteOptions = 0;
     PVOID ViewBase;
-#ifdef _M_AMD64
-    VOID (*pWow64LdrpInitialize)(PVOID) = NULL;
-#endif
 
     /* Set a NULL SEH Filter */
     RtlSetUnhandledExceptionFilter(NULL);
@@ -2353,33 +2394,15 @@ LdrpInitializeProcess(IN PCONTEXT Context,
 #ifdef _M_AMD64
     if (NtHeader->FileHeader.Machine == IMAGE_FILE_MACHINE_I386)
     {
-        PVOID Wow64BaseAddress;
-
-        DPRINT1("Loading WOW64.DLL\n");
-        
-        Status = LdrLoadDll(NULL, NULL, &Wow64String, &Wow64BaseAddress);
-        
+        Status = LdrpLoadWow64();
         if (!NT_SUCCESS(Status))
         {
-            if (ShowSnaps)
-                DPRINT1("LDR: Unable to load %wZ, Status=0x%08lx\n", &Wow64String, Status);
-            return Status;
-        }
-        
-        Status = LdrGetProcedureAddress(Wow64BaseAddress,
-                                        &Wow64LdrpInitializeImportName,
-                                        0,
-                                        (PVOID*)&pWow64LdrpInitialize);
-                                        
-        if (!NT_SUCCESS(Status))
-        {
-            if (ShowSnaps)
-                DPRINT1("LDR: Unable to find WOW64 init function, Status=0x%08lx\n", Status);
+             DPRINT1("Loading WOW64 failed\n");
             return Status;
         }
         
         _InterlockedIncrement(&LdrpProcessInitialized);
-        pWow64LdrpInitialize(Context);
+        LdrpWow64LdrpInitialize(Context);
         return STATUS_SUCCESS;
     }
 #endif

@@ -406,7 +406,6 @@ Wow64SystemServiceEx(ULONG syscallNum,
         WINE_WOW_IMPL_CASE(OpenProcessTokenEx);
 
         /* system.c */
-        WINE_WOW_IMPL_CASE(QueryInformationProcess);
         WINE_WOW_IMPL_CASE(PowerInformation);
         WINE_WOW_IMPL_CASE(QuerySystemEnvironmentValue);
         WINE_WOW_IMPL_CASE(QuerySystemEnvironmentValueEx);
@@ -534,7 +533,10 @@ Wow64SystemServiceEx(ULONG syscallNum,
         WINE_WOW_IMPL_CASE(CreateProcess);
         WINE_WOW_IMPL_CASE(CreateProcessEx);
         WINE_WOW_IMPL_CASE(QueryInformationThread);
+        WINE_WOW_IMPL_CASE(QueryInformationProcess);
+        WINE_WOW_IMPL_CASE(SetInformationProcess);
         WINE_WOW_IMPL_CASE(ResumeThread);
+        WINE_WOW_IMPL_CASE(ApphelpCacheControl);
 
         case NumTerminateThread:
         {
@@ -781,6 +783,63 @@ wow64_NtResumeThread(UINT* pArgs)
     return NtResumeThread(hThread, pSuspendCount);
 }
 
+/**********************************************************************
+ * NtSetInformationProcess
+ *
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+wow64_NtSetInformationProcess(UINT* pArgs)
+{
+    HANDLE Handle = get_handle(&pArgs);
+    PROCESSINFOCLASS Class = get_ulong(&pArgs);
+    PVOID Information = get_ptr(&pArgs);
+    ULONG Length = get_ulong(&pArgs);
+    
+    switch (Class)
+    {
+        case ProcessIoCounters:  /* IO_COUNTERS */
+        case ProcessTimes:  /* KERNEL_USER_TIMES */
+        case ProcessDefaultHardErrorMode:  /* ULONG */
+        case ProcessPriorityClass:  /* PROCESS_PRIORITY_CLASS */
+        case ProcessHandleCount:  /* ULONG */
+        case ProcessSessionInformation:  /* ULONG */
+        case ProcessDebugFlags:  /* ULONG */
+        case ProcessExecuteFlags:  /* ULONG */
+        case ProcessCookie:  /* ULONG */
+        case ProcessCycleTime:  /* PROCESS_CYCLE_TIME_INFORMATION */
+            return NtSetInformationProcess(Handle, Class, Information, Length);
+        default:
+            /* UNIMPLEMENTED */
+            __debugbreak();
+            return STATUS_NOT_IMPLEMENTED;
+    }
+    
+    return STATUS_SUCCESS;
+}
+
+
+/**********************************************************************
+ * wow64_NtApphelpCacheControl
+ *
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+wow64_NtApphelpCacheControl(UINT* pArgs)
+{
+    APPHELP_CACHE_SERVICE_LOOKUP ServiceData;
+    
+    APPHELPCACHESERVICECLASS Service = get_ulong(&pArgs);
+    PAPPHELP_CACHE_SERVICE_LOOKUP32 ServiceData32 = get_ptr(&pArgs);
+    
+    ServiceData.ImageHandle = UlongToHandle(ServiceData32->ImageHandle);
+    unicode_str_32to64(&ServiceData.ImageName, &ServiceData32->ImageName);
+    
+    return NtApphelpCacheControl(Service, &ServiceData);
+}
+
 NTSTATUS
 NTAPI
 wow64_NtQueryInformationThread(UINT* pArgs)
@@ -829,8 +888,11 @@ wow64_NtQueryInformationThread(UINT* pArgs)
             pBasicInfo32->TebBaseAddress =
                 ROUND_TO_PAGES((ULONG_PTR)((PTEB)BasicInfo.TebBaseAddress + 1));
 
-            *pRetLen32 = sizeof(*pBasicInfo32);
-
+            if (pRetLen32 != NULL)
+            {
+                *pRetLen32 = sizeof(*pBasicInfo32);
+            }
+            
             return Status;
         }
         case ThreadAmILastThread:
@@ -1004,7 +1066,6 @@ Wow64Trampoline(ULONG_PTR Rip,
 {
     _SEH2_TRY
     {
-        __debugbreak();
         Enter32(NtDll32LdrpRoutine,
                 NtDll32,
                 Rip,
@@ -1087,15 +1148,13 @@ Wow64LdrpInitialize(PCONTEXT pContext)
 {
     static LONG ProcessInitialized = 0;
 
-    if (_InterlockedCompareExchange(&ProcessInitialized,
-                                    1,
-                                    0) == 0)
+    if (InterlockedCompareExchange(&ProcessInitialized,
+                                   1,
+                                   0) == 0)
     {
+        __debugbreak();
         Wow64InitProcess(pContext);
     }
     
-    /* TODO: Parse Context to (somehow) get the start address for the new thread.
-       This is somewhat problematic, because the 64-bit side can give us 64-bit 
-       pointer to functions in 64-bit DLLs. */
     Wow64InitThread(pContext);
 }

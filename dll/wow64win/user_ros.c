@@ -811,3 +811,10 @@ wow64_NtUserConvertMemHandle(UINT* pArgs)
 
     return NtUserConvertMemHandle(pData, cbData);
 }
+
+HDC WINAPI wow64_NtGdiGetDCforBitmap(UINT *pArgs)
+{
+    HBITMAP hBitmap = get_handle(&pArgs);
+
+    return NtGdiGetDCforBitmap(hBitmap);
+}

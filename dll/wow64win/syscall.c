@@ -143,6 +143,7 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserSetFocus);
     IMPLEMENT_SERVICE(GdiSelectBitmap);
     IMPLEMENT_SERVICE(GdiStretchDIBitsInternal);
+    IMPLEMENT_SERVICE(GdiSetDIBitsToDeviceInternal);
     IMPLEMENT_SERVICE(GdiGetDeviceCaps);
     IMPLEMENT_SERVICE(GdiCreateCompatibleBitmap);
     IMPLEMENT_SERVICE(GdiGetAppClipBox);
@@ -183,6 +184,7 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(GdiGetFontData);
     IMPLEMENT_SERVICE(GdiOpenDCW);
     IMPLEMENT_SERVICE(GdiGetDCObject);
+    IMPLEMENT_SERVICE(GdiGetDCforBitmap);
     IMPLEMENT_SERVICE(GdiGetCharABCWidthsW);
     IMPLEMENT_SERVICE(GdiGetGlyphIndicesW);
     IMPLEMENT_SERVICE(GdiGetTransform);
@@ -298,6 +300,7 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserCloseDesktop);
     IMPLEMENT_SERVICE(UserCloseWindowStation);
     IMPLEMENT_SERVICE(GdiGetTextCharsetInfo);
+    IMPLEMENT_SERVICE(UserSelectPalette);
 #undef IMPLEMENT_SERVICE
 }
 

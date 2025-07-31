@@ -292,9 +292,6 @@ IopCompleteRequest(IN PKAPC Apc,
     PMDL Mdl, NextMdl;
     PVOID Port = NULL, Key = NULL;
     BOOLEAN SignaledCreateRequest = FALSE;
-#ifdef _WIN64
-    PIO_STATUS_BLOCK32 Iosb32 = NULL;
-#endif
 
     /* Get data from the APC */
     FileObject = (PFILE_OBJECT)*SystemArgument1;
