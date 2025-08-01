@@ -1127,6 +1127,7 @@ Wow64InitThread(PCONTEXT pContext)
     NtCurrentTeb()->TlsSlots[WOW64_TLS_TEMPLIST] = NULL;
     NtCurrentTeb()->TlsSlots[WOW64_TLS_APCLIST] = NULL;
     NtCurrentTeb()->TlsSlots[WOW64_TLS_USERCALLBACKDATA] = NULL;
+    NtCurrentTeb()->TlsSlots[WOW64_TLS_FILESYSREDIR] = (PVOID)TRUE;
 
     /* Make sure the handler routine pointer fits into the 32-bit TEB */
     ASSERT((((ULONG_PTR)Wow64SystemServiceEx) & ~0xFFFFFFFF) == 0);

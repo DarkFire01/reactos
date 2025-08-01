@@ -180,6 +180,14 @@ static HANDLE UlongToHandleNoSignExtend(ULONG ulong)
     {
         return INVALID_HANDLE_VALUE;
     }
+    else if (ulong == HandleToUlong(HWND_MESSAGE))
+    {
+        return HWND_MESSAGE;
+    }
+    else if (ulong == HandleToUlong(HWND_NOTOPMOST))
+    {
+        return HWND_NOTOPMOST;
+    }
     return (HANDLE)(ULONG_PTR)ulong;
 }
 

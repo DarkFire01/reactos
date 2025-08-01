@@ -673,7 +673,7 @@ NTSTATUS WINAPI wow64_NtSetInformationFile(UINT *args)
             name.Buffer = info32->FileName;
             name.Length = info32->FileNameLength;
             InitializeObjectAttributes(&attr, &name, 0, LongToHandle(info32->RootDirectory), 0);
-            get_file_redirect(&attr);
+            GetFileRedirect(&attr);
             size = offsetof(FILE_RENAME_INFORMATION, FileName[name.Length/sizeof(WCHAR)]);
             info = Wow64AllocateTemp(size);
             info->ReplaceIfExists = info32->Flags;

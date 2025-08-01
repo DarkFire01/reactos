@@ -12,7 +12,13 @@
 
 #if defined(BUILD_WOW6432)
 
-/* Exported functions */
+#define TEB64_TLS_OFFSET            0x1480
+
+#define WOW64_TLS_FILESYSREDIR      8
+
+/**********************************************************************
+ * Exported functions 
+ */
 NTSYSAPI
 NTSTATUS 
 NTAPI
@@ -31,10 +37,14 @@ NtWow64WriteVirtualMemory64(HANDLE ProcessHandle,
                             UINT64 BufferSize,
                             PUINT64 NumberOfBytesWritten);
 
-/* Helper inline functions */
+/**********************************************************************
+ * Helper functions 
+ */
+void __writegsdword(ULONG offset, ULONG value);
+ULONG __readgsdword(ULONG offset);
 
 static 
-__inline 
+inline 
 WORD
 Wow64ReadNativeWord(UINT64 Address)
 {
@@ -59,7 +69,7 @@ Wow64ReadNativeWord(UINT64 Address)
 }
 
 static 
-__inline 
+inline 
 ULONG 
 Wow64ReadNativeULong(UINT64 Address)
 {
@@ -83,7 +93,7 @@ Wow64ReadNativeULong(UINT64 Address)
 }
 
 static 
-__inline 
+inline 
 UINT64 
 Wow64ReadNativePtr(UINT64 Address)
 {
@@ -107,7 +117,7 @@ Wow64ReadNativePtr(UINT64 Address)
 }
 
 static 
-__inline 
+inline 
 void 
 Wow64WriteNativeULong(UINT64 Address, ULONG Value)
 {
@@ -128,7 +138,7 @@ Wow64WriteNativeULong(UINT64 Address, ULONG Value)
 }
 
 static 
-__inline 
+inline 
 void
 Wow64WriteNativePtr(UINT64 Address, UINT64 Value)
 {

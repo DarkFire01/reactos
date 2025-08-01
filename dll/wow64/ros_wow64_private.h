@@ -308,16 +308,25 @@ RedirectPath(const WOW64_PATH_REDIRECTION* Redirection,
     return FALSE;
 }
 
-static BOOLEAN get_file_redirect(OBJECT_ATTRIBUTES* attr)
+static BOOLEAN GetFileRedirect(OBJECT_ATTRIBUTES* attr)
 {
+    if (PtrToUlong(NtCurrentTeb()->TlsSlots[WOW64_TLS_FILESYSREDIR]) == 0)
+    {
+        if (attr && attr->ObjectName)
+        {
+            DPRINT1("Redirection disabled for %wZ\n", attr->ObjectName);
+        }
+        return FALSE;
+    }
+    
     static const WOW64_PATH_REDIRECTION Redirections[] = 
     {
     /* TODO: system directory shouldn't be hardcoded here */
 #define REDIRECTION(From, To) { RTL_CONSTANT_STRING(From), RTL_CONSTANT_STRING(To) }
         REDIRECTION(L"\\??\\C:\\reactos\\system32", L"\\??\\" TMP_WOW_DIR),
-        REDIRECTION(L"\\??\\C:\\reactos\\winsxs", L"\\??\\" TMP_WOW_DIR L"\\winsxs"),
+       // REDIRECTION(L"\\??\\C:\\reactos\\winsxs", L"\\??\\" TMP_WOW_DIR L"\\winsxs"),
         REDIRECTION(L"\\??\\X:\\reactos\\system32", L"\\??\\" TMP_WOW_DIR),
-        REDIRECTION(L"\\??\\X:\\reactos\\winsxs", L"\\??\\" TMP_WOW_DIR L"\\winsxs"),
+        // REDIRECTION(L"\\??\\X:\\reactos\\winsxs", L"\\??\\" TMP_WOW_DIR L"\\winsxs"),
         REDIRECTION(L"\\KnownDlls", L"\\KnownDlls32")
 #undef  REDIRECTION
     };
@@ -505,7 +514,7 @@ RosWow64RedirObjAttributes(struct object_attr64 *out,
 
     if (attr)
     {
-        get_file_redirect(attr);
+        GetFileRedirect(attr);
     }
     return attr;
 }
