@@ -96,3 +96,18 @@ elseif(ARCH STREQUAL "amd64")
 endif()
 #
 
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/optional/nv4_disp.dll)
+    add_cd_file(FILE "${CMAKE_CURRENT_SOURCE_DIR}/optional/nv4_disp.dll" DESTINATION reactos/system32 FOR livecd)
+endif()
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/optional/nvoglnt.dll)
+    add_cd_file(FILE "${CMAKE_CURRENT_SOURCE_DIR}/optional/nvoglnt.dll" DESTINATION reactos/system32 FOR livecd)
+endif()
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/optional/wglgears.exe)
+    add_cd_file(FILE "${CMAKE_CURRENT_SOURCE_DIR}/optional/wglgears.exe" DESTINATION reactos/system32 FOR livecd)
+endif()
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/optional/nv4_mini.sys)
+    add_cd_file(FILE "${CMAKE_CURRENT_SOURCE_DIR}/optional/nv4_mini.sys" DESTINATION reactos/system32/drivers FOR livecd)
+endif()
