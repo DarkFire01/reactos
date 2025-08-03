@@ -1295,6 +1295,17 @@ VOID DispTdiQueryInformationExComplete(
 
     QueryContext = (PTI_QUERY_CONTEXT)Context;
     if (NT_SUCCESS(Status)) {
+#ifdef _WIN64
+        if (IoIs32bitProcess(QueryContext->Irp))
+        {
+            CopyBufferToBufferChain(
+                QueryContext->InputMdl,
+                FIELD_OFFSET(TCP_REQUEST_QUERY_INFORMATION_EX32, Context),
+                (PCHAR)&((TCP_REQUEST_QUERY_INFORMATION_EX32*)&QueryContext->QueryInfo)->Context,
+                CONTEXT_SIZE);
+        }
+        else
+#endif
         CopyBufferToBufferChain(
             QueryContext->InputMdl,
             FIELD_OFFSET(TCP_REQUEST_QUERY_INFORMATION_EX, Context),
@@ -1328,7 +1339,7 @@ NTSTATUS DispTdiQueryInformationEx(
  *     Status of operation
  */
 {
-    PTCP_REQUEST_QUERY_INFORMATION_EX InputBuffer;
+    PVOID InputBuffer;
     PTRANSPORT_CONTEXT TranContext;
     PTI_QUERY_CONTEXT QueryContext;
     PVOID OutputBuffer;
@@ -1341,6 +1352,7 @@ NTSTATUS DispTdiQueryInformationEx(
     PMDL InputMdl           = NULL;
     PMDL OutputMdl          = NULL;
     NTSTATUS Status         = STATUS_SUCCESS;
+    SIZE_T ValidInputLength = sizeof(TCP_REQUEST_QUERY_INFORMATION_EX);
 
     TI_DbgPrint(DEBUG_IRP, ("Called.\n"));
 
@@ -1367,8 +1379,15 @@ NTSTATUS DispTdiQueryInformationEx(
     InputBufferLength  = IrpSp->Parameters.DeviceIoControl.InputBufferLength;
     OutputBufferLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
 
+#ifdef _WIN64
+    if (IoIs32bitProcess(Irp))
+    {
+        ValidInputLength = sizeof(TCP_REQUEST_QUERY_INFORMATION_EX32);
+    }
+#endif
+
     /* Validate parameters */
-    if ((InputBufferLength == sizeof(TCP_REQUEST_QUERY_INFORMATION_EX)) &&
+    if ((InputBufferLength == ValidInputLength) &&
         (OutputBufferLength != 0)) {
 
         InputBuffer = (PTCP_REQUEST_QUERY_INFORMATION_EX)
@@ -1379,7 +1398,7 @@ NTSTATUS DispTdiQueryInformationEx(
         if (QueryContext) {
 	    _SEH2_TRY {
                 InputMdl = IoAllocateMdl(InputBuffer,
-                    sizeof(TCP_REQUEST_QUERY_INFORMATION_EX),
+                    ValidInputLength,
                     FALSE, TRUE, NULL);
 
                 OutputMdl = IoAllocateMdl(OutputBuffer,
@@ -1397,8 +1416,10 @@ NTSTATUS DispTdiQueryInformationEx(
 
                     OutputMdlLocked = TRUE;
 
+                    ASSERT(ValidInputLength <= sizeof(QueryContext->QueryInfo));
+
                     RtlCopyMemory(&QueryContext->QueryInfo,
-                        InputBuffer, sizeof(TCP_REQUEST_QUERY_INFORMATION_EX));
+                        InputBuffer, ValidInputLength);
                 } else
                     Status = STATUS_INSUFFICIENT_RESOURCES;
             } _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
@@ -1441,57 +1462,61 @@ NTSTATUS DispTdiQueryInformationEx(
             ExFreePoolWithTag(QueryContext, QUERY_CONTEXT_TAG);
         } else
             Status = STATUS_INSUFFICIENT_RESOURCES;
-    } else if( InputBufferLength ==
-	       sizeof(TCP_REQUEST_QUERY_INFORMATION_EX) ) {
-	/* Handle the case where the user is probing the buffer for length */
-	TI_DbgPrint(MAX_TRACE, ("InputBufferLength %d OutputBufferLength %d\n",
-				InputBufferLength, OutputBufferLength));
+    }
+    else if(InputBufferLength == ValidInputLength)
+    {
+        /* Handle the case where the user is probing the buffer for length */
+        TI_DbgPrint(MAX_TRACE, ("InputBufferLength %d OutputBufferLength %d\n",
+                    InputBufferLength, OutputBufferLength));
+
         InputBuffer = (PTCP_REQUEST_QUERY_INFORMATION_EX)
             IrpSp->Parameters.DeviceIoControl.Type3InputBuffer;
 
-	Size = 0;
+        Size = 0;
 
         QueryContext = ExAllocatePoolWithTag(NonPagedPool, sizeof(TI_QUERY_CONTEXT), QUERY_CONTEXT_TAG);
         if (!QueryContext) return STATUS_INSUFFICIENT_RESOURCES;
 
-	_SEH2_TRY {
-	    InputMdl = IoAllocateMdl(InputBuffer,
-				     sizeof(TCP_REQUEST_QUERY_INFORMATION_EX),
-				     FALSE, TRUE, NULL);
+        _SEH2_TRY {
+            InputMdl = IoAllocateMdl(InputBuffer,
+                                     ValidInputLength,
+                                     FALSE, TRUE, NULL);
 
-	    MmProbeAndLockPages(InputMdl, Irp->RequestorMode,
-				IoModifyAccess);
+            MmProbeAndLockPages(InputMdl, Irp->RequestorMode,
+                                IoModifyAccess);
 
-	    InputMdlLocked = TRUE;
-	    Status = STATUS_SUCCESS;
-	} _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-	    TI_DbgPrint(MAX_TRACE, ("Failed to acquire client buffer\n"));
-	    Status = _SEH2_GetExceptionCode();
-	} _SEH2_END;
+            InputMdlLocked = TRUE;
+            Status = STATUS_SUCCESS;
+        } _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+            TI_DbgPrint(MAX_TRACE, ("Failed to acquire client buffer\n"));
+            Status = _SEH2_GetExceptionCode();
+        } _SEH2_END;
 
-	if( !NT_SUCCESS(Status) || !InputMdl ) {
-	    if( InputMdl ) IoFreeMdl( InputMdl );
-	    ExFreePoolWithTag(QueryContext, QUERY_CONTEXT_TAG);
-	    return Status;
-	}
+        if( !NT_SUCCESS(Status) || !InputMdl ) {
+            if( InputMdl ) IoFreeMdl( InputMdl );
+            ExFreePoolWithTag(QueryContext, QUERY_CONTEXT_TAG);
+            return Status;
+        }
 
-	RtlCopyMemory(&QueryContext->QueryInfo,
-		      InputBuffer, sizeof(TCP_REQUEST_QUERY_INFORMATION_EX));
+        ASSERT(ValidInputLength <= sizeof(QueryContext->QueryInfo));
+        RtlCopyMemory(&QueryContext->QueryInfo,
+                      InputBuffer, ValidInputLength);
 
-	QueryContext->Irp       = Irp;
-	QueryContext->InputMdl  = InputMdl;
-	QueryContext->OutputMdl = NULL;
+        QueryContext->Irp       = Irp;
+        QueryContext->InputMdl  = InputMdl;
+        QueryContext->OutputMdl = NULL;
 
-	Request.RequestNotifyObject = DispTdiQueryInformationExComplete;
-	Request.RequestContext      = QueryContext;
-	Status = InfoTdiQueryInformationEx(&Request,
-					   &QueryContext->QueryInfo.ID,
-					   NULL,
-					   &Size,
-					   &QueryContext->QueryInfo.Context);
-	DispTdiQueryInformationExComplete(QueryContext, Status, Size);
-	TI_DbgPrint(MAX_TRACE, ("Leaving. Status = (0x%X)\n", Status));
-    } else Status = STATUS_INVALID_PARAMETER;
+        Request.RequestNotifyObject = DispTdiQueryInformationExComplete;
+        Request.RequestContext      = QueryContext;
+        Status = InfoTdiQueryInformationEx(&Request,
+                                           &QueryContext->QueryInfo.ID,
+                                           NULL,
+                                           &Size,
+                                           &QueryContext->QueryInfo.Context);
+        DispTdiQueryInformationExComplete(QueryContext, Status, Size);
+        TI_DbgPrint(MAX_TRACE, ("Leaving. Status = (0x%X)\n", Status));
+    } 
+    else Status = STATUS_INVALID_PARAMETER;
 
     TI_DbgPrint(MIN_TRACE, ("Leaving. Status = (0x%X)\n", Status));
 

@@ -23,6 +23,14 @@
 #include <afd/shared.h>
 #include <pseh/pseh2.h>
 
+#ifdef _WIN64
+#define EXPLICIT_32BIT
+#include <afd/shared.h>
+#undef EXPLICIT_32BIT
+#else
+#define IoIs32bitProcess(irp) FALSE
+#endif
+
 #include "tdi_proto.h"
 #include "tdiconn.h"
 #include "debug.h"
@@ -289,10 +297,11 @@ NTSTATUS AfdSuperAccept( PDEVICE_OBJECT DeviceObject, PIRP Irp,
 
 /* lock.c */
 
-PAFD_WSABUF LockBuffers( PAFD_WSABUF Buf, UINT Count,
-			 PVOID AddressBuf, PINT AddressLen,
-			 BOOLEAN Write, BOOLEAN LockAddress,
-             KPROCESSOR_MODE LockMode );
+PAFD_WSABUF LockBuffers(PAFD_WSABUF Buf, UINT Count,
+                        PVOID AddressBuf, PINT AddressLen,
+                        BOOLEAN Write, BOOLEAN LockAddress,
+                        KPROCESSOR_MODE LockMode,
+                        BOOLEAN Wow64Is32Bit);
 VOID UnlockBuffers( PAFD_WSABUF Buf, UINT Count, BOOL Address );
 BOOLEAN SocketAcquireStateLock( PAFD_FCB FCB );
 NTSTATUS NTAPI UnlockAndMaybeComplete

@@ -325,6 +325,160 @@ static NTSTATUS NTAPI PacketSocketSendComplete
     return STATUS_SUCCESS;
 }
 
+#ifdef _WIN64
+static
+NTSTATUS
+AfdConvert32BitUdpWrite(PIRP Irp,
+                        PAFD_SEND_INFO_UDP32 SendReq32,
+                        PAFD_SEND_INFO_UDP* pOutSendReq)
+{
+    PAFD_SEND_INFO_UDP SendReq;
+    
+    SendReq = ExAllocatePoolWithTag(NonPagedPool,
+                                    sizeof(*SendReq),
+                                    TAG_AFD_DATA_BUFFER);
+    if (!SendReq)
+    {
+        return STATUS_NO_MEMORY;
+    }
+
+    SendReq->BufferCount    = SendReq32->BufferCount;
+    SendReq->BufferArray    = UlongToPtr(SendReq32->BufferArray);
+    SendReq->AfdFlags       = SendReq32->AfdFlags;
+    
+    SendReq->TdiRequest.SendDatagramInformation = 
+        UlongToPtr(SendReq32->TdiRequest.SendDatagramInformation);
+        
+    SendReq->TdiRequest.Request.Handle.AddressHandle = 
+        UlongToPtr(SendReq32->TdiRequest.Request.Handle.AddressHandle);
+    
+    SendReq->TdiRequest.Request.RequestNotifyObject = 
+        UlongToPtr(SendReq32->TdiRequest.Request.RequestNotifyObject);
+        
+    SendReq->TdiRequest.Request.RequestContext = 
+        UlongToPtr(SendReq32->TdiRequest.Request.RequestContext);
+        
+    SendReq->TdiRequest.Request.TdiStatus = SendReq32->TdiRequest.Request.TdiStatus;
+    
+    SendReq->TdiConnection.UserDataLength = SendReq32->TdiConnection.UserDataLength;
+    SendReq->TdiConnection.UserData = UlongToPtr(SendReq32->TdiConnection.UserData);
+    
+    SendReq->TdiConnection.OptionsLength = SendReq32->TdiConnection.OptionsLength;
+    SendReq->TdiConnection.Options = UlongToPtr(SendReq32->TdiConnection.Options);
+    
+    SendReq->TdiConnection.RemoteAddressLength = SendReq32->TdiConnection.RemoteAddressLength;
+    SendReq->TdiConnection.RemoteAddress = UlongToPtr(SendReq32->TdiConnection.RemoteAddress);
+    
+    Irp->Tail.Overlay.DriverContext[0] = SendReq;
+    *pOutSendReq = SendReq;
+    
+    ExFreePoolWithTag(SendReq32, TAG_AFD_DATA_BUFFER);
+    return STATUS_SUCCESS;
+}
+#endif
+
+static
+NTSTATUS
+AfdConnectedSocketWriteDataUdp(PAFD_FCB FCB,
+                               PDEVICE_OBJECT DeviceObject, PIRP Irp,
+                               PIO_STACK_LOCATION IrpSp, BOOLEAN Short)
+{
+    PAFD_SEND_INFO_UDP SendReq;
+    PTDI_CONNECTION_INFORMATION TargetAddress;
+    KPROCESSOR_MODE LockMode;
+    NTSTATUS Status;
+
+    /* Check that the socket is bound */
+    if (FCB->State != SOCKET_STATE_BOUND || !FCB->RemoteAddress)
+    {
+        AFD_DbgPrint(MIN_TRACE,("Invalid parameter\n"));
+        return UnlockAndMaybeComplete(FCB, 
+                                      STATUS_INVALID_PARAMETER, 
+                                      Irp,
+                                      0);
+    }
+
+    if (!(SendReq = LockRequest(Irp, IrpSp, FALSE, &LockMode)))
+    {
+        return UnlockAndMaybeComplete(FCB, STATUS_NO_MEMORY, Irp, 0);
+    }
+    
+#ifdef _WIN64
+    if ((IrpSp->MajorFunction == IRP_MJ_DEVICE_CONTROL ||
+         IrpSp->MajorFunction == IRP_MJ_INTERNAL_DEVICE_CONTROL) &&
+        IoIs32bitProcess(Irp))
+    {
+        Status = AfdConvert32BitUdpWrite(Irp, (PAFD_SEND_INFO_UDP32)SendReq, &SendReq);
+        if (!NT_SUCCESS(Status))
+        {
+            return UnlockAndMaybeComplete(FCB, Status, Irp, 0);
+        }
+        
+        SendReq->BufferArray = LockBuffers(SendReq->BufferArray,
+                                           SendReq->BufferCount,
+                                           NULL, NULL,
+                                           FALSE, FALSE, LockMode,
+                                           TRUE);
+    }
+    else
+#endif
+    {
+        /* Must lock buffers before handing off user data */
+        SendReq->BufferArray = LockBuffers(SendReq->BufferArray,
+                                              SendReq->BufferCount,
+                                              NULL, NULL,
+                                              FALSE, FALSE, LockMode,
+                                              FALSE);
+    }
+    
+    if(!SendReq->BufferArray) 
+    {
+        return UnlockAndMaybeComplete(FCB, 
+                                      STATUS_ACCESS_VIOLATION,
+                                      Irp, 
+                                      0);
+    }
+
+    Status = TdiBuildConnectionInfo(&TargetAddress, FCB->RemoteAddress);
+
+    if (!NT_SUCCESS(Status))
+    {
+        UnlockBuffers(SendReq->BufferArray, SendReq->BufferCount, FALSE);
+        return UnlockAndMaybeComplete(FCB, Status, Irp, 0);
+    }
+    
+    FCB->PollState &= ~AFD_EVENT_SEND;
+
+    Status = QueueUserModeIrp(FCB, Irp, FUNCTION_SEND);
+    if (Status == STATUS_PENDING)
+    {
+        Status = TdiSendDatagram(&FCB->SendIrp.InFlightRequest,
+                                 FCB->AddressFile.Object,
+                                 SendReq->BufferArray[0].buf,
+                                 SendReq->BufferArray[0].len,
+                                 TargetAddress,
+                                 PacketSocketSendComplete,
+                                 FCB);
+                                 
+        if (Status != STATUS_PENDING)
+        {
+            NT_VERIFY(RemoveHeadList(&FCB->PendingIrpList[FUNCTION_SEND]) == &Irp->Tail.Overlay.ListEntry);
+            Irp->IoStatus.Status = Status;
+            Irp->IoStatus.Information = 0;
+            (void)IoSetCancelRoutine(Irp, NULL);
+            UnlockBuffers(SendReq->BufferArray, SendReq->BufferCount, FALSE);
+            UnlockRequest(Irp, IoGetCurrentIrpStackLocation(Irp));
+            IoCompleteRequest(Irp, IO_NETWORK_INCREMENT);
+        }
+    }
+
+    ExFreePoolWithTag(TargetAddress, TAG_AFD_TDI_CONNECTION_INFORMATION);
+
+    SocketStateUnlock(FCB);
+
+    return STATUS_PENDING;
+}
+
 NTSTATUS NTAPI
 AfdConnectedSocketWriteData(PDEVICE_OBJECT DeviceObject, PIRP Irp,
                             PIO_STACK_LOCATION IrpSp, BOOLEAN Short) {
@@ -332,6 +486,9 @@ AfdConnectedSocketWriteData(PDEVICE_OBJECT DeviceObject, PIRP Irp,
     PFILE_OBJECT FileObject = IrpSp->FileObject;
     PAFD_FCB FCB = FileObject->FsContext;
     PAFD_SEND_INFO SendReq;
+#ifdef _WIN64
+    PAFD_SEND_INFO32 SendReq32 = NULL;
+#endif
     UINT TotalBytesCopied = 0, i, SpaceAvail = 0, BytesCopied, SendLength;
     KPROCESSOR_MODE LockMode;
 
@@ -344,7 +501,7 @@ AfdConnectedSocketWriteData(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 
     FCB->EventSelectDisabled &= ~AFD_EVENT_SEND;
 
-    if( FCB->Flags & AFD_ENDPOINT_CONNECTIONLESS )
+    if(FCB->Flags & AFD_ENDPOINT_CONNECTIONLESS)
     {
         PAFD_SEND_INFO_UDP SendReq;
         PTDI_CONNECTION_INFORMATION TargetAddress;
@@ -442,12 +599,49 @@ AfdConnectedSocketWriteData(PDEVICE_OBJECT DeviceObject, PIRP Irp,
     if( !(SendReq = LockRequest( Irp, IrpSp, FALSE, &LockMode )) )
         return UnlockAndMaybeComplete
             ( FCB, STATUS_NO_MEMORY, Irp, 0 );
+            
+#ifdef _WIN64
+    if ((IrpSp->MajorFunction == IRP_MJ_DEVICE_CONTROL ||
+         IrpSp->MajorFunction == IRP_MJ_INTERNAL_DEVICE_CONTROL) &&
+        IoIs32bitProcess(Irp))
+    {
+        SendReq32 = (PAFD_SEND_INFO32)SendReq;
+        SendReq = ExAllocatePoolWithTag(NonPagedPool,
+                                        sizeof(*SendReq),
+                                        TAG_AFD_DATA_BUFFER);
 
-    SendReq->BufferArray = LockBuffers( SendReq->BufferArray,
-                                        SendReq->BufferCount,
-                                        NULL, NULL,
-                                        FALSE, FALSE, LockMode );
+        if (!SendReq)
+        {
+            return UnlockAndMaybeComplete(FCB, 
+                                          STATUS_NO_MEMORY,
+                                          Irp, 0);
+        }
 
+        SendReq->BufferCount     = SendReq32->BufferCount;
+        SendReq->BufferArray     = UlongToPtr(SendReq32->BufferArray);
+        SendReq->AfdFlags        = SendReq32->AfdFlags;
+        SendReq->TdiFlags        = SendReq32->TdiFlags;
+        
+        Irp->Tail.Overlay.DriverContext[0] = SendReq;
+        
+        ExFreePoolWithTag(SendReq32, TAG_AFD_DATA_BUFFER);
+        
+        SendReq->BufferArray = LockBuffers(SendReq->BufferArray,
+                                           SendReq->BufferCount,
+                                           NULL, NULL,
+                                           FALSE, FALSE, LockMode,
+                                           TRUE);
+    }
+    else
+#endif
+    {
+        SendReq->BufferArray = LockBuffers(SendReq->BufferArray,
+                                           SendReq->BufferCount,
+                                           NULL, NULL,
+                                           FALSE, FALSE, LockMode,
+                                           FALSE);
+    }
+    
     if( !SendReq->BufferArray ) {
         return UnlockAndMaybeComplete( FCB, STATUS_ACCESS_VIOLATION,
                                        Irp, 0 );
@@ -573,6 +767,7 @@ AfdPacketSocketWriteData(PDEVICE_OBJECT DeviceObject, PIRP Irp,
     PAFD_FCB FCB = FileObject->FsContext;
     PAFD_SEND_INFO_UDP SendReq;
     KPROCESSOR_MODE LockMode;
+    BOOLEAN Convert32Bit = FALSE;
 
     UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -598,6 +793,21 @@ AfdPacketSocketWriteData(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 
     if( !(SendReq = LockRequest( Irp, IrpSp, FALSE, &LockMode )) )
         return UnlockAndMaybeComplete(FCB, STATUS_NO_MEMORY, Irp, 0);
+
+#ifdef _WIN64
+    if ((IrpSp->MajorFunction == IRP_MJ_DEVICE_CONTROL ||
+         IrpSp->MajorFunction == IRP_MJ_INTERNAL_DEVICE_CONTROL) &&
+        IoIs32bitProcess(Irp))
+    {
+        Status = AfdConvert32BitUdpWrite(Irp, (PAFD_SEND_INFO_UDP32)SendReq, &SendReq);
+        Convert32Bit = TRUE;
+        
+        if (!NT_SUCCESS(Status))
+        {
+            return UnlockAndMaybeComplete(FCB, Status, Irp, 0);
+        }
+    }
+#endif
 
     if (FCB->SharedData.State == SOCKET_STATE_CREATED)
     {
@@ -625,7 +835,8 @@ AfdPacketSocketWriteData(PDEVICE_OBJECT DeviceObject, PIRP Irp,
     SendReq->BufferArray = LockBuffers( SendReq->BufferArray,
                                         SendReq->BufferCount,
                                         NULL, NULL,
-                                        FALSE, FALSE, LockMode );
+                                        FALSE, FALSE, LockMode,
+                                        Convert32Bit );
 
     if( !SendReq->BufferArray )
         return UnlockAndMaybeComplete( FCB, STATUS_ACCESS_VIOLATION,

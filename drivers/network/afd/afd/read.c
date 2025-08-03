@@ -449,6 +449,9 @@ AfdConnectedSocketReadData(PDEVICE_OBJECT DeviceObject, PIRP Irp,
     PFILE_OBJECT FileObject = IrpSp->FileObject;
     PAFD_FCB FCB = FileObject->FsContext;
     PAFD_RECV_INFO RecvReq;
+#ifdef _WIN64
+    PAFD_RECV_INFO32 RecvReq32;
+#endif
     UINT TotalBytesCopied = 0;
     PAFD_STORED_DATAGRAM DatagramRecv;
     PLIST_ENTRY ListEntry;
@@ -476,12 +479,49 @@ AfdConnectedSocketReadData(PDEVICE_OBJECT DeviceObject, PIRP Irp,
         return UnlockAndMaybeComplete( FCB, STATUS_NO_MEMORY,
                                        Irp, 0 );
 
-    AFD_DbgPrint(MID_TRACE,("Recv flags %x\n", RecvReq->AfdFlags));
+#ifdef _WIN64
+    if ((IrpSp->MajorFunction == IRP_MJ_DEVICE_CONTROL ||
+         IrpSp->MajorFunction == IRP_MJ_INTERNAL_DEVICE_CONTROL) &&
+        IoIs32bitProcess(Irp))
+    {
+        RecvReq32 = (PAFD_RECV_INFO32)RecvReq;
+        RecvReq = ExAllocatePoolWithTag(NonPagedPool,
+                                        sizeof(*RecvReq),
+                                        TAG_AFD_DATA_BUFFER);
 
-    RecvReq->BufferArray = LockBuffers( RecvReq->BufferArray,
-                                       RecvReq->BufferCount,
-                                       NULL, NULL,
-                                       TRUE, FALSE, LockMode );
+        if (!RecvReq)
+        {
+            return UnlockAndMaybeComplete(FCB, 
+                                          STATUS_NO_MEMORY,
+                                          Irp, 0);
+        }
+
+        RecvReq->BufferCount     = RecvReq32->BufferCount;
+        RecvReq->BufferArray     = UlongToPtr(RecvReq32->BufferArray);
+        RecvReq->AfdFlags        = RecvReq32->AfdFlags;
+        RecvReq->TdiFlags        = RecvReq32->TdiFlags;
+        
+        Irp->Tail.Overlay.DriverContext[0] = RecvReq;
+        
+        ExFreePoolWithTag(RecvReq32, TAG_AFD_DATA_BUFFER);
+
+        AFD_DbgPrint(MID_TRACE,("Recv flags %x\n", RecvReq->AfdFlags));
+
+        RecvReq->BufferArray = LockBuffers(RecvReq->BufferArray,
+                                           RecvReq->BufferCount,
+                                           NULL, NULL,
+                                           FALSE, FALSE, LockMode,
+                                           TRUE);
+    }
+    else
+#endif
+    {
+        RecvReq->BufferArray = LockBuffers(RecvReq->BufferArray,
+                                           RecvReq->BufferCount,
+                                           NULL, NULL,
+                                           TRUE, FALSE, LockMode,
+                                           FALSE);
+    }
 
     if( !RecvReq->BufferArray ) {
         return UnlockAndMaybeComplete( FCB, STATUS_ACCESS_VIOLATION,
@@ -764,7 +804,8 @@ AfdPacketSocketReadData(PDEVICE_OBJECT DeviceObject, PIRP Irp,
                                         RecvReq->BufferCount,
                                         RecvReq->Address,
                                         RecvReq->AddressLength,
-                                        TRUE, TRUE, LockMode );
+                                        TRUE, TRUE, LockMode,
+                                        IoIs32bitProcess(Irp));
 
     if( !RecvReq->BufferArray ) { /* access violation in userspace */
         return UnlockAndMaybeComplete(FCB, STATUS_ACCESS_VIOLATION, Irp, 0);
