@@ -301,6 +301,12 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserCloseWindowStation);
     IMPLEMENT_SERVICE(GdiGetTextCharsetInfo);
     IMPLEMENT_SERVICE(UserSelectPalette);
+    IMPLEMENT_SERVICE(UserTrackPopupMenuEx);
+    IMPLEMENT_SERVICE(GdiGetDeviceGammaRamp);
+    IMPLEMENT_SERVICE(UserGetKeyboardLayoutName);
+    IMPLEMENT_SERVICE(UserLoadKeyboardLayoutEx);
+    IMPLEMENT_SERVICE(UserSetImeHotKey);
+    IMPLEMENT_SERVICE(UserGetKeyboardLayoutList);
 #undef IMPLEMENT_SERVICE
 }
 

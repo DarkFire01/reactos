@@ -812,9 +812,53 @@ wow64_NtUserConvertMemHandle(UINT* pArgs)
     return NtUserConvertMemHandle(pData, cbData);
 }
 
-HDC WINAPI wow64_NtGdiGetDCforBitmap(UINT *pArgs)
+HDC 
+WINAPI 
+wow64_NtGdiGetDCforBitmap(UINT *pArgs)
 {
     HBITMAP hBitmap = get_handle(&pArgs);
 
     return NtGdiGetDCforBitmap(hBitmap);
+}
+
+NTSTATUS 
+WINAPI 
+wow64_NtUserGetKeyboardLayoutName(UINT *pArgs)
+{
+    PUNICODE_STRING32 pName32 = get_ptr(&pArgs);
+    UNICODE_STRING Name;
+
+    return NtUserGetKeyboardLayoutName(unicode_str_32to64(&Name, pName32));
+}
+
+NTSTATUS
+WINAPI 
+wow64_NtUserSetImeHotKey(UINT *pArgs)
+{
+    DWORD dwHotkeyId = get_ulong(&pArgs);
+    UINT uModifiers = get_ulong(&pArgs);
+    UINT uVirtualKey = get_ulong(&pArgs);
+    HKL hKl = get_handle(&pArgs);
+    DWORD dwAction = get_ulong(&pArgs);
+    
+    return NtUserSetImeHotKey(dwHotkeyId, uModifiers, uVirtualKey, hKl, dwAction);
+}
+
+HKL 
+WINAPI 
+wow64_NtUserLoadKeyboardLayoutEx(UINT *pArgs)
+{
+    HANDLE hFile = get_handle(&pArgs);
+    DWORD offTable = get_ulong(&pArgs);
+    PVOID pTables = get_ptr(&pArgs);
+    HKL hOldKl = get_handle(&pArgs);
+    PUNICODE_STRING32 pusKLID32 = get_ptr(&pArgs);
+    DWORD dwNewKl = get_ulong(&pArgs);
+    UINT Flags = get_ulong(&pArgs);
+    
+    UNICODE_STRING usKLID;
+
+    return NtUserLoadKeyboardLayoutEx(hFile, offTable, pTables, hOldKl, 
+                                      unicode_str_32to64(&usKLID, pusKLID32),
+                                      dwNewKl, Flags);
 }
