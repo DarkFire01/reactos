@@ -39,7 +39,15 @@ KiInitMachineDependent(VOID)
     /* There is nothing to do on ARM */
     return;
 }
-
+void ArmTestStack();
+CODE_SEG("INIT")
+DECLSPEC_NORETURN
+VOID
+NTAPI
+KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+    ArmTestStack();
+}
 VOID
 NTAPI
 KiInitializeKernel(IN PKPROCESS InitProcess,
