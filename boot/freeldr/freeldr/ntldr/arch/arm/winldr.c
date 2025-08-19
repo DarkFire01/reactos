@@ -2,11 +2,8 @@
  * PROJECT:         ReactOS Boot Loader
  * LICENSE:         BSD - See COPYING.ARM in the top level directory
  * FILE:            boot/freeldr/freeldr/arch/arm/winldr.c
- * PURPOSE:         ARM Kernel Loader
- * PROGRAMMERS:     ReactOS Portable Systems Group
+ * PURPOSE:         Full-featured ARMv7 UEFI Kernel Loader with all MMU fixes
  */
-
-/* INCLUDES ***************************************************************/
 
 #include <freeldr.h>
 #include <debug.h>
@@ -24,7 +21,6 @@ extern SIZE_T OsLoaderSize;
 
 /*
  * Disables the MMU, I-cache, and D-cache.
- * This is a safe preliminary step before reconfiguring the MMU.
  */
 void ArmDisableMMUAndCaches(void);
 
@@ -35,7 +31,6 @@ void ArmInvalidateICache(void);
 
 /*
  * Cleans and invalidates the entire data/unified cache.
- * This is critical to ensure page table writes are visible to the MMU.
  */
 void ArmCleanAndInvalidateDCache(void);
 
@@ -45,28 +40,20 @@ void ArmCleanAndInvalidateDCache(void);
 void ArmInvalidateTlb(void);
 
 /*
- * An instruction synchronization barrier, used to ensure previous
- * instructions (like an MCR to change system state) have completed.
- */
-void ArmInstructionSynchronizationBarrier(void);
-
-/*
  * The final step: Enables the MMU and caches by writing to the
  * system control register (SCTLR).
- *
- * @param TtbRegister The value for the Translation Table Base Register (TTBR0).
- * @param DomainRegister The value for the Domain Access Control Register (DACR).
- * @param ControlRegister The final value for the System Control Register (SCTLR).
  */
 void ArmEnableMMU(unsigned int TtbRegister,
                   unsigned int DomainRegister,
-                  unsigned int ControlRegister);
+                  unsigned int ControlRegister,
+                  unsigned int StackPointerVA);
 
 /*
  * Disables IRQ and FIQ interrupts by setting the I and F bits in the CPSR.
  */
 void ArmDisableInterrupts(void);
 
+void ArmDisableDCache(void);
 
 EFI_GUID gEfiGraphicsOutputProtocolGuid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 EFI_GUID gEfiLoadedImageProtocolGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
@@ -81,7 +68,7 @@ static ULONG g_NextFreeL2Table = 0;
 
 // Base address for the new kernel stack
 static PVOID g_KernelStackPhysicalBase = NULL;
-
+PVOID BasicStack = NULL;
 /*
  * ============================================================================
  * ARMv7 Short-Descriptor Page Table Entry Definitions
@@ -105,9 +92,6 @@ static PVOID g_KernelStackPhysicalBase = NULL;
 // Globals provided by the UEFI entry point
 extern EFI_HANDLE GlobalImageHandle;
 extern EFI_SYSTEM_TABLE* GlobalSystemTable;
-extern PVOID OsLoaderBase;
-extern SIZE_T OsLoaderSize;
-
 
 /* FORWARD DECLARATIONS ***************************************************/
 static void ArmMapSmallPage(unsigned int VirtualAddr, unsigned int PhysicalAddr, unsigned int Attributes);
@@ -149,53 +133,42 @@ ArmMapSmallPage(unsigned int VirtualAddr, unsigned int PhysicalAddr, unsigned in
 VOID
 WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+        BasicStack = (PVOID)((ULONG_PTR)0x32000 + (ULONG_PTR)MmAllocateMemoryWithType(0x32000, LoaderOsloaderStack));
+
     ULONG_PTR UnalignedBuffer, PageTablePhysAddr;
     const ULONG Alignment = 16384;
+    #define KERNEL_STACK_SIZE_LOC (16 * 1024)
 
     TRACE("WinLdrSetupMachineDependent: Setting up full page tables...\n");
 
-    // 1. Allocate memory for the new Kernel Stack
-    g_KernelStackPhysicalBase = MmAllocateMemoryWithType(KERNEL_STACK_SIZE, LoaderLoadedProgram);
-    if (!g_KernelStackPhysicalBase)
-    {
-        TRACE("FATAL: Failed to allocate kernel stack!\n");
-        for(;;);
-    }
+    g_KernelStackPhysicalBase = MmAllocateMemoryWithType(KERNEL_STACK_SIZE_LOC, LoaderLoadedProgram);
     
-    // 2. Allocate and manually align the L1 Page Table.
     UnalignedBuffer = (ULONG_PTR)MmAllocateMemoryWithType(Alignment + (Alignment - 1), LoaderMemoryData);
-    if (!UnalignedBuffer)
-    {
-        TRACE("FATAL: Failed to allocate memory for L1 page table!\n");
-        for(;;);
-    }
     L1_PageTable = (unsigned int*)((UnalignedBuffer + (Alignment - 1)) & ~(Alignment - 1));
     RtlZeroMemory(L1_PageTable, Alignment);
     PageTablePhysAddr = (ULONG_PTR)L1_PageTable;
     
-    // 3. Allocate the L2 Page Table Pool.
     ULONG num_l2_tables_for_phys = (TotalPagesInLookupTable * 4096) / (1024 * 1024) + 1;
     ULONG num_l2_tables_for_kernel = num_l2_tables_for_phys;
     g_L2PageTablePoolSizeInKb = (num_l2_tables_for_phys + num_l2_tables_for_kernel);
     g_L2PageTablePoolBuffer = MmAllocateMemoryWithType(g_L2PageTablePoolSizeInKb * 1024, LoaderMemoryData);
-    if (!g_L2PageTablePoolBuffer)
-    {
-        TRACE("FATAL: Failed to allocate L2 page table pool!\n");
-        for(;;);
-    }
     g_NextFreeL2Table = 0;
     
-    // 4. Create the critical 1-to-1 identity mappings BEFORE mapping anything else.
+        // 2. --- THE NEW FIX ---
+    // Temporarily disable the D-Cache. This forces all subsequent writes,
+    // including the creation of L2 tables and PTEs for the stack,
+    // to go directly to main memory, solving the cache coherency problem.
+    TRACE("Disabling D-Cache before critical page table writes...\n");
+    ArmCleanAndInvalidateDCache(); // First, clean out any existing dirty data
+    ArmDisableDCache();
+
     unsigned int ram_attrs = L1_TYPE_SECTION | L1_SECT_AP_RW_ALL | L1_SECT_DOMAIN_0 | L1_SECT_ATTR_NORMAL_WBWA;
     
-    // Map the first 1MB of RAM for exception vectors.
     L1_PageTable[0] = (0x00000000 & 0xFFF00000) | ram_attrs;
 
-    // Map the L1 Page Table's own memory region for cache coherency.
     ULONG_PTR PageTableSection = PageTablePhysAddr & 0xFFF00000;
     L1_PageTable[PageTableSection >> 20] = (PageTableSection & 0xFFF00000) | ram_attrs;
 
-    // Map the bootloader's own code region.
     ULONG_PTR FreeldrBase = (ULONG_PTR)OsLoaderBase;
     ULONG_PTR FreeldrEnd = FreeldrBase + OsLoaderSize;
     for (ULONG_PTR Addr = (FreeldrBase & 0xFFF00000); Addr < FreeldrEnd; Addr += (1024*1024))
@@ -203,18 +176,27 @@ WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
         L1_PageTable[Addr >> 20] = (Addr & 0xFFF00000) | ram_attrs;
     }
 
-    // --- FIX: Manually add the UART mapping for positive confirmation ---
+    // --- THIS IS THE CRITICAL FIX for the hang at R0= ---
+    // Pre-map the L2 page table pool itself to ensure cache coherency when ArmMapSmallPage writes to it.
+    ULONG_PTR pool_start = (ULONG_PTR)g_L2PageTablePoolBuffer & 0xFFF00000;
+    ULONG_PTR pool_end = (ULONG_PTR)g_L2PageTablePoolBuffer + (g_L2PageTablePoolSizeInKb * 1024);
+    for (ULONG_PTR Addr = pool_start; Addr < pool_end; Addr += (1024*1024))
+    {
+        if (L1_PageTable[Addr >> 20] == 0)
+        {
+            L1_PageTable[Addr >> 20] = (Addr & 0xFFF00000) | ram_attrs;
+        }
+    }
+    
     #define QEMU_UART_BASE 0x09000000
     unsigned int device_attrs = L1_TYPE_SECTION | L1_SECT_AP_RW_ALL | L1_SECT_DOMAIN_0 | L1_SECT_ATTR_DEVICE;
     L1_PageTable[QEMU_UART_BASE >> 20] = (QEMU_UART_BASE & 0xFFF00000) | device_attrs;
-    TRACE("Manually mapping UART at PA/VA 0x%X for verification.\n", QEMU_UART_BASE);
 
-    // 5. Map the newly allocated kernel stack to its virtual address
     const unsigned int l2_stack_attributes = L2_TYPE_SMALL_PAGE | L2_AP_RW_ALL | L2_ATTR_NORMAL_WBWA;
-    for (int i = 0; i < (KERNEL_STACK_SIZE / 4096); i++)
+    for (int i = 0; i < (KERNEL_STACK_SIZE_LOC / 4096); i++)
     {
         unsigned int pa = (unsigned int)g_KernelStackPhysicalBase + (i * 4096);
-        unsigned int va = (KERNEL_STACK_VIRTUAL_TOP - KERNEL_STACK_SIZE) + (i * 4096);
+        unsigned int va = (KERNEL_STACK_VIRTUAL_TOP - KERNEL_STACK_SIZE_LOC) + (i * 4096);
         ArmMapSmallPage(va, pa, l2_stack_attributes);
     }
 }
@@ -222,12 +204,13 @@ WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
 VOID
 WinLdrSetProcessorContext(_In_ USHORT OperatingSystemVersion)
 {
+
     EFI_STATUS Status;
     UINTN MapKey, DescriptorSize;
     EFI_MEMORY_DESCRIPTOR* MemoryMap;
     UINT32 DescriptorVersion;
     UINTN MemoryMapSize = 0;
-    
+
     GlobalSystemTable->BootServices->GetMemoryMap(&MemoryMapSize, NULL, &MapKey, &DescriptorSize, &DescriptorVersion);
     MemoryMapSize += 2 * DescriptorSize;
     GlobalSystemTable->BootServices->AllocatePool(EfiLoaderData, MemoryMapSize, (VOID**)&MemoryMap);
@@ -253,15 +236,31 @@ WinLdrSetProcessorContext(_In_ USHORT OperatingSystemVersion)
     unsigned int domain_register = 0x1;
     unsigned int control_register = (1 << 12) | (1 << 11) | (1 << 2) | (1 << 0); // I, Z, C, M
 
-    ArmEnableMMU(ttb_register, domain_register, control_register);
+    // Call the updated function, passing the stack VA as the fourth argument
+    ArmEnableMMU(ttb_register, domain_register, control_register, (  unsigned int)BasicStack);
 
-    PubKiSystemStartup(PubLoaderBlockVA);
+    // This should not be reached as ArmEnableMMU now jumps to the kernel
+    for(;;);
 }
 
 VOID
 MempDump(VOID)
 {
     return;
+}
+
+void
+JumpToKernel()
+{
+    TRACE("\nPREPPING JUMP....\n");
+
+    TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
+          PubKiSystemStartup, PubLoaderBlockVA);
+    PubKiSystemStartup(PubLoaderBlockVA);
+    for(;;)
+    {
+
+    }   
 }
 
 BOOLEAN

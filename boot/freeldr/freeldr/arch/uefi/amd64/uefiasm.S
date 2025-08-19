@@ -17,10 +17,10 @@ EXTERN UefiExitBootServices:PROC
 .code64
 
 // void _exituefi(VOID)
-PUBLIC _exituefi
+PUBLIC 
 _exituefi:
     /* Save non-volatile registers */
-    push rbp
+    push rbp_exituefi
     push rsi
     push rdi
     push rbx

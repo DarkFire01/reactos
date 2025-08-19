@@ -9,6 +9,8 @@
 ; Import symbols if needed (none for this basic case)
     IMPORT  PubLoaderBlockVA
     IMPORT  PubKiSystemStartup
+    IMPORT BasicStack
+    IMPORT JumpToKernel
 ; Export function names so the C linker can find them
     EXPORT  ArmDisableInterrupts
     EXPORT  ArmDisableMMUAndCaches
@@ -17,6 +19,7 @@
     EXPORT  ArmInvalidateTlb
     EXPORT  ArmInstructionSynchronizationBarrier
     EXPORT  ArmEnableMMU
+    EXPORT  ArmDisableDCache
 ; This must match the #define in the C file.
 KERNEL_STACK_VIRTUAL_TOP EQU 0x80200000
 QEMU_UART_BASE EQU 0x09000000
@@ -99,57 +102,67 @@ print_loop
     ldmfd   sp!, {r0, r4, pc}        ; Restore and return
     ENDP
 
+ArmDisableDCache PROC
+    mrc     p15, 0, r0, c1, c0, 0       ; Read SCTLR
+    bic     r0, r0, #(1 << 2)           ; Clear C bit (D-Cache)
+    mcr     p15, 0, r0, c1, c0, 0       ; Write SCTLR
+    bx      lr
+    ENDP
+
 ;-------------------------------------------------------------------------------
-; void ArmMmuEnable(UINT TtbRegister, UINT DomainRegister, UINT ControlRegister)
-; Enables MMU, switches stack, prints args, and then jumps to the kernel.
+; void ArmMmuEnable(UINT TtbRegister, UINT DomainRegister, UINT ControlRegister, UINT StackPointerVA)
 ; r0 = TtbRegister
 ; r1 = DomainRegister
 ; r2 = ControlRegister
+; r3 = StackPointerVA
 ;-------------------------------------------------------------------------------
 ArmEnableMMU PROC
     mcr     p15, 0, r0, c2, c0, 0       ; Write TTBR0
     mcr     p15, 0, r1, c3, c0, 0       ; Write DACR
     mcr     p15, 0, r2, c1, c0, 0       ; Write SCTLR
     isb                                 ; Flush pipeline
-    ldr     sp, =KERNEL_STACK_VIRTUAL_TOP ; Switch stack
 
-    ; --- DEBUG: Print the arguments before jumping ---
+    ; --- Switch to the stack pointer passed in r3 ---
+    mov     sp, r3
+
+    ; --- DEBUG BREADCRUMB TRAIL ---
     ldr     r2, =QEMU_UART_BASE
     
-    ; Print "R0="
-    mov     r1, #'R'
+    ; Print " 1"
+    mov     r1, #' '
     str     r1, [r2]
-    mov     r1, #'0'
-    str     r1, [r2]
-    mov     r1, #'='
+    mov     r1, #'1'
     str     r1, [r2]
     
-    ; Load and print the Loader Block VA
     ldr     r0, =PubLoaderBlockVA
     ldr     r0, [r0]
     bl      PrintRegisterHex
 
-    ; Print " EP="
+    ; Print " 2"
     mov     r1, #' '
     str     r1, [r2]
-    mov     r1, #'E'
-    str     r1, [r2]
-    mov     r1, #'P'
-    str     r1, [r2]
-    mov     r1, #'='
+    mov     r1, #'2'
     str     r1, [r2]
 
-    ; Load and print the Kernel Entry Point VA
     ldr     r0, =PubKiSystemStartup
-    ldr     r0, [r0]
+    
+    ; Print " 3"
+    mov     r1, #' '
+    str     r1, [r2]
+    mov     r1, #'3'
+    str     r1, [r2]
+
+    ldr     r0, [r0] ; This is the likely point of failure
+
+    ; Print " 4"
+    mov     r1, #' '
+    str     r1, [r2]
+    mov     r1, #'4'
+    str     r1, [r2]
+    
     bl      PrintRegisterHex
 
-    ; --- JUMP TO KERNEL ---
-    ldr     r0, =PubLoaderBlockVA       ; Reload r0 with the first argument
-    ldr     r0, [r0]
-    ldr     r3, =PubKiSystemStartup     ; Reload r3 with the entry point
-    ldr     r3, [r3]
-    bx      r3
+    b JumpToKernel
     ENDP
 
 ;-------------------------------------------------------------------------------
