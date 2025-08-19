@@ -226,7 +226,7 @@ WinLdrSetProcessorContext(_In_ USHORT OperatingSystemVersion)
         for (;;);
     }
 
-    ArmDisableInterrupts();
+    // ArmDisableInterrupts();
     ArmDisableMMUAndCaches();
     ArmCleanAndInvalidateDCache();
     ArmInvalidateICache();
@@ -256,7 +256,9 @@ JumpToKernel()
 
     TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
           PubKiSystemStartup, PubLoaderBlockVA);
-    PubKiSystemStartup(PubLoaderBlockVA);
+    TRACE("test\n");
+    (*PubKiSystemStartup)(PubLoaderBlockVA);
+    TRACE("two\n");
     for(;;)
     {
 

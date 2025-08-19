@@ -1226,7 +1226,7 @@ LoadAndBootWindowsCommon(
 
     /* Load boot drivers */
     UiSetProgressBarText("Loading boot drivers...");
- //   Success = WinLdrLoadBootDrivers(LoaderBlock, BootPath);
+//    Success = WinLdrLoadBootDrivers(LoaderBlock, BootPath);
     TRACE("Boot drivers loading %s\n", Success ? "successful" : "failed");
 
     UiSetProgressBarSubset(0, 100);
@@ -1246,8 +1246,7 @@ LoadAndBootWindowsCommon(
     /* Save entry-point pointer and Loader block VAs */
     KiSystemStartup = (KERNEL_ENTRY_POINT)KernelDTE->EntryPoint;
     LoaderBlockVA = PaToVa(LoaderBlock);
-    PubKiSystemStartup = KiSystemStartup;
-    PubLoaderBlockVA = LoaderBlockVA ;
+
     /* "Stop all motors", change videomode */
     MachPrepareForReactOS();
 
@@ -1259,7 +1258,8 @@ LoadAndBootWindowsCommon(
 
     /* Map pages and create memory descriptors */
     WinLdrSetupMemoryLayout(LoaderBlock);
-
+    PubKiSystemStartup = KiSystemStartup;
+    PubLoaderBlockVA =   LoaderBlockVA ;
     /* Set processor context */
     WinLdrSetProcessorContext(OperatingSystemVersion);
 

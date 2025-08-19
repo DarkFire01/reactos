@@ -41,6 +41,7 @@ KiInitMachineDependent(VOID)
 }
 ULONG
 DbgPrintEarly(const char *fmt, ...);
+
 CODE_SEG("INIT")
 DECLSPEC_NORETURN
 VOID
