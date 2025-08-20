@@ -102,10 +102,10 @@ KdRegisterDebuggerDataBlock(IN ULONG Tag,
     KIRQL OldIrql;
     PLIST_ENTRY NextEntry;
     PDBGKD_DEBUG_DATA_HEADER64 CurrentHeader;
-
+    //DbgPrintEarly("KdRegisterDebuggerDataBlock: goto\n");
     /* Acquire the Data Lock */
     KeAcquireSpinLock(&KdpDataSpinLock, &OldIrql);
-
+    //DbgPrintEarly("KdRegisterDebuggerDataBlock: Acquired Data Lock\n");
     /* Loop the debugger data list */
     NextEntry = KdpDebuggerDataListHead.Flink;
     while (NextEntry != &KdpDebuggerDataListHead)
@@ -121,8 +121,10 @@ KdRegisterDebuggerDataBlock(IN ULONG Tag,
         /* Check if we already have this data block */
         if ((CurrentHeader == DataHeader) || (CurrentHeader->OwnerTag == Tag))
         {
+            //DbgPrintEarly("KdRegisterDebuggerDataBlock: Found existing block\n");
             /* Release the lock and fail */
             KeReleaseSpinLock(&KdpDataSpinLock, OldIrql);
+            //DbgPrintEarly("KdRegisterDebuggerDataBlock: Released Data Lock\n");
             return FALSE;
         }
     }
@@ -133,10 +135,12 @@ KdRegisterDebuggerDataBlock(IN ULONG Tag,
 
     /* Insert it into the list and release the lock */
     InsertTailList(&KdpDebuggerDataListHead, (PLIST_ENTRY)&DataHeader->List);
+     //DbgPrintEarly("KdRegisterDebuggerDataBlock: Relaeasing Data Lock\n");
     KeReleaseSpinLock(&KdpDataSpinLock, OldIrql);
     return TRUE;
 }
-
+ULONG
+DbgPrintEarly(const char *fmt, ...);
 BOOLEAN
 NTAPI
 KdInitSystem(
@@ -166,13 +170,13 @@ KdInitSystem(
         KeQueryPerformanceCounter(&KdPerformanceCounterRate);
         return TRUE;
     }
-
+    //DbgPrintEarly("KdInitSystem: Initialized\n");
     /* Check if we already initialized once */
     if (KdDebuggerEnabled) return TRUE;
 
     /* Set the Debug Routine as the Stub for now */
     KiDebugRoutine = KdpStub;
-
+    //DbgPrintEarly("KdInitSystem: Set Debug Routine\n");
     /* Disable break after symbol load for now */
     KdBreakAfterSymbolLoad = FALSE;
 
@@ -181,16 +185,16 @@ KdInitSystem(
     {
         /* It wasn't...Initialize the KD Data Listhead */
         InitializeListHead(&KdpDebuggerDataListHead);
-
+        //DbgPrintEarly("KdInitSystem: Initialized KD Data Listhead\n");
         /* Register the Debugger Data Block */
         KdRegisterDebuggerDataBlock(KDBG_TAG,
                                     &KdDebuggerDataBlock.Header,
                                     sizeof(KdDebuggerDataBlock));
-
+        //DbgPrintEarly("KdInitSystem: Registered Debugger Data Block\n");
         /* Fill out the KD Version Block */
         KdVersionBlock.MajorVersion = (USHORT)((DBGKD_MAJOR_NT << 8) | (NtBuildNumber >> 28));
         KdVersionBlock.MinorVersion = (USHORT)(NtBuildNumber & 0xFFFF);
-
+        //DbgPrintEarly("KdInitSystem: Set Version Block\n");
 #ifdef CONFIG_SMP
         /* This is an MP Build */
         KdVersionBlock.Flags |= DBGKD_VERS_FLAG_MP;
@@ -199,18 +203,19 @@ KdInitSystem(
         /* Save Pointers to Loaded Module List and Debugger Data */
         KdVersionBlock.PsLoadedModuleList = (ULONG64)(LONG_PTR)&PsLoadedModuleList;
         KdVersionBlock.DebuggerDataList = (ULONG64)(LONG_PTR)&KdpDebuggerDataListHead;
-
+        //DbgPrintEarly("KdInitSystem: Set Loaded Module List\n");
         /* Set protocol limits */
         KdVersionBlock.MaxStateChange = DbgKdMaximumStateChange -
                                         DbgKdMinimumStateChange;
         KdVersionBlock.MaxManipulate = DbgKdMaximumManipulate -
                                        DbgKdMinimumManipulate;
         KdVersionBlock.Unused[0] = 0;
-
+        //DbgPrintEarly("KdInitSystem: Set Protocol Limits\n");
         /* Link us in the KPCR */
         KeGetPcr()->KdVersionBlock =  &KdVersionBlock;
+        //DbgPrintEarly("KdInitSystem: Linked KPCR\n");
     }
-
+    //DbgPrintEarly("KdInitSystem: InitializedTwo\n");
     /* Check if we have a loader block */
     if (LoaderBlock)
     {
@@ -350,19 +355,23 @@ KdInitSystem(
 
     /* Set the Kernel Base in the Data Block */
     KdDebuggerDataBlock.KernBase = (ULONG_PTR)KdVersionBlock.KernBase;
-
+    //DbgPrintEarly("KdInitSystem: Set Kernel Base\n");
     /* Initialize the debugger if requested */
-    if (EnableKd && (NT_SUCCESS(KdDebuggerInitialize0(LoaderBlock))))
+    NTSTATUS DebugStatus = 0;
+    DebugStatus = KdDebuggerInitialize0(LoaderBlock);
+    //DbgPrintEarly("KdInitSystem: KdDebuggerInitialize0 returned %x\n", DebugStatus);
+    if (1)
     {
+               //DbgPrintEarly("KdInitSystem: KdDebuggerInitialize0 Enabled\n");
         /* Now set our real KD routine */
         KiDebugRoutine = KdpTrap;
-
+        //DbgPrintEarly("Traproutine\n");
         /* Check if we've already initialized our structures */
         if (!KdpDebuggerStructuresInitialized)
         {
             /* Set Retries */
             KdpContext.KdpDefaultRetries = 20;
-
+       //DbgPrintEarly("KdpDefaultRetries\n");
             /* Initialize breakpoints owed flag and table */
             KdpOweBreakpoint = FALSE;
             for (i = 0; i < KD_BREAKPOINT_MAX; i++)
@@ -371,7 +380,8 @@ KdInitSystem(
                 KdpBreakpointTable[i].DirectoryTableBase = 0;
                 KdpBreakpointTable[i].Address = NULL;
             }
-
+       //DbgPrintEarly("breakpoints seting\n");
+   
             /* Initialize the Time Slip DPC */
             KeInitializeDpc(&KdpTimeSlipDpc, KdpTimeSlipDpcRoutine, NULL);
             KeInitializeTimer(&KdpTimeSlipTimer);
@@ -387,10 +397,11 @@ KdInitSystem(
         /* Officially enable KD */
         KdPitchDebugger = FALSE;
         KdDebuggerEnabled = TRUE;
-
+        //DbgPrintEarly("KdInitSystem: Debugger Enabled\n");
         /* Let user-mode know that it's enabled as well */
         SharedUserData->KdDebuggerEnabled = TRUE;
-
+                //DbgPrintEarly("KdInitSystem:Shared user adata write\n");
+           //KdpPrintBanner(1025);
         /* Display separator + ReactOS version at start of the debug log */
         MemSizeMBs = KdpGetMemorySizeInMBs(KeLoaderBlock);
         KdpPrintBanner(MemSizeMBs);

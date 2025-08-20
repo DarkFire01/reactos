@@ -109,6 +109,8 @@ KdpGetDebugMode(
 
     return p2;
 }
+ULONG
+DbgPrintEarly(const char *fmt, ...);
 
 NTSTATUS
 NTAPI
@@ -118,7 +120,7 @@ KdDebuggerInitialize0(
     PCHAR CommandLine, Port = NULL;
     ULONG i;
     BOOLEAN Success = FALSE;
-
+        //DbgPrintEarly("KdInitSystem: KdDebuggerInitialize0\n");
     if (LoaderBlock)
     {
         /* Check if we have a command line */
@@ -127,15 +129,15 @@ KdDebuggerInitialize0(
         {
             /* Upcase it */
             _strupr(CommandLine);
-
+            //DbgPrintEarly("get terminals etitngs\n");
             /* Get terminal settings */
             KdpGetTerminalSettings(CommandLine);
-
+            //DbgPrintEarly("get terminal stetings\n");
             /* Get the port */
             Port = strstr(CommandLine, "DEBUGPORT");
         }
     }
-
+    //DbgPrintEarly("geting port\n");
     /* Check if we got the /DEBUGPORT parameter(s) */
     while (Port)
     {
@@ -145,7 +147,7 @@ KdDebuggerInitialize0(
         /* Now get past any spaces and skip the equal sign */
         while (*Port == ' ') Port++;
         Port++;
-
+           //DbgPrintEarly("setitng debug mode\n");
         /* Get the debug mode and wrapper */
         Port = KdpGetDebugMode(Port);
         Port = strstr(Port, "DEBUGPORT");
@@ -154,14 +156,14 @@ KdDebuggerInitialize0(
     /* Use serial port then */
     if (KdpDebugMode.Value == 0)
         KdpDebugMode.Serial = TRUE;
-
+       //DbgPrintEarly("init providers\n");
     /* Call the providers at Phase 0 */
     for (i = 0; i < RTL_NUMBER_OF(DispatchTable); i++)
     {
         DispatchTable[i].InitStatus = InitRoutines[i](&DispatchTable[i], 0);
         Success = (Success || NT_SUCCESS(DispatchTable[i].InitStatus));
     }
-
+       //DbgPrintEarly("got provierings\n");
     /* Return success if at least one of the providers succeeded */
     return (Success ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL);
 }

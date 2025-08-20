@@ -678,11 +678,11 @@
 @ stdcall KeRemoveQueueDpc(ptr)
 @ stdcall KeRemoveSystemServiceTable(long)
 @ stdcall KeResetEvent(ptr)
-@ stdcall -arch=i386 KeRestoreFloatingPointState(ptr)
+@ stdcall -arch=i386,arm KeRestoreFloatingPointState(ptr) DbgPrintEarly
 @ stdcall -arch=x86_64 KeRestoreFloatingPointState(ptr) KxRestoreFloatingPointState
 @ stdcall KeRevertToUserAffinityThread()
 @ stdcall KeRundownQueue(ptr)
-@ stdcall -arch=i386 KeSaveFloatingPointState(ptr)
+@ stdcall -arch=i386,arm KeSaveFloatingPointState(ptr) DbgPrintEarly
 @ stdcall -arch=x86_64 KeSaveFloatingPointState(ptr) KxSaveFloatingPointState
 @ cdecl KeSaveStateForHibernate(ptr)
 @ extern KeServiceDescriptorTable

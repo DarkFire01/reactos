@@ -146,6 +146,7 @@ KiInitializeContextThread(IN PKTHREAD Thread,
     // Save back the new value of the kernel stack
     //
     Thread->KernelStack = (PVOID)CtxSwitchFrame;
+    DPRINT1("KiInitializeContextThread - Thread %p, Stack %p, CtxSwitchFrame %p\n", Thread, Thread->KernelStack, CtxSwitchFrame);
 }
 
 DECLSPEC_NORETURN

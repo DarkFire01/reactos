@@ -22,6 +22,7 @@ KeContextToTrapFrame(IN PCONTEXT Context,
                      IN ULONG ContextFlags,
                      IN KPROCESSOR_MODE PreviousMode)
 {
+       DPRINT1("KeContextToTrapFrame - Entry\n");
     KIRQL OldIrql;
 
     //
@@ -79,6 +80,7 @@ KeContextToTrapFrame(IN PCONTEXT Context,
     // Restore IRQL
     //
     if (OldIrql < APC_LEVEL) KeLowerIrql(OldIrql);
+    DPRINT1("KeContextToTrapFrame - TrapFrame %p, ExceptionFrame %p\n", TrapFrame, ExceptionFrame);
 }
 
 VOID

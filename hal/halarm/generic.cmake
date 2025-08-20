@@ -18,6 +18,7 @@ list(APPEND HAL_GENERIC_SOURCE
     generic/processor.c
     generic/profil.c
     generic/reboot.c
+    generic/spinlock.c
     generic/rtc.c
     generic/sysinfo.c)
 

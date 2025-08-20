@@ -33,7 +33,16 @@ ArmDisableInterrupts PROC
     msr     cpsr_c, r0      ; Write back to the control field
     bx      lr
     ENDP
-
+    ;-------------------------------------------------------------------------------
+    ; void ArmEnableInterrupts(void)
+    ; Enables IRQ (I bit) and FIQ (F bit) in the CPSR.
+    ;-------------------------------------------------------------------------------
+ArmEnableInterrupts PROC
+    mrs     r0, cpsr        ; Read Current Program Status Register
+    bic     r0, r0, #0xC0   ; Clear bits 7 (I) and 6 (F)
+    msr     cpsr_c, r0      ; Write back to the control field
+    bx      lr
+    ENDP
 ;-------------------------------------------------------------------------------
 ; void ArmDisableMMUAndCaches(void)
 ;-------------------------------------------------------------------------------
@@ -109,6 +118,9 @@ ArmDisableDCache PROC
     bx      lr
     ENDP
 
+
+
+
 ;-------------------------------------------------------------------------------
 ; void ArmMmuEnable(UINT TtbRegister, UINT DomainRegister, UINT ControlRegister, UINT StackPointerVA)
 ; r0 = TtbRegister
@@ -117,52 +129,46 @@ ArmDisableDCache PROC
 ; r3 = StackPointerVA
 ;-------------------------------------------------------------------------------
 ArmEnableMMU PROC
-    mcr     p15, 0, r0, c2, c0, 0       ; Write TTBR0
-    mcr     p15, 0, r1, c3, c0, 0       ; Write DACR
-    mcr     p15, 0, r2, c1, c0, 0       ; Write SCTLR
-    isb                                 ; Flush pipeline
+    ; r0 = TTBR0 (PGD base, 64-bit)
+    ; r1 = unused (was DACR)
+    ; r2 = SCTLR value
+    ; r3 = StackPointerVA
 
-    ; --- Switch to the stack pointer passed in r3 ---
+    ; Set MAIR0: Attr0=device nGnRE, Attr1=normal WB/WA/RA
+    mov     r4, #0x00           ; Attr0: device nGnRE
+    mov     r5, #0xFF           ; Attr1: normal WB/WA/RA
+    orr     r4, r4, r5, lsl #8
+    mcr     p15, 0, r4, c10, c2, 0   ; MAIR0
+
+    ; Set TTBCR: EAE=1 (LPAE/long format)
+    mov     r4, #(1 << 31)
+    mcr     p15, 0, r4, c2, c0, 2
+
+    ; Set TTBR0 (64-bit): use mcrr
+    mov     r4, r0
+    mov     r5, #0
+    mcrr    p15, 0, r4, r5, c2
+
+    ; Invalidate TLBs
+    mov     r4, #0
+    mcr     p15, 0, r4, c8, c7, 0
+
+    ; Set SCTLR (enable MMU, caches, etc.)
+    mcr     p15, 0, r2, c1, c0, 0
+    isb
+
+    ; Print character 'A' to UART at 0x09000000
+    mov     r1, #'A'
+    ldr     r2, =QEMU_UART_BASE
+    str     r1, [r2]
+
+    ; Switch to the new kernel stack
     mov     sp, r3
 
-    ; --- DEBUG BREADCRUMB TRAIL ---
-    ldr     r2, =QEMU_UART_BASE
-    
-    ; Print " 1"
-    mov     r1, #' '
-    str     r1, [r2]
-    mov     r1, #'1'
-    str     r1, [r2]
-    
-    ldr     r0, =PubLoaderBlockVA
-    ldr     r0, [r0]
-    bl      PrintRegisterHex
 
-    ; Print " 2"
-    mov     r1, #' '
-    str     r1, [r2]
-    mov     r1, #'2'
-    str     r1, [r2]
 
-    ldr     r0, =PubKiSystemStartup
-    
-    ; Print " 3"
-    mov     r1, #' '
-    str     r1, [r2]
-    mov     r1, #'3'
-    str     r1, [r2]
-
-    ldr     r0, [r0] ; This is the likely point of failure
-
-    ; Print " 4"
-    mov     r1, #' '
-    str     r1, [r2]
-    mov     r1, #'4'
-    str     r1, [r2]
-    
-    bl      PrintRegisterHex
-
-    b JumpToKernel
+   
+    b       JumpToKernel
     ENDP
 
 ;-------------------------------------------------------------------------------

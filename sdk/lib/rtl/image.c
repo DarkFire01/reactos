@@ -387,6 +387,54 @@ RtlImageRvaToVa(
                    (ULONG_PTR)SWAPD(Section->VirtualAddress));
 }
 
+
+
+//*****************************************************************************
+//  Deposit the 16-bit immediate into ARM Thumb2 Instruction (STANDARD COMPLIANT)
+//  Encoding for MOVW/MOVT (T3)
+//*****************************************************************************
+static FORCEINLINE void PutThumb2Imm16_Standard(UINT16* p, UINT16 imm16)
+{
+    // p[0] is the first 16-bit word (instr bits 15:0)
+    // p[1] is the second 16-bit word (instr bits 31:16)
+
+    // Clear the immediate fields
+    // imm3 and imm8 fields
+    p[0] &= ~0x70FF;
+    // i and imm4 fields
+    p[1] &= ~0x040F;
+
+    // Set the new immediate fields
+    // imm3 field (imm[10:8]) goes into p[0] bits 14:12
+    p[0] |= (imm16 & 0x0700) << 4;
+    // imm8 field (imm[7:0]) goes into p[0] bits 7:0
+    p[0] |= (imm16 & 0x00FF);
+    // i field (imm[11]) goes into p[1] bit 10 (instruction bit 26)
+    p[1] |= (imm16 & 0x0800) >> 1;
+    // imm4 field (imm[15:12]) goes into p[1] bits 3:0 (instruction bits 19:16)
+    p[1] |= (imm16 & 0xF000) >> 12;
+}
+
+//*****************************************************************************
+//  Extract the 16-bit immediate from ARM Thumb2 Instruction (STANDARD COMPLIANT)
+//  Encoding for MOVW/MOVT (T3)
+//*****************************************************************************
+static FORCEINLINE UINT16 GetThumb2Imm16_Standard(UINT16* p)
+{
+    UINT16 imm16;
+
+    // Extract from p[0] (instr bits 15:0)
+    imm16  = (p[0] >> 4) & 0x0700; // imm3 field (imm[10:8])
+    imm16 |= (p[0] & 0x00FF);      // imm8 field (imm[7:0])
+
+    // Extract from p[1] (instr bits 31:16)
+    imm16 |= (p[1] << 1) & 0x0800; // i field (imm[11])
+    imm16 |= (p[1] << 12) & 0xF000;// imm4 field (imm[15:12])
+
+    return imm16;
+}
+
+
 //*****************************************************************************
 //  Deposit the 16-bit immediate into ARM Thumb2 Instruction (format T2_N)
 //*****************************************************************************

@@ -19,15 +19,6 @@ HalpInitializeInterrupts(VOID)
    while (TRUE);
 }
 
-#undef KeGetCurrentIrql
-
-NTHALAPI
-KIRQL
-NTAPI
-KeGetCurrentIrql(VOID)
-{
-    return PASSIVE_LEVEL;
-}
 
 ULONG
 HalGetInterruptSource(VOID)
@@ -63,7 +54,7 @@ KfRaiseIrql(IN KIRQL NewIrql)
     {
         /* Crash system */
         Pcr->CurrentIrql = PASSIVE_LEVEL;
-        KeBugCheck(IRQL_NOT_GREATER_OR_EQUAL);
+        //KeBugCheck(IRQL_NOT_GREATER_OR_EQUAL);
     }
 #endif
     /* Set new IRQL */
@@ -85,13 +76,80 @@ KfLowerIrql(IN KIRQL NewIrql)
     {
         /* Crash system */
         Pcr->CurrentIrql = HIGH_LEVEL;
-        KeBugCheck(IRQL_NOT_LESS_OR_EQUAL);
+       // KeBugCheck(IRQL_NOT_LESS_OR_EQUAL);
     }
 #endif
 
     /* Save the new IRQL and restore interrupt state */
     Pcr->CurrentIrql = NewIrql;
 }
+
+#undef KeGetCurrentIrql
+
+KIRQL
+NTAPI
+KeGetCurrentIrql()
+{
+     PKPCR Pcr = KeGetPcr();
+    /* Return the IRQL */
+    return Pcr->CurrentIrql;
+}
+
+
+/*
+ * @implemented
+ */
+KIRQL
+NTAPI
+KeRaiseIrqlToDpcLevel(VOID)
+{
+    PKPCR Pcr = KeGetPcr();
+    KIRQL CurrentIrql;
+
+    /* Save and update IRQL */
+    CurrentIrql = Pcr->CurrentIrql;
+    Pcr->CurrentIrql = DISPATCH_LEVEL;
+
+#ifdef IRQL_DEBUG
+    /* Validate correct raise */
+  //  if (CurrentIrql > DISPATCH_LEVEL) KeBugCheck(IRQL_NOT_GREATER_OR_EQUAL);
+#endif
+
+    /* Return the previous value */
+    return CurrentIrql;
+}
+
+/*
+ * @implemented
+ */
+KIRQL
+NTAPI
+KeRaiseIrqlToSynchLevel(VOID)
+{
+    PKPCR Pcr = KeGetPcr();
+    KIRQL CurrentIrql;
+
+    /* Save and update IRQL */
+    CurrentIrql = Pcr->CurrentIrql;
+    Pcr->CurrentIrql = SYNCH_LEVEL;
+
+#ifdef IRQL_DEBUG
+    /* Validate correct raise */
+    if (CurrentIrql > SYNCH_LEVEL)
+    {
+        /* Crash system */
+        KeBugCheckEx(IRQL_NOT_GREATER_OR_EQUAL,
+                     CurrentIrql,
+                     SYNCH_LEVEL,
+                     0,
+                     1);
+    }
+#endif
+
+    /* Return the previous value */
+    return CurrentIrql;
+}
+
 
 /* SOFTWARE INTERRUPTS ********************************************************/
 

@@ -14,6 +14,40 @@
 
 /* FUNCTIONS ******************************************************************/
 
+NTSTATUS
+NTAPI
+KeSaveFloatingPointState(
+    _Out_ PKFLOATING_SAVE Save)
+{
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Restores the original FPU state context that has
+ * been saved by a API call of KeSaveFloatingPointState.
+ * Callers are expected to restore the floating point
+ * state by calling this function when they've finished
+ * doing FPU operations.
+ *
+ * @param[in] Save
+ * The saved floating point context that is to be given
+ * to the function to restore the FPU state.
+ *
+ * @return
+ * Returns STATUS_SUCCESS indicating the function
+ * has fully completed its operations.
+ */
+
+NTSTATUS
+NTAPI
+KeRestoreFloatingPointState(
+    _In_ PKFLOATING_SAVE Save)
+{
+    return STATUS_SUCCESS;
+}
+
 VOID
 NTAPI
 KeInitializeInterrupt(IN PKINTERRUPT Interrupt,

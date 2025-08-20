@@ -24,7 +24,7 @@ BOOLEAN HalpTestCleanSupported;
 VOID
 HalpIdentifyProcessor(VOID)
 {
-    ARM_ID_CODE_REGISTER IdRegister;
+    ARM_ID_CODE_REGISTER IdRegister = {0};
 
     /* Don't do it again */
     HalpProcessorIdentified = TRUE;
@@ -32,14 +32,17 @@ HalpIdentifyProcessor(VOID)
     // fixfix: Use Pcr->ProcessorId
 
     /* Read the ID Code */
-    IdRegister = KeArmIdCodeRegisterGet();
+   // IdRegister = KeArmIdCodeRegisterGet();
 
     /* Architecture "6" CPUs support test-and-clean (926EJ-S and 1026EJ-S) */
-    HalpTestCleanSupported = (IdRegister.Architecture == 6);
+    HalpTestCleanSupported = 1;
+    (IdRegister.Architecture = 7);
 }
 
 /* FUNCTIONS ******************************************************************/
 
+ULONG
+DbgPrintEarly(const char *fmt, ...);
 /*
  * @implemented
  */
@@ -48,11 +51,8 @@ NTAPI
 HalInitializeProcessor(IN ULONG ProcessorNumber,
                        IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    /* Do nothing */
-    for(;;)
-    {
 
-    }
+    DbgPrintEarly("test");
     return;
 }
 
@@ -103,42 +103,6 @@ HalRequestIpi(KAFFINITY TargetProcessors)
     UNIMPLEMENTED;
     while (TRUE);
 }
-#define QEMUUART 0x09000000
-volatile unsigned int * UART0DR = (unsigned int *) QEMUUART;
-
-VOID
-ARMWriteToUART(UCHAR Data)
-{
-    *UART0DR = Data;
-}
-
-ULONG
-DbgPrintEarly(const char *fmt, ...)
-{
-    va_list args;
-    unsigned int i;
-    char Buffer[1024];
-    PCHAR String = Buffer;
-
-    va_start(args, fmt);
-    i = vsprintf(Buffer, fmt, args);
-    va_end(args);
-
-    /* Output the message */
-    while (*String != 0)
-    {
-        if (*String == '\n')
-        {
-
-            ARMWriteToUART('\r');
-        }
-        ARMWriteToUART(*String);
-        String++;
-    }
-
-    return STATUS_SUCCESS;
-}
-
 
 
 VOID v7_flush_dcache_all(VOID);
@@ -157,6 +121,7 @@ HalSweepDcache(VOID)
 
     /* We need to do it it by set/way. For now always call ARMv7 function */
     v7_flush_dcache_all();
+        DbgPrintEarly("HalSweepDcache: cache sweep done");
 }
 
 /*

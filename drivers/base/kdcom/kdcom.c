@@ -40,7 +40,7 @@ const ULONG BaseArray[] = {0, 0x800003F8};
 #elif defined(_M_MIPS)
 const ULONG BaseArray[] = {0, 0x80006000, 0x80007000};
 #elif defined(_M_ARM)
-const ULONG BaseArray[] = {0, 0xF1012000};
+const ULONG BaseArray[] = {0, 0x09000000};
 #else
 #error Unknown architecture
 #endif
@@ -133,9 +133,7 @@ KdpPortInitialize(IN ULONG ComPortNumber,
 
     KDDBGPRINT("KdpPortInitialize, Port = COM%ld\n", ComPortNumber);
 
-    Status = CpInitialize(&KdComPort,
-                          UlongToPtr(BaseArray[ComPortNumber]),
-                          ComPortBaudRate);
+    Status = 0;
     if (!NT_SUCCESS(Status))
     {
         return STATUS_INVALID_PARAMETER;

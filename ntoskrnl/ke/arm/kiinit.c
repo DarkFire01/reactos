@@ -18,7 +18,10 @@ KdPortPutByteEx(
     PCPPORT PortInformation,
     UCHAR ByteToSend
 );
-
+UCHAR DECLSPEC_ALIGN(PAGE_SIZE) P0BootStackData[KERNEL_STACK_SIZE] = {0};
+UCHAR DECLSPEC_ALIGN(PAGE_SIZE) KiDoubleFaultStackData[KERNEL_STACK_SIZE] = {0};
+ULONG_PTR P0BootStack = (ULONG_PTR)&P0BootStackData[KERNEL_STACK_SIZE];
+ULONG_PTR KiDoubleFaultStack = (ULONG_PTR)&KiDoubleFaultStackData[KERNEL_STACK_SIZE];
 /* GLOBALS ********************************************************************/
 
 KINTERRUPT KxUnexpectedInterrupt;
@@ -39,21 +42,7 @@ KiInitMachineDependent(VOID)
     /* There is nothing to do on ARM */
     return;
 }
-ULONG
-DbgPrintEarly(const char *fmt, ...);
 
-CODE_SEG("INIT")
-DECLSPEC_NORETURN
-VOID
-NTAPI
-KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
-{
-    DbgPrintEarly("test\n");
-    for(;;)
-    {
-
-    }
-}
 
 VOID
 NTAPI
@@ -64,6 +53,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
                    IN CCHAR Number,
                    IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    DPRINT1("KiInitializeKernel: entry\n");
     PKIPCR Pcr = (PKIPCR)KeGetPcr();
     ULONG PageDirectory[2];
     ULONG i;
@@ -79,7 +69,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     Pcr->PrcbData.SpBase = IdleStack; // ???
 
     /* Check if this is the Boot CPU */
-    if (!Number)
+    if (1)
     {
         /* Setup the unexpected interrupt */
         KxUnexpectedInterrupt.DispatchAddress = KiUnexpectedInterrupt;
@@ -110,7 +100,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
 
         /* Initialize portable parts of the OS */
         KiInitSystem();
-
+            DPRINT1("Creating system process\n");
         /* Initialize the Idle Process and the Process Listhead */
         InitializeListHead(&KiProcessListHead);
         PageDirectory[0] = 0;
@@ -127,7 +117,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
         /* FIXME-V6: See if we want to support MP */
         DPRINT1("ARM MPCore not supported\n");
     }
-
+    DPRINT1("First process is made\n");
     /* Setup the Idle Thread */
     KeInitializeThread(InitProcess,
                        InitThread,
@@ -137,6 +127,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
                        NULL,
                        NULL,
                        IdleStack);
+     DPRINT1("First Thread is made\n");
     InitThread->NextProcessor = Number;
     InitThread->Priority = HIGH_PRIORITY;
     InitThread->State = Running;
@@ -151,10 +142,10 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     Prcb->CurrentThread = InitThread;
     Prcb->NextThread = NULL;
     Prcb->IdleThread = InitThread;
-
+     DPRINT1("Start executive\n");
     /* Initialize the Kernel Executive */
     ExpInitializeExecutive(Number, LoaderBlock);
-
+DPRINT1("leaving executive\n");
     /* Only do this on the boot CPU */
     if (!Number)
     {
@@ -171,10 +162,10 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
 
     /* Raise to Dispatch */
     KfRaiseIrql(DISPATCH_LEVEL);
-
+    DPRINT1("Set Thread Priority\n");
     /* Set the Idle Priority to 0. This will jump into Phase 1 */
     KeSetPriorityThread(InitThread, 0);
-
+    DPRINT1("Exit Thread Priority\n");
     /* If there's no thread scheduled, put this CPU in the Idle summary */
     KiAcquirePrcbLock(Prcb);
     if (!Prcb->NextThread) KiIdleSummary |= 1 << Number;
@@ -342,34 +333,64 @@ KiInitializeMachineType(VOID)
     }
 }
 
+
+#define QEMUUART 0x09000000
+
+/* Forcefully shove UART data through qemu */
+VOID
+QemuHackPutByte(UCHAR ByteToSend)
+{
+    ULONG *UART0DR = (ULONG*)QEMUUART;
+    *UART0DR = ByteToSend;
+}
+DECLSPEC_NORETURN
+VOID
+KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock);
+void KiSystemStartupLOC(void);
+CODE_SEG("INIT")
+DECLSPEC_NORETURN
+VOID
+NTAPI
+KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+    ULONG* Addr = (ULONG*)QEMUUART;
+    *Addr = 'C';
+    QemuHackPutByte('C');
+    KiSystemStartupLOC();
+    KiInitializeSystem(LoaderBlock);
+}
+
 DECLSPEC_NORETURN
 VOID
 KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    //DbgPrintEarly("KiInitializeSystem: Starting kernel\n");
     ULONG Cpu;
     PKTHREAD InitialThread;
     PKPROCESS InitialProcess;
-    ARM_CONTROL_REGISTER ControlRegister;
     PKIPCR Pcr = (PKIPCR)KeGetPcr();
     PKTHREAD Thread;
-
+    //DbgPrintEarly("KiInitializeSystem: Got PCR\n");
     /* Flush the TLB */
     KeFlushTb();
-
+    //DbgPrintEarly("KiInitializeSystem: Flushed TLB\n");
     /* Save the loader block and get the current CPU */
     KeLoaderBlock = LoaderBlock;
     Cpu = KeNumberProcessors;
 
+          /* Set the initial stack and idle thread as well */
+    LoaderBlock->KernelStack = (ULONG_PTR)P0BootStack;
+    LoaderBlock->Thread = (ULONG_PTR)&KiInitialThread;
     /* Save the initial thread and process */
     InitialThread = (PKTHREAD)LoaderBlock->Thread;
     InitialProcess = (PKPROCESS)LoaderBlock->Process;
-
+    //DbgPrintEarly("KiInitializeSystem: Saved initial thread and process\n");
     /* Clean the APC List Head */
     InitializeListHead(&InitialThread->ApcState.ApcListHead[KernelMode]);
-
+    //DbgPrintEarly("KiInitializeSystem: Cleaned APC List Head\n");
     /* Initialize the machine type */
     KiInitializeMachineType();
-
+    //DbgPrintEarly("KiInitializeSystem: Initialized machine type\n");
     /* Skip initial setup if this isn't the Boot CPU */
     if (Cpu) goto AppCpuInit;
 
@@ -380,11 +401,11 @@ KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                     InitialThread,
                     (PVOID)LoaderBlock->u.Arm.PanicStack,
                     (PVOID)LoaderBlock->u.Arm.InterruptStack);
-
+    //DbgPrintEarly("KiInitializeSystem: Initialized PCR\n");
     /* Now sweep caches */
-    HalSweepIcache();
-    HalSweepDcache();
-
+    //HalSweepIcache();
+    //HalSweepDcache();
+    //DbgPrintEarly("KiInitializeSystem: Swept caches\n");
     /* Set us as the current process */
     InitialThread->ApcState.Process = InitialProcess;
 
@@ -392,35 +413,33 @@ AppCpuInit:
     /* Setup CPU-related fields */
     Pcr->PrcbData.Number = Cpu;
     Pcr->PrcbData.SetMember = 1 << Cpu;
-
+    //DbgPrintEarly("KiInitializeSystem: Init CPU\n");
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);
-
+    //DbgPrintEarly("KiInitializeSystem: Returned from HAL\n");
     /* Set active processors */
     KeActiveProcessors |= Pcr->PrcbData.SetMember;
     KeNumberProcessors++;
 
+    /* Setup the exception vector table */
+    RtlCopyMemory((PVOID)0x00000000, &KiArmVectorTable, 14 * sizeof(PVOID));
     /* Check if this is the boot CPU */
     if (!Cpu)
     {
+        //DbgPrintEarly("Setting up DPRINTs\n");
         /* Initialize debugging system */
         KdInitSystem(0, KeLoaderBlock);
-
+        DPRINT1("Test!\n");
+        
         /* Check for break-in */
-        if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
+        if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C); //TODO Exception record
+    
     }
 
     /* Raise to HIGH_LEVEL */
     KfRaiseIrql(HIGH_LEVEL);
-
-    /* Set the exception address to high */
-    ControlRegister = KeArmControlRegisterGet();
-    ControlRegister.HighVectors = TRUE;
-    KeArmControlRegisterSet(ControlRegister);
-
-    /* Setup the exception vector table */
-    RtlCopyMemory((PVOID)0xFFFF0000, &KiArmVectorTable, 14 * sizeof(PVOID));
-
+ DPRINT1("Going into debugger\n");
+    DPRINT1("Exception vector table set\n");
     /* Initialize the rest of the kernel now */
     KiInitializeKernel((PKPROCESS)LoaderBlock->Process,
                        (PKTHREAD)LoaderBlock->Thread,
@@ -442,16 +461,6 @@ AppCpuInit:
 
     /* Jump into the idle loop */
     KiIdleLoop();
-}
-
-#define QEMUUART 0x09000000
-volatile unsigned int * UART0DR = (unsigned int *) QEMUUART;
-
-/* Forcefully shove UART data through qemu */
-VOID
-QemuHackPutByte(UCHAR ByteToSend)
-{
-    *UART0DR = ByteToSend;
 }
 
 ULONG

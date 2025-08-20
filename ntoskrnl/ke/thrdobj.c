@@ -488,7 +488,8 @@ VOID
 NTAPI
 KeStartThread(IN OUT PKTHREAD Thread)
 {
-    KLOCK_QUEUE_HANDLE LockHandle;
+    DPRINT1("KeStartThread - Entry\n");
+  //  KLOCK_QUEUE_HANDLE LockHandle;
 #ifdef CONFIG_SMP
     PKNODE Node;
     PKPRCB NodePrcb;
@@ -507,8 +508,8 @@ KeStartThread(IN OUT PKTHREAD Thread)
     Thread->SystemAffinityActive = FALSE;
 
     /* Lock the process */
-    KiAcquireProcessLockRaiseToSynch(Process, &LockHandle);
-
+    //KiAcquireProcessLockRaiseToSynch(Process, &LockHandle);
+ DPRINT1("KeStartThread - Process lcoekd\n");
     /* Setup volatile data */
     Thread->Priority = Process->BasePriority;
     Thread->BasePriority = Process->BasePriority;
@@ -522,8 +523,9 @@ KeStartThread(IN OUT PKTHREAD Thread)
 
     /* Calculate affinity mask */
 #ifdef _M_ARM
-    DbgBreakPoint();
-    Set = 0;
+    DPRINT1("KeStartThread - ARM HACK for affiniy mask\n");
+  //  DbgBreakPoint();
+    Set = 1;
 #else
     Set = ~NodePrcb->MultiThreadProcessorSet;
 #endif
@@ -534,28 +536,29 @@ KeStartThread(IN OUT PKTHREAD Thread)
     /* Get the new thread seed */
     IdealProcessor = KeFindNextRightSetAffinity(Process->ThreadSeed, Mask);
     Process->ThreadSeed = IdealProcessor;
-
+ DPRINT1("KeStartThread - Checking sanity\n");
     /* Sanity check */
     ASSERT((Thread->UserAffinity & AFFINITY_MASK(IdealProcessor)));
 #endif
-
+     DPRINT1("KeStartThread - Okay we got affintiy\n");
     /* Set the Ideal Processor */
     Thread->IdealProcessor = IdealProcessor;
     Thread->UserIdealProcessor = IdealProcessor;
 
     /* Lock the Dispatcher Database */
-    KiAcquireDispatcherLockAtSynchLevel();
-
+    //KiAcquireDispatcherLockAtSynchLevel();
+    DPRINT1("insert tail lost\n");
     /* Insert the thread into the process list */
     InsertTailList(&Process->ThreadListHead, &Thread->ThreadListEntry);
-
+     DPRINT1("KeStartThread - Checking stack sanity\n");
     /* Increase the stack count */
     ASSERT(Process->StackCount != MAXULONG_PTR);
     Process->StackCount++;
-
+     DPRINT1("KeStartThread - Good releasing locks\n");
     /* Release locks and return */
-    KiReleaseDispatcherLockFromSynchLevel();
-    KiReleaseProcessLock(&LockHandle);
+    //KiReleaseDispatcherLockFromSynchLevel();
+  //  KiReleaseProcessLock(&LockHandle);
+     DPRINT1("KeStartThread - This thread is now live\n");
 }
 
 VOID
@@ -767,7 +770,7 @@ KeInitThread(IN OUT PKTHREAD Thread,
     PKWAIT_BLOCK TimerWaitBlock;
     PKTIMER Timer;
     NTSTATUS Status;
-
+    DPRINT1("KeInitThread\n");
     /* Initialize the Dispatcher Header */
     Thread->Header.Type = ThreadObject;
     Thread->Header.ThreadControlFlags = 0;
@@ -784,17 +787,17 @@ KeInitThread(IN OUT PKTHREAD Thread,
         /* Put our pointer */
         Thread->WaitBlock[i].Thread = Thread;
     }
-
+  DPRINT1("KeInitThread - ListHead\n");
     /* Set swap settings */
     Thread->EnableStackSwap = TRUE;
     Thread->IdealProcessor = 1;
     Thread->SwapBusy = FALSE;
     Thread->KernelStackResident = TRUE;
     Thread->AdjustReason = AdjustNone;
-
+      DPRINT1("KeInitThread -States \n");
     /* Initialize the lock */
     KeInitializeSpinLock(&Thread->ThreadLock);
-
+  DPRINT1("KeInitThread - Spinlock\n");
     /* Setup the Service Descriptor Table for Native Calls */
     Thread->ServiceTable = KeServiceDescriptorTable;
 
@@ -807,7 +810,7 @@ KeInitThread(IN OUT PKTHREAD Thread,
     Thread->ApcStateIndex = OriginalApcEnvironment;
     Thread->ApcQueueable = TRUE;
     KeInitializeSpinLock(&Thread->ApcQueueLock);
-
+      DPRINT1("KeInitThread - Prepping APC State\n");
     /* Initialize the Suspend APC */
     KeInitializeApc(&Thread->SuspendApc,
                     Thread,
@@ -817,10 +820,10 @@ KeInitThread(IN OUT PKTHREAD Thread,
                     KiSuspendThread,
                     KernelMode,
                     NULL);
-
+          DPRINT1("KeInitThread - init APIC\n");
     /* Initialize the Suspend Semaphore */
     KeInitializeSemaphore(&Thread->SuspendSemaphore, 0, 2);
-
+  DPRINT1("KeInitThread - init semaphore\n");
     /* Setup the timer */
     Timer = &Thread->Timer;
     KeInitializeTimer(Timer);
@@ -829,7 +832,7 @@ KeInitThread(IN OUT PKTHREAD Thread,
     TimerWaitBlock->WaitKey = STATUS_TIMEOUT;
     TimerWaitBlock->WaitType = WaitAny;
     TimerWaitBlock->NextWaitBlock = NULL;
-
+  DPRINT1("KeInitThread - init timer\n");
     /* Link the two wait lists together */
     TimerWaitBlock->WaitListEntry.Flink = &Timer->Header.WaitListHead;
     TimerWaitBlock->WaitListEntry.Blink = &Timer->Header.WaitListHead;
@@ -837,7 +840,7 @@ KeInitThread(IN OUT PKTHREAD Thread,
     /* Set the TEB and process */
     Thread->Teb = Teb;
     Thread->Process = Process;
-
+  DPRINT1("KeInitThread -  we gotta make a kernel stack\n");
     /* Check if we have a kernel stack */
     if (!KernelStack)
     {
@@ -848,24 +851,28 @@ KeInitThread(IN OUT PKTHREAD Thread,
         /* Remember for later */
         AllocatedStack = TRUE;
     }
-
+  DPRINT1("KeInitThread - made kernel stack\n");
     /* Set the Thread Stacks */
     Thread->InitialStack = KernelStack;
     Thread->StackBase = KernelStack;
     Thread->StackLimit = (ULONG_PTR)KernelStack - KERNEL_STACK_SIZE;
     Thread->KernelStackResident = TRUE;
-
+    DPRINT1("First thread's initial strucutres made creating context\n");
     /* Enter SEH to avoid crashes due to user mode */
     Status = STATUS_SUCCESS;
+    UNREFERENCED_PARAMETER(Status);
+    #if 0
     _SEH2_TRY
     {
+#endif
         /* Initialize the Thread Context */
         KiInitializeContextThread(Thread,
                                   SystemRoutine,
                                   StartRoutine,
                                   StartContext,
                                   Context);
-    }
+      #if 0
+                                }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
         /* Set failure status */
@@ -880,7 +887,7 @@ KeInitThread(IN OUT PKTHREAD Thread,
         }
     }
     _SEH2_END;
-
+#endif
     /* Set the Thread to initialized */
     Thread->State = Initialized;
     return Status;
