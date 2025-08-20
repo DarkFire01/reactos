@@ -200,7 +200,13 @@ WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
     TRACE("Manually mapping UART at PA/VA 0x%X for kernel use.\n", QEMU_UART_BASE);
     /* Map KI_USER_SHARED_DATA */
 
-    
+    #define GIC_DIST_BASE   0x08000000
+#define GIC_CPU_BASE    0x08010000
+
+    LPAE_MapPage(GIC_DIST_BASE, GIC_DIST_BASE, LPAE_ATTR_DEVICE, LPAE_SH_NONE, LPAE_AP_RW);
+        LPAE_MapPage(GIC_CPU_BASE, GIC_CPU_BASE, LPAE_ATTR_DEVICE, LPAE_SH_NONE, LPAE_AP_RW);
+
+
     /* Allocate 2 pages for PCR: one for the boot processor PCR and one for KI_USER_SHARED_DATA */
     ULONG_PTR KiSharedNuts = (ULONG_PTR)MmAllocateMemoryWithType(1 * MM_PAGE_SIZE, LoaderStartupPcrPage);
     LPAE_MapPage(KI_USER_SHARED_DATA, (uintptr_t)KiSharedNuts, LPAE_ATTR_NORMAL, LPAE_SH_INNER, LPAE_AP_RW);

@@ -43,6 +43,9 @@ _KiFastInterruptJump           DCD KiFastInterruptException
 
     MACRO
     SYSCALL_PROLOG $Abort
+        ldr r0, =0x09000000
+        mov r1, #'A'
+        str r1, [r0]
         __debugbreak
     MEND
 
@@ -53,7 +56,9 @@ _KiFastInterruptJump           DCD KiFastInterruptException
 
     NESTED_ENTRY KiUndefinedInstructionException
     PROLOG_END KiUndefinedInstructionException
-
+    ldr r0, =0x09000000
+    mov r1, #'A'
+    str r1, [r0]
     /* Handle trap entry */
     TRAP_PROLOG 0 // NotFromAbort
 
@@ -67,7 +72,9 @@ _KiFastInterruptJump           DCD KiFastInterruptException
 
     NESTED_ENTRY KiSoftwareInterruptException
     PROLOG_END KiSoftwareInterruptException
-
+    ldr r0, =0x09000000
+    mov r1, #'D'
+    str r1, [r0]
     /* Handle trap entry */
     SYSCALL_PROLOG
 
@@ -81,7 +88,9 @@ _KiFastInterruptJump           DCD KiFastInterruptException
 
     NESTED_ENTRY KiPrefetchAbortException
     PROLOG_END KiPrefetchAbortException
-
+    ldr r0, =0x09000000
+    mov r1, #'X'
+    str r1, [r0]
     /* Handle trap entry */
     TRAP_PROLOG 0 // NotFromAbort
 
@@ -95,7 +104,9 @@ _KiFastInterruptJump           DCD KiFastInterruptException
 
     NESTED_ENTRY KiDataAbortException
     PROLOG_END KiDataAbortException
-
+    ldr r0, =0x09000000
+    mov r1, #'H'
+    str r1, [r0]
     /* Handle trap entry */
     TRAP_PROLOG 1 // FromAbort
 
@@ -109,7 +120,9 @@ _KiFastInterruptJump           DCD KiFastInterruptException
 
     NESTED_ENTRY KiInterruptException
     PROLOG_END KiInterruptException
-
+    ldr r0, =0x09000000
+    mov r1, #'Z'
+    str r1, [r0]
     /* Handle trap entry */
     TRAP_PROLOG 0 // NotFromAbort
 

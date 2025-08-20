@@ -360,8 +360,9 @@ KiInterruptHandler(IN PKTRAP_FRAME TrapFrame,
     ULONG InterruptCause = 0;//, InterruptMask;
     PKIPCR Pcr;
     PKTRAP_FRAME OldTrapFrame;
+    DPRINT1("KiInterruptHandler\n");
    // ASSERT(TrapFrame->Reserved == 0xBADB0D00);
-    DbgPrintEarly("[INT] (%x) @ %p %p\n", InterruptCause, TrapFrame->Lr, TrapFrame->Pc);
+
     //
     // Increment interrupt count
     //
@@ -378,6 +379,7 @@ KiInterruptHandler(IN PKTRAP_FRAME TrapFrame,
     // Get the interrupt source
     //
     InterruptCause = HalGetInterruptSource();
+        DbgPrintEarly("[INT] (%x) @ %p %p\n", InterruptCause, TrapFrame->Lr, TrapFrame->Pc);
     //DPRINT1("[INT] (%x) @ %p %p\n", InterruptCause, TrapFrame->SvcLr, TrapFrame->Pc);
 
     //
@@ -593,6 +595,7 @@ KiSoftwareInterruptHandler(IN PKTRAP_FRAME TrapFrame)
 NTSTATUS
 KiUndefinedExceptionHandler(IN PKTRAP_FRAME TrapFrame)
 {
+    DPRINT1("Testn");
     ASSERT(TrapFrame->Reserved == 0xBADB0D00);
 
     //

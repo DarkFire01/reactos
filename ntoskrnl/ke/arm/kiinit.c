@@ -1,3 +1,4 @@
+
 /*
  * PROJECT:         ReactOS Kernel
  * LICENSE:         BSD - See COPYING.ARM in the top level directory
@@ -100,7 +101,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
 
         /* Initialize portable parts of the OS */
         KiInitSystem();
-            DPRINT1("Creating system process\n");
+        DPRINT1("Creating system process\n");
         /* Initialize the Idle Process and the Process Listhead */
         InitializeListHead(&KiProcessListHead);
         PageDirectory[0] = 0;
@@ -162,6 +163,15 @@ DPRINT1("leaving executive\n");
 
     /* Raise to Dispatch */
     KfRaiseIrql(DISPATCH_LEVEL);
+    DPRINT1("Raising Irql to DISPATCH_LEVEL and trigger INTn\n");
+    /* Set the PCR for the loader block */
+    DbgBreakPoint();
+        __debugbreak(); // FIXME: This is a hack to trigger an interrupt    
+    //HalRequestSoftwareInterrupt(DISPATCH_LEVEL);
+        for(;;)
+        {
+            
+        }
     DPRINT1("Set Thread Priority\n");
     /* Set the Idle Priority to 0. This will jump into Phase 1 */
     KeSetPriorityThread(InitThread, 0);
@@ -355,7 +365,7 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
     ULONG* Addr = (ULONG*)QEMUUART;
     *Addr = 'C';
-    QemuHackPutByte('C');
+
     KiSystemStartupLOC();
     KiInitializeSystem(LoaderBlock);
 }
@@ -364,8 +374,9 @@ DECLSPEC_NORETURN
 VOID
 KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    //DbgPrintEarly("KiInitializeSystem: Starting kernel\n");
+    DbgPrintEarly("\nKiInitializeSystem: Starting kernel\n");
     ULONG Cpu;
+   // ARM_CONTROL_REGISTER ControlRegister;
     PKTHREAD InitialThread;
     PKPROCESS InitialProcess;
     PKIPCR Pcr = (PKIPCR)KeGetPcr();
@@ -376,7 +387,7 @@ KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     KeLoaderBlock = LoaderBlock;
     Cpu = KeNumberProcessors;
 
-          /* Set the initial stack and idle thread as well */
+    /* Set the initial stack and idle thread as well */
     LoaderBlock->KernelStack = (ULONG_PTR)P0BootStack;
     LoaderBlock->Thread = (ULONG_PTR)&KiInitialThread;
     LoaderBlock->Process = (ULONG_PTR)&KiInitialProcess.Pcb;
@@ -400,12 +411,14 @@ KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                     (PVOID)LoaderBlock->u.Arm.InterruptStack);
     //DbgPrintEarly("KiInitializeSystem: Initialized PCR\n");
     /* Now sweep caches */
-    //HalSweepIcache();
-    //HalSweepDcache();
+    HalSweepIcache();
+    HalSweepDcache();
     //DbgPrintEarly("KiInitializeSystem: Swept caches\n");
     /* Set us as the current process */
     InitialThread->ApcState.Process = InitialProcess;
 
+    /* Setup the exception vector table */
+    RtlCopyMemory((PVOID)0x00000000, &KiArmVectorTable, 14 * sizeof(PVOID));
 AppCpuInit:
     /* Setup CPU-related fields */
     Pcr->PrcbData.Number = Cpu;
@@ -418,8 +431,13 @@ AppCpuInit:
     KeActiveProcessors |= Pcr->PrcbData.SetMember;
     KeNumberProcessors++;
 
-    /* Setup the exception vector table */
-    RtlCopyMemory((PVOID)0x00000000, &KiArmVectorTable, 14 * sizeof(PVOID));
+  //ControlRegister = KeArmControlRegisterGet();
+  //ControlRegister.HighVectors = TRUE;
+  //KeArmControlRegisterSet(ControlRegister);
+    DbgPrintEarly("Trigger Exception\n");
+    void impissedoff(void);
+    impissedoff();
+    DbgPrintEarly("Trigger Exception - done\n");
     /* Check if this is the boot CPU */
     if (!Cpu)
     {

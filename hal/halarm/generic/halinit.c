@@ -99,10 +99,11 @@ HalInitSystem(IN ULONG BootPhase,
             /* Validation failed, bugcheck */
             KeBugCheckEx(MISMATCHED_HAL, 1, Prcb->MajorVersion, PRCB_MAJOR_VERSION, 0);
         }
-
+#endif
         /* Initialize interrupts */
         HalpInitializeInterrupts();
-#endif
+
+
         /* Force initial PIC state */
         KfRaiseIrql(KeGetCurrentIrql());
 

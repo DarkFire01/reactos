@@ -40,7 +40,7 @@ HalpIdentifyProcessor(VOID)
 }
 
 /* FUNCTIONS ******************************************************************/
-
+void GicV2_Initialize(void);
 ULONG
 DbgPrintEarly(const char *fmt, ...);
 /*
@@ -51,8 +51,9 @@ NTAPI
 HalInitializeProcessor(IN ULONG ProcessorNumber,
                        IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    extern void GicV2_Initialize(void);
 
-    DbgPrintEarly("test");
+    DbgPrintEarly("HalInitializeProcessor: Initializing GIC\n");
     return;
 }
 
@@ -112,7 +113,6 @@ VOID v7_flush_dcache_all(VOID);
 VOID
 HalSweepDcache(VOID)
 {
-    DbgPrintEarly("HalSweepDcache: try dcache sweep");
     /*
      * We get called very early on, before HalInitSystem or any of the Hal*
      * processor routines, so we need to figure out what CPU we're on.
@@ -121,7 +121,6 @@ HalSweepDcache(VOID)
 
     /* We need to do it it by set/way. For now always call ARMv7 function */
     v7_flush_dcache_all();
-        DbgPrintEarly("HalSweepDcache: cache sweep done");
 }
 
 /*
@@ -131,9 +130,8 @@ VOID
 HalSweepIcache(VOID)
 {
 
-    DbgPrintEarly("HAL JUMP");
     /* All ARM cores support the same Icache flush command */
-   // KeArmFlushIcache();
+    KeArmFlushIcache();
 }
 
 /* EOF */

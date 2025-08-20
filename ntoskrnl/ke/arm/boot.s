@@ -11,54 +11,59 @@
     TEXTAREA
 
     IMPORT KiInitializeSystem
-
+    EXTERN P0BootStack
     NESTED_ENTRY KiSystemStartupLOC
     PROLOG_END KiSystemStartupLOC
-    /* Print character 'A' to 0x09000000 */
-    ldr r0, =0x09000000
-    mov r1, #'A'
-    str r1, [r0]
+
     /* Put us in FIQ mode, set IRQ stack */
 
     mrs r3, cpsr
     orr r3, r1, #CPSRM_FIQ
     //msr cpsr, r3
     msr cpsr_fc, r3
-    ldr sp, [a1, #LpbKernelStack]
-    ldr r0, =0x09000000
-    mov r1, #'B'
-    str r1, [r0]
+    ldr sp, =P0BootStack
+
     /* Repeat for IRQ mode */
     mov r3, #CPSRM_INT
     msr cpsr_c, r3
-    ldr sp, [a1, #LpbKernelStack]
-    ldr r0, =0x09000000
-    mov r1, #'C'
-    str r1, [r0]
+    ldr sp, =P0BootStack
+
     /* Put us in ABORT mode and set the panic stack */
     mov r3, #CPSRM_ABT
     msr cpsr_c, r3
-    ldr sp, [a1, #LpbKernelStack]
-    ldr r0, =0x09000000
-    mov r1, #'D'
-    str r1, [r0]
+    ldr sp, =P0BootStack
+
     /* Repeat for UDF (Undefined) mode */
     mov r3, #CPSRM_UDF
     msr cpsr_c, r3
-    ldr sp, [a1, #LpbKernelStack]
-    ldr r0, =0x09000000
-    mov r1, #'E'
-    str r1, [r0]
+    ldr sp, =P0BootStack
+
     /* Put us into SVC (Supervisor) mode and set the kernel stack */
     mov r3, #CPSRM_SVC
     msr cpsr_c, r3
+    ldr sp, =P0BootStack
 
+    ldr r0, =0x0000000
+    mcr p15, 0, r0, c12, c0, 0
+    isb
     /* Go to C code */
     bx lr
 
     NESTED_END KiSystemStartupLOC
 
+    NESTED_ENTRY impissedoff
 
+
+    PROLOG_END impissedoff
+
+
+    udf #0
+
+
+    bx lr
+
+
+    NESTED_END impissedoff
 
 
 
