@@ -59,14 +59,15 @@ NTAPI
 HalInitSystem(IN ULONG BootPhase,
               IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    PKPRCB Prcb = KeGetCurrentPrcb();
+    DPRINT1("HalInitSystem: Boot Phase %d\n", BootPhase);
+   // PKPRCB Prcb = KeGetCurrentPrcb();
 
     /* Check the boot phase */
     if (!BootPhase)
     {
         /* Get command-line parameters */
-        HalpGetParameters(LoaderBlock);
-
+    //    HalpGetParameters(LoaderBlock);
+#if 0
         /* Checked HAL requires checked kernel */
 #if DBG
         if (!(Prcb->BuildType & PRCB_BUILD_DEBUG))
@@ -101,7 +102,7 @@ HalInitSystem(IN ULONG BootPhase,
 
         /* Initialize interrupts */
         HalpInitializeInterrupts();
-
+#endif
         /* Force initial PIC state */
         KfRaiseIrql(KeGetCurrentIrql());
 

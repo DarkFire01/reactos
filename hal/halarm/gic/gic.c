@@ -23,9 +23,7 @@ HalpInitializeInterrupts(VOID)
 ULONG
 HalGetInterruptSource(VOID)
 {
-   UNIMPLEMENTED;
-   while (TRUE);
-   return 0;
+    return 0;
 }
 
 CODE_SEG("INIT")

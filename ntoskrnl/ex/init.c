@@ -935,7 +935,7 @@ ExpInitializeExecutive(IN ULONG Cpu,
     size_t Remaining = 0;
     PCHAR RcEnd = NULL;
     CHAR VersionBuffer[65];
-
+    DPRINT1("ExpInitializeExecutive: Initializing Executive\n");
     /* Validate Loader */
     if (!ExpIsLoaderValid(LoaderBlock))
     {
@@ -946,10 +946,10 @@ ExpInitializeExecutive(IN ULONG Cpu,
                      LoaderBlock->Extension->MajorVersion,
                      LoaderBlock->Extension->MinorVersion);
     }
-
+  DPRINT1("ExpInitializeExecutive: Loader valid\n");
     /* Initialize PRCB pool lookaside pointers */
     ExInitPoolLookasidePointers();
-
+  DPRINT1("ExpInitializeExecutive: lookaseide valid\n");
     /* Check if this is an application CPU */
     if (Cpu)
     {
@@ -988,7 +988,7 @@ ExpInitializeExecutive(IN ULONG Cpu,
 
     /* Set phase to 0 */
     ExpInitializationPhase = 0;
-
+  DPRINT1("ExpInitializeExecutive: Welcome to executive phase 0\n");
     /* Get boot command line */
     CommandLine = LoaderBlock->LoadOptions;
     if (CommandLine)
@@ -1027,7 +1027,7 @@ ExpInitializeExecutive(IN ULONG Cpu,
             }
         }
     }
-
+      DPRINT1("ExpInitializeExecutive: Command line valid\n");
     /* Setup NLS Base and offsets */
     NlsData = LoaderBlock->NlsData;
     ExpNlsTableBase = NlsData->AnsiCodePageData;
@@ -1036,7 +1036,7 @@ ExpInitializeExecutive(IN ULONG Cpu,
                                        (ULONG_PTR)NlsData->AnsiCodePageData);
     ExpUnicodeCaseTableDataOffset = (ULONG)((ULONG_PTR)NlsData->UnicodeCodePageData -
                                             (ULONG_PTR)NlsData->AnsiCodePageData);
-
+      DPRINT1("ExpInitializeExecutive: Initializing NLS\n");
     /* Initialize the NLS Tables */
     RtlInitNlsTables((PVOID)((ULONG_PTR)ExpNlsTableBase +
                              ExpAnsiCodePageDataOffset),
@@ -1046,7 +1046,7 @@ ExpInitializeExecutive(IN ULONG Cpu,
                              ExpUnicodeCaseTableDataOffset),
                      &ExpNlsTableInfo);
     RtlResetRtlTranslations(&ExpNlsTableInfo);
-
+      DPRINT1("ExpInitializeExecutive: Done with NLS\n");
     /* Now initialize the HAL */
     if (!HalInitSystem(ExpInitializationPhase, LoaderBlock))
     {

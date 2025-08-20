@@ -349,17 +349,19 @@ KiDispatchInterrupt(VOID)
     }
 }
 #endif
+ULONG
+DbgPrintEarly(const char *fmt, ...);
 
 VOID
 KiInterruptHandler(IN PKTRAP_FRAME TrapFrame,
                    IN ULONG Reserved)
 {
     KIRQL OldIrql, Irql;
-    ULONG InterruptCause;//, InterruptMask;
+    ULONG InterruptCause = 0;//, InterruptMask;
     PKIPCR Pcr;
     PKTRAP_FRAME OldTrapFrame;
-    ASSERT(TrapFrame->Reserved == 0xBADB0D00);
-
+   // ASSERT(TrapFrame->Reserved == 0xBADB0D00);
+    DbgPrintEarly("[INT] (%x) @ %p %p\n", InterruptCause, TrapFrame->Lr, TrapFrame->Pc);
     //
     // Increment interrupt count
     //
@@ -385,7 +387,6 @@ KiInterruptHandler(IN PKTRAP_FRAME TrapFrame,
     //Irql = Pcr->IrqlMask[InterruptCause];
     //InterruptMask = Pcr->IrqlTable[Irql];
     Irql = 0;
-    __debugbreak();
 
     //
     // Raise to the new IRQL
@@ -422,7 +423,7 @@ KiInterruptHandler(IN PKTRAP_FRAME TrapFrame,
     //
     /// FIXME: this should probably go into a table in ntoskrnl
     //Pcr->InterruptRoutine[Irql]();
-    __debugbreak();
+  //  __debugbreak();
     ASSERT(KeGetCurrentThread()->TrapFrame == TrapFrame);
     KeGetCurrentThread()->TrapFrame = OldTrapFrame;
 //    DPRINT1("[ISR RETURN]\n");

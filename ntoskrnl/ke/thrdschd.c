@@ -524,6 +524,8 @@ KiSetPriorityThread(IN PKTHREAD Thread,
         /* Loop priority setting in case we need to start over */
         for (;;)
         {
+            DPRINT1("KiSetPriorityThread - Setting priority %d for thread %p\n",
+                   Priority, Thread);
             /* Choose action based on thread's state */
             if (Thread->State == Ready)
             {

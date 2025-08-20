@@ -370,10 +370,8 @@ KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     PKPROCESS InitialProcess;
     PKIPCR Pcr = (PKIPCR)KeGetPcr();
     PKTHREAD Thread;
-    //DbgPrintEarly("KiInitializeSystem: Got PCR\n");
     /* Flush the TLB */
     KeFlushTb();
-    //DbgPrintEarly("KiInitializeSystem: Flushed TLB\n");
     /* Save the loader block and get the current CPU */
     KeLoaderBlock = LoaderBlock;
     Cpu = KeNumberProcessors;
@@ -381,16 +379,15 @@ KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
           /* Set the initial stack and idle thread as well */
     LoaderBlock->KernelStack = (ULONG_PTR)P0BootStack;
     LoaderBlock->Thread = (ULONG_PTR)&KiInitialThread;
+    LoaderBlock->Process = (ULONG_PTR)&KiInitialProcess.Pcb;
+
     /* Save the initial thread and process */
     InitialThread = (PKTHREAD)LoaderBlock->Thread;
     InitialProcess = (PKPROCESS)LoaderBlock->Process;
-    //DbgPrintEarly("KiInitializeSystem: Saved initial thread and process\n");
     /* Clean the APC List Head */
     InitializeListHead(&InitialThread->ApcState.ApcListHead[KernelMode]);
-    //DbgPrintEarly("KiInitializeSystem: Cleaned APC List Head\n");
     /* Initialize the machine type */
     KiInitializeMachineType();
-    //DbgPrintEarly("KiInitializeSystem: Initialized machine type\n");
     /* Skip initial setup if this isn't the Boot CPU */
     if (Cpu) goto AppCpuInit;
 

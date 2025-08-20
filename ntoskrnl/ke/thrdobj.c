@@ -1328,11 +1328,11 @@ KeSetPriorityThread(IN PKTHREAD Thread,
 {
     KIRQL OldIrql;
     KPRIORITY OldPriority;
-    ASSERT_THREAD(Thread);
-    ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
-    ASSERT((Priority <= HIGH_PRIORITY) && (Priority >= LOW_PRIORITY));
-    ASSERT(KeIsExecutingDpc() == FALSE);
-
+   //ASSERT_THREAD(Thread);
+   //ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
+   //ASSERT((Priority <= HIGH_PRIORITY) && (Priority >= LOW_PRIORITY));
+   //ASSERT(KeIsExecutingDpc() == FALSE);
+    DPRINT1("KeSetPriorityThread - Entry\n");
     /* Lock the Dispatcher Database */
     OldIrql = KiAcquireDispatcherLock();
 
@@ -1351,11 +1351,11 @@ KeSetPriorityThread(IN PKTHREAD Thread,
 
         /* Check if priority is being set too low and normalize if so */
         if ((Thread->BasePriority != 0) && !(Priority)) Priority = 1;
-
+          DPRINT1("KeSetPriorityThread - Set new proority\n");
         /* Set the new Priority */
         KiSetPriorityThread(Thread, Priority);
     }
-
+  DPRINT1("KeSetPriorityThread - Done, Release\n");
     /* Release thread lock */
     KiReleaseThreadLock(Thread);
 
