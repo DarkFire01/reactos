@@ -165,10 +165,21 @@ ArmEnableMMU PROC
     ; Switch to the new kernel stack
     mov     sp, r3
 
-
-
-   
     b       JumpToKernel
+    ENDP
+
+is_secure PROC
+    ldr r0, =0x09000000
+    mov r1, #'N'
+    str r1, [r0]
+    bx lr
+    ENDP
+
+is_non_secure PROC
+    ldr r0, =0x09000000
+    mov r1, #'Y'
+    str r1, [r0]
+    bx lr
     ENDP
 
 ;-------------------------------------------------------------------------------

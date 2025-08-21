@@ -363,11 +363,18 @@ VOID
 NTAPI
 KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    ULONG* Addr = (ULONG*)QEMUUART;
-    *Addr = 'C';
-
+    DbgPrintEarly("KiSystemStartup: Entry\n");
+    /* Save the loader block and get the current CPU */
+    KeLoaderBlock = LoaderBlock;
     KiSystemStartupLOC();
     KiInitializeSystem(LoaderBlock);
+}
+
+DECLSPEC_NORETURN
+VOID
+HoldSystem()
+{
+    KiInitializeSystem(KeLoaderBlock);
 }
 
 DECLSPEC_NORETURN
@@ -376,15 +383,14 @@ KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
     DbgPrintEarly("\nKiInitializeSystem: Starting kernel\n");
     ULONG Cpu;
-   // ARM_CONTROL_REGISTER ControlRegister;
+  //  ARM_CONTROL_REGISTER ControlRegister;
     PKTHREAD InitialThread;
     PKPROCESS InitialProcess;
     PKIPCR Pcr = (PKIPCR)KeGetPcr();
     PKTHREAD Thread;
     /* Flush the TLB */
     KeFlushTb();
-    /* Save the loader block and get the current CPU */
-    KeLoaderBlock = LoaderBlock;
+
     Cpu = KeNumberProcessors;
 
     /* Set the initial stack and idle thread as well */
@@ -409,35 +415,42 @@ KiInitializeSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                     InitialThread,
                     (PVOID)LoaderBlock->u.Arm.PanicStack,
                     (PVOID)LoaderBlock->u.Arm.InterruptStack);
-    //DbgPrintEarly("KiInitializeSystem: Initialized PCR\n");
+
     /* Now sweep caches */
     HalSweepIcache();
     HalSweepDcache();
-    //DbgPrintEarly("KiInitializeSystem: Swept caches\n");
+
     /* Set us as the current process */
     InitialThread->ApcState.Process = InitialProcess;
 
-    /* Setup the exception vector table */
-    RtlCopyMemory((PVOID)0x00000000, &KiArmVectorTable, 14 * sizeof(PVOID));
 AppCpuInit:
     /* Setup CPU-related fields */
     Pcr->PrcbData.Number = Cpu;
     Pcr->PrcbData.SetMember = 1 << Cpu;
-    //DbgPrintEarly("KiInitializeSystem: Init CPU\n");
+
     /* Initialize the Processor with HAL */
-    HalInitializeProcessor(Cpu, KeLoaderBlock);
-    //DbgPrintEarly("KiInitializeSystem: Returned from HAL\n");
+  //  HalInitializeProcessor(Cpu, KeLoaderBlock);
+
     /* Set active processors */
     KeActiveProcessors |= Pcr->PrcbData.SetMember;
     KeNumberProcessors++;
-
-  //ControlRegister = KeArmControlRegisterGet();
-  //ControlRegister.HighVectors = TRUE;
-  //KeArmControlRegisterSet(ControlRegister);
+    DbgPrintEarly("Trigger ControlReg\n");
+#if 0
+    ControlRegister = KeArmControlRegisterGet();
+    ControlRegister.HighVectors = TRUE;
+    KeArmControlRegisterSet(ControlRegister);
+    DbgPrintEarly("Trigger Copy\n");
+        /* Setup the exception vector table */
+    RtlCopyMemory((PVOID)0xFFFF0000, &KiArmVectorTable, 14 * sizeof(PVOID));
+#endif
+    _enable();
     DbgPrintEarly("Trigger Exception\n");
-    void impissedoff(void);
-    impissedoff();
+    __debugbreak();
     DbgPrintEarly("Trigger Exception - done\n");
+    for(;;)
+    {
+        
+    }
     /* Check if this is the boot CPU */
     if (!Cpu)
     {
@@ -453,8 +466,7 @@ AppCpuInit:
 
     /* Raise to HIGH_LEVEL */
     KfRaiseIrql(HIGH_LEVEL);
- DPRINT1("Going into debugger\n");
-    DPRINT1("Exception vector table set\n");
+
     /* Initialize the rest of the kernel now */
     KiInitializeKernel((PKPROCESS)LoaderBlock->Process,
                        (PKTHREAD)LoaderBlock->Thread,

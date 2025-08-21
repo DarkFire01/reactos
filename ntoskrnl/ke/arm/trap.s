@@ -27,18 +27,20 @@ KiArmVectorTable
         ldr pc, _KiInterruptJump                // Interrupt
         ldr pc, _KiFastInterruptJump            // Fast Interrupt
 
-_KiUndefinedInstructionJump    DCD KiUndefinedInstructionException
-_KiSoftwareInterruptJump       DCD KiSoftwareInterruptException
-_KiPrefetchAbortJump           DCD KiPrefetchAbortException
-_KiDataAbortJump               DCD KiDataAbortException
-_KiInterruptJump               DCD KiInterruptException
-_KiFastInterruptJump           DCD KiFastInterruptException
+_KiUndefinedInstructionJump    DCD KiInterruptTemplate
+_KiSoftwareInterruptJump       DCD KiInterruptTemplate
+_KiPrefetchAbortJump           DCD KiInterruptTemplate
+_KiDataAbortJump               DCD KiInterruptTemplate
+_KiInterruptJump               DCD KiInterruptTemplate
+_KiFastInterruptJump           DCD KiInterruptTemplate
 
     // Might need to move these to a custom header, when used by HAL as well
 
     MACRO
     TRAP_PROLOG $Abort
-        __debugbreak
+        ldr r0, =0x09000000
+        mov r1, #'A'
+        str r1, [r0]
     MEND
 
     MACRO
@@ -46,7 +48,6 @@ _KiFastInterruptJump           DCD KiFastInterruptException
         ldr r0, =0x09000000
         mov r1, #'A'
         str r1, [r0]
-        __debugbreak
     MEND
 
     MACRO
@@ -54,116 +55,22 @@ _KiFastInterruptJump           DCD KiFastInterruptException
         __debugbreak
     MEND
 
-    NESTED_ENTRY KiUndefinedInstructionException
-    PROLOG_END KiUndefinedInstructionException
-    ldr r0, =0x09000000
-    mov r1, #'A'
-    str r1, [r0]
-    /* Handle trap entry */
-    TRAP_PROLOG 0 // NotFromAbort
-
-    /* Call the C handler */
-    ldr lr, =KiExceptionExit
-    mov r0, sp
-    ldr pc, =KiUndefinedExceptionHandler
-
-    NESTED_END KiUndefinedInstructionException
-
-
-    NESTED_ENTRY KiSoftwareInterruptException
-    PROLOG_END KiSoftwareInterruptException
-    ldr r0, =0x09000000
-    mov r1, #'D'
-    str r1, [r0]
-    /* Handle trap entry */
-    SYSCALL_PROLOG
-
-    /* Call the C handler */
-    ldr lr, =KiServiceExit
-    mov r0, sp
-    ldr pc, =KiSoftwareInterruptHandler
-
-    NESTED_END KiSoftwareInterruptException
-
-
-    NESTED_ENTRY KiPrefetchAbortException
-    PROLOG_END KiPrefetchAbortException
-    ldr r0, =0x09000000
-    mov r1, #'X'
-    str r1, [r0]
-    /* Handle trap entry */
-    TRAP_PROLOG 0 // NotFromAbort
-
-    /* Call the C handler */
-    ldr lr, =KiExceptionExit
-    mov r0, sp
-    ldr pc, =KiPrefetchAbortHandler
-
-    NESTED_END KiPrefetchAbortException
-
-
-    NESTED_ENTRY KiDataAbortException
-    PROLOG_END KiDataAbortException
-    ldr r0, =0x09000000
-    mov r1, #'H'
-    str r1, [r0]
-    /* Handle trap entry */
-    TRAP_PROLOG 1 // FromAbort
-
-    /* Call the C handler */
-    ldr lr, =KiExceptionExit
-    mov r0, sp
-    ldr pc, =KiDataAbortHandler
-
-    NESTED_END KiDataAbortException
-
-
-    NESTED_ENTRY KiInterruptException
-    PROLOG_END KiInterruptException
+    LEAF_ENTRY KiInterruptTemplate
+    PROLOG_END KiInterruptTemplate
     ldr r0, =0x09000000
     mov r1, #'Z'
     str r1, [r0]
-    /* Handle trap entry */
-    TRAP_PROLOG 0 // NotFromAbort
-
-    /* Call the C handler */
-    ldr lr, =KiExceptionExit
-    mov r0, sp
-    mov r1, #0
-    ldr pc, =KiInterruptHandler
-
-    NESTED_END KiInterruptException
-
-
-    NESTED_ENTRY KiFastInterruptException
-    PROLOG_END KiFastInterruptException
-
-    // FIXME-PERF: Implement FIQ exception
-    __debugbreak
-
-    NESTED_END KiFastInterruptException
-
-
-    NESTED_ENTRY KiExceptionExit
-    PROLOG_END KiExceptionExit
-
-    /* Handle trap exit */
-    TRAP_EPILOG 0 // NotFromSystemCall
-
-    NESTED_END KiExceptionExit
-
-    NESTED_ENTRY KiServiceExit
-    PROLOG_END KiServiceExit
-
-    /* Handle trap exit */
-    TRAP_EPILOG 1 // FromSystemCall
-
-    NESTED_END KiServiceExit
-
-
-    LEAF_ENTRY KiInterruptTemplate
-    DCD 0
+    b KiInterruptTemplate
     LEAF_END KiInterruptTemplate
+
+
+    LEAF_ENTRY KiExceptionExit
+    PROLOG_END KiExceptionExit
+    ldr r0, =0x09000000
+    mov r1, #'Z'
+    str r1, [r0]
+    b KiExceptionExit
+    LEAF_END KiExceptionExit
 
     END
 /* EOF */

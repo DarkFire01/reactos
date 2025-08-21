@@ -157,7 +157,6 @@ static void LPAE_MapPage(uintptr_t va, uintptr_t pa, uint64_t attr_idx, uint64_t
 }
 
 VOID
-
 WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
     BasicStack = ((ULONG_PTR)0x32000 + (ULONG_PTR)MmAllocateMemoryWithType(0x32000, LoaderOsloaderStack));
@@ -201,22 +200,19 @@ WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
     /* Map KI_USER_SHARED_DATA */
 
     #define GIC_DIST_BASE   0x08000000
-#define GIC_CPU_BASE    0x08010000
+    #define GIC_CPU_BASE    0x08010000
 
     LPAE_MapPage(GIC_DIST_BASE, GIC_DIST_BASE, LPAE_ATTR_DEVICE, LPAE_SH_NONE, LPAE_AP_RW);
-        LPAE_MapPage(GIC_CPU_BASE, GIC_CPU_BASE, LPAE_ATTR_DEVICE, LPAE_SH_NONE, LPAE_AP_RW);
+    LPAE_MapPage(GIC_CPU_BASE, GIC_CPU_BASE, LPAE_ATTR_DEVICE, LPAE_SH_NONE, LPAE_AP_RW);
 
 
     /* Allocate 2 pages for PCR: one for the boot processor PCR and one for KI_USER_SHARED_DATA */
     ULONG_PTR KiSharedNuts = (ULONG_PTR)MmAllocateMemoryWithType(1 * MM_PAGE_SIZE, LoaderStartupPcrPage);
     LPAE_MapPage(KI_USER_SHARED_DATA, (uintptr_t)KiSharedNuts, LPAE_ATTR_NORMAL, LPAE_SH_INNER, LPAE_AP_RW);
     LPAE_MapPage(0xFFFF0000, 0xFFFF0000, LPAE_ATTR_NORMAL, LPAE_SH_INNER, LPAE_AP_RW);
-    LPAE_MapPage(0, 0, LPAE_ATTR_NORMAL, LPAE_SH_INNER, LPAE_AP_RW);
-    // Optionally: map more RAM, page table pool, etc.
 }
 
 VOID
-
 WinLdrSetProcessorContext(_In_ USHORT OperatingSystemVersion)
 {
     EFI_STATUS Status;
@@ -238,6 +234,7 @@ WinLdrSetProcessorContext(_In_ USHORT OperatingSystemVersion)
     {
         for (;;);
     }
+
     // Clean/invalidate caches and TLBs
     ArmDisableMMUAndCaches();
     ArmCleanAndInvalidateDCache();
@@ -264,24 +261,13 @@ MempDump(VOID)
 }
 
 
-void
-JumpToKerneTwol()
-{
-    TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
-          PubKiSystemStartup, PubLoaderBlockVA);
-    (*PubKiSystemStartup)(PubLoaderBlockVA);
-}
 
 void
 JumpToKernel()
 {
-    TRACE("\nPREPPING JUMP....\n");
- JumpToKerneTwol();
-    TRACE("two\n");
-    for(;;)
-    {
-
-    }   
+    TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
+          PubKiSystemStartup, PubLoaderBlockVA);
+    (*PubKiSystemStartup)(PubLoaderBlockVA);
 }
 
 

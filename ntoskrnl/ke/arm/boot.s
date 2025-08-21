@@ -12,11 +12,12 @@
 
     IMPORT KiInitializeSystem
     EXTERN P0BootStack
+    EXTERN KiArmVectorTable
+    EXTERN HoldSystem
     NESTED_ENTRY KiSystemStartupLOC
     PROLOG_END KiSystemStartupLOC
 
     /* Put us in FIQ mode, set IRQ stack */
-
     mrs r3, cpsr
     orr r3, r1, #CPSRM_FIQ
     //msr cpsr, r3
@@ -43,42 +44,16 @@
     msr cpsr_c, r3
     ldr sp, =P0BootStack
 
-    ldr r0, =0x0000000
-    mcr p15, 0, r0, c12, c0, 0
-    isb
     /* Go to C code */
     bx lr
-
     NESTED_END KiSystemStartupLOC
-
-    NESTED_ENTRY impissedoff
-
-
-    PROLOG_END impissedoff
-
-
-    udf #0
-
-
-    bx lr
-
-
-    NESTED_END impissedoff
 
 
 
     NESTED_ENTRY pArmControlRegisterGet
-
-
     PROLOG_END pArmControlRegisterGet
-
-
     mrc p15, 0, r0, c1, c0, 0
-
-
     bx lr
-
-
     NESTED_END pArmControlRegisterGet
 
 
@@ -86,17 +61,9 @@
 
 
     NESTED_ENTRY  pArmControlRegisterSet
-
-
     PROLOG_END pArmControlRegisterSet
-
-
     mcr p15, 0, r0, c1, c0, 0
-
-
     bx lr
-
-
     NESTED_END pArmControlRegisterSet
     END
 /* EOF */

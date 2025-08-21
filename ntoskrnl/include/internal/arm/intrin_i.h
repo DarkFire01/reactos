@@ -20,7 +20,7 @@ KeArmControlRegisterGet(VOID)
     ARM_CONTROL_REGISTER Value;
 #ifdef _MSC_VER
     Value.AsUlong = 0;
-      pArmControlRegisterGet(&Value.AsUlong);
+    pArmControlRegisterGet(&Value.AsUlong);
 #else
     __asm__ __volatile__ ("mrc p15, 0, %0, c1, c0, 0" : "=r"(Value.AsUlong) : : "cc");
 #endif
