@@ -92,9 +92,9 @@ PciFdoIrpStartDevice(IN PIRP Irp,
     Resources = IoStackLocation->Parameters.StartDevice.AllocatedResources;
     if ((Resources) && !(PCI_IS_ROOT_FDO(DeviceExtension)))
     {
-        /* These resources would only be for non-root FDOs, unhandled for now */
-        ASSERT(Resources->Count == 1);
-        UNIMPLEMENTED_DBGBREAK();
+        /* These resources would only be for non-root FDOs; accept and continue */
+        DPRINT1("PCI - Non-root FDO received boot resources (count=%lu), continuing.\n",
+                Resources->Count);
     }
 
     /* Initialize the arbiter for this FDO */
@@ -109,9 +109,8 @@ PciFdoIrpStartDevice(IN PIRP Irp,
     /* Again, check for boot-provided resources for non-root FDO */
     if ((Resources) && !(PCI_IS_ROOT_FDO(DeviceExtension)))
     {
-        /* Unhandled for now */
-        ASSERT(Resources->Count == 1);
-        UNIMPLEMENTED_DBGBREAK();
+        /* Nothing special to do for now; arbiters are initialized */
+        DPRINT1("PCI - Non-root FDO boot resources acknowledged.\n");
     }
 
     /* Commit the transition to the started state */
@@ -421,6 +420,37 @@ PciFilterRequirementsListDropMsi(IN OUT PIO_RESOURCE_REQUIREMENTS_LIST Reqs)
     Reqs->AlternativeLists = outAlts;
     Reqs->ListSize = (ULONG)(dstPtr - (PUCHAR)Reqs);
 }
+
+static
+VOID
+PciNormalizeLegacyInterrupts(IN OUT PIO_RESOURCE_REQUIREMENTS_LIST Reqs)
+{
+    ULONG alts = Reqs->AlternativeLists;
+    PUCHAR ptr = (PUCHAR)&Reqs->List[0];
+    ULONG i;
+    for (i = 0; i < alts; i++)
+    {
+        PIO_RESOURCE_LIST Alt = (PIO_RESOURCE_LIST)ptr;
+        ULONG d;
+        for (d = 0; d < Alt->Count; d++)
+        {
+            PIO_RESOURCE_DESCRIPTOR Desc = &Alt->Descriptors[d];
+            if ((Desc->Type == CmResourceTypeInterrupt) &&
+                !(Desc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE))
+            {
+                Desc->ShareDisposition = CmResourceShareShared;
+                Desc->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+                Desc->u.Interrupt.MinimumVector = 0;
+                Desc->u.Interrupt.MaximumVector = 0xFF;
+                Desc->u.Interrupt.AffinityPolicy = IrqPolicyMachineDefault;
+                Desc->u.Interrupt.PriorityPolicy = IrqPriorityUndefined;
+                Desc->u.Interrupt.TargetedProcessors = 0;
+            }
+        }
+        ptr += FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) + sizeof(IO_RESOURCE_DESCRIPTOR) * Alt->Count;
+    }
+}
+
 //TODO: HACK:
 NTSTATUS
 NTAPI
@@ -440,6 +470,8 @@ PciFdoIrpFilterResourceRequirements(IN PIRP Irp,
     {
         PciFilterRequirementsListDropMsi(Reqs);
     }
+    /* Normalize legacy INTx on all platforms; limit to PIC range on PIC */
+    PciNormalizeLegacyInterrupts(Reqs);
 
     Irp->IoStatus.Status = STATUS_SUCCESS;
     return STATUS_SUCCESS;

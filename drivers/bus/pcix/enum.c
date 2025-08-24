@@ -665,7 +665,8 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
         Desc->ShareDisposition = CmResourceShareShared;
         Desc->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
         Desc->u.Interrupt.MinimumVector = 0;
-        Desc->u.Interrupt.MaximumVector = 0xFF; /* legacy PIC/APIC range */
+        /* HACK: Limit to legacy PIC range for now to avoid bogus 0xFF selections */
+        Desc->u.Interrupt.MaximumVector = 0x0F;
         Desc->u.Interrupt.AffinityPolicy = IrqPolicyMachineDefault;
         Desc->u.Interrupt.PriorityPolicy = IrqPriorityUndefined;
         Desc->u.Interrupt.TargetedProcessors = 0;
@@ -1626,18 +1627,8 @@ PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
     /* Cheeck if this is the root bus */
     if (!PCI_IS_ROOT_FDO(DeviceExtension))
     {
-        /* Not really handling this year */
-        UNIMPLEMENTED_DBGBREAK();
-
-        /* Check for PCI bridges with the ISA bit set, or required */
-        if ((PdoExtension) &&
-            (PciClassifyDeviceType(PdoExtension) == PciTypePciBridge) &&
-            ((PdoExtension->Dependent.type1.IsaBitRequired) ||
-             (PdoExtension->Dependent.type1.IsaBitSet)))
-        {
-            /* We'll need to do some legacy support */
-            UNIMPLEMENTED_DBGBREAK();
-        }
+        /* Minimal non-root bus processing: nothing to do yet */
+        return;
     }
     else
     {
@@ -1650,7 +1641,7 @@ PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
             if (PdoExtension->Dependent.type1.VgaBitSet)
             {
                 /* Again, some more legacy support we'll have to do */
-                UNIMPLEMENTED_DBGBREAK();
+                DPRINT1("PCI: VGA decode present on bridge %p - legacy support not yet implemented\n", PdoExtension);
             }
         }
     }

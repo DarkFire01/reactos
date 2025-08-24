@@ -355,6 +355,10 @@ PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
                                   "%02X",
                                   (PdoExtension->Slot.u.bits.DeviceNumber << 3) |
                                   PdoExtension->Slot.u.bits.FunctionNumber);
+
+                /* Move up one level */
+                ParentExtension = ParentExtension->ParentFdoExtension;
+                if (!ParentExtension) break;
             }
             break;
 
