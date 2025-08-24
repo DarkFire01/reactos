@@ -127,23 +127,16 @@ PciIdeXGetConfigurationInfo(
 
     if (PciConfig->BaseClass == PCI_CLASS_MASS_STORAGE_CTLR)
     {
-        if (PciConfig->ProgIf & PCIIDE_PROGIF_DMA_CAPABLE)
-        {
-            FdoExtension->Flags |= FDO_DMA_CAPABLE;
-        }
-
         if (PciConfig->SubClass == PCI_SUBCLASS_MSC_IDE_CTLR)
         {
             /* Both IDE channels in native mode */
-            if ((PciConfig->ProgIf & PCIIDE_PROGIF_PRIMARY_CHANNEL_NATIVE_MODE) &&
-                (PciConfig->ProgIf & PCIIDE_PROGIF_SECONDARY_CHANNEL_NATIVE_MODE))
-            {
-                FdoExtension->Flags |= FDO_IN_NATIVE_MODE;
-            }
+            FdoExtension->InNativeMode =
+                (PciConfig->ProgIf & PCIIDE_PROGIF_PRIMARY_CHANNEL_NATIVE_MODE) &&
+                (PciConfig->ProgIf & PCIIDE_PROGIF_SECONDARY_CHANNEL_NATIVE_MODE);
         }
         else if (PciConfig->SubClass == PCI_SUBCLASS_MSC_RAID_CTLR)
         {
-            FdoExtension->Flags |= FDO_IN_NATIVE_MODE;
+            FdoExtension->InNativeMode = TRUE;
         }
     }
 
@@ -151,7 +144,7 @@ PciIdeXGetConfigurationInfo(
            FdoExtension->VendorId,
            FdoExtension->DeviceId,
            PciConfig->ProgIf,
-           !!(FdoExtension->Flags & FDO_IN_NATIVE_MODE));
+           FdoExtension->InNativeMode);
 
     return STATUS_SUCCESS;
 }
