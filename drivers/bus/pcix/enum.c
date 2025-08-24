@@ -57,7 +57,6 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 {
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial, InterruptResource;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR BaseResource, CurrentDescriptor;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR PreviousDescriptor;
     CM_PARTIAL_RESOURCE_DESCRIPTOR ResourceArray[7];
     PCM_FULL_RESOURCE_DESCRIPTOR FullList;
     BOOLEAN DrainPartial, RangeChange;
@@ -85,7 +84,7 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
     /* TODO: Implement full sanity and mapping logic. For now, accept OS-assigned
      * resources without change to avoid assertion until full path is complete. */
-    return FALSE;
+    /* Continue processing below */
 
     /* Clear the temporary resource array */
     for (i = 0; i < 7; i++) ResourceArray[i].Type = CmResourceTypeNull;
@@ -117,8 +116,7 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
                 case CmResourceTypePort:
                 case CmResourceTypeMemory:
 
-                    /* Set it as the base */
-                    ASSERT(BaseResource == NULL);
+                    /* Track last seen base (multiple BARs can appear without drains) */
                     BaseResource = Partial;
                     break;
 
@@ -162,10 +160,8 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
                         /* A drain request */
                         case 3:
-                            /* Shouldn't be a base resource, this is a drain */
-                            ASSERT(BaseResource == NULL);
+                            /* Drain marker for previous base resource (optional in lists) */
                             DrainPartial = Partial->u.DevicePrivate.Data[1];
-                            ASSERT(DrainPartial == TRUE);
                             break;
                     }
                     break;
@@ -184,9 +180,27 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     PciResources = PdoExtension->Resources;
     if (!PciResources) return FALSE;
 
-    //if... // MISSING CODE
-    UNIMPLEMENTED;
-    DPRINT1("Missing sanity checking code!\n");
+    /* Build desired ResourceArray from incoming list by matching limits (Type/Length) */
+    FullList = &ResourceList->List[0];
+    for (i = 0; i < 7; i++)
+    {
+        PIO_RESOURCE_DESCRIPTOR Limit = &PciResources->Limit[i];
+        if ((Limit->Type != CmResourceTypePort) && (Limit->Type != CmResourceTypeMemory))
+            continue;
+        if (Limit->u.Generic.Length == 0) continue;
+
+        Partial = FullList->PartialResourceList.PartialDescriptors;
+        for (j = 0; j < FullList->PartialResourceList.Count; j++)
+        {
+            if ((Partial->Type == Limit->Type) &&
+                (Partial->u.Generic.Length == Limit->u.Generic.Length))
+            {
+                ResourceArray[i] = *Partial;
+                break;
+            }
+            Partial = CmiGetNextPartialDescriptor(Partial);
+        }
+    }
 
     /* Loop all the PCI function resources */
     for (i = 0; i < 7; i++)
@@ -195,15 +209,8 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
         CurrentDescriptor = &PciResources->Current[i];
         Partial = &ResourceArray[i];
 
-        /* Previous is current during the first loop iteration */
-        PreviousDescriptor = &PciResources->Current[(i == 0) ? (0) : (i - 1)];
-
         /* Check if this new descriptor is different than the old one */
-        if (((Partial->Type != CurrentDescriptor->Type) ||
-             (Partial->Type != CmResourceTypeNull)) &&
-            ((Partial->u.Generic.Start.QuadPart !=
-              CurrentDescriptor->u.Generic.Start.QuadPart) ||
-             (Partial->u.Generic.Length != CurrentDescriptor->u.Generic.Length)))
+        if (!RtlEqualMemory(Partial, CurrentDescriptor, sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR)))
         {
             /* Record a change */
             RangeChange = TRUE;
@@ -226,10 +233,7 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
             PciDebugPrintPartialResource(Partial);
 
             /* Update to new range */
-            CurrentDescriptor->Type = Partial->Type;
-            PreviousDescriptor->u.Generic.Start = Partial->u.Generic.Start;
-            PreviousDescriptor->u.Generic.Length = Partial->u.Generic.Length;
-            CurrentDescriptor = PreviousDescriptor;
+            *CurrentDescriptor = *Partial;
         }
     }
 

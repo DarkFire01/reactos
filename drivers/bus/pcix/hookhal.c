@@ -28,14 +28,28 @@ PciTranslateBusAddress(IN INTERFACE_TYPE InterfaceType,
                        OUT PULONG AddressSpace,
                        OUT PPHYSICAL_ADDRESS TranslatedAddress)
 {
-    UNREFERENCED_PARAMETER(InterfaceType);
-    UNREFERENCED_PARAMETER(BusNumber);
-    UNREFERENCED_PARAMETER(AddressSpace);
+    /* Prefer HAL's original translator if available */
+    if (PcipSavedTranslateBusAddress)
+    {
+        return PcipSavedTranslateBusAddress(InterfaceType,
+                                            BusNumber,
+                                            BusAddress,
+                                            AddressSpace,
+                                            TranslatedAddress);
+    }
 
-    /* FIXME: Broken translation */
-    UNIMPLEMENTED;
-    TranslatedAddress->QuadPart = BusAddress.QuadPart;
-    return TRUE;
+    /* Fallback: identity map for memory, preserve IO space */
+    if (*AddressSpace == 0)
+    {
+        TranslatedAddress->QuadPart = BusAddress.QuadPart;
+        return TRUE;
+    }
+    else
+    {
+        /* I/O space: still pass through (legacy x86) */
+        TranslatedAddress->QuadPart = BusAddress.QuadPart;
+        return TRUE;
+    }
 }
 
 PPCI_PDO_EXTENSION
