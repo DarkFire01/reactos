@@ -577,8 +577,6 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
                 PCM_RESOURCE_LIST BootList = Descriptor;
                 PCM_FULL_RESOURCE_DESCRIPTOR Full;
                 PCM_PARTIAL_RESOURCE_LIST PartialList;
-                PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial;
-                ULONG i;
                 BOOLEAN FoundBus = FALSE;
 
                 if (BootList && BootList->Count > 0)
@@ -591,20 +589,11 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
                         FoundBus = TRUE;
                     }
 
+                    /* Some platforms may encode bus number ranges in partials when using IO resources,
+                     * but BootConfiguration uses CM_RESOURCE_LIST (assigned resources), which typically
+                     * doesn't carry BusNumber ranges for the root. We rely on Full->BusNumber. */
                     PartialList = &Full->PartialResourceList;
-                    Partial = PartialList->PartialDescriptors;
-                    for (i = 0; i < PartialList->Count; i++, Partial++)
-                    {
-                        if (Partial->Type == CmResourceTypeBusNumber)
-                        {
-                            FdoExtension->BaseBus = Partial->u.BusNumber.MinBusNumber;
-                            FoundBus = TRUE;
-                            DPRINT1("PCI Root Boot BusNumber: min=%lu max=%lu\n",
-                                    Partial->u.BusNumber.MinBusNumber,
-                                    Partial->u.BusNumber.MaxBusNumber);
-                            break;
-                        }
-                    }
+                    UNREFERENCED_PARAMETER(PartialList);
                 }
 
                 if (!FoundBus)

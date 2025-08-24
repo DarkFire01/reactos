@@ -22,7 +22,6 @@ PciGetDescriptionMessage(IN ULONG Identifier,
                          OUT PULONG Length)
 {
     PMESSAGE_RESOURCE_ENTRY Entry;
-    ULONG TextLength;
     PWCHAR Description, Buffer;
     ANSI_STRING MessageString;
     UNICODE_STRING UnicodeString;
@@ -40,36 +39,47 @@ PciGetDescriptionMessage(IN ULONG Identifier,
     /* Check if the resource data is Unicode or ANSI */
     if (Entry->Flags & MESSAGE_RESOURCE_UNICODE)
     {
-        /* Subtract one space for the end-of-message terminator */
-        TextLength = Entry->Length -
-                     FIELD_OFFSET(MESSAGE_RESOURCE_ENTRY, Text) -
-                     sizeof(WCHAR);
+        SIZE_T TotalBytes, CharCount, CopyChars;
+
+        /* Compute total characters in the message entry */
+        TotalBytes = Entry->Length - FIELD_OFFSET(MESSAGE_RESOURCE_ENTRY, Text);
+        CharCount = TotalBytes / sizeof(WCHAR);
 
         /* Grab the text */
         Description = (PWCHAR)Entry->Text;
 
-        /* Validate valid message length, ending with a newline character */
-        ASSERT(TextLength > 1);
-        ASSERT(Description[TextLength / sizeof(WCHAR)] == L'\n');
+        /* Trim trailing newline or NUL if present */
+        CopyChars = CharCount;
+        if (CopyChars && (Description[CopyChars - 1] == L'\n' ||
+                          Description[CopyChars - 1] == UNICODE_NULL))
+        {
+            CopyChars--;
+        }
 
-        /* Allocate the buffer to hold the message string */
-        Buffer = ExAllocatePoolWithTag(PagedPool, TextLength, 'BicP');
+        /* Allocate the buffer to hold the message string (+NUL) */
+        Buffer = ExAllocatePoolWithTag(PagedPool,
+                                       (CopyChars + 1) * sizeof(WCHAR),
+                                       'BicP');
         if (!Buffer) return NULL;
 
-        /* Copy the message, minus the newline character, and terminate it */
-        RtlCopyMemory(Buffer, Entry->Text, TextLength - 1);
-        Buffer[TextLength / sizeof(WCHAR)] = UNICODE_NULL;
+        /* Copy the message and terminate it */
+        if (CopyChars) RtlCopyMemory(Buffer, Entry->Text, CopyChars * sizeof(WCHAR));
+        Buffer[CopyChars] = UNICODE_NULL;
 
-        /* Return the length to the caller, minus the terminating NULL */
-        if (Length) *Length = TextLength - 1;
+        /* Return the byte length to the caller (excluding the terminator) */
+        if (Length) *Length = (ULONG)(CopyChars * sizeof(WCHAR));
     }
     else
     {
         /* Initialize the entry as a string */
         RtlInitAnsiString(&MessageString, (PCHAR)Entry->Text);
 
-        /* Remove the newline character */
-        MessageString.Length -= sizeof(CHAR);
+        /* Remove the trailing newline if present */
+        if (MessageString.Length &&
+            ((PCHAR)Entry->Text)[MessageString.Length - 1] == '\n')
+        {
+            MessageString.Length -= sizeof(CHAR);
+        }
 
         /* Convert it to Unicode */
         RtlAnsiStringToUnicodeString(&UnicodeString, &MessageString, TRUE);

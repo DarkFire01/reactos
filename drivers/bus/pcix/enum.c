@@ -1749,9 +1749,17 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
             /* Find description for this device for the debugger's sake */
             DescriptionText = PciGetDeviceDescriptionMessage(PciData->BaseClass,
                                                              PciData->SubClass);
-            DPRINT1("Device Description \"%S\".\n",
-                    DescriptionText ? DescriptionText : L"(NULL)");
-            if (DescriptionText) ExFreePoolWithTag(DescriptionText, 0);
+            if (DescriptionText)
+            {
+                SIZE_T len = wcslen(DescriptionText);
+                if (len && DescriptionText[len - 1] == L'\n') DescriptionText[len - 1] = L'\0';
+                DPRINT1("Device Description \"%S\".\n", DescriptionText);
+                ExFreePoolWithTag(DescriptionText, 0);
+            }
+            else
+            {
+                DPRINT1("Device Description \"(NULL)\".\n");
+            }
 
             /* Check if there is an ACPI Watchdog Table */
             if (WdTable)
