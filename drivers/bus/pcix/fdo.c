@@ -451,6 +451,39 @@ PciNormalizeLegacyInterrupts(IN OUT PIO_RESOURCE_REQUIREMENTS_LIST Reqs)
     }
 }
 
+static
+VOID
+PciClampLegacyPortDescriptors(IN OUT PIO_RESOURCE_REQUIREMENTS_LIST Reqs)
+{
+    ULONG alts = Reqs->AlternativeLists;
+    PUCHAR ptr = (PUCHAR)&Reqs->List[0];
+    ULONG i;
+    for (i = 0; i < alts; i++)
+    {
+        PIO_RESOURCE_LIST Alt = (PIO_RESOURCE_LIST)ptr;
+        ULONG d;
+        for (d = 0; d < Alt->Count; d++)
+        {
+            PIO_RESOURCE_DESCRIPTOR Desc = &Alt->Descriptors[d];
+            if (Desc->Type == CmResourceTypePort)
+            {
+                ULONGLONG min = Desc->u.Port.MinimumAddress.QuadPart;
+                ULONGLONG max = Desc->u.Port.MaximumAddress.QuadPart;
+                if (min < 0x1000)
+                {
+                    Desc->u.Port.MinimumAddress.QuadPart = 0x1000;
+                    if (max < 0x1000)
+                    {
+                        /* Keep range valid: collapse to 0x1000 */
+                        Desc->u.Port.MaximumAddress.QuadPart = 0x1000;
+                    }
+                }
+            }
+        }
+        ptr += FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) + sizeof(IO_RESOURCE_DESCRIPTOR) * Alt->Count;
+    }
+}
+
 //TODO: HACK:
 NTSTATUS
 NTAPI
@@ -472,6 +505,8 @@ PciFdoIrpFilterResourceRequirements(IN PIRP Irp,
     }
     /* Normalize legacy INTx on all platforms; limit to PIC range on PIC */
     PciNormalizeLegacyInterrupts(Reqs);
+    /* Clamp low I/O port windows to avoid forwarding 0x0-0x1000 through bridges */
+    PciClampLegacyPortDescriptors(Reqs);
 
     Irp->IoStatus.Status = STATUS_SUCCESS;
     return STATUS_SUCCESS;

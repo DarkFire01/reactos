@@ -329,6 +329,12 @@ PPBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
                 DPRINT1("Bridge I/O Base and Limit: %lx %lx\n",
                          Base.LowPart, Limit.LowPart);
 
+                /* Do not forward ISA low ports through this bridge */
+                if (Base.LowPart < 0x1000)
+                {
+                    Base.LowPart = 0x1000;
+                }
+
                 /* Do we have any I/O Port data? */
                 if (!(Base.LowPart) && (Current->u.type1.IOLimit))
                 {
