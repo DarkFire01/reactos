@@ -724,16 +724,22 @@ HalpGetISAFixedPCIIrq(IN PBUS_HANDLER BusHandler,
     RtlZeroMemory(*Range, sizeof(SUPPORTED_RANGE));
     (*Range)->Base = 1;
 
-    /* If the PCI device has no IRQ, nothing to do */
-    if (!PciData.u.type0.InterruptPin) return STATUS_SUCCESS;
+    /* If the PCI device has no IRQ pin, return a benign PIC range */
+    if (!PciData.u.type0.InterruptPin)
+    {
+        (*Range)->Base = 1;
+        (*Range)->Limit = 15;
+        return STATUS_SUCCESS;
+    }
 
     /* FIXME: The PCI IRQ Routing Miniport should be called */
 
-    /* Also if the INT# seems bogus, nothing to do either */
+    /* If the INT# is bogus, return default PIC range */
     if ((PciData.u.type0.InterruptLine == 0) ||
         (PciData.u.type0.InterruptLine == 255))
     {
-        /* Fake success */
+        (*Range)->Base = 1;
+        (*Range)->Limit = 15;
         return STATUS_SUCCESS;
     }
 
@@ -778,15 +784,62 @@ HalpAdjustPCIResourceList(IN PBUS_HANDLER BusHandler,
         UNIMPLEMENTED_DBGBREAK("/PCILOCK boot switch is not yet supported.");
     }
 #endif
-    /* Now create the correct resource list based on the supported bus ranges */
-#if 0
-    Status = HaliAdjustResourceListRange(BusHandler->BusAddresses,
-                                         Interrupt,
-                                         pResourceList);
-#else
-    DPRINT1("HAL: No PCI Resource Adjustment done! Hardware may malfunction\n");
-    Status = STATUS_SUCCESS;
-#endif
+    /* Now adjust interrupt descriptors to the supported range on this platform */
+    if (NT_SUCCESS(Status) && (*pResourceList))
+    {
+        PIO_RESOURCE_REQUIREMENTS_LIST Reqs = *pResourceList;
+        PUCHAR Ptr;
+        ULONG i;
+        ULONG supBase = (ULONG)Interrupt->Base;
+        ULONG supLimit = (ULONG)(Interrupt->Limit ? Interrupt->Limit : Interrupt->Base);
+
+        /* If the supported range is invalid, default to PIC 1..15 */
+        if ((supBase == 0) || (supBase > supLimit))
+        {
+            supBase = 1;
+            supLimit = 15;
+        }
+
+        Ptr = (PUCHAR)&Reqs->List[0];
+        for (i = 0; i < Reqs->AlternativeLists; i++)
+        {
+            PIO_RESOURCE_LIST Alt = (PIO_RESOURCE_LIST)Ptr;
+            ULONG d;
+            for (d = 0; d < Alt->Count; d++)
+            {
+                PIO_RESOURCE_DESCRIPTOR Desc = &Alt->Descriptors[d];
+                if (Desc->Type == CmResourceTypeInterrupt)
+                {
+                    ULONG reqMin = Desc->u.Interrupt.MinimumVector;
+                    ULONG reqMax = Desc->u.Interrupt.MaximumVector;
+                    ULONG adjMin, adjMax;
+
+                    /* Intersect requested range with supported range */
+                    adjMin = (reqMin > supBase) ? reqMin : supBase;
+                    adjMax = (reqMax < supLimit) ? reqMax : supLimit;
+                    if (adjMin > adjMax)
+                    {
+                        /* No overlap: clamp to supported range */
+                        adjMin = supBase;
+                        adjMax = supLimit;
+                    }
+
+                    Desc->ShareDisposition = CmResourceShareShared;
+                    Desc->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+                    Desc->u.Interrupt.MinimumVector = adjMin;
+                    Desc->u.Interrupt.MaximumVector = adjMax;
+                }
+            }
+
+            Ptr += FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) + sizeof(IO_RESOURCE_DESCRIPTOR) * Alt->Count;
+        }
+
+        Status = STATUS_SUCCESS;
+    }
+    else
+    {
+        Status = STATUS_SUCCESS;
+    }
 
     /* Return to caller */
     ExFreePool(Interrupt);
