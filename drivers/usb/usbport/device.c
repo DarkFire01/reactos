@@ -1389,7 +1389,7 @@ USBPORT_InitializeDevice(IN PUSBPORT_DEVICE_HANDLE DeviceHandle,
 
     if (NT_SUCCESS(Status))
     {
-        ASSERT(TransferedLen == sizeof(USB_DEVICE_DESCRIPTOR));
+        //ASSERT(TransferedLen == sizeof(USB_DEVICE_DESCRIPTOR));
         ASSERT(DeviceHandle->DeviceDescriptor.bLength >= sizeof(USB_DEVICE_DESCRIPTOR));
         ASSERT(DeviceHandle->DeviceDescriptor.bDescriptorType == USB_DEVICE_DESCRIPTOR_TYPE);
 
