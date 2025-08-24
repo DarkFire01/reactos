@@ -573,33 +573,60 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
             }
             else
             {
-                /* Root PDO in ReactOS does not assign boot resources */
-                UNIMPLEMENTED_DBGBREAK("Encountered during setup\n");
-                Descriptor = NULL;
-            }
+                /* Parse BootConfiguration to initialize root bus base */
+                PCM_RESOURCE_LIST BootList = Descriptor;
+                PCM_FULL_RESOURCE_DESCRIPTOR Full;
+                PCM_PARTIAL_RESOURCE_LIST PartialList;
+                PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial;
+                ULONG i;
+                BOOLEAN FoundBus = FALSE;
 
-            if (Descriptor)
-            {
-                /* Root PDO in ReactOS does not assign boot resources */
-                UNIMPLEMENTED_DBGBREAK();
-            }
-            else
-            {
-                /* Default configuration isn't the normal path on Windows */
-                if (PciBreakOnDefault)
+                if (BootList && BootList->Count > 0)
                 {
-                    /* If a second bus is found and there's still no data, crash */
-                    KeBugCheckEx(PCI_BUS_DRIVER_INTERNAL,
-                                 0xDEAD0010u,
-                                 (ULONG_PTR)DeviceObject,
-                                 0,
-                                 0);
+                    Full = &BootList->List[0];
+                    /* Prefer BusNumber from descriptor header if present */
+                    if (Full->InterfaceType == PCIBus)
+                    {
+                        FdoExtension->BaseBus = Full->BusNumber;
+                        FoundBus = TRUE;
+                    }
+
+                    PartialList = &Full->PartialResourceList;
+                    Partial = PartialList->PartialDescriptors;
+                    for (i = 0; i < PartialList->Count; i++, Partial++)
+                    {
+                        if (Partial->Type == CmResourceTypeBusNumber)
+                        {
+                            FdoExtension->BaseBus = Partial->u.BusNumber.MinBusNumber;
+                            FoundBus = TRUE;
+                            DPRINT1("PCI Root Boot BusNumber: min=%lu max=%lu\n",
+                                    Partial->u.BusNumber.MinBusNumber,
+                                    Partial->u.BusNumber.MaxBusNumber);
+                            break;
+                        }
+                    }
                 }
 
-                /* Warn that a default configuration will be used, and set bus 0 */
-                DPRINT1("PCI   Will use default configuration.\n");
-                PciBreakOnDefault = TRUE;
-                FdoExtension->BaseBus = 0;
+                if (!FoundBus)
+                {
+                    /* Default configuration isn't the normal path on Windows */
+                    if (PciBreakOnDefault)
+                    {
+                        /* If a second bus is found and there's still no data, crash */
+                        KeBugCheckEx(PCI_BUS_DRIVER_INTERNAL,
+                                     0xDEAD0010u,
+                                     (ULONG_PTR)DeviceObject,
+                                     0,
+                                     0);
+                    }
+
+                    /* Warn that a default configuration will be used, and set bus 0 */
+                    DPRINT1("PCI   Will use default configuration.\n");
+                    PciBreakOnDefault = TRUE;
+                    FdoExtension->BaseBus = 0;
+                }
+
+                if (Descriptor) ExFreePoolWithTag(Descriptor, 0);
             }
 
             /* This is the root bus */
