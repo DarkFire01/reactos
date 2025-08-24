@@ -660,7 +660,8 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
         Desc = &List->Descriptors[List->Count++];
         RtlZeroMemory(Desc, sizeof(*Desc));
         Desc->Type = CmResourceTypeInterrupt;
-        Desc->ShareDisposition = CmResourceShareDeviceExclusive;
+        /* Legacy INTx are sharable, level-sensitive */
+        Desc->ShareDisposition = CmResourceShareShared;
         Desc->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
         Desc->u.Interrupt.MinimumVector = 0;
         Desc->u.Interrupt.MaximumVector = 0xFF; /* legacy PIC/APIC range */

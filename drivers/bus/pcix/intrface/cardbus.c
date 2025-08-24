@@ -30,6 +30,41 @@ PCI_INTERFACE PciCardbusPrivateInterface =
 
 /* FUNCTIONS ******************************************************************/
 
+static VOID NTAPI PciInterface_RefDereference_NoOp(IN PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+}
+
+NTSTATUS
+NTAPI
+PciCardbus_Add(
+    IN PDEVICE_OBJECT DeviceObject,
+    IN OUT PVOID *DeviceContext)
+{
+    *DeviceContext = DeviceObject;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NTAPI
+PciCardbus_Delete(
+    IN PVOID DeviceContext)
+{
+    UNREFERENCED_PARAMETER(DeviceContext);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NTAPI
+PciCardbus_DispatchPnp(
+    IN PVOID DeviceContext,
+    IN PIRP Irp)
+{
+    PDEVICE_OBJECT DeviceObject = (PDEVICE_OBJECT)DeviceContext;
+    IoSkipCurrentIrpStackLocation(Irp);
+    return IoCallDriver(DeviceObject, Irp);
+}
+
 VOID
 NTAPI
 Cardbus_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
@@ -113,16 +148,23 @@ pcicbintrf_Constructor(IN PVOID DeviceExtension,
                        IN USHORT Size,
                        IN PINTERFACE Interface)
 {
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PPCI_PDO_EXTENSION PdoExtension = (PPCI_PDO_EXTENSION)DeviceExtension;
+    PPCI_CARDBUS_INTERFACE_PRIVATE CbIf = (PPCI_CARDBUS_INTERFACE_PRIVATE)Interface;
     UNREFERENCED_PARAMETER(Instance);
     UNREFERENCED_PARAMETER(InterfaceData);
-    UNREFERENCED_PARAMETER(Version);
-    UNREFERENCED_PARAMETER(Size);
-    UNREFERENCED_PARAMETER(Interface);
 
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_IMPLEMENTED;
+    ASSERT_PDO(PdoExtension);
+    if (Version != PCI_CB_INTRF_VERSION) return STATUS_NOINTERFACE;
+    if (Size < sizeof(PCI_CARDBUS_INTERFACE_PRIVATE)) return STATUS_INFO_LENGTH_MISMATCH;
+
+    CbIf->Context = PdoExtension;
+    CbIf->InterfaceReference = (PINTERFACE_REFERENCE)PciInterface_RefDereference_NoOp;
+    CbIf->InterfaceDereference = (PINTERFACE_DEREFERENCE)PciInterface_RefDereference_NoOp;
+    CbIf->DriverObject = PdoExtension->ParentFdoExtension->FunctionalDeviceObject->DriverObject;
+    CbIf->AddCardBus = (PCARDBUSADD)PciCardbus_Add;
+    CbIf->DeleteCardBus = (PCARDBUSDELETE)PciCardbus_Delete;
+    CbIf->DispatchPnp = (PCARDBUSPCIDISPATCH)PciCardbus_DispatchPnp;
+    return STATUS_SUCCESS;
 }
 
 /* EOF */

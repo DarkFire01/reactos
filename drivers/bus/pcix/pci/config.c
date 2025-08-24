@@ -40,8 +40,8 @@ PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
         if (Length) InterruptLine = PciInterruptLine;
     }
 
-    /* Either keep the original interrupt line, or the one on the master bus */
-    return InterruptLine ? PdoExtension->RawInterruptLine : InterruptLine;
+    /* Prefer bus-provided (parent) value when present; otherwise use raw */
+    return InterruptLine ? InterruptLine : PdoExtension->RawInterruptLine;
 }
 
 VOID

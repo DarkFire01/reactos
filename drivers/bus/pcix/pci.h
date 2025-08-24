@@ -1888,6 +1888,32 @@ PciPdoIrpFilterResourceRequirements(IN PIRP Irp,
                                     IN PIO_STACK_LOCATION IoStackLocation,
                                     IN PPCI_PDO_EXTENSION DeviceExtension);
 
+VOID
+NTAPI
+PciInterface_RefDereference_NoOp(
+    IN PVOID Context
+);
+
+NTSTATUS
+NTAPI
+PciCardbus_Add(
+    IN PDEVICE_OBJECT DeviceObject,
+    IN OUT PVOID *DeviceContext
+);
+
+NTSTATUS
+NTAPI
+PciCardbus_Delete(
+    IN PVOID DeviceContext
+);
+
+NTSTATUS
+NTAPI
+PciCardbus_DispatchPnp(
+    IN PVOID DeviceContext,
+    IN PIRP Irp
+);
+
 //
 // External Resources
 //
