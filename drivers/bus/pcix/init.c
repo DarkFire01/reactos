@@ -678,9 +678,56 @@ NTSTATUS
 NTAPI
 PciGetDebugPorts(IN HANDLE DebugKey)
 {
-    UNREFERENCED_PARAMETER(DebugKey);
-    /* This function is not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
+    NTSTATUS Status;
+    PKEY_VALUE_PARTIAL_INFORMATION ValueInfo;
+    UNICODE_STRING ValueName;
+    ULONG Bytes;
+    ULONG ComBase;
+
+    /* Optional registry-driven debug port hints used only for logging today */
+    ValueInfo = ExAllocatePoolWithTag(PagedPool,
+                                      sizeof(KEY_VALUE_PARTIAL_INFORMATION) + 256,
+                                      PCI_POOL_TAG);
+    if (!ValueInfo) return STATUS_INSUFFICIENT_RESOURCES;
+
+    /* Com/debug port base (DWORD) */
+    RtlInitUnicodeString(&ValueName, L"DebugComPortBase");
+    Status = ZwQueryValueKey(DebugKey,
+                             &ValueName,
+                             KeyValuePartialInformation,
+                             ValueInfo,
+                             sizeof(KEY_VALUE_PARTIAL_INFORMATION) + 256,
+                             &Bytes);
+    if (NT_SUCCESS(Status) &&
+        ValueInfo->Type == REG_DWORD &&
+        ValueInfo->DataLength == sizeof(ULONG))
+    {
+        ComBase = *(PULONG)ValueInfo->Data;
+        DPRINT1("PCI: Debug COM base: 0x%lx\n", ComBase);
+        /* HACK: Reserve IO range [base, base+7] so arbiters don't allocate over KD */
+        RtlAddRange(&PciIsaBitExclusionList,
+                    ComBase,
+                    ComBase + 0x7,
+                    0,
+                    RTL_RANGE_LIST_ADD_IF_CONFLICT,
+                    NULL,
+                    NULL);
+    }
+
+    /* Net KD info (STRING) */
+    RtlInitUnicodeString(&ValueName, L"KdNetTarget");
+    Status = ZwQueryValueKey(DebugKey,
+                             &ValueName,
+                             KeyValuePartialInformation,
+                             ValueInfo,
+                             sizeof(KEY_VALUE_PARTIAL_INFORMATION) + 256,
+                             &Bytes);
+    if (NT_SUCCESS(Status) && ValueInfo->Type == REG_SZ)
+    {
+        DPRINT1("PCI: KDNET target: %S\n", (PWCH)ValueInfo->Data);
+    }
+
+    ExFreePoolWithTag(ValueInfo, 0);
     return STATUS_SUCCESS;
 }
 

@@ -54,7 +54,7 @@ if(MSVC)
 else()
     add_custom_command(
         TARGET pci POST_BUILD
-        COMMAND native-pefixup --section:.rsrc,!D $<TARGET_FILE:pcix>
+        COMMAND native-pefixup --section:.rsrc,!D $<TARGET_FILE:pci>
         VERBATIM)
 endif()
 add_importlibs(pci ntoskrnl hal)

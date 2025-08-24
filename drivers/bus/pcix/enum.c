@@ -86,8 +86,8 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
      * resources without change to avoid assertion until full path is complete. */
     /* Continue processing below */
 
-    /* Clear the temporary resource array */
-    for (i = 0; i < 7; i++) ResourceArray[i].Type = CmResourceTypeNull;
+    /* Clear the temporary resource array fully */
+    RtlZeroMemory(ResourceArray, sizeof(ResourceArray));
 
     /* Loop the full resource descriptor */
     FullList = ResourceList->List;
@@ -210,7 +210,8 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
         Partial = &ResourceArray[i];
 
         /* Check if this new descriptor is different than the old one */
-        if (!RtlEqualMemory(Partial, CurrentDescriptor, sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR)))
+        if ((Partial->Type != CmResourceTypeNull) &&
+            !RtlEqualMemory(Partial, CurrentDescriptor, sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR)))
         {
             /* Record a change */
             RangeChange = TRUE;
@@ -2070,26 +2071,34 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
                 /* Check if this is a capability that should be dumped */
                 if (Size)
                 {
-                    /* Read the whole capability data */
-                    TempOffset = PciReadDeviceCapability(NewExtension,
-                                                         CapOffset,
-                                                         CapHeader.CapabilityID,
-                                                         &CapHeader,
-                                                         Size);
-
-                    if (TempOffset != CapOffset)
+                    PUCHAR CapBuf;
+                    /* Allocate a temporary buffer large enough for this capability */
+                    CapBuf = ExAllocatePoolWithTag(NonPagedPool, Size, PCI_POOL_TAG);
+                    if (CapBuf)
                     {
-                        /* Again, a strange issue that shouldn't be seen */
-                        DPRINT1("- Failed to read capability data. ***\n");
-                        ASSERT(TempOffset == CapOffset);
+                        /* Read the whole capability data */
+                        TempOffset = PciReadDeviceCapability(NewExtension,
+                                                             CapOffset,
+                                                             CapHeader.CapabilityID,
+                                                             (PPCI_CAPABILITIES_HEADER)CapBuf,
+                                                             Size);
+
+                        if (TempOffset != CapOffset)
+                        {
+                            /* Again, a strange issue that shouldn't be seen */
+                            DPRINT1("- Failed to read capability data. ***\n");
+                            ASSERT(TempOffset == CapOffset);
+                        }
+
+                        /* Dump this capability */
+                        DPRINT1("CAP @%02x ID %02x (%s)\n",
+                                CapOffset, CapHeader.CapabilityID, Name);
+                        for (i = 0; i < Size; i += 2)
+                            DPRINT1("  %04x\n", *(PUSHORT)((ULONG_PTR)CapBuf + i));
+
+                        ExFreePoolWithTag(CapBuf, 0);
                     }
                 }
-
-                /* Dump this capability */
-                DPRINT1("CAP @%02x ID %02x (%s)\n",
-                        CapOffset, CapHeader.CapabilityID, Name);
-                for (i = 0; i < Size; i += 2)
-                    DPRINT1("  %04x\n", *(PUSHORT)((ULONG_PTR)&CapHeader + i));
                 DPRINT1("\n");
 
                 /* Early MSI/MSI-X enable policy (do not enable here; just note capability) */

@@ -437,7 +437,9 @@ PciPdoIrpFilterResourceRequirements(IN PIRP Irp,
                                     IN PPCI_PDO_EXTENSION DeviceExtension)
 {
     PIO_RESOURCE_REQUIREMENTS_LIST InReqs, OutReqs;
-    SIZE_T outSize;
+    SIZE_T OutSize, AltSize;
+    ULONG i;
+    PUCHAR AppendPtr;
     PAGED_CODE();
 
     UNREFERENCED_PARAMETER(Irp);
@@ -457,42 +459,135 @@ PciPdoIrpFilterResourceRequirements(IN PIRP Irp,
         return Irp->IoStatus.Status;
     }
 
-    /* Build a new requirements list with one extra alternative */
-    outSize = InReqs->ListSize + sizeof(IO_RESOURCE_LIST);
-    OutReqs = ExAllocatePoolWithTag(PagedPool, outSize, PCI_POOL_TAG);
+    /*
+     * Windows duplicates EACH alternative list and creates a message-capable
+     * variant. If an alternative lacks an interrupt descriptor, one is added.
+     * Compute the exact output size first.
+     */
+    OutSize = InReqs->ListSize;
+    {
+        PIO_RESOURCE_LIST SrcAlt;
+        PUCHAR Ptr = (PUCHAR)&InReqs->List[0];
+        for (i = 0; i < InReqs->AlternativeLists; i++)
+        {
+            BOOLEAN HasInterrupt = FALSE;
+            ULONG d;
+            SrcAlt = (PIO_RESOURCE_LIST)Ptr;
+            for (d = 0; d < SrcAlt->Count; d++)
+            {
+                if (SrcAlt->Descriptors[d].Type == CmResourceTypeInterrupt)
+                {
+                    HasInterrupt = TRUE;
+                    break;
+                }
+            }
+
+            /* Size of a copy of this alternative */
+            AltSize = FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) + sizeof(IO_RESOURCE_DESCRIPTOR) * SrcAlt->Count;
+
+            if (HasInterrupt)
+            {
+                /* We'll duplicate the list 1:1 and convert INTx->MSI */
+                OutSize += AltSize;
+            }
+            else
+            {
+                /* We'll duplicate and APPEND one MSI descriptor */
+                OutSize += FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) + sizeof(IO_RESOURCE_DESCRIPTOR) * (SrcAlt->Count + 1);
+            }
+
+            /* Advance to next alternative in the input */
+            Ptr += AltSize;
+        }
+    }
+
+    OutReqs = ExAllocatePoolWithTag(PagedPool, OutSize, PCI_POOL_TAG);
     if (!OutReqs)
     {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlZeroMemory(OutReqs, outSize);
-    /* Copy header and existing alternatives */
+    /* Copy existing blob first */
     RtlCopyMemory(OutReqs, InReqs, InReqs->ListSize);
 
-    /* Append a message-interrupt alternative cloned from the first list */
-    OutReqs->AlternativeLists = InReqs->AlternativeLists + 1;
-    OutReqs->ListSize = (ULONG)outSize;
+    /* We will append the new alternatives after the original content */
+    AppendPtr = (PUCHAR)OutReqs + InReqs->ListSize;
 
+    /* Recompute and append per-alternative MSI variants */
     {
-        PIO_RESOURCE_LIST base = &InReqs->List[0];
-        PIO_RESOURCE_LIST alt = &OutReqs->List[InReqs->AlternativeLists];
-        PIO_RESOURCE_LIST clone;
-        clone = PciDuplicateIoResourceList(base);
-        if (!clone)
+        PIO_RESOURCE_LIST SrcAlt;
+        PUCHAR Ptr = (PUCHAR)&InReqs->List[0];
+        ULONG NewAltCount = InReqs->AlternativeLists;
+        for (i = 0; i < InReqs->AlternativeLists; i++)
         {
-            ExFreePoolWithTag(OutReqs, 0);
-            return STATUS_INSUFFICIENT_RESOURCES;
+            ULONG d;
+            LONG IntIndex = -1;
+            SrcAlt = (PIO_RESOURCE_LIST)Ptr;
+
+            /* Find first interrupt descriptor, if any */
+            for (d = 0; d < SrcAlt->Count; d++)
+            {
+                if (SrcAlt->Descriptors[d].Type == CmResourceTypeInterrupt)
+                {
+                    IntIndex = (LONG)d;
+                    break;
+                }
+            }
+
+            if (IntIndex >= 0)
+            {
+                /* Duplicate this alternative and convert INTx -> MSI */
+                PIO_RESOURCE_LIST DstAlt;
+                AltSize = FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) + sizeof(IO_RESOURCE_DESCRIPTOR) * SrcAlt->Count;
+                DstAlt = (PIO_RESOURCE_LIST)AppendPtr;
+                RtlCopyMemory(DstAlt, SrcAlt, AltSize);
+
+                /* Make the copy advertise message-signaled interrupt */
+                DstAlt->Descriptors[IntIndex].ShareDisposition = CmResourceShareDeviceExclusive;
+                DstAlt->Descriptors[IntIndex].Flags = CM_RESOURCE_INTERRUPT_MESSAGE;
+                DstAlt->Descriptors[IntIndex].u.Interrupt.MinimumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
+                DstAlt->Descriptors[IntIndex].u.Interrupt.MaximumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
+                DstAlt->Descriptors[IntIndex].u.Interrupt.AffinityPolicy = IrqPolicyMachineDefault;
+                DstAlt->Descriptors[IntIndex].u.Interrupt.PriorityPolicy = IrqPriorityUndefined;
+                DstAlt->Descriptors[IntIndex].u.Interrupt.TargetedProcessors = 0;
+
+                AppendPtr += AltSize;
+                NewAltCount += 1;
+            }
+            else
+            {
+                /* Duplicate and append a new MSI descriptor */
+                PIO_RESOURCE_LIST DstAlt;
+                AltSize = FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) + sizeof(IO_RESOURCE_DESCRIPTOR) * (SrcAlt->Count + 1);
+                DstAlt = (PIO_RESOURCE_LIST)AppendPtr;
+                RtlZeroMemory(DstAlt, AltSize);
+                DstAlt->Version = SrcAlt->Version;
+                DstAlt->Revision = SrcAlt->Revision;
+                DstAlt->Count = SrcAlt->Count;
+                if (SrcAlt->Count)
+                {
+                    RtlCopyMemory(DstAlt->Descriptors, SrcAlt->Descriptors, sizeof(IO_RESOURCE_DESCRIPTOR) * SrcAlt->Count);
+                }
+                /* Append MSI */
+                PciAppendMessageInterruptDescriptor(DstAlt);
+
+                AppendPtr += AltSize;
+                NewAltCount += 1;
+            }
+
+            /* Advance to next source alternative */
+            Ptr += FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) + sizeof(IO_RESOURCE_DESCRIPTOR) * SrcAlt->Count;
         }
-        /* Place clone at end of OutReqs */
-        *alt = *clone; /* structure copy; pointer adjust below */
-        /* The structure contains a flexible array; fix Count and then append message descriptor */
-        PciAppendMessageInterruptDescriptor(alt);
-        ExFreePoolWithTag(clone, 0);
+
+        OutReqs->AlternativeLists = NewAltCount;
+        OutReqs->ListSize = (ULONG)OutSize;
     }
 
-    /* Replace the IRP information pointer */
+    /* Replace the IRP information pointer, free the original */
     Irp->IoStatus.Information = (ULONG_PTR)OutReqs;
     Irp->IoStatus.Status = STATUS_SUCCESS;
+
+    ExFreePoolWithTag(InReqs, 0);
     return STATUS_SUCCESS;
 }
 
