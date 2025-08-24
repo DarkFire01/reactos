@@ -14,8 +14,8 @@
  * The CSR_DBG macro is defined for building CSR Servers
  * with extended debugging information.
  */
-#if 0
-#define CSR_DBG
+#if DBG
+//#define CSR_DBG
 #endif
 
 #include "csrmsg.h"
