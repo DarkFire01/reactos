@@ -1888,6 +1888,10 @@ PciPdoIrpFilterResourceRequirements(IN PIRP Irp,
                                     IN PIO_STACK_LOCATION IoStackLocation,
                                     IN PPCI_PDO_EXTENSION DeviceExtension);
 
+/* Global legacy exclusion lists (defined in utils.c) */
+extern RTL_RANGE_LIST PciIsaBitExclusionList;
+extern RTL_RANGE_LIST PciVgaAndIsaBitExclusionList;
+
 VOID
 NTAPI
 PciInterface_RefDereference_NoOp(
