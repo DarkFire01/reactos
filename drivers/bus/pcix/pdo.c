@@ -239,7 +239,7 @@ PciPdoIrpRemoveDevice(IN PIRP Irp,
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
+ //   UNIMPLEMENTED_DBGBREAK();
     return STATUS_NOT_SUPPORTED;
 }
 
@@ -253,7 +253,7 @@ PciPdoIrpCancelRemoveDevice(IN PIRP Irp,
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
+//    UNIMPLEMENTED_DBGBREAK();
     return STATUS_NOT_SUPPORTED;
 }
 

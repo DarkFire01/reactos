@@ -1900,6 +1900,27 @@ PciPdoIrpFilterResourceRequirements(IN PIRP Irp,
 extern RTL_RANGE_LIST PciIsaBitExclusionList;
 extern RTL_RANGE_LIST PciVgaAndIsaBitExclusionList;
 
+/* KD debugging device discovery (KDNET/Serial) */
+typedef struct _PCI_DEBUG_DEVICE
+{
+    ULONG BusNumber;
+    UCHAR DeviceNumber;
+    UCHAR FunctionNumber;
+    BOOLEAN InUse;
+} PCI_DEBUG_DEVICE, *PPCI_DEBUG_DEVICE;
+
+extern BOOLEAN PciHasDebuggingDevice;
+extern PCI_DEBUG_DEVICE PciDebuggingDevice[2];
+VOID
+NTAPI
+PciLocateKdDevices(VOID);
+BOOLEAN
+NTAPI
+PciIsDebuggingSlot(
+    IN ULONG BusNumber,
+    IN PCI_SLOT_NUMBER Slot
+    );
+
 VOID
 NTAPI
 PciInterface_RefDereference_NoOp(

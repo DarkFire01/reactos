@@ -299,6 +299,17 @@ Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
         Current = &Resources->Current[i];
         if (Current->Type == CmResourceTypeNull) continue;
 
+        /* Do not reprogram BARs for KD debugging device (e.g. KDNET) */
+        if (PciIsDebuggingSlot(PdoExtension->ParentFdoExtension->BaseBus, PdoExtension->Slot))
+        {
+            DPRINT1("PCI: Skipping BAR%lu reprogramming for KD debug device %02x:%02x.%x\n",
+                    i,
+                    PdoExtension->Slot.u.bits.DeviceNumber,
+                    PdoExtension->Slot.u.bits.FunctionNumber,
+                    0);
+            continue;
+        }
+
         barOffset = FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.BaseAddresses) + (i * sizeof(ULONG));
         origBar = PciData->u.type0.BaseAddresses[i];
 
@@ -341,13 +352,26 @@ Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     Current = &Resources->Current[PCI_TYPE0_ADDRESSES];
     if (Current->Type != CmResourceTypeNull)
     {
+        if (PciIsDebuggingSlot(PdoExtension->ParentFdoExtension->BaseBus, PdoExtension->Slot))
+        {
+            DPRINT1("PCI: Skipping ROM BAR programming for KD debug device %02x:%02x.%x\n",
+                    PdoExtension->Slot.u.bits.DeviceNumber,
+                    PdoExtension->Slot.u.bits.FunctionNumber,
+                    0);
+        }
+        else
+        {
         ULONG rom = (Current->u.Memory.Start.LowPart & PCI_ADDRESS_ROM_ADDRESS_MASK) | PCI_ROMADDRESS_ENABLED;
         ULONG romOffset = FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.ROMBaseAddress);
         PciWriteDeviceConfig(PdoExtension, &rom, romOffset, sizeof(ULONG));
+        }
     }
 
     /* Finally, enable requested decodes (IO/MEM/BUSMASTER) */
-    PciDecodeEnable(PdoExtension, TRUE, &PdoExtension->CommandEnables);
+    if (!PciIsDebuggingSlot(PdoExtension->ParentFdoExtension->BaseBus, PdoExtension->Slot))
+    {
+        PciDecodeEnable(PdoExtension, TRUE, &PdoExtension->CommandEnables);
+    }
 }
 
 /* EOF */

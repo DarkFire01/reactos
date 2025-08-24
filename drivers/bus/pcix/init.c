@@ -704,8 +704,15 @@ PciGetDebugPorts(IN HANDLE DebugKey)
     {
         ComBase = *(PULONG)ValueInfo->Data;
         DPRINT1("PCI: Debug COM base: 0x%lx\n", ComBase);
-        /* HACK: Reserve IO range [base, base+7] so arbiters don't allocate over KD */
+        /* Reserve debug COM range in both ISA-only and VGA+ISA lists */
         RtlAddRange(&PciIsaBitExclusionList,
+                    ComBase,
+                    ComBase + 0x7,
+                    0,
+                    RTL_RANGE_LIST_ADD_IF_CONFLICT,
+                    NULL,
+                    NULL);
+        RtlAddRange(&PciVgaAndIsaBitExclusionList,
                     ComBase,
                     ComBase + 0x7,
                     0,
@@ -894,6 +901,9 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
         /* Build the range lists for all the excluded resource areas */
         Status = PciBuildDefaultExclusionLists();
         if (!NT_SUCCESS(Status)) break;
+
+        /* Locate KD debugging devices (e.g. KDNET) from registry like old PCI */
+        PciLocateKdDevices();
 
         /* Read the PCI IRQ Routing Table that the loader put in the registry */
         PciGetIrqRoutingTableFromRegistry(&PciIrqRoutingTable);

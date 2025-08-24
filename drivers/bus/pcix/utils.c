@@ -9,7 +9,7 @@
 /* INCLUDES *******************************************************************/
 
 #include <pci.h>
-
+#include <ntstrsafe.h>
 #define NDEBUG
 #include <debug.h>
 
@@ -19,6 +19,9 @@ ULONG PciDebugPortsCount;
 
 RTL_RANGE_LIST PciIsaBitExclusionList;
 RTL_RANGE_LIST PciVgaAndIsaBitExclusionList;
+
+BOOLEAN PciHasDebuggingDevice;
+PCI_DEBUG_DEVICE PciDebuggingDevice[2];
 
 /* FUNCTIONS ******************************************************************/
 
@@ -284,6 +287,25 @@ PciBuildDefaultExclusionLists(VOID)
     RtlInitializeRangeList(&PciIsaBitExclusionList);
     RtlInitializeRangeList(&PciVgaAndIsaBitExclusionList);
 
+    /* Always exclude the lowest ISA page (0x0000 - 0x00FF): PIC/PIT/DMA/etc */
+    Status = RtlAddRange(&PciIsaBitExclusionList,
+                         0x0000,
+                         0x00FF,
+                         0,
+                         RTL_RANGE_LIST_ADD_IF_CONFLICT,
+                         NULL,
+                         NULL);
+    if (!NT_SUCCESS(Status)) return Status;
+
+    Status = RtlAddRange(&PciVgaAndIsaBitExclusionList,
+                         0x0000,
+                         0x00FF,
+                         0,
+                         RTL_RANGE_LIST_ADD_IF_CONFLICT,
+                         NULL,
+                         NULL);
+    if (!NT_SUCCESS(Status)) return Status;
+
     /* Loop x86 I/O ranges */
     for (Start = 0x100; Start <= 0xFEFF; Start += 0x400)
     {
@@ -330,8 +352,7 @@ PciBuildDefaultExclusionLists(VOID)
         /* Success, ranges added done */
     };
 
-    RtlFreeRangeList(&PciIsaBitExclusionList);
-    RtlFreeRangeList(&PciVgaAndIsaBitExclusionList);
+    /* Keep the exclusion lists alive for use by arbiters/filters */
     return Status;
 }
 
@@ -760,6 +781,73 @@ PciIsDeviceOnDebugPath(IN PPCI_PDO_EXTENSION DeviceExtension)
 
     /* eVb has not been able to test such devices yet */
     UNIMPLEMENTED_DBGBREAK();
+    return FALSE;
+}
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+PciLocateKdDevices(VOID)
+{
+    ULONG i;
+    NTSTATUS Status;
+    WCHAR KeyNameBuffer[32];
+    ULONG BusNumber = 0, SlotNumber = 0;
+    RTL_QUERY_REGISTRY_TABLE QueryTable[3];
+
+    RtlZeroMemory(&PciDebuggingDevice, sizeof(PciDebuggingDevice));
+    PciHasDebuggingDevice = FALSE;
+
+    RtlZeroMemory(QueryTable, sizeof(QueryTable));
+    QueryTable[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_REQUIRED;
+    QueryTable[0].Name = L"Bus";
+    QueryTable[0].EntryContext = &BusNumber;
+    QueryTable[1].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_REQUIRED;
+    QueryTable[1].Name = L"Slot";
+    QueryTable[1].EntryContext = &SlotNumber;
+
+    for (i = 0; i < RTL_NUMBER_OF(PciDebuggingDevice); ++i)
+    {
+        PCI_SLOT_NUMBER PciSlot; PciSlot.u.AsULONG = 0;
+        RtlStringCbPrintfW(KeyNameBuffer, sizeof(KeyNameBuffer), L"PCI\\Debug\\%d", i);
+
+        Status = RtlQueryRegistryValues(RTL_REGISTRY_SERVICES,
+                                        KeyNameBuffer,
+                                        QueryTable,
+                                        NULL,
+                                        NULL);
+        if (!NT_SUCCESS(Status))
+            break;
+
+        PciHasDebuggingDevice = TRUE;
+        PciSlot.u.AsULONG = SlotNumber;
+        PciDebuggingDevice[i].DeviceNumber = PciSlot.u.bits.DeviceNumber;
+        PciDebuggingDevice[i].FunctionNumber = PciSlot.u.bits.FunctionNumber;
+        PciDebuggingDevice[i].BusNumber = BusNumber;
+        PciDebuggingDevice[i].InUse = TRUE;
+        DPRINT1("PCI: Debugging device %02x:%02x.%x\n",
+                BusNumber,
+                PciSlot.u.bits.DeviceNumber,
+                PciSlot.u.bits.FunctionNumber);
+    }
+}
+
+BOOLEAN
+NTAPI
+PciIsDebuggingSlot(IN ULONG BusNumber, IN PCI_SLOT_NUMBER Slot)
+{
+    ULONG i;
+    if (!PciHasDebuggingDevice) return FALSE;
+    for (i = 0; i < RTL_NUMBER_OF(PciDebuggingDevice); ++i)
+    {
+        if (PciDebuggingDevice[i].InUse &&
+            PciDebuggingDevice[i].BusNumber == BusNumber &&
+            PciDebuggingDevice[i].DeviceNumber == Slot.u.bits.DeviceNumber &&
+            PciDebuggingDevice[i].FunctionNumber == Slot.u.bits.FunctionNumber)
+        {
+            return TRUE;
+        }
+    }
     return FALSE;
 }
 
