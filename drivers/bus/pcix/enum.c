@@ -553,28 +553,115 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
                          OUT PIO_RESOURCE_REQUIREMENTS_LIST* Buffer)
 {
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
+    PIO_RESOURCE_LIST List;
+    PIO_RESOURCE_DESCRIPTOR Desc;
+    PPCI_FUNCTION_RESOURCES Resources;
+    ULONG Count, i;
+    BOOLEAN HasInterrupt;
+    PAGED_CODE();
 
-    UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(PciData);
 
+    Resources = PdoExtension->Resources;
+    if (!Resources)
     {
-        /* There aren't, so use the zero descriptor */
+        /* Fallback to zero list */
         RequirementsList = PciZeroIoResourceRequirements;
-
-        /* Does it actually exist yet? */
-        if (!PciZeroIoResourceRequirements)
+        if (!RequirementsList)
         {
-            /* Allocate it, and use it for future use */
             RequirementsList = PciAllocateIoRequirementsList(0, 0, 0);
             PciZeroIoResourceRequirements = RequirementsList;
-            if (!PciZeroIoResourceRequirements) return STATUS_INSUFFICIENT_RESOURCES;
+            if (!RequirementsList) return STATUS_INSUFFICIENT_RESOURCES;
         }
-
-        /* Return the zero requirements list to the caller */
         *Buffer = RequirementsList;
-        DPRINT1("PCI - build resource reqs - early out, 0 resources\n");
+        DPRINT1("PCI - build resource reqs - no resources, returning zero list\n");
         return STATUS_SUCCESS;
     }
+
+    /* Count BAR-like limits */
+    Count = 0;
+    for (i = 0; i < 7; i++)
+    {
+        if ((Resources->Limit[i].Type == CmResourceTypePort) ||
+            (Resources->Limit[i].Type == CmResourceTypeMemory))
+        {
+            if (Resources->Limit[i].u.Generic.Length) Count++;
+        }
+    }
+
+    /* Add interrupt if present */
+    HasInterrupt = (PdoExtension->InterruptPin != 0);
+    if (HasInterrupt) Count++;
+
+    /* If no resources and no interrupt, return zero list */
+    if (!Count)
+    {
+        RequirementsList = PciZeroIoResourceRequirements;
+        if (!RequirementsList)
+        {
+            RequirementsList = PciAllocateIoRequirementsList(0, 0, 0);
+            PciZeroIoResourceRequirements = RequirementsList;
+            if (!RequirementsList) return STATUS_INSUFFICIENT_RESOURCES;
+        }
+        *Buffer = RequirementsList;
+        DPRINT1("PCI - build resource reqs - nothing to report, zero list\n");
+        return STATUS_SUCCESS;
+    }
+
+    /* Allocate requirements list with a single alternative */
+    RequirementsList = PciAllocateIoRequirementsList(Count,
+                                                     PdoExtension->ParentFdoExtension->BaseBus,
+                                                     PdoExtension->Slot.u.AsULONG);
+    if (!RequirementsList) return STATUS_INSUFFICIENT_RESOURCES;
+
+    /* Fill the descriptors */
+    List = &RequirementsList->List[0];
+    List->Count = 0;
+
+    for (i = 0; i < 7; i++)
+    {
+        PIO_RESOURCE_DESCRIPTOR Limit = &Resources->Limit[i];
+        if ((Limit->Type != CmResourceTypePort) && (Limit->Type != CmResourceTypeMemory))
+            continue;
+        if (!Limit->u.Generic.Length) continue;
+
+        Desc = &List->Descriptors[List->Count++];
+        RtlZeroMemory(Desc, sizeof(*Desc));
+        Desc->Type = Limit->Type;
+        Desc->ShareDisposition = CmResourceShareDeviceExclusive;
+        if (Limit->Type == CmResourceTypePort)
+        {
+            Desc->Flags = CM_RESOURCE_PORT_IO | CM_RESOURCE_PORT_BAR;
+            Desc->u.Port.Length = Limit->u.Generic.Length;
+            Desc->u.Port.Alignment = Limit->u.Generic.Length;
+            Desc->u.Port.MinimumAddress.QuadPart = 0;
+            Desc->u.Port.MaximumAddress.QuadPart = (ULONGLONG)-1;
+        }
+        else
+        {
+            Desc->Flags = CM_RESOURCE_MEMORY_READ_WRITE | CM_RESOURCE_MEMORY_BAR;
+            Desc->u.Memory.Length = Limit->u.Generic.Length;
+            Desc->u.Memory.Alignment = Limit->u.Generic.Length;
+            Desc->u.Memory.MinimumAddress.QuadPart = 0;
+            Desc->u.Memory.MaximumAddress.QuadPart = (ULONGLONG)-1;
+        }
+    }
+
+    if (HasInterrupt)
+    {
+        Desc = &List->Descriptors[List->Count++];
+        RtlZeroMemory(Desc, sizeof(*Desc));
+        Desc->Type = CmResourceTypeInterrupt;
+        Desc->ShareDisposition = CmResourceShareDeviceExclusive;
+        Desc->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+        Desc->u.Interrupt.MinimumVector = 0;
+        Desc->u.Interrupt.MaximumVector = 0xFF; /* legacy PIC/APIC range */
+        Desc->u.Interrupt.AffinityPolicy = IrqPolicyMachineDefault;
+        Desc->u.Interrupt.PriorityPolicy = IrqPriorityUndefined;
+        Desc->u.Interrupt.TargetedProcessors = 0;
+    }
+
+    *Buffer = RequirementsList;
     return STATUS_SUCCESS;
 }
 
@@ -1901,6 +1988,40 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
                     ASSERT(TempOffset == CapOffset);
                 }
 
+                /* Track MSI/MSI-X capabilities for later use */
+                if (CapHeader.CapabilityID == PCI_CAPABILITY_ID_MSI)
+                {
+                    PCI_MSI_CAPABILITY MsiCap;
+                    if (PciReadDeviceCapability(NewExtension,
+                                                CapOffset,
+                                                PCI_CAPABILITY_ID_MSI,
+                                                (PPCI_CAPABILITIES_HEADER)&MsiCap,
+                                                sizeof(MsiCap)))
+                    {
+                        NewExtension->MsiCapabilityOffset = (UCHAR)CapOffset;
+                        NewExtension->MsiControl = *(USHORT *)&MsiCap.MessageControl;
+                        /* Granted bits will be computed during programming; store default 0 for now */
+                        NewExtension->MsiGrantedBits = 0;
+                    }
+                }
+                else if (CapHeader.CapabilityID == PCI_CAPABILITY_ID_MSIX)
+                {
+                    PCI_MSIX_CAPABILITY MsixCap;
+                    if (PciReadDeviceCapability(NewExtension,
+                                                CapOffset,
+                                                PCI_CAPABILITY_ID_MSIX,
+                                                (PPCI_CAPABILITIES_HEADER)&MsixCap,
+                                                sizeof(MsixCap)))
+                    {
+                        NewExtension->MsixCapabilityOffset = (UCHAR)CapOffset;
+                        NewExtension->MsixControl = MsixCap.MessageControl.AsUSHORT;
+                        NewExtension->MsixTableBir = MsixCap.Table.BIR;
+                        NewExtension->MsixTableOffset = MsixCap.Table.Offset;
+                        NewExtension->MsixPbaBir = MsixCap.PBA.BIR;
+                        NewExtension->MsixPbaOffset = MsixCap.PBA.Offset;
+                    }
+                }
+
                 /* Check for capabilities that this driver cares about */
                 switch (CapHeader.CapabilityID)
                 {
@@ -1953,6 +2074,16 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
                 for (i = 0; i < Size; i += 2)
                     DPRINT1("  %04x\n", *(PUSHORT)((ULONG_PTR)&CapHeader + i));
                 DPRINT1("\n");
+
+                /* Early MSI/MSI-X enable policy (do not enable here; just note capability) */
+                if (CapHeader.CapabilityID == PCI_CAPABILITY_ID_MSI)
+                {
+                    DPRINT1("PCI - Device supports MSI\n");
+                }
+                else if (CapHeader.CapabilityID == PCI_CAPABILITY_ID_MSIX)
+                {
+                    DPRINT1("PCI - Device supports MSI-X\n");
+                }
 
                 /* Check the next capability */
                 CapOffset = CapHeader.Next;

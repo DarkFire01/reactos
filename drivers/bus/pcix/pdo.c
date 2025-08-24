@@ -45,7 +45,7 @@ PCI_MN_DISPATCH_TABLE PciPdoDispatchPnpTable[] =
     {IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciPdoIrpQueryResources},
     {IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciPdoIrpQueryResourceRequirements},
     {IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciPdoIrpQueryDeviceText},
-    {IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
+    {IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciPdoIrpFilterResourceRequirements},
     {IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
     {IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciPdoIrpReadConfig},
     {IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciPdoIrpWriteConfig},
@@ -392,6 +392,102 @@ PciPdoIrpQueryResourceRequirements(IN PIRP Irp,
     return PciQueryRequirements(DeviceExtension,
                                 (PIO_RESOURCE_REQUIREMENTS_LIST*)&Irp->
                                 IoStatus.Information);
+}
+
+static
+VOID
+PciAppendMessageInterruptDescriptor(IN PIO_RESOURCE_LIST DestList)
+{
+    PIO_RESOURCE_DESCRIPTOR d;
+    d = &DestList->Descriptors[DestList->Count++];
+    RtlZeroMemory(d, sizeof(*d));
+    d->Type = CmResourceTypeInterrupt;
+    d->ShareDisposition = CmResourceShareDeviceExclusive;
+    d->Flags = CM_RESOURCE_INTERRUPT_MESSAGE;
+    d->u.Interrupt.MinimumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
+    d->u.Interrupt.MaximumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
+    d->u.Interrupt.AffinityPolicy = IrqPolicyMachineDefault;
+    d->u.Interrupt.PriorityPolicy = IrqPriorityUndefined;
+    d->u.Interrupt.TargetedProcessors = 0;
+}
+
+static
+PIO_RESOURCE_LIST
+PciDuplicateIoResourceList(IN PIO_RESOURCE_LIST Src)
+{
+    SIZE_T size;
+    PIO_RESOURCE_LIST dst;
+    size = FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) + sizeof(IO_RESOURCE_DESCRIPTOR) * Src->Count;
+    dst = ExAllocatePoolWithTag(PagedPool, size, PCI_POOL_TAG);
+    if (!dst) return NULL;
+    RtlCopyMemory(dst, Src, size);
+    return dst;
+}
+
+NTSTATUS
+NTAPI
+PciPdoIrpFilterResourceRequirements(IN PIRP Irp,
+                                    IN PIO_STACK_LOCATION IoStackLocation,
+                                    IN PPCI_PDO_EXTENSION DeviceExtension)
+{
+    PIO_RESOURCE_REQUIREMENTS_LIST InReqs, OutReqs;
+    SIZE_T outSize;
+    PAGED_CODE();
+
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(IoStackLocation);
+
+    InReqs = (PIO_RESOURCE_REQUIREMENTS_LIST)Irp->IoStatus.Information;
+
+    /* Only act if device supports MSI/MSI-X */
+    if ((!DeviceExtension->MsiCapabilityOffset) && (!DeviceExtension->MsixCapabilityOffset))
+    {
+        return Irp->IoStatus.Status;
+    }
+
+    if (!InReqs)
+    {
+        /* Nothing to filter; leave as-is */
+        return Irp->IoStatus.Status;
+    }
+
+    /* Build a new requirements list with one extra alternative */
+    outSize = InReqs->ListSize + sizeof(IO_RESOURCE_LIST);
+    OutReqs = ExAllocatePoolWithTag(PagedPool, outSize, PCI_POOL_TAG);
+    if (!OutReqs)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlZeroMemory(OutReqs, outSize);
+    /* Copy header and existing alternatives */
+    RtlCopyMemory(OutReqs, InReqs, InReqs->ListSize);
+
+    /* Append a message-interrupt alternative cloned from the first list */
+    OutReqs->AlternativeLists = InReqs->AlternativeLists + 1;
+    OutReqs->ListSize = (ULONG)outSize;
+
+    {
+        PIO_RESOURCE_LIST base = &InReqs->List[0];
+        PIO_RESOURCE_LIST alt = &OutReqs->List[InReqs->AlternativeLists];
+        PIO_RESOURCE_LIST clone;
+        clone = PciDuplicateIoResourceList(base);
+        if (!clone)
+        {
+            ExFreePoolWithTag(OutReqs, 0);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+        /* Place clone at end of OutReqs */
+        *alt = *clone; /* structure copy; pointer adjust below */
+        /* The structure contains a flexible array; fix Count and then append message descriptor */
+        PciAppendMessageInterruptDescriptor(alt);
+        ExFreePoolWithTag(clone, 0);
+    }
+
+    /* Replace the IRP information pointer */
+    Irp->IoStatus.Information = (ULONG_PTR)OutReqs;
+    Irp->IoStatus.Status = STATUS_SUCCESS;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS

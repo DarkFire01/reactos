@@ -317,6 +317,16 @@ typedef struct _PCI_PDO_EXTENSION
     BOOLEAN TargetAgpCapabilityId;
     USHORT CommandEnables;
     USHORT InitialCommand;
+    /* MSI/MSI-X capability tracking */
+    UCHAR MsiCapabilityOffset;
+    UCHAR MsixCapabilityOffset;
+    USHORT MsiControl;
+    USHORT MsixControl;
+    UCHAR MsiGrantedBits;
+    UCHAR MsixTableBir;
+    ULONG MsixTableOffset;
+    UCHAR MsixPbaBir;
+    ULONG MsixPbaOffset;
 } PCI_PDO_EXTENSION, *PPCI_PDO_EXTENSION;
 
 //
@@ -430,6 +440,78 @@ typedef struct _PCI_ID_BUFFER
     PCHAR CharBuffer;
     CHAR BufferData[256];
 } PCI_ID_BUFFER, *PPCI_ID_BUFFER;
+
+//
+// MSI/MSI-X Capability Structures
+//
+typedef struct _PCI_MSI_MESSAGE_CONTROL
+{
+    USHORT MSIEnable:1;
+    USHORT MultipleMessageCapable:3;
+    USHORT MultipleMessageEnable:3;
+    USHORT CapableOf64Bits:1;
+    USHORT PerVectorMaskingCapable:1;
+    USHORT Reserved:7;
+} PCI_MSI_MESSAGE_CONTROL, *PPCI_MSI_MESSAGE_CONTROL;
+
+typedef struct _PCI_MSI_CAPABILITY
+{
+    PCI_CAPABILITIES_HEADER Header;
+    union {
+        PCI_MSI_MESSAGE_CONTROL MessageControl;
+        USHORT AsUSHORT;
+    } MessageControl;
+    union {
+        struct {
+            ULONG MessageAddress;
+            USHORT MessageData;
+            USHORT Reserved;
+            ULONG MaskBits;     // Optional if PerVectorMaskingCapable
+            ULONG PendingBits;  // Optional if PerVectorMaskingCapable
+        } Option32Bit;
+        struct {
+            ULONG MessageAddressLower;
+            ULONG MessageAddressUpper;
+            USHORT MessageData;
+            USHORT Reserved;
+            ULONG MaskBits;     // Optional if PerVectorMaskingCapable
+            ULONG PendingBits;  // Optional if PerVectorMaskingCapable
+        } Option64Bit;
+    } u;
+} PCI_MSI_CAPABILITY, *PPCI_MSI_CAPABILITY;
+
+typedef struct _PCI_MSIX_TABLE_POINTER
+{
+    ULONG Offset:29;
+    ULONG BIR:3;
+} PCI_MSIX_TABLE_POINTER, *PPCI_MSIX_TABLE_POINTER;
+
+typedef struct _PCI_MSIX_MESSAGE_CONTROL
+{
+    USHORT TableSize:11;
+    USHORT Reserved:3;
+    USHORT FunctionMask:1;
+    USHORT MSIEnable:1;
+} PCI_MSIX_MESSAGE_CONTROL, *PPCI_MSIX_MESSAGE_CONTROL;
+
+typedef struct _PCI_MSIX_CAPABILITY
+{
+    PCI_CAPABILITIES_HEADER Header;
+    union {
+        PCI_MSIX_MESSAGE_CONTROL MessageControl;
+        USHORT AsUSHORT;
+    } MessageControl;
+    PCI_MSIX_TABLE_POINTER Table;
+    PCI_MSIX_TABLE_POINTER PBA;
+} PCI_MSIX_CAPABILITY, *PPCI_MSIX_CAPABILITY;
+
+typedef struct _PCI_MSIX_TABLE_ENTRY
+{
+    ULONG MessageAddressLow;
+    ULONG MessageAddressHigh;
+    ULONG MessageData;
+    ULONG VectorControl; /* bit0 = Mask */
+} PCI_MSIX_TABLE_ENTRY, *PPCI_MSIX_TABLE_ENTRY;
 
 //
 // PCI Configuration Callbacks
@@ -1791,6 +1873,21 @@ PciCacheLegacyDeviceRouting(
     OUT PDEVICE_OBJECT *pFoundDeviceObject
 );
 
+NTSTATUS
+NTAPI
+PciMsiXTableConfigInterfaceConstructor(IN PVOID DeviceExtension,
+                                       IN PVOID Instance,
+                                       IN PVOID InterfaceData,
+                                       IN USHORT Version,
+                                       IN USHORT Size,
+                                       IN PINTERFACE Interface);
+    
+NTSTATUS
+NTAPI
+PciPdoIrpFilterResourceRequirements(IN PIRP Irp,
+                                    IN PIO_STACK_LOCATION IoStackLocation,
+                                    IN PPCI_PDO_EXTENSION DeviceExtension);
+
 //
 // External Resources
 //
@@ -1810,6 +1907,7 @@ extern PCI_INTERFACE PciDevicePresentInterface;
 extern PCI_INTERFACE PciLocationInterface;
 extern PCI_INTERFACE AgpTargetInterface;
 extern PCI_INTERFACE TranslatorInterfaceInterrupt;
+extern PCI_INTERFACE PciMsiXTableConfigInterface;
 extern PDRIVER_OBJECT PciDriverObject;
 extern PWATCHDOG_TABLE WdTable;
 extern PPCI_HACK_ENTRY PciHackTable;

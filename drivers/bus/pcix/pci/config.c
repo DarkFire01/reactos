@@ -93,6 +93,23 @@ PciWriteDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
                      IN ULONG Offset,
                      IN ULONG Length)
 {
+    /* Prevent MSI/MSI-X config paths from being inadvertently written via generic IOCTLs */
+    if ((DeviceExtension->MsiCapabilityOffset) &&
+        (Offset >= DeviceExtension->MsiCapabilityOffset) &&
+        (Offset < DeviceExtension->MsiCapabilityOffset + sizeof(PCI_MSI_CAPABILITY)))
+    {
+        DPRINT1("PCI: Blocking generic write to MSI capability at offset %lu\n", Offset);
+        return;
+    }
+
+    if ((DeviceExtension->MsixCapabilityOffset) &&
+        (Offset >= DeviceExtension->MsixCapabilityOffset) &&
+        (Offset < DeviceExtension->MsixCapabilityOffset + sizeof(PCI_MSIX_CAPABILITY)))
+    {
+        DPRINT1("PCI: Blocking generic write to MSI-X capability at offset %lu\n", Offset);
+        return;
+    }
+
     /* Call the generic worker function */
     PciReadWriteConfigSpace(DeviceExtension->ParentFdoExtension,
                             DeviceExtension->Slot,
