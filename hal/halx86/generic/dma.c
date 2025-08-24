@@ -77,6 +77,11 @@
 #define NDEBUG
 #include <debug.h>
 
+<<<<<<< HEAD
+=======
+#define MAX_SG_ELEMENTS 0x20
+
+>>>>>>> 9cb40a09005 ([HALX86:DMA] HACK: Avoid excessive stack usage)
 #ifndef _MINIHAL_
 static KEVENT HalpDmaLock;
 static KSPIN_LOCK HalpDmaAdapterListLock;
