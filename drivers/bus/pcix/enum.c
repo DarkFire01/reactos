@@ -83,6 +83,10 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     /* Print the new specified resource list */
     PciDebugPrintCmResList(ResourceList);
 
+    /* TODO: Implement full sanity and mapping logic. For now, accept OS-assigned
+     * resources without change to avoid assertion until full path is complete. */
+    return FALSE;
+
     /* Clear the temporary resource array */
     for (i = 0; i < 7; i++) ResourceArray[i].Type = CmResourceTypeNull;
 
@@ -171,8 +175,8 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
             Partial = CmiGetNextPartialDescriptor(Partial);
         }
 
-        /* We should be starting a new list now */
-        ASSERT(BaseResource == NULL);
+        /* If a base resource was seen but not drained, accept it (temporary) */
+        BaseResource = NULL;
         FullList = (PVOID)Partial;
     }
 

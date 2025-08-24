@@ -283,10 +283,71 @@ NTAPI
 Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
                               IN PPCI_COMMON_HEADER PciData)
 {
-    UNREFERENCED_PARAMETER(PdoExtension);
-    UNREFERENCED_PARAMETER(PciData);
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
+    PPCI_FUNCTION_RESOURCES Resources;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Current;
+    ULONG i;
+    ULONG barOffset;
+    ULONG origBar;
+    ULONG mask;
+
+    Resources = PdoExtension->Resources;
+    if (!Resources) return;
+
+    /* Program Type 0 device BARs */
+    for (i = 0; i < PCI_TYPE0_ADDRESSES; i++)
+    {
+        Current = &Resources->Current[i];
+        if (Current->Type == CmResourceTypeNull) continue;
+
+        barOffset = FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.BaseAddresses) + (i * sizeof(ULONG));
+        origBar = PciData->u.type0.BaseAddresses[i];
+
+        if (Current->Type == CmResourceTypePort)
+        {
+            /* I/O BAR */
+            mask = PCI_ADDRESS_IO_ADDRESS_MASK;
+            origBar |= PCI_ADDRESS_IO_SPACE; /* ensure IO attribute bit */
+
+            origBar = (origBar & ~mask) | (Current->u.Port.Start.LowPart & mask);
+            PciWriteDeviceConfig(PdoExtension, &origBar, barOffset, sizeof(ULONG));
+        }
+        else if (Current->Type == CmResourceTypeMemory)
+        {
+            /* Memory BAR */
+            ULONG memType = (origBar & PCI_ADDRESS_MEMORY_TYPE_MASK);
+            if (memType == PCI_TYPE_20BIT)
+                mask = 0xFFFF0;
+            else
+                mask = PCI_ADDRESS_MEMORY_ADDRESS_MASK;
+
+            /* Low */
+            {
+                ULONG value = (origBar & ~mask) | (Current->u.Memory.Start.LowPart & mask);
+                PciWriteDeviceConfig(PdoExtension, &value, barOffset, sizeof(ULONG));
+            }
+
+            /* High for 64-bit BAR */
+            if (memType == PCI_TYPE_64BIT)
+            {
+                ULONG high = Current->u.Memory.Start.HighPart;
+                ULONG nextOffset = barOffset + sizeof(ULONG);
+                PciWriteDeviceConfig(PdoExtension, &high, nextOffset, sizeof(ULONG));
+                i++; /* consumed the next BAR */
+            }
+        }
+    }
+
+    /* Program ROM BAR if present */
+    Current = &Resources->Current[PCI_TYPE0_ADDRESSES];
+    if (Current->Type != CmResourceTypeNull)
+    {
+        ULONG rom = (Current->u.Memory.Start.LowPart & PCI_ADDRESS_ROM_ADDRESS_MASK) | PCI_ROMADDRESS_ENABLED;
+        ULONG romOffset = FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.ROMBaseAddress);
+        PciWriteDeviceConfig(PdoExtension, &rom, romOffset, sizeof(ULONG));
+    }
+
+    /* Finally, enable requested decodes (IO/MEM/BUSMASTER) */
+    PciDecodeEnable(PdoExtension, TRUE, &PdoExtension->CommandEnables);
 }
 
 /* EOF */

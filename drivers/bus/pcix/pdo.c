@@ -305,12 +305,18 @@ PciPdoIrpQueryInterface(IN PIRP Irp,
                         IN PIO_STACK_LOCATION IoStackLocation,
                         IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
-
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    NTSTATUS Status;
+    PAGED_CODE();
+    /* Query our own PDO-exposed interfaces (e.g., BUS_INTERFACE_STANDARD) */
+    Status = PciQueryInterface((PPCI_FDO_EXTENSION)DeviceExtension,
+                               IoStackLocation->Parameters.QueryInterface.InterfaceType,
+                               IoStackLocation->Parameters.QueryInterface.Size,
+                               IoStackLocation->Parameters.QueryInterface.Version,
+                               IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
+                               IoStackLocation->Parameters.QueryInterface.Interface,
+                               FALSE);
+    /* Let the dispatcher complete the IRP for IRP_COMPLETE style */
+    return Status;
 }
 
 NTSTATUS

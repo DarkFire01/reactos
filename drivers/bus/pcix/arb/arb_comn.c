@@ -184,12 +184,42 @@ PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
                                                  ArbiterType);
         if (Instance)
         {
-            /*
-             * Now we should initialize it, not yet implemented because Arb
-             * library isn't yet implemented, not even the headers.
-             */
-            UNIMPLEMENTED;
-            //while (TRUE);
+            PPCI_ARBITER_INSTANCE PciArbiter = (PPCI_ARBITER_INSTANCE)Instance;
+            PARBITER_INSTANCE Common = &PciArbiter->CommonInstance;
+
+            /* Seed root-bus arbiters with permissive default ranges */
+            if (PCI_IS_ROOT_FDO(DeviceExtension))
+            {
+                NTSTATUS AddStatus;
+                if (ArbiterType == PciArb_Io)
+                {
+                    /* I/O ports 0x0000 - 0xFFFF (coarse; refine later) */
+                    AddStatus = RtlAddRange(Common->Allocation,
+                                             0,
+                                             0xFFFF,
+                                             0,
+                                             0,
+                                             NULL,
+                                             NULL);
+                    DPRINT1("PCI IO Arb seed status %08lx\n", AddStatus);
+                }
+                else if (ArbiterType == PciArb_Memory)
+                {
+                    /* Memory 0x00000000 - 0xFFFFFFFF (coarse; refine later) */
+                    AddStatus = RtlAddRange(Common->Allocation,
+                                             0,
+                                             0xFFFFFFFFULL,
+                                             0,
+                                             0,
+                                             NULL,
+                                             NULL);
+                    DPRINT1("PCI MEM Arb seed status %08lx\n", AddStatus);
+                }
+            }
+            else
+            {
+                /* For bridges, seeding from window registers can be added later */
+            }
         }
         else
         {
