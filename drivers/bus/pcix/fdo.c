@@ -39,10 +39,10 @@ PCI_MN_DISPATCH_TABLE PciFdoDispatchPnpTable[] =
     {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpQueryDeviceRelations},
     {IRP_DISPATCH, (PCI_DISPATCH_FUNCTION)PciFdoIrpQueryInterface},
     {IRP_UPWARD,   (PCI_DISPATCH_FUNCTION)PciFdoIrpQueryCapabilities},
-    {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
-    {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
-    {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
-    {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
+    {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported}, /* QUERY_RESOURCES */
+    {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported}, /* QUERY_RESOURCE_REQUIREMENTS */
+    {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported}, /* QUERY_DEVICE_TEXT */
+    {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpFilterResourceRequirements},
     {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
     {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
     {IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported},
@@ -372,6 +372,77 @@ PciFdoIrpQueryLegacyBusInformation(IN PIRP Irp,
 
     UNIMPLEMENTED_DBGBREAK();
     return STATUS_NOT_SUPPORTED;
+}
+
+//TODO: HACK:
+static
+BOOLEAN
+PciPlatformSupportsMsi(VOID)
+{
+    /* Minimal heuristic: PIC HAL lacks APIC/MSI; later, query ACPI/APIC */
+    return FALSE;
+}
+//TODO: HACK:
+static
+BOOLEAN
+IoResIsMsiDescriptor(IN PIO_RESOURCE_DESCRIPTOR D)
+{
+    return (D->Type == CmResourceTypeInterrupt) &&
+           (D->Flags & CM_RESOURCE_INTERRUPT_MESSAGE);
+}
+//TODO: HACK:
+static
+VOID
+PciFilterRequirementsListDropMsi(IN OUT PIO_RESOURCE_REQUIREMENTS_LIST Reqs)
+{
+    ULONG inAlts = Reqs->AlternativeLists;
+    PUCHAR srcPtr = (PUCHAR)&Reqs->List[0];
+    PUCHAR dstPtr = srcPtr;
+    ULONG outAlts = 0;
+    ULONG i;
+    for (i = 0; i < inAlts; i++)
+    {
+        PIO_RESOURCE_LIST SrcAlt = (PIO_RESOURCE_LIST)srcPtr;
+        BOOLEAN HasMsi = FALSE;
+        ULONG d;
+        for (d = 0; d < SrcAlt->Count; d++)
+        {
+            if (IoResIsMsiDescriptor(&SrcAlt->Descriptors[d])) { HasMsi = TRUE; break; }
+        }
+        if (!HasMsi)
+        {
+            SIZE_T sz = FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) + sizeof(IO_RESOURCE_DESCRIPTOR) * SrcAlt->Count;
+            if (dstPtr != srcPtr) RtlMoveMemory(dstPtr, srcPtr, sz);
+            dstPtr += sz;
+            outAlts++;
+        }
+        srcPtr += FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) + sizeof(IO_RESOURCE_DESCRIPTOR) * SrcAlt->Count;
+    }
+    Reqs->AlternativeLists = outAlts;
+    Reqs->ListSize = (ULONG)(dstPtr - (PUCHAR)Reqs);
+}
+//TODO: HACK:
+NTSTATUS
+NTAPI
+PciFdoIrpFilterResourceRequirements(IN PIRP Irp,
+                                   IN PIO_STACK_LOCATION IoStackLocation,
+                                   IN PPCI_FDO_EXTENSION DeviceExtension)
+{
+    PIO_RESOURCE_REQUIREMENTS_LIST Reqs;
+    UNREFERENCED_PARAMETER(IoStackLocation);
+    UNREFERENCED_PARAMETER(DeviceExtension);
+
+    Reqs = (PIO_RESOURCE_REQUIREMENTS_LIST)Irp->IoStatus.Information;
+    if (!Reqs) return Irp->IoStatus.Status;
+
+    /* On PIC legacy platforms, strip MSI/MSI-X alternatives */
+    if (!PciPlatformSupportsMsi())
+    {
+        PciFilterRequirementsListDropMsi(Reqs);
+    }
+
+    Irp->IoStatus.Status = STATUS_SUCCESS;
+    return STATUS_SUCCESS;
 }
 
 VOID

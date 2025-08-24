@@ -789,6 +789,14 @@ PciFdoIrpQueryCapabilities(
 
 NTSTATUS
 NTAPI
+PciFdoIrpFilterResourceRequirements(
+    IN PIRP Irp,
+    IN PIO_STACK_LOCATION IoStackLocation,
+    IN PPCI_FDO_EXTENSION DeviceExtension
+);
+
+NTSTATUS
+NTAPI
 PciFdoIrpDeviceUsageNotification(
     IN PIRP Irp,
     IN PIO_STACK_LOCATION IoStackLocation,

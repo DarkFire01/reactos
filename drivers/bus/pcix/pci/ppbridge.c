@@ -747,7 +747,8 @@ PPBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
         /* Loop each resource type (the BARs, ROM BAR and Prefetch) */
         for (i = 0; i < 6; i++)
         {
-            UNIMPLEMENTED;
+            /* TODO: Program window limits from assigned resources if needed */
+            /* Minimal no-op for now to avoid UNIMPLEMENTED spam */
         }
     }
 
