@@ -250,22 +250,33 @@ PcipUpdateHardware(IN PVOID Context,
     PPCI_PDO_EXTENSION PdoExtension = Context;
     PPCI_COMMON_HEADER PciData = Context2;
 
-    /* Check if we're allowed to disable decodes */
-    PciData->Command = PdoExtension->CommandEnables;
+    /* Program only fields that we intentionally changed, avoid blasting header */
     if (!(PdoExtension->HackFlags & PCI_HACK_PRESERVE_COMMAND))
     {
-        /* Disable all decodes */
-        PciData->Command &= ~(PCI_ENABLE_IO_SPACE |
-                              PCI_ENABLE_MEMORY_SPACE |
-                              PCI_ENABLE_BUS_MASTER |
-                              PCI_ENABLE_WRITE_AND_INVALIDATE);
+        USHORT Command = PdoExtension->CommandEnables & ~(PCI_ENABLE_WRITE_AND_INVALIDATE);
+        PciWriteDeviceConfig(PdoExtension,
+                             &Command,
+                             FIELD_OFFSET(PCI_COMMON_HEADER, Command),
+                             sizeof(USHORT));
     }
 
-    /* Update the device configuration */
-    PciData->Status = 0;
-    PciWriteDeviceConfig(PdoExtension, PciData, 0, PCI_COMMON_HDR_LENGTH);
+    /* Latency and cacheline come from Saved* values */
+    PciWriteDeviceConfig(PdoExtension,
+                         &PciData->LatencyTimer,
+                         FIELD_OFFSET(PCI_COMMON_HEADER, LatencyTimer),
+                         sizeof(UCHAR));
+    PciWriteDeviceConfig(PdoExtension,
+                         &PciData->CacheLineSize,
+                         FIELD_OFFSET(PCI_COMMON_HEADER, CacheLineSize),
+                         sizeof(UCHAR));
 
-    /* Turn decodes back on */
+    /* InterruptLine may have been adjusted (routing) */
+    PciWriteDeviceConfig(PdoExtension,
+                         &PciData->u.type0.InterruptLine,
+                         FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.InterruptLine),
+                         sizeof(UCHAR));
+
+    /* Finally, restore decodes to requested state */
     PciDecodeEnable(PdoExtension, TRUE, &PdoExtension->CommandEnables);
 }
 
@@ -2353,8 +2364,14 @@ PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
     /* Locate the correct resource configurator for this type of device */
     Configurator = &PciConfigurators[PdoExtension->HeaderType];
 
-    /* Apply the settings change */
-    Configurator->ChangeResourceSettings(PdoExtension, &PciData);
+    /* Disable decodes before touching BARs or other resource registers */
+    PciDecodeEnable(PdoExtension, FALSE, NULL);
+
+    /* Apply the settings change only if needed (moved/hotplug/reset) */
+    if (PdoExtension->MovedDevice || DoReset || PdoExtension->NeedsHotPlugConfiguration)
+    {
+        Configurator->ChangeResourceSettings(PdoExtension, &PciData);
+    }
 
     /* Assume no update needed */
     PdoExtension->UpdateHardware = FALSE;

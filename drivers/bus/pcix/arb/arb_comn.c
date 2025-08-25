@@ -42,7 +42,7 @@ PciInitializeArbiters(IN PPCI_FDO_EXTENSION FdoExtension)
     PPCI_INTERFACE CurrentInterface, *Interfaces;
     PPCI_PDO_EXTENSION PdoExtension;
     PPCI_ARBITER_INSTANCE ArbiterInterface;
-    NTSTATUS Status;
+    NTSTATUS Status = STATUS_SUCCESS;
     PCI_SIGNATURE ArbiterType;
     ASSERT_FDO(FdoExtension);
 

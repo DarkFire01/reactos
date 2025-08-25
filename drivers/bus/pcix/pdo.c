@@ -198,19 +198,22 @@ PciPdoIrpStartDevice(IN PIRP Irp,
         DoReset = TRUE;
     }
 
+    DPRINT1("PCI - START: going into PciSetResources DoReset = %d\n", DoReset);
     /* Update resource information now that the device is powered up and active */
     Status = PciSetResources(DeviceExtension, DoReset, TRUE);
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("PCI - START: PciSetResources failed\n");
         /* That failed, so cancel the transition */
         PciCancelStateTransition((PVOID)DeviceExtension, PciStarted);
     }
     else
     {
+        DPRINT1("PCI - START: PciSetResources succeeded\n");
         /* Fully commit, as the device is now started up and ready to go */
         PciCommitStateTransition((PVOID)DeviceExtension, PciStarted);
     }
-
+    DPRINT1("PCI - START: Status = %lx\n", Status);
     /* Return the result of the start request */
     return Status;
 }
