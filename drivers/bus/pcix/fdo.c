@@ -97,7 +97,21 @@ PciFdoIrpStartDevice(IN PIRP Irp,
                 Resources->Count);
     }
 
-    /* Initialize the arbiter for this FDO */
+    /* Initialize arbiters for this FDO if not already done */
+    if (!DeviceExtension->ArbitersInitialized)
+    {
+        Status = PciInitializeArbiters(DeviceExtension);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("PCI: Failed to initialize arbiters for FDO %p: 0x%lx\n", DeviceExtension, Status);
+            /* Cancel the transition if this failed */
+            PciCancelStateTransition(DeviceExtension, PciStarted);
+            return Status;
+        }
+        DPRINT("PCI: Successfully initialized arbiters for FDO %p\n", DeviceExtension);
+    }
+
+    /* Initialize the arbiter ranges for this FDO */
     Status = PciInitializeArbiterRanges(DeviceExtension, Resources);
     if (!NT_SUCCESS(Status))
     {

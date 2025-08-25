@@ -116,9 +116,7 @@ IoWMIWriteEvent(_Inout_ PVOID WnodeEventItem)
         return STATUS_INVALID_PARAMETER;
     }
 
-    DPRINT1("IoWMIWriteEvent() called for WnodeEventItem %p (Flags = 0x%08lx), returning success\n",
-            WnodeEventItem, Header->Flags);
-
+ 
     if (Header->Flags & WNODE_FLAG_TRACED_GUID)
     {
         // Never free WnodeEventItem in this case.
