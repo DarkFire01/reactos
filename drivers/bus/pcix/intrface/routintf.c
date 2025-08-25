@@ -42,7 +42,7 @@ routeintrf_Initializer(IN PVOID Instance)
     return STATUS_UNSUCCESSFUL;
 }
 
-static VOID NTAPI PciInterface_RefDereference_NoOp(IN PVOID Context)
+ VOID NTAPI PciInterface_RefDereference_NoOp(IN PVOID Context)
 {
     UNREFERENCED_PARAMETER(Context);
 }

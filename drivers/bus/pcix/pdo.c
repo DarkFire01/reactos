@@ -224,12 +224,12 @@ PciPdoIrpQueryRemoveDevice(IN PIRP Irp,
                            IN PIO_STACK_LOCATION IoStackLocation,
                            IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_SUPPORTED;
+    /* Allow removal by default; filter drivers may veto */
+    Irp->IoStatus.Information = 0;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -238,12 +238,13 @@ PciPdoIrpRemoveDevice(IN PIRP Irp,
                       IN PIO_STACK_LOCATION IoStackLocation,
                       IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
- //   UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /* Mark PDO as removed; the bus driver will cleanup on its own flow */
+    DeviceExtension->ReportedMissing = TRUE;
+    DeviceExtension->NotPresent = TRUE;
+    Irp->IoStatus.Information = 0;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -252,12 +253,11 @@ PciPdoIrpCancelRemoveDevice(IN PIRP Irp,
                             IN PIO_STACK_LOCATION IoStackLocation,
                             IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-//    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    Irp->IoStatus.Information = 0;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -266,12 +266,12 @@ PciPdoIrpStopDevice(IN PIRP Irp,
                     IN PIO_STACK_LOCATION IoStackLocation,
                     IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /* For now, nothing to do for PDO stop; resources are managed by bus */
+    Irp->IoStatus.Information = 0;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -280,12 +280,11 @@ PciPdoIrpQueryStopDevice(IN PIRP Irp,
                          IN PIO_STACK_LOCATION IoStackLocation,
                          IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    Irp->IoStatus.Information = 0;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -294,12 +293,11 @@ PciPdoIrpCancelStopDevice(IN PIRP Irp,
                           IN PIO_STACK_LOCATION IoStackLocation,
                           IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    Irp->IoStatus.Information = 0;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS

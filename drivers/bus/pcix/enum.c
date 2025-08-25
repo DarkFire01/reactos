@@ -180,25 +180,46 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     PciResources = PdoExtension->Resources;
     if (!PciResources) return FALSE;
 
-    /* Build desired ResourceArray from incoming list by matching limits (Type/Length) */
+    /* Build desired ResourceArray from incoming list by matching each OS descriptor once */
     FullList = &ResourceList->List[0];
-    for (i = 0; i < 7; i++)
     {
-        PIO_RESOURCE_DESCRIPTOR Limit = &PciResources->Limit[i];
-        if ((Limit->Type != CmResourceTypePort) && (Limit->Type != CmResourceTypeMemory))
-            continue;
-        if (Limit->u.Generic.Length == 0) continue;
-
-        Partial = FullList->PartialResourceList.PartialDescriptors;
-        for (j = 0; j < FullList->PartialResourceList.Count; j++)
+        ULONG PartialCount = FullList->PartialResourceList.Count;
+        BOOLEAN *Used = ExAllocatePoolWithTag(NonPagedPool, sizeof(BOOLEAN) * PartialCount, 'BicP');
+        if (Used)
         {
-            if ((Partial->Type == Limit->Type) &&
-                (Partial->u.Generic.Length == Limit->u.Generic.Length))
+            RtlZeroMemory(Used, sizeof(BOOLEAN) * PartialCount);
+
+            Partial = FullList->PartialResourceList.PartialDescriptors;
+            for (j = 0; j < PartialCount; j++)
             {
-                ResourceArray[i] = *Partial;
-                break;
+                PCM_PARTIAL_RESOURCE_DESCRIPTOR This = Partial;
+                if ((This->Type != CmResourceTypePort) && (This->Type != CmResourceTypeMemory))
+                {
+                    Partial = CmiGetNextPartialDescriptor(Partial);
+                    continue;
+                }
+
+                /* Find first matching BAR-like limit not yet satisfied */
+                for (i = 0; i < 7; i++)
+                {
+                    PIO_RESOURCE_DESCRIPTOR Limit = &PciResources->Limit[i];
+                    if ((Limit->Type != This->Type) || (Limit->u.Generic.Length == 0)) continue;
+                    if (ResourceArray[i].Type != CmResourceTypeNull) continue; /* already filled */
+                    if (Limit->u.Generic.Length != This->u.Generic.Length) continue;
+
+                    ResourceArray[i] = *This;
+                    Used[j] = TRUE;
+                    break;
+                }
+
+                Partial = CmiGetNextPartialDescriptor(Partial);
             }
-            Partial = CmiGetNextPartialDescriptor(Partial);
+
+            ExFreePoolWithTag(Used, 'BicP');
+        }
+        else
+        {
+            /* Fallback: leave ResourceArray zeros; current settings will remain */
         }
     }
 

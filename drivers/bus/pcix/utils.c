@@ -1406,9 +1406,6 @@ PciQueryBusInformation(IN PPCI_PDO_EXTENSION PdoExtension,
 {
     PPNP_BUS_INFORMATION BusInfo;
 
-    UNREFERENCED_PARAMETER(Buffer);
-
-    /* Allocate a structure for the bus information */
     BusInfo = ExAllocatePoolWithTag(PagedPool,
                                     sizeof(PNP_BUS_INFORMATION),
                                     'BicP');
@@ -1418,6 +1415,7 @@ PciQueryBusInformation(IN PPCI_PDO_EXTENSION PdoExtension,
     BusInfo->BusTypeGuid = GUID_BUS_TYPE_PCI;
     BusInfo->LegacyBusType = PCIBus;
     BusInfo->BusNumber = PdoExtension->ParentFdoExtension->BaseBus;
+    *Buffer = BusInfo;
     return STATUS_SUCCESS;
 }
 
