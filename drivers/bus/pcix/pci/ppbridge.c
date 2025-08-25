@@ -731,19 +731,22 @@ PPBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
          * had been saved by the hack in PPBridge_SaveCurrentSettings.
          */
         FdoExtension = PdoExtension->ParentFdoExtension;
-        ASSERT(PdoExtension->Resources == NULL);
 
-        /* Read the PCI header data and use that here */
-        PciData->u.type1.IOBase = FdoExtension->PreservedConfig->u.type1.IOBase;
-        PciData->u.type1.IOLimit = FdoExtension->PreservedConfig->u.type1.IOLimit;
-        PciData->u.type1.MemoryBase = FdoExtension->PreservedConfig->u.type1.MemoryBase;
-        PciData->u.type1.MemoryLimit = FdoExtension->PreservedConfig->u.type1.MemoryLimit;
-        PciData->u.type1.PrefetchBase = FdoExtension->PreservedConfig->u.type1.PrefetchBase;
-        PciData->u.type1.PrefetchLimit = FdoExtension->PreservedConfig->u.type1.PrefetchLimit;
-        PciData->u.type1.PrefetchBaseUpper32 = FdoExtension->PreservedConfig->u.type1.PrefetchBaseUpper32;
-        PciData->u.type1.PrefetchLimitUpper32 = FdoExtension->PreservedConfig->u.type1.PrefetchLimitUpper32;
-        PciData->u.type1.IOBaseUpper16 = FdoExtension->PreservedConfig->u.type1.IOBaseUpper16;
-        PciData->u.type1.IOLimitUpper16 = FdoExtension->PreservedConfig->u.type1.IOLimitUpper16;
+        /* If preserved config exists, use it; otherwise leave current values */
+        if (FdoExtension->PreservedConfig)
+        {
+            /* Read the PCI header data and use that here */
+            PciData->u.type1.IOBase = FdoExtension->PreservedConfig->u.type1.IOBase;
+            PciData->u.type1.IOLimit = FdoExtension->PreservedConfig->u.type1.IOLimit;
+            PciData->u.type1.MemoryBase = FdoExtension->PreservedConfig->u.type1.MemoryBase;
+            PciData->u.type1.MemoryLimit = FdoExtension->PreservedConfig->u.type1.MemoryLimit;
+            PciData->u.type1.PrefetchBase = FdoExtension->PreservedConfig->u.type1.PrefetchBase;
+            PciData->u.type1.PrefetchLimit = FdoExtension->PreservedConfig->u.type1.PrefetchLimit;
+            PciData->u.type1.PrefetchBaseUpper32 = FdoExtension->PreservedConfig->u.type1.PrefetchBaseUpper32;
+            PciData->u.type1.PrefetchLimitUpper32 = FdoExtension->PreservedConfig->u.type1.PrefetchLimitUpper32;
+            PciData->u.type1.IOBaseUpper16 = FdoExtension->PreservedConfig->u.type1.IOBaseUpper16;
+            PciData->u.type1.IOLimitUpper16 = FdoExtension->PreservedConfig->u.type1.IOLimitUpper16;
+        }
     }
 
     /* Loop bus resources */

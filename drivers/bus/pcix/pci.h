@@ -208,7 +208,7 @@ typedef struct _PCI_FDO_EXTENSION
     PPCI_BUS_INTERFACE_STANDARD PciBusInterface;
     BOOLEAN MaxSubordinateBus;
     BUS_HANDLER *BusHandler;
-    BOOLEAN BaseBus;
+    ULONG BaseBus;
     BOOLEAN Fake;
     BOOLEAN ChildDelete;
     BOOLEAN Scanned;
