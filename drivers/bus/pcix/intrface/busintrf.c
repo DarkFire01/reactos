@@ -144,6 +144,9 @@ busintrf_Constructor(IN PVOID DeviceExtension,
     }
     if (Size < sizeof(BUS_INTERFACE_STANDARD)) return STATUS_INFO_LENGTH_MISMATCH;
 
+    /* Initialize the interface structure */
+    Iface->Size = sizeof(BUS_INTERFACE_STANDARD);
+    Iface->Version = 1;
     Iface->Context = PdoExtension;
     Iface->InterfaceReference = (PINTERFACE_REFERENCE)BusIf_RefDeref_NoOp;
     Iface->InterfaceDereference = (PINTERFACE_DEREFERENCE)BusIf_RefDeref_NoOp;

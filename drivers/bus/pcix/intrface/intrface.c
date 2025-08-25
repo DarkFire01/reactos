@@ -77,13 +77,6 @@ PciQueryInterface(IN PPCI_FDO_EXTENSION DeviceExtension,
 
         /* For debugging, construct the GUID string */
         RtlStringFromGUID(PciInterface->InterfaceType, &GuidString);
-        
-        /* Debug: Check if this is the BUS_INTERFACE_STANDARD we're looking for */
-        if (IsEqualGUIDAligned(PciInterface->InterfaceType, &GUID_BUS_INTERFACE_STANDARD))
-        {
-            DPRINT1("PCI - Found BUS_INTERFACE_STANDARD interface, Flags=0x%x, DeviceExtension->ExtensionType=%d\n",
-                    PciInterface->Flags, DeviceExtension->ExtensionType);
-        }
 
         /* Check if this is an FDO or PDO */
         if (DeviceExtension->ExtensionType == PciFdoExtensionType)
