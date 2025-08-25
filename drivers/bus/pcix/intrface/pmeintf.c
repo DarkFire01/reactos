@@ -58,9 +58,9 @@ PciPmeInterfaceConstructor(IN PVOID DeviceExtension,
     /* Only version 1 is supported */
     if (Version != PCI_PME_INTRF_STANDARD_VER) return STATUS_NOINTERFACE;
 
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_IMPLEMENTED;
+    /* PME (Power Management Event) interface is not yet implemented */
+    DPRINT1("PCI: PME interface requested but not implemented\n");
+    return STATUS_NOT_SUPPORTED;
 }
 
 /* EOF */

@@ -2423,6 +2423,10 @@ PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
     /* Return the final count and the new buffer */
     NewRelations->Count += PdoCount;
     *pDeviceRelations = NewRelations;
+    
+    /* Cancel the state transition to restore the original state */
+    PciCancelStateTransition(DeviceExtension, PciSynchronizedOperation);
+    
     return STATUS_SUCCESS;
 }
 
