@@ -240,6 +240,19 @@ PciPdoIrpRemoveDevice(IN PIRP Irp,
 {
     UNREFERENCED_PARAMETER(IoStackLocation);
 
+    //
+    // Clean up PCIe Express port if this device has one
+    //
+    if (DeviceExtension->IsExpressDevice && DeviceExtension->ExpressPort)
+    {
+        DPRINT("PCI: Cleaning up Express port %p for device %p during removal\n",
+               DeviceExtension->ExpressPort, DeviceExtension);
+               
+        ExpressPortDestroy(DeviceExtension->ExpressPort);
+        DeviceExtension->ExpressPort = NULL;
+        DeviceExtension->IsExpressDevice = FALSE;
+    }
+
     /* Mark PDO as removed; the bus driver will cleanup on its own flow */
     DeviceExtension->ReportedMissing = TRUE;
     DeviceExtension->NotPresent = TRUE;

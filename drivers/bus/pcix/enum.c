@@ -2055,6 +2055,11 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
                     }
                 }
 
+                /* Debug: Show all capability IDs found */
+                DPRINT("PCI: Found capability ID 0x%02x at offset 0x%x for device %p (VID:0x%04x DID:0x%04x)\n", 
+                       CapHeader.CapabilityID, CapOffset, NewExtension, 
+                       NewExtension->VendorId, NewExtension->DeviceId);
+
                 /* Check for capabilities that this driver cares about */
                 switch (CapHeader.CapabilityID)
                 {
@@ -2072,6 +2077,20 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
                         /* Dump the capability */
                         Name = "AGP";
                         Size = sizeof(PCI_AGP_CAPABILITY);
+                        break;
+
+                    /* PCIe Express capability for modern devices */
+                    case PCI_CAPABILITY_ID_PCIE:
+                        
+                        /* This is a PCIe device - mark it for Express processing */
+                        NewExtension->ExpressCapabilityOffset = CapOffset;
+                        NewExtension->IsExpressDevice = TRUE;
+                        
+                        /* Dump the capability */
+                        Name = "PCIE EXPRESS";
+                        Size = sizeof(PCI_EXPRESS_CAPABILITIES_REGISTER);
+                        DPRINT("PCI: Found PCIe Express capability at offset 0x%x for device %p\n", 
+                               CapOffset, NewExtension);
                         break;
 
                     /* This driver doesn't really use anything other than that */
@@ -2444,6 +2463,65 @@ PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
     /* Update complete */
     PdoExtension->RawInterruptLine = PciData.u.type0.InterruptLine;
     PdoExtension->NeedsHotPlugConfiguration = FALSE;
+    
+    //
+    // Debug: Show device processing status
+    //
+    DPRINT("PCI: Processing device %p - VID:0x%04x DID:0x%04x, IsExpress:%s, ExpressCapOffset:0x%x\n",
+           PdoExtension, PdoExtension->VendorId, PdoExtension->DeviceId,
+           PdoExtension->IsExpressDevice ? "YES" : "NO", 
+           PdoExtension->ExpressCapabilityOffset);
+
+    //
+    // Initialize PCIe Express port if this is an Express device
+    //
+    if (PdoExtension->IsExpressDevice && !PdoExtension->ExpressPort)
+    {
+        NTSTATUS ExpressStatus;
+        PEXPRESS_PORT ExpressPort = NULL;
+        
+        DPRINT("PCI: Initializing PCIe Express port for device %p\n", PdoExtension);
+        
+        //
+        // Create and initialize the Express port
+        //
+        ExpressStatus = ExpressPortCreate(PdoExtension, &ExpressPort);
+        if (NT_SUCCESS(ExpressStatus))
+        {
+            DPRINT("PCI: Successfully created Express port %p for device %p (Type: %d)\n",
+                   ExpressPort, PdoExtension, ExpressPort->DeviceType);
+                   
+            //
+            // If this is a bridge device, create an Express bridge as well
+            //
+            if (ExpressPort->DeviceType == PciExpressRootPort ||
+                ExpressPort->DeviceType == PciExpressDownstreamSwitchPort ||
+                ExpressPort->DeviceType == PciExpressUpstreamSwitchPort ||
+                ExpressPort->DeviceType == PciExpressToPciXBridge)
+            {
+                PEXPRESS_BRIDGE ExpressBridge = NULL;
+                PPCI_FDO_EXTENSION FdoExt = PdoExtension->ParentFdoExtension;
+                
+                ExpressStatus = ExpressBridgeCreate(FdoExt, ExpressPort, &ExpressBridge);
+                if (NT_SUCCESS(ExpressStatus))
+                {
+                    DPRINT("PCI: Successfully created Express bridge %p for port %p\n",
+                           ExpressBridge, ExpressPort);
+                }
+                else
+                {
+                    DPRINT1("PCI: Failed to create Express bridge for port %p: 0x%lx\n",
+                            ExpressPort, ExpressStatus);
+                }
+            }
+        }
+        else
+        {
+            DPRINT1("PCI: Failed to create Express port for device %p: 0x%lx\n",
+                    PdoExtension, ExpressStatus);
+        }
+    }
+    
     return STATUS_SUCCESS;
 }
 

@@ -118,8 +118,25 @@ typedef enum _PCI_DEVICE_TYPES
     PciTypeHostBridge,
     PciTypePciBridge,
     PciTypeCardbusBridge,
-    PciTypeDevice
+    PciTypeDevice,
+    PciTypeExpressBridge,          // PCIe-to-PCIe Bridge
+    PciTypeExpressEndpoint,        // PCIe Endpoint Device
+    PciTypeExpressRootPort,        // PCIe Root Port
+    PciTypeExpressUpstreamPort,    // PCIe Upstream Switch Port
+    PciTypeExpressDownstreamPort   // PCIe Downstream Switch Port
 } PCI_DEVICE_TYPES;
+
+//
+// PCIe Capability ID constant
+//
+#ifndef PCI_CAPABILITY_ID_PCIE
+#define PCI_CAPABILITY_ID_PCIE                  0x10
+#endif
+
+//
+// Include PCIe Express definitions
+//
+#include "express.h"
 
 //
 // Device Extension Logic States
@@ -229,6 +246,10 @@ typedef struct _PCI_FDO_EXTENSION
         BOOLEAN EnableSERR;
     } HotPlugParameters;
     LONG BusHackFlags;
+    
+    /* PCIe Express bridge support */
+    PEXPRESS_BRIDGE ExpressBridge;     // Express bridge structure (if PCIe bridge)
+    BOOLEAN IsExpressBridge;           // True if this is a PCIe bridge
 } PCI_FDO_EXTENSION, *PPCI_FDO_EXTENSION;
 
 typedef struct _PCI_FUNCTION_RESOURCES
@@ -259,6 +280,9 @@ typedef union _PCI_HEADER_TYPE_DEPENDENT
         UCHAR Spare[4];
     } type2;
 } PCI_HEADER_TYPE_DEPENDENT, *PPCI_HEADER_TYPE_DEPENDENT;
+
+
+
 
 typedef struct _PCI_PDO_EXTENSION
 {
@@ -327,6 +351,12 @@ typedef struct _PCI_PDO_EXTENSION
     ULONG MsixTableOffset;
     UCHAR MsixPbaBir;
     ULONG MsixPbaOffset;
+    
+    /* PCIe Express port support */
+    PEXPRESS_PORT ExpressPort;         // Express port structure (if PCIe device)
+    UCHAR ExpressCapabilityOffset;     // PCIe capability offset in config space
+    BOOLEAN IsExpressDevice;           // True if this is a PCIe device
+    PCI_EXPRESS_DEVICE_TYPE ExpressDeviceType; // PCIe device type
 } PCI_PDO_EXTENSION, *PPCI_PDO_EXTENSION;
 
 //
@@ -512,6 +542,19 @@ typedef struct _PCI_MSIX_TABLE_ENTRY
     ULONG MessageData;
     ULONG VectorControl; /* bit0 = Mask */
 } PCI_MSIX_TABLE_ENTRY, *PPCI_MSIX_TABLE_ENTRY;
+
+//
+// Forward declarations for Express structures
+//
+struct _EXPRESS_PORT;
+struct _EXPRESS_BRIDGE;
+struct _EXPRESS_LINK;
+struct _PCI_PDO_EXTENSION;
+struct _PCI_FDO_EXTENSION;
+
+typedef struct _EXPRESS_PORT EXPRESS_PORT, *PEXPRESS_PORT;
+typedef struct _EXPRESS_BRIDGE EXPRESS_BRIDGE, *PEXPRESS_BRIDGE;
+typedef struct _EXPRESS_LINK EXPRESS_LINK, *PEXPRESS_LINK;
 
 //
 // PCI Configuration Callbacks
@@ -1945,6 +1988,208 @@ NTAPI
 PciCardbus_DispatchPnp(
     IN PVOID DeviceContext,
     IN PIRP Irp
+);
+
+//
+// PCIe Express Port Management Functions
+//
+
+// Express port creation and destruction
+NTSTATUS
+NTAPI
+ExpressPortCreate(
+    IN PPCI_PDO_EXTENSION Device,
+    OUT PEXPRESS_PORT *ExpressPort
+);
+
+VOID
+NTAPI
+ExpressPortDestroy(
+    IN PEXPRESS_PORT ExpressPort
+);
+
+// Express port initialization and configuration
+NTSTATUS
+NTAPI
+ExpressPortInitialize(
+    IN PEXPRESS_PORT ExpressPort
+);
+
+NTSTATUS
+NTAPI
+ExpressPortDetectCapabilities(
+    IN PEXPRESS_PORT ExpressPort
+);
+
+// Express bridge creation and management
+NTSTATUS
+NTAPI
+ExpressBridgeCreate(
+    IN PPCI_FDO_EXTENSION BusFdo,
+    IN PEXPRESS_PORT Port,
+    OUT PEXPRESS_BRIDGE *ExpressBridge
+);
+
+VOID
+NTAPI
+ExpressBridgeDestroy(
+    IN PEXPRESS_BRIDGE ExpressBridge
+);
+
+NTSTATUS
+NTAPI
+ExpressBridgeInitialize(
+    IN PEXPRESS_BRIDGE ExpressBridge
+);
+
+// Link management functions
+NTSTATUS
+NTAPI
+ExpressLinkCreate(
+    IN PEXPRESS_PORT UpstreamPort,
+    IN PEXPRESS_PORT DownstreamPort,
+    OUT PEXPRESS_LINK *ExpressLink
+);
+
+VOID
+NTAPI
+ExpressLinkDestroy(
+    IN PEXPRESS_LINK ExpressLink
+);
+
+NTSTATUS
+NTAPI
+ExpressLinkTrain(
+    IN PEXPRESS_LINK ExpressLink
+);
+
+NTSTATUS
+NTAPI
+ExpressLinkRetrain(
+    IN PEXPRESS_LINK ExpressLink
+);
+
+// ASPM (Active State Power Management) functions
+NTSTATUS
+NTAPI
+ExpressLinkConfigureAspm(
+    IN PEXPRESS_LINK ExpressLink,
+    IN PCIE_LINK_STATE TargetState
+);
+
+NTSTATUS
+NTAPI
+ExpressLinkEnableL0s(
+    IN PEXPRESS_LINK ExpressLink
+);
+
+NTSTATUS
+NTAPI
+ExpressLinkEnableL1(
+    IN PEXPRESS_LINK ExpressLink
+);
+
+NTSTATUS
+NTAPI
+ExpressLinkDisableL0sL1(
+    IN PEXPRESS_LINK ExpressLink
+);
+
+// Interrupt handling functions for different controller types
+NTSTATUS
+NTAPI
+ExpressPortConfigureInterrupts(
+    IN PEXPRESS_PORT ExpressPort,
+    IN PCI_INTERRUPT_TYPE InterruptType
+);
+
+NTSTATUS
+NTAPI
+ExpressPortConfigurePicInterrupts(
+    IN PEXPRESS_PORT ExpressPort,
+    IN UCHAR IrqLine,
+    IN BOOLEAN EdgeTriggered
+);
+
+NTSTATUS
+NTAPI
+ExpressPortConfigureAcpiPicInterrupts(
+    IN PEXPRESS_PORT ExpressPort,
+    IN UCHAR IrqLine,
+    IN BOOLEAN EdgeTriggered,
+    IN ULONG AcpiFlags
+);
+
+NTSTATUS
+NTAPI
+ExpressPortConfigureApicInterrupts(
+    IN PEXPRESS_PORT ExpressPort,
+    IN UCHAR ApicId,
+    IN UCHAR Vector,
+    IN BOOLEAN EdgeTriggered,
+    IN ULONG ApicFlags
+);
+
+// Power management functions
+NTSTATUS
+NTAPI
+ExpressPortSetPowerState(
+    IN PEXPRESS_PORT ExpressPort,
+    IN DEVICE_POWER_STATE PowerState
+);
+
+NTSTATUS
+NTAPI
+ExpressBridgeSetPowerState(
+    IN PEXPRESS_BRIDGE ExpressBridge,
+    IN DEVICE_POWER_STATE PowerState
+);
+
+// Hot plug support functions
+NTSTATUS
+NTAPI
+ExpressBridgeInitializeHotPlug(
+    IN PEXPRESS_BRIDGE ExpressBridge
+);
+
+NTSTATUS
+NTAPI
+ExpressBridgeHandleHotPlugEvent(
+    IN PEXPRESS_BRIDGE ExpressBridge,
+    IN ULONG EventType
+);
+
+// Error handling functions
+NTSTATUS
+NTAPI
+ExpressPortInitializeErrorReporting(
+    IN PEXPRESS_PORT ExpressPort
+);
+
+NTSTATUS
+NTAPI
+ExpressPortHandleError(
+    IN PEXPRESS_PORT ExpressPort,
+    IN ULONG ErrorStatus
+);
+
+// Utility functions
+BOOLEAN
+NTAPI
+ExpressIsDevicePresent(
+    IN PEXPRESS_PORT ExpressPort
+);
+
+NTSTATUS
+NTAPI
+ExpressPortSaveConfiguration(
+    IN PEXPRESS_PORT ExpressPort
+);
+
+NTSTATUS
+NTAPI
+ExpressPortRestoreConfiguration(
+    IN PEXPRESS_PORT ExpressPort
 );
 
 //
