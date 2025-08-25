@@ -211,8 +211,8 @@ typedef struct _PCI_FDO_EXTENSION
     SINGLE_LIST_ENTRY List;
     ULONG ExtensionType;
     struct _PCI_MJ_DISPATCH_TABLE *IrpDispatchTable;
-    BOOLEAN DeviceState;
-    BOOLEAN TentativeNextState;
+    PCI_STATE DeviceState;
+    PCI_STATE TentativeNextState;
     KEVENT SecondaryExtLock;
     PDEVICE_OBJECT PhysicalDeviceObject;
     PDEVICE_OBJECT FunctionalDeviceObject;
@@ -289,8 +289,8 @@ typedef struct _PCI_PDO_EXTENSION
     PVOID Next;
     ULONG ExtensionType;
     struct _PCI_MJ_DISPATCH_TABLE *IrpDispatchTable;
-    BOOLEAN DeviceState;
-    BOOLEAN TentativeNextState;
+    PCI_STATE DeviceState;
+    PCI_STATE TentativeNextState;
 
     KEVENT SecondaryExtLock;
     PCI_SLOT_NUMBER Slot;
@@ -2314,6 +2314,22 @@ PciValidateAcpiApicInterrupt(
     IN PPCI_PDO_EXTENSION DeviceExtension,
     IN PCI_INTERRUPT_TYPE InterruptType,
     IN ULONG InterruptNumber
+);
+
+//
+// Bus Number Assignment Functions
+//
+VOID
+NTAPI
+PciAssignBusNumbersToAllBridges(
+    IN PPCI_FDO_EXTENSION DeviceExtension
+);
+
+VOID
+NTAPI
+PciUpdateSubordinateBusNumbers(
+    IN PPCI_FDO_EXTENSION DeviceExtension,
+    IN UCHAR MaxBusNumber
 );
 
 /* Exported by NTOS, should this go in the NDK? */

@@ -686,12 +686,57 @@ PciPdoIrpQueryDeviceState(IN PIRP Irp,
                           IN PIO_STACK_LOCATION IoStackLocation,
                           IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PNP_DEVICE_STATE DeviceState;
+    NTSTATUS Status;
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_SUPPORTED;
+    UNREFERENCED_PARAMETER(IoStackLocation);
+    PAGED_CODE();
+
+    /* Initialize the device state */
+    DeviceState = 0;
+
+    /* Check if the device is not present */
+    if (DeviceExtension->NotPresent)
+    {
+        DeviceState |= PNP_DEVICE_NOT_DISABLEABLE;
+        DeviceState |= PNP_DEVICE_FAILED;
+    }
+
+    /* Check if the device is on the debug path */
+    if (DeviceExtension->OnDebugPath)
+    {
+        DeviceState |= PNP_DEVICE_NOT_DISABLEABLE;
+    }
+
+    /* Check if device needs configuration */
+    if (DeviceExtension->NeedsHotPlugConfiguration)
+    {
+        DeviceState |= PNP_DEVICE_NOT_DISABLEABLE;
+    }
+
+    /* Check if device has a legacy driver */
+    if (DeviceExtension->LegacyDriver)
+    {
+        DeviceState |= PNP_DEVICE_NOT_DISABLEABLE;
+    }
+
+    /* Check power management capabilities */
+    if (DeviceExtension->DisablePowerDown)
+    {
+        DeviceState |= PNP_DEVICE_NOT_DISABLEABLE;
+    }
+
+    DPRINT("PCI: Device state for device %p (VID:0x%04x DID:0x%04x) = 0x%lx\n",
+           DeviceExtension, 
+           DeviceExtension->VendorId,
+           DeviceExtension->DeviceId,
+           DeviceState);
+
+    /* Set the device state in the IRP */
+    Irp->IoStatus.Information = (ULONG_PTR)DeviceState;
+    Status = STATUS_SUCCESS;
+
+    return Status;
 }
 
 NTSTATUS

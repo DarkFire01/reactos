@@ -62,7 +62,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/kdnetfiles/)
     foreach(item ${EXTRA_FILES})
         add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/kdnetfiles/${item} DESTINATION reactos/system32 NAME_ON_CD ${item} FOR all)
     endforeach(item)
-endif()
+endif()#
 #
 if(ARCH STREQUAL "i386")
     ## Slipstreaming drivers x86

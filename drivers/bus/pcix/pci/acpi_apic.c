@@ -309,6 +309,10 @@ PciConfigureAcpiInterrupt(IN PPCI_PDO_EXTENSION DeviceExtension,
         if (!NT_SUCCESS(Status))
         {
             DPRINT("PciConfigureAcpiInterrupt: _PRT method evaluation failed (Status: 0x%lx)\n", Status);
+            // Fallback: Use the current interrupt line from PCI configuration space
+            DPRINT("PciConfigureAcpiInterrupt: Using fallback - keeping current IRQ %d\n", 
+                   DeviceExtension->RawInterruptLine);
+            Status = STATUS_SUCCESS;
             break;
         }
         

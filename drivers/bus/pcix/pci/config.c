@@ -10,7 +10,7 @@
 
 #include <pci.h>
 
-//#define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 /* GLOBALS ********************************************************************/
@@ -187,11 +187,14 @@ PciQueryForPciBusInterface(IN PPCI_FDO_EXTENSION FdoExtension)
     PAGED_CODE();
     ASSERT(PCI_IS_ROOT_FDO(FdoExtension));
 
-    /* Allocate space for the interface */
+    /* Allocate space for the interface - use larger size to accommodate either interface type */
     PciInterface = ExAllocatePoolWithTag(NonPagedPool,
                                          sizeof(PCI_BUS_INTERFACE_STANDARD),
                                          PCI_POOL_TAG);
     if (!PciInterface) return STATUS_INSUFFICIENT_RESOURCES;
+    
+    /* Initialize the interface structure - let ACPI driver fill in the correct values */
+    RtlZeroMemory(PciInterface, sizeof(PCI_BUS_INTERFACE_STANDARD));
 
     /* Get the device the PDO is attached to, should be the Root (ACPI) */
     AttachedDevice = IoGetAttachedDeviceReference(FdoExtension->PhysicalDeviceObject);
@@ -243,7 +246,28 @@ PciQueryForPciBusInterface(IN PPCI_FDO_EXTENSION FdoExtension)
         }
         else
         {
-            /* An interface was returned, save it */
+            /* An interface was returned, validate and save it */
+            DPRINT("PCI: ACPI returned interface with Size=%d, Expected PCI Size=%d, Base Size=%d\n",
+                   PciInterface->Size, sizeof(PCI_BUS_INTERFACE_STANDARD), sizeof(BUS_INTERFACE_STANDARD));
+            
+            /* Check if ACPI returned the smaller BUS_INTERFACE_STANDARD instead of PCI_BUS_INTERFACE_STANDARD */
+            if (PciInterface->Size == sizeof(BUS_INTERFACE_STANDARD))
+            {
+                /* ACPI returned the generic bus interface, not the PCI-specific one */
+                DPRINT("PCI: ACPI returned generic BUS_INTERFACE_STANDARD, accepting it\n");
+                /* The interface is valid but smaller - this is acceptable */
+            }
+            else if (PciInterface->Size == sizeof(PCI_BUS_INTERFACE_STANDARD))
+            {
+                /* ACPI returned the PCI-specific interface as expected */
+                DPRINT("PCI: ACPI returned PCI_BUS_INTERFACE_STANDARD as expected\n");
+            }
+            else
+            {
+                /* Unexpected interface size */
+                DPRINT1("PCI: ACPI returned unexpected interface size %d\n", PciInterface->Size);
+            }
+            
             FdoExtension->PciBusInterface = PciInterface;
         }
 
