@@ -42,6 +42,31 @@ routeintrf_Initializer(IN PVOID Instance)
     return STATUS_UNSUCCESSFUL;
 }
 
+static VOID NTAPI PciInterface_RefDereference_NoOp(IN PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+}
+
+static VOID NTAPI PciRoutingInterface_UpdateInterruptLine(
+    IN PDEVICE_OBJECT Pdo,
+    IN UCHAR LineRegister)
+{
+    PPCI_PDO_EXTENSION PdoExtension;
+    UCHAR Line = LineRegister;
+
+    if (!Pdo) return;
+
+    PdoExtension = (PPCI_PDO_EXTENSION)Pdo->DeviceExtension;
+    ASSERT_PDO(PdoExtension);
+
+    /* Update cached value and write to config space */
+    PdoExtension->RawInterruptLine = Line;
+    PciWriteDeviceConfig(PdoExtension,
+                         &Line,
+                         FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.InterruptLine),
+                         sizeof(UCHAR));
+}
+
 NTSTATUS
 NTAPI
 routeintrf_Constructor(IN PVOID DeviceExtension,
@@ -51,18 +76,26 @@ routeintrf_Constructor(IN PVOID DeviceExtension,
                        IN USHORT Size,
                        IN PINTERFACE Interface)
 {
+    PINT_ROUTE_INTERFACE_STANDARD Iface = (PINT_ROUTE_INTERFACE_STANDARD)Interface;
     UNREFERENCED_PARAMETER(DeviceExtension);
     UNREFERENCED_PARAMETER(Instance);
     UNREFERENCED_PARAMETER(InterfaceData);
-    UNREFERENCED_PARAMETER(Size);
-    UNREFERENCED_PARAMETER(Interface);
 
     /* Only version 1 is supported */
     if (Version != PCI_INT_ROUTE_INTRF_STANDARD_VER) return STATUS_NOINTERFACE;
+    if (Size < sizeof(*Iface)) return STATUS_INFO_LENGTH_MISMATCH;
 
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_IMPLEMENTED;
+    RtlZeroMemory(Iface, sizeof(*Iface));
+    Iface->Size = sizeof(*Iface);
+    Iface->Version = PCI_INT_ROUTE_INTRF_STANDARD_VER;
+    Iface->Context = NULL;
+    Iface->InterfaceReference = (PINTERFACE_REFERENCE)PciInterface_RefDereference_NoOp;
+    Iface->InterfaceDereference = (PINTERFACE_DEREFERENCE)PciInterface_RefDereference_NoOp;
+    /* Leave GetInterruptRouting/SetInterruptRoutingToken unimplemented for now */
+    Iface->GetInterruptRouting = NULL;
+    Iface->SetInterruptRoutingToken = NULL;
+    Iface->UpdateInterruptLine = (PUPDATE_INTERRUPT_LINE)PciRoutingInterface_UpdateInterruptLine;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS

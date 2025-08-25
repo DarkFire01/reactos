@@ -24,6 +24,7 @@ ULONG64 TscCalibrationArray[NUM_SAMPLES];
 
 /* PRIVATE FUNCTIONS *********************************************************/
 
+
 static
 ULONG64
 DoLinearRegression(

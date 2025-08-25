@@ -1598,15 +1598,8 @@ HalGetInterruptVector(IN INTERFACE_TYPE InterfaceType,
                                          BusInterruptVector,
                                          Irql,
                                          Affinity);
-    if ((Vector != IRQ2VECTOR(BusInterruptLevel)) ||
-        (*Irql != VECTOR2IRQL(IRQ2VECTOR(BusInterruptLevel))))
-    {
-        DPRINT1("Returning IRQL %lx, Vector %lx for Level/Vector: %lx/%lx\n",
-                *Irql, Vector, BusInterruptLevel, BusInterruptVector);
-        DPRINT1("Old HAL would've returned IRQL %lx and Vector %lx\n",
-                VECTOR2IRQL(IRQ2VECTOR(BusInterruptLevel)),
-                IRQ2VECTOR(BusInterruptLevel));
-    }
+    DPRINT1("Returning IRQL %lx, Vector %lx for Level/Vector: %lx/%lx\n",
+            *Irql, Vector, BusInterruptLevel, BusInterruptVector);
 
     /* Dereference the handler and return */
     HalDereferenceBusHandler(Handler);

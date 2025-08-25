@@ -20,6 +20,7 @@ PPCI_INTERFACE PciInterfaces[] =
     &ArbiterInterfaceBusNumber,
     &ArbiterInterfaceMemory,
     &ArbiterInterfaceIo,
+    &ArbiterInterfaceInterrupt,
     &BusHandlerInterface,
     &PciRoutingInterface,
     &PciCardbusPrivateInterface,

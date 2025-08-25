@@ -23,7 +23,22 @@ HalpIoWait(VOID)
     for (i = 0; i < 6; i++)
         __outbyte(CPU_IO_o_ARTIC_DELAY, 0);
 }
-
+NTSTATUS
+NTAPI
+HalpGetInterruptTranslator(IN INTERFACE_TYPE ParentInterfaceType,
+                           IN ULONG ParentBusNumber,
+                           IN INTERFACE_TYPE BridgeInterfaceType,
+                           IN USHORT Size,
+                           IN USHORT Version,
+                           OUT PTRANSLATOR_INTERFACE Translator,
+                           OUT PULONG BridgeBusNumber)
+{
+    PAGED_CODE();
+    UNREFERENCED_PARAMETER(ParentInterfaceType);
+    UNREFERENCED_PARAMETER(ParentBusNumber);
+    UNREFERENCED_PARAMETER(BridgeBusNumber);
+    return STATUS_NOT_IMPLEMENTED;
+}
 VOID
 NTAPI
 HalpInitializeLegacyPICs(VOID)

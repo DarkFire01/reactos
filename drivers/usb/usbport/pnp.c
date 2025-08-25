@@ -1011,8 +1011,11 @@ USBPORT_ParseResources(IN PDEVICE_OBJECT FdoDevice,
             UsbPortResources->ShareVector = InterruptDescriptor->ShareDisposition ==
                                             CmResourceShareShared;
 
-            UsbPortResources->InterruptMode = InterruptDescriptor->Flags ==
-                                              CM_RESOURCE_INTERRUPT_LATCHED;
+            /* Map resource flags to proper KINTERRUPT_MODE */
+            UsbPortResources->InterruptMode =
+                (InterruptDescriptor->Flags & CM_RESOURCE_INTERRUPT_LATCHED) ?
+                Latched :
+                LevelSensitive;
         }
     }
     else

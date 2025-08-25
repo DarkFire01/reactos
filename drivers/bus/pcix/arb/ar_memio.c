@@ -51,6 +51,153 @@ PCI_INTERFACE ArbiterInterfaceIo =
     ario_Initializer
 };
 
+NTSTATUS
+NTAPI
+arint_Initializer(IN PVOID Instance);
+NTSTATUS
+NTAPI
+arint_Constructor(IN PVOID DeviceExtension,
+                  IN PVOID PciInterface,
+                  IN PVOID InterfaceData,
+                  IN USHORT Version,
+                  IN USHORT Size,
+                  IN PINTERFACE Interface);
+PCI_INTERFACE ArbiterInterfaceInterrupt =
+{
+    &GUID_ARBITER_INTERFACE_STANDARD,
+    sizeof(ARBITER_INTERFACE),
+    0,
+    0,
+    PCI_INTERFACE_FDO,
+    0,
+    PciArb_Interrupt,
+    arint_Constructor,
+    arint_Initializer
+};
+
+static NTSTATUS NTAPI arint_UnpackRequirement(
+    _In_ PIO_RESOURCE_DESCRIPTOR IoDesc,
+    _Out_ PULONGLONG Min,
+    _Out_ PULONGLONG Max,
+    _Out_ PULONG Length,
+    _Out_ PULONG Alignment)
+{
+    UNREFERENCED_PARAMETER(IoDesc);
+    /* Legacy INTx are unit-size tokens; let core arbiter manage sharing */
+    *Min = 0;
+    *Max = 0xFF;
+    *Length = 1;
+    *Alignment = 1;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS NTAPI arint_PackResource(
+    _In_ PIO_RESOURCE_DESCRIPTOR IoDesc,
+    _In_ ULONGLONG Start,
+    _Out_ PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDesc)
+{
+    RtlZeroMemory(CmDesc, sizeof(*CmDesc));
+    CmDesc->Type = CmResourceTypeInterrupt;
+    CmDesc->ShareDisposition = CmResourceShareShared;
+    CmDesc->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+    CmDesc->u.Interrupt.Level = (ULONG)Start;
+    CmDesc->u.Interrupt.Vector = (ULONG)Start;
+    CmDesc->u.Interrupt.Affinity = (KAFFINITY)-1;
+    UNREFERENCED_PARAMETER(IoDesc);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS NTAPI arint_UnpackResource(
+    _In_ PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDesc,
+    _Out_ PULONGLONG Start,
+    _Out_ PULONG Length)
+{
+    *Start = CmDesc->u.Interrupt.Vector;
+    *Length = 1;
+    return STATUS_SUCCESS;
+}
+
+static LONG NTAPI arint_ScoreRequirement(_In_ PIO_RESOURCE_DESCRIPTOR IoDesc)
+{
+    UNREFERENCED_PARAMETER(IoDesc);
+    return 0;
+}
+
+NTSTATUS
+NTAPI
+arint_Initializer(IN PVOID Instance)
+{
+    PPCI_ARBITER_INSTANCE Arbiter = Instance;
+    PPCI_FDO_EXTENSION FdoExtension = Arbiter->BusFdoExtension;
+
+    PAGED_CODE();
+
+    RtlZeroMemory(&Arbiter->CommonInstance, sizeof(Arbiter->CommonInstance));
+
+    Arbiter->CommonInstance.UnpackRequirement = arint_UnpackRequirement;
+    Arbiter->CommonInstance.PackResource = arint_PackResource;
+    Arbiter->CommonInstance.UnpackResource = arint_UnpackResource;
+    Arbiter->CommonInstance.ScoreRequirement = arint_ScoreRequirement;
+    Arbiter->CommonInstance.TestAllocation = ArbTestAllocation;
+    Arbiter->CommonInstance.RetestAllocation = ArbRetestAllocation;
+    Arbiter->CommonInstance.CommitAllocation = ArbCommitAllocation;
+    Arbiter->CommonInstance.RollbackAllocation = ArbRollbackAllocation;
+    Arbiter->CommonInstance.BootAllocation = ArbBootAllocation;
+    Arbiter->CommonInstance.StartArbiter = NULL;
+    Arbiter->CommonInstance.PreprocessEntry = ArbPreprocessEntry;
+    Arbiter->CommonInstance.AllocateEntry = ArbAllocateEntry;
+    Arbiter->CommonInstance.GetNextAllocationRange = ArbGetNextAllocationRange;
+    Arbiter->CommonInstance.FindSuitableRange = ArbFindSuitableRange;
+    Arbiter->CommonInstance.AddAllocation = ArbAddAllocation;
+    Arbiter->CommonInstance.BacktrackAllocation = ArbBacktrackAllocation;
+    Arbiter->CommonInstance.OverrideConflict = NULL;
+
+    return ArbInitializeArbiterInstance(&Arbiter->CommonInstance,
+                                        FdoExtension->FunctionalDeviceObject,
+                                        CmResourceTypeInterrupt,
+                                        Arbiter->InstanceName,
+                                        L"Pci",
+                                        NULL);
+}
+
+NTSTATUS
+NTAPI
+arint_Constructor(IN PVOID DeviceExtension,
+                  IN PVOID PciInterface,
+                  IN PVOID InterfaceData,
+                  IN USHORT Version,
+                  IN USHORT Size,
+                  IN PINTERFACE Interface)
+{
+    PPCI_FDO_EXTENSION FdoExtension = (PPCI_FDO_EXTENSION)DeviceExtension;
+    NTSTATUS Status;
+    PAGED_CODE();
+
+    UNREFERENCED_PARAMETER(PciInterface);
+    UNREFERENCED_PARAMETER(Version);
+    UNREFERENCED_PARAMETER(Size);
+    UNREFERENCED_PARAMETER(Interface);
+
+    if ((ULONG_PTR)InterfaceData != CmResourceTypeInterrupt)
+    {
+        if (FdoExtension->ArbitersInitialized)
+        {
+            UNIMPLEMENTED;
+            while (TRUE);
+        }
+        else
+        {
+            Status = STATUS_NOT_SUPPORTED;
+        }
+    }
+    else
+    {
+        Status = STATUS_INVALID_PARAMETER_5;
+    }
+
+    return Status;
+}
+
 /* FUNCTIONS ******************************************************************/
 
 static NTSTATUS NTAPI ario_UnpackRequirement(

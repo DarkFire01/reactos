@@ -74,6 +74,16 @@ HalInitializeProcessor(
     }
 }
 
+NTSTATUS
+NTAPI
+HalpGetInterruptTranslator(IN INTERFACE_TYPE ParentInterfaceType,
+                           IN ULONG ParentBusNumber,
+                           IN INTERFACE_TYPE BridgeInterfaceType,
+                           IN USHORT Size,
+                           IN USHORT Version,
+                           OUT PTRANSLATOR_INTERFACE Translator,
+                           OUT PULONG BridgeBusNumber);
+                           
 /*
  * @implemented
  */
@@ -132,7 +142,8 @@ HalInitSystem(
         HalInitPnpDriver = HaliInitPnpDriver;
         HalGetDmaAdapter = HalpGetDmaAdapter;
 
-        HalGetInterruptTranslator = NULL;  // FIXME: TODO
+        /* Provide HAL's own interrupt translator */
+        HalGetInterruptTranslator = HalpGetInterruptTranslator;
         HalResetDisplay = HalpBiosDisplayReset;
         HalHaltSystem = HaliHaltSystem;
 
