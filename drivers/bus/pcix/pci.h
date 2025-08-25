@@ -2221,6 +2221,101 @@ extern BOOLEAN PciEnableNativeModeATA;
 extern PPCI_IRQ_ROUTING_TABLE PciIrqRoutingTable;
 extern BOOLEAN PciRunningDatacenter;
 
+//
+// ACPI/APIC Interrupt Management Functions
+//
+BOOLEAN
+NTAPI
+PciDetectAcpi(
+    VOID
+);
+
+BOOLEAN
+NTAPI
+PciDetectApic(
+    VOID
+);
+
+BOOLEAN
+NTAPI
+PciDetectMsiSupport(
+    VOID
+);
+
+PCI_INTERRUPT_TYPE
+NTAPI
+PciDetermineInterruptType(
+    IN PPCI_PDO_EXTENSION DeviceExtension
+);
+
+NTSTATUS
+NTAPI
+PciConfigureAcpiInterrupt(
+    IN PPCI_PDO_EXTENSION DeviceExtension,
+    IN UCHAR InterruptLine
+);
+
+NTSTATUS
+NTAPI
+PciConfigureApicInterrupt(
+    IN PPCI_PDO_EXTENSION DeviceExtension,
+    IN UCHAR InterruptLine,
+    IN UCHAR ApicId,
+    IN UCHAR Vector
+);
+
+NTSTATUS
+NTAPI
+PciIntegrateAcpiApicInterrupts(
+    IN PPCI_PDO_EXTENSION DeviceExtension
+);
+
+NTSTATUS
+NTAPI
+PciInitializeAcpiApicSupport(
+    VOID
+);
+
+//
+// ACPI Support Functions (from init.c)
+//
+NTSTATUS
+NTAPI
+PciAcpiFindRsdt(
+    OUT PACPI_BIOS_MULTI_NODE *AcpiMultiNode
+);
+
+PVOID
+NTAPI
+PciGetAcpiTable(
+    IN ULONG TableCode
+);
+
+//
+// ACPI/APIC Interrupt Arbiter Functions
+//
+NTSTATUS
+NTAPI
+PciInitializeAcpiApicInterruptRanges(
+    IN PARBITER_INSTANCE Arbiter
+);
+
+NTSTATUS
+NTAPI
+PciAllocateAcpiApicInterrupt(
+    IN PPCI_PDO_EXTENSION DeviceExtension,
+    IN PCI_INTERRUPT_TYPE InterruptType,
+    OUT PULONG AllocatedInterrupt
+);
+
+BOOLEAN
+NTAPI
+PciValidateAcpiApicInterrupt(
+    IN PPCI_PDO_EXTENSION DeviceExtension,
+    IN PCI_INTERRUPT_TYPE InterruptType,
+    IN ULONG InterruptNumber
+);
+
 /* Exported by NTOS, should this go in the NDK? */
 extern NTSYSAPI BOOLEAN InitSafeBootMode;
 

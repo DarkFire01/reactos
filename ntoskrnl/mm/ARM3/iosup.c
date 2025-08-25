@@ -9,7 +9,7 @@
 /* INCLUDES *******************************************************************/
 
 #include <ntoskrnl.h>
-#define NDEBUG
+//#define NDEBUG
 #include <debug.h>
 
 #define MODULE_INVOLVED_IN_ARM3
@@ -99,6 +99,11 @@ MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
     //
     PointerPte = MiReserveSystemPtes(PageCount, SystemPteSpace);
     if (!PointerPte) return NULL;
+    
+    //
+    // Store the original PTE pointer for cleanup if needed
+    //
+    PMMPTE OriginalPointerPte = PointerPte;
     BaseAddress = MiPteToAddress(PointerPte);
 
     //
@@ -167,6 +172,73 @@ MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
     KeFlushEntireTb(TRUE, TRUE);
     KeInvalidateAllCaches();
 
+    //
+    // Add detailed debugging for mapping requests
+    //
+    DPRINT("MmMapIoSpace: Mapping PA=0x%I64x, Size=0x%lx, VA=%p, PTE=%p\n",
+           PhysicalAddress.QuadPart, NumberOfBytes, BaseAddress, OriginalPointerPte);
+    DPRINT("MmMapIoSpace: PTE Valid=%d, PFN=0x%lx, RequestedPFN=0x%lx\n",
+           OriginalPointerPte->u.Hard.Valid, 
+           OriginalPointerPte->u.Hard.PageFrameNumber,
+           (PFN_NUMBER)(PhysicalAddress.QuadPart >> PAGE_SHIFT));
+    
+    //
+    // Check if the physical memory is already mapped and the existing mapping is sufficient
+    // This can happen when HAL pre-maps I/O regions and the same physical memory is requested again
+    //
+    if (OriginalPointerPte->u.Hard.Valid != 0)
+    {
+        //
+        // Check if all required pages are already mapped to the correct physical addresses
+        //
+        PMMPTE CheckPte = OriginalPointerPte;
+        PFN_NUMBER CheckPfn = (PFN_NUMBER)(PhysicalAddress.QuadPart >> PAGE_SHIFT);
+        ULONG PagesToCheck = PageCount;
+        BOOLEAN AllPagesMapped = TRUE;
+        
+        while (PagesToCheck-- > 0)
+        {
+            if ((CheckPte->u.Hard.Valid == 0) || 
+                (CheckPte->u.Hard.PageFrameNumber != CheckPfn))
+            {
+                AllPagesMapped = FALSE;
+                break;
+            }
+            CheckPte++;
+            CheckPfn++;
+        }
+        
+        if (AllPagesMapped)
+        {
+            //
+            // All required pages are already mapped correctly
+            // Return the existing mapping instead of trying to map again
+            //
+            DPRINT("MmMapIoSpace: Physical range 0x%I64x (0x%lx bytes) already fully mapped at virtual %p\n",
+                   PhysicalAddress.QuadPart, NumberOfBytes, BaseAddress);
+            
+            //
+            // Release our allocated PTEs since we don't need them
+            //
+            MiReleaseSystemPtes(OriginalPointerPte, PageCount, SystemPteSpace);
+            
+            //
+            // Return the already-mapped virtual address
+            //
+            return BaseAddress;
+        }
+        else
+        {
+            //
+            // Partial mapping exists but not sufficient for our needs
+            // This is a complex case - for now, proceed with normal mapping
+            // but add detailed logging
+            //
+            DPRINT("MmMapIoSpace: Partial mapping exists for PA=0x%I64x, proceeding with new mapping\n",
+                   PhysicalAddress.QuadPart);
+        }
+    }
+    
     //
     // Do the mapping
     //

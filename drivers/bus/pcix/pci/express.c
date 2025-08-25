@@ -67,7 +67,7 @@
 
 #include <pci.h>
 
-#define NDEBUG
+// #define NDEBUG  // Temporarily disabled to see PCIe debug output
 #include <debug.h>
 
 /* CONSTANTS ******************************************************************/

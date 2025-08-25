@@ -10,7 +10,7 @@
 
 #include <pci.h>
 
-#define NDEBUG
+// #define NDEBUG  // Temporarily disabled to see PCIe debug output
 #include <debug.h>
 
 /* GLOBALS ********************************************************************/
@@ -2465,12 +2465,18 @@ PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
     PdoExtension->NeedsHotPlugConfiguration = FALSE;
     
     //
+    // Configure ACPI/APIC interrupts for this device
+    //
+    DPRINT("PCI: Integrating ACPI/APIC interrupts for device %p\n", PdoExtension);
+    PciIntegrateAcpiApicInterrupts(PdoExtension);
+    
+    //
     // Debug: Show device processing status
     //
-    DPRINT("PCI: Processing device %p - VID:0x%04x DID:0x%04x, IsExpress:%s, ExpressCapOffset:0x%x\n",
+    DPRINT("PCI: Processing device %p - VID:0x%04x DID:0x%04x, IsExpress:%s, ExpressCapOffset:0x%x, IRQ:%d\n",
            PdoExtension, PdoExtension->VendorId, PdoExtension->DeviceId,
            PdoExtension->IsExpressDevice ? "YES" : "NO", 
-           PdoExtension->ExpressCapabilityOffset);
+           PdoExtension->ExpressCapabilityOffset, PdoExtension->RawInterruptLine);
 
     //
     // Initialize PCIe Express port if this is an Express device

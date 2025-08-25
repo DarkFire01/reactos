@@ -10,7 +10,7 @@
 
 #include <pci.h>
 
-#define NDEBUG
+//#define NDEBUG
 #include <debug.h>
 
 /* External arbiter library helpers missing from the public header */
@@ -170,32 +170,59 @@ arint_Constructor(IN PVOID DeviceExtension,
                   IN PINTERFACE Interface)
 {
     PPCI_FDO_EXTENSION FdoExtension = (PPCI_FDO_EXTENSION)DeviceExtension;
+    PPCI_ARBITER_INSTANCE PciArbiter = (PPCI_ARBITER_INSTANCE)PciInterface;
     NTSTATUS Status;
     PAGED_CODE();
 
-    UNREFERENCED_PARAMETER(PciInterface);
     UNREFERENCED_PARAMETER(Version);
     UNREFERENCED_PARAMETER(Size);
     UNREFERENCED_PARAMETER(Interface);
 
+    //
+    // Validate parameters
+    //
     if ((ULONG_PTR)InterfaceData != CmResourceTypeInterrupt)
     {
-        if (FdoExtension->ArbitersInitialized)
+        DPRINT1("PCI: arint_Constructor called with non-interrupt resource type: %p\n", InterfaceData);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    DPRINT("PCI: Initializing interrupt arbiter for FDO %p\n", FdoExtension);
+
+    //
+    // Initialize the arbiter instance
+    //
+    Status = ArbInitializeArbiterInstance(&PciArbiter->CommonInstance,
+                                          FdoExtension->FunctionalDeviceObject,
+                                          CmResourceTypeInterrupt,
+                                          PciArbiter->InstanceName,
+                                          L"Pci",
+                                          NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("PCI: Failed to initialize interrupt arbiter instance: 0x%lx\n", Status);
+        return Status;
+    }
+
+    //
+    // Initialize ACPI/APIC interrupt ranges if this is the root bus
+    //
+    if (PCI_IS_ROOT_FDO(FdoExtension))
+    {
+        Status = PciInitializeAcpiApicInterruptRanges(&PciArbiter->CommonInstance);
+        if (!NT_SUCCESS(Status))
         {
-            UNIMPLEMENTED;
-            while (TRUE);
+            DPRINT("PCI: Failed to initialize ACPI/APIC interrupt ranges: 0x%lx\n", Status);
+            // Continue - let HAL handle interrupt allocation
         }
         else
         {
-            Status = STATUS_NOT_SUPPORTED;
+            DPRINT("PCI: Successfully initialized ACPI/APIC interrupt ranges\n");
         }
     }
-    else
-    {
-        Status = STATUS_INVALID_PARAMETER_5;
-    }
 
-    return Status;
+    DPRINT("PCI: Successfully initialized interrupt arbiter for FDO %p\n", FdoExtension);
+    return STATUS_SUCCESS;
 }
 
 /* FUNCTIONS ******************************************************************/

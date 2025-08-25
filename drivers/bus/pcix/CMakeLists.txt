@@ -7,6 +7,7 @@ list(APPEND SOURCE
     arb/ar_busno.c
     arb/ar_memio.c
     arb/arb_comn.c
+    arb/arb_irq_acpi_apic.c
     arb/tr_irq.c
     intrface/agpintrf.c
     intrface/busintrf.c
@@ -19,6 +20,7 @@ list(APPEND SOURCE
     intrface/locintrf.c
     intrface/pmeintf.c
     intrface/routintf.c
+    pci/acpi_apic.c
     pci/busno.c
     pci/config.c
     pci/devhere.c

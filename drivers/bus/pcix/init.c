@@ -10,7 +10,7 @@
 
 #include <pci.h>
 
-#define NDEBUG
+// #define NDEBUG  // Temporarily disabled to see ACPI/APIC debug output
 #include <debug.h>
 
 /* GLOBALS ********************************************************************/
@@ -282,7 +282,7 @@ PciGetAcpiTable(IN ULONG TableCode)
             PhysicalAddress = Xsdt->Tables[CurrentEntry];
         }
 
-        /* Map this table */
+        /* Map this table header first to read the length */
         Header = MmMapIoSpace(PhysicalAddress,
                               sizeof(DESCRIPTION_HEADER),
                               MmNonCached);
@@ -291,17 +291,36 @@ PciGetAcpiTable(IN ULONG TableCode)
         /* Check if this is the table that's being asked for */
         if (Header->Signature == TableCode)
         {
+            /* Save the table length and unmap the header */
+            ULONG TableLength = Header->Length;
+            MmUnmapIoSpace(Header, sizeof(DESCRIPTION_HEADER));
+            Header = NULL;
+            
+            /* Now map the full table */
+            PDESCRIPTION_HEADER FullTable = MmMapIoSpace(PhysicalAddress,
+                                                        TableLength,
+                                                        MmNonCached);
+            if (!FullTable) break;
+            
             /* Allocate a buffer for it */
             TableBuffer = ExAllocatePoolWithTag(PagedPool,
-                                                Header->Length,
+                                                TableLength,
                                                 PCI_POOL_TAG);
-            if (!TableBuffer) break;
+            if (!TableBuffer) 
+            {
+                MmUnmapIoSpace(FullTable, TableLength);
+                break;
+            }
 
             /* Copy the table into the buffer */
-            RtlCopyMemory(TableBuffer, Header, Header->Length);
+            RtlCopyMemory(TableBuffer, FullTable, TableLength);
+            
+            /* Unmap the full table and return success */
+            MmUnmapIoSpace(FullTable, TableLength);
+            return TableBuffer;
         }
 
-        /* Done with this table, keep going */
+        /* Done with this table header, keep going */
         MmUnmapIoSpace(Header, sizeof(DESCRIPTION_HEADER));
     }
 
@@ -783,6 +802,14 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
         /* This is how we'll detect a new PCI bus */
         DriverObject->DriverExtension->AddDevice = PciAddDevice;
+        
+        /* Initialize ACPI/APIC interrupt management support */
+        Status = PciInitializeAcpiApicSupport();
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT("PCI: Failed to initialize ACPI/APIC support (Status: 0x%lx)\n", Status);
+            // Continue anyway - this is not a fatal error
+        }
 
         /* Open the PCI key */
         InitializeObjectAttributes(&ObjectAttributes,

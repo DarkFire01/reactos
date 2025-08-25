@@ -10,7 +10,7 @@
 
 #include <pci.h>
 
-#define NDEBUG
+// #define NDEBUG  // Temporarily disabled for ACPI/APIC debugging
 #include <debug.h>
 
 /* GLOBALS ********************************************************************/
@@ -52,6 +52,7 @@ tranirq_Constructor(IN PVOID DeviceExtension,
     PPCI_FDO_EXTENSION FdoExtension = (PPCI_FDO_EXTENSION)DeviceExtension;
     ULONG BaseBus, ParentBus;
     INTERFACE_TYPE ParentInterface;
+    NTSTATUS Status;
     ASSERT_FDO(FdoExtension);
 
     UNREFERENCED_PARAMETER(Instance);
@@ -77,7 +78,17 @@ tranirq_Constructor(IN PVOID DeviceExtension,
         /* It is, so there is no parent, and it's connected on the system bus */
         ParentBus = 0;
         ParentInterface = Internal;
-        DPRINT1("      Is root FDO\n");
+        DPRINT("PCI IRQ Translator: Root FDO on bus %d\n", BaseBus);
+        
+        /* Check for ACPI/APIC support on root bus */
+        if (PciDetectAcpi())
+        {
+            DPRINT("PCI IRQ Translator: ACPI detected - enhanced interrupt routing available\n");
+        }
+        if (PciDetectApic())
+        {
+            DPRINT("PCI IRQ Translator: APIC detected - advanced interrupt management available\n");
+        }
     }
     else
     {
@@ -85,19 +96,30 @@ tranirq_Constructor(IN PVOID DeviceExtension,
         #if 0 // when have PDO commit
         ParentBus = FdoExtension->PhysicalDeviceObject->DeviceExtension->ParentFdoExtension->BaseBus;
         ParentInterface = PCIBus;
-        DPRINT1("      Is bridge FDO, parent bus %x, secondary bus %x\n",
+        DPRINT("PCI IRQ Translator: Bridge FDO, parent bus %x, secondary bus %x\n",
                 ParentBus, BaseBus);
         #endif
     }
 
     /* Now call the legacy HAL interface to get the correct translator */
-    return HalGetInterruptTranslator(ParentInterface,
-                                     ParentBus,
-                                     PCIBus,
-                                     sizeof(TRANSLATOR_INTERFACE),
-                                     0,
-                                     (PTRANSLATOR_INTERFACE)Interface,
-                                     (PULONG)&InterfaceData);
+    Status = HalGetInterruptTranslator(ParentInterface,
+                                       ParentBus,
+                                       PCIBus,
+                                       sizeof(TRANSLATOR_INTERFACE),
+                                       0,
+                                       (PTRANSLATOR_INTERFACE)Interface,
+                                       (PULONG)&InterfaceData);
+    
+    if (NT_SUCCESS(Status))
+    {
+        DPRINT("PCI IRQ Translator: Successfully obtained HAL interrupt translator\n");
+    }
+    else
+    {
+        DPRINT("PCI IRQ Translator: Failed to obtain HAL interrupt translator (Status: 0x%lx)\n", Status);
+    }
+    
+    return Status;
 }
 
 /* EOF */

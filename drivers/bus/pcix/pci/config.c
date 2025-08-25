@@ -10,7 +10,7 @@
 
 #include <pci.h>
 
-#define NDEBUG
+//#define NDEBUG
 #include <debug.h>
 
 /* GLOBALS ********************************************************************/
@@ -65,8 +65,34 @@ PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
     PciInterface = DeviceExtension->BusRootFdoExtension->PciBusInterface;
     if (PciInterface)
     {
-        /* Currently this driver only supports the legacy HAL interface */
-        UNIMPLEMENTED_DBGBREAK();
+        /* Use the ACPI-compliant PCI interface for configuration space access */
+        DPRINT("PciReadWriteConfigSpace: Using ACPI PCI interface for %s at Bus %d, Device %d, Function %d, Offset 0x%lx, Length %d\n",
+               Read ? "READ" : "WRITE", 
+               DeviceExtension->BaseBus,
+               Slot.u.bits.DeviceNumber,
+               Slot.u.bits.FunctionNumber,
+               Offset, Length);
+               
+        if (Read)
+        {
+            /* Call the ReadConfig function */
+            PciInterface->ReadConfig(PciInterface->Context,
+                                     DeviceExtension->BaseBus,
+                                     Slot.u.AsULONG,
+                                     Buffer,
+                                     Offset,
+                                     Length);
+        }
+        else
+        {
+            /* Call the WriteConfig function */
+            PciInterface->WriteConfig(PciInterface->Context,
+                                      DeviceExtension->BaseBus,
+                                      Slot.u.AsULONG,
+                                      Buffer,
+                                      Offset,
+                                      Length);
+        }
     }
     else
     {

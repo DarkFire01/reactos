@@ -402,6 +402,7 @@ ACPILoadFindRSDT(VOID)
     ASSERT(AcpiMultiNode->RsdtAddress.HighPart == 0);
   #endif
 
+    // First, map just the header to read the total length
     Rsdt = MmMapIoSpace(AcpiMultiNode->RsdtAddress, sizeof(DESCRIPTION_HEADER), MmNonCached);
     if (!Rsdt)
     {
@@ -417,8 +418,15 @@ ACPILoadFindRSDT(VOID)
         ASSERT(AcpiMultiNode->RsdtAddress.HighPart == 0);
       #endif
 
-        OutRsdt = MmMapIoSpace(AcpiMultiNode->RsdtAddress, Rsdt->Header.Length, MmNonCached);
+        // Save the table length before unmapping the header
+        ULONG TableLength = Rsdt->Header.Length;
+        
+        // Unmap the header first to avoid overlapping mappings
         MmUnmapIoSpace(Rsdt, sizeof(DESCRIPTION_HEADER));
+        Rsdt = NULL;
+        
+        // Now map the complete RSDT table
+        OutRsdt = MmMapIoSpace(AcpiMultiNode->RsdtAddress, TableLength, MmNonCached);
 
         if (!OutRsdt)
         {
