@@ -26,6 +26,8 @@
 
 ULONG ApicVersion;
 UCHAR HalpVectorToIndex[256];
+BOOLEAN HalpApicInitialized = FALSE;
+BOOLEAN HalpAcpiRoutingEnabled = FALSE;
 
 #ifndef _M_AMD64
 const UCHAR
@@ -133,6 +135,64 @@ ApicReadIORedirectionEntry(
 
     return ReDirReg;
 }
+
+BOOLEAN
+NTAPI
+HalpAcpiInterruptRoutingActive(VOID)
+{
+    /* Check if ACPI interrupt routing is enabled and APIC is initialized */
+    return (HalpAcpiRoutingEnabled && HalpApicInitialized);
+}
+
+BOOLEAN
+NTAPI
+HalpValidateAcpiInterruptRouting(IN ULONG Vector)
+{
+    UCHAR Index;
+    IOAPIC_REDIRECTION_REGISTER RedirReg;
+    
+    /* Get the IRQ index for this vector */
+    Index = HalpVectorToIndex[Vector];
+    
+    /* Check if it's a valid ACPI-routed interrupt */
+    if (Index == APIC_FREE_VECTOR || Index >= APIC_MAX_IRQ)
+    {
+        return FALSE;
+    }
+    
+    /* Read the I/O APIC redirection entry */
+    RedirReg = ApicReadIORedirectionEntry(Index);
+    
+    /* Validate that the interrupt is properly configured */
+    if (RedirReg.Mask == 1)
+    {
+        /* Interrupt is masked - this indicates ACPI routing failure */
+        DPRINT1("HalpValidateAcpiInterruptRouting: Vector 0x%x (IRQ %d) is masked\n", Vector, Index);
+        return FALSE;
+    }
+    
+    /* Verify vector matches */
+    if (RedirReg.Vector != Vector)
+    {
+        DPRINT1("HalpValidateAcpiInterruptRouting: Vector mismatch - expected 0x%x, got 0x%x\n", 
+                Vector, RedirReg.Vector);
+        return FALSE;
+    }
+    
+    return TRUE;
+}
+
+VOID
+NTAPI
+HalpEnableAcpiInterruptRouting(VOID)
+{
+    /* Called by ACPI driver to enable ACPI interrupt routing */
+    HalpAcpiRoutingEnabled = TRUE;
+    
+    DPRINT("HAL: ACPI interrupt routing enabled (resources already registered during HAL init)\n");
+}
+
+
 
 FORCEINLINE
 VOID
@@ -421,6 +481,28 @@ HalpGetRootInterruptVector(
     {
         ULONG Offset;
 
+        /* CRITICAL FIX: Handle ACPI-specific interrupt allocation ranges */
+        if (HalpAcpiInterruptRoutingActive() && BusInterruptLevel >= 16)
+        {
+            /* ACPI/APIC systems use higher vector ranges for PCI interrupts */
+            /* Start from vector 0x50 for ACPI-routed PCI interrupts */
+            Vector = 0x50 + (BusInterruptLevel - 16);
+            
+            /* Validate the vector is available */
+            if (Vector <= 0xEF && HalpVectorToIrq(Vector) == APIC_FREE_VECTOR)
+            {
+                Vector = HalpAllocateSystemInterrupt(BusInterruptLevel, Vector);
+                *OutIrql = HalpVectorToIrql(Vector);
+                
+                /* CRITICAL FIX: Register the vector in the IDT for interrupt delivery */
+                HalpRegisterVector(IDT_DEVICE, 0, Vector, *OutIrql);
+                
+                DPRINT("HalpGetRootInterruptVector: ACPI allocated IRQ %lu -> Vector 0x%x (IDT registered)\n", 
+                       BusInterruptLevel, Vector);
+                goto Exit;
+            }
+        }
+
         /* Outer loop to find alternative slots, when all IRQLs are in use */
         for (Offset = 0; Offset < 15; Offset++)
         {
@@ -525,6 +607,13 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
     /* Initialize the I/O APIC */
     ApicInitializeIOApic();
 
+    /* Mark APIC as initialized */
+    HalpApicInitialized = TRUE;
+    
+    /* CRITICAL FIX: Enable ACPI routing if ACPI subsystem is available */
+    /* This should be set by ACPI driver when it successfully initializes interrupt routing */
+    HalpAcpiRoutingEnabled = FALSE; /* Will be set to TRUE by ACPI driver */
+
     /* Manually reserve some vectors */
     HalpVectorToIndex[APC_VECTOR] = APIC_RESERVED_VECTOR;
     HalpVectorToIndex[DISPATCH_VECTOR] = APIC_RESERVED_VECTOR;
@@ -543,6 +632,11 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
     /* Register the vectors for APC and dispatch interrupts */
     HalpRegisterVector(IDT_INTERNAL, 0, APC_VECTOR, APC_LEVEL);
     HalpRegisterVector(IDT_INTERNAL, 0, DISPATCH_VECTOR, DISPATCH_LEVEL);
+    
+            /* CRITICAL FIX: Do NOT pre-register ACPI-routed IRQs (16-23) during HAL init */
+        /* These IRQs must remain unregistered so the resource manager sees them as available for PCI allocation */
+        /* They will be registered dynamically when actually used by PCI devices */
+        DPRINT("HAL: Leaving IRQs 16-23 unregistered for dynamic PCI allocation\n");
 
     /* Restore interrupt state */
     if (EnableInterrupts) EFlags |= EFLAGS_INTERRUPT_MASK;
@@ -791,6 +885,10 @@ HalBeginSystemInterrupt(
         return FALSE;
     }
 #endif
+    
+    /* ACPI-routed interrupts should be handled normally - no special validation needed */
+    /* Windows 8 HAL doesn't block ACPI interrupts in HalBeginSystemInterrupt */
+
     /* Save the current IRQL */
     *OldIrql = CurrentIrql;
 

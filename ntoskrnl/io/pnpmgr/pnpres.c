@@ -41,7 +41,30 @@ IopCheckDescriptorForConflict(
 
     Status = IopDetectResourceConflict(&CmList, TRUE, ConflictingDescriptor);
     if (Status == STATUS_CONFLICTING_ADDRESSES)
+    {
+        /* Debug: Log conflicts for ACPI-routed IRQs to understand what's conflicting */
+        if (CmDesc->Type == CmResourceTypeInterrupt && CmDesc->u.Interrupt.Vector >= 16 && CmDesc->u.Interrupt.Vector <= 23)
+        {
+            DPRINT1("Resource manager: IRQ %lu conflict detected\n", CmDesc->u.Interrupt.Vector);
+            if (ConflictingDescriptor)
+            {
+                DPRINT1("  Conflicting resource: Type=%u\n", ConflictingDescriptor->Type);
+                if (ConflictingDescriptor->Type == CmResourceTypeInterrupt)
+                {
+                    DPRINT1("  Conflicting IRQ: %lu\n", ConflictingDescriptor->u.Interrupt.Vector);
+                }
+                else if (ConflictingDescriptor->Type == CmResourceTypePort)
+                {
+                    DPRINT1("  Conflicting Port: 0x%lx\n", ConflictingDescriptor->u.Port.Start.LowPart);
+                }
+                else if (ConflictingDescriptor->Type == CmResourceTypeMemory)
+                {
+                    DPRINT1("  Conflicting Memory: 0x%lx\n", ConflictingDescriptor->u.Memory.Start.LowPart);
+                }
+            }
+        }
         return TRUE;
+    }
 
     return FALSE;
 }
@@ -706,9 +729,106 @@ ByeBye:
                       sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR));
     }
 
+    // CRITICAL FIX: Allow ACPI IRQs 16-23 to be allocated even if pre-reserved
+    // The HAL may have pre-reserved these IRQs, but they should be available for dynamic allocation
+    if (Result && ResDesc->Type == CmResourceTypeInterrupt &&
+        ResDesc->u.Interrupt.Vector >= 16 &&
+        ResDesc->u.Interrupt.Vector <= 23)
+    {
+        if (ConflictingDescriptor)
+        {
+            // Only allow if the conflicting resource is NOT the same IRQ (prevent duplicates)
+            if (ConflictingDescriptor->Type == CmResourceTypeInterrupt &&
+                ConflictingDescriptor->u.Interrupt.Vector == ResDesc->u.Interrupt.Vector)
+            {
+                DPRINT1("Resource manager: Preventing duplicate ACPI IRQ %lu allocation\n", 
+                        ResDesc->u.Interrupt.Vector);
+                return TRUE; // Block duplicate allocation
+            }
+            else
+            {
+                DPRINT1("Resource manager: Allowing ACPI IRQ %lu allocation despite conflict with %s\n", 
+                        ResDesc->u.Interrupt.Vector,
+                        ConflictingDescriptor->Type == CmResourceTypeInterrupt ? "IRQ" :
+                        ConflictingDescriptor->Type == CmResourceTypePort ? "Port" : "Other");
+                return FALSE; // Allow allocation
+            }
+        }
+        else
+        {
+            DPRINT1("Resource manager: Allowing ACPI IRQ %lu allocation despite unknown conflict\n", 
+                    ResDesc->u.Interrupt.Vector);
+            return FALSE; // Allow allocation even with unknown conflict
+        }
+    }
+    
     // Hacked, because after fixing resource list parsing
     // we actually detect resource conflicts
     return Silent ? Result : FALSE; // Result;
+}
+
+static
+VOID
+IopCompactResourceList(
+    IN PCM_RESOURCE_LIST ResourceList)
+{
+    PCM_PARTIAL_RESOURCE_LIST PartialList;
+    ULONG WriteIndex, ReadIndex;
+
+    /* Only compact the first resource list entry */
+    if (!ResourceList || ResourceList->Count == 0)
+        return;
+
+    PartialList = &ResourceList->List[0].PartialResourceList;
+    WriteIndex = 0;
+
+    /* Compact the resource list by removing CmResourceTypeNull entries */
+    for (ReadIndex = 0; ReadIndex < PartialList->Count; ReadIndex++)
+    {
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR Source = &PartialList->PartialDescriptors[ReadIndex];
+
+        /* Skip null resources */
+        if (Source->Type == CmResourceTypeNull)
+        {
+            DPRINT1("PnP: Removing null resource at index %lu\n", ReadIndex);
+            continue;
+        }
+
+        /* Copy non-null resource to the write position */
+        if (WriteIndex != ReadIndex)
+        {
+            PCM_PARTIAL_RESOURCE_DESCRIPTOR Dest = &PartialList->PartialDescriptors[WriteIndex];
+            *Dest = *Source;
+            DPRINT1("PnP: Compacting resource from index %lu to %lu (Type=%lu, Vector=%lu)\n", 
+                    ReadIndex, WriteIndex, Source->Type, 
+                    Source->Type == CmResourceTypeInterrupt ? Source->u.Interrupt.Vector : 0);
+        }
+        WriteIndex++;
+    }
+
+    /* Update the count to reflect the compacted list */
+    if (WriteIndex < PartialList->Count)
+    {
+        DPRINT1("PnP: Compacted resource list from %lu to %lu entries\n", PartialList->Count, WriteIndex);
+        PartialList->Count = WriteIndex;
+    }
+}
+
+static
+BOOLEAN
+IopIsPciDevice(
+    IN PDEVICE_NODE DeviceNode)
+{
+    /* Check if this is a PCI device by examining the instance path */
+    if (DeviceNode->InstancePath.Buffer && DeviceNode->InstancePath.Length >= 8)
+    {
+        /* Look for "PCI\" at the beginning of the instance path */
+        if (_wcsnicmp(DeviceNode->InstancePath.Buffer, L"PCI\\", 4) == 0)
+        {
+            return TRUE;
+        }
+    }
+    return FALSE;
 }
 
 static
@@ -722,6 +842,14 @@ IopUpdateControlKeyWithResources(
     HANDLE EnumKey, InstanceKey, ControlKey;
     NTSTATUS Status;
     OBJECT_ATTRIBUTES ObjectAttributes;
+
+    /* CRITICAL FIX: Compact resource list for PCI devices to remove duplicate IRQ entries */
+    /* This ensures Device Manager only sees the preferred ACPI IRQ, not legacy duplicates */
+    if (DeviceNode->ResourceList && IopIsPciDevice(DeviceNode))
+    {
+        DPRINT1("PnP: Compacting resource list for PCI device %wZ\n", &DeviceNode->InstancePath);
+        IopCompactResourceList(DeviceNode->ResourceList);
+    }
 
     /* Open the Enum key */
     Status = IopOpenRegistryKeyEx(&EnumKey, NULL, &EnumRoot, KEY_ENUMERATE_SUB_KEYS);

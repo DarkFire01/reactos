@@ -53,6 +53,64 @@ typedef struct _PDO_EXTENSION
 PDRIVER_OBJECT HalpDriverObject;
 
 /* PRIVATE FUNCTIONS **********************************************************/
+
+/* ACPI Interface Helper Functions */
+VOID
+NTAPI
+HalpAcpiInterfaceReference(IN PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+    /* Nothing to do for now */
+}
+
+VOID
+NTAPI
+HalpAcpiInterfaceDereference(IN PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+    /* Nothing to do for now */
+}
+NTSTATUS
+NTAPI
+HalpTranslateInterrupt(IN PVOID Context,
+                       IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Source,
+                       IN RESOURCE_TRANSLATION_DIRECTION Direction,
+                       IN ULONG AlternativesCount,
+                       IN IO_RESOURCE_DESCRIPTOR Alternatives[],
+                       IN PDEVICE_OBJECT PhysicalDeviceObject,
+                       OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR Target)
+{
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(AlternativesCount);
+    UNREFERENCED_PARAMETER(Alternatives);
+    UNREFERENCED_PARAMETER(PhysicalDeviceObject);
+    
+    /* Handle interrupt translation */
+    if (Source->Type == CmResourceTypeInterrupt)
+    {
+        /* Copy source to target as base */
+        *Target = *Source;
+        
+        /* Basic interrupt translation - enhanced logic will be in APIC-specific modules */
+        if (Direction == TranslateChildToParent)
+        {
+            /* Child to parent: PCI device IRQ to system interrupt vector */
+            DPRINT("HalpTranslateInterrupt: Child->Parent, Vector=0x%x, Level=0x%x\n", 
+                   Source->u.Interrupt.Vector, Source->u.Interrupt.Level);
+        }
+        else
+        {
+            /* Parent to child: system interrupt vector to PCI device IRQ */
+            DPRINT("HalpTranslateInterrupt: Parent->Child, Vector=0x%x\n", 
+                   Source->u.Interrupt.Vector);
+        }
+        
+        return STATUS_SUCCESS;
+    }
+    
+    return STATUS_UNSUCCESSFUL;
+}
+
 NTSTATUS
 NTAPI
 HalpGetInterruptTranslator(IN INTERFACE_TYPE ParentInterfaceType,
@@ -64,10 +122,35 @@ HalpGetInterruptTranslator(IN INTERFACE_TYPE ParentInterfaceType,
                            OUT PULONG BridgeBusNumber)
 {
     PAGED_CODE();
-    UNREFERENCED_PARAMETER(ParentInterfaceType);
-    UNREFERENCED_PARAMETER(ParentBusNumber);
-    UNREFERENCED_PARAMETER(BridgeBusNumber);
-    return STATUS_NOT_IMPLEMENTED;
+    
+    DPRINT("HalpGetInterruptTranslator: ParentInterfaceType=%d, BridgeInterfaceType=%d\n", 
+           ParentInterfaceType, BridgeInterfaceType);
+    
+    /* Validate parameters */
+    if (!Translator || Size < sizeof(TRANSLATOR_INTERFACE))
+        return STATUS_INSUFFICIENT_RESOURCES;
+        
+    /* For PCI interrupts, provide a basic translator */
+    if (BridgeInterfaceType == PCIBus || BridgeInterfaceType == PCMCIABus)
+    {
+        /* Fill out the translator interface */
+        Translator->Size = sizeof(TRANSLATOR_INTERFACE);
+        Translator->Version = Version;
+        Translator->Context = NULL;
+        Translator->InterfaceReference = HalpAcpiInterfaceReference;
+        Translator->InterfaceDereference = HalpAcpiInterfaceDereference;
+        Translator->TranslateResources = HalpTranslateInterrupt;
+        Translator->TranslateResourceRequirements = NULL; /* Not required for basic functionality */
+        
+        /* Set the bridge bus number if requested */
+        if (BridgeBusNumber)
+            *BridgeBusNumber = ParentBusNumber;
+            
+        return STATUS_SUCCESS;
+    }
+    
+    DPRINT1("HalpGetInterruptTranslator: Unsupported bridge interface type %d\n", BridgeInterfaceType);
+    return STATUS_NOT_SUPPORTED;
 }
 NTSTATUS
 NTAPI
@@ -162,6 +245,54 @@ HalpAddDevice(IN PDRIVER_OBJECT DriverObject,
     return Status;
 }
 
+/* APIC Management Interface Functions */
+
+
+/* ACPI Register Access Interface Functions */
+NTSTATUS
+NTAPI
+HalpAcpiRegisterRead(IN PVOID Context,
+                     IN ULONG RegisterId,
+                     IN ULONG ValueSize,
+                     OUT PVOID Value)
+{
+    UNREFERENCED_PARAMETER(Context);
+    
+    /* Validate parameters */
+    if (!Value || (ValueSize == 0))
+        return STATUS_INVALID_PARAMETER;
+        
+    DPRINT("HalpAcpiRegisterRead: RegisterId=0x%x, ValueSize=%d\n", RegisterId, ValueSize);
+    
+    /* For now, just zero the value and return success */
+    /* TODO: Implement actual ACPI register reading */
+    RtlZeroMemory(Value, ValueSize);
+    
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NTAPI
+HalpAcpiRegisterWrite(IN PVOID Context,
+                      IN ULONG RegisterId,
+                      IN ULONG ValueSize,
+                      IN PVOID Value)
+{
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(Value);
+    
+    /* Validate parameters */
+    if (!Value || (ValueSize == 0))
+        return STATUS_INVALID_PARAMETER;
+        
+    DPRINT("HalpAcpiRegisterWrite: RegisterId=0x%x, ValueSize=%d\n", RegisterId, ValueSize);
+    
+    /* For now, just return success */
+    /* TODO: Implement actual ACPI register writing */
+    
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NTAPI
 HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
@@ -174,15 +305,47 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
 {
     if (IsEqualIID(InterfaceType, &GUID_ACPI_REGS_INTERFACE_STANDARD))
     {
-        DPRINT1("HalpQueryInterface(GUID_ACPI_REGS_INTERFACE_STANDARD) is UNIMPLEMENTED\n");
+        DPRINT("HalpQueryInterface: Providing GUID_ACPI_REGS_INTERFACE_STANDARD\n");
+        
+        /* Verify interface size */
+        if (InterfaceBufferSize < sizeof(INTERFACE))
+            return STATUS_BUFFER_TOO_SMALL;
+            
+        /* Fill out the basic interface */
+        Interface->Size = sizeof(INTERFACE);
+        Interface->Version = 1;
+        Interface->Context = DeviceObject->DeviceExtension;
+        Interface->InterfaceReference = HalpAcpiInterfaceReference;
+        Interface->InterfaceDereference = HalpAcpiInterfaceDereference;
+        
+        /* TODO: Add ACPI-specific interface functions when we have the proper structure definitions */
+        *Length = sizeof(INTERFACE);
+        
+        return STATUS_SUCCESS;
     }
     else if (IsEqualIID(InterfaceType, &GUID_ACPI_PORT_RANGES_INTERFACE_STANDARD))
     {
-        DPRINT1("HalpQueryInterface(GUID_ACPI_PORT_RANGES_INTERFACE_STANDARD) is UNIMPLEMENTED\n");
+        DPRINT("HalpQueryInterface: Providing GUID_ACPI_PORT_RANGES_INTERFACE_STANDARD\n");
+        
+        /* Verify interface size */
+        if (InterfaceBufferSize < sizeof(INTERFACE))
+            return STATUS_BUFFER_TOO_SMALL;
+            
+        /* Fill out the basic interface */
+        Interface->Size = sizeof(INTERFACE);
+        Interface->Version = 1;
+        Interface->Context = DeviceObject->DeviceExtension;
+        Interface->InterfaceReference = HalpAcpiInterfaceReference;
+        Interface->InterfaceDereference = HalpAcpiInterfaceDereference;
+        
+        /* TODO: Add port range-specific interface functions */
+        *Length = sizeof(INTERFACE);
+        
+        return STATUS_SUCCESS;
     }
     else
     {
-        DPRINT1("HalpQueryInterface({%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}) is UNIMPLEMENTED\n",
+        DPRINT1("HalpQueryInterface({%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}) is not supported\n",
                 InterfaceType->Data1, InterfaceType->Data2, InterfaceType->Data3,
                 InterfaceType->Data4[0], InterfaceType->Data4[1],
                 InterfaceType->Data4[2], InterfaceType->Data4[3],

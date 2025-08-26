@@ -210,12 +210,63 @@ PciPdoIrpStartDevice(IN PIRP Irp,
     else
     {
         DPRINT1("PCI - START: PciSetResources succeeded\n");
+        
+        /* No longer needed - ACPI routing now happens during resource requirements generation */
+        
         /* Fully commit, as the device is now started up and ready to go */
         PciCommitStateTransition((PVOID)DeviceExtension, PciStarted);
     }
     DPRINT1("PCI - START: Status = %lx\n", Status);
     /* Return the result of the start request */
     return Status;
+}
+
+VOID
+NTAPI
+PciUpdateResourceListInterrupt(IN PPCI_PDO_EXTENSION DeviceExtension,
+                              IN PIRP Irp)
+{
+    PIO_STACK_LOCATION IoStackLocation;
+    PCM_RESOURCE_LIST ResourceList;
+    PCM_PARTIAL_RESOURCE_LIST PartialList;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor;
+    ULONG i;
+    
+    /* Get the current I/O stack location */
+    IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
+    
+    /* Get the resource list from the IRP */
+    ResourceList = IoStackLocation->Parameters.StartDevice.AllocatedResources;
+    if (!ResourceList) return;
+    
+    /* Walk through all resource lists */
+    PartialList = &ResourceList->List[0].PartialResourceList;
+    
+    /* Find interrupt descriptors and update them */
+    for (i = 0; i < PartialList->Count; i++)
+    {
+        Descriptor = &PartialList->PartialDescriptors[i];
+        
+        if (Descriptor->Type == CmResourceTypeInterrupt)
+        {
+            /* Safety check: Don't modify legacy IRQs or system-critical interrupts */
+            if (DeviceExtension->RawInterruptLine >= 16 && DeviceExtension->RawInterruptLine <= 23)
+            {
+                DPRINT1("PCI: Updating interrupt resource from IRQ %lu to IRQ %lu\n",
+                        Descriptor->u.Interrupt.Vector, DeviceExtension->RawInterruptLine);
+                        
+                /* Update the interrupt vector to match the ACPI-routed IRQ */
+                Descriptor->u.Interrupt.Vector = DeviceExtension->RawInterruptLine;
+                Descriptor->u.Interrupt.Level = DeviceExtension->RawInterruptLine;
+            }
+            else
+            {
+                DPRINT1("PCI: Skipping interrupt update for IRQ %lu (not ACPI-routed)\n", 
+                        DeviceExtension->RawInterruptLine);
+            }
+            break;
+        }
+    }
 }
 
 NTSTATUS
@@ -462,7 +513,8 @@ PciPdoIrpFilterResourceRequirements(IN PIRP Irp,
     InReqs = (PIO_RESOURCE_REQUIREMENTS_LIST)Irp->IoStatus.Information;
 
     /* Only act if device supports MSI/MSI-X */
-    if ((!DeviceExtension->MsiCapabilityOffset) && (!DeviceExtension->MsixCapabilityOffset))
+    if ((!DeviceExtension->MsiCapabilityOffset) && 
+        (!DeviceExtension->MsixCapabilityOffset))
     {
         return Irp->IoStatus.Status;
     }
@@ -472,6 +524,9 @@ PciPdoIrpFilterResourceRequirements(IN PIRP Irp,
         /* Nothing to filter; leave as-is */
         return Irp->IoStatus.Status;
     }
+
+    /* Skip ACPI routing updates for now to avoid crashes during resource filtering */
+    /* This will be handled during actual interrupt integration in PciIntegrateAcpiApicInterrupts */
 
     /*
      * Windows duplicates EACH alternative list and creates a message-capable

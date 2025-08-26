@@ -682,7 +682,95 @@ HalpPCIPin2ISALine(IN PBUS_HANDLER BusHandler,
                    IN PCI_SLOT_NUMBER SlotNumber,
                    IN PPCI_COMMON_CONFIG PciData)
 {
-    UNIMPLEMENTED_DBGBREAK();
+    ULONG InterruptLine;
+    ULONG DeviceNumber, FunctionNumber;
+    
+    UNREFERENCED_PARAMETER(BusHandler);
+    UNREFERENCED_PARAMETER(RootHandler);
+    
+    /* Check if the device has a valid interrupt pin */
+    if (PciData->u.type0.InterruptPin == 0)
+    {
+        /* No interrupt pin, nothing to do */
+        return;
+    }
+    
+    DeviceNumber = SlotNumber.u.bits.DeviceNumber;
+    FunctionNumber = SlotNumber.u.bits.FunctionNumber;
+    
+    /* Get the current interrupt line from PCI config */
+    InterruptLine = PciData->u.type0.InterruptLine;
+    
+    /* Check if interrupt line needs to be assigned */
+    if (InterruptLine == 0 || InterruptLine == 0xFF)
+    {
+        /* Assign interrupt line based on PCI INTx pin and system type */
+        /* For now, assume legacy PIC behavior - APIC logic will be enhanced later */
+        if (FALSE) /* TODO: Check for APIC initialization */
+        {
+            /* APIC system: Use device-specific interrupt routing */
+            /* This implements a simple round-robin distribution for better load balancing */
+            ULONG BaseIrq;
+            
+            switch (PciData->u.type0.InterruptPin)
+            {
+                case 1: /* INTA# */
+                    BaseIrq = 16; /* Start from IRQ 16 for APIC systems */
+                    break;
+                case 2: /* INTB# */
+                    BaseIrq = 17;
+                    break;
+                case 3: /* INTC# */
+                    BaseIrq = 18;
+                    break;
+                case 4: /* INTD# */
+                    BaseIrq = 19;
+                    break;
+                default:
+                    BaseIrq = 16; /* Default fallback */
+                    break;
+            }
+            
+            /* Add device number for distribution across available IRQs */
+            InterruptLine = BaseIrq + (DeviceNumber % 4);
+            
+            DPRINT("HalpPCIPin2ISALine: APIC Slot %d.%d, Pin %d -> assigned IRQ %d\n",
+                   DeviceNumber, FunctionNumber, PciData->u.type0.InterruptPin, InterruptLine);
+        }
+        else
+        {
+            /* Legacy PIC system: Use traditional ISA IRQ assignments */
+            switch (PciData->u.type0.InterruptPin)
+            {
+                case 1: /* INTA# */
+                    InterruptLine = 11;
+                    break;
+                case 2: /* INTB# */
+                    InterruptLine = 10;
+                    break;
+                case 3: /* INTC# */
+                    InterruptLine = 9;
+                    break;
+                case 4: /* INTD# */
+                    InterruptLine = 5;
+                    break;
+                default:
+                    InterruptLine = 11; /* Default fallback */
+                    break;
+            }
+            
+            DPRINT("HalpPCIPin2ISALine: PIC Slot %d.%d, Pin %d -> assigned IRQ %d\n",
+                   DeviceNumber, FunctionNumber, PciData->u.type0.InterruptPin, InterruptLine);
+        }
+        
+        /* Update the PCI configuration with the assigned interrupt line */
+        PciData->u.type0.InterruptLine = (UCHAR)InterruptLine;
+    }
+    else
+    {
+        DPRINT("HalpPCIPin2ISALine: Slot %d.%d, keeping existing IRQ %d\n",
+               DeviceNumber, FunctionNumber, InterruptLine);
+    }
 }
 
 VOID
@@ -693,7 +781,30 @@ HalpPCIISALine2Pin(IN PBUS_HANDLER BusHandler,
                    IN PPCI_COMMON_CONFIG PciNewData,
                    IN PPCI_COMMON_CONFIG PciOldData)
 {
-    UNIMPLEMENTED_DBGBREAK();
+    ULONG NewInterruptLine, OldInterruptLine;
+    
+    UNREFERENCED_PARAMETER(BusHandler);
+    UNREFERENCED_PARAMETER(RootHandler);
+    UNREFERENCED_PARAMETER(SlotNumber);
+    
+    /* Get interrupt lines from both configurations */
+    NewInterruptLine = PciNewData->u.type0.InterruptLine;
+    OldInterruptLine = PciOldData->u.type0.InterruptLine;
+    
+    /* Check if the interrupt line changed */
+    if (NewInterruptLine != OldInterruptLine)
+    {
+        DPRINT("HalpPCIISALine2Pin: Slot %d.%d, IRQ changed from %d to %d\n",
+               SlotNumber.u.bits.DeviceNumber, SlotNumber.u.bits.FunctionNumber,
+               OldInterruptLine, NewInterruptLine);
+               
+        /* For now, we don't need to do any special processing */
+        /* In a more complete implementation, we might need to update */
+        /* interrupt routing tables or notify the ACPI subsystem */
+    }
+    
+    /* Copy the interrupt line to ensure consistency */
+    PciOldData->u.type0.InterruptLine = PciNewData->u.type0.InterruptLine;
 }
 
 #ifndef _MINIHAL_
@@ -724,22 +835,78 @@ HalpGetISAFixedPCIIrq(IN PBUS_HANDLER BusHandler,
     RtlZeroMemory(*Range, sizeof(SUPPORTED_RANGE));
     (*Range)->Base = 1;
 
-    /* If the PCI device has no IRQ pin, return a benign PIC range */
+    /* If the PCI device has no IRQ pin, return a benign range */
     if (!PciData.u.type0.InterruptPin)
     {
         (*Range)->Base = 1;
-        (*Range)->Limit = 15;
+        /* CRITICAL FIX: Support ACPI/APIC extended interrupt range */
+        /* Be cautious about checking APIC state too early */
+        if (HalpApicInitialized)
+        {
+            /* Check if ACPI routing is available - but use a safer approach */
+            BOOLEAN AcpiRoutingActive = FALSE;
+            __try
+            {
+                AcpiRoutingActive = HalpAcpiInterruptRoutingActive();
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                /* If we can't access the function safely, assume not active */
+                AcpiRoutingActive = FALSE;
+            }
+            
+            if (AcpiRoutingActive)
+            {
+                (*Range)->Limit = 23; /* Support ACPI-routed IRQs 16-23 */
+            }
+            else
+            {
+                (*Range)->Limit = 15; /* Legacy PIC range */
+            }
+        }
+        else
+        {
+            (*Range)->Limit = 15; /* Legacy PIC range */
+        }
         return STATUS_SUCCESS;
     }
 
     /* FIXME: The PCI IRQ Routing Miniport should be called */
 
-    /* If the INT# is bogus, return default PIC range */
+    /* If the INT# is bogus, return default range based on system type */
     if ((PciData.u.type0.InterruptLine == 0) ||
         (PciData.u.type0.InterruptLine == 255))
     {
         (*Range)->Base = 1;
-        (*Range)->Limit = 15;
+        /* CRITICAL FIX: Support ACPI/APIC extended interrupt range */
+        /* Be cautious about checking APIC state too early */
+        if (HalpApicInitialized)
+        {
+            /* Check if ACPI routing is available - but use a safer approach */
+            BOOLEAN AcpiRoutingActive = FALSE;
+            __try
+            {
+                AcpiRoutingActive = HalpAcpiInterruptRoutingActive();
+            }
+            __except(EXCEPTION_EXECUTE_HANDLER)
+            {
+                /* If we can't access the function safely, assume not active */
+                AcpiRoutingActive = FALSE;
+            }
+            
+            if (AcpiRoutingActive)
+            {
+                (*Range)->Limit = 23; /* Support ACPI-routed IRQs 16-23 */
+            }
+            else
+            {
+                (*Range)->Limit = 15; /* Legacy PIC range */
+            }
+        }
+        else
+        {
+            (*Range)->Limit = 15; /* Legacy PIC range */
+        }
         return STATUS_SUCCESS;
     }
 

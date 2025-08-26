@@ -89,6 +89,12 @@ HalpDismissIrqGeneric(
     OUT PKIRQL OldIrql
 );
 
+/* ACPI INTERRUPT ROUTING *****************************************************/
+
+VOID
+NTAPI
+HalpEnableAcpiInterruptRouting(VOID);
+
 BOOLEAN
 NTAPI
 HalpDismissIrq15(
@@ -624,3 +630,7 @@ extern KAFFINITY HalpDefaultInterruptAffinity;
 extern IDTUsageFlags HalpIDTUsageFlags[MAXIMUM_IDTVECTOR+1];
 
 extern const USHORT HalpBuildType;
+
+/* ACPI/APIC interrupt routing support */
+extern BOOLEAN HalpApicInitialized;
+BOOLEAN NTAPI HalpAcpiInterruptRoutingActive(VOID);

@@ -13,7 +13,14 @@
 #include <debug.h>
 
 /* FUNCTIONS ****************************************************************/
+BOOLEAN HalpApicInitialized = FALSE;
 
+BOOLEAN
+NTAPI
+HalpAcpiInterruptRoutingActive(VOID)
+{
+    return FALSE;
+}
 VOID
 NTAPI
 HalpInitProcessor(

@@ -2220,7 +2220,10 @@ extern BOOLEAN PciAssignBusNumbers;
 extern BOOLEAN PciEnableNativeModeATA;
 extern PPCI_IRQ_ROUTING_TABLE PciIrqRoutingTable;
 extern BOOLEAN PciRunningDatacenter;
-
+NTSTATUS
+NTAPI
+PciQueryAcpiInterruptRouting(IN PPCI_PDO_EXTENSION DeviceExtension,
+                             OUT PULONG RoutedInterrupt);
 //
 // ACPI/APIC Interrupt Management Functions
 //
@@ -2229,7 +2232,10 @@ NTAPI
 PciDetectAcpi(
     VOID
 );
-
+VOID
+NTAPI
+PciUpdateResourceListInterrupt(IN PPCI_PDO_EXTENSION DeviceExtension,
+                              IN PIRP Irp);
 BOOLEAN
 NTAPI
 PciDetectApic(

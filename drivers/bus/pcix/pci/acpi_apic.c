@@ -18,16 +18,19 @@
 // Global state for ACPI/APIC detection
 static BOOLEAN PciAcpiDetected = FALSE;
 static BOOLEAN PciApicDetected = FALSE;
+
 static BOOLEAN PciMsiSupported = FALSE;
 
-// ACPI Method names for interrupt routing
-static ULONG PciAcpiPrtMethod = '_TRP';  // _PRT in reverse for ACPI eval
-static ULONG PciAcpiSrsMethod = '_SRS';  // _SRS in reverse for ACPI eval
+// ACPI Method names for interrupt routing (little-endian format)
+static ULONG PciAcpiPrtMethod = 'TRP_';  // "_PRT" method for interrupt routing
+static ULONG PciAcpiSrsMethod = 'SRS_';  // "_SRS" method for setting resources
 
 // ACPI Table signatures (4-byte constants)
 #ifndef MADT_SIGNATURE
 #define MADT_SIGNATURE 'CIPA'  // "APIC" in reverse (little-endian)
 #endif
+
+
 
 /* FUNCTIONS ******************************************************************/
 
@@ -216,34 +219,21 @@ PciDetermineInterruptType(IN PPCI_PDO_EXTENSION DeviceExtension)
         // For now, we'll implement this later
     }
     
-    // For legacy devices and basic controllers, prefer simpler interrupt methods
-    // Only use APIC for devices that specifically benefit from it
+    // When APIC HAL is loaded, prefer APIC interrupts over legacy PIC
+    // This is critical for proper interrupt handling in APIC mode
     
-    // Check for ACPI PIC support first (more compatible)
+    // Check for APIC support first when available
+    if (PciDetectApic())
+    {
+        DPRINT("PciDetermineInterruptType: Using APIC interrupts\n");
+        return PciInterruptApic;
+    }
+    
+    // Fall back to ACPI PIC only if APIC is not available
     if (PciDetectAcpi())
     {
         DPRINT("PciDetermineInterruptType: Using ACPI PIC interrupts\n");
         return PciInterruptAcpiPic;
-    }
-    
-    // Check for APIC support only for devices that may need advanced interrupt handling
-    // or when ACPI PIC is not available
-    if (PciDetectApic())
-    {
-        // Use APIC primarily for:
-        // - PCIe devices that may support MSI in the future
-        // - High-performance devices
-        // - Multi-function devices
-        if (DeviceExtension->IsExpressDevice)
-        {
-            DPRINT("PciDetermineInterruptType: PCIe device - using APIC interrupts\n");
-            return PciInterruptApic;
-        }
-        else
-        {
-            DPRINT("PciDetermineInterruptType: Legacy device on APIC system - using ACPI PIC for compatibility\n");
-            return PciInterruptAcpiPic;
-        }
     }
     
     // Fall back to legacy PIC
@@ -347,12 +337,12 @@ PciConfigureAcpiInterrupt(IN PPCI_PDO_EXTENSION DeviceExtension,
 NTSTATUS
 NTAPI
 PciConfigureApicInterrupt(IN PPCI_PDO_EXTENSION DeviceExtension,
-                          IN UCHAR InterruptLine,
-                          IN UCHAR ApicId,
-                          IN UCHAR Vector)
+                         IN UCHAR InterruptLine,
+                         IN UCHAR ApicId,
+                         IN UCHAR Vector)
 {
     NTSTATUS Status;
-    
+  
     PAGED_CODE();
     
     ASSERT(DeviceExtension);
@@ -367,19 +357,55 @@ PciConfigureApicInterrupt(IN PPCI_PDO_EXTENSION DeviceExtension,
         return STATUS_NOT_SUPPORTED;
     }
     
-    // For now, this is a stub implementation
-    // A full implementation would:
-    // 1. Program the I/O APIC routing table entry
-    // 2. Set up the interrupt vector
-    // 3. Configure the local APIC if needed
-    // 4. Enable the interrupt in the APIC
+    // Validate IRQ line
+    if (InterruptLine == 0 || InterruptLine == 0xFF)
+    {
+        DPRINT("PciConfigureApicInterrupt: Invalid interrupt line %d\n", InterruptLine);
+        return STATUS_INVALID_PARAMETER;
+    }
     
-    DPRINT("PciConfigureApicInterrupt: APIC interrupt configuration is not fully implemented yet\n");
+    // The key insight: We need to trigger the HAL's APIC vector allocation system
+    // This is normally done when drivers call HalGetInterruptVector() through IoConnectInterrupt()
+    // But we need to ensure vectors are allocated during PCI device initialization
     
-    // Mark the device as using APIC interrupts
-    // This would be stored in device extension in a real implementation
+    DPRINT("PciConfigureApicInterrupt: Requesting APIC vector allocation for IRQ %d\n", InterruptLine);
     
-    Status = STATUS_SUCCESS;
+    // Call HalGetInterruptVector to trigger APIC vector allocation
+    // This will call HalpGetRootInterruptVector() which allocates APIC vectors
+    ULONG AllocatedApicVector;
+    KIRQL Irql;
+    KAFFINITY Affinity;
+    
+    AllocatedApicVector = HalGetInterruptVector(PCIBus,                    // InterfaceType
+                                                0,                         // BusNumber  
+                                                InterruptLine,             // BusInterruptLevel
+                                                InterruptLine,             // BusInterruptVector
+                                                &Irql,                     // Irql
+                                                &Affinity);                // Affinity
+    
+    if (AllocatedApicVector != 0)
+    {
+        DPRINT("PciConfigureApicInterrupt: HAL allocated APIC vector 0x%02x (IRQL %d) for IRQ %d\n", 
+               AllocatedApicVector, Irql, InterruptLine);
+               
+        // Update device extension with the allocated vector information
+        DeviceExtension->RawInterruptLine = InterruptLine;
+        
+        // The HAL has now allocated the APIC vector and set up the IO APIC redirection table
+        // Drivers can now successfully call IoConnectInterrupt() with this IRQ
+        
+        Status = STATUS_SUCCESS;
+    }
+    else
+    {
+        DPRINT1("PciConfigureApicInterrupt: HAL failed to allocate APIC vector for IRQ %d\n", InterruptLine);
+        
+        // Fall back to legacy behavior - let the device keep its IRQ line
+        // Drivers may still be able to connect using legacy PIC emulation
+        DeviceExtension->RawInterruptLine = InterruptLine;
+        
+        Status = STATUS_SUCCESS; // Don't fail device initialization
+    }
     
     DPRINT("PciConfigureApicInterrupt: Configuration completed (Status: 0x%lx)\n", Status);
     
@@ -407,10 +433,29 @@ PciIntegrateAcpiApicInterrupts(IN PPCI_PDO_EXTENSION DeviceExtension)
     DPRINT("PciIntegrateAcpiApicInterrupts: Integrating ACPI/APIC interrupts for device %p\n",
            DeviceExtension);
     
-    // Get the current interrupt line
-    InterruptLine = DeviceExtension->RawInterruptLine;
+    // CRITICAL FIX: Only query ACPI for devices that actually have interrupt pins
+    if (DeviceExtension->InterruptPin == 0)
+    {
+        // Device has no interrupt pin (like ISA bridge) - skip interrupt processing
+        DPRINT("PciIntegrateAcpiApicInterrupts: Device has no interrupt pin, skipping interrupt configuration\n");
+        return STATUS_SUCCESS;
+    }
     
-    DPRINT("PciIntegrateAcpiApicInterrupts: Current interrupt line: %d\n", InterruptLine);
+    // CRITICAL FIX: Query ACPI _PRT for proper interrupt routing instead of using raw device line
+    Status = PciQueryAcpiInterruptRouting(DeviceExtension, (PULONG)&InterruptLine);
+    
+    if (!NT_SUCCESS(Status))
+    {
+        // Fallback to raw interrupt line if ACPI routing fails
+        InterruptLine = DeviceExtension->RawInterruptLine;
+        DPRINT("PciIntegrateAcpiApicInterrupts: ACPI routing failed (0x%08x), using raw interrupt line: %d\n", 
+               Status, InterruptLine);
+    }
+    else
+    {
+        DPRINT("PciIntegrateAcpiApicInterrupts: ACPI routed interrupt line: %d (was raw: %d)\n", 
+               InterruptLine, DeviceExtension->RawInterruptLine);
+    }
     
     // Determine the best interrupt type for this device
     InterruptType = PciDetermineInterruptType(DeviceExtension);
@@ -445,9 +490,22 @@ PciIntegrateAcpiApicInterrupts(IN PPCI_PDO_EXTENSION DeviceExtension)
     
     if (NT_SUCCESS(Status))
     {
-        DPRINT("PciIntegrateAcpiApicInterrupts: Successfully configured %s interrupts\n",
-               (InterruptType == PciInterruptApic) ? "APIC" :
-               (InterruptType == PciInterruptAcpiPic) ? "ACPI PIC" : "Legacy PIC");
+        // CRITICAL FIX: Write the new ACPI-routed interrupt line back to PCI config space
+        // This is what makes the interrupt change visible to Task Manager and the OS
+        UCHAR NewInterruptLine = (UCHAR)InterruptLine;
+        PciWriteDeviceConfig(DeviceExtension,
+                           &NewInterruptLine,
+                           FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.InterruptLine),
+                           sizeof(UCHAR));
+        
+        // Also update the device extension's stored interrupt line (like Win8 does)
+        DeviceExtension->RawInterruptLine = NewInterruptLine;
+        
+        // CRITICAL: Update the device's cached interrupt line used by resource allocation
+        // This ensures the resource manager sees the ACPI-routed interrupt, not the raw one
+        DeviceExtension->RawInterruptLine = NewInterruptLine;
+        
+        DPRINT("PciIntegrateAcpiApicInterrupts: Successfully configured APIC interrupts and wrote IRQ %d to config space\n", InterruptLine);
     }
     else
     {

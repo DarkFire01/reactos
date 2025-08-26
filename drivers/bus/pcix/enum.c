@@ -123,10 +123,48 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
                 /* Interrupt resource */
                 case CmResourceTypeInterrupt:
 
-                    /* Make sure it's a compatible (and the only) PCI interrupt */
-                    ASSERT(InterruptResource == NULL);
-                    ASSERT(Partial->u.Interrupt.Level == Partial->u.Interrupt.Vector);
-                    InterruptResource = Partial;
+                    /* CRITICAL FIX: Handle multiple interrupt resources by preferring ACPI over legacy */
+                    if (InterruptResource != NULL)
+                    {
+                        /* Multiple interrupts detected - prefer ACPI IRQs (16-23) over legacy IRQs (0-15) */
+                        if (Partial->u.Interrupt.Vector >= 16 && Partial->u.Interrupt.Vector <= 23)
+                        {
+                            DPRINT1("PCI: Preferring ACPI IRQ %lu over legacy IRQ %lu\n", 
+                                    Partial->u.Interrupt.Vector, InterruptResource->u.Interrupt.Vector);
+                            
+                            /* CRITICAL: Mark the legacy IRQ for removal by setting flag */
+                            InterruptResource->Type = CmResourceTypeNull;
+                            InterruptResource->u.Generic.Start.QuadPart = 0;
+                            InterruptResource->u.Generic.Length = 0;
+                            
+                            InterruptResource = Partial;  // Replace legacy with ACPI IRQ
+                        }
+                        else if (InterruptResource->u.Interrupt.Vector >= 16 && InterruptResource->u.Interrupt.Vector <= 23)
+                        {
+                            DPRINT1("PCI: Keeping ACPI IRQ %lu, removing legacy IRQ %lu\n", 
+                                    InterruptResource->u.Interrupt.Vector, Partial->u.Interrupt.Vector);
+                            
+                            /* CRITICAL: Mark the legacy IRQ for removal by setting flag */
+                            Partial->Type = CmResourceTypeNull;
+                            Partial->u.Generic.Start.QuadPart = 0;
+                            Partial->u.Generic.Length = 0;
+                        }
+                        else
+                        {
+                            DPRINT1("PCI: Multiple legacy IRQs detected: %lu and %lu\n", 
+                                    InterruptResource->u.Interrupt.Vector, Partial->u.Interrupt.Vector);
+                            /* For multiple legacy IRQs, keep the first one and remove the second */
+                            Partial->Type = CmResourceTypeNull;
+                            Partial->u.Generic.Start.QuadPart = 0;
+                            Partial->u.Generic.Length = 0;
+                        }
+                    }
+                    else
+                    {
+                        /* First interrupt resource */
+                        ASSERT(Partial->u.Interrupt.Level == Partial->u.Interrupt.Vector);
+                        InterruptResource = Partial;
+                    }
 
                     /* Only 255 interrupts on x86/x64 hardware */
                     if (Partial->u.Interrupt.Level < 256)
@@ -256,6 +294,46 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
             /* Update to new range */
             *CurrentDescriptor = *Partial;
+        }
+    }
+
+    /* CRITICAL FIX: Compact resource list by removing CmResourceTypeNull entries */
+    /* This ensures Device Manager and drivers only see the preferred ACPI IRQ, not legacy duplicates */
+    if (ResourceList && ResourceList->Count > 0)
+    {
+        PCM_PARTIAL_RESOURCE_LIST PartialList = &ResourceList->List[0].PartialResourceList;
+        ULONG WriteIndex = 0;
+        ULONG ReadIndex;
+        
+        /* Compact the resource list by removing null entries */
+        for (ReadIndex = 0; ReadIndex < PartialList->Count; ReadIndex++)
+        {
+            PCM_PARTIAL_RESOURCE_DESCRIPTOR Source = &PartialList->PartialDescriptors[ReadIndex];
+            
+            /* Skip null resources */
+            if (Source->Type == CmResourceTypeNull)
+            {
+                DPRINT1("PCI: Removing null resource at index %lu\n", ReadIndex);
+                continue;
+            }
+            
+            /* Copy non-null resource to the write position */
+            if (WriteIndex != ReadIndex)
+            {
+                PCM_PARTIAL_RESOURCE_DESCRIPTOR Dest = &PartialList->PartialDescriptors[WriteIndex];
+                *Dest = *Source;
+                DPRINT1("PCI: Compacting resource from index %lu to %lu (Type=%lu, Vector=%lu)\n", 
+                        ReadIndex, WriteIndex, Source->Type, 
+                        Source->Type == CmResourceTypeInterrupt ? Source->u.Interrupt.Vector : 0);
+            }
+            WriteIndex++;
+        }
+        
+        /* Update the count to reflect the compacted list */
+        if (WriteIndex < PartialList->Count)
+        {
+            DPRINT1("PCI: Compacted resource list from %lu to %lu entries\n", PartialList->Count, WriteIndex);
+            PartialList->Count = WriteIndex;
         }
     }
 
@@ -688,9 +766,33 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
         /* Legacy INTx are sharable, level-sensitive */
         Desc->ShareDisposition = CmResourceShareShared;
         Desc->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
-        Desc->u.Interrupt.MinimumVector = 0;
-        /* HACK: Limit to legacy PIC range for now to avoid bogus 0xFF selections */
-        Desc->u.Interrupt.MaximumVector = 0x0F;
+        /* CRITICAL FIX: Use ACPI routing to set correct interrupt requirements from the start */
+        if (PciDetectAcpi() && PciDetectApic() && PdoExtension->InterruptPin != 0)
+        {
+            ULONG AcpiRoutedInterrupt = 0;
+            NTSTATUS AcpiStatus = PciQueryAcpiInterruptRouting(PdoExtension, &AcpiRoutedInterrupt);
+            
+            if (NT_SUCCESS(AcpiStatus) && AcpiRoutedInterrupt >= 16 && AcpiRoutedInterrupt <= 23)
+            {
+                /* Use the ACPI-routed interrupt directly in requirements */
+                Desc->u.Interrupt.MinimumVector = AcpiRoutedInterrupt;
+                Desc->u.Interrupt.MaximumVector = AcpiRoutedInterrupt;
+                DPRINT("PCI: Device requirements using ACPI-routed IRQ %lu\n", AcpiRoutedInterrupt);
+            }
+            else
+            {
+                /* Fallback to legacy range if ACPI routing fails */
+                Desc->u.Interrupt.MinimumVector = 0;
+                Desc->u.Interrupt.MaximumVector = 0x0F;
+                DPRINT("PCI: ACPI routing failed, using legacy IRQ range\n");
+            }
+        }
+        else
+        {
+            /* Legacy PIC systems */
+            Desc->u.Interrupt.MinimumVector = 0;
+            Desc->u.Interrupt.MaximumVector = 0x0F;
+        }
         Desc->u.Interrupt.AffinityPolicy = IrqPolicyMachineDefault;
         Desc->u.Interrupt.PriorityPolicy = IrqPriorityUndefined;
         Desc->u.Interrupt.TargetedProcessors = 0;

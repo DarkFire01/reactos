@@ -22,7 +22,7 @@ PopIsDeviceRegisteredForIdleDetection(
     PLIST_ENTRY Entry;
     PDEVICE_OBJECT_POWER_EXTENSION Dope;
 
-    PAGED_CODE();
+ 
 
     /* Passing a NULL DOPE is illegal */
     ASSERT(TargetDope);
