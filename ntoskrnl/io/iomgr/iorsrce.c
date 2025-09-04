@@ -12,6 +12,7 @@
 /* INCLUDES *****************************************************************/
 
 #include <ntoskrnl.h>
+#include <ndk/iotypes.h>
 #define NDEBUG
 #include <debug.h>
 
@@ -99,6 +100,100 @@ PCWSTR IoDeviceInfoNames[IoQueryDeviceMaxData] =
 };
 
 /* PRIVATE FUNCTIONS **********************************************************/
+
+#ifndef TAG_IO_RESOURCE
+#define TAG_IO_RESOURCE 'CRSR'
+#endif
+
+/* Forward */
+static NTSTATUS
+IopPersistResourceClaim(
+    _In_opt_ PUNICODE_STRING ClassName,
+    _In_opt_ PUNICODE_STRING DriverKeyName,
+    _In_reads_bytes_opt_(RawListSize) PCM_RESOURCE_LIST RawList,
+    _In_ ULONG RawListSize,
+    _In_reads_bytes_opt_(TranslatedListSize) PCM_RESOURCE_LIST TranslatedList,
+    _In_ ULONG TranslatedListSize);
+
+static NTSTATUS
+IopPersistResourceClaim(
+    _In_opt_ PUNICODE_STRING ClassName,
+    _In_opt_ PUNICODE_STRING DriverKeyName,
+    _In_reads_bytes_opt_(RawListSize) PCM_RESOURCE_LIST RawList,
+    _In_ ULONG RawListSize,
+    _In_reads_bytes_opt_(TranslatedListSize) PCM_RESOURCE_LIST TranslatedList,
+    _In_ ULONG TranslatedListSize)
+{
+    NTSTATUS st;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    UNICODE_STRING Name;
+    HANDLE MapKey = NULL, ClassKey = NULL, DriverKey = NULL;
+    BOOLEAN WroteSomething = FALSE;
+
+    if ((!RawList || !RawListSize) && (!TranslatedList || !TranslatedListSize))
+        return STATUS_SUCCESS; /* Nothing to persist */
+
+    RtlInitUnicodeString(&Name, L"\\Registry\\Machine\\HARDWARE\\RESOURCEMAP");
+    InitializeObjectAttributes(&ObjectAttributes, &Name, OBJ_CASE_INSENSITIVE | OBJ_OPENIF, NULL, NULL);
+    st = ZwCreateKey(&MapKey, KEY_ALL_ACCESS, &ObjectAttributes, 0, NULL, REG_OPTION_VOLATILE, NULL);
+    if (!NT_SUCCESS(st)) goto Exit;
+
+    if (ClassName && ClassName->Length)
+    {
+        InitializeObjectAttributes(&ObjectAttributes, (PUNICODE_STRING)ClassName, OBJ_CASE_INSENSITIVE | OBJ_OPENIF, MapKey, NULL);
+    }
+    else
+    {
+        RtlInitUnicodeString(&Name, L"LegacyDrivers");
+        InitializeObjectAttributes(&ObjectAttributes, &Name, OBJ_CASE_INSENSITIVE | OBJ_OPENIF, MapKey, NULL);
+    }
+    st = ZwCreateKey(&ClassKey, KEY_ALL_ACCESS, &ObjectAttributes, 0, NULL, REG_OPTION_VOLATILE, NULL);
+    if (!NT_SUCCESS(st)) goto Exit;
+
+    if (DriverKeyName && DriverKeyName->Length)
+    {
+        InitializeObjectAttributes(&ObjectAttributes, (PUNICODE_STRING)DriverKeyName, OBJ_CASE_INSENSITIVE | OBJ_OPENIF, ClassKey, NULL);
+    }
+    else
+    {
+        RtlInitUnicodeString(&Name, L"(anonymous)");
+        InitializeObjectAttributes(&ObjectAttributes, &Name, OBJ_CASE_INSENSITIVE | OBJ_OPENIF, ClassKey, NULL);
+    }
+    st = ZwCreateKey(&DriverKey, KEY_ALL_ACCESS, &ObjectAttributes, 0, NULL, REG_OPTION_VOLATILE, NULL);
+    if (!NT_SUCCESS(st)) goto Exit;
+
+    if (RawList && RawListSize)
+    {
+        RtlInitUnicodeString(&Name, L".Raw");
+        st = ZwSetValueKey(DriverKey,
+                           &Name,
+                           0,
+                           REG_RESOURCE_LIST,
+                           RawList,
+                           RawListSize);
+        if (!NT_SUCCESS(st)) goto Exit; else WroteSomething = TRUE;
+    }
+    if (TranslatedList && TranslatedListSize)
+    {
+        /* If caller passed the same buffer for both, we still write a second value */
+        RtlInitUnicodeString(&Name, L".Translated");
+        st = ZwSetValueKey(DriverKey,
+                           &Name,
+                           0,
+                           REG_RESOURCE_LIST,
+                           TranslatedList,
+                           TranslatedListSize);
+        if (!NT_SUCCESS(st)) goto Exit; else WroteSomething = TRUE;
+    }
+    if (!WroteSomething)
+        st = STATUS_SUCCESS;
+
+Exit:
+    if (DriverKey) ZwClose(DriverKey);
+    if (ClassKey) ZwClose(ClassKey);
+    if (MapKey) ZwClose(MapKey);
+    return st;
+}
 
 /**
  * @brief
@@ -1051,6 +1146,7 @@ IoReportResourceUsage(
 {
     NTSTATUS Status;
     PCM_RESOURCE_LIST ResourceList;
+    ULONG ResourceListSize;
 
     DPRINT1("IoReportResourceUsage is halfplemented!\n");
 
@@ -1058,9 +1154,15 @@ IoReportResourceUsage(
         return STATUS_INVALID_PARAMETER;
 
     if (DeviceList)
+    {
         ResourceList = DeviceList;
+        ResourceListSize = DeviceListSize;
+    }
     else
+    {
         ResourceList = DriverList;
+        ResourceListSize = DriverListSize;
+    }
 
     Status = IopDetectResourceConflict(ResourceList, FALSE, NULL);
     if (Status == STATUS_CONFLICTING_ADDRESSES)
@@ -1082,7 +1184,18 @@ IoReportResourceUsage(
         return Status;
     }
 
-    /* TODO: Claim resources in registry */
+    /* Claim resources (currently we only have one list; use it for both Raw & Translated) */
+    {
+        UNICODE_STRING driverNameCopy = DriverObject->DriverName;
+        NTSTATUS regStatus = IopPersistResourceClaim(DriverClassName,
+                                                     &driverNameCopy,
+                                                     ResourceList,
+                                                     ResourceListSize,
+                                                     ResourceList,
+                                                     ResourceListSize);
+        if (!NT_SUCCESS(regStatus))
+            DPRINT1("IoReportResourceUsage: PersistResourceClaim failed %lx\n", regStatus);
+    }
 
     *ConflictDetected = FALSE;
 
