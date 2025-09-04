@@ -242,8 +242,29 @@ PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
              * Now we should initialize it, not yet implemented because Arb
              * library isn't yet implemented, not even the headers.
              */
-            UNIMPLEMENTED;
-            //while (TRUE);
+            /* Seed boot reservations after arbiter init (memory & port only, once) */
+            if (PCI_IS_ROOT_FDO(DeviceExtension) && !DeviceExtension->BootRangesSeeded)
+            {
+                PARBITER_INSTANCE Arb = &((PPCI_ARBITER_INSTANCE)Instance)->CommonInstance;
+                PLIST_ENTRY le;
+                for (le = DeviceExtension->BootRangeList.Flink; le != &DeviceExtension->BootRangeList; le = le->Flink)
+                {
+                    PPCI_BOOT_RANGE br = CONTAINING_RECORD(le, PCI_BOOT_RANGE, ListEntry);
+                    if ((ArbiterType == PciArb_Io && br->Type == CmResourceTypePort) ||
+                        (ArbiterType == PciArb_Memory && br->Type == CmResourceTypeMemory))
+                    {
+                        (VOID)RtlAddRange(Arb->Allocation,
+                                          br->Start,
+                                          br->Start + br->Length - 1,
+                                          0,
+                                          RTL_RANGE_LIST_ADD_IF_CONFLICT,
+                                          NULL,
+                                          NULL);
+                    }
+                }
+                if (ArbiterType == PciArb_Memory || ArbiterType == PciArb_Io)
+                    DeviceExtension->BootRangesSeeded = TRUE; /* After both loops first pass */
+            }
         }
         else
         {
