@@ -211,9 +211,15 @@ IopIrqUnpackResource(
     _Out_ PULONG OutLength)
 {
     PAGED_CODE();
+    ASSERT(CmDescriptor);
+    ASSERT(CmDescriptor->Type == CmResourceTypeInterrupt);
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    *Start = CmDescriptor->u.Interrupt.Vector; /* Level equals Vector for ISA style IRQ */
+    *OutLength = 1; /* Single IRQ line */
+
+    DPRINT("IopIrqUnpackResource: CmDesc %p => Vector %I64u\n", CmDescriptor, *Start);
+
+    return STATUS_SUCCESS;
 }
 
 LONG
@@ -222,9 +228,21 @@ IopIrqScoreRequirement(
     _In_ PIO_RESOURCE_DESCRIPTOR IoDescriptor)
 {
     PAGED_CODE();
+    ASSERT(IoDescriptor);
+    ASSERT(IoDescriptor->Type == CmResourceTypeInterrupt);
 
-    UNIMPLEMENTED;
-    return 0;
+    /* Flexibility score: size of selectable vector span (Max - Min + 1) */
+    {
+        ULONGLONG Span = IoDescriptor->u.Interrupt.MaximumVector - IoDescriptor->u.Interrupt.MinimumVector + 1;
+        if (Span > 0x7FFFFFFF) Span = 0x7FFFFFFF; /* Clamp to LONG range */
+        DPRINT("IopIrqScoreRequirement: IoDesc %p Min %u Max %u Span %I64u => Score %ld\n",
+               IoDescriptor,
+               IoDescriptor->u.Interrupt.MinimumVector,
+               IoDescriptor->u.Interrupt.MaximumVector,
+               Span,
+               (LONG)Span);
+        return (LONG)Span;
+    }
 }
 
 NTSTATUS
@@ -297,6 +315,41 @@ IopIrqInitialize(VOID)
                                           L"RootIRQ",
                                           L"Root",
                                           IopIrqTranslateOrdering);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* Reserve IRQ vectors outside legacy PIC range (>=16) so they won't be allocated
+       until proper APIC/MSI support & translation logic are implemented. */
+    Status = RtlAddRange(IopRootIrqArbiter.Allocation,
+                         16,
+                         (ULONGLONG)(-1),
+                         0,
+                         0,
+                         NULL,
+                         NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* Reserve critical legacy system IRQs typically consumed by fixed devices (timer, keyboard, cascade, RTC) */
+    {
+        static const UCHAR LegacySystemIrqs[] = {0,1,2,8};
+        for (ULONG i = 0; i < RTL_NUMBER_OF(LegacySystemIrqs); ++i)
+        {
+            NTSTATUS St = RtlAddRange(IopRootIrqArbiter.Allocation,
+                                      LegacySystemIrqs[i],
+                                      LegacySystemIrqs[i],
+                                      0,
+                                      0,
+                                      NULL,
+                                      NULL);
+            if (!NT_SUCCESS(St))
+            {
+                DPRINT1("IopIrqInitialize: Failed to reserve legacy IRQ %u Status %X\n", LegacySystemIrqs[i], St);
+                if (NT_SUCCESS(Status)) Status = St; /* keep first failure */
+            }
+        }
+    }
+
     return Status;
 }
 

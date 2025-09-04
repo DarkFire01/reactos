@@ -164,7 +164,7 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
              having two competing IRQ arbiters (HAL + kernel root). Enable later when routing is added. */
     if (IsEqualGUID(InterfaceType, &GUID_ARBITER_INTERFACE_STANDARD))
     {
-
+        //TODO: this should be temp?
         return HalpFillInIrqArbiter(Version,
                                     InterfaceBufferSize,
                                     (PARBITER_INTERFACE)Interface,

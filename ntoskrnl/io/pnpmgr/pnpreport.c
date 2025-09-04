@@ -417,6 +417,7 @@ IoReportResourceForDetection(IN PDRIVER_OBJECT DriverObject,
     Status = IopDetectResourceConflict(ResourceList, TRUE, NULL);
     if (Status == STATUS_CONFLICTING_ADDRESSES)
     {
+        __debugbreak();
         /* Oh noes */
         *ConflictDetected = TRUE;
     }
