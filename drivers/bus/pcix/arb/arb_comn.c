@@ -10,6 +10,9 @@
 
 #include <pci.h>
 
+/* Forward (header may not have parsed yet for lint) */
+typedef struct _PCI_FDO_EXTENSION *PPCI_FDO_EXTENSION;
+
 #define NDEBUG
 #include <debug.h>
 
@@ -24,6 +27,46 @@ PCHAR PciArbiterNames[] =
 };
 
 /* FUNCTIONS ******************************************************************/
+
+/* Local persistence of boot resources (duplicated logic from IopPersistResourceClaim) */
+static VOID
+PciPersistBootResources(PPCI_FDO_EXTENSION Fdo)
+{
+    NTSTATUS st;
+    OBJECT_ATTRIBUTES oa;
+    UNICODE_STRING name, sub, bus;
+    HANDLE mapKey = NULL, classKey = NULL, busKey = NULL;
+    WCHAR busNameBuf[16];
+
+    if (!Fdo->BootResources || !Fdo->BootResourcesSize) return;
+
+    RtlInitUnicodeString(&name, L"\\Registry\\Machine\\HARDWARE\\RESOURCEMAP");
+    InitializeObjectAttributes(&oa, &name, OBJ_CASE_INSENSITIVE | OBJ_OPENIF, NULL, NULL);
+    st = ZwCreateKey(&mapKey, KEY_ALL_ACCESS, &oa, 0, NULL, REG_OPTION_VOLATILE, NULL);
+    if (!NT_SUCCESS(st)) goto Exit;
+
+    RtlInitUnicodeString(&sub, L"PCI");
+    InitializeObjectAttributes(&oa, &sub, OBJ_CASE_INSENSITIVE | OBJ_OPENIF, mapKey, NULL);
+    st = ZwCreateKey(&classKey, KEY_ALL_ACCESS, &oa, 0, NULL, REG_OPTION_VOLATILE, NULL);
+    if (!NT_SUCCESS(st)) goto Exit;
+
+    _snwprintf(busNameBuf, RTL_NUMBER_OF(busNameBuf), L"Bus%02X", (ULONG)Fdo->BaseBus);
+    RtlInitUnicodeString(&bus, busNameBuf);
+    InitializeObjectAttributes(&oa, &bus, OBJ_CASE_INSENSITIVE | OBJ_OPENIF, classKey, NULL);
+    st = ZwCreateKey(&busKey, KEY_ALL_ACCESS, &oa, 0, NULL, REG_OPTION_VOLATILE, NULL);
+    if (!NT_SUCCESS(st)) goto Exit;
+
+    /* Store raw + translated (identical for now) */
+    RtlInitUnicodeString(&name, L".Raw");
+    ZwSetValueKey(busKey, &name, 0, REG_RESOURCE_LIST, Fdo->BootResources, Fdo->BootResourcesSize);
+    RtlInitUnicodeString(&name, L".Translated");
+    ZwSetValueKey(busKey, &name, 0, REG_RESOURCE_LIST, Fdo->BootResources, Fdo->BootResourcesSize);
+
+Exit:
+    if (busKey) ZwClose(busKey);
+    if (classKey) ZwClose(classKey);
+    if (mapKey) ZwClose(mapKey);
+}
 
 VOID
 NTAPI
@@ -134,6 +177,50 @@ PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
     PCI_SIGNATURE ArbiterType;
 
     UNREFERENCED_PARAMETER(Resources);
+
+    /* If this is the root and we have boot resources not yet parsed, do a simple parse now.
+       Later these will be used to add fixed allocations into the arbiter once implemented. */
+    if (PCI_IS_ROOT_FDO(DeviceExtension) &&
+        DeviceExtension->BootResources &&
+        (DeviceExtension->BootIoCount == 0) &&
+        (DeviceExtension->BootMemCount == 0))
+    {
+        PCM_RESOURCE_LIST Boot = DeviceExtension->BootResources;
+        ULONG iFull; PCM_FULL_RESOURCE_DESCRIPTOR Full;
+        Full = &Boot->List[0];
+        for (iFull = 0; iFull < Boot->Count; iFull++)
+        {
+            ULONG iPart; PCM_PARTIAL_RESOURCE_DESCRIPTOR Part;
+            Part = &Full->PartialResourceList.PartialDescriptors[0];
+            for (iPart = 0; iPart < Full->PartialResourceList.Count; iPart++, Part++)
+            {
+                if (Part->Type == CmResourceTypePort && DeviceExtension->BootIoCount < 16)
+                {
+                    DeviceExtension->BootIoBase[DeviceExtension->BootIoCount] = Part->u.Port.Start.LowPart;
+                    DeviceExtension->BootIoLength[DeviceExtension->BootIoCount] = Part->u.Port.Length;
+                    DeviceExtension->BootIoCount++;
+                }
+                else if (Part->Type == CmResourceTypeMemory && DeviceExtension->BootMemCount < 16)
+                {
+                    DeviceExtension->BootMemBase[DeviceExtension->BootMemCount] = Part->u.Memory.Start.QuadPart;
+                    DeviceExtension->BootMemLength[DeviceExtension->BootMemCount] = Part->u.Memory.Length;
+                    DeviceExtension->BootMemCount++;
+                }
+            }
+            /* Advance to next full descriptor */
+            Full = (PCM_FULL_RESOURCE_DESCRIPTOR)((PUCHAR)Full +
+                    FIELD_OFFSET(CM_FULL_RESOURCE_DESCRIPTOR, PartialResourceList.PartialDescriptors) +
+                    (Full->PartialResourceList.Count * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR)));
+        }
+        if (DeviceExtension->BootIoCount || DeviceExtension->BootMemCount)
+        {
+            DPRINT1("PCI Root Boot resource summary: IO=%u MEM=%u\n",
+                    DeviceExtension->BootIoCount,
+                    DeviceExtension->BootMemCount);
+            /* Persist them under RESOURCEMAP */
+            PciPersistBootResources(DeviceExtension);
+        }
+    }
 
     /* Arbiters should not already be initialized */
     if (DeviceExtension->ArbitersInitialized)
