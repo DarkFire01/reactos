@@ -691,8 +691,20 @@ NTAPI
 PciDriverUnload(IN PDRIVER_OBJECT DriverObject)
 {
     UNREFERENCED_PARAMETER(DriverObject);
-    /* This function is not yet implemented */
-    UNIMPLEMENTED_DBGBREAK("PCI: Unload\n");
+    /* Walk FDO list and free boot resource copies */
+    SINGLE_LIST_ENTRY *entry = PciFdoExtensionListHead.Next;
+    while (entry)
+    {
+        PPCI_FDO_EXTENSION fdo = (PPCI_FDO_EXTENSION)entry;
+        entry = entry->Next;
+        if (fdo->BootResources)
+        {
+            ExFreePoolWithTag(fdo->BootResources, PCI_POOL_TAG);
+            fdo->BootResources = NULL;
+            fdo->BootResourcesSize = 0;
+            fdo->BootIoCount = 0; fdo->BootMemCount = 0;
+        }
+    }
 }
 
 NTSTATUS
