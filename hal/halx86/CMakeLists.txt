@@ -6,7 +6,8 @@ add_definitions(
 include_directories(
     include
     ${REACTOS_SOURCE_DIR}/ntoskrnl/include
-    ${REACTOS_SOURCE_DIR}/sdk/include/reactos/libs/fast486)
+    ${REACTOS_SOURCE_DIR}/sdk/include/reactos/libs/fast486
+    ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/arbiter)
 
 function(add_hal _halname)
     cmake_parse_arguments(_haldata "" "" "SOURCES;COMPONENTS" ${ARGN})
@@ -25,7 +26,7 @@ function(add_hal _halname)
     if(${_halname} STREQUAL "hal")
         target_link_libraries(${_halname} libcntpr setjmp arbiter fast486 ${PSEH_LIB})
     else()
-        target_link_libraries(${_halname} libcntpr setjmp fast486 ${PSEH_LIB})
+        target_link_libraries(${_halname} libcntpr setjmp arbiter fast486 ${PSEH_LIB})
     endif()
 
     add_importlibs(${_halname} ntoskrnl)
@@ -63,8 +64,8 @@ if(ARCH STREQUAL "i386")
     add_hal(halacpi SOURCES acpi/halacpi.rc COMPONENTS generic acpi up pic)
     add_hal(halaacpi SOURCES apic/halaacpi.rc COMPONENTS generic acpi up apic)
     add_hal(halapic SOURCES apic/halapic.rc COMPONENTS generic legacy up apic)
-    add_hal(halxbox SOURCES xbox/halxbox.rc COMPONENTS xbox up)
-    add_hal(halpc98 SOURCES pc98/halpc98.rc COMPONENTS pc98 up)
+    #add_hal(halxbox SOURCES xbox/halxbox.rc COMPONENTS xbox up)
+    #add_hal(halpc98 SOURCES pc98/halpc98.rc COMPONENTS pc98 up)
 
     add_hal(halmacpi SOURCES smp/halmacpi.rc COMPONENTS generic acpi smp apic)
     #add_hal(halmp SOURCES mp/halmp.rc COMPONENTS generic legacy smp apic)

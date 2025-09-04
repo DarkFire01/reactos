@@ -12,6 +12,9 @@
 #define NDEBUG
 #include <debug.h>
 
+/* Forward decl from irqarb.c */
+NTSTATUS HalpInitIrqArbiter(VOID);
+
 /* GLOBALS *******************************************************************/
 
 //#ifdef CONFIG_SMP // FIXME: Reenable conditional once HAL is consistently compiled for SMP mode
@@ -120,6 +123,9 @@ HalInitSystem(
         /* Initialize the PICs */
         HalpInitializePICs(TRUE);
 
+    /* Initialize IRQ Arbiter (must follow PIC setup) */
+    HalpInitIrqArbiter();
+
         /* Initialize CMOS lock */
         KeInitializeSpinLock(&HalpSystemHardwareLock);
 
@@ -132,7 +138,8 @@ HalInitSystem(
         HalInitPnpDriver = HaliInitPnpDriver;
         HalGetDmaAdapter = HalpGetDmaAdapter;
 
-        HalGetInterruptTranslator = NULL;  // FIXME: TODO
+    extern NTSTATUS NTAPI HalpGetInterruptTranslator(IN INTERFACE_TYPE, IN ULONG, IN INTERFACE_TYPE, IN USHORT, IN USHORT, OUT PTRANSLATOR_INTERFACE, OUT PULONG);
+    HalGetInterruptTranslator = HalpGetInterruptTranslator; // Legacy PIC translator
         HalResetDisplay = HalpBiosDisplayReset;
         HalHaltSystem = HaliHaltSystem;
 

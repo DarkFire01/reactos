@@ -10,6 +10,8 @@ list(APPEND HAL_GENERIC_SOURCE
     generic/memory.c
     generic/misc.c
     generic/nmi.c
+    generic/irqarb.c
+    generic/irqtrans.c
     generic/pic.c
     generic/reboot.c
     generic/sysinfo.c
