@@ -444,6 +444,8 @@ PciInitializeFdoExtensionCommonFields(PPCI_FDO_EXTENSION FdoExtension,
     FdoExtension->PowerState.CurrentSystemState = PowerSystemWorking;
     FdoExtension->PowerState.CurrentDeviceState = PowerDeviceD0;
     FdoExtension->IrpDispatchTable = &PciFdoDispatchTable;
+    InitializeListHead(&FdoExtension->BootRangeList);
+    FdoExtension->BootResourcesPersisted = FALSE;
 
     /* Initialize the extension locks */
     KeInitializeEvent(&FdoExtension->SecondaryExtLock, SynchronizationEvent, TRUE);

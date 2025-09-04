@@ -232,14 +232,18 @@ typedef struct _PCI_FDO_EXTENSION
     /* Firmware/boot supplied resource list for root bus (copied) */
     PCM_RESOURCE_LIST BootResources;
     ULONG BootResourcesSize;
-    /* Parsed boot-time claimed ranges (simple cap) */
-    ULONG BootIoBase[16];
-    ULONG BootIoLength[16];
-    UCHAR BootIoCount;
-    ULONGLONG BootMemBase[16];
-    ULONGLONG BootMemLength[16];
-    UCHAR BootMemCount;
+    BOOLEAN BootResourcesPersisted;
+    LIST_ENTRY BootRangeList; /* list of PCI_BOOT_RANGE */
 } PCI_FDO_EXTENSION, *PPCI_FDO_EXTENSION;
+
+typedef struct _PCI_BOOT_RANGE
+{
+    LIST_ENTRY ListEntry;
+    CM_RESOURCE_TYPE Type; /* Port or Memory */
+    ULONGLONG Start;
+    ULONGLONG Length;
+    BOOLEAN Prefetchable; /* Memory only */
+} PCI_BOOT_RANGE, *PPCI_BOOT_RANGE;
 
 typedef struct _PCI_FUNCTION_RESOURCES
 {
