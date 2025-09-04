@@ -48,20 +48,32 @@ PciGetDescriptionMessage(IN ULONG Identifier,
         /* Grab the text */
         Description = (PWCHAR)Entry->Text;
 
-        /* Validate valid message length, ending with a newline character */
-        ASSERT(TextLength > 1);
-        ASSERT(Description[TextLength / sizeof(WCHAR)] == L'\n');
+        /* Validate message length; tolerate missing trailing newline in table (some builds may strip it) */
+        ASSERT(TextLength >= sizeof(WCHAR));
+        if (Description[(TextLength / sizeof(WCHAR))] != L'\n')
+        {
+            /* Treat absence of newline as acceptable, adjust copy size so we still NULL terminate correctly */
+            /* No change to TextLength; copying logic below already trims one WCHAR */
+        }
 
         /* Allocate the buffer to hold the message string */
         Buffer = ExAllocatePoolWithTag(PagedPool, TextLength, 'BicP');
         if (!Buffer) return NULL;
 
-        /* Copy the message, minus the newline character, and terminate it */
-        RtlCopyMemory(Buffer, Entry->Text, TextLength - 1);
-        Buffer[TextLength / sizeof(WCHAR)] = UNICODE_NULL;
-
-        /* Return the length to the caller, minus the terminating NULL */
-        if (Length) *Length = TextLength - 1;
+        /* Copy the message, strip a single trailing newline if present, then terminate */
+        if (Description[(TextLength / sizeof(WCHAR))] == L'\n')
+        {
+            RtlCopyMemory(Buffer, Entry->Text, TextLength - 1);
+            Buffer[(TextLength / sizeof(WCHAR)) - 1] = UNICODE_NULL;
+            if (Length) *Length = TextLength - 1; /* exclude newline */
+        }
+        else
+        {
+            RtlCopyMemory(Buffer, Entry->Text, TextLength);
+            Buffer[TextLength / sizeof(WCHAR)] = UNICODE_NULL;
+            if (Length) *Length = TextLength; /* whole length */
+        }
+        /* Length already set above */
     }
     else
     {

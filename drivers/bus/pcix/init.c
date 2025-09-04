@@ -709,6 +709,7 @@ PciDriverUnload(IN PDRIVER_OBJECT DriverObject)
             PPCI_BOOT_RANGE br = CONTAINING_RECORD(le, PCI_BOOT_RANGE, ListEntry);
             ExFreePoolWithTag(br, PCI_POOL_TAG);
         }
+    fdo->BootRangesSeeded = FALSE;
     }
 }
 

@@ -234,6 +234,7 @@ typedef struct _PCI_FDO_EXTENSION
     ULONG BootResourcesSize;
     BOOLEAN BootResourcesPersisted;
     LIST_ENTRY BootRangeList; /* list of PCI_BOOT_RANGE */
+    BOOLEAN BootRangesSeeded;
 } PCI_FDO_EXTENSION, *PPCI_FDO_EXTENSION;
 
 typedef struct _PCI_BOOT_RANGE

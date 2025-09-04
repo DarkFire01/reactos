@@ -8,10 +8,33 @@
 
 /* INCLUDES *******************************************************************/
 
+#include <ntddk.h>
 #include <pci.h>
+#include <limits.h>
+
 
 #define NDEBUG
 #include <debug.h>
+
+/* LOCAL ARBITER HELPERS (cannot rely on ntoskrnl IopGeneric* exports) */
+NTSTATUS NTAPI PciArbUnpackRequirement(
+    PIO_RESOURCE_DESCRIPTOR Requirement,
+    PULONGLONG MinimumAddress,
+    PULONGLONG MaximumAddress,
+    PULONG Length,
+    PULONG Alignment);
+NTSTATUS NTAPI PciArbPackResource(
+    PIO_RESOURCE_DESCRIPTOR Requirement,
+    ULONGLONG Start,
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor);
+NTSTATUS NTAPI PciArbUnpackResource(
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor,
+    PULONGLONG Start,
+    PULONG Length);
+LONG NTAPI PciArbScoreRequirement(PIO_RESOURCE_DESCRIPTOR Requirement);
+/* Local replacements for kernel-only helpers */
+BOOLEAN NTAPI PciArbFindSuitableRange(PARBITER_INSTANCE Arbiter, PARBITER_ALLOCATION_STATE State);
+NTSTATUS NTAPI PciArbTranslateOrdering(PIO_RESOURCE_DESCRIPTOR OutDesc, PIO_RESOURCE_DESCRIPTOR InDesc);
 
 /* GLOBALS ********************************************************************/
 
@@ -47,12 +70,23 @@ NTSTATUS
 NTAPI
 ario_Initializer(IN PVOID Instance)
 {
-    UNREFERENCED_PARAMETER(Instance);
-
-    /* Not yet implemented */
-    UNIMPLEMENTED;
-    //while (TRUE);
-    return STATUS_SUCCESS;
+    PPCI_ARBITER_INSTANCE PciArb = (PPCI_ARBITER_INSTANCE)Instance;
+    PARBITER_INSTANCE Arb;
+    if (!PciArb) return STATUS_INVALID_PARAMETER;
+    Arb = &PciArb->CommonInstance;
+    RtlZeroMemory(Arb, sizeof(*Arb));
+    /* Use local PCI helpers instead of kernel generic routines */
+    Arb->UnpackRequirement = PciArbUnpackRequirement;
+    Arb->PackResource = PciArbPackResource;
+    Arb->UnpackResource = PciArbUnpackResource;
+    Arb->ScoreRequirement = PciArbScoreRequirement;
+    Arb->FindSuitableRange = PciArbFindSuitableRange;
+    return ArbInitializeArbiterInstance(Arb,
+                                        PciArb->BusFdoExtension->FunctionalDeviceObject,
+                                        CmResourceTypePort,
+                                        PciArb->InstanceName,
+                                        L"Pci",
+                                        PciArbTranslateOrdering);
 }
 
 NTSTATUS
@@ -143,12 +177,23 @@ NTSTATUS
 NTAPI
 armem_Initializer(IN PVOID Instance)
 {
-    UNREFERENCED_PARAMETER(Instance);
-
-    /* Not yet implemented */
-    UNIMPLEMENTED;
-    //while (TRUE);
-    return STATUS_SUCCESS;
+    PPCI_ARBITER_INSTANCE PciArb = (PPCI_ARBITER_INSTANCE)Instance;
+    PARBITER_INSTANCE Arb;
+    if (!PciArb) return STATUS_INVALID_PARAMETER;
+    Arb = &PciArb->CommonInstance;
+    RtlZeroMemory(Arb, sizeof(*Arb));
+    /* Use local PCI helpers instead of kernel generic routines */
+    Arb->UnpackRequirement = PciArbUnpackRequirement;
+    Arb->PackResource = PciArbPackResource;
+    Arb->UnpackResource = PciArbUnpackResource;
+    Arb->ScoreRequirement = PciArbScoreRequirement;
+    Arb->FindSuitableRange = PciArbFindSuitableRange;
+    return ArbInitializeArbiterInstance(Arb,
+                                        PciArb->BusFdoExtension->FunctionalDeviceObject,
+                                        CmResourceTypeMemory,
+                                        PciArb->InstanceName,
+                                        L"Pci",
+                                        PciArbTranslateOrdering);
 }
 
 NTSTATUS
@@ -196,3 +241,100 @@ armem_Constructor(IN PVOID DeviceExtension,
 }
 
 /* EOF */
+
+/* Helper implementations placed at end to mirror style of other arbiter files */
+NTSTATUS NTAPI PciArbUnpackRequirement(PIO_RESOURCE_DESCRIPTOR Requirement,
+                                       PULONGLONG MinimumAddress,
+                                       PULONGLONG MaximumAddress,
+                                       PULONG Length,
+                                       PULONG Alignment)
+{
+    if (!Requirement) return STATUS_INVALID_PARAMETER;
+    switch (Requirement->Type)
+    {
+        case CmResourceTypePort:
+            *MinimumAddress = Requirement->u.Port.MinimumAddress.QuadPart;
+            *MaximumAddress = Requirement->u.Port.MaximumAddress.QuadPart;
+            *Length = Requirement->u.Port.Length;
+            *Alignment = Requirement->u.Port.Alignment ? Requirement->u.Port.Alignment : 1;
+            return STATUS_SUCCESS;
+        case CmResourceTypeMemory:
+            *MinimumAddress = Requirement->u.Memory.MinimumAddress.QuadPart;
+            *MaximumAddress = Requirement->u.Memory.MaximumAddress.QuadPart;
+            *Length = Requirement->u.Memory.Length;
+            *Alignment = Requirement->u.Memory.Alignment ? Requirement->u.Memory.Alignment : 1;
+            return STATUS_SUCCESS;
+        default:
+            return STATUS_INVALID_PARAMETER;
+    }
+}
+
+NTSTATUS NTAPI PciArbPackResource(PIO_RESOURCE_DESCRIPTOR Requirement,
+                                  ULONGLONG Start,
+                                  PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor)
+{
+    if (!Requirement || !Descriptor) return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(Descriptor, sizeof(*Descriptor));
+    if (Requirement->Type == CmResourceTypePort)
+    {
+        Descriptor->Type = CmResourceTypePort;
+        Descriptor->ShareDisposition = Requirement->ShareDisposition;
+        Descriptor->Flags = CM_RESOURCE_PORT_IO;
+        Descriptor->u.Port.Start.QuadPart = Start;
+        Descriptor->u.Port.Length = Requirement->u.Port.Length;
+    }
+    else if (Requirement->Type == CmResourceTypeMemory)
+    {
+        Descriptor->Type = CmResourceTypeMemory;
+        Descriptor->ShareDisposition = Requirement->ShareDisposition;
+        Descriptor->Flags = Requirement->Flags & (CM_RESOURCE_MEMORY_PREFETCHABLE | CM_RESOURCE_MEMORY_READ_ONLY);
+        Descriptor->u.Memory.Start.QuadPart = Start;
+        Descriptor->u.Memory.Length = Requirement->u.Memory.Length;
+    }
+    else
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS NTAPI PciArbUnpackResource(PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor,
+                                    PULONGLONG Start,
+                                    PULONG Length)
+{
+    if (!Descriptor || !Start || !Length) return STATUS_INVALID_PARAMETER;
+    *Start = Descriptor->u.Generic.Start.QuadPart;
+    *Length = Descriptor->u.Generic.Length;
+    return STATUS_SUCCESS;
+}
+
+LONG NTAPI PciArbScoreRequirement(PIO_RESOURCE_DESCRIPTOR Requirement)
+{
+    ULONGLONG span;
+    if (Requirement->Type == CmResourceTypePort)
+    {
+        span = Requirement->u.Port.MaximumAddress.QuadPart - Requirement->u.Port.MinimumAddress.QuadPart + 1;
+    }
+    else if (Requirement->Type == CmResourceTypeMemory)
+    {
+        span = Requirement->u.Memory.MaximumAddress.QuadPart - Requirement->u.Memory.MinimumAddress.QuadPart + 1;
+    }
+    else
+    {
+        return -1;
+    }
+    if (span > LONG_MAX) span = LONG_MAX;
+    return (LONG)span;
+}
+
+BOOLEAN NTAPI PciArbFindSuitableRange(PARBITER_INSTANCE Arbiter, PARBITER_ALLOCATION_STATE State)
+{
+    return ArbFindSuitableRange(Arbiter, State);
+}
+
+NTSTATUS NTAPI PciArbTranslateOrdering(PIO_RESOURCE_DESCRIPTOR OutDesc, PIO_RESOURCE_DESCRIPTOR InDesc)
+{
+    if (!OutDesc || !InDesc) return STATUS_INVALID_PARAMETER;
+    RtlCopyMemory(OutDesc, InDesc, sizeof(IO_RESOURCE_DESCRIPTOR));
+    return STATUS_SUCCESS;
+}
