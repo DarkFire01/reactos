@@ -12,8 +12,6 @@
 #define NDEBUG
 #include <debug.h>
 
-/* Forward decl from irqarb.c */
-NTSTATUS HalpInitIrqArbiter(VOID);
 
 /* GLOBALS *******************************************************************/
 
@@ -135,8 +133,7 @@ HalInitSystem(
         /* Initialize the PICs */
         HalpInitializePICs(TRUE);
 
-    /* Initialize IRQ Arbiter (must follow PIC setup) */
-    HalpInitIrqArbiter();
+    /* HAL IRQ Arbiter removed: rely on kernel root IRQ arbiter (IopRootIrqArbiter) */
 
         /* Initialize CMOS lock */
         KeInitializeSpinLock(&HalpSystemHardwareLock);

@@ -130,6 +130,44 @@ static NTSTATUS NTAPI HalpIrqArbRollbackAllocation(PARBITER_INSTANCE Arbiter)
 static NTSTATUS NTAPI HalpIrqArbBootAllocation(PARBITER_INSTANCE Arbiter, PLIST_ENTRY List)
 { return ArbBootAllocation(Arbiter, List); }
 
+/* Advanced callbacks (present in NT HAL IRQ arbiter). We keep them minimal/no-op until
+   PCI IRQ routing logic is implemented. */
+static NTSTATUS NTAPI
+HalpIrqArbPreprocessEntry(PARBITER_INSTANCE Arbiter, PARBITER_ALLOCATION_STATE State)
+{
+    UNREFERENCED_PARAMETER(Arbiter);
+    UNREFERENCED_PARAMETER(State);
+    return STATUS_SUCCESS; /* No special range attributes */
+}
+
+static BOOLEAN NTAPI
+HalpIrqArbGetNextAllocationRange(PARBITER_INSTANCE Arbiter, PARBITER_ALLOCATION_STATE State)
+{
+    /* Delegate to generic helper */
+    return ArbGetNextAllocationRange(Arbiter, State);
+}
+
+static BOOLEAN NTAPI
+HalpIrqArbFindSuitableRange(PARBITER_INSTANCE Arbiter, PARBITER_ALLOCATION_STATE State)
+{
+    return ArbFindSuitableRange(Arbiter, State);
+}
+
+static VOID NTAPI
+HalpIrqArbAddAllocation(PARBITER_INSTANCE Arbiter, PARBITER_ALLOCATION_STATE State)
+{
+    UNREFERENCED_PARAMETER(Arbiter);
+    UNREFERENCED_PARAMETER(State);
+    /* No link tracking; nothing extra to do */
+}
+
+static VOID NTAPI
+HalpIrqArbBacktrackAllocation(PARBITER_INSTANCE Arbiter, PARBITER_ALLOCATION_STATE State)
+{
+    UNREFERENCED_PARAMETER(Arbiter);
+    UNREFERENCED_PARAMETER(State);
+}
+
 /* Public initialization entry called from halinit.c after PIC init */
 NTSTATUS
 HalpInitIrqArbiter(VOID)
@@ -150,6 +188,11 @@ HalpInitIrqArbiter(VOID)
     HalpIrqArbiterInstance.CommitAllocation  = HalpIrqArbCommitAllocation;
     HalpIrqArbiterInstance.RollbackAllocation= HalpIrqArbRollbackAllocation;
     HalpIrqArbiterInstance.BootAllocation    = HalpIrqArbBootAllocation;
+    HalpIrqArbiterInstance.PreprocessEntry   = HalpIrqArbPreprocessEntry;
+    HalpIrqArbiterInstance.GetNextAllocationRange = HalpIrqArbGetNextAllocationRange;
+    HalpIrqArbiterInstance.FindSuitableRange = HalpIrqArbFindSuitableRange;
+    HalpIrqArbiterInstance.AddAllocation     = HalpIrqArbAddAllocation;
+    HalpIrqArbiterInstance.BacktrackAllocation = HalpIrqArbBacktrackAllocation;
 
     Status = ArbInitializeArbiterInstance(&HalpIrqArbiterInstance,
                                           NULL, /* Root-style */

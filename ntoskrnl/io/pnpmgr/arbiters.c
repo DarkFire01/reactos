@@ -86,9 +86,11 @@ IopBusNumberUnpackResource(
     _Out_ PULONG Length)
 {
     PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    ASSERT(Descriptor);
+    ASSERT(Descriptor->Type == CmResourceTypeBusNumber);
+    *Start = Descriptor->u.BusNumber.Start;
+    *Length = Descriptor->u.BusNumber.Length;
+    return STATUS_SUCCESS;
 }
 
 LONG
@@ -97,9 +99,13 @@ IopBusNumberScoreRequirement(
     _In_ PIO_RESOURCE_DESCRIPTOR IoDescriptor)
 {
     PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return 0;
+    ASSERT(IoDescriptor);
+    ASSERT(IoDescriptor->Type == CmResourceTypeBusNumber);
+    {
+        ULONGLONG Span = IoDescriptor->u.BusNumber.MaxBusNumber - IoDescriptor->u.BusNumber.MinBusNumber + 1;
+        if (Span > 0x7FFFFFFF) Span = 0x7FFFFFFF;
+        return (LONG)Span;
+    }
 }
 
 #define ARB_MAX_BUS_NUMBER 0xFF
@@ -476,9 +482,11 @@ IopGenericUnpackResource(
     _Out_ PULONG OutLength)
 {
     PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    ASSERT(CmDescriptor);
+    ASSERT(CmDescriptor->Type == CmResourceTypePort || CmDescriptor->Type == CmResourceTypeMemory);
+    *Start = CmDescriptor->u.Generic.Start.QuadPart;
+    *OutLength = CmDescriptor->u.Generic.Length;
+    return STATUS_SUCCESS;
 }
 
 LONG
@@ -487,9 +495,13 @@ IopGenericScoreRequirement(
     _In_ PIO_RESOURCE_DESCRIPTOR IoDescriptor)
 {
     PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return 0;
+    ASSERT(IoDescriptor);
+    ASSERT(IoDescriptor->Type == CmResourceTypePort || IoDescriptor->Type == CmResourceTypeMemory);
+    {
+        ULONGLONG Span = IoDescriptor->u.Generic.MaximumAddress.QuadPart - IoDescriptor->u.Generic.MinimumAddress.QuadPart + 1;
+        if (Span > 0x7FFFFFFF) Span = 0x7FFFFFFF;
+        return (LONG)Span; /* Larger span => higher (worse) priority */
+    }
 }
 
 static
