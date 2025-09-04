@@ -12,6 +12,14 @@
 #define NDEBUG
 #include <debug.h>
 
+/* Forward declaration from irqarb.c */
+NTSTATUS
+HalpFillInIrqArbiter(
+    _In_ ULONG Version,
+    _In_ ULONG InterfaceBufferSize,
+    _Out_writes_bytes_(InterfaceBufferSize) PARBITER_INTERFACE Interface,
+    _Out_ PULONG Length);
+
 typedef enum _EXTENSION_TYPE
 {
     PdoExtensionType = 0xC0,
@@ -134,7 +142,9 @@ HalpAddDevice(IN PDRIVER_OBJECT DriverObject,
     DPRINT("Device added %lx\n", Status);
     return Status;
 }
-
+#include <initguid.h>
+DEFINE_GUID(GUID_ARBITER_INTERFACE_STANDARD,
+  0xe644f185, 0x8c0e, 0x11d0, 0xbe, 0xcf, 0x08, 0x00, 0x2b, 0xe2, 0x09, 0x2f);
 NTSTATUS
 NTAPI
 HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
@@ -145,12 +155,25 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
                    IN PINTERFACE Interface,
                    OUT PULONG Length)
 {
-    DPRINT1("HalpQueryInterface({%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}) is UNIMPLEMENTED\n",
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(InterfaceSpecificData);
+
+    /* Arbiter Interface (Interrupt only for now) */
+    if (IsEqualGUID(InterfaceType, &GUID_ARBITER_INTERFACE_STANDARD))
+    {
+        if (Version != 1)
+            return STATUS_NOT_SUPPORTED;
+
+        return HalpFillInIrqArbiter(Version,
+                                    InterfaceBufferSize,
+                                    (PARBITER_INTERFACE)Interface,
+                                    Length);
+    }
+
+    DPRINT1("HalpQueryInterface: Unsupported GUID {%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}\n",
             InterfaceType->Data1, InterfaceType->Data2, InterfaceType->Data3,
-            InterfaceType->Data4[0], InterfaceType->Data4[1],
-            InterfaceType->Data4[2], InterfaceType->Data4[3],
-            InterfaceType->Data4[4], InterfaceType->Data4[5],
-            InterfaceType->Data4[6], InterfaceType->Data4[7]);
+            InterfaceType->Data4[0], InterfaceType->Data4[1], InterfaceType->Data4[2], InterfaceType->Data4[3],
+            InterfaceType->Data4[4], InterfaceType->Data4[5], InterfaceType->Data4[6], InterfaceType->Data4[7]);
     return STATUS_NOT_SUPPORTED;
 }
 
