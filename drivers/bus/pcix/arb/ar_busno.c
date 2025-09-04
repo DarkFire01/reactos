@@ -30,6 +30,57 @@ PCI_INTERFACE ArbiterInterfaceBusNumber =
 
 /* FUNCTIONS ******************************************************************/
 
+
+/* LOCAL BUS NUMBER ARBITER HELPERS ******************************************/
+
+static NTSTATUS NTAPI PciBusArbUnpackRequirement(
+    PIO_RESOURCE_DESCRIPTOR IoDesc,
+    PULONGLONG Min,
+    PULONGLONG Max,
+    PULONG Len,
+    PULONG Align)
+{
+    if (!IoDesc || IoDesc->Type != CmResourceTypeBusNumber) return STATUS_INVALID_PARAMETER;
+    *Min = IoDesc->u.BusNumber.MinBusNumber;
+    *Max = IoDesc->u.BusNumber.MaxBusNumber;
+    *Len = IoDesc->u.BusNumber.Length;
+    *Align = 1; /* bus numbers increment by 1 */
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS NTAPI PciBusArbPackResource(
+    PIO_RESOURCE_DESCRIPTOR IoDesc,
+    ULONGLONG Start,
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDesc)
+{
+    if (!IoDesc || !CmDesc || IoDesc->Type != CmResourceTypeBusNumber) return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(CmDesc, sizeof(*CmDesc));
+    CmDesc->Type = CmResourceTypeBusNumber;
+    CmDesc->ShareDisposition = IoDesc->ShareDisposition;
+    CmDesc->u.BusNumber.Start = Start;
+    CmDesc->u.BusNumber.Length = IoDesc->u.BusNumber.Length;
+    CmDesc->u.BusNumber.Reserved = 0;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS NTAPI PciBusArbUnpackResource(
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDesc,
+    PULONGLONG Start,
+    PULONG Len)
+{
+    if (!CmDesc || CmDesc->Type != CmResourceTypeBusNumber) return STATUS_INVALID_PARAMETER;
+    *Start = CmDesc->u.BusNumber.Start;
+    *Len = CmDesc->u.BusNumber.Length;
+    return STATUS_SUCCESS;
+}
+
+static LONG NTAPI PciBusArbScoreRequirement(
+    PIO_RESOURCE_DESCRIPTOR IoDesc)
+{
+    if (!IoDesc || IoDesc->Type != CmResourceTypeBusNumber) return -1;
+    return (LONG)IoDesc->u.BusNumber.Length; /* simple heuristic */
+}
+
 NTSTATUS
 NTAPI
 arbusno_Initializer(IN PVOID Instance)
@@ -44,15 +95,12 @@ arbusno_Initializer(IN PVOID Instance)
 
     FdoExtension = Arbiter->BusFdoExtension;
 
-    /* Not yet implemented */
-    UNIMPLEMENTED;
-
-#if 0
-    Arbiter->CommonInstance.UnpackRequirement = arbusno_UnpackRequirement;
-    Arbiter->CommonInstance.PackResource = arbusno_PackResource;
-    Arbiter->CommonInstance.UnpackResource = arbusno_UnpackResource;
-    Arbiter->CommonInstance.ScoreRequirement = arbusno_ScoreRequirement;
-#endif
+    /* Minimal bus number arbiter implementation (local helpers) */
+    Arbiter->CommonInstance.UnpackRequirement = PciBusArbUnpackRequirement;
+    Arbiter->CommonInstance.PackResource = PciBusArbPackResource;
+    Arbiter->CommonInstance.UnpackResource = PciBusArbUnpackResource;
+    Arbiter->CommonInstance.ScoreRequirement = PciBusArbScoreRequirement;
+    Arbiter->CommonInstance.FindSuitableRange = ArbFindSuitableRange;
 
     Status = ArbInitializeArbiterInstance(&Arbiter->CommonInstance,
                                           FdoExtension->FunctionalDeviceObject,
