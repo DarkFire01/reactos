@@ -229,6 +229,9 @@ typedef struct _PCI_FDO_EXTENSION
         BOOLEAN EnableSERR;
     } HotPlugParameters;
     LONG BusHackFlags;
+    /* Firmware/boot supplied resource list for root bus (copied) */
+    PCM_RESOURCE_LIST BootResources;
+    ULONG BootResourcesSize;
 } PCI_FDO_EXTENSION, *PPCI_FDO_EXTENSION;
 
 typedef struct _PCI_FUNCTION_RESOURCES

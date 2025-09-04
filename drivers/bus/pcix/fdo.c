@@ -573,15 +573,46 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
             }
             else
             {
-                /* Root PDO in ReactOS does not assign boot resources */
-                UNIMPLEMENTED_DBGBREAK("Encountered during setup\n");
-                Descriptor = NULL;
+                /* Copy the boot configuration resource list for later use.
+                   Size must be computed because CM_RESOURCE_LIST is variable length. */
+                ULONG i; ULONG Size = sizeof(ULONG); /* For Count */
+                PCM_FULL_RESOURCE_DESCRIPTOR Full;
+                Full = &Descriptor->List[0];
+                for (i = 0; i < Descriptor->Count; i++)
+                {
+                    ULONG PartialCount = Full->PartialResourceList.Count;
+                    Size += FIELD_OFFSET(CM_FULL_RESOURCE_DESCRIPTOR, PartialResourceList.PartialDescriptors) +
+                            (PartialCount * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR));
+                    /* Advance to next full descriptor */
+                    Full = (PCM_FULL_RESOURCE_DESCRIPTOR)((PUCHAR)Full +
+                            FIELD_OFFSET(CM_FULL_RESOURCE_DESCRIPTOR, PartialResourceList.PartialDescriptors) +
+                            (PartialCount * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR)));
+                }
+
+                FdoExtension->BootResources = ExAllocatePoolWithTag(PagedPool, Size, PCI_POOL_TAG);
+                if (FdoExtension->BootResources)
+                {
+                    RtlCopyMemory(FdoExtension->BootResources, Descriptor, Size);
+                    FdoExtension->BootResourcesSize = Size;
+                    /* Use BusNumber from first descriptor if sensible */
+                    if (Descriptor->Count && Descriptor->List[0].BusNumber <= 0xFF)
+                    {
+                        FdoExtension->BaseBus = Descriptor->List[0].BusNumber;
+                    }
+                    DPRINT1("PCI   Adopted %lu boot resource descriptor(s) for root bus %lu (size %lu).\n",
+                            Descriptor->Count,
+                            (ULONG)FdoExtension->BaseBus,
+                            Size);
+                }
+                else
+                {
+                    DPRINT1("PCI   Failed to allocate copy of boot resources (size %lu).\n", Size);
+                }
             }
 
             if (Descriptor)
             {
-                /* Root PDO in ReactOS does not assign boot resources */
-                UNIMPLEMENTED_DBGBREAK();
+                /* We copied them already; original list freed by PnP manager. */
             }
             else
             {

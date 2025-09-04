@@ -25,6 +25,7 @@ HalpTranslateSystemBusAddress(IN PBUS_HANDLER BusHandler,
                               OUT PPHYSICAL_ADDRESS TranslatedAddress)
 {
     PSUPPORTED_RANGE Range = NULL;
+    ULONGLONG Addr = BusAddress.QuadPart;
 
     /* Check what kind of address space this is */
     switch (*AddressSpace)
@@ -92,21 +93,32 @@ HalpTranslateSystemBusAddress(IN PBUS_HANDLER BusHandler,
     if (Range)
     {
         /* Do the translation and return the kind of address space this is */
-        TranslatedAddress->QuadPart = BusAddress.QuadPart + Range->SystemBase;
-        if ((TranslatedAddress->QuadPart != BusAddress.QuadPart) ||
+        TranslatedAddress->QuadPart = Addr + Range->SystemBase;
+        if ((TranslatedAddress->QuadPart != Addr) ||
             (*AddressSpace != Range->SystemAddressSpace))
         {
-            /* Different than what the old HAL would do */
-            DPRINT1("Translation of %I64x is %I64x %s\n",
-                    BusAddress.QuadPart, TranslatedAddress->QuadPart,
-                    Range->SystemAddressSpace ? "In I/O Space" : "In RAM");
+            /* Informational only; don't spam high-importance channel */
+            DPRINT("Translation of %I64x -> %I64x (%s)\n",
+                   Addr,
+                   TranslatedAddress->QuadPart,
+                   Range->SystemAddressSpace ? "I/O" : "MEM");
         }
         *AddressSpace = Range->SystemAddressSpace;
         return TRUE;
     }
 
-    /* Nothing found */
-    DPRINT1("Translation of %I64x failed!\n", BusAddress.QuadPart);
+    /* Suppress noisy failures for known probe/sizing sentinel values often used by PCI/legacy code.
+       These values are not expected to translate on the root/ISA buses and failure is normal: */
+    if ((Addr >= 0xFFF00000ULL) ||      /* High sentinel range */
+        (Addr == ~0ULL) ||              /* 0xFFFFFFFFFFFFFFFF full mask */
+        (Addr == 0xFFFFFFFFULL) ||      /* 32-bit full mask */
+        (Addr == 0xFFFFFFFEULL))        /* Common BAR size probe */
+    {
+        return FALSE;
+    }
+
+    /* Nothing found – keep a warning but at reduced severity */
+    DPRINT("Hal: SystemBus translation failed for %I64x (space %lu)\n", Addr, *AddressSpace);
     return FALSE;
 }
 
@@ -120,6 +132,7 @@ HalpGetSystemInterruptVector(IN PBUS_HANDLER BusHandler,
                              OUT PKAFFINITY Affinity)
 {
     ULONG Vector;
+    static BOOLEAN WarnedReuse[MAXIMUM_IDTVECTOR+1];
 
     /* Get the root vector */
     Vector = HalpGetRootInterruptVector(BusInterruptLevel,
@@ -128,8 +141,17 @@ HalpGetSystemInterruptVector(IN PBUS_HANDLER BusHandler,
                                         Affinity);
 
     /* Check if the vector is owned by the HAL and fail if it is */
-    if (HalpIDTUsageFlags[Vector].Flags & IDT_REGISTERED) DPRINT1("Vector %lx is ALREADY IN USE!\n", Vector);
-    return (HalpIDTUsageFlags[Vector].Flags & IDT_REGISTERED) ? 0 : Vector;
+    if (HalpIDTUsageFlags[Vector].Flags & IDT_REGISTERED)
+    {
+        /* Shared line (e.g. multiple ISA devices on same IRQ). Return vector instead of 0.
+           Warn only once per vector to avoid log spam. */
+        if (!WarnedReuse[Vector])
+        {
+            DPRINT("Vector %lx already registered – allowing shared use.\n", Vector);
+            WarnedReuse[Vector] = TRUE;
+        }
+    }
+    return Vector;
 }
 
 /* EOF */

@@ -565,7 +565,7 @@ IopCheckResourceDescriptor(
     ULONG i, ii;
     BOOLEAN Result = FALSE;
     PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor;
-
+    DPRINT1("IopCheckResourceDescriptor: Checking descriptor type %d\n", ResDesc->Type);
     FullDescriptor = &ResourceList->List[0];
     for (i = 0; i < ResourceList->Count; i++)
     {
@@ -646,6 +646,7 @@ IopCheckResourceDescriptor(
                             DPRINT1("Resource conflict: IRQ (0x%x 0x%x vs. 0x%x 0x%x)\n",
                                     ResDesc->u.Interrupt.Vector, ResDesc->u.Interrupt.Level,
                                     ResDesc2->u.Interrupt.Vector, ResDesc2->u.Interrupt.Level);
+                            __debugbreak();
                         }
 
                         Result = TRUE;
@@ -706,9 +707,7 @@ ByeBye:
                       sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR));
     }
 
-    // Hacked, because after fixing resource list parsing
-    // we actually detect resource conflicts
-    return Silent ? Result : FALSE; // Result;
+    return Result;
 }
 
 static
