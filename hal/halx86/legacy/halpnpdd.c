@@ -158,11 +158,12 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
     UNREFERENCED_PARAMETER(DeviceObject);
     UNREFERENCED_PARAMETER(InterfaceSpecificData);
 
-    /* Arbiter Interface (Interrupt only for now) */
+    /* IRQ Arbiter Interface
+       NOTE: On NT this is only exposed when PCI IRQ routing is active (routing table + interface present).
+             Routing logic not yet implemented here, so we deliberately deny the request to avoid
+             having two competing IRQ arbiters (HAL + kernel root). Enable later when routing is added. */
     if (IsEqualGUID(InterfaceType, &GUID_ARBITER_INTERFACE_STANDARD))
     {
-        if (Version != 1)
-            return STATUS_NOT_SUPPORTED;
 
         return HalpFillInIrqArbiter(Version,
                                     InterfaceBufferSize,
