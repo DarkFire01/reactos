@@ -28,45 +28,6 @@ PCHAR PciArbiterNames[] =
 
 /* FUNCTIONS ******************************************************************/
 
-/* Local persistence of boot resources (duplicated logic from IopPersistResourceClaim) */
-static VOID
-PciPersistBootResources(PPCI_FDO_EXTENSION Fdo)
-{
-    NTSTATUS st;
-    OBJECT_ATTRIBUTES oa;
-    UNICODE_STRING name, sub, bus;
-    HANDLE mapKey = NULL, classKey = NULL, busKey = NULL;
-    WCHAR busNameBuf[16];
-
-    if (!Fdo->BootResources || !Fdo->BootResourcesSize) return;
-
-    RtlInitUnicodeString(&name, L"\\Registry\\Machine\\HARDWARE\\RESOURCEMAP");
-    InitializeObjectAttributes(&oa, &name, OBJ_CASE_INSENSITIVE | OBJ_OPENIF, NULL, NULL);
-    st = ZwCreateKey(&mapKey, KEY_ALL_ACCESS, &oa, 0, NULL, REG_OPTION_VOLATILE, NULL);
-    if (!NT_SUCCESS(st)) goto Exit;
-
-    RtlInitUnicodeString(&sub, L"PCI");
-    InitializeObjectAttributes(&oa, &sub, OBJ_CASE_INSENSITIVE | OBJ_OPENIF, mapKey, NULL);
-    st = ZwCreateKey(&classKey, KEY_ALL_ACCESS, &oa, 0, NULL, REG_OPTION_VOLATILE, NULL);
-    if (!NT_SUCCESS(st)) goto Exit;
-
-    _snwprintf(busNameBuf, RTL_NUMBER_OF(busNameBuf), L"Bus%02X", (ULONG)Fdo->BaseBus);
-    RtlInitUnicodeString(&bus, busNameBuf);
-    InitializeObjectAttributes(&oa, &bus, OBJ_CASE_INSENSITIVE | OBJ_OPENIF, classKey, NULL);
-    st = ZwCreateKey(&busKey, KEY_ALL_ACCESS, &oa, 0, NULL, REG_OPTION_VOLATILE, NULL);
-    if (!NT_SUCCESS(st)) goto Exit;
-
-    /* Store raw + translated (identical for now) */
-    RtlInitUnicodeString(&name, L".Raw");
-    ZwSetValueKey(busKey, &name, 0, REG_RESOURCE_LIST, Fdo->BootResources, Fdo->BootResourcesSize);
-    RtlInitUnicodeString(&name, L".Translated");
-    ZwSetValueKey(busKey, &name, 0, REG_RESOURCE_LIST, Fdo->BootResources, Fdo->BootResourcesSize);
-
-Exit:
-    if (busKey) ZwClose(busKey);
-    if (classKey) ZwClose(classKey);
-    if (mapKey) ZwClose(mapKey);
-}
 
 VOID
 NTAPI
@@ -182,8 +143,7 @@ PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
        Later these will be used to add fixed allocations into the arbiter once implemented. */
     if (PCI_IS_ROOT_FDO(DeviceExtension) &&
         DeviceExtension->BootResources &&
-        (DeviceExtension->BootIoCount == 0) &&
-        (DeviceExtension->BootMemCount == 0))
+        IsListEmpty(&DeviceExtension->BootRangeList))
     {
         PCM_RESOURCE_LIST Boot = DeviceExtension->BootResources;
         ULONG iFull; PCM_FULL_RESOURCE_DESCRIPTOR Full;
@@ -194,17 +154,24 @@ PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
             Part = &Full->PartialResourceList.PartialDescriptors[0];
             for (iPart = 0; iPart < Full->PartialResourceList.Count; iPart++, Part++)
             {
-                if (Part->Type == CmResourceTypePort && DeviceExtension->BootIoCount < 16)
+                if ((Part->Type == CmResourceTypePort) || (Part->Type == CmResourceTypeMemory))
                 {
-                    DeviceExtension->BootIoBase[DeviceExtension->BootIoCount] = Part->u.Port.Start.LowPart;
-                    DeviceExtension->BootIoLength[DeviceExtension->BootIoCount] = Part->u.Port.Length;
-                    DeviceExtension->BootIoCount++;
-                }
-                else if (Part->Type == CmResourceTypeMemory && DeviceExtension->BootMemCount < 16)
-                {
-                    DeviceExtension->BootMemBase[DeviceExtension->BootMemCount] = Part->u.Memory.Start.QuadPart;
-                    DeviceExtension->BootMemLength[DeviceExtension->BootMemCount] = Part->u.Memory.Length;
-                    DeviceExtension->BootMemCount++;
+                    PPCI_BOOT_RANGE Range = ExAllocatePoolWithTag(PagedPool, sizeof(PCI_BOOT_RANGE), PCI_POOL_TAG);
+                    if (!Range) continue;
+                    Range->Type = Part->Type;
+                    if (Part->Type == CmResourceTypePort)
+                    {
+                        Range->Start = Part->u.Port.Start.QuadPart;
+                        Range->Length = Part->u.Port.Length;
+                        Range->Prefetchable = FALSE;
+                    }
+                    else
+                    {
+                        Range->Start = Part->u.Memory.Start.QuadPart;
+                        Range->Length = Part->u.Memory.Length;
+                        Range->Prefetchable = (Part->Flags & CM_RESOURCE_MEMORY_PREFETCHABLE) ? TRUE : FALSE;
+                    }
+                    InsertTailList(&DeviceExtension->BootRangeList, &Range->ListEntry);
                 }
             }
             /* Advance to next full descriptor */
@@ -212,13 +179,13 @@ PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
                     FIELD_OFFSET(CM_FULL_RESOURCE_DESCRIPTOR, PartialResourceList.PartialDescriptors) +
                     (Full->PartialResourceList.Count * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR)));
         }
-        if (DeviceExtension->BootIoCount || DeviceExtension->BootMemCount)
+        if (!IsListEmpty(&DeviceExtension->BootRangeList) && !DeviceExtension->BootResourcesPersisted)
         {
-            DPRINT1("PCI Root Boot resource summary: IO=%u MEM=%u\n",
-                    DeviceExtension->BootIoCount,
-                    DeviceExtension->BootMemCount);
-            /* Persist them under RESOURCEMAP */
-            PciPersistBootResources(DeviceExtension);
+            /* Standard persistence via IoReportResourceUsage (raw == translated for now) */
+            NTSTATUS st = IoReportResourceUsage(NULL, NULL, DeviceExtension->BootResources, DeviceExtension->BootResourcesSize,
+                                                NULL, DeviceExtension->BootResources, DeviceExtension->BootResourcesSize, FALSE, NULL);
+            if (NT_SUCCESS(st)) DeviceExtension->BootResourcesPersisted = TRUE;
+            DPRINT1("PCI Root Boot resource summary: persisted=%d st=0x%lx\n", DeviceExtension->BootResourcesPersisted, st);
         }
     }
 

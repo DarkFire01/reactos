@@ -702,7 +702,12 @@ PciDriverUnload(IN PDRIVER_OBJECT DriverObject)
             ExFreePoolWithTag(fdo->BootResources, PCI_POOL_TAG);
             fdo->BootResources = NULL;
             fdo->BootResourcesSize = 0;
-            fdo->BootIoCount = 0; fdo->BootMemCount = 0;
+        }
+        while (!IsListEmpty(&fdo->BootRangeList))
+        {
+            PLIST_ENTRY le = RemoveHeadList(&fdo->BootRangeList);
+            PPCI_BOOT_RANGE br = CONTAINING_RECORD(le, PCI_BOOT_RANGE, ListEntry);
+            ExFreePoolWithTag(br, PCI_POOL_TAG);
         }
     }
 }
