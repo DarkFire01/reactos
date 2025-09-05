@@ -1585,10 +1585,42 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
     USHORT CapOffset, TempOffset;
     LONGLONG HackFlags;
     PDEVICE_OBJECT DeviceObject;
+    /*
+     * Debug-only stack corruption sentinel.
+     * We observed an /RTC stack corruption trap in this frame; add 8-byte
+     * canaries before/after each header buffer to detect overwrite beyond
+     * PCI_COMMON_HDR_LENGTH (64) bytes. Production size unchanged.
+     */
+#if DBG
+#define PCI_SCAN_CANARY 0xA5
+    UCHAR Buffer[PCI_COMMON_HDR_LENGTH + 16];
+    UCHAR BiosBuffer[PCI_COMMON_HDR_LENGTH + 16];
+    PPCI_COMMON_HEADER PciData = (PVOID)(Buffer + 8);
+    PPCI_COMMON_HEADER BiosData = (PVOID)(BiosBuffer + 8);
+    RtlFillMemory(Buffer, sizeof(Buffer), PCI_SCAN_CANARY);
+    RtlFillMemory(BiosBuffer, sizeof(BiosBuffer), PCI_SCAN_CANARY);
+#define PCI_SCAN_CHECK_CANARY(_bus,_dev,_fn)                                         \
+    do {                                                                            \
+        ULONG _idx;                                                                 \
+        for (_idx = 0; _idx < 8; _idx++) {                                          \
+            if ((Buffer[_idx] != PCI_SCAN_CANARY) ||                                \
+                (Buffer[sizeof(Buffer)-8+_idx] != PCI_SCAN_CANARY) ||               \
+                (BiosBuffer[_idx] != PCI_SCAN_CANARY) ||                            \
+                (BiosBuffer[sizeof(BiosBuffer)-8+_idx] != PCI_SCAN_CANARY)) {       \
+                DPRINT1("PCI ScanBus header overflow detected (b=%u d=%u f=%u).\n", \
+                        (_bus), (_dev), (_fn));                                     \
+                DbgBreakPoint();                                                    \
+                break;                                                              \
+            }                                                                       \
+        }                                                                           \
+    } while (0)
+#else
     UCHAR Buffer[PCI_COMMON_HDR_LENGTH];
     UCHAR BiosBuffer[PCI_COMMON_HDR_LENGTH];
     PPCI_COMMON_HEADER PciData = (PVOID)Buffer;
     PPCI_COMMON_HEADER BiosData = (PVOID)BiosBuffer;
+#define PCI_SCAN_CHECK_CANARY(_bus,_dev,_fn) ((void)0)
+#endif
     PCI_SLOT_NUMBER PciSlot;
     PCHAR Name;
     NTSTATUS Status;
@@ -1597,6 +1629,10 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
     PWCHAR DescriptionText;
     USHORT SubVendorId, SubSystemId;
     PCI_CAPABILITIES_HEADER CapHeader, PcixCapHeader;
+    /* Buffer large enough for the biggest capability structure we dump */
+#define PCI_MAX_KNOWN_CAP_SIZE ((sizeof(PCI_PM_CAPABILITY) > sizeof(PCI_AGP_CAPABILITY)) ? \
+                                 sizeof(PCI_PM_CAPABILITY) : sizeof(PCI_AGP_CAPABILITY))
+    UCHAR CapData[PCI_MAX_KNOWN_CAP_SIZE];
     UCHAR SecondaryBus;
     DPRINT1("PCI Scan Bus: FDO Extension @ 0x%p, Base Bus = 0x%x\n",
             DeviceExtension, DeviceExtension->BaseBus);
@@ -1941,26 +1977,33 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
                 /* Check if this is a capability that should be dumped */
                 if (Size)
                 {
-                    /* Read the whole capability data */
+                    ASSERT(Size <= sizeof(CapData));
+                    RtlZeroMemory(CapData, sizeof(CapData));
+                    /* Read the whole capability data into CapData */
                     TempOffset = PciReadDeviceCapability(NewExtension,
                                                          CapOffset,
                                                          CapHeader.CapabilityID,
-                                                         &CapHeader,
+                                                         (PPCI_CAPABILITIES_HEADER)CapData,
                                                          Size);
-
                     if (TempOffset != CapOffset)
                     {
-                        /* Again, a strange issue that shouldn't be seen */
                         DPRINT1("- Failed to read capability data. ***\n");
                         ASSERT(TempOffset == CapOffset);
                     }
+                    else
+                    {
+                        /* Keep original header fields consistent */
+                        RtlCopyMemory(&CapHeader, CapData, sizeof(PCI_CAPABILITIES_HEADER));
+                    }
                 }
 
-                /* Dump this capability */
-                DPRINT1("CAP @%02x ID %02x (%s)\n",
-                        CapOffset, CapHeader.CapabilityID, Name);
-                for (i = 0; i < Size; i += 2)
-                    DPRINT1("  %04x\n", *(PUSHORT)((ULONG_PTR)&CapHeader + i));
+                /* Dump this capability (use CapData if we read more) */
+                DPRINT1("CAP @%02x ID %02x (%s)\n", CapOffset, CapHeader.CapabilityID, Name);
+                if (Size)
+                {
+                    for (i = 0; i < Size; i += 2)
+                        DPRINT1("  %04x\n", *(PUSHORT)(CapData + i));
+                }
                 DPRINT1("\n");
 
                 /* Check the next capability */
@@ -2030,6 +2073,9 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 
             /* The PDO is now ready to go */
             DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+
+            /* Verify no overwrite beyond header occurred for this function */
+            PCI_SCAN_CHECK_CANARY(i, j, k);
         }
     }
 
