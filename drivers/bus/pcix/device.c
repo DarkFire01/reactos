@@ -283,10 +283,90 @@ NTAPI
 Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
                               IN PPCI_COMMON_HEADER PciData)
 {
-    UNREFERENCED_PARAMETER(PdoExtension);
-    UNREFERENCED_PARAMETER(PciData);
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
+    PPCI_FUNCTION_RESOURCES Resources;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR CurrentDesc;
+    ULONG i, barCount;
+    PULONG BarArray;
+    ULONG Value, OrigValue;
+    BOOLEAN Is64;
+
+    /* Retrieve current (programmed) BAR descriptors captured earlier */
+    Resources = PdoExtension->Resources;
+    if (!Resources) return; /* Defensive */
+
+    /* Only handle type 0 headers here */
+    if (PdoExtension->HeaderType != 0) return;
+
+    BarArray = PciData->u.type0.BaseAddresses;
+    barCount = PCI_TYPE0_ADDRESSES; /* 6 BARs */
+
+    for (i = 0; i < barCount; i++)
+    {
+        CurrentDesc = &Resources->Current[i];
+        if (CurrentDesc->Type == CmResourceTypeNull)
+        {
+            /* Clear BAR if descriptor not used */
+            BarArray[i] = 0; 
+            continue;
+        }
+
+        Is64 = FALSE;
+        /* Determine I/O vs Memory */
+        if (CurrentDesc->Type == CmResourceTypePort)
+        {
+            ULONGLONG start = CurrentDesc->u.Port.Start.QuadPart;
+            Value = (ULONG)start & PCI_ADDRESS_IO_ADDRESS_MASK;
+            Value |= PCI_ADDRESS_IO_SPACE; /* mark as I/O */
+        }
+        else if (CurrentDesc->Type == CmResourceTypeMemory)
+        {
+            ULONGLONG start = CurrentDesc->u.Memory.Start.QuadPart;
+            Value = (ULONG)start & PCI_ADDRESS_MEMORY_ADDRESS_MASK;
+            /* Prefetchable flag if original limits had it */
+            if (CurrentDesc->Flags & CM_RESOURCE_MEMORY_PREFETCHABLE)
+                Value |= PCI_ADDRESS_MEMORY_PREFETCHABLE;
+            /* Width detection: if original limit said 64-bit keep it */
+            OrigValue = BarArray[i];
+            if ((OrigValue & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_64BIT)
+            {
+                /* Store low then high */
+                Is64 = TRUE;
+                BarArray[i + 1] = (ULONG)(start >> 32);
+                Value |= PCI_TYPE_64BIT;    
+            }
+            else if ((OrigValue & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_20BIT)
+            {
+                Value &= 0xFFFF0; /* legacy 20-bit */
+                Value |= PCI_TYPE_20BIT;
+            }
+            else
+            {
+                Value |= PCI_TYPE_32BIT;
+            }
+        }
+        else
+        {
+            /* Unknown type -- skip */
+            continue;
+        }
+
+        BarArray[i] = Value;
+        if (Is64) i++; /* skip companion */
+    }
+
+    /* Handle ROM BAR (descriptor index == barCount) */
+    CurrentDesc = &Resources->Current[barCount];
+    if (CurrentDesc->Type == CmResourceTypeMemory)
+    {
+        ULONGLONG start = CurrentDesc->u.Memory.Start.QuadPart;
+        ULONG RomVal = (ULONG)start & PCI_ADDRESS_ROM_ADDRESS_MASK;
+        RomVal |= PCI_ROMADDRESS_ENABLED;
+        PciData->u.type0.ROMBaseAddress = RomVal;
+    }
+    else
+    {
+        PciData->u.type0.ROMBaseAddress = 0; /* disabled */
+    }
 }
 
 /* EOF */
