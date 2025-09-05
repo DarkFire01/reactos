@@ -15,7 +15,6 @@
 
 /* FUNCTIONS ******************************************************************/
 
-static
 BOOLEAN
 PciIsBootAllocatedRange(
     _In_ PPCI_FDO_EXTENSION FdoExt,

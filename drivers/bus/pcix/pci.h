@@ -253,6 +253,20 @@ typedef struct _PCI_FUNCTION_RESOURCES
     CM_PARTIAL_RESOURCE_DESCRIPTOR Current[7];
 } PCI_FUNCTION_RESOURCES, *PPCI_FUNCTION_RESOURCES;
 
+/*
+ * Private resource descriptor tags (mirroring NT semantics) used to map
+ * an incoming CM_RESOURCE_LIST descriptor back to its BAR index during
+ * PciComputeNewCurrentSettings.
+ */
+typedef enum _PCI_PRIVATE_RESOURCE_TAG
+{
+    PciPrivateBar = 0,       /* Data[1] = BAR index */
+    PciPrivateIsaBar = 1,    /* ISA hole aggregation (not yet used) */
+    PciPrivateSkipList = 2   /* Skip remaining descriptors (not yet used) */
+} PCI_PRIVATE_RESOURCE_TAG;
+
+#define PCI_MAX_RANGE_COUNT 7
+
 typedef union _PCI_HEADER_TYPE_DEPENDENT
 {
     struct

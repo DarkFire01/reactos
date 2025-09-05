@@ -25,6 +25,12 @@ PUCHAR PciArbiterNames[] =
 };
 
 /* FUNCTIONS ******************************************************************/
+BOOLEAN
+PciIsBootAllocatedRange(
+    _In_ PPCI_FDO_EXTENSION FdoExt,
+    _In_ CM_RESOURCE_TYPE Type,
+    _In_ ULONGLONG Start,
+    _In_ ULONGLONG Length);
 
 /* Placeholder for future arbitration list construction helper removed for now. */
 /*
@@ -92,6 +98,8 @@ PciArbBuildAndCommitFromRequirements(
 
         BaseDesc = &FirstList->Descriptors[ReqIndex];
         Type = BaseDesc->Type;
+        if (Type == CmResourceTypeDevicePrivate)
+            continue; /* tagging descriptor, skip */
         if (Type != CmResourceTypePort && Type != CmResourceTypeMemory)
             continue; /* not handled */
 
@@ -138,7 +146,17 @@ PciArbBuildAndCommitFromRequirements(
         ArbEntry->Alternatives = AltBuffer; /* our contiguous copy */
         ArbEntry->PhysicalDeviceObject = Pdo;
         ArbEntry->RequestSource = ArbiterRequestPnpEnumerated;
-        ArbEntry->Flags = 0; /* later: ARBITER_FLAG_BOOT_CONFIG when appropriate */
+        ArbEntry->Flags = 0; /* default */
+        /* Mark boot-config if descriptor already programmed and in boot ranges */
+        if (PdoExt->Resources && BaseDesc->Type != CmResourceTypeNull)
+        {
+            ULONGLONG start = BaseDesc->u.Generic.MinimumAddress.QuadPart;
+            ULONGLONG len = BaseDesc->u.Generic.Length;
+            if (PciIsBootAllocatedRange(Parent, BaseDesc->Type, start, len))
+            {
+                ArbEntry->Flags |= ARBITER_FLAG_BOOT_CONFIG;
+            }
+        }
         ArbEntry->InterfaceType = ReqList->InterfaceType;
         ArbEntry->SlotNumber = ReqList->SlotNumber;
         ArbEntry->BusNumber = ReqList->BusNumber;
