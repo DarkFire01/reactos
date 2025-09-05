@@ -235,6 +235,7 @@ typedef struct _PCI_FDO_EXTENSION
     BOOLEAN BootResourcesPersisted;
     LIST_ENTRY BootRangeList; /* list of PCI_BOOT_RANGE */
     BOOLEAN BootRangesSeeded;
+    USHORT BootRangeSeedMask; /* bit0=IO, bit1=MEM; BootRangesSeeded when both set */
 } PCI_FDO_EXTENSION, *PPCI_FDO_EXTENSION;
 
 typedef struct _PCI_BOOT_RANGE
@@ -647,6 +648,12 @@ PciFdoIrpStartDevice(
     IN PIO_STACK_LOCATION IoStackLocation,
     IN PPCI_FDO_EXTENSION DeviceExtension
 );
+
+VOID
+NTAPI
+PciArbitersCommitPending(
+    IN PPCI_FDO_EXTENSION FdoExtension
+    );
 
 NTSTATUS
 NTAPI

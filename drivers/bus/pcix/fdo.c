@@ -116,6 +116,8 @@ PciFdoIrpStartDevice(IN PIRP Irp,
 
     /* Commit the transition to the started state */
     PciCommitStateTransition(DeviceExtension, PciStarted);
+    /* Commit any pending arbiter allocations (placeholder for future dynamic tests) */
+    PciArbitersCommitPending(DeviceExtension);
     return STATUS_SUCCESS;
 }
 
@@ -446,6 +448,8 @@ PciInitializeFdoExtensionCommonFields(PPCI_FDO_EXTENSION FdoExtension,
     FdoExtension->IrpDispatchTable = &PciFdoDispatchTable;
     InitializeListHead(&FdoExtension->BootRangeList);
     FdoExtension->BootResourcesPersisted = FALSE;
+    FdoExtension->BootRangesSeeded = FALSE;
+    FdoExtension->BootRangeSeedMask = 0;
 
     /* Initialize the extension locks */
     KeInitializeEvent(&FdoExtension->SecondaryExtLock, SynchronizationEvent, TRUE);

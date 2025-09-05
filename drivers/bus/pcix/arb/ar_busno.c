@@ -15,6 +15,10 @@
 
 /* GLOBALS ********************************************************************/
 
+NTSTATUS
+NTAPI
+ArbCommitAllocation(
+    _In_ PARBITER_INSTANCE Arbiter);
 PCI_INTERFACE ArbiterInterfaceBusNumber =
 {
     &GUID_ARBITER_INTERFACE_STANDARD,
@@ -81,6 +85,49 @@ static LONG NTAPI PciBusArbScoreRequirement(
     return (LONG)IoDesc->u.BusNumber.Length; /* simple heuristic */
 }
 
+/* Transaction callbacks (simple wrappers around generic arbiter library) */
+static NTSTATUS NTAPI PciBusArbTestAllocation(PARBITER_INSTANCE Arbiter, PLIST_ENTRY List)
+{ return ArbTestAllocation(Arbiter, List); }
+static NTSTATUS NTAPI PciBusArbRetestAllocation(PARBITER_INSTANCE Arbiter, PLIST_ENTRY List)
+{
+    if (Arbiter->PossibleAllocation)
+    {
+        RtlFreeRangeList(Arbiter->PossibleAllocation);
+        Arbiter->PossibleAllocation = ExAllocatePoolWithTag(PagedPool, sizeof(RTL_RANGE_LIST), TAG_ARB_RANGE);
+        if (!Arbiter->PossibleAllocation) return STATUS_INSUFFICIENT_RESOURCES;
+        RtlInitializeRangeList(Arbiter->PossibleAllocation);
+    }
+    if (!Arbiter->AllocationStack)
+    {
+        Arbiter->AllocationStack = ExAllocatePoolWithTag(PagedPool, PAGE_SIZE, TAG_ARB_ALLOCATION);
+        if (!Arbiter->AllocationStack) return STATUS_INSUFFICIENT_RESOURCES;
+        Arbiter->AllocationStackMaxSize = PAGE_SIZE;
+    }
+    return ArbTestAllocation(Arbiter, List);
+}
+static NTSTATUS NTAPI PciBusArbCommitAllocation(PARBITER_INSTANCE Arbiter)
+{ return ArbCommitAllocation(Arbiter); }
+static NTSTATUS NTAPI PciBusArbRollbackAllocation(PARBITER_INSTANCE Arbiter)
+{
+    if (Arbiter->PossibleAllocation)
+    {
+        RtlFreeRangeList(Arbiter->PossibleAllocation);
+        RtlInitializeRangeList(Arbiter->PossibleAllocation);
+    }
+    if (Arbiter->AllocationStack)
+    {
+        ExFreePoolWithTag(Arbiter->AllocationStack, TAG_ARB_ALLOCATION);
+        Arbiter->AllocationStack = ExAllocatePoolWithTag(PagedPool, PAGE_SIZE, TAG_ARB_ALLOCATION);
+        if (Arbiter->AllocationStack)
+            Arbiter->AllocationStackMaxSize = PAGE_SIZE;
+        else
+            Arbiter->AllocationStackMaxSize = 0;
+    }
+    return STATUS_SUCCESS;
+}
+static NTSTATUS NTAPI PciBusArbBootAllocation(PARBITER_INSTANCE Arbiter, PLIST_ENTRY List)
+{ return ArbBootAllocation(Arbiter, List); }
+
 NTSTATUS
 NTAPI
 arbusno_Initializer(IN PVOID Instance)
@@ -101,6 +148,11 @@ arbusno_Initializer(IN PVOID Instance)
     Arbiter->CommonInstance.UnpackResource = PciBusArbUnpackResource;
     Arbiter->CommonInstance.ScoreRequirement = PciBusArbScoreRequirement;
     Arbiter->CommonInstance.FindSuitableRange = ArbFindSuitableRange;
+    Arbiter->CommonInstance.TestAllocation = PciBusArbTestAllocation;
+    Arbiter->CommonInstance.RetestAllocation = PciBusArbRetestAllocation;
+    Arbiter->CommonInstance.CommitAllocation = PciBusArbCommitAllocation;
+    Arbiter->CommonInstance.RollbackAllocation = PciBusArbRollbackAllocation;
+    Arbiter->CommonInstance.BootAllocation = PciBusArbBootAllocation;
 
     Status = ArbInitializeArbiterInstance(&Arbiter->CommonInstance,
                                           FdoExtension->FunctionalDeviceObject,

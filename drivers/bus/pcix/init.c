@@ -710,6 +710,7 @@ PciDriverUnload(IN PDRIVER_OBJECT DriverObject)
             ExFreePoolWithTag(br, PCI_POOL_TAG);
         }
     fdo->BootRangesSeeded = FALSE;
+    fdo->BootRangeSeedMask = 0;
     }
 }
 

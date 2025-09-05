@@ -8,17 +8,15 @@
 
 /* INCLUDES *******************************************************************/
 
+#include <ntddk.h>
 #include <pci.h>
-
-/* Forward (header may not have parsed yet for lint) */
-typedef struct _PCI_FDO_EXTENSION *PPCI_FDO_EXTENSION;
 
 #define NDEBUG
 #include <debug.h>
 
 /* GLOBALS ********************************************************************/
 
-PCHAR PciArbiterNames[] =
+PUCHAR PciArbiterNames[] =
 {
     "I/O Port",
     "Memory",
@@ -28,15 +26,44 @@ PCHAR PciArbiterNames[] =
 
 /* FUNCTIONS ******************************************************************/
 
+/* Placeholder for future arbitration list construction helper removed for now. */
 
 VOID
 NTAPI
 PciArbiterDestructor(IN PPCI_ARBITER_INSTANCE Arbiter)
 {
-    UNREFERENCED_PARAMETER(Arbiter);
-    /* This function is not yet implemented */
-    UNIMPLEMENTED;
-    while (TRUE);
+    PARBITER_INSTANCE A;
+    if (!Arbiter) return;
+    A = &Arbiter->CommonInstance;
+    /* Free ordering lists */
+    ArbFreeOrderingList(&A->OrderingList);
+    ArbFreeOrderingList(&A->ReservedList);
+    /* Free range lists */
+    if (A->PossibleAllocation)
+    {
+        RtlFreeRangeList(A->PossibleAllocation);
+        ExFreePoolWithTag(A->PossibleAllocation, TAG_ARB_RANGE);
+        A->PossibleAllocation = NULL;
+    }
+    if (A->Allocation)
+    {
+        RtlFreeRangeList(A->Allocation);
+        ExFreePoolWithTag(A->Allocation, TAG_ARB_RANGE);
+        A->Allocation = NULL;
+    }
+    /* Free allocation stack */
+    if (A->AllocationStack)
+    {
+        ExFreePoolWithTag(A->AllocationStack, TAG_ARB_ALLOCATION);
+        A->AllocationStack = NULL;
+        A->AllocationStackMaxSize = 0;
+    }
+    /* Free mutex */
+    if (A->MutexEvent)
+    {
+        ExFreePoolWithTag(A->MutexEvent, TAG_ARBITER);
+        A->MutexEvent = NULL;
+    }
 }
 
 NTSTATUS
@@ -53,6 +80,12 @@ PciInitializeArbiters(IN PPCI_FDO_EXTENSION FdoExtension)
     /* Loop all the arbiters */
     for (ArbiterType = PciArb_Io; ArbiterType <= PciArb_BusNumber; ArbiterType++)
     {
+        /* Skip Interrupt arbiter: IRQ arbitration is provided globally by HAL (Hal IRQ Arbiter) */
+        if (ArbiterType == PciArb_Interrupt)
+        {
+            DPRINT("PCI - Skipping per-bus Interrupt arbiter (HAL provides global IRQ arbiter)\n");
+            continue;
+        }
         /* Check if this is the extension for the Root PCI Bus */
         if (!PCI_IS_ROOT_FDO(FdoExtension))
         {
@@ -116,10 +149,11 @@ PciInitializeArbiters(IN PPCI_FDO_EXTENSION FdoExtension)
                                    PciArbiterDestructor);
 
         /* This arbiter is now initialized, move to the next one */
-        DPRINT1("PCI - FDO ext 0x%p %S arbiter initialized (context 0x%p).\n",
-                FdoExtension,
-                L"ARBITER HEADER MISSING", //ArbiterInterface->CommonInstance.Name,
-                ArbiterInterface);
+    /* Log successful arbiter initialization with instance name */
+    DPRINT1("PCI - FDO ext 0x%p Arbiter '%S' initialized (ctx 0x%p).\n",
+        FdoExtension,
+        ArbiterInterface->InstanceName,
+        ArbiterInterface);
         Status = STATUS_SUCCESS;
     }
 
@@ -247,23 +281,30 @@ PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
             {
                 PARBITER_INSTANCE Arb = &((PPCI_ARBITER_INSTANCE)Instance)->CommonInstance;
                 PLIST_ENTRY le;
-                for (le = DeviceExtension->BootRangeList.Flink; le != &DeviceExtension->BootRangeList; le = le->Flink)
+                if (Arb->Allocation)
                 {
-                    PPCI_BOOT_RANGE br = CONTAINING_RECORD(le, PCI_BOOT_RANGE, ListEntry);
-                    if ((ArbiterType == PciArb_Io && br->Type == CmResourceTypePort) ||
-                        (ArbiterType == PciArb_Memory && br->Type == CmResourceTypeMemory))
+                    for (le = DeviceExtension->BootRangeList.Flink; le != &DeviceExtension->BootRangeList; le = le->Flink)
                     {
-                        (VOID)RtlAddRange(Arb->Allocation,
-                                          br->Start,
-                                          br->Start + br->Length - 1,
-                                          0,
-                                          RTL_RANGE_LIST_ADD_IF_CONFLICT,
-                                          NULL,
-                                          NULL);
+                        PPCI_BOOT_RANGE br = CONTAINING_RECORD(le, PCI_BOOT_RANGE, ListEntry);
+                        if ((ArbiterType == PciArb_Io && br->Type == CmResourceTypePort) ||
+                            (ArbiterType == PciArb_Memory && br->Type == CmResourceTypeMemory))
+                        {
+                            (VOID)RtlAddRange(Arb->Allocation,
+                                              br->Start,
+                                              br->Start + br->Length - 1,
+                                              0,
+                                              RTL_RANGE_LIST_ADD_IF_CONFLICT,
+                                              NULL,
+                                              NULL);
+                        }
                     }
                 }
-                if (ArbiterType == PciArb_Memory || ArbiterType == PciArb_Io)
-                    DeviceExtension->BootRangesSeeded = TRUE; /* After both loops first pass */
+                if (ArbiterType == PciArb_Io)
+                    DeviceExtension->BootRangeSeedMask |= 0x1;
+                else if (ArbiterType == PciArb_Memory)
+                    DeviceExtension->BootRangeSeedMask |= 0x2;
+                if (DeviceExtension->BootRangeSeedMask == 0x3)
+                    DeviceExtension->BootRangesSeeded = TRUE; /* both types seeded */
             }
         }
         else
@@ -278,6 +319,31 @@ PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
     /* Arbiters are now initialized */
     DeviceExtension->ArbitersInitialized = TRUE;
     return STATUS_SUCCESS;
+}
+
+VOID
+NTAPI
+PciArbitersCommitPending(IN PPCI_FDO_EXTENSION FdoExtension)
+{
+    PSINGLE_LIST_ENTRY link;
+    for (link = FdoExtension->SecondaryExtension.Next; link; link = link->Next)
+    {
+        PPCI_SECONDARY_EXTENSION sec = CONTAINING_RECORD(link, PCI_SECONDARY_EXTENSION, List);
+        if (sec->ExtensionType == PciArb_Io || sec->ExtensionType == PciArb_Memory || sec->ExtensionType == PciArb_BusNumber)
+        {
+            PPCI_ARBITER_INSTANCE inst = (PPCI_ARBITER_INSTANCE)sec;
+            PARBITER_INSTANCE a = &inst->CommonInstance;
+            if (a->PossibleAllocation && a->PossibleAllocation != a->Allocation)
+            {
+                /* Commit any pending tested allocation */
+                if (a->CommitAllocation)
+                {
+                    (VOID)a->CommitAllocation(a);
+                    DPRINT1("PCI Arbiter '%S' committed pending allocation\n", a->Name);
+                }
+            }
+        }
+    }
 }
 
 /* EOF */
