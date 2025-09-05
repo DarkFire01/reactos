@@ -8,6 +8,7 @@
 
 /* INCLUDES *******************************************************************/
 
+#include <ntddk.h>
 #include <pci.h>
 
 #define NDEBUG
@@ -50,218 +51,99 @@ PCI_CONFIGURATOR PciConfigurators[] =
 
 /* FUNCTIONS ******************************************************************/
 
-BOOLEAN
-NTAPI
+BOOLEAN NTAPI
 PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
                              IN PCM_RESOURCE_LIST ResourceList)
 {
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial, InterruptResource;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR BaseResource, CurrentDescriptor;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR PreviousDescriptor;
-    CM_PARTIAL_RESOURCE_DESCRIPTOR ResourceArray[7];
-    PCM_FULL_RESOURCE_DESCRIPTOR FullList;
-    BOOLEAN DrainPartial, RangeChange;
-    ULONG i, j, ResourceIndex;
-    PPCI_FUNCTION_RESOURCES PciResources;
+    CM_PARTIAL_RESOURCE_DESCRIPTOR NewResources[PCI_MAX_RANGE_COUNT];
+    BOOLEAN Used[PCI_MAX_RANGE_COUNT];
+    ULONG i, j;
+    BOOLEAN Changed = FALSE;
     PAGED_CODE();
 
-    /* Make sure we have either no resources, or at least one */
-    ASSERT((ResourceList == NULL) || (ResourceList->Count == 1));
+    if (!PdoExtension->Resources)
+        return FALSE;
 
-    /* Initialize no partial, interrupt descriptor, or range change */
-    Partial = NULL;
-    InterruptResource = NULL;
-    RangeChange = FALSE;
-
-    /* Check if there's not actually any resources */
-    if (!(ResourceList) || !(ResourceList->Count))
-    {
-        /* Then just return the hardware update state */
+    /* Quick out if no list */
+    if (!ResourceList || !ResourceList->Count)
         return PdoExtension->UpdateHardware;
+
+    for (i = 0; i < PCI_MAX_RANGE_COUNT; i++)
+    {
+        NewResources[i].Type = CmResourceTypeNull;
+        Used[i] = FALSE;
     }
 
-    /* Print the new specified resource list */
-    PciDebugPrintCmResList(ResourceList);
-
-    /* Clear the temporary resource array */
-    for (i = 0; i < 7; i++) ResourceArray[i].Type = CmResourceTypeNull;
-
-    /* Loop the full resource descriptor */
-    FullList = ResourceList->List;
+    /* For each assigned resource, try to match a BAR by type & length */
     for (i = 0; i < ResourceList->Count; i++)
     {
-        /* Initialize loop variables */
-        DrainPartial = FALSE;
-        BaseResource = NULL;
-        ResourceIndex = 0;
-
-        /* Loop the partial descriptors */
-        Partial = FullList->PartialResourceList.PartialDescriptors;
-        for (j = 0; j < FullList->PartialResourceList.Count; j++)
+        PCM_FULL_RESOURCE_DESCRIPTOR Full = &ResourceList->List[i];
+        PCM_PARTIAL_RESOURCE_LIST Plist = &Full->PartialResourceList;
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial = Plist->PartialDescriptors;
+        ULONG k;
+        for (k = 0; k < Plist->Count; k++, Partial = CmiGetNextPartialDescriptor(Partial))
         {
-            /* Check if we were supposed to drain a partial due to device data */
-            if (DrainPartial)
+            if (Partial->Type == CmResourceTypeInterrupt)
             {
-                /* Draining complete, move on to the next descriptor then */
-                DrainPartial--;
+                if (Partial->u.Interrupt.Level < 256)
+                    PdoExtension->AdjustedInterruptLine = (UCHAR)Partial->u.Interrupt.Level;
                 continue;
             }
+            if (Partial->Type != CmResourceTypePort && Partial->Type != CmResourceTypeMemory)
+                continue;
 
-            /* Check what kind of descriptor this was */
-            switch (Partial->Type)
+            /* Exact length/type match first */
+            for (j = 0; j < PCI_MAX_RANGE_COUNT; j++)
             {
-                /* Base BAR resources */
-                case CmResourceTypePort:
-                case CmResourceTypeMemory:
-
-                    /* Set it as the base */
-                    ASSERT(BaseResource == NULL);
-                    BaseResource = Partial;
-
-                    /*
-                     * Windows exposes legacy VGA ranges (0x3B0-0x3BB, 0x3C0-0x3DF, 0xA0000-0xBFFFF)
-                     * for VGA-enabled bridges, but they are not BAR-backed and should not be
-                     * merged into the device's programmable resource set. Skip them here so the
-                     * later comparison logic does not attempt to treat them as BAR changes.
-                     */
-                    if ((Partial->Type == CmResourceTypePort &&
-                         (Partial->u.Port.Start.QuadPart == 0x3B0 ||
-                          Partial->u.Port.Start.QuadPart == 0x3C0)) ||
-                        (Partial->Type == CmResourceTypeMemory &&
-                         Partial->u.Memory.Start.QuadPart == 0xA0000))
-                    {
-                        /* Ignore legacy VGA descriptor */
-                        BaseResource = NULL;
-                        break;
-                    }
-
-                    /* Store the descriptor into the temporary array */
-                    if (ResourceIndex < RTL_NUMBER_OF(ResourceArray))
-                    {
-                        ResourceArray[ResourceIndex++] = *Partial;
-                    }
-                    else
-                    {
-                        /* Should never happen (max 6 BARs + ROM) */
-                        ASSERT(FALSE);
-                    }
-
-                    /* Reset for next base descriptor */
-                    BaseResource = NULL;
-                    break;
-
-                /* Interrupt resource */
-                case CmResourceTypeInterrupt:
-
-                    /* Make sure it's a compatible (and the only) PCI interrupt */
-                    ASSERT(InterruptResource == NULL);
-                    ASSERT(Partial->u.Interrupt.Level == Partial->u.Interrupt.Vector);
-                    InterruptResource = Partial;
-
-                    /* Only 255 interrupts on x86/x64 hardware */
-                    if (Partial->u.Interrupt.Level < 256)
-                    {
-                        /* Use the passed interrupt line */
-                        PdoExtension->AdjustedInterruptLine = Partial->u.Interrupt.Level;
-                    }
-                    else
-                    {
-                        /* Invalid vector, so ignore it */
-                        PdoExtension->AdjustedInterruptLine = 0;
-                    }
-
-                    break;
-
-                /* Check for specific device data */
-                case CmResourceTypeDevicePrivate:
-
-                    /* Check what kind of data this was */
-                    switch (Partial->u.DevicePrivate.Data[0])
-                    {
-                        /* Not used in the driver yet */
-                        case 1:
-                            UNIMPLEMENTED_DBGBREAK();
-                            break;
-
-                        /* Not used in the driver yet */
-                        case 2:
-                            UNIMPLEMENTED_DBGBREAK();
-                            break;
-
-                        /* A drain request */
-                        case 3:
-                            /* Shouldn't be a base resource, this is a drain */
-                            ASSERT(BaseResource == NULL);
-                            DrainPartial = Partial->u.DevicePrivate.Data[1];
-                            ASSERT(DrainPartial == TRUE);
-                            break;
-                    }
-                    break;
+                PIO_RESOURCE_DESCRIPTOR Limit = &PdoExtension->Resources->Limit[j];
+                if (Used[j]) continue;
+                if (Limit->Type != Partial->Type) continue;
+                if (Limit->u.Generic.Length != Partial->u.Generic.Length) continue;
+                NewResources[j] = *Partial; Used[j] = TRUE; break;
             }
+            if (j < PCI_MAX_RANGE_COUNT) continue; /* matched */
 
-            /* Move to the next descriptor */
-            Partial = CmiGetNextPartialDescriptor(Partial);
+            /* Fallback: match by type and greater-or-equal length (some firmware rounding) */
+            for (j = 0; j < PCI_MAX_RANGE_COUNT; j++)
+            {
+                PIO_RESOURCE_DESCRIPTOR Limit = &PdoExtension->Resources->Limit[j];
+                if (Used[j]) continue;
+                if (Limit->Type != Partial->Type) continue;
+                if (!Limit->u.Generic.Length) continue;
+                if (Limit->u.Generic.Length >= Partial->u.Generic.Length)
+                {
+                    NewResources[j] = *Partial; Used[j] = TRUE; break;
+                }
+            }
         }
-
-    /* Ensure we consumed any pending base resource */
-    BaseResource = NULL;
-        FullList = (PVOID)Partial;
     }
 
-    /* Check the current assigned PCI resources */
-    PciResources = PdoExtension->Resources;
-    if (!PciResources) return FALSE;
-
-    /* Loop all the PCI function resources */
-    for (i = 0; i < 7; i++)
+    /* Compare and update current snapshot */
+    for (i = 0; i < PCI_MAX_RANGE_COUNT; i++)
     {
-        /* Get the current function resource descriptor, and the new one */
-        CurrentDescriptor = &PciResources->Current[i];
-        Partial = &ResourceArray[i];
-
-        /* Previous is current during the first loop iteration */
-        PreviousDescriptor = &PciResources->Current[(i == 0) ? (0) : (i - 1)];
-
-        /* If no new descriptor was supplied for this slot, ignore it */
-        if (Partial->Type == CmResourceTypeNull)
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR Old = &PdoExtension->Resources->Current[i];
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR New = &NewResources[i];
+        if ((New->Type != Old->Type) ||
+            (New->Type != CmResourceTypeNull &&
+             (New->u.Generic.Start.QuadPart != Old->u.Generic.Start.QuadPart ||
+              New->u.Generic.Length != Old->u.Generic.Length)))
         {
-            continue;
-        }
-
-        /* Check if this new descriptor is different than the old one */
-        if ((Partial->Type != CurrentDescriptor->Type) ||
-            (Partial->u.Generic.Start.QuadPart != CurrentDescriptor->u.Generic.Start.QuadPart) ||
-            (Partial->u.Generic.Length != CurrentDescriptor->u.Generic.Length))
-        {
-            /* Record a change */
-            RangeChange = TRUE;
-
-            /* Was there a range before? */
-            if (CurrentDescriptor->Type != CmResourceTypeNull)
+            Changed = TRUE;
+            if (Old->Type != CmResourceTypeNull)
             {
-                /* Print it */
                 DbgPrint("      Old range-\n");
-                PciDebugPrintPartialResource(CurrentDescriptor);
+                PciDebugPrintPartialResource(Old);
             }
             else
             {
-                /* There was no range */
                 DbgPrint("      Previously unset range\n");
             }
-
-            /* Print new one */
             DbgPrint("      changed to\n");
-            PciDebugPrintPartialResource(Partial);
-
-            /* Update to new range */
-            CurrentDescriptor->Type = Partial->Type;
-            CurrentDescriptor->u.Generic.Start = Partial->u.Generic.Start;
-            CurrentDescriptor->u.Generic.Length = Partial->u.Generic.Length;
+            PciDebugPrintPartialResource(New);
+            *Old = *New;
         }
     }
-
-    /* Either the hardware was updated, or a resource range changed */
-    return ((RangeChange) || (PdoExtension->UpdateHardware));
+    return Changed || PdoExtension->UpdateHardware;
 }
 
 VOID
@@ -583,29 +465,86 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
                          IN PPCI_COMMON_HEADER PciData,
                          OUT PIO_RESOURCE_REQUIREMENTS_LIST* Buffer)
 {
+    PPCI_FUNCTION_RESOURCES Resources;
+    ULONG Bar, DescriptorCount;
+    PIO_RESOURCE_DESCRIPTOR IoDesc;
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
+    BOOLEAN HaveAny = FALSE;
 
-    UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(PciData);
 
+    *Buffer = NULL;
+    Resources = PdoExtension->Resources;
+    if (!Resources)
     {
-        /* There aren't, so use the zero descriptor */
-        RequirementsList = PciZeroIoResourceRequirements;
+        DPRINT1("PciBuildRequirementsList: No PCI resources recorded for PDO\n");
+        return STATUS_SUCCESS; /* no resources */
+    }
 
-        /* Does it actually exist yet? */
-        if (!PciZeroIoResourceRequirements)
+    /* Count BAR-style resources that have non-zero limits */
+    DescriptorCount = 0;
+    for (Bar = 0; Bar < PCI_MAX_RANGE_COUNT; Bar++)
+    {
+        if (Resources->Limit[Bar].Type == CmResourceTypePort ||
+            Resources->Limit[Bar].Type == CmResourceTypeMemory)
         {
-            /* Allocate it, and use it for future use */
+            if (Resources->Limit[Bar].u.Generic.Length)
+            {
+                DescriptorCount += 2; /* base + device private tag */
+                HaveAny = TRUE;
+            }
+        }
+    }
+
+    if (!HaveAny)
+    {
+        /* Use (and cache) the zero list */
+        RequirementsList = PciZeroIoResourceRequirements;
+        if (!RequirementsList)
+        {
             RequirementsList = PciAllocateIoRequirementsList(0, 0, 0);
             PciZeroIoResourceRequirements = RequirementsList;
-            if (!PciZeroIoResourceRequirements) return STATUS_INSUFFICIENT_RESOURCES;
+            if (!RequirementsList) return STATUS_INSUFFICIENT_RESOURCES;
         }
-
-        /* Return the zero requirements list to the caller */
         *Buffer = RequirementsList;
-        DPRINT1("PCI - build resource reqs - early out, 0 resources\n");
+        DPRINT1("PCI - build resource reqs - no BAR limits -> zero list\n");
         return STATUS_SUCCESS;
     }
+
+    /* Allocate requirements list with all descriptors */
+    RequirementsList = PciAllocateIoRequirementsList(DescriptorCount,
+                                                     PdoExtension->ParentFdoExtension->BaseBus,
+                                                     (PdoExtension->Slot.u.AsULONG & 0xFFFF));
+    if (!RequirementsList) return STATUS_INSUFFICIENT_RESOURCES;
+
+    IoDesc = RequirementsList->List[0].Descriptors;
+    for (Bar = 0; Bar < PCI_MAX_RANGE_COUNT; Bar++)
+    {
+        PIO_RESOURCE_DESCRIPTOR Limit = &Resources->Limit[Bar];
+        if (!Limit->u.Generic.Length) continue;
+        if (Limit->Type != CmResourceTypePort && Limit->Type != CmResourceTypeMemory) continue;
+
+        /* Base descriptor */
+        *IoDesc = *Limit; /* copy type/flags/alignment/length */
+        IoDesc->Option = 0;
+        IoDesc->ShareDisposition = CmResourceShareDeviceExclusive;
+        if (Limit->Type == CmResourceTypePort)
+        {
+            IoDesc->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
+        }
+        IoDesc++;
+
+        /* Device private descriptor tagging BAR index */
+        RtlZeroMemory(IoDesc, sizeof(*IoDesc));
+        IoDesc->Type = CmResourceTypeDevicePrivate;
+        IoDesc->u.DevicePrivate.Data[0] = PciPrivateBar; /* tag */
+        IoDesc->u.DevicePrivate.Data[1] = (USHORT)Bar;    /* BAR index */
+        IoDesc->u.DevicePrivate.Data[2] = 0;              /* unused */
+        IoDesc++;
+    }
+
+    *Buffer = RequirementsList;
+    PciDebugPrintIoResReqList(RequirementsList);
     return STATUS_SUCCESS;
 }
 
