@@ -16,6 +16,10 @@
 #define NDEBUG
 #include <debug.h>
 
+NTSTATUS
+NTAPI
+ArbCommitAllocation(
+    _In_ PARBITER_INSTANCE Arbiter);
 /* LOCAL ARBITER HELPERS (cannot rely on ntoskrnl IopGeneric* exports) */
 NTSTATUS NTAPI PciArbUnpackRequirement(
     PIO_RESOURCE_DESCRIPTOR Requirement,
@@ -35,6 +39,62 @@ LONG NTAPI PciArbScoreRequirement(PIO_RESOURCE_DESCRIPTOR Requirement);
 /* Local replacements for kernel-only helpers */
 BOOLEAN NTAPI PciArbFindSuitableRange(PARBITER_INSTANCE Arbiter, PARBITER_ALLOCATION_STATE State);
 NTSTATUS NTAPI PciArbTranslateOrdering(PIO_RESOURCE_DESCRIPTOR OutDesc, PIO_RESOURCE_DESCRIPTOR InDesc);
+
+/* Transaction (allocation lifecycle) callbacks – thin wrappers over generic library */
+static NTSTATUS NTAPI PciArbTestAllocation(PARBITER_INSTANCE Arbiter, PLIST_ENTRY List)
+{ return ArbTestAllocation(Arbiter, List); }
+static NTSTATUS NTAPI PciArbRetestAllocation(PARBITER_INSTANCE Arbiter, PLIST_ENTRY List)
+{
+    /* Discard previous possible allocation (if any) then re-run test */
+    if (Arbiter->PossibleAllocation)
+    {
+        RtlFreeRangeList(Arbiter->PossibleAllocation);
+        Arbiter->PossibleAllocation = ExAllocatePoolWithTag(PagedPool, sizeof(RTL_RANGE_LIST), TAG_ARB_RANGE);
+        if (!Arbiter->PossibleAllocation) return STATUS_INSUFFICIENT_RESOURCES;
+        RtlInitializeRangeList(Arbiter->PossibleAllocation);
+        /* We intentionally don't copy Allocation yet; ArbTestAllocation will */
+    }
+    /* Ensure allocation stack present (may have been freed on rollback) */
+    if (!Arbiter->AllocationStack)
+    {
+        Arbiter->AllocationStack = ExAllocatePoolWithTag(PagedPool, PAGE_SIZE, TAG_ARB_ALLOCATION);
+        if (!Arbiter->AllocationStack) return STATUS_INSUFFICIENT_RESOURCES;
+        Arbiter->AllocationStackMaxSize = PAGE_SIZE;
+    }
+    return ArbTestAllocation(Arbiter, List);
+}
+static NTSTATUS NTAPI PciArbCommitAllocation(PARBITER_INSTANCE Arbiter)
+{ return ArbCommitAllocation(Arbiter); }
+static NTSTATUS NTAPI PciArbRollbackAllocation(PARBITER_INSTANCE Arbiter)
+{
+    /* Abandon any tentative allocation state */
+    if (Arbiter->PossibleAllocation)
+    {
+        RtlFreeRangeList(Arbiter->PossibleAllocation);
+        RtlInitializeRangeList(Arbiter->PossibleAllocation); /* leave reusable */
+    }
+    if (Arbiter->AllocationStack)
+    {
+        ExFreePoolWithTag(Arbiter->AllocationStack, TAG_ARB_ALLOCATION);
+        Arbiter->AllocationStack = ExAllocatePoolWithTag(PagedPool, PAGE_SIZE, TAG_ARB_ALLOCATION);
+        if (Arbiter->AllocationStack)
+            Arbiter->AllocationStackMaxSize = PAGE_SIZE;
+        else
+            Arbiter->AllocationStackMaxSize = 0; /* next retest tries again */
+    }
+    return STATUS_SUCCESS;
+}
+static NTSTATUS NTAPI PciArbBootAllocation(PARBITER_INSTANCE Arbiter, PLIST_ENTRY List)
+{ return ArbBootAllocation(Arbiter, List); }
+/* Optional phase wrappers (currently trivial, allow future specialization) */
+static NTSTATUS NTAPI PciArbPreprocessEntry(PARBITER_INSTANCE Arbiter, PARBITER_ALLOCATION_STATE State)
+{ UNREFERENCED_PARAMETER(Arbiter); UNREFERENCED_PARAMETER(State); return STATUS_SUCCESS; }
+static BOOLEAN NTAPI PciArbGetNextRange(PARBITER_INSTANCE Arbiter, PARBITER_ALLOCATION_STATE State)
+{ return ArbGetNextAllocationRange(Arbiter, State); }
+static VOID NTAPI PciArbAddAllocation(PARBITER_INSTANCE Arbiter, PARBITER_ALLOCATION_STATE State)
+{ ArbAddAllocation(Arbiter, State); }
+static VOID NTAPI PciArbBacktrackAllocation(PARBITER_INSTANCE Arbiter, PARBITER_ALLOCATION_STATE State)
+{ ArbBacktrackAllocation(Arbiter, State); }
 
 /* GLOBALS ********************************************************************/
 
@@ -81,6 +141,15 @@ ario_Initializer(IN PVOID Instance)
     Arb->UnpackResource = PciArbUnpackResource;
     Arb->ScoreRequirement = PciArbScoreRequirement;
     Arb->FindSuitableRange = PciArbFindSuitableRange;
+    Arb->TestAllocation = PciArbTestAllocation;
+    Arb->RetestAllocation = PciArbRetestAllocation;
+    Arb->CommitAllocation = PciArbCommitAllocation;
+    Arb->RollbackAllocation = PciArbRollbackAllocation;
+    Arb->BootAllocation = PciArbBootAllocation;
+    Arb->PreprocessEntry = PciArbPreprocessEntry;
+    Arb->GetNextAllocationRange = PciArbGetNextRange;
+    Arb->AddAllocation = PciArbAddAllocation;
+    Arb->BacktrackAllocation = PciArbBacktrackAllocation;
     return ArbInitializeArbiterInstance(Arb,
                                         PciArb->BusFdoExtension->FunctionalDeviceObject,
                                         CmResourceTypePort,
@@ -108,25 +177,15 @@ ario_Constructor(IN PVOID DeviceExtension,
     UNREFERENCED_PARAMETER(Interface);
 
     /* Make sure it's the expected interface */
-    if ((ULONG_PTR)InterfaceData != CmResourceTypePort)
+    if ((ULONG_PTR)InterfaceData == CmResourceTypePort)
     {
-        /* Arbiter support must have been initialized first */
-        if (FdoExtension->ArbitersInitialized)
-        {
-            /* Not yet implemented */
-            UNIMPLEMENTED;
-            while (TRUE);
-        }
-        else
-        {
-            /* No arbiters for this FDO */
-            Status = STATUS_NOT_SUPPORTED;
-        }
+        /* Caller wants the port arbiter interface: we currently rely on PnP's internal path.
+           Returning STATUS_NOT_SUPPORTED lets the caller retry (e.g. via root/last chance). */
+        Status = STATUS_NOT_SUPPORTED;
     }
     else
     {
-        /* Not the right interface */
-        Status = STATUS_INVALID_PARAMETER_5;
+        Status = STATUS_INVALID_PARAMETER_5; /* InterfaceData not a port resource type */
     }
 
     /* Return the status */
@@ -188,6 +247,15 @@ armem_Initializer(IN PVOID Instance)
     Arb->UnpackResource = PciArbUnpackResource;
     Arb->ScoreRequirement = PciArbScoreRequirement;
     Arb->FindSuitableRange = PciArbFindSuitableRange;
+    Arb->TestAllocation = PciArbTestAllocation;
+    Arb->RetestAllocation = PciArbRetestAllocation;
+    Arb->CommitAllocation = PciArbCommitAllocation;
+    Arb->RollbackAllocation = PciArbRollbackAllocation;
+    Arb->BootAllocation = PciArbBootAllocation;
+    Arb->PreprocessEntry = PciArbPreprocessEntry;
+    Arb->GetNextAllocationRange = PciArbGetNextRange;
+    Arb->AddAllocation = PciArbAddAllocation;
+    Arb->BacktrackAllocation = PciArbBacktrackAllocation;
     return ArbInitializeArbiterInstance(Arb,
                                         PciArb->BusFdoExtension->FunctionalDeviceObject,
                                         CmResourceTypeMemory,
@@ -215,24 +283,12 @@ armem_Constructor(IN PVOID DeviceExtension,
     UNREFERENCED_PARAMETER(Interface);
 
     /* Make sure it's the expected interface */
-    if ((ULONG_PTR)InterfaceData != CmResourceTypeMemory)
+    if ((ULONG_PTR)InterfaceData == CmResourceTypeMemory)
     {
-        /* Arbiter support must have been initialized first */
-        if (FdoExtension->ArbitersInitialized)
-        {
-            /* Not yet implemented */
-            UNIMPLEMENTED;
-            while (TRUE);
-        }
-        else
-        {
-            /* No arbiters for this FDO */
-            Status = STATUS_NOT_SUPPORTED;
-        }
+        Status = STATUS_NOT_SUPPORTED; /* Defer to generic/root provider for now */
     }
     else
     {
-        /* Not the right interface */
         Status = STATUS_INVALID_PARAMETER_5;
     }
 
