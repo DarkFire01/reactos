@@ -27,6 +27,146 @@ PUCHAR PciArbiterNames[] =
 /* FUNCTIONS ******************************************************************/
 
 /* Placeholder for future arbitration list construction helper removed for now. */
+/*
+ * Build simple arbitration list entries for a PDO's resource requirements and
+ * invoke Test/Commit on the matching arbiters. This is intentionally minimal:
+ * - Only handles port and memory descriptors
+ * - Each descriptor becomes a single-alternative ARBITER_LIST_ENTRY
+ * - Boot configs (ARBITER_FLAG_BOOT_CONFIG) not distinguished yet
+ */
+VOID
+PciArbBuildAndCommitFromRequirements(
+    _In_ PPCI_PDO_EXTENSION PdoExt,
+    _In_ PIO_RESOURCE_REQUIREMENTS_LIST ReqList)
+{
+    ULONG AltCount, iAlt, ReqIndex, ReqPerList;
+    PIO_RESOURCE_LIST FirstList;
+    PIO_RESOURCE_LIST *AltArray = NULL;
+    PDEVICE_OBJECT Pdo;
+    PPCI_FDO_EXTENSION Parent;
+    PPCI_ARBITER_INSTANCE IoArb = NULL, MemArb = NULL;
+
+    if (!PdoExt || !ReqList) return;
+    Parent = PdoExt->ParentFdoExtension;
+    if (!Parent) return;
+    Pdo = PdoExt->PhysicalDeviceObject;
+
+    AltCount = ReqList->AlternativeLists;
+    if (!AltCount) return;
+
+    /* Collect pointers to each IO_RESOURCE_LIST (alternative list) */
+    AltArray = ExAllocatePoolWithTag(PagedPool, sizeof(PIO_RESOURCE_LIST) * AltCount, PCI_POOL_TAG);
+    if (!AltArray) return;
+
+    FirstList = ReqList->List;
+    AltArray[0] = FirstList;
+    for (iAlt = 1; iAlt < AltCount; iAlt++)
+    {
+        /* Advance from previous list using documented layout */
+        PIO_RESOURCE_LIST Prev = AltArray[iAlt - 1];
+        AltArray[iAlt] = (PIO_RESOURCE_LIST)((PUCHAR)Prev +
+                            FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) +
+                            (Prev->Count * sizeof(IO_RESOURCE_DESCRIPTOR)));
+    }
+
+    ReqPerList = FirstList->Count; /* assume all lists have same Count as is typical */
+    if (!ReqPerList) goto Cleanup;
+
+    /* Locate arbiters once */
+    IoArb = (PPCI_ARBITER_INSTANCE)PciFindNextSecondaryExtension(&Parent->SecondaryExtension, PciArb_Io);
+    MemArb = (PPCI_ARBITER_INSTANCE)PciFindNextSecondaryExtension(&Parent->SecondaryExtension, PciArb_Memory);
+    if (!IoArb && !MemArb) goto Cleanup;
+
+    /* Iterate each requirement index; build alternatives over all alt lists */
+    for (ReqIndex = 0; ReqIndex < ReqPerList; ReqIndex++)
+    {
+        CM_RESOURCE_TYPE Type;
+        PIO_RESOURCE_DESCRIPTOR BaseDesc;
+        PPCI_ARBITER_INSTANCE TargetArb;
+        PARBITER_INSTANCE AInst;
+        PIO_RESOURCE_DESCRIPTOR AltBuffer = NULL;
+        ULONG ValidAlt = 0;
+        LIST_ENTRY ArbHead;
+        PARBITER_LIST_ENTRY ArbEntry;
+        ULONG Size;
+
+        BaseDesc = &FirstList->Descriptors[ReqIndex];
+        Type = BaseDesc->Type;
+        if (Type != CmResourceTypePort && Type != CmResourceTypeMemory)
+            continue; /* not handled */
+
+        TargetArb = (Type == CmResourceTypePort) ? IoArb : MemArb;
+        if (!TargetArb) continue;
+        AInst = &TargetArb->CommonInstance;
+
+        /* Count how many alternative lists provide a descriptor of same type at this index */
+        for (iAlt = 0; iAlt < AltCount; iAlt++)
+        {
+            PIO_RESOURCE_LIST RL = AltArray[iAlt];
+            if (ReqIndex >= RL->Count) continue; /* inconsistent list, skip */
+            if (RL->Descriptors[ReqIndex].Type == Type)
+                ValidAlt++;
+        }
+        if (!ValidAlt) continue;
+
+        /* Allocate a contiguous copy of those alternatives */
+        Size = ValidAlt * sizeof(IO_RESOURCE_DESCRIPTOR);
+        AltBuffer = ExAllocatePoolWithTag(PagedPool, Size, PCI_POOL_TAG);
+        if (!AltBuffer) continue;
+
+        ValidAlt = 0;
+        for (iAlt = 0; iAlt < AltCount; iAlt++)
+        {
+            PIO_RESOURCE_LIST RL = AltArray[iAlt];
+            if (ReqIndex >= RL->Count) continue;
+            if (RL->Descriptors[ReqIndex].Type != Type) continue; /* mismatch */
+            RtlCopyMemory(&AltBuffer[ValidAlt], &RL->Descriptors[ReqIndex], sizeof(IO_RESOURCE_DESCRIPTOR));
+            ValidAlt++;
+        }
+        if (!ValidAlt) { ExFreePoolWithTag(AltBuffer, PCI_POOL_TAG); continue; }
+
+        InitializeListHead(&ArbHead);
+        ArbEntry = ExAllocatePoolWithTag(PagedPool, sizeof(ARBITER_LIST_ENTRY), PCI_POOL_TAG);
+        if (!ArbEntry)
+        {
+            ExFreePoolWithTag(AltBuffer, PCI_POOL_TAG);
+            continue;
+        }
+        RtlZeroMemory(ArbEntry, sizeof(*ArbEntry));
+        InsertTailList(&ArbHead, &ArbEntry->ListEntry);
+        ArbEntry->AlternativeCount = ValidAlt;
+        ArbEntry->Alternatives = AltBuffer; /* our contiguous copy */
+        ArbEntry->PhysicalDeviceObject = Pdo;
+        ArbEntry->RequestSource = ArbiterRequestPnpEnumerated;
+        ArbEntry->Flags = 0; /* later: ARBITER_FLAG_BOOT_CONFIG when appropriate */
+        ArbEntry->InterfaceType = ReqList->InterfaceType;
+        ArbEntry->SlotNumber = ReqList->SlotNumber;
+        ArbEntry->BusNumber = ReqList->BusNumber;
+        ArbEntry->Result = ArbiterResultUndefined;
+
+        if (AInst->TestAllocation)
+        {
+            NTSTATUS St = AInst->TestAllocation(AInst, &ArbHead);
+            if (NT_SUCCESS(St))
+            {
+                if (AInst->CommitAllocation)
+                    (VOID)AInst->CommitAllocation(AInst);
+            }
+            else if (AInst->RollbackAllocation)
+            {
+                (VOID)AInst->RollbackAllocation(AInst);
+            }
+        }
+
+        /* Free temp structures; arbiter copied selected ranges internally */
+        RemoveEntryList(&ArbEntry->ListEntry);
+        ExFreePoolWithTag(ArbEntry, PCI_POOL_TAG);
+        ExFreePoolWithTag(AltBuffer, PCI_POOL_TAG);
+    }
+
+Cleanup:
+    if (AltArray) ExFreePoolWithTag(AltArray, PCI_POOL_TAG);
+}
 
 VOID
 NTAPI

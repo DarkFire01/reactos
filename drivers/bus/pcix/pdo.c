@@ -207,6 +207,18 @@ PciPdoIrpStartDevice(IN PIRP Irp,
     }
     else
     {
+        /* If we have requirements and parent arbiters, exercise arbitration now */
+        if (DeviceExtension->ParentFdoExtension && DeviceExtension->ParentFdoExtension->ArbitersInitialized)
+        {
+            PIO_RESOURCE_REQUIREMENTS_LIST reqs = NULL;
+            PciQueryRequirements(DeviceExtension, &reqs);
+            if (reqs)
+            {
+                extern VOID PciArbBuildAndCommitFromRequirements(PPCI_PDO_EXTENSION, PIO_RESOURCE_REQUIREMENTS_LIST);
+                PciArbBuildAndCommitFromRequirements(DeviceExtension, reqs);
+                /* If this was the global zero list we must not free it */
+            }
+        }
         /* Fully commit, as the device is now started up and ready to go */
         PciCommitStateTransition((PVOID)DeviceExtension, PciStarted);
     }
