@@ -61,7 +61,7 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     CM_PARTIAL_RESOURCE_DESCRIPTOR ResourceArray[7];
     PCM_FULL_RESOURCE_DESCRIPTOR FullList;
     BOOLEAN DrainPartial, RangeChange;
-    ULONG i, j;
+    ULONG i, j, ResourceIndex;
     PPCI_FUNCTION_RESOURCES PciResources;
     PAGED_CODE();
 
@@ -93,6 +93,7 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
         /* Initialize loop variables */
         DrainPartial = FALSE;
         BaseResource = NULL;
+        ResourceIndex = 0;
 
         /* Loop the partial descriptors */
         Partial = FullList->PartialResourceList.PartialDescriptors;
@@ -125,6 +126,37 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
                     /* Set it as the base */
                     ASSERT(BaseResource == NULL);
                     BaseResource = Partial;
+
+                    /*
+                     * Windows exposes legacy VGA ranges (0x3B0-0x3BB, 0x3C0-0x3DF, 0xA0000-0xBFFFF)
+                     * for VGA-enabled bridges, but they are not BAR-backed and should not be
+                     * merged into the device's programmable resource set. Skip them here so the
+                     * later comparison logic does not attempt to treat them as BAR changes.
+                     */
+                    if ((Partial->Type == CmResourceTypePort &&
+                         (Partial->u.Port.Start.QuadPart == 0x3B0 ||
+                          Partial->u.Port.Start.QuadPart == 0x3C0)) ||
+                        (Partial->Type == CmResourceTypeMemory &&
+                         Partial->u.Memory.Start.QuadPart == 0xA0000))
+                    {
+                        /* Ignore legacy VGA descriptor */
+                        BaseResource = NULL;
+                        break;
+                    }
+
+                    /* Store the descriptor into the temporary array */
+                    if (ResourceIndex < RTL_NUMBER_OF(ResourceArray))
+                    {
+                        ResourceArray[ResourceIndex++] = *Partial;
+                    }
+                    else
+                    {
+                        /* Should never happen (max 6 BARs + ROM) */
+                        ASSERT(FALSE);
+                    }
+
+                    /* Reset for next base descriptor */
+                    BaseResource = NULL;
                     break;
                 }
                 /* Interrupt resource */
@@ -180,18 +212,14 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
             Partial = CmiGetNextPartialDescriptor(Partial);
         }
 
-        /* We should be starting a new list now */
-        ASSERT(BaseResource == NULL);
+    /* Ensure we consumed any pending base resource */
+    BaseResource = NULL;
         FullList = (PVOID)Partial;
     }
 
     /* Check the current assigned PCI resources */
     PciResources = PdoExtension->Resources;
     if (!PciResources) return FALSE;
-
-    //if... // MISSING CODE
-    UNIMPLEMENTED;
-    DPRINT1("Missing sanity checking code!\n");
 
     /* Loop all the PCI function resources */
     for (i = 0; i < 7; i++)
@@ -203,12 +231,16 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
         /* Previous is current during the first loop iteration */
         PreviousDescriptor = &PciResources->Current[(i == 0) ? (0) : (i - 1)];
 
+        /* If no new descriptor was supplied for this slot, ignore it */
+        if (Partial->Type == CmResourceTypeNull)
+        {
+            continue;
+        }
+
         /* Check if this new descriptor is different than the old one */
-        if (((Partial->Type != CurrentDescriptor->Type) ||
-             (Partial->Type != CmResourceTypeNull)) &&
-            ((Partial->u.Generic.Start.QuadPart !=
-              CurrentDescriptor->u.Generic.Start.QuadPart) ||
-             (Partial->u.Generic.Length != CurrentDescriptor->u.Generic.Length)))
+        if ((Partial->Type != CurrentDescriptor->Type) ||
+            (Partial->u.Generic.Start.QuadPart != CurrentDescriptor->u.Generic.Start.QuadPart) ||
+            (Partial->u.Generic.Length != CurrentDescriptor->u.Generic.Length))
         {
             /* Record a change */
             RangeChange = TRUE;
@@ -232,9 +264,8 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
             /* Update to new range */
             CurrentDescriptor->Type = Partial->Type;
-            PreviousDescriptor->u.Generic.Start = Partial->u.Generic.Start;
-            PreviousDescriptor->u.Generic.Length = Partial->u.Generic.Length;
-            CurrentDescriptor = PreviousDescriptor;
+            CurrentDescriptor->u.Generic.Start = Partial->u.Generic.Start;
+            CurrentDescriptor->u.Generic.Length = Partial->u.Generic.Length;
         }
     }
 
