@@ -15,6 +15,26 @@
 
 /* FUNCTIONS ******************************************************************/
 
+static
+BOOLEAN
+PciIsBootAllocatedRange(
+    _In_ PPCI_FDO_EXTENSION FdoExt,
+    _In_ CM_RESOURCE_TYPE Type,
+    _In_ ULONGLONG Start,
+    _In_ ULONGLONG Length)
+{
+    PLIST_ENTRY le;
+    if (!FdoExt) return FALSE;
+    for (le = FdoExt->BootRangeList.Flink; le != &FdoExt->BootRangeList; le = le->Flink)
+    {
+        PPCI_BOOT_RANGE br = CONTAINING_RECORD(le, PCI_BOOT_RANGE, ListEntry);
+        if (br->Type != Type) continue;
+        if (br->Start == Start && br->Length == Length)
+            return TRUE;
+    }
+    return FALSE;
+}
+
 VOID
 NTAPI
 Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
@@ -312,7 +332,7 @@ Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
         Is64 = FALSE;
         /* Determine I/O vs Memory */
-        if (CurrentDesc->Type == CmResourceTypePort)
+    if (CurrentDesc->Type == CmResourceTypePort)
         {
             ULONGLONG start = CurrentDesc->u.Port.Start.QuadPart;
             Value = (ULONG)start & PCI_ADDRESS_IO_ADDRESS_MASK;
@@ -350,6 +370,32 @@ Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
             continue;
         }
 
+        /* Boot-config detection: if firmware already programmed this BAR with same base */
+        if ((CurrentDesc->Type == CmResourceTypePort || CurrentDesc->Type == CmResourceTypeMemory))
+        {
+            ULONGLONG descStart = (CurrentDesc->Type == CmResourceTypePort) ?
+                                  CurrentDesc->u.Port.Start.QuadPart : CurrentDesc->u.Memory.Start.QuadPart;
+            ULONGLONG descLen = CurrentDesc->u.Generic.Length;
+            ULONGLONG existing = 0;
+            ULONGLONG existingHigh = 0;
+            ULONG mask = (CurrentDesc->Type == CmResourceTypePort) ? PCI_ADDRESS_IO_ADDRESS_MASK : PCI_ADDRESS_MEMORY_ADDRESS_MASK;
+            OrigValue = BarArray[i];
+            existing = OrigValue & mask;
+            if (Is64)
+            {
+                existingHigh = BarArray[i+1];
+                existing |= (existingHigh << 32);
+            }
+            if (existing == descStart &&
+                PciIsBootAllocatedRange(PdoExtension->ParentFdoExtension, CurrentDesc->Type, descStart, descLen))
+            {
+                /* Keep existing BAR (firmware assignment) */
+                DPRINT1("PCI (pdox %p) preserving boot-config BAR %u @ %I64x len %I64u\n", PdoExtension, i, descStart, descLen);
+                if (Is64) i++; /* still skip companion */
+                continue;
+            }
+        }
+
         BarArray[i] = Value;
         if (Is64) i++; /* skip companion */
     }
@@ -361,7 +407,17 @@ Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
         ULONGLONG start = CurrentDesc->u.Memory.Start.QuadPart;
         ULONG RomVal = (ULONG)start & PCI_ADDRESS_ROM_ADDRESS_MASK;
         RomVal |= PCI_ROMADDRESS_ENABLED;
-        PciData->u.type0.ROMBaseAddress = RomVal;
+        if (PciIsBootAllocatedRange(PdoExtension->ParentFdoExtension,
+                                    CmResourceTypeMemory,
+                                    start,
+                                    CurrentDesc->u.Generic.Length))
+        {
+            DPRINT1("PCI (pdox %p) preserving boot-config ROM BAR @ %I64x len %I64u\n", PdoExtension, start, (ULONGLONG)CurrentDesc->u.Generic.Length);
+        }
+        else
+        {
+            PciData->u.type0.ROMBaseAddress = RomVal;
+        }
     }
     else
     {
