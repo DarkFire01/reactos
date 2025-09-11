@@ -644,14 +644,16 @@ NICDisableTxRx(
     ULONG Value;
 
     NDIS_DbgPrint(MAX_TRACE, ("Called.\n"));
+    if (Adapter->IoBase == NULL)
+    {
+        E1000ReadUlong(Adapter, E1000_REG_TCTL, &Value);
+        Value &= ~E1000_TCTL_EN;
+        E1000WriteUlong(Adapter, E1000_REG_TCTL, Value);
 
-    E1000ReadUlong(Adapter, E1000_REG_TCTL, &Value);
-    Value &= ~E1000_TCTL_EN;
-    E1000WriteUlong(Adapter, E1000_REG_TCTL, Value);
-
-    E1000ReadUlong(Adapter, E1000_REG_RCTL, &Value);
-    Value &= ~E1000_RCTL_EN;
-    E1000WriteUlong(Adapter, E1000_REG_RCTL, Value);
+        E1000ReadUlong(Adapter, E1000_REG_RCTL, &Value);
+        Value &= ~E1000_RCTL_EN;
+        E1000WriteUlong(Adapter, E1000_REG_RCTL, Value);
+    }
 
     return NDIS_STATUS_SUCCESS;
 }
