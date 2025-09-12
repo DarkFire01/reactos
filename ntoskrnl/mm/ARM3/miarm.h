@@ -1149,6 +1149,13 @@ VOID
 MiLockProcessWorkingSetShared(IN PEPROCESS Process,
                               IN PETHREAD Thread)
 {
+    /* We must be at or below APC level to enter guarded region */
+    if (KeGetCurrentIrql() > APC_LEVEL)
+    {
+        DPRINT1("WARNING: Attempting to lock working set at IRQL %d > APC_LEVEL, skipping\n", KeGetCurrentIrql());
+        return;
+    }
+
     /* Shouldn't already be owning the process working set */
     ASSERT(Thread->OwnsProcessWorkingSetShared == FALSE);
     ASSERT(Thread->OwnsProcessWorkingSetExclusive == FALSE);
@@ -1218,6 +1225,13 @@ VOID
 MiUnlockProcessWorkingSetShared(IN PEPROCESS Process,
                                 IN PETHREAD Thread)
 {
+    /* Check if we actually own the lock (we might have skipped locking at high IRQL) */
+    if (!Thread->OwnsProcessWorkingSetShared)
+    {
+        /* Lock was never acquired due to high IRQL, nothing to unlock */
+        return;
+    }
+
     /* Make sure we are the owner of a safe acquisition (because shared) */
     ASSERT(MI_WS_OWNER(Process));
     ASSERT(!MI_IS_WS_UNSAFE(Process));

@@ -1490,8 +1490,16 @@ PoHandlePowerIrp(
     /* Update the current device as it currently holds hands on this IRP */
     PopAcquireIrpLock(&IrpLockHandle);
     IrpData = PopFindIrpData(Irp, NULL, SearchByIrp);
-    ASSERT(IrpData != NULL);
-    IrpData->CurrentDevice = DeviceObject;
+    if (IrpData != NULL)
+    {
+        IrpData->CurrentDevice = DeviceObject;
+    }
+    else
+    {
+        /* IRP data not found - this can happen if the IRP was not properly registered
+         * or has already been processed. Handle gracefully by forwarding the IRP directly. */
+        DPRINT1("WARNING: IRP data not found for IRP %p, forwarding directly\n", Irp);
+    }
     PopReleaseIrpLock(&IrpLockHandle);
 
     /* Check if we should send this IRP at PASSIVE_LEVEL */

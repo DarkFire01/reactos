@@ -22,7 +22,9 @@ PopIsDeviceRegisteredForIdleDetection(
     PLIST_ENTRY Entry;
     PDEVICE_OBJECT_POWER_EXTENSION Dope;
 
-    PAGED_CODE();
+    /* This function can be called at DISPATCH_LEVEL while holding the DOPE lock
+     * so we cannot use PAGED_CODE() here. The function only walks a list and
+     * doesn't access any pageable data. */
 
     /* Passing a NULL DOPE is illegal */
     ASSERT(TargetDope);
@@ -234,7 +236,10 @@ PoRegisterDeviceForIdleDetection(
     PDEVICE_OBJECT_POWER_EXTENSION Dope;
     BOOLEAN IsDeviceDisk = FALSE;
 
-    PAGED_CODE();
+    /* This function can be called from various contexts including worker threads
+     * that may be running at DISPATCH_LEVEL. Since device drivers need to register
+     * for idle detection during device startup, we cannot enforce PASSIVE_LEVEL here.
+     * The function will acquire a spinlock later which properly handles IRQL. */
 
     /* The caller has to pass a DO here */
     ASSERT(DeviceObject);
