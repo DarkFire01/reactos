@@ -151,6 +151,7 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
             InterfaceType->Data4[2], InterfaceType->Data4[3],
             InterfaceType->Data4[4], InterfaceType->Data4[5],
             InterfaceType->Data4[6], InterfaceType->Data4[7]);
+    __debugbreak();
     return STATUS_NOT_SUPPORTED;
 }
 

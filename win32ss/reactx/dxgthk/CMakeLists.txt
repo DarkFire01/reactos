@@ -9,4 +9,4 @@ list(APPEND SOURCE
 add_library(dxgthk MODULE ${SOURCE})
 set_module_type(dxgthk kernelmodedriver)
 add_importlibs(dxgthk win32k)
-add_cd_file(TARGET dxgthk DESTINATION reactos/system32/drivers FOR all)
+#add_cd_file(TARGET dxgthk DESTINATION reactos/system32/drivers FOR all)
