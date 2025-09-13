@@ -17,3 +17,4 @@ foreach(item ${ROSAPPS_INF_FILES})
     list(APPEND rosapps_converted_item ${_rosapps_converted_item})
 endforeach(item)
 add_custom_target(converted_inf_files2 DEPENDS ${rosapps_converted_item})
+#

@@ -655,23 +655,85 @@ typedef struct _POP_FLUSH_VOLUME
 } POP_FLUSH_VOLUME, *PPOP_FLUSH_VOLUME;
 
 //
-// Power system idle
+// Power system idle - constants for NT-compatible idle detection
 //
+#define SYS_IDLE_WORKER                 15      // 15 seconds
+#define SYS_IDLE_CHECKS_PER_MIN         (60/SYS_IDLE_WORKER)
+#define SYS_IDLE_SAMPLES                240     // 1hr worth of samples
+#define SYS_IDLE_IO_SCALER              100
+
+// defaults for system idle detection on a system wake used
+// to re-enter a system sleep when a full wake does not occur
+#define SYS_IDLE_REENTER_SENSITIVITY    80
+#define SYS_IDLE_REENTER_TIMEOUT       (2*60)   // 2 minutes
+#define SYS_IDLE_REENTER_TIMEOUT_S4    (5*60)   // 5 minutes
+
 typedef struct _POP_SYSTEM_IDLE
 {
-    LONG AverageIdleness;
-    LONG LowestIdleness;
+    //
+    // Current idle settings
+    //
+    LONG Idleness;
     ULONG Time;
     ULONG Timeout;
-    ULONG LastUserInput;
+    ULONG Sensitivity;
     POWER_ACTION_POLICY Action;
     SYSTEM_POWER_STATE MinState;
-    ULONG SystemRequired;
-    UCHAR IdleWorker;
-    UCHAR Sampling;
+
+    //
+    // Current idle stats
+    //
+    BOOLEAN IdleWorker;
+    BOOLEAN Sampling;
     ULONGLONG LastTick;
-    ULONG LastSystemRequiredTime;
+    ULONGLONG LastIoTransfer;
+    ULONG LastIoCount;
 } POP_SYSTEM_IDLE, *PPOP_SYSTEM_IDLE;
+
+//
+// Power heuristics for system idle detection
+//
+#define POP_HEURISTICS_VERSION_CLEAR_TRANSFER 0x04
+#define POP_HEURISTICS_VERSION       0x05
+
+//
+// Thermal zone constants
+//
+#define POP_THERMAL_ZONE_ACTIVE      1
+#define POP_THERMAL_ZONE_PASSIVE     2
+
+// POP_THERMAL_ZONE.State
+#define PO_TZ_NO_STATE      0
+#define PO_TZ_READ_STATE    1
+#define PO_TZ_SET_MODE      2
+#define PO_TZ_SET_ACTIVE    3
+
+// POP_THERMAL_ZONE.Flags
+#define PO_TZ_THROTTLING    0x01
+#define PO_TZ_CLEANUP       0x80
+
+#define PO_TZ_THROTTLE_SCALE    10      // temp reported in 1/10ths kelvin
+#define PO_TZ_NO_THROTTLE   (100 * PO_TZ_THROTTLE_SCALE)
+
+// PopCoolingMode
+#define PO_TZ_ACTIVE        0
+#define PO_TZ_PASSIVE       1
+#define PO_TZ_INVALID_MODE  2
+
+typedef struct _POP_HEURISTICS
+{
+    ULONG Version;
+    BOOLEAN Dirty;
+    BOOLEAN GetDumpStackVerified;
+    BOOLEAN HiberFileEnabled;
+
+    //
+    // System idle heuristics
+    //
+    ULONG IoTransferTotal;
+    ULONG IoTransferSamples;
+    ULONG IoTransferWeight;
+} POP_HEURISTICS, *PPOP_HEURISTICS;
 
 //
 // Power thermal zone
@@ -1131,6 +1193,131 @@ NTAPI
 PopCheckForPendingWorkers(
     VOID);
 
+//
+// System Idle Detection functions
+//
+VOID
+NTAPI
+PopInitSIdle(
+    VOID);
+
+VOID
+NTAPI
+PopIdleScanDpcRoutine(
+    _In_ PKDPC Dpc,
+    _In_ PVOID DeferredContext,
+    _In_ PVOID SystemArgument1,
+    _In_ PVOID SystemArgument2);
+
+VOID
+NTAPI
+PoSystemIdleWorker(
+    _In_ PVOID Context);
+
+ULONG
+NTAPI
+PopSqrt(
+    _In_ ULONG Number);
+
+VOID
+NTAPI
+PopCaptureCounts(
+    _Out_ PULONG IoReads,
+    _Out_ PULONG IoWrites,
+    _Out_ PULONG IoOthers);
+
+//
+// Processor Power Management functions
+//
+VOID
+NTAPI
+PpmInitializeCpuStats(
+    _In_ ULONG ProcessorNumber);
+
+ULONG
+NTAPI
+PpmGetCpuIdlePercentage(
+    _In_ ULONG ProcessorNumber);
+
+VOID
+NTAPI
+PpmUpdateCpuStats(
+    _In_ ULONG ProcessorNumber);
+
+//
+// Power Action functions
+//
+VOID
+NTAPI
+PopApplyPowerAction(
+    _In_ POWER_ACTION PowerAction);
+
+NTSTATUS
+NTAPI
+PopInitiatePowerAction(
+    _In_ POWER_ACTION SystemAction,
+    _In_ SYSTEM_POWER_STATE MinSystemState,
+    _In_ ULONG Flags);
+
+VOID
+NTAPI
+PopCoordinatePowerManagement(
+    _In_ ULONG IdlenessPercent,
+    _In_ BOOLEAN SystemIdle);
+
+//
+// PPM Engine Functions
+//
+VOID
+NTAPI
+PpmEngineInitialize(VOID);
+
+NTSTATUS
+NTAPI
+PpmSetProcessorPowerState(
+    _In_ ULONG ProcessorNumber,
+    _In_ ULONG PowerState);
+
+ULONG
+NTAPI
+PpmGetProcessorPowerState(
+    _In_ ULONG ProcessorNumber);
+
+BOOLEAN
+NTAPI
+PpmIsPowerManagementEnabled(VOID);
+
+VOID
+NTAPI
+PpmSetPowerManagementEnabled(
+    _In_ BOOLEAN Enabled);
+
+//
+// Thermal Zone Management functions
+//
+NTSTATUS
+NTAPI
+PopAddThermalZone(
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+NTSTATUS
+NTAPI
+PopRemoveThermalZone(
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+VOID
+NTAPI
+PopThermalZonePassiveDpc(
+    _In_ PKDPC Dpc,
+    _In_ PVOID DeferredContext,
+    _In_ PVOID SystemArgument1,
+    _In_ PVOID SystemArgument2);
+
+ULONG
+NTAPI
+PopGetThermalZoneTemperature(
+    _In_ PPOP_THERMAL_ZONE ThermalZone);
+
 NTSTATUS
 NTAPI
 PopDevicePolicyCallback(
@@ -1566,6 +1753,14 @@ extern KTIMER PopIdleScanDevicesTimer;
 extern LIST_ENTRY PopIdleDetectList;
 extern BOOLEAN PopResumeAutomatic;
 extern POWER_STATE_HANDLER PopDefaultPowerStateHandlers[];
+
+/* Power Manager System Idle constructs */
+extern POP_SYSTEM_IDLE PopSIdle;
+extern KDPC PopIdleScanDpc;
+extern LARGE_INTEGER PopIdleScanTime;
+extern KTIMER PopIdleScanTimer;
+extern POP_HEURISTICS PopHeuristics;
+extern WORK_QUEUE_ITEM PopSIdleWorkItem;
 
 /* Power Manager User Presence constructs */
 extern WORK_QUEUE_ITEM PopUserPresentWorkItem;

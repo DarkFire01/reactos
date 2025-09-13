@@ -852,6 +852,15 @@ KeInsertQueueDpc(IN PKDPC Dpc,
     /* Check if the DPC was inserted */
     if (DpcInserted)
     {
+        /* Validate that we're at a reasonable IRQL before requesting interrupt */
+        if (KeGetCurrentIrql() > HIGH_LEVEL)
+        {
+            DPRINT1("KeInsertQueueDpc: Invalid IRQL %d when requesting interrupt\n", KeGetCurrentIrql());
+            /* Lower IRQL and return without requesting interrupt to prevent crash */
+            KeLowerIrql(OldIrql);
+            return DpcConfigured;
+        }
+
         /* Check if this was SMP */
         if (Prcb != CurrentPrcb)
         {

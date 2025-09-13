@@ -15,7 +15,7 @@
 
 KSPIN_LOCK PopThermalZoneLock;
 LIST_ENTRY PopThermalZones;
-ULONG PopCoolingSystemMode = 0;
+
 
 /* PRIVATE FUNCTIONS **********************************************************/
 

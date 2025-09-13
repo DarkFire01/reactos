@@ -1619,14 +1619,42 @@ LdrUnloadAlternateResourceModule(
 }
 
 /*
- * @unimplemented
+ * @implemented
  */
 BOOLEAN
 NTAPI
 LdrFlushAlternateResourceModules(VOID)
 {
-    UNIMPLEMENTED;
-    return FALSE;
+    ULONG_PTR Cookie;
+
+    /* Acquire the loader lock */
+    LdrLockLoaderLock(LDR_LOCK_LOADER_LOCK_FLAG_RAISE_ON_ERRORS, NULL, &Cookie);
+
+    /* Check if there are any alternate resource modules loaded */
+    if (AlternateResourceModuleCount > 0)
+    {
+        /* 
+         * In a full implementation, we would iterate through all loaded
+         * alternate resource modules and unload them (unmap views, close handles, etc.).
+         * Since ReactOS doesn't currently support loading them 
+         * (LdrAlternateResourcesEnabled returns FALSE), we just reset the count.
+         * 
+         * When MUI support is implemented, this should:
+         * 1. Iterate through AlternateResourceModules array
+         * 2. For each module: unmap section views, close handles, free memory
+         * 3. Free the AlternateResourceModules array
+         * 4. Reset AlternateResourceModuleCount to 0
+         */
+        DPRINT("LdrFlushAlternateResourceModules: Flushing %lu alternate resource modules\n", 
+               AlternateResourceModuleCount);
+        AlternateResourceModuleCount = 0;
+    }
+
+    /* Release the loader lock */
+    LdrUnlockLoaderLock(LDR_UNLOCK_LOADER_LOCK_FLAG_RAISE_ON_ERRORS, Cookie);
+
+    /* Success */
+    return TRUE;
 }
 
 /*

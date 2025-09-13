@@ -100,4 +100,79 @@ elseif(ARCH STREQUAL "amd64")
         endforeach(item)
     endif()
 endif()
-##
+##s
+
+
+
+
+
+
+
+
+## Slipstreaming drivers
+
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/comsix/)#
+
+
+    file(GLOB_RECURSE EXTRA_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/comsix/ ${CMAKE_CURRENT_SOURCE_DIR}/comsix/*)
+
+
+    foreach(item ${EXTRA_FILES})
+
+
+        add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/comsix/${item} DESTINATION reactos/winsxs/x86_microsoft.windows.common-controls_6595b64144ccf1df_6.0.2600.2982_none_deadbeef NAME_ON_CD ${item} FOR all)
+
+
+    endforeach(item)
+
+
+endif()
+
+
+#
+
+
+## Slipstreaming drivers
+
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/comfiv/)
+
+
+    file(GLOB_RECURSE EXTRA_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/comfiv/ ${CMAKE_CURRENT_SOURCE_DIR}/comfiv/*)
+
+
+    foreach(item ${EXTRA_FILES})
+
+
+        add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/comfiv/${item} DESTINATION reactos/winsxs/x86_microsoft.windows.common-controls_6595b64144ccf1df_5.82.2600.2982_none_deadbeef NAME_ON_CD ${item} FOR all)
+
+
+    endforeach(item)
+
+
+endif()
+
+
+
+## Slipstreaming drivers
+
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/ros/)
+
+
+    file(GLOB_RECURSE EXTRA_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/ros/ ${CMAKE_CURRENT_SOURCE_DIR}/ros/*)
+
+
+    foreach(item ${EXTRA_FILES})
+
+
+        add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/ros/${item} DESTINATION reactos NAME_ON_CD ${item} FOR all)
+
+
+    endforeach(item)
+
+
+endif()
+
+######

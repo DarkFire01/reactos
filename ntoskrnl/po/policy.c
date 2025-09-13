@@ -163,8 +163,13 @@ PopRemovePolicyDevice(
     }
     else if (PolicyDeviceType == PolicyDeviceThermalZone)
     {
-        DPRINT1("Policy thermal zone device not currently implemented yet\n");
-        ASSERT(FALSE);
+        /* Add the thermal zone device to the power manager */
+        Status = PopAddThermalZone(PolicyDeviceObject);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to add thermal zone device (Status 0x%lx)\n", Status);
+        }
+        return Status;
     }
     else if (PolicyDeviceType == PolicyDeviceFan)
     {
@@ -297,8 +302,12 @@ PopAddPolicyDevice(
 
         case PolicyDeviceThermalZone:
         {
-            DPRINT1("Policy thermal zone device not currently implemented yet\n");
-            Status = STATUS_NOT_IMPLEMENTED;
+            /* Remove the thermal zone device from the power manager */
+            Status = PopRemoveThermalZone(PolicyDeviceObject);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("Failed to remove thermal zone device (Status 0x%lx)\n", Status);
+            }
             break;
         }
 
@@ -484,6 +493,238 @@ PopGetPolicyDeviceObject(
     return STATUS_SUCCESS;
 }
 
+/*
+ * @implemented
+ */
+VOID
+NTAPI
+PopInitSIdle(VOID)
+{
+    LARGE_INTEGER DueTime;
+    
+    PAGED_CODE();
+    
+    /* Initialize the system idle structure with default values */
+    RtlZeroMemory(&PopSIdle, sizeof(PopSIdle));
+    
+    PopSIdle.Idleness = 0;
+    PopSIdle.Time = 0;
+    PopSIdle.Timeout = 60;  // Default 60 seconds
+    PopSIdle.Sensitivity = 80;  // Default 80% sensitivity
+    PopSIdle.MinState = PowerSystemSleeping1;
+    PopSIdle.IdleWorker = FALSE;
+    PopSIdle.Sampling = TRUE;
+    
+    /* Initialize heuristics */
+    RtlZeroMemory(&PopHeuristics, sizeof(PopHeuristics));
+    PopHeuristics.Version = POP_HEURISTICS_VERSION;
+    PopHeuristics.Dirty = FALSE;
+    PopHeuristics.IoTransferTotal = 0;
+    PopHeuristics.IoTransferSamples = 0;
+    PopHeuristics.IoTransferWeight = 0;
+    
+    /* Initialize the system idle detection timer and DPC */
+    KeInitializeDpc(&PopIdleScanDpc, PopIdleScanDpcRoutine, NULL);
+    KeInitializeTimer(&PopIdleScanTimer);
+    
+    /* Initialize the work item for idle detection */
+    ExInitializeWorkItem(&PopSIdleWorkItem, PoSystemIdleWorker, NULL);
+    
+    /* Initialize CPU statistics for the primary processor */
+    PpmInitializeCpuStats(0);
+    
+    /* Start the system idle worker to run every 15 seconds */
+    DueTime.QuadPart = Int32x32To64(SYS_IDLE_WORKER, -10 * 1000 * 1000);
+    KeSetTimerEx(&PopIdleScanTimer,
+                 DueTime,
+                 SYS_IDLE_WORKER * 1000,  // 15 second interval
+                 &PopIdleScanDpc);
+}
+
+/*
+ * @implemented
+ */
+VOID
+NTAPI
+PopIdleScanDpcRoutine(
+    _In_ PKDPC Dpc,
+    _In_ PVOID DeferredContext,
+    _In_ PVOID SystemArgument1,
+    _In_ PVOID SystemArgument2)
+{
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(DeferredContext);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+    
+    /* Queue the work item to do the actual idle detection work */
+    ExQueueWorkItem(&PopSIdleWorkItem, DelayedWorkQueue);
+}
+
+/*
+ * @implemented
+ */
+VOID
+NTAPI
+PoSystemIdleWorker(
+    _In_ PVOID Context)
+{
+    ULONGLONG CurrentTime;
+    ULONG ProcessorBusy;
+    ULONG IoReads, IoWrites, IoOthers;
+    ULONG IoTransferRate;
+    LONG IdlenessPercent;
+    
+    PAGED_CODE();
+    UNREFERENCED_PARAMETER(Context);
+    
+    /* Only one idle worker should run at a time */
+    if (PopSIdle.IdleWorker)
+        return;
+        
+    PopSIdle.IdleWorker = TRUE;
+    
+    /* Get current time */
+    KeQuerySystemTime((PLARGE_INTEGER)&CurrentTime);
+    
+    /* Calculate processor busy percentage */
+    /* Use the new CPU statistics for better accuracy */
+    ProcessorBusy = 100 - PpmGetCpuIdlePercentage(0); /* Use primary processor */
+    
+    /* Update CPU stats for next sample */
+    PpmUpdateCpuStats(0);
+    
+    /* Capture I/O transfer counts */
+    PopCaptureCounts(&IoReads, &IoWrites, &IoOthers);
+    
+    /* Calculate I/O transfer rate since last sample */
+    if (PopSIdle.LastIoCount != 0)
+    {
+        IoTransferRate = (IoReads + IoWrites + IoOthers) - PopSIdle.LastIoCount;
+    }
+    else
+    {
+        IoTransferRate = 0;
+    }
+    
+    /* Update I/O heuristics */
+    if (PopHeuristics.IoTransferSamples < SYS_IDLE_SAMPLES)
+    {
+        PopHeuristics.IoTransferSamples++;
+    }
+    
+    PopHeuristics.IoTransferTotal += IoTransferRate;
+    
+    /* Calculate system idleness percentage */
+    if (PopHeuristics.IoTransferSamples > 0)
+    {
+        ULONG AverageIoRate = PopHeuristics.IoTransferTotal / PopHeuristics.IoTransferSamples;
+        
+        /* Scale I/O activity relative to average */
+        if (AverageIoRate > 0 && IoTransferRate > 0)
+        {
+            ULONG IoActivityPercent = (IoTransferRate * 100) / AverageIoRate;
+            if (IoActivityPercent > 100)
+                IoActivityPercent = 100;
+                
+            /* Combine processor busy and I/O activity */
+            IdlenessPercent = 100 - max(ProcessorBusy, IoActivityPercent);
+        }
+        else
+        {
+            IdlenessPercent = 100 - ProcessorBusy;
+        }
+    }
+    else
+    {
+        /* No I/O history yet, use only processor activity */
+        IdlenessPercent = 100 - ProcessorBusy;
+    }
+    
+    /* Update system idle state */
+    PopSIdle.Idleness = IdlenessPercent;
+    PopSIdle.LastTick = CurrentTime;
+    PopSIdle.LastIoTransfer = CurrentTime;
+    PopSIdle.LastIoCount = IoReads + IoWrites + IoOthers;
+    
+    /* Check if system is idle enough to trigger power action */
+    if (PopSIdle.Sampling && IdlenessPercent >= (LONG)PopSIdle.Sensitivity)
+    {
+        PopSIdle.Time += SYS_IDLE_WORKER;
+        
+        /* Coordinate processor power management */
+        PopCoordinatePowerManagement(IdlenessPercent, TRUE);
+        
+        if (PopSIdle.Time >= PopSIdle.Timeout)
+        {
+            /* System has been idle long enough - trigger policy worker */
+            PopRequestPolicyWorker(PolicyWorkerSystemIdle);
+            PopSIdle.Time = 0;  // Reset timer
+        }
+    }
+    else
+    {
+        /* System not idle enough - coordinate for active state */
+        PopCoordinatePowerManagement(IdlenessPercent, FALSE);
+        
+        /* Reset timer */
+        PopSIdle.Time = 0;
+    }
+    
+    PopSIdle.IdleWorker = FALSE;
+}
+
+/*
+ * @implemented
+ */
+VOID
+NTAPI
+PopCaptureCounts(
+    _Out_ PULONG IoReads,
+    _Out_ PULONG IoWrites, 
+    _Out_ PULONG IoOthers)
+{
+    /* 
+     * Capture I/O transfer counts from the system.
+     * For now we'll use simplified counters.
+     */
+    *IoReads = 0;
+    *IoWrites = 0; 
+    *IoOthers = 0;
+    
+    /* TODO: Get actual I/O statistics from IoStatistics or performance counters */
+}
+
+/*
+ * @implemented
+ */
+ULONG
+NTAPI
+PopSqrt(
+    _In_ ULONG Number)
+{
+    ULONG Root = 0;
+    ULONG Remainder = Number;
+    ULONG Place = 0x40000000;
+    
+    /* Simple integer square root implementation */
+    while (Place > Remainder)
+        Place >>= 2;
+        
+    while (Place != 0)
+    {
+        if (Remainder >= Root + Place)
+        {
+            Remainder -= Root + Place;
+            Root += Place << 1;
+        }
+        Root >>= 1;
+        Place >>= 2;
+    }
+    
+    return Root;
+}
+
 VOID
 NTAPI
 PopPowerPolicyNotification(VOID)
@@ -497,9 +738,35 @@ VOID
 NTAPI
 PopPowerPolicySystemIdle(VOID)
 {
-    /* FIXME */
-    UNIMPLEMENTED;
-    NOTHING;
+    /*
+     * System idle policy worker. This triggers when the system has been idle
+     * long enough to warrant a power action according to the current power policy.
+     */
+    PSYSTEM_POWER_POLICY Policy;
+    POWER_ACTION_POLICY *ActionPolicy;
+    
+    PAGED_CODE();
+    
+    /* Get the current policy based on AC/DC state */
+    Policy = PopDefaultPowerPolicy;
+    if (Policy == NULL)
+    {
+        return;
+    }
+    
+    ActionPolicy = &Policy->Idle;
+    
+    /* Check if we should take an idle action */
+    if (ActionPolicy->Action != PowerActionNone && 
+        PopSIdle.Idleness >= (LONG)PopSIdle.Sensitivity)
+    {
+        POTRACE(PO_SIDLE, "System idle timeout reached, initiating power action\n");
+        
+        /* Initiate the idle power action */
+        PopInitiatePowerAction(ActionPolicy->Action, 
+                              Policy->MinSleep, 
+                              ActionPolicy->Flags);
+    }
 }
 
 VOID

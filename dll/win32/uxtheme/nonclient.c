@@ -100,7 +100,39 @@ HRESULT WINAPI ThemeDrawCaptionText(PDRAW_CONTEXT pcontext, RECT* pRect, int iPa
     WCHAR *pszText = buffer;
     INT len;
 
-    len = InternalGetWindowText(pcontext->hWnd, NULL, 0);
+    /* Validate input parameters */
+    if (!pcontext || !pRect)
+        return E_INVALIDARG;
+
+    /* Check if we have a valid window handle */
+    if (!pcontext->hWnd || !IsWindow(pcontext->hWnd))
+    {
+        /* Use a default text for preview windows without valid handles */
+        wcscpy(buffer, L"Inactive Window");
+        len = wcslen(buffer);
+        goto draw_text;
+    }
+
+    /* Additional safety check - validate the window handle again */
+    if (!IsWindow(pcontext->hWnd))
+    {
+        wcscpy(buffer, L"Window");
+        len = wcslen(buffer);
+        goto draw_text;
+    }
+
+    /* Try to get window text length with exception handling */
+    __try
+    {
+        len = InternalGetWindowText(pcontext->hWnd, NULL, 0);
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        /* If getting window text fails, use default text */
+        wcscpy(buffer, L"Window");
+        len = wcslen(buffer);
+        goto draw_text;
+    }
     if (!len)
         return S_OK;
 
@@ -113,7 +145,38 @@ HRESULT WINAPI ThemeDrawCaptionText(PDRAW_CONTEXT pcontext, RECT* pRect, int iPa
             return E_OUTOFMEMORY;
     }
 
-    InternalGetWindowText(pcontext->hWnd, pszText, len);
+    /* Try to get the actual window text with exception handling */
+    __try
+    {
+        /* Validate window handle one more time before getting text */
+        if (!IsWindow(pcontext->hWnd))
+        {
+            if (pszText != buffer && pszText)
+            {
+                HeapFree(GetProcessHeap(), 0, pszText);
+                pszText = buffer;
+            }
+            wcscpy(buffer, L"Window");
+            len = wcslen(buffer);
+        }
+        else
+        {
+            InternalGetWindowText(pcontext->hWnd, pszText, len);
+        }
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        /* If getting window text fails, use default text */
+        if (pszText != buffer && pszText)
+        {
+            HeapFree(GetProcessHeap(), 0, pszText);
+            pszText = buffer;
+        }
+        wcscpy(buffer, L"Window");
+        len = wcslen(buffer);
+    }
+
+draw_text:
 
     hr = GetThemeSysFont(pcontext->theme, TMT_CAPTIONFONT, &logfont);
     if (SUCCEEDED(hr))

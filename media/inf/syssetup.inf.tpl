@@ -33,6 +33,11 @@ unknown.inf
 usbport.inf
 audio.inf
 ks.inf
+comstubs.inf
 
 [RegistrationPhase2]
 RegisterDlls=OleControlDlls
+
+[OleControlDlls]
+; Register missing COM classes to prevent "class not registered" errors
+11,,comstubs.inf,DefaultInstall

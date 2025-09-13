@@ -280,6 +280,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/posett.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/shtdwn.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/state.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/po/thermal.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/thermreq.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/thermzn.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/po/thrtmgr.c

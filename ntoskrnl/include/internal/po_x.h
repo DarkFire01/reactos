@@ -181,18 +181,6 @@ PopReleaseInrushIrp(
 }
 
 //
-// Applies a power action that is global for the whole system
-//
-FORCEINLINE
-VOID
-PopApplyPowerAction(
-    _In_ POWER_ACTION Action)
-{
-    ASSERT((Action >= PowerActionNone) && (Action <= PowerActionDisplayOff));
-    PopAction.Action = Action;
-}
-
-//
 // Applies a thermal zone state for the whole system
 //
 FORCEINLINE

@@ -69,6 +69,9 @@ typedef struct _WMI_SET_MARK
     WCHAR Mark[1];
 } WMI_SET_MARK, *PWMI_SET_MARK;
 
+/* WMI_SET_MARK flags */
+#define WMI_SET_MARK_WITH_FLUSH 0x00000001
+
 PDEVICE_OBJECT WmipServiceDeviceObject;
 PDEVICE_OBJECT WmipAdminDeviceObject;
 FAST_IO_DISPATCH WmipFastIoDispatch;
@@ -439,7 +442,49 @@ WmiSetMark(
     PWMI_SET_MARK Buffer,
     ULONG Length)
 {
-    UNIMPLEMENTED;
+    ULONG CopyBytes;
+    PWCHAR Mark;
+    
+    /* Validate buffer size */
+    if (Length < FIELD_OFFSET(WMI_SET_MARK, Mark))
+    {
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+    
+    /* Calculate the number of bytes to copy from the Mark field */
+    CopyBytes = Length - FIELD_OFFSET(WMI_SET_MARK, Mark);
+    
+    /* Ensure we don't exceed maximum reasonable mark size (64KB) */
+    if (CopyBytes > 65536)
+    {
+        CopyBytes = 65536;
+    }
+    
+    /* Get pointer to the mark string */
+    Mark = &Buffer->Mark[0];
+    
+    /* For now, just output debug information about the mark */
+    /* In a full implementation, this would be logged to performance counters */
+    if (CopyBytes >= sizeof(WCHAR))
+    {
+        DPRINT("WMI Set Mark: Flags=0x%lx, Mark=%.*ws\n", 
+               Buffer->Flags, (int)(CopyBytes / sizeof(WCHAR)), Mark);
+    }
+    else
+    {
+        DPRINT("WMI Set Mark: Flags=0x%lx, No mark string\n", Buffer->Flags);
+    }
+    
+    /* Check if we need to flush working sets */
+    if (Buffer->Flags & WMI_SET_MARK_WITH_FLUSH)
+    {
+        DPRINT("WMI Set Mark: Flush flag requested (not implemented)\n");
+        /* TODO: In Windows, this would call MmEmptyAllWorkingSets() */
+        /* TODO: and MmPerfSnapShotValidPhysicalMemory() */
+    }
+    
+    /* TODO: In Windows, this would also log to performance trace buffers using PERFINFO */
+    
     return STATUS_SUCCESS;
 }
 
@@ -594,6 +639,17 @@ WmipFastIoDeviceControl(
         }
 
         IoStatus->Status = WmiTraceUserMessage(InputBuffer, InputBufferLength);
+        return TRUE;
+    }
+    else if (IoControlCode == IOCTL_WMI_SET_MARK)
+    {
+        if (InputBufferLength < FIELD_OFFSET(WMI_SET_MARK, Mark))
+        {
+            DPRINT1("Buffer too small for SET_MARK\n");
+            return FALSE;
+        }
+
+        IoStatus->Status = WmiSetMark(InputBuffer, InputBufferLength);
         return TRUE;
     }
 

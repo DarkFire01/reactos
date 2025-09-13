@@ -19,6 +19,14 @@ SYSTEM_POWER_CAPABILITIES PopCapabilities;
 ADMINISTRATOR_POWER_POLICY PopAdminPowerPolicy;
 BOOLEAN PopSimulate = FALSE;
 
+/* System Idle Detection globals */
+POP_SYSTEM_IDLE PopSIdle;
+KDPC PopIdleScanDpc;
+LARGE_INTEGER PopIdleScanTime;
+KTIMER PopIdleScanTimer;
+POP_HEURISTICS PopHeuristics;
+WORK_QUEUE_ITEM PopSIdleWorkItem;
+
 /* PRIVATE FUNCTIONS **********************************************************/
 
 static
@@ -567,6 +575,12 @@ PopInitSystemPhase1(VOID)
         /* If this fails, then sacrifice the system later on... */
         return FALSE;
     }
+
+    /* Initialize system idle detection */
+    PopInitSIdle();
+
+    /* Initialize the PPM engine */
+    PpmEngineInitialize();
 
     /* Fire up the idle scan timer for idle detection */
     IdleScanDueTime.QuadPart = Int32x32To64(PopIdleScanIntervalInSeconds,

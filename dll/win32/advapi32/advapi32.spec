@@ -571,7 +571,7 @@
 @ stub SaferSetPolicyInformation
 @ stub SaferiChangeRegistryScope
 @ stub SaferiCompareTokenLevels
-@ stub SaferiIsExecutableFileType
+@ stdcall -stub SaferiIsExecutableFileType(wstr long)
 @ stub SaferiPopulateDefaultsInRegistry
 @ stub SaferiRecordEventLogEntry
 @ stub SaferiReplaceProcessThreadTokens

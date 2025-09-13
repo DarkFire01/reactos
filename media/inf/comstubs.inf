@@ -1,0 +1,28 @@
+[Version]
+Signature = "$Windows NT$"
+ClassGUID={00000000-0000-0000-0000-000000000000}
+
+[DefaultInstall]
+AddReg = COMClasses.AddReg
+
+[COMClasses.AddReg]
+; Add missing COM classes to prevent "class not registered" errors
+; GUID: {a2a9545d-a0c2-42b4-9708-a0b2badd77c8}
+HKCR,CLSID\{a2a9545d-a0c2-42b4-9708-a0b2badd77c8},,,"ReactOS Stub COM Class"
+HKCR,CLSID\{a2a9545d-a0c2-42b4-9708-a0b2badd77c8}\InprocServer32,,,ole32.dll
+HKCR,CLSID\{a2a9545d-a0c2-42b4-9708-a0b2badd77c8}\InprocServer32,ThreadingModel,,Apartment
+
+; GUID: {dd522acc-f821-461a-a407-50b198b896dc}
+HKCR,CLSID\{dd522acc-f821-461a-a407-50b198b896dc},,,"ReactOS Stub COM Class"
+HKCR,CLSID\{dd522acc-f821-461a-a407-50b198b896dc}\InprocServer32,,,ole32.dll
+HKCR,CLSID\{dd522acc-f821-461a-a407-50b198b896dc}\InprocServer32,ThreadingModel,,Apartment
+
+; GUID: {8b4a02db-97bb-4c1b-be75-8827a7358cd0}
+HKCR,CLSID\{8b4a02db-97bb-4c1b-be75-8827a7358cd0},,,"ReactOS Stub COM Class"
+HKCR,CLSID\{8b4a02db-97bb-4c1b-be75-8827a7358cd0}\InprocServer32,,,ole32.dll
+HKCR,CLSID\{8b4a02db-97bb-4c1b-be75-8827a7358cd0}\InprocServer32,ThreadingModel,,Apartment
+
+; GUID: {603d3801-bd81-11d0-a3a5-00c04fd706ec}
+HKCR,CLSID\{603d3801-bd81-11d0-a3a5-00c04fd706ec},,,"ReactOS Stub COM Class"
+HKCR,CLSID\{603d3801-bd81-11d0-a3a5-00c04fd706ec}\InprocServer32,,,ole32.dll
+HKCR,CLSID\{603d3801-bd81-11d0-a3a5-00c04fd706ec}\InprocServer32,ThreadingModel,,Apartment

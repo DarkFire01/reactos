@@ -1061,10 +1061,124 @@ HRESULT WINAPI HitTestThemeBackground(HTHEME hTheme, HDC hdc, int iPartId,
                                      const RECT *pRect, HRGN hrgn,
                                      POINT ptTest, WORD *pwHitTestCode)
 {
-    FIXME("%d %d 0x%08x: stub\n", iPartId, iStateId, dwOptions);
+    TRACE("%d %d 0x%08x: Performing hit test\n", iPartId, iStateId, dwOptions);
+    
     if (!ValidateHandle(hTheme))
         return E_HANDLE;
-    return E_NOTIMPL;
+        
+    if (!pRect || !pwHitTestCode)
+        return E_INVALIDARG;
+        
+    /* Initialize hit test code to "not hit" */
+    *pwHitTestCode = HTNOWHERE;
+    
+    /* Check if the point is within the rectangle bounds */
+    if (!PtInRect(pRect, ptTest))
+    {
+        return S_FALSE; /* Point is outside the rectangle */
+    }
+    
+    /* If we have a clip region, check if the point is within it */
+    if (hrgn && !PtInRegion(hrgn, ptTest.x, ptTest.y))
+    {
+        return S_FALSE; /* Point is outside the clipping region */
+    }
+    
+    /* Start with client area as default */
+    *pwHitTestCode = HTCLIENT;
+    
+    /* For now, implement basic 9-grid hit testing using system metrics for margins */
+    /* In a full implementation, this would use theme-specific margins */
+    int leftMargin = GetSystemMetrics(SM_CXSIZEFRAME);
+    int rightMargin = GetSystemMetrics(SM_CXSIZEFRAME);
+    int topMargin = GetSystemMetrics(SM_CYSIZEFRAME);
+    int bottomMargin = GetSystemMetrics(SM_CYSIZEFRAME);
+    
+    /* Test for corner hits first (highest priority) */
+    if (ptTest.x < pRect->left + leftMargin && ptTest.y < pRect->top + topMargin)
+        *pwHitTestCode = HTTOPLEFT;
+    else if (ptTest.x >= pRect->right - rightMargin && ptTest.y < pRect->top + topMargin)
+        *pwHitTestCode = HTTOPRIGHT;
+    else if (ptTest.x < pRect->left + leftMargin && ptTest.y >= pRect->bottom - bottomMargin)
+        *pwHitTestCode = HTBOTTOMLEFT;
+    else if (ptTest.x >= pRect->right - rightMargin && ptTest.y >= pRect->bottom - bottomMargin)
+        *pwHitTestCode = HTBOTTOMRIGHT;
+    /* Test for edge hits */
+    else if (ptTest.x < pRect->left + leftMargin)
+        *pwHitTestCode = HTLEFT;
+    else if (ptTest.x >= pRect->right - rightMargin)
+        *pwHitTestCode = HTRIGHT;
+    else if (ptTest.y < pRect->top + topMargin)
+        *pwHitTestCode = HTTOP;
+    else if (ptTest.y >= pRect->bottom - bottomMargin)
+        *pwHitTestCode = HTBOTTOM;
+    /* Otherwise it's client area - already set above */
+    
+    /* Apply options to modify the hit test result */
+    if (*pwHitTestCode != HTCLIENT)
+    {
+        if (dwOptions & HTTB_RESIZINGBORDER)
+        {
+            /* Resizing border - check which edges are enabled */
+            switch (*pwHitTestCode)
+            {
+                case HTLEFT:
+                    if (!(dwOptions & HTTB_RESIZINGBORDER_LEFT))
+                        *pwHitTestCode = HTBORDER;
+                    break;
+                case HTRIGHT:
+                    if (!(dwOptions & HTTB_RESIZINGBORDER_RIGHT))
+                        *pwHitTestCode = HTBORDER;
+                    break;
+                case HTTOP:
+                    if (!(dwOptions & HTTB_RESIZINGBORDER_TOP))
+                        *pwHitTestCode = (dwOptions & HTTB_CAPTION) ? HTCAPTION : HTBORDER;
+                    break;
+                case HTBOTTOM:
+                    if (!(dwOptions & HTTB_RESIZINGBORDER_BOTTOM))
+                        *pwHitTestCode = HTBORDER;
+                    break;
+                case HTTOPLEFT:
+                    if (!(dwOptions & HTTB_RESIZINGBORDER_LEFT) || !(dwOptions & HTTB_RESIZINGBORDER_TOP))
+                        *pwHitTestCode = (dwOptions & HTTB_CAPTION) ? HTCAPTION : HTBORDER;
+                    break;
+                case HTTOPRIGHT:
+                    if (!(dwOptions & HTTB_RESIZINGBORDER_RIGHT) || !(dwOptions & HTTB_RESIZINGBORDER_TOP))
+                        *pwHitTestCode = (dwOptions & HTTB_CAPTION) ? HTCAPTION : HTBORDER;
+                    break;
+                case HTBOTTOMLEFT:
+                    if (!(dwOptions & HTTB_RESIZINGBORDER_LEFT) || !(dwOptions & HTTB_RESIZINGBORDER_BOTTOM))
+                        *pwHitTestCode = HTBORDER;
+                    break;
+                case HTBOTTOMRIGHT:
+                    if (!(dwOptions & HTTB_RESIZINGBORDER_RIGHT) || !(dwOptions & HTTB_RESIZINGBORDER_BOTTOM))
+                        *pwHitTestCode = HTBORDER;
+                    break;
+            }
+        }
+        else if (dwOptions & (HTTB_CAPTION | HTTB_FIXEDBORDER))
+        {
+            /* Fixed border or caption */
+            switch (*pwHitTestCode)
+            {
+                case HTTOP:
+                case HTTOPLEFT:
+                case HTTOPRIGHT:
+                    *pwHitTestCode = (dwOptions & HTTB_CAPTION) ? HTCAPTION : HTBORDER;
+                    break;
+                default:
+                    *pwHitTestCode = HTBORDER;
+                    break;
+            }
+        }
+        else
+        {
+            /* No special options - default to border for non-client areas */
+            *pwHitTestCode = HTBORDER;
+        }
+    }
+    
+    return S_OK;
 }
 
 /***********************************************************************

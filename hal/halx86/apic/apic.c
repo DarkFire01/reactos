@@ -142,6 +142,13 @@ ApicRequestSelfInterrupt(IN UCHAR Vector, UCHAR TriggerMode)
     APIC_INTERRUPT_COMMAND_REGISTER Icr;
     APIC_INTERRUPT_COMMAND_REGISTER IcrStatus;
 
+    /* Validate the vector range */
+    if (Vector < 0x10 || Vector > 0xFF)
+    {
+        DPRINT1("ApicRequestSelfInterrupt: Invalid vector 0x%02x\n", Vector);
+        return;
+    }
+
     /*
      * The IRR registers are spaced 16 bytes apart and hold 32 status bits each.
      * Pre-compute the register and bit that match our vector.
@@ -652,6 +659,13 @@ VOID
 FASTCALL
 HalRequestSoftwareInterrupt(IN KIRQL Irql)
 {
+    /* Validate IRQL parameter */
+    if (Irql > HIGH_LEVEL)
+    {
+        DPRINT1("HalRequestSoftwareInterrupt: Invalid IRQL %d\n", Irql);
+        return;
+    }
+
     /* Convert irql to vector and request an interrupt */
     ApicRequestSelfInterrupt(IrqlToSoftVector(Irql), APIC_TGM_Edge);
 }
