@@ -717,7 +717,7 @@ PopCompositeBatteryHandler(
         case POP_CB_QUERY_STATUS_MODE:
         {
             /* Setup the appropriate lengths to query battery status */
-            DPRINT1("Querying battery status in progress (Mode -> POP_CB_QUERY_STATUS_MODE)\n");
+            DPRINT("Querying battery status in progress (Mode -> POP_CB_QUERY_STATUS_MODE)\n");
             InputBufferLength = sizeof(BATTERY_WAIT_STATUS);
             OutputBufferLength = sizeof(BATTERY_STATUS);
 
@@ -733,7 +733,7 @@ PopCompositeBatteryHandler(
         case POP_CB_QUERY_BATTERY_ESTIMATION_TIME_MODE:
         {
             /* Setup the appropriate lengths to query the battery estimation time */
-            DPRINT1("Querying battery estimation time in progress (Mode -> POP_CB_QUERY_BATTERY_ESTIMATION_TIME_MODE)\n");
+            DPRINT("Querying battery estimation time in progress (Mode -> POP_CB_QUERY_BATTERY_ESTIMATION_TIME_MODE)\n");
             InputBufferLength = sizeof(BATTERY_QUERY_INFORMATION);
             OutputBufferLength = sizeof(ULONG);
 

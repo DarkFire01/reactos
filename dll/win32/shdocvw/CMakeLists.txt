@@ -29,7 +29,7 @@ add_delay_importlibs(shdocvw shell32 user32 gdi32 ole32 oleaut32 ieframe)
 add_importlibs(shdocvw shlwapi advapi32 msvcrt comctl32 kernel32 ntdll)
 add_dependencies(shdocvw stdole2)
 add_pch(shdocvw precomp.h SOURCE)
-add_cd_file(TARGET shdocvw DESTINATION reactos/system32 FOR all)
+#add_cd_file(TARGET shdocvw DESTINATION reactos/system32 FOR all)
 
 add_library(shdocvw_sublib OBJECT
     CExplorerBand.cpp

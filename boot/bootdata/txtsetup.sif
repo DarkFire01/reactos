@@ -89,7 +89,7 @@ FreeSysPartDiskSpace=450
 [SourceDisksFiles]
 nmidebug.sys = 1,,,,,,x,4,,,,1,4
 sacdrv.sys   = 1,,,,,,x,4,,,,1,4
-atapi.sys   = 1,,,,,,x,4,,,,1,4
+atapi.sys   =  1,,,,,,x,4,,,,1,4
 buslogic.sys = 1,,,,,,x,4,,,,1,4
 blue.sys     = 1,,,,,,x,4,,,,1,4
 vgafonts.cab = 1,,,,,,,1,,,,1,1
@@ -142,12 +142,7 @@ wdfldr.sys   = 1,,,,,,,4,,,,1,4
 wdf01000.sys = 1,,,,,,x,4,,,,1,4
 wpprecorder.sys = 1,,,,,,,4,,,,1,4
 msrpc.sys    = 1,,,,,,,4,,,,1,4
-
-[SourceDisksFiles.x86]
-acpi.sys     = 1,,,,,,,4,1,,,1,4
-
-[SourceDisksFiles.amd64]
-acpi.sys     = 1,,,,,,x,4,,,,1,4
+acpi.sys     =  1,,,,,,x,4,,,,1,4
 
 ;
 ; The [SystemPartitionFiles] section lists all the files

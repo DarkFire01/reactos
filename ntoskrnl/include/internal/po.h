@@ -1324,6 +1324,11 @@ NTAPI
 PopCreatePowerPolicyDatabase(
     VOID);
 
+VOID
+NTAPI
+PopUserPresentSet(
+    _In_ ULONG Argument);
+
 NTSTATUS
 NTAPI
 PopReadPowerSettings(
@@ -1561,6 +1566,11 @@ extern KTIMER PopIdleScanDevicesTimer;
 extern LIST_ENTRY PopIdleDetectList;
 extern BOOLEAN PopResumeAutomatic;
 extern POWER_STATE_HANDLER PopDefaultPowerStateHandlers[];
+
+/* Power Manager User Presence constructs */
+extern WORK_QUEUE_ITEM PopUserPresentWorkItem;
+extern LONG PopUserPresentSetStatus;
+extern KEVENT PopUserPresentCompletedEvent;
 
 /* Power Manager Switch constructs */
 extern LIST_ENTRY PopControlSwitches;

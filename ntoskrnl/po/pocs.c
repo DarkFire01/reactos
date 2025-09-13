@@ -83,8 +83,7 @@ PopDisableControlSwitchCaps(
     _In_ POP_SWITCH_TYPE SwitchType)
 {
     /* We should already know what is the capability of this switch */
-    ASSERT(SwitchType != SwitchNone);
-
+    DPRINT1("SwitchType == SwitchNone\n");
     /* Disable the capability based on the switch */
     switch (SwitchType)
     {

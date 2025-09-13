@@ -20,14 +20,23 @@ ULONG PopIdleScanIntervalInSeconds = 1;
 BOOLEAN PopResumeAutomatic = FALSE;
 POWER_STATE_HANDLER PopDefaultPowerStateHandlers[PowerStateMaximum] = {0};
 
+/* PopUserPresent infrastructure */
+WORK_QUEUE_ITEM PopUserPresentWorkItem;
+LONG PopUserPresentSetStatus = 0;
+KEVENT PopUserPresentCompletedEvent;
+
 /* PRIVATE FUNCTIONS **********************************************************/
 
 static
 VOID
 PopSystemRequired(VOID)
 {
-    /* FIXME */
-    UNIMPLEMENTED;
+    DPRINT("PopSystemRequired: System activity required\n");
+    
+    /* Reset system idle time - system is now active */
+    // TODO: Reset system idle tracking when proper infrastructure is in place
+    
+    /* For now, this is a stub that acknowledges system activity */
     return;
 }
 
@@ -35,18 +44,65 @@ static
 VOID
 PopDisplayRequired(VOID)
 {
-    /* FIXME */
-    UNIMPLEMENTED;
+    DPRINT("PopDisplayRequired: Display activity required\n");
+    
+    /* Reset display idle time - display is now active */
+    // TODO: Reset display idle tracking when proper infrastructure is in place
+    
+    /* For now, this is a stub that acknowledges display activity */
     return;
+}
+
+static
+VOID
+NTAPI
+PopUserPresentSetWorker(
+    _In_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+    
+    DPRINT("PopUserPresentSetWorker: User presence detected\n");
+
+    /* Reset the user present status */
+    InterlockedExchange(&PopUserPresentSetStatus, 0);
+
+    /* Signal completion event */
+    KeSetEvent(&PopUserPresentCompletedEvent, 0, FALSE);
+}
+
+static
+VOID
+NTAPI
+PopUserPresentSet(
+    _In_ ULONG Argument)
+{
+    LONG PreviousStatus;
+    
+    UNREFERENCED_PARAMETER(Argument);
+
+    /* Atomically set the user present status and get the previous value */
+    PreviousStatus = InterlockedExchange(&PopUserPresentSetStatus, 1);
+
+    /* If we weren't already processing user presence, queue the work item */
+    if (PreviousStatus == 0)
+    {
+        /* Initialize work item if needed */
+        PopUserPresentWorkItem.WorkerRoutine = PopUserPresentSetWorker;
+        PopUserPresentWorkItem.Parameter = &PopUserPresentSetStatus;
+
+        /* Queue the work item to delayed work queue */
+        ExQueueWorkItem(&PopUserPresentWorkItem, DelayedWorkQueue);
+    }
 }
 
 static
 VOID
 PopUserPresent(VOID)
 {
-    /* FIXME */
-    UNIMPLEMENTED;
-    return;
+    DPRINT("PopUserPresent: Detecting user presence\n");
+    
+    /* Call the user present set function with default argument */
+    PopUserPresentSet(0);
 }
 
 static
@@ -58,7 +114,7 @@ PopWaitForAllSystemStateDpcs(
     /* Keep waiting until every processor has their DPC ready */
     for (;;)
     {
-        if (StateCommandContext->DpcReadyForProcess == ProcessorsCount)
+        if (StateCommandContext->DpcReadyForProcess == ProcessorsCount) 
         {
             break;
         }

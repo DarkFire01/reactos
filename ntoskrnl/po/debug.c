@@ -674,13 +674,14 @@ PopReportBatteryStatus(
     KeQuerySystemTime(&Time);
     ExSystemTimeToLocalTime(&Time, &Time);
     RtlTimeToTimeFields(&Time, &CurrentTime);
-
+#if 0
     DbgPrint("================== BATTERY STATUS (Last Update: %d:%d:%d) ==================\n",
              CurrentTime.Hour, CurrentTime.Minute, CurrentTime.Second);
     DbgPrint("PowerState -> 0x%lx\n", Status->PowerState);
     DbgPrint("Capacity -> %u\n", Status->Capacity);
     DbgPrint("Voltage -> %u\n", Status->Voltage);
     DbgPrint("Rate -> %d\n\n", Status->Rate);
+#endif
 }
 
 _Function_class_(KDEFERRED_ROUTINE)

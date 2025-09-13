@@ -337,6 +337,9 @@ PopInitSystemPhase0(VOID)
     KeInitializeTimerEx(&PopIdleScanDevicesTimer, NotificationTimer);
     KeInitializeDpc(&PopIdleScanDevicesDpc, PopScanForIdleStateDevicesDpcRoutine, NULL);
 
+    /* Initialize the PopUserPresent infrastructure */
+    KeInitializeEvent(&PopUserPresentCompletedEvent, SynchronizationEvent, FALSE);
+
     /* Initialize the list of power switches and action waiters */
     InitializeListHead(&PopControlSwitches);
     InitializeListHead(&PopActionWaiters);
