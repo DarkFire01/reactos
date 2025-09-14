@@ -252,7 +252,7 @@ HaliAcpiMachineStateInit(
     PAGED_CODE();
     DPRINT("HaliAcpiMachineStateInit: StateData %p\n", StateData);
 
-    /* ACPI PIC HAL uses PIC model; APIC HAL variants will override via their own table */
+    /* Default to PIC for ACPI-PIC HAL; APIC HAL will override in its own variant */
     *OutInterruptModel = 0;
 
     if (StateData[0].Data0)

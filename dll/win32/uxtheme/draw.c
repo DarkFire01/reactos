@@ -1444,13 +1444,16 @@ DrawThemeTextEx(
         hr = GetThemeColor(hTheme, iPartId, iStateId, TMT_TEXTSHADOWCOLOR, &shadowColor);
         if (FAILED(hr))
         {
-            ERR("GetThemeColor failed\n");
+            TRACE("GetThemeColor for shadow failed, using default\n");
+            shadowColor = RGB(0, 0, 0); /* Default to black shadow */
         }
 
         hr = GetThemePosition(hTheme, iPartId, iStateId, TMT_TEXTSHADOWOFFSET, &ptShadowOffset);
         if (FAILED(hr))
         {
-            ERR("GetThemePosition failed\n");
+            TRACE("GetThemePosition for shadow failed, using default\n");
+            ptShadowOffset.x = 1; /* Default shadow offset */
+            ptShadowOffset.y = 1;
         }
 
         if (iShadowType == TST_SINGLE)

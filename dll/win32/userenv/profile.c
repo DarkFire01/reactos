@@ -4,7 +4,7 @@
  * FILE:            dll/win32/userenv/profile.c
  * PURPOSE:         User profile code
  * PROGRAMMERS:     Eric Kohl
- *                  Hervé Poussineau
+ *                  Hervï¿½ Poussineau
  */
 
 #include "precomp.h"
@@ -1852,7 +1852,14 @@ GetUserProfileDirectoryW(
                              &dwLength);
     if ((Error != ERROR_SUCCESS) || (dwType != REG_SZ && dwType != REG_EXPAND_SZ))
     {
-        DPRINT1("Error: %lu\n", Error);
+        if (Error != ERROR_FILE_NOT_FOUND)
+        {
+            DPRINT1("Error: %lu\n", Error);
+        }
+        else
+        {
+            DPRINT("ProfileImagePath not found for this user, this may be normal\n");
+        }
         RegCloseKey(hKey);
         SetLastError((DWORD)Error);
         return FALSE;

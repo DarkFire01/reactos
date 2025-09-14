@@ -12,6 +12,14 @@
 #include <smp.h>
 #define NDEBUG
 #include <debug.h>
+#include "../acpi/dispatch.h"
+ 
+VOID
+NTAPI
+HaliAcpiMachineStateInit(
+    _In_ ULONG Par1,
+    _In_ PHALP_STATE_DATA StateData,
+    _Out_ ULONG* OutInterruptModel);
 
 VOID
 NTAPI
@@ -73,5 +81,6 @@ HalpInitPhase1(VOID)
 {
 
 }
+ 
 
 /* EOF */

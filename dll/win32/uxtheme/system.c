@@ -778,7 +778,7 @@ PTHEME_CLASS ValidateHandle(HTHEME hTheme)
 
     if (!RtlIsValidHandle(&g_UxThemeHandleTable, (PRTL_HANDLE_TABLE_ENTRY)hTheme))
     {
-        ERR("Invalid handle 0x%x!\n", hTheme);
+        TRACE("Invalid handle 0x%p!\n", hTheme);
         return NULL;
     }
 
@@ -1041,7 +1041,10 @@ HRESULT WINAPI CloseThemeData(HTHEME hTheme)
     TRACE("(%p)\n", hTheme);
 
     if (!RtlIsValidHandle(&g_UxThemeHandleTable, (PRTL_HANDLE_TABLE_ENTRY)hTheme))
+    {
+        TRACE("CloseThemeData: Invalid handle 0x%p\n", hTheme);
         return E_HANDLE;
+    }
 
     hr = MSSTYLES_CloseThemeClass(pHandle->pClass);
     if (SUCCEEDED(hr))

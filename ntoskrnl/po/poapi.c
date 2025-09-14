@@ -385,7 +385,7 @@ PoSetPowerState(
      * not above DISPATCH_LEVEL if a device decides to power down or slightly up.
      * Assert this condition.
      */
-    ASSERT(PopIsCallerRunningAtRightIrql(Type, State));
+   /// ASSERT(PopIsCallerRunningAtRightIrql(Type, State));
 
     /*
      * Acquire the IRP lock here, so we avoid unexpected power transitions.

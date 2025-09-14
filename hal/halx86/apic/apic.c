@@ -719,8 +719,9 @@ HalEnableSystemInterrupt(
     ReDirReg.MessageType = APIC_MT_Fixed;
     ReDirReg.DestinationMode = APIC_DM_Physical;
     ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
-    ReDirReg.TriggerMode = (InterruptMode == LevelSensitive) ?
-        APIC_TGM_Level : APIC_TGM_Edge;
+    /* Program trigger and polarity based on requested mode */
+    ReDirReg.TriggerMode = (InterruptMode == LevelSensitive) ? APIC_TGM_Level : APIC_TGM_Edge;
+    ReDirReg.Polarity = (InterruptMode == LevelSensitive) ? 1 : 0; /* Low for level, High for edge */
     ReDirReg.Mask = FALSE;
 
     /* Write back the entry */

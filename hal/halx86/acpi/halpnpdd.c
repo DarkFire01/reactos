@@ -487,6 +487,143 @@ HalPnpInterfaceDereference(
 
 NTSTATUS
 NTAPI
+HalpGetInterruptRouting(
+    IN PDEVICE_OBJECT Pdo,
+    OUT ULONG *Bus,
+    OUT ULONG *PciSlot,
+    OUT UCHAR *InterruptLine,
+    OUT UCHAR *InterruptPin,
+    OUT UCHAR *ClassCode,
+    OUT UCHAR *SubClassCode,
+    OUT PDEVICE_OBJECT *ParentPdo,
+    OUT ROUTING_TOKEN *RoutingToken,
+    OUT UCHAR *Flags)
+{
+    PPCI_COMMON_CONFIG PciConfig;
+    BUS_HANDLER BusHandler;
+    ULONG Bytes;
+    PCI_SLOT_NUMBER Slot;
+    ULONG Address;
+
+    if (!Pdo || !Bus || !PciSlot || !InterruptLine || !InterruptPin ||
+        !ClassCode || !SubClassCode || !ParentPdo || !RoutingToken || !Flags)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Default outputs */
+    *ParentPdo = NULL;
+    RtlZeroMemory(RoutingToken, sizeof(*RoutingToken));
+    *Flags = 0;
+
+    /* Query PDO bus number */
+    if (!NT_SUCCESS(IoGetDeviceProperty(Pdo,
+                                       DevicePropertyBusNumber,
+                                       sizeof(ULONG),
+                                       Bus,
+                                       &Bytes)))
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    /* Read PCI config to get slot, class, pin/line */
+    /* Prefer querying the slot from PDO's DevicePropertyAddress */
+    if (!NT_SUCCESS(IoGetDeviceProperty(Pdo,
+                                       DevicePropertyAddress,
+                                       sizeof(ULONG),
+                                       &Address,
+                                       &Bytes)))
+    {
+        Address = 0; /* fallback */
+    }
+    Slot.u.AsULONG = Address;
+    PciConfig = ExAllocatePoolWithTag(NonPagedPool, sizeof(PCI_COMMON_CONFIG), 'ICPH');
+    if (!PciConfig) return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlCopyMemory(&BusHandler, &HalpFakePciBusHandler, sizeof(BUS_HANDLER));
+    BusHandler.BusNumber = *Bus;
+
+    Bytes = HalGetBusDataByOffset(PCIConfiguration,
+                                  *Bus,
+                                  Slot.u.AsULONG,
+                                  PciConfig,
+                                  0,
+                                  sizeof(PCI_COMMON_CONFIG));
+    if (Bytes < FIELD_OFFSET(PCI_COMMON_CONFIG, BaseClass))
+    {
+        ExFreePoolWithTag(PciConfig, 'ICPH');
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    *PciSlot = (ULONG)Slot.u.AsULONG;
+    *ClassCode = PciConfig->BaseClass;
+    *SubClassCode = PciConfig->SubClass;
+    *InterruptPin = PciConfig->u.type0.InterruptPin;
+    *InterruptLine = PciConfig->u.type0.InterruptLine;
+
+    /* Token: pack current line; LinkNode may be supplied by ACPI router later */
+    RoutingToken->LinkNode = NULL;
+    RoutingToken->StaticVector = *InterruptLine;
+    RoutingToken->Flags = 0;
+
+    ExFreePoolWithTag(PciConfig, 'ICPH');
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NTAPI
+HalpSetInterruptRoutingToken(
+    IN PDEVICE_OBJECT Pdo,
+    IN PROUTING_TOKEN RoutingToken)
+{
+    UNREFERENCED_PARAMETER(Pdo);
+    UNREFERENCED_PARAMETER(RoutingToken);
+    /* TODO: Store routing token for device */
+    return STATUS_SUCCESS;
+}
+
+VOID
+NTAPI
+HalpUpdateInterruptLine(
+    IN PDEVICE_OBJECT Pdo,
+    IN UCHAR LineRegister)
+{
+    ULONG Bus;
+    ULONG Bytes;
+    PCI_SLOT_NUMBER Slot;
+    ULONG Address;
+
+    if (!Pdo) return;
+
+    if (!NT_SUCCESS(IoGetDeviceProperty(Pdo,
+                                       DevicePropertyBusNumber,
+                                       sizeof(ULONG),
+                                       &Bus,
+                                       &Bytes)))
+    {
+        return;
+    }
+
+    if (!NT_SUCCESS(IoGetDeviceProperty(Pdo,
+                                       DevicePropertyAddress,
+                                       sizeof(ULONG),
+                                       &Address,
+                                       &Bytes)))
+    {
+        Address = 0;
+    }
+    Slot.u.AsULONG = Address;
+
+    HalSetBusDataByOffset(PCIConfiguration,
+                          Bus,
+                          Slot.u.AsULONG,
+                          &LineRegister,
+                          FIELD_OFFSET(PCI_COMMON_CONFIG, u.type0.InterruptLine),
+                          sizeof(LineRegister));
+}
+
+NTSTATUS
+NTAPI
 HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
                    IN CONST GUID* InterfaceType,
                    IN USHORT Version,
@@ -568,12 +705,37 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
         Tr = (PTRANSLATOR_INTERFACE)Interface;
         Tr->Size = sizeof(TRANSLATOR_INTERFACE);
         Tr->Version = HAL_IRQ_TRANSLATOR_VERSION;
-        Tr->Context = NULL;
+        Tr->Context = UlongToPtr(PCIBus);
         Tr->InterfaceReference = HalPnpInterfaceReference;
         Tr->InterfaceDereference = HalPnpInterfaceDereference;
         Tr->TranslateResources = (PTRANSLATE_RESOURCE_HANDLER)HalIrqTranslateResourcesRoot;
         Tr->TranslateResourceRequirements = (PTRANSLATE_RESOURCE_REQUIREMENTS_HANDLER)HalIrqTranslateResourceRequirementsRoot;
         if (Length) *Length = sizeof(TRANSLATOR_INTERFACE);
+        return STATUS_SUCCESS;
+    }
+    else if (IsEqualIID(InterfaceType, &GUID_INT_ROUTE_INTERFACE_STANDARD))
+    {
+        PINT_ROUTE_INTERFACE_STANDARD Iface;
+
+    
+
+        DPRINT("HalpQueryInterface(GUID_INT_ROUTE_INTERFACE_STANDARD)\n");
+
+        if (InterfaceBufferSize < sizeof(INT_ROUTE_INTERFACE_STANDARD))
+        {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+
+        Iface = (PINT_ROUTE_INTERFACE_STANDARD)Interface;
+        Iface->Size = sizeof(INT_ROUTE_INTERFACE_STANDARD);
+        Iface->Version = 1;
+        Iface->Context = DeviceObject;
+        Iface->InterfaceReference = HalPnpInterfaceReference;
+        Iface->InterfaceDereference = HalPnpInterfaceDereference;
+        Iface->GetInterruptRouting = HalpGetInterruptRouting;
+        Iface->SetInterruptRoutingToken = HalpSetInterruptRoutingToken;
+        Iface->UpdateInterruptLine = HalpUpdateInterruptLine;
+        if (Length) *Length = sizeof(INT_ROUTE_INTERFACE_STANDARD);
         return STATUS_SUCCESS;
     }
     else if (IsEqualIID(InterfaceType, &GUID_BUS_INTERFACE_STANDARD))
