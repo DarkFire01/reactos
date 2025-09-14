@@ -15,8 +15,12 @@
 
 #include <hal.h>
 #include "apicp.h"
+#include <smp.h>
 #define NDEBUG
 #include <debug.h>
+
+/* Provided by ACPI MADT parser */
+extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
 
 #ifndef _M_AMD64
 #define APIC_LAZY_IRQL
@@ -719,9 +723,21 @@ HalEnableSystemInterrupt(
     ReDirReg.MessageType = APIC_MT_Fixed;
     ReDirReg.DestinationMode = APIC_DM_Physical;
     ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
-    /* Program trigger and polarity based on requested mode */
+    /* Program trigger and polarity (default PCI: level/low). Allow MADT overrides for ISA */
     ReDirReg.TriggerMode = (InterruptMode == LevelSensitive) ? APIC_TGM_Level : APIC_TGM_Edge;
-    ReDirReg.Polarity = (InterruptMode == LevelSensitive) ? 1 : 0; /* Low for level, High for edge */
+    ReDirReg.Polarity = (InterruptMode == LevelSensitive) ? 1 : 0; /* 1=active low, 0=active high */
+
+    /* If this is an ISA IRQ with overrides, honour them */
+    if (Index < 16)
+    {
+        extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
+        UCHAR trig = HalpApicInfoTable.IsaOverrideTrigger[Index];
+        UCHAR pol = HalpApicInfoTable.IsaOverridePolarity[Index];
+        if (trig == 1) ReDirReg.TriggerMode = APIC_TGM_Edge;
+        else if (trig == 3) ReDirReg.TriggerMode = APIC_TGM_Level;
+        if (pol == 1) ReDirReg.Polarity = 0; /* active high */
+        else if (pol == 3) ReDirReg.Polarity = 1; /* active low */
+    }
     ReDirReg.Mask = FALSE;
 
     /* Write back the entry */

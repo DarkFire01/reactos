@@ -28,6 +28,10 @@ typedef struct _HALP_APIC_INFO_TABLE
     ULONG IoApicVA[HALP_APIC_INFO_TABLE_IOAPIC_NUMBER];
     ULONG IoApicPA[HALP_APIC_INFO_TABLE_IOAPIC_NUMBER];
     ULONG IoApicIrqBase[HALP_APIC_INFO_TABLE_IOAPIC_NUMBER]; // Global system interrupt base
+    /* ISA Interrupt Overrides from MADT */
+    ULONG IsaOverrideGsi[16];
+    UCHAR IsaOverridePolarity[16];
+    UCHAR IsaOverrideTrigger[16];
 } HALP_APIC_INFO_TABLE, *PHALP_APIC_INFO_TABLE;
 
 /* HALP_APIC_INFO_TABLE.ApicMode values */

@@ -196,7 +196,7 @@ HalpParseApicTables(
                     return;
                 }
 
-                DPRINT00(" Interrupt Override: Bus %u, SourceIrq %u, GlobalIrq %08X, IntiFlags %04X / UNIMPLEMENTED\n",
+                DPRINT00(" Interrupt Override: Bus %u, SourceIrq %u, GlobalIrq %08X, IntiFlags %04X\n",
                          InterruptOverride->Bus, InterruptOverride->SourceIrq,
                          InterruptOverride->GlobalIrq, InterruptOverride->IntiFlags);
 
@@ -206,20 +206,14 @@ HalpParseApicTables(
                     return;
                 }
 
-#if 1
-                // TODO: Implement it.
-#else // TODO: Is that correct?
-                if (InterruptOverride->SourceIrq > _countof(HalpPicVectorRedirect))
+                if (InterruptOverride->SourceIrq < 16)
                 {
-                    DPRINT01("Invalid SourceIrq: %p, %u\n",
-                             InterruptOverride, InterruptOverride->SourceIrq);
-                    return;
+                    HalpApicInfoTable.IsaOverrideGsi[InterruptOverride->SourceIrq] = InterruptOverride->GlobalIrq;
+                    /* Polarity: 0=conform, 1=active-high, 3=active-low */
+                    HalpApicInfoTable.IsaOverridePolarity[InterruptOverride->SourceIrq] = (UCHAR)((InterruptOverride->IntiFlags >> 2) & 0x3);
+                    /* Trigger: 0=conform, 1=edge, 3=level */
+                    HalpApicInfoTable.IsaOverrideTrigger[InterruptOverride->SourceIrq] = (UCHAR)(InterruptOverride->IntiFlags & 0x3);
                 }
-
-                // Note: GlobalIrq is not validated in any way (yet).
-                HalpPicVectorRedirect[InterruptOverride->SourceIrq] = InterruptOverride->GlobalIrq;
-                // TODO: What about 'InterruptOverride->IntiFlags'?
-#endif
 
                 break;
             }

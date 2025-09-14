@@ -13,6 +13,53 @@
 extern FADT HalpFixedAcpiDescTable;
 #include <initguid.h>
 #include <wdmguid.h>
+#include <acpi.h>
+/* ACPI_BIOS_ERROR defined in acoutput.h and bugcodes.h */
+#undef ACPI_BIOS_ERROR
+#include <smp.h>
+extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
+
+static
+UCHAR
+HalpComputePciLegacyLine(
+    IN ULONG Bus,
+    IN ULONG SlotNumber,
+    IN UCHAR InterruptPin)
+{
+    UCHAR pinIndex = (InterruptPin ? (InterruptPin - 1) : 0) & 0x3;
+    if (Bus == 0)
+    {
+        return (UCHAR)(16 + ((SlotNumber & 0x1F) + pinIndex) % 4);
+    }
+    else
+    {
+        return (UCHAR)(16 + ((Bus & 0x07) * 4) + ((SlotNumber & 0x1F) + pinIndex) % 4);
+    }
+}
+
+/*
+ * Note: ACPI sys is disabled, so we cannot use ACPICA helpers here.
+ * For now, stub out _PRT resolution and rely on legacy fallback.
+ */
+static BOOLEAN
+HalpResolvePrtGsi(
+    IN ULONG Bus,
+    IN ULONG DeviceNumber,
+    IN UCHAR InterruptPin,
+    OUT PULONG Gsi,
+    OUT PUCHAR Trigger,
+    OUT PUCHAR Polarity,
+    OUT PVOID *LinkNode)
+{
+    UNREFERENCED_PARAMETER(Bus);
+    UNREFERENCED_PARAMETER(DeviceNumber);
+    UNREFERENCED_PARAMETER(InterruptPin);
+    if (LinkNode) *LinkNode = NULL;
+    *Gsi = 0;
+    *Trigger = 3;
+    *Polarity = 3;
+    return FALSE;
+}
 
 #define NDEBUG
 #include <debug.h>
@@ -561,10 +608,52 @@ HalpGetInterruptRouting(
     *InterruptPin = PciConfig->u.type0.InterruptPin;
     *InterruptLine = PciConfig->u.type0.InterruptLine;
 
-    /* Token: pack current line; LinkNode may be supplied by ACPI router later */
-    RoutingToken->LinkNode = NULL;
-    RoutingToken->StaticVector = *InterruptLine;
-    RoutingToken->Flags = 0;
+    /* If no line assigned, derive a legacy line via swizzle as fallback */
+    if ((*InterruptLine == 0) || (*InterruptLine == 0xFF))
+    {
+        *InterruptLine = HalpComputePciLegacyLine(*Bus, *PciSlot, *InterruptPin);
+    }
+
+    /* Resolve GSI via ACPI _PRT if possible */
+    {
+        ULONG Gsi;
+        UCHAR Trig, Pol;
+        PVOID Link;
+        if (HalpResolvePrtGsi(*Bus, (*PciSlot) & 0x1F, *InterruptPin, &Gsi, &Trig, &Pol, &Link))
+        {
+            KIRQL Irql;
+            KAFFINITY Affinity;
+            ULONG Vector = HalGetInterruptVector(PCIBus,
+                                                 *Bus,
+                                                 Gsi,
+                                                 Gsi,
+                                                 &Irql,
+                                                 &Affinity);
+            RoutingToken->StaticVector = Vector;
+            RoutingToken->LinkNode = Link;
+            RoutingToken->Flags = 0;
+            /* Backfill InterruptLine with legacy value for drivers */
+            if (*InterruptLine == 0 || *InterruptLine == 0xFF)
+            {
+                *InterruptLine = HalpComputePciLegacyLine(*Bus, *PciSlot, *InterruptPin);
+            }
+        }
+        else
+        {
+            /* Fallback to legacy vector computation */
+            KIRQL Irql;
+            KAFFINITY Affinity;
+            ULONG Vector = HalGetInterruptVector(PCIBus,
+                                                 *Bus,
+                                                 *InterruptLine,
+                                                 *InterruptLine,
+                                                 &Irql,
+                                                 &Affinity);
+            RoutingToken->StaticVector = Vector;
+            RoutingToken->LinkNode = NULL;
+            RoutingToken->Flags = 0;
+        }
+    }
 
     ExFreePoolWithTag(PciConfig, 'ICPH');
     return STATUS_SUCCESS;
@@ -614,6 +703,51 @@ HalpUpdateInterruptLine(
     }
     Slot.u.AsULONG = Address;
 
+    /* Program IOAPIC redirection and enable interrupt for this device */
+    {
+        ULONG Gsi;
+        UCHAR Trig, Pol;
+        PVOID Link;
+        KIRQL Irql;
+        KAFFINITY Affinity;
+        ULONG Address = 0;
+        UCHAR Pin;
+        PCI_COMMON_CONFIG Cfg;
+
+        IoGetDeviceProperty(Pdo, DevicePropertyAddress, sizeof(ULONG), &Address, &Bytes);
+        /* Read pin from PCI config */
+        HalGetBusDataByOffset(PCIConfiguration,
+                               Bus,
+                               Address,
+                               &Cfg,
+                               0,
+                               FIELD_OFFSET(PCI_COMMON_CONFIG, u.type0.InterruptPin) + sizeof(Cfg.u.type0.InterruptPin));
+        Pin = Cfg.u.type0.InterruptPin;
+
+        if (HalpResolvePrtGsi(Bus, Address & 0x1F, Pin, &Gsi, &Trig, &Pol, &Link) && Gsi)
+        {
+            ULONG Vector = HalGetInterruptVector(PCIBus, Bus, Gsi, Gsi, &Irql, &Affinity);
+            if (Vector)
+            {
+                HalEnableSystemInterrupt(Vector, Irql, (Trig == 3) ? LevelSensitive : Latched);
+            }
+        }
+        else if (LineRegister != 0 && LineRegister != 0xFF)
+        {
+            ULONG Vector = HalGetInterruptVector(PCIBus,
+                                                 Bus,
+                                                 LineRegister,
+                                                 LineRegister,
+                                                 &Irql,
+                                                 &Affinity);
+            if (Vector)
+            {
+                HalEnableSystemInterrupt(Vector, Irql, LevelSensitive);
+            }
+        }
+    }
+
+    /* Update the device's PCI InterruptLine register */
     HalSetBusDataByOffset(PCIConfiguration,
                           Bus,
                           Slot.u.AsULONG,
@@ -715,28 +849,8 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
     }
     else if (IsEqualIID(InterfaceType, &GUID_INT_ROUTE_INTERFACE_STANDARD))
     {
-        PINT_ROUTE_INTERFACE_STANDARD Iface;
-
-    
-
-        DPRINT("HalpQueryInterface(GUID_INT_ROUTE_INTERFACE_STANDARD)\n");
-
-        if (InterfaceBufferSize < sizeof(INT_ROUTE_INTERFACE_STANDARD))
-        {
-            return STATUS_BUFFER_TOO_SMALL;
-        }
-
-        Iface = (PINT_ROUTE_INTERFACE_STANDARD)Interface;
-        Iface->Size = sizeof(INT_ROUTE_INTERFACE_STANDARD);
-        Iface->Version = 1;
-        Iface->Context = DeviceObject;
-        Iface->InterfaceReference = HalPnpInterfaceReference;
-        Iface->InterfaceDereference = HalPnpInterfaceDereference;
-        Iface->GetInterruptRouting = HalpGetInterruptRouting;
-        Iface->SetInterruptRoutingToken = HalpSetInterruptRoutingToken;
-        Iface->UpdateInterruptLine = HalpUpdateInterruptLine;
-        if (Length) *Length = sizeof(INT_ROUTE_INTERFACE_STANDARD);
-        return STATUS_SUCCESS;
+        /* Provided by PCI bus driver in base; HAL returns not supported */
+        return STATUS_NOT_SUPPORTED;
     }
     else if (IsEqualIID(InterfaceType, &GUID_BUS_INTERFACE_STANDARD))
     {
