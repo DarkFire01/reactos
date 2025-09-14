@@ -9,7 +9,8 @@
 /* INCLUDES *******************************************************************/
 
 #include <hal.h>
-
+#include "dispatch.h"
+extern FADT HalpFixedAcpiDescTable;
 #include <initguid.h>
 #include <wdmguid.h>
 
@@ -272,40 +273,77 @@ HalpReadAcpiRegister(
     ACPI_REG_TYPE AcpiReg,
     ULONG Register)
 {
-    /* For now, return a stub implementation */
-    DPRINT("HalpReadAcpiRegister: AcpiReg=%d, Register=0x%x\n", AcpiReg, Register);
-    
-    /* TODO: Implement actual ACPI register reading based on AcpiReg type */
+    USHORT value = 0;
+    ULONG port = 0;
+    PFADT Fadt = &HalpFixedAcpiDescTable;
+
+    UNREFERENCED_PARAMETER(Register);
+
     switch (AcpiReg)
     {
         case PM1a_STATUS:
+            port = Fadt->pm1a_evt_blk_io_port;
+            if (Fadt->pm1_evt_len >= 2 && port)
+                value = READ_PORT_USHORT((PUSHORT)(ULONG_PTR)port);
+            break;
+
         case PM1b_STATUS:
-            /* Return a default status indicating no events */
-            return 0;
-            
+            port = Fadt->pm1b_evt_blk_io_port;
+            if (Fadt->pm1_evt_len >= 2 && port)
+                value = READ_PORT_USHORT((PUSHORT)(ULONG_PTR)port);
+            break;
+
         case PM1a_ENABLE:
+            port = Fadt->pm1a_evt_blk_io_port;
+            if (Fadt->pm1_evt_len >= 4 && port)
+                value = READ_PORT_USHORT((PUSHORT)(ULONG_PTR)(port + 2));
+            break;
+
         case PM1b_ENABLE:
-            /* Return default enable mask */
-            return 0;
-            
+            port = Fadt->pm1b_evt_blk_io_port;
+            if (Fadt->pm1_evt_len >= 4 && port)
+                value = READ_PORT_USHORT((PUSHORT)(ULONG_PTR)(port + 2));
+            break;
+
         case PM1a_CONTROL:
+            port = Fadt->pm1a_ctrl_blk_io_port;
+            if (Fadt->pm1_ctrl_len >= 2 && port)
+                value = READ_PORT_USHORT((PUSHORT)(ULONG_PTR)port);
+            break;
+
         case PM1b_CONTROL:
-            /* Return default control value */
-            return 0;
-            
+            port = Fadt->pm1b_ctrl_blk_io_port;
+            if (Fadt->pm1_ctrl_len >= 2 && port)
+                value = READ_PORT_USHORT((PUSHORT)(ULONG_PTR)port);
+            break;
+
         case GP_STATUS:
+            port = Fadt->gp0_blk_io_port;
+            if (Fadt->gp0_blk_len && port)
+                value = READ_PORT_UCHAR((PUCHAR)(ULONG_PTR)(port + Register));
+            break;
+
         case GP_ENABLE:
-            /* General purpose event registers */
-            return 0;
-            
+            port = Fadt->gp0_blk_io_port;
+            if (Fadt->gp0_blk_len && port)
+            {
+                ULONG enableOffset = Fadt->gp0_blk_len / 2; /* status then enable */
+                value = READ_PORT_UCHAR((PUCHAR)(ULONG_PTR)(port + enableOffset + Register));
+            }
+            break;
+
         case SMI_CMD:
-            /* SMI command register */
-            return 0;
-            
+            port = Fadt->smi_cmd_io_port;
+            if (port)
+                value = READ_PORT_UCHAR((PUCHAR)(ULONG_PTR)port);
+            break;
+
         default:
             DPRINT1("Unknown ACPI register type: %d\n", AcpiReg);
-            return 0;
+            break;
     }
+
+    return value;
 }
 
 VOID
@@ -315,37 +353,77 @@ HalpWriteAcpiRegister(
     ULONG Register,
     USHORT Value)
 {
-    /* For now, provide a stub implementation */
-    DPRINT("HalpWriteAcpiRegister: AcpiReg=%d, Register=0x%x, Value=0x%x\n", 
-           AcpiReg, Register, Value);
-    
-    /* TODO: Implement actual ACPI register writing based on AcpiReg type */
+    ULONG port = 0;
+    PFADT Fadt = (PFADT)&HalpFixedAcpiDescTable;
+
+    UNREFERENCED_PARAMETER(Register);
+
     switch (AcpiReg)
     {
         case PM1a_STATUS:
+            port = Fadt->pm1a_evt_blk_io_port;
+            if (Fadt->pm1_evt_len >= 2 && port)
+                WRITE_PORT_USHORT((PUSHORT)(ULONG_PTR)port, Value);
+            break;
+
         case PM1b_STATUS:
-            /* Clear status bits by writing */
+            port = Fadt->pm1b_evt_blk_io_port;
+            if (Fadt->pm1_evt_len >= 2 && port)
+                WRITE_PORT_USHORT((PUSHORT)(ULONG_PTR)port, Value);
             break;
-            
+
         case PM1a_ENABLE:
+            port = Fadt->pm1a_evt_blk_io_port;
+            if (Fadt->pm1_evt_len >= 4 && port)
+                WRITE_PORT_USHORT((PUSHORT)(ULONG_PTR)(port + 2), Value);
+            break;
+
         case PM1b_ENABLE:
-            /* Set enable mask */
+            port = Fadt->pm1b_evt_blk_io_port;
+            if (Fadt->pm1_evt_len >= 4 && port)
+                WRITE_PORT_USHORT((PUSHORT)(ULONG_PTR)(port + 2), Value);
             break;
-            
+
         case PM1a_CONTROL:
+            port = Fadt->pm1a_ctrl_blk_io_port;
+            if (Fadt->pm1_ctrl_len >= 2 && port)
+                WRITE_PORT_USHORT((PUSHORT)(ULONG_PTR)port, Value);
+            break;
+
         case PM1b_CONTROL:
-            /* Set control value */
+            port = Fadt->pm1b_ctrl_blk_io_port;
+            if (Fadt->pm1_ctrl_len >= 2 && port)
+                WRITE_PORT_USHORT((PUSHORT)(ULONG_PTR)port, Value);
             break;
-            
+
         case GP_STATUS:
+        {
+            port = Fadt->gp0_blk_io_port;
+            if (Fadt->gp0_blk_len && port)
+            {
+                /* GPx_STS are write-1-to-clear */
+                WRITE_PORT_UCHAR((PUCHAR)(ULONG_PTR)(port + Register), (UCHAR)Value);
+            }
+            break;
+        }
+
         case GP_ENABLE:
-            /* General purpose event registers */
+        {
+            port = Fadt->gp0_blk_io_port;
+            if (Fadt->gp0_blk_len && port)
+            {
+                ULONG enableOffset = Fadt->gp0_blk_len / 2;
+                WRITE_PORT_UCHAR((PUCHAR)(ULONG_PTR)(port + enableOffset + Register), (UCHAR)Value);
+            }
             break;
-            
+        }
+
         case SMI_CMD:
-            /* SMI command register */
+            port = Fadt->smi_cmd_io_port;
+            if (port)
+                WRITE_PORT_UCHAR((PUCHAR)(ULONG_PTR)port, (UCHAR)Value);
             break;
-            
+
         default:
             DPRINT1("Unknown ACPI register type: %d\n", AcpiReg);
             break;
@@ -469,6 +547,33 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
         PortRangeInterface->QueryAllocateRange = HalpQueryAllocatePortRange;
         PortRangeInterface->FreeRange = HalpFreePortRange;
         
+        return STATUS_SUCCESS;
+    }
+    else if (IsEqualIID(InterfaceType, &GUID_TRANSLATOR_INTERFACE_STANDARD))
+    {
+        CM_RESOURCE_TYPE ResourceType = (CM_RESOURCE_TYPE)(ULONG_PTR)InterfaceSpecificData;
+        PTRANSLATOR_INTERFACE Tr;
+
+        DPRINT("HalpQueryInterface(GUID_TRANSLATOR_INTERFACE_STANDARD)\n");
+
+        if (ResourceType != CmResourceTypeInterrupt)
+        {
+            return STATUS_NOT_SUPPORTED;
+        }
+        if (InterfaceBufferSize < sizeof(TRANSLATOR_INTERFACE))
+        {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+
+        Tr = (PTRANSLATOR_INTERFACE)Interface;
+        Tr->Size = sizeof(TRANSLATOR_INTERFACE);
+        Tr->Version = HAL_IRQ_TRANSLATOR_VERSION;
+        Tr->Context = NULL;
+        Tr->InterfaceReference = HalPnpInterfaceReference;
+        Tr->InterfaceDereference = HalPnpInterfaceDereference;
+        Tr->TranslateResources = (PTRANSLATE_RESOURCE_HANDLER)HalIrqTranslateResourcesRoot;
+        Tr->TranslateResourceRequirements = (PTRANSLATE_RESOURCE_REQUIREMENTS_HANDLER)HalIrqTranslateResourceRequirementsRoot;
+        if (Length) *Length = sizeof(TRANSLATOR_INTERFACE);
         return STATUS_SUCCESS;
     }
     else if (IsEqualIID(InterfaceType, &GUID_BUS_INTERFACE_STANDARD))

@@ -478,7 +478,27 @@ HalpRegisterInternalBusHandlers(VOID)
         Bus->TranslateBusAddress = HalpTranslateIsaBusAddress;
     }
 
-    /* No support for EISA or MCA */
+    /* Provide a basic EISA handler for ISA fallback paths */
+    Bus = HalpAllocateBusHandler(Eisa,
+                                 ConfigurationSpaceUndefined,
+                                 0,
+                                 Internal,
+                                 0,
+                                 0);
+    if (Bus)
+    {
+        /* Minimal setup: identity memory map via system translator */
+        Bus->GetBusData = HalpNoBusData;
+        Bus->TranslateBusAddress = HalpTranslateSystemBusAddress;
+        Bus->BusAddresses->Memory.Base = 0;
+        Bus->BusAddresses->Memory.Limit = 0xFFFFFFFF;
+        Bus->BusAddresses->PrefetchMemory.Base = 0;
+        Bus->BusAddresses->PrefetchMemory.Limit = 0xFFFFFFFF;
+        Bus->BusAddresses->IO.Base = 0;
+        Bus->BusAddresses->IO.Limit = 0xFFFF;
+    }
+
+    /* No support for MCA */
     ASSERT(HalpBusType == MACHINE_TYPE_ISA);
 }
 #endif // _MINIHAL_

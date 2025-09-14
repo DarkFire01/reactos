@@ -216,15 +216,14 @@ HaliInitPowerManagement(
 
     PAGED_CODE();
 
-    /* ReactOS ACPI doesn't bother filling out a ACPI private dispatch*/
-    if (PmDriverDispatchTable)
-        DPRINT1("Microsoft or VGAL ACPI.sus has been detected\n");
+    /* Save ACPI's PM dispatch for later use */
     PmAcpiDispatchTable = PmDriverDispatchTable;
 
     HalSetWakeEnable = HaliSetWakeEnable;
     HalSetWakeAlarm = HaliSetWakeAlarm;
 
-    *PmHalDispatchTable = (PPM_DISPATCH_TABLE)&HalAcpiDispatchTable; // HAL export interface
+    /* Return HAL PM dispatch to ACPI */
+    *PmHalDispatchTable = (PPM_DISPATCH_TABLE)&HalAcpiDispatchTable;
 
     /* Create a power callback */    
     InitializeObjectAttributes(&ObjectAttributes,
@@ -253,8 +252,8 @@ HaliAcpiMachineStateInit(
     PAGED_CODE();
     DPRINT("HaliAcpiMachineStateInit: StateData %p\n", StateData);
 
-    //*OutInterruptModel = 0; // PIC HAL
-    *OutInterruptModel = 1; // APIC HAL
+    /* ACPI PIC HAL uses PIC model; APIC HAL variants will override via their own table */
+    *OutInterruptModel = 0;
 
     if (StateData[0].Data0)
     {

@@ -1,3 +1,29 @@
+NTSTATUS
+NTAPI
+HaliAdjustResourceListRange(
+    IN PSUPPORTED_RANGES                    SRanges,
+    IN PSUPPORTED_RANGE                     InterruptRange,
+    IN OUT PIO_RESOURCE_REQUIREMENTS_LIST   *pResourceList);
+
+NTSTATUS
+NTAPI
+HalIrqTranslateResourcesRoot(
+    IN PVOID Context,
+    IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Source,
+    IN RESOURCE_TRANSLATION_DIRECTION Direction,
+    IN ULONG AlternativesCount OPTIONAL,
+    IN IO_RESOURCE_DESCRIPTOR Alternatives[] OPTIONAL,
+    IN PDEVICE_OBJECT PhysicalDeviceObject,
+    OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR Target);
+
+NTSTATUS
+NTAPI
+HalIrqTranslateResourceRequirementsRoot(
+    IN PVOID Context,
+    IN PIO_RESOURCE_DESCRIPTOR Source,
+    IN PDEVICE_OBJECT PhysicalDeviceObject,
+    OUT PULONG TargetCount,
+    OUT PIO_RESOURCE_DESCRIPTOR *Target);
 
 #pragma once
 

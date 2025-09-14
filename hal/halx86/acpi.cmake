@@ -7,6 +7,7 @@ list(APPEND HAL_ACPI_SOURCE
     acpi/busemul.c
     acpi/madt.c
     acpi/acpidisp.c
+    acpi/rangesup.c
     legacy/bus/pcibus.c)
 
 # Needed to compile while using ACPICA
