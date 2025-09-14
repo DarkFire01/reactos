@@ -16,6 +16,124 @@
 #define NDEBUG
 #include <debug.h>
 
+/* ACPI Register Interface Definitions */
+typedef enum _ACPI_REG_TYPE {
+    PM1a_ENABLE,
+    PM1b_ENABLE,
+    PM1a_STATUS,
+    PM1b_STATUS,
+    PM1a_CONTROL,
+    PM1b_CONTROL,
+    GP_STATUS,
+    GP_ENABLE,
+    SMI_CMD,
+    MaxRegType
+} ACPI_REG_TYPE, *PACPI_REG_TYPE;
+
+typedef USHORT (NTAPI *PREAD_ACPI_REGISTER) (
+  ACPI_REG_TYPE AcpiReg,
+  ULONG         Register);
+
+typedef VOID (NTAPI *PWRITE_ACPI_REGISTER) (
+  ACPI_REG_TYPE AcpiReg,
+  ULONG         Register,
+  USHORT        Value
+  );
+
+typedef struct ACPI_REGS_INTERFACE_STANDARD {
+    //
+    // generic interface header
+    //
+    USHORT Size;
+    USHORT Version;
+    PVOID  Context;
+    PINTERFACE_REFERENCE   InterfaceReference;
+    PINTERFACE_DEREFERENCE InterfaceDereference;
+
+    //
+    // READ/WRITE_ACPI_REGISTER functions
+    //
+    PREAD_ACPI_REGISTER  ReadAcpiRegister;
+    PWRITE_ACPI_REGISTER WriteAcpiRegister;
+
+} ACPI_REGS_INTERFACE_STANDARD, *PACPI_REGS_INTERFACE_STANDARD;
+
+typedef NTSTATUS (NTAPI *PHAL_QUERY_ALLOCATE_PORT_RANGE) (
+  BOOLEAN IsSparse,
+  BOOLEAN PrimaryIsMmio,
+  PVOID VirtBaseAddr,
+  PHYSICAL_ADDRESS PhysBaseAddr,
+  ULONG Length,
+  PUSHORT NewRangeId
+  );
+
+typedef VOID (NTAPI *PHAL_FREE_PORT_RANGE)(
+    USHORT RangeId
+    );
+
+typedef struct _HAL_PORT_RANGE_INTERFACE {
+    //
+    // generic interface header
+    //
+    USHORT Size;
+    USHORT Version;
+    PVOID  Context;
+    PINTERFACE_REFERENCE   InterfaceReference;
+    PINTERFACE_DEREFERENCE InterfaceDereference;
+
+    //
+    // QueryAllocateRange/FreeRange functions
+    //
+    PHAL_QUERY_ALLOCATE_PORT_RANGE QueryAllocateRange;
+    PHAL_FREE_PORT_RANGE FreeRange;
+
+} HAL_PORT_RANGE_INTERFACE, *PHAL_PORT_RANGE_INTERFACE;
+
+#define HAL_PORT_RANGE_INTERFACE_VERSION 1
+
+
+ULONG
+NTAPI
+HalpSetBusData(
+    PVOID Context,
+    ULONG DataType,
+    PVOID Buffer,
+    ULONG Offset,
+    ULONG Length)
+{
+    /* For now, return 0 to indicate no data set */
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(DataType);
+    UNREFERENCED_PARAMETER(Buffer);
+    UNREFERENCED_PARAMETER(Offset);
+    
+    DPRINT("HalpSetBusData: DataType=%d, Offset=%d, Length=%d (stub)\n",
+           DataType, Offset, Length);
+    
+    return 0;
+}
+
+ULONG
+NTAPI
+HalpGetBusData(
+    PVOID Context,
+    ULONG DataType,
+    PVOID Buffer,
+    ULONG Offset,
+    ULONG Length)
+{
+    /* For now, return 0 to indicate no data retrieved */
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(DataType);
+    UNREFERENCED_PARAMETER(Buffer);
+    UNREFERENCED_PARAMETER(Offset);
+    
+    DPRINT("HalpGetBusData: DataType=%d, Offset=%d, Length=%d (stub)\n",
+           DataType, Offset, Length);
+    
+    return 0;
+}
+
 typedef enum _EXTENSION_TYPE
 {
     PdoExtensionType = 0xC0,
@@ -147,6 +265,148 @@ HalpAddDevice(IN PDRIVER_OBJECT DriverObject,
     return Status;
 }
 
+/* ACPI Register Interface Implementation */
+USHORT
+NTAPI
+HalpReadAcpiRegister(
+    ACPI_REG_TYPE AcpiReg,
+    ULONG Register)
+{
+    /* For now, return a stub implementation */
+    DPRINT("HalpReadAcpiRegister: AcpiReg=%d, Register=0x%x\n", AcpiReg, Register);
+    
+    /* TODO: Implement actual ACPI register reading based on AcpiReg type */
+    switch (AcpiReg)
+    {
+        case PM1a_STATUS:
+        case PM1b_STATUS:
+            /* Return a default status indicating no events */
+            return 0;
+            
+        case PM1a_ENABLE:
+        case PM1b_ENABLE:
+            /* Return default enable mask */
+            return 0;
+            
+        case PM1a_CONTROL:
+        case PM1b_CONTROL:
+            /* Return default control value */
+            return 0;
+            
+        case GP_STATUS:
+        case GP_ENABLE:
+            /* General purpose event registers */
+            return 0;
+            
+        case SMI_CMD:
+            /* SMI command register */
+            return 0;
+            
+        default:
+            DPRINT1("Unknown ACPI register type: %d\n", AcpiReg);
+            return 0;
+    }
+}
+
+VOID
+NTAPI
+HalpWriteAcpiRegister(
+    ACPI_REG_TYPE AcpiReg,
+    ULONG Register,
+    USHORT Value)
+{
+    /* For now, provide a stub implementation */
+    DPRINT("HalpWriteAcpiRegister: AcpiReg=%d, Register=0x%x, Value=0x%x\n", 
+           AcpiReg, Register, Value);
+    
+    /* TODO: Implement actual ACPI register writing based on AcpiReg type */
+    switch (AcpiReg)
+    {
+        case PM1a_STATUS:
+        case PM1b_STATUS:
+            /* Clear status bits by writing */
+            break;
+            
+        case PM1a_ENABLE:
+        case PM1b_ENABLE:
+            /* Set enable mask */
+            break;
+            
+        case PM1a_CONTROL:
+        case PM1b_CONTROL:
+            /* Set control value */
+            break;
+            
+        case GP_STATUS:
+        case GP_ENABLE:
+            /* General purpose event registers */
+            break;
+            
+        case SMI_CMD:
+            /* SMI command register */
+            break;
+            
+        default:
+            DPRINT1("Unknown ACPI register type: %d\n", AcpiReg);
+            break;
+    }
+}
+
+/* Port Range Interface Implementation */
+NTSTATUS
+NTAPI
+HalpQueryAllocatePortRange(
+    BOOLEAN IsSparse,
+    BOOLEAN PrimaryIsMmio,
+    PVOID VirtBaseAddr,
+    PHYSICAL_ADDRESS PhysBaseAddr,
+    ULONG Length,
+    PUSHORT NewRangeId)
+{
+    /* For now, provide a stub implementation */
+    DPRINT("HalpQueryAllocatePortRange: IsSparse=%d, PrimaryIsMmio=%d, PhysAddr=0x%I64x, Length=0x%x\n",
+           IsSparse, PrimaryIsMmio, PhysBaseAddr.QuadPart, Length);
+    
+    /* TODO: Implement actual port range allocation */
+    /* For now, just assign a dummy range ID */
+    if (NewRangeId)
+    {
+        *NewRangeId = 1; /* Dummy range ID */
+    }
+    
+    return STATUS_SUCCESS;
+}
+
+VOID
+NTAPI
+HalpFreePortRange(
+    USHORT RangeId)
+{
+    /* For now, provide a stub implementation */
+    DPRINT("HalpFreePortRange: RangeId=%d\n", RangeId);
+    
+    /* TODO: Implement actual port range deallocation */
+}
+
+/* Interface reference/dereference functions */
+VOID
+NTAPI
+HalPnpInterfaceReference(
+    PVOID Context)
+{
+    /* Reference the interface */
+    UNREFERENCED_PARAMETER(Context);
+}
+
+VOID
+NTAPI
+HalPnpInterfaceDereference(
+    PVOID Context)
+{
+    /* Dereference the interface */
+    UNREFERENCED_PARAMETER(Context);
+}
+
 NTSTATUS
 NTAPI
 HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
@@ -159,11 +419,86 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
 {
     if (IsEqualIID(InterfaceType, &GUID_ACPI_REGS_INTERFACE_STANDARD))
     {
-        DPRINT1("HalpQueryInterface(GUID_ACPI_REGS_INTERFACE_STANDARD) is UNIMPLEMENTED\n");
+        PACPI_REGS_INTERFACE_STANDARD AcpiRegInterface;
+        
+        DPRINT("HalpQueryInterface(GUID_ACPI_REGS_INTERFACE_STANDARD)\n");
+        
+        /* Set the interface size */
+        *Length = sizeof(ACPI_REGS_INTERFACE_STANDARD);
+        
+        /* Check buffer size */
+        if (InterfaceBufferSize < sizeof(ACPI_REGS_INTERFACE_STANDARD))
+        {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+        
+        /* Fill in the interface */
+        AcpiRegInterface = (PACPI_REGS_INTERFACE_STANDARD)Interface;
+        AcpiRegInterface->Size = sizeof(ACPI_REGS_INTERFACE_STANDARD);
+        AcpiRegInterface->Version = Version;
+        AcpiRegInterface->Context = DeviceObject;
+        AcpiRegInterface->InterfaceReference = HalPnpInterfaceReference;
+        AcpiRegInterface->InterfaceDereference = HalPnpInterfaceDereference;
+        AcpiRegInterface->ReadAcpiRegister = HalpReadAcpiRegister;
+        AcpiRegInterface->WriteAcpiRegister = HalpWriteAcpiRegister;
+        
+        return STATUS_SUCCESS;
     }
     else if (IsEqualIID(InterfaceType, &GUID_ACPI_PORT_RANGES_INTERFACE_STANDARD))
     {
-        DPRINT1("HalpQueryInterface(GUID_ACPI_PORT_RANGES_INTERFACE_STANDARD) is UNIMPLEMENTED\n");
+        PHAL_PORT_RANGE_INTERFACE PortRangeInterface;
+        
+        DPRINT("HalpQueryInterface(GUID_ACPI_PORT_RANGES_INTERFACE_STANDARD)\n");
+        
+        /* Set the interface size */
+        *Length = sizeof(HAL_PORT_RANGE_INTERFACE);
+        
+        /* Check buffer size */
+        if (InterfaceBufferSize < sizeof(HAL_PORT_RANGE_INTERFACE))
+        {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+        
+        /* Fill in the interface */
+        PortRangeInterface = (PHAL_PORT_RANGE_INTERFACE)Interface;
+        PortRangeInterface->Size = sizeof(HAL_PORT_RANGE_INTERFACE);
+        PortRangeInterface->Version = HAL_PORT_RANGE_INTERFACE_VERSION;
+        PortRangeInterface->Context = DeviceObject;
+        PortRangeInterface->InterfaceReference = HalPnpInterfaceReference;
+        PortRangeInterface->InterfaceDereference = HalPnpInterfaceDereference;
+        PortRangeInterface->QueryAllocateRange = HalpQueryAllocatePortRange;
+        PortRangeInterface->FreeRange = HalpFreePortRange;
+        
+        return STATUS_SUCCESS;
+    }
+    else if (IsEqualIID(InterfaceType, &GUID_BUS_INTERFACE_STANDARD))
+    {
+        PBUS_INTERFACE_STANDARD BusInterface;
+        
+        DPRINT("HalpQueryInterface(GUID_BUS_INTERFACE_STANDARD)\n");
+        
+        /* Set the interface size */
+        *Length = sizeof(BUS_INTERFACE_STANDARD);
+        
+        /* Check buffer size */
+        if (InterfaceBufferSize < sizeof(BUS_INTERFACE_STANDARD))
+        {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+        
+        /* Fill in the interface */
+        BusInterface = (PBUS_INTERFACE_STANDARD)Interface;
+        BusInterface->Size = sizeof(BUS_INTERFACE_STANDARD);
+        BusInterface->Version = 1;
+        BusInterface->Context = DeviceObject;
+        BusInterface->InterfaceReference = HalPnpInterfaceReference;
+        BusInterface->InterfaceDereference = HalPnpInterfaceDereference;
+        BusInterface->TranslateBusAddress = (PTRANSLATE_BUS_ADDRESS)HalpTranslateBusAddress;
+        BusInterface->GetDmaAdapter = HalpGetDmaAdapter;
+        BusInterface->SetBusData = HalpSetBusData;
+        BusInterface->GetBusData = HalpGetBusData;
+        
+        return STATUS_SUCCESS;
     }
     else
     {
@@ -664,9 +999,9 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
                 DPRINT("Querying interface for FDO\n");
                 Status = HalpQueryInterface(DeviceObject,
                                             IoStackLocation->Parameters.QueryInterface.InterfaceType,
-                                            IoStackLocation->Parameters.QueryInterface.Size,
-                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
                                             IoStackLocation->Parameters.QueryInterface.Version,
+                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
+                                            IoStackLocation->Parameters.QueryInterface.Size,
                                             IoStackLocation->Parameters.QueryInterface.Interface,
                                             (PVOID)&Irp->IoStatus.Information);
                 break;
@@ -763,9 +1098,9 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
                 DPRINT("Querying interface for PDO\n");
                 Status = HalpQueryInterface(DeviceObject,
                                             IoStackLocation->Parameters.QueryInterface.InterfaceType,
-                                            IoStackLocation->Parameters.QueryInterface.Size,
-                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
                                             IoStackLocation->Parameters.QueryInterface.Version,
+                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
+                                            IoStackLocation->Parameters.QueryInterface.Size,
                                             IoStackLocation->Parameters.QueryInterface.Interface,
                                             (PVOID)&Irp->IoStatus.Information);
                 break;

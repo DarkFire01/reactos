@@ -26,6 +26,15 @@ HalpTranslateSystemBusAddress(IN PBUS_HANDLER BusHandler,
 {
     PSUPPORTED_RANGE Range = NULL;
 
+    /* Sanity guards */
+    if ((AddressSpace == NULL) || (TranslatedAddress == NULL) ||
+        (BusHandler == NULL) || (BusHandler->BusAddresses == NULL))
+    {
+        DPRINT1("HalpTranslateSystemBusAddress: invalid args: AH=%p BA=%p AS=%p TA=%p\n",
+                BusHandler, BusAddress.QuadPart, AddressSpace, TranslatedAddress);
+        return FALSE;
+    }
+
     /* Check what kind of address space this is */
     switch (*AddressSpace)
     {

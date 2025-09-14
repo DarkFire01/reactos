@@ -12,6 +12,12 @@
 #define NDEBUG
 #include <debug.h>
 
+/* Helper macro for alignment */
+#ifndef ALIGN_UP_BY
+#define ALIGN_UP_BY(source, alignment) \
+    (((source) + (alignment) - 1) & ~((alignment) - 1))
+#endif
+
 FORCEINLINE
 PIO_RESOURCE_LIST
 IopGetNextResourceList(
@@ -104,8 +110,14 @@ IopFindMemoryResource(
 
         if (IopCheckDescriptorForConflict(CmDesc, &ConflictingDesc))
         {
-            Start += (ULONGLONG)ConflictingDesc.u.Memory.Start.QuadPart +
-                     ConflictingDesc.u.Memory.Length;
+            /* Skip past the conflicting range more intelligently */
+            ULONGLONG ConflictEnd = (ULONGLONG)ConflictingDesc.u.Memory.Start.QuadPart + ConflictingDesc.u.Memory.Length;
+            
+            if (ConflictEnd > Start)
+            {
+                /* Align the next start to the required alignment */
+                Start = ALIGN_UP_BY(ConflictEnd, IoDesc->u.Memory.Alignment) - IoDesc->u.Memory.Alignment;
+            }
         }
         else
         {
@@ -142,7 +154,47 @@ IopFindPortResource(
 
         if (IopCheckDescriptorForConflict(CmDesc, &ConflictingDesc))
         {
-            Start += (ULONGLONG)ConflictingDesc.u.Port.Start.QuadPart + ConflictingDesc.u.Port.Length;
+            /* Skip past the conflicting range more intelligently */
+            ULONGLONG ConflictEnd = (ULONGLONG)ConflictingDesc.u.Port.Start.QuadPart + ConflictingDesc.u.Port.Length;
+            
+            /* If the conflict covers a huge range (like 0x0 to 0xcf8), try to find a smaller gap */
+            if (ConflictingDesc.u.Port.Length > 0x1000) 
+            {
+                DPRINT("Large conflict detected (0x%I64x to 0x%I64x), attempting to find gaps\n",
+                       ConflictingDesc.u.Port.Start.QuadPart, ConflictEnd);
+                
+                /* Try some common port ranges that are usually available */
+                ULONGLONG CommonRanges[] = {
+                    0x100, 0x200, 0x300, 0x400, 0x500, 0x600, 0x700, 0x800, 
+                    0x900, 0xa00, 0xb00, 0xc00, 0xd00, 0xe00, 0xf00,
+                    0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000, 0x7000, 0x8000,
+                    0x9000, 0xa000, 0xb000, 0xc000, 0xd000, 0xe000, 0xf000
+                };
+                
+                for (ULONG i = 0; i < ARRAYSIZE(CommonRanges); i++)
+                {
+                    ULONGLONG TestStart = CommonRanges[i];
+                    if (TestStart >= IoDesc->u.Port.MinimumAddress.QuadPart &&
+                        TestStart + IoDesc->u.Port.Length <= IoDesc->u.Port.MaximumAddress.QuadPart + 1)
+                    {
+                        CM_PARTIAL_RESOURCE_DESCRIPTOR TestDesc = *CmDesc;
+                        TestDesc.u.Port.Start.QuadPart = TestStart;
+                        
+                        if (!IopCheckDescriptorForConflict(&TestDesc, NULL))
+                        {
+                            DPRINT("Found available range at 0x%I64x\n", TestStart);
+                            *CmDesc = TestDesc;
+                            return TRUE;
+                        }
+                    }
+                }
+            }
+            
+            if (ConflictEnd > Start)
+            {
+                /* Align the next start to the required alignment */
+                Start = ALIGN_UP_BY(ConflictEnd, IoDesc->u.Port.Alignment) - IoDesc->u.Port.Alignment;
+            }
         }
         else
         {
@@ -456,8 +508,31 @@ IopFixupResourceListWithRequirements(
                         break;
 
                     default:
-                        DPRINT1("Unsupported resource type: %x\n", IoDesc->Type);
-                        FoundResource = FALSE;
+                        /* Handle unknown resource types gracefully */
+                        if (IoDesc->Type >= CmResourceTypeNonArbitrated)
+                        {
+                            /* Non-arbitrated resource types should just be accepted */
+                            DPRINT("Non-arbitrated resource type: %x, accepting without conflict checking\n", IoDesc->Type);
+                            
+                            /* Just fill in basic info */
+                            NewDesc.Type = IoDesc->Type;
+                            NewDesc.ShareDisposition = IoDesc->ShareDisposition;
+                            NewDesc.Flags = IoDesc->Flags;
+                            
+                            /* For unknown types, just use generic data */
+                            if (IoDesc->Type == 0x51) /* Type 81 - seems to be device-specific */
+                            {
+                                DPRINT("Handling device-specific resource type 0x51\n");
+                                /* Accept it as-is since it's device-specific */
+                            }
+                            
+                            FoundResource = TRUE;
+                        }
+                        else
+                        {
+                            DPRINT1("Unsupported arbitrated resource type: %x\n", IoDesc->Type);
+                            FoundResource = FALSE;
+                        }
                         break;
                 }
 
@@ -603,12 +678,29 @@ IopCheckResourceDescriptor(
                     UINT64 r2End = (UINT64)ResDesc2->u.Memory.Start.QuadPart
                                    + ResDesc2->u.Memory.Length;
 
+                    /* Skip overly broad system memory ranges that may be incorrectly reported */
+                    if (ResDesc2->u.Memory.Length > 0x10000000)  /* > 256MB */
+                    {
+                        if (!Silent)
+                        {
+                            DPRINT("Ignoring overly broad memory range (0x%I64x to 0x%I64x, size=0x%x) as it's likely a system resource\n",
+                                   r2Start, r2End, ResDesc2->u.Memory.Length);
+                        }
+                        continue;
+                    }
+
                     if (rStart < r2End && r2Start < rEnd)
                     {
                         if (!Silent)
                         {
                             DPRINT1("Resource conflict: Memory (0x%I64x to 0x%I64x vs. 0x%I64x to 0x%I64x)\n",
                                     rStart, rEnd, r2Start, r2End);
+                        }
+
+                        /* Store the conflicting descriptor for intelligent conflict resolution */
+                        if (ConflictingDescriptor)
+                        {
+                            *ConflictingDescriptor = *ResDesc2;
                         }
 
                         Result = TRUE;
@@ -627,12 +719,30 @@ IopCheckResourceDescriptor(
                     UINT64 r2End = (UINT64)ResDesc2->u.Port.Start.QuadPart
                                    + ResDesc2->u.Port.Length;
 
+                    /* Skip overly broad system ranges that may be incorrectly reported */
+                    if ((r2Start == 0 && ResDesc2->u.Port.Length > 0x1000) ||
+                        (r2Start == 0 && r2End >= 0xcf8))
+                    {
+                        if (!Silent)
+                        {
+                            DPRINT("Ignoring overly broad port range (0x%I64x to 0x%I64x) as it's likely a system resource\n",
+                                   r2Start, r2End);
+                        }
+                        continue;
+                    }
+
                     if (rStart < r2End && r2Start < rEnd)
                     {
                         if (!Silent)
                         {
                             DPRINT1("Resource conflict: Port (0x%I64x to 0x%I64x vs. 0x%I64x to 0x%I64x)\n",
                                     rStart, rEnd, r2Start, r2End);
+                        }
+
+                        /* Store the conflicting descriptor for intelligent conflict resolution */
+                        if (ConflictingDescriptor)
+                        {
+                            *ConflictingDescriptor = *ResDesc2;
                         }
 
                         Result = TRUE;

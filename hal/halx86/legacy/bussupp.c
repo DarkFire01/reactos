@@ -153,6 +153,261 @@ HalpAllocateBusHandler(IN INTERFACE_TYPE InterfaceType,
 }
 
 #ifndef _MINIHAL_
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+HaliAdjustResourceListRange(
+    IN PSUPPORTED_RANGES                    SRanges,
+    IN PSUPPORTED_RANGE                     InterruptRange,
+    IN OUT PIO_RESOURCE_REQUIREMENTS_LIST   *pResourceList);
+
+/* Local declarations for range support */
+typedef struct _NRPARAMS {
+    PIO_RESOURCE_DESCRIPTOR     InDesc;
+    PIO_RESOURCE_DESCRIPTOR     OutDesc;
+    PSUPPORTED_RANGE            CurrentPosition;
+    LONGLONG                    Base;
+    LONGLONG                    Limit;
+    UCHAR                       DescOpt;
+    BOOLEAN                     AnotherListPending;
+} NRPARAMS, *PNRPARAMS;
+
+static
+PIO_RESOURCE_DESCRIPTOR
+HalpGetNextSupportedRange(
+    IN LONGLONG             MinimumAddress,
+    IN LONGLONG             MaximumAddress,
+    IN OUT PNRPARAMS        PNRParams);
+
+static
+ULONG
+HalpSortRanges(
+    IN PSUPPORTED_RANGE     pRange1);
+
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+HaliAdjustResourceListRange(
+    IN PSUPPORTED_RANGES                    SRanges,
+    IN PSUPPORTED_RANGE                     InterruptRange,
+    IN OUT PIO_RESOURCE_REQUIREMENTS_LIST   *pResourceList)
+{
+    PIO_RESOURCE_REQUIREMENTS_LIST  InCompleteList, OutCompleteList;
+    PIO_RESOURCE_LIST               InResourceList, OutResourceList;
+    PIO_RESOURCE_DESCRIPTOR         HeadOutDesc, SetDesc;
+    NRPARAMS                        Pos;
+    ULONG                           len, alt, cnt, i;
+    ULONG                           icnt;
+
+    PAGED_CODE();
+
+    if (!SRanges) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (!SRanges->Sorted) {
+        SRanges->NoIO = HalpSortRanges(&SRanges->IO);
+        SRanges->NoMemory = HalpSortRanges(&SRanges->Memory);
+        SRanges->NoPrefetchMemory = HalpSortRanges(&SRanges->PrefetchMemory);
+        SRanges->NoDma = HalpSortRanges(&SRanges->Dma);
+        SRanges->Sorted = TRUE;
+    }
+
+    icnt = HalpSortRanges(InterruptRange);
+
+    InCompleteList = *pResourceList;
+    len = InCompleteList->ListSize;
+
+    i = 1;
+    InResourceList = InCompleteList->List;
+    for (alt = 0; alt < InCompleteList->AlternativeLists; alt++) {
+        if (InResourceList->Version != 1 || InResourceList->Revision < 1) {
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        Pos.InDesc = InResourceList->Descriptors;
+        for (cnt = InResourceList->Count; cnt; cnt--) {
+            switch (Pos.InDesc->Type) {
+            case CmResourceTypeInterrupt:  i += icnt;           break;
+            case CmResourceTypePort:       i += SRanges->NoIO;  break;
+            case CmResourceTypeDma:        i += SRanges->NoDma; break;
+            case CmResourceTypeMemory:
+                i += SRanges->NoMemory;
+                if (Pos.InDesc->Flags & CM_RESOURCE_MEMORY_PREFETCHABLE) {
+                    i += SRanges->NoPrefetchMemory;
+                }
+                break;
+            default:
+                return STATUS_INVALID_PARAMETER;
+            }
+
+            i -= 1;
+            Pos.InDesc++;
+        }
+
+        InResourceList = (PIO_RESOURCE_LIST)Pos.InDesc;
+    }
+    len += i * sizeof(IO_RESOURCE_DESCRIPTOR);
+
+    OutCompleteList = (PIO_RESOURCE_REQUIREMENTS_LIST)
+        ExAllocatePoolWithTag(PagedPool, len, ' laH');
+    if (!OutCompleteList) return STATUS_INSUFFICIENT_RESOURCES;
+    RtlZeroMemory(OutCompleteList, len);
+
+    InResourceList = InCompleteList->List;
+    *OutCompleteList = *InCompleteList;
+    OutResourceList = OutCompleteList->List;
+
+    for (alt = 0; alt < InCompleteList->AlternativeLists; alt++) {
+        OutResourceList->Version  = 1;
+        OutResourceList->Revision = 1;
+
+        Pos.InDesc  = InResourceList->Descriptors;
+        Pos.OutDesc = OutResourceList->Descriptors;
+        HeadOutDesc = Pos.OutDesc;
+
+        for (cnt = InResourceList->Count; cnt; cnt--) {
+            Pos.DescOpt = Pos.InDesc->Option;
+            Pos.AnotherListPending = FALSE;
+
+            switch (Pos.InDesc->Type) {
+            case CmResourceTypePort:
+                Pos.CurrentPosition = &SRanges->IO;
+                do {
+                    SetDesc = HalpGetNextSupportedRange(
+                        Pos.InDesc->u.Port.MinimumAddress.QuadPart,
+                        Pos.InDesc->u.Port.MaximumAddress.QuadPart,
+                        &Pos);
+                    if (SetDesc) {
+                        SetDesc->u.Port.MinimumAddress.QuadPart = Pos.Base;
+                        SetDesc->u.Port.MaximumAddress.QuadPart = Pos.Limit;
+                    }
+                } while (SetDesc);
+                break;
+
+            case CmResourceTypeInterrupt:
+                Pos.CurrentPosition = InterruptRange;
+                do {
+                    SetDesc = HalpGetNextSupportedRange(
+                        Pos.InDesc->u.Interrupt.MinimumVector,
+                        Pos.InDesc->u.Interrupt.MaximumVector,
+                        &Pos);
+                    if (SetDesc) {
+                        SetDesc->u.Interrupt.MinimumVector = (ULONG)Pos.Base;
+                        SetDesc->u.Interrupt.MaximumVector = (ULONG)Pos.Limit;
+                    }
+                } while (SetDesc);
+                break;
+
+            case CmResourceTypeMemory:
+                if (Pos.InDesc->Flags & CM_RESOURCE_MEMORY_PREFETCHABLE) {
+                    Pos.AnotherListPending = TRUE;
+                    Pos.CurrentPosition = &SRanges->PrefetchMemory;
+                    do {
+                        SetDesc = HalpGetNextSupportedRange(
+                            Pos.InDesc->u.Memory.MinimumAddress.QuadPart,
+                            Pos.InDesc->u.Memory.MaximumAddress.QuadPart,
+                            &Pos);
+                        if (SetDesc) {
+                            SetDesc->u.Memory.MinimumAddress.QuadPart = Pos.Base;
+                            SetDesc->u.Memory.MaximumAddress.QuadPart = Pos.Limit;
+                            SetDesc->Option |= IO_RESOURCE_PREFERRED;
+                        }
+                    } while (SetDesc);
+                    Pos.AnotherListPending = FALSE;
+                }
+
+                Pos.CurrentPosition = &SRanges->Memory;
+                do {
+                    SetDesc = HalpGetNextSupportedRange(
+                        Pos.InDesc->u.Memory.MinimumAddress.QuadPart,
+                        Pos.InDesc->u.Memory.MaximumAddress.QuadPart,
+                        &Pos);
+                    if (SetDesc) {
+                        SetDesc->u.Memory.MinimumAddress.QuadPart = Pos.Base;
+                        SetDesc->u.Memory.MaximumAddress.QuadPart = Pos.Limit;
+                    }
+                } while (SetDesc);
+                break;
+
+            case CmResourceTypeDma:
+                Pos.CurrentPosition = &SRanges->Dma;
+                do {
+                    SetDesc = HalpGetNextSupportedRange(
+                        Pos.InDesc->u.Dma.MinimumChannel,
+                        Pos.InDesc->u.Dma.MaximumChannel,
+                        &Pos);
+                    if (SetDesc) {
+                        SetDesc->u.Dma.MinimumChannel = (ULONG)Pos.Base;
+                        SetDesc->u.Dma.MaximumChannel = (ULONG)Pos.Limit;
+                    }
+                } while (SetDesc);
+                break;
+
+            default:
+                ExFreePool(OutCompleteList);
+                return STATUS_INVALID_PARAMETER;
+            }
+
+            Pos.InDesc++;
+            OutResourceList->Count = (USHORT)(Pos.OutDesc - HeadOutDesc);
+
+            if (Pos.AnotherListPending) {
+                *(Pos.OutDesc) = *(Pos.OutDesc-1);
+                HeadOutDesc = Pos.OutDesc;
+                Pos.OutDesc += 1;
+            }
+        }
+
+        InResourceList  = (PIO_RESOURCE_LIST)Pos.InDesc;
+        OutResourceList = (PIO_RESOURCE_LIST)Pos.OutDesc;
+    }
+
+    ExFreePool(*pResourceList);
+    *pResourceList = OutCompleteList;
+    return STATUS_SUCCESS;
+}
+
+/* Minimal helpers: keep existing ranges order and coalesce metadata-only */
+static
+ULONG
+HalpSortRanges(IN PSUPPORTED_RANGE pRange)
+{
+    ULONG count = 0;
+    for (; pRange; pRange = pRange->Next) count++;
+    return count ? count : 0;
+}
+
+static
+PIO_RESOURCE_DESCRIPTOR
+HalpGetNextSupportedRange(
+    IN LONGLONG MinimumAddress,
+    IN LONGLONG MaximumAddress,
+    IN OUT PNRPARAMS P)
+{
+    LONGLONG base, limit;
+
+    while (P->CurrentPosition) {
+        base  = P->CurrentPosition->Base;
+        limit = P->CurrentPosition->Limit;
+        P->CurrentPosition = P->CurrentPosition->Next;
+
+        if (base < MinimumAddress) base = MinimumAddress;
+        if (limit > MaximumAddress) limit = MaximumAddress;
+        if (base > limit) continue;
+
+        P->Base  = base;
+        P->Limit = limit;
+
+        *P->OutDesc = *P->InDesc;
+        P->OutDesc->Option = P->DescOpt;
+        P->OutDesc += 1;
+        return P->OutDesc - 1;
+    }
+
+    return NULL;
+}
+
 CODE_SEG("INIT")
 VOID
 NTAPI
@@ -1418,6 +1673,14 @@ HaliTranslateBusAddress(IN INTERFACE_TYPE InterfaceType,
 {
     PBUS_HANDLER Handler;
     BOOLEAN Status;
+
+    /* Validate pointers to avoid AV if callers pass NULL */
+    if ((AddressSpace == NULL) || (TranslatedAddress == NULL))
+    {
+        DPRINT1("HaliTranslateBusAddress: invalid pointers AddressSpace=%p, Translated=%p\n",
+                AddressSpace, TranslatedAddress);
+        return FALSE;
+    }
 
     /* Find the handler */
     Handler = HalReferenceHandlerForBus(InterfaceType, BusNumber);

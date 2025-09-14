@@ -9,6 +9,8 @@
 /* INCLUDES *******************************************************************/
 
 #include <hal.h>
+#include <initguid.h>
+#include <wdmguid.h>
 #define NDEBUG
 #include <debug.h>
 
@@ -47,6 +49,102 @@ typedef struct _PDO_EXTENSION
 /* GLOBALS ********************************************************************/
 
 PDRIVER_OBJECT HalpDriverObject;
+/* Simple stubs matching BUS_INTERFACE_STANDARD get/set callbacks */
+ULONG
+NTAPI
+HalpSetBusData(
+    PVOID Context,
+    ULONG DataType,
+    PVOID Buffer,
+    ULONG Offset,
+    ULONG Length)
+{
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(DataType);
+    UNREFERENCED_PARAMETER(Buffer);
+    UNREFERENCED_PARAMETER(Offset);
+    DPRINT("HalpSetBusData: DataType=%lu, Offset=%lu, Length=%lu (legacy stub)\n",
+           DataType, Offset, Length);
+    return 0;
+}
+
+ULONG
+NTAPI
+HalpGetBusData(
+    PVOID Context,
+    ULONG DataType,
+    PVOID Buffer,
+    ULONG Offset,
+    ULONG Length)
+{
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(DataType);
+    UNREFERENCED_PARAMETER(Buffer);
+    UNREFERENCED_PARAMETER(Offset);
+    DPRINT("HalpGetBusData: DataType=%lu, Offset=%lu, Length=%lu (legacy stub)\n",
+           DataType, Offset, Length);
+    return 0;
+}
+
+/* Wrapper for BUS_INTERFACE_STANDARD TranslateBusAddress */
+static
+BOOLEAN
+NTAPI
+HalpBusIfTranslate(
+    _Inout_opt_ PVOID Context,
+    _In_ PHYSICAL_ADDRESS BusAddress,
+    _In_ ULONG Length,
+    _Out_ PULONG AddressSpace,
+    _Out_ PPHYSICAL_ADDRESS TranslatedAddress)
+{
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(Length);
+
+    /* Root PCI bus translation via HAL */
+    return HaliTranslateBusAddress(PCIBus,
+                                   0,
+                                   BusAddress,
+                                   AddressSpace,
+                                   TranslatedAddress);
+}
+
+/* Return a simple location string for root bus */
+static
+NTSTATUS
+NTAPI
+HalpGetLocationString(
+    _In_ PVOID Context,
+    _Outptr_ PWCHAR *LocationStrings)
+{
+    static const WCHAR LocStr[] = L"ACPI Root Bus";
+    PWCHAR Buf;
+    UNREFERENCED_PARAMETER(Context);
+    Buf = ExAllocatePoolWithTag(PagedPool, sizeof(LocStr), TAG_HAL);
+    if (!Buf) return STATUS_INSUFFICIENT_RESOURCES;
+    RtlCopyMemory(Buf, LocStr, sizeof(LocStr));
+    *LocationStrings = Buf;
+    return STATUS_SUCCESS;
+}
+
+/* No-op interface ref/deref for interfaces we return */
+static
+VOID
+NTAPI
+HalpInterfaceReference(
+    _In_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+}
+
+static
+VOID
+NTAPI
+HalpInterfaceDereference(
+    _In_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+}
+
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
@@ -145,13 +243,120 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
                    IN PINTERFACE Interface,
                    OUT PULONG Length)
 {
-    DPRINT1("HalpQueryInterface({%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}) is UNIMPLEMENTED\n",
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    /* Default: nothing returned */
+    if (Length) *Length = 0;
+
+    /* IRQ translator interface */
+    if (IsEqualIID(InterfaceType, &GUID_TRANSLATOR_INTERFACE_STANDARD))
+    {
+        CM_RESOURCE_TYPE ResourceType = (CM_RESOURCE_TYPE)(ULONG_PTR)InterfaceSpecificData;
+        ULONG BridgeBusNumber = 0;
+
+        /* Only interrupt translation is supported */
+        if (ResourceType != CmResourceTypeInterrupt)
+        {
+            return STATUS_NOT_SUPPORTED;
+        }
+
+        if (InterfaceBufferSize < sizeof(TRANSLATOR_INTERFACE))
+        {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+
+        /* Provide the system IRQ translator (Internal -> PCI) */
+        return HalGetInterruptTranslator(Internal,
+                                         0,
+                                         PCIBus,
+                                         (USHORT)InterfaceBufferSize,
+                                         Version,
+                                         (PTRANSLATOR_INTERFACE)Interface,
+                                         &BridgeBusNumber);
+    }
+
+    /* Bus interface (basic address translation/DMA access) */
+    if (IsEqualIID(InterfaceType, &GUID_BUS_INTERFACE_STANDARD))
+    {
+        PBUS_INTERFACE_STANDARD BusInterface;
+
+        if (InterfaceBufferSize < sizeof(BUS_INTERFACE_STANDARD))
+        {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+
+        BusInterface = (PBUS_INTERFACE_STANDARD)Interface;
+        BusInterface->Size = sizeof(BUS_INTERFACE_STANDARD);
+        BusInterface->Version = 1;
+        BusInterface->Context = DeviceObject;
+        BusInterface->InterfaceReference = HalpInterfaceReference;
+        BusInterface->InterfaceDereference = HalpInterfaceDereference;
+        BusInterface->TranslateBusAddress = HalpBusIfTranslate;
+        BusInterface->GetDmaAdapter = HalpGetDmaAdapter;
+        /* Legacy HAL stubs (per-device bus data not implemented here) */
+        BusInterface->SetBusData = HalpSetBusData;
+        BusInterface->GetBusData = HalpGetBusData;
+
+        if (Length) *Length = sizeof(BUS_INTERFACE_STANDARD);
+        return STATUS_SUCCESS;
+    }
+
+    if (IsEqualIID(InterfaceType, &GUID_PCI_BUS_INTERFACE_STANDARD))
+    {
+        PPCI_BUS_INTERFACE_STANDARD PciIf;
+
+        if (InterfaceBufferSize < sizeof(PCI_BUS_INTERFACE_STANDARD))
+        {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+
+        PciIf = (PPCI_BUS_INTERFACE_STANDARD)Interface;
+        RtlZeroMemory(PciIf, sizeof(*PciIf));
+        PciIf->Size = sizeof(*PciIf);
+        PciIf->Version = PCI_BUS_INTERFACE_STANDARD_VERSION;
+        PciIf->Context = DeviceObject;
+        PciIf->InterfaceReference = HalpInterfaceReference;
+        PciIf->InterfaceDereference = HalpInterfaceDereference;
+        /* Forward to PCI driver via IRP if needed; for legacy HAL, provide NULLs */
+        PciIf->ReadConfig = NULL;
+        PciIf->WriteConfig = NULL;
+        PciIf->PinToLine = NULL;
+        PciIf->LineToPin = NULL;
+        PciIf->RootBusCapability = NULL;
+        PciIf->ExpressWakeControl = NULL;
+        if (Length) *Length = sizeof(*PciIf);
+        return STATUS_SUCCESS;
+    }
+
+    /* PNP Location Interface */
+    if (IsEqualIID(InterfaceType, &GUID_PNP_LOCATION_INTERFACE))
+    {
+        PPNP_LOCATION_INTERFACE Loc;
+
+        if (InterfaceBufferSize < sizeof(*Loc))
+        {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+
+        Loc = (PPNP_LOCATION_INTERFACE)Interface;
+        RtlZeroMemory(Loc, sizeof(*Loc));
+        Loc->Size = sizeof(*Loc);
+        Loc->Version = PNP_LOCATION_INTERFACE_VERSION;
+        Loc->Context = DeviceObject;
+        Loc->InterfaceReference = HalpInterfaceReference;
+        Loc->InterfaceDereference = HalpInterfaceDereference;
+        /* Provide a stable location string */
+        Loc->GetLocationString = (PVOID)HalpGetLocationString;
+        if (Length) *Length = sizeof(*Loc);
+        return STATUS_SUCCESS;
+    }
+
+    DPRINT1("HalpQueryInterface({%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}) unsupported\n",
             InterfaceType->Data1, InterfaceType->Data2, InterfaceType->Data3,
             InterfaceType->Data4[0], InterfaceType->Data4[1],
             InterfaceType->Data4[2], InterfaceType->Data4[3],
             InterfaceType->Data4[4], InterfaceType->Data4[5],
             InterfaceType->Data4[6], InterfaceType->Data4[7]);
-    __debugbreak();
     return STATUS_NOT_SUPPORTED;
 }
 
@@ -338,37 +543,30 @@ HalpQueryResources(IN PDEVICE_OBJECT DeviceObject,
     PPDO_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
     NTSTATUS Status;
     PCM_RESOURCE_LIST ResourceList;
-//    PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
-//    PIO_RESOURCE_DESCRIPTOR Descriptor;
-//    PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDesc;
-//    ULONG i;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDesc;
     PAGED_CODE();
 
     /* Only the ACPI PDO has requirements */
     if (DeviceExtension->PdoType == AcpiPdo)
     {
-#if 0
-        /* Query ACPI requirements */
-        Status = HalpQueryAcpiResourceRequirements(&RequirementsList);
-        if (!NT_SUCCESS(Status)) return Status;
+        SIZE_T Size;
 
-        ASSERT(RequirementsList->AlternativeLists == 1);
-#endif
+        /* Only expose BusNumber here; IO/MEM windows are advertised via requirements */
+        Size = FIELD_OFFSET(CM_RESOURCE_LIST,
+                            List[0].PartialResourceList.PartialDescriptors) +
+               (1 * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR));
 
-        /* Allocate the resourcel ist */
-        ResourceList = ExAllocatePoolWithTag(PagedPool,
-                                             sizeof(CM_RESOURCE_LIST),
-                                             TAG_HAL);
-        if (!ResourceList )
+        /* Allocate the resource list */
+        ResourceList = ExAllocatePoolWithTag(PagedPool, Size, TAG_HAL);
+        if (!ResourceList)
         {
             /* Fail, no memory */
             Status = STATUS_INSUFFICIENT_RESOURCES;
-//            ExFreePoolWithTag(RequirementsList, TAG_HAL);
             return Status;
         }
 
         /* Initialize it */
-        RtlZeroMemory(ResourceList, sizeof(CM_RESOURCE_LIST));
+        RtlZeroMemory(ResourceList, Size);
         ResourceList->Count = 1;
 
         /* Setup the list fields */
@@ -376,41 +574,20 @@ HalpQueryResources(IN PDEVICE_OBJECT DeviceObject,
         ResourceList->List[0].InterfaceType = PCIBus;
         ResourceList->List[0].PartialResourceList.Version = 1;
         ResourceList->List[0].PartialResourceList.Revision = 1;
-        ResourceList->List[0].PartialResourceList.Count = 0;
+        ResourceList->List[0].PartialResourceList.Count = 1;
 
-        /* Setup the first descriptor */
-        //PartialDesc = ResourceList->List[0].PartialResourceList.PartialDescriptors;
+        PartialDesc = ResourceList->List[0].PartialResourceList.PartialDescriptors;
 
-        /* Find the requirement descriptor for the SCI */
-#if 0
-        for (i = 0; i < RequirementsList->List[0].Count; i++)
-        {
-            /* Get this descriptor */
-            Descriptor = &RequirementsList->List[0].Descriptors[i];
-            if (Descriptor->Type == CmResourceTypeInterrupt)
-            {
-                /* Copy requirements descriptor into resource descriptor */
-                PartialDesc->Type = CmResourceTypeInterrupt;
-                PartialDesc->ShareDisposition = Descriptor->ShareDisposition;
-                PartialDesc->Flags = Descriptor->Flags;
-                ASSERT(Descriptor->u.Interrupt.MinimumVector ==
-                       Descriptor->u.Interrupt.MaximumVector);
-                PartialDesc->u.Interrupt.Vector = Descriptor->u.Interrupt.MinimumVector;
-                PartialDesc->u.Interrupt.Level = Descriptor->u.Interrupt.MinimumVector;
-                PartialDesc->u.Interrupt.Affinity = 0xFFFFFFFF;
-
-                ResourceList->List[0].PartialResourceList.Count++;
-
-                break;
-            }
-        }
-#endif
+        /* PCI root bus number (bus 0) */
+        PartialDesc->Type = CmResourceTypeBusNumber;
+        PartialDesc->ShareDisposition = CmResourceShareDeviceExclusive;
+        PartialDesc->Flags = 0;
+        PartialDesc->u.BusNumber.Start = 0;
+        PartialDesc->u.BusNumber.Length = 1;
+        PartialDesc->u.BusNumber.Reserved = 0;
 
         /* Return resources and success */
         *Resources = ResourceList;
-
-//        ExFreePoolWithTag(RequirementsList, TAG_HAL);
-
         return STATUS_SUCCESS;
     }
     else if (DeviceExtension->PdoType == WdPdo)
@@ -436,8 +613,80 @@ HalpQueryResourceRequirements(IN PDEVICE_OBJECT DeviceObject,
     /* Only the ACPI PDO has requirements */
     if (DeviceExtension->PdoType == AcpiPdo)
     {
-        /* Query ACPI requirements */
-//        return HalpQueryAcpiResourceRequirements(Requirements);
+        PIO_RESOURCE_REQUIREMENTS_LIST ReqList;
+        PIO_RESOURCE_DESCRIPTOR Desc;
+        ULONG Count;
+        SIZE_T Size;
+
+        /* Advertise IO/MEM windows via requirements, in two IO windows and one MEM window */
+        Count = 4; /* BusNumber + 2x IO + 1x MEM */
+        Size = FIELD_OFFSET(IO_RESOURCE_REQUIREMENTS_LIST, List[0].Descriptors) +
+               (Count * sizeof(IO_RESOURCE_DESCRIPTOR));
+
+        /* Allocate requirements */
+        ReqList = ExAllocatePoolWithTag(PagedPool, Size, TAG_HAL);
+        if (!ReqList)
+        {
+            *Requirements = NULL;
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        RtlZeroMemory(ReqList, Size);
+        ReqList->ListSize = (ULONG)Size;
+        ReqList->InterfaceType = PCIBus;
+        ReqList->BusNumber = 0;
+        ReqList->SlotNumber = 0;
+        ReqList->AlternativeLists = 1;
+        ReqList->List[0].Version = 1;
+        ReqList->List[0].Revision = 1;
+        ReqList->List[0].Count = Count;
+
+        Desc = &ReqList->List[0].Descriptors[0];
+
+        /* 0) BusNumber 0 */
+        Desc->Option = 0; /* Required */
+        Desc->Type = CmResourceTypeBusNumber;
+        Desc->ShareDisposition = CmResourceShareDeviceExclusive;
+        Desc->Flags = 0;
+        Desc->u.BusNumber.MinBusNumber = 0;
+        Desc->u.BusNumber.MaxBusNumber = 0;
+        Desc->u.BusNumber.Length = 1;
+        Desc->u.BusNumber.Reserved = 0;
+        Desc++;
+
+        /* 1) IO: 0x0000 - 0x0CF7 */
+        Desc->Option = 0;
+        Desc->Type = CmResourceTypePort;
+        Desc->ShareDisposition = CmResourceShareDeviceExclusive;
+        Desc->Flags = 0;
+        Desc->u.Port.MinimumAddress.QuadPart = 0x0000;
+        Desc->u.Port.MaximumAddress.QuadPart = 0x0CF7;
+        Desc->u.Port.Alignment = 1;
+        Desc->u.Port.Length = 0x0CF8;
+        Desc++;
+
+        /* 2) IO: 0x0D00 - 0xFFFF */
+        Desc->Option = 0;
+        Desc->Type = CmResourceTypePort;
+        Desc->ShareDisposition = CmResourceShareDeviceExclusive;
+        Desc->Flags = 0;
+        Desc->u.Port.MinimumAddress.QuadPart = 0x0D00;
+        Desc->u.Port.MaximumAddress.QuadPart = 0xFFFF;
+        Desc->u.Port.Alignment = 1;
+        Desc->u.Port.Length = 0xF300;
+        Desc++;
+
+        /* 3) Memory: 0x00100000 - 0xFEBFFFFF */
+        Desc->Option = 0;
+        Desc->Type = CmResourceTypeMemory;
+        Desc->ShareDisposition = CmResourceShareDeviceExclusive;
+        Desc->Flags = 0; /* non-prefetchable */
+        Desc->u.Memory.MinimumAddress.QuadPart = 0x00100000ULL;
+        Desc->u.Memory.MaximumAddress.QuadPart = 0xFEBFFFFFULL;
+        Desc->u.Memory.Alignment = 0x1000; /* 4K */
+        Desc->u.Memory.Length = (ULONG)(0xFEBFFFFFULL - 0x00100000ULL + 1ULL);
+
+        *Requirements = ReqList;
         return STATUS_SUCCESS;
     }
     else if (DeviceExtension->PdoType == WdPdo)
@@ -648,9 +897,9 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
                 DPRINT("Querying interface for FDO\n");
                 Status = HalpQueryInterface(DeviceObject,
                                             IoStackLocation->Parameters.QueryInterface.InterfaceType,
-                                            IoStackLocation->Parameters.QueryInterface.Size,
-                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
                                             IoStackLocation->Parameters.QueryInterface.Version,
+                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
+                                            IoStackLocation->Parameters.QueryInterface.Size,
                                             IoStackLocation->Parameters.QueryInterface.Interface,
                                             (PVOID)&Irp->IoStatus.Information);
                 break;
@@ -747,9 +996,9 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
                 DPRINT("Querying interface for PDO\n");
                 Status = HalpQueryInterface(DeviceObject,
                                             IoStackLocation->Parameters.QueryInterface.InterfaceType,
-                                            IoStackLocation->Parameters.QueryInterface.Size,
-                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
                                             IoStackLocation->Parameters.QueryInterface.Version,
+                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
+                                            IoStackLocation->Parameters.QueryInterface.Size,
                                             IoStackLocation->Parameters.QueryInterface.Interface,
                                             (PVOID)&Irp->IoStatus.Information);
                 break;

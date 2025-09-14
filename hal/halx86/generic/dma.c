@@ -931,7 +931,38 @@ HalpGetDmaAdapter(IN PVOID Context,
                   IN PDEVICE_DESCRIPTION DeviceDescription,
                   OUT PULONG NumberOfMapRegisters)
 {
-    return &HalGetAdapter(DeviceDescription, NumberOfMapRegisters)->DmaHeader;
+    PADAPTER_OBJECT Adapter;
+
+    UNREFERENCED_PARAMETER(Context);
+
+    /* Normalize device description to avoid NULL adapter returns */
+    if (!DeviceDescription)
+    {
+        return NULL;
+    }
+    if (DeviceDescription->Version < DEVICE_DESCRIPTION_VERSION1)
+    {
+        DeviceDescription->Version = DEVICE_DESCRIPTION_VERSION1;
+    }
+    /* x86: if 64-bit DMA requested, fall back to 32-bit */
+    if (DeviceDescription->Dma64BitAddresses)
+    {
+        DeviceDescription->Dma64BitAddresses = FALSE;
+        DeviceDescription->Dma32BitAddresses = TRUE;
+    }
+    /* Ensure sane maximum length for initial map register sizing */
+    if (DeviceDescription->MaximumLength == 0)
+    {
+        DeviceDescription->MaximumLength = 0x10000; /* 64KB default */
+    }
+
+    Adapter = HalGetAdapter(DeviceDescription, NumberOfMapRegisters);
+    if (!Adapter)
+    {
+        return NULL;
+    }
+
+    return &Adapter->DmaHeader;
 }
 
 /**

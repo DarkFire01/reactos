@@ -22,6 +22,175 @@ BOOLEAN HalpPciLockSettings;
 /* PRIVATE FUNCTIONS *********************************************************/
 
 static
+VOID
+NTAPI
+HalpTranslatorNull(
+    IN PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+}
+
+NTSTATUS
+NTAPI
+HalpTranslateResource(
+    IN OUT PVOID Context OPTIONAL,
+    IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Source,
+    IN RESOURCE_TRANSLATION_DIRECTION Direction,
+    IN ULONG AlternativesCount OPTIONAL,
+    IN PIO_RESOURCE_DESCRIPTOR Alternatives[],
+    IN PDEVICE_OBJECT PhysicalDeviceObject,
+    OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR Target)
+{
+    KIRQL Irql;
+    KAFFINITY Affinity;
+    ULONG MinimumVector, Vector, k;
+    PIO_RESOURCE_DESCRIPTOR Alternative;
+
+    UNREFERENCED_PARAMETER(PhysicalDeviceObject);
+
+    PAGED_CODE();
+
+    ASSERT(Source->Type == CmResourceTypeInterrupt);
+
+    /* Copy common fields */
+    Target->Type = Source->Type;
+    Target->ShareDisposition = Source->ShareDisposition;
+    Target->Flags = Source->Flags;
+
+    if (Direction == TranslateChildToParent)
+    {
+        /* Translate device (child) vector to system (parent) vector */
+        Target->u.Interrupt.Vector = HalGetInterruptVector((INTERFACE_TYPE)Context,
+                                                           0,
+                                                           Source->u.Interrupt.Vector,
+                                                           Source->u.Interrupt.Vector,
+                                                           &Irql,
+                                                           &Affinity);
+        Target->u.Interrupt.Level = Irql;
+        Target->u.Interrupt.Affinity = Affinity;
+        return STATUS_TRANSLATION_COMPLETE;
+    }
+    else if (Direction == TranslateParentToChild)
+    {
+        /* Try to find the device vector that maps to the given system vector */
+        for (k = 0; k < AlternativesCount; k++)
+        {
+            Alternative = Alternatives[k];
+
+            ASSERT(Alternative->Type == CmResourceTypeInterrupt);
+
+            MinimumVector = Alternative->u.Interrupt.MinimumVector;
+            while (MinimumVector <= Alternative->u.Interrupt.MaximumVector)
+            {
+                Vector = HalGetInterruptVector((INTERFACE_TYPE)Context,
+                                               0,
+                                               MinimumVector,
+                                               MinimumVector,
+                                               &Irql,
+                                               &Affinity);
+
+                if (Vector == Source->u.Interrupt.Vector)
+                {
+                    Target->u.Interrupt.Affinity = (KAFFINITY)-1;
+                    Target->u.Interrupt.Vector = MinimumVector;
+                    Target->u.Interrupt.Level = MinimumVector;
+                    return STATUS_SUCCESS;
+                }
+
+                MinimumVector++;
+            }
+        }
+    }
+
+    return STATUS_UNSUCCESSFUL;
+}
+
+static
+NTSTATUS
+NTAPI
+HalpTranslateRequirement(
+    IN OUT PVOID Context OPTIONAL,
+    IN PIO_RESOURCE_DESCRIPTOR Source,
+    IN PDEVICE_OBJECT PhysicalDeviceObject,
+    OUT PULONG TargetCount,
+    OUT PIO_RESOURCE_DESCRIPTOR *Target)
+{
+    KIRQL Irql;
+    KAFFINITY Affinity;
+
+    UNREFERENCED_PARAMETER(PhysicalDeviceObject);
+
+    PAGED_CODE();
+
+    ASSERT(Source->Type == CmResourceTypeInterrupt);
+
+    *Target = ExAllocatePoolWithTag(PagedPool,
+                                    sizeof(IO_RESOURCE_DESCRIPTOR),
+                                    'trIH');
+    if (!*Target)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlZeroMemory(*Target, sizeof(IO_RESOURCE_DESCRIPTOR));
+    *TargetCount = 1;
+
+    /* Translate minimum and maximum vectors into parent space */
+    (*Target)->Type = CmResourceTypeInterrupt;
+    (*Target)->u.Interrupt.MinimumVector = HalGetInterruptVector((INTERFACE_TYPE)Context,
+                                                                 0,
+                                                                 Source->u.Interrupt.MinimumVector,
+                                                                 Source->u.Interrupt.MinimumVector,
+                                                                 &Irql,
+                                                                 &Affinity);
+    (*Target)->u.Interrupt.MaximumVector = HalGetInterruptVector((INTERFACE_TYPE)Context,
+                                                                 0,
+                                                                 Source->u.Interrupt.MaximumVector,
+                                                                 Source->u.Interrupt.MaximumVector,
+                                                                 &Irql,
+                                                                 &Affinity);
+
+    return STATUS_TRANSLATION_COMPLETE;
+}
+ 
+NTSTATUS
+NTAPI
+HalpGetInterruptTranslator(
+    IN INTERFACE_TYPE ParentInterfaceType,
+    IN ULONG ParentBusNumber,
+    IN INTERFACE_TYPE BridgeInterfaceType,
+    IN USHORT Size,
+    IN USHORT Version,
+    OUT PTRANSLATOR_INTERFACE Translator,
+    OUT PULONG BridgeBusNumber)
+{
+    UNREFERENCED_PARAMETER(ParentInterfaceType);
+    UNREFERENCED_PARAMETER(ParentBusNumber);
+    UNREFERENCED_PARAMETER(BridgeBusNumber);
+
+    PAGED_CODE();
+
+    ASSERT(Size >= sizeof(TRANSLATOR_INTERFACE));
+    ASSERT(Version == HAL_IRQ_TRANSLATOR_VERSION);
+
+    /* Only non-internal busses are supported */
+    if ((BridgeInterfaceType == Internal) || (BridgeInterfaceType >= MicroChannel))
+    {
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    Translator->Size = sizeof(TRANSLATOR_INTERFACE);
+    Translator->Version = HAL_IRQ_TRANSLATOR_VERSION;
+    Translator->Context = UlongToPtr((BridgeInterfaceType == InterfaceTypeUndefined) ? Isa : BridgeInterfaceType);
+    Translator->InterfaceReference = HalpTranslatorNull;
+    Translator->InterfaceDereference = HalpTranslatorNull;
+    Translator->TranslateResources = (PTRANSLATE_RESOURCE_HANDLER)HalpTranslateResource;
+    Translator->TranslateResourceRequirements = HalpTranslateRequirement;
+
+    return STATUS_SUCCESS;
+}
+
+static
 CODE_SEG("INIT")
 VOID
 HalpGetParameters(
@@ -132,7 +301,7 @@ HalInitSystem(
         HalInitPnpDriver = HaliInitPnpDriver;
         HalGetDmaAdapter = HalpGetDmaAdapter;
 
-        HalGetInterruptTranslator = NULL;  // FIXME: TODO
+        HalGetInterruptTranslator = HalpGetInterruptTranslator;
         HalResetDisplay = HalpBiosDisplayReset;
         HalHaltSystem = HaliHaltSystem;
 

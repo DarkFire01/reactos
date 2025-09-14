@@ -697,6 +697,14 @@ HalpPCIISALine2Pin(IN PBUS_HANDLER BusHandler,
 }
 
 #ifndef _MINIHAL_
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+HaliAdjustResourceListRange(
+    IN PSUPPORTED_RANGES                    SRanges,
+    IN PSUPPORTED_RANGE                     InterruptRange,
+    IN OUT PIO_RESOURCE_REQUIREMENTS_LIST   *pResourceList);
+
 NTSTATUS
 NTAPI
 HalpGetISAFixedPCIIrq(IN PBUS_HANDLER BusHandler,
@@ -752,6 +760,7 @@ PciSize(ULONG Base, ULONG Mask)
     return Size;
 }
 
+
 NTSTATUS
 NTAPI
 HalpAdjustPCIResourceList(IN PBUS_HANDLER BusHandler,
@@ -777,17 +786,12 @@ HalpAdjustPCIResourceList(IN PBUS_HANDLER BusHandler,
         /* /PCILOCK is not yet supported */
         UNIMPLEMENTED_DBGBREAK("/PCILOCK boot switch is not yet supported.");
     }
-#endif
+
     /* Now create the correct resource list based on the supported bus ranges */
-#if 0
     Status = HaliAdjustResourceListRange(BusHandler->BusAddresses,
                                          Interrupt,
                                          pResourceList);
-#else
-    DPRINT1("HAL: No PCI Resource Adjustment done! Hardware may malfunction\n");
-    Status = STATUS_SUCCESS;
-#endif
-
+                                         #endif
     /* Return to caller */
     ExFreePool(Interrupt);
     return Status;
