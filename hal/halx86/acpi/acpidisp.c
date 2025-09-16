@@ -97,21 +97,32 @@ HaliAcpiQueryFlags(VOID)
     return 0;
 }
 
-UCHAR
+BOOLEAN HalpPicStateIntact = TRUE;
+
+BOOLEAN
 NTAPI
 HalpAcpiPicStateIntact(VOID)
 {
-    UNIMPLEMENTED;
-    ASSERT(FALSE);// HalpDbgBreakPointEx();
-    return 0;
+    DPRINT1("HalpAcpiPicStateIntact returning %s\n", HalpPicStateIntact ? "TRUE" : "FALSE");
+    return HalpPicStateIntact;
+}
+
+VOID
+NTAPI
+HalpSetPicStateIntact(
+    _In_ BOOLEAN State)
+{
+    DPRINT1("HalpSetPicStateIntact: Setting PIC state to %s\n", State ? "INTACT" : "NOT INTACT");
+    HalpPicStateIntact = State;
 }
 
 VOID
 NTAPI
 HalpRestoreInterruptControllerState(VOID)
 {
-    UNIMPLEMENTED;
-    ASSERT(FALSE);// HalpDbgBreakPointEx();
+    DPRINT("HalpRestoreInterruptControllerState: Restoring interrupt controller state\n");
+    /* Set PIC state as intact after restoration */
+    HalpPicStateIntact = TRUE;
 }
 
 VOID

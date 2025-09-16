@@ -69,8 +69,8 @@
    which connects the NMI and 8259 INTR lines directly to the BSP.
    Writing a value of 01h forces the NMI and 8259 INTR signals to pass through the APIC.
 */
-#define IMCR_ADDRESS_PORT  (PUCHAR)0x0022
-#define IMCR_DATA_PORT     (PUCHAR)0x0023
+#define IMCR_ADDRESS_PORT  0x0022
+#define IMCR_DATA_PORT     0x0023
 #define IMCR_SELECT        0x70
 #define IMCR_PIC_DIRECT    0x00
 #define IMCR_PIC_VIA_APIC  0x01

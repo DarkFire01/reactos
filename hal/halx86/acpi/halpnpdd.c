@@ -18,7 +18,7 @@ extern FADT HalpFixedAcpiDescTable;
 #undef ACPI_BIOS_ERROR
 #include <smp.h>
 extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
-
+#include <debug.h>
 static
 UCHAR
 HalpComputePciLegacyLine(
@@ -27,19 +27,81 @@ HalpComputePciLegacyLine(
     IN UCHAR InterruptPin)
 {
     UCHAR pinIndex = (InterruptPin ? (InterruptPin - 1) : 0) & 0x3;
+    
+    DPRINT1("[ACPI] HalpComputePciLegacyLine: Bus=%lu Slot=%lu Pin=%u\n", Bus, SlotNumber, InterruptPin);
+
+    /* If we are in PIC mode, return PIC IRQs using the classic 9/10/11/5 swizzle */
+    if (HalpAcpiPicStateIntact())
+    {
+        static const UCHAR PicRoute[4] = { 9, 10, 11, 5 };
+        UCHAR irq = PicRoute[((SlotNumber & 0x1F) + pinIndex) & 0x3];
+        DPRINT("[ACPI] Legacy PIC route: bus %lu slot %lu pin %u -> IRQ %u\n",
+                Bus, SlotNumber & 0x1F, InterruptPin, irq);
+        return irq;
+    }
+
+    /* APIC/IOAPIC: return a GSI in 16.. range with bus-based swizzle */
     if (Bus == 0)
     {
-        return (UCHAR)(16 + ((SlotNumber & 0x1F) + pinIndex) % 4);
+        UCHAR gsi = (UCHAR)(16 + (((SlotNumber & 0x1F) + pinIndex) & 0x3));
+        DPRINT("[ACPI] Legacy APIC route: bus %lu slot %lu pin %u -> GSI %u\n",
+                Bus, SlotNumber & 0x1F, InterruptPin, gsi);
+        return gsi;
     }
     else
     {
-        return (UCHAR)(16 + ((Bus & 0x07) * 4) + ((SlotNumber & 0x1F) + pinIndex) % 4);
+        UCHAR gsi = (UCHAR)(16 + (((Bus & 0x07) * 4) + (((SlotNumber & 0x1F) + pinIndex) & 0x3)));
+        DPRINT("[ACPI] Legacy APIC route: bus %lu slot %lu pin %u -> GSI %u\n",
+                Bus, SlotNumber & 0x1F, InterruptPin, gsi);
+        return gsi;
     }
 }
 
+/* Simple HAL-managed PCI link nodes (LNKA..LNKD) for ACPI _PRT fallback */
+typedef struct _HALP_LINK_NODE
+{
+    UCHAR AssignedGsi;
+    UCHAR Initialized;
+} HALP_LINK_NODE, *PHALP_LINK_NODE;
+
+static HALP_LINK_NODE HalpLinkNodes[4]; /* A..D */
+static volatile LONG HalpLinkNodesInit;
+
+static VOID
+HalpInitLinkNodesOnce(VOID)
+{
+    if (InterlockedCompareExchange(&HalpLinkNodesInit, 1, 0) == 0)
+    {
+        for (int i = 0; i < 4; ++i)
+        {
+            HalpLinkNodes[i].AssignedGsi = 0xFF;
+            HalpLinkNodes[i].Initialized = 1;
+        }
+    }
+}
+
+static UCHAR
+HalpChooseGsiForLink(UCHAR linkIndex)
+{
+    /* Prefer typical PCI INTx shareable GSIs: 9,10,11,5, then 3..15 excluding 0,1,2,8,13 */
+    static const UCHAR PrefList[] = {9, 10, 11, 5, 3, 4, 6, 7, 12, 14, 15};
+    for (size_t i = 0; i < sizeof(PrefList); ++i)
+    {
+        UCHAR g = PrefList[i];
+        /* Honour MADT ISA overrides mapping IRQ->GSI if present */
+        if (g < 16)
+        {
+            ULONG over = HalpApicInfoTable.IsaOverrideGsi[g];
+            if (over != 0) return (UCHAR)over;
+        }
+        return g;
+    }
+    return 9;
+}
+
 /*
- * Note: ACPI sys is disabled, so we cannot use ACPICA helpers here.
- * For now, stub out _PRT resolution and rely on legacy fallback.
+ * _PRT/Link routing fallback in HAL: map (bus, device, pin) to one of LNKA..LNKD
+ * and assign a stable GSI, programming will occur on enable.
  */
 static BOOLEAN
 HalpResolvePrtGsi(
@@ -51,14 +113,42 @@ HalpResolvePrtGsi(
     OUT PUCHAR Polarity,
     OUT PVOID *LinkNode)
 {
-    UNREFERENCED_PARAMETER(Bus);
-    UNREFERENCED_PARAMETER(DeviceNumber);
-    UNREFERENCED_PARAMETER(InterruptPin);
+    UCHAR pinIndex;
+    UCHAR linkIndex;
+
+    DPRINT1("[ACPI] HalpResolvePrtGsi: Bus=%lu Device=%lu Pin=%u\n", Bus, DeviceNumber, InterruptPin);
+
     if (LinkNode) *LinkNode = NULL;
-    *Gsi = 0;
-    *Trigger = 3;
-    *Polarity = 3;
-    return FALSE;
+
+    /* No INTx pin present */
+    if (InterruptPin == 0)
+    {
+        *Gsi = 0;
+        *Trigger = 3;
+        *Polarity = 3;
+        return FALSE;
+    }
+
+    /* Default PCI implies level/low */
+    *Trigger = 3;  /* ACPI_LEVEL_SENSITIVE */
+    *Polarity = 3; /* ACPI_ACTIVE_LOW */
+
+    HalpInitLinkNodesOnce();
+
+    /* Barber-pole swizzle reduced to link selection at this bus level */
+    pinIndex = (InterruptPin - 1) & 0x3;
+    linkIndex = (UCHAR)(((DeviceNumber & 0x1F) + pinIndex) & 0x3); /* A..D */
+
+    if (HalpLinkNodes[linkIndex].AssignedGsi == 0xFF)
+    {
+        UCHAR chosen = HalpChooseGsiForLink(linkIndex);
+        HalpLinkNodes[linkIndex].AssignedGsi = chosen;
+        DPRINT("[ACPI] Link LNK%c assigned GSI %u (bus %lu dev %lu pin %u)\n",
+                'A' + linkIndex, chosen, Bus, DeviceNumber, InterruptPin);
+    }
+
+    *Gsi = HalpLinkNodes[linkIndex].AssignedGsi;
+    return TRUE;
 }
 
 #define NDEBUG
@@ -552,6 +642,8 @@ HalpGetInterruptRouting(
     PCI_SLOT_NUMBER Slot;
     ULONG Address;
 
+    DPRINT1("[ACPI] HalpGetInterruptRouting called for PDO %p\n", Pdo);
+
     if (!Pdo || !Bus || !PciSlot || !InterruptLine || !InterruptPin ||
         !ClassCode || !SubClassCode || !ParentPdo || !RoutingToken || !Flags)
     {
@@ -587,7 +679,8 @@ HalpGetInterruptRouting(
     PciConfig = ExAllocatePoolWithTag(NonPagedPool, sizeof(PCI_COMMON_CONFIG), 'ICPH');
     if (!PciConfig) return STATUS_INSUFFICIENT_RESOURCES;
 
-    RtlCopyMemory(&BusHandler, &HalpFakePciBusHandler, sizeof(BUS_HANDLER));
+    RtlZeroMemory(&BusHandler, sizeof(BUS_HANDLER));
+    BusHandler.InterfaceType = PCIBus;
     BusHandler.BusNumber = *Bus;
 
     Bytes = HalGetBusDataByOffset(PCIConfiguration,
@@ -681,6 +774,8 @@ HalpUpdateInterruptLine(
     ULONG Bytes;
     PCI_SLOT_NUMBER Slot;
     ULONG Address;
+
+    DPRINT1("[ACPI] HalpUpdateInterruptLine called: PDO %p, LineRegister %u\n", Pdo, LineRegister);
 
     if (!Pdo) return;
 
@@ -849,8 +944,25 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
     }
     else if (IsEqualIID(InterfaceType, &GUID_INT_ROUTE_INTERFACE_STANDARD))
     {
-        /* Provided by PCI bus driver in base; HAL returns not supported */
-        return STATUS_NOT_SUPPORTED;
+        PINT_ROUTE_INTERFACE_STANDARD Rt;
+
+        DPRINT1("HalpQueryInterface(GUID_INT_ROUTE_INTERFACE_STANDARD)\n");
+
+        if (InterfaceBufferSize < sizeof(INT_ROUTE_INTERFACE_STANDARD))
+        {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+
+        Rt = (PINT_ROUTE_INTERFACE_STANDARD)Interface;
+        Rt->Size = sizeof(INT_ROUTE_INTERFACE_STANDARD);
+        Rt->Version = 1;
+        Rt->Context = DeviceObject;
+        Rt->InterfaceReference = HalPnpInterfaceReference;
+        Rt->InterfaceDereference = HalPnpInterfaceDereference;
+        Rt->GetInterruptRouting = (PGET_INTERRUPT_ROUTING)HalpGetInterruptRouting;
+        Rt->SetInterruptRoutingToken = (PSET_INTERRUPT_ROUTING_TOKEN)HalpSetInterruptRoutingToken;
+        if (Length) *Length = sizeof(INT_ROUTE_INTERFACE_STANDARD);
+        return STATUS_SUCCESS;
     }
     else if (IsEqualIID(InterfaceType, &GUID_BUS_INTERFACE_STANDARD))
     {
@@ -1517,6 +1629,65 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
                                         IoStackLocation->Parameters.QueryId.IdType,
                                         (PVOID)&Irp->IoStatus.Information);
                 break;
+
+            case IRP_MN_QUERY_DEVICE_TEXT:
+
+                /* Device text query */
+                DPRINT("Querying device text for PDO\n");
+                Status = STATUS_NOT_SUPPORTED;
+                break;
+
+            case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
+
+                /* Filter resource requirements */
+                DPRINT("Filtering resource requirements for PDO\n");
+                Status = STATUS_NOT_SUPPORTED;
+                break;
+
+            case IRP_MN_EJECT:
+
+                /* Eject device */
+                DPRINT("Eject request for PDO\n");
+                Status = STATUS_NOT_SUPPORTED;
+                break;
+
+            case IRP_MN_SET_LOCK:
+
+                /* Set device lock */
+                DPRINT("Set lock request for PDO\n");
+                Status = STATUS_NOT_SUPPORTED;
+                break;
+
+            case IRP_MN_QUERY_PNP_DEVICE_STATE:
+
+                /* Query PnP device state */
+                DPRINT("Querying PnP device state for PDO\n");
+                Status = STATUS_NOT_SUPPORTED;
+                break;
+
+            case IRP_MN_QUERY_BUS_INFORMATION:
+            {
+                PPNP_BUS_INFORMATION BusInfo;
+
+                DPRINT1("Querying bus information for PDO\n");
+
+                BusInfo = ExAllocatePoolWithTag(PagedPool,
+                                                sizeof(PNP_BUS_INFORMATION),
+                                                TAG_HAL);
+                if (!BusInfo)
+                {
+                    Status = STATUS_INSUFFICIENT_RESOURCES;
+                    break;
+                }
+
+                BusInfo->BusTypeGuid = GUID_BUS_TYPE_PCI;
+                BusInfo->LegacyBusType = PCIBus;
+                BusInfo->BusNumber = 0;
+
+                Irp->IoStatus.Information = (ULONG_PTR)BusInfo;
+                Status = STATUS_SUCCESS;
+                break;
+            }
 
             default:
 

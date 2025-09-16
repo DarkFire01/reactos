@@ -12,6 +12,13 @@
 #define NDEBUG
 #include <debug.h>
 
+BOOLEAN
+NTAPI
+IopPortGetNextAlias(
+    _In_ UCHAR Flags,
+    _In_ ULONGLONG Start,
+    _Out_ PULONGLONG OutNextStart);
+    
 /* GLOBALS *******************************************************************/
 
 extern ARBITER_INSTANCE IopRootBusNumberArbiter;
@@ -87,8 +94,12 @@ IopBusNumberUnpackResource(
 {
     PAGED_CODE();
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    ASSERT(Descriptor);
+    ASSERT(Descriptor->Type == CmResourceTypeBusNumber);
+
+    *Start = Descriptor->u.BusNumber.Start;
+    *Length = Descriptor->u.BusNumber.Length;
+    return STATUS_SUCCESS;
 }
 
 LONG
@@ -98,8 +109,9 @@ IopBusNumberScoreRequirement(
 {
     PAGED_CODE();
 
-    UNIMPLEMENTED;
-    return 0;
+    ASSERT(IoDescriptor);
+    ASSERT(IoDescriptor->Type == CmResourceTypeBusNumber);
+    return (LONG)IoDescriptor->u.BusNumber.Length;
 }
 
 #define ARB_MAX_BUS_NUMBER 0xFF
@@ -206,8 +218,12 @@ IopIrqUnpackResource(
 {
     PAGED_CODE();
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    ASSERT(CmDescriptor);
+    ASSERT(CmDescriptor->Type == CmResourceTypeInterrupt);
+
+    *Start = CmDescriptor->u.Interrupt.Vector;
+    *OutLength = 1;
+    return STATUS_SUCCESS;
 }
 
 LONG
@@ -217,8 +233,9 @@ IopIrqScoreRequirement(
 {
     PAGED_CODE();
 
-    UNIMPLEMENTED;
-    return 0;
+    ASSERT(IoDescriptor);
+    ASSERT(IoDescriptor->Type == CmResourceTypeInterrupt);
+    return 1;
 }
 
 NTSTATUS
@@ -333,8 +350,17 @@ IopDmaPackResource(
 {
     PAGED_CODE();
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    ASSERT(CmDescriptor);
+    ASSERT(IoDescriptor);
+    ASSERT(IoDescriptor->Type == CmResourceTypeDma);
+
+    CmDescriptor->Type = CmResourceTypeDma;
+    CmDescriptor->Flags = IoDescriptor->Flags;
+    CmDescriptor->ShareDisposition = IoDescriptor->ShareDisposition;
+    CmDescriptor->u.Dma.Channel = (ULONG)Start;
+    CmDescriptor->u.Dma.Port = 0;
+    CmDescriptor->u.Dma.Reserved1 = 0;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -346,8 +372,11 @@ IopDmaUnpackResource(
 {
     PAGED_CODE();
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    ASSERT(CmDescriptor);
+    ASSERT(CmDescriptor->Type == CmResourceTypeDma);
+    *Start = CmDescriptor->u.Dma.Channel;
+    *OutLength = 1;
+    return STATUS_SUCCESS;
 }
 
 LONG
@@ -357,8 +386,9 @@ IopDmaScoreRequirement(
 {
     PAGED_CODE();
 
-    UNIMPLEMENTED;
-    return 0;
+    ASSERT(IoDescriptor);
+    ASSERT(IoDescriptor->Type == CmResourceTypeDma);
+    return 1;
 }
 
 NTSTATUS
@@ -477,8 +507,12 @@ IopGenericUnpackResource(
 {
     PAGED_CODE();
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    ASSERT(CmDescriptor);
+    ASSERT(CmDescriptor->Type == CmResourceTypePort || CmDescriptor->Type == CmResourceTypeMemory);
+
+    *Start = CmDescriptor->u.Generic.Start.QuadPart;
+    *OutLength = CmDescriptor->u.Generic.Length;
+    return STATUS_SUCCESS;
 }
 
 LONG
@@ -488,8 +522,9 @@ IopGenericScoreRequirement(
 {
     PAGED_CODE();
 
-    UNIMPLEMENTED;
-    return 0;
+    ASSERT(IoDescriptor);
+    ASSERT(IoDescriptor->Type == CmResourceTypePort || IoDescriptor->Type == CmResourceTypeMemory);
+    return (LONG)IoDescriptor->u.Generic.Length;
 }
 
 static
@@ -673,6 +708,49 @@ IopPortIsAliasedRangeAvailable(
     _In_ PARBITER_ALLOCATION_STATE State)
 {
     PAGED_CODE();
+    ASSERT(Arbiter);
+    ASSERT(State);
+
+    if (!(State->CurrentAlternative->Descriptor->Flags & (CM_RESOURCE_PORT_10_BIT_DECODE | CM_RESOURCE_PORT_12_BIT_DECODE)))
+        return TRUE;
+
+    {
+        ULONGLONG AliasStart = State->Start;
+        ULONGLONG Next;
+        ULONG Length = State->CurrentAlternative->Length;
+        NTSTATUS Status;
+        ULONGLONG FoundStart;
+        ULONG Flags = 0;
+
+        if (State->Flags & 8)
+            Flags |= RTL_RANGE_LIST_NULL_CONFLICT_OK;
+        if (State->CurrentAlternative->Flags & 1)
+            Flags |= RTL_RANGE_LIST_SHARED_OK;
+
+        while (IopPortGetNextAlias(State->CurrentAlternative->Descriptor->Flags,
+                                   AliasStart,
+                                   &Next))
+        {
+            AliasStart = Next;
+
+            Status = RtlFindRange(Arbiter->PossibleAllocation,
+                                  AliasStart,
+                                  AliasStart + Length - 1,
+                                  Length,
+                                  State->CurrentAlternative->Alignment,
+                                  Flags,
+                                  State->RangeAvailableAttributes,
+                                  Arbiter->ConflictCallbackContext,
+                                  Arbiter->ConflictCallback,
+                                  &FoundStart);
+
+            if (!NT_SUCCESS(Status) || FoundStart != AliasStart)
+            {
+                return FALSE;
+            }
+        }
+    }
+
     return TRUE;
 }
 
@@ -845,8 +923,33 @@ IopPortBacktrackAllocation(
     _Inout_ PARBITER_ALLOCATION_STATE ArbState)
 {
     PAGED_CODE();
+    ASSERT(Arbiter);
+    ASSERT(ArbState);
 
-    UNIMPLEMENTED;
+    {
+        NTSTATUS Status;
+        ULONGLONG Start = ArbState->Start;
+        ULONG Length = ArbState->CurrentAlternative->Length;
+
+        /* Remove the primary range */
+        Status = RtlDeleteRange(Arbiter->PossibleAllocation,
+                                ArbState->Start,
+                                ArbState->End,
+                                ArbState->Entry->PhysicalDeviceObject);
+        ASSERT(NT_SUCCESS(Status));
+
+        /* Remove alias ranges added with attribute bit as in AddAllocation */
+        while (IopPortGetNextAlias(ArbState->CurrentAlternative->Descriptor->Flags,
+                                   Start,
+                                   &Start))
+        {
+            Status = RtlDeleteRange(Arbiter->PossibleAllocation,
+                                    Start,
+                                    Start + Length - 1,
+                                    ArbState->Entry->PhysicalDeviceObject);
+            ASSERT(NT_SUCCESS(Status));
+        }
+    }
 }
 
 NTSTATUS

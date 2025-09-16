@@ -12,6 +12,22 @@
 #include <ntoskrnl.h>
 #define NDEBUG
 #include <debug.h>
+#include <wdmguid.h>
+
+/* Forward declarations for arbiter exposure */
+typedef struct _ARBITER_INSTANCE ARBITER_INSTANCE;
+extern ARBITER_INSTANCE IopRootBusNumberArbiter;
+extern ARBITER_INSTANCE IopRootIrqArbiter;
+extern ARBITER_INSTANCE IopRootDmaArbiter;
+extern ARBITER_INSTANCE IopRootMemArbiter;
+extern ARBITER_INSTANCE IopRootPortArbiter;
+
+NTSTATUS
+NTAPI
+ArbArbiterHandler(
+    _Inout_opt_ PVOID Context,
+    _In_ ARBITER_ACTION Action,
+    _Inout_ PARBITER_PARAMETERS Parameters);
 
 /* GLOBALS *******************************************************************/
 
@@ -65,6 +81,58 @@ typedef struct _BUFFER
 static PNPROOT_FDO_DEVICE_EXTENSION PnpRootDOExtension;
 
 /* FUNCTIONS *****************************************************************/
+
+/*
+ * Minimal translator handlers to satisfy GUID_TRANSLATOR_INTERFACE_STANDARD
+ */
+static
+NTSTATUS
+NTAPI
+IopTranslatorHandlerCm(
+    IN PVOID Context,
+    IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Source,
+    IN RESOURCE_TRANSLATION_DIRECTION Direction,
+    IN ULONG AlternativesCount OPTIONAL,
+    IN IO_RESOURCE_DESCRIPTOR Alternatives[] OPTIONAL,
+    IN PDEVICE_OBJECT DeviceObject,
+    OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR Target)
+{
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(Direction);
+    UNREFERENCED_PARAMETER(AlternativesCount);
+    UNREFERENCED_PARAMETER(Alternatives);
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    *Target = *Source;
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+NTAPI
+IopTranslatorHandlerIo(
+    IN PVOID Context,
+    IN PIO_RESOURCE_DESCRIPTOR Source,
+    IN PDEVICE_OBJECT DeviceObject,
+    OUT PULONG TargetCount,
+    OUT PIO_RESOURCE_DESCRIPTOR *Target)
+{
+    PIO_RESOURCE_DESCRIPTOR NewDesc;
+
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    NewDesc = (PIO_RESOURCE_DESCRIPTOR)ExAllocatePool(PagedPool, sizeof(IO_RESOURCE_DESCRIPTOR));
+    if (NewDesc == NULL)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    *TargetCount = 1;
+    *NewDesc = *Source;
+    *Target = NewDesc;
+    return STATUS_SUCCESS;
+}
 
 static NTSTATUS
 LocateChildDevice(
@@ -997,6 +1065,65 @@ PnpRootFdoPnpControl(
 
     switch (IrpSp->MinorFunction)
     {
+        case IRP_MN_QUERY_INTERFACE:
+        {
+            /* Provide arbiter/translator interfaces on the root bus */
+            Status = Irp->IoStatus.Status;
+
+            if (IrpSp->Parameters.QueryInterface.InterfaceType &&
+                RtlCompareMemory(IrpSp->Parameters.QueryInterface.InterfaceType,
+                                 &GUID_ARBITER_INTERFACE_STANDARD,
+                                 sizeof(GUID)) == sizeof(GUID))
+            {
+                PARBITER_INTERFACE ArbiterInterface;
+                UCHAR ResourceType;
+
+                ArbiterInterface = (PARBITER_INTERFACE)IrpSp->Parameters.QueryInterface.Interface;
+                ArbiterInterface->ArbiterHandler = ArbArbiterHandler;
+
+                ResourceType = (UCHAR)((ULONG_PTR)IrpSp->Parameters.QueryInterface.InterfaceSpecificData);
+                switch (ResourceType)
+                {
+                    case CmResourceTypePort:
+                        ArbiterInterface->Context = (PVOID)&IopRootPortArbiter;
+                        Status = STATUS_SUCCESS;
+                        break;
+                    case CmResourceTypeMemory:
+                        ArbiterInterface->Context = (PVOID)&IopRootMemArbiter;
+                        Status = STATUS_SUCCESS;
+                        break;
+                    case CmResourceTypeInterrupt:
+                        ArbiterInterface->Context = (PVOID)&IopRootIrqArbiter;
+                        Status = STATUS_SUCCESS;
+                        break;
+                    case CmResourceTypeDma:
+                        ArbiterInterface->Context = (PVOID)&IopRootDmaArbiter;
+                        Status = STATUS_SUCCESS;
+                        break;
+                    case CmResourceTypeBusNumber:
+                        ArbiterInterface->Context = (PVOID)&IopRootBusNumberArbiter;
+                        Status = STATUS_SUCCESS;
+                        break;
+                    default:
+                        Status = STATUS_INVALID_PARAMETER;
+                        break;
+                }
+            }
+            else if (IrpSp->Parameters.QueryInterface.InterfaceType &&
+                     RtlCompareMemory(IrpSp->Parameters.QueryInterface.InterfaceType,
+                                      &GUID_TRANSLATOR_INTERFACE_STANDARD,
+                                      sizeof(GUID)) == sizeof(GUID))
+            {
+                PTRANSLATOR_INTERFACE TranslatorInterface;
+
+                TranslatorInterface = (PTRANSLATOR_INTERFACE)IrpSp->Parameters.QueryInterface.Interface;
+                TranslatorInterface->TranslateResources = IopTranslatorHandlerCm;
+                TranslatorInterface->TranslateResourceRequirements = IopTranslatorHandlerIo;
+                Status = STATUS_SUCCESS;
+            }
+
+            break;
+        }
         case IRP_MN_QUERY_DEVICE_RELATIONS:
             DPRINT("IRP_MJ_PNP / IRP_MN_QUERY_DEVICE_RELATIONS\n");
             Status = PnpRootQueryDeviceRelations(DeviceObject, Irp);

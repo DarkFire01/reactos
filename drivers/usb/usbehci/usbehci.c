@@ -1098,6 +1098,7 @@ EHCI_TakeControlHC(IN PEHCI_EXTENSION EhciExtension)
     LARGE_INTEGER CurrentTime;
     EHCI_LEGACY_EXTENDED_CAPABILITY LegacyCapability;
     UCHAR OffsetEECP;
+    ULONG LegacyControlStatus;
 
     DPRINT("EHCI_TakeControlHC: EhciExtension - %p\n", EhciExtension);
 
@@ -1115,7 +1116,24 @@ EHCI_TakeControlHC(IN PEHCI_EXTENSION EhciExtension)
                                           sizeof(LegacyCapability));
 
     if (LegacyCapability.BiosOwnedSemaphore == 0)
+    {
+        /* Already OS-owned; proactively disable legacy SMI */
+        RegPacket.UsbPortReadWriteConfigSpace(EhciExtension,
+                                              TRUE,
+                                              &LegacyControlStatus,
+                                              OffsetEECP + 4,
+                                              sizeof(LegacyControlStatus));
+        if (LegacyControlStatus)
+        {
+            LegacyControlStatus = 0;
+            RegPacket.UsbPortReadWriteConfigSpace(EhciExtension,
+                                                  FALSE,
+                                                  &LegacyControlStatus,
+                                                  OffsetEECP + 4,
+                                                  sizeof(LegacyControlStatus));
+        }
         return MP_STATUS_SUCCESS;
+    }
 
     LegacyCapability.OsOwnedSemaphore = 1;
 
@@ -1126,7 +1144,8 @@ EHCI_TakeControlHC(IN PEHCI_EXTENSION EhciExtension)
                                           sizeof(LegacyCapability));
 
     KeQuerySystemTime(&EndTime);
-    EndTime.QuadPart += 100 * 10000;
+    /* Wait up to 5 seconds for BIOS to release ownership */
+    EndTime.QuadPart += 5000LL * 10000LL;
 
     do
     {
@@ -1137,13 +1156,30 @@ EHCI_TakeControlHC(IN PEHCI_EXTENSION EhciExtension)
                                               sizeof(LegacyCapability));
         KeQuerySystemTime(&CurrentTime);
 
-        if (LegacyCapability.BiosOwnedSemaphore)
+        if (LegacyCapability.BiosOwnedSemaphore == 0)
         {
-            DPRINT("EHCI_TakeControlHC: Ownership is ok\n");
+            DPRINT1("EHCI_TakeControlHC: BIOS released ownership\n");
             break;
         }
     }
     while (CurrentTime.QuadPart <= EndTime.QuadPart);
+
+    /* Disable legacy SMI routing to ACPI/SMI now that OS owns the controller */
+    RegPacket.UsbPortReadWriteConfigSpace(EhciExtension,
+                                          TRUE,
+                                          &LegacyControlStatus,
+                                          OffsetEECP + 4,
+                                          sizeof(LegacyControlStatus));
+    if (LegacyControlStatus)
+    {
+        DPRINT1("EHCI_TakeControlHC: Disabling legacy SMI (was 0x%08lx)\n", LegacyControlStatus);
+        LegacyControlStatus = 0;
+        RegPacket.UsbPortReadWriteConfigSpace(EhciExtension,
+                                              FALSE,
+                                              &LegacyControlStatus,
+                                              OffsetEECP + 4,
+                                              sizeof(LegacyControlStatus));
+    }
 
     return MP_STATUS_SUCCESS;
 }

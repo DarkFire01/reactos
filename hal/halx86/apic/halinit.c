@@ -53,6 +53,15 @@ HalpInitProcessor(
 VOID
 HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    /*
+     * Route PIC interrupts through the APIC and mask them. This is critical
+     * and must be done before interrupts are enabled.
+     */
+    __outbyte(IMCR_ADDRESS_PORT, IMCR_SELECT);
+    __outbyte(IMCR_DATA_PORT, IMCR_PIC_VIA_APIC);
+    __outbyte(0x21, 0xFF);
+    __outbyte(0xA1, 0xFF);
+
     DPRINT1("Using HAL: APIC %s %s\n",
             (HalpBuildType & PRCB_BUILD_UNIPROCESSOR) ? "UP" : "SMP",
             (HalpBuildType & PRCB_BUILD_DEBUG) ? "DBG" : "REL");

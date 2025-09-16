@@ -362,6 +362,7 @@ RegisterForTargetDeviceNotification(
 );
 
 VOID
+NTAPI
 SendOnlineNotification(
     IN PUNICODE_STRING SymbolicName
 );

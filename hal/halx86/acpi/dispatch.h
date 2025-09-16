@@ -144,10 +144,16 @@ HaliAcpiQueryFlags(
     VOID
 );
 
-UCHAR
+BOOLEAN
 NTAPI
 HalpAcpiPicStateIntact(
     VOID
+);
+
+VOID
+NTAPI
+HalpSetPicStateIntact(
+    _In_ BOOLEAN State
 );
 
 VOID

@@ -10,7 +10,6 @@
 
 #include <ntoskrnl.h>
 
-#define NDEBUG
 #include <debug.h>
 
 /* FUNCTIONS *****************************************************************/
@@ -40,6 +39,9 @@ IoConnectInterrupt(OUT PKINTERRUPT *InterruptObject,
     KAFFINITY Affinity;
 
     PAGED_CODE();
+
+    DPRINT1("[IoConnect] IoConnectInterrupt called: Vector=0x%lx IRQL=%u Share=%s\n", 
+            Vector, Irql, ShareVector ? "YES" : "NO");
 
     /* Assume failure */
     *InterruptObject = NULL;
@@ -99,8 +101,11 @@ IoConnectInterrupt(OUT PKINTERRUPT *InterruptObject,
                               FloatingSave);
 
         /* Connect it */
+        DPRINT1("[IoConnect] Connecting interrupt: Vector=0x%lx IRQL=%u Share=%s\n", 
+                Vector, Irql, ShareVector ? "YES" : "NO");
         if (!KeConnectInterrupt(InterruptUsed))
         {
+            DPRINT1("[IoConnect] KeConnectInterrupt FAILED for Vector=0x%lx!\n", Vector);
             /* Check how far we got */
             if (FirstRun)
             {
@@ -115,6 +120,10 @@ IoConnectInterrupt(OUT PKINTERRUPT *InterruptObject,
 
             /* And fail */
             return STATUS_INVALID_PARAMETER;
+        }
+        else
+        {
+            DPRINT1("[IoConnect] KeConnectInterrupt SUCCESS for Vector=0x%lx IRQL=%u\n", Vector, Irql);
         }
 
         /* Now we've used up our First Run */

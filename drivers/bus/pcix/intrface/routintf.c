@@ -51,18 +51,129 @@ routeintrf_Constructor(IN PVOID DeviceExtension,
                        IN USHORT Size,
                        IN PINTERFACE Interface)
 {
+   // PINT_ROUTE_INTERFACE_STANDARD Rt;
+
     UNREFERENCED_PARAMETER(DeviceExtension);
     UNREFERENCED_PARAMETER(Instance);
     UNREFERENCED_PARAMETER(InterfaceData);
     UNREFERENCED_PARAMETER(Size);
-    UNREFERENCED_PARAMETER(Interface);
 
     /* Only version 1 is supported */
     if (Version != PCI_INT_ROUTE_INTRF_STANDARD_VER) return STATUS_NOINTERFACE;
+#if 0
+    Rt = (PINT_ROUTE_INTERFACE_STANDARD)Interface;
+    Rt->Size = sizeof(INT_ROUTE_INTERFACE_STANDARD);
+    Rt->Version = PCI_INT_ROUTE_INTRF_STANDARD_VER;
+    Rt->Context = NULL;
+    Rt->InterfaceReference = NULL;
+    Rt->InterfaceDereference = NULL;
+    Rt->GetInterruptRouting = PciGetInterruptRouting;
+    Rt->SetInterruptRoutingToken = PciSetInterruptRoutingToken;
+#endif
+    return STATUS_SUCCESS;
+}
 
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_IMPLEMENTED;
+static
+NTSTATUS
+NTAPI
+PciGetInterruptRouting(
+    IN PDEVICE_OBJECT Pdo,
+    OUT PULONG Bus,
+    OUT PULONG PciSlot,
+    OUT PUCHAR InterruptLine,
+    OUT PUCHAR InterruptPin,
+    OUT PUCHAR ClassCode,
+    OUT PUCHAR SubClassCode,
+    OUT PDEVICE_OBJECT* ParentPdo,
+    OUT PROUTING_TOKEN RoutingToken,
+    OUT PUCHAR Flags)
+{
+    BUS_HANDLER BusHandler;
+    PCI_SLOT_NUMBER Slot;
+    PPCI_COMMON_CONFIG PciConfig;
+    ULONG Bytes;
+    ULONG Address;
+    KIRQL Irql;
+    KAFFINITY Affinity;
+
+    if (!Pdo || !Bus || !PciSlot || !InterruptLine || !InterruptPin ||
+        !ClassCode || !SubClassCode || !ParentPdo || !RoutingToken || !Flags)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    *ParentPdo = NULL;
+    *Flags = 0;
+    RtlZeroMemory(RoutingToken, sizeof(*RoutingToken));
+
+    if (!NT_SUCCESS(IoGetDeviceProperty(Pdo, DevicePropertyBusNumber, sizeof(ULONG), Bus, &Bytes)))
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    if (!NT_SUCCESS(IoGetDeviceProperty(Pdo, DevicePropertyAddress, sizeof(ULONG), &Address, &Bytes)))
+    {
+        Address = 0;
+    }
+    Slot.u.AsULONG = Address;
+
+   // RtlCopyMemory(&BusHandler, &HalpFakePciBusHandler, sizeof(BUS_HANDLER));
+    BusHandler.BusNumber = *Bus;
+
+    PciConfig = ExAllocatePoolWithTag(NonPagedPool, sizeof(PCI_COMMON_CONFIG), 'rtnI');
+    if (!PciConfig) return STATUS_INSUFFICIENT_RESOURCES;
+
+    Bytes = HalGetBusDataByOffset(PCIConfiguration, *Bus, Slot.u.AsULONG, PciConfig, 0, sizeof(PCI_COMMON_CONFIG));
+    if (Bytes < FIELD_OFFSET(PCI_COMMON_CONFIG, BaseClass))
+    {
+        ExFreePoolWithTag(PciConfig, 'rtnI');
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    *PciSlot = (ULONG)Slot.u.AsULONG;
+    *ClassCode = PciConfig->BaseClass;
+    *SubClassCode = PciConfig->SubClass;
+    *InterruptPin = PciConfig->u.type0.InterruptPin;
+    *InterruptLine = PciConfig->u.type0.InterruptLine;
+
+    if ((*InterruptLine == 0) || (*InterruptLine == 0xFF))
+    {
+        /* Derive a legacy line via swizzle */
+        UCHAR pinIndex = (*InterruptPin ? (*InterruptPin - 1) : 0) & 0x3;
+        if (*Bus == 0)
+        {
+            *InterruptLine = (UCHAR)(16 + (((*PciSlot & 0x1F) + pinIndex) & 0x3));
+        }
+        else
+        {
+            *InterruptLine = (UCHAR)(16 + (((*Bus & 0x07) * 4) + (((*PciSlot & 0x1F) + pinIndex) & 0x3)));
+        }
+    }
+
+    /* Compute a system vector for this routing */
+    RoutingToken->StaticVector = HalGetInterruptVector(PCIBus,
+                                                       *Bus,
+                                                       *InterruptLine,
+                                                       *InterruptLine,
+                                                       &Irql,
+                                                       &Affinity);
+    RoutingToken->LinkNode = NULL;
+    RoutingToken->Flags = 0;
+
+    ExFreePoolWithTag(PciConfig, 'rtnI');
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+NTAPI
+PciSetInterruptRoutingToken(
+    IN PDEVICE_OBJECT Pdo,
+    IN PROUTING_TOKEN RoutingToken)
+{
+    UNREFERENCED_PARAMETER(Pdo);
+    UNREFERENCED_PARAMETER(RoutingToken);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS

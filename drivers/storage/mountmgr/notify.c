@@ -35,11 +35,19 @@
  * @implemented
  */
 VOID
+NTAPI
 SendOnlineNotification(IN PUNICODE_STRING SymbolicName)
 {
     NTSTATUS Status;
     PFILE_OBJECT FileObject;
     PDEVICE_OBJECT DeviceObject;
+
+    /* Validate input */
+    if (SymbolicName == NULL || SymbolicName->Buffer == NULL || SymbolicName->Length == 0)
+    {
+        DPRINT("SendOnlineNotification: invalid SymbolicName\n");
+        return;
+    }
 
     /* Get device object */
     Status = IoGetDeviceObjectPointer(SymbolicName,
@@ -49,19 +57,24 @@ SendOnlineNotification(IN PUNICODE_STRING SymbolicName)
     if (!NT_SUCCESS(Status))
         return;
 
-    /* And attached device object */
-    DeviceObject = IoGetAttachedDeviceReference(FileObject->DeviceObject);
+      if (FileObject) {
+      /* And attached device object */
+      DeviceObject = IoGetAttachedDeviceReference(FileObject->DeviceObject);
 
-    /* And send VOLUME_ONLINE */
-    Status = MountMgrSendSyncDeviceIoCtl(IOCTL_VOLUME_ONLINE,
-                                         DeviceObject,
-                                         NULL, 0,
-                                         NULL, 0,
-                                         FileObject);
-    UNREFERENCED_PARAMETER(Status);
-
-    ObDereferenceObject(DeviceObject);
-    ObDereferenceObject(FileObject);
+      /* And send VOLUME_ONLINE */
+      Status = MountMgrSendSyncDeviceIoCtl(IOCTL_VOLUME_ONLINE,
+                                           DeviceObject,
+                                           NULL, 0,
+                                           NULL, 0,
+                                           FileObject);
+      UNREFERENCED_PARAMETER(Status);
+    }
+    if (DeviceObject)    {
+        ObDereferenceObject(DeviceObject);
+    }
+    if (FileObject)    {
+        ObDereferenceObject(FileObject);
+    }
     return;
 }
 

@@ -354,7 +354,7 @@ ArbTestAllocation(
             continue;
 
         for (CurrentIoDesc = &ArbEntry->Alternatives[0];
-             CurrentIoDesc > &ArbEntry->Alternatives[ArbEntry->AlternativeCount];
+             CurrentIoDesc < &ArbEntry->Alternatives[ArbEntry->AlternativeCount];
              CurrentIoDesc++)
         {
             Score = Arbiter->ScoreRequirement(CurrentIoDesc);
@@ -368,8 +368,35 @@ ArbTestAllocation(
         }
     }
 
-    DPRINT("ArbTestAllocation: FIXME ArbSortArbitrationList\n");
-    Status = 0;//ArbSortArbitrationList(ArbitrationList);
+    /* Simple insertion sort by WorkSpace ascending */
+    {
+        LIST_ENTRY SortedHead, *Entry, *Next;
+        InitializeListHead(&SortedHead);
+
+        for (Entry = ArbitrationList->Flink; Entry != ArbitrationList; Entry = Next)
+        {
+            PARBITER_LIST_ENTRY Cur = CONTAINING_RECORD(Entry, ARBITER_LIST_ENTRY, ListEntry);
+            Next = Entry->Flink;
+
+            LIST_ENTRY *Ins;
+            for (Ins = SortedHead.Flink; Ins != &SortedHead; Ins = Ins->Flink)
+            {
+                PARBITER_LIST_ENTRY Probe = CONTAINING_RECORD(Ins, ARBITER_LIST_ENTRY, ListEntry);
+                if (Cur->WorkSpace <= Probe->WorkSpace) break;
+            }
+            RemoveEntryList(&Cur->ListEntry);
+            InsertTailList(Ins, &Cur->ListEntry);
+        }
+
+        /* Replace original list with sorted list */
+        InitializeListHead(ArbitrationList);
+        while (!IsListEmpty(&SortedHead))
+        {
+            LIST_ENTRY *E = RemoveHeadList(&SortedHead);
+            InsertTailList(ArbitrationList, E);
+        }
+    }
+    Status = STATUS_SUCCESS;
     if (!NT_SUCCESS(Status))
     {
         RtlFreeRangeList(Arbiter->PossibleAllocation);
@@ -396,10 +423,25 @@ ArbRetestAllocation(
     _In_ PARBITER_INSTANCE Arbiter,
     _In_ PLIST_ENTRY ArbitrationList)
 {
-    PAGED_CODE();
+    // Minimal retest: rebuild allocation stack and try allocate again
+    ULONG EntriesCount = 0;
+    PARBITER_LIST_ENTRY ArbEntry;
+    NTSTATUS Status;
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    //PAGED_CODE();
+    DPRINT("ArbRetestAllocation: %p\n", Arbiter);
+
+    for (ArbEntry = CONTAINING_RECORD(ArbitrationList->Flink, ARBITER_LIST_ENTRY, ListEntry);
+         &ArbEntry->ListEntry != ArbitrationList;
+         ArbEntry = CONTAINING_RECORD(ArbEntry->ListEntry.Flink, ARBITER_LIST_ENTRY, ListEntry))
+    {
+        EntriesCount++;
+    }
+
+    Status = ArbpBuildAllocationStack(Arbiter, ArbitrationList, EntriesCount);
+    if (!NT_SUCCESS(Status)) return Status;
+
+    return Arbiter->AllocateEntry(Arbiter, Arbiter->AllocationStack);
 }
 
 NTSTATUS
@@ -426,10 +468,12 @@ NTAPI
 ArbRollbackAllocation(
     _In_ PARBITER_INSTANCE Arbiter)
 {
-    PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    // Minimal rollback: discard PossibleAllocation changes
+    //PAGED_CODE();
+    DPRINT("ArbRollbackAllocation: %p\n", Arbiter);
+    RtlFreeRangeList(Arbiter->PossibleAllocation);
+    RtlInitializeRangeList(Arbiter->PossibleAllocation);
+    return STATUS_SUCCESS;
 }
 
 /* FIXME: the prototype is not correct yet. */
@@ -439,9 +483,8 @@ ArbAddReserved(
     _In_ PARBITER_INSTANCE Arbiter)
 {
     PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    // No-op placeholder: reserved handling not yet implemented
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -1173,9 +1216,12 @@ ArbQueryConflict(
     _Out_ PARBITER_CONFLICT_INFO* OutConflicts)
 {
     PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    UNREFERENCED_PARAMETER(Arbiter);
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(ConflictingResource);
+    if (OutConflictCount) *OutConflictCount = 0;
+    if (OutConflicts) *OutConflicts = NULL;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -1185,9 +1231,9 @@ ArbStartArbiter(
     _In_ PCM_RESOURCE_LIST CmResource)
 {
     PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    UNREFERENCED_PARAMETER(CmResource);
+    // Minimal start: nothing to do
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS

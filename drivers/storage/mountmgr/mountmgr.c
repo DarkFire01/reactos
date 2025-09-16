@@ -1312,7 +1312,7 @@ MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION DeviceExtension,
 
     /* Set the device online now if necessary */
     if (SetOnline)
-        SendOnlineNotification(SymbolicName);
+        PostOnlineNotification(DeviceExtension, SymbolicName);
 
     /* If we had symlinks (from storage), free them */
     if (SymLinks)

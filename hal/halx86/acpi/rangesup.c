@@ -284,6 +284,11 @@ HalIrqTranslateResourcesRoot(
                                                            &Affinity);
         Target->u.Interrupt.Level = Irql;
         Target->u.Interrupt.Affinity = Affinity;
+        DPRINT1("[ACPI] Xlate Child->Parent: GSI %lu -> vec 0x%02lx irql %lu aff 0x%Ix\n",
+                (ULONG)Source->u.Interrupt.Vector,
+                (ULONG)Target->u.Interrupt.Vector,
+                (ULONG)Irql,
+                (SIZE_T)Affinity);
         return STATUS_TRANSLATION_COMPLETE;
     }
     else if (Direction == TranslateParentToChild)
@@ -308,6 +313,8 @@ HalIrqTranslateResourcesRoot(
                     Target->u.Interrupt.Affinity = (KAFFINITY)-1;
                     Target->u.Interrupt.Vector = minimumVector;
                     Target->u.Interrupt.Level = minimumVector;
+                    DPRINT1("[ACPI] Xlate Parent->Child: vec 0x%02lx -> GSI %lu\n",
+                            (ULONG)vector, (ULONG)minimumVector);
                     return STATUS_SUCCESS;
                 }
 
@@ -329,8 +336,6 @@ HalIrqTranslateResourceRequirementsRoot(
     PULONG TargetCount,
     PIO_RESOURCE_DESCRIPTOR *Target)
 {
-    KIRQL Irql;
-    KAFFINITY Affinity;
 
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(PhysicalDeviceObject);
@@ -351,18 +356,10 @@ HalIrqTranslateResourceRequirementsRoot(
     *TargetCount = 1;
 
     (*Target)->Type = CmResourceTypeInterrupt;
-    (*Target)->u.Interrupt.MinimumVector = HalGetInterruptVector(PCIBus,
-                                                                 0,
-                                                                 Source->u.Interrupt.MinimumVector,
-                                                                 Source->u.Interrupt.MinimumVector,
-                                                                 &Irql,
-                                                                 &Affinity);
-    (*Target)->u.Interrupt.MaximumVector = HalGetInterruptVector(PCIBus,
-                                                                 0,
-                                                                 Source->u.Interrupt.MaximumVector,
-                                                                 Source->u.Interrupt.MaximumVector,
-                                                                 &Irql,
-                                                                 &Affinity);
+    /* Do NOT allocate/program vectors here; just map ranges into parent space.
+       For ACPI root, GSI ranges are already in parent space, so pass through. */
+    (*Target)->u.Interrupt.MinimumVector = Source->u.Interrupt.MinimumVector;
+    (*Target)->u.Interrupt.MaximumVector = Source->u.Interrupt.MaximumVector;
 
     return STATUS_TRANSLATION_COMPLETE;
 }

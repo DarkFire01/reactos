@@ -16,20 +16,29 @@
 #include <hal.h>
 #include "apicp.h"
 #include <smp.h>
+
+#include <acpi.h>
+/* ACPI_BIOS_ERROR defined in acoutput.h and bugcodes.h */
+#undef ACPI_BIOS_ERROR
 #define NDEBUG
 #include <debug.h>
 
 /* Provided by ACPI MADT parser */
 extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
+/* ACPI FADT is provided by ACPI HAL */
+extern FADT HalpFixedAcpiDescTable;
 
 #ifndef _M_AMD64
-#define APIC_LAZY_IRQL
+//#define APIC_LAZY_IRQL
 #endif
 
 /* GLOBALS ********************************************************************/
 
 ULONG ApicVersion;
 UCHAR HalpVectorToIndex[256];
+/* IOAPIC id -> contiguous VA slot mapping */
+static UCHAR HalpIoApicIdToSlot[HALP_APIC_INFO_TABLE_IOAPIC_NUMBER];
+static UCHAR HalpIoApicSlotCount;
 
 #ifndef _M_AMD64
 const UCHAR
@@ -97,20 +106,161 @@ FORCEINLINE
 ULONG
 IOApicRead(UCHAR Register)
 {
-    /* Select the register, then do the read */
+    /* Backwards-compatible read using legacy single IOAPIC_BASE mapping */
     ASSERT(Register <= 0x3F);
     WRITE_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOREGSEL), Register);
     return READ_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOWIN));
 }
 
 FORCEINLINE
+ULONG
+IOApicReadAt(ULONG_PTR IoApicVa, UCHAR Register)
+{
+    ASSERT(Register <= 0x3F);
+    WRITE_REGISTER_ULONG((PULONG)(IoApicVa + IOAPIC_IOREGSEL), Register);
+    return READ_REGISTER_ULONG((PULONG)(IoApicVa + IOAPIC_IOWIN));
+}
+
+FORCEINLINE
 VOID
 IOApicWrite(UCHAR Register, ULONG Value)
 {
-    /* Select the register, then do the write */
     ASSERT(Register <= 0x3F);
     WRITE_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOREGSEL), Register);
     WRITE_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOWIN), Value);
+}
+
+FORCEINLINE
+VOID
+IOApicWriteAt(ULONG_PTR IoApicVa, UCHAR Register, ULONG Value)
+{
+    ASSERT(Register <= 0x3F);
+    WRITE_REGISTER_ULONG((PULONG)(IoApicVa + IOAPIC_IOREGSEL), Register);
+    WRITE_REGISTER_ULONG((PULONG)(IoApicVa + IOAPIC_IOWIN), Value);
+}
+
+static
+BOOLEAN
+HalpSelectIoApicForGsi(
+    _In_ ULONG Gsi,
+    _Out_opt_ UCHAR* RedirIndex)
+{
+    ULONG id;
+    ULONG selectedPa = 0;
+    ULONG selectedBase = 0;
+    UCHAR idx = 0;
+
+    /* Pick IOAPIC with the highest base <= GSI by scanning all populated IDs */
+    for (id = 0; id < HALP_APIC_INFO_TABLE_IOAPIC_NUMBER; ++id)
+    {
+        ULONG pa = HalpApicInfoTable.IoApicPA[id];
+        ULONG base = HalpApicInfoTable.IoApicIrqBase[id];
+        if (pa == 0) continue;
+        if (Gsi >= base && base >= selectedBase)
+        {
+            selectedPa = pa;
+            selectedBase = base;
+        }
+    }
+    if (selectedPa)
+    {
+        idx = (UCHAR)(Gsi - selectedBase);
+    }
+
+    if (!selectedPa)
+    {
+        /* Fallback: assume a single IOAPIC at the legacy physical base */
+        if (HalpApicInfoTable.IOAPICCount == 0)
+        {
+            if (Gsi >= APIC_MAX_IRQ) return FALSE;
+            selectedPa = IOAPIC_PHYS_BASE;
+            idx = (UCHAR)Gsi;
+            DPRINT1("[APIC] Fallback IOAPIC for GSI %lu -> idx %u at legacy base\n", Gsi, idx);
+        }
+        else
+        {
+            DPRINT1("[APIC] No IOAPIC selected for GSI %lu (IOAPICCount=%lu)\n", Gsi, HalpApicInfoTable.IOAPICCount);
+            return FALSE;
+        }
+    }
+
+    if (RedirIndex) *RedirIndex = idx;
+    DPRINT1("[APIC] Select IOAPIC for GSI %lu -> PA 0x%lx baseGsi %lu idx %u\n", Gsi, selectedPa, selectedBase, idx);
+    return TRUE;
+}
+
+static
+IOAPIC_REDIRECTION_REGISTER
+HalpReadIoApicRedirectionForGsi(
+    _In_ ULONG Gsi)
+{
+    IOAPIC_REDIRECTION_REGISTER Redir;
+    ULONG id;
+    ULONG selPa = 0, selBase = 0, selId = 0;
+    UCHAR idx = 0;
+
+    /* Scan ONLY IOAPICs that exist according to the MADT-derived count */
+    for (id = 0; id < HALP_APIC_INFO_TABLE_IOAPIC_NUMBER; ++id)
+    {
+        ULONG pa = HalpApicInfoTable.IoApicPA[id];
+        ULONG base = HalpApicInfoTable.IoApicIrqBase[id];
+        if (pa == 0) continue;
+        if (Gsi >= base && base >= selBase)
+        {
+            selPa = pa;
+            selBase = base;
+            selId = id;
+        }
+    }
+    if (!selPa)
+    {
+        Redir.Long0 = 0;
+        Redir.Long1 = 0;
+        DPRINT1("[APIC] Read RTE: no IOAPIC for GSI %lu\n", Gsi);
+        return Redir;
+    }
+    idx = (UCHAR)(Gsi - selBase);
+    {
+        UCHAR selSlot = HalpIoApicIdToSlot[selId];
+        ULONG_PTR va = (ULONG_PTR)IOAPIC_BASE + ((ULONG_PTR)selSlot * PAGE_SIZE);
+        Redir.Long0 = IOApicReadAt(va, IOAPIC_REDTBL + 2 * idx);
+        Redir.Long1 = IOApicReadAt(va, IOAPIC_REDTBL + 2 * idx + 1);
+    }
+    DPRINT1("[APIC] Read RTE GSI %lu (ioapic id %lu slot %u baseGsi %lu idx %u): L0=%08lx L1=%08lx\n", Gsi, selId, HalpIoApicIdToSlot[selId], selBase, idx, Redir.Long0, Redir.Long1);
+    return Redir;
+}
+
+static
+VOID
+HalpWriteIoApicRedirectionForGsi(
+    _In_ ULONG Gsi,
+    _In_ IOAPIC_REDIRECTION_REGISTER Redir)
+{
+    ULONG id;
+    ULONG selPa = 0, selBase = 0, selId = 0;
+    UCHAR idx = 0;
+
+    for (id = 0; id < HALP_APIC_INFO_TABLE_IOAPIC_NUMBER; ++id)
+    {
+        ULONG pa = HalpApicInfoTable.IoApicPA[id];
+        ULONG base = HalpApicInfoTable.IoApicIrqBase[id];
+        if (pa == 0) continue;
+        if (Gsi >= base && base >= selBase)
+        {
+            selPa = pa;
+            selBase = base;
+            selId = id;
+        }
+    }
+    if (!selPa) { DPRINT1("[APIC] Write RTE: no IOAPIC for GSI %lu\n", Gsi); return; }
+    idx = (UCHAR)(Gsi - selBase);
+    {
+        UCHAR selSlot = HalpIoApicIdToSlot[selId];
+        ULONG_PTR va = (ULONG_PTR)IOAPIC_BASE + ((ULONG_PTR)selSlot * PAGE_SIZE);
+        IOApicWriteAt(va, IOAPIC_REDTBL + 2 * idx, Redir.Long0);
+        IOApicWriteAt(va, IOAPIC_REDTBL + 2 * idx + 1, Redir.Long1);
+    }
+    DPRINT1("[APIC] Write RTE GSI %lu (ioapic id %lu slot %u baseGsi %lu idx %u): L0=%08lx L1=%08lx\n", Gsi, selId, HalpIoApicIdToSlot[selId], selBase, idx, Redir.Long0, Redir.Long1);
 }
 
 FORCEINLINE
@@ -268,13 +418,9 @@ UCHAR
 FASTCALL
 HalpIrqToVector(UCHAR Irq)
 {
-    IOAPIC_REDIRECTION_REGISTER ReDirReg;
-
-    /* Read low dword of the redirection entry */
-    ReDirReg.Long0 = IOApicRead(IOAPIC_REDTBL + 2 * Irq);
-
-    /* Return the vector */
-    return (UCHAR)ReDirReg.Vector;
+    IOAPIC_REDIRECTION_REGISTER Redir;
+    Redir = HalpReadIoApicRedirectionForGsi(Irq);
+    return (UCHAR)Redir.Vector;
 }
 
 KIRQL
@@ -311,6 +457,13 @@ ApicInitializeLocalApic(ULONG Cpu)
     BaseRegister.Enable = 1;
     BaseRegister.BootStrapCPUCore = (Cpu == 0);
     __writemsr(MSR_APIC_BASE, BaseRegister.LongLong);
+
+    if (Cpu == 0)
+    {
+        DPRINT1("Enabling IMCR to route PIC via APIC\n");
+        __outbyte(IMCR_ADDRESS_PORT, IMCR_SELECT);
+        __outbyte(IMCR_DATA_PORT, IMCR_PIC_VIA_APIC);
+    }
 
     /* Set spurious vector and SoftwareEnable to 1 */
     SpIntRegister.Long = ApicRead(APIC_SIVR);
@@ -350,8 +503,9 @@ ApicInitializeLocalApic(ULONG Cpu)
     ApicWrite(APIC_EXT2LVTR, LvtEntry.Long);
     ApicWrite(APIC_EXT3LVTR, LvtEntry.Long);
 
-    /* LINT0 */
-    LvtEntry.Vector = APIC_SPURIOUS_VECTOR;
+    /* LINT0: mask external PIC (ExtINT) delivery */
+    LvtEntry.Mask = 1;
+    LvtEntry.Vector = 0; /* ignored for ExtINT */
     LvtEntry.MessageType = APIC_MT_ExtInt;
     ApicWrite(APIC_LINT0, LvtEntry.Long);
 
@@ -383,23 +537,22 @@ HalpAllocateSystemInterrupt(
 {
     IOAPIC_REDIRECTION_REGISTER ReDirReg;
 
-    ASSERT(Irq < APIC_MAX_IRQ);
     ASSERT(HalpVectorToIndex[Vector] == APIC_FREE_VECTOR);
 
-    /* Setup a redirection entry */
+    /* Setup a redirection entry (match HalEnableSystemInterrupt defaults for PCI) */
     ReDirReg.Vector = Vector;
-    ReDirReg.MessageType = APIC_MT_LowestPriority;
-    ReDirReg.DestinationMode = APIC_DM_Logical;
+    ReDirReg.MessageType = APIC_MT_Fixed;
+    ReDirReg.DestinationMode = APIC_DM_Physical;
     ReDirReg.DeliveryStatus = 0;
-    ReDirReg.Polarity = 0;
+    ReDirReg.Polarity = 1;             /* active low */
     ReDirReg.RemoteIRR = 0;
-    ReDirReg.TriggerMode = APIC_TGM_Edge;
+    ReDirReg.TriggerMode = APIC_TGM_Level; /* level */
     ReDirReg.Mask = 1;
     ReDirReg.Reserved = 0;
     ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
 
-    /* Initialize entry */
-    ApicWriteIORedirectionEntry(Irq, ReDirReg);
+    /* Initialize entry for this GSI */
+    HalpWriteIoApicRedirectionForGsi(Irq, ReDirReg);
 
     /* Save irq in the table */
     HalpVectorToIndex[Vector] = Irq;
@@ -472,52 +625,68 @@ ApicInitializeIOApic(VOID)
 {
     PHARDWARE_PTE Pte;
     IOAPIC_REDIRECTION_REGISTER ReDirReg;
-    UCHAR Index;
+    ULONG id;
     ULONG Vector;
+    UCHAR slot;
 
-    /* Map the I/O Apic page */
-    Pte = HalAddressToPte(IOAPIC_BASE);
-    Pte->PageFrameNumber = IOAPIC_PHYS_BASE / PAGE_SIZE;
-    Pte->Valid = 1;
-    Pte->Write = 1;
-    Pte->Owner = 1;
-    Pte->CacheDisable = 1;
-    Pte->Global = 1;
-    _ReadWriteBarrier();
+    /* Initialize ID->slot mapping */
+    for (id = 0; id < HALP_APIC_INFO_TABLE_IOAPIC_NUMBER; ++id) HalpIoApicIdToSlot[id] = 0xFF;
+    HalpIoApicSlotCount = 0;
 
-    /* Setup a redirection entry */
-    ReDirReg.Vector = APIC_FREE_VECTOR;
-    ReDirReg.MessageType = APIC_MT_Fixed;
-    ReDirReg.DestinationMode = APIC_DM_Physical;
-    ReDirReg.DeliveryStatus = 0;
-    ReDirReg.Polarity = 0;
-    ReDirReg.RemoteIRR = 0;
-    ReDirReg.TriggerMode = APIC_TGM_Edge;
-    ReDirReg.Mask = 1;
-    ReDirReg.Reserved = 0;
-    ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
-
-    /* Loop all table entries */
-    for (Index = 0; Index < APIC_MAX_IRQ; Index++)
+    /* Map and initialize each IOAPIC listed by ACPI (compact VA slots) */
+    for (id = 0, slot = 0; id < HALP_APIC_INFO_TABLE_IOAPIC_NUMBER; ++id)
     {
-        /* Initialize entry */
-        ApicWriteIORedirectionEntry(Index, ReDirReg);
-    }
+        ULONG pa = HalpApicInfoTable.IoApicPA[id];
+        if (pa == 0) continue;
 
-    /* Init the vactor to index table */
+        /* Assign contiguous slot for this IOAPIC id */
+        HalpIoApicIdToSlot[id] = slot;
+
+        /* Map this IOAPIC at a unique VA page based on slot */
+        ULONG_PTR va = (ULONG_PTR)IOAPIC_BASE + ((ULONG_PTR)slot * PAGE_SIZE);
+        Pte = HalAddressToPte(va);
+        Pte->PageFrameNumber = pa / PAGE_SIZE;
+        Pte->Valid = 1;
+        Pte->Write = 1;
+        Pte->Owner = 1;
+        Pte->CacheDisable = 1;
+        Pte->Global = 1;
+        _ReadWriteBarrier();
+
+        /* Determine number of redirection entries */
+        {
+            ULONG ver = IOApicReadAt(va, IOAPIC_VER);
+            UCHAR maxRedir = (UCHAR)((ver >> 16) & 0xFF);
+            UCHAR count = (UCHAR)(maxRedir + 1);
+
+            /* Setup default masked redirection entries */
+            ReDirReg.Vector = APIC_FREE_VECTOR;
+            ReDirReg.MessageType = APIC_MT_Fixed;
+            ReDirReg.DestinationMode = APIC_DM_Physical;
+            ReDirReg.DeliveryStatus = 0;
+            ReDirReg.Polarity = 0;
+            ReDirReg.RemoteIRR = 0;
+            ReDirReg.TriggerMode = APIC_TGM_Edge;
+            ReDirReg.Mask = 1;
+            ReDirReg.Reserved = 0;
+            ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
+
+            for (UCHAR i = 0; i < count; ++i)
+            {
+                IOApicWriteAt(va, IOAPIC_REDTBL + 2 * i, ReDirReg.Long0);
+                IOApicWriteAt(va, IOAPIC_REDTBL + 2 * i + 1, ReDirReg.Long1);
+            }
+        }
+
+        slot++;
+    }
+    HalpIoApicSlotCount = slot;
+
+    /* Init the vector to index table */
     for (Vector = 0; Vector <= 255; Vector++)
     {
         HalpVectorToIndex[Vector] = APIC_FREE_VECTOR;
     }
-
-    /* Enable the timer interrupt (but keep it masked) */
-    ReDirReg.Vector = APIC_CLOCK_VECTOR;
-    ReDirReg.MessageType = APIC_MT_Fixed;
-    ReDirReg.DestinationMode = APIC_DM_Physical;
-    ReDirReg.TriggerMode = APIC_TGM_Level;
-    ReDirReg.Mask = 1;
-    ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
-    ApicWriteIORedirectionEntry(APIC_CLOCK_INDEX, ReDirReg);
 }
 
 VOID
@@ -530,8 +699,16 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
     EFlags = __readeflags();
     _disable();
 
+    /* Route PIC interrupts via APIC (disconnect INTR to BSP) using IMCR */
+    __outbyte(IMCR_ADDRESS_PORT, IMCR_SELECT);
+    __outbyte(IMCR_DATA_PORT, IMCR_PIC_VIA_APIC);
+
     /* Initialize and mask the PIC */
     HalpInitializeLegacyPICs();
+
+    /* Ensure 8259 PICs are fully masked when using IOAPIC */
+    __outbyte(0x21, 0xFF);
+    __outbyte(0xA1, 0xFF);
 
     /* Initialize the I/O APIC */
     ApicInitializeIOApic();
@@ -694,6 +871,7 @@ HalEnableSystemInterrupt(
 {
     IOAPIC_REDIRECTION_REGISTER ReDirReg;
     UCHAR Index;
+    ULONG Gsi;
     ASSERT(Irql <= HIGH_LEVEL);
     ASSERT((IrqlToTpr(Irql) & 0xF0) == (Vector & 0xF0));
 
@@ -707,8 +885,16 @@ HalEnableSystemInterrupt(
         return FALSE;
     }
 
-    /* Read the redirection entry */
-    ReDirReg = ApicReadIORedirectionEntry(Index);
+    /* Apply ISA interrupt override mapping if present */
+    Gsi = Index;
+    if (Index < 16)
+    {
+        ULONG OverrideGsi = HalpApicInfoTable.IsaOverrideGsi[Index];
+        if (OverrideGsi != 0) Gsi = OverrideGsi;
+    }
+
+    /* Read the redirection entry for this (possibly overridden) GSI */
+    ReDirReg = HalpReadIoApicRedirectionForGsi(Gsi);
 
     /* Check if the interrupt is already enabled */
     if (ReDirReg.Mask == FALSE)
@@ -741,9 +927,42 @@ HalEnableSystemInterrupt(
     ReDirReg.Mask = FALSE;
 
     /* Write back the entry */
-    ApicWriteIORedirectionEntry(Index, ReDirReg);
+    HalpWriteIoApicRedirectionForGsi(Gsi, ReDirReg);
+    DPRINT1("[APIC] Enable IRQ %u (GSI %lu) -> vec 0x%02x irql %u trig %s pol %s dest 0x%02x\n",
+            Index, Gsi, Vector, Irql,
+            (ReDirReg.TriggerMode ? "level" : "edge"),
+            (ReDirReg.Polarity ? "low" : "high"),
+            ReDirReg.Destination);
+
+    /* CRITICAL: For level-triggered interrupts (like PCI), we need to ensure proper EOI handling */
+    if (ReDirReg.TriggerMode == APIC_TGM_Level)
+    {
+        DPRINT1("[APIC] Level-triggered interrupt enabled - EOI handling is CRITICAL for IRQ %u\n", Index);
+    }
 
     return TRUE;
+}
+
+
+/*
+ * @implemented
+ */
+VOID
+NTAPI
+HalEndSystemInterrupt(
+    IN KIRQL Irql,
+    IN PKTRAP_FRAME TrapFrame)
+{
+    /* Send End-of-Interrupt to Local APIC */
+    ApicWrite(APIC_EOI, 0);
+
+    /*
+     * Lower both the software IRQL in the KPCR and the hardware IRQL in the
+     * APIC's Task Priority Register (TPR). This must be done explicitly to
+     * ensure synchronization and prevent IRQL-related bugchecks.
+     */
+    KeGetPcr()->Irql = Irql;
+    ApicLowerIrql(Irql);
 }
 
 VOID
@@ -754,19 +973,29 @@ HalDisableSystemInterrupt(
 {
     IOAPIC_REDIRECTION_REGISTER ReDirReg;
     UCHAR Index;
+    ULONG Gsi;
     ASSERT(Irql <= HIGH_LEVEL);
     ASSERT(Vector < RTL_NUMBER_OF(HalpVectorToIndex));
 
     Index = HalpVectorToIndex[Vector];
 
-    /* Read lower dword of redirection entry */
-    ReDirReg.Long0 = IOApicRead(IOAPIC_REDTBL + 2 * Index);
+    /* Apply ISA interrupt override mapping if present */
+    Gsi = Index;
+    if (Index < 16)
+    {
+        ULONG OverrideGsi = HalpApicInfoTable.IsaOverrideGsi[Index];
+        if (OverrideGsi != 0) Gsi = OverrideGsi;
+    }
+
+    /* Read lower dword of redirection entry for this GSI */
+    ReDirReg = HalpReadIoApicRedirectionForGsi(Gsi);
 
     /* Mask it */
     ReDirReg.Mask = 1;
 
     /* Write back lower dword */
-    IOApicWrite(IOAPIC_REDTBL + 2 * Index, ReDirReg.Long0);
+    HalpWriteIoApicRedirectionForGsi(Gsi, ReDirReg);
+    DPRINT1("[APIC] Disable vec 0x%02x (IRQ %u GSI %lu)\n", Vector, Index, Gsi);
 }
 
 BOOLEAN
@@ -804,7 +1033,7 @@ HalBeginSystemInterrupt(
         if (Index < APIC_MAX_IRQ)
         {
             /* Read the I/O redirection entry */
-            RedirReg = ApicReadIORedirectionEntry(Index);
+            RedirReg = HalpReadIoApicRedirectionForGsi(Index);
 
             /* Re-request the interrupt to be handled later */
             ApicRequestSelfInterrupt(Vector, (UCHAR)RedirReg.TriggerMode);
@@ -833,19 +1062,6 @@ HalBeginSystemInterrupt(
 
     /* Success */
     return TRUE;
-}
-
-VOID
-NTAPI
-HalEndSystemInterrupt(
-    IN KIRQL OldIrql,
-    IN PKTRAP_FRAME TrapFrame)
-{
-    /* Send an EOI */
-    ApicSendEOI();
-
-    /* Restore the old IRQL */
-    ApicLowerIrql(OldIrql);
 }
 
 

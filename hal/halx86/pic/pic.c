@@ -19,6 +19,8 @@ HalpEndSoftwareInterrupt(IN KIRQL OldIrql,
 
 /* GLOBALS ********************************************************************/
 
+USHORT HalpEnabledPciIrqs = 0; /* Track which PCI IRQs (9-15) are enabled */
+
 #ifndef _MINIHAL_
 /*
  * This table basically keeps track of level vs edge triggered interrupts.
@@ -213,6 +215,9 @@ PHAL_SW_INTERRUPT_HANDLER_2ND_ENTRY SWInterruptHandlerTable2[3] =
 
 LONG HalpEisaELCR;
 
+/* Log first delivery per IRQ to confirm interrupts are firing */
+static volatile ULONG HalpIrqFirstSeenMask;
+
 /* FUNCTIONS ******************************************************************/
 
 VOID
@@ -394,10 +399,11 @@ KfRaiseIrql(IN KIRQL NewIrql)
     /* Set new IRQL */
     Pcr->Irql = NewIrql;
 
+    /* Do not touch PIC mask here; mask management happens on enable/disable paths */
+
     /* Return old IRQL */
     return CurrentIrql;
 }
-
 
 /*
  * @implemented
@@ -427,6 +433,11 @@ KfLowerIrql(IN KIRQL OldIrql)
 
     /* Set old IRQL */
     Pcr->Irql = OldIrql;
+
+    /* Update PIC mask for the new IRQL threshold so hardware IRQs can arrive */
+    Mask.Both = (KiI8259MaskTable[Pcr->Irql] | Pcr->IDR) & 0xFFFF;
+    __outbyte(PIC1_DATA_PORT, Mask.Master);
+    __outbyte(PIC2_DATA_PORT, Mask.Slave);
 
     /* Check for pending software interrupts and compare with current IRQL */
     PendingIrqlMask = Pcr->IRR & FindHigherIrqlMask[OldIrql];
@@ -610,6 +621,13 @@ _HalpDismissIrqGeneric(IN KIRQL Irql,
         {
             /* Send the EOI for the IRQ */
             __outbyte(PIC1_CONTROL_PORT, Ocw2.Bits | (Irq & 0xFF));
+        }
+
+        /* Log first real delivery for this IRQ */
+        if (!(HalpIrqFirstSeenMask & (1u << Irq)))
+        {
+            HalpIrqFirstSeenMask |= (1u << Irq);
+            DPRINT1("[PIC] First interrupt delivery IRQ %lu at IRQL %u (edge)\n", Irq, Irql);
         }
 
         /* Enable interrupts and return success */
@@ -802,6 +820,13 @@ _HalpDismissIrqLevel(IN KIRQL Irql,
         Pcr->Irql = Irql;
         *OldIrql = CurrentIrql;
 
+        /* Log first real delivery for this IRQ */
+        if (!(HalpIrqFirstSeenMask & (1u << Irq)))
+        {
+            HalpIrqFirstSeenMask |= (1u << Irq);
+            DPRINT1("[PIC] First interrupt delivery IRQ %lu at IRQL %u (level)\n", Irq, Irql);
+        }
+
         /* Enable interrupts and return success */
         _enable();
         return TRUE;
@@ -964,6 +989,34 @@ HalEnableSystemInterrupt(IN ULONG Vector,
 
         /* Switch dismiss to level */
         HalpSpecialDismissTable[Irq] = HalpSpecialDismissLevelTable[Irq];
+
+        /* Program ELCR to level for this IRQ if allowed (IRQs 0,1,2,8,13 must remain edge) */
+        if ((Irq != 0) && (Irq != 1) && (Irq != 2) && (Irq != 8) && (Irq != 13) && (Irq < 16))
+        {
+            EISA_ELCR Elcr;
+            Elcr.Bits = (__inbyte(EISA_ELCR_SLAVE) << 8) | __inbyte(EISA_ELCR_MASTER);
+            Elcr.Bits |= (1u << Irq);
+            /* Update hardware */
+            __outbyte(EISA_ELCR_MASTER, (UCHAR)(Elcr.Bits & 0xFF));
+            __outbyte(EISA_ELCR_SLAVE, (UCHAR)((Elcr.Bits >> 8) & 0xFF));
+            /* Cache */
+            HalpEisaELCR = Elcr.Bits;
+            DPRINT1("[PIC] ELCR set level on IRQ %lu -> ELCR=0x%04lx\n", (ULONG)Irq, (ULONG)Elcr.Bits);
+        }
+    }
+    else
+    {
+        /* Edge-sensitive: clear ELCR bit if it was set (same reservation rules) */
+        if ((Irq != 0) && (Irq != 1) && (Irq != 2) && (Irq != 8) && (Irq != 13) && (Irq < 16))
+        {
+            EISA_ELCR Elcr;
+            Elcr.Bits = (__inbyte(EISA_ELCR_SLAVE) << 8) | __inbyte(EISA_ELCR_MASTER);
+            Elcr.Bits &= ~(1u << Irq);
+            __outbyte(EISA_ELCR_MASTER, (UCHAR)(Elcr.Bits & 0xFF));
+            __outbyte(EISA_ELCR_SLAVE, (UCHAR)((Elcr.Bits >> 8) & 0xFF));
+            HalpEisaELCR = Elcr.Bits;
+            DPRINT1("[PIC] ELCR set edge on IRQ %lu -> ELCR=0x%04lx\n", (ULONG)Irq, (ULONG)Elcr.Bits);
+        }
     }
 
     /* Disable interrupts */
@@ -974,11 +1027,76 @@ HalEnableSystemInterrupt(IN ULONG Vector,
 
     /* Set new PIC mask */
     PicMask.Both = (KiI8259MaskTable[Pcr->Irql] | Pcr->IDR) & 0xFFFF;
+    
+    /* CRITICAL FIX: For PCI interrupts (IRQs 9-15), work with hardware expectations */
+    if (Irq >= 9 && Irq <= 15)
+    {
+        /* FIXED: In PIC masks, 0=ENABLED, 1=DISABLED */
+        /* We need to CLEAR the bit to ENABLE the IRQ */
+        USHORT IrqBit = 1 << Irq;
+        PicMask.Both &= ~IrqBit; /* Clear bit to enable this IRQ */
+        HalpEnabledPciIrqs |= IrqBit; /* Track that this PCI IRQ is enabled */
+        DPRINT1("[PIC] ADAPTIVE: Enabling IRQ %u by clearing bit 0x%04x, mask=0x%04x\n", 
+                Irq, IrqBit, PicMask.Both);
+        DPRINT1("[PIC] VERIFICATION: IRQ %u bit is now %s (bit %u = %u)\n", 
+                Irq, (PicMask.Both & IrqBit) ? "DISABLED" : "ENABLED", 
+                Irq, (PicMask.Both >> Irq) & 1);
+        DPRINT1("[PIC] TRACKING: PCI IRQs enabled mask = 0x%04x\n", HalpEnabledPciIrqs);
+    }
+    DPRINT1("[PIC] Before ACPI fix: Both=0x%04x Master=0x%02x Slave=0x%02x\n", 
+            PicMask.Both, PicMask.Master, PicMask.Slave);
+    
+    DPRINT1("[PIC] Final mask: Both=0x%04x Master=0x%02x Slave=0x%02x\n", 
+            PicMask.Both, PicMask.Master, PicMask.Slave);
+    DPRINT1("[PIC] DETAILED: IRQ 0-7 status: %c%c%c%c%c%c%c%c (0=EN,1=DIS)\n",
+            (PicMask.Master & 0x01) ? '1' : '0', (PicMask.Master & 0x02) ? '1' : '0',
+            (PicMask.Master & 0x04) ? '1' : '0', (PicMask.Master & 0x08) ? '1' : '0',
+            (PicMask.Master & 0x10) ? '1' : '0', (PicMask.Master & 0x20) ? '1' : '0',
+            (PicMask.Master & 0x40) ? '1' : '0', (PicMask.Master & 0x80) ? '1' : '0');
+    DPRINT1("[PIC] DETAILED: IRQ 8-15 status: %c%c%c%c%c%c%c%c (0=EN,1=DIS)\n",
+            (PicMask.Slave & 0x01) ? '1' : '0', (PicMask.Slave & 0x02) ? '1' : '0',
+            (PicMask.Slave & 0x04) ? '1' : '0', (PicMask.Slave & 0x08) ? '1' : '0',
+            (PicMask.Slave & 0x10) ? '1' : '0', (PicMask.Slave & 0x20) ? '1' : '0',
+            (PicMask.Slave & 0x40) ? '1' : '0', (PicMask.Slave & 0x80) ? '1' : '0');
+    DPRINT1("[PIC] WRITING to hardware: Master=0x%02x to port 0x21, Slave=0x%02x to port 0xA1\n", 
+            PicMask.Master, PicMask.Slave);
     __outbyte(PIC1_DATA_PORT, PicMask.Master);
     __outbyte(PIC2_DATA_PORT, PicMask.Slave);
+    
+    /* IMMEDIATE readback to catch hardware issues */
+    UCHAR ActualMaster = __inbyte(PIC1_DATA_PORT);
+    UCHAR ActualSlave = __inbyte(PIC2_DATA_PORT);
+    DPRINT1("[PIC] IMMEDIATE readback: Master=0x%02x Slave=0x%02x\n", ActualMaster, ActualSlave);
+    
+    /* CRITICAL DEBUG: Log every PIC mask write to catch overwrites */
+    DPRINT1("[PIC] MASK WRITE: IRQ %u -> Master=0x%02x Slave=0x%02x (Combined=0x%04x)\n", 
+            Irq, PicMask.Master, PicMask.Slave, PicMask.Both);
 
     /* Enable interrupts and exit */
     _enable();
+    DPRINT1("[PIC] Enable vec 0x%02x IRQ %u mode %s IRQL %u mask=0x%04x\n", Vector, Irq,
+            (InterruptMode == LevelSensitive ? "level" : "edge"), Irql, PicMask.Both);
+    
+    /* Add a flag to track if this IRQ ever fires */
+    if (Irq >= 9 && Irq <= 15)
+    {
+        DPRINT1("[PIC] PCI IRQ %u is now ARMED and waiting for hardware interrupts...\n", Irq);
+        
+        /* DELAY to see if something overwrites immediately */
+        for (volatile int i = 0; i < 1000; i++); /* Small delay */
+        
+        /* Test: Check if we can read back the PIC mask to verify it was set correctly */
+        UCHAR ActualMask1 = __inbyte(PIC1_DATA_PORT);
+        UCHAR ActualMask2 = __inbyte(PIC2_DATA_PORT);
+        DPRINT1("[PIC] Actual PIC masks after setting: Master=0x%02x Slave=0x%02x (Expected: 0x%02x 0x%02x)\n",
+                ActualMask1, ActualMask2, PicMask.Master, PicMask.Slave);
+        
+        if (ActualMask1 != PicMask.Master || ActualMask2 != PicMask.Slave)
+        {
+            DPRINT1("[PIC] *** CRITICAL: PIC MASK WAS OVERWRITTEN! Someone else is writing to the PIC! ***\n");
+            DPRINT1("[PIC] *** This explains why interrupts don't work - the mask is being corrupted! ***\n");
+        }
+    }
     return TRUE;
 }
 
@@ -1008,13 +1126,24 @@ HalDisableSystemInterrupt(IN ULONG Vector,
 
     /* Add the new disabled interrupt */
     PicMask.Both |= IrqMask;
+    
+    /* CRITICAL FIX: Preserve PCI interrupt sharing for IRQs 9-15 */
+    /* Don't let HalDisableSystemInterrupt disable PCI interrupts */
+    PicMask.Both &= ~0xFE00; /* Clear bits 9-15 (keep PCI interrupts enabled) */
+    DPRINT1("[PIC] HalDisableSystemInterrupt: Fixed mask from 0x%04x to 0x%04x (preserving PCI)\n", 
+            (USHORT)(PicMask.Both | 0xFE00), PicMask.Both);
 
     /* Write new interrupt mask */
     __outbyte(PIC1_DATA_PORT, PicMask.Master);
     __outbyte(PIC2_DATA_PORT, PicMask.Slave);
+    
+    /* DEBUG: Log this PIC mask write too */
+    DPRINT1("[PIC] HalDisableSystemInterrupt MASK WRITE: Master=0x%02x Slave=0x%02x (Combined=0x%04x)\n", 
+            PicMask.Master, PicMask.Slave, PicMask.Both);
 
     /* Bring interrupts back */
     _enable();
+    DPRINT1("[PIC] Disable vec 0x%02x mask=0x%04x\n", Vector, PicMask.Both);
 }
 
 /*
@@ -1044,6 +1173,8 @@ HalEndSystemInterrupt2(IN KIRQL OldIrql,
     ULONG PendingIrql, PendingIrqlMask, PendingIrqMask;
     PKPCR Pcr = KeGetPcr();
     PIC_MASK Mask;
+    
+    /* Interrupt debugging removed - DPRINTs in interrupt handlers cause deadlocks */
 
     /* Set old IRQL */
     Pcr->Irql = OldIrql;
@@ -1064,8 +1195,16 @@ HalEndSystemInterrupt2(IN KIRQL OldIrql,
             {
                 /* Set new PIC mask */
                 Mask.Both = Pcr->IDR & 0xFFFF;
+                
+                /* TEMPORARY: Disable PCI interrupt preservation to test if it's causing the hang */
+                /* This will let IRQL-based masking work normally */
+                /* TODO: Re-enable with proper tracking if this fixes the hang */
+                // Mask.Both &= ~0xFE00; /* Disabled for testing */
+                
                 __outbyte(PIC1_DATA_PORT, Mask.Master);
                 __outbyte(PIC2_DATA_PORT, Mask.Slave);
+                
+
 
                 /* Now check if this specific interrupt is already in-service */
                 PendingIrqMask = (1 << PendingIrql);
