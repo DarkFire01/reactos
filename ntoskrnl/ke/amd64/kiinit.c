@@ -536,12 +536,14 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
         /* Setup the IDT */
         KeInitExceptions();
+
+        /* Initialize the kernel VA layout */
+        MiInitializeKernelVaLayout(LoaderBlock);
     }
 
     /* Acquire lock */
     while (InterlockedBitTestAndSet64((PLONG64)&KiFreezeExecutionLock, 0))
     {
-        /* Loop until lock is free */
         while ((*(volatile KSPIN_LOCK*)&KiFreezeExecutionLock) & 1);
     }
 
