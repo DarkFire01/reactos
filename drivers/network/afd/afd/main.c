@@ -1181,8 +1181,8 @@ CleanupPendingIrp(PAFD_FCB FCB, PIRP Irp, PIO_STACK_LOCATION IrpSp, PAFD_ACTIVE_
             ASSERT(Poll);
 
             PollReq = Irp->AssociatedIrp.SystemBuffer;
-            ZeroEvents(PollReq->Handles, PollReq->HandleCount);
-            SignalSocket(Poll, NULL, PollReq, STATUS_CANCELLED);
+            ZeroEvents(PollReq, IoIs32bitProcess(Irp));
+            SignalSocket(Poll, NULL, Poll->AfdHandles, PollReq, STATUS_CANCELLED);
         }
     }
 }

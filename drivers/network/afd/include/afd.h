@@ -106,12 +106,6 @@ typedef struct IPADDR_ENTRY {
 					   * for ancillary data on packet
 					   * requests. */
 
-/* XXX This is a hack we should clean up later
- * We do this in order to get some storage for the locked handle table
- * Maybe I'll use some tail item in the irp instead */
-#define AFD_HANDLES(x) ((PAFD_HANDLE)(x)->Exclusive)
-#define SET_AFD_HANDLES(x,y) (((x)->Exclusive) = (ULONG_PTR)(y))
-
 typedef struct _AFD_MAPBUF {
     PVOID BufferAddress;
     PMDL  Mdl;
@@ -131,6 +125,7 @@ typedef struct _AFD_ACTIVE_POLL {
     KTIMER Timer;
     PKEVENT EventObject;
     BOOLEAN Exclusive;
+    PAFD_HANDLE AfdHandles;
 } AFD_ACTIVE_POLL, *PAFD_ACTIVE_POLL;
 
 typedef struct _IRP_LIST {
@@ -309,7 +304,7 @@ NTSTATUS NTAPI UnlockAndMaybeComplete
   UINT Information );
 VOID SocketStateUnlock( PAFD_FCB FCB );
 NTSTATUS LostSocket( PIRP Irp );
-PAFD_HANDLE LockHandles( PAFD_HANDLE HandleArray, UINT HandleCount );
+PAFD_HANDLE LockHandles(PAFD_HANDLE HandleArray, UINT HandleCount, BOOLEAN Wow64Is32Bit);
 VOID UnlockHandles( PAFD_HANDLE HandleArray, UINT HandleCount );
 PVOID LockRequest( PIRP Irp, PIO_STACK_LOCATION IrpSp, BOOLEAN Output, KPROCESSOR_MODE *LockMode );
 VOID UnlockRequest( PIRP Irp, PIO_STACK_LOCATION IrpSp );
@@ -353,10 +348,10 @@ AfdEnumEvents( PDEVICE_OBJECT DeviceObject, PIRP Irp,
 VOID PollReeval( PAFD_DEVICE_EXTENSION DeviceObject, PFILE_OBJECT FileObject );
 VOID KillSelectsForFCB( PAFD_DEVICE_EXTENSION DeviceExt,
                         PFILE_OBJECT FileObject, BOOLEAN ExclusiveOnly );
-VOID ZeroEvents( PAFD_HANDLE HandleArray,
-		 UINT HandleCount );
+VOID ZeroEvents(PAFD_POLL_INFO PollReq,
+                BOOLEAN Wow64Is32Bit);
 VOID SignalSocket(
-   PAFD_ACTIVE_POLL Poll OPTIONAL, PIRP _Irp OPTIONAL,
+   PAFD_ACTIVE_POLL Poll OPTIONAL, PIRP _Irp OPTIONAL, PAFD_HANDLE AfdHandles,
    PAFD_POLL_INFO PollReq, NTSTATUS Status);
 
 /* write.c */

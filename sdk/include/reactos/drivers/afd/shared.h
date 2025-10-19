@@ -85,19 +85,19 @@ typedef struct STRUCT(_AFD_LISTEN_DATA)
     BOOLEAN             UseDelayedAcceptance;
 } STRUCT(AFD_LISTEN_DATA), *STRUCT(PAFD_LISTEN_DATA);
 
-typedef struct STRUCT(_AFD_HANDLE_)
+typedef struct STRUCT(_AFD_HANDLE)
 {
-    SOCKET      Handle;
+    PTR(SOCKET) Handle;
     ULONG       Events;
     NTSTATUS    Status;
 } STRUCT(AFD_HANDLE), *STRUCT(PAFD_HANDLE);
 
 typedef struct STRUCT(_AFD_POLL_INFO)
 {
-    LARGE_INTEGER   Timeout;
-    ULONG           HandleCount;
-    PTR(ULONG_PTR)  Exclusive;
-    AFD_HANDLE      Handles[1];
+    LARGE_INTEGER      Timeout;
+    ULONG              HandleCount;
+    PTR(ULONG_PTR)     Exclusive;
+    STRUCT(AFD_HANDLE) Handles[1];
 } STRUCT(AFD_POLL_INFO), *STRUCT(PAFD_POLL_INFO);
 
 typedef struct STRUCT(_AFD_ACCEPT_DATA)
