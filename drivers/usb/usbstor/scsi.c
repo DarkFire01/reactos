@@ -474,7 +474,8 @@ USBSTOR_SendCBWRequest(
     Context->cbw.Tag = PtrToUlong(Irp);
     Context->cbw.DataTransferLength = Request->DataTransferLength;
     Context->cbw.Flags = ((UCHAR)Request->SrbFlags & SRB_FLAGS_UNSPECIFIED_DIRECTION) << 1;
-    Context->cbw.LUN = PDODeviceExtension->LUN;
+    // Per BOT spec, LUN is 4 bits; clamp just in case
+    Context->cbw.LUN = (UCHAR)(PDODeviceExtension->LUN & 0x0F);
     Context->cbw.CommandBlockLength = Request->CdbLength;
 
     RtlCopyMemory(&Context->cbw.CommandBlock, Request->Cdb, Request->CdbLength);
@@ -552,8 +553,14 @@ USBSTOR_HandleExecuteSCSI(
 
     DPRINT("USBSTOR_HandleExecuteSCSI Operation Code %x, Length %lu\n", SrbGetCdb(Request)->CDB10.OperationCode, Request->DataTransferLength);
 
-    // check that we're sending to the right LUN
-    ASSERT(SrbGetCdb(Request)->CDB10.LogicalUnitNumber == PDODeviceExtension->LUN);
+    // Note: Some stacks/devices don’t propagate the LUN in the CDB10 header bits.
+    // USB BOT uses CBW.bCBWLUN for addressing. Don’t assert here; just warn if mismatched.
+    if (SrbGetCdb(Request)->CDB10.LogicalUnitNumber != PDODeviceExtension->LUN)
+    {
+        DPRINT1("USBSTOR_HandleExecuteSCSI: CDB LUN %u != PDO LUN %u (using CBW LUN)\n",
+                (ULONG)SrbGetCdb(Request)->CDB10.LogicalUnitNumber,
+                (ULONG)PDODeviceExtension->LUN);
+    }
 
     return USBSTOR_SendCBWRequest(PDODeviceExtension->LowerDeviceObject->DeviceExtension, Irp);
 }
