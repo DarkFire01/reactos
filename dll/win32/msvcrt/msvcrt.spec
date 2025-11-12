@@ -175,7 +175,7 @@
 @ extern _HUGE MSVCRT__HUGE
 @ cdecl _Strftime(ptr long str ptr ptr)
 @ cdecl _XcptFilter(long ptr)
-@ stdcall -arch=!i386 __C_specific_handler(ptr long ptr ptr) ntdll.__C_specific_handler
+@ stdcall -arch=x86_64,arm,arm64 __C_specific_handler(ptr long ptr ptr)
 @ cdecl __CppXcptFilter(long ptr)
 # stub -version=0x600+ -arch=i386 __CxxCallUnwindDelDtor
 # stub -arch=i386 __CxxCallUnwindDtor
@@ -185,8 +185,9 @@
 @ cdecl -norelay __CxxFrameHandler(ptr ptr ptr ptr)
 @ cdecl -arch=i386 -norelay __CxxFrameHandler2(ptr ptr ptr ptr) __CxxFrameHandler
 @ cdecl -version=0x600+ -arch=x86_64 -norelay __CxxFrameHandler2(ptr ptr ptr ptr) __CxxFrameHandler
-@ cdecl -arch=arm -norelay __CxxFrameHandler3(ptr ptr ptr ptr)
-@ cdecl -version=0x600+ -norelay __CxxFrameHandler3(ptr ptr ptr ptr) __CxxFrameHandler
+@ cdecl -arch=arm,arm64 -norelay __CxxFrameHandler3(ptr ptr ptr ptr)
+@ cdecl -version=0x600+ -arch=i386 -norelay __CxxFrameHandler3(ptr ptr ptr ptr)
+@ cdecl -version=0x600+ -arch=x86_64 -norelay __CxxFrameHandler3(ptr ptr ptr ptr) __CxxFrameHandler
 @ stdcall -arch=i386 __CxxLongjmpUnwind(ptr)
 @ cdecl -arch=i386 __CxxQueryExceptionSize()
 @ cdecl -arch=i386 __CxxRegisterExceptionObject(ptr ptr)
