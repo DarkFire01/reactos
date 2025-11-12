@@ -224,6 +224,43 @@ struct thunkCode
     }
 };
 #pragma pack(pop)
+#elif defined(_M_ARM64)
+
+#pragma pack(push,4)
+struct thunkCode
+{
+    // AArch64: 3x 32-bit instructions followed by two 64-bit literals.
+    // Layout:
+    //   0x00: ldr x0,  [pc, #16]  ; load "this" pointer from literal at +16
+    //   0x04: ldr x16, [pc, #20]  ; load target proc address from literal at +20
+    //   0x08: br  x16             ; branch to proc (x0 already set)
+    //   0x0C: padding (kept for alignment so first literal starts at +16)
+    //   0x10: 64-bit literal: this
+    //   0x18: 64-bit literal: proc
+    DWORD   m_ldr_x0;   /* ldr x0, [pc, #16]  */
+    DWORD   m_ldr_x16;  /* ldr x16, [pc, #20] */
+    DWORD   m_br_x16;   /* br x16            */
+    DWORD   m_pad;      /* alignment padding */
+    ULONG64 m_this;
+    ULONG64 m_proc;
+
+    void Init(WNDPROC proc, void *pThis)
+    {
+        // Encodings:
+        //  LDR (literal) Xt, #imm19 : 0x58000000 | (imm19 << 5) | Rt
+        //    for x0 with literal at +16 bytes => imm19 = 16/4 = 4
+        //    for x16 with literal at +20 bytes (from its own PC) => imm19 = 20/4 = 5
+        //  BR Xn : 0xD61F0000 | (Rn << 5) ; for x16 => 0xD61F0200
+        m_ldr_x0  = 0x58000000 | (4u << 5) | 0u;   // 0x58000080
+        m_ldr_x16 = 0x58000000 | (5u << 5) | 16u;  // 0x580000B0
+        m_br_x16  = 0xD61F0000 | (16u << 5);       // 0xD61F0200
+        m_pad     = 0; // keep data at +16
+        m_this    = (ULONG64)pThis;
+        m_proc    = (ULONG64)proc;
+        FlushInstructionCache(GetCurrentProcess(), this, sizeof(thunkCode));
+    }
+};
+#pragma pack(pop)
 
 #else
 #error ARCH not supported
