@@ -948,7 +948,7 @@
 @ cdecl _seterrormode(long)
 @ cdecl -norelay _setjmp(ptr)
 @ cdecl -arch=i386 -norelay _setjmp3(ptr long)
-@ cdecl -arch=x86_64,arm -norelay _setjmpex(ptr ptr)
+@ cdecl -arch=x86_64,arm,arm64 -norelay _setjmpex(ptr ptr)
 @ cdecl _setmaxstdio(long)
 @ cdecl _setmbcp(long)
 @ cdecl _setmode(long long)

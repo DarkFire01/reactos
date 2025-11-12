@@ -28,6 +28,10 @@ DBG_DEFAULT_CHANNEL(WARNING);
 
 CCHAR FrLdrBootPath[MAX_PATH] = "";
 
+#ifdef _M_ARM64
+VOID __cdecl Reboot(VOID);
+#endif
+
 /* FUNCTIONS ******************************************************************/
 
 static

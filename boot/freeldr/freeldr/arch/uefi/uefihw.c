@@ -23,12 +23,7 @@ extern UINT32 FreeldrDescCount;
 BOOLEAN AcpiPresent = FALSE;
 
 /* FUNCTIONS *****************************************************************/
-
-BOOLEAN IsAcpiPresent(VOID)
-{
-    return AcpiPresent;
-}
-
+#if 0
 static
 PRSDP_DESCRIPTOR
 FindAcpiBios(VOID)
@@ -127,12 +122,14 @@ DetectAcpiBios(PCONFIGURATION_COMPONENT_DATA SystemKey, ULONG *BusNumber)
     }
 }
 
+#endif
+
 PCONFIGURATION_COMPONENT_DATA
 UefiHwDetect(
     _In_opt_ PCSTR Options)
 {
     PCONFIGURATION_COMPONENT_DATA SystemKey;
-    ULONG BusNumber = 0;
+    //ULONG BusNumber = 0;
 
     TRACE("DetectHardware()\n");
 
@@ -148,7 +145,7 @@ UefiHwDetect(
 #endif
 
     /* Detect ACPI */
-    DetectAcpiBios(SystemKey, &BusNumber);
+   // DetectAcpiBios(SystemKey, &BusNumber);
 
     TRACE("DetectHardware() Done\n");
     return SystemKey;

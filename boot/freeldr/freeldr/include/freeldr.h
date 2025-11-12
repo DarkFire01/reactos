@@ -124,6 +124,9 @@
 #include <arch/powerpc/hardware.h>
 #elif defined(_M_ARM)
 #include <arch/arm/hardware.h>
+#elif defined(_M_ARM64)
+extern UCHAR FrldrBootDrive;
+extern ULONG FrldrBootPartition;
 #elif defined(_M_MIPS)
 #include <arch/mips/arcbios.h>
 #endif

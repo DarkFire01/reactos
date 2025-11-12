@@ -1,6 +1,8 @@
 
 if(NOT ARCH STREQUAL "arm")
+if(NOT ARCH STREQUAL "arm64")
 add_subdirectory(acpi)
+endif()
 endif()
 add_subdirectory(isapnp)
 add_subdirectory(pci)

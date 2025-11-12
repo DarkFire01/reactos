@@ -158,6 +158,7 @@ $endif (_WDMDDK_ || _NTDDK_)
 
 $if (_WDMDDK_)
 #if !defined(_M_AMD64)
+#if !defined(_M_ARM64)
 NTKERNELAPI
 ULONGLONG
 NTAPI
@@ -168,6 +169,7 @@ VOID
 NTAPI
 KeQuerySystemTime(
   _Out_ PLARGE_INTEGER CurrentTime);
+#endif /* !_M_ARM64 */
 #endif /* !_M_AMD64 */
 
 #if !defined(_X86_) && !defined(_M_ARM)

@@ -2258,6 +2258,56 @@ RtlFillMemoryUlong(
 #define RtlFillMemoryUlonglong(Destination, Length, Pattern)                \
     __stosq((PULONG64)(Destination), Pattern, (Length) / 8)
 
+#elif defined(_M_ARM64)
+FORCEINLINE
+VOID
+RtlFillMemoryUlong(
+    _Out_writes_bytes_all_(Length) PVOID Destination,
+    _In_ SIZE_T Length,
+    _In_ ULONG Pattern)
+{
+    PULONG addr32 = (PULONG)Destination;
+    SIZE_T count32 = Length / sizeof(ULONG);
+
+    if (count32 == 0) return;
+
+    /* Align to 8-byte boundary for 64-bit stores if needed */
+    if (((ULONG_PTR)addr32 & sizeof(ULONG)) != 0) {
+        *addr32++ = Pattern;
+        if (--count32 == 0) return;
+    }
+
+    /* Bulk fill using 64-bit stores with duplicated 32-bit pattern */
+    {
+        ULONGLONG pat64 = ((ULONGLONG)Pattern << 32) | (ULONGLONG)Pattern;
+        PULONGLONG addr64 = (PULONGLONG)addr32;
+        SIZE_T count64 = count32 / 2;
+
+        for (SIZE_T i = 0; i < count64; ++i) {
+            *addr64++ = pat64;
+        }
+
+        /* If odd number of 32-bit elements, write the last one */
+        if (count32 & 1) {
+            *(PULONG)addr64 = Pattern;
+        }
+    }
+}
+
+FORCEINLINE
+VOID
+RtlFillMemoryUlonglong(
+    _Out_writes_bytes_all_(Length) PVOID Destination,
+    _In_ SIZE_T Length,
+    _In_ ULONGLONG Pattern)
+{
+    PULONGLONG addr64 = (PULONGLONG)Destination;
+    SIZE_T count64 = Length / sizeof(ULONGLONG);
+
+    for (SIZE_T i = 0; i < count64; ++i) {
+        *addr64++ = Pattern;
+    }
+}
 #else
 
 NTSYSAPI

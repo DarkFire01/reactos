@@ -543,8 +543,9 @@ RtlAssert(IN PVOID FailedAssertion,
                  (PCHAR)FileName,
                  LineNumber);
     }
-
+#ifndef _M_ARM64
     DbgBreakPoint();
+#endif
 }
 
 char *BugCodeStrings[] =

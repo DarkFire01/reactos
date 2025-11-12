@@ -9,6 +9,13 @@
 
 #include <sysfuncs.h>
 
+#elif defined(_M_ARM64)
+
+/* On ARM64, STUB_K in syscalls.inc emits an SVC-based Zw stub. */
+#define SVC_(name, argcount) STUB_K name
+
+#include <sysfuncs.h>
+
 #else
 
 #ifdef _M_IX86

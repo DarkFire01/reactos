@@ -104,7 +104,9 @@ elseif(ARCH STREQUAL "amd64")
 elseif(ARCH STREQUAL "arm")
     list(APPEND FREELDR_NTLDR_SOURCE
         ntldr/arch/arm/winldr.c)
-
+elseif(ARCH STREQUAL "arm64")
+    list(APPEND FREELDR_NTLDR_SOURCE
+            ntldr/arch/arm64/winldr.c)
 else()
     #TBD
 endif()
@@ -120,7 +122,10 @@ if(ARCH STREQUAL "i386" OR ARCH STREQUAL "amd64")
         ${CMAKE_CURRENT_BINARY_DIR}/freeldr.def)
 endif()
 
-include(pcat.cmake)
+if(ARCH STREQUAL "i386" OR ARCH STREQUAL "amd64")
+    include(pcat.cmake)
+endif()
+
 include(rosload.cmake)
 if(NOT ARCH STREQUAL "i386" OR NOT (SARCH STREQUAL "pc98" OR SARCH STREQUAL "xbox"))
     include(uefi.cmake)

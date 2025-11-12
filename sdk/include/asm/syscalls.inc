@@ -46,6 +46,54 @@ $NtFuncEndName
 $ZwFuncEndName
     MEND
 
+#elif defined(_M_ARM64)
+
+#include <ksarm64.h>
+
+    GBLA SyscallId
+
+SyscallId SETA 0
+
+    MACRO
+    STUB_K $Name
+    LCLS ZwFuncName
+    LCLS ZwFuncEndName
+ZwFuncName    SETS "Zw$Name"
+ZwFuncEndName SETS "$ZwFuncName":CC:"_end"
+    ALIGN 4
+    EXPORT $ZwFuncName [FUNC]
+$ZwFuncName
+    ROUT
+    /* x8 holds syscall number on AArch64; use SVC #0 */
+    mov     w8, #SyscallId
+    svc     #0
+    ret
+$ZwFuncEndName
+    MEND
+
+    MACRO
+    STUB_U $Name
+    LCLS NtFuncName
+    LCLS NtFuncEndName
+    LCLS ZwFuncName
+    LCLS ZwFuncEndName
+NtFuncName    SETS "Nt$Name"
+NtFuncEndName SETS "$NtFuncName":CC:"_end"
+ZwFuncName    SETS "Zw$Name"
+ZwFuncEndName SETS "$ZwFuncName":CC:"_end"
+    ALIGN 4
+    EXPORT $NtFuncName [FUNC]
+$NtFuncName
+    EXPORT $ZwFuncName [FUNC]
+$ZwFuncName
+    ROUT
+    mov     w8, #SyscallId
+    svc     #0
+    ret
+$NtFuncEndName
+$ZwFuncEndName
+    MEND
+
 #else
 
 #include <asm.inc>
@@ -112,6 +160,9 @@ MACRO(STUBCODE_K, Name, SyscallId, ArgCount)
     j KiSystemService
     nop
 ENDM
+#elif defined(_M_ARM64)
+#include <ksarm64.h>
+
 #else
 #error unsupported architecture
 #endif

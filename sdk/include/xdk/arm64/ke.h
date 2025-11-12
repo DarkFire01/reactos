@@ -13,7 +13,49 @@ $if (_WDMDDK_)
 #define PROFILE_LEVEL           15
 #define HIGH_LEVEL              15
 
-#define SharedUserData          ((KUSER_SHARED_DATA * const)KI_USER_SHARED_DATA)
+
+_IRQL_requires_max_(HIGH_LEVEL)
+_IRQL_saves_
+NTHALAPI
+KIRQL
+KeGetCurrentIrql (
+    VOID
+    );
+
+_IRQL_requires_max_(HIGH_LEVEL)
+NTHALAPI
+VOID
+KfLowerIrql (
+    _In_ _IRQL_restores_ _Notliteral_ KIRQL NewIrql
+    );
+
+#define KeLowerIrql(a) KfLowerIrql(a)
+#define KeRaiseIrql(a,b) *(b) = KfRaiseIrql(a)
+
+NTHALAPI
+KIRQL
+_IRQL_requires_max_(HIGH_LEVEL)
+_IRQL_raises_(NewIrql)
+_IRQL_saves_
+KfRaiseIrql (
+    _In_ KIRQL NewIrql
+    );
+
+
+#define KI_USER_SHARED_DATA 0xFFFFF78000000000UI64
+
+#define SharedUserData ((KUSER_SHARED_DATA * const)KI_USER_SHARED_DATA)
+#define SharedInterruptTime (KI_USER_SHARED_DATA + 0x8)
+#define SharedSystemTime (KI_USER_SHARED_DATA + 0x14)
+#define SharedTickCount (KI_USER_SHARED_DATA + 0x320)
+
+#define KeQueryInterruptTime() ((ULONG64)ReadNoFence64((const volatile LONG64 *)(SharedInterruptTime)))
+
+#define KeQuerySystemTime(CurrentCount)                                     \
+    *((PULONG64)(CurrentCount)) = ReadNoFence64((const volatile LONG64 *)(SharedSystemTime))
+
+#define KeQueryTickCount(CurrentCount)                                      \
+    *((PULONG64)(CurrentCount)) = ReadNoFence64((const volatile LONG64 *)(SharedTickCount))
 
 #define PAGE_SIZE               0x1000
 #define PAGE_SHIFT              12L
@@ -30,10 +72,94 @@ $if (_WDMDDK_)
 #define EXCEPTION_WRITE_FAULT   1
 #define EXCEPTION_EXECUTE_FAULT 8
 
+
+
+
+#define PCR_MINOR_VERSION 1
+#define PCR_MAJOR_VERSION 1
+/* this is just ARM32 KPCR, it's a hack to move on*/
+typedef struct _KPCR
+{
+    _ANONYMOUS_UNION union
+    {
+        _ANONYMOUS_STRUCT struct
+        {
+            ULONG TibPad0[2];
+            PVOID Spare1;
+            struct _KPCR *Self;
+            struct _KPRCB *CurrentPrcb;
+            PKSPIN_LOCK_QUEUE LockArray;
+            PVOID Used_Self;
+        };
+    };
+    KIRQL CurrentIrql;
+    UCHAR SecondLevelCacheAssociativity;
+    ULONG Unused0[3];
+    USHORT MajorVersion;
+    USHORT MinorVersion;
+    ULONG StallScaleFactor;
+    PVOID Unused1[3];
+    ULONG KernelReserved[15];
+    ULONG SecondLevelCacheSize;
+    _ANONYMOUS_UNION union
+    {
+        USHORT SoftwareInterruptPending; // Software Interrupt Pending Flag
+        struct
+        {
+            UCHAR ApcInterrupt;          // 0x01 if APC int pending
+            UCHAR DispatchInterrupt;     // 0x01 if dispatch int pending
+        };
+    };
+    UCHAR Number;
+    USHORT InterruptPad;
+    ULONG HalReserved[32];
+    PVOID KdVersionBlock;
+    PVOID Unused3;
+    ULONG PcrAlign1[8];
+} KPCR, *PKPCR;
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+_CRT_DEPRECATE_TEXT("KeGetCurrentProcessorNumber is deprecated. Use KeGetCurrentProcessorNumberEx or KeGetCurrentProcessorIndex instead.")
+#endif
+FORCEINLINE
+ULONG
+KeGetCurrentProcessorNumber(VOID)
+{
+    return (ULONG)__readx18byte(FIELD_OFFSET(KPCR, Number));
+}
+
+/* this isn't correct.. There's a far better way to do this then this static address. */
+#define KIP0PCRADDRESS                      0xFFFFF78000001000ULL /* FIXME!!! */
+#define PCR                     ((KPCR * const)KIP0PCRADDRESS)
+
+FORCEINLINE
+PKPCR
+KeGetPcr(
+    VOID)
+{
+    return (PKPCR)(PCR);
+}
+
 NTSYSAPI
 PKTHREAD
 NTAPI
 KeGetCurrentThread(VOID);
+
+VOID
+KeFlushIoBuffers(
+    _In_ PMDL Mdl,
+    _In_ BOOLEAN ReadOperation,
+    _In_ BOOLEAN DmaOperation);
+
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+FORCEINLINE
+ULONG
+NTAPI
+KeGetCurrentProcessorIndex(VOID)
+{
+    return 1;
+    //TODO:
+}
+#endif
 
 #define DbgRaiseAssertionFailure() __break(0xf001)
 

@@ -38,6 +38,10 @@ elseif(ARCH STREQUAL "arm")
         arch/arm/debug.c)
     #TBD
 elseif(ARCH STREQUAL "arm64")
+    list(APPEND UEFILDR_ARC_SOURCE
+        arch/arm64/mach.c)
+    list(APPEND UEFILDR_COMMON_ASM_SOURCE
+        arch/uefi/arm64/uefiasm.S)
     #TBD
 else()
     #TBD
@@ -109,7 +113,7 @@ endif()
 
 if(MSVC)
 if(NOT ARCH STREQUAL "arm")
-    target_link_options(uefildr PRIVATE /DYNAMICBASE:NO)
+    #target_link_options(uefildr PRIVATE /DYNAMICBASE:NO)
 endif()
     target_link_options(uefildr PRIVATE /NXCOMPAT:NO /ignore:4078 /ignore:4254 /DRIVER)
     # We don't need hotpatching

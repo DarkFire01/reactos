@@ -1,5 +1,7 @@
 
+if(NOT ARCH STREQUAL "arm64")
 add_subdirectory(btrfs)
+endif()
 add_subdirectory(cdfs)
 add_subdirectory(ext2)
 add_subdirectory(fastfat)
