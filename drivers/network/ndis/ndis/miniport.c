@@ -2622,7 +2622,6 @@ NdisIAddDevice(
   KeInitializeSpinLock(&Adapter->NdisMiniportBlock.Lock);
   InitializeListHead(&Adapter->ProtocolListHead);
 
-
   Status = IoRegisterDeviceInterface(PhysicalDeviceObject,
                                      &GUID_DEVINTERFACE_NET,
                                      NULL,
