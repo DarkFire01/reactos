@@ -236,6 +236,7 @@ typedef struct _PCI_FDO_EXTENSION
     LIST_ENTRY BootRangeList; /* list of PCI_BOOT_RANGE */
     BOOLEAN BootRangesSeeded;
     USHORT BootRangeSeedMask; /* bit0=IO, bit1=MEM; BootRangesSeeded when both set */
+    LONG PciPmeInterfaceCount;
 } PCI_FDO_EXTENSION, *PPCI_FDO_EXTENSION;
 
 typedef struct _PCI_BOOT_RANGE
