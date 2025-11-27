@@ -95,10 +95,10 @@
 #elif (VER_PRODUCTMAJORVERSION == 10) && (VER_PRODUCTMINORVERSION == 0)
 
 //
-// Windows 10
+// Windows 10 1607 / NT Version 10.0 Build 14393.0
 //
-#define VER_PRODUCTBUILD                    10011
-#define VER_PRODUCTBUILD_QFE                16384
+#define VER_PRODUCTBUILD                    14393
+#define VER_PRODUCTBUILD_QFE                0
 
 #else
 

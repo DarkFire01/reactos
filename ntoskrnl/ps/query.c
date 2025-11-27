@@ -3092,7 +3092,7 @@ NtQueryInformationThread(
         DPRINT1("NtQueryInformationThread(ThreadInformationClass: %s): Class validation failed! (Status: 0x%lx)\n",
                 PspDumpThreadInfoClassName(ThreadInformationClass), Status);
 #endif
-        return Status;
+        //return Status;
     }
 
     /* Check what class this is */

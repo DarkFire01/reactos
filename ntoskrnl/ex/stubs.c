@@ -297,5 +297,11 @@ NtAllocateVirtualMemoryEx(HANDLE ProcessHandle, IN OUT PVOID* UBaseAddress, PSIZ
     return NtAllocateVirtualMemory(ProcessHandle, UBaseAddress, 0, RegionSize, AllocationType, PageProtection);
 }
 
+NTSTATUS NTAPI NtCommitRegistryTransaction() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
+NTSTATUS NTAPI NtCreateRegistryTransaction() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
+NTSTATUS NTAPI NtOpenRegistryTransaction() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
+NTSTATUS NTAPI NtQuerySecurityPolicy() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
+NTSTATUS NTAPI NtRollbackRegistryTransaction() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
+NTSTATUS NTAPI NtSetCachedSigningLevel2() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 
 #pragma warning( pop )
