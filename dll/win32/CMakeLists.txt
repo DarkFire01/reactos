@@ -312,6 +312,7 @@ if(DLL_EXPORT_VERSION GREATER_EQUAL 0x600)
     if(NOT EXISTS ${REACTOS_SOURCE_DIR}/DarkFiresReactOSModules/dwm_win11/dwmapi/CMakeLists.txt)
         add_subdirectory(dwmapi)
     endif()
+    add_subdirectory(ktmw32)
     add_subdirectory(ncrypt)
 endif()
 
