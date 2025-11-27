@@ -46,7 +46,7 @@ wow64_NtRaiseException(UINT* pArgs)
     Record.ExceptionAddress = UlongToPtr(pRecord32->ExceptionAddress);
     Record.NumberParameters = pRecord32->NumberParameters;
     
-    CopyContext32To64(&Context, pContext32);
+    Wow64CopyContext32To64(&Context, pContext32);
     
     for (int i = 0; i < EXCEPTION_MAXIMUM_PARAMETERS; i++)
     {
@@ -87,7 +87,7 @@ Wow64UnhandledExceptionHandler(IN PEXCEPTION_POINTERS ExceptionInfo)
         Record32.ExceptionInformation[i] = pRecord->ExceptionInformation[i];
     }
     
-    CopyContext64To32(&Context32, pContext);
+    Wow64CopyContext64To32(&Context32, pContext);
     
     DispatcherArgs[0] = PtrToUlong(&Record32);
     DispatcherArgs[1] = PtrToUlong(&Context32);

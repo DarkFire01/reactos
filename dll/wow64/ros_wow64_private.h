@@ -651,51 +651,10 @@ RemotePortView64To32(PREMOTE_PORT_VIEW32 portView32,
     return portView32;
 }
 
-/* FIXME: this is an incomplete implementation */
-static
 VOID
-CopyContext32To64(PCONTEXT pContext,
-                  PI386_CONTEXT pContext32)
-{
-    pContext->ContextFlags = pContext32->ContextFlags | CONTEXT_AMD64;
-    pContext->Rip = pContext32->Eip;
-    pContext->Rax = pContext32->Eax;
-    pContext->Rbx = pContext32->Ebx;
-    pContext->Rcx = pContext32->Ecx;
-    pContext->Rdx = pContext32->Edx;
-    pContext->Rsp = pContext32->Esp;
-    pContext->Rbp = pContext32->Ebp;
-    pContext->Rsi = pContext32->Esi;
-    pContext->Rdi = pContext32->Edi;
-    pContext->EFlags = pContext32->EFlags;
-    pContext->SegCs = pContext32->SegCs;
-    pContext->SegDs = pContext32->SegDs;
-    pContext->SegEs = pContext32->SegEs;
-    pContext->SegFs = pContext32->SegFs;
-    pContext->SegGs = pContext32->SegGs;
-    pContext->SegSs = pContext32->SegSs;
-}
+Wow64CopyContext32To64(PCONTEXT pContext,
+                       PI386_CONTEXT pContext32);
 
-static
 VOID
-CopyContext64To32(PI386_CONTEXT pContext32,
-                  PCONTEXT pContext)
-{
-    pContext32->Eip = pContext->Rip;
-    pContext32->Eax = pContext->Rax;
-    pContext32->Ebx = pContext->Rbx;
-    pContext32->Ecx = pContext->Rcx;
-    pContext32->Edx = pContext->Rdx;
-    pContext32->Esi = pContext->Rdi;
-    pContext32->Edi = pContext->Rsi;
-    pContext32->Ebp = pContext->Rbp;
-    pContext32->Esp = pContext->Rsp;
-    pContext32->SegCs = pContext->SegCs;
-    pContext32->SegDs = pContext->SegDs;
-    pContext32->SegEs = pContext->SegEs;
-    pContext32->SegFs = pContext->SegFs;
-    pContext32->SegGs = pContext->SegGs;
-    pContext32->SegSs = pContext->SegSs;
-    pContext32->EFlags = pContext->EFlags;
-    pContext32->ContextFlags = pContext->ContextFlags;
-}
+Wow64CopyContext64To32(PI386_CONTEXT pContext32,
+                       PCONTEXT pContext);

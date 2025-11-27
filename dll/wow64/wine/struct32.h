@@ -780,6 +780,30 @@ typedef struct
 
 #ifdef __REACTOS__
 
+typedef struct _CPTABLEINFO32 
+{
+    USHORT CodePage;
+    USHORT MaximumCharacterSize;
+    USHORT DefaultChar;
+    USHORT UniDefaultChar;
+    USHORT TransDefaultChar;
+    USHORT TransUniDefaultChar;
+    USHORT DBCSCodePage;
+    UCHAR LeadByte[MAXIMUM_LEADBYTES];
+    ULONG MultiByteTable;
+    ULONG WideCharTable;
+    ULONG DBCSRanges;
+    ULONG DBCSOffsets;
+} CPTABLEINFO32, *PCPTABLEINFO32;
+
+typedef struct _NLSTABLEINFO32 
+{
+    CPTABLEINFO32 OemTableInfo;
+    CPTABLEINFO32 AnsiTableInfo;
+    ULONG UpperCaseTable;
+    ULONG LowerCaseTable;
+} NLSTABLEINFO32, *PNLSTABLEINFO32;
+
 typedef struct _PORT_VIEW32
 {
     ULONG Length;

@@ -4,6 +4,7 @@ spec2def(wow64.dll def/wow64.spec ADD_IMPORTLIB)
 add_asm_files(wow64_asm srasm.S exception.S)
 add_library(wow64 MODULE
     wow64.c
+    entrypoint.c
     wine/registry.c
     wine/struct32.h
     wine/file.c

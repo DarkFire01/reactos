@@ -587,8 +587,8 @@ NTSTATUS WINAPI wow64_NtReadFileScatter(UINT *args)
 NTSTATUS WINAPI wow64_NtRemoveIoCompletion(UINT *args)
 {
     HANDLE handle = get_handle(&args);
-    PVOID *key_ptr = get_ptr(&args);
-    PVOID *value_ptr = get_ptr(&args);
+    ULONG *key_ptr = get_ptr(&args);
+    ULONG *value_ptr = get_ptr(&args);
     IO_STATUS_BLOCK32 *io32 = get_ptr(&args);
     LARGE_INTEGER *timeout = get_ptr(&args);
 
@@ -599,8 +599,8 @@ NTSTATUS WINAPI wow64_NtRemoveIoCompletion(UINT *args)
     status = NtRemoveIoCompletion(handle, &key, &value, AllocIosbStorage(io32, &IosbStorage), timeout);
     if (!status)
     {
-        *key_ptr = key;
-        *value_ptr = value;
+        *key_ptr = PtrToUlong(key);
+        *value_ptr = PtrToUlong(value);
     }
     FreeIosbStorage(IosbStorage, io32, status);
 

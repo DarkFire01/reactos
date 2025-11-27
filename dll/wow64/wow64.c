@@ -14,12 +14,19 @@
 //#define NDEBUG
 #include <debug.h>
 
+#include "entrypoint.h"
+
 typedef MEMORY_BASIC_INFORMATION32 *PMEMORY_BASIC_INFORMATION32;
 
 /* PEB Data */
 static USHORT UnicodeCopy[2048]; /* ??? */
 static UCHAR AnsiCopy[1024], OemCopy[1024]; /* ??? */
 static ULONG_PTR FixmeProcessHeaps[100]; /* FIXME */
+static BYTE UnicodeData[8192]; /* ??? */
+
+static PNLSTABLEINFO32 UnicodeNlsTable = (PVOID)&UnicodeData;
+static PCPTABLEINFO32 AnsiCpTable;
+static PCPTABLEINFO32 OemCpTable;
 
 static UNICODE_STRING NtDll32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR L"\\ntdll.dll");
 static ANSI_STRING ImportLdrInitializeThunkStr = RTL_CONSTANT_STRING("LdrInitializeThunk");
@@ -35,6 +42,53 @@ PVOID NtDll32KiUserExceptionDispatcher = NULL;
 void SetupFs(ULONG_PTR segSelector);
 void Enter32(PVOID where, PVOID ntdll32Base, ULONG_PTR entrypoint, ULONG_PTR rax);
 __declspec(dllexport) void WINAPI Wow64LdrpInitialize(PCONTEXT pContext);
+
+/* FIXME: this is an incomplete implementation */
+VOID
+Wow64CopyContext32To64(PCONTEXT pContext,
+                  PI386_CONTEXT pContext32)
+{
+    pContext->ContextFlags = pContext32->ContextFlags | CONTEXT_AMD64;
+    pContext->Rip = Wow64TranslateEntrypoint32To64(pContext32->Eip);
+    pContext->Rax = pContext32->Eax;
+    pContext->Rbx = pContext32->Ebx;
+    pContext->Rcx = pContext32->Ecx;
+    pContext->Rdx = pContext32->Edx;
+    pContext->Rsp = pContext32->Esp;
+    pContext->Rbp = pContext32->Ebp;
+    pContext->Rsi = pContext32->Esi;
+    pContext->Rdi = pContext32->Edi;
+    pContext->EFlags = pContext32->EFlags;
+    pContext->SegCs = pContext32->SegCs;
+    pContext->SegDs = pContext32->SegDs;
+    pContext->SegEs = pContext32->SegEs;
+    pContext->SegFs = pContext32->SegFs;
+    pContext->SegGs = pContext32->SegGs;
+    pContext->SegSs = pContext32->SegSs;
+}
+
+VOID
+Wow64CopyContext64To32(PI386_CONTEXT pContext32,
+                       PCONTEXT pContext)
+{
+    pContext32->Eip = Wow64TranslateEntrypoint64To32(pContext->Rip);
+    pContext32->Eax = pContext->Rax;
+    pContext32->Ebx = pContext->Rbx;
+    pContext32->Ecx = pContext->Rcx;
+    pContext32->Edx = pContext->Rdx;
+    pContext32->Esi = pContext->Rdi;
+    pContext32->Edi = pContext->Rsi;
+    pContext32->Ebp = pContext->Rbp;
+    pContext32->Esp = pContext->Rsp;
+    pContext32->SegCs = pContext->SegCs;
+    pContext32->SegDs = pContext->SegDs;
+    pContext32->SegEs = pContext->SegEs;
+    pContext32->SegFs = pContext->SegFs;
+    pContext32->SegGs = pContext->SegGs;
+    pContext32->SegSs = pContext->SegSs;
+    pContext32->EFlags = pContext->EFlags;
+    pContext32->ContextFlags = pContext->ContextFlags;
+}
 
 /* From wine/dlls/ntdll/unix/env.c */
 static inline void dup_unicode_string( const UNICODE_STRING *src, WCHAR **dst, UNICODE_STRING32 *str )
@@ -96,6 +150,10 @@ static void *build_wow64_parameters( const RTL_USER_PROCESS_PARAMETERS *params )
     dup_unicode_string( &params->DesktopInfo, &dst, &wow64_params->DesktopInfo );
     dup_unicode_string( &params->ShellInfo, &dst, &wow64_params->ShellInfo );
     dup_unicode_string( &params->RuntimeData, &dst, &wow64_params->RuntimeData );
+    
+    DPRINT1("WOW64: Converting native process parameters for image '%wZ', command line '%wZ'\n", 
+            &params->ImagePathName, 
+            &params->CommandLine);
 
     wow64_params->Environment = PtrToUlong( params->Environment );
     //DPRINT1("Original enviroment %ls\n", params->Environment);
@@ -404,6 +462,7 @@ Wow64SystemServiceEx(ULONG syscallNum,
         WINE_WOW_IMPL_CASE(OpenThreadToken);
         WINE_WOW_IMPL_CASE(OpenThreadTokenEx);
         WINE_WOW_IMPL_CASE(OpenProcessTokenEx);
+        WINE_WOW_IMPL_CASE(DuplicateToken);
 
         /* system.c */
         WINE_WOW_IMPL_CASE(PowerInformation);
@@ -529,6 +588,7 @@ Wow64SystemServiceEx(ULONG syscallNum,
         
         /* wow64.c */
         WINE_WOW_IMPL_CASE(OpenProcess);
+        WINE_WOW_IMPL_CASE(OpenThread);
         WINE_WOW_IMPL_CASE(CreateThread);
         WINE_WOW_IMPL_CASE(CreateProcess);
         WINE_WOW_IMPL_CASE(CreateProcessEx);
@@ -537,6 +597,8 @@ Wow64SystemServiceEx(ULONG syscallNum,
         WINE_WOW_IMPL_CASE(SetInformationProcess);
         WINE_WOW_IMPL_CASE(ResumeThread);
         WINE_WOW_IMPL_CASE(ApphelpCacheControl);
+        WINE_WOW_IMPL_CASE(SuspendThread);
+        WINE_WOW_IMPL_CASE(GetContextThread);
 
         case NumTerminateThread:
         {
@@ -625,6 +687,39 @@ wow64_NtOpenProcess(UINT* pArgs)
     return Status;
 }
 
+WINAPI
+NTSTATUS
+wow64_NtOpenThread(UINT* pArgs)
+{
+    PULONG pThreadHandle32 = get_ptr(&pArgs);
+    ACCESS_MASK DesiredAcces = get_ulong(&pArgs);
+    POBJECT_ATTRIBUTES32 pObjectAttributes32 = get_ptr(&pArgs);
+    PCLIENT_ID32 pClientId32 = get_ptr(&pArgs);
+    
+    CLIENT_ID ClientId;
+    struct object_attr64 ObjectAttributes;
+    NTSTATUS Status;
+    
+    HANDLE ThreadHandle; 
+    
+    if (pThreadHandle32 == NULL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+    
+    Status = NtOpenThread(&ThreadHandle,
+                          DesiredAcces,
+                          objattr_32to64(&ObjectAttributes, pObjectAttributes32),
+                          client_id_32to64(&ClientId, pClientId32));
+
+    if (NT_SUCCESS(Status))
+    {
+        *pThreadHandle32 = HandleToULong(ThreadHandle);
+    }
+    
+    return Status;
+}
+
 NTSTATUS
 WINAPI
 wow64_NtContinue(UINT *pArgs)
@@ -637,7 +732,7 @@ wow64_NtContinue(UINT *pArgs)
     /* TODO: APC handling here?
        Wine has an implementation, port from there maybe. */
     
-    CopyContext32To64(&Context, pContext32);
+    Wow64CopyContext32To64(&Context, pContext32);
     
     return NtContinue(&Context, bRasieAlert);
 }
@@ -662,6 +757,17 @@ wow64_NtCreateThread(UINT* pArgs)
     CONTEXT Context;
     NTSTATUS Status;
     HANDLE hThread;
+    ULONG_PTR Wow64Information;
+    
+    Status = NtQueryInformationProcess(hProcess,
+                                       ProcessWow64Information,
+                                       &Wow64Information,
+                                       sizeof(Wow64Information),
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
 
     InitialTeb.AllocatedStackBase = UlongToPtr(pInitialTeb->AllocatedStackBase);
     InitialTeb.PreviousStackBase = UlongToPtr(pInitialTeb->PreviousStackBase);
@@ -669,16 +775,25 @@ wow64_NtCreateThread(UINT* pArgs)
     InitialTeb.StackBase = UlongToPtr(pInitialTeb->StackBase);
     InitialTeb.StackLimit = UlongToPtr(pInitialTeb->StackLimit);
 
-    /* Convert the context to 64-bit */
-    CopyContext32To64(&Context, pContext32);
+    /* Only convert the context if the thread is created in a WOW64 thread,
+       otherwise assume CONTEXT_AMD64 layout. */
+    if (Wow64Information != 0)
+    {
+        /* Convert the context to 64-bit */
+        Wow64CopyContext32To64(&Context, pContext32);
 
-    /* For some reason, segment registers have bogus values in pContext32 */
-    Context.SegSs = 0x2b;
-    Context.SegEs = 0x2b;
-    Context.SegDs = 0x2b;
-    Context.SegFs = 0x53;
-    Context.SegGs = 0x2b;
-    Context.SegCs = 0x23;
+        Context.SegSs = 0x2b;
+        Context.SegEs = 0x2b;
+        Context.SegDs = 0x2b;
+        Context.SegFs = 0x53;
+        Context.SegGs = 0x2b;
+        Context.SegCs = 0x23;
+    }
+    else
+    {
+        /* FIXME: no guarantee of the context being a full context */
+        RtlCopyMemory(&Context, pContext32, sizeof(Context));
+    }
 
     Status = NtCreateThread(&hThread,
                             DesiredAccess,
@@ -729,7 +844,8 @@ wow64_NtCreateProcessEx(UINT *pArgs)
     if (NT_SUCCESS(Status))
     {
         DPRINT1("Created process from WOW64\n");
-        NtCurrentTeb32()->NtTib.ArbitraryUserPointer = PtrToUlong(NtCurrentTeb()->NtTib.ArbitraryUserPointer);
+        NtCurrentTeb32()->NtTib.ArbitraryUserPointer = 
+            PtrToUlong(NtCurrentTeb()->NtTib.ArbitraryUserPointer);
         *phProcessHandle32 = HandleToUlong(hProcessHandle);
     }
 
@@ -766,10 +882,11 @@ wow64_NtCreateProcess(UINT *pArgs)
     if (NT_SUCCESS(Status))
     {
         DPRINT1("Created process from WOW64\n");
-        NtCurrentTeb32()->NtTib.ArbitraryUserPointer = PtrToUlong(NtCurrentTeb()->NtTib.ArbitraryUserPointer);
+        NtCurrentTeb32()->NtTib.ArbitraryUserPointer = 
+            PtrToUlong(NtCurrentTeb()->NtTib.ArbitraryUserPointer);
         *phProcessHandle32 = HandleToUlong(hProcessHandle);
     }
-
+  
     return Status;
 }
 
@@ -781,6 +898,41 @@ wow64_NtResumeThread(UINT* pArgs)
     PULONG pSuspendCount = get_ptr(&pArgs);
 
     return NtResumeThread(hThread, pSuspendCount);
+}
+
+NTSTATUS
+NTAPI
+wow64_NtSuspendThread(UINT* pArgs)
+{
+    HANDLE hThread = get_handle(&pArgs);
+    PULONG pSuspendCount = get_ptr(&pArgs);
+
+    return NtSuspendThread(hThread, pSuspendCount);
+}
+
+NTSTATUS
+NTAPI
+wow64_NtGetContextThread(UINT *pArgs)
+{
+    CONTEXT Context64;
+    PI386_CONTEXT pContext32;
+    NTSTATUS Status;
+    
+    HANDLE hThread = get_handle(&pArgs);
+    pContext32 = get_ptr(&pArgs);
+    
+    Context64.ContextFlags = CONTEXT_AMD64 | (pContext32->ContextFlags & 0xFFFF);
+    
+    Status = NtGetContextThread(hThread, &Context64);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+    
+    Wow64CopyContext64To32(pContext32, &Context64);
+    pContext32->ContextFlags &= 0xFFFF;
+    pContext32->ContextFlags |= 0x10000;
+    return STATUS_SUCCESS;
 }
 
 /**********************************************************************
@@ -958,6 +1110,20 @@ Wow64KiUserCallbackDispatcher(ULONG nCallback,
 }
 
 static
+VOID
+SetupNls(PPEB Peb, 
+         PPEB32 WowPeb)
+{
+    /* CHECKME */
+    WowPeb->OemCodePageData = PtrToUlong(&OemCopy);
+    WowPeb->AnsiCodePageData = PtrToUlong(&AnsiCopy);
+    WowPeb->UnicodeCaseTableData = PtrToUlong(&UnicodeCopy);
+    RtlCopyMemory(&OemCopy, Peb->OemCodePageData, sizeof(OemCopy));
+    RtlCopyMemory(&AnsiCopy, Peb->AnsiCodePageData, sizeof(AnsiCopy));
+    RtlCopyMemory(&UnicodeCopy, Peb->UnicodeCaseTableData, sizeof(UnicodeCopy));
+}
+
+static
 VOID 
 Wow64InitProcess(PCONTEXT pContext)
 {
@@ -967,7 +1133,10 @@ Wow64InitProcess(PCONTEXT pContext)
     PPEB Peb = NtCurrentPeb();
     ULONG_PTR EntrypointAddress;
     IMAGE_NT_HEADERS32 *NtHeaders = NULL;
-
+    
+    Status = Wow64InitEntrypointTranslation();
+    ASSERT(NT_SUCCESS(Status));
+    
     NtHeaders = (IMAGE_NT_HEADERS32 *)RtlImageNtHeader(Peb->ImageBaseAddress);
 
     Status = LdrLoadDll(L"" TMP_WOW_DIR L"\\ntdll.dll", 0, &NtDll32Str, &NtDll32);
@@ -990,7 +1159,11 @@ Wow64InitProcess(PCONTEXT pContext)
         ASSERT(FALSE);
     }
 
-    DPRINT1("Replacing old entrypoint %p with %p\n", pContext->Rip, EntrypointAddress);
+    /* HACK: This entrypoint should be repalced with BaseInitializeProcess in 
+             32-bit kernel32 instead. */
+    DPRINT1("Replacing old entrypoint %p with %p\n", 
+            pContext->Rip, 
+            EntrypointAddress);
     pContext->Rip = EntrypointAddress;
 
     Status = NtQueryInformationProcess(NtCurrentProcess(),
@@ -1019,19 +1192,16 @@ Wow64InitProcess(PCONTEXT pContext)
     WowPeb->OSBuildNumber  = Peb->OSBuildNumber;
     WowPeb->OSPlatformId   = Peb->OSPlatformId;
     
-    /* CHECKME */
-    WowPeb->OemCodePageData = PtrToUlong(&OemCopy);
-    WowPeb->AnsiCodePageData = PtrToUlong(&AnsiCopy);
-    WowPeb->UnicodeCaseTableData = PtrToUlong(&UnicodeCopy);
-    RtlCopyMemory(&OemCopy, Peb->OemCodePageData, sizeof(OemCopy));
-    RtlCopyMemory(&AnsiCopy, Peb->AnsiCodePageData, sizeof(AnsiCopy));
-    RtlCopyMemory(&UnicodeCopy, Peb->UnicodeCaseTableData, sizeof(UnicodeCopy));
+    WowPeb->NtGlobalFlag = Peb->NtGlobalFlag;
+    
+    /* Set up codepage translation data */
+    SetupNls(Peb, WowPeb);
     
     /* Change image path name */
     ProcParams32->ImagePathName.Buffer = PtrToUlong(Peb->ProcessParameters->ImagePathName.Buffer);
     ProcParams32->ImagePathName.Length = Peb->ProcessParameters->ImagePathName.Length;
     ProcParams32->ImagePathName.MaximumLength = Peb->ProcessParameters->ImagePathName.MaximumLength;
-    ProcParams32->Flags |=  RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
+    ProcParams32->Flags |= RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
     
     Status = LdrGetProcedureAddress(NtDll32, 
                                     &ImportLdrInitializeThunkStr, 
@@ -1135,6 +1305,8 @@ Wow64InitThread(PCONTEXT pContext)
 
     WowTeb->ClientId.UniqueProcess = HandleToULong(Teb->ClientId.UniqueProcess);
     WowTeb->ClientId.UniqueThread = HandleToULong(Teb->ClientId.UniqueThread);
+
+    DPRINT1("Wow64 thread client id: %X:%X\n", WowTeb->ClientId.UniqueProcess, WowTeb->ClientId.UniqueThread);
 
     pContext->Rsp -= 32;
     pContext->Rcx = pContext->Rip;

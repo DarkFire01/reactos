@@ -32,12 +32,14 @@
 @ stub -version=0x600+ BaseGenerateAppCompatData
 @ stdcall BaseInitAppcompatCacheSupport()
 @ stdcall BaseIsAppcompatInfrastructureDisabled() IsShimInfrastructureDisabled
-@ stdcall -version=0x501-0x502 BaseProcessInitPostImport()
-@ stdcall -version=0x600+ BaseProcessInitPostImport() # HACK: This export is dynamicaly imported by ntdll
-;@ stdcall -version=0x502 -arch=x86_64 BaseProcessStart()
+;@ stdcall -version=0x501-0x502 BaseProcessInitPostImport()
+@ stdcall BaseProcessInitPostImport() # HACK: This export is dynamicaly imported by ntdll
+@ stdcall -version=0x502 -arch=x86_64 BaseProcessStart() BaseProcessStartup
+@ stdcall -version=0x502 -arch=i386 BaseProcessStartThunk() ; FIXME: WOW64 only
 @ stdcall BaseQueryModuleData(str str ptr ptr ptr) ;check
-@ stub -version=0x600+ BaseThreadInitThunk
-;@ stdcall -version=0x502 -arch=x86_64 BaseThreadStart()
+;@ stub -version=0x600+ BaseThreadInitThunk
+@ stdcall -version=0x502 -arch=x86_64 BaseThreadStart() BaseThreadStartup
+@ stdcall -version=0x502 -arch=i386 BaseThreadStartupThunk() ; FIXME: WOW64 only
 @ stdcall BaseUpdateAppcompatCache(long long long)
 @ stdcall BasepCheckBadapp(long ptr long long long long long long long)
 @ stdcall BasepCheckWinSaferRestrictions(long long long long long long)
@@ -1169,7 +1171,7 @@
 @ stdcall TransmitCommChar(long long)
 @ stdcall -version=0x601+ TryAcquireSRWLockExclusive(ptr) ntdll.RtlTryAcquireSRWLockExclusive
 @ stdcall -version=0x601+ TryAcquireSRWLockShared(ptr) ntdll.RtlTryAcquireSRWLockShared
-@ stdcall TryEnterCriticalSection(ptr) ntdll.RtlTryEnterCriticalSection
+@ stdcall TryEnterCriticalSection(ptr)
 @ stdcall -version=0x600+ TrySubmitThreadpoolCallback(ptr ptr ptr)
 @ stdcall TzSpecificLocalTimeToSystemTime(ptr ptr ptr)
 @ stdcall UTRegister(long str str str ptr ptr ptr)
