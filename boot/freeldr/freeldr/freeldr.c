@@ -84,6 +84,13 @@ LaunchSecondStageLoader(VOID)
 
     /* Call the entrypoint */
     printf("Launching rosload.exe...\n");
+    {
+    ULONG Width, Height, Depth;
+    MachVideoGetDisplaySize(&Width, &Height, &Depth);
+    for (int i = 0; i <= 0xFF; ++i)
+        MachVideoPutChar(/*'A' + i*/' ', /*ATTR(0xFF - i, i)*/i, i % Width, 1 + i / Width);
+    MachConsGetCh();
+    }
     EntryPoint = VaToPa(RosloadDTE->EntryPoint);
     return (*EntryPoint)();
 }

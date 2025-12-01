@@ -21,6 +21,10 @@
 
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(UI);
+#undef TRACE
+#undef INFO
+#define TRACE ERR
+#define INFO ERR
 
 #define VIDEOPORT_PALETTE_READ      0x03C7
 #define VIDEOPORT_PALETTE_WRITE     0x03C8

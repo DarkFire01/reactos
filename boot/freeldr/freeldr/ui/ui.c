@@ -21,6 +21,10 @@
 
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(UI);
+#undef TRACE
+#undef INFO
+#define TRACE ERR
+#define INFO ERR
 
 UCHAR UiStatusBarFgColor;       // Status bar foreground color
 UCHAR UiStatusBarBgColor;       // Status bar background color
@@ -134,9 +138,11 @@ BOOLEAN UiInitialize(BOOLEAN ShowUi)
         UiVtbl = GuiVtbl;
 #else
     {
+ERR("*** WE FELT BACK THERE ?! ***\n");
         // Switch back to text mode.
-        MachVideoSetDisplayMode(NULL, TRUE);
-        UiDisplayMode = VideoTextMode;
+        // MachVideoSetDisplayMode(NULL, TRUE); // FIXME: This fscks up!
+        // UiDisplayMode = VideoTextMode;
+/***/UiVtbl = (UiMinimal ? MiniTuiVtbl : TuiVtbl);/***/
     }
 #endif
     else // if (UiDisplayMode == VideoTextMode)
