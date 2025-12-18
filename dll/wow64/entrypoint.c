@@ -167,6 +167,9 @@ Wow64InitEntrypointTranslation(VOID)
     SIZE_T i = 0;
     PENTRYPOINT_TRANSLATION pTranslation;
     NTSTATUS Status;
+    UNICODE_STRING UnexpanedSysRoot = RTL_CONSTANT_STRING(L"%SystemRoot%");
+    UNICODE_STRING SystemRootString;
+    WCHAR Buffer[MAX_PATH] = { 0 };
     
     PVOID Temp;
     
@@ -175,9 +178,32 @@ Wow64InitEntrypointTranslation(VOID)
     LPCWSTR PrevName32 = NULL, PrevName64 = NULL;
     WCHAR Directory32[MAX_PATH], Directory64[MAX_PATH];
 
-    /* FIXME */
+    /* Get the Windows directory */
+    RtlInitEmptyUnicodeString(&SystemRootString, Buffer, sizeof(Buffer));
+    Status = RtlExpandEnvironmentStrings_U(NULL,
+                                           &UnexpanedSysRoot,
+                                           &SystemRootString,
+                                           NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+    
+    DPRINT1("Sysroot: %ls\n", Buffer);
+    
+#ifndef TMP_WOW_DIR
+    wcscpy(Directory32, L"\\??\\");
+    wcscat(Directory32, Buffer);
+    wcscat(Directory32, L"\\SysWOW64");
+#else
     wcscpy(Directory32, L"\\??\\" TMP_WOW_DIR);
-    wcscpy(Directory64, L"\\??\\C:\\reactos\\system32");
+#endif
+    
+    wcscpy(Directory64, L"\\??\\");
+    wcscat(Directory64, Buffer);
+    wcscat(Directory64, L"\\System32");
+    
+    DPRINT1("%ls %ls\n", Directory32, Directory64);
     
     HANDLE hCurrentSection32 = NULL, hCurrentSection64 = NULL;
     
