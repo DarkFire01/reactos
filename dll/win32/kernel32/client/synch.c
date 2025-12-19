@@ -698,6 +698,16 @@ InitializeCriticalSection(OUT LPCRITICAL_SECTION lpCriticalSection)
  */
 BOOL
 WINAPI
+TryEnterCriticalSection(IN LPCRITICAL_SECTION lpCriticalSection)
+{
+    return !!RtlTryEnterCriticalSection((PVOID)lpCriticalSection);
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
 InitializeCriticalSectionAndSpinCount(OUT LPCRITICAL_SECTION lpCriticalSection,
                                       IN DWORD dwSpinCount)
 {

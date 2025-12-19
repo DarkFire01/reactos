@@ -5,28 +5,41 @@ __readfsdword:
     mov eax, fs:[rcx]
     ret
    
-PUBLIC Enter32
-Enter32:
-    push r8
-    push r9
-    push rdx
+PUBLIC EnterApc32
+EnterApc32:
+    push r12
+    mov r12, rsp
     
-    // Push the return address for the 32 bit procedure
-    mov rax, retpoint
-    push rax
-    // KGDT64_R3_CMCODE
-    push 0023h
-    // Address of the 32 bit procedure to be called
-    push rcx
+    sub rsp, rdx
     
-    xor rax, rax
+    push rdi
+    push rsi
     
-    // REX.W prefix - the default size for far returns is 32 bit
+    mov rsi, rcx
+    mov rcx, rdx
+    lea rdi, [rsp + 16]
+    cld
+    rep movsb
+    
+    pop rsi
+    pop rdi
+    
+    lea rcx, [return32]
+    mov [rsp + 16], rcx
+    
     db 48h
     retf
-retpoint:
+return32:
+    call l
+l:
     pop rax
-    add esp, 4
+    add eax, return64 - l
+    push 33h
+    push rax
+    retf
+return64:
+    mov rsp, r12
+    pop r12
     ret
 
 PUBLIC SetupFs

@@ -1,5 +1,11 @@
 #include "entrypoint.h"
 
+typedef enum _FIXUP
+{
+    Fix32To64,
+    Fix64To32
+} FIXUP;
+
 typedef struct _ENTRYPOINT_TRANSLATION
 {
     LPCWSTR     LibraryName32;
@@ -8,12 +14,27 @@ typedef struct _ENTRYPOINT_TRANSLATION
     LPCSTR      SymbolName32;
     ULONG_PTR   SymbolAddress64;
     ULONG       SymbolAddress32;
+    void        (*ContextFixup)(PCONTEXT, PI386_CONTEXT, FIXUP);
 } ENTRYPOINT_TRANSLATION, *PENTRYPOINT_TRANSLATION;
+
+static 
+void 
+FixupStartupThunks(PCONTEXT pContext, PI386_CONTEXT pContext32, FIXUP fixup);
 
 static ENTRYPOINT_TRANSLATION EntrypointTranslations[] =
 {
-    {L"kernel32.dll", L"kernel32.dll", "BaseProcessStart", "BaseProcessStartThunk", 0, 0},
-    {L"kernel32.dll", L"kernel32.dll", "BaseThreadStart",  "BaseThreadStartupThunk",  0, 0}
+    {
+        L"kernel32.dll",    L"kernel32.dll", 
+        "BaseProcessStart",  "BaseProcessStartThunk", 
+        0,                  0, 
+        FixupStartupThunks
+    },
+    {
+        L"kernel32.dll",    L"kernel32.dll", 
+        "BaseThreadStart",   "BaseThreadStartupThunk",  
+        0,                  0, 
+        FixupStartupThunks
+    }
 };
 
 static
@@ -189,8 +210,6 @@ Wow64InitEntrypointTranslation(VOID)
         return Status;
     }
     
-    DPRINT1("Sysroot: %ls\n", Buffer);
-    
 #ifndef TMP_WOW_DIR
     wcscpy(Directory32, L"\\??\\");
     wcscat(Directory32, Buffer);
@@ -268,10 +287,12 @@ Wow64InitEntrypointTranslation(VOID)
     
     if (hCurrentSection32 != NULL)
     {
+        NtUnmapViewOfSection(NtCurrentProcess(), Base32);
         NtClose(hCurrentSection32);
     }
     if (hCurrentSection64 != NULL)
     {
+        NtUnmapViewOfSection(NtCurrentProcess(), Base64);
         NtClose(hCurrentSection64);
     }
     
@@ -279,39 +300,66 @@ Wow64InitEntrypointTranslation(VOID)
 }
 
 ULONG_PTR
-Wow64TranslateEntrypoint32To64(ULONG Entrypoint)
+Wow64TranslateEntrypoint32To64(PCONTEXT pContext, PI386_CONTEXT pContext32)
 {
     SIZE_T i;
     PENTRYPOINT_TRANSLATION pTranslation;
     
-    for (i = 1; i < _countof(EntrypointTranslations); i++)
+    for (i = 0; i < _countof(EntrypointTranslations); i++)
     {
         pTranslation = &EntrypointTranslations[i];
         
-        if (pTranslation->SymbolAddress32 == Entrypoint)
+        if (pTranslation->SymbolAddress32 == pContext32->Eip)
         {
-            return pTranslation->SymbolAddress64;
+            if (pTranslation->ContextFixup != NULL)
+            {
+                pTranslation->ContextFixup(pContext, pContext32, Fix32To64);
+            }
+            return pContext->Rip = pTranslation->SymbolAddress64;
         }
     }
 
-    return Entrypoint;
+    return pContext->Rip = pContext32->Eip;
 }
 
 ULONG
-Wow64TranslateEntrypoint64To32(ULONG_PTR Entrypoint)
+Wow64TranslateEntrypoint64To32(PI386_CONTEXT pContext32, PCONTEXT pContext)
 {
     SIZE_T i;
     PENTRYPOINT_TRANSLATION pTranslation;
     
-    for (i = 1; i < _countof(EntrypointTranslations); i++)
+    for (i = 0; i < _countof(EntrypointTranslations); i++)
     {
         pTranslation = &EntrypointTranslations[i];
         
-        if (pTranslation->SymbolAddress64 == Entrypoint)
+        if (pTranslation->SymbolAddress64 == pContext->Rip)
         {
-            return pTranslation->SymbolAddress32;
+            if (pTranslation->ContextFixup != NULL)
+            {
+                pTranslation->ContextFixup(pContext, pContext32, Fix64To32);
+            }
+            return pContext32->Eip = pTranslation->SymbolAddress32;
         }
     }
     
-    return Entrypoint;
+    return pContext32->Eip = pContext->Rip;
+}
+
+static 
+void 
+FixupStartupThunks(PCONTEXT pContext, PI386_CONTEXT pContext32, FIXUP fixup)
+{
+    switch (fixup)
+    {
+        case Fix32To64:
+            pContext->Rcx = pContext32->Eax;
+            pContext->Rdx = pContext32->Ebx;
+            pContext->SegCs = 0x33;
+            break;
+        case Fix64To32:
+            pContext32->Eax = pContext->Rcx;
+            pContext32->Ebx = pContext->Rdx;
+            pContext32->SegCs = 0x23;
+            break;
+    }
 }

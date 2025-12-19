@@ -40,16 +40,16 @@ PVOID NtDll32LdrpRoutine = NULL;
 PVOID NtDll32KiUserExceptionDispatcher = NULL;
 
 void SetupFs(ULONG_PTR segSelector);
-void Enter32(PVOID where, PVOID ntdll32Base, ULONG_PTR entrypoint, ULONG_PTR rax);
+void EnterApc32(PVOID pEnterCtx, SIZE_T cbCtxSize);
 __declspec(dllexport) void WINAPI Wow64LdrpInitialize(PCONTEXT pContext);
 
 /* FIXME: this is an incomplete implementation */
 VOID
 Wow64CopyContext32To64(PCONTEXT pContext,
-                  PI386_CONTEXT pContext32)
+                       PI386_CONTEXT pContext32)
 {
     pContext->ContextFlags = pContext32->ContextFlags | CONTEXT_AMD64;
-    pContext->Rip = Wow64TranslateEntrypoint32To64(pContext32->Eip);
+    pContext->Rip = pContext32->Eip;
     pContext->Rax = pContext32->Eax;
     pContext->Rbx = pContext32->Ebx;
     pContext->Rcx = pContext32->Ecx;
@@ -71,7 +71,7 @@ VOID
 Wow64CopyContext64To32(PI386_CONTEXT pContext32,
                        PCONTEXT pContext)
 {
-    pContext32->Eip = Wow64TranslateEntrypoint64To32(pContext->Rip);
+    pContext32->Eip = pContext->Rip;
     pContext32->Eax = pContext->Rax;
     pContext32->Ebx = pContext->Rbx;
     pContext32->Ecx = pContext->Rcx;
@@ -1131,7 +1131,6 @@ Wow64InitProcess(PCONTEXT pContext)
     PPEB32 WowPeb = NULL;
     PRTL_USER_PROCESS_PARAMETERS32 ProcParams32 = NULL;
     PPEB Peb = NtCurrentPeb();
-    ULONG_PTR EntrypointAddress;
     IMAGE_NT_HEADERS32 *NtHeaders = NULL;
     
     Status = Wow64InitEntrypointTranslation();
@@ -1145,26 +1144,6 @@ Wow64InitProcess(PCONTEXT pContext)
         DPRINT1("32 bit NTDLL.DLL could not be loaded.\n");
         ASSERT(FALSE);
     }
-
-    EntrypointAddress = (ULONG_PTR)Peb->ImageBaseAddress
-                          + NtHeaders->OptionalHeader.AddressOfEntryPoint;
-
-    Status = NtSetInformationThread(NtCurrentThread(),
-                                    ThreadQuerySetWin32StartAddress,
-                                    &EntrypointAddress,
-                                    sizeof(EntrypointAddress));
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Setting ThreadQuerySetWin32StartAddress failed. %lx\n", Status);
-        ASSERT(FALSE);
-    }
-
-    /* HACK: This entrypoint should be repalced with BaseInitializeProcess in 
-             32-bit kernel32 instead. */
-    DPRINT1("Replacing old entrypoint %p with %p\n", 
-            pContext->Rip, 
-            EntrypointAddress);
-    pContext->Rip = EntrypointAddress;
 
     Status = NtQueryInformationProcess(NtCurrentProcess(),
                                        ProcessWow64Information,
@@ -1231,22 +1210,41 @@ Wow64UnhandledExceptionHandler(IN PEXCEPTION_POINTERS ExceptionInfo);
 
 static
 void
-Wow64Trampoline(ULONG_PTR Rip,
-                PCONTEXT pContext)
+Wow64Trampoline(PCONTEXT pContext)
 {
+#pragma pack(push, 1)
+    struct
+    {
+        ULONG_PTR ApcRoutine;
+        ULONG_PTR SegCs;
+        ULONG RetAddress32;
+        ULONG ApcContext;
+        ULONG SystemArgument1;
+        ULONG SystemArgument2;
+        I386_CONTEXT Context32;
+    } EnterApc32Stack;
+#pragma pack(pop)
+    
+    Wow64CopyContext64To32(&EnterApc32Stack.Context32, pContext);
+    Wow64TranslateEntrypoint64To32(&EnterApc32Stack.Context32, pContext);
+    
+    EnterApc32Stack.ApcRoutine = (ULONG_PTR)NtDll32LdrpRoutine;
+    EnterApc32Stack.SegCs = 0x23;
+    EnterApc32Stack.RetAddress32 = 0;
+    EnterApc32Stack.ApcContext = PtrToUlong(&EnterApc32Stack.Context32);
+    EnterApc32Stack.SystemArgument1 = PtrToUlong(NtDll32);
+    EnterApc32Stack.SystemArgument2 = 0;
+    
     _SEH2_TRY
     {
-        Enter32(NtDll32LdrpRoutine,
-                NtDll32,
-                Rip,
-                pContext->Rax);
+        EnterApc32(&EnterApc32Stack, sizeof(EnterApc32Stack));
     }
     _SEH2_EXCEPT(Wow64UnhandledExceptionHandler(_SEH2_GetExceptionInformation()))
     {
         
     }
 
-    ASSERT(FALSE);
+    Wow64CopyContext32To64(pContext, &EnterApc32Stack.Context32);
 }
 
 static
@@ -1308,11 +1306,7 @@ Wow64InitThread(PCONTEXT pContext)
 
     DPRINT1("Wow64 thread client id: %X:%X\n", WowTeb->ClientId.UniqueProcess, WowTeb->ClientId.UniqueThread);
 
-    pContext->Rsp -= 32;
-    pContext->Rcx = pContext->Rip;
-    pContext->SegCs = 0x33;
-    pContext->Rdx = (ULONG_PTR)pContext;
-    pContext->Rip = (ULONG_PTR)Wow64Trampoline;
+    Wow64Trampoline(pContext);
 }
 
 void 
