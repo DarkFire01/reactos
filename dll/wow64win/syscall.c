@@ -307,6 +307,12 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserLoadKeyboardLayoutEx);
     IMPLEMENT_SERVICE(UserSetImeHotKey);
     IMPLEMENT_SERVICE(UserGetKeyboardLayoutList);
+    IMPLEMENT_SERVICE(UserEnumDisplayDevices);
+    IMPLEMENT_SERVICE(UserEnumDisplayMonitors);
+    IMPLEMENT_SERVICE(GdiGetFontFamilyInfo);
+    IMPLEMENT_SERVICE(GdiModifyWorldTransform);
+    IMPLEMENT_SERVICE(GdiGetGlyphOutline);
+    IMPLEMENT_SERVICE(GdiGetRegionData);
 #undef IMPLEMENT_SERVICE
 }
 

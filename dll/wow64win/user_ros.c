@@ -8,6 +8,7 @@
  */
 
 #include "wow64win_private.h"
+#include <ntgdibad.h>
 
 #include <intrin.h>
 #pragma intrinsic(_ReturnAddress)
@@ -315,8 +316,26 @@ NTSTATUS
 WINAPI
 wow64win_NtUser32CallCopyImageFromKernel(PVOID Arguments, ULONG ArgumentLength)
 {
-    DPRINT1("UNHANDLED USER CALLBACK " __FILE__ ":%d\n", __LINE__);
-    return STATUS_NOT_IMPLEMENTED;
+    PCOPYIMAGE_CALLBACK_ARGUMENTS32 pCommon32 = Arguments;
+    COPYIMAGE_CALLBACK_ARGUMENTS Common;
+    
+    NTSTATUS Status;
+    ULONG nRetLen = 0;
+    PVOID pResult;
+    
+    Common.hImage = UlongToHandle(pCommon32->hImage);
+    Common.uType = pCommon32->uType;
+    Common.cxDesired = pCommon32->cxDesired;
+    Common.cyDesired = pCommon32->cyDesired;
+    Common.fuFlags = pCommon32->fuFlags;
+    
+    Status = Wow64KiUserCallbackDispatcher(NumUser32CallCopyImageFromKernel,
+                                           &Common,
+                                           sizeof(Common),
+                                           &pResult,
+                                           &nRetLen);
+    
+    return NtCallbackReturn(pResult, nRetLen, Status);
 }
 
 NTSTATUS
@@ -861,4 +880,17 @@ wow64_NtUserLoadKeyboardLayoutEx(UINT *pArgs)
     return NtUserLoadKeyboardLayoutEx(hFile, offTable, pTables, hOldKl, 
                                       unicode_str_32to64(&usKLID, pusKLID32),
                                       dwNewKl, Flags);
+}
+
+LONG
+NTAPI
+wow64_NtGdiGetFontFamilyInfo(UINT *pArgs)
+{
+    HDC hDc = get_handle(&pArgs);
+    /* The memory layout of below types seems to be the same for 32-bit and 64-bit */
+    const LOGFONTW *pLogFont = get_ptr(&pArgs);
+    PFONTFAMILYINFO pInfo = get_ptr(&pArgs);
+    PLONG pInfoCount = get_ptr(&pArgs);
+
+    return NtGdiGetFontFamilyInfo(hDc, pLogFont, pInfo, pInfoCount);
 }

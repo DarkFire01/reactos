@@ -2375,7 +2375,6 @@ NTSTATUS WINAPI wow64_NtUserEndPaint( UINT *args )
     return NtUserEndPaint( hwnd, paintstruct_32to64( &ps, ps32 ));
 }
 
-#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserEnumDisplayDevices( UINT *args )
 {
     UNICODE_STRING32 *device32 = get_ptr( &args );
@@ -2390,14 +2389,33 @@ NTSTATUS WINAPI wow64_NtUserEnumDisplayDevices( UINT *args )
 
 NTSTATUS WINAPI wow64_NtUserEnumDisplayMonitors( UINT *args )
 {
+#ifndef __REACTOS__
     HDC hdc = get_handle( &args );
     RECT *rect = get_ptr( &args );
     MONITORENUMPROC proc = get_ptr( &args );
     LPARAM lp = get_ulong( &args );
 
     return NtUserEnumDisplayMonitors( hdc, rect, proc, lp );
-}
+#else
+    HDC hDC = get_handle(&args);
+    LPCRECT pRect = get_ptr(&args);
+    PULONG ahMonitorList32 = get_ptr(&args);
+    LPRECT monitorRectList = get_ptr(&args);
+    DWORD listSize = get_ulong(&args);
+    HMONITOR* ahMonitorList;
+    INT iCount, i;
+    
+    ahMonitorList = Wow64AllocateTemp(listSize * sizeof(*ahMonitorList));
+    
+    iCount = NtUserEnumDisplayMonitors(hDC, pRect, ahMonitorList, monitorRectList, listSize);
+    for (i = 0; i < iCount; i++)
+    {
+        ahMonitorList32[i] = HandleToUlong(ahMonitorList[i]);
+    }
+    
+    return iCount;
 #endif
+}
 
 NTSTATUS WINAPI wow64_NtUserEnumDisplaySettings( UINT *args )
 {
