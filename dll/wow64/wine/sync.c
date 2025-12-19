@@ -110,7 +110,6 @@ static void put_job_basic_limit_info( JOBOBJECT_BASIC_LIMIT_INFORMATION32 *info3
 
 void put_section_image_info( SECTION_IMAGE_INFORMATION32 *info32, const SECTION_IMAGE_INFORMATION *info )
 {
-#ifndef __REACTOS__
     if (info->Machine == IMAGE_FILE_MACHINE_AMD64 || info->Machine == IMAGE_FILE_MACHINE_ARM64)
     {
         info32->TransferAddress    = 0x81231234;  /* sic */
@@ -123,8 +122,10 @@ void put_section_image_info( SECTION_IMAGE_INFORMATION32 *info32, const SECTION_
         info32->MaximumStackSize   = info->MaximumStackSize;
         info32->CommittedStackSize = info->CommittedStackSize;
     }
+    
     info32->ZeroBits                    = info->ZeroBits;
     info32->SubSystemType               = info->SubSystemType;
+#ifndef __REACTOS__
     info32->MinorSubsystemVersion       = info->MinorSubsystemVersion;
     info32->MajorSubsystemVersion       = info->MajorSubsystemVersion;
     info32->MajorOperatingSystemVersion = info->MajorOperatingSystemVersion;
@@ -138,20 +139,6 @@ void put_section_image_info( SECTION_IMAGE_INFORMATION32 *info32, const SECTION_
     info32->ImageFileSize               = info->ImageFileSize;
     info32->CheckSum                    = info->CheckSum;
 #else
-    if (info->Machine == IMAGE_FILE_MACHINE_AMD64 || info->Machine == IMAGE_FILE_MACHINE_ARM64)
-    {
-        info32->TransferAddress    = 0x81231234;  /* sic */
-        info32->MaximumStackSize   = 0x100000;
-        info32->CommittedStackSize = 0x10000;
-    }
-    else
-    {
-        info32->TransferAddress    = PtrToUlong( info->TransferAddress );
-        info32->MaximumStackSize   = info->MaximumStackSize;
-        info32->CommittedStackSize = info->CommittedStackSize;
-    }
-    info32->ZeroBits                    = info->ZeroBits;
-    info32->SubSystemType               = info->SubSystemType;
     info32->MinorSubsystemVersion       = info->SubSystemMinorVersion;
     info32->MajorSubsystemVersion       = info->SubSystemMajorVersion;
     info32->GpValue                     = info->GpValue;

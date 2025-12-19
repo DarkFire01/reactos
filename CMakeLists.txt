@@ -80,6 +80,10 @@ add_definitions(
     -D__REACTOS__
 )
 
+if (ARCH STREQUAL "amd64")
+    add_definitions(-DBUILD_WOW64_ENABLED)
+endif()
+
 # There doesn't seem to be a standard for __FILE__ being relative or absolute, so detect it at runtime.
 file(RELATIVE_PATH _PATH_PREFIX ${REACTOS_BINARY_DIR} ${REACTOS_SOURCE_DIR})
 if (NOT MSVC AND ((CMAKE_C_COMPILER_ID STREQUAL "GNU") AND (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL "8.0.0")

@@ -757,17 +757,6 @@ wow64_NtCreateThread(UINT* pArgs)
     CONTEXT Context;
     NTSTATUS Status;
     HANDLE hThread;
-    ULONG_PTR Wow64Information;
-    
-    Status = NtQueryInformationProcess(hProcess,
-                                       ProcessWow64Information,
-                                       &Wow64Information,
-                                       sizeof(Wow64Information),
-                                       NULL);
-    if (!NT_SUCCESS(Status))
-    {
-        return Status;
-    }
 
     InitialTeb.AllocatedStackBase = UlongToPtr(pInitialTeb->AllocatedStackBase);
     InitialTeb.PreviousStackBase = UlongToPtr(pInitialTeb->PreviousStackBase);
@@ -775,25 +764,17 @@ wow64_NtCreateThread(UINT* pArgs)
     InitialTeb.StackBase = UlongToPtr(pInitialTeb->StackBase);
     InitialTeb.StackLimit = UlongToPtr(pInitialTeb->StackLimit);
 
-    /* Only convert the context if the thread is created in a WOW64 thread,
-       otherwise assume CONTEXT_AMD64 layout. */
-    if (Wow64Information != 0)
-    {
-        /* Convert the context to 64-bit */
-        Wow64CopyContext32To64(&Context, pContext32);
-
-        Context.SegSs = 0x2b;
-        Context.SegEs = 0x2b;
-        Context.SegDs = 0x2b;
-        Context.SegFs = 0x53;
-        Context.SegGs = 0x2b;
-        Context.SegCs = 0x23;
-    }
-    else
-    {
-        /* FIXME: no guarantee of the context being a full context */
-        RtlCopyMemory(&Context, pContext32, sizeof(Context));
-    }
+    /* Convert the context to 64-bit */
+    Wow64CopyContext32To64(&Context, pContext32);
+    
+    Context.SegSs = 0x2b;
+    Context.SegEs = 0x2b;
+    Context.SegDs = 0x2b;
+    Context.SegFs = 0x53;
+    Context.SegGs = 0x2b;
+    Context.SegCs = 0x23;
+    
+    Wow64TranslateEntrypoint32To64(&Context, pContext32);
 
     Status = NtCreateThread(&hThread,
                             DesiredAccess,
@@ -843,7 +824,7 @@ wow64_NtCreateProcessEx(UINT *pArgs)
                                bInJob);
     if (NT_SUCCESS(Status))
     {
-        DPRINT1("Created process from WOW64\n");
+        DPRINT1("Created process from WOW64 userpointer %p\n", NtCurrentTeb()->NtTib.ArbitraryUserPointer);
         NtCurrentTeb32()->NtTib.ArbitraryUserPointer = 
             PtrToUlong(NtCurrentTeb()->NtTib.ArbitraryUserPointer);
         *phProcessHandle32 = HandleToUlong(hProcessHandle);

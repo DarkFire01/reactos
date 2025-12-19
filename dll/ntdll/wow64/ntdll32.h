@@ -160,28 +160,28 @@ Wow64WriteNativePtr(UINT64 Address, UINT64 Value)
 
 typedef struct DECLSPEC_ALIGN(16) _M128A64
 {
-  ULONGLONG Low;
-  LONGLONG High;
+    ULONGLONG Low;
+    LONGLONG High;
 } M128A64, *PM128A64;
 
 typedef struct DECLSPEC_ALIGN(16) _XSAVE_FORMAT64 
 {
-  USHORT ControlWord;
-  USHORT StatusWord;
-  UCHAR TagWord;
-  UCHAR Reserved1;
-  USHORT ErrorOpcode;
-  ULONG ErrorOffset;
-  USHORT ErrorSelector;
-  USHORT Reserved2;
-  ULONG DataOffset;
-  USHORT DataSelector;
-  USHORT Reserved3;
-  ULONG MxCsr;
-  ULONG MxCsr_Mask;
-  M128A64 FloatRegisters[8];
-  M128A64 XmmRegisters[16];
-  UCHAR Reserved4[96];
+    USHORT ControlWord;
+    USHORT StatusWord;
+    UCHAR TagWord;
+    UCHAR Reserved1;
+    USHORT ErrorOpcode;
+    ULONG ErrorOffset;
+    USHORT ErrorSelector;
+    USHORT Reserved2;
+    ULONG DataOffset;
+    USHORT DataSelector;
+    USHORT Reserved3;
+    ULONG MxCsr;
+    ULONG MxCsr_Mask;
+    M128A64 FloatRegisters[8];
+    M128A64 XmmRegisters[16];
+    UCHAR Reserved4[96];
 } XSAVE_FORMAT64, *PXSAVE_FORMAT64;
 
 typedef struct DECLSPEC_ALIGN(16) _CONTEXT64 
@@ -278,6 +278,7 @@ C_ASSERT(sizeof(CONTEXT64) == sizeof(CONTEXT));
 #define WOW64_WRITE_HANDLE_FIELD(Ptr, StructType, Field, Value) (WOW64_WRITE_PTR_FIELD(Ptr, StructType, Field, (ULONG_PTR)Value))
     
 #define WOW64_CONTAINING_RECORD(Ptr, StructType, Field) ((Ptr) - (ULONG_PTR)&((StructType*)NULL)->Field)
+#define WOW64_FIELD_PTR(Ptr, Type, Field) ((Ptr) + (ULONG_PTR)&((Type*)NULL)->Field)
 
 #define WOW64_CAST_TO_PTR(Ptr) ((PVOID)(ULONG_PTR)(Ptr))
 #define WOW64_CAST_TO_HANDLE(H) ((HANDLE)(ULONG_PTR)(H))
@@ -300,6 +301,7 @@ C_ASSERT(sizeof(CONTEXT64) == sizeof(CONTEXT));
 #define WOW64_WRITE_HANDLE_FIELD(Ptr, StructType, Field, Value) (Ptr->Field = (Value))
     
 #define WOW64_CONTAINING_RECORD(Ptr, StructType, Field) CONTAINING_RECORD(Ptr, StructType, Field)
+#define WOW64_FIELD_PTR(Ptr, Type, Field) (&(Ptr)->Field)
 
 #define WOW64_CAST_TO_PTR(Ptr) (Ptr)
 #define WOW64_CAST_TO_HANDLE(H) (H)

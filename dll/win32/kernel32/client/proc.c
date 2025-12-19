@@ -56,11 +56,18 @@ VOID
 WINAPI
 StuffStdHandle(IN HANDLE ProcessHandle,
                IN HANDLE StandardHandle,
-               IN PHANDLE Address)
+#ifndef BUILD_WOW6432
+               IN PHANDLE Address
+#else
+               IN UINT64 Address
+#endif
+               )
 {
     NTSTATUS Status;
     HANDLE DuplicatedHandle;
-    SIZE_T NumberOfBytesWritten;
+#ifdef BUILD_WOW6432
+    UINT64 Tmp;
+#endif
 
     /* If there is no handle to duplicate, return immediately */
     if (!StandardHandle) return;
@@ -77,11 +84,20 @@ StuffStdHandle(IN HANDLE ProcessHandle,
     if (!NT_SUCCESS(Status)) return;
 
     /* Write it */
+#ifndef BUILD_WOW6432
     NtWriteVirtualMemory(ProcessHandle,
                          Address,
                          &DuplicatedHandle,
                          sizeof(HANDLE),
-                         &NumberOfBytesWritten);
+                         NULL);
+#else
+    Tmp = (ULONG_PTR)DuplicatedHandle;
+    NtWow64WriteVirtualMemory64(ProcessHandle,
+                                Address,
+                                &Tmp,
+                                sizeof(Tmp),
+                                NULL);
+#endif
 }
 
 BOOLEAN
@@ -519,7 +535,7 @@ CreateProcessParameters64(
     HANDLE ConsoleHandle;
     ULONG ConsoleFlags;
 
-    DPRINT("RtlCreateProcessParameters\n");
+    DPRINT("CreateProcessParameters64\n");
 
     RtlAcquirePebLock();
 
@@ -550,7 +566,7 @@ CreateProcessParameters64(
         RuntimeData = &EmptyString;
 
     /* size of process parameter block */
-    Length = sizeof(RTL_USER_PROCESS_PARAMETERS);
+    Length = sizeof(RTL_USER_PROCESS_PARAMETERS64);
 
     /* size of current directory buffer */
     Length += (MAX_PATH * sizeof(WCHAR));
@@ -582,7 +598,7 @@ CreateProcessParameters64(
     Param->ConsoleHandle = WOW64_CAST_FROM_HANDLE(ConsoleHandle);
     Param->ConsoleFlags = ConsoleFlags;
 
-    Dest = (PWCHAR)(((PBYTE)Param) + sizeof(RTL_USER_PROCESS_PARAMETERS));
+    Dest = (PWCHAR)(((PBYTE)Param) + sizeof(RTL_USER_PROCESS_PARAMETERS64));
 
     /* copy current directory */
     CopyParameterString(&Dest, &Param->CurrentDirectory.DosPath, CurrentDirectory, MAX_PATH * sizeof(WCHAR));
@@ -660,7 +676,7 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
 #ifndef BUILD_WOW6432
                           IN PPEB RemotePeb,
 #else
-                          IN PPEB64 RemotePeb,
+                          IN UINT64 RemotePeb,
 #endif
                           IN LPCWSTR ApplicationPathName,
                           IN LPWSTR lpCurrentDirectory,
@@ -679,6 +695,7 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
     PRTL_USER_PROCESS_PARAMETERS ProcessParameters, RemoteParameters;
 #else
     PRTL_USER_PROCESS_PARAMETERS64 ProcessParameters, RemoteParameters;
+    UINT64 Tmp;
 #endif
 
     PVOID RemoteAppCompatData;
@@ -960,11 +977,20 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
     if (!NT_SUCCESS(Status)) goto FailPath;
 
     /* Write the PEB Pointer */
+#ifndef BUILD_WOW6432
     Status = NtWriteVirtualMemory(ProcessHandle,
                                   &RemotePeb->ProcessParameters,
                                   &RemoteParameters,
                                   sizeof(PVOID),
                                   NULL);
+#else
+    Tmp = (ULONG_PTR)RemoteParameters;
+    Status = NtWow64WriteVirtualMemory64(ProcessHandle,
+                                         RemotePeb + offsetof(PEB64, ProcessParameters),
+                                         &Tmp,
+                                         sizeof(Tmp),
+                                         NULL);
+#endif
     if (!NT_SUCCESS(Status)) goto FailPath;
 
     /* Check if there's any app compat data to write */
@@ -991,21 +1017,39 @@ BasePushProcessParameters(IN ULONG ParameterFlags,
     }
 
     /* Write the PEB Pointer to the app compat data (might be NULL) */
+#ifndef BUILD_WOW6432
     Status = NtWriteVirtualMemory(ProcessHandle,
                                   &RemotePeb->pShimData,
                                   &RemoteAppCompatData,
                                   sizeof(PVOID),
                                   NULL);
+#else
+    Tmp = (ULONG_PTR)RemoteAppCompatData;
+    Status = NtWow64WriteVirtualMemory64(ProcessHandle,
+                                         RemotePeb + offsetof(PEB64, pShimData),
+                                         &Tmp,
+                                         sizeof(Tmp),
+                                         NULL);
+#endif
     if (!NT_SUCCESS(Status)) goto FailPath;
 
     /* Now write Peb->ImageSubSystem */
     if (ImageSubsystem)
     {
+#ifndef BUILD_WOW6432
         NtWriteVirtualMemory(ProcessHandle,
                              &RemotePeb->ImageSubsystem,
                              &ImageSubsystem,
                              sizeof(ImageSubsystem),
                              NULL);
+#else
+        Tmp = ImageSubsystem;
+        NtWow64WriteVirtualMemory64(ProcessHandle,
+                                    RemotePeb + offsetof(PEB64, ImageSubsystem),
+                                    &Tmp,
+                                    sizeof(Tmp),
+                                    NULL);
+#endif
     }
 
     /* Success path */
@@ -2367,16 +2411,18 @@ CreateProcessInternalW(IN HANDLE hUserToken,
     NTSTATUS Status, AppCompatStatus, SaferStatus, IFEOStatus, ImageDbgStatus;
 #ifndef BUILD_WOW6432
     PPEB RemotePeb;
+    PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
+    PVOID TibValue;
 #else
-    PPEB64 RemotePeb;
+    UINT64 ProcessParameters;
+    UINT64 RemotePeb;
+    UINT64 TibValue;
 #endif
     PPEB Peb;
     PTEB Teb;
     INITIAL_TEB InitialTeb;
-    PVOID TibValue;
     PIMAGE_NT_HEADERS NtHeaders;
     STARTUPINFOW StartupInfo;
-    PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
     UNICODE_STRING DebuggerString;
     BOOL Result;
     //
@@ -2912,7 +2958,6 @@ StartScan:
     ASSERT(FreeBuffer == NULL);
     FreeBuffer = PathName.Buffer;
 
-#ifndef WOW_EXPERIMENT_1
     /* Check what kind of path the application is, for SxS (Fusion) purposes */
     RtlInitUnicodeString(&SxsWin32ExePath, lpApplicationName);
     SxsPathType = RtlDetermineDosPathNameType_U(lpApplicationName);
@@ -2961,7 +3006,6 @@ StartScan:
         /* Otherwise, it's absolute, make sure no relative dir is used */
         SxsWin32RelativePath.ContainingDirectory = NULL;
     }
-#endif
 
     /* Now use the path name, and the root path, to try opening the app */
     DPRINT("Path: %wZ. Dir: %p\n", &PathName, SxsWin32RelativePath.ContainingDirectory);
@@ -3965,7 +4009,11 @@ StartScan:
     }
 
     /* Save the current TIB value since kernel overwrites it to store PEB */
+#ifndef BUILD_WOW6432
     TibValue = Teb->NtTib.ArbitraryUserPointer;
+#else
+    TibValue = NtCurrentTeb64()->NtTib.ArbitraryUserPointer;
+#endif
 
     /* Tell the kernel to create the process */
     Status = NtCreateProcessEx(&ProcessHandle,
@@ -3979,10 +4027,15 @@ StartScan:
                                InJob);
 
     /* Load the PEB address from the hacky location where the kernel stores it */
+#ifndef BUILD_WOW6432
     RemotePeb = Teb->NtTib.ArbitraryUserPointer;
-
+    
     /* And restore the old TIB value */
     Teb->NtTib.ArbitraryUserPointer = TibValue;
+#else
+    RemotePeb = NtCurrentTeb64()->NtTib.ArbitraryUserPointer;
+    NtCurrentTeb64()->NtTib.ArbitraryUserPointer = TibValue;
+#endif
 
     /* Release the large page privilege if we had acquired it */
     if (HavePrivilege) RtlReleasePrivilege(PrivilegeState);
@@ -4239,11 +4292,19 @@ StartScan:
         (ImageInformation.SubSystemType == IMAGE_SUBSYSTEM_WINDOWS_CUI))
     {
         /* Get the remote parameters */
+#ifndef BUILD_WOW6432
         Status = NtReadVirtualMemory(ProcessHandle,
                                      &RemotePeb->ProcessParameters,
                                      &ProcessParameters,
                                      sizeof(PRTL_USER_PROCESS_PARAMETERS),
                                      NULL);
+#else
+        Status = NtWow64ReadVirtualMemory64(ProcessHandle,
+                                            RemotePeb + offsetof(PEB64, ProcessParameters),
+                                            &ProcessParameters,
+                                            sizeof(ProcessParameters),
+                                            NULL);
+#endif
         if (NT_SUCCESS(Status))
         {
             /* Duplicate standard input unless it's a console handle */
@@ -4251,7 +4312,7 @@ StartScan:
             {
                 StuffStdHandle(ProcessHandle,
                                Peb->ProcessParameters->StandardInput,
-                               &ProcessParameters->StandardInput);
+                               WOW64_FIELD_PTR(ProcessParameters, RTL_USER_PROCESS_PARAMETERS64, StandardInput));
             }
 
             /* Duplicate standard output unless it's a console handle */
@@ -4259,7 +4320,7 @@ StartScan:
             {
                 StuffStdHandle(ProcessHandle,
                                Peb->ProcessParameters->StandardOutput,
-                               &ProcessParameters->StandardOutput);
+                               WOW64_FIELD_PTR(ProcessParameters, RTL_USER_PROCESS_PARAMETERS64, StandardOutput));
             }
 
             /* Duplicate standard error unless it's a console handle */
@@ -4267,7 +4328,7 @@ StartScan:
             {
                 StuffStdHandle(ProcessHandle,
                                Peb->ProcessParameters->StandardError,
-                               &ProcessParameters->StandardError);
+                               WOW64_FIELD_PTR(ProcessParameters, RTL_USER_PROCESS_PARAMETERS64, StandardError));
             }
         }
     }
@@ -4287,11 +4348,19 @@ StartScan:
     }
 
     /* Create the Thread's Context */
+#ifndef BUILD_WOW6432
     BaseInitializeContext(&Context,
                           RemotePeb,
                           ImageInformation.TransferAddress,
                           InitialTeb.StackBase,
                           0);
+#else
+    BaseInitializeContext(&Context,
+                          NULL,
+                          ImageInformation.TransferAddress,
+                          InitialTeb.StackBase,
+                          0);
+#endif
 
     /* Convert the thread attributes */
     ObjectAttributes = BaseFormatObjectAttributes(&LocalObjectAttributes,
@@ -4339,7 +4408,12 @@ StartScan:
 #else
     CreateProcessMsg->PebAddressWow64 = (ULONG)RemotePeb;
 #endif
+
+#ifndef BUILD_WOW6432
     RemotePeb = NULL;
+#else
+    RemotePeb = 0;
+#endif
 
     /* Now check what kind of architecture this image was made for */
     switch (ImageInformation.Machine)
