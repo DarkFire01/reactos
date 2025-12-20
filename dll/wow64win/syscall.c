@@ -313,6 +313,7 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(GdiModifyWorldTransform);
     IMPLEMENT_SERVICE(GdiGetGlyphOutline);
     IMPLEMENT_SERVICE(GdiGetRegionData);
+    IMPLEMENT_SERVICE(UserWaitMessage);
 #undef IMPLEMENT_SERVICE
 }
 

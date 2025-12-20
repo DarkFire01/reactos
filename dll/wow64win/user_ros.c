@@ -894,3 +894,10 @@ wow64_NtGdiGetFontFamilyInfo(UINT *pArgs)
 
     return NtGdiGetFontFamilyInfo(hDc, pLogFont, pInfo, pInfoCount);
 }
+
+BOOL
+NTAPI
+wow64_NtUserWaitMessage(UINT *pArgs)
+{
+    return NtUserWaitMessage();
+}
