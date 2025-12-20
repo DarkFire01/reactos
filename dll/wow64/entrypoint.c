@@ -14,12 +14,19 @@ typedef struct _ENTRYPOINT_TRANSLATION
     LPCSTR      SymbolName32;
     ULONG_PTR   SymbolAddress64;
     ULONG       SymbolAddress32;
-    void        (*ContextFixup)(PCONTEXT, PI386_CONTEXT, FIXUP);
+    NTSTATUS    (*ContextFixup)(HANDLE hProcess, PCONTEXT, PI386_CONTEXT, FIXUP);
 } ENTRYPOINT_TRANSLATION, *PENTRYPOINT_TRANSLATION;
 
+static
+NTSTATUS
+Wow64FixupNativeEntrypoint(HANDLE hProcess, PCONTEXT pContext);
+
 static 
-void 
-FixupStartupThunks(PCONTEXT pContext, PI386_CONTEXT pContext32, FIXUP fixup);
+NTSTATUS
+FixupStartupThunks(HANDLE hProcess, 
+                   PCONTEXT pContext, 
+                   PI386_CONTEXT pContext32, 
+                   FIXUP fixup);
 
 static ENTRYPOINT_TRANSLATION EntrypointTranslations[] =
 {
@@ -299,11 +306,14 @@ Wow64InitEntrypointTranslation(VOID)
     return Status;
 }
 
-ULONG_PTR
-Wow64TranslateEntrypoint32To64(PCONTEXT pContext, PI386_CONTEXT pContext32)
+NTSTATUS
+Wow64TranslateEntrypoint32To64(IN  HANDLE hProcess,
+                               OUT PCONTEXT pContext, 
+                               IN  PI386_CONTEXT pContext32)
 {
     SIZE_T i;
     PENTRYPOINT_TRANSLATION pTranslation;
+    NTSTATUS Status;
     
     for (i = 0; i < _countof(EntrypointTranslations); i++)
     {
@@ -313,19 +323,32 @@ Wow64TranslateEntrypoint32To64(PCONTEXT pContext, PI386_CONTEXT pContext32)
         {
             if (pTranslation->ContextFixup != NULL)
             {
-                pTranslation->ContextFixup(pContext, pContext32, Fix32To64);
+                Status = pTranslation->ContextFixup(hProcess, 
+                                                    pContext, 
+                                                    pContext32, 
+                                                    Fix32To64);
+                if (!NT_SUCCESS(Status))
+                {
+                    return Status;
+                }
             }
-            return pContext->Rip = pTranslation->SymbolAddress64;
+            
+            pContext->Rip = pTranslation->SymbolAddress64;
+            return STATUS_SUCCESS;
         }
     }
 
-    return pContext->Rip = pContext32->Eip;
+    pContext->Rip = pContext32->Eip;
+    return STATUS_SUCCESS;
 }
 
-ULONG
-Wow64TranslateEntrypoint64To32(PI386_CONTEXT pContext32, PCONTEXT pContext)
+NTSTATUS
+Wow64TranslateEntrypoint64To32(IN  HANDLE hProcess,
+                               OUT PI386_CONTEXT pContext32, 
+                               IN  PCONTEXT pContext)
 {
     SIZE_T i;
+    NTSTATUS Status;
     PENTRYPOINT_TRANSLATION pTranslation;
     
     for (i = 0; i < _countof(EntrypointTranslations); i++)
@@ -336,25 +359,53 @@ Wow64TranslateEntrypoint64To32(PI386_CONTEXT pContext32, PCONTEXT pContext)
         {
             if (pTranslation->ContextFixup != NULL)
             {
-                pTranslation->ContextFixup(pContext, pContext32, Fix64To32);
+                Status = pTranslation->ContextFixup(hProcess, 
+                                                    pContext, 
+                                                    pContext32, 
+                                                    Fix64To32);
+                if (!NT_SUCCESS(Status))
+                {
+                    return Status;
+                }
             }
-            return pContext32->Eip = pTranslation->SymbolAddress32;
+            
+            pContext32->Eip = pTranslation->SymbolAddress32;
+            return STATUS_SUCCESS;
         }
     }
     
-    return pContext32->Eip = pContext->Rip;
+    pContext32->Eip = pContext->Rip;
+    return STATUS_SUCCESS;
 }
 
 static 
-void 
-FixupStartupThunks(PCONTEXT pContext, PI386_CONTEXT pContext32, FIXUP fixup)
+NTSTATUS 
+FixupStartupThunks(HANDLE hProcess, 
+                   PCONTEXT pContext, 
+                   PI386_CONTEXT pContext32, 
+                   FIXUP fixup)
 {
+    NTSTATUS Status;
+    
     switch (fixup)
     {
         case Fix32To64:
             pContext->Rcx = pContext32->Eax;
             pContext->Rdx = pContext32->Ebx;
             pContext->SegCs = 0x33;
+            pContext->Rsp &= (~0xFULL);
+            pContext->Rsp -= 8;
+            
+            /* Manually fixup the entrypoint; see wow64_NtQuerySection */
+            if (pContext->Rcx == 0x81231234)
+            {
+                Status = Wow64FixupNativeEntrypoint(hProcess, pContext);
+                if (!NT_SUCCESS(Status))
+                {
+                    return Status;
+                }
+            }
+            
             break;
         case Fix64To32:
             pContext32->Eax = pContext->Rcx;
@@ -362,4 +413,86 @@ FixupStartupThunks(PCONTEXT pContext, PI386_CONTEXT pContext32, FIXUP fixup)
             pContext32->SegCs = 0x23;
             break;
     }
+    
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+Wow64FixupNativeEntrypoint(HANDLE hProcess, PCONTEXT pContext)
+{
+    PROCESS_BASIC_INFORMATION Info;
+    NTSTATUS Status;
+    PPEB RemotePeb;
+    ULONG_PTR BaseAddress;
+    ULONG eLfanew;
+    ULONG_PTR NtHeaders;
+    WORD OptionalHeaderMagic;
+    DWORD EntrypointRva;
+    
+    __debugbreak();
+    
+    /* Get the remote PEB */
+    Status = NtQueryInformationProcess(hProcess, 
+                                       ProcessBasicInformation, 
+                                       &Info,
+                                       sizeof(Info), 
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+    
+    RemotePeb = Info.PebBaseAddress;
+    
+    /* Get the remote base address */
+    Status = NtReadVirtualMemory(hProcess,
+                                 &RemotePeb->ImageBaseAddress,
+                                 &BaseAddress,
+                                 sizeof(BaseAddress),
+                                 NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+    
+    /* Find NT headers */
+    Status = NtReadVirtualMemory(hProcess,
+                                 &((PIMAGE_DOS_HEADER)BaseAddress)->e_lfanew,
+                                 &eLfanew,
+                                 sizeof(eLfanew),
+                                 NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+    
+    NtHeaders = BaseAddress + eLfanew;
+    
+    /* Validate the image */
+    Status = NtReadVirtualMemory(hProcess,
+                                 &((PIMAGE_NT_HEADERS64)NtHeaders)->OptionalHeader.Magic,
+                                 &OptionalHeaderMagic,
+                                 sizeof(OptionalHeaderMagic),
+                                 NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+    ASSERT(OptionalHeaderMagic == IMAGE_NT_OPTIONAL_HDR64_MAGIC);
+    
+    Status = NtReadVirtualMemory(hProcess,
+                                 &((PIMAGE_NT_HEADERS64)NtHeaders)->OptionalHeader.
+                                    AddressOfEntryPoint,
+                                 &EntrypointRva,
+                                 sizeof(EntrypointRva),
+                                 NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+    
+    pContext->Rcx = BaseAddress + EntrypointRva;
+    
+    return STATUS_SUCCESS;
 }

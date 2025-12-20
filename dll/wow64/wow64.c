@@ -48,7 +48,8 @@ VOID
 Wow64CopyContext32To64(PCONTEXT pContext,
                        PI386_CONTEXT pContext32)
 {
-    pContext->ContextFlags = pContext32->ContextFlags | CONTEXT_AMD64;
+    RtlZeroMemory(pContext, sizeof(*pContext));
+    pContext->ContextFlags = CONTEXT_FULL;
     pContext->Rip = pContext32->Eip;
     pContext->Rax = pContext32->Eax;
     pContext->Rbx = pContext32->Ebx;
@@ -65,6 +66,7 @@ Wow64CopyContext32To64(PCONTEXT pContext,
     pContext->SegFs = pContext32->SegFs;
     pContext->SegGs = pContext32->SegGs;
     pContext->SegSs = pContext32->SegSs;
+    pContext->MxCsr = INITIAL_MXCSR;
 }
 
 VOID
@@ -774,7 +776,11 @@ wow64_NtCreateThread(UINT* pArgs)
     Context.SegGs = 0x2b;
     Context.SegCs = 0x23;
     
-    Wow64TranslateEntrypoint32To64(&Context, pContext32);
+    Status = Wow64TranslateEntrypoint32To64(hProcess, &Context, pContext32);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
 
     Status = NtCreateThread(&hThread,
                             DesiredAccess,
@@ -1190,9 +1196,11 @@ LONG
 Wow64UnhandledExceptionHandler(IN PEXCEPTION_POINTERS ExceptionInfo);
 
 static
-void
+NTSTATUS
 Wow64Trampoline(PCONTEXT pContext)
 {
+    NTSTATUS Status;
+    
 #pragma pack(push, 1)
     struct
     {
@@ -1207,7 +1215,13 @@ Wow64Trampoline(PCONTEXT pContext)
 #pragma pack(pop)
     
     Wow64CopyContext64To32(&EnterApc32Stack.Context32, pContext);
-    Wow64TranslateEntrypoint64To32(&EnterApc32Stack.Context32, pContext);
+    Status = Wow64TranslateEntrypoint64To32(NtCurrentProcess(), 
+                                            &EnterApc32Stack.Context32, 
+                                            pContext);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
     
     EnterApc32Stack.ApcRoutine = (ULONG_PTR)NtDll32LdrpRoutine;
     EnterApc32Stack.SegCs = 0x23;
@@ -1226,6 +1240,7 @@ Wow64Trampoline(PCONTEXT pContext)
     }
 
     Wow64CopyContext32To64(pContext, &EnterApc32Stack.Context32);
+    return STATUS_SUCCESS;
 }
 
 static
@@ -1287,7 +1302,8 @@ Wow64InitThread(PCONTEXT pContext)
 
     DPRINT1("Wow64 thread client id: %X:%X\n", WowTeb->ClientId.UniqueProcess, WowTeb->ClientId.UniqueThread);
 
-    Wow64Trampoline(pContext);
+    Status = Wow64Trampoline(pContext);
+    ASSERT(NT_SUCCESS(Status));
 }
 
 void 
