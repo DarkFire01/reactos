@@ -27,6 +27,7 @@ add_executable(ntkrnlmp
     ${ntkrnlmp_asm}
     ${NTKRNLMP_SOURCE}
     ${NTKRNLMP_PCH_SKIP_SOURCE}
+    ${CMAKE_CURRENT_BINARY_DIR}/ntkrnlmp_stubs.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ntoskrnl.rc
     ${CMAKE_CURRENT_BINARY_DIR}/ntkrnlmp.def)
 set_module_type(ntkrnlmp kernel)
