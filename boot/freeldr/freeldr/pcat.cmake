@@ -58,15 +58,15 @@ if(ARCH STREQUAL "i386")
         # arch/i386/i386bug.c
         arch/i386/i386idt.c)
 
-    if(SARCH STREQUAL "xbox")
+    if(NOT SARCH STREQUAL "pc98")
         list(APPEND PCATLDR_ARC_SOURCE
             arch/vidfb.c)
     endif()
-    if(SARCH STREQUAL "pc98" OR SARCH STREQUAL "xbox")
+    #if(SARCH STREQUAL "pc98" OR SARCH STREQUAL "xbox")
         # These machine types require built-in bitmap font
         list(APPEND PCATLDR_ARC_SOURCE
             arch/vgafont.c)
-    endif()
+    #endif()
 
     if(SARCH STREQUAL "xbox")
         list(APPEND PCATLDR_ARC_SOURCE
@@ -86,7 +86,6 @@ if(ARCH STREQUAL "i386")
             # Prevent a warning when doing a memcmp with address 0
             set_source_files_properties(arch/i386/xbox/xboxmem.c PROPERTIES COMPILE_OPTIONS "-Wno-nonnull")
         endif()
-
     elseif(SARCH STREQUAL "pc98")
         list(APPEND PCATLDR_ARC_SOURCE
             arch/i386/pc/pcmem.c        # pc98mem.c depends on it
@@ -138,6 +137,10 @@ elseif(ARCH STREQUAL "amd64")
         arch/i386/pc/pcrtc.c
         arch/i386/pc/pcvesa.c
         arch/i386/pc/pcvideo.c)
+
+    list(APPEND PCATLDR_ARC_SOURCE
+        arch/vidfb.c
+        arch/vgafont.c)
 
 elseif(ARCH STREQUAL "arm")
     list(APPEND PCATLDR_COMMON_ASM_SOURCE

@@ -42,6 +42,11 @@ static FREELDR_MEMORY_DESCRIPTOR PcMemoryMap[MAX_BIOS_DESCRIPTORS + 1];
 #endif
 ULONG PcMapCount;
 
+#if !defined(SARCH_XBOX) && !defined(SARCH_PC98)
+extern ULONG_PTR VramAddress;
+extern ULONG VramSize;
+#endif
+
 ULONG
 AddMemoryDescriptor(
     IN OUT PFREELDR_MEMORY_DESCRIPTOR List,
@@ -649,7 +654,7 @@ PcMemGetMemoryMap(ULONG *MemoryMapSize)
                                              LoaderFree);
         }
 
-        /* Check if we have an EBDA and get it's location */
+        /* Check if we have an EBDA and get its location */
         if (GetEbdaLocation(&EbdaBase, &EbdaSize))
         {
             /* Add the descriptor */
@@ -665,7 +670,14 @@ PcMemGetMemoryMap(ULONG *MemoryMapSize)
     SetMemory(PcMemoryMap, 0x000000, 0x01000, LoaderFirmwarePermanent); // Realmode IVT / BDA
     SetMemory(PcMemoryMap, 0x0A0000, 0x50000, LoaderFirmwarePermanent); // Video memory
     SetMemory(PcMemoryMap, 0x0F0000, 0x10000, LoaderSpecialMemory); // ROM
-    SetMemory(PcMemoryMap, 0xFFF000, 0x01000, LoaderSpecialMemory); // unusable memory (do we really need this?)
+    SetMemory(PcMemoryMap, 0xFFF000, 0x01000, LoaderSpecialMemory); // Unusable memory (do we really need this?)
+
+    /* Other video memory */
+    if (VramAddress && (VramSize != 0) &&
+        !(0x0A0000 <= VramAddress && VramAddress /*+ VramSize*/ <= 0x0A0000 + 0x50000))
+    {
+        SetMemory(PcMemoryMap, VramAddress, VramSize, LoaderFirmwarePermanent);
+    }
 
     *MemoryMapSize = PcMemFinalizeMemoryMap(PcMemoryMap);
     return PcMemoryMap;

@@ -1,6 +1,7 @@
 /*
  * PROJECT:     FreeLoader
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ *              or MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     Video support for linear framebuffers
  * COPYRIGHT:   Copyright 2025-2026 Hermès Bélusca-Maïto <hermes.belusca-maito@reactos.org>
  */
@@ -25,6 +26,27 @@ typedef struct _PIXEL_BITMASK
     ULONG BlueMask;
     ULONG ReservedMask;
 } PIXEL_BITMASK, *PPIXEL_BITMASK;
+
+typedef struct _PIXEL_BITMASK_SIZEPOS
+{
+    /* Size in bits of each mask */
+    UCHAR RedMaskSize;
+    UCHAR GreenMaskSize;
+    UCHAR BlueMaskSize;
+    UCHAR ReservedMaskSize;
+
+    /* Bit position (~ shift count) of each mask LSB */
+    UCHAR RedMaskPosition;
+    UCHAR GreenMaskPosition;
+    UCHAR BlueMaskPosition;
+    UCHAR ReservedMaskPosition;
+} PIXEL_BITMASK_SIZEPOS, *PPIXEL_BITMASK_SIZEPOS;
+
+typedef union _PIXEL_FORMAT
+{
+    PIXEL_BITMASK PixelMasks;
+    PIXEL_BITMASK_SIZEPOS MasksBySizePos;
+} PIXEL_FORMAT, *PPIXEL_FORMAT;
 
 
 /**
@@ -60,7 +82,8 @@ VidFbInitializeVideo(
     _In_ UINT32 ScreenHeight,
     _In_ UINT32 PixelsPerScanLine,
     _In_ UINT32 BitsPerPixel,
-    _In_opt_ PPIXEL_BITMASK PixelMasks);
+    _In_opt_ PPIXEL_FORMAT PixelFormat,
+    _In_ BOOLEAN FormatByMask);
 
 VOID
 VidFbClearScreenColor(

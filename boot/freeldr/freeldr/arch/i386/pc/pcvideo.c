@@ -17,7 +17,7 @@
  */
 
 #include <freeldr.h>
-#include <suppress.h>
+#include "../../vidfb.h"
 
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(UI);
@@ -31,13 +31,14 @@ DBG_DEFAULT_CHANNEL(UI);
 #define VIDEOPORT_PALETTE_DATA      0x03C9
 #define VIDEOPORT_VERTICAL_RETRACE  0x03DA
 
-#define VIDEOVGA_MEM_ADDRESS  0xA0000
-#define VIDEOTEXT_MEM_ADDRESS 0xB8000
-#define VIDEOTEXT_MEM_SIZE    0x8000
+#define VIDEOVGA_MEM_ADDRESS    0xA0000
+#define VIDEOVGA_MEM_SIZE       0x20000
+#define VIDEOTEXT_MEM_ADDRESS   0xB8000
+#define VIDEOTEXT_MEM_SIZE      0x8000
 
-#define VIDEOCARD_CGA_OR_OTHER 0
-#define VIDEOCARD_EGA          1
-#define VIDEOCARD_VGA          2
+#define VIDEOCARD_CGA_OR_OTHER  0
+#define VIDEOCARD_EGA           1
+#define VIDEOCARD_VGA           2
 
 #define VIDEOMODE_NORMAL_TEXT   0
 #define VIDEOMODE_EXTENDED_TEXT 1
@@ -54,6 +55,8 @@ DBG_DEFAULT_CHANNEL(UI);
 #define VERTRES_200_SCANLINES        0x00
 #define VERTRES_350_SCANLINES        0x01
 #define VERTRES_400_SCANLINES        0x02
+
+#define VGA_CHAR_SIZE 2
 
 #include <pshpack2.h>
 typedef struct
@@ -113,14 +116,46 @@ typedef struct
 C_ASSERT(sizeof(SVGA_MODE_INFORMATION) == 256);
 #include <poppack.h>
 
-UCHAR MachDefaultTextColor = COLOR_GRAY;
+// FIXME: See pcvesa.c
+#include <pshpack2.h>
+typedef struct
+{
+    UCHAR Signature[4];
+    USHORT VesaVersion;
+    ULONG OemNamePtr;
+    ULONG Capabilities;
+    ULONG SupportedModeListPtr;
+    USHORT TotalVideoMemory;
+    // ---VBE v1.x ---
+    //UCHAR Reserved[236];
+    // ---VBE v2.0 ---
+    USHORT OemSoftwareVersion;
+    ULONG VendorNamePtr;
+    ULONG ProductNamePtr;
+    ULONG ProductRevisionStringPtr;
+    USHORT VBE_AF_Version;
+    ULONG AcceleratedModeListPtr;
+    UCHAR Reserved[216];
+    UCHAR ScratchPad[256];
+} VESA_SVGA_INFO, *PVESA_SVGA_INFO;
+#include <poppack.h>
+
+extern BOOLEAN
+BiosVesaGetInfo(
+    _Out_ PVESA_SVGA_INFO VesaVbeInformation);
+
+
+ULONG_PTR VramAddress; // = VIDEOTEXT_MEM_ADDRESS;
+ULONG VramSize;
+PCM_FRAMEBUF_DEVICE_DATA FrameBufferData = NULL;
 
 static ULONG VideoCard = VIDEOCARD_CGA_OR_OTHER;        /* Type of video card installed on the system */
 static USHORT BiosVideoMode = VIDEOMODE_NORMAL_TEXT;    /* Current video mode as known by BIOS */
 static ULONG ScreenWidth = 80;                          /* Screen Width in characters */
 static ULONG ScreenHeight = 25;                         /* Screen Height in characters */
 static ULONG BytesPerScanLine = 160;                    /* Number of bytes per scanline (delta) */
-static VIDEODISPLAYMODE DisplayMode = VideoTextMode;    /* Current display mode */
+static UCHAR BitsPerPixel = 8;                          /* Number of bits per pixel */
+/*static*/ VIDEODISPLAYMODE DisplayMode = VideoTextMode;    /* Current display mode */
 static BOOLEAN VesaVideoMode = FALSE;                   /* Are we using a VESA mode? */
 static SVGA_MODE_INFORMATION VesaVideoModeInformation;  /* Only valid when in VESA mode */
 static ULONG CurrentMemoryBank = 0;                     /* Currently selected VESA bank */
@@ -333,6 +368,34 @@ PcVideoVesaGetCurrentSVGAMode(
     return TRUE;
 }
 
+/**
+ * @brief
+ * Returns TRUE if the specified VESA mode is supported by FreeLoader:
+ * - Check whether this is a graphics mode with linear frame buffer support;
+ * - Check whether this is a packed pixel or direct color mode.
+ **/
+static BOOLEAN
+IsVesaModeSupportedByFrLdr(
+    _In_ const SVGA_MODE_INFORMATION* ModeInformation)
+{
+    /*
+     * (Table 00082)
+     * Values for VESA SuperVGA memory model type:
+     * 00h    text
+     * 01h    CGA graphics
+     * 02h    HGC graphics
+     * 03h    16-color (EGA) graphics
+     * 04h    packed pixel graphics
+     * 05h    "sequ 256" (non-chain 4) graphics
+     * 06h    direct color (HiColor, 24-bit color)
+     * 07h    YUV (luminance-chrominance, also called YIQ)
+     * 08h-0Fh reserved for VESA
+     * 10h-FFh OEM memory models
+     */
+    return ((ModeInformation->ModeAttributes & 0x80) &&
+            (ModeInformation->MemoryModel == 4 || ModeInformation->MemoryModel == 6));
+}
+
 static BOOLEAN
 PcVideoGetBiosMode(
     _Out_ PUSHORT Mode)
@@ -380,8 +443,77 @@ PcVideoGetBiosMode(
     return TRUE;
 }
 
-static VOID
-PcVideoGetDisplayMode(VOID)
+/**
+ * @brief   Set up the framebuffer needed to support a linear graphics mode.
+ **/
+static BOOLEAN
+PcVideoSetupGraphicsMode(VOID)
+{
+    PIXEL_BITMASK_SIZEPOS MasksBySizePos;
+
+    ASSERT(DisplayMode == VideoGraphicsMode);
+    if (VesaVideoMode)
+    {
+        VESA_SVGA_INFO VesaVbeInformation;
+
+        /*
+         * Packed Pixel model (MemoryModel == 4) uses the BitsPerPixel field
+         * only to define the pixel format. The (linear)RGBMaskSize/Position
+         * fields are all zero.
+         * Direct Color model (MemoryModel == 6) uses the masks data instead.
+         */
+        /*
+         * NOTE: From the "VBE Core Functions Standard Version 3.0" specification:
+         * "For VBE 3.0 implementations it is possible to have different color
+         * formats in banked framebuffer and linear framebuffer modes. The
+         * standard values list the framebuffer format for banked framebuffer
+         * modes. For linear modes please refer to the LinXX variants."
+         */
+        MasksBySizePos.RedMaskSize = VesaVideoModeInformation.LinearRedMaskSize;
+        MasksBySizePos.RedMaskPosition = VesaVideoModeInformation.LinearRedMaskPosition;
+        MasksBySizePos.GreenMaskSize = VesaVideoModeInformation.LinearGreenMaskSize;
+        MasksBySizePos.GreenMaskPosition = VesaVideoModeInformation.LinearGreenMaskPosition;
+        MasksBySizePos.BlueMaskSize = VesaVideoModeInformation.LinearBlueMaskSize;
+        MasksBySizePos.BlueMaskPosition = VesaVideoModeInformation.LinearBlueMaskPosition;
+        MasksBySizePos.ReservedMaskSize = VesaVideoModeInformation.LinearReservedMaskSize;
+        MasksBySizePos.ReservedMaskPosition = VesaVideoModeInformation.LinearReservedMaskPosition;
+
+        /* Set the video RAM information */
+        VramAddress = (ULONG_PTR)VesaVideoModeInformation.LinearVideoBufferAddress;
+        if (BiosVesaGetInfo(&VesaVbeInformation))
+            VramSize = VesaVbeInformation.TotalVideoMemory * 64 * 1024;
+        else
+            VramSize = ScreenHeight * BytesPerScanLine;
+    }
+    else
+    {
+        /* Set the video RAM information */
+        VramAddress = (ULONG_PTR)VIDEOVGA_MEM_ADDRESS;
+        VramSize = VIDEOVGA_MEM_SIZE;
+    }
+// TODO: For packed-pixel modes, we need to set a palette.
+
+    if (!VidFbInitializeVideo(&FrameBufferData,
+                              VramAddress,
+                              VramSize,
+                              ScreenWidth,
+                              ScreenHeight,
+                              BytesPerScanLine / ((BitsPerPixel + 7) / 8), // PixelsPerScanLine
+                              BitsPerPixel,
+                              (VesaVideoMode ? (PPIXEL_FORMAT)&MasksBySizePos : NULL),
+                              !VesaVideoMode))
+    {
+        ERR("Couldn't initialize video framebuffer\n");
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/**
+ * @brief   Detects the current video mode with which FreeLoader was started.
+ **/
+static BOOLEAN
+PcVideoDetectVideoMode(VOID)
 {
     USHORT Mode = 0;
 
@@ -389,10 +521,21 @@ PcVideoGetDisplayMode(VOID)
     if (PcVideoVesaGetCurrentSVGAMode(&Mode) &&
         PcVideoVesaGetSVGAModeInformation(Mode, &VesaVideoModeInformation))
     {
-        TRACE("VESA mode detected\n");
+        TRACE("VESA mode 0x%x detected\n", Mode);
+
+        /* Fail if this is not a supported VESA linear mode */
+        if (!IsVesaModeSupportedByFrLdr(&VesaVideoModeInformation))
+        {
+            ERR("Unsupported VESA mode 0x%x\n", Mode);
+            return FALSE;
+        }
+
+ERR("VESA MemoryModel: %lu\n", VesaVideoModeInformation.MemoryModel);
+        Mode &= ~0x4000; // Remove the "Linear/flat frame buffer model" bit.
         ScreenWidth = VesaVideoModeInformation.WidthInPixels;
         ScreenHeight = VesaVideoModeInformation.HeightInPixels;
         BytesPerScanLine = VesaVideoModeInformation.BytesPerScanLine;
+        BitsPerPixel = VesaVideoModeInformation.BitsPerPixel;
         BiosVideoMode = Mode;
         DisplayMode = (0x0108 <= Mode && Mode <= 0x010C) ? VideoTextMode : VideoGraphicsMode;
         VesaVideoMode = TRUE;
@@ -409,7 +552,7 @@ PcVideoGetDisplayMode(VOID)
         UCHAR BiosMode = (*(PUCHAR)0x449) & 0x7F; /* Current video mode */
         ASSERT(BiosMode == Mode);
         BiosVideoMode = Mode;
-        TRACE("BIOS mode detected\n");
+        TRACE("BIOS mode 0x%x detected\n", Mode);
 
         ScreenWidth = *(PUSHORT)0x44A; /* Number of screen columns */
         ScreenHeight = 1 + *(PUCHAR)0x484; /* 1 + "Rows on the screen (less 1, EGA+)" */
@@ -440,21 +583,16 @@ PcVideoGetDisplayMode(VOID)
             default:
                 BytesPerScanLine = 160; break;
         }
+        BitsPerPixel = 8;
 
-        DisplayMode = VideoTextMode;
+        DisplayMode = VideoTextMode; // FIXME
         VesaVideoMode = FALSE;
     }
     else
     {
-        /* Set the values for the default text mode.
-         * If a graphics mode is set, these values will be changed. */
-        TRACE("Fallback mode detected\n");
-        BiosVideoMode = VIDEOMODE_NORMAL_TEXT;
-        ScreenWidth = 80;
-        ScreenHeight = 25;
-        BytesPerScanLine = 160;
-        DisplayMode = VideoTextMode;
-        VesaVideoMode = FALSE;
+        /* Unknown/unhandled video mode */
+        ERR("Unknown video mode detected\n");
+        return FALSE;
     }
 
     TRACE("This is a %s video mode\n", VesaVideoMode ? "VESA" : "BIOS");
@@ -463,6 +601,10 @@ PcVideoGetDisplayMode(VOID)
     TRACE("ScreenWidth      = %lu\n", ScreenWidth);
     TRACE("ScreenHeight     = %lu\n", ScreenHeight);
     TRACE("BytesPerScanLine = %lu\n", BytesPerScanLine);
+
+    if (DisplayMode == VideoGraphicsMode)
+        return PcVideoSetupGraphicsMode();
+    return TRUE;
 }
 
 static BOOLEAN
@@ -526,7 +668,7 @@ PcVideoSetBiosVesaMode(USHORT Mode)
      * directly, however). As of VBE 2.0, VESA will no longer define video mode numbers.
      */
     Regs.w.ax = 0x4F02;
-    Regs.w.bx = Mode;
+    Regs.w.bx = Mode | 0x4000; // Use a linear/flat frame buffer model.
     Int386(0x10, &Regs, &Regs);
     return (Regs.w.ax == 0x004F);
 }
@@ -881,18 +1023,23 @@ PcVideoSetMode80x60(VOID)
 static BOOLEAN
 PcVideoSetMode(USHORT NewMode)
 {
-    CurrentMemoryBank = 0;
+    /* If the mode the caller tries to set is already being used,
+     * do nothing and just return success. */
+    if (BiosVideoMode == NewMode)
+        return TRUE;
 
-    /* Set the values for the default text modes
-     * If they are setting a graphics mode then
-     * these values will be changed. */
+    /* Set the values for the default text mode.
+     * If a graphics mode is set, these values will be changed. */
     BiosVideoMode = NewMode;
     ScreenWidth = 80;
     ScreenHeight = 25;
     BytesPerScanLine = 160;
+    BitsPerPixel = 8;
     DisplayMode = VideoTextMode;
     VesaVideoMode = FALSE;
+    CurrentMemoryBank = 0;
 
+    /* Check for text modes */
     switch (NewMode)
     {
         case VIDEOMODE_NORMAL_TEXT:
@@ -910,7 +1057,13 @@ PcVideoSetMode(USHORT NewMode)
             return PcVideoSetMode80x43();
         case VIDEOMODE_80X60:
             return PcVideoSetMode80x60();
+        // case VIDEOMODE_132X25:
+        // case VIDEOMODE_132X43:
+        // case VIDEOMODE_132X50:
+        // case VIDEOMODE_132X60:
     }
+
+    /* Check for graphics modes */
 
     if (NewMode == 0x12)
     {
@@ -925,38 +1078,50 @@ PcVideoSetMode(USHORT NewMode)
 
         return TRUE;
     }
-    else if (NewMode == 0x13)
+
+    /* Linear framebuffer graphics modes */
+    if (NewMode == 0x13)
     {
-        /* 320x200x256 */
+        /* 320x200x256 (Linear 256 color mode)
+         * https://people.cs.umass.edu/~verts/cs32/vga_320.html
+         * REMARK: PcVideoDetectVideoMode() would return a number of screen
+         * text columns/rows of 40x25. */
         PcVideoSetBiosMode((UCHAR)NewMode);
         ScreenWidth = 320;
         ScreenHeight = 200;
         BytesPerScanLine = 320;
+        BitsPerPixel = 8;
         BiosVideoMode = NewMode;
         DisplayMode = VideoGraphicsMode;
-
-        return TRUE;
     }
     else
     {
         /* VESA Text/Graphics Mode */
-        if (!PcVideoVesaGetSVGAModeInformation(NewMode, &VesaVideoModeInformation))
+        SVGA_MODE_INFORMATION ModeInformation;
+        if (!PcVideoVesaGetSVGAModeInformation(NewMode, &ModeInformation))
+            return FALSE;
+
+        /* Fail if this is not a supported VESA linear mode */
+        if (!IsVesaModeSupportedByFrLdr(&ModeInformation))
             return FALSE;
 
         if (!PcVideoSetBiosVesaMode(NewMode))
             return FALSE;
 
+ERR("VESA MemoryModel: %lu\n", VesaVideoModeInformation.MemoryModel);
+        VesaVideoModeInformation = ModeInformation;
         ScreenWidth = VesaVideoModeInformation.WidthInPixels;
         ScreenHeight = VesaVideoModeInformation.HeightInPixels;
         BytesPerScanLine = VesaVideoModeInformation.BytesPerScanLine;
+        BitsPerPixel = VesaVideoModeInformation.BitsPerPixel;
         BiosVideoMode = NewMode;
         DisplayMode = (0x0108 <= NewMode && NewMode <= 0x010C) ? VideoTextMode : VideoGraphicsMode;
         VesaVideoMode = TRUE;
-
-        return TRUE;
     }
 
-    return FALSE;
+    if (DisplayMode == VideoGraphicsMode)
+        return PcVideoSetupGraphicsMode();
+    return TRUE;
 }
 
 static VOID
@@ -1026,17 +1191,19 @@ PcVideoInit(VOID)
     /* Detect the installed video card */
     VideoCard = PcVideoDetectVideoCard();
 
-    /* Retrieve the initial display mode parameters */
-    PcVideoGetDisplayMode();
+    /* Detect the initial display mode and retrieve the parameters. If the
+     * video mode is unhandled, it is reset to default 80x25 text mode. */
+    if (!PcVideoDetectVideoMode())
+    {
+        /* Unknown/unhandled video mode, fall back to default text mode */
+        WARN("Fall back to 80x25 text mode\n");
+        BiosVideoMode = -1; // Invalidate so that PcVideoSetMode() really resets the mode.
+        PcVideoSetMode(VIDEOMODE_NORMAL_TEXT);
+    }
 
     /* If any video options have been specified, try to set a display mode */
     if (BootMgrInfo.VideoOptions && *BootMgrInfo.VideoOptions)
         PcVideoSetDisplayMode(BootMgrInfo.VideoOptions, TRUE);
-
-    // FIXME: We don't support graphics modes yet!
-    // Revert to 80x25 text mode.
-    if (DisplayMode != VideoTextMode)
-        PcVideoSetMode(VIDEOMODE_NORMAL_TEXT);
 }
 
 #define TRACE_printf(Format, ...) \
@@ -1057,17 +1224,20 @@ PcVideoSetDisplayMode(PCSTR DisplayModeName, BOOLEAN Init)
     {
         TRACE_printf("CGA or other display adapter detected.\n");
         TRACE_printf("Using 80x25 text mode.\n");
+        PcConsGetCh();
         VideoMode = VIDEOMODE_NORMAL_TEXT;
     }
     else if (VideoCard == VIDEOCARD_EGA)
     {
         TRACE_printf("EGA display adapter detected.\n");
         TRACE_printf("Using 80x25 text mode.\n");
+        PcConsGetCh();
         VideoMode = VIDEOMODE_NORMAL_TEXT;
     }
     else /* VIDEOCARD_VGA */
     {
         TRACE_printf("VGA display adapter detected.\n");
+        PcConsGetCh();
 
         /* Get the video option separator, if any */
         size_t NameLen = strcspn(DisplayModeName, ",");
@@ -1100,10 +1270,19 @@ Quit:
 VOID
 PcVideoGetDisplaySize(PULONG Width, PULONG Height, PULONG Depth)
 {
-    *Width = ScreenWidth;
-    *Height = ScreenHeight;
-    if (VideoGraphicsMode == DisplayMode && VesaVideoMode)
+    /* Text mode (BIOS or VESA) */
+    if (DisplayMode == VideoTextMode)
     {
+        *Width = ScreenWidth;
+        *Height = ScreenHeight;
+        *Depth = 0;
+    }
+    /* VESA banked graphics mode */
+    else if (DisplayMode == VideoGraphicsMode && VesaVideoMode &&
+             !(VesaVideoModeInformation.ModeAttributes & 0x80))
+    {
+        *Width = ScreenWidth;
+        *Height = ScreenHeight;
         if (VesaVideoModeInformation.BitsPerPixel == 16)
         {
             /* 16-bit color modes give green an extra bit (5:6:5)
@@ -1115,16 +1294,51 @@ PcVideoGetDisplaySize(PULONG Width, PULONG Height, PULONG Depth)
             *Depth = VesaVideoModeInformation.BitsPerPixel;
         }
     }
+    /* Linear framebuffer mode */
+    else if (DisplayMode == VideoGraphicsMode)
+    {
+        FbConsGetDisplaySize(Width, Height, Depth);
+    }
+    /* BIOS graphics mode */
     else
     {
+        UNIMPLEMENTED;
+        *Width = ScreenWidth;
+        *Height = ScreenHeight;
         *Depth = 0;
     }
 }
 
+//
+// FIXME: Differentiate between text-mode, graphics-mode for
+// displaying graphics, and graphics-mode for emulating text-mode.
+//
 ULONG
 PcVideoGetBufferSize(VOID)
 {
-    return ScreenHeight * BytesPerScanLine;
+    /* Text mode (BIOS or VESA) */
+    if (DisplayMode == VideoTextMode)
+    {
+        // return ScreenHeight * BytesPerScanLine;
+        return ScreenWidth * ScreenHeight * VGA_CHAR_SIZE;
+    }
+    /* VESA banked graphics mode */
+    else if (DisplayMode == VideoGraphicsMode && VesaVideoMode &&
+             !(VesaVideoModeInformation.ModeAttributes & 0x80))
+    {
+        return ScreenHeight * BytesPerScanLine;
+    }
+    /* Linear framebuffer mode */
+    else if (DisplayMode == VideoGraphicsMode)
+    {
+        return FbConsGetBufferSize();
+    }
+    /* BIOS graphics mode */
+    else
+    {
+        UNIMPLEMENTED;
+        return ScreenHeight * BytesPerScanLine;
+    }
 }
 
 VOID
@@ -1161,10 +1375,17 @@ PcVideoGetFontsFromFirmware(PULONG RomFontPointers)
     RomFontPointers[5] = BiosRegs.w.es << 16 | BiosRegs.w.bp;
 }
 
+// NOTE: Console support. // FIXME: Move to pccons.c
+extern unsigned CurrentCursorX;
+extern unsigned CurrentCursorY;
 VOID
 PcVideoSetTextCursorPosition(UCHAR X, UCHAR Y)
 {
     REGS Regs;
+
+    // FIXME: Do this only in graphics mode.
+    CurrentCursorX = X;
+    CurrentCursorY = Y;
 
     /* Int 10h AH=02h
      * VIDEO - SET CURSOR POSITION
@@ -1198,27 +1419,24 @@ PcVideoHideShowTextCursor(BOOLEAN Show)
 VOID
 PcVideoCopyOffScreenBufferToVRAM(PVOID Buffer)
 {
-    USHORT BanksToCopy;
-    ULONG BytesInLastBank;
-    USHORT CurrentBank;
-    ULONG BankSize;
-
-    /* PcVideoWaitForVerticalRetrace(); */
+    // PcVideoWaitForVerticalRetrace();
 
     /* Text mode (BIOS or VESA) */
-    if (VideoTextMode == DisplayMode)
+    if (DisplayMode == VideoTextMode)
     {
         RtlCopyMemory((PVOID)VIDEOTEXT_MEM_ADDRESS, Buffer, PcVideoGetBufferSize());
     }
-    /* VESA graphics mode */
-    else if (VideoGraphicsMode == DisplayMode && VesaVideoMode)
+    /* VESA banked graphics mode */
+    else if (DisplayMode == VideoGraphicsMode && VesaVideoMode &&
+             !(VesaVideoModeInformation.ModeAttributes & 0x80))
     {
-        BankSize = VesaVideoModeInformation.WindowGranularity << 10;
-        BanksToCopy = (USHORT)((VesaVideoModeInformation.HeightInPixels * VesaVideoModeInformation.BytesPerScanLine) / BankSize);
-        BytesInLastBank = (VesaVideoModeInformation.HeightInPixels * VesaVideoModeInformation.BytesPerScanLine) % BankSize;
+        ULONG BankSize = VesaVideoModeInformation.WindowGranularity << 10;
+        USHORT BanksToCopy = (USHORT)((VesaVideoModeInformation.HeightInPixels * VesaVideoModeInformation.BytesPerScanLine) / BankSize);
+        ULONG BytesInLastBank = (VesaVideoModeInformation.HeightInPixels * VesaVideoModeInformation.BytesPerScanLine) % BankSize;
 
-        /* Copy all the banks but the last one because
-         * it is probably a partial bank */
+        /* Copy all the banks but the last one because it probably is a partial bank */
+        // FIXME: Don't hardcode VIDEOVGA_MEM_ADDRESS but use WindowAStartSegment.
+        USHORT CurrentBank;
         for (CurrentBank = 0; CurrentBank < BanksToCopy; CurrentBank++)
         {
             PcVideoSetMemoryBank(CurrentBank);
@@ -1228,6 +1446,11 @@ PcVideoCopyOffScreenBufferToVRAM(PVOID Buffer)
         /* Copy the remaining bytes into the last bank */
         PcVideoSetMemoryBank(CurrentBank);
         RtlCopyMemory((PVOID)VIDEOVGA_MEM_ADDRESS, (char*)Buffer + CurrentBank * BankSize, BytesInLastBank);
+    }
+    /* Linear framebuffer mode */
+    else if (DisplayMode == VideoGraphicsMode)
+    {
+        FbConsCopyOffScreenBufferToVRAM(Buffer);
     }
     /* BIOS graphics mode */
     else
@@ -1239,26 +1462,33 @@ PcVideoCopyOffScreenBufferToVRAM(PVOID Buffer)
 VOID
 PcVideoClearScreen(UCHAR Attr)
 {
-    USHORT AttrChar;
-    USHORT *BufPtr;
-
-    AttrChar = ((USHORT)Attr << 8) | ' ';
-    for (BufPtr = (USHORT*)VIDEOTEXT_MEM_ADDRESS;
-         BufPtr < (USHORT*)(VIDEOTEXT_MEM_ADDRESS + VIDEOTEXT_MEM_SIZE);
-         BufPtr++)
+    if (DisplayMode == VideoTextMode)
     {
-        _PRAGMA_WARNING_SUPPRESS(__WARNING_DEREF_NULL_PTR)
-        *BufPtr = AttrChar;
+        USHORT AttrChar = ((USHORT)Attr << 8) | ' ';
+        __stosw((PVOID)VIDEOTEXT_MEM_ADDRESS, AttrChar, VIDEOTEXT_MEM_SIZE / VGA_CHAR_SIZE);
+    }
+    else // VideoGraphicsMode
+    {
+        FbConsClearScreen(Attr);
     }
 }
 
+// NOTE: Console support.
+// X, Y are in character coordinates. But we could image a similar
+// function where it is in pixels instead.
 VOID
 PcVideoPutChar(int Ch, UCHAR Attr, unsigned X, unsigned Y)
 {
-    USHORT *BufPtr;
-
-    BufPtr = (USHORT*)(ULONG_PTR)(VIDEOTEXT_MEM_ADDRESS + Y * BytesPerScanLine + X * 2);
-    *BufPtr = ((USHORT)Attr << 8) | (Ch & 0xff);
+    if (DisplayMode == VideoTextMode)
+    {
+        USHORT *BufPtr;
+        BufPtr = (USHORT*)(ULONG_PTR)(VIDEOTEXT_MEM_ADDRESS + Y * BytesPerScanLine + X * VGA_CHAR_SIZE);
+        *BufPtr = ((USHORT)Attr << 8) | (Ch & 0xff);
+    }
+    else
+    {
+        FbConsPutChar(Ch, Attr, X, Y);
+    }
 }
 
 BOOLEAN

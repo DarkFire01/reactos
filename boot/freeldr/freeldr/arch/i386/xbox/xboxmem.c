@@ -263,7 +263,7 @@ XboxMemGetMemoryMap(ULONG *MemoryMapSize)
                   AvailableMemoryMb * 1024 * 1024,
                   LoaderFree);
 
-        if (FrameBufferSize != 0)
+        if (FrameBuffer && (FrameBufferSize != 0))
         {
             /* Video memory */
             ReserveMemory(XboxMemoryMap,

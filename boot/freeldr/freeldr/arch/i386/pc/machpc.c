@@ -18,6 +18,7 @@
 
 #include <freeldr.h>
 #include <cportlib/cportlib.h>
+#include "../../vidfb.h"
 
 #include "../ntldr/ntldropts.h"
 
@@ -1562,14 +1563,152 @@ USHORT  BiosIsVesaSupported(VOID);
 BOOLEAN BiosIsVesaDdcSupported(VOID);
 BOOLEAN BiosVesaReadEdid(VOID);
 
-static VOID
-DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
-{
-    PCSTR Identifier;
-    PCONFIGURATION_COMPONENT_DATA ControllerKey;
-    USHORT VesaVersion;
+#if !defined(SARCH_XBOX) && !defined(SARCH_PC98)
+/* From pcvideo.c */
+extern ULONG_PTR VramAddress;
+extern ULONG VramSize;
+extern PCM_FRAMEBUF_DEVICE_DATA FrameBufferData;
+#endif
 
-    /* FIXME: Set 'ComponentInformation' value */
+#define MONITOR_NEW_DATA
+static VOID
+DetectMonitorPeripheral(
+    _In_ PCONFIGURATION_COMPONENT_DATA DisplayNode,
+    _In_ PCM_FRAMEBUF_DEVICE_DATA FramebufData,
+    _In_ USHORT VesaVersion)
+{
+    PCONFIGURATION_COMPONENT_DATA PeripheralKey;
+#ifndef MONITOR_NEW_DATA // Using "old" configuration data
+    PMONITOR_CONFIGURATION_DATA MonitorData;
+#else // Using "new" configuration list
+    PCM_PARTIAL_RESOURCE_LIST PartialResourceList;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor;
+    PCM_MONITOR_DEVICE_DATA MonitorData;
+#endif
+    ULONG Size;
+    CHAR IdentifierStr[32];
+
+    /* FIXME: Add monitor EDID data */
+    if (VesaVersion != 0)
+    {
+        if (BiosIsVesaDdcSupported())
+        {
+            TRACE("VESA/DDC supported!\n");
+            if (BiosVesaReadEdid())
+            {
+                TRACE("EDID data read successfully!\n");
+            }
+        }
+    }
+
+#ifndef MONITOR_NEW_DATA // Using "old" configuration data
+    Size = sizeof(*MonitorData);
+    MonitorData = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
+    if (MonitorData == NULL)
+    {
+        ERR("Failed to allocate resource descriptor\n");
+        return;
+    }
+
+    RtlZeroMemory(MonitorData, sizeof(*MonitorData));
+    MonitorData->HorizontalResolution = FramebufData->ScreenWidth;
+    MonitorData->HorizontalDisplayTime = 16000;
+    MonitorData->HorizontalBackPorch = 2000;
+    MonitorData->HorizontalFrontPorch = 1000;
+    MonitorData->HorizontalSync = 1500;
+    MonitorData->VerticalResolution = FramebufData->ScreenHeight;
+    MonitorData->VerticalBackPorch = 39;
+    MonitorData->VerticalFrontPorch = 1;
+    MonitorData->VerticalSync = 1;
+    MonitorData->HorizontalScreenSize = 343;
+    MonitorData->VerticalScreenSize = 274;
+
+#else // Using "new" configuration list
+    Size = FIELD_OFFSET(CM_PARTIAL_RESOURCE_LIST, PartialDescriptors[1]) + sizeof(*MonitorData);
+    PartialResourceList = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
+    if (PartialResourceList == NULL)
+    {
+        ERR("Failed to allocate resource descriptor\n");
+        return;
+    }
+
+    /* Initialize resource descriptor */
+    RtlZeroMemory(PartialResourceList, Size);
+    PartialResourceList->Version = 1;
+    PartialResourceList->Revision = 1;
+    PartialResourceList->Count = 1;
+
+    /* Set monitor-specific data */
+    PartialDescriptor = &PartialResourceList->PartialDescriptors[0];
+    PartialDescriptor->Type = CmResourceTypeDeviceSpecific;
+    PartialDescriptor->ShareDisposition = CmResourceShareUndetermined;
+    PartialDescriptor->Flags = 0;
+    PartialDescriptor->u.DeviceSpecificData.DataSize = sizeof(*MonitorData);
+
+    /* Get pointer to monitor data */
+    MonitorData = (PCM_MONITOR_DEVICE_DATA)(PartialDescriptor + 1);
+    MonitorData->Version = 2;
+    MonitorData->Revision = 0;
+    MonitorData->HorizontalScreenSize = 343;
+    MonitorData->VerticalScreenSize = 274;
+    MonitorData->HorizontalResolution = FramebufData->ScreenWidth;
+    MonitorData->VerticalResolution = FramebufData->ScreenHeight;
+    MonitorData->HorizontalDisplayTimeLow = 0;
+    MonitorData->HorizontalDisplayTime = 16000;
+    MonitorData->HorizontalDisplayTimeHigh = 0;
+    MonitorData->HorizontalBackPorchLow = 0;
+    MonitorData->HorizontalBackPorch = 2000;
+    MonitorData->HorizontalBackPorchHigh = 0;
+    MonitorData->HorizontalFrontPorchLow = 0;
+    MonitorData->HorizontalFrontPorch = 1000;
+    MonitorData->HorizontalFrontPorchHigh = 0;
+    MonitorData->HorizontalSyncLow = 0;
+    MonitorData->HorizontalSync = 1500;
+    MonitorData->HorizontalSyncHigh = 0;
+    MonitorData->VerticalBackPorchLow = 0;
+    MonitorData->VerticalBackPorch = 39;
+    MonitorData->VerticalBackPorchHigh = 0;
+    MonitorData->VerticalFrontPorchLow = 0;
+    MonitorData->VerticalFrontPorch = 1;
+    MonitorData->VerticalFrontPorchHigh = 0;
+    MonitorData->VerticalSyncLow = 0;
+    MonitorData->VerticalSync = 1;
+    MonitorData->VerticalSyncHigh = 0;
+
+#endif // MONITOR_NEW_DATA
+
+    sprintf(IdentifierStr, "%lux%lu",
+            MonitorData->HorizontalResolution,
+            MonitorData->VerticalResolution);
+
+    FldrCreateComponentKey(DisplayNode,
+                           PeripheralClass,
+                           MonitorPeripheral,
+                           Output | ConsoleOut,
+                           0,
+                           0xFFFFFFFF,
+                           IdentifierStr,
+#ifndef MONITOR_NEW_DATA // Using "old" configuration data
+                           // Pointer to MONITOR_CONFIGURATION_DATA
+                           (PCM_PARTIAL_RESOURCE_LIST)MonitorData,
+#else
+                           PartialResourceList,
+#endif
+                           Size,
+                           &PeripheralKey);
+}
+
+static VOID
+DetectDisplayController(
+    _In_ PCONFIGURATION_COMPONENT_DATA BusKey)
+{
+    PCONFIGURATION_COMPONENT_DATA ControllerKey;
+    PCM_PARTIAL_RESOURCE_LIST PartialResourceList;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor;
+    PCM_FRAMEBUF_DEVICE_DATA FramebufData;
+    PCSTR Identifier;
+    ULONG Size;
+    USHORT VesaVersion;
 
     VesaVersion = BiosIsVesaSupported();
     if (VesaVersion != 0)
@@ -1588,6 +1727,52 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
     else
         Identifier = "VGA Display";
 
+    if (FrameBufferData)
+    {
+        Size = FIELD_OFFSET(CM_PARTIAL_RESOURCE_LIST, PartialDescriptors[2]) + sizeof(*FramebufData);
+        PartialResourceList = FrLdrHeapAlloc(Size, TAG_HW_RESOURCE_LIST);
+        if (PartialResourceList == NULL)
+        {
+            ERR("Failed to allocate resource descriptor\n");
+            return;
+        }
+
+        /* Initialize resource descriptor */
+        RtlZeroMemory(PartialResourceList, Size);
+        PartialResourceList->Version  = 1;
+        PartialResourceList->Revision = 2;
+        PartialResourceList->Count = 2;
+
+        /* Set Memory */
+        PartialDescriptor = &PartialResourceList->PartialDescriptors[0];
+        PartialDescriptor->Type = CmResourceTypeMemory;
+        PartialDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+        PartialDescriptor->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
+        PartialDescriptor->u.Memory.Start.QuadPart = VramAddress;
+        PartialDescriptor->u.Memory.Length = VramSize;
+
+        /* Set framebuffer-specific data */
+        PartialDescriptor = &PartialResourceList->PartialDescriptors[1];
+        PartialDescriptor->Type = CmResourceTypeDeviceSpecific;
+        PartialDescriptor->ShareDisposition = CmResourceShareUndetermined;
+        PartialDescriptor->Flags = 0;
+        PartialDescriptor->u.DeviceSpecificData.DataSize = sizeof(*FramebufData);
+
+        /* Get pointer to framebuffer-specific data */
+        FramebufData = (PCM_FRAMEBUF_DEVICE_DATA)(PartialDescriptor + 1);
+        RtlCopyMemory(FramebufData, FrameBufferData, sizeof(*FrameBufferData));
+        FramebufData->Version  = 1;
+        FramebufData->Revision = 3;
+        FramebufData->VideoClock = 0; // FIXME: Use EDID
+    }
+    else
+    {
+        /* No need to add video/framebuffer data if there is no framebuffer being used */
+        FramebufData = NULL;
+        PartialResourceList = NULL;
+        Size = 0;
+    }
+
     FldrCreateComponentKey(BusKey,
                            ControllerClass,
                            DisplayController,
@@ -1595,22 +1780,15 @@ DetectDisplayController(PCONFIGURATION_COMPONENT_DATA BusKey)
                            0,
                            0xFFFFFFFF,
                            Identifier,
-                           NULL,
-                           0,
+                           PartialResourceList,
+                           Size,
                            &ControllerKey);
 
-    /* FIXME: Add display peripheral (monitor) data */
-    if (VesaVersion != 0)
-    {
-        if (BiosIsVesaDdcSupported())
-        {
-            TRACE("VESA/DDC supported!\n");
-            if (BiosVesaReadEdid())
-            {
-                TRACE("EDID data read successfully!\n");
-            }
-        }
-    }
+    /* No need to add monitor configuration data if there is no framebuffer being used */
+    if (!FrameBufferData)
+        return;
+
+    DetectMonitorPeripheral(ControllerKey, FramebufData, VesaVersion);
 }
 
 static

@@ -17,6 +17,30 @@
  */
 
 #include <freeldr.h>
+#include "../../vidfb.h"
+
+extern VIDEODISPLAYMODE DisplayMode;
+
+UCHAR MachDefaultTextColor = COLOR_GRAY;
+
+/*static*/ unsigned CurrentCursorX = 0;
+/*static*/ unsigned CurrentCursorY = 0;
+static UCHAR CurrentAttr = ATTR(COLOR_GRAY, COLOR_BLACK);
+
+/**
+* TODO Consider this for console support:
+All of the following TTY functions must be supported when this bit is set:
+01 Set Cursor Size
+02 Set Cursor Position
+06 Scroll TTY window up or Blank Window
+07 Scroll TTY window down or Blank Window
+09 Write character and attribute at cursor position
+0A Write character only at cursor position
+0E Write character and advance cursor
+*
+* It may be this in bit 2 of the VESA ModeAttributes that tells us whether
+* we can use the INT 10h for TTY operations, or use our own implementations.
+**/
 
 VOID
 PcConsPutChar(int Ch)
@@ -44,6 +68,49 @@ PcConsPutChar(int Ch)
         PcConsPutChar(' ');
         return;
     }
+
+    if (DisplayMode == VideoGraphicsMode)
+    {
+        ULONG Width, Height, Unused;
+        BOOLEAN NeedScroll;
+
+        PcVideoGetDisplaySize(&Width, &Height, &Unused);
+
+        NeedScroll = (CurrentCursorY >= Height);
+        if (NeedScroll)
+        {
+            FbConsScrollUp(CurrentAttr);
+            --CurrentCursorY;
+        }
+
+        if (Ch == '\r')
+        {
+            CurrentCursorX = 0;
+        }
+        else if (Ch == '\n')
+        {
+            CurrentCursorX = 0;
+            if (!NeedScroll)
+                ++CurrentCursorY;
+        }
+        else if (Ch == '\t')
+        {
+            CurrentCursorX = (CurrentCursorX + 8) & ~ 7;
+        }
+        else
+        {
+            PcVideoPutChar(Ch, CurrentAttr, CurrentCursorX, CurrentCursorY);
+            CurrentCursorX++;
+        }
+
+        if (CurrentCursorX >= Width)
+        {
+            CurrentCursorX = 0;
+            CurrentCursorY++;
+        }
+        return;
+    }
+    // else, VideoTextMode
 
     /* Int 10h AH=0Eh
      * VIDEO - TELETYPE OUTPUT

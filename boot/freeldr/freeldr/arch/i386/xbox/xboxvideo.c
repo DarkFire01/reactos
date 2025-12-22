@@ -137,7 +137,7 @@ XboxVideoInit(VOID)
                               ScreenHeight,
                               ScreenWidth,
                               BytesPerPixel * 8,
-                              NULL))
+                              NULL, TRUE))
     {
         ERR("Couldn't initialize video framebuffer\n");
         return;

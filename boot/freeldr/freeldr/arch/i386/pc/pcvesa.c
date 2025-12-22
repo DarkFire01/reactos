@@ -157,69 +157,82 @@ static ULONG VideoGetTextCursorPositionY(VOID)
 }
 #endif
 
-USHORT BiosIsVesaSupported(VOID)
+#define BCD_BYTE(bcd) \
+    ((((bcd) & 0xF0) >> 4) * 10 + ((bcd) & 0x0F))
+
+BOOLEAN
+BiosVesaGetInfo(
+    _Out_ PVESA_SVGA_INFO VesaVbeInformation)
 {
-    REGS Regs;
     PVESA_SVGA_INFO SvgaInfo = (PVESA_SVGA_INFO)BIOSCALLBUFFER;
-    //USHORT* VideoModes;
-    //USHORT Index;
+    REGS Regs;
 
-    TRACE("BiosIsVesaSupported()\n");
+    RtlZeroMemory(SvgaInfo, sizeof(*SvgaInfo));
 
-    RtlZeroMemory(SvgaInfo, sizeof(VESA_SVGA_INFO));
-
-    // Make sure we receive version 2.0 info
+    /* Make sure we receive version 2.0 info */
     SvgaInfo->Signature[0] = 'V';
     SvgaInfo->Signature[1] = 'B';
     SvgaInfo->Signature[2] = 'E';
     SvgaInfo->Signature[3] = '2';
 
-    // Int 10h AX=4F00h
-    // VESA SuperVGA BIOS (VBE) - GET SuperVGA INFORMATION
-    //
-    // AX = 4F00h
-    // ES:DI -> buffer for SuperVGA information (see #00077)
-    // Return:
-    // AL = 4Fh if function supported
-    // AH = status
-    //   00h successful
-    // ES:DI buffer filled
-    //   01h failed
-    //   ---VBE v2.0---
-    //   02h function not supported by current hardware configuration
-    //   03h function invalid in current video mode
-    //
-    // Determine whether VESA BIOS extensions are present and the
-    // capabilities supported by the display adapter
-    //
-    // Installation check;VESA SuperVGA
+    /* Int 10h AX=4F00h
+     * VESA SuperVGA BIOS (VBE) - GET SuperVGA INFORMATION
+     *
+     * AX = 4F00h
+     * ES:DI -> buffer for SuperVGA information (see #00077)
+     * Return:
+     * AL = 4Fh if function supported
+     * AH = status
+     *   00h successful
+     * ES:DI buffer filled
+     *   01h failed
+     *   ---VBE v2.0---
+     *   02h function not supported by current hardware configuration
+     *   03h function invalid in current video mode
+     *
+     * Determine whether VESA BIOS extensions are present and the
+     * capabilities supported by the display adapter.
+     *
+     * Installation check;VESA SuperVGA
+     */
     Regs.w.ax = 0x4F00;
     Regs.w.es = BIOSCALLBUFSEGMENT;
     Regs.w.di = BIOSCALLBUFOFFSET;
     Int386(0x10, &Regs, &Regs);
 
-    TRACE("AL = 0x%x\n", Regs.b.al);
-    TRACE("AH = 0x%x\n", Regs.b.ah);
-
     if (Regs.w.ax != 0x004F)
     {
         WARN("VBE Get SuperVGA information function not supported (AL=0x%x) or failed (AH=0x%x)\n",
              Regs.b.al, Regs.b.ah);
-        return 0x0000;
+        return FALSE;
     }
 
-    TRACE("Supported.\n");
+    TRACE("VESA 2+ supported\n");
     TRACE("SvgaInfo->Signature[4] = %c%c%c%c\n", SvgaInfo->Signature[0], SvgaInfo->Signature[1], SvgaInfo->Signature[2], SvgaInfo->Signature[3]);
-    TRACE("SvgaInfo->VesaVersion = v%d.%d\n", ((SvgaInfo->VesaVersion >> 8) & 0xFF), (SvgaInfo->VesaVersion & 0xFF));
-    TRACE("SvgaInfo->OemNamePtr = 0x%x\n", SvgaInfo->OemNamePtr);
+    TRACE("SvgaInfo->VesaVersion = v%u.%u\n",
+          BCD_BYTE((SvgaInfo->VesaVersion >> 8) & 0xFF), BCD_BYTE(SvgaInfo->VesaVersion & 0xFF));
+    TRACE("SvgaInfo->OemNamePtr = %x:%x\n",
+          ((SvgaInfo->OemNamePtr >> 16) & 0xFFFF), (SvgaInfo->OemNamePtr & 0xFFFF));
     TRACE("SvgaInfo->Capabilities = 0x%x\n", SvgaInfo->Capabilities);
-    TRACE("SvgaInfo->VideoMemory = %dK\n", SvgaInfo->TotalVideoMemory * 64);
+    TRACE("SvgaInfo->SupportedModeListPtr = %x:%x\n",
+          ((SvgaInfo->SupportedModeListPtr >> 16) & 0xFFFF), (SvgaInfo->SupportedModeListPtr & 0xFFFF));
+    TRACE("SvgaInfo->VideoMemory = %uKB\n", SvgaInfo->TotalVideoMemory * 64);
     TRACE("---VBE v2.0 ---\n");
-    TRACE("SvgaInfo->OemSoftwareVersion = v%d.%d\n", ((SvgaInfo->OemSoftwareVersion >> 8) & 0x0F) + (((SvgaInfo->OemSoftwareVersion >> 12) & 0x0F) * 10), (SvgaInfo->OemSoftwareVersion & 0x0F) + (((SvgaInfo->OemSoftwareVersion >> 4) & 0x0F) * 10));
-    TRACE("SvgaInfo->VendorNamePtr = 0x%x\n", SvgaInfo->VendorNamePtr);
-    TRACE("SvgaInfo->ProductNamePtr = 0x%x\n", SvgaInfo->ProductNamePtr);
-    TRACE("SvgaInfo->ProductRevisionStringPtr = 0x%x\n", SvgaInfo->ProductRevisionStringPtr);
-    TRACE("SvgaInfo->VBE/AF Version = 0x%x (BCD WORD)\n", SvgaInfo->VBE_AF_Version);
+    TRACE("SvgaInfo->OemSoftwareVersion = v%u.%u\n",
+          BCD_BYTE((SvgaInfo->OemSoftwareVersion >> 8) & 0xFF), BCD_BYTE(SvgaInfo->OemSoftwareVersion & 0xFF));
+    TRACE("SvgaInfo->VendorNamePtr = %x:%x\n",
+          ((SvgaInfo->VendorNamePtr >> 16) & 0xFFFF), (SvgaInfo->VendorNamePtr & 0xFFFF));
+    TRACE("SvgaInfo->ProductNamePtr = %x:%x\n",
+          ((SvgaInfo->ProductNamePtr >> 16) & 0xFFFF), (SvgaInfo->ProductNamePtr & 0xFFFF));
+    TRACE("SvgaInfo->ProductRevisionStringPtr = %x:%x\n",
+          ((SvgaInfo->ProductRevisionStringPtr >> 16) & 0xFFFF), (SvgaInfo->ProductRevisionStringPtr & 0xFFFF));
+    if ((SvgaInfo->VesaVersion >= 0x0200) && (SvgaInfo->Capabilities & 8))
+    {
+        TRACE("SvgaInfo->VBE_AF_Version = v%u.%u\n",
+              BCD_BYTE((SvgaInfo->VBE_AF_Version >> 8) & 0xFF), BCD_BYTE(SvgaInfo->VBE_AF_Version & 0xFF));
+        TRACE("SvgaInfo->AcceleratedModeListPtr = %x:%x\n",
+              ((SvgaInfo->AcceleratedModeListPtr >> 16) & 0xFFFF), (SvgaInfo->AcceleratedModeListPtr & 0xFFFF));
+    }
 
     if (SvgaInfo->Signature[0] != 'V' ||
         SvgaInfo->Signature[1] != 'E' ||
@@ -231,9 +244,44 @@ USHORT BiosIsVesaSupported(VOID)
             SvgaInfo->Signature[1],
             SvgaInfo->Signature[2],
             SvgaInfo->Signature[3]);
-        return 0x0000;
+        return FALSE;
     }
 
+#if 0 // DBG
+    {
+    PUSHORT VideoModes;
+    USHORT Index;
+    TRACE("\nSupported VESA and OEM video modes:\n");
+    VideoModes = (PUSHORT)(ULONG_PTR)(((SvgaInfo->SupportedModeListPtr >> 12) & 0xFFFF0) + (SvgaInfo->SupportedModeListPtr & 0xFFFF));
+    for (Index = 0; VideoModes[Index] != 0xFFFF; ++Index)
+    {
+        TRACE("Mode %u: 0x%x\n", Index, VideoModes[Index]);
+    }
+    if ((SvgaInfo->VesaVersion >= 0x0200) && (SvgaInfo->Capabilities & 8))
+    {
+        TRACE("\nSupported accelerated video modes (VESA v2.0):\n");
+        VideoModes = (PUSHORT)(ULONG_PTR)(((SvgaInfo->AcceleratedModeListPtr >> 12) & 0xFFFF0) + (SvgaInfo->AcceleratedModeListPtr & 0xFFFF));
+        for (Index = 0; VideoModes[Index] != 0xFFFF; ++Index)
+        {
+            TRACE("Mode %u: 0x%x\n", Index, VideoModes[Index]);
+        }
+    }
+    }
+#endif
+
+    if (VesaVbeInformation != (PVOID)BIOSCALLBUFFER)
+        RtlMoveMemory(VesaVbeInformation, (PVOID)BIOSCALLBUFFER, sizeof(*VesaVbeInformation));
+
+    return TRUE;
+}
+
+USHORT
+BiosIsVesaSupported(VOID)
+{
+    PVESA_SVGA_INFO SvgaInfo = (PVESA_SVGA_INFO)BIOSCALLBUFFER;
+
+    if (!BiosVesaGetInfo(SvgaInfo))
+        return 0x0000;
     return SvgaInfo->VesaVersion;
 }
 
