@@ -510,3 +510,33 @@ RtlRosGetAppcompatVersion(VOID)
     /* Calculate OS version from PEB fields */
     return (Peb->OSMajorVersion << 8) | Peb->OSMinorVersion;
 }
+
+typedef ULONGLONG REGHANDLE, *PREGHANDLE;
+typedef struct _EVENT_DESCRIPTOR {
+  USHORT Id;
+  UCHAR Version;
+  UCHAR Channel;
+  UCHAR Level;
+  UCHAR Opcode;
+  USHORT Task;
+  ULONGLONG Keyword;
+} EVENT_DESCRIPTOR, *PEVENT_DESCRIPTOR;
+typedef const EVENT_DESCRIPTOR *PCEVENT_DESCRIPTOR;
+
+BOOLEAN
+NTAPI
+EtwEventEnabled(REGHANDLE RegHandle,
+                PCEVENT_DESCRIPTOR EventDescriptor)
+{
+    UNIMPLEMENTED;
+    return FALSE;
+}
+
+NTSTATUS
+NTAPI
+RtlQueryElevationFlags(DWORD* pFlags)
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+

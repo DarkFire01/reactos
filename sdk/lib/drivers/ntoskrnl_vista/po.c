@@ -7,6 +7,7 @@
 
 #include <ntdef.h>
 #include <ntifs.h>
+#include <debug.h>
 
 NTKRNLVISTAAPI
 NTSTATUS
@@ -39,6 +40,9 @@ PoQueryWatchdogTime(
     _In_ PDEVICE_OBJECT Pdo,
     _Out_ PULONG SecondsRemaining)
 {
+    *SecondsRemaining = 0;
+
+    UNIMPLEMENTED;
     return FALSE;
 }
 
@@ -49,7 +53,7 @@ NTAPI
 PoSetSystemWake(
     _Inout_ struct _IRP *Irp)
 {
-
+    UNIMPLEMENTED;
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
@@ -59,5 +63,34 @@ NTAPI
 PoGetSystemWake(
     _In_ struct _IRP *Irp)
 {
+    UNIMPLEMENTED;
     return FALSE;
+}
+
+NTKERNELAPI
+VOID
+NTAPI
+PoSetDeviceBusyEx(
+    _Inout_ PULONG IdlePointer)
+{
+    UNIMPLEMENTED;
+    PoSetDeviceBusy(IdlePointer);
+}
+
+NTKRNLVISTAAPI
+VOID
+NTAPI
+PoStartDeviceBusy(
+    _Inout_ PULONG IdlePointer)
+{
+    UNIMPLEMENTED;
+}
+
+NTKERNELAPI
+VOID
+NTAPI
+PoEndDeviceBusy(
+    _Inout_ PULONG IdlePointer)
+{
+    UNIMPLEMENTED;
 }

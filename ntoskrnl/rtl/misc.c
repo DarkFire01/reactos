@@ -23,6 +23,17 @@ extern ULONG NtOSCSDVersion;
 
 /* FUNCTIONS *****************************************************************/
 
+BOOLEAN NTAPI RtlIsNtDdiVersionAvailable_nt(ULONG Version)
+{
+  BOOLEAN result; 
+
+  if (Version )
+    result = 0;
+  else
+    result = Version <= 0xA000002; 
+  return result;
+}
+
 /*
 * @implemented
 */
@@ -228,6 +239,18 @@ AVrfInternalHeapFreeNotification(PVOID AllocationBase, SIZE_T AllocationSize)
     /* Stub for linking against rtl */
 }
 
+
+NTSTATUS
+NTAPI
+NtQueryLicenseValue(PUNICODE_STRING Name,
+                    ULONG *Type,
+                    PVOID Buffer,
+                    ULONG Length,
+                    ULONG *DataLength)
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
 
 
 /* EOF */
