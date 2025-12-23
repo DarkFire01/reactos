@@ -830,7 +830,6 @@ wow64_NtCreateProcessEx(UINT *pArgs)
                                bInJob);
     if (NT_SUCCESS(Status))
     {
-        DPRINT1("Created process from WOW64 userpointer %p\n", NtCurrentTeb()->NtTib.ArbitraryUserPointer);
         NtCurrentTeb32()->NtTib.ArbitraryUserPointer = 
             PtrToUlong(NtCurrentTeb()->NtTib.ArbitraryUserPointer);
         *phProcessHandle32 = HandleToUlong(hProcessHandle);
@@ -868,7 +867,6 @@ wow64_NtCreateProcess(UINT *pArgs)
                              hExceptionPort);
     if (NT_SUCCESS(Status))
     {
-        DPRINT1("Created process from WOW64\n");
         NtCurrentTeb32()->NtTib.ArbitraryUserPointer = 
             PtrToUlong(NtCurrentTeb()->NtTib.ArbitraryUserPointer);
         *phProcessHandle32 = HandleToUlong(hProcessHandle);
@@ -1159,6 +1157,9 @@ Wow64InitProcess(PCONTEXT pContext)
     WowPeb->OSPlatformId   = Peb->OSPlatformId;
     
     WowPeb->NtGlobalFlag = Peb->NtGlobalFlag;
+    
+    WowPeb->CriticalSectionTimeout = Peb->CriticalSectionTimeout;
+    WowPeb->NumberOfProcessors = Peb->NumberOfProcessors;
     
     /* Set up codepage translation data */
     SetupNls(Peb, WowPeb);
