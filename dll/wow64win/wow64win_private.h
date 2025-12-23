@@ -640,5 +640,34 @@ typedef struct tagGETCLIPBDATA32
     };
 } GETCLIPBDATA32, *PGETCLIPBDATA32;
 
+typedef struct tagGUITHREADINFO32
+{
+    DWORD cbSize;
+    DWORD flags;
+    ULONG hwndActive;
+    ULONG hwndFocus;
+    ULONG hwndCapture;
+    ULONG hwndMenuOwner;
+    ULONG hwndMoveSize;
+    ULONG hwndCaret;
+    RECT  rcCaret;
+} GUITHREADINFO32, *PGUITHREADINFO32, *LPGUITHREADINFO32;
+
+typedef struct 
+{
+    UINT  cbSize;
+    ULONG hwnd;
+    DWORD dwFlags;
+    UINT  uCount;
+    DWORD dwTimeout;
+} FLASHWINFO32, *PFLASHWINFO32;
+
+typedef struct _CLSMENUNAME32
+{
+    ULONG pszClientAnsiMenuName;
+    ULONG pwszClientUnicodeMenuName;
+    ULONG pusMenuName;
+} CLSMENUNAME32, *PCLSMENUNAME32;
+
 #endif /* __REACTOS__ */
 #endif /* __WOW64WIN_PRIVATE_H */

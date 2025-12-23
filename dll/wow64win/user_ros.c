@@ -901,3 +901,113 @@ wow64_NtUserWaitMessage(UINT *pArgs)
 {
     return NtUserWaitMessage();
 }
+
+BOOL
+NTAPI
+wow64_NtUserGetUpdateRgn(UINT *pArgs)
+{
+    HWND hWnd = get_handle(&pArgs);
+    HRGN hRgn = get_handle(&pArgs);
+    BOOL bErase = get_ulong(&pArgs);
+    
+    return NtUserGetUpdateRgn(hWnd, hRgn, bErase);
+}
+
+BOOL
+NTAPI
+wow64_NtUserGetUpdateRect(UINT *pArgs)
+{
+    HWND hWnd = get_handle(&pArgs);
+    LPRECT pUnsafeRect = get_ptr(&pArgs);
+    BOOL bErase = get_ulong(&pArgs);
+    
+    return NtUserGetUpdateRect(hWnd, pUnsafeRect, bErase);
+}
+
+UINT
+NTAPI
+wow64_NtUserGetCaretBlinkTime(UINT* pArgs)
+{
+    return NtUserGetCaretBlinkTime();
+}
+
+BOOL
+NTAPI
+wow64_NtUserGetGUIThreadInfo(UINT* pArgs)
+{
+    DWORD idThread = get_ulong(&pArgs);
+    PGUITHREADINFO32 lpGui32 = get_ptr(&pArgs);
+    GUITHREADINFO Gui;
+    
+    Gui.cbSize = sizeof(Gui);
+    Gui.flags = lpGui32->flags;
+    
+    if (!NtUserGetGUIThreadInfo(idThread, &Gui))
+    {
+        return FALSE;
+    }
+    
+    lpGui32->cbSize = Gui.cbSize;
+    lpGui32->flags = Gui.flags;
+    lpGui32->hwndActive = HandleToUlong(Gui.hwndActive);
+    lpGui32->hwndFocus = HandleToUlong(Gui.hwndFocus);
+    lpGui32->hwndCapture = HandleToUlong(Gui.hwndCapture);
+    lpGui32->hwndMenuOwner = HandleToUlong(Gui.hwndMenuOwner);
+    lpGui32->hwndMoveSize = HandleToUlong(Gui.hwndMoveSize);
+    lpGui32->hwndCaret = HandleToUlong(Gui.hwndCaret);
+    lpGui32->rcCaret = Gui.rcCaret;
+    
+    return TRUE;
+}
+
+BOOL
+NTAPI
+wow64_NtUserSetKeyboardState(UINT* pArgs)
+{
+    LPBYTE lpKeyState = get_ptr(&pArgs);
+    
+    return NtUserSetKeyboardState(lpKeyState);
+}
+
+BOOL
+NTAPI
+wow64_NtUserFlashWindowEx(UINT* pArgs)
+{
+    PFLASHWINFO32 pFlashInfo32 = get_ptr(&pArgs);
+    FLASHWINFO FlashInfo;
+    
+    FlashInfo.cbSize = sizeof(FlashInfo);
+    FlashInfo.hwnd = UlongToHandle(pFlashInfo32->hwnd);
+    FlashInfo.dwFlags = pFlashInfo32->dwFlags;
+    FlashInfo.uCount = pFlashInfo32->uCount;
+    FlashInfo.dwTimeout = pFlashInfo32->dwTimeout;
+
+    return NtUserFlashWindowEx(&FlashInfo);
+}
+
+BOOL
+NTAPI
+wow64_NtUserUnregisterClass(UINT* pArgs)
+{
+    PUNICODE_STRING32 pClassName32 = get_ptr(&pArgs);
+    HINSTANCE hInstance = get_handle(&pArgs);
+    PCLSMENUNAME32 pClassMenuName32 = get_ptr(&pArgs);;
+    
+    UNICODE_STRING ClassName;
+    CLSMENUNAME ClassMenuName;
+    
+    if (!NtUserUnregisterClass(unicode_str_32to64(&ClassName, pClassName32),
+                               hInstance,
+                               &ClassMenuName))
+    {
+        return FALSE;
+    }
+    
+    pClassMenuName32->pszClientAnsiMenuName = PtrToUlong(ClassMenuName.pszClientAnsiMenuName);
+    pClassMenuName32->pwszClientUnicodeMenuName = PtrToUlong(ClassMenuName.pwszClientUnicodeMenuName);
+    /* Even though the types are not identical here, this is fine. 
+     * 64-bit UNICODE_STRING starts with a 32 bit one. */
+    pClassMenuName32->pusMenuName = PtrToUlong(ClassMenuName.pusMenuName);
+
+    return TRUE;
+}

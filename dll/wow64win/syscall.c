@@ -314,6 +314,17 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(GdiGetGlyphOutline);
     IMPLEMENT_SERVICE(GdiGetRegionData);
     IMPLEMENT_SERVICE(UserWaitMessage);
+    IMPLEMENT_SERVICE(GdiOffsetRgn);
+    IMPLEMENT_SERVICE(UserGetUpdateRect);
+    IMPLEMENT_SERVICE(GdiCombineRgn);
+    IMPLEMENT_SERVICE(GdiSetBrushOrg);
+    IMPLEMENT_SERVICE(UserGetCaretBlinkTime);
+    IMPLEMENT_SERVICE(UserGetGUIThreadInfo);
+    IMPLEMENT_SERVICE(UserSetKeyboardState);
+    IMPLEMENT_SERVICE(UserFlashWindowEx);
+    IMPLEMENT_SERVICE(UserGetUpdateRgn);
+    IMPLEMENT_SERVICE(UserUnregisterClass);
+    IMPLEMENT_SERVICE(UserDestroyAcceleratorTable);
 #undef IMPLEMENT_SERVICE
 }
 
