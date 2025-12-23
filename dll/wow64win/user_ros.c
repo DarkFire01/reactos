@@ -1037,3 +1037,27 @@ wow64_NtUserSetThreadState(UINT* pArgs)
     return NtUserSetThreadState(dwSet, dwFlags);
 }
 
+BOOL
+NTAPI
+wow64_NtUserGetComboBoxInfo(UINT* pArgs)
+{
+    HWND hWnd = get_handle(&pArgs);
+    PCOMBOBOXINFO32 pcbi32 = get_ptr(&pArgs);
+    COMBOBOXINFO cbi;
+    
+    cbi.cbSize = sizeof(cbi);
+
+    if (!NtUserGetComboBoxInfo(hWnd, &cbi))
+    {
+        return FALSE;
+    }
+    
+    pcbi32->rcItem = cbi.rcItem;
+    pcbi32->rcButton = cbi.rcButton;
+    pcbi32->stateButton = cbi.stateButton;
+    pcbi32->hwndCombo = HandleToUlong(cbi.hwndCombo);
+    pcbi32->hwndItem = HandleToUlong(cbi.hwndItem);
+    pcbi32->hwndList = HandleToUlong(cbi.hwndList);
+
+    return TRUE;
+}

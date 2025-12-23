@@ -3916,15 +3916,12 @@ ULONG
 RtlGetExpWinVer(_In_ PVOID BaseAddress);
 
 #ifdef BUILD_WOW6432
-#ifdef _M_IX86
 
 WNDPROC GETPFNCLIENTA(int fnid);
 WNDPROC GETPFNCLIENTW(int fnid);
 
 #define GETPFNSERVER(fnid) (WNDPROC)WOW64_READ_ULONG_FIELD(gpsi, SERVERINFO, aStoCidPfn[fnid - FNID_FIRST])     
 
-
-#endif
 #endif
 
 #endif /* __WIN32K_NTUSER_H */

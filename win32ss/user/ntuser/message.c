@@ -1616,7 +1616,7 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
            ERR("Failed to pack message parameters\n");
            goto Cleanup; // Return FALSE
         }
-
+        
         Result = (ULONG_PTR)co_IntCallWindowProc( Window->lpfnWndProc,
                                                   !Window->Unicode,
                                                   hWnd,

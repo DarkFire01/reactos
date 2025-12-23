@@ -285,6 +285,7 @@ User32CreateWindowEx(DWORD dwExStyle,
         lstrClassVersion.Buffer = ClassVersion.Buffer;
         lstrClassVersion.Length = ClassVersion.Length;
         lstrClassVersion.MaximumLength = ClassVersion.MaximumLength;
+        lstrClassVersion.bAnsi = 0; // TODO: WOW64 DEBUG
         plstrClassVersion = &lstrClassVersion;
     }
 

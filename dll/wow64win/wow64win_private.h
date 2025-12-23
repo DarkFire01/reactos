@@ -415,16 +415,16 @@ typedef struct
     ULONG itemData;
 } DRAWITEMSTRUCT32;
 
-typedef struct
+typedef struct tagCOMBOBOXINFO32 
 {
     DWORD cbSize;
-    RECT  rcItem;
-    RECT  rcButton;
+    RECT rcItem;
+    RECT rcButton;
     DWORD stateButton;
     ULONG hwndCombo;
     ULONG hwndItem;
     ULONG hwndList;
-} COMBOBOXINFO32;
+} COMBOBOXINFO32,*PCOMBOBOXINFO32, *LPCOMBOBOXINFO32;
 
 typedef struct
 {
