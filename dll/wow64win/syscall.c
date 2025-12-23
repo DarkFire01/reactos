@@ -325,6 +325,9 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserGetUpdateRgn);
     IMPLEMENT_SERVICE(UserUnregisterClass);
     IMPLEMENT_SERVICE(UserDestroyAcceleratorTable);
+    IMPLEMENT_SERVICE(UserGetSystemMenu);
+    IMPLEMENT_SERVICE(UserGetForegroundWindow);
+    IMPLEMENT_SERVICE(UserSetThreadState);
 #undef IMPLEMENT_SERVICE
 }
 

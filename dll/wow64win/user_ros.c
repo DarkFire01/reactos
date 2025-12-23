@@ -1005,9 +1005,35 @@ wow64_NtUserUnregisterClass(UINT* pArgs)
     
     pClassMenuName32->pszClientAnsiMenuName = PtrToUlong(ClassMenuName.pszClientAnsiMenuName);
     pClassMenuName32->pwszClientUnicodeMenuName = PtrToUlong(ClassMenuName.pwszClientUnicodeMenuName);
-    /* Even though the types are not identical here, this is fine. 
-     * 64-bit UNICODE_STRING starts with a 32 bit one. */
     pClassMenuName32->pusMenuName = PtrToUlong(ClassMenuName.pusMenuName);
 
     return TRUE;
 }
+
+ULONG
+NTAPI
+wow64_NtUserGetSystemMenu(UINT* pArgs)
+{
+    HWND hWnd = get_handle(&pArgs);
+    BOOL bRevert = get_ulong(&pArgs);
+    
+    return HandleToUlong(NtUserGetSystemMenu(hWnd, bRevert));
+}
+
+ULONG
+NTAPI
+wow64_NtUserGetForegroundWindow(UINT* pArgs)
+{
+    return HandleToUlong(NtUserGetForegroundWindow());
+}
+
+DWORD
+NTAPI
+wow64_NtUserSetThreadState(UINT* pArgs)
+{
+    DWORD dwSet = get_ulong(&pArgs);
+    DWORD dwFlags = get_ulong(&pArgs);
+    
+    return NtUserSetThreadState(dwSet, dwFlags);
+}
+

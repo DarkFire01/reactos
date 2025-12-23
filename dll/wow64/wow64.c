@@ -211,6 +211,7 @@ NTSTATUS WINAPI wow64_NtQueryInformationProcess( UINT *args )
     case ProcessCycleTime:  /* PROCESS_CYCLE_TIME_INFORMATION */
 #ifdef __REACTOS__
     case ProcessDeviceMap:
+    case ProcessBreakOnTermination:
 #endif
         /* FIXME: check buffer alignment */
         return NtQueryInformationProcess( handle, class, ptr, len, retlen );

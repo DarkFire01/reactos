@@ -41,7 +41,11 @@
 #define WOW64_TLS_WOW64INFO        10
 #define WOW64_TLS_MAX_NUMBER       19
 
-#define FIXME(...) do { DPRINT1(__VA_ARGS__); __debugbreak(); } while(0);
+/* FIXME: Whatever Wine uses treats %u as something else than DPRINT1. 
+ * Don't print, so this doesn't crash (this shouldn't crash either way, but for
+ * some reason, SEH fails to RtlUnwindEx: investigate) */
+// #define FIXME(...) do { DPRINT1(__VA_ARGS__); __debugbreak(); } while(0);
+#define FIXME(...) do { __debugbreak(); (void)(__VA_ARGS__); } while(0);
 
 static inline ULONG get_ulong( UINT **args ) { return *(*args)++; }
 static inline HANDLE get_handle( UINT **args ) { return UlongToHandle( *(*args)++ ); }
