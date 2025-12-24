@@ -136,6 +136,7 @@ NTSTATUS WINAPI wow64_NtAdjustPrivilegesToken( UINT *args )
 }
 
 
+#ifndef __REACTOS__
 /**********************************************************************
  *           wow64_NtCreateLowBoxToken
  */
@@ -157,6 +158,7 @@ NTSTATUS WINAPI wow64_NtCreateLowBoxToken( UINT *args )
     *handle_ptr = 0;
     return STATUS_SUCCESS;
 }
+#endif
 
 
 /**********************************************************************

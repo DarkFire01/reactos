@@ -459,13 +459,23 @@ Wow64SystemServiceEx(ULONG syscallNum,
         WINE_WOW_IMPL_CASE(SetValueKey);
 
         /* security.c */
-        WINE_WOW_IMPL_CASE(QuerySecurityObject);
-        WINE_WOW_IMPL_CASE(QueryInformationToken);
+        WINE_WOW_IMPL_CASE(AccessCheck);
+        WINE_WOW_IMPL_CASE(AdjustGroupsToken);
+        WINE_WOW_IMPL_CASE(AdjustPrivilegesToken);
+        WINE_WOW_IMPL_CASE(CreateToken);
+        WINE_WOW_IMPL_CASE(FilterToken);
+        WINE_WOW_IMPL_CASE(DuplicateToken);
+        WINE_WOW_IMPL_CASE(CompareTokens);
+        WINE_WOW_IMPL_CASE(ImpersonateAnonymousToken);
         WINE_WOW_IMPL_CASE(OpenProcessToken);
+        WINE_WOW_IMPL_CASE(OpenProcessTokenEx);
         WINE_WOW_IMPL_CASE(OpenThreadToken);
         WINE_WOW_IMPL_CASE(OpenThreadTokenEx);
-        WINE_WOW_IMPL_CASE(OpenProcessTokenEx);
-        WINE_WOW_IMPL_CASE(DuplicateToken);
+        WINE_WOW_IMPL_CASE(PrivilegeCheck);
+        WINE_WOW_IMPL_CASE(QueryInformationToken);
+        WINE_WOW_IMPL_CASE(QuerySecurityObject);
+        WINE_WOW_IMPL_CASE(SetInformationToken);
+        WINE_WOW_IMPL_CASE(SetSecurityObject);
 
         /* system.c */
         WINE_WOW_IMPL_CASE(PowerInformation);
