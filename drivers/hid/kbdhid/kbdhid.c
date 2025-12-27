@@ -279,6 +279,7 @@ KbdHid_Create(
     {
         /* request pending */
         KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = Irp->IoStatus.Status;
     }
 
     /* check for success */
@@ -290,29 +291,40 @@ KbdHid_Create(
         return Status;
     }
 
-    /* is the driver already in use */
-    if (DeviceExtension->FileObject == NULL)
+    /*
+     * Capture the FileObject used by the class driver for subsequent IRP_MJ_READ.
+     * Do NOT start the read loop here: CREATE may arrive before StartDevice has
+     * initialized the report buffer/MDL.
+     */
+    if (DeviceExtension->FileObject == NULL && IoStack->FileObject != NULL)
     {
-         /* did the caller specify correct attributes */
-         ASSERT(IoStack->Parameters.Create.SecurityContext);
-         if (IoStack->Parameters.Create.SecurityContext->DesiredAccess)
-         {
-             /* store file object */
-             DeviceExtension->FileObject = IoStack->FileObject;
-
-             /* reset event */
-             KeClearEvent(&DeviceExtension->ReadCompletionEvent);
-
-             /* initiating read */
-             Status = KbdHid_InitiateRead(DeviceExtension);
-             DPRINT("[KBDHID] KbdHid_InitiateRead: status %x\n", Status);
-             if (Status == STATUS_PENDING)
-             {
-                 /* report irp is pending */
-                 Status = STATUS_SUCCESS;
-             }
-         }
+        DeviceExtension->FileObject = IoStack->FileObject;
+        DeviceExtension->StopReadReport = FALSE;
     }
+
+    /* If we're already started and connected, we can safely start the read loop now. */
+    if (DeviceExtension->ClassService != NULL &&
+        DeviceExtension->FileObject != NULL &&
+        DeviceExtension->ReportMDL != NULL &&
+        DeviceExtension->ReportLength != 0 &&
+        !DeviceExtension->ReadReportActive)
+    {
+        DeviceExtension->StopReadReport = FALSE;
+        KeClearEvent(&DeviceExtension->ReadCompletionEvent);
+        Status = KbdHid_InitiateRead(DeviceExtension);
+        DPRINT("[KBDHID] KbdHid_InitiateRead (create/post-start): status %x\n", Status);
+        if (Status == STATUS_PENDING)
+        {
+            Status = STATUS_SUCCESS;
+        }
+    }
+
+    /*
+     * Do not start the read loop from CREATE.
+     * CREATE can arrive before IRP_MN_START_DEVICE finished initializing
+     * the input report buffer/MDL; starting reads early can crash the lower HID stack.
+     * The read loop is started from IOCTL_INTERNAL_KEYBOARD_CONNECT and/or after StartDevice.
+     */
 
     /* complete request */
     Irp->IoStatus.Status = Status;
@@ -368,6 +380,7 @@ KbdHid_InternalDeviceControl(
     PKBDHID_DEVICE_EXTENSION DeviceExtension;
     PCONNECT_DATA Data;
     PKEYBOARD_ATTRIBUTES Attributes;
+    NTSTATUS Status;
 
     /* get current stack location */
     IoStack = IoGetCurrentIrpStackLocation(Irp);
@@ -429,6 +442,25 @@ KbdHid_InternalDeviceControl(
             /* store connect details */
             DeviceExtension->ClassDeviceObject = Data->ClassDeviceObject;
             DeviceExtension->ClassService = Data->ClassService;
+
+            /* Some callers won't supply a FileObject on internal IOCTLs; keep it if present. */
+            if (DeviceExtension->FileObject == NULL && IoStack->FileObject != NULL)
+            {
+                DeviceExtension->FileObject = IoStack->FileObject;
+            }
+
+            /* Start the read loop only if StartDevice has initialized the report buffer/MDL. */
+            if (DeviceExtension->FileObject != NULL &&
+                DeviceExtension->ReportMDL != NULL &&
+                DeviceExtension->ReportLength != 0 &&
+                !DeviceExtension->ReadReportActive)
+            {
+                DeviceExtension->StopReadReport = FALSE;
+                KeClearEvent(&DeviceExtension->ReadCompletionEvent);
+
+                Status = KbdHid_InitiateRead(DeviceExtension);
+                DPRINT("[KBDHID] KbdHid_InitiateRead (connect): status %x\n", Status);
+            }
 
             /* completed successfully */
             Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -781,6 +813,17 @@ KbdHid_StartDevice(
 
     /* store preparsed data */
     DeviceExtension->PreparsedData = PreparsedData;
+
+    /* If the class driver already connected & opened us, start the read loop now. */
+    if (DeviceExtension->ClassService != NULL &&
+        DeviceExtension->FileObject != NULL &&
+        !DeviceExtension->ReadReportActive)
+    {
+        DeviceExtension->StopReadReport = FALSE;
+        KeClearEvent(&DeviceExtension->ReadCompletionEvent);
+        Status = KbdHid_InitiateRead(DeviceExtension);
+        DPRINT("[KBDHID] KbdHid_InitiateRead (start): status %x\n", Status);
+    }
 
     /* completed successfully */
     return STATUS_SUCCESS;
