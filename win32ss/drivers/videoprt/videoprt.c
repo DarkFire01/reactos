@@ -1647,7 +1647,7 @@ VideoPortCreateSecondaryDisplay(
     PDEVICE_OBJECT DeviceObject;
     PVIDEO_PORT_DEVICE_EXTENSION FirstDeviceExtension, DeviceExtension;
     NTSTATUS Status;
-
+    return ERROR_DEV_NOT_EXIST;
     ASSERT(SecondaryDeviceExtension);
 
     if (Flag != 0)
