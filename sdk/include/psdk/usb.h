@@ -44,6 +44,10 @@ typedef PVOID PMDL;
 
 #include "usb200.h"
 
+#if (_WIN32_WINNT >= 0x0501)
+#include "msosv10.h"
+#endif
+
 #define USB_PORTATTR_NO_CONNECTOR                       0x00000001
 #define USB_PORTATTR_SHARED_USB2                        0x00000002
 #define USB_PORTATTR_MINI_CONNECTOR                     0x00000004
@@ -429,6 +433,7 @@ struct _URB_CONTROL_GET_CONFIGURATION_REQUEST {
 #define OS_STRING_DESCRIPTOR_INDEX                      0xEE
 #define MS_GENRE_DESCRIPTOR_INDEX                       0x0001
 #define MS_POWER_DESCRIPTOR_INDEX                       0x0002
+#define MS_EXTENDED_COMPATIBLE_ID_DESCRIPTOR_INDEX      0x0004
 #define MS_OS_STRING_SIGNATURE                          L"MSFT100"
 #define MS_OS_FLAGS_CONTAINERID                         0x02
 
