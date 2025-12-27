@@ -192,12 +192,12 @@ USBH_PdoUrbFilter(IN PUSBHUB_PORT_PDO_EXTENSION PortExtension,
 
             break;
         }
-
+#if 0
         case URB_FUNCTION_GET_MS_FEATURE_DESCRIPTOR:
             DPRINT1("USBH_PdoUrbFilter: URB_FUNCTION_GET_MS_FEATURE_DESCRIPTOR UNIMPLEMENTED. FIXME\n");
             USBH_CompleteIrp(Irp, STATUS_NOT_IMPLEMENTED);
             return STATUS_NOT_IMPLEMENTED;
-
+#endif
         default:
             break;
     }

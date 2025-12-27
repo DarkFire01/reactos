@@ -630,6 +630,38 @@ USBPORT_HandleGetSetDescriptor(IN PIRP Irp,
 
 NTSTATUS
 NTAPI
+USBPORT_HandleGetOSFeatrueDescriptor(IN PIRP Irp,
+                                    IN PURB Urb)
+{
+    PUSB_DEFAULT_PIPE_SETUP_PACKET SetupPacket;
+
+    SetupPacket = (PUSB_DEFAULT_PIPE_SETUP_PACKET)
+                   &Urb->UrbControlDescriptorRequest.Reserved1;
+
+    SetupPacket->wLength = Urb->UrbOSFeatureDescriptorRequest.TransferBufferLength;
+    SetupPacket->wIndex.LowByte = Urb->UrbOSFeatureDescriptorRequest.MS_FeatureDescriptorIndex;
+    SetupPacket->bmRequestType.B = 0; // Clear bmRequestType
+    SetupPacket->bmRequestType.Type = BMREQUEST_VENDOR;
+    SetupPacket->bRequest = Urb->UrbOSFeatureDescriptorRequest.Reserved2;
+    SetupPacket->bmRequestType.Dir = BMREQUEST_DEVICE_TO_HOST;
+    SetupPacket->bmRequestType.Recipient = Urb->UrbOSFeatureDescriptorRequest.Recipient;
+
+    Urb->UrbControlTransfer.TransferFlags |= USBD_SHORT_TRANSFER_OK;
+
+    if (SetupPacket->bmRequestType.Dir)
+        Urb->UrbControlTransfer.TransferFlags |= USBD_TRANSFER_DIRECTION_IN;
+    else
+        Urb->UrbControlTransfer.TransferFlags &= ~USBD_TRANSFER_DIRECTION_IN;
+
+    USBPORT_DumpingSetupPacket(SetupPacket);
+
+    USBPORT_QueueTransferUrb(Urb);
+
+    return STATUS_PENDING;
+}
+
+NTSTATUS
+NTAPI
 USBPORT_ValidateTransferParametersURB(IN PURB Urb)
 {
     struct _URB_CONTROL_TRANSFER *UrbRequest;
@@ -916,9 +948,16 @@ USBPORT_HandleSubmitURB(IN PDEVICE_OBJECT PdoDevice,
             break;
 
         case URB_FUNCTION_GET_MS_FEATURE_DESCRIPTOR:
-            DPRINT1("USBPORT_HandleSubmitURB: URB_FUNCTION_GET_MS_FEATURE_DESCRIPTOR (0x2A) NOT_SUPPORTED\n");
-            return USBPORT_USBDStatusToNtStatus(Urb,
-                                                USBD_STATUS_INVALID_URB_FUNCTION);
+            Status = USBPORT_ValidateURB(FdoDevice, Irp, Urb, TRUE, FALSE);
+
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("USBPORT_HandleSubmitURB: Not valid URB\n");
+                break;
+            }
+
+            Status = USBPORT_HandleGetOSFeatrueDescriptor(Irp, Urb);
+            break;
 
         case URB_FUNCTION_GET_STATUS_FROM_DEVICE:
         case URB_FUNCTION_GET_STATUS_FROM_INTERFACE:
