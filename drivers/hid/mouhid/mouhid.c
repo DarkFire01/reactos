@@ -429,6 +429,35 @@ MouHid_InitiateRead(
     return Status;
 }
 
+static
+NTSTATUS
+MouHid_TryStartRead(
+    _In_ PMOUHID_DEVICE_EXTENSION DeviceExtension)
+{
+    NTSTATUS Status;
+
+    if (!DeviceExtension->ClassService || !DeviceExtension->ClassDeviceObject)
+        return STATUS_DEVICE_NOT_READY;
+
+    if (!DeviceExtension->FileObject)
+        return STATUS_DEVICE_NOT_READY;
+
+    if (!DeviceExtension->Report || !DeviceExtension->ReportMDL || !DeviceExtension->ReportLength)
+        return STATUS_DEVICE_NOT_READY;
+
+    if (DeviceExtension->ReadReportActive)
+        return STATUS_SUCCESS;
+
+    KeClearEvent(&DeviceExtension->ReadCompletionEvent);
+
+    Status = MouHid_InitiateRead(DeviceExtension);
+    DPRINT("[MOUHID] MouHid_InitiateRead: status %x\n", Status);
+    if (Status == STATUS_PENDING)
+        Status = STATUS_SUCCESS;
+
+    return Status;
+}
+
 NTSTATUS
 NTAPI
 MouHid_CreateCompletion(
@@ -475,6 +504,7 @@ MouHid_Create(
     {
         /* request pending */
         KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = Irp->IoStatus.Status;
     }
 
     /* check for success */
@@ -496,17 +526,8 @@ MouHid_Create(
              /* store file object */
              DeviceExtension->FileObject = IoStack->FileObject;
 
-             /* reset event */
-             KeClearEvent(&DeviceExtension->ReadCompletionEvent);
-
-             /* initiating read */
-             Status = MouHid_InitiateRead(DeviceExtension);
-             DPRINT("[MOUHID] MouHid_InitiateRead: status %x\n", Status);
-             if (Status == STATUS_PENDING)
-             {
-                 /* report irp is pending */
-                 Status = STATUS_SUCCESS;
-             }
+             /* Start reads only once we're started and connected */
+             Status = MouHid_TryStartRead(DeviceExtension);
          }
     }
 
@@ -638,6 +659,9 @@ MouHid_InternalDeviceControl(
          /* store connect details */
          DeviceExtension->ClassDeviceObject = Data->ClassDeviceObject;
          DeviceExtension->ClassService = Data->ClassService;
+
+         /* If the device is already opened and started, begin the read loop now */
+         (VOID)MouHid_TryStartRead(DeviceExtension);
 
          /* completed successfully */
          Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -953,6 +977,9 @@ MouHid_StartDevice(
         /* mice is absolute */
         DeviceExtension->MouseAbsolute = TRUE;
     }
+
+    /* If class driver is already connected and we have a FileObject, start reads now */
+    (VOID)MouHid_TryStartRead(DeviceExtension);
 
     /* completed successfully */
     return STATUS_SUCCESS;
