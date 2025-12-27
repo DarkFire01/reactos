@@ -1563,17 +1563,21 @@ USBH_PdoQueryId(IN PUSBHUB_PORT_PDO_EXTENSION PortExtension,
 {
     ULONG IdType;
     WCHAR Buffer[200];
-    PWCHAR EndBuffer;
+    PWCHAR EndBuffer = NULL;
     size_t Remaining = sizeof(Buffer);
     size_t Length;
     PWCHAR Id = NULL;
     NTSTATUS Status = STATUS_SUCCESS;
     PUSB_DEVICE_DESCRIPTOR DeviceDescriptor;
     PUSB_INTERFACE_DESCRIPTOR InterfaceDescriptor;
+    POS_FEATURE_EXTENDED_COMPATIBLE_ID_DESCRIPTOR OSExtendedCompatibleIdDescriptor;
 
     IdType = IoGetCurrentIrpStackLocation(Irp)->Parameters.QueryId.IdType;
     DeviceDescriptor = &PortExtension->DeviceDescriptor;
     InterfaceDescriptor = &PortExtension->InterfaceDescriptor;
+    OSExtendedCompatibleIdDescriptor = &PortExtension->OSExtendedCompatibleIdDescriptor;
+    ANSI_STRING OSCompatibleId, OSSubCompatibleId;
+    UNICODE_STRING OSCompatibleIdU, OSSubCompatibleIdU;
 
     RtlZeroMemory(Buffer, sizeof(Buffer));
 
@@ -1692,85 +1696,132 @@ USBH_PdoQueryId(IN PUSBHUB_PORT_PDO_EXTENSION PortExtension,
                                      0,
                                      L"USB\\UNKNOWN");
             }
-            else if (PortExtension->PortPdoFlags & USBHUB_PDO_FLAG_MULTI_INTERFACE)
-            {
-                RtlStringCbPrintfExW(Buffer,
-                                     Remaining,
-                                     &EndBuffer,
-                                     &Remaining,
-                                     0,
-                                     L"USB\\DevClass_%02x&SubClass_%02x&Prot_%02x",
-                                     InterfaceDescriptor->bInterfaceClass,
-                                     InterfaceDescriptor->bInterfaceSubClass,
-                                     InterfaceDescriptor->bInterfaceProtocol);
-
-                EndBuffer++;
-                Remaining -= sizeof(UNICODE_NULL);
-
-                RtlStringCbPrintfExW(EndBuffer,
-                                     Remaining,
-                                     &EndBuffer,
-                                     &Remaining,
-                                     0,
-                                     L"USB\\DevClass_%02x&SubClass_%02x",
-                                     InterfaceDescriptor->bInterfaceClass,
-                                     InterfaceDescriptor->bInterfaceSubClass);
-
-                EndBuffer++;
-                Remaining -= sizeof(UNICODE_NULL);
-
-                RtlStringCbPrintfExW(EndBuffer,
-                                     Remaining,
-                                     &EndBuffer,
-                                     &Remaining,
-                                     0,
-                                     L"USB\\DevClass_%02x",
-                                     InterfaceDescriptor->bInterfaceClass);
-
-                EndBuffer++;
-                Remaining -= sizeof(UNICODE_NULL);
-
-                RtlStringCbPrintfExW(EndBuffer,
-                                     Remaining,
-                                     NULL,
-                                     &Remaining,
-                                     0,
-                                     L"USB\\COMPOSITE");
-            }
             else
             {
-                RtlStringCbPrintfExW(Buffer,
-                                     Remaining,
-                                     &EndBuffer,
-                                     &Remaining,
-                                     0,
-                                     L"USB\\Class_%02x&SubClass_%02x&Prot_%02x",
-                                     InterfaceDescriptor->bInterfaceClass,
-                                     InterfaceDescriptor->bInterfaceSubClass,
-                                     InterfaceDescriptor->bInterfaceProtocol);
+                if (OSExtendedCompatibleIdDescriptor->dwLength == sizeof(OS_FEATURE_EXTENDED_COMPATIBLE_ID_DESCRIPTOR))
+                {
+                    RtlInitAnsiString(&OSCompatibleId, OSExtendedCompatibleIdDescriptor->compatibleID);
+                    RtlInitAnsiString(&OSSubCompatibleId, OSExtendedCompatibleIdDescriptor->subCompatibleID);
 
-                EndBuffer++;
-                Remaining -= sizeof(UNICODE_NULL);
+                    if ((OSCompatibleId.Length > sizeof(ANSI_NULL)) && (OSSubCompatibleId.Length > sizeof(ANSI_NULL)))
+                    {
+                        RtlAnsiStringToUnicodeString(&OSCompatibleIdU, &OSCompatibleId, TRUE);
+                        RtlAnsiStringToUnicodeString(&OSSubCompatibleIdU, &OSSubCompatibleId, TRUE);
+                        RtlStringCbPrintfExW(Buffer,
+                                            Remaining,
+                                            &EndBuffer,
+                                            &Remaining,
+                                            0,
+                                            L"USB\\MS_COMP_%s&MS_SUBCOMP_%s",
+                                            OSCompatibleIdU.Buffer,
+                                            OSSubCompatibleId.Buffer);
 
-                RtlStringCbPrintfExW(EndBuffer,
-                                     Remaining,
-                                     &EndBuffer,
-                                     &Remaining,
-                                     0,
-                                     L"USB\\Class_%02x&SubClass_%02x",
-                                     InterfaceDescriptor->bInterfaceClass,
-                                     InterfaceDescriptor->bInterfaceSubClass);
+                        EndBuffer++;
+                        Remaining -= sizeof(UNICODE_NULL);
+                        RtlFreeUnicodeString(&OSCompatibleIdU);
+                        RtlFreeUnicodeString(&OSSubCompatibleIdU);
+                    }
 
-                EndBuffer++;
-                Remaining -= sizeof(UNICODE_NULL);
+                    if (OSCompatibleId.Length > sizeof(ANSI_NULL))
+                    {
+                        RtlAnsiStringToUnicodeString(&OSCompatibleIdU, &OSCompatibleId, TRUE);
+                        RtlStringCbPrintfExW(EndBuffer ? EndBuffer : Buffer,
+                                            Remaining,
+                                            &EndBuffer,
+                                            &Remaining,
+                                            0,
+                                            L"USB\\MS_COMP_%s",
+                                            OSCompatibleIdU.Buffer);
 
-                RtlStringCbPrintfExW(EndBuffer,
-                                     Remaining,
-                                     NULL,
-                                     &Remaining,
-                                     0,
-                                     L"USB\\Class_%02x",
-                                     InterfaceDescriptor->bInterfaceClass);
+                        EndBuffer++;
+                        Remaining -= sizeof(UNICODE_NULL);
+                        RtlFreeUnicodeString(&OSCompatibleIdU);
+                        DPRINT1("Remaining: %d\n", Remaining);
+                    }
+                }
+
+                if (PortExtension->PortPdoFlags & USBHUB_PDO_FLAG_MULTI_INTERFACE)
+                {
+                    RtlStringCbPrintfExW(EndBuffer ? EndBuffer : Buffer,
+                                        Remaining,
+                                        &EndBuffer,
+                                        &Remaining,
+                                        0,
+                                        L"USB\\DevClass_%02x&SubClass_%02x&Prot_%02x",
+                                        InterfaceDescriptor->bInterfaceClass,
+                                        InterfaceDescriptor->bInterfaceSubClass,
+                                        InterfaceDescriptor->bInterfaceProtocol);
+
+                    EndBuffer++;
+                    Remaining -= sizeof(UNICODE_NULL);
+
+                    RtlStringCbPrintfExW(EndBuffer,
+                                        Remaining,
+                                        &EndBuffer,
+                                        &Remaining,
+                                        0,
+                                        L"USB\\DevClass_%02x&SubClass_%02x",
+                                        InterfaceDescriptor->bInterfaceClass,
+                                        InterfaceDescriptor->bInterfaceSubClass);
+
+                    EndBuffer++;
+                    Remaining -= sizeof(UNICODE_NULL);
+
+                    RtlStringCbPrintfExW(EndBuffer,
+                                        Remaining,
+                                        &EndBuffer,
+                                        &Remaining,
+                                        0,
+                                        L"USB\\DevClass_%02x",
+                                        InterfaceDescriptor->bInterfaceClass);
+
+                    EndBuffer++;
+                    Remaining -= sizeof(UNICODE_NULL);
+
+                    RtlStringCbPrintfExW(EndBuffer,
+                                        Remaining,
+                                        NULL,
+                                        &Remaining,
+                                        0,
+                                        L"USB\\COMPOSITE");
+                }
+                else
+                {
+                    DPRINT1("Remaining2: %d\n", Remaining);
+                    RtlStringCbPrintfExW(EndBuffer ? EndBuffer : Buffer,
+                                        Remaining,
+                                        &EndBuffer,
+                                        &Remaining,
+                                        0,
+                                        L"USB\\Class_%02x&SubClass_%02x&Prot_%02x",
+                                        InterfaceDescriptor->bInterfaceClass,
+                                        InterfaceDescriptor->bInterfaceSubClass,
+                                        InterfaceDescriptor->bInterfaceProtocol);
+
+                    EndBuffer++;
+                    Remaining -= sizeof(UNICODE_NULL);
+                    DPRINT1("Remaining3: %d\n", Remaining);
+                    RtlStringCbPrintfExW(EndBuffer,
+                                        Remaining,
+                                        &EndBuffer,
+                                        &Remaining,
+                                        0,
+                                        L"USB\\Class_%02x&SubClass_%02x",
+                                        InterfaceDescriptor->bInterfaceClass,
+                                        InterfaceDescriptor->bInterfaceSubClass);
+
+                    EndBuffer++;
+                    Remaining -= sizeof(UNICODE_NULL);
+                    DPRINT1("Remaining4: %d\n", Remaining);
+                    RtlStringCbPrintfExW(EndBuffer,
+                                        Remaining,
+                                        NULL,
+                                        &Remaining,
+                                        0,
+                                        L"USB\\Class_%02x",
+                                        InterfaceDescriptor->bInterfaceClass);
+                    DPRINT1("Remaining5: %d\n", Remaining);
+                }
             }
 
             Length = sizeof(Buffer) - (Remaining - 2 * sizeof(UNICODE_NULL));

@@ -4391,6 +4391,127 @@ Exit:
 
 NTSTATUS
 NTAPI
+USBH_SyncGetOSFeatureDescriptor(IN PDEVICE_OBJECT DeviceObject,
+                             IN POS_FEATURE_EXTENDED_COMPATIBLE_ID_DESCRIPTOR Descriptor,
+                             IN UCHAR InterfaceNumber,
+                             IN USHORT FeatureDescriptorIndex,
+                             IN UCHAR Recipient,
+                             IN UCHAR VendorCode,
+                             IN ULONG NumberOfBytes,
+                             IN PULONG OutLength,
+                             IN BOOLEAN IsValidateLength)
+{
+    struct _URB_OS_FEATURE_DESCRIPTOR_REQUEST * Urb;
+    ULONG TransferedLength;
+    NTSTATUS Status;
+
+    DPRINT("USBH_SyncGetOSFeatureDescriptor: Index - %x,\n", FeatureDescriptorIndex);
+
+    Urb = ExAllocatePoolWithTag(NonPagedPool,
+                                sizeof(struct _URB_OS_FEATURE_DESCRIPTOR_REQUEST),
+                                USB_HUB_TAG);
+
+    if (!Urb)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlZeroMemory(Urb, sizeof(struct _URB_OS_FEATURE_DESCRIPTOR_REQUEST));
+
+    Urb->Hdr.Function = URB_FUNCTION_GET_MS_FEATURE_DESCRIPTOR;
+    Urb->Hdr.Length = sizeof(struct _URB_OS_FEATURE_DESCRIPTOR_REQUEST);
+
+    Urb->TransferBuffer = Descriptor;
+    Urb->TransferBufferLength = NumberOfBytes;
+
+    Urb->InterfaceNumber = Recipient ? InterfaceNumber : 0;
+    Urb->MS_FeatureDescriptorIndex = FeatureDescriptorIndex;
+    Urb->Recipient = Recipient;
+    Urb->Reserved2 = VendorCode; /* Likely to be very wrong. Need to figure this out */
+
+    Status = USBH_SyncSubmitUrb(DeviceObject, (PURB)Urb);
+
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(Urb, USB_HUB_TAG);
+        return Status;
+    }
+
+    TransferedLength = Urb->TransferBufferLength;
+
+    if (TransferedLength > NumberOfBytes)
+    {
+        Status = STATUS_DEVICE_DATA_ERROR;
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(Urb, USB_HUB_TAG);
+        return Status;
+    }
+
+    if (OutLength)
+    {
+        *OutLength = TransferedLength;
+    }
+
+    if (IsValidateLength && TransferedLength != Descriptor->dwLength)
+    {
+        Status = STATUS_DEVICE_DATA_ERROR;
+    }
+
+    ExFreePoolWithTag(Urb, USB_HUB_TAG);
+
+    return Status;
+}
+
+NTSTATUS
+NTAPI
+USBH_GetOSStringDescriptor(IN PDEVICE_OBJECT DeviceObject,
+                        IN POS_STRING OSStringDescriptor)
+{
+    NTSTATUS Status;
+    UNICODE_STRING Signature;
+    UNICODE_STRING MSFTSignature;
+
+    DPRINT("USBH_GetOSStringDescriptor: ... \n");
+
+    RtlZeroMemory(OSStringDescriptor, sizeof(*OSStringDescriptor));
+    Status = USBH_SyncGetStringDescriptor(DeviceObject,
+                                          OS_STRING_DESCRIPTOR_INDEX,
+                                          0,
+                                          (PUSB_STRING_DESCRIPTOR)OSStringDescriptor,
+                                          sizeof(*OSStringDescriptor),
+                                          NULL,
+                                          TRUE);
+
+    if (!NT_SUCCESS(Status) ||
+        OSStringDescriptor->bLength <= sizeof(USB_COMMON_DESCRIPTOR))
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Exit;
+    }
+
+    RtlInitUnicodeString(&Signature, OSStringDescriptor->MicrosoftString);
+
+    if (Signature.Length > sizeof(OSStringDescriptor->MicrosoftString))
+    {
+        Signature.Length = sizeof(OSStringDescriptor->MicrosoftString);
+    }
+
+    RtlInitUnicodeString(&MSFTSignature, MS_OS_STRING_SIGNATURE);
+    if (!RtlEqualUnicodeString(&Signature, &MSFTSignature, TRUE))
+    {
+        Status = STATUS_NOT_SUPPORTED;
+    }
+
+    /* This is also where Windows usbhub writes the osvc usbflags entry into registry */
+Exit:
+    return Status;
+}
+
+NTSTATUS
+NTAPI
 USBH_CreateDevice(IN PUSBHUB_FDO_EXTENSION HubExtension,
                   IN USHORT Port,
                   IN USB_PORT_STATUS UsbPortStatus,
@@ -4403,6 +4524,8 @@ USBH_CreateDevice(IN PUSBHUB_FDO_EXTENSION HubExtension,
     PUSBHUB_PORT_PDO_EXTENSION PortExtension;
     PUSB_DEVICE_HANDLE DeviceHandle;
     LPWSTR SerialNumberBuffer;
+    OS_STRING OSStringDescriptor;
+    DWORD OSCompatibleIDDescriptorLength;
     BOOLEAN IsHsDevice;
     BOOLEAN IsLsDevice;
     BOOLEAN IgnoringHwSerial = FALSE;
@@ -4592,6 +4715,26 @@ USBH_CreateDevice(IN PUSBHUB_FDO_EXTENSION HubExtension,
     Status = USBH_ProcessDeviceInformation(PortExtension);
 
     USBH_PdoSetCapabilities(PortExtension);
+
+    /* Get MSOS compatible id descriptor */
+    if (NT_SUCCESS(USBH_GetOSStringDescriptor(PortExtension->Common.SelfDevice, &OSStringDescriptor)))
+    {
+        Status = USBH_SyncGetOSFeatureDescriptor(PortExtension->Common.SelfDevice,
+                                                    &PortExtension->OSExtendedCompatibleIdDescriptor,
+                                                    PortExtension->InterfaceDescriptor.bInterfaceNumber,
+                                                    MS_EXTENDED_COMPATIBLE_ID_DESCRIPTOR_INDEX,
+                                                    BMREQUEST_TO_DEVICE,
+                                                    OSStringDescriptor.bVendorCode,
+                                                    sizeof(PortExtension->OSExtendedCompatibleIdDescriptor),
+                                                    &OSCompatibleIDDescriptorLength,
+                                                    TRUE);
+        /* Should probably validate the descriptor! */
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("USBH_SyncGetOSFeatureDescriptor failed with status %d! Ignoring for now...\n", Status);
+            Status = STATUS_SUCCESS;
+        }
+    }
 
     if (NT_SUCCESS(Status))
     {
