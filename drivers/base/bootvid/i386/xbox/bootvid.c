@@ -71,7 +71,6 @@ ApplyPalette(VOID)
     for (y = 0; y < SCREEN_HEIGHT; y++)
     {
         Frame = (PULONG)(FrameBufferStart + FB_OFFSET(-(LONG)PanH, y));
-
         for (x = 0; x < PanH; x++)
         {
             *Frame++ = CachedPalette[0];
@@ -83,7 +82,6 @@ ApplyPalette(VOID)
     for (y = 0; y < SCREEN_HEIGHT; y++)
     {
         Frame = (PULONG)(FrameBufferStart + FB_OFFSET(0, y));
-
         for (x = 0; x < SCREEN_WIDTH; x++)
         {
             *Frame++ = CachedPalette[*Back++];
@@ -94,7 +92,6 @@ ApplyPalette(VOID)
     for (y = 0; y < SCREEN_HEIGHT; y++)
     {
         Frame = (PULONG)(FrameBufferStart + FB_OFFSET(SCREEN_WIDTH, y));
-
         for (x = 0; x < PanH; x++)
         {
             *Frame++ = CachedPalette[0];
@@ -286,25 +283,20 @@ PreserveRow(
         OldPosition = BackBuffer + BB_OFFSET(0, CurrentTop);
     }
 
-    /* Set the count and loop every pixel of backbuffer */
+    /* Set the count and copy the pixel data back to the other position in the backbuffer */
     ULONG Count = TopDelta * SCREEN_WIDTH;
-
     RtlCopyMemory(NewPosition, OldPosition, Count);
 
+    /* On restore, mirror the backbuffer changes to the framebuffer */
     if (Restore)
     {
         NewPosition = BackBuffer + BB_OFFSET(0, CurrentTop);
-
-        /* Set the count and loop every pixel of framebuffer */
         for (ULONG y = 0; y < TopDelta; y++)
         {
             PULONG Frame = (PULONG)(FrameBufferStart + FB_OFFSET(0, CurrentTop + y));
-
             Count = SCREEN_WIDTH;
             while (Count--)
-            {
                 *Frame++ = CachedPalette[*NewPosition++];
-            }
         }
     }
 }
@@ -328,7 +320,6 @@ DoScroll(
         RtlCopyMemory(NewPosition, OldPosition, RowSize);
 
         PULONG Frame = (PULONG)(FrameBufferStart + FB_OFFSET(VidpScrollRegion.Left, Top));
-
         for (i = 0; i < RowSize; ++i)
             Frame[i] = CachedPalette[NewPosition[i]];
 
@@ -345,7 +336,7 @@ DisplayCharacter(
     _In_ ULONG TextColor,
     _In_ ULONG BackColor)
 {
-    /* Get the font and pixel pointer */
+    /* Get the font line for this character */
     const UCHAR* FontChar = GetFontPtr(Character);
 
     /* Loop each pixel height */
@@ -353,23 +344,14 @@ DisplayCharacter(
     {
         /* Loop each pixel width */
         ULONG x = Left;
-
         for (UCHAR bit = 1 << (BOOTCHAR_WIDTH - 1); bit > 0; bit >>= 1, x++)
         {
-            /* Check if we should draw this pixel */
+            /* If we should draw this pixel, use the text color. Otherwise
+             * this is a background pixel, draw it unless it's transparent. */
             if (*FontChar & bit)
-            {
-                /* We do, use the given Text Color */
                 SetPixel(x, y, (UCHAR)TextColor);
-            }
             else if (BackColor < BV_COLOR_NONE)
-            {
-                /*
-                 * This is a background pixel. We're drawing it
-                 * unless it's transparent.
-                 */
                 SetPixel(x, y, (UCHAR)BackColor);
-            }
         }
     }
 }
@@ -383,18 +365,17 @@ VidSolidColorFill(
     _In_ ULONG Bottom,
     _In_ UCHAR Color)
 {
-    while (Top <= Bottom)
+    for (; Top <= Bottom; ++Top)
     {
         PUCHAR Back = BackBuffer + BB_OFFSET(Left, Top);
+        // NOTE: Assumes 24/32bpp
         PULONG Frame = (PULONG)(FrameBufferStart + FB_OFFSET(Left, Top));
         ULONG L = Left;
-
         while (L++ <= Right)
         {
             *Back++ = Color;
             *Frame++ = CachedPalette[Color];
         }
-        Top++;
     }
 }
 

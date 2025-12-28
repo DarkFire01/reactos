@@ -54,13 +54,24 @@ SetPixel(
     _In_ ULONG Top,
     _In_ UCHAR Color)
 {
-    PUSHORT PixelPosition;
-
-    /* Calculate the pixel position */
-    PixelPosition = &VgaArmBase[Left + (Top * SCREEN_WIDTH)];
-
-    /* Set our color */
+    /* Calculate the pixel position and set the color */
+    PUSHORT PixelPosition = &VgaArmBase[Left + (Top * SCREEN_WIDTH)];
     WRITE_REGISTER_USHORT(PixelPosition, VidpBuildColor(Color));
+}
+
+FORCEINLINE
+VOID
+SetPixels(
+    _In_ ULONG Left,
+    _In_ ULONG Top,
+    _In_ UCHAR Color,
+    _In_ ULONG Count)
+{
+    /* Calculate the initial pixel position and copy the color */
+    PUSHORT PixelPosition = &VgaArmBase[Left + (Top * SCREEN_WIDTH)];
+    USHORT vidColor = VidpBuildColor(Color);
+    while (Count--)
+        WRITE_REGISTER_USHORT(PixelPosition++, vidColor);
 }
 
 VOID
@@ -71,40 +82,24 @@ DisplayCharacter(
     _In_ ULONG TextColor,
     _In_ ULONG BackColor)
 {
-    const UCHAR* FontChar;
+    /* Get the font line for this character */
+    const UCHAR* FontChar = GetFontPtr(Character);
     ULONG i, j, XOffset;
 
-    /* Get the font line for this character */
-    FontChar = &VidpFontData[Character * BOOTCHAR_HEIGHT - Top];
-
     /* Loop each pixel height */
-    for (i = BOOTCHAR_HEIGHT; i > 0; --i)
+    for (i = BOOTCHAR_HEIGHT; i > 0; --i, Top++)
     {
         /* Loop each pixel width */
         XOffset = Left;
-        for (j = (1 << 7); j > 0; j >>= 1)
+        for (j = 1 << (BOOTCHAR_WIDTH - 1); j > 0; j >>= 1, XOffset++)
         {
-            /* Check if we should draw this pixel */
-            if (FontChar[Top] & (UCHAR)j)
-            {
-                /* We do, use the given Text Color */
+            /* If we should draw this pixel, use the text color. Otherwise
+             * this is a background pixel, draw it unless it's transparent. */
+            if (FontChar[BOOTCHAR_HEIGHT - i] & (UCHAR)j)
                 SetPixel(XOffset, Top, (UCHAR)TextColor);
-            }
             else if (BackColor < BV_COLOR_NONE)
-            {
-                /*
-                 * This is a background pixel. We're drawing it
-                 * unless it's transparent.
-                 */
                 SetPixel(XOffset, Top, (UCHAR)BackColor);
-            }
-
-            /* Increase X Offset */
-            XOffset++;
         }
-
-        /* Move to the next Y ordinate */
-        Top++;
     }
 }
 
@@ -161,54 +156,41 @@ PreserveRow(
     _In_ ULONG TopDelta,
     _In_ BOOLEAN Restore)
 {
-    PUSHORT Position1, Position2;
+    PUSHORT NewPosition, OldPosition;
     ULONG Count;
 
     /* Calculate the position in memory for the row */
     if (Restore)
     {
         /* Restore the row by copying back the contents saved off-screen */
-        Position1 = &VgaArmBase[CurrentTop * (SCREEN_WIDTH / 8)];
-        Position2 = &VgaArmBase[SCREEN_HEIGHT * (SCREEN_WIDTH / 8)];
+        NewPosition = &VgaArmBase[CurrentTop * (SCREEN_WIDTH / 8)];
+        OldPosition = &VgaArmBase[SCREEN_HEIGHT * (SCREEN_WIDTH / 8)];
     }
     else
     {
         /* Preserve the row by saving its contents off-screen */
-        Position1 = &VgaArmBase[SCREEN_HEIGHT * (SCREEN_WIDTH / 8)];
-        Position2 = &VgaArmBase[CurrentTop * (SCREEN_WIDTH / 8)];
+        NewPosition = &VgaArmBase[SCREEN_HEIGHT * (SCREEN_WIDTH / 8)];
+        OldPosition = &VgaArmBase[CurrentTop * (SCREEN_WIDTH / 8)];
     }
 
-    /* Set the count and loop every pixel */
+    /* Set the count and copy the pixel data back to the other position */
     Count = TopDelta * (SCREEN_WIDTH / 8);
-    while (Count--)
-    {
-        /* Write the data back on the other position */
-        WRITE_REGISTER_USHORT(Position1, READ_REGISTER_USHORT(Position2));
-
-        /* Increase both positions */
-        Position1++;
-        Position2++;
-    }
+    for (; Count--; NewPosition++, OldPosition++)
+        WRITE_REGISTER_USHORT(NewPosition, READ_REGISTER_USHORT(OldPosition));
 }
 
 VOID
 VidpInitializeDisplay(VOID)
 {
-    //
-    // Set framebuffer address
-    //
+    /* Set framebuffer address */
     WRITE_REGISTER_ULONG(PL110_LCDUPBASE, VgaPhysical.LowPart);
     WRITE_REGISTER_ULONG(PL110_LCDLPBASE, VgaPhysical.LowPart);
 
-    //
-    // Initialize timings to 640x480
-    //
+    /* Initialize timings to 640x480 */
     WRITE_REGISTER_ULONG(PL110_LCDTIMING0, LCDTIMING0_PPL(SCREEN_WIDTH));
     WRITE_REGISTER_ULONG(PL110_LCDTIMING1, LCDTIMING1_LPP(SCREEN_HEIGHT));
 
-    //
-    // Enable the LCD Display
-    //
+    /* Enable the LCD display */
     WRITE_REGISTER_ULONG(PL110_LCDCONTROL,
                          LCDCONTROL_LCDEN |
                          LCDCONTROL_LCDTFT |
@@ -233,29 +215,18 @@ VidInitialize(
 {
     DPRINT1("bv-arm v0.1\n");
 
-    //
-    // Allocate framebuffer
-    // 600kb works out to 640x480@16bpp
-    //
+    /* Allocate the framebuffer. 600kb works out to 640x480@16bpp. */
     VgaPhysical.QuadPart = -1;
     VgaArmBase = MmAllocateContiguousMemory(600 * 1024, VgaPhysical);
     if (!VgaArmBase) return FALSE;
 
-    //
-    // Get physical address
-    //
+    /* Get physical address */
     VgaPhysical = MmGetPhysicalAddress(VgaArmBase);
     if (!VgaPhysical.QuadPart) return FALSE;
-    DPRINT1("[BV-ARM] Frame Buffer @ 0x%p 0p%p\n", VgaArmBase, VgaPhysical.LowPart);
+    DPRINT1("[BV-ARM] Frame Buffer @ 0x%p 0x%p\n", VgaArmBase, VgaPhysical.LowPart);
 
-    //
-    // Setup the display
-    //
+    /* Setup the display */
     VidpInitializeDisplay();
-
-    //
-    // We are done!
-    //
     return TRUE;
 }
 
@@ -275,8 +246,8 @@ VOID
 NTAPI
 VidCleanUp(VOID)
 {
-    UNIMPLEMENTED;
-    while (TRUE);
+    /* Just fill the screen black */
+    VidSolidColorFill(0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1, BV_COLOR_BLACK);
 }
 
 VOID
@@ -302,22 +273,9 @@ VidSolidColorFill(
     _In_ ULONG Bottom,
     _In_ UCHAR Color)
 {
-    int y, x;
-
-    //
-    // Loop along the Y-axis
-    //
-    for (y = Top; y <= Bottom; y++)
+    ULONG y;
+    for (y = Top; y <= Bottom; ++y)
     {
-        //
-        // Loop along the X-axis
-        //
-        for (x = Left; x <= Right; x++)
-        {
-            //
-            // Draw the pixel
-            //
-            SetPixel(x, y, Color);
-        }
+        SetPixels(Left, y, Color, Right - Left + 1);
     }
 }

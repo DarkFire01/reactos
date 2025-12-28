@@ -13,6 +13,7 @@
 /* GLOBALS ********************************************************************/
 
 #define BYTES_PER_SCANLINE (SCREEN_WIDTH / 8)
+//#define FB_OFFSET(x, y)    ((y) * SCREEN_WIDTH + (x))
 
 #define PEGC_MAX_COLORS    256
 
@@ -279,13 +280,10 @@ DisplayCharacter(
     const UCHAR* FontChar = GetFontPtr(Character);
     ULONG X, Y, PixelMask;
 
-    for (Y = Top;
-         Y < Top + BOOTCHAR_HEIGHT;
-         ++Y, FontChar += FONT_PTR_DELTA)
+    for (Y = Top; Y < Top + BOOTCHAR_HEIGHT; ++Y, FontChar += FONT_PTR_DELTA)
     {
-        for (X = Left, PixelMask = 1 << (BOOTCHAR_WIDTH - 1);
-             X < Left + BOOTCHAR_WIDTH;
-             ++X, PixelMask >>= 1)
+        X = Left; // X < Left + BOOTCHAR_WIDTH;
+        for (PixelMask = 1 << (BOOTCHAR_WIDTH - 1); PixelMask > 0; PixelMask >>= 1, ++X)
         {
             if (*FontChar & PixelMask)
                 SetPixel(X, Y, (UCHAR)TextColor);
@@ -317,6 +315,7 @@ PreserveRow(
         NewPosition = (PULONG)(FrameBuffer + FB_OFFSET(0, SCREEN_HEIGHT));
     }
 
+    /* Set the count and copy the pixel data back to the other position */
     while (PixelCount--)
         WRITE_REGISTER_ULONG(NewPosition++, READ_REGISTER_ULONG(OldPosition++));
 }
@@ -329,13 +328,13 @@ DoScroll(
     PUCHAR Src, Dst;
     PULONG SrcWide, DstWide;
     USHORT PixelCount = (VidpScrollRegion.Right - VidpScrollRegion.Left) + 1;
-    ULONG_PTR SourceOffset = FrameBuffer + FB_OFFSET(VidpScrollRegion.Left, VidpScrollRegion.Top + Scroll);
-    ULONG_PTR DestinationOffset = FrameBuffer + FB_OFFSET(VidpScrollRegion.Left, VidpScrollRegion.Top);
+    ULONG_PTR SrcOffset = FrameBuffer + FB_OFFSET(VidpScrollRegion.Left, VidpScrollRegion.Top + Scroll);
+    ULONG_PTR DstOffset = FrameBuffer + FB_OFFSET(VidpScrollRegion.Left, VidpScrollRegion.Top);
 
-    for (Line = VidpScrollRegion.Top; Line <= VidpScrollRegion.Bottom; Line++)
+    for (Line = VidpScrollRegion.Top; Line <= VidpScrollRegion.Bottom; ++Line)
     {
-        SrcWide = (PULONG)SourceOffset;
-        DstWide = (PULONG)DestinationOffset;
+        SrcWide = (PULONG)SrcOffset;
+        DstWide = (PULONG)DstOffset;
         for (i = 0; i < PixelCount / sizeof(ULONG); i++)
             WRITE_REGISTER_ULONG(DstWide++, READ_REGISTER_ULONG(SrcWide++));
 
@@ -344,8 +343,8 @@ DoScroll(
         for (i = 0; i < PixelCount % sizeof(ULONG); i++)
             WRITE_REGISTER_UCHAR(Dst++, READ_REGISTER_UCHAR(Src++));
 
-        SourceOffset += SCREEN_WIDTH;
-        DestinationOffset += SCREEN_WIDTH;
+        SrcOffset += SCREEN_WIDTH;
+        DstOffset += SCREEN_WIDTH;
     }
 }
 
@@ -461,7 +460,7 @@ VidSolidColorFill(
     USHORT PixelCount = (Right - Left) + 1;
     ULONG_PTR StartOffset = FrameBuffer + FB_OFFSET(Left, Top);
 
-    for (Line = Top; Line <= Bottom; Line++)
+    for (Line = Top; Line <= Bottom; ++Line)
     {
         PixelsPtr = (PULONG)StartOffset;
         for (i = 0; i < PixelCount / sizeof(ULONG); i++)

@@ -253,12 +253,11 @@ DoScroll(
     /* Start loop */
     for (Top = VidpScrollRegion.Top; Top <= VidpScrollRegion.Bottom; ++Top)
     {
+        /* Scroll the row */
 #if defined(_M_IX86) || defined(_M_AMD64)
         __movsb(NewPosition, OldPosition, RowSize);
 #else
         ULONG i;
-
-        /* Scroll the row */
         for (i = 0; i < RowSize; ++i)
             WRITE_REGISTER_UCHAR(NewPosition + i, READ_REGISTER_UCHAR(OldPosition + i));
 #endif
@@ -273,7 +272,7 @@ PreserveRow(
     _In_ ULONG TopDelta,
     _In_ BOOLEAN Restore)
 {
-    PUCHAR Position1, Position2;
+    PUCHAR NewPosition, OldPosition;
     ULONG Count;
 
     /* Clear the 4 planes */
@@ -289,30 +288,23 @@ PreserveRow(
     if (Restore)
     {
         /* Restore the row by copying back the contents saved off-screen */
-        Position1 = (PUCHAR)(VgaBase + CurrentTop * (SCREEN_WIDTH / 8));
-        Position2 = (PUCHAR)(VgaBase + SCREEN_HEIGHT * (SCREEN_WIDTH / 8));
+        NewPosition = (PUCHAR)(VgaBase + CurrentTop * (SCREEN_WIDTH / 8));
+        OldPosition = (PUCHAR)(VgaBase + SCREEN_HEIGHT * (SCREEN_WIDTH / 8));
     }
     else
     {
         /* Preserve the row by saving its contents off-screen */
-        Position1 = (PUCHAR)(VgaBase + SCREEN_HEIGHT * (SCREEN_WIDTH / 8));
-        Position2 = (PUCHAR)(VgaBase + CurrentTop * (SCREEN_WIDTH / 8));
+        NewPosition = (PUCHAR)(VgaBase + SCREEN_HEIGHT * (SCREEN_WIDTH / 8));
+        OldPosition = (PUCHAR)(VgaBase + CurrentTop * (SCREEN_WIDTH / 8));
     }
 
-    /* Set the count and loop every pixel */
+    /* Set the count and copy the pixel data back to the other position */
     Count = TopDelta * (SCREEN_WIDTH / 8);
 #if defined(_M_IX86) || defined(_M_AMD64)
-    __movsb(Position1, Position2, Count);
+    __movsb(NewPosition, OldPosition, Count);
 #else
-    while (Count--)
-    {
-        /* Write the data back on the other position */
-        WRITE_REGISTER_UCHAR(Position1, READ_REGISTER_UCHAR(Position2));
-
-        /* Increase both positions */
-        Position1++;
-        Position2++;
-    }
+    for (; Count--; NewPosition++, OldPosition++)
+        WRITE_REGISTER_UCHAR(NewPosition, READ_REGISTER_UCHAR(OldPosition));
 #endif
 }
 
