@@ -1532,6 +1532,16 @@ KeRestoreFloatingPointState(
     FsContext = *((PVOID *) Save);
 
     /*
+     * ReactOS stores an internal context pointer in the caller-provided buffer.
+     * If a buggy driver calls restore twice, the first restore frees the context.
+     * Make restore idempotent by treating a NULL context as "already restored".
+     */
+    if (FsContext == NULL)
+    {
+        return STATUS_SUCCESS;
+    }
+
+    /*
      * We have to restore the regular saved FPU
      * state. For this we must first do some
      * validation checks so that we are sure
@@ -1585,6 +1595,9 @@ KeRestoreFloatingPointState(
     /* We're done, free the allocated area and context */
     ExFreePoolWithTag(FsContext->Buffer, TAG_FLOATING_POINT_FX);
     ExFreePoolWithTag(FsContext, TAG_FLOATING_POINT_CONTEXT);
+
+    /* Prevent double-restore from using a freed context */
+    *((PVOID *) Save) = NULL;
 
     return STATUS_SUCCESS;
 }
