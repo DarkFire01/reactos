@@ -77,7 +77,7 @@ list(APPEND SOURCE
     wine/lzexpand.c
     wine/muldiv.c
     wine/profile.c
-    wine/res.c
+    wine/resource.c
     wine/timezone.c
     winnls/string/casemap.c
     winnls/string/collation.c
