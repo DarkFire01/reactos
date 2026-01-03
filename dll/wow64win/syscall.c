@@ -329,6 +329,7 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserGetForegroundWindow);
     IMPLEMENT_SERVICE(UserSetThreadState);
     IMPLEMENT_SERVICE(UserGetComboBoxInfo);
+    IMPLEMENT_SERVICE(UserGetWindowDC);
 #undef IMPLEMENT_SERVICE
 }
 
