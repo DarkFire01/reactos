@@ -2013,7 +2013,7 @@ co_WinPosSetWindowPos(
                      NewWindowRect.top - OldWindowRect.top);
    }
 
-   DceResetActiveDCEs(Window); // For WS_VISIBLE changes.
+         DceResetActiveDCEs(Window); // For WS_VISIBLE changes.
 
    // Change or update, set send non-client paint flag.
    if ( Window->style & WS_VISIBLE &&

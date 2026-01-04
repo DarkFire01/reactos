@@ -18,6 +18,7 @@ VIS_ComputeVisibleRegion(
 {
    PREGION VisRgn, ClipRgn;
    PWND PreviousWindow, CurrentWindow, CurrentSibling;
+   RECTL VisBox, Tmp;
 
    if (!Wnd || !(Wnd->style & WS_VISIBLE))
    {
@@ -34,6 +35,13 @@ VIS_ComputeVisibleRegion(
    {
       VisRgn = IntSysCreateRectpRgnIndirect(&Wnd->rcWindow);
    }
+
+   if (!VisRgn)
+      return NULL;
+
+   /* Track a cheap bounding box to avoid unnecessary region allocations */
+   if (REGION_GetRgnBox(VisRgn, &VisBox) == NULLREGION)
+      goto Done;
 
    /*
     * Walk through all parent windows and for each clip the visble region
@@ -64,6 +72,9 @@ VIS_ComputeVisibleRegion(
       IntGdiCombineRgn(VisRgn, VisRgn, ClipRgn, RGN_AND);
       REGION_Delete(ClipRgn);
 
+      if (REGION_GetRgnBox(VisRgn, &VisBox) == NULLREGION)
+         goto Done;
+
       if ((PreviousWindow->style & WS_CLIPSIBLINGS) ||
           (PreviousWindow == Wnd && ClipSiblings))
       {
@@ -74,6 +85,13 @@ VIS_ComputeVisibleRegion(
             if ((CurrentSibling->style & WS_VISIBLE) &&
                 !(CurrentSibling->ExStyle & WS_EX_TRANSPARENT))
             {
+               /* Fast reject: sibling doesn't touch our current bounds */
+               if (!RECTL_bIntersectRect(&Tmp, &CurrentSibling->rcWindow, &VisBox))
+               {
+                  CurrentSibling = CurrentSibling->spwndNext;
+                  continue;
+               }
+
                ClipRgn = IntSysCreateRectpRgnIndirect(&CurrentSibling->rcWindow);
                /* Combine it with the window region if available */
                if (CurrentSibling->hrgnClip && !(CurrentSibling->style & WS_MINIMIZE))
@@ -89,6 +107,9 @@ VIS_ComputeVisibleRegion(
                }
                IntGdiCombineRgn(VisRgn, VisRgn, ClipRgn, RGN_DIFF);
                REGION_Delete(ClipRgn);
+
+               if (REGION_GetRgnBox(VisRgn, &VisBox) == NULLREGION)
+                  goto Done;
             }
             CurrentSibling = CurrentSibling->spwndNext;
          }
@@ -106,6 +127,13 @@ VIS_ComputeVisibleRegion(
          if ((CurrentWindow->style & WS_VISIBLE) &&
              !(CurrentWindow->ExStyle & WS_EX_TRANSPARENT))
          {
+            /* Fast reject: child doesn't touch our current bounds */
+            if (!RECTL_bIntersectRect(&Tmp, &CurrentWindow->rcWindow, &VisBox))
+            {
+               CurrentWindow = CurrentWindow->spwndNext;
+               continue;
+            }
+
             ClipRgn = IntSysCreateRectpRgnIndirect(&CurrentWindow->rcWindow);
             /* Combine it with the window region if available */
             if (CurrentWindow->hrgnClip && !(CurrentWindow->style & WS_MINIMIZE))
@@ -121,6 +149,9 @@ VIS_ComputeVisibleRegion(
             }
             IntGdiCombineRgn(VisRgn, VisRgn, ClipRgn, RGN_DIFF);
             REGION_Delete(ClipRgn);
+
+            if (REGION_GetRgnBox(VisRgn, &VisBox) == NULLREGION)
+               goto Done;
          }
          CurrentWindow = CurrentWindow->spwndNext;
       }
@@ -138,6 +169,7 @@ VIS_ComputeVisibleRegion(
       }
    }
 
+Done:
    return VisRgn;
 }
 
