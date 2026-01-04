@@ -150,6 +150,14 @@ PENTRY gpentHmgr;
 PULONG gpaulRefCount;
 volatile ULONG gulFirstFree;
 volatile ULONG gulFirstUnused;
+
+/*
+ * Multi-threaded create/delete can heavily contend on gulFirstFree.
+ * Keep a small per-CPU cache to reduce global CAS traffic.
+ */
+#define GDI_HANDLE_FREE_LIST_LOCAL_MAX 64
+static volatile ULONG gaulFirstFreeLocal[MAXIMUM_PROCESSORS];
+static volatile LONG galFreeLocalCount[MAXIMUM_PROCESSORS];
 static PPAGED_LOOKASIDE_LIST gpaLookasideList;
 
 static VOID NTAPI GDIOBJ_vCleanup(PVOID ObjectBody);
@@ -305,6 +313,9 @@ InitGdiHandleTable(void)
     gulFirstFree = 0;
     gulFirstUnused = RESERVE_ENTRIES_COUNT;
 
+    RtlZeroMemory((PVOID)gaulFirstFreeLocal, sizeof(gaulFirstFreeLocal));
+    RtlZeroMemory((PVOID)galFreeLocalCount, sizeof(galFreeLocalCount));
+
     GdiHandleTable = (PVOID)gpentHmgr;
 
     /* Initialize the lookaside lists */
@@ -379,7 +390,7 @@ DecrementGdiHandleCount(ULONG ulProcessId)
 
 static
 PENTRY
-ENTRY_pentPopFreeEntry(VOID)
+ENTRY_pentPopFreeEntryGlobal(VOID)
 {
     ULONG iFirst, iNext, iPrev;
     PENTRY pentFree;
@@ -432,13 +443,98 @@ ENTRY_pentPopFreeEntry(VOID)
     return pentFree;
 }
 
+FORCEINLINE
+ULONG
+ENTRY_ulGetFreeListProcessorIndex(VOID)
+{
+    ULONG cpu = KeGetCurrentProcessorNumber();
+    if (cpu >= MAXIMUM_PROCESSORS) cpu = 0;
+    return cpu;
+}
+
+static
+PENTRY
+ENTRY_pentPopFreeEntryLocal(_In_ ULONG cpu)
+{
+    ULONG iFirst, iNext, iPrev;
+    PENTRY pentFree;
+
+    do
+    {
+        iFirst = InterlockedReadUlong(&gaulFirstFreeLocal[cpu]);
+
+        if (!(iFirst & GDI_HANDLE_INDEX_MASK))
+            return NULL;
+
+        pentFree = &gpentHmgr[iFirst & GDI_HANDLE_INDEX_MASK];
+
+        iNext = GDI_HANDLE_GET_INDEX(pentFree->einfo.hFree);
+        iNext |= (iFirst & ~GDI_HANDLE_INDEX_MASK) + 0x10000;
+
+        iPrev = InterlockedCompareExchange((LONG*)&gaulFirstFreeLocal[cpu],
+                                           iNext,
+                                           iFirst);
+    }
+    while (iPrev != iFirst);
+
+    ASSERT(((ULONG_PTR)pentFree->einfo.pobj & ~GDI_HANDLE_INDEX_MASK) == 0);
+    return pentFree;
+}
+
+static
+PENTRY
+ENTRY_pentPopFreeEntry(VOID)
+{
+    ULONG cpu = ENTRY_ulGetFreeListProcessorIndex();
+    PENTRY pentFree = ENTRY_pentPopFreeEntryLocal(cpu);
+    if (pentFree)
+    {
+        InterlockedDecrement(&galFreeLocalCount[cpu]);
+        return pentFree;
+    }
+
+    return ENTRY_pentPopFreeEntryGlobal();
+}
+
+/* Pushes an entry of the handle table to the free list,
+   The entry must not have any references left */
+static
+VOID
+ENTRY_vPushFreeEntryToList(_Inout_ volatile ULONG* pulFirstFree, _In_ PENTRY pentFree)
+{
+    ULONG iToFree, iFirst, iPrev, idxToFree;
+
+    idxToFree = pentFree - gpentHmgr;
+
+    do
+    {
+        /* Get the current first free index and sequence number */
+        iFirst = InterlockedReadUlong(pulFirstFree);
+
+        /* Set the einfo.pobj member to the index of the first free entry */
+        pentFree->einfo.pobj = UlongToPtr(iFirst & GDI_HANDLE_INDEX_MASK);
+
+        /* Combine new index and increased sequence number in iToFree */
+        iToFree = idxToFree | ((iFirst & ~GDI_HANDLE_INDEX_MASK) + 0x10000);
+
+        /* Try to atomically update the first free entry */
+        iPrev = InterlockedCompareExchange((LONG*)pulFirstFree,
+                                           iToFree,
+                                           iFirst);
+    }
+    while (iPrev != iFirst);
+}
+
 /* Pushes an entry of the handle table to the free list,
    The entry must not have any references left */
 static
 VOID
 ENTRY_vPushFreeEntry(PENTRY pentFree)
 {
-    ULONG iToFree, iFirst, iPrev, idxToFree;
+    ULONG idxToFree;
+    ULONG cpu;
+    LONG cLocal;
+    PENTRY pentSpill;
 
     DPRINT("Enter ENTRY_vPushFreeEntry\n");
 
@@ -454,23 +550,21 @@ ENTRY_vPushFreeEntry(PENTRY pentFree)
     InterlockedExchangeAdd((LONG*)&gpaulRefCount[idxToFree], REF_INC_REUSE);
     pentFree->FullUnique += 0x0100;
 
-    do
+    /* Push to per-CPU cache first */
+    cpu = ENTRY_ulGetFreeListProcessorIndex();
+    ENTRY_vPushFreeEntryToList(&gaulFirstFreeLocal[cpu], pentFree);
+    cLocal = InterlockedIncrement(&galFreeLocalCount[cpu]);
+
+    /* Spill to global list if local cache grows too large */
+    if (cLocal > GDI_HANDLE_FREE_LIST_LOCAL_MAX)
     {
-        /* Get the current first free index and sequence number */
-        iFirst = InterlockedReadUlong(&gulFirstFree);
-
-        /* Set the einfo.pobj member to the index of the first free entry */
-        pentFree->einfo.pobj = UlongToPtr(iFirst & GDI_HANDLE_INDEX_MASK);
-
-        /* Combine new index and increased sequence number in iToFree */
-        iToFree = idxToFree | ((iFirst & ~GDI_HANDLE_INDEX_MASK) + 0x10000);
-
-        /* Try to atomically update the first free entry */
-        iPrev = InterlockedCompareExchange((LONG*)&gulFirstFree,
-                                           iToFree,
-                                           iFirst);
+        pentSpill = ENTRY_pentPopFreeEntryLocal(cpu);
+        if (pentSpill)
+        {
+            InterlockedDecrement(&galFreeLocalCount[cpu]);
+            ENTRY_vPushFreeEntryToList(&gulFirstFree, pentSpill);
+        }
     }
-    while (iPrev != iFirst);
 }
 
 static

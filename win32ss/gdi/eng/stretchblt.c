@@ -257,13 +257,16 @@ EngStretchBltROP(
         return TRUE;
     }
 
-    if (! IntEngEnter(&EnterLeaveDest, psoDest, &OutputRect, FALSE, &Translate, &psoOutput))
     {
-        if (UsesSource)
+        BOOL CopyDest = (clippingType == DC_COMPLEX) || ROP4_USES_DEST(Rop4);
+        if (!IntEngEnterEx(&EnterLeaveDest, psoDest, &OutputRect, FALSE, CopyDest, &Translate, &psoOutput))
         {
-            IntEngLeave(&EnterLeaveSource);
+            if (UsesSource)
+            {
+                IntEngLeave(&EnterLeaveSource);
+            }
+            return FALSE;
         }
-        return FALSE;
     }
 
     OutputRect.left += Translate.x;

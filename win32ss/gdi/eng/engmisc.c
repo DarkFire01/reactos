@@ -12,12 +12,13 @@
 #include <debug.h>
 
 BOOL APIENTRY
-IntEngEnter(PINTENG_ENTER_LEAVE EnterLeave,
-            SURFOBJ *psoDest,
-            RECTL *DestRect,
-            BOOL ReadOnly,
-            POINTL *Translate,
-            SURFOBJ **ppsoOutput)
+IntEngEnterEx(PINTENG_ENTER_LEAVE EnterLeave,
+              SURFOBJ *psoDest,
+              RECTL *DestRect,
+              BOOL ReadOnly,
+              BOOL CopyDest,
+              POINTL *Translate,
+              SURFOBJ **ppsoOutput)
 {
   LONG Exchange;
   SIZEL BitmapSize;
@@ -103,22 +104,25 @@ IntEngEnter(PINTENG_ENTER_LEAVE EnterLeave,
       return FALSE;
     }
     EnterLeave->TrivialClipObj->iDComplexity = DC_TRIVIAL;
-    if (ClippedDestRect.left < (*ppsoOutput)->sizlBitmap.cx &&
+    if (CopyDest)
+    {
+      if (ClippedDestRect.left < (*ppsoOutput)->sizlBitmap.cx &&
         0 <= ClippedDestRect.right &&
         SrcPoint.x < psoDest->sizlBitmap.cx &&
         ClippedDestRect.top <= (*ppsoOutput)->sizlBitmap.cy &&
         0 <= ClippedDestRect.bottom &&
         SrcPoint.y < psoDest->sizlBitmap.cy &&
         ! GDIDEVFUNCS(psoDest).CopyBits(
-                                        *ppsoOutput, psoDest,
-                                        EnterLeave->TrivialClipObj, NULL,
-                                        &ClippedDestRect, &SrcPoint))
+                        *ppsoOutput, psoDest,
+                        EnterLeave->TrivialClipObj, NULL,
+                        &ClippedDestRect, &SrcPoint))
       {
-          EngDeleteClip(EnterLeave->TrivialClipObj);
-          EngUnlockSurface(*ppsoOutput);
-          EngDeleteSurface((HSURF)EnterLeave->OutputBitmap);
-          return FALSE;
+        EngDeleteClip(EnterLeave->TrivialClipObj);
+        EngUnlockSurface(*ppsoOutput);
+        EngDeleteSurface((HSURF)EnterLeave->OutputBitmap);
+        return FALSE;
       }
+    }
     EnterLeave->DestRect.left = DestRect->left;
     EnterLeave->DestRect.top = DestRect->top;
     EnterLeave->DestRect.right = DestRect->right;
@@ -156,6 +160,17 @@ IntEngEnter(PINTENG_ENTER_LEAVE EnterLeave,
   EnterLeave->ReadOnly = ReadOnly;
 
   return TRUE;
+}
+
+BOOL APIENTRY
+IntEngEnter(PINTENG_ENTER_LEAVE EnterLeave,
+            SURFOBJ *psoDest,
+            RECTL *DestRect,
+            BOOL ReadOnly,
+            POINTL *Translate,
+            SURFOBJ **ppsoOutput)
+{
+  return IntEngEnterEx(EnterLeave, psoDest, DestRect, ReadOnly, TRUE, Translate, ppsoOutput);
 }
 
 BOOL APIENTRY

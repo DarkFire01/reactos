@@ -512,18 +512,35 @@ NtGdiMaskBlt(
     /* Make Well Ordered so that we don't flip either way */
     RECTL_vMakeWellOrdered(&DestRect);
 
-    /* Perform the bitblt operation */
-    Status = IntEngBitBlt(&BitmapDest->SurfObj,
-                          BitmapSrc ? &BitmapSrc->SurfObj : NULL,
-                          psurfMask ? &psurfMask->SurfObj : NULL,
-                          (CLIPOBJ *)&DCDest->co,
-                          XlateObj,
-                          &DestRect,
-                          &SourcePoint,
-                          &MaskPoint,
-                          &DCDest->eboFill.BrushObject,
-                          &DCDest->dclevel.pbrFill->ptOrigin,
-                          rop4);
+    /*
+     * Fast path for the most common case (BitBlt SRCCOPY).
+     * Some display drivers perform very poorly in DrvBitBlt for SRCCOPY while
+     * providing a much cheaper DrvCopyBits implementation.
+     */
+    if (UsesSource && (psurfMask == NULL) && (rop4 == ROP4_SRCCOPY))
+    {
+        Status = EngCopyBits(&BitmapDest->SurfObj,
+                             &BitmapSrc->SurfObj,
+                             (CLIPOBJ *)&DCDest->co,
+                             XlateObj,
+                             &DestRect,
+                             &SourcePoint);
+    }
+    else
+    {
+        /* Perform the bitblt operation */
+        Status = IntEngBitBlt(&BitmapDest->SurfObj,
+                              BitmapSrc ? &BitmapSrc->SurfObj : NULL,
+                              psurfMask ? &psurfMask->SurfObj : NULL,
+                              (CLIPOBJ *)&DCDest->co,
+                              XlateObj,
+                              &DestRect,
+                              &SourcePoint,
+                              &MaskPoint,
+                              &DCDest->eboFill.BrushObject,
+                              &DCDest->dclevel.pbrFill->ptOrigin,
+                              rop4);
+    }
 
     if (UsesSource)
         EXLATEOBJ_vCleanup(&exlo);

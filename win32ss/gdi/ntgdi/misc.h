@@ -18,6 +18,14 @@ extern BOOL APIENTRY IntEngEnter(PINTENG_ENTER_LEAVE EnterLeave,
                                 POINTL *Translate,
                                 SURFOBJ **OutputObj);
 
+extern BOOL APIENTRY IntEngEnterEx(PINTENG_ENTER_LEAVE EnterLeave,
+                                  SURFOBJ *DestObj,
+                                  RECTL *DestRect,
+                                  BOOL ReadOnly,
+                                  BOOL CopyDest,
+                                  POINTL *Translate,
+                                  SURFOBJ **OutputObj);
+
 extern BOOL APIENTRY IntEngLeave(PINTENG_ENTER_LEAVE EnterLeave);
 
 extern HGDIOBJ StockObjects[];
