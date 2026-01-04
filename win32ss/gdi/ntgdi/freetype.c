@@ -6973,7 +6973,7 @@ IntExtTextOutW(
      */
 
     PDC_ATTR pdcattr;
-    SURFOBJ *psoDest, *psoGlyph;
+    SURFOBJ *psoDest;
     SURFACE *psurf;
     INT glyph_index, i;
     FT_Face face;
@@ -6981,7 +6981,6 @@ IntExtTextOutW(
     LONGLONG X64, Y64, RealXStart64, RealYStart64, DeltaX64, DeltaY64;
     ULONG previous;
     RECTL DestRect, MaskRect;
-    HBITMAP hbmGlyph;
     SIZEL glyphSize;
     FONTOBJ *FontObj;
     PFONTGDI FontGDI;
@@ -6999,6 +6998,11 @@ IntExtTextOutW(
     const DWORD del = 0x7f, nbsp = 0xa0; // DEL is ASCII DELETE and nbsp is a non-breaking space
     FONTLINK_CHAIN Chain;
     SIZE spaceWidth;
+
+    HBITMAP hbmGlyphMask = NULL;
+    SURFOBJ *psoGlyphMask = NULL;
+    SIZEL sizlGlyphMask = {0, 0};
+    LONG lDeltaGlyphMask = 0;
 
     /* Check if String is valid */
     if (Count > 0xFFFF || (Count > 0 && String == NULL))
@@ -7293,27 +7297,66 @@ IntExtTextOutW(
         if ((glyphSize.cx != 0) && (glyphSize.cy != 0))
         {
             /*
-             * We should create the bitmap out of the loop at the biggest possible
-             * glyph size. Then use memset with 0 to clear it and sourcerect to
-             * limit the work of the transbitblt.
+             * EngMaskBitBlt/IntEngEnter assumes SURFOBJ is embedded in a SURFACE.
+             * Create a real 8bpp surface and reuse it across glyphs in this call,
+             * copying the FreeType bitmap into it each iteration.
              */
-            hbmGlyph = EngCreateBitmap(glyphSize, realglyph->bitmap.pitch,
-                                       BMF_8BPP, BMF_TOPDOWN,
-                                       realglyph->bitmap.buffer);
-            if (!hbmGlyph)
+            if (hbmGlyphMask == NULL ||
+                sizlGlyphMask.cx < glyphSize.cx ||
+                sizlGlyphMask.cy < glyphSize.cy ||
+                lDeltaGlyphMask < realglyph->bitmap.pitch)
             {
-                DPRINT1("WARNING: EngCreateBitmap() failed!\n");
-                bResult = FALSE;
-                break;
+                if (psoGlyphMask)
+                {
+                    EngUnlockSurface(psoGlyphMask);
+                    psoGlyphMask = NULL;
+                }
+                if (hbmGlyphMask)
+                {
+                    EngDeleteSurface((HSURF)hbmGlyphMask);
+                    hbmGlyphMask = NULL;
+                }
+
+                sizlGlyphMask = glyphSize;
+                lDeltaGlyphMask = max(realglyph->bitmap.pitch, (LONG)glyphSize.cx);
+                hbmGlyphMask = EngCreateBitmap(sizlGlyphMask,
+                                               lDeltaGlyphMask,
+                                               BMF_8BPP,
+                                               BMF_TOPDOWN,
+                                               NULL);
+                if (!hbmGlyphMask)
+                {
+                    DPRINT1("WARNING: EngCreateBitmap() for glyph mask failed!\n");
+                    bResult = FALSE;
+                    break;
+                }
+                psoGlyphMask = EngLockSurface((HSURF)hbmGlyphMask);
+                if (!psoGlyphMask)
+                {
+                    EngDeleteSurface((HSURF)hbmGlyphMask);
+                    hbmGlyphMask = NULL;
+                    DPRINT1("WARNING: EngLockSurface() for glyph mask failed!\n");
+                    bResult = FALSE;
+                    break;
+                }
             }
 
-            psoGlyph = EngLockSurface((HSURF)hbmGlyph);
-            if (!psoGlyph)
+            /* Copy the glyph's grayscale bitmap into the reusable mask surface */
+            if (psoGlyphMask && psoGlyphMask->pvScan0 && realglyph->bitmap.buffer)
             {
-                EngDeleteSurface((HSURF)hbmGlyph);
-                DPRINT1("WARNING: EngLockSurface() failed!\n");
-                bResult = FALSE;
-                break;
+                BYTE *dstRow = (BYTE *)psoGlyphMask->pvScan0;
+                const BYTE *srcRow = (const BYTE *)realglyph->bitmap.buffer;
+                LONG dstDelta = psoGlyphMask->lDelta;
+                LONG srcDelta = realglyph->bitmap.pitch;
+                LONG rowBytes = glyphSize.cx;
+                INT row;
+
+                for (row = 0; row < glyphSize.cy; ++row)
+                {
+                    RtlCopyMemory(dstRow, srcRow, rowBytes);
+                    dstRow += dstDelta;
+                    srcRow += srcDelta;
+                }
             }
 
             /*
@@ -7338,7 +7381,7 @@ IntExtTextOutW(
             }
 
             if (!IntEngMaskBlt(psoDest,
-                               psoGlyph,
+                               psoGlyphMask,
                                (CLIPOBJ *)&dc->co,
                                &exloRGB2Dst.xlo,
                                &exloDst2RGB.xlo,
@@ -7349,9 +7392,6 @@ IntExtTextOutW(
             {
                 DPRINT1("Failed to MaskBlt a glyph!\n");
             }
-
-            EngUnlockSurface(psoGlyph);
-            EngDeleteSurface((HSURF)hbmGlyph);
         }
 
         if (DoBreak)
@@ -7490,6 +7530,17 @@ IntExtTextOutW(
     EXLATEOBJ_vCleanup(&exloDst2RGB);
 
 Cleanup:
+    if (psoGlyphMask)
+    {
+        EngUnlockSurface(psoGlyphMask);
+        psoGlyphMask = NULL;
+    }
+    if (hbmGlyphMask)
+    {
+        EngDeleteSurface((HSURF)hbmGlyphMask);
+        hbmGlyphMask = NULL;
+    }
+
     DC_vFinishBlit(dc, NULL);
 
     if (TextObj != NULL)

@@ -67,8 +67,18 @@ EBRUSHOBJ_vInit(EBRUSHOBJ *pebo,
     pebo->psoMask = NULL;
 
     /* Initialize 1 bpp fore and back colors */
-    pebo->crCurrentBack = crBackgroundClr;
-    pebo->crCurrentText = crForegroundClr;
+ /*
+     * COLORREF uses only 24 bits (0x00BBGGRR).
+     *
+     * Note that 0xFFFFFFFF is CLR_INVALID in GDI, but we have also observed
+     * some code paths feeding in ARGB values (e.g. 0xFFFFFFFF for opaque white).
+     * We normalize to sane 24-bit defaults if we get CLR_INVALID, and otherwise
+     * mask away any high byte to avoid sentinel collisions in drivers/ENG.
+     */
+    pebo->crCurrentBack = (crBackgroundClr == CLR_INVALID) ?
+                          0x00FFFFFF : (crBackgroundClr & 0x00FFFFFF);
+    pebo->crCurrentText = (crForegroundClr == CLR_INVALID) ?
+                          0x00000000 : (crForegroundClr & 0x00FFFFFF);
 
     pebo->psurfTrg = psurf;
     /* We are initializing for a new memory DC */
@@ -103,7 +113,7 @@ EBRUSHOBJ_vInit(EBRUSHOBJ *pebo,
 
         /* Use foreground color of hatch brushes */
         if (pbrush->flAttrs & BR_IS_HATCH)
-            pebo->crCurrentText = pbrush->BrushAttr.lbColor;
+            pebo->crCurrentText = pbrush->BrushAttr.lbColor & 0x00FFFFFF;
     }
 }
 
@@ -142,6 +152,21 @@ EBRUSHOBJ_vSetSolidRGBColor(EBRUSHOBJ *pebo, COLORREF crColor)
 
     /* Translate the brush color to the target format */
     iSolidColor = XLATEOBJ_iXlate(&exlo.xlo, crColor);
+    
+    /*
+     * 0xFFFFFFFF is a documented sentinel value meaning "not a solid brush".
+     * On 32bpp targets a real white pixel can otherwise become 0xFFFFFFFF
+     * depending on translation/format assumptions. Avoid colliding with the
+     * sentinel by clearing the high byte for 32bpp targets.
+     */
+
+
+    if ((iSolidColor == 0xFFFFFFFF) &&
+        (pebo->psurfTrg) &&
+        (pebo->psurfTrg->SurfObj.iBitmapFormat == BMF_32BPP))
+    {
+        iSolidColor = 0x00FFFFFF;
+    }
     pebo->BrushObject.iSolidColor = iSolidColor;
 
     /* Clean up the XLATEOBJ */

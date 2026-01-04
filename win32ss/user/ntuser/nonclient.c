@@ -416,7 +416,7 @@ DefWndDoSizeMove(PWND pwnd, WORD wParam)
       if (msg.message == WM_MOUSEMOVE)
       {
          MSG msgMove;
-         while (co_IntGetPeekMessage(&msgMove, 0, WM_MOUSEMOVE, WM_MOUSEMOVE, PM_REMOVE, TRUE))
+         while (co_IntGetPeekMessage(&msgMove, 0, WM_MOUSEMOVE, WM_MOUSEMOVE, PM_REMOVE, FALSE))
          {
             msg = msgMove;
          }
