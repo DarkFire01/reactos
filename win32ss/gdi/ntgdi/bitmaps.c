@@ -304,11 +304,14 @@ IntCreateCompatibleBitmap(
         psurf = SURFACE_ShareLockSurface(Bmp);
         ASSERT(psurf);
 
-        /* Dereference old palette and set new palette */
-        ppal = PALETTE_ShareLockPalette(Dc->ppdev->devinfo.hpalDefault);
-        ASSERT(ppal);
-        SURFACE_vSetPalette(psurf, ppal);
-        PALETTE_ShareUnlockPalette(ppal);
+        /* Only palettized formats need the device default palette */
+        if (BitsPerFormat(psurf->SurfObj.iBitmapFormat) <= 8)
+        {
+            ppal = PALETTE_ShareLockPalette(Dc->ppdev->devinfo.hpalDefault);
+            ASSERT(ppal);
+            SURFACE_vSetPalette(psurf, ppal);
+            PALETTE_ShareUnlockPalette(ppal);
+        }
 
         /* Set flags */
         psurf->flags = API_BITMAP;
@@ -341,8 +344,11 @@ IntCreateCompatibleBitmap(
             psurfBmp = SURFACE_ShareLockSurface(Bmp);
             ASSERT(psurfBmp);
 
-            /* Dereference old palette and set new palette */
-            SURFACE_vSetPalette(psurfBmp, psurf->ppal);
+            /* Only palettized formats need palette propagation */
+            if (BitsPerFormat(psurfBmp->SurfObj.iBitmapFormat) <= 8)
+            {
+                SURFACE_vSetPalette(psurfBmp, psurf->ppal);
+            }
 
             /* Set flags */
             psurfBmp->flags = API_BITMAP;

@@ -19,6 +19,7 @@ VIS_ComputeVisibleRegion(
    PREGION VisRgn, ClipRgn;
    PWND PreviousWindow, CurrentWindow, CurrentSibling;
    RECTL VisBox, Tmp;
+   INT iRgnType;
 
    if (!Wnd || !(Wnd->style & WS_VISIBLE))
    {
@@ -40,8 +41,7 @@ VIS_ComputeVisibleRegion(
       return NULL;
 
    /* Track a cheap bounding box to avoid unnecessary region allocations */
-   if (REGION_GetRgnBox(VisRgn, &VisBox) == NULLREGION)
-      goto Done;
+   VisBox = ClientArea ? Wnd->rcClient : Wnd->rcWindow;
 
    /*
     * Walk through all parent windows and for each clip the visble region
@@ -69,11 +69,16 @@ VIS_ComputeVisibleRegion(
       }
 
       ClipRgn = IntSysCreateRectpRgnIndirect(&CurrentWindow->rcClient);
-      IntGdiCombineRgn(VisRgn, VisRgn, ClipRgn, RGN_AND);
+      iRgnType = IntGdiCombineRgn(VisRgn, VisRgn, ClipRgn, RGN_AND);
       REGION_Delete(ClipRgn);
 
-      if (REGION_GetRgnBox(VisRgn, &VisBox) == NULLREGION)
+      if (iRgnType == NULLREGION)
          goto Done;
+
+      /* Keep VisBox clipped by parents using cheap rect math */
+      if (!RECTL_bIntersectRect(&Tmp, &VisBox, &CurrentWindow->rcClient))
+         goto Done;
+      VisBox = Tmp;
 
       if ((PreviousWindow->style & WS_CLIPSIBLINGS) ||
           (PreviousWindow == Wnd && ClipSiblings))
@@ -105,10 +110,10 @@ VIS_ComputeVisibleRegion(
                       REGION_UnlockRgn(SiblingClipRgn);
                   }
                }
-               IntGdiCombineRgn(VisRgn, VisRgn, ClipRgn, RGN_DIFF);
+               iRgnType = IntGdiCombineRgn(VisRgn, VisRgn, ClipRgn, RGN_DIFF);
                REGION_Delete(ClipRgn);
 
-               if (REGION_GetRgnBox(VisRgn, &VisBox) == NULLREGION)
+               if (iRgnType == NULLREGION)
                   goto Done;
             }
             CurrentSibling = CurrentSibling->spwndNext;
@@ -147,10 +152,10 @@ VIS_ComputeVisibleRegion(
                    REGION_UnlockRgn(CurrentRgnClip);
                }
             }
-            IntGdiCombineRgn(VisRgn, VisRgn, ClipRgn, RGN_DIFF);
+            iRgnType = IntGdiCombineRgn(VisRgn, VisRgn, ClipRgn, RGN_DIFF);
             REGION_Delete(ClipRgn);
 
-            if (REGION_GetRgnBox(VisRgn, &VisBox) == NULLREGION)
+            if (iRgnType == NULLREGION)
                goto Done;
          }
          CurrentWindow = CurrentWindow->spwndNext;

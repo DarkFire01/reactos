@@ -410,6 +410,18 @@ DefWndDoSizeMove(PWND pwnd, WORD wParam)
       if (!co_IntGetPeekMessage(&msg, 0, 0, 0, PM_REMOVE, TRUE)) break;
       if (IntCallMsgFilter( &msg, MSGF_SIZE )) continue;
 
+      /* Coalesce WM_MOUSEMOVE messages: when dragging, mouse move can flood the queue.
+       * Processing only the latest move avoids redundant SetWindowPos/UpdateThreadWindows work.
+       */
+      if (msg.message == WM_MOUSEMOVE)
+      {
+         MSG msgMove;
+         while (co_IntGetPeekMessage(&msgMove, 0, WM_MOUSEMOVE, WM_MOUSEMOVE, PM_REMOVE, TRUE))
+         {
+            msg = msgMove;
+         }
+      }
+
       if (msg.message == WM_KEYDOWN && (msg.wParam == VK_RETURN || msg.wParam == VK_ESCAPE))
          break; // Exit on Return or Esc
 
