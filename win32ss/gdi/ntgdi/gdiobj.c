@@ -485,6 +485,9 @@ static
 PENTRY
 ENTRY_pentPopFreeEntry(VOID)
 {
+    if (KeNumberProcessors <= 1)
+        return ENTRY_pentPopFreeEntryGlobal();
+
     ULONG cpu = ENTRY_ulGetFreeListProcessorIndex();
     PENTRY pentFree = ENTRY_pentPopFreeEntryLocal(cpu);
     if (pentFree)
@@ -549,6 +552,12 @@ ENTRY_vPushFreeEntry(PENTRY pentFree)
     /* Increase reuse counter in entry and reference counter */
     InterlockedExchangeAdd((LONG*)&gpaulRefCount[idxToFree], REF_INC_REUSE);
     pentFree->FullUnique += 0x0100;
+
+    if (KeNumberProcessors <= 1)
+    {
+        ENTRY_vPushFreeEntryToList(&gulFirstFree, pentFree);
+        return;
+    }
 
     /* Push to per-CPU cache first */
     cpu = ENTRY_ulGetFreeListProcessorIndex();

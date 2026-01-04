@@ -2316,12 +2316,12 @@ co_WinPosSetWindowPos(
       CopyRgn = NULL;
    }
 
-   if(!(flags & SWP_DEFERERASE))
+      if(!(flags & SWP_DEFERERASE))
    {
        /* erase parent when hiding or resizing child */
-       if ((flags & SWP_HIDEWINDOW) ||
-         (!(flags & SWP_SHOWWINDOW) &&
-          (WinPos.flags & SWP_AGG_STATUSFLAGS) != SWP_AGG_NOGEOMETRYCHANGE))
+         if ((flags & SWP_HIDEWINDOW) ||
+          (!(flags & SWP_SHOWWINDOW) &&
+           (WinPos.flags & SWP_AGG_STATUSFLAGS) != SWP_AGG_NOGEOMETRYCHANGE))
        {
            PWND Parent = Window->spwndParent;
            if (!Parent || UserIsDesktopWindow(Parent)) Parent = Window;
@@ -2329,8 +2329,8 @@ co_WinPosSetWindowPos(
        }
 
        /* Give newly shown windows a chance to redraw */
-       if(((WinPos.flags & SWP_AGG_STATUSFLAGS) != SWP_AGG_NOPOSCHANGE)
-                && !(flags & SWP_AGG_NOCLIENTCHANGE) && (flags & SWP_SHOWWINDOW))
+         if(((WinPos.flags & SWP_AGG_STATUSFLAGS) != SWP_AGG_NOPOSCHANGE)
+               && !(flags & SWP_AGG_NOCLIENTCHANGE) && (flags & SWP_SHOWWINDOW))
        {
            UserSyncAndPaintWindows( Window, RDW_ERASENOW);
        }
