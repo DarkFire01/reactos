@@ -10,7 +10,7 @@
 
 #include <win32k.h>
 
-// #define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 /************************************************************************/
@@ -24,7 +24,7 @@ NtGdiDdDestroySurface(HANDLE hSurface, BOOL bRealDestroy)
 
     if (pfnDdDestroySurface == NULL)
     {
-        DPRINT1("Warning: no pfnDdDestroySurface\n");
+        DPRINT("Warning: no pfnDdDestroySurface\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -47,7 +47,7 @@ NtGdiDdFlip(HANDLE hSurfaceCurrent,
 
     if (pfnDdDdFlip == NULL)
     {
-        DPRINT1("Warning: no pfnDdDdFlip\n");
+        DPRINT("Warning: no pfnDdDdFlip\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -68,7 +68,7 @@ NtGdiDdLock(HANDLE hSurface,
 
     if (pfnDdLock == NULL)
     {
-        DPRINT1("Warning: no pfnDdLock\n");
+        DPRINT("Warning: no pfnDdLock\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -88,7 +88,7 @@ NtGdiDdUnlock(HANDLE hSurface,
 
     if (pfnDdUnlock == NULL)
     {
-        DPRINT1("Warning: no pfnDdUnlock\n");
+        DPRINT("Warning: no pfnDdUnlock\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -109,7 +109,7 @@ NtGdiDdBlt(HANDLE hSurfaceDest,
 
     if (pfnDdBlt == NULL)
     {
-        DPRINT1("Warning: no pfnDdBlt\n");
+        DPRINT("Warning: no pfnDdBlt\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -129,7 +129,7 @@ NtGdiDdSetColorKey(HANDLE hSurface,
 
     if (pfnDdSetColorKey == NULL)
     {
-        DPRINT1("Warning: no pfnDdSetColorKey\n");
+        DPRINT("Warning: no pfnDdSetColorKey\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -150,7 +150,7 @@ NtGdiDdAddAttachedSurface(HANDLE hSurface,
 
     if (pfnDdAddAttachedSurface == NULL)
     {
-        DPRINT1("Warning: no pfnDdAddAttachedSurface\n");
+        DPRINT("Warning: no pfnDdAddAttachedSurface\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -170,7 +170,7 @@ NtGdiDdGetBltStatus(HANDLE hSurface,
 
     if (pfnDdGetBltStatus == NULL)
     {
-        DPRINT1("Warning: no pfnDdGetBltStatus\n");
+        DPRINT("Warning: no pfnDdGetBltStatus\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -190,7 +190,7 @@ NtGdiDdGetFlipStatus(HANDLE hSurface,
 
     if (pfnDdGetFlipStatus == NULL)
     {
-        DPRINT1("Warning: no pfnDdGetFlipStatus\n");
+        DPRINT("Warning: no pfnDdGetFlipStatus\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -211,7 +211,7 @@ NtGdiDdUpdateOverlay(HANDLE hSurfaceDestination,
 
     if (pfnDdUpdateOverlay == NULL)
     {
-        DPRINT1("Warning: no pfnDdUpdateOverlay\n");
+        DPRINT("Warning: no pfnDdUpdateOverlay\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -232,7 +232,7 @@ NtGdiDdSetOverlayPosition(HANDLE hSurfaceSource,
 
     if (pfnDdSetOverlayPosition == NULL)
     {
-        DPRINT1("Warning: no pfnDdSetOverlayPosition\n");
+        DPRINT("Warning: no pfnDdSetOverlayPosition\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -259,7 +259,7 @@ NtGdiDdAlphaBlt(HANDLE hSurfaceDest,
 
     if (pfnDdAlphaBlt == NULL)
     {
-        DPRINT1("Warning: no pfnDdAlphaBlt\n");
+        DPRINT("Warning: no pfnDdAlphaBlt\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -280,7 +280,7 @@ NtGdiDdAttachSurface(HANDLE hSurfaceFrom,
 
     if (pfnDdAttachSurface == NULL)
     {
-        DPRINT1("Warning: no pfnDdAttachSurface\n");
+        DPRINT("Warning: no pfnDdAttachSurface\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -303,7 +303,7 @@ NtGdiDdUnattachSurface(HANDLE hSurface,
     PGD_DXDDUNATTACHSURFACE pfnDdUnattachSurface = (PGD_DXDDUNATTACHSURFACE)gpDxFuncs[DXG_INDEX_DxDdUnattachSurface].pfn;
     if (pfnDdUnattachSurface == NULL)
     {
-        DPRINT1("Warning: no pfnDdUnattachSurface\n");
+        DPRINT("Warning: no pfnDdUnattachSurface\n");
         //return DDHAL_DRIVER_NOTHANDLED;
         return STATUS_NOT_IMPLEMENTED;
     }

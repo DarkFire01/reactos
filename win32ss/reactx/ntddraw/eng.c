@@ -10,7 +10,7 @@
 
 #include <win32k.h>
 
-// #define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 /************************************************************************/
@@ -28,7 +28,7 @@ HeapVidMemAllocAligned(LPVIDMEM lpVidMem,
 
     if (pfnHeapVidMemAllocAligned == NULL)
     {
-        DPRINT1("Warning: no pfnHeapVidMemAllocAligned\n");
+        DPRINT("Warning: no pfnHeapVidMemAllocAligned\n");
         return 0;
     }
 
@@ -48,7 +48,7 @@ VidMemFree(LPVMEMHEAP pvmh,
 
     if (pfnVidMemFree == NULL)
     {
-        DPRINT1("Warning: no pfnVidMemFree\n");
+        DPRINT("Warning: no pfnVidMemFree\n");
     }
     else
     {
@@ -75,7 +75,7 @@ EngAllocPrivateUserMem(
 
     if (pfnEngAllocPrivateUserMem == NULL)
     {
-        DPRINT1("Warning: no pfnEngAllocPrivateUserMem\n");
+        DPRINT("Warning: no pfnEngAllocPrivateUserMem\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -95,7 +95,7 @@ EngFreePrivateUserMem(PDD_SURFACE_LOCAL  psl,
 
     if (pfnEngFreePrivateUserMem == NULL)
     {
-        DPRINT1("Warning: no pfnEngFreePrivateUserMem\n");
+        DPRINT("Warning: no pfnEngFreePrivateUserMem\n");
     }
     else
     {

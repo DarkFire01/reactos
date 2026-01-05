@@ -10,7 +10,7 @@
 
 #include <win32k.h>
 
-// #define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 PGD_DXDDSTARTUPDXGRAPHICS gpfnStartupDxGraphics = NULL;
@@ -54,12 +54,12 @@ DxDdStartupDxGraphics(  ULONG ulc1,
 
     /* Loading the kernel interface of DirectX for win32k */
 
-    DPRINT1("Warning: trying loading xp/2003/windows7/reactos dxg.sys\n");
+    DPRINT("Warning: trying loading xp/2003/windows7/reactos dxg.sys\n");
     ghDxGraphics = EngLoadImage(L"\\SystemRoot\\System32\\drivers\\dxg.sys");
     if ( ghDxGraphics == NULL)
     {
         Status = STATUS_DLL_NOT_FOUND;
-        DPRINT1("Warning: no ReactX or DirectX kernel driver found\n");
+        DPRINT("Warning: no ReactX or DirectX kernel driver found\n");
     }
     else
     {
@@ -93,7 +93,7 @@ DxDdStartupDxGraphics(  ULONG ulc1,
                 EngUnloadImage( ghDxGraphics);
                 ghDxGraphics = NULL;
             }
-            DPRINT1("Warning: DirectX graphics interface can not be initialized\n");
+            DPRINT("Warning: DirectX graphics interface can not be initialized\n");
         }
         else
         {
@@ -132,7 +132,7 @@ NtGdiDdCreateDirectDrawObject(HDC hdc)
 
     if (hdc == NULL)
     {
-        DPRINT1("Warning: hdc is NULL\n");
+        DPRINT("Warning: hdc is NULL\n");
         return 0;
     }
 
@@ -141,7 +141,7 @@ NtGdiDdCreateDirectDrawObject(HDC hdc)
 
     if (pfnDdCreateDirectDrawObject == NULL)
     {
-        DPRINT1("Warning: no pfnDdCreateDirectDrawObject\n");
+        DPRINT("Warning: no pfnDdCreateDirectDrawObject\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -196,7 +196,7 @@ NtGdiDxgGenericThunk(ULONG_PTR ulIndex,
 
     if (pfnDxgGenericThunk == NULL)
     {
-        DPRINT1("Warning: no pfnDxgGenericThunk\n");
+        DPRINT("Warning: no pfnDxgGenericThunk\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -215,7 +215,7 @@ NtGdiDdGetDriverState(PDD_GETDRIVERSTATEDATA pdata)
 
     if (pfnDdGetDriverState == NULL)
     {
-        DPRINT1("Warning: no pfnDdGetDriverState\n");
+        DPRINT("Warning: no pfnDdGetDriverState\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -235,7 +235,7 @@ NtGdiDdColorControl(HANDLE hSurface,
 
     if (pfnDdColorControl == NULL)
     {
-        DPRINT1("Warning: no pfnDdColorControl\n");
+        DPRINT("Warning: no pfnDdColorControl\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -260,7 +260,7 @@ NtGdiDdCreateSurfaceObject(HANDLE hDirectDrawLocal,
 
     if (pfnDdCreateSurfaceObject == NULL)
     {
-        DPRINT1("Warning: no pfnDdCreateSurfaceObject\n");
+        DPRINT("Warning: no pfnDdCreateSurfaceObject\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -279,13 +279,13 @@ NtGdiDdDeleteDirectDrawObject(HANDLE hDirectDrawLocal)
 
     if (pfnDdDeleteDirectDrawObject == NULL)
     {
-        DPRINT1("Warning: no pfnDdDeleteDirectDrawObject\n");
+        DPRINT("Warning: no pfnDdDeleteDirectDrawObject\n");
         return FALSE;
     }
 
     if (hDirectDrawLocal == NULL)
     {
-         DPRINT1("Warning: hDirectDrawLocal is NULL\n");
+         DPRINT("Warning: hDirectDrawLocal is NULL\n");
          return FALSE;
     }
 
@@ -304,7 +304,7 @@ NtGdiDdDeleteSurfaceObject(HANDLE hSurface)
 
     if (pfnDdDeleteSurfaceObject == NULL)
     {
-        DPRINT1("Warning: no pfnDdDeleteSurfaceObject\n");
+        DPRINT("Warning: no pfnDdDeleteSurfaceObject\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
     /* Try and see if the handle is valid */
@@ -334,7 +334,7 @@ NtGdiDdQueryDirectDrawObject(HANDLE hDirectDrawLocal,
 
     if (pfnDdQueryDirectDrawObject == NULL)
     {
-        DPRINT1("Warning: no pfnDdQueryDirectDrawObject\n");
+        DPRINT("Warning: no pfnDdQueryDirectDrawObject\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -358,14 +358,14 @@ NtGdiDdReenableDirectDrawObject(HANDLE hDirectDrawLocal,
 
     if (pfnDdReenableDirectDrawObject == NULL)
     {
-        DPRINT1("Warning: no pfnDdReenableDirectDrawObject\n");
+        DPRINT("Warning: no pfnDdReenableDirectDrawObject\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
     DPRINT("Calling dxg.sys pfnDdReenableDirectDrawObject\n");
 #if DXDBG
     status = pfnDdReenableDirectDrawObject(hDirectDrawLocal, pubNewMode);
-    DPRINT1("end Calling dxg.sys pfnDdReenableDirectDrawObject, status: 0x%08x\n", status);
+    DPRINT("end Calling dxg.sys pfnDdReenableDirectDrawObject, status: 0x%08x\n", status);
     return status;
 #else
     return pfnDdReenableDirectDrawObject(hDirectDrawLocal, pubNewMode);
@@ -385,7 +385,7 @@ NtGdiDdGetDriverInfo(HANDLE hDirectDrawLocal,
 
     if (pfnDdGetDriverInfo == NULL)
     {
-        DPRINT1("Warning: no pfnDdGetDriverInfo\n");
+        DPRINT("Warning: no pfnDdGetDriverInfo\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -405,7 +405,7 @@ NtGdiDdGetAvailDriverMemory(HANDLE hDirectDrawLocal,
 
     if (pfnDdGetAvailDriverMemory == NULL)
     {
-        DPRINT1("Warning: no pfnDdGetAvailDriverMemory\n");
+        DPRINT("Warning: no pfnDdGetAvailDriverMemory\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -426,7 +426,7 @@ NtGdiDdSetExclusiveMode(HANDLE hDirectDraw,
 
     if (pfnDdSetExclusiveMode == NULL)
     {
-        DPRINT1("Warning: no pfnDdSetExclusiveMode\n");
+        DPRINT("Warning: no pfnDdSetExclusiveMode\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -446,7 +446,7 @@ NtGdiDdFlipToGDISurface(HANDLE hDirectDraw,
 
     if (pfnDdFlipToGDISurface == NULL)
     {
-        DPRINT1("Warning: no pfnDdFlipToGDISurface\n");
+        DPRINT("Warning: no pfnDdFlipToGDISurface\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -466,7 +466,7 @@ NtGdiDdGetDC(HANDLE hSurface,
 
     if (pfnDdGetDC == NULL)
     {
-        DPRINT1("Warning: no pfnDdGetDC\n");
+        DPRINT("Warning: no pfnDdGetDC\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -487,7 +487,7 @@ NtGdiDdGetDxHandle(HANDLE hDirectDraw,
 
     if (pfnDdGetDxHandle == NULL)
     {
-        DPRINT1("Warning: no pfnDdGetDxHandle\n");
+        DPRINT("Warning: no pfnDdGetDxHandle\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -506,7 +506,7 @@ NtGdiDdReleaseDC(HANDLE hSurface)
 
     if (pfnDdReleaseDC == NULL)
     {
-        DPRINT1("Warning: no pfnDdReleaseDC\n");
+        DPRINT("Warning: no pfnDdReleaseDC\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -527,7 +527,7 @@ NtGdiDdResetVisrgn(HANDLE hSurface,
 
     if (pfnDdResetVisrgn == NULL)
     {
-        DPRINT1("Warning: no pfnDdResetVisrgn\n");
+        DPRINT("Warning: no pfnDdResetVisrgn\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -548,7 +548,7 @@ NtGdiDdSetGammaRamp(HANDLE hDirectDraw,
 
     if (pfnDdSetGammaRamp == NULL)
     {
-        DPRINT1("Warning: no pfnDdSetGammaRamp\n");
+        DPRINT("Warning: no pfnDdSetGammaRamp\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 

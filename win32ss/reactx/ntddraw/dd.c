@@ -10,7 +10,7 @@
 
 #include <win32k.h>
 
-// #define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 /************************************************************************/
@@ -31,7 +31,7 @@ NtGdiDdCreateSurface(HANDLE hDirectDrawLocal,
 
     if (pfnDdCreateSurface == NULL)
     {
-        DPRINT1("Warning: no pfnDdCreateSurface\n");
+        DPRINT("Warning: no pfnDdCreateSurface\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -52,7 +52,7 @@ NtGdiDdWaitForVerticalBlank(HANDLE hDirectDraw,
 
     if (pfnDdWaitForVerticalBlank == NULL)
     {
-        DPRINT1("Warning: no pfnDdWaitForVerticalBlank\n");
+        DPRINT("Warning: no pfnDdWaitForVerticalBlank\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -72,7 +72,7 @@ NtGdiDdCanCreateSurface(HANDLE hDirectDrawLocal,
 
     if (pfnDdCanCreateSurface == NULL)
     {
-        DPRINT1("Warning: no pfnDdCanCreateSurface\n");
+        DPRINT("Warning: no pfnDdCanCreateSurface\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -93,7 +93,7 @@ NtGdiDdGetScanLine(HANDLE hDirectDrawLocal,
 
     if (pfnDdGetScanLine == NULL)
     {
-        DPRINT1("Warning: no pfnDdGetScanLine\n");
+        DPRINT("Warning: no pfnDdGetScanLine\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -121,7 +121,7 @@ NtGdiDdCreateSurfaceEx(HANDLE hDirectDraw,
 
     if (pfnDdCreateSurfaceEx == NULL)
     {
-        DPRINT1("Warning: no pfnDdCreateSurfaceEx\n");
+        DPRINT("Warning: no pfnDdCreateSurfaceEx\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 

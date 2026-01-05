@@ -11,7 +11,28 @@
  */
 
 #include <win32k.h>
+#include <debug.h>
 DBG_DEFAULT_CHANNEL(UserCallback);
+
+typedef struct _CO_WPCHG_CALLBACK_STATS
+{
+   ULONG Calls;
+   ULONG StackCalls;
+   ULONG HeapCalls;
+   ULONGLONG CopyInTicks;
+   ULONGLONG LeaveCoTicks;
+   ULONGLONG CallbackTicks;
+   ULONGLONG CopyResultTicks;
+   ULONGLONG EnterCoTicks;
+   ULONGLONG WriteBackTicks;
+   ULONGLONG TotalTicks;
+   ULONGLONG MaxTotalTicks;
+   ULONGLONG MaxCallbackTicks;
+   ULONGLONG MaxEnterCoTicks;
+} CO_WPCHG_CALLBACK_STATS;
+
+static CO_WPCHG_CALLBACK_STATS g_CoWpChgCbStats;
+static LARGE_INTEGER g_CoWpChgCbFreq;
 
 
 /* CALLBACK MEMORY MANAGEMENT ************************************************/
@@ -288,6 +309,11 @@ co_IntCallWindowProc(WNDPROC Proc,
                      INT lParamBufferSize)
 {
    WINDOWPROC_CALLBACK_ARGUMENTS StackArguments = { 0 };
+   struct
+   {
+      WINDOWPROC_CALLBACK_ARGUMENTS Args;
+      UCHAR ParamBuffer[128];
+   } StackArgumentsWithParam = { 0 };
    PWINDOWPROC_CALLBACK_ARGUMENTS Arguments;
    NTSTATUS Status;
    PVOID ResultPointer, pActCtx;
@@ -295,6 +321,11 @@ co_IntCallWindowProc(WNDPROC Proc,
    ULONG ResultLength;
    ULONG ArgumentLength;
    LRESULT Result;
+   BOOL FreeArguments = FALSE;
+      BOOL TrackWpChg = (Message == WM_WINDOWPOSCHANGING);
+      LARGE_INTEGER QpcStart = { 0 }, QpcAfterCopyIn = { 0 }, QpcAfterLeaveCo = { 0 };
+      LARGE_INTEGER QpcAfterCallback = { 0 }, QpcAfterCopyResult = { 0 }, QpcAfterEnterCo = { 0 };
+      LARGE_INTEGER QpcAfterWriteBack = { 0 };
 
    TRACE("co_IntCallWindowProc(Proc %p, IsAnsiProc: %s, Wnd %p, Message %u, wParam %Iu, lParam %Id, lParamBufferSize %d)\n",
        Proc, IsAnsiProc ? "TRUE" : "FALSE", Wnd, Message, wParam, lParam, lParamBufferSize);
@@ -302,17 +333,44 @@ co_IntCallWindowProc(WNDPROC Proc,
    /* Do not allow the desktop thread to do callback to user mode */
    ASSERT(PsGetCurrentThreadWin32Thread() != gptiDesktopThread);
 
+   if (TrackWpChg)
+   {
+      if (g_CoWpChgCbFreq.QuadPart == 0)
+      {
+         KeQueryPerformanceCounter(&g_CoWpChgCbFreq);
+         if (g_CoWpChgCbFreq.QuadPart == 0)
+            g_CoWpChgCbFreq.QuadPart = 1;
+      }
+      QpcStart = KeQueryPerformanceCounter(NULL);
+   }
+
    if (lParamBufferSize != -1)
    {
       ArgumentLength = sizeof(WINDOWPROC_CALLBACK_ARGUMENTS) + lParamBufferSize;
-      Arguments = IntCbAllocateMemory(ArgumentLength);
-      if (NULL == Arguments)
+
+      if ((ULONG)lParamBufferSize <= sizeof(StackArgumentsWithParam.ParamBuffer))
       {
-         ERR("Unable to allocate buffer for window proc callback\n");
-         return -1;
+         Arguments = &StackArgumentsWithParam.Args;
+         if (TrackWpChg) g_CoWpChgCbStats.StackCalls++;
       }
-      RtlMoveMemory((PVOID) ((char *) Arguments + sizeof(WINDOWPROC_CALLBACK_ARGUMENTS)),
-                    (PVOID) lParam, lParamBufferSize);
+      else
+      {
+         Arguments = IntCbAllocateMemory(ArgumentLength);
+         if (NULL == Arguments)
+         {
+            ERR("Unable to allocate buffer for window proc callback\n");
+            return -1;
+         }
+         FreeArguments = TRUE;
+         if (TrackWpChg) g_CoWpChgCbStats.HeapCalls++;
+      }
+
+      RtlMoveMemory((PVOID)((char*)Arguments + sizeof(WINDOWPROC_CALLBACK_ARGUMENTS)),
+                    (PVOID)lParam,
+                    lParamBufferSize);
+
+      if (TrackWpChg)
+         QpcAfterCopyIn = KeQueryPerformanceCounter(NULL);
    }
    else
    {
@@ -331,17 +389,31 @@ co_IntCallWindowProc(WNDPROC Proc,
 
    IntSetTebWndCallback (&Wnd, &pWnd, &pActCtx);
 
+   if (TrackWpChg)
+      QpcAfterCopyIn = QpcAfterCopyIn.QuadPart ? QpcAfterCopyIn : KeQueryPerformanceCounter(NULL);
+
    UserLeaveCo();
+
+   if (TrackWpChg)
+      QpcAfterLeaveCo = KeQueryPerformanceCounter(NULL);
 
    Status = KeUserModeCallback(USER32_CALLBACK_WINDOWPROC,
                                Arguments,
                                ArgumentLength,
                                &ResultPointer,
                                &ResultLength);
+
+   if (TrackWpChg)
+      QpcAfterCallback = KeQueryPerformanceCounter(NULL);
+
    if (!NT_SUCCESS(Status))
    {
       ERR("Error Callback to User space Status %lx Message %d\n",Status,Message);
       UserEnterCo();
+      if (FreeArguments)
+      {
+         IntCbFreeMemory(Arguments);
+      }
       return 0;
    }
 
@@ -357,14 +429,20 @@ co_IntCallWindowProc(WNDPROC Proc,
    }
    _SEH2_END;
 
+   if (TrackWpChg)
+      QpcAfterCopyResult = KeQueryPerformanceCounter(NULL);
+
    UserEnterCo();
+
+   if (TrackWpChg)
+      QpcAfterEnterCo = KeQueryPerformanceCounter(NULL);
 
    IntRestoreTebWndCallback (Wnd, pWnd, pActCtx);
 
    if (!NT_SUCCESS(Status))
    {
      ERR("Call to user mode failed! 0x%08lx\n",Status);
-      if (lParamBufferSize != -1)
+      if (FreeArguments)
       {
          IntCbFreeMemory(Arguments);
       }
@@ -418,7 +496,58 @@ co_IntCallWindowProc(WNDPROC Proc,
             }
             break;
       }
-      IntCbFreeMemory(Arguments);
+
+      if (TrackWpChg)
+         QpcAfterWriteBack = KeQueryPerformanceCounter(NULL);
+
+      if (FreeArguments)
+      {
+         IntCbFreeMemory(Arguments);
+      }
+   }
+
+   if (TrackWpChg)
+   {
+      ULONGLONG copyIn = (ULONGLONG)(QpcAfterCopyIn.QuadPart - QpcStart.QuadPart);
+      ULONGLONG leaveCo = (ULONGLONG)(QpcAfterLeaveCo.QuadPart - QpcAfterCopyIn.QuadPart);
+      ULONGLONG cb = (ULONGLONG)(QpcAfterCallback.QuadPart - QpcAfterLeaveCo.QuadPart);
+      ULONGLONG copyRes = (ULONGLONG)(QpcAfterCopyResult.QuadPart - QpcAfterCallback.QuadPart);
+      ULONGLONG enterCo = (ULONGLONG)(QpcAfterEnterCo.QuadPart - QpcAfterCopyResult.QuadPart);
+      ULONGLONG writeBack = (ULONGLONG)(QpcAfterWriteBack.QuadPart - QpcAfterEnterCo.QuadPart);
+      ULONGLONG total = (ULONGLONG)(QpcAfterWriteBack.QuadPart - QpcStart.QuadPart);
+
+      g_CoWpChgCbStats.Calls++;
+      g_CoWpChgCbStats.CopyInTicks += copyIn;
+      g_CoWpChgCbStats.LeaveCoTicks += leaveCo;
+      g_CoWpChgCbStats.CallbackTicks += cb;
+      g_CoWpChgCbStats.CopyResultTicks += copyRes;
+      g_CoWpChgCbStats.EnterCoTicks += enterCo;
+      g_CoWpChgCbStats.WriteBackTicks += writeBack;
+      g_CoWpChgCbStats.TotalTicks += total;
+
+      if (total > g_CoWpChgCbStats.MaxTotalTicks) g_CoWpChgCbStats.MaxTotalTicks = total;
+      if (cb > g_CoWpChgCbStats.MaxCallbackTicks) g_CoWpChgCbStats.MaxCallbackTicks = cb;
+      if (enterCo > g_CoWpChgCbStats.MaxEnterCoTicks) g_CoWpChgCbStats.MaxEnterCoTicks = enterCo;
+
+      if ((g_CoWpChgCbStats.Calls & 0x3FF) == 0)
+      {
+         const double denom = (double)g_CoWpChgCbFreq.QuadPart;
+         const double n = (double)g_CoWpChgCbStats.Calls;
+         DPRINT1("CBWP: WM_WINDOWPOSCHANGING calls=%lu avg(ms): copyIn=%.3f leave=%.3f cb=%.3f copyRes=%.3f enter=%.3f write=%.3f | avgTotal=%.3f maxTotal=%.3f maxCb=%.3f maxEnter=%.3f stack=%lu heap=%lu\n",
+                 g_CoWpChgCbStats.Calls,
+                 (double)g_CoWpChgCbStats.CopyInTicks * 1000.0 / (denom * n),
+                 (double)g_CoWpChgCbStats.LeaveCoTicks * 1000.0 / (denom * n),
+                 (double)g_CoWpChgCbStats.CallbackTicks * 1000.0 / (denom * n),
+                 (double)g_CoWpChgCbStats.CopyResultTicks * 1000.0 / (denom * n),
+                 (double)g_CoWpChgCbStats.EnterCoTicks * 1000.0 / (denom * n),
+                 (double)g_CoWpChgCbStats.WriteBackTicks * 1000.0 / (denom * n),
+                 (double)g_CoWpChgCbStats.TotalTicks * 1000.0 / (denom * n),
+                 (double)g_CoWpChgCbStats.MaxTotalTicks * 1000.0 / denom,
+                 (double)g_CoWpChgCbStats.MaxCallbackTicks * 1000.0 / denom,
+                 (double)g_CoWpChgCbStats.MaxEnterCoTicks * 1000.0 / denom,
+                 g_CoWpChgCbStats.StackCalls,
+                 g_CoWpChgCbStats.HeapCalls);
+      }
    }
 
    return Result;

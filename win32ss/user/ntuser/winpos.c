@@ -1273,6 +1273,22 @@ BOOL FASTCALL
 co_WinPosDoWinPosChanging(PWND Window,
                           PWINDOWPOS WinPos,
                           PRECTL WindowRect,
+                          PRECTL ClientRect);
+
+/* Sub-split of COSWP_STAGE_PRE_CHANGING: time spent inside the WM_WINDOWPOSCHANGING SendMessage.
+ * This isolates SendMessage plumbing from the post-message rect calculations.
+ */
+static volatile ULONG g_CoSwpChgSendCalls = 0;
+static volatile LONG64 g_CoSwpChgSendTotalQpc = 0;
+static volatile LONG64 g_CoSwpChgSendMaxQpc = 0;
+static volatile ULONG g_CoSwpChgSendSameThread = 0;
+static volatile ULONG g_CoSwpChgSendOtherThread = 0;
+
+static
+BOOL FASTCALL
+co_WinPosDoWinPosChanging(PWND Window,
+                          PWINDOWPOS WinPos,
+                          PRECTL WindowRect,
                           PRECTL ClientRect)
 {
    ASSERT_REFS_CO(Window);
@@ -1282,8 +1298,31 @@ co_WinPosDoWinPosChanging(PWND Window,
    if (!(WinPos->flags & SWP_NOSENDCHANGING)
           && !((WinPos->flags & SWP_AGG_NOCLIENTCHANGE) && (WinPos->flags & SWP_SHOWWINDOW)))
    {
+      LARGE_INTEGER qpcSendStart = { 0 }, qpcSendEnd = { 0 };
+
+      {
+         PTHREADINFO ptiCur = PsGetCurrentThreadWin32Thread();
+         PTHREADINFO ptiOwner = Window->head.pti;
+         if (ptiCur && ptiOwner && (ptiCur == ptiOwner))
+            (VOID)InterlockedIncrement((volatile LONG*)&g_CoSwpChgSendSameThread);
+         else
+            (VOID)InterlockedIncrement((volatile LONG*)&g_CoSwpChgSendOtherThread);
+      }
+
+      qpcSendStart = KeQueryPerformanceCounter(NULL);
       TRACE("Sending WM_WINDOWPOSCHANGING to hwnd %p flags %04x.\n", UserHMGetHandle(Window), WinPos->flags);
       co_IntSendMessage(UserHMGetHandle(Window), WM_WINDOWPOSCHANGING, 0, (LPARAM)WinPos);
+      qpcSendEnd = KeQueryPerformanceCounter(NULL);
+      {
+         const LONG64 dt = qpcSendEnd.QuadPart - qpcSendStart.QuadPart;
+         (VOID)InterlockedIncrement((volatile LONG*)&g_CoSwpChgSendCalls);
+         InterlockedExchangeAdd64(&g_CoSwpChgSendTotalQpc, dt);
+         {
+            LONG64 prev;
+            do { prev = g_CoSwpChgSendMaxQpc; if (dt <= prev) break; }
+            while (InterlockedCompareExchange64(&g_CoSwpChgSendMaxQpc, dt, prev) != prev);
+         }
+      }
    }
 
    /* Calculate new position and size */
@@ -1799,6 +1838,40 @@ co_WinPosSetWindowPos(
    UINT flags
    )
 {
+   /* Stage-by-stage profiling for GPU-driver SetWindowPos regressions.
+    * Aggregated stats only (milestones + every 1024 calls) to keep overhead low.
+    */
+   enum
+   {
+      COSWP_STAGE_PRE_MISC = 0,
+      COSWP_STAGE_PRE_CHANGING,
+      COSWP_STAGE_PRE_FIXUP,
+      COSWP_STAGE_PRE_OWNED,
+      COSWP_STAGE_VISBEFORE,
+      COSWP_STAGE_VISBEFORE_CLIENT,
+      COSWP_STAGE_NCCALC,
+      COSWP_STAGE_APPLY,
+      COSWP_STAGE_DCE_RESET,
+      COSWP_STAGE_VISAFTER,
+      COSWP_STAGE_COPYBITS,
+      COSWP_STAGE_INVALIDATE,
+      COSWP_STAGE_EXPOSE,
+      COSWP_STAGE_SYNC_PAINT,
+      COSWP_STAGE_MSGS,
+      COSWP_STAGE_COUNT
+   };
+
+   static volatile ULONG g_CoSwpCalls = 0;
+   static volatile LONG64 g_CoSwpTotalQpc[COSWP_STAGE_COUNT] = { 0 };
+   static volatile LONG64 g_CoSwpMaxQpc[COSWP_STAGE_COUNT] = { 0 };
+   static LARGE_INTEGER g_CoSwpQpcFreq = { 0 };
+
+   LARGE_INTEGER qpcStart = { 0 };
+   LARGE_INTEGER qpcPrev = { 0 };
+   LARGE_INTEGER qpcNow = { 0 };
+   LONG64 stageDtQpc[COSWP_STAGE_COUNT] = { 0 };
+   BOOL bCoSwpProfile = TRUE;
+
    WINDOWPOS WinPos;
    RECTL NewWindowRect;
    RECTL NewClientRect;
@@ -1817,6 +1890,17 @@ co_WinPosSetWindowPos(
    PTHREADINFO pti = PsGetCurrentThreadWin32Thread();
 
    ASSERT_REFS_CO(Window);
+
+   if (g_CoSwpQpcFreq.QuadPart == 0)
+   {
+      LARGE_INTEGER freq;
+      (VOID)KeQueryPerformanceCounter(&freq);
+      if (freq.QuadPart != 0)
+         g_CoSwpQpcFreq = freq;
+   }
+
+   qpcStart = KeQueryPerformanceCounter(NULL);
+   qpcPrev = qpcStart;
 
    TRACE("pwnd %p, after %p, %d,%d (%dx%d), flags 0x%x\n",
          Window, WndInsertAfter, x, y, cx, cy, flags);
@@ -1857,7 +1941,15 @@ co_WinPosSetWindowPos(
       return FALSE;
    }
 
+   qpcNow = KeQueryPerformanceCounter(NULL);
+   stageDtQpc[COSWP_STAGE_PRE_MISC] += qpcNow.QuadPart - qpcPrev.QuadPart;
+   qpcPrev = qpcNow;
+
    co_WinPosDoWinPosChanging(Window, &WinPos, &NewWindowRect, &NewClientRect);
+
+   qpcNow = KeQueryPerformanceCounter(NULL);
+   stageDtQpc[COSWP_STAGE_PRE_CHANGING] += qpcNow.QuadPart - qpcPrev.QuadPart;
+   qpcPrev = qpcNow;
 
    /* Does the window still exist? */
    if (!IntIsWindow(WinPos.hwnd))
@@ -1874,12 +1966,20 @@ co_WinPosSetWindowPos(
       return TRUE;
    }
 
+   qpcNow = KeQueryPerformanceCounter(NULL);
+   stageDtQpc[COSWP_STAGE_PRE_FIXUP] += qpcNow.QuadPart - qpcPrev.QuadPart;
+   qpcPrev = qpcNow;
+
    Ancestor = UserGetAncestor(Window, GA_PARENT);
    if ( (WinPos.flags & (SWP_NOZORDER | SWP_HIDEWINDOW | SWP_SHOWWINDOW)) != SWP_NOZORDER &&
          Ancestor && UserHMGetHandle(Ancestor) == IntGetDesktopWindow() )
    {
       WinPos.hwndInsertAfter = WinPosDoOwnedPopups(Window, WinPos.hwndInsertAfter);
    }
+
+   qpcNow = KeQueryPerformanceCounter(NULL);
+   stageDtQpc[COSWP_STAGE_PRE_OWNED] += qpcNow.QuadPart - qpcPrev.QuadPart;
+   qpcPrev = qpcNow;
 
    if (!(WinPos.flags & SWP_NOREDRAW))
    {
@@ -1903,6 +2003,10 @@ co_WinPosSetWindowPos(
             REGION_bOffsetRgn(VisBefore, -Window->rcWindow.left, -Window->rcWindow.top);
          }
 
+         qpcNow = KeQueryPerformanceCounter(NULL);
+         stageDtQpc[COSWP_STAGE_VISBEFORE] += qpcNow.QuadPart - qpcPrev.QuadPart;
+         qpcPrev = qpcNow;
+
          /* Calculate the non client area for resizes, as this is used in the copy region */
          if ((WinPos.flags & (SWP_NOSIZE | SWP_FRAMECHANGED)) != SWP_NOSIZE)
          {
@@ -1920,6 +2024,10 @@ co_WinPosSetWindowPos(
                  REGION_bOffsetRgn(VisBeforeJustClient, -Window->rcWindow.left, -Window->rcWindow.top);
              }
          }
+
+          qpcNow = KeQueryPerformanceCounter(NULL);
+          stageDtQpc[COSWP_STAGE_VISBEFORE_CLIENT] += qpcNow.QuadPart - qpcPrev.QuadPart;
+          qpcPrev = qpcNow;
       }
    }
 
@@ -1931,6 +2039,10 @@ co_WinPosSetWindowPos(
    }
 
    WvrFlags = co_WinPosDoNCCALCSize(Window, &WinPos, &NewWindowRect, &NewClientRect, valid_rects);
+
+   qpcNow = KeQueryPerformanceCounter(NULL);
+   stageDtQpc[COSWP_STAGE_NCCALC] += qpcNow.QuadPart - qpcPrev.QuadPart;
+   qpcPrev = qpcNow;
 
 //   ERR("co_WinPosDoNCCALCSize returned 0x%x\n valid dest: %d %d %d %d\n valid src : %d %d %d %d\n", WvrFlags,
 //      valid_rects[0].left,valid_rects[0].top,valid_rects[0].right,valid_rects[0].bottom,
@@ -2033,10 +2145,18 @@ co_WinPosSetWindowPos(
                      NewWindowRect.top - OldWindowRect.top);
    }
 
+   qpcNow = KeQueryPerformanceCounter(NULL);
+   stageDtQpc[COSWP_STAGE_APPLY] += qpcNow.QuadPart - qpcPrev.QuadPart;
+   qpcPrev = qpcNow;
+
    if (bResetActiveDCEs)
    {
       DceResetActiveDCEs(Window);
    }
+
+   qpcNow = KeQueryPerformanceCounter(NULL);
+   stageDtQpc[COSWP_STAGE_DCE_RESET] += qpcNow.QuadPart - qpcPrev.QuadPart;
+   qpcPrev = qpcNow;
 
    // Change or update, set send non-client paint flag.
    if ( Window->style & WS_VISIBLE &&
@@ -2072,6 +2192,10 @@ co_WinPosSetWindowPos(
           }
           REGION_bOffsetRgn(VisAfter, -Window->rcWindow.left, -Window->rcWindow.top);
       }
+
+        qpcNow = KeQueryPerformanceCounter(NULL);
+        stageDtQpc[COSWP_STAGE_VISAFTER] += qpcNow.QuadPart - qpcPrev.QuadPart;
+        qpcPrev = qpcNow;
 
       /*
        * Determine which pixels can be copied from the old window position
@@ -2171,6 +2295,10 @@ co_WinPosSetWindowPos(
          CopyRgn = NULL;
       }
 
+      qpcNow = KeQueryPerformanceCounter(NULL);
+      stageDtQpc[COSWP_STAGE_COPYBITS] += qpcNow.QuadPart - qpcPrev.QuadPart;
+      qpcPrev = qpcNow;
+
       /* We need to redraw what wasn't visible before or force a redraw */
       if (VisAfter != NULL)
       {
@@ -2251,6 +2379,10 @@ co_WinPosSetWindowPos(
          }
       }
 
+        qpcNow = KeQueryPerformanceCounter(NULL);
+        stageDtQpc[COSWP_STAGE_INVALIDATE] += qpcNow.QuadPart - qpcPrev.QuadPart;
+        qpcPrev = qpcNow;
+
       /* Expose what was covered before but not covered anymore */
       if (VisBefore != NULL)
       {
@@ -2272,6 +2404,10 @@ co_WinPosSetWindowPos(
              REGION_Delete(ExposedRgn);
          }
       }
+
+      qpcNow = KeQueryPerformanceCounter(NULL);
+      stageDtQpc[COSWP_STAGE_EXPOSE] += qpcNow.QuadPart - qpcPrev.QuadPart;
+      qpcPrev = qpcNow;
    }
 
    if (!(WinPos.flags & (SWP_NOACTIVATE|SWP_HIDEWINDOW)))
@@ -2359,6 +2495,10 @@ co_WinPosSetWindowPos(
        }
    }
 
+         qpcNow = KeQueryPerformanceCounter(NULL);
+         stageDtQpc[COSWP_STAGE_SYNC_PAINT] += qpcNow.QuadPart - qpcPrev.QuadPart;
+         qpcPrev = qpcNow;
+
    /* And last, send the WM_WINDOWPOSCHANGED message */
 
    TRACE("\tstatus hwnd %p flags = %04x\n", Window ? UserHMGetHandle(Window) : NULL, WinPos.flags & SWP_AGG_STATUSFLAGS);
@@ -2401,6 +2541,106 @@ co_WinPosSetWindowPos(
       msg.lParam = MAKELPARAM(gpsi->ptCursor.x, gpsi->ptCursor.y);
       msg.pt = gpsi->ptCursor;
       co_MsqInsertMouseMessage(&msg, 0, 0, TRUE);
+   }
+
+   qpcNow = KeQueryPerformanceCounter(NULL);
+   stageDtQpc[COSWP_STAGE_MSGS] += qpcNow.QuadPart - qpcPrev.QuadPart;
+   qpcPrev = qpcNow;
+
+   /* Aggregate and occasionally print */
+   if (bCoSwpProfile)
+   {
+      ULONG callCount = (ULONG)InterlockedIncrement((volatile LONG*)&g_CoSwpCalls);
+      LONG64 totalQpc = 0;
+      int i;
+
+      for (i = 0; i < COSWP_STAGE_COUNT; i++)
+      {
+         const LONG64 dt = stageDtQpc[i];
+         totalQpc += dt;
+         InterlockedExchangeAdd64(&g_CoSwpTotalQpc[i], dt);
+
+         /* Update max per-stage */
+         {
+            LONG64 prev;
+            do { prev = g_CoSwpMaxQpc[i]; if (dt <= prev) break; }
+            while (InterlockedCompareExchange64(&g_CoSwpMaxQpc[i], dt, prev) != prev);
+         }
+      }
+
+      if ((callCount == 1) || (callCount == 128) || ((callCount & 0x3FF) == 0))
+      {
+         const LONG64 freq = g_CoSwpQpcFreq.QuadPart ? g_CoSwpQpcFreq.QuadPart : 1;
+         const double avgTotalMs =
+            (double)((g_CoSwpTotalQpc[COSWP_STAGE_PRE_MISC] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_PRE_CHANGING] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_PRE_FIXUP] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_PRE_OWNED] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_VISBEFORE] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_VISBEFORE_CLIENT] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_NCCALC] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_APPLY] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_DCE_RESET] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_VISAFTER] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_COPYBITS] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_INVALIDATE] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_EXPOSE] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_SYNC_PAINT] +
+                      g_CoSwpTotalQpc[COSWP_STAGE_MSGS]) / (LONG64)callCount) * 1000.0 / (double)freq;
+
+         const double avgChgSendMs =
+            (double)(g_CoSwpChgSendTotalQpc / (LONG64)callCount) * 1000.0 / (double)freq;
+
+         const double maxChgSendMs =
+            (double)g_CoSwpChgSendMaxQpc * 1000.0 / (double)freq;
+
+         DbgPrint("COSWP: calls=%lu avg(ms): misc=%.3f chg=%.3f chgSend=%.3f fx=%.3f own=%.3f vb=%.3f vbc=%.3f ncc=%.3f apply=%.3f dce=%.3f va=%.3f copy=%.3f inv=%.3f exp=%.3f sync=%.3f msg=%.3f | avgTotal=%.3f last=%.3f chgSendCalls=%lu maxChgSend=%.3f\n",
+                  callCount,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_PRE_MISC] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_PRE_CHANGING] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  avgChgSendMs,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_PRE_FIXUP] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_PRE_OWNED] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_VISBEFORE] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_VISBEFORE_CLIENT] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_NCCALC] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_APPLY] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_DCE_RESET] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_VISAFTER] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_COPYBITS] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_INVALIDATE] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_EXPOSE] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_SYNC_PAINT] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  (double)(g_CoSwpTotalQpc[COSWP_STAGE_MSGS] / (LONG64)callCount) * 1000.0 / (double)freq,
+                  avgTotalMs,
+                  (double)totalQpc * 1000.0 / (double)freq,
+                  (ULONG)g_CoSwpChgSendCalls,
+                  maxChgSendMs);
+      }
+
+      /* Rare outlier print: show dominant stage for slow calls */
+      {
+         const LONG64 freq = g_CoSwpQpcFreq.QuadPart ? g_CoSwpQpcFreq.QuadPart : 1;
+         const double totalMs = (double)totalQpc * 1000.0 / (double)freq;
+         if (totalMs > 8.0)
+         {
+            int maxStage = 0;
+            LONG64 maxDt = stageDtQpc[0];
+            for (i = 1; i < COSWP_STAGE_COUNT; i++)
+            {
+               if (stageDtQpc[i] > maxDt)
+               {
+                  maxDt = stageDtQpc[i];
+                  maxStage = i;
+               }
+            }
+            DbgPrint("COSWP: SLOW total=%.3fms flags=0x%x maxStage=%d stage=%.3fms\n",
+                     totalMs,
+                     WinPos.flags,
+                     maxStage,
+                     (double)maxDt * 1000.0 / (double)freq);
+         }
+      }
    }
 
    return TRUE;
@@ -3618,6 +3858,12 @@ NtUserSetWindowPos(
    }
 
    qpcStart = KeQueryPerformanceCounter(NULL);
+   qpcAfterEnter = qpcStart;
+   qpcBeforeCo = qpcStart;
+   qpcAfterCo = qpcStart;
+   qpcBeforeLeave = qpcStart;
+   qpcAfterLeave = qpcStart;
+   BOOLEAN didCo = FALSE;
 
    TRACE("Enter NtUserSetWindowPos\n");
    UserEnterExclusive();
@@ -3663,6 +3909,7 @@ NtUserSetWindowPos(
    qpcBeforeCo = KeQueryPerformanceCounter(NULL);
    ret = co_WinPosSetWindowPos(Window, hWndInsertAfter, X, Y, cx, cy, uFlags);
    qpcAfterCo = KeQueryPerformanceCounter(NULL);
+   didCo = TRUE;
    UserDerefObjectCo(Window);
 
 Exit:
@@ -3673,7 +3920,7 @@ Exit:
 
    {
       const LONG64 enterQpc = qpcAfterEnter.QuadPart - qpcStart.QuadPart;
-      const LONG64 coQpc = qpcAfterCo.QuadPart - qpcBeforeCo.QuadPart;
+      const LONG64 coQpc = didCo ? (qpcAfterCo.QuadPart - qpcBeforeCo.QuadPart) : 0;
       const LONG64 leaveQpc = qpcAfterLeave.QuadPart - qpcBeforeLeave.QuadPart;
       ULONG callCount = (ULONG)InterlockedIncrement((volatile LONG*)&g_SwpCalls);
 

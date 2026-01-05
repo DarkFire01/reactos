@@ -1515,6 +1515,36 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
                                 UINT uTimeout,
                                 ULONG_PTR *uResult )
 {
+    typedef struct _SM_WPCHG_STATS
+    {
+        ULONG Calls;
+        ULONGLONG PreTicks;
+        ULONGLONG HookPreTicks;
+        ULONGLONG FindTicks;
+        ULONGLONG SizeTicks;
+        ULONGLONG PackTicks;
+        ULONGLONG CallTicks;
+        ULONGLONG UnpackTicks;
+        ULONGLONG HookRetTicks;
+        ULONGLONG TotalTicks;
+        ULONGLONG MaxTotalTicks;
+    } SM_WPCHG_STATS;
+
+    typedef struct _SM_WPCHG_XTHREAD_STATS
+    {
+        ULONG AnyCalls;
+        ULONG SameThreadCalls;
+        ULONG OtherThreadCalls;
+        ULONGLONG OtherTotalTicks;
+        ULONGLONG OtherMsqTicks;
+        ULONGLONG OtherMaxTotalTicks;
+        ULONGLONG OtherMaxMsqTicks;
+    } SM_WPCHG_XTHREAD_STATS;
+
+    static SM_WPCHG_STATS g_SmWpChgStats;
+    static LARGE_INTEGER g_SmWpChgFreq;
+    static SM_WPCHG_XTHREAD_STATS g_SmWpChgXStats;
+
     NTSTATUS Status = STATUS_SUCCESS;
     PWND Window;
     PMSGMEMORY MsgMemoryEntry;
@@ -1525,6 +1555,22 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
     LRESULT Ret = FALSE;
     USER_REFERENCE_ENTRY Ref;
     BOOL DoCallBack = TRUE;
+
+    const BOOL TrackWpChg = (Msg == WM_WINDOWPOSCHANGING);
+    LARGE_INTEGER qEntry = { 0 }, qPre = { 0 };
+    LARGE_INTEGER qMsqStart = { 0 }, qMsqEnd = { 0 };
+    BOOL IsOtherThread = FALSE;
+
+    if (TrackWpChg)
+    {
+        if (g_SmWpChgFreq.QuadPart == 0)
+        {
+            KeQueryPerformanceCounter(&g_SmWpChgFreq);
+            if (g_SmWpChgFreq.QuadPart == 0) g_SmWpChgFreq.QuadPart = 1;
+        }
+        qEntry = KeQueryPerformanceCounter(NULL);
+        (VOID)InterlockedIncrement((volatile LONG*)&g_SmWpChgXStats.AnyCalls);
+    }
 
     if (!(Window = UserGetWindowObject(hWnd)))
     {
@@ -1537,6 +1583,7 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
     Win32Thread = PsGetCurrentThreadWin32Thread();
 
     ptiSendTo = IntSendTo(Window, Win32Thread, Msg);
+    IsOtherThread = (ptiSendTo != NULL);
 
     if ( Msg >= WM_DDE_FIRST && Msg <= WM_DDE_LAST )
     {
@@ -1547,8 +1594,18 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
        }
     }
 
+    if (TrackWpChg)
+        qPre = KeQueryPerformanceCounter(NULL);
+
     if ( !ptiSendTo )
     {
+        LARGE_INTEGER q0 = { 0 }, q1 = { 0 }, q2 = { 0 }, q3 = { 0 }, q4 = { 0 }, q5 = { 0 }, q6 = { 0 }, q7 = { 0 };
+
+        if (TrackWpChg)
+        {
+            q0 = qPre.QuadPart ? qPre : KeQueryPerformanceCounter(NULL);
+        }
+
         if (Win32Thread->TIF_flags & TIF_INCLEANUP)
         {
             /* Never send messages to exiting threads */
@@ -1566,6 +1623,9 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
 
         // Only happens when calling the client!
         IntCallWndProc( Window, hWnd, Msg, wParam, lParam);
+
+        if (TrackWpChg)
+            q1 = KeQueryPerformanceCounter(NULL);
 
         if ( Window->state & WNDS_SERVERSIDEWINDOWPROC )
         {
@@ -1598,6 +1658,10 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
         }
         /* See if this message type is present in the table */
         MsgMemoryEntry = FindMsgMemory(Msg);
+
+        if (TrackWpChg)
+            q2 = KeQueryPerformanceCounter(NULL);
+
         if (NULL == MsgMemoryEntry)
         {
            lParamBufferSize = -1;
@@ -1609,11 +1673,17 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
            if (!lParamBufferSize) lParamBufferSize = -1;
         }
 
+        if (TrackWpChg)
+            q3 = KeQueryPerformanceCounter(NULL);
+
         if (! NT_SUCCESS(PackParam(&lParamPacked, Msg, wParam, lParam, FALSE)))
         {
            ERR("Failed to pack message parameters\n");
            goto Cleanup; // Return FALSE
         }
+
+        if (TrackWpChg)
+            q4 = KeQueryPerformanceCounter(NULL);
 
         Result = (ULONG_PTR)co_IntCallWindowProc( Window->lpfnWndProc,
                                                   !Window->Unicode,
@@ -1622,6 +1692,9 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
                                                   wParam,
                                                   lParamPacked,
                                                   lParamBufferSize );
+
+        if (TrackWpChg)
+            q5 = KeQueryPerformanceCounter(NULL);
         if (uResult)
         {
             *uResult = Result;
@@ -1634,8 +1707,57 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
             goto Cleanup;
         }
 
+        if (TrackWpChg)
+            q6 = KeQueryPerformanceCounter(NULL);
+
         // Only happens when calling the client!
         IntCallWndProcRet( Window, hWnd, Msg, wParam, lParam, (LRESULT *)uResult);
+
+        if (TrackWpChg)
+            q7 = KeQueryPerformanceCounter(NULL);
+
+        if (TrackWpChg)
+        {
+            const ULONGLONG pre = (ULONGLONG)(q0.QuadPart - qEntry.QuadPart);
+            const ULONGLONG hookPre = (ULONGLONG)(q1.QuadPart - q0.QuadPart);
+            const ULONGLONG find = (ULONGLONG)(q2.QuadPart - q1.QuadPart);
+            const ULONGLONG size = (ULONGLONG)(q3.QuadPart - q2.QuadPart);
+            const ULONGLONG pack = (ULONGLONG)(q4.QuadPart - q3.QuadPart);
+            const ULONGLONG call = (ULONGLONG)(q5.QuadPart - q4.QuadPart);
+            const ULONGLONG unpack = (ULONGLONG)(q6.QuadPart - q5.QuadPart);
+            const ULONGLONG hookRet = (ULONGLONG)(q7.QuadPart - q6.QuadPart);
+            const ULONGLONG total = (ULONGLONG)(q7.QuadPart - qEntry.QuadPart);
+
+            g_SmWpChgStats.Calls++;
+            g_SmWpChgStats.PreTicks += pre;
+            g_SmWpChgStats.HookPreTicks += hookPre;
+            g_SmWpChgStats.FindTicks += find;
+            g_SmWpChgStats.SizeTicks += size;
+            g_SmWpChgStats.PackTicks += pack;
+            g_SmWpChgStats.CallTicks += call;
+            g_SmWpChgStats.UnpackTicks += unpack;
+            g_SmWpChgStats.HookRetTicks += hookRet;
+            g_SmWpChgStats.TotalTicks += total;
+            if (total > g_SmWpChgStats.MaxTotalTicks) g_SmWpChgStats.MaxTotalTicks = total;
+
+            if ((g_SmWpChgStats.Calls & 0x3FF) == 0)
+            {
+                const double denom = (double)g_SmWpChgFreq.QuadPart;
+                const double n = (double)g_SmWpChgStats.Calls;
+                DbgPrint("SMWP: WM_WINDOWPOSCHANGING calls=%lu avg(ms): pre=%.3f hook=%.3f find=%.3f size=%.3f pack=%.3f call=%.3f unpack=%.3f hookRet=%.3f | avgTotal=%.3f maxTotal=%.3f\n",
+                         g_SmWpChgStats.Calls,
+                         (double)g_SmWpChgStats.PreTicks * 1000.0 / (denom * n),
+                         (double)g_SmWpChgStats.HookPreTicks * 1000.0 / (denom * n),
+                         (double)g_SmWpChgStats.FindTicks * 1000.0 / (denom * n),
+                         (double)g_SmWpChgStats.SizeTicks * 1000.0 / (denom * n),
+                         (double)g_SmWpChgStats.PackTicks * 1000.0 / (denom * n),
+                         (double)g_SmWpChgStats.CallTicks * 1000.0 / (denom * n),
+                         (double)g_SmWpChgStats.UnpackTicks * 1000.0 / (denom * n),
+                         (double)g_SmWpChgStats.HookRetTicks * 1000.0 / (denom * n),
+                         (double)g_SmWpChgStats.TotalTicks * 1000.0 / (denom * n),
+                         (double)g_SmWpChgStats.MaxTotalTicks * 1000.0 / denom);
+            }
+        }
 
         Ret = TRUE;
         goto Cleanup;
@@ -1658,6 +1780,9 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
 
     do
     {
+        if (TrackWpChg && qMsqStart.QuadPart == 0)
+            qMsqStart = KeQueryPerformanceCounter(NULL);
+
         Status = co_MsqSendMessage( ptiSendTo,
                                     hWnd,
                                     Msg,
@@ -1667,6 +1792,9 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
                                     (uFlags & SMTO_BLOCK),
                                     MSQ_NORMAL,
                                     uResult );
+
+        if (TrackWpChg)
+            qMsqEnd = KeQueryPerformanceCounter(NULL);
     }
     while ((Status == STATUS_TIMEOUT) &&
            (uFlags & SMTO_NOTIMEOUTIFNOTHUNG) &&
@@ -1699,6 +1827,51 @@ co_IntSendMessageTimeoutSingle( HWND hWnd,
     Ret = TRUE;
 
 Cleanup:
+    if (TrackWpChg)
+    {
+        if (!IsOtherThread)
+        {
+            (VOID)InterlockedIncrement((volatile LONG*)&g_SmWpChgXStats.SameThreadCalls);
+        }
+        else
+        {
+            const LARGE_INTEGER qExit = KeQueryPerformanceCounter(NULL);
+            const ULONGLONG total = (ULONGLONG)(qExit.QuadPart - qEntry.QuadPart);
+            ULONGLONG msq = 0;
+            (VOID)InterlockedIncrement((volatile LONG*)&g_SmWpChgXStats.OtherThreadCalls);
+            InterlockedExchangeAdd64((volatile LONG64*)&g_SmWpChgXStats.OtherTotalTicks, (LONG64)total);
+            if (qMsqStart.QuadPart && qMsqEnd.QuadPart)
+            {
+                msq = (ULONGLONG)(qMsqEnd.QuadPart - qMsqStart.QuadPart);
+                InterlockedExchangeAdd64((volatile LONG64*)&g_SmWpChgXStats.OtherMsqTicks, (LONG64)msq);
+            }
+            {
+                LONG64 prev;
+                do { prev = (LONG64)g_SmWpChgXStats.OtherMaxTotalTicks; if ((LONG64)total <= prev) break; }
+                while (InterlockedCompareExchange64((volatile LONG64*)&g_SmWpChgXStats.OtherMaxTotalTicks, (LONG64)total, prev) != prev);
+            }
+            if (msq)
+            {
+                LONG64 prev;
+                do { prev = (LONG64)g_SmWpChgXStats.OtherMaxMsqTicks; if ((LONG64)msq <= prev) break; }
+                while (InterlockedCompareExchange64((volatile LONG64*)&g_SmWpChgXStats.OtherMaxMsqTicks, (LONG64)msq, prev) != prev);
+            }
+        }
+
+        if ((g_SmWpChgXStats.AnyCalls & 0x3FF) == 0)
+        {
+            const double denom = (double)g_SmWpChgFreq.QuadPart;
+            const double otherN = (double)(g_SmWpChgXStats.OtherThreadCalls ? g_SmWpChgXStats.OtherThreadCalls : 1);
+            DbgPrint("SMWPX: WM_WINDOWPOSCHANGING same=%lu other=%lu otherAvg(ms): total=%.3f msq=%.3f | otherMax(ms): total=%.3f msq=%.3f\n",
+                     g_SmWpChgXStats.SameThreadCalls,
+                     g_SmWpChgXStats.OtherThreadCalls,
+                     (double)g_SmWpChgXStats.OtherTotalTicks * 1000.0 / (denom * otherN),
+                     (double)g_SmWpChgXStats.OtherMsqTicks * 1000.0 / (denom * otherN),
+                     (double)g_SmWpChgXStats.OtherMaxTotalTicks * 1000.0 / denom,
+                     (double)g_SmWpChgXStats.OtherMaxMsqTicks * 1000.0 / denom);
+        }
+    }
+
     UserDerefObjectCo(Window);
     return Ret;
 }

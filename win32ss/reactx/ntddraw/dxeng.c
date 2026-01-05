@@ -9,7 +9,7 @@
 
 #include <win32k.h>
 
-// #define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 HSEMAPHORE  ghsemShareDevLock = NULL;
@@ -474,7 +474,7 @@ DxEngGetDCState(HDC hDC,
             }
             default:
                 /* If a valid type is not found, zero is returned */
-                DPRINT1("Warning: did not find type %lu\n", type);
+                DPRINT("Warning: did not find type %lu\n", type);
                 break;
         }
         DC_UnlockDc(pDC);
@@ -661,9 +661,41 @@ DxEngCreateMemoryDC(HDEV hDev)
 /************************************************************************/
 DWORD APIENTRY DxEngScreenAccessCheck(VOID)
 {
-    UNIMPLEMENTED;
+    /*
+     * Windows gates a number of DirectDraw/D3D entrypoints on "screen access".
+     * In win32k we already track/read this via the process window-station access
+     * checks (WINSTA_READSCREEN) and interactive window station requirement.
+     */
+    PPROCESSINFO ppi;
+    static BOOLEAN Warned;
 
-    /* We're cheating here and telling dxg.sys it has always had permissions to access the screen */
+    ppi = PsGetCurrentProcessWin32Process();
+    if (!ppi)
+        return TRUE;
+
+    /* Logon process is special-cased in the USER checks. */
+    if (gpidLogon == PsGetCurrentProcessId())
+        return TRUE;
+
+    /*
+     * Windows uses this as a gate for DirectDraw/D3D capability queries.
+     * ReactOS does not yet reliably propagate WINSTA_READSCREEN to all normal
+     * GUI processes early enough, so being strict here causes spurious
+     * D3DERR_NOTAVAILABLE failures (CreateDevice).
+     *
+     * For now we only block truly non-interactive window stations.
+     */
+    if (ppi->prpwinsta && (ppi->prpwinsta->Flags & WSS_NOIO))
+    {
+        if (!Warned)
+        {
+            Warned = TRUE;
+            DPRINT1("DxEngScreenAccessCheck: denied (WSS_NOIO) pid=%lu\n",
+                    (ULONG)(ULONG_PTR)PsGetCurrentProcessId());
+        }
+        return FALSE;
+    }
+
     return TRUE;
 }
 
@@ -873,8 +905,52 @@ DWORD APIENTRY DxEngLoadImage(DWORD x1,DWORD x2)
 /************************************************************************/
 DWORD APIENTRY DxEngSpTearDownSprites(DWORD x1, DWORD x2, DWORD x3)
 {
-    UNIMPLEMENTED;
-    return FALSE;
+    PPDEVOBJ ppdev = (PPDEVOBJ)(ULONG_PTR)x1;
+    RECTL rcl;
+    SIZEL sizl;
+
+    if (!ppdev)
+        return FALSE;
+
+    /* MouseSafetyOnDrawStart requires the device lock. */
+    EngAcquireSemaphore(ppdev->hsemDevLock);
+
+    /* If there is no surface yet, do nothing (avoid ASSERT in MouseSafety). */
+    if (!ppdev->pSurface)
+    {
+        EngReleaseSemaphore(ppdev->hsemDevLock);
+        return TRUE;
+    }
+
+    /* Try to interpret x2 as a RECTL pointer (Windows uses pointer-sized args here). */
+    _SEH2_TRY
+    {
+        rcl = *(volatile RECTL*)(ULONG_PTR)x2;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        /* Fallback: treat x2/x3 as packed SHORT coordinates (left/top, right/bottom). */
+        rcl.left   = (SHORT)(x2 & 0xFFFF);
+        rcl.top    = (SHORT)((x2 >> 16) & 0xFFFF);
+        rcl.right  = (SHORT)(x3 & 0xFFFF);
+        rcl.bottom = (SHORT)((x3 >> 16) & 0xFFFF);
+    }
+    _SEH2_END
+
+    /* If the rect is empty/garbage, fall back to the full device surface size. */
+    if ((rcl.left == rcl.right) && (rcl.top == rcl.bottom))
+    {
+        PDEVOBJ_sizl(ppdev, &sizl);
+        rcl.left = 0;
+        rcl.top = 0;
+        rcl.right = sizl.cx;
+        rcl.bottom = sizl.cy;
+    }
+
+    (void)MouseSafetyOnDrawStart(ppdev, rcl.left, rcl.top, rcl.right, rcl.bottom);
+
+    EngReleaseSemaphore(ppdev->hsemDevLock);
+    return TRUE;
 }
 
 /************************************************************************/
@@ -882,8 +958,21 @@ DWORD APIENTRY DxEngSpTearDownSprites(DWORD x1, DWORD x2, DWORD x3)
 /************************************************************************/
 DWORD APIENTRY DxEngSpUnTearDownSprites(DWORD x1, DWORD x2, DWORD x3)
 {
-    UNIMPLEMENTED;
-    return FALSE;
+    PPDEVOBJ ppdev = (PPDEVOBJ)(ULONG_PTR)x1;
+
+    UNREFERENCED_PARAMETER(x2);
+    UNREFERENCED_PARAMETER(x3);
+
+    if (!ppdev)
+        return FALSE;
+
+    EngAcquireSemaphore(ppdev->hsemDevLock);
+
+    if (ppdev->pSurface)
+        (void)MouseSafetyOnDrawEnd(ppdev);
+
+    EngReleaseSemaphore(ppdev->hsemDevLock);
+    return TRUE;
 }
 
 /************************************************************************/

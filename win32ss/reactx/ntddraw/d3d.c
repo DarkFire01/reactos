@@ -15,7 +15,7 @@
 
 #include <win32k.h>
 
-// #define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 /*++
@@ -64,7 +64,7 @@ NtGdiDdCanCreateD3DBuffer(HANDLE hDirectDraw,
 
     if (pfnDdCanCreateD3DBuffer == NULL)
     {
-        DPRINT1("Warning: no pfnDdCanCreateD3DBuffer\n");
+        DPRINT("Warning: no pfnDdCanCreateD3DBuffer\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -123,7 +123,7 @@ NtGdiD3dContextCreate(HANDLE hDirectDrawLocal,
 
     if (pfnD3dContextCreate == NULL)
     {
-        DPRINT1("Warning: no pfnD3dContextCreate\n");
+        DPRINT("Warning: no pfnD3dContextCreate\n");
         return FALSE;
     }
 
@@ -158,7 +158,7 @@ NtGdiD3dContextDestroy(LPD3DNTHAL_CONTEXTDESTROYDATA pContextDestroyData)
 
     if ( pfnD3dContextDestroy == NULL)
     {
-        DPRINT1("Warning: no pfnD3dContextDestroy\n");
+        DPRINT("Warning: no pfnD3dContextDestroy\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -196,7 +196,7 @@ NtGdiD3dContextDestroyAll(LPD3DNTHAL_CONTEXTDESTROYALLDATA pdcad)
 
     if (pfnD3dContextDestroyAll == NULL)
     {
-        DPRINT1("Warning: no pfnD3dContextDestroyAll\n");
+        DPRINT("Warning: no pfnD3dContextDestroyAll\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -271,7 +271,7 @@ NtGdiDdCreateD3DBuffer(HANDLE hDirectDraw,
 
     if (pfnDdCreateD3DBuffer == NULL)
     {
-        DPRINT1("Warning: no pfnDdCreateD3DBuffer\n");
+        DPRINT("Warning: no pfnDdCreateD3DBuffer\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -294,7 +294,7 @@ NtGdiDdDestroyD3DBuffer(HANDLE hSurface)
 
     if (pfnDdDestroyD3DBuffer == NULL)
     {
-        DPRINT1("Warning: no pfnDdDestroyD3DBuffer\n");
+        DPRINT("Warning: no pfnDdDestroyD3DBuffer\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -320,7 +320,7 @@ NtGdiD3dDrawPrimitives2(HANDLE hCmdBuf,
 
     if (pfnD3dDrawPrimitives2 == NULL)
     {
-        DPRINT1("Warning: no pfnD3dDrawPrimitives2\n");
+        DPRINT("Warning: no pfnD3dDrawPrimitives2\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -340,7 +340,7 @@ NtGdiDdLockD3D(HANDLE hSurface,
 
     if (pfnDdLockD3D == NULL)
     {
-        DPRINT1("Warning: no pfnDdLockD3D\n");
+        DPRINT("Warning: no pfnDdLockD3D\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -360,7 +360,7 @@ NtGdiD3dValidateTextureStageState(LPD3DNTHAL_VALIDATETEXTURESTAGESTATEDATA pData
 
     if (pfnD3dValidateTextureStageState == NULL)
     {
-        DPRINT1("Warning: no pfnD3dValidateTextureStageState\n");
+        DPRINT("Warning: no pfnD3dValidateTextureStageState\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -380,7 +380,7 @@ NtGdiDdUnlockD3D(HANDLE hSurface,
 
     if (pfnDdUnlockD3D == NULL)
     {
-        DPRINT1("Warning: no pfnDdUnlockD3D\n");
+        DPRINT("Warning: no pfnDdUnlockD3D\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 

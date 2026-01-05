@@ -10,7 +10,7 @@
 
 #include <win32k.h>
 
-// #define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 /************************************************************************/
@@ -25,7 +25,7 @@ NtGdiDdBeginMoCompFrame(HANDLE hMoComp,
 
     if (pfnDdBeginMoCompFrame == NULL)
     {
-        DPRINT1("Warning: no pfnDdBeginMoCompFrame\n");
+        DPRINT("Warning: no pfnDdBeginMoCompFrame\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -44,7 +44,7 @@ NtGdiDdCreateMoComp(HANDLE hDirectDraw, PDD_CREATEMOCOMPDATA puCreateMoCompData)
 
     if (pfnDdCreateMoComp == NULL)
     {
-        DPRINT1("Warning: no pfnDdCreateMoComp\n");
+        DPRINT("Warning: no pfnDdCreateMoComp\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -65,7 +65,7 @@ NtGdiDdDestroyMoComp(HANDLE hMoComp,
 
     if (pfnDdDestroyMoComp == NULL)
     {
-        DPRINT1("Warning: no pfnDdDestroyMoComp\n");
+        DPRINT("Warning: no pfnDdDestroyMoComp\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -85,7 +85,7 @@ NtGdiDdEndMoCompFrame(HANDLE hMoComp,
 
     if (pfnDdEndMoCompFrame == NULL)
     {
-        DPRINT1("Warning: no pfnDdEndMoCompFrame\n");
+        DPRINT("Warning: no pfnDdEndMoCompFrame\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -105,7 +105,7 @@ NtGdiDdGetInternalMoCompInfo(HANDLE hDirectDraw,
 
     if (pfnDdGetInternalMoCompInfo == NULL)
     {
-        DPRINT1("Warning: no pfnDdGetInternalMoCompInfo\n");
+        DPRINT("Warning: no pfnDdGetInternalMoCompInfo\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -125,7 +125,7 @@ NtGdiDdGetMoCompBuffInfo(HANDLE hDirectDraw,
 
     if (pfnDdGetMoCompBuffInfo == NULL)
     {
-        DPRINT1("Warning: no pfnDdGetMoCompBuffInfo\n");
+        DPRINT("Warning: no pfnDdGetMoCompBuffInfo\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -145,7 +145,7 @@ NtGdiDdGetMoCompFormats(HANDLE hDirectDraw,
 
     if (pfnDdGetMoCompFormats == NULL)
     {
-        DPRINT1("Warning: no pfnDdGetMoCompFormats\n");
+        DPRINT("Warning: no pfnDdGetMoCompFormats\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -165,7 +165,7 @@ NtGdiDdGetMoCompGuids(HANDLE hDirectDraw,
 
     if (pfnDdGetMoCompGuids == NULL)
     {
-        DPRINT1("Warning: no pfnDdGetMoCompGuids\n");
+        DPRINT("Warning: no pfnDdGetMoCompGuids\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -185,7 +185,7 @@ NtGdiDdQueryMoCompStatus(HANDLE hMoComp,
 
     if (pfnDdQueryMoCompStatus == NULL)
     {
-        DPRINT1("Warning: no pfnDdQueryMoCompStatus\n");
+        DPRINT("Warning: no pfnDdQueryMoCompStatus\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 
@@ -205,7 +205,7 @@ NtGdiDdRenderMoComp(HANDLE hMoComp,
 
     if (pfnDdRenderMoComp == NULL)
     {
-        DPRINT1("Warning: no pfnDdRenderMoComp\n");
+        DPRINT("Warning: no pfnDdRenderMoComp\n");
         return DDHAL_DRIVER_NOTHANDLED;
     }
 

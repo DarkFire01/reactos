@@ -1062,14 +1062,47 @@ IntGdiCreateDC(
 HDC FASTCALL
 IntGdiCreateDisplayDC(HDEV hDev, ULONG DcType, BOOL EmptyDC)
 {
-    HDC hDC;
-    UNIMPLEMENTED;
+    PPDEVOBJ ppdev;
+    PDC pdcNew;
+    HDC hdcNew;
+    GDILOOBJTYPE eDcObjType;
 
-    if (DcType == DCTYPE_MEMORY)
-        hDC = NtGdiCreateCompatibleDC(NULL); // OH~ Yuck! I think I taste vomit in my mouth!
-    else
-        hDC = IntGdiCreateDC(NULL, NULL, NULL, NULL, (DcType == DCTYPE_INFO));
+    ppdev = (PPDEVOBJ)hDev;
+    if (!ppdev)
+    {
+        EngSetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
 
-    return hDC;
+    /*
+     * DC_vCleanup() will release pdc->ppdev, so take our own reference
+     * to balance that and keep the caller's HDEV ownership intact.
+     */
+    PDEVOBJ_vReference(ppdev);
+
+    eDcObjType = EmptyDC ? GDILoObjType_LO_ALTDC_TYPE : GDILoObjType_LO_DC_TYPE;
+
+    pdcNew = DC_AllocDcWithHandle(eDcObjType);
+    if (!pdcNew)
+    {
+        PDEVOBJ_vRelease(ppdev);
+        return NULL;
+    }
+
+    hdcNew = pdcNew->BaseObject.hHmgr;
+
+    DC_vInitDc(pdcNew, (DCTYPE)DcType, ppdev);
+    pdcNew->fs |= DC_DISPLAY;
+    if ((DCTYPE)DcType == DCTYPE_DIRECT)
+        pdcNew->fs |= DC_DIRECT;
+
+    /* FIXME: HACK! */
+    DC_InitHack(pdcNew);
+
+    DC_bAllocDcAttr(pdcNew);
+
+    DC_UnlockDc(pdcNew);
+
+    return hdcNew;
 }
 

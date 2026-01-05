@@ -438,7 +438,9 @@ MsqWakeQueue(PTHREADINFO pti, DWORD MessageBits, BOOL KeyEvent)
    if (MessageBits & QS_EVENT)       pti->nCntsQBits[QSRosEvent]++;
 
    if (KeyEvent)
-      KeSetEvent(pti->pEventQueueServer, IO_NO_INCREMENT, FALSE);
+      KeSetEvent(pti->pEventQueueServer,
+              (MessageBits & QS_SENDMESSAGE) ? EVENT_INCREMENT : IO_NO_INCREMENT,
+              FALSE);
 }
 
 VOID FASTCALL
@@ -991,7 +993,7 @@ co_MsqDispatchOneSentMessage(
    /* Notify the sender. */
    if (Message->pkCompletionEvent != NULL)
    {
-      KeSetEvent(Message->pkCompletionEvent, IO_NO_INCREMENT, FALSE);
+      KeSetEvent(Message->pkCompletionEvent, EVENT_INCREMENT, FALSE);
    }
 
    /* free the message */
@@ -1063,6 +1065,29 @@ co_MsqSendMessage(PTHREADINFO ptirec,
                   INT HookMessage,
                   ULONG_PTR *uResult)
 {
+#if DBG
+   typedef struct _MSQ_WPCHG_STATS
+   {
+      ULONG AnyCalls;
+      ULONG BlockCalls;
+      ULONG NonBlockCalls;
+      ULONG Wait0;
+      ULONG Wait1;
+      ULONG Timeout;
+      ULONGLONG QueueTicks;
+      ULONGLONG LeaveTicks;
+      ULONGLONG WaitTicks;
+      ULONGLONG EnterTicks;
+      ULONGLONG DispatchTicks;
+      ULONGLONG TotalTicks;
+      ULONGLONG MaxTotalTicks;
+      ULONGLONG MaxWaitTicks;
+   } MSQ_WPCHG_STATS;
+
+   static MSQ_WPCHG_STATS g_MsqWpChgStats;
+   static LARGE_INTEGER g_MsqWpChgFreq;
+#endif
+
    PTHREADINFO pti;
    PUSER_SENT_MESSAGE SaveMsg, Message;
    NTSTATUS WaitStatus;
@@ -1071,6 +1096,26 @@ co_MsqSendMessage(PTHREADINFO ptirec,
    PWND pWnd;
    BOOLEAN SwapStateEnabled;
    LRESULT Result = 0;   //// Result could be trashed. ////
+
+#if DBG
+   const BOOL TrackWpChg = (Msg == WM_WINDOWPOSCHANGING && HookMessage == MSQ_NORMAL);
+   LARGE_INTEGER qEntry = { 0 }, qQueued = { 0 };
+   LARGE_INTEGER qBeforeLeave = { 0 }, qAfterLeave = { 0 };
+   LARGE_INTEGER qAfterWait = { 0 };
+   LARGE_INTEGER qAfterEnter = { 0 };
+   LARGE_INTEGER qAfterDispatch = { 0 }, qExit = { 0 };
+   ULONGLONG queueTicks = 0, leaveTicks = 0, waitTicks = 0, enterTicks = 0, dispatchTicks = 0, totalTicks = 0;
+   if (TrackWpChg)
+   {
+      if (g_MsqWpChgFreq.QuadPart == 0)
+      {
+         KeQueryPerformanceCounter(&g_MsqWpChgFreq);
+         if (g_MsqWpChgFreq.QuadPart == 0) g_MsqWpChgFreq.QuadPart = 1;
+      }
+      qEntry = KeQueryPerformanceCounter(NULL);
+      (VOID)InterlockedIncrement((volatile LONG*)&g_MsqWpChgStats.AnyCalls);
+   }
+#endif
 
    pti = PsGetCurrentThreadWin32Thread();
    ASSERT(pti != ptirec);
@@ -1165,6 +1210,18 @@ co_MsqSendMessage(PTHREADINFO ptirec,
 
    MsqWakeQueue(ptirec, QS_SENDMESSAGE, TRUE);
 
+#if DBG
+   if (TrackWpChg)
+   {
+      qQueued = KeQueryPerformanceCounter(NULL);
+      queueTicks = (ULONGLONG)(qQueued.QuadPart - qEntry.QuadPart);
+      if (Block)
+         (VOID)InterlockedIncrement((volatile LONG*)&g_MsqWpChgStats.BlockCalls);
+      else
+         (VOID)InterlockedIncrement((volatile LONG*)&g_MsqWpChgStats.NonBlockCalls);
+   }
+#endif
+
    // First time in, turn off swapping of the stack.
    if (pti->cEnterCount == 0)
    {
@@ -1179,7 +1236,13 @@ co_MsqSendMessage(PTHREADINFO ptirec,
       WaitObjects[0] = Message->pkCompletionEvent; // Wait 0
       WaitObjects[1] = ptirec->pEThread;           // Wait 1
 
+   #if DBG
+      if (TrackWpChg) qBeforeLeave = KeQueryPerformanceCounter(NULL);
+   #endif
       UserLeaveCo();
+   #if DBG
+      if (TrackWpChg) qAfterLeave = KeQueryPerformanceCounter(NULL);
+   #endif
 
       WaitStatus = KeWaitForMultipleObjects( 2,
                                              WaitObjects,
@@ -1190,7 +1253,15 @@ co_MsqSendMessage(PTHREADINFO ptirec,
                                             (uTimeout ? &Timeout : NULL),
                                              NULL );
 
+   #if DBG
+      if (TrackWpChg) qAfterWait = KeQueryPerformanceCounter(NULL);
+   #endif
+
       UserEnterCo();
+
+   #if DBG
+      if (TrackWpChg) qAfterEnter = KeQueryPerformanceCounter(NULL);
+   #endif
 
       if (WaitStatus == STATUS_TIMEOUT)
       {
@@ -1221,6 +1292,10 @@ co_MsqSendMessage(PTHREADINFO ptirec,
 
       while (co_MsqDispatchOneSentMessage(pti))
          ;
+
+   #if DBG
+      if (TrackWpChg) qAfterDispatch = KeQueryPerformanceCounter(NULL);
+   #endif
    }
    else
    {
@@ -1232,7 +1307,13 @@ co_MsqSendMessage(PTHREADINFO ptirec,
 
       do
       {
+   #if DBG
+         if (TrackWpChg && qBeforeLeave.QuadPart == 0) qBeforeLeave = KeQueryPerformanceCounter(NULL);
+   #endif
          UserLeaveCo();
+   #if DBG
+         if (TrackWpChg && qAfterLeave.QuadPart == 0) qAfterLeave = KeQueryPerformanceCounter(NULL);
+   #endif
 
          WaitStatus = KeWaitForMultipleObjects( 3,
                                                 WaitObjects,
@@ -1243,7 +1324,13 @@ co_MsqSendMessage(PTHREADINFO ptirec,
                                                (uTimeout ? &Timeout : NULL),
                                                 NULL);
 
+#if DBG
+         if (TrackWpChg) qAfterWait = KeQueryPerformanceCounter(NULL);
+#endif
          UserEnterCo();
+#if DBG
+         if (TrackWpChg) qAfterEnter = KeQueryPerformanceCounter(NULL);
+#endif
 
          if (WaitStatus == STATUS_TIMEOUT)
          {
@@ -1279,6 +1366,10 @@ co_MsqSendMessage(PTHREADINFO ptirec,
          while (co_MsqDispatchOneSentMessage(pti))
             ;
       } while (WaitStatus == STATUS_WAIT_1);
+
+      #if DBG
+         if (TrackWpChg) qAfterDispatch = KeQueryPerformanceCounter(NULL);
+      #endif
    }
 
    // Count is nil, restore swapping of the stack.
@@ -1317,6 +1408,68 @@ co_MsqSendMessage(PTHREADINFO ptirec,
       // Make it to this point, the message was received.
       FreeUserMessage(Message);
    }
+
+#if DBG
+   if (TrackWpChg)
+   {
+      qExit = KeQueryPerformanceCounter(NULL);
+      if (qBeforeLeave.QuadPart && qAfterLeave.QuadPart)
+         leaveTicks = (ULONGLONG)(qAfterLeave.QuadPart - qBeforeLeave.QuadPart);
+      if (qAfterLeave.QuadPart && qAfterWait.QuadPart)
+         waitTicks = (ULONGLONG)(qAfterWait.QuadPart - qAfterLeave.QuadPart);
+      if (qAfterWait.QuadPart && qAfterEnter.QuadPart)
+         enterTicks = (ULONGLONG)(qAfterEnter.QuadPart - qAfterWait.QuadPart);
+      if (qAfterEnter.QuadPart && qAfterDispatch.QuadPart)
+         dispatchTicks = (ULONGLONG)(qAfterDispatch.QuadPart - qAfterEnter.QuadPart);
+      totalTicks = (ULONGLONG)(qExit.QuadPart - qEntry.QuadPart);
+
+      InterlockedExchangeAdd64((volatile LONG64*)&g_MsqWpChgStats.QueueTicks, (LONG64)queueTicks);
+      InterlockedExchangeAdd64((volatile LONG64*)&g_MsqWpChgStats.LeaveTicks, (LONG64)leaveTicks);
+      InterlockedExchangeAdd64((volatile LONG64*)&g_MsqWpChgStats.WaitTicks, (LONG64)waitTicks);
+      InterlockedExchangeAdd64((volatile LONG64*)&g_MsqWpChgStats.EnterTicks, (LONG64)enterTicks);
+      InterlockedExchangeAdd64((volatile LONG64*)&g_MsqWpChgStats.DispatchTicks, (LONG64)dispatchTicks);
+      InterlockedExchangeAdd64((volatile LONG64*)&g_MsqWpChgStats.TotalTicks, (LONG64)totalTicks);
+
+      {
+         LONG64 prev;
+         do { prev = (LONG64)g_MsqWpChgStats.MaxTotalTicks; if ((LONG64)totalTicks <= prev) break; }
+         while (InterlockedCompareExchange64((volatile LONG64*)&g_MsqWpChgStats.MaxTotalTicks, (LONG64)totalTicks, prev) != prev);
+      }
+      {
+         LONG64 prev;
+         do { prev = (LONG64)g_MsqWpChgStats.MaxWaitTicks; if ((LONG64)waitTicks <= prev) break; }
+         while (InterlockedCompareExchange64((volatile LONG64*)&g_MsqWpChgStats.MaxWaitTicks, (LONG64)waitTicks, prev) != prev);
+      }
+
+      if (WaitStatus == STATUS_WAIT_0)
+         (VOID)InterlockedIncrement((volatile LONG*)&g_MsqWpChgStats.Wait0);
+      else if (WaitStatus == STATUS_WAIT_1)
+         (VOID)InterlockedIncrement((volatile LONG*)&g_MsqWpChgStats.Wait1);
+      else if (WaitStatus == STATUS_TIMEOUT)
+         (VOID)InterlockedIncrement((volatile LONG*)&g_MsqWpChgStats.Timeout);
+
+      if ((g_MsqWpChgStats.AnyCalls & 0x3FF) == 0)
+      {
+         const double denom = (double)g_MsqWpChgFreq.QuadPart;
+         const double n = (double)(g_MsqWpChgStats.AnyCalls ? g_MsqWpChgStats.AnyCalls : 1);
+         DbgPrint("MSQWP: WM_WINDOWPOSCHANGING calls=%lu blk=%lu nb=%lu wait0=%lu wait1=%lu to=%lu avg(ms): q=%.3f leave=%.3f wait=%.3f enter=%.3f disp=%.3f | avgTotal=%.3f maxTotal=%.3f maxWait=%.3f\n",
+                  g_MsqWpChgStats.AnyCalls,
+                  g_MsqWpChgStats.BlockCalls,
+                  g_MsqWpChgStats.NonBlockCalls,
+                  g_MsqWpChgStats.Wait0,
+                  g_MsqWpChgStats.Wait1,
+                  g_MsqWpChgStats.Timeout,
+                  (double)g_MsqWpChgStats.QueueTicks * 1000.0 / (denom * n),
+                  (double)g_MsqWpChgStats.LeaveTicks * 1000.0 / (denom * n),
+                  (double)g_MsqWpChgStats.WaitTicks * 1000.0 / (denom * n),
+                  (double)g_MsqWpChgStats.EnterTicks * 1000.0 / (denom * n),
+                  (double)g_MsqWpChgStats.DispatchTicks * 1000.0 / (denom * n),
+                  (double)g_MsqWpChgStats.TotalTicks * 1000.0 / (denom * n),
+                  (double)g_MsqWpChgStats.MaxTotalTicks * 1000.0 / denom,
+                  (double)g_MsqWpChgStats.MaxWaitTicks * 1000.0 / denom);
+      }
+   }
+#endif
 
    pti->pusmSent = SaveMsg;
 
@@ -2268,7 +2421,7 @@ MsqCleanupThreadMsgs(PTHREADINFO pti)
       /* wake the sender's thread */
       if (CurrentSentMessage->pkCompletionEvent != NULL)
       {
-         KeSetEvent(CurrentSentMessage->pkCompletionEvent, IO_NO_INCREMENT, FALSE);
+         KeSetEvent(CurrentSentMessage->pkCompletionEvent, EVENT_INCREMENT, FALSE);
       }
 
       if (CurrentSentMessage->HasPackedLParam)
