@@ -3,6 +3,37 @@
 #define NDEBUG
 #include <debug.h>
 
+/* Marker used to signal initialization/deletion in progress.
+ * HSEMAPHORE is a pointer type (ERESOURCE*), so a small invalid value is safe.
+ */
+#define HSEM_IN_PROGRESS ((HSEMAPHORE)(ULONG_PTR)1)
+
+static
+VOID
+EngpWaitForSafeSemaphoreReady(_In_ volatile HSEMAPHORE *SafeHsem)
+{
+    ULONG spinCount = 0;
+
+    ASSERT_IRQL_LESS_OR_EQUAL(PASSIVE_LEVEL);
+
+    while ((*SafeHsem == NULL) || (*SafeHsem == HSEM_IN_PROGRESS))
+    {
+        if (++spinCount < 1024)
+        {
+            YieldProcessor();
+        }
+        else
+        {
+            LARGE_INTEGER interval;
+
+            /* Sleep 1ms to avoid pegging the CPU if another thread stalls. */
+            interval.QuadPart = -(10 * 1000);
+            (void)KeDelayExecutionThread(KernelMode, FALSE, &interval);
+            spinCount = 0;
+        }
+    }
+}
+
 /*
  * @implemented
  */
@@ -148,26 +179,52 @@ EngInitializeSafeSemaphore(
     _Out_ ENGSAFESEMAPHORE *Semaphore)
 {
     HSEMAPHORE hSem;
+    HSEMAPHORE hCur;
 
     if (InterlockedIncrement(&Semaphore->lCount) == 1)
     {
+        /* We are the initializer for this generation.
+         * Acquire the initialization marker; if a previous-generation semaphore is
+         * still being torn down, wait until it becomes NULL.
+         */
+        for (;;)
+        {
+            hCur = (HSEMAPHORE)InterlockedCompareExchangePointer((volatile PVOID *)&Semaphore->hsem,
+                                                                (PVOID)HSEM_IN_PROGRESS,
+                                                                NULL);
+            if (hCur == NULL)
+                break;
+
+            /* Someone else is initializing/deleting, or an old semaphore is pending
+             * deletion. Wait for it to finish.
+             */
+            EngpWaitForSafeSemaphoreReady((volatile HSEMAPHORE *)&Semaphore->hsem);
+
+            /* If we got here, hsem is now a real semaphore; but since lCount is 1,
+             * it must be from a previous generation that raced with deletion.
+             * Wait until it is cleared and retry.
+             */
+            while (Semaphore->hsem != NULL)
+                EngpWaitForSafeSemaphoreReady((volatile HSEMAPHORE *)&Semaphore->hsem);
+        }
+
         /* Create the semaphore */
         hSem = EngCreateSemaphore();
-        if (hSem == 0)
+        if (hSem == NULL)
         {
+            (void)InterlockedExchangePointer((volatile PVOID *)&Semaphore->hsem, NULL);
             InterlockedDecrement(&Semaphore->lCount);
             return FALSE;
         }
-        /* FIXME: Not thread-safe! Check result of InterlockedCompareExchangePointer
-                  and delete semaphore if already initialized! */
+
+        /* Publish it (replace the in-progress marker). */
         (void)InterlockedExchangePointer((volatile PVOID *)&Semaphore->hsem, hSem);
     }
     else
     {
         /* Wait for the other thread to create the semaphore */
         ASSERT(Semaphore->lCount > 1);
-        ASSERT_IRQL_LESS_OR_EQUAL(PASSIVE_LEVEL);
-        while (Semaphore->hsem == NULL);
+        EngpWaitForSafeSemaphoreReady((volatile HSEMAPHORE *)&Semaphore->hsem);
     }
 
     return TRUE;
@@ -183,8 +240,18 @@ EngDeleteSafeSemaphore(
 {
     if (InterlockedDecrement(&pssem->lCount) == 0)
     {
-        /* FIXME: Not thread-safe! Use result of InterlockedCompareExchangePointer! */
-        EngDeleteSemaphore(pssem->hsem);
+        /* Block any concurrent initializers from observing a soon-to-be-deleted
+         * semaphore pointer.
+         */
+        HSEMAPHORE hOld;
+
+        hOld = (HSEMAPHORE)InterlockedExchangePointer((volatile PVOID *)&pssem->hsem,
+                                                     (PVOID)HSEM_IN_PROGRESS);
+        if ((hOld != NULL) && (hOld != HSEM_IN_PROGRESS))
+        {
+            EngDeleteSemaphore(hOld);
+        }
+
         (void)InterlockedExchangePointer((volatile PVOID *)&pssem->hsem, NULL);
     }
 }

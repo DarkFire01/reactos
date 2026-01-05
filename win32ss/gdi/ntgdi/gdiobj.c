@@ -103,7 +103,15 @@ ASSERT_LOCK_ORDER(
         /* Ensure correct locking order! */
         for (i = objt + 1; i < GDIObjTypeTotal; i++)
         {
-            NT_ASSERT(pti->acExclusiveLockCount[i] == 0);
+            if (pti->acExclusiveLockCount[i] != 0)
+            {
+                DPRINT1("ASSERT_LOCK_ORDER: locking type=%lu while holding type=%lu (count=%lu), totalExclusive=%lu\n",
+                        (ULONG)objt,
+                        i,
+                        (ULONG)pti->acExclusiveLockCount[i],
+                        (ULONG)pti->cExclusiveLocks);
+                NT_ASSERT(pti->acExclusiveLockCount[i] == 0);
+            }
         }
     }
 }
@@ -394,6 +402,7 @@ ENTRY_pentPopFreeEntryGlobal(VOID)
 {
     ULONG iFirst, iNext, iPrev;
     PENTRY pentFree;
+    ULONG spinCount = 0;
 
     DPRINT("Enter InterLockedPopFreeEntry\n");
 
@@ -434,6 +443,13 @@ ENTRY_pentPopFreeEntryGlobal(VOID)
         iPrev = InterlockedCompareExchange((LONG*)&gulFirstFree,
                                            iNext,
                                            iFirst);
+
+        /* Avoid hard spinning under heavy contention */
+        if (iPrev != iFirst)
+        {
+            if ((++spinCount & 0xFF) == 0)
+                YieldProcessor();
+        }
     }
     while (iPrev != iFirst);
 
@@ -458,6 +474,7 @@ ENTRY_pentPopFreeEntryLocal(_In_ ULONG cpu)
 {
     ULONG iFirst, iNext, iPrev;
     PENTRY pentFree;
+    ULONG spinCount = 0;
 
     do
     {
@@ -474,6 +491,12 @@ ENTRY_pentPopFreeEntryLocal(_In_ ULONG cpu)
         iPrev = InterlockedCompareExchange((LONG*)&gaulFirstFreeLocal[cpu],
                                            iNext,
                                            iFirst);
+
+        if (iPrev != iFirst)
+        {
+            if ((++spinCount & 0xFF) == 0)
+                YieldProcessor();
+        }
     }
     while (iPrev != iFirst);
 
@@ -506,6 +529,7 @@ VOID
 ENTRY_vPushFreeEntryToList(_Inout_ volatile ULONG* pulFirstFree, _In_ PENTRY pentFree)
 {
     ULONG iToFree, iFirst, iPrev, idxToFree;
+    ULONG spinCount = 0;
 
     idxToFree = pentFree - gpentHmgr;
 
@@ -524,6 +548,12 @@ ENTRY_vPushFreeEntryToList(_Inout_ volatile ULONG* pulFirstFree, _In_ PENTRY pen
         iPrev = InterlockedCompareExchange((LONG*)pulFirstFree,
                                            iToFree,
                                            iFirst);
+
+        if (iPrev != iFirst)
+        {
+            if ((++spinCount & 0xFF) == 0)
+                YieldProcessor();
+        }
     }
     while (iPrev != iFirst);
 }
@@ -583,6 +613,7 @@ ENTRY_ReferenceEntryByHandle(HGDIOBJ hobj, FLONG fl)
     ULONG ulIndex, cNewRefs, cOldRefs;
     PENTRY pentry;
     PTHREADINFO pti = PsGetCurrentThreadWin32Thread();
+    ULONG spinCount = 0;
 
     /* HACK: This may be a hack but it fixes CORE-5601.
      * Allow a window that is moving or resizing to have access to all of its child
@@ -631,6 +662,12 @@ ENTRY_ReferenceEntryByHandle(HGDIOBJ hobj, FLONG fl)
         cOldRefs = InterlockedCompareExchange((PLONG)&gpaulRefCount[ulIndex],
                                               cNewRefs,
                                               cOldRefs);
+
+        if (cNewRefs != cOldRefs + 1)
+        {
+            if ((++spinCount & 0xFF) == 0)
+                YieldProcessor();
+        }
     }
     while (cNewRefs != cOldRefs + 1);
 

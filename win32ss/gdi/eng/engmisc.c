@@ -11,6 +11,17 @@
 #define NDEBUG
 #include <debug.h>
 
+typedef struct _INTENG_TEMP_BITMAP_CACHE
+{
+  volatile LONG Busy;
+  HBITMAP hbm;
+  SIZEL sizl;
+  LONG width;
+  ULONG format;
+} INTENG_TEMP_BITMAP_CACHE;
+
+static INTENG_TEMP_BITMAP_CACHE s_IntEngTempBitmapCache = {0};
+
 BOOL APIENTRY
 IntEngEnterEx(PINTENG_ENTER_LEAVE EnterLeave,
               SURFOBJ *psoDest,
@@ -25,6 +36,8 @@ IntEngEnterEx(PINTENG_ENTER_LEAVE EnterLeave,
   POINTL SrcPoint;
   LONG Width;
   RECTL ClippedDestRect;
+  BOOL UseCachedBitmap = FALSE;
+  BOOL CacheLockHeld = FALSE;
 
   /* Normalize */
   if (DestRect->right < DestRect->left)
@@ -54,20 +67,71 @@ IntEngEnterEx(PINTENG_ENTER_LEAVE EnterLeave,
     BitmapSize.cx = DestRect->right - DestRect->left;
     BitmapSize.cy = DestRect->bottom - DestRect->top;
     Width = WIDTH_BYTES_ALIGN32(BitmapSize.cx, BitsPerFormat(psoDest->iBitmapFormat));
-    EnterLeave->OutputBitmap = EngCreateBitmap(BitmapSize, Width,
-                                               psoDest->iBitmapFormat,
-                                               BMF_TOPDOWN | BMF_NOZEROINIT, NULL);
+    if (BitmapSize.cx > 0 && BitmapSize.cy > 0 &&
+        InterlockedCompareExchange(&s_IntEngTempBitmapCache.Busy, 1, 0) == 0)
+    {
+      CacheLockHeld = TRUE;
 
-    if (!EnterLeave->OutputBitmap)
+      if (s_IntEngTempBitmapCache.hbm != NULL &&
+          s_IntEngTempBitmapCache.sizl.cx == BitmapSize.cx &&
+          s_IntEngTempBitmapCache.sizl.cy == BitmapSize.cy &&
+          s_IntEngTempBitmapCache.width == Width &&
+          s_IntEngTempBitmapCache.format == psoDest->iBitmapFormat)
       {
-      DPRINT1("EngCreateBitmap() failed\n");
-      return FALSE;
+        EnterLeave->OutputBitmap = s_IntEngTempBitmapCache.hbm;
+        UseCachedBitmap = TRUE;
       }
+      else
+      {
+        if (s_IntEngTempBitmapCache.hbm != NULL)
+        {
+          EngDeleteSurface((HSURF)s_IntEngTempBitmapCache.hbm);
+          s_IntEngTempBitmapCache.hbm = NULL;
+        }
+
+        s_IntEngTempBitmapCache.hbm = EngCreateBitmap(BitmapSize, Width,
+                                                      psoDest->iBitmapFormat,
+                                                      BMF_TOPDOWN | BMF_NOZEROINIT, NULL);
+        if (s_IntEngTempBitmapCache.hbm != NULL)
+        {
+          s_IntEngTempBitmapCache.sizl = BitmapSize;
+          s_IntEngTempBitmapCache.width = Width;
+          s_IntEngTempBitmapCache.format = psoDest->iBitmapFormat;
+
+          EnterLeave->OutputBitmap = s_IntEngTempBitmapCache.hbm;
+          UseCachedBitmap = TRUE;
+        }
+      }
+    }
+
+    if (!UseCachedBitmap)
+    {
+      EnterLeave->OutputBitmap = EngCreateBitmap(BitmapSize, Width,
+                                                 psoDest->iBitmapFormat,
+                                                 BMF_TOPDOWN | BMF_NOZEROINIT, NULL);
+
+      if (!EnterLeave->OutputBitmap)
+        {
+        if (CacheLockHeld)
+        {
+          InterlockedExchange(&s_IntEngTempBitmapCache.Busy, 0);
+        }
+        DPRINT1("EngCreateBitmap() failed\n");
+        return FALSE;
+        }
+    }
 
     *ppsoOutput = EngLockSurface((HSURF)EnterLeave->OutputBitmap);
     if (*ppsoOutput == NULL)
     {
-      EngDeleteSurface((HSURF)EnterLeave->OutputBitmap);
+      if (!UseCachedBitmap)
+      {
+        EngDeleteSurface((HSURF)EnterLeave->OutputBitmap);
+      }
+      if (CacheLockHeld)
+      {
+        InterlockedExchange(&s_IntEngTempBitmapCache.Busy, 0);
+      }
       return FALSE;
     }
 
@@ -100,7 +164,14 @@ IntEngEnterEx(PINTENG_ENTER_LEAVE EnterLeave,
     if (EnterLeave->TrivialClipObj == NULL)
     {
       EngUnlockSurface(*ppsoOutput);
-      EngDeleteSurface((HSURF)EnterLeave->OutputBitmap);
+      if (!UseCachedBitmap)
+      {
+        EngDeleteSurface((HSURF)EnterLeave->OutputBitmap);
+      }
+      if (CacheLockHeld)
+      {
+        InterlockedExchange(&s_IntEngTempBitmapCache.Busy, 0);
+      }
       return FALSE;
     }
     EnterLeave->TrivialClipObj->iDComplexity = DC_TRIVIAL;
@@ -158,6 +229,7 @@ IntEngEnterEx(PINTENG_ENTER_LEAVE EnterLeave,
   EnterLeave->DestObj = psoDest;
   EnterLeave->OutputObj = *ppsoOutput;
   EnterLeave->ReadOnly = ReadOnly;
+  EnterLeave->UseCachedBitmap = UseCachedBitmap;
 
   return TRUE;
 }
@@ -222,8 +294,16 @@ IntEngLeave(PINTENG_ENTER_LEAVE EnterLeave)
         }
       }
     EngUnlockSurface(EnterLeave->OutputObj);
-    EngDeleteSurface((HSURF)EnterLeave->OutputBitmap);
+    if (!EnterLeave->UseCachedBitmap)
+    {
+      EngDeleteSurface((HSURF)EnterLeave->OutputBitmap);
+    }
     EngDeleteClip(EnterLeave->TrivialClipObj);
+
+    if (EnterLeave->UseCachedBitmap)
+    {
+      InterlockedExchange(&s_IntEngTempBitmapCache.Busy, 0);
+    }
     }
   else
     {

@@ -1945,6 +1945,13 @@ co_WinPosSetWindowPos(
    OldWindowRect = Window->rcWindow;
    OldClientRect = Window->rcClient;
 
+   /* Track whether any change requires updating existing active DCEs.
+    * This can be expensive (it recomputes vis regions and may notify the
+    * display driver), so avoid doing it when the SetWindowPos call is a
+    * no-op (common in microbenchmarks).
+    */
+   BOOLEAN bResetActiveDCEs = FALSE;
+
    if (NewClientRect.left != OldClientRect.left ||
        NewClientRect.top  != OldClientRect.top)
    {
@@ -1953,10 +1960,23 @@ co_WinPosSetWindowPos(
                                NewClientRect.left - OldClientRect.left,
                                NewClientRect.top - OldClientRect.top);
       PosChanged = TRUE;
+      bResetActiveDCEs = TRUE;
    }
 
    Window->rcWindow = NewWindowRect;
    Window->rcClient = NewClientRect;
+
+   if (NewWindowRect.left != OldWindowRect.left ||
+       NewWindowRect.top  != OldWindowRect.top)
+   {
+      bResetActiveDCEs = TRUE;
+   }
+
+   if (!(WinPos.flags & SWP_NOZORDER) ||
+       (WinPos.flags & (SWP_SHOWWINDOW | SWP_HIDEWINDOW | SWP_FRAMECHANGED | SWP_STATECHANGED)))
+   {
+      bResetActiveDCEs = TRUE;
+   }
 
    /* erase parent when hiding or resizing child */
    if (WinPos.flags & SWP_HIDEWINDOW)
@@ -2013,7 +2033,10 @@ co_WinPosSetWindowPos(
                      NewWindowRect.top - OldWindowRect.top);
    }
 
-         DceResetActiveDCEs(Window); // For WS_VISIBLE changes.
+   if (bResetActiveDCEs)
+   {
+      DceResetActiveDCEs(Window);
+   }
 
    // Change or update, set send non-client paint flag.
    if ( Window->style & WS_VISIBLE &&
@@ -3572,9 +3595,33 @@ NtUserSetWindowPos(
    PWND Window, pWndIA;
    BOOL ret = FALSE;
    USER_REFERENCE_ENTRY Ref;
+   LARGE_INTEGER qpcStart, qpcAfterEnter, qpcBeforeCo, qpcAfterCo, qpcBeforeLeave, qpcAfterLeave;
+
+   /* Lightweight aggregated profiling for SetWindowPos.
+    * Helps distinguish USER lock contention vs co_ work vs leave/flush costs.
+    */
+   static volatile ULONG g_SwpCalls = 0;
+   static volatile LONG64 g_SwpTotalEnterQpc = 0;
+   static volatile LONG64 g_SwpTotalCoQpc = 0;
+   static volatile LONG64 g_SwpTotalLeaveQpc = 0;
+   static volatile LONG64 g_SwpMaxEnterQpc = 0;
+   static volatile LONG64 g_SwpMaxCoQpc = 0;
+   static volatile LONG64 g_SwpMaxLeaveQpc = 0;
+   static LARGE_INTEGER g_SwpQpcFreq = { 0 };
+
+   if (g_SwpQpcFreq.QuadPart == 0)
+   {
+      LARGE_INTEGER freq;
+      (VOID)KeQueryPerformanceCounter(&freq);
+      if (freq.QuadPart != 0)
+         g_SwpQpcFreq = freq;
+   }
+
+   qpcStart = KeQueryPerformanceCounter(NULL);
 
    TRACE("Enter NtUserSetWindowPos\n");
    UserEnterExclusive();
+   qpcAfterEnter = KeQueryPerformanceCounter(NULL);
 
    if (!(Window = UserGetWindowObject(hWnd)) ||
         UserIsDesktopWindow(Window) || UserIsMessageWindow(Window))
@@ -3613,12 +3660,55 @@ NtUserSetWindowPos(
    }
 
    UserRefObjectCo(Window, &Ref);
+   qpcBeforeCo = KeQueryPerformanceCounter(NULL);
    ret = co_WinPosSetWindowPos(Window, hWndInsertAfter, X, Y, cx, cy, uFlags);
+   qpcAfterCo = KeQueryPerformanceCounter(NULL);
    UserDerefObjectCo(Window);
 
 Exit:
    TRACE("Leave NtUserSetWindowPos, ret=%i\n", ret);
+   qpcBeforeLeave = KeQueryPerformanceCounter(NULL);
    UserLeave();
+   qpcAfterLeave = KeQueryPerformanceCounter(NULL);
+
+   {
+      const LONG64 enterQpc = qpcAfterEnter.QuadPart - qpcStart.QuadPart;
+      const LONG64 coQpc = qpcAfterCo.QuadPart - qpcBeforeCo.QuadPart;
+      const LONG64 leaveQpc = qpcAfterLeave.QuadPart - qpcBeforeLeave.QuadPart;
+      ULONG callCount = (ULONG)InterlockedIncrement((volatile LONG*)&g_SwpCalls);
+
+      InterlockedExchangeAdd64(&g_SwpTotalEnterQpc, enterQpc);
+      InterlockedExchangeAdd64(&g_SwpTotalCoQpc, coQpc);
+      InterlockedExchangeAdd64(&g_SwpTotalLeaveQpc, leaveQpc);
+
+      /* Update max values */
+      {
+         LONG64 prev;
+         do { prev = g_SwpMaxEnterQpc; if (enterQpc <= prev) break; }
+         while (InterlockedCompareExchange64(&g_SwpMaxEnterQpc, enterQpc, prev) != prev);
+         do { prev = g_SwpMaxCoQpc; if (coQpc <= prev) break; }
+         while (InterlockedCompareExchange64(&g_SwpMaxCoQpc, coQpc, prev) != prev);
+         do { prev = g_SwpMaxLeaveQpc; if (leaveQpc <= prev) break; }
+         while (InterlockedCompareExchange64(&g_SwpMaxLeaveQpc, leaveQpc, prev) != prev);
+      }
+
+      /* Print a small number of summary lines */
+      if ((callCount == 1) || (callCount == 128) || ((callCount & 0x3FF) == 0))
+      {
+         const LONG64 freq = g_SwpQpcFreq.QuadPart ? g_SwpQpcFreq.QuadPart : 1;
+         const LONG64 avgEnter = g_SwpTotalEnterQpc / (LONG64)callCount;
+         const LONG64 avgCo = g_SwpTotalCoQpc / (LONG64)callCount;
+         const LONG64 avgLeave = g_SwpTotalLeaveQpc / (LONG64)callCount;
+         DbgPrint("SWP: calls=%lu avg(ms): enter=%.3f co=%.3f leave=%.3f | max(ms): enter=%.3f co=%.3f leave=%.3f\n",
+                  callCount,
+                  (double)avgEnter * 1000.0 / (double)freq,
+                  (double)avgCo * 1000.0 / (double)freq,
+                  (double)avgLeave * 1000.0 / (double)freq,
+                  (double)g_SwpMaxEnterQpc * 1000.0 / (double)freq,
+                  (double)g_SwpMaxCoQpc * 1000.0 / (double)freq,
+                  (double)g_SwpMaxLeaveQpc * 1000.0 / (double)freq);
+      }
+   }
    return ret;
 }
 

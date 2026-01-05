@@ -12,6 +12,45 @@ DBG_DEFAULT_CHANNEL(EngWnd);
 
 INT gcountPWO = 0;
 
+/* Lightweight periodic profiling for WNDOBJ change notifications.
+ * This is intended for diagnosing GPU-driver regressions where the driver
+ * change proc (and/or the clip recomputation) becomes disproportionately
+ * expensive.
+ */
+static volatile ULONG g_EngWnd_ChangeProcCalls = 0;
+static volatile ULONG g_EngWnd_WindowChangedCalls = 0;
+static volatile LONG64 g_EngWnd_TotalChangeProcQpc = 0;
+static volatile LONG64 g_EngWnd_TotalWindowChangedQpc = 0;
+static volatile LONG64 g_EngWnd_MaxChangeProcQpc = 0;
+static volatile LONG64 g_EngWnd_MaxWindowChangedQpc = 0;
+static LARGE_INTEGER g_EngWnd_QpcFreq = { 0 };
+
+static VOID
+EngWndInitQpcFreq(VOID)
+{
+    if (g_EngWnd_QpcFreq.QuadPart == 0)
+    {
+        LARGE_INTEGER freq;
+        (VOID)KeQueryPerformanceCounter(&freq);
+        if (freq.QuadPart != 0)
+        {
+            g_EngWnd_QpcFreq = freq;
+        }
+    }
+}
+
+static VOID
+EngWndUpdateMaxQpc(_Inout_ volatile LONG64* pMax, _In_ LONG64 value)
+{
+    LONG64 prev;
+    do
+    {
+        prev = *pMax;
+        if (value <= prev)
+            return;
+    } while (InterlockedCompareExchange64((volatile LONG64*)pMax, value, prev) != prev);
+}
+
 /*
  * Calls the WNDOBJCHANGEPROC of the given WNDOBJ
  */
@@ -21,6 +60,11 @@ IntEngWndCallChangeProc(
     _In_ EWNDOBJ *Clip,
     _In_ FLONG   flChanged)
 {
+    LARGE_INTEGER qpcStart = { 0 };
+    LARGE_INTEGER qpcEnd;
+    LONG64 qpcDelta;
+    ULONG callCount;
+
     if (Clip->ChangeProc == NULL)
     {
         return;
@@ -36,11 +80,35 @@ IntEngWndCallChangeProc(
     TRACE("Calling WNDOBJCHANGEPROC (0x%p), Changed = 0x%x\n",
            Clip->ChangeProc, flChanged);
 
+    EngWndInitQpcFreq();
+    qpcStart = KeQueryPerformanceCounter(NULL);
+
     /* Call the WNDOBJCHANGEPROC */
     if (flChanged == WOC_CHANGED)
         Clip->ChangeProc(NULL, flChanged);
     else
         Clip->ChangeProc((WNDOBJ *)Clip, flChanged);
+
+    qpcEnd = KeQueryPerformanceCounter(NULL);
+    qpcDelta = qpcEnd.QuadPart - qpcStart.QuadPart;
+
+    InterlockedExchangeAdd64(&g_EngWnd_TotalChangeProcQpc, qpcDelta);
+    EngWndUpdateMaxQpc(&g_EngWnd_MaxChangeProcQpc, qpcDelta);
+    callCount = (ULONG)InterlockedIncrement((volatile LONG*)&g_EngWnd_ChangeProcCalls);
+
+    /* Print periodically to avoid spamming (and at early milestones). */
+    if ((callCount == 1) || (callCount == 128) || ((callCount & 0x3FF) == 0))
+    {
+        const LONG64 freq = g_EngWnd_QpcFreq.QuadPart ? g_EngWnd_QpcFreq.QuadPart : 1;
+        const LONG64 total = g_EngWnd_TotalChangeProcQpc;
+        const LONG64 maxv = g_EngWnd_MaxChangeProcQpc;
+        const LONG64 avg = (callCount != 0) ? (total / (LONG64)callCount) : 0;
+        DbgPrint("ENGWND: ChangeProc calls=%lu avg=%.3fms max=%.3fms (qpc freq=%lld)\n",
+                 callCount,
+                 (double)avg * 1000.0 / (double)freq,
+                 (double)maxv * 1000.0 / (double)freq,
+                 freq);
+    }
 }
 
 /*
@@ -101,6 +169,10 @@ IntEngWindowChanged(
     _In_    FLONG flChanged)
 {
     EWNDOBJ *Clip;
+    LARGE_INTEGER qpcStart;
+    LARGE_INTEGER qpcEnd;
+    LONG64 qpcDelta;
+    ULONG callCount;
 
     ASSERT_IRQL_LESS_OR_EQUAL(PASSIVE_LEVEL);
 
@@ -111,6 +183,9 @@ IntEngWindowChanged(
     }
 
     ASSERT(Clip->Hwnd == Window->head.h);
+
+    EngWndInitQpcFreq();
+    qpcStart = KeQueryPerformanceCounter(NULL);
     // if (Clip->pvConsumer != NULL)
     {
         /* Update the WNDOBJ */
@@ -134,6 +209,24 @@ IntEngWindowChanged(
         {
             IntEngWndCallChangeProc(Clip, WOC_CHANGED);
         }
+    }
+
+    qpcEnd = KeQueryPerformanceCounter(NULL);
+    qpcDelta = qpcEnd.QuadPart - qpcStart.QuadPart;
+    InterlockedExchangeAdd64(&g_EngWnd_TotalWindowChangedQpc, qpcDelta);
+    EngWndUpdateMaxQpc(&g_EngWnd_MaxWindowChangedQpc, qpcDelta);
+    callCount = (ULONG)InterlockedIncrement((volatile LONG*)&g_EngWnd_WindowChangedCalls);
+    if ((callCount == 1) || (callCount == 128) || ((callCount & 0x3FF) == 0))
+    {
+        const LONG64 freq = g_EngWnd_QpcFreq.QuadPart ? g_EngWnd_QpcFreq.QuadPart : 1;
+        const LONG64 total = g_EngWnd_TotalWindowChangedQpc;
+        const LONG64 maxv = g_EngWnd_MaxWindowChangedQpc;
+        const LONG64 avg = (callCount != 0) ? (total / (LONG64)callCount) : 0;
+        DbgPrint("ENGWND: WindowChanged calls=%lu avg=%.3fms max=%.3fms (qpc freq=%lld)\n",
+                 callCount,
+                 (double)avg * 1000.0 / (double)freq,
+                 (double)maxv * 1000.0 / (double)freq,
+                 freq);
     }
 }
 

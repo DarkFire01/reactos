@@ -187,13 +187,58 @@ DceDeleteClipRgn(DCE* Dce)
    IntGdiSetHookFlags(Dce->hDC, DCHF_INVALIDATEVISRGN);
 }
 
+/* Lightweight periodic profiling for DceUpdateVisRgn.
+ * GPU drivers can make some of this path disproportionately slow.
+ */
+static volatile ULONG g_DceVis_Calls[2] = { 0, 0 };
+static volatile LONG64 g_DceVis_TotalQpc[2] = { 0, 0 };
+static volatile LONG64 g_DceVis_MaxQpc[2] = { 0, 0 };
+static volatile LONG64 g_DceVis_TotalVisQpc[2] = { 0, 0 };
+static volatile LONG64 g_DceVis_TotalSelectQpc[2] = { 0, 0 };
+static volatile LONG64 g_DceVis_TotalNotifyQpc[2] = { 0, 0 };
+static LARGE_INTEGER g_DceVis_QpcFreq = { 0 };
+
+static VOID
+DceVisInitQpcFreq(VOID)
+{
+   if (g_DceVis_QpcFreq.QuadPart == 0)
+   {
+      LARGE_INTEGER freq;
+      (VOID)KeQueryPerformanceCounter(&freq);
+      if (freq.QuadPart != 0)
+      {
+         g_DceVis_QpcFreq = freq;
+      }
+   }
+}
+
+static VOID
+DceVisUpdateMaxQpc(_Inout_ volatile LONG64* pMax, _In_ LONG64 value)
+{
+   LONG64 prev;
+   do
+   {
+      prev = *pMax;
+      if (value <= prev)
+         return;
+   } while (InterlockedCompareExchange64((volatile LONG64*)pMax, value, prev) != prev);
+}
+
 VOID
 FASTCALL
-DceUpdateVisRgn(DCE *Dce, PWND Window, ULONG Flags)
+DceUpdateVisRgn(DCE *Dce, PWND Window, ULONG Flags, BOOL bUpdateWndObj)
 {
    PREGION RgnVisible = NULL;
    ULONG DcxFlags;
    PWND DesktopWindow;
+   LARGE_INTEGER qpcStart, qpcAfterVis, qpcAfterSelect, qpcEnd;
+   LONG64 qpcVis, qpcSelect, qpcNotify, qpcTotal;
+   ULONG bucket, callCount;
+
+   DceVisInitQpcFreq();
+   qpcStart = KeQueryPerformanceCounter(NULL);
+   qpcAfterVis = qpcStart;
+   qpcAfterSelect = qpcStart;
 
    if (Flags & DCX_PARENTCLIP)
    {
@@ -263,11 +308,51 @@ noparent:
        REGION_UnlockRgn(RgnClip);
    }
 
+      qpcAfterVis = KeQueryPerformanceCounter(NULL);
+
    Dce->DCXFlags &= ~DCX_DCEDIRTY;
    GdiSelectVisRgn(Dce->hDC, RgnVisible);
+   qpcAfterSelect = KeQueryPerformanceCounter(NULL);
    /* Tell GDI driver */
-   if (Window)
+      if (bUpdateWndObj && Window)
        IntEngWindowChanged(Window, WOC_RGN_CLIENT);
+
+   qpcEnd = KeQueryPerformanceCounter(NULL);
+
+   qpcVis = qpcAfterVis.QuadPart - qpcStart.QuadPart;
+   qpcSelect = qpcAfterSelect.QuadPart - qpcAfterVis.QuadPart;
+   qpcNotify = qpcEnd.QuadPart - qpcAfterSelect.QuadPart;
+   qpcTotal = qpcEnd.QuadPart - qpcStart.QuadPart;
+
+   bucket = bUpdateWndObj ? 1u : 0u;
+   InterlockedExchangeAdd64(&g_DceVis_TotalQpc[bucket], qpcTotal);
+   InterlockedExchangeAdd64(&g_DceVis_TotalVisQpc[bucket], qpcVis);
+   InterlockedExchangeAdd64(&g_DceVis_TotalSelectQpc[bucket], qpcSelect);
+   InterlockedExchangeAdd64(&g_DceVis_TotalNotifyQpc[bucket], qpcNotify);
+   DceVisUpdateMaxQpc(&g_DceVis_MaxQpc[bucket], qpcTotal);
+   callCount = (ULONG)InterlockedIncrement((volatile LONG*)&g_DceVis_Calls[bucket]);
+
+   if ((callCount == 1) || (callCount == 128) || ((callCount & 0x3FF) == 0))
+   {
+      const LONG64 freq = g_DceVis_QpcFreq.QuadPart ? g_DceVis_QpcFreq.QuadPart : 1;
+      const LONG64 total = g_DceVis_TotalQpc[bucket];
+      const LONG64 totalVis = g_DceVis_TotalVisQpc[bucket];
+      const LONG64 totalSel = g_DceVis_TotalSelectQpc[bucket];
+      const LONG64 totalNot = g_DceVis_TotalNotifyQpc[bucket];
+      const LONG64 maxv = g_DceVis_MaxQpc[bucket];
+      const LONG64 avg = (callCount != 0) ? (total / (LONG64)callCount) : 0;
+      const LONG64 avgVis = (callCount != 0) ? (totalVis / (LONG64)callCount) : 0;
+      const LONG64 avgSel = (callCount != 0) ? (totalSel / (LONG64)callCount) : 0;
+      const LONG64 avgNot = (callCount != 0) ? (totalNot / (LONG64)callCount) : 0;
+      DbgPrint("DCE: UpdateVisRgn notify=%lu calls=%lu avgTot=%.3fms (vis=%.3f sel=%.3f not=%.3f) maxTot=%.3fms\n",
+               bucket,
+               callCount,
+               (double)avg * 1000.0 / (double)freq,
+               (double)avgVis * 1000.0 / (double)freq,
+               (double)avgSel * 1000.0 / (double)freq,
+               (double)avgNot * 1000.0 / (double)freq,
+               (double)maxv * 1000.0 / (double)freq);
+   }
 
    if (RgnVisible != NULL)
    {
@@ -286,7 +371,8 @@ DceReleaseDC(DCE* dce, BOOL EndPaint)
    /* Restore previous visible region */
    if (EndPaint)
    {
-      DceUpdateVisRgn(dce, dce->pwndOrg, dce->DCXFlags);
+      /* EndPaint restore: keep it cheap, avoid driver WNDOBJ churn */
+      DceUpdateVisRgn(dce, dce->pwndOrg, dce->DCXFlags, FALSE);
    }
 
    if ((dce->DCXFlags & (DCX_INTERSECTRGN | DCX_EXCLUDERGN)) &&
@@ -598,7 +684,7 @@ UserGetDCEx(PWND Wnd OPTIONAL, HANDLE ClipRegion, ULONG Flags)
 
    DceSetDrawable(Wnd, Dce->hDC, Flags, UpdateClipOrigin);
 
-   if (bUpdateVisRgn) DceUpdateVisRgn(Dce, Wnd, Flags);
+   if (bUpdateVisRgn) DceUpdateVisRgn(Dce, Wnd, Flags, TRUE);
 
    if (Dce->DCXFlags & DCX_CACHE)
    {
@@ -710,7 +796,7 @@ DceFreeWindowDCE(PWND Window)
                  DceDeleteClipRgn(pDCE);
               // Update and reset Vis Rgn and clear the dirty bit.
               // Should release VisRgn than reset it to default.
-              DceUpdateVisRgn(pDCE, Window, pDCE->DCXFlags);
+              DceUpdateVisRgn(pDCE, Window, pDCE->DCXFlags, FALSE);
               pDCE->DCXFlags = DCX_DCEEMPTY|DCX_CACHE;
               pDCE->hwndCurrent = 0;
               pDCE->pwndOrg = pDCE->pwndClip = NULL;
@@ -884,7 +970,8 @@ DceResetActiveDCEs(PWND Window)
          }
          DC_UnlockDc(dc);
 
-         DceUpdateVisRgn(pDCE, CurrentWindow, pDCE->DCXFlags);
+         /* Bulk DCE reset: avoid driver WNDOBJ churn */
+         DceUpdateVisRgn(pDCE, CurrentWindow, pDCE->DCXFlags, FALSE);
          IntGdiSetHookFlags(pDCE->hDC, DCHF_VALIDATEVISRGN);
       }
    }

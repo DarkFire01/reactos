@@ -852,31 +852,51 @@ AlphaBltMask(SURFOBJ* psoDest,
         for (j = 0; j < dy; j++)
         {
             lMask = tMask;
-            for (i = 0; i < dx; i++)
+            for (i = 0; i < dx;)
             {
-                if (*lMask > 0)
+                LONG iStart;
+
+                /* Skip fully transparent run */
+                while (i < dx && lMask[i] == 0)
                 {
-                    if (*lMask == 0xff)
-                    {
-                        DibFunctionsForBitmapFormat[psoDest->iBitmapFormat].DIB_PutPixel(
-                            psoDest, prclDest->left + i, prclDest->top + j, pbo ? pbo->iSolidColor : 0);
-                    }
-                    else
-                    {
-                        Background = DIB_GetSource(psoDest, prclDest->left + i, prclDest->top + j,
-                                                   pxloBrush);
-
-                        NewColor =
-                            RGB((*lMask * (r - GetRValue(Background)) >> 8) + GetRValue(Background),
-                                (*lMask * (g - GetGValue(Background)) >> 8) + GetGValue(Background),
-                                (*lMask * (b - GetBValue(Background)) >> 8) + GetBValue(Background));
-
-                        Background = XLATEOBJ_iXlate(pxloRGB2Dest, NewColor);
-                        DibFunctionsForBitmapFormat[psoDest->iBitmapFormat].DIB_PutPixel(
-                            psoDest, prclDest->left + i, prclDest->top + j, Background);
-                    }
+                    i++;
                 }
-                lMask++;
+
+                /* Fast fill fully opaque run */
+                iStart = i;
+                while (i < dx && lMask[i] == 0xff)
+                {
+                    i++;
+                }
+                if (iStart != i)
+                {
+                    DibFunctionsForBitmapFormat[psoDest->iBitmapFormat].DIB_HLine(
+                        psoDest,
+                        prclDest->left + iStart,
+                        prclDest->left + i,
+                        prclDest->top + j,
+                        pbo ? pbo->iSolidColor : 0);
+                    continue;
+                }
+
+                /* Blend partial-alpha run */
+                while (i < dx && lMask[i] != 0 && lMask[i] != 0xff)
+                {
+                    Background = DIB_GetSource(psoDest,
+                                               prclDest->left + i,
+                                               prclDest->top + j,
+                                               pxloBrush);
+
+                    NewColor =
+                        RGB((lMask[i] * (r - GetRValue(Background)) >> 8) + GetRValue(Background),
+                            (lMask[i] * (g - GetGValue(Background)) >> 8) + GetGValue(Background),
+                            (lMask[i] * (b - GetBValue(Background)) >> 8) + GetBValue(Background));
+
+                    Background = XLATEOBJ_iXlate(pxloRGB2Dest, NewColor);
+                    DibFunctionsForBitmapFormat[psoDest->iBitmapFormat].DIB_PutPixel(
+                        psoDest, prclDest->left + i, prclDest->top + j, Background);
+                    i++;
+                }
             }
             tMask += psoMask->lDelta;
         }
@@ -1116,6 +1136,18 @@ IntEngMaskBlt(
     POINTL ptMask = {0,0};
     PSURFACE psurfTemp;
     RECTL rcTemp;
+    BOOLEAN bCacheLockAcquired = FALSE;
+
+    /* Reusable scratch surface for device-managed destinations.
+     * Many display drivers make psoDest != STYPE_BITMAP. The old code allocated
+     * and freed a temp surface on every call, which is extremely expensive for
+     * text/icon rendering and can cause huge variance.
+     *
+     * This cache is best-effort: if busy or incompatible, we fall back to the
+     * old per-call allocation path.
+     */
+    static volatile LONG s_MaskBltTempBusy = 0;
+    static PSURFACE s_psurfMaskBltTemp = NULL;
 
     ASSERT(psoDest);
     ASSERT(psoMask);
@@ -1171,18 +1203,71 @@ IntEngMaskBlt(
         rcTemp.right = rcDest.right - rcDest.left;
         rcTemp.bottom = rcDest.bottom - rcDest.top;
 
-        /* Allocate a temporary surface */
-        psurfTemp = SURFACE_AllocSurface(STYPE_BITMAP,
-                                         rcTemp.right,
-                                         rcTemp.bottom,
-                                         psoDest->iBitmapFormat,
-                                         0,
-                                         0,
-                                         0,
-                                         NULL);
+        psurfTemp = NULL;
+
+        /* Try to use the reusable scratch surface */
+        if (InterlockedCompareExchange((PLONG)&s_MaskBltTempBusy, 1, 0) == 0)
+        {
+            bCacheLockAcquired = TRUE;
+            if (s_psurfMaskBltTemp &&
+                s_psurfMaskBltTemp->SurfObj.iBitmapFormat == psoDest->iBitmapFormat &&
+                s_psurfMaskBltTemp->SurfObj.sizlBitmap.cx >= rcTemp.right &&
+                s_psurfMaskBltTemp->SurfObj.sizlBitmap.cy >= rcTemp.bottom)
+            {
+                psurfTemp = s_psurfMaskBltTemp;
+            }
+            else
+            {
+                if (s_psurfMaskBltTemp)
+                {
+                    GDIOBJ_vDeleteObject(&s_psurfMaskBltTemp->BaseObject);
+                    s_psurfMaskBltTemp = NULL;
+                }
+
+                s_psurfMaskBltTemp = SURFACE_AllocSurface(STYPE_BITMAP,
+                                                         rcTemp.right,
+                                                         rcTemp.bottom,
+                                                         psoDest->iBitmapFormat,
+                                                         0,
+                                                         0,
+                                                         0,
+                                                         NULL);
+                if (s_psurfMaskBltTemp)
+                {
+                    /* SURFACE_AllocSurface returns an exclusively locked object.
+                     * This cache is global and may be cleaned up from a different
+                     * thread/process context, so it must not remain process-owned.
+                     * Make it PUBLIC-owned while we still are the creator.
+                     *
+                     * Keep a shared reference for the cache lifetime (so the pointer
+                     * stays valid), then drop the initial exclusive lock to avoid
+                     * leaking a SURF lock on the creating thread.
+                     */
+                    GDIOBJ_vSetObjectOwner(&s_psurfMaskBltTemp->BaseObject, GDI_OBJ_HMGR_PUBLIC);
+                    SURFACE_ShareLockByPointer(s_psurfMaskBltTemp);
+                    SURFACE_UnlockSurface(s_psurfMaskBltTemp);
+                }
+                psurfTemp = s_psurfMaskBltTemp;
+            }
+        }
+
+        /* If cache is busy or allocation failed, fall back to per-call allocation */
         if (psurfTemp == NULL)
         {
-            return FALSE;
+            psurfTemp = SURFACE_AllocSurface(STYPE_BITMAP,
+                                             rcTemp.right,
+                                             rcTemp.bottom,
+                                             psoDest->iBitmapFormat,
+                                             0,
+                                             0,
+                                             0,
+                                             NULL);
+            if (psurfTemp == NULL)
+            {
+                if (bCacheLockAcquired)
+                    InterlockedExchange((PLONG)&s_MaskBltTempBusy, 0);
+                return FALSE;
+            }
         }
 
         /* Copy the current target surface bits to the temp surface */
@@ -1218,8 +1303,13 @@ IntEngMaskBlt(
                               (PPOINTL)&rcTemp);
         }
 
-        /* Delete the temp surface */
-        GDIOBJ_vDeleteObject(&psurfTemp->BaseObject);
+        /* Release temp surface */
+        if (psurfTemp != s_psurfMaskBltTemp)
+        {
+            GDIOBJ_vDeleteObject(&psurfTemp->BaseObject);
+        }
+        if (bCacheLockAcquired)
+            InterlockedExchange((PLONG)&s_MaskBltTempBusy, 0);
     }
     else
     {

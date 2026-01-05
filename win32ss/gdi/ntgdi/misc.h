@@ -9,6 +9,7 @@ typedef struct INTENG_ENTER_LEAVE_TAG
   CLIPOBJ *TrivialClipObj;
   RECTL DestRect;
   BOOL ReadOnly;
+    BOOL UseCachedBitmap;
   } INTENG_ENTER_LEAVE, *PINTENG_ENTER_LEAVE;
 
 extern BOOL APIENTRY IntEngEnter(PINTENG_ENTER_LEAVE EnterLeave,
