@@ -6,11 +6,14 @@
  */
 
 #include <freeldr.h>
+#include <ndk/kefuncs.h> // For KeFindConfiguration*Entry()
 #include <ndk/ldrtypes.h>
 #include "winldr.h"
 #include "ntldropts.h"
 #include "registry.h"
 #include <internal/cmboot.h>
+
+#include <drivers/bootvid/framebuf.h> // For CM_FRAMEBUF_DEVICE_DATA
 
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WINDOWS);
@@ -628,13 +631,17 @@ LoadWindowsCore(IN USHORT OperatingSystemVersion,
     PCSTR Option;
     ULONG OptionLength;
     PVOID KernelBase, HalBase, KdDllBase = NULL;
+    PVOID BootVidBase = NULL;
     PLDR_DATA_TABLE_ENTRY HalDTE, KdDllDTE = NULL;
+    PLDR_DATA_TABLE_ENTRY BootVidDTE = NULL;
     CHAR DirPath[MAX_PATH];
     CHAR HalFileName[MAX_PATH];
     CHAR KernelFileName[MAX_PATH];
     CHAR KdDllName[MAX_PATH];
+    CHAR BootVidName[MAX_PATH];
 
-    if (!KernelDTE) return FALSE;
+    if (!KernelDTE)
+        return FALSE;
 
     /* Initialize SystemRoot\System32 path */
     RtlStringCbCopyA(DirPath, sizeof(DirPath), BootPath);
@@ -880,7 +887,145 @@ LoadWindowsCore(IN USHORT OperatingSystemVersion,
         }
     }
 
-    /* Load all referenced DLLs for Kernel, HAL and Kernel Debugger Transport DLL */
+    /* Load the correct Boot Video Driver */
+    if (OperatingSystemVersion >= _WIN32_WINNT_WIN2K)
+    {
+        /* Check whether there is a BOOTVID option */
+        Option = NtLdrGetOptionEx(BootOptions, "BOOTVID=", &OptionLength);
+        if (Option && (OptionLength > 8))
+        {
+            /* Retrieve the BootVid file name */
+            Option += 8; OptionLength -= 8;
+            RtlStringCbCopyNA(BootVidName, sizeof(BootVidName), Option, OptionLength);
+            _strlwr(BootVidName);
+            TRACE("User-specified BootVid file: '%s'\n", BootVidName);
+        }
+        else
+        {
+            /* No option given, attempt auto-detection.
+             * NOTE: The following array should instead be read from txtsetup.sif */
+            static const struct
+            {
+                PCSTR SystemSubId;
+                PCSTR ModuleName;
+            } BootVidNames[] =
+            {
+#ifndef UEFIBOOT
+#if defined(SARCH_PC98) // FIXME
+                {"PC-98", "bootvid.dll"},
+#else
+                {"PC-98", "pc98bvid.dll"},
+#endif
+#if defined(SARCH_XBOX) // FIXME
+                {"Xbox", "bootvid.dll"},
+#else
+                {"Xbox", "xboxbvid.dll"},
+#endif
+#endif // !UEFIBOOT
+                {"EFI", "lfbbvid.dll"},
+            };
+
+            /* Default BootVid file name */
+            RtlStringCbCopyA(BootVidName, sizeof(BootVidName), "bootvid.dll");
+
+            /* Attempt auto-detection by System ID */
+            PCONFIGURATION_COMPONENT_DATA Entry = NULL;
+            Entry = KeFindConfigurationEntry(LoaderBlock->ConfigurationRoot,
+                                             SystemClass,
+                                             ArcSystem,
+                                             NULL);
+            if (!Entry)
+            {
+                /* No SystemClass ArcSystem entry, retry with hack */
+                Entry = KeFindConfigurationEntry(LoaderBlock->ConfigurationRoot,
+                                                 SystemClass,
+                                                 MaximumType, // HACK for non-ARC machines
+                                                 NULL);
+            }
+            if (Entry)
+            {
+                // Entry->ComponentEntry.IdentifierLength;
+                TRACE("ARC System ID: '%s'\n", Entry->ComponentEntry.Identifier);
+
+                /* Look up the name */
+                for (ULONG i = 0; i < RTL_NUMBER_OF(BootVidNames); ++i)
+                {
+                    if (strstr(Entry->ComponentEntry.Identifier, BootVidNames[i].SystemSubId))
+                    {
+                        RtlStringCbCopyA(BootVidName, sizeof(BootVidName), BootVidNames[i].ModuleName);
+                        break;
+                    }
+                }
+            }
+            /* Special-case detection if the display controller contains
+             * a DeviceSpecific CM_FRAMEBUF_DEVICE_DATA resource */
+            Entry = KeFindConfigurationEntry(LoaderBlock->ConfigurationRoot,
+                                             ControllerClass,
+                                             DisplayController,
+                                             NULL);
+            if (Entry)
+            {
+                /* Cast to PCM_PARTIAL_RESOURCE_LIST to access
+                 * the common Version and Revision fields */
+                PCM_PARTIAL_RESOURCE_LIST ResourceList =
+                    (PCM_PARTIAL_RESOURCE_LIST)Entry->ConfigurationData;
+                ULONG ConfigurationDataLength =
+                    Entry->ComponentEntry.ConfigurationDataLength;
+
+                // Entry->ComponentEntry.IdentifierLength;
+                TRACE("Display: '%s'\n", Entry->ComponentEntry.Identifier);
+
+                /* The configuration data length must be valid.
+                 * The Version/Revision must be greater than or equal to 1.2
+                 * in order to describe a valid new configuration data. */
+                if (Entry->ConfigurationData &&
+                    (ConfigurationDataLength >= sizeof(CM_PARTIAL_RESOURCE_LIST)) &&
+                    ( (ResourceList->Version >  1) ||
+                     ((ResourceList->Version == 1) && (ResourceList->Revision > 1)) ))
+                {
+                    /* Try to find the DeviceSpecific resource */
+                    PCM_PARTIAL_RESOURCE_DESCRIPTOR DeviceSpecific = NULL;
+                    for (ULONG i = 0; i < ResourceList->Count; ++i)
+                    {
+                        PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor =
+                            &ResourceList->PartialDescriptors[i];
+                        if (Descriptor->Type == CmResourceTypeDeviceSpecific)
+                        {
+                            /* NOTE: This descriptor *MUST* be the last one.
+                             * The actual device data follows the descriptor. */
+                            ASSERT(i == ResourceList->Count - 1);
+                            DeviceSpecific = Descriptor;
+                            break;
+                        }
+                    }
+
+                    /* Check whether the resource describes framebuffer information */
+                    if (DeviceSpecific &&
+                        (DeviceSpecific->u.DeviceSpecificData.DataSize >= sizeof(CM_FRAMEBUF_DEVICE_DATA)))
+                    {
+                        /* It does, set the BootVid file name */
+                        RtlStringCbCopyA(BootVidName, sizeof(BootVidName), "lfbbvid.dll");
+                    }
+                }
+            }
+            TRACE("Auto-detected BootVid file: '%s'\n", BootVidName);
+        }
+
+        /* Load the BootVid */
+        BootVidBase = LoadModule(&LoaderBlock->LoadOrderListHead,
+                                 DirPath, BootVidName,
+                                 "bootvid.dll", LoaderSystemCode,
+                                 &BootVidDTE, 45);
+        if (!BootVidBase)
+        {
+            /* Ignore the failure; we will fail later when scanning the
+             * kernel import tables, if it really needs the BootVid. */
+            ERR("LoadModule('%s') failed\n", BootVidName);
+            // UiMessageBox("Could not load %s", BootVidName);
+        }
+    }
+
+    /* Load all referenced DLLs for Kernel, HAL, Kernel Debugger Transport and BootVid */
     Success = PeLdrScanImportDescriptorTable(&LoaderBlock->LoadOrderListHead, DirPath, *KernelDTE);
     if (!Success)
     {
@@ -902,11 +1047,25 @@ LoadWindowsCore(IN USHORT OperatingSystemVersion,
             goto Quit;
         }
     }
+    if (BootVidDTE)
+    {
+        Success = PeLdrScanImportDescriptorTable(&LoaderBlock->LoadOrderListHead, DirPath, BootVidDTE);
+        if (!Success)
+        {
+            UiMessageBox("Could not load %s", BootVidName);
+            goto Quit;
+        }
+    }
 
 Quit:
     if (!Success)
     {
         /* Cleanup and bail out */
+        if (BootVidDTE)
+            PeLdrFreeDataTableEntry(BootVidDTE);
+        if (BootVidBase) // Optional
+            MmFreeMemory(BootVidBase);
+
         if (KdDllDTE)
             PeLdrFreeDataTableEntry(KdDllDTE);
         if (KdDllBase) // Optional
