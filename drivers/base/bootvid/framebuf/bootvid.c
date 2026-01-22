@@ -49,6 +49,15 @@ static ULONG PanH, PanV;
 
 static RGBQUAD CachedPalette[BV_MAX_COLORS];
 
+#if 0
+typedef struct _BOOT_DISPLAY_INFO
+{
+    PVOID FrameAddress; // Mapped framebuffer virtual address.
+    // ULONG BufferSize; // SIZE_T ?
+} BOOT_DISPLAY_INFO, *PBOOT_DISPLAY_INFO;
+
+BOOT_DISPLAY_INFO gBootDisp = {0};
+#endif
 
 /* PRIVATE FUNCTIONS *********************************************************/
 
@@ -134,7 +143,8 @@ VidInitialize(
     ULONG BusNumber;
     NTSTATUS Status;
 
-    /* Find boot-time framebuffer display information from the LoaderBlock */
+__debugbreak();
+    /* Find boot-time (POST) framebuffer display information from the LoaderBlock */
     Status = FindBootDisplay(&VramAddress,
                              &VramSize,
                              &VideoConfigData,
@@ -153,7 +163,7 @@ VidInitialize(
     ASSERT(VramAddress.QuadPart % PAGE_SIZE == 0);
     if (VramSize % PAGE_SIZE != 0)
         DPRINT1("** VramSize %lu (0x%lx) isn't multiple of PAGE_SIZE\n", VramSize, VramSize);
-    // ASSERT(VramSize % PAGE_SIZE == 0); // This assert may fail, e.g. 800x600@32bpp UEFI GOP display
+    ASSERT(VramSize % PAGE_SIZE == 0); // This assert may fail, e.g. 800x600@32bpp UEFI GOP display
 
     /* Retrieve the framebuffer address, its visible screen dimensions, and its attributes */
     FrameBuffer.QuadPart = VramAddress.QuadPart + VideoConfigData.FrameBufferOffset;
@@ -255,11 +265,15 @@ VidInitialize(
     else
     {
         /* Allocate the backbuffer */
+#if 1
         PHYSICAL_ADDRESS NullAddress = {{0, 0}};
         PHYSICAL_ADDRESS HighestAddress = {{-1, -1}};
         BackBuffer = MmAllocateContiguousMemorySpecifyCache(
                         BackBufferSize, NullAddress, HighestAddress,
                         NullAddress, MmNonCached);
+#else
+        BackBuffer = ExAllocatePoolWithTag(NonPagedPool, BackBufferSize, 'bfGB');
+#endif
         if (!BackBuffer)
         {
             DPRINT1("Could not allocate backbuffer (size: %lu)\n", (ULONG)BackBufferSize);
@@ -312,8 +326,11 @@ VOID
 ResetDisplay(
     _In_ BOOLEAN SetMode)
 {
-    RtlZeroMemory(BackBuffer, BackBufferSize);
-    RtlZeroMemory((PVOID)FrameBufferStart, FrameBufferSize);
+    // RtlZeroMemory(BackBuffer, BackBufferSize);
+    RtlFillMemory(BackBuffer, BackBufferSize, 0xAA); // FIXME: Testing purposes!
+
+    // RtlZeroMemory((PVOID)FrameBufferStart, FrameBufferSize);
+    RtlFillMemoryUlong((PVOID)FrameBufferStart, FrameBufferSize, 0x00FFCC); // FIXME: Testing purposes!
 
     /* Re-initialize the palette and fill the screen black */
     InitializePalette();
