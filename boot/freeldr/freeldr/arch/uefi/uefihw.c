@@ -216,6 +216,19 @@ DetectDisplayController(
     FramebufData->Revision = 3;
     FramebufData->VideoClock = 0; // FIXME: Use EDID
 
+    //
+    // TODO: Investigate display rotation!
+    //
+    // See OpenCorePkg OcConsoleLib/ConsoleGop.c
+    // if ((mGop.Rotation == 90) || (mGop.Rotation == 270))
+    if (FramebufData->ScreenWidth < FramebufData->ScreenHeight)
+    {
+        #define SWAP(x, y) { (x) ^= (y); (y) ^= (x); (x) ^= (y); }
+        SWAP(FramebufData->ScreenWidth, FramebufData->ScreenHeight);
+        FramebufData->PixelsPerScanLine = FramebufData->ScreenWidth;
+        #undef SWAP
+    }
+
     FldrCreateComponentKey(BusKey,
                            ControllerClass,
                            DisplayController,
