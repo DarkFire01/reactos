@@ -143,7 +143,6 @@ VidInitialize(
     ULONG BusNumber;
     NTSTATUS Status;
 
-__debugbreak();
     /* Find boot-time (POST) framebuffer display information from the LoaderBlock */
     Status = FindBootDisplay(&VramAddress,
                              &VramSize,
@@ -163,7 +162,6 @@ __debugbreak();
     ASSERT(VramAddress.QuadPart % PAGE_SIZE == 0);
     if (VramSize % PAGE_SIZE != 0)
         DPRINT1("** VramSize %lu (0x%lx) isn't multiple of PAGE_SIZE\n", VramSize, VramSize);
-    ASSERT(VramSize % PAGE_SIZE == 0); // This assert may fail, e.g. 800x600@32bpp UEFI GOP display
 
     /* Retrieve the framebuffer address, its visible screen dimensions, and its attributes */
     FrameBuffer.QuadPart = VramAddress.QuadPart + VideoConfigData.FrameBufferOffset;
