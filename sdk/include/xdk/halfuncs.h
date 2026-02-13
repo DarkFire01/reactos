@@ -173,6 +173,35 @@ HalGetInterruptVector(
   _Out_ PKIRQL Irql,
   _Out_ PKAFFINITY Affinity);
 
+/*
+ * ReactOS extension: Minimal MSI support.
+ *
+ * Allocates a free interrupt vector suitable for MSI delivery and returns
+ * the xAPIC MSI message address/data to program into the device's MSI
+ * capability.
+ *
+ * NOTE: This is intentionally minimal (single-vector, fixed delivery) and is
+ * currently only implemented by the APIC HAL.
+ */
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTHALAPI
+BOOLEAN
+NTAPI
+HalAllocateMsiInterruptVector(
+  _Out_ PULONG Vector,
+  _Out_ PKIRQL Irql,
+  _Out_ PKAFFINITY Affinity,
+  _Out_ PPHYSICAL_ADDRESS MessageAddress,
+  _Out_ PULONG MessageData);
+
+NTHALAPI
+BOOLEAN
+NTAPI
+HalGetMsiInterruptMessage(
+  _In_ ULONG Vector,
+  _Out_ PPHYSICAL_ADDRESS MessageAddress,
+  _Out_ PULONG MessageData);
+
 NTHALAPI
 ULONG
 NTAPI

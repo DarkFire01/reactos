@@ -190,9 +190,49 @@ IopFindInterruptResource(
     OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDesc)
 {
     ULONG Vector;
+    ULONG MsiVector;
+    KIRQL MsiIrql;
+    KAFFINITY MsiAffinity;
+    PHYSICAL_ADDRESS MsiMsgAddr;
+    ULONG MsiMsgData;
 
     ASSERT(IoDesc->Type == CmDesc->Type);
     ASSERT(IoDesc->Type == CmResourceTypeInterrupt);
+
+    /*
+     * Message-signaled interrupts (MSI/MSI-X) are requested using the special
+     * token CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN (-2) and/or the MESSAGE flag.
+     * These do not represent a legacy IRQ range and must not be iterated.
+     */
+    if ((IoDesc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE) ||
+        (IoDesc->u.Interrupt.MinimumVector == CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN &&
+         IoDesc->u.Interrupt.MaximumVector == CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN))
+    {
+        if (!HalAllocateMsiInterruptVector(&MsiVector,
+                                           &MsiIrql,
+                                           &MsiAffinity,
+                                           &MsiMsgAddr,
+                                           &MsiMsgData))
+        {
+            DPRINT1("Failed to allocate MSI interrupt vector\n");
+            return FALSE;
+        }
+
+        CmDesc->Flags |= CM_RESOURCE_INTERRUPT_MESSAGE;
+        CmDesc->ShareDisposition = CmResourceShareDeviceExclusive;
+
+        /* For message interrupts, store translated system vector/IRQL/affinity. */
+        CmDesc->u.Interrupt.Vector = MsiVector;
+        CmDesc->u.Interrupt.Level = (ULONG)MsiIrql;
+        CmDesc->u.Interrupt.Affinity = MsiAffinity;
+        CmDesc->u.MessageInterrupt.Translated.Vector = MsiVector;
+        CmDesc->u.MessageInterrupt.Translated.Level = (ULONG)MsiIrql;
+        CmDesc->u.MessageInterrupt.Translated.Affinity = MsiAffinity;
+
+        DPRINT1("Satisfying message interrupt requirement with vector 0x%lx (irql %lu)\n",
+                MsiVector, (ULONG)MsiIrql);
+        return TRUE;
+    }
 
     for (Vector = IoDesc->u.Interrupt.MinimumVector;
          Vector <= IoDesc->u.Interrupt.MaximumVector;
@@ -1046,20 +1086,34 @@ IopTranslateDeviceResources(
             case CmResourceTypeInterrupt:
             {
                KIRQL Irql;
-               DescriptorTranslated->u.Interrupt.Vector = HalGetInterruptVector(
-                  DeviceNode->ResourceList->List[i].InterfaceType,
-                  DeviceNode->ResourceList->List[i].BusNumber,
-                  DescriptorRaw->u.Interrupt.Level,
-                  DescriptorRaw->u.Interrupt.Vector,
-                  &Irql,
-                  &DescriptorTranslated->u.Interrupt.Affinity);
-               DescriptorTranslated->u.Interrupt.Level = Irql;
-               if (!DescriptorTranslated->u.Interrupt.Vector)
+               /*
+                * Message-signaled interrupts (MSI/MSI-X) are already expressed as
+                * system vectors by the bus driver. Do not attempt legacy translation.
+                */
+               if (DescriptorRaw->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
                {
-                   Status = STATUS_UNSUCCESSFUL;
-                   DPRINT1("Failed to translate interrupt resource (Vector: 0x%x | Level: 0x%x)\n", DescriptorRaw->u.Interrupt.Vector,
-                                                                                                   DescriptorRaw->u.Interrupt.Level);
-                   goto cleanup;
+                   /* Keep the raw descriptor as-is in the translated list. */
+                   DescriptorTranslated->u.Interrupt.Vector = DescriptorRaw->u.Interrupt.Vector;
+                   DescriptorTranslated->u.Interrupt.Level = DescriptorRaw->u.Interrupt.Level;
+                   DescriptorTranslated->u.Interrupt.Affinity = DescriptorRaw->u.Interrupt.Affinity;
+               }
+               else
+               {
+                   DescriptorTranslated->u.Interrupt.Vector = HalGetInterruptVector(
+                      DeviceNode->ResourceList->List[i].InterfaceType,
+                      DeviceNode->ResourceList->List[i].BusNumber,
+                      DescriptorRaw->u.Interrupt.Level,
+                      DescriptorRaw->u.Interrupt.Vector,
+                      &Irql,
+                      &DescriptorTranslated->u.Interrupt.Affinity);
+                   DescriptorTranslated->u.Interrupt.Level = Irql;
+                   if (!DescriptorTranslated->u.Interrupt.Vector)
+                   {
+                       Status = STATUS_UNSUCCESSFUL;
+                       DPRINT1("Failed to translate interrupt resource (Vector: 0x%x | Level: 0x%x)\n", DescriptorRaw->u.Interrupt.Vector,
+                                                                                                       DescriptorRaw->u.Interrupt.Level);
+                       goto cleanup;
+                   }
                }
                break;
             }

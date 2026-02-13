@@ -1613,6 +1613,38 @@ HalGetInterruptVector(IN INTERFACE_TYPE InterfaceType,
     return Vector;
 }
 
+BOOLEAN
+NTAPI
+HalAllocateMsiInterruptVector(
+    _Out_ PULONG Vector,
+    _Out_ PKIRQL Irql,
+    _Out_ PKAFFINITY Affinity,
+    _Out_ PPHYSICAL_ADDRESS MessageAddress,
+    _Out_ PULONG MessageData)
+{
+    UNREFERENCED_PARAMETER(Vector);
+    UNREFERENCED_PARAMETER(Irql);
+    UNREFERENCED_PARAMETER(Affinity);
+    UNREFERENCED_PARAMETER(MessageAddress);
+    UNREFERENCED_PARAMETER(MessageData);
+
+    /* Legacy PIC/IOAPIC-less HAL has no MSI support. */
+    return FALSE;
+}
+
+BOOLEAN
+NTAPI
+HalGetMsiInterruptMessage(
+    _In_ ULONG Vector,
+    _Out_ PPHYSICAL_ADDRESS MessageAddress,
+    _Out_ PULONG MessageData)
+{
+    UNREFERENCED_PARAMETER(Vector);
+    UNREFERENCED_PARAMETER(MessageAddress);
+    UNREFERENCED_PARAMETER(MessageData);
+    return FALSE;
+}
+
 /*
  * @implemented
  */

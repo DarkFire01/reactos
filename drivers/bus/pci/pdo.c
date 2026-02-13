@@ -8,6 +8,8 @@
  */
 
 #include "pci.h"
+#include "pcidef.h"
+#include <halfuncs.h>
 
 #include <initguid.h>
 #include <wdmguid.h>
@@ -37,6 +39,158 @@ PciSetIosbStatus(_Out_ IO_STATUS_BLOCK* IoStatusBlock, _In_ NTSTATUS Status)
 
 #define PCI_IOSB_STATUS(_iosb) PciGetIosbStatus(&(_iosb))
 #define PCI_IRP_GET_STATUS(_irp) PciGetIosbStatus(&(_irp)->IoStatus)
+
+static __forceinline ULONG
+PciConfigRead(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER Slot,
+    _Out_writes_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length)
+{
+    ULONG sz;
+
+    sz = PciReadWriteConfigBuffer(FALSE, 0, Bus, Slot, Buffer, Offset, Length);
+    if (sz != Length)
+    {
+        sz = HalGetBusDataByOffset(PCIConfiguration,
+                                   Bus,
+                                   Slot.u.AsULONG,
+                                   Buffer,
+                                   Offset,
+                                   Length);
+    }
+
+    return sz;
+}
+
+static __forceinline BOOLEAN
+PciConfigReadU8(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER Slot,
+    _In_ ULONG Offset,
+    _Out_ PUCHAR Value)
+{
+    if (!Value)
+        return FALSE;
+    return (PciConfigRead(Bus, Slot, Value, Offset, sizeof(*Value)) == sizeof(*Value));
+}
+
+static __forceinline BOOLEAN
+PciConfigReadU16(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER Slot,
+    _In_ ULONG Offset,
+    _Out_ PUSHORT Value)
+{
+    if (!Value)
+        return FALSE;
+    return (PciConfigRead(Bus, Slot, Value, Offset, sizeof(*Value)) == sizeof(*Value));
+}
+
+static __forceinline BOOLEAN
+PciConfigReadU32(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER Slot,
+    _In_ ULONG Offset,
+    _Out_ PULONG Value)
+{
+    if (!Value)
+        return FALSE;
+    return (PciConfigRead(Bus, Slot, Value, Offset, sizeof(*Value)) == sizeof(*Value));
+}
+
+static
+BOOLEAN
+PciFindCapabilityOffset(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER Slot,
+    _In_ UCHAR CapId,
+    _Out_ PUCHAR CapOffset)
+{
+    USHORT Status;
+    UCHAR capPtr;
+    UCHAR visited = 0;
+
+    if (!CapOffset)
+        return FALSE;
+
+    *CapOffset = 0;
+
+    /* Read status + capability pointer by offset to avoid struct layout pitfalls. */
+    if (!PciConfigReadU16(Bus, Slot, PCI_STATUS, &Status))
+        return FALSE;
+
+    if (!(Status & PCI_STATUS_CAP_LIST))
+        return FALSE;
+
+    if (!PciConfigReadU8(Bus, Slot, PCI_CAPABILITY_LIST, &capPtr))
+        return FALSE;
+
+    while (capPtr >= 0x40 && capPtr < 0x100 && visited++ < 48)
+    {
+        UCHAR hdr[2];
+        if (PciConfigRead(Bus, Slot, hdr, capPtr + PCI_CAP_LIST_ID, sizeof(hdr)) != sizeof(hdr))
+            break;
+
+        if (hdr[0] == CapId)
+        {
+            *CapOffset = capPtr;
+            return TRUE;
+        }
+
+        capPtr = hdr[1];
+    }
+
+    return FALSE;
+}
+
+static
+BOOLEAN
+PciProgramMsiSingleVector(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER Slot,
+    _In_ UCHAR MsiCap,
+    _In_ PHYSICAL_ADDRESS MsgAddr,
+    _In_ ULONG MsgData)
+{
+    USHORT ctrl;
+    ULONG addrLo;
+    ULONG addrHi;
+    ULONG dataOff;
+
+    if (PciReadWriteConfigBuffer(FALSE, 0, Bus, Slot, &ctrl, MsiCap + PCI_MSI_FLAGS, sizeof(ctrl)) != sizeof(ctrl))
+        return FALSE;
+
+    addrLo = (ULONG)(MsgAddr.QuadPart & 0xFFFFFFFFull);
+    if (PciReadWriteConfigBuffer(TRUE, 0, Bus, Slot, &addrLo, MsiCap + PCI_MSI_ADDRESS_LO, sizeof(addrLo)) != sizeof(addrLo))
+        return FALSE;
+
+    if (ctrl & PCI_MSI_FLAGS_64BIT)
+    {
+        addrHi = (ULONG)((MsgAddr.QuadPart >> 32) & 0xFFFFFFFFull);
+        if (PciReadWriteConfigBuffer(TRUE, 0, Bus, Slot, &addrHi, MsiCap + PCI_MSI_ADDRESS_HI, sizeof(addrHi)) != sizeof(addrHi))
+            return FALSE;
+        dataOff = MsiCap + PCI_MSI_DATA_64;
+    }
+    else
+    {
+        dataOff = MsiCap + PCI_MSI_DATA_32;
+    }
+
+    /* MSI data is 16-bit */
+    {
+        USHORT data16 = (USHORT)(MsgData & 0xFFFF);
+        if (PciReadWriteConfigBuffer(TRUE, 0, Bus, Slot, &data16, dataOff, sizeof(data16)) != sizeof(data16))
+            return FALSE;
+    }
+
+    ctrl |= PCI_MSI_FLAGS_ENABLE;
+    if (PciReadWriteConfigBuffer(TRUE, 0, Bus, Slot, &ctrl, MsiCap + PCI_MSI_FLAGS, sizeof(ctrl)) != sizeof(ctrl))
+        return FALSE;
+
+    return TRUE;
+}
 #define PCI_IRP_SET_STATUS(_irp, _st) PciSetIosbStatus(&(_irp)->IoStatus, (_st))
 
 #define PCI_ADDRESS_MEMORY_ADDRESS_MASK_64     0xfffffffffffffff0ull
@@ -219,6 +373,7 @@ PciReadWriteConfigBuffer(
         ULONG width;
         ULONG v;
         NTSTATUS st;
+        ULONG sz;
 
         if (remaining >= 4 && (curOff & 3) == 0)
             width = 4;
@@ -232,7 +387,18 @@ PciReadWriteConfigBuffer(
             v = 0xFFFFFFFF;
             st = PciAcpiCfgIoctlReadWrite(FALSE, Segment, Bus, Slot, curOff, width, &v);
             if (!NT_SUCCESS(st))
-                return 0;
+            {
+                /* Fallback for platforms/firmware without MCFG/ECAM (e.g. VirtualBox). */
+                v = 0;
+                sz = HalGetBusDataByOffset(PCIConfiguration,
+                                           Bus,
+                                           Slot.u.AsULONG,
+                                           &v,
+                                           curOff,
+                                           width);
+                if (sz != width)
+                    return 0;
+            }
 
             if (width == 1)
                 b[done] = (UCHAR)(v & 0xFF);
@@ -260,7 +426,17 @@ PciReadWriteConfigBuffer(
 
             st = PciAcpiCfgIoctlReadWrite(TRUE, Segment, Bus, Slot, curOff, width, &v);
             if (!NT_SUCCESS(st))
-                return 0;
+            {
+                /* Fallback for platforms/firmware without MCFG/ECAM (e.g. VirtualBox). */
+                sz = HalSetBusDataByOffset(PCIConfiguration,
+                                           Bus,
+                                           Slot.u.AsULONG,
+                                           &v,
+                                           curOff,
+                                           width);
+                if (sz != width)
+                    return 0;
+            }
         }
 
         done += width;
@@ -917,6 +1093,8 @@ PdoQueryResourceRequirements(
     ULONGLONG Length;
     ULONG Flags;
     ULONGLONG MaximumAddress;
+    UCHAR MsiCapOffset;
+    BOOLEAN MsiCapable = FALSE;
 
     UNREFERENCED_PARAMETER(IrpSp);
     DPRINT("PdoQueryResourceRequirements() called\n");
@@ -948,6 +1126,82 @@ PdoQueryResourceRequirements(
 
     DPRINT("Command register: 0x%04hx\n", PciConfig.Command);
 
+    /* Detect MSI capability once; we'll use it to build interrupt alternatives. */
+    MsiCapable = PciFindCapabilityOffset(DeviceExtension->PciDevice->BusNumber,
+                                         DeviceExtension->PciDevice->SlotNumber,
+                                         PCI_CAP_ID_MSI,
+                                         &MsiCapOffset);
+
+    /* Targeted debug: USB controllers (especially xHCI) often require MSI/MSI-X. */
+    if ((PciConfig.BaseClass == PCI_CLASS_SERIAL_BUS_CTLR) &&
+        (PciConfig.SubClass == PCI_SUBCLASS_SB_USB))
+    {
+        USHORT St = 0;
+        UCHAR CapPtr = 0;
+        ULONG CapDw = 0;
+        ULONG CapDwEcam = 0;
+        ULONG CapDwHal = 0;
+        USHORT StEcam = 0;
+        USHORT StHal = 0;
+        ULONG SzCapEcam = 0, SzStEcam = 0, SzCapHal = 0, SzStHal = 0;
+        (void)PciConfigReadU16(DeviceExtension->PciDevice->BusNumber, DeviceExtension->PciDevice->SlotNumber, PCI_STATUS, &St);
+        (void)PciConfigReadU8(DeviceExtension->PciDevice->BusNumber, DeviceExtension->PciDevice->SlotNumber, PCI_CAPABILITY_LIST, &CapPtr);
+        (void)PciConfigReadU32(DeviceExtension->PciDevice->BusNumber, DeviceExtension->PciDevice->SlotNumber, PCI_CAPABILITY_LIST, &CapDw);
+
+        DPRINT1("PCI: USB controller %04x:%04x bus=%lu dev=%lu fun=%lu progif=0x%x pin=%u line=0x%x status=0x%04hx capPtr=0x%x msi=%lu msiCap=0x%x\n",
+                PciConfig.VendorID,
+                PciConfig.DeviceID,
+                DeviceExtension->PciDevice->BusNumber,
+                DeviceExtension->PciDevice->SlotNumber.u.bits.DeviceNumber,
+                DeviceExtension->PciDevice->SlotNumber.u.bits.FunctionNumber,
+                PciConfig.ProgIf,
+                PciConfig.u.type0.InterruptPin,
+                PciConfig.u.type0.InterruptLine,
+                St,
+                CapPtr,
+                (ULONG)MsiCapable,
+                (ULONG)MsiCapOffset);
+
+        DPRINT1("PCI: USB controller raw cap dword @0x34 = 0x%08lx\n", CapDw);
+
+        /* Compare ECAM path vs HAL fallback directly for 0x06 and 0x34. */
+        CapDwEcam = 0; StEcam = 0;
+        SzCapEcam = PciReadWriteConfigBuffer(FALSE,
+                                             0,
+                                             DeviceExtension->PciDevice->BusNumber,
+                                             DeviceExtension->PciDevice->SlotNumber,
+                                             &CapDwEcam,
+                                             PCI_CAPABILITY_LIST,
+                                             sizeof(CapDwEcam));
+        SzStEcam = PciReadWriteConfigBuffer(FALSE,
+                                            0,
+                                            DeviceExtension->PciDevice->BusNumber,
+                                            DeviceExtension->PciDevice->SlotNumber,
+                                            &StEcam,
+                                            PCI_STATUS,
+                                            sizeof(StEcam));
+
+        CapDwHal = 0; StHal = 0;
+        SzCapHal = HalGetBusDataByOffset(PCIConfiguration,
+                                         DeviceExtension->PciDevice->BusNumber,
+                                         DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
+                                         &CapDwHal,
+                                         PCI_CAPABILITY_LIST,
+                                         sizeof(CapDwHal));
+        SzStHal = HalGetBusDataByOffset(PCIConfiguration,
+                                        DeviceExtension->PciDevice->BusNumber,
+                                        DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
+                                        &StHal,
+                                        PCI_STATUS,
+                                        sizeof(StHal));
+
+        DPRINT1("PCI: USB controller cfgcmp ECAM: st(0x06)=0x%04hx(sz=%lu) capdw(0x34)=0x%08lx(sz=%lu) | HAL: st=0x%04hx(sz=%lu) capdw=0x%08lx(sz=%lu)\n",
+                StEcam, SzStEcam,
+                CapDwEcam, SzCapEcam,
+                StHal, SzStHal,
+                CapDwHal, SzCapHal);
+    }
+
     /* Count required resource descriptors */
     ResCount = 0;
     if (PCI_CONFIGURATION_TYPE(&PciConfig) == PCI_DEVICE_TYPE)
@@ -970,7 +1224,13 @@ PdoQueryResourceRequirements(
         /* FIXME: Check ROM address */
 
         if (PciConfig.u.type0.InterruptPin != 0)
-            ResCount++;
+        {
+            /*
+             * If MSI-capable, advertise MSI as preferred and INTx as alternative.
+             * If not MSI-capable, advertise a single INTx requirement.
+             */
+            ResCount += MsiCapable ? 2 : 1;
+        }
     }
     else if (PCI_CONFIGURATION_TYPE(&PciConfig) == PCI_BRIDGE_TYPE)
     {
@@ -1132,8 +1392,20 @@ PdoQueryResourceRequirements(
                                                               &route);
             if (NT_SUCCESS(RouteStatus))
             {
-                Vector = route.Gsi;
-                HaveVector = TRUE;
+                /*
+                 * A resolved GSI of 0 is effectively "bogus"/unroutable on PC
+                 * platforms and leads to broken translation/connection. Treat it
+                 * as a routing failure and fall back to other mechanisms.
+                 */
+                if (route.Gsi != 0)
+                {
+                    Vector = route.Gsi;
+                    HaveVector = TRUE;
+                }
+                else
+                {
+                    HaveVector = FALSE;
+                }
             }
             else if ((PciConfig.u.type0.InterruptLine != 0) && (PciConfig.u.type0.InterruptLine != 0xFF))
             {
@@ -1149,36 +1421,84 @@ PdoQueryResourceRequirements(
 
             if (!HaveVector)
             {
-                /* Drop the interrupt requirement descriptor (keep list allocation as-is). */
-                ResourceList->List[0].Count--;
-
-                /* Log useful context for debugging xHCI/USB early-boot issues. */
-                if ((PciConfig.BaseClass == PCI_CLASS_SERIAL_BUS_CTLR) &&
-                    (PciConfig.SubClass == 0x03 /* USB */))
+                /* No valid INTx routing information. If MSI-capable, we'll still advertise MSI. */
+                if (!MsiCapable)
                 {
-                    DPRINT1("PCI: no usable INTx route for USB controller (bus=%lu dev=%lu fun=%lu pin=%lu intline=0x%x status=0x%08lx progif=0x%x)\n",
+                    /* Drop the interrupt requirement descriptor (keep list allocation as-is). */
+                    ResourceList->List[0].Count--;
+                }
+
+                /* Log useful context for debugging USB early-boot issues. */
+                if ((PciConfig.BaseClass == PCI_CLASS_SERIAL_BUS_CTLR) &&
+                    (PciConfig.SubClass == PCI_SUBCLASS_SB_USB))
+                {
+                    DPRINT1("PCI: no usable INTx route for USB controller (bus=%lu dev=%lu fun=%lu pin=%lu intline=0x%x status=0x%08lx progif=0x%x msi=%lu)\n",
                             DeviceExtension->PciDevice->BusNumber,
                             DeviceExtension->PciDevice->SlotNumber.u.bits.DeviceNumber,
                             DeviceExtension->PciDevice->SlotNumber.u.bits.FunctionNumber,
                             PciConfig.u.type0.InterruptPin,
                             PciConfig.u.type0.InterruptLine,
                             RouteStatus,
-                            PciConfig.ProgIf);
+                            PciConfig.ProgIf,
+                            (ULONG)MsiCapable);
                 }
             }
             else
             {
+                /* We'll emit INTx as either required (non-MSI) or alternative (MSI-capable). */
+                if ((PciConfig.BaseClass == PCI_CLASS_SERIAL_BUS_CTLR) &&
+                    (PciConfig.SubClass == PCI_SUBCLASS_SB_USB))
+                {
+                    DPRINT1("PCI: USB controller INTx route: bus=%lu dev=%lu fun=%lu pin=%lu -> vec=%lu (route: st=0x%08lx gsi=%lu trig=%lu pol=%lu share=%lu)\n",
+                            DeviceExtension->PciDevice->BusNumber,
+                            DeviceExtension->PciDevice->SlotNumber.u.bits.DeviceNumber,
+                            DeviceExtension->PciDevice->SlotNumber.u.bits.FunctionNumber,
+                            PciConfig.u.type0.InterruptPin,
+                            Vector,
+                            RouteStatus,
+                            route.Gsi,
+                            route.Triggering,
+                            route.Polarity,
+                            route.Sharing);
+                }
+            }
+
+            if (MsiCapable)
+            {
+                /* Preferred MSI requirement (message token). */
+                Descriptor->Option = IO_RESOURCE_PREFERRED;
+                Descriptor->Type = CmResourceTypeInterrupt;
+                Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+                Descriptor->Flags = CM_RESOURCE_INTERRUPT_LATCHED | CM_RESOURCE_INTERRUPT_MESSAGE;
+                Descriptor->u.Interrupt.MinimumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
+                Descriptor->u.Interrupt.MaximumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
+                Descriptor++;
+
+                if (HaveVector)
+                {
+                    /*
+                     * PCI INTx alternative.
+                     * Keep Windows-like INTx semantics: level-sensitive + shareable.
+                     */
+                    Descriptor->Option = IO_RESOURCE_ALTERNATIVE;
+                    Descriptor->Type = CmResourceTypeInterrupt;
+                    Descriptor->ShareDisposition = CmResourceShareShared;
+                    Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+                    Descriptor->u.Interrupt.MinimumVector = Vector;
+                    Descriptor->u.Interrupt.MaximumVector = Vector;
+                    Descriptor++;
+                }
+                else
+                {
+                    /* We reserved space for the INTx alternative in ResCount; drop it if unavailable. */
+                    ResourceList->List[0].Count--;
+                }
+            }
+            else if (HaveVector)
+            {
+                /* Required INTx (no MSI support). */
                 Descriptor->Option = 0; /* Required */
                 Descriptor->Type = CmResourceTypeInterrupt;
-                Descriptor->ShareDisposition = CmResourceShareShared;
-                Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
-
-                /*
-                 * PCI INTx is level-sensitive and shareable.
-                 * Some firmware reports link resources as edge/exclusive, which breaks
-                 * interrupt delivery for PCI devices (notably USB controllers).
-                 * Use ACPI only to select the routed GSI; keep Windows-like INTx semantics.
-                 */
                 Descriptor->ShareDisposition = CmResourceShareShared;
                 Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
                 Descriptor->u.Interrupt.MinimumVector = Vector;
@@ -1477,6 +1797,12 @@ PdoQueryResources(
         {
             ACPI_PCI_IRQ_ROUTE_OUTPUT route;
             NTSTATUS RouteStatus;
+            UCHAR MsiCap;
+            ULONG MsiVector;
+            KIRQL MsiIrql;
+            KAFFINITY MsiAffinity;
+            PHYSICAL_ADDRESS MsiMsgAddr;
+            ULONG MsiMsgData;
 
             Descriptor->Type = CmResourceTypeInterrupt;
             Descriptor->ShareDisposition = CmResourceShareShared;
@@ -1492,21 +1818,68 @@ PdoQueryResources(
                 /* See comment in PdoQueryResourceRequirements(): INTx should be shared + level-sensitive. */
                 Descriptor->ShareDisposition = CmResourceShareShared;
                 Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
-                Descriptor->u.Interrupt.Level = route.Gsi;
+                /* Raw INTx: keep bus interrupt level/vector (GSI). PnP will translate. */
                 Descriptor->u.Interrupt.Vector = route.Gsi;
+                Descriptor->u.Interrupt.Level = route.Gsi;
+                Descriptor->u.Interrupt.Affinity = (KAFFINITY)-1;
             }
             else if ((PciConfig.u.type0.InterruptLine != 0) && (PciConfig.u.type0.InterruptLine != 0xFF))
             {
-                Descriptor->u.Interrupt.Level = PciConfig.u.type0.InterruptLine;
+                /* Raw legacy line IRQ: PnP will translate. */
                 Descriptor->u.Interrupt.Vector = PciConfig.u.type0.InterruptLine;
+                Descriptor->u.Interrupt.Level = PciConfig.u.type0.InterruptLine;
+                Descriptor->u.Interrupt.Affinity = (KAFFINITY)-1;
             }
             else
             {
-                /* No route and bogus InterruptLine -> skip descriptor */
-                PartialList->Count--;
-                goto SkipInterruptDescriptor;
+                /*
+                 * No INTx route and bogus InterruptLine.
+                 * Try to enable MSI for devices that support it, otherwise skip descriptor.
+                 */
+                if (PciFindCapabilityOffset(DeviceExtension->PciDevice->BusNumber,
+                                            DeviceExtension->PciDevice->SlotNumber,
+                                            PCI_CAP_ID_MSI,
+                                            &MsiCap) &&
+                    HalAllocateMsiInterruptVector(&MsiVector,
+                                                  &MsiIrql,
+                                                  &MsiAffinity,
+                                                  &MsiMsgAddr,
+                                                  &MsiMsgData) &&
+                    PciProgramMsiSingleVector(DeviceExtension->PciDevice->BusNumber,
+                                              DeviceExtension->PciDevice->SlotNumber,
+                                              MsiCap,
+                                              MsiMsgAddr,
+                                              MsiMsgData))
+                {
+                    /* MSI translated interrupt resource */
+                    Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+                    Descriptor->Flags = CM_RESOURCE_INTERRUPT_LATCHED | CM_RESOURCE_INTERRUPT_MESSAGE;
+                    Descriptor->u.Interrupt.Vector = MsiVector;
+                    Descriptor->u.Interrupt.Level = (ULONG)MsiIrql;
+                    Descriptor->u.Interrupt.Affinity = MsiAffinity;
+                    Descriptor->u.MessageInterrupt.Translated.Vector = MsiVector;
+                    Descriptor->u.MessageInterrupt.Translated.Level = (ULONG)MsiIrql;
+                    Descriptor->u.MessageInterrupt.Translated.Affinity = MsiAffinity;
+
+                    DPRINT1("PCI: enabled MSI (vector=0x%lx irql=%lu) for device bus=%lu dev=%lu fun=%lu\n",
+                            MsiVector,
+                            (ULONG)MsiIrql,
+                            DeviceExtension->PciDevice->BusNumber,
+                            DeviceExtension->PciDevice->SlotNumber.u.bits.DeviceNumber,
+                            DeviceExtension->PciDevice->SlotNumber.u.bits.FunctionNumber);
+                }
+                else
+                {
+                    /* Still no interrupt -> skip descriptor */
+                    PartialList->Count--;
+                    goto SkipInterruptDescriptor;
+                }
             }
-            Descriptor->u.Interrupt.Affinity = 0xFFFFFFFF;
+            if (!(Descriptor->Flags & CM_RESOURCE_INTERRUPT_MESSAGE))
+            {
+                if (Descriptor->u.Interrupt.Affinity == 0)
+                    Descriptor->u.Interrupt.Affinity = 0xFFFFFFFF;
+            }
         SkipInterruptDescriptor:;
         }
 
@@ -1980,6 +2353,7 @@ PdoStartDevice(
     PPDO_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
     UCHAR Irq;
     USHORT Command;
+    BOOLEAN MsiEnabled = FALSE;
 
     UNREFERENCED_PARAMETER(Irp);
 
@@ -1999,26 +2373,62 @@ PdoStartDevice(
 
             if (RawPartialDesc->Type == CmResourceTypeInterrupt)
             {
-                DPRINT("Assigning IRQ %u to PCI device 0x%x on bus 0x%x\n",
-                        RawPartialDesc->u.Interrupt.Vector,
-                        DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
-                        DeviceExtension->PciDevice->BusNumber);
-
-                Irq = (UCHAR)RawPartialDesc->u.Interrupt.Vector;
-                if (PciReadWriteConfigBuffer(TRUE,
-                                             0,
-                                             DeviceExtension->PciDevice->BusNumber,
-                                             DeviceExtension->PciDevice->SlotNumber,
-                                             &Irq,
-                                             0x3c /* PCI_INTERRUPT_LINE */,
-                                             sizeof(UCHAR)) != sizeof(UCHAR))
+                if (RawPartialDesc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
                 {
-                    HalSetBusDataByOffset(PCIConfiguration,
-                                          DeviceExtension->PciDevice->BusNumber,
-                                          DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
-                                          &Irq,
-                                          0x3c /* PCI_INTERRUPT_LINE */,
-                                          sizeof(UCHAR));
+                    UCHAR MsiCap;
+                    PHYSICAL_ADDRESS MsgAddr;
+                    ULONG MsgData;
+                    ULONG Vector;
+
+                    Vector = RawPartialDesc->u.Interrupt.Vector;
+
+                    if (PciFindCapabilityOffset(DeviceExtension->PciDevice->BusNumber,
+                                                DeviceExtension->PciDevice->SlotNumber,
+                                                PCI_CAP_ID_MSI,
+                                                &MsiCap) &&
+                        HalGetMsiInterruptMessage(Vector, &MsgAddr, &MsgData) &&
+                        PciProgramMsiSingleVector(DeviceExtension->PciDevice->BusNumber,
+                                                  DeviceExtension->PciDevice->SlotNumber,
+                                                  MsiCap,
+                                                  MsgAddr,
+                                                  MsgData))
+                    {
+                        DPRINT1("Enabled MSI for PCI device 0x%x on bus 0x%x (vector 0x%lx)\n",
+                                DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
+                                DeviceExtension->PciDevice->BusNumber,
+                                Vector);
+                        MsiEnabled = TRUE;
+                    }
+                    else
+                    {
+                        DPRINT1("Failed to enable MSI for PCI device 0x%x on bus 0x%x\n",
+                                DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
+                                DeviceExtension->PciDevice->BusNumber);
+                    }
+                }
+                else
+                {
+                    DPRINT("Assigning IRQ %u to PCI device 0x%x on bus 0x%x\n",
+                            RawPartialDesc->u.Interrupt.Vector,
+                            DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
+                            DeviceExtension->PciDevice->BusNumber);
+
+                    Irq = (UCHAR)RawPartialDesc->u.Interrupt.Vector;
+                    if (PciReadWriteConfigBuffer(TRUE,
+                                                 0,
+                                                 DeviceExtension->PciDevice->BusNumber,
+                                                 DeviceExtension->PciDevice->SlotNumber,
+                                                 &Irq,
+                                                 0x3c /* PCI_INTERRUPT_LINE */,
+                                                 sizeof(UCHAR)) != sizeof(UCHAR))
+                    {
+                        HalSetBusDataByOffset(PCIConfiguration,
+                                              DeviceExtension->PciDevice->BusNumber,
+                                              DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
+                                              &Irq,
+                                              0x3c /* PCI_INTERRUPT_LINE */,
+                                              sizeof(UCHAR));
+                    }
                 }
             }
         }
@@ -2053,6 +2463,10 @@ PdoStartDevice(
 
         /* OR with the previous value */
         Command |= DeviceExtension->PciDevice->PciConfig.Command;
+
+        /* If we enabled MSI, disable legacy INTx assertion. */
+        if (MsiEnabled)
+            Command |= PCI_DISABLE_LEVEL_INTERRUPT;
 
         if (PciReadWriteConfigBuffer(TRUE,
                                      0,

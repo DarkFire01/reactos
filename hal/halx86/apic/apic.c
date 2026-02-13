@@ -826,6 +826,10 @@ HalEnableSystemInterrupt(
     /* Get the irq for this vector */
     Index = HalpVectorToIndex[Vector];
 
+    /* MSI vectors are marked as reserved and don't use an I/O APIC redirection entry. */
+    if (Index == APIC_RESERVED_VECTOR)
+        return TRUE;
+
     /* Check if its valid */
     if (Index == APIC_FREE_VECTOR)
     {
@@ -894,6 +898,10 @@ HalDisableSystemInterrupt(
 
     Index = HalpVectorToIndex[Vector];
 
+    /* MSI vectors are reserved and don't use an I/O APIC redirection entry. */
+    if (Index == APIC_RESERVED_VECTOR || Index == APIC_FREE_VECTOR)
+        return;
+
     /* Read lower dword of redirection entry */
     ReDirReg.Long0 = IOApicRead(IOAPIC_REDTBL + 2 * Index);
 
@@ -902,6 +910,87 @@ HalDisableSystemInterrupt(
 
     /* Write back lower dword */
     IOApicWrite(IOAPIC_REDTBL + 2 * Index, ReDirReg.Long0);
+}
+
+/*
+ * Minimal MSI vector allocator for xAPIC mode.
+ *
+ * This reserves a free IDT vector without assigning an I/O APIC pin.
+ * Callers are expected to program the device's MSI capability with the
+ * returned message address/data.
+ */
+BOOLEAN
+NTAPI
+HalAllocateMsiInterruptVector(
+    _Out_ PULONG Vector,
+    _Out_ PKIRQL Irql,
+    _Out_ PKAFFINITY Affinity,
+    _Out_ PPHYSICAL_ADDRESS MessageAddress,
+    _Out_ PULONG MessageData)
+{
+    KIRQL k;
+    ULONG offset;
+    UCHAR v;
+
+    if (!Vector || !Irql || !Affinity || !MessageAddress || !MessageData)
+        return FALSE;
+
+    /* Ensure LAPIC mapping and BSP APIC ID are initialized. */
+    HalpEnsureLocalApicMapped(0);
+
+    /*
+     * Find a free vector using the same pool as line interrupts, but mark it
+     * as reserved to indicate "no IOAPIC pin backing this vector".
+     */
+    for (offset = 0; offset < 15; offset++)
+    {
+        for (k = CLOCK_LEVEL - 1; k >= CMCI_LEVEL; k--)
+        {
+            v = (UCHAR)(IrqlToTpr(k) + offset);
+
+            if (HalpVectorToIndex[v] == APIC_FREE_VECTOR)
+            {
+                HalpVectorToIndex[v] = APIC_RESERVED_VECTOR;
+                *Vector = v;
+                *Irql = k;
+                *Affinity = HalpDefaultInterruptAffinity;
+
+                /* xAPIC MSI address is 0xFEE00000 | (DestApicId << 12) */
+                MessageAddress->QuadPart = 0xFEE00000ull | ((ULONGLONG)HalpBspApicId << 12);
+
+                /* MSI data: vector in bits 0..7, fixed delivery mode (0). */
+                *MessageData = (ULONG)(v & 0xFF);
+                return TRUE;
+            }
+        }
+    }
+
+    return FALSE;
+}
+
+BOOLEAN
+NTAPI
+HalGetMsiInterruptMessage(
+    _In_ ULONG Vector,
+    _Out_ PPHYSICAL_ADDRESS MessageAddress,
+    _Out_ PULONG MessageData)
+{
+    if (!MessageAddress || !MessageData)
+        return FALSE;
+
+    if (Vector >= RTL_NUMBER_OF(HalpVectorToIndex))
+        return FALSE;
+
+    /* Only vectors reserved by HalAllocateMsiInterruptVector are considered MSI vectors. */
+    if (HalpVectorToIndex[Vector] != APIC_RESERVED_VECTOR)
+        return FALSE;
+
+    /* Ensure LAPIC mapping and BSP APIC ID are initialized. */
+    HalpEnsureLocalApicMapped(0);
+
+    MessageAddress->QuadPart = 0xFEE00000ull | ((ULONGLONG)HalpBspApicId << 12);
+    *MessageData = (ULONG)(Vector & 0xFF);
+    return TRUE;
 }
 
 BOOLEAN

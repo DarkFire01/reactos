@@ -1,143 +1,1376 @@
-diff --git a/ntoskrnl/ke/amd64/stubs.c b/ntoskrnl/ke/amd64/stubs.c
-index 9b87b588df0..ad2701c17c5 100644
---- a/ntoskrnl/ke/amd64/stubs.c
-+++ b/ntoskrnl/ke/amd64/stubs.c
-@@ -128,6 +128,32 @@ KiIdleLoop(VOID)
+diff --git a/drivers/bus/pci/pdo.c b/drivers/bus/pci/pdo.c
+index e2c923ca43e..dff57604fd8 100644
+--- a/drivers/bus/pci/pdo.c
++++ b/drivers/bus/pci/pdo.c
+@@ -8,6 +8,8 @@
+  */
  
-         /* Check if a new thread is scheduled for execution */
-         if (Prcb->NextThread)
+ #include "pci.h"
++#include "pcidef.h"
++#include <halfuncs.h>
+ 
+ #include <initguid.h>
+ #include <wdmguid.h>
+@@ -37,6 +39,158 @@ PciSetIosbStatus(_Out_ IO_STATUS_BLOCK* IoStatusBlock, _In_ NTSTATUS Status)
+ 
+ #define PCI_IOSB_STATUS(_iosb) PciGetIosbStatus(&(_iosb))
+ #define PCI_IRP_GET_STATUS(_irp) PciGetIosbStatus(&(_irp)->IoStatus)
++
++static __forceinline ULONG
++PciConfigRead(
++    _In_ ULONG Bus,
++    _In_ PCI_SLOT_NUMBER Slot,
++    _Out_writes_bytes_(Length) PVOID Buffer,
++    _In_ ULONG Offset,
++    _In_ ULONG Length)
++{
++    ULONG sz;
++
++    sz = PciReadWriteConfigBuffer(FALSE, 0, Bus, Slot, Buffer, Offset, Length);
++    if (sz != Length)
++    {
++        sz = HalGetBusDataByOffset(PCIConfiguration,
++                                   Bus,
++                                   Slot.u.AsULONG,
++                                   Buffer,
++                                   Offset,
++                                   Length);
++    }
++
++    return sz;
++}
++
++static __forceinline BOOLEAN
++PciConfigReadU8(
++    _In_ ULONG Bus,
++    _In_ PCI_SLOT_NUMBER Slot,
++    _In_ ULONG Offset,
++    _Out_ PUCHAR Value)
++{
++    if (!Value)
++        return FALSE;
++    return (PciConfigRead(Bus, Slot, Value, Offset, sizeof(*Value)) == sizeof(*Value));
++}
++
++static __forceinline BOOLEAN
++PciConfigReadU16(
++    _In_ ULONG Bus,
++    _In_ PCI_SLOT_NUMBER Slot,
++    _In_ ULONG Offset,
++    _Out_ PUSHORT Value)
++{
++    if (!Value)
++        return FALSE;
++    return (PciConfigRead(Bus, Slot, Value, Offset, sizeof(*Value)) == sizeof(*Value));
++}
++
++static __forceinline BOOLEAN
++PciConfigReadU32(
++    _In_ ULONG Bus,
++    _In_ PCI_SLOT_NUMBER Slot,
++    _In_ ULONG Offset,
++    _Out_ PULONG Value)
++{
++    if (!Value)
++        return FALSE;
++    return (PciConfigRead(Bus, Slot, Value, Offset, sizeof(*Value)) == sizeof(*Value));
++}
++
++static
++BOOLEAN
++PciFindCapabilityOffset(
++    _In_ ULONG Bus,
++    _In_ PCI_SLOT_NUMBER Slot,
++    _In_ UCHAR CapId,
++    _Out_ PUCHAR CapOffset)
++{
++    USHORT Status;
++    UCHAR capPtr;
++    UCHAR visited = 0;
++
++    if (!CapOffset)
++        return FALSE;
++
++    *CapOffset = 0;
++
++    /* Read status + capability pointer by offset to avoid struct layout pitfalls. */
++    if (!PciConfigReadU16(Bus, Slot, PCI_STATUS, &Status))
++        return FALSE;
++
++    if (!(Status & PCI_STATUS_CAP_LIST))
++        return FALSE;
++
++    if (!PciConfigReadU8(Bus, Slot, PCI_CAPABILITY_LIST, &capPtr))
++        return FALSE;
++
++    while (capPtr >= 0x40 && capPtr < 0x100 && visited++ < 48)
++    {
++        UCHAR hdr[2];
++        if (PciConfigRead(Bus, Slot, hdr, capPtr + PCI_CAP_LIST_ID, sizeof(hdr)) != sizeof(hdr))
++            break;
++
++        if (hdr[0] == CapId)
 +        {
-+            /* Thread already selected, proceed with context switch */
++            *CapOffset = capPtr;
++            return TRUE;
 +        }
-+        else if (Prcb->ReadySummary != 0)
-+        {
-+            /* We have ready threads but no NextThread set - select one now */
-+            PKTHREAD SelectedThread;
 +
-+            /* Acquire PRCB lock to safely select a thread */
-+            KiAcquirePrcbLock(Prcb);
++        capPtr = hdr[1];
++    }
 +
-+            /* Select the highest priority ready thread */
-+            SelectedThread = KiSelectReadyThread(0, Prcb);
-+            if (SelectedThread)
++    return FALSE;
++}
++
++static
++BOOLEAN
++PciProgramMsiSingleVector(
++    _In_ ULONG Bus,
++    _In_ PCI_SLOT_NUMBER Slot,
++    _In_ UCHAR MsiCap,
++    _In_ PHYSICAL_ADDRESS MsgAddr,
++    _In_ ULONG MsgData)
++{
++    USHORT ctrl;
++    ULONG addrLo;
++    ULONG addrHi;
++    ULONG dataOff;
++
++    if (PciReadWriteConfigBuffer(FALSE, 0, Bus, Slot, &ctrl, MsiCap + PCI_MSI_FLAGS, sizeof(ctrl)) != sizeof(ctrl))
++        return FALSE;
++
++    addrLo = (ULONG)(MsgAddr.QuadPart & 0xFFFFFFFFull);
++    if (PciReadWriteConfigBuffer(TRUE, 0, Bus, Slot, &addrLo, MsiCap + PCI_MSI_ADDRESS_LO, sizeof(addrLo)) != sizeof(addrLo))
++        return FALSE;
++
++    if (ctrl & PCI_MSI_FLAGS_64BIT)
++    {
++        addrHi = (ULONG)((MsgAddr.QuadPart >> 32) & 0xFFFFFFFFull);
++        if (PciReadWriteConfigBuffer(TRUE, 0, Bus, Slot, &addrHi, MsiCap + PCI_MSI_ADDRESS_HI, sizeof(addrHi)) != sizeof(addrHi))
++            return FALSE;
++        dataOff = MsiCap + PCI_MSI_DATA_64;
++    }
++    else
++    {
++        dataOff = MsiCap + PCI_MSI_DATA_32;
++    }
++
++    /* MSI data is 16-bit */
++    {
++        USHORT data16 = (USHORT)(MsgData & 0xFFFF);
++        if (PciReadWriteConfigBuffer(TRUE, 0, Bus, Slot, &data16, dataOff, sizeof(data16)) != sizeof(data16))
++            return FALSE;
++    }
++
++    ctrl |= PCI_MSI_FLAGS_ENABLE;
++    if (PciReadWriteConfigBuffer(TRUE, 0, Bus, Slot, &ctrl, MsiCap + PCI_MSI_FLAGS, sizeof(ctrl)) != sizeof(ctrl))
++        return FALSE;
++
++    return TRUE;
++}
+ #define PCI_IRP_SET_STATUS(_irp, _st) PciSetIosbStatus(&(_irp)->IoStatus, (_st))
+ 
+ #define PCI_ADDRESS_MEMORY_ADDRESS_MASK_64     0xfffffffffffffff0ull
+@@ -219,6 +373,7 @@ PciReadWriteConfigBuffer(
+         ULONG width;
+         ULONG v;
+         NTSTATUS st;
++        ULONG sz;
+ 
+         if (remaining >= 4 && (curOff & 3) == 0)
+             width = 4;
+@@ -232,7 +387,18 @@ PciReadWriteConfigBuffer(
+             v = 0xFFFFFFFF;
+             st = PciAcpiCfgIoctlReadWrite(FALSE, Segment, Bus, Slot, curOff, width, &v);
+             if (!NT_SUCCESS(st))
+-                return 0;
 +            {
-+                /* Set it as the next thread to run */
-+                SelectedThread->State = Standby;
-+                Prcb->NextThread = SelectedThread;
++                /* Fallback for platforms/firmware without MCFG/ECAM (e.g. VirtualBox). */
++                v = 0;
++                sz = HalGetBusDataByOffset(PCIConfiguration,
++                                           Bus,
++                                           Slot.u.AsULONG,
++                                           &v,
++                                           curOff,
++                                           width);
++                if (sz != width)
++                    return 0;
 +            }
-+
-+            /* Release PRCB lock */
-+            KiReleasePrcbLock(Prcb);
-+        }
-+
-+        /* Check if we have a thread to run */
-+        if (Prcb->NextThread)
-         {
-             /* Enable interrupts */
-             _enable();
-diff --git a/ntoskrnl/ke/arm/thrdini.c b/ntoskrnl/ke/arm/thrdini.c
-index c32b39c392d..eef227f51db 100644
---- a/ntoskrnl/ke/arm/thrdini.c
-+++ b/ntoskrnl/ke/arm/thrdini.c
-@@ -178,6 +178,32 @@ KiIdleLoop(VOID)
  
-         /* Check if a new thread is scheduled for execution */
-         if (Prcb->NextThread)
-+        {
-+            /* Thread already selected, proceed with context switch */
-+        }
-+        else if (Prcb->ReadySummary != 0)
-+        {
-+            /* We have ready threads but no NextThread set - select one now */
-+            PKTHREAD SelectedThread;
-+
-+            /* Acquire PRCB lock to safely select a thread */
-+            KiAcquirePrcbLock(Prcb);
-+
-+            /* Select the highest priority ready thread */
-+            SelectedThread = KiSelectReadyThread(0, Prcb);
-+            if (SelectedThread)
+             if (width == 1)
+                 b[done] = (UCHAR)(v & 0xFF);
+@@ -260,7 +426,17 @@ PciReadWriteConfigBuffer(
+ 
+             st = PciAcpiCfgIoctlReadWrite(TRUE, Segment, Bus, Slot, curOff, width, &v);
+             if (!NT_SUCCESS(st))
+-                return 0;
 +            {
-+                /* Set it as the next thread to run */
-+                SelectedThread->State = Standby;
-+                Prcb->NextThread = SelectedThread;
++                /* Fallback for platforms/firmware without MCFG/ECAM (e.g. VirtualBox). */
++                sz = HalSetBusDataByOffset(PCIConfiguration,
++                                           Bus,
++                                           Slot.u.AsULONG,
++                                           &v,
++                                           curOff,
++                                           width);
++                if (sz != width)
++                    return 0;
 +            }
-+
-+            /* Release PRCB lock */
-+            KiReleasePrcbLock(Prcb);
-+        }
-+
-+        /* Check if we have a thread to run */
-+        if (Prcb->NextThread)
-         {
-             /* Enable interrupts */
-             _enable();
-diff --git a/ntoskrnl/ke/dpc.c b/ntoskrnl/ke/dpc.c
-index 39e2c16b9d7..bc49f64437f 100644
---- a/ntoskrnl/ke/dpc.c
-+++ b/ntoskrnl/ke/dpc.c
-@@ -653,14 +653,16 @@ KiRetireDpcList(IN PKPRCB Prcb)
-         Prcb->DpcRoutineActive = FALSE;
-         Prcb->DpcInterruptRequested = FALSE;
- 
--#ifdef CONFIG_SMP
--        /* Check if we have deferred threads */
-+        /* Check if we have deferred threads (both UP and SMP need this) */
-         if (Prcb->DeferredReadyListHead.Next)
-         {
--
-             /* Re-enable interrupts and raise to synch */
-             _enable();
-+#ifdef CONFIG_SMP
-             OldIrql = KeRaiseIrqlToSynchLevel();
-+#else
-+            KIRQL OldIrql = KeRaiseIrqlToSynchLevel();
-+#endif
- 
-             /* Process deferred threads */
-             KiProcessDeferredReadyList(Prcb);
-@@ -669,7 +671,6 @@ KiRetireDpcList(IN PKPRCB Prcb)
-             KeLowerIrql(OldIrql);
-             _disable();
          }
--#endif
-     } while (DpcData->DpcQueueDepth != 0);
+ 
+         done += width;
+@@ -917,6 +1093,8 @@ PdoQueryResourceRequirements(
+     ULONGLONG Length;
+     ULONG Flags;
+     ULONGLONG MaximumAddress;
++    UCHAR MsiCapOffset;
++    BOOLEAN MsiCapable = FALSE;
+ 
+     UNREFERENCED_PARAMETER(IrpSp);
+     DPRINT("PdoQueryResourceRequirements() called\n");
+@@ -948,6 +1126,82 @@ PdoQueryResourceRequirements(
+ 
+     DPRINT("Command register: 0x%04hx\n", PciConfig.Command);
+ 
++    /* Detect MSI capability once; we'll use it to build interrupt alternatives. */
++    MsiCapable = PciFindCapabilityOffset(DeviceExtension->PciDevice->BusNumber,
++                                         DeviceExtension->PciDevice->SlotNumber,
++                                         PCI_CAP_ID_MSI,
++                                         &MsiCapOffset);
++
++    /* Targeted debug: USB controllers (especially xHCI) often require MSI/MSI-X. */
++    if ((PciConfig.BaseClass == PCI_CLASS_SERIAL_BUS_CTLR) &&
++        (PciConfig.SubClass == PCI_SUBCLASS_SB_USB))
++    {
++        USHORT St = 0;
++        UCHAR CapPtr = 0;
++        ULONG CapDw = 0;
++        ULONG CapDwEcam = 0;
++        ULONG CapDwHal = 0;
++        USHORT StEcam = 0;
++        USHORT StHal = 0;
++        ULONG SzCapEcam = 0, SzStEcam = 0, SzCapHal = 0, SzStHal = 0;
++        (void)PciConfigReadU16(DeviceExtension->PciDevice->BusNumber, DeviceExtension->PciDevice->SlotNumber, PCI_STATUS, &St);
++        (void)PciConfigReadU8(DeviceExtension->PciDevice->BusNumber, DeviceExtension->PciDevice->SlotNumber, PCI_CAPABILITY_LIST, &CapPtr);
++        (void)PciConfigReadU32(DeviceExtension->PciDevice->BusNumber, DeviceExtension->PciDevice->SlotNumber, PCI_CAPABILITY_LIST, &CapDw);
++
++        DPRINT1("PCI: USB controller %04x:%04x bus=%lu dev=%lu fun=%lu progif=0x%x pin=%u line=0x%x status=0x%04hx capPtr=0x%x msi=%lu msiCap=0x%x\n",
++                PciConfig.VendorID,
++                PciConfig.DeviceID,
++                DeviceExtension->PciDevice->BusNumber,
++                DeviceExtension->PciDevice->SlotNumber.u.bits.DeviceNumber,
++                DeviceExtension->PciDevice->SlotNumber.u.bits.FunctionNumber,
++                PciConfig.ProgIf,
++                PciConfig.u.type0.InterruptPin,
++                PciConfig.u.type0.InterruptLine,
++                St,
++                CapPtr,
++                (ULONG)MsiCapable,
++                (ULONG)MsiCapOffset);
++
++        DPRINT1("PCI: USB controller raw cap dword @0x34 = 0x%08lx\n", CapDw);
++
++        /* Compare ECAM path vs HAL fallback directly for 0x06 and 0x34. */
++        CapDwEcam = 0; StEcam = 0;
++        SzCapEcam = PciReadWriteConfigBuffer(FALSE,
++                                             0,
++                                             DeviceExtension->PciDevice->BusNumber,
++                                             DeviceExtension->PciDevice->SlotNumber,
++                                             &CapDwEcam,
++                                             PCI_CAPABILITY_LIST,
++                                             sizeof(CapDwEcam));
++        SzStEcam = PciReadWriteConfigBuffer(FALSE,
++                                            0,
++                                            DeviceExtension->PciDevice->BusNumber,
++                                            DeviceExtension->PciDevice->SlotNumber,
++                                            &StEcam,
++                                            PCI_STATUS,
++                                            sizeof(StEcam));
++
++        CapDwHal = 0; StHal = 0;
++        SzCapHal = HalGetBusDataByOffset(PCIConfiguration,
++                                         DeviceExtension->PciDevice->BusNumber,
++                                         DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
++                                         &CapDwHal,
++                                         PCI_CAPABILITY_LIST,
++                                         sizeof(CapDwHal));
++        SzStHal = HalGetBusDataByOffset(PCIConfiguration,
++                                        DeviceExtension->PciDevice->BusNumber,
++                                        DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
++                                        &StHal,
++                                        PCI_STATUS,
++                                        sizeof(StHal));
++
++        DPRINT1("PCI: USB controller cfgcmp ECAM: st(0x06)=0x%04hx(sz=%lu) capdw(0x34)=0x%08lx(sz=%lu) | HAL: st=0x%04hx(sz=%lu) capdw=0x%08lx(sz=%lu)\n",
++                StEcam, SzStEcam,
++                CapDwEcam, SzCapEcam,
++                StHal, SzStHal,
++                CapDwHal, SzCapHal);
++    }
++
+     /* Count required resource descriptors */
+     ResCount = 0;
+     if (PCI_CONFIGURATION_TYPE(&PciConfig) == PCI_DEVICE_TYPE)
+@@ -970,7 +1224,13 @@ PdoQueryResourceRequirements(
+         /* FIXME: Check ROM address */
+ 
+         if (PciConfig.u.type0.InterruptPin != 0)
+-            ResCount++;
++        {
++            /*
++             * If MSI-capable, advertise MSI as preferred and INTx as alternative.
++             * If not MSI-capable, advertise a single INTx requirement.
++             */
++            ResCount += MsiCapable ? 2 : 1;
++        }
+     }
+     else if (PCI_CONFIGURATION_TYPE(&PciConfig) == PCI_BRIDGE_TYPE)
+     {
+@@ -1149,36 +1409,69 @@ PdoQueryResourceRequirements(
+ 
+             if (!HaveVector)
+             {
+-                /* Drop the interrupt requirement descriptor (keep list allocation as-is). */
+-                ResourceList->List[0].Count--;
++                /* No valid INTx routing information. If MSI-capable, we'll still advertise MSI. */
++                if (!MsiCapable)
++                {
++                    /* Drop the interrupt requirement descriptor (keep list allocation as-is). */
++                    ResourceList->List[0].Count--;
++                }
+ 
+-                /* Log useful context for debugging xHCI/USB early-boot issues. */
++                /* Log useful context for debugging USB early-boot issues. */
+                 if ((PciConfig.BaseClass == PCI_CLASS_SERIAL_BUS_CTLR) &&
+-                    (PciConfig.SubClass == 0x03 /* USB */))
++                    (PciConfig.SubClass == PCI_SUBCLASS_SB_USB))
+                 {
+-                    DPRINT1("PCI: no usable INTx route for USB controller (bus=%lu dev=%lu fun=%lu pin=%lu intline=0x%x status=0x%08lx progif=0x%x)\n",
++                    DPRINT1("PCI: no usable INTx route for USB controller (bus=%lu dev=%lu fun=%lu pin=%lu intline=0x%x status=0x%08lx progif=0x%x msi=%lu)\n",
+                             DeviceExtension->PciDevice->BusNumber,
+                             DeviceExtension->PciDevice->SlotNumber.u.bits.DeviceNumber,
+                             DeviceExtension->PciDevice->SlotNumber.u.bits.FunctionNumber,
+                             PciConfig.u.type0.InterruptPin,
+                             PciConfig.u.type0.InterruptLine,
+                             RouteStatus,
+-                            PciConfig.ProgIf);
++                            PciConfig.ProgIf,
++                            (ULONG)MsiCapable);
+                 }
+             }
+             else
+             {
+-                Descriptor->Option = 0; /* Required */
++                /* We'll emit INTx as either required (non-MSI) or alternative (MSI-capable). */
++            }
++
++            if (MsiCapable)
++            {
++                /* Preferred MSI requirement (message token). */
++                Descriptor->Option = IO_RESOURCE_PREFERRED;
+                 Descriptor->Type = CmResourceTypeInterrupt;
+-                Descriptor->ShareDisposition = CmResourceShareShared;
+-                Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
++                Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
++                Descriptor->Flags = CM_RESOURCE_INTERRUPT_LATCHED | CM_RESOURCE_INTERRUPT_MESSAGE;
++                Descriptor->u.Interrupt.MinimumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
++                Descriptor->u.Interrupt.MaximumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
++                Descriptor++;
+ 
+-                /*
+-                 * PCI INTx is level-sensitive and shareable.
+-                 * Some firmware reports link resources as edge/exclusive, which breaks
+-                 * interrupt delivery for PCI devices (notably USB controllers).
+-                 * Use ACPI only to select the routed GSI; keep Windows-like INTx semantics.
+-                 */
++                if (HaveVector)
++                {
++                    /*
++                     * PCI INTx alternative.
++                     * Keep Windows-like INTx semantics: level-sensitive + shareable.
++                     */
++                    Descriptor->Option = IO_RESOURCE_ALTERNATIVE;
++                    Descriptor->Type = CmResourceTypeInterrupt;
++                    Descriptor->ShareDisposition = CmResourceShareShared;
++                    Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
++                    Descriptor->u.Interrupt.MinimumVector = Vector;
++                    Descriptor->u.Interrupt.MaximumVector = Vector;
++                    Descriptor++;
++                }
++                else
++                {
++                    /* We reserved space for the INTx alternative in ResCount; drop it if unavailable. */
++                    ResourceList->List[0].Count--;
++                }
++            }
++            else if (HaveVector)
++            {
++                /* Required INTx (no MSI support). */
++                Descriptor->Option = 0; /* Required */
++                Descriptor->Type = CmResourceTypeInterrupt;
+                 Descriptor->ShareDisposition = CmResourceShareShared;
+                 Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+                 Descriptor->u.Interrupt.MinimumVector = Vector;
+@@ -1477,6 +1770,12 @@ PdoQueryResources(
+         {
+             ACPI_PCI_IRQ_ROUTE_OUTPUT route;
+             NTSTATUS RouteStatus;
++            UCHAR MsiCap;
++            ULONG MsiVector;
++            KIRQL MsiIrql;
++            KAFFINITY MsiAffinity;
++            PHYSICAL_ADDRESS MsiMsgAddr;
++            ULONG MsiMsgData;
+ 
+             Descriptor->Type = CmResourceTypeInterrupt;
+             Descriptor->ShareDisposition = CmResourceShareShared;
+@@ -1492,21 +1791,68 @@ PdoQueryResources(
+                 /* See comment in PdoQueryResourceRequirements(): INTx should be shared + level-sensitive. */
+                 Descriptor->ShareDisposition = CmResourceShareShared;
+                 Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+-                Descriptor->u.Interrupt.Level = route.Gsi;
++                /* Raw INTx: keep bus interrupt level/vector (GSI). PnP will translate. */
+                 Descriptor->u.Interrupt.Vector = route.Gsi;
++                Descriptor->u.Interrupt.Level = route.Gsi;
++                Descriptor->u.Interrupt.Affinity = (KAFFINITY)-1;
+             }
+             else if ((PciConfig.u.type0.InterruptLine != 0) && (PciConfig.u.type0.InterruptLine != 0xFF))
+             {
+-                Descriptor->u.Interrupt.Level = PciConfig.u.type0.InterruptLine;
++                /* Raw legacy line IRQ: PnP will translate. */
+                 Descriptor->u.Interrupt.Vector = PciConfig.u.type0.InterruptLine;
++                Descriptor->u.Interrupt.Level = PciConfig.u.type0.InterruptLine;
++                Descriptor->u.Interrupt.Affinity = (KAFFINITY)-1;
+             }
+             else
+             {
+-                /* No route and bogus InterruptLine -> skip descriptor */
+-                PartialList->Count--;
+-                goto SkipInterruptDescriptor;
++                /*
++                 * No INTx route and bogus InterruptLine.
++                 * Try to enable MSI for devices that support it, otherwise skip descriptor.
++                 */
++                if (PciFindCapabilityOffset(DeviceExtension->PciDevice->BusNumber,
++                                            DeviceExtension->PciDevice->SlotNumber,
++                                            PCI_CAP_ID_MSI,
++                                            &MsiCap) &&
++                    HalAllocateMsiInterruptVector(&MsiVector,
++                                                  &MsiIrql,
++                                                  &MsiAffinity,
++                                                  &MsiMsgAddr,
++                                                  &MsiMsgData) &&
++                    PciProgramMsiSingleVector(DeviceExtension->PciDevice->BusNumber,
++                                              DeviceExtension->PciDevice->SlotNumber,
++                                              MsiCap,
++                                              MsiMsgAddr,
++                                              MsiMsgData))
++                {
++                    /* MSI translated interrupt resource */
++                    Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
++                    Descriptor->Flags = CM_RESOURCE_INTERRUPT_LATCHED | CM_RESOURCE_INTERRUPT_MESSAGE;
++                    Descriptor->u.Interrupt.Vector = MsiVector;
++                    Descriptor->u.Interrupt.Level = (ULONG)MsiIrql;
++                    Descriptor->u.Interrupt.Affinity = MsiAffinity;
++                    Descriptor->u.MessageInterrupt.Translated.Vector = MsiVector;
++                    Descriptor->u.MessageInterrupt.Translated.Level = (ULONG)MsiIrql;
++                    Descriptor->u.MessageInterrupt.Translated.Affinity = MsiAffinity;
++
++                    DPRINT1("PCI: enabled MSI (vector=0x%lx irql=%lu) for device bus=%lu dev=%lu fun=%lu\n",
++                            MsiVector,
++                            (ULONG)MsiIrql,
++                            DeviceExtension->PciDevice->BusNumber,
++                            DeviceExtension->PciDevice->SlotNumber.u.bits.DeviceNumber,
++                            DeviceExtension->PciDevice->SlotNumber.u.bits.FunctionNumber);
++                }
++                else
++                {
++                    /* Still no interrupt -> skip descriptor */
++                    PartialList->Count--;
++                    goto SkipInterruptDescriptor;
++                }
++            }
++            if (!(Descriptor->Flags & CM_RESOURCE_INTERRUPT_MESSAGE))
++            {
++                if (Descriptor->u.Interrupt.Affinity == 0)
++                    Descriptor->u.Interrupt.Affinity = 0xFFFFFFFF;
+             }
+-            Descriptor->u.Interrupt.Affinity = 0xFFFFFFFF;
+         SkipInterruptDescriptor:;
+         }
+ 
+@@ -1980,6 +2326,7 @@ PdoStartDevice(
+     PPDO_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
+     UCHAR Irq;
+     USHORT Command;
++    BOOLEAN MsiEnabled = FALSE;
+ 
+     UNREFERENCED_PARAMETER(Irp);
+ 
+@@ -1999,26 +2346,62 @@ PdoStartDevice(
+ 
+             if (RawPartialDesc->Type == CmResourceTypeInterrupt)
+             {
+-                DPRINT("Assigning IRQ %u to PCI device 0x%x on bus 0x%x\n",
+-                        RawPartialDesc->u.Interrupt.Vector,
+-                        DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
+-                        DeviceExtension->PciDevice->BusNumber);
+-
+-                Irq = (UCHAR)RawPartialDesc->u.Interrupt.Vector;
+-                if (PciReadWriteConfigBuffer(TRUE,
+-                                             0,
+-                                             DeviceExtension->PciDevice->BusNumber,
+-                                             DeviceExtension->PciDevice->SlotNumber,
+-                                             &Irq,
+-                                             0x3c /* PCI_INTERRUPT_LINE */,
+-                                             sizeof(UCHAR)) != sizeof(UCHAR))
++                if (RawPartialDesc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
+                 {
+-                    HalSetBusDataByOffset(PCIConfiguration,
+-                                          DeviceExtension->PciDevice->BusNumber,
+-                                          DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
+-                                          &Irq,
+-                                          0x3c /* PCI_INTERRUPT_LINE */,
+-                                          sizeof(UCHAR));
++                    UCHAR MsiCap;
++                    PHYSICAL_ADDRESS MsgAddr;
++                    ULONG MsgData;
++                    ULONG Vector;
++
++                    Vector = RawPartialDesc->u.Interrupt.Vector;
++
++                    if (PciFindCapabilityOffset(DeviceExtension->PciDevice->BusNumber,
++                                                DeviceExtension->PciDevice->SlotNumber,
++                                                PCI_CAP_ID_MSI,
++                                                &MsiCap) &&
++                        HalGetMsiInterruptMessage(Vector, &MsgAddr, &MsgData) &&
++                        PciProgramMsiSingleVector(DeviceExtension->PciDevice->BusNumber,
++                                                  DeviceExtension->PciDevice->SlotNumber,
++                                                  MsiCap,
++                                                  MsgAddr,
++                                                  MsgData))
++                    {
++                        DPRINT1("Enabled MSI for PCI device 0x%x on bus 0x%x (vector 0x%lx)\n",
++                                DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
++                                DeviceExtension->PciDevice->BusNumber,
++                                Vector);
++                        MsiEnabled = TRUE;
++                    }
++                    else
++                    {
++                        DPRINT1("Failed to enable MSI for PCI device 0x%x on bus 0x%x\n",
++                                DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
++                                DeviceExtension->PciDevice->BusNumber);
++                    }
++                }
++                else
++                {
++                    DPRINT("Assigning IRQ %u to PCI device 0x%x on bus 0x%x\n",
++                            RawPartialDesc->u.Interrupt.Vector,
++                            DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
++                            DeviceExtension->PciDevice->BusNumber);
++
++                    Irq = (UCHAR)RawPartialDesc->u.Interrupt.Vector;
++                    if (PciReadWriteConfigBuffer(TRUE,
++                                                 0,
++                                                 DeviceExtension->PciDevice->BusNumber,
++                                                 DeviceExtension->PciDevice->SlotNumber,
++                                                 &Irq,
++                                                 0x3c /* PCI_INTERRUPT_LINE */,
++                                                 sizeof(UCHAR)) != sizeof(UCHAR))
++                    {
++                        HalSetBusDataByOffset(PCIConfiguration,
++                                              DeviceExtension->PciDevice->BusNumber,
++                                              DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
++                                              &Irq,
++                                              0x3c /* PCI_INTERRUPT_LINE */,
++                                              sizeof(UCHAR));
++                    }
+                 }
+             }
+         }
+@@ -2054,6 +2437,10 @@ PdoStartDevice(
+         /* OR with the previous value */
+         Command |= DeviceExtension->PciDevice->PciConfig.Command;
+ 
++        /* If we enabled MSI, disable legacy INTx assertion. */
++        if (MsiEnabled)
++            Command |= PCI_DISABLE_LEVEL_INTERRUPT;
++
+         if (PciReadWriteConfigBuffer(TRUE,
+                                      0,
+                                      DeviceExtension->PciDevice->BusNumber,
+diff --git a/hal/hal.spec b/hal/hal.spec
+index 2a3285e1c81..f5979119f07 100644
+--- a/hal/hal.spec
++++ b/hal/hal.spec
+@@ -27,6 +27,8 @@
+ @ stdcall HalGetEnvironmentVariable(str long str)
+ @ fastcall -arch=arm HalGetInterruptSource()
+ @ stdcall HalGetInterruptVector(long long long long ptr ptr)
++@ stdcall HalAllocateMsiInterruptVector(ptr ptr ptr ptr ptr)
++@ stdcall HalGetMsiInterruptMessage(long ptr ptr)
+ ;@ stdcall -arch=x86_64 HalHandleMcheck()
+ @ stdcall -arch=i386,x86_64 HalHandleNMI(ptr)
+ @ stdcall HalInitSystem(long ptr)
+diff --git a/hal/halx86/apic/apic.c b/hal/halx86/apic/apic.c
+index 045b901c488..5baaf4b3a6b 100644
+--- a/hal/halx86/apic/apic.c
++++ b/hal/halx86/apic/apic.c
+@@ -826,6 +826,10 @@ HalEnableSystemInterrupt(
+     /* Get the irq for this vector */
+     Index = HalpVectorToIndex[Vector];
+ 
++    /* MSI vectors are marked as reserved and don't use an I/O APIC redirection entry. */
++    if (Index == APIC_RESERVED_VECTOR)
++        return TRUE;
++
+     /* Check if its valid */
+     if (Index == APIC_FREE_VECTOR)
+     {
+@@ -894,6 +898,10 @@ HalDisableSystemInterrupt(
+ 
+     Index = HalpVectorToIndex[Vector];
+ 
++    /* MSI vectors are reserved and don't use an I/O APIC redirection entry. */
++    if (Index == APIC_RESERVED_VECTOR || Index == APIC_FREE_VECTOR)
++        return;
++
+     /* Read lower dword of redirection entry */
+     ReDirReg.Long0 = IOApicRead(IOAPIC_REDTBL + 2 * Index);
+ 
+@@ -904,6 +912,87 @@ HalDisableSystemInterrupt(
+     IOApicWrite(IOAPIC_REDTBL + 2 * Index, ReDirReg.Long0);
  }
  
-diff --git a/ntoskrnl/ke/i386/thrdini.c b/ntoskrnl/ke/i386/thrdini.c
-index 91e8ad3931f..6b8e6072659 100644
---- a/ntoskrnl/ke/i386/thrdini.c
-+++ b/ntoskrnl/ke/i386/thrdini.c
-@@ -285,6 +285,32 @@ KiIdleLoop(VOID)
- 
-         /* Check if a new thread is scheduled for execution */
-         if (Prcb->NextThread)
-+        {
-+            /* Thread already selected, proceed with context switch */
-+        }
-+        else if (Prcb->ReadySummary != 0)
-+        {
-+            /* We have ready threads but no NextThread set - select one now */
-+            PKTHREAD SelectedThread;
++/*
++ * Minimal MSI vector allocator for xAPIC mode.
++ *
++ * This reserves a free IDT vector without assigning an I/O APIC pin.
++ * Callers are expected to program the device's MSI capability with the
++ * returned message address/data.
++ */
++BOOLEAN
++NTAPI
++HalAllocateMsiInterruptVector(
++    _Out_ PULONG Vector,
++    _Out_ PKIRQL Irql,
++    _Out_ PKAFFINITY Affinity,
++    _Out_ PPHYSICAL_ADDRESS MessageAddress,
++    _Out_ PULONG MessageData)
++{
++    KIRQL k;
++    ULONG offset;
++    UCHAR v;
 +
-+            /* Acquire PRCB lock to safely select a thread */
-+            KiAcquirePrcbLock(Prcb);
++    if (!Vector || !Irql || !Affinity || !MessageAddress || !MessageData)
++        return FALSE;
 +
-+            /* Select the highest priority ready thread */
-+            SelectedThread = KiSelectReadyThread(0, Prcb);
-+            if (SelectedThread)
++    /* Ensure LAPIC mapping and BSP APIC ID are initialized. */
++    HalpEnsureLocalApicMapped(0);
++
++    /*
++     * Find a free vector using the same pool as line interrupts, but mark it
++     * as reserved to indicate "no IOAPIC pin backing this vector".
++     */
++    for (offset = 0; offset < 15; offset++)
++    {
++        for (k = CLOCK_LEVEL - 1; k >= CMCI_LEVEL; k--)
++        {
++            v = (UCHAR)(IrqlToTpr(k) + offset);
++
++            if (HalpVectorToIndex[v] == APIC_FREE_VECTOR)
 +            {
-+                /* Set it as the next thread to run */
-+                SelectedThread->State = Standby;
-+                Prcb->NextThread = SelectedThread;
++                HalpVectorToIndex[v] = APIC_RESERVED_VECTOR;
++                *Vector = v;
++                *Irql = k;
++                *Affinity = HalpDefaultInterruptAffinity;
++
++                /* xAPIC MSI address is 0xFEE00000 | (DestApicId << 12) */
++                MessageAddress->QuadPart = 0xFEE00000ull | ((ULONGLONG)HalpBspApicId << 12);
++
++                /* MSI data: vector in bits 0..7, fixed delivery mode (0). */
++                *MessageData = (ULONG)(v & 0xFF);
++                return TRUE;
++            }
++        }
++    }
++
++    return FALSE;
++}
++
++BOOLEAN
++NTAPI
++HalGetMsiInterruptMessage(
++    _In_ ULONG Vector,
++    _Out_ PPHYSICAL_ADDRESS MessageAddress,
++    _Out_ PULONG MessageData)
++{
++    if (!MessageAddress || !MessageData)
++        return FALSE;
++
++    if (Vector >= RTL_NUMBER_OF(HalpVectorToIndex))
++        return FALSE;
++
++    /* Only vectors reserved by HalAllocateMsiInterruptVector are considered MSI vectors. */
++    if (HalpVectorToIndex[Vector] != APIC_RESERVED_VECTOR)
++        return FALSE;
++
++    /* Ensure LAPIC mapping and BSP APIC ID are initialized. */
++    HalpEnsureLocalApicMapped(0);
++
++    MessageAddress->QuadPart = 0xFEE00000ull | ((ULONGLONG)HalpBspApicId << 12);
++    *MessageData = (ULONG)(Vector & 0xFF);
++    return TRUE;
++}
++
+ BOOLEAN
+ NTAPI
+ HalBeginSystemInterrupt(
+diff --git a/hal/halx86/legacy/bussupp.c b/hal/halx86/legacy/bussupp.c
+index 5bff8f7efc6..2cde07086ae 100644
+--- a/hal/halx86/legacy/bussupp.c
++++ b/hal/halx86/legacy/bussupp.c
+@@ -1613,6 +1613,38 @@ HalGetInterruptVector(IN INTERFACE_TYPE InterfaceType,
+     return Vector;
+ }
+ 
++BOOLEAN
++NTAPI
++HalAllocateMsiInterruptVector(
++    _Out_ PULONG Vector,
++    _Out_ PKIRQL Irql,
++    _Out_ PKAFFINITY Affinity,
++    _Out_ PPHYSICAL_ADDRESS MessageAddress,
++    _Out_ PULONG MessageData)
++{
++    UNREFERENCED_PARAMETER(Vector);
++    UNREFERENCED_PARAMETER(Irql);
++    UNREFERENCED_PARAMETER(Affinity);
++    UNREFERENCED_PARAMETER(MessageAddress);
++    UNREFERENCED_PARAMETER(MessageData);
++
++    /* Legacy PIC/IOAPIC-less HAL has no MSI support. */
++    return FALSE;
++}
++
++BOOLEAN
++NTAPI
++HalGetMsiInterruptMessage(
++    _In_ ULONG Vector,
++    _Out_ PPHYSICAL_ADDRESS MessageAddress,
++    _Out_ PULONG MessageData)
++{
++    UNREFERENCED_PARAMETER(Vector);
++    UNREFERENCED_PARAMETER(MessageAddress);
++    UNREFERENCED_PARAMETER(MessageData);
++    return FALSE;
++}
++
+ /*
+  * @implemented
+  */
+diff --git a/ntoskrnl/io/iomgr/irq.c b/ntoskrnl/io/iomgr/irq.c
+index aaaea556760..6173333cd20 100644
+--- a/ntoskrnl/io/iomgr/irq.c
++++ b/ntoskrnl/io/iomgr/irq.c
+@@ -15,6 +15,94 @@
+ 
+ /* FUNCTIONS *****************************************************************/
+ 
++typedef struct _IOP_MESSAGE_INTERRUPT_CONTEXT
++{
++    PKMESSAGE_SERVICE_ROUTINE MessageServiceRoutine;
++    PVOID ServiceContext;
++    ULONG MessageId;
++} IOP_MESSAGE_INTERRUPT_CONTEXT, *PIOP_MESSAGE_INTERRUPT_CONTEXT;
++
++static
++BOOLEAN
++NTAPI
++IopMessageInterruptServiceRoutine(
++    _In_ struct _KINTERRUPT *Interrupt,
++    _In_ PVOID ServiceContext)
++{
++    PIOP_MESSAGE_INTERRUPT_CONTEXT Ctx = (PIOP_MESSAGE_INTERRUPT_CONTEXT)ServiceContext;
++
++    if (!Ctx || !Ctx->MessageServiceRoutine)
++        return FALSE;
++
++    return Ctx->MessageServiceRoutine(Interrupt, Ctx->ServiceContext, Ctx->MessageId);
++}
++
++static
++NTSTATUS
++IopQueryTranslatedInterrupt(
++    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
++    _Out_ PULONG Vector,
++    _Out_ PKIRQL Irql,
++    _Out_ PKAFFINITY Affinity,
++    _Out_ PBOOLEAN IsMessageInterrupt,
++    _Out_opt_ PUSHORT OutFlags,
++    _Out_opt_ PUCHAR OutShareDisposition)
++{
++    PDEVICE_NODE DeviceNode;
++    PCM_RESOURCE_LIST Translated;
++
++    if (!PhysicalDeviceObject || !Vector || !Irql || !Affinity || !IsMessageInterrupt)
++        return STATUS_INVALID_PARAMETER;
++
++    *Vector = 0;
++    *Irql = 0;
++    *Affinity = 0;
++    *IsMessageInterrupt = FALSE;
++    if (OutFlags) *OutFlags = 0;
++    if (OutShareDisposition) *OutShareDisposition = CmResourceShareUndetermined;
++
++    DeviceNode = IopGetDeviceNode(PhysicalDeviceObject);
++    if (!DeviceNode || !DeviceNode->ResourceListTranslated)
++        return STATUS_NOT_FOUND;
++
++    Translated = DeviceNode->ResourceListTranslated;
++    for (ULONG f = 0; f < Translated->Count; f++)
++    {
++        PCM_FULL_RESOURCE_DESCRIPTOR Full = &Translated->List[f];
++        PCM_PARTIAL_RESOURCE_LIST Partial = &Full->PartialResourceList;
++
++        for (ULONG p = 0; p < Partial->Count; p++)
++        {
++            PCM_PARTIAL_RESOURCE_DESCRIPTOR Desc = &Partial->PartialDescriptors[p];
++            if (Desc->Type != CmResourceTypeInterrupt)
++                continue;
++
++            if (Desc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
++            {
++                *IsMessageInterrupt = TRUE;
++                *Vector = Desc->u.MessageInterrupt.Translated.Vector;
++                *Irql = (KIRQL)Desc->u.MessageInterrupt.Translated.Level;
++                *Affinity = Desc->u.MessageInterrupt.Translated.Affinity;
++            }
++            else
++            {
++                *IsMessageInterrupt = FALSE;
++                *Vector = Desc->u.Interrupt.Vector;
++                *Irql = (KIRQL)Desc->u.Interrupt.Level;
++                *Affinity = Desc->u.Interrupt.Affinity;
 +            }
 +
-+            /* Release PRCB lock */
-+            KiReleasePrcbLock(Prcb);
++            if (OutFlags) *OutFlags = Desc->Flags;
++            if (OutShareDisposition) *OutShareDisposition = Desc->ShareDisposition;
++
++            if (*Vector)
++                return STATUS_SUCCESS;
++        }
++    }
++
++    return STATUS_NOT_FOUND;
++}
++
+ /*
+  * @implemented
+  */
+@@ -201,6 +289,9 @@ IoConnectInterruptEx(
+ {
+     PAGED_CODE();
+ 
++    if (!Parameters)
++        return STATUS_INVALID_PARAMETER;
++
+     switch (Parameters->Version)
+     {
+         case CONNECT_FULLY_SPECIFIED:
+@@ -209,14 +300,164 @@ IoConnectInterruptEx(
+             //TODO: We don't do anything for the group type
+             return IopConnectInterruptExFullySpecific(Parameters);
+         case CONNECT_MESSAGE_BASED:
+-            DPRINT1("FIXME: Message based interrupts are UNIMPLEMENTED\n");
+-            break;
++        {
++            PIO_CONNECT_INTERRUPT_MESSAGE_BASED_PARAMETERS P = &Parameters->MessageBased;
++            PIO_INTERRUPT_MESSAGE_INFO Table;
++            PIOP_MESSAGE_INTERRUPT_CONTEXT Ctx;
++            SIZE_T Size;
++            ULONG Vector;
++            KIRQL Irql;
++            KAFFINITY Affinity;
++            BOOLEAN IsMsg;
++            USHORT Flags;
++            UCHAR ShareDisposition;
++            KIRQL SyncIrql;
++            NTSTATUS Status;
++
++            Status = IopQueryTranslatedInterrupt(P->PhysicalDeviceObject,
++                                                 &Vector,
++                                                 &Irql,
++                                                 &Affinity,
++                                                 &IsMsg,
++                                                 &Flags,
++                                                 &ShareDisposition);
++            if (!NT_SUCCESS(Status))
++            {
++                DPRINT1("IoConnectInterruptEx(CONNECT_MESSAGE_BASED): no translated interrupt resource: 0x%lx\n", Status);
++                return Status;
++            }
++
++            /*
++             * Vista+ behavior: if the interrupt isn't message-signaled but the
++             * caller provided a fallback ISR, connect a line-based interrupt instead.
++             * KMDF relies on this behavior.
++             */
++            if (!IsMsg)
++            {
++                if (!P->FallBackServiceRoutine)
++                {
++                    DPRINT1("IoConnectInterruptEx(CONNECT_MESSAGE_BASED): no message interrupt and no fallback ISR\n");
++                    return STATUS_NOT_FOUND;
++                }
++
++                SyncIrql = P->SynchronizeIrql ? P->SynchronizeIrql : Irql;
++                Status = IoConnectInterrupt(P->ConnectionContext.InterruptObject,
++                                            P->FallBackServiceRoutine,
++                                            P->ServiceContext,
++                                            P->SpinLock,
++                                            Vector,
++                                            Irql,
++                                            SyncIrql,
++                                            (Flags & CM_RESOURCE_INTERRUPT_LATCHED) ? Latched : LevelSensitive,
++                                            (ShareDisposition == CmResourceShareShared),
++                                            Affinity ? Affinity : KeActiveProcessors,
++                                            P->FloatingSave);
++                return Status;
++            }
++
++            /* Minimal implementation: single-message only. */
++            Size = sizeof(*Table) + sizeof(*Ctx);
++            Table = ExAllocatePoolZero(NonPagedPool, Size, TAG_IO_INTERRUPT);
++            if (!Table)
++                return STATUS_INSUFFICIENT_RESOURCES;
++
++            Ctx = (PIOP_MESSAGE_INTERRUPT_CONTEXT)((PUCHAR)Table + sizeof(*Table));
++            Ctx->MessageServiceRoutine = P->MessageServiceRoutine;
++            Ctx->ServiceContext = P->ServiceContext;
++            Ctx->MessageId = 0;
++
++            Table->UnifiedIrql = Irql;
++            Table->MessageCount = 1;
++            Table->MessageInfo[0].Vector = Vector;
++            Table->MessageInfo[0].Irql = Irql;
++            Table->MessageInfo[0].Mode = (Flags & CM_RESOURCE_INTERRUPT_LATCHED) ? Latched : LevelSensitive;
++            Table->MessageInfo[0].Polarity = InterruptPolarityUnknown;
++            Table->MessageInfo[0].TargetProcessorSet = Affinity ? Affinity : KeActiveProcessors;
++            Table->MessageInfo[0].MessageAddress.QuadPart = 0;
++            Table->MessageInfo[0].MessageData = 0;
++
++            SyncIrql = P->SynchronizeIrql ? P->SynchronizeIrql : Irql;
++
++            Status = IoConnectInterrupt(&Table->MessageInfo[0].InterruptObject,
++                                        IopMessageInterruptServiceRoutine,
++                                        Ctx,
++                                        P->SpinLock,
++                                        Vector,
++                                        Irql,
++                                        SyncIrql,
++                                        Table->MessageInfo[0].Mode,
++                                        FALSE,
++                                        Table->MessageInfo[0].TargetProcessorSet,
++                                        P->FloatingSave);
++            if (!NT_SUCCESS(Status))
++            {
++                ExFreePoolWithTag(Table, TAG_IO_INTERRUPT);
++                return Status;
++            }
++
++            if (P->ConnectionContext.InterruptMessageTable)
++                *P->ConnectionContext.InterruptMessageTable = Table;
++            else if (P->ConnectionContext.Generic)
++                *P->ConnectionContext.Generic = Table;
++            else if (P->ConnectionContext.InterruptObject)
++                *P->ConnectionContext.InterruptObject = Table->MessageInfo[0].InterruptObject;
++
++            return STATUS_SUCCESS;
++        }
+         case CONNECT_LINE_BASED:
+-            DPRINT1("FIXME: Line based interrupts are UNIMPLEMENTED\n");
+-            break;
++        {
++            PIO_CONNECT_INTERRUPT_LINE_BASED_PARAMETERS P = &Parameters->LineBased;
++            ULONG Vector;
++            KIRQL Irql;
++            KAFFINITY Affinity;
++            BOOLEAN IsMsg;
++            USHORT Flags;
++            UCHAR ShareDisposition;
++            KIRQL SyncIrql;
++            KINTERRUPT_MODE Mode;
++            BOOLEAN ShareVector;
++            NTSTATUS Status;
++
++            Status = IopQueryTranslatedInterrupt(P->PhysicalDeviceObject,
++                                                 &Vector,
++                                                 &Irql,
++                                                 &Affinity,
++                                                 &IsMsg,
++                                                 &Flags,
++                                                 &ShareDisposition);
++            if (!NT_SUCCESS(Status))
++            {
++                DPRINT1("IoConnectInterruptEx(CONNECT_LINE_BASED): no translated interrupt resource: 0x%lx\n", Status);
++                return Status;
++            }
++
++            /* If the device actually has MSI resources, the caller should use CONNECT_MESSAGE_BASED. */
++            if (IsMsg)
++            {
++                DPRINT1("IoConnectInterruptEx(CONNECT_LINE_BASED): called for message interrupt, rejecting\n");
++                return STATUS_INVALID_PARAMETER;
++            }
++
++            SyncIrql = P->SynchronizeIrql ? P->SynchronizeIrql : Irql;
++            Mode = (Flags & CM_RESOURCE_INTERRUPT_LATCHED) ? Latched : LevelSensitive;
++            ShareVector = (ShareDisposition == CmResourceShareShared);
++
++            Status = IoConnectInterrupt(P->InterruptObject,
++                                        P->ServiceRoutine,
++                                        P->ServiceContext,
++                                        P->SpinLock,
++                                        Vector,
++                                        Irql,
++                                        SyncIrql,
++                                        Mode,
++                                        ShareVector,
++                                        Affinity ? Affinity : KeActiveProcessors,
++                                        P->FloatingSave);
++            return Status;
++        }
+     }
+ 
+-    return STATUS_SUCCESS;
++    return STATUS_INVALID_PARAMETER;
+ }
+ 
+ VOID
+@@ -227,6 +468,15 @@ IoDisconnectInterruptEx(
+     PAGED_CODE();
+ 
+     //FIXME: This eventually will need to handle more cases
++    if (Parameters->ConnectionContext.InterruptMessageTable)
++    {
++        PIO_INTERRUPT_MESSAGE_INFO Table = Parameters->ConnectionContext.InterruptMessageTable;
++        if (Table->MessageCount >= 1 && Table->MessageInfo[0].InterruptObject)
++            IoDisconnectInterrupt(Table->MessageInfo[0].InterruptObject);
++        ExFreePoolWithTag(Table, TAG_IO_INTERRUPT);
++        return;
++    }
++
+     if (Parameters->ConnectionContext.InterruptObject)
+         IoDisconnectInterrupt(Parameters->ConnectionContext.InterruptObject);
+ }
+diff --git a/ntoskrnl/io/pnpmgr/pnpres.c b/ntoskrnl/io/pnpmgr/pnpres.c
+index 1fded9234dd..368e4152dc6 100644
+--- a/ntoskrnl/io/pnpmgr/pnpres.c
++++ b/ntoskrnl/io/pnpmgr/pnpres.c
+@@ -190,10 +190,50 @@ IopFindInterruptResource(
+     OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDesc)
+ {
+     ULONG Vector;
++    ULONG MsiVector;
++    KIRQL MsiIrql;
++    KAFFINITY MsiAffinity;
++    PHYSICAL_ADDRESS MsiMsgAddr;
++    ULONG MsiMsgData;
+ 
+     ASSERT(IoDesc->Type == CmDesc->Type);
+     ASSERT(IoDesc->Type == CmResourceTypeInterrupt);
+ 
++    /*
++     * Message-signaled interrupts (MSI/MSI-X) are requested using the special
++     * token CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN (-2) and/or the MESSAGE flag.
++     * These do not represent a legacy IRQ range and must not be iterated.
++     */
++    if ((IoDesc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE) ||
++        (IoDesc->u.Interrupt.MinimumVector == CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN &&
++         IoDesc->u.Interrupt.MaximumVector == CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN))
++    {
++        if (!HalAllocateMsiInterruptVector(&MsiVector,
++                                           &MsiIrql,
++                                           &MsiAffinity,
++                                           &MsiMsgAddr,
++                                           &MsiMsgData))
++        {
++            DPRINT1("Failed to allocate MSI interrupt vector\n");
++            return FALSE;
 +        }
 +
-+        /* Check if we have a thread to run */
-+        if (Prcb->NextThread)
-         {
-             /* Enable interrupts */
-             _enable();
++        CmDesc->Flags |= CM_RESOURCE_INTERRUPT_MESSAGE;
++        CmDesc->ShareDisposition = CmResourceShareDeviceExclusive;
++
++        /* For message interrupts, store translated system vector/IRQL/affinity. */
++        CmDesc->u.Interrupt.Vector = MsiVector;
++        CmDesc->u.Interrupt.Level = (ULONG)MsiIrql;
++        CmDesc->u.Interrupt.Affinity = MsiAffinity;
++        CmDesc->u.MessageInterrupt.Translated.Vector = MsiVector;
++        CmDesc->u.MessageInterrupt.Translated.Level = (ULONG)MsiIrql;
++        CmDesc->u.MessageInterrupt.Translated.Affinity = MsiAffinity;
++
++        DPRINT1("Satisfying message interrupt requirement with vector 0x%lx (irql %lu)\n",
++                MsiVector, (ULONG)MsiIrql);
++        return TRUE;
++    }
++
+     for (Vector = IoDesc->u.Interrupt.MinimumVector;
+          Vector <= IoDesc->u.Interrupt.MaximumVector;
+          Vector++)
+@@ -1046,20 +1086,34 @@ IopTranslateDeviceResources(
+             case CmResourceTypeInterrupt:
+             {
+                KIRQL Irql;
+-               DescriptorTranslated->u.Interrupt.Vector = HalGetInterruptVector(
+-                  DeviceNode->ResourceList->List[i].InterfaceType,
+-                  DeviceNode->ResourceList->List[i].BusNumber,
+-                  DescriptorRaw->u.Interrupt.Level,
+-                  DescriptorRaw->u.Interrupt.Vector,
+-                  &Irql,
+-                  &DescriptorTranslated->u.Interrupt.Affinity);
+-               DescriptorTranslated->u.Interrupt.Level = Irql;
+-               if (!DescriptorTranslated->u.Interrupt.Vector)
++               /*
++                * Message-signaled interrupts (MSI/MSI-X) are already expressed as
++                * system vectors by the bus driver. Do not attempt legacy translation.
++                */
++               if (DescriptorRaw->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
++               {
++                   /* Keep the raw descriptor as-is in the translated list. */
++                   DescriptorTranslated->u.Interrupt.Vector = DescriptorRaw->u.Interrupt.Vector;
++                   DescriptorTranslated->u.Interrupt.Level = DescriptorRaw->u.Interrupt.Level;
++                   DescriptorTranslated->u.Interrupt.Affinity = DescriptorRaw->u.Interrupt.Affinity;
++               }
++               else
+                {
+-                   Status = STATUS_UNSUCCESSFUL;
+-                   DPRINT1("Failed to translate interrupt resource (Vector: 0x%x | Level: 0x%x)\n", DescriptorRaw->u.Interrupt.Vector,
+-                                                                                                   DescriptorRaw->u.Interrupt.Level);
+-                   goto cleanup;
++                   DescriptorTranslated->u.Interrupt.Vector = HalGetInterruptVector(
++                      DeviceNode->ResourceList->List[i].InterfaceType,
++                      DeviceNode->ResourceList->List[i].BusNumber,
++                      DescriptorRaw->u.Interrupt.Level,
++                      DescriptorRaw->u.Interrupt.Vector,
++                      &Irql,
++                      &DescriptorTranslated->u.Interrupt.Affinity);
++                   DescriptorTranslated->u.Interrupt.Level = Irql;
++                   if (!DescriptorTranslated->u.Interrupt.Vector)
++                   {
++                       Status = STATUS_UNSUCCESSFUL;
++                       DPRINT1("Failed to translate interrupt resource (Vector: 0x%x | Level: 0x%x)\n", DescriptorRaw->u.Interrupt.Vector,
++                                                                                                       DescriptorRaw->u.Interrupt.Level);
++                       goto cleanup;
++                   }
+                }
+                break;
+             }
+diff --git a/output.patch b/output.patch
+index 30937186cad..d7697943a88 100644
+--- a/output.patch
++++ b/output.patch
+@@ -1,143 +0,0 @@
+-diff --git a/ntoskrnl/ke/amd64/stubs.c b/ntoskrnl/ke/amd64/stubs.c
+-index 9b87b588df0..ad2701c17c5 100644
+---- a/ntoskrnl/ke/amd64/stubs.c
+-+++ b/ntoskrnl/ke/amd64/stubs.c
+-@@ -128,6 +128,32 @@ KiIdleLoop(VOID)
+- 
+-         /* Check if a new thread is scheduled for execution */
+-         if (Prcb->NextThread)
+-+        {
+-+            /* Thread already selected, proceed with context switch */
+-+        }
+-+        else if (Prcb->ReadySummary != 0)
+-+        {
+-+            /* We have ready threads but no NextThread set - select one now */
+-+            PKTHREAD SelectedThread;
+-+
+-+            /* Acquire PRCB lock to safely select a thread */
+-+            KiAcquirePrcbLock(Prcb);
+-+
+-+            /* Select the highest priority ready thread */
+-+            SelectedThread = KiSelectReadyThread(0, Prcb);
+-+            if (SelectedThread)
+-+            {
+-+                /* Set it as the next thread to run */
+-+                SelectedThread->State = Standby;
+-+                Prcb->NextThread = SelectedThread;
+-+            }
+-+
+-+            /* Release PRCB lock */
+-+            KiReleasePrcbLock(Prcb);
+-+        }
+-+
+-+        /* Check if we have a thread to run */
+-+        if (Prcb->NextThread)
+-         {
+-             /* Enable interrupts */
+-             _enable();
+-diff --git a/ntoskrnl/ke/arm/thrdini.c b/ntoskrnl/ke/arm/thrdini.c
+-index c32b39c392d..eef227f51db 100644
+---- a/ntoskrnl/ke/arm/thrdini.c
+-+++ b/ntoskrnl/ke/arm/thrdini.c
+-@@ -178,6 +178,32 @@ KiIdleLoop(VOID)
+- 
+-         /* Check if a new thread is scheduled for execution */
+-         if (Prcb->NextThread)
+-+        {
+-+            /* Thread already selected, proceed with context switch */
+-+        }
+-+        else if (Prcb->ReadySummary != 0)
+-+        {
+-+            /* We have ready threads but no NextThread set - select one now */
+-+            PKTHREAD SelectedThread;
+-+
+-+            /* Acquire PRCB lock to safely select a thread */
+-+            KiAcquirePrcbLock(Prcb);
+-+
+-+            /* Select the highest priority ready thread */
+-+            SelectedThread = KiSelectReadyThread(0, Prcb);
+-+            if (SelectedThread)
+-+            {
+-+                /* Set it as the next thread to run */
+-+                SelectedThread->State = Standby;
+-+                Prcb->NextThread = SelectedThread;
+-+            }
+-+
+-+            /* Release PRCB lock */
+-+            KiReleasePrcbLock(Prcb);
+-+        }
+-+
+-+        /* Check if we have a thread to run */
+-+        if (Prcb->NextThread)
+-         {
+-             /* Enable interrupts */
+-             _enable();
+-diff --git a/ntoskrnl/ke/dpc.c b/ntoskrnl/ke/dpc.c
+-index 39e2c16b9d7..bc49f64437f 100644
+---- a/ntoskrnl/ke/dpc.c
+-+++ b/ntoskrnl/ke/dpc.c
+-@@ -653,14 +653,16 @@ KiRetireDpcList(IN PKPRCB Prcb)
+-         Prcb->DpcRoutineActive = FALSE;
+-         Prcb->DpcInterruptRequested = FALSE;
+- 
+--#ifdef CONFIG_SMP
+--        /* Check if we have deferred threads */
+-+        /* Check if we have deferred threads (both UP and SMP need this) */
+-         if (Prcb->DeferredReadyListHead.Next)
+-         {
+--
+-             /* Re-enable interrupts and raise to synch */
+-             _enable();
+-+#ifdef CONFIG_SMP
+-             OldIrql = KeRaiseIrqlToSynchLevel();
+-+#else
+-+            KIRQL OldIrql = KeRaiseIrqlToSynchLevel();
+-+#endif
+- 
+-             /* Process deferred threads */
+-             KiProcessDeferredReadyList(Prcb);
+-@@ -669,7 +671,6 @@ KiRetireDpcList(IN PKPRCB Prcb)
+-             KeLowerIrql(OldIrql);
+-             _disable();
+-         }
+--#endif
+-     } while (DpcData->DpcQueueDepth != 0);
+- }
+- 
+-diff --git a/ntoskrnl/ke/i386/thrdini.c b/ntoskrnl/ke/i386/thrdini.c
+-index 91e8ad3931f..6b8e6072659 100644
+---- a/ntoskrnl/ke/i386/thrdini.c
+-+++ b/ntoskrnl/ke/i386/thrdini.c
+-@@ -285,6 +285,32 @@ KiIdleLoop(VOID)
+- 
+-         /* Check if a new thread is scheduled for execution */
+-         if (Prcb->NextThread)
+-+        {
+-+            /* Thread already selected, proceed with context switch */
+-+        }
+-+        else if (Prcb->ReadySummary != 0)
+-+        {
+-+            /* We have ready threads but no NextThread set - select one now */
+-+            PKTHREAD SelectedThread;
+-+
+-+            /* Acquire PRCB lock to safely select a thread */
+-+            KiAcquirePrcbLock(Prcb);
+-+
+-+            /* Select the highest priority ready thread */
+-+            SelectedThread = KiSelectReadyThread(0, Prcb);
+-+            if (SelectedThread)
+-+            {
+-+                /* Set it as the next thread to run */
+-+                SelectedThread->State = Standby;
+-+                Prcb->NextThread = SelectedThread;
+-+            }
+-+
+-+            /* Release PRCB lock */
+-+            KiReleasePrcbLock(Prcb);
+-+        }
+-+
+-+        /* Check if we have a thread to run */
+-+        if (Prcb->NextThread)
+-         {
+-             /* Enable interrupts */
+-             _enable();
+diff --git a/sdk/include/xdk/cmtypes.h b/sdk/include/xdk/cmtypes.h
+index a84e464eb20..37489a5b350 100644
+--- a/sdk/include/xdk/cmtypes.h
++++ b/sdk/include/xdk/cmtypes.h
+@@ -154,7 +154,6 @@ typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
+       ULONG Vector;
+       KAFFINITY Affinity;
+     } Interrupt;
+-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+     struct {
+       _ANONYMOUS_UNION union {
+         struct {
+@@ -179,7 +178,6 @@ typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
+         } Translated;
+       } DUMMYUNIONNAME;
+     } MessageInterrupt;
+-#endif
+     struct {
+       PHYSICAL_ADDRESS Start;
+       ULONG Length;
+diff --git a/sdk/include/xdk/halfuncs.h b/sdk/include/xdk/halfuncs.h
+index 70431aa619c..c5e3ec71369 100644
+--- a/sdk/include/xdk/halfuncs.h
++++ b/sdk/include/xdk/halfuncs.h
+@@ -173,6 +173,35 @@ HalGetInterruptVector(
+   _Out_ PKIRQL Irql,
+   _Out_ PKAFFINITY Affinity);
+ 
++/*
++ * ReactOS extension: Minimal MSI support.
++ *
++ * Allocates a free interrupt vector suitable for MSI delivery and returns
++ * the xAPIC MSI message address/data to program into the device's MSI
++ * capability.
++ *
++ * NOTE: This is intentionally minimal (single-vector, fixed delivery) and is
++ * currently only implemented by the APIC HAL.
++ */
++_IRQL_requires_max_(PASSIVE_LEVEL)
++NTHALAPI
++BOOLEAN
++NTAPI
++HalAllocateMsiInterruptVector(
++  _Out_ PULONG Vector,
++  _Out_ PKIRQL Irql,
++  _Out_ PKAFFINITY Affinity,
++  _Out_ PPHYSICAL_ADDRESS MessageAddress,
++  _Out_ PULONG MessageData);
++
++NTHALAPI
++BOOLEAN
++NTAPI
++HalGetMsiInterruptMessage(
++  _In_ ULONG Vector,
++  _Out_ PPHYSICAL_ADDRESS MessageAddress,
++  _Out_ PULONG MessageData);
++
+ NTHALAPI
+ ULONG
+ NTAPI

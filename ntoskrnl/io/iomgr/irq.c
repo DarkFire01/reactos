@@ -15,6 +15,94 @@
 
 /* FUNCTIONS *****************************************************************/
 
+typedef struct _IOP_MESSAGE_INTERRUPT_CONTEXT
+{
+    PKMESSAGE_SERVICE_ROUTINE MessageServiceRoutine;
+    PVOID ServiceContext;
+    ULONG MessageId;
+} IOP_MESSAGE_INTERRUPT_CONTEXT, *PIOP_MESSAGE_INTERRUPT_CONTEXT;
+
+static
+BOOLEAN
+NTAPI
+IopMessageInterruptServiceRoutine(
+    _In_ struct _KINTERRUPT *Interrupt,
+    _In_ PVOID ServiceContext)
+{
+    PIOP_MESSAGE_INTERRUPT_CONTEXT Ctx = (PIOP_MESSAGE_INTERRUPT_CONTEXT)ServiceContext;
+
+    if (!Ctx || !Ctx->MessageServiceRoutine)
+        return FALSE;
+
+    return Ctx->MessageServiceRoutine(Interrupt, Ctx->ServiceContext, Ctx->MessageId);
+}
+
+static
+NTSTATUS
+IopQueryTranslatedInterrupt(
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _Out_ PULONG Vector,
+    _Out_ PKIRQL Irql,
+    _Out_ PKAFFINITY Affinity,
+    _Out_ PBOOLEAN IsMessageInterrupt,
+    _Out_opt_ PUSHORT OutFlags,
+    _Out_opt_ PUCHAR OutShareDisposition)
+{
+    PDEVICE_NODE DeviceNode;
+    PCM_RESOURCE_LIST Translated;
+
+    if (!PhysicalDeviceObject || !Vector || !Irql || !Affinity || !IsMessageInterrupt)
+        return STATUS_INVALID_PARAMETER;
+
+    *Vector = 0;
+    *Irql = 0;
+    *Affinity = 0;
+    *IsMessageInterrupt = FALSE;
+    if (OutFlags) *OutFlags = 0;
+    if (OutShareDisposition) *OutShareDisposition = CmResourceShareUndetermined;
+
+    DeviceNode = IopGetDeviceNode(PhysicalDeviceObject);
+    if (!DeviceNode || !DeviceNode->ResourceListTranslated)
+        return STATUS_NOT_FOUND;
+
+    Translated = DeviceNode->ResourceListTranslated;
+    for (ULONG f = 0; f < Translated->Count; f++)
+    {
+        PCM_FULL_RESOURCE_DESCRIPTOR Full = &Translated->List[f];
+        PCM_PARTIAL_RESOURCE_LIST Partial = &Full->PartialResourceList;
+
+        for (ULONG p = 0; p < Partial->Count; p++)
+        {
+            PCM_PARTIAL_RESOURCE_DESCRIPTOR Desc = &Partial->PartialDescriptors[p];
+            if (Desc->Type != CmResourceTypeInterrupt)
+                continue;
+
+            if (Desc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
+            {
+                *IsMessageInterrupt = TRUE;
+                *Vector = Desc->u.MessageInterrupt.Translated.Vector;
+                *Irql = (KIRQL)Desc->u.MessageInterrupt.Translated.Level;
+                *Affinity = Desc->u.MessageInterrupt.Translated.Affinity;
+            }
+            else
+            {
+                *IsMessageInterrupt = FALSE;
+                *Vector = Desc->u.Interrupt.Vector;
+                *Irql = (KIRQL)Desc->u.Interrupt.Level;
+                *Affinity = Desc->u.Interrupt.Affinity;
+            }
+
+            if (OutFlags) *OutFlags = Desc->Flags;
+            if (OutShareDisposition) *OutShareDisposition = Desc->ShareDisposition;
+
+            if (*Vector)
+                return STATUS_SUCCESS;
+        }
+    }
+
+    return STATUS_NOT_FOUND;
+}
+
 /*
  * @implemented
  */
@@ -201,6 +289,9 @@ IoConnectInterruptEx(
 {
     PAGED_CODE();
 
+    if (!Parameters)
+        return STATUS_INVALID_PARAMETER;
+
     switch (Parameters->Version)
     {
         case CONNECT_FULLY_SPECIFIED:
@@ -209,14 +300,164 @@ IoConnectInterruptEx(
             //TODO: We don't do anything for the group type
             return IopConnectInterruptExFullySpecific(Parameters);
         case CONNECT_MESSAGE_BASED:
-            DPRINT1("FIXME: Message based interrupts are UNIMPLEMENTED\n");
-            break;
+        {
+            PIO_CONNECT_INTERRUPT_MESSAGE_BASED_PARAMETERS P = &Parameters->MessageBased;
+            PIO_INTERRUPT_MESSAGE_INFO Table;
+            PIOP_MESSAGE_INTERRUPT_CONTEXT Ctx;
+            SIZE_T Size;
+            ULONG Vector;
+            KIRQL Irql;
+            KAFFINITY Affinity;
+            BOOLEAN IsMsg;
+            USHORT Flags;
+            UCHAR ShareDisposition;
+            KIRQL SyncIrql;
+            NTSTATUS Status;
+
+            Status = IopQueryTranslatedInterrupt(P->PhysicalDeviceObject,
+                                                 &Vector,
+                                                 &Irql,
+                                                 &Affinity,
+                                                 &IsMsg,
+                                                 &Flags,
+                                                 &ShareDisposition);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("IoConnectInterruptEx(CONNECT_MESSAGE_BASED): no translated interrupt resource: 0x%lx\n", Status);
+                return Status;
+            }
+
+            /*
+             * Vista+ behavior: if the interrupt isn't message-signaled but the
+             * caller provided a fallback ISR, connect a line-based interrupt instead.
+             * KMDF relies on this behavior.
+             */
+            if (!IsMsg)
+            {
+                if (!P->FallBackServiceRoutine)
+                {
+                    DPRINT1("IoConnectInterruptEx(CONNECT_MESSAGE_BASED): no message interrupt and no fallback ISR\n");
+                    return STATUS_NOT_FOUND;
+                }
+
+                SyncIrql = P->SynchronizeIrql ? P->SynchronizeIrql : Irql;
+                Status = IoConnectInterrupt(P->ConnectionContext.InterruptObject,
+                                            P->FallBackServiceRoutine,
+                                            P->ServiceContext,
+                                            P->SpinLock,
+                                            Vector,
+                                            Irql,
+                                            SyncIrql,
+                                            (Flags & CM_RESOURCE_INTERRUPT_LATCHED) ? Latched : LevelSensitive,
+                                            (ShareDisposition == CmResourceShareShared),
+                                            Affinity ? Affinity : KeActiveProcessors,
+                                            P->FloatingSave);
+                return Status;
+            }
+
+            /* Minimal implementation: single-message only. */
+            Size = sizeof(*Table) + sizeof(*Ctx);
+            Table = ExAllocatePoolZero(NonPagedPool, Size, TAG_IO_INTERRUPT);
+            if (!Table)
+                return STATUS_INSUFFICIENT_RESOURCES;
+
+            Ctx = (PIOP_MESSAGE_INTERRUPT_CONTEXT)((PUCHAR)Table + sizeof(*Table));
+            Ctx->MessageServiceRoutine = P->MessageServiceRoutine;
+            Ctx->ServiceContext = P->ServiceContext;
+            Ctx->MessageId = 0;
+
+            Table->UnifiedIrql = Irql;
+            Table->MessageCount = 1;
+            Table->MessageInfo[0].Vector = Vector;
+            Table->MessageInfo[0].Irql = Irql;
+            Table->MessageInfo[0].Mode = (Flags & CM_RESOURCE_INTERRUPT_LATCHED) ? Latched : LevelSensitive;
+            Table->MessageInfo[0].Polarity = InterruptPolarityUnknown;
+            Table->MessageInfo[0].TargetProcessorSet = Affinity ? Affinity : KeActiveProcessors;
+            Table->MessageInfo[0].MessageAddress.QuadPart = 0;
+            Table->MessageInfo[0].MessageData = 0;
+
+            SyncIrql = P->SynchronizeIrql ? P->SynchronizeIrql : Irql;
+
+            Status = IoConnectInterrupt(&Table->MessageInfo[0].InterruptObject,
+                                        IopMessageInterruptServiceRoutine,
+                                        Ctx,
+                                        P->SpinLock,
+                                        Vector,
+                                        Irql,
+                                        SyncIrql,
+                                        Table->MessageInfo[0].Mode,
+                                        FALSE,
+                                        Table->MessageInfo[0].TargetProcessorSet,
+                                        P->FloatingSave);
+            if (!NT_SUCCESS(Status))
+            {
+                ExFreePoolWithTag(Table, TAG_IO_INTERRUPT);
+                return Status;
+            }
+
+            if (P->ConnectionContext.InterruptMessageTable)
+                *P->ConnectionContext.InterruptMessageTable = Table;
+            else if (P->ConnectionContext.Generic)
+                *P->ConnectionContext.Generic = Table;
+            else if (P->ConnectionContext.InterruptObject)
+                *P->ConnectionContext.InterruptObject = Table->MessageInfo[0].InterruptObject;
+
+            return STATUS_SUCCESS;
+        }
         case CONNECT_LINE_BASED:
-            DPRINT1("FIXME: Line based interrupts are UNIMPLEMENTED\n");
-            break;
+        {
+            PIO_CONNECT_INTERRUPT_LINE_BASED_PARAMETERS P = &Parameters->LineBased;
+            ULONG Vector;
+            KIRQL Irql;
+            KAFFINITY Affinity;
+            BOOLEAN IsMsg;
+            USHORT Flags;
+            UCHAR ShareDisposition;
+            KIRQL SyncIrql;
+            KINTERRUPT_MODE Mode;
+            BOOLEAN ShareVector;
+            NTSTATUS Status;
+
+            Status = IopQueryTranslatedInterrupt(P->PhysicalDeviceObject,
+                                                 &Vector,
+                                                 &Irql,
+                                                 &Affinity,
+                                                 &IsMsg,
+                                                 &Flags,
+                                                 &ShareDisposition);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("IoConnectInterruptEx(CONNECT_LINE_BASED): no translated interrupt resource: 0x%lx\n", Status);
+                return Status;
+            }
+
+            /* If the device actually has MSI resources, the caller should use CONNECT_MESSAGE_BASED. */
+            if (IsMsg)
+            {
+                DPRINT1("IoConnectInterruptEx(CONNECT_LINE_BASED): called for message interrupt, rejecting\n");
+                return STATUS_INVALID_PARAMETER;
+            }
+
+            SyncIrql = P->SynchronizeIrql ? P->SynchronizeIrql : Irql;
+            Mode = (Flags & CM_RESOURCE_INTERRUPT_LATCHED) ? Latched : LevelSensitive;
+            ShareVector = (ShareDisposition == CmResourceShareShared);
+
+            Status = IoConnectInterrupt(P->InterruptObject,
+                                        P->ServiceRoutine,
+                                        P->ServiceContext,
+                                        P->SpinLock,
+                                        Vector,
+                                        Irql,
+                                        SyncIrql,
+                                        Mode,
+                                        ShareVector,
+                                        Affinity ? Affinity : KeActiveProcessors,
+                                        P->FloatingSave);
+            return Status;
+        }
     }
 
-    return STATUS_SUCCESS;
+    return STATUS_INVALID_PARAMETER;
 }
 
 VOID
@@ -227,6 +468,15 @@ IoDisconnectInterruptEx(
     PAGED_CODE();
 
     //FIXME: This eventually will need to handle more cases
+    if (Parameters->ConnectionContext.InterruptMessageTable)
+    {
+        PIO_INTERRUPT_MESSAGE_INFO Table = Parameters->ConnectionContext.InterruptMessageTable;
+        if (Table->MessageCount >= 1 && Table->MessageInfo[0].InterruptObject)
+            IoDisconnectInterrupt(Table->MessageInfo[0].InterruptObject);
+        ExFreePoolWithTag(Table, TAG_IO_INTERRUPT);
+        return;
+    }
+
     if (Parameters->ConnectionContext.InterruptObject)
         IoDisconnectInterrupt(Parameters->ConnectionContext.InterruptObject);
 }
