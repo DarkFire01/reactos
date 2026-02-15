@@ -13,3 +13,7 @@ modules/[Aa][Hh][Kk]_[Tt]ests
 .settings
 .vscode
 sdk/tools/winesync/winesync.cfg
+drivers/usb/wdf/include
+drivers/usb/wdf/ucx01000
+drivers/usb/wdf/usbhub3
+drivers/usb/wdf/usbxhci
