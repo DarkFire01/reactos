@@ -96,3 +96,18 @@ MiArchCreateProcessAddressSpace(
 
     return TRUE;
 }
+
+PMMPTE
+MiReserveKernelStackPtes(
+    _In_ ULONG NumberOfPtes)
+{
+    return MiReserveSystemPtes(NumberOfPtes, SystemPteSpace);
+}
+
+VOID
+MiReleaseKernelStackPtes(
+    _In_ PMMPTE FirstPte,
+    _In_ ULONG NumberOfPtes)
+{
+    MiReleaseSystemPtes(FirstPte, NumberOfPtes, SystemPteSpace);
+}

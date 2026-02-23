@@ -1162,16 +1162,68 @@ HalCalculateScatterGatherListSize(
     OUT PULONG ScatterGatherListSize,
     OUT PULONG pNumberOfMapRegisters)
 {
-    ULONG NumberOfMapRegisters;
+    ULONG NumberOfMapRegisters = 0;
     ULONG SgSize;
+    PMDL CurMdl;
+    PUCHAR SegmentStart, SegmentEnd, CurVa;
+    ULONG Remaining, Chunk, OffsetInPage;
 
-    UNIMPLEMENTED_ONCE;
+    if (Mdl == NULL)
+    {
+        /*
+         * No MDL: contiguous virtual range. Number of pages spanning
+         * [CurrentVa, CurrentVa + Length) as in Vista/Win8 hal.
+         */
+        OffsetInPage = (ULONG)((ULONG_PTR)CurrentVa & (PAGE_SIZE - 1));
+        NumberOfMapRegisters = (Length >> PAGE_SHIFT) +
+            ((OffsetInPage + (Length & (PAGE_SIZE - 1)) + PAGE_SIZE - 1) >> PAGE_SHIFT);
+    }
+    else
+    {
+        /*
+         * Walk MDL chain to find segment containing CurrentVa, then count
+         * map registers (pages) for [CurrentVa, CurrentVa + Length).
+         */
+        CurMdl = Mdl;
+        while (CurMdl != NULL)
+        {
+            SegmentStart = (PUCHAR)CurMdl->StartVa + CurMdl->ByteOffset;
+            SegmentEnd = SegmentStart + CurMdl->ByteCount;
+            if (CurrentVa >= (PVOID)SegmentStart && CurrentVa < (PVOID)SegmentEnd)
+                break;
+            CurMdl = CurMdl->Next;
+        }
+        if (CurMdl == NULL)
+            return STATUS_INVALID_PARAMETER; /* CurrentVa not in MDL */
 
-    NumberOfMapRegisters = PAGE_ROUND_UP(Length) >> PAGE_SHIFT;
+        Remaining = Length;
+        CurVa = (PUCHAR)CurrentVa;
+        while (Remaining > 0 && CurMdl != NULL)
+        {
+            SegmentStart = (PUCHAR)CurMdl->StartVa + CurMdl->ByteOffset;
+            SegmentEnd = SegmentStart + CurMdl->ByteCount;
+            Chunk = Remaining;
+            if ((ULONG)(SegmentEnd - CurVa) < Chunk)
+                Chunk = (ULONG)(SegmentEnd - CurVa);
+            OffsetInPage = (ULONG)((ULONG_PTR)CurVa & (PAGE_SIZE - 1));
+            NumberOfMapRegisters += (OffsetInPage + Chunk + PAGE_SIZE - 1) >> PAGE_SHIFT;
+            Remaining -= Chunk;
+            CurMdl = CurMdl->Next;
+            CurVa += Chunk;
+            if (CurMdl != NULL)
+                CurVa = (PUCHAR)CurMdl->StartVa + CurMdl->ByteOffset;
+        }
+        if (Remaining > 0)
+            return STATUS_INVALID_PARAMETER; /* Length extends past MDL */
+    }
+
+    if (NumberOfMapRegisters > AdapterObject->MapRegistersPerChannel)
+        return STATUS_INVALID_DEVICE_REQUEST;
+
     SgSize = sizeof(SCATTER_GATHER_CONTEXT);
-
     *ScatterGatherListSize = SgSize;
-    if (pNumberOfMapRegisters) *pNumberOfMapRegisters = NumberOfMapRegisters;
+    if (pNumberOfMapRegisters != NULL)
+        *pNumberOfMapRegisters = NumberOfMapRegisters;
 
     return STATUS_SUCCESS;
 }

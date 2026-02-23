@@ -219,3 +219,13 @@ C_ASSERT(PD_COUNT == 1);
         (PMMPTE)((ULONG_PTR)MmNonPagedPoolEnd -                     \
                 (((x)->u.Subsect.SubsectionAddressHigh << 7) |      \
                   (x)->u.Subsect.SubsectionAddressLow << 3))
+
+/* Kernel stack PTE allocation (wrappers around system PTE pool on i386) */
+PMMPTE
+MiReserveKernelStackPtes(
+    _In_ ULONG NumberOfPtes);
+
+VOID
+MiReleaseKernelStackPtes(
+    _In_ PMMPTE FirstPte,
+    _In_ ULONG NumberOfPtes);
