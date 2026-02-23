@@ -42,9 +42,6 @@ Include=machine.inf
 Needs=PciD3ColdSupported
 
 [Generic_AddReg.HW]
-HKR, Interrupt Management,, 0x00000010
-HKR, Interrupt Management\MessageSignaledInterruptProperties,, 0x00000010
-HKR, Interrupt Management\MessageSignaledInterruptProperties, MSISupported, 0x00010001, 0
 
 [Generic.Install.NT.Services]
 AddService=USBXHCI, 2, Generic.AddService

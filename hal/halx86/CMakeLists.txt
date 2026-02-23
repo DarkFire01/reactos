@@ -65,7 +65,7 @@ if(ARCH STREQUAL "i386")
     #add_hal(halapic SOURCES apic/halapic.rc COMPONENTS generic legacy up apic)
     #add_hal(halxbox SOURCES xbox/halxbox.rc COMPONENTS xbox up)
    # add_hal(halpc98 SOURCES pc98/halpc98.rc COMPONENTS pc98 up)
-
+     add_hal(halaacpi SOURCES apic/halaacpi.rc COMPONENTS generic acpi up apic)
     add_hal(halmacpi SOURCES smp/halmacpi.rc COMPONENTS generic acpi smp apic)
     #add_hal(halmp SOURCES mp/halmp.rc COMPONENTS generic legacy smp apic)
 
