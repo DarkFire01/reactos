@@ -1,0 +1,5 @@
+#define REACTOS_VERSION_DLL
+#define REACTOS_STR_FILE_DESCRIPTION  "NVMe Storage Controller Driver"
+#define REACTOS_STR_INTERNAL_NAME     "nvme2k"
+#define REACTOS_STR_ORIGINAL_FILENAME "nvme2k.sys"
+#include <reactos/version.rc>

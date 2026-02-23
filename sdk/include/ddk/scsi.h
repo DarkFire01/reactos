@@ -3300,6 +3300,7 @@ typedef struct _UNMAP_LIST_HEADER {
   UNMAP_BLOCK_DESCRIPTOR Descriptors[0];
 #endif
 } UNMAP_LIST_HEADER, *PUNMAP_LIST_HEADER;
+#define _SCSI_UNMAP_STRUCTS_DEFINED_
 #include <poppack.h>
 
 #define LOG_PAGE_CODE_SUPPORTED_LOG_PAGES           0x00

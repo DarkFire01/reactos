@@ -578,7 +578,9 @@ ScsiPortGetPhysicalAddress(IN PVOID HwDeviceExtension,
 
 
 /*
- * @unimplemented
+ * @implemented
+ * Returns the SRB currently associated with the given (PathId, TargetId, Lun) and QueueTag.
+ * Used by miniports in completion handling to find the SRB for a completed command.
  */
 PSCSI_REQUEST_BLOCK NTAPI
 ScsiPortGetSrb(IN PVOID DeviceExtension,
@@ -587,9 +589,23 @@ ScsiPortGetSrb(IN PVOID DeviceExtension,
            IN UCHAR Lun,
            IN LONG QueueTag)
 {
-  DPRINT1("ScsiPortGetSrb() unimplemented\n");
-  UNIMPLEMENTED;
-  return NULL;
+    PSCSI_PORT_DEVICE_EXTENSION PortExtension;
+    PSCSI_PORT_LUN_EXTENSION LunExtension;
+    PSCSI_REQUEST_BLOCK_INFO SrbInfo;
+
+    PortExtension = CONTAINING_RECORD(DeviceExtension,
+                                     SCSI_PORT_DEVICE_EXTENSION,
+                                     MiniPortDeviceExtension);
+
+    LunExtension = GetLunByPath(PortExtension, PathId, TargetId, Lun);
+    if (LunExtension == NULL)
+        return NULL;
+
+    SrbInfo = SpiGetSrbData(PortExtension, LunExtension, (UCHAR)QueueTag);
+    if (SrbInfo == NULL)
+        return NULL;
+
+    return SrbInfo->Srb;
 }
 
 

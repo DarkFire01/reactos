@@ -117,6 +117,11 @@ usbohci.sys  = 1,,,,,,x,4,,,,1,4
 usbehci.sys  = 1,,,,,,x,4,,,,1,4
 usbxhci.sys  = 1,,,,,,x,4,,,,1,4
 usbstor.sys  = 1,,,,,,x,4,,,,1,4
+<<<<<<< HEAD
+=======
+uaspstor.sys = 1,,,,,,x,4,,,,1,4
+nvme2k.sys   = 1,,,,,,x,4,,,,1,4
+>>>>>>> 2725d130c1d ([NVME2K] Add NVME Support)
 kbdhid.sys   = 1,,,,,,,4,,,,1,4
 kbdclass.sys = 1,,,,,,x,4,,,,1,4
 l_intl.nls   = 1,,,,,,,2,,,,1,2
@@ -162,12 +167,19 @@ PCI\CC_0601 = isapnp
 PCI\CC_0604 = pci
 PCI\VEN_104B&CC_0100 = buslogic
 PCI\CC_0101 = pciide
+<<<<<<< HEAD
 ;PCI\CC_0104 = uniata
 ;PCI\CC_0105 = uniata
 ;PCI\CC_0106 = uniata
 PCI\CC_0104 = pciide
 PCI\CC_0105 = pciide
 PCI\CC_0106 = pciide
+=======
+PCI\CC_0104 = uniata
+PCI\CC_0105 = uniata
+PCI\CC_0106 = uniata
+PCI\CC_010802 = nvme2k
+>>>>>>> 2725d130c1d ([NVME2K] Add NVME Support)
 ;PCI\CC_0106 = storahci
 ;*PNP0600 = uniata
 *PNP0600 = atapi
@@ -215,6 +227,7 @@ atapi = atapi.sys
 ;uniata = uniata.sys
 atapi = atapi.sys
 buslogic = buslogic.sys
+nvme2k = nvme2k.sys
 storahci = storahci.sys
 disk = disk.sys
 
