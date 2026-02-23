@@ -27,6 +27,38 @@
 extern "C" {
 #endif
 
+/*
+ * miniport.h uses NT types (ULONG, UCHAR, PVOID, VOID, etc.).
+ * Ensure they are defined when this header is included without ntddk.h/wdm.h.
+ */
+#ifndef _MINIPORT_TYPES_DEFINED_
+#define _MINIPORT_TYPES_DEFINED_
+#if !defined(ULONG)
+typedef unsigned long ULONG;
+typedef ULONG *PULONG;
+#endif
+#if !defined(UCHAR)
+typedef unsigned char UCHAR;
+typedef UCHAR *PUCHAR;
+#endif
+#if !defined(USHORT)
+typedef unsigned short USHORT;
+typedef USHORT *PUSHORT;
+#endif
+#if !defined(PVOID)
+typedef void *PVOID;
+#endif
+#ifndef VOID
+#define VOID void
+#endif
+#ifndef NTAPI
+#define NTAPI __stdcall
+#endif
+#ifndef IN
+#define IN
+#endif
+#endif /* _MINIPORT_TYPES_DEFINED_ */
+
 #define EMULATOR_READ_ACCESS              0x01
 #define EMULATOR_WRITE_ACCESS             0x02
 
@@ -53,6 +85,8 @@ typedef VOID
   IN PVOID Context);
 
 #ifndef __BROKEN__
+/* When ntddk.h/wdm.h is included first, these types are already defined; skip to avoid redefinition. */
+#if !defined(_WDMDDK_)
 
 typedef enum _INTERFACE_TYPE {
   InterfaceTypeUndefined = -1,
@@ -219,6 +253,8 @@ typedef struct _IO_RESOURCE_DESCRIPTOR {
     } Memory64;
   } u;
 } IO_RESOURCE_DESCRIPTOR, *PIO_RESOURCE_DESCRIPTOR;
+
+#endif /* !_WDMDDK_ */
 
 #include <guiddef.h>
 #endif /* ! __BROKEN__ */

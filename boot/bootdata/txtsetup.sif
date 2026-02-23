@@ -119,6 +119,7 @@ usbehci.sys  = 1,,,,,,x,4,,,,1,4
 usbxhci.sys  = 1,,,,,,x,4,,,,1,4
 usbstor.sys  = 1,,,,,,x,4,,,,1,4
 uaspstor.sys = 1,,,,,,x,4,,,,1,4
+nvme2k.sys   = 1,,,,,,x,4,,,,1,4
 kbdhid.sys   = 1,,,,,,,4,,,,1,4
 kbdclass.sys = 1,,,,,,x,4,,,,1,4
 l_intl.nls   = 1,,,,,,,2,,,,1,2
@@ -168,6 +169,7 @@ PCI\CC_0101 = pciide
 PCI\CC_0104 = uniata
 PCI\CC_0105 = uniata
 PCI\CC_0106 = uniata
+PCI\CC_010802 = nvme2k
 ;PCI\CC_0106 = storahci
 *PNP0600 = uniata
 USB\CLASS_09 = usbhub
@@ -212,6 +214,7 @@ pciide = pciide.sys
 [SCSI.Load]
 uniata = uniata.sys
 buslogic = buslogic.sys
+nvme2k = nvme2k.sys
 storahci = storahci.sys
 disk = disk.sys
 
