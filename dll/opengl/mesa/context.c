@@ -262,7 +262,7 @@
 #endif
 
 #include <wine/debug.h>
-WINE_DEFAULT_DEBUG_CHANNEL(opengl32);
+WINE_DEFAULT_DEBUG_CHANNEL(mesa);
 
 
 
