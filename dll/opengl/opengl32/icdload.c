@@ -58,6 +58,16 @@ extern INT APIENTRY GdiDescribePixelFormat(HDC hdc, INT ipfd, UINT cjpfd, PPIXEL
 extern BOOL APIENTRY GdiSetPixelFormat(HDC hdc, INT ipfd);
 extern BOOL APIENTRY GdiSwapBuffers(HDC hdc);
 
+/* Definitions for DrvSwapLayerBuffers wrapper hack */
+BOOL (WINAPI *DrvSwapLayerBuffers)(HDC hdc, UINT fuPlanes);
+BOOL APIENTRY DrvSwapLayerBuffersWrapper(HDC hdc)
+{
+    if (DrvSwapLayerBuffers)
+        return DrvSwapLayerBuffers(hdc, 0);
+    else
+        return FALSE;
+}
+
 /* Retrieves the ICD data (driver version + relevant DLL entry points) for a device context */
 struct ICD_Data* IntGetIcdData(HDC hdc)
 {
@@ -69,6 +79,7 @@ struct ICD_Data* IntGetIcdData(HDC hdc)
     HKEY OglKey = NULL;
     HKEY DrvKey, CustomKey;
     WCHAR DllName[MAX_PATH];
+    BOOLEAN GdiPixelFormat = FALSE;
     BOOL (WINAPI *DrvValidateVersion)(DWORD);
     void (WINAPI *DrvSetCallbackProcs)(int nProcs, PROC* pProcs);
 
@@ -149,7 +160,6 @@ custom_end:
         /* Query for the ICD DLL name and version */
         dwInput = OPENGL_GETINFO_DRVNAME;
         ret = ExtEscape(hdc, OPENGL_GETINFO, sizeof(DWORD), (LPCSTR)&dwInput, sizeof(DrvInfo), (LPSTR)&DrvInfo);
-
         if(ret <= 0)
         {
             ERR("Driver claims to support OPENGL_GETINFO escape code, but doesn't. ret: %X\n", ret);
@@ -313,28 +323,39 @@ custom_end:
     DRV_LOAD(DrvCreateLayerContext);
     DRV_LOAD(DrvDeleteContext);
     DRV_LOAD(DrvDescribeLayerPlane);
-    DRV_LOAD(DrvDescribePixelFormat);
     DRV_LOAD(DrvGetLayerPaletteEntries);
     DRV_LOAD(DrvGetProcAddress);
     DRV_LOAD(DrvReleaseContext);
     DRV_LOAD(DrvRealizeLayerPalette);
     DRV_LOAD(DrvSetContext);
     DRV_LOAD(DrvSetLayerPaletteEntries);
-    DRV_LOAD(DrvSetPixelFormat);
     DRV_LOAD(DrvShareLists);
-    DRV_LOAD(DrvSwapBuffers);
     DRV_LOAD(DrvSwapLayerBuffers);
 #undef DRV_LOAD
+#define DRV_LOAD_OPTIONAL(x) do                         \
+{                                                       \
+    data->x = (void*)GetProcAddress(data->hModule, #x); \
+    if(!data->x) {                                      \
+        GdiPixelFormat = TRUE;                          \
+    }                                                   \
+} while(0)
+    DRV_LOAD_OPTIONAL(DrvDescribePixelFormat);
+    DRV_LOAD_OPTIONAL(DrvSetPixelFormat);
+    DRV_LOAD_OPTIONAL(DrvSwapBuffers);
+#undef DRV_LOAD_OPTIONAL
 
     /* Let's see if GDI should handle this instead of the ICD DLL */
     // FIXME: maybe there is a better way
-    if (GdiDescribePixelFormat(hdc, 0, 0, NULL) != 0)
+    if ((GdiDescribePixelFormat(hdc, 0, 0, NULL) != 0) || GdiPixelFormat)
     {
         /* GDI knows what to do with that. Override */
         TRACE("Forwarding WGL calls to win32k!\n");
         data->DrvDescribePixelFormat = GdiDescribePixelFormat;
         data->DrvSetPixelFormat = GdiSetPixelFormat;
-        data->DrvSwapBuffers = GdiSwapBuffers;
+        /* How cool it would be if some DDIs didn't export a stub SwapBuffers routine which just returns TRUE! */
+        //data->DrvSwapBuffers = GdiSwapBuffers;
+        DrvSwapLayerBuffers = data->DrvSwapLayerBuffers;
+        data->DrvSwapBuffers = DrvSwapLayerBuffersWrapper;
     }
 
     /* Copy the DriverName */
