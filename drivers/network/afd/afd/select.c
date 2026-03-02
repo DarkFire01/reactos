@@ -482,6 +482,10 @@ static BOOLEAN UpdatePollWithFCB( PAFD_ACTIVE_POLL Poll, PFILE_OBJECT FileObject
     PAFD_FCB FCB;
     UINT Signalled = 0;
     PAFD_POLL_INFO PollReq = Poll->Irp->AssociatedIrp.SystemBuffer;
+#ifdef _WIN64
+    PAFD_POLL_INFO32 PollReq32 = Poll->Irp->AssociatedIrp.SystemBuffer;
+#endif
+
     PAFD_HANDLE AfdHandles = Poll->AfdHandles;
 
     ASSERT( KeGetCurrentIrql() == DISPATCH_LEVEL );
@@ -492,11 +496,27 @@ static BOOLEAN UpdatePollWithFCB( PAFD_ACTIVE_POLL Poll, PFILE_OBJECT FileObject
         FileObject = (PFILE_OBJECT)AfdHandles[i].Handle;
         FCB = FileObject->FsContext;
 
-        PollReq->Handles[i].Status = PollReq->Handles[i].Events & FCB->PollState;
-        if( PollReq->Handles[i].Status ) {
-            AFD_DbgPrint(MID_TRACE,("Signalling %p with %x\n",
-                                    FCB, FCB->PollState));
-            Signalled++;
+#ifdef _WIN64
+        if (IoIs32bitProcess(Poll->Irp))
+        {
+            PollReq32->Handles[i].Status = PollReq32->Handles[i].Events & FCB->PollState;
+            if(PollReq32->Handles[i].Status) 
+            {
+                AFD_DbgPrint(MID_TRACE,("Signalling %p with %x\n",
+                                        FCB, FCB->PollState));
+                Signalled++;
+            }
+        }
+        else
+#endif
+        {
+            PollReq->Handles[i].Status = PollReq->Handles[i].Events & FCB->PollState;
+            if(PollReq->Handles[i].Status) 
+            {
+                AFD_DbgPrint(MID_TRACE,("Signalling %p with %x\n",
+                                        FCB, FCB->PollState));
+                Signalled++;
+            }
         }
     }
 
