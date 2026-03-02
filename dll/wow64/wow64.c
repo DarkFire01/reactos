@@ -20,7 +20,7 @@ typedef MEMORY_BASIC_INFORMATION32 *PMEMORY_BASIC_INFORMATION32;
 
 /* PEB Data */
 static USHORT UnicodeCopy[2048]; /* ??? */
-static UCHAR AnsiCopy[1024], OemCopy[1024]; /* ??? */
+static UCHAR AnsiCopy[65536], OemCopy[65536]; /* ??? */
 static ULONG_PTR FixmeProcessHeaps[100]; /* FIXME */
 static BYTE UnicodeData[8192]; /* ??? */
 
