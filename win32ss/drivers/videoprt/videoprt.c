@@ -986,6 +986,10 @@ VideoPortInitialize(
             INFO_(VIDEOPRT, "We were loaded by a Windows NT miniport driver.\n");
             break;
 
+        case SIZE_OF_EARLY_W2K_VIDEO_HW_INITIALIZATION_DATA:
+            INFO_(VIDEOPRT, "We were loaded by an early Windows 2000 miniport driver.\n");
+            break;
+
         case SIZE_OF_W2K_VIDEO_HW_INITIALIZATION_DATA:
             INFO_(VIDEOPRT, "We were loaded by a Windows 2000 miniport driver.\n");
             break;
