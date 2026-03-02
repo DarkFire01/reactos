@@ -30,4 +30,4 @@ set_subsystem(wow64 console)
 set_image_base(wow64 0xFF000000)
 add_importlibs(wow64 ntdll)
 
-add_cd_file(TARGET wow64 DESTINATION reactos/system32 NO_CAB FOR all)
+add_cd_file(TARGET wow64 DESTINATION reactos/system32 FOR all)
