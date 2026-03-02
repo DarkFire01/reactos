@@ -130,9 +130,8 @@ NtGdiSetPixelFormat(
     PDC pdc;
     PPDEVOBJ ppdev;
     HWND hWnd;
-    PWNDOBJ pWndObj;
-    SURFOBJ *pso = NULL;
     BOOL Ret = FALSE;
+    PSURFACE psurf;
 
     DPRINT1("Setting pixel format from win32k!\n");
 
@@ -153,10 +152,7 @@ NtGdiSetPixelFormat(
         goto Exit;
     }
 
-    UserEnterExclusive();
-    hWnd = UserGethWnd(hdc, &pWndObj);
-    UserLeave();
-
+    hWnd = IntWindowFromDC(hdc);
     if (!hWnd)
     {
         EngSetLastError(ERROR_INVALID_WINDOW_STYLE);
@@ -164,17 +160,20 @@ NtGdiSetPixelFormat(
     }
 
     ppdev = pdc->ppdev;
+    PDEVOBJ_vReference(ppdev);
 
-    /*
-        WndObj is needed so exit on NULL pointer.
-    */
-    if (pWndObj)
-        pso = pWndObj->psoOwner;
-    else
+    EngAcquireSemaphore(ppdev->hsemDevLock);
+
+    /* Check if we have a surface */
+    psurf = pdc->dclevel.pSurface;
+    if (!psurf)
     {
+        EngReleaseSemaphore(ppdev->hsemDevLock);
+        PDEVOBJ_vRelease(ppdev);
         EngSetLastError(ERROR_INVALID_PIXEL_FORMAT);
         goto Exit;
     }
+    SURFACE_ShareLockByPointer(psurf);
 
     if (ppdev->flFlags & PDEV_META_DEVICE)
     {
@@ -185,10 +184,14 @@ NtGdiSetPixelFormat(
     if (ppdev->DriverFunctions.SetPixelFormat)
     {
         Ret = ppdev->DriverFunctions.SetPixelFormat(
-                                                pso,
+                                                &psurf->SurfObj,
                                                 ipfd,
                                                 hWnd);
     }
+
+    SURFACE_ShareUnlockSurface(psurf);
+    EngReleaseSemaphore(ppdev->hsemDevLock);
+    PDEVOBJ_vRelease(ppdev);
 
 Exit:
     DC_UnlockDc(pdc);
@@ -203,9 +206,8 @@ NtGdiSwapBuffers(
     PDC pdc;
     PPDEVOBJ ppdev;
     HWND hWnd;
-    PWNDOBJ pWndObj;
-    SURFOBJ *pso = NULL;
     BOOL Ret = FALSE;
+    PSURFACE psurf;
 
     pdc = DC_LockDc(hdc);
     if (!pdc)
@@ -214,10 +216,7 @@ NtGdiSwapBuffers(
         return FALSE;
     }
 
-    UserEnterExclusive();
-    hWnd = UserGethWnd(hdc, &pWndObj);
-    UserLeave();
-
+    hWnd = IntWindowFromDC(hdc);
     if (!hWnd)
     {
         EngSetLastError(ERROR_INVALID_WINDOW_STYLE);
@@ -225,17 +224,20 @@ NtGdiSwapBuffers(
     }
 
     ppdev = pdc->ppdev;
+    PDEVOBJ_vReference(ppdev);
 
-    /*
-        WndObj is needed so exit on NULL pointer.
-    */
-    if (pWndObj)
-        pso = pWndObj->psoOwner;
-    else
+    EngAcquireSemaphore(ppdev->hsemDevLock);
+
+    /* Check if we have a surface */
+    psurf = pdc->dclevel.pSurface;
+    if (!psurf)
     {
+        EngReleaseSemaphore(ppdev->hsemDevLock);
+        PDEVOBJ_vRelease(ppdev);
         EngSetLastError(ERROR_INVALID_PIXEL_FORMAT);
         goto Exit;
     }
+    SURFACE_ShareLockByPointer(psurf);
 
     if (ppdev->flFlags & PDEV_META_DEVICE)
     {
@@ -245,8 +247,12 @@ NtGdiSwapBuffers(
 
     if (ppdev->DriverFunctions.SwapBuffers)
     {
-        Ret = ppdev->DriverFunctions.SwapBuffers(pso, pWndObj);
+        Ret = ppdev->DriverFunctions.SwapBuffers(&psurf->SurfObj, NULL);
     }
+
+    SURFACE_ShareUnlockSurface(psurf);
+    EngReleaseSemaphore(ppdev->hsemDevLock);
+    PDEVOBJ_vRelease(ppdev);
 
 Exit:
     DC_UnlockDc(pdc);
