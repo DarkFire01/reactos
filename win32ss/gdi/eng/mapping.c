@@ -11,9 +11,6 @@
 #define NDEBUG
 #include <debug.h>
 
-HANDLE ghSystem32Directory;
-HANDLE ghRootDirectory;
-
 PVOID
 NTAPI
 EngMapSectionView(
@@ -335,6 +332,7 @@ EngLoadModuleEx(
     OBJECT_ATTRIBUTES ObjectAttributes;
     HANDLE hRootDir;
     UNICODE_STRING ustrFileName;
+    UNICODE_STRING System32Directory = RTL_CONSTANT_STRING(L"\\SystemRoot\\system32");
     IO_STATUS_BLOCK IoStatusBlock;
     FILE_BASIC_INFORMATION FileInformation;
     HANDLE hFile;
@@ -356,11 +354,35 @@ EngLoadModuleEx(
     /* Check if the file is relative to system32 */
     if (fl & FVF_SYSTEMROOT)
     {
-        hRootDir = ghSystem32Directory;
+        InitializeObjectAttributes(&ObjectAttributes,
+                                    &System32Directory,
+                                    OBJ_KERNEL_HANDLE,
+                                    NULL,
+                                    NULL);
+
+        /* Now open the file */
+        Status = ZwCreateFile(&hRootDir,
+                            FILE_READ_DATA,
+                            &ObjectAttributes,
+                            &IoStatusBlock,
+                            NULL,
+                            FILE_ATTRIBUTE_NORMAL,
+                            FILE_SHARE_READ,
+                            FILE_OPEN,
+                            FILE_DIRECTORY_FILE,
+                            NULL,
+                            0);
+
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to open system directory. Status=0x%x\n", Status);
+            EngFreeMem(pFileView);
+            return NULL;
+        }
     }
     else
     {
-        hRootDir = ghRootDirectory;
+        hRootDir = NULL;
     }
 
     /* Initialize unicode string and object attributes */
@@ -378,7 +400,7 @@ EngLoadModuleEx(
                           &IoStatusBlock,
                           NULL,
                           FILE_ATTRIBUTE_NORMAL,
-                          0,
+                          FILE_SHARE_READ,
                           FILE_OPEN,
                           FILE_NON_DIRECTORY_FILE,
                           NULL,
@@ -402,17 +424,17 @@ EngLoadModuleEx(
 
     /* Create a section from the file */
     liSize.QuadPart = cjSizeOfModule;
-    Status = MmCreateSection(&pFileView->pSection,
+    Status = ZwCreateSection(&pFileView->pSection,
                              SECTION_ALL_ACCESS,
                              NULL,
                              &liSize,
                              fl & FVF_READONLY ? PAGE_EXECUTE_READ : PAGE_EXECUTE_READWRITE,
                              SEC_COMMIT,
-                             hFile,
-                             NULL);
+                             hFile);
 
     /* Close the file handle */
     ZwClose(hFile);
+    ZwClose(hRootDir);
 
     if (!NT_SUCCESS(Status))
     {
@@ -462,10 +484,17 @@ EngMapModule(
 
     pFileView->cjView = 0;
 
-    /* FIXME: Use system space because ARM3 doesn't support executable sections yet */
-    Status = MmMapViewInSystemSpace(pFileView->pSection,
-                                    &pFileView->pvKView,
-                                    &pFileView->cjView);
+    Status = ZwMapViewOfSection(pFileView->pSection,
+                       h,
+                       &pFileView->pvKView,
+                       0,
+                       0,
+                       NULL,
+                       &pFileView->cjView,
+                       ViewUnmap,
+                       0,
+                       PAGE_EXECUTE_READ);
+
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to map a section Status=0x%x\n", Status);
@@ -485,16 +514,17 @@ EngFreeModule(
     PFILEVIEW pFileView = (PFILEVIEW)h;
     NTSTATUS Status;
 
-    /* FIXME: Use system space because ARM3 doesn't support executable sections yet */
-    Status = MmUnmapViewInSystemSpace(pFileView->pvKView);
-    if (!NT_SUCCESS(Status))
+    if (pFileView->cjView && pFileView->pvKView)
     {
-        DPRINT1("MmUnmapViewInSessionSpace failed: 0x%lx\n", Status);
-        ASSERT(FALSE);
+        Status = ZwUnmapViewOfSection(h, pFileView->pvKView);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("ZwUnmapViewOfSection failed: 0x%lx\n", Status);
+            ASSERT(FALSE);
+        }
     }
 
-    /* Dereference the section */
-    ObDereferenceObject(pFileView->pSection);
+    ZwClose(pFileView->pSection);
 
     /* Free the file view memory */
     EngFreeMem(pFileView);
