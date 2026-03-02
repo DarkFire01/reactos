@@ -124,7 +124,7 @@
 #include <wine/debug.h>
 #endif
 
-WINE_DEFAULT_DEBUG_CHANNEL(opengl32);
+WINE_DEFAULT_DEBUG_CHANNEL(mesa);
 
 
 #if 0  /* NOT USED AT THIS TIME */

@@ -9,7 +9,7 @@
 
 #include <win32k.h>
 
-// #define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 HSEMAPHORE  ghsemShareDevLock = NULL;
@@ -873,7 +873,7 @@ DWORD APIENTRY DxEngLoadImage(DWORD x1,DWORD x2)
 /************************************************************************/
 DWORD APIENTRY DxEngSpTearDownSprites(DWORD x1, DWORD x2, DWORD x3)
 {
-    UNIMPLEMENTED;
+    UNIMPLEMENTED_ONCE;
     return FALSE;
 }
 
@@ -882,7 +882,7 @@ DWORD APIENTRY DxEngSpTearDownSprites(DWORD x1, DWORD x2, DWORD x3)
 /************************************************************************/
 DWORD APIENTRY DxEngSpUnTearDownSprites(DWORD x1, DWORD x2, DWORD x3)
 {
-    UNIMPLEMENTED;
+    UNIMPLEMENTED_ONCE;
     return FALSE;
 }
 
