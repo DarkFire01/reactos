@@ -1061,3 +1061,13 @@ wow64_NtUserGetComboBoxInfo(UINT* pArgs)
 
     return TRUE;
 }
+
+
+DWORD
+NTAPI
+wow64_NtGdiGetCharSet(UINT* pArgs)
+{
+    HDC hDc = get_handle(&pArgs);
+    
+    return NtGdiGetCharSet(hDc);
+}

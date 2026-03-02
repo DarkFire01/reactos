@@ -330,6 +330,7 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserSetThreadState);
     IMPLEMENT_SERVICE(UserGetComboBoxInfo);
     IMPLEMENT_SERVICE(UserGetWindowDC);
+    IMPLEMENT_SERVICE(GdiGetCharSet);
 #undef IMPLEMENT_SERVICE
 }
 
