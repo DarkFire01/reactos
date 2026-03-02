@@ -898,8 +898,8 @@ VideoPortGetAccessRanges(
              Descriptor->Type == CmResourceTypePort) &&
             AssignedCount >= NumAccessRanges)
         {
-            ERR_(VIDEOPRT, "Too many access ranges found\n");
-            return ERROR_MORE_DATA;
+            ERR_(VIDEOPRT, "Too many access ranges found: AssignedCount: %d NumAccesRanges: %d\n", AssignedCount, NumAccessRanges);
+            continue; //return ERROR_MORE_DATA;
         }
         else if (Descriptor->Type == CmResourceTypeMemory)
         {
