@@ -4181,7 +4181,7 @@ EHCI_UnlinkITDFromFrameList(IN PEHCI_EXTENSION EhciExtension,
         EHCI_LINK_POINTER nextLink = ITD->HwTD.NextLink;
         EHCI_LINK_POINTER current = *CurrentLink;
 
-        while ((current.AsULONG & LINK_POINTER_MASK) != TERMINATE_POINTER)
+        while (!current.Terminate)
         {
             if ((current.AsULONG & LINK_POINTER_MASK) == TargetPhysicalAddress &&
             current.Type == EHCI_LINK_TYPE_iTD)

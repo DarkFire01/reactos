@@ -120,7 +120,6 @@ USBPORT_CompleteIsoTransfer(IN PVOID MiniPortExtension,
                             IN PVOID TransferParameters,
                             IN ULONG TransferLength)
 {
-    PUSBPORT_DEVICE_EXTENSION FdoExtension;
     PUSBPORT_ENDPOINT Endpoint;
     PUSBPORT_TRANSFER Transfer;
     struct _URB_ISOCH_TRANSFER *IsoUrb;
@@ -130,10 +129,6 @@ USBPORT_CompleteIsoTransfer(IN PVOID MiniPortExtension,
     ULONG RemainingLength = TransferLength;
 
     DPRINT("USBPORT_CompleteIsoTransfer: TransferLength - %lu\n", TransferLength);
-
-    FdoExtension = (PUSBPORT_DEVICE_EXTENSION)((ULONG_PTR)MiniPortExtension -
-                                               sizeof(USBPORT_DEVICE_EXTENSION));
-
     if (!MiniPortEndpoint)
     {
         DPRINT1("USBPORT_CompleteIsoTransfer: Invalid MiniPortEndpoint\n");
@@ -196,6 +191,7 @@ USBPORT_CompleteIsoTransfer(IN PVOID MiniPortExtension,
                                      CompletedLength);
 
     DPRINT("USBPORT_CompleteIsoTransfer: Completed %lu bytes\n", CompletedLength);
+    UNREFERENCED_PARAMETER(Endpoint);
     return CompletedLength;
 }
 
