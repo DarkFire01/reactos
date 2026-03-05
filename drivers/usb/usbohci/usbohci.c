@@ -1637,7 +1637,6 @@ OHCI_SubmitIsoTransfer(IN PVOID ohciExtension,
     POHCI_HCD_TD PrevTD;
     ULONG PacketCount;
     ULONG ix;
-    ULONG CurrentOffset;
     ULONG MaxTDs;
     ULONG StartingFrame;
 
@@ -1687,7 +1686,6 @@ OHCI_SubmitIsoTransfer(IN PVOID ohciExtension,
         StartingFrame = HcHCCA->FrameNumber + 2; // Start 2 frames from now
     }
 
-    CurrentOffset = 0;
     PrevTD = NULL;
 
     // Create Isochronous Transfer Descriptors for each packet
@@ -1862,7 +1860,6 @@ OHCI_ProcessDoneIsoTD(IN POHCI_EXTENSION OhciExtension,
     POHCI_ENDPOINT OhciEndpoint;
     struct _URB_ISOCH_TRANSFER *IsoUrb;
     USBD_ISO_PACKET_DESCRIPTOR *PacketDescriptor;
-    ULONG FrameNumber;
     ULONG PacketIndex;
     ULONG TransferredLength;
 
@@ -1885,10 +1882,6 @@ OHCI_ProcessDoneIsoTD(IN POHCI_EXTENSION OhciExtension,
     }
 
     OhciTransfer->PendingTDs--;
-
-    // Extract completion information from the ITD
-    FrameNumber = TD->HwTD.iTD.Control.StartingFrame;
-    
     // Find the corresponding packet descriptor
     // This is a simplified approach
     // TODO: we need to track which TD corresponds to which packet
