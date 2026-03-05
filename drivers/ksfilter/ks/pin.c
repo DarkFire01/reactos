@@ -1008,6 +1008,7 @@ KsPinAttemptProcessing(
         KsIncrementCountedWorker(This->PinWorker);
     }
 
+    UNREFERENCED_PARAMETER(Status);
 }
 
 /*
