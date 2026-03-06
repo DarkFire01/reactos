@@ -7,7 +7,7 @@
 
 #include "usbport.h"
 
-#define NDEBUG
+#define YDEBUG
 #include <debug.h>
 
 static const UCHAR CMASKS[USB2_MICROFRAMES] = {
@@ -1334,7 +1334,10 @@ USB2_AllocateTimeForEndpoint(IN PUSB2_TT_ENDPOINT TtEndpoint,
         if (TtEndpoint->Period > USB2_MAX_MICROFRAMES)
             TtEndpoint->ActualPeriod = USB2_MAX_MICROFRAMES;
         else
+        {
+            ASSERT(TtEndpoint->Period);
             TtEndpoint->ActualPeriod = TtEndpoint->Period;
+        }
 
         MinTimeUsed = HcExtension->TimeUsed[0][0];
 
@@ -1369,7 +1372,7 @@ USB2_AllocateTimeForEndpoint(IN PUSB2_TT_ENDPOINT TtEndpoint,
             DPRINT("USB2_AllocateTimeForEndpoint: Microframe >= 256. Result - TRUE\n");
             return TRUE;
         }
-
+        ASSERT(TtEndpoint->ActualPeriod);
         for (ix = Microframe;
              ix < USB2_MAX_MICROFRAMES;
              ix += TtEndpoint->ActualPeriod)
@@ -1388,6 +1391,7 @@ USB2_AllocateTimeForEndpoint(IN PUSB2_TT_ENDPOINT TtEndpoint,
             {
                 DPRINT("USB2_AllocateTimeForEndpoint: Result = FALSE\n");
                 Result = FALSE;
+                break;
             }
         }
 
@@ -1893,7 +1897,9 @@ USBPORT_AllocateBandwidthUSB2(IN PDEVICE_OBJECT FdoDevice,
             {
                 Tt = &FdoExtension->Usb2Extension->HcTt;
                 Period = EndpointProperties->Period;
+                DPRINT("USBPORT_AllocateBandwidthUSB2: Endpoint %p Period - %X\n", EndpointProperties, Period);
 
+                ASSERT(Period);
                 break;
             }
 

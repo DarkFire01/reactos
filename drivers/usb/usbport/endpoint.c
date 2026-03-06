@@ -115,10 +115,10 @@ USBPORT_AllocateBandwidth(IN PDEVICE_OBJECT FdoDevice,
         DPRINT1("USBPORT_AllocateBandwidth: Period is zero\n");
         return FALSE;
     }
-    
+
     if (Period > USB2_FRAMES)
     {
-        DPRINT1("USBPORT_AllocateBandwidth: Period %lu exceeds maximum %d\n", 
+        DPRINT1("USBPORT_AllocateBandwidth: Period %lu exceeds maximum %d\n",
                 Period, USB2_FRAMES);
         return FALSE;
     }
@@ -128,14 +128,14 @@ USBPORT_AllocateBandwidth(IN PDEVICE_OBJECT FdoDevice,
     for (Offset = 0; Offset < Period; Offset++)
     {
         MinBandwidth = TotalBusBandwidth;
-        
+
         // Bounds check before accessing bandwidth array
         if ((Offset * Factor) >= USB2_FRAMES)
         {
             DPRINT1("USBPORT_AllocateBandwidth: Array index out of bounds\n");
             continue;
         }
-        
+
         Bandwidth = &FdoExtension->Bandwidth[Offset * Factor];
 
         for (ix = 1; *Bandwidth >= EndpointBandwidth; ix++)
@@ -327,7 +327,7 @@ USBPORT_EndpointHasQueuedTransfers(IN PDEVICE_OBJECT FdoDevice,
                 }
 
                 Entry = Entry->Flink;
-                
+
                 // Prevent infinite loop in case of circular corruption
                 if (*TransferCount > 1000)
                 {
@@ -562,7 +562,7 @@ USBPORT_DeleteEndpoint(IN PDEVICE_OBJECT FdoDevice,
 
     FdoExtension = FdoDevice->DeviceExtension;
 
-    /* 
+    /*
      * Remove endpoint from EpStateChangeList if it's still there.
      * This prevents the DPC handler from accessing a deleted endpoint.
      */
@@ -574,10 +574,10 @@ USBPORT_DeleteEndpoint(IN PDEVICE_OBJECT FdoDevice,
     {
         RemoveEntryList(&Endpoint->StateChangeLink);
     }
-    
+
     Endpoint->StateChangeLink.Flink = NULL;
     Endpoint->StateChangeLink.Blink = NULL;
-    
+
     KeReleaseSpinLock(&FdoExtension->EpStateChangeSpinLock, StateChangeOldIrql);
 
     if ((Endpoint->WorkerLink.Flink && Endpoint->WorkerLink.Blink) ||
@@ -1027,17 +1027,21 @@ USBPORT_OpenPipe(IN PDEVICE_OBJECT FdoDevice,
         }
     }
 
-    if (EndpointProperties->TransferType == USB_ENDPOINT_TYPE_ISOCHRONOUS)
+    if (EndpointProperties->TransferType == USBPORT_TRANSFER_TYPE_ISOCHRONOUS)
     {
         if (EndpointProperties->DeviceSpeed == UsbHighSpeed)
         {
             EndpointProperties->Period =
                 USBPORT_NormalizeHsInterval(EndpointDescriptor->bInterval);
+            ASSERT(EndpointProperties->Period);
+            if (!EndpointProperties->Period)
+                EndpointProperties->Period = ENDPOINT_INTERRUPT_1ms;
         }
         else
         {
             EndpointProperties->Period = ENDPOINT_INTERRUPT_1ms;
         }
+        DPRINT1("Endpoint %p Period %u\n", EndpointProperties, EndpointProperties->Period);
     }
 
     if ((DeviceHandle->Flags & DEVICE_HANDLE_FLAG_ROOTHUB) != 0)

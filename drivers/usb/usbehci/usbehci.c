@@ -505,6 +505,9 @@ EHCI_OpenInterruptEndpoint(IN PEHCI_EXTENSION EhciExtension,
     return MP_STATUS_SUCCESS;
 }
 
+#define ROUND_DOWN(n, align) (((ULONG)n) & ~((align) - 1l))
+#define ROUND_UP(n, align) ROUND_DOWN(((ULONG)n) + (align) - 1, (align))
+
 MPSTATUS
 NTAPI
 EHCI_OpenHsIsoEndpoint(IN PEHCI_EXTENSION EhciExtension,
@@ -516,7 +519,7 @@ EHCI_OpenHsIsoEndpoint(IN PEHCI_EXTENSION EhciExtension,
     ULONG ItdCount;
     PEHCI_HCD_ITD ITD;
     ULONG ix;
-
+    ULONG Size;
     DPRINT("EHCI_OpenHsIsoEndpoint: EhciEndpoint - %p\n", EhciEndpoint);
 
     RtlCopyMemory(&EhciEndpoint->EndpointProperties,
@@ -528,7 +531,7 @@ EHCI_OpenHsIsoEndpoint(IN PEHCI_EXTENSION EhciExtension,
 
     /* Calculate iTD count and pointers */
     ItdCount = EndpointProperties->BufferLength / sizeof(EHCI_HCD_ITD);
-    
+
     if (ItdCount == 0)
     {
         return MP_STATUS_NO_RESOURCES;
@@ -541,6 +544,7 @@ EHCI_OpenHsIsoEndpoint(IN PEHCI_EXTENSION EhciExtension,
     EhciEndpoint->MaxITDs = ItdCount;
     EhciEndpoint->RemainITDs = ItdCount;
 
+    Size = ROUND_UP(sizeof(EHCI_HCD_ITD), 32);
     /* Initialize all iTDs in the buffer */
     for (ix = 0; ix < ItdCount; ix++)
     {
@@ -554,7 +558,7 @@ EHCI_OpenHsIsoEndpoint(IN PEHCI_EXTENSION EhciExtension,
         ITD->EhciEndpoint = EhciEndpoint;
         ITD->EhciTransfer = NULL;
 
-        FirstItdPA += sizeof(EHCI_HCD_ITD);
+        FirstItdPA += Size;
     }
 
     /* Initialize isochronous endpoint specific fields */
@@ -592,7 +596,7 @@ EHCI_OpenIsoEndpoint(IN PEHCI_EXTENSION EhciExtension,
 
     /* Calculate siTD count and pointers */
     SitdCount = EndpointProperties->BufferLength / sizeof(EHCI_HCD_SITD);
-    
+
     if (SitdCount == 0)
     {
         return MP_STATUS_NO_RESOURCES;
@@ -2636,7 +2640,7 @@ EHCI_SubmitIsoTransfer(IN PVOID ehciExtension,
 
         MaxPacketSize = EhciEndpoint->EndpointProperties.MaxPacketSize;
         TransferLength = TransferParameters->TransferBufferLength;
-        
+
         /* For ISO transfers, we'll need to use the DMA buffer from the endpoint
          * or extract from isoParameters - simplified for now */
         BufferPA = EhciEndpoint->DmaBufferPA;
@@ -2677,12 +2681,12 @@ EHCI_SubmitIsoTransfer(IN PVOID ehciExtension,
         /* Link iTD into the frame list */
         LinkPointer.AsULONG = HcResourcesVA->PeriodicFrameList[FrameIndex];
         ITD->HwTD.NextLink = LinkPointer;
-        
+
         LinkPointer.AsULONG = ITD->PhysicalAddress;
         LinkPointer.Type = EHCI_LINK_TYPE_iTD;
         LinkPointer.Terminate = 0;
         LinkPointer.Reserved = 0;
-        
+
         HcResourcesVA->PeriodicFrameList[FrameIndex] = LinkPointer.AsULONG;
 
         /* Store scheduling information for later cleanup */
@@ -2730,7 +2734,7 @@ EHCI_AbortIsoTransfer(IN PEHCI_EXTENSION EhciExtension,
         ULONG ix;
 
         DPRINT("EHCI_AbortIsoTransfer: Aborting high-speed ISO transfer\n");
-        
+
         /* Find iTDs belonging to this transfer and abort them */
         ITD = EhciEndpoint->FirstITD;
         for (ix = 0; ix < EhciEndpoint->MaxITDs; ix++)
@@ -2775,7 +2779,7 @@ EHCI_AbortIsoTransfer(IN PEHCI_EXTENSION EhciExtension,
     {
         /* Abort full-speed/low-speed isochronous transfer using siTD */
         DPRINT("EHCI_AbortIsoTransfer: Aborting full/low-speed ISO transfer\n");
-        
+
         /* TODO: Implement siTD abort logic similar to iTD */
     }
 
@@ -4054,7 +4058,7 @@ EHCI_InitializeITD(IN PEHCI_EXTENSION EhciExtension,
     ITD->HwTD.Buffer[0].AsULONG = BufferPhysicalAddress & ~0xFFF;
     ITD->HwTD.Buffer[0].DeviceAddress = DeviceAddress;
     ITD->HwTD.Buffer[0].EndpointNumber = EndpointNumber;
-    
+
     /* Setup buffer 1 with additional info */
     ITD->HwTD.Buffer[1].MaximumPacketSize = EndpointProperties->MaxPacketSize;
     ITD->HwTD.Buffer[1].Direction = Direction;
@@ -4109,7 +4113,7 @@ EHCI_ProcessCompletedITD(IN PEHCI_EXTENSION EhciExtension,
                 /* Check for errors */
                 if (Status & 0x8) /* Transaction Error */
                 {
-                    DPRINT1("EHCI_ProcessCompletedITD: Transaction %d error, status 0x%x\n", 
+                    DPRINT1("EHCI_ProcessCompletedITD: Transaction %d error, status 0x%x\n",
                             TransactionIndex, Status);
                     EhciTransfer->USBDStatus = USBD_STATUS_ERROR;
                 }
@@ -4166,7 +4170,7 @@ EHCI_UnlinkITDFromFrameList(IN PEHCI_EXTENSION EhciExtension,
 
     /* Search and unlink from frame list - simplified version */
     CurrentLink = (EHCI_LINK_POINTER*)&HcResourcesVA->PeriodicFrameList[FrameIndex];
-    
+
     if ((CurrentLink->AsULONG & LINK_POINTER_MASK) == TargetPhysicalAddress &&
         CurrentLink->Type == EHCI_LINK_TYPE_iTD)
     {
@@ -4215,14 +4219,14 @@ EHCI_CheckIsoBandwidth(IN PEHCI_EXTENSION EhciExtension,
     {
         /* High-speed: bandwidth per microframe */
         RequiredBandwidth = MaxPacketSize;
-        
+
         /* Add overhead and safety margin */
         RequiredBandwidth += 64; /* Protocol overhead */
-        
+
         /* Simple check: ensure we don't exceed 80% of frame time */
         if (RequiredBandwidth > (188 * 8 * 80 / 100)) /* 80% of max HS bandwidth */
         {
-            DPRINT1("EHCI_CheckIsoBandwidth: High-speed bandwidth requirement too high: %d\n", 
+            DPRINT1("EHCI_CheckIsoBandwidth: High-speed bandwidth requirement too high: %d\n",
                     RequiredBandwidth);
             return FALSE;
         }
@@ -4231,14 +4235,14 @@ EHCI_CheckIsoBandwidth(IN PEHCI_EXTENSION EhciExtension,
     {
         /* Full/Low-speed: bandwidth per frame */
         RequiredBandwidth = MaxPacketSize;
-        
+
         /* Add split transaction overhead */
         RequiredBandwidth += 128; /* Split transaction overhead */
-        
+
         /* Simple check: ensure we don't exceed 90% of frame time for FS */
         if (RequiredBandwidth > (1023 * 90 / 100)) /* 90% of max FS bandwidth per frame */
         {
-            DPRINT1("EHCI_CheckIsoBandwidth: Full-speed bandwidth requirement too high: %d\n", 
+            DPRINT1("EHCI_CheckIsoBandwidth: Full-speed bandwidth requirement too high: %d\n",
                     RequiredBandwidth);
             return FALSE;
         }
