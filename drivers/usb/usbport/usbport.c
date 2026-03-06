@@ -1030,11 +1030,17 @@ USBPORT_IsrDpcHandler(IN PDEVICE_OBJECT FdoDevice,
             FrameNumber = Packet->Get32BitFrameNumber(FdoExtension->MiniPortExt);
             KeReleaseSpinLockFromDpcLevel(&FdoExtension->MiniportSpinLock);
 
-            /* Check if the endpoint is ready to be processed */
-            if (FrameNumber > Endpoint->FrameNumber ||
+            /* Check if the endpoint is ready to be processed.
+             * Use wrap-safe comparison for 32-bit frame counter rollover. */
+            if (UsbportFrameAfter(FrameNumber, Endpoint->FrameNumber) ||
                 (Endpoint->Flags & ENDPOINT_FLAG_NUKE))
             {
                 EndpointReady = TRUE;
+            }
+            else
+            {
+                DPRINT("USBPORT_IsrDpcHandler: Endpoint %p not ready, FrameNumber %x <= EpFrameNumber %x\n",
+                       Endpoint, FrameNumber, Endpoint->FrameNumber);
             }
         }
 
@@ -2671,11 +2677,9 @@ USBPORT_AllocateTransfer(IN PDEVICE_OBJECT FdoDevice,
 
     if (Urb->UrbHeader.Function == URB_FUNCTION_ISOCH_TRANSFER)
     {
-        DPRINT1("USBPORT_AllocateTransfer: ISOCH_TRANSFER UNIMPLEMENTED. FIXME\n");
-
-        //IsoBlockLen = sizeof(USBPORT_ISO_BLOCK) +
-        //              Urb->UrbIsochronousTransfer.NumberOfPackets *
-        //              sizeof(USBPORT_ISO_BLOCK_PACKET);
+        DPRINT("USBPORT_AllocateTransfer: ISOCH_TRANSFER\n");
+        IsoBlockLen = FIELD_OFFSET(USBPORT_ISO_TRANSFER_DATA, Packets) +
+                      Urb->UrbIsochronousTransfer.NumberOfPackets * sizeof(USBPORT_ISO_PACKET_DATA);
     }
 
     PortTransferLength = sizeof(USBPORT_TRANSFER) +
@@ -2711,7 +2715,10 @@ USBPORT_AllocateTransfer(IN PDEVICE_OBJECT FdoDevice,
     {
         Transfer->IsoBlockPtr = (PVOID)((ULONG_PTR)Transfer +
                                  PortTransferLength - IsoBlockLen);
+    }
 
+    if (Urb->UrbHeader.Function == URB_FUNCTION_ISOCH_TRANSFER)
+    {
         Transfer->Period = PipeHandle->Endpoint->EndpointProperties.Period;
         Transfer->Flags |= TRANSFER_FLAG_ISO;
     }
