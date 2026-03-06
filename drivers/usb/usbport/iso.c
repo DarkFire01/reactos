@@ -10,106 +10,194 @@
 #define NDEBUG
 #include <debug.h>
 
+/*
+ * USBPORT_LookupSgPhysicalAddr - Walk the scatter/gather table
+ * to translate a byte offset within the transfer buffer into
+ * the corresponding physical address.  Also returns which SG
+ * entry the offset falls in through *OutEntry.
+ */
+static
+PHYSICAL_ADDRESS
+USBPORT_LookupSgPhysicalAddr(
+    IN PUSBPORT_SCATTER_GATHER_LIST SgTable,
+    IN ULONG ByteOffset,
+    OUT PULONG OutEntry)
+{
+    PHYSICAL_ADDRESS Result;
+    ULONG Idx = 0;
+    ULONG Count = SgTable->SgElementCount;
+
+    while (Idx < Count)
+    {
+        ULONG EntryStart = SgTable->SgElement[Idx].SgOffset;
+        ULONG EntryEnd   = EntryStart + SgTable->SgElement[Idx].SgTransferLength;
+
+        if (ByteOffset >= EntryStart && ByteOffset < EntryEnd)
+        {
+            Result = SgTable->SgElement[Idx].SgPhysicalAddress;
+            Result.LowPart += (ByteOffset - EntryStart);
+            *OutEntry = Idx;
+            return Result;
+        }
+        Idx++;
+    }
+
+    /* No matching entry - return zero (caller guarantees valid offsets) */
+    Result.QuadPart = 0;
+    *OutEntry = 0;
+    return Result;
+}
+
 USBD_STATUS
 NTAPI
 USBPORT_InitializeIsoTransfer(PDEVICE_OBJECT FdoDevice,
                               struct _URB_ISOCH_TRANSFER * Urb,
                               PUSBPORT_TRANSFER Transfer)
 {
-    PUSBPORT_DEVICE_EXTENSION FdoExtension;
     PUSBPORT_ENDPOINT Endpoint;
-    PUSBPORT_REGISTRATION_PACKET Packet;
-    USBD_ISO_PACKET_DESCRIPTOR *PacketDescriptor;
-    ULONG i;
-    ULONG TotalLength = 0;
-    MPSTATUS MpStatus;
+    PUSBPORT_ISO_TRANSFER_DATA IsoBlock;
+    PUSBPORT_SCATTER_GATHER_LIST SgTable;
+    ULONG TotalPackets, Idx;
+    ULONG Period;
+    BOOLEAN IsHighSpeed;
 
     DPRINT("USBPORT_InitializeIsoTransfer: FdoDevice - %p, Urb - %p\n", FdoDevice, Urb);
 
-    FdoExtension = FdoDevice->DeviceExtension;
-    Packet = &FdoExtension->MiniPortInterface->Packet;
     Endpoint = Transfer->Endpoint;
 
-    // Validate parameters
     if (!Urb || !Transfer || !Endpoint)
     {
         DPRINT1("USBPORT_InitializeIsoTransfer: Invalid parameters\n");
         return USBD_STATUS_INVALID_PARAMETER;
     }
 
-    // Check if this is an isochronous endpoint
     if (Endpoint->EndpointProperties.TransferType != USBPORT_TRANSFER_TYPE_ISOCHRONOUS)
     {
         DPRINT1("USBPORT_InitializeIsoTransfer: Not an isochronous endpoint\n");
         return USBD_STATUS_INVALID_PIPE_HANDLE;
     }
 
-    // Validate number of packets
-    if (Urb->NumberOfPackets == 0 || Urb->NumberOfPackets > 255)
+    TotalPackets = Urb->NumberOfPackets;
+    if (TotalPackets == 0 || TotalPackets > 1024)
     {
-        DPRINT1("USBPORT_InitializeIsoTransfer: Invalid NumberOfPackets: %lu\n", Urb->NumberOfPackets);
+        DPRINT1("USBPORT_InitializeIsoTransfer: Invalid NumberOfPackets: %lu\n", TotalPackets);
         return USBD_STATUS_INVALID_PARAMETER;
     }
 
-    // Initialize packet descriptors and calculate total length
-    for (i = 0; i < Urb->NumberOfPackets; i++)
+    IsoBlock = (PUSBPORT_ISO_TRANSFER_DATA)Transfer->IsoBlockPtr;
+    if (!IsoBlock)
     {
-        PacketDescriptor = &Urb->IsoPacket[i];
-        
-        // Validate packet length
-        if (PacketDescriptor->Length > Endpoint->EndpointProperties.MaxPacketSize)
+        DPRINT1("USBPORT_InitializeIsoTransfer: No IsoBlock allocated\n");
+        return USBD_STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    SgTable = &Transfer->SgList;
+    Period = Endpoint->EndpointProperties.Period;
+    IsHighSpeed = (Endpoint->EndpointProperties.DeviceSpeed == UsbHighSpeed);
+
+    IsoBlock->TotalPackets = TotalPackets;
+    IsoBlock->MappedBuffer = (PVOID)SgTable->MappedSystemVa;
+
+    /*
+     * Walk each URB packet descriptor, compute its actual byte length
+     * from the offset array, resolve the physical scatter/gather mapping,
+     * and populate the per-packet data for the miniport.
+     */
+    for (Idx = 0; Idx < TotalPackets; Idx++)
+    {
+        USBD_ISO_PACKET_DESCRIPTOR *UrbPkt = &Urb->IsoPacket[Idx];
+        PUSBPORT_ISO_PACKET_DATA PktData = &IsoBlock->Packets[Idx];
+        ULONG PktBytes;
+        ULONG MaxPkt = Endpoint->EndpointProperties.TotalMaxPacketSize;
+
+        /*
+         * The URB uses offset-based packet boundaries.  Derive
+         * each packet's byte count from the gap between consecutive
+         * offsets.  The final packet runs to the end of the buffer.
+         */
+        if (Idx < TotalPackets - 1)
+            PktBytes = Urb->IsoPacket[Idx + 1].Offset - UrbPkt->Offset;
+        else
+            PktBytes = Urb->TransferBufferLength - UrbPkt->Offset;
+
+        if (PktBytes > MaxPkt)
+            PktBytes = MaxPkt;
+
+        UrbPkt->Status = USBD_STATUS_NOT_ACCESSED;
+
+        /* Fill in the miniport packet data */
+        PktData->PacketLength = PktBytes;
+        PktData->BytesTransferred = 0;
+        PktData->CompletionStatus = USBD_STATUS_NOT_ACCESSED;
+
+        /* Assign USB frame/microframe indices based on bus speed */
+        if (IsHighSpeed)
         {
-            DPRINT1("USBPORT_InitializeIsoTransfer: Packet %lu length %lu exceeds max packet size %lu\n",
-                    i, PacketDescriptor->Length, Endpoint->EndpointProperties.MaxPacketSize);
-            return USBD_STATUS_INVALID_PARAMETER;
+            ULONG SlotsPerFrame = 8 / Period;
+            PktData->FrameNumber = Urb->StartFrame + (Idx / SlotsPerFrame);
+            PktData->MicroFrameNumber = Idx % SlotsPerFrame;
+        }
+        else
+        {
+            PktData->FrameNumber = Urb->StartFrame + Idx;
+            PktData->MicroFrameNumber = 0;
         }
 
-        PacketDescriptor->Status = USBD_STATUS_NOT_ACCESSED;
-        TotalLength += PacketDescriptor->Length;
-    }
-
-    // Validate total transfer length
-    if (TotalLength > Urb->TransferBufferLength)
-    {
-        DPRINT1("USBPORT_InitializeIsoTransfer: Total packet length %lu exceeds buffer length %lu\n",
-                TotalLength, Urb->TransferBufferLength);
-        return USBD_STATUS_INVALID_PARAMETER;
-    }
-
-    // Set up transfer parameters for isochronous transfer
-    Transfer->TransferParameters.TransferFlags = USBPORT_TRANSFER_FLAGS_ISO;
-    Transfer->TransferParameters.TransferBufferLength = Urb->TransferBufferLength;
-    Transfer->TransferParameters.TransferCounter = 0;
-    Transfer->TransferParameters.IsTransferSplited = FALSE;
-
-    // Submit to miniport if it supports ISO transfers
-    if (Packet->SubmitIsoTransfer)
-    {
-        KIRQL OldIrql;
-        
-        KeAcquireSpinLock(&FdoExtension->MiniportSpinLock, &OldIrql);
-        
-        MpStatus = Packet->SubmitIsoTransfer(FdoExtension->MiniPortExt,
-                                           Endpoint + 1,
-                                           &Transfer->TransferParameters,
-                                           Transfer->MiniportTransfer,
-                                           Urb);
-                                           
-        KeReleaseSpinLock(&FdoExtension->MiniportSpinLock, OldIrql);
-
-        if (MpStatus != MP_STATUS_SUCCESS)
+        /*
+         * Map the packet's byte range onto physical scatter/gather
+         * segments.  Most packets occupy a single segment; packets
+         * straddling a page boundary need two.
+         */
+        if (PktBytes > 0 && SgTable->SgElementCount > 0)
         {
-            DPRINT1("USBPORT_InitializeIsoTransfer: SubmitIsoTransfer failed with status %x\n", MpStatus);
-            return USBD_STATUS_INTERNAL_HC_ERROR;
+            PHYSICAL_ADDRESS HeadPhys;
+            ULONG HeadEntry, TailEntry;
+
+            HeadPhys = USBPORT_LookupSgPhysicalAddr(SgTable,
+                                                     UrbPkt->Offset,
+                                                     &HeadEntry);
+            PktData->Segment0Addr = HeadPhys;
+            PktData->Segment0Length = PktBytes;
+            PktData->SegmentCount = 1;
+
+            /* Does this packet span into another SG entry? */
+            if (PktBytes > 1)
+            {
+                USBPORT_LookupSgPhysicalAddr(SgTable,
+                                              UrbPkt->Offset + PktBytes - 1,
+                                              &TailEntry);
+
+                if (TailEntry != HeadEntry)
+                {
+                    ULONG BytesToPageEnd = PAGE_SIZE - (HeadPhys.LowPart & (PAGE_SIZE - 1));
+
+                    PktData->Segment0Length = BytesToPageEnd;
+                    PktData->Segment1Addr = SgTable->SgElement[TailEntry].SgPhysicalAddress;
+                    PktData->Segment1Length = PktBytes - BytesToPageEnd;
+                    PktData->SegmentCount = 2;
+                }
+            }
+        }
+        else
+        {
+            PktData->PacketLength = 0;
+            PktData->Segment0Addr.QuadPart = 0;
+            PktData->Segment0Length = 0;
+            PktData->SegmentCount = 0;
         }
     }
-    else
-    {
-        DPRINT1("USBPORT_InitializeIsoTransfer: Miniport does not support ISO transfers\n");
-        return USBD_STATUS_NOT_SUPPORTED;
-    }
 
-    DPRINT("USBPORT_InitializeIsoTransfer: Successfully initialized ISO transfer\n");
+    /* Enqueue on the endpoint's transfer list for the DMA worker to pick up */
+    KeAcquireSpinLock(&Endpoint->EndpointSpinLock,
+                      &Endpoint->EndpointOldIrql);
+
+    InsertTailList(&Endpoint->TransferList, &Transfer->TransferLink);
+
+    KeReleaseSpinLock(&Endpoint->EndpointSpinLock,
+                      Endpoint->EndpointOldIrql);
+
+    DPRINT("USBPORT_InitializeIsoTransfer: Prepared %lu packets for ISO transfer\n",
+           TotalPackets);
     return USBD_STATUS_SUCCESS;
 }
 
