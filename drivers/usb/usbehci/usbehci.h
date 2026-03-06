@@ -105,10 +105,11 @@ typedef struct _EHCI_HCD_ITD {
   ULONG PacketLength[EHCI_MAX_ITD_TRANSACTIONS];
   ULONG PacketStatus[EHCI_MAX_ITD_TRANSACTIONS];
   LIST_ENTRY DoneLink;
+  ULONG ScheduledFrame; /* Frame list index where this iTD was inserted */
 #ifdef _WIN64
-  ULONG Pad[8];
+  ULONG Pad[7];
 #else
-  ULONG Pad[14];
+  ULONG Pad[13];
 #endif
 } EHCI_HCD_ITD, *PEHCI_HCD_ITD;
 

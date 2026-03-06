@@ -458,6 +458,9 @@ USBPORT_SetEndpointState(IN PUSBPORT_ENDPOINT Endpoint,
         Endpoint->FrameNumber = Packet->Get32BitFrameNumber(FdoExtension->MiniPortExt);
         KeReleaseSpinLock(&FdoExtension->MiniportSpinLock, OldIrql);
 
+        DPRINT1("USBPORT_SetEndpointState: Endpoint %p State %x FrameNumber %x\n",
+                Endpoint, State, Endpoint->FrameNumber);
+
         KIRQL StateChangeOldIrql;
         KeAcquireSpinLock(&FdoExtension->EpStateChangeSpinLock, &StateChangeOldIrql);
 
@@ -973,7 +976,6 @@ USBPORT_OpenPipe(IN PDEVICE_OBJECT FdoDevice,
             break;
 
         case USB_ENDPOINT_TYPE_ISOCHRONOUS:
-            DPRINT1("USBPORT_OpenPipe: USB_ENDPOINT_TYPE_ISOCHRONOUS UNIMPLEMENTED. FIXME. \n");
             EndpointProperties->TransferType = USBPORT_TRANSFER_TYPE_ISOCHRONOUS;
             EndpointProperties->MaxTransferSize = 0x1000000;
             break;
@@ -1042,6 +1044,9 @@ USBPORT_OpenPipe(IN PDEVICE_OBJECT FdoDevice,
             EndpointProperties->Period = ENDPOINT_INTERRUPT_1ms;
         }
         DPRINT1("Endpoint %p Period %u\n", EndpointProperties, EndpointProperties->Period);
+
+        Endpoint->IsFirstIsoTransfer = TRUE;
+        Endpoint->IsoScheduleFrame = 0;
     }
 
     if ((DeviceHandle->Flags & DEVICE_HANDLE_FLAG_ROOTHUB) != 0)
@@ -1169,11 +1174,19 @@ USBPORT_OpenPipe(IN PDEVICE_OBJECT FdoDevice,
                         break;
                     }
 
+                    if (RetryCount > 0 && (RetryCount % 10) == 0)
+                    {
+                        KeAcquireSpinLock(&FdoExtension->MiniportSpinLock, &OldIrql);
+                        Packet->InterruptNextSOF(FdoExtension->MiniPortExt);
+                        KeReleaseSpinLock(&FdoExtension->MiniportSpinLock, OldIrql);
+                    }
+
                     USBPORT_Wait(FdoDevice, 1); // 1 msec.
                 }
                 if (State != USBPORT_ENDPOINT_ACTIVE)
                 {
-                    DPRINT1("Timeout State %x\n", State);
+                    DPRINT1("Timeout State %x StateLast %x StateNext %x\n",
+                            State, Endpoint->StateLast, Endpoint->StateNext);
                     USBDStatus = USBD_STATUS_TIMEOUT;
                 }
             }
@@ -1619,13 +1632,11 @@ USBPORT_DmaEndpointActive(IN PDEVICE_OBJECT FdoDevice,
 
             if (Transfer->Flags & TRANSFER_FLAG_ISO)
             {
-                DPRINT1("USBPORT_DmaEndpointActive: FIXME call SubmitIsoTransfer\n");
-
                 MpStatus = Packet->SubmitIsoTransfer(FdoExtension->MiniPortExt,
                                                      Endpoint + 1,
                                                      &Transfer->TransferParameters,
                                                      Transfer->MiniportTransfer,
-                                                     NULL);//&Transfer->IsoTransferParameters);
+                                                     Transfer->IsoBlockPtr);
             }
             else
             {

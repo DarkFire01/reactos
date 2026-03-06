@@ -895,8 +895,166 @@ USBPORT_HandleSubmitURB(IN PDEVICE_OBJECT PdoDevice,
     switch (Function)
     {
         case URB_FUNCTION_ISOCH_TRANSFER:
-            DPRINT1("USBPORT_HandleSubmitURB: URB_FUNCTION_ISOCH_TRANSFER UNIMPLEMENTED. FIXME. \n");
+        {
+            PUSBPORT_PIPE_HANDLE IsoPipeHandle;
+            PUSBPORT_ENDPOINT IsoEndpoint;
+            PUSBPORT_REGISTRATION_PACKET IsoPacket;
+            ULONG ScheduledFrame;
+            ULONG HwFrame;
+            ULONG PacketCount;
+            ULONG FrameSpan;
+            ULONG Period;
+            ULONG PacketLimit;
+            BOOLEAN IsHighSpeed;
+            ULONG ix;
+            KIRQL OldIrql;
+
+            /* Number of frames to schedule ahead when using ASAP mode */
+            #define ISO_ASAP_LEAD_FRAMES 5
+
+            IsoPipeHandle = Urb->UrbIsochronousTransfer.PipeHandle;
+
+            if (!USBPORT_ValidatePipeHandle(DeviceHandle, IsoPipeHandle))
+            {
+                Status = USBPORT_USBDStatusToNtStatus(Urb,
+                                                      USBD_STATUS_INVALID_PIPE_HANDLE);
+                DPRINT1("USBPORT_HandleSubmitURB: ISO - Invalid pipe handle\n");
+                break;
+            }
+
+            IsoEndpoint = IsoPipeHandle->Endpoint;
+
+            if (IsoEndpoint->EndpointProperties.TransferType != USBPORT_TRANSFER_TYPE_ISOCHRONOUS)
+            {
+                Status = USBPORT_USBDStatusToNtStatus(Urb,
+                                                      USBD_STATUS_INVALID_PIPE_HANDLE);
+                DPRINT1("USBPORT_HandleSubmitURB: ISO - Not an isochronous endpoint\n");
+                break;
+            }
+
+            IsHighSpeed = (IsoEndpoint->EndpointProperties.DeviceSpeed == UsbHighSpeed);
+            Period = IsHighSpeed ? IsoEndpoint->EndpointProperties.Period : 1;
+            PacketLimit = IsHighSpeed ? 1024 : 255;
+
+            /* Validate buffer */
+            if (Urb->UrbIsochronousTransfer.TransferBufferLength == 0 &&
+                Urb->UrbIsochronousTransfer.TransferBufferMDL == NULL &&
+                Urb->UrbIsochronousTransfer.TransferBuffer == NULL)
+            {
+                Status = USBPORT_USBDStatusToNtStatus(Urb,
+                                                      USBD_STATUS_INVALID_PARAMETER);
+                DPRINT1("USBPORT_HandleSubmitURB: ISO - No buffer\n");
+                break;
+            }
+
+            /* Validate number of packets */
+            PacketCount = Urb->UrbIsochronousTransfer.NumberOfPackets;
+            if (PacketCount == 0 || PacketCount > PacketLimit)
+            {
+                Status = USBPORT_USBDStatusToNtStatus(Urb,
+                                                      USBD_STATUS_INVALID_PARAMETER);
+                DPRINT1("USBPORT_HandleSubmitURB: ISO - Invalid NumberOfPackets %lu\n",
+                        PacketCount);
+                break;
+            }
+
+            /* Validate and allocate transfer MDL */
+            Status = USBPORT_ValidateTransferParametersURB(Urb);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("USBPORT_HandleSubmitURB: ISO - ValidateTransferParameters failed\n");
+                break;
+            }
+
+            /* Allocate the transfer */
+            {
+                USBD_STATUS IsoUSBDStatus;
+                IsoUSBDStatus = USBPORT_AllocateTransfer(FdoDevice,
+                                                         Urb,
+                                                         DeviceHandle,
+                                                         Irp,
+                                                         NULL);
+                if (IsoUSBDStatus != USBD_STATUS_SUCCESS)
+                {
+                    Status = USBPORT_USBDStatusToNtStatus(Urb, IsoUSBDStatus);
+                    DPRINT1("USBPORT_HandleSubmitURB: ISO - AllocateTransfer failed\n");
+                    break;
+                }
+            }
+
+            IsoPacket = &FdoExtension->MiniPortInterface->Packet;
+
+            /* Sample the current hardware frame counter */
+            KeAcquireSpinLock(&FdoExtension->MiniportSpinLock, &OldIrql);
+            HwFrame = IsoPacket->Get32BitFrameNumber(FdoExtension->MiniPortExt);
+            KeReleaseSpinLock(&FdoExtension->MiniportSpinLock, OldIrql);
+
+            /* How many 1ms frames does this transfer span? */
+            FrameSpan = IsHighSpeed ? ((PacketCount * Period) / 8) : PacketCount;
+
+            /* Mark all URB packets as not yet touched */
+            for (ix = 0; ix < PacketCount; ix++)
+                Urb->UrbIsochronousTransfer.IsoPacket[ix].Status = USBD_STATUS_NOT_ACCESSED;
+
+            /*
+             * Determine the starting frame for this transfer.
+             * ASAP mode: schedule relative to the last transfer's
+             * end or, for the first/reset case, a few frames ahead
+             * of the current hardware frame to give the controller
+             * time to pick it up.
+             */
+            if (Urb->UrbIsochronousTransfer.TransferFlags & USBD_START_ISO_TRANSFER_ASAP)
+            {
+                ScheduledFrame = IsoEndpoint->IsoScheduleFrame;
+
+                if (IsoEndpoint->IsFirstIsoTransfer ||
+                    UsbportFrameAfter(HwFrame, ScheduledFrame + PacketLimit))
+                {
+                    /* First transfer on this pipe, or we fell too far
+                     * behind — resync to the current position. */
+                    ScheduledFrame = HwFrame + ISO_ASAP_LEAD_FRAMES;
+                    IsoEndpoint->IsFirstIsoTransfer = FALSE;
+                }
+            }
+            else
+            {
+                /* Client provided an absolute frame number */
+                ScheduledFrame = Urb->UrbIsochronousTransfer.StartFrame;
+            }
+
+            Urb->UrbIsochronousTransfer.StartFrame = ScheduledFrame;
+            IsoEndpoint->IsoScheduleFrame = ScheduledFrame + FrameSpan;
+
+            /* Reject the transfer if the start frame is out of range */
+            {
+                LONG FrameDelta = (LONG)(ScheduledFrame - HwFrame);
+                if (FrameDelta > USBD_ISO_START_FRAME_RANGE ||
+                    FrameDelta < -USBD_ISO_START_FRAME_RANGE)
+                {
+                    for (ix = 0; ix < PacketCount; ix++)
+                        Urb->UrbIsochronousTransfer.IsoPacket[ix].Status =
+                            USBD_STATUS_ISO_NOT_ACCESSED_LATE;
+
+                    Urb->UrbHeader.Status = USBD_STATUS_BAD_START_FRAME;
+                    Status = STATUS_SUCCESS;
+                    break;
+                }
+            }
+
+            /* Set transfer direction based on endpoint direction */
+            if (IsoEndpoint->EndpointProperties.Direction == USBPORT_TRANSFER_DIRECTION_OUT)
+                Urb->UrbIsochronousTransfer.TransferFlags &= ~USBD_TRANSFER_DIRECTION_IN;
+            else
+                Urb->UrbIsochronousTransfer.TransferFlags |= USBD_TRANSFER_DIRECTION_IN;
+
+            /* Submit to the transfer queue */
+            USBPORT_QueueTransferUrb(Urb);
+
+            Status = STATUS_PENDING;
+
+            #undef ISO_ASAP_LEAD_FRAMES
             break;
+        }
 
         case URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER:
         case URB_FUNCTION_CONTROL_TRANSFER:
