@@ -587,6 +587,7 @@ EHCI_OpenIsoEndpoint(IN PEHCI_EXTENSION EhciExtension,
     ULONG SitdCount;
     PEHCI_HCD_SITD SITD;
     ULONG ix;
+    ULONG Size;
 
     DPRINT("EHCI_OpenIsoEndpoint: EhciEndpoint - %p\n", EhciEndpoint);
 
@@ -613,6 +614,7 @@ EHCI_OpenIsoEndpoint(IN PEHCI_EXTENSION EhciExtension,
     EhciEndpoint->RemainSITDs = SitdCount;
 
     /* Initialize all siTDs in the buffer */
+    Size = ROUND_UP(sizeof(EHCI_HCD_ITD), 32);
     for (ix = 0; ix < SitdCount; ix++)
     {
         SITD = EhciEndpoint->FirstSITD + ix;
@@ -625,7 +627,7 @@ EHCI_OpenIsoEndpoint(IN PEHCI_EXTENSION EhciExtension,
         SITD->EhciEndpoint = EhciEndpoint;
         SITD->EhciTransfer = NULL;
 
-        FirstSitdPA += sizeof(EHCI_HCD_SITD);
+        FirstSitdPA += Size;
     }
 
     /* Initialize isochronous endpoint specific fields */
@@ -4352,13 +4354,17 @@ EHCI_ProcessCompletedITD(IN PEHCI_EXTENSION EhciExtension,
             ULONG Status = ITD->HwTD.Transaction[TransactionIndex].Status;
             ULONG Remaining = ITD->HwTD.Transaction[TransactionIndex].xLength;
 
-            if (Status & (EHCI_TOKEN_STATUS_ACTIVE >> 4))
+            if ((Status & (1 << 3))) //EHCI_TOKEN_STATUS_ACTIVE >> 4))
             {
                 /* Transaction still active, not complete yet */
                 TransferComplete = FALSE;
+                break;
             }
             else
             {
+                ASSERT((Status & (1 << 2)) == 0);
+                ASSERT((Status & (1 << 1)) == 0);
+
                 /* Transaction completed - bytes transferred = programmed - remaining */
                 TotalBytesTransferred += ITD->PacketLength[TransactionIndex] - Remaining;
 
@@ -4401,11 +4407,10 @@ EHCI_ProcessCompletedITD(IN PEHCI_EXTENSION EhciExtension,
             DPRINT("EHCI_ProcessCompletedITD: Transfer fully completed, %d total bytes\n",
                    EhciTransfer->TransferLen);
 
-            RegPacket.UsbPortCompleteTransfer(EhciExtension,
+            RegPacket.UsbPortCompleteIsoTransfer(EhciExtension,
                                               EhciEndpoint,
                                               EhciTransfer->TransferParameters,
-                                              EhciTransfer->USBDStatus,
-                                              EhciTransfer->TransferLen);
+                                              TotalBytesTransferred);
         }
     }
 }

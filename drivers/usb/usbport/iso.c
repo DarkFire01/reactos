@@ -61,7 +61,7 @@ USBPORT_InitializeIsoTransfer(PDEVICE_OBJECT FdoDevice,
     ULONG Period;
     BOOLEAN IsHighSpeed;
 
-    DPRINT("USBPORT_InitializeIsoTransfer: FdoDevice - %p, Urb - %p\n", FdoDevice, Urb);
+    DPRINT("USBPORT_InitializeIsoTransfer: FdoDevice - %p, Urb - %p Irp - %p\n", FdoDevice, Urb, Transfer->Irp);
 
     Endpoint = Transfer->Endpoint;
 
@@ -217,6 +217,9 @@ USBPORT_CompleteIsoTransfer(IN PVOID MiniPortExtension,
     ULONG RemainingLength = TransferLength;
 
     DPRINT("USBPORT_CompleteIsoTransfer: TransferLength - %lu\n", TransferLength);
+    FdoExtension = (PUSBPORT_DEVICE_EXTENSION)((ULONG_PTR)MiniPortExtension -
+                                               sizeof(USBPORT_DEVICE_EXTENSION));
+
     if (!MiniPortEndpoint)
     {
         DPRINT1("USBPORT_CompleteIsoTransfer: Invalid MiniPortEndpoint\n");
@@ -246,29 +249,35 @@ USBPORT_CompleteIsoTransfer(IN PVOID MiniPortExtension,
     }
 
     // Update packet descriptors with completion status
-    for (i = 0; i < IsoUrb->NumberOfPackets && RemainingLength > 0; i++)
+    i = 0;
+    do
     {
         PacketDescriptor = &IsoUrb->IsoPacket[i];
-        
-        if (RemainingLength >= PacketDescriptor->Length)
+
+        if (RemainingLength >= Endpoint->EndpointProperties.MaxPacketSize)
         {
             PacketDescriptor->Status = USBD_STATUS_SUCCESS;
+            PacketDescriptor->Length = Endpoint->EndpointProperties.MaxPacketSize;
             CompletedLength += PacketDescriptor->Length;
             RemainingLength -= PacketDescriptor->Length;
         }
         else
         {
             PacketDescriptor->Status = USBD_STATUS_SUCCESS;
+            PacketDescriptor->Length = RemainingLength;
             CompletedLength += RemainingLength;
             RemainingLength = 0;
+            i++;
+            break;
         }
-    }
+    }while(i++ < IsoUrb->NumberOfPackets);
 
     // Mark remaining packets as not processed if any
     for (; i < IsoUrb->NumberOfPackets; i++)
     {
         PacketDescriptor = &IsoUrb->IsoPacket[i];
         PacketDescriptor->Status = USBD_STATUS_NOT_ACCESSED;
+        PacketDescriptor->Length = 0;
     }
 
     // Complete the transfer

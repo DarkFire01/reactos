@@ -928,7 +928,8 @@ USBPORT_HandleSubmitURB(IN PDEVICE_OBJECT PdoDevice,
             {
                 Status = USBPORT_USBDStatusToNtStatus(Urb,
                                                       USBD_STATUS_INVALID_PIPE_HANDLE);
-                DPRINT1("USBPORT_HandleSubmitURB: ISO - Not an isochronous endpoint\n");
+                DPRINT1("USBPORT_HandleSubmitURB: ISO - Not an isochronous endpoint %u\n", IsoEndpoint->EndpointProperties.TransferType);
+                ASSERT(FALSE);
                 break;
             }
 
