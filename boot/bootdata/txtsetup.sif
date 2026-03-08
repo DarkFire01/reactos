@@ -120,6 +120,7 @@ usbxhci.sys  = 1,,,,,,x,4,,,,1,4
 usbstor.sys  = 1,,,,,,x,4,,,,1,4
 uaspstor.sys = 1,,,,,,x,4,,,,1,4
 nvme2k.sys   = 1,,,,,,x,4,,,,1,4
+usbvideo.sys   = 1,,,,,,,4,,,,1,4
 kbdhid.sys   = 1,,,,,,,4,,,,1,4
 kbdclass.sys = 1,,,,,,x,4,,,,1,4
 l_intl.nls   = 1,,,,,,,2,,,,1,2
