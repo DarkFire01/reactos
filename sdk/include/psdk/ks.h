@@ -3809,6 +3809,15 @@ KsPinGetParentFilter(
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 KSDDKAPI
+PKSDEVICE
+NTAPI
+KsFilterGetDevice(
+  _In_ PKSFILTER Filter
+);
+
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+KSDDKAPI
 PKSPIN
 NTAPI
 KsPinGetNextSiblingPin(

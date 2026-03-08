@@ -1374,7 +1374,7 @@ IKsPin_PrepareStreamHeader(
     StreamPointer->StreamPointer.Offset->Count = Length;
     StreamPointer->StreamPointer.Offset->Remaining = Length - Header->DataUsed;
     StreamPointer->StreamPointer.Offset->Data = StreamPointer->Data;
-
+    StreamPointer->StreamPointer.StreamHeader->Data = StreamPointer->Data;
     KeReleaseSpinLock(&StreamPointer->Lock, OldLevel);
     return STATUS_SUCCESS;
 }
@@ -1469,8 +1469,8 @@ KsStreamPointerUnlock(
     IN BOOLEAN Eject)
 {
     PKSISTREAM_POINTER Pointer = (PKSISTREAM_POINTER)CONTAINING_RECORD(StreamPointer, KSISTREAM_POINTER, StreamPointer);
-    PIO_STACK_LOCATION IoStack;
     PKSSTREAM_HEADER Header;
+    PIO_STACK_LOCATION IoStack;
 
     PIRP Irp = Pointer->Irp;
     if (Irp)
@@ -1484,10 +1484,9 @@ KsStreamPointerUnlock(
         if (Header->DataUsed)
         {
             DPRINT("KsStreamPointerUnlock DataUsed %u Length %u Completing Irp %p\n", Header->DataUsed, Pointer->Length, Pointer->Irp);
-            MmUnmapLockedPages(Pointer->Data, Irp->MdlAddress);
-            IoStack = IoGetCurrentIrpStackLocation(Irp);
+            IoStack = IoGetCurrentIrpStackLocation(Pointer->Irp);
             Pointer->Irp->IoStatus.Status = STATUS_SUCCESS;
-            Pointer->Irp->IoStatus.Information = IoStack->Parameters.DeviceIoControl.OutputBufferLength;
+            Pointer->Irp->IoStatus.Information = IoStack->Parameters.DeviceIoControl.InputBufferLength; // FIXME
             Pointer->Irp = NULL;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return;
@@ -1544,12 +1543,12 @@ KsStreamPointerAdvanceOffsetsAndUnlock(
         PIRP Irp = Pointer->Irp;
         if (Irp)
         {
-            DPRINT("KsStreamPointerAdvanceOffsets DataUsed %u Length %u Completing Irp %p\n", Header->DataUsed, Pointer->Length, Pointer->Irp);
+            DPRINT1("KsStreamPointerAdvanceOffsets DataUsed %u Length %u Completing Irp %p\n", Header->DataUsed, Pointer->Length, Pointer->Irp);
             Header->DataUsed = Pointer->Length;
             MmUnmapLockedPages(Pointer->Data, Pointer->Irp->MdlAddress);
             IoStack = IoGetCurrentIrpStackLocation(Pointer->Irp);
             Pointer->Irp->IoStatus.Status = STATUS_SUCCESS;
-            Pointer->Irp->IoStatus.Information = IoStack->Parameters.DeviceIoControl.OutputBufferLength;
+            Pointer->Irp->IoStatus.Information = sizeof(KSSTREAM_HEADER);
             Pointer->Irp = NULL;
             KeReleaseSpinLock(&Pointer->Lock, OldLevel);
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -1982,11 +1981,22 @@ IKsPin_DispatchKsStream(
         return Status;
     }
 
-    /* calculate num headers */
-    NumHeaders = IoStack->Parameters.DeviceIoControl.OutputBufferLength / Header->Size;
+    if (IoStack->Parameters.DeviceIoControl.IoControlCode == IOCTL_KS_WRITE_STREAM)
+    {
+        /* calculate num headers */
+        NumHeaders = IoStack->Parameters.DeviceIoControl.OutputBufferLength / Header->Size;
 
-    /* assume headers of same length */
-    ASSERT(IoStack->Parameters.DeviceIoControl.OutputBufferLength % Header->Size == 0);
+        /* assume headers of same length */
+        ASSERT(IoStack->Parameters.DeviceIoControl.OutputBufferLength % Header->Size == 0);
+    }
+    else
+    {
+        /* calculate num headers */
+        NumHeaders = IoStack->Parameters.DeviceIoControl.InputBufferLength / Header->Size;
+
+        /* assume headers of same length */
+        ASSERT(IoStack->Parameters.DeviceIoControl.InputBufferLength % Header->Size == 0);
+    }
 
     /* FIXME support multiple stream headers */
     ASSERT(NumHeaders == 1);
@@ -2033,6 +2043,16 @@ IKsPin_DispatchKsStream(
             /* start the processing loop */
             KsIncrementCountedWorker(This->PinWorker);
         }
+#if 0
+        else if (This->Pin.Descriptor->Flags & KSPIN_FLAG_DO_NOT_INITIATE_PROCESSING)
+        {
+            if (This->AttemptProcessing)
+            {
+                /* start the processing loop */
+                KsIncrementCountedWorker(This->PinWorker);
+            }
+        }
+#endif
         Status = STATUS_PENDING;
     }
     else
@@ -2438,6 +2458,7 @@ KspCreatePin(
      {
          UNICODE_STRING GuidString;
          /* convert the guid to string */
+         ASSERT(Descriptor->PinDescriptor.DataRanges[Index]);
          RtlStringFromGUID(&Descriptor->PinDescriptor.DataRanges[Index]->MajorFormat, &GuidString);
          DPRINT("Index %lu MajorFormat %S\n", Index, GuidString.Buffer);
          RtlStringFromGUID(&Descriptor->PinDescriptor.DataRanges[Index]->SubFormat, &GuidString);

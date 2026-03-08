@@ -8,3 +8,5 @@ add_subdirectory(usbport)
 add_subdirectory(usbstor)
 #add_subdirectory(usbstor_new)
 add_subdirectory(usbuhci)
+add_subdirectory(usbvideo)
+
