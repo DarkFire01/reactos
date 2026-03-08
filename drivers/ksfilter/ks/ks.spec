@@ -82,6 +82,7 @@
 @ stdcall KsFilterFactoryGetSymbolicLink(ptr)
 @ stdcall KsFilterFactorySetDeviceClassesState(ptr long)
 @ stdcall KsFilterFactoryUpdateCacheData(ptr ptr)
+@ stdcall KsFilterGetDevice(ptr)
 @ stdcall KsFilterGetAndGate(ptr)
 @ stdcall KsFilterGetChildPinCount(ptr long)
 @ stdcall KsFilterGetFirstChildPin(ptr long)
