@@ -217,8 +217,6 @@ USBPORT_CompleteIsoTransfer(IN PVOID MiniPortExtension,
     ULONG RemainingLength = TransferLength;
 
     DPRINT("USBPORT_CompleteIsoTransfer: TransferLength - %lu\n", TransferLength);
-    FdoExtension = (PUSBPORT_DEVICE_EXTENSION)((ULONG_PTR)MiniPortExtension -
-                                               sizeof(USBPORT_DEVICE_EXTENSION));
 
     if (!MiniPortEndpoint)
     {
