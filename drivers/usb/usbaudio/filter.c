@@ -1162,6 +1162,7 @@ UsbAudioGetDataRanges(
     PUSB_INTERFACE_DESCRIPTOR Descriptor;
     PKSDATARANGE_AUDIO DataRangeAudio;
     PKSDATARANGE *DataRangeAudioArray;
+    
     ULONG NumFrequency, DataRangeCount, DataRangeIndex, Index;
 
     /* count all data ranges */
