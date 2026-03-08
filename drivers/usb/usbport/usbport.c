@@ -178,7 +178,7 @@ USBPORT_FindCompanionControllers(IN PDEVICE_OBJECT USB2FdoDevice,
 
     // Don't release spinlock to prevent race condition
     ControllersList = ExAllocatePoolWithTag(NonPagedPool,
-                                            sizeof(DEVICE_RELATIONS) + 
+                                            sizeof(DEVICE_RELATIONS) +
                                             (NumControllers - 1) * sizeof(PDEVICE_OBJECT),
                                             USB_PORT_TAG);
 
@@ -187,7 +187,7 @@ USBPORT_FindCompanionControllers(IN PDEVICE_OBJECT USB2FdoDevice,
         goto Exit;
     }
 
-    RtlZeroMemory(ControllersList, sizeof(DEVICE_RELATIONS) + 
+    RtlZeroMemory(ControllersList, sizeof(DEVICE_RELATIONS) +
                   (NumControllers - 1) * sizeof(PDEVICE_OBJECT));
 
     ControllersList->Count = NumControllers;
@@ -1058,7 +1058,7 @@ USBPORT_IsrDpcHandler(IN PDEVICE_OBJECT FdoDevice,
 
             DPRINT_CORE("USBPORT_IsrDpcHandler: Endpoint->StateLast - %x\n",
                         Endpoint->StateLast);
-            
+
             KeReleaseSpinLockFromDpcLevel(&FdoExtension->EpStateChangeSpinLock);
 
             if (IsDpcHandler)
