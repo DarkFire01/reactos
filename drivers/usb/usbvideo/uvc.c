@@ -83,7 +83,6 @@ UvcPatchAvi1ToJfif(
 
     ASSERT(app0Len);
     ULONG oldApp0Size = 2 + app0Len;
-    ULONG newApp0Size = sizeof(JFIF_APP0);
     C_ASSERT(sizeof(JFIF_APP0) == 18);
     ULONG restOffset  = 2 + oldApp0Size;
 
