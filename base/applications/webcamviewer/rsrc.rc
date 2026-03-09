@@ -1,0 +1,8 @@
+#include <windows.h>
+
+STRINGTABLE
+BEGIN
+    1, "ReactOS Webcam Viewer"
+END
+
+1 RT_MANIFEST "webcamviewer.exe.manifest"
