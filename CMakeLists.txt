@@ -392,6 +392,10 @@ Enable this if the module uses typeid or dynamic_cast. You will probably need to
     add_subdirectory(subsystems)
     add_subdirectory(sdk/tools/wpp)
     add_subdirectory(win32ss)
+    # DarkFire's Modules:
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/DarkFiresReactOSModules")
+        add_subdirectory(DarkFiresReactOSModules)
+    endif()
 
     if(NOT USERMODE_ONLY_BUILD)
         # Create the registry hives
