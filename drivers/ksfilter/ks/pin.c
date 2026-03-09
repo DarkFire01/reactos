@@ -1761,9 +1761,63 @@ NTAPI
 KsStreamPointerAdvance(
     IN PKSSTREAM_POINTER StreamPointer)
 {
-    UNIMPLEMENTED;
-    DbgBreakPoint();
-    return STATUS_NOT_IMPLEMENTED;
+    PKSISTREAM_POINTER Pointer;
+    PIRP Irp;
+    PKSSTREAM_HEADER Header;
+    PKSSTREAM_HEADER UserHeader;
+    KIRQL OldLevel;
+    PIO_STACK_LOCATION IrpStack;
+
+    if (!StreamPointer)
+        return STATUS_INVALID_PARAMETER;
+
+    Pointer = (PKSISTREAM_POINTER)CONTAINING_RECORD(StreamPointer, KSISTREAM_POINTER, StreamPointer);
+    Header = StreamPointer->StreamHeader;
+
+    if (!Header || !Pointer->Irp)
+        return STATUS_INVALID_PARAMETER;
+
+    /* Acquire the lock */
+    KeAcquireSpinLock(&Pointer->Lock, &OldLevel);
+
+    Irp = Pointer->Irp;
+    if (Irp)
+    {
+        DPRINT("KsStreamPointerAdvance: Completing IRP %p with %u bytes\n", Irp, Header->DataUsed);
+        
+        /* Get the IRP stack location to find output buffer */
+        IrpStack = IoGetCurrentIrpStackLocation(Irp);
+        
+        /* Get the user's output buffer (the KSSTREAM_HEADER they passed) */
+        if (Irp->AssociatedIrp.SystemBuffer && IrpStack->Parameters.DeviceIoControl.OutputBufferLength >= sizeof(KSSTREAM_HEADER))
+        {
+            UserHeader = (PKSSTREAM_HEADER)Irp->AssociatedIrp.SystemBuffer;
+            
+            /* Copy the updated header back to the user buffer */
+            UserHeader->DataUsed = Header->DataUsed;
+            UserHeader->FrameExtent = Header->FrameExtent;
+            UserHeader->Size = Header->Size;
+            UserHeader->TypeSpecificFlags = Header->TypeSpecificFlags;
+            UserHeader->PresentationTime = Header->PresentationTime;
+            UserHeader->Duration = Header->Duration;
+            UserHeader->OptionsFlags = Header->OptionsFlags;
+            
+            DPRINT("KsStreamPointerAdvance: Updated user header with DataUsed=%u\n", Header->DataUsed);
+        }
+        
+        /* Complete the IRP with the frame data */
+        Irp->IoStatus.Status = STATUS_SUCCESS;
+        Irp->IoStatus.Information = IrpStack->Parameters.DeviceIoControl.OutputBufferLength;
+        Pointer->Irp = NULL;
+        
+        KeReleaseSpinLock(&Pointer->Lock, OldLevel);
+        
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_SUCCESS;
+    }
+
+    KeReleaseSpinLock(&Pointer->Lock, OldLevel);    
+    return STATUS_SUCCESS;
 }
 
 /*
@@ -1998,8 +2052,11 @@ IKsPin_DispatchKsStream(
         ASSERT(IoStack->Parameters.DeviceIoControl.InputBufferLength % Header->Size == 0);
     }
 
-    /* FIXME support multiple stream headers */
-    ASSERT(NumHeaders == 1);
+    /* Support multiple stream headers (but mostly used with 1) */
+    if (NumHeaders != 1)
+    {
+        DPRINT("Warning: %lu stream headers provided (not 1)\n", NumHeaders);
+    }
 
  #if 0
     if (Irp->RequestorMode == UserMode)
