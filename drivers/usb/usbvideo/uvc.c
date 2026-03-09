@@ -6,7 +6,7 @@
 * PROGRAMMERS:
 *              Johannes Anderwald (johannes.anderwald@reactos.org)
 */
-#define NDEBUG
+#define YDEBUG
 #include "usbvideo.h"
 
 static const JFIF_APP0 g_JfifApp0 = {
@@ -120,36 +120,47 @@ USBVideoDeliverFrame(
     PUCHAR FrameBuffer,
     ULONG FrameSize)
 {
-    PKSSTREAM_POINTER LeadingEdge;
+    PKSSTREAM_POINTER StreamPointer;
     PKSPIN Pin;
-    ULONG BytesCopied;
-    NTSTATUS Status;
+
+    if (!DeviceExtension || !DeviceExtension->Pin)
+    {
+        DPRINT("USBVideoDeliverFrame: Invalid device extension or pin\n");
+        return;
+    }
 
     Pin = DeviceExtension->Pin;
 
-    // get leading edge stream pointer
-    LeadingEdge = KsPinGetLeadingEdgeStreamPointer(Pin, KSSTREAM_POINTER_STATE_LOCKED);
-    if (LeadingEdge == NULL)
+    /* Get leading edge stream pointer - this is the user's buffer from IOCTL_KS_READ_STREAM */
+    StreamPointer = KsPinGetLeadingEdgeStreamPointer(Pin, KSSTREAM_POINTER_STATE_LOCKED);
+    if (!StreamPointer)
     {
-        //DPRINT1("No data, discarding frame\n");
+        DPRINT("USBVideoDeliverFrame: No stream pointer available\n");
         return;
     }
 
-    if (NULL == LeadingEdge->StreamHeader->Data)
+    if (!StreamPointer->StreamHeader || !StreamPointer->StreamHeader->Data)
     {
-        KsStreamPointerUnlock(LeadingEdge, FALSE);
-        //DPRINT1("No data, discarding frame\n");
+        DPRINT("USBVideoDeliverFrame: No stream header or data pointer\n");
+        KsStreamPointerUnlock(StreamPointer, FALSE);
         return;
     }
 
-    BytesCopied = min(LeadingEdge->Offset->Remaining, FrameSize);
-    ASSERT(LeadingEdge->StreamHeader->Data);
-    DPRINT("BytesCopied %u Length %u, FrameSize %u FrameBuffer %p UserBuffer %p\n", BytesCopied, LeadingEdge->Offset->Remaining, FrameSize, FrameBuffer, LeadingEdge->StreamHeader->Data);
-    /* removes app0 marker and replaces with JFIF */
-    Status = UvcPatchAvi1ToJfif(FrameBuffer, FrameSize, LeadingEdge->StreamHeader->Data, &BytesCopied);
-    if (NT_SUCCESS(Status))
+    /* Copy frame data to user buffer */
+    ULONG BytesToCopy = min(StreamPointer->Offset->Remaining, FrameSize);
+    if (BytesToCopy > 0)
     {
-        KsStreamPointerAdvanceOffsetsAndUnlock(LeadingEdge, 0, BytesCopied, TRUE);
-        KsStreamPointerUnlock(LeadingEdge, FALSE);
+        DPRINT("USBVideoDeliverFrame: Copying %u bytes to user buffer (frame size %u)\n", BytesToCopy, FrameSize);
+        RtlCopyMemory(StreamPointer->StreamHeader->Data, FrameBuffer, BytesToCopy);
+        StreamPointer->StreamHeader->DataUsed = BytesToCopy;
+        
+        /* Advance the stream pointer to deliver the buffer */
+        KsStreamPointerAdvance(StreamPointer);
+        DPRINT("USBVideoDeliverFrame: Frame delivered\n");
+    }
+    else
+    {
+        DPRINT("USBVideoDeliverFrame: BytesToCopy is 0\n");
+        KsStreamPointerUnlock(StreamPointer, FALSE);
     }
 }
