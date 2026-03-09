@@ -7,6 +7,7 @@ modules/3rdparty
 modules/x64
 modules/x86
 modules/[Aa][Hh][Kk]_[Tt]ests
+DarkFiresReactOSModules
 .cache
 .cproject
 .DS_Store
