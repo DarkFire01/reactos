@@ -6,7 +6,7 @@
 * PROGRAMMERS:
 *              Johannes Anderwald (johannes.anderwald@reactos.org)
 */
-#define NDEBUG
+#define YDEBUG
 #include "usbvideo.h"
 
 
@@ -79,6 +79,8 @@ USBVideoBulkReadComplete(
     PFRAME_CONTEXT Frame     = DeviceExtension->FrameCtx;
     PURB Urb = Irp->Tail.Overlay.DriverContext[0];
 
+    DPRINT("USBVideoBulkReadComplete: Called, status=%x\n", Irp->IoStatus.Status);
+
     /* check for success */
     if (!NT_SUCCESS(Irp->IoStatus.Status))
     {
@@ -93,6 +95,7 @@ USBVideoBulkReadComplete(
     }
 
     BytesReceived = Urb->UrbBulkOrInterruptTransfer.TransferBufferLength;
+    DPRINT("USBVideoBulkReadComplete: Received %u bytes\n", BytesReceived);
     Data         = (PUCHAR)Urb->UrbBulkOrInterruptTransfer.TransferBuffer;
     Offset        = 0;
     while (Offset < BytesReceived)

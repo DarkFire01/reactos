@@ -625,6 +625,8 @@ NTAPI
 USBVideoPinProcess(
     _In_ PKSPIN Pin)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    /* For pull-mode pins, the KS framework calls this when user buffers are available.
+       However, since we're delivering frames directly from the USB completion callback
+       (via USBVideoDeliverFrame), this function doesn't need to do much. */
+    return STATUS_SUCCESS;
 }
