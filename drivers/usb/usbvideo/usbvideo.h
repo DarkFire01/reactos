@@ -60,8 +60,9 @@ typedef struct
 }STILL_PROBE_COMMIT, *PSTILL_PROBE_COMMIT;;
 
 
-#define ISO_PACKET_COUNT 8
+#define ISO_PACKET_COUNT 24 // FIXME determine packet count by bInterval
 #define BULK_TRANSFER_SIZE  (64*1024)
+#define ISO_TRANSFER_SIZE (64*1024)
 #define URB_POOL_COUNT    4
 
 typedef struct _FRAME_CONTEXT {

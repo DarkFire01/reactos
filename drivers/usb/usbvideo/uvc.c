@@ -6,7 +6,7 @@
 * PROGRAMMERS:
 *              Johannes Anderwald (johannes.anderwald@reactos.org)
 */
-#define YDEBUG
+#define NDEBUG
 #include "usbvideo.h"
 
 static const JFIF_APP0 g_JfifApp0 = {
@@ -37,20 +37,20 @@ UvcPatchAvi1ToJfif(
 
     if (pFrame[0] != 0xFF || pFrame[1] != 0xD8)
     {
-        DPRINT1("invalid soi\n");
+        DPRINT("invalid soi\n");
         return STATUS_INVALID_PARAMETER;
     }
 
     if (pFrame[2] != 0xFF || pFrame[3] != 0xE0)
     {
-        DPRINT1("no app maker\n");
+        DPRINT("no app maker\n");
         return STATUS_INVALID_PARAMETER;
     }
 
     USHORT app0Len = (pFrame[4] << 8) | pFrame[5];
     if (frameSize < (ULONG)(2 + 2 + app0Len))
     {
-        DPRINT1("unexpected app0len\n");
+        DPRINT("unexpected app0len\n");
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -122,6 +122,7 @@ USBVideoDeliverFrame(
 {
     PKSSTREAM_POINTER StreamPointer;
     PKSPIN Pin;
+    NTSTATUS Status;
 
     if (!DeviceExtension || !DeviceExtension->Pin)
     {
@@ -151,12 +152,19 @@ USBVideoDeliverFrame(
     if (BytesToCopy > 0)
     {
         DPRINT("USBVideoDeliverFrame: Copying %u bytes to user buffer (frame size %u)\n", BytesToCopy, FrameSize);
-        RtlCopyMemory(StreamPointer->StreamHeader->Data, FrameBuffer, BytesToCopy);
-        StreamPointer->StreamHeader->DataUsed = BytesToCopy;
-        
-        /* Advance the stream pointer to deliver the buffer */
-        KsStreamPointerAdvance(StreamPointer);
-        DPRINT("USBVideoDeliverFrame: Frame delivered\n");
+        Status = UvcPatchAvi1ToJfif(FrameBuffer, BytesToCopy, StreamPointer->StreamHeader->Data, &BytesToCopy);
+        //RtlCopyMemory(StreamPointer->StreamHeader->Data, FrameBuffer, BytesToCopy);
+        //Status = STATUS_SUCCESS;
+        if (NT_SUCCESS(Status))
+        {
+            /* Advance the stream pointer to deliver the buffer */
+            KsStreamPointerAdvanceOffsetsAndUnlock(StreamPointer, 0, BytesToCopy, FALSE);
+            KsStreamPointerUnlock(StreamPointer, FALSE);
+        }
+        else
+        {
+            KsStreamPointerUnlock(StreamPointer, FALSE);
+        }
     }
     else
     {

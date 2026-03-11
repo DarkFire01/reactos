@@ -60,6 +60,8 @@ USBPORT_InitializeIsoTransfer(PDEVICE_OBJECT FdoDevice,
     ULONG TotalPackets, Idx;
     ULONG Period;
     BOOLEAN IsHighSpeed;
+    PUSBPORT_DEVICE_EXTENSION FdoExtension;
+    PUSBPORT_REGISTRATION_PACKET Packet;
 
     DPRINT("USBPORT_InitializeIsoTransfer: FdoDevice - %p, Urb - %p Irp - %p\n", FdoDevice, Urb, Transfer->Irp);
 
@@ -97,6 +99,14 @@ USBPORT_InitializeIsoTransfer(PDEVICE_OBJECT FdoDevice,
 
     IsoBlock->TotalPackets = TotalPackets;
     IsoBlock->MappedBuffer = (PVOID)SgTable->MappedSystemVa;
+
+    if (Urb->TransferFlags & USBD_START_ISO_TRANSFER_ASAP)
+    {
+        FdoExtension = FdoDevice->DeviceExtension;
+        Packet = &FdoExtension->MiniPortInterface->Packet;
+        Urb->StartFrame = (Packet->Get32BitFrameNumber(FdoExtension->MiniPortExt) + 64) & 0xFFFFFFF0;
+        DPRINT("Urb StartFrame %u\n", Urb->StartFrame);
+    }
 
     /*
      * Walk each URB packet descriptor, compute its actual byte length

@@ -37,6 +37,9 @@ extern USBPORT_REGISTRATION_PACKET RegPacket;
 
 #define EHCI_MAX_HC_SYSTEM_ERRORS  256
 
+#define ROUND_DOWN(n, align) (((ULONG)n) & ~((align) - 1l))
+#define ROUND_UP(n, align) ROUND_DOWN(((ULONG)n) + (align) - 1, (align))
+
 typedef struct _EHCI_PERIOD {
   UCHAR Period;
   UCHAR PeriodIdx;
@@ -107,12 +110,12 @@ typedef struct _EHCI_HCD_ITD {
   LIST_ENTRY DoneLink;
   ULONG ScheduledFrame; /* Frame list index where this iTD was inserted */
 #ifdef _WIN64
-  ULONG Pad[7];
+  ULONG Pad[23];
 #else
-  ULONG Pad[13];
+  ULONG Pad[41];
 #endif
 } EHCI_HCD_ITD, *PEHCI_HCD_ITD;
-
+C_ASSERT(sizeof(EHCI_HCD_ITD) == ROUND_UP(sizeof(EHCI_HCD_ITD), 32));
 
 /* Split Isochronous Transfer Descriptor */
 typedef struct _EHCI_HCD_SITD {
@@ -220,6 +223,7 @@ typedef struct _EHCI_TRANSFER {
   ULONG USBDStatus;
   ULONG TransferLen;
   PEHCI_ENDPOINT EhciEndpoint;
+  PEHCI_HCD_ITD ActiveITD;
   ULONG PendingTDs;
   ULONG TransferOnAsyncList;
 } EHCI_TRANSFER, *PEHCI_TRANSFER;
@@ -406,12 +410,13 @@ NTAPI
 EHCI_CheckIsoBandwidth(IN PEHCI_EXTENSION EhciExtension,
                        IN PEHCI_ENDPOINT EhciEndpoint,
                        IN ULONG TransferLength);
-  
+
 VOID
 NTAPI
 EHCI_UnlinkITDFromFrameList(IN PEHCI_EXTENSION EhciExtension,
                             IN PEHCI_HCD_ITD ITD,
-                            IN ULONG Frame);
+                            IN ULONG Frame,
+                            IN PEHCI_TRANSFER EhciTransfer);
 
 VOID
 NTAPI
@@ -423,5 +428,5 @@ EHCI_InitializeITD(IN PEHCI_EXTENSION EhciExtension,
                    IN ULONG BufferPhysicalAddress,
                    IN ULONG TransferLength,
                    IN ULONG MicroframeNumber);
-            
+
 #endif /* USBEHCI_H__ */

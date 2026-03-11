@@ -105,7 +105,7 @@ USBVideoIsoReadComplete(
         USBVideoQueueIsoRead(Pin,
                               DeviceExtension->hPipe,
                               (PUCHAR)Urb->UrbIsochronousTransfer.TransferBuffer,
-                              32 * 1024,
+                              ISO_TRANSFER_SIZE,
                               Irp,
                               Urb,
                               Frame);
@@ -184,7 +184,7 @@ USBVideoIsoReadComplete(
     USBVideoQueueIsoRead(Pin,
                           DeviceExtension->hPipe,
                           (PUCHAR)Urb->UrbIsochronousTransfer.TransferBuffer,
-                          32 * 1024,
+                          ISO_TRANSFER_SIZE,
                           Irp,
                           Urb,
                           Frame);

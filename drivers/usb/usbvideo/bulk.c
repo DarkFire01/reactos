@@ -6,7 +6,7 @@
 * PROGRAMMERS:
 *              Johannes Anderwald (johannes.anderwald@reactos.org)
 */
-#define YDEBUG
+#define NDEBUG
 #include "usbvideo.h"
 
 

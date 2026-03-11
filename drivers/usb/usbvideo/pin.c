@@ -55,7 +55,7 @@ USBVideoPinSetDeviceState(
                     Pin,
                     DeviceExtension->hPipe,
                     DeviceExtension->BulkBuffer[Index],
-                    32* 1024,
+                    ISO_TRANSFER_SIZE,
                     DeviceExtension->Irp[Index],
                     DeviceExtension->Urb[Index],
                     &DeviceExtension->FrameCtx[Index]);
@@ -146,11 +146,9 @@ USBVideoGetDataRangeIndexForFormat(
 
     }
     //HACK return first available format
-    *FormatIndex = DeviceExtension->VideoFormatInfo[0].bFormatIndex;
-    *FrameIndex = DeviceExtension->VideoFormatInfo[0].bFrameIndex;
-    *dwFrameInterval = DeviceExtension->VideoFormatInfo[0].dwFrameInterval;
-
-    ASSERT(FALSE);
+    *FormatIndex = DeviceExtension->VideoFormatInfo[2].bFormatIndex;
+    *FrameIndex = DeviceExtension->VideoFormatInfo[2].bFrameIndex;
+    *dwFrameInterval = DeviceExtension->VideoFormatInfo[2].dwFrameInterval;
     return STATUS_SUCCESS;
 }
 
@@ -543,7 +541,7 @@ USBVideoPinCreate(
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
-        DeviceExtension->BulkBuffer[i] = AllocFunction(32 * 1024);
+        DeviceExtension->BulkBuffer[i] = AllocFunction(ISO_TRANSFER_SIZE);
         if (!DeviceExtension->BulkBuffer[i])
         {
             /* no memory */
