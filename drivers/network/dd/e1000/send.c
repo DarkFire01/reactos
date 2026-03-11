@@ -64,8 +64,11 @@ MiniportSend(
     ASSERT((sgList->Elements[0].Address.LowPart & 3) == 0);
     ASSERT(sgList->Elements[0].Length <= MAXIMUM_FRAME_SIZE);
 
+    NdisAcquireSpinLock(&Adapter->TxLock);
+
     if (Adapter->TxFull)
     {
+        NdisReleaseSpinLock(&Adapter->TxLock);
         NDIS_DbgPrint(MIN_TRACE, ("All TX descriptors are full\n"));
         return NDIS_STATUS_RESOURCES;
     }
@@ -75,6 +78,9 @@ MiniportSend(
     Adapter->TransmitPackets[Adapter->CurrentTxDesc] = Packet;
 
     Status = NICTransmitPacket(Adapter, TransmitBuffer, TransmitLength);
+
+    NdisReleaseSpinLock(&Adapter->TxLock);
+
     if (Status != NDIS_STATUS_SUCCESS)
     {
         NDIS_DbgPrint(MIN_TRACE, ("Transmit packet failed\n"));

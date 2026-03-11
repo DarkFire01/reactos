@@ -148,6 +148,14 @@ KeStartAllProcessors(VOID)
             KeMemoryBarrier();
             YieldProcessor();
         }
+
+        /*
+         * Ensure the AP has fully entered KiIdleLoop before we overwrite
+         * KeLoaderBlock and HalpLowStub for the next AP. This prevents a race
+         * where the BSP could corrupt state the previous AP still needs.
+         */
+        KeMemoryBarrier();
+        KeStallExecutionProcessor(500);  /* ~500us for AP to enter KiIdleLoop */
     }
 
     if (KernelStack != NULL)

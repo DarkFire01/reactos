@@ -209,7 +209,7 @@ KiSwapContextResume(
     }
 
     /* Increase context switch count */
-    Pcr->ContextSwitches++;
+    Pcr->Prcb.KeContextSwitches++;
     NewThread->ContextSwitches++;
 
     /* DPCs shouldn't be active */

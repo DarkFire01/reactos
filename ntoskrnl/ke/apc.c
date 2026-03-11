@@ -263,11 +263,14 @@ KiInsertQueueApc(IN PKAPC Apc,
                 KiUnwaitThread(Thread, Status, PriorityBoost);
             }
 
+            /* Send IPI *before* releasing dispatcher lock - otherwise the target
+             * thread can be switched out on another CPU, and the IPI would
+             * deliver APCs to the wrong (newly current) thread. Holding the lock
+             * prevents context switches until the IPI is sent. */
+            KiRequestApcInterrupt(RequestInterrupt, Thread->NextProcessor);
+
             /* Release dispatcher lock */
             KiReleaseDispatcherLockFromSynchLevel();
-
-            /* Check if an interrupt was requested */
-            KiRequestApcInterrupt(RequestInterrupt, Thread->NextProcessor);
         }
     }
 }

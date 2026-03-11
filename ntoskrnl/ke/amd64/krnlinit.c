@@ -204,6 +204,7 @@ KiSystemStartupBootStack(VOID)
     /* Raise back to HIGH_LEVEL and clear the PRCB for the loader block */
     KfRaiseIrql(HIGH_LEVEL);
     LoaderBlock->Prcb = 0;
+    KeMemoryBarrier();  /* Ensure BSP sees the clear before we continue */
 
     /* Set the priority of this thread to 0 */
     Thread = KeGetCurrentThread();

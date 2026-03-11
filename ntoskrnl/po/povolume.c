@@ -347,13 +347,25 @@ PopFlushVolumes(IN BOOLEAN ShuttingDown)
     KeReleaseGuardedMutex(&PopVolumeLock);
 
     /* Enter the flush work */
-    DPRINT("Local flush\n");
+    DPRINT1("Local flush\n");
     PopFlushVolumeWorker(&FlushContext);
 
     /* Wait for all flushes to be over */
-    DPRINT("Waiting for flushes\n");
-    KeWaitForSingleObject(&FlushContext.Wait, Executive, KernelMode, FALSE, NULL);
-    DPRINT("Flushes have completed\n");
+    DPRINT1("Waiting for flushes\n");
+    if (ShuttingDown)
+    {
+        /* Use 30s timeout during shutdown to avoid hanging indefinitely if
+         * volume flush or cache flush deadlocks (e.g. after process termination). */
+        LARGE_INTEGER Timeout;
+        Timeout.QuadPart = -4 * 10000000LL; /* 30 seconds in 100ns units */
+        if (KeWaitForSingleObject(&FlushContext.Wait, Executive, KernelMode, FALSE, &Timeout) == STATUS_TIMEOUT)
+            DPRINT1("PopFlushVolumes: Flush timed out after 30s, continuing shutdown\n");
+    }
+    else
+    {
+        KeWaitForSingleObject(&FlushContext.Wait, Executive, KernelMode, FALSE, NULL);
+    }
+    DPRINT1("Flushes have completed\n");
 }
 
 VOID

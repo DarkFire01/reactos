@@ -1084,8 +1084,9 @@ WlxShutdown(
     /* Close the LSA handle */
     pgContext->AuthenticationPackage = 0;
     Status = LsaDeregisterLogonProcess(pgContext->LsaHandle);
-    if (!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status) && Status != STATUS_INVALID_HANDLE)
     {
+        /* STATUS_INVALID_HANDLE is expected during shutdown when LSA has already terminated */
         ERR("LsaDeregisterLogonProcess failed (Status 0x%08lx)\n", Status);
     }
 }

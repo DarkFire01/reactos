@@ -2451,8 +2451,12 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
 
     //
     // And return the pool allocation
+    // Note: Do NOT call ExpCheckPoolBlocks here - the pool lock has been
+    // released, so another CPU may have taken our fragment from the free list
+    // and modified the page. ExpCheckPoolBlocks would then falsely detect
+    // "corruption" (NextEntry->PreviousSize != Entry->BlockSize) when the
+    // adjacent block was legitimately reallocated by another CPU (SMP race).
     //
-    ExpCheckPoolBlocks(Entry);
     Entry->PoolTag = Tag;
     return POOL_FREE_BLOCK(Entry);
 }

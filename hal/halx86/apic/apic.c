@@ -151,8 +151,12 @@ ApicRequestSelfInterrupt(IN UCHAR Vector, UCHAR TriggerMode)
     ULONG Irr = APIC_IRR + 0x10 * VectorHigh;
     ULONG IrrBit = 1UL << VectorLow;
 
+    /* Sanity check: Irr must be in valid APIC register range (catches stack corruption) */
+    ASSERT(Irr >= APIC_IRR && Irr <= APIC_IRR + 0x70);
+
     /* Setup the command register */
     Icr.LongLong = 0;
+    IcrStatus.LongLong = 0;
     Icr.Vector = Vector;
     Icr.MessageType = APIC_MT_Fixed;
     Icr.TriggerMode = TriggerMode;

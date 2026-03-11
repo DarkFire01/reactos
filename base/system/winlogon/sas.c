@@ -1181,7 +1181,9 @@ HandleShutdown(
 
     /* Now we can shut down NT */
     ERR("Shutting down NT...\n");
+    ERR("Winlogon: Acquiring shutdown privilege\n");
     RtlAdjustPrivilege(SE_SHUTDOWN_PRIVILEGE, TRUE, FALSE, &Old);
+    ERR("Winlogon: Calling NtShutdownSystem\n");
     if (wlxAction == WLX_SAS_ACTION_SHUTDOWN_REBOOT)
     {
         NtShutdownSystem(ShutdownReboot);

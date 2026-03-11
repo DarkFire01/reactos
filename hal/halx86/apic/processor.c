@@ -45,9 +45,7 @@ VOID
 NTAPI
 HalProcessorIdle(VOID)
 {
-    /* Enable interrupts and halt the processor */
-    _enable();
-    __halt();
+    /* Nothing lmao */
 }
 
 /* EOF */

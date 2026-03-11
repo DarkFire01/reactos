@@ -142,6 +142,8 @@ Cleanup:
     return NULL;
 }
 
+#define SPTI_MAX_PASSTHROUGH_BUFFER  (1024 * 1024)  /* 1MB sanity limit */
+
 static
 CODE_SEG("PAGE")
 VOID
@@ -151,14 +153,25 @@ SptiInitializeOutputBuffer(
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     ULONG OutputBufferLength = IoStack->Parameters.DeviceIoControl.OutputBufferLength;
     ULONG InputBufferLength = IoStack->Parameters.DeviceIoControl.InputBufferLength;
+    ULONG ZeroLength;
 
     PAGED_CODE();
 
-    if (OutputBufferLength > InputBufferLength)
+    /* Validate: SystemBuffer must be allocated (METHOD_BUFFERED), lengths must be
+     * reasonable. Corrupt parameters (e.g. from SMP races) can cause NULL deref. */
+    if (!Irp->AssociatedIrp.SystemBuffer ||
+        OutputBufferLength <= InputBufferLength ||
+        OutputBufferLength > SPTI_MAX_PASSTHROUGH_BUFFER)
     {
-        ULONG_PTR BufferStart = (ULONG_PTR)Irp->AssociatedIrp.SystemBuffer + InputBufferLength;
-        RtlZeroMemory((PVOID)BufferStart, OutputBufferLength - InputBufferLength);
+        return;
     }
+
+    ZeroLength = OutputBufferLength - InputBufferLength;
+    if (ZeroLength > SPTI_MAX_PASSTHROUGH_BUFFER)
+        return;
+
+    RtlZeroMemory((PVOID)((ULONG_PTR)Irp->AssociatedIrp.SystemBuffer + InputBufferLength),
+                  ZeroLength);
 }
 
 static
@@ -785,9 +798,15 @@ SptiHandleAtaPassthru(
     _In_ ULONG MaximumTransferLength,
     _In_ ULONG MaximumPhysicalPages)
 {
-    PATA_PASS_THROUGH_EX Apt = Irp->AssociatedIrp.SystemBuffer;
+    PATA_PASS_THROUGH_EX Apt;
     PIO_STACK_LOCATION IoStack;
     BOOLEAN IsDirectMemoryAccess;
+
+    /* METHOD_BUFFERED requires SystemBuffer; corrupt IRP (e.g. SMP race) can be NULL */
+    if (!Irp->AssociatedIrp.SystemBuffer)
+        return STATUS_INVALID_PARAMETER;
+
+    Apt = Irp->AssociatedIrp.SystemBuffer;
     PASSTHROUGH_DATA AptData;
     PUCHAR TaskFile;
     NTSTATUS Status;
@@ -891,9 +910,15 @@ SptiHandleScsiPassthru(
     _In_ ULONG MaximumTransferLength,
     _In_ ULONG MaximumPhysicalPages)
 {
-    PSCSI_PASS_THROUGH Spt = Irp->AssociatedIrp.SystemBuffer;
+    PSCSI_PASS_THROUGH Spt;
     PIO_STACK_LOCATION IoStack;
     BOOLEAN IsDirectMemoryAccess;
+
+    /* METHOD_BUFFERED requires SystemBuffer; corrupt IRP (e.g. SMP race) can be NULL */
+    if (!Irp->AssociatedIrp.SystemBuffer)
+        return STATUS_INVALID_PARAMETER;
+
+    Spt = Irp->AssociatedIrp.SystemBuffer;
     PASSTHROUGH_DATA SptData;
     ULONG SenseInfoOffset;
     PUCHAR Cdb;

@@ -31,7 +31,7 @@ typedef struct _E1000_ADAPTER
     NDIS_PHYSICAL_ADDRESS IoAddress;
     ULONG IoLength;
 
-    // NDIS_SPIN_LOCK AdapterLock;
+    NDIS_SPIN_LOCK TxLock;
 
     NDIS_HANDLE AdapterHandle;
     USHORT VendorID;

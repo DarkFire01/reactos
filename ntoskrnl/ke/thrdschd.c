@@ -328,7 +328,19 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
     {
         /* Sanity check */
         ASSERT(NextThread->State == Standby);
-        ASSERT(NextThread != KeGetCurrentThread());
+
+        /* On SMP, NextThread can be the idle thread (us) when we scheduled ourselves
+         * as next due to no work. Handle it: just replace with the new thread. */
+        if (NextThread == KeGetCurrentThread())
+        {
+            Thread->State = Standby;
+            ASSERT(Prcb->NextThread != Thread);
+            Prcb->NextThread = Thread;
+            KiReleasePrcbLock(Prcb);
+            if (KeGetCurrentProcessorNumber() != Thread->NextProcessor)
+                KiIpiSend(AFFINITY_MASK(Thread->NextProcessor), IPI_DPC);
+            return;
+        }
 
         /* Check if priority changed */
         if (OldPriority > NextThread->Priority)

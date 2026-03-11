@@ -93,6 +93,7 @@ MiniportInitialize(
 
     RtlZeroMemory(Adapter, sizeof(*Adapter));
     Adapter->AdapterHandle = MiniportAdapterHandle;
+    NdisAllocateSpinLock(&Adapter->TxLock);
 
     /* Notify NDIS of some characteristics of our NIC */
     NdisMSetAttributesEx(MiniportAdapterHandle,

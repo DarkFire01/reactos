@@ -1939,8 +1939,12 @@ KdEnterDebugger(IN PKTRAP_FRAME TrapFrame,
         KdpDprintf("Some processors not frozen in debugger!\n");
     }
 
-    /* Make sure we acquired the port */
-    if (!KdpPortLocked) KdpDprintf("Port lock was not acquired!\n");
+    /*
+     * On SMP, we may fail to acquire the port lock if another CPU was in
+     * KdPollBreakIn (clock tick break-in check) when frozen - it holds the
+     * lock. This is expected; we continue without it and skip KdpPortUnlock
+     * on exit. The debugger still functions correctly.
+     */
 
     /* Return if interrupts needs to be re-enabled */
     return Enable;

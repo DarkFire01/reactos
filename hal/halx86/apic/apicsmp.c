@@ -68,7 +68,7 @@ ApicRequestGlobalInterrupt(
     _In_ APIC_DSH DestinationShortHand)
 {
     ULONG Flags;
-    APIC_INTERRUPT_COMMAND_REGISTER Icr;
+    APIC_INTERRUPT_COMMAND_REGISTER Icr = { 0 };
 
     /* Disable interrupts so that we can change IRR without being interrupted */
     Flags = __readeflags();

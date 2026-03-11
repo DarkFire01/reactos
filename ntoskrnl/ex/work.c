@@ -637,13 +637,19 @@ NTAPI
 ExSwapinWorkerThreads(IN BOOLEAN AllowSwap)
 {
     KEVENT Event;
+    LARGE_INTEGER Timeout;
     PETHREAD CurrentThread = PsGetCurrentThread(), Thread;
     PEPROCESS Process = PsInitialSystemProcess;
     KAPC Apc;
+    NTSTATUS WaitStatus;
     PAGED_CODE();
 
     /* Initialize an event so we know when we're done */
     KeInitializeEvent(&Event, NotificationEvent, FALSE);
+
+    /* 3 second timeout - workers stuck in driver work items (e.g. network) may
+     * never return to APC delivery points; we must not hang shutdown forever */
+    Timeout.QuadPart = Int32x32To64(3, -10000000);
 
     /* Lock this routine */
     ExAcquireFastMutex(&ExpWorkerSwapinMutex);
@@ -677,9 +683,14 @@ ExSwapinWorkerThreads(IN BOOLEAN AllowSwap)
                             &AllowSwap);
             if (KeInsertQueueApc(&Apc, &Event, NULL, 3))
             {
-                /* Wait for the APC to run */
-                KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+                /* Wait for the APC to run (with timeout to avoid shutdown hang) */
+                WaitStatus = KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, &Timeout);
                 KeClearEvent(&Event);
+                if (WaitStatus == STATUS_TIMEOUT)
+                {
+                    /* Worker stuck in work item - remove our APC to avoid use-after-free */
+                    KeRemoveQueueApc(&Apc);
+                }
             }
         }
 

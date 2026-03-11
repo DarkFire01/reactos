@@ -94,13 +94,17 @@ LsaDeregisterLogonProcess(IN HANDLE LsaHandle)
                                     (PPORT_MESSAGE)&ApiMessage);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("ZwRequestWaitReplyPort() failed (Status 0x%08lx)\n", Status);
+        /* STATUS_INVALID_HANDLE is expected during shutdown when LSA has already terminated */
+        if (Status != STATUS_INVALID_HANDLE)
+            DPRINT1("ZwRequestWaitReplyPort() failed (Status 0x%08lx)\n", Status);
+        ZwClose(LsaHandle);
         return Status;
     }
 
     if (!NT_SUCCESS(ApiMessage.Status))
     {
         DPRINT1("ZwRequestWaitReplyPort() failed (ApiMessage.Status 0x%08lx)\n", ApiMessage.Status);
+        ZwClose(LsaHandle);
         return ApiMessage.Status;
     }
 
