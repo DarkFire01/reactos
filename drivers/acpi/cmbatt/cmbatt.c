@@ -643,6 +643,17 @@ CmBattIoctl(IN PDEVICE_OBJECT DeviceObject,
         return Status;
     }
 
+    /* Class driver not initialized yet (e.g. during device removal or init race) */
+    if (DeviceExtension->ClassData == NULL)
+    {
+        DbgPrint("CmBattIoctl: ClassData is NULL!\n");
+        Irp->IoStatus.Status = STATUS_DEVICE_NOT_READY;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        IoReleaseRemoveLock(&DeviceExtension->RemoveLock, Irp);
+        return STATUS_DEVICE_NOT_READY;
+    }
+
     /* Send to class driver */
     Status = BatteryClassIoctl(DeviceExtension->ClassData, Irp);
     if (Status == STATUS_NOT_SUPPORTED)

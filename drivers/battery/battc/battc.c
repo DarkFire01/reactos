@@ -87,6 +87,12 @@ BatteryClassStatusNotify(
 
     DPRINT("Received battery status notification from %p\n", ClassData);
 
+    if (ClassData == NULL)
+    {
+        DPRINT1("BatteryClassStatusNotify: ClassData is NULL!\n");
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
     BattClass = ClassData;
     BattWait = BattClass->EventTriggerContext;
 
@@ -211,6 +217,15 @@ BatteryClassIoctl(PVOID ClassData,
     ULONG ReturnedLength;
 
     DPRINT("BatteryClassIoctl(%p %p)\n", ClassData, Irp);
+
+    if (ClassData == NULL)
+    {
+        DPRINT1("BatteryClassIoctl: ClassData is NULL!\n");
+        Irp->IoStatus.Status = STATUS_INVALID_DEVICE_STATE;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
 
     BattClass = ClassData;
 
