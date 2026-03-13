@@ -434,7 +434,7 @@ MiAllocatePoolPages(IN POOL_TYPE PoolType,
     MMPDE TempPde;
     PMMPFN Pfn1;
     PVOID BaseVa, BaseVaStart;
-    PMMFREE_POOL_ENTRY FreeEntry;
+    PMMFREE_POOL_ENTRY FreeEntry, ConsumedFreeEntry;
 
     //
     // Figure out how big the allocation is in pages
@@ -714,18 +714,26 @@ MiAllocatePoolPages(IN POOL_TYPE PoolType,
             //
             FreeEntry = CONTAINING_RECORD(NextEntry, MMFREE_POOL_ENTRY, List);
             ASSERT(FreeEntry->Signature == MM_FREE_POOL_SIGNATURE);
-            if (FreeEntry->Size >= SizeInPages)
+            if (FreeEntry->Size > SizeInPages + 1)
             {
                 //
                 // It does, so consume the pages from here
                 //
-                FreeEntry->Size -= SizeInPages;
+                FreeEntry->Size -= SizeInPages + 1;
 
                 //
                 // The allocation will begin in this free page area
                 //
                 BaseVa = (PVOID)((ULONG_PTR)FreeEntry +
-                                 (FreeEntry->Size  << PAGE_SHIFT));
+                                 ((FreeEntry->Size +1) << PAGE_SHIFT));
+
+                //
+                // Setup consumed descriptor one page before
+                //
+                ConsumedFreeEntry = (PMMFREE_POOL_ENTRY)(((ULONG_PTR)BaseVa) - PAGE_SIZE);
+                ConsumedFreeEntry->Size = 0;
+                ConsumedFreeEntry->Signature = MM_FREE_POOL_SIGNATURE;
+                ConsumedFreeEntry->Owner = ConsumedFreeEntry;
 
                 /* Remove the item from the list, depending if pool is protected */
                 if (MmProtectFreedNonPagedPool)
@@ -758,7 +766,7 @@ MiAllocatePoolPages(IN POOL_TYPE PoolType,
                 //
                 // Grab the PTE for this allocation
                 //
-                PointerPte = MiAddressToPte(BaseVa);
+                PointerPte = MiAddressToPte(ConsumedFreeEntry);
                 ASSERT(PointerPte->u.Hard.Valid == 1);
 
                 //
@@ -824,10 +832,10 @@ MiAllocatePoolPages(IN POOL_TYPE PoolType,
     // Start by releasing the lock
     //
     KeReleaseQueuedSpinLock(LockQueueMmNonPagedPoolLock, OldIrql);
-
     //
     // Allocate some system PTEs
     //
+    SizeInPages++;
     StartPte = MiReserveSystemPtes(SizeInPages, NonPagedPoolExpansion);
     PointerPte = StartPte;
     if (StartPte == NULL)
@@ -910,7 +918,12 @@ MiAllocatePoolPages(IN POOL_TYPE PoolType,
     //
     // Return the address
     //
-    return MiPteToAddress(StartPte);
+    ConsumedFreeEntry = MiPteToAddress(StartPte);
+    ASSERT(ConsumedFreeEntry);
+    ConsumedFreeEntry->Size = 0;
+    ConsumedFreeEntry->Signature = MM_FREE_POOL_SIGNATURE;
+    ConsumedFreeEntry->Owner = ConsumedFreeEntry;
+    return (PVOID)(((ULONG_PTR)ConsumedFreeEntry) + PAGE_SIZE);
 }
 
 ULONG
@@ -921,7 +934,7 @@ MiFreePoolPages(IN PVOID StartingVa)
     PMMPFN Pfn1, StartPfn;
     PFN_COUNT FreePages, NumberOfPages;
     KIRQL OldIrql;
-    PMMFREE_POOL_ENTRY FreeEntry, NextEntry, LastEntry;
+    PMMFREE_POOL_ENTRY FreeEntry;
     ULONG i, End;
     ULONG_PTR Offset;
 
@@ -1086,29 +1099,6 @@ MiFreePoolPages(IN PVOID StartingVa)
     }
 
     //
-    // Check if this allocation actually exists
-    //
-    if ((Pfn1) && (Pfn1->u3.e1.StartOfAllocation == 0))
-    {
-        //
-        // It doesn't, so we should actually locate a free entry descriptor
-        //
-        FreeEntry = (PMMFREE_POOL_ENTRY)((ULONG_PTR)StartingVa +
-                                         (NumberOfPages << PAGE_SHIFT));
-        ASSERT(FreeEntry->Signature == MM_FREE_POOL_SIGNATURE);
-        ASSERT(FreeEntry->Owner == FreeEntry);
-
-        /* Consume this entry's pages */
-        FreePages += FreeEntry->Size;
-
-        /* Remove the item from the list, depending if pool is protected */
-        if (MmProtectFreedNonPagedPool)
-            MiProtectedPoolRemoveEntryList(&FreeEntry->List);
-        else
-            RemoveEntryList(&FreeEntry->List);
-    }
-
-    //
     // Now get the official free entry we'll create for the caller's allocation
     //
     FreeEntry = StartingVa;
@@ -1128,7 +1118,7 @@ MiFreePoolPages(IN PVOID StartingVa)
         //
         // Otherwise, get the PTE for the page right before our allocation
         //
-        PointerPte -= NumberOfPages + 1;
+        PointerPte = StartPte - 1;
 
         /* Check if protected pool is enabled */
         if (MmProtectFreedNonPagedPool)
@@ -1153,20 +1143,21 @@ MiFreePoolPages(IN PVOID StartingVa)
             Pfn1 = NULL;
         }
     }
-
     //
     // Check if there is a valid PFN entry for the page before the allocation
-    // and then check if this page was actually the end of an allocation.
-    // If it wasn't, then we know for sure it's a free page
+    // and then check if this page was actually the start of an allocation.
     //
-    if ((Pfn1) && (Pfn1->u3.e1.EndOfAllocation == 0))
+    if ((Pfn1) && (Pfn1->u3.e1.StartOfAllocation == 1))
     {
         //
         // Get the free entry descriptor for that given page range
         //
         FreeEntry = (PMMFREE_POOL_ENTRY)((ULONG_PTR)StartingVa - PAGE_SIZE);
+        ASSERT(FreeEntry);
+        ASSERT(FreeEntry->Size == 0);
         ASSERT(FreeEntry->Signature == MM_FREE_POOL_SIGNATURE);
-        FreeEntry = FreeEntry->Owner;
+        ASSERT(FreeEntry->Owner == FreeEntry);
+        ASSERT(FreeEntry);
 
         /* Check if protected pool is enabled */
         if (MmProtectFreedNonPagedPool)
@@ -1176,23 +1167,17 @@ MiFreePoolPages(IN PVOID StartingVa)
         }
 
         //
+        // Update its size
+        //
+        FreeEntry->Size += FreePages;
+
+        //
         // Check if the entry is small enough (1-3 pages) to be indexed on a free list
         // If it is, we'll want to re-insert it, since we're about to
         // collapse our pages on top of it, which will change its count
         //
         if (FreeEntry->Size < MI_MAX_FREE_PAGE_LISTS)
         {
-            /* Remove the item from the list, depending if pool is protected */
-            if (MmProtectFreedNonPagedPool)
-                MiProtectedPoolRemoveEntryList(&FreeEntry->List);
-            else
-                RemoveEntryList(&FreeEntry->List);
-
-            //
-            // Update its size
-            //
-            FreeEntry->Size += FreePages;
-
             //
             // And now find the new appropriate list to place it in
             //
@@ -1204,25 +1189,14 @@ MiFreePoolPages(IN PVOID StartingVa)
             else
                 InsertTailList(&MmNonPagedPoolFreeListHead[i], &FreeEntry->List);
         }
-        else
-        {
-            //
-            // Otherwise, just combine our free pages into this entry
-            //
-            FreeEntry->Size += FreePages;
-        }
     }
-
-    //
-    // Check if we were unable to do any compaction, and we'll stick with this
-    //
-    if (FreeEntry == StartingVa)
+    else
     {
         //
-        // Well, now we are a free entry. At worse we just have our newly freed
-        // pages, at best we have our pages plus whatever entry came after us
+        // Check if we were unable to do any compaction, and we'll stick with this
         //
         FreeEntry->Size = FreePages;
+        FreeEntry->Owner = FreeEntry;
 
         //
         // Find the appropriate list we should be on
@@ -1234,34 +1208,6 @@ MiFreePoolPages(IN PVOID StartingVa)
             MiProtectedPoolInsertList(&MmNonPagedPoolFreeListHead[i], &FreeEntry->List, TRUE);
         else
             InsertTailList(&MmNonPagedPoolFreeListHead[i], &FreeEntry->List);
-    }
-
-    //
-    // Just a sanity check
-    //
-    ASSERT(FreePages != 0);
-
-    //
-    // Get all the pages between our allocation and its end. These will all now
-    // become free page chunks.
-    //
-    NextEntry = StartingVa;
-    LastEntry = (PMMFREE_POOL_ENTRY)((ULONG_PTR)NextEntry + (FreePages << PAGE_SHIFT));
-    do
-    {
-        //
-        // Link back to the parent free entry, and keep going
-        //
-        NextEntry->Owner = FreeEntry;
-        NextEntry->Signature = MM_FREE_POOL_SIGNATURE;
-        NextEntry = (PMMFREE_POOL_ENTRY)((ULONG_PTR)NextEntry + PAGE_SIZE);
-    } while (NextEntry != LastEntry);
-
-    /* Is freed non paged pool protected? */
-    if (MmProtectFreedNonPagedPool)
-    {
-        /* Protect the freed pool! */
-        MiProtectFreeNonPagedPool(FreeEntry, FreeEntry->Size);
     }
 
     //
@@ -1671,7 +1617,7 @@ MmFreeMappingAddress(
                      PoolTag,
                      (ULONG_PTR)_ReturnAddress());
     }
-    
+
     /* Enumerate all PTEs and make sure they are empty */
     for (i = 2; i < SizeInPages; i++)
     {

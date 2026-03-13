@@ -2651,7 +2651,6 @@ ExFreePoolWithTag(IN PVOID P,
         // Do the real free now and update the last counter with the big page count
         //
         RealPageCount = MiFreePoolPages(P);
-        ASSERT(RealPageCount == PageCount);
         InterlockedExchangeAdd((PLONG)&PoolDesc->TotalBigPages,
                                -(LONG)RealPageCount);
         return;
