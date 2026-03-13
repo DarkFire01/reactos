@@ -1786,7 +1786,6 @@ USBPORT_AllocateCommonBuffer(IN PDEVICE_OBJECT FdoDevice,
     PUSBPORT_DEVICE_EXTENSION FdoExtension;
     PDMA_ADAPTER DmaAdapter;
     PDMA_OPERATIONS DmaOperations;
-    SIZE_T HeaderSize;
     ULONG Length = 0;
     ULONG LengthPadded;
     PHYSICAL_ADDRESS LogicalAddress;
@@ -1806,9 +1805,17 @@ USBPORT_AllocateCommonBuffer(IN PDEVICE_OBJECT FdoDevice,
     DmaAdapter = FdoExtension->DmaAdapter;
     DmaOperations = DmaAdapter->DmaOperations;
 
-    HeaderSize = sizeof(USBPORT_COMMON_BUFFER_HEADER);
-    Length = ROUND_TO_PAGES(BufferLength + HeaderSize);
-    LengthPadded = Length - (BufferLength + HeaderSize);
+    Length = ROUND_TO_PAGES(BufferLength);
+    LengthPadded = Length - BufferLength;
+
+    ASSERT(DmaAdapter);
+    ASSERT(Length);
+    ASSERT(DmaOperations);
+    ASSERT(DmaOperations->AllocateCommonBuffer);
+
+    HeaderBuffer = (PUSBPORT_COMMON_BUFFER_HEADER)ExAllocatePoolZero(NonPagedPool, sizeof(USBPORT_COMMON_BUFFER_HEADER), USB_PORT_TAG);
+    if (!HeaderBuffer)
+        return NULL;
 
     BaseVA = (ULONG_PTR)DmaOperations->AllocateCommonBuffer(DmaAdapter,
                                                             Length,
@@ -1817,13 +1824,10 @@ USBPORT_AllocateCommonBuffer(IN PDEVICE_OBJECT FdoDevice,
 
     if (!BaseVA)
         goto Exit;
-
     StartBufferVA = BaseVA & ~(PAGE_SIZE - 1);
+
     StartBufferPA = LogicalAddress.LowPart & ~(PAGE_SIZE - 1);
 
-    HeaderBuffer = (PUSBPORT_COMMON_BUFFER_HEADER)(StartBufferVA +
-                                                   BufferLength +
-                                                   LengthPadded);
 
     HeaderBuffer->Length = Length;
     HeaderBuffer->BaseVA = BaseVA;
@@ -1833,8 +1837,7 @@ USBPORT_AllocateCommonBuffer(IN PDEVICE_OBJECT FdoDevice,
     HeaderBuffer->VirtualAddress = StartBufferVA;
     HeaderBuffer->PhysicalAddress = StartBufferPA;
 
-    RtlZeroMemory((PVOID)StartBufferVA, BufferLength + LengthPadded);
-
+    RtlZeroMemory((PVOID)StartBufferVA, BufferLength);
 Exit:
     return HeaderBuffer;
 }
@@ -1854,12 +1857,17 @@ USBPORT_FreeCommonBuffer(IN PDEVICE_OBJECT FdoDevice,
 
     DmaAdapter = FdoExtension->DmaAdapter;
     DmaOperations = DmaAdapter->DmaOperations;
+    ASSERT(DmaAdapter);
+    ASSERT(DmaOperations);
+    ASSERT(FdoExtension->DmaAdapter);
 
     DmaOperations->FreeCommonBuffer(FdoExtension->DmaAdapter,
                                     HeaderBuffer->Length,
                                     HeaderBuffer->LogicalAddress,
-                                    (PVOID)HeaderBuffer->VirtualAddress,
+                                    (PVOID)HeaderBuffer->BaseVA,
                                     TRUE);
+
+    ExFreePool(HeaderBuffer);
 }
 
 PUSBPORT_MINIPORT_INTERFACE
