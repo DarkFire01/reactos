@@ -17,7 +17,8 @@ GUID PPINNAME_VIDEO_STILL = { STATIC_PINNAME_VIDEO_STILL };
 GUID gKSDATAFORMAT_TYPE_VIDEO = { STATIC_KSDATAFORMAT_TYPE_VIDEO};
 GUID gKSDATAFORMAT_SPECIFIER_VIDEOINFO = { STATIC_KSDATAFORMAT_SPECIFIER_VIDEOINFO};
 GUID gKSDATAFORMAT_SPECIFIER_VIDEOINFO2 = { STATIC_KSDATAFORMAT_SPECIFIER_VIDEOINFO2};
-GUID KSDATAFORMAT_SUBTYPE_MJPEG_LOCAL = {1196444237L, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}};
+GUID KSDATAFORMAT_SUBTYPE_MJPEG_LOCAL = {0x47504a4d, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+GUID MEDIASUBTYPE_YUY2 = {0x32595559, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 
 KSPIN_INTERFACE StandardPinInterface =
 {
@@ -135,11 +136,12 @@ UsbVideoGetDataRangesForStreaming(
 {
     PUSB_VIDEO_DEVICE_EXTENSION DeviceExtension;
     PVS_VIDEO_INPUT_HEADER_DESCRIPTOR VideoInputHeaderDescriptor;
-    PUSB_COMMON_DESCRIPTOR CommonDescriptor;
+    PVC_INTERFACE_COMMON_DESCRIPTOR CommonDescriptor;
     PVS_MJPEG_FORMAT_TYPE_DESCRIPTOR MjpegFormatTypeDescriptor;
     PVS_STILL_IMAGE_FRAME_TYPE_DESCRIPTOR StillImageFormatDescriptor;
     PVS_UNCOMPRESSED_FORMAT_TYPE_DESCRIPTOR UncompressedFormatDescriptor;
     PVS_MJPEG_FRAME_TYPE_DESCRIPTOR MjpegFrameTypeDescriptor;
+    PVS_UNCOMPRESSED_FRAME_TYPE_DESCRIPTOR UncompressedFrameTypeDescriptor;
     PKS_DATARANGE_VIDEO DataRangeVideo;
     PKS_DATARANGE_VIDEO2 DataRangeVideo2;
     PKSDATARANGE *DataRangeVideoArray;
@@ -149,13 +151,13 @@ UsbVideoGetDataRangesForStreaming(
     DeviceExtension = Device->Context;
     ASSERT(DeviceExtension);
     VideoInputHeaderDescriptor = DeviceExtension->VideoInputHeaderDescriptor;
-    CommonDescriptor = (PUSB_COMMON_DESCRIPTOR)((ULONG_PTR)VideoInputHeaderDescriptor + VideoInputHeaderDescriptor->bLength);
+    CommonDescriptor = (PVC_INTERFACE_COMMON_DESCRIPTOR)((ULONG_PTR)VideoInputHeaderDescriptor + VideoInputHeaderDescriptor->bLength);
 
     /* enumerate all formats */
     FormatCount = 0;
     do
     {
-        if (CommonDescriptor->bDescriptorType == VS_INTERFACE_HEADER_DESCRIPTOR_TYPE)
+        if (CommonDescriptor->Common.bDescriptorType == VS_INTERFACE_HEADER_DESCRIPTOR_TYPE)
         {
             MjpegFormatTypeDescriptor = (PVS_MJPEG_FORMAT_TYPE_DESCRIPTOR)CommonDescriptor;
             StillImageFormatDescriptor = (PVS_STILL_IMAGE_FRAME_TYPE_DESCRIPTOR)CommonDescriptor;
@@ -172,14 +174,17 @@ UsbVideoGetDataRangesForStreaming(
                 FormatCount += StillImageFormatDescriptor->bNumImageSizePatterns;
                 ASSERT(FALSE);
             }
-
+#endif
             else if (UncompressedFormatDescriptor->bDescriptorSubtype == VS_UNCOMPRESSED_FORMAT_TYPE_DESCRIPTOR_SUBTYPE)
             {
                 DPRINT1("Found Uncompressed Format Type descriptor bNumFrameDescriptors %u\n", UncompressedFormatDescriptor->bNumFrameDescriptors);
-                FormatCount += UncompressedFormatDescriptor->bNumFrameDescriptors;
+                if (IsEqualGUIDAligned(&UncompressedFormatDescriptor->guidFormat,
+                    &MEDIASUBTYPE_YUY2))
+                {
+                  FormatCount += UncompressedFormatDescriptor->bNumFrameDescriptors * 2;
+                }
             }
-#endif
-            CommonDescriptor = (PUSB_COMMON_DESCRIPTOR)((ULONG_PTR)CommonDescriptor + CommonDescriptor->bLength);
+            CommonDescriptor = (PVC_INTERFACE_COMMON_DESCRIPTOR)((ULONG_PTR)CommonDescriptor + CommonDescriptor->Common.bLength);
         }
 
     } while (((ULONG_PTR)CommonDescriptor) <((ULONG_PTR)VideoInputHeaderDescriptor + VideoInputHeaderDescriptor->wTotalLength));
@@ -199,21 +204,27 @@ UsbVideoGetDataRangesForStreaming(
     }
 
     /* now build datarange video array */
-    CommonDescriptor = (PUSB_COMMON_DESCRIPTOR)((ULONG_PTR)VideoInputHeaderDescriptor + VideoInputHeaderDescriptor->bLength);
+    CommonDescriptor = (PVC_INTERFACE_COMMON_DESCRIPTOR)((ULONG_PTR)VideoInputHeaderDescriptor + VideoInputHeaderDescriptor->bLength);
     FormatIndex = 0;
     VideoFormatIndex = 0;
     do
     {
-        if (CommonDescriptor->bDescriptorType == VS_INTERFACE_HEADER_DESCRIPTOR_TYPE)
+        if (CommonDescriptor->Common.bDescriptorType == VS_INTERFACE_HEADER_DESCRIPTOR_TYPE)
         {
-            MjpegFormatTypeDescriptor = (PVS_MJPEG_FORMAT_TYPE_DESCRIPTOR)CommonDescriptor;
-            MjpegFrameTypeDescriptor = (PVS_MJPEG_FRAME_TYPE_DESCRIPTOR)CommonDescriptor;
-            if (MjpegFormatTypeDescriptor->bDescriptorSubtype == VS_MJPEG_FORMAT_TYPE_DESCRIPTOR_SUBTYPE)
+            if (CommonDescriptor->bDescriptorSubtype == VS_MJPEG_FORMAT_TYPE_DESCRIPTOR_SUBTYPE)
             {
+                MjpegFormatTypeDescriptor = (PVS_MJPEG_FORMAT_TYPE_DESCRIPTOR)CommonDescriptor;
                 VideoFormatIndex = MjpegFormatTypeDescriptor->bFormatIndex;
             }
-            if (MjpegFrameTypeDescriptor->bDescriptorSubtype == VS_MJPEG_FRAME_TYPE_DESCRIPTOR_SUBTYPE)
+            else if (CommonDescriptor->bDescriptorSubtype == VS_UNCOMPRESSED_FORMAT_TYPE_DESCRIPTOR_SUBTYPE)
             {
+                UncompressedFormatDescriptor = (PVS_UNCOMPRESSED_FORMAT_TYPE_DESCRIPTOR)CommonDescriptor;
+                VideoFormatIndex = UncompressedFormatDescriptor->bFormatIndex;
+            }
+            if (CommonDescriptor->bDescriptorSubtype == VS_MJPEG_FRAME_TYPE_DESCRIPTOR_SUBTYPE)
+            {
+                MjpegFrameTypeDescriptor = (PVS_MJPEG_FRAME_TYPE_DESCRIPTOR)CommonDescriptor;
+
                 DPRINT1("MjpegFrameTypeDescriptor ", MjpegFrameTypeDescriptor->bFrameIndex);
                 DataRangeVideo = AllocFunction(sizeof(KS_DATARANGE_VIDEO));
                 DataRangeVideo2 = AllocFunction(sizeof(KS_DATARANGE_VIDEO2));
@@ -303,12 +314,108 @@ UsbVideoGetDataRangesForStreaming(
                 DataRangeVideoArray[FormatIndex+1] = (PKSDATARANGE)DataRangeVideo2;
                 FormatIndex += 2;
             }
-            else
+            else if (CommonDescriptor->bDescriptorSubtype == VS_UNCOMPRESSED_FRAME_TYPE_DESCRIPTOR_SUBTYPE)
             {
-                // uncompressed etc format not implemented
-                // ignore for now
+                if (IsEqualGUIDAligned(&UncompressedFormatDescriptor->guidFormat,
+                                      &MEDIASUBTYPE_YUY2))
+                {
+                    UncompressedFrameTypeDescriptor = (PVS_UNCOMPRESSED_FRAME_TYPE_DESCRIPTOR)CommonDescriptor;
+
+                    DPRINT1("Uncompressed FormatType Descriptor %x", UncompressedFrameTypeDescriptor->bFrameIndex);
+                    DataRangeVideo = AllocFunction(sizeof(KS_DATARANGE_VIDEO));
+                    DataRangeVideo2 = AllocFunction(sizeof(KS_DATARANGE_VIDEO2));
+
+                    if (DataRangeVideo == NULL || DataRangeVideo2 == NULL)
+                    {
+                        /* insufficient resources */
+                        return STATUS_INSUFFICIENT_RESOURCES;
+                    }
+                    /* init video range */
+                    DataRangeVideo->DataRange.FormatSize = sizeof(KS_DATARANGE_VIDEO);
+                    DataRangeVideo->DataRange.MajorFormat = gKSDATAFORMAT_TYPE_VIDEO;
+                    DataRangeVideo->DataRange.SampleSize = UncompressedFrameTypeDescriptor->wWidth * UncompressedFrameTypeDescriptor->wHeight * 3; // 3 bytes per pixel
+                    DataRangeVideo->DataRange.SubFormat = MEDIASUBTYPE_YUY2;
+                    DataRangeVideo->DataRange.Specifier = gKSDATAFORMAT_SPECIFIER_VIDEOINFO;
+                    DataRangeVideo->ConfigCaps.guid = gKSDATAFORMAT_SPECIFIER_VIDEOINFO;
+                    DataRangeVideo->ConfigCaps.InputSize.cx = UncompressedFrameTypeDescriptor->wWidth;
+                    DataRangeVideo->ConfigCaps.InputSize.cy = UncompressedFrameTypeDescriptor->wHeight;
+                    DataRangeVideo->ConfigCaps.MinCroppingSize.cx = UncompressedFrameTypeDescriptor->wWidth;
+                    DataRangeVideo->ConfigCaps.MinCroppingSize.cy = UncompressedFrameTypeDescriptor->wHeight;
+                    DataRangeVideo->ConfigCaps.MaxCroppingSize.cx = UncompressedFrameTypeDescriptor->wWidth;
+                    DataRangeVideo->ConfigCaps.MaxCroppingSize.cy = UncompressedFrameTypeDescriptor->wHeight;
+                    DataRangeVideo->ConfigCaps.MinOutputSize.cx = UncompressedFrameTypeDescriptor->wWidth;
+                    DataRangeVideo->ConfigCaps.MinOutputSize.cy = UncompressedFrameTypeDescriptor->wHeight;
+                    DataRangeVideo->ConfigCaps.MaxOutputSize.cx = UncompressedFrameTypeDescriptor->wWidth;
+                    DataRangeVideo->ConfigCaps.MaxOutputSize.cy = UncompressedFrameTypeDescriptor->wHeight;
+                    DataRangeVideo->ConfigCaps.OutputGranularityX = 1;
+                    DataRangeVideo->ConfigCaps.OutputGranularityY = 1;
+                    DataRangeVideo->ConfigCaps.CropGranularityX = 1;
+                    DataRangeVideo->ConfigCaps.CropGranularityY = 1;
+                    DataRangeVideo->ConfigCaps.CropAlignX = 1;
+                    DataRangeVideo->ConfigCaps.CropAlignY = 1;
+                    /* todo Alignment, MaxBitsPerSecond, MinBitsPerSecond, MinFrameInterval, MaxFrameInterval */
+                    DataRangeVideo->VideoInfoHeader.AvgTimePerFrame = 333333; // FIXME
+                    DataRangeVideo->VideoInfoHeader.dwBitRate = UncompressedFrameTypeDescriptor->wHeight * UncompressedFrameTypeDescriptor->wWidth * 3; // FIXME
+                    DataRangeVideo->VideoInfoHeader.bmiHeader.biSize = sizeof(KS_BITMAPINFOHEADER);
+                    DataRangeVideo->VideoInfoHeader.bmiHeader.biWidth = UncompressedFrameTypeDescriptor->wWidth;
+                    DataRangeVideo->VideoInfoHeader.bmiHeader.biHeight = UncompressedFrameTypeDescriptor->wHeight;
+                    DataRangeVideo->VideoInfoHeader.bmiHeader.biPlanes = 1;
+                    DataRangeVideo->VideoInfoHeader.bmiHeader.biBitCount = 16;
+                    DataRangeVideo->VideoInfoHeader.bmiHeader.biCompression = MAKEFOURCC('Y','U','Y','2');
+                    DataRangeVideo->VideoInfoHeader.bmiHeader.biSizeImage = UncompressedFrameTypeDescriptor->wWidth * UncompressedFrameTypeDescriptor->wHeight * 3;
+                    DataRangeVideo->bFixedSizeSamples = TRUE;
+
+
+                    DataRangeVideo2->DataRange.FormatSize = sizeof(KS_DATARANGE_VIDEO2);
+                    DataRangeVideo2->DataRange.MajorFormat = gKSDATAFORMAT_TYPE_VIDEO;
+                    DataRangeVideo2->DataRange.SampleSize = UncompressedFrameTypeDescriptor->wWidth * UncompressedFrameTypeDescriptor->wHeight * 3; // 3 bytes per pixel
+                    DataRangeVideo2->DataRange.SubFormat = MEDIASUBTYPE_YUY2;
+                    DataRangeVideo2->DataRange.Specifier = gKSDATAFORMAT_SPECIFIER_VIDEOINFO2;
+                    DataRangeVideo2->ConfigCaps.guid = gKSDATAFORMAT_SPECIFIER_VIDEOINFO2;
+                    DataRangeVideo2->ConfigCaps.InputSize.cx = UncompressedFrameTypeDescriptor->wWidth;
+                    DataRangeVideo2->ConfigCaps.InputSize.cy = UncompressedFrameTypeDescriptor->wHeight;
+                    DataRangeVideo2->ConfigCaps.MinCroppingSize.cx = UncompressedFrameTypeDescriptor->wWidth;
+                    DataRangeVideo2->ConfigCaps.MinCroppingSize.cy = UncompressedFrameTypeDescriptor->wHeight;
+                    DataRangeVideo2->ConfigCaps.MaxCroppingSize.cx = UncompressedFrameTypeDescriptor->wWidth;
+                    DataRangeVideo2->ConfigCaps.MaxCroppingSize.cy = UncompressedFrameTypeDescriptor->wHeight;
+                    DataRangeVideo2->ConfigCaps.MinOutputSize.cx = UncompressedFrameTypeDescriptor->wWidth;
+                    DataRangeVideo2->ConfigCaps.MinOutputSize.cy = UncompressedFrameTypeDescriptor->wHeight;
+                    DataRangeVideo2->ConfigCaps.MaxOutputSize.cx = UncompressedFrameTypeDescriptor->wWidth;
+                    DataRangeVideo2->ConfigCaps.MaxOutputSize.cy = UncompressedFrameTypeDescriptor->wHeight;
+                    DataRangeVideo2->ConfigCaps.OutputGranularityX = 1;
+                    DataRangeVideo2->ConfigCaps.OutputGranularityY = 1;
+                    DataRangeVideo2->ConfigCaps.CropGranularityX = 1;
+                    DataRangeVideo2->ConfigCaps.CropGranularityY = 1;
+                    DataRangeVideo2->ConfigCaps.CropAlignX = 1;
+                    DataRangeVideo2->ConfigCaps.CropAlignY = 1;
+                    /* todo Alignment, MaxBitsPerSecond, MinBitsPerSecond, MinFrameInterval, MaxFrameInterval */
+                    DataRangeVideo2->VideoInfoHeader.AvgTimePerFrame = 333333; // FIXME
+                    DataRangeVideo2->VideoInfoHeader.dwBitRate = UncompressedFrameTypeDescriptor->wHeight * UncompressedFrameTypeDescriptor->wWidth * 3; // FIXME
+                    DataRangeVideo2->VideoInfoHeader.bmiHeader.biSize = sizeof(KS_BITMAPINFOHEADER);
+                    DataRangeVideo2->VideoInfoHeader.bmiHeader.biWidth = UncompressedFrameTypeDescriptor->wWidth;
+                    DataRangeVideo2->VideoInfoHeader.bmiHeader.biHeight = UncompressedFrameTypeDescriptor->wHeight;
+                    DataRangeVideo2->VideoInfoHeader.bmiHeader.biPlanes = 1;
+                    DataRangeVideo2->VideoInfoHeader.bmiHeader.biBitCount = 16;
+                    DataRangeVideo2->VideoInfoHeader.bmiHeader.biCompression = MAKEFOURCC('Y','U','Y','2');
+                    DataRangeVideo2->VideoInfoHeader.bmiHeader.biSizeImage = UncompressedFrameTypeDescriptor->wWidth * UncompressedFrameTypeDescriptor->wHeight * 3;
+                    DataRangeVideo2->bFixedSizeSamples = TRUE;
+
+
+                    DeviceExtension->VideoFormatInfo[FormatIndex].bFormatIndex = VideoFormatIndex;
+                    DeviceExtension->VideoFormatInfo[FormatIndex+1].bFormatIndex = VideoFormatIndex;
+                    DeviceExtension->VideoFormatInfo[FormatIndex].bFrameIndex = UncompressedFrameTypeDescriptor->bFrameIndex;
+                    DeviceExtension->VideoFormatInfo[FormatIndex+1].bFrameIndex = UncompressedFrameTypeDescriptor->bFrameIndex;
+                    DeviceExtension->VideoFormatInfo[FormatIndex].dwFrameInterval = UncompressedFrameTypeDescriptor->dwFrameInterval[0];
+                    DeviceExtension->VideoFormatInfo[FormatIndex+1].dwFrameInterval = UncompressedFrameTypeDescriptor->dwFrameInterval[0];
+                    DeviceExtension->VideoFormatInfo[FormatIndex].Descriptor = (PUSB_COMMON_DESCRIPTOR)UncompressedFrameTypeDescriptor;
+                    DeviceExtension->VideoFormatInfo[FormatIndex+1].Descriptor = (PUSB_COMMON_DESCRIPTOR)UncompressedFrameTypeDescriptor;
+
+                    DataRangeVideoArray[FormatIndex] = (PKSDATARANGE)DataRangeVideo;
+                    DataRangeVideoArray[FormatIndex+1] = (PKSDATARANGE)DataRangeVideo2;
+                    FormatIndex += 2;
+                }
             }
-            CommonDescriptor = (PUSB_COMMON_DESCRIPTOR)((ULONG_PTR)CommonDescriptor + CommonDescriptor->bLength);
+            CommonDescriptor = (PVC_INTERFACE_COMMON_DESCRIPTOR)((ULONG_PTR)CommonDescriptor + CommonDescriptor->Common.bLength);
         }
 
     } while (((ULONG_PTR)CommonDescriptor) <((ULONG_PTR)VideoInputHeaderDescriptor + VideoInputHeaderDescriptor->wTotalLength));

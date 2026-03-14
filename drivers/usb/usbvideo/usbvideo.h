@@ -60,11 +60,12 @@ typedef struct
 }STILL_PROBE_COMMIT, *PSTILL_PROBE_COMMIT;;
 
 
-#define ISO_PACKET_COUNT 16 // FIXME determine packet count by bInterval
 #define BULK_TRANSFER_SIZE  (64*1024)
-#define ISO_TRANSFER_SIZE (64*1024)
+#define ISO_TRANSFER_SIZE (614400)
+#define FRAME_CONTEXT_COUNT (1)
+#define FRAME_CONTEXT_SIZE (640 * 480 * 2)
 #define URB_POOL_COUNT    4
-
+#define ISO_PACKET_COUNT  16
 
 typedef struct _FRAME_CONTEXT {
     PUCHAR  FrameBuffer;

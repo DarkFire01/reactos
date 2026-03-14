@@ -152,9 +152,9 @@ USBVideoDeliverFrame(
     if (BytesToCopy > 0)
     {
         DPRINT("USBVideoDeliverFrame: Copying %u bytes to user buffer (frame size %u)\n", BytesToCopy, FrameSize);
-        Status = UvcPatchAvi1ToJfif(FrameBuffer, BytesToCopy, StreamPointer->StreamHeader->Data, &BytesToCopy);
-        //RtlCopyMemory(StreamPointer->StreamHeader->Data, FrameBuffer, BytesToCopy);
-        //Status = STATUS_SUCCESS;
+        //Status = UvcPatchAvi1ToJfif(FrameBuffer, BytesToCopy, StreamPointer->StreamHeader->Data, &BytesToCopy);
+        RtlCopyMemory(StreamPointer->StreamHeader->Data, FrameBuffer, BytesToCopy);
+        Status = STATUS_SUCCESS;
         if (NT_SUCCESS(Status))
         {
             /* Advance the stream pointer to deliver the buffer */

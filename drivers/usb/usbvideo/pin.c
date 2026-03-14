@@ -58,7 +58,7 @@ USBVideoPinSetDeviceState(
                     ISO_TRANSFER_SIZE,
                     DeviceExtension->Irp[Index],
                     DeviceExtension->Urb[Index],
-                    &DeviceExtension->FrameCtx[Index]);
+                    &DeviceExtension->FrameCtx[0]);
 
             }
             else
@@ -481,7 +481,7 @@ USBVideoPinCreate(
     DeviceExtension = Pin->Context;
 
     /* init frame context */
-    DeviceExtension->FrameCtx = AllocFunction(sizeof(FRAME_CONTEXT) * URB_POOL_COUNT);
+    DeviceExtension->FrameCtx = AllocFunction(sizeof(FRAME_CONTEXT) * FRAME_CONTEXT_COUNT);
     if (!DeviceExtension->FrameCtx)
     {
         /* no memory */
@@ -547,14 +547,16 @@ USBVideoPinCreate(
             /* no memory */
             return STATUS_INSUFFICIENT_RESOURCES;
         }
-
-        DeviceExtension->FrameCtx[i].FrameBuffer = AllocFunction(720 * 1280 * 3);
-        if (!DeviceExtension->FrameCtx[i].FrameBuffer)
+        if (i < FRAME_CONTEXT_COUNT)
         {
-            /* no memory */
-            return STATUS_INSUFFICIENT_RESOURCES;
+            DeviceExtension->FrameCtx[i].FrameBuffer = AllocFunction(FRAME_CONTEXT_SIZE);
+            if (!DeviceExtension->FrameCtx[i].FrameBuffer)
+            {
+                /* no memory */
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+            DeviceExtension->FrameCtx[i].MaxFrameSize = FRAME_CONTEXT_SIZE;
         }
-        DeviceExtension->FrameCtx[i].MaxFrameSize = 720 * 1280 * 3;
     }
     return STATUS_SUCCESS;
 }
