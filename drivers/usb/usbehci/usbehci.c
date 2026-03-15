@@ -1117,6 +1117,11 @@ EHCI_InitializeSchedule(IN PEHCI_EXTENSION EhciExtension,
 
     EhciExtension->IsoDummyQHListVA = &HcResourcesVA->IsoDummyQH[0];
     EhciExtension->IsoDummyQHListPA = HcResourcesPA + FIELD_OFFSET(EHCI_HC_RESOURCES, IsoDummyQH[0]);
+    EhciExtension->IsoBitmapBuffer = ExAllocatePoolZero(NonPagedPool, EHCI_FRAME_LIST_MAX_ENTRIES * sizeof(UCHAR), 0x12345678);
+    if (!EhciExtension->IsoBitmapBuffer)
+        return MP_STATUS_NO_RESOURCES;
+
+    RtlInitializeBitMap(&EhciExtension->IsoBitmap, EhciExtension->IsoBitmapBuffer, EHCI_FRAME_LIST_MAX_ENTRIES);
 
     EHCI_AddDummyQHs(EhciExtension);
 
@@ -2625,8 +2630,10 @@ EHCI_SubmitIsoTransfer(IN PVOID ehciExtension,
         ULONG NumITDs;
         ULONG PacketIndex = 0;
         ULONG ITDCount = 0;
+        ULONG Count = 0;
         PEHCI_HCD_ITD ITD;
         PEHCI_HCD_ITD LastITD = NULL;
+        PEHCI_HCD_ITD FirstITD = NULL;
         PEHCI_HC_RESOURCES HcResourcesVA;
         ULONG CurrentFrame;
         ULONG FrameIndex;
@@ -2645,8 +2652,17 @@ EHCI_SubmitIsoTransfer(IN PVOID ehciExtension,
         HcResourcesVA = EhciExtension->HcResourcesVA;
 
         /* Use the first packet's FrameNumber for scheduling */
-        CurrentFrame = IsoTransfer->Packets[0].FrameNumber;
-        ASSERT(CurrentFrame);
+        CurrentFrame = IsoTransfer->Packets[0].FrameNumber % EHCI_FRAME_LIST_MAX_ENTRIES;
+
+        CurrentFrame = RtlFindClearBitsAndSet(&EhciExtension->IsoBitmap, NumITDs, CurrentFrame);
+        if (CurrentFrame == (ULONG)-1)
+        {
+            /* no consecutive found */
+            DPRINT1("EHCI_SubmitIsoTransfer no consecutive gap found\n");
+            return MP_STATUS_NO_RESOURCES;
+        }
+        DPRINT("OriginalFrame %u New FrameNumber %u\n", IsoTransfer->Packets[0].FrameNumber, CurrentFrame);
+
         /* Allocate and program iTDs, one per frame */
         while (PacketIndex < IsoTransfer->TotalPackets)
         {
@@ -2775,9 +2791,11 @@ EHCI_SubmitIsoTransfer(IN PVOID ehciExtension,
             /* Schedule this iTD in the periodic frame list */
             FrameIndex = CurrentFrame % (EHCI_FRAME_LIST_MAX_ENTRIES);
 
+            /* link last ITD to dummy qh */
             LinkPointer.AsULONG = HcResourcesVA->PeriodicFrameList[FrameIndex];
             ITD->HwTD.NextLink = LinkPointer;
 
+            /* setup frame link */
             LinkPointer.AsULONG = ITD->PhysicalAddress;
             LinkPointer.Type = EHCI_LINK_TYPE_iTD;
             LinkPointer.Terminate = 0;
@@ -2787,27 +2805,27 @@ EHCI_SubmitIsoTransfer(IN PVOID ehciExtension,
 
             /* Store the frame index in the iTD for unlinking later */
             ITD->ScheduledFrame = FrameIndex;
+            /* clear next itd software link */
+            ITD->NextHcdTD = NULL;
 
             /* Track which frame this iTD was inserted at */
             if (ITDCount == 0)
                 EhciEndpoint->StartingFrame = FrameIndex;
 
+            if (!FirstITD)
+            {
+                FirstITD = ITD;
+            }
             if (LastITD)
             {
                 LastITD->NextHcdTD = ITD;
-            }
-            else
-            {
-                /* link in list */
-                ITD->NextHcdTD = EhciTransfer->ActiveITD;
-                EhciTransfer->ActiveITD = ITD;
             }
             LastITD = ITD;
             PacketIndex += PacketsThisITD;
             CurrentFrame++;
             ITDCount++;
         }
-
+        EhciTransfer->ActiveITD = FirstITD;
         EhciEndpoint->FrameCount += ITDCount;
         EhciTransfer->PendingTDs += ITDCount;
         EhciExtension->PendingTransfers++;
@@ -2847,9 +2865,10 @@ EHCI_AbortIsoTransfer(IN PEHCI_EXTENSION EhciExtension,
         DPRINT("EHCI_AbortIsoTransfer: Aborting high-speed ISO transfer\n");
 
         /* Find iTDs belonging to this transfer and abort them */
-        ITD = EhciTransfer->ActiveITD;
-        while(ITD != NULL)
+        while(EhciTransfer->ActiveITD)
         {
+            /* grab first */
+            ITD = EhciTransfer->ActiveITD;
             /* Found an iTD for this transfer */
             DPRINT("EHCI_AbortIsoTransfer: Aborting iTD %p\n", ITD);
 
@@ -2876,9 +2895,7 @@ EHCI_AbortIsoTransfer(IN PEHCI_EXTENSION EhciExtension,
             {
                 EhciExtension->PendingTransfers--;
             }
-            /* move to next */
-            ITD = ITD->NextHcdTD;
-        };
+         };
     }
     else
     {
@@ -4416,7 +4433,7 @@ EHCI_ProcessCompletedITD(IN PEHCI_EXTENSION EhciExtension,
                ITD, TotalBytesTransferred, EhciTransfer->PendingTDs);
 
         /* Complete the transfer only when ALL iTDs are done */
-        if (EhciTransfer->PendingTDs == 0)
+        if (EhciTransfer->ActiveITD == NULL)
         {
             EhciExtension->PendingTransfers--;
             ASSERT(EhciTransfer->ActiveITD == NULL);
@@ -4426,7 +4443,7 @@ EHCI_ProcessCompletedITD(IN PEHCI_EXTENSION EhciExtension,
             RegPacket.UsbPortCompleteIsoTransfer(EhciExtension,
                                               EhciEndpoint,
                                               EhciTransfer->TransferParameters,
-                                              TotalBytesTransferred);
+                                              EhciTransfer->TransferLen);
         }
     }
 }
@@ -4459,44 +4476,29 @@ EHCI_UnlinkITDFromFrameList(IN PEHCI_EXTENSION EhciExtension,
         /* Found the iTD at the head of the frame list */
         HcResourcesVA->PeriodicFrameList[FrameIndex] = ITD->HwTD.NextLink.AsULONG;
         DPRINT_EHCI("EHCI_UnlinkITDFromFrameList: Unlinked iTD from frame %d head\n", FrameIndex);
+        EhciTransfer->ActiveITD = EhciTransfer->ActiveITD->NextHcdTD;
     }
     else
     {
-        FrameIndex = 0;
+        PrevITD = EhciTransfer->ActiveITD;
+        CurrentITD = PrevITD->NextHcdTD;
         do
         {
-            CurrentLink.AsULONG = HcResourcesVA->PeriodicFrameList[FrameIndex];
-            if ((CurrentLink.AsULONG & LINK_POINTER_MASK) == TargetPhysicalAddress &&
-                CurrentLink.Type == EHCI_LINK_TYPE_iTD)
+            if (CurrentITD == ITD)
             {
-                HcResourcesVA->PeriodicFrameList[FrameIndex] = ITD->HwTD.NextLink.AsULONG;
+                /* unlink */
+                PrevITD->NextHcdTD = CurrentITD->NextHcdTD;
+                PrevITD->HwTD.NextLink = CurrentITD->HwTD.NextLink;
                 break;
             }
-            FrameIndex++;
-        } while (FrameIndex < EHCI_FRAME_LIST_MAX_ENTRIES);
+            PrevITD = CurrentITD;
+            if (CurrentITD)
+            {
+                CurrentITD = CurrentITD->NextHcdTD;
+            }
+        } while (CurrentITD != NULL);
     }
-    if (!EhciTransfer)
-        return;
-    PrevITD = NULL;
-    CurrentITD = EhciTransfer->ActiveITD;
-    ASSERT(CurrentITD);
-    do
-    {
-        if (CurrentITD == ITD)
-        {
-            if (PrevITD)
-            {
-                PrevITD->NextHcdTD = ITD->NextHcdTD;
-            }
-            else
-            {
-                EhciTransfer->ActiveITD = ITD->NextHcdTD;
-            }
-            break;
-        }
-        PrevITD = CurrentITD;
-        CurrentITD = CurrentITD->NextHcdTD;
-    } while (CurrentITD);
+    RtlClearBits(&EhciExtension->IsoBitmap, ITD->ScheduledFrame, 1);
 }
 
 BOOLEAN

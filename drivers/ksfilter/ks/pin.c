@@ -1784,15 +1784,15 @@ KsStreamPointerAdvance(
     if (Irp)
     {
         DPRINT("KsStreamPointerAdvance: Completing IRP %p with %u bytes\n", Irp, Header->DataUsed);
-        
+
         /* Get the IRP stack location to find output buffer */
         IrpStack = IoGetCurrentIrpStackLocation(Irp);
-        
+
         /* Get the user's output buffer (the KSSTREAM_HEADER they passed) */
         if (Irp->AssociatedIrp.SystemBuffer && IrpStack->Parameters.DeviceIoControl.OutputBufferLength >= sizeof(KSSTREAM_HEADER))
         {
             UserHeader = (PKSSTREAM_HEADER)Irp->AssociatedIrp.SystemBuffer;
-            
+
             /* Copy the updated header back to the user buffer */
             UserHeader->DataUsed = Header->DataUsed;
             UserHeader->FrameExtent = Header->FrameExtent;
@@ -1801,22 +1801,22 @@ KsStreamPointerAdvance(
             UserHeader->PresentationTime = Header->PresentationTime;
             UserHeader->Duration = Header->Duration;
             UserHeader->OptionsFlags = Header->OptionsFlags;
-            
+
             DPRINT("KsStreamPointerAdvance: Updated user header with DataUsed=%u\n", Header->DataUsed);
         }
-        
+
         /* Complete the IRP with the frame data */
         Irp->IoStatus.Status = STATUS_SUCCESS;
         Irp->IoStatus.Information = IrpStack->Parameters.DeviceIoControl.OutputBufferLength;
         Pointer->Irp = NULL;
-        
+
         KeReleaseSpinLock(&Pointer->Lock, OldLevel);
-        
+
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_SUCCESS;
     }
 
-    KeReleaseSpinLock(&Pointer->Lock, OldLevel);    
+    KeReleaseSpinLock(&Pointer->Lock, OldLevel);
     return STATUS_SUCCESS;
 }
 

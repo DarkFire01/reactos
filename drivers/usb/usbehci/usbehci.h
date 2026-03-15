@@ -278,6 +278,8 @@ typedef struct _EHCI_EXTENSION {
   ULONG BackupAsynclistaddr;
   ULONG BackupCtrlDSSegment;
   ULONG BackupUSBCmd;
+  RTL_BITMAP IsoBitmap;
+  PULONG IsoBitmapBuffer;
 } EHCI_EXTENSION, *PEHCI_EXTENSION;
 
 /* debug.c */
@@ -428,5 +430,8 @@ EHCI_InitializeITD(IN PEHCI_EXTENSION EhciExtension,
                    IN ULONG BufferPhysicalAddress,
                    IN ULONG TransferLength,
                    IN ULONG MicroframeNumber);
+ULONG
+NTAPI
+EHCI_Get32BitFrameNumber(IN PVOID ehciExtension);
 
 #endif /* USBEHCI_H__ */
