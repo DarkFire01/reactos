@@ -80,7 +80,7 @@ USBVideoFindStreamingInterfaceDescriptor(
         EndpointDescriptor = (PUSB_ENDPOINT_DESCRIPTOR)((ULONG_PTR)Descriptor + Descriptor->bLength);
         ASSERT(EndpointDescriptor->bDescriptorType == 0x05);
         ASSERT(EndpointDescriptor->bLength == 0x07);
-        if (EndpointDescriptor->wMaxPacketSize >= dwMaxPayloadTransferSize)
+        if ((EndpointDescriptor->wMaxPacketSize & 0x3FF) >=dwMaxPayloadTransferSize)
         {
             /* found alternate setting */
             DPRINT1("wMaxPacketSize %x\n", EndpointDescriptor->wMaxPacketSize);

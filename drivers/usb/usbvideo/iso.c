@@ -30,15 +30,12 @@ USBVideoQueueIsoRead(
     {
         InterlockedIncrement(&DeviceExtension->StoppedStreamingIrps);
 
-        if (InterlockedCompareExchange(&DeviceExtension->StoppedStreamingIrps, 0, URB_POOL_COUNT))
+        if (InterlockedCompareExchange(&DeviceExtension->StoppedStreamingIrps, 0, DeviceExtension->UrbPoolCount))
         {
             KeSetEvent(&DeviceExtension->StoppedStreamingEvent, 0, FALSE);
         }
         return STATUS_SUCCESS;
     }
-
-
-    //DPRINT1("USBVideoQueueIsoRead MaxTransferSize %x dwMaxPayloadTransferSize %x\n", DeviceExtension->MaximumPacketSize, DeviceExtension->dwMaxPayloadTransferSize);
 
     /* initialize irp */
     IoInitializeIrp(Irp, IoSizeOfIrp(DeviceExtension->LowerDevice->StackSize), DeviceExtension->LowerDevice->StackSize);
@@ -49,21 +46,19 @@ USBVideoQueueIsoRead(
     Irp->Flags = 0;
     Irp->UserBuffer = NULL;
 
-    RtlZeroMemory(Urb, GET_ISO_URB_SIZE(ISO_PACKET_COUNT));
-
-   // ASSERT(DeviceExtension->InterfaceInfo->Pipes[0].MaximumPacketSize == DeviceExtension->MaximumPacketSize);
+    RtlZeroMemory(Urb, GET_ISO_URB_SIZE(DeviceExtension->IsoPacketCount));
 
     /* init urb */
     Urb->UrbIsochronousTransfer.Hdr.Function = URB_FUNCTION_ISOCH_TRANSFER;
-    Urb->UrbIsochronousTransfer.Hdr.Length = GET_ISO_URB_SIZE(ISO_PACKET_COUNT);
+    Urb->UrbIsochronousTransfer.Hdr.Length = GET_ISO_URB_SIZE(DeviceExtension->IsoPacketCount);
     Urb->UrbIsochronousTransfer.PipeHandle = DeviceExtension->hPipe;
     Urb->UrbIsochronousTransfer.TransferFlags = USBD_TRANSFER_DIRECTION_IN | USBD_START_ISO_TRANSFER_ASAP;
-    Urb->UrbIsochronousTransfer.TransferBufferLength = DeviceExtension->dwMaxPayloadTransferSize * ISO_PACKET_COUNT;
+    Urb->UrbIsochronousTransfer.TransferBufferLength = DeviceExtension->dwMaxPayloadTransferSize * DeviceExtension->IsoPacketCount;
     Urb->UrbIsochronousTransfer.TransferBuffer = TransferBuffer;
-    Urb->UrbIsochronousTransfer.NumberOfPackets = ISO_PACKET_COUNT;
+    Urb->UrbIsochronousTransfer.NumberOfPackets = DeviceExtension->IsoPacketCount;
     Urb->UrbIsochronousTransfer.StartFrame = 0;
 
-    for (Index = 0; Index < ISO_PACKET_COUNT; Index++)
+    for (Index = 0; Index < DeviceExtension->IsoPacketCount; Index++)
     {
         Urb->UrbIsochronousTransfer.IsoPacket[Index].Offset = Index * DeviceExtension->dwMaxPayloadTransferSize;
         Urb->UrbIsochronousTransfer.IsoPacket[Index].Length = DeviceExtension->dwMaxPayloadTransferSize;
@@ -94,6 +89,7 @@ USBVideoIsoReadComplete(
     UCHAR HeaderLen;
     ULONG Index;
     PKSPIN Pin = (PKSPIN)Context;
+
     PUSB_VIDEO_DEVICE_EXTENSION  DeviceExtension = Pin->Context;
     PURB Urb = Irp->Tail.Overlay.DriverContext[0];
     PFRAME_CONTEXT Frame = Irp->Tail.Overlay.DriverContext[1];
@@ -105,26 +101,28 @@ USBVideoIsoReadComplete(
         USBVideoQueueIsoRead(Pin,
                               DeviceExtension->hPipe,
                               (PUCHAR)Urb->UrbIsochronousTransfer.TransferBuffer,
-                              ISO_TRANSFER_SIZE,
+                              DeviceExtension->IsoTransferSize,
                               Irp,
                               Urb,
                               Frame);
+
         return STATUS_MORE_PROCESSING_REQUIRED;
     }
     BytesReceived = 0;
 
-    for(Index = 0; Index < ISO_PACKET_COUNT; Index++)
+    for(Index = 0; Index < Urb->UrbIsochronousTransfer.NumberOfPackets; Index++)
     {
         //DPRINT1("Index %u Length %u\n", Index, Urb->UrbIsochronousTransfer.IsoPacket[Index].Length);
         BytesReceived += Urb->UrbIsochronousTransfer.IsoPacket[Index].Length;
     }
+
     Data         = (PUCHAR)Urb->UrbIsochronousTransfer.TransferBuffer;
     Offset        = 0;
-    for(Index = 0; Index < ISO_PACKET_COUNT; Index++)
+    for(Index = 0; Index < Urb->UrbIsochronousTransfer.NumberOfPackets; Index++)
     {
         if (Urb->UrbIsochronousTransfer.IsoPacket[Index].Status != USBD_STATUS_SUCCESS)
         {
-            DPRINT("Status failed for packet %x\n", Urb->UrbIsochronousTransfer.IsoPacket[Index].Status);
+            DPRINT("Status %x failed for packet %u\n", Urb->UrbIsochronousTransfer.IsoPacket[Index].Status, Index);
             continue;
         }
         Offset = Urb->UrbIsochronousTransfer.IsoPacket[Index].Offset;
@@ -136,7 +134,7 @@ USBVideoIsoReadComplete(
         {
             DPRINT("Invalid packet atIso Index %u Offset %u HeaderLen %u BytesReceived %u\n", Index,
                     Offset, HeaderLen, BytesReceived);
-            break;
+            continue;
         }
 #if 0
         /* discard frame if err bit is set */
@@ -178,13 +176,20 @@ USBVideoIsoReadComplete(
             Frame->FrameSize   += PayloadDataLen;
             Frame->FrameStarted = TRUE;
         }
+
+        if (Frame->FrameSize == Frame->MaxFrameSize)
+        {
+            DPRINT1("Buffer full discarding\n");
+            Frame->FrameSize    = 0;
+            Frame->FrameStarted = FALSE;
+        }
     }
 
     /* requeue irp */
     USBVideoQueueIsoRead(Pin,
                           DeviceExtension->hPipe,
                           (PUCHAR)Urb->UrbIsochronousTransfer.TransferBuffer,
-                          ISO_TRANSFER_SIZE,
+                          DeviceExtension->IsoTransferSize,
                           Irp,
                           Urb,
                           Frame);

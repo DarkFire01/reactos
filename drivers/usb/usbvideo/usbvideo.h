@@ -60,13 +60,6 @@ typedef struct
 }STILL_PROBE_COMMIT, *PSTILL_PROBE_COMMIT;;
 
 
-#define BULK_TRANSFER_SIZE  (64*1024)
-#define ISO_TRANSFER_SIZE (614400)
-#define FRAME_CONTEXT_COUNT (1)
-#define FRAME_CONTEXT_SIZE (640 * 480 * 2)
-#define URB_POOL_COUNT    4
-#define ISO_PACKET_COUNT  16
-
 typedef struct _FRAME_CONTEXT {
     PUCHAR  FrameBuffer;
     ULONG   FrameSize;
@@ -333,13 +326,21 @@ typedef struct
     PFRAME_CONTEXT FrameCtx;
     ULONG dwMaxPayloadTransferSize;
     PVIDEO_FORMAT_INFO VideoFormatInfo;                           /* video format lookup info */
-    PUCHAR * BulkBuffer;                                          /* bulk buffer array for irp queue */
+    PUCHAR * Buffer;                                              /* buffer array for irp queue */
     PURB * Urb;                                                   /* Urb array for irp queue */
     PIRP * Irp;                                                   /* irp array for irp queue */
     PKSPIN Pin;                                                   /* pin reference */
     ULONG StopStreaming;                                          /* stops streaming */
     ULONG StoppedStreamingIrps;                                   /* stopped streaming irp count */
     KEVENT StoppedStreamingEvent;                                  /* stopped streaming event */
+
+    ULONG BulkTransferSize;
+    ULONG IsoTransferSize;
+    ULONG FrameContextCount;
+    ULONG FrameContextSize;
+    ULONG UrbPoolCount;
+    ULONG IsoPacketCount;
+    BOOLEAN NeedFramePatching;
 } USB_VIDEO_DEVICE_EXTENSION, *PUSB_VIDEO_DEVICE_EXTENSION;
 
 

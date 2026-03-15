@@ -8,6 +8,8 @@
 */
 #include "usbvideo.h"
 
+extern GUID KSDATAFORMAT_SUBTYPE_MJPEG_LOCAL;
+
 VOID
 NTAPI
 USBVideoPinReset(
@@ -47,19 +49,18 @@ USBVideoPinSetDeviceState(
 
     if (ToState == KSSTATE_RUN)
     {
-        for (Index = 0; Index < URB_POOL_COUNT; Index++)
+        for (Index = 0; Index < DeviceExtension->UrbPoolCount; Index++)
         {
             if (DeviceExtension->PipeType == UsbdPipeTypeIsochronous)
             {
                 USBVideoQueueIsoRead(
                     Pin,
                     DeviceExtension->hPipe,
-                    DeviceExtension->BulkBuffer[Index],
-                    ISO_TRANSFER_SIZE,
+                    DeviceExtension->Buffer[Index],
+                    DeviceExtension->IsoTransferSize,
                     DeviceExtension->Irp[Index],
                     DeviceExtension->Urb[Index],
-                    &DeviceExtension->FrameCtx[0]);
-
+                    &DeviceExtension->FrameCtx[Index]);
             }
             else
             {
@@ -67,11 +68,10 @@ USBVideoPinSetDeviceState(
                 USBVideoQueueBulkRead(
                         Pin,
                         DeviceExtension->hPipe,
-                        DeviceExtension->BulkBuffer[Index],
-                        32* 1024,
+                        DeviceExtension->Buffer[Index],
+                        DeviceExtension->BulkTransferSize,
                         DeviceExtension->Irp[Index],
                         DeviceExtension->Urb[Index]);
-
             }
 
         }
@@ -151,6 +151,77 @@ USBVideoGetDataRangeIndexForFormat(
     *dwFrameInterval = DeviceExtension->VideoFormatInfo[2].dwFrameInterval;
     return STATUS_SUCCESS;
 }
+
+VOID
+USBVideoSetStreamingDefaults(
+    IN PKSPIN Pin,
+    IN PKSDATAFORMAT ConnectionFormat)
+{
+    PUSB_VIDEO_DEVICE_EXTENSION DeviceExtension;
+    PKS_DATARANGE_VIDEO Format;
+
+    /* get device extension */
+    DeviceExtension = Pin->Context;
+
+    /* get video format */
+    Format = (PKS_DATARANGE_VIDEO)ConnectionFormat;
+
+    if (DeviceExtension->PipeType == UsbdPipeTypeBulk)
+    {
+        /* bulk pipe */
+        DeviceExtension->BulkTransferSize = 32 * 1024;
+        DeviceExtension->FrameContextCount = 1;
+        DeviceExtension->UrbPoolCount = 4;
+        DeviceExtension->FrameContextSize = Format->VideoInfoHeader.dwBitRate;
+        DeviceExtension->NeedFramePatching = IsEqualGUIDAligned(&Format->DataRange.SubFormat, &KSDATAFORMAT_SUBTYPE_MJPEG_LOCAL);
+
+        DPRINT1("BulkTransferSize %u\n", DeviceExtension->BulkTransferSize);
+        DPRINT1("FrameContextCount %u\n", DeviceExtension->FrameContextCount);
+        DPRINT1("FrameContextSize %u\n", DeviceExtension->FrameContextSize);
+        DPRINT1("UrbPoolCount %u\n", DeviceExtension->UrbPoolCount);
+        DPRINT1("IsoPacketCount %u\n", DeviceExtension->IsoPacketCount);
+        DPRINT1("NeedFramePatching %u\n", DeviceExtension->NeedFramePatching);
+    }
+    else
+    {
+        ASSERT(DeviceExtension->PipeType == UsbdPipeTypeIsochronous);
+        if (Format->bFixedSizeSamples)
+        {
+            /* uncompressed format have fixed samples */
+            ULONG Count = Format->VideoInfoHeader.dwBitRate / DeviceExtension->dwMaxPayloadTransferSize;
+            if (Format->VideoInfoHeader.dwBitRate % DeviceExtension->dwMaxPayloadTransferSize != 0)
+                Count++;
+            DeviceExtension->IsoTransferSize = Count * DeviceExtension->dwMaxPayloadTransferSize;
+            DeviceExtension->FrameContextCount = 2;
+            DeviceExtension->FrameContextSize = DeviceExtension->IsoTransferSize;
+            DeviceExtension->UrbPoolCount = 2;
+            DeviceExtension->IsoPacketCount = Count;
+            DeviceExtension->NeedFramePatching = FALSE;
+        }
+        else
+        {
+            ULONG TransferSize = 650 * 1024; // FIXME determine
+            DeviceExtension->IsoTransferSize = TransferSize;
+            DeviceExtension->FrameContextCount = 1;
+            DeviceExtension->FrameContextSize = DeviceExtension->IsoTransferSize;
+            DeviceExtension->UrbPoolCount = 1;
+            DeviceExtension->IsoPacketCount = DeviceExtension->IsoTransferSize / DeviceExtension->dwMaxPayloadTransferSize;
+            if (DeviceExtension->IsoTransferSize % DeviceExtension->dwMaxPayloadTransferSize != 0)
+            {
+                DeviceExtension->IsoPacketCount++;
+            }
+            DeviceExtension->IsoPacketCount = min(DeviceExtension->IsoPacketCount, 256);
+            DeviceExtension->NeedFramePatching = IsEqualGUIDAligned(&Format->DataRange.SubFormat, &KSDATAFORMAT_SUBTYPE_MJPEG_LOCAL);
+        }
+        DPRINT1("IsoTransferSize %u\n", DeviceExtension->IsoTransferSize);
+        DPRINT1("FrameContextCount %u\n", DeviceExtension->FrameContextCount);
+        DPRINT1("FrameContextSize %u\n", DeviceExtension->FrameContextSize);
+        DPRINT1("UrbPoolCount %u\n", DeviceExtension->UrbPoolCount);
+        DPRINT1("IsoPacketCount %u\n", DeviceExtension->IsoPacketCount);
+        DPRINT1("NeedFramePatching %u\n", DeviceExtension->NeedFramePatching);
+    }
+}
+
 
 NTSTATUS
 USBVideoSetStreamingFormat(
@@ -281,6 +352,7 @@ USBVideoSetStreamingFormat(
     DeviceExtension->PipeType = Urb->UrbSelectInterface.Interface.Pipes[0].PipeType;
     DeviceExtension->hPipe = Urb->UrbSelectInterface.Interface.Pipes[0].PipeHandle;
     DeviceExtension->MaximumPacketSize = Urb->UrbSelectInterface.Interface.Pipes[0].MaximumPacketSize;
+    USBVideoSetStreamingDefaults(Pin, ConnectionFormat);
     DPRINT1("USBVideoSetFormat success\n");
     return Status;
 }
@@ -481,34 +553,45 @@ USBVideoPinCreate(
     DeviceExtension = Pin->Context;
 
     /* init frame context */
-    DeviceExtension->FrameCtx = AllocFunction(sizeof(FRAME_CONTEXT) * FRAME_CONTEXT_COUNT);
+    DeviceExtension->FrameCtx = AllocFunction(sizeof(FRAME_CONTEXT) * DeviceExtension->FrameContextCount);
     if (!DeviceExtension->FrameCtx)
     {
         /* no memory */
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-    DeviceExtension->Irp = AllocFunction(sizeof(PIRP) * URB_POOL_COUNT);
+    DeviceExtension->Irp = AllocFunction(sizeof(PIRP) * DeviceExtension->UrbPoolCount);
         if (!DeviceExtension->Irp)
     {
         /* no memory */
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    DeviceExtension->Urb = AllocFunction(sizeof(PURB) * URB_POOL_COUNT);
+    DeviceExtension->Urb = AllocFunction(sizeof(PURB) * DeviceExtension->UrbPoolCount);
     if (!DeviceExtension->Urb)
     {
         /* no memory */
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    DeviceExtension->BulkBuffer = AllocFunction(sizeof(PUCHAR) * URB_POOL_COUNT);
-    if (!DeviceExtension->BulkBuffer)
+    DeviceExtension->Buffer = AllocFunction(sizeof(PUCHAR) * DeviceExtension->UrbPoolCount);
+    if (!DeviceExtension->Buffer)
     {
         /* no memory */
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    for (ULONG i = 0; i < URB_POOL_COUNT; i++)
+    for(ULONG i = 0; i < DeviceExtension->FrameContextCount; i++)
+    {
+        DeviceExtension->FrameCtx[i].FrameBuffer = AllocFunction(DeviceExtension->FrameContextSize);
+        if (!DeviceExtension->FrameCtx[i].FrameBuffer)
+        {
+            /* no memory */
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+        DeviceExtension->FrameCtx[i].MaxFrameSize = DeviceExtension->FrameContextSize;
+    }
+
+    for (ULONG i = 0; i < DeviceExtension->UrbPoolCount; i++)
     {
         /* allocate irp */
         PIRP Irp = AllocFunction(IoSizeOfIrp(DeviceExtension->LowerDevice->StackSize));
@@ -528,7 +611,7 @@ USBVideoPinCreate(
 
         if (DeviceExtension->PipeType == UsbdPipeTypeIsochronous)
         {
-            DeviceExtension->Urb[i] = AllocFunction(GET_ISO_URB_SIZE(ISO_PACKET_COUNT));
+            DeviceExtension->Urb[i] = AllocFunction(GET_ISO_URB_SIZE(DeviceExtension->IsoPacketCount));
         }
         else
         {
@@ -541,21 +624,20 @@ USBVideoPinCreate(
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
-        DeviceExtension->BulkBuffer[i] = AllocFunction(ISO_TRANSFER_SIZE);
-        if (!DeviceExtension->BulkBuffer[i])
+        if (DeviceExtension->PipeType == UsbdPipeTypeIsochronous)
+        {
+            DeviceExtension->Buffer[i] = AllocFunction(DeviceExtension->IsoTransferSize);
+        }
+        else
+        {
+            ASSERT(DeviceExtension->PipeType == UsbdPipeTypeBulk);
+            DeviceExtension->Buffer[i] = AllocFunction(DeviceExtension->BulkTransferSize);
+        }
+
+        if (!DeviceExtension->Buffer[i])
         {
             /* no memory */
             return STATUS_INSUFFICIENT_RESOURCES;
-        }
-        if (i < FRAME_CONTEXT_COUNT)
-        {
-            DeviceExtension->FrameCtx[i].FrameBuffer = AllocFunction(FRAME_CONTEXT_SIZE);
-            if (!DeviceExtension->FrameCtx[i].FrameBuffer)
-            {
-                /* no memory */
-                return STATUS_INSUFFICIENT_RESOURCES;
-            }
-            DeviceExtension->FrameCtx[i].MaxFrameSize = FRAME_CONTEXT_SIZE;
         }
     }
     return STATUS_SUCCESS;

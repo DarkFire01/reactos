@@ -76,7 +76,7 @@ USBVideoBulkReadComplete(
 
     PKSPIN Pin = (PKSPIN)Context;
     PUSB_VIDEO_DEVICE_EXTENSION  DeviceExtension = Pin->Context;
-    PFRAME_CONTEXT Frame     = DeviceExtension->FrameCtx;
+    PFRAME_CONTEXT Frame     = &DeviceExtension->FrameCtx[0]; // bulk uses one frame context
     PURB Urb = Irp->Tail.Overlay.DriverContext[0];
 
     DPRINT("USBVideoBulkReadComplete: Called, status=%x\n", Irp->IoStatus.Status);
@@ -88,7 +88,7 @@ USBVideoBulkReadComplete(
         USBVideoQueueBulkRead(Pin,
                               DeviceExtension->hPipe,
                               (PUCHAR)Urb->UrbBulkOrInterruptTransfer.TransferBuffer,
-                              32 * 1024,
+                              DeviceExtension->BulkTransferSize,
                               Irp,
                               Urb);
         return STATUS_MORE_PROCESSING_REQUIRED;
@@ -165,7 +165,7 @@ USBVideoBulkReadComplete(
     USBVideoQueueBulkRead(Pin,
                           DeviceExtension->hPipe,
                           (PUCHAR)Urb->UrbBulkOrInterruptTransfer.TransferBuffer,
-                          32 * 1024,
+                          DeviceExtension->BulkTransferSize,
                           Irp,
                           Urb);
     return STATUS_MORE_PROCESSING_REQUIRED;
