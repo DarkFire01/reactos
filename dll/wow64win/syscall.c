@@ -331,6 +331,13 @@ static VOID InitServiceTable(VOID)
     IMPLEMENT_SERVICE(UserGetComboBoxInfo);
     IMPLEMENT_SERVICE(UserGetWindowDC);
     IMPLEMENT_SERVICE(GdiGetCharSet);
+    IMPLEMENT_SERVICE(GdiExtCreateRegion);
+    IMPLEMENT_SERVICE(GdiExtCreatePen);
+    IMPLEMENT_SERVICE(UserUnhookWindowsHookEx);
+    IMPLEMENT_SERVICE(GdiAddFontMemResourceEx);
+    IMPLEMENT_SERVICE(UserUnregisterHotKey);
+    IMPLEMENT_SERVICE(UserUnhookWinEvent);
+    IMPLEMENT_SERVICE(UserUpdateLayeredWindow);
 #undef IMPLEMENT_SERVICE
 }
 

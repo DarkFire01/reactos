@@ -5215,7 +5215,6 @@ NTSTATUS WINAPI wow64_NtUserTranslateMessage( UINT *args )
     return NtUserTranslateMessage( msg_32to64( &msg, msg32 ), flags );
 }
 
-#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserUnhookWinEvent( UINT *args )
 {
     HWINEVENTHOOK handle = get_handle( &args );
@@ -5230,6 +5229,7 @@ NTSTATUS WINAPI wow64_NtUserUnhookWindowsHookEx( UINT *args )
     return NtUserUnhookWindowsHookEx( handle );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserUnregisterClass( UINT *args )
 {
     UNICODE_STRING32 *name32 = get_ptr( &args );
@@ -5244,6 +5244,7 @@ NTSTATUS WINAPI wow64_NtUserUnregisterClass( UINT *args )
     if (ret) client_menu_name_64to32( &menu_name, menu_name32 );
     return ret;
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserUnregisterHotKey( UINT *args )
 {
@@ -5253,6 +5254,7 @@ NTSTATUS WINAPI wow64_NtUserUnregisterHotKey( UINT *args )
     return NtUserUnregisterHotKey( hwnd, id );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserUpdateInputContext( UINT *args )
 {
     HIMC handle = get_handle( &args );
@@ -5261,11 +5263,13 @@ NTSTATUS WINAPI wow64_NtUserUpdateInputContext( UINT *args )
 
     return NtUserUpdateInputContext( handle, attr, value );
 }
+#endif
 
 NTSTATUS WINAPI wow64_NtUserUpdateLayeredWindow( UINT *args )
 {
     HWND hwnd = get_handle( &args );
     HDC hdc_dst = get_handle( &args );
+#ifndef __REACTOS__
     const POINT *pts_dst = get_ptr( &args );
     const SIZE *size = get_ptr( &args );
     HDC hdc_src = get_handle( &args );
@@ -5274,11 +5278,22 @@ NTSTATUS WINAPI wow64_NtUserUpdateLayeredWindow( UINT *args )
     const BLENDFUNCTION *blend = get_ptr( &args );
     DWORD flags = get_ulong( &args );
     const RECT *dirty = get_ptr( &args );
+#else
+    POINT *pts_dst = get_ptr( &args );
+    SIZE *size = get_ptr( &args );
+    HDC hdc_src = get_handle( &args );
+    POINT *pts_src = get_ptr( &args );
+    COLORREF key = get_ulong( &args );
+    BLENDFUNCTION *blend = get_ptr( &args );
+    DWORD flags = get_ulong( &args );
+    RECT *dirty = get_ptr( &args );
+#endif
 
     return NtUserUpdateLayeredWindow( hwnd, hdc_dst, pts_dst, size, hdc_src, pts_src,
                                       key, blend, flags, dirty );
 }
 
+#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserValidateRect( UINT *args )
 {
     HWND hwnd = get_handle( &args );
