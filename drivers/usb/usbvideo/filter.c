@@ -19,20 +19,6 @@ static KSFILTER_DISPATCH USBVideoFilterDispatch =
     NULL
 };
 
-static KSPIN_DISPATCH UsbVideoPinDispatch =
-{
-    USBVideoPinCreate,
-    USBVideoPinClose,
-    USBVideoPinProcess,
-    USBVideoPinReset,
-    USBVideoPinSetDataFormat,
-    USBVideoPinSetDeviceState,
-    NULL,
-    NULL,
-    NULL,
-    NULL
-};
-
 
 NTSTATUS
 NTAPI

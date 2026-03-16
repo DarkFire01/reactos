@@ -161,6 +161,7 @@ UsbVideoGetDataRangesForStreaming(
         {
             MjpegFormatTypeDescriptor = (PVS_MJPEG_FORMAT_TYPE_DESCRIPTOR)CommonDescriptor;
             StillImageFormatDescriptor = (PVS_STILL_IMAGE_FRAME_TYPE_DESCRIPTOR)CommonDescriptor;
+            (void)StillImageFormatDescriptor; /* Used in #if 0 block below */
             UncompressedFormatDescriptor = (PVS_UNCOMPRESSED_FORMAT_TYPE_DESCRIPTOR)CommonDescriptor;
             if (MjpegFormatTypeDescriptor->bDescriptorSubtype == VS_MJPEG_FORMAT_TYPE_DESCRIPTOR_SUBTYPE)
             {

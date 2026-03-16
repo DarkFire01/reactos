@@ -2630,7 +2630,6 @@ EHCI_SubmitIsoTransfer(IN PVOID ehciExtension,
         ULONG NumITDs;
         ULONG PacketIndex = 0;
         ULONG ITDCount = 0;
-        ULONG Count = 0;
         PEHCI_HCD_ITD ITD;
         PEHCI_HCD_ITD LastITD = NULL;
         PEHCI_HCD_ITD FirstITD = NULL;

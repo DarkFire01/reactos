@@ -30,7 +30,7 @@ USBVideoQueueIsoRead(
     {
         InterlockedIncrement(&DeviceExtension->StoppedStreamingIrps);
 
-        if (InterlockedCompareExchange(&DeviceExtension->StoppedStreamingIrps, 0, DeviceExtension->UrbPoolCount))
+        if (InterlockedCompareExchange(&DeviceExtension->StoppedStreamingIrps, 0, (LONG)DeviceExtension->UrbPoolCount))
         {
             KeSetEvent(&DeviceExtension->StoppedStreamingEvent, 0, FALSE);
         }

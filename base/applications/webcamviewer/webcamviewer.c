@@ -5,6 +5,7 @@
  * COPYRIGHT:   Copyright 2026 ReactOS Contributors
  */
 
+#include <winnt.h>
 #define WIN32_NO_STATUS
 #include <windef.h>
 #include <winbase.h>
@@ -96,14 +97,14 @@ VOID UpdateStatus(const char* format, ...)
 {
     char szBuffer[256];
     va_list args;
-    
+
     va_start(args, format);
     vsprintf(szBuffer, format, args);
     va_end(args);
-    
+
     if (g_AppState.hwndStatus)
         SetWindowTextA(g_AppState.hwndStatus, szBuffer);
-    
+
     DEBUG_PRINT("[STATUS] %s", szBuffer);
 }
 
@@ -111,13 +112,13 @@ static BOOL ks_prop_get(HANDLE h, const GUID* Set, ULONG Id, ULONG PinId, void* 
 {
     KSP_PIN prop;
     DWORD bytes = 0;
-    
+
     prop.Property.Set = *Set;
     prop.Property.Id = Id;
     prop.Property.Flags = KSPROPERTY_TYPE_GET;
     prop.PinId = PinId;
     prop.Reserved = 0;
-    
+
     return DeviceIoControl(h, IOCTL_KS_PROPERTY,
                           &prop, sizeof(prop),
                           Out, OutCb,
@@ -129,11 +130,11 @@ static BOOL set_pin_state(HANDLE hPin, KSSTATE State)
     DWORD bytes = 0;
     KSPROPERTY prop;
     KSSTATE outState = State;
-    
+
     prop.Set = KSPROPSETID_Connection;
     prop.Id = KSPROPERTY_CONNECTION_STATE;
     prop.Flags = KSPROPERTY_TYPE_SET;
-    
+
     return DeviceIoControl(hPin, IOCTL_KS_PROPERTY,
                           &prop, sizeof(prop),
                           &outState, sizeof(outState),
@@ -146,29 +147,29 @@ static BOOL get_pin_dataranges(HANDLE hFilter, ULONG pinId, BYTE** OutBuf, DWORD
     DWORD bytes = 0;
     DWORD cb = 256 * 1024;
     BYTE* buf;
-    
+
     if (!OutBuf || !OutCb)
         return FALSE;
-    
+
     *OutBuf = NULL;
     *OutCb = 0;
-    
+
     buf = (BYTE*)malloc(cb);
     if (!buf)
         return FALSE;
-    
+
     prop.Property.Set = KSPROPSETID_Pin;
     prop.Property.Id = KSPROPERTY_PIN_DATARANGES;
     prop.Property.Flags = KSPROPERTY_TYPE_GET;
     prop.PinId = pinId;
     prop.Reserved = 0;
-    
+
     if (!DeviceIoControl(hFilter, IOCTL_KS_PROPERTY, &prop, sizeof(prop), buf, cb, &bytes, NULL))
     {
         free(buf);
         return FALSE;
     }
-    
+
     *OutBuf = buf;
     *OutCb = bytes;
     return TRUE;
@@ -180,28 +181,28 @@ static BOOL get_pin_interfaces(HANDLE hFilter, ULONG pinId, BYTE** OutBuf, DWORD
     DWORD bytes = 0;
     DWORD cb = 64 * 1024;
     BYTE* buf;
-    
+
     if (!OutBuf || !OutCb)
         return FALSE;
     *OutBuf = NULL;
     *OutCb = 0;
-    
+
     buf = (BYTE*)malloc(cb);
     if (!buf)
         return FALSE;
-    
+
     prop.Property.Set = KSPROPSETID_Pin;
     prop.Property.Id = KSPROPERTY_PIN_INTERFACES;
     prop.Property.Flags = KSPROPERTY_TYPE_GET;
     prop.PinId = pinId;
     prop.Reserved = 0;
-    
+
     if (!DeviceIoControl(hFilter, IOCTL_KS_PROPERTY, &prop, sizeof(prop), buf, cb, &bytes, NULL))
     {
         free(buf);
         return FALSE;
     }
-    
+
     *OutBuf = buf;
     *OutCb = bytes;
     return TRUE;
@@ -213,28 +214,28 @@ static BOOL get_pin_mediums(HANDLE hFilter, ULONG pinId, BYTE** OutBuf, DWORD* O
     DWORD bytes = 0;
     DWORD cb = 64 * 1024;
     BYTE* buf;
-    
+
     if (!OutBuf || !OutCb)
         return FALSE;
     *OutBuf = NULL;
     *OutCb = 0;
-    
+
     buf = (BYTE*)malloc(cb);
     if (!buf)
         return FALSE;
-    
+
     prop.Property.Set = KSPROPSETID_Pin;
     prop.Property.Id = KSPROPERTY_PIN_MEDIUMS;
     prop.Property.Flags = KSPROPERTY_TYPE_GET;
     prop.PinId = pinId;
     prop.Reserved = 0;
-    
+
     if (!DeviceIoControl(hFilter, IOCTL_KS_PROPERTY, &prop, sizeof(prop), buf, cb, &bytes, NULL))
     {
         free(buf);
         return FALSE;
     }
-    
+
     *OutBuf = buf;
     *OutCb = bytes;
     return TRUE;
@@ -250,16 +251,16 @@ static BOOL pick_video_format_from_dataranges(const BYTE* Buf, DWORD Cb, GUID* O
     const KSMULTIPLE_ITEM* mi;
     const BYTE* p;
     ULONG i;
-    
+
     if (!Buf || Cb < sizeof(KSMULTIPLE_ITEM) || !OutSubtype || !OutSpecifier)
         return FALSE;
-    
+
     mi = (const KSMULTIPLE_ITEM*)Buf;
     if (mi->Size < sizeof(KSMULTIPLE_ITEM) || mi->Size > Cb)
         return FALSE;
-    
+
     p = Buf + sizeof(KSMULTIPLE_ITEM);
-    
+
     /* FIRST PASS: Prefer YUY2 specifically (best for raw pixel access) */
     for (i = 0; i < mi->Count; ++i)
     {
@@ -280,7 +281,7 @@ static BOOL pick_video_format_from_dataranges(const BYTE* Buf, DWORD Cb, GUID* O
         }
         p += dr->FormatSize;
     }
-    
+
     /* SECOND PASS: Fall back to MJPG if YUY2 not available */
     p = Buf + sizeof(KSMULTIPLE_ITEM);
     for (i = 0; i < mi->Count; ++i)
@@ -302,7 +303,7 @@ static BOOL pick_video_format_from_dataranges(const BYTE* Buf, DWORD Cb, GUID* O
         }
         p += dr->FormatSize;
     }
-    
+
     /* THIRD PASS: Take any video format as last resort */
     p = Buf + sizeof(KSMULTIPLE_ITEM);
     for (i = 0; i < mi->Count; ++i)
@@ -320,7 +321,7 @@ static BOOL pick_video_format_from_dataranges(const BYTE* Buf, DWORD Cb, GUID* O
         }
         p += dr->FormatSize;
     }
-    
+
     return FALSE;
 }
 
@@ -332,16 +333,16 @@ static BOOL build_pin_format_from_dataranges(const BYTE* Buf, DWORD Cb, const GU
     const BYTE* p;
     ULONG i;
     GUID spec = *outSpecifier;
-    
+
     if (!Buf || Cb < sizeof(KSMULTIPLE_ITEM) || !outFormatBuf || !outFormatUsed)
         return FALSE;
-    
+
     mi = (const KSMULTIPLE_ITEM*)Buf;
     if (mi->Size < sizeof(KSMULTIPLE_ITEM) || mi->Size > Cb)
         return FALSE;
-    
+
     p = Buf + sizeof(KSMULTIPLE_ITEM);
-    
+
     for (i = 0; i < mi->Count; ++i)
     {
         const KSDATARANGE* dr = (const KSDATARANGE*)p;
@@ -359,18 +360,18 @@ static BOOL build_pin_format_from_dataranges(const BYTE* Buf, DWORD Cb, const GU
             p += dr->FormatSize;
             continue;
         }
-        
+
         /* Found matching format - use device's template */
         if (guid_is_equal(&spec, &KSDATAFORMAT_SPECIFIER_VIDEOINFO2))
         {
             const KS_DATARANGE_VIDEO2* drv = (const KS_DATARANGE_VIDEO2*)dr;
             KS_DATAFORMAT_VIDEOINFOHEADER2* fmt = (KS_DATAFORMAT_VIDEOINFOHEADER2*)outFormatBuf;
-            
+
             if (outFormatCb < sizeof(*fmt))
                 return FALSE;
-            
+
             ZeroMemory(fmt, sizeof(*fmt));
-            
+
             /* Copy from device's template */
             fmt->DataFormat.FormatSize = sizeof(*fmt);
             fmt->DataFormat.Flags = 0;
@@ -378,10 +379,10 @@ static BOOL build_pin_format_from_dataranges(const BYTE* Buf, DWORD Cb, const GU
             fmt->DataFormat.SubFormat = *ioSubtype;
             fmt->DataFormat.Specifier = spec;
             fmt->DataFormat.SampleSize = 0;
-            
+
             /* Copy video info header template from device */
             fmt->VideoInfoHeader = drv->VideoInfoHeader;
-            
+
             /* Override with requested parameters */
             fmt->VideoInfoHeader.bmiHeader.biWidth = Width;
             fmt->VideoInfoHeader.bmiHeader.biHeight = Height;
@@ -390,7 +391,7 @@ static BOOL build_pin_format_from_dataranges(const BYTE* Buf, DWORD Cb, const GU
             fmt->VideoInfoHeader.rcSource.bottom = Height;
             fmt->VideoInfoHeader.rcTarget = fmt->VideoInfoHeader.rcSource;
             fmt->VideoInfoHeader.AvgTimePerFrame = 10000000 / (Fps > 0 ? Fps : 30);
-            
+
             if (guid_is_equal(ioSubtype, &MEDIASUBTYPE_YUY2))
             {
                 fmt->VideoInfoHeader.bmiHeader.biCompression = 0x32595559;
@@ -398,11 +399,11 @@ static BOOL build_pin_format_from_dataranges(const BYTE* Buf, DWORD Cb, const GU
                 fmt->VideoInfoHeader.bmiHeader.biSizeImage = Width * Height * 2;
                 fmt->DataFormat.SampleSize = Width * Height * 2;
             }
-            
-            DEBUG_PRINT("[DEBUG] Using VIDEOINFO2 template: width=%lu, height=%lu", 
+
+            DEBUG_PRINT("[DEBUG] Using VIDEOINFO2 template: width=%lu, height=%lu",
                        (unsigned long)fmt->VideoInfoHeader.bmiHeader.biWidth,
                        (unsigned long)fmt->VideoInfoHeader.bmiHeader.biHeight);
-            
+
             *outFormatUsed = sizeof(*fmt);
             return TRUE;
         }
@@ -410,12 +411,12 @@ static BOOL build_pin_format_from_dataranges(const BYTE* Buf, DWORD Cb, const GU
         {
             const KS_DATARANGE_VIDEO* drv = (const KS_DATARANGE_VIDEO*)dr;
             KS_DATAFORMAT_VIDEOINFOHEADER* fmt = (KS_DATAFORMAT_VIDEOINFOHEADER*)outFormatBuf;
-            
+
             if (outFormatCb < sizeof(*fmt))
                 return FALSE;
-            
+
             ZeroMemory(fmt, sizeof(*fmt));
-            
+
             /* Copy from device's template */
             fmt->DataFormat.FormatSize = sizeof(*fmt);
             fmt->DataFormat.Flags = 0;
@@ -423,10 +424,10 @@ static BOOL build_pin_format_from_dataranges(const BYTE* Buf, DWORD Cb, const GU
             fmt->DataFormat.SubFormat = *ioSubtype;
             fmt->DataFormat.Specifier = spec;
             fmt->DataFormat.SampleSize = 0;
-            
+
             /* Copy video info header template from device */
             fmt->VideoInfoHeader = drv->VideoInfoHeader;
-            
+
             /* Override with requested parameters */
             fmt->VideoInfoHeader.bmiHeader.biWidth = Width;
             fmt->VideoInfoHeader.bmiHeader.biHeight = Height;
@@ -435,7 +436,7 @@ static BOOL build_pin_format_from_dataranges(const BYTE* Buf, DWORD Cb, const GU
             fmt->VideoInfoHeader.rcSource.bottom = Height;
             fmt->VideoInfoHeader.rcTarget = fmt->VideoInfoHeader.rcSource;
             fmt->VideoInfoHeader.AvgTimePerFrame = 10000000 / (Fps > 0 ? Fps : 30);
-            
+
             if (guid_is_equal(ioSubtype, &MEDIASUBTYPE_YUY2))
             {
                 fmt->VideoInfoHeader.bmiHeader.biCompression = 0x32595559;
@@ -443,18 +444,18 @@ static BOOL build_pin_format_from_dataranges(const BYTE* Buf, DWORD Cb, const GU
                 fmt->VideoInfoHeader.bmiHeader.biSizeImage = Width * Height * 2;
                 fmt->DataFormat.SampleSize = Width * Height * 2;
             }
-            
-            DEBUG_PRINT("[DEBUG] Using VIDEOINFO template: width=%lu, height=%lu", 
+
+            DEBUG_PRINT("[DEBUG] Using VIDEOINFO template: width=%lu, height=%lu",
                        (unsigned long)fmt->VideoInfoHeader.bmiHeader.biWidth,
                        (unsigned long)fmt->VideoInfoHeader.bmiHeader.biHeight);
-            
+
             *outFormatUsed = sizeof(*fmt);
             return TRUE;
         }
-        
+
         p += dr->FormatSize;
     }
-    
+
     DEBUG_PRINT("[DEBUG] No matching format found in dataranges");
     return FALSE;
 }
@@ -466,36 +467,36 @@ static BOOL try_create_pin(HANDLE hFilter, ULONG pinId, const KSPIN_INTERFACE* i
     BYTE* reqBuf;
     KSPIN_CONNECT* connect;
     DWORD st;
-    
+
     if (!iface || !medium || !format || formatCb == 0 || !outPin)
         return FALSE;
-    
+
     reqCb = (DWORD)(sizeof(KSPIN_CONNECT) + formatCb);
     reqBuf = (BYTE*)malloc(reqCb);
     if (!reqBuf)
         return FALSE;
-    
+
     ZeroMemory(reqBuf, reqCb);
     connect = (KSPIN_CONNECT*)reqBuf;
-    
+
     connect->Interface = *iface;
     connect->Medium = *medium;
     connect->PinId = pinId;
     connect->PinToHandle = NULL;
     connect->Priority.PriorityClass = KSPRIORITY_NORMAL;
     connect->Priority.PrioritySubClass = 1;
-    
+
     memcpy(reqBuf + sizeof(KSPIN_CONNECT), format, formatCb);
-    
+
     DEBUG_PRINT("[DEBUG] KsCreatePin: pinId=%lu, formatCb=%lu, totalCb=%lu", pinId, formatCb, reqCb);
-    
+
     *outPin = NULL;
     st = (DWORD)KsCreatePin(hFilter, connect, GENERIC_READ | GENERIC_WRITE, outPin);
-    
+
     DEBUG_PRINT("[DEBUG] KsCreatePin returned: 0x%lx, handle=%p", st, *outPin);
-    
+
     free(reqBuf);
-    
+
     return (st == 0 && *outPin && *outPin != INVALID_HANDLE_VALUE);
 }
 
@@ -507,7 +508,7 @@ VOID QueryPinInfo(HANDLE hKsDevice)
 VOID PaintPreview(HWND hwnd, HDC hdc)
 {
     RECT rc;
-    
+
     GetClientRect(hwnd, &rc);
     FillRect(hdc, &rc, (HBRUSH)(COLOR_WINDOW + 1));
 }
@@ -520,11 +521,11 @@ BOOL EnumerateWebcams(HWND hwndList)
     DWORD dwRequiredSize;
     PSP_DEVICE_INTERFACE_DETAIL_DATA_W pDetail;
     SP_DEVINFO_DATA devInfoData;
-    
+
     DEBUG_PRINT("[DEBUG] Starting webcam enumeration");
-    
+
     SendMessageW(hwndList, LB_RESETCONTENT, 0, 0);
-    
+
     /* Try KSCATEGORY_VIDEO first */
     hDevInfo = SetupDiGetClassDevsW(&KSCATEGORY_VIDEO, NULL, NULL,
                                     DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
@@ -534,31 +535,31 @@ BOOL EnumerateWebcams(HWND hwndList)
         hDevInfo = SetupDiGetClassDevsW(&KSCATEGORY_CAPTURE, NULL, NULL,
                                         DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
     }
-    
+
     if (hDevInfo == INVALID_HANDLE_VALUE)
     {
         UpdateStatus("Failed to enumerate video devices");
         return FALSE;
     }
-    
+
     ifData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
     dwIndex = 0;
-    
+
     while (SetupDiEnumDeviceInterfaces(hDevInfo, NULL, &KSCATEGORY_VIDEO, dwIndex, &ifData) ||
            (dwIndex == 0 && SetupDiEnumDeviceInterfaces(hDevInfo, NULL, &KSCATEGORY_CAPTURE, dwIndex, &ifData)))
     {
         SetupDiGetDeviceInterfaceDetailW(hDevInfo, &ifData, NULL, 0, &dwRequiredSize, NULL);
-        
+
         pDetail = (PSP_DEVICE_INTERFACE_DETAIL_DATA_W)LocalAlloc(LMEM_FIXED, dwRequiredSize);
         if (!pDetail)
         {
             dwIndex++;
             continue;
         }
-        
+
         pDetail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
         devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-        
+
         if (SetupDiGetDeviceInterfaceDetailW(hDevInfo, &ifData, pDetail, dwRequiredSize, &dwRequiredSize, &devInfoData))
         {
             HANDLE hTest = CreateFileW(pDetail->DevicePath, GENERIC_READ | GENERIC_WRITE,
@@ -575,26 +576,26 @@ BOOL EnumerateWebcams(HWND hwndList)
                     if (!nameBuf[0])
                         SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_DEVICEDESC,
                                                           NULL, (PBYTE)nameBuf, sizeof(nameBuf), NULL);
-                    
+
                     SendMessageW(hwndList, LB_ADDSTRING, 0, (LPARAM)(nameBuf[0] ? nameBuf : pDetail->DevicePath));
                     DEBUG_PRINT("[DEBUG] Found device: %ls (%lu pins)", nameBuf[0] ? nameBuf : L"(unnamed)", ctypes);
                 }
                 CloseHandle(hTest);
             }
         }
-        
+
         LocalFree(pDetail);
         dwIndex++;
     }
-    
+
     SetupDiDestroyDeviceInfoList(hDevInfo);
-    
+
     if (dwIndex == 0)
     {
         UpdateStatus("No video capture devices found");
         return FALSE;
     }
-    
+
     SendMessageW(hwndList, LB_SETCURSEL, 0, 0);
     return TRUE;
 }
@@ -610,11 +611,11 @@ BOOL OpenDevice(int iDeviceIndex)
     HANDLE hFilter = INVALID_HANDLE_VALUE;
     ULONG ctypes = 0;
     ULONG pinId;
-    
+
     DEBUG_PRINT("[DEBUG] Opening device %d", iDeviceIndex);
-    
+
     CloseDevice();
-    
+
     hDevInfo = SetupDiGetClassDevsW(&KSCATEGORY_VIDEO, NULL, NULL,
                                     DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
     if (hDevInfo == INVALID_HANDLE_VALUE)
@@ -622,16 +623,16 @@ BOOL OpenDevice(int iDeviceIndex)
         hDevInfo = SetupDiGetClassDevsW(&KSCATEGORY_CAPTURE, NULL, NULL,
                                         DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
     }
-    
+
     if (hDevInfo == INVALID_HANDLE_VALUE)
     {
         UpdateStatus("Failed to enumerate devices");
         return FALSE;
     }
-    
+
     ifData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
     dwIndex = 0;
-    
+
     while (SetupDiEnumDeviceInterfaces(hDevInfo, NULL, &KSCATEGORY_VIDEO, dwIndex, &ifData) ||
            (dwIndex == 0 && SetupDiEnumDeviceInterfaces(hDevInfo, NULL, &KSCATEGORY_CAPTURE, dwIndex, &ifData)))
     {
@@ -641,16 +642,16 @@ BOOL OpenDevice(int iDeviceIndex)
             pDetail = (PSP_DEVICE_INTERFACE_DETAIL_DATA_W)LocalAlloc(LMEM_FIXED, dwRequiredSize);
             if (!pDetail)
                 break;
-            
+
             pDetail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
             devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-            
+
             if (!SetupDiGetDeviceInterfaceDetailW(hDevInfo, &ifData, pDetail, dwRequiredSize, &dwRequiredSize, &devInfoData))
             {
                 LocalFree(pDetail);
                 break;
             }
-            
+
             hFilter = CreateFileW(pDetail->DevicePath, GENERIC_READ | GENERIC_WRITE,
                                  FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -659,24 +660,24 @@ BOOL OpenDevice(int iDeviceIndex)
         }
         dwIndex++;
     }
-    
+
     SetupDiDestroyDeviceInfoList(hDevInfo);
-    
+
     if (hFilter == INVALID_HANDLE_VALUE)
     {
         UpdateStatus("Failed to open device");
         return FALSE;
     }
-    
+
     if (!ks_prop_get(hFilter, &KSPROPSETID_Pin, KSPROPERTY_PIN_CTYPES, 0, &ctypes, sizeof(ctypes)))
     {
         UpdateStatus("Device doesn't support KS property queries");
         CloseHandle(hFilter);
         return FALSE;
     }
-    
+
     DEBUG_PRINT("[DEBUG] Device has %lu pins", ctypes);
-    
+
     /* Find a video output pin */
     for (pinId = 0; pinId < ctypes; ++pinId)
     {
@@ -690,41 +691,41 @@ BOOL OpenDevice(int iDeviceIndex)
         DWORD medCb = 0;
         GUID subtype = MEDIASUBTYPE_YUY2;
         GUID specifier = {0};
-        
+
         DEBUG_PRINT("[DEBUG] Checking pin %lu", pinId);
-        
+
         if (!ks_prop_get(hFilter, &KSPROPSETID_Pin, KSPROPERTY_PIN_DATAFLOW, pinId, &dataflow, sizeof(dataflow)))
             continue;
         if (!ks_prop_get(hFilter, &KSPROPSETID_Pin, KSPROPERTY_PIN_COMMUNICATION, pinId, &comm, sizeof(comm)))
             continue;
-        
+
         if (dataflow != KSPIN_DATAFLOW_OUT)
             continue;
         if (comm != KSPIN_COMMUNICATION_SOURCE && comm != KSPIN_COMMUNICATION_BOTH)
             continue;
-        
+
         if (!get_pin_dataranges(hFilter, pinId, &drBuf, &drCb))
             continue;
-        
+
         if (!pick_video_format_from_dataranges(drBuf, drCb, &subtype, &specifier))
         {
             free(drBuf);
             continue;
         }
-        
+
         if (!get_pin_interfaces(hFilter, pinId, &ifBuf, &ifCb))
         {
             free(drBuf);
             continue;
         }
-        
+
         if (!get_pin_mediums(hFilter, pinId, &medBuf, &medCb))
         {
             free(drBuf);
             free(ifBuf);
             continue;
         }
-        
+
         {
             const KSMULTIPLE_ITEM* ifMi = (const KSMULTIPLE_ITEM*)ifBuf;
             const KSMULTIPLE_ITEM* medMi = (const KSMULTIPLE_ITEM*)medBuf;
@@ -733,15 +734,15 @@ BOOL OpenDevice(int iDeviceIndex)
             ULONG ii, mi;
             BYTE formatBuf[sizeof(KS_DATAFORMAT_VIDEOINFOHEADER2)];
             DWORD formatUsed = 0;
-            
+
             DEBUG_PRINT("[DEBUG] Pin %lu: trying %lu interfaces x %lu mediums", pinId, (unsigned long)ifMi->Count, (unsigned long)medMi->Count);
-            
+
             for (ii = 0; ii < ifMi->Count; ++ii)
             {
                 for (mi = 0; mi < medMi->Count; ++mi)
                 {
                     DEBUG_PRINT("[DEBUG] Pin %lu: trying interface %lu, medium %lu", pinId, ii, mi);
-                    
+
                     /* Try multiple format variants: no override, size override, size+fps override */
                     if ((build_pin_format_from_dataranges(drBuf, drCb, &subtype, &specifier,
                                                           640, 480, 30,
@@ -758,7 +759,7 @@ BOOL OpenDevice(int iDeviceIndex)
                         g_AppState.dtSpecifier = specifier;
                         g_AppState.dwWidth = 640;
                         g_AppState.dwHeight = 480;
-                        
+
                         /* Log negotiated format */
                         if (guid_is_equal(&subtype, &MEDIASUBTYPE_YUY2))
                         {
@@ -775,7 +776,7 @@ BOOL OpenDevice(int iDeviceIndex)
                             DEBUG_PRINT("[DEBUG] Format negotiated: Unknown (%08lx)", subtype.Data1);
                             UpdateStatus("Format: Unknown (0x%08lx)", subtype.Data1);
                         }
-                        
+
                         /* Allocate frame buffer for streaming */
                         g_AppState.dwFrameBufSize = 640 * 480 * 2 + 1024;
                         g_AppState.pFrameBuf = (BYTE*)malloc(g_AppState.dwFrameBufSize);
@@ -785,7 +786,7 @@ BOOL OpenDevice(int iDeviceIndex)
                             CloseDevice();
                             return FALSE;
                         }
-                        
+
                         /* Allocate display buffer (BGRA32) */
                         g_AppState.dwDisplayBufSize = 640 * 480 * 4;
                         g_AppState.pDisplayBuf = (BYTE*)malloc(g_AppState.dwDisplayBufSize);
@@ -795,7 +796,7 @@ BOOL OpenDevice(int iDeviceIndex)
                             CloseDevice();
                             return FALSE;
                         }
-                        
+
                         /* Initialize BITMAPINFO for display */
                         ZeroMemory(&g_AppState.bmi, sizeof(g_AppState.bmi));
                         g_AppState.bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -804,11 +805,11 @@ BOOL OpenDevice(int iDeviceIndex)
                         g_AppState.bmi.bmiHeader.biPlanes = 1;
                         g_AppState.bmi.bmiHeader.biBitCount = 32;
                         g_AppState.bmi.bmiHeader.biCompression = BI_RGB;
-                        
+
                         free(drBuf);
                         free(ifBuf);
                         free(medBuf);
-                        
+
                         UpdateStatus("Device opened - starting streaming");
                         DEBUG_PRINT("[DEBUG] Pin created successfully");
                         return TRUE;
@@ -819,13 +820,13 @@ BOOL OpenDevice(int iDeviceIndex)
                     }
                 }
             }
-            
+
             free(drBuf);
             free(ifBuf);
             free(medBuf);
         }
     }
-    
+
     UpdateStatus("Failed to create streaming pin");
     CloseHandle(hFilter);
     return FALSE;
@@ -839,20 +840,20 @@ VOID CloseDevice(void)
         CloseHandle(g_AppState.hPin);
         g_AppState.hPin = NULL;
     }
-    
+
     if (g_AppState.hFilter && g_AppState.hFilter != INVALID_HANDLE_VALUE)
     {
         CloseHandle(g_AppState.hFilter);
         g_AppState.hFilter = NULL;
     }
-    
+
     if (g_AppState.pFrameBuf)
     {
         free(g_AppState.pFrameBuf);
         g_AppState.pFrameBuf = NULL;
         g_AppState.dwFrameBufSize = 0;
     }
-    
+
     if (g_AppState.pDisplayBuf)
     {
         free(g_AppState.pDisplayBuf);
@@ -867,7 +868,7 @@ static void yuy2_to_rgb32(const BYTE* yuy2, int w, int h, BYTE* rgb32)
     int i, j;
     const BYTE* src = yuy2;
     BYTE* dst = rgb32;
-    
+
     for (i = 0; i < h; i++)
     {
         for (j = 0; j < w; j += 2)
@@ -876,21 +877,21 @@ static void yuy2_to_rgb32(const BYTE* yuy2, int w, int h, BYTE* rgb32)
             int u = *src++;
             int y2 = *src++;
             int v = *src++;
-            
+
             /* YUV to RGB conversion */
             int c1 = y1 - 16;
             int c2 = y2 - 16;
             int d = u - 128;
             int e = v - 128;
-            
+
             int r1 = (298 * c1 + 409 * e + 128) >> 8;
             int g1 = (298 * c1 - 100 * d - 208 * e + 128) >> 8;
             int b1 = (298 * c1 + 516 * d + 128) >> 8;
-            
+
             int r2 = (298 * c2 + 409 * e + 128) >> 8;
             int g2 = (298 * c2 - 100 * d - 208 * e + 128) >> 8;
             int b2 = (298 * c2 + 516 * d + 128) >> 8;
-            
+
             /* Clamp to 0-255 */
             r1 = (r1 < 0) ? 0 : (r1 > 255) ? 255 : r1;
             g1 = (g1 < 0) ? 0 : (g1 > 255) ? 255 : g1;
@@ -898,13 +899,13 @@ static void yuy2_to_rgb32(const BYTE* yuy2, int w, int h, BYTE* rgb32)
             r2 = (r2 < 0) ? 0 : (r2 > 255) ? 255 : r2;
             g2 = (g2 < 0) ? 0 : (g2 > 255) ? 255 : g2;
             b2 = (b2 < 0) ? 0 : (b2 > 255) ? 255 : b2;
-            
+
             /* Store as BGRA */
             *dst++ = b1;
             *dst++ = g1;
             *dst++ = r1;
             *dst++ = 0xFF;
-            
+
             *dst++ = b2;
             *dst++ = g2;
             *dst++ = r2;
@@ -976,22 +977,22 @@ static BOOL jpeg_to_bgra32(const BYTE* jpegData, DWORD jpegSize, BYTE* bgra32, i
     int row_stride;
     int x, y;
     BYTE* dst;
-    
+
     DEBUG_PRINT("[APP] Decoding JPEG: %u bytes, target %dx%d", jpegSize, w, h);
-    
+
     /* Set up error handler */
     cinfo.err = jpeg_std_error(&jerr.pub);
     jerr.pub.error_exit = jpeg_error_exit;
-    
+
     if (setjmp(jerr.setjmp_buffer)) {
         jpeg_destroy_decompress(&cinfo);
         DEBUG_PRINT("[APP] JPEG decode error");
         return FALSE;
     }
-    
+
     /* Create decompressor */
     jpeg_create_decompress(&cinfo);
-    
+
     /* Set up memory source */
     ZeroMemory(&src, sizeof(src));
     src.pub.init_source = init_source;
@@ -1004,53 +1005,53 @@ static BOOL jpeg_to_bgra32(const BYTE* jpegData, DWORD jpegSize, BYTE* bgra32, i
     src.data = jpegData;
     src.size = jpegSize;
     src.pos = 0;
-    
+
     cinfo.src = (struct jpeg_source_mgr *)&src;
-    
+
     /* Read header */
     if (jpeg_read_header(&cinfo, TRUE) != JPEG_HEADER_OK) {
         jpeg_destroy_decompress(&cinfo);
         DEBUG_PRINT("[APP] JPEG header read failed");
         return FALSE;
     }
-    
+
     /* Set output format to RGB */
     cinfo.out_color_space = JCS_RGB;
-    
+
     /* Start decompression */
     jpeg_start_decompress(&cinfo);
-    
-    DEBUG_PRINT("[APP] JPEG image: %u x %u, components: %u", 
+
+    DEBUG_PRINT("[APP] JPEG image: %u x %u, components: %u",
                cinfo.output_width, cinfo.output_height, cinfo.output_components);
-    
+
     /* Allocate scanline buffer */
     row_stride = cinfo.output_width * cinfo.output_components;
     buffer = (*cinfo.mem->alloc_sarray)((j_common_ptr)&cinfo, JPOOL_IMAGE, row_stride, 1);
-    
+
     dst = bgra32;
-    
+
     /* Read and convert scanlines */
     while (cinfo.output_scanline < cinfo.output_height && cinfo.output_scanline < (UINT)h)
     {
         BYTE *src_row;
         int x;
-        
+
         jpeg_read_scanlines(&cinfo, buffer, 1);
         src_row = buffer[0];
-        
+
         /* Convert RGB to BGRA32 */
         for (x = 0; x < w && x < (int)cinfo.output_width; x++)
         {
             BYTE r = src_row[x * 3 + 0];
             BYTE g = src_row[x * 3 + 1];
             BYTE b = src_row[x * 3 + 2];
-            
+
             *dst++ = b;  /* B */
             *dst++ = g;  /* G */
             *dst++ = r;  /* R */
             *dst++ = 0xFF;  /* A */
         }
-        
+
         /* Pad remaining columns with black */
         for (; x < w; x++)
         {
@@ -1060,7 +1061,7 @@ static BOOL jpeg_to_bgra32(const BYTE* jpegData, DWORD jpegSize, BYTE* bgra32, i
             *dst++ = 0xFF;
         }
     }
-    
+
     /* Fill remaining rows with black */
     for (y = cinfo.output_scanline; y < h; y++)
     {
@@ -1072,10 +1073,10 @@ static BOOL jpeg_to_bgra32(const BYTE* jpegData, DWORD jpegSize, BYTE* bgra32, i
             *dst++ = 0xFF;
         }
     }
-    
+
     jpeg_finish_decompress(&cinfo);
     jpeg_destroy_decompress(&cinfo);
-    
+
     DEBUG_PRINT("[APP] JPEG decoded successfully");
     return TRUE;
 }
@@ -1088,10 +1089,10 @@ LRESULT CALLBACK PreviewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         {
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hwnd, &ps);
-            
+
             RECT rc;
             GetClientRect(hwnd, &rc);
-            
+
             /* Display the frame or show status */
             if (g_AppState.pDisplayBuf && g_AppState.bFrameReady && g_AppState.dwWidth > 0 && g_AppState.dwHeight > 0)
             {
@@ -1107,14 +1108,14 @@ LRESULT CALLBACK PreviewWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 SetTextColor(hdc, RGB(128, 128, 128));
                 DrawTextW(hdc, L"Waiting for video...", -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             }
-            
+
             EndPaint(hwnd, &ps);
             break;
         }
-        
+
         case WM_ERASEBKGND:
             return 1;  /* Don't erase background to avoid flicker */
-        
+
         default:
             return DefWindowProcW(hwnd, msg, wParam, lParam);
     }
@@ -1129,9 +1130,9 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         {
             HWND hwndButton;
             WNDCLASSW wcPreview;
-            
+
             DEBUG_PRINT("[DEBUG] Creating main window");
-            
+
             /* Register preview window class */
             ZeroMemory(&wcPreview, sizeof(wcPreview));
             wcPreview.lpfnWndProc = PreviewWndProc;
@@ -1140,7 +1141,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             wcPreview.hCursor = LoadCursorW(NULL, IDC_ARROW);
             wcPreview.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
             RegisterClassW(&wcPreview);
-            
+
             /* Create video preview area with custom class */
             g_AppState.hwndPreview = CreateWindowW(
                 L"WebcamPreviewWindow",
@@ -1148,7 +1149,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 WS_CHILD | WS_VISIBLE,
                 8, 8, 480, 360,
                 hwnd, (HMENU)1001, GetModuleHandle(NULL), NULL);
-            
+
             /* Create device list */
             g_AppState.hwndList = CreateWindowW(
                 L"LISTBOX",
@@ -1156,7 +1157,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_BORDER,
                 495, 8, 295, 130,
                 hwnd, (HMENU)2000, GetModuleHandle(NULL), NULL);
-            
+
             /* Create Refresh button */
             hwndButton = CreateWindowW(
                 L"BUTTON",
@@ -1164,7 +1165,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                 495, 142, 140, 25,
                 hwnd, (HMENU)101, GetModuleHandle(NULL), NULL);
-            
+
             /* Create Open button */
             hwndButton = CreateWindowW(
                 L"BUTTON",
@@ -1172,7 +1173,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                 650, 142, 140, 25,
                 hwnd, (HMENU)102, GetModuleHandle(NULL), NULL);
-            
+
             /* Create video mode label */
             hwndButton = CreateWindowW(
                 L"STATIC",
@@ -1180,7 +1181,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 WS_CHILD | WS_VISIBLE | SS_LEFT,
                 495, 175, 290, 16,
                 hwnd, (HMENU)3000, GetModuleHandle(NULL), NULL);
-            
+
             /* Create video mode dropdown */
             g_AppState.hwndVideoModes = CreateWindowW(
                 L"COMBOBOX",
@@ -1188,11 +1189,11 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
                 495, 195, 290, 20,
                 hwnd, (HMENU)2001, GetModuleHandle(NULL), NULL);
-            
+
             /* Add default video mode text */
             SendMessageW(g_AppState.hwndVideoModes, CB_ADDSTRING, 0, (LPARAM)L"640x480 (Default)");
             SendMessageW(g_AppState.hwndVideoModes, CB_SETCURSEL, 0, 0);
-            
+
             /* Create Set Mode button */
             hwndButton = CreateWindowW(
                 L"BUTTON",
@@ -1200,7 +1201,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                 495, 220, 290, 25,
                 hwnd, (HMENU)104, GetModuleHandle(NULL), NULL);
-            
+
             /* Create status display */
             g_AppState.hwndStatus = CreateWindowW(
                 L"STATIC",
@@ -1208,23 +1209,23 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 WS_CHILD | WS_VISIBLE | SS_LEFT | WS_BORDER,
                 0, 375, 800, 20,
                 hwnd, (HMENU)1000, GetModuleHandle(NULL), NULL);
-            
+
             g_AppState.hwndMain = hwnd;
             DEBUG_PRINT("[DEBUG] Main window created successfully");
             EnumerateWebcams(g_AppState.hwndList);
             break;
         }
-        
+
         case WM_COMMAND:
         {
             int wID = LOWORD(wParam);
-            
+
             switch (wID)
             {
                 case 101:  /* Refresh */
                     EnumerateWebcams(g_AppState.hwndList);
                     break;
-                
+
                 case 102:  /* Open Device */
                 {
                     int iSel = SendMessageW(g_AppState.hwndList, LB_GETCURSEL, 0, 0);
@@ -1239,7 +1240,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     }
                     break;
                 }
-                
+
                 case 103:  /* Close */
                     if (g_AppState.uTimerId)
                     {
@@ -1249,7 +1250,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     CloseDevice();
                     UpdateStatus("Device closed");
                     break;
-                
+
                 case 104:  /* Set Video Mode */
                     if (g_AppState.hPin && g_AppState.hPin != INVALID_HANDLE_VALUE)
                     {
@@ -1267,7 +1268,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
             break;
         }
-        
+
         case WM_TIMER:
         {
             /* Timer for frame capture */
@@ -1275,7 +1276,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             {
                 KSSTREAM_HEADER sh;
                 DWORD got = 0;
-                
+
                 /* Set pin state to RUN if not already */
                 static BOOL bStreaming = FALSE;
                 if (!bStreaming)
@@ -1285,14 +1286,14 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     set_pin_state(g_AppState.hPin, KSSTATE_RUN);
                     bStreaming = TRUE;
                 }
-                
+
                 ZeroMemory(&sh, sizeof(sh));
                 sh.Size = sizeof(KSSTREAM_HEADER);
                 sh.TypeSpecificFlags = 0;
                 sh.FrameExtent = g_AppState.dwFrameBufSize;
                 sh.DataUsed = 0;
                 sh.Data = g_AppState.pFrameBuf;
-                
+
                 if (DeviceIoControl(g_AppState.hPin, IOCTL_KS_READ_STREAM,
                                    NULL, 0,
                                    &sh, sizeof(sh),
@@ -1307,7 +1308,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                             /* MJPEG frame - decode to BGRA32 */
                             if (g_AppState.pDisplayBuf)
                             {
-                                if (jpeg_to_bgra32(g_AppState.pFrameBuf, sh.DataUsed, g_AppState.pDisplayBuf, 
+                                if (jpeg_to_bgra32(g_AppState.pFrameBuf, sh.DataUsed, g_AppState.pDisplayBuf,
                                                   g_AppState.dwWidth, g_AppState.dwHeight))
                                 {
                                     g_AppState.bFrameReady = TRUE;
@@ -1341,7 +1342,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
             break;
         }
-        
+
         case WM_PAINT:
         {
             PAINTSTRUCT ps;
@@ -1350,24 +1351,24 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             EndPaint(hwnd, &ps);
             break;
         }
-        
+
         case WM_SIZE:
         {
             int dwWidth = (int)(short)LOWORD(lParam);
             int dwHeight = (int)(short)HIWORD(lParam);
-            
+
             /* Resize preview window */
             if (g_AppState.hwndPreview)
             {
                 MoveWindow(g_AppState.hwndPreview, 8, 8, dwWidth - 313, dwHeight - 60, TRUE);
             }
-            
+
             /* Resize device list */
             if (g_AppState.hwndList)
             {
                 MoveWindow(g_AppState.hwndList, dwWidth - 305, 8, 295, 130, TRUE);
             }
-            
+
             /* Resize status bar */
             if (g_AppState.hwndStatus)
             {
@@ -1375,10 +1376,11 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
             break;
         }
-        
+
         case WM_DESTROY:
         {
             DEBUG_PRINT("[DEBUG] Destroying main window");
+                DEBUG_PRINT("%p",hwndButton);
             if (g_AppState.uTimerId)
             {
                 KillTimer(hwnd, (UINT_PTR)g_AppState.uTimerId);
@@ -1388,11 +1390,10 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             PostQuitMessage(0);
             break;
         }
-        
+
         default:
             return DefWindowProcW(hwnd, msg, wParam, lParam);
     }
-    
     return 0;
 }
 
@@ -1401,26 +1402,26 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     WNDCLASSW wc = {0};
     HWND hwnd;
     MSG msg;
-    
+
     DEBUG_PRINT("[DEBUG] === ReactOS Webcam Viewer Started ===");
-    
+
     InitCommonControls();
-    
+
     wc.lpfnWndProc = MainWndProc;
     wc.hInstance = hInstance;
     wc.lpszClassName = L"WebcamViewerWindow";
     wc.hCursor = LoadCursorW(NULL, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    
+
     if (!RegisterClassW(&wc))
     {
         DEBUG_PRINT("[ERROR] RegisterClassW failed");
         MessageBoxW(NULL, L"Failed to register window class", L"Error", MB_OK | MB_ICONERROR);
         return 1;
     }
-    
+
     DEBUG_PRINT("[DEBUG] Window class registered successfully");
-    
+
     hwnd = CreateWindowW(
         L"WebcamViewerWindow",
         L"ReactOS Webcam Viewer",
@@ -1428,22 +1429,22 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         CW_USEDEFAULT, CW_USEDEFAULT,
         840, 420,
         NULL, NULL, hInstance, NULL);
-    
+
     if (!hwnd)
     {
         DEBUG_PRINT("[ERROR] CreateWindowW failed");
         MessageBoxW(NULL, L"Failed to create window", L"Error", MB_OK | MB_ICONERROR);
         return 1;
     }
-    
+
     DEBUG_PRINT("[DEBUG] Main window created successfully");
-    
+
     while (GetMessageW(&msg, NULL, 0, 0))
     {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
-    
+
     DEBUG_PRINT("[DEBUG] === ReactOS Webcam Viewer Terminated ===");
     return 0;
 }

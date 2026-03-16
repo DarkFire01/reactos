@@ -1514,7 +1514,6 @@ KsStreamPointerAdvanceOffsetsAndUnlock(
 {
     PKSISTREAM_POINTER Pointer = (PKSISTREAM_POINTER)CONTAINING_RECORD(StreamPointer, KSISTREAM_POINTER, StreamPointer);
     PKSSTREAM_HEADER Header;
-    PIO_STACK_LOCATION IoStack;
     IKsPinImpl * This;
     KIRQL OldLevel;
 
@@ -1546,7 +1545,6 @@ KsStreamPointerAdvanceOffsetsAndUnlock(
             DPRINT1("KsStreamPointerAdvanceOffsets DataUsed %u Length %u Completing Irp %p\n", Header->DataUsed, Pointer->Length, Pointer->Irp);
             Header->DataUsed = Pointer->Length;
             MmUnmapLockedPages(Pointer->Data, Pointer->Irp->MdlAddress);
-            IoStack = IoGetCurrentIrpStackLocation(Pointer->Irp);
             Pointer->Irp->IoStatus.Status = STATUS_SUCCESS;
             Pointer->Irp->IoStatus.Information = sizeof(KSSTREAM_HEADER);
             Pointer->Irp = NULL;

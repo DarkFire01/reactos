@@ -331,7 +331,7 @@ typedef struct
     PIRP * Irp;                                                   /* irp array for irp queue */
     PKSPIN Pin;                                                   /* pin reference */
     ULONG StopStreaming;                                          /* stops streaming */
-    ULONG StoppedStreamingIrps;                                   /* stopped streaming irp count */
+    LONG StoppedStreamingIrps;                                    /* stopped streaming irp count */
     KEVENT StoppedStreamingEvent;                                  /* stopped streaming event */
 
     ULONG BulkTransferSize;
