@@ -1043,7 +1043,12 @@ wow64_NtQueryInformationThread(UINT* pArgs)
             
             return Status;
         }
+        case ThreadTimes:
+        case ThreadPerformanceCount:
         case ThreadAmILastThread:
+        case ThreadIsIoPending:
+        case ThreadPriorityBoost:
+        case ThreadIsTerminated:
             return NtQueryInformationThread(hThread,
                                             InfoClass,
                                             pThreadInfo32,
