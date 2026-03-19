@@ -1783,6 +1783,10 @@ PoInitializePrcb(
 // Power Policy Manager routines
 //
 VOID
+PopDispatchPowerEvent(
+    _In_ PWIN32_POWEREVENT_PARAMETERS Win32PwrEventParams);
+
+VOID
 NTAPI
 PopPowerPolicyNotification(
     VOID);
@@ -2129,6 +2133,15 @@ PopChangePowerRequestProperties(
 
 VOID
 NTAPI
+PopCloseThermalRequestObject(
+    _In_opt_ PEPROCESS Process,
+    _In_ PVOID ThermalRequestObject,
+    _In_ ACCESS_MASK GrantedAccess,
+    _In_ ULONG ProcessHandleCount,
+    _In_ ULONG SystemHandleCount);
+
+VOID
+NTAPI
 PopClosePowerRequestObject(
     _In_opt_ PEPROCESS Process,
     _In_ PVOID PowerRequestObject,
@@ -2300,6 +2313,16 @@ extern LIST_ENTRY PopPowerSettingCallbacksList;
 extern ULONG PopPowerSettingCallbacksCount;
 extern PKTHREAD PopPowerSettingOwnerLockThread;
 extern POP_POWER_SETTING_DATABASE PopPowerSettingsDatabase[];
+
+/* Power Manager Power Framework (PoFx) constructs */
+extern LIST_ENTRY PopFxDeviceList;
+extern KSPIN_LOCK PopFxDeviceLock;
+extern LIST_ENTRY PopFxPluginList;
+extern KSPIN_LOCK PopFxPluginLock;
+extern ULONG PopFxTraceLevel;
+
+/* Power Manager Thermal Request constructs */
+extern POBJECT_TYPE PoThermalRequestObjectType;
 
 /* Power Manager miscellaneous constructs */
 extern BOOLEAN PopSimulate;
