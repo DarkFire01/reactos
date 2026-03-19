@@ -73,9 +73,43 @@ PoSetHiberRange(
     _In_ ULONG_PTR Length,
     _In_ ULONG PageTag)
 {
-    /* FIXME */
-    UNIMPLEMENTED;
-    NOTHING;
+    PPOP_HIBER_CONTEXT Context;
+
+    /*
+     * If the caller passed a NULL hibernation context this means the
+     * caller wants the global Power Manager action context to be used
+     * instead.
+     */
+    if (!HiberContext)
+    {
+        Context = PopAction.HiberContext;
+
+        /*
+         * The global action context has no hibernation context if the system
+         * is not undergoing hibernation at the moment.
+         */
+        if (!Context)
+        {
+            return;
+        }
+    }
+    else
+    {
+        Context = (PPOP_HIBER_CONTEXT)HiberContext;
+    }
+
+    /*
+     * If the hibernation context has already failed, do not attempt
+     * to modify it any further.
+     */
+    if (!NT_SUCCESS(Context->Status))
+    {
+        return;
+    }
+
+    /* FIXME: Record the range in the hibernation range map */
+    DPRINT("PoSetHiberRange: Context 0x%p, Flags 0x%lx, StartPage 0x%p, Length 0x%Ix, Tag 0x%lx\n",
+           Context, Flags, StartPage, Length, PageTag);
 }
 
 /* EOF */
