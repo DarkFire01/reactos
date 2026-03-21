@@ -92,6 +92,7 @@ add_livecd_shortcut("Keyboard Layout Switcher" kbswitch.exe "Profiles/All Users/
 add_livecd_shortcut("ReactX Diagnostic" dxdiag.exe "Profiles/All Users/Start Menu/Programs/Accessories/System Tools")
 add_livecd_shortcut("Registry Editor" regedit.exe "Profiles/All Users/Start Menu/Programs/Accessories/System Tools")
 add_livecd_shortcut("Task Manager" taskmgr.exe "Profiles/All Users/Start Menu/Programs/Accessories/System Tools")
+add_livecd_shortcut("Task Manager (modern)" taskmgr8.exe "Profiles/All Users/Start Menu/Programs/Accessories/System Tools")
 add_livecd_shortcut("Calculator" calc.exe "Profiles/All Users/Start Menu/Programs/Accessories")
 add_livecd_shortcut("Command Prompt" cmd.exe "Profiles/All Users/Start Menu/Programs/Accessories")
 add_livecd_shortcut("Paint" mspaint.exe "Profiles/All Users/Start Menu/Programs/Accessories")

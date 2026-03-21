@@ -589,6 +589,8 @@
 @ stdcall -arch=arm KeFlushIoBuffers(ptr long long)
 @ stdcall KeFlushQueuedDpcs()
 @ stdcall KeGenericCallDpc(ptr ptr)
+@ stdcall KeGetCurrentProcessorIndex()
+@ stdcall KeGetProcessorNumberFromIndex(long ptr)
 @ stdcall KeGetCurrentThread()
 @ stdcall KeGetPreviousMode()
 @ stdcall KeGetRecommendedSharedDataAlignment()
@@ -638,6 +640,8 @@
 @ stdcall KeProfileInterruptWithSource(ptr long)
 @ stdcall KePulseEvent(ptr long long)
 @ stdcall KeQueryActiveProcessors()
+@ stdcall KeQueryActiveProcessorCountEx(long)
+@ stdcall KeQueryMaximumProcessorCount()
 @ stdcall -arch=i386,arm KeQueryInterruptTime()
 ;@ cdecl -arch=x86_64 KeQueryMultiThreadProcessorSet
 ;@ cdecl -arch=x86_64 KeQueryPrcbAddress
@@ -681,6 +685,8 @@
 @ stdcall -arch=i386 KeRestoreFloatingPointState(ptr)
 @ stdcall -arch=x86_64 KeRestoreFloatingPointState(ptr) KxRestoreFloatingPointState
 @ stdcall KeRevertToUserAffinityThread()
+@ stdcall KeRevertToUserAffinityThreadEx(long)
+@ stdcall KeRevertToUserGroupAffinityThread(ptr)
 @ stdcall KeRundownQueue(ptr)
 @ stdcall -arch=i386 KeSaveFloatingPointState(ptr)
 @ stdcall -arch=x86_64 KeSaveFloatingPointState(ptr) KxSaveFloatingPointState
@@ -697,6 +703,8 @@
 @ stdcall KeSetPriorityThread(ptr long)
 @ stdcall KeSetProfileIrql(long)
 @ stdcall KeSetSystemAffinityThread(long)
+@ stdcall KeSetSystemAffinityThreadEx(long)
+@ stdcall KeSetSystemGroupAffinityThread(ptr ptr)
 @ stdcall KeSetTargetProcessorDpc(ptr long)
 @ stdcall KeSetTimeIncrement(long long)
 @ stdcall KeSetTimer(ptr long long ptr)
