@@ -1,0 +1,7 @@
+; XInput HID Filter Driver - Service registration
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\xinputhid","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\xinputhid","Group",0x00000000,"Base"
+HKLM,"SYSTEM\CurrentControlSet\Services\xinputhid","ImagePath",0x00020000,"system32\drivers\xinputhid.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\xinputhid","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\xinputhid","Type",0x00010001,0x00000001

@@ -1,0 +1,70 @@
+;
+; XInput HID Filter Driver
+; Provides XInput API compatibility for HID game controllers
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=HIDClass
+ClassGuid={745a17a0-74d3-11d0-b6fe-00a0c90f57da}
+Provider=%ProviderName%
+DriverVer=03/15/2025,1.0.0.0
+PnpLockdown=1
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%ProviderName%=Microsoft
+
+[Microsoft]
+%XInputHid.DeviceDesc%=XInput_Hid, HID\VID_045E&PID_02D1&IG_00
+%XInputHid.DeviceDesc%=XInput_Hid, HID\VID_045E&PID_02DD&IG_00
+%XInputHid.DeviceDesc%=XInput_Hid, HID\VID_045E&PID_02E3&IG_00
+%XInputHid.DeviceDesc%=XInput_Hid, HID\VID_045E&PID_02EA&IG_00
+%XInputHid.DeviceDesc%=XInput_Hid, HID\VID_045E&PID_02FF&IG_00
+%XInputHid.DeviceDesc%=XInput_Hid, HID\VID_045E&PID_02D1
+%XInputHid.DeviceDesc%=XInput_Hid, HID\VID_045E&PID_02DD
+%XInputHid.DeviceDesc%=XInput_Hid, HID\VID_045E&PID_02E3
+%XInputHid.DeviceDesc%=XInput_Hid, HID\VID_045E&PID_02EA
+%XInputHid.DeviceDesc%=XInput_Hid, HID\VID_045E&PID_02FF
+
+[XInput_Hid]
+CopyFiles=XInput_Hid.CopyFiles
+AddReg=XInput_Hid.AddReg
+
+[XInput_Hid.CopyFiles]
+xinputhid.sys
+
+[XInput_Hid.AddReg]
+HKR,,ConfigFlags,0x00010001,1
+HKR,,DevicePropertyFlags,0x00010001,0xE
+
+[XInput_Hid.HW]
+AddReg=XInput_Hid.AddRegHW
+
+[XInput_Hid.AddRegHW]
+HKR,,UpperFilters,0x00010008,"xinputhid"
+
+[XInput_Hid.Services]
+AddService=xinputhid,,XInput_HidService
+
+[XInput_HidService]
+DisplayName    = %xinputhid.SvcDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\xinputhid.sys
+LoadOrderGroup = Base
+
+[SourceDisksNames]
+1=%Disk_Description%,,,
+
+[SourceDisksFiles]
+xinputhid.sys = 1
+
+[Strings]
+ProviderName       = "ReactOS"
+Disk_Description   = "XInput HID Filter Driver Installation Disk"
+xinputhid.SvcDesc  = "XInput HID Filter Driver"
+XInputHid.DeviceDesc = "Xbox Controller (XInput compatible)"
