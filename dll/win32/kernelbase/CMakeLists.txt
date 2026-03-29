@@ -1,13 +1,9 @@
-
-remove_definitions(-D_WIN32_WINNT=0x502 -DWINVER=0x502)
-add_definitions(-D_WIN32_WINNT=0x601 -DWINVER=0x601)
-
 if (DLL_EXPORT_VERSION LESS 0x601)
     set(kernelbase_name kernelbase)
 else()
-    set(kernelbase_name kernelbase)
+    set(kernelbase_name kernel32_win7)
 endif()
-
+add_subdirectory(nativekernel32)
 add_definitions(-D_KERNEL32_
                 -D_KERNELBASE_)
 include_directories(${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys)
@@ -16,7 +12,6 @@ spec2def(${kernelbase_name}.dll kernelbase.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
     nativekernel32/client/actctx.c
-    nativekernel32/client/appcache.c
     nativekernel32/client/compname.c
     nativekernel32/client/debugger.c
     nativekernel32/client/dosdev.c
@@ -43,11 +38,6 @@ list(APPEND SOURCE
     nativekernel32/client/vdm.c
     nativekernel32/client/version.c
     nativekernel32/client/virtmem.c
-    nativekernel32/client/console/alias.c
-    nativekernel32/client/console/console.c
-    nativekernel32/client/console/history.c
-    nativekernel32/client/console/init.c
-    nativekernel32/client/console/readwrite.c
     nativekernel32/client/file/backup.c
     nativekernel32/client/file/cnotify.c
     nativekernel32/client/file/copy.c
@@ -129,8 +119,8 @@ set_module_type(${kernelbase_name} win32dll ENTRYPOINT DllMain 12)
 set_subsystem(${kernelbase_name} console)
 ################# END  HACK #################
 
-target_link_libraries(${kernelbase_name} win32_registry psapi_static cryptlib wine chkstk ${PSEH_LIB})
-add_importlibs(${kernelbase_name} ntdll)
-add_pch(${kernelbase_name} kernel32/k32.h SOURCE)
+target_link_libraries(${kernelbase_name} kernel32_vista_static pathcch_static win32_registry psapi_static cryptlib wine chkstk ${PSEH_LIB})
+add_importlibs(${kernelbase_name} ntdll_vista ntdll)
+add_pch(${kernelbase_name} nativekernel32/k32.h SOURCE)
 add_dependencies(${kernelbase_name} psdk errcodes asm)
 add_cd_file(TARGET ${kernelbase_name} DESTINATION reactos/system32 FOR all)

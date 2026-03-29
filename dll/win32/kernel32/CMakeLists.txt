@@ -4,13 +4,22 @@ include_directories(${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys)
 spec2def(kernel32.dll kernel32.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
+    client/appcache.c
+    client/atom.c
     client/atomansi.c
     client/dllmain.c
     client/job.c
     client/pathansi.c
     client/power.c
     client/procansi.c
+    client/synchansi.c
+    client/sysinfoansi.c
     client/versionansi.c
+    client/console/alias.c
+    client/console/console.c
+    client/console/history.c
+    client/console/init.c
+    client/console/readwrite.c
     client/file/copyansi.c
     client/file/diransi.c
     client/file/fileinfoansi.c
@@ -40,7 +49,7 @@ set_subsystem(kernel32 console)
 ################# END  HACK #################
 
 target_link_libraries(kernel32 psapi_static wine chkstk ${PSEH_LIB})
-add_importlibs(kernel32 ntdll)
+add_importlibs(kernel32 kernelbase ntdll)
 add_pch(kernel32 k32.h SOURCE)
 add_dependencies(kernel32 psdk errcodes asm)
 add_cd_file(TARGET kernel32 DESTINATION reactos/system32 FOR all)

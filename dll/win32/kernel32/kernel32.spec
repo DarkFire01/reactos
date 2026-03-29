@@ -369,7 +369,7 @@
 @ stdcall FreeUserPhysicalPages(long ptr ptr) kernelbase.FreeUserPhysicalPages
 @ stdcall GenerateConsoleCtrlEvent(long long) kernelbase.GenerateConsoleCtrlEvent
 @ stdcall GetACP() kernelbase.GetACP
-@ stdcall GetActiveProcessorCount(long)
+@ stdcall -stub GetActiveProcessorCount(long)
 @ stdcall GetActiveProcessorGroupCount()
 @ stdcall -version=0x600+ GetApplicationRecoveryCallback(ptr ptr ptr ptr ptr)
 @ stdcall -version=0x600+ GetApplicationRestartSettings(long ptr ptr ptr) kernelbase.GetApplicationRestartSettings
@@ -579,7 +579,7 @@
 @ stdcall GetNumaNodeProcessorMask(long ptr)
 @ stdcall GetNumaNodeProcessorMaskEx(long ptr) kernelbase.GetNumaNodeProcessorMaskEx
 @ stdcall GetNumaProcessorNode(long ptr)
-@ stdcall GetNumaProcessorNodeEx(ptr ptr)
+@ stdcall -version GetNumaProcessorNodeEx(ptr ptr)
 @ stdcall -version=0x600+ GetNumaProximityNode(long ptr)
 @ stdcall GetNumaProximityNodeEx(long ptr) kernelbase.GetNumaProximityNodeEx
 @ stdcall GetNumberFormatA(long long str ptr ptr long)
@@ -777,7 +777,7 @@
 @ stdcall -version=0x600+ IdnToUnicode(long wstr long ptr long) kernelbase.IdnToUnicode
 @ stdcall InitAtomTable(long)
 @ stdcall -version=0x600+ InitializeConditionVariable(ptr) ntdll.RtlInitializeConditionVariable
-@ stdcall InitializeContext(ptr long ptr ptr) kernelbase.InitializeContext
+@ stdcall -version=0x601+ InitializeContext(ptr long ptr ptr)
 @ stdcall -version=0xA00+ InitializeContext2(ptr long ptr ptr int64) kernelbase.InitializeContext2
 @ stdcall InitializeCriticalSection(ptr) ntdll.RtlInitializeCriticalSection
 @ stdcall InitializeCriticalSectionAndSpinCount(ptr long) kernelbase.InitializeCriticalSectionAndSpinCount
@@ -964,9 +964,9 @@
 @ stdcall PeekConsoleInputW(ptr ptr long ptr) kernelbase.PeekConsoleInputW
 @ stdcall PeekNamedPipe(long ptr long ptr ptr ptr) kernelbase.PeekNamedPipe
 @ stdcall PostQueuedCompletionStatus(long long ptr ptr) kernelbase.PostQueuedCompletionStatus
-@ stdcall PowerClearRequest(long long)
-@ stdcall PowerCreateRequest(ptr)
-@ stdcall PowerSetRequest(long long)
+@ stdcall -stub PowerClearRequest(long long)
+@ stdcall -stub PowerCreateRequest(ptr)
+@ stdcall -stub PowerSetRequest(long long)
 @ stdcall -version=0x602+ PrefetchVirtualMemory(ptr ptr ptr long) kernelbase.PrefetchVirtualMemory
 @ stdcall PrepareTape(ptr long long)
 @ stdcall PrivCopyFileExW(wstr wstr ptr ptr long long)
