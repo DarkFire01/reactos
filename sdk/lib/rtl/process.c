@@ -12,6 +12,15 @@
 
 #include <rtl.h>
 
+#ifndef __REACTOS_RTL_PROCESSOR_NUMBER_DEFINED
+#define __REACTOS_RTL_PROCESSOR_NUMBER_DEFINED
+typedef struct _PROCESSOR_NUMBER {
+    USHORT Group;
+    UCHAR Number;
+    UCHAR Reserved;
+} PROCESSOR_NUMBER, *PPROCESSOR_NUMBER;
+#endif
+
 #define NDEBUG
 #include <debug.h>
 
@@ -492,6 +501,16 @@ RtlGetCurrentProcessorNumber(VOID)
 {
     /* Forward to kernel */
     return NtGetCurrentProcessorNumber();
+}
+
+VOID
+WINAPI
+RtlGetCurrentProcessorNumberEx(
+    _Out_ PPROCESSOR_NUMBER ProcNumber)
+{
+    ProcNumber->Group = 0;
+    ProcNumber->Number = (UCHAR)NtGetCurrentProcessorNumber();
+    ProcNumber->Reserved = 0;
 }
 
 _IRQL_requires_max_(APC_LEVEL)

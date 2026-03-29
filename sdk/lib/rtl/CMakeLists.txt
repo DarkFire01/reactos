@@ -66,6 +66,7 @@ list(APPEND SOURCE
     network.c
     nls.c
     path.c
+    perfvista.c
     ppb.c
     prefix.c
     priv.c
