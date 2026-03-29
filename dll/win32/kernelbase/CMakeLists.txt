@@ -9,6 +9,22 @@ else()
 endif()
 
 add_subdirectory(wine)
+add_subdirectory(native)
+
+if(ARCH STREQUAL "i386")
+    list(APPEND ASM_SOURCE
+        native/client/i386/fiber.S
+        native/client/i386/thread.S)
+elseif(ARCH STREQUAL "amd64")
+    list(APPEND ASM_SOURCE
+        native/client/amd64/fiber.S)
+elseif(ARCH STREQUAL "arm")
+    list(APPEND ASM_SOURCE
+        native/client/arm/fiber.S
+        native/client/arm/thread.S)
+endif()
+
+add_asm_files(kernel32_asm ${ASM_SOURCE})
 
 add_definitions(-D_KERNELBASE_)
 include_directories(${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys)
@@ -25,6 +41,7 @@ endif()
 # This isn't called KernelBase because apps will explode and we aren't win7 yet.
 add_library(${kernelbase_name} MODULE
     wine/kernelbase.rc
+    ${kernel32_asm}
     ${CMAKE_CURRENT_BINARY_DIR}/${kernelbase_name}_stubs.c
     ${CMAKE_CURRENT_BINARY_DIR}/${kernelbase_name}.def)
 
@@ -40,8 +57,8 @@ set_module_type(${kernelbase_name} win32dll ENTRYPOINT DllMain 12)
 set_subsystem(${kernelbase_name} console)
 ################# END  HACK #################
 
-target_link_libraries(${kernelbase_name} win32_registry kernelbase_path kernelbase_static cryptlib wine chkstk ${PSEH_LIB})
-add_importlibs(${kernelbase_name} ntdll)
+target_link_libraries(${kernelbase_name} kernel32_vista_static kernel32_shared win32_registry kernelbase_path kernelbase_static cryptlib wine chkstk ${PSEH_LIB})
+add_importlibs(${kernelbase_name} ntdll_vista ntdll)
 add_pch(${kernelbase_name} kernel32/k32.h SOURCE)
 add_dependencies(${kernelbase_name} psdk errcodes asm)
 add_cd_file(TARGET ${kernelbase_name} DESTINATION reactos/system32 FOR all)

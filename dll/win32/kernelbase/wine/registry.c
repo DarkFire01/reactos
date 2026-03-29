@@ -533,7 +533,6 @@ static BOOL is_perf_key( HKEY key )
             || HandleToUlong(key) == HandleToUlong(HKEY_PERFORMANCE_TEXT)
             || HandleToUlong(key) == HandleToUlong(HKEY_PERFORMANCE_NLSTEXT);
 }
-#ifndef __REACTOS__
 
 /******************************************************************************
  * RemapPredefinedHandleInternal   (kernelbase.@)
@@ -586,7 +585,7 @@ NTSTATUS WINAPI DisablePredefinedHandleTableInternal( HKEY hkey )
     return STATUS_SUCCESS;
 }
 
-
+#ifndef __REACTOS__
 /******************************************************************************
  * RegCreateKeyExW   (kernelbase.@)
  *

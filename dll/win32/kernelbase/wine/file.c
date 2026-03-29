@@ -1005,7 +1005,7 @@ done:
     return ret;
 }
 
-
+#ifndef __REACTOS__
 /*************************************************************************
  *	CreateSymbolicLinkW   (kernelbase.@)
  */
@@ -1014,6 +1014,7 @@ BOOLEAN WINAPI /* DECLSPEC_HOTPATCH */ CreateSymbolicLinkW( LPCWSTR link, LPCWST
     FIXME( "(%s %s %ld): stub\n", debugstr_w(link), debugstr_w(target), flags );
     return TRUE;
 }
+#endif
 
 
 /***********************************************************************
@@ -3104,7 +3105,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetFileInformationByHandle( HANDLE file, BY_HANDLE
     return TRUE;
 }
 
-
+#ifndef __REACTOS__
 /***********************************************************************
  *	GetFileInformationByHandleEx   (kernelbase.@)
  */
@@ -3190,7 +3191,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetFileInformationByHandleEx( HANDLE handle, FILE_
     }
     return set_ntstatus( status );
 }
-
+#endif
 
 /***********************************************************************
  *	GetFileSize   (kernelbase.@)

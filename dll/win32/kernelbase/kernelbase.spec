@@ -243,7 +243,7 @@
 @ stdcall DeactivateActCtx(long long)
 @ stdcall DebugActiveProcess(long)
 @ stdcall DebugActiveProcessStop(long)
-@ stdcall DebugBreak()
+@ stdcall -stub DebugBreak()
 @ stdcall DecodePointer(ptr) ntdll.RtlDecodePointer
 # @ stub DecodeRemotePointer
 @ stdcall DecodeSystemPointer(ptr) ntdll.RtlDecodeSystemPointer
@@ -522,7 +522,7 @@
 # @ stub GetEightBitStringToUnicodeStringRoutine
 @ stdcall -ret64 -arch=i386,x86_64 GetEnabledXStateFeatures()
 @ stdcall GetEnvironmentStrings() GetEnvironmentStringsA
-@ stdcall GetEnvironmentStringsA()
+@ stdcall -stub GetEnvironmentStringsA()
 @ stdcall GetEnvironmentStringsW()
 @ stdcall GetEnvironmentVariableA(str ptr long)
 @ stdcall GetEnvironmentVariableW(wstr ptr long)
@@ -1269,7 +1269,7 @@
 # @ stub QuirkIsEnabledForPackage3
 # @ stub QuirkIsEnabledForPackage4
 # @ stub QuirkIsEnabledForProcess
-@ stdcall RaiseException(long long long ptr)
+@ stdcall -stub RaiseException(long long long ptr)
 @ stdcall RaiseFailFastException(ptr ptr long)
 @ stdcall ReOpenFile(ptr long long long)
 @ stdcall ReadConsoleA(long ptr long ptr ptr)

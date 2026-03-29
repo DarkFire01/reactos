@@ -154,7 +154,7 @@ static DWORD get_mountmgr_drive_type( LPCWSTR root )
 }
 #endif
 
-
+#ifndef __REACTOS__
 /***********************************************************************
  *           GetVolumeInformationW   (kernelbase.@)
  */
@@ -249,6 +249,8 @@ BOOL WINAPI GetVolumeInformationA( LPCSTR root, LPSTR label,
     HeapFree( GetProcessHeap(), 0, fsnameW );
     return ret;
 }
+
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************
@@ -512,7 +514,7 @@ DWORD WINAPI QueryDosDeviceW( LPCWSTR devname, LPWSTR target, DWORD bufsize )
     }
 }
 
-
+#ifndef __REACTOS__
 /***********************************************************************
  *           GetLogicalDrives   (kernelbase.@)
  */
@@ -574,7 +576,6 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetLogicalDriveStringsW( DWORD len, LPWSTR buffer
     return count * 4;
 }
 
-#ifndef __REACTOS__
 /***********************************************************************
  *           GetDriveTypeW   (kernelbase.@)
  */
@@ -623,8 +624,10 @@ UINT WINAPI DECLSPEC_HOTPATCH GetDriveTypeW( LPCWSTR root )
     TRACE( "%s -> %d\n", debugstr_w(root), ret );
     return ret;
 }
-#endif
 
+#endif /* !__REACTOS__ */
+
+#ifndef __REACTOS__
 /***********************************************************************
  *           GetDriveTypeA   (kernelbase.@)
  */
@@ -740,6 +743,8 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetDiskFreeSpaceA( LPCSTR root, LPDWORD cluster_se
     if (root && !(rootW = file_name_AtoW( root, FALSE ))) return FALSE;
     return GetDiskFreeSpaceW( rootW, cluster_sectors, sector_bytes, free_clusters, total_clusters );
 }
+
+#endif /* !__REACTOS__ */
 
 
 static BOOL is_dos_path( const UNICODE_STRING *path )
@@ -908,6 +913,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetVolumePathNameW( const WCHAR *path, WCHAR *volu
 
 #endif
 
+#ifndef __REACTOS__
 static MOUNTMGR_MOUNT_POINTS *query_mount_points( HANDLE mgr, MOUNTMGR_MOUNT_POINT *input, DWORD insize )
 {
     MOUNTMGR_MOUNT_POINTS *output;
@@ -1130,6 +1136,8 @@ BOOL WINAPI DECLSPEC_HOTPATCH FindVolumeClose( HANDLE handle )
 {
     return HeapFree( GetProcessHeap(), 0, handle );
 }
+
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************

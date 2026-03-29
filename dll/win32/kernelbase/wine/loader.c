@@ -198,6 +198,7 @@ DLL_DIRECTORY_COOKIE WINAPI DECLSPEC_HOTPATCH AddDllDirectory( const WCHAR *dir 
 }
 
 
+#ifndef __REACTOS__
 /***********************************************************************
  *	DelayLoadFailureHook   (kernelbase.@)
  */
@@ -427,7 +428,6 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetModuleHandleExW( DWORD flags, LPCWSTR name, HMO
     return set_ntstatus( status );
 }
 
-#ifndef __REACTOS__
 /***********************************************************************
  *	GetProcAddress   (kernelbase.@)
  */
@@ -493,7 +493,7 @@ FARPROC WINAPI DECLSPEC_HOTPATCH GetProcAddress( HMODULE module, LPCSTR function
 }
 
 #endif /* __x86_64__ */
-#endif
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************
@@ -512,6 +512,7 @@ BOOL WINAPI IsApiSetImplemented( LPCSTR name )
 }
 
 
+#ifndef __REACTOS__
 /***********************************************************************
  *	LoadLibraryA   (kernelbase.@)
  */
@@ -568,6 +569,8 @@ HMODULE WINAPI DECLSPEC_HOTPATCH LoadLibraryExW( LPCWSTR name, HANDLE file, DWOR
     RtlFreeUnicodeString( &str );
     return module;
 }
+
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************

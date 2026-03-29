@@ -115,6 +115,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateThread( LPSECURITY_ATTRIBUTES sa, DWORD st
 }
 
 
+#ifndef __REACTOS__
 /***********************************************************************
  *           FreeLibraryAndExitThread   (kernelbase.@)
  */
@@ -123,6 +124,8 @@ void WINAPI DECLSPEC_HOTPATCH FreeLibraryAndExitThread( HINSTANCE module, DWORD 
     FreeLibrary( module );
     RtlExitUserThread( exit_code );
 }
+
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************
