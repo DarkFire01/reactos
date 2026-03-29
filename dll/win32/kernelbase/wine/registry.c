@@ -36,6 +36,12 @@
 #include "winternl.h"
 #include "winperf.h"
 #include "winuser.h"
+
+#ifdef __REACTOS__
+/* This module implements many SHReg* helpers; avoid importing them. */
+#define WINSHLWAPI
+#pragma warning(disable:4995)
+#endif
 #include "shlwapi.h"
 #include "sddl.h"
 
@@ -527,7 +533,7 @@ static BOOL is_perf_key( HKEY key )
             || HandleToUlong(key) == HandleToUlong(HKEY_PERFORMANCE_TEXT)
             || HandleToUlong(key) == HandleToUlong(HKEY_PERFORMANCE_NLSTEXT);
 }
-
+#ifndef __REACTOS__
 
 /******************************************************************************
  * RemapPredefinedHandleInternal   (kernelbase.@)
@@ -3269,6 +3275,7 @@ LSTATUS WINAPI RegLoadAppKeyW(const WCHAR *file, HKEY *result, REGSAM sam, DWORD
     return ERROR_SUCCESS;
 }
 
+#endif
 
 /***********************************************************************
  * DnsHostnameToComputerNameExW   (kernelbase.@)

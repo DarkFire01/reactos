@@ -22,17 +22,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#ifndef __REACTOS__
 #include <sys/types.h>
-
+#endif
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
 #include "winbase.h"
 #include "winnls.h"
 #include "winternl.h"
+#ifndef __REACTOS__
 #include "winerror.h"
 #include "ddk/wdm.h"
-
+#endif
 #include "kernelbase.h"
 #include "wine/exception.h"
 #include "wine/debug.h"
@@ -41,7 +43,20 @@ WINE_DEFAULT_DEBUG_CHANNEL(heap);
 WINE_DECLARE_DEBUG_CHANNEL(virtual);
 WINE_DECLARE_DEBUG_CHANNEL(globalmem);
 
-
+#ifndef WIN32_MEMORY_RANGE_ENTRY
+typedef MEMORY_RANGE_ENTRY WIN32_MEMORY_RANGE_ENTRY;
+#endif
+#ifndef PAGE_TARGETS_NO_UPDATE
+#define PAGE_TARGETS_NO_UPDATE 0x40000000
+#endif
+#ifndef PAGE_ENCLAVE_NO_CHANGE
+#define PAGE_ENCLAVE_NO_CHANGE 0x20000000
+#endif
+#ifndef WIN32_MEMORY_INFORMATION_CLASS
+typedef enum _WIN32_MEMORY_INFORMATION_CLASS {
+    MemoryRegionInfo
+} WIN32_MEMORY_INFORMATION_CLASS;
+#endif
 
 static CROSS_PROCESS_WORK_LIST *open_cross_process_connection( HANDLE process )
 {
@@ -65,7 +80,7 @@ static void close_cross_process_connection( CROSS_PROCESS_WORK_LIST *list )
 static void send_cross_process_notification( CROSS_PROCESS_WORK_LIST *list, UINT id,
                                              const void *addr, SIZE_T size, int nb_args, ... )
 {
-#ifdef __aarch64__
+#if !defined(__REACTOS__) && defined(__aarch64__)
     CROSS_PROCESS_WORK_ENTRY *entry;
     void *unused;
     va_list args;
@@ -436,13 +451,17 @@ LPVOID WINAPI DECLSPEC_HOTPATCH VirtualAllocEx( HANDLE process, void *addr, SIZE
  */
 LPVOID WINAPI DECLSPEC_HOTPATCH VirtualAlloc2( HANDLE process, void *addr, SIZE_T size,
                                                DWORD type, DWORD protect,
-                                               MEM_EXTENDED_PARAMETER *parameters, ULONG count )
+                                               VOID *parameters, ULONG count )
 {
     LPVOID ret = addr;
 
     if (!process) process = GetCurrentProcess();
+#ifdef __REACTOS__
+    if (!set_ntstatus( NtAllocateVirtualMemory( process, &ret, 0, &size, MEM_COMMIT | MEM_RESERVE, protect ))) return NULL;
+#else
     if (!set_ntstatus( NtAllocateVirtualMemoryEx( process, &ret, &size, type, protect, parameters, count )))
         return NULL;
+#endif
     return ret;
 }
 
@@ -1457,8 +1476,12 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetLogicalProcessorInformationEx( LOGICAL_PROCESSO
         SetLastError( ERROR_INVALID_PARAMETER );
         return FALSE;
     }
+#ifdef __REACTOS__
+    status = NtQuerySystemInformation( SystemLogicalProcessorInformationEx, buffer, *len, len ); //NtQuerySystemInformationEx is required.
+#else
     status = NtQuerySystemInformationEx( SystemLogicalProcessorInformationEx, &relationship,
                                          sizeof(relationship), buffer, *len, len );
+#endif
     if (status == STATUS_INFO_LENGTH_MISMATCH) status = STATUS_BUFFER_TOO_SMALL;
     return set_ntstatus( status );
 }

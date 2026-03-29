@@ -26,6 +26,7 @@
 #define WIN32_NO_STATUS
 #include "windef.h"
 #include "winbase.h"
+#include "winreg.h"
 #include "winternl.h"
 #include "winnls.h"
 #include "wingdi.h"
@@ -38,6 +39,8 @@
 #include "wine/asm.h"
 #include "kernelbase.h"
 #include "wine/debug.h"
+
+UINT WINAPI GetErrorMode(void);
 
 WINE_DEFAULT_DEBUG_CHANNEL(seh);
 WINE_DECLARE_DEBUG_CHANNEL(winedbg);
@@ -309,7 +312,7 @@ void WINAPI DECLSPEC_HOTPATCH OutputDebugStringW( LPCWSTR str )
     }
 }
 
-
+#ifndef __REACTOS__
 /*******************************************************************
  *           RaiseException  (kernelbase.@)
  */
@@ -409,6 +412,7 @@ void WINAPI DECLSPEC_HOTPATCH RaiseException( DWORD code, DWORD flags, DWORD cou
 __ASM_STDCALL_IMPORT(RaiseException,16)
 #else
 __ASM_GLOBAL_IMPORT(RaiseException)
+#endif
 #endif
 
 /*******************************************************************
@@ -576,13 +580,13 @@ static BOOL start_debugger( EXCEPTION_POINTERS *epointers, HANDLE event )
     {
         size_t format_size = lstrlenW( format ) + 2*20;
         cmdline = HeapAlloc( GetProcessHeap(), 0, format_size * sizeof(WCHAR) );
-        swprintf( cmdline, format_size, format, GetCurrentProcessId(), HandleToLong(event) );
+        _snwprintf( cmdline, format_size, format, GetCurrentProcessId(), HandleToLong(event) );
         HeapFree( GetProcessHeap(), 0, format );
     }
     else
     {
         cmdline = HeapAlloc( GetProcessHeap(), 0, 80 * sizeof(WCHAR) );
-        swprintf( cmdline, 80, L"winedbg --auto %ld %ld", GetCurrentProcessId(), HandleToLong(event) );
+        _snwprintf( cmdline, 80, L"winedbg --auto %ld %ld", GetCurrentProcessId(), HandleToLong(event) );
     }
 
     if (!autostart)
@@ -849,7 +853,7 @@ HRESULT WINAPI /* DECLSPEC_HOTPATCH */ WerUnregisterRuntimeExceptionModule( cons
     return S_OK;
 }
 
-
+#ifndef __REACTOS__
 /***********************************************************************
  * psapi functions
  ***********************************************************************/
@@ -1669,7 +1673,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetWsChanges( HANDLE process, PSAPI_WS_WATCH_INFOR
     TRACE( "(%p, %p, %ld)\n", process, info, size );
     return set_ntstatus( NtQueryInformationProcess( process, ProcessWorkingSetWatch, info, size, NULL ));
 }
-
+#endif
 
 /***********************************************************************
  *         GetWsChangesEx   (kernelbase.@)
@@ -1684,6 +1688,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetWsChangesEx( HANDLE process, PSAPI_WS_WATCH_INF
 }
 
 
+#ifndef __REACTOS__
 /***********************************************************************
  *         InitializeProcessForWsWatch   (kernelbase.@)
  *         K32InitializeProcessForWsWatch   (kernelbase.@)
@@ -1693,7 +1698,6 @@ BOOL WINAPI /* DECLSPEC_HOTPATCH */ InitializeProcessForWsWatch( HANDLE process 
     FIXME( "(process=%p): stub\n", process );
     return TRUE;
 }
-
 
 /***********************************************************************
  *         QueryWorkingSet   (kernelbase.@)
@@ -1818,3 +1822,4 @@ cleanup:
     HeapFree( GetProcessHeap(), 0, dynamic_buffer );
     return set_ntstatus( status );
 }
+#endif

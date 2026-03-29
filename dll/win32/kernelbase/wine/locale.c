@@ -851,13 +851,13 @@ static int locale_return_number( UINT val, LCTYPE type, WCHAR *buffer, int len )
         {
         case LOCALE_ILANGUAGE:
         case LOCALE_IDEFAULTLANGUAGE:
-            ret = swprintf( tmp, ARRAY_SIZE(tmp), L"%04x", val ) + 1;
+            ret = _snwprintf( tmp, ARRAY_SIZE(tmp), L"%04x", val ) + 1;
             break;
         case LOCALE_IDEFAULTEBCDICCODEPAGE:
-            ret = swprintf( tmp, ARRAY_SIZE(tmp), L"%03u", val ) + 1;
+            ret = _snwprintf( tmp, ARRAY_SIZE(tmp), L"%03u", val ) + 1;
             break;
         default:
-            ret = swprintf( tmp, ARRAY_SIZE(tmp), L"%u", val ) + 1;
+            ret = _snwprintf( tmp, ARRAY_SIZE(tmp), L"%u", val ) + 1;
             break;
         }
     }
@@ -982,7 +982,7 @@ static int cal_return_number( UINT val, CALTYPE type, WCHAR *buffer, int len, DW
         *value = val;
         return sizeof(UINT) / sizeof(WCHAR);
     }
-    ret = swprintf( tmp, ARRAY_SIZE(tmp), L"%u", val );
+    ret = _snwprintf( tmp, ARRAY_SIZE(tmp), L"%u", val );
     return locale_return_data( tmp, ret + 1, 0, buffer, len );
 }
 
@@ -1787,16 +1787,16 @@ static int get_geo_info( const struct geo_id *geo, enum SYSGEOTYPE type,
         if (geo->class != GEOCLASS_NATION) return 0;
         /* fall through */
     case GEO_ID:
-        swprintf( tmp, ARRAY_SIZE(tmp), L"%u", geo->id );
+        _snwprintf( tmp, ARRAY_SIZE(tmp), L"%u", geo->id );
         break;
     case GEO_ISO_UN_NUMBER:
-        swprintf( tmp, ARRAY_SIZE(tmp), L"%03u", geo->uncode );
+        _snwprintf( tmp, ARRAY_SIZE(tmp), L"%03u", geo->uncode );
         break;
     case GEO_PARENT:
-        swprintf( tmp, ARRAY_SIZE(tmp), L"%u", geo->parent );
+        _snwprintf( tmp, ARRAY_SIZE(tmp), L"%u", geo->parent );
         break;
     case GEO_DIALINGCODE:
-        swprintf( tmp, ARRAY_SIZE(tmp), L"%u", geo->dialcode );
+        _snwprintf( tmp, ARRAY_SIZE(tmp), L"%u", geo->dialcode );
         break;
     case GEO_ISO2:
         str = geo->iso2;
@@ -1855,7 +1855,7 @@ static void update_locale_registry(void)
     WCHAR buffer[80];
     UINT len;
 
-    len = swprintf( buffer, ARRAY_SIZE(buffer), L"%08x", GetUserDefaultLCID() );
+    len = _snwprintf( buffer, ARRAY_SIZE(buffer), L"%08x", GetUserDefaultLCID() );
     RegSetValueExW( intl_key, L"Locale", 0, REG_SZ, (BYTE *)buffer, (len + 1) * sizeof(WCHAR) );
 
 #define UPDATE(val,entry) update_registry_value( LOCALE_NOUSEROVERRIDE | (val), (entry).subkey, (entry).value )
@@ -1984,11 +1984,11 @@ void init_locale( HMODULE module )
     if (!RegCreateKeyExW( nls_key, L"Codepage",
                           0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hkey, NULL ))
     {
-        count = swprintf( bufferW, ARRAY_SIZE(bufferW), L"%03d", GetACP() );
+        count = _snwprintf( bufferW, ARRAY_SIZE(bufferW), L"%03d", GetACP() );
         RegSetValueExW( hkey, L"ACP", 0, REG_SZ, (BYTE *)bufferW, (count + 1) * sizeof(WCHAR) );
-        count = swprintf( bufferW, ARRAY_SIZE(bufferW), L"%03d", GetOEMCP() );
+        count = _snwprintf( bufferW, ARRAY_SIZE(bufferW), L"%03d", GetOEMCP() );
         RegSetValueExW( hkey, L"OEMCP", 0, REG_SZ, (BYTE *)bufferW, (count + 1) * sizeof(WCHAR) );
-        count = swprintf( bufferW, ARRAY_SIZE(bufferW), L"%03d", system_locale->idefaultmaccodepage );
+        count = _snwprintf( bufferW, ARRAY_SIZE(bufferW), L"%03d", system_locale->idefaultmaccodepage );
         RegSetValueExW( hkey, L"MACCP", 0, REG_SZ, (BYTE *)bufferW, (count + 1) * sizeof(WCHAR) );
         RegCloseKey( hkey );
     }
@@ -4707,7 +4707,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH Internal_EnumUILanguages( UILANGUAGE_ENUMPROCW pro
             if (lcnames_index[i].id == LOCALE_CUSTOM_UNSPECIFIED) continue;  /* skip locales with no lcid */
             if (unicode)
             {
-                swprintf( nameW, ARRAY_SIZE(nameW), L"%04lx", lcnames_index[i].id );
+                _snwprintf( nameW, ARRAY_SIZE(nameW), L"%04lx", lcnames_index[i].id );
                 if (!proc( nameW, param )) break;
             }
             else
@@ -5122,7 +5122,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH EnumSystemLocalesW( LOCALE_ENUMPROCW proc, DWORD f
             continue; /* skip alternate sorts if not requested */
         if (SORTIDFROMLCID( lcnames_index[i].id ) == SORT_DEFAULT && !(flags & (LCID_INSTALLED | LCID_SUPPORTED)))
             continue;  /* skip default sorts if not requested */
-        swprintf( name, ARRAY_SIZE(name), L"%08lx", lcnames_index[i].id );
+        _snwprintf( name, ARRAY_SIZE(name), L"%08lx", lcnames_index[i].id );
         if (!proc( name )) break;
     }
     return TRUE;
@@ -6351,7 +6351,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetTimeZoneInformationForYear( USHORT year,
         !RegOpenKeyExW( key, L"Dynamic DST", 0, KEY_ALL_ACCESS, &dst_key ))
     {
         WCHAR yearW[16];
-        swprintf( yearW, ARRAY_SIZE(yearW), L"%u", year );
+        _snwprintf( yearW, ARRAY_SIZE(yearW), L"%u", year );
         count = sizeof(data);
         ret = RegQueryValueExW( dst_key, yearW, NULL, NULL, (BYTE *)&data, &count );
         RegCloseKey( dst_key );
@@ -6703,7 +6703,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH IsValidLanguageGroup( LGRPID id, DWORD flags )
 
     if (RegOpenKeyExW( nls_key, L"Language Groups", 0, KEY_READ, &key )) return FALSE;
 
-    swprintf( name, ARRAY_SIZE(name), L"%x", id );
+    _snwprintf( name, ARRAY_SIZE(name), L"%x", id );
     if (!RegQueryValueExW( key, name, NULL, &type, (BYTE *)value, &value_len ) && type == REG_SZ)
         ret = (flags & LGRPID_SUPPORTED) || wcstoul( value, NULL, 10 );
 
@@ -7262,13 +7262,13 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetUserGeoID( GEOID id )
     if (!RegCreateKeyExW( intl_key, L"Geo", 0, NULL, 0, KEY_ALL_ACCESS, NULL, &hkey, NULL ))
     {
         const WCHAR *name = geo->class == GEOCLASS_NATION ? L"Nation" : L"Region";
-        swprintf( bufferW, ARRAY_SIZE(bufferW), L"%u", geo->id );
+        _snwprintf( bufferW, ARRAY_SIZE(bufferW), L"%u", geo->id );
         RegSetValueExW( hkey, name, 0, REG_SZ, (BYTE *)bufferW, (lstrlenW(bufferW) + 1) * sizeof(WCHAR) );
 
         if (geo->class == GEOCLASS_NATION || wcscmp( geo->iso2, L"XX" ))
             lstrcpyW( bufferW, geo->iso2 );
         else
-            swprintf( bufferW, ARRAY_SIZE(bufferW), L"%03u", geo->uncode );
+            _snwprintf( bufferW, ARRAY_SIZE(bufferW), L"%03u", geo->uncode );
         RegSetValueExW( hkey, L"Name", 0, REG_SZ, (BYTE *)bufferW, (lstrlenW(bufferW) + 1) * sizeof(WCHAR) );
         RegCloseKey( hkey );
     }
@@ -7987,14 +7987,14 @@ static int get_date_format( const NLS_LOCALE_DATA *locale, DWORD flags, const SY
             break;
 
         case 'y':
-            p += swprintf( p, output + ARRAY_SIZE(output) - p, L"%02u",
+            p += _snwprintf( p, output + ARRAY_SIZE(output) - p, L"%02u",
                            (count <= 2) ? time.wYear % 100 : time.wYear );
             break;
 
         case 'M':
             if (count <= 2)
             {
-                p += swprintf( p, output + ARRAY_SIZE(output) - p, L"%.*u", count, time.wMonth );
+                p += _snwprintf( p, output + ARRAY_SIZE(output) - p, L"%.*u", count, time.wMonth );
                 break;
             }
             val = (count == 3 ? LOCALE_SABBREVMONTHNAME1 : LOCALE_SMONTHNAME1) + time.wMonth - 1;
@@ -8016,7 +8016,7 @@ static int get_date_format( const NLS_LOCALE_DATA *locale, DWORD flags, const SY
             if (count <= 2)
             {
                 genitive = LOCALE_RETURN_GENITIVE_NAMES;
-                p += swprintf( p, output + ARRAY_SIZE(output) - p, L"%.*u", count, time.wDay );
+                p += _snwprintf( p, output + ARRAY_SIZE(output) - p, L"%.*u", count, time.wDay );
                 break;
             }
             genitive = 0;
@@ -8144,7 +8144,7 @@ static int get_time_format( const NLS_LOCALE_DATA *locale, DWORD flags, const SY
             continue;
         }
 
-        p += swprintf( p, output + ARRAY_SIZE(output) - p, L"%.*u", min( 2, count ), val );
+        p += _snwprintf( p, output + ARRAY_SIZE(output) - p, L"%.*u", min( 2, count ), val );
         last = p;
         skip = FALSE;
     }
