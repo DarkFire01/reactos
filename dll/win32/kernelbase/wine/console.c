@@ -335,7 +335,7 @@ static BOOL init_console_std_handles( BOOL override_all )
 /******************************************************************
  *	AddConsoleAliasA   (kernelbase.@)
  */
-BOOL WINAPI AddConsoleAliasA( LPSTR source, LPSTR target, LPSTR exename )
+BOOL WINAPI AddConsoleAliasA( LPCSTR source, LPCSTR target, LPCSTR exename )
 {
     FIXME( ": (%s, %s, %s) stub!\n", debugstr_a(source), debugstr_a(target), debugstr_a(exename) );
     SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
@@ -346,7 +346,7 @@ BOOL WINAPI AddConsoleAliasA( LPSTR source, LPSTR target, LPSTR exename )
 /******************************************************************
  *	AddConsoleAliasW   (kernelbase.@)
  */
-BOOL WINAPI AddConsoleAliasW( LPWSTR source, LPWSTR target, LPWSTR exename )
+BOOL WINAPI AddConsoleAliasW( LPCWSTR source, LPCWSTR target, LPCWSTR exename )
 {
     FIXME( ": (%s, %s, %s) stub!\n", debugstr_w(source), debugstr_w(target), debugstr_w(exename) );
     SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
@@ -455,8 +455,8 @@ static BOOL alloc_console( BOOL headless )
 
     UpdateProcThreadAttribute( console_si.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
                                &server, sizeof(server), NULL, NULL );
-    swprintf( conhost_path, ARRAY_SIZE(conhost_path), L"%s\\conhost.exe", system_dir );
-    swprintf( cmd, ARRAY_SIZE(cmd),  L"\"%s\" --server 0x%x", conhost_path, condrv_handle( server ));
+    _snwprintf( conhost_path, ARRAY_SIZE(conhost_path), L"%s\\conhost.exe", system_dir );
+    _snwprintf( cmd, ARRAY_SIZE(cmd),  L"\"%s\" --server 0x%x", conhost_path, condrv_handle( server ));
     if (headless) wcscat( cmd, L" --headless" );
     Wow64DisableWow64FsRedirection( &redir );
     ret = CreateProcessW( conhost_path, cmd, NULL, NULL, TRUE, DETACHED_PROCESS | EXTENDED_STARTUPINFO_PRESENT,
@@ -499,7 +499,7 @@ BOOL WINAPI AllocConsole(void)
  *	CreateConsoleScreenBuffer   (kernelbase.@)
  */
 HANDLE WINAPI DECLSPEC_HOTPATCH CreateConsoleScreenBuffer( DWORD access, DWORD share,
-                                                           SECURITY_ATTRIBUTES *sa, DWORD flags,
+                                                           CONST SECURITY_ATTRIBUTES *sa, DWORD flags,
                                                            void *data )
 {
     OBJECT_ATTRIBUTES attr = {sizeof(attr)};
@@ -708,7 +708,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GenerateConsoleCtrlEvent( DWORD event, DWORD group
 /******************************************************************
  *	GetConsoleAliasA   (kernelbase.@)
  */
-DWORD WINAPI GetConsoleAliasA( LPSTR source, LPSTR buffer, DWORD len, LPSTR exename )
+DWORD WINAPI GetConsoleAliasA( LPCSTR source, LPSTR buffer, DWORD len, LPCSTR exename )
 {
     FIXME( "(%s,%p,%ld,%s): stub\n", debugstr_a(source), buffer, len, debugstr_a(exename) );
     SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
@@ -719,7 +719,7 @@ DWORD WINAPI GetConsoleAliasA( LPSTR source, LPSTR buffer, DWORD len, LPSTR exen
 /******************************************************************
  *	GetConsoleAliasW   (kernelbase.@)
  */
-DWORD WINAPI GetConsoleAliasW( LPWSTR source, LPWSTR buffer, DWORD len, LPWSTR exename )
+DWORD WINAPI GetConsoleAliasW( LPCWSTR source, LPWSTR buffer, DWORD len, LPCWSTR exename )
 {
     FIXME( "(%s,%p,%ld,%s): stub\n", debugstr_w(source), buffer, len, debugstr_w(exename) );
     SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
@@ -752,7 +752,7 @@ DWORD WINAPI GetConsoleAliasExesLengthW(void)
 /******************************************************************
  *	GetConsoleAliasesLengthA   (kernelbase.@)
  */
-DWORD WINAPI GetConsoleAliasesLengthA( LPSTR unknown )
+DWORD WINAPI GetConsoleAliasesLengthA( LPCSTR unknown )
 {
     FIXME( ": (%s) stub!\n", debugstr_a(unknown) );
     SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
@@ -763,7 +763,7 @@ DWORD WINAPI GetConsoleAliasesLengthA( LPSTR unknown )
 /******************************************************************
  *	GetConsoleAliasesLengthW   (kernelbase.@)
  */
-DWORD WINAPI GetConsoleAliasesLengthW( LPWSTR unknown )
+DWORD WINAPI GetConsoleAliasesLengthW( LPCWSTR unknown )
 {
     FIXME( ": (%s) stub!\n", debugstr_w(unknown) );
     SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
@@ -1538,7 +1538,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetConsoleCtrlHandler( PHANDLER_ROUTINE func, BOOL
 /******************************************************************************
  *	SetConsoleCursorInfo   (kernelbase.@)
  */
-BOOL WINAPI DECLSPEC_HOTPATCH SetConsoleCursorInfo( HANDLE handle, CONSOLE_CURSOR_INFO *info )
+BOOL WINAPI DECLSPEC_HOTPATCH SetConsoleCursorInfo( HANDLE handle, CONST CONSOLE_CURSOR_INFO *info )
 {
     struct condrv_output_info_params params = { SET_CONSOLE_OUTPUT_INFO_CURSOR_GEOM };
 
@@ -1733,7 +1733,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetConsoleTitleW( LPCWSTR title )
 /******************************************************************************
  *	SetConsoleWindowInfo   (kernelbase.@)
  */
-BOOL WINAPI DECLSPEC_HOTPATCH SetConsoleWindowInfo( HANDLE handle, BOOL absolute, SMALL_RECT *window )
+BOOL WINAPI DECLSPEC_HOTPATCH SetConsoleWindowInfo( HANDLE handle, BOOL absolute, CONST SMALL_RECT *window )
 {
     struct condrv_output_info_params params = { SET_CONSOLE_OUTPUT_INFO_DISPLAY_WINDOW };
     SMALL_RECT rect = *window;
@@ -2063,7 +2063,8 @@ BOOL WINAPI DECLSPEC_HOTPATCH WriteConsoleOutputCharacterW( HANDLE handle, LPCWS
 /***********************************************************************
  *            ReadConsoleA   (kernelbase.@)
  */
-BOOL WINAPI ReadConsoleA( HANDLE handle, void *buffer, DWORD length, DWORD *count, void *reserved )
+BOOL WINAPI ReadConsoleA( HANDLE handle, void *buffer, DWORD length, DWORD *count,
+                          PCONSOLE_READCONSOLE_CONTROL reserved )
 {
     if (length > INT_MAX)
     {
@@ -2078,7 +2079,8 @@ BOOL WINAPI ReadConsoleA( HANDLE handle, void *buffer, DWORD length, DWORD *coun
 /***********************************************************************
  *            ReadConsoleW   (kernelbase.@)
  */
-BOOL WINAPI ReadConsoleW( HANDLE handle, void *buffer, DWORD length, DWORD *count, void *reserved )
+BOOL WINAPI ReadConsoleW( HANDLE handle, void *buffer, DWORD length, DWORD *count,
+                          PCONSOLE_READCONSOLE_CONTROL reserved )
 {
     BOOL ret;
 
@@ -2113,7 +2115,7 @@ BOOL WINAPI ReadConsoleW( HANDLE handle, void *buffer, DWORD length, DWORD *coun
                              tmp, sizeof(DWORD) + length * sizeof(WCHAR), count );
         if (ret)
         {
-            memcpy( &crc->dwConsoleKeyState, tmp, sizeof(DWORD) );
+            memcpy( &crc->dwControlKeyState, tmp, sizeof(DWORD) );
             *count -= sizeof(DWORD);
             memcpy( buffer, tmp + sizeof(DWORD), *count );
         }
@@ -2226,18 +2228,19 @@ static HANDLE create_pseudo_console( COORD size, HANDLE input, HANDLE output, HA
     UpdateProcThreadAttribute( si.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
                                inherit, sizeof(*inherit) * inherit_count, NULL, NULL );
 
-    swprintf( conhost_path, ARRAY_SIZE(conhost_path), L"%s\\conhost.exe", system_dir );
+    _snwprintf( conhost_path, ARRAY_SIZE(conhost_path), L"%s\\conhost.exe", system_dir );
     if (signal)
     {
-        swprintf( cmd, ARRAY_SIZE(cmd),
-                  L"\"%s\" --headless %s--width %u --height %u --signal 0x%x --server 0x%x",
+        _snwprintf( cmd, ARRAY_SIZE(cmd),
+                  L"\"%s\" --headless %s--width %u --height %u --signal 0x%llx --server 0x%llx",
                   conhost_path, (flags & PSEUDOCONSOLE_INHERIT_CURSOR) ? L"--inheritcursor " : L"",
-                  size.X, size.Y, signal, server );
+                  size.X, size.Y, (unsigned long long)(ULONG_PTR)signal,
+                  (unsigned long long)(ULONG_PTR)server );
     }
     else
     {
-        swprintf( cmd, ARRAY_SIZE(cmd), L"\"%s\" --unix --width %u --height %u --server 0x%x",
-                  conhost_path, size.X, size.Y, server );
+        _snwprintf( cmd, ARRAY_SIZE(cmd), L"\"%s\" --unix --width %u --height %u --server 0x%llx",
+                  conhost_path, size.X, size.Y, (unsigned long long)(ULONG_PTR)server );
     }
     Wow64DisableWow64FsRedirection( &redir );
     res = CreateProcessW( conhost_path, cmd, NULL, NULL, TRUE, DETACHED_PROCESS | EXTENDED_STARTUPINFO_PRESENT,
@@ -2273,7 +2276,7 @@ HRESULT WINAPI CreatePseudoConsole( COORD size, HANDLE input, HANDLE output, DWO
 
     if (!(pseudo_console = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*pseudo_console) ))) return E_OUTOFMEMORY;
 
-    swprintf( pipe_name, ARRAY_SIZE(pipe_name),  L"\\\\.\\pipe\\wine_pty_signal_pipe%x",
+    _snwprintf( pipe_name, ARRAY_SIZE(pipe_name),  L"\\\\.\\pipe\\wine_pty_signal_pipe%x",
               GetCurrentThreadId() );
     signal = CreateNamedPipeW( pipe_name, PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED, PIPE_TYPE_BYTE,
                                PIPE_UNLIMITED_INSTANCES, 4096, 4096, NMPWAIT_USE_DEFAULT_WAIT, &inherit_attr );

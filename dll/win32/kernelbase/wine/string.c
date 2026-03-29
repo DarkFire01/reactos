@@ -21,6 +21,12 @@
 #include "windef.h"
 #include "winbase.h"
 #include "winnls.h"
+
+#ifdef __REACTOS__
+/* Avoid importing shlwapi string helpers; this module provides them. */
+#define WINSHLWAPI
+#pragma warning(disable:4995)
+#endif
 #include "shlwapi.h"
 #include "winternl.h"
 

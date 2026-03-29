@@ -33,10 +33,14 @@
 #include "winnls.h"
 #include "winternl.h"
 #include "winioctl.h"
+#ifdef __REACTOS__
+#include <mountmgr.h>
+#else
 #include "ntddcdrm.h"
 #define WINE_MOUNTMGR_EXTENSIONS
 #include "ddk/mountmgr.h"
 #include "ddk/wdm.h"
+#endif
 #include "kernelbase.h"
 #include "wine/debug.h"
 
@@ -119,6 +123,7 @@ static BOOL open_device_root( LPCWSTR root, HANDLE *handle )
     return set_ntstatus( status );
 }
 
+#ifndef __REACTOS__
 /* query the type of a drive from the mount manager */
 static DWORD get_mountmgr_drive_type( LPCWSTR root )
 {
@@ -147,6 +152,7 @@ static DWORD get_mountmgr_drive_type( LPCWSTR root )
     CloseHandle( mgr );
     return data.type;
 }
+#endif
 
 
 /***********************************************************************
@@ -546,7 +552,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetLogicalDrives(void)
 /***********************************************************************
  *           GetLogicalDriveStringsW   (kernelbase.@)
  */
-UINT WINAPI DECLSPEC_HOTPATCH GetLogicalDriveStringsW( UINT len, LPWSTR buffer )
+DWORD WINAPI DECLSPEC_HOTPATCH GetLogicalDriveStringsW( DWORD len, LPWSTR buffer )
 {
     DWORD drives = GetLogicalDrives();
     UINT drive, count;
@@ -568,7 +574,7 @@ UINT WINAPI DECLSPEC_HOTPATCH GetLogicalDriveStringsW( UINT len, LPWSTR buffer )
     return count * 4;
 }
 
-
+#ifndef __REACTOS__
 /***********************************************************************
  *           GetDriveTypeW   (kernelbase.@)
  */
@@ -617,7 +623,7 @@ UINT WINAPI DECLSPEC_HOTPATCH GetDriveTypeW( LPCWSTR root )
     TRACE( "%s -> %d\n", debugstr_w(root), ret );
     return ret;
 }
-
+#endif
 
 /***********************************************************************
  *           GetDriveTypeA   (kernelbase.@)
@@ -782,6 +788,7 @@ static BOOL resolve_symlink( UNICODE_STRING *path )
     return !status;
 }
 
+#ifndef __REACTOS__
 /***********************************************************************
  *           GetVolumePathNameW   (kernelbase.@)
  */
@@ -899,6 +906,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetVolumePathNameW( const WCHAR *path, WCHAR *volu
     return FALSE;
 }
 
+#endif
 
 static MOUNTMGR_MOUNT_POINTS *query_mount_points( HANDLE mgr, MOUNTMGR_MOUNT_POINT *input, DWORD insize )
 {

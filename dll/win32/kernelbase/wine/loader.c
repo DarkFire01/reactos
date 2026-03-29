@@ -28,7 +28,9 @@
 #include "winbase.h"
 #include "winnls.h"
 #include "winternl.h"
+#ifndef __REACTOS__
 #include "ddk/ntddk.h"
+#endif
 #include "kernelbase.h"
 #include "wine/list.h"
 #include "wine/asm.h"
@@ -425,7 +427,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetModuleHandleExW( DWORD flags, LPCWSTR name, HMO
     return set_ntstatus( status );
 }
 
-
+#ifndef __REACTOS__
 /***********************************************************************
  *	GetProcAddress   (kernelbase.@)
  */
@@ -491,6 +493,7 @@ FARPROC WINAPI DECLSPEC_HOTPATCH GetProcAddress( HMODULE module, LPCSTR function
 }
 
 #endif /* __x86_64__ */
+#endif
 
 
 /***********************************************************************

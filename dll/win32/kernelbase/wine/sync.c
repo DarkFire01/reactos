@@ -31,8 +31,13 @@
 #include "winnls.h"
 #include "winternl.h"
 #include "winioctl.h"
+#ifdef __REACTOS__
+#define SystemProcessorIdleCycleTimeInformation 83
+#define DIRECTORY_TRAVERSE                0x0002
+#define DIRECTORY_CREATE_OBJECT           0x0004
+#else
 #include "ddk/wdm.h"
-
+#endif
 #include "kernelbase.h"
 #include "wine/asm.h"
 #include "wine/exception.h"
@@ -56,7 +61,6 @@ static inline LARGE_INTEGER *get_nt_timeout( LARGE_INTEGER *time, DWORD timeout 
     return time;
 }
 
-
 /***********************************************************************
  *              BaseGetNamedObjectDirectory  (kernelbase.@)
  */
@@ -71,9 +75,13 @@ NTSTATUS WINAPI BaseGetNamedObjectDirectory( HANDLE *dir )
     if (!handle)
     {
         HANDLE dir;
-
+#ifdef __REACTOS__
+        swprintf( buffer, L"\\Sessions\\%u\\BaseNamedObjects",
+                  NtCurrentTeb()->Peb->SessionId );
+#else
         swprintf( buffer, ARRAY_SIZE(buffer), L"\\Sessions\\%u\\BaseNamedObjects",
                   NtCurrentTeb()->Peb->SessionId );
+#endif
         RtlInitUnicodeString( &str, buffer );
         InitializeObjectAttributes(&attr, &str, 0, 0, NULL);
         status = NtOpenDirectoryObject( &dir, DIRECTORY_CREATE_OBJECT|DIRECTORY_TRAVERSE, &attr );
@@ -175,7 +183,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetSystemTimes( FILETIME *idle, FILETIME *kernel, 
     return TRUE;
 }
 
-
+#ifndef __REACTOS__
 /******************************************************************************
  *           GetTickCount   (kernelbase.@)
  */
@@ -213,12 +221,13 @@ void WINAPI DECLSPEC_HOTPATCH QueryInterruptTime( ULONGLONG *time )
 
     do
     {
-        high = user_shared_data->InterruptTime.High1Time;
-        low = user_shared_data->InterruptTime.LowPart;
+        high = SharedUserData->InterruptTime.High1Time;
+        low = SharedUserData->InterruptTime.LowPart;
     }
-    while (high != user_shared_data->InterruptTime.High2Time);
+    while (high != SharedUserData->InterruptTime.High2Time);
     *time = (ULONGLONG)high << 32 | low;
 }
+#endif
 
 
 /******************************************************************************
@@ -263,10 +272,17 @@ BOOL WINAPI QueryIdleProcessorCycleTime( ULONG *size, ULONG64 *times )
  */
 BOOL WINAPI QueryIdleProcessorCycleTimeEx( USHORT group_id, ULONG *size, ULONG64 *times )
 {
+#ifndef __REACTOS__
     ULONG ret_size;
     NTSTATUS status = NtQuerySystemInformationEx( SystemProcessorIdleCycleTimeInformation, &group_id, sizeof(group_id),
                                                   times, *size, &ret_size );
     if (!*size || !status) *size = ret_size;
+#else
+    ULONG ret_size;
+    NTSTATUS status = NtQuerySystemInformation( SystemProcessorIdleCycleTimeInformation,
+                                                  times, *size, &ret_size );
+    if (!*size || !status) *size = ret_size;
+#endif
     return TRUE;
 }
 
@@ -1410,8 +1426,13 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreatePipe( HANDLE *read_pipe, HANDLE *write_pipe,
     /* generate a unique pipe name (system wide) */
     for (;;)
     {
+#ifdef __REACTOS__
+        swprintf( name, L"\\??\\pipe\\Win32.Pipes.%08lu.%08u",
+                  GetCurrentProcessId(), ++index );
+#else
         swprintf( name, ARRAY_SIZE(name), L"\\??\\pipe\\Win32.Pipes.%08lu.%08u",
                   GetCurrentProcessId(), ++index );
+#endif
         RtlInitUnicodeString( &nt_name, name );
         if (!NtCreateNamedPipeFile( read_pipe, GENERIC_READ | FILE_WRITE_ATTRIBUTES | SYNCHRONIZE,
                                     &attr, &iosb, FILE_SHARE_WRITE, FILE_OPEN_IF,

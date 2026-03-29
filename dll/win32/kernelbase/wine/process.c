@@ -31,9 +31,33 @@
 
 #include "kernelbase.h"
 #include "wine/debug.h"
+#ifndef __REACTOS__
 #include "wine/condrv.h"
+#else
+/* wine/condrv.h is not in ReactOS SDK; keep process creation console markers in sync with Wine. */
+#ifndef CONSOLE_HANDLE_ALLOC
+#define CONSOLE_HANDLE_ALLOC           LongToHandle(-1)
+#define CONSOLE_HANDLE_ALLOC_NO_WINDOW LongToHandle(-2)
+#endif
+#endif
 
 WINE_DEFAULT_DEBUG_CHANNEL(process);
+
+BOOL WINAPI CreateProcessInternalA( HANDLE token, const char *app_name, char *cmd_line,
+                                    SECURITY_ATTRIBUTES *process_attr, SECURITY_ATTRIBUTES *thread_attr,
+                                    BOOL inherit, DWORD flags, void *env, const char *cur_dir,
+                                    STARTUPINFOA *startup_info, PROCESS_INFORMATION *info, HANDLE *new_token );
+BOOL WINAPI CreateProcessInternalW( HANDLE token, const WCHAR *app_name, WCHAR *cmd_line,
+                                    SECURITY_ATTRIBUTES *process_attr, SECURITY_ATTRIBUTES *thread_attr,
+                                    BOOL inherit, DWORD flags, void *env, const WCHAR *cur_dir,
+                                    STARTUPINFOW *startup_info, PROCESS_INFORMATION *info, HANDLE *new_token );
+
+#ifndef QUOTA_LIMITS_HARDWS_MIN_DISABLE
+#define QUOTA_LIMITS_HARDWS_MIN_ENABLE  0x00000001
+#define QUOTA_LIMITS_HARDWS_MIN_DISABLE 0x00000002
+#define QUOTA_LIMITS_HARDWS_MAX_ENABLE  0x00000004
+#define QUOTA_LIMITS_HARDWS_MAX_DISABLE 0x00000008
+#endif
 
 static DWORD shutdown_flags = 0;
 static DWORD shutdown_priority = 0x280;
@@ -126,7 +150,7 @@ static WCHAR *get_file_name( WCHAR *cmdline, WCHAR *buffer, DWORD buflen )
     {
         if (!(ret = HeapAlloc( GetProcessHeap(), 0, (lstrlenW(cmdline) + 3) * sizeof(WCHAR) )))
             goto done;
-        swprintf( ret, lstrlenW(cmdline) + 3, L"\"%s\"%s", name, p );
+        _snwprintf( ret, lstrlenW(cmdline) + 3, L"\"%s\"%s", name, p );
     }
 
  done:
@@ -264,7 +288,12 @@ static NTSTATUS create_nt_process( HANDLE token, HANDLE debug, SECURITY_ATTRIBUT
 {
     OBJECT_ATTRIBUTES process_attr, thread_attr;
     PS_CREATE_INFO create_info;
+#if defined(_MSC_VER)
+    /* MSVC rejects offsetof() as a constant array bound here. */
+    ULONG_PTR buffer[64];
+#else
     ULONG_PTR buffer[offsetof( PS_ATTRIBUTE_LIST, Attributes[9] ) / sizeof(ULONG_PTR)];
+#endif
     PS_ATTRIBUTE_LIST *attr = (PS_ATTRIBUTE_LIST *)buffer;
     UNICODE_STRING nameW;
     NTSTATUS status;
@@ -376,8 +405,8 @@ static NTSTATUS create_vdm_process( HANDLE token, HANDLE debug, SECURITY_ATTRIBU
     if (!(newcmdline = RtlAllocateHeap( GetProcessHeap(), 0, len * sizeof(WCHAR) )))
         return STATUS_NO_MEMORY;
 
-    swprintf( newcmdline, len, L"%s --app-name \"%s\" %s",
-              winevdm, params->ImagePathName.Buffer, params->CommandLine.Buffer );
+    _snwprintf( newcmdline, len, L"%s --app-name \"%s\" %s",
+                winevdm, params->ImagePathName.Buffer, params->CommandLine.Buffer );
     RtlInitUnicodeString( &params->ImagePathName, winevdm );
     RtlInitUnicodeString( &params->CommandLine, newcmdline );
     status = create_nt_process( token, debug, psa, tsa, flags, params, info, 0, 0, NULL, NULL );
@@ -406,7 +435,7 @@ static NTSTATUS create_cmd_process( HANDLE token, HANDLE debug, SECURITY_ATTRIBU
     if (!(newcmdline = RtlAllocateHeap( GetProcessHeap(), 0, len * sizeof(WCHAR) )))
         return STATUS_NO_MEMORY;
 
-    swprintf( newcmdline, len, L"%s /s/c \"%s\"", comspec, params->CommandLine.Buffer );
+    _snwprintf( newcmdline, len, L"%s /s/c \"%s\"", comspec, params->CommandLine.Buffer );
     RtlInitUnicodeString( &params->ImagePathName, comspec );
     RtlInitUnicodeString( &params->CommandLine, newcmdline );
     status = create_nt_process( token, debug, psa, tsa, flags, params, info, 0, 0, NULL, NULL );
@@ -534,7 +563,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR 
         {
             if (!(tidy_cmdline = RtlAllocateHeap( GetProcessHeap(), 0, (lstrlenW(app_name)+3) * sizeof(WCHAR) )))
                 return FALSE;
-            swprintf( tidy_cmdline, lstrlenW(app_name) + 3, L"\"%s\"", app_name );
+            _snwprintf( tidy_cmdline, lstrlenW(app_name) + 3, L"\"%s\"", app_name );
         }
     }
     else
@@ -1062,11 +1091,11 @@ BOOL WINAPI GetProcessInformation( HANDLE process, PROCESS_INFORMATION_CLASS inf
                     mi->Res0 = 0;
                     mi->MachineAttributes = 0;
                     if (machines[i].KernelMode)
-                        mi->MachineAttributes |= KernelEnabled;
+                        mi->MachineAttributes |= PROCESS_MACHINE_ATTRIBUTE_KERNEL_ENABLED;
                     if (machines[i].UserMode)
-                        mi->MachineAttributes |= UserEnabled;
+                        mi->MachineAttributes |= PROCESS_MACHINE_ATTRIBUTE_USER_ENABLED;
                     if (machines[i].WoW64Container)
-                        mi->MachineAttributes |= Wow64Container;
+                        mi->MachineAttributes |= PROCESS_MACHINE_ATTRIBUTE_WOW64_CONTAINER;
 
                     return TRUE;
                 }
@@ -1281,7 +1310,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetProcessWorkingSetSizeEx( HANDLE process, SIZE_T
 /******************************************************************************
  *           TerminateProcess   (kernelbase.@)
  */
-BOOL WINAPI DECLSPEC_HOTPATCH TerminateProcess( HANDLE handle, DWORD exit_code )
+BOOL WINAPI DECLSPEC_HOTPATCH TerminateProcess( HANDLE handle, UINT exit_code )
 {
     if (!handle)
     {
@@ -1548,6 +1577,8 @@ LPWSTR WINAPI DECLSPEC_HOTPATCH GetEnvironmentStringsW(void)
     return ret;
 }
 
+
+BOOL WINAPI DECLSPEC_HOTPATCH SetEnvironmentStringsW( WCHAR *env );
 
 /***********************************************************************
  *           SetEnvironmentStringsA   (kernelbase.@)
@@ -1868,5 +1899,10 @@ void WINAPI DECLSPEC_HOTPATCH DeleteProcThreadAttributeList( struct _PROC_THREAD
  */
 BOOL WINAPI DECLSPEC_HOTPATCH CompareObjectHandles( HANDLE first, HANDLE second )
 {
+#ifndef __REACTOS__
     return set_ntstatus( NtCompareObjects( first, second ));
+#else
+    TRACE("CompareObjectHandles is not implemented in ReactOS\n");
+    return FALSE; //NtCompareObjects is not implemented in ReactOS
+#endif
 }

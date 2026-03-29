@@ -33,9 +33,35 @@
 #include "winioctl.h"
 #include "wincon.h"
 #include "fileapi.h"
+
+#ifdef __REACTOS__
+/* Use local implementations of shlwapi helpers instead of importing them. */
+#define WINSHLWAPI
+#pragma warning(disable:4995)
+#endif
 #include "shlwapi.h"
+#ifdef __REACTOS__
+/* ntddser.h overlaps Wine winioctl.h on a few CTL_CODEs; drop Wine's so PSDK is single source. */
+#undef IOCTL_SERIAL_LSRMST_INSERT
+#undef IOCTL_SERENUM_PORT_DESC
+#undef IOCTL_SERENUM_GET_PORT_NAME
+#ifndef PHYSICAL_ADDRESS
+typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;
+#endif
+#include "ntddser.h"
+#ifndef FILE_VALID_DATA_LENGTH_INFORMATION
+typedef struct _FILE_VALID_DATA_LENGTH_INFORMATION
+{
+    LARGE_INTEGER ValidDataLength;
+} FILE_VALID_DATA_LENGTH_INFORMATION, *PFILE_VALID_DATA_LENGTH_INFORMATION;
+#endif
+#ifndef NT_ERROR
+#define NT_ERROR(Status) ((((ULONG)(Status)) >> 30) == 3)
+#endif
+#else
 #include "ddk/ntddk.h"
 #include "ddk/ntddser.h"
+#endif
 #include "ioringapi.h"
 
 #include "kernelbase.h"
@@ -43,6 +69,11 @@
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(file);
+
+#ifndef COPY_FILE_COPY_SYMLINK
+/* Flag used by CopyFile2/COPYFILE2_EXTENDED_PARAMETERS on newer Windows. */
+#define COPY_FILE_COPY_SYMLINK 0x00000800
+#endif
 
 /* info structure for FindFirstFile handle */
 typedef struct
@@ -1617,7 +1648,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetCompressedFileSizeW( LPCWSTR name, LPDWORD siz
 /***********************************************************************
  *           GetCurrentDirectoryA    (kernelbase.@)
  */
-UINT WINAPI DECLSPEC_HOTPATCH GetCurrentDirectoryA( UINT buflen, LPSTR buf )
+DWORD WINAPI DECLSPEC_HOTPATCH GetCurrentDirectoryA( DWORD buflen, LPSTR buf )
 {
     WCHAR bufferW[MAX_PATH];
     DWORD ret;
@@ -1647,7 +1678,7 @@ UINT WINAPI DECLSPEC_HOTPATCH GetCurrentDirectoryA( UINT buflen, LPSTR buf )
 /***********************************************************************
  *           GetCurrentDirectoryW    (kernelbase.@)
  */
-UINT WINAPI DECLSPEC_HOTPATCH GetCurrentDirectoryW( UINT buflen, LPWSTR buf )
+DWORD WINAPI DECLSPEC_HOTPATCH GetCurrentDirectoryW( DWORD buflen, LPWSTR buf )
 {
     return RtlGetCurrentDirectory_U( buflen * sizeof(WCHAR), buf ) / sizeof(WCHAR);
 }
@@ -2382,7 +2413,7 @@ UINT WINAPI DECLSPEC_HOTPATCH GetTempFileNameW( LPCWSTR path, LPCWSTR prefix, UI
     if (prefix) for (i = 3; (i > 0) && (*prefix); i--) *p++ = *prefix++;
 
     unique &= 0xffff;
-    if (unique) swprintf( p, MAX_PATH - (p - buffer), L"%x.tmp", unique );
+    if (unique) _snwprintf( p, MAX_PATH - (p - buffer), L"%x.tmp", unique );
     else
     {
         /* get a "random" unique number and try to create the file */
@@ -2396,7 +2427,11 @@ UINT WINAPI DECLSPEC_HOTPATCH GetTempFileNameW( LPCWSTR path, LPCWSTR prefix, UI
         unique = num;
         do
         {
+#ifdef __REACTOS__
+            _snwprintf( p, MAX_PATH - (p - buffer), L"%x.tmp", unique );
+#else
             swprintf( p, MAX_PATH - (p - buffer), L"%x.tmp", unique );
+#endif
             handle = CreateFileW( buffer, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, 0 );
             if (handle != INVALID_HANDLE_VALUE)
             {  /* We created it */
@@ -3005,8 +3040,11 @@ BOOL WINAPI DECLSPEC_HOTPATCH CancelIo( HANDLE handle )
 BOOL WINAPI DECLSPEC_HOTPATCH CancelIoEx( HANDLE handle, LPOVERLAPPED overlapped )
 {
     IO_STATUS_BLOCK io;
-
+#ifdef __REACTOS__
+    return set_ntstatus( NtCancelIoFile( handle, &io ) );
+#else
     return set_ntstatus( NtCancelIoFileEx( handle, (PIO_STATUS_BLOCK)overlapped, &io ) );
+#endif
 }
 
 
@@ -4000,7 +4038,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH WriteFileGather( HANDLE file, FILE_SEGMENT_ELEMENT
 /*********************************************************************
  *	CompareFileTime   (kernelbase.@)
  */
-INT WINAPI DECLSPEC_HOTPATCH CompareFileTime( const FILETIME *x, const FILETIME *y )
+LONG WINAPI DECLSPEC_HOTPATCH CompareFileTime( CONST FILETIME *x, CONST FILETIME *y )
 {
     if (!x || !y) return -1;
     if (x->dwHighDateTime > y->dwHighDateTime) return 1;

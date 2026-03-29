@@ -57,9 +57,9 @@ static DWORD rtlmode_to_win32mode( DWORD rtlmode )
 /***************************************************************************
  *           CreateRemoteThread   (kernelbase.@)
  */
-HANDLE WINAPI DECLSPEC_HOTPATCH CreateRemoteThread( HANDLE process, SECURITY_ATTRIBUTES *sa, SIZE_T stack,
+HANDLE WINAPI DECLSPEC_HOTPATCH CreateRemoteThread( HANDLE process, LPSECURITY_ATTRIBUTES sa, DWORD stack,
                                                     LPTHREAD_START_ROUTINE start, LPVOID param,
-                                                    DWORD flags, DWORD *id )
+                                                    DWORD flags, LPDWORD id )
 {
     return CreateRemoteThreadEx( process, sa, stack, start, param, flags, NULL, id );
 }
@@ -68,10 +68,10 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateRemoteThread( HANDLE process, SECURITY_ATT
 /***************************************************************************
  *           CreateRemoteThreadEx   (kernelbase.@)
  */
-HANDLE WINAPI DECLSPEC_HOTPATCH CreateRemoteThreadEx( HANDLE process, SECURITY_ATTRIBUTES *sa,
-                                                      SIZE_T stack, LPTHREAD_START_ROUTINE start,
+HANDLE WINAPI DECLSPEC_HOTPATCH CreateRemoteThreadEx( HANDLE process, LPSECURITY_ATTRIBUTES sa,
+                                                      DWORD stack, LPTHREAD_START_ROUTINE start,
                                                       LPVOID param, DWORD flags,
-                                                      LPPROC_THREAD_ATTRIBUTE_LIST attributes, DWORD *id )
+                                                      LPPROC_THREAD_ATTRIBUTE_LIST attributes, LPDWORD id )
 {
     HANDLE handle;
     CLIENT_ID client_id;
@@ -107,7 +107,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH CreateRemoteThreadEx( HANDLE process, SECURITY_A
 /***********************************************************************
  *           CreateThread   (kernelbase.@)
  */
-HANDLE WINAPI DECLSPEC_HOTPATCH CreateThread( SECURITY_ATTRIBUTES *sa, SIZE_T stack,
+HANDLE WINAPI DECLSPEC_HOTPATCH CreateThread( LPSECURITY_ATTRIBUTES sa, DWORD stack,
                                               LPTHREAD_START_ROUTINE start, LPVOID param,
                                               DWORD flags, LPDWORD id )
 {
@@ -796,7 +796,7 @@ BOOL WINAPI Wow64SetThreadContext( HANDLE handle, const WOW64_CONTEXT *context)
  * Fibers
  ***********************************************************************/
 
-
+ #ifndef __REACTOS__
 struct fiber_actctx
 {
     ACTIVATION_CONTEXT_STACK stack_space;    /* activation context stack space */
@@ -1190,7 +1190,7 @@ void WINAPI DECLSPEC_HOTPATCH SwitchToFiber( LPVOID fiber )
     NtCurrentTeb()->ActivationContextStackPointer = new_fiber->actctx.stack_ptr;
     switch_fiber( &current_fiber->context, &new_fiber->context );
 }
-
+#endif
 
 /***********************************************************************
  *           FlsAlloc   (kernelbase.@)
