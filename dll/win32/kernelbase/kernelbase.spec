@@ -857,7 +857,7 @@
 @ stdcall InterlockedPopEntrySList(ptr) ntdll.RtlInterlockedPopEntrySList
 @ stdcall InterlockedPushEntrySList(ptr ptr) ntdll.RtlInterlockedPushEntrySList
 @ stdcall -fastcall InterlockedPushListSList(ptr ptr ptr long) ntdll.RtlInterlockedPushListSList
-@ stdcall InterlockedPushListSListEx(ptr ptr ptr long) ntdll.RtlInterlockedPushListSListEx
+@ stdcall -version=0x602+ -stub InterlockedPushListSListEx(ptr ptr ptr long) ntdll.RtlInterlockedPushListSListEx
 @ stub InternalLcidToName
 @ stdcall Internal_EnumCalendarInfo(ptr long long long long long long long)
 @ stdcall Internal_EnumDateFormats(ptr long long long long long long)
