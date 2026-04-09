@@ -427,7 +427,7 @@ FORCEINLINE struct _TEB * NtCurrentTeb(VOID)
     // return (struct _TEB *)KeGetPcr()->Used_Self;
     return (struct _TEB *)(ULONG_PTR)_MoveFromCoprocessor(CP15_TPIDRURW);
 #elif defined (_M_ARM64)
-    return (struct _TEB *)__getReg(18);
+    return (struct _TEB *)__readx18qword(FIELD_OFFSET(NT_TIB, Self));
 #else
 #error Unsupported architecture
 #endif
