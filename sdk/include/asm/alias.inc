@@ -53,6 +53,48 @@ ENDM
     CREATE_ALIAS1 $alias, $target
     CREATE_ALIAS2 $alias, $target
     MEND
+
+#elif defined(_M_ARM64)
+
+#include <kxarm64.h>
+
+#ifdef _MSC_VER
+
+    MACRO
+    CREATE_ALIAS1   $alias, $target
+    EXTERN SYM($target):PROC
+    ALIAS <SYM($alias)> = <SYM($target)>
+    MEND
+
+    MACRO
+    CREATE_ALIAS2   $alias, $target
+    EXTERN IMPSYM($target):PROC
+    ALIAS <IMPSYM($alias)> = <IMPSYM($target)>
+    MEND
+
+    MACRO
+    CREATE_ALIAS   $alias, $target
+    CREATE_ALIAS1 $alias, $target
+    CREATE_ALIAS2 $alias, $target
+    MEND
+
+#else /* GAS / Clang */
+
+.macro CREATE_ALIAS1 alias, target
+    .weakref \alias, \target
+.endm
+
+.macro CREATE_ALIAS2 alias, target
+    .weakref __imp_\()\alias, __imp_\()\target
+.endm
+
+.macro CREATE_ALIAS alias, target
+    CREATE_ALIAS1 \alias, \target
+    CREATE_ALIAS2 \alias, \target
+.endm
+
+#endif /* _MSC_VER */
+
 #else
 #error "Unsupported platform."
 #endif
