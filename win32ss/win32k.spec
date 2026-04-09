@@ -239,8 +239,8 @@
 @ cdecl _itow() NTOSKRNL._itow
 @ cdecl -arch=i386 _local_unwind2() NTOSKRNL._local_unwind2
 @ cdecl -arch=x86_64 _local_unwind() NTOSKRNL._local_unwind
-@ cdecl -arch=x86_64,arm _setjmp(ptr ptr) NTOSKRNL._setjmp
-@ cdecl -arch=x86_64,arm _setjmpex(ptr ptr) NTOSKRNL._setjmpex
+@ cdecl -arch=x86_64,arm,arm64 _setjmp(ptr ptr) NTOSKRNL._setjmp
+@ cdecl -arch=x86_64,arm,arm64 _setjmpex(ptr ptr) NTOSKRNL._setjmpex
 @ cdecl -arch=x86_64,arm longjmp(ptr long) NTOSKRNL.longjmp
 @ cdecl -arch=x86_64,arm memcmp() NTOSKRNL.memcmp
 @ cdecl -arch=x86_64,arm memcpy() NTOSKRNL.memcpy
