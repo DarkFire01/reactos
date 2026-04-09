@@ -13,11 +13,7 @@ list(APPEND SOURCE
     vista/GetFinalPathNameByHandle.c
     vista/GetNamedPipeClientProcessId.c
     vista/GetTickCount64.c
-    vista/GetUserDefaultLocaleName.c
     vista/InitOnce.c
-    vista/IsValidLocaleName.c
-    vista/LCIDToLocaleName.c
-    vista/LocaleNameToLCID.c
     vista/SetThreadDescription.c
     vista/sync.c
     vista/threadpool.c

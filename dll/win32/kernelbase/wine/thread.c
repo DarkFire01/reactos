@@ -325,17 +325,23 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetThreadTimes( HANDLE thread, LPFILETIME creation
 }
 
 
-/***********************************************************************
- *	     GetThreadUILanguage   (kernelbase.@)
- */
-LANGID WINAPI DECLSPEC_HOTPATCH GetThreadUILanguage(void)
+static LANGID thread_default_ui_language(void)
 {
     LANGID lang;
-
-    FIXME(": stub, returning default language.\n");
     NtQueryDefaultUILanguage( &lang );
     return lang;
 }
+
+/***********************************************************************
+ *	     GetThreadUILanguage   (kernelbase.@)
+ */
+#ifndef __REACTOS__
+LANGID WINAPI DECLSPEC_HOTPATCH GetThreadUILanguage(void)
+{
+    FIXME(": stub, returning default language.\n");
+    return thread_default_ui_language();
+}
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************
@@ -600,7 +606,7 @@ LANGID WINAPI DECLSPEC_HOTPATCH SetThreadUILanguage( LANGID langid )
 {
     TRACE( "(0x%04x) stub - returning success\n", langid );
 
-    if (!langid) langid = GetThreadUILanguage();
+    if (!langid) langid = thread_default_ui_language();
     return langid;
 }
 
@@ -1198,6 +1204,7 @@ void WINAPI DECLSPEC_HOTPATCH SwitchToFiber( LPVOID fiber )
 /***********************************************************************
  *           FlsAlloc   (kernelbase.@)
  */
+#ifndef __REACTOS__
 DWORD WINAPI DECLSPEC_HOTPATCH FlsAlloc( PFLS_CALLBACK_FUNCTION callback )
 {
     DWORD index;
@@ -1236,6 +1243,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH FlsSetValue( DWORD index, PVOID data )
 {
     return set_ntstatus( RtlFlsSetValue( index, data ));
 }
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************

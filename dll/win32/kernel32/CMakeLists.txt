@@ -9,8 +9,11 @@ add_library(kernel32_shared
     client/file/fileutils.c
     client/file/volume.c
     client/file/disk.c
+    client/file/mntpoint.c
+    client/path.c
     client/fiber.c
     client/loader.c
+    client/utils.c
 )
 target_link_libraries(kernel32_shared PRIVATE pseh)
 add_dependencies(kernel32_shared psdk)

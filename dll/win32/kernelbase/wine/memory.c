@@ -219,6 +219,11 @@ void WINAPI DECLSPEC_HOTPATCH GetNativeSystemInfo( SYSTEM_INFO *si )
 
     if (is_wow64)
     {
+#ifdef __REACTOS__
+        GetSystemInfo( si );
+        si->wProcessorArchitecture = PROCESSOR_ARCHITECTURE_AMD64;
+        return;
+#else
         USHORT current_machine, native_machine;
 
         RtlWow64GetProcessMachines( 0, &current_machine, &native_machine );
@@ -228,6 +233,7 @@ void WINAPI DECLSPEC_HOTPATCH GetNativeSystemInfo( SYSTEM_INFO *si )
             si->wProcessorArchitecture = PROCESSOR_ARCHITECTURE_AMD64;
             return;
         }
+#endif
     }
 
     if (!set_ntstatus( RtlGetNativeSystemInformation( SystemBasicInformation,
@@ -348,11 +354,20 @@ LPVOID WINAPI DECLSPEC_HOTPATCH MapViewOfFile3( HANDLE handle, HANDLE process, P
 
     addr = baseaddr;
     off.QuadPart = offset;
+#ifdef __REACTOS__
+    (void)alloc_type;
+    (void)params;
+    (void)params_count;
+    if (!set_ntstatus( NtMapViewOfSection( handle, process, &addr, 0, 0, &off,
+                                           &size, ViewShare, 0, protection )))
+        return NULL;
+#else
     if (!set_ntstatus( NtMapViewOfSectionEx( handle, process, &addr, &off, &size, alloc_type, protection,
             params, params_count )))
     {
         return NULL;
     }
+#endif
     return addr;
 }
 
@@ -411,7 +426,12 @@ BOOL WINAPI DECLSPEC_HOTPATCH UnmapViewOfFile( const void *addr )
  */
 BOOL WINAPI DECLSPEC_HOTPATCH UnmapViewOfFile2( HANDLE process, void *addr, ULONG flags )
 {
+#ifdef __REACTOS__
+    (void)flags;
+    return set_ntstatus( NtUnmapViewOfSection( process, addr ));
+#else
     return set_ntstatus( NtUnmapViewOfSectionEx( process, addr, flags ));
+#endif
 }
 
 
@@ -420,7 +440,12 @@ BOOL WINAPI DECLSPEC_HOTPATCH UnmapViewOfFile2( HANDLE process, void *addr, ULON
  */
 BOOL WINAPI DECLSPEC_HOTPATCH UnmapViewOfFileEx( void *addr, ULONG flags )
 {
+#ifdef __REACTOS__
+    (void)flags;
+    return set_ntstatus( NtUnmapViewOfSection( GetCurrentProcess(), addr ));
+#else
     return set_ntstatus( NtUnmapViewOfSectionEx( GetCurrentProcess(), addr, flags ));
+#endif
 }
 
 
@@ -489,8 +514,13 @@ LPVOID WINAPI DECLSPEC_HOTPATCH VirtualAlloc2FromApp( HANDLE process, void *addr
     }
 
     if (!process) process = GetCurrentProcess();
+#ifdef __REACTOS__
+    if (!set_ntstatus( NtAllocateVirtualMemory( process, &ret, 0, &size, type, protect )))
+        return NULL;
+#else
     if (!set_ntstatus( NtAllocateVirtualMemoryEx( process, &ret, &size, type, protect, parameters, count )))
         return NULL;
+#endif
     return ret;
 }
 
@@ -522,9 +552,18 @@ LPVOID WINAPI DECLSPEC_HOTPATCH VirtualAllocFromApp( void *addr, SIZE_T size,
 BOOL WINAPI DECLSPEC_HOTPATCH PrefetchVirtualMemory( HANDLE process, ULONG_PTR count,
                                                      WIN32_MEMORY_RANGE_ENTRY *addresses, ULONG flags )
 {
+#ifdef __REACTOS__
+    (void)process;
+    (void)count;
+    (void)addresses;
+    (void)flags;
+    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
+    return FALSE;
+#else
     return set_ntstatus( NtSetInformationVirtualMemory( process, VmPrefetchInformation,
                                                         count, (PMEMORY_RANGE_ENTRY)addresses,
                                                         &flags, sizeof(flags) ));
+#endif
 }
 
 

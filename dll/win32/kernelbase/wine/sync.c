@@ -61,10 +61,7 @@ static inline LARGE_INTEGER *get_nt_timeout( LARGE_INTEGER *time, DWORD timeout 
     return time;
 }
 
-/***********************************************************************
- *              BaseGetNamedObjectDirectory  (kernelbase.@)
- */
-NTSTATUS WINAPI BaseGetNamedObjectDirectory( HANDLE *dir )
+static NTSTATUS get_named_object_directory( HANDLE *dir )
 {
     static HANDLE handle;
     WCHAR buffer[64];
@@ -74,7 +71,7 @@ NTSTATUS WINAPI BaseGetNamedObjectDirectory( HANDLE *dir )
 
     if (!handle)
     {
-        HANDLE dir;
+        HANDLE dir_handle;
 #ifdef __REACTOS__
         swprintf( buffer, L"\\Sessions\\%u\\BaseNamedObjects",
                   NtCurrentTeb()->Peb->SessionId );
@@ -84,16 +81,26 @@ NTSTATUS WINAPI BaseGetNamedObjectDirectory( HANDLE *dir )
 #endif
         RtlInitUnicodeString( &str, buffer );
         InitializeObjectAttributes(&attr, &str, 0, 0, NULL);
-        status = NtOpenDirectoryObject( &dir, DIRECTORY_CREATE_OBJECT|DIRECTORY_TRAVERSE, &attr );
-        if (!status && InterlockedCompareExchangePointer( &handle, dir, 0 ) != 0)
+        status = NtOpenDirectoryObject( &dir_handle, DIRECTORY_CREATE_OBJECT|DIRECTORY_TRAVERSE, &attr );
+        if (!status && InterlockedCompareExchangePointer( &handle, dir_handle, 0 ) != 0)
         {
             /* someone beat us here... */
-            CloseHandle( dir );
+            CloseHandle( dir_handle );
         }
     }
     *dir = handle;
     return status;
 }
+
+#ifndef __REACTOS__
+/***********************************************************************
+ *              BaseGetNamedObjectDirectory  (kernelbase.@)
+ */
+NTSTATUS WINAPI BaseGetNamedObjectDirectory( HANDLE *dir )
+{
+    return get_named_object_directory( dir );
+}
+#endif /* !__REACTOS__ */
 
 static void get_create_object_attributes( OBJECT_ATTRIBUTES *attr, UNICODE_STRING *nameW,
                                           SECURITY_ATTRIBUTES *sa, const WCHAR *name )
@@ -108,7 +115,7 @@ static void get_create_object_attributes( OBJECT_ATTRIBUTES *attr, UNICODE_STRIN
     {
         RtlInitUnicodeString( nameW, name );
         attr->ObjectName = nameW;
-        BaseGetNamedObjectDirectory( &attr->RootDirectory );
+        get_named_object_directory( &attr->RootDirectory );
     }
 }
 
@@ -123,7 +130,7 @@ static BOOL get_open_object_attributes( OBJECT_ATTRIBUTES *attr, UNICODE_STRING 
         return FALSE;
     }
     RtlInitUnicodeString( nameW, name );
-    BaseGetNamedObjectDirectory( &dir );
+    get_named_object_directory( &dir );
     InitializeObjectAttributes( attr, nameW, inherit ? OBJ_INHERIT : 0, dir, NULL );
     return TRUE;
 }

@@ -187,6 +187,14 @@ static HMODULE load_library( const UNICODE_STRING *libname, DWORD flags )
 /****************************************************************************
  *	AddDllDirectory   (kernelbase.@)
  */
+#ifdef __REACTOS__
+DLL_DIRECTORY_COOKIE WINAPI DECLSPEC_HOTPATCH AddDllDirectory( const WCHAR *dir )
+{
+    (void)dir;
+    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
+    return NULL;
+}
+#else
 DLL_DIRECTORY_COOKIE WINAPI DECLSPEC_HOTPATCH AddDllDirectory( const WCHAR *dir )
 {
     UNICODE_STRING str;
@@ -196,6 +204,14 @@ DLL_DIRECTORY_COOKIE WINAPI DECLSPEC_HOTPATCH AddDllDirectory( const WCHAR *dir 
     if (!set_ntstatus( LdrAddDllDirectory( &str, &cookie ))) return NULL;
     return cookie;
 }
+#endif
+
+#ifdef __REACTOS__
+BOOL WINAPI DECLSPEC_HOTPATCH DisableThreadLibraryCalls( HMODULE module )
+{
+    return set_ntstatus( LdrDisableThreadCalloutsForDll( module ));
+}
+#endif
 
 
 #ifndef __REACTOS__
@@ -501,6 +517,10 @@ FARPROC WINAPI DECLSPEC_HOTPATCH GetProcAddress( HMODULE module, LPCSTR function
  */
 BOOL WINAPI IsApiSetImplemented( LPCSTR name )
 {
+#ifdef __REACTOS__
+    (void)name;
+    return TRUE;
+#else
     UNICODE_STRING str;
     NTSTATUS status;
     BOOLEAN in_schema, present;
@@ -509,6 +529,7 @@ BOOL WINAPI IsApiSetImplemented( LPCSTR name )
     status = ApiSetQueryApiSetPresenceEx( &str, &in_schema, &present );
     RtlFreeUnicodeString( &str );
     return !status && present;
+#endif
 }
 
 
@@ -596,19 +617,37 @@ void WINAPI LoadAppInitDlls(void)
 /****************************************************************************
  *	RemoveDllDirectory   (kernelbase.@)
  */
+#ifdef __REACTOS__
+BOOL WINAPI DECLSPEC_HOTPATCH RemoveDllDirectory( DLL_DIRECTORY_COOKIE cookie )
+{
+    (void)cookie;
+    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
+    return FALSE;
+}
+#else
 BOOL WINAPI DECLSPEC_HOTPATCH RemoveDllDirectory( DLL_DIRECTORY_COOKIE cookie )
 {
     return set_ntstatus( LdrRemoveDllDirectory( cookie ));
 }
+#endif
 
 
 /*************************************************************************
  *	SetDefaultDllDirectories   (kernelbase.@)
  */
+#ifdef __REACTOS__
+BOOL WINAPI DECLSPEC_HOTPATCH SetDefaultDllDirectories( DWORD flags )
+{
+    (void)flags;
+    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
+    return FALSE;
+}
+#else
 BOOL WINAPI DECLSPEC_HOTPATCH SetDefaultDllDirectories( DWORD flags )
 {
     return set_ntstatus( LdrSetDefaultDllDirectories( flags ));
 }
+#endif
 
 
 /***********************************************************************

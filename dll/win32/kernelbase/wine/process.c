@@ -31,6 +31,9 @@
 
 #include "kernelbase.h"
 #include "wine/debug.h"
+#ifdef __REACTOS__
+#include <ndk/ketypes.h>
+#endif
 #ifndef __REACTOS__
 #include "wine/condrv.h"
 #else
@@ -72,9 +75,15 @@ static DWORD shutdown_priority = 0x280;
  */
 static BOOL find_exe_file( const WCHAR *name, WCHAR *buffer, DWORD buflen )
 {
+#ifndef __REACTOS__
     WCHAR *load_path;
+#endif
     BOOL ret;
 
+#ifdef __REACTOS__
+    ret = (SearchPathW( NULL, name, L".exe", buflen, buffer, NULL ) ||
+           SearchPathW( NULL, name, NULL, buflen, buffer, NULL ));
+#else
     if (!set_ntstatus( RtlGetExePath( name, &load_path ))) return FALSE;
 
     TRACE( "looking for %s in %s\n", debugstr_w(name), debugstr_w(load_path) );
@@ -82,6 +91,7 @@ static BOOL find_exe_file( const WCHAR *name, WCHAR *buffer, DWORD buflen )
     ret = (SearchPathW( load_path, name, L".exe", buflen, buffer, NULL ) ||
            /* not found, try without extension in case it is a Unix app */
            SearchPathW( load_path, name, NULL, buflen, buffer, NULL ));
+#endif
 
     if (ret)  /* make sure it can be opened, SearchPathW also returns directories */
     {
@@ -89,7 +99,9 @@ static BOOL find_exe_file( const WCHAR *name, WCHAR *buffer, DWORD buflen )
                                      NULL, OPEN_EXISTING, 0, 0 );
         if ((ret = (handle != INVALID_HANDLE_VALUE))) CloseHandle( handle );
     }
+#ifndef __REACTOS__
     RtlReleasePath( load_path );
+#endif
     return ret;
 }
 
@@ -1033,7 +1045,12 @@ BOOL WINAPI DECLSPEC_HOTPATCH IsProcessInJob( HANDLE process, HANDLE job, BOOL *
  */
 BOOL WINAPI DECLSPEC_HOTPATCH IsProcessorFeaturePresent ( DWORD feature )
 {
+#ifdef __REACTOS__
+    if (feature >= PROCESSOR_FEATURE_MAX) return FALSE;
+    return (BOOL)SharedUserData->ProcessorFeatures[feature];
+#else
     return RtlIsProcessorFeaturePresent( feature );
+#endif
 }
 
 
@@ -1042,7 +1059,15 @@ BOOL WINAPI DECLSPEC_HOTPATCH IsProcessorFeaturePresent ( DWORD feature )
  */
 BOOL WINAPI DECLSPEC_HOTPATCH IsWow64Process2( HANDLE process, USHORT *machine, USHORT *native_machine )
 {
+#ifdef __REACTOS__
+    BOOL wow = FALSE;
+    if (!IsWow64Process( process, &wow )) return FALSE;
+    if (machine) *machine = wow ? IMAGE_FILE_MACHINE_I386 : IMAGE_FILE_MACHINE_AMD64;
+    if (native_machine) *native_machine = IMAGE_FILE_MACHINE_AMD64;
+    return TRUE;
+#else
     return set_ntstatus( RtlWow64GetProcessMachines( process, machine, native_machine ));
+#endif
 }
 
 

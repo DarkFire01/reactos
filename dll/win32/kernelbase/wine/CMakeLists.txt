@@ -40,6 +40,7 @@ if(NOT MSVC)
 endif()
 
 list(APPEND SOURCE_STATIC
+    reactos_kernelbase_stubs.c
     console.c
     debug.c
     file.c

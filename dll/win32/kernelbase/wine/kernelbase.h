@@ -26,7 +26,63 @@
 
 #ifdef __REACTOS__
 #include "synchacks.h"
+
+/* Wine sources call Win32 names; spec exports use kernelbase_* / KERNELBASE_* */
+HANDLE WINAPI kernelbase_GetCurrentProcess(void);
+DWORD WINAPI kernelbase_GetCurrentProcessId(void);
+HANDLE WINAPI kernelbase_GetProcessHeap(void);
+HANDLE WINAPI kernelbase_GetCurrentThread(void);
+DWORD WINAPI kernelbase_GetCurrentThreadId(void);
+DWORD WINAPI kernelbase_GetLastError(void);
+
+VOID NTAPI RtlSetLastWin32Error(ULONG err);
+VOID NTAPI RtlExitUserThread(NTSTATUS status);
+
+#undef GetCurrentProcess
+#define GetCurrentProcess kernelbase_GetCurrentProcess
+#undef GetCurrentProcessId
+#define GetCurrentProcessId kernelbase_GetCurrentProcessId
+#undef GetProcessHeap
+#define GetProcessHeap kernelbase_GetProcessHeap
+#undef GetCurrentThread
+#define GetCurrentThread kernelbase_GetCurrentThread
+#undef GetCurrentThreadId
+#define GetCurrentThreadId kernelbase_GetCurrentThreadId
+#undef GetLastError
+#define GetLastError kernelbase_GetLastError
+#undef SetLastError
+#define SetLastError RtlSetLastWin32Error
+
+#undef lstrcpynW
+#define lstrcpynW KERNELBASE_lstrcpynW
+#undef lstrcpynA
+#define lstrcpynA KERNELBASE_lstrcpynA
+#undef lstrlenW
+#define lstrlenW KERNELBASE_lstrlenW
+#undef lstrlenA
+#define lstrlenA KERNELBASE_lstrlenA
+
+LPWSTR WINAPI KERNELBASE_lstrcpynW(LPWSTR dst, LPCWSTR src, INT n);
+LPSTR WINAPI KERNELBASE_lstrcpynA(LPSTR dst, LPCSTR src, INT n);
+INT WINAPI KERNELBASE_lstrlenW(LPCWSTR str);
+INT WINAPI KERNELBASE_lstrlenA(LPCSTR str);
+
+#include <wchar.h>
+#include <string.h>
+#ifndef lstrcpyW
+#define lstrcpyW(dst, src) wcscpy((dst), (src))
 #endif
+#ifndef lstrcpyA
+#define lstrcpyA(dst, src) strcpy((dst), (src))
+#endif
+#ifndef lstrcatW
+#define lstrcatW(dst, src) wcscat((dst), (src))
+#endif
+
+#undef ExitThread
+#define ExitThread(code) RtlExitUserThread((NTSTATUS)(code))
+
+#endif /* __REACTOS__ */
 
 
 struct pseudo_console

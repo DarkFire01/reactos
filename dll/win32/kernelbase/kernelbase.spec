@@ -769,7 +769,7 @@
 @ stdcall GetTraceEnableFlags(int64) ntdll.EtwGetTraceEnableFlags
 @ stdcall GetTraceEnableLevel(int64) ntdll.EtwGetTraceEnableLevel
 @ stdcall -ret64 GetTraceLoggerHandle(ptr) ntdll.EtwGetTraceLoggerHandle
-@ stub GetUILanguageInfo
+@ stdcall GetUILanguageInfo(long wstr wstr ptr ptr)
 # @ stub GetUnicodeStringToEightBitSizeRoutine
 # @ stub GetUnicodeStringToEightBitStringRoutine
 @ stdcall GetUserDefaultGeoName(ptr long)

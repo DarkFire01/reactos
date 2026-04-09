@@ -27,7 +27,9 @@ endif()
 add_asm_files(kernel32_asm ${ASM_SOURCE})
 
 add_definitions(-D_KERNELBASE_)
-include_directories(${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys)
+include_directories(
+    ${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys
+    ${REACTOS_SOURCE_DIR}/dll/win32/kernel32)
 spec2def(${kernelbase_name}.dll kernelbase.spec ADD_IMPORTLIB)
 
 if(MSVC)
@@ -41,6 +43,7 @@ endif()
 # This isn't called KernelBase because apps will explode and we aren't win7 yet.
 add_library(${kernelbase_name} MODULE
     wine/kernelbase.rc
+    native/kernelbase_k32_glue.c
     ${kernel32_asm}
     ${CMAKE_CURRENT_BINARY_DIR}/${kernelbase_name}_stubs.c
     ${CMAKE_CURRENT_BINARY_DIR}/${kernelbase_name}.def)

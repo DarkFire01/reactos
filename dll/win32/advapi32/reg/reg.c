@@ -893,7 +893,7 @@ RegConnectRegistryW(LPCWSTR lpMachineName,
         if( lpMachineName[0] == '\\' &&  lpMachineName[1] == '\\')
             lpMachineName += 2;
 
-        if (GetComputerNameW(compName, &len))
+        if (GetComputerNameExW(ComputerNameNetBIOS, compName, &len))
         {
             if (!_wcsicmp(lpMachineName, compName))
                 ret = RegOpenKeyW(hKey, NULL, phkResult);
@@ -1966,9 +1966,9 @@ RegGetValueW(HKEY hKey,
     {
         do
         {
-            HeapFree(GetProcessHeap(), 0, pvBuf);
+            RtlFreeHeap(RtlGetProcessHeap(), 0, pvBuf);
 
-            pvBuf = HeapAlloc(GetProcessHeap(), 0, cbData);
+            pvBuf = RtlAllocateHeap(RtlGetProcessHeap(), 0, cbData);
             if (!pvBuf)
             {
                 ret = ERROR_NOT_ENOUGH_MEMORY;
@@ -2007,7 +2007,7 @@ RegGetValueW(HKEY hKey,
                 CopyMemory(pvData, pvBuf, *pcbData);
         }
 
-        HeapFree(GetProcessHeap(), 0, pvBuf);
+        RtlFreeHeap(RtlGetProcessHeap(), 0, pvBuf);
     }
 
     if (pszSubKey && pszSubKey[0])
@@ -2071,9 +2071,9 @@ RegGetValueA(HKEY hKey,
         (dwType == REG_EXPAND_SZ && !(dwFlags & RRF_NOEXPAND)))
     {
         do {
-            HeapFree(GetProcessHeap(), 0, pvBuf);
+            RtlFreeHeap(RtlGetProcessHeap(), 0, pvBuf);
 
-            pvBuf = HeapAlloc(GetProcessHeap(), 0, cbData);
+            pvBuf = RtlAllocateHeap(RtlGetProcessHeap(), 0, cbData);
             if (!pvBuf)
             {
                 ret = ERROR_NOT_ENOUGH_MEMORY;
@@ -2111,7 +2111,7 @@ RegGetValueA(HKEY hKey,
                 CopyMemory(pvData, pvBuf, *pcbData);
         }
 
-        HeapFree(GetProcessHeap(), 0, pvBuf);
+        RtlFreeHeap(RtlGetProcessHeap(), 0, pvBuf);
     }
 
     if (pszSubKey && pszSubKey[0])
@@ -2887,8 +2887,8 @@ RegEnumValueW(
         /* retry with a dynamically allocated buffer */
         while ((status == STATUS_BUFFER_OVERFLOW) || (status == STATUS_BUFFER_TOO_SMALL))
         {
-            if (buf_ptr != buffer) HeapFree( GetProcessHeap(), 0, buf_ptr );
-            if (!(buf_ptr = HeapAlloc( GetProcessHeap(), 0, total_size )))
+            if (buf_ptr != buffer) RtlFreeHeap( RtlGetProcessHeap(), 0, buf_ptr );
+            if (!(buf_ptr = RtlAllocateHeap( RtlGetProcessHeap(), 0, total_size )))
             {
                 status = ERROR_NOT_ENOUGH_MEMORY;
                 goto done;
@@ -2936,7 +2936,7 @@ RegEnumValueW(
     if (count) *count = info->DataLength;
 
  done:
-    if (buf_ptr != buffer) HeapFree( GetProcessHeap(), 0, buf_ptr );
+    if (buf_ptr != buffer) RtlFreeHeap( RtlGetProcessHeap(), 0, buf_ptr );
     ClosePredefKey(KeyHandle);
     return RtlNtStatusToDosError(status);
 }
@@ -4168,8 +4168,8 @@ RegQueryValueExW(
         /* retry with a dynamically allocated buffer */
         while (status == STATUS_BUFFER_OVERFLOW && total_size - info_size <= *count)
         {
-            if (buf_ptr != buffer) HeapFree( GetProcessHeap(), 0, buf_ptr );
-            if (!(buf_ptr = HeapAlloc( GetProcessHeap(), 0, total_size )))
+            if (buf_ptr != buffer) RtlFreeHeap( RtlGetProcessHeap(), 0, buf_ptr );
+            if (!(buf_ptr = RtlAllocateHeap( RtlGetProcessHeap(), 0, total_size )))
             {
                 ClosePredefKey(hkey);
                 return ERROR_NOT_ENOUGH_MEMORY;
@@ -4198,7 +4198,7 @@ RegQueryValueExW(
     if (count) *count = total_size - info_size;
 
  done:
-    if (buf_ptr != buffer) HeapFree( GetProcessHeap(), 0, buf_ptr );
+    if (buf_ptr != buffer) RtlFreeHeap( RtlGetProcessHeap(), 0, buf_ptr );
     ClosePredefKey(hkey);
     return RtlNtStatusToDosError(status);
 }
@@ -5196,7 +5196,7 @@ RegLoadMUIStringW(
         result = ERROR_FILE_NOT_FOUND;
         goto cleanup;
     }
-    pwszTempBuffer = HeapAlloc(GetProcessHeap(), 0, cbData);
+    pwszTempBuffer = RtlAllocateHeap(RtlGetProcessHeap(), 0, cbData);
     if (!pwszTempBuffer)
     {
         result = ERROR_NOT_ENOUGH_MEMORY;
@@ -5210,7 +5210,7 @@ RegLoadMUIStringW(
     {
         cbData = ExpandEnvironmentStringsW(pwszTempBuffer, NULL, 0) * sizeof(WCHAR);
         if (!cbData) goto cleanup;
-        pwszExpandedBuffer = HeapAlloc(GetProcessHeap(), 0, cbData);
+        pwszExpandedBuffer = RtlAllocateHeap(RtlGetProcessHeap(), 0, cbData);
         if (!pwszExpandedBuffer)
         {
             result = ERROR_NOT_ENOUGH_MEMORY;
@@ -5220,7 +5220,7 @@ RegLoadMUIStringW(
     }
     else
     {
-        pwszExpandedBuffer = HeapAlloc(GetProcessHeap(), 0, cbData);
+        pwszExpandedBuffer = RtlAllocateHeap(RtlGetProcessHeap(), 0, cbData);
         memcpy(pwszExpandedBuffer, pwszTempBuffer, cbData);
     }
 
@@ -5254,8 +5254,8 @@ RegLoadMUIStringW(
     }
 
 cleanup:
-    HeapFree(GetProcessHeap(), 0, pwszTempBuffer);
-    HeapFree(GetProcessHeap(), 0, pwszExpandedBuffer);
+    RtlFreeHeap(RtlGetProcessHeap(), 0, pwszTempBuffer);
+    RtlFreeHeap(RtlGetProcessHeap(), 0, pwszExpandedBuffer);
     return result;
 }
 
@@ -5282,7 +5282,7 @@ RegLoadMUIStringA(
     valueW.Buffer = baseDirW.Buffer = pwszBuffer = NULL;
     if (!RtlCreateUnicodeStringFromAsciiz(&valueW, pszValue) ||
         !RtlCreateUnicodeStringFromAsciiz(&baseDirW, pszDirectory) ||
-        !(pwszBuffer = HeapAlloc(GetProcessHeap(), 0, cbData)))
+        !(pwszBuffer = RtlAllocateHeap(RtlGetProcessHeap(), 0, cbData)))
     {
         result = ERROR_NOT_ENOUGH_MEMORY;
         goto cleanup;
@@ -5299,7 +5299,7 @@ RegLoadMUIStringA(
     }
 
 cleanup:
-    HeapFree(GetProcessHeap(), 0, pwszBuffer);
+    RtlFreeHeap(RtlGetProcessHeap(), 0, pwszBuffer);
     RtlFreeUnicodeString(&baseDirW);
     RtlFreeUnicodeString(&valueW);
 

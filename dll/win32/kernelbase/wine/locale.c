@@ -38,6 +38,11 @@
 #include "kernelbase.h"
 #include "wine/debug.h"
 
+#ifdef __REACTOS__
+NTSTATUS WINAPI RtlGetLocaleFileMappingAddress(void **base, LCID *lcid, LARGE_INTEGER *size);
+INT WINAPI CompareStringOrdinal(const WCHAR *str1, INT len1, const WCHAR *str2, INT len2, BOOL ignore_case);
+#endif
+
 WINE_DEFAULT_DEBUG_CHANNEL(nls);
 
 #define CALINFO_MAX_YEAR 2029
@@ -460,8 +465,12 @@ static void load_locale_nls(void)
     LARGE_INTEGER dummy;
     const USHORT *map_ptr;
     unsigned int i;
-
+#ifdef __REACTOS__
+    if (!NT_SUCCESS( RtlGetLocaleFileMappingAddress( (void **)&header, &system_lcid, &dummy )))
+        return;
+#else
     RtlGetLocaleFileMappingAddress( (void **)&header, &system_lcid, &dummy );
+#endif
     locale_table = (const NLS_LOCALE_HEADER *)((char *)header + header->locales);
     lcids_index = (const NLS_LOCALE_LCID_INDEX *)((char *)locale_table + locale_table->lcids_offset);
     lcnames_index = (const NLS_LOCALE_LCNAME_INDEX *)((char *)locale_table + locale_table->lcnames_offset);
@@ -1921,6 +1930,9 @@ void init_locale( HMODULE module )
 
     kernelbase_handle = module;
     load_locale_nls();
+#ifdef __REACTOS__
+    if (!locale_table) return;
+#endif
     load_sortdefault_nls();
 
     if (system_lcid == LOCALE_CUSTOM_UNSPECIFIED) system_lcid = MAKELANGID( LANG_ENGLISH, SUBLANG_DEFAULT );
@@ -2489,6 +2501,14 @@ static int mbstowcs_utf8( DWORD flags, const char *src, int srclen, WCHAR *dst, 
     NTSTATUS status;
 
     if (!dstlen) dst = NULL;
+#ifdef __REACTOS__
+{
+    DWORD mflags = (flags & MB_ERR_INVALID_CHARS) ? MB_ERR_INVALID_CHARS : 0;
+    int ret = MultiByteToWideChar(CP_UTF8, mflags, src, srclen, dst, dstlen ? dstlen : 0);
+    if (!ret) return 0;
+    return ret;
+}
+#else
     status = RtlUTF8ToUnicodeN( dst, dstlen * sizeof(WCHAR), &reslen, src, srclen );
     if (status == STATUS_SOME_NOT_MAPPED)
     {
@@ -2501,6 +2521,7 @@ static int mbstowcs_utf8( DWORD flags, const char *src, int srclen, WCHAR *dst, 
     else if (!set_ntstatus( status )) reslen = 0;
 
     return reslen / sizeof(WCHAR);
+#endif
 }
 
 
@@ -2894,6 +2915,17 @@ static int wcstombs_utf8( DWORD flags, const WCHAR *src, int srclen, char *dst, 
 
     if (used) *used = FALSE;
     if (!dstlen) dst = NULL;
+#ifdef __REACTOS__
+{
+    DWORD wcflags = (flags & WC_ERR_INVALID_CHARS) ? WC_ERR_INVALID_CHARS : 0;
+    BOOL local_used = FALSE;
+    BOOL *pused = (dst && dstlen) ? &local_used : NULL;
+    int ret = WideCharToMultiByte(CP_UTF8, wcflags, src, srclen, dst, dstlen ? dstlen : 0, NULL, pused);
+    if (!ret) return 0;
+    if (used && local_used) *used = TRUE;
+    return ret;
+}
+#else
     status = RtlUnicodeToUTF8N( dst, dstlen, &reslen, src, srclen * sizeof(WCHAR) );
     if (status == STATUS_SOME_NOT_MAPPED)
     {
@@ -2906,6 +2938,7 @@ static int wcstombs_utf8( DWORD flags, const WCHAR *src, int srclen, char *dst, 
     }
     else if (!set_ntstatus( status )) reslen = 0;
     return reslen;
+#endif
 }
 
 
@@ -4883,6 +4916,7 @@ INT WINAPI DECLSPEC_HOTPATCH CompareStringW( LCID lcid, DWORD flags, const WCHAR
 /******************************************************************************
  *	CompareStringOrdinal   (kernelbase.@)
  */
+#ifndef __REACTOS__
 INT WINAPI DECLSPEC_HOTPATCH CompareStringOrdinal( const WCHAR *str1, INT len1,
                                                    const WCHAR *str2, INT len2, BOOL ignore_case )
 {
@@ -4901,6 +4935,7 @@ INT WINAPI DECLSPEC_HOTPATCH CompareStringOrdinal( const WCHAR *str1, INT len1,
     if (ret > 0) return CSTR_GREATER_THAN;
     return CSTR_EQUAL;
 }
+#endif /* !__REACTOS__ */
 
 
 /******************************************************************************
@@ -5789,6 +5824,7 @@ static BOOL validate_mui_resource(struct mui_resource *mui, DWORD size)
 /******************************************************************************
  *	GetFileMUIInfo   (kernelbase.@)
  */
+#ifndef __REACTOS__
 BOOL WINAPI DECLSPEC_HOTPATCH GetFileMUIInfo( DWORD flags, const WCHAR *path,
                                               FILEMUIINFO *info, DWORD *size )
 {
@@ -5947,11 +5983,13 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetFileMUIInfo( DWORD flags, const WCHAR *path,
     FreeLibrary( hmod );
     return TRUE;
 }
+#endif /* !__REACTOS__ */
 
 
 /******************************************************************************
  *	GetFileMUIPath   (kernelbase.@)
  */
+#ifndef __REACTOS__
 BOOL WINAPI /* DECLSPEC_HOTPATCH */ GetFileMUIPath( DWORD flags, const WCHAR *filepath,
                                                     WCHAR *language, ULONG *languagelen,
                                                     WCHAR *muipath, ULONG *muipathlen,
@@ -5962,6 +6000,7 @@ BOOL WINAPI /* DECLSPEC_HOTPATCH */ GetFileMUIPath( DWORD flags, const WCHAR *fi
     SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
     return FALSE;
 }
+#endif /* !__REACTOS__ */
 
 
 /******************************************************************************
@@ -6159,11 +6198,24 @@ UINT WINAPI GetOEMCP(void)
 /***********************************************************************
  *      GetProcessPreferredUILanguages   (kernelbase.@)
  */
+#ifdef __REACTOS__
+BOOL WINAPI DECLSPEC_HOTPATCH GetProcessPreferredUILanguages( DWORD flags, ULONG *count,
+                                                              WCHAR *buffer, ULONG *size )
+{
+    (void)flags;
+    (void)count;
+    (void)buffer;
+    (void)size;
+    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
+    return FALSE;
+}
+#else
 BOOL WINAPI DECLSPEC_HOTPATCH GetProcessPreferredUILanguages( DWORD flags, ULONG *count,
                                                               WCHAR *buffer, ULONG *size )
 {
     return set_ntstatus( RtlGetProcessPreferredUILanguages( flags, count, buffer, size ));
 }
+#endif
 
 
 /***********************************************************************
@@ -6272,21 +6324,25 @@ LANGID WINAPI DECLSPEC_HOTPATCH GetSystemDefaultUILanguage(void)
 /***********************************************************************
  *      GetSystemPreferredUILanguages   (kernelbase.@)
  */
+#ifndef __REACTOS__
 BOOL WINAPI DECLSPEC_HOTPATCH GetSystemPreferredUILanguages( DWORD flags, ULONG *count,
                                                              WCHAR *buffer, ULONG *size )
 {
     return set_ntstatus( RtlGetSystemPreferredUILanguages( flags, 0, count, buffer, size ));
 }
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************
  *      GetThreadPreferredUILanguages   (kernelbase.@)
  */
+#ifndef __REACTOS__
 BOOL WINAPI DECLSPEC_HOTPATCH GetThreadPreferredUILanguages( DWORD flags, ULONG *count,
                                                              WCHAR *buffer, ULONG *size )
 {
     return set_ntstatus( RtlGetThreadPreferredUILanguages( flags, count, buffer, size ));
 }
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************
@@ -6450,11 +6506,13 @@ GEOID WINAPI DECLSPEC_HOTPATCH GetUserGeoID( GEOCLASS geoclass )
 /******************************************************************************
  *      GetUserPreferredUILanguages   (kernelbase.@)
  */
+#ifndef __REACTOS__
 BOOL WINAPI DECLSPEC_HOTPATCH GetUserPreferredUILanguages( DWORD flags, ULONG *count,
                                                            WCHAR *buffer, ULONG *size )
 {
     return set_ntstatus( RtlGetUserPreferredUILanguages( flags, 0, count, buffer, size ));
 }
+#endif /* !__REACTOS__ */
 
 
 /******************************************************************************
@@ -7221,19 +7279,32 @@ INT WINAPI /* DECLSPEC_HOTPATCH */ SetCalendarInfoW( LCID lcid, CALID calendar, 
 /***********************************************************************
  *      SetProcessPreferredUILanguages   (kernelbase.@)
  */
+#ifdef __REACTOS__
+BOOL WINAPI DECLSPEC_HOTPATCH SetProcessPreferredUILanguages( DWORD flags, PCZZWSTR buffer, ULONG *count )
+{
+    (void)flags;
+    (void)buffer;
+    (void)count;
+    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
+    return FALSE;
+}
+#else
 BOOL WINAPI DECLSPEC_HOTPATCH SetProcessPreferredUILanguages( DWORD flags, PCZZWSTR buffer, ULONG *count )
 {
     return set_ntstatus( RtlSetProcessPreferredUILanguages( flags, buffer, count ));
 }
+#endif
 
 
 /***********************************************************************
  *      SetThreadPreferredUILanguages   (kernelbase.@)
  */
+#ifndef __REACTOS__
 BOOL WINAPI DECLSPEC_HOTPATCH SetThreadPreferredUILanguages( DWORD flags, PCZZWSTR buffer, ULONG *count )
 {
     return set_ntstatus( RtlSetThreadPreferredUILanguages( flags, buffer, count ));
 }
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************

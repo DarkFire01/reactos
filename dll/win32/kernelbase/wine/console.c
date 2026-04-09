@@ -1787,7 +1787,15 @@ BOOL WINAPI SetCurrentConsoleFontEx( HANDLE handle, BOOL maxwindow, CONSOLE_FONT
     data.params.info.font_pitch_family = info->FontFamily;
     data.params.info.font_weight = info->FontWeight;
 
+#ifdef __REACTOS__
+    {
+        size_t i;
+        for (i = 0; i < LF_FACESIZE - 1 && info->FaceName[i]; i++) ;
+        size = i * sizeof(WCHAR);
+    }
+#else
     size = wcsnlen( info->FaceName, LF_FACESIZE - 1 ) * sizeof(WCHAR);
+#endif
     memcpy( data.face_name, info->FaceName, size );
 
     size += sizeof(struct condrv_output_info_params);

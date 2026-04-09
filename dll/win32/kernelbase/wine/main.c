@@ -52,10 +52,17 @@ BOOL is_wow64 = FALSE;
 /***********************************************************************
  *           DllMain
  */
+#ifdef __REACTOS__
+VOID WINAPI KernelBase_InitK32SharedFromPeb(VOID);
+#endif
+
 BOOL WINAPI DllMain( HINSTANCE hinst, DWORD reason, LPVOID reserved )
 {
     if (reason == DLL_PROCESS_ATTACH)
     {
+#ifdef __REACTOS__
+        KernelBase_InitK32SharedFromPeb();
+#endif
         DisableThreadLibraryCalls( hinst );
         IsWow64Process( GetCurrentProcess(), &is_wow64 );
         init_global_data();

@@ -511,10 +511,12 @@ static BOOL is_same_file( HANDLE h1, HANDLE h2 )
 /******************************************************************************
  *	AreFileApisANSI   (kernelbase.@)
  */
+#ifndef __REACTOS__
 BOOL WINAPI DECLSPEC_HOTPATCH AreFileApisANSI(void)
 {
     return !oem_file_apis;
 }
+#endif /* !__REACTOS__ */
 
 /******************************************************************************
  *  copy_file
@@ -1799,6 +1801,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetFileAttributesExW( LPCWSTR name, GET_FILEEX_INF
 /***********************************************************************
  *	GetFinalPathNameByHandleA   (kernelbase.@)
  */
+#ifndef __REACTOS__
 DWORD WINAPI DECLSPEC_HOTPATCH GetFinalPathNameByHandleA( HANDLE file, LPSTR path,
                                                           DWORD count, DWORD flags )
 {
@@ -1834,6 +1837,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetFinalPathNameByHandleA( HANDLE file, LPSTR pat
     HeapFree(GetProcessHeap(), 0, str);
     return len - 1;
 }
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************
@@ -2877,12 +2881,23 @@ DWORD WINAPI DECLSPEC_HOTPATCH SearchPathW( LPCWSTR path, LPCWSTR name, LPCWSTR 
             else if (lastpart) *lastpart = NULL;
             RtlFreeHeap( GetProcessHeap(), 0, dll_path );
         }
+#ifdef __REACTOS__
+        else
+        {
+            WCHAR searchpath[8192];
+
+            if (GetEnvironmentVariableW( L"PATH", searchpath, ARRAY_SIZE(searchpath) ))
+                ret = RtlDosSearchPath_U( searchpath, name, NULL, buflen * sizeof(WCHAR),
+                                          buffer, lastpart ) / sizeof(WCHAR);
+        }
+#else
         else if (!RtlGetSearchPath( &dll_path ))
         {
             ret = RtlDosSearchPath_U( dll_path, name, NULL, buflen * sizeof(WCHAR),
                                       buffer, lastpart ) / sizeof(WCHAR);
             RtlReleasePath( dll_path );
         }
+#endif
         RtlFreeHeap( GetProcessHeap(), 0, name_ext );
     }
 
@@ -2921,19 +2936,23 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetCurrentDirectoryW( LPCWSTR dir )
 /**************************************************************************
  *	SetFileApisToANSI   (kernelbase.@)
  */
+#ifndef __REACTOS__
 void WINAPI DECLSPEC_HOTPATCH SetFileApisToANSI(void)
 {
     oem_file_apis = FALSE;
 }
+#endif /* !__REACTOS__ */
 
 
 /**************************************************************************
  *	SetFileApisToOEM   (kernelbase.@)
  */
+#ifndef __REACTOS__
 void WINAPI DECLSPEC_HOTPATCH SetFileApisToOEM(void)
 {
     oem_file_apis = TRUE;
 }
+#endif /* !__REACTOS__ */
 
 
 /**************************************************************************
@@ -2993,10 +3012,12 @@ BOOL WINAPI DECLSPEC_HOTPATCH SetFileAttributesW( LPCWSTR name, DWORD attributes
 /***********************************************************************
  *	Wow64DisableWow64FsRedirection   (kernelbase.@)
  */
+#ifndef __REACTOS__
 BOOL WINAPI DECLSPEC_HOTPATCH Wow64DisableWow64FsRedirection( PVOID *old_value )
 {
     return set_ntstatus( RtlWow64EnableFsRedirectionEx( TRUE, (ULONG *)old_value ));
 }
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************
@@ -3013,10 +3034,12 @@ DWORD /*BOOLEAN*/ WINAPI kernelbase_Wow64EnableWow64FsRedirection( BOOLEAN enabl
 /***********************************************************************
  *	Wow64RevertWow64FsRedirection   (kernelbase.@)
  */
+#ifndef __REACTOS__
 BOOL WINAPI DECLSPEC_HOTPATCH Wow64RevertWow64FsRedirection( PVOID old_value )
 {
     return set_ntstatus( RtlWow64EnableFsRedirection( !old_value ));
 }
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************
@@ -3392,6 +3415,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH LockFileEx( HANDLE file, DWORD flags, DWORD reserv
 /***********************************************************************
  *	OpenFileById   (kernelbase.@)
  */
+#ifndef __REACTOS__
 HANDLE WINAPI DECLSPEC_HOTPATCH OpenFileById( HANDLE handle, LPFILE_ID_DESCRIPTOR id, DWORD access,
                                               DWORD share, LPSECURITY_ATTRIBUTES sec_attr, DWORD flags )
 {
@@ -3433,6 +3457,7 @@ HANDLE WINAPI DECLSPEC_HOTPATCH OpenFileById( HANDLE handle, LPFILE_ID_DESCRIPTO
         return INVALID_HANDLE_VALUE;
     return result;
 }
+#endif /* !__REACTOS__ */
 
 
 /***********************************************************************
@@ -4141,11 +4166,15 @@ void WINAPI DECLSPEC_HOTPATCH GetSystemTimeAsFileTime( FILETIME *time )
  */
 void WINAPI DECLSPEC_HOTPATCH GetSystemTimePreciseAsFileTime( FILETIME *time )
 {
+#ifdef __REACTOS__
+    GetSystemTimeAsFileTime( time );
+#else
     LARGE_INTEGER t;
 
     t.QuadPart = RtlGetSystemTimePrecise();
     time->dwLowDateTime = t.u.LowPart;
     time->dwHighDateTime = t.u.HighPart;
+#endif
 }
 
 
