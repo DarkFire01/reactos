@@ -387,6 +387,19 @@ elseif(ARCH STREQUAL "arm")
         ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/arm/init.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/arm/psctx.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/arm/rtlexcpt.c)
+elseif(ARCH STREQUAL "arm64")
+    list(APPEND SOURCE
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/config/arm64/cmhardwr.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/cpu.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/exp.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/interrupt.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/kiinit.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/thrdini.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/trapc.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/usercall.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/page.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/arm64/init.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ps/arm64/psctx.c)
 endif()
 
 if(NOT _WINKD_)
@@ -407,6 +420,8 @@ if(NOT _WINKD_)
             list(APPEND SOURCE ${REACTOS_SOURCE_DIR}/ntoskrnl/kdbg/i386/i386-dis.c)
         endif()
     elseif(ARCH STREQUAL "arm")
+        list(APPEND SOURCE ${REACTOS_SOURCE_DIR}/ntoskrnl/kd/arm/kdserial.c)
+    elseif(ARCH STREQUAL "arm64")
         list(APPEND SOURCE ${REACTOS_SOURCE_DIR}/ntoskrnl/kd/arm/kdserial.c)
     endif()
 

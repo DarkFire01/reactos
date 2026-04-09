@@ -35,6 +35,26 @@ void __isb(unsigned int _Type);
 #pragma intrinsic(__dsb)
 #pragma intrinsic(__isb)
 
+// Define __break as a macro to avoid compiler intrinsic conflicts
+// Maps to __debugbreak() which triggers debugging
+#define __break(__imm) __debugbreak()
+
+// Yield processor execution hint
+__forceinline
+void YieldProcessor(void)
+{
+    __isb(_ARM64_BARRIER_SY);
+}
+
+// Read timestamp counter
+unsigned __int64 __rdtsc(void);
+
+// Interlock bit test operations - ARM64 MSVC library should provide these
+unsigned char _interlockedbittestandset64(__int64 volatile *_Base, long _Bit);
+unsigned char _interlockedbittestandreset64(__int64 volatile *_Base, long _Bit);
+unsigned char _InterlockedBitTestAndSet64(__int64 volatile *_Base, long _Bit);
+unsigned char _InterlockedBitTestAndReset64(__int64 volatile *_Base, long _Bit);
+
 #if defined(__cplusplus)
 } // extern "C"
 #endif

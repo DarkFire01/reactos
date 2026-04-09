@@ -1,5 +1,9 @@
 #pragma once
 
+/* Forward declarations for PTE types */
+typedef PMMPTE PMMPDE;  /* PDE and PTE share same structure on ARM64 */
+typedef PMMPTE PMMPPE;  /* PPE (Page Parent Entry) */
+typedef PMMPTE PMMPXE;  /* PXE (Page Extended Entry) */
 
 #define _MI_PAGING_LEVELS 4
 #define _MI_HAS_NO_EXECUTE 1
@@ -8,6 +12,7 @@
 #define MI_USER_PROBE_ADDRESS           (PVOID)0x000007FFFFFF0000ULL
 #define MI_DEFAULT_SYSTEM_RANGE_START   (PVOID)0xFFFF080000000000ULL
 #define MI_REAL_SYSTEM_RANGE_START             0xFFFF800000000000ULL
+#define MM_SYSTEM_RANGE_START                  MI_REAL_SYSTEM_RANGE_START
 //#define MI_PAGE_TABLE_BASE                   0xFFFFF68000000000ULL // 512 GB page tables
 #define HYPER_SPACE                            0xFFFFF70000000000ULL // 512 GB hyper space [MiVaProcessSpace]
 #define HYPER_SPACE_END                        0xFFFFF77FFFFFFFFFULL

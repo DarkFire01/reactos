@@ -49,6 +49,12 @@ KfRaiseIrql (
 #define SharedSystemTime (KI_USER_SHARED_DATA + 0x14)
 #define SharedTickCount (KI_USER_SHARED_DATA + 0x320)
 
+// User probe address - ARM64 user/kernel split  
+#define MM_USER_PROBE_ADDRESS            0x000007FFFFF0000ULL
+
+// Kernel tick count variable 
+extern NTKERNELAPI volatile KSYSTEM_TIME KeTickCount;
+
 #define KeQueryInterruptTime() ((ULONG64)ReadNoFence64((const volatile LONG64 *)(SharedInterruptTime)))
 
 #define KeQuerySystemTime(CurrentCount)                                     \

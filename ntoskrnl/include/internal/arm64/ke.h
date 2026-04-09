@@ -1,29 +1,28 @@
 #pragma once
+
+//
+// ARM64 Kernel Execution Macros
+//
+
 #define KiServiceExit2 KiExceptionExit
 
 #define SYNCH_LEVEL DISPATCH_LEVEL
 #define PCR                     ((KPCR * const)KIP0PCRADDRESS)
 
 //
-//Lockdown TLB entries
-//
-#define PCR_ENTRY            0
-#define PDR_ENTRY            2
-
-//
-// BKPT is 4 bytes long
+// ARM64 uses BRK instruction for breakpoints (4 bytes)
 //
 #define KD_BREAKPOINT_TYPE        ULONG
 #define KD_BREAKPOINT_SIZE        sizeof(ULONG)
-#define KD_BREAKPOINT_VALUE       0xDEFE
+#define KD_BREAKPOINT_VALUE       0xD4200000  // BRK #0
 
 //
-// Maximum IRQs
+// Maximum interrupt vectors for ARM64
 //
-#define MAXIMUM_VECTOR          16
+#define MAXIMUM_VECTOR          256
 
 //
-// Macros for getting and setting special purpose registers in portable code
+// Program counter and register access macros
 //
 #define KeGetContextPc(Context) \
     ((Context)->Pc)
@@ -35,10 +34,10 @@
     ((TrapFrame)->Pc)
 
 #define KeGetContextReturnRegister(Context) \
-    ((Context)->R0)
+    ((Context)->X0)
 
 #define KeSetContextReturnRegister(Context, ReturnValue) \
-    ((Context)->R0 = (ReturnValue))
+    ((Context)->X0 = (ReturnValue))
 
 //
 // Macro to get trap and exception frame from a thread stack
@@ -53,19 +52,17 @@
 
 //
 // Macro to get context switches from the PRCB
-// All architectures but x86 have it in the PRCB's KeContextSwitches
 //
 #define KeGetContextSwitches(Prcb)  \
     (Prcb)->KeContextSwitches
 
 //
-// Macro to get the second level cache size field name which differs between
-// CISC and RISC architectures, as the former has unified I/D cache
+// Macro to get the data cache size field
 //
 #define KiGetSecondLevelDCacheSize() ((PKIPCR)KeGetPcr())->SecondLevelDcacheSize
 
 //
-// Returns the Interrupt State from a Trap Frame.
-// ON = TRUE, OFF = FALSE
+// Returns the Interrupt State from a Trap Frame (ARM64 uses DAIF flags)
 //
-#define KeGetTrapFrameInterruptState(TrapFrame) 0
+#define KeGetTrapFrameInterruptState(TrapFrame) \
+    (((TrapFrame)->Spsr & DAIF_IRQF) == 0)

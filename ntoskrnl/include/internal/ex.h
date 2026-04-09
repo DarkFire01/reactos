@@ -1,5 +1,7 @@
 #pragma once
 
+#include <internal/mm.h>  /* For MM_SYSTEM_RANGE_START */
+
 #ifdef __cplusplus
 extern "C"
 {
