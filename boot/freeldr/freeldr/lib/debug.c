@@ -22,7 +22,7 @@
 
 #if DBG
 
-// #define DEBUG_ALL
+ #define DEBUG_ALL
 // #define DEBUG_WARN
 // #define DEBUG_ERR
 // #define DEBUG_INIFILE
@@ -37,6 +37,7 @@ static UCHAR DbgChannels[DBG_CHANNELS_COUNT];
 #define SCREEN  1
 #define RS232   2
 #define BOCHS   4
+#define ARM64UART 8
 
 #define BOCHS_OUTPUT_PORT   0xE9
 
@@ -47,6 +48,27 @@ ULONG DebugPort = RS232;
 ULONG ComPortBaudRate = DEFAULT_DEBUG_BAUD_RATE;
 // The COM port initializer chooses the first available port starting from COM4 down to COM1.
 PUCHAR ComPortAddress = NULL;
+
+#ifdef _M_ARM64
+#define ARM64_QEMU_VIRT_UART_BASE 0x09000000UL
+#define ARM64_QEMU_VIRT_UART_DR   0x00UL
+#define ARM64_QEMU_VIRT_UART_FR   0x18UL
+#define ARM64_QEMU_VIRT_UART_TXFF 0x20UL
+
+static VOID
+Arm64VirtUartPutByte(UCHAR ByteToSend)
+{
+    ULONG_PTR UartBase = (ULONG_PTR)UlongToPtr(ARM64_QEMU_VIRT_UART_BASE);
+    PULONG FrReg = (PULONG)UlongToPtr((ULONG)(UartBase + ARM64_QEMU_VIRT_UART_FR));
+    PULONG DrReg = (PULONG)UlongToPtr((ULONG)(UartBase + ARM64_QEMU_VIRT_UART_DR));
+
+    while (READ_REGISTER_ULONG(FrReg) & ARM64_QEMU_VIRT_UART_TXFF)
+    {
+    }
+
+    WRITE_REGISTER_ULONG(DrReg, ByteToSend);
+}
+#endif
 
 BOOLEAN DebugStartOfLine = TRUE;
 
@@ -149,6 +171,14 @@ DebugInit(
                     ComPortAddress = UlongToPtr(Value);
             }
         }
+#ifdef _M_ARM64
+        else if (_strnicmp(PortString, "QEMUVIRT", CONST_STR_LEN("QEMUVIRT")) == 0 ||
+                 _strnicmp(PortString, "ARM64UART", CONST_STR_LEN("ARM64UART")) == 0)
+        {
+            PortString += CONST_STR_LEN("QEMUVIRT");
+            DebugPort |= ARM64UART;
+        }
+#endif
 
         PortString = strstr(PortString, "DEBUGPORT");
    }
@@ -176,7 +206,12 @@ Done:
     if (DebugPort & RS232)
     {
         if (!Rs232PortInitialize(ComPortAddress, ComPortBaudRate))
+        {
+#ifdef _M_ARM64
+            DebugPort |= ARM64UART;
+#endif
             DebugPort &= ~RS232;
+        }
     }
 }
 
@@ -192,6 +227,15 @@ VOID DebugPrintChar(UCHAR Character)
 
         Rs232PortPutByte(Character);
     }
+#ifdef _M_ARM64
+    if (DebugPort & ARM64UART)
+    {
+        if (Character == '\n')
+            Arm64VirtUartPutByte('\r');
+
+        Arm64VirtUartPutByte(Character);
+    }
+#endif
     if (DebugPort & BOCHS)
     {
         WRITE_PORT_UCHAR((PUCHAR)BOCHS_OUTPUT_PORT, Character);

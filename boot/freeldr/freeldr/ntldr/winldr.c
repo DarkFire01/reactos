@@ -1418,8 +1418,8 @@ LoadAndBootWindowsCommon(
 
     /* Load boot drivers */
     UiSetProgressBarText("Loading boot drivers...");
-    Success = WinLdrLoadBootDrivers(LoaderBlock, BootPath);
-    TRACE("Boot drivers loading %s\n", Success ? "successful" : "failed");
+    //Success = WinLdrLoadBootDrivers(LoaderBlock, BootPath);
+    //TRACE("Boot drivers loading %s\n", Success ? "successful" : "failed");
 
     UiSetProgressBarSubset(0, 100);
 
@@ -1481,23 +1481,32 @@ LoadAndBootWindowsCommon(
     /* Set processor context */
     WinLdrSetProcessorContext(OperatingSystemVersion);
 
+    TRACE("Exit Processor Context\n");
     /* Save final value of LoaderPagesSpanned */
-    LoaderBlock->Extension->LoaderPagesSpanned = MmGetLoaderPagesSpanned();
-
     TRACE("Hello from paged mode, KiSystemStartup %p, LoaderBlockVA %p!\n",
           KiSystemStartup, LoaderBlockVA);
 
     /* Zero KI_USER_SHARED_DATA page */
-    RtlZeroMemory((PVOID)KI_USER_SHARED_DATA, MM_PAGE_SIZE);
-
+        TRACE("Skipping KI_USER_SHARED_DATA VA zero at %p; ARM64 backing page was already zeroed before paging setup\n",
+            (PVOID)KI_USER_SHARED_DATA);
+    TRACE("About to dump memory descriptors for LoaderBlockVA %p\n", LoaderBlockVA);
     WinLdrpDumpMemoryDescriptors(LoaderBlockVA);
+    TRACE("Dumped memory descriptors\n");
+    TRACE("About to dump boot drivers\n");
     WinLdrpDumpBootDriver(LoaderBlockVA);
+    TRACE("Dumped boot drivers\n");
 #ifndef _M_AMD64
+    TRACE("About to dump ARC disks\n");
     WinLdrpDumpArcDisks(LoaderBlockVA);
+    TRACE("Dumped ARC disks\n");
 #endif
-
+    TRACE("Dumped memory descriptors, boot drivers and ARC disks\n");
     /* Pass control */
+    TRACE("About to call KiSystemStartup(%p) with LoaderBlockVA %p\n",
+          KiSystemStartup,
+          LoaderBlockVA);
     (*KiSystemStartup)(LoaderBlockVA);
+    LoaderBlock->Extension->LoaderPagesSpanned = MmGetLoaderPagesSpanned();
 
     UNREACHABLE; // return ESUCCESS;
 }

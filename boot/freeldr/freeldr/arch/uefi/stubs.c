@@ -42,25 +42,6 @@ UefiPcBeep(VOID)
 }
 
 #ifdef _M_ARM64
-DECLSPEC_NORETURN
-VOID
-FrLdrBugCheckWithMessage(
-    ULONG BugCode,
-    PCHAR File,
-    ULONG Line,
-    PCSTR Format,
-    ...)
-{
-    UNREFERENCED_PARAMETER(BugCode);
-    UNREFERENCED_PARAMETER(File);
-    UNREFERENCED_PARAMETER(Line);
-    UNREFERENCED_PARAMETER(Format);
-
-    for (;;)
-    {
-        NOTHING;
-    }
-}
 
 VOID
 DbgBreakPoint(VOID)

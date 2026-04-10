@@ -19,16 +19,6 @@ HalpInitializeInterrupts(VOID)
    while (TRUE);
 }
 
-#undef KeGetCurrentIrql
-
-NTHALAPI
-KIRQL
-NTAPI
-KeGetCurrentIrql(VOID)
-{
-    return PASSIVE_LEVEL;
-}
-
 ULONG
 HalGetInterruptSource(VOID)
 {
