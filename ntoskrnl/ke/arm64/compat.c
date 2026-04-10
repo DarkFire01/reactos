@@ -107,15 +107,9 @@ RtlInterlockedPopEntrySList(IN OUT PSLIST_HEADER ListHead)
 {
     PSLIST_ENTRY Entry;
 
-#ifdef NONAMELESSUNION
-    Entry = ListHead->DUMMYSTRUCTNAME.Next.Next;
+    Entry = (PSLIST_ENTRY)(ULONG_PTR)ListHead->Region;
     if (!Entry) return NULL;
-    ListHead->DUMMYSTRUCTNAME.Next.Next = Entry->Next;
-#else
-    Entry = ListHead->Next.Next;
-    if (!Entry) return NULL;
-    ListHead->Next.Next = Entry->Next;
-#endif
+    ListHead->Region = (ULONGLONG)(ULONG_PTR)Entry->Next;
 
     return Entry;
 }
@@ -127,15 +121,9 @@ RtlInterlockedPushEntrySList(IN OUT PSLIST_HEADER ListHead,
 {
     PSLIST_ENTRY OldHead;
 
-#ifdef NONAMELESSUNION
-    OldHead = ListHead->DUMMYSTRUCTNAME.Next.Next;
+    OldHead = (PSLIST_ENTRY)(ULONG_PTR)ListHead->Region;
     ListEntry->Next = OldHead;
-    ListHead->DUMMYSTRUCTNAME.Next.Next = ListEntry;
-#else
-    OldHead = ListHead->Next.Next;
-    ListEntry->Next = OldHead;
-    ListHead->Next.Next = ListEntry;
-#endif
+    ListHead->Region = (ULONGLONG)(ULONG_PTR)ListEntry;
 
     return OldHead;
 }
@@ -144,13 +132,8 @@ PSLIST_ENTRY
 NTAPI
 RtlInterlockedFlushSList(IN OUT PSLIST_HEADER ListHead)
 {
-#ifdef NONAMELESSUNION
-    PSLIST_ENTRY OldHead = ListHead->DUMMYSTRUCTNAME.Next.Next;
-    ListHead->DUMMYSTRUCTNAME.Next.Next = NULL;
-#else
-    PSLIST_ENTRY OldHead = ListHead->Next.Next;
-    ListHead->Next.Next = NULL;
-#endif
+    PSLIST_ENTRY OldHead = (PSLIST_ENTRY)(ULONG_PTR)ListHead->Region;
+    ListHead->Region = 0;
     return OldHead;
 }
 
@@ -772,6 +755,7 @@ MmDeletePhysicalMapping(IN PEPROCESS Process,
     return MmDeleteVirtualMapping(Process, Address, WasDirty, Page);
 }
 
+CODE_SEG("INIT")
 VOID
 NTAPI
 MmInitGlobalKernelPageDirectory(VOID)
@@ -880,7 +864,7 @@ VOID
 NTAPI
 MmGetPageFileMapping(IN PEPROCESS Process,
                      IN PVOID Address,
-                     OUT PSWAPENTRY SwapEntry)
+                     OUT SWAPENTRY *SwapEntry)
 {
     UNREFERENCED_PARAMETER(Process);
     UNREFERENCED_PARAMETER(Address);
