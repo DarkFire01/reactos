@@ -21,10 +21,23 @@ CPPORT KdComPort;
 #ifdef _M_ARM64
 /* QEMU virt PL011 UART base. Can be overridden via DEBUGPORT=COM:<addr>. */
 #define ARM64_DEFAULT_DEBUG_UART_BASE 0x09000000ULL
+#define ARM64_PL011_UART_CLOCK      24000000UL
 #define ARM64_UART_DR                 0x00ULL
+#define ARM64_UART_RSR_ECR            0x04ULL
 #define ARM64_UART_FR                 0x18ULL
+#define ARM64_UART_IBRD               0x24ULL
+#define ARM64_UART_FBRD               0x28ULL
+#define ARM64_UART_LCRH               0x2CULL
+#define ARM64_UART_CR                 0x30ULL
+#define ARM64_UART_IMSC               0x38ULL
+#define ARM64_UART_ICR                0x44ULL
 #define ARM64_UART_FR_RXFE            0x10UL
 #define ARM64_UART_FR_TXFF            0x20UL
+#define ARM64_UART_LCRH_WLEN_8        0x60UL
+#define ARM64_UART_LCRH_FEN           0x10UL
+#define ARM64_UART_CR_UARTEN          0x001UL
+#define ARM64_UART_CR_TXE             0x100UL
+#define ARM64_UART_CR_RXE             0x200UL
 
 static ULONG_PTR KdArm64UartBase;
 
@@ -64,6 +77,47 @@ KdArm64UartReadByte(IN PUCHAR Byte,
 
     *Byte = (UCHAR)(*KdArm64UartReg(ARM64_UART_DR) & 0xFF);
     return TRUE;
+}
+
+static
+NTSTATUS
+KdArm64UartInitialize(IN PUCHAR PortAddress,
+                      IN ULONG BaudRate)
+{
+    ULONG Divider;
+    ULONG Remainder;
+    ULONG Fraction;
+
+    if ((PortAddress == NULL) || (BaudRate == 0))
+        return STATUS_INVALID_PARAMETER;
+
+    KdArm64UartBase = (ULONG_PTR)PortAddress;
+
+    Divider = ARM64_PL011_UART_CLOCK / (16 * BaudRate);
+    Remainder = ARM64_PL011_UART_CLOCK % (16 * BaudRate);
+    Fraction = (8 * Remainder / BaudRate) >> 1;
+    Fraction += (8 * Remainder / BaudRate) & 1;
+
+    /* Disable UART while programming the line settings. */
+    *KdArm64UartReg(ARM64_UART_CR) = 0;
+
+    /* Mask and clear interrupts, then clear sticky receive errors. */
+    *KdArm64UartReg(ARM64_UART_IMSC) = 0;
+    *KdArm64UartReg(ARM64_UART_ICR) = 0x7FF;
+    *KdArm64UartReg(ARM64_UART_RSR_ECR) = 0;
+
+    /* Program baud rate and 8N1 with FIFO enabled. */
+    *KdArm64UartReg(ARM64_UART_IBRD) = Divider;
+    *KdArm64UartReg(ARM64_UART_FBRD) = Fraction;
+    *KdArm64UartReg(ARM64_UART_LCRH) = ARM64_UART_LCRH_WLEN_8 |
+                                       ARM64_UART_LCRH_FEN;
+
+    /* Enable UART RX/TX. */
+    *KdArm64UartReg(ARM64_UART_CR) = ARM64_UART_CR_UARTEN |
+                                     ARM64_UART_CR_TXE |
+                                     ARM64_UART_CR_RXE;
+
+    return STATUS_SUCCESS;
 }
 #endif
 #ifdef KDDEBUG
@@ -147,12 +201,16 @@ KdpPortInitialize(
     _In_ ULONG BaudRate)
 {
 #ifdef _M_ARM64
-    UNREFERENCED_PARAMETER(BaudRate);
-
     if (PortAddress == NULL)
         PortAddress = (PUCHAR)(ULONG_PTR)ARM64_DEFAULT_DEBUG_UART_BASE;
 
-    KdArm64UartBase = (ULONG_PTR)PortAddress;
+    KdComPort.Address = PortAddress;
+    KdComPort.BaudRate = BaudRate;
+    KdComPort.Flags = 0;
+
+    if (!NT_SUCCESS(KdArm64UartInitialize(PortAddress, BaudRate)))
+        return STATUS_INVALID_PARAMETER;
+
     KdComPortInUse = PortAddress;
     return STATUS_SUCCESS;
 #else

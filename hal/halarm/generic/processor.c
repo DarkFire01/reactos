@@ -55,11 +55,6 @@ NTAPI
 HalInitializeProcessor(IN ULONG ProcessorNumber,
                        IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
-    /* Do nothing */
-    for(;;)
-    {
-
-    }
     return;
 }
 

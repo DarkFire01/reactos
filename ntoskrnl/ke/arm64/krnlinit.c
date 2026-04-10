@@ -65,6 +65,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
 
     InitThread->NextProcessor = Number;
     InitThread->Priority = HIGH_PRIORITY;
+    InitThread->State = Running;
     InitThread->Affinity = (KAFFINITY)1 << Number;
     InitThread->WaitIrql = DISPATCH_LEVEL;
     InitProcess->ActiveProcessors = (KAFFINITY)1 << Number;
@@ -74,6 +75,8 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     Prcb->CurrentThread = InitThread;
     Prcb->NextThread = NULL;
     Prcb->IdleThread = InitThread;
+    Prcb->MultiThreadProcessorSet = Prcb->SetMember;
+    Prcb->MultiThreadSetMaster = Prcb;
 
     ExpInitializeExecutive(Number, LoaderBlock);
 

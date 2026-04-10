@@ -419,7 +419,7 @@ KdInitSystem(
             KdBlockEnable = BlockEnable;
             return TRUE;
         }
-
+        DPRINT1("KD initialized successfully\n");
         /* Check if we have a loader block */
         if (LoaderBlock)
         {
@@ -451,17 +451,19 @@ KdInitSystem(
 
                 /* Null-terminate */
                 NameBuffer[j] = ANSI_NULL;
-
+                DPRINT1("Loading symbols for %s\n", NameBuffer);
                 /* Load the symbols */
                 RtlInitString(&ImageName, NameBuffer);
                 DbgLoadImageSymbols(&ImageName,
                                     LdrEntry->DllBase,
                                     (ULONG_PTR)PsGetCurrentProcessId());
             }
+            DPRINT1("Initial KD initialization complete, HAL and kernel symbols loaded\n");
 
             /* Check for incoming break-in and break on symbol load
              * if requested, see ex/init.c!ExpLoadBootSymbols() */
             KdBreakAfterSymbolLoad = KdPollBreakIn();
+            DPRINT1("KD break after symbol load is %s\n", KdBreakAfterSymbolLoad ? "enabled" : "disabled");
         }
     }
     else
@@ -469,7 +471,8 @@ KdInitSystem(
         /* Disable debugger */
         KdDebuggerNotPresent = TRUE;
     }
-
+    DPRINT1("KD initialization complete\n");
+    __debugbreak();
     /* Return initialized */
     return TRUE;
 }
