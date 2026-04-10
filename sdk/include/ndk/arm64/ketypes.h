@@ -286,6 +286,14 @@ typedef struct _KPROCESSOR_STATE
 } KPROCESSOR_STATE, *PKPROCESSOR_STATE;
 
 //
+// Map GENERAL_LOOKASIDE_POOL to PP_LOOKASIDE_LIST so that ARM3 pool code
+// that accesses the .P and .L members compiles correctly.
+//
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
+#define GENERAL_LOOKASIDE_POOL PP_LOOKASIDE_LIST
+#endif
+
+//
 // Processor Region Control Block
 //
 typedef struct _KPRCB

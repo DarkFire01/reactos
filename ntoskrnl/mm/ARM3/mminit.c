@@ -598,7 +598,7 @@ MiInitializeColorTables(VOID)
     }
 }
 
-#ifndef _M_AMD64
+#if !defined(_M_AMD64) && !defined(_M_ARM64)
 CODE_SEG("INIT")
 BOOLEAN
 NTAPI
@@ -876,7 +876,7 @@ MiBuildPfnDatabaseZeroPage(VOID)
     if (!(MmLowestPhysicalPage) && !(Pfn1->u3.e2.ReferenceCount))
     {
         /* Make it a bogus page to catch errors */
-        PointerPde = MiAddressToPde(0xFFFFFFFF);
+        PointerPde = MiAddressToPde((PVOID)(ULONG_PTR)0xFFFFFFFF);
         Pfn1->u4.PteFrame = PFN_FROM_PTE(PointerPde);
         Pfn1->PteAddress = (PMMPTE)PointerPde;
         Pfn1->u2.ShareCount++;
@@ -1077,7 +1077,7 @@ MiInitializePfnDatabase(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     /* Finally add the pages for the PFN database itself */
     MiBuildPfnDatabaseSelf();
 }
-#endif /* !_M_AMD64 */
+#endif /* !_M_AMD64 && !_M_ARM64 */
 
 CODE_SEG("INIT")
 VOID

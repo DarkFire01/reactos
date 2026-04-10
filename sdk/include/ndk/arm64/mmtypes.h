@@ -173,6 +173,16 @@ typedef struct _MMPTE
   MMPPE, *PMMPPE,
   MMPXE, *PMMPXE;
 
+//
+// User space range limit
+//
+#define MI_HIGHEST_USER_ADDRESS         (PVOID)0x000007FFFFFEFFFFULL
+
+//
+// Address of the shared user page
+//
+#define MM_SHARED_USER_DATA_VA 0x7FFE0000ULL
+
 #ifdef __cplusplus
 }; // extern "C"
 #endif

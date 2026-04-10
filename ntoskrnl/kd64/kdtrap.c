@@ -41,6 +41,14 @@
 #define KdpGetParameterThree(Context)  ((Context)->R3)
 #define KdpGetParameterFour(Context)   ((Context)->R4)
 
+#elif defined(_ARM64_)
+
+//
+// X2/X3 on ARM64 (arguments 3 and 4 per AArch64 calling convention)
+//
+#define KdpGetParameterThree(Context)  ((Context)->X2)
+#define KdpGetParameterFour(Context)   ((Context)->X3)
+
 #else
 #error Unsupported Architecture
 #endif

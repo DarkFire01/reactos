@@ -390,6 +390,9 @@ elseif(ARCH STREQUAL "arm")
 elseif(ARCH STREQUAL "arm64")
     list(APPEND ASM_SOURCE
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/zwsvc.S)
+    list(APPEND SOURCE
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/page.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/arm64/rtlexcpt.c)
 endif()
 
 if(NOT _WINKD_)

@@ -275,6 +275,12 @@ KiRundownThread(PKTHREAD Thread)
 /* Include memory-management helpers after all base definitions */
 #include "mm.h"
 
+DECLSPEC_NORETURN
+VOID
+KiExceptionExit(
+    _In_ PKTRAP_FRAME TrapFrame,
+    _In_ PKEXCEPTION_FRAME ExceptionFrame);
+
 #endif /* !__ASM__ */
 
 #ifdef __cplusplus

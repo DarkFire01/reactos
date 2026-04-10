@@ -19,6 +19,14 @@ POBJECT_TYPE IoAdapterObjectType;
 POBJECT_TYPE IoDeviceHandlerObjectType;
 ULONG IoDeviceHandlerObjectSize;
 
+NTHALAPI
+NTSTATUS
+NTAPI
+HalAllocateAdapterChannel(IN PADAPTER_OBJECT AdapterObject,
+                          IN PWAIT_CONTEXT_BLOCK Wcb,
+                          IN ULONG NumberOfMapRegisters,
+                          IN PDRIVER_CONTROL ExecutionRoutine);
+
 /* FUNCTIONS *****************************************************************/
 
 #undef IoAllocateAdapterChannel

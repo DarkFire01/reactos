@@ -1761,6 +1761,10 @@ MmArmAccessFault(IN ULONG FaultCode,
                 DbgPrint("MM:***PC %p\n", TrapFrame->Pc);
                 DbgPrint("MM:***R0 %p, R1 %p R2 %p, R3 %p\n", TrapFrame->R0, TrapFrame->R1, TrapFrame->R2, TrapFrame->R3);
                 DbgPrint("MM:***R11 %p, R12 %p SP %p, LR %p\n", TrapFrame->R11, TrapFrame->R12, TrapFrame->Sp, TrapFrame->Lr);
+#elif defined(_M_ARM64)
+                DbgPrint("MM:***PC %p, SPSR %08lx\n", TrapFrame->Pc, TrapFrame->Spsr);
+                DbgPrint("MM:***X0 %p, X1 %p X2 %p, X3 %p\n", TrapFrame->X0, TrapFrame->X1, TrapFrame->X2, TrapFrame->X3);
+                DbgPrint("MM:***FP %p, LR %p SP %p\n", TrapFrame->Fp, TrapFrame->Lr, TrapFrame->Sp);
 #endif
             }
 
@@ -2312,7 +2316,11 @@ UserFault:
                 /* And make a new shiny one with our page */
                 MiInitializePfn(PageFrameIndex, PointerPte, TRUE);
                 TempPte.u.Hard.PageFrameNumber = PageFrameIndex;
+#if defined(_M_ARM64)
+                TempPte.u.Hard.Writable = 1;
+#else
                 TempPte.u.Hard.Write = 1;
+#endif
                 TempPte.u.Hard.CopyOnWrite = 0;
 
                 MI_WRITE_VALID_PTE(PointerPte, TempPte);
@@ -2342,7 +2350,12 @@ UserFault:
             if (CurrentProcess->Pcb.Flags.ExecuteEnable)
             {
                 /* Fix up the PTE to be executable */
+#if defined(_M_ARM64)
+                TempPte.u.Hard.PrivilegedNoExecute = 0;
+                TempPte.u.Hard.UserNoExecute = 0;
+#else
                 TempPte.u.Hard.NoExecute = 0;
+#endif
                 MI_UPDATE_VALID_PTE(PointerPte, TempPte);
                 MiUnlockProcessWorkingSet(CurrentProcess, CurrentThread);
                 return STATUS_SUCCESS;

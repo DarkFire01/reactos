@@ -150,6 +150,39 @@ C_ASSERT(SYSTEM_PD_SIZE == PAGE_SIZE);
 #define PTE_DISABLE_CACHE       0x10
 #define PTE_WRITECOMBINED_CACHE 0x10
 #define PTE_PROTECT_MASK        0x610
+#elif defined(_M_ARM64)
+//
+// Access Flags
+// ARM64 AArch64 PTE bit layout (ARMv8-A small page descriptor):
+//   Bit 55  (0x0080000000000000) = Writable (software-defined)
+//   Bit 56  (0x0100000000000000) = CopyOnWrite (software-defined)
+//   Bit 57  (0x0200000000000000) = Prototype / OsAvailable[0]
+//
+#define PTE_READONLY            0x0000000000000000ULL
+#define PTE_EXECUTE             0x0000000000000000ULL
+#define PTE_EXECUTE_READ        0x0000000000000000ULL
+#define PTE_READWRITE           0x0080000000000000ULL /* Writable */
+#define PTE_WRITECOPY           0x0100000000000000ULL /* CopyOnWrite */
+#define PTE_EXECUTE_READWRITE   0x0080000000000000ULL
+#define PTE_EXECUTE_WRITECOPY   0x0100000000000000ULL
+#define PTE_PROTOTYPE           0x0200000000000000ULL /* OsAvailable[0] */
+
+//
+// State Flags
+//
+#define PTE_VALID               0x0000000000000001ULL
+#define PTE_ACCESSED            0x0000000000000400ULL /* AF (bit 10) */
+#define PTE_DIRTY               0x0000000000000000ULL /* tracked via NotDirty (bit 7) */
+
+//
+// Cache flags (AttrIndx field, bits 2:0)
+//
+#define PTE_ENABLE_CACHE        0x0000000000000000ULL
+#define PTE_DISABLE_CACHE       0x0000000000000008ULL /* AttrIndx = 1 */
+#define PTE_WRITECOMBINED_CACHE 0x0000000000000004ULL /* AttrIndx = 0b010 */
+#define PTE_PROTECT_MASK        (0x0080000000000000ULL | 0x0100000000000000ULL | \
+                                 0x0200000000000000ULL | 0x0000000000000008ULL | \
+                                 0x0000000000000004ULL)
 #else
 #error Define these please!
 #endif
@@ -688,7 +721,7 @@ MiIsMemoryTypeInvisible(TYPE_OF_MEMORY MemoryType)
             (MemoryType == LoaderBBTMemory));
 }
 
-#ifdef _M_AMD64
+#if defined(_M_AMD64) || defined(_M_ARM64)
 FORCEINLINE
 BOOLEAN
 MiIsUserPxe(PVOID Address)
@@ -853,7 +886,7 @@ MI_MAKE_HARDWARE_PTE_USER(IN PMMPTE NewPte,
     NewPte->u.Long |= MmProtectToPteMask[ProtectionMask];
 }
 
-#ifndef _M_AMD64
+#if !defined(_M_AMD64) && !defined(_M_ARM64)
 //
 // Builds a Prototype PTE for the address of the PTE
 //
@@ -956,7 +989,11 @@ MI_IS_PHYSICAL_ADDRESS(IN PVOID Address)
 
     /* Large pages are never paged out, always physically resident */
     PointerPde = MiAddressToPde(Address);
+#if defined(_M_ARM64)
+    return (MI_IS_PAGE_LARGE(PointerPde) && (PointerPde->u.Hard.Valid));
+#else
     return ((PointerPde->u.Hard.LargePage) && (PointerPde->u.Hard.Valid));
+#endif
 }
 
 //
