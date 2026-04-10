@@ -1,6 +1,9 @@
 $if (_WDMDDK_)
 /** Kernel definitions for ARM64 **/
 
+/* Exported kernel variables */
+extern NTKERNELAPI volatile KSYSTEM_TIME KeTickCount;
+
 /* Interrupt request levels */
 #define PASSIVE_LEVEL           0
 #define LOW_LEVEL               0

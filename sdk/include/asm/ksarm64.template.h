@@ -17,20 +17,12 @@ RAW(""),
 #define CONTEXT_X18             (CONTEXT_ARM64 | 0x10L)
 #define CONTEXT_FULL            (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT)
 
-HEADER("Pointer size"),
-SIZE(SizeofPointer, PVOID),
-
 HEADER("PAGE constants"),
 CONSTANT(PAGE_SHIFT),
 
 HEADER("CONTEXT flags"),
 CONSTANTX(CONTEXT_ARM64, CONTEXT_ARM64),
-CONSTANT(CONTEXT_CONTROL),
-CONSTANT(CONTEXT_INTEGER),
-CONSTANT(CONTEXT_FLOATING_POINT),
-CONSTANT(CONTEXT_DEBUG_REGISTERS),
 CONSTANTX(CONTEXT_X18, CONTEXT_X18),
-CONSTANT(CONTEXT_FULL),
 
 /*
  * ARM64 PSTATE / SPSR exception-level and flag bits.
@@ -78,13 +70,7 @@ CONSTANTX(PSTATE_N, PSTATE_N),
  * IRQL levels (from ndk/arm64/ketypes.h)
  */
 HEADER("Interrupt request levels"),
-CONSTANT(PASSIVE_LEVEL),
-CONSTANT(APC_LEVEL),
-CONSTANT(DISPATCH_LEVEL),
 CONSTANT(CLOCK_LEVEL),
-CONSTANT(IPI_LEVEL),
-CONSTANT(PROFILE_LEVEL),
-CONSTANT(HIGH_LEVEL),
 
 HEADER("Exception active frame type codes"),
 CONSTANT(KEXCEPTION_ACTIVE_INTERRUPT_FRAME),
@@ -328,13 +314,10 @@ OFFSET(PcKvaUserModeTtbr1,  KIPCR, KvaUserModeTtbr1),
 OFFSET(PcPrcb,              KIPCR, Prcb),
 SIZE(ProcessorControlRegisterLength, KIPCR),
 
-/*
- * KPRCB offsets
- * NOTE: KPRCB for ARM64 uses the same shared body from ndk/arm64/ketypes.h.
- * Only the size is emitted here; individual field offsets should be added
- * once the ReactOS ARM64 KPRCB body separates from the x86/x64 stub.
- */
 HEADER("KPRCB offsets"),
+OFFSET(PbCurrentThread, KPRCB, CurrentThread),
+OFFSET(PbNextThread,    KPRCB, NextThread),
+OFFSET(PbIdleThread,    KPRCB, IdleThread),
 SIZE(KprcbLength, KPRCB),
 
 /* =====================================================================

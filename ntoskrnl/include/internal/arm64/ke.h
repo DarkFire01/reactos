@@ -66,6 +66,9 @@ extern "C" {
  * ------------------------------------------------------------------------- */
 #define SYNCH_LEVEL DISPATCH_LEVEL
 
+/* Kernel variable exported from ntoskrnl */
+extern NTKERNELAPI volatile KSYSTEM_TIME KeTickCount;
+
 #ifndef __ASM__
 
 #include "intrin_i.h"

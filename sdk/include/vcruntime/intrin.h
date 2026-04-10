@@ -1008,6 +1008,7 @@ int _isunorderedf(float, float);
 #endif /* _M_ARM */
 
 #ifdef _M_ARM64
+void __break(int);
 unsigned __int64 __getReg(int);
 
 /* Thread pointer (x18) accessors */
@@ -1077,6 +1078,17 @@ void *          _InterlockedCompareExchangePointer_acq(void * volatile *Destinat
 void *          _InterlockedCompareExchangePointer_rel(void * volatile *Destination, void *Exchange, void *Comparand);
 void *          _InterlockedCompareExchangePointer_nf (void * volatile *Destination, void *Exchange, void *Comparand);
 unsigned char   _InterlockedCompareExchange128(__int64 volatile *Destination, __int64 ExchangeHigh, __int64 ExchangeLow, __int64 *ComparandResult);
+
+/* Yield / sleep hint */
+void __yield(void);
+void __wfe(void);
+void __wfi(void);
+void __sev(void);
+
+/* 64-bit bit-test-and-set/reset intrinsics (same semantics as AMD64) */
+unsigned char _interlockedbittestandset64(__int64 volatile *, __int64);
+unsigned char _interlockedbittestandreset64(__int64 volatile *, __int64);
+
 #endif
 
 #if defined(_M_CEE_PURE)

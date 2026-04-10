@@ -9,6 +9,14 @@
 
 #include <sysfuncs.h>
 
+#elif defined(_M_ARM64)
+
+    TEXTAREA
+
+#define SVC_(name, argcount) STUB_K name
+
+#include <sysfuncs.h>
+
 #else
 
 #ifdef _M_IX86

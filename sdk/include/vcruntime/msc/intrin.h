@@ -198,6 +198,7 @@ extern "C" {
 
 #if defined _M_ARM64
 #pragma intrinsic(__getReg)
+#pragma intrinsic(__break)
 #endif
 /*** Bit manipulation ***/
 #pragma intrinsic(_BitScanForward)
@@ -434,6 +435,12 @@ void _sgdt(void *Destination);
 
 #if defined(_M_ARM64)
 #pragma intrinsic(__getReg)
+#pragma intrinsic(__yield)
+#pragma intrinsic(__wfe)
+#pragma intrinsic(__wfi)
+#pragma intrinsic(__sev)
+#pragma intrinsic(_interlockedbittestandset64)
+#pragma intrinsic(_interlockedbittestandreset64)
 #endif
 
 /** Secure virtual machine **/
