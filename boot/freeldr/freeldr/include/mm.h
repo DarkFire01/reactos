@@ -46,7 +46,7 @@ typedef struct _FREELDR_MEMORY_DESCRIPTOR
 } FREELDR_MEMORY_DESCRIPTOR, *PFREELDR_MEMORY_DESCRIPTOR;
 
 
-#if  defined(__i386__) || defined(_PPC_) || defined(_MIPS_) || defined(_ARM_)
+#if  defined(__i386__) || defined(_PPC_) || defined(_MIPS_) || defined(_ARM_) || defined(_ARM64_)
 
 #define MM_PAGE_SIZE    4096
 #define MM_PAGE_MASK    0xFFF
@@ -61,7 +61,7 @@ typedef struct _FREELDR_MEMORY_DESCRIPTOR
 #define MM_SIZE_TO_PAGES(a)  \
     ( ((a) >> MM_PAGE_SHIFT) + ((a) & MM_PAGE_MASK ? 1 : 0) )
 
-#endif // defined __i386__ or _PPC_ or _MIPS_
+#endif // defined __i386__ or _PPC_ or _MIPS_ or _ARM64_
 
 #if defined (_AMD64_)
 

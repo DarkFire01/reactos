@@ -68,14 +68,6 @@ KeMemoryBarrier(
 #define KeMemoryBarrierWithoutFence() _ReadWriteBarrier()
 
 _IRQL_requires_max_(HIGH_LEVEL)
-_IRQL_saves_
-NTHALAPI
-KIRQL
-NTAPI
-KeGetCurrentIrql(
-    VOID);
-
-_IRQL_requires_max_(HIGH_LEVEL)
 NTHALAPI
 VOID
 FASTCALL
@@ -391,6 +383,16 @@ KeGetPcr(VOID)
     __asm__ volatile ("mrs %0, tpidr_el1" : "=r" (Pcr));
     return Pcr;
 #endif
+}
+
+_IRQL_requires_max_(HIGH_LEVEL)
+_IRQL_saves_
+FORCEINLINE
+KIRQL
+KeGetCurrentIrql(
+    VOID)
+{
+    return KeGetPcr()->CurrentIrql;
 }
 
 #if (NTDDI_VERSION < NTDDI_WIN7) || !defined(NT_PROCESSOR_GROUPS)

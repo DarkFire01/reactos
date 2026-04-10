@@ -9,6 +9,9 @@
 
 #include <uefildr.h>
 #include "../vidfb.h"
+#include <arch/pc/pcbios.h>
+
+#define TAG_HW_RESOURCE_LIST    'lRwH'
 
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(HWDETECT);

@@ -39,7 +39,8 @@ elseif(ARCH STREQUAL "arm")
         arch/arm/debug.c)
     #TBD
 elseif(ARCH STREQUAL "arm64")
-    #TBD
+    list(APPEND UEFILDR_COMMON_ASM_SOURCE
+        arch/uefi/arm64/uefiasm.S)
 else()
     #TBD
 endif()
@@ -75,6 +76,9 @@ elseif(ARCH STREQUAL "amd64")
 elseif(ARCH STREQUAL "arm")
     list(APPEND FREELDR_NTLDR_SOURCE
         ntldr/arch/arm/winldr.c)
+elseif(ARCH STREQUAL "arm64")
+    list(APPEND FREELDR_NTLDR_SOURCE
+        ntldr/arch/arm64/winldr.c)
 else()
     #TBD
 endif()
@@ -133,7 +137,7 @@ if(ARCH STREQUAL "amd64")
 endif()
 
 if(MSVC)
-if(NOT ARCH STREQUAL "arm")
+if(NOT ARCH STREQUAL "arm" AND NOT ARCH STREQUAL "arm64")
     target_link_options(uefildr PRIVATE /DYNAMICBASE:NO)
 endif()
     target_link_options(uefildr PRIVATE /NXCOMPAT:NO /ignore:4078 /ignore:4254 /DRIVER)

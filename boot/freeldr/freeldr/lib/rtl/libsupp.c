@@ -84,3 +84,27 @@ RtlImageNtHeaderEx(
     return RtlpImageNtHeaderEx(Flags, Base, Size, OutHeaders);
 }
 
+#ifdef _M_ARM64
+VOID
+NTAPI
+RtlFillMemoryUlong(
+    PVOID Destination,
+    SIZE_T Length,
+    ULONG Pattern)
+{
+    PULONG Ptr = (PULONG)Destination;
+    SIZE_T Count = Length / sizeof(ULONG);
+
+    while (Count--)
+    {
+        *Ptr++ = Pattern;
+    }
+}
+
+/* ARM64 stack-probe fallback for freeldr-linked static libs. */
+VOID
+__chkstk(VOID)
+{
+}
+#endif
+
