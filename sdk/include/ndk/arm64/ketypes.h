@@ -651,15 +651,14 @@ typedef struct _KIPCR
 } KIPCR, *PKIPCR;
 
 //
-// Macro to get current KPRCB
+// Macro to get current KPRCB.
+// On ARM64 the kernel stores the PCR base in TPIDR_EL1.  KeGetPcr() reads
+// that register (defined in xdk/arm64/ke.h).  KIPCR embeds the KPRCB after
+// the public KPCR fields, so &((PKIPCR)KeGetPcr())->Prcb gives us the PRCB.
+// This must be a macro (not an inline) because KeGetPcr() is declared later
+// in the include chain and would not be visible inside an inline body here.
 //
-FORCEINLINE
-struct _KPRCB *
-KeGetCurrentPrcb(VOID)
-{  
-    //UNIMPLEMENTED;
-    return 0;
-}
+#define KeGetCurrentPrcb() (&((PKIPCR)KeGetPcr())->Prcb)
 
 //
 // Just read it from the PCR

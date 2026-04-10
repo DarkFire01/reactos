@@ -33,6 +33,25 @@ KeSetCurrentIrql(KIRQL Irql)
 }
 
 /* -------------------------------------------------------------------------
+ * Thread ID Register (TPIDR_EL1) — PCR base pointer
+ * The kernel stores the current processor's PCR address in TPIDR_EL1 so
+ * that KeGetPcr() / KeGetCurrentPrcb() can find it cheaply.  This must be
+ * written once per CPU early in KiSystemStartup before any per-CPU accessor
+ * (KeGetCurrentIrql, KeGetCurrentThread, …) is used.
+ * ------------------------------------------------------------------------- */
+FORCEINLINE
+VOID
+KeArm64TpidrEl1Set(ULONG64 Value)
+{
+#if defined(_MSC_VER)
+    _WriteStatusReg(ARM64_SYSREG(3, 0, 13, 0, 4), Value); /* TPIDR_EL1 */
+#else
+    __asm__ __volatile__ ("msr tpidr_el1, %0" :: "r"(Value) : "memory");
+#endif
+    __isb(0xF); /* ISB SY — ensure the write is visible to subsequent MRS */
+}
+
+/* -------------------------------------------------------------------------
  * System Control Register (SCTLR_EL1)
  * ------------------------------------------------------------------------- */
 FORCEINLINE

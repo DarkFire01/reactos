@@ -472,7 +472,7 @@ KdInitSystem(
         KdDebuggerNotPresent = TRUE;
     }
     DPRINT1("KD initialization complete\n");
-    __debugbreak();
+
     /* Return initialized */
     return TRUE;
 }

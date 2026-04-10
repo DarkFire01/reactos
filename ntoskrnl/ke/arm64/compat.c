@@ -597,10 +597,16 @@ KiExceptionExit(IN PKTRAP_FRAME TrapFrame,
 {
     UNREFERENCED_PARAMETER(TrapFrame);
     UNREFERENCED_PARAMETER(ExceptionFrame);
-    for (;;)
-    {
-        __debugbreak();
-    }
+
+    /*
+     * ARM64 bringup stub: a real implementation must restore processor state
+     * and return from exception in assembly. Avoid recursive debug breaks.
+     */
+    KeBugCheckEx(KMODE_EXCEPTION_NOT_HANDLED,
+                 0,
+                 (ULONG_PTR)TrapFrame,
+                 (ULONG_PTR)ExceptionFrame,
+                 0);
 }
 
 VOID
@@ -611,11 +617,135 @@ KeContextToTrapFrame(IN PCONTEXT Context,
                      IN ULONG ContextFlags,
                      IN KPROCESSOR_MODE PreviousMode)
 {
-    UNREFERENCED_PARAMETER(Context);
-    UNREFERENCED_PARAMETER(ExeptionFrame);
-    UNREFERENCED_PARAMETER(TrapFrame);
-    UNREFERENCED_PARAMETER(ContextFlags);
     UNREFERENCED_PARAMETER(PreviousMode);
+
+    if (ContextFlags & CONTEXT_INTEGER)
+    {
+        TrapFrame->X0 = Context->X0;
+        TrapFrame->X1 = Context->X1;
+        TrapFrame->X2 = Context->X2;
+        TrapFrame->X3 = Context->X3;
+        TrapFrame->X4 = Context->X4;
+        TrapFrame->X5 = Context->X5;
+        TrapFrame->X6 = Context->X6;
+        TrapFrame->X7 = Context->X7;
+        TrapFrame->X8 = Context->X8;
+        TrapFrame->X9 = Context->X9;
+        TrapFrame->X10 = Context->X10;
+        TrapFrame->X11 = Context->X11;
+        TrapFrame->X12 = Context->X12;
+        TrapFrame->X13 = Context->X13;
+        TrapFrame->X14 = Context->X14;
+        TrapFrame->X15 = Context->X15;
+        TrapFrame->X16 = Context->X16;
+        TrapFrame->X17 = Context->X17;
+        TrapFrame->X18 = Context->X18;
+
+        if (ExeptionFrame)
+        {
+            ExeptionFrame->X19 = Context->X19;
+            ExeptionFrame->X20 = Context->X20;
+            ExeptionFrame->X21 = Context->X21;
+            ExeptionFrame->X22 = Context->X22;
+            ExeptionFrame->X23 = Context->X23;
+            ExeptionFrame->X24 = Context->X24;
+            ExeptionFrame->X25 = Context->X25;
+            ExeptionFrame->X26 = Context->X26;
+            ExeptionFrame->X27 = Context->X27;
+            ExeptionFrame->X28 = Context->X28;
+        }
+    }
+
+    if (ContextFlags & CONTEXT_CONTROL)
+    {
+        TrapFrame->Spsr = Context->Cpsr;
+        TrapFrame->Fp = Context->Fp;
+        TrapFrame->Lr = Context->Lr;
+        TrapFrame->Sp = Context->Sp;
+        TrapFrame->Pc = Context->Pc;
+
+        if (ExeptionFrame)
+        {
+            ExeptionFrame->Fp = Context->Fp;
+            ExeptionFrame->Return = Context->Lr;
+        }
+    }
+}
+
+VOID
+NTAPI
+KeTrapFrameToContext(IN PKTRAP_FRAME TrapFrame,
+                     IN PKEXCEPTION_FRAME ExceptionFrame,
+                     IN OUT PCONTEXT Context)
+{
+    ULONG ContextFlags;
+
+    ContextFlags = Context->ContextFlags;
+
+    if (ContextFlags & CONTEXT_INTEGER)
+    {
+        Context->X0 = TrapFrame->X0;
+        Context->X1 = TrapFrame->X1;
+        Context->X2 = TrapFrame->X2;
+        Context->X3 = TrapFrame->X3;
+        Context->X4 = TrapFrame->X4;
+        Context->X5 = TrapFrame->X5;
+        Context->X6 = TrapFrame->X6;
+        Context->X7 = TrapFrame->X7;
+        Context->X8 = TrapFrame->X8;
+        Context->X9 = TrapFrame->X9;
+        Context->X10 = TrapFrame->X10;
+        Context->X11 = TrapFrame->X11;
+        Context->X12 = TrapFrame->X12;
+        Context->X13 = TrapFrame->X13;
+        Context->X14 = TrapFrame->X14;
+        Context->X15 = TrapFrame->X15;
+        Context->X16 = TrapFrame->X16;
+        Context->X17 = TrapFrame->X17;
+        Context->X18 = TrapFrame->X18;
+
+        if (ExceptionFrame)
+        {
+            Context->X19 = ExceptionFrame->X19;
+            Context->X20 = ExceptionFrame->X20;
+            Context->X21 = ExceptionFrame->X21;
+            Context->X22 = ExceptionFrame->X22;
+            Context->X23 = ExceptionFrame->X23;
+            Context->X24 = ExceptionFrame->X24;
+            Context->X25 = ExceptionFrame->X25;
+            Context->X26 = ExceptionFrame->X26;
+            Context->X27 = ExceptionFrame->X27;
+            Context->X28 = ExceptionFrame->X28;
+        }
+        else
+        {
+            Context->X19 = 0;
+            Context->X20 = 0;
+            Context->X21 = 0;
+            Context->X22 = 0;
+            Context->X23 = 0;
+            Context->X24 = 0;
+            Context->X25 = 0;
+            Context->X26 = 0;
+            Context->X27 = 0;
+            Context->X28 = 0;
+        }
+    }
+
+    if (ContextFlags & CONTEXT_CONTROL)
+    {
+        Context->Cpsr = TrapFrame->Spsr;
+        Context->Fp = TrapFrame->Fp;
+        Context->Lr = TrapFrame->Lr;
+        Context->Sp = TrapFrame->Sp;
+        Context->Pc = TrapFrame->Pc;
+
+        if (ExceptionFrame)
+        {
+            Context->Fp = ExceptionFrame->Fp;
+            Context->Lr = ExceptionFrame->Return;
+        }
+    }
 }
 
 VOID
@@ -626,11 +756,56 @@ KiDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
                     IN KPROCESSOR_MODE PreviousMode,
                     IN BOOLEAN SearchFrames)
 {
-    UNREFERENCED_PARAMETER(ExceptionRecord);
-    UNREFERENCED_PARAMETER(ExceptionFrame);
-    UNREFERENCED_PARAMETER(Tf);
-    UNREFERENCED_PARAMETER(PreviousMode);
-    UNREFERENCED_PARAMETER(SearchFrames);
+    CONTEXT Context;
+
+    KeGetCurrentPrcb()->KeExceptionDispatchCount++;
+
+    RtlZeroMemory(&Context, sizeof(Context));
+    Context.ContextFlags = CONTEXT_FULL;
+
+    KeTrapFrameToContext(Tf, ExceptionFrame, &Context);
+
+    if ((PreviousMode == KernelMode) && SearchFrames)
+    {
+        if (KiDebugRoutine(Tf,
+                           ExceptionFrame,
+                           ExceptionRecord,
+                           &Context,
+                           PreviousMode,
+                           FALSE))
+        {
+            goto Handled;
+        }
+
+        if (RtlDispatchException(ExceptionRecord, &Context))
+        {
+            goto Handled;
+        }
+    }
+
+    if ((PreviousMode == KernelMode) &&
+        KiDebugRoutine(Tf,
+                       ExceptionFrame,
+                       ExceptionRecord,
+                       &Context,
+                       PreviousMode,
+                       TRUE))
+    {
+        goto Handled;
+    }
+
+    KeBugCheckEx(KMODE_EXCEPTION_NOT_HANDLED,
+                 ExceptionRecord->ExceptionCode,
+                 (ULONG_PTR)ExceptionRecord->ExceptionAddress,
+                 (ULONG_PTR)Tf,
+                 0);
+
+Handled:
+    KeContextToTrapFrame(&Context,
+                         ExceptionFrame,
+                         Tf,
+                         Context.ContextFlags,
+                         PreviousMode);
 }
 
 CODE_SEG("INIT")

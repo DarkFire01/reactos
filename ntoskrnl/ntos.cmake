@@ -389,9 +389,11 @@ elseif(ARCH STREQUAL "arm")
         ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/arm/rtlexcpt.c)
 elseif(ARCH STREQUAL "arm64")
     list(APPEND ASM_SOURCE
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/zwsvc.S)
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/zwsvc.S
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/exception.S)
     list(APPEND SOURCE
         ${REACTOS_SOURCE_DIR}/ntoskrnl/config/arm/cmhardwr.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/exception.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/kd64/arm64/kdarm64.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/compat.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/kiinit.c

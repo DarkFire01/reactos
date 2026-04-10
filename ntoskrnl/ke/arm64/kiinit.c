@@ -47,6 +47,57 @@ KiInitModuleList(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     }
 }
 
+#define ARM64_QEMU_VIRT_UART_BASE 0x09000000ULL
+#define ARM64_QEMU_VIRT_UART_DR   0x00ULL
+#define ARM64_QEMU_VIRT_UART_FR   0x18ULL
+#define ARM64_QEMU_VIRT_UART_TXFF 0x20UL
+
+VOID
+NTAPI
+KdPortPutByteEx(IN PCPPORT PortInformation,
+                IN UCHAR ByteToSend)
+{
+    volatile ULONG *FrReg;
+    volatile ULONG *DrReg;
+
+    UNREFERENCED_PARAMETER(PortInformation);
+
+    FrReg = (volatile ULONG *)(ULONG_PTR)(ARM64_QEMU_VIRT_UART_BASE + ARM64_QEMU_VIRT_UART_FR);
+    DrReg = (volatile ULONG *)(ULONG_PTR)(ARM64_QEMU_VIRT_UART_BASE + ARM64_QEMU_VIRT_UART_DR);
+
+    while ((*FrReg & ARM64_QEMU_VIRT_UART_TXFF) != 0)
+    {
+    }
+
+    *DrReg = ByteToSend;
+}
+
+ULONG
+DbgPrintEarly(const char *fmt, ...)
+{
+    va_list args;
+    unsigned int Count;
+    CHAR Buffer[256];
+    PCHAR String = Buffer;
+
+    va_start(args, fmt);
+    Count = vsprintf(Buffer, fmt, args);
+    va_end(args);
+
+    while (*String != 0)
+    {
+        if (*String == '\n')
+        {
+            KdPortPutByteEx(NULL, '\r');
+        }
+
+        KdPortPutByteEx(NULL, *String);
+        ++String;
+    }
+
+    return Count;
+}
+
 CODE_SEG("INIT")
 VOID
 NTAPI
@@ -61,6 +112,9 @@ CODE_SEG("INIT")
 VOID
 NTAPI
 KiInitializeMachineType(VOID);
+VOID
+NTAPI
+KiInitializeExceptionHandling(VOID);
 
 DECLSPEC_NORETURN
 CODE_SEG("INIT")
@@ -85,6 +139,16 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     Thread = (PKTHREAD)LoaderBlock->Thread;
     Pcr = CONTAINING_RECORD((PKPRCB)(ULONG_PTR)LoaderBlock->Prcb, KIPCR, Prcb);
     Prcb = &Pcr->Prcb;
+
+    /*
+     * ARM64: write TPIDR_EL1 with this processor's PCR address NOW.
+     * Every per-CPU accessor (KeGetCurrentIrql, KeGetCurrentPrcb,
+     * KeGetCurrentThread, …) reads TPIDR_EL1 via KeGetPcr().  Without this
+     * the register contains whatever UEFI left — typically 0 — so all
+     * per-CPU reads return garbage and WinDbg reports "thread 0x100".
+     */
+    KeArm64TpidrEl1Set((ULONG64)Pcr);
+
     /* Bootstrap the PCR/PRCB identity and basic versioning fields. */
     Pcr->Self = (PKPCR)Pcr;
     Pcr->MajorVersion = PCR_MAJOR_VERSION;
@@ -106,39 +170,35 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     Prcb->MultiThreadProcessorSet = Prcb->SetMember;
     Prcb->MultiThreadSetMaster = Prcb;
 
+    /*
+     * KD state packets use KeGetCurrentThread(), which comes from PRCB.
+     * Initialize it early to avoid bogus thread IDs during first breakpoints.
+     */
+    Prcb->CurrentThread = Thread;
+
     KiProcessorBlock[Cpu] = Prcb;
+    DbgPrintEarly("ARM64 boot CPU %lu initialized\n", Cpu);
     Thread->ApcState.Process = (PKPROCESS)LoaderBlock->Process;
 
-    Prcb->ParentNode = KeNodeBlock[0];
-    Prcb->ParentNode->ProcessorMask |= Prcb->SetMember;
-
-    PoInitializePrcb(Prcb);
-    KiSaveProcessorControlState(&Prcb->ProcessorState);
-
-    Prcb->CurrentThread = Thread;
-    Prcb->NextThread = NULL;
-    Prcb->IdleThread = Thread;
-
-
     HalInitializeProcessor(Cpu, KeLoaderBlock);
-
+    DbgPrintEarly("ARM64 boot CPU %lu after HalInitializeProcessor\n", Cpu);
     KeActiveProcessors |= Prcb->SetMember;
     KeNumberProcessors++;
-
+    KiInitializeExceptionHandling();
     if (Cpu == 0)
     {
         /* Initialize the module list (ntos, hal, kdcom) before KD init. */
         KiInitModuleList(KeLoaderBlock);
 
         KdInitSystem(0, KeLoaderBlock);
-        DPRINT1("Processor %u is in KiSystemStartup\n", Cpu);
-        if (KdPollBreakIn())
-        {
-            DPRINT1("Break into debugger on processor %u\n", Cpu);
-            DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
-        }
+        DbgPrintEarly("ARM64 boot CPU post KdInitSystem\n");
+
+        /*
+         * Do not break this early on ARM64 bringup: the debugger can attach
+         * before stable thread/context state exists, causing unusable stops.
+         */
     }
-    DPRINT1("incrementing IRQL\n");
+    DPRINT1("ARM64 Windbg setup complete\n");
     KfRaiseIrql(HIGH_LEVEL);
 
     KiInitializeKernel((PKPROCESS)LoaderBlock->Process,

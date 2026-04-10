@@ -60,8 +60,9 @@ KiIdleLoop(VOID)
             }
             else
             {
+                /* WFI: halt until the next interrupt so QEMU can yield the host CPU. */
                 _enable();
-                YieldProcessor();
+                __wfi();
                 _disable();
             }
         }

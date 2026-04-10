@@ -88,10 +88,15 @@ VOID
 NTAPI
 HalProcessorIdle(VOID)
 {
-    /* Enable interrupts and halt the processor */
+    /* Enable interrupts and halt the processor until the next interrupt (WFI).
+     * This lets QEMU/KVM yield the host CPU instead of busy-spinning. */
     _enable();
+#if defined(_ARM64_)
+    __wfi();
+#else
     UNIMPLEMENTED;
     while (TRUE);
+#endif
 }
 
 /*
