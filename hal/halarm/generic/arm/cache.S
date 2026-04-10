@@ -5,6 +5,58 @@
  * PURPOSE:         Implements cache clean, invalidate routines for ARM machines
  * PROGRAMMERS:     Copyright (C) 2005 ARM Ltd.
  */
+#ifdef _M_ARM64
+#include <ksarm64.h>
+
+    TEXTAREA
+
+    NESTED_ENTRY v7_flush_dcache_all
+    PROLOG_END
+    mrs     x0, clidr_el1           ; read CLIDR_EL1
+    and     x3, x0, #0x7000000     ; extract LoC (bits [26:24])
+    lsr     x3, x3, #23            ; shift left to get LoC * 2
+    cbz     x3, a64_finished       ; if LoC is 0, no work to do
+    mov     x10, #0                ; cache level * 2 (start at level 0)
+a64_loop1
+    add     x2, x10, x10, lsr #1  ; work out 3x current cache level
+    lsr     x1, x0, x2             ; extract cache type bits from CLIDR
+    and     x1, x1, #7            ; mask for current cache only
+    cmp     x1, #2                 ; see what cache we have
+    b.lt    a64_skip               ; skip if no cache or only i-cache
+    msr     csselr_el1, x10        ; select current cache level in CSSELR
+    isb                            ; sync the new CSSELR
+    mrs     x1, ccsidr_el1         ; read CCSIDR_EL1
+    and     x2, x1, #7            ; extract line length field
+    add     x2, x2, #4             ; add 4 (line length offset)
+    ubfx    x4, x1, #3, #10       ; way count (bits [12:3])
+    clz     w5, w4                 ; bit position of way size increment
+    ubfx    x7, x1, #13, #15      ; set count (bits [27:13])
+a64_loop2
+    mov     x9, x4                 ; working copy of max way
+a64_loop3
+    lsl     x6, x9, x5
+    orr     x11, x10, x6
+    lsl     x6, x7, x2
+    orr     x11, x11, x6
+    dc      cisw, x11              ; clean & invalidate by set/way
+    subs    x9, x9, #1
+    b.ge    a64_loop3
+    subs    x7, x7, #1
+    b.ge    a64_loop2
+a64_skip
+    add     x10, x10, #2           ; increment cache number
+    cmp     x3, x10
+    b.gt    a64_loop1
+a64_finished
+    msr     csselr_el1, xzr        ; switch back to cache level 0
+    dsb     sy
+    isb
+    ret
+    NESTED_END v7_flush_dcache_all
+
+    END
+
+#else
 #include <ksarm.h>
 
     TEXTAREA
@@ -55,3 +107,5 @@ finished
 
     NESTED_END v7_flush_dcache_all
  	END
+
+#endif

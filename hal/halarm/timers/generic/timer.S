@@ -1,4 +1,139 @@
+#ifdef _M_ARM64
+#include <ksarm64.h>
 
+    TEXTAREA
+
+    NESTED_ENTRY pArmTranslationTableRegisterSet
+    PROLOG_END
+    msr     ttbr0_el1, x0
+    isb
+    ret
+    NESTED_END pArmTranslationTableRegisterSet
+
+    NESTED_ENTRY ArmReadCntFrq
+    PROLOG_END
+    mrs     x0, cntfrq_el0
+    ret
+    NESTED_END ArmReadCntFrq
+
+    NESTED_ENTRY ArmWriteCntFrq
+    PROLOG_END
+    msr     cntfrq_el0, x0
+    ret
+    NESTED_END ArmWriteCntFrq
+
+    NESTED_ENTRY ArmReadCntPct
+    PROLOG_END
+    mrs     x0, cntpct_el0
+    ret
+    NESTED_END ArmReadCntPct
+
+    NESTED_ENTRY ArmReadCntkCtl
+    PROLOG_END
+    mrs     x0, cntkctl_el1
+    ret
+    NESTED_END ArmReadCntkCtl
+
+    NESTED_ENTRY ArmWriteCntkCtl
+    PROLOG_END
+    msr     cntkctl_el1, x0
+    ret
+    NESTED_END ArmWriteCntkCtl
+
+    NESTED_ENTRY ArmReadCntpTval
+    PROLOG_END
+    mrs     x0, cntp_tval_el0
+    ret
+    NESTED_END ArmReadCntpTval
+
+    NESTED_ENTRY ArmWriteCntpTval
+    PROLOG_END
+    msr     cntp_tval_el0, x0
+    ret
+    NESTED_END ArmWriteCntpTval
+
+    NESTED_ENTRY ArmReadCntpCtl
+    PROLOG_END
+    mrs     x0, cntp_ctl_el0
+    ret
+    NESTED_END ArmReadCntpCtl
+
+    NESTED_ENTRY ArmWriteCntpCtl
+    PROLOG_END
+    msr     cntp_ctl_el0, x0
+    ret
+    NESTED_END ArmWriteCntpCtl
+
+    NESTED_ENTRY ArmReadCntvTval
+    PROLOG_END
+    mrs     x0, cntv_tval_el0
+    ret
+    NESTED_END ArmReadCntvTval
+
+    NESTED_ENTRY ArmWriteCntvTval
+    PROLOG_END
+    msr     cntv_tval_el0, x0
+    ret
+    NESTED_END ArmWriteCntvTval
+
+    NESTED_ENTRY ArmReadCntvCtl
+    PROLOG_END
+    mrs     x0, cntv_ctl_el0
+    ret
+    NESTED_END ArmReadCntvCtl
+
+    NESTED_ENTRY ArmWriteCntvCtl
+    PROLOG_END
+    msr     cntv_ctl_el0, x0
+    ret
+    NESTED_END ArmWriteCntvCtl
+
+    NESTED_ENTRY ArmReadCntvCt
+    PROLOG_END
+    mrs     x0, cntvct_el0
+    ret
+    NESTED_END ArmReadCntvCt
+
+    NESTED_ENTRY ArmReadCntpCval
+    PROLOG_END
+    mrs     x0, cntp_cval_el0
+    ret
+    NESTED_END ArmReadCntpCval
+
+    NESTED_ENTRY ArmWriteCntpCval
+    PROLOG_END
+    msr     cntp_cval_el0, x0
+    ret
+    NESTED_END ArmWriteCntpCval
+
+    NESTED_ENTRY ArmReadCntvCval
+    PROLOG_END
+    mrs     x0, cntv_cval_el0
+    ret
+    NESTED_END ArmReadCntvCval
+
+    NESTED_ENTRY ArmWriteCntvCval
+    PROLOG_END
+    msr     cntv_cval_el0, x0
+    ret
+    NESTED_END ArmWriteCntvCval
+
+    NESTED_ENTRY ArmReadCntvOff
+    PROLOG_END
+    ; CNTVOFF_EL2 is EL2-only; return 0 from EL1
+    mov     x0, #0
+    ret
+    NESTED_END ArmReadCntvOff
+
+    NESTED_ENTRY ArmWriteCntvOff
+    PROLOG_END
+    ; CNTVOFF_EL2 is EL2-only; NOP from EL1
+    ret
+    NESTED_END ArmWriteCntvOff
+
+    END
+
+#else
 #include <ksarm.h>
 
     TEXTAREA
@@ -133,3 +268,5 @@
 
 
  	END
+
+#endif

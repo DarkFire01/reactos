@@ -682,9 +682,9 @@ function(set_module_type MODULE TYPE)
         if (ARCH STREQUAL "arm64")
                 # special case for kernel
                 if (TYPE STREQUAL kernel)
-                    set_image_base(${MODULE} 0x80000000)
+                    set_image_base(${MODULE} 0x800000000000)
                 else()
-                    set_image_base(${MODULE} 0x40000000)
+                    set_image_base(${MODULE} 0x400000000000)
                 endif()
         else()
             # special case for kernel

@@ -1,10 +1,10 @@
 #pragma once
 
 //
-// ARM Headers
+// Architecture-specific kernel headers
 //
-#include <internal/arm/ke.h>
-#include <internal/arm/intrin_i.h>
+#include <internal/arch/ke.h>
+#include <internal/arch/intrin_i.h>
 
 #define PRIMARY_VECTOR_BASE     0x00
 

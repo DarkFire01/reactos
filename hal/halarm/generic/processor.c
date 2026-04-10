@@ -24,18 +24,25 @@ BOOLEAN HalpTestCleanSupported;
 VOID
 HalpIdentifyProcessor(VOID)
 {
-    ARM_ID_CODE_REGISTER IdRegister;
-
     /* Don't do it again */
     HalpProcessorIdentified = TRUE;
 
-    // fixfix: Use Pcr->ProcessorId
+#ifndef _M_ARM64
+    {
+        ARM_ID_CODE_REGISTER IdRegister;
 
-    /* Read the ID Code */
-    IdRegister = KeArmIdCodeRegisterGet();
+        // fixfix: Use Pcr->ProcessorId
 
-    /* Architecture "6" CPUs support test-and-clean (926EJ-S and 1026EJ-S) */
-    HalpTestCleanSupported = (IdRegister.Architecture == 6);
+        /* Read the ID Code */
+        IdRegister = KeArmIdCodeRegisterGet();
+
+        /* Architecture "6" CPUs support test-and-clean (926EJ-S and 1026EJ-S) */
+        HalpTestCleanSupported = (IdRegister.Architecture == 6);
+    }
+#else
+    /* ARM64 (AArch64): test-and-clean is not applicable */
+    HalpTestCleanSupported = FALSE;
+#endif
 }
 
 /* FUNCTIONS ******************************************************************/
