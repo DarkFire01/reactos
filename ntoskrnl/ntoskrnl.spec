@@ -171,9 +171,9 @@
 @ fastcall ExfReleasePushLockShared(ptr)
 @ fastcall ExfTryToWakePushLock(ptr)
 @ fastcall ExfUnblockPushLock(ptr ptr)
-@ stdcall -arch=x86_64,arm ExpInterlockedFlushSList(ptr) RtlInterlockedFlushSList
-@ stdcall -arch=x86_64,arm ExpInterlockedPopEntrySList(ptr ptr) RtlInterlockedPopEntrySList
-@ stdcall -arch=x86_64,arm ExpInterlockedPushEntrySList(ptr ptr) RtlInterlockedPushEntrySList
+@ stdcall -arch=x86_64,arm,arm64 ExpInterlockedFlushSList(ptr) RtlInterlockedFlushSList
+@ stdcall -arch=x86_64,arm,arm64 ExpInterlockedPopEntrySList(ptr ptr) RtlInterlockedPopEntrySList
+@ stdcall -arch=x86_64,arm,arm64 ExpInterlockedPushEntrySList(ptr ptr) RtlInterlockedPushEntrySList
 @ fastcall -arch=i386 Exfi386InterlockedDecrementLong(ptr)
 @ fastcall -arch=i386 Exfi386InterlockedExchangeUlong(ptr long)
 @ fastcall -arch=i386 Exfi386InterlockedIncrementLong(ptr)
@@ -1543,7 +1543,7 @@
 @ stdcall ZwWaitForSingleObject(ptr long ptr)
 @ stdcall ZwWriteFile(ptr ptr ptr ptr ptr ptr long ptr ptr)
 @ stdcall ZwYieldExecution()
-@ cdecl -arch=x86_64,arm __C_specific_handler(ptr long ptr ptr)
+@ cdecl -arch=x86_64,arm,arm64 __C_specific_handler(ptr long ptr ptr)
 @ cdecl -arch=arm __jump_unwind()
 @ cdecl -arch=x86_64 __chkstk()
 ;@ cdecl -arch=x86_64 __misaligned_access()
@@ -1568,10 +1568,10 @@
 @ cdecl _itoa()
 @ cdecl _itow()
 @ cdecl -arch=i386,arm _local_unwind2()
-@ cdecl -arch=x86_64 _local_unwind()
+@ cdecl -arch=x86_64,arm64 _local_unwind()
 @ cdecl _purecall()
-@ cdecl -arch=x86_64,arm,arm64 _setjmp(ptr ptr)
-@ cdecl -arch=x86_64,arm,arm64 _setjmpex(ptr ptr)
+@ cdecl -arch=x86_64,arm _setjmp(ptr ptr)
+@ cdecl -arch=x86_64,arm _setjmpex(ptr ptr)
 @ cdecl _snprintf()
 @ cdecl _snwprintf()
 @ cdecl _stricmp()
