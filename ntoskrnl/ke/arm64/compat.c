@@ -173,19 +173,6 @@ KeGetCurrentProcessorNumber(VOID)
     return (ULONG)KeGetCurrentPrcb()->Number;
 }
 
-DECLSPEC_NORETURN
-CODE_SEG("INIT")
-VOID
-NTAPI
-KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
-{
-    UNREFERENCED_PARAMETER(LoaderBlock);
-    for (;;)
-    {
-        __debugbreak();
-    }
-}
-
 VOID
 NTAPI
 KiFlushSingleTb(IN BOOLEAN Invalid,

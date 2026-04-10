@@ -392,8 +392,11 @@ elseif(ARCH STREQUAL "arm64")
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/zwsvc.S)
     list(APPEND SOURCE
         ${REACTOS_SOURCE_DIR}/ntoskrnl/config/arm/cmhardwr.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/kd64/arm/kdarm.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/kd64/arm64/kdarm64.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/compat.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/kiinit.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/krnlinit.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/thrdini.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/page.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/arm64/rtlexcpt.c)
 endif()

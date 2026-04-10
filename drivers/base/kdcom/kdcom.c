@@ -18,6 +18,54 @@
 /* GLOBALS ********************************************************************/
 
 CPPORT KdComPort;
+#ifdef _M_ARM64
+/* QEMU virt PL011 UART base. Can be overridden via DEBUGPORT=COM:<addr>. */
+#define ARM64_DEFAULT_DEBUG_UART_BASE 0x09000000ULL
+#define ARM64_UART_DR                 0x00ULL
+#define ARM64_UART_FR                 0x18ULL
+#define ARM64_UART_FR_RXFE            0x10UL
+#define ARM64_UART_FR_TXFF            0x20UL
+
+static ULONG_PTR KdArm64UartBase;
+
+static __forceinline
+volatile ULONG *
+KdArm64UartReg(IN ULONG_PTR Offset)
+{
+    return (volatile ULONG *)(ULONG_PTR)(KdArm64UartBase + Offset);
+}
+
+static __forceinline
+VOID
+KdArm64UartWriteByte(IN UCHAR Byte)
+{
+    while ((*KdArm64UartReg(ARM64_UART_FR) & ARM64_UART_FR_TXFF) != 0)
+    {
+    }
+
+    *KdArm64UartReg(ARM64_UART_DR) = Byte;
+}
+
+static __forceinline
+BOOLEAN
+KdArm64UartReadByte(IN PUCHAR Byte,
+                    IN BOOLEAN Wait)
+{
+    ULONG Timeout = 1024 * 200;
+
+    while ((*KdArm64UartReg(ARM64_UART_FR) & ARM64_UART_FR_RXFE) != 0)
+    {
+        if (!Wait)
+            return FALSE;
+
+        if (Timeout-- == 0)
+            return FALSE;
+    }
+
+    *Byte = (UCHAR)(*KdArm64UartReg(ARM64_UART_DR) & 0xFF);
+    return TRUE;
+}
+#endif
 #ifdef KDDEBUG
 CPPORT KdDebugComPort;
 #endif
@@ -98,6 +146,16 @@ KdpPortInitialize(
     _In_ PUCHAR PortAddress,
     _In_ ULONG BaudRate)
 {
+#ifdef _M_ARM64
+    UNREFERENCED_PARAMETER(BaudRate);
+
+    if (PortAddress == NULL)
+        PortAddress = (PUCHAR)(ULONG_PTR)ARM64_DEFAULT_DEBUG_UART_BASE;
+
+    KdArm64UartBase = (ULONG_PTR)PortAddress;
+    KdComPortInUse = PortAddress;
+    return STATUS_SUCCESS;
+#else
     NTSTATUS Status;
 
     Status = CpInitialize(&KdComPort, PortAddress, BaudRate);
@@ -106,6 +164,7 @@ KdpPortInitialize(
 
     KdComPortInUse = KdComPort.Address;
     return STATUS_SUCCESS;
+#endif
 }
 
 /******************************************************************************
@@ -194,7 +253,11 @@ KdDebuggerInitialize0(IN PLOADER_PARAMETER_BLOCK LoaderBlock OPTIONAL)
     }
 
     if (!ComPortAddress)
+#ifdef _M_ARM64
+        ComPortAddress = UlongToPtr(ARM64_DEFAULT_DEBUG_UART_BASE);
+#else
         ComPortAddress = UlongToPtr(BaseArray[ComPortNumber]);
+#endif
 
 #ifdef KDDEBUG
     /*
@@ -243,14 +306,23 @@ VOID
 NTAPI
 KdpSendByte(IN UCHAR Byte)
 {
+#ifdef _M_ARM64
+    KdArm64UartWriteByte(Byte);
+#else
     /* Send the byte */
     CpPutByte(&KdComPort, Byte);
+#endif
 }
 
 KDP_STATUS
 NTAPI
 KdpPollByte(OUT PUCHAR OutByte)
 {
+#ifdef _M_ARM64
+    return KdArm64UartReadByte(OutByte, FALSE) ?
+           KDP_PACKET_RECEIVED :
+           KDP_PACKET_TIMEOUT;
+#else
     USHORT Status;
 
     /* Poll the byte */
@@ -267,12 +339,18 @@ KdpPollByte(OUT PUCHAR OutByte)
         default:
             return KDP_PACKET_RESEND;
     }
+#endif
 }
 
 KDP_STATUS
 NTAPI
 KdpReceiveByte(OUT PUCHAR OutByte)
 {
+#ifdef _M_ARM64
+    return KdArm64UartReadByte(OutByte, TRUE) ?
+           KDP_PACKET_RECEIVED :
+           KDP_PACKET_TIMEOUT;
+#else
     USHORT Status;
 
     /* Get the byte */
@@ -289,6 +367,7 @@ KdpReceiveByte(OUT PUCHAR OutByte)
         default:
             return KDP_PACKET_RESEND;
     }
+#endif
 }
 
 KDP_STATUS
