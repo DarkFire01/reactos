@@ -97,7 +97,7 @@ foreach(_keyboard_layout ${_keyboard_layouts})
 
     target_include_directories(${_keyboard_layout} PRIVATE ${REACTOS_SOURCE_DIR}/ntoskrnl/include)
     set_entrypoint(${_keyboard_layout} 0)
-    set_image_base(${_keyboard_layout} 0x5FFF0000)
+  #  set_image_base(${_keyboard_layout} 0x5FFF0000)
     set_subsystem(${_keyboard_layout} native)
 
     if(MSVC)

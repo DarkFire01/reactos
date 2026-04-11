@@ -81,9 +81,9 @@
 @ stdcall -arch=i386,arm VideoPortReadPortUchar(ptr) HAL.READ_PORT_UCHAR
 @ stdcall -arch=x86_64 VideoPortReadPortUchar(ptr)
 @ stdcall -arch=i386,arm VideoPortReadPortUlong(ptr) HAL.READ_PORT_ULONG
-@ stdcall -arch=x86_64 VideoPortReadPortUlong(ptr)
+@ stdcall -arch=x86_64,arm64 VideoPortReadPortUlong(ptr)
 @ stdcall -arch=i386,arm VideoPortReadPortUshort(ptr) HAL.READ_PORT_USHORT
-@ stdcall -arch=x86_64 VideoPortReadPortUshort(ptr)
+@ stdcall -arch=x86_64,arm64 VideoPortReadPortUshort(ptr)
 @ stdcall -arch=i386,arm VideoPortReadRegisterBufferUchar(ptr ptr long) NTOSKRNL.READ_REGISTER_BUFFER_UCHAR
 @ stdcall -arch=x86_64 VideoPortReadRegisterBufferUchar(ptr ptr long)
 @ stdcall -arch=i386,arm VideoPortReadRegisterBufferUlong(ptr ptr long) NTOSKRNL.READ_REGISTER_BUFFER_ULONG
@@ -93,9 +93,9 @@
 @ stdcall -arch=i386,arm VideoPortReadRegisterUchar(ptr) NTOSKRNL.READ_REGISTER_UCHAR
 @ stdcall -arch=x86_64 VideoPortReadRegisterUchar(ptr)
 @ stdcall -arch=i386,arm VideoPortReadRegisterUlong(ptr) NTOSKRNL.READ_REGISTER_ULONG
-@ stdcall -arch=x86_64 VideoPortReadRegisterUlong(ptr)
+@ stdcall -arch=x86_64,arm64 VideoPortReadRegisterUlong(ptr)
 @ stdcall -arch=i386,arm VideoPortReadRegisterUshort(ptr) NTOSKRNL.READ_REGISTER_USHORT
-@ stdcall -arch=x86_64 VideoPortReadRegisterUshort(ptr)
+@ stdcall -arch=x86_64,arm64 VideoPortReadRegisterUshort(ptr)
 @ stdcall VideoPortReadStateEvent(ptr ptr)
 @ stdcall VideoPortRegisterBugcheckCallback(ptr long ptr long)
 @ stdcall VideoPortReleaseBuffer(ptr ptr)
@@ -131,9 +131,9 @@
 @ stdcall -arch=i386,arm VideoPortWritePortUchar(ptr long) HAL.WRITE_PORT_UCHAR
 @ stdcall -arch=x86_64 VideoPortWritePortUchar(ptr long)
 @ stdcall -arch=i386,arm VideoPortWritePortUlong(ptr long) HAL.WRITE_PORT_ULONG
-@ stdcall -arch=x86_64 VideoPortWritePortUlong(ptr long)
+@ stdcall -arch=x86_64,arm64 VideoPortWritePortUlong(ptr long)
 @ stdcall -arch=i386,arm VideoPortWritePortUshort(ptr long) HAL.WRITE_PORT_USHORT
-@ stdcall -arch=x86_64 VideoPortWritePortUshort(ptr long)
+@ stdcall -arch=x86_64,arm64 VideoPortWritePortUshort(ptr long)
 @ stdcall -arch=i386,arm VideoPortWriteRegisterBufferUchar(ptr ptr long) NTOSKRNL.WRITE_REGISTER_BUFFER_UCHAR
 @ stdcall -arch=x86_64 VideoPortWriteRegisterBufferUchar(ptr ptr long)
 @ stdcall -arch=i386,arm VideoPortWriteRegisterBufferUlong(ptr ptr long) NTOSKRNL.WRITE_REGISTER_BUFFER_ULONG
@@ -143,9 +143,9 @@
 @ stdcall -arch=i386,arm VideoPortWriteRegisterUchar(ptr long) NTOSKRNL.WRITE_REGISTER_UCHAR
 @ stdcall -arch=x86_64 VideoPortWriteRegisterUchar(ptr long)
 @ stdcall -arch=i386,arm VideoPortWriteRegisterUlong(ptr long) NTOSKRNL.WRITE_REGISTER_ULONG
-@ stdcall -arch=x86_64 VideoPortWriteRegisterUlong(ptr long)
+@ stdcall -arch=x86_64,arm64 VideoPortWriteRegisterUlong(ptr long)
 @ stdcall -arch=i386,arm VideoPortWriteRegisterUshort(ptr long) NTOSKRNL.WRITE_REGISTER_USHORT
-@ stdcall -arch=x86_64 VideoPortWriteRegisterUshort(ptr long)
+@ stdcall -arch=x86_64,arm64 VideoPortWriteRegisterUshort(ptr long)
 @ stdcall VideoPortZeroDeviceMemory(ptr long) NTOSKRNL.RtlZeroMemory
 @ stdcall VideoPortZeroMemory(ptr long) NTOSKRNL.RtlZeroMemory
 @ stdcall VpNotifyEaData(ptr ptr)

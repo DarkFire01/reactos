@@ -62,14 +62,12 @@ ENDM
 
     MACRO
     CREATE_ALIAS1   $alias, $target
-    EXTERN SYM($target):PROC
-    ALIAS <SYM($alias)> = <SYM($target)>
+    IMPORT  SYM($alias), WEAK SYM($target)
     MEND
 
     MACRO
     CREATE_ALIAS2   $alias, $target
-    EXTERN IMPSYM($target):PROC
-    ALIAS <IMPSYM($alias)> = <IMPSYM($target)>
+    IMPORT  IMPSYM($alias), WEAK IMPSYM($target)
     MEND
 
     MACRO

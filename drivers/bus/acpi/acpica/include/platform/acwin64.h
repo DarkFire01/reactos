@@ -127,7 +127,11 @@
 #ifdef ACPI_APPLICATION
 #define ACPI_FLUSH_CPU_CACHE()
 #else
+#if defined(_M_ARM64) || defined(__aarch64__)
+#define ACPI_FLUSH_CPU_CACHE()  ((void)0)
+#else
 #define ACPI_FLUSH_CPU_CACHE()  __wbinvd()
+#endif
 #endif
 
 #define ACPI_ACQUIRE_GLOBAL_LOCK(FacsPtr, Acq) \

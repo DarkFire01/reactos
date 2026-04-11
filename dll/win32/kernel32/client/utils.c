@@ -646,8 +646,31 @@ BaseInitializeContext(IN PCONTEXT Context,
 
     /* Give it some room for the Parameter */
     Context->Sp -= sizeof(PVOID);
+
+#elif defined(_M_ARM64)
+    DPRINT("BaseInitializeContext: %p\n", Context);
+
+    Context->X0 = (ULONG_PTR)StartAddress;
+    Context->X1 = (ULONG_PTR)Parameter;
+    Context->Sp = (ULONG_PTR)StackAddress;
+
+    if (ContextType == 1)
+    {
+        Context->Pc = (ULONG_PTR)BaseThreadStartupThunk;
+    }
+    else if (ContextType == 2)
+    {
+        Context->Pc = (ULONG_PTR)BaseFiberStartup;
+    }
+    else
+    {
+        Context->Pc = (ULONG_PTR)BaseProcessStartThunk;
+    }
+
+    Context->ContextFlags = CONTEXT_FULL;
+    Context->Sp -= sizeof(PVOID);
 #else
-#warning Unknown architecture
+#pragma message("Unknown architecture")
     UNIMPLEMENTED;
     DbgBreakPoint();
 #endif

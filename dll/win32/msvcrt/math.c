@@ -982,7 +982,7 @@ static void _setfp( unsigned int *cw, unsigned int cw_mask,
 #endif
 #elif defined(__x86_64__)
     _setfp_sse(cw, cw_mask, sw, sw_mask);
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && !defined(_MSC_VER)
     ULONG_PTR old_fpsr = 0, fpsr = 0, old_fpcr = 0, fpcr = 0;
     unsigned int flags;
 
@@ -1061,7 +1061,7 @@ static void _setfp( unsigned int *cw, unsigned int cw_mask,
         __asm__ __volatile__( "msr fpsr, %0" :: "r" (fpsr) );
     if (old_fpcr != fpcr)
         __asm__ __volatile__( "msr fpcr, %0" :: "r" (fpcr) );
-#elif defined(__arm__)
+#elif defined(__arm__) && !defined(_MSC_VER)
     DWORD old_fpscr, fpscr;
     unsigned int flags;
 

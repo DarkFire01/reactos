@@ -1446,6 +1446,13 @@ VideoPortSynchronizeExecution(
     BOOLEAN Ret;
     PVIDEO_PORT_DEVICE_EXTENSION DeviceExtension;
     KIRQL OldIrql;
+    KIRQL SyncIrql;
+
+#ifdef SYNCH_LEVEL
+    SyncIrql = SYNCH_LEVEL;
+#else
+    SyncIrql = DISPATCH_LEVEL;
+#endif
 
     switch (Priority)
     {
@@ -1466,12 +1473,12 @@ VideoPortSynchronizeExecution(
 
         case VpHighPriority:
             OldIrql = KeGetCurrentIrql();
-            if (OldIrql < SYNCH_LEVEL)
-                KeRaiseIrql(SYNCH_LEVEL, &OldIrql);
+            if (OldIrql < SyncIrql)
+                KeRaiseIrql(SyncIrql, &OldIrql);
 
             Ret = (*SynchronizeRoutine)(Context);
 
-            if (OldIrql < SYNCH_LEVEL)
+            if (OldIrql < SyncIrql)
                 KeLowerIrql(OldIrql);
             break;
 

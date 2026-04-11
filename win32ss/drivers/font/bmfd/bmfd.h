@@ -13,7 +13,7 @@
 #include <wingdi.h>
 #include <winddi.h>
 
-#if defined(_M_IX86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_M_AMD64) || defined(_M_ARM64) || defined(_ARM64_) || defined(__arm64__) || defined(__aarch64__)
 /* on x86 and x64, unaligned access is allowed, byteorder is LE */
 #define GETVAL(x) (x)
 #else

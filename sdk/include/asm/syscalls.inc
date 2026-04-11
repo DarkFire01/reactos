@@ -46,14 +46,16 @@ $NtFuncEndName
 $ZwFuncEndName
     MEND
 
-#elif defined(_M_ARM64)
+#elif defined(_M_ARM64) || defined(_ARM64_) || defined(__arm64__) || defined(__aarch64__)
 
 #include <kxarm64.h>
 
     GBLA SyscallId
 SyscallId SETA 0
 
+#ifdef SVC_KERNEL_STUBS
     IMPORT KiZwSystemService
+#endif
 
     /*
      * STUB_K - kernel-mode Zw stub (ntoskrnl).
@@ -67,6 +69,7 @@ SyscallId SETA 0
      *   5. Restores TrapFrame/PreviousMode and callee-saved registers.
      *   6. Returns to the ZwXxx caller (x0 = NtXxx return value).
      */
+#ifdef SVC_KERNEL_STUBS
     MACRO
     STUB_K $Name
     LCLS ZwFuncName
@@ -88,6 +91,11 @@ $ZwFuncEndName
     ENDP
 SyscallId SETA SyscallId + 1
     MEND
+#else
+    MACRO
+    STUB_K $Name
+    MEND
+#endif
 
     /*
      * STUB_U - user-mode Zw/Nt stub (ntdll)

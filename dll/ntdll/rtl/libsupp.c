@@ -253,6 +253,9 @@ RtlWalkFrameChain(OUT PVOID *Callers,
     // FIXME: Hack. Probably won't work if this ever actually manages to run someday.
     Stack = (ULONG_PTR)&Stack;
 #endif
+#elif defined(_M_ARM64)
+    /* MSVC ARM64 has no inline asm; use local-frame address as an initial cursor. */
+    Stack = (ULONG_PTR)&Stack;
 #else
 #error Unknown architecture
 #endif

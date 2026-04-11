@@ -232,11 +232,11 @@ HGDIOBJ WINAPI GdiFixUpHandle(HGDIOBJ hGdiObj);
 BOOL WINAPI SetWorldTransformForMetafile(HDC hdc, const XFORM *pxform);
 #define SetWorldTransform SetWorldTransformForMetafile
 #endif
-#ifdef _M_ARM
-#define DbgRaiseAssertionFailure() __emit(0xdefc)
+#if defined(_M_ARM) || defined(_M_ARM64)
+#define DbgRaiseAssertionFailure() __debugbreak()
 #else
 #define DbgRaiseAssertionFailure() __int2c()
-#endif // _M_ARM
+#endif // _M_ARM || _M_ARM64
 
 #undef ASSERT
 #define ASSERT(x) if (!(x)) DbgRaiseAssertionFailure()

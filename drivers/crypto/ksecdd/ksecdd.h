@@ -44,7 +44,7 @@ typedef struct _KSEC_MACHINE_SPECIFIC_COUNTERS
     ULONG64 Ctr0;
     ULONG64 Ctr1;
 } KSEC_MACHINE_SPECIFIC_COUNTERS, *PKSEC_MACHINE_SPECIFIC_COUNTERS;
-#elif defined(_M_ARM)
+#elif defined(_M_ARM) || defined(_M_ARM64)
 typedef struct _KSEC_MACHINE_SPECIFIC_COUNTERS
 {
     ULONG Ccr;

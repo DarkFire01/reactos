@@ -1,4 +1,8 @@
 
+#if defined(_M_ARM64)
+#define SVC_KERNEL_STUBS
+#endif
+
 #include <syscalls.inc>
 
 #ifdef _M_ARM

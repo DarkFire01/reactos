@@ -38,6 +38,11 @@ NTAPI
 NmiDbgCallback(IN PVOID Context,
                IN BOOLEAN Handled)
 {
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(Handled);
+
+    /* Keep ARM64 buildable; the NMI I/O probe path is x86-only. */
+#if defined(_M_IX86)
     /* Clear the NMI flag */
     NmiClearFlag();
 
@@ -46,7 +51,6 @@ NmiDbgCallback(IN PVOID Context,
     ((void(*)())&KiBugCheckData[4])();
 
     /* Handle the NMI safely */
-#ifdef _M_IX86
     KiEnableTimerWatchdog = (RtlCompareMemory(NmiBegin, NmiBegin + 4, 4) != 4);
 #endif
     return TRUE;

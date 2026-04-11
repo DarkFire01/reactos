@@ -42,6 +42,13 @@
 #include <ntdddisk.h>
 #include <ntddvol.h>
 
+#if (defined(_ARM_) || defined(_ARM64_) || defined(__aarch64__)) && defined(__has_include)
+#if __has_include(<arm_neon.h>)
+#include <arm_neon.h>
+#define BTRFS_ARM_NEON 1
+#endif
+#endif
+
 #ifdef _MSC_VER
 #include <initguid.h>
 #include <ntddstor.h>
@@ -287,7 +294,7 @@ bool is_top_level(_In_ PIRP Irp) {
 static void __stdcall do_xor_basic(uint8_t* buf1, uint8_t* buf2, uint32_t len) {
     uint32_t j;
 
-#if defined(_ARM_) || defined(_ARM64_)
+#if defined(BTRFS_ARM_NEON)
     uint64x2_t x1, x2;
 
     if (((uintptr_t)buf1 & 0xf) == 0 && ((uintptr_t)buf2 & 0xf) == 0) {

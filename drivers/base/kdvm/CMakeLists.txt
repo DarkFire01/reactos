@@ -1,6 +1,10 @@
 
 spec2def(kdvbox.dll kdvm.spec)
-add_asm_files(kdvbox_asm kdvbox_asm.S)
+
+# kdvbox_asm.S uses GCC-style ASM macros that MSVC doesn't support on ARM64
+if(NOT ARCH STREQUAL "arm64")
+    add_asm_files(kdvbox_asm kdvbox_asm.S)
+endif()
 
 add_library(kdvbox MODULE
     kdvm.c

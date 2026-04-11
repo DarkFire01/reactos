@@ -184,6 +184,24 @@ NTAPI
 KeGetCurrentProcessorIndex(VOID);
 #endif
 
+_IRQL_requires_max_(HIGH_LEVEL)
+_IRQL_saves_
+NTHALAPI
+KIRQL
+NTAPI
+KeGetCurrentIrql(VOID);
+
+#if (NTDDI_VERSION < NTDDI_WIN7) || !defined(NT_PROCESSOR_GROUPS)
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+_CRT_DEPRECATE_TEXT("KeGetCurrentProcessorNumber is deprecated. " \
+    "Use KeGetCurrentProcessorNumberEx or KeGetCurrentProcessorIndex instead.")
+#endif
+NTSYSAPI
+ULONG
+NTAPI
+KeGetCurrentProcessorNumber(VOID);
+#endif /* (NTDDI_VERSION < NTDDI_WIN7) || !defined(NT_PROCESSOR_GROUPS) */
+
 $endif /* _WDMDDK_ */
 $if (_NTDDK_)
 

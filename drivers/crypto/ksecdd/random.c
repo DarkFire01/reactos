@@ -79,6 +79,10 @@ KsecReadMachineSpecificCounters(
 #elif defined(_M_ARM)
     /* Read the Cycle Counter Register */
     MachineSpecificCounters->Ccr = _MoveFromCoprocessor(CP15_PMCCNTR);
+#elif defined(_M_ARM64)
+    LARGE_INTEGER Counter;
+    Counter = KeQueryPerformanceCounter(NULL);
+    MachineSpecificCounters->Ccr = Counter.LowPart;
 #else
     #error Implement me!
 #endif

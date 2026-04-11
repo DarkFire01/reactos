@@ -27,6 +27,15 @@
 #ifdef KeGetCurrentThread
 #undef KeGetCurrentThread
 #endif
+#ifdef KeGetCurrentIrql
+#undef KeGetCurrentIrql
+#endif
+#ifdef KeGetPcr
+#undef KeGetPcr
+#endif
+#ifdef KeGetCurrentPrcb
+#undef KeGetCurrentPrcb
+#endif
 
 ULONG KiDmaIoCoherency = 0;
 ULONG KeLargestCacheLine = 64;
@@ -192,11 +201,74 @@ _KeGetCurrentThread(VOID)
     return KeGetCurrentPrcb()->CurrentThread;
 }
 
+PKPCR
+NTAPI
+KeGetPcr(VOID)
+{
+    /* ARM64: Read TPIDR_EL1 which holds the PCR base pointer.
+     * Set by KeArm64TpidrEl1Set() during processor startup.
+     */
+#if defined(_MSC_VER)
+    return (PKPCR)_ReadStatusReg(ARM64_SYSREG(3, 0, 13, 0, 4));
+#else
+    ULONG64 Pcr;
+    __asm__ __volatile__ ("mrs %0, tpidr_el1" : "=r"(Pcr));
+    return (PKPCR)Pcr;
+#endif
+}
+
+PKPRCB
+NTAPI
+KeGetCurrentPrcb(VOID)
+{
+    PKPCR Pcr = KeGetPcr();
+    return Pcr ? Pcr->Prcb : NULL;
+}
+
+KIRQL
+NTAPI
+KeGetCurrentIrql(VOID)
+{
+    PKPRCB Prcb = KeGetCurrentPrcb();
+    return Prcb ? Prcb->CurrentIrql : 0;
+}
+
 ULONG
 NTAPI
 KeGetCurrentProcessorNumber(VOID)
 {
     return (ULONG)KeGetCurrentPrcb()->Number;
+}
+
+KIRQL
+FASTCALL
+KfRaiseIrql(IN KIRQL NewIrql)
+{
+    PKPRCB Prcb;
+    KIRQL OldIrql;
+
+    Prcb = KeGetCurrentPrcb();
+    if (!Prcb)
+        return 0;
+
+    OldIrql = Prcb->CurrentIrql;
+
+    /* Only raise if necessary */
+    if (NewIrql > OldIrql)
+        Prcb->CurrentIrql = NewIrql;
+
+    return OldIrql;
+}
+
+VOID
+FASTCALL
+KfLowerIrql(IN KIRQL NewIrql)
+{
+    PKPRCB Prcb;
+
+    Prcb = KeGetCurrentPrcb();
+    if (Prcb)
+        Prcb->CurrentIrql = NewIrql;
 }
 
 VOID
