@@ -169,7 +169,7 @@ KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame,
 
     if (InterlockedBitTestAndReset((PLONG)&Prcb->IpiFrozen, IPI_SYNCH_REQUEST))
     {
-#if defined(_M_ARM) || defined(_M_AMD64)
+#if defined(_M_ARM) || defined(_M_AMD64) || defined(_M_ARM64)
         DbgBreakPoint();
 #else
         (void)InterlockedDecrementUL(&Prcb->SignalDone->CurrentPacket[1]);
@@ -184,7 +184,7 @@ KiIpiServiceRoutine(IN PKTRAP_FRAME TrapFrame,
             while (0 != InterlockedCompareExchangeUL(&Prcb->SignalDone->TargetSet, 0, 0));
         }
         (void)InterlockedExchangePointer((PVOID*)&Prcb->SignalDone, NULL);
-#endif // _M_ARM
+#endif // _M_ARM || _M_AMD64 || _M_ARM64
     }
 #endif
    return TRUE;

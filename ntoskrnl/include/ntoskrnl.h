@@ -19,7 +19,6 @@
 /* WDK hacks */
 #ifdef _M_ARM64
 #define IoAllocateAdapterChannel _IoAllocateAdapterChannel
-#define KeGetCurrentThread _KeGetCurrentThread
 #define RtlFillMemoryUlong _RtlFillMemoryUlong
 #endif
 

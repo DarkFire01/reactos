@@ -246,7 +246,22 @@ elseif(ARCH STREQUAL "arm64")
         math/arm/__64tof.h
     )
     list(APPEND CRT_MATH_SOURCE
+        math/_hypotf.c
+        math/acosf.c
+        math/asinf.c
+        math/atan2f.c
+        math/atanf.c
+        math/ceilf.c
+        math/coshf.c
+        math/expf.c
         math/fabsf.c
+        math/fmodf.c
+        math/modff.c
+        math/sinf.c
+        math/sinhf.c
+        math/sqrtf.c
+        math/tanf.c
+        math/tanhf.c
     )
     list(APPEND LIBCNTPR_MATH_ASM_SOURCE
         math/arm64/atan.s
@@ -267,6 +282,10 @@ elseif(ARCH STREQUAL "arm64")
     )
     list(APPEND CRT_MATH_ASM_SOURCE
         math/arm64/_logb.s
+    )
+    list(APPEND CRT_MATH_SOURCE
+        math/logbf_arm64.c
+        math/arm64/acrt_fma3_stub.c
     )
 endif()
 

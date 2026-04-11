@@ -42,7 +42,11 @@ list(APPEND SOURCE
     ${CMAKE_CURRENT_BINARY_DIR}/epm_c.c)
 
 if(MSVC)
-    add_asm_files(rpcrt4_asm msvc.S thunks-msvc.s)
+    if(ARCH STREQUAL "arm64")
+        add_asm_files(rpcrt4_asm msvc.S arm64/thunks-msvc.asm)
+    else()
+        add_asm_files(rpcrt4_asm msvc.S thunks-msvc.s)
+    endif()
 endif()
 
 list(APPEND PCH_SKIP_SOURCE

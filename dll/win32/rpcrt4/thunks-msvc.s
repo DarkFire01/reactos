@@ -5,6 +5,8 @@
 #include <kxarm.h>
 #endif
 
+#if defined(_M_IX86) || defined(_M_AMD64) || defined(_M_ARM)
+
 #ifdef _M_IX86
 .code32
 
@@ -66,23 +68,6 @@ THUNK_ENTRY_VTBL MACRO num:REQ
     ldr pc, [ip, 4 * num]
 ENDM
 
-#elif defined(_M_ARM64)
-.code64
-
-// FIXME: this is probably broken
-THUNK_ENTRY MACRO num:REQ
-    mov w16, num
-    b call_stubless_func
-ENDM
-
-THUNK_ENTRY_VTBL MACRO num:REQ
-    ldr x0, [x0, 20h]
-    ldr x16, [x0]
-    mov x17, num
-    ldr x16, [x16, x17, lsl 3]
-    br x16
-ENDM
-
 #endif
 
 ALL_THUNK_ENTRIES MACRO entry
@@ -110,5 +95,7 @@ PUBLIC vtbl_thunks
 vtbl_thunks:
     ALL_THUNK_ENTRIES THUNK_ENTRY_VTBL
 #endif
+
+#endif /* _M_IX86 || _M_AMD64 || _M_ARM */
 
 END

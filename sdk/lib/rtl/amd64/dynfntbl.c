@@ -12,6 +12,19 @@
 
 #define TAG_RTLDYNFNTBL 'tfDP'
 
+#ifdef _M_ARM64
+static ULONG
+RtlpDynFunctionEntryEndRva(_In_ PRUNTIME_FUNCTION Entry)
+{
+    ULONG u = Entry->UnwindData;
+
+    if ((u & 3) == 0)
+        return Entry->BeginAddress + ((u >> 2) & 0x7FF) * 4;
+
+    return Entry->BeginAddress + 4;
+}
+#endif
+
 typedef
 _Function_class_(GET_RUNTIME_FUNCTION_CALLBACK)
 PRUNTIME_FUNCTION
@@ -150,8 +163,13 @@ RtlAddFunctionTable(
     {
         dynamicTable->MinimumAddress = min(dynamicTable->MinimumAddress,
                                            FunctionTable[i].BeginAddress);
+#ifdef _M_ARM64
+        dynamicTable->MaximumAddress = max(dynamicTable->MaximumAddress,
+                                           RtlpDynFunctionEntryEndRva(&FunctionTable[i]));
+#else
         dynamicTable->MaximumAddress = max(dynamicTable->MaximumAddress,
                                            FunctionTable[i].EndAddress);
+#endif
     }
 
     /* Adjust the margins to be absolute addresses */
@@ -275,7 +293,7 @@ NTAPI
 RtlpLookupDynamicFunctionEntry(
     _In_ DWORD64 ControlPc,
     _Out_ PDWORD64 ImageBase,
-    _In_ PUNWIND_HISTORY_TABLE HistoryTable)
+    _In_opt_ PVOID HistoryTable)
 {
     PLIST_ENTRY listLink;
     PDYNAMIC_FUNCTION_TABLE dynamicTable;
@@ -283,6 +301,8 @@ RtlpLookupDynamicFunctionEntry(
     PGET_RUNTIME_FUNCTION_CALLBACK callback;
     DWORD64 ipOffset;
     ULONG i;
+
+    (void)HistoryTable;
 
     AcquireDynamicFunctionTableLockShared();
 
@@ -314,7 +334,11 @@ RtlpLookupDynamicFunctionEntry(
             {
                 /* Check if this entry contains the address */
                 if ((ipOffset >= functionTable[i].BeginAddress) &&
+#ifdef _M_ARM64
+                    (ipOffset < RtlpDynFunctionEntryEndRva(&functionTable[i])))
+#else
                     (ipOffset < functionTable[i].EndAddress))
+#endif
                 {
                     foundEntry = &functionTable[i];
                     *ImageBase = dynamicTable->BaseAddress;

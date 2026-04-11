@@ -3,6 +3,8 @@
 #include <asm.inc>
 #elif defined(_M_ARM)
 #include <kxarm.h>
+#elif defined(_M_ARM64)
+#include <ksarm64.h>
 #endif
 
 #ifdef _M_IX86
@@ -222,13 +224,63 @@ FUNC Ndr64AsyncClientCall
     ret
 ENDFUNC
 
+#elif defined(_M_ARM64)
+
+    EXTERN ndr_stubless_client_call
+
+    TEXTAREA
+
+    NESTED_ENTRY call_stubless_func
+    stp     x29, x30, [sp, #-144]!
+    mov     x29, sp
+    stp     d0, d1, [sp, #16]
+    stp     d2, d3, [sp, #32]
+    stp     d4, d5, [sp, #48]
+    stp     d6, d7, [sp, #64]
+    stp     x0, x1, [sp, #80]
+    stp     x2, x3, [sp, #96]
+    stp     x4, x5, [sp, #112]
+    stp     x6, x7, [sp, #128]
+    mov     w0, w16
+    add     x1, sp, #80
+    add     x2, sp, #16
+    bl      ndr_stubless_client_call
+    ldp     x29, x30, [sp], #144
+    ret
+    NESTED_END call_stubless_func
+
+    LEAF_ENTRY call_server_func
+    ARMASM_ASSERTFAIL
+    ret
+    LEAF_END call_server_func
+
+    LEAF_ENTRY NdrClientCall2
+    ARMASM_ASSERTFAIL
+    ret
+    LEAF_END NdrClientCall2
+
+    LEAF_ENTRY NdrAsyncClientCall
+    ARMASM_ASSERTFAIL
+    ret
+    LEAF_END NdrAsyncClientCall
+
+    LEAF_ENTRY NdrClientCall3
+    ARMASM_ASSERTFAIL
+    ret
+    LEAF_END NdrClientCall3
+
+    LEAF_ENTRY Ndr64AsyncClientCall
+    ARMASM_ASSERTFAIL
+    ret
+    LEAF_END Ndr64AsyncClientCall
+
 #elif _M_ARM
 TEXTAREA
 
     LEAF_ENTRY call_stubless_func
 
     /* Unimplemented */
-    __assertfail
+    ARMASM_ASSERTFAIL
     bx lr
 
     LEAF_END call_stubless_func
@@ -236,7 +288,7 @@ TEXTAREA
     LEAF_ENTRY call_server_func
 
     /* Unimplemented */
-    __assertfail
+    ARMASM_ASSERTFAIL
     bx lr
 
     LEAF_END call_server_func

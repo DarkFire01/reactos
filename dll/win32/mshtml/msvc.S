@@ -8,8 +8,21 @@
         LCLS _FuncName
 _FuncName SETS "_wrapper_func_":CC:"$n"
         NESTED_ENTRY $_FuncName
-            __assertfail
+            ARMASM_ASSERTFAIL
         NESTED_END $_FuncName
+    MEND
+
+#elif defined(_M_ARM64)
+
+#include <ksarm64.h>
+
+    MACRO
+    DEFINE_WRAPPER_FUNC $n, $off, $x
+        LCLS _FuncName
+_FuncName SETS "_wrapper_func_":CC:"$n"
+        LEAF_ENTRY $_FuncName
+            ARMASM_ASSERTFAIL
+        LEAF_END $_FuncName
     MEND
 
 #else

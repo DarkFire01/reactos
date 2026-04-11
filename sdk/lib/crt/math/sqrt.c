@@ -8,7 +8,6 @@
 #include <math.h>
 #include <assert.h>
 
-#ifndef _M_ARM64
 double
 __cdecl
 sqrt(
@@ -69,4 +68,3 @@ sqrt(
 
     return y;
 }
-#endif

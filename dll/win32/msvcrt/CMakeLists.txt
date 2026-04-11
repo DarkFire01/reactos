@@ -107,6 +107,11 @@ if(MSVC)
             amd64/cpp_vtables.s
             amd64/except_x86_64.s
         )
+    elseif(ARCH STREQUAL "arm64")
+        list(APPEND SHARED_ASM_SOURCE
+            arm64/call_exc_handler.asm
+            arm64/cpp_vtables.s
+        )
     endif()
 endif()
 
@@ -187,6 +192,60 @@ if(MSVC)
     # Silence warning C4102: export of deleting destructor "name"
     target_link_options(msvcrt PRIVATE "/ignore:4102")
     set_property(TARGET libmsvcrt APPEND PROPERTY STATIC_LIBRARY_OPTIONS "/ignore:4102")
+    if(ARCH STREQUAL "arm64")
+        target_link_options(msvcrt PRIVATE
+            "LINKER:/alternatename:??3@YAXPEAX@Z=operator_delete"
+            "LINKER:/alternatename:??_U@YAPEAX_K@Z=operator_new"
+            "LINKER:/alternatename:??_U@YAPEAX_KHPEBDH@Z=operator_new_dbg"
+            "LINKER:/alternatename:??_V@YAXPEAX@Z=operator_delete"
+            "LINKER:/alternatename:??2@YAPEAX_K@Z=operator_new"
+            "LINKER:/alternatename:??2@YAPEAX_KHPEBDH@Z=operator_new_dbg"
+            "LINKER:/alternatename:?_query_new_handler@@YAP6AHI@ZXZ=_query_new_handler"
+            "LINKER:/alternatename:?_set_new_handler@@YAP6AHI@ZP6AHI@Z@Z=_set_new_handler"
+            "LINKER:/alternatename:?set_new_handler@@YAP6AXXZP6AXXZ@Z=set_new_handler"
+            "LINKER:/alternatename:?_query_new_mode@@YAHXZ=_query_new_mode"
+            "LINKER:/alternatename:?_set_new_mode@@YAHH@Z=_set_new_mode"
+            "LINKER:/alternatename:?_set_se_translator@@YAP6AXIPAU_EXCEPTION_POINTERS@@@ZP6AXI0@Z@Z=_set_se_translator"
+            "LINKER:/alternatename:?set_terminate@@YAP6AXXZP6AXXZ@Z=set_terminate"
+            "LINKER:/alternatename:?set_unexpected@@YAP6AXXZP6AXXZ@Z=set_unexpected"
+            "LINKER:/alternatename:?terminate@@YAXXZ=terminate"
+            "LINKER:/alternatename:?unexpected@@YAXXZ=unexpected"
+            "LINKER:/alternatename:?what@exception@@UEBAPEBDXZ=exception_what"
+            "LINKER:/alternatename:??0exception@@QEAA@AEBQEBDH@Z=exception_ctor_noalloc"
+            "LINKER:/alternatename:??0exception@@QEAA@AEBV0@@Z=exception_copy_ctor"
+            "LINKER:/alternatename:??0exception@@QEAA@XZ=exception_default_ctor"
+            "LINKER:/alternatename:??1exception@@UEAA@XZ=exception_dtor"
+            "LINKER:/alternatename:??4exception@@QEAAAEAV0@AEBV0@@Z=exception_opequals"
+            "LINKER:/alternatename:??1type_info@@UEAA@XZ=type_info_dtor"
+            "LINKER:/alternatename:??0__non_rtti_object@@QEAA@AEBV0@@Z=__non_rtti_object_copy_ctor"
+            "LINKER:/alternatename:??0__non_rtti_object@@QEAA@PEBD@Z=__non_rtti_object_ctor"
+            "LINKER:/alternatename:??0bad_cast@@AAE@PBQBD@Z=bad_cast_ctor"
+            "LINKER:/alternatename:??0bad_cast@@AEAA@PEBQEBD@Z=bad_cast_ctor"
+            "LINKER:/alternatename:??0bad_cast@@QAE@ABQBD@Z=bad_cast_ctor"
+            "LINKER:/alternatename:??0bad_cast@@QEAA@AEBQEBD@Z=bad_cast_ctor"
+            "LINKER:/alternatename:??0bad_cast@@QEAA@AEBV0@@Z=bad_cast_copy_ctor"
+            "LINKER:/alternatename:??0bad_cast@@QEAA@PEBD@Z=bad_cast_ctor_charptr"
+            "LINKER:/alternatename:??0bad_typeid@@QEAA@AEBV0@@Z=bad_typeid_copy_ctor"
+            "LINKER:/alternatename:??0bad_typeid@@QEAA@PEBD@Z=bad_typeid_ctor"
+            "LINKER:/alternatename:??0exception@@QEAA@AEBQEBD@Z=exception_ctor"
+            "LINKER:/alternatename:??1__non_rtti_object@@UEAA@XZ=__non_rtti_object_dtor"
+            "LINKER:/alternatename:??1bad_cast@@UEAA@XZ=bad_cast_dtor"
+            "LINKER:/alternatename:??1bad_typeid@@UEAA@XZ=bad_typeid_dtor"
+            "LINKER:/alternatename:??4bad_cast@@QEAAAEAV0@AEBV0@@Z=bad_cast_opequals"
+            "LINKER:/alternatename:??4bad_typeid@@QEAAAEAV0@AEBV0@@Z=bad_typeid_opequals"
+            "LINKER:/alternatename:??8type_info@@QEBAHAEBV0@@Z=type_info_opequals_equals"
+            "LINKER:/alternatename:??9type_info@@QEBAHAEBV0@@Z=type_info_opnot_equals"
+            "LINKER:/alternatename:??_Fbad_cast@@QEAAXXZ=bad_cast_default_ctor"
+            "LINKER:/alternatename:??_Fbad_typeid@@QEAAXXZ=bad_typeid_default_ctor"
+            "LINKER:/alternatename:?_query_new_handler@@YAP6AH_K@ZXZ=_query_new_handler"
+            "LINKER:/alternatename:?_set_new_handler@@YAP6AH_K@ZP6AH0@Z@Z=_set_new_handler"
+            "LINKER:/alternatename:?_set_se_translator@@YAP6AXIPEAU_EXCEPTION_POINTERS@@@ZP6AXI0@Z@Z=_set_se_translator"
+            "LINKER:/alternatename:?before@type_info@@QEBAHAEBV1@@Z=type_info_before"
+            "LINKER:/alternatename:?name@type_info@@QEBAPEBDXZ=type_info_name"
+            "LINKER:/alternatename:?raw_name@type_info@@QEBAPEBDXZ=type_info_raw_name"
+            "LINKER:/alternatename:??4__non_rtti_object@@QEAAAEAV0@AEBV0@@Z=__non_rtti_object_opequals"
+        )
+    endif()
 endif()
 
 add_cd_file(TARGET msvcrt DESTINATION reactos/system32 FOR all)

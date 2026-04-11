@@ -21,22 +21,6 @@
 #ifdef RtlFillMemoryUlong
 #undef RtlFillMemoryUlong
 #endif
-#ifdef _KeGetCurrentThread
-#undef _KeGetCurrentThread
-#endif
-#ifdef KeGetCurrentThread
-#undef KeGetCurrentThread
-#endif
-#ifdef KeGetCurrentIrql
-#undef KeGetCurrentIrql
-#endif
-#ifdef KeGetPcr
-#undef KeGetPcr
-#endif
-#ifdef KeGetCurrentPrcb
-#undef KeGetCurrentPrcb
-#endif
-
 ULONG KiDmaIoCoherency = 0;
 ULONG KeLargestCacheLine = 64;
 
@@ -76,21 +60,6 @@ VOID
 NTAPI
 RtlZeroMemory(OUT VOID *Destination,
               IN SIZE_T Length);
-
-VOID
-NTAPI
-DbgBreakPoint(VOID)
-{
-    __debugbreak();
-}
-
-VOID
-NTAPI
-DbgBreakPointWithStatus(IN ULONG Status)
-{
-    UNREFERENCED_PARAMETER(Status);
-    DbgBreakPoint();
-}
 
 VOID
 NTAPI
@@ -194,45 +163,6 @@ ExpInterlockedFlushSList(IN OUT PSLIST_HEADER SListHead)
     return RtlInterlockedFlushSList(SListHead);
 }
 
-PKTHREAD
-NTAPI
-_KeGetCurrentThread(VOID)
-{
-    return KeGetCurrentPrcb()->CurrentThread;
-}
-
-PKPCR
-NTAPI
-KeGetPcr(VOID)
-{
-    /* ARM64: Read TPIDR_EL1 which holds the PCR base pointer.
-     * Set by KeArm64TpidrEl1Set() during processor startup.
-     */
-#if defined(_MSC_VER)
-    return (PKPCR)_ReadStatusReg(ARM64_SYSREG(3, 0, 13, 0, 4));
-#else
-    ULONG64 Pcr;
-    __asm__ __volatile__ ("mrs %0, tpidr_el1" : "=r"(Pcr));
-    return (PKPCR)Pcr;
-#endif
-}
-
-PKPRCB
-NTAPI
-KeGetCurrentPrcb(VOID)
-{
-    PKPCR Pcr = KeGetPcr();
-    return Pcr ? Pcr->Prcb : NULL;
-}
-
-KIRQL
-NTAPI
-KeGetCurrentIrql(VOID)
-{
-    PKPRCB Prcb = KeGetCurrentPrcb();
-    return Prcb ? Prcb->CurrentIrql : 0;
-}
-
 ULONG
 NTAPI
 KeGetCurrentProcessorNumber(VOID)
@@ -240,36 +170,21 @@ KeGetCurrentProcessorNumber(VOID)
     return (ULONG)KeGetCurrentPrcb()->Number;
 }
 
-KIRQL
-FASTCALL
-KfRaiseIrql(IN KIRQL NewIrql)
+ULONG
+NTAPI
+KeGetCurrentProcessorIndex(VOID)
 {
-    PKPRCB Prcb;
-    KIRQL OldIrql;
-
-    Prcb = KeGetCurrentPrcb();
-    if (!Prcb)
-        return 0;
-
-    OldIrql = Prcb->CurrentIrql;
-
-    /* Only raise if necessary */
-    if (NewIrql > OldIrql)
-        Prcb->CurrentIrql = NewIrql;
-
-    return OldIrql;
+    return KeGetCurrentProcessorNumber();
 }
 
-VOID
-FASTCALL
-KfLowerIrql(IN KIRQL NewIrql)
+#undef KeGetCurrentPrcb
+PKPRCB
+NTAPI
+KeGetCurrentPrcb(VOID)
 {
-    PKPRCB Prcb;
-
-    Prcb = KeGetCurrentPrcb();
-    if (Prcb)
-        Prcb->CurrentIrql = NewIrql;
+    return (&((PKIPCR)KeGetPcr())->Prcb);
 }
+#define KeGetCurrentPrcb() (&((PKIPCR)KeGetPcr())->Prcb)
 
 VOID
 NTAPI
@@ -581,14 +496,6 @@ RtlFillMemoryUlonglong(OUT VOID *Destination,
     }
 }
 
-DECLSPEC_NORETURN
-VOID
-NTAPI
-RtlRaiseException(IN PEXCEPTION_RECORD ExceptionRecord)
-{
-    ExRaiseStatus(ExceptionRecord->ExceptionCode);
-}
-
 NTSTATUS
 NTAPI
 KeRaiseUserException(IN NTSTATUS ExceptionCode)
@@ -637,13 +544,6 @@ KiCallUserMode(IN PVOID *OutputBuffer,
     if (OutputBuffer) *OutputBuffer = NULL;
     if (OutputLength) *OutputLength = 0;
     return STATUS_NOT_IMPLEMENTED;
-}
-
-VOID
-NTAPI
-RtlpBreakWithStatusInstruction(VOID)
-{
-    DbgBreakPoint();
 }
 
 VOID
@@ -1155,33 +1055,6 @@ KeSwitchKernelStack(IN PVOID StackBase,
 {
     UNREFERENCED_PARAMETER(StackLimit);
     return StackBase;
-}
-
-ULONG
-NTAPI
-DebugService(IN ULONG Service,
-             IN PVOID Argument1,
-             IN PVOID Argument2,
-             IN PVOID Argument3,
-             IN PVOID Argument4)
-{
-    UNREFERENCED_PARAMETER(Service);
-    UNREFERENCED_PARAMETER(Argument1);
-    UNREFERENCED_PARAMETER(Argument2);
-    UNREFERENCED_PARAMETER(Argument3);
-    UNREFERENCED_PARAMETER(Argument4);
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-VOID
-NTAPI
-DebugService2(IN PVOID Argument1,
-              IN PVOID Argument2,
-              IN ULONG Service)
-{
-    UNREFERENCED_PARAMETER(Argument1);
-    UNREFERENCED_PARAMETER(Argument2);
-    UNREFERENCED_PARAMETER(Service);
 }
 
 BOOLEAN

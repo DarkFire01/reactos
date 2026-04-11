@@ -392,6 +392,7 @@ elseif(ARCH STREQUAL "arm64")
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/zwsvc.S
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/exception.S)
     list(APPEND SOURCE
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/arm64/ioport.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/config/arm/cmhardwr.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/exception.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/kd64/arm64/kdarm64.c
@@ -399,6 +400,8 @@ elseif(ARCH STREQUAL "arm64")
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/kiinit.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/krnlinit.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/thrdini.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/mproc.c
+        ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/arm64/freeze.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/arm64/page.c
         ${REACTOS_SOURCE_DIR}/ntoskrnl/rtl/arm64/rtlexcpt.c)
 endif()

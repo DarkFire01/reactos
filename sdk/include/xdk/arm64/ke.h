@@ -177,13 +177,6 @@ KeRestoreFloatingPointState(
 
 #define DbgRaiseAssertionFailure() __break(0xf001)
 
-#if (NTDDI_VERSION >= NTDDI_WIN7)
-NTSYSAPI
-ULONG
-NTAPI
-KeGetCurrentProcessorIndex(VOID);
-#endif
-
 _IRQL_requires_max_(HIGH_LEVEL)
 _IRQL_saves_
 NTHALAPI
@@ -201,6 +194,15 @@ ULONG
 NTAPI
 KeGetCurrentProcessorNumber(VOID);
 #endif /* (NTDDI_VERSION < NTDDI_WIN7) || !defined(NT_PROCESSOR_GROUPS) */
+
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+FORCEINLINE
+ULONG
+KeGetCurrentProcessorIndex(VOID)
+{
+    return KeGetCurrentProcessorNumber();
+}
+#endif
 
 $endif /* _WDMDDK_ */
 $if (_NTDDK_)

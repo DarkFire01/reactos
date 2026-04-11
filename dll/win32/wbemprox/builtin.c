@@ -3612,10 +3612,17 @@ done:
 }
 
 extern void do_cpuid( unsigned int ax, unsigned int *p );
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(_M_ARM64)
 void do_cpuid( unsigned int ax, unsigned int *p )
 {
     __cpuid( p, ax );
+}
+#elif defined(_MSC_VER) && defined(_M_ARM64)
+void do_cpuid( unsigned int ax, unsigned int *p )
+{
+    if (p)
+        p[0] = p[1] = p[2] = p[3] = 0;
+    (void)ax;
 }
 #elif defined(__i386__)
 __ASM_GLOBAL_FUNC( do_cpuid,

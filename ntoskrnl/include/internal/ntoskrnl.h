@@ -6,7 +6,7 @@
 
 #ifdef _NTOSKRNL_
 
-#ifndef _ARM_
+#if !defined(_ARM_) && !defined(_M_ARM64)
 #define KeGetCurrentThread  _KeGetCurrentThread
 #define KeGetPreviousMode   _KeGetPreviousMode
 #endif

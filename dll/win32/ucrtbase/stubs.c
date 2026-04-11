@@ -81,3 +81,36 @@ long int lrintf(float x)
     __debugbreak();
     return 0;
 }
+
+#ifdef _M_ARM64
+
+unsigned int __cdecl _clearfp(void)
+{
+    return 0;
+}
+
+unsigned int __cdecl _control87(unsigned int newval, unsigned int mask)
+{
+    (void)newval;
+    (void)mask;
+    return 0;
+}
+
+unsigned int __cdecl _controlfp(unsigned int newval, unsigned int mask)
+{
+    (void)newval;
+    (void)mask;
+    return 0;
+}
+
+void __cdecl _set_FMA3_enable(int flag)
+{
+    (void)flag;
+}
+
+unsigned int __cdecl _statusfp(void)
+{
+    return 0;
+}
+
+#endif /* _M_ARM64 */

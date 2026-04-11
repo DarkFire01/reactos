@@ -66,6 +66,21 @@ if(DEFINED EFI_PLATFORM_ID)
 endif()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/bootfiles.sort ${ISO_SORT_FILE_DATA})
 
+# x86 BIOS master boot record for "hybrid" ISOs (isohybrid); not built on ARM targets.
+if(ARCH STREQUAL "i386" OR ARCH STREQUAL "amd64")
+    set(ISO_ISOHYBRID_BOOTCD_COMMAND
+        COMMAND native-isohybrid -b ${_isombr_file} -t 0x96 ${REACTOS_BINARY_DIR}/bootcd.iso)
+    set(ISO_ISOHYBRID_BOOTCD_DEPENDS isombr native-isohybrid)
+    set(ISO_ISOHYBRID_BOOTCDREGTEST_COMMAND
+        COMMAND native-isohybrid -b ${_isombr_file} -t 0x96 ${REACTOS_BINARY_DIR}/bootcdregtest.iso)
+    set(ISO_ISOHYBRID_BOOTCDREGTEST_DEPENDS isombr native-isohybrid)
+    set(ISO_ISOHYBRID_LIVECD_COMMAND
+        COMMAND native-isohybrid -b ${_isombr_file} -t 0x96 ${REACTOS_BINARY_DIR}/livecd.iso)
+    set(ISO_ISOHYBRID_LIVECD_DEPENDS isombr native-isohybrid)
+    set(ISO_ISOHYBRID_HYBRIDCD_COMMAND
+        COMMAND native-isohybrid -b ${_isombr_file} -t 0x96 ${REACTOS_BINARY_DIR}/hybridcd.iso)
+endif()
+
 # ISO image identifier names
 set(ISO_MANUFACTURER "ReactOS Project") # For both the publisher and the preparer
 set(ISO_VOLNAME      "ReactOS")         # For both the Volume ID and the Volume set ID
@@ -147,8 +162,8 @@ add_custom_target(bootcd
     COMMAND native-mkisofs -quiet -o ${REACTOS_BINARY_DIR}/bootcd.iso
         ${ISO_COMMON_OPTIONS} ${ISO_BOOT_OPTIONS} ${ISO_BOOT_FILES_OPTIONS} ${ISO_LAYOUT_OPTIONS}
         -path-list ${CMAKE_CURRENT_BINARY_DIR}/bootcd.$<CONFIG>.lst
-    COMMAND native-isohybrid -b ${_isombr_file} -t 0x96 ${REACTOS_BINARY_DIR}/bootcd.iso
-    DEPENDS isombr native-isohybrid native-mkisofs
+    ${ISO_ISOHYBRID_BOOTCD_COMMAND}
+    DEPENDS native-mkisofs ${ISO_ISOHYBRID_BOOTCD_DEPENDS}
     VERBATIM)
 
 ## BootCDRegTest
@@ -160,8 +175,8 @@ add_custom_target(bootcdregtest
     COMMAND native-mkisofs -quiet -o ${REACTOS_BINARY_DIR}/bootcdregtest.iso
         ${ISO_COMMON_OPTIONS} ${ISO_BOOT_OPTIONS_REGTEST} ${ISO_BOOT_FILES_OPTIONS} ${ISO_LAYOUT_OPTIONS}
         -path-list ${CMAKE_CURRENT_BINARY_DIR}/bootcdregtest.$<CONFIG>.lst
-    COMMAND native-isohybrid -b ${_isombr_file} -t 0x96 ${REACTOS_BINARY_DIR}/bootcdregtest.iso
-    DEPENDS isombr native-isohybrid native-mkisofs
+    ${ISO_ISOHYBRID_BOOTCDREGTEST_COMMAND}
+    DEPENDS native-mkisofs ${ISO_ISOHYBRID_BOOTCDREGTEST_DEPENDS}
     VERBATIM)
 
 ## LiveCD
@@ -180,8 +195,8 @@ add_custom_target(livecd
     COMMAND native-mkisofs -quiet -o ${REACTOS_BINARY_DIR}/livecd.iso
         ${ISO_COMMON_OPTIONS} ${ISO_BOOT_OPTIONS} ${ISO_BOOT_FILES_OPTIONS} ${ISO_LAYOUT_OPTIONS}
         -path-list ${CMAKE_CURRENT_BINARY_DIR}/livecd.$<CONFIG>.lst
-    COMMAND native-isohybrid -b ${_isombr_file} -t 0x96 ${REACTOS_BINARY_DIR}/livecd.iso
-    DEPENDS isombr native-isohybrid native-mkisofs
+    ${ISO_ISOHYBRID_LIVECD_COMMAND}
+    DEPENDS native-mkisofs ${ISO_ISOHYBRID_LIVECD_DEPENDS}
     VERBATIM)
 
 ## HybridCD
@@ -197,7 +212,7 @@ add_custom_target(hybridcd
     COMMAND native-mkisofs -quiet -o ${REACTOS_BINARY_DIR}/hybridcd.iso
         ${ISO_COMMON_OPTIONS} ${ISO_BOOT_OPTIONS} ${ISO_BOOT_FILES_OPTIONS} ${ISO_LAYOUT_OPTIONS}
         -path-list ${CMAKE_CURRENT_BINARY_DIR}/hybridcd.$<CONFIG>.lst
-    COMMAND native-isohybrid -b ${_isombr_file} -t 0x96 ${REACTOS_BINARY_DIR}/hybridcd.iso
+    ${ISO_ISOHYBRID_HYBRIDCD_COMMAND}
     DEPENDS bootcd livecd
     VERBATIM)
 

@@ -593,6 +593,7 @@
 @ fastcall -arch=arm,arm64 KfRaiseIrql(long)
 @ stdcall KeGetCurrentIrql()
 @ stdcall KeGetCurrentProcessorNumber()
+@ stdcall KeGetCurrentProcessorIndex()
 @ stdcall KeGetCurrentPrcb()
 @ stdcall KeGetCurrentThread()
 @ stdcall KeGetPcr()

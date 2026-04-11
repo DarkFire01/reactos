@@ -19,6 +19,11 @@
  * ================================================================
  */
 
+/*
+ * cl /EP preprocessing can expand names that collide with MSVC intrinsics
+ * (__debugbreak, __fastfail).  Use ARMASM_* macro names only (no #undef dance).
+ */
+
     /* Persistent global string variables used to track function labels */
     GBLS __FuncStartLabel
     GBLS __FuncEndLabel
@@ -136,12 +141,36 @@ __FuncEndLabel SETS ""
         ROUT
     MEND
 
-    /* Convenience data-byte aliases */
-    #define CR  13
-    #define LF  10
-    #define NUL 0
+    /*
+     * Debug / assert helpers for ARMASM64 (see ksarm64.template.h ARM64_* codes).
+     * Use DCD-encoded BRK (not "brk #imm"): cl /EP treats # as a directive start.
+     * Encoding: 0xD4200000 | (imm16 << 5).
+     */
+    MACRO
+    ARMASM_DEBUGBREAK
+        DCD     0xd43e0000
+    MEND
 
-    #define ASCII dcb
+    MACRO
+    ARMASM_ASSERTFAIL
+        DCD     0xd43e0040
+    MEND
+
+    MACRO
+    ARMASM_FASTFAIL
+        DCD     0xd43e0060
+    MEND
+
+    MACRO
+    ARMASM_BRKDIV0
+        DCD     0xd43e0080
+    MEND
+
+    /* BRK #0xF001 — user/kernel debug service (__debugservice); see ksarm64.template.h */
+    MACRO
+    ARMASM_DEBUGSERVICE
+        DCD     0xd43e0020
+    MEND
 
 #else /* !_MSC_VER */
 
@@ -222,6 +251,26 @@ __FuncEndLabel SETS ""
 .macro ALTERNATE_ENTRY Name
     .global \Name
 \Name:
+.endm
+
+.macro ARMASM_DEBUGBREAK
+    .inst 0xd43e0000
+.endm
+
+.macro ARMASM_ASSERTFAIL
+    .inst 0xd43e0040
+.endm
+
+.macro ARMASM_FASTFAIL
+    .inst 0xd43e0060
+.endm
+
+.macro ARMASM_BRKDIV0
+    .inst 0xd43e0080
+.endm
+
+.macro ARMASM_DEBUGSERVICE
+    .inst 0xd43e0020
 .endm
 
 /* END - marks end of source file; no-op in GAS (processed to EOF) */

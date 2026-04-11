@@ -1,4 +1,10 @@
-\
+/*
+ * PROJECT:     ReactOS Kernel
+ * LICENSE:     BSD - See COPYING.ARM in the top level directory
+ * FILE:        ntoskrnl/ke/arm64/mproc.c
+ * PURPOSE:     Multiprocessor bring-up stubs (ARM64)
+ */
+
 /* INCLUDES *****************************************************************/
 
 #include <ntoskrnl.h>

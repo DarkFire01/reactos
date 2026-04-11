@@ -12,9 +12,9 @@
 
     // Export all common entry points to the same implementation
     LEAF_ENTRY _setjmpex
-_setjmp:
-__intrinsic_setjmp:
-__intrinsic_setjmpex:
+    ALTERNATE_ENTRY _setjmp
+    ALTERNATE_ENTRY __intrinsic_setjmp
+    ALTERNATE_ENTRY __intrinsic_setjmpex
 
     // x0: _JUMP_BUFFER* _Env
     // x1: void* _Frame (context)

@@ -948,7 +948,7 @@ NTAPI
 KeGetCurrentThread(VOID)
 {
     /* Return the current thread on this PCR */
-    return _KeGetCurrentThread();
+    return KeGetCurrentPrcb()->CurrentThread;
 }
 
 /*

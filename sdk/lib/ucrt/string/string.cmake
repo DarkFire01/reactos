@@ -106,10 +106,17 @@ elseif(${ARCH} STREQUAL "amd64")
     )
 else()
     if(${ARCH} STREQUAL "arm64")
-        list(APPEND UCRT_STRING_ASM_SOURCES
-            string/arm64/strlen.s
-            string/arm64/wcslen.s
-    )
+        if(MSVC)
+            # add_asm_files feeds MASM-style output to armasm64; use C fallbacks.
+            list(APPEND UCRT_STRING_SOURCES
+                string/arm64/strlen_wcslen_msvc.c
+            )
+        else()
+            list(APPEND UCRT_STRING_ASM_SOURCES
+                string/arm64/strlen.s
+                string/arm64/wcslen.s
+            )
+        endif()
     else()
         list(APPEND UCRT_STRING_SOURCES
             string/arm/strlen.c

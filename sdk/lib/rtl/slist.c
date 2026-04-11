@@ -144,6 +144,51 @@ RtlInterlockedPushListSList(
     {
         ULONG64 Compare;
 
+#if defined(_M_ARM64)
+        /* ARM64 uses the same Header8 packing as amd64/slist.S (not the << 4 heuristic). */
+        do
+        {
+#define SLIST8A_DEPTH_INC_ARM        0x0000000000000001ull
+#define SLIST8A_SEQUENCE_INC_ARM   0x0000000000010000ull
+#define SLIST8A_SEQUENCE_MASK_ARM  0x0000000001FF0000ull
+#define SLIST8A_DEPTH_MASK_ARM      0x000000000000FFFFull
+#define SLIST8A_NEXTENTRY_MASK_ARM 0xFFFFFFFFFE000000ull
+#define SLIST8A_NEXTENTRY_SHIFT_ARM 21
+#define SLIST8_POINTER_MASK_ARM    0x000007FFFFFFFFFFull
+
+            OldSListHead = *SListHead;
+
+            FirstEntry = (PSLIST_ENTRY)(
+                ((OldSListHead.Alignment & SLIST8A_NEXTENTRY_MASK_ARM) >>
+                 SLIST8A_NEXTENTRY_SHIFT_ARM) |
+                ((ULONG_PTR)SListHead & ~SLIST8_POINTER_MASK_ARM));
+
+            ListEnd->Next = FirstEntry;
+
+            NewSListHead = OldSListHead;
+            NewSListHead.Alignment =
+                ((((ULONG_PTR)List) << SLIST8A_NEXTENTRY_SHIFT_ARM) &
+                 SLIST8A_NEXTENTRY_MASK_ARM) |
+                ((OldSListHead.Alignment +
+                  (SLIST8A_DEPTH_INC_ARM * Count) +
+                  SLIST8A_SEQUENCE_INC_ARM) &
+                 (SLIST8A_SEQUENCE_MASK_ARM | SLIST8A_DEPTH_MASK_ARM));
+
+            Compare = OldSListHead.Alignment;
+            OldSListHead.Alignment = InterlockedCompareExchange64((PLONG64)&SListHead->Alignment,
+                                                                    NewSListHead.Alignment,
+                                                                    Compare);
+#undef SLIST8A_DEPTH_INC_ARM
+#undef SLIST8A_SEQUENCE_INC_ARM
+#undef SLIST8A_SEQUENCE_MASK_ARM
+#undef SLIST8A_DEPTH_MASK_ARM
+#undef SLIST8A_NEXTENTRY_MASK_ARM
+#undef SLIST8A_NEXTENTRY_SHIFT_ARM
+#undef SLIST8_POINTER_MASK_ARM
+        } while (OldSListHead.Alignment != Compare);
+
+        return FirstEntry;
+#else
         /* ListHead and List must be in the same region */
         ASSERT(((ULONG64)SListHead & 0xFFFFF80000000000ull) ==
                ((ULONG64)List & 0xFFFFF80000000000ull));
@@ -175,6 +220,7 @@ RtlInterlockedPushListSList(
 
         /* Return the old first entry */
         return FirstEntry;
+#endif /* defined(_M_ARM64) */
     }
 #else
     SLIST_HEADER OldHeader, NewHeader;

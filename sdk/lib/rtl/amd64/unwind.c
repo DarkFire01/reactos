@@ -112,7 +112,7 @@ NTAPI
 RtlpLookupDynamicFunctionEntry(
     _In_ DWORD64 ControlPc,
     _Out_ PDWORD64 ImageBase,
-    _In_ PUNWIND_HISTORY_TABLE HistoryTable);
+    _In_opt_ PVOID HistoryTable);
 
 /*! RtlLookupFunctionEntry
  * \brief Locates the RUNTIME_FUNCTION entry corresponding to a code address.

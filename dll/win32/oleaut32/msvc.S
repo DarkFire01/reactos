@@ -4,8 +4,27 @@
 #include <kxarm.h>
 
     LEAF_ENTRY call_method
-        __assertfail
+        ARMASM_ASSERTFAIL
     LEAF_END call_method
+
+#elif defined(_M_ARM64)
+
+#include <ksarm64.h>
+
+    TEXTAREA
+
+    LEAF_ENTRY call_method
+    ARMASM_ASSERTFAIL
+    ret
+    LEAF_END call_method
+
+    LEAF_ENTRY call_double_method
+    b call_method
+    LEAF_END call_double_method
+
+    LEAF_ENTRY call_float_method
+    b call_method
+    LEAF_END call_float_method
 
 #elif defined(_M_AMD64)
 

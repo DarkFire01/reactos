@@ -39,8 +39,20 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(seh);
 
+#if defined(_MSC_VER)
+int __cdecl __CxxFrameHandler3(void *pExcept, ULONG64 RN, void *pContext, void *pDC)
+{
+    (void)pExcept;
+    (void)RN;
+    (void)pContext;
+    (void)pDC;
+    return 0;
+}
+#endif
 
-extern void *call_exc_handler( void *handler, ULONG_PTR frame, UINT flags, BYTE *nonvol_regs );
+void *call_exc_handler(void *handler, ULONG_PTR frame, UINT flags, BYTE *nonvol_regs);
+
+#if !defined(_MSC_VER)
 __ASM_GLOBAL_FUNC( call_exc_handler,
                    "stp x29, x30, [sp, #-96]!\n\t"
                    ".seh_save_fplr_x 96\n\t"
@@ -72,6 +84,7 @@ __ASM_GLOBAL_FUNC( call_exc_handler,
                    "ldp x27, x28, [sp, #80]\n\t"
                    "ldp x29, x30, [sp], #96\n\t"
                    "ret" )
+#endif /* !_MSC_VER */
 
 
 /*******************************************************************
@@ -112,8 +125,9 @@ ULONG_PTR get_exception_pc( DISPATCHER_CONTEXT *dispatch )
 /*******************************************************************
  *		_setjmp (MSVCRT.@)
  */
+#ifndef _MSC_VER
 __ASM_GLOBAL_FUNC( _setjmp, "b _setjmpex" );
-
+#endif
 
 /*********************************************************************
  *              handle_fpieee_flt

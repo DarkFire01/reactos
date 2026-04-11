@@ -17,10 +17,14 @@ include_directories(
     BEFORE include
     ${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys)
 
-add_library(rtl_um OBJECT
+set(RTL_UM_SOURCES
     rtl/libsupp.c
     rtl/uilist.c
     rtl/version.c)
+if(ARCH STREQUAL "arm64")
+    list(APPEND RTL_UM_SOURCES rtl/local_unwind.c)
+endif()
+add_library(rtl_um OBJECT ${RTL_UM_SOURCES})
 target_link_libraries(rtl_um apisets ${PSEH_LIB})
 add_dependencies(rtl_um psdk)
 
@@ -45,6 +49,8 @@ elseif(ARCH STREQUAL "amd64")
         compat/amd64/msys2.S)
 elseif(ARCH STREQUAL "arm")
     list(APPEND ASM_SOURCE dispatch/arm/stubs_asm.s)
+elseif(ARCH STREQUAL "arm64")
+    list(APPEND ASM_SOURCE dispatch/arm64/stubs_asm.s)
 else()
     list(APPEND SOURCE dispatch/dispatch.c)
 endif()
