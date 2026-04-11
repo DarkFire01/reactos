@@ -31,6 +31,32 @@
 ULONG KiDmaIoCoherency = 0;
 ULONG KeLargestCacheLine = 64;
 
+/*
+ * KiInterruptDispatch - Kernel-side IRQ dispatcher for ARM64.
+ *
+ * Called from the KiInterruptException assembly stub with SavedSp pointing
+ * to the 192-byte register-save frame on the kernel stack.
+ *
+ * The actual dispatch logic lives in the HAL (gic.c: HalpDispatchIrq) because
+ * the HAL owns the GIC MMIO addresses and IRQL tables.  The HAL registers its
+ * dispatch function in Pcr->HalReserved[14] during HalpInitPhase0.
+ *
+ * Using HalReserved[] avoids any cross-module symbol dependency: ntoskrnl
+ * calls this stub (which is in ntoskrnl), and the HAL populates the slot via
+ * its normal access to the PCR -- no new HAL exports required.
+ */
+VOID
+NTAPI
+KiInterruptDispatch(IN ULONG_PTR SavedSp)
+{
+    PKPCR Pcr = KeGetPcr();
+    VOID (NTAPI *HalIrqDispatch)(ULONG_PTR) =
+        (VOID (NTAPI *)(ULONG_PTR))Pcr->HalReserved[14];
+
+    if (HalIrqDispatch)
+        HalIrqDispatch(SavedSp);
+}
+
 VOID
 NTAPI
 RtlFillMemory(OUT VOID *Destination,

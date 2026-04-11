@@ -46,9 +46,16 @@ HalpGetTimerFreq(VOID)
 VOID
 HalpClockInterrupt(VOID)
 {
-    /* Clear the interrupt */
-     ASSERT(KeGetCurrentIrql() == CLOCK2_LEVEL);
-    //TODO: Clear Interrupt
+    ASSERT(KeGetCurrentIrql() == CLOCK2_LEVEL);
+
+    /*
+     * Rearm the EL1 Physical Timer for the next tick.
+     * The ARM generic timer is level-triggered: ISTATUS remains asserted
+     * until CNTP_TVAL is loaded with a new positive countdown value.
+     * Writing ArmWriteCntpTval() clears the signal and schedules the next
+     * interrupt.
+     */
+    ArmWriteCntpTval(ArmReadCntFrq() / 100);
 
     /* FIXME: Update HAL Perf counters */
 

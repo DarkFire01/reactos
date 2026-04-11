@@ -191,14 +191,10 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         KiInitModuleList(KeLoaderBlock);
 
         KdInitSystem(0, KeLoaderBlock);
-        DbgPrintEarly("ARM64 boot CPU post KdInitSystem\n");
 
-        /*
-         * Do not break this early on ARM64 bringup: the debugger can attach
-         * before stable thread/context state exists, causing unusable stops.
-         */
+        if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
     }
-    DPRINT1("ARM64 Windbg setup complete\n");
+
     KfRaiseIrql(HIGH_LEVEL);
 
     KiInitializeKernel((PKPROCESS)LoaderBlock->Process,

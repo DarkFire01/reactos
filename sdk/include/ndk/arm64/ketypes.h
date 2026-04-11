@@ -44,6 +44,22 @@ extern "C" {
 
 #define LDT_ENTRY              ULONG
 
+//
+// ARM64 KeFeatureBits flags.
+// These follow the Windows ARM64 convention for the platform feature word.
+// Bit positions chosen to avoid overlap and match the Win10 ARM64 HAL usage.
+//
+#define KF_ARM_VFP              0x00000001  /* FP/NEON (ARMv8 mandatory)      */
+#define KF_ARM_NEON             0x00000002  /* Advanced SIMD (ARMv8 mandatory) */
+#define KF_ARM_AES              0x00000004  /* AES instructions               */
+#define KF_ARM_PMULL            0x00000008  /* PMULL/PMULL2 instructions      */
+#define KF_ARM_SHA1             0x00000010  /* SHA1 instructions              */
+#define KF_ARM_SHA256           0x00000020  /* SHA-256 instructions           */
+#define KF_ARM_CRC32            0x00000040  /* CRC32 instructions             */
+#define KF_ARM_ATOMICS          0x00000080  /* Large-System Extensions (LSE)  */
+#define KF_ARM_JSCVT            0x00000100  /* FJCVTZS instruction (JS float) */
+#define KF_ARM_LRCPC            0x00000200  /* Load-acquire RCpc register     */
+
 
 //
 // HAL Variables

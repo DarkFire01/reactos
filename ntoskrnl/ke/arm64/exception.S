@@ -10,6 +10,7 @@
 // External symbol declarations
 //
     IMPORT  KiSynchronousExceptionC
+    IMPORT  KiInterruptDispatch
 
 //
 // ARM64 Exception Vector Table
@@ -230,12 +231,58 @@ KiExceptionVector32
     NESTED_END KiSynchronousException
 
     //
-    // KiInterruptException - Handle IRQ from kernel mode
-    // Silently ERET until the HAL interrupt stack is initialized.
-    // The QEMU virt timer (and GIC) keep firing from UEFI config;
-    // a BRK stub here would spam KD with spurious breakpoints.
+    // KiInterruptException - Handle IRQ from EL1 (kernel mode)
+    //
+    // Saves all caller-saved registers plus FP/LR in a 192-byte frame,
+    // preserves ELR_EL1 and SPSR_EL1 so nested synchronous exceptions cannot
+    // corrupt them, then dispatches through HalpDispatchIrq (gic.c).
+    //
+    // Frame layout on entry to BL (SP points to base):
+    //   [SP+  0] x29 (FP), [SP+ 8] x30 (LR)  <- FP/LR of interrupted context
+    //   [SP+ 16] x0,       [SP+24]  x1
+    //   [SP+ 32] x2,       [SP+40]  x3
+    //   [SP+ 48] x4,       [SP+56]  x5
+    //   [SP+ 64] x6,       [SP+72]  x7
+    //   [SP+ 80] x8,       [SP+88]  x9
+    //   [SP+ 96] x10,      [SP+104] x11
+    //   [SP+112] x12,      [SP+120] x13
+    //   [SP+128] x14,      [SP+136] x15
+    //   [SP+144] x16,      [SP+152] x17
+    //   [SP+160] x18,      [SP+168] xzr (padding)
+    //   [SP+176] ELR_EL1,  [SP+184] SPSR_EL1
+    //   [SP+192]           <- original SP before IRQ
     //
     NESTED_ENTRY KiInterruptException
+    STP     x29, x30, [sp, #-192]!  // allocate frame; save FP/LR
+    STP     x0,  x1,  [sp, #16]
+    STP     x2,  x3,  [sp, #32]
+    STP     x4,  x5,  [sp, #48]
+    STP     x6,  x7,  [sp, #64]
+    STP     x8,  x9,  [sp, #80]
+    STP     x10, x11, [sp, #96]
+    STP     x12, x13, [sp, #112]
+    STP     x14, x15, [sp, #128]
+    STP     x16, x17, [sp, #144]
+    STP     x18, xzr, [sp, #160]    // x18 + zero padding
+    MRS     x0,  ELR_EL1            // read after volatile saves so x0 is free
+    MRS     x1,  SPSR_EL1
+    STP     x0,  x1,  [sp, #176]    // save ELR / SPSR
+    MOV     x0,  sp                 // pass frame base pointer to C
+    BL      KiInterruptDispatch
+    LDP     x0,  x1,  [sp, #176]   // restore ELR / SPSR
+    MSR     ELR_EL1, x0
+    MSR     SPSR_EL1, x1
+    LDP     x18, xzr, [sp, #160]
+    LDP     x16, x17, [sp, #144]
+    LDP     x14, x15, [sp, #128]
+    LDP     x12, x13, [sp, #112]
+    LDP     x10, x11, [sp, #96]
+    LDP     x8,  x9,  [sp, #80]
+    LDP     x6,  x7,  [sp, #64]
+    LDP     x4,  x5,  [sp, #48]
+    LDP     x2,  x3,  [sp, #32]
+    LDP     x0,  x1,  [sp, #16]
+    LDP     x29, x30, [sp], #192
     ERET
     NESTED_END KiInterruptException
 

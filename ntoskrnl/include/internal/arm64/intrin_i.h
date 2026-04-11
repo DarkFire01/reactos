@@ -275,3 +275,70 @@ KeArm64CleanDataCache(VOID)
     __dsb(0xF); /* DSB SY */
     __isb(0xF);
 }
+
+/* -------------------------------------------------------------------------
+ * Processor identification and feature registers
+ * ------------------------------------------------------------------------- */
+
+/* MIDR_EL1 - Main ID Register: Implementer[31:24] Variant[23:20] Arch[19:16]
+ *             PartNum[15:4] Revision[3:0] */
+FORCEINLINE
+ULONG64
+KeArm64MidrGet(VOID)
+{
+    ULONG64 Value;
+#if defined(_MSC_VER)
+    Value = _ReadStatusReg(ARM64_SYSREG(3, 0, 0, 0, 0));
+#else
+    __asm__ __volatile__ ("mrs %0, midr_el1" : "=r"(Value));
+#endif
+    return Value;
+}
+
+/* ID_AA64ISAR0_EL1 - Instruction Set Attribute Register 0.
+ * Reports availability of AES, SHA1, SHA2, CRC32, Atomic, RDM, SHA3, SM3,
+ * SM4, DP, FHM, TS, TLB, RNDR ISA extensions. */
+FORCEINLINE
+ULONG64
+KeArm64IdAa64Isar0Get(VOID)
+{
+    ULONG64 Value;
+#if defined(_MSC_VER)
+    Value = _ReadStatusReg(ARM64_SYSREG(3, 0, 0, 6, 0));
+#else
+    __asm__ __volatile__ ("mrs %0, id_aa64isar0_el1" : "=r"(Value));
+#endif
+    return Value;
+}
+
+/* ID_AA64ISAR1_EL1 - Instruction Set Attribute Register 1.
+ * Reports JSCVT, FCMA, LRCPC, GPA, GPI, FRINTTS, SB, SPECRES, BF16, DGH,
+ * I8MM, XS, LS64 ISA extensions. */
+FORCEINLINE
+ULONG64
+KeArm64IdAa64Isar1Get(VOID)
+{
+    ULONG64 Value;
+#if defined(_MSC_VER)
+    Value = _ReadStatusReg(ARM64_SYSREG(3, 0, 0, 6, 1));
+#else
+    __asm__ __volatile__ ("mrs %0, id_aa64isar1_el1" : "=r"(Value));
+#endif
+    return Value;
+}
+
+/* ID_AA64PFR0_EL1 - Processor Feature Register 0.
+ * Reports FP, AdvSIMD, GIC, RAS, SVE, SEL2, MPAMif, AMU, DIT, RME, CSV2,
+ * CSV3 feature support. */
+FORCEINLINE
+ULONG64
+KeArm64IdAa64Pfr0Get(VOID)
+{
+    ULONG64 Value;
+#if defined(_MSC_VER)
+    Value = _ReadStatusReg(ARM64_SYSREG(3, 0, 0, 4, 0));
+#else
+    __asm__ __volatile__ ("mrs %0, id_aa64pfr0_el1" : "=r"(Value));
+#endif
+    return Value;
+}
