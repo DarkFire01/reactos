@@ -85,6 +85,7 @@ list(APPEND SOURCE
     NtQuerySection.c
     NtQuerySystemEnvironmentValue.c
     NtQuerySystemInformation.c
+    NtQuerySystemInformationEx.c
     NtQueryValueKey.c
     NtQueryVolumeInformationFile.c
     NtReadFile.c
