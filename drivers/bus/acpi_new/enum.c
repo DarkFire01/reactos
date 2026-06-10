@@ -245,7 +245,7 @@ AcpiNewCreatePdo(
                     PWSTR newId;
 
                     baseLen = wcslen(pdoExt->InstanceId);
-                    (void)swprintf(suffixBuf, L"_%lu", suffix++);
+                    (void)swprintf(suffixBuf, RTL_NUMBER_OF(suffixBuf), L"_%lu", suffix++);
                     suffixLen = wcslen(suffixBuf);
 
                     newId = (PWSTR)ExAllocatePoolWithTag(PagedPool, (baseLen + suffixLen + 1) * sizeof(WCHAR), 'dAcu');
