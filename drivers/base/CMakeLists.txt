@@ -14,6 +14,8 @@ if(_WINKD_)
 else()
     add_subdirectory(kdrosdbg)
 endif()
+add_subdirectory(kd_02_8086)
+add_subdirectory(kdnet)
 add_subdirectory(kdstub)
 
 if(NOT ARCH STREQUAL "arm")
