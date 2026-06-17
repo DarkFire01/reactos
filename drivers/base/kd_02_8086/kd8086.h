@@ -18,12 +18,12 @@ extern PKDNET_EXTENSIBILITY_IMPORTS KdNetExtensibilityImports;
 #define TRACE_DBG_PRINT 0
 #endif
 
-ULONG    E1000GetHardwareContextSize(VOID);
-NTSTATUS E1000InitializeController(PKDNET_SHARED_DATA KdNet);
-VOID     E1000ShutdownController(PVOID Adapter);
-NTSTATUS E1000GetTxPacket(PVOID Adapter, PULONG Handle);
-NTSTATUS E1000SendTxPacket(PVOID Adapter, ULONG Handle, ULONG Length);
-NTSTATUS E1000GetRxPacket(PVOID Adapter, PULONG Handle, PVOID *Packet, PULONG Length);
-VOID     E1000ReleaseRxPacket(PVOID Adapter, ULONG Handle);
-PVOID    E1000GetPacketAddress(PVOID Adapter, ULONG Handle);
-ULONG    E1000GetPacketLength(PVOID Adapter, ULONG Handle);
+ULONG    NTAPI E1000GetHardwareContextSize(VOID);
+NTSTATUS NTAPI E1000InitializeController(PKDNET_SHARED_DATA KdNet);
+VOID     NTAPI E1000ShutdownController(PVOID Adapter);
+NTSTATUS NTAPI E1000GetTxPacket(PVOID Adapter, PULONG Handle);
+NTSTATUS NTAPI E1000SendTxPacket(PVOID Adapter, ULONG Handle, ULONG Length);
+NTSTATUS NTAPI E1000GetRxPacket(PVOID Adapter, PULONG Handle, PVOID *Packet, PULONG Length);
+VOID     NTAPI E1000ReleaseRxPacket(PVOID Adapter, ULONG Handle);
+PVOID    NTAPI E1000GetPacketAddress(PVOID Adapter, ULONG Handle);
+ULONG    NTAPI E1000GetPacketLength(PVOID Adapter, ULONG Handle);

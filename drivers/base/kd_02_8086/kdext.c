@@ -20,6 +20,7 @@ DriverEntry(
 }
 
 VOID
+NTAPI
 KdSetHibernateRange(
     VOID
     )
@@ -27,6 +28,14 @@ KdSetHibernateRange(
     //TODO:
 }
 
+ULONG 
+NTAPI 
+KdGetHardwareContextSize(
+    _In_ struct _DEBUG_DEVICE_DESCRIPTOR *Device
+)
+{
+    return E1000GetHardwareContextSize();
+}
 NTSTATUS
 NTAPI
 KdInitializeLibrary(
@@ -51,16 +60,16 @@ KdInitializeLibrary(
                                                   ImportTable ? ImportTable->FunctionCount : 0,
                                                   (ULONG)KDNET_EXT_IMPORTS);
     
-    Exports->KdInitializeController =   (KD_INITIALIZE_CONTROLLER)E1000InitializeController;
-    Exports->KdShutdownController =     (KD_SHUTDOWN_CONTROLLER)E1000ShutdownController;
-    Exports->KdSetHibernateRange =      (KD_SET_HIBERNATE_RANGE)KdSetHibernateRange;
-    Exports->KdGetRxPacket =            (KD_GET_RX_PACKET)E1000GetRxPacket;
-    Exports->KdReleaseRxPacket =        (KD_RELEASE_RX_PACKET)E1000ReleaseRxPacket;
-    Exports->KdGetTxPacket =            (KD_GET_TX_PACKET)E1000GetTxPacket;
-    Exports->KdSendTxPacket =           (KD_SEND_TX_PACKET)E1000SendTxPacket;
-    Exports->KdGetPacketAddress =       (KD_GET_PACKET_ADDRESS)E1000GetPacketAddress;
-    Exports->KdGetPacketLength =        (KD_GET_PACKET_LENGTH)E1000GetPacketLength;
-    Exports->KdGetHardwareContextSize = (KD_GET_HARDWARE_CONTEXT_SIZE)E1000GetHardwareContextSize;
+    Exports->KdInitializeController =   E1000InitializeController;
+    Exports->KdShutdownController =     E1000ShutdownController;
+    Exports->KdSetHibernateRange =      KdSetHibernateRange;
+    Exports->KdGetRxPacket =            E1000GetRxPacket;
+    Exports->KdReleaseRxPacket =        E1000ReleaseRxPacket;
+    Exports->KdGetTxPacket =            E1000GetTxPacket;
+    Exports->KdSendTxPacket =           E1000SendTxPacket;
+    Exports->KdGetPacketAddress =       E1000GetPacketAddress;
+    Exports->KdGetPacketLength =        E1000GetPacketLength;
+    Exports->KdGetHardwareContextSize = KdGetHardwareContextSize;
 
     return Status;
 }
