@@ -18,6 +18,6 @@ add_library(kdnet MODULE
 
 set_module_type(kdnet kerneldll ENTRYPOINT 0)
 set_subsystem(kdnet native)
-add_importlibs(kdnet ntoskrnl hal kd_02_10ec)
+add_importlibs(kdnet ntoskrnl hal kd_02_8086)
 add_dependencies(kdnet psdk bugcodes)
 add_cd_file(TARGET kdnet DESTINATION reactos/system32 NO_CAB FOR all)
