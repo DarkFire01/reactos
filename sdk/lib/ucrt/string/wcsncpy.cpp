@@ -11,13 +11,6 @@
 
 #pragma warning(disable:__WARNING_POSTCONDITION_NULLTERMINATION_VIOLATION) // 26036
 
-
-#if defined(_MSC_VER) && (defined(_M_ARM) || _MSC_VER >= 1932) // VS2022 version 17.2 and later
-    #pragma function(wcsncpy)
-#endif
-
-
-
 extern "C" wchar_t * __cdecl wcsncpy(
     wchar_t*       const destination,
     wchar_t const* const source,
