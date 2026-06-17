@@ -363,6 +363,7 @@ VOID E1kRxDescRecycle(PE1000_ADAPTER a, ULONG idx)
 }
 
 ULONG
+NTAPI
 E1000GetHardwareContextSize(VOID)
 {
     /* adapter + two 128-byte-aligned rings + TX/RX buffers, generously rounded. */
@@ -385,6 +386,7 @@ E1kPhys(PE1000_ADAPTER a, PVOID Va)
             KdNetExtensibilityImports->KdNetDbgPrintf(__VA_ARGS__); } while (0)
 
 NTSTATUS
+NTAPI
 E1000InitializeController(PKDNET_SHARED_DATA KdNet)
 {
     PE1000_ADAPTER a;
@@ -676,6 +678,7 @@ E1000InitializeController(PKDNET_SHARED_DATA KdNet)
 }
 
 VOID
+NTAPI
 E1000ShutdownController(PVOID Adapter)
 {
     PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
@@ -688,6 +691,7 @@ E1000ShutdownController(PVOID Adapter)
 }
 
 NTSTATUS
+NTAPI
 E1000GetTxPacket(PVOID Adapter, PULONG Handle)
 {
     PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
@@ -707,6 +711,7 @@ E1000GetTxPacket(PVOID Adapter, PULONG Handle)
 }
 
 NTSTATUS
+NTAPI
 E1000SendTxPacket(PVOID Adapter, ULONG Handle, ULONG Length)
 {
     PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
@@ -732,6 +737,7 @@ E1000SendTxPacket(PVOID Adapter, ULONG Handle, ULONG Length)
 }
 
 NTSTATUS
+NTAPI
 E1000GetRxPacket(PVOID Adapter, PULONG Handle, PVOID *Packet, PULONG Length)
 {
     PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
@@ -751,6 +757,7 @@ E1000GetRxPacket(PVOID Adapter, PULONG Handle, PVOID *Packet, PULONG Length)
 }
 
 VOID
+NTAPI
 E1000ReleaseRxPacket(PVOID Adapter, ULONG Handle)
 {
     PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
@@ -766,6 +773,7 @@ E1000ReleaseRxPacket(PVOID Adapter, ULONG Handle)
 }
 
 PVOID
+NTAPI
 E1000GetPacketAddress(PVOID Adapter, ULONG Handle)
 {
     PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
@@ -779,6 +787,7 @@ E1000GetPacketAddress(PVOID Adapter, ULONG Handle)
 }
 
 ULONG
+NTAPI
 E1000GetPacketLength(PVOID Adapter, ULONG Handle)
 {
     PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
