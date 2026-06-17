@@ -262,6 +262,11 @@ static ULONG g_KdNetLinkSpeed;
 static ULONG g_KdNetLinkDuplex;
 static PVOID g_KdNetHardwareContext;
 
+/* Defined in kdnet_ext.c; the extension writes its failure reason / chip id here
+ * (via the import table) so we can report it when KdInitializeController fails. */
+extern PWCHAR g_KdNetErrorString;
+extern ULONG  g_KdNetHardwareId;
+
 /**
  * @brief Phase-0 initialization of the kernel debugger over network.
  *
@@ -426,6 +431,12 @@ KdDebuggerInitialize0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
         if (!NT_SUCCESS(Status))
             return Status;
 
+        if (FrLdrDbgPrint)
+            FrLdrDbgPrint("kdnet: PCI device Vendor=0x%04x Device=0x%04x Class=0x%02x/0x%02x Bus=%lu Slot=0x%lx\n",
+                          g_KdNetDeviceDescriptor.VendorID, g_KdNetDeviceDescriptor.DeviceID,
+                          g_KdNetDeviceDescriptor.BaseClass, g_KdNetDeviceDescriptor.SubClass,
+                          g_KdNetDeviceDescriptor.Bus, g_KdNetDeviceDescriptor.Slot);
+
         g_KdNetHardwareContext = g_KdNetDeviceDescriptor.Memory.VirtualAddress;
         if (!g_KdNetHardwareContext)
             return STATUS_INSUFFICIENT_RESOURCES;
@@ -459,7 +470,21 @@ KdDebuggerInitialize0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
         if (FrLdrDbgPrint)
             FrLdrDbgPrint("kdnet: KdInitializeController -> 0x%08lx\n", Status);
         if (!NT_SUCCESS(Status))
+        {
+            /*
+             * The extension records why it bailed. KdNetHardwareID is the raw
+             * TCR/MAC-version register it read; it stays 0 if the extension never
+             * got past its vendor/class guard. So: HardwareID==0 => the device
+             * wasn't recognized as this NIC family (wrong VendorID/BaseClass);
+             * HardwareID!=0 => recognized, but its MAC version isn't supported by
+             * the chip table (HardwareID is the value to add). KdNetErrorString
+             * holds the matching human-readable reason. (Avoid %ws here: the boot
+             * debug printer may not handle wide strings.) */
+            if (FrLdrDbgPrint)
+                FrLdrDbgPrint("kdnet: ext failed: HardwareID=0x%08lx ErrorString=%p\n",
+                              g_KdNetHardwareId, g_KdNetErrorString);
             return Status;
+        }
 
         g_KdNetLinkSpeed = g_KdNetSharedData.LinkSpeed;
         g_KdNetLinkDuplex = g_KdNetSharedData.LinkDuplex;
