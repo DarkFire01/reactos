@@ -2,8 +2,11 @@ spec2def(kdnet.dll kdnet.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
     kdnet_aux.c
+    kdnet_crypto_prim.c
+    kdnet_crypto.c
     kdnet_ext.c
     kdnet_init.c
+    kdnet_net.c
     kdnet_packet.c
     kdnet_power.c
     )
@@ -15,6 +18,6 @@ add_library(kdnet MODULE
 
 set_module_type(kdnet kerneldll ENTRYPOINT 0)
 set_subsystem(kdnet native)
-add_importlibs(kdnet ntoskrnl hal kdstub)
+add_importlibs(kdnet ntoskrnl hal kd_02_10ec)
 add_dependencies(kdnet psdk bugcodes)
 add_cd_file(TARGET kdnet DESTINATION reactos/system32 NO_CAB FOR all)

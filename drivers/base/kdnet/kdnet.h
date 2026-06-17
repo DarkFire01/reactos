@@ -45,3 +45,4 @@ KdNetInitializeExtensibility(
     _In_opt_ PKDNET_INITIALIZE_LIBRARY KdInitializeLibrary,
     _Out_ PKDNET_EXTENSIBILITY_EXPORTS ExtensibilityExports,
     _Out_opt_ void *SerialExtensibility);
+ULONG KdpComputeChecksum(const UCHAR *Buffer, ULONG Length);
