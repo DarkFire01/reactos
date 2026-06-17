@@ -13,8 +13,10 @@ PKDNET_EXTENSIBILITY_EXPORTS KdNetExtensibilityExports = NULL;
 #include <ndk/halfuncs.h>
 
 static NTSTATUS g_KdNetErrorStatus = STATUS_SUCCESS;
-static PWCHAR   g_KdNetErrorString = NULL;
-static ULONG    g_KdNetHardwareId  = 0;
+/* Non-static: kdnet_init.c reads these to report why an extension's
+ * KdInitializeController failed. */
+PWCHAR   g_KdNetErrorString = NULL;
+ULONG    g_KdNetHardwareId  = 0;
 
 static UCHAR  NTAPI KdNetRrUchar(PUCHAR r)            { return READ_REGISTER_UCHAR(r); }
 static USHORT NTAPI KdNetRrUshort(PUSHORT r)          { return READ_REGISTER_USHORT(r); }

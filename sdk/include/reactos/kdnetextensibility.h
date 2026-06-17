@@ -36,7 +36,14 @@ typedef NTSTATUS (NTAPI *DEBUG_SERIAL_OUTPUT_INIT)(_In_opt_ struct _DEBUG_DEVICE
     _Out_opt_ PPHYSICAL_ADDRESS PAddress);
 typedef VOID     (NTAPI *DEBUG_SERIAL_OUTPUT_BYTE)(_In_ UCHAR byte);
 
-#define KDNET_EXT_EXPORTS 15
+/*
+ * ABI compatibility gate. KdInitializeLibrary rejects the table unless
+ * Exports->FunctionCount == KDNET_EXT_EXPORTS, so this MUST match what the
+ * shipped Microsoft kd_02_*.dll extensions expect: 13 (0x0D) exports
+ * (KdInitializeController..KdWriteSerialByte). The DebugSerialOutput* members
+ * below are extra trailing fields not included in the count.
+ */
+#define KDNET_EXT_EXPORTS 13
 
 typedef struct _KDNET_EXTENSIBILITY_EXPORTS
 {
@@ -92,7 +99,14 @@ typedef VOID (NTAPI *KDNET_UNMAP_VIRTUAL_ADDRESS)(_In_ PVOID VirtualAddress,
 typedef ULONG64 (NTAPI *KDNET_READ_CYCLE_COUNTER)(_Out_opt_ ULONG64 *Frequency);
 typedef VOID (NTAPI *KDNET_DBGPRINT)(_In_ PCHAR pFmt, ...);
 
-#define KDNET_EXT_IMPORTS 33
+/*
+ * ABI compatibility gate (see KDNET_EXT_EXPORTS). KdInitializeLibrary rejects
+ * the import table unless ImportTable->FunctionCount == KDNET_EXT_IMPORTS, so
+ * this MUST match the shipped Microsoft kd_02_*.dll extensions: 30 (0x1E)
+ * entries (Exports..ExecutionEnvironment). KdNetErrorStatus/KdNetErrorString/
+ * KdNetHardwareID below are extra trailing fields not included in the count.
+ */
+#define KDNET_EXT_IMPORTS 30
 
 typedef struct _KDNET_EXTENSIBILITY_IMPORTS
 {
@@ -136,6 +150,79 @@ NTSTATUS NTAPI KdInitializeLibrary(
     _In_ PKDNET_EXTENSIBILITY_IMPORTS ImportTable,
     _In_opt_ PCHAR LoaderOptions,
     _Inout_ struct _DEBUG_DEVICE_DESCRIPTOR *Device);
+
+#ifdef _KDNET_EXTENSION_MACROS_
+
+/*
+ * Convenience macros for KDNET extensibility (miniport) modules written in the
+ * Microsoft DDK style, where helper routines are referenced by their bare names
+ * (e.g. KdGetPciDataByOffset(), KdNetErrorString) rather than through the import
+ * table. They redirect those names onto the import table the core KDNET driver
+ * hands to the extension via KdInitializeLibrary.
+ *
+ * These are OPT-IN: a module must #define _KDNET_EXTENSION_MACROS_ before
+ * including this header to get them. The core KDNET driver and extension modules
+ * that access the import-table members directly (e.g.
+ * KdNetExtensibilityImports->KdNetDbgPrintf) must NOT enable them, otherwise the
+ * macros whose names match a structure member would corrupt that member access.
+ */
+
+extern PKDNET_EXTENSIBILITY_IMPORTS KdNetExtensibilityImports;
+
+#define KdGetPciDataByOffset      KdNetExtensibilityImports->GetPciDataByOffset
+#define KdSetPciDataByOffset      KdNetExtensibilityImports->SetPciDataByOffset
+#define KdGetPhysicalAddress      KdNetExtensibilityImports->GetPhysicalAddress
+#define KeStallExecutionProcessor KdNetExtensibilityImports->StallExecutionProcessor
+
+/*
+ * Route register / port access through the import table. The DDK's ioaccess.h
+ * already defines these as direct-access macros, so undefine first to avoid a
+ * C4005 redefinition (fatal under /WX). An extension that needs direct access
+ * (e.g. a memory-mapped NIC) can undefine these again after including us.
+ */
+#undef READ_REGISTER_UCHAR
+#undef READ_REGISTER_USHORT
+#undef READ_REGISTER_ULONG
+#undef READ_REGISTER_ULONG64
+#undef WRITE_REGISTER_UCHAR
+#undef WRITE_REGISTER_USHORT
+#undef WRITE_REGISTER_ULONG
+#undef WRITE_REGISTER_ULONG64
+#undef READ_PORT_UCHAR
+#undef READ_PORT_USHORT
+#undef READ_PORT_ULONG
+#undef READ_PORT_ULONG64
+#undef WRITE_PORT_UCHAR
+#undef WRITE_PORT_USHORT
+#undef WRITE_PORT_ULONG
+#undef WRITE_PORT_ULONG64
+#define READ_REGISTER_UCHAR       KdNetExtensibilityImports->ReadRegisterUChar
+#define READ_REGISTER_USHORT      KdNetExtensibilityImports->ReadRegisterUShort
+#define READ_REGISTER_ULONG       KdNetExtensibilityImports->ReadRegisterULong
+#define READ_REGISTER_ULONG64     KdNetExtensibilityImports->ReadRegisterULong64
+#define WRITE_REGISTER_UCHAR      KdNetExtensibilityImports->WriteRegisterUChar
+#define WRITE_REGISTER_USHORT     KdNetExtensibilityImports->WriteRegisterUShort
+#define WRITE_REGISTER_ULONG      KdNetExtensibilityImports->WriteRegisterULong
+#define WRITE_REGISTER_ULONG64    KdNetExtensibilityImports->WriteRegisterULong64
+#define READ_PORT_UCHAR           KdNetExtensibilityImports->ReadPortUChar
+#define READ_PORT_USHORT          KdNetExtensibilityImports->ReadPortUShort
+#define READ_PORT_ULONG           KdNetExtensibilityImports->ReadPortULong
+#define READ_PORT_ULONG64         KdNetExtensibilityImports->ReadPortULong64
+#define WRITE_PORT_UCHAR          KdNetExtensibilityImports->WritePortUChar
+#define WRITE_PORT_USHORT         KdNetExtensibilityImports->WritePortUShort
+#define WRITE_PORT_ULONG          KdNetExtensibilityImports->WritePortULong
+#define WRITE_PORT_ULONG64        KdNetExtensibilityImports->WritePortULong64
+#define KdReadCycleCounter        KdNetExtensibilityImports->ReadCycleCounter
+#define KdSetHiberRange           KdNetExtensibilityImports->SetHiberRange
+#define KdBugCheckEx              KdNetExtensibilityImports->BugCheckEx
+#define KdMapPhysicalMemory64     KdNetExtensibilityImports->MapPhysicalMemory64
+#define KdUnmapVirtualAddress     KdNetExtensibilityImports->UnmapVirtualAddress
+#define KdNetDbgPrintf            KdNetExtensibilityImports->KdNetDbgPrintf
+#define KdNetErrorStatus          (*KdNetExtensibilityImports->KdNetErrorStatus)
+#define KdNetErrorString          (*KdNetExtensibilityImports->KdNetErrorString)
+#define KdNetHardwareID           (*KdNetExtensibilityImports->KdNetHardwareID)
+
+#endif /* _KDNET_EXTENSION_MACROS_ */
 
 #ifdef __cplusplus
 }
