@@ -209,6 +209,16 @@ HalpMapPhysicalMemory64Vista(IN PHYSICAL_ADDRESS PhysicalAddress,
         PointerPte->PageFrameNumber = (PFN_NUMBER)(PhysicalAddress.QuadPart >> PAGE_SHIFT);
         PointerPte->Valid = 1;
         PointerPte->Write = 1;
+        /*
+         * Map uncached. This routine maps debug-device resources (PCI register
+         * BARs and the KDNET hardware/DMA context). Device MMIO must not be
+         * cached: otherwise register writes sit in the CPU cache and never reach
+         * the NIC, so an extension's write-then-poll init loop spins forever
+         * (observed: reads return sane values, writes are lost). Uncached is also
+         * correct for the DMA context (CPU and NIC then see the same data).
+         */
+        PointerPte->CacheDisable = 1;
+        PointerPte->WriteThrough = 1;
 
         /* Move to the next address */
         PhysicalAddress.QuadPart += PAGE_SIZE;

@@ -46,3 +46,11 @@ KdNetInitializeExtensibility(
     _Out_ PKDNET_EXTENSIBILITY_EXPORTS ExtensibilityExports,
     _Out_opt_ void *SerialExtensibility);
 ULONG KdpComputeChecksum(const UCHAR *Buffer, ULONG Length);
+
+/*
+ * Architecture-specific timing primitives (implemented per-arch under i386/,
+ * amd64/, ...). Used instead of KeStallExecutionProcessor in the kdnet init
+ * path, which runs before the HAL calibrates the stall scale factor.
+ */
+ULONG64 KdNetReadTimeStampCounter(VOID);
+ULONG64 KdNetGetTicksPerMicrosecond(VOID);
