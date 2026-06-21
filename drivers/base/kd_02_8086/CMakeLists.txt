@@ -1,4 +1,5 @@
 spec2def(kd_02_8086.dll kd_02_8086.spec ADD_IMPORTLIB)
+add_definitions(-D_KDNET_EXTENSION_MACROS_)
 
 list(APPEND SOURCE
     e8086.c
@@ -15,4 +16,4 @@ set_subsystem(kd_02_8086 native)
 add_importlibs(kd_02_8086 ntoskrnl hal)
 
 add_dependencies(kd_02_8086 psdk bugcodes)
-#add_cd_file(TARGET kd_02_8086 DESTINATION reactos/system32 NO_CAB FOR all)
+add_cd_file(TARGET kd_02_8086 DESTINATION reactos/system32 NO_CAB FOR all)

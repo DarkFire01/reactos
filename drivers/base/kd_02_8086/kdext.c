@@ -21,7 +21,7 @@ DriverEntry(
 
 VOID
 NTAPI
-KdSetHibernateRange(
+KdNicSetHibernateRange(
     VOID
     )
 {
@@ -30,7 +30,7 @@ KdSetHibernateRange(
 
 ULONG 
 NTAPI 
-KdGetHardwareContextSize(
+KdNicGetHardwareContextSize(
     _In_ struct _DEBUG_DEVICE_DESCRIPTOR *Device
 )
 {
@@ -50,26 +50,26 @@ KdInitializeLibrary(
     KdNetExtensibilityImports = ImportTable;
     Exports = KdNetExtensibilityImports->Exports;
 
-    if (!KdNetExtensibilityImports || !KdNetExtensibilityImports->KdNetDbgPrintf)
+    if (!KdNetExtensibilityImports || !KdNetDbgPrintf)
         return STATUS_INVALID_PARAMETER;
     
-    KdNetExtensibilityImports->KdNetDbgPrintf("KdInitializeLibrary: ExportsFnCount=%lu Expected=%lu\n",
+    KdNetDbgPrintf("KdInitializeLibrary: ExportsFnCount=%lu Expected=%lu\n",
                                                       ImportTable->Exports->FunctionCount,
                                                       KDNET_EXT_EXPORTS);
-    KdNetExtensibilityImports->KdNetDbgPrintf("KdInitializeLibrary: ImportFnCount=%lu Expected=%lu\n",
+    KdNetDbgPrintf("KdInitializeLibrary: ImportFnCount=%lu Expected=%lu\n",
                                                   ImportTable ? ImportTable->FunctionCount : 0,
                                                   (ULONG)KDNET_EXT_IMPORTS);
     
     Exports->KdInitializeController =   E1000InitializeController;
     Exports->KdShutdownController =     E1000ShutdownController;
-    Exports->KdSetHibernateRange =      KdSetHibernateRange;
+    Exports->KdSetHibernateRange =      KdNicSetHibernateRange;
     Exports->KdGetRxPacket =            E1000GetRxPacket;
     Exports->KdReleaseRxPacket =        E1000ReleaseRxPacket;
     Exports->KdGetTxPacket =            E1000GetTxPacket;
     Exports->KdSendTxPacket =           E1000SendTxPacket;
     Exports->KdGetPacketAddress =       E1000GetPacketAddress;
     Exports->KdGetPacketLength =        E1000GetPacketLength;
-    Exports->KdGetHardwareContextSize = KdGetHardwareContextSize;
+    Exports->KdGetHardwareContextSize = KdNicGetHardwareContextSize;
 
     return Status;
 }

@@ -490,26 +490,6 @@ KdDebuggerInitialize0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
                 break;
             }
 
-            /* Hardware-context write-persistence test. The extension builds its
-             * operation vtable (function pointers) INSIDE this context and then
-             * calls through it. If writes here don't stick, it calls a garbage
-             * pointer -> crash. Test a few offsets (restore after). */
-            if (g_KdNetDeviceDescriptor.Memory.VirtualAddress)
-            {
-                volatile ULONG *ctx = (volatile ULONG *)g_KdNetDeviceDescriptor.Memory.VirtualAddress;
-                ULONG off, bad = 0;
-                static const ULONG offs[3] = { 0, 0x2A00 / 4, 0x80000 / 4 };
-                for (off = 0; off < 3; off++)
-                {
-                    ULONG save = ctx[offs[off]];
-                    ctx[offs[off]] = 0xDEADBEEF;
-                    if (ctx[offs[off]] != 0xDEADBEEF) bad++;
-                    ctx[offs[off]] = save;
-                }
-                FrLdrDbgPrint("kdnet: CTX write-test @%p len=0x%lx: %s (%lu/3 bad)\n",
-                              ctx, g_KdNetDeviceDescriptor.Memory.Length,
-                              bad ? "WRITES LOST" : "OK", bad);
-            }
         }
 
         g_KdNetHardwareContext = g_KdNetDeviceDescriptor.Memory.VirtualAddress;
