@@ -45,4 +45,20 @@ extern KDNET_SHARED_DATA KdNetSharedData;
 /** TRUE once KdInitializeController has succeeded at least once. */
 extern BOOLEAN KdNetInitialized;
 
+/*
+ * Architecture-specific timing primitives (implemented per-arch under i386/,
+ * amd64/, ...). MUST be used instead of KeStallExecutionProcessor for any
+ * wall-clock timing in the kdnet init path: the HAL StallScaleFactor is not yet
+ * calibrated when kdnet runs (KdInitSystem is called from KiSystemStartup,
+ * before the HAL clock is set up), so KeStallExecutionProcessor under-delays by
+ * ~1000x.
+ */
+
+/** Monotonic hardware cycle/tick counter (TSC on x86). */
+ULONG64 KdNetReadTimeStampCounter(VOID);
+
+/** Hardware ticks per microsecond, calibrated once against an independent timer
+ *  (the 8254 PIT on x86) and cached. Never returns zero. */
+ULONG64 KdNetGetTicksPerMicrosecond(VOID);
+
 #endif /* _KDNET_PRIVATE_H_ */

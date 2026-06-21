@@ -103,8 +103,7 @@ typedef VOID (NTAPI *KDNET_DBGPRINT)(_In_ PCHAR pFmt, ...);
  * ABI compatibility gate (see KDNET_EXT_EXPORTS). KdInitializeLibrary rejects
  * the import table unless ImportTable->FunctionCount == KDNET_EXT_IMPORTS, so
  * this MUST match the shipped Microsoft kd_02_*.dll extensions: 30 (0x1E)
- * entries (Exports..ExecutionEnvironment). KdNetErrorStatus/KdNetErrorString/
- * KdNetHardwareID below are extra trailing fields not included in the count.
+ * entries, Exports(+0x04) through KdNetHardwareID(+0x78) inclusive.
  */
 #define KDNET_EXT_IMPORTS 30
 
@@ -138,9 +137,15 @@ typedef struct _KDNET_EXTENSIBILITY_IMPORTS
     KDNET_UNMAP_VIRTUAL_ADDRESS UnmapVirtualAddress;
     KDNET_READ_CYCLE_COUNTER ReadCycleCounter;
     KDNET_DBGPRINT KdNetDbgPrintf;
-    PVOID VmbusInitialize;       /* optional */
-    PVOID GetHypervisorVendorId; /* optional */
-    ULONG ExecutionEnvironment;
+    /*
+     * KdNetErrorStatus/String/HardwareID immediately follow KdNetDbgPrintf in
+     * the shipped Microsoft kd_02_*.dll ABI (offsets +0x70/+0x74/+0x78 on i386).
+     * Do NOT insert VmbusInitialize/GetHypervisorVendorId/ExecutionEnvironment
+     * here: those exist only in a newer (33-entry) ABI revision and putting them
+     * before the trio shifts KdNetErrorString off +0x74, so a real MS extension
+     * writing an error string would corrupt the wrong field. Verified by
+     * disassembly: KdInitializeController writes the error string via [imports+0x74].
+     */
     NTSTATUS *KdNetErrorStatus;
     PWCHAR *KdNetErrorString;
     PULONG KdNetHardwareID;

@@ -11,6 +11,14 @@ list(APPEND SOURCE
     kdnet_power.c
     )
 
+# Architecture-specific timing primitives (TSC + PIT calibration on x86).
+# TODO: ARM/ARM64 (architected generic timer).
+if(ARCH STREQUAL "i386")
+    list(APPEND SOURCE i386/kdnethw.c)
+elseif(ARCH STREQUAL "amd64")
+    list(APPEND SOURCE amd64/kdnethw.c)
+endif()
+
 add_library(kdnet MODULE
     ${SOURCE}
     kdnet.rc

@@ -98,7 +98,7 @@ static VOID KdNetWireRuntimeParameters(_In_opt_ PCHAR LoaderOptions)
     /* Seed the offer nonce (TargetRandom). Bytes 8..31 must stay stable for the
      * connect handshake; bytes 0..7 are an incrementing counter. */
     {
-        ULONGLONG seed = __rdtsc();
+        ULONGLONG seed = KdNetReadTimeStampCounter();
         ULONG i;
         for (i = 0; i < 32; i++)
             KdNetParameters.TargetRandom[i] = (UCHAR)(seed >> ((i & 7) * 8)) ^ (UCHAR)(i * 7 + 0x5A);
@@ -437,6 +437,81 @@ KdDebuggerInitialize0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
                           g_KdNetDeviceDescriptor.BaseClass, g_KdNetDeviceDescriptor.SubClass,
                           g_KdNetDeviceDescriptor.Bus, g_KdNetDeviceDescriptor.Slot);
 
+        /* Show the mapped register BARs: the extension does its MMIO through
+         * BaseAddress[i].TranslatedAddress. A NULL/garbage VA here means the
+         * stub's first register access faults/hangs in KdInitializeController. */
+        if (FrLdrDbgPrint)
+        {
+            ULONG _bar;
+            for (_bar = 0; _bar < MAXIMUM_DEBUG_BARS; _bar++)
+            {
+                if (!g_KdNetDeviceDescriptor.BaseAddress[_bar].Valid)
+                    continue;
+                FrLdrDbgPrint("kdnet: BAR[%lu] Type=%u Valid=%u Xlat=%p Len=0x%lx\n",
+                              _bar,
+                              (ULONG)g_KdNetDeviceDescriptor.BaseAddress[_bar].Type,
+                              (ULONG)g_KdNetDeviceDescriptor.BaseAddress[_bar].Valid,
+                              g_KdNetDeviceDescriptor.BaseAddress[_bar].TranslatedAddress,
+                              g_KdNetDeviceDescriptor.BaseAddress[_bar].Length);
+            }
+
+            /* Probe the first memory BAR ourselves to prove the mapping reaches
+             * the NIC. For an e1000 these are CTRL(0x00)/STATUS(0x08)/EECD(0x10);
+             * sane values => the mapping is good and a hung KdInitializeController
+             * is the stub's own polling, not a ReactOS mapping bug. */
+            for (_bar = 0; _bar < MAXIMUM_DEBUG_BARS; _bar++)
+            {
+                PUCHAR _va;
+                if (!g_KdNetDeviceDescriptor.BaseAddress[_bar].Valid ||
+                    g_KdNetDeviceDescriptor.BaseAddress[_bar].Type != 3 /* CmResourceTypeMemory */)
+                    continue;
+                _va = (PUCHAR)g_KdNetDeviceDescriptor.BaseAddress[_bar].TranslatedAddress;
+                if (!_va)
+                    continue;
+                FrLdrDbgPrint("kdnet: MMIO probe BAR[%lu]: +0x00=0x%08lx +0x08=0x%08lx +0x10=0x%08lx\n",
+                              _bar,
+                              READ_REGISTER_ULONG((PULONG)(_va + 0x00)),
+                              READ_REGISTER_ULONG((PULONG)(_va + 0x08)),
+                              READ_REGISTER_ULONG((PULONG)(_va + 0x10)));
+                /* Device side-effect write test: CTRL.RST (bit 26) is self-clearing
+                 * BY THE NIC. If our write reaches the device it resets and clears
+                 * the bit; if the write is swallowed the bit stays set. Unambiguous
+                 * (a cached mapping would read back our written value with RST set).
+                 * The stub resets the chip itself first, so this is harmless. */
+                WRITE_REGISTER_ULONG((PULONG)(_va + 0x00), 0x04000000);
+                { volatile ULONG _d; for (_d = 0; _d < 2000000; _d++) { } }
+                {
+                    ULONG _ctrl = READ_REGISTER_ULONG((PULONG)(_va + 0x00));
+                    FrLdrDbgPrint("kdnet: CTRL.RST test: CTRL=0x%08lx -> %s\n",
+                                  _ctrl,
+                                  (_ctrl & 0x04000000) ? "RST STUCK (write NOT reaching NIC)"
+                                                       : "RST cleared (writes reach NIC)");
+                }
+                break;
+            }
+
+            /* Hardware-context write-persistence test. The extension builds its
+             * operation vtable (function pointers) INSIDE this context and then
+             * calls through it. If writes here don't stick, it calls a garbage
+             * pointer -> crash. Test a few offsets (restore after). */
+            if (g_KdNetDeviceDescriptor.Memory.VirtualAddress)
+            {
+                volatile ULONG *ctx = (volatile ULONG *)g_KdNetDeviceDescriptor.Memory.VirtualAddress;
+                ULONG off, bad = 0;
+                static const ULONG offs[3] = { 0, 0x2A00 / 4, 0x80000 / 4 };
+                for (off = 0; off < 3; off++)
+                {
+                    ULONG save = ctx[offs[off]];
+                    ctx[offs[off]] = 0xDEADBEEF;
+                    if (ctx[offs[off]] != 0xDEADBEEF) bad++;
+                    ctx[offs[off]] = save;
+                }
+                FrLdrDbgPrint("kdnet: CTX write-test @%p len=0x%lx: %s (%lu/3 bad)\n",
+                              ctx, g_KdNetDeviceDescriptor.Memory.Length,
+                              bad ? "WRITES LOST" : "OK", bad);
+            }
+        }
+
         g_KdNetHardwareContext = g_KdNetDeviceDescriptor.Memory.VirtualAddress;
         if (!g_KdNetHardwareContext)
             return STATUS_INSUFFICIENT_RESOURCES;
@@ -471,17 +546,8 @@ KdDebuggerInitialize0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
             FrLdrDbgPrint("kdnet: KdInitializeController -> 0x%08lx\n", Status);
         if (!NT_SUCCESS(Status))
         {
-            /*
-             * The extension records why it bailed. KdNetHardwareID is the raw
-             * TCR/MAC-version register it read; it stays 0 if the extension never
-             * got past its vendor/class guard. So: HardwareID==0 => the device
-             * wasn't recognized as this NIC family (wrong VendorID/BaseClass);
-             * HardwareID!=0 => recognized, but its MAC version isn't supported by
-             * the chip table (HardwareID is the value to add). KdNetErrorString
-             * holds the matching human-readable reason. (Avoid %ws here: the boot
-             * debug printer may not handle wide strings.) */
             if (FrLdrDbgPrint)
-                FrLdrDbgPrint("kdnet: ext failed: HardwareID=0x%08lx ErrorString=%p\n",
+                FrLdrDbgPrint("kdnet: ext failed: HardwareID=0x%08lx ErrorString=%ws\n",
                               g_KdNetHardwareId, g_KdNetErrorString);
             return Status;
         }

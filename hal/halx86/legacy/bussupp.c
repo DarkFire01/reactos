@@ -1274,6 +1274,8 @@ HalpRegisterKdSupportFunctions(VOID)
     /* Register PCI Device Functions */
     KdSetupPciDeviceForDebugging = HalpSetupPciDeviceForDebugging;
     KdReleasePciDeviceforDebugging = HalpReleasePciDeviceForDebugging;
+    KdGetPciDataByOffset = HalpGetPciDataByOffset;
+    KdSetPciDataByOffset = HalpSetPciDataByOffset;
 
     /* Register memory functions */
 #ifndef _MINIHAL_

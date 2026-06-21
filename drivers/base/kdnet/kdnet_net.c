@@ -342,16 +342,19 @@ KdNetProcessUnhandledPackets(PDEBUG_NET_DATA Adapter, ULONG PacketHandle)
 static ULONGLONG
 KdNetReadCycleCounter(VOID)
 {
-    return __rdtsc();
+    return KdNetReadTimeStampCounter();
 }
 
 static NTSTATUS
 KdNetWaitForRxPacket(PDEBUG_NET_DATA Adapter, PULONG Handle, PVOID *Packet, PULONG Length, PULONG Timeout)
 {
     ULONGLONG start = KdNetReadCycleCounter();
-    ULONGLONG cyclesPerUnit = 0;
-    ULONG perStall = 1;
+    ULONGLONG tscPerUs = KdNetGetTicksPerMicrosecond();   /* calibrated; *Timeout is in us */
+    ULONGLONG cyclesTimeout;
     NTSTATUS status;
+
+    if (tscPerUs == 0)
+        tscPerUs = 1;
 
     for (;;)
     {
@@ -362,30 +365,21 @@ KdNetWaitForRxPacket(PDEBUG_NET_DATA Adapter, PULONG Handle, PVOID *Packet, PULO
             break;
         if (*Timeout == 0xFFFFFFFF)
         {
-            KeStallExecutionProcessor(4);
+            YieldProcessor();
             continue;
         }
-        if (cyclesPerUnit == 0)
-        {
-            ULONGLONG a = KdNetReadCycleCounter();
-            ULONGLONG b;
-            KeStallExecutionProcessor(8);
-            b = (KdNetReadCycleCounter() - a) >> 3;
-            if (b > perStall)
-                perStall = (ULONG)b;
-            cyclesPerUnit = (ULONGLONG)*Timeout * b + 1;
-        }
-        if (KdNetReadCycleCounter() - start < cyclesPerUnit)
-            KeStallExecutionProcessor(4);
+        cyclesTimeout = (ULONGLONG)*Timeout * tscPerUs;
+        if (KdNetReadCycleCounter() - start < cyclesTimeout)
+            YieldProcessor();
         else
             *Timeout = 0;
     }
 
-    if (*Timeout != 0 && *Timeout != 0xFFFFFFFF && cyclesPerUnit != 0)
+    if (*Timeout != 0 && *Timeout != 0xFFFFFFFF)
     {
-        ULONGLONG elapsed = (KdNetReadCycleCounter() - start) / perStall;
-        if (elapsed < *Timeout)
-            *Timeout -= (ULONG)elapsed;
+        ULONGLONG elapsedUs = (KdNetReadCycleCounter() - start) / tscPerUs;
+        if (elapsedUs < *Timeout)
+            *Timeout -= (ULONG)elapsedUs;
         else
             *Timeout = 0;
     }
@@ -550,6 +544,8 @@ KdNetGetNodeMacAddress(PDEBUG_NET_DATA Adapter, ULONG SourceIP, ULONG NodeIP,
     ULONG handle;
     NTSTATUS status;
     ULONG retries = Retries;
+    ULONG rxSeen = 0;     /* ARP packets received (any sender) while waiting */
+    ULONG sends = 0;      /* ARP requests we transmitted */
 
     status = KdNetGetTxPacket(Adapter, &handle);
     if (!NT_SUCCESS(status))
@@ -588,6 +584,7 @@ KdNetGetNodeMacAddress(PDEBUG_NET_DATA Adapter, ULONG SourceIP, ULONG NodeIP,
         status = KdNetSendTxPacket(Adapter, handle, 0x2A);
         if (!NT_SUCCESS(status))
             break;
+        sends++;
 
         /* QEMU's e1000 defers inbound packets for ~1s after RX is enabled
          * (flush_queue_timer); poll well past that so the queued reply is seen. */
@@ -606,13 +603,15 @@ KdNetGetNodeMacAddress(PDEBUG_NET_DATA Adapter, ULONG SourceIP, ULONG NodeIP,
             {
                 if (retries)
                     break;   /* resend */
+                goto Done;   /* out of retries: report via the summary below */
             }
             if (!NT_SUCCESS(status))
-                return status;
+                goto Done;
 
             /* rxPayload points past the 14-byte ethernet header. */
             eth = (PETHERNET_PACKET)((PUCHAR)rxPayload - 14);
             KdNetSwapPacket(eth, FALSE);
+            rxSeen++;
 
             if (*(PUSHORT)&eth->Data[0] == 1 &&
                 *(PUSHORT)&eth->Data[2] == 0x0800 &&
@@ -622,6 +621,9 @@ KdNetGetNodeMacAddress(PDEBUG_NET_DATA Adapter, ULONG SourceIP, ULONG NodeIP,
                 *(PULONG)NodeAddress->Address = *(PULONG)&eth->Data[8];
                 *(PUSHORT)&NodeAddress->Address[4] = *(PUSHORT)&eth->Data[12];
                 KdNetReleaseRxPacket(Adapter, rxHandle);
+                if (FrLdrDbgPrint)
+                    FrLdrDbgPrint("kdnet: ARP who-has 0x%08lx resolved after %lu send(s), rxSeen=%lu\n",
+                                  NodeIP, sends, rxSeen);
                 return STATUS_SUCCESS;
             }
             KdNetReleaseRxPacket(Adapter, rxHandle);
@@ -633,6 +635,10 @@ KdNetGetNodeMacAddress(PDEBUG_NET_DATA Adapter, ULONG SourceIP, ULONG NodeIP,
             break;
     }
 
+Done:
+    if (FrLdrDbgPrint)
+        FrLdrDbgPrint("kdnet: ARP who-has 0x%08lx FAILED status=0x%08lx sends=%lu rxSeen=%lu\n",
+                      NodeIP, status, sends, rxSeen);
     return status;
 }
 
@@ -934,7 +940,7 @@ KdNetGetTargetIPAddress(PDEBUG_NET_DATA Adapter)
 
 Retry:
     ++attempt;
-    st->DhcpTransactionID = (ULONG)(__rdtsc() >> 4);
+    st->DhcpTransactionID = (ULONG)(KdNetReadTimeStampCounter() >> 4);
     st->DhcpSeconds = 0;
     st->DhcpServer = 0;
 
