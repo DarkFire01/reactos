@@ -308,7 +308,12 @@ KdNetHandleArp(PDEBUG_NET_DATA Adapter, PETHERNET_PACKET Packet)
         reply->Header.EtherType = ETHERTYPE_ARP;
 
         *(PUSHORT)&reply->Data[0] = 1;          /* hw type ethernet */
-        *(PULONG)&reply->Data[2] = 0x04060008;  /* proto IPv4, hwlen 6, protolen 4 */
+        /* Host order (KdNetSwapPacket byte-swaps the 16-bit fields on TX):
+         * proto type host 0x0800 -> wire 0x0800; hwlen 6, protolen 4 are bytes.
+         * NB: do NOT use 0x04060008 here -- that puts host 0x0008 at Data[2],
+         * which swaps to wire 0x0008 and is silently dropped by real ARP stacks
+         * (Linux/Windows require ar_pro == 0x0800); only QEMU's SLIRP tolerates it. */
+        *(PULONG)&reply->Data[2] = 0x04060800;  /* proto IPv4, hwlen 6, protolen 4 */
         *(PUSHORT)&reply->Data[6] = 2;          /* opcode = reply */
         *(PULONG)&reply->Data[8] = *(PULONG)Adapter->TargetMac.Address;
         *(PUSHORT)&reply->Data[12] = *(PUSHORT)&Adapter->TargetMac.Address[4];
@@ -573,7 +578,12 @@ KdNetGetNodeMacAddress(PDEBUG_NET_DATA Adapter, ULONG SourceIP, ULONG NodeIP,
 
         /* ARP request. */
         *(PUSHORT)&d[0] = 1;             /* hardware type ethernet */
-        *(PULONG)&d[2] = 0x04060008;     /* proto IPv4, hwlen 6, protolen 4 */
+        /* Host order (KdNetSwapPacket byte-swaps the 16-bit fields on TX):
+         * proto type host 0x0800 -> wire 0x0800; hwlen 6, protolen 4 are bytes.
+         * NB: do NOT use 0x04060008 here -- that puts host 0x0008 at d[2], which
+         * swaps to wire 0x0008 and is silently dropped by real ARP stacks
+         * (Linux/Windows require ar_pro == 0x0800); only QEMU's SLIRP tolerates it. */
+        *(PULONG)&d[2] = 0x04060800;     /* proto IPv4, hwlen 6, protolen 4 */
         *(PUSHORT)&d[6] = 1;             /* opcode = request */
         *(PULONG)&d[8] = *(PULONG)Adapter->TargetMac.Address;
         *(PUSHORT)&d[12] = *(PUSHORT)&Adapter->TargetMac.Address[4];
