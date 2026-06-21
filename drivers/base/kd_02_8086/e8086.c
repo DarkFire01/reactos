@@ -12,14 +12,6 @@
  * the better decision is to port the intel UNDI, which as a compatible license
  * and wrapping EDK2 types is easy for us. But for now, Small PRs!
  */
-#undef READ_REGISTER_ULONG
-#undef WRITE_REGISTER_ULONG
-#undef KeStallExecutionProcessor
-
-#if defined(_MSC_VER)
-unsigned char __inbyte(unsigned short Port);
-#pragma intrinsic(__inbyte)
-#endif
 
 /* ---- e1000 register offsets (BAR0) ---- */
 #define E1000_CTRL    0x0000
@@ -79,7 +71,10 @@ unsigned char __inbyte(unsigned short Port);
 #define E1000_CTRL_FRCDPLX  0x00001000   /* force duplex */
 #define E1000_CTRL_RST      0x04000000
 /* STATUS bits */
+#define E1000_STATUS_FD 0x00000001   /* full duplex */
 #define E1000_STATUS_LU 0x00000002
+#define E1000_STATUS_SPEED_SHIFT 6   /* bits 7:6 -> 0=10,1=100,2/3=1000 Mbps */
+#define E1000_STATUS_SPEED_MASK  0x3
 /* RCTL bits */
 #define E1000_RCTL_EN    0x00000002
 #define E1000_RCTL_UPE   0x00000008   /* unicast promiscuous */
@@ -217,10 +212,10 @@ VOID E1kWrite(PE1000_ADAPTER a, ULONG off, ULONG val)
 static VOID E1kDelayMicroseconds(ULONG Microseconds)
 {
     ULONG transitions = (Microseconds / 15) + 1;
-    UCHAR prev = (UCHAR)(__inbyte(0x61) & 0x10);
+    UCHAR prev = (UCHAR)(READ_PORT_UCHAR((PUCHAR)0x61) & 0x10);
     while (transitions)
     {
-        UCHAR cur = (UCHAR)(__inbyte(0x61) & 0x10);
+        UCHAR cur = (UCHAR)(READ_PORT_UCHAR((PUCHAR)0x61) & 0x10);
         if (cur != prev)
         {
             prev = cur;
@@ -382,8 +377,8 @@ E1kPhys(PE1000_ADAPTER a, PVOID Va)
 }
 
 #define E1kDbg(a, ...) \
-    do { if ((a)->Shared && KdNetExtensibilityImports && KdNetExtensibilityImports->KdNetDbgPrintf) \
-            KdNetExtensibilityImports->KdNetDbgPrintf(__VA_ARGS__); } while (0)
+    do { if ((a)->Shared && KdNetExtensibilityImports && KdNetDbgPrintf) \
+            KdNetDbgPrintf(__VA_ARGS__); } while (0)
 
 NTSTATUS
 NTAPI
@@ -393,8 +388,8 @@ E1000InitializeController(PKDNET_SHARED_DATA KdNet)
     PUCHAR base;
     ULONG off, i, status;
 
-    if (KdNetExtensibilityImports && KdNetExtensibilityImports->KdNetDbgPrintf)
-        KdNetExtensibilityImports->KdNetDbgPrintf(
+    if (KdNetExtensibilityImports && KdNetDbgPrintf)
+        KdNetDbgPrintf(
             "e1000: enter KdNet=%p Hw=%p Dev=%p\n",
             KdNet, KdNet ? KdNet->Hardware : NULL, KdNet ? KdNet->Device : NULL);
 
@@ -403,8 +398,8 @@ E1000InitializeController(PKDNET_SHARED_DATA KdNet)
     if (!KdNet->Device->BaseAddress[0].Valid)
         return STATUS_INVALID_PARAMETER;
 
-    if (KdNetExtensibilityImports && KdNetExtensibilityImports->KdNetDbgPrintf)
-        KdNetExtensibilityImports->KdNetDbgPrintf(
+    if (KdNetExtensibilityImports && KdNetDbgPrintf)
+        KdNetDbgPrintf(
             "e1000: BAR0 valid=%u type=%u xlat=%p\n",
             (ULONG)KdNet->Device->BaseAddress[0].Valid,
             (ULONG)KdNet->Device->BaseAddress[0].Type,
@@ -468,13 +463,14 @@ E1000InitializeController(PKDNET_SHARED_DATA KdNet)
     E1kWrite(a, E1000_IMC, 0xFFFFFFFF);
     (void)E1kRead(a, E1000_ICR);
 
-    /* Bring the link up; disable flow control. */
-    /* Force 1000/full-duplex and set the link up. QEMU brings the link up from
-     * just SLU|ASDE, but VirtualBox is happier with a forced speed/duplex
-     * (no auto-negotiation), which makes it assert the link deterministically. */
-    E1kWrite(a, E1000_CTRL,
-             E1000_CTRL_SLU | E1000_CTRL_FD | E1000_CTRL_SPEED_1000 |
-             E1000_CTRL_FRCSPD | E1000_CTRL_FRCDPLX);
+    /* Bring the link up via auto-negotiation; disable flow control.
+     * Do NOT force speed/duplex: 1000BASE-T copper MANDATES auto-negotiation and
+     * cannot be force-selected, so SPEED_1000|FRCSPD|FRCDPLX is invalid on real
+     * hardware -- the PHY never links, STATUS.LU stays clear, and a real MAC won't
+     * complete a transmit with no link (observed as ARP "sends=0"). Set SLU + ASDE
+     * so the MAC adopts whatever speed/duplex the PHY negotiates. Emulators
+     * (QEMU/VBox) honor SLU+ASDE as well, so this path is universal. */
+    E1kWrite(a, E1000_CTRL, E1000_CTRL_SLU | E1000_CTRL_ASDE);
     E1kWrite(a, E1000_FCAL, 0);
     E1kWrite(a, E1000_FCAH, 0);
     E1kWrite(a, E1000_FCT, 0);
@@ -641,27 +637,30 @@ E1000InitializeController(PKDNET_SHARED_DATA KdNet)
     }
 
     /*
-     * Wait for the link to come up.
+     * Wait for the MAC link (STATUS.LU) to come up.
+     *
+     * Poll STATUS.LU specifically -- do NOT accept the PHY link bit as a
+     * substitute. VirtualBox's e1000 asserts the PHY link almost immediately but
+     * defers the MAC's STATUS.LU behind a timer (~5s) and holds TX until then;
+     * trusting the PHY bit makes this loop exit early, so the first transmit
+     * finds no MAC link and the TX descriptor DD bit is never set (seen upstream
+     * as ARP "sends=0"). On real silicon STATUS.LU follows the PHY within a
+     * millisecond, so waiting on it costs nothing there. Timeout generously to
+     * cover VirtualBox's link-up delay.
      */
     ULONG ms = 0;
     BOOLEAN linkUp;
     status = E1kRead(a, E1000_STATUS);
     linkUp = (status & E1000_STATUS_LU) != 0;
-    while (ms < 8000 && !linkUp)
+    while (ms < 10000 && !linkUp)
     {
         E1kDelayMicroseconds(1000);   /* 1ms real time (PIT) */
         status = E1kRead(a, E1000_STATUS);
         linkUp = (status & E1000_STATUS_LU) != 0;
-        /* On real hardware the PHY may report link slightly before the MAC
-         * reflects it in STATUS.LU; accept either */
-        if (!linkUp && (ms & 0x3F) == 0)
-        {
-            USHORT phySts = E1kPhyRead(a, MII_PHY_STATUS);
-            if (phySts != 0xFFFF && (phySts & MII_SR_LINK_STATUS))
-                linkUp = TRUE;
-        }
         ms++;
     }
+    E1kDbg(a, "e1000: link wait %lums LU=%u STATUS=0x%lx\n",
+           ms, (ULONG)(linkUp ? 1 : 0), status);
     /* Ensure at least ~1.3s elapsed for QEMU's flush_queue_timer even if the
      * link came up sooner. */
     for (; ms < 1300; ms++)
@@ -669,8 +668,12 @@ E1000InitializeController(PKDNET_SHARED_DATA KdNet)
 
     if (KdNet->LinkState)
         *KdNet->LinkState = (UCHAR)(linkUp ? 1 : 0);
-    KdNet->LinkSpeed = 1000;
-    KdNet->LinkDuplex = 1;
+    {
+        /* Report the negotiated speed/duplex (ASDE made the MAC adopt them). */
+        ULONG spd = (status >> E1000_STATUS_SPEED_SHIFT) & E1000_STATUS_SPEED_MASK;
+        KdNet->LinkSpeed  = (spd == 0) ? 10 : (spd == 1) ? 100 : 1000;
+        KdNet->LinkDuplex = (status & E1000_STATUS_FD) ? 1 : 0;
+    }
 
     E1kDbg(a, "e1000: init done STATUS=0x%lx LinkUp=%u\n", status, (ULONG)(linkUp ? 1 : 0));
 
