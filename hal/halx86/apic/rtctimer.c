@@ -21,7 +21,9 @@
 
 static const UCHAR RtcMinimumClockRate = 6;  /* Minimum rate  6: 1024 Hz / 0.97 ms */
 static const UCHAR RtcMaximumClockRate = 10; /* Maximum rate 10: 64 Hz / 15.6 ms */
-static UCHAR HalpCurrentClockRate = 6;   /* Initial rate   6: 1024 Hz / 0.977 ms.
+static UCHAR HalpCurrentClockRate = 6;   /* rate 6: 1024 Hz / 0.977 ms. (Confirmed the
+    clock rate is NOT the cause of flaky SMP boot -- 64Hz fails the same way -- so kept
+    at 1024Hz for the fine Sleep resolution.)
     NOTE: rate 5 (2048Hz) gives slightly finer Sleep (~1.45ms vs ~1.93ms) but
     REPRODUCIBLY blows up thread create+join to ~16ms (vs 59us at 1024Hz) -- the
     2x clock-IPI/interrupt load starves the thread-reaper/scheduling round-trips.
@@ -38,6 +40,7 @@ static ULONG HalpCurrentFractionalIncrement;
 static ULONG HalpRunningFraction;
 static BOOLEAN HalpSetClockRate;
 static UCHAR HalpNextClockRate;
+static ULONG HalpClockIpiAccumulator;   /* paces the AP clock-IPI to the logical tick */
 
 /*!
     \brief Converts the CMOS RTC rate into the time increment in 0.1ns intervals.
@@ -201,8 +204,20 @@ HalpClockInterruptHandler(IN PKTRAP_FRAME TrapFrame)
         HalpSetClockRate = FALSE;
     }
 
-    /* Send the clock IPI to all other CPUs */
-    HalpBroadcastClockIpi(CLOCK_IPI_VECTOR);
+    /* Send the clock IPI to the other CPUs only at the LOGICAL tick rate, not on
+     * every fine-grained 1024Hz interrupt. The APs run KeUpdateRunTime per IPI
+     * (quantum + per-tick CPU-time accounting); broadcasting at the full 1024Hz
+     * decremented AP quanta ~16x too fast (inconsistent with CPU0, which only does
+     * KeUpdateRunTime once per accumulated full tick) AND flooded the IPI path,
+     * which intermittently crashed boot once the APs were up. Accumulate the
+     * per-interrupt increment and broadcast once per HalpMaximumTimeIncrement so
+     * APs tick at the same ~64Hz logical rate as CPU0. */
+    HalpClockIpiAccumulator += LastIncrement;
+    if (HalpClockIpiAccumulator >= HalpMaximumTimeIncrement)
+    {
+        HalpClockIpiAccumulator -= HalpMaximumTimeIncrement;
+        HalpBroadcastClockIpi(CLOCK_IPI_VECTOR);
+    }
 
     /* Update the system time -- on x86 the kernel will exit this trap  */
     KeUpdateSystemTime(TrapFrame, LastIncrement, Irql);

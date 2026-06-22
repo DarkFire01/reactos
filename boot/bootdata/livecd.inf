@@ -27,6 +27,14 @@ HKLM,"SYSTEM\CurrentControlSet\Services\Cdrom","Start",0x00010001,0x00000000
 ; KDB. Off for the automated benchmark image.
 HKLM,"SYSTEM\CurrentControlSet\Services\i8042prt\Parameters","CrashOnCtrlScroll",0x00010001,0x00000000
 
+; Disable the i8042 (PS/2) driver entirely (Start = SERVICE_DISABLED = 4). This q35
+; board has an i8042 controller with NO PS/2 keyboard/mouse attached (input is via
+; USB-HID), so the controller emits spurious interrupts/scancodes that intermittently
+; crash i8042prt during init (e.g. ASSERT ControlPort!=NULL in i8042ReadStatus, or the
+; SYSRQ break) -- a major source of flaky SMP boot. The USB keyboard is unaffected.
+HKLM,"SYSTEM\CurrentControlSet\Services\i8042prt","Start",0x00010001,0x00000004
+HKLM,"SYSTEM\CurrentControlSet\Services\i8042prt","DependOnService",0x00010000,""
+
 ; Reset BootExecute to an empty value: AutoChk should not start in MiniNT mode
 HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager","BootExecute",0x00010000,""
 

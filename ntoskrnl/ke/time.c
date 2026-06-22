@@ -82,16 +82,21 @@ KeUpdateSystemTime(IN PKTRAP_FRAME TrapFrame,
     /* Update the tick offset */
     OldTickOffset = InterlockedExchangeAdd(&KiTickOffset, -(LONG)Increment);
 
-    /* If the debugger is enabled, check for break-in request */
-    if (KdDebuggerEnabled && KdPollBreakIn())
-    {
-        /* Break-in requested! */
-        DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
-    }
-
     /* Check for full tick */
     if (OldTickOffset <= (LONG)Increment)
     {
+        /* If the debugger is enabled, check for break-in request. This is done
+         * only once per logical tick (~64Hz), NOT on every fine-grained clock
+         * interrupt: at 1024Hz, polling the debug port 16x more often
+         * intermittently misreads a spurious break-in over the serial line and
+         * drops to KDB ("embedded INT3" via DbgBreakPointWithStatus), which was
+         * the most common SMP-boot crash after the timer rate was raised. */
+        if (KdDebuggerEnabled && KdPollBreakIn())
+        {
+            /* Break-in requested! */
+            DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
+        }
+
         /* Update the system time */
         CurrentTime.QuadPart = *(ULONGLONG*)&SharedUserData->SystemTime;
         CurrentTime.QuadPart += KeTimeAdjustment;

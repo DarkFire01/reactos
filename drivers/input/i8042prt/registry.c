@@ -6,7 +6,7 @@
  * PROGRAMMERS: Copyright Victor Kirhenshtein (sauros@iname.com)
                 Copyright Jason Filby (jasonfilby@yahoo.com)
                 Copyright Martijn Vernooij (o112w8r02@sneakemail.com)
-                Copyright 2006-2007 Hervé Poussineau (hpoussin@reactos.org)
+                Copyright 2006-2007 Hervï¿½ Poussineau (hpoussin@reactos.org)
  */
 
 /* INCLUDES ******************************************************************/
@@ -41,14 +41,13 @@ ReadRegistryEntries(
 	ULONG DefaultSampleRate = 60;
 	ULONG DefaultCrashOnCtrlScroll;
 
-	/* Default value for CrashOnCtrlScroll depends if we're
-	 * running a debug build or a normal build.
-	 */
-#if DBG
-	DefaultCrashOnCtrlScroll = 1;
-#else
+	/* Default value for CrashOnCtrlScroll. Normally ON in debug builds, but on
+	 * this branch the q35 board has an i8042 controller with no PS/2 keyboard
+	 * attached (we use USB), so it feeds spurious scancodes that intermittently
+	 * match the TAB+k / Ctrl+ScrollLock debug-break sequence and drop an
+	 * unattended boot into KDB. Default it OFF so a stray byte can't crash boot;
+	 * the registry value (livecd.inf) can still override. */
 	DefaultCrashOnCtrlScroll = 0;
-#endif
 
 	RtlZeroMemory(Parameters, sizeof(Parameters));
 
