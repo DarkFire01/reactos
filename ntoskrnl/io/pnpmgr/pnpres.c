@@ -275,6 +275,69 @@ IopFindInterruptResource(
     return FALSE;
 }
 
+static
+VOID
+IopDropStaleLineInterrupts(
+    IN PCM_RESOURCE_LIST ResourceList)
+{
+    PCM_PARTIAL_RESOURCE_LIST PartialList;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Desc;
+    ULONG i;
+    BOOLEAN HasMessageInterrupt = FALSE;
+
+    if (!ResourceList || ResourceList->Count == 0)
+        return;
+
+    PartialList = &ResourceList->List[0].PartialResourceList;
+
+    /*
+     * Compaction below assumes fixed-size partial descriptors. A variable-length
+     * CmResourceTypeDeviceSpecific descriptor would break the shift, so bail out
+     * if one is present (it never is for a PCI interrupt assignment).
+     */
+    for (i = 0; i < PartialList->Count; i++)
+    {
+        Desc = &PartialList->PartialDescriptors[i];
+        if (Desc->Type == CmResourceTypeDeviceSpecific)
+            return;
+        if (Desc->Type == CmResourceTypeInterrupt &&
+            (Desc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE))
+        {
+            HasMessageInterrupt = TRUE;
+        }
+    }
+
+    if (!HasMessageInterrupt)
+        return;
+
+    /*
+     * The device was assigned an MSI/MSI-X interrupt. Any legacy line-based
+     * interrupt that survived from the boot configuration is stale: it was only
+     * the IO_RESOURCE_ALTERNATIVE fallback for the preferred MSI requirement,
+     * which we skipped once the MSI was satisfied. MSI and INTx are mutually
+     * exclusive on a PCI function, so leaving it in would make the device claim
+     * both a message-signalled vector and an INTx line. Drop the line interrupt.
+     */
+    for (i = 0; i < PartialList->Count; )
+    {
+        Desc = &PartialList->PartialDescriptors[i];
+        if (Desc->Type == CmResourceTypeInterrupt &&
+            !(Desc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE))
+        {
+            ULONG Remaining = PartialList->Count - i - 1;
+            if (Remaining)
+            {
+                RtlMoveMemory(Desc, Desc + 1,
+                              Remaining * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR));
+            }
+            PartialList->Count--;
+            DPRINT1("Dropped stale legacy INTx interrupt (MSI/MSI-X assigned)\n");
+            continue;
+        }
+        i++;
+    }
+}
+
 NTSTATUS NTAPI
 IopFixupResourceListWithRequirements(
     IN PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList,
@@ -595,6 +658,9 @@ IopFixupResourceListWithRequirements(
             /* Try the next alternate list */
             continue;
         }
+
+        /* Drop any stale boot INTx left over once the preferred MSI was assigned */
+        IopDropStaleLineInterrupts(*ResourceList);
 
         /* We're done because we satisfied one of the alternate lists */
         return STATUS_SUCCESS;
