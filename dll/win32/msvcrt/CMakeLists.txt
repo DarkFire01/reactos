@@ -126,6 +126,7 @@ list(APPEND MSVCRT_SOURCE
     ${SHARED_SOURCE}
     ${msvcrt_shared_asm}
     reactos/misc.c
+    reactos/mingw_compat.c
     reactos/system.cpp
     concurrency.c
     console.c

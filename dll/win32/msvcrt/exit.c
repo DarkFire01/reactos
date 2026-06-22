@@ -322,6 +322,18 @@ void DECLSPEC_NORETURN CDECL _assert(const char* str, const char* file, unsigned
 }
 
 /*********************************************************************
+ *		__msvcrt_assert (MSVCRT.@)
+ *
+ * A modern mingw-w64 libstdc++/libmingwex calls __msvcrt_assert (imported from
+ * msvcrt.dll) from its assert() path. Real msvcrt exports it; ReactOS only
+ * shipped _assert, so forward to it here.
+ */
+void DECLSPEC_NORETURN CDECL __msvcrt_assert(const char* str, const char* file, unsigned int line)
+{
+    _assert(str, file, line);
+}
+
+/*********************************************************************
  *		_c_exit (MSVCRT.@)
  */
 void CDECL _c_exit(void)

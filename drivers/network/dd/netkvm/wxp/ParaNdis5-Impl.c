@@ -368,7 +368,7 @@ VOID ParaNdis_FinalizeCleanup(PARANDIS_ADAPTER *pContext)
 }
 
 
-static FORCEINLINE ULONG MaxNdisBufferDataSize(PARANDIS_ADAPTER *pContext, pIONetDescriptor pBufferDesc)
+static __inline ULONG MaxNdisBufferDataSize(PARANDIS_ADAPTER *pContext, pIONetDescriptor pBufferDesc)
 {
     ULONG size  = pBufferDesc->DataInfo.size;
     if (pContext->bUseMergedBuffers) size -= pContext->nVirtioHeaderSize;
@@ -576,7 +576,7 @@ VOID ParaNdis_IndicateReceivedBatch(
         nofPackets);
 }
 
-static FORCEINLINE void GET_NUMBER_OF_SG_ELEMENTS(PNDIS_PACKET Packet, UINT *pNum)
+static __inline void GET_NUMBER_OF_SG_ELEMENTS(PNDIS_PACKET Packet, UINT *pNum)
 {
     PSCATTER_GATHER_LIST pSGList;
     pSGList = NDIS_PER_PACKET_INFO_FROM_PACKET(Packet, ScatterGatherListPacketInfo);
@@ -703,7 +703,7 @@ VOID ParaNdis_OnTransmitBufferReleased(PARANDIS_ADAPTER *pContext, IONetDescript
 }
 
 
-static FORCEINLINE ULONG CalculateTotalOffloadSize(
+static __inline ULONG CalculateTotalOffloadSize(
     ULONG packetSize,
     ULONG mss,
     ULONG ipheaderOffset,

@@ -61,7 +61,7 @@ PciGetMsiCapabilityInfo(
 #define DBGPRINT(...)
 #endif
 
-static __forceinline NTSTATUS
+static __inline NTSTATUS
 PciGetIosbStatus(_In_ const IO_STATUS_BLOCK* IoStatusBlock)
 {
     NTSTATUS Status;
@@ -69,7 +69,7 @@ PciGetIosbStatus(_In_ const IO_STATUS_BLOCK* IoStatusBlock)
     return Status;
 }
 
-static __forceinline VOID
+static __inline VOID
 PciSetIosbStatus(_Out_ IO_STATUS_BLOCK* IoStatusBlock, _In_ NTSTATUS Status)
 {
     RtlCopyMemory(IoStatusBlock, &Status, sizeof(Status));

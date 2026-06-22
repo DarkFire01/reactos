@@ -357,16 +357,14 @@ UacpiEnsureWorkInit(VOID)
     }
 }
 
-static
-__forceinline
+static __inline
 ULONG_PTR
 UacpiAlignDown(ULONG_PTR Value, ULONG_PTR Align)
 {
     return Value & ~(Align - 1);
 }
 
-static
-__forceinline
+static __inline
 ULONG_PTR
 UacpiAlignUp(ULONG_PTR Value, ULONG_PTR Align)
 {

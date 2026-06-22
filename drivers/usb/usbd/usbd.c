@@ -721,8 +721,7 @@ static LIST_ENTRY UsbdGlobalDeviceListHead;
 static KSPIN_LOCK UsbdGlobalDeviceListLock;
 static LONG UsbdGlobalDeviceListInitialized = 0;
 
-static
-FORCEINLINE
+static __inline
 VOID
 UsbdInitializeGlobalDeviceListIfNeeded(VOID)
 {

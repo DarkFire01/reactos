@@ -545,7 +545,7 @@ static NDIS_STATUS ParseOffloadTask(
     return status;
 }
 
-static FORCEINLINE BOOLEAN ValidateOffloadHeader(NDIS_TASK_OFFLOAD_HEADER *pth)
+static __inline BOOLEAN ValidateOffloadHeader(NDIS_TASK_OFFLOAD_HEADER *pth)
 {
     return
         pth->EncapsulationFormat.Encapsulation == IEEE_802_3_Encapsulation &&

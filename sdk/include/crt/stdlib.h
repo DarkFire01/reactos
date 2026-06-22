@@ -256,6 +256,15 @@ extern "C" {
 #endif
   int __cdecl atexit(void (__cdecl *)(void));
 
+#ifndef _CRT_QUICK_EXIT_DEFINED
+#define _CRT_QUICK_EXIT_DEFINED
+  /* C11 quick_exit / at_quick_exit. Declared so that a modern libstdc++
+     <cstdlib> (GCC >= ~5 with _GLIBCXX_HAVE_AT_QUICK_EXIT) can do
+     'using ::quick_exit;' / 'using ::at_quick_exit;' against ReactOS headers. */
+  __declspec(noreturn) void __cdecl quick_exit(int _Code);
+  int __cdecl at_quick_exit(void (__cdecl *)(void));
+#endif
+
 #ifndef _CRT_ATOF_DEFINED
 #define _CRT_ATOF_DEFINED
 

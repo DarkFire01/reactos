@@ -182,6 +182,29 @@ MmDeleteTeb(IN PEPROCESS Process,
     KeDetachProcess();
 }
 
+#ifndef _M_AMD64
+//
+// On amd64 the kernel stack PTEs come from a dedicated stack-PTE allocator
+// (see mm/amd64/kstack.c). Other architectures reserve them from the regular
+// system PTE space, so provide thin wrappers exposing the same interface that
+// the shared code below uses.
+//
+static PMMPTE
+MiReserveKernelStackPtes(
+    _In_ ULONG NumberOfPtes)
+{
+    return MiReserveSystemPtes(NumberOfPtes, SystemPteSpace);
+}
+
+static VOID
+MiReleaseKernelStackPtes(
+    _In_ PMMPTE FirstPte,
+    _In_ ULONG NumberOfPtes)
+{
+    MiReleaseSystemPtes(FirstPte, NumberOfPtes, SystemPteSpace);
+}
+#endif /* !_M_AMD64 */
+
 VOID
 NTAPI
 MmDeleteKernelStack(IN PVOID StackBase,

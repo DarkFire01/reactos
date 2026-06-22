@@ -127,7 +127,7 @@
 
 //---------- IN-LINE FUNCTIONS
 //---------- INLINE KeyWord				// Define FF_INLINE as your compiler's inline keyword. This is placed before the type qualifier.
-#define FF_INLINE static __forceinline	// Keywords to inline functions (Windows)
+#define FF_INLINE static __inline	// Keywords to inline functions (Windows)
 //#define FF_INLINE static inline		// Standard for GCC
 
 //---------- Inline Memory Independence Routines for better performance, but bigger codesize.

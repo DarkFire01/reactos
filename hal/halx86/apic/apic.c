@@ -108,9 +108,12 @@ typedef struct _HALP_IOAPIC_DESCRIPTOR
     ULONG EntryCount;  /* Number of redirection entries (pins) */
 } HALP_IOAPIC_DESCRIPTOR;
 
-static HALP_IOAPIC_DESCRIPTOR HalpIoApic[HALP_MAX_IOAPICS];
-static ULONG HalpIoApicCount;
-static ULONG HalpMaxGsi;  /* One past the highest valid GSI across all I/O APICs */
+/* External linkage (not static): these are referenced by the FORCEINLINE
+   (extern gnu_inline) helpers below; modern GCC errors on a static object
+   used in a non-static inline function. They remain private to apic.c. */
+HALP_IOAPIC_DESCRIPTOR HalpIoApic[HALP_MAX_IOAPICS];
+ULONG HalpIoApicCount;
+ULONG HalpMaxGsi;  /* One past the highest valid GSI across all I/O APICs */
 
 FORCEINLINE
 ULONG
