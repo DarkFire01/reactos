@@ -128,7 +128,7 @@ HalpParseApicTables(
                 if (AcpiHeader->Length != sizeof(*LocalApic))
                 {
                     DPRINT01("Type/Length mismatch: %p, %u\n", AcpiHeader, AcpiHeader->Length);
-                    return;
+                    break;
                 }
 
                 DPRINT00(" Local Apic, Processor %lu: ProcessorId %u, Id %u, LapicFlags %08X\n",
@@ -164,7 +164,7 @@ HalpParseApicTables(
                 if (AcpiHeader->Length != sizeof(*IoApic))
                 {
                     DPRINT01("Type/Length mismatch: %p, %u\n", AcpiHeader, AcpiHeader->Length);
-                    return;
+                    break;
                 }
 
                 DPRINT00(" Io Apic: Id %u, Address %08X, GlobalIrqBase %08X\n",
@@ -173,8 +173,9 @@ HalpParseApicTables(
                 // Ensure HalpApicInfoTable.IOAPICCount consistency.
                 if (HalpApicInfoTable.IoApicPA[IoApic->Id] != 0)
                 {
+                    /* Skip the duplicate but keep parsing the rest of the MADT */
                     DPRINT01("Id duplication: %p, %u\n", IoApic, IoApic->Id);
-                    return;
+                    break;
                 }
 
                 // Note: Address and GlobalIrqBase are not validated in any way (yet).
@@ -193,7 +194,7 @@ HalpParseApicTables(
                 if (AcpiHeader->Length != sizeof(*InterruptOverride))
                 {
                     DPRINT01("Type/Length mismatch: %p, %u\n", AcpiHeader, AcpiHeader->Length);
-                    return;
+                    break;
                 }
 
                 DPRINT00(" Interrupt Override: Bus %u, SourceIrq %u, GlobalIrq %08X, IntiFlags %04X / UNIMPLEMENTED\n",
@@ -203,7 +204,7 @@ HalpParseApicTables(
                 if (InterruptOverride->Bus != 0) // 0 = ISA
                 {
                     DPRINT01("Invalid Bus: %p, %u\n", InterruptOverride, InterruptOverride->Bus);
-                    return;
+                    break;
                 }
 
 #if 1
@@ -225,9 +226,13 @@ HalpParseApicTables(
             }
             default:
             {
+                /* Skip subtable types we don't handle and keep going - aborting
+                 * the whole parse here would drop later entries (e.g. I/O APICs
+                 * that follow an unhandled entry), which breaks interrupt
+                 * routing on firmware that emits such entries early. */
                 DPRINT01(" UNIMPLEMENTED: Type %u, Length %u\n",
                          AcpiHeader->Type, AcpiHeader->Length);
-                return;
+                break;
             }
         }
 
