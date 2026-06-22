@@ -16,4 +16,4 @@ set_subsystem(kd_02_8086 native)
 add_importlibs(kd_02_8086 ntoskrnl hal)
 
 add_dependencies(kd_02_8086 psdk bugcodes)
-add_cd_file(TARGET kd_02_8086 DESTINATION reactos/system32 NO_CAB FOR all)
+#add_cd_file(TARGET kd_02_8086 DESTINATION reactos/system32 NO_CAB FOR all)
