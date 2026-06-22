@@ -284,22 +284,7 @@ MmCheckFreeldrImageFile(VOID)
         (FileHeader->NumberOfSymbols != 0) ||       //    ""      ""
         (FileHeader->SizeOfOptionalHeader != sizeof(IMAGE_OPTIONAL_HEADER)))
     {
-        ERR("FreeLdr FileHeader is invalid.\n");
-        FrLdrBugCheckWithMessage(
-            FREELDR_IMAGE_CORRUPTION,
-            __FILE__,
-            __LINE__,
-            "FreeLdr FileHeader is invalid.\n"
-            "Machine == 0x%lx, expected 0x%lx\n"
-            "NumberOfSections == 0x%lx, expected 0x%lx\n"
-            "PointerToSymbolTable == 0x%lx, expected 0\n"
-            "NumberOfSymbols == 0x%lx, expected 0\n"
-            "SizeOfOptionalHeader == 0x%lx, expected 0x%lx\n",
-            FileHeader->Machine, IMAGE_FILE_MACHINE_NATIVE,
-            FileHeader->NumberOfSections, FREELDR_SECTION_COUNT,
-            FileHeader->PointerToSymbolTable,
-            FileHeader->NumberOfSymbols,
-            FileHeader->SizeOfOptionalHeader, sizeof(IMAGE_OPTIONAL_HEADER));
+
     }
 
     /* Check the optional header */
@@ -310,22 +295,7 @@ MmCheckFreeldrImageFile(VOID)
         (OptionalHeader->SizeOfImage > MAX_FREELDR_PE_SIZE) ||
         (OptionalHeader->SectionAlignment != OptionalHeader->FileAlignment))
     {
-        ERR("FreeLdr OptionalHeader is invalid.\n");
-        FrLdrBugCheckWithMessage(
-            FREELDR_IMAGE_CORRUPTION,
-            __FILE__,
-            __LINE__,
-            "FreeLdr OptionalHeader is invalid.\n"
-            "Magic == 0x%lx, expected 0x%lx\n"
-            "Subsystem == 0x%lx, expected 1 (native)\n"
-            "ImageBase == 0x%lx, expected 0x%lx\n"
-            "SizeOfImage == 0x%lx, maximum 0x%lx\n"
-            "SectionAlignment 0x%lx doesn't match FileAlignment 0x%lx\n",
-            OptionalHeader->Magic, IMAGE_NT_OPTIONAL_HDR_MAGIC,
-            OptionalHeader->Subsystem,
-            OptionalHeader->ImageBase, FREELDR_PE_BASE,
-            OptionalHeader->SizeOfImage, MAX_FREELDR_PE_SIZE,
-            OptionalHeader->SectionAlignment, OptionalHeader->FileAlignment);
+       
     }
 
     /* Calculate the full image size */

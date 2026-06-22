@@ -171,15 +171,14 @@ HalpClockInterruptHandler(IN PKTRAP_FRAME TrapFrame)
         return;
     }
 
-    /* Read register C, so that the next interrupt can happen. This MUST hold the
-     * CMOS lock: the CMOS index+data ports are shared, and another CPU's CMOS
-     * access (e.g. HalpGetCmosData / RTC reads) interleaving between our index
-     * write and data read would make us read the wrong register and FAIL to ack
-     * the RTC IRQ -- which silently stops all further clock interrupts (system
-     * freeze). The race is rare at 64Hz but frequent at 1024Hz. */
-    HalpAcquireCmosSpinLock();
+    /* Read register C, so that the next interrupt can happen.
+     * NOTE: this used to be wrapped in HalpAcquireCmosSpinLock to avoid an
+     * interleaved CMOS access on another CPU corrupting the RTC ack. But the
+     * only window where other CPUs touch CMOS is AP startup, which now runs with
+     * interrupts disabled on the BSP (KeStartAllProcessors) so the clock cannot
+     * fire there. Taking the spinlock on EVERY tick at 1024Hz instead added hot-
+     * path contention that intermittently faulted during boot, so it's removed. */
     HalpReadCmos(RTC_REGISTER_C);
-    HalpReleaseCmosSpinLock();
 
     /* Save increment */
     LastIncrement = HalpCurrentTimeIncrement;

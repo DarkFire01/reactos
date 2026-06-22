@@ -39,6 +39,8 @@ KeStartAllProcessors(VOID)
     ULONG ProcessorCount = 0;
     PAPINFO APInfo;
     PKPROCESSOR_STATE ProcessorState;
+    ULONG_PTR EFlags;
+    ULONG WaitUs;
 
     //__debugbreak();
     //if (KeNumberProcessors <= 2) return;
@@ -133,21 +135,46 @@ KeStartAllProcessors(VOID)
         KeLoaderBlock->Process = (ULONG64)PsIdleProcess;
         KeLoaderBlock->Prcb = (ULONG64)&APInfo->Pcr.Prcb;
 
-        /* Start the next processor */
+        /* Start the next processor.
+         * Disable interrupts across the INIT-SIPI-SIPI sequence AND the wait for
+         * the AP to come up: otherwise the clock ISR (now 1024Hz, and it takes
+         * the CMOS spinlock) can fire on the BSP mid-sequence and skew the tight
+         * APIC timing, intermittently losing the AP. KeStallExecutionProcessor
+         * (used inside) is a TSC busy-wait and works fine with interrupts off. */
         DPRINT1("Attempting to start processor #%u\n", ProcessorCount);
+        EFlags = __readeflags();
+        _disable();
+
         if (!HalStartNextProcessor(KeLoaderBlock, ProcessorState))
         {
+            __writeeflags(EFlags);
             DPRINT1("Failed to start processor #%u\n", ProcessorCount);
             break;
         }
 
-        /* Wait for it to start */
+        /* Wait for it to start, with a timeout so a processor that fails to come
+         * up can NOT hang boot forever (the AP clears LoaderBlock->Prcb when up). */
+        WaitUs = 0;
         while (KeLoaderBlock->Prcb)
         {
-            //TODO: Add a time out so we don't wait forever
             KeMemoryBarrier();
-            YieldProcessor();
+            KeStallExecutionProcessor(50);
+            WaitUs += 50;
+            if (WaitUs > 3000000) /* 3 seconds */
+            {
+                DPRINT1("Processor #%u did not come up; continuing without it\n",
+                        ProcessorCount);
+                break;
+            }
         }
+
+        __writeeflags(EFlags);
+
+        /* If it never came up, stop launching further APs (the shared loader
+         * block is still claimed by the stuck one). The system boots with the
+         * processors that did start. */
+        if (KeLoaderBlock->Prcb)
+            break;
     }
 
     if (KernelStack != NULL)

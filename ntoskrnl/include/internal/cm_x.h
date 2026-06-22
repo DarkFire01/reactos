@@ -11,11 +11,14 @@ FORCEINLINE
 VOID
 CmpCaptureLockBackTraceByIndex(_In_ ULONG Index)
 {
-    /* Capture the backtrace */
-    RtlCaptureStackBackTrace(1,
-                             _countof(CmpCacheTable[Index].LockBackTrace),
-                             CmpCacheTable[Index].LockBackTrace,
-                             NULL);
+    /* DISABLED: this captured a full stack backtrace (RtlCaptureStackBackTrace ->
+     * RtlWalkFrameChain -> RtlVirtualUnwind) on EVERY config-manager KCB cache
+     * lock acquire -- which happens constantly during boot (registry access).
+     * The unwinder is not safe against the high-frequency (1024Hz) clock
+     * interrupt nesting on it, so this intermittently faulted boot (the single
+     * most common SMP-boot crash). It is a pure debug aid and a real perf drain,
+     * so the capture is removed; the field stays for ABI/struct compatibility. */
+    UNREFERENCED_PARAMETER(Index);
 }
 #endif
 

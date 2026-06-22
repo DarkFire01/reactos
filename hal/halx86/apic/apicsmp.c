@@ -111,24 +111,44 @@ ApicStartApplicationProcessor(
     _In_ ULONG NTProcessorNumber,
     _In_ PHYSICAL_ADDRESS StartupLoc)
 {
+    ULONG SipiVector = (StartupLoc.LowPart) >> 12;
+    ULONG LapicId = HalpProcessorIdentity[NTProcessorNumber].LapicId;
+
     ASSERT(StartupLoc.HighPart == 0);
     ASSERT((StartupLoc.QuadPart & 0xFFF) == 0);
     ASSERT((StartupLoc.QuadPart & 0xFFF00FFF) == 0);
 
-    /* Init IPI */
-    ApicRequestGlobalInterrupt(HalpProcessorIdentity[NTProcessorNumber].LapicId, 0,
+    /* Follow the Intel MP-init algorithm (SDM Vol.3 "MP Initialization Protocol").
+     * The previous code sent a SINGLE Startup IPI, which is unreliable: the first
+     * SIPI is frequently missed, so an AP would intermittently fail to come up
+     * (~1 boot in 3). The spec sends INIT, waits ~10ms, then sends TWO SIPIs
+     * 200us apart; the second is the backup and is ignored by an AP that already
+     * started from the first. */
+
+    /* Assert INIT IPI */
+    ApicRequestGlobalInterrupt(LapicId, 0,
         APIC_MT_INIT, APIC_TGM_Edge, APIC_DSH_Destination);
 
-    /* De-Assert Init IPI */
-    ApicRequestGlobalInterrupt(HalpProcessorIdentity[NTProcessorNumber].LapicId, 0,
+    /* De-assert INIT IPI */
+    ApicRequestGlobalInterrupt(LapicId, 0,
         APIC_MT_INIT, APIC_TGM_Level, APIC_DSH_Destination);
 
-    /* Stall execution for a bit to give APIC time: MPS Spec - B.4 */
+    /* Wait 10ms for the target to process INIT (MPS Spec B.4) */
+    KeStallExecutionProcessor(10000);
+
+    /* Startup IPI #1 */
+    ApicRequestGlobalInterrupt(LapicId, SipiVector,
+        APIC_MT_Startup, APIC_TGM_Edge, APIC_DSH_Destination);
+
+    /* Wait 200us */
     KeStallExecutionProcessor(200);
 
-    /* Startup IPI */
-    ApicRequestGlobalInterrupt(HalpProcessorIdentity[NTProcessorNumber].LapicId, (StartupLoc.LowPart) >> 12,
+    /* Startup IPI #2 (backup; ignored if the AP already started) */
+    ApicRequestGlobalInterrupt(LapicId, SipiVector,
         APIC_MT_Startup, APIC_TGM_Edge, APIC_DSH_Destination);
+
+    /* Wait 200us for the AP to begin executing the trampoline */
+    KeStallExecutionProcessor(200);
 }
 
 /* HAL IPI FUNCTIONS **********************************************************/
