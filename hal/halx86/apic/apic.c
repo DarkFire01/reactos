@@ -838,14 +838,14 @@ HalDisableSystemInterrupt(
 
     Index = HalpVectorToIndex[Vector];
 
-    /* Read lower dword of redirection entry */
-    ReDirReg.Long0 = IOApicRead(IOAPIC_REDTBL + 2 * Index);
+    /* Read the redirection entry (resolves the owning I/O APIC and pin) */
+    ReDirReg = ApicReadIORedirectionEntry(Index);
 
     /* Mask it */
     ReDirReg.Mask = 1;
 
-    /* Write back lower dword */
-    IOApicWrite(IOAPIC_REDTBL + 2 * Index, ReDirReg.Long0);
+    /* Write it back */
+    ApicWriteIORedirectionEntry(Index, ReDirReg);
 }
 
 BOOLEAN
@@ -880,7 +880,7 @@ HalBeginSystemInterrupt(
         Index = HalpVectorToIndex[Vector];
 
         /* Check if it's valid */
-        if (Index < APIC_MAX_IRQ)
+        if (Index < HalpMaxGsi)
         {
             /* Read the I/O redirection entry */
             RedirReg = ApicReadIORedirectionEntry(Index);
