@@ -21,7 +21,16 @@
 
 static const UCHAR RtcMinimumClockRate = 6;  /* Minimum rate  6: 1024 Hz / 0.97 ms */
 static const UCHAR RtcMaximumClockRate = 10; /* Maximum rate 10: 64 Hz / 15.6 ms */
-static UCHAR HalpCurrentClockRate = 10;  /* Initial rate  10: 64 Hz / 15.6 ms */
+static UCHAR HalpCurrentClockRate = 6;   /* Initial rate   6: 1024 Hz / 0.977 ms.
+    NOTE: rate 5 (2048Hz) gives slightly finer Sleep (~1.45ms vs ~1.93ms) but
+    REPRODUCIBLY blows up thread create+join to ~16ms (vs 59us at 1024Hz) -- the
+    2x clock-IPI/interrupt load starves the thread-reaper/scheduling round-trips.
+    1024Hz is the sweet spot. Original was rate 10 (64Hz / 15.6ms).
+    Raised from 10 (64Hz/15.6ms) for fine timer resolution: KiCheckForTimerExpiration
+    runs every interrupt (~1ms) so Sleep()/timed waits get ~1ms granularity. The
+    scheduling quantum is UNCHANGED: KeMaximumIncrement comes from the fixed
+    RtcMaximumClockRate (156250 = 15.6ms tick), and KeUpdateRunTime still fires once
+    per accumulated 15.6ms via the KiTickOffset accumulator. */
 static ULONG HalpCurrentTimeIncrement;
 static ULONG HalpMinimumTimeIncrement;
 static ULONG HalpMaximumTimeIncrement;
@@ -162,8 +171,15 @@ HalpClockInterruptHandler(IN PKTRAP_FRAME TrapFrame)
         return;
     }
 
-    /* Read register C, so that the next interrupt can happen */
+    /* Read register C, so that the next interrupt can happen. This MUST hold the
+     * CMOS lock: the CMOS index+data ports are shared, and another CPU's CMOS
+     * access (e.g. HalpGetCmosData / RTC reads) interleaving between our index
+     * write and data read would make us read the wrong register and FAIL to ack
+     * the RTC IRQ -- which silently stops all further clock interrupts (system
+     * freeze). The race is rare at 64Hz but frequent at 1024Hz. */
+    HalpAcquireCmosSpinLock();
     HalpReadCmos(RTC_REGISTER_C);
+    HalpReleaseCmosSpinLock();
 
     /* Save increment */
     LastIncrement = HalpCurrentTimeIncrement;

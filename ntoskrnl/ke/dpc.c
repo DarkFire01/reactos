@@ -751,8 +751,13 @@ KeInsertQueueDpc(IN PKDPC Dpc,
         Cpu = Prcb->Number;
     }
 
-    /* ROS Sanity Check */
-    ASSERT(Prcb == CurrentPrcb);
+    /* NOTE: Prcb may legitimately differ from CurrentPrcb here: a DPC targeted at
+     * another processor via KeSetTargetProcessorDpc() encodes Dpc->Number =
+     * Target + MAXIMUM_PROCESSORS (handled above). The rest of this function
+     * queues to the target's DpcData and sends IPI_DPC to it (see below), exactly
+     * like Windows. The old `ASSERT(Prcb == CurrentPrcb)` was a too-strict ROS
+     * sanity check that bugchecked on every cross-CPU/targeted DPC (e.g. at
+     * shutdown under SMP). Removed. */
 
     /* Check if this is a threaded DPC and threaded DPCs are enabled */
     if ((Dpc->Type == ThreadedDpcObject) && (Prcb->ThreadDpcEnable))

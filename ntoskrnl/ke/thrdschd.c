@@ -116,17 +116,41 @@ ULONG
 KiSelectNextProcessor(
     _In_ PKTHREAD Thread)
 {
-    KAFFINITY PreferredSet, IdleSet;
+    KAFFINITY PreferredSet, IdleSet, FreeIdleSet;
     ULONG Processor;
 
     /* Start with the affinity */
     PreferredSet = Thread->Affinity;
 
-    /* If we have matching idle processors, use them */
+    /* If we have matching idle processors, prefer them */
     IdleSet = PreferredSet & KiIdleSummary;
     if (IdleSet != 0)
     {
-        PreferredSet = IdleSet;
+        /* An idle CPU keeps its KiIdleSummary bit set until it actually wakes
+         * and switches (KiIdleLoop). During a burst of newly-ready threads that
+         * lag means KiSelectNextProcessor would keep picking the SAME "idle" CPU
+         * (one that already has a thread queued as NextThread) and pile every
+         * thread onto its ready queue while the other cores stay idle -- capping
+         * SMP throughput at ~1 core. So narrow the idle set to CPUs that are
+         * idle AND don't already have a NextThread pending. This is a hint read
+         * without a lock (racy by nature), so we fall back to the full idle set
+         * if it would leave us with nothing. We do NOT clear KiIdleSummary here:
+         * that field also drives DPC-interrupt delivery (KeInsertQueueDpc), and
+         * mutating it from this path desynchronises DPC routing during boot. */
+        FreeIdleSet = IdleSet;
+        for (KAFFINITY s = IdleSet; s != 0; )
+        {
+            ULONG i;
+            BitScanForwardAffinity(&i, s);
+            s &= ~AFFINITY_MASK(i);
+            if (KiProcessorBlock[i]->NextThread != NULL)
+            {
+                /* Already has work queued -- not really available */
+                FreeIdleSet &= ~AFFINITY_MASK(i);
+            }
+        }
+
+        PreferredSet = (FreeIdleSet != 0) ? FreeIdleSet : IdleSet;
     }
 
     /* Check if we can use the ideal processor */
@@ -140,6 +164,90 @@ KiSelectNextProcessor(
     ASSERT(Processor < KeNumberProcessors);
 
     return Processor;
+}
+
+//
+// Work-stealing: called from the idle loop when this CPU has nothing scheduled.
+// Scans the other processors' ready queues and pulls over the highest-priority
+// thread that is allowed to run here, handing it to ourselves as NextThread.
+//
+// This is what makes N CPU-bound threads actually use N cores: ReactOS places a
+// newly-ready thread on whatever CPU was idle at *creation* time, with no later
+// rebalancing. So a parent that spawns workers while running on CPU0 leaves CPU0
+// out of the worker set, and any over-subscribed CPU's backlog never migrates to
+// a core that later goes idle. Stealing on idle fixes both.
+//
+// Safety: we take OUR OWN PRCB lock first, then TRY (non-blocking) the victim's,
+// so two CPUs stealing from each other can never deadlock. We never touch
+// KiIdleSummary (that field also drives DPC-interrupt routing -- mutating it from
+// here desynchronises DPC delivery during boot), only move threads between ready
+// queues.
+//
+PKTHREAD
+FASTCALL
+KiStealReadyThread(IN PKPRCB Prcb)
+{
+    ULONG MyNumber = Prcb->Number;
+    ULONG vi, n = (ULONG)KeNumberProcessors;
+    PKTHREAD Stolen = NULL;
+
+    /* Consistent lock order: our own PRCB lock before any victim's. */
+    KiAcquirePrcbLock(Prcb);
+
+    /* If someone already handed us a thread, nothing to steal. */
+    if (Prcb->NextThread != NULL)
+    {
+        KiReleasePrcbLock(Prcb);
+        return Prcb->NextThread;
+    }
+
+    for (vi = 0; vi < n; vi++)
+    {
+        PKPRCB Victim;
+        LONG HighPriority;
+        PLIST_ENTRY ListHead, Entry;
+        PKTHREAD Thread;
+
+        if (vi == MyNumber) continue;
+        Victim = KiProcessorBlock[vi];
+
+        /* Cheap unlocked peek -- nothing ready there, skip. */
+        if (Victim->ReadySummary == 0) continue;
+
+        /* Try the victim's lock without blocking (deadlock-free). */
+        if (InterlockedCompareExchange((PLONG)&Victim->PrcbLock, 1, 0) != 0)
+            continue;
+
+        if (Victim->ReadySummary != 0)
+        {
+            /* Walk the highest-priority ready list for a thread we may run. */
+            BitScanReverse((PULONG)&HighPriority, Victim->ReadySummary);
+            ListHead = &Victim->DispatcherReadyListHead[HighPriority];
+            for (Entry = ListHead->Flink; Entry != ListHead; Entry = Entry->Flink)
+            {
+                Thread = CONTAINING_RECORD(Entry, KTHREAD, WaitListEntry);
+                if (Thread->Affinity & AFFINITY_MASK(MyNumber))
+                {
+                    /* Pull it off the victim's queue... */
+                    if (RemoveEntryList(&Thread->WaitListEntry))
+                        Victim->ReadySummary ^= PRIORITY_MASK(HighPriority);
+
+                    /* ...and make it our next thread to run. */
+                    Thread->NextProcessor = MyNumber;
+                    Thread->State = Standby;
+                    Prcb->NextThread = Thread;
+                    Stolen = Thread;
+                    break;
+                }
+            }
+        }
+
+        InterlockedAnd((PLONG)&Victim->PrcbLock, 0);
+        if (Stolen != NULL) break;
+    }
+
+    KiReleasePrcbLock(Prcb);
+    return Stolen;
 }
 #else
 #define KiSelectNextProcessor(Thread) 0

@@ -131,6 +131,17 @@ KiIdleLoop(VOID)
             KiRetireDpcList(Prcb);
         }
 
+#ifdef CONFIG_SMP
+        /* Nothing scheduled for us? Pull a ready thread off a busier CPU rather
+         * than halting while runnable work sits elsewhere. This provides the
+         * load-balancing ReactOS otherwise lacks (placement happens once, at
+         * thread-ready time, with no later migration). */
+        if (!Prcb->NextThread)
+        {
+            KiStealReadyThread(Prcb);
+        }
+#endif
+
         /* Check if a new thread is scheduled for execution */
         if (Prcb->NextThread)
         {

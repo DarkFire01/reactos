@@ -28,6 +28,7 @@
 
 #include "wine/debug.h"
 #include "wine/list.h"
+#include "wine/exception.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(ole);
 

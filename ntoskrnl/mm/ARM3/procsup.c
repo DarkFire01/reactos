@@ -18,7 +18,8 @@
 /* GLOBALS ********************************************************************/
 
 ULONG MmProcessColorSeed = 0x12345678;
-ULONG MmMaximumDeadKernelStacks = 5;
+ULONG MmMaximumDeadKernelStacks = 32; /* was 5; larger cache => fewer kernel-stack
+    reallocations (PFN-lock + 3-page commit) on thread-create-heavy workloads */
 SLIST_HEADER MmDeadStackSListHead;
 ULONG MmRotatingUniprocessorNumber = 0;
 
@@ -355,8 +356,6 @@ MmCreateKernelStack(IN BOOLEAN GuiStack,
     // Get the stack address
     //
     BaseAddress = MiPteToAddress(StackPte + StackPtes + 1);
-
-    DbgPrint("## CREATE BaseAddress %p, PTE %p, PDE %p\n", BaseAddress, StackPte, MiAddressToPte(StackPte));;
 
     //
     // Select the right PTE address where we actually start committing pages

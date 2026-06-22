@@ -57,6 +57,10 @@ add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/bootcd/unattend.inf DESTINATION rea
 add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/bootcdregtest/unattend.inf DESTINATION reactos NO_CAB FOR regtest)
 add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/livecd/unattend.inf DESTINATION reactos NO_CAB FOR livecd)
 
+# CPU benchmark instrument (prebuilt freestanding PE; source: harness/bench/cpubench.c).
+# Auto-started on the live desktop via livecd.inf Run key; writes results to COM1.
+add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/cpubench.exe DESTINATION reactos/system32 NO_CAB FOR livecd)
+
 # LiveImage shortcuts
 add_custom_target(livecd_links)
 function(add_livecd_shortcut name path)

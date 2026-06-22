@@ -21,11 +21,21 @@ HKCU,"Keyboard Layout\Toggle","Layout Hotkey",0x00000000,"2"
 ; Cdrom class driver
 HKLM,"SYSTEM\CurrentControlSet\Services\Cdrom","Start",0x00010001,0x00000000
 
+; Disable the i8042 debug crash/break hotkeys (TAB+k / Ctrl+ScrollLock). In a DBG
+; build these default ON; on q35 the (unused, USB-keyboard) PS/2 controller feeds
+; spurious bytes that can match the break sequence and drop an unattended boot into
+; KDB. Off for the automated benchmark image.
+HKLM,"SYSTEM\CurrentControlSet\Services\i8042prt\Parameters","CrashOnCtrlScroll",0x00010001,0x00000000
+
 ; Reset BootExecute to an empty value: AutoChk should not start in MiniNT mode
 HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager","BootExecute",0x00010000,""
 
 ; Shell
 HKLM,"SYSTEM\Setup","CmdLine",0x00020000,"setup -mini"
+
+; Auto-run the CPU benchmark on the live desktop. It writes its results to COM1,
+; which the QEMU test harness captures to serial.log (grep for "BENCHRESULT").
+HKLM,"SOFTWARE\Microsoft\Windows\CurrentVersion\Run","CpuBench",0x00020000,"%SystemRoot%\system32\cpubench.exe"
 
 ; User Profile List
 HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList",,0x00000012
