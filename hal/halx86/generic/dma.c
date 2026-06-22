@@ -1314,6 +1314,38 @@ HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT DeviceObject,
     DPRINT("S/G DMA has finished!\n");
 }
 
+/**
+ * @name HalCalculateScatterGatherListSize
+ *
+ * Computes the number of map registers and the size, in bytes, of the buffer
+ * the HAL needs in order to build a scatter/gather list for a transfer. It is
+ * exported through DMA_OPERATIONS::CalculateScatterGatherList and is called by
+ * KMDF when a WDFDMAENABLER is created (to size the per-transfer SG-list
+ * lookaside buffer) and internally by HalBuildScatterGatherList.
+ *
+ * @param AdapterObject
+ *        Adapter object representing the bus master or system dma controller.
+ * @param Mdl
+ *        Optional MDL describing the buffer to be mapped. When supplied, the
+ *        transfer is treated as the contiguous virtual-address range
+ *        [CurrentVa, CurrentVa + Length).
+ * @param CurrentVa
+ *        The current VA in the buffer to be mapped for transfer. Used to
+ *        account for a transfer that does not begin on a page boundary.
+ * @param Length
+ *        Specifies the length of data in bytes to be mapped.
+ * @param ScatterGatherListSize
+ *        On return, the size in bytes of the buffer required by
+ *        HalBuildScatterGatherList.
+ * @param pNumberOfMapRegisters
+ *        Optional. On return, the number of map registers the transfer needs.
+ *
+ * @return STATUS_SUCCESS.
+ *
+ * @see HalBuildScatterGatherList
+ *
+ * @implemented
+ */
 NTSTATUS
 NTAPI
 HalCalculateScatterGatherListSize(
@@ -1325,14 +1357,29 @@ HalCalculateScatterGatherListSize(
     OUT PULONG pNumberOfMapRegisters)
 {
     ULONG NumberOfMapRegisters;
-    ULONG SgSize;
 
-    UNIMPLEMENTED_ONCE;
+    UNREFERENCED_PARAMETER(AdapterObject);
+    UNREFERENCED_PARAMETER(Mdl);
 
-    NumberOfMapRegisters = PAGE_ROUND_UP(Length) >> PAGE_SHIFT;
-    SgSize = sizeof(SCATTER_GATHER_CONTEXT);
+    /*
+     * Work out how many map registers the transfer needs. We use
+     * ADDRESS_AND_SIZE_TO_SPAN_PAGES so that a buffer whose first byte is not
+     * page-aligned is charged the extra register required for the partial
+     * first/last page - the same accounting HalpScatterGatherAdapterControl
+     * relies on when it walks the buffer with IoMapTransfer. When the caller
+     * passes no MDL (e.g. the KMDF enabler probing with a page-multiple length
+     * and a NULL CurrentVa) this reduces to a plain page count, which keeps
+     * KMDF's NumberOfMapRegisters == mapRegistersCount assertion happy.
+     */
+    NumberOfMapRegisters = ADDRESS_AND_SIZE_TO_SPAN_PAGES(CurrentVa, Length);
 
-    *ScatterGatherListSize = SgSize;
+    /*
+     * The buffer returned here is consumed by HalBuildScatterGatherList as the
+     * SCATTER_GATHER_CONTEXT scratch space; the SCATTER_GATHER_LIST itself is
+     * allocated separately when the adapter channel becomes available. Both
+     * sides must agree on this size, so report exactly the context size.
+     */
+    *ScatterGatherListSize = sizeof(SCATTER_GATHER_CONTEXT);
     if (pNumberOfMapRegisters) *pNumberOfMapRegisters = NumberOfMapRegisters;
 
     return STATUS_SUCCESS;

@@ -60,6 +60,36 @@ xHalEndOfBoot(
     VOID
 );
 
+//
+// Message-signalled interrupt (MSI/MSI-X) support, exported by the APIC HAL.
+// See hal/halx86/apic/apic.c and hal/hal.spec.
+//
+NTSTATUS
+NTAPI
+HalAllocateMessageVectorBlock(
+    _In_ ULONG Count,
+    _Out_ PUCHAR OutBaseVector,
+    _Out_ PKIRQL OutIrql,
+    _Out_ PKAFFINITY OutAffinity);
+
+VOID
+NTAPI
+HalGetMessageVectorMessage(
+    _In_ UCHAR Vector,
+    _In_ KINTERRUPT_MODE InterruptMode,
+    _Out_ PPHYSICAL_ADDRESS MessageAddress,
+    _Out_ PULONG MessageData);
+
+KIRQL
+NTAPI
+HalGetMessageVectorIrql(
+    _In_ UCHAR Vector);
+
+VOID
+NTAPI
+HalFreeMessageVector(
+    _In_ UCHAR Vector);
+
 VOID
 NTAPI
 xHalSetWakeEnable(

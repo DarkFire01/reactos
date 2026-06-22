@@ -1887,23 +1887,6 @@ HKLM,"SYSTEM\CurrentControlSet\Services\usbstor","ImagePath",0x00020000,"system3
 HKLM,"SYSTEM\CurrentControlSet\Services\usbstor","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\usbstor","Type",0x00010001,0x00000001
 
-<<<<<<< HEAD
-=======
-; NVMe storage miniport driver (boot device)
-HKLM,"SYSTEM\CurrentControlSet\Services\nvme2k","ErrorControl",0x00010001,0x00000001
-HKLM,"SYSTEM\CurrentControlSet\Services\nvme2k","Group",0x00000000,"Primary Disk"
-HKLM,"SYSTEM\CurrentControlSet\Services\nvme2k","ImagePath",0x00020000,"system32\drivers\nvme2k.sys"
-HKLM,"SYSTEM\CurrentControlSet\Services\nvme2k","Start",0x00010001,0x00000000
-HKLM,"SYSTEM\CurrentControlSet\Services\nvme2k","Type",0x00010001,0x00000001
-
-; USB attached SCSI storage driver
-; HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","ErrorControl",0x00010001,0x00000001
-; HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","Group",0x00000000,"Primary Disk"
-; HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","ImagePath",0x00020000,"system32\drivers\uaspstor.sys"
-; HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","Start",0x00010001,0x00000000
-; HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","Type",0x00010001,0x00000001
-
->>>>>>> dfb9a13e260 (WIP DONT USE UASPSTOR)
 ; USB composite generic parent
 HKLM,"SYSTEM\CurrentControlSet\Services\usbccgp","ErrorControl",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\usbccgp","Group",0x00000000,"Boot Bus Extender"
