@@ -455,6 +455,142 @@ Exit:
     return Vector;
 }
 
+/* MESSAGE-SIGNALLED INTERRUPTS (MSI / MSI-X) *********************************/
+
+/*
+ * Allocate a block of Count consecutive vectors usable by a message-signalled
+ * interrupt (MSI or MSI-X).
+ *
+ * Unlike HalpAllocateSystemInterrupt(), an MSI vector is not backed by an I/O
+ * APIC redirection entry - the device delivers the interrupt directly to a
+ * local APIC by writing an interrupt message. We therefore only need to find
+ * free IDT vectors in the device IRQL range and reserve them so the legacy line
+ * arbiter will not hand them out for an I/O APIC line. Each reservation is
+ * marked with the APIC_MSI_INDEX sentinel, which the enable/disable/begin paths
+ * below recognise and treat as "no I/O APIC entry to touch".
+ *
+ * A *consecutive* run is required: multi-message MSI derives each message's
+ * vector by ORing the message number into the low bits of a single base vector,
+ * and giving MSI-X a consecutive run keeps the per-entry vectors trivial to
+ * derive (BaseVector + i). OutBaseVector receives the lowest vector of the run;
+ * OutIrql receives the IRQL of the highest vector (the unified/synchronize IRQL).
+ *
+ * Exported (see hal.spec) and called by the PnP resource-assignment path
+ * (ntoskrnl IopFindInterruptResource) when satisfying a CM_RESOURCE_INTERRUPT_MESSAGE
+ * requirement.
+ */
+NTSTATUS
+NTAPI
+HalAllocateMessageVectorBlock(
+    _In_ ULONG Count,
+    _Out_ PUCHAR OutBaseVector,
+    _Out_ PKIRQL OutIrql,
+    _Out_ PKAFFINITY OutAffinity)
+{
+    ULONG Base, Limit, i;
+
+    if (Count == 0)
+        Count = 1;
+
+    /* Device vectors occupy the contiguous range [CMCI_LEVEL .. CLOCK_LEVEL).
+       Scan it for the first run of Count consecutive free vectors. */
+    Base = IrqlToTpr(CMCI_LEVEL);
+    Limit = IrqlToTpr(CLOCK_LEVEL);
+
+    for (; Base + Count <= Limit; Base++)
+    {
+        BOOLEAN Run = TRUE;
+
+        for (i = 0; i < Count; i++)
+        {
+            if (HalpVectorToIndex[Base + i] != APIC_FREE_VECTOR)
+            {
+                Run = FALSE;
+                break;
+            }
+        }
+
+        if (Run)
+        {
+            /* Reserve every vector in the run as a message vector */
+            for (i = 0; i < Count; i++)
+                HalpVectorToIndex[Base + i] = APIC_MSI_INDEX;
+
+            *OutBaseVector = (UCHAR)Base;
+            *OutIrql = HalpVectorToIrql((UCHAR)(Base + Count - 1));
+            *OutAffinity = HalpDefaultInterruptAffinity;
+            return STATUS_SUCCESS;
+        }
+    }
+
+    DPRINT1("Failed to allocate %lu consecutive message-signalled vectors\n", Count);
+    *OutBaseVector = 0;
+    *OutIrql = 0;
+    *OutAffinity = 0;
+    return STATUS_INSUFFICIENT_RESOURCES;
+}
+
+/*
+ * Return the IRQL at which a previously-allocated message vector is delivered.
+ * Used by the connect path to initialise the KINTERRUPT for each message.
+ */
+KIRQL
+NTAPI
+HalGetMessageVectorIrql(
+    _In_ UCHAR Vector)
+{
+    return HalpVectorToIrql(Vector);
+}
+
+/*
+ * Build the (MessageAddress, MessageData) pair that a device must write into its
+ * MSI/MSI-X capability so that an interrupt message is delivered to Vector.
+ *
+ * On x86/x64 this is the standard local APIC message format:
+ *   Address: 0xFEE0_0000 | (DestinationApicId << 12)   (physical, no redirect)
+ *   Data:    Vector | (level ? trigger/level bits : 0) (fixed delivery)
+ */
+VOID
+NTAPI
+HalGetMessageVectorMessage(
+    _In_ UCHAR Vector,
+    _In_ KINTERRUPT_MODE InterruptMode,
+    _Out_ PPHYSICAL_ADDRESS MessageAddress,
+    _Out_ PULONG MessageData)
+{
+    ULONG ApicId;
+    ULONG Data;
+
+    /* Target the current (boot) processor in physical destination mode */
+    ApicId = ApicRead(APIC_ID) >> 24;
+
+    MessageAddress->QuadPart = APIC_MSI_ADDRESS_BASE | (ApicId << 12);
+
+    /* Fixed delivery mode, vector in the low 8 bits */
+    Data = Vector;
+    if (InterruptMode == LevelSensitive)
+    {
+        /* Level trigger mode + level assert */
+        Data |= (1 << 15) | (1 << 14);
+    }
+
+    *MessageData = Data;
+}
+
+/*
+ * Release a single vector previously obtained from HalAllocateMessageVectorBlock().
+ */
+VOID
+NTAPI
+HalFreeMessageVector(
+    _In_ UCHAR Vector)
+{
+    if (HalpVectorToIndex[Vector] == APIC_MSI_INDEX)
+    {
+        HalpVectorToIndex[Vector] = APIC_FREE_VECTOR;
+    }
+}
+
 VOID
 NTAPI
 ApicInitializeIOApic(VOID)
@@ -689,6 +825,13 @@ HalEnableSystemInterrupt(
         return FALSE;
     }
 
+    /* Message-signalled interrupts have no I/O APIC redirection entry: the
+       device delivers the message itself, so there is nothing to unmask. */
+    if (Index == APIC_MSI_INDEX)
+    {
+        return TRUE;
+    }
+
     /* Read the redirection entry */
     ReDirReg = ApicReadIORedirectionEntry(Index);
 
@@ -728,6 +871,12 @@ HalDisableSystemInterrupt(
     ASSERT(Vector < RTL_NUMBER_OF(HalpVectorToIndex));
 
     Index = HalpVectorToIndex[Vector];
+
+    /* Message-signalled interrupts have no I/O APIC entry to mask */
+    if (Index == APIC_MSI_INDEX)
+    {
+        return;
+    }
 
     /* Read lower dword of redirection entry */
     ReDirReg.Long0 = IOApicRead(IOAPIC_REDTBL + 2 * Index);
@@ -781,10 +930,11 @@ HalBeginSystemInterrupt(
        }
        else
        {
-            /* This should be a reserved vector! */
-            ASSERT(Index == APIC_RESERVED_VECTOR);
+            /* This should be a reserved or a message-signalled vector, neither
+               of which has an I/O APIC redirection entry to consult. */
+            ASSERT(Index == APIC_RESERVED_VECTOR || Index == APIC_MSI_INDEX);
 
-            /* Re-request the interrupt to be handled later */
+            /* Re-request the interrupt to be handled later (MSI is edge) */
             ApicRequestSelfInterrupt(Vector, APIC_TGM_Edge);
        }
 

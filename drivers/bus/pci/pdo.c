@@ -15,6 +15,46 @@
 #define NDEBUG
 #include <debug.h>
 
+/*
+ * Message-signalled interrupt helper exported by the HAL (see hal.spec /
+ * hal/halx86/apic/apic.c). Builds the local-APIC message address/data pair that
+ * delivers an interrupt to the given vector. Declared here because the kernel's
+ * internal HAL header is not available to drivers.
+ */
+VOID
+NTAPI
+HalGetMessageVectorMessage(
+    _In_ UCHAR Vector,
+    _In_ KINTERRUPT_MODE InterruptMode,
+    _Out_ PPHYSICAL_ADDRESS MessageAddress,
+    _Out_ PULONG MessageData);
+
+/* PCI capability config-space layout helpers */
+#define PCI_BAR0_OFFSET             0x10
+
+/* MSI Message Control bits (at MsiCapability + 2) */
+#define PCI_MSI_CONTROL_ENABLE      0x0001
+#define PCI_MSI_CONTROL_MME_MASK    0x0070
+#define PCI_MSI_CONTROL_64BIT       0x0080
+
+/* MSI-X Message Control bits (at MsiXCapability + 2) */
+#define PCI_MSIX_CONTROL_TABLE_SIZE 0x07FF
+#define PCI_MSIX_CONTROL_FUNC_MASK  0x4000
+#define PCI_MSIX_CONTROL_ENABLE     0x8000
+
+/* Upper bound on the number of MSI/MSI-X messages we will request for a device.
+   Kept in step with the kernel's IOP_MAX_MSI_MESSAGES (ntoskrnl io/iomgr/irq.c). */
+#define PCI_MAX_MSI_MESSAGES        16
+
+/* Reports MSI/MSI-X message capacity; defined further below, used while building
+   the resource requirements list. */
+static
+NTSTATUS
+PciGetMsiCapabilityInfo(
+    _Inout_ PPCI_DEVICE Device,
+    _Out_ PULONG MaxMessages,
+    _Out_ PBOOLEAN MsiXSupported);
+
 #if 0
 #define DBGPRINT(...) DbgPrint(__VA_ARGS__)
 #else
@@ -917,6 +957,9 @@ PdoQueryResourceRequirements(
     ULONGLONG Length;
     ULONG Flags;
     ULONGLONG MaximumAddress;
+    BOOLEAN MsiCapable = FALSE;
+    BOOLEAN MsiXSupported = FALSE;
+    ULONG MsiMessageCount = 0;
 
     UNREFERENCED_PARAMETER(IrpSp);
     DPRINT("PdoQueryResourceRequirements() called\n");
@@ -969,8 +1012,26 @@ PdoQueryResourceRequirements(
 
         /* FIXME: Check ROM address */
 
+        /*
+         * Determine whether the device can use message-signalled interrupts. If
+         * so we offer the MSI/MSI-X requirement as the preferred interrupt and
+         * keep the INTx line (if any) as a fallback alternative.
+         */
+        if (NT_SUCCESS(PciGetMsiCapabilityInfo(DeviceExtension->PciDevice,
+                                               &MsiMessageCount, &MsiXSupported)) &&
+            MsiMessageCount != 0)
+        {
+            MsiCapable = TRUE;
+
+            /* Cap the request so the HAL is not asked for an unreasonable run */
+            if (MsiMessageCount > PCI_MAX_MSI_MESSAGES)
+                MsiMessageCount = PCI_MAX_MSI_MESSAGES;
+        }
+
+        if (MsiCapable)
+            ResCount++;                              /* Preferred: message interrupt */
         if (PciConfig.u.type0.InterruptPin != 0)
-            ResCount++;
+            ResCount++;                              /* INTx (alternative or sole) */
     }
     else if (PCI_CONFIGURATION_TYPE(&PciConfig) == PCI_BRIDGE_TYPE)
     {
@@ -1118,12 +1179,31 @@ PdoQueryResourceRequirements(
 
         /* FIXME: Check ROM address */
 
+        /*
+         * Preferred interrupt: message-signalled (MSI/MSI-X). The vector range
+         * does not name real vectors; it encodes the requested message count as
+         * [TOKEN - (Count - 1) .. TOKEN]. The PnP manager recognises the
+         * CM_RESOURCE_INTERRUPT_MESSAGE flag and allocates a HAL vector block,
+         * and pci!PdoStartDevice programs the capability from the assignment.
+         */
+        if (MsiCapable)
+        {
+            Descriptor->Option = (PciConfig.u.type0.InterruptPin != 0) ? IO_RESOURCE_PREFERRED : 0;
+            Descriptor->Type = CmResourceTypeInterrupt;
+            Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+            Descriptor->Flags = CM_RESOURCE_INTERRUPT_LATCHED | CM_RESOURCE_INTERRUPT_MESSAGE;
+            Descriptor->u.Interrupt.MinimumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN - (MsiMessageCount - 1);
+            Descriptor->u.Interrupt.MaximumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
+            Descriptor++;
+        }
+
         if (PciConfig.u.type0.InterruptPin != 0)
         {
             ACPI_PCI_IRQ_ROUTE_OUTPUT route;
             NTSTATUS RouteStatus;
 
-            Descriptor->Option = 0; /* Required */
+            /* INTx line: the sole option, or the fallback alternative for MSI */
+            Descriptor->Option = MsiCapable ? IO_RESOURCE_ALTERNATIVE : 0;
             Descriptor->Type = CmResourceTypeInterrupt;
             Descriptor->ShareDisposition = CmResourceShareShared;
             Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
@@ -1864,6 +1944,306 @@ InterfacePciDevicePresentEx(
 }
 
 
+/* MSI / MSI-X SUPPORT ********************************************************/
+
+static
+ULONG
+PciMsiReadConfig(
+    _In_ PPCI_DEVICE Device,
+    _Out_writes_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length)
+{
+    return PciReadWriteConfigBuffer(FALSE, 0, Device->BusNumber,
+                                    Device->SlotNumber, Buffer, Offset, Length);
+}
+
+static
+ULONG
+PciMsiWriteConfig(
+    _In_ PPCI_DEVICE Device,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length)
+{
+    return PciReadWriteConfigBuffer(TRUE, 0, Device->BusNumber,
+                                    Device->SlotNumber, Buffer, Offset, Length);
+}
+
+/*
+ * Walk the PCI capability list once and remember the MSI and MSI-X offsets.
+ */
+static
+VOID
+PciScanCapabilities(
+    _Inout_ PPCI_DEVICE Device)
+{
+    UCHAR CapPtr;
+    ULONG Guard = 0;
+
+    Device->MsiCapability = 0;
+    Device->MsiXCapability = 0;
+    Device->CapabilitiesScanned = TRUE;
+
+    if (!(Device->PciConfig.Status & PCI_STATUS_CAPABILITIES_LIST))
+        return;
+
+    switch (PCI_CONFIGURATION_TYPE(&Device->PciConfig))
+    {
+        case PCI_BRIDGE_TYPE:
+            CapPtr = Device->PciConfig.u.type1.CapabilitiesPtr;
+            break;
+        case PCI_CARDBUS_BRIDGE_TYPE:
+            CapPtr = Device->PciConfig.u.type2.CapabilitiesPtr;
+            break;
+        default:
+            CapPtr = Device->PciConfig.u.type0.CapabilitiesPtr;
+            break;
+    }
+    CapPtr &= 0xFC;
+
+    /* A well-formed list is short; cap the walk to guard against loops */
+    while (CapPtr != 0 && Guard++ < 48)
+    {
+        PCI_CAPABILITIES_HEADER Header;
+
+        if (PciMsiReadConfig(Device, &Header, CapPtr, sizeof(Header)) != sizeof(Header))
+            break;
+
+        if (Header.CapabilityID == PCI_CAPABILITY_ID_MSI)
+            Device->MsiCapability = CapPtr;
+        else if (Header.CapabilityID == PCI_CAPABILITY_ID_MSIX)
+            Device->MsiXCapability = CapPtr;
+
+        CapPtr = Header.Next & 0xFC;
+    }
+}
+
+/*
+ * Report the number of MSI/MSI-X messages this device can be granted and whether
+ * MSI-X is available. Consulted while building the resource requirements list so
+ * the PnP manager can assign a CM_RESOURCE_INTERRUPT_MESSAGE descriptor.
+ */
+static
+NTSTATUS
+PciGetMsiCapabilityInfo(
+    _Inout_ PPCI_DEVICE Device,
+    _Out_ PULONG MaxMessages,
+    _Out_ PBOOLEAN MsiXSupported)
+{
+    USHORT Control;
+
+    if (!Device->CapabilitiesScanned)
+        PciScanCapabilities(Device);
+
+    if (Device->MsiXCapability)
+    {
+        if (PciMsiReadConfig(Device, &Control, Device->MsiXCapability + 2, sizeof(Control)) != sizeof(Control))
+            return STATUS_UNSUCCESSFUL;
+
+        *MaxMessages = (Control & PCI_MSIX_CONTROL_TABLE_SIZE) + 1;
+        *MsiXSupported = TRUE;
+        return STATUS_SUCCESS;
+    }
+
+    if (Device->MsiCapability)
+    {
+        /*
+         * Grant only a single MSI message. Multi-message MSI requires the device
+         * to OR the message number into the low bits of one data value, which in
+         * turn needs a power-of-two aligned vector block; MSI-X has no such
+         * constraint and is preferred above.
+         */
+        *MaxMessages = 1;
+        *MsiXSupported = FALSE;
+        return STATUS_SUCCESS;
+    }
+
+    *MaxMessages = 0;
+    *MsiXSupported = FALSE;
+    return STATUS_NOT_SUPPORTED;
+}
+
+/*
+ * Program the legacy MSI capability with a single message and enable it. The
+ * message address/data is derived by the HAL from the assigned base vector
+ * (see PdoStartDevice / the InterruptResource recorded there).
+ */
+static
+NTSTATUS
+PciProgramMsiCapability(
+    _In_ PPCI_DEVICE Device)
+{
+    UCHAR Cap = Device->MsiCapability;
+    PHYSICAL_ADDRESS Address;
+    ULONG MessageData;
+    USHORT Control;
+    USHORT Data;
+    ULONG AddrLow;
+
+    /* A single MSI message is delivered on the assigned base vector */
+    HalGetMessageVectorMessage((UCHAR)Device->InterruptResource.BaseVector,
+                               Latched, &Address, &MessageData);
+
+    PciMsiReadConfig(Device, &Control, Cap + 2, sizeof(Control));
+
+    AddrLow = Address.LowPart;
+    PciMsiWriteConfig(Device, &AddrLow, Cap + 4, sizeof(AddrLow));
+
+    Data = (USHORT)MessageData;
+    if (Control & PCI_MSI_CONTROL_64BIT)
+    {
+        ULONG AddrHigh = Address.HighPart;
+        PciMsiWriteConfig(Device, &AddrHigh, Cap + 8, sizeof(AddrHigh));
+        PciMsiWriteConfig(Device, &Data, Cap + 12, sizeof(Data));
+    }
+    else
+    {
+        PciMsiWriteConfig(Device, &Data, Cap + 6, sizeof(Data));
+    }
+
+    /* Multiple Message Enable = 0 (one message granted), set MSI Enable */
+    Control &= ~PCI_MSI_CONTROL_MME_MASK;
+    Control |= PCI_MSI_CONTROL_ENABLE;
+    PciMsiWriteConfig(Device, &Control, Cap + 2, sizeof(Control));
+
+    DPRINT1("PCI: enabled MSI on %lx:%lx vector 0x%lx addr %08lx data %04x\n",
+            Device->BusNumber, Device->SlotNumber.u.AsULONG,
+            Device->InterruptResource.BaseVector, AddrLow, Data);
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Program the MSI-X table (one entry per granted message) and enable MSI-X.
+ * Message i is delivered on the consecutive vector BaseVector + i.
+ */
+static
+NTSTATUS
+PciProgramMsiXCapability(
+    _In_ PPCI_DEVICE Device)
+{
+    UCHAR Cap = Device->MsiXCapability;
+    ULONG MessageCount = Device->InterruptResource.MessageCount;
+    USHORT Control;
+    USHORT TableSize;
+    ULONG TableOffBir;
+    ULONG Bir;
+    ULONG TableOffset;
+    ULONG BarLow;
+    ULONG BarHigh = 0;
+    PHYSICAL_ADDRESS TableBase;
+    volatile ULONG *Table;
+    ULONG i;
+
+    if (MessageCount == 0)
+        MessageCount = 1;
+
+    PciMsiReadConfig(Device, &Control, Cap + 2, sizeof(Control));
+    TableSize = (Control & PCI_MSIX_CONTROL_TABLE_SIZE) + 1;
+    if (MessageCount > TableSize)
+        MessageCount = TableSize;
+
+    /* Table Offset / BIR at capability offset +4 */
+    PciMsiReadConfig(Device, &TableOffBir, Cap + 4, sizeof(TableOffBir));
+    Bir = TableOffBir & 0x7;
+    TableOffset = TableOffBir & ~0x7u;
+
+    if (Bir >= PCI_TYPE0_ADDRESSES)
+        return STATUS_UNSUCCESSFUL;
+
+    /* Read the BAR live (the cached header predates PnP resource assignment) */
+    PciMsiReadConfig(Device, &BarLow, PCI_BAR0_OFFSET + Bir * 4, sizeof(BarLow));
+    if (BarLow & 0x1)
+        return STATUS_UNSUCCESSFUL; /* MSI-X table must live in a memory BAR */
+
+    /* 64-bit memory BAR (type field bits [2:1] == 10b) */
+    if ((BarLow & 0x6) == 0x4)
+    {
+        if (Bir + 1 >= PCI_TYPE0_ADDRESSES)
+            return STATUS_UNSUCCESSFUL;
+        PciMsiReadConfig(Device, &BarHigh, PCI_BAR0_OFFSET + (Bir + 1) * 4, sizeof(BarHigh));
+    }
+
+    TableBase.LowPart = (BarLow & 0xFFFFFFF0) + TableOffset;
+    TableBase.HighPart = BarHigh;
+
+    Table = (volatile ULONG *)MmMapIoSpace(TableBase, MessageCount * 16, MmNonCached);
+    if (!Table)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    for (i = 0; i < MessageCount; i++)
+    {
+        volatile ULONG *Slot = &Table[i * 4];
+        PHYSICAL_ADDRESS Address;
+        ULONG MessageData;
+
+        HalGetMessageVectorMessage((UCHAR)(Device->InterruptResource.BaseVector + i),
+                                   Latched, &Address, &MessageData);
+
+        WRITE_REGISTER_ULONG((PULONG)&Slot[0], Address.LowPart);
+        WRITE_REGISTER_ULONG((PULONG)&Slot[1], Address.HighPart);
+        WRITE_REGISTER_ULONG((PULONG)&Slot[2], MessageData);
+        WRITE_REGISTER_ULONG((PULONG)&Slot[3], 0); /* Vector Control: unmask */
+    }
+
+    MmUnmapIoSpace((PVOID)Table, MessageCount * 16);
+
+    /* Enable MSI-X and clear the global function mask */
+    Control |= PCI_MSIX_CONTROL_ENABLE;
+    Control &= ~PCI_MSIX_CONTROL_FUNC_MASK;
+    PciMsiWriteConfig(Device, &Control, Cap + 2, sizeof(Control));
+
+    DPRINT1("PCI: enabled MSI-X on %lx:%lx (%lu messages, base vector 0x%lx)\n",
+            Device->BusNumber, Device->SlotNumber.u.AsULONG, MessageCount,
+            Device->InterruptResource.BaseVector);
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Program the device's interrupt hardware to match the resource it was assigned
+ * at START. Mirrors Win8 pci.sys's PciProgramInterruptResource.
+ */
+static
+NTSTATUS
+PciProgramInterruptResource(
+    _In_ PPCI_DEVICE Device)
+{
+    switch (Device->InterruptResource.Type)
+    {
+        case PciInterruptTypeMsiX:
+            return PciProgramMsiXCapability(Device);
+        case PciInterruptTypeMsi:
+            return PciProgramMsiCapability(Device);
+        default:
+            return STATUS_SUCCESS;
+    }
+}
+
+/*
+ * Clear the device's MSI/MSI-X enable bit. Called when the device is stopped or
+ * removed so a stale capability does not keep generating messages.
+ */
+static
+VOID
+PciDisableMsiInterrupt(
+    _In_ PPCI_DEVICE Device)
+{
+    USHORT Control;
+
+    if (Device->InterruptResource.Type == PciInterruptTypeMsiX && Device->MsiXCapability)
+    {
+        PciMsiReadConfig(Device, &Control, Device->MsiXCapability + 2, sizeof(Control));
+        Control &= ~PCI_MSIX_CONTROL_ENABLE;
+        PciMsiWriteConfig(Device, &Control, Device->MsiXCapability + 2, sizeof(Control));
+    }
+    else if (Device->InterruptResource.Type == PciInterruptTypeMsi && Device->MsiCapability)
+    {
+        PciMsiReadConfig(Device, &Control, Device->MsiCapability + 2, sizeof(Control));
+        Control &= ~PCI_MSI_CONTROL_ENABLE;
+        PciMsiWriteConfig(Device, &Control, Device->MsiCapability + 2, sizeof(Control));
+    }
+}
+
 static NTSTATUS
 PdoQueryInterface(
     IN PDEVICE_OBJECT DeviceObject,
@@ -1964,8 +2344,38 @@ PdoStartDevice(
                but only one is allowed and it must be the last one in the list! */
             RawPartialDesc = &RawFullDesc->PartialResourceList.PartialDescriptors[ii];
 
-            if (RawPartialDesc->Type == CmResourceTypeInterrupt)
+            if (RawPartialDesc->Type == CmResourceTypeInterrupt &&
+                (RawPartialDesc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE))
             {
+                PPCI_DEVICE PciDevice = DeviceExtension->PciDevice;
+
+                /*
+                 * Message-signalled interrupt assignment. Record the granted
+                 * messages and program the device's MSI/MSI-X capability from the
+                 * assigned base vector (Win8 pci.sys does this in
+                 * PciProcessStartResources / PciProgramInterruptResource).
+                 */
+                PciDevice->InterruptResource.Type =
+                    PciDevice->MsiXCapability ? PciInterruptTypeMsiX : PciInterruptTypeMsi;
+                PciDevice->InterruptResource.MessageCount =
+                    RawPartialDesc->u.MessageInterrupt.Raw.MessageCount;
+                PciDevice->InterruptResource.BaseVector =
+                    RawPartialDesc->u.MessageInterrupt.Raw.Vector;
+                PciDevice->InterruptResource.Affinity =
+                    RawPartialDesc->u.MessageInterrupt.Raw.Affinity;
+
+                DPRINT1("Assigning %lu message(s) at base vector 0x%lx to PCI device 0x%x on bus 0x%x\n",
+                        PciDevice->InterruptResource.MessageCount,
+                        PciDevice->InterruptResource.BaseVector,
+                        PciDevice->SlotNumber.u.AsULONG,
+                        PciDevice->BusNumber);
+
+                PciProgramInterruptResource(PciDevice);
+            }
+            else if (RawPartialDesc->Type == CmResourceTypeInterrupt)
+            {
+                DeviceExtension->PciDevice->InterruptResource.Type = PciInterruptTypeLineBased;
+
                 DPRINT("Assigning IRQ %u to PCI device 0x%x on bus 0x%x\n",
                         RawPartialDesc->u.Interrupt.Vector,
                         DeviceExtension->PciDevice->SlotNumber.u.AsULONG,
@@ -2210,13 +2620,22 @@ PdoPnpControl(
             Status = PdoStartDevice(DeviceObject, Irp, IrpSp);
             break;
 
-        case IRP_MN_QUERY_STOP_DEVICE:
-        case IRP_MN_CANCEL_STOP_DEVICE:
         case IRP_MN_STOP_DEVICE:
-        case IRP_MN_QUERY_REMOVE_DEVICE:
-        case IRP_MN_CANCEL_REMOVE_DEVICE:
         case IRP_MN_REMOVE_DEVICE:
         case IRP_MN_SURPRISE_REMOVAL:
+        {
+            /* Quiesce a message-signalled capability before the resource goes away */
+            PPDO_DEVICE_EXTENSION PdoExt = (PPDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+            PciDisableMsiInterrupt(PdoExt->PciDevice);
+            PdoExt->PciDevice->InterruptResource.Type = PciInterruptTypeNone;
+            Status = STATUS_SUCCESS;
+            break;
+        }
+
+        case IRP_MN_QUERY_STOP_DEVICE:
+        case IRP_MN_CANCEL_STOP_DEVICE:
+        case IRP_MN_QUERY_REMOVE_DEVICE:
+        case IRP_MN_CANCEL_REMOVE_DEVICE:
             Status = STATUS_SUCCESS;
             break;
 

@@ -1061,7 +1061,7 @@ typedef struct _KINTERRUPT
     CSHORT Size;
     LIST_ENTRY InterruptListEntry;
     PKSERVICE_ROUTINE ServiceRoutine;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if 1//(NTDDI_VERSION >= NTDDI_LONGHORN)
     PKSERVICE_ROUTINE MessageServiceRoutine;
     ULONG MessageIndex;
 #endif
@@ -1078,12 +1078,12 @@ typedef struct _KINTERRUPT
     CCHAR Number;
     BOOLEAN ShareVector;
     KINTERRUPT_MODE Mode;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if 1//(NTDDI_VERSION >= NTDDI_LONGHORN)
     KINTERRUPT_POLARITY Polarity;
 #endif
     ULONG ServiceCount;
     ULONG DispatchCount;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if 1//(NTDDI_VERSION >= NTDDI_LONGHORN)
     ULONGLONG Rsvd1;
 #endif
 #ifdef _M_AMD64

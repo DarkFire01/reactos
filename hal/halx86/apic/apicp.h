@@ -61,6 +61,13 @@
 #define APIC_MAX_IRQ 24
 #define APIC_FREE_VECTOR 0xFF
 #define APIC_RESERVED_VECTOR 0xFE
+/* Sentinel stored in HalpVectorToIndex[] for a vector that is owned by a
+   message-signalled interrupt (MSI/MSI-X). Such a vector has no I/O APIC
+   redirection entry: the device itself generates the interrupt message. */
+#define APIC_MSI_INDEX 0xFD
+
+/* Local APIC physical message address base (the "FEE" range) */
+#define APIC_MSI_ADDRESS_BASE 0xFEE00000
 
 /* The IMCR is supported by two read/writable or write-only I/O ports,
    22h and 23h, which receive address and data respectively.

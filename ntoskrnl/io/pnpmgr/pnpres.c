@@ -185,6 +185,62 @@ IopFindDmaResource(
 
 static
 BOOLEAN
+IopFindMessageInterruptResource(
+    IN PIO_RESOURCE_DESCRIPTOR IoDesc,
+    OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDesc)
+{
+    ULONG Requested;
+    ULONG Granted;
+    UCHAR BaseVector;
+    KIRQL Irql;
+    KAFFINITY Affinity;
+    NTSTATUS Status;
+
+    ASSERT(IoDesc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE);
+
+    /*
+     * For a message-signalled interrupt requirement the vector range does not
+     * name real vectors - it only encodes how many messages the device asked
+     * for (the bus driver fills it as [TOKEN - (Count - 1) .. TOKEN]). Recover
+     * the requested count from the range width.
+     */
+    Requested = IoDesc->u.Interrupt.MaximumVector - IoDesc->u.Interrupt.MinimumVector + 1;
+    if (Requested == 0)
+        Requested = 1;
+
+    /*
+     * MSI vectors are not backed by an I/O APIC line, so there is nothing to
+     * conflict-check against the legacy resource map: the HAL simply hands us a
+     * consecutive run of free IDT vectors. Ask for the full count and degrade
+     * gracefully so a device that wants many messages can still get fewer.
+     */
+    for (Granted = Requested; Granted >= 1; Granted--)
+    {
+        Status = HalAllocateMessageVectorBlock(Granted, &BaseVector, &Irql, &Affinity);
+        if (NT_SUCCESS(Status))
+            break;
+
+        if (Granted == 1)
+        {
+            DPRINT1("Failed to allocate any message-signalled vector (requested %lu)\n", Requested);
+            return FALSE;
+        }
+    }
+
+    /* Emit the assigned messages in the raw (untranslated) MessageInterrupt form.
+       Zero first so the Reserved/Group field is clean regardless of NT_PROCESSOR_GROUPS. */
+    RtlZeroMemory(&CmDesc->u.MessageInterrupt, sizeof(CmDesc->u.MessageInterrupt));
+    CmDesc->u.MessageInterrupt.Raw.MessageCount = (USHORT)Granted;
+    CmDesc->u.MessageInterrupt.Raw.Vector = BaseVector;
+    CmDesc->u.MessageInterrupt.Raw.Affinity = Affinity;
+
+    DPRINT1("Satisfying message interrupt requirement with %lu message(s) at base vector 0x%x (IRQL %u)\n",
+            Granted, BaseVector, Irql);
+    return TRUE;
+}
+
+static
+BOOLEAN
 IopFindInterruptResource(
     IN PIO_RESOURCE_DESCRIPTOR IoDesc,
     OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDesc)
@@ -193,6 +249,10 @@ IopFindInterruptResource(
 
     ASSERT(IoDesc->Type == CmDesc->Type);
     ASSERT(IoDesc->Type == CmResourceTypeInterrupt);
+
+    /* Message-signalled interrupts are allocated by the HAL, not arbitrated */
+    if (IoDesc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
+        return IopFindMessageInterruptResource(IoDesc, CmDesc);
 
     for (Vector = IoDesc->u.Interrupt.MinimumVector;
          Vector <= IoDesc->u.Interrupt.MaximumVector;
@@ -1046,6 +1106,24 @@ IopTranslateDeviceResources(
             case CmResourceTypeInterrupt:
             {
                KIRQL Irql;
+
+               /*
+                * Message-signalled interrupts carry a vector that is already a
+                * system vector handed out by the HAL (HalAllocateMessageVectorBlock),
+                * not a bus-relative line. Convert the raw MessageInterrupt form
+                * (base vector + message count) into the translated form
+                * (IRQL + vector); the vector and affinity already sit at the same
+                * offsets, so only the delivery IRQL has to be folded in.
+                */
+               if (DescriptorRaw->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
+               {
+                   UCHAR MsgVector = (UCHAR)DescriptorRaw->u.MessageInterrupt.Raw.Vector;
+
+                   DescriptorTranslated->u.MessageInterrupt.Translated.Vector = MsgVector;
+                   DescriptorTranslated->u.MessageInterrupt.Translated.Level = HalGetMessageVectorIrql(MsgVector);
+                   break;
+               }
+
                DescriptorTranslated->u.Interrupt.Vector = HalGetInterruptVector(
                   DeviceNode->ResourceList->List[i].InterfaceType,
                   DeviceNode->ResourceList->List[i].BusNumber,

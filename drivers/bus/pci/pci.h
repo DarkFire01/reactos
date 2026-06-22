@@ -17,6 +17,33 @@ PciReadWriteConfigBuffer(
     _In_ ULONG Offset,
     _In_ ULONG Length);
 
+//
+// How a device's interrupt is currently delivered. Mirrors the relevant subset
+// of Win8 pci.sys's PCI_INTERRUPT_TYPE, recorded when the device is started from
+// the assigned resource list and consumed when programming the hardware.
+//
+typedef enum _PCI_INTERRUPT_TYPE
+{
+    PciInterruptTypeNone = 0,
+    PciInterruptTypeLineBased,
+    PciInterruptTypeMsi,
+    PciInterruptTypeMsiX
+} PCI_INTERRUPT_TYPE;
+
+//
+// The message-signalled interrupt resource a device was granted at START. The
+// base vector and message count come straight out of the CM_RESOURCE_INTERRUPT_MESSAGE
+// descriptor assigned by the PnP manager; the per-message address/data is derived
+// from the base vector via the HAL when the capability is programmed.
+//
+typedef struct _PCI_DEVICE_INTERRUPT_RESOURCE
+{
+    PCI_INTERRUPT_TYPE Type;
+    ULONG MessageCount;
+    ULONG BaseVector;
+    KAFFINITY Affinity;
+} PCI_DEVICE_INTERRUPT_RESOURCE, *PPCI_DEVICE_INTERRUPT_RESOURCE;
+
 typedef struct _PCI_DEVICE
 {
     // Entry on device list
@@ -37,6 +64,13 @@ typedef struct _PCI_DEVICE
     BOOLEAN EnableBusMaster;
     // Whether the device is owned by the KD
     BOOLEAN IsDebuggingDevice;
+    // MSI/MSI-X capability config-space offsets (0 if the capability is absent)
+    UCHAR MsiCapability;
+    UCHAR MsiXCapability;
+    // Whether the capability list has already been scanned
+    BOOLEAN CapabilitiesScanned;
+    // The interrupt resource the device was started with (line-based or MSI/MSI-X)
+    PCI_DEVICE_INTERRUPT_RESOURCE InterruptResource;
 } PCI_DEVICE, *PPCI_DEVICE;
 
 
