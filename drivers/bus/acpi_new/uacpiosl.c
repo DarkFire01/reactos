@@ -472,7 +472,10 @@ UacpiQueryAcpiRootFromRegistry(_Out_ PHYSICAL_ADDRESS *OutRootTable)
 
     Status = ZwOpenKey(&KeyHandle, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, &ObjectAttributes);
     if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("uACPI: open MultiFunctionAdapter key failed: 0x%08lx\n", Status);
         return Status;
+    }
 
     Bytes = 0;
     Status = ZwQueryKey(KeyHandle, KeyFullInformation, NULL, 0, &Bytes);
@@ -525,6 +528,8 @@ UacpiQueryAcpiRootFromRegistry(_Out_ PHYSICAL_ADDRESS *OutRootTable)
         SubName.Buffer = KeyInfo->Name;
         SubName.Length = (USHORT)KeyInfo->NameLength;
         SubName.MaximumLength = (USHORT)(KeyInfo->NameLength + sizeof(WCHAR));
+
+        DPRINT1("uACPI: MultiFunctionAdapter subkey[%lu] = '%S'\n", i, KeyInfo->Name);
 
         InitializeObjectAttributes(&ObjectAttributes, &SubName, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, KeyHandle, NULL);
         Status = ZwOpenKey(&SubKeyHandle, KEY_QUERY_VALUE, &ObjectAttributes);
@@ -585,8 +590,14 @@ UacpiQueryAcpiRootFromRegistry(_Out_ PHYSICAL_ADDRESS *OutRootTable)
                     goto Exit;
                 }
 
+                DPRINT1("uACPI: found 'ACPI BIOS' node; Configuration Data type=%lu len=%lu\n",
+                        ConfigInfo->Type, ConfigInfo->DataLength);
+
                 if (ConfigInfo->Type != REG_FULL_RESOURCE_DESCRIPTOR || ConfigInfo->DataLength < sizeof(CM_FULL_RESOURCE_DESCRIPTOR))
                 {
+                    DPRINT1("uACPI: unexpected Configuration Data (type=%lu len=%lu, want type=%u min len=%lu)\n",
+                            ConfigInfo->Type, ConfigInfo->DataLength,
+                            REG_FULL_RESOURCE_DESCRIPTOR, (ULONG)sizeof(CM_FULL_RESOURCE_DESCRIPTOR));
                     ExFreePoolWithTag(ConfigInfo, 'rAcu');
                     Status = STATUS_OBJECT_TYPE_MISMATCH;
                     goto Exit;
@@ -603,6 +614,7 @@ UacpiQueryAcpiRootFromRegistry(_Out_ PHYSICAL_ADDRESS *OutRootTable)
                 /* Device-specific data starts right after the CM_FULL_RESOURCE_DESCRIPTOR (which contains 1 descriptor). */
                 PUACPI_ACPI_BIOS_MULTI_NODE Node = (PUACPI_ACPI_BIOS_MULTI_NODE)(Full + 1);
                 *OutRootTable = Node->RsdtAddress;
+                DPRINT1("uACPI: ACPI BIOS RsdtAddress = 0x%I64x\n", Node->RsdtAddress.QuadPart);
                 ExFreePoolWithTag(ConfigInfo, 'rAcu');
                 Status = STATUS_SUCCESS;
                 goto Exit;
@@ -613,6 +625,7 @@ UacpiQueryAcpiRootFromRegistry(_Out_ PHYSICAL_ADDRESS *OutRootTable)
         SubKeyHandle = NULL;
     }
 
+    DPRINT1("uACPI: no 'ACPI BIOS' node found under MultiFunctionAdapter\n");
     Status = STATUS_NOT_FOUND;
 
 Exit:
@@ -643,10 +656,15 @@ UacpiGetOrBuildSyntheticRsdpFromRoot(_In_ PHYSICAL_ADDRESS RootTable, _Out_ uacp
     /* Determine whether RootTable points to an XSDT or RSDT */
     UCHAR *Hdr = (UCHAR *)uacpi_kernel_map((uacpi_phys_addr)RootTable.QuadPart, 4);
     if (!Hdr)
+    {
+        DPRINT1("uACPI: failed to map ACPI root table at 0x%I64x\n", RootTable.QuadPart);
         return UACPI_STATUS_MAPPING_FAILED;
+    }
 
     BOOLEAN IsXsdt = (memcmp(Hdr, "XSDT", 4) == 0);
     BOOLEAN IsRsdt = (memcmp(Hdr, "RSDT", 4) == 0);
+    DPRINT1("uACPI: ACPI root table at 0x%I64x signature='%c%c%c%c'\n",
+            RootTable.QuadPart, Hdr[0], Hdr[1], Hdr[2], Hdr[3]);
     uacpi_kernel_unmap(Hdr, 4);
 
     if (!IsXsdt && !IsRsdt)
@@ -1055,9 +1073,12 @@ uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rdsp_address)
      */
     PHYSICAL_ADDRESS RootTable;
     NTSTATUS RegSt = UacpiQueryAcpiRootFromRegistry(&RootTable);
+    DPRINT1("uACPI: registry ACPI root query status=0x%08lx RootTable=0x%I64x\n",
+            RegSt, NT_SUCCESS(RegSt) ? RootTable.QuadPart : 0);
     if (NT_SUCCESS(RegSt) && RootTable.QuadPart)
     {
         uacpi_status St = UacpiGetOrBuildSyntheticRsdpFromRoot(RootTable, out_rdsp_address);
+        DPRINT1("uACPI: synthetic RSDP from root status=%d\n", (int)St);
         if (uacpi_likely_success(St))
             return St;
     }
@@ -1108,6 +1129,7 @@ uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rdsp_address)
     }
 
     uacpi_kernel_unmap(Bios, BiosLen);
+    DPRINT1("uACPI: RSDP not found via registry, EBDA, or BIOS area\n");
     return UACPI_STATUS_NOT_FOUND;
 }
 

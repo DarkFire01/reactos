@@ -15,8 +15,11 @@
 
 #include <hal.h>
 #include "apicp.h"
+#include <smp.h>
 #define NDEBUG
 #include <debug.h>
+
+extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
 
 #ifndef _M_AMD64
 #define APIC_LAZY_IRQL
@@ -89,47 +92,90 @@ HalVectorToIRQL[16] =
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
+/*
+ * Runtime description of each I/O APIC in the system, built from the MADT data
+ * (HalpApicInfoTable) by ApicInitializeIOApic. Supporting more than the legacy
+ * single 24-pin I/O APIC is required on machines whose ACPI _PRT routes device
+ * interrupts to global system interrupts (GSIs) >= 24 - either via a single
+ * large I/O APIC or via multiple I/O APICs each owning a range of GSIs.
+ */
+#define HALP_MAX_IOAPICS 16
+
+typedef struct _HALP_IOAPIC_DESCRIPTOR
+{
+    PVOID Va;          /* Virtual address of this I/O APIC's IOREGSEL/IOWIN window */
+    ULONG GsiBase;     /* First global system interrupt owned by this I/O APIC */
+    ULONG EntryCount;  /* Number of redirection entries (pins) */
+} HALP_IOAPIC_DESCRIPTOR;
+
+static HALP_IOAPIC_DESCRIPTOR HalpIoApic[HALP_MAX_IOAPICS];
+static ULONG HalpIoApicCount;
+static ULONG HalpMaxGsi;  /* One past the highest valid GSI across all I/O APICs */
+
 FORCEINLINE
 ULONG
-IOApicRead(UCHAR Register)
+IOApicRead(PVOID IoApicVa, ULONG Register)
 {
     /* Select the register, then do the read */
-    ASSERT(Register <= 0x3F);
-    WRITE_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOREGSEL), Register);
-    return READ_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOWIN));
+    WRITE_REGISTER_ULONG((PULONG)((PUCHAR)IoApicVa + IOAPIC_IOREGSEL), Register);
+    return READ_REGISTER_ULONG((PULONG)((PUCHAR)IoApicVa + IOAPIC_IOWIN));
 }
 
 FORCEINLINE
 VOID
-IOApicWrite(UCHAR Register, ULONG Value)
+IOApicWrite(PVOID IoApicVa, ULONG Register, ULONG Value)
 {
     /* Select the register, then do the write */
-    ASSERT(Register <= 0x3F);
-    WRITE_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOREGSEL), Register);
-    WRITE_REGISTER_ULONG((PULONG)(IOAPIC_BASE + IOAPIC_IOWIN), Value);
+    WRITE_REGISTER_ULONG((PULONG)((PUCHAR)IoApicVa + IOAPIC_IOREGSEL), Register);
+    WRITE_REGISTER_ULONG((PULONG)((PUCHAR)IoApicVa + IOAPIC_IOWIN), Value);
+}
+
+/* Find the I/O APIC that owns the given GSI and return the matching pin */
+FORCEINLINE
+HALP_IOAPIC_DESCRIPTOR*
+HalpGsiToIoApic(ULONG Gsi, OUT PULONG Pin)
+{
+    ULONG i;
+
+    for (i = 0; i < HalpIoApicCount; i++)
+    {
+        if ((Gsi >= HalpIoApic[i].GsiBase) &&
+            (Gsi < HalpIoApic[i].GsiBase + HalpIoApic[i].EntryCount))
+        {
+            *Pin = Gsi - HalpIoApic[i].GsiBase;
+            return &HalpIoApic[i];
+        }
+    }
+
+    return NULL;
 }
 
 FORCEINLINE
 VOID
 ApicWriteIORedirectionEntry(
-    UCHAR Index,
+    ULONG Gsi,
     IOAPIC_REDIRECTION_REGISTER ReDirReg)
 {
-    ASSERT(Index < APIC_MAX_IRQ);
-    IOApicWrite(IOAPIC_REDTBL + 2 * Index, ReDirReg.Long0);
-    IOApicWrite(IOAPIC_REDTBL + 2 * Index + 1, ReDirReg.Long1);
+    ULONG Pin;
+    HALP_IOAPIC_DESCRIPTOR *IoApic = HalpGsiToIoApic(Gsi, &Pin);
+
+    ASSERT(IoApic != NULL);
+    IOApicWrite(IoApic->Va, IOAPIC_REDTBL + 2 * Pin, ReDirReg.Long0);
+    IOApicWrite(IoApic->Va, IOAPIC_REDTBL + 2 * Pin + 1, ReDirReg.Long1);
 }
 
 FORCEINLINE
 IOAPIC_REDIRECTION_REGISTER
 ApicReadIORedirectionEntry(
-    UCHAR Index)
+    ULONG Gsi)
 {
     IOAPIC_REDIRECTION_REGISTER ReDirReg;
+    ULONG Pin;
+    HALP_IOAPIC_DESCRIPTOR *IoApic = HalpGsiToIoApic(Gsi, &Pin);
 
-    ASSERT(Index < APIC_MAX_IRQ);
-    ReDirReg.Long0 = IOApicRead(IOAPIC_REDTBL + 2 * Index);
-    ReDirReg.Long1 = IOApicRead(IOAPIC_REDTBL + 2 * Index + 1);
+    ASSERT(IoApic != NULL);
+    ReDirReg.Long0 = IOApicRead(IoApic->Va, IOAPIC_REDTBL + 2 * Pin);
+    ReDirReg.Long1 = IOApicRead(IoApic->Va, IOAPIC_REDTBL + 2 * Pin + 1);
 
     return ReDirReg;
 }
@@ -258,9 +304,14 @@ FASTCALL
 HalpIrqToVector(UCHAR Irq)
 {
     IOAPIC_REDIRECTION_REGISTER ReDirReg;
+    ULONG Pin;
 
-    /* Read low dword of the redirection entry */
-    ReDirReg.Long0 = IOApicRead(IOAPIC_REDTBL + 2 * Irq);
+    /* The IRQ is a global system interrupt; bail out if no I/O APIC owns it */
+    if (HalpGsiToIoApic(Irq, &Pin) == NULL)
+        return APIC_FREE_VECTOR;
+
+    /* Read the redirection entry */
+    ReDirReg = ApicReadIORedirectionEntry(Irq);
 
     /* Return the vector */
     return (UCHAR)ReDirReg.Vector;
@@ -372,7 +423,7 @@ HalpAllocateSystemInterrupt(
 {
     IOAPIC_REDIRECTION_REGISTER ReDirReg;
 
-    ASSERT(Irq < APIC_MAX_IRQ);
+    ASSERT(Irq < HalpMaxGsi);
     ASSERT(HalpVectorToIndex[Vector] == APIC_FREE_VECTOR);
 
     /* Setup a redirection entry */
@@ -455,18 +506,16 @@ Exit:
     return Vector;
 }
 
-VOID
-NTAPI
-ApicInitializeIOApic(VOID)
+static
+PVOID
+ApicMapIoApic(ULONG Index, ULONG PhysicalAddress)
 {
+    PVOID Va = (PVOID)(IOAPIC_BASE + (ULONG_PTR)Index * PAGE_SIZE);
     PHARDWARE_PTE Pte;
-    IOAPIC_REDIRECTION_REGISTER ReDirReg;
-    UCHAR Index;
-    ULONG Vector;
 
-    /* Map the I/O Apic page */
-    Pte = HalAddressToPte(IOAPIC_BASE);
-    Pte->PageFrameNumber = IOAPIC_PHYS_BASE / PAGE_SIZE;
+    /* Map this I/O APIC's register window one page past the previous one */
+    Pte = HalAddressToPte(Va);
+    Pte->PageFrameNumber = PhysicalAddress / PAGE_SIZE;
     Pte->Valid = 1;
     Pte->Write = 1;
     Pte->Owner = 1;
@@ -474,7 +523,64 @@ ApicInitializeIOApic(VOID)
     Pte->Global = 1;
     _ReadWriteBarrier();
 
-    /* Setup a redirection entry */
+    return Va;
+}
+
+VOID
+NTAPI
+ApicInitializeIOApic(VOID)
+{
+    IOAPIC_REDIRECTION_REGISTER ReDirReg;
+    ULONG Id, Index, Vector;
+
+    /* Build the runtime I/O APIC table from the MADT-derived data */
+    HalpIoApicCount = 0;
+    HalpMaxGsi = 0;
+    for (Id = 0; Id < HALP_APIC_INFO_TABLE_IOAPIC_NUMBER; Id++)
+    {
+        ULONG VersionReg, EntryCount, GsiBase;
+        PVOID Va;
+
+        /* Skip absent I/O APIC slots */
+        if (HalpApicInfoTable.IoApicPA[Id] == 0)
+            continue;
+
+        if (HalpIoApicCount >= HALP_MAX_IOAPICS)
+        {
+            DPRINT1("HAL: more than %u I/O APICs present, ignoring the rest\n",
+                    HALP_MAX_IOAPICS);
+            break;
+        }
+
+        /* Map it and read the number of redirection entries from its version register */
+        Va = ApicMapIoApic(HalpIoApicCount, HalpApicInfoTable.IoApicPA[Id]);
+        VersionReg = IOApicRead(Va, IOAPIC_VER);
+        EntryCount = ((VersionReg >> 16) & 0xFF) + 1;
+        GsiBase = HalpApicInfoTable.IoApicIrqBase[Id];
+
+        HalpIoApic[HalpIoApicCount].Va = Va;
+        HalpIoApic[HalpIoApicCount].GsiBase = GsiBase;
+        HalpIoApic[HalpIoApicCount].EntryCount = EntryCount;
+        HalpIoApicCount++;
+
+        if (GsiBase + EntryCount > HalpMaxGsi)
+            HalpMaxGsi = GsiBase + EntryCount;
+
+        DPRINT1("HAL: I/O APIC %u: PA 0x%08lx, GSI base %lu, %lu entries\n",
+                Id, HalpApicInfoTable.IoApicPA[Id], GsiBase, EntryCount);
+    }
+
+    /* Fall back to the legacy single I/O APIC if the MADT described none */
+    if (HalpIoApicCount == 0)
+    {
+        HalpIoApic[0].Va = ApicMapIoApic(0, IOAPIC_PHYS_BASE);
+        HalpIoApic[0].GsiBase = 0;
+        HalpIoApic[0].EntryCount = APIC_MAX_IRQ;
+        HalpIoApicCount = 1;
+        HalpMaxGsi = APIC_MAX_IRQ;
+    }
+
+    /* Setup a masked redirection entry template */
     ReDirReg.Vector = APIC_FREE_VECTOR;
     ReDirReg.MessageType = APIC_MT_Fixed;
     ReDirReg.DestinationMode = APIC_DM_Physical;
@@ -486,11 +592,14 @@ ApicInitializeIOApic(VOID)
     ReDirReg.Reserved = 0;
     ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
 
-    /* Loop all table entries */
-    for (Index = 0; Index < APIC_MAX_IRQ; Index++)
+    /* Mask every redirection entry on every I/O APIC */
+    for (Id = 0; Id < HalpIoApicCount; Id++)
     {
-        /* Initialize entry */
-        ApicWriteIORedirectionEntry(Index, ReDirReg);
+        for (Index = 0; Index < HalpIoApic[Id].EntryCount; Index++)
+        {
+            IOApicWrite(HalpIoApic[Id].Va, IOAPIC_REDTBL + 2 * Index, ReDirReg.Long0);
+            IOApicWrite(HalpIoApic[Id].Va, IOAPIC_REDTBL + 2 * Index + 1, ReDirReg.Long1);
+        }
     }
 
     /* Init the vactor to index table */

@@ -683,9 +683,14 @@ FORCEINLINE
 BOOLEAN
 MiIsMemoryTypeInvisible(TYPE_OF_MEMORY MemoryType)
 {
+    /* This must stay consistent with the IncludeType[] exclusion list used to
+     * build MmPhysicalMemoryBlock (see MmInitSystem): every page that ends up in
+     * the physical memory block must have a mapped PFN entry, otherwise scanning
+     * the block (e.g. MiFindContiguousPages) faults on the missing entry.
+     * LoaderHALCachedMemory is normal usable RAM and is included in the block, so
+     * it must NOT be treated as invisible here. */
     return ((MemoryType == LoaderFirmwarePermanent) ||
             (MemoryType == LoaderSpecialMemory) ||
-            (MemoryType == LoaderHALCachedMemory) ||
             (MemoryType == LoaderBBTMemory));
 }
 

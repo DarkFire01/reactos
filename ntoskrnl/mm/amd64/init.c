@@ -443,9 +443,12 @@ MiSetupPfnForPageTable(
     /* Get the pfn entry for this page */
     Pfn = MiGetPfnEntry(PageFrameIndex);
 
-    /* Check if it's valid memory */
+    /* Check if it's valid memory. The PFN entry can straddle a page boundary,
+     * and the page mapping its tail may cover a memory hole and therefore be
+     * unmapped, so validate the whole entry (start and end), not just its start. */
     if ((PageFrameIndex <= MmHighestPhysicalPage) &&
         (MmIsAddressValid(Pfn)) &&
+        (MmIsAddressValid((PUCHAR)(Pfn + 1) - 1)) &&
         (Pfn->u3.e1.PageLocation == ActiveAndValid))
     {
         /* Setup the PFN entry */
