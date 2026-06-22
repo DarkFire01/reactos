@@ -921,6 +921,7 @@
 @ stub _setsystime(ptr long)
 @ cdecl _sleep(long)
 @ varargs _snprintf(ptr long str)
+@ varargs -version=0x600+ snprintf(ptr long str)
 @ varargs -version=0x600+ _snprintf_c(ptr long str)
 @ varargs -version=0x600+ _snprintf_c_l(ptr long str ptr)
 @ varargs -version=0x600+ _snprintf_l(ptr long str ptr)

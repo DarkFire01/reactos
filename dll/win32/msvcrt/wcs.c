@@ -1235,6 +1235,22 @@ int WINAPIV _snprintf(char *str, size_t len, const char *format, ...)
 }
 
 /*********************************************************************
+ *		snprintf (MSVCRT.@)
+ *
+ * C99 name imported by modern (GCC-built) modules; mirror _snprintf, like the
+ * existing vsnprintf -> _vsnprintf export.
+ */
+int WINAPIV snprintf(char *str, size_t len, const char *format, ...)
+{
+    int retval;
+    va_list valist;
+    va_start(valist, format);
+    retval = vsnprintf(str, len, format, valist);
+    va_end(valist);
+    return retval;
+}
+
+/*********************************************************************
  *		_snprintf_l (MSVCRT.@)
  */
 int WINAPIV _snprintf_l(char *str, size_t count, const char *format,

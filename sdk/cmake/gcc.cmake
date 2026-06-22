@@ -361,15 +361,15 @@ if(SEPARATE_DBG)
         "${CMAKE_STRIP} --only-keep-debug <TARGET> -o ${REACTOS_BINARY_DIR}/symbols/${SYMBOL_FILE}"
         ${strip_debug})
     set(CMAKE_C_CREATE_SHARED_LIBRARY
-        "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition <CMAKE_SHARED_LIBRARY_C_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group"
+        "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition <CMAKE_SHARED_LIBRARY_C_FLAGS> <LINK_FLAGS> -shared <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group"
         "${CMAKE_STRIP} --only-keep-debug <TARGET> -o ${REACTOS_BINARY_DIR}/symbols/${SYMBOL_FILE}"
         ${strip_debug})
     set(CMAKE_CXX_CREATE_SHARED_LIBRARY
-        "<CMAKE_CXX_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition <CMAKE_SHARED_LIBRARY_CXX_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group"
+        "<CMAKE_CXX_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition <CMAKE_SHARED_LIBRARY_CXX_FLAGS> <LINK_FLAGS> -shared <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group"
         "${CMAKE_STRIP} --only-keep-debug <TARGET> -o ${REACTOS_BINARY_DIR}/symbols/${SYMBOL_FILE}"
         ${strip_debug})
     set(CMAKE_RC_CREATE_SHARED_LIBRARY
-        "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition <CMAKE_SHARED_LIBRARY_C_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group"
+        "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition <CMAKE_SHARED_LIBRARY_C_FLAGS> <LINK_FLAGS> -shared <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group"
         "${CMAKE_STRIP} --only-keep-debug <TARGET> -o ${REACTOS_BINARY_DIR}/symbols/${SYMBOL_FILE}"
         ${strip_debug})
 elseif(NO_ROSSYM)
@@ -377,9 +377,9 @@ elseif(NO_ROSSYM)
     message(STATUS "Generating a dwarf-based build (no rsym)")
     set(CMAKE_C_LINK_EXECUTABLE "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_C_FLAGS} <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group")
     set(CMAKE_CXX_LINK_EXECUTABLE "<CMAKE_CXX_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_CXX_FLAGS} <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group")
-    set(CMAKE_C_CREATE_SHARED_LIBRARY "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_C_FLAGS} <CMAKE_SHARED_LIBRARY_C_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group")
-    set(CMAKE_CXX_CREATE_SHARED_LIBRARY "<CMAKE_CXX_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_CXX_FLAGS} <CMAKE_SHARED_LIBRARY_CXX_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group")
-    set(CMAKE_RC_CREATE_SHARED_LIBRARY "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_C_FLAGS} <CMAKE_SHARED_LIBRARY_C_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group")
+    set(CMAKE_C_CREATE_SHARED_LIBRARY "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_C_FLAGS} <CMAKE_SHARED_LIBRARY_C_FLAGS> <LINK_FLAGS> -shared <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group")
+    set(CMAKE_CXX_CREATE_SHARED_LIBRARY "<CMAKE_CXX_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_CXX_FLAGS} <CMAKE_SHARED_LIBRARY_CXX_FLAGS> <LINK_FLAGS> -shared <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group")
+    set(CMAKE_RC_CREATE_SHARED_LIBRARY "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_C_FLAGS} <CMAKE_SHARED_LIBRARY_C_FLAGS> <LINK_FLAGS> -shared <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group")
 else()
     # Normal rsym build
     get_target_property(RSYM native-rsym IMPORTED_LOCATION)
@@ -391,13 +391,13 @@ else()
         "<CMAKE_CXX_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_CXX_FLAGS} <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group"
         "${RSYM} -s ${REACTOS_SOURCE_DIR} <TARGET> <TARGET>")
     set(CMAKE_C_CREATE_SHARED_LIBRARY
-        "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_C_FLAGS} <CMAKE_SHARED_LIBRARY_C_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group"
+        "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_C_FLAGS} <CMAKE_SHARED_LIBRARY_C_FLAGS> <LINK_FLAGS> -shared <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group"
         "${RSYM} -s ${REACTOS_SOURCE_DIR} <TARGET> <TARGET>")
     set(CMAKE_CXX_CREATE_SHARED_LIBRARY
-        "<CMAKE_CXX_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_CXX_FLAGS} <CMAKE_SHARED_LIBRARY_CXX_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group"
+        "<CMAKE_CXX_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_CXX_FLAGS} <CMAKE_SHARED_LIBRARY_CXX_FLAGS> <LINK_FLAGS> -shared <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group"
         "${RSYM} -s ${REACTOS_SOURCE_DIR} <TARGET> <TARGET>")
     set(CMAKE_RC_CREATE_SHARED_LIBRARY
-        "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_C_FLAGS} <CMAKE_SHARED_LIBRARY_C_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group")
+        "<CMAKE_C_COMPILER> -Wl,--start-group -Wl,--allow-multiple-definition ${CMAKE_C_FLAGS} <CMAKE_SHARED_LIBRARY_C_FLAGS> <LINK_FLAGS> -shared <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> -o <TARGET> <OBJECTS> <LINK_LIBRARIES> -Wl,--end-group")
 endif()
 
 set(CMAKE_C_CREATE_SHARED_MODULE ${CMAKE_C_CREATE_SHARED_LIBRARY})
