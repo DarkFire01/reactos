@@ -170,6 +170,8 @@ typedef struct _ATA_CONTROLLER
 {
     CM_PARTIAL_RESOURCE_DESCRIPTOR InterruptDesc;
     PKINTERRUPT InterruptObject;
+    /* Set when the HBA interrupt is connected via the message-based (MSI/MSI-X) path. */
+    PIO_INTERRUPT_MESSAGE_INFO InterruptMessageTable;
     struct
     {
         USHORT VendorID;
@@ -627,6 +629,7 @@ CHANNEL_PREPARE_IO AtaAhciPrepareIo;
 CHANNEL_PREPARE_PRD_TABLE AtaAhciPreparePrdTable;
 CHANNEL_ALLOCATE_SLOT AtaAhciAllocateSlot;
 KSERVICE_ROUTINE AtaAhciHbaIsr;
+KMESSAGE_SERVICE_ROUTINE AtaAhciHbaMessageIsr;
 
 /* pata_generic.c *************************************************************/
 

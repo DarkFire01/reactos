@@ -169,25 +169,103 @@ IoDisconnectInterrupt(PKINTERRUPT InterruptObject)
     ExFreePoolWithTag(IoInterrupt, TAG_IO_INTERRUPT);
 }
 
+static PCM_PARTIAL_RESOURCE_DESCRIPTOR
+IopFindMessageInterruptDescriptor(
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject);
+static PCM_PARTIAL_RESOURCE_DESCRIPTOR
+IopFindMessageInterruptDescriptorEx(
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _In_ BOOLEAN Translated);
+
 NTSTATUS
 IopConnectInterruptExFullySpecific(
     _Inout_ PIO_CONNECT_INTERRUPT_PARAMETERS Parameters)
 {
     NTSTATUS Status;
+    ULONG Vector = Parameters->FullySpecified.Vector;
+    KIRQL Irql = Parameters->FullySpecified.Irql;
+    KIRQL SynchronizeIrql = Parameters->FullySpecified.SynchronizeIrql;
+    KINTERRUPT_MODE Mode = Parameters->FullySpecified.InterruptMode;
+    KAFFINITY Affinity = Parameters->FullySpecified.ProcessorEnableMask;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR RawDesc;
 
     PAGED_CODE();
 
-    /* Fallback to standard IoConnectInterrupt */
+    /*
+     * If the device was granted a message-signalled interrupt (MSI/MSI-X), the
+     * caller passes the *translated* system vector, but the LAPIC actually
+     * delivers the *raw* message vector that the bus driver programmed into the
+     * device's MSI/MSI-X capability. IoConnectInterrupt() arms the IDT at the
+     * vector it is given, so without remapping the IDT entry would never match
+     * the delivered vector and the ISR would never run. Remap to the raw vector
+     * (with its message IRQL and edge-triggered mode) before connecting.
+     *
+     * Win8's IoConnectInterruptEx resolves the same thing via the device's
+     * interrupt connection data; we derive it from the raw/translated resource
+     * lists the PnP manager assigned.
+     */
+    RawDesc = IopFindMessageInterruptDescriptor(Parameters->FullySpecified.PhysicalDeviceObject);
+    if (RawDesc != NULL)
+    {
+        ULONG RawBase = RawDesc->u.MessageInterrupt.Raw.Vector;
+        ULONG Count = RawDesc->u.MessageInterrupt.Raw.MessageCount;
+        BOOLEAN Remap = FALSE;
+
+        if (Count == 0)
+            Count = 1;
+
+        if (Count == 1)
+        {
+            /*
+             * Single message: the device delivers exactly one vector - the raw
+             * message vector the bus driver programmed into the MSI/MSI-X
+             * capability. The caller's translated vector belongs to a different
+             * HAL domain and would arm the wrong IDT entry, so use the raw one.
+             */
+            Vector = RawBase;
+            Remap = TRUE;
+        }
+        else
+        {
+            /*
+             * Multiple messages: map the caller's translated vector to the raw
+             * message vector by its offset within the translated block.
+             */
+            PCM_PARTIAL_RESOURCE_DESCRIPTOR TransDesc =
+                IopFindMessageInterruptDescriptorEx(Parameters->FullySpecified.PhysicalDeviceObject, TRUE);
+            if (TransDesc != NULL)
+            {
+                ULONG TransBase = TransDesc->u.MessageInterrupt.Translated.Vector;
+                if (Vector >= TransBase && Vector < TransBase + Count)
+                {
+                    Vector = RawBase + (Vector - TransBase);
+                    Remap = TRUE;
+                }
+            }
+        }
+
+        if (Remap)
+        {
+            Irql = HalGetMessageVectorIrql((UCHAR)Vector);
+            Mode = Latched;       /* MSI/MSI-X are edge-triggered */
+            Affinity = RawDesc->u.MessageInterrupt.Raw.Affinity;
+        }
+    }
+
+    /* KeInitializeInterrupt requires SynchronizeIrql >= the interrupt IRQL */
+    if (SynchronizeIrql < Irql)
+        SynchronizeIrql = Irql;
+
     Status = IoConnectInterrupt(Parameters->FullySpecified.InterruptObject,
                                 Parameters->FullySpecified.ServiceRoutine,
                                 Parameters->FullySpecified.ServiceContext,
                                 Parameters->FullySpecified.SpinLock,
-                                Parameters->FullySpecified.Vector,
-                                Parameters->FullySpecified.Irql,
-                                Parameters->FullySpecified.SynchronizeIrql,
-                                Parameters->FullySpecified.InterruptMode,
+                                Vector,
+                                Irql,
+                                SynchronizeIrql,
+                                Mode,
                                 Parameters->FullySpecified.ShareVector,
-                                Parameters->FullySpecified.ProcessorEnableMask,
+                                Affinity,
                                 Parameters->FullySpecified.FloatingSave);
     if (!NT_SUCCESS(Status))
         DPRINT1("IopConnectInterruptExFullySpecific() failed: 0x%lx\n", Status);
@@ -249,8 +327,9 @@ IopFreeMsiInterrupts(
  */
 static
 PCM_PARTIAL_RESOURCE_DESCRIPTOR
-IopFindMessageInterruptDescriptor(
-    _In_ PDEVICE_OBJECT PhysicalDeviceObject)
+IopFindMessageInterruptDescriptorEx(
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _In_ BOOLEAN Translated)
 {
     PDEVICE_NODE DeviceNode;
     PCM_RESOURCE_LIST ResourceList;
@@ -258,11 +337,17 @@ IopFindMessageInterruptDescriptor(
     ULONG i, j;
 
     DeviceNode = IopGetDeviceNode(PhysicalDeviceObject);
-    if (!DeviceNode || !DeviceNode->ResourceList)
+    if (!DeviceNode)
         return NULL;
 
-    /* The raw list carries the MessageInterrupt.Raw form (base vector + count) */
-    ResourceList = DeviceNode->ResourceList;
+    /*
+     * The raw list carries the MessageInterrupt.Raw form (base vector + count);
+     * the translated list carries MessageInterrupt.Translated (system vector).
+     */
+    ResourceList = Translated ? DeviceNode->ResourceListTranslated : DeviceNode->ResourceList;
+    if (!ResourceList)
+        return NULL;
+
     FullDescriptor = &ResourceList->List[0];
 
     for (i = 0; i < ResourceList->Count; i++)
@@ -284,6 +369,14 @@ IopFindMessageInterruptDescriptor(
     }
 
     return NULL;
+}
+
+static
+PCM_PARTIAL_RESOURCE_DESCRIPTOR
+IopFindMessageInterruptDescriptor(
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject)
+{
+    return IopFindMessageInterruptDescriptorEx(PhysicalDeviceObject, FALSE);
 }
 
 NTSTATUS

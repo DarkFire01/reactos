@@ -491,8 +491,11 @@ UacpiQueryAcpiRootFromRegistry(_Out_ PHYSICAL_ADDRESS *OutRootTable)
     if (!NT_SUCCESS(Status))
         goto Exit;
 
-    /* Allocate enough to hold the longest subkey name (+ terminator) */
-    Bytes = FullInfo->MaxNameLen + sizeof(WCHAR);
+    /* Allocate enough to hold the KEY_BASIC_INFORMATION header plus the longest
+     * subkey name (+ terminator). MaxNameLen counts only the name bytes, so the
+     * fixed header (LastWriteTime/TitleIndex/NameLength, i.e. up to Name[]) must
+     * be added; otherwise ZwEnumerateKey fails with STATUS_BUFFER_TOO_SMALL. */
+    Bytes = FIELD_OFFSET(KEY_BASIC_INFORMATION, Name) + FullInfo->MaxNameLen + sizeof(WCHAR);
     KeyInfo = ExAllocatePoolWithTag(PagedPool, Bytes, 'rAcu');
     if (!KeyInfo)
     {

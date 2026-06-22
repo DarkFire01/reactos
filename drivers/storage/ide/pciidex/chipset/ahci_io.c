@@ -427,3 +427,19 @@ AtaAhciHbaIsr(
 
     return TRUE;
 }
+
+/*
+ * Message-signalled (MSI/MSI-X) interrupt trampoline. The HBA shares a single
+ * MSI for all ports, so the message id is irrelevant - just run the HBA ISR.
+ */
+BOOLEAN
+NTAPI
+AtaAhciHbaMessageIsr(
+    _In_ PKINTERRUPT Interrupt,
+    _In_ PVOID ServiceContext,
+    _In_ ULONG MessageId)
+{
+    UNREFERENCED_PARAMETER(MessageId);
+
+    return AtaAhciHbaIsr(Interrupt, ServiceContext);
+}

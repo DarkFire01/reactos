@@ -2370,7 +2370,12 @@ PdoStartDevice(
                         PciDevice->SlotNumber.u.AsULONG,
                         PciDevice->BusNumber);
 
-                PciProgramInterruptResource(PciDevice);
+                /*
+                 * NB: do not program the capability here. An MSI-X table lives in
+                 * the device's BAR memory, so it can only be written once Memory
+                 * Space decoding is enabled below. Defer until after the command
+                 * register is set up.
+                 */
             }
             else if (RawPartialDesc->Type == CmResourceTypeInterrupt)
             {
@@ -2450,6 +2455,19 @@ PdoStartDevice(
     else
     {
         DBGPRINT("None\n");
+    }
+
+    /*
+     * Now that Memory Space (and Bus Master) decoding is enabled, program the
+     * MSI/MSI-X capability. This must happen after the command register write:
+     * an MSI-X table is mapped from the device's BAR, and the message-address
+     * writes only reach the device once memory decoding is on. (MSI lives in
+     * config space and would work either way, but is harmless to defer too.)
+     */
+    if (DeviceExtension->PciDevice->InterruptResource.Type == PciInterruptTypeMsi ||
+        DeviceExtension->PciDevice->InterruptResource.Type == PciInterruptTypeMsiX)
+    {
+        PciProgramInterruptResource(DeviceExtension->PciDevice);
     }
 
     return STATUS_SUCCESS;

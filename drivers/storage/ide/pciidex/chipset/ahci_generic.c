@@ -548,7 +548,19 @@ AtaAhciHbaFreeResouces(
 {
     PAGED_CODE();
 
-    if (Controller->InterruptObject)
+    if (Controller->InterruptMessageTable)
+    {
+        IO_DISCONNECT_INTERRUPT_PARAMETERS Params;
+
+        Params.Version = CONNECT_MESSAGE_BASED;
+        Params.ConnectionContext.InterruptMessageTable = Controller->InterruptMessageTable;
+        IoDisconnectInterruptEx(&Params);
+        Controller->InterruptMessageTable = NULL;
+
+        /* IoDisconnectInterruptEx freed the KINTERRUPT we aliased here */
+        Controller->InterruptObject = NULL;
+    }
+    else if (Controller->InterruptObject)
     {
         IoDisconnectInterrupt(Controller->InterruptObject);
         Controller->InterruptObject = NULL;
@@ -728,6 +740,52 @@ AhciGetControllerProperties(
 
     /* Clear HBA interrupts */
     AHCI_HBA_WRITE(Controller->IoBase, HbaInterruptStatus, 0xFFFFFFFF);
+
+    /*
+     * MSI/MSI-X interrupts must be connected through the message-based path.
+     * The legacy IoConnectInterrupt() does not arm message-signalled delivery,
+     * so the HBA would assert its interrupt but the ISR would never run.
+     * Try the message-based path first (it locates any assigned MSI resource
+     * from the PDO itself) and fall back to a line-based connection.
+     */
+    {
+        PFDO_DEVICE_EXTENSION FdoExt =
+            CONTAINING_RECORD(Controller, FDO_DEVICE_EXTENSION, Controller);
+        IO_CONNECT_INTERRUPT_PARAMETERS Params;
+
+        RtlZeroMemory(&Params, sizeof(Params));
+        Params.Version = CONNECT_MESSAGE_BASED;
+        Params.MessageBased.PhysicalDeviceObject = FdoExt->Pdo;
+        Params.MessageBased.ConnectionContext.InterruptMessageTable =
+            &Controller->InterruptMessageTable;
+        Params.MessageBased.MessageServiceRoutine = AtaAhciHbaMessageIsr;
+        Params.MessageBased.ServiceContext = Controller;
+        Params.MessageBased.SpinLock = NULL;
+        Params.MessageBased.SynchronizeIrql = 0;
+        Params.MessageBased.FloatingSave = FALSE;
+        Params.MessageBased.FallBackServiceRoutine = NULL;
+
+        Status = IoConnectInterruptEx(&Params);
+        if (NT_SUCCESS(Status))
+        {
+            /*
+             * Publish the message's KINTERRUPT as the controller interrupt object
+             * so the existing per-port/atapi synchronization (which calls
+             * KeAcquireInterruptSpinLock(Controller->InterruptObject)) keeps
+             * working with the message-based connection. The HBA uses a single
+             * MSI for all ports, so message 0's object covers the controller.
+             */
+            Controller->InterruptObject =
+                Controller->InterruptMessageTable->MessageInfo[0].InterruptObject;
+
+            INFO("Connected message-based interrupt: %lu message(s)\n",
+                 Controller->InterruptMessageTable->MessageCount);
+            return STATUS_SUCCESS;
+        }
+
+        WARN("Message-based connect failed (0x%lx), trying line-based\n", Status);
+        Controller->InterruptMessageTable = NULL;
+    }
 
     Status = IoConnectInterrupt(&Controller->InterruptObject,
                                 AtaAhciHbaIsr,
