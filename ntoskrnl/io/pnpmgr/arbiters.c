@@ -330,9 +330,17 @@ IopIrqInitialize(VOID)
     if (!NT_SUCCESS(Status))
         return Status;
 
-    /* Reserve critical legacy system IRQs typically consumed by fixed devices (timer, keyboard, cascade, RTC) */
+    /* Pre-reserve only the legacy IRQs that are permanently owned by the
+       platform and are NEVER handed to an enumerated device:
+         IRQ 0 - 8254 system timer
+         IRQ 2 - cascade from the second PIC (not a usable line)
+         IRQ 8 - RTC/CMOS periodic clock (owned by the HAL)
+       Do NOT reserve IRQ 1 (PS/2 keyboard) or IRQ 12 (PS/2 mouse): those lines
+       have to remain available so the i8042prt keyboard/mouse PDOs can acquire
+       them through this arbiter. Reserving them here is exactly what left the
+       PS/2 devices without an interrupt on the Standard HAL (CORE-17463). */
     {
-        static const UCHAR LegacySystemIrqs[] = {0,1,2,8};
+        static const UCHAR LegacySystemIrqs[] = {0, 2, 8};
         for (ULONG i = 0; i < RTL_NUMBER_OF(LegacySystemIrqs); ++i)
         {
             NTSTATUS St = RtlAddRange(IopRootIrqArbiter.Allocation,

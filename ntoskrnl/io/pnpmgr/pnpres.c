@@ -183,9 +183,154 @@ IopFindDmaResource(
     return FALSE;
 }
 
+/*
+ * Interrupt (IRQ) arbitration.
+ *
+ * On a Standard (non-ACPI) HAL there is no ACPI driver to supply an IRQ
+ * arbiter, so the kernel's root IRQ arbiter (IopRootIrqArbiter, see
+ * io/pnpmgr/arbiters.c) is the authority that hands out and tracks PIC IRQs.
+ * Interrupt resources are therefore arbitrated here through that instance
+ * instead of via the HARDWARE\RESOURCEMAP scan used for the other resource
+ * types. The registry map cannot model device ownership, so it spuriously
+ * reports the firmware-mapper's "detected" copy of a legacy device (e.g. the
+ * PS/2 keyboard on IRQ 1) as conflicting with the very PnP devnode being
+ * started - which is what broke PS/2 input on the Standard HAL (CORE-17463).
+ * The arbiter, keyed on the owning PDO, does not have that problem.
+ */
+
+extern ARBITER_INSTANCE IopRootIrqArbiter;
+
+static
+NTSTATUS
+IopArbitrateInterrupt(
+    IN PDEVICE_OBJECT Pdo,
+    IN PIO_RESOURCE_DESCRIPTOR IoDesc,
+    IN ARBITER_REQUEST_SOURCE RequestSource,
+    OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDesc)
+{
+    PARBITER_INSTANCE Arbiter = &IopRootIrqArbiter;
+    ARBITER_LIST_ENTRY Entry;
+    CM_PARTIAL_RESOURCE_DESCRIPTOR Assignment;
+    LIST_ENTRY ArbitrationList;
+    NTSTATUS Status;
+
+    ASSERT(IoDesc->Type == CmResourceTypeInterrupt);
+    ASSERT(Pdo != NULL);
+
+    RtlZeroMemory(&Entry, sizeof(Entry));
+    RtlZeroMemory(&Assignment, sizeof(Assignment));
+    InitializeListHead(&ArbitrationList);
+
+    Entry.AlternativeCount = 1;
+    Entry.Alternatives = IoDesc;
+    Entry.PhysicalDeviceObject = Pdo;
+    Entry.RequestSource = RequestSource;
+    Entry.Flags = (RequestSource == ArbiterRequestLegacyReported) ? ARBITER_FLAG_BOOT_CONFIG : 0;
+    Entry.InterfaceType = Isa;
+    Entry.SlotNumber = 0;
+    Entry.BusNumber = 0;
+    Entry.Assignment = &Assignment;
+    Entry.SelectedAlternative = NULL;
+    Entry.Result = ArbiterResultUndefined;
+    InsertTailList(&ArbitrationList, &Entry.ListEntry);
+
+    /* Serialize against any other consumer of the (single, global) root IRQ
+       arbiter. TestAllocation operates on Arbiter->PossibleAllocation and
+       CommitAllocation swaps it into Arbiter->Allocation. */
+    KeWaitForSingleObject(Arbiter->MutexEvent, Executive, KernelMode, FALSE, NULL);
+
+    Status = Arbiter->TestAllocation(Arbiter, &ArbitrationList);
+    if (NT_SUCCESS(Status))
+    {
+        /* Make the assignment permanent so later devices see this IRQ taken */
+        Status = Arbiter->CommitAllocation(Arbiter);
+    }
+    /* On failure TestAllocation has already released PossibleAllocation */
+
+    KeSetEvent(Arbiter->MutexEvent, IO_NO_INCREMENT, FALSE);
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("IopArbitrateInterrupt: PDO %p IRQ 0x%x-0x%x denied (Status 0x%lx)\n",
+                Pdo, IoDesc->u.Interrupt.MinimumVector, IoDesc->u.Interrupt.MaximumVector, Status);
+        return Status;
+    }
+
+    *CmDesc = Assignment;
+    DPRINT1("IopArbitrateInterrupt: PDO %p granted IRQ 0x%x (requested 0x%x-0x%x)\n",
+            Pdo, CmDesc->u.Interrupt.Vector,
+            IoDesc->u.Interrupt.MinimumVector, IoDesc->u.Interrupt.MaximumVector);
+    return STATUS_SUCCESS;
+}
+
+/* Record the interrupts a boot/firmware config already owns with the root IRQ
+   arbiter so a later PnP allocation will not hand the same exclusive line to a
+   different device. This is best-effort and deliberately does NOT run a full
+   arbitration: a firmware-assigned IRQ is a fact we must accept, not a request
+   we can deny, and the same line is legitimately referenced by more than one
+   related devnode (e.g. an IDE controller and each of its ATA channels claim
+   IRQ 14/15). A conflict therefore just means the line is already tracked, which
+   is harmless - so the result is ignored and the device is never failed here. */
+static
+VOID
+IopArbitrateBootInterrupts(
+    IN PDEVICE_OBJECT Pdo,
+    IN PCM_RESOURCE_LIST ResourceList)
+{
+    PARBITER_INSTANCE Arbiter = &IopRootIrqArbiter;
+    PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor;
+    ULONG i, j;
+
+    if (!ResourceList || !Pdo)
+        return;
+
+    KeWaitForSingleObject(Arbiter->MutexEvent, Executive, KernelMode, FALSE, NULL);
+
+    FullDescriptor = &ResourceList->List[0];
+    for (i = 0; i < ResourceList->Count; i++)
+    {
+        PCM_PARTIAL_RESOURCE_LIST PartialList = &FullDescriptor->PartialResourceList;
+        FullDescriptor = CmiGetNextResourceDescriptor(FullDescriptor);
+
+        for (j = 0; j < PartialList->Count; j++)
+        {
+            PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDesc = &PartialList->PartialDescriptors[j];
+            ULONG Flags = RTL_RANGE_LIST_ADD_IF_CONFLICT;
+            NTSTATUS Status;
+
+            if (CmDesc->Type != CmResourceTypeInterrupt)
+                continue;
+
+            if (CmDesc->ShareDisposition == CmResourceShareShared)
+                Flags |= RTL_RANGE_LIST_ADD_SHARED;
+
+            Status = RtlAddRange(Arbiter->Allocation,
+                                 CmDesc->u.Interrupt.Vector,
+                                 CmDesc->u.Interrupt.Vector,
+                                 0,
+                                 Flags,
+                                 NULL,
+                                 Pdo);
+            if (NT_SUCCESS(Status))
+            {
+                DPRINT1("IopArbitrateBootInterrupts: tracked boot IRQ 0x%x for PDO %p\n",
+                        CmDesc->u.Interrupt.Vector, Pdo);
+            }
+            else
+            {
+                DPRINT("IopArbitrateBootInterrupts: boot IRQ 0x%x already tracked (0x%lx)\n",
+                       CmDesc->u.Interrupt.Vector, Status);
+            }
+        }
+    }
+
+    KeSetEvent(Arbiter->MutexEvent, IO_NO_INCREMENT, FALSE);
+}
+
 static
 BOOLEAN
 IopFindInterruptResource(
+    IN PDEVICE_OBJECT Pdo,
     IN PIO_RESOURCE_DESCRIPTOR IoDesc,
     OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDesc)
 {
@@ -194,6 +339,20 @@ IopFindInterruptResource(
     ASSERT(IoDesc->Type == CmDesc->Type);
     ASSERT(IoDesc->Type == CmResourceTypeInterrupt);
 
+    /* Preferred path: let the root IRQ arbiter pick and reserve a free line */
+    if (Pdo != NULL)
+    {
+        if (NT_SUCCESS(IopArbitrateInterrupt(Pdo, IoDesc, ArbiterRequestPnpEnumerated, CmDesc)))
+            return TRUE;
+
+        DPRINT1("Failed to arbitrate interrupt requirement with IRQ 0x%x-0x%x\n",
+                IoDesc->u.Interrupt.MinimumVector,
+                IoDesc->u.Interrupt.MaximumVector);
+        return FALSE;
+    }
+
+    /* Fallback (no owning PDO, e.g. raw IoAssignResources callers): scan the
+       HARDWARE\RESOURCEMAP for a free line as before. */
     for (Vector = IoDesc->u.Interrupt.MinimumVector;
          Vector <= IoDesc->u.Interrupt.MaximumVector;
          Vector++)
@@ -218,6 +377,7 @@ IopFindInterruptResource(
 NTSTATUS NTAPI
 IopFixupResourceListWithRequirements(
     IN PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList,
+    IN PDEVICE_OBJECT Pdo OPTIONAL,
     OUT PCM_RESOURCE_LIST *ResourceList)
 {
     ULONG i, OldCount;
@@ -399,7 +559,7 @@ IopFixupResourceListWithRequirements(
                 {
                     case CmResourceTypeInterrupt:
                         /* Find an available interrupt */
-                        if (!IopFindInterruptResource(IoDesc, &NewDesc))
+                        if (!IopFindInterruptResource(Pdo, IoDesc, &NewDesc))
                         {
                             DPRINT1("Failed to find an available interrupt resource (0x%x to 0x%x)\n",
                                     IoDesc->u.Interrupt.MinimumVector, IoDesc->u.Interrupt.MaximumVector);
@@ -682,26 +842,15 @@ IopCheckResourceDescriptor(
                 }
                 case CmResourceTypeInterrupt:
                 {
-                    if (ResDesc->u.Interrupt.Vector == ResDesc2->u.Interrupt.Vector)
-                    {
-                        if (!Silent)
-                        {
-                            /* An IRQ conflict is a normal, handled condition: e.g.
-                               legacy ISA serial ports (COM1/COM3) share IRQ 4 and
-                               two non-shareable claimants land on the same line.
-                               Report it and let the arbiter pick an alternate (or
-                               deny the duplicate) - never break into the debugger,
-                               which would wedge the boot.  This is especially
-                               common in legacy-PIC mode where PCI IRQs are shared. */
-                            DPRINT1("Resource conflict: IRQ (0x%x 0x%x vs. 0x%x 0x%x)\n",
-                                    ResDesc->u.Interrupt.Vector, ResDesc->u.Interrupt.Level,
-                                    ResDesc2->u.Interrupt.Vector, ResDesc2->u.Interrupt.Level);
-                        }
-
-                        Result = TRUE;
-
-                        goto ByeBye;
-                    }
+                    /* IRQ ownership is arbitrated by the root IRQ arbiter
+                       (IopRootIrqArbiter), not by this HARDWARE\RESOURCEMAP scan.
+                       The registry map has no notion of which PDO owns a line, so
+                       it cannot tell a real cross-device clash from a device
+                       re-claiming the IRQ that the firmware mapper "detected" for
+                       that very same hardware (e.g. the PS/2 keyboard on IRQ 1).
+                       Treating the latter as a conflict is exactly what left PS/2
+                       input dead on the Standard HAL (CORE-17463). Skip interrupts
+                       here and let the arbiter be authoritative. */
                     break;
                 }
                 case CmResourceTypeBusNumber:
@@ -1195,6 +1344,13 @@ IopAssignDeviceResources(
 
        RtlCopyMemory(DeviceNode->ResourceList, DeviceNode->BootResources, ListSize);
 
+       /* Track any interrupts the boot config already owns in the root IRQ
+          arbiter so a later PnP device cannot be handed the same exclusive
+          line. Interrupts are no longer checked by the RESOURCEMAP scan below -
+          the arbiter owns IRQ ownership. */
+       IopArbitrateBootInterrupts(DeviceNode->PhysicalDeviceObject,
+                                  DeviceNode->ResourceList);
+
        Status = IopDetectResourceConflict(DeviceNode->ResourceList, FALSE, NULL);
        if (!NT_SUCCESS(Status))
        {
@@ -1218,6 +1374,7 @@ IopAssignDeviceResources(
 
    /* Add resource requirements that aren't in the list we already got */
    Status = IopFixupResourceListWithRequirements(DeviceNode->ResourceRequirements,
+                                                 DeviceNode->PhysicalDeviceObject,
                                                  &DeviceNode->ResourceList);
    if (!NT_SUCCESS(Status))
    {

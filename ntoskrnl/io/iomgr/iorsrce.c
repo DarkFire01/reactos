@@ -1224,6 +1224,7 @@ IopLegacyResourceAllocation(
     }
 
     Status = IopFixupResourceListWithRequirements(ResourceRequirements,
+                                                  DeviceObject,
                                                   AllocatedResources);
     if (!NT_SUCCESS(Status))
     {

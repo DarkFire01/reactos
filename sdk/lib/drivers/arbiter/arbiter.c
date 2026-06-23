@@ -1014,7 +1014,13 @@ ArbFindSuitableRange(
         if (ArbShareDriverExclusive(Arbiter, ArbState))
             return TRUE;
 
-        return Arbiter->OverrideConflict(Arbiter, ArbState);
+        /* OverrideConflict returns an NTSTATUS; this routine returns a BOOLEAN.
+           Map it explicitly - a failing (or UNIMPLEMENTED) OverrideConflict must
+           report "no suitable range" so the caller backtracks and the request
+           fails cleanly. Returning the raw NTSTATUS would coerce a failure code
+           (e.g. STATUS_NOT_IMPLEMENTED) to TRUE and drive AddAllocation into an
+           invalid range. */
+        return NT_SUCCESS(Arbiter->OverrideConflict(Arbiter, ArbState));
     }
 
     ArbState->End = (ArbState->Start + ArbState->CurrentAlternative->Length - 1);

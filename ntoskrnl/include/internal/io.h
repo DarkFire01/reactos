@@ -547,6 +547,7 @@ NTSTATUS
 NTAPI
 IopFixupResourceListWithRequirements(
     IN PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList,
+    IN PDEVICE_OBJECT Pdo OPTIONAL,
     OUT PCM_RESOURCE_LIST *ResourceList
 );
 
