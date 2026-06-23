@@ -943,8 +943,15 @@ VideoPortGetAccessRanges(
         // else if (Descriptor->Type == CmResourceTypeDma) // TODO!
         else
         {
-            ASSERT(FALSE);
-            return ERROR_INVALID_PARAMETER;
+            /* Ignore descriptor types we don't translate into access ranges.
+               In particular the PCI bus driver tags each BAR in the resource
+               list with a CmResourceTypeDevicePrivate descriptor (type 0x81),
+               and that descriptor is carried through into the START_DEVICE
+               resource list. It is not a hardware range a miniport consumes, so
+               skip it instead of failing the whole adapter (which previously
+               bugchecked here). */
+            INFO_(VIDEOPRT, "Ignoring non-range resource descriptor type 0x%x\n",
+                  Descriptor->Type);
         }
     }
 
