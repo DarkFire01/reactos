@@ -137,7 +137,7 @@ ULONG MmGetBiosMemoryMap(_Out_ PFREELDR_MEMORY_DESCRIPTOR *MemoryMap);
 
 /* Heap */
 #define DEFAULT_HEAP_SIZE (1024 * 1024)
-#define TEMP_HEAP_SIZE (32 * 1024 * 1024)
+#define TEMP_HEAP_SIZE (8 * 1024 * 1024)
 
 extern SIZE_T FrLdrImageSize;
 
