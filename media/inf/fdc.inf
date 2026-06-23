@@ -1,4 +1,4 @@
-; FDC.INF
+; floppy.INF
 
 ; Installation file for floppy disk controllers
 
@@ -6,7 +6,7 @@
 Signature  = "$Windows NT$"
 ;Signature  = "$ReactOS$"
 LayoutFile = layout.inf
-Class      = FDC
+Class      = floppy
 ClassGUID  = {4D36E969-E325-11CE-BFC1-08002BE10318}
 Provider   = %ReactOS%
 DriverVer  = 08/15/2005,1.01.0.0
@@ -15,10 +15,10 @@ DriverVer  = 08/15/2005,1.01.0.0
 DefaultDestDir = 12
 
 [ClassInstall32.NT]
-AddReg = FDC.NT.AddReg
+AddReg = floppy.NT.AddReg
 
-[FDC.NT.AddReg]
-HKR, , ,               0, %FDCClassName%
+[floppy.NT.AddReg]
+HKR, , ,               0, %floppyClassName%
 HKR, , Icon,           0, "-9"
 HKR,,NoInstallClass,,1
 
@@ -26,26 +26,33 @@ HKR,,NoInstallClass,,1
 %GenericMfg% = GenericMfg
 
 [GenericMfg]
-;FIXME: We do not have a driver yet
-%*PNP0700.DeviceDesc% = fdc_Inst,*PNP0700
-;%*PNP0700.DeviceDesc% = NO_DRV,*PNP0700
+; The legacy floppy.sys is a non-PnP, System-start driver that claims the FDC
+; directly from the firmware/BIOS hardware tree; it has no AddDevice and cannot
+; act as the PnP function driver for the PNP0700 controller node (doing so makes
+; the node fail with Code 39 "driver missing or damaged"). The PnP fdc.sys
+; controller driver is not built (see drivers/storage/floppy/CMakeLists.txt), so
+; install PNP0700 as needing no function driver - same pattern flpydisk.inf uses
+; for the floppy drive node. Actual floppy I/O stays with the System-start
+; floppy.sys service.
+;%*PNP0700.DeviceDesc% = floppy_Inst,*PNP0700
+%*PNP0700.DeviceDesc% = NO_DRV,*PNP0700
 
-;----------------------------- FDC DRIVER -----------------------------
+;----------------------------- floppy DRIVER -----------------------------
 
-[fdc_Inst.NT]
-CopyFiles = fdc_CopyFiles.NT
+[floppy_Inst.NT]
+CopyFiles = floppy_CopyFiles.NT
 
-[fdc_CopyFiles.NT]
-fdc.sys
+[floppy_CopyFiles.NT]
+floppy.sys
 
-[fdc_Inst.NT.Services]
-AddService = fdc, 0x00000002, fdc_Service_Inst
+[floppy_Inst.NT.Services]
+AddService = floppy, 0x00000002, floppy_Service_Inst
 
-[fdc_Service_Inst]
+[floppy_Service_Inst]
 ServiceType    = 1
 StartType      = 3
 ErrorControl   = 1
-ServiceBinary  = %12%\fdc.sys
+ServiceBinary  = %12%\floppy.sys
 LoadOrderGroup = System Bus Extender
 
 ;----------------------------- NO DRIVER REQ ----------------------------
@@ -62,97 +69,97 @@ AddService = , 0x00000002
 ReactOS = "ReactOS Project"
 
 ; Localizable
-FDCClassName = "Floppy disk controllers"
+floppyClassName = "Floppy disk controllers"
 
 GenericMfg = "(Generic floppy disk controllers)"
 *PNP0700.DeviceDesc = "Generic floppy disk controller"
 
 [Strings.0404]
-FDCClassName = "軟碟控制器"
+floppyClassName = "軟碟控制器"
 
 GenericMfg = "(標準軟碟控制器)"
 *PNP0700.DeviceDesc = "標準軟碟控制器"
 
 [Strings.0405]
-FDCClassName = "Řadiče disketových jednotek"
+floppyClassName = "Řadiče disketových jednotek"
 
 GenericMfg = "(Generické řadiče disketových jednotek)"
 *PNP0700.DeviceDesc = "Generický řadič disketové jednotky"
 
 [Strings.0407]
-FDCClassName = "Disketten-Controller"
+floppyClassName = "Disketten-Controller"
 
 GenericMfg = "(Generische Disketten-Controller)"
 *PNP0700.DeviceDesc = "Generischer Disketten-Controller"
 
 [Strings.0408]
-FDCClassName = "Ελεγκτής Δισκέτας"
+floppyClassName = "Ελεγκτής Δισκέτας"
 
 GenericMfg = "(Γενικοί ελεγκτές δισκέτας)"
 *PNP0700.DeviceDesc = "Γενικός ελεγκτής δισκέτας"
 
 [Strings.0a]
-FDCClassName = "Controladores de disquete"
+floppyClassName = "Controladores de disquete"
 
 GenericMfg = "(Controlador estándar de disquetes)"
 *PNP0700.DeviceDesc = "Controlador estándar de disquetes"
 
 [Strings.040C]
-FDCClassName = "Contrôleurs de lecteur de disquettes"
+floppyClassName = "Contrôleurs de lecteur de disquettes"
 
 GenericMfg = "(Contrôleurs de lecteur de disquettes génériques)"
 *PNP0700.DeviceDesc = "Contrôleur de lecteur de disquettes générique"
 
 [Strings.0411]
-FDCClassName = "フロッピー ディスク コントローラ"
+floppyClassName = "フロッピー ディスク コントローラ"
 
 GenericMfg = "(標準フロッピー ディスク コントローラ)"
 *PNP0700.DeviceDesc = "標準フロッピー ディスク コントローラ"
 
 [Strings.0415]
-FDCClassName = "Kontrolery stacji dyskietek"
+floppyClassName = "Kontrolery stacji dyskietek"
 
 GenericMfg = "(Standardowowe kontrolery stacji dyskietek)"
 *PNP0700.DeviceDesc = "Standardowy kontroler stacji dyskietek"
 
 [Strings.0416]
-FDCClassName = "Unidades de disquete"
+floppyClassName = "Unidades de disquete"
 
 GenericMfg = "(Unidades de disquete padrão)"
 *PNP0700.DeviceDesc = "Controlador padrão de disquete"
 
 [Strings.0418]
-FDCClassName = "Dispozitive de control disc flexibil"
+floppyClassName = "Dispozitive de control disc flexibil"
 
 GenericMfg = "(dispozitiv generic de control disc flexibil)"
 *PNP0700.DeviceDesc = "Dispozitiv generic de control disc flexibil"
 
 [Strings.0419]
-FDCClassName = "Контроллеры гибких дисков"
+floppyClassName = "Контроллеры гибких дисков"
 
 GenericMfg = "(Стандартные контроллеры гибких дисков)"
 *PNP0700.DeviceDesc = "Стандартный контроллер гибких дисков"
 
 [Strings.041B]
-FDCClassName = "Radiče disketových mechaník"
+floppyClassName = "Radiče disketových mechaník"
 
 GenericMfg = "(Generické radiče disketových mechaník)"
 *PNP0700.DeviceDesc = "Generický radič disketovej mechaniky"
 
 [Strings.041f]
-FDCClassName = "Disket Denetleyicileri"
+floppyClassName = "Disket Denetleyicileri"
 
 GenericMfg = "(Genel Disket Denetleyicileri)"
 *PNP0700.DeviceDesc = "Genel Disket Denetleyicisi"
 
 [Strings.0422]
-FDCClassName = "Контроллери гнучких дисків"
+floppyClassName = "Контроллери гнучких дисків"
 
 GenericMfg = "(Стандартні контроллери гнучких дисків)"
 *PNP0700.DeviceDesc = "Стандартний контроллер гнучких дисків"
 
 [Strings.0427]
-FDCClassName = "Diskelių įrenginių valdikliai"
+floppyClassName = "Diskelių įrenginių valdikliai"
 
 GenericMfg = "(Standartiniai diskelių įrenginių valdikliai)"
 *PNP0700.DeviceDesc = "Standartinis diskelių įrenginio valdiklis"
@@ -162,13 +169,13 @@ GenericMfg = "(通用软盘控制器)"
 *PNP0700.DeviceDesc = "通用软盘控制器"
 
 [Strings.0816]
-FDCClassName = "Unidades de disquete"
+floppyClassName = "Unidades de disquete"
 
 GenericMfg = "(Unidades de disquete padrão)"
 *PNP0700.DeviceDesc = "Controlador de disquete padrão"
 
 [Strings.0C04]
-FDCClassName = "軟碟控制器"
+floppyClassName = "軟碟控制器"
 
 GenericMfg = "(標準軟碟控制器)"
 *PNP0700.DeviceDesc = "標準軟碟控制器"
