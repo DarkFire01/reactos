@@ -457,17 +457,31 @@ IopInitializePlugPlayServices(VOID)
     }
     RtlZeroMemory(PnpBusTypeGuidList.Guids, PnpBusTypeGuidList.AllocatedCount * sizeof(GUID));
   
-    /* Initialize PnP root relations (this is a syncronous operation) */
-    PiQueueDeviceAction(Pdo, PiActionEnumRootDevices, NULL, NULL);
-
-    /* Launch the firmware mapper */
+    /* Launch the firmware mapper BEFORE enumerating the PnP root bus.
+     *
+     * The mapper writes the firmware-detected legacy devices (notably the
+     * PS/2 keyboard and mouse) into the registry, including their
+     * LogConf\BootConfig (IRQ/port boot resources). That LogConf subkey is
+     * volatile, so it is recreated on every boot. The root enumeration below
+     * is synchronous and the PnP root bus driver reads each child's boot
+     * resources from LogConf exactly once, when it first creates the PDO.
+     *
+     * Enumerating before the mapper therefore created those PDOs with an
+     * empty resource list (the "Failed to read the LogConf key" case in
+     * pnproot.c), and a later re-enumeration does not re-read LogConf for an
+     * already-created device. i8042prt then received no interrupt/port
+     * resources and failed to start with STATUS_INSUFFICIENT_RESOURCES -
+     * this is why PS/2 input was dead on the Standard (non-ACPI) HAL where,
+     * unlike the ACPI HAL, there is no acpi.sys to supply _CRS resources
+     * (CORE-17463). Running the mapper first makes LogConf present before the
+     * single enumeration that creates the PDOs. */
     Status = IopUpdateRootKey();
     if (!NT_SUCCESS(Status)) return Status;
 
     /* Close the handle to the control set */
     NtClose(KeyHandle);
 
-    /* Initialize PnP root relations (this is a syncronous operation) */
+    /* Initialize PnP root relations (this is a synchronous operation) */
     PiQueueDeviceAction(Pdo, PiActionEnumRootDevices, NULL, NULL);
 
     /* We made it */
