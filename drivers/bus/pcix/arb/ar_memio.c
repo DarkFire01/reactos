@@ -175,6 +175,7 @@ ario_Constructor(IN PVOID DeviceExtension,
     UNREFERENCED_PARAMETER(Version);
     UNREFERENCED_PARAMETER(Size);
     UNREFERENCED_PARAMETER(Interface);
+    UNREFERENCED_PARAMETER(FdoExtension);
 
     /* Make sure it's the expected interface */
     if ((ULONG_PTR)InterfaceData == CmResourceTypePort)
@@ -281,6 +282,7 @@ armem_Constructor(IN PVOID DeviceExtension,
     UNREFERENCED_PARAMETER(Version);
     UNREFERENCED_PARAMETER(Size);
     UNREFERENCED_PARAMETER(Interface);
+    UNREFERENCED_PARAMETER(FdoExtension);
 
     /* Make sure it's the expected interface */
     if ((ULONG_PTR)InterfaceData == CmResourceTypeMemory)

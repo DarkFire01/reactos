@@ -417,8 +417,10 @@ IoReportResourceForDetection(IN PDRIVER_OBJECT DriverObject,
     Status = IopDetectResourceConflict(ResourceList, TRUE, NULL);
     if (Status == STATUS_CONFLICTING_ADDRESSES)
     {
-        __debugbreak();
-        /* Oh noes */
+        /* A conflict is a normal, expected outcome of resource detection
+         * (e.g. a legacy driver probing ports/IRQs already owned by a PnP
+         * device). Report it to the caller via ConflictDetected so it can
+         * back off; do not break into the debugger here. */
         *ConflictDetected = TRUE;
     }
     else if (NT_SUCCESS(Status))

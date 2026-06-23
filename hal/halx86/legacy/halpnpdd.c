@@ -12,14 +12,6 @@
 #define NDEBUG
 #include <debug.h>
 
-/* Forward declaration from irqarb.c */
-NTSTATUS
-HalpFillInIrqArbiter(
-    _In_ ULONG Version,
-    _In_ ULONG InterfaceBufferSize,
-    _Out_writes_bytes_(InterfaceBufferSize) PARBITER_INTERFACE Interface,
-    _Out_ PULONG Length);
-
 typedef enum _EXTENSION_TYPE
 {
     PdoExtensionType = 0xC0,
@@ -160,15 +152,16 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
 
     /* IRQ Arbiter Interface
        NOTE: On NT this is only exposed when PCI IRQ routing is active (routing table + interface present).
-             Routing logic not yet implemented here, so we deliberately deny the request to avoid
-             having two competing IRQ arbiters (HAL + kernel root). Enable later when routing is added. */
+             We deliberately deny the request so the HAL does not provide a second IRQ arbiter that would
+             compete with the kernel root IRQ arbiter (IopRootIrqArbiter); PCI IRQ steering is handled by
+             the pci driver's $PIR routing instead. */
     if (IsEqualGUID(InterfaceType, &GUID_ARBITER_INTERFACE_STANDARD))
     {
-        //TODO: this should be temp?
-        return HalpFillInIrqArbiter(Version,
-                                    InterfaceBufferSize,
-                                    (PARBITER_INTERFACE)Interface,
-                                    Length);
+        UNREFERENCED_PARAMETER(Version);
+        UNREFERENCED_PARAMETER(InterfaceBufferSize);
+        UNREFERENCED_PARAMETER(Interface);
+        UNREFERENCED_PARAMETER(Length);
+        return STATUS_NOT_SUPPORTED;
     }
 
     DPRINT1("HalpQueryInterface: Unsupported GUID {%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}\n",

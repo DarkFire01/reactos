@@ -496,6 +496,24 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
         }
     }
 
+    /*
+     * Add an interrupt requirement when the device has an interrupt pin and the
+     * routing logic resolved it to a valid legacy PIC IRQ (see
+     * PciGetAdjustedInterruptLine -> PciRouteInterrupt).  This is what lets the
+     * IRQ actually be arbitrated and translated; previously the interrupt was
+     * never expressed in the requirements list.  The IRQ is presented as a
+     * fixed value rather than the full $PIR mask because, with the global IRQ
+     * arbiter, nothing re-programs the router after arbitration - so the IRQ the
+     * link is physically steered to is the only valid choice.
+     */
+    if ((PdoExtension->InterruptPin) &&
+        (PdoExtension->AdjustedInterruptLine >= 1) &&
+        (PdoExtension->AdjustedInterruptLine <= 15))
+    {
+        DescriptorCount += 1;
+        HaveAny = TRUE;
+    }
+
     if (!HaveAny)
     {
         /* Use (and cache) the zero list */
@@ -540,6 +558,21 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
         IoDesc->u.DevicePrivate.Data[0] = PciPrivateBar; /* tag */
         IoDesc->u.DevicePrivate.Data[1] = (USHORT)Bar;    /* BAR index */
         IoDesc->u.DevicePrivate.Data[2] = 0;              /* unused */
+        IoDesc++;
+    }
+
+    /* Emit the routed interrupt requirement (counted above) */
+    if ((PdoExtension->InterruptPin) &&
+        (PdoExtension->AdjustedInterruptLine >= 1) &&
+        (PdoExtension->AdjustedInterruptLine <= 15))
+    {
+        RtlZeroMemory(IoDesc, sizeof(*IoDesc));
+        IoDesc->Option = 0;
+        IoDesc->Type = CmResourceTypeInterrupt;
+        IoDesc->ShareDisposition = CmResourceShareShared;
+        IoDesc->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+        IoDesc->u.Interrupt.MinimumVector = PdoExtension->AdjustedInterruptLine;
+        IoDesc->u.Interrupt.MaximumVector = PdoExtension->AdjustedInterruptLine;
         IoDesc++;
     }
 
@@ -1496,20 +1529,27 @@ PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
     PhysicalDeviceObject = DeviceExtension->PhysicalDeviceObject;
     PdoExtension = (PPCI_PDO_EXTENSION)PhysicalDeviceObject->DeviceExtension;
 
-    /* Cheeck if this is the root bus */
+    /*
+     * This is a post-enumeration pass that would set up legacy VGA/ISA decode
+     * forwarding through PCI-PCI bridges. None of it is implemented yet, and
+     * none is required to boot: devices already received their resources during
+     * enumeration/start. Log what would be done and proceed instead of breaking
+     * into the debugger.
+     */
+
+    /* Check if this is the root bus */
     if (!PCI_IS_ROOT_FDO(DeviceExtension))
     {
-        /* Not really handling this year */
-        UNIMPLEMENTED_DBGBREAK();
-
         /* Check for PCI bridges with the ISA bit set, or required */
         if ((PdoExtension) &&
             (PciClassifyDeviceType(PdoExtension) == PciTypePciBridge) &&
             ((PdoExtension->Dependent.type1.IsaBitRequired) ||
              (PdoExtension->Dependent.type1.IsaBitSet)))
         {
-            /* We'll need to do some legacy support */
-            UNIMPLEMENTED_DBGBREAK();
+            /* Legacy ISA decode forwarding through this bridge is not implemented;
+               the bridge still functions, only legacy ISA aliasing is skipped. */
+            DPRINT1("PCI: bridge FDO %p has ISA decode bit set; legacy ISA "
+                    "forwarding not implemented (skipped)\n", DeviceExtension);
         }
     }
     else
@@ -1522,8 +1562,10 @@ PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
             /* Find any that have the VGA decode bit on */
             if (PdoExtension->Dependent.type1.VgaBitSet)
             {
-                /* Again, some more legacy support we'll have to do */
-                UNIMPLEMENTED_DBGBREAK();
+                /* Legacy VGA decode forwarding through this bridge is not
+                   implemented; VGA on the root bus is unaffected. */
+                DPRINT1("PCI: child bridge PDO %p has VGA decode bit set; legacy "
+                        "VGA forwarding not implemented (skipped)\n", PdoExtension);
             }
         }
     }
@@ -1531,8 +1573,10 @@ PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
     /* Check for ACPI systems where the OS assigns bus numbers */
     if (PciAssignBusNumbers)
     {
-        /* Not yet supported */
-        UNIMPLEMENTED_DBGBREAK();
+        /* OS-assigned bus numbers are not yet supported; the firmware-assigned
+           numbers are used as-is. */
+        DPRINT1("PCI: PciAssignBusNumbers set but OS bus-number assignment is "
+                "not implemented (using firmware assignment)\n");
     }
 }
 

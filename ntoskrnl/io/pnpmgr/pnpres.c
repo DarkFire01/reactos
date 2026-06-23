@@ -456,16 +456,37 @@ IopFixupResourceListWithRequirements(
                         break;
 
                     default:
-                        DPRINT1("Unsupported resource type: %x\n", IoDesc->Type);
-                        FoundResource = FALSE;
+                        /* Non-arbitrated descriptors (e.g. the
+                           CmResourceTypeDevicePrivate tags that the PCI bus
+                           driver emits after each BAR to record the BAR index)
+                           are not assigned by an arbiter. Pass them through
+                           verbatim so they reach the driver in the
+                           START_DEVICE resource list instead of failing the
+                           whole alternative list. */
+                        if (IoDesc->Type >= CmResourceTypeNonArbitrated)
+                        {
+                            NewDesc.u.DevicePrivate.Data[0] = IoDesc->u.DevicePrivate.Data[0];
+                            NewDesc.u.DevicePrivate.Data[1] = IoDesc->u.DevicePrivate.Data[1];
+                            NewDesc.u.DevicePrivate.Data[2] = IoDesc->u.DevicePrivate.Data[2];
+                        }
+                        else
+                        {
+                            DPRINT1("Unsupported resource type: %x\n", IoDesc->Type);
+                            FoundResource = FALSE;
+                        }
                         break;
                 }
 
                 /* Check if it's missing and required */
                 if (!FoundResource && IoDesc->Option == 0)
                 {
-                    /* Break out of this loop and try the next list */
+                    /* This alternative list cannot be satisfied. Mark it failed
+                       so we move on to the next list (and ultimately return
+                       STATUS_CONFLICTING_ADDRESSES if none work) instead of
+                       falling through to STATUS_SUCCESS with an unsatisfied
+                       required resource and a possibly NULL resource list. */
                     DPRINT1("Unable to satisfy required resource in list %lu\n", i);
+                    AlternateRequired = TRUE;
                     break;
                 }
                 else if (!FoundResource)
@@ -1229,6 +1250,9 @@ IopCheckForResourceConflict(
    BOOLEAN Result = FALSE;
    PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor;
 
+   /* An empty (NULL) resource list cannot conflict with anything */
+   if (!ResourceList1 || !ResourceList2) return FALSE;
+
    FullDescriptor = &ResourceList1->List[0];
    for (i = 0; i < ResourceList1->Count; i++)
    {
@@ -1269,6 +1293,13 @@ IopDetectResourceConflict(
    PKEY_VALUE_BASIC_INFORMATION KeyNameInformation;
    ULONG ChildKeyIndex1 = 0, ChildKeyIndex2, ChildKeyIndex3;
    NTSTATUS Status;
+   /* Diagnostic: name of the RESOURCEMAP class subkey currently being scanned,
+      so a detected conflict can identify who owns the conflicting range. */
+   WCHAR ConflictOwnerClass[64] = {0};
+
+   /* An empty (NULL) resource list cannot conflict with anything */
+   if (!ResourceList)
+       return STATUS_SUCCESS;
 
    RtlInitUnicodeString(&KeyName, L"\\Registry\\Machine\\HARDWARE\\RESOURCEMAP");
    InitializeObjectAttributes(&ObjectAttributes,
@@ -1323,6 +1354,16 @@ IopDetectResourceConflict(
 
       KeyName.Buffer = KeyInformation->Name;
       KeyName.MaximumLength = KeyName.Length = (USHORT)KeyInformation->NameLength;
+
+      /* Remember this class name for conflict diagnostics */
+      {
+          ULONG NameBytes = KeyInformation->NameLength;
+          if (NameBytes > (RTL_NUMBER_OF(ConflictOwnerClass) - 1) * sizeof(WCHAR))
+              NameBytes = (RTL_NUMBER_OF(ConflictOwnerClass) - 1) * sizeof(WCHAR);
+          RtlCopyMemory(ConflictOwnerClass, KeyInformation->Name, NameBytes);
+          ConflictOwnerClass[NameBytes / sizeof(WCHAR)] = UNICODE_NULL;
+      }
+
       InitializeObjectAttributes(&ObjectAttributes,
                                  &KeyName,
                                  OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
@@ -1475,6 +1516,14 @@ IopDetectResourceConflict(
                                               Silent,
                                               ConflictingDescriptor))
               {
+                  if (!Silent)
+                  {
+                      PCM_RESOURCE_LIST Owner = (PCM_RESOURCE_LIST)KeyValueInformation->Data;
+                      DPRINT1("Resource conflict: owner = RESOURCEMAP\\%S (InterfaceType %d, Bus %lu)\n",
+                              ConflictOwnerClass,
+                              (Owner && Owner->Count) ? (LONG)Owner->List[0].InterfaceType : -1,
+                              (Owner && Owner->Count) ? Owner->List[0].BusNumber : (ULONG)-1);
+                  }
                   ExFreePoolWithTag(KeyValueInformation, TAG_IO);
                   Status = STATUS_CONFLICTING_ADDRESSES;
                   goto cleanup;

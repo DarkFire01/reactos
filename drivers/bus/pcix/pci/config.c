@@ -23,25 +23,17 @@ UCHAR
 NTAPI
 PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
 {
-    UCHAR InterruptLine = 0, PciInterruptLine;
-    ULONG Length;
+    /* No interrupt pin means no interrupt resource */
+    if (!PdoExtension->InterruptPin) return 0;
 
-    /* Does the device have an interrupt pin? */
-    if (PdoExtension->InterruptPin)
-    {
-        /* Find the associated line on the parent bus */
-        Length = HalGetBusDataByOffset(PCIConfiguration,
-                                       PdoExtension->ParentFdoExtension->BaseBus,
-                                       PdoExtension->Slot.u.AsULONG,
-                                       &PciInterruptLine,
-                                       FIELD_OFFSET(PCI_COMMON_HEADER,
-                                                    u.type0.InterruptLine),
-                                       sizeof(UCHAR));
-        if (Length) InterruptLine = PciInterruptLine;
-    }
-
-    /* Either keep the original interrupt line, or the one on the master bus */
-    return InterruptLine ? PdoExtension->RawInterruptLine : InterruptLine;
+    /*
+     * Resolve the device's interrupt pin through the BIOS $PIR routing table to
+     * a valid legacy PIC IRQ, steering the router and repairing the
+     * InterruptLine register as needed.  This replaces blindly trusting the
+     * raw InterruptLine, which may hold a bogus out-of-PIC-range value on
+     * systems that expect the OS to perform routing.
+     */
+    return PciRouteInterrupt(PdoExtension);
 }
 
 VOID

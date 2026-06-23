@@ -92,9 +92,14 @@ PciFdoIrpStartDevice(IN PIRP Irp,
     Resources = IoStackLocation->Parameters.StartDevice.AllocatedResources;
     if ((Resources) && !(PCI_IS_ROOT_FDO(DeviceExtension)))
     {
-        /* These resources would only be for non-root FDOs, unhandled for now */
-        ASSERT(Resources->Count == 1);
-        UNIMPLEMENTED_DBGBREAK();
+        /*
+         * Boot resources on a non-root FDO are the PCI-PCI bridge's assigned
+         * decode window(s). These are passed to PciInitializeArbiterRanges
+         * below, which confines this bridge's per-bus arbiters to the aperture
+         * so child devices are sub-arbitrated within the window.
+         */
+        DPRINT1("PCI: bridge FDO %p started with %lu boot resource list(s)\n",
+                DeviceExtension, Resources->Count);
     }
 
     /* Initialize the arbiter for this FDO */
@@ -104,14 +109,6 @@ PciFdoIrpStartDevice(IN PIRP Irp,
         /* Cancel the transition if this failed */
         PciCancelStateTransition(DeviceExtension, PciStarted);
         return Status;
-    }
-
-    /* Again, check for boot-provided resources for non-root FDO */
-    if ((Resources) && !(PCI_IS_ROOT_FDO(DeviceExtension)))
-    {
-        /* Unhandled for now */
-        ASSERT(Resources->Count == 1);
-        UNIMPLEMENTED_DBGBREAK();
     }
 
     /* Commit the transition to the started state */

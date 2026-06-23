@@ -1829,6 +1829,22 @@ PciCacheLegacyDeviceRouting(
 );
 
 //
+// PCI Interrupt Routing ($PIR / legacy PIC steering)
+//
+UCHAR
+NTAPI
+PciRouteInterrupt(
+    IN PPCI_PDO_EXTENSION PdoExtension
+);
+
+VOID
+NTAPI
+PciUpdateInterruptLine(
+    IN PDEVICE_OBJECT Pdo,
+    IN UCHAR LineRegister
+);
+
+//
 // External Resources
 //
 extern SINGLE_LIST_ENTRY PciFdoExtensionListHead;

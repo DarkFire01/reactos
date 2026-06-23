@@ -58,9 +58,18 @@ devpresent_Constructor(IN PVOID DeviceExtension,
     UNREFERENCED_PARAMETER(Size);
     UNREFERENCED_PARAMETER(Interface);
 
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_IMPLEMENTED;
+    /*
+     * The PCI device-presence interface (IsDevicePresent/IsDevicePresentEx) is
+     * not implemented yet. It is an optional interface - e.g. usbport queries
+     * it to detect a companion host controller and falls back gracefully when
+     * it is absent. Decline the request cleanly instead of breaking into the
+     * debugger so device start can proceed.
+     *
+     * TODO: implement by scanning the PCI device tree (PciFdoExtensionListHead
+     * -> each FDO's ChildPdoList) for a device matching the
+     * PCI_DEVICE_PRESENCE_PARAMETERS (VendorID/DeviceID/class/etc per Flags).
+     */
+    return STATUS_NOT_SUPPORTED;
 }
 
 /* EOF */

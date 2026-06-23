@@ -16,7 +16,7 @@
 
 /* GLOBALS ********************************************************************/
 
-PUCHAR PciArbiterNames[] =
+PCHAR PciArbiterNames[] =
 {
     "I/O Port",
     "Memory",
@@ -107,6 +107,22 @@ PciArbBuildAndCommitFromRequirements(
         if (!TargetArb) continue;
         AInst = &TargetArb->CommonInstance;
 
+        /*
+         * Make sure the arbiter we looked up actually arbitrates this resource
+         * type. If the secondary-extension list is mis-wired (e.g. the memory
+         * slot resolving to the bus-number arbiter), feeding it the wrong
+         * descriptor type would make PackResource fail and the arbiter library
+         * assert. Skip rather than crash; the kernel root arbiters still
+         * perform the real assignment.
+         */
+        if (AInst->ResourceType != Type)
+        {
+            DPRINT1("PCI: %s arbiter has mismatched ResourceType %u (expected %u), skipping\n",
+                    (Type == CmResourceTypePort) ? "I/O" : "Memory",
+                    AInst->ResourceType, Type);
+            continue;
+        }
+
         /* Count how many alternative lists provide a descriptor of same type at this index */
         for (iAlt = 0; iAlt < AltCount; iAlt++)
         {
@@ -162,6 +178,25 @@ PciArbBuildAndCommitFromRequirements(
         ArbEntry->BusNumber = ReqList->BusNumber;
         ArbEntry->Result = ArbiterResultUndefined;
 
+        /*
+         * The arbiter library packs the granted resource into Entry->Assignment
+         * (via PackResource) but does not allocate that buffer itself - the
+         * caller must provide it. Without this, PackResource receives a NULL
+         * descriptor, returns STATUS_INVALID_PARAMETER, and ArbAllocateEntry
+         * asserts.
+         */
+        ArbEntry->Assignment = ExAllocatePoolWithTag(PagedPool,
+                                                     sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR),
+                                                     PCI_POOL_TAG);
+        if (!ArbEntry->Assignment)
+        {
+            RemoveEntryList(&ArbEntry->ListEntry);
+            ExFreePoolWithTag(ArbEntry, PCI_POOL_TAG);
+            ExFreePoolWithTag(AltBuffer, PCI_POOL_TAG);
+            continue;
+        }
+        RtlZeroMemory(ArbEntry->Assignment, sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR));
+
         if (AInst->TestAllocation)
         {
             NTSTATUS St = AInst->TestAllocation(AInst, &ArbHead);
@@ -178,6 +213,7 @@ PciArbBuildAndCommitFromRequirements(
 
         /* Free temp structures; arbiter copied selected ranges internally */
         RemoveEntryList(&ArbEntry->ListEntry);
+        ExFreePoolWithTag(ArbEntry->Assignment, PCI_POOL_TAG);
         ExFreePoolWithTag(ArbEntry, PCI_POOL_TAG);
         ExFreePoolWithTag(AltBuffer, PCI_POOL_TAG);
     }
@@ -231,7 +267,10 @@ PciInitializeArbiters(IN PPCI_FDO_EXTENSION FdoExtension)
     PPCI_INTERFACE CurrentInterface, *Interfaces;
     PPCI_PDO_EXTENSION PdoExtension;
     PPCI_ARBITER_INSTANCE ArbiterInterface;
-    NTSTATUS Status;
+    /* Default to success: a subtractive-decode bridge (or a bus with no
+       matching arbiter interfaces) creates no arbiters and skips every loop
+       iteration, leaving Status otherwise unassigned. */
+    NTSTATUS Status = STATUS_SUCCESS;
     PCI_SIGNATURE ArbiterType;
     ASSERT_FDO(FdoExtension);
 
@@ -319,6 +358,82 @@ PciInitializeArbiters(IN PPCI_FDO_EXTENSION FdoExtension)
     return Status;
 }
 
+/*
+ * A single decode window [Base, End] of a PCI-PCI bridge, used to confine the
+ * bridge's per-bus arbiters to the aperture (sub-arbitration).
+ */
+typedef struct _PCI_ARB_WINDOW
+{
+    ULONGLONG Base;
+    ULONGLONG End;
+} PCI_ARB_WINDOW;
+
+/* Sort up to a handful of windows ascending by base (simple, n is tiny) */
+static
+VOID
+PciSortArbWindows(IN OUT PCI_ARB_WINDOW *Windows, IN ULONG Count)
+{
+    ULONG i, j;
+    for (i = 0; (i + 1) < Count; i++)
+    {
+        for (j = 0; (j + 1) < (Count - i); j++)
+        {
+            if (Windows[j].Base > Windows[j + 1].Base)
+            {
+                PCI_ARB_WINDOW Tmp = Windows[j];
+                Windows[j] = Windows[j + 1];
+                Windows[j + 1] = Tmp;
+            }
+        }
+    }
+}
+
+/*
+ * Reserve everything OUTSIDE the given (sorted, ascending) decode windows in a
+ * bridge's per-bus arbiter, so child devices can only be allocated within the
+ * bridge aperture. Reserving the complement (rather than the windows) keeps the
+ * in-window child addresses free, so BIOS-assigned children are unaffected.
+ */
+static
+VOID
+PciSeedBridgeArbiterComplement(IN PARBITER_INSTANCE Arb,
+                               IN PCI_ARB_WINDOW *Windows,
+                               IN ULONG Count,
+                               IN ULONGLONG SpaceMax)
+{
+    ULONGLONG Cursor = 0;
+    ULONG i;
+
+    if (!Arb || !Arb->Allocation || (Count == 0)) return;
+
+    for (i = 0; i < Count; i++)
+    {
+        ULONGLONG Base = Windows[i].Base;
+        ULONGLONG End = Windows[i].End;
+
+        /* Ignore windows that fall outside the space this arbiter manages */
+        if (Base > SpaceMax) break;
+
+        /* Reserve the gap below this window */
+        if (Base > Cursor)
+        {
+            (VOID)RtlAddRange(Arb->Allocation, Cursor, Base - 1, 0,
+                              RTL_RANGE_LIST_ADD_IF_CONFLICT, NULL, NULL);
+        }
+
+        /* The window itself stays free; advance past it (handles overlap) */
+        if (End >= SpaceMax) return;
+        if ((End + 1) > Cursor) Cursor = End + 1;
+    }
+
+    /* Reserve everything above the last window */
+    if (Cursor <= SpaceMax)
+    {
+        (VOID)RtlAddRange(Arb->Allocation, Cursor, SpaceMax, 0,
+                          RTL_RANGE_LIST_ADD_IF_CONFLICT, NULL, NULL);
+    }
+}
+
 NTSTATUS
 NTAPI
 PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
@@ -328,8 +443,9 @@ PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
     //CM_RESOURCE_TYPE DesiredType;
     PVOID Instance;
     PCI_SIGNATURE ArbiterType;
-
-    UNREFERENCED_PARAMETER(Resources);
+    /* Bridge decode windows gathered from the assigned (boot) resources */
+    PCI_ARB_WINDOW IoWin[4], MemWin[4];
+    ULONG IoWinCount = 0, MemWinCount = 0;
 
     /* If this is the root and we have boot resources not yet parsed, do a simple parse now.
        Later these will be used to add fixed allocations into the arbiter once implemented. */
@@ -403,6 +519,38 @@ PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
             DPRINT1("PCI Skipping arbiter initialization for subtractive bridge FDOX %p\n", DeviceExtension);
             return STATUS_SUCCESS;
         }
+
+        /* Gather the bridge's decode window(s) from the assigned resources so the
+           per-bus arbiters below can be confined to the aperture. The assigned
+           resource list contains the bridge's I/O and memory (and prefetch
+           memory) windows as Port/Memory partial descriptors. */
+        if ((Resources) && (Resources->Count))
+        {
+            PCM_PARTIAL_RESOURCE_LIST PartialList = &Resources->List[0].PartialResourceList;
+            PCM_PARTIAL_RESOURCE_DESCRIPTOR Desc = PartialList->PartialDescriptors;
+            ULONG k;
+
+            for (k = 0; k < PartialList->Count; k++, Desc++)
+            {
+                if ((Desc->Type == CmResourceTypePort) && (Desc->u.Port.Length) &&
+                    (IoWinCount < RTL_NUMBER_OF(IoWin)))
+                {
+                    IoWin[IoWinCount].Base = (ULONGLONG)Desc->u.Port.Start.QuadPart;
+                    IoWin[IoWinCount].End = IoWin[IoWinCount].Base + Desc->u.Port.Length - 1;
+                    IoWinCount++;
+                }
+                else if ((Desc->Type == CmResourceTypeMemory) && (Desc->u.Memory.Length) &&
+                         (MemWinCount < RTL_NUMBER_OF(MemWin)))
+                {
+                    MemWin[MemWinCount].Base = (ULONGLONG)Desc->u.Memory.Start.QuadPart;
+                    MemWin[MemWinCount].End = MemWin[MemWinCount].Base + Desc->u.Memory.Length - 1;
+                    MemWinCount++;
+                }
+            }
+
+            PciSortArbWindows(IoWin, IoWinCount);
+            PciSortArbWindows(MemWin, MemWinCount);
+        }
     }
 
     /* Loop all arbiters */
@@ -463,6 +611,26 @@ PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
                     DeviceExtension->BootRangeSeedMask |= 0x2;
                 if (DeviceExtension->BootRangeSeedMask == 0x3)
                     DeviceExtension->BootRangesSeeded = TRUE; /* both types seeded */
+            }
+            else if (!PCI_IS_ROOT_FDO(DeviceExtension))
+            {
+                /* Non-root (PCI-PCI bridge) FDO: confine this arbiter to the
+                   bridge's decode window(s) by reserving everything outside
+                   them. I/O and memory are 32-bit on these bridges. */
+                PARBITER_INSTANCE Arb = &((PPCI_ARBITER_INSTANCE)Instance)->CommonInstance;
+
+                if ((ArbiterType == PciArb_Io) && (IoWinCount))
+                {
+                    PciSeedBridgeArbiterComplement(Arb, IoWin, IoWinCount, 0xFFFFFFFFULL);
+                    DPRINT1("PCI: bridge FDO %p I/O arbiter confined to %lu window(s)\n",
+                            DeviceExtension, IoWinCount);
+                }
+                else if ((ArbiterType == PciArb_Memory) && (MemWinCount))
+                {
+                    PciSeedBridgeArbiterComplement(Arb, MemWin, MemWinCount, 0xFFFFFFFFULL);
+                    DPRINT1("PCI: bridge FDO %p Memory arbiter confined to %lu window(s)\n",
+                            DeviceExtension, MemWinCount);
+                }
             }
         }
         else
