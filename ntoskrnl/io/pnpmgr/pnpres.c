@@ -616,6 +616,16 @@ IopCheckResourceDescriptor(
             {
                 case CmResourceTypeMemory:
                 {
+                    /* A PCI-to-PCI bridge forwards (produces) a memory window for
+                       the devices behind it.  Such a window is reported with the
+                       CM_RESOURCE_MEMORY_WINDOW_DECODE flag.  A child device that
+                       decodes an address inside its parent's window is the normal
+                       hierarchy, NOT a conflict, so a window descriptor on either
+                       side is never treated as a consumed range here. */
+                    if ((ResDesc->Flags & CM_RESOURCE_MEMORY_WINDOW_DECODE) ||
+                        (ResDesc2->Flags & CM_RESOURCE_MEMORY_WINDOW_DECODE))
+                        continue;
+
                     /* NOTE: ranges are in a form [x1;x2) */
                     UINT64 rStart = (UINT64)ResDesc->u.Memory.Start.QuadPart;
                     UINT64 rEnd = (UINT64)ResDesc->u.Memory.Start.QuadPart
@@ -640,6 +650,14 @@ IopCheckResourceDescriptor(
                 }
                 case CmResourceTypePort:
                 {
+                    /* Same as memory above: a bridge's forwarded I/O window (and
+                       the legacy VGA port ranges it forwards) carry
+                       CM_RESOURCE_PORT_WINDOW_DECODE.  Children decoding inside
+                       the window are not in conflict with it. */
+                    if ((ResDesc->Flags & CM_RESOURCE_PORT_WINDOW_DECODE) ||
+                        (ResDesc2->Flags & CM_RESOURCE_PORT_WINDOW_DECODE))
+                        continue;
+
                     /* NOTE: ranges are in a form [x1;x2) */
                     UINT64 rStart = (UINT64)ResDesc->u.Port.Start.QuadPart;
                     UINT64 rEnd = (UINT64)ResDesc->u.Port.Start.QuadPart
@@ -668,10 +686,16 @@ IopCheckResourceDescriptor(
                     {
                         if (!Silent)
                         {
+                            /* An IRQ conflict is a normal, handled condition: e.g.
+                               legacy ISA serial ports (COM1/COM3) share IRQ 4 and
+                               two non-shareable claimants land on the same line.
+                               Report it and let the arbiter pick an alternate (or
+                               deny the duplicate) - never break into the debugger,
+                               which would wedge the boot.  This is especially
+                               common in legacy-PIC mode where PCI IRQs are shared. */
                             DPRINT1("Resource conflict: IRQ (0x%x 0x%x vs. 0x%x 0x%x)\n",
                                     ResDesc->u.Interrupt.Vector, ResDesc->u.Interrupt.Level,
                                     ResDesc2->u.Interrupt.Vector, ResDesc2->u.Interrupt.Level);
-                            __debugbreak();
                         }
 
                         Result = TRUE;

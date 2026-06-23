@@ -194,7 +194,6 @@ arbusno_Constructor(IN PVOID DeviceExtension,
         {
             /* Not yet implemented */
             UNIMPLEMENTED;
-            while (TRUE);
         }
         else
         {

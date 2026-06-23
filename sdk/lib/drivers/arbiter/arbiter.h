@@ -253,6 +253,15 @@ ArbArbiterHandler(
     _Out_ PARBITER_PARAMETERS Params
 );
 
+NTSTATUS
+NTAPI
+ArbBuildAssignmentOrdering(
+    _Inout_ PARBITER_INSTANCE ArbInstance,
+    _In_ PCWSTR OrderName,
+    _In_ PCWSTR ReservedOrderName,
+    _In_ PARB_TRANSLATE_ORDERING TranslateOrderingFunction
+);
+
 BOOLEAN
 NTAPI
 ArbFindSuitableRange(

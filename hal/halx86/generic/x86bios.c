@@ -336,7 +336,7 @@ ValidatePort(
     }
 
     /* Allow but report unknown ports, we trust the BIOS for now */
-    DPRINT1("Unknown port 0x%x, size %d, write %d\n", Port, Size, IsWrite);
+  //  DPRINT1("Unknown port 0x%x, size %d, write %d\n", Port, Size, IsWrite);
     return TRUE;
 }
 

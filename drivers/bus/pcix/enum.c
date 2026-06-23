@@ -68,6 +68,13 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     if (!ResourceList || !ResourceList->Count)
         return PdoExtension->UpdateHardware;
 
+    /* Fully zero the array: unmatched slots stay a CLEAN CmResourceTypeNull
+       (== 0) descriptor.  Without this the non-Type fields are uninitialized
+       stack memory, and the compare-and-update loop below copies that garbage
+       into Current[] via "*Old = *New" - which is what produced the bogus
+       "changed to: Type 0, ShareDisposition 0xAB, <pointer>" descriptors in the
+       bridge START dump. */
+    RtlZeroMemory(NewResources, sizeof(NewResources));
     for (i = 0; i < PCI_MAX_RANGE_COUNT; i++)
     {
         NewResources[i].Type = CmResourceTypeNull;
@@ -366,8 +373,12 @@ PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
         /* Are the memory decodes enabled? */
         if (HaveMemSpace)
         {
-            /* Build a memory descriptor for a 128KB framebuffer at 0xA0000 */
-            Resource->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
+            /* Build a memory descriptor for a 128KB framebuffer at 0xA0000.
+               This range is forwarded to the VGA device behind the bridge, so
+               flag it as a forwarding window (CM_RESOURCE_MEMORY_WINDOW_DECODE)
+               and the child's identical decode will not be seen as a conflict. */
+            Resource->Flags = CM_RESOURCE_MEMORY_READ_WRITE |
+                              CM_RESOURCE_MEMORY_WINDOW_DECODE;
             Resource->u.Generic.Start.HighPart = 0;
             Resource->Type = CmResourceTypeMemory;
             Resource->u.Generic.Start.LowPart = 0xA0000;
@@ -378,16 +389,23 @@ PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
         /* Are the I/O decodes enabled? */
         if (HaveIoSpace)
         {
-            /* Build an I/O descriptor for the graphic ports at 0x3B0 */
+            /* Build an I/O descriptor for the graphic ports at 0x3B0.  These
+               legacy VGA ports are forwarded to the child VGA device, so they
+               are tagged as a forwarding window (CM_RESOURCE_PORT_WINDOW_DECODE)
+               to avoid a false conflict with the child's own VGA decode. */
             Resource->Type = CmResourceTypePort;
-            Resource->Flags = CM_RESOURCE_PORT_POSITIVE_DECODE | CM_RESOURCE_PORT_10_BIT_DECODE;
+            Resource->Flags = CM_RESOURCE_PORT_POSITIVE_DECODE |
+                              CM_RESOURCE_PORT_10_BIT_DECODE |
+                              CM_RESOURCE_PORT_WINDOW_DECODE;
             Resource->u.Port.Start.QuadPart = 0x3B0u;
             Resource->u.Port.Length = 0xC;
             Resource++;
 
             /* Build an I/O descriptor for the graphic ports at 0x3C0 */
             Resource->Type = CmResourceTypePort;
-            Resource->Flags = CM_RESOURCE_PORT_POSITIVE_DECODE | CM_RESOURCE_PORT_10_BIT_DECODE;
+            Resource->Flags = CM_RESOURCE_PORT_POSITIVE_DECODE |
+                              CM_RESOURCE_PORT_10_BIT_DECODE |
+                              CM_RESOURCE_PORT_WINDOW_DECODE;
             Resource->u.Port.Start.QuadPart = 0x3C0u;
             Resource->u.Port.Length = 0x20;
             Resource++;

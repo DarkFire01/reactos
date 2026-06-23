@@ -103,8 +103,10 @@ PciDebugPoIrpTypeToText(IN USHORT MinorFunction)
 {
     PCHAR Text;
 
-    /* Catch invalid code */
-    if (MinorFunction >= IRP_MN_QUERY_POWER)
+    /* Catch invalid code (QUERY_POWER is the highest code we decode, so only
+     * strictly-greater minor functions are unknown - the old ">=" mislabeled a
+     * perfectly valid IRP_MN_QUERY_POWER as "UNKNOWN PO IRP Minor Code") */
+    if (MinorFunction > IRP_MN_QUERY_POWER)
     {
         /* New version of Windows? Or driver bug */
         Text = "** UNKNOWN PO IRP Minor Code **";

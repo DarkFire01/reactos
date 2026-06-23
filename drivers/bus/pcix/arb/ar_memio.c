@@ -198,8 +198,8 @@ NTAPI
 ario_ApplyBrokenVideoHack(IN PPCI_FDO_EXTENSION FdoExtension)
 {
     PPCI_ARBITER_INSTANCE PciArbiter;
-    //PARBITER_INSTANCE CommonInstance;
-    //NTSTATUS Status;
+    PARBITER_INSTANCE CommonInstance;
+    NTSTATUS Status;
 
     /* Only valid for root FDOs who are being applied the hack for the first time */
     ASSERT(!FdoExtension->BrokenVideoHackApplied);
@@ -210,25 +210,45 @@ ario_ApplyBrokenVideoHack(IN PPCI_FDO_EXTENSION FdoExtension)
                                                       SecondaryExtension.Next,
                                                       PciArb_Io);
     ASSERT(PciArbiter);
-#if 0 // when arb exist
+    if (!PciArbiter) return;
+
     /* Get the Arb instance */
     CommonInstance = &PciArbiter->CommonInstance;
 
-    /* Free the two lists, enabling full VGA access */
-    ArbFreeOrderingList(&CommonInstance->OrderingList);
-    ArbFreeOrderingList(&CommonInstance->ReservedList);
-
-    /* Build the ordering for broken video PCI access */
+    /*
+     * Rebuild the I/O arbiter's assignment ordering using the "BrokenVideo"
+     * reserved-resource profile in place of the normal "Pci" one.  The standard
+     * profile reserves (holds back) the legacy VGA I/O ranges 0x3B0-0x3BB and
+     * 0x3C0-0x3DF so they are not handed out during arbitration; the BrokenVideo
+     * profile deliberately omits them, leaving those ranges in the allocatable
+     * pool.  That lets an old video card which positively decodes the full VGA
+     * I/O range (PCI_HACK_VIDEO_LEGACY_DECODE) actually be granted them instead
+     * of being denied and forced into a fallback.
+     *
+     * ArbBuildAssignmentOrdering frees and reinitializes the OrderingList and
+     * ReservedList itself, so there is no need to free them here first.
+     */
     Status = ArbBuildAssignmentOrdering(CommonInstance,
                                         L"Pci",
                                         L"BrokenVideo",
                                         NULL);
-    ASSERT(NT_SUCCESS(Status));
-#else
-    //Status = STATUS_SUCCESS;
-    UNIMPLEMENTED;
-    while (TRUE);
-#endif
+    if (!NT_SUCCESS(Status))
+    {
+        /* On failure ArbBuildAssignmentOrdering leaves BOTH ordering lists
+           freed/empty, which would break I/O arbitration for the whole root
+           bus.  Restore the normal "Pci" ordering (the same profile the arbiter
+           was initialized with) so the bus keeps working, and skip the hack. */
+        DPRINT1("PCI: ario_ApplyBrokenVideoHack - ArbBuildAssignmentOrdering "
+                "failed (0x%08lx); is Arbiters\\ReservedResources\\BrokenVideo "
+                "present in the registry? Restoring normal PCI ordering.\n",
+                Status);
+        ArbBuildAssignmentOrdering(CommonInstance,
+                                   L"Pci",
+                                   L"Pci",
+                                   PciArbTranslateOrdering);
+        return;
+    }
+
     /* Now the hack has been applied */
     FdoExtension->BrokenVideoHackApplied = TRUE;
 }

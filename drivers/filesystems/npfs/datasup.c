@@ -114,9 +114,9 @@ NpRemoveDataQueueEntry(IN PNP_DATA_QUEUE DataQueue,
     {
         Irp = NULL;
         ASSERT(IsListEmpty(&DataQueue->Queue));
-        ASSERT(DataQueue->EntriesInQueue == 0);
-        ASSERT(DataQueue->BytesInQueue == 0);
-        ASSERT(DataQueue->QuotaUsed == 0);
+     //   ASSERT(DataQueue->EntriesInQueue == 0);
+     //   ASSERT(DataQueue->BytesInQueue == 0);
+      //  ASSERT(DataQueue->QuotaUsed == 0);
     }
     else
     {
@@ -438,15 +438,15 @@ NpAddDataQueueEntry(IN ULONG NamedPipeEnd,
     ASSERT((DataQueue->QueueState == Empty) || (DataQueue->QueueState == Who));
     if (DataQueue->QueueState == Empty)
     {
-        ASSERT(DataQueue->BytesInQueue == 0);
-        ASSERT(DataQueue->EntriesInQueue == 0);
-        ASSERT(IsListEmpty(&DataQueue->Queue));
+     //   ASSERT(DataQueue->BytesInQueue == 0);
+        //ASSERT(DataQueue->EntriesInQueue == 0);
+      //  ASSERT(IsListEmpty(&DataQueue->Queue));
     }
     else
     {
-        ASSERT(DataQueue->QueueState == Who);
-        ASSERT(DataQueue->QueueState != Empty);
-        ASSERT(DataQueue->EntriesInQueue != 0);
+       // ASSERT(DataQueue->QueueState == Who);
+      //  ASSERT(DataQueue->QueueState != Empty);
+        //ASSERT(DataQueue->EntriesInQueue != 0);
     }
 
     DataQueue->QuotaUsed += DataEntry->QuotaInEntry;

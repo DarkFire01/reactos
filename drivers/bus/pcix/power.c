@@ -207,13 +207,19 @@ PciFdoWaitWake(IN PIRP Irp,
                IN PIO_STACK_LOCATION IoStackLocation,
                IN PPCI_FDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED;
-    while (TRUE);
-    return STATUS_NOT_SUPPORTED;
+    /*
+     * The PCI bus FDO does not arm wake itself; the wake event (PME#) is owned
+     * by the parent bus below us.  This entry is IRP_DISPATCH, so the framework
+     * does NOT forward the IRP for us - we must pass it down to the parent's
+     * device object explicitly (PciPassIrpFromFdoToPdo issues PoStartNextPowerIrp
+     * + PoCallDriver for power IRPs) and return that status.
+     *
+     * (Previously this was an UNIMPLEMENTED busy-loop - "while (TRUE);" - which
+     * hung the issuing thread forever the moment a WAIT_WAKE arrived.)
+     */
+    return PciPassIrpFromFdoToPdo(DeviceExtension, Irp);
 }
 
 NTSTATUS
@@ -223,12 +229,35 @@ PciFdoSetPowerState(IN PIRP Irp,
                     IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED;
-    while (TRUE);
-    return STATUS_NOT_SUPPORTED;
+    /*
+     * The PCI bus FDO performs no hardware power-state programming of its own;
+     * the bridge/host-bus power state is managed by the parent bus driver below
+     * us.  Acknowledge the request with success and let the dispatcher forward
+     * the IRP down the stack (this handler is IRP_DOWNWARD, so a success/return
+     * causes PciPassIrpFromFdoToPdo to run PoStartNextPowerIrp + PoCallDriver).
+     *
+     * This mirrors the legacy ReactOS pci driver's FdoPowerControl, which simply
+     * forwards power IRPs to the lower device object.
+     *
+     * (Previously this was an UNIMPLEMENTED busy-loop - "while (TRUE);" - which
+     * hung the worker thread on every reboot/shutdown SET_POWER, tripping
+     * ExpDetectWorkerThreadDeadlock.)
+     */
+    if (IoStackLocation->Parameters.Power.Type == SystemPowerState)
+    {
+        DPRINT1("PCI: FDO %p SET_POWER system state S%u\n",
+                DeviceExtension,
+                IoStackLocation->Parameters.Power.State.SystemState - PowerSystemWorking);
+    }
+    else
+    {
+        DPRINT1("PCI: FDO %p SET_POWER device state D%u\n",
+                DeviceExtension,
+                IoStackLocation->Parameters.Power.State.DeviceState - PowerDeviceD0);
+    }
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -241,9 +270,16 @@ PciFdoIrpQueryPower(IN PIRP Irp,
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED;
-    while (TRUE);
-    return STATUS_NOT_SUPPORTED;
+    /*
+     * A PCI bus imposes no constraints that would prevent the queried power
+     * transition, so we always allow it.  Returning success lets the dispatcher
+     * forward the IRP down to the parent bus (IRP_DOWNWARD -> PciPassIrpFromFdoToPdo).
+     *
+     * (Previously this was an UNIMPLEMENTED busy-loop - "while (TRUE);" - which
+     * is exactly what wedged reboot in the captured log: the QUERY_POWER handler
+     * never returned and the worker thread spun forever.)
+     */
+    return STATUS_SUCCESS;
 }
 
 /* EOF */

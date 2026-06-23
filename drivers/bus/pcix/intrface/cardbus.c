@@ -30,36 +30,97 @@ PCI_INTERFACE PciCardbusPrivateInterface =
 
 /* FUNCTIONS ******************************************************************/
 
+/*
+ * CardBus (PCI header type 2) resource configurator.
+ *
+ * The only PCI-arbitrated resource of a CardBus bridge is its socket (ExCA)
+ * registers BAR at offset 0x10. The four card-side memory/I/O decode windows
+ * (the type2 Range[] registers) are read/write registers programmed by the
+ * CardBus controller driver, not sizeable BARs, so they are not treated as
+ * device BARs here.
+ */
+
 VOID
 NTAPI
-Cardbus_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
+Cardbus_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
-    UNREFERENCED_PARAMETER(Context);
-    UNIMPLEMENTED_DBGBREAK();
+    PPCI_COMMON_HEADER PciData, Current;
+
+    PciData = Context->PciData;
+    Current = Context->Current;
+
+    /* Write all 1s to the socket-registers BAR; the read-back shows which bits
+       are hardwired to 0, which gives the BAR length. */
+    PciData->u.type2.SocketRegistersBaseAddress = 0xFFFFFFFF;
+
+    /* Preserve the bus-number and latency fields across the discovery write */
+    PciData->u.type2.PrimaryBus = Current->u.type2.PrimaryBus;
+    PciData->u.type2.SecondaryBus = Current->u.type2.SecondaryBus;
+    PciData->u.type2.SubordinateBus = Current->u.type2.SubordinateBus;
+    PciData->u.type2.SecondaryLatency = Current->u.type2.SecondaryLatency;
+
+    /* The card decode windows (Range[]) are not sizeable BARs; leave them at
+       their current values so they are written back unchanged. */
+
+    /* Save and clear the write-1-to-clear secondary status register */
+    Context->SecondaryStatus = Current->u.type2.SecondaryStatus;
+    Current->u.type2.SecondaryStatus = 0;
+    PciData->u.type2.SecondaryStatus = 0;
 }
 
 VOID
 NTAPI
 Cardbus_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
-    UNREFERENCED_PARAMETER(Context);
-    UNIMPLEMENTED_DBGBREAK();
+    PPCI_COMMON_HEADER PciData;
+    PPCI_FUNCTION_RESOURCES Resources;
+
+    /* PciData holds the sized BAR mask read back after the all-1s write */
+    PciData = Context->PciData;
+    Resources = Context->PdoExtension->Resources;
+
+    /* Build the limit descriptor for the socket-registers memory BAR. The
+       remaining limit descriptors are left NULL (the caller zeroed them). */
+    PciCreateIoDescriptorFromBarLimit(&Resources->Limit[0],
+                                      &PciData->u.type2.SocketRegistersBaseAddress,
+                                      FALSE);
 }
 
 VOID
 NTAPI
-Cardbus_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context)
+Cardbus_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
-    UNREFERENCED_PARAMETER(Context);
-    UNIMPLEMENTED_DBGBREAK();
+    PPCI_COMMON_HEADER Current;
+    PPCI_FUNCTION_RESOURCES Resources;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDescriptor;
+    PIO_RESOURCE_DESCRIPTOR IoDescriptor;
+
+    Current = Context->Current;
+    Resources = Context->PdoExtension->Resources;
+
+    /* Mirror the socket BAR's limit descriptor into a current-setting one,
+       using the live (programmed) base address. */
+    CmDescriptor = &Resources->Current[0];
+    IoDescriptor = &Resources->Limit[0];
+
+    CmDescriptor->Type = IoDescriptor->Type;
+    if (CmDescriptor->Type != CmResourceTypeNull)
+    {
+        CmDescriptor->Flags = IoDescriptor->Flags;
+        CmDescriptor->ShareDisposition = IoDescriptor->ShareDisposition;
+        CmDescriptor->u.Generic.Start.HighPart = 0;
+        CmDescriptor->u.Generic.Length = IoDescriptor->u.Generic.Length;
+        CmDescriptor->u.Memory.Start.LowPart =
+            Current->u.type2.SocketRegistersBaseAddress & PCI_ADDRESS_MEMORY_ADDRESS_MASK;
+    }
 }
 
 VOID
 NTAPI
 Cardbus_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
-    UNREFERENCED_PARAMETER(Context);
-    UNIMPLEMENTED_DBGBREAK();
+    /* Restore the secondary status register saved during massaging */
+    Context->Current->u.type2.SecondaryStatus = Context->SecondaryStatus;
 }
 
 VOID
@@ -71,7 +132,9 @@ Cardbus_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(PciData);
     UNREFERENCED_PARAMETER(IoDescriptor);
-    UNIMPLEMENTED_DBGBREAK();
+
+    /* A CardBus bridge exposes no additional fixed legacy resources here; the
+       card-side windows are owned by the CardBus controller driver. */
 }
 
 VOID
@@ -81,7 +144,8 @@ Cardbus_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
 {
     UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(PciData);
-    UNIMPLEMENTED_DBGBREAK();
+
+    /* No special reset handling required for a CardBus bridge. */
 }
 
 VOID
@@ -91,7 +155,12 @@ Cardbus_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 {
     UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(PciData);
-    UNIMPLEMENTED_DBGBREAK();
+
+    /*
+     * PciData already holds the bridge's live configuration (read by
+     * PciSetResources). The socket BAR and the card decode windows keep their
+     * firmware-programmed values, so there is nothing to reprogram here.
+     */
 }
 
 NTSTATUS
@@ -119,9 +188,7 @@ pcicbintrf_Constructor(IN PVOID DeviceExtension,
     UNREFERENCED_PARAMETER(Version);
     UNREFERENCED_PARAMETER(Size);
     UNREFERENCED_PARAMETER(Interface);
-
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
+    DPRINT1("PCI pcicbintrf_Constructor, unexpected call.\n");
     return STATUS_NOT_IMPLEMENTED;
 }
 

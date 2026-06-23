@@ -84,7 +84,16 @@ PciPdoWaitWake(IN PIRP Irp,
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
+    /*
+     * This minimal PCI driver does not implement device wake (PME#) arming, so
+     * we report that wake is not supported.  The PDO is the bottom of the stack,
+     * so this status is the final answer (the dispatcher completes the IRP).
+     *
+     * Note: this used to be UNIMPLEMENTED_DBGBREAK(), which halts into the
+     * debugger - undesirable on the shutdown/reboot path where the Power Manager
+     * may probe wake support.  A plain "not supported" is the correct response.
+     */
+    DPRINT1("PCI: PDO %p WAIT_WAKE not supported\n", DeviceExtension);
     return STATUS_NOT_SUPPORTED;
 }
 
@@ -95,11 +104,31 @@ PciPdoSetPowerState(IN PIRP Irp,
                     IN PPCI_PDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_SUPPORTED;
+    /*
+     * Record the new power state and acknowledge it.  The PDO is the bottom of
+     * the device stack for a PCI child, so it is responsible for completing the
+     * power IRP - there is no lower driver to forward to.  Full hardware PM
+     * (writing the PMCSR via PciSetPowerManagedDevicePowerState) is not wired up
+     * for this minimal bring-up; on shutdown/reboot the platform cuts power
+     * regardless, so acknowledging the transition is both sufficient and correct.
+     *
+     * (Previously returned STATUS_NOT_SUPPORTED, which fails the SET_POWER at the
+     * bottom of the stack and propagates a failure back up the power sequence
+     * during reboot.)
+     */
+    if (IoStackLocation->Parameters.Power.Type == SystemPowerState)
+    {
+        DeviceExtension->PowerState.CurrentSystemState =
+            IoStackLocation->Parameters.Power.State.SystemState;
+    }
+    else
+    {
+        DeviceExtension->PowerState.CurrentDeviceState =
+            IoStackLocation->Parameters.Power.State.DeviceState;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -112,8 +141,15 @@ PciPdoIrpQueryPower(IN PIRP Irp,
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /*
+     * A PCI device PDO never vetoes a power-state query in this driver - it can
+     * always enter the requested state - so we answer success.  The PDO completes
+     * the IRP (it is the bottom of the stack).
+     *
+     * (Previously UNIMPLEMENTED_DBGBREAK() + STATUS_NOT_SUPPORTED, which both
+     * halted into the debugger and failed the query during reboot/shutdown.)
+     */
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -499,12 +535,41 @@ PciPdoIrpQueryDeviceState(IN PIRP Irp,
                           IN PIO_STACK_LOCATION IoStackLocation,
                           IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PNP_DEVICE_STATE DeviceState;
+    PAGED_CODE();
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_SUPPORTED;
+    UNREFERENCED_PARAMETER(IoStackLocation);
+
+    /*
+     * IRP_MN_QUERY_PNP_DEVICE_STATE is additive: each driver in the stack ORs
+     * the flags it wants to contribute into IoStatus.Information.  Start from
+     * whatever is already there so we never clobber another driver's bits.
+     */
+    DeviceState = (PNP_DEVICE_STATE)Irp->IoStatus.Information;
+
+    /*
+     * A device that lies on the kernel debugger's hardware path must never be
+     * disabled (or the debug connection would be torn out from under us), so
+     * mark it as not-disableable.
+     */
+    if (DeviceExtension->OnDebugPath)
+    {
+        DeviceState |= PNP_DEVICE_NOT_DISABLEABLE;
+    }
+
+    /*
+     * If the device was found to be physically gone during a re-enumeration,
+     * report it as failed and hide it from the UI so the PnP manager tears the
+     * devnode down instead of leaving a phantom behind.
+     */
+    if (DeviceExtension->ReportedMissing)
+    {
+        DeviceState |= PNP_DEVICE_FAILED | PNP_DEVICE_DONT_DISPLAY_IN_UI;
+    }
+
+    /* Hand the accumulated state back; the dispatcher completes the IRP */
+    Irp->IoStatus.Information = DeviceState;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS

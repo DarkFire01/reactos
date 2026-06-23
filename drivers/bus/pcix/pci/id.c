@@ -135,16 +135,33 @@ PciIdPrintf(IN PPCI_ID_BUFFER IdBuffer,
             IN PCCH Format,
             ...)
 {
-    ULONG Size, Length;
+    ULONG Size, Length, MaxLength;
+    LONG Written;
     PANSI_STRING AnsiString;
     va_list va;
 
     ASSERT(IdBuffer->Count < MAX_ANSI_STRINGS);
+    if (IdBuffer->Count >= MAX_ANSI_STRINGS) return 0;
 
-    /* Do the actual string formatting into the character buffer */
+    /* Space remaining in the fixed character buffer from the current pointer */
+    MaxLength = (ULONG)((PCHAR)(IdBuffer + 1) - IdBuffer->CharBuffer);
+    if (!MaxLength) return 0;
+
+    /*
+     * Do the actual string formatting into the character buffer, bounded to the
+     * remaining space so we can never overrun BufferData (release builds have
+     * no ASSERT to catch it).
+     */
     va_start(va, Format);
-    vsprintf(IdBuffer->CharBuffer, Format, va);
+    Written = _vsnprintf(IdBuffer->CharBuffer, MaxLength, Format, va);
     va_end(va);
+
+    /* _vsnprintf does not NUL-terminate on truncation; force it and warn */
+    if ((Written < 0) || ((ULONG)Written >= MaxLength))
+    {
+        IdBuffer->CharBuffer[MaxLength - 1] = ANSI_NULL;
+        DPRINT1("PCI: ID buffer full, string truncated in PciIdPrintf\n");
+    }
 
     /* Initialize the ANSI_STRING that will hold this string buffer */
     AnsiString = &IdBuffer->Strings[IdBuffer->Count];
@@ -177,18 +194,33 @@ PciIdPrintfAppend(IN PPCI_ID_BUFFER IdBuffer,
     va_list va;
 
     ASSERT(IdBuffer->Count);
+    if (!IdBuffer->Count) return 0;
 
     /* Choose the next static ANSI_STRING to use */
     NextId = IdBuffer->Count - 1;
 
     /* Max length is from the end of the buffer up until the current pointer */
     MaxLength = (PCHAR)(IdBuffer + 1) - IdBuffer->CharBuffer;
+    if (!MaxLength) return 0;
 
-    /* Do the actual append, and return the length this string took */
+    /*
+     * Do the actual append, and return the length this string took. The append
+     * overwrites the previous NUL at CharBuffer - 1, so the writable region is
+     * MaxLength + 1 bytes. Bound the format to that region so a buggy caller or
+     * pathological topology can never overrun BufferData (release builds have
+     * no ASSERT to catch it).
+     */
     va_start(va, Format);
-    Length = vsprintf(IdBuffer->CharBuffer - 1, Format, va);
+    Length = (ULONG)_vsnprintf(IdBuffer->CharBuffer - 1, MaxLength + 1, Format, va);
     va_end(va);
-    ASSERT(Length < MaxLength);
+
+    /* On truncation _vsnprintf returns negative and does not NUL-terminate */
+    if (((LONG)Length < 0) || (Length > MaxLength))
+    {
+        IdBuffer->CharBuffer[MaxLength - 1] = ANSI_NULL;
+        Length = MaxLength;
+        DPRINT1("PCI: ID buffer full, string truncated in PciIdPrintfAppend\n");
+    }
 
     /* Select the static ANSI_STRING, and update its length information */
     AnsiString = &IdBuffer->Strings[NextId];
@@ -357,6 +389,11 @@ PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
                                   "%02X",
                                   (PdoExtension->Slot.u.bits.DeviceNumber << 3) |
                                   PdoExtension->Slot.u.bits.FunctionNumber);
+
+                /* Move up to the bus that this parent bridge sits on. Without
+                   this the loop would spin forever on a device behind a bridge,
+                   overflowing the ID buffer. */
+                ParentExtension = PdoExtension->ParentFdoExtension;
             }
             break;
 

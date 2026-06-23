@@ -25,15 +25,37 @@ NTAPI
 PciTranslateBusAddress(IN INTERFACE_TYPE InterfaceType,
                        IN ULONG BusNumber,
                        IN PHYSICAL_ADDRESS BusAddress,
-                       OUT PULONG AddressSpace,
+                       IN OUT PULONG AddressSpace,
                        OUT PPHYSICAL_ADDRESS TranslatedAddress)
 {
-    UNREFERENCED_PARAMETER(InterfaceType);
-    UNREFERENCED_PARAMETER(BusNumber);
-    UNREFERENCED_PARAMETER(AddressSpace);
+    /*
+     * This routine is hooked over the HAL's HalPciTranslateBusAddress (see
+     * PciHookHal), with the original HAL routine stashed in
+     * PcipSavedTranslateBusAddress.  Like the real pci.sys, the hook itself
+     * performs no translation arithmetic - it simply defers to the HAL, which
+     * owns the platform-specific PCI bus-address-to-physical mapping and the
+     * bus-handler chain (range/offset lookup, I/O vs. memory space, etc.).
+     * This is recursion-safe: the saved routine (HaliTranslateBusAddress)
+     * dispatches straight to a bus handler's TranslateBusAddress, never back
+     * through HalPciTranslateBusAddress.
+     */
+    if (PcipSavedTranslateBusAddress &&
+        PcipSavedTranslateBusAddress(InterfaceType,
+                                     BusNumber,
+                                     BusAddress,
+                                     AddressSpace,
+                                     TranslatedAddress))
+    {
+        return TRUE;
+    }
 
-    /* FIXME: Broken translation */
-    UNIMPLEMENTED;
+    /*
+     * Fallback for when the HAL has no registered translator for this PCI bus
+     * (common during this bring-up, where the new bus driver owns enumeration
+     * and the legacy HAL PCI bus handler may be absent).  On x86 a PCI bus
+     * address is identity-mapped to the CPU physical address for both memory
+     * and I/O space, so pass it through unchanged and leave AddressSpace as-is.
+     */
     TranslatedAddress->QuadPart = BusAddress.QuadPart;
     return TRUE;
 }

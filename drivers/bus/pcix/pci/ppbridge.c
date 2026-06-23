@@ -538,8 +538,12 @@ PPBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
                 ASSERT((Working->u.type1.MemoryLimit & 0xF) == 0);
                 MemoryLimit.LowPart = PciBridgeMemoryLimit(Working);
 
-                /* Build the descriptor for it */
-                (&Limit[i])->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
+                /* Build the descriptor for it.  Like the I/O window above, mark
+                   it as a bridge forwarding window (CM_RESOURCE_MEMORY_WINDOW_DECODE)
+                   so the PnP arbiter does not flag child BARs that decode inside
+                   this window as conflicting with the bridge itself. */
+                (&Limit[i])->Flags = CM_RESOURCE_MEMORY_READ_WRITE |
+                                     CM_RESOURCE_MEMORY_WINDOW_DECODE;
                 (&Limit[i])->Type = CmResourceTypeMemory;
                 (&Limit[i])->u.Memory.Alignment = 0x100000;
                 (&Limit[i])->u.Memory.MinimumAddress.QuadPart = 0;
@@ -551,8 +555,9 @@ PPBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
                 /* Get the prefetch memory limit, if there is one */
                 MemoryLimit = PciBridgePrefetchMemoryLimit(Working);
 
-                /* Write out the descriptor for it */
-                (&Limit[i])->Flags = CM_RESOURCE_MEMORY_PREFETCHABLE;
+                /* Write out the descriptor for it (also a forwarding window) */
+                (&Limit[i])->Flags = CM_RESOURCE_MEMORY_PREFETCHABLE |
+                                     CM_RESOURCE_MEMORY_WINDOW_DECODE;
                 (&Limit[i])->Type = CmResourceTypeMemory;
                 (&Limit[i])->u.Memory.Alignment = 0x100000;
                 (&Limit[i])->u.Memory.MinimumAddress.QuadPart = 0;
@@ -749,14 +754,82 @@ PPBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
         }
     }
 
-    /* Loop bus resources */
+    /*
+     * Program the bridge's own BARs and expansion ROM from the assigned
+     * resources.
+     *
+     * The three FORWARDED decode windows (I/O at Current[2], memory at
+     * Current[3], prefetchable memory at Current[4]) are deliberately NOT
+     * recomputed here.  Their base/limit register pairs already hold the
+     * firmware programming - left intact for a positive-decode bridge, or
+     * restored from PreservedConfig, by the code above - and in this legacy
+     * bring-up boot resources are preserved rather than relocated, so the
+     * assigned window equals the firmware window.  Re-encoding the base/limit
+     * pairs from Current[] would risk corrupting decode for every device behind
+     * the bridge, and is especially unsafe because the window Limit descriptors
+     * carry length 0, so PnP-assigned windows are not matched back into
+     * Current[] by PciComputeNewCurrentSettings (they remain CmResourceTypeNull).
+     * Recomputing the window registers is left as a follow-up once that matching
+     * is fixed.
+     */
     PciResources = PdoExtension->Resources;
     if (PciResources)
     {
-        /* Loop each resource type (the BARs, ROM BAR and Prefetch) */
-        for (i = 0; i < 6; i++)
+        PULONG BarArray = PciData->u.type1.BaseAddresses;
+
+        /* A type 1 (bridge) header has PCI_TYPE1_ADDRESSES (2) normal BARs */
+        for (i = 0; i < PCI_TYPE1_ADDRESSES; i++)
         {
-            UNIMPLEMENTED;
+            PCM_PARTIAL_RESOURCE_DESCRIPTOR Cur = &PciResources->Current[i];
+            ULONGLONG Start;
+            ULONG Value;
+
+            /* Unused/unassigned BAR: leave the live firmware value untouched */
+            if (Cur->Type == CmResourceTypeNull) continue;
+
+            if (Cur->Type == CmResourceTypePort)
+            {
+                Start = (ULONGLONG)Cur->u.Port.Start.QuadPart;
+                Value = ((ULONG)Start & PCI_ADDRESS_IO_ADDRESS_MASK) |
+                        PCI_ADDRESS_IO_SPACE;
+            }
+            else if (Cur->Type == CmResourceTypeMemory)
+            {
+                Start = (ULONGLONG)Cur->u.Memory.Start.QuadPart;
+                Value = (ULONG)Start & PCI_ADDRESS_MEMORY_ADDRESS_MASK;
+                if (Cur->Flags & CM_RESOURCE_MEMORY_PREFETCHABLE)
+                    Value |= PCI_ADDRESS_MEMORY_PREFETCHABLE;
+
+                /* Preserve the memory type (32/64-bit) bits from the live BAR */
+                Value |= (BarArray[i] & PCI_ADDRESS_MEMORY_TYPE_MASK);
+                if ((BarArray[i] & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_64BIT)
+                {
+                    /* The companion BAR holds the upper 32 bits */
+                    if ((i + 1) < PCI_TYPE1_ADDRESSES)
+                        BarArray[i + 1] = (ULONG)(Start >> 32);
+                    BarArray[i] = Value;
+                    i++; /* skip the companion */
+                    continue;
+                }
+            }
+            else
+            {
+                continue;
+            }
+
+            BarArray[i] = Value;
+        }
+
+        /* Expansion ROM BAR lives at Current[5] for a bridge */
+        {
+            PCM_PARTIAL_RESOURCE_DESCRIPTOR Rom = &PciResources->Current[5];
+            if (Rom->Type == CmResourceTypeMemory)
+            {
+                ULONGLONG Start = (ULONGLONG)Rom->u.Memory.Start.QuadPart;
+                PciData->u.type1.ROMBaseAddress =
+                    ((ULONG)Start & PCI_ADDRESS_ROM_ADDRESS_MASK) |
+                    PCI_ROMADDRESS_ENABLED;
+            }
         }
     }
 
