@@ -1,5 +1,10 @@
 
 add_subdirectory(atactl)
+<<<<<<< HEAD
+=======
+#add_subdirectory(baresh)
+#add_subdirectory(bootpsx)
+>>>>>>> f5ab286b409 (clean up)
 add_subdirectory(cacls)
 add_subdirectory(calc)
 add_subdirectory(charmap)
