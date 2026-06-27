@@ -1324,7 +1324,7 @@ typedef struct _ETHREAD
 #endif
     UCHAR DisablePageFaultClustering;
     UCHAR ActiveFaultCount;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if 1//(NTDDI_VERSION >= NTDDI_LONGHORN)
     ULONG AlpcMessageId;
     union
     {

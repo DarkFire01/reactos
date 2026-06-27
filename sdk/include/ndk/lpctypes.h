@@ -108,6 +108,7 @@ typedef HANDLE ALPC_HANDLE, *PALPC_HANDLE;
 #define ALPC_MESSAGE_VIEW_ATTRIBUTE     0x40000000
 #define ALPC_MESSAGE_CONTEXT_ATTRIBUTE  0x20000000
 #define ALPC_MESSAGE_HANDLE_ATTRIBUTE   0x10000000
+#define ALPC_MESSAGE_TOKEN_ATTRIBUTE    0x08000000
 
 //
 // ALPC Message Flags (NtAlpcSendWaitReceivePort)
@@ -280,6 +281,15 @@ typedef struct _ALPC_BASIC_INFORMATION
 } ALPC_BASIC_INFORMATION, *PALPC_BASIC_INFORMATION;
 
 //
+// ALPC Completion-Port association (AlpcAssociateCompletionPortInformation)
+//
+typedef struct _ALPC_PORT_ASSOCIATE_COMPLETION_PORT
+{
+    PVOID CompletionKey;
+    HANDLE CompletionPort;
+} ALPC_PORT_ASSOCIATE_COMPLETION_PORT, *PALPC_PORT_ASSOCIATE_COMPLETION_PORT;
+
+//
 // ALPC Completion List registration (AlpcRegisterCompletionListInformation)
 //
 typedef struct _ALPC_PORT_COMPLETION_LIST_INFORMATION
@@ -289,6 +299,33 @@ typedef struct _ALPC_PORT_COMPLETION_LIST_INFORMATION
     ULONG ConcurrencyCount;
     ULONG AttributeFlags;
 } ALPC_PORT_COMPLETION_LIST_INFORMATION, *PALPC_PORT_COMPLETION_LIST_INFORMATION;
+
+//
+// Completion-list ring header laid out at the start of the registered buffer.
+//
+// The kernel writes received messages into fixed-size slots that begin at
+// ListOffset; the user side polls them with AlpcGetMessageFromCompletionList.
+// This is an adapted, single-consumer ring rather than the Win10 24-bit packed
+// lock-free state, but it occupies the same buffer position so both the kernel
+// and ntdll agree on the layout.
+//
+#define ALPC_COMPLETION_LIST_START_MAGIC    0x4C50434C41435354ULL /* "TSCALCPL" */
+#define ALPC_COMPLETION_LIST_END_MAGIC      0x444E45434C50414CULL /* "LAPLCEND" */
+#define ALPC_COMPLETION_LIST_LIST_OFFSET    0x1000
+#define ALPC_COMPLETION_LIST_SLOT_SIZE      0x400
+
+typedef struct _ALPC_COMPLETION_LIST_HEADER
+{
+    ULONGLONG StartMagic;
+    ULONG TotalSize;
+    ULONG ListOffset;
+    ULONG ListSize;
+    ULONG SlotSize;
+    ULONG SlotCount;
+    volatile ULONG Head;
+    volatile ULONG Tail;
+    ULONGLONG EndMagic;
+} ALPC_COMPLETION_LIST_HEADER, *PALPC_COMPLETION_LIST_HEADER;
 
 #ifdef NTOS_MODE_USER
 

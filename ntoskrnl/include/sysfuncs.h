@@ -294,8 +294,8 @@
     SVC_(QueryPortInformationProcess, 0)
     SVC_(GetCurrentProcessorNumber, 0)
     SVC_(WaitForMultipleObjects32, 5)
-#if 0
-#if (NTDDI_VERSION >= NTDDI_VISTA)
+/* ALPC is always present so the kernel SSDT matches the ntdll stubs even on a
+ * 0x502 (NTDDI_WS03) kernel build; the user-mode stubs are 0x600+ exports. */
     SVC_(AlpcAcceptConnectPort, 9)
     SVC_(AlpcCancelMessage, 3)
     SVC_(AlpcConnectPort, 11)
@@ -323,6 +323,3 @@
     SVC_(AlpcRevokeSecurityContext, 3)
     SVC_(AlpcSendWaitReceivePort, 8)
     SVC_(AlpcSetInformation, 4)
-#endif // (NTDDI_VERSION >= NTDDI_VISTA)
-
-#endif

@@ -684,5 +684,21 @@ NTAPI
 AlpcGetHeaderSize(
     _In_ ULONG Flags
 );
+
+NTSYSAPI
+PVOID
+NTAPI
+AlpcGetMessageFromCompletionList(
+    _In_ PVOID CompletionList,
+    _Reserved_ PVOID Reserved
+);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+AlpcFreeCompletionListMessage(
+    _In_ PVOID CompletionList,
+    _In_ PVOID Message
+);
 #endif // NTOS_MODE_USER
 #endif
