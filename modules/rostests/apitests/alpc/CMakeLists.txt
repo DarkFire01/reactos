@@ -19,6 +19,22 @@ list(APPEND SOURCE
     CompletionList.c
     ViewTransfer.c
     NtAlpcConnectPortEx.c
+    ConnectPending.c
+    CommPortReceive.c
+    SectionRounding.c
+    OpenSenderDatagram.c
+    HandleTransfer.c
+    ImpersonateDenied.c
+    CancelRoundTrip.c
+    DisconnectPeer.c
+    ContextAttribute.c
+    TokenAttribute.c
+    SecurityAttribute.c
+    CompletionPortAssoc.c
+    LargeMessage.c
+    ReserveEnforcement.c
+    CompletionListDelivery.c
+    LegacyLpc.c
     alpc_helpers.c
     precomp.h)
 
