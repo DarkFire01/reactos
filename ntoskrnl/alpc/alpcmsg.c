@@ -468,6 +468,7 @@ AlpcpReceiveMessage(
     _Out_ PPORT_MESSAGE ReceiveMessage,
     _Inout_ PSIZE_T BufferLength,
     _Inout_opt_ PALPC_MESSAGE_ATTRIBUTES ReceiveMessageAttributes,
+    _Out_opt_ PVOID *OutServerContext,
     _In_ KPROCESSOR_MODE PreviousMode,
     _In_opt_ PLARGE_INTEGER Timeout)
 {
@@ -478,6 +479,13 @@ AlpcpReceiveMessage(
     ULONG TotalLength;
     USHORT BaseType;
     NTSTATUS Status;
+
+    /* Messages are queued on the connection port. A receiver may wait on a
+     * communication port (e.g. CSR receives on the per-client port after setting
+     * it as the reply port), so operate on the connection port that actually
+     * holds the queue and wait list. */
+    if (Port->CommunicationInfo != NULL && Port->CommunicationInfo->ConnectionPort != NULL)
+        Port = Port->CommunicationInfo->ConnectionPort;
 
     KeInitializeSemaphore(&Thread->AlpcWaitSemaphore, 0, MAXLONG);
     InitializeListHead(&Thread->AlpcWaitListEntry);
@@ -527,6 +535,20 @@ AlpcpReceiveMessage(
                 Status = _SEH2_GetExceptionCode();
             }
             _SEH2_END;
+
+            /* Resolve the per-client port context for legacy LPC receivers: the
+             * context the server set at NtAcceptConnectPort lives on the server
+             * communication port paired with the sender's client port. */
+            if (OutServerContext != NULL)
+            {
+                PALPC_PORT ServerComm = NULL;
+                if (Message->OwnerPort != NULL &&
+                    Message->OwnerPort->CommunicationInfo != NULL)
+                {
+                    ServerComm = Message->OwnerPort->CommunicationInfo->ServerCommunicationPort;
+                }
+                *OutServerContext = (ServerComm != NULL) ? ServerComm->PortContext : NULL;
+            }
 
             /* Expose any transferred VIEW attribute to the receiver. */
             if (NT_SUCCESS(Status) &&
@@ -994,11 +1016,21 @@ AlpcpSendReply(
     PKALPC_MESSAGE Reply;
     PETHREAD WaitingThread;
     PLIST_ENTRY Entry;
+    PALPC_PORT QueuePort = ReplyPort;
     ULONG MessageId = Header->MessageId;
 
+    /* Requests are pended on the connection port. A reply may be issued on a
+     * communication port (e.g. CSR replies on the per-client port), so resolve
+     * to the connection port that actually holds the pending request. */
+    if (ReplyPort->CommunicationInfo != NULL &&
+        ReplyPort->CommunicationInfo->ConnectionPort != NULL)
+    {
+        QueuePort = ReplyPort->CommunicationInfo->ConnectionPort;
+    }
+
     KeAcquireGuardedMutex(&AlpcpLock);
-    for (Entry = ReplyPort->PendingQueue.Flink;
-         Entry != &ReplyPort->PendingQueue;
+    for (Entry = QueuePort->PendingQueue.Flink;
+         Entry != &QueuePort->PendingQueue;
          Entry = Entry->Flink)
     {
         PKALPC_MESSAGE Candidate = CONTAINING_RECORD(Entry, KALPC_MESSAGE, Entry);
@@ -1014,7 +1046,7 @@ AlpcpSendReply(
         return STATUS_INVALID_PARAMETER;
     }
     RemoveEntryList(&Request->Entry);
-    ReplyPort->PendingQueueLength--;
+    QueuePort->PendingQueueLength--;
     Request->u1.QueueType = 0;
     WaitingThread = Request->WaitingThread;
     KeReleaseGuardedMutex(&AlpcpLock);
@@ -1024,8 +1056,8 @@ AlpcpSendReply(
     {
         /* Put the request back so the sender can still time out cleanly. */
         KeAcquireGuardedMutex(&AlpcpLock);
-        InsertTailList(&ReplyPort->PendingQueue, &Request->Entry);
-        ReplyPort->PendingQueueLength++;
+        InsertTailList(&QueuePort->PendingQueue, &Request->Entry);
+        QueuePort->PendingQueueLength++;
         Request->u1.QueueType = 3;
         KeReleaseGuardedMutex(&AlpcpLock);
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -1179,7 +1211,7 @@ NtAlpcSendWaitReceivePort(
     else
     {
         Status = AlpcpReceiveMessage(Port, ReceiveMessage, &CapturedBufferLength,
-                                     ReceiveMessageAttributes, PreviousMode, TimeoutPtr);
+                                     ReceiveMessageAttributes, NULL, PreviousMode, TimeoutPtr);
         if ((NT_SUCCESS(Status) || Status == STATUS_BUFFER_TOO_SMALL) && BufferLength != NULL)
         {
             _SEH2_TRY

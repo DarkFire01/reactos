@@ -22,6 +22,8 @@
 #define NDEBUG
 #include <debug.h>
 
+extern POBJECT_TYPE MmSectionObjectType;
+
 /* GLOBALS ******************************************************************/
 
 /* The legacy LPC port object types alias the ALPC port object type: legacy
@@ -196,6 +198,7 @@ NTSTATUS
 LpcpConnectPort(
     _Out_ PHANDLE PortHandle,
     _In_ PUNICODE_STRING PortName,
+    _Inout_opt_ PPORT_VIEW ClientView,
     _Inout_opt_ PVOID ConnectionInformation,
     _Inout_opt_ PULONG ConnectionInformationLength,
     _Out_opt_ PULONG MaxMessageLength,
@@ -210,7 +213,14 @@ LpcpConnectPort(
     HANDLE ClientHandle = NULL;
     PKALPC_MESSAGE Message = NULL;
     ULONG ConnInfoLength = 0;
+    PORT_VIEW CapturedClientView;
+    BOOLEAN HaveClientView = FALSE;
+    PVOID ViewSection = NULL;
+    UCHAR ConnResponse[0x200];
+    ULONG ConnResponseLength = 0;
     NTSTATUS Status;
+
+    RtlZeroMemory(&CapturedClientView, sizeof(CapturedClientView));
 
     if (ConnectionInformation != NULL && ConnectionInformationLength != NULL)
     {
@@ -219,6 +229,23 @@ LpcpConnectPort(
             if (PreviousMode != KernelMode)
                 ProbeForRead(ConnectionInformationLength, sizeof(ULONG), sizeof(ULONG));
             ConnInfoLength = *ConnectionInformationLength;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+    }
+
+    if (ClientView != NULL)
+    {
+        _SEH2_TRY
+        {
+            if (PreviousMode != KernelMode)
+                ProbeForWrite(ClientView, sizeof(PORT_VIEW), sizeof(ULONG));
+            CapturedClientView = *ClientView;
+            HaveClientView = (CapturedClientView.Length == sizeof(PORT_VIEW) &&
+                              CapturedClientView.SectionHandle != NULL);
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {
@@ -246,6 +273,37 @@ LpcpConnectPort(
         goto Cleanup;
 
     ClientPort->u1.ConnectionPending = TRUE;
+
+    /* Map the client's shared "write" section into this (client) process. The
+     * server side is mapped at accept; the client polls both base addresses. */
+    if (HaveClientView)
+    {
+        PVOID ViewBase = NULL;
+        SIZE_T ViewSize = CapturedClientView.ViewSize;
+        LARGE_INTEGER SectionOffset;
+
+        Status = ObReferenceObjectByHandle(CapturedClientView.SectionHandle,
+                                           SECTION_MAP_READ | SECTION_MAP_WRITE,
+                                           MmSectionObjectType, PreviousMode,
+                                           &ViewSection, NULL);
+        if (!NT_SUCCESS(Status))
+            goto Cleanup;
+
+        SectionOffset.QuadPart = CapturedClientView.SectionOffset;
+        Status = MmMapViewOfSection(ViewSection, PsGetCurrentProcess(), &ViewBase,
+                                    0, 0, &SectionOffset, &ViewSize, ViewUnmap, 0,
+                                    PAGE_READWRITE);
+        if (!NT_SUCCESS(Status))
+            goto Cleanup;
+
+        ClientPort->LpcViewSection = ViewSection;
+        ClientPort->LpcClientViewBase = ViewBase;
+        ClientPort->LpcViewSize = ViewSize;
+        ViewSection = NULL; /* owned by the port now */
+
+        CapturedClientView.ViewBase = ViewBase;
+        CapturedClientView.ViewSize = ViewSize;
+    }
 
     Status = ObInsertObject(ClientPort, NULL, PORT_ALL_ACCESS, 0, NULL, &ClientHandle);
     if (!NT_SUCCESS(Status))
@@ -312,6 +370,16 @@ LpcpConnectPort(
             Status = STATUS_SUCCESS;
     }
 
+    /* Grab the server's connection-info response from the message before it is
+     * reclaimed; it is handed back to the caller's ConnectionInformation. */
+    if (Status == STATUS_SUCCESS && ConnInfoLength != 0)
+    {
+        ConnResponseLength = ConnInfoLength;
+        if (ConnResponseLength > sizeof(ConnResponse))
+            ConnResponseLength = sizeof(ConnResponse);
+        RtlCopyMemory(ConnResponse, AlpcpGetMessageData(Message), ConnResponseLength);
+    }
+
     /* Reclaim the connection request. */
     KeAcquireGuardedMutex(&AlpcpLock);
     if (ServerPort->CachedMessage == Message)
@@ -339,6 +407,20 @@ LpcpConnectPort(
 
             if (MaxMessageLength != NULL)
                 *MaxMessageLength = ClientPort->PortAttributes.MaxMessageLength;
+
+            if (ClientView != NULL && HaveClientView)
+            {
+                CapturedClientView.ViewBase = ClientPort->LpcClientViewBase;
+                CapturedClientView.ViewRemoteBase = ClientPort->LpcServerViewBase;
+                *ClientView = CapturedClientView;
+            }
+
+            if (ConnectionInformation != NULL && ConnResponseLength != 0)
+            {
+                RtlCopyMemory(ConnectionInformation, ConnResponse, ConnResponseLength);
+                if (ConnectionInformationLength != NULL)
+                    *ConnectionInformationLength = ConnResponseLength;
+            }
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {
@@ -351,6 +433,8 @@ LpcpConnectPort(
     }
 
 Cleanup:
+    if (ViewSection != NULL)
+        ObDereferenceObject(ViewSection);
     if (Message != NULL)
         AlpcpFreeMessage(Message);
     if (ClientPort != NULL)
@@ -378,10 +462,9 @@ NtConnectPort(
     _Inout_opt_ PULONG ConnectionInformationLength)
 {
     UNREFERENCED_PARAMETER(SecurityQos);
-    UNREFERENCED_PARAMETER(ClientView);
     UNREFERENCED_PARAMETER(ServerView);
 
-    return LpcpConnectPort(PortHandle, PortName, ConnectionInformation,
+    return LpcpConnectPort(PortHandle, PortName, ClientView, ConnectionInformation,
                            ConnectionInformationLength, MaxMessageLength,
                            KeGetPreviousMode());
 }
@@ -400,11 +483,10 @@ NtSecureConnectPort(
     _Inout_opt_ PULONG ConnectionInformationLength)
 {
     UNREFERENCED_PARAMETER(SecurityQos);
-    UNREFERENCED_PARAMETER(ClientView);
     UNREFERENCED_PARAMETER(ServerSid);
     UNREFERENCED_PARAMETER(ServerView);
 
-    return LpcpConnectPort(PortHandle, PortName, ConnectionInformation,
+    return LpcpConnectPort(PortHandle, PortName, ClientView, ConnectionInformation,
                            ConnectionInformationLength, MaxMessageLength,
                            KeGetPreviousMode());
 }
@@ -467,11 +549,18 @@ NtAcceptConnectPort(
     PETHREAD WaitingThread = NULL;
     HANDLE ServerHandle = NULL;
     ULONG RequestMessageId = 0;
+    PALPC_PORT AcceptedClientPort = NULL;
+    PVOID ViewSection = NULL;
+    SIZE_T ViewSize = 0;
+    UCHAR ResponseData[0x200];
+    ULONG ResponseLength = 0;
     NTSTATUS Status;
 
     UNREFERENCED_PARAMETER(ServerView);
-    UNREFERENCED_PARAMETER(ClientView);
 
+    /* Capture the message id and the server's connection-information response
+     * (the server fills it into the connection request before accepting); it is
+     * handed back to the connecting client. */
     _SEH2_TRY
     {
         if (PreviousMode != KernelMode)
@@ -481,6 +570,15 @@ NtAcceptConnectPort(
             ProbeForRead(ConnectionRequest, sizeof(PORT_MESSAGE), sizeof(ULONG));
         }
         RequestMessageId = ConnectionRequest->MessageId;
+        ResponseLength = (USHORT)ConnectionRequest->u1.s1.DataLength;
+        if (ResponseLength > sizeof(ResponseData))
+            ResponseLength = sizeof(ResponseData);
+        if (ResponseLength != 0)
+        {
+            if (PreviousMode != KernelMode)
+                ProbeForRead((PUCHAR)ConnectionRequest + sizeof(PORT_MESSAGE), ResponseLength, 1);
+            RtlCopyMemory(ResponseData, (PUCHAR)ConnectionRequest + sizeof(PORT_MESSAGE), ResponseLength);
+        }
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
@@ -522,6 +620,14 @@ NtAcceptConnectPort(
 
     if (AcceptConnection)
     {
+        /* Stash the server's connection-info response in the connection message
+         * so the connecting client receives it back. */
+        ULONG CopyLen = ResponseLength;
+        if (CopyLen > (ULONG)(USHORT)Message->PortMessage.u1.s1.DataLength)
+            CopyLen = (USHORT)Message->PortMessage.u1.s1.DataLength;
+        if (CopyLen != 0)
+            RtlCopyMemory(AlpcpGetMessageData(Message), ResponseData, CopyLen);
+
         ClientPort->u1.ConnectionPending = FALSE;
         if (ServerPort->CommunicationInfo != NULL && ClientPort->CommunicationInfo != NULL)
         {
@@ -533,7 +639,45 @@ NtAcceptConnectPort(
         ServerPort->CachedConnectionMessageId = RequestMessageId;
         ConnectionPort->CachedMessage = NULL;
         ConnectionPort->PendingClientPort = NULL;
+        /* Keep the client port alive while we map its section below. */
+        AcceptedClientPort = ClientPort;
+        ObReferenceObject(AcceptedClientPort);
+        ViewSection = ClientPort->LpcViewSection;
+        ViewSize = ClientPort->LpcViewSize;
         KeReleaseGuardedMutex(&AlpcpLock);
+
+        /* Map the client's shared section into this (server) process so the
+         * server can read client capture buffers; this base is reported back to
+         * both the server (ClientView) and the client (LpcServerViewBase). */
+        if (ViewSection != NULL)
+        {
+            PVOID ServerViewBase = NULL;
+            SIZE_T MapSize = ViewSize;
+            LARGE_INTEGER SectionOffset;
+
+            SectionOffset.QuadPart = 0;
+            Status = MmMapViewOfSection(ViewSection, PsGetCurrentProcess(), &ServerViewBase,
+                                        0, 0, &SectionOffset, &MapSize, ViewUnmap, 0,
+                                        PAGE_READWRITE);
+            if (NT_SUCCESS(Status))
+                AcceptedClientPort->LpcServerViewBase = ServerViewBase;
+
+            if (NT_SUCCESS(Status) && ClientView != NULL)
+            {
+                _SEH2_TRY
+                {
+                    if (PreviousMode != KernelMode)
+                        ProbeForWrite(ClientView, sizeof(REMOTE_PORT_VIEW), sizeof(ULONG));
+                    ClientView->ViewBase = ServerViewBase;
+                    ClientView->ViewSize = MapSize;
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    NOTHING;
+                }
+                _SEH2_END;
+            }
+        }
 
         _SEH2_TRY
         {
@@ -564,6 +708,8 @@ NtAcceptConnectPort(
     }
 
 Cleanup:
+    if (AcceptedClientPort != NULL)
+        ObDereferenceObject(AcceptedClientPort);
     if (ServerHandle != NULL)
         ObCloseHandle(ServerHandle, PreviousMode);
     if (ServerPort != NULL)
@@ -626,6 +772,7 @@ LpcpReplyWaitReceive(
 {
     PALPC_PORT Port;
     SIZE_T BufferLength;
+    PVOID ServerContext = NULL;
     NTSTATUS Status;
 
     Status = ObReferenceObjectByHandle(PortHandle, 0, AlpcPortObjectType, PreviousMode,
@@ -651,13 +798,18 @@ LpcpReplyWaitReceive(
         }
     }
 
-    if (PortContext != NULL)
+    BufferLength = Port->PortAttributes.MaxMessageLength;
+    Status = AlpcpReceiveMessage(Port, ReceiveMessage, &BufferLength, NULL,
+                                 &ServerContext, PreviousMode, Timeout);
+
+    /* Return the per-client port context the server set at NtAcceptConnectPort. */
+    if (NT_SUCCESS(Status) && PortContext != NULL)
     {
         _SEH2_TRY
         {
             if (PreviousMode != KernelMode)
                 ProbeForWrite(PortContext, sizeof(PVOID), sizeof(PVOID));
-            *PortContext = Port->PortContext;
+            *PortContext = ServerContext;
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {
@@ -665,10 +817,22 @@ LpcpReplyWaitReceive(
         }
         _SEH2_END;
     }
-
-    BufferLength = Port->PortAttributes.MaxMessageLength;
-    Status = AlpcpReceiveMessage(Port, ReceiveMessage, &BufferLength, NULL,
-                                 PreviousMode, Timeout);
+    /* Deliver the plain LPC message type to legacy clients: strip the ALPC
+     * internal high bits (0x3000) so a connection request reads as
+     * LPC_CONNECTION_REQUEST (10), a request as LPC_REQUEST (1), etc. Legacy
+     * servers (SMSS, CSRSS) compare the whole Type field, not just the low byte. */
+    if (NT_SUCCESS(Status))
+    {
+        _SEH2_TRY
+        {
+            ReceiveMessage->u2.s2.Type &= ~0x3000;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            NOTHING;
+        }
+        _SEH2_END;
+    }
 
     ObDereferenceObject(Port);
     return Status;
@@ -802,6 +966,11 @@ LpcpRequest(
                                 &Header, &Data, &DataLength);
     if (!NT_SUCCESS(Status))
         return Status;
+
+    /* Legacy clients do not set MessageId (the kernel assigns it). Clear it so a
+     * non-zero/high-bit value from the caller's buffer is not mistaken for a
+     * resource-reserve handle by the ALPC send path. */
+    Header.MessageId = 0;
 
     ReplyBufferLength = Port->PortAttributes.MaxMessageLength;
     Status = AlpcpSendRequest(Port, &Header, Data, DataLength,

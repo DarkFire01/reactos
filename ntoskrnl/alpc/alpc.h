@@ -288,6 +288,13 @@ typedef struct _ALPC_PORT
     ULONG DirectQueueLength;
     ULONG CanceledQueueLength;
     ULONG WaitQueueLength;
+    /* Legacy LPC connection shared-section view (the client's "write" section,
+     * mapped into both the client and the server so CSR-style clients can pass
+     * capture buffers). Tracked on the client communication port. */
+    PVOID LpcViewSection;
+    PVOID LpcClientViewBase;
+    PVOID LpcServerViewBase;
+    SIZE_T LpcViewSize;
 } ALPC_PORT, *PALPC_PORT;
 
 typedef struct _ALPC_COMPLETION_LIST
@@ -350,6 +357,7 @@ AlpcpReceiveMessage(
     _Out_ PPORT_MESSAGE ReceiveMessage,
     _Inout_ PSIZE_T BufferLength,
     _Inout_opt_ PALPC_MESSAGE_ATTRIBUTES ReceiveMessageAttributes,
+    _Out_opt_ PVOID *OutServerContext,
     _In_ KPROCESSOR_MODE PreviousMode,
     _In_opt_ PLARGE_INTEGER Timeout);
 

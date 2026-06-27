@@ -140,6 +140,14 @@ AlpcpDeletePort(
         Port->CommunicationInfo = NULL;
     }
 
+    /* Release a legacy LPC connection view section. The mapped views are torn
+     * down with their address spaces at process exit; just drop our reference. */
+    if (Port->LpcViewSection != NULL)
+    {
+        ObDereferenceObject(Port->LpcViewSection);
+        Port->LpcViewSection = NULL;
+    }
+
     /* Tear down a registered completion list (unmaps the system view). */
     if (Port->CompletionList != NULL)
         AlpcpUnregisterCompletionList(Port);
