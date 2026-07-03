@@ -1,0 +1,58 @@
+/*
+ * PROJECT:     ReactOS POSIX+ Environment Subsystem
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     Date and time (<time.h>) for the POSIX userland
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+#pragma once
+
+#include <sys/types.h>      /* time_t, clock_t, size_t */
+
+#define CLOCKS_PER_SEC  1000
+
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
+
+/* Guard shared with the ReactOS CRT, which defines an identical struct tm */
+#ifndef _TM_DEFINED
+#define _TM_DEFINED
+struct tm
+{
+    int tm_sec;     /* seconds after the minute [0,60] */
+    int tm_min;     /* minutes after the hour   [0,59] */
+    int tm_hour;    /* hours since midnight      [0,23] */
+    int tm_mday;    /* day of the month          [1,31] */
+    int tm_mon;     /* months since January      [0,11] */
+    int tm_year;    /* years since 1900 */
+    int tm_wday;    /* days since Sunday         [0,6] */
+    int tm_yday;    /* days since January 1      [0,365] */
+    int tm_isdst;   /* daylight saving time flag */
+};
+#endif
+
+/* Also guarded by __timespec_defined, which newlib uses for the same struct */
+#if !defined(_TIMESPEC_DEFINED) && !defined(__timespec_defined)
+#define _TIMESPEC_DEFINED
+#define __timespec_defined
+struct timespec
+{
+    time_t tv_sec;      /* seconds */
+    long   tv_nsec;     /* nanoseconds [0, 999999999] */
+};
+#endif
+
+/* psxdll extension (ordinal 121) */
+int nanosleep(const struct timespec *Requested, struct timespec *Remaining);
+
+clock_t clock(void);
+time_t  time(time_t *Timer);
+double  difftime(time_t Time1, time_t Time0);
+time_t  mktime(struct tm *Tm);
+
+struct tm *gmtime(const time_t *Timer);
+struct tm *localtime(const time_t *Timer);
+char      *asctime(const struct tm *Tm);
+char      *ctime(const time_t *Timer);
+size_t     strftime(char *String, size_t Max, const char *Format, const struct tm *Tm);
