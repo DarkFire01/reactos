@@ -2688,10 +2688,11 @@ LdrpInit(PCONTEXT Context,
         /* Loader data is there... is this a fork() ? */
         if(Peb->InheritedAddressSpace)
         {
-            /* Handle the fork() */
-            //LoaderStatus = LdrpForkProcess();
-            LoaderStatus = STATUS_NOT_IMPLEMENTED;
-            UNIMPLEMENTED;
+            /* The fork() child inherits an initialized copy of the parent's loader state,
+             * so skip process init. Reset the loader lock in case it was held. */
+            RtlInitializeCriticalSection(&LdrpLoaderLock);
+            Peb->InheritedAddressSpace = FALSE;
+            LoaderStatus = STATUS_SUCCESS;
         }
         else
         {
