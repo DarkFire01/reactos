@@ -2184,6 +2184,16 @@ MiLocateAddress(
     IN PVOID VirtualAddress
 );
 
+ULONG
+NTAPI
+MiQueryAddressState(
+    IN PVOID Va,
+    IN PMMVAD Vad,
+    IN PEPROCESS TargetProcess,
+    OUT PULONG ReturnedProtect,
+    OUT PVOID *NextVa
+);
+
 TABLE_SEARCH_RESULT
 NTAPI
 MiCheckForConflictingNode(
