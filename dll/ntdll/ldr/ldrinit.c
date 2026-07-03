@@ -2688,10 +2688,16 @@ LdrpInit(PCONTEXT Context,
         /* Loader data is there... is this a fork() ? */
         if(Peb->InheritedAddressSpace)
         {
-            /* Handle the fork() */
-            //LoaderStatus = LdrpForkProcess();
-            LoaderStatus = STATUS_NOT_IMPLEMENTED;
-            UNIMPLEMENTED;
+            /* fork() child (POSIX subsystem): the entire address space -- the
+             * loader data, the loaded-module list and ntdll's own .data -- is a
+             * live copy of the parent, so the process is ALREADY initialized. The
+             * child simply resumes the parent's thread at the fork() return, so we
+             * must NOT re-run process init or DLL thread-attach. Reset the
+             * process-wide loader lock in case it was inherited in a held state,
+             * clear the fork flag so any later threads init normally, and continue. */
+            RtlInitializeCriticalSection(&LdrpLoaderLock);
+            Peb->InheritedAddressSpace = FALSE;
+            LoaderStatus = STATUS_SUCCESS;
         }
         else
         {
