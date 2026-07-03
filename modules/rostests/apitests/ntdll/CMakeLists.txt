@@ -60,6 +60,7 @@ list(APPEND SOURCE
     NtDuplicateObject.c
     NtDuplicateToken.c
     NtFilterToken.c
+    NtForkClone.c
     NtFreeVirtualMemory.c
     NtGetCurrentProcessorNumberEx.c
     NtImpersonateAnonymousToken.c

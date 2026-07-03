@@ -804,6 +804,72 @@ MmCreatePeb(IN PEPROCESS Process,
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief Creates the PEB of a cloned process by copying the parent's PEB page.
+ */
+NTSTATUS
+NTAPI
+MmCreatePebForClone(
+    _In_ PEPROCESS Process,
+    _In_ PEPROCESS Parent,
+    _Out_ PPEB *BasePeb)
+{
+    PPEB Peb = NULL;
+    SIZE_T Done;
+    NTSTATUS Status;
+
+    *BasePeb = NULL;
+
+    if (Parent->Peb == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    /* Allocate the PEB VAD in the child */
+    KeAttachProcess(&Process->Pcb);
+    Status = MiCreatePebOrTeb(Process, sizeof(PEB), (PULONG_PTR)&Peb);
+    KeDetachProcess();
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* The PEB and its ProcessHeaps array share one page */
+    Status = MmCopyVirtualMemory(Parent,
+                                 Parent->Peb,
+                                 Process,
+                                 Peb,
+                                 PAGE_SIZE,
+                                 KernelMode,
+                                 &Done);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Fork: failed to copy parent PEB: %lx\n", Status);
+        return Status;
+    }
+
+    /* Patch the child specific fields */
+    KeAttachProcess(&Process->Pcb);
+    _SEH2_TRY
+    {
+        Peb->InheritedAddressSpace = TRUE;
+        Peb->Mutant = (HANDLE)-1;
+        Peb->BeingDebugged = (BOOLEAN)(Process->DebugPort != NULL);
+
+        /* The ProcessHeaps array moved along with the PEB */
+        Peb->ProcessHeaps = (PVOID*)(Peb + 1);
+
+        if (Process->Session)
+            Peb->SessionId = MmGetSessionId(Process);
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        KeDetachProcess();
+        _SEH2_YIELD(return _SEH2_GetExceptionCode());
+    }
+    _SEH2_END;
+    KeDetachProcess();
+
+    *BasePeb = Peb;
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NTAPI
 MmCreateTeb(IN PEPROCESS Process,
@@ -982,6 +1048,369 @@ FailPath:
     return Status;
 }
 #endif
+
+/*
+ * Address space cloning for fork(). Each eligible parent VAD is recreated in the
+ * child at the same base and its committed pages are copied eagerly.
+ */
+typedef struct _MI_CLONE_REGION
+{
+    ULONG_PTR Base;
+    SIZE_T Size;
+    ULONG Protect;
+} MI_CLONE_REGION, *PMI_CLONE_REGION;
+
+/**
+ * @brief Recreates a private VAD of the parent in the child and copies its committed pages.
+ */
+static
+NTSTATUS
+NTAPI
+MiClonePrivateVad(
+    _In_ PEPROCESS Parent,
+    _In_ PEPROCESS Child,
+    _In_ ULONG_PTR StartVa,
+    _In_ ULONG_PTR EndVa)
+{
+    NTSTATUS Status;
+    KAPC_STATE ApcState;
+    PETHREAD Thread = PsGetCurrentThread();
+    PMI_CLONE_REGION Regions;
+    ULONG Capacity, Count, i;
+    ULONG_PTR Va;
+    PVOID Base, NextVa;
+    SIZE_T Size, RegionSize, Done;
+    PMMVAD Vad;
+    ULONG State, Protect, OldProtect;
+
+    /* Reserve the whole range in the child at the same base */
+    KeStackAttachProcess(&Child->Pcb, &ApcState);
+    Base = (PVOID)StartVa;
+    RegionSize = EndVa - StartVa + 1;
+    Status = ZwAllocateVirtualMemory(NtCurrentProcess(),
+                                     &Base,
+                                     0,
+                                     &RegionSize,
+                                     MEM_RESERVE,
+                                     PAGE_READWRITE);
+    KeUnstackDetachProcess(&ApcState);
+    if (!NT_SUCCESS(Status) || (ULONG_PTR)Base != StartVa)
+    {
+        DPRINT1("Fork: could not reserve child range %p-%p (Status %lx, Base %p)\n",
+                (PVOID)StartVa, (PVOID)EndVa, Status, Base);
+        return NT_SUCCESS(Status) ? STATUS_CONFLICTING_ADDRESSES : Status;
+    }
+
+    /* Committed regions are gathered one page worth of entries at a time */
+    Regions = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, 'FkmM');
+    if (!Regions)
+        return STATUS_INSUFFICIENT_RESOURCES;
+    Capacity = PAGE_SIZE / sizeof(*Regions);
+
+    Va = StartVa;
+    while (Va <= EndVa)
+    {
+        /* Collect committed regions from the parent while holding its locks */
+        Count = 0;
+        KeStackAttachProcess(&Parent->Pcb, &ApcState);
+        MmLockAddressSpace(&Parent->Vm);
+        Vad = MiLocateAddress((PVOID)Va);
+        if ((Vad != NULL) && (Vad->u.VadFlags.VadType == VadNone))
+        {
+            MiLockProcessWorkingSetShared(Parent, Thread);
+            while ((Va <= EndVa) && (Count < Capacity))
+            {
+                State = MiQueryAddressState((PVOID)Va, Vad, Parent, &Protect, &NextVa);
+                if (State == MEM_COMMIT)
+                {
+                    Regions[Count].Base = Va;
+                    Regions[Count].Size = (ULONG_PTR)NextVa - Va;
+                    Regions[Count].Protect = Protect;
+                    Count++;
+                }
+                Va = (ULONG_PTR)NextVa;
+            }
+            MiUnlockProcessWorkingSetShared(Parent, Thread);
+        }
+        else
+        {
+            /* The VAD was freed in the meantime */
+            Va = EndVa + 1;
+        }
+        MmUnlockAddressSpace(&Parent->Vm);
+        KeUnstackDetachProcess(&ApcState);
+
+        /* Commit, copy, then apply the parent's protection */
+        for (i = 0; i < Count; i++)
+        {
+            Base = (PVOID)Regions[i].Base;
+            RegionSize = Regions[i].Size;
+            KeStackAttachProcess(&Child->Pcb, &ApcState);
+            Status = ZwAllocateVirtualMemory(NtCurrentProcess(),
+                                             &Base,
+                                             0,
+                                             &RegionSize,
+                                             MEM_COMMIT,
+                                             PAGE_READWRITE);
+            KeUnstackDetachProcess(&ApcState);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("Fork: commit of %p (%lx) in child failed: %lx\n",
+                        (PVOID)Regions[i].Base, (ULONG)Regions[i].Size, Status);
+                continue;
+            }
+
+            /* Guard and no access pages cannot be read */
+            if (!(Regions[i].Protect & (PAGE_GUARD | PAGE_NOACCESS)))
+            {
+                Size = Regions[i].Size;
+                Status = MmCopyVirtualMemory(Parent,
+                                             (PVOID)Regions[i].Base,
+                                             Child,
+                                             (PVOID)Regions[i].Base,
+                                             Size,
+                                             KernelMode,
+                                             &Done);
+                if (!NT_SUCCESS(Status))
+                    DPRINT1("Fork: copy of %p (%lx) failed: %lx\n",
+                            (PVOID)Regions[i].Base, (ULONG)Regions[i].Size, Status);
+            }
+
+            if (Regions[i].Protect != PAGE_READWRITE)
+            {
+                Base = (PVOID)Regions[i].Base;
+                RegionSize = Regions[i].Size;
+                Protect = Regions[i].Protect;
+                KeStackAttachProcess(&Child->Pcb, &ApcState);
+                ZwProtectVirtualMemory(NtCurrentProcess(),
+                                       &Base,
+                                       &RegionSize,
+                                       Protect,
+                                       &OldProtect);
+                KeUnstackDetachProcess(&ApcState);
+            }
+        }
+    }
+
+    ExFreePoolWithTag(Regions, 'FkmM');
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Recreates a mapped view of the parent as a private read/write copy in the child.
+ *
+ * The child resumes inside loaded DLLs, so it needs the parent's current bytes rather than a fresh mapping.
+ */
+static
+NTSTATUS
+NTAPI
+MiCloneMappedVad(
+    _In_ PEPROCESS Parent,
+    _In_ PEPROCESS Child,
+    _In_ ULONG_PTR StartVa,
+    _In_ ULONG_PTR EndVa)
+{
+    NTSTATUS Status;
+    KAPC_STATE ApcState;
+    PVOID Base;
+    SIZE_T RegionSize, Done;
+    ULONG_PTR Va;
+
+    /* Reserve and commit the whole range at the same base */
+    KeStackAttachProcess(&Child->Pcb, &ApcState);
+    Base = (PVOID)StartVa;
+    RegionSize = EndVa - StartVa + 1;
+    Status = ZwAllocateVirtualMemory(NtCurrentProcess(),
+                                     &Base,
+                                     0,
+                                     &RegionSize,
+                                     MEM_RESERVE | MEM_COMMIT,
+                                     PAGE_READWRITE);
+    KeUnstackDetachProcess(&ApcState);
+    if (!NT_SUCCESS(Status) || (ULONG_PTR)Base != StartVa)
+    {
+        DPRINT1("Fork: could not map child view %p-%p (Status %lx, Base %p)\n",
+                (PVOID)StartVa, (PVOID)EndVa, Status, Base);
+        return NT_SUCCESS(Status) ? STATUS_CONFLICTING_ADDRESSES : Status;
+    }
+
+    /* Try copying the whole view at once */
+    Status = MmCopyVirtualMemory(Parent,
+                                 (PVOID)StartVa,
+                                 Child,
+                                 (PVOID)StartVa,
+                                 EndVa - StartVa + 1,
+                                 KernelMode,
+                                 &Done);
+    if (NT_SUCCESS(Status))
+    {
+        DPRINT1("Fork/MappedVad: copied %p-%p (fast)\n", (PVOID)StartVa, (PVOID)EndVa);
+        return STATUS_SUCCESS;
+    }
+    DPRINT1("Fork/MappedVad: fast copy of %p-%p failed (%lx), page-by-page\n",
+            (PVOID)StartVa, (PVOID)EndVa, Status);
+
+    /* Copy page by page and decommit the pages the parent cannot read */
+    for (Va = StartVa; Va <= EndVa; Va += PAGE_SIZE)
+    {
+        Status = MmCopyVirtualMemory(Parent,
+                                     (PVOID)Va,
+                                     Child,
+                                     (PVOID)Va,
+                                     PAGE_SIZE,
+                                     KernelMode,
+                                     &Done);
+        if (!NT_SUCCESS(Status))
+        {
+            KeStackAttachProcess(&Child->Pcb, &ApcState);
+            Base = (PVOID)Va;
+            RegionSize = PAGE_SIZE;
+            ZwFreeVirtualMemory(NtCurrentProcess(), &Base, &RegionSize, MEM_DECOMMIT);
+            KeUnstackDetachProcess(&ApcState);
+        }
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Returns the lowest VAD of a process, or NULL if it has none.
+ */
+static
+PMMADDRESS_NODE
+MiFirstVadNode(
+    _In_ PEPROCESS Process)
+{
+    PMMADDRESS_NODE Node;
+
+    if (Process->VadRoot.NumberGenericTableElements == 0)
+        return NULL;
+
+    /* BalancedRoot is a sentinel; the tree starts at its right child */
+    Node = Process->VadRoot.BalancedRoot.RightChild;
+    if (Node)
+    {
+        while (Node->LeftChild)
+            Node = Node->LeftChild;
+    }
+    return Node;
+}
+
+/**
+ * @brief Copies the parent's VADs into the child after its address space is initialized.
+ */
+static
+NTSTATUS
+NTAPI
+MmCloneProcessAddressSpace(
+    _In_ PEPROCESS Parent,
+    _In_ PEPROCESS Child)
+{
+    PMMVAD Vad;
+    PMI_CLONE_REGION List;
+    ULONG ListCount, Capacity, i, VadKind, RegionProtect;
+    ULONG_PTR StartVa, EndVa;
+
+    /* The child inherits the parent's image name */
+    RtlCopyMemory(Child->ImageFileName, Parent->ImageFileName, sizeof(Child->ImageFileName));
+
+    /* Count the parent's VADs */
+    MmLockAddressSpace(&Parent->Vm);
+
+    ListCount = 0;
+    for (Vad = (PMMVAD)MiFirstVadNode(Parent);
+         Vad != NULL;
+         Vad = (PMMVAD)MiGetNextNode((PMMADDRESS_NODE)Vad))
+        ListCount++;
+
+    MmUnlockAddressSpace(&Parent->Vm);
+
+    if (ListCount == 0)
+        return STATUS_SUCCESS;
+
+    Capacity = ListCount;
+    List = ExAllocatePoolWithTag(NonPagedPool,
+                                 Capacity * sizeof(*List),
+                                 'LkmM');
+    if (!List)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    /* Record the ranges to clone. Protect holds 0 for private memory and 1 for a mapped view. */
+    MmLockAddressSpace(&Parent->Vm);
+
+    ListCount = 0;
+    for (Vad = (PMMVAD)MiFirstVadNode(Parent);
+         (Vad != NULL) && (ListCount < Capacity);
+         Vad = (PMMVAD)MiGetNextNode((PMMADDRESS_NODE)Vad))
+    {
+        VadKind = Vad->u.VadFlags.VadType;
+
+        StartVa = (ULONG_PTR)(Vad->StartingVpn << PAGE_SHIFT);
+        EndVa = (ULONG_PTR)((Vad->EndingVpn << PAGE_SHIFT) | (PAGE_SIZE - 1));
+
+        DPRINT1("Fork/VAD: %p-%p type %lu priv %lu rosmm %lu\n",
+                (PVOID)StartVa, (PVOID)EndVa, VadKind,
+                (ULONG)Vad->u.VadFlags.PrivateMemory,
+                (ULONG)(MI_IS_ROSMM_VAD(Vad) ? 1 : 0));
+
+        /* Physical, AWE and large page mappings cannot be reproduced by copying */
+        if ((VadKind == VadAwe) ||
+            (VadKind == VadDevicePhysicalMemory) ||
+            (VadKind == VadRotatePhysical) ||
+            (VadKind == VadLargePages) ||
+            (VadKind == VadLargePageSection))
+        {
+            DPRINT1("Fork: skipping non-inheritable VAD %p-%p (type %lu)\n",
+                    (PVOID)StartVa, (PVOID)EndVa, VadKind);
+            continue;
+        }
+
+        if ((VadKind == VadNone) &&
+            Vad->u.VadFlags.PrivateMemory &&
+            !MI_IS_ROSMM_VAD(Vad))
+            RegionProtect = 0;
+        else
+            RegionProtect = 1;
+
+        /* An image is mapped as several contiguous per-section VADs, so merge them into one region */
+        if ((RegionProtect == 1) && (ListCount > 0) &&
+            (List[ListCount - 1].Protect == 1) &&
+            (List[ListCount - 1].Base + List[ListCount - 1].Size == StartVa))
+        {
+            List[ListCount - 1].Size += (EndVa - StartVa + 1);
+            continue;
+        }
+
+        /* New regions must be allocation granularity aligned. The PEB and TEBs are rebuilt separately. */
+        if ((StartVa & (MM_ALLOCATION_GRANULARITY - 1)) != 0)
+            continue;
+
+        List[ListCount].Base = StartVa;
+        List[ListCount].Size = EndVa - StartVa + 1;
+        List[ListCount].Protect = RegionProtect;
+        ListCount++;
+    }
+
+    MmUnlockAddressSpace(&Parent->Vm);
+
+    /* Clone each region, continuing past failures */
+    for (i = 0; i < ListCount; i++)
+    {
+        if (List[i].Protect == 0)
+            (VOID)MiClonePrivateVad(Parent,
+                                    Child,
+                                    List[i].Base,
+                                    List[i].Base + List[i].Size - 1);
+        else
+            (VOID)MiCloneMappedVad(Parent,
+                                   Child,
+                                   List[i].Base,
+                                   List[i].Base + List[i].Size - 1);
+    }
+
+    ExFreePoolWithTag(List, 'LkmM');
+    return STATUS_SUCCESS;
+}
 
 NTSTATUS
 NTAPI
@@ -1172,6 +1601,10 @@ MmInitializeProcessAddressSpace(IN PEPROCESS Process,
 
     /* Be nice and detach */
     KeDetachProcess();
+
+    /* For a clone, copy the parent's memory now that we are detached */
+    if (ProcessClone && NT_SUCCESS(Status))
+        Status = MmCloneProcessAddressSpace(ProcessClone, Process);
 
     /* Return status to caller */
     return Status;

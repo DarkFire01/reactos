@@ -775,6 +775,13 @@ MmCreatePeb(
 
 NTSTATUS
 NTAPI
+MmCreatePebForClone(
+    _In_ PEPROCESS Process,
+    _In_ PEPROCESS Parent,
+    _Out_ PPEB *BasePeb);
+
+NTSTATUS
+NTAPI
 MmCreateTeb(
     IN PEPROCESS Process,
     IN PCLIENT_ID ClientId,

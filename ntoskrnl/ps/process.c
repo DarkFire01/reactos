@@ -655,8 +655,14 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
             //
             NeedsPeb = TRUE;
 
-            /* This is a clone! */
-            ASSERTMSG("No support for cloning yet\n", FALSE);
+            /* This is a clone: duplicate the parent's address space instead of mapping the image */
+            Status = MmInitializeProcessAddressSpace(Process,
+                                                     Parent,
+                                                     NULL,
+                                                     &Flags,
+                                                     NULL);
+            if (!NT_SUCCESS(Status))
+                goto CleanupWithRef;
         }
         else
         {
@@ -694,8 +700,9 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
     if (Process->WorkingSetPage) memcpy(MiGetPfnEntry(Process->WorkingSetPage)->ProcessName, Process->ImageFileName, 16);
 #endif
 
-    /* Check if we have a section object and map the system DLL */
-    if (SectionObject) PspMapSystemDll(Process, NULL, FALSE);
+    /* Map the system DLL, except for a clone which already has the parent's copy */
+    if (SectionObject && SectionHandle)
+        PspMapSystemDll(Process, NULL, FALSE);
 
     /* Create a handle for the Process */
     CidEntry.Object = Process;
@@ -770,9 +777,11 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
         else
         {
             //
-            // We have to clone it
+            // Clone: copy the parent's PEB into the child
             //
-            ASSERTMSG("No support for cloning yet\n", FALSE);
+            Status = MmCreatePebForClone(Process, Parent, &Process->Peb);
+            if (!NT_SUCCESS(Status))
+                goto CleanupWithRef;
         }
 
     }
