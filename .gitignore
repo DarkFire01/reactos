@@ -14,3 +14,7 @@ modules/[Aa][Hh][Kk]_[Tt]ests
 .vs
 .vscode
 sdk/tools/winesync/winesync.cfg
+modules/bin
+modules/etc
+modules/x86
+modules/x64
