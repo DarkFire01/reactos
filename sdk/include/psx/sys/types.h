@@ -30,8 +30,14 @@ typedef unsigned long ino_t;
 
 #ifndef _TIME_T_DEFINED
 typedef long time_t;
-typedef long clock_t;
 #define _TIME_T_DEFINED
+#endif
+
+/* Separate guard: the ReactOS CRT defines time_t (setting _TIME_T_DEFINED)
+   without defining clock_t, so clock_t must not hide behind time_t's guard. */
+#ifndef _CLOCK_T_DEFINED
+typedef long clock_t;
+#define _CLOCK_T_DEFINED
 #endif
 
 #ifndef _SIZE_T_DEFINED
