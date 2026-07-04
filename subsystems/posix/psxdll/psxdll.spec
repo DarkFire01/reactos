@@ -2,11 +2,14 @@
 ; PSXDLL.DLL export table -- ordinals 1:1 with the real NT 4.0 psxdll.dll
 ; (authoritative: dumped from modules/x86/system32/psxdll.dll).
 ;
-; Entries WITHOUT -stub are implemented in syscalls.c/init.c. The rest are
-; -stub so this DLL links to produce the import library sh/utilities link
-; against; at runtime they bind by name to the real psxdll.dll (this DLL is
-; NOT slipstreamed to the CD -- see the commented add_cd_file). Fill in stubs
-; incrementally to grow our own psxdll.dll.
+; Entries WITHOUT -stub are implemented in syscalls.c/init.c/sigjmp.c/tty.c.
+; THIS DLL IS THE ONE ON THE CD (reactos/system32/psxdll.dll -- see the
+; bootcd .lst); the userland binds to these implementations at runtime, so a
+; -stub entry is a link-time-only convenience that will fail if actually
+; called. Note: the CRT (psxcrt/newlib) deliberately shadows siglongjmp and
+; _sigjmp_store_mask with static implementations (psxcrt/sigjmp.c) -- the
+; NtContinue-based siglongjmp here was observed returning without
+; transferring; keep both in sync with the jmp_buf layout in psxcrt/setjmp.c.
 ;
 1 stdcall GetProcessHeap()
 2 stdcall HeapAlloc(ptr long long)
@@ -127,3 +130,17 @@
 117 cdecl wait(ptr)
 118 cdecl waitpid(long ptr long)
 119 cdecl write(long ptr long)
+;
+; ---- ReactOS extensions: ordinals past the real NT 4.0 export table. The
+; 1:1 block above stays frozen; new POSIX surface grows from 120 up.
+;
+120 cdecl gettimeofday(ptr ptr)
+121 cdecl nanosleep(ptr ptr)
+122 cdecl settimeofday(ptr ptr)
+; Pseudo-terminal layer (dtterm): ioctl/select over the pty + SVR4 helpers.
+123 cdecl ioctl(long long ptr)
+124 cdecl select(long ptr ptr ptr ptr)
+125 cdecl ptsname(long)
+126 cdecl grantpt(long)
+127 cdecl unlockpt(long)
+128 cdecl setpgrp()

@@ -40,6 +40,8 @@
 //
 #define FD_CLOEXEC  0x1
 
+#ifndef _FLOCK_DEFINED
+#define _FLOCK_DEFINED
 struct flock
 {
     short l_type;       // F_RDLCK, F_WRLCK, or F_UNLCK
@@ -48,6 +50,7 @@ struct flock
     off_t l_len;        // size; if 0 then until EOF
     pid_t l_pid;        // pid of the process holding the lock
 };
+#endif
 
 //
 // Values for flock.l_type

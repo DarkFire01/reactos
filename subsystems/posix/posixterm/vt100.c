@@ -62,7 +62,7 @@ int ScColorTrans[8]= { 0,
                     SC_RED|SC_GREEN,
                     SC_BLUE,
                     SC_RED|SC_BLUE,
-                    SC_RED|SC_GREEN,
+                    SC_GREEN|SC_BLUE,           /* 6 = cyan (was RED|GREEN = a second yellow) */
                     SC_RED|SC_GREEN|SC_BLUE
                     };
 
@@ -318,13 +318,14 @@ static int ProcessBracket(int Start)
 
         if (numargs < 1)
         {
-            /* If we just get ESC[m, treat it as though
-             * we should shut off all extra text
-             * attributes
+            /* Bare ESC[m is equivalent to ESC[0m: back to the default
+             * rendition -- white on black, no extra attributes. (Charset
+             * state G0/G1/GRAPHICS is not rendition; leave it alone.)
              */
 
-            iForeground &= ~(SC_BOLD|SC_UL|SC_BL|SC_RV|SC_GRAPHICS|SC_G0|SC_G1);
-            iForeground |= SC_ASCII;
+            iForeground &= ~(SC_BOLD|SC_UL|SC_BL|SC_RV|SC_RED|SC_GREEN|SC_BLUE);
+            iForeground |= SC_RED|SC_GREEN|SC_BLUE;
+            iBackground &= ~(SC_BOLD|SC_RED|SC_GREEN|SC_BLUE);
 
             beSetTextAttributes(iForeground, iBackground);
             End += 1;
@@ -340,9 +341,13 @@ static int ProcessBracket(int Start)
         {
             switch(args[i])
             {
-            /* 0 for normal display */
+            /* 0 = normal display: default rendition, white on black,
+             * all extra attributes off.
+             */
             case 0:
-                iForeground &= ~SC_BOLD;
+                iForeground &= ~(SC_BOLD|SC_UL|SC_BL|SC_RV|SC_RED|SC_GREEN|SC_BLUE);
+                iForeground |= SC_RED|SC_GREEN|SC_BLUE;
+                iBackground &= ~(SC_BOLD|SC_RED|SC_GREEN|SC_BLUE);
                 break;
 
             /* 1 for bold on */
@@ -367,6 +372,19 @@ static int ProcessBracket(int Start)
 
             /* 8 nondisplayed (invisible)  BUGBUG - not doing this. */
 
+            /* 22/24/25/27: attribute-off codes (dircolors emit 22) */
+            case 22:
+                iForeground &= ~SC_BOLD;
+                break;
+            case 24:
+                iForeground &= ~SC_UL;
+                break;
+            case 25:
+                iForeground &= ~SC_BL;
+                break;
+            case 27:
+                iForeground &= ~SC_RV;
+                break;
 
             /* 30-37 is bit combination of 30+ red(1) green(2) blue(4)
              * 30 black foreground
@@ -383,6 +401,12 @@ static int ProcessBracket(int Start)
                 iForeground |= ScColorTrans[args[i]-30];
                 break;
 
+            /* 39 = default foreground (white) */
+            case 39:
+                iForeground &= ~(SC_RED|SC_GREEN|SC_BLUE);
+                iForeground |= SC_RED|SC_GREEN|SC_BLUE;
+                break;
+
             /* 40-47 is bit combo similar to 30-37, but for background. */
             case 40:
             case 41:
@@ -393,7 +417,40 @@ static int ProcessBracket(int Start)
             case 46:
             case 47:
                 iBackground &= ~(SC_RED|SC_GREEN|SC_BLUE);
-                iBackground |= ScColorTrans[args[i]-30];
+                iBackground |= ScColorTrans[args[i]-40];
+                break;
+
+            /* 49 = default background (black) */
+            case 49:
+                iBackground &= ~(SC_BOLD|SC_RED|SC_GREEN|SC_BLUE);
+                break;
+
+            /* 90-97: bright foreground = color + intensity (aixterm) */
+            case 90:
+            case 91:
+            case 92:
+            case 93:
+            case 94:
+            case 95:
+            case 96:
+            case 97:
+                iForeground &= ~(SC_RED|SC_GREEN|SC_BLUE);
+                iForeground |= ScColorTrans[args[i]-90] | SC_BOLD;
+                break;
+
+            /* 100-107: bright background (SC_BOLD in the background word
+             * maps to BACKGROUND_INTENSITY in the console back end)
+             */
+            case 100:
+            case 101:
+            case 102:
+            case 103:
+            case 104:
+            case 105:
+            case 106:
+            case 107:
+                iBackground &= ~(SC_BOLD|SC_RED|SC_GREEN|SC_BLUE);
+                iBackground |= ScColorTrans[args[i]-100] | SC_BOLD;
                 break;
             }
         }

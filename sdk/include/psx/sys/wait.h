@@ -14,6 +14,7 @@
 //
 #define WNOHANG   0x00000001
 #define WUNTRACED 0x00000002
+#define WCONTINUED 0x00000008   // accepted for source compat; not reported
 
 //
 // Wait status macros. Status layout: bits 0-7 = signal/stop indicator,
@@ -25,6 +26,7 @@
 #define WIFSIGNALED(stat_val)  (!WIFSTOPPED(stat_val) && !WIFEXITED(stat_val))
 #define WTERMSIG(stat_val)     ((stat_val) & 0xff)
 #define WSTOPSIG(stat_val)     (((stat_val) & 0xff00) >> 8)
+#define WIFCONTINUED(stat_val) (0)   // never reported
 
 pid_t wait(int *StatLoc);
 pid_t waitpid(pid_t Pid, int *StatLoc, int Options);

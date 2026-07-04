@@ -94,6 +94,7 @@ static UCHAR   g_Termios[0x44];
 #define LFLAG_ECHO   0x01
 #define LFLAG_ICANON 0x10
 #define LFLAG_ISIG   0x40
+#define IFLAG_ICRNL  0x02
 
 /* Cooked input ring buffer, filled by the input thread, drained by read(). */
 static CRITICAL_SECTION g_InLock;
@@ -168,24 +169,61 @@ static DWORD WINAPI InputThread(LPVOID Arg)
         {
             char ch;
             BOOL canon, echo;
+            WORD rep;
 
             if (rec[i].EventType != KEY_EVENT || !rec[i].Event.KeyEvent.bKeyDown)
                 continue;
-            ch = rec[i].Event.KeyEvent.uChar.AsciiChar;
-            if (ch == 0)
-                continue;
+            ch  = rec[i].Event.KeyEvent.uChar.AsciiChar;
+            rep = rec[i].Event.KeyEvent.wRepeatCount;
+            if (rep == 0)
+                rep = 1;
 
             canon = (T_CLFLAG(g_Termios) & LFLAG_ICANON) != 0;
             echo  = (T_CLFLAG(g_Termios) & LFLAG_ECHO) != 0;
 
-            if (!canon)
+            if (ch == 0)
             {
-                /* Raw mode: deliver the byte immediately (the shell's line
-                 * editor drives its own echo/erase). */
-                if (echo) { char e[1]; e[0] = ch; EmitToConsole(e, 1); }
-                InBufPush(ch);
+                /* Non-character key: in raw mode hand editors (readline, vi)
+                 * the VT100 cursor sequences; canonical mode has no use for
+                 * them (matches the old drop-silently behavior). */
+                const char *seq = NULL;
+                switch (rec[i].Event.KeyEvent.wVirtualKeyCode)
+                {
+                    case VK_UP:     seq = "\x1B[A";  break;
+                    case VK_DOWN:   seq = "\x1B[B";  break;
+                    case VK_RIGHT:  seq = "\x1B[C";  break;
+                    case VK_LEFT:   seq = "\x1B[D";  break;
+                    case VK_HOME:   seq = "\x1B[H";  break;
+                    case VK_END:    seq = "\x1B[F";  break;
+                    case VK_DELETE: seq = "\x1B[3~"; break;
+                }
+                if (seq != NULL && !canon)
+                {
+                    while (rep--)
+                    {
+                        const char *s;
+                        for (s = seq; *s; s++) InBufPush(*s);
+                    }
+                }
                 continue;
             }
+
+            if (!canon)
+            {
+                /* Raw mode: deliver each byte immediately (the shell's line
+                 * editor drives its own echo/erase). ICRNL still applies --
+                 * it's an input flag, independent of ICANON. */
+                if (ch == '\r' && (T_CIFLAG(g_Termios) & IFLAG_ICRNL))
+                    ch = '\n';
+                while (rep--)
+                {
+                    if (echo) { char e[1]; e[0] = ch; EmitToConsole(e, 1); }
+                    InBufPush(ch);
+                }
+                continue;
+            }
+            /* Canonical mode: key auto-repeat only matters for printables;
+             * apply it there (below) and treat control keys once. */
 
             /* Canonical line discipline. */
             if (ch == '\r' || ch == '\n')
@@ -222,10 +260,13 @@ static DWORD WINAPI InputThread(LPVOID Arg)
             }
             else
             {
-                if (linelen < (int)sizeof(line) - 1)
+                while (rep--)
                 {
-                    line[linelen++] = ch;
-                    if (echo) { char e[1]; e[0] = ch; EmitToConsole(e, 1); }
+                    if (linelen < (int)sizeof(line) - 1)
+                    {
+                        line[linelen++] = ch;
+                        if (echo) { char e[1]; e[0] = ch; EmitToConsole(e, 1); }
+                    }
                 }
             }
         }
@@ -287,13 +328,15 @@ static void SendTtySignal(ULONG code)
     LeaveCriticalSection(&g_SesLock);
 }
 
-/* Console Ctrl handler: Ctrl-C -> SIGINT, Ctrl-Break -> SIGTSTP. Returning TRUE
+/* Console Ctrl handler: Ctrl-C -> SIGINT, Ctrl-Break -> SIGTSTP, window close ->
+ * the 'close' code (psxss delivers the hangup to the session). Returning TRUE
  * keeps posixterm alive (the signal goes to the POSIX child, not us). Fires when
  * the console has ENABLE_PROCESSED_INPUT (canonical + ISIG). */
 static BOOL WINAPI CtrlHandler(DWORD type)
 {
     if (type == CTRL_C_EVENT)     { SendTtySignal(0); return TRUE; }
     if (type == CTRL_BREAK_EVENT) { SendTtySignal(1); return TRUE; }
+    if (type == CTRL_CLOSE_EVENT) { SendTtySignal(2); return TRUE; }
     return FALSE;
 }
 
@@ -537,10 +580,89 @@ static NTSTATUS ConnectSesPort(void)
  *====================================================================*/
 static ULONG AlignUp4(ULONG x) { return (x + 3) & ~3u; }
 
-static NTSTATUS SpawnChild(const char *command)
+/* TRUE if <drive>:\bin exists (the marker for "the POSIX tree lives here"). */
+static BOOL DriveHasPosixTree(char drive)
+{
+    char probe[8];
+    DWORD attrs;
+    probe[0] = drive; probe[1] = ':'; probe[2] = '\\';
+    probe[3] = 'b';   probe[4] = 'i'; probe[5] = 'n'; probe[6] = 0;
+    attrs = GetFileAttributesA(probe);
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+/* Pick the drive hosting the POSIX tree (/bin, /etc). psxss derives the POSIX
+ * root '/' from the spawn cwd's DRIVE letter, so this choice IS the root: get
+ * it wrong and /bin, /etc point at the wrong volume. Probe order: the current
+ * directory's drive (installed system, or a LiveCD prompt on X:), then
+ * SystemDrive, then every drive on the machine. */
+static char PickPosixDrive(void)
+{
+    char  buf[MAX_PATH];
+    DWORD mask;
+    int   i;
+
+    if (GetCurrentDirectoryA(sizeof(buf), buf) >= 2 && buf[1] == ':' &&
+        DriveHasPosixTree(buf[0]))
+        return buf[0];
+
+    if (GetEnvironmentVariableA("SystemDrive", buf, sizeof(buf)) >= 2 &&
+        buf[1] == ':' && DriveHasPosixTree(buf[0]))
+        return buf[0];
+
+    mask = GetLogicalDrives();
+    for (i = 0; i < 26; i++)
+        if ((mask & (1u << i)) && DriveHasPosixTree((char)('A' + i)))
+            return (char)('A' + i);
+
+    return 'C';     /* nothing found: the historic default, will fail visibly */
+}
+
+/* Resolve the typed command to a DOS image path on the POSIX volume:
+ *   "name"          -> <root>:\bin\name[.exe]
+ *   "/bin/name"     -> <root>:\bin\name[.exe]    (POSIX absolute path)
+ *   "dir\x", "D:\x" -> as given [.exe]           (DOS form passes through)
+ * .exe is appended only when the path as given doesn't exist -- so both
+ * 'nlhello' and 'nlhello.exe' resolve to nlhello.exe (never .exe.exe). */
+static void ResolveImage(const char *command, char posixDrive,
+                         char *dos, size_t dossz)
+{
+    size_t len, i;
+
+    if (command[0] == '/')
+    {
+        _snprintf(dos, dossz - 1, "%c:%s", posixDrive, command);
+        dos[dossz - 1] = 0;
+        for (i = 0; dos[i]; i++)
+            if (dos[i] == '/') dos[i] = '\\';
+    }
+    else if (strchr(command, '\\') || strchr(command, '/') ||
+             (command[0] != 0 && command[1] == ':'))
+    {
+        _snprintf(dos, dossz - 1, "%s", command);
+        dos[dossz - 1] = 0;
+    }
+    else
+    {
+        _snprintf(dos, dossz - 1, "%c:\\bin\\%s", posixDrive, command);
+        dos[dossz - 1] = 0;
+    }
+
+    len = strlen(dos);
+    if (GetFileAttributesA(dos) == INVALID_FILE_ATTRIBUTES && len + 4 < dossz &&
+        (len < 4 || _stricmp(dos + len - 4, ".exe") != 0))
+    {
+        strcpy(dos + len, ".exe");
+    }
+}
+
+/* xargv[0] = the command (bare name or path), xargv[1..] forwarded verbatim to
+ * the child (so 'posixterm sh -c "ls /"' works). dosImage receives the resolved
+ * image path for error reporting. */
+static NTSTATUS SpawnChild(int xargc, char **xargv, char *dosImage, size_t dosImageSize)
 {
     char        *sec = (char *)g_SharedBase;
-    char         dosImage[300], cwd[300];
+    char         cwd[300];
     WCHAR        wImage[300];
     UNICODE_STRING ntImage;
     ANSI_STRING  aImage;
@@ -548,10 +670,12 @@ static NTSTATUS SpawnChild(const char *command)
     ULONG       *table;
     SES_MSG      msg;
     NTSTATUS     st;
+    char         posixDrive;
+    const char  *command;
 
-    /* argv[] for the child: argv[0] = command, no extra args (interactive sh). */
-    const char *argv[2];
-    int argc = 1;
+    /* argv[] for the child: the leader's tail, capped to the table below. */
+    const char *argv[64];
+    int argc = 0, a;
     /* env[] for the child. TERM=vt100 since we drive John Miller's emulator. */
     static const char *envv[] = {
         "PATH=/bin", "HOME=/", "TERM=vt100", "_POSIX_TERM=on", NULL
@@ -559,26 +683,21 @@ static NTSTATUS SpawnChild(const char *command)
     int envc = 0;
     while (envv[envc]) envc++;
 
-    if (command == NULL || command[0] == 0)
-        command = "sh";
-    argv[0] = command;
+    command = (xargc > 0 && xargv[0] != NULL && xargv[0][0] != 0) ? xargv[0] : "sh";
+    argv[argc++] = command;
+    for (a = 1; a < xargc && argc < (int)(sizeof(argv) / sizeof(argv[0])) - 1; a++)
+        argv[argc++] = xargv[a];
 
-    /* Resolve the DOS image path: a bare name lives in \bin. */
-    if (strchr(command, '\\') || strchr(command, '/') || command[1] == ':')
-        _snprintf(dosImage, sizeof(dosImage) - 1, "%s", command);
-    else
-        _snprintf(dosImage, sizeof(dosImage) - 1, "C:\\bin\\%s.exe", command);
-    dosImage[sizeof(dosImage) - 1] = 0;
+    posixDrive = PickPosixDrive();
+    ResolveImage(command, posixDrive, dosImage, dosImageSize);
 
     /* cwd = current dir (DOS form); psxss prepends \DosDevices\ AND derives the
-     * POSIX root '/' from this cwd's DRIVE letter. The POSIX tree (/bin, /etc)
-     * lives on C:, so the cwd MUST be on C: -- otherwise '/' points at the wrong
-     * volume (e.g. the X: boot drive on a LiveCD) and /bin/ls can't be found.
-     * Keep the real cwd only if it is already on C:; else fall back to C:\. */
+     * POSIX root '/' from this cwd's DRIVE letter (see PickPosixDrive). Keep the
+     * real cwd when it lives on the POSIX volume; else use that volume's root. */
     if (GetCurrentDirectoryA(sizeof(cwd) - 2, cwd) == 0 ||
-        !((cwd[0] == 'C' || cwd[0] == 'c') && cwd[1] == ':'))
+        !(cwd[1] == ':' && (cwd[0] & ~0x20) == (posixDrive & ~0x20)))
     {
-        strcpy(cwd, "C:\\");
+        cwd[0] = posixDrive; cwd[1] = ':'; cwd[2] = '\\'; cwd[3] = 0;
     }
     { size_t l = strlen(cwd); if (l && cwd[l - 1] != '\\') { cwd[l] = '\\'; cwd[l + 1] = 0; } }
 
@@ -682,7 +801,10 @@ int main(int argc, char **argv)
 {
     NTSTATUS st;
     HANDLE thread;
-    const char *command = (argc > 1) ? argv[1] : "sh";
+    char resolvedImage[300];
+    static char *defargv[] = { "sh", NULL };
+    int    cargc = (argc > 1) ? argc - 1 : 1;
+    char **cargv = (argc > 1) ? argv + 1  : defargv;
 
     g_MyPid = GetCurrentProcessId();
 
@@ -714,8 +836,13 @@ int main(int argc, char **argv)
     st = ConnectSesPort();
     if (!NT_SUCCESS(st)) { vtprintf("%s: connect to psxss failed (%08x)\r\n", g_MyName, st); return 1; }
 
-    st = SpawnChild(command);
-    if (!NT_SUCCESS(st)) { vtprintf("%s: could not start '%s' (%08x)\r\n", g_MyName, command, st); return 1; }
+    st = SpawnChild(cargc, cargv, resolvedImage, sizeof(resolvedImage));
+    if (!NT_SUCCESS(st))
+    {
+        vtprintf("%s: could not start '%s' -> '%s' (%08x)\r\n",
+                 g_MyName, cargv[0], resolvedImage, st);
+        return 1;
+    }
 
     /* Drive keyboard input; the P<pid> server thread carries the tty I/O. */
     thread = CreateThread(NULL, 0, InputThread, NULL, 0, NULL);

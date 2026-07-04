@@ -29,9 +29,9 @@ static ULONG PsxStrLen(PCSTR s) { PCSTR p = s; while (*p) p++; return (ULONG)(p 
 // line. Returns a shared-section block (server-relative address via PsxServerPtr).
 //
 static PVOID
-PsxBuildExecBlock(char *const Argv[], char *const Envp[])
+PsxBuildExecBlock(char *const Argv[], char *const Envp[], PULONG CwdOffset, PULONG CwdLength)
 {
-    ULONG nargv = 0, nenv = 0, i, t = 0, off, strBytes = 0, tableBytes, total;
+    ULONG nargv = 0, nenv = 0, i, t = 0, off, strBytes = 0, tableBytes, total, cwdLen;
     PLONG Table;
     PCHAR Strings;
     PVOID Blob;
@@ -39,10 +39,18 @@ PsxBuildExecBlock(char *const Argv[], char *const Envp[])
     if (Argv) while (Argv[nargv]) nargv++;
     if (Envp) while (Envp[nenv]) nenv++;
 
+    // The caller's CURRENT working directory rides along after the offset
+    // table (which is self-terminating, so the tail is invisible to the new
+    // image's crt0 walk). The server refreshes its process-record CWD from it
+    // before re-arming the startup exchange -- chdir() is client-side state,
+    // and without this the exec'd image would inherit the stale spawn-time
+    // CWD (symptom: after cd, exec'd ls still listed the old directory).
+    cwdLen = PsxStartupCwdLen ? PsxStartupCwdLen : PsxStrLen(PsxStartupCwd);
+
     tableBytes = ((nargv + 1) + (nenv + 1)) * sizeof(LONG);
     for (i = 0; i < nargv; i++) strBytes += PsxStrLen(Argv[i]) + 1;
     for (i = 0; i < nenv; i++)  strBytes += PsxStrLen(Envp[i]) + 1;
-    total = tableBytes + strBytes;
+    total = tableBytes + strBytes + cwdLen + 1;
 
     Blob = PsxAllocShared(total);
     if (Blob == NULL)
@@ -67,6 +75,11 @@ PsxBuildExecBlock(char *const Argv[], char *const Envp[])
         Strings += len; off += len;
     }
     Table[t++] = 0;                             // env terminator
+
+    RtlCopyMemory(Strings, PsxStartupCwd, cwdLen);
+    Strings[cwdLen] = '\0';
+    *CwdOffset = off;
+    *CwdLength = cwdLen;
     return Blob;
 }
 
@@ -81,7 +94,7 @@ execve(const char *Path, char *const Argv[], char *const Envp[])
     PSX_API_MESSAGE Message;
     CHAR NtAnsi[PSX_PATH_MAX * 2];
     static WCHAR NtWide[PSX_PATH_MAX * 2];      // static: outlives the LPC read
-    ULONG AnsiLen, i;
+    ULONG AnsiLen, i, CwdOff = 0, CwdLen = 0;
     PVOID Blob;
     LONG Result;
 
@@ -90,13 +103,15 @@ execve(const char *Path, char *const Argv[], char *const Envp[])
     for (i = 0; i < AnsiLen; i++)
         NtWide[i] = (WCHAR)(UCHAR)NtAnsi[i];
 
-    Blob = PsxBuildExecBlock(Argv, Envp);
+    Blob = PsxBuildExecBlock(Argv, Envp, &CwdOff, &CwdLen);
     if (Blob == NULL) { PsxSetErrno(12 /* ENOMEM */); return -1; }
 
-    PsxInitMessage(&Message, PsxApiExecve, PSX_BODY_DATALEN(3 * sizeof(ULONG)));
+    PsxInitMessage(&Message, PsxApiExecve, PSX_BODY_DATALEN(5 * sizeof(ULONG)));
     ((PULONG)Message.Data.Raw)[0] = AnsiLen * sizeof(WCHAR);            // +0x30 path bytes
     ((PULONG)Message.Data.Raw)[1] = (ULONG)(ULONG_PTR)NtWide;           // +0x34 raw wide-path ptr
     ((PULONG)Message.Data.Raw)[2] = PsxServerPtr(Blob);                 // +0x38 offset table
+    ((PULONG)Message.Data.Raw)[3] = PsxServerPtr((PCHAR)Blob + CwdOff); // +0x3C current cwd (ANSI NT path)
+    ((PULONG)Message.Data.Raw)[4] = CwdLen;                             // +0x40 cwd length
 
     Result = PsxCallServer(&Message);           // returns only on failure
     PsxFreeShared(Blob);

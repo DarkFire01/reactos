@@ -257,6 +257,21 @@ macro(dir_to_num dir var)
     elseif(${dir} STREQUAL reactos/winsxs/arm64_microsoft.windows.gdiplus_6595b64144ccf1df_1.0.14393.0_none_deadbeef)
         set(${var} 81)
 
+    # ReactOS POSIX subsystem: the userland hierarchy at the drive root
+    # (/bin, /usr/bin, /etc, /tmp). These must exist as real directories --
+    # /tmp especially, since bash writes here-documents into it. Numbers must
+    # match reactos.dff.in's [Directories] table.
+    elseif(${dir} STREQUAL bin)
+        set(${var} 82)
+    elseif(${dir} STREQUAL usr)
+        set(${var} 83)
+    elseif(${dir} STREQUAL usr/bin)
+        set(${var} 84)
+    elseif(${dir} STREQUAL etc)
+        set(${var} 85)
+    elseif(${dir} STREQUAL tmp)
+        set(${var} 86)
+
     else()
         message(FATAL_ERROR "Wrong destination: ${dir}")
     endif()

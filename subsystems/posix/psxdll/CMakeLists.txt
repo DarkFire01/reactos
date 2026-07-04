@@ -17,6 +17,7 @@ list(APPEND SOURCE
     terminal.c
     dirent.c
     tty.c
+    pty.c
     syscalls.c
     psxdllp.h)
 

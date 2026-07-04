@@ -10,9 +10,11 @@
 
 #include "psxss.h"
 #include <ndk/kefuncs.h>    // NtWaitForMultipleObjects
+#include <ndk/psfuncs.h>    // NtQueryInformationProcess, PROCESS_BASIC_INFORMATION
 
 #define PSX_ENOENT      2
 #define PSX_ENOEXEC     8
+#define PSX_EACCES      13
 #define PSX_ECHILD      10
 #define PSX_EAGAIN      11
 #define PSX_ENOMEM      12
@@ -234,7 +236,28 @@ PsxSrvExecve(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message)
     RtlDestroyProcessParameters(Parameters);
     if (!NT_SUCCESS(Status))
     {
-        Message->Errno = PSX_ENOENT;
+        // The errno here is a contract with the shell: ENOEXEC is the ONLY
+        // value that makes bash/sh fall back to reading the file itself and
+        // running it as a script (#! parsing is client-side in the shell), so
+        // every "the file exists but the loader can't map it as a PE" status
+        // must map to it. Everything else keeps the old ENOENT behavior.
+        switch (Status)
+        {
+            case STATUS_INVALID_IMAGE_NOT_MZ:       // shell scripts, text files
+            case STATUS_INVALID_IMAGE_FORMAT:
+            case STATUS_INVALID_IMAGE_NE_FORMAT:
+            case STATUS_INVALID_IMAGE_LE_FORMAT:
+            case STATUS_INVALID_IMAGE_PROTECT:
+            case STATUS_INVALID_IMAGE_WIN_16:
+                Message->Errno = PSX_ENOEXEC;
+                break;
+            case STATUS_ACCESS_DENIED:
+                Message->Errno = PSX_EACCES;
+                break;
+            default:
+                Message->Errno = PSX_ENOENT;
+                break;
+        }
         Message->ReturnValue = -1;
         return;
     }
@@ -265,8 +288,24 @@ PsxSrvExecve(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message)
 
     // The new image is a fresh psxdll with an empty CWD, so re-arm the connect
     // startup-block exchange: on its ApiPort connect it must receive the CWD/root
-    // path-translation strings (kept on this record across exec) -- otherwise
-    // relative paths (".") resolve to "\" in the execve'd image.
+    // path-translation strings -- otherwise relative paths (".") resolve to "\"
+    // in the execve'd image. The CWD must be the caller's CURRENT one, not the
+    // spawn-time snapshot on this record: chdir() is client-side psxdll state
+    // the server never hears about, so execve ships it at +0x3C/+0x40 (appended
+    // to the argv/env blob in the shared view).
+    {
+        ULONG_PTR CwdPtr = (ULONG_PTR)Args[3];
+        ULONG CwdLen = Args[4];
+
+        if ((CwdLen > 0) && (CwdLen < sizeof(Process->StartupCwd)) &&
+            PsxValidateClientPointer(Process, Args[3], CwdLen))
+        {
+            RtlCopyMemory(Process->StartupCwd, (PVOID)CwdPtr, CwdLen);
+            Process->StartupCwd[CwdLen] = '\0';
+            Process->StartupCwdLen = (USHORT)CwdLen;
+            Process->StartupBlockValid = TRUE;
+        }
+    }
     Process->StartupBlockDone = FALSE;
 
     NtResumeThread(ProcessInfo.ThreadHandle, NULL);
@@ -337,6 +376,23 @@ PsxSrvWaitpid(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message)
             PPSX_PROCESS Child = CONTAINING_RECORD(Entry, PSX_PROCESS, Entry);
             if (!PsxIsWaitMatch(Child, Process, WantPid))
                 continue;
+
+            // A child that terminated WITHOUT calling _exit() (crashed, killed by
+            // an exception, or a failed image-load in ntdll) never became a zombie
+            // -- and its process handle is permanently signaled, so a naive wait
+            // spins forever. Detect an already-dead process here and zombify it
+            // (WIFSIGNALED: killed by a signal) so waitpid() reaps it.
+            if ((Child->State != PSX_STATE_ZOMBIE) && (Child->ProcessHandle != NULL))
+            {
+                PROCESS_BASIC_INFORMATION Pbi;
+                if (NT_SUCCESS(NtQueryInformationProcess(Child->ProcessHandle,
+                        ProcessBasicInformation, &Pbi, sizeof(Pbi), NULL)) &&
+                    (Pbi.ExitStatus != STATUS_PENDING))
+                {
+                    Child->State = PSX_STATE_ZOMBIE;
+                    Child->ExitStatus = PSX_SIGKILL;    // low 7 bits = signal
+                }
+            }
 
             if (Child->State == PSX_STATE_ZOMBIE)
             {

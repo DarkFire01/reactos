@@ -88,6 +88,12 @@ PsxInitAllowAllSd(OUT PSECURITY_DESCRIPTOR Sd)
 #define PSX_FILE_XPOLL      8   // /dev/xpoll: read = wait for the X connection to
                                 //             become readable (select primitive; the
                                 //             MS psxdll can't carry new opcodes/fcntls)
+// Pseudo-terminal (Phase 2 extension). open("/dev/ptmx") allocates a pty pair and
+// returns the MASTER; the terminal emulator (dtterm) drives it. open("/dev/pts/N")
+// returns the SLAVE the child shell runs on. Two in-server ring buffers connect
+// them (master<->slave), plus termios (line discipline) and winsize. See pty.c.
+#define PSX_FILE_PTMX       9   // /dev/ptmx:  pty master (terminal side)
+#define PSX_FILE_PTS        10  // /dev/pts/N: pty slave (shell side)
 
 //
 // An open file description. Shared between descriptors by dup2 (RefCount). The
@@ -103,6 +109,7 @@ typedef struct _PSX_FILE_OBJECT
     ULONG         FileType;      // PSX_FILE_*
     PVOID         Pipe;          // PSX_PIPE for pipe ends (read end O_RDONLY/write O_WRONLY)
     HANDLE        XPipe;         // Win32 named-pipe handle to psxx11.exe (PSX_FILE_XCONN)
+    PVOID         Pty;           // PSX_PTY for pty master/slave ends (PSX_FILE_PTMX/PTS)
 } PSX_FILE_OBJECT, *PPSX_FILE_OBJECT;
 
 //
@@ -279,6 +286,19 @@ VOID PsxPipeRead(IN PPSX_PROCESS Process, IN PPSX_FILE_OBJECT File, IN OUT PPSX_
 VOID PsxPipeWrite(IN PPSX_PROCESS Process, IN PPSX_FILE_OBJECT File, IN OUT PPSX_API_MESSAGE Message);
 VOID PsxPipeCloseEnd(IN PPSX_FILE_OBJECT File);
 BOOLEAN PsxPipeReady(IN PPSX_FILE_OBJECT File);   // poll()/select() readability
+
+// Pseudo-terminal (pty.c). Master = terminal side, slave = shell side.
+INT  PsxPtyOpenMaster(IN PPSX_PROCESS Process, IN ULONG OpenFlags);         // /dev/ptmx
+INT  PsxPtyOpenSlave(IN PPSX_PROCESS Process, IN ULONG Index, IN ULONG OpenFlags); // /dev/pts/N
+VOID PsxPtyRead(IN PPSX_PROCESS Process, IN PPSX_FILE_OBJECT File, IN OUT PPSX_API_MESSAGE Message);
+VOID PsxPtyWrite(IN PPSX_PROCESS Process, IN PPSX_FILE_OBJECT File, IN OUT PPSX_API_MESSAGE Message);
+BOOLEAN PsxPtyReady(IN PPSX_FILE_OBJECT File);    // poll()/select() readability
+VOID PsxPtyClose(IN PPSX_FILE_OBJECT File);
+LONG PsxPtyIoctl(IN PPSX_PROCESS Process, IN PPSX_FILE_OBJECT File, IN ULONG Request, IN ULONG_PTR Arg, OUT PULONG Errno);
+VOID PsxSrvIoctl(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message);  // PSX_API_IOCTL
+VOID PsxSrvSelect(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message); // PSX_API_SELECT
+BOOLEAN PsxPtyTermios(IN PPSX_FILE_OBJECT File, IN BOOLEAN Set, IN OUT PUCHAR Blob68); // tcget/setattr on a pts
+BOOLEAN PsxPollReady(IN PPSX_FILE_OBJECT File);   // shared readiness (xconn.c)
 
 /* xconn.c -- X11 display connection to the companion server psxx11.exe */
 INT  PsxOpenXConnFd(IN PPSX_PROCESS Process, IN ULONG OpenFlags);

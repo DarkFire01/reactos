@@ -12,6 +12,7 @@ list(APPEND SOURCE
     procops.c
     signals.c
     pipe.c
+    pty.c
     xconn.c
     timer.c
     psxss.h)

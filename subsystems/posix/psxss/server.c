@@ -65,6 +65,14 @@ PsxApiServerLoop(PVOID Parameter)
                     // handle ahead of the fixed dispatch table.
                     PsxSrvPoll((PPSX_PROCESS)PortContext, &Request);
                 }
+                else if (ApiNumber == PSX_API_IOCTL)
+                {
+                    PsxSrvIoctl((PPSX_PROCESS)PortContext, &Request);
+                }
+                else if (ApiNumber == PSX_API_SELECT)
+                {
+                    PsxSrvSelect((PPSX_PROCESS)PortContext, &Request);
+                }
                 else if ((ApiNumber < PsxApiMaxApiNumber) && (g_OpHandlers[ApiNumber] != NULL))
                 {
                     g_OpHandlers[ApiNumber]((PPSX_PROCESS)PortContext, &Request);

@@ -49,6 +49,19 @@ struct termios
 #define ONLRET  0x00000004  // NL performs CR function
 #define OCRNL   0x00000008  // map CR to NL on output
 #define ONOCR   0x00000010  // no CR output at column 0
+#define OFILL   0x00000020  // use fill characters for delay
+// Output delay masks (terminal emulators set/clear these on the pty)
+#define NLDLY   0x00000100  // newline delay mask
+#define     NL0 0x00000000
+#define     NL1 0x00000100
+#define CRDLY   0x00000600  // carriage-return delay mask
+#define     CR0 0x00000000
+#define TABDLY  0x00001800  // horizontal-tab delay mask
+#define     TAB0 0x00000000
+#define     TAB3 0x00001800  // expand tabs to spaces
+#define BSDLY   0x00002000  // backspace delay mask
+#define VTDLY   0x00004000  // vertical-tab delay mask
+#define FFDLY   0x00008000  // form-feed delay mask
 
 //
 // c_cflag - control modes
@@ -64,6 +77,7 @@ struct termios
 #define HUPCL   0x00000200  // hang up on last close
 #define PARENB  0x00000400  // parity enable
 #define PARODD  0x00000800  // odd parity, else even
+#define CBAUD   0x0000F000  // baud-rate mask (our baud is index-based; pty ignores it)
 
 //
 // c_lflag - local modes
@@ -77,6 +91,11 @@ struct termios
 #define ISIG    0x00000040  // enable signals
 #define NOFLSH  0x00000080  // disable flush after intr, quit, or suspend
 #define TOSTOP  0x00000100  // send SIGTTOU for background output
+#define ECHOCTL 0x00000200  // echo control chars as ^X
+#define ECHOPRT 0x00000400  // echo erased chars backward over
+#define ECHOKE  0x00000800  // BS-SP-BS erase whole line on KILL
+#define FLUSHO  0x00001000  // output being flushed
+#define PENDIN  0x00002000  // retype pending input at next read
 
 //
 // c_cc - subscript names
@@ -149,3 +168,25 @@ speed_t cfgetospeed(const struct termios *Termios);
 int     cfsetospeed(struct termios *Termios, speed_t Speed);
 speed_t cfgetispeed(const struct termios *Termios);
 int     cfsetispeed(struct termios *Termios, speed_t Speed);
+
+//
+// Window size + terminal ioctls -- needed by terminal emulators (dtterm) and
+// the pseudo-terminal layer. TIOCGWINSZ/TIOCSWINSZ carry the row/col geometry
+// to the pty slave; TCSBRK sends an RS-232 break.
+//
+#ifndef _WINSIZE_DEFINED
+#define _WINSIZE_DEFINED
+struct winsize {
+    unsigned short ws_row;      // rows, in characters
+    unsigned short ws_col;      // columns, in characters
+    unsigned short ws_xpixel;   // horizontal size, in pixels
+    unsigned short ws_ypixel;   // vertical size, in pixels
+};
+#endif
+
+#define TIOCGWINSZ  0x5413
+#define TIOCSWINSZ  0x5414
+#define TCSBRK      0x5409
+#define TIOCSCTTY   0x540E      // make this the controlling terminal
+#define TIOCGPTN    0x80045430  // get pty slave index (pts number)
+#define TIOCSPTLCK  0x40045431  // (un)lock pty slave -- accepted, no-op

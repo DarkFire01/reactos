@@ -107,6 +107,8 @@ PsxDereferenceFile(IN PPSX_FILE_OBJECT File)
 
     if ((File->FileType == PSX_FILE_PIPE) && (File->Pipe != NULL))
         PsxPipeCloseEnd(File);          // drop the pipe end, free the pipe if last
+    else if (((File->FileType == PSX_FILE_PTMX) || (File->FileType == PSX_FILE_PTS)) && (File->Pty != NULL))
+        PsxPtyClose(File);              // drop the pty end, free the pty if last
     else if (File->FileType == PSX_FILE_XCONN)
         PsxXConnClose(File);            // close the X server pipe -> server drops client
     else if (File->NtHandle != NULL)
@@ -144,12 +146,14 @@ PsxCloseAllFds(IN PPSX_PROCESS Process)
 // Translate POSIX open() flags into an NtCreateFile call and open the file.
 //
 static NTSTATUS
-PsxOpenNtFile(IN PUNICODE_STRING NtPath, IN ULONG OpenFlags, OUT PHANDLE Handle)
+PsxOpenNtFile(IN PPSX_PROCESS Process, IN PPSX_API_MESSAGE Message,
+             IN PUNICODE_STRING NtPath, IN ULONG OpenFlags, OUT PHANDLE Handle)
 {
     OBJECT_ATTRIBUTES ObjectAttributes;
     IO_STATUS_BLOCK IoStatusBlock;
     ACCESS_MASK DesiredAccess;
     ULONG Disposition;
+    NTSTATUS Status;
 
     switch (OpenFlags & 7 /* O_ACCMODE */)
     {
@@ -178,17 +182,26 @@ PsxOpenNtFile(IN PUNICODE_STRING NtPath, IN ULONG OpenFlags, OUT PHANDLE Handle)
     // Do not force FILE_NON_DIRECTORY_FILE: opendir() opens the directory with a
     // plain open() (O_RDONLY) and then enumerates it via readdir (op 0x3C), so a
     // directory must be openable here. FILE_GENERIC_READ carries FILE_LIST_DIRECTORY.
-    return NtCreateFile(Handle,
-                        DesiredAccess,
-                        &ObjectAttributes,
-                        &IoStatusBlock,
-                        NULL,
-                        FILE_ATTRIBUTE_NORMAL,
-                        FILE_SHARE_READ | FILE_SHARE_WRITE,
-                        Disposition,
-                        FILE_SYNCHRONOUS_IO_NONALERT,
-                        NULL,
-                        0);
+    //
+    // Impersonate the client so the create/open runs under ITS token: the file is
+    // owned by the POSIX user and access checks use its rights, matching mkdir and
+    // the path.c ops. Creating as bare psxss (no impersonation) was both wrong
+    // (ownership) and a source of ACCESS_DENIED on user-owned directories -- the
+    // EACCES bash saw writing here-document temp files.
+    PsxImpersonateClient(Process, Message);
+    Status = NtCreateFile(Handle,
+                          DesiredAccess,
+                          &ObjectAttributes,
+                          &IoStatusBlock,
+                          NULL,
+                          FILE_ATTRIBUTE_NORMAL,
+                          FILE_SHARE_READ | FILE_SHARE_WRITE,
+                          Disposition,
+                          FILE_SYNCHRONOUS_IO_NONALERT,
+                          NULL,
+                          0);
+    PsxRevertToSelf();
+    return Status;
 }
 
 //
@@ -209,6 +222,7 @@ PsxClassifyDeviceNode(IN PUNICODE_STRING Path)
         { L"tty",     PSX_FILE_TTY },
         { L"x11",     PSX_FILE_XCONN },
         { L"xpoll",   PSX_FILE_XPOLL },
+        { L"ptmx",    PSX_FILE_PTMX },
     };
     ULONG Chars = Path->Length / sizeof(WCHAR);
     ULONG i, n, Start;
@@ -248,6 +262,40 @@ PsxClassifyDeviceNode(IN PUNICODE_STRING Path)
         }
     }
     return 0xFFFFFFFF;
+}
+
+//
+// Recognise "\dev\pts\<N>" (the pty slave nodes) and extract the index N. The
+// number is a variable trailing component, so this is separate from the fixed
+// device table above. Returns TRUE + *Index on a match.
+//
+static BOOLEAN
+PsxClassifyPts(IN PUNICODE_STRING Path, OUT PULONG Index)
+{
+    ULONG Chars = Path->Length / sizeof(WCHAR);
+    PWCHAR B = Path->Buffer;
+    LONG i, dstart;
+    ULONG val = 0;
+#define PSX_SEP(c) (((c) == L'\\') || ((c) == L'/'))
+
+    if ((B == NULL) || (Chars < 9)) return FALSE;       // "\dev\pts\N" is 9 chars min
+    i = (LONG)Chars - 1;
+    while ((i >= 0) && (B[i] >= L'0') && (B[i] <= L'9')) i--;
+    dstart = i + 1;
+    if (dstart > (LONG)Chars - 1) return FALSE;          // no trailing digits
+    if (i < 8) return FALSE;                             // need "\dev\pts\" before them
+    if (!PSX_SEP(B[i])) return FALSE;
+    if ((RtlUpcaseUnicodeChar(B[i-3]) != L'P') || (RtlUpcaseUnicodeChar(B[i-2]) != L'T') ||
+        (RtlUpcaseUnicodeChar(B[i-1]) != L'S') || !PSX_SEP(B[i-4]))
+        return FALSE;
+    if ((RtlUpcaseUnicodeChar(B[i-7]) != L'D') || (RtlUpcaseUnicodeChar(B[i-6]) != L'E') ||
+        (RtlUpcaseUnicodeChar(B[i-5]) != L'V') || !PSX_SEP(B[i-8]))
+        return FALSE;
+    for (i = dstart; i < (LONG)Chars; i++)
+        val = val * 10 + (ULONG)(B[i] - L'0');
+    *Index = val;
+    return TRUE;
+#undef PSX_SEP
 }
 
 // RtlRandomEx (ntdll) isn't declared by the NDK headers this build pulls in.
@@ -371,13 +419,34 @@ PsxSrvOpen(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message)
     // file. /dev/tty maps to a controlling-terminal object (two-phase like fds 0-2).
     {
         ULONG DevType = PsxClassifyDeviceNode(&Path);
-        if (DevType != 0xFFFFFFFF)
+        ULONG PtsIndex = 0;
+        BOOLEAN IsDevice = TRUE;
+
+        if (DevType == PSX_FILE_PTMX)
+        {
+            // /dev/ptmx: allocate a fresh pty pair, return its master.
+            Fd = PsxPtyOpenMaster(Process, OpenFlags);
+        }
+        else if (PsxClassifyPts(&Path, &PtsIndex))
+        {
+            // /dev/pts/N: the slave the child shell runs on.
+            Fd = PsxPtyOpenSlave(Process, PtsIndex, OpenFlags);
+        }
+        else if (DevType != 0xFFFFFFFF)
         {
             // /dev/x11 is a live connection to the companion X server, not a plain
             // no-handle device: dial the named pipe instead of allocating a stub fd.
             Fd = (DevType == PSX_FILE_XCONN)
                      ? PsxOpenXConnFd(Process, OpenFlags)
                      : PsxOpenDeviceFd(Process, DevType, OpenFlags);
+        }
+        else
+        {
+            IsDevice = FALSE;
+        }
+
+        if (IsDevice)
+        {
             if (Fd < 0)
             {
                 Message->Errno = (ULONG)(-Fd);
@@ -390,7 +459,7 @@ PsxSrvOpen(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message)
         }
     }
 
-    Status = PsxOpenNtFile(&Path, OpenFlags, &Handle);
+    Status = PsxOpenNtFile(Process, Message, &Path, OpenFlags, &Handle);
     if (!NT_SUCCESS(Status))
     {
         Message->Errno = PsxErrnoFromStatus(Status);
@@ -585,7 +654,12 @@ PsxFillStat(IN HANDLE Handle, IN PPSX_PROCESS Process, OUT PPSX_STAT Stat)
     if (BasicInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY)
         Mode = PSX_S_IFDIR | ((BasicInfo.FileAttributes & FILE_ATTRIBUTE_READONLY) ? 0555 : 0755);
     else
-        Mode = PSX_S_IFREG | ((BasicInfo.FileAttributes & FILE_ATTRIBUTE_READONLY) ? 0444 : 0666);
+        /* Regular files report x: NT has no execute bit short of ACLs (which
+         * we don't map -- see the Uid TODO below), and a mode without x makes
+         * every shell's PATH search reject every binary (bash executable_file
+         * refused the whole read-only CD /bin). Interix did the same when ACL
+         * data was absent. */
+        Mode = PSX_S_IFREG | ((BasicInfo.FileAttributes & FILE_ATTRIBUTE_READONLY) ? 0555 : 0777);
 
     Stat->st_mode  = Mode;
     Stat->st_ino   = InternalInfo.IndexNumber.LowPart;
@@ -830,6 +904,11 @@ PsxSrvRead(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message)
         PsxPipeRead(Process, File, Message);
         return;
     }
+    if ((File->FileType == PSX_FILE_PTMX) || (File->FileType == PSX_FILE_PTS))
+    {
+        PsxPtyRead(Process, File, Message);
+        return;
+    }
     if (File->FileType == PSX_FILE_XCONN)
     {
         PsxXConnRead(Process, File, Message);
@@ -978,6 +1057,11 @@ PsxSrvWrite(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message)
         PsxPipeWrite(Process, File, Message);
         return;
     }
+    if ((File->FileType == PSX_FILE_PTMX) || (File->FileType == PSX_FILE_PTS))
+    {
+        PsxPtyWrite(Process, File, Message);
+        return;
+    }
     if (File->FileType == PSX_FILE_XCONN)
     {
         PsxXConnWrite(Process, File, Message);
@@ -1075,7 +1159,13 @@ PsxSrvIsatty(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message)
 {
     INT Fd = (INT)((PULONG)Message->Data.Raw)[0];       // body +0x30
     PPSX_FILE_OBJECT File = PsxGetFile(Process, Fd);
-    ULONG IsTty = ((File != NULL) && (File->FileType == PSX_FILE_TTY)) ? 1 : 0;
+    // A pseudo-terminal master/slave is a terminal too -- without this, a shell
+    // on a pty gets isatty()==0, decides it is non-interactive, and prints no
+    // prompt (it reads its own stdin as a script). That was dtterm's dead shell.
+    ULONG IsTty = ((File != NULL) &&
+                   ((File->FileType == PSX_FILE_TTY) ||
+                    (File->FileType == PSX_FILE_PTS) ||
+                    (File->FileType == PSX_FILE_PTMX))) ? 1 : 0;
 
     // Phase 1: report whether the fd is a terminal in the is-tty flag at body
     // +0x34. If set, the client confirms with posix.exe (session data sub-op 6);

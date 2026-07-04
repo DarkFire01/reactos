@@ -29,4 +29,22 @@
 //
 #define PSX_FCNTL_POLLRD    0x70
 
+//
+// ioctl(fd, request, arg) -- ApiNumber 0x41. Body: FileDescriptor = fd (0x30),
+// Raw[1] = request (a TIOC* code), Raw[2] = arg (a client pointer, request-
+// specific). Used by the pseudo-terminal layer: TIOCGPTN (get pts index),
+// TIOCSWINSZ/TIOCGWINSZ (window size), TIOCSCTTY (make controlling tty; no-op).
+//
+#define PSX_API_IOCTL   0x41
+
+//
+// select() -- ApiNumber 0x42. Multi-fd readability wait built on the same ~10ms
+// poll loop as PSX_API_POLL. Body: Raw[0] = read-fd count N (<= 32), Raw[1] =
+// timeout ms (0 = poll, 0xFFFFFFFF = infinite), Raw[2..2+N-1] = the read fds.
+// ReturnValue = a bitmask (bit i set => read fd i is readable), 0 on timeout,
+// -1 on error. Writability is treated as always-ready by the client.
+//
+#define PSX_API_SELECT  0x42
+#define PSX_SELECT_MAXFDS   32
+
 #endif /* _PSXEXT_H_ */

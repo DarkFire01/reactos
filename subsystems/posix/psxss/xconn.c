@@ -66,6 +66,11 @@ PsxLaunchXServer(VOID)
 
     RtlZeroMemory(&StartupInfo, sizeof(StartupInfo));
     StartupInfo.cb = sizeof(StartupInfo);
+    // psxss is a session-manager-spawned subsystem: its inherited window station is
+    // NOT the interactive WinSta0\Default, so a psxx11 launched with lpDesktop=NULL
+    // creates its GUI window on an invisible (non-interactive) desktop -- the X server
+    // runs but nothing shows. Pin it to the interactive desktop so the window is visible.
+    StartupInfo.lpDesktop = L"WinSta0\\Default";
     RtlZeroMemory(&ProcessInfo, sizeof(ProcessInfo));
 
     if (CreateProcessW(Path, NULL, NULL, NULL, FALSE, 0, NULL, NULL,
@@ -294,7 +299,7 @@ PsxXConnBytesReadable(IN PPSX_FILE_OBJECT File)
 // or a read would return immediately (EOF/error). This is the per-fd predicate poll()
 // waits on.
 //
-static BOOLEAN
+BOOLEAN
 PsxPollReady(IN PPSX_FILE_OBJECT File)
 {
     DWORD Available = 0;
@@ -309,6 +314,9 @@ PsxPollReady(IN PPSX_FILE_OBJECT File)
             return (Available > 0);
         case PSX_FILE_PIPE:
             return PsxPipeReady(File);
+        case PSX_FILE_PTMX:
+        case PSX_FILE_PTS:
+            return PsxPtyReady(File);
         case PSX_FILE_DEVNULL:
         case PSX_FILE_DEVZERO:
         case PSX_FILE_DEVRANDOM:

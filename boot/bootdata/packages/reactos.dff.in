@@ -102,6 +102,15 @@ Signature = "$Windows NT$"
 79 = winsxs\arm64_microsoft.windows.gdiplus_6595b64144ccf1df_1.1.7601.23038_none_deadbeef
 81 = winsxs\arm64_microsoft.windows.gdiplus_6595b64144ccf1df_1.0.14393.0_none_deadbeef
 
+; ReactOS POSIX subsystem userland hierarchy (numbers match dir_to_num in
+; sdk/cmake/CMakeMacros.cmake). /tmp must exist and be writable -- bash writes
+; here-documents there.
+82 = bin
+83 = usr
+84 = usr\bin
+85 = etc
+86 = tmp
+
 .InfEnd
 
 ; Contents of disk

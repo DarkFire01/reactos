@@ -50,6 +50,92 @@ time(long *Result)
 }
 
 //
+// gettimeofday(struct timeval *tv, struct timezone *tz) -- EXTENSION export
+// (ordinal 120; the real NT 4.0 psxdll stopped at 119 and never had it).
+// Real microsecond resolution from the NT clock, same 1601->1970 epoch
+// conversion as time(). tz is vestigial POSIX; zero it.
+//
+int __cdecl
+gettimeofday(void *Tv, void *Tz)
+{
+    LARGE_INTEGER SystemTime;
+    LONGLONG Usec1970;
+
+    if (Tv != NULL)
+    {
+        NtQuerySystemTime(&SystemTime);
+        Usec1970 = (SystemTime.QuadPart / 10) - 11644473600000000LL;
+        ((long *)Tv)[0] = (long)(Usec1970 / 1000000);   // tv_sec
+        ((long *)Tv)[1] = (long)(Usec1970 % 1000000);   // tv_usec
+    }
+    if (Tz != NULL)
+    {
+        ((int *)Tz)[0] = 0;     // tz_minuteswest
+        ((int *)Tz)[1] = 0;     // tz_dsttime
+    }
+    return 0;
+}
+
+//
+// settimeofday(const struct timeval *tv, const struct timezone *tz) --
+// EXTENSION export (ordinal 122). NtSetSystemTime needs the caller to hold
+// SeSystemtimePrivilege; without it this fails EPERM, which is exactly the
+// POSIX contract for non-root settimeofday.
+//
+int __cdecl
+settimeofday(const void *Tv, const void *Tz)
+{
+    LARGE_INTEGER SystemTime;
+    const long *In = (const long *)Tv;
+    NTSTATUS Status;
+
+    if (In == NULL || In[1] < 0 || In[1] >= 1000000)
+    {
+        PsxSetErrno(22 /* EINVAL */);
+        return -1;
+    }
+
+    SystemTime.QuadPart = ((LONGLONG)In[0] + 11644473600LL) * 10000000
+                          + (LONGLONG)In[1] * 10;
+    Status = NtSetSystemTime(&SystemTime, NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        PsxSetErrno(1 /* EPERM */);
+        return -1;
+    }
+    return 0;
+}
+
+//
+// nanosleep(const struct timespec *req, struct timespec *rem) -- EXTENSION
+// export (ordinal 121). NtDelayExecution counts 100ns units natively, so this
+// is the honest primitive (sleep() above is the derived one). Sub-100ns
+// residue rounds up so we never return early.
+//
+int __cdecl
+nanosleep(const void *Requested, void *Remaining)
+{
+    LARGE_INTEGER Interval;
+    const long *Req = (const long *)Requested;
+
+    if (Req == NULL || Req[0] < 0 || Req[1] < 0 || Req[1] >= 1000000000)
+    {
+        PsxSetErrno(22 /* EINVAL */);
+        return -1;
+    }
+
+    Interval.QuadPart = -((LONGLONG)Req[0] * 10000000 + ((LONGLONG)Req[1] + 99) / 100);
+    NtDelayExecution(FALSE, &Interval);
+
+    if (Remaining != NULL)
+    {
+        ((long *)Remaining)[0] = 0;     // uninterrupted: nothing remains
+        ((long *)Remaining)[1] = 0;
+    }
+    return 0;
+}
+
+//
 // sysconf(name) -- ApiNumber 0x17.
 //
 long __cdecl
@@ -107,11 +193,12 @@ uname(void *Utsname)
 char * __cdecl
 getcwd(char *Buffer, unsigned int Size)
 {
+    CHAR  Tmp[PSX_PATH_MAX];
     ULONG RootLen = PsxStartupRootLen;
     PCSTR Nt = PsxStartupCwd;
-    ULONG i, out = 0;
+    ULONG i, out = 0, Needed;
 
-    if (Buffer == NULL || Size == 0) { PsxSetErrno(22 /* EINVAL */); return NULL; }
+    if (Buffer != NULL && Size == 0) { PsxSetErrno(22 /* EINVAL */); return NULL; }
 
     // Strip the root device prefix ("\DosDevices\X:") if the CWD sits under it.
     if (RootLen != 0)
@@ -124,22 +211,39 @@ getcwd(char *Buffer, unsigned int Size)
             Nt += RootLen;
     }
 
-    if (Nt[0] == '\0')
-    {
-        if (Size < 2) { PsxSetErrno(34 /* ERANGE */); return NULL; }
-        Buffer[0] = '/'; Buffer[1] = '\0';
-        return Buffer;
-    }
-
+    // Translate into Tmp first so the glibc allocation extension below knows
+    // the exact length up front.
     for (i = 0; Nt[i] != '\0'; i++)
     {
-        if (out + 1 >= Size) { PsxSetErrno(34 /* ERANGE */); return NULL; }
-        Buffer[out++] = (Nt[i] == '\\') ? '/' : Nt[i];
+        if (out + 1 >= sizeof(Tmp)) { PsxSetErrno(34 /* ERANGE */); return NULL; }
+        Tmp[out++] = (Nt[i] == '\\') ? '/' : Nt[i];
     }
     // Drop a trailing slash (unless the whole path is "/").
-    if (out > 1 && Buffer[out - 1] == '/')
+    if (out > 1 && Tmp[out - 1] == '/')
         out--;
-    Buffer[out] = '\0';
+    if (out == 0)
+        Tmp[out++] = '/';
+    Tmp[out] = '\0';
+    Needed = out + 1;
+
+    if (Buffer == NULL)
+    {
+        // The glibc extension modern code leans on (bash shell-init calls
+        // getcwd(0, 0)): allocate the result. Size == 0 means exact fit; the
+        // caller frees it with free() -- the CRT heap and ours are both the
+        // NT process heap, so ownership transfers cleanly.
+        ULONG Alloc = (Size != 0) ? Size : Needed;
+        if (Alloc < Needed) { PsxSetErrno(34 /* ERANGE */); return NULL; }
+        Buffer = RtlAllocateHeap(RtlGetProcessHeap(), 0, Alloc);
+        if (Buffer == NULL) { PsxSetErrno(12 /* ENOMEM */); return NULL; }
+    }
+    else if (Size < Needed)
+    {
+        PsxSetErrno(34 /* ERANGE */);
+        return NULL;
+    }
+
+    RtlMoveMemory(Buffer, Tmp, Needed);
     return Buffer;
 }
 

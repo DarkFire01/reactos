@@ -49,6 +49,12 @@ tcgetattr(int FileDescriptor, void *Termios)
     unsigned long *T = (unsigned long *)Termios;
     unsigned char *Cc;
     int i;
+    extern int __cdecl ioctl(int, unsigned long, void *);
+
+    // Pseudo-terminal slave: the pty owns its termios (psxss pty.c). ioctl(TCGETS)
+    // returns it directly; a non-pty fd answers ENOTTY and we fall through.
+    if (ioctl(FileDescriptor, 0x5401 /* TCGETS */, Termios) == 0)
+        return 0;
 
     PsxInitMessage(&Message, PsxApiTcgetattr, PSX_BODY_DATALEN(2 * sizeof(ULONG)));
     ((PULONG)Message.Data.Raw)[0] = (ULONG)FileDescriptor;
@@ -86,8 +92,12 @@ int __cdecl
 tcsetattr(int FileDescriptor, int Action, const void *Termios)
 {
     PSX_API_MESSAGE Message;
+    extern int __cdecl ioctl(int, unsigned long, void *);
     UNREFERENCED_PARAMETER(Action);
-    UNREFERENCED_PARAMETER(Termios);
+
+    // Pseudo-terminal slave: store the termios in the pty (psxss pty.c).
+    if (ioctl(FileDescriptor, 0x5402 /* TCSETS */, (void *)Termios) == 0)
+        return 0;
 
     PsxInitMessage(&Message, PsxApiTcsetattr, PSX_BODY_DATALEN(2 * sizeof(ULONG)));
     ((PULONG)Message.Data.Raw)[0] = (ULONG)FileDescriptor;

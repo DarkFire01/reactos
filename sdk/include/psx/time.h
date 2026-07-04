@@ -34,6 +34,21 @@ struct tm
 };
 #endif
 
+/* Guarded with both conventions: newlib's sys/types.h uses __timespec_defined
+   for the identical struct. */
+#if !defined(_TIMESPEC_DEFINED) && !defined(__timespec_defined)
+#define _TIMESPEC_DEFINED
+#define __timespec_defined
+struct timespec
+{
+    time_t tv_sec;      /* seconds */
+    long   tv_nsec;     /* nanoseconds [0, 999999999] */
+};
+#endif
+
+/* psxdll extension export (ordinal 121). */
+int nanosleep(const struct timespec *Requested, struct timespec *Remaining);
+
 clock_t clock(void);
 time_t  time(time_t *Timer);
 double  difftime(time_t Time1, time_t Time0);

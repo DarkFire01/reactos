@@ -318,6 +318,12 @@ static int       g_NumBtnGrabs;
 static XClient  *g_PtrGrab;         // active pointer-grab client (NULL = none)
 static XID       g_PtrGrabWin;
 static BOOL      g_PtrGrabExplicit; // TRUE if from XGrabPointer (only Ungrab clears)
+// XGrabKeyboard: Motif posts every menu and modal dialog with an active keyboard
+// grab. While grabbed, ALL key events route to the grabbing client's window,
+// regardless of the pointer -- that is what makes menu navigation and modal
+// dialogs receive the keyboard (and it's why an ungrabbed dtterm felt dead).
+static XClient  *g_KbdGrab;         // active keyboard-grab client (NULL = none)
+static XID       g_KbdGrabWin;
 
 static COLORREF PixelToColor(DWORD p) { return RGB((p >> 16) & 0xFF, (p >> 8) & 0xFF, p & 0xFF); }
 
@@ -621,6 +627,34 @@ static void DeliverEvent(XWin *w, DWORD mask, BYTE *ev)
     XDBG("psxx11: event %u win=%lx mask=%lx -> %d\n",                 /* TEMP motif */
          ev[0], (ULONG)w->id, mask, sent);
 }
+// Selection ownership. Enough of a model for a window manager to claim the
+// ICCCM manager selections (WM_S<n>, _MOTIF_WM_QUERY_S<n>): SetSelectionOwner
+// records (atom -> owner window); GetSelectionOwner reads it back. mwm sets the
+// selection then verifies it owns it, and gives up ("Failed to own WM selection")
+// if GetSelectionOwner doesn't return its window.
+#define MAX_SELECTIONS 32
+static struct { XID atom; XID owner; } g_Selections[MAX_SELECTIONS];
+static int g_NumSelections = 0;
+
+static void SetSelectionOwnerAtom(XID atom, XID owner)
+{
+    int i;
+    for (i = 0; i < g_NumSelections; i++)
+        if (g_Selections[i].atom == atom) { g_Selections[i].owner = owner; return; }
+    if (g_NumSelections < MAX_SELECTIONS) {
+        g_Selections[g_NumSelections].atom = atom;
+        g_Selections[g_NumSelections].owner = owner;
+        g_NumSelections++;
+    }
+}
+static XID GetSelectionOwnerAtom(XID atom)
+{
+    int i;
+    for (i = 0; i < g_NumSelections; i++)
+        if (g_Selections[i].atom == atom) return g_Selections[i].owner;
+    return 0;                                       /* None */
+}
+
 // The single client that selected SubstructureRedirect on w (the WM), if any, other
 // than `except`.
 static XClient *RedirectClient(XWin *w, XClient *except)
@@ -1625,13 +1659,24 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
         SendTo(c, rep, 32);
         break;
     }
-    case X_GrabKey: {
+    case X_GrabKey:
+        // GrabKey is a VOID request -- it has NO reply. Sending one (as this used
+        // to) floods the client with "Xlib: unexpected async reply" and desyncs
+        // the whole stream, because a window manager registers many key grabs at
+        // startup. We don't model key grabs yet; accept and ignore.
+        break;
+    case 31: { /* GrabKeyboard -- grab-window at body+0; reply status byte = Success */
         BYTE rep[32];
         ReplyHead(rep, c, 0);
-        rep[1] = 0;
+        rep[1] = 0;                                                 // Success
+        g_KbdGrab = c;
+        g_KbdGrabWin = (bodyLen >= 4) ? *(const DWORD *)(body + 0) : ID_ROOT;
         SendTo(c, rep, 32);
         break;
     }
+    case 32: /* UngrabKeyboard */
+        g_KbdGrab = NULL;
+        break;
     case X_UngrabPointer:
         g_PtrGrab = NULL; g_PtrGrabExplicit = FALSE;
         break;
@@ -1714,13 +1759,18 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
         SendTo(c, rep, replen);                    /* Mod2..Mod5 left empty */
         break;
     }
-    case 23: { /* GetSelectionOwner: selection ATOM@0 -> owner WINDOW.  We have
-                  no selection/clipboard model yet; report None (unowned), which
-                  is a valid answer Motif's clipboard init tolerates. */
+    case 22: /* SetSelectionOwner: owner WINDOW@0, selection ATOM@4, time@8 (VOID) */
+        if (bodyLen >= 8)
+            SetSelectionOwnerAtom(*(const DWORD *)(body + 4), *(const DWORD *)(body + 0));
+        break;
+    case 23: { /* GetSelectionOwner: selection ATOM@0 -> owner WINDOW. Report the
+                  recorded owner so a WM claiming WM_S<n> sees itself and proceeds
+                  (else "Failed to own WM selection"). None (0) if unowned. */
         BYTE rep[32];
+        XID owner = (bodyLen >= 4) ? GetSelectionOwnerAtom(*(const DWORD *)(body + 0)) : 0;
         RtlZeroMemory(rep, sizeof(rep));
         ReplyHead(rep, c, 0);
-        *(DWORD *)(rep + 8) = 0;                   /* owner = None */
+        *(DWORD *)(rep + 8) = owner;
         SendTo(c, rep, 32);
         break;
     }
@@ -2093,6 +2143,7 @@ static void FreeClient(XClient *c)
     }
     // drop this client's grabs
     if (g_PtrGrab == c) { g_PtrGrab = NULL; g_PtrGrabExplicit = FALSE; }
+    if (g_KbdGrab == c) { g_KbdGrab = NULL; }
     for (i = 0, j = 0; i < g_NumBtnGrabs; i++)
         if (g_BtnGrabs[i].c != c) g_BtnGrabs[j++] = g_BtnGrabs[i];
     g_NumBtnGrabs = j;
@@ -2248,10 +2299,18 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                      ButtonReleaseMask, g_PtrX, g_PtrY, FALSE, TRUE);
         return 0;
     case WM_KEYDOWN:
-        DeliverInput(KeyPress, (BYTE)wp, KeyPressMask, g_PtrX, g_PtrY);
+        // A keyboard grab (Motif menu/dialog) takes all keys; otherwise keys go
+        // to the window under the pointer (focus-follows-mouse).
+        if (g_KbdGrab)
+            DeliverToClient(g_KbdGrab, g_KbdGrabWin, KeyPress, (BYTE)wp, g_PtrX, g_PtrY);
+        else
+            DeliverInput(KeyPress, (BYTE)wp, KeyPressMask, g_PtrX, g_PtrY);
         return 0;
     case WM_KEYUP:
-        DeliverInput(KeyRelease, (BYTE)wp, KeyReleaseMask, g_PtrX, g_PtrY);
+        if (g_KbdGrab)
+            DeliverToClient(g_KbdGrab, g_KbdGrabWin, KeyRelease, (BYTE)wp, g_PtrX, g_PtrY);
+        else
+            DeliverInput(KeyRelease, (BYTE)wp, KeyReleaseMask, g_PtrX, g_PtrY);
         return 0;
     case WM_DESTROY:
         PostQuitMessage(0);
