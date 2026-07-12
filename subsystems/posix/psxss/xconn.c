@@ -38,8 +38,12 @@
 // data is available, which is exactly the recv()/send() semantics Xlib expects.
 #define PSX_X11_CHUNK   0x4000      // 16 KiB
 
-// We launch the server at most once per psxss lifetime (0 = not yet tried).
+// We launch the server at most once per psxss lifetime (0 = not yet tried) --
+// unless the launched server has since DIED, in which case the guard is cleared
+// and the next /dev/x11 open relaunches it. The kept process handle is what lets
+// us tell "still running" from "crashed".
 static LONG PsxX11ServerLaunched = 0;
+static HANDLE PsxX11ServerProcess = NULL;
 
 //
 // Best-effort launch of the companion X server. Idempotent: guarded so concurrent
@@ -53,6 +57,17 @@ PsxLaunchXServer(VOID)
     UINT Len;
     STARTUPINFOW StartupInfo;
     PROCESS_INFORMATION ProcessInfo;
+
+    // A previously launched psxx11 that has exited must not wedge the guard: probe
+    // the kept handle and clear the guard so this open() respawns the server.
+    if ((PsxX11ServerLaunched != 0) && (PsxX11ServerProcess != NULL) &&
+        (WaitForSingleObject(PsxX11ServerProcess, 0) == WAIT_OBJECT_0))
+    {
+        NtClose(PsxX11ServerProcess);
+        PsxX11ServerProcess = NULL;
+        InterlockedExchange(&PsxX11ServerLaunched, 0);
+        PSXTRACE("PSXSS: psxx11 died -- clearing launch guard for respawn\n");
+    }
 
     if (InterlockedCompareExchange(&PsxX11ServerLaunched, 1, 0) != 0)
         return;     // someone else already kicked it off
@@ -77,7 +92,9 @@ PsxLaunchXServer(VOID)
                        &StartupInfo, &ProcessInfo))
     {
         NtClose(ProcessInfo.hThread);
-        NtClose(ProcessInfo.hProcess);
+        // Keep the process handle: it is the liveness probe that lets a later
+        // open() detect a dead psxx11 and relaunch it (see guard reset above).
+        PsxX11ServerProcess = ProcessInfo.hProcess;
     }
     else
     {

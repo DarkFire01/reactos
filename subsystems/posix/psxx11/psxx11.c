@@ -207,13 +207,32 @@ enum {
 #define CWOverrideRedirect 0x0200
 #define CWEventMask        0x0800
 
-/* ---- GC component bits ---- */
-#define GCFunction     0x0001
-#define GCForeground   0x0004
-#define GCBackground   0x0008
-#define GCLineWidth    0x0010
+/* ---- GC component bits (all 23, X11 core protocol order) ---- */
+#define GCFunction          0x00000001
+#define GCPlaneMask         0x00000002
+#define GCForeground        0x00000004
+#define GCBackground        0x00000008
+#define GCLineWidth         0x00000010
+#define GCLineStyle         0x00000020
+#define GCCapStyle          0x00000040
+#define GCJoinStyle         0x00000080
+#define GCFillStyle         0x00000100
+#define GCFillRule          0x00000200
+#define GCTile              0x00000400
+#define GCStipple           0x00000800
+#define GCTileStipXOrigin   0x00001000
+#define GCTileStipYOrigin   0x00002000
+#define GCFont              0x00004000
+#define GCSubwindowMode     0x00008000
+#define GCGraphicsExposures 0x00010000
+#define GCClipXOrigin       0x00020000
+#define GCClipYOrigin       0x00040000
+#define GCClipMask          0x00080000
+#define GCDashOffset        0x00100000
+#define GCDashList          0x00200000
+#define GCArcMode           0x00400000
 
-/* ---- GC raster functions (subset) ---- */
+/* ---- GC raster functions ---- */
 #define GXclear   0x0
 #define GXcopy    0x3
 #define GXxor     0x6
@@ -261,6 +280,18 @@ typedef struct _XClient {
     BYTE    *outBuf; DWORD outLen, outCap; // pending outbound bytes
 } XClient;
 
+// A window property (WM_NAME, WM_NORMAL_HINTS, _MOTIF_WM_HINTS, ...). Real
+// storage: this is how a WM learns titles/hints and how clients see xrdb's
+// RESOURCE_MANAGER -- an empty GetProperty makes every title blank and every
+// hint default.
+typedef struct _XProp {
+    struct _XProp *next;
+    XID   atom, type;
+    BYTE  format;                   // 8 / 16 / 32
+    DWORD len;                      // bytes
+    BYTE *data;
+} XProp;
+
 #define MAX_SELECT 8
 typedef struct _XWin {
     struct _XWin *hnext;            // flat lookup list
@@ -270,22 +301,41 @@ typedef struct _XWin {
     int      borderWidth;
     DWORD    bgPixel, borderPixel;
     BOOL     hasBg;
+    XID      bgPixmap;              // CWBackPixmap: 0=None, 1=ParentRelative, else pixmap
     BOOL     mapped, overrideRedirect;
     struct { XClient *client; DWORD mask; } sel[MAX_SELECT];
     int      numSel;
     XClient *owner;
+    XProp   *props;
 } XWin;
 
+// The FULL GC: all 23 X11 components stored; the GDI mapping helpers
+// (GCBrush/GCPen/ApplyGC) translate what GDI can express and degrade the rest
+// gracefully (plane-mask and font are stored but not rendered -- one fixed
+// font backs all text, and TrueColor plane tricks have no GDI equivalent).
+#define GC_MAX_DASHES 16
 typedef struct _XGCObj {
     struct _XGCObj *next;
     XID   id;
-    DWORD fg, bg, lineWidth, function;
+    DWORD function, planeMask, fg, bg;
+    DWORD lineWidth, lineStyle, capStyle, joinStyle;   // ls: 0 solid 1 onoff 2 double
+    DWORD fillStyle, fillRule;      // fs: 0 solid 1 tiled 2 stippled 3 opaque-stippled
+    XID   tile, stipple, font, clipMask;
+    int   tsX, tsY, clipX, clipY;   // tile/stipple + clip origins
+    DWORD subwindowMode;            // 0 ClipByChildren, 1 IncludeInferiors
+    DWORD graphicsExposures;        // X default True: CopyArea must answer with NoExpose
+    DWORD arcMode;                  // 0 Chord, 1 PieSlice
+    DWORD dashOffset, numDashes;
+    BYTE  dashes[GC_MAX_DASHES];
+    RECT *clipRects;                // SetClipRectangles list (GC-relative), or NULL
+    int   numClipRects;
 } XGCObj;
 
 typedef struct _XPixmap {
     struct _XPixmap *next;
     XID    id;
     int    w, h;
+    int    depth;                   // 1 (mono: stipples/icon bitmaps) or 24/32
     HDC    dc;
     HBITMAP bmp;
     void  *bits;
@@ -327,6 +377,27 @@ static XID       g_KbdGrabWin;
 
 static COLORREF PixelToColor(DWORD p) { return RGB((p >> 16) & 0xFF, (p >> 8) & 0xFF, p & 0xFF); }
 
+// WM-path tracing via the server window TITLE (newest first): the only debug
+// channel visible in a headless-VM screenshot (XDBG's OutputDebugString needs an
+// attached kd). Logs redirect selections, map routing and reparents -- the chain
+// that produces (or fails to produce) a WM frame.
+static char g_WmEvt[5][44];
+static int  g_WmEvtN;
+static void WMLOG(const char *fmt, ...)
+{
+    char title[256];
+    va_list ap;
+    int n = g_WmEvtN % 5;
+    va_start(ap, fmt);
+    wvsprintfA(g_WmEvt[n], fmt, ap);
+    va_end(ap);
+    g_WmEvtN++;
+    wsprintfA(title, "X :0 [%s] [%s] [%s] [%s] [%s]",
+              g_WmEvt[n], g_WmEvt[(n + 4) % 5], g_WmEvt[(n + 3) % 5],
+              g_WmEvt[(n + 2) % 5], g_WmEvt[(n + 1) % 5]);
+    if (g_Hwnd) SetWindowTextA(g_Hwnd, title);
+}
+
 /* ================================================================================
  *  Overlapped pipe I/O + per-client output buffer (single-threaded, no locks)
  * ================================================================================ */
@@ -357,8 +428,10 @@ static void IssueWrite(XClient *c)
         c->writePending = TRUE;                  // completed sync; wev signals -> OnWriteDone
     else if (GetLastError() == ERROR_IO_PENDING)
         c->writePending = TRUE;
-    else
+    else {
+        WMLOG("c%lu KILL wr e=%lu", c->id, GetLastError());
         c->alive = FALSE;
+    }
 }
 
 // Queue bytes to a client (append to its output buffer; never blocks).
@@ -377,7 +450,10 @@ static void OnWriteDone(XClient *c)
     DWORD n = 0;
     c->writePending = FALSE;
     if (!GetOverlappedResult(c->pipe, &c->wov, &n, FALSE)) {
-        if (GetLastError() != ERROR_IO_INCOMPLETE) c->alive = FALSE;
+        if (GetLastError() != ERROR_IO_INCOMPLETE) {
+            WMLOG("c%lu KILL wrd e=%lu", c->id, GetLastError());
+            c->alive = FALSE;
+        }
         return;
     }
     if (n > c->outLen) n = c->outLen;
@@ -407,7 +483,7 @@ static void ProcessInput(XClient *c)
     while (c->state == CS_RUNNING && c->inLen >= 4) {
         DWORD reqLen = ((DWORD)(c->inBuf[2] | (c->inBuf[3] << 8))) * 4;
         X_REQ_HEAD head;
-        if (reqLen < 4) { c->alive = FALSE; return; }
+        if (reqLen < 4) { WMLOG("c%lu KILL len0 op=%u", c->id, c->inBuf[0]); c->alive = FALSE; return; }
         if (c->inLen < reqLen) break;            // wait for the rest of this request
         head.opcode = c->inBuf[0]; head.data = c->inBuf[1];
         head.length = (WORD)(c->inBuf[2] | (c->inBuf[3] << 8));
@@ -427,18 +503,23 @@ static void IssueRead(XClient *c)
     RtlZeroMemory(&c->rov, sizeof(c->rov));
     c->rov.hEvent = c->rev;
     if (!ReadFile(c->pipe, c->rtmp, sizeof(c->rtmp), &n, &c->rov)
-        && GetLastError() != ERROR_IO_PENDING)
+        && GetLastError() != ERROR_IO_PENDING) {
+        WMLOG("c%lu KILL rdi e=%lu", c->id, GetLastError());
         c->alive = FALSE;
+    }
 }
 
 static void OnReadDone(XClient *c)
 {
     DWORD n = 0;
     if (!GetOverlappedResult(c->pipe, &c->rov, &n, FALSE)) {
-        if (GetLastError() != ERROR_IO_INCOMPLETE) c->alive = FALSE;
+        if (GetLastError() != ERROR_IO_INCOMPLETE) {
+            WMLOG("c%lu KILL rd e=%lu", c->id, GetLastError());
+            c->alive = FALSE;
+        }
         return;
     }
-    if (n == 0) { c->alive = FALSE; return; }    // EOF
+    if (n == 0) { WMLOG("c%lu KILL eof", c->id); c->alive = FALSE; return; }    // EOF
     EnsureCap(&c->inBuf, &c->inCap, c->inLen + n);
     if (c->inCap < c->inLen + n) { c->alive = FALSE; return; }
     RtlCopyMemory(c->inBuf + c->inLen, c->rtmp, n);
@@ -627,6 +708,64 @@ static void DeliverEvent(XWin *w, DWORD mask, BYTE *ev)
     XDBG("psxx11: event %u win=%lx mask=%lx -> %d\n",                 /* TEMP motif */
          ev[0], (ULONG)w->id, mask, sent);
 }
+// Real atom table. Atoms MUST be (a) stable per name, (b) unique across names,
+// and (c) InternAtom MUST honor only-if-exists. The old "1 + nameLen" scheme
+// violated all three: colliding atoms made Xt believe a client owned SELECTIONS
+// it never claimed (Motif's color-object startup then did a LOCAL selection
+// transfer against itself, parsed garbage as color-server data, and dtwm died
+// dereferencing wild XmPixelSet pointers in WriteOutXrmColors); and a never-None
+// InternAtom defeated every "is the service running?" only-if-exists probe.
+static const char *g_PredefAtoms[] = { "",
+    "PRIMARY", "SECONDARY", "ARC", "ATOM", "BITMAP", "CARDINAL", "COLORMAP",
+    "CURSOR", "CUT_BUFFER0", "CUT_BUFFER1", "CUT_BUFFER2", "CUT_BUFFER3",
+    "CUT_BUFFER4", "CUT_BUFFER5", "CUT_BUFFER6", "CUT_BUFFER7", "DRAWABLE",
+    "FONT", "INTEGER", "PIXMAP", "POINT", "RECTANGLE", "RESOURCE_MANAGER",
+    "RGB_COLOR_MAP", "RGB_BEST_MAP", "RGB_BLUE_MAP", "RGB_DEFAULT_MAP",
+    "RGB_GRAY_MAP", "RGB_GREEN_MAP", "RGB_RED_MAP", "STRING", "VISUALID",
+    "WINDOW", "WM_COMMAND", "WM_HINTS", "WM_CLIENT_MACHINE", "WM_ICON_NAME",
+    "WM_ICON_SIZE", "WM_NAME", "WM_NORMAL_HINTS", "WM_SIZE_HINTS",
+    "WM_ZOOM_HINTS", "MIN_SPACE", "NORM_SPACE", "MAX_SPACE", "END_SPACE",
+    "SUPERSCRIPT_X", "SUPERSCRIPT_Y", "SUBSCRIPT_X", "SUBSCRIPT_Y",
+    "UNDERLINE_POSITION", "UNDERLINE_THICKNESS", "STRIKEOUT_ASCENT",
+    "STRIKEOUT_DESCENT", "ITALIC_ANGLE", "X_HEIGHT", "QUAD_WIDTH", "WEIGHT",
+    "POINT_SIZE", "RESOLUTION", "COPYRIGHT", "NOTICE", "FONT_NAME",
+    "FAMILY_NAME", "FULL_NAME", "CAP_HEIGHT", "WM_CLASS", "WM_TRANSIENT_FOR" };
+#define NUM_PREDEF_ATOMS 68            /* XA_PRIMARY(1) .. XA_WM_TRANSIENT_FOR(68) */
+#define MAX_DYN_ATOMS    512
+#define ATOM_NAME_MAX    80
+#define DYN_ATOM_BASE    100
+static char g_DynAtoms[MAX_DYN_ATOMS][ATOM_NAME_MAX];
+static int  g_NumDynAtoms;
+
+static BOOL AtomNameEq(const char *tabName, const char *name, int len)
+{
+    int i;
+    for (i = 0; i < len; i++)
+        if (tabName[i] == '\0' || tabName[i] != name[i]) return FALSE;
+    return tabName[len] == '\0';
+}
+static XID InternAtomByName(const char *name, int len, BOOL onlyIfExists)
+{
+    int i;
+    if (len <= 0 || len >= ATOM_NAME_MAX) return 0;
+    for (i = 1; i <= NUM_PREDEF_ATOMS; i++)
+        if (AtomNameEq(g_PredefAtoms[i], name, len)) return (XID)i;
+    for (i = 0; i < g_NumDynAtoms; i++)
+        if (AtomNameEq(g_DynAtoms[i], name, len)) return (XID)(DYN_ATOM_BASE + i);
+    if (onlyIfExists || g_NumDynAtoms >= MAX_DYN_ATOMS)
+        return 0;                                   /* None */
+    RtlCopyMemory(g_DynAtoms[g_NumDynAtoms], name, len);
+    g_DynAtoms[g_NumDynAtoms][len] = '\0';
+    return (XID)(DYN_ATOM_BASE + g_NumDynAtoms++);
+}
+static const char *AtomName(XID atom)
+{
+    if (atom >= 1 && atom <= NUM_PREDEF_ATOMS) return g_PredefAtoms[atom];
+    if (atom >= DYN_ATOM_BASE && atom < (XID)(DYN_ATOM_BASE + g_NumDynAtoms))
+        return g_DynAtoms[atom - DYN_ATOM_BASE];
+    return NULL;
+}
+
 // Selection ownership. Enough of a model for a window manager to claim the
 // ICCCM manager selections (WM_S<n>, _MOTIF_WM_QUERY_S<n>): SetSelectionOwner
 // records (atom -> owner window); GetSelectionOwner reads it back. mwm sets the
@@ -773,6 +912,35 @@ static void FillAbsRect(RECT *r, DWORD pixel)
     DeleteObject(b);
 }
 
+// Fill an absolute screen rect with a window's EFFECTIVE background. X
+// semantics: an unset background (None) shows whatever is beneath, and
+// ParentRelative explicitly inherits the parent's -- both approximate here to
+// "walk up to the nearest ancestor with a background" (root always has one).
+// A background PIXMAP tiles anchored at the owning window's origin.
+static void FillBgRect(XWin *w, RECT *r)
+{
+    XWin *src = w;
+    if (r->right <= r->left || r->bottom <= r->top) return;
+    while (src && !src->hasBg && src->bgPixmap <= 1)
+        src = src->parent;
+    if (src && src->bgPixmap > 1) {
+        XPixmap *p = FindPixmap(src->bgPixmap);
+        if (p && p->bmp) {
+            HBRUSH b = CreatePatternBrush(p->bmp);
+            if (b) {
+                int ax, ay;
+                WinAbs(src, &ax, &ay);
+                SetBrushOrgEx(g_ScreenDc, ax, ay, NULL);
+                FillRect(g_ScreenDc, r, b);
+                SetBrushOrgEx(g_ScreenDc, 0, 0, NULL);
+                DeleteObject(b);
+                return;
+            }
+        }
+    }
+    FillAbsRect(r, (src && src->hasBg) ? src->bgPixel : 0x00808080);
+}
+
 // Paint a window's border + background into its visible rect (no client content).
 static void PaintWinBg(XWin *w)
 {
@@ -787,7 +955,7 @@ static void PaintWinBg(XWin *w)
         br.right = ax + w->w + w->borderWidth; br.bottom = ay + w->h + w->borderWidth;
         FillAbsRect(&br, w->borderPixel);
     }
-    FillAbsRect(&vis, w->hasBg ? w->bgPixel : WHITE_PIXEL);
+    FillBgRect(w, &vis);
 }
 
 // Recursively paint a window subtree bg (parents before children = back-to-front),
@@ -822,7 +990,11 @@ static void ResolveDrawable(XID id, XTarget *t)
     t->valid = FALSE; t->clip = NULL;
     if ((w = FindWin(id)) != NULL) {
         int ax, ay;
-        if (!WinIsViewable(w)) return;         // drawing to unmapped window: drop
+        if (!WinIsViewable(w)) {               // drawing to unmapped window: drop
+            static int s_dropLogs;             /* PSX DEBUG */
+            if (s_dropLogs < 6) { s_dropLogs++; WMLOG("drop %lx", (ULONG)id); }
+            return;
+        }
         WinAbs(w, &ax, &ay);
         t->clip = WinClipRegion(w);            // visible region (minus occluders)
         t->dc = g_ScreenDc; t->ox = ax; t->oy = ay; t->valid = TRUE;
@@ -842,59 +1014,199 @@ static void EndTarget(XTarget *t, HRGN rgn)
 {
     (void)rgn;
     SelectClipRgn(t->dc, NULL);
+    // Undo any per-GC DC state ApplyGC installed (every draw brackets with
+    // Begin/EndTarget, so resetting unconditionally is safe and simplest).
+    SetROP2(t->dc, R2_COPYPEN);
+    SetPolyFillMode(t->dc, ALTERNATE);
+    SetBrushOrgEx(t->dc, 0, 0, NULL);
     DeleteObject(t->clip);
     t->clip = NULL;
     InterlockedExchange(&g_Dirty, 1);
 }
 
-static void DrawFillRects(XTarget *t, XGCObj *gc, const X_RECT *rects, DWORD n)
+/* ================================================================================
+ *  GC -> GDI mapping
+ * ================================================================================ */
+// All 16 X raster functions as GDI binary raster ops (affect pen/brush drawing).
+static int GXToRop2(DWORD f)
 {
-    BOOL xorMode = (gc && gc->function == GXxor);
-    HBRUSH b = CreateSolidBrush(PixelToColor(gc ? gc->fg : 0));
-    HRGN rgn = BeginTarget(t);
-    HBRUSH ob = (HBRUSH)SelectObject(t->dc, b);
-    DWORD i;
-    for (i = 0; i < n; i++) {
-        int x = t->ox + rects[i].x, y = t->oy + rects[i].y;
-        if (xorMode)
-            PatBlt(t->dc, x, y, rects[i].width, rects[i].height, PATINVERT);  // dest ^= fg
-        else {
-            RECT r; r.left = x; r.top = y; r.right = x + rects[i].width; r.bottom = y + rects[i].height;
-            FillRect(t->dc, &r, b);
+    static const int m[16] = {
+        R2_BLACK,      R2_MASKPEN,     R2_MASKPENNOT, R2_COPYPEN,
+        R2_MASKNOTPEN, R2_NOP,         R2_XORPEN,     R2_MERGEPEN,
+        R2_NOTMERGEPEN,R2_NOTXORPEN,   R2_NOT,        R2_MERGEPENNOT,
+        R2_NOTCOPYPEN, R2_MERGENOTPEN, R2_NOTMASKPEN, R2_WHITE };
+    return m[f & 15];
+}
+// Pattern (brush) rop3 for rect fills -- PatBlt/FillRect ignore ROP2.
+static DWORD GXToPatRop3(DWORD f)
+{
+    switch (f & 15) {
+    case GXclear:  return BLACKNESS;
+    case 0x1:      return 0x00A000C9;   /* GXand:  D & P */
+    case GXxor:    return PATINVERT;
+    case 0x7:      return 0x00FA0089;   /* GXor:   D | P */
+    case GXinvert: return DSTINVERT;
+    case 0xF:      return WHITENESS;
+    default:       return PATCOPY;
+    }
+}
+// Source rop3 for blits (CopyArea/CopyPlane).
+static DWORD GXToSrcRop3(DWORD f)
+{
+    switch (f & 15) {
+    case GXclear:  return BLACKNESS;
+    case 0x1:      return SRCAND;
+    case GXxor:    return SRCINVERT;
+    case 0x7:      return SRCPAINT;
+    case 0xC:      return NOTSRCCOPY;
+    case GXinvert: return DSTINVERT;
+    case 0xF:      return WHITENESS;
+    default:       return SRCCOPY;
+    }
+}
+// Integer sine for arc endpoints: sin(deg)*1024, deg in [0,90].
+static int Sin1024(int deg)
+{
+    static const short tab[91] = {
+        0,18,36,54,71,89,107,125,143,160,178,195,213,230,248,265,282,299,316,333,
+        350,367,384,400,416,433,449,465,481,496,512,527,543,558,573,587,602,616,
+        630,644,658,672,685,698,711,724,737,749,761,773,784,796,807,818,828,839,
+        849,859,868,878,887,896,904,912,920,928,935,943,949,956,962,968,974,979,
+        984,989,994,998,1002,1005,1008,1011,1014,1016,1018,1020,1022,1023,1023,1024,1024 };
+    return tab[deg < 0 ? 0 : (deg > 90 ? 90 : deg)];
+}
+static int SinDeg1024(int deg)   // any angle, degrees
+{
+    deg %= 360; if (deg < 0) deg += 360;
+    if (deg <= 90)  return Sin1024(deg);
+    if (deg <= 180) return Sin1024(180 - deg);
+    if (deg <= 270) return -Sin1024(deg - 180);
+    return -Sin1024(360 - deg);
+}
+static int CosDeg1024(int deg) { return SinDeg1024(deg + 90); }
+
+// Brush honoring fill-style. A monochrome tile/stipple pattern brush paints
+// through the DC's text/background colors -- GDI maps 0-bits to the TEXT color
+// and 1-bits to the BACKGROUND color, the inverse of X's 1-bit->foreground, so
+// ApplyGC swaps them onto the DC for stippled fills.
+static HBRUSH GCBrush(XGCObj *gc)
+{
+    if (gc) {
+        XPixmap *p = NULL;
+        if (gc->fillStyle == 1 && gc->tile)
+            p = FindPixmap(gc->tile);
+        else if ((gc->fillStyle == 2 || gc->fillStyle == 3) && gc->stipple)
+            p = FindPixmap(gc->stipple);
+        if (p && p->bmp) {
+            HBRUSH b = CreatePatternBrush(p->bmp);
+            if (b) return b;
         }
     }
+    return CreateSolidBrush(PixelToColor(gc ? gc->fg : 0));
+}
+// Pen honoring line width/style/cap/join (dash pattern approximated by PS_DASH;
+// GDI custom dash arrays only work for geometric pens and buy little here).
+static HPEN GCPen(XGCObj *gc)
+{
+    DWORD width = (gc && gc->lineWidth) ? gc->lineWidth : 1;
+    DWORD style;
+    LOGBRUSH lb;
+    HPEN pen;
+    if (!gc || (gc->lineStyle == 0 && gc->capStyle <= 1 && gc->joinStyle == 0))
+        return CreatePen(PS_SOLID, (int)width, PixelToColor(gc ? gc->fg : 0));
+    style = PS_GEOMETRIC | (gc->lineStyle ? PS_DASH : PS_SOLID);
+    style |= (gc->capStyle == 2) ? PS_ENDCAP_ROUND :
+             (gc->capStyle == 3) ? PS_ENDCAP_SQUARE : PS_ENDCAP_FLAT;
+    style |= (gc->joinStyle == 1) ? PS_JOIN_ROUND :
+             (gc->joinStyle == 2) ? PS_JOIN_BEVEL : PS_JOIN_MITER;
+    lb.lbStyle = BS_SOLID;
+    lb.lbColor = PixelToColor(gc->fg);
+    lb.lbHatch = 0;
+    pen = ExtCreatePen(style, width, &lb, 0, NULL);
+    return pen ? pen : CreatePen(PS_SOLID, (int)width, PixelToColor(gc->fg));
+}
+// Install per-GC DC state after BeginTarget: raster op, fill rule, tile/stipple
+// origin + colors, and the GC's clip-rectangle list (intersected with the
+// drawable's visible region). EndTarget resets all of it.
+static void ApplyGC(XTarget *t, XGCObj *gc)
+{
+    SetROP2(t->dc, GXToRop2(gc ? gc->function : GXcopy));
+    if (!gc) return;
+    // IncludeInferiors: draw over child windows too (a WM's XOR rubber-band on
+    // the root). Approximated by lifting the child-subtracted visible clip.
+    if (gc->subwindowMode == 1)
+        SelectClipRgn(t->dc, NULL);
+    SetPolyFillMode(t->dc, (gc->fillRule == 1) ? WINDING : ALTERNATE);
+    SetBrushOrgEx(t->dc, t->ox + gc->tsX, t->oy + gc->tsY, NULL);
+    if (gc->fillStyle == 2 || gc->fillStyle == 3) {
+        SetTextColor(t->dc, PixelToColor(gc->bg));   // mono brush 0-bits
+        SetBkColor(t->dc, PixelToColor(gc->fg));     // mono brush 1-bits
+    }
+    if (gc->numClipRects > 0 && gc->clipRects) {
+        HRGN acc = CreateRectRgn(0, 0, 0, 0);
+        int i;
+        for (i = 0; i < gc->numClipRects; i++) {
+            HRGN one = CreateRectRgn(
+                t->ox + gc->clipX + gc->clipRects[i].left,
+                t->oy + gc->clipY + gc->clipRects[i].top,
+                t->ox + gc->clipX + gc->clipRects[i].right,
+                t->oy + gc->clipY + gc->clipRects[i].bottom);
+            CombineRgn(acc, acc, one, RGN_OR);
+            DeleteObject(one);
+        }
+        ExtSelectClipRgn(t->dc, acc, RGN_AND);
+        DeleteObject(acc);
+    }
+}
+
+static void DrawFillRects(XTarget *t, XGCObj *gc, const X_RECT *rects, DWORD n)
+{
+    HBRUSH b = GCBrush(gc);
+    DWORD rop3 = GXToPatRop3(gc ? gc->function : GXcopy);
+    HRGN rgn = BeginTarget(t);
+    HBRUSH ob;
+    DWORD i;
+    ApplyGC(t, gc);
+    ob = (HBRUSH)SelectObject(t->dc, b);
+    if (!(gc && gc->function == 5 /* GXnoop */))
+        for (i = 0; i < n; i++)
+            PatBlt(t->dc, t->ox + rects[i].x, t->oy + rects[i].y,
+                   rects[i].width, rects[i].height, rop3);
     SelectObject(t->dc, ob);
     EndTarget(t, rgn);
     DeleteObject(b);
 }
 static void DrawFrameRects(XTarget *t, XGCObj *gc, const X_RECT *rects, DWORD n)
 {
-    HPEN pen = CreatePen(PS_SOLID, (gc && gc->lineWidth) ? gc->lineWidth : 1, PixelToColor(gc ? gc->fg : 0));
+    HPEN pen = GCPen(gc);
     HRGN rgn = BeginTarget(t);
-    HPEN op = (HPEN)SelectObject(t->dc, pen);
-    HBRUSH ob = (HBRUSH)SelectObject(t->dc, GetStockObject(NULL_BRUSH));
-    int rop = SetROP2(t->dc, (gc && gc->function == GXxor) ? R2_XORPEN : R2_COPYPEN);
+    HPEN op;
+    HBRUSH ob;
     DWORD i;
+    ApplyGC(t, gc);
+    op = (HPEN)SelectObject(t->dc, pen);
+    ob = (HBRUSH)SelectObject(t->dc, GetStockObject(NULL_BRUSH));
     for (i = 0; i < n; i++)
         Rectangle(t->dc, t->ox + rects[i].x, t->oy + rects[i].y,
                   t->ox + rects[i].x + rects[i].width + 1, t->oy + rects[i].y + rects[i].height + 1);
-    SetROP2(t->dc, rop);
     SelectObject(t->dc, ob); SelectObject(t->dc, op);
     EndTarget(t, rgn);
     DeleteObject(pen);
 }
 static void DrawSegments(XTarget *t, XGCObj *gc, const X_SEGMENT *segs, DWORD n)
 {
-    HPEN pen = CreatePen(PS_SOLID, (gc && gc->lineWidth) ? gc->lineWidth : 1, PixelToColor(gc ? gc->fg : 0));
+    HPEN pen = GCPen(gc);
     HRGN rgn = BeginTarget(t);
-    HPEN op = (HPEN)SelectObject(t->dc, pen);
-    int rop = SetROP2(t->dc, (gc && gc->function == GXxor) ? R2_XORPEN : R2_COPYPEN);
+    HPEN op;
     DWORD i;
+    ApplyGC(t, gc);
+    op = (HPEN)SelectObject(t->dc, pen);
     for (i = 0; i < n; i++) {
         MoveToEx(t->dc, t->ox + segs[i].x1, t->oy + segs[i].y1, NULL);
         LineTo(t->dc, t->ox + segs[i].x2, t->oy + segs[i].y2);
+        SetPixelV(t->dc, t->ox + segs[i].x2, t->oy + segs[i].y2,
+                  PixelToColor(gc ? gc->fg : 0));    // X draws the endpoint too
     }
-    SetROP2(t->dc, rop);
     SelectObject(t->dc, op);
     EndTarget(t, rgn);
     DeleteObject(pen);
@@ -906,8 +1218,9 @@ static void DrawPolyline(XTarget *t, XGCObj *gc, const X_POINT *pts, DWORD n, BY
     DWORD i;
     int cx, cy;
     if (n == 0) return;
-    pen = CreatePen(PS_SOLID, (gc && gc->lineWidth) ? gc->lineWidth : 1, PixelToColor(gc ? gc->fg : 0));
+    pen = GCPen(gc);
     rgn = BeginTarget(t);
+    ApplyGC(t, gc);
     op = (HPEN)SelectObject(t->dc, pen);
     cx = t->ox + pts[0].x; cy = t->oy + pts[0].y;
     MoveToEx(t->dc, cx, cy, NULL);
@@ -920,6 +1233,21 @@ static void DrawPolyline(XTarget *t, XGCObj *gc, const X_POINT *pts, DWORD n, BY
     EndTarget(t, rgn);
     DeleteObject(pen);
 }
+static void DrawPoints(XTarget *t, XGCObj *gc, const X_POINT *pts, DWORD n, BYTE coordMode)
+{
+    HRGN rgn;
+    COLORREF col = PixelToColor(gc ? gc->fg : 0);
+    DWORD i;
+    int cx = 0, cy = 0;
+    if (n == 0) return;
+    rgn = BeginTarget(t);
+    for (i = 0; i < n; i++) {
+        if (coordMode && i) { cx += pts[i].x; cy += pts[i].y; }
+        else { cx = t->ox + pts[i].x; cy = t->oy + pts[i].y; }
+        SetPixelV(t->dc, cx, cy, col);
+    }
+    EndTarget(t, rgn);
+}
 static void DrawFillPoly(XTarget *t, XGCObj *gc, const X_POINT *pts, DWORD n)
 {
     POINT *wp;
@@ -931,8 +1259,9 @@ static void DrawFillPoly(XTarget *t, XGCObj *gc, const X_POINT *pts, DWORD n)
     wp = (POINT *)HeapAlloc(GetProcessHeap(), 0, n * sizeof(POINT));
     if (!wp) return;
     for (i = 0; i < n; i++) { wp[i].x = t->ox + pts[i].x; wp[i].y = t->oy + pts[i].y; }
-    b = CreateSolidBrush(PixelToColor(gc ? gc->fg : 0));
+    b = GCBrush(gc);
     rgn = BeginTarget(t);
+    ApplyGC(t, gc);
     ob = (HBRUSH)SelectObject(t->dc, b);
     op = (HPEN)SelectObject(t->dc, GetStockObject(NULL_PEN));
     Polygon(t->dc, wp, (int)n);
@@ -941,22 +1270,75 @@ static void DrawFillPoly(XTarget *t, XGCObj *gc, const X_POINT *pts, DWORD n)
     DeleteObject(b);
     HeapFree(GetProcessHeap(), 0, wp);
 }
+// X arc geometry -> the two radial endpoints GDI's Arc/Chord/Pie take. X angles
+// are 1/64 degree, counterclockwise from 3 o'clock; angle2 is the sweep.
+static void ArcEndpoints(const X_ARC *a, int ox, int oy, POINT *pStart, POINT *pEnd)
+{
+    int cx2 = 2 * ox + 2 * a->x + a->width;      // center * 2 (avoid truncation)
+    int cy2 = 2 * oy + 2 * a->y + a->height;
+    int deg1 = a->angle1 / 64;
+    int deg2 = (a->angle1 + a->angle2) / 64;
+    // GDI defines arcs counterclockwise in logical space with y DOWN, so the
+    // y term is subtracted to match X's counterclockwise-with-y-down.
+    pStart->x = (cx2 + (int)a->width  * CosDeg1024(deg1) / 1024) / 2;
+    pStart->y = (cy2 - (int)a->height * SinDeg1024(deg1) / 1024) / 2;
+    pEnd->x   = (cx2 + (int)a->width  * CosDeg1024(deg2) / 1024) / 2;
+    pEnd->y   = (cy2 - (int)a->height * SinDeg1024(deg2) / 1024) / 2;
+}
 static void DrawFillArcs(XTarget *t, XGCObj *gc, const X_ARC *arcs, DWORD n)
 {
     HBRUSH b, ob;
     HPEN op;
     HRGN rgn;
     DWORD i;
-    b = CreateSolidBrush(PixelToColor(gc ? gc->fg : 0));
+    BOOL pie = !gc || gc->arcMode == 1;          // PieSlice is the X default
+    b = GCBrush(gc);
     rgn = BeginTarget(t);
+    ApplyGC(t, gc);
     ob = (HBRUSH)SelectObject(t->dc, b);
     op = (HPEN)SelectObject(t->dc, GetStockObject(NULL_PEN));
-    for (i = 0; i < n; i++)
-        Ellipse(t->dc, t->ox + arcs[i].x, t->oy + arcs[i].y,
-                t->ox + arcs[i].x + arcs[i].width + 1, t->oy + arcs[i].y + arcs[i].height + 1);
+    for (i = 0; i < n; i++) {
+        int l = t->ox + arcs[i].x, tp = t->oy + arcs[i].y;
+        int r = l + arcs[i].width + 1, bo = tp + arcs[i].height + 1;
+        if ((int)arcs[i].angle2 >= 360 * 64 || (int)arcs[i].angle2 <= -360 * 64)
+            Ellipse(t->dc, l, tp, r, bo);
+        else {
+            POINT s, e;
+            ArcEndpoints(&arcs[i], t->ox, t->oy, &s, &e);
+            if ((int)arcs[i].angle2 < 0) { POINT tmp = s; s = e; e = tmp; }
+            if (pie) Pie(t->dc, l, tp, r, bo, s.x, s.y, e.x, e.y);
+            else     Chord(t->dc, l, tp, r, bo, s.x, s.y, e.x, e.y);
+        }
+    }
     SelectObject(t->dc, op); SelectObject(t->dc, ob);
     EndTarget(t, rgn);
     DeleteObject(b);
+}
+static void DrawArcs(XTarget *t, XGCObj *gc, const X_ARC *arcs, DWORD n)
+{
+    HPEN pen = GCPen(gc);
+    HRGN rgn = BeginTarget(t);
+    HPEN op;
+    DWORD i;
+    ApplyGC(t, gc);
+    op = (HPEN)SelectObject(t->dc, pen);
+    for (i = 0; i < n; i++) {
+        int l = t->ox + arcs[i].x, tp = t->oy + arcs[i].y;
+        int r = l + arcs[i].width + 1, bo = tp + arcs[i].height + 1;
+        if ((int)arcs[i].angle2 >= 360 * 64 || (int)arcs[i].angle2 <= -360 * 64) {
+            HBRUSH ob = (HBRUSH)SelectObject(t->dc, GetStockObject(NULL_BRUSH));
+            Ellipse(t->dc, l, tp, r, bo);
+            SelectObject(t->dc, ob);
+        } else {
+            POINT s, e;
+            ArcEndpoints(&arcs[i], t->ox, t->oy, &s, &e);
+            if ((int)arcs[i].angle2 < 0) { POINT tmp = s; s = e; e = tmp; }
+            Arc(t->dc, l, tp, r, bo, s.x, s.y, e.x, e.y);
+        }
+    }
+    SelectObject(t->dc, op);
+    EndTarget(t, rgn);
+    DeleteObject(pen);
 }
 // Draw text. opaque=TRUE for ImageText8 (fills the bg box), FALSE for PolyText8 (glyphs
 // only). GXxor is rendered via a glyph mask XORed onto the destination (SRCINVERT).
@@ -968,6 +1350,8 @@ static void DrawTextGeneric(XTarget *t, XGCObj *gc, SHORT x, SHORT y, const char
     if (gc && gc->function == GXxor) {
         SIZE sz;
         rgn = BeginTarget(t);
+        ApplyGC(t, gc);
+        SetROP2(t->dc, R2_COPYPEN);                        // blit path does its own rop
         if (GetTextExtentPoint32A(t->dc, s, len, &sz) && sz.cx > 0 && sz.cy > 0) {
             HDC mem = CreateCompatibleDC(t->dc);
             HBITMAP bmp = CreateCompatibleBitmap(t->dc, sz.cx, sz.cy);
@@ -985,6 +1369,8 @@ static void DrawTextGeneric(XTarget *t, XGCObj *gc, SHORT x, SHORT y, const char
         EndTarget(t, rgn);
     } else {
         rgn = BeginTarget(t);
+        ApplyGC(t, gc);
+        SetROP2(t->dc, R2_COPYPEN);                        // glyphs always copy
         SetTextColor(t->dc, PixelToColor(gc ? gc->fg : 0));
         SetBkColor(t->dc, PixelToColor(gc ? gc->bg : WHITE_PIXEL));
         SetBkMode(t->dc, opaque ? OPAQUE : TRANSPARENT);
@@ -996,47 +1382,86 @@ static void DrawText8(XTarget *t, XGCObj *gc, SHORT x, SHORT y, const char *s, i
 {
     DrawTextGeneric(t, gc, x, y, s, len, TRUE);       // ImageText8: opaque
 }
-// PutImage (ZPixmap, depth 24/32): blit the client's 32bpp rows into the drawable.
-static void DrawPutImage(XTarget *t, SHORT dstX, SHORT dstY, WORD w, WORD h,
-                         BYTE depth, const BYTE *data, DWORD dataLen)
+// Depth-1 image rows (XYBitmap / depth-1 ZPixmap): X sends LSB-first bits in
+// rows padded to the advertised 32-bit scanline pad; GDI mono bitmaps want
+// MSB-first bits in WORD-aligned rows. Returns a mono HBITMAP (caller frees).
+static HBITMAP MonoBitmapFromXRows(WORD w, WORD h, BYTE leftPad,
+                                   const BYTE *data, DWORD dataLen)
 {
-    BITMAPINFO bmi;
-    HRGN rgn;
-    if ((depth != 24 && depth != 32) || w == 0 || h == 0) return;
-    if ((DWORD)w * h * 4 > dataLen) return;
-    RtlZeroMemory(&bmi, sizeof(bmi));
-    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth = w; bmi.bmiHeader.biHeight = -(LONG)h;
-    bmi.bmiHeader.biPlanes = 1; bmi.bmiHeader.biBitCount = 32; bmi.bmiHeader.biCompression = BI_RGB;
-    rgn = BeginTarget(t);
-    SetDIBitsToDevice(t->dc, t->ox + dstX, t->oy + dstY, w, h, 0, 0, 0, h, data, &bmi, DIB_RGB_COLORS);
-    EndTarget(t, rgn);
+    DWORD srcStride = (((DWORD)w + leftPad + 31) >> 5) << 2;
+    DWORD dstStride = ((((DWORD)w + 15) >> 4) << 1);
+    BYTE *buf;
+    HBITMAP bmp;
+    DWORD y, x;
+    if (w == 0 || h == 0 || srcStride * h > dataLen) return NULL;
+    buf = (BYTE *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dstStride * h);
+    if (!buf) return NULL;
+    for (y = 0; y < h; y++) {
+        const BYTE *src = data + y * srcStride;
+        BYTE *dst = buf + y * dstStride;
+        for (x = 0; x < w; x++) {
+            DWORD sx = x + leftPad;
+            if ((src[sx >> 3] >> (sx & 7)) & 1)      // LSB-first in
+                dst[x >> 3] |= (BYTE)(0x80 >> (x & 7));  // MSB-first out
+        }
+    }
+    bmp = CreateBitmap(w, h, 1, 1, buf);
+    HeapFree(GetProcessHeap(), 0, buf);
+    return bmp;
 }
-
-static void DoClearArea(XWin *w, SHORT x, SHORT y, WORD width, WORD height)
+// Blit a mono bitmap onto a target with X fg/bg semantics. GDI's mono->color
+// blit maps 1-bits to the destination DC's BACKGROUND color and 0-bits to its
+// TEXT color -- the inverse of X's 1-bit->foreground -- hence the swap.
+static void BlitMono(XTarget *t, XGCObj *gc, HDC monoDc, int sx, int sy,
+                     int w, int h, int dx, int dy, DWORD rop3)
 {
-    XTarget t;
-    HRGN rgn;
-    HBRUSH b;
-    RECT r;
-    if (width == 0) width = (WORD)w->w;
-    if (height == 0) height = (WORD)w->h;
-    // Resolve through the window's visible region so the fill is clipped to the window's
-    // OWN area, NOT its child windows -- e.g. a WM's XClearWindow on a frame must not
-    // paint over the reparented client sitting inside it.
-    ResolveDrawable(w->id, &t);
-    if (!t.valid) { if (t.clip) DeleteObject(t.clip); return; }
-    b = CreateSolidBrush(PixelToColor(w->hasBg ? w->bgPixel : WHITE_PIXEL));
-    r.left = t.ox + x; r.top = t.oy + y; r.right = r.left + width; r.bottom = r.top + height;
-    rgn = BeginTarget(&t);
-    FillRect(t.dc, &r, b);
-    EndTarget(&t, rgn);
-    DeleteObject(b);
+    COLORREF otc = SetTextColor(t->dc, PixelToColor(gc ? gc->bg : WHITE_PIXEL));
+    COLORREF obc = SetBkColor(t->dc, PixelToColor(gc ? gc->fg : 0));
+    BitBlt(t->dc, t->ox + dx, t->oy + dy, w, h, monoDc, sx, sy, rop3);
+    SetTextColor(t->dc, otc);
+    SetBkColor(t->dc, obc);
 }
-static void DoCopyArea(XID srcId, XID dstId, XGCObj *gc, int sx, int sy, int w, int h, int dx, int dy)
+// PutImage. ZPixmap depth 24/32 -> direct 32bpp rows; XYBitmap or depth-1 ->
+// mono conversion, drawn fg/bg onto color targets or copied raw into mono
+// pixmaps (XCreateBitmapFromData = CreatePixmap(depth 1) + XYBitmap PutImage:
+// this is how Motif's bevel stipples and mwm's icon bitmaps arrive).
+static void DrawPutImage(XTarget *t, XGCObj *gc, BYTE format, SHORT dstX, SHORT dstY,
+                         WORD w, WORD h, BYTE leftPad, BYTE depth,
+                         const BYTE *data, DWORD dataLen)
+{
+    HRGN rgn;
+    if (w == 0 || h == 0) return;
+    if (format == 0 || depth == 1) {                 // XYBitmap / mono ZPixmap
+        HBITMAP bmp = MonoBitmapFromXRows(w, h, leftPad, data, dataLen);
+        HDC mem;
+        if (!bmp) return;
+        mem = CreateCompatibleDC(t->dc);
+        SelectObject(mem, bmp);
+        rgn = BeginTarget(t);
+        BlitMono(t, gc, mem, 0, 0, w, h, dstX, dstY, SRCCOPY);
+        EndTarget(t, rgn);
+        DeleteDC(mem);
+        DeleteObject(bmp);
+    } else if (depth == 24 || depth == 32) {         // ZPixmap 32bpp rows
+        BITMAPINFO bmi;
+        if ((DWORD)w * h * 4 > dataLen) return;
+        RtlZeroMemory(&bmi, sizeof(bmi));
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = w; bmi.bmiHeader.biHeight = -(LONG)h;
+        bmi.bmiHeader.biPlanes = 1; bmi.bmiHeader.biBitCount = 32; bmi.bmiHeader.biCompression = BI_RGB;
+        rgn = BeginTarget(t);
+        SetDIBitsToDevice(t->dc, t->ox + dstX, t->oy + dstY, w, h, 0, 0, 0, h, data, &bmi, DIB_RGB_COLORS);
+        EndTarget(t, rgn);
+    }
+}
+// CopyPlane: mono source (the real-world case: icon/stipple bitmaps) blits
+// through fg/bg; a color source degrades to a brightness threshold via GDI's
+// color->mono conversion rather than an exact bit-plane extract.
+static void DoCopyPlane(XID srcId, XID dstId, XGCObj *gc,
+                        int sx, int sy, int w, int h, int dx, int dy)
 {
     XTarget src, dst;
-    (void)gc;
+    XPixmap *sp = FindPixmap(srcId);
     ResolveDrawable(srcId, &src);
     ResolveDrawable(dstId, &dst);
     if (!src.valid || !dst.valid) {
@@ -1045,7 +1470,64 @@ static void DoCopyArea(XID srcId, XID dstId, XGCObj *gc, int sx, int sy, int w, 
         return;
     }
     SelectClipRgn(dst.dc, dst.clip);
-    BitBlt(dst.dc, dst.ox + dx, dst.oy + dy, w, h, src.dc, src.ox + sx, src.oy + sy, SRCCOPY);
+    if (sp && sp->depth == 1) {
+        BlitMono(&dst, gc, src.dc, src.ox + sx, src.oy + sy, w, h, dx, dy,
+                 GXToSrcRop3(gc ? gc->function : GXcopy));
+    } else {
+        HDC mono = CreateCompatibleDC(dst.dc);
+        HBITMAP mb = CreateBitmap(w, h, 1, 1, NULL);
+        if (mono && mb) {
+            SelectObject(mono, mb);
+            BitBlt(mono, 0, 0, w, h, src.dc, src.ox + sx, src.oy + sy, SRCCOPY);
+            BlitMono(&dst, gc, mono, 0, 0, w, h, dx, dy,
+                     GXToSrcRop3(gc ? gc->function : GXcopy));
+        }
+        if (mono) DeleteDC(mono);
+        if (mb) DeleteObject(mb);
+    }
+    SelectClipRgn(dst.dc, NULL);
+    DeleteObject(src.clip);
+    DeleteObject(dst.clip);
+    InterlockedExchange(&g_Dirty, 1);
+}
+
+static void DoClearArea(XWin *w, SHORT x, SHORT y, WORD width, WORD height)
+{
+    XTarget t;
+    HRGN rgn;
+    RECT r;
+    if (width == 0) width = (WORD)w->w;
+    if (height == 0) height = (WORD)w->h;
+    // Resolve through the window's visible region so the fill is clipped to the window's
+    // OWN area, NOT its child windows -- e.g. a WM's XClearWindow on a frame must not
+    // paint over the reparented client sitting inside it.
+    ResolveDrawable(w->id, &t);
+    if (!t.valid) { if (t.clip) DeleteObject(t.clip); return; }
+    r.left = t.ox + x; r.top = t.oy + y; r.right = r.left + width; r.bottom = r.top + height;
+    rgn = BeginTarget(&t);
+    FillBgRect(w, &r);          // effective background: pixel, pixmap, or inherited
+    EndTarget(&t, rgn);
+}
+static void DoCopyArea(XID srcId, XID dstId, XGCObj *gc, int sx, int sy, int w, int h, int dx, int dy)
+{
+    XTarget src, dst;
+    XPixmap *sp = FindPixmap(srcId);
+    ResolveDrawable(srcId, &src);
+    ResolveDrawable(dstId, &dst);
+    if (!src.valid || !dst.valid) {
+        if (src.clip) DeleteObject(src.clip);
+        if (dst.clip) DeleteObject(dst.clip);
+        return;
+    }
+    SelectClipRgn(dst.dc, dst.clip);
+    if (sp && sp->depth == 1)
+        // Depth-mismatched CopyArea is an X error, but clients that try it
+        // invariably mean "draw the bitmap" -- give them fg/bg like CopyPlane.
+        BlitMono(&dst, gc, src.dc, src.ox + sx, src.oy + sy, w, h, dx, dy,
+                 GXToSrcRop3(gc ? gc->function : GXcopy));
+    else
+        BitBlt(dst.dc, dst.ox + dx, dst.oy + dy, w, h, src.dc, src.ox + sx, src.oy + sy,
+               GXToSrcRop3(gc ? gc->function : GXcopy));
     SelectClipRgn(dst.dc, NULL);
     DeleteObject(src.clip);
     DeleteObject(dst.clip);
@@ -1243,6 +1725,11 @@ static BOOL SendSetupReply(XClient *c)
 static void AddSelector(XWin *w, XClient *c, DWORD mask)
 {
     int i;
+    // Log EVERY root event-mask selection: X semantics REPLACE the per-client
+    // mask, so a WM's SubstructureRedirect can be silently clobbered by a later
+    // redirect-less XSelectInput on root from the same connection.
+    if (w == g_Root)
+        WMLOG("c%lu selroot %lx", c->id, mask);
     for (i = 0; i < w->numSel; i++)
         if (w->sel[i].client == c) { w->sel[i].mask = mask; return; }
     if (w->numSel < MAX_SELECT) {
@@ -1250,6 +1737,85 @@ static void AddSelector(XWin *w, XClient *c, DWORD mask)
         w->sel[w->numSel].mask = mask;
         w->numSel++;
     }
+}
+
+/* ---- window property store ---- */
+static XProp *FindProp(XWin *w, XID atom)
+{
+    XProp *p;
+    for (p = w->props; p; p = p->next)
+        if (p->atom == atom) return p;
+    return NULL;
+}
+#define PROP_MAX_BYTES 0x40000      // 256 KB per property: plenty for xrdb blobs
+// mode: 0 Replace, 1 Prepend, 2 Append. Returns FALSE on bad args/alloc.
+static BOOL StoreProp(XWin *w, XID atom, XID type, BYTE format, BYTE mode,
+                      const BYTE *data, DWORD len)
+{
+    XProp *p = FindProp(w, atom);
+    if (format != 8 && format != 16 && format != 32) return FALSE;
+    if (mode != 0 && p && (p->type != type || p->format != format))
+        return FALSE;               // prepend/append must match type+format
+    if (!p) {
+        p = (XProp *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(XProp));
+        if (!p) return FALSE;
+        p->atom = atom;
+        p->next = w->props; w->props = p;
+        mode = 0;
+    }
+    if (mode == 0) {
+        BYTE *nd = NULL;
+        if (len > PROP_MAX_BYTES) len = PROP_MAX_BYTES;
+        if (len) {
+            nd = (BYTE *)HeapAlloc(GetProcessHeap(), 0, len);
+            if (!nd) return FALSE;
+            RtlCopyMemory(nd, data, len);
+        }
+        if (p->data) HeapFree(GetProcessHeap(), 0, p->data);
+        p->data = nd; p->len = len; p->type = type; p->format = format;
+    } else {
+        DWORD total = p->len + len;
+        BYTE *nd;
+        if (total > PROP_MAX_BYTES || total < p->len) return FALSE;
+        nd = (BYTE *)HeapAlloc(GetProcessHeap(), 0, total ? total : 1);
+        if (!nd) return FALSE;
+        if (mode == 1) {            // prepend
+            RtlCopyMemory(nd, data, len);
+            RtlCopyMemory(nd + len, p->data, p->len);
+        } else {                    // append
+            RtlCopyMemory(nd, p->data, p->len);
+            RtlCopyMemory(nd + p->len, data, len);
+        }
+        if (p->data) HeapFree(GetProcessHeap(), 0, p->data);
+        p->data = nd; p->len = total;
+    }
+    return TRUE;
+}
+static void DeleteProp(XWin *w, XID atom)
+{
+    XProp **pp;
+    for (pp = &w->props; *pp; pp = &(*pp)->next)
+        if ((*pp)->atom == atom) {
+            XProp *p = *pp; *pp = p->next;
+            if (p->data) HeapFree(GetProcessHeap(), 0, p->data);
+            HeapFree(GetProcessHeap(), 0, p);
+            return;
+        }
+}
+static void FreeAllProps(XWin *w)
+{
+    while (w->props) DeleteProp(w, w->props->atom);
+}
+static void SendPropertyNotify(XWin *w, XID atom, BYTE state)   // 0 NewValue, 1 Deleted
+{
+    BYTE ev[32];
+    RtlZeroMemory(ev, sizeof(ev));
+    ev[0] = PropertyNotify;
+    *(DWORD *)(ev + 4) = (DWORD)w->id;
+    *(DWORD *)(ev + 8) = (DWORD)atom;
+    *(DWORD *)(ev + 12) = g_ServerTime++;        // time (must be non-zero)
+    ev[16] = state;
+    DeliverEvent(w, PropertyChangeMask, ev);
 }
 
 // Extract value from a CW/GC value-list given the mask bit.
@@ -1261,6 +1827,42 @@ static DWORD ValueFor(DWORD mask, DWORD bit, const DWORD *values, DWORD count)
     return (idx < count) ? values[idx] : 0;
 }
 
+// Parse a CreateGC/ChangeGC value list into the GC -- all 23 components.
+static void ParseGCValues(XGCObj *g, DWORD mask, const DWORD *vals, DWORD vcount)
+{
+    if (mask & GCFunction)     g->function  = ValueFor(mask, GCFunction, vals, vcount);
+    if (mask & GCPlaneMask)    g->planeMask = ValueFor(mask, GCPlaneMask, vals, vcount);
+    if (mask & GCForeground)   g->fg        = ValueFor(mask, GCForeground, vals, vcount);
+    if (mask & GCBackground)   g->bg        = ValueFor(mask, GCBackground, vals, vcount);
+    if (mask & GCLineWidth)    g->lineWidth = ValueFor(mask, GCLineWidth, vals, vcount);
+    if (mask & GCLineStyle)    g->lineStyle = ValueFor(mask, GCLineStyle, vals, vcount);
+    if (mask & GCCapStyle)     g->capStyle  = ValueFor(mask, GCCapStyle, vals, vcount);
+    if (mask & GCJoinStyle)    g->joinStyle = ValueFor(mask, GCJoinStyle, vals, vcount);
+    if (mask & GCFillStyle)    g->fillStyle = ValueFor(mask, GCFillStyle, vals, vcount);
+    if (mask & GCFillRule)     g->fillRule  = ValueFor(mask, GCFillRule, vals, vcount);
+    if (mask & GCTile)         g->tile      = ValueFor(mask, GCTile, vals, vcount);
+    if (mask & GCStipple)      g->stipple   = ValueFor(mask, GCStipple, vals, vcount);
+    if (mask & GCTileStipXOrigin) g->tsX = (SHORT)ValueFor(mask, GCTileStipXOrigin, vals, vcount);
+    if (mask & GCTileStipYOrigin) g->tsY = (SHORT)ValueFor(mask, GCTileStipYOrigin, vals, vcount);
+    if (mask & GCFont)         g->font      = ValueFor(mask, GCFont, vals, vcount);
+    if (mask & GCSubwindowMode) g->subwindowMode = ValueFor(mask, GCSubwindowMode, vals, vcount);
+    if (mask & GCGraphicsExposures) g->graphicsExposures = ValueFor(mask, GCGraphicsExposures, vals, vcount);
+    if (mask & GCClipXOrigin)  g->clipX = (SHORT)ValueFor(mask, GCClipXOrigin, vals, vcount);
+    if (mask & GCClipYOrigin)  g->clipY = (SHORT)ValueFor(mask, GCClipYOrigin, vals, vcount);
+    if (mask & GCClipMask) {
+        g->clipMask = ValueFor(mask, GCClipMask, vals, vcount);
+        // Setting a clip-mask (even None) replaces any SetClipRectangles list.
+        if (g->clipRects) { HeapFree(GetProcessHeap(), 0, g->clipRects); g->clipRects = NULL; }
+        g->numClipRects = 0;
+    }
+    if (mask & GCDashOffset)   g->dashOffset = ValueFor(mask, GCDashOffset, vals, vcount);
+    if (mask & GCDashList) {
+        g->dashes[0] = (BYTE)ValueFor(mask, GCDashList, vals, vcount);
+        g->numDashes = 1;
+    }
+    if (mask & GCArcMode)      g->arcMode   = ValueFor(mask, GCArcMode, vals, vcount);
+}
+
 static void DoMapWindow(XClient *c, XWin *w)
 {
     XClient *wm;
@@ -1269,6 +1871,7 @@ static void DoMapWindow(XClient *c, XWin *w)
     if (wm && !w->overrideRedirect) {
         // Redirect: tell the WM (MapRequest) instead of mapping.
         BYTE ev[32];
+        WMLOG("mapreq %lx>c%lu", w->id, wm->id);
         RtlZeroMemory(ev, sizeof(ev));
         ev[0] = MapRequest;
         ev[2] = (BYTE)(wm->sequence & 0xFF);
@@ -1278,6 +1881,9 @@ static void DoMapWindow(XClient *c, XWin *w)
         SendTo(wm, ev, 32);
         return;
     }
+    // Only un-redirected top-levels are log-worthy (or=1 maps are normal).
+    if (w->parent == g_Root && !w->overrideRedirect && w != g_Root)
+        WMLOG("map %lx DIR", w->id);
     w->mapped = TRUE;
     SendMapNotify(w);
     RepaintScreen();
@@ -1426,7 +2032,8 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
             w = NewWin(wid, parent, x, y, ww, hh);
             if (w) {
                 w->owner = c; w->borderWidth = bw;
-                if (mask & CWBackPixel) { w->bgPixel = ValueFor(mask, CWBackPixel, vals, vcount); w->hasBg = TRUE; }
+                if (mask & CWBackPixmap) { w->bgPixmap = ValueFor(mask, CWBackPixmap, vals, vcount); w->hasBg = FALSE; }
+                if (mask & CWBackPixel) { w->bgPixel = ValueFor(mask, CWBackPixel, vals, vcount); w->hasBg = TRUE; w->bgPixmap = 0; }
                 if (mask & CWBorderPixel) w->borderPixel = ValueFor(mask, CWBorderPixel, vals, vcount);
                 if (mask & CWOverrideRedirect) w->overrideRedirect = ValueFor(mask, CWOverrideRedirect, vals, vcount) != 0;
                 if (mask & CWEventMask) AddSelector(w, c, ValueFor(mask, CWEventMask, vals, vcount));
@@ -1442,8 +2049,10 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
             const DWORD *vals = (const DWORD *)(body + 8);
             DWORD vcount = (bodyLen - 8) / 4;
             if (w) {
-                if (mask & CWBackPixel) { w->bgPixel = ValueFor(mask, CWBackPixel, vals, vcount); w->hasBg = TRUE; }
+                if (mask & CWBackPixmap) { w->bgPixmap = ValueFor(mask, CWBackPixmap, vals, vcount); w->hasBg = FALSE; }
+                if (mask & CWBackPixel) { w->bgPixel = ValueFor(mask, CWBackPixel, vals, vcount); w->hasBg = TRUE; w->bgPixmap = 0; }
                 if (mask & CWBorderPixel) w->borderPixel = ValueFor(mask, CWBorderPixel, vals, vcount);
+                if (mask & CWOverrideRedirect) w->overrideRedirect = ValueFor(mask, CWOverrideRedirect, vals, vcount) != 0;
                 if (mask & CWEventMask) AddSelector(w, c, ValueFor(mask, CWEventMask, vals, vcount));
             }
         }
@@ -1472,6 +2081,7 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
             TreeUnlink(w);
             for (pp = &g_AllWins; *pp; pp = &(*pp)->hnext)
                 if (*pp == w) { *pp = w->hnext; break; }
+            FreeAllProps(w);
             HeapFree(GetProcessHeap(), 0, w);
             RepaintScreen();
         }
@@ -1484,6 +2094,7 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
             SHORT x = *(const SHORT *)(body + 8), y = *(const SHORT *)(body + 10);
             if (w && np && w != g_Root) {
                 BOOL wasMapped = w->mapped;
+                WMLOG("repar %lx>%lx", w->id, np->id);
                 if (wasMapped) { w->mapped = FALSE; }
                 TreeUnlink(w);
                 TreeLink(np, w);
@@ -1587,35 +2198,126 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
         break;
     }
     case X_InternAtom: {
+        // only-if-exists in h->data; nameLen WORD @0, name @4.
         BYTE rep[32];
+        XID atom = 0;
+        if (bodyLen >= 4) {
+            int nameLen = *(const WORD *)(body + 0);
+            if ((DWORD)(4 + nameLen) <= bodyLen)
+                atom = InternAtomByName((const char *)(body + 4), nameLen, h->data != 0);
+        }
         ReplyHead(rep, c, 0);
-        *(DWORD *)(rep + 8) = 1 + (bodyLen & 0xFFFF);               // stable non-zero atom
+        *(DWORD *)(rep + 8) = (DWORD)atom;                          // None when only-if-exists misses
         SendTo(c, rep, 32);
         break;
     }
+    case 17: /* GetAtomName: atom@0 -> name */ {
+        const char *name = (bodyLen >= 4) ? AtomName(*(const DWORD *)(body + 0)) : NULL;
+        int nameLen = 0;
+        BYTE rep[32 + ATOM_NAME_MAX + 4];
+        if (name) while (name[nameLen] != '\0') nameLen++;
+        RtlZeroMemory(rep, sizeof(rep));
+        ReplyHead(rep, c, ((DWORD)nameLen + 3) / 4);
+        *(WORD *)(rep + 8) = (WORD)nameLen;
+        if (name) RtlCopyMemory(rep + 32, name, nameLen);
+        SendTo(c, rep, 32 + (((DWORD)nameLen + 3) & ~3u));
+        break;
+    }
     case X_ChangeProperty: {
-        // window(4) property(4) type(4) format(1) ... We don't store properties, but we
-        // MUST emit PropertyNotify: WMs (9wm's timestamp()) do a zero-length append and
-        // block in XMaskEvent(PropertyChangeMask) to fetch the server time.
+        // mode(data): 0 replace / 1 prepend / 2 append.
+        // window@0 property@4 type@8 format@12(1) pad(3) length@16 (format units) data@20.
+        // Stored for real; PropertyNotify still fires (WMs like 9wm do a
+        // zero-length append purely to fetch the server timestamp).
+        if (bodyLen >= 20) {
+            XWin *w = FindWin(*(const DWORD *)(body + 0));
+            XID atom = *(const DWORD *)(body + 4);
+            if (w) {
+                BYTE format = body[12];
+                DWORD units = *(const DWORD *)(body + 16);
+                DWORD bytes = units * (format / 8);
+                if (20 + bytes <= bodyLen)
+                    StoreProp(w, atom, *(const DWORD *)(body + 8), format,
+                              h->data, body + 20, bytes);
+                SendPropertyNotify(w, atom, 0);
+            }
+        }
+        break;
+    }
+    case 19: { /* DeleteProperty: window@0, property@4 */
         if (bodyLen >= 8) {
             XWin *w = FindWin(*(const DWORD *)(body + 0));
-            if (w) {
-                BYTE ev[32];
-                RtlZeroMemory(ev, sizeof(ev));
-                ev[0] = PropertyNotify;
-                *(DWORD *)(ev + 4) = (DWORD)w->id;                  // window
-                *(DWORD *)(ev + 8) = *(const DWORD *)(body + 4);    // atom (property)
-                *(DWORD *)(ev + 12) = g_ServerTime++;               // time (must be non-zero)
-                ev[16] = 0;                                         // state: NewValue
-                DeliverEvent(w, PropertyChangeMask, ev);
+            XID atom = *(const DWORD *)(body + 4);
+            if (w && FindProp(w, atom)) {
+                DeleteProp(w, atom);
+                SendPropertyNotify(w, atom, 1);
             }
         }
         break;
     }
     case X_GetProperty: {
+        // delete(data); window@0 property@4 req-type@8 (0 = AnyPropertyType),
+        // long-offset@12, long-length@16 (both in 32-bit units).
+        XWin *w = (bodyLen >= 20) ? FindWin(*(const DWORD *)(body + 0)) : NULL;
+        XProp *p = w ? FindProp(w, *(const DWORD *)(body + 4)) : NULL;
+        XID reqType = (bodyLen >= 20) ? *(const DWORD *)(body + 8) : 0;
         BYTE rep[32];
-        ReplyHead(rep, c, 0);
-        SendTo(c, rep, 32);                                         // empty property
+        if (!p) {
+            ReplyHead(rep, c, 0);                       // nonexistent: type None
+            SendTo(c, rep, 32);
+        } else if (reqType != 0 && reqType != p->type) {
+            // Type mismatch: report actual type/format + full length, no data.
+            ReplyHead(rep, c, 0);
+            rep[1] = p->format;
+            *(DWORD *)(rep + 8) = (DWORD)p->type;
+            *(DWORD *)(rep + 12) = p->len;              // bytes-after
+            SendTo(c, rep, 32);
+        } else {
+            DWORD offset = *(const DWORD *)(body + 12) * 4;
+            DWORD maxOut = *(const DWORD *)(body + 16) * 4;
+            DWORD avail = (offset < p->len) ? p->len - offset : 0;
+            DWORD out = (avail < maxOut) ? avail : maxOut;
+            DWORD padded = (out + 3) & ~3u;
+            BYTE *full = (BYTE *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, 32 + padded);
+            if (full) {
+                RtlZeroMemory(full, 32);
+                full[0] = 1;
+                full[1] = p->format;
+                full[2] = (BYTE)(c->sequence & 0xFF);
+                full[3] = (BYTE)((c->sequence >> 8) & 0xFF);
+                *(DWORD *)(full + 4) = padded / 4;      // reply length
+                *(DWORD *)(full + 8) = (DWORD)p->type;
+                *(DWORD *)(full + 12) = avail - out;    // bytes-after
+                *(DWORD *)(full + 16) = out / (p->format / 8);  // length in format units
+                if (out) RtlCopyMemory(full + 32, p->data + offset, out);
+                SendTo(c, full, 32 + padded);
+                HeapFree(GetProcessHeap(), 0, full);
+                if (h->data && avail - out == 0) {      // delete once fully read
+                    XID atom = p->atom;
+                    DeleteProp(w, atom);
+                    SendPropertyNotify(w, atom, 1);
+                }
+            } else {
+                ReplyHead(rep, c, 0);
+                SendTo(c, rep, 32);
+            }
+        }
+        break;
+    }
+    case 21: { /* ListProperties: window@0 -> atom list */
+        XWin *w = (bodyLen >= 4) ? FindWin(*(const DWORD *)(body + 0)) : NULL;
+        XProp *p;
+        WORD n = 0;
+        BYTE rep[32 + 4 * 64];
+        RtlZeroMemory(rep, sizeof(rep));
+        if (w)
+            for (p = w->props; p && n < 64; p = p->next, n++)
+                *(DWORD *)(rep + 32 + 4 * n) = (DWORD)p->atom;
+        rep[0] = 1;
+        rep[2] = (BYTE)(c->sequence & 0xFF);
+        rep[3] = (BYTE)((c->sequence >> 8) & 0xFF);
+        *(DWORD *)(rep + 4) = n;                        // reply length (units)
+        *(WORD *)(rep + 8) = n;                         // #atoms
+        SendTo(c, rep, 32 + 4 * n);
         break;
     }
     case X_GetInputFocus: {
@@ -1775,12 +2477,29 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
         break;
     }
     case 24: { /* ConvertSelection: requestor@0, selection@4, target@8,
-                  property@12, time@16.  No owner exists, so per ICCCM the server
-                  sends the requestor a SelectionNotify with property=None.
-                  Without this, Motif's clipboard/DND init blocks forever waiting
-                  on XtGetSelectionValue -> widgets never realize (blank shell). */
+                  property@12, time@16.  With an OWNER on record, forward a
+                  SelectionRequest (event 30) to the owner's client (ICCCM
+                  transfer).  With NO owner, the server must send the requestor a
+                  SelectionNotify with property=None -- Motif's clipboard/DND and
+                  color-object init block forever in XtGetSelectionValue without
+                  it (blank shells / bogus color-server detection). */
+        XID owner = (bodyLen >= 20) ? GetSelectionOwnerAtom(*(const DWORD *)(body + 4)) : 0;
+        XWin *ow = owner ? FindWin(owner) : NULL;
         BYTE ev[32];
         RtlZeroMemory(ev, sizeof(ev));
+        if (ow && ow->owner) {
+            ev[0] = 30;                            /* SelectionRequest -> owner */
+            ev[2] = (BYTE)(ow->owner->sequence & 0xFF);
+            ev[3] = (BYTE)((ow->owner->sequence >> 8) & 0xFF);
+            *(DWORD *)(ev + 4)  = g_ServerTime++;               /* time */
+            *(DWORD *)(ev + 8)  = (DWORD)owner;                 /* owner window */
+            *(DWORD *)(ev + 12) = *(const DWORD *)(body + 0);   /* requestor */
+            *(DWORD *)(ev + 16) = *(const DWORD *)(body + 4);   /* selection */
+            *(DWORD *)(ev + 20) = *(const DWORD *)(body + 8);   /* target */
+            *(DWORD *)(ev + 24) = *(const DWORD *)(body + 12);  /* property */
+            SendTo(ow->owner, ev, 32);
+            break;
+        }
         ev[0] = 31;                                /* SelectionNotify */
         ev[2] = (BYTE)(c->sequence & 0xFF);
         ev[3] = (BYTE)((c->sequence >> 8) & 0xFF);
@@ -1906,29 +2625,29 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
             XGCObj *g = FindGC(gid);
             if (!g) {
                 g = (XGCObj *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(XGCObj));
-                if (g) { g->id = gid; g->bg = WHITE_PIXEL; g->function = GXcopy; g->next = g_GCs; g_GCs = g; }
+                if (g) {
+                    // X defaults (bg kept WHITE rather than the spec's pixel 1:
+                    // sloppy clients that never set bg read better on white).
+                    g->id = gid;
+                    g->function = GXcopy;
+                    g->planeMask = 0xFFFFFFFF;
+                    g->bg = WHITE_PIXEL;
+                    g->capStyle = 1;             // Butt
+                    g->graphicsExposures = 1;
+                    g->arcMode = 1;              // PieSlice
+                    g->dashes[0] = 4; g->dashes[1] = 4; g->numDashes = 2;
+                    g->next = g_GCs; g_GCs = g;
+                }
             }
-            if (g) {
-                if (mask & GCFunction) g->function = ValueFor(mask, GCFunction, vals, vcount);
-                if (mask & GCForeground) g->fg = ValueFor(mask, GCForeground, vals, vcount);
-                if (mask & GCBackground) g->bg = ValueFor(mask, GCBackground, vals, vcount);
-                if (mask & GCLineWidth) g->lineWidth = ValueFor(mask, GCLineWidth, vals, vcount);
-            }
+            if (g) ParseGCValues(g, mask, vals, vcount);
         }
         break;
     }
     case X_ChangeGC: {
         if (bodyLen >= 8) {
             XGCObj *g = FindGC(*(const DWORD *)(body + 0));
-            DWORD mask = *(const DWORD *)(body + 4);
-            const DWORD *vals = (const DWORD *)(body + 8);
-            DWORD vcount = (bodyLen - 8) / 4;
-            if (g) {
-                if (mask & GCFunction) g->function = ValueFor(mask, GCFunction, vals, vcount);
-                if (mask & GCForeground) g->fg = ValueFor(mask, GCForeground, vals, vcount);
-                if (mask & GCBackground) g->bg = ValueFor(mask, GCBackground, vals, vcount);
-                if (mask & GCLineWidth) g->lineWidth = ValueFor(mask, GCLineWidth, vals, vcount);
-            }
+            if (g) ParseGCValues(g, *(const DWORD *)(body + 4),
+                                 (const DWORD *)(body + 8), (bodyLen - 8) / 4);
         }
         break;
     }
@@ -1938,10 +2657,96 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
             XGCObj *d = FindGC(*(const DWORD *)(body + 4));
             DWORD mask = *(const DWORD *)(body + 8);
             if (s && d) {
-                if (mask & GCFunction) d->function = s->function;
-                if (mask & GCForeground) d->fg = s->fg;
-                if (mask & GCBackground) d->bg = s->bg;
-                if (mask & GCLineWidth) d->lineWidth = s->lineWidth;
+                if (mask & GCFunction)     d->function  = s->function;
+                if (mask & GCPlaneMask)    d->planeMask = s->planeMask;
+                if (mask & GCForeground)   d->fg        = s->fg;
+                if (mask & GCBackground)   d->bg        = s->bg;
+                if (mask & GCLineWidth)    d->lineWidth = s->lineWidth;
+                if (mask & GCLineStyle)    d->lineStyle = s->lineStyle;
+                if (mask & GCCapStyle)     d->capStyle  = s->capStyle;
+                if (mask & GCJoinStyle)    d->joinStyle = s->joinStyle;
+                if (mask & GCFillStyle)    d->fillStyle = s->fillStyle;
+                if (mask & GCFillRule)     d->fillRule  = s->fillRule;
+                if (mask & GCTile)         d->tile      = s->tile;
+                if (mask & GCStipple)      d->stipple   = s->stipple;
+                if (mask & GCTileStipXOrigin) d->tsX    = s->tsX;
+                if (mask & GCTileStipYOrigin) d->tsY    = s->tsY;
+                if (mask & GCFont)         d->font      = s->font;
+                if (mask & GCSubwindowMode) d->subwindowMode = s->subwindowMode;
+                if (mask & GCGraphicsExposures) d->graphicsExposures = s->graphicsExposures;
+                if (mask & GCClipXOrigin)  d->clipX     = s->clipX;
+                if (mask & GCClipYOrigin)  d->clipY     = s->clipY;
+                if (mask & GCClipMask) {
+                    d->clipMask = s->clipMask;
+                    if (d->clipRects) { HeapFree(GetProcessHeap(), 0, d->clipRects); d->clipRects = NULL; }
+                    d->numClipRects = 0;
+                    if (s->clipRects && s->numClipRects > 0) {
+                        d->clipRects = (RECT *)HeapAlloc(GetProcessHeap(), 0,
+                                            s->numClipRects * sizeof(RECT));
+                        if (d->clipRects) {
+                            RtlCopyMemory(d->clipRects, s->clipRects, s->numClipRects * sizeof(RECT));
+                            d->numClipRects = s->numClipRects;
+                        }
+                    }
+                }
+                if (mask & GCDashOffset)   d->dashOffset = s->dashOffset;
+                if (mask & GCDashList) {
+                    RtlCopyMemory(d->dashes, s->dashes, sizeof(d->dashes));
+                    d->numDashes = s->numDashes;
+                }
+                if (mask & GCArcMode)      d->arcMode   = s->arcMode;
+            }
+        }
+        break;
+    }
+    case 58: { /* SetDashes: gc@0, dash-offset@4(2), n@6(2), dashes@8 */
+        if (bodyLen >= 8) {
+            XGCObj *g = FindGC(*(const DWORD *)(body + 0));
+            WORD n = *(const WORD *)(body + 6);
+            if (g && (DWORD)(8 + n) <= bodyLen) {
+                DWORD i, count = n < GC_MAX_DASHES ? n : GC_MAX_DASHES;
+                g->dashOffset = *(const WORD *)(body + 4);
+                for (i = 0; i < count; i++) g->dashes[i] = body[8 + i];
+                g->numDashes = count;
+                if (count) g->lineStyle = 1;     // dashes imply OnOffDash rendering
+            }
+        }
+        break;
+    }
+    case 59: { /* SetClipRectangles: ordering(data), gc@0, clipX@4(2), clipY@6(2), rects@8 */
+        if (bodyLen >= 8) {
+            XGCObj *g = FindGC(*(const DWORD *)(body + 0));
+            DWORD n = (bodyLen - 8) / 8;
+            if (g) {
+                DWORD i;
+                g->clipX = *(const SHORT *)(body + 4);
+                g->clipY = *(const SHORT *)(body + 6);
+                g->clipMask = 0;
+                if (g->clipRects) { HeapFree(GetProcessHeap(), 0, g->clipRects); g->clipRects = NULL; }
+                g->numClipRects = 0;
+                if (n > 0) {
+                    g->clipRects = (RECT *)HeapAlloc(GetProcessHeap(), 0, n * sizeof(RECT));
+                    if (g->clipRects) {
+                        for (i = 0; i < n; i++) {
+                            const BYTE *rp = body + 8 + i * 8;
+                            g->clipRects[i].left   = *(const SHORT *)(rp + 0);
+                            g->clipRects[i].top    = *(const SHORT *)(rp + 2);
+                            g->clipRects[i].right  = g->clipRects[i].left + *(const WORD *)(rp + 4);
+                            g->clipRects[i].bottom = g->clipRects[i].top  + *(const WORD *)(rp + 6);
+                        }
+                        g->numClipRects = (int)n;
+                    }
+                }
+                // An EMPTY rect list means "clip everything out": model as one
+                // empty rect so ApplyGC intersects down to nothing.
+                if (n == 0) {
+                    g->clipRects = (RECT *)HeapAlloc(GetProcessHeap(), 0, sizeof(RECT));
+                    if (g->clipRects) {
+                        g->clipRects[0].left = g->clipRects[0].top = 0;
+                        g->clipRects[0].right = g->clipRects[0].bottom = 0;
+                        g->numClipRects = 1;
+                    }
+                }
             }
         }
         break;
@@ -1950,27 +2755,41 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
         XID gid = *(const DWORD *)body;
         XGCObj **pp;
         for (pp = &g_GCs; *pp; pp = &(*pp)->next)
-            if ((*pp)->id == gid) { XGCObj *g = *pp; *pp = g->next; HeapFree(GetProcessHeap(), 0, g); break; }
+            if ((*pp)->id == gid) {
+                XGCObj *g = *pp; *pp = g->next;
+                if (g->clipRects) HeapFree(GetProcessHeap(), 0, g->clipRects);
+                HeapFree(GetProcessHeap(), 0, g);
+                break;
+            }
         break;
     }
     case X_CreatePixmap: {
-        // depth(data) pid(4) drawable(4) w(2) h(2)
+        // depth(data) pid(4) drawable(4) w(2) h(2). Depth 1 = a real monochrome
+        // bitmap (XCreateBitmapFromData: Motif stipples, WM icon bitmaps) so
+        // pattern brushes and mono blits get GDI's text/bk color mapping.
         if (bodyLen >= 12) {
             XID pid = *(const DWORD *)(body + 0);
             WORD ww = *(const WORD *)(body + 8), hh = *(const WORD *)(body + 10);
+            BYTE depth = h->data;
             XPixmap *p = (XPixmap *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(XPixmap));
             if (p) {
-                BITMAPINFO bmi;
                 HDC dc = GetDC(g_Hwnd);
-                RtlZeroMemory(&bmi, sizeof(bmi));
-                bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-                bmi.bmiHeader.biWidth = ww ? ww : 1;
-                bmi.bmiHeader.biHeight = -(LONG)(hh ? hh : 1);
-                bmi.bmiHeader.biPlanes = 1; bmi.bmiHeader.biBitCount = 32;
-                bmi.bmiHeader.biCompression = BI_RGB;
                 p->id = pid; p->w = ww; p->h = hh;
+                p->depth = (depth == 1) ? 1 : 32;
                 p->dc = CreateCompatibleDC(dc);
-                p->bmp = CreateDIBSection(dc, &bmi, DIB_RGB_COLORS, &p->bits, NULL, 0);
+                if (p->depth == 1) {
+                    p->bmp = CreateBitmap(ww ? ww : 1, hh ? hh : 1, 1, 1, NULL);
+                    p->bits = NULL;
+                } else {
+                    BITMAPINFO bmi;
+                    RtlZeroMemory(&bmi, sizeof(bmi));
+                    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+                    bmi.bmiHeader.biWidth = ww ? ww : 1;
+                    bmi.bmiHeader.biHeight = -(LONG)(hh ? hh : 1);
+                    bmi.bmiHeader.biPlanes = 1; bmi.bmiHeader.biBitCount = 32;
+                    bmi.bmiHeader.biCompression = BI_RGB;
+                    p->bmp = CreateDIBSection(dc, &bmi, DIB_RGB_COLORS, &p->bits, NULL, 0);
+                }
                 SelectObject(p->dc, p->bmp);
                 SelectObject(p->dc, GetStockObject(ANSI_FIXED_FONT));
                 ReleaseDC(g_Hwnd, dc);
@@ -2007,6 +2826,21 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
             SHORT dx = *(const SHORT *)(body + 16), dy = *(const SHORT *)(body + 18);
             WORD w = *(const WORD *)(body + 20), h = *(const WORD *)(body + 22);
             DoCopyArea(src, dst, g, sx, sy, w, h, dx, dy);
+            // graphics_exposures contract: a CopyArea must be answered with NoExpose
+            // (or GraphicsExpose). Everything composites into the one screen DIB, so
+            // source pixels are always available -> always NoExpose. DtTerm's scroll
+            // (waitOnCopyArea) BLOCKS in XWindowEvent until one of the two arrives.
+            if (!g || g->graphicsExposures) {
+                BYTE ev[32];
+                RtlZeroMemory(ev, sizeof(ev));
+                ev[0] = 14;                                   // NoExpose
+                ev[2] = (BYTE)(c->sequence & 0xFF);
+                ev[3] = (BYTE)((c->sequence >> 8) & 0xFF);
+                *(DWORD *)(ev + 4) = dst;                     // drawable
+                *(WORD *)(ev + 8) = 0;                        // minor-opcode
+                ev[10] = X_CopyArea;                          // major-opcode
+                SendTo(c, ev, 32);
+            }
         }
         break;
     }
@@ -2047,7 +2881,7 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
         }
         break;
     }
-    case X_PolyFillArc: case X_PolyArc: {
+    case X_PolyFillArc: {
         if (bodyLen >= 8) {
             XTarget t; ResolveDrawable(*(const DWORD *)(body + 0), &t);
             if (t.valid) DrawFillArcs(&t, FindGC(*(const DWORD *)(body + 4)),
@@ -2055,9 +2889,39 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
         }
         break;
     }
+    case X_PolyArc: {
+        if (bodyLen >= 8) {
+            XTarget t; ResolveDrawable(*(const DWORD *)(body + 0), &t);
+            if (t.valid) DrawArcs(&t, FindGC(*(const DWORD *)(body + 4)),
+                                  (const X_ARC *)(body + 8), (bodyLen - 8) / 12);
+        }
+        break;
+    }
+    case X_PolyPoint: {
+        if (bodyLen >= 8) {
+            XTarget t; ResolveDrawable(*(const DWORD *)(body + 0), &t);
+            if (t.valid) DrawPoints(&t, FindGC(*(const DWORD *)(body + 4)),
+                                    (const X_POINT *)(body + 8), (bodyLen - 8) / 4, h->data);
+        }
+        break;
+    }
+    case 63: { /* CopyPlane: src@0 dst@4 gc@8 sx@12 sy@14 dx@16 dy@18 w@20 h@22 plane@24 */
+        if (bodyLen >= 28) {
+            XGCObj *g = FindGC(*(const DWORD *)(body + 8));
+            DoCopyPlane(*(const DWORD *)(body + 0), *(const DWORD *)(body + 4), g,
+                        *(const SHORT *)(body + 12), *(const SHORT *)(body + 14),
+                        *(const WORD *)(body + 20), *(const WORD *)(body + 22),
+                        *(const SHORT *)(body + 16), *(const SHORT *)(body + 18));
+        }
+        break;
+    }
     case X_ImageText8: {
         if (bodyLen >= 12) {
-            XTarget t; ResolveDrawable(*(const DWORD *)(body + 0), &t);
+            XTarget t;
+            XWin *tw = FindWin(*(const DWORD *)(body + 0));   /* PSX DEBUG */
+            if (tw && tw->owner && RedirectClient(g_Root, NULL) == tw->owner)
+                WMLOG("wmitxt %lx n=%d", (ULONG)tw->id, (int)h->data);
+            ResolveDrawable(*(const DWORD *)(body + 0), &t);
             if (t.valid) {
                 int len = h->data;
                 if ((DWORD)(12 + len) <= bodyLen)
@@ -2073,6 +2937,11 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
         // or [255][font:4] font-shifts (skipped). XDrawString -> this (transparent glyphs).
         if (bodyLen >= 12) {
             XID drw = *(const DWORD *)(body + 0);
+            {   /* PSX DEBUG */
+                XWin *tw = FindWin(drw);
+                if (tw && tw->owner && RedirectClient(g_Root, NULL) == tw->owner)
+                    WMLOG("wmptxt %lx", (ULONG)drw);
+            }
             XGCObj *g = FindGC(*(const DWORD *)(body + 4));
             SHORT y = *(const SHORT *)(body + 10);
             int cx = *(const SHORT *)(body + 8);
@@ -2099,9 +2968,60 @@ static void Dispatch(XClient *c, const X_REQ_HEAD *h, const BYTE *body, DWORD bo
         if (bodyLen >= 20) {
             XTarget t; ResolveDrawable(*(const DWORD *)(body + 0), &t);
             if (t.valid)
-                DrawPutImage(&t, *(const SHORT *)(body + 12), *(const SHORT *)(body + 14),
+                DrawPutImage(&t, FindGC(*(const DWORD *)(body + 4)), h->data,
+                             *(const SHORT *)(body + 12), *(const SHORT *)(body + 14),
                              *(const WORD *)(body + 8), *(const WORD *)(body + 10),
-                             body[17], body + 20, bodyLen - 20);
+                             body[16], body[17], body + 20, bodyLen - 20);
+        }
+        break;
+    }
+    case 77: { /* ImageText16: 2-byte chars (big-endian); low bytes back a single font */
+        if (bodyLen >= 12) {
+            XTarget t; ResolveDrawable(*(const DWORD *)(body + 0), &t);
+            if (t.valid) {
+                int len = h->data;
+                if ((DWORD)(12 + len * 2) <= bodyLen && len > 0 && len <= 255) {
+                    char buf[256];
+                    int i;
+                    for (i = 0; i < len; i++) {
+                        WORD ch = (WORD)((body[12 + i * 2] << 8) | body[12 + i * 2 + 1]);
+                        buf[i] = (ch < 256) ? (char)ch : '?';
+                    }
+                    DrawText8(&t, FindGC(*(const DWORD *)(body + 4)),
+                              *(const SHORT *)(body + 8), *(const SHORT *)(body + 10),
+                              buf, len);
+                }
+            }
+        }
+        break;
+    }
+    case 75: { /* PolyText16: TEXTITEM16 items ([len][delta][CHAR2B...] / font shifts) */
+        if (bodyLen >= 12) {
+            XID drw = *(const DWORD *)(body + 0);
+            XGCObj *g = FindGC(*(const DWORD *)(body + 4));
+            SHORT y = *(const SHORT *)(body + 10);
+            int cx = *(const SHORT *)(body + 8);
+            const BYTE *p = body + 12, *end = body + bodyLen;
+            while (p + 2 <= end) {
+                BYTE m = p[0];
+                signed char delta;
+                XTarget t;
+                char buf[256];
+                int i;
+                if (m == 255) { p += 5; continue; }        // font shift
+                if (m == 0) break;                         // padding/end
+                if (p + 2 + m * 2 > end) break;
+                delta = (signed char)p[1];
+                cx += delta;
+                for (i = 0; i < m; i++) {
+                    WORD ch = (WORD)((p[2 + i * 2] << 8) | p[2 + i * 2 + 1]);
+                    buf[i] = (ch < 256) ? (char)ch : '?';
+                }
+                ResolveDrawable(drw, &t);
+                if (t.valid) DrawTextGeneric(&t, g, (SHORT)cx, y, buf, m, FALSE);
+                cx += m * g_FontW;
+                p += 2 + m * 2;
+            }
         }
         break;
     }
@@ -2148,6 +3068,7 @@ static void FreeClient(XClient *c)
         if (g_BtnGrabs[i].c != c) g_BtnGrabs[j++] = g_BtnGrabs[i];
     g_NumBtnGrabs = j;
     XDBG("psxx11: client %lu gone\n", c->id);
+    WMLOG("c%lu GONE", c->id);
     CancelIo(c->pipe);
     FlushFileBuffers(c->pipe);
     DisconnectNamedPipe(c->pipe);
@@ -2192,6 +3113,7 @@ static void FinalizeClient(void)
     c->next = g_Clients; g_Clients = c;
     g_AcceptPipe = INVALID_HANDLE_VALUE;
     XDBG("psxx11: client %lu connected\n", c->id);
+    WMLOG("c%lu +", c->id);
     IssueRead(c);
 }
 
@@ -2341,8 +3263,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE prev, PWSTR cmd, int show)
                              WS_OVERLAPPEDWINDOW, 40, 40,
                              rc.right - rc.left, rc.bottom - rc.top, NULL, NULL, inst, NULL);
     if (!g_Hwnd) return 1;
-    ShowWindow(g_Hwnd, SW_SHOWNORMAL);
-    SetForegroundWindow(g_Hwnd);
+    // SW_SHOWNOACTIVATE + no SetForegroundWindow: stealing Win32 focus at spawn
+    // sent the user's (or the automation's) keystrokes into the X window instead
+    // of the console that launched the client. The user clicks in when ready.
+    ShowWindow(g_Hwnd, SW_SHOWNOACTIVATE);
     UpdateWindow(g_Hwnd);
     XDBG("psxx11: server up, hwnd=%p\n", (void *)g_Hwnd);
 

@@ -11,15 +11,17 @@
 #include "psxdllp.h"
 
 //
-// DIR layout (1:1 with the SDK <dirent.h>): { int fd; ULONG index; char
-// restart; char d_name[256]; } -> d_name at offset 9, total padded to 0x10C.
+// DIR layout (1:1 with the SDK <dirent.h>). The embedded struct dirent keeps
+// d_name FIRST at DIR+9 (ABI-compatible with the original name-only struct);
+// the server appends d_ino (at d_name+0x100) and d_type (+0x104) after it.
+// Name[] is sized to hold the whole struct dirent { d_name[256]; d_ino; d_type; }.
 //
 typedef struct _PSX_DIR
 {
     int   Fd;
     ULONG Index;
     char  RestartScan;
-    char  Name[256];    // struct dirent { char d_name[NAME_MAX+1]; }
+    char  Name[256 + sizeof(ULONG) + 1 + 3];   // d_name[256] + d_ino + d_type + pad
 } PSX_DIR;
 
 #define PSX_O_RDONLY  0x0000
@@ -66,7 +68,7 @@ readdir(void *Directory)
 
     PsxInitMessage(&Message, PsxApiReaddir, PSX_BODY_DATALEN(4 * sizeof(ULONG)));
     ((PULONG)Message.Data.Raw)[0] = (ULONG)Dir->Fd;                     // +0x30
-    ((PULONG)Message.Data.Raw)[1] = (ULONG)(ULONG_PTR)Dir->Name;        // +0x34 raw ptr
+    ((PULONG)Message.Data.Raw)[1] = (ULONG)(ULONG_PTR)Dir->Name;        // +0x34 &struct dirent (d_name)
     Message.Data.Raw[0x0C] = Dir->RestartScan;                         // +0x3C rewind
 
     Result = PsxCallServer(&Message);
@@ -74,14 +76,15 @@ readdir(void *Directory)
     if (Result <= 0)            // 0 = end of directory, -1 = error
         return NULL;
 
-    // The server writes the name bytes (ReturnValue = length) but no terminator;
-    // the DIR buffer is not zero-filled, so terminate d_name here.
-    if (Result > (LONG)sizeof(Dir->Name) - 1)
-        Result = (LONG)sizeof(Dir->Name) - 1;
+    // The server wrote d_name (ReturnValue = name length) plus d_ino/d_type after
+    // it, but no name terminator; the DIR buffer is not zero-filled, so terminate
+    // d_name here. Cap to d_name[255] (d_ino/d_type live beyond that).
+    if (Result > 255)
+        Result = 255;
     Dir->Name[Result] = '\0';
 
     Dir->Index++;
-    return Dir->Name;           // &struct dirent (d_name at DIR+9)
+    return Dir->Name;           // &struct dirent (d_name at DIR+9, d_ino/d_type after)
 }
 
 //

@@ -26,6 +26,28 @@ typedef struct _PSX_FILE_NAMES_INFORMATION
 } PSX_FILE_NAMES_INFORMATION;
 
 //
+// FileBothDirectoryInformation layout -- gives us FileAttributes (for d_type)
+// alongside the name, in one single-entry NtQueryDirectoryFile call.
+//
+typedef struct _PSX_FILE_BOTH_DIR_INFORMATION
+{
+    ULONG         NextEntryOffset;
+    ULONG         FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG         FileAttributes;
+    ULONG         FileNameLength;
+    ULONG         EaSize;
+    CCHAR         ShortNameLength;
+    WCHAR         ShortName[12];
+    WCHAR         FileName[1];
+} PSX_FILE_BOTH_DIR_INFORMATION;
+
+//
 // POSIX errno values that cross the LPC wire (subset; see psx/errno.h).
 //
 #define PSX_ENOENT   2
@@ -1270,12 +1292,12 @@ VOID
 PsxSrvReaddir(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message)
 {
     INT Fd = (INT)((PULONG)Message->Data.Raw)[0];               // +0x30
-    ULONG_PTR ClientNameBuf = ((PULONG)Message->Data.Raw)[1];   // +0x34 (DIR+9)
+    ULONG_PTR ClientDirent = ((PULONG)Message->Data.Raw)[1];    // +0x34 &struct dirent
     BOOLEAN Restart = (Message->Data.Raw[0x0C] != 0);           // +0x3C byte (rewind)
     PPSX_FILE_OBJECT File = PsxGetFile(Process, Fd);
     struct
     {
-        PSX_FILE_NAMES_INFORMATION Info;
+        PSX_FILE_BOTH_DIR_INFORMATION Info;
         WCHAR NameTail[256];
     } DirInfo;
     IO_STATUS_BLOCK IoStatusBlock;
@@ -1292,7 +1314,7 @@ PsxSrvReaddir(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message)
     }
 
     Status = NtQueryDirectoryFile(File->NtHandle, NULL, NULL, NULL, &IoStatusBlock,
-                                  &DirInfo, sizeof(DirInfo), FileNamesInformation,
+                                  &DirInfo, sizeof(DirInfo), FileBothDirectoryInformation,
                                   TRUE /* ReturnSingleEntry */, NULL, Restart);
     if (Status == STATUS_NO_MORE_FILES)
     {
@@ -1321,7 +1343,12 @@ PsxSrvReaddir(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message)
         return;
     }
 
-    Status = NtWriteVirtualMemory(Process->ProcessHandle, (PVOID)ClientNameBuf,
+    /* Fill the client's struct dirent. d_name is at offset 0 (kept there for ABI
+     * compatibility with the original name-only struct); d_ino/d_type follow at
+     * offset (NAME_MAX+1) = 0x100 / 0x104. d_ino must be non-zero (glob/fts treat
+     * 0 as a stale entry) -- a stable per-name FNV-1a hash. d_type from the file
+     * attributes. The name write must succeed; the trailer is best-effort. */
+    Status = NtWriteVirtualMemory(Process->ProcessHandle, (PVOID)ClientDirent,
                                   AnsiName.Buffer, AnsiName.Length, NULL);
     if (!NT_SUCCESS(Status))
     {
@@ -1329,9 +1356,30 @@ PsxSrvReaddir(IN PPSX_PROCESS Process, IN OUT PPSX_API_MESSAGE Message)
         Message->ReturnValue = -1;
         return;
     }
+    {
+        ULONG i, ino = 2166136261u;             // FNV-1a offset basis
+        UCHAR Trailer[sizeof(ULONG) + 1];       // [d_ino:4][d_type:1]
+
+        for (i = 0; i < AnsiName.Length; i++)
+            ino = (ino ^ (UCHAR)AnsiName.Buffer[i]) * 16777619u;
+        if (ino == 0) ino = 1;                  // never 0
+        *(PULONG)&Trailer[0] = ino;             // d_ino
+
+        if (DirInfo.Info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+            Trailer[sizeof(ULONG)] = 10;        // DT_LNK
+        else if (DirInfo.Info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            Trailer[sizeof(ULONG)] = 4;         // DT_DIR
+        else
+            Trailer[sizeof(ULONG)] = 8;         // DT_REG
+
+        // d_ino at d_name + (NAME_MAX+1) = +0x100, d_type at +0x104
+        NtWriteVirtualMemory(Process->ProcessHandle,
+                             (PVOID)(ClientDirent + 256),
+                             Trailer, sizeof(Trailer), NULL);
+    }
 
     Message->Errno = 0;
-    Message->ReturnValue = (LONG)AnsiName.Length;
+    Message->ReturnValue = (LONG)AnsiName.Length;   // name length (client NUL-terminates d_name)
 }
 
 //

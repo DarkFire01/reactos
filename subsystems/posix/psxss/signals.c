@@ -4,9 +4,7 @@
  * PURPOSE:     POSIX signals: kill / sigaction / sigprocmask / sigpending /
  *              sigsuspend, plus signal delivery. A SIG_DFL terminate signal kills
  *              the target; a custom handler on a running target is injected via
- *              RtlRemoteCall into psxdll's signal trampoline (the connect cb2).
- *              Faithful to the NT 4.0 handlers sub_1F46DEE (kill), sub_1F46BCD
- *              (sigaction), and SignalProcess (sub_1F44E8C).
+ *              RtlRemoteCall into psxdll's signal trampoline
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 

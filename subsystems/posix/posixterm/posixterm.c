@@ -659,7 +659,8 @@ static void ResolveImage(const char *command, char posixDrive,
 /* xargv[0] = the command (bare name or path), xargv[1..] forwarded verbatim to
  * the child (so 'posixterm sh -c "ls /"' works). dosImage receives the resolved
  * image path for error reporting. */
-static NTSTATUS SpawnChild(int xargc, char **xargv, char *dosImage, size_t dosImageSize)
+static NTSTATUS SpawnChild(int xargc, char **xargv, char *dosImage, size_t dosImageSize,
+                           BOOLEAN loginShell)
 {
     char        *sec = (char *)g_SharedBase;
     char         cwd[300];
@@ -676,15 +677,33 @@ static NTSTATUS SpawnChild(int xargc, char **xargv, char *dosImage, size_t dosIm
     /* argv[] for the child: the leader's tail, capped to the table below. */
     const char *argv[64];
     int argc = 0, a;
-    /* env[] for the child. TERM=vt100 since we drive John Miller's emulator. */
+    /* env[] for the child. TERM=vt100 since we drive John Miller's emulator.
+     * PATH carries the native toolchain (/psxtc/bin) ahead of the userland
+     * (/bin) so gcc/as/ld resolve even for a non-login `posixterm <cmd>` spawn;
+     * a login shell then re-derives PATH from /etc/profile on top of this. */
     static const char *envv[] = {
-        "PATH=/bin", "HOME=/", "TERM=vt100", "_POSIX_TERM=on", NULL
+        "PATH=/psxtc/bin:/bin", "HOME=/", "TERM=vt100", "_POSIX_TERM=on", NULL
     };
     int envc = 0;
     while (envv[envc]) envc++;
 
     command = (xargc > 0 && xargv[0] != NULL && xargv[0][0] != 0) ? xargv[0] : "sh";
-    argv[argc++] = command;
+
+    /* Session leader = login shell (getty/login convention): pass argv[0] with a
+     * leading '-' so bash/ksh source /etc/profile -> ~/.profile. The IMAGE is
+     * still resolved from `command` (no dash), so `-sh` runs /bin/sh. */
+    if (loginShell)
+    {
+        static char loginArg0[64];
+        size_t n = strlen(command);
+        if (n > sizeof(loginArg0) - 2) n = sizeof(loginArg0) - 2;
+        loginArg0[0] = '-';
+        memcpy(loginArg0 + 1, command, n);
+        loginArg0[n + 1] = '\0';
+        argv[argc++] = loginArg0;
+    }
+    else
+        argv[argc++] = command;
     for (a = 1; a < xargc && argc < (int)(sizeof(argv) / sizeof(argv[0])) - 1; a++)
         argv[argc++] = xargv[a];
 
@@ -836,7 +855,11 @@ int main(int argc, char **argv)
     st = ConnectSesPort();
     if (!NT_SUCCESS(st)) { vtprintf("%s: connect to psxss failed (%08x)\r\n", g_MyName, st); return 1; }
 
-    st = SpawnChild(cargc, cargv, resolvedImage, sizeof(resolvedImage));
+    /* No command on the posixterm line -> we're starting the session's
+     * interactive shell: run it as a LOGIN shell so /etc/profile loads.
+     * `posixterm <cmd> ...` runs that command directly (not a login shell). */
+    st = SpawnChild(cargc, cargv, resolvedImage, sizeof(resolvedImage),
+                    /*loginShell=*/(BOOLEAN)(argc <= 1));
     if (!NT_SUCCESS(st))
     {
         vtprintf("%s: could not start '%s' -> '%s' (%08x)\r\n",

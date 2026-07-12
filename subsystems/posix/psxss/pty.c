@@ -34,6 +34,12 @@
 #define IO_TIOCGWINSZ  0x5413
 #define IO_TIOCSWINSZ  0x5414
 #define IO_TIOCGPTN    0x80045430
+// SVR4 STREAMS module ops (values from the psx <stropts.h> stub). Our pty IS the
+// whole line discipline, so "pushing ptem/ldterm/ttcompat" is already done.
+#define IO_I_STR       0x5301
+#define IO_I_PUSH      0x5302
+#define IO_I_POP       0x5303
+#define IO_I_FIND      0x5305
 
 typedef struct _PSX_PTY
 {
@@ -113,7 +119,7 @@ PsxPtyAllocate(VOID)
     {
         PULONG T = (PULONG)Pty->Termios;
         T[0] = 0x0500;   // c_iflag: ICRNL | IXON
-        T[1] = 0x0005;   // c_oflag: OPOST | ONLCR
+        T[1] = 0x0003;   // c_oflag: OPOST | ONLCR (psx ABI: OPOST=0x1, ONLCR=0x2)
         T[2] = 0x00B0;   // c_cflag: CS8 | CREAD
         T[3] = 0x001B;   // c_lflag: ISIG | ICANON | ECHO | ECHOE
         T[4] = 13; T[5] = 13;                       // ispeed/ospeed = B9600
@@ -330,8 +336,11 @@ PsxPtyWrite(IN PPSX_PROCESS Process, IN PPSX_FILE_OBJECT File, IN OUT PPSX_API_M
         // only moves down -> the "staircase" text. readline emits its own \r\n
         // for the prompt, and typically clears OPOST while in raw mode, so this
         // fires only for cooked-mode program output.
+        // psx ABI values (sdk/include/psx/termios.h + the newlib overlay):
+        // OPOST=0x0001, ONLCR=0x0002. NOT the Linux 0x4 -- that mismatch made
+        // this check fail the moment a client tcsetattr'd a legit OPOST|ONLCR.
         ULONG Oflag = ((PULONG)Pty->Termios)[1];    // c_oflag
-        if ((Oflag & 0x0001) && (Oflag & 0x0004))   // OPOST && ONLCR
+        if ((Oflag & 0x0001) && (Oflag & 0x0002))   // OPOST && ONLCR
         {
             static const UCHAR Cr = '\r';
             ULONG i;
@@ -453,6 +462,12 @@ PsxPtyIoctl(IN PPSX_PROCESS Process, IN PPSX_FILE_OBJECT File, IN ULONG Request,
             return 0;
         case IO_TIOCSCTTY:      // make controlling tty -- accepted (session work is elsewhere)
             return 0;
+        case IO_I_PUSH:         // STREAMS module push/pop: built into the pty -- accept.
+        case IO_I_POP:          // DtTerm's SetupPty EXITS THE CHILD if these fail, so
+        case IO_I_STR:          // ENOTTY here meant an empty terminal (no shell ever ran).
+            return 0;
+        case IO_I_FIND:         // "is the module on the stream?" -- yes (built in).
+            return 1;
         case IO_TCGETS:         // tcgetattr(pts) -> *(termios *)Arg (68 bytes)
         {
             UCHAR Blob[PSX_TERMIOS_SIZE];
