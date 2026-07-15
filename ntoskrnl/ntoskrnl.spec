@@ -1257,6 +1257,7 @@
 @ stdcall RtlOemStringToUnicodeString(ptr ptr long)
 @ stdcall RtlOemToUnicodeN(wstr long ptr ptr long)
 @ cdecl -arch=x86_64 RtlPcToFileHeader(ptr ptr)
+@ stdcall -arch=i386,arm,arm64 RtlPcToFileHeader(ptr ptr)
 @ stdcall RtlPinAtomInAtomTable(ptr ptr)
 @ fastcall RtlPrefetchMemoryNonTemporal(ptr long)
 @ stdcall RtlPrefixString(ptr ptr long)
@@ -1655,3 +1656,120 @@
 @ stdcall -arch=arm __rt_udiv()
 @ stdcall -arch=arm __rt_udiv64()
 @ stdcall -arch=arm __rt_srsh()
+
+# =========================================================================
+# NT 6.0+ (Vista and later) kernel APIs - implemented in ntoskrnl_vista and
+# the ntoskrnl subsystems. See sdk/lib/drivers/ntoskrnl_vista.
+# =========================================================================
+
+# --- C runtime helpers ---
+@ cdecl _strtoui64()
+@ cdecl memcpy_s()
+@ cdecl strncpy_s()
+@ cdecl strtok_s()
+
+# --- Errata Manager (Em) ---
+@ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
+@ stdcall -version=0x601+ EmClientRuleEvaluate(ptr ptr ptr)
+@ stdcall -version=0x601+ EmProviderDeregister(ptr)
+@ stdcall -version=0x601+ EmProviderRegister(ptr ptr ptr)
+
+# --- Event Tracing for Windows (Etw) ---
+@ stdcall -version=0x600+ EtwEventEnabled(int64 ptr)
+@ stdcall -version=0x600+ EtwRegister(ptr ptr ptr ptr)
+@ stdcall -version=0x600+ EtwUnregister(int64)
+@ stdcall -version=0x600+ EtwWrite(int64 ptr ptr long ptr)
+
+# --- Executive (Ex) ---
+@ fastcall -version=0x600+ ExAcquireSpinLockExclusive(ptr)
+@ fastcall -version=0x600+ ExAcquireSpinLockShared(ptr)
+@ fastcall -version=0x600+ ExReleaseSpinLockExclusive(ptr long)
+@ fastcall -version=0x600+ ExReleaseSpinLockShared(ptr long)
+@ stdcall -version=0x603+ ExSetTimer(ptr int64 int64 ptr)
+@ stdcall -version=0x602+ ExTryQueueWorkItem(ptr long)
+
+# --- Hypervisor Library (Hvl) ---
+@ stdcall -version=0xa00+ HvlIsAnyHypervisorPresent()
+@ stdcall -version=0xa00+ HvlQueryActiveHypervisorProcessorCount()
+
+# --- I/O Manager (Io) ---
+@ stdcall -version=0x602+ IoDuplicateDependency(ptr ptr)
+@ stdcall -version=0x602+ IoGetDeviceNumaNode(ptr ptr)
+@ stdcall -version=0x600+ IoGetDevicePropertyData(ptr ptr long long long ptr ptr ptr)
+@ stdcall IoInitializeWorkItem(ptr ptr)
+@ stdcall -version=0x600+ IoQueueWorkItemEx(ptr ptr long ptr)
+@ stdcall -version=0x601+ IoRegisterContainerNotification(long ptr ptr long ptr)
+@ stdcall -version=0x602+ IoReportInterruptActive(ptr)
+@ stdcall -version=0x602+ IoReportInterruptInactive(ptr)
+@ stdcall -version=0x601+ IoRequestDeviceEjectEx(ptr ptr ptr ptr)
+@ stdcall -version=0x602+ IoRequestDeviceRemovalForReset(ptr long)
+@ stdcall -version=0x602+ IoReserveDependency(ptr ptr)
+@ stdcall -version=0x602+ IoResolveDependency(ptr)
+@ stdcall -version=0x602+ IoSetDependency(ptr ptr)
+@ stdcall -version=0x602+ IoSetDevicePropertyData(ptr ptr long long long long ptr)
+@ stdcall -version=0x600+ IoSizeofWorkItem()
+@ stdcall -version=0x600+ IoSynchronousCallDriver(ptr ptr)
+@ stdcall -version=0x602+ IoTestDependency(ptr)
+@ stdcall -version=0x600+ IoUninitializeWorkItem(ptr)
+@ stdcall -version=0x601+ IoUnregisterContainerNotification(ptr)
+@ stdcall -version=0x601+ IoUnregisterPlugPlayNotificationEx(ptr)
+
+# --- Kernel (Ke) ---
+@ stdcall -version=0x603+ KeCancelTimer2(ptr)
+@ stdcall -version=0x601+ KeGetProcessorIndexFromNumber(ptr)
+@ stdcall -version=0x601+ KeGetProcessorNumberFromIndex(long ptr)
+@ stdcall -version=0x603+ KeInitializeTimer2(ptr)
+@ stdcall -version=0x601+ KeProcessorGroupAffinity(long)
+@ stdcall -version=0x601+ KeQueryActiveProcessorCountEx(long)
+@ stdcall -version=0x601+ KeQueryGroupAffinity(long)
+@ stdcall -version=0x603+ KeQueryInterruptTimePrecise(ptr)
+@ stdcall -version=0x601+ KeQueryMaximumGroupCount()
+@ stdcall -version=0x601+ KeQueryMaximumProcessorCountEx(long)
+@ stdcall -version=0x601+ KeQueryNodeActiveAffinity(long ptr ptr)
+@ stdcall -version=0x600+ KeRegisterProcessorChangeCallback(ptr ptr long)
+@ stdcall -version=0x600+ KeRevertToUserAffinityThreadEx(long)
+@ stdcall -version=0x601+ KeRevertToUserGroupAffinityThread(ptr)
+@ stdcall -version=0x600+ KeSetSystemAffinityThreadEx(long)
+@ stdcall -version=0x601+ KeSetSystemGroupAffinityThread(ptr ptr)
+@ stdcall -version=0x603+ KeSetTimer2(ptr int64 int64 ptr)
+@ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
+
+# --- Memory Manager (Mm) ---
+@ stdcall -version=0xa00+ MmMapInSpaceEx(int64 long long)
+
+# --- System information queries (Nt/Zw) ---
+@ stdcall -version=0x602+ NtQuerySystemInformationEx(long ptr long ptr long ptr)
+@ stdcall -version=0x602+ ZwQuerySystemInformationEx(long ptr long ptr long ptr)
+
+# --- Object Manager (Ob) ---
+@ fastcall -version=0x601+ ObfDereferenceObjectWithTag(ptr long)
+@ fastcall -version=0x601+ ObfReferenceObjectWithTag(ptr long)
+
+# --- Power Manager (Po) ---
+@ stdcall -version=0x603+ PoCreateThermalRequest(ptr ptr ptr ptr ptr long)
+@ stdcall -version=0x603+ PoDeleteThermalRequest(ptr)
+@ stdcall -version=0x602+ PoFxNotifySurprisePowerOn(ptr)
+@ stdcall -version=0x600+ PoGetSystemWake(ptr)
+@ stdcall -version=0x603+ PoGetThermalRequestSupport(ptr ptr)
+@ stdcall -version=0x600+ PoRegisterPowerSettingCallback(ptr ptr ptr ptr ptr)
+@ stdcall -version=0x600+ PoSetSystemWake(ptr)
+@ stdcall -version=0x603+ PoSetThermalActiveCooling(ptr long)
+@ stdcall -version=0x603+ PoSetThermalPassiveCooling(ptr long)
+@ stdcall -version=0x600+ PoUnregisterPowerSettingCallback(ptr)
+
+# --- Runtime Library (Rtl) ---
+@ stdcall -version=0x600+ RtlCmDecodeMemIoResource(ptr ptr)
+@ stdcall -version=0x600+ RtlCmEncodeMemIoResource(ptr long int64 int64)
+@ stdcall -version=0x600+ RtlFindClosestEncodableLength(int64 ptr)
+@ stdcall -version=0x601+ RtlInvertRangeListEx(ptr ptr int64 int64)
+@ stdcall -version=0x600+ RtlIoDecodeMemIoResource(ptr ptr ptr ptr)
+@ stdcall -version=0x600+ RtlIoEncodeMemIoResource(ptr long int64 int64 int64 int64)
+@ stdcall -version=0x600+ RtlNumberOfSetBitsUlongPtr(long)
+@ stdcall -version=0x602+ RtlQueryRegistryValuesEx(long wstr ptr ptr ptr)
+
+# --- Windows Hardware Error Architecture (Whea) ---
+@ stdcall -version=0x600+ WheaAddErrorSource(ptr ptr)
+@ stdcall -version=0x600+ WheaConfigureErrorSource(long ptr)
+@ stdcall -version=0x600+ WheaGetErrorSource(long ptr)
+@ stdcall -version=0x600+ WheaInitializeRecordHeader(ptr)
+@ stdcall -version=0x600+ WheaReportHwError(ptr)

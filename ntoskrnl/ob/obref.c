@@ -703,4 +703,66 @@ ObReferenceObjectByHandle(IN HANDLE Handle,
     return Status;
 }
 
+/**
+ * @brief
+ * Increments the reference count of an object, associating an allocation tag
+ * with the reference.
+ *
+ * @param[in] Object
+ * The object to reference.
+ *
+ * @param[in] Tag
+ * A four-character tag used for reference tracking.
+ *
+ * @return
+ * The new reference count of the object.
+ *
+ * @remarks
+ * ReactOS does not implement per-tag reference tracking, so the tag is ignored
+ * and the call behaves like ObfReferenceObject().
+ *
+ * @implemented
+ */
+LONG_PTR
+FASTCALL
+ObfReferenceObjectWithTag(IN PVOID Object,
+                          IN ULONG Tag)
+{
+    UNREFERENCED_PARAMETER(Tag);
+
+    /* Tag tracking is not implemented; defer to the untagged path */
+    return ObfReferenceObject(Object);
+}
+
+/**
+ * @brief
+ * Decrements the reference count of an object that was referenced with an
+ * allocation tag.
+ *
+ * @param[in] Object
+ * The object to dereference.
+ *
+ * @param[in] Tag
+ * The tag that was supplied when the object was referenced.
+ *
+ * @return
+ * The new reference count of the object.
+ *
+ * @remarks
+ * ReactOS does not implement per-tag reference tracking, so the tag is ignored
+ * and the call behaves like ObfDereferenceObject().
+ *
+ * @implemented
+ */
+LONG_PTR
+FASTCALL
+ObfDereferenceObjectWithTag(IN PVOID Object,
+                            IN ULONG Tag)
+{
+    UNREFERENCED_PARAMETER(Tag);
+
+    /* Tag tracking is not implemented; defer to the untagged path */
+    return ObfDereferenceObject(Object);
+}
+
 /* EOF */
