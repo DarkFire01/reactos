@@ -90,4 +90,75 @@ IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject)
     return IoWorkItem;
 }
 
+/**
+ * @brief
+ * Returns the size, in bytes, of an I/O work item structure.
+ *
+ * @return
+ * The number of bytes a caller must allocate before calling
+ * IoInitializeWorkItem().
+ *
+ * @remarks
+ * Use this together with IoInitializeWorkItem() when embedding a work item in
+ * a caller-owned allocation instead of allocating one with
+ * IoAllocateWorkItem().
+ *
+ * @implemented
+ */
+ULONG
+NTAPI
+IoSizeofWorkItem(VOID)
+{
+    return sizeof(IO_WORKITEM);
+}
+
+/**
+ * @brief
+ * Initializes a caller-allocated I/O work item.
+ *
+ * @param[in] IoObject
+ * The device or driver object the work item is associated with. A reference is
+ * taken on this object each time the work item is queued.
+ *
+ * @param[out] IoWorkItem
+ * A caller-owned buffer of at least IoSizeofWorkItem() bytes to initialize.
+ *
+ * @remarks
+ * A work item initialized with this routine must be released with
+ * IoUninitializeWorkItem() rather than IoFreeWorkItem().
+ *
+ * @implemented
+ */
+VOID
+NTAPI
+IoInitializeWorkItem(IN PVOID IoObject,
+                     OUT PIO_WORKITEM IoWorkItem)
+{
+    /* Initialize the caller-provided work item */
+    IoWorkItem->DeviceObject = IoObject;
+    ExInitializeWorkItem(&IoWorkItem->Item, IopWorkItemCallback, IoWorkItem);
+}
+
+/**
+ * @brief
+ * Releases an I/O work item that was initialized with IoInitializeWorkItem().
+ *
+ * @param[in,out] IoWorkItem
+ * The work item to uninitialize.
+ *
+ * @remarks
+ * The caller remains responsible for freeing the memory backing the work item.
+ *
+ * @implemented
+ */
+VOID
+NTAPI
+IoUninitializeWorkItem(IN OUT PIO_WORKITEM IoWorkItem)
+{
+    /* Nothing to release: the memory is owned by the caller */
+    IoWorkItem->DeviceObject = NULL;
+    IoWorkItem->WorkerRoutine = NULL;
+    IoWorkItem->Context = NULL;
+}
+
 /* EOF */
