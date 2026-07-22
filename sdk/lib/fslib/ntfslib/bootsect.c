@@ -37,37 +37,18 @@ VOID
 FillBiosParametersBlock(OUT PBIOS_PARAMETERS_BLOCK BiosParametersBlock)
 {
     // See: https://en.wikipedia.org/wiki/BIOS_parameter_block
-    
-    BiosParametersBlock->BytesPerSector    = BYTES_PER_SECTOR;
-    BiosParametersBlock->SectorsPerCluster = SECTORS_PER_CLUSTER;
 
-    BiosParametersBlock->MediaId = IS_HARD_DRIVE ? 0xF8 : 0x00;
+    BiosParametersBlock->BytesPerSector    = (USHORT)BYTES_PER_SECTOR;
+    BiosParametersBlock->SectorsPerCluster = (BYTE)SECTORS_PER_CLUSTER;
 
-    BiosParametersBlock->SectorsPerTrack    = SECTORS_PER_TRACK;
-    BiosParametersBlock->Heads              = DISK_HEADS;
-    BiosParametersBlock->HiddenSectorsCount = BPB_HIDDEN_SECTORS;
-}
+    BiosParametersBlock->MediaId = IS_HARD_DRIVE ? 0xF8 : 0xF0;
 
-static
-ULONGLONG
-CalcVolumeSerialNumber()
-{
-    BYTE  i;
-    ULONG r;
-    ULONG seed;
-    ULONGLONG serial;
+    BiosParametersBlock->SectorsPerTrack = (USHORT)SECTORS_PER_TRACK;
+    BiosParametersBlock->Heads           = DISK_HEADS;
 
-    seed = NtGetTickCount();
-
-    for (i = 0; i < 32; i += 2)
-    {
-        r = RtlRandom(&seed);
-
-        serial |= ((r & 0xff00) >> 8) << (i * 8);
-        serial |= ((r & 0xff)) << (i * 8 * 2);
-    }
-
-    return serial;
+    // Number of sectors preceding the partition. This is only relevant for
+    // booting (the VBR uses it); a mounting driver ignores it. We leave it 0.
+    BiosParametersBlock->HiddenSectorsCount = 0;
 }
 
 static
@@ -77,31 +58,82 @@ FillExBiosParametersBlock(OUT PEXTENDED_BIOS_PARAMETERS_BLOCK ExBiosParametersBl
     // See: https://en.wikipedia.org/wiki/BIOS_parameter_block
 
     ExBiosParametersBlock->Header      = EBPB_HEADER;
-    ExBiosParametersBlock->SectorCount = SECTORS_COUNT;
+    ExBiosParametersBlock->SectorCount = TOTAL_SECTORS;
 
-    ExBiosParametersBlock->MftLocation     = MFT_ADDRESS;
-    ExBiosParametersBlock->MftMirrLocation = MFT_MIRR_ADDRESS;
+    ExBiosParametersBlock->MftLocation     = LAYOUT.MftLcn;
+    ExBiosParametersBlock->MftMirrLocation = LAYOUT.MftMirrLcn;
 
-    ExBiosParametersBlock->ClustersPerMftRecord   = MFT_CLUSTERS_PER_RECORD;
-    ExBiosParametersBlock->ClustersPerIndexRecord = MFT_CLUSTERS_PER_INDEX_RECORD;
+    ExBiosParametersBlock->ClustersPerMftRecord   = LAYOUT.ClustersPerMftRecord;
+    ExBiosParametersBlock->ClustersPerIndexRecord = LAYOUT.ClustersPerIndexRecord;
 
-    ExBiosParametersBlock->SerialNumber = CalcVolumeSerialNumber();
+    ExBiosParametersBlock->SerialNumber = LAYOUT.SerialNumber;
+}
+
+//
+// Writes the backup boot sector to the last sector of the volume, which is the
+// sector immediately following the addressable area (LAYOUT.TotalSectors).
+//
+static
+NTSTATUS
+WriteBackupBootSector(IN PBOOT_SECTOR BootSector)
+{
+    NTSTATUS        Status;
+    IO_STATUS_BLOCK IoStatusBlock;
+    LARGE_INTEGER   Offset;
+    PBYTE           Sector;
+    ULONG           Bps = BYTES_PER_SECTOR;
+
+    Sector = RtlAllocateHeap(RtlGetProcessHeap(), 0, Bps);
+    if (!Sector)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlZeroMemory(Sector, Bps);
+    RtlCopyMemory(Sector, BootSector, (Bps < sizeof(BOOT_SECTOR)) ? Bps : sizeof(BOOT_SECTOR));
+
+    Offset.QuadPart = (LONGLONG)TOTAL_SECTORS * Bps;
+
+    Status = NtWriteFile(DISK_HANDLE,
+                         NULL,
+                         NULL,
+                         NULL,
+                         &IoStatusBlock,
+                         Sector,
+                         Bps,
+                         &Offset,
+                         NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Backup boot sector write failed (Status %lx)\n", Status);
+    }
+
+    FREE(Sector);
+
+    return Status;
 }
 
 NTSTATUS
-WriteBootSector()
+WriteBootSector(VOID)
 {
     NTSTATUS        Status;
     IO_STATUS_BLOCK IoStatusBlock;
     PBOOT_SECTOR    BootSector;
+    PBYTE           BootRegion;
+    LARGE_INTEGER   Offset;
+    ULONG           RegionSize;
 
-    BootSector = RtlAllocateHeap(RtlGetProcessHeap(), 0, sizeof(BOOT_SECTOR));
-    if (!BootSector)
+    // The whole $Boot region (8192 bytes rounded up to clusters). Only the
+    // first sector carries the BPB; the rest is zeroed bootstrap area.
+    RegionSize = LAYOUT.BootClusters * BYTES_PER_CLUSTER;
+
+    BootRegion = RtlAllocateHeap(RtlGetProcessHeap(), 0, RegionSize);
+    if (!BootRegion)
     {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlZeroMemory(BootSector, sizeof(BOOT_SECTOR));
+    RtlZeroMemory(BootRegion, RegionSize);
+
+    BootSector = (PBOOT_SECTOR)BootRegion;
 
     FillJumpInstruction(BootSector);
     FillOemId(BootSector);
@@ -111,21 +143,28 @@ WriteBootSector()
 
     BootSector->EndSector = BOOT_SECTOR_END;
 
+    // Write the $Boot region at LCN 0.
+    Offset.QuadPart = 0LL;
     Status = NtWriteFile(DISK_HANDLE,
                          NULL,
                          NULL,
                          NULL,
                          &IoStatusBlock,
-                         BootSector,
-                         sizeof(BOOT_SECTOR),
-                         0ULL,
+                         BootRegion,
+                         RegionSize,
+                         &Offset,
                          NULL);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("BootSector write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        FREE(BootRegion);
+        return Status;
     }
 
-    FREE(BootSector);
+    // Write the backup boot sector at the very end of the volume.
+    Status = WriteBackupBootSector(BootSector);
+
+    FREE(BootRegion);
 
     return Status;
 }

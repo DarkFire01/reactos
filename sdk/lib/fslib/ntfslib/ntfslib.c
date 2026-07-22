@@ -14,6 +14,12 @@
 #include <debug.h>
 
 
+/* GLOBALS *******************************************************************/
+
+// The single, shared instance of the format state (declared extern in the header).
+NTFS_FORMAT_DATA NtfsFormatData;
+
+
 /* FUNCTIONS *****************************************************************/
 
 VOID
@@ -33,26 +39,190 @@ NtfsGetSystemTimeAsFileTime(OUT PFILETIME lpFileTime)
 }
 
 BYTE
-GetSectorsPerCluster()
+GetSectorsPerCluster(VOID)
 {
-    GET_LENGTH_INFORMATION* LengthInformation = NtfsFormatData.LengthInformation;
+    // Default NTFS cluster size selection based on the volume size,
+    // mirroring the classic Windows defaults (for 512-byte sectors):
+    //   <= 512 MB : 512 B, <= 1 GB : 1 KB, <= 2 GB : 2 KB, else 4 KB.
+    ULONGLONG Size = DISK_LEN->Length.QuadPart;
+    ULONG     Bps  = BYTES_PER_SECTOR;
+    ULONG     ClusterBytes;
 
-    if (LengthInformation->Length.QuadPart < MB_TO_B(512))
+    if (Size <= (512ULL * 1024 * 1024))
+        ClusterBytes = 512;
+    else if (Size <= (1024ULL * 1024 * 1024))
+        ClusterBytes = 1024;
+    else if (Size <= (2048ULL * 1024 * 1024))
+        ClusterBytes = 2048;
+    else
+        ClusterBytes = 4096;
+
+    if (ClusterBytes < Bps)
+        ClusterBytes = Bps;
+
+    return (BYTE)(ClusterBytes / Bps);
+}
+
+//
+// Encodes a record size (MFT record / index record) the way the NTFS boot
+// sector expects it: a positive value is a count of clusters per record; a
+// negative value -n means the record size is 2^n bytes (used when the record
+// is smaller than a cluster).
+//
+static
+CHAR
+EncodeRecordSize(IN ULONG RecordBytes,
+                 IN ULONG ClusterBytes)
+{
+    if (RecordBytes >= ClusterBytes)
     {
-        return 1;
-    }
-    else if (LengthInformation->Length.QuadPart < MB_TO_B(1024))
-    {
-        return 2;
-    }
-    else if (LengthInformation->Length.QuadPart < MB_TO_B(2048))
-    {
-        return 4;
+        return (CHAR)(RecordBytes / ClusterBytes);
     }
     else
     {
-        return 8;
+        CHAR  Log = 0;
+        ULONG Value = RecordBytes;
+
+        while (Value > 1)
+        {
+            Value >>= 1;
+            Log++;
+        }
+
+        return (CHAR)(-Log);
     }
+}
+
+#define CEIL_DIV(a, b) (((a) + (b) - 1) / (b))
+
+NTSTATUS
+ComputeLayout(IN ULONG ClusterSize)
+{
+    ULONG     Bps = BYTES_PER_SECTOR;
+    ULONGLONG VolumeBytes;
+    ULONGLONG VolumeSectors;
+    ULONG     Spc;
+    ULONG     C;
+    ULONGLONG Lcn;
+
+    if (Bps == 0)
+        return STATUS_INVALID_PARAMETER;
+
+    VolumeBytes   = DISK_LEN->Length.QuadPart;
+    VolumeSectors = VolumeBytes / Bps;
+
+    // Need at least the backup boot sector plus something to format.
+    if (VolumeSectors < 2)
+        return STATUS_INVALID_PARAMETER;
+
+    // Sectors per cluster
+    if (ClusterSize != 0)
+    {
+        Spc = ClusterSize / Bps;
+        if (Spc == 0)
+            Spc = 1;
+    }
+    else
+    {
+        Spc = GetSectorsPerCluster();
+    }
+
+    LAYOUT.SectorsPerCluster = Spc;
+    LAYOUT.BytesPerCluster   = Spc * Bps;
+    C = LAYOUT.BytesPerCluster;
+
+    // The last sector holds the backup boot sector and is not addressable.
+    LAYOUT.TotalSectors = VolumeSectors - 1;
+    LAYOUT.ClusterCount = LAYOUT.TotalSectors / Spc;
+    if (LAYOUT.ClusterCount == 0)
+        return STATUS_INVALID_PARAMETER;
+
+    LAYOUT.ClustersPerMftRecord   = EncodeRecordSize(MFT_RECORD_SIZE, C);
+    LAYOUT.ClustersPerIndexRecord = EncodeRecordSize(INDEX_RECORD_SIZE, C);
+
+    //
+    // Metadata sizes (in clusters)
+    //
+
+    // $Boot is exactly the first 8192 bytes of the volume.
+    LAYOUT.BootClusters = (ULONG)CEIL_DIV(8192ULL, (ULONGLONG)C);
+
+    // $MFT: reserve headroom beyond the reserved system records.
+    LAYOUT.MftAllocRecords = 64;
+    LAYOUT.MftClusters = (ULONG)CEIL_DIV((ULONGLONG)LAYOUT.MftAllocRecords * MFT_RECORD_SIZE, (ULONGLONG)C);
+
+    // $MFTMirr: the first four system records.
+    LAYOUT.MftMirrClusters = (ULONG)CEIL_DIV((ULONGLONG)MFT_MIRR_COUNT * MFT_RECORD_SIZE, (ULONGLONG)C);
+
+    // $LogFile: ~0.78% of the volume, clamped to [256 KB, 64 MB].
+    {
+        ULONGLONG LogBytes = VolumeBytes / 128;
+
+        if (LogBytes < (256ULL * 1024))
+            LogBytes = 256ULL * 1024;
+        if (LogBytes > (64ULL * 1024 * 1024))
+            LogBytes = 64ULL * 1024 * 1024;
+
+        LAYOUT.LogFileClusters = (ULONG)CEIL_DIV(LogBytes, (ULONGLONG)C);
+    }
+
+    // $Bitmap: one bit per cluster of the whole volume.
+    {
+        ULONGLONG BitmapBytes = CEIL_DIV(LAYOUT.ClusterCount, 8ULL);
+        LAYOUT.BitmapClusters = (ULONG)CEIL_DIV(BitmapBytes, (ULONGLONG)C);
+    }
+
+    // $UpCase: 128 KB (65536 UTF-16 entries).
+    LAYOUT.UpCaseClusters = (ULONG)CEIL_DIV(128ULL * 1024, (ULONGLONG)C);
+
+    // $AttrDef: reserve 4 KB (the attribute-definition table is ~2.5 KB).
+    LAYOUT.AttrDefClusters = (ULONG)CEIL_DIV(4096ULL, (ULONGLONG)C);
+
+    // $MFT's own allocation bitmap: one bit per reserved MFT record.
+    {
+        ULONGLONG MftBmpBytes = CEIL_DIV((ULONGLONG)LAYOUT.MftAllocRecords, 8ULL);
+        LAYOUT.MftBitmapClusters = (ULONG)CEIL_DIV(MftBmpBytes, (ULONGLONG)C);
+    }
+
+    // Root directory $I30 index: one INDX block.
+    LAYOUT.RootIdxClusters = (ULONG)CEIL_DIV((ULONGLONG)INDEX_RECORD_SIZE, (ULONGLONG)C);
+
+    // $Secure:$SDS: the descriptor entry plus its mirror 256 KiB later.
+    LAYOUT.SdsClusters = (ULONG)CEIL_DIV((ULONGLONG)NTFS_SDS_MIRROR + C, (ULONGLONG)C);
+
+    //
+    // Placement: everything contiguous from the start of the volume.
+    //
+    Lcn = 0;
+    LAYOUT.BootLcn      = Lcn; Lcn += LAYOUT.BootClusters;
+    LAYOUT.MftLcn       = Lcn; Lcn += LAYOUT.MftClusters;
+    LAYOUT.MftMirrLcn   = Lcn; Lcn += LAYOUT.MftMirrClusters;
+    LAYOUT.LogFileLcn   = Lcn; Lcn += LAYOUT.LogFileClusters;
+    LAYOUT.BitmapLcn    = Lcn; Lcn += LAYOUT.BitmapClusters;
+    LAYOUT.UpCaseLcn    = Lcn; Lcn += LAYOUT.UpCaseClusters;
+    LAYOUT.AttrDefLcn   = Lcn; Lcn += LAYOUT.AttrDefClusters;
+    LAYOUT.MftBitmapLcn = Lcn; Lcn += LAYOUT.MftBitmapClusters;
+    LAYOUT.RootIdxLcn   = Lcn; Lcn += LAYOUT.RootIdxClusters;
+    LAYOUT.SdsLcn       = Lcn; Lcn += LAYOUT.SdsClusters;
+    LAYOUT.FirstFreeLcn = Lcn;
+
+    // The volume must be large enough to hold the metadata (plus slack).
+    if (LAYOUT.FirstFreeLcn + 16 >= LAYOUT.ClusterCount)
+    {
+        DPRINT1("Volume too small for NTFS: need %I64u clusters, have %I64u\n",
+                LAYOUT.FirstFreeLcn + 16, LAYOUT.ClusterCount);
+        return STATUS_DISK_FULL;
+    }
+
+    // Volume serial number
+    {
+        ULONG Seed = NtGetTickCount();
+        ULONG Hi   = RtlRandom(&Seed);
+        ULONG Lo   = RtlRandom(&Seed);
+        LAYOUT.SerialNumber = ((ULONGLONG)Hi << 32) | (ULONGLONG)Lo;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 BOOLEAN
@@ -72,8 +242,15 @@ NtfsFormat(
     GET_LENGTH_INFORMATION LengthInformation;
     DISK_GEOMETRY          DiskGeometry;
     NTSTATUS               Status;
+    BOOLEAN                Result = FALSE;
 
     DPRINT1("NtfsFormat(DriveRoot '%wZ')\n", DriveRoot);
+
+    // We always perform a quick format (metadata only); the volume body is
+    // not zeroed.
+    UNREFERENCED_PARAMETER(QuickFormat);
+    UNREFERENCED_PARAMETER(BackwardCompatible);
+    UNREFERENCED_PARAMETER(MediaType);
 
     InitializeObjectAttributes(&Attributes, DriveRoot, 0, NULL, NULL);
 
@@ -137,16 +314,33 @@ NtfsFormat(
     DISK_HANDLE = DiskHandle;
     DISK_GEO    = &DiskGeometry;
     DISK_LEN    = &LengthInformation;
+    LABEL       = Label;
+
+    // Capture a single timestamp used for every record, so a file's timestamps
+    // match the copies stored in its parent directory's index entries.
+    {
+        LARGE_INTEGER SystemTime;
+        KeQuerySystemTime(&SystemTime);
+        NtfsFormatData.FormatTime = (ULONGLONG)SystemTime.QuadPart;
+    }
+
+    // Compute the on-disk layout (cluster size, metadata placement, serial)
+    Status = ComputeLayout(ClusterSize);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("ComputeLayout() failed with status 0x%.08x\n", Status);
+        goto end;
+    }
 
     // Lock volume
-    NtFsControlFile(DiskHandle, 
+    NtFsControlFile(DiskHandle,
                     NULL,
                     NULL,
-                    NULL, 
-                    &Iosb, 
+                    NULL,
+                    &Iosb,
                     FSCTL_LOCK_VOLUME,
-                    NULL, 
-                    0, 
+                    NULL,
+                    0,
                     NULL,
                     0);
 
@@ -155,7 +349,6 @@ NtfsFormat(
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteBootSector() failed with status 0x%.08x\n", Status);
-        NtClose(DiskHandle);
         goto end;
     }
 
@@ -164,34 +357,35 @@ NtfsFormat(
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafiles() failed with status 0x%.08x\n", Status);
-        NtClose(DiskHandle);
         goto end;
     }
-    
-    DPRINT1("Went through fine\n");
+
+    Result = TRUE;
+    DPRINT1("NtfsFormat() completed successfully\n");
 
 end:
-
-    // Clear global data structure
-    DISK_HANDLE = NULL;
-    DISK_GEO    = NULL;
-    DISK_LEN    = NULL;
 
     // Dismount and unlock volume
     NtFsControlFile(DiskHandle, NULL, NULL, NULL, &Iosb, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0);
     NtFsControlFile(DiskHandle, NULL, NULL, NULL, &Iosb, FSCTL_UNLOCK_VOLUME, NULL, 0, NULL, 0);
 
-    // Clear memory
+    // Close the volume handle
     NtClose(DiskHandle);
+
+    // Clear global data structure
+    DISK_HANDLE = NULL;
+    DISK_GEO    = NULL;
+    DISK_LEN    = NULL;
+    LABEL       = NULL;
 
     // Update progress bar
     if (Callback)
     {
-        BOOL success = NT_SUCCESS(Status);
+        BOOL success = Result;
         Callback(DONE, 0, (PVOID)&success);
     }
 
-    return TRUE;
+    return Result;
 }
 
 BOOLEAN
