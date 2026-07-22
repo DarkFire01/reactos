@@ -375,17 +375,18 @@ NtfsFormat(
         goto end;
     }
 
-    // Lock volume
-    NtFsControlFile(DiskHandle,
-                    NULL,
-                    NULL,
-                    NULL,
-                    &Iosb,
-                    FSCTL_LOCK_VOLUME,
-                    NULL,
-                    0,
-                    NULL,
-                    0);
+    // Lock the volume, then dismount any filesystem currently mounted on it,
+    // BEFORE writing. Formatting must reach the raw partition - including its
+    // very last sector, which holds the backup boot sector. If an existing NTFS
+    // volume is left mounted (e.g. when reformatting during a reinstall), our
+    // writes route through the live filesystem instead: ntfs.sys misreads the
+    // new metadata (USA mismatches, "can't find record") and the backup boot
+    // sector - one sector past the mounted volume's end - is rejected with
+    // STATUS_UNSUCCESSFUL. Dismounting up front gives us direct disk access.
+    // (The dismount in the cleanup path below then forces a remount with the
+    // freshly written filesystem.)
+    NtFsControlFile(DiskHandle, NULL, NULL, NULL, &Iosb, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0);
+    NtFsControlFile(DiskHandle, NULL, NULL, NULL, &Iosb, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0);
 
     // Write boot sector
     Status = WriteBootSector();
