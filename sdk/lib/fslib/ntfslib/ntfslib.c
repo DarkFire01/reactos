@@ -147,8 +147,27 @@ ComputeLayout(IN ULONG ClusterSize)
     // $Boot is exactly the first 8192 bytes of the volume.
     LAYOUT.BootClusters = (ULONG)CEIL_DIV(8192ULL, (ULONGLONG)C);
 
-    // $MFT: reserve headroom beyond the reserved system records.
-    LAYOUT.MftAllocRecords = 64;
+    // $MFT: reserve a large CONTIGUOUS MFT.
+    //
+    // The NTFS boot VBR (boot/freeldr/bootsect/ntfs.S) assumes the MFT is
+    // contiguous - it locates record N at MFT_start + N*record_size and never
+    // reads $MFT's own $DATA run list. If the install grows the MFT past a tiny
+    // reservation, the FS driver extends it with a *second, non-contiguous run*
+    // (our metadata sits right after the MFT), and freeldr.sys - copied late in
+    // setup, so it lands at a high record number in that second run - becomes
+    // unreadable at boot ("File system error"). Reserving a big contiguous MFT
+    // up front (~0.78% of the volume, clamped) keeps a normal install inside a
+    // single run so the VBR can read every record.
+    {
+        ULONGLONG MftBytes = VolumeBytes / 128;
+
+        if (MftBytes < (4ULL * 1024 * 1024))
+            MftBytes = 4ULL * 1024 * 1024;     // 4 MB min (~4096 records)
+        if (MftBytes > (32ULL * 1024 * 1024))
+            MftBytes = 32ULL * 1024 * 1024;    // 32 MB cap (~32768 records)
+
+        LAYOUT.MftAllocRecords = (ULONG)(MftBytes / MFT_RECORD_SIZE);
+    }
     LAYOUT.MftClusters = (ULONG)CEIL_DIV((ULONGLONG)LAYOUT.MftAllocRecords * MFT_RECORD_SIZE, (ULONGLONG)C);
 
     // $MFTMirr: the first four system records.
@@ -315,6 +334,30 @@ NtfsFormat(
     DISK_GEO    = &DiskGeometry;
     DISK_LEN    = &LengthInformation;
     LABEL       = Label;
+
+    // Get the partition's start LBA for the boot sector's HiddenSectors field.
+    // The NTFS VBR (ntfs.S) adds HiddenSectors to every disk read to convert
+    // volume-relative sectors to absolute LBAs; without it, booting reads
+    // garbage and hangs. A mounting driver ignores this field, so failure here
+    // is non-fatal (we just leave it 0, correct for a volume starting at LBA 0).
+    NtfsFormatData.HiddenSectors = 0;
+    {
+        PARTITION_INFORMATION_EX PartitionInfo;
+        NTSTATUS PartStatus =
+            NtDeviceIoControlFile(DiskHandle, NULL, NULL, NULL, &Iosb,
+                                  IOCTL_DISK_GET_PARTITION_INFO_EX,
+                                  NULL, 0,
+                                  &PartitionInfo, sizeof(PartitionInfo));
+        if (NT_SUCCESS(PartStatus) && DiskGeometry.BytesPerSector != 0)
+        {
+            NtfsFormatData.HiddenSectors =
+                (ULONG)(PartitionInfo.StartingOffset.QuadPart / DiskGeometry.BytesPerSector);
+        }
+        else
+        {
+            DPRINT1("IOCTL_DISK_GET_PARTITION_INFO_EX failed (0x%.08x); HiddenSectors=0\n", PartStatus);
+        }
+    }
 
     // Capture a single timestamp used for every record, so a file's timestamps
     // match the copies stored in its parent directory's index entries.

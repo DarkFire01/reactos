@@ -46,9 +46,10 @@ FillBiosParametersBlock(OUT PBIOS_PARAMETERS_BLOCK BiosParametersBlock)
     BiosParametersBlock->SectorsPerTrack = (USHORT)SECTORS_PER_TRACK;
     BiosParametersBlock->Heads           = DISK_HEADS;
 
-    // Number of sectors preceding the partition. This is only relevant for
-    // booting (the VBR uses it); a mounting driver ignores it. We leave it 0.
-    BiosParametersBlock->HiddenSectorsCount = 0;
+    // Sectors preceding the partition (its start LBA). The NTFS VBR adds this to
+    // every read to reach absolute disk sectors; a wrong value makes booting
+    // load garbage and hang. A mounting driver ignores it.
+    BiosParametersBlock->HiddenSectorsCount = HIDDEN_SECTORS;
 }
 
 static
