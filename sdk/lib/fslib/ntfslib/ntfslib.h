@@ -61,42 +61,44 @@
 #define DISK_HANDLE (NtfsFormatData.DiskHandle)
 #define DISK_GEO    (NtfsFormatData.DiskGeometry)
 #define DISK_LEN    (NtfsFormatData.LengthInformation)
+#define LABEL       (NtfsFormatData.Label)
+#define LAYOUT      (NtfsFormatData.Layout)
 
-#define BYTES_PER_SECTOR    (DISK_GEO->BytesPerSector)
+#define BYTES_PER_SECTOR    ((ULONG)DISK_GEO->BytesPerSector)
+#define SECTORS_PER_TRACK   ((ULONG)DISK_GEO->SectorsPerTrack)
 
-#define SECTORS_PER_TRACK   (DISK_GEO->SectorsPerTrack)
-#define SECTORS_PER_CLUSTER (GetSectorsPerCluster())
-#define BYTES_PER_CLUSTER   ((ULONGLONG)BYTES_PER_SECTOR * (ULONGLONG)SECTORS_PER_CLUSTER)
-
-#define SECTORS_COUNT ( ((ULONGLONG)DISK_GEO->SectorsPerTrack)    * \
-                        ((ULONGLONG)DISK_GEO->TracksPerCylinder)  * \
-                        ((ULONGLONG)DISK_GEO->Cylinders.QuadPart) )
+// The following are computed once by ComputeLayout() and cached in LAYOUT.
+#define SECTORS_PER_CLUSTER (LAYOUT.SectorsPerCluster)
+#define BYTES_PER_CLUSTER   (LAYOUT.BytesPerCluster)
+#define CLUSTER_COUNT       (LAYOUT.ClusterCount)
+#define TOTAL_SECTORS       (LAYOUT.TotalSectors)
 
 #define IS_HARD_DRIVE (DISK_GEO->MediaType == FixedMedia)
 
 
 /* DISK DEFINES **************************************************************/
 
-#define DISK_HEADS             0xFF
+#define DISK_HEADS  0xFF
 
 
 /* BOOT SECTOR DEFINES *******************************************************/
 
-#define BPB_HIDDEN_SECTORS  0x3F  // From WinXP
-
-#define OEM_ID              BSWAP64(0x4E54465320202020)
-#define EBPB_HEADER         BSWAP32(0x80008000)
-#define BOOT_SECTOR_END     BSWAP16(0x55AA)
+#define OEM_ID           BSWAP64(0x4E54465320202020)  // "NTFS    "
+#define EBPB_HEADER      BSWAP32(0x80008000)
+#define BOOT_SECTOR_END  BSWAP16(0x55AA)
 
 
-/* MFT DEFINES ***************************************************************/
+/* MFT / RECORD DEFINES ******************************************************/
 
-#define MFT_ADDRESS         0x0C0000
+#define MFT_RECORD_SIZE    1024
+#define INDEX_RECORD_SIZE  4096
 
-#define MFT_CLUSTERS_PER_RECORD        0xF6
-#define MFT_CLUSTERS_PER_INDEX_RECORD  0x01
+// Count of MFT records materialized during format (the 16 reserved system records).
+#define MFT_RESERVED_RECORDS  16
 
-#define MFT_RECORD_SIZE     1024
+// Count of $MFTMirr records: the first four system records
+// ($MFT, $MFTMirr, $LogFile, $Volume).
+#define MFT_MIRR_COUNT  4
 
 
 /* OTHER DEFINES *************************************************************/
@@ -104,11 +106,23 @@
 #define NTFS_MAJOR_VERSION 3
 #define NTFS_MINOR_VERSION 1
 
-#define FILE_RECORD_MAGIC  BSWAP32(0x46494C45)
+// The shared security id stamped on every file (its descriptor lives in $Secure).
+#define NTFS_SECURITY_ID 0x100
+
+#define FILE_RECORD_MAGIC  BSWAP32(0x46494C45)  // 'FILE'
+#define INDX_RECORD_MAGIC  BSWAP32(0x494E4458)  // 'INDX'
 
 // The beginning and length of an attribute record are always aligned to an 8-byte boundary,
 // relative to the beginning of the file record.
 #define ATTR_RECORD_ALIGNMENT  8
+
+// A resident attribute's value offset is aligned to a 4-byte boundary,
+// relative to the start of the attribute record.
+#define VALUE_OFFSET_ALIGNMENT  4
+
+// Data runs are aligned to a 4-byte boundary, relative to the start of the
+// attribute record.
+#define DATA_RUN_ALIGNMENT  4
 
 // FILE_RECORD_END seems to follow AttributeEnd in every file record starting with $Quota.
 // No clue what data is being represented here.
@@ -135,6 +149,32 @@
 #define RA_METAFILES_ATTRIBUTES  (FILE_TYPE_SYSTEM | FILE_TYPE_HIDDEN)
 #define RA_HEADER_LENGTH         (FIELD_OFFSET(ATTR_RECORD, Resident.Reserved) + sizeof(UCHAR))
 
+// Collation rules (used by $INDEX_ROOT)
+#define COLLATION_BINARY               0x00
+#define COLLATION_FILE_NAME            0x01
+#define COLLATION_NTOFS_ULONG          0x10  // $Secure:$SII (by security id)
+#define COLLATION_NTOFS_SECURITY_HASH  0x12  // $Secure:$SDH (by descriptor hash)
+
+// Non-resident attribute header size. The extended form (with the trailing
+// "compressed/allocated size" field at 0x40) is used for sparse/compressed
+// attributes such as $BadClus:$Bad.
+#define NONRES_HEADER_SIZE          0x40
+#define NONRES_HEADER_SIZE_SPARSE   0x48
+
+// Index entry flags
+#define INDEX_ENTRY_NODE  0x01   // Entry points at a sub-node (has a child VCN)
+#define INDEX_ENTRY_END   0x02   // Last entry in the node
+// Index node header flags
+#define INDEX_NODE_LARGE  0x01   // Node has an $INDEX_ALLOCATION
+
+// A metadata record's sequence number: Windows sets it equal to the record
+// number, except record 0 (sequence 0 would mean "unused", so it uses 1).
+#define RECORD_SEQUENCE(rec)  ((USHORT)(((rec) == 0) ? 1 : (rec)))
+
+// Build an MFT file reference: record number in the low 48 bits, sequence
+// number in the high 16 bits.
+#define MFT_REFERENCE(rec)  (((ULONGLONG)(rec)) | ((ULONGLONG)RECORD_SEQUENCE(rec) << 48))
+
 // Metafiles
 #define METAFILE_MFT              0
 #define METAFILE_MFTMIRR          1
@@ -147,42 +187,69 @@
 #define METAFILE_BADCLUS          8
 #define METAFILE_SECURE           9
 #define METAFILE_UPCASE           10
+#define METAFILE_EXTEND           11
 #define METAFILE_FIRST_USER_FILE  16
-
-#define MFT_DEFAULT_CLUSTERS_SIZE 8
-#define MFT_DEFAULT_RECORDS_COUNT (MFT_DEFAULT_CLUSTERS_SIZE * (BYTES_PER_CLUSTER / MFT_RECORD_SIZE))
-
-#define MFT_BITMAP_SIZE    1 
-#define MFT_BITMAP_ADDRESS (MFT_ADDRESS - MFT_BITMAP_SIZE)
 
 #define RUN_LIST_ENTRY_HEADER_SIZE 1
 #define RUN_LIST_ENTRY_SIZE        8
 
-#define BOOT_SIZE    2
-#define BOOT_ADDRESS 0x00
-
-#define UPCASE_SIZE    32
-#define UPCASE_ADDRESS 0x03
-
-#define ATTRDEF_SIZE    1
-#define ATTRDEF_ADDRESS (MFT_BITMAP_ADDRESS - ATTRDEF_SIZE)
-
-#define LOGFILE_SIZE    11000
-#define LOGFILE_ADDRESS (ATTRDEF_ADDRESS - LOGFILE_SIZE)
-
-#define MFT_MIRR_SIZE    1
-#define MFT_MIRR_ADDRESS (SECTORS_COUNT / SECTORS_PER_CLUSTER / 2)
-#define MFT_MIRR_COUNT   4
-
 
 /* GLOBAL DATA ***************************************************************/
 
-static struct
+//
+// The whole metadata is laid out contiguously from the start of the volume:
+//
+//   [ $Boot | $MFT | $MFTMirr | $LogFile | $Bitmap | $UpCase | $AttrDef | $MFT bitmap | ... free ... ]
+//
+// A correct NTFS driver locates $MFT / $MFTMirr through the boot sector, so the
+// exact placement does not matter for mountability - only that everything fits
+// inside the volume and the cluster bitmap marks the used clusters.
+//
+typedef struct _NTFS_LAYOUT
+{
+    ULONG      SectorsPerCluster;
+    ULONG      BytesPerCluster;
+    ULONGLONG  TotalSectors;      // Value recorded in the boot sector (volume sectors - 1)
+    ULONGLONG  ClusterCount;
+
+    CHAR       ClustersPerMftRecord;    // Signed, boot-sector encoding
+    CHAR       ClustersPerIndexRecord;  // Signed, boot-sector encoding
+
+    ULONGLONG  SerialNumber;
+
+    // Cluster placement of the metadata
+    ULONGLONG  BootLcn;        ULONG BootClusters;
+    ULONGLONG  MftLcn;         ULONG MftClusters;   ULONG MftAllocRecords;
+    ULONGLONG  MftMirrLcn;     ULONG MftMirrClusters;
+    ULONGLONG  LogFileLcn;     ULONG LogFileClusters;
+    ULONGLONG  BitmapLcn;      ULONG BitmapClusters;
+    ULONGLONG  UpCaseLcn;      ULONG UpCaseClusters;
+    ULONGLONG  AttrDefLcn;     ULONG AttrDefClusters;
+    ULONGLONG  MftBitmapLcn;   ULONG MftBitmapClusters;
+    ULONGLONG  RootIdxLcn;     ULONG RootIdxClusters;   // One INDX block for the root $I30 index
+    ULONGLONG  SdsLcn;         ULONG SdsClusters;       // $Secure:$SDS (descriptor + 256 KiB mirror)
+
+    ULONGLONG  FirstFreeLcn;   // Count of clusters used by metadata == first free cluster
+} NTFS_LAYOUT, *PNTFS_LAYOUT;
+
+// The $SDS descriptor mirror is stored NTFS_SDS_MIRROR bytes after the primary.
+#define NTFS_SDS_MIRROR  0x40000
+
+// Shared across all ntfslib translation units. The single definition lives in
+// ntfslib.c; every other file sees it through this extern declaration.
+typedef struct _NTFS_FORMAT_DATA
 {
     HANDLE                  DiskHandle;
     GET_LENGTH_INFORMATION* LengthInformation;
     PDISK_GEOMETRY          DiskGeometry;
-} NtfsFormatData;
+    PUNICODE_STRING         Label;
+    ULONGLONG               FormatTime;   // Single timestamp stamped on every record
+    NTFS_LAYOUT             Layout;
+} NTFS_FORMAT_DATA;
+
+extern NTFS_FORMAT_DATA NtfsFormatData;
+
+#define FORMAT_TIME (NtfsFormatData.FormatTime)
 
 
 /* BOOT SECTOR STRUCTURES ****************************************************/
@@ -243,7 +310,9 @@ typedef enum _MFT_RECORD_FLAGS
 {
     MFT_RECORD_NOT_USED     = 0x0000,
     MFT_RECORD_IN_USE       = 0x0001,
-    MFT_RECORD_IS_DIRECTORY = 0x0002
+    MFT_RECORD_IS_DIRECTORY = 0x0002,
+    MFT_RECORD_UNKNOWN1     = 0x0004,   // Set on $Extend children by Windows
+    MFT_RECORD_VIEW_INDEX   = 0x0008    // File carries a view index (e.g. $Secure)
 } MFT_RECORD_FLAGS, *PMFT_RECORD_FLAGS;
 
 typedef struct _FILE_RECORD_HEADER
@@ -330,21 +399,19 @@ typedef struct _ATTR_RECORD
 
 typedef struct _STANDARD_INFORMATION
 {
-    ULONGLONG CreationTime;
-    ULONGLONG ChangeTime;
-    ULONGLONG LastWriteTime;
-    ULONGLONG LastAccessTime;
-    ULONG     FileAttribute;
-    ULONG     AlignmentOrReserved[3];
-    
-    // FIXME: UNIMPLEMENTED
-#if 0
-    ULONG QuotaId;
-    ULONG SecurityId;
-    ULONGLONG QuotaCharge;
-    USN Usn;
-#endif
-} STANDARD_INFORMATION, *PSTANDARD_INFORMATION;
+    ULONGLONG CreationTime;      // 0x00
+    ULONGLONG ChangeTime;        // 0x08
+    ULONGLONG LastWriteTime;     // 0x10
+    ULONGLONG LastAccessTime;    // 0x18
+    ULONG     FileAttribute;     // 0x20
+    ULONG     MaximumVersions;   // 0x24
+    ULONG     VersionNumber;     // 0x28
+    ULONG     ClassId;           // 0x2C
+    ULONG     OwnerId;           // 0x30
+    ULONG     SecurityId;        // 0x34
+    ULONGLONG QuotaCharge;       // 0x38
+    ULONGLONG Usn;               // 0x40
+} STANDARD_INFORMATION, *PSTANDARD_INFORMATION;   // 72 bytes (NTFS 3.x)
 
 typedef struct _FILENAME_ATTRIBUTE
 {
@@ -380,6 +447,37 @@ typedef struct _VOLUME_INFORMATION_ATTRIBUTE
 } VOLUME_INFORMATION_ATTRIBUTE, *PVOLUME_INFORMATION_ATTRIBUTE;
 
 
+/* INDEX STRUCTURES **********************************************************/
+
+typedef struct _INDEX_NODE_HEADER
+{
+    ULONG FirstEntryOffset;    // Offset to the first index entry, relative to this header
+    ULONG TotalSizeOfEntries;  // Total size of the index entries, incl. this header
+    ULONG AllocatedSize;       // Allocated size of the node
+    BYTE  Flags;               // 0 = small (fits in $INDEX_ROOT), 1 = large ($INDEX_ALLOCATION)
+    BYTE  Padding[3];
+} INDEX_NODE_HEADER, *PINDEX_NODE_HEADER;
+
+typedef struct _INDEX_ROOT_ATTRIBUTE
+{
+    ULONG             AttributeType;           // Type of the indexed attribute ($FILE_NAME = 0x30)
+    ULONG             CollationRule;
+    ULONG             SizeOfEntry;             // Bytes per index record
+    BYTE              ClustersPerIndexRecord;
+    BYTE              Padding[3];
+    INDEX_NODE_HEADER Header;
+} INDEX_ROOT_ATTRIBUTE, *PINDEX_ROOT_ATTRIBUTE;
+
+typedef struct _INDEX_ENTRY_HEADER
+{
+    ULONGLONG FileReference;  // MFT reference of the indexed file (0 for the end marker)
+    USHORT    Length;         // Length of this index entry
+    USHORT    KeyLength;      // Length of the key ($FILE_NAME) that follows
+    USHORT    Flags;          // See INDEX_ENTRY_*
+    USHORT    Reserved;
+} INDEX_ENTRY_HEADER, *PINDEX_ENTRY_HEADER;
+
+
 /* PROTOTYPES ****************************************************************/
 
 ULONG
@@ -390,17 +488,24 @@ NTAPI NtGetTickCount(VOID);
 VOID
 NtfsGetSystemTimeAsFileTime(OUT PFILETIME lpFileTime);
 
-BYTE GetSectorsPerCluster();
+BYTE GetSectorsPerCluster(VOID);
+
+// Computes the on-disk layout (cluster size, metadata placement, serial number)
+// and stores it in LAYOUT. ClusterSize is the caller-requested cluster size in
+// bytes (0 = auto-select). Returns STATUS_SUCCESS, or an error if the volume is
+// too small to hold the NTFS metadata.
+NTSTATUS
+ComputeLayout(IN ULONG ClusterSize);
 
 // bootsect.c
 
 NTSTATUS
-WriteBootSector();
+WriteBootSector(VOID);
 
 // attrib.c
 
 VOID
-AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord, 
+AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
                                 OUT PATTR_RECORD        Attribute);
 
 VOID
@@ -416,17 +521,18 @@ AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
 VOID
 AddNonResidentDataAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
                             OUT PATTR_RECORD            Attribute,
-                            IN  ULONG                   Address,
+                            IN  ULONGLONG               Lcn,
                             IN  ULONG                   ClustersCount,
-                            OPTIONAL IN  ULONG          DataSize);
+                            OPTIONAL IN  ULONGLONG      DataSize);
 
 VOID
 AddMftBitmapAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
                       OUT PATTR_RECORD            Attribute);
 
 VOID
-AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
-                            OUT PATTR_RECORD        Attribute);
+AddVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                       OUT PATTR_RECORD        Attribute,
+                       OPTIONAL IN PUNICODE_STRING Label);
 
 VOID
 AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
@@ -434,17 +540,94 @@ AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
                               IN  BYTE                MajorVersion,
                               IN  BYTE                MinorVersion);
 
+// Builds an empty resident $INDEX_ROOT containing only the end-of-index marker.
+// IndexedType is the attribute type being indexed (AttributeFileName for a
+// directory "$I30", 0 for a view index such as "$SII"/"$SDH").
+VOID
+AddEmptyIndexRoot(OUT PFILE_RECORD_HEADER FileRecord,
+                  OUT PATTR_RECORD        Attribute,
+                  IN  LPCWSTR             Name,
+                  IN  ULONG               IndexedType,
+                  IN  ULONG               CollationRule);
+
+// Builds an empty directory index ($INDEX_ROOT, named "$I30").
 VOID
 AddIndexRoot(OUT PFILE_RECORD_HEADER FileRecord,
              OUT PATTR_RECORD        Attribute);
 
+// Builds the $FILE_NAME value (used both by the file record's $FILE_NAME
+// attribute and by the parent directory's index entries, so they stay
+// byte-identical). Returns the value length.
+ULONG
+BuildFileNameValue(OUT PBYTE     Out,
+                   IN  LPCWSTR   Name,
+                   IN  DWORD32   ParentRecordNumber,
+                   IN  ULONG     FileAttributes,
+                   IN  ULONGLONG AllocatedSize,
+                   IN  ULONGLONG RealSize);
+
+// The standard NTFS file attributes for the system metafiles / a directory.
+#define METAFILE_FILE_ATTRIBUTES(isDir) \
+    (RA_METAFILES_ATTRIBUTES | ((isDir) ? FILE_TYPE_DIRECTORY : 0))
+
+// Builds a "large" directory $INDEX_ROOT ("$I30"): no inline entries, just the
+// end marker flagged LAST|HAS_SUBNODE pointing at INDX VCN 0. Used when the
+// directory's entries live in an $INDEX_ALLOCATION.
 VOID
-AddIndexAllocation(OUT PFILE_RECORD_HEADER FileRecord,
-                   OUT PATTR_RECORD        Attribute);
+AddIndexRootLarge(OUT PFILE_RECORD_HEADER FileRecord,
+                  OUT PATTR_RECORD        Attribute);
+
+// Builds a non-resident $INDEX_ALLOCATION attribute named "$I30".
+VOID
+AddIndexAllocationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                            OUT PATTR_RECORD        Attribute,
+                            IN  ULONGLONG           Lcn,
+                            IN  ULONG               Clusters);
+
+// Builds a resident named $BITMAP attribute holding the given bytes.
+VOID
+AddIndexBitmapAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                        OUT PATTR_RECORD        Attribute,
+                        IN  LPCWSTR             Name,
+                        IN  PVOID               Bits,
+                        IN  ULONG               BitsLength);
+
+// Builds a non-resident named $DATA stream (e.g. $Secure:$SDS).
+VOID
+AddNamedNonResidentDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                                 OUT PATTR_RECORD        Attribute,
+                                 IN  LPCWSTR             Name,
+                                 IN  ULONGLONG           Lcn,
+                                 IN  ULONG               Clusters,
+                                 IN  ULONGLONG           DataSize);
+
+// Builds a resident named view-index $INDEX_ROOT holding one entry (key+data)
+// plus the end marker (used for $Secure's $SDH and $SII).
+VOID
+AddViewIndexRoot(OUT PFILE_RECORD_HEADER FileRecord,
+                 OUT PATTR_RECORD        Attribute,
+                 IN  LPCWSTR             Name,
+                 IN  ULONG               CollationRule,
+                 IN  PVOID               Key,
+                 IN  USHORT              KeyLength,
+                 IN  PVOID               Data,
+                 IN  USHORT              DataLength);
+
+// Adds an empty resident named $DATA stream (e.g. $Secure:$SDS).
+VOID
+AddNamedEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                           OUT PATTR_RECORD        Attribute,
+                           IN  LPCWSTR             Name);
+
+// Adds the $BadClus:$Bad stream: a sparse, whole-volume $DATA stream with no
+// clusters allocated (i.e. no bad clusters).
+VOID
+AddBadClusterDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
+                           OUT PATTR_RECORD        Attribute);
 
 // files.c
 
 NTSTATUS
-WriteMetafiles();
+WriteMetafiles(VOID);
 
 #endif
