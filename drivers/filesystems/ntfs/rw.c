@@ -335,6 +335,7 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
     PNTFS_ATTR_CONTEXT DataContext;
     ULONG AttributeOffset;
     ULONGLONG StreamSize;
+    ULONG RequestedLength = 0;
 
     DPRINT("NtfsWriteFile(%p, %p, %p, %lu, %lu, %x, %s, %p)\n",
            DeviceExt,
@@ -484,9 +485,34 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
                                           CaseSensitive);
 
         }
+        else if (IrpFlags & IRP_PAGING_IO)
+        {
+            /*
+             * The memory manager flushes whole pages, so the final page of a
+             * file routinely reaches past its end. A paging write must never
+             * change the file size, so clamp it to what the stream actually
+             * holds rather than failing: the bytes past the end have nowhere
+             * to go, and refusing the write loses the ones before it too.
+             */
+            if (WriteOffset >= StreamSize)
+            {
+                DPRINT("Paging write entirely past the end of the stream; nothing to do\n");
+
+                ReleaseAttributeContext(DataContext);
+                ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
+                *LengthWritten = Length;
+                return STATUS_SUCCESS;
+            }
+
+            DPRINT("Clamping paging write of %lu bytes at %lu to stream size %I64u\n",
+                   Length, WriteOffset, StreamSize);
+
+            RequestedLength = Length;
+            Length = (ULONG)(StreamSize - WriteOffset);
+        }
         else
         {
-            // TODO - just fail for now
+            /* The volume stream is exactly as big as the volume; it cannot grow. */
             ReleaseAttributeContext(DataContext);
             ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
             *LengthWritten = 0;
@@ -516,6 +542,11 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
             *LengthWritten, Length);
         Status = STATUS_UNEXPECTED_IO_ERROR;
     }
+
+    // A clamped paging write stored everything the stream had room for, so as
+    // far as the memory manager is concerned the whole page was dealt with.
+    if (RequestedLength != 0 && NT_SUCCESS(Status))
+        *LengthWritten = RequestedLength;
 
     ReleaseAttributeContext(DataContext);
     ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
