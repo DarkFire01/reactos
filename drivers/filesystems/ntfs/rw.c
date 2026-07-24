@@ -35,6 +35,83 @@
 
 /* FUNCTIONS ****************************************************************/
 
+/**
+* @name NtfsReadWriteVolume
+* @implemented
+*
+* Serves a read or write made through a handle on the volume itself.
+*
+* @param DeviceExt
+* Points to the target disk's DEVICE_EXTENSION
+*
+* @param MajorFunction
+* IRP_MJ_READ or IRP_MJ_WRITE
+*
+* @param Buffer
+* System-space buffer to transfer to or from
+*
+* @param Length
+* How much to transfer, in bytes
+*
+* @param Offset
+* Byte offset from the start of the volume
+*
+* @param Irp
+* The request being served, so that its buffer can be used directly
+*
+* @param LengthTransferred
+* Receives how much was transferred
+*
+* @return
+* STATUS_SUCCESS on success, otherwise the status of the transfer.
+*
+* @remarks A volume handle is raw access to the partition: it has no file
+* record and no attributes. Running it through the attribute code would
+* resolve the volume FCB's MFT index of zero and redirect the transfer into
+* $MFT's own $DATA attribute.
+*
+*/
+static
+NTSTATUS
+NtfsReadWriteVolume(PDEVICE_EXTENSION DeviceExt,
+                    UCHAR MajorFunction,
+                    PUCHAR Buffer,
+                    ULONG Length,
+                    LONGLONG Offset,
+                    PIRP Irp,
+                    PULONG LengthTransferred)
+{
+    NTFS_IO_RUN_LIST RunList;
+    NTSTATUS Status;
+
+    DPRINT("NtfsReadWriteVolume(%p, %u, %p, %lu, %I64u, %p, %p)\n",
+           DeviceExt, MajorFunction, Buffer, Length, Offset, Irp, LengthTransferred);
+
+    *LengthTransferred = 0;
+
+    if (Length == 0)
+        return STATUS_SUCCESS;
+
+    NtfsInitIoRunList(&RunList);
+
+    Status = NtfsAddIoRun(&RunList, Offset, Length);
+    if (NT_SUCCESS(Status))
+    {
+        Status = NtfsPerformIrpIoRuns(DeviceExt->StorageDevice,
+                                      MajorFunction,
+                                      DeviceExt->NtfsInfo.BytesPerSector,
+                                      Irp,
+                                      Buffer,
+                                      &RunList,
+                                      FALSE,
+                                      LengthTransferred);
+    }
+
+    NtfsFreeIoRunList(&RunList);
+
+    return Status;
+}
+
 /*
  * FUNCTION: Reads data from a file
  */
@@ -174,11 +251,9 @@ NtfsReadFile(PDEVICE_EXTENSION DeviceExt,
     }
 
     DPRINT("Effective read: %lu at %lu for stream '%S'\n", RealLength, RealReadOffset, Fcb->Stream);
-    /*
-     * Only hand the IRP down when we are reading straight into its buffer. If
-     * we widened the request to sector boundaries and are bouncing through
-     * ReadBuffer, a forwarded transfer would land at the wrong place.
-     */
+    /* Only hand the IRP down when reading straight into its buffer: a
+     * forwarded transfer lands at the start of the IRP's MDL, so a bounced
+     * read would end up in the wrong place */
     RealLengthRead = ReadAttributeToIrp(DeviceExt,
                                         DataContext,
                                         RealReadOffset,
@@ -249,14 +324,37 @@ NtfsRead(PNTFS_IRP_CONTEXT IrpContext)
     ReadOffset = Stack->Parameters.Read.ByteOffset;
     Buffer = NtfsGetUserBuffer(Irp, BooleanFlagOn(Irp->Flags, IRP_PAGING_IO));
 
-    Status = NtfsReadFile(DeviceExt,
-                          FileObject,
-                          Buffer,
-                          ReadLength,
-                          ReadOffset.u.LowPart,
-                          Irp->Flags,
-                          Irp,
-                          &ReturnedReadLength);
+    /* Once dismounted the metadata can't be trusted; only raw volume access
+     * is still served */
+    if ((DeviceExt->Flags & VCB_VOLUME_DISMOUNTED) &&
+        !(((PNTFS_FCB)FileObject->FsContext)->Flags & FCB_IS_VOLUME))
+    {
+        Irp->IoStatus.Information = 0;
+        return STATUS_VOLUME_DISMOUNTED;
+    }
+
+    /* A handle on the volume itself is raw access to the partition. */
+    if (((PNTFS_FCB)FileObject->FsContext)->Flags & FCB_IS_VOLUME)
+    {
+        Status = NtfsReadWriteVolume(DeviceExt,
+                                     IRP_MJ_READ,
+                                     Buffer,
+                                     ReadLength,
+                                     ReadOffset.QuadPart,
+                                     Irp,
+                                     &ReturnedReadLength);
+    }
+    else
+    {
+        Status = NtfsReadFile(DeviceExt,
+                              FileObject,
+                              Buffer,
+                              ReadLength,
+                              ReadOffset.u.LowPart,
+                              Irp->Flags,
+                              Irp,
+                              &ReturnedReadLength);
+    }
     if (NT_SUCCESS(Status))
     {
         if (FileObject->Flags & FO_SYNCHRONOUS_IO)
@@ -494,13 +592,10 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
         }
         else if (IrpFlags & IRP_PAGING_IO)
         {
-            /*
-             * The memory manager flushes whole pages, so the final page of a
-             * file routinely reaches past its end. A paging write must never
-             * change the file size, so clamp it to what the stream actually
-             * holds rather than failing: the bytes past the end have nowhere
-             * to go, and refusing the write loses the ones before it too.
-             */
+            /* Mm flushes whole pages, so a file's last page routinely reaches
+             * past its end. A paging write must not change the file size, so
+             * clamp instead of failing - refusing it would lose the valid
+             * bytes before the end too. */
             if (WriteOffset >= StreamSize)
             {
                 DPRINT("Paging write entirely past the end of the stream; nothing to do\n");
@@ -519,7 +614,7 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
         }
         else
         {
-            /* The volume stream is exactly as big as the volume; it cannot grow. */
+            /* The volume stream is the size of the volume and cannot grow */
             ReleaseAttributeContext(DataContext);
             ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
             *LengthWritten = 0;
@@ -530,11 +625,9 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
     DPRINT("Length: %lu\tWriteOffset: %lu\tStreamSize: %I64u\n", Length, WriteOffset, StreamSize);
 
     // Write the data to the attribute
-    /*
-     * Buffer is the system mapping of this IRP's own MDL, so hand the IRP down
-     * as well: the run layer borrows that MDL rather than locking these pages a
-     * second time, which is not allowed on the paging path.
-     */
+    /* Buffer is the system mapping of this IRP's MDL, so hand the IRP down too
+     * and let the run layer borrow it instead of locking these pages twice,
+     * which the paging path forbids */
     Status = WriteAttributeFromIrp(DeviceExt, DataContext, WriteOffset, Buffer, Length, LengthWritten, FileRecord, Irp);
 
     // Did the write fail?
@@ -555,8 +648,8 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
         Status = STATUS_UNEXPECTED_IO_ERROR;
     }
 
-    // A clamped paging write stored everything the stream had room for, so as
-    // far as the memory manager is concerned the whole page was dealt with.
+    // A clamped paging write stored all the stream had room for, so as far as
+    // Mm is concerned the whole page is done
     if (RequestedLength != 0 && NT_SUCCESS(Status))
         *LengthWritten = RequestedLength;
 
@@ -679,19 +772,11 @@ NtfsWrite(PNTFS_IRP_CONTEXT IrpContext)
         return STATUS_INVALID_PARAMETER;
     }
 
-    /*
-     * Is this an async request to a file?
-     *
-     * Serving a write means reading the file record, walking its attributes
-     * and possibly growing the allocation, all of which is blocking metadata
-     * I/O. We therefore cannot satisfy it in a caller that told us it must not
-     * block; instead we post it to a worker thread, which runs the very same
-     * path with IRPCONTEXT_CANWAIT set.
-     *
-     * The user buffer has to be locked here rather than on the worker, while
-     * we are still in the requesting thread's address space. Once it has an
-     * MDL the transfer is context-independent.
-     */
+    /* Is this an async request to a file? Serving a write means reading the
+     * file record, walking its attributes and possibly growing the allocation,
+     * all of it blocking metadata I/O, so post it to a worker thread which
+     * runs the same path with IRPCONTEXT_CANWAIT set. Lock the user buffer
+     * here, while we're still in the requesting thread's address space. */
     if (!(IrpContext->Flags & IRPCONTEXT_CANWAIT) && !(Fcb->Flags & FCB_IS_VOLUME))
     {
         Status = NtfsLockUserBuffer(Irp, Length, IoReadAccess);
@@ -700,8 +785,6 @@ NtfsWrite(PNTFS_IRP_CONTEXT IrpContext)
             DPRINT1("Unable to lock user buffer!\n");
             return Status;
         }
-
-        DPRINT("Posting async write of %lu bytes to a worker thread\n", Length);
 
         return NtfsMarkIrpContextForQueue(IrpContext);
     }
@@ -758,16 +841,39 @@ NtfsWrite(PNTFS_IRP_CONTEXT IrpContext)
 
     // TODO: handle HighPart of ByteOffset (large files)
 
+    /* See NtfsRead() */
+    if ((DeviceExt->Flags & VCB_VOLUME_DISMOUNTED) &&
+        !(Fcb->Flags & FCB_IS_VOLUME))
+    {
+        ExReleaseResourceLite(Resource);
+        Irp->IoStatus.Information = 0;
+        return STATUS_VOLUME_DISMOUNTED;
+    }
+
     // write the file
-    Status = NtfsWriteFile(DeviceExt,
-                           FileObject,
-                           Buffer,
-                           Length,
-                           ByteOffset.LowPart,
-                           Irp->Flags,
-                           BooleanFlagOn(IrpContext->Stack->Flags, SL_CASE_SENSITIVE),
-                           Irp,
-                           &ReturnedWriteLength);
+    if (Fcb->Flags & FCB_IS_VOLUME)
+    {
+        /* Raw access to the partition, including after a dismount. */
+        Status = NtfsReadWriteVolume(DeviceExt,
+                                     IRP_MJ_WRITE,
+                                     Buffer,
+                                     Length,
+                                     ByteOffset.QuadPart,
+                                     Irp,
+                                     &ReturnedWriteLength);
+    }
+    else
+    {
+        Status = NtfsWriteFile(DeviceExt,
+                               FileObject,
+                               Buffer,
+                               Length,
+                               ByteOffset.LowPart,
+                               Irp->Flags,
+                               BooleanFlagOn(IrpContext->Stack->Flags, SL_CASE_SENSITIVE),
+                               Irp,
+                               &ReturnedWriteLength);
+    }
 
     IrpContext->Irp->IoStatus.Status = Status;
 

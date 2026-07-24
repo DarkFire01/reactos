@@ -745,16 +745,12 @@ NtfsSetEndOfFile(PNTFS_FCB Fcb,
 * $STANDARD_INFORMATION, or whatever status reading or writing the file record
 * returned.
 *
-* @remarks A timestamp of zero means "leave this one as it is". A timestamp of
-* -1 means "stop maintaining this one automatically", which we also treat as
-* no change, since the driver does not yet update timestamps as a side effect
-* of I/O. FileAttributes of zero likewise means no change.
+* @remarks A timestamp of zero means "leave as is" and -1 means "stop
+* maintaining automatically"; both are treated as no change, as the driver
+* doesn't yet update timestamps on I/O. FileAttributes of zero means no change.
 *
-* NTFS keeps a second copy of all of these in the $FILE_NAME attribute and a
-* third in the parent directory's index entry; all three are updated here. A
-* failure to refresh the index copy is logged but not reported, because
-* $STANDARD_INFORMATION is the authoritative one and is already on disk by
-* then.
+* NTFS keeps a second copy of these in $FILE_NAME and a third in the parent
+* directory's index entry; all three are updated here.
 *
 */
 static
@@ -810,18 +806,18 @@ NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
     {
         ULONG Attributes = BasicInfo->FileAttributes;
 
-        /* Whether this is a directory is ours to say, not the caller's. */
+        /* Whether this is a directory isn't the caller's to say */
         Attributes &= ~FILE_ATTRIBUTE_DIRECTORY;
         Attributes |= (StdInfo->FileAttribute & NTFS_FILE_TYPE_DIRECTORY);
 
-        /* NORMAL only means anything when it stands alone. */
+        /* NORMAL only means anything on its own */
         if ((Attributes & FILE_ATTRIBUTE_NORMAL) && Attributes != FILE_ATTRIBUTE_NORMAL)
             Attributes &= ~FILE_ATTRIBUTE_NORMAL;
 
         StdInfo->FileAttribute = Attributes;
     }
 
-    /* Keep the copy in $FILE_NAME in step with $STANDARD_INFORMATION. */
+    /* Keep the $FILE_NAME copy in step with $STANDARD_INFORMATION */
     FileName = GetBestFileNameFromRecord(DeviceExt, FileRecord);
     if (FileName != NULL)
     {
@@ -840,10 +836,7 @@ NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
         return Status;
     }
 
-    /*
-     * And refresh the third copy, in the parent directory's index, so that
-     * enumerating the directory reports what we just set.
-     */
+    /* Refresh the third copy, in the parent directory's index */
     if (FileName != NULL)
     {
         NTFS_FILENAME_UPDATE Update;
@@ -872,16 +865,11 @@ NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
                                            &Update,
                                            CaseSensitive);
 
-        /*
-         * $STANDARD_INFORMATION is the authoritative copy and it is already on
-         * disk, so a stale index entry is a cosmetic problem that chkdsk can
-         * repair. Failing the caller over it would be worse than reporting the
-         * success that actually happened.
-         */
+        /* $STANDARD_INFORMATION is authoritative and already on disk, so a
+         * stale index entry is cosmetic and chkdsk can repair it */
         if (!NT_SUCCESS(IndexStatus))
         {
-            DPRINT1("Failed to refresh the index entry for %wS (Status %lx); "
-                    "directory listings may show stale data\n",
+            DPRINT1("Failed to refresh the index entry for %wS (Status %lx)\n",
                     Fcb->ObjectName, IndexStatus);
         }
     }
