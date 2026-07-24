@@ -15,6 +15,7 @@
 #define TAG_IRP_CTXT 'iftN'
 #define TAG_ATT_CTXT 'aftN'
 #define TAG_FILE_REC 'rftN'
+#define TAG_IO_RUNS 'RftN'
 
 #define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
 #define ROUND_DOWN(N, S) ((N) - ((N) % (S)))
@@ -475,6 +476,53 @@ typedef struct {
 #define IRPCONTEXT_COMPLETE 0x2
 #define IRPCONTEXT_QUEUE 0x4
 
+/* An LBO of NTFS_SPARSE_LBO marks a run that has no backing storage. On read it
+ * is satisfied by zeroing the buffer; on write it is rejected. */
+#define NTFS_SPARSE_LBO ((LONGLONG)-1)
+
+/* How many runs a request may span before the run list spills into pool. */
+#define NTFS_MAX_IO_RUNS_ON_STACK 8
+
+/*
+ * One physically contiguous piece of a transfer. The runs of a request tile the
+ * caller's buffer contiguously: Runs[i].BufferOffset + Runs[i].ByteCount ==
+ * Runs[i + 1].BufferOffset.
+ */
+typedef struct _NTFS_IO_RUN
+{
+    LONGLONG Lbo;           /* Byte offset on the volume, or NTFS_SPARSE_LBO */
+    ULONG BufferOffset;     /* Byte offset into the caller's buffer */
+    ULONG ByteCount;
+    PIRP SavedIrp;          /* The IRP issued for this run; owned by blockdev.c */
+} NTFS_IO_RUN, *PNTFS_IO_RUN;
+
+/*
+ * A growable run list. Small requests stay entirely on the caller's stack;
+ * heavily fragmented ones spill into paged pool.
+ */
+typedef struct _NTFS_IO_RUN_LIST
+{
+    PNTFS_IO_RUN Runs;
+    ULONG Count;
+    ULONG Capacity;
+    ULONG TotalLength;
+    NTFS_IO_RUN StackRuns[NTFS_MAX_IO_RUNS_ON_STACK];
+} NTFS_IO_RUN_LIST, *PNTFS_IO_RUN_LIST;
+
+/*
+ * Shared between the issuing thread and the completion routines of every run of
+ * a single request. It outlives none of them: the issuer waits on SyncEvent,
+ * which the last completing run sets.
+ */
+typedef struct _NTFS_IO_CONTEXT
+{
+    volatile LONG IrpCount;         /* Runs still in flight */
+    volatile LONG Status;           /* First error seen, else STATUS_SUCCESS */
+    volatile LONG BytesTransferred;
+    PMDL MasterMdl;                 /* Owned by the issuer, not by any run */
+    KEVENT SyncEvent;
+} NTFS_IO_CONTEXT, *PNTFS_IO_CONTEXT;
+
 typedef struct
 {
     NTFSIDENTIFIER Identifier;
@@ -706,6 +754,26 @@ FreeClusters(PNTFS_VCB Vcb,
              ULONG ClustersToFree);
 
 /* blockdev.c */
+
+VOID
+NtfsInitIoRunList(OUT PNTFS_IO_RUN_LIST RunList);
+
+NTSTATUS
+NtfsAddIoRun(IN OUT PNTFS_IO_RUN_LIST RunList,
+             IN LONGLONG Lbo,
+             IN ULONG ByteCount);
+
+VOID
+NtfsFreeIoRunList(IN OUT PNTFS_IO_RUN_LIST RunList);
+
+NTSTATUS
+NtfsPerformIoRuns(IN PDEVICE_OBJECT DeviceObject,
+                  IN UCHAR MajorFunction,
+                  IN ULONG SectorSize,
+                  IN OUT PUCHAR Buffer,
+                  IN PNTFS_IO_RUN_LIST RunList,
+                  IN BOOLEAN Override,
+                  OUT PULONG BytesTransferred OPTIONAL);
 
 NTSTATUS
 NtfsReadDisk(IN PDEVICE_OBJECT DeviceObject,

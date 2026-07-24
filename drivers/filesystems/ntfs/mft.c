@@ -1076,10 +1076,12 @@ ReadAttribute(PDEVICE_EXTENSION Vcb,
     ULONGLONG CurrentOffset;
     ULONG ReadLength;
     ULONG AlreadyRead;
+    ULONG Transferred = 0;
     NTSTATUS Status;
+    NTFS_IO_RUN_LIST RunList;
 
     //TEMPTEMP
-    PUCHAR TempBuffer;
+    PUCHAR TempBuffer = NULL;
 
     if (!Context->pRecord->IsNonResident)
     {
@@ -1106,6 +1108,8 @@ ReadAttribute(PDEVICE_EXTENSION Vcb,
      */
 
     AlreadyRead = 0;
+    Status = STATUS_SUCCESS;
+    NtfsInitIoRunList(&RunList);
 
     // FIXME: Cache seems to be non-working. Disable it for now
     //if(Context->CacheRunOffset <= Offset && Offset < Context->CacheRunOffset + Context->CacheRunLength * Volume->ClusterSize)
@@ -1124,7 +1128,8 @@ ReadAttribute(PDEVICE_EXTENSION Vcb,
         TempBuffer = ExAllocatePoolWithTag(NonPagedPool, Vcb->NtfsInfo.BytesPerFileRecord, TAG_NTFS);
         if (TempBuffer == NULL)
         {
-            return STATUS_INSUFFICIENT_RESOURCES;
+            /* We return a byte count, so a failure has to read as zero bytes. */
+            return 0;
         }
 
         LastLCN = 0;
@@ -1170,28 +1175,22 @@ ReadAttribute(PDEVICE_EXTENSION Vcb,
     }
 
     /*
-     * II. Go through the run list and read the data
+     * II. Collect every run the request spans, then issue them all at once.
+     *
+     * Reading one run and waiting for it before starting the next would cost a
+     * full disk round trip per fragment. Building the whole list first lets the
+     * storage stack see all of them at the same time.
      */
 
     ReadLength = (ULONG)min(DataRunLength * Vcb->NtfsInfo.BytesPerCluster - (Offset - CurrentOffset), Length);
-    if (DataRunStartLCN == -1)
-    {
-        RtlZeroMemory(Buffer, ReadLength);
-        Status = STATUS_SUCCESS;
-    }
-    else
-    {
-        Status = NtfsReadDisk(Vcb->StorageDevice,
-                              DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster + Offset - CurrentOffset,
-                              ReadLength,
-                              Vcb->NtfsInfo.BytesPerSector,
-                              (PVOID)Buffer,
-                              FALSE);
-    }
+
+    Status = NtfsAddIoRun(&RunList,
+                          (DataRunStartLCN == -1) ? NTFS_SPARSE_LBO :
+                              (LONGLONG)(DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster + Offset - CurrentOffset),
+                          ReadLength);
     if (NT_SUCCESS(Status))
     {
         Length -= ReadLength;
-        Buffer += ReadLength;
         AlreadyRead += ReadLength;
 
         if (ReadLength == DataRunLength * Vcb->NtfsInfo.BytesPerCluster - (Offset - CurrentOffset))
@@ -1210,22 +1209,15 @@ ReadAttribute(PDEVICE_EXTENSION Vcb,
         while (Length > 0)
         {
             ReadLength = (ULONG)min(DataRunLength * Vcb->NtfsInfo.BytesPerCluster, Length);
-            if (DataRunStartLCN == -1)
-                RtlZeroMemory(Buffer, ReadLength);
-            else
-            {
-                Status = NtfsReadDisk(Vcb->StorageDevice,
+
+            Status = NtfsAddIoRun(&RunList,
+                                  (DataRunStartLCN == -1) ? NTFS_SPARSE_LBO :
                                       DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster,
-                                      ReadLength,
-                                      Vcb->NtfsInfo.BytesPerSector,
-                                      (PVOID)Buffer,
-                                      FALSE);
-                if (!NT_SUCCESS(Status))
-                    break;
-            }
+                                  ReadLength);
+            if (!NT_SUCCESS(Status))
+                break;
 
             Length -= ReadLength;
-            Buffer += ReadLength;
             AlreadyRead += ReadLength;
 
             /* We finished this request, but there still data in this data run. */
@@ -1253,10 +1245,36 @@ ReadAttribute(PDEVICE_EXTENSION Vcb,
             }
         } /* while */
 
-    } /* if Disk */
+    } /* if the run list was built */
+
+    if (NT_SUCCESS(Status))
+    {
+        Status = NtfsPerformIoRuns(Vcb->StorageDevice,
+                                   IRP_MJ_READ,
+                                   Vcb->NtfsInfo.BytesPerSector,
+                                   (PUCHAR)Buffer,
+                                   &RunList,
+                                   FALSE,
+                                   &Transferred);
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        /* Our callers read the return value as a byte count and treat zero as
+         * failure, so we cannot report a partial transfer here. */
+        DPRINT1("Read failure (Status %lx)\n", Status);
+        AlreadyRead = 0;
+    }
+    else if (Transferred < AlreadyRead)
+    {
+        DPRINT1("Short read: expected %lu bytes, got %lu\n", AlreadyRead, Transferred);
+        AlreadyRead = Transferred;
+    }
+
+    NtfsFreeIoRunList(&RunList);
 
     // TEMPTEMP
-    if (Context->pRecord->IsNonResident)
+    if (TempBuffer != NULL)
         ExFreePoolWithTag(TempBuffer, TAG_NTFS);
 
     Context->CacheRun = DataRun;
@@ -1327,18 +1345,20 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
     LONGLONG DataRunStartLCN;
     ULONGLONG CurrentOffset;
     ULONG WriteLength;
+    ULONG Transferred = 0;
     NTSTATUS Status;
-    PUCHAR SourceBuffer = Buffer;
     LONGLONG StartingOffset;
     BOOLEAN FileRecordAllocated = FALSE;
+    NTFS_IO_RUN_LIST RunList;
 
     //TEMPTEMP
-    PUCHAR TempBuffer;
+    PUCHAR TempBuffer = NULL;
 
 
     DPRINT("WriteAttribute(%p, %p, %I64u, %p, %lu, %p, %p)\n", Vcb, Context, Offset, Buffer, Length, RealLengthWritten, FileRecord);
 
     *RealLengthWritten = 0;
+    NtfsInitIoRunList(&RunList);
 
     // is this a resident attribute?
     if (!Context->pRecord->IsNonResident)
@@ -1497,7 +1517,11 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
         }
     }
 
-    // II. Go through the run list and write the data
+    // II. Collect every run the request spans, then issue them all at once.
+    //
+    // Writing one run and waiting for it before starting the next would cost a
+    // full disk round trip per fragment. Building the whole list first lets the
+    // storage stack see all of them at the same time.
 
     /* REVIEWME -- As adapted from NtfsReadAttribute():
     We seem to be making a special case for the first applicable data run, but I'm not sure why.
@@ -1507,14 +1531,7 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
 
     StartingOffset = DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster + Offset - CurrentOffset;
 
-    // Write the data to the disk
-    Status = NtfsWriteDisk(Vcb->StorageDevice,
-                           StartingOffset,
-                           WriteLength,
-                           Vcb->NtfsInfo.BytesPerSector,
-                           (PVOID)SourceBuffer);
-
-    // Did the write fail?
+    Status = NtfsAddIoRun(&RunList, StartingOffset, WriteLength);
     if (!NT_SUCCESS(Status))
     {
         Context->CacheRun = DataRun;
@@ -1528,7 +1545,6 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
     }
 
     Length -= WriteLength;
-    SourceBuffer += WriteLength;
     *RealLengthWritten += WriteLength;
 
     // Did we write to the end of the data run?
@@ -1562,18 +1578,14 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
         }
         else
         {
-            // write the data to the disk
-            Status = NtfsWriteDisk(Vcb->StorageDevice,
-                                   DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster,
-                                   WriteLength,
-                                   Vcb->NtfsInfo.BytesPerSector,
-                                   (PVOID)SourceBuffer);
+            Status = NtfsAddIoRun(&RunList,
+                                  DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster,
+                                  WriteLength);
             if (!NT_SUCCESS(Status))
-                break;
+                goto Cleanup;
         }
 
         Length -= WriteLength;
-        SourceBuffer += WriteLength;
         *RealLengthWritten += WriteLength;
 
         // We finished this request, but there's still data in this data run.
@@ -1612,6 +1624,28 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
         }
     } // end while (Length > 0) [more data to write]
 
+    // Now that the whole request is mapped out, hand every run to the storage
+    // stack in one go and wait once.
+    Status = NtfsPerformIoRuns(Vcb->StorageDevice,
+                               IRP_MJ_WRITE,
+                               Vcb->NtfsInfo.BytesPerSector,
+                               Buffer,
+                               &RunList,
+                               FALSE,
+                               &Transferred);
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Write failure (Status %lx)\n", Status);
+        *RealLengthWritten = 0;
+    }
+    else if (Transferred < *RealLengthWritten)
+    {
+        DPRINT1("Short write: expected %lu bytes, wrote %lu\n", *RealLengthWritten, Transferred);
+        *RealLengthWritten = Transferred;
+        Status = STATUS_UNEXPECTED_IO_ERROR;
+    }
+
     Context->CacheRun = DataRun;
     Context->CacheRunOffset = Offset + *RealLengthWritten;
     Context->CacheRunStartLCN = DataRunStartLCN;
@@ -1620,8 +1654,10 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
     Context->CacheRunCurrentOffset = CurrentOffset;
 
 Cleanup:
+    NtfsFreeIoRunList(&RunList);
+
     // TEMPTEMP
-    if (Context->pRecord->IsNonResident)
+    if (TempBuffer != NULL)
         ExFreePoolWithTag(TempBuffer, TAG_NTFS);
 
     return Status;
