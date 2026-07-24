@@ -64,4 +64,3 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/system32/)
         add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/system32/${item} DESTINATION reactos/system32 NAME_ON_CD ${item} FOR bootcd regtest)
     endforeach(item)
 endif()
-#
