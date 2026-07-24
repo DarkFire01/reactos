@@ -1204,28 +1204,55 @@ ReadFileRecord(PDEVICE_EXTENSION Vcb,
                ULONGLONG index,
                PFILE_RECORD_HEADER file);
 
+/*
+ * NTFS keeps a copy of a file's sizes, timestamps and attributes in the
+ * $FILE_NAME attribute of its entry in the parent directory's index, so that a
+ * directory can be enumerated without reading every file record it lists. That
+ * copy has to be refreshed whenever the authoritative values in the file record
+ * change; these flags say which of them the caller has changed.
+ */
+#define NTFS_FILENAME_UPDATE_SIZES  0x1
+#define NTFS_FILENAME_UPDATE_TIMES  0x2
+#define NTFS_FILENAME_UPDATE_ATTRS  0x4
+
+typedef struct _NTFS_FILENAME_UPDATE
+{
+    ULONG Flags;
+
+    /* NTFS_FILENAME_UPDATE_SIZES */
+    ULONGLONG DataSize;
+    ULONGLONG AllocatedSize;
+
+    /* NTFS_FILENAME_UPDATE_TIMES */
+    ULONGLONG CreationTime;
+    ULONGLONG ChangeTime;
+    ULONGLONG LastWriteTime;
+    ULONGLONG LastAccessTime;
+
+    /* NTFS_FILENAME_UPDATE_ATTRS */
+    ULONG FileAttributes;
+} NTFS_FILENAME_UPDATE, *PNTFS_FILENAME_UPDATE;
+
 NTSTATUS
-UpdateIndexEntryFileNameSize(PDEVICE_EXTENSION Vcb,
-                             PFILE_RECORD_HEADER MftRecord,
-                             PCHAR IndexRecord,
-                             ULONG IndexBlockSize,
-                             PINDEX_ENTRY_ATTRIBUTE FirstEntry,
-                             PINDEX_ENTRY_ATTRIBUTE LastEntry,
-                             PUNICODE_STRING FileName,
-                             PULONG StartEntry,
-                             PULONG CurrentEntry,
-                             BOOLEAN DirSearch,
-                             ULONGLONG NewDataSize,
-                             ULONGLONG NewAllocatedSize,
-                             BOOLEAN CaseSensitive);
+UpdateIndexEntryFileName(PDEVICE_EXTENSION Vcb,
+                         PFILE_RECORD_HEADER MftRecord,
+                         PCHAR IndexRecord,
+                         ULONG IndexBlockSize,
+                         PINDEX_ENTRY_ATTRIBUTE FirstEntry,
+                         PINDEX_ENTRY_ATTRIBUTE LastEntry,
+                         PUNICODE_STRING FileName,
+                         PULONG StartEntry,
+                         PULONG CurrentEntry,
+                         BOOLEAN DirSearch,
+                         PNTFS_FILENAME_UPDATE Update,
+                         BOOLEAN CaseSensitive);
 
 NTSTATUS
 UpdateFileNameRecord(PDEVICE_EXTENSION Vcb,
                      ULONGLONG ParentMFTIndex,
                      PUNICODE_STRING FileName,
                      BOOLEAN DirSearch,
-                     ULONGLONG NewDataSize,
-                     ULONGLONG NewAllocationSize,
+                     PNTFS_FILENAME_UPDATE Update,
                      BOOLEAN CaseSensitive);
 
 NTSTATUS

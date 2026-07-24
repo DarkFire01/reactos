@@ -462,6 +462,8 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
                 return Status;
             }
 
+            NTFS_FILENAME_UPDATE Update;
+
             AllocationSize = AttributeAllocatedLength(DataContext->pRecord);
 
             // now we need to update this file's size in every directory index entry that references it
@@ -476,12 +478,16 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
             filename.Length = fileNameAttribute->NameLength * sizeof(WCHAR);
             filename.MaximumLength = filename.Length;
 
+            RtlZeroMemory(&Update, sizeof(Update));
+            Update.Flags = NTFS_FILENAME_UPDATE_SIZES;
+            Update.DataSize = DataSize.QuadPart;
+            Update.AllocatedSize = AllocationSize;
+
             Status = UpdateFileNameRecord(Fcb->Vcb,
                                           ParentMFTId,
                                           &filename,
                                           FALSE,
-                                          DataSize.QuadPart,
-                                          AllocationSize,
+                                          &Update,
                                           CaseSensitive);
 
         }
