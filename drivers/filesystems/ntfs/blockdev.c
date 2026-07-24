@@ -985,6 +985,69 @@ NtfsWriteDisk(IN PDEVICE_OBJECT DeviceObject,
     return Status;
 }
 
+/**
+* @name NtfsFlushDevice
+* @implemented
+*
+* Asks the storage stack to push everything it is holding out to the media.
+*
+* @param DeviceObject
+* Device to flush
+*
+* @return
+* STATUS_SUCCESS on success, or whatever the storage stack returned.
+*
+* @remarks A device that has nothing to flush answers STATUS_INVALID_DEVICE_REQUEST
+* or STATUS_NOT_SUPPORTED; neither is a failure as far as the caller is concerned.
+*
+*/
+NTSTATUS
+NtfsFlushDevice(IN PDEVICE_OBJECT DeviceObject)
+{
+    NTFS_IO_CONTEXT IoContext;
+    PIO_STACK_LOCATION Stack;
+    NTSTATUS Status;
+    PIRP Irp;
+
+    Irp = IoAllocateIrp(DeviceObject->StackSize, FALSE);
+    if (Irp == NULL)
+    {
+        DPRINT1("IoAllocateIrp failed!\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlZeroMemory(&IoContext, sizeof(IoContext));
+    KeInitializeEvent(&IoContext.SyncEvent, NotificationEvent, FALSE);
+    IoContext.Status = STATUS_SUCCESS;
+    IoContext.IrpCount = 1;
+
+    Stack = IoGetNextIrpStackLocation(Irp);
+    Stack->MajorFunction = IRP_MJ_FLUSH_BUFFERS;
+
+    IoSetCompletionRoutine(Irp,
+                           NtfsIoRunCompletionRoutine,
+                           &IoContext,
+                           TRUE,
+                           TRUE,
+                           TRUE);
+
+    (VOID)IoCallDriver(DeviceObject, Irp);
+
+    KeWaitForSingleObject(&IoContext.SyncEvent, Executive, KernelMode, FALSE, NULL);
+
+    Status = (NTSTATUS)IoContext.Status;
+
+    if (Status == STATUS_INVALID_DEVICE_REQUEST ||
+        Status == STATUS_NOT_SUPPORTED)
+    {
+        Status = STATUS_SUCCESS;
+    }
+
+    DPRINT("NtfsFlushDevice() done (Status %lx)\n", Status);
+
+    return Status;
+}
+
 NTSTATUS
 NtfsReadSectors(IN PDEVICE_OBJECT DeviceObject,
                 IN ULONG DiskSector,
