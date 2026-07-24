@@ -327,6 +327,7 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
                        ULONG WriteOffset,
                        ULONG IrpFlags,
                        BOOLEAN CaseSensitive,
+                       PIRP Irp,
                        PULONG LengthWritten)
 {
     NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
@@ -529,7 +530,12 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
     DPRINT("Length: %lu\tWriteOffset: %lu\tStreamSize: %I64u\n", Length, WriteOffset, StreamSize);
 
     // Write the data to the attribute
-    Status = WriteAttribute(DeviceExt, DataContext, WriteOffset, Buffer, Length, LengthWritten, FileRecord);
+    /*
+     * Buffer is the system mapping of this IRP's own MDL, so hand the IRP down
+     * as well: the run layer borrows that MDL rather than locking these pages a
+     * second time, which is not allowed on the paging path.
+     */
+    Status = WriteAttributeFromIrp(DeviceExt, DataContext, WriteOffset, Buffer, Length, LengthWritten, FileRecord, Irp);
 
     // Did the write fail?
     if (!NT_SUCCESS(Status))
@@ -760,6 +766,7 @@ NtfsWrite(PNTFS_IRP_CONTEXT IrpContext)
                            ByteOffset.LowPart,
                            Irp->Flags,
                            BooleanFlagOn(IrpContext->Stack->Flags, SL_CASE_SENSITIVE),
+                           Irp,
                            &ReturnedWriteLength);
 
     IrpContext->Irp->IoStatus.Status = Status;

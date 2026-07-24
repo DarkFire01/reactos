@@ -519,7 +519,16 @@ typedef struct _NTFS_IO_CONTEXT
     volatile LONG IrpCount;         /* Runs still in flight */
     volatile LONG Status;           /* First error seen, else STATUS_SUCCESS */
     volatile LONG BytesTransferred;
-    PMDL MasterMdl;                 /* Owned by the issuer, not by any run */
+
+    /*
+     * MDL covering the whole transfer, which every run cuts a partial MDL
+     * from. It is either borrowed from the caller's IRP or built here; only
+     * in the latter case do we lock and release it.
+     */
+    PMDL MasterMdl;
+    PVOID MasterVa;                 /* Base address MasterMdl describes */
+    BOOLEAN OwnsMasterMdl;
+
     KEVENT SyncEvent;
 } NTFS_IO_CONTEXT, *PNTFS_IO_CONTEXT;
 
@@ -1143,6 +1152,16 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
                ULONG Length,
                PULONG LengthWritten,
                PFILE_RECORD_HEADER FileRecord);
+
+NTSTATUS
+WriteAttributeFromIrp(PDEVICE_EXTENSION Vcb,
+                      PNTFS_ATTR_CONTEXT Context,
+                      ULONGLONG Offset,
+                      const PUCHAR Buffer,
+                      ULONG Length,
+                      PULONG LengthWritten,
+                      PFILE_RECORD_HEADER FileRecord,
+                      PIRP Irp);
 
 ULONGLONG
 AttributeDataLength(PNTFS_ATTR_RECORD AttrRecord);

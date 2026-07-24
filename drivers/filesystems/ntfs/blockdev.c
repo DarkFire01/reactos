@@ -251,15 +251,24 @@ NtfsBuildIoRunIrp(IN PDEVICE_OBJECT DeviceObject,
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    /* A run that spans the whole buffer can use the master MDL as-is. Anything
-     * else needs a partial MDL describing just its slice of it. */
+    /*
+     * A run that spans the whole buffer can use the master MDL as-is. Anything
+     * else needs a partial MDL describing just its slice of it.
+     *
+     * Partial MDLs are cut in terms of the address the master MDL describes,
+     * which is not necessarily the address we read and write through: when the
+     * master is borrowed from an IRP it describes the originator's buffer,
+     * while Buffer is a system-space mapping of the same pages.
+     */
     if (Run->BufferOffset == 0 && Run->ByteCount == BufferLength)
     {
         Mdl = IoContext->MasterMdl;
     }
     else
     {
-        Mdl = IoAllocateMdl(Buffer + Run->BufferOffset,
+        PUCHAR MasterVa = (PUCHAR)IoContext->MasterVa + Run->BufferOffset;
+
+        Mdl = IoAllocateMdl(MasterVa,
                             Run->ByteCount,
                             FALSE,
                             FALSE,
@@ -273,7 +282,7 @@ NtfsBuildIoRunIrp(IN PDEVICE_OBJECT DeviceObject,
 
         IoBuildPartialMdl(IoContext->MasterMdl,
                           Mdl,
-                          Buffer + Run->BufferOffset,
+                          MasterVa,
                           Run->ByteCount);
     }
 
@@ -316,6 +325,7 @@ NTSTATUS
 NtfsIssueIoRuns(IN PDEVICE_OBJECT DeviceObject,
                 IN UCHAR MajorFunction,
                 IN OUT PUCHAR Buffer,
+                IN PMDL BorrowedMdl OPTIONAL,
                 IN PNTFS_IO_RUN_LIST RunList,
                 IN BOOLEAN Override,
                 OUT PULONG BytesTransferred)
@@ -361,32 +371,52 @@ NtfsIssueIoRuns(IN PDEVICE_OBJECT DeviceObject,
         return STATUS_SUCCESS;
     }
 
-    /* Lock the buffer down once. Every run either uses this MDL directly or
-     * carries a partial MDL cut from it. */
-    IoContext.MasterMdl = IoAllocateMdl(Buffer, RunList->TotalLength, FALSE, FALSE, NULL);
-    if (IoContext.MasterMdl == NULL)
+    if (BorrowedMdl != NULL)
     {
-        DPRINT1("IoAllocateMdl failed!\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
+        /*
+         * The caller's own MDL already describes these pages, and they are
+         * already locked. We must not build a second MDL over our mapping of
+         * them and probe-and-lock that: on a paging path the pages are in
+         * transition rather than active and valid, and MmProbeAndLockPages
+         * asserts on precisely that. Borrow the MDL instead and leave both the
+         * locking and the release to whoever owns it.
+         */
+        IoContext.MasterMdl = BorrowedMdl;
+        IoContext.MasterVa = MmGetMdlVirtualAddress(BorrowedMdl);
+        IoContext.OwnsMasterMdl = FALSE;
     }
+    else
+    {
+        /* A buffer of our own: describe it and lock it down once. Every run
+         * either uses this MDL directly or cuts a partial MDL from it. */
+        IoContext.MasterMdl = IoAllocateMdl(Buffer, RunList->TotalLength, FALSE, FALSE, NULL);
+        if (IoContext.MasterMdl == NULL)
+        {
+            DPRINT1("IoAllocateMdl failed!\n");
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
 
-    _SEH2_TRY
-    {
-        MmProbeAndLockPages(IoContext.MasterMdl,
-                            KernelMode,
-                            (MajorFunction == IRP_MJ_READ) ? IoWriteAccess : IoReadAccess);
-    }
-    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
-    {
-        Status = _SEH2_GetExceptionCode();
-    }
-    _SEH2_END;
+        _SEH2_TRY
+        {
+            MmProbeAndLockPages(IoContext.MasterMdl,
+                                KernelMode,
+                                (MajorFunction == IRP_MJ_READ) ? IoWriteAccess : IoReadAccess);
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
 
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("MmProbeAndLockPages failed (Status %lx)\n", Status);
-        IoFreeMdl(IoContext.MasterMdl);
-        return Status;
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("MmProbeAndLockPages failed (Status %lx)\n", Status);
+            IoFreeMdl(IoContext.MasterMdl);
+            return Status;
+        }
+
+        IoContext.MasterVa = Buffer;
+        IoContext.OwnsMasterMdl = TRUE;
     }
 
     /* Build everything before issuing anything, so an allocation failure here
@@ -430,8 +460,12 @@ NtfsIssueIoRuns(IN PDEVICE_OBJECT DeviceObject,
             Run->SavedIrp = NULL;
         }
 
-        MmUnlockPages(IoContext.MasterMdl);
-        IoFreeMdl(IoContext.MasterMdl);
+        if (IoContext.OwnsMasterMdl)
+        {
+            MmUnlockPages(IoContext.MasterMdl);
+            IoFreeMdl(IoContext.MasterMdl);
+        }
+
         return Status;
     }
 
@@ -457,8 +491,11 @@ NtfsIssueIoRuns(IN PDEVICE_OBJECT DeviceObject,
 
     KeWaitForSingleObject(&IoContext.SyncEvent, Executive, KernelMode, FALSE, NULL);
 
-    MmUnlockPages(IoContext.MasterMdl);
-    IoFreeMdl(IoContext.MasterMdl);
+    if (IoContext.OwnsMasterMdl)
+    {
+        MmUnlockPages(IoContext.MasterMdl);
+        IoFreeMdl(IoContext.MasterMdl);
+    }
 
     Status = (NTSTATUS)IoContext.Status;
     if (NT_SUCCESS(Status))
@@ -509,14 +546,16 @@ NtfsIssueIoRuns(IN PDEVICE_OBJECT DeviceObject,
 * request outwards can never reach past the run it belongs to.
 *
 */
+static
 NTSTATUS
-NtfsPerformIoRuns(IN PDEVICE_OBJECT DeviceObject,
-                  IN UCHAR MajorFunction,
-                  IN ULONG SectorSize,
-                  IN OUT PUCHAR Buffer,
-                  IN PNTFS_IO_RUN_LIST RunList,
-                  IN BOOLEAN Override,
-                  OUT PULONG BytesTransferred OPTIONAL)
+NtfsPerformIoRunsInternal(IN PDEVICE_OBJECT DeviceObject,
+                          IN UCHAR MajorFunction,
+                          IN ULONG SectorSize,
+                          IN OUT PUCHAR Buffer,
+                          IN PMDL BorrowedMdl OPTIONAL,
+                          IN PNTFS_IO_RUN_LIST RunList,
+                          IN BOOLEAN Override,
+                          OUT PULONG BytesTransferred OPTIONAL)
 {
     NTSTATUS Status;
     PNTFS_IO_RUN FirstRun;
@@ -560,6 +599,7 @@ NtfsPerformIoRuns(IN PDEVICE_OBJECT DeviceObject,
         Status = NtfsIssueIoRuns(DeviceObject,
                                  MajorFunction,
                                  Buffer,
+                                 BorrowedMdl,
                                  RunList,
                                  Override,
                                  &Transferred);
@@ -634,9 +674,11 @@ NtfsPerformIoRuns(IN PDEVICE_OBJECT DeviceObject,
 
     if (NT_SUCCESS(Status))
     {
+        /* The bounce buffer is ours, so there is no MDL to borrow here. */
         Status = NtfsIssueIoRuns(DeviceObject,
                                  MajorFunction,
                                  BounceBuffer,
+                                 NULL,
                                  RunList,
                                  Override,
                                  &Transferred);
@@ -795,29 +837,62 @@ NtfsPerformIrpIoRuns(IN PDEVICE_OBJECT DeviceObject,
                      IN BOOLEAN Override,
                      OUT PULONG BytesTransferred)
 {
+    PMDL BorrowedMdl = NULL;
+
     if (Irp != NULL &&
         Irp->MdlAddress != NULL &&
-        RunList->Count == 1 &&
-        RunList->Runs[0].Lbo != NTFS_SPARSE_LBO &&
-        (RunList->Runs[0].Lbo % SectorSize) == 0 &&
-        (RunList->Runs[0].ByteCount % SectorSize) == 0 &&
-        RunList->Runs[0].ByteCount <= MmGetMdlByteCount(Irp->MdlAddress))
+        RunList->TotalLength <= MmGetMdlByteCount(Irp->MdlAddress))
     {
-        return NtfsForwardIrpToRun(DeviceObject,
-                                   MajorFunction,
-                                   Irp,
-                                   &RunList->Runs[0],
-                                   Override,
-                                   BytesTransferred);
+        /*
+         * Buffer is a system-space mapping of exactly the pages this MDL
+         * describes, so the MDL can stand in for one of our own -- and on a
+         * paging path it must, because those pages cannot be locked twice.
+         */
+        BorrowedMdl = Irp->MdlAddress;
+
+        /* One aligned run covering the lot needs no MDL work at all: the
+         * caller's IRP can go straight down to the disk. */
+        if (RunList->Count == 1 &&
+            RunList->Runs[0].Lbo != NTFS_SPARSE_LBO &&
+            (RunList->Runs[0].Lbo % SectorSize) == 0 &&
+            (RunList->Runs[0].ByteCount % SectorSize) == 0)
+        {
+            return NtfsForwardIrpToRun(DeviceObject,
+                                       MajorFunction,
+                                       Irp,
+                                       &RunList->Runs[0],
+                                       Override,
+                                       BytesTransferred);
+        }
     }
 
-    return NtfsPerformIoRuns(DeviceObject,
-                             MajorFunction,
-                             SectorSize,
-                             Buffer,
-                             RunList,
-                             Override,
-                             BytesTransferred);
+    return NtfsPerformIoRunsInternal(DeviceObject,
+                                     MajorFunction,
+                                     SectorSize,
+                                     Buffer,
+                                     BorrowedMdl,
+                                     RunList,
+                                     Override,
+                                     BytesTransferred);
+}
+
+NTSTATUS
+NtfsPerformIoRuns(IN PDEVICE_OBJECT DeviceObject,
+                  IN UCHAR MajorFunction,
+                  IN ULONG SectorSize,
+                  IN OUT PUCHAR Buffer,
+                  IN PNTFS_IO_RUN_LIST RunList,
+                  IN BOOLEAN Override,
+                  OUT PULONG BytesTransferred OPTIONAL)
+{
+    return NtfsPerformIoRunsInternal(DeviceObject,
+                                     MajorFunction,
+                                     SectorSize,
+                                     Buffer,
+                                     NULL,
+                                     RunList,
+                                     Override,
+                                     BytesTransferred);
 }
 
 /**

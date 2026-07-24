@@ -1410,13 +1410,14 @@ ReadAttribute(PDEVICE_EXTENSION Vcb,
 */
 
 NTSTATUS
-WriteAttribute(PDEVICE_EXTENSION Vcb,
-               PNTFS_ATTR_CONTEXT Context,
-               ULONGLONG Offset,
-               const PUCHAR Buffer,
-               ULONG Length,
-               PULONG RealLengthWritten,
-               PFILE_RECORD_HEADER FileRecord)
+WriteAttributeFromIrp(PDEVICE_EXTENSION Vcb,
+                      PNTFS_ATTR_CONTEXT Context,
+                      ULONGLONG Offset,
+                      const PUCHAR Buffer,
+                      ULONG Length,
+                      PULONG RealLengthWritten,
+                      PFILE_RECORD_HEADER FileRecord,
+                      PIRP Irp)
 {
     ULONG MappedLength = 0;
     ULONG Transferred = 0;
@@ -1529,14 +1530,15 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
     if (NT_SUCCESS(Status))
     {
         // Writing into a hole would mean allocating clusters, which we cannot
-        // do here; NtfsPerformIoRuns() rejects sparse runs on IRP_MJ_WRITE.
-        Status = NtfsPerformIoRuns(Vcb->StorageDevice,
-                                   IRP_MJ_WRITE,
-                                   Vcb->NtfsInfo.BytesPerSector,
-                                   Buffer,
-                                   &RunList,
-                                   FALSE,
-                                   &Transferred);
+        // do here; NtfsPerformIrpIoRuns() rejects sparse runs on IRP_MJ_WRITE.
+        Status = NtfsPerformIrpIoRuns(Vcb->StorageDevice,
+                                      IRP_MJ_WRITE,
+                                      Vcb->NtfsInfo.BytesPerSector,
+                                      Irp,
+                                      Buffer,
+                                      &RunList,
+                                      FALSE,
+                                      &Transferred);
     }
 
     NtfsFreeIoRunList(&RunList);
@@ -1557,6 +1559,25 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
     }
 
     return Status;
+}
+
+NTSTATUS
+WriteAttribute(PDEVICE_EXTENSION Vcb,
+               PNTFS_ATTR_CONTEXT Context,
+               ULONGLONG Offset,
+               const PUCHAR Buffer,
+               ULONG Length,
+               PULONG RealLengthWritten,
+               PFILE_RECORD_HEADER FileRecord)
+{
+    return WriteAttributeFromIrp(Vcb,
+                                 Context,
+                                 Offset,
+                                 Buffer,
+                                 Length,
+                                 RealLengthWritten,
+                                 FileRecord,
+                                 NULL);
 }
 
 NTSTATUS
