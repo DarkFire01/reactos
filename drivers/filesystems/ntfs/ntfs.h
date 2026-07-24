@@ -776,6 +776,16 @@ NtfsPerformIoRuns(IN PDEVICE_OBJECT DeviceObject,
                   OUT PULONG BytesTransferred OPTIONAL);
 
 NTSTATUS
+NtfsPerformIrpIoRuns(IN PDEVICE_OBJECT DeviceObject,
+                     IN UCHAR MajorFunction,
+                     IN ULONG SectorSize,
+                     IN PIRP Irp,
+                     IN OUT PUCHAR Buffer,
+                     IN PNTFS_IO_RUN_LIST RunList,
+                     IN BOOLEAN Override,
+                     OUT PULONG BytesTransferred);
+
+NTSTATUS
 NtfsReadDisk(IN PDEVICE_OBJECT DeviceObject,
              IN LONGLONG StartingOffset,
              IN ULONG Length,
@@ -1116,6 +1126,14 @@ ReadAttribute(PDEVICE_EXTENSION Vcb,
               ULONGLONG Offset,
               PCHAR Buffer,
               ULONG Length);
+
+ULONG
+ReadAttributeToIrp(PDEVICE_EXTENSION Vcb,
+                   PNTFS_ATTR_CONTEXT Context,
+                   ULONGLONG Offset,
+                   PCHAR Buffer,
+                   ULONG Length,
+                   PIRP Irp);
 
 NTSTATUS
 WriteAttribute(PDEVICE_EXTENSION Vcb,
