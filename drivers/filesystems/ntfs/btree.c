@@ -70,7 +70,7 @@ PrintAllVCNs(PDEVICE_EXTENSION Vcb,
             continue;
         }
 
-        DPRINT1("Node #%d, VCN: %I64u\n", Count, CurrentNode->VCN);
+        DPRINT("Node #%d, VCN: %I64u\n", Count, CurrentNode->VCN);
 
         CurrentNode = (PINDEX_BUFFER)((ULONG_PTR)CurrentNode + NodeSize);
         CurrentOffset += NodeSize;
@@ -133,7 +133,7 @@ AllocateIndexNode(PDEVICE_EXTENSION DeviceExt,
     ULONG BytesNeeded;
     LARGE_INTEGER DataSize;
 
-    DPRINT1("AllocateIndexNode(%p, %p, %lu, %p, %lu, %p) called.\n", DeviceExt,
+    DPRINT("AllocateIndexNode(%p, %p, %lu, %p, %lu, %p) called.\n", DeviceExt,
             FileRecord,
             IndexBufferSize,
             IndexAllocationCtx,
@@ -351,7 +351,7 @@ CreateEmptyBTree(PB_TREE *NewTree)
     PB_TREE_FILENAME_NODE RootNode = ExAllocatePoolWithTag(NonPagedPool, sizeof(B_TREE_FILENAME_NODE), TAG_NTFS);
     PB_TREE_KEY DummyKey;
 
-    DPRINT1("CreateEmptyBTree(%p) called\n", NewTree);
+    DPRINT("CreateEmptyBTree(%p) called\n", NewTree);
 
     if (!Tree || !RootNode)
     {
@@ -972,7 +972,7 @@ CreateIndexRootFromBTree(PDEVICE_EXTENSION DeviceExt,
         // Copy the index entry
         RtlCopyMemory(CurrentNodeEntry, CurrentKey->IndexEntry, CurrentKey->IndexEntry->Length);
 
-        DPRINT1("Index Node Entry Stream Length: %u\nIndex Node Entry Length: %u\n",
+        DPRINT("Index Node Entry Stream Length: %u\nIndex Node Entry Length: %u\n",
                 CurrentNodeEntry->KeyLength,
                 CurrentNodeEntry->Length);
 
@@ -1215,7 +1215,7 @@ UpdateIndexAllocation(PDEVICE_EXTENSION DeviceExt,
             {
                 // We need to add an index allocation to the file record
                 PNTFS_ATTR_RECORD EndMarker = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + FileRecord->BytesInUse - (sizeof(ULONG) * 2));
-                DPRINT1("Adding index allocation...\n");
+                DPRINT("Adding index allocation...\n");
 
                 // Add index allocation to the very end of the file record
                 Status = AddIndexAllocation(DeviceExt,
@@ -1952,8 +1952,8 @@ SplitBTreeNode(PB_TREE Tree,
     *MedianKey = LastKeyBeforeMedian->NextKey;
     FirstKeyAfterMedian = (*MedianKey)->NextKey;
 
-    DPRINT1("%lu keys, %lu median\n", Node->KeyCount, MedianKeyIndex);
-    DPRINT1("\t\tMedian: %.*S\n", (*MedianKey)->IndexEntry->FileName.NameLength, (*MedianKey)->IndexEntry->FileName.Name);
+    DPRINT("%lu keys, %lu median\n", Node->KeyCount, MedianKeyIndex);
+    DPRINT("\t\tMedian: %.*S\n", (*MedianKey)->IndexEntry->FileName.NameLength, (*MedianKey)->IndexEntry->FileName.Name);
 
     // "Node" will be the left hand sibling after the split, containing all keys prior to the median key
 

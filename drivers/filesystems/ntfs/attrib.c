@@ -34,6 +34,10 @@
 #define NDEBUG
 #include <debug.h>
 
+/* Set to 1 to dump each data run list as it is encoded. Uses DbgPrint, so it
+ * prints whatever NDEBUG is set to. */
+#define NTFS_DUMP_DATA_RUNS 0
+
 /* FUNCTIONS ****************************************************************/
 
 /**
@@ -268,7 +272,7 @@ AddFileName(PFILE_RECORD_HEADER FileRecord,
         FileNameAttribute->FileAttributes = NTFS_FILE_TYPE_ARCHIVE;
 
     // we need to extract the filename from the path
-    DPRINT1("Pathname: %wZ\n", &FileObject->FileName);
+    DPRINT("Pathname: %wZ\n", &FileObject->FileName);
 
     FsRtlDissectName(FileObject->FileName, &Current, &Remaining);
 
@@ -277,7 +281,7 @@ AddFileName(PFILE_RECORD_HEADER FileRecord,
 
     while (Current.Length != 0)
     {
-        DPRINT1("Current: %wZ\n", &Current);
+        DPRINT("Current: %wZ\n", &Current);
 
         if (Remaining.Length != 0)
         {
@@ -309,13 +313,13 @@ AddFileName(PFILE_RECORD_HEADER FileRecord,
         FsRtlDissectName(Remaining, &Current, &Remaining);
     }
 
-    DPRINT1("MFT Index of parent: %I64u\n", CurrentMFTIndex);
+    DPRINT("MFT Index of parent: %I64u\n", CurrentMFTIndex);
 
     // set reference to parent directory
     FileNameAttribute->DirectoryFileReferenceNumber = CurrentMFTIndex;
     *ParentMftIndex = CurrentMFTIndex;
 
-    DPRINT1("SequenceNumber: 0x%02x\n", FileRecord->SequenceNumber);
+    DPRINT("SequenceNumber: 0x%02x\n", FileRecord->SequenceNumber);
 
     // The highest 2 bytes should be the sequence number, unless the parent happens to be root
     if (CurrentMFTIndex == NTFS_FILE_ROOT)
@@ -323,7 +327,7 @@ AddFileName(PFILE_RECORD_HEADER FileRecord,
     else
         FileNameAttribute->DirectoryFileReferenceNumber |= (ULONGLONG)FileRecord->SequenceNumber << 48;
 
-    DPRINT1("FileNameAttribute->DirectoryFileReferenceNumber: 0x%016I64x\n", FileNameAttribute->DirectoryFileReferenceNumber);
+    DPRINT("FileNameAttribute->DirectoryFileReferenceNumber: 0x%016I64x\n", FileNameAttribute->DirectoryFileReferenceNumber);
 
     FileNameAttribute->NameLength = FilenameNoPath.Length / sizeof(WCHAR);
     RtlCopyMemory(FileNameAttribute->Name, FilenameNoPath.Buffer, FilenameNoPath.Length);
@@ -687,7 +691,7 @@ AddRun(PNTFS_VCB Vcb,
             ULONG_PTR MoveTo = (ULONG_PTR)DestinationAttribute + AttrContext->pRecord->NonResident.MappingPairsOffset + RunBufferSize;
             MoveTo = ALIGN_UP_BY(MoveTo, ATTR_RECORD_ALIGNMENT);
 
-            DPRINT1("Moving attribute(s) after this one starting with type 0x%lx\n", NextAttribute->Type);
+            DPRINT("Moving attribute(s) after this one starting with type 0x%lx\n", NextAttribute->Type);
 
             // Move the trailing attributes; FinalAttribute will point to the end marker
             FinalAttribute = MoveAttributes(Vcb, NextAttribute, NextAttributeOffset, MoveTo);
@@ -743,7 +747,9 @@ AddRun(PNTFS_VCB Vcb,
 
     ExFreePoolWithTag(RunBuffer, TAG_NTFS);
 
+#if NTFS_DUMP_DATA_RUNS
     NtfsDumpDataRuns((PUCHAR)((ULONG_PTR)DestinationAttribute + DestinationAttribute->NonResident.MappingPairsOffset), 0);
+#endif
 
     return Status;
 }
@@ -1217,7 +1223,9 @@ FreeClusters(PNTFS_VCB Vcb,
 
     ExFreePoolWithTag(RunBuffer, TAG_NTFS);
 
+#if NTFS_DUMP_DATA_RUNS
     NtfsDumpDataRuns((PUCHAR)((ULONG_PTR)DestinationAttribute + DestinationAttribute->NonResident.MappingPairsOffset), 0);
+#endif
 
     return Status;
 }
@@ -1774,7 +1782,7 @@ NtfsDumpDataRuns(PVOID StartOfRun,
 
     if (CurrentLCN == 0)
     {
-        DPRINT1("Dumping data runs.\n\tData:\n\t\t");
+        DPRINT("Dumping data runs.\n\tData:\n\t\t");
         NtfsDumpDataRunData(StartOfRun);
         DbgPrint("\n\tRuns:\n\t\tOff\t\tLCN\t\tLength\n");
     }
