@@ -576,6 +576,7 @@ NtfsSetEndOfFile(PNTFS_FCB Fcb,
     PFILENAME_ATTRIBUTE FileNameAttribute;
     ULONGLONG ParentMFTId;
     UNICODE_STRING FileName;
+    NTFS_FILENAME_UPDATE Update;
 
 
     // Allocate non-paged memory for the file record
@@ -677,12 +678,16 @@ NtfsSetEndOfFile(PNTFS_FCB Fcb,
 
     AllocationSize = AttributeAllocatedLength(DataContext->pRecord);
 
+    RtlZeroMemory(&Update, sizeof(Update));
+    Update.Flags = NTFS_FILENAME_UPDATE_SIZES;
+    Update.DataSize = NewFileSize->QuadPart;
+    Update.AllocatedSize = AllocationSize;
+
     Status = UpdateFileNameRecord(Fcb->Vcb,
                                   ParentMFTId,
                                   &FileName,
                                   FALSE,
-                                  NewFileSize->QuadPart,
-                                  AllocationSize,
+                                  &Update,
                                   CaseSensitive);
 
     ReleaseAttributeContext(DataContext);
@@ -728,6 +733,9 @@ NtfsSetEndOfFile(PNTFS_FCB Fcb,
 * @param Fcb
 * File control block of the file being changed
 *
+* @param CaseSensitive
+* Whether the parent directory's index should be searched case-sensitively
+*
 * @param BasicInfo
 * The timestamps and attributes to apply
 *
@@ -742,16 +750,18 @@ NtfsSetEndOfFile(PNTFS_FCB Fcb,
 * no change, since the driver does not yet update timestamps as a side effect
 * of I/O. FileAttributes of zero likewise means no change.
 *
-* NTFS keeps a second copy of all of these in the $FILE_NAME attribute, and a
-* third in the parent directory's index entry. We update the first two here;
-* the index copy is only refreshed when a file's size changes, so a directory
-* listing can report stale timestamps until then.
+* NTFS keeps a second copy of all of these in the $FILE_NAME attribute and a
+* third in the parent directory's index entry; all three are updated here. A
+* failure to refresh the index copy is logged but not reported, because
+* $STANDARD_INFORMATION is the authoritative one and is already on disk by
+* then.
 *
 */
 static
 NTSTATUS
 NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
                         PNTFS_FCB Fcb,
+                        BOOLEAN CaseSensitive,
                         PFILE_BASIC_INFORMATION BasicInfo)
 {
     PFILE_RECORD_HEADER FileRecord;
@@ -823,10 +833,62 @@ NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
     }
 
     Status = UpdateFileRecord(DeviceExt, Fcb->MFTIndex, FileRecord);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to write the file record for %wS!\n", Fcb->ObjectName);
+        ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
+        return Status;
+    }
+
+    /*
+     * And refresh the third copy, in the parent directory's index, so that
+     * enumerating the directory reports what we just set.
+     */
+    if (FileName != NULL)
+    {
+        NTFS_FILENAME_UPDATE Update;
+        UNICODE_STRING Name;
+        ULONGLONG ParentMFTId;
+        NTSTATUS IndexStatus;
+
+        ParentMFTId = FileName->DirectoryFileReferenceNumber & NTFS_MFT_MASK;
+
+        Name.Buffer = FileName->Name;
+        Name.Length = FileName->NameLength * sizeof(WCHAR);
+        Name.MaximumLength = Name.Length;
+
+        RtlZeroMemory(&Update, sizeof(Update));
+        Update.Flags = NTFS_FILENAME_UPDATE_TIMES | NTFS_FILENAME_UPDATE_ATTRS;
+        Update.CreationTime = StdInfo->CreationTime;
+        Update.ChangeTime = StdInfo->ChangeTime;
+        Update.LastWriteTime = StdInfo->LastWriteTime;
+        Update.LastAccessTime = StdInfo->LastAccessTime;
+        Update.FileAttributes = StdInfo->FileAttribute;
+
+        IndexStatus = UpdateFileNameRecord(DeviceExt,
+                                           ParentMFTId,
+                                           &Name,
+                                           FALSE,
+                                           &Update,
+                                           CaseSensitive);
+
+        /*
+         * $STANDARD_INFORMATION is the authoritative copy and it is already on
+         * disk, so a stale index entry is a cosmetic problem that chkdsk can
+         * repair. Failing the caller over it would be worse than reporting the
+         * success that actually happened.
+         */
+        if (!NT_SUCCESS(IndexStatus))
+        {
+            DPRINT1("Failed to refresh the index entry for %wS (Status %lx); "
+                    "directory listings may show stale data\n",
+                    Fcb->ObjectName, IndexStatus);
+        }
+    }
 
     ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
 
-    return Status;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -875,6 +937,7 @@ NtfsSetInformation(PNTFS_IRP_CONTEXT IrpContext)
 
             Status = NtfsSetBasicInformation(DeviceExt,
                                              Fcb,
+                                             BooleanFlagOn(Stack->Flags, SL_CASE_SENSITIVE),
                                              (PFILE_BASIC_INFORMATION)SystemBuffer);
             break;
 

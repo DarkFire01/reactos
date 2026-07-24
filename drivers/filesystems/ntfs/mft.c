@@ -1583,8 +1583,8 @@ ReadFileRecord(PDEVICE_EXTENSION Vcb,
 
 /**
 * Searches a file's parent directory (given the parent's index in the mft)
-* for the given file. Upon finding an index entry for that file, updates
-* Data Size and Allocated Size values in the $FILE_NAME attribute of that entry.
+* for the given file. Upon finding an index entry for that file, refreshes the
+* fields of that entry's $FILE_NAME attribute named by Update->Flags.
 *
 * (Most of this code was copied from NtfsFindMftRecord)
 */
@@ -1593,8 +1593,7 @@ UpdateFileNameRecord(PDEVICE_EXTENSION Vcb,
                      ULONGLONG ParentMFTIndex,
                      PUNICODE_STRING FileName,
                      BOOLEAN DirSearch,
-                     ULONGLONG NewDataSize,
-                     ULONGLONG NewAllocationSize,
+                     PNTFS_FILENAME_UPDATE Update,
                      BOOLEAN CaseSensitive)
 {
     PFILE_RECORD_HEADER MftRecord;
@@ -1605,14 +1604,16 @@ UpdateFileNameRecord(PDEVICE_EXTENSION Vcb,
     NTSTATUS Status;
     ULONG CurrentEntry = 0;
 
-    DPRINT("UpdateFileNameRecord(%p, %I64d, %wZ, %s, %I64u, %I64u, %s)\n",
+    DPRINT("UpdateFileNameRecord(%p, %I64d, %wZ, %s, %lx, %s)\n",
            Vcb,
            ParentMFTIndex,
            FileName,
            DirSearch ? "TRUE" : "FALSE",
-           NewDataSize,
-           NewAllocationSize,
+           Update->Flags,
            CaseSensitive ? "TRUE" : "FALSE");
+
+    if (Update->Flags == 0)
+        return STATUS_SUCCESS;
 
     MftRecord = ExAllocateFromNPagedLookasideList(&Vcb->FileRecLookasideList);
     if (MftRecord == NULL)
@@ -1660,19 +1661,18 @@ UpdateFileNameRecord(PDEVICE_EXTENSION Vcb,
 
     DPRINT("IndexRecordSize: %x IndexBlockSize: %x\n", Vcb->NtfsInfo.BytesPerIndexRecord, IndexRoot->SizeOfEntry);
 
-    Status = UpdateIndexEntryFileNameSize(Vcb,
-                                          MftRecord,
-                                          IndexRecord,
-                                          IndexRoot->SizeOfEntry,
-                                          IndexEntry,
-                                          IndexEntryEnd,
-                                          FileName,
-                                          &CurrentEntry,
-                                          &CurrentEntry,
-                                          DirSearch,
-                                          NewDataSize,
-                                          NewAllocationSize,
-                                          CaseSensitive);
+    Status = UpdateIndexEntryFileName(Vcb,
+                                      MftRecord,
+                                      IndexRecord,
+                                      IndexRoot->SizeOfEntry,
+                                      IndexEntry,
+                                      IndexEntryEnd,
+                                      FileName,
+                                      &CurrentEntry,
+                                      &CurrentEntry,
+                                      DirSearch,
+                                      Update,
+                                      CaseSensitive);
 
     if (Status == STATUS_PENDING)
     {
@@ -1694,24 +1694,23 @@ UpdateFileNameRecord(PDEVICE_EXTENSION Vcb,
 }
 
 /**
-* Recursively searches directory index and applies the size update to the $FILE_NAME attribute of the
-* proper index entry.
+* Recursively searches a directory index and applies the requested update to the $FILE_NAME
+* attribute of the proper index entry.
 * (Heavily based on BrowseIndexEntries)
 */
 NTSTATUS
-UpdateIndexEntryFileNameSize(PDEVICE_EXTENSION Vcb,
-                             PFILE_RECORD_HEADER MftRecord,
-                             PCHAR IndexRecord,
-                             ULONG IndexBlockSize,
-                             PINDEX_ENTRY_ATTRIBUTE FirstEntry,
-                             PINDEX_ENTRY_ATTRIBUTE LastEntry,
-                             PUNICODE_STRING FileName,
-                             PULONG StartEntry,
-                             PULONG CurrentEntry,
-                             BOOLEAN DirSearch,
-                             ULONGLONG NewDataSize,
-                             ULONGLONG NewAllocatedSize,
-                             BOOLEAN CaseSensitive)
+UpdateIndexEntryFileName(PDEVICE_EXTENSION Vcb,
+                         PFILE_RECORD_HEADER MftRecord,
+                         PCHAR IndexRecord,
+                         ULONG IndexBlockSize,
+                         PINDEX_ENTRY_ATTRIBUTE FirstEntry,
+                         PINDEX_ENTRY_ATTRIBUTE LastEntry,
+                         PUNICODE_STRING FileName,
+                         PULONG StartEntry,
+                         PULONG CurrentEntry,
+                         BOOLEAN DirSearch,
+                         PNTFS_FILENAME_UPDATE Update,
+                         BOOLEAN CaseSensitive)
 {
     NTSTATUS Status;
     ULONG RecordOffset;
@@ -1720,7 +1719,7 @@ UpdateIndexEntryFileNameSize(PDEVICE_EXTENSION Vcb,
     ULONGLONG IndexAllocationSize;
     PINDEX_BUFFER IndexBuffer;
 
-    DPRINT("UpdateIndexEntrySize(%p, %p, %p, %lu, %p, %p, %wZ, %lu, %lu, %s, %I64u, %I64u, %s)\n",
+    DPRINT("UpdateIndexEntryFileName(%p, %p, %p, %lu, %p, %p, %wZ, %lu, %lu, %s, %lx, %s)\n",
            Vcb,
            MftRecord,
            IndexRecord,
@@ -1731,8 +1730,7 @@ UpdateIndexEntryFileNameSize(PDEVICE_EXTENSION Vcb,
            *StartEntry,
            *CurrentEntry,
            DirSearch ? "TRUE" : "FALSE",
-           NewDataSize,
-           NewAllocatedSize,
+           Update->Flags,
            CaseSensitive ? "TRUE" : "FALSE");
 
     // find the index entry responsible for the file we're trying to update
@@ -1746,8 +1744,26 @@ UpdateIndexEntryFileNameSize(PDEVICE_EXTENSION Vcb,
             CompareFileName(FileName, IndexEntry, DirSearch, CaseSensitive))
         {
             *StartEntry = *CurrentEntry;
-            IndexEntry->FileName.DataSize = NewDataSize;
-            IndexEntry->FileName.AllocatedSize = NewAllocatedSize;
+
+            if (Update->Flags & NTFS_FILENAME_UPDATE_SIZES)
+            {
+                IndexEntry->FileName.DataSize = Update->DataSize;
+                IndexEntry->FileName.AllocatedSize = Update->AllocatedSize;
+            }
+
+            if (Update->Flags & NTFS_FILENAME_UPDATE_TIMES)
+            {
+                IndexEntry->FileName.CreationTime = Update->CreationTime;
+                IndexEntry->FileName.ChangeTime = Update->ChangeTime;
+                IndexEntry->FileName.LastWriteTime = Update->LastWriteTime;
+                IndexEntry->FileName.LastAccessTime = Update->LastAccessTime;
+            }
+
+            if (Update->Flags & NTFS_FILENAME_UPDATE_ATTRS)
+            {
+                IndexEntry->FileName.FileAttributes = Update->FileAttributes;
+            }
+
             // indicate that the caller will still need to write the structure to the disk
             return STATUS_PENDING;
         }
@@ -1794,19 +1810,18 @@ UpdateIndexEntryFileNameSize(PDEVICE_EXTENSION Vcb,
         LastEntry = (PINDEX_ENTRY_ATTRIBUTE)((ULONG_PTR)&IndexBuffer->Header + IndexBuffer->Header.TotalSizeOfEntries);
         ASSERT(LastEntry <= (PINDEX_ENTRY_ATTRIBUTE)((ULONG_PTR)IndexBuffer + IndexBlockSize));
 
-        Status = UpdateIndexEntryFileNameSize(NULL,
-                                              NULL,
-                                              NULL,
-                                              0,
-                                              FirstEntry,
-                                              LastEntry,
-                                              FileName,
-                                              StartEntry,
-                                              CurrentEntry,
-                                              DirSearch,
-                                              NewDataSize,
-                                              NewAllocatedSize,
-                                              CaseSensitive);
+        Status = UpdateIndexEntryFileName(NULL,
+                                          NULL,
+                                          NULL,
+                                          0,
+                                          FirstEntry,
+                                          LastEntry,
+                                          FileName,
+                                          StartEntry,
+                                          CurrentEntry,
+                                          DirSearch,
+                                          Update,
+                                          CaseSensitive);
         if (Status == STATUS_PENDING)
         {
             // write the index record back to disk
