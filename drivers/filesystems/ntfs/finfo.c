@@ -715,6 +715,120 @@ NtfsSetEndOfFile(PNTFS_FCB Fcb,
 * All other information classes are TODO.
 *
 */
+/**
+* @name NtfsSetBasicInformation
+* @implemented
+*
+* Applies a FILE_BASIC_INFORMATION to a file: its four timestamps and its
+* attribute flags.
+*
+* @param DeviceExt
+* Points to the target disk's DEVICE_EXTENSION
+*
+* @param Fcb
+* File control block of the file being changed
+*
+* @param BasicInfo
+* The timestamps and attributes to apply
+*
+* @return
+* STATUS_SUCCESS on success, STATUS_INSUFFICIENT_RESOURCES if an allocation
+* failed, STATUS_INVALID_PARAMETER if the file record has no
+* $STANDARD_INFORMATION, or whatever status reading or writing the file record
+* returned.
+*
+* @remarks A timestamp of zero means "leave this one as it is". A timestamp of
+* -1 means "stop maintaining this one automatically", which we also treat as
+* no change, since the driver does not yet update timestamps as a side effect
+* of I/O. FileAttributes of zero likewise means no change.
+*
+* NTFS keeps a second copy of all of these in the $FILE_NAME attribute, and a
+* third in the parent directory's index entry. We update the first two here;
+* the index copy is only refreshed when a file's size changes, so a directory
+* listing can report stale timestamps until then.
+*
+*/
+static
+NTSTATUS
+NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
+                        PNTFS_FCB Fcb,
+                        PFILE_BASIC_INFORMATION BasicInfo)
+{
+    PFILE_RECORD_HEADER FileRecord;
+    PSTANDARD_INFORMATION StdInfo;
+    PFILENAME_ATTRIBUTE FileName;
+    NTSTATUS Status;
+
+    DPRINT("NtfsSetBasicInformation(%p, %p, %p)\n", DeviceExt, Fcb, BasicInfo);
+
+    FileRecord = ExAllocateFromNPagedLookasideList(&DeviceExt->FileRecLookasideList);
+    if (FileRecord == NULL)
+    {
+        DPRINT1("Not enough memory!\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Status = ReadFileRecord(DeviceExt, Fcb->MFTIndex, FileRecord);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Can't find record for %wS!\n", Fcb->ObjectName);
+        ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
+        return Status;
+    }
+
+    StdInfo = GetStandardInformationFromRecord(DeviceExt, FileRecord);
+    if (StdInfo == NULL)
+    {
+        DPRINT1("No $STANDARD_INFORMATION for %wS!\n", Fcb->ObjectName);
+        ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (BasicInfo->CreationTime.QuadPart > 0)
+        StdInfo->CreationTime = BasicInfo->CreationTime.QuadPart;
+
+    if (BasicInfo->LastAccessTime.QuadPart > 0)
+        StdInfo->LastAccessTime = BasicInfo->LastAccessTime.QuadPart;
+
+    if (BasicInfo->LastWriteTime.QuadPart > 0)
+        StdInfo->LastWriteTime = BasicInfo->LastWriteTime.QuadPart;
+
+    if (BasicInfo->ChangeTime.QuadPart > 0)
+        StdInfo->ChangeTime = BasicInfo->ChangeTime.QuadPart;
+
+    if (BasicInfo->FileAttributes != 0)
+    {
+        ULONG Attributes = BasicInfo->FileAttributes;
+
+        /* Whether this is a directory is ours to say, not the caller's. */
+        Attributes &= ~FILE_ATTRIBUTE_DIRECTORY;
+        Attributes |= (StdInfo->FileAttribute & NTFS_FILE_TYPE_DIRECTORY);
+
+        /* NORMAL only means anything when it stands alone. */
+        if ((Attributes & FILE_ATTRIBUTE_NORMAL) && Attributes != FILE_ATTRIBUTE_NORMAL)
+            Attributes &= ~FILE_ATTRIBUTE_NORMAL;
+
+        StdInfo->FileAttribute = Attributes;
+    }
+
+    /* Keep the copy in $FILE_NAME in step with $STANDARD_INFORMATION. */
+    FileName = GetBestFileNameFromRecord(DeviceExt, FileRecord);
+    if (FileName != NULL)
+    {
+        FileName->CreationTime = StdInfo->CreationTime;
+        FileName->LastAccessTime = StdInfo->LastAccessTime;
+        FileName->LastWriteTime = StdInfo->LastWriteTime;
+        FileName->ChangeTime = StdInfo->ChangeTime;
+        FileName->FileAttributes = StdInfo->FileAttribute;
+    }
+
+    Status = UpdateFileRecord(DeviceExt, Fcb->MFTIndex, FileRecord);
+
+    ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
+
+    return Status;
+}
+
 NTSTATUS
 NtfsSetInformation(PNTFS_IRP_CONTEXT IrpContext)
 {
@@ -751,6 +865,18 @@ NtfsSetInformation(PNTFS_IRP_CONTEXT IrpContext)
     switch (FileInformationClass)
     {
         PFILE_END_OF_FILE_INFORMATION EndOfFileInfo;
+
+        case FileBasicInformation:
+            if (BufferLength < sizeof(FILE_BASIC_INFORMATION))
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                break;
+            }
+
+            Status = NtfsSetBasicInformation(DeviceExt,
+                                             Fcb,
+                                             (PFILE_BASIC_INFORMATION)SystemBuffer);
+            break;
 
         /* TODO: Allocation size is not actually the same as file end for NTFS,
            however, few applications are likely to make the distinction. */
