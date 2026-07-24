@@ -1092,9 +1092,9 @@ SetResidentAttributeDataLength(PDEVICE_EXTENSION Vcb,
 * STATUS_SUCCESS if the range was mapped, STATUS_END_OF_FILE if Offset lies
 * beyond the last allocated cluster, or STATUS_INSUFFICIENT_RESOURCES.
 *
-* @remarks Holes are recorded as NTFS_SPARSE_LBO runs rather than being
-* rejected here: reads satisfy them by zeroing and writes fail on them, so the
-* policy belongs to the caller rather than to the mapping.
+* @remarks Holes are recorded as NTFS_SPARSE_LBO runs rather than rejected
+* here: reads satisfy them by zeroing and writes fail on them, so the policy
+* belongs to the caller.
 *
 */
 static
@@ -1216,7 +1216,7 @@ NtfsMapAttributeRuns(PDEVICE_EXTENSION Vcb,
         if (Length == 0 && RunLength != DataRunLength * Vcb->NtfsInfo.BytesPerCluster)
             break;
 
-        /* That was the last run the attribute has, so the caller gets a short map. */
+        /* Last run the attribute has, so the caller gets a short map */
         if (*DataRun == 0)
             break;
 
@@ -1274,18 +1274,16 @@ Cleanup:
 * How much to read, in bytes
 *
 * @param Irp
-* The request being served, or NULL. When supplied and the range turns out to
-* be a single aligned contiguous piece of the volume, the IRP is handed
-* straight to the storage stack, so the disk transfers directly into the
-* caller's pages with no intermediate IRP, MDL or copy.
+* The request being served, or NULL. When supplied and the range is a single
+* aligned contiguous piece of the volume, the IRP goes straight to the storage
+* stack and the disk transfers directly into the caller's pages.
 *
 * @return
 * The number of bytes read, or zero on failure.
 *
-* @remarks An IRP may only be passed when Buffer is the very start of that
-* IRP's buffer and no realignment or bouncing has taken place, because a
-* forwarded transfer lands at the beginning of the IRP's MDL. Callers that
-* read into a temporary or offset buffer must pass NULL.
+* @remarks An IRP may only be passed when Buffer is the start of that IRP's
+* buffer and nothing has been realigned or bounced, since a forwarded transfer
+* lands at the beginning of the IRP's MDL.
 *
 */
 ULONG

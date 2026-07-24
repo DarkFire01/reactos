@@ -25,25 +25,14 @@
  */
 
 /*
- * This is the volume I/O layer. Everything the driver reads from or writes to
- * the underlying storage device goes through NtfsPerformIoRuns().
+ * Volume I/O. A request is described as a list of physically contiguous runs
+ * (NTFS_IO_RUN_LIST); all of them are issued at once and waited on together,
+ * instead of one round trip per run. Same shape as fastfat's FatSingleAsync()
+ * and FatMultipleAsync().
  *
- * A request is described as a list of runs (NTFS_IO_RUN_LIST), each run being
- * one physically contiguous piece of the transfer. All the runs of a request
- * are issued to the storage stack at once and the caller waits a single time
- * for all of them, rather than paying a full round trip per run. This is the
- * same shape fastfat (FatNonCachedIo -> FatSingleAsync/FatMultipleAsync) and
- * Windows' own ntfs.sys (NtfsNonCachedIo -> NtfsSingleAsync/NtfsMultipleAsync)
- * use.
- *
- * The IRPs are built with IoAllocateIrp() rather than IoBuildSynchronousFsdRequest().
- * The latter binds the IRP to the calling thread's IRP list and signals
- * completion through a thread APC, which is wrong for a file system: we issue
- * these from worker threads, from the cache manager and from the paging path,
- * where the issuing thread is not necessarily the one that should own or wait
- * on the IRP. Owning the IRP ourselves also lets the completion routine return
- * STATUS_MORE_PROCESSING_REQUIRED, so nothing above us can complete or cancel
- * an IRP we are still waiting on.
+ * IRPs are built with IoAllocateIrp() and not IoBuildSynchronousFsdRequest():
+ * the latter queues the IRP on the calling thread and completes it through a
+ * thread APC, which we can't rely on from worker threads or the paging path.
  */
 
 /* INCLUDES *****************************************************************/
@@ -55,10 +44,8 @@
 
 /* FUNCTIONS ****************************************************************/
 
-/*
- * Run list management. The run list starts out using storage embedded in the
- * caller's stack frame and only spills into pool for heavily fragmented files.
- */
+/* The run list uses storage embedded in the caller's stack frame and only
+ * spills into pool for heavily fragmented files. */
 
 VOID
 NtfsInitIoRunList(OUT PNTFS_IO_RUN_LIST RunList)
@@ -90,9 +77,8 @@ NtfsInitIoRunList(OUT PNTFS_IO_RUN_LIST RunList)
 * the allocation failed.
 *
 * @remarks Runs tile the caller's buffer in the order they are added, so the
-* buffer offset is implied and must not be passed in. A piece that continues
-* the previous one is merged into it, which keeps physically contiguous files
-* down to a single IRP.
+* buffer offset is implied. A piece continuing the previous one is merged into
+* it, keeping contiguous files down to a single IRP.
 *
 */
 NTSTATUS
@@ -176,14 +162,10 @@ NtfsFreeIoRunList(IN OUT PNTFS_IO_RUN_LIST RunList)
 }
 
 /*
- * Completion routine shared by every run of a request.
- *
- * We allocated the IRP and (usually) its MDL, and nothing above us holds a
- * reference to either, so we tear them down here and return
- * STATUS_MORE_PROCESSING_REQUIRED to stop the I/O manager from completing the
- * IRP behind us. The last run to complete wakes the issuer.
- *
- * Runs at up to DISPATCH_LEVEL, in an arbitrary thread.
+ * Completion routine shared by every run of a request. Frees the IRP and its
+ * partial MDL, which are ours, and returns STATUS_MORE_PROCESSING_REQUIRED so
+ * the I/O manager stops touching them. The last run to complete wakes the
+ * issuer. Called at up to DISPATCH_LEVEL, in an arbitrary thread.
  */
 static
 NTSTATUS
@@ -225,11 +207,9 @@ NtfsIoRunCompletionRoutine(IN PDEVICE_OBJECT DeviceObject,
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
-/*
- * Builds, but does not issue, the IRP for a single run. Leaves it in
- * Run->SavedIrp. Every IRP of a request is built before any of them is issued,
- * so that a failure part-way through can be unwound without any I/O in flight.
- */
+/* Builds, but does not issue, the IRP for a single run. Every IRP is built
+ * before any is issued, so a failure part-way through unwinds with no I/O in
+ * flight. */
 static
 NTSTATUS
 NtfsBuildIoRunIrp(IN PDEVICE_OBJECT DeviceObject,
@@ -251,15 +231,10 @@ NtfsBuildIoRunIrp(IN PDEVICE_OBJECT DeviceObject,
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    /*
-     * A run that spans the whole buffer can use the master MDL as-is. Anything
-     * else needs a partial MDL describing just its slice of it.
-     *
-     * Partial MDLs are cut in terms of the address the master MDL describes,
-     * which is not necessarily the address we read and write through: when the
-     * master is borrowed from an IRP it describes the originator's buffer,
-     * while Buffer is a system-space mapping of the same pages.
-     */
+    /* A run spanning the whole buffer can use the master MDL as-is; anything
+     * else needs a partial MDL. Note partial MDLs are cut in terms of the
+     * address the master describes, which for a borrowed MDL is the
+     * originator's buffer and not our system mapping of it. */
     if (Run->BufferOffset == 0 && Run->ByteCount == BufferLength)
     {
         Mdl = IoContext->MasterMdl;
@@ -311,15 +286,10 @@ NtfsBuildIoRunIrp(IN PDEVICE_OBJECT DeviceObject,
     return STATUS_SUCCESS;
 }
 
-/*
- * Issues every non-sparse run of RunList in parallel against Buffer and waits
- * for all of them. Sparse runs are satisfied by zeroing, without touching the
- * storage stack.
- *
- * Buffer must be a system-space address covering RunList->TotalLength bytes,
- * and every run's Lbo and ByteCount must already be sector-aligned; the
- * alignment fixups live in NtfsPerformIoRuns().
- */
+/* Issues every non-sparse run in parallel and waits for all of them; sparse
+ * runs are satisfied by zeroing. Buffer must be a system-space address of
+ * RunList->TotalLength bytes and every run must already be sector-aligned --
+ * NtfsPerformIoRuns() does the alignment fixups. */
 static
 NTSTATUS
 NtfsIssueIoRuns(IN PDEVICE_OBJECT DeviceObject,
@@ -344,8 +314,7 @@ NtfsIssueIoRuns(IN PDEVICE_OBJECT DeviceObject,
     KeInitializeEvent(&IoContext.SyncEvent, NotificationEvent, FALSE);
     IoContext.Status = STATUS_SUCCESS;
 
-    /* Satisfy the sparse runs up front, and find out whether there is any real
-     * I/O left to do. */
+    /* Satisfy the sparse runs, and see if any real I/O is left */
     for (Index = 0; Index < RunList->Count; Index++)
     {
         Run = &RunList->Runs[Index];
@@ -373,22 +342,17 @@ NtfsIssueIoRuns(IN PDEVICE_OBJECT DeviceObject,
 
     if (BorrowedMdl != NULL)
     {
-        /*
-         * The caller's own MDL already describes these pages, and they are
-         * already locked. We must not build a second MDL over our mapping of
-         * them and probe-and-lock that: on a paging path the pages are in
-         * transition rather than active and valid, and MmProbeAndLockPages
-         * asserts on precisely that. Borrow the MDL instead and leave both the
-         * locking and the release to whoever owns it.
-         */
+        /* These pages are already described and locked by the caller's MDL.
+         * Locking them again through a second MDL over our mapping is illegal:
+         * on the paging path they aren't ActiveAndValid and
+         * MmProbeAndLockPages asserts. Borrow the MDL and leave it alone. */
         IoContext.MasterMdl = BorrowedMdl;
         IoContext.MasterVa = MmGetMdlVirtualAddress(BorrowedMdl);
         IoContext.OwnsMasterMdl = FALSE;
     }
     else
     {
-        /* A buffer of our own: describe it and lock it down once. Every run
-         * either uses this MDL directly or cuts a partial MDL from it. */
+        /* Our own buffer: describe and lock it once */
         IoContext.MasterMdl = IoAllocateMdl(Buffer, RunList->TotalLength, FALSE, FALSE, NULL);
         if (IoContext.MasterMdl == NULL)
         {
@@ -419,8 +383,7 @@ NtfsIssueIoRuns(IN PDEVICE_OBJECT DeviceObject,
         IoContext.OwnsMasterMdl = TRUE;
     }
 
-    /* Build everything before issuing anything, so an allocation failure here
-     * never leaves us tearing down an IRP that is already in flight. */
+    /* Build everything before issuing anything */
     for (Index = 0; Index < RunList->Count; Index++)
     {
         Run = &RunList->Runs[Index];
@@ -479,13 +442,12 @@ NtfsIssueIoRuns(IN PDEVICE_OBJECT DeviceObject,
         if (Run->SavedIrp == NULL)
             continue;
 
-        /* The completion routine frees the IRP, so let go of our pointer to it
-         * before handing it down. */
+        /* The completion routine frees the IRP, so drop our pointer first */
         Irp = Run->SavedIrp;
         Run->SavedIrp = NULL;
 
-        /* If the lower driver fails the IRP it completes it, and our completion
-         * routine picks the error up like any other I/O failure. */
+        /* A failure here is completed by the lower driver and picked up by
+         * our completion routine like any other I/O error */
         (VOID)IoCallDriver(DeviceObject, Irp);
     }
 
@@ -539,11 +501,9 @@ NtfsIssueIoRuns(IN PDEVICE_OBJECT DeviceObject,
 * failed, STATUS_NOT_IMPLEMENTED for a write to a sparse run, or whatever
 * status the storage stack returned.
 *
-* @remarks If the request does not start and end on a sector boundary it is
-* rounded outwards and performed through a bounce buffer, which for a write
-* means a read-modify-write of the two edge sectors. Because data runs are
-* cluster-aligned and clusters are a whole number of sectors, rounding a
-* request outwards can never reach past the run it belongs to.
+* @remarks A request not starting and ending on a sector boundary is rounded
+* outwards and performed through a bounce buffer, which for a write means a
+* read-modify-write of the two edge sectors.
 *
 */
 static
@@ -581,8 +541,8 @@ NtfsPerformIoRunsInternal(IN PDEVICE_OBJECT DeviceObject,
     FirstRun = &RunList->Runs[0];
     LastRun = &RunList->Runs[RunList->Count - 1];
 
-    /* Only the first run can start unaligned, and only the last can end
-     * unaligned: every run in between begins and ends on a cluster boundary. */
+    /* Only the first run can start unaligned and only the last can end
+     * unaligned; the rest sit on cluster boundaries */
     if (FirstRun->Lbo != NTFS_SPARSE_LBO)
     {
         FrontPad = (ULONG)(FirstRun->Lbo % SectorSize);
@@ -619,8 +579,8 @@ NtfsPerformIoRunsInternal(IN PDEVICE_OBJECT DeviceObject,
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    /* Grow the request outwards to cover whole sectors. Everything after the
-     * first run slides along by the amount we prepended. */
+    /* Grow the request out to whole sectors; everything after the first run
+     * slides along by what we prepended */
     for (Index = 1; Index < RunList->Count; Index++)
     {
         RunList->Runs[Index].BufferOffset += FrontPad;
@@ -651,9 +611,7 @@ NtfsPerformIoRunsInternal(IN PDEVICE_OBJECT DeviceObject,
                                   Override);
         }
 
-        /* Skip this only when the read above already fetched the very same
-         * sector -- that is, when there was a front read at all and the
-         * whole transfer fits inside one sector. */
+        /* Skip only if the read above already fetched this same sector */
         if (NT_SUCCESS(Status) &&
             BackPad != 0 &&
             (FrontPad == 0 || BounceLength > SectorSize))
@@ -706,14 +664,9 @@ NtfsPerformIoRunsInternal(IN PDEVICE_OBJECT DeviceObject,
     return Status;
 }
 
-/*
- * Completion routine for an IRP we did not allocate and must not free: the
- * caller's own request, handed straight to the storage stack.
- *
- * Returning STATUS_MORE_PROCESSING_REQUIRED stops the I/O manager from
- * completing it, leaving ownership with the file system so that the dispatch
- * path can finish it in the usual way.
- */
+/* Completion routine for the caller's own IRP, which we must not free.
+ * STATUS_MORE_PROCESSING_REQUIRED keeps ownership with us so the dispatch path
+ * can complete it as usual. */
 static
 NTSTATUS
 NTAPI
@@ -733,14 +686,9 @@ NtfsForwardedIrpCompletionRoutine(IN PDEVICE_OBJECT DeviceObject,
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
-/*
- * Hands the caller's IRP directly to the storage stack for one contiguous run.
- *
- * Nothing is allocated and nothing is copied: the disk transfers straight into
- * (or out of) the pages the caller's MDL already describes. This is what
- * fastfat's FatSingleAsync() and ntfs.sys' NtfsSingleAsync() do, and it is the
- * common case for any file that is not fragmented.
- */
+/* Hands the caller's IRP straight to the storage stack for one contiguous
+ * run: no allocation, no copy, the disk transfers directly into the pages the
+ * caller's MDL describes. Same as fastfat's FatSingleAsync(). */
 static
 NTSTATUS
 NtfsForwardIrpToRun(IN PDEVICE_OBJECT DeviceObject,
@@ -822,9 +770,8 @@ NtfsForwardIrpToRun(IN PDEVICE_OBJECT DeviceObject,
 * STATUS_SUCCESS on success, otherwise the status of the failing transfer.
 *
 * @remarks Forwarding is only possible when the whole request is one aligned,
-* non-sparse run that fits the IRP's MDL. Anything else -- a fragmented file, a
-* hole, an unaligned edge -- falls back to the gather/scatter path, which
-* allocates its own IRPs but still issues every run in parallel.
+* non-sparse run that fits the IRP's MDL. Anything else falls back to the
+* gather/scatter path, which still issues every run in parallel.
 *
 */
 NTSTATUS
@@ -843,15 +790,11 @@ NtfsPerformIrpIoRuns(IN PDEVICE_OBJECT DeviceObject,
         Irp->MdlAddress != NULL &&
         RunList->TotalLength <= MmGetMdlByteCount(Irp->MdlAddress))
     {
-        /*
-         * Buffer is a system-space mapping of exactly the pages this MDL
-         * describes, so the MDL can stand in for one of our own -- and on a
-         * paging path it must, because those pages cannot be locked twice.
-         */
+        /* Buffer maps exactly the pages this MDL describes, so it can stand
+         * in for one of our own, and on the paging path it must */
         BorrowedMdl = Irp->MdlAddress;
 
-        /* One aligned run covering the lot needs no MDL work at all: the
-         * caller's IRP can go straight down to the disk. */
+        /* One aligned run covering the lot goes straight down to the disk */
         if (RunList->Count == 1 &&
             RunList->Runs[0].Lbo != NTFS_SPARSE_LBO &&
             (RunList->Runs[0].Lbo % SectorSize) == 0 &&

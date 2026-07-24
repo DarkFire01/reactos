@@ -126,6 +126,8 @@ typedef struct
 } DEVICE_EXTENSION, *PDEVICE_EXTENSION, NTFS_VCB, *PNTFS_VCB;
 
 #define VCB_VOLUME_LOCKED       0x0001
+/* Volume dismounted: everything but raw volume access is refused */
+#define VCB_VOLUME_DISMOUNTED   0x0002
 
 typedef struct
 {
@@ -476,18 +478,14 @@ typedef struct {
 #define IRPCONTEXT_COMPLETE 0x2
 #define IRPCONTEXT_QUEUE 0x4
 
-/* An LBO of NTFS_SPARSE_LBO marks a run that has no backing storage. On read it
- * is satisfied by zeroing the buffer; on write it is rejected. */
+/* A run with no backing storage: zeroed on read, rejected on write */
 #define NTFS_SPARSE_LBO ((LONGLONG)-1)
 
 /* How many runs a request may span before the run list spills into pool. */
 #define NTFS_MAX_IO_RUNS_ON_STACK 8
 
-/*
- * One physically contiguous piece of a transfer. The runs of a request tile the
- * caller's buffer contiguously: Runs[i].BufferOffset + Runs[i].ByteCount ==
- * Runs[i + 1].BufferOffset.
- */
+/* One physically contiguous piece of a transfer. Runs tile the caller's buffer:
+ * Runs[i].BufferOffset + Runs[i].ByteCount == Runs[i + 1].BufferOffset. */
 typedef struct _NTFS_IO_RUN
 {
     LONGLONG Lbo;           /* Byte offset on the volume, or NTFS_SPARSE_LBO */
@@ -496,10 +494,7 @@ typedef struct _NTFS_IO_RUN
     PIRP SavedIrp;          /* The IRP issued for this run; owned by blockdev.c */
 } NTFS_IO_RUN, *PNTFS_IO_RUN;
 
-/*
- * A growable run list. Small requests stay entirely on the caller's stack;
- * heavily fragmented ones spill into paged pool.
- */
+/* Small requests stay on the caller's stack; fragmented ones spill into pool */
 typedef struct _NTFS_IO_RUN_LIST
 {
     PNTFS_IO_RUN Runs;
@@ -509,22 +504,17 @@ typedef struct _NTFS_IO_RUN_LIST
     NTFS_IO_RUN StackRuns[NTFS_MAX_IO_RUNS_ON_STACK];
 } NTFS_IO_RUN_LIST, *PNTFS_IO_RUN_LIST;
 
-/*
- * Shared between the issuing thread and the completion routines of every run of
- * a single request. It outlives none of them: the issuer waits on SyncEvent,
- * which the last completing run sets.
- */
+/* Shared between the issuing thread and every run's completion routine. The
+ * issuer waits on SyncEvent, which the last completing run sets. */
 typedef struct _NTFS_IO_CONTEXT
 {
     volatile LONG IrpCount;         /* Runs still in flight */
     volatile LONG Status;           /* First error seen, else STATUS_SUCCESS */
     volatile LONG BytesTransferred;
 
-    /*
-     * MDL covering the whole transfer, which every run cuts a partial MDL
-     * from. It is either borrowed from the caller's IRP or built here; only
-     * in the latter case do we lock and release it.
-     */
+    /* Covers the whole transfer; every run cuts a partial MDL from it. Either
+     * borrowed from the caller's IRP or built here; we only lock and release
+     * it in the latter case. */
     PMDL MasterMdl;
     PVOID MasterVa;                 /* Base address MasterMdl describes */
     BOOLEAN OwnsMasterMdl;
@@ -1223,13 +1213,10 @@ ReadFileRecord(PDEVICE_EXTENSION Vcb,
                ULONGLONG index,
                PFILE_RECORD_HEADER file);
 
-/*
- * NTFS keeps a copy of a file's sizes, timestamps and attributes in the
- * $FILE_NAME attribute of its entry in the parent directory's index, so that a
- * directory can be enumerated without reading every file record it lists. That
- * copy has to be refreshed whenever the authoritative values in the file record
- * change; these flags say which of them the caller has changed.
- */
+/* NTFS duplicates a file's sizes, timestamps and attributes into the $FILE_NAME
+ * of its entry in the parent directory's index, so a directory can be
+ * enumerated without reading every file record. These flags say which of them
+ * the caller changed and so need refreshing there. */
 #define NTFS_FILENAME_UPDATE_SIZES  0x1
 #define NTFS_FILENAME_UPDATE_TIMES  0x2
 #define NTFS_FILENAME_UPDATE_ATTRS  0x4
