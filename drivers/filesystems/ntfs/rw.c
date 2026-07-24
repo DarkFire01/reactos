@@ -46,6 +46,7 @@ NtfsReadFile(PDEVICE_EXTENSION DeviceExt,
              ULONG Length,
              ULONG ReadOffset,
              ULONG IrpFlags,
+             PIRP Irp,
              PULONG LengthRead)
 {
     NTSTATUS Status = STATUS_SUCCESS;
@@ -173,7 +174,17 @@ NtfsReadFile(PDEVICE_EXTENSION DeviceExt,
     }
 
     DPRINT("Effective read: %lu at %lu for stream '%S'\n", RealLength, RealReadOffset, Fcb->Stream);
-    RealLengthRead = ReadAttribute(DeviceExt, DataContext, RealReadOffset, (PCHAR)ReadBuffer, RealLength);
+    /*
+     * Only hand the IRP down when we are reading straight into its buffer. If
+     * we widened the request to sector boundaries and are bouncing through
+     * ReadBuffer, a forwarded transfer would land at the wrong place.
+     */
+    RealLengthRead = ReadAttributeToIrp(DeviceExt,
+                                        DataContext,
+                                        RealReadOffset,
+                                        (PCHAR)ReadBuffer,
+                                        RealLength,
+                                        AllocatedBuffer ? NULL : Irp);
     if (RealLengthRead == 0)
     {
         DPRINT1("Read failure!\n");
@@ -244,6 +255,7 @@ NtfsRead(PNTFS_IRP_CONTEXT IrpContext)
                           ReadLength,
                           ReadOffset.u.LowPart,
                           Irp->Flags,
+                          Irp,
                           &ReturnedReadLength);
     if (NT_SUCCESS(Status))
     {
@@ -624,6 +636,33 @@ NtfsWrite(PNTFS_IRP_CONTEXT IrpContext)
         return STATUS_INVALID_PARAMETER;
     }
 
+    /*
+     * Is this an async request to a file?
+     *
+     * Serving a write means reading the file record, walking its attributes
+     * and possibly growing the allocation, all of which is blocking metadata
+     * I/O. We therefore cannot satisfy it in a caller that told us it must not
+     * block; instead we post it to a worker thread, which runs the very same
+     * path with IRPCONTEXT_CANWAIT set.
+     *
+     * The user buffer has to be locked here rather than on the worker, while
+     * we are still in the requesting thread's address space. Once it has an
+     * MDL the transfer is context-independent.
+     */
+    if (!(IrpContext->Flags & IRPCONTEXT_CANWAIT) && !(Fcb->Flags & FCB_IS_VOLUME))
+    {
+        Status = NtfsLockUserBuffer(Irp, Length, IoReadAccess);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Unable to lock user buffer!\n");
+            return Status;
+        }
+
+        DPRINT("Posting async write of %lu bytes to a worker thread\n", Length);
+
+        return NtfsMarkIrpContextForQueue(IrpContext);
+    }
+
     // get the Resource
     if (Fcb->Flags & FCB_IS_VOLUME)
     {
@@ -654,15 +693,6 @@ NtfsWrite(PNTFS_IRP_CONTEXT IrpContext)
     goto ByeBye;
     }
     }*/
-
-    // Is this an async request to a file?
-    if (!(IrpContext->Flags & IRPCONTEXT_CANWAIT) && !(Fcb->Flags & FCB_IS_VOLUME))
-    {
-        DPRINT1("FIXME: Async writes not supported in NTFS!\n");
-
-        ExReleaseResourceLite(Resource);
-        return STATUS_NOT_IMPLEMENTED;
-    }
 
     // get the buffer of data the user is trying to write
     Buffer = NtfsGetUserBuffer(Irp, BooleanFlagOn(Irp->Flags, IRP_PAGING_IO));

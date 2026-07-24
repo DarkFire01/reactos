@@ -664,6 +664,162 @@ NtfsPerformIoRuns(IN PDEVICE_OBJECT DeviceObject,
     return Status;
 }
 
+/*
+ * Completion routine for an IRP we did not allocate and must not free: the
+ * caller's own request, handed straight to the storage stack.
+ *
+ * Returning STATUS_MORE_PROCESSING_REQUIRED stops the I/O manager from
+ * completing it, leaving ownership with the file system so that the dispatch
+ * path can finish it in the usual way.
+ */
+static
+NTSTATUS
+NTAPI
+NtfsForwardedIrpCompletionRoutine(IN PDEVICE_OBJECT DeviceObject,
+                                  IN PIRP Irp,
+                                  IN PVOID Context)
+{
+    PNTFS_IO_CONTEXT IoContext = (PNTFS_IO_CONTEXT)Context;
+
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    IoContext->Status = Irp->IoStatus.Status;
+    IoContext->BytesTransferred = (LONG)Irp->IoStatus.Information;
+
+    KeSetEvent(&IoContext->SyncEvent, IO_NO_INCREMENT, FALSE);
+
+    return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
+/*
+ * Hands the caller's IRP directly to the storage stack for one contiguous run.
+ *
+ * Nothing is allocated and nothing is copied: the disk transfers straight into
+ * (or out of) the pages the caller's MDL already describes. This is what
+ * fastfat's FatSingleAsync() and ntfs.sys' NtfsSingleAsync() do, and it is the
+ * common case for any file that is not fragmented.
+ */
+static
+NTSTATUS
+NtfsForwardIrpToRun(IN PDEVICE_OBJECT DeviceObject,
+                    IN UCHAR MajorFunction,
+                    IN PIRP Irp,
+                    IN PNTFS_IO_RUN Run,
+                    IN BOOLEAN Override,
+                    OUT PULONG BytesTransferred)
+{
+    NTFS_IO_CONTEXT IoContext;
+    PIO_STACK_LOCATION Stack;
+
+    DPRINT("Forwarding IRP %p for a single run at %I64x, %lu bytes\n",
+           Irp, Run->Lbo, Run->ByteCount);
+
+    RtlZeroMemory(&IoContext, sizeof(IoContext));
+    KeInitializeEvent(&IoContext.SyncEvent, NotificationEvent, FALSE);
+    IoContext.Status = STATUS_SUCCESS;
+
+    Stack = IoGetNextIrpStackLocation(Irp);
+    Stack->MajorFunction = MajorFunction;
+    Stack->MinorFunction = 0;
+    Stack->FileObject = NULL;
+    Stack->Parameters.Read.Length = Run->ByteCount;
+    Stack->Parameters.Read.ByteOffset.QuadPart = Run->Lbo;
+    Stack->Flags = Override ? SL_OVERRIDE_VERIFY_VOLUME : 0;
+
+    /* Must come last: it takes over Control on this same stack location. */
+    IoSetCompletionRoutine(Irp,
+                           NtfsForwardedIrpCompletionRoutine,
+                           &IoContext,
+                           TRUE,
+                           TRUE,
+                           TRUE);
+
+    (VOID)IoCallDriver(DeviceObject, Irp);
+
+    KeWaitForSingleObject(&IoContext.SyncEvent, Executive, KernelMode, FALSE, NULL);
+
+    *BytesTransferred = (ULONG)IoContext.BytesTransferred;
+
+    return (NTSTATUS)IoContext.Status;
+}
+
+/**
+* @name NtfsPerformIrpIoRuns
+* @implemented
+*
+* Transfers the runs of a request that originated from an IRP, forwarding that
+* IRP straight to the storage stack when the request allows it.
+*
+* @param DeviceObject
+* Storage device to transfer to or from
+*
+* @param MajorFunction
+* IRP_MJ_READ or IRP_MJ_WRITE
+*
+* @param SectorSize
+* Sector size the storage device requires transfers to be aligned to
+*
+* @param Irp
+* The request being served. May be NULL, in which case this is exactly
+* NtfsPerformIoRuns().
+*
+* @param Buffer
+* System-space mapping of the IRP's buffer, used whenever the request cannot
+* simply be forwarded
+*
+* @param RunList
+* The pieces to transfer
+*
+* @param Override
+* Whether to set SL_OVERRIDE_VERIFY_VOLUME on the requests
+*
+* @param BytesTransferred
+* Receives how much of the request was satisfied
+*
+* @return
+* STATUS_SUCCESS on success, otherwise the status of the failing transfer.
+*
+* @remarks Forwarding is only possible when the whole request is one aligned,
+* non-sparse run that fits the IRP's MDL. Anything else -- a fragmented file, a
+* hole, an unaligned edge -- falls back to the gather/scatter path, which
+* allocates its own IRPs but still issues every run in parallel.
+*
+*/
+NTSTATUS
+NtfsPerformIrpIoRuns(IN PDEVICE_OBJECT DeviceObject,
+                     IN UCHAR MajorFunction,
+                     IN ULONG SectorSize,
+                     IN PIRP Irp,
+                     IN OUT PUCHAR Buffer,
+                     IN PNTFS_IO_RUN_LIST RunList,
+                     IN BOOLEAN Override,
+                     OUT PULONG BytesTransferred)
+{
+    if (Irp != NULL &&
+        Irp->MdlAddress != NULL &&
+        RunList->Count == 1 &&
+        RunList->Runs[0].Lbo != NTFS_SPARSE_LBO &&
+        (RunList->Runs[0].Lbo % SectorSize) == 0 &&
+        (RunList->Runs[0].ByteCount % SectorSize) == 0 &&
+        RunList->Runs[0].ByteCount <= MmGetMdlByteCount(Irp->MdlAddress))
+    {
+        return NtfsForwardIrpToRun(DeviceObject,
+                                   MajorFunction,
+                                   Irp,
+                                   &RunList->Runs[0],
+                                   Override,
+                                   BytesTransferred);
+    }
+
+    return NtfsPerformIoRuns(DeviceObject,
+                             MajorFunction,
+                             SectorSize,
+                             Buffer,
+                             RunList,
+                             Override,
+                             BytesTransferred);
+}
+
 /**
 * @name NtfsReadDisk
 * @implemented

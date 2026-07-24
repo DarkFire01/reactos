@@ -1061,27 +1061,245 @@ SetResidentAttributeDataLength(PDEVICE_EXTENSION Vcb,
     return STATUS_SUCCESS;
 }
 
-ULONG
-ReadAttribute(PDEVICE_EXTENSION Vcb,
-              PNTFS_ATTR_CONTEXT Context,
-              ULONGLONG Offset,
-              PCHAR Buffer,
-              ULONG Length)
+/**
+* @name NtfsMapAttributeRuns
+* @implemented
+*
+* Maps a byte range of a non-resident attribute onto the volume, collecting the
+* physically contiguous runs it spans into a run list.
+*
+* @param Vcb
+* Volume the attribute lives on
+*
+* @param Context
+* Attribute to map. Its data run cache is updated to reflect where the mapping
+* stopped.
+*
+* @param Offset
+* Byte offset into the attribute to start mapping at
+*
+* @param Length
+* How many bytes to map
+*
+* @param RunList
+* Receives the runs. Must have been initialized by NtfsInitIoRunList().
+*
+* @param MappedLength
+* Receives how many bytes were actually mapped, which is less than Length if
+* the attribute's allocation ends first.
+*
+* @return
+* STATUS_SUCCESS if the range was mapped, STATUS_END_OF_FILE if Offset lies
+* beyond the last allocated cluster, or STATUS_INSUFFICIENT_RESOURCES.
+*
+* @remarks Holes are recorded as NTFS_SPARSE_LBO runs rather than being
+* rejected here: reads satisfy them by zeroing and writes fail on them, so the
+* policy belongs to the caller rather than to the mapping.
+*
+*/
+static
+NTSTATUS
+NtfsMapAttributeRuns(PDEVICE_EXTENSION Vcb,
+                     PNTFS_ATTR_CONTEXT Context,
+                     ULONGLONG Offset,
+                     ULONG Length,
+                     PNTFS_IO_RUN_LIST RunList,
+                     PULONG MappedLength)
 {
-    ULONGLONG LastLCN;
+    ULONGLONG LastLCN = 0;
+    ULONGLONG CurrentOffset = 0;
     PUCHAR DataRun;
     LONGLONG DataRunOffset;
-    ULONGLONG DataRunLength;
-    LONGLONG DataRunStartLCN;
-    ULONGLONG CurrentOffset;
-    ULONG ReadLength;
-    ULONG AlreadyRead;
+    ULONGLONG DataRunLength = 0;
+    LONGLONG DataRunStartLCN = -1;
+    ULONG RunLength;
+    ULONG Mapped = 0;
+    ULONG UsedBufferSize;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    //TEMPTEMP
+    PUCHAR TempBuffer;
+
+    *MappedLength = 0;
+
+    // This will be rewritten in the next iteration to just use the DataRuns MCB directly
+    TempBuffer = ExAllocatePoolWithTag(NonPagedPool, Vcb->NtfsInfo.BytesPerFileRecord, TAG_NTFS);
+    if (TempBuffer == NULL)
+    {
+        DPRINT1("Not enough memory!\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    ConvertLargeMCBToDataRuns(&Context->DataRunsMCB,
+                              TempBuffer,
+                              Vcb->NtfsInfo.BytesPerFileRecord,
+                              &UsedBufferSize);
+
+    DataRun = TempBuffer;
+
+    // I. Walk forward to the data run that holds Offset.
+    while (1)
+    {
+        DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
+        if (DataRunOffset != (LONGLONG)-1)
+        {
+            /* Normal data run. */
+            DataRunStartLCN = LastLCN + DataRunOffset;
+            LastLCN = DataRunStartLCN;
+        }
+        else
+        {
+            /* Sparse data run. */
+            DataRunStartLCN = -1;
+        }
+
+        if (Offset >= CurrentOffset &&
+            Offset < CurrentOffset + (DataRunLength * Vcb->NtfsInfo.BytesPerCluster))
+        {
+            break;
+        }
+
+        if (*DataRun == 0)
+        {
+            /* Offset is past the last cluster the attribute has allocated. */
+            Status = STATUS_END_OF_FILE;
+            goto Cleanup;
+        }
+
+        CurrentOffset += DataRunLength * Vcb->NtfsInfo.BytesPerCluster;
+    }
+
+    // II. Collect the runs. The first is special only in that the request
+    // usually starts partway into it.
+
+    RunLength = (ULONG)min(DataRunLength * Vcb->NtfsInfo.BytesPerCluster - (Offset - CurrentOffset), Length);
+
+    Status = NtfsAddIoRun(RunList,
+                          (DataRunStartLCN == -1) ? NTFS_SPARSE_LBO :
+                              DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster + Offset - CurrentOffset,
+                          RunLength);
+    if (!NT_SUCCESS(Status))
+        goto Cleanup;
+
+    Length -= RunLength;
+    Mapped += RunLength;
+
+    /* Did that consume the rest of this data run? */
+    if (RunLength == DataRunLength * Vcb->NtfsInfo.BytesPerCluster - (Offset - CurrentOffset))
+    {
+        CurrentOffset += DataRunLength * Vcb->NtfsInfo.BytesPerCluster;
+        DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
+        if (DataRunOffset != (LONGLONG)-1)
+        {
+            DataRunStartLCN = LastLCN + DataRunOffset;
+            LastLCN = DataRunStartLCN;
+        }
+        else
+            DataRunStartLCN = -1;
+    }
+
+    while (Length > 0)
+    {
+        RunLength = (ULONG)min(DataRunLength * Vcb->NtfsInfo.BytesPerCluster, Length);
+
+        Status = NtfsAddIoRun(RunList,
+                              (DataRunStartLCN == -1) ? NTFS_SPARSE_LBO :
+                                  DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster,
+                              RunLength);
+        if (!NT_SUCCESS(Status))
+            goto Cleanup;
+
+        Length -= RunLength;
+        Mapped += RunLength;
+
+        /* We satisfied the request, but there is still data in this run. */
+        if (Length == 0 && RunLength != DataRunLength * Vcb->NtfsInfo.BytesPerCluster)
+            break;
+
+        /* That was the last run the attribute has, so the caller gets a short map. */
+        if (*DataRun == 0)
+            break;
+
+        CurrentOffset += DataRunLength * Vcb->NtfsInfo.BytesPerCluster;
+        DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
+        if (DataRunOffset != (LONGLONG)-1)
+        {
+            /* Normal data run. */
+            DataRunStartLCN = LastLCN + DataRunOffset;
+            LastLCN = DataRunStartLCN;
+        }
+        else
+        {
+            /* Sparse data run. */
+            DataRunStartLCN = -1;
+        }
+    }
+
+Cleanup:
+    Context->CacheRun = DataRun;
+    Context->CacheRunOffset = Offset + Mapped;
+    Context->CacheRunStartLCN = DataRunStartLCN;
+    Context->CacheRunLength = DataRunLength;
+    Context->CacheRunLastLCN = LastLCN;
+    Context->CacheRunCurrentOffset = CurrentOffset;
+
+    //TEMPTEMP
+    ExFreePoolWithTag(TempBuffer, TAG_NTFS);
+
+    *MappedLength = Mapped;
+
+    return Status;
+}
+
+/**
+* @name ReadAttributeToIrp
+* @implemented
+*
+* Reads a range of an attribute, serving it out of the given IRP where the
+* shape of the request allows it.
+*
+* @param Vcb
+* Volume the attribute lives on
+*
+* @param Context
+* Attribute to read from
+*
+* @param Offset
+* Byte offset into the attribute to start reading at
+*
+* @param Buffer
+* System-space buffer receiving the data
+*
+* @param Length
+* How much to read, in bytes
+*
+* @param Irp
+* The request being served, or NULL. When supplied and the range turns out to
+* be a single aligned contiguous piece of the volume, the IRP is handed
+* straight to the storage stack, so the disk transfers directly into the
+* caller's pages with no intermediate IRP, MDL or copy.
+*
+* @return
+* The number of bytes read, or zero on failure.
+*
+* @remarks An IRP may only be passed when Buffer is the very start of that
+* IRP's buffer and no realignment or bouncing has taken place, because a
+* forwarded transfer lands at the beginning of the IRP's MDL. Callers that
+* read into a temporary or offset buffer must pass NULL.
+*
+*/
+ULONG
+ReadAttributeToIrp(PDEVICE_EXTENSION Vcb,
+                   PNTFS_ATTR_CONTEXT Context,
+                   ULONGLONG Offset,
+                   PCHAR Buffer,
+                   ULONG Length,
+                   PIRP Irp)
+{
+    ULONG AlreadyRead = 0;
     ULONG Transferred = 0;
     NTSTATUS Status;
     NTFS_IO_RUN_LIST RunList;
-
-    //TEMPTEMP
-    PUCHAR TempBuffer = NULL;
 
     if (!Context->pRecord->IsNonResident)
     {
@@ -1100,191 +1318,53 @@ ReadAttribute(PDEVICE_EXTENSION Vcb,
     }
 
     /*
-     * Non-resident attribute
+     * Non-resident attribute: map the requested range onto the volume, then
+     * issue every run it spans in a single parallel batch.
      */
 
-    /*
-     * I. Find the corresponding start data run.
-     */
-
-    AlreadyRead = 0;
-    Status = STATUS_SUCCESS;
     NtfsInitIoRunList(&RunList);
 
-    // FIXME: Cache seems to be non-working. Disable it for now
-    //if(Context->CacheRunOffset <= Offset && Offset < Context->CacheRunOffset + Context->CacheRunLength * Volume->ClusterSize)
-    if (0)
+    Status = NtfsMapAttributeRuns(Vcb, Context, Offset, Length, &RunList, &AlreadyRead);
+
+    if (NT_SUCCESS(Status) && AlreadyRead != 0)
     {
-        DataRun = Context->CacheRun;
-        LastLCN = Context->CacheRunLastLCN;
-        DataRunStartLCN = Context->CacheRunStartLCN;
-        DataRunLength = Context->CacheRunLength;
-        CurrentOffset = Context->CacheRunCurrentOffset;
-    }
-    else
-    {
-        //TEMPTEMP
-        ULONG UsedBufferSize;
-        TempBuffer = ExAllocatePoolWithTag(NonPagedPool, Vcb->NtfsInfo.BytesPerFileRecord, TAG_NTFS);
-        if (TempBuffer == NULL)
-        {
-            /* We return a byte count, so a failure has to read as zero bytes. */
-            return 0;
-        }
-
-        LastLCN = 0;
-        CurrentOffset = 0;
-
-        // This will be rewritten in the next iteration to just use the DataRuns MCB directly
-        ConvertLargeMCBToDataRuns(&Context->DataRunsMCB,
-                                  TempBuffer,
-                                  Vcb->NtfsInfo.BytesPerFileRecord,
-                                  &UsedBufferSize);
-
-        DataRun = TempBuffer;
-
-        while (1)
-        {
-            DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
-            if (DataRunOffset != -1)
-            {
-                /* Normal data run. */
-                DataRunStartLCN = LastLCN + DataRunOffset;
-                LastLCN = DataRunStartLCN;
-            }
-            else
-            {
-                /* Sparse data run. */
-                DataRunStartLCN = -1;
-            }
-
-            if (Offset >= CurrentOffset &&
-                Offset < CurrentOffset + (DataRunLength * Vcb->NtfsInfo.BytesPerCluster))
-            {
-                break;
-            }
-
-            if (*DataRun == 0)
-            {
-                ExFreePoolWithTag(TempBuffer, TAG_NTFS);
-                return AlreadyRead;
-            }
-
-            CurrentOffset += DataRunLength * Vcb->NtfsInfo.BytesPerCluster;
-        }
+        Status = NtfsPerformIrpIoRuns(Vcb->StorageDevice,
+                                      IRP_MJ_READ,
+                                      Vcb->NtfsInfo.BytesPerSector,
+                                      Irp,
+                                      (PUCHAR)Buffer,
+                                      &RunList,
+                                      FALSE,
+                                      &Transferred);
     }
 
-    /*
-     * II. Collect every run the request spans, then issue them all at once.
-     *
-     * Reading one run and waiting for it before starting the next would cost a
-     * full disk round trip per fragment. Building the whole list first lets the
-     * storage stack see all of them at the same time.
-     */
-
-    ReadLength = (ULONG)min(DataRunLength * Vcb->NtfsInfo.BytesPerCluster - (Offset - CurrentOffset), Length);
-
-    Status = NtfsAddIoRun(&RunList,
-                          (DataRunStartLCN == -1) ? NTFS_SPARSE_LBO :
-                              (LONGLONG)(DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster + Offset - CurrentOffset),
-                          ReadLength);
-    if (NT_SUCCESS(Status))
-    {
-        Length -= ReadLength;
-        AlreadyRead += ReadLength;
-
-        if (ReadLength == DataRunLength * Vcb->NtfsInfo.BytesPerCluster - (Offset - CurrentOffset))
-        {
-            CurrentOffset += DataRunLength * Vcb->NtfsInfo.BytesPerCluster;
-            DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
-            if (DataRunOffset != (ULONGLONG)-1)
-            {
-                DataRunStartLCN = LastLCN + DataRunOffset;
-                LastLCN = DataRunStartLCN;
-            }
-            else
-                DataRunStartLCN = -1;
-        }
-
-        while (Length > 0)
-        {
-            ReadLength = (ULONG)min(DataRunLength * Vcb->NtfsInfo.BytesPerCluster, Length);
-
-            Status = NtfsAddIoRun(&RunList,
-                                  (DataRunStartLCN == -1) ? NTFS_SPARSE_LBO :
-                                      DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster,
-                                  ReadLength);
-            if (!NT_SUCCESS(Status))
-                break;
-
-            Length -= ReadLength;
-            AlreadyRead += ReadLength;
-
-            /* We finished this request, but there still data in this data run. */
-            if (Length == 0 && ReadLength != DataRunLength * Vcb->NtfsInfo.BytesPerCluster)
-                break;
-
-            /*
-             * Go to next run in the list.
-             */
-
-            if (*DataRun == 0)
-                break;
-            CurrentOffset += DataRunLength * Vcb->NtfsInfo.BytesPerCluster;
-            DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
-            if (DataRunOffset != -1)
-            {
-                /* Normal data run. */
-                DataRunStartLCN = LastLCN + DataRunOffset;
-                LastLCN = DataRunStartLCN;
-            }
-            else
-            {
-                /* Sparse data run. */
-                DataRunStartLCN = -1;
-            }
-        } /* while */
-
-    } /* if the run list was built */
-
-    if (NT_SUCCESS(Status))
-    {
-        Status = NtfsPerformIoRuns(Vcb->StorageDevice,
-                                   IRP_MJ_READ,
-                                   Vcb->NtfsInfo.BytesPerSector,
-                                   (PUCHAR)Buffer,
-                                   &RunList,
-                                   FALSE,
-                                   &Transferred);
-    }
+    NtfsFreeIoRunList(&RunList);
 
     if (!NT_SUCCESS(Status))
     {
         /* Our callers read the return value as a byte count and treat zero as
          * failure, so we cannot report a partial transfer here. */
         DPRINT1("Read failure (Status %lx)\n", Status);
-        AlreadyRead = 0;
+        return 0;
     }
-    else if (Transferred < AlreadyRead)
+
+    if (Transferred < AlreadyRead)
     {
         DPRINT1("Short read: expected %lu bytes, got %lu\n", AlreadyRead, Transferred);
         AlreadyRead = Transferred;
     }
 
-    NtfsFreeIoRunList(&RunList);
-
-    // TEMPTEMP
-    if (TempBuffer != NULL)
-        ExFreePoolWithTag(TempBuffer, TAG_NTFS);
-
-    Context->CacheRun = DataRun;
-    Context->CacheRunOffset = Offset + AlreadyRead;
-    Context->CacheRunStartLCN = DataRunStartLCN;
-    Context->CacheRunLength = DataRunLength;
-    Context->CacheRunLastLCN = LastLCN;
-    Context->CacheRunCurrentOffset = CurrentOffset;
-
     return AlreadyRead;
+}
+
+ULONG
+ReadAttribute(PDEVICE_EXTENSION Vcb,
+              PNTFS_ATTR_CONTEXT Context,
+              ULONGLONG Offset,
+              PCHAR Buffer,
+              ULONG Length)
+{
+    return ReadAttributeToIrp(Vcb, Context, Offset, Buffer, Length, NULL);
 }
 
 
@@ -1338,21 +1418,11 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
                PULONG RealLengthWritten,
                PFILE_RECORD_HEADER FileRecord)
 {
-    ULONGLONG LastLCN;
-    PUCHAR DataRun;
-    LONGLONG DataRunOffset;
-    ULONGLONG DataRunLength;
-    LONGLONG DataRunStartLCN;
-    ULONGLONG CurrentOffset;
-    ULONG WriteLength;
+    ULONG MappedLength = 0;
     ULONG Transferred = 0;
     NTSTATUS Status;
-    LONGLONG StartingOffset;
     BOOLEAN FileRecordAllocated = FALSE;
     NTFS_IO_RUN_LIST RunList;
-
-    //TEMPTEMP
-    PUCHAR TempBuffer = NULL;
 
 
     DPRINT("WriteAttribute(%p, %p, %I64u, %p, %lu, %p, %p)\n", Vcb, Context, Offset, Buffer, Length, RealLengthWritten, FileRecord);
@@ -1441,224 +1511,50 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
         return Status;
     }
 
-    // This is a non-resident attribute.
+    // This is a non-resident attribute: map the requested range onto the
+    // volume, then issue every run it spans in a single parallel batch.
 
-    // I. Find the corresponding start data run.
+    Status = NtfsMapAttributeRuns(Vcb, Context, Offset, Length, &RunList, &MappedLength);
 
-    // FIXME: Cache seems to be non-working. Disable it for now
-    //if(Context->CacheRunOffset <= Offset && Offset < Context->CacheRunOffset + Context->CacheRunLength * Volume->ClusterSize)
-    /*if (0)
+    if (NT_SUCCESS(Status) && MappedLength < Length)
     {
-    DataRun = Context->CacheRun;
-    LastLCN = Context->CacheRunLastLCN;
-    DataRunStartLCN = Context->CacheRunStartLCN;
-    DataRunLength = Context->CacheRunLength;
-    CurrentOffset = Context->CacheRunCurrentOffset;
-    }
-    else*/
-    {
-        ULONG UsedBufferSize;
-        LastLCN = 0;
-        CurrentOffset = 0;
-
-        // This will be rewritten in the next iteration to just use the DataRuns MCB directly
-        TempBuffer = ExAllocatePoolWithTag(NonPagedPool, Vcb->NtfsInfo.BytesPerFileRecord, TAG_NTFS);
-        if (TempBuffer == NULL)
-        {
-            return STATUS_INSUFFICIENT_RESOURCES;
-        }
-
-        ConvertLargeMCBToDataRuns(&Context->DataRunsMCB,
-                                  TempBuffer,
-                                  Vcb->NtfsInfo.BytesPerFileRecord,
-                                  &UsedBufferSize);
-
-        DataRun = TempBuffer;
-
-        while (1)
-        {
-            DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
-            if (DataRunOffset != -1)
-            {
-                // Normal data run.
-                // DPRINT1("Writing to normal data run, LastLCN %I64u DataRunOffset %I64d\n", LastLCN, DataRunOffset);
-                DataRunStartLCN = LastLCN + DataRunOffset;
-                LastLCN = DataRunStartLCN;
-            }
-            else
-            {
-                // Sparse data run. We can't support writing to sparse files yet
-                // (it may require increasing the allocation size).
-                DataRunStartLCN = -1;
-                DPRINT1("FIXME: Writing to sparse files is not supported yet!\n");
-                Status = STATUS_NOT_IMPLEMENTED;
-                goto Cleanup;
-            }
-
-            // Have we reached the data run we're trying to write to?
-            if (Offset >= CurrentOffset &&
-                Offset < CurrentOffset + (DataRunLength * Vcb->NtfsInfo.BytesPerCluster))
-            {
-                break;
-            }
-
-            if (*DataRun == 0)
-            {
-                // We reached the last assigned cluster
-                // TODO: assign new clusters to the end of the file.
-                // (Presently, this code will rarely be reached, the write will usually have already failed by now)
-                // [We can reach here by creating a new file record when the MFT isn't large enough]
-                DPRINT1("FIXME: Master File Table needs to be enlarged.\n");
-                Status = STATUS_END_OF_FILE;
-                goto Cleanup;
-            }
-
-            CurrentOffset += DataRunLength * Vcb->NtfsInfo.BytesPerCluster;
-        }
+        // The attribute's allocation ends before the request does.
+        // TODO: assign new clusters to the end of the file.
+        // [We can reach here by creating a new file record when the MFT isn't large enough]
+        DPRINT1("FIXME: Attribute needs to be enlarged (mapped %lu of %lu bytes).\n",
+                MappedLength, Length);
+        Status = STATUS_END_OF_FILE;
     }
 
-    // II. Collect every run the request spans, then issue them all at once.
-    //
-    // Writing one run and waiting for it before starting the next would cost a
-    // full disk round trip per fragment. Building the whole list first lets the
-    // storage stack see all of them at the same time.
-
-    /* REVIEWME -- As adapted from NtfsReadAttribute():
-    We seem to be making a special case for the first applicable data run, but I'm not sure why.
-    Does it have something to do with (not) caching? Is this strategy equally applicable to writing? */
-
-    WriteLength = (ULONG)min(DataRunLength * Vcb->NtfsInfo.BytesPerCluster - (Offset - CurrentOffset), Length);
-
-    StartingOffset = DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster + Offset - CurrentOffset;
-
-    Status = NtfsAddIoRun(&RunList, StartingOffset, WriteLength);
-    if (!NT_SUCCESS(Status))
+    if (NT_SUCCESS(Status))
     {
-        Context->CacheRun = DataRun;
-        Context->CacheRunOffset = Offset;
-        Context->CacheRunStartLCN = DataRunStartLCN;
-        Context->CacheRunLength = DataRunLength;
-        Context->CacheRunLastLCN = LastLCN;
-        Context->CacheRunCurrentOffset = CurrentOffset;
-
-        goto Cleanup;
+        // Writing into a hole would mean allocating clusters, which we cannot
+        // do here; NtfsPerformIoRuns() rejects sparse runs on IRP_MJ_WRITE.
+        Status = NtfsPerformIoRuns(Vcb->StorageDevice,
+                                   IRP_MJ_WRITE,
+                                   Vcb->NtfsInfo.BytesPerSector,
+                                   Buffer,
+                                   &RunList,
+                                   FALSE,
+                                   &Transferred);
     }
 
-    Length -= WriteLength;
-    *RealLengthWritten += WriteLength;
-
-    // Did we write to the end of the data run?
-    if (WriteLength == DataRunLength * Vcb->NtfsInfo.BytesPerCluster - (Offset - CurrentOffset))
-    {
-        // Advance to the next data run
-        CurrentOffset += DataRunLength * Vcb->NtfsInfo.BytesPerCluster;
-        DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
-
-        if (DataRunOffset != (ULONGLONG)-1)
-        {
-            DataRunStartLCN = LastLCN + DataRunOffset;
-            LastLCN = DataRunStartLCN;
-        }
-        else
-            DataRunStartLCN = -1;
-    }
-
-    // Do we have more data to write?
-    while (Length > 0)
-    {
-        // Make sure we don't write past the end of the current data run
-        WriteLength = (ULONG)min(DataRunLength * Vcb->NtfsInfo.BytesPerCluster, Length);
-
-        // Are we dealing with a sparse data run?
-        if (DataRunStartLCN == -1)
-        {
-            DPRINT1("FIXME: Don't know how to write to sparse files yet! (DataRunStartLCN == -1)\n");
-            Status = STATUS_NOT_IMPLEMENTED;
-            goto Cleanup;
-        }
-        else
-        {
-            Status = NtfsAddIoRun(&RunList,
-                                  DataRunStartLCN * Vcb->NtfsInfo.BytesPerCluster,
-                                  WriteLength);
-            if (!NT_SUCCESS(Status))
-                goto Cleanup;
-        }
-
-        Length -= WriteLength;
-        *RealLengthWritten += WriteLength;
-
-        // We finished this request, but there's still data in this data run.
-        if (Length == 0 && WriteLength != DataRunLength * Vcb->NtfsInfo.BytesPerCluster)
-            break;
-
-        // Go to next run in the list.
-
-        if (*DataRun == 0)
-        {
-            // that was the last run
-            if (Length > 0)
-            {
-                // Failed sanity check.
-                DPRINT1("Encountered EOF before expected!\n");
-                Status = STATUS_END_OF_FILE;
-                goto Cleanup;
-            }
-
-            break;
-        }
-
-        // Advance to the next data run
-        CurrentOffset += DataRunLength * Vcb->NtfsInfo.BytesPerCluster;
-        DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
-        if (DataRunOffset != -1)
-        {
-            // Normal data run.
-            DataRunStartLCN = LastLCN + DataRunOffset;
-            LastLCN = DataRunStartLCN;
-        }
-        else
-        {
-            // Sparse data run.
-            DataRunStartLCN = -1;
-        }
-    } // end while (Length > 0) [more data to write]
-
-    // Now that the whole request is mapped out, hand every run to the storage
-    // stack in one go and wait once.
-    Status = NtfsPerformIoRuns(Vcb->StorageDevice,
-                               IRP_MJ_WRITE,
-                               Vcb->NtfsInfo.BytesPerSector,
-                               Buffer,
-                               &RunList,
-                               FALSE,
-                               &Transferred);
+    NtfsFreeIoRunList(&RunList);
 
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Write failure (Status %lx)\n", Status);
         *RealLengthWritten = 0;
+        return Status;
     }
-    else if (Transferred < *RealLengthWritten)
+
+    *RealLengthWritten = Transferred;
+
+    if (Transferred < Length)
     {
-        DPRINT1("Short write: expected %lu bytes, wrote %lu\n", *RealLengthWritten, Transferred);
-        *RealLengthWritten = Transferred;
+        DPRINT1("Short write: expected %lu bytes, wrote %lu\n", Length, Transferred);
         Status = STATUS_UNEXPECTED_IO_ERROR;
     }
-
-    Context->CacheRun = DataRun;
-    Context->CacheRunOffset = Offset + *RealLengthWritten;
-    Context->CacheRunStartLCN = DataRunStartLCN;
-    Context->CacheRunLength = DataRunLength;
-    Context->CacheRunLastLCN = LastLCN;
-    Context->CacheRunCurrentOffset = CurrentOffset;
-
-Cleanup:
-    NtfsFreeIoRunList(&RunList);
-
-    // TEMPTEMP
-    if (TempBuffer != NULL)
-        ExFreePoolWithTag(TempBuffer, TAG_NTFS);
 
     return Status;
 }
