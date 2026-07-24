@@ -800,6 +800,9 @@ NtfsWriteDisk(IN PDEVICE_OBJECT DeviceObject,
               IN const PUCHAR Buffer);
 
 NTSTATUS
+NtfsFlushDevice(IN PDEVICE_OBJECT DeviceObject);
+
+NTSTATUS
 NtfsReadSectors(IN PDEVICE_OBJECT DeviceObject,
                 IN ULONG DiskSector,
                 IN ULONG SectorCount,
@@ -1094,6 +1097,11 @@ NtfsSetInformation(PNTFS_IRP_CONTEXT IrpContext);
 
 NTSTATUS
 NtfsFileSystemControl(PNTFS_IRP_CONTEXT IrpContext);
+
+/* flush.c */
+
+NTSTATUS
+NtfsFlushBuffers(PNTFS_IRP_CONTEXT IrpContext);
 
 
 /* mft.c */
