@@ -786,7 +786,7 @@ NtfsCreateDirectory(PDEVICE_EXTENSION DeviceExt,
         else
             FileMftIndex = FileMftIndex + ((ULONGLONG)FileRecord->SequenceNumber << 48);
 
-        DPRINT1("New File Reference: 0x%016I64x\n", FileMftIndex);
+        DPRINT("New File Reference: 0x%016I64x\n", FileMftIndex);
 
         // Add the filename attribute to the filename-index of the parent directory
         Status = NtfsAddFilenameToDirectory(DeviceExt,
@@ -945,7 +945,7 @@ NtfsCreateFileRecord(PDEVICE_EXTENSION DeviceExt,
         else
             FileMftIndex = FileMftIndex + ((ULONGLONG)FileRecord->SequenceNumber << 48);
 
-        DPRINT1("New File Reference: 0x%016I64x\n", FileMftIndex);
+        DPRINT("New File Reference: 0x%016I64x\n", FileMftIndex);
 
         // Add the filename attribute to the filename-index of the parent directory
         Status = NtfsAddFilenameToDirectory(DeviceExt,

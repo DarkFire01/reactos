@@ -309,7 +309,7 @@ IncreaseMftSize(PDEVICE_EXTENSION Vcb, BOOLEAN CanWait)
     ULONG i;
     NTSTATUS Status;
 
-    DPRINT1("IncreaseMftSize(%p, %s)\n", Vcb, CanWait ? "TRUE" : "FALSE");
+    DPRINT("IncreaseMftSize(%p, %s)\n", Vcb, CanWait ? "TRUE" : "FALSE");
 
     // We need exclusive access to the mft while we change its size
     if (!ExAcquireResourceExclusiveLite(&(Vcb->DirResource), CanWait))
@@ -551,7 +551,7 @@ InternalSetResidentAttributeLength(PDEVICE_EXTENSION DeviceExt,
     ULONG OldAttributeLength = Destination->Length;
     ULONG NextAttributeOffset;
 
-    DPRINT1("InternalSetResidentAttributeLength( %p, %p, %p, %lu, %lu )\n", DeviceExt, AttrContext, FileRecord, AttrOffset, DataSize);
+    DPRINT("InternalSetResidentAttributeLength( %p, %p, %p, %lu, %lu )\n", DeviceExt, AttrContext, FileRecord, AttrOffset, DataSize);
 
     ASSERT(!AttrContext->pRecord->IsNonResident);
 
@@ -621,7 +621,7 @@ SetAttributeDataLength(PFILE_OBJECT FileObject,
 {
     NTSTATUS Status = STATUS_SUCCESS;
 
-    DPRINT1("SetAttributeDataLength(%p, %p, %p, %lu, %p, %I64u)\n",
+    DPRINT("SetAttributeDataLength(%p, %p, %p, %lu, %p, %I64u)\n",
             FileObject,
             Fcb,
             AttrContext,
@@ -925,7 +925,7 @@ SetResidentAttributeDataLength(PDEVICE_EXTENSION Vcb,
                 ULONG EndAttributeOffset;
                 ULONG LengthWritten;
 
-                DPRINT1("Converting attribute to non-resident.\n");
+                DPRINT("Converting attribute to non-resident.\n");
 
                 AttribDataSize.QuadPart = AttrContext->pRecord->Resident.ValueLength;
 
@@ -2002,7 +2002,7 @@ AddNewMftEntry(PFILE_RECORD_HEADER FileRecord,
     LARGE_INTEGER BitmapBits;
     UCHAR SystemReservedBits;
 
-    DPRINT1("AddNewMftEntry(%p, %p, %p, %s)\n", FileRecord, DeviceExt, DestinationIndex, CanWait ? "TRUE" : "FALSE");
+    DPRINT("AddNewMftEntry(%p, %p, %p, %s)\n", FileRecord, DeviceExt, DestinationIndex, CanWait ? "TRUE" : "FALSE");
 
     // First, we have to read the mft's $Bitmap attribute
 
@@ -2081,7 +2081,7 @@ AddNewMftEntry(PFILE_RECORD_HEADER FileRecord,
         return AddNewMftEntry(FileRecord, DeviceExt, DestinationIndex, CanWait);
     }
 
-    DPRINT1("Creating file record at MFT index: %I64u\n", MftIndex);
+    DPRINT("Creating file record at MFT index: %I64u\n", MftIndex);
 
     // update file record with index
     FileRecord->MFTRecordNumber = MftIndex;
@@ -2402,7 +2402,7 @@ NtfsAddFilenameToDirectory(PDEVICE_EXTENSION DeviceExt,
     NodeSize = GetSizeOfIndexEntries(NewTree->RootNode);
     if (NodeSize > NewMaxIndexRootSize)
     {
-        DPRINT1("Demoting index root.\nNodeSize: 0x%lx\nNewMaxIndexRootSize: 0x%lx\n", NodeSize, NewMaxIndexRootSize);
+        DPRINT("Demoting index root.\nNodeSize: 0x%lx\nNewMaxIndexRootSize: 0x%lx\n", NodeSize, NewMaxIndexRootSize);
 
         Status = DemoteBTreeRoot(NewTree);
         if (!NT_SUCCESS(Status))
