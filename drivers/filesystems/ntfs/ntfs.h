@@ -566,6 +566,7 @@ typedef struct _NTFS_ATTR_CONTEXT
 #define FCB_CACHE_INITIALIZED   0x0001
 #define FCB_IS_VOLUME_STREAM    0x0002
 #define FCB_IS_VOLUME           0x0004
+#define FCB_DELETE_PENDING      0x0008
 #define MAX_PATH                260
 
 typedef struct _FCB
@@ -856,8 +857,15 @@ CreateIndexRootFromBTree(PDEVICE_EXTENSION DeviceExt,
 NTSTATUS
 DemoteBTreeRoot(PB_TREE Tree);
 
+PB_TREE_KEY
+CreateBTreeKeyFromFilename(ULONGLONG FileReference,
+                           PFILENAME_ATTRIBUTE FileNameAttribute);
+
 VOID
 DestroyBTree(PB_TREE Tree);
+
+VOID
+DestroyBTreeKey(PB_TREE_KEY Key);
 
 VOID
 DestroyBTreeNode(PB_TREE_FILENAME_NODE Node);
@@ -901,6 +909,11 @@ NtfsInsertKey(PB_TREE Tree,
               ULONG IndexRecordSize,
               PB_TREE_KEY *MedianKey,
               PB_TREE_FILENAME_NODE *NewRightHandSibling);
+
+NTSTATUS
+NtfsRemoveKey(PB_TREE_FILENAME_NODE Node,
+              PB_TREE_KEY SearchKey,
+              BOOLEAN CaseSensitive);
 
 NTSTATUS
 SplitBTreeNode(PB_TREE Tree,
@@ -1122,6 +1135,21 @@ NtfsAddFilenameToDirectory(PDEVICE_EXTENSION DeviceExt,
                            ULONGLONG FileReferenceNumber,
                            PFILENAME_ATTRIBUTE FilenameAttribute,
                            BOOLEAN CaseSensitive);
+
+NTSTATUS
+NtfsRemoveFilenameFromDirectory(PDEVICE_EXTENSION DeviceExt,
+                                ULONGLONG DirectoryMftIndex,
+                                PFILENAME_ATTRIBUTE FilenameAttribute,
+                                BOOLEAN CaseSensitive);
+
+NTSTATUS
+FreeMftEntry(PDEVICE_EXTENSION DeviceExt,
+             ULONGLONG MftIndex);
+
+NTSTATUS
+NtfsDeleteFileRecord(PDEVICE_EXTENSION DeviceExt,
+                     ULONGLONG MftIndex,
+                     BOOLEAN CaseSensitive);
 
 NTSTATUS
 AddNewMftEntry(PFILE_RECORD_HEADER FileRecord,
