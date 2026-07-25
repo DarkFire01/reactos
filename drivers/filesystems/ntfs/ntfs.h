@@ -119,6 +119,11 @@ typedef struct
 
     NPAGED_LOOKASIDE_LIST FileRecLookasideList;
 
+    /* $UpCase, one upcased code point per UCS-2 value. NTFS defines its
+     * own case folding through this file, so comparisons must use it
+     * rather than the Rtl table. */
+    PWCHAR UpCaseTable;
+
     ULONG MftDataOffset;
     ULONG Flags;
     ULONG OpenHandleCount;
@@ -141,7 +146,13 @@ typedef struct
     PWCHAR DirectorySearchPattern;
     ULONG LastCluster;
     ULONG LastOffset;
+    ULONG Flags;
 } NTFS_CCB, *PNTFS_CCB;
+
+/* NTFS has no "." or ".." in its indices, so directory enumeration makes them
+ * up. These record which of the two a scan has already handed out. */
+#define CCB_RETURNED_DOT        0x0001
+#define CCB_RETURNED_DOTDOT     0x0002
 
 typedef struct
 {
@@ -331,8 +342,8 @@ typedef struct
 typedef struct
 {
     ULONGLONG CreationTime;
-    ULONGLONG ChangeTime;
     ULONGLONG LastWriteTime;
+    ULONGLONG ChangeTime;
     ULONGLONG LastAccessTime;
     ULONG FileAttribute;
     ULONG AlignmentOrReserved[3];
@@ -362,8 +373,8 @@ typedef struct
 {
     ULONGLONG DirectoryFileReferenceNumber;
     ULONGLONG CreationTime;
-    ULONGLONG ChangeTime;
     ULONGLONG LastWriteTime;
+    ULONGLONG ChangeTime;
     ULONGLONG LastAccessTime;
     ULONGLONG AllocatedSize;
     ULONGLONG DataSize;
@@ -1208,13 +1219,17 @@ ULONGLONG
 AttributeAllocatedLength(PNTFS_ATTR_RECORD AttrRecord);
 
 BOOLEAN
-CompareFileName(PUNICODE_STRING FileName,
+CompareFileName(PDEVICE_EXTENSION Vcb,
+                PUNICODE_STRING FileName,
                 PINDEX_ENTRY_ATTRIBUTE IndexEntry,
                 BOOLEAN DirSearch,
                 BOOLEAN CaseSensitive);
 
 NTSTATUS
 UpdateMftMirror(PNTFS_VCB Vcb);
+
+NTSTATUS
+NtfsLoadUpCaseTable(PDEVICE_EXTENSION Vcb);
 
 NTSTATUS
 ReadFileRecord(PDEVICE_EXTENSION Vcb,
@@ -1239,8 +1254,8 @@ typedef struct _NTFS_FILENAME_UPDATE
 
     /* NTFS_FILENAME_UPDATE_TIMES */
     ULONGLONG CreationTime;
-    ULONGLONG ChangeTime;
     ULONGLONG LastWriteTime;
+    ULONGLONG ChangeTime;
     ULONGLONG LastAccessTime;
 
     /* NTFS_FILENAME_UPDATE_ATTRS */
@@ -1260,6 +1275,13 @@ UpdateIndexEntryFileName(PDEVICE_EXTENSION Vcb,
                          BOOLEAN DirSearch,
                          PNTFS_FILENAME_UPDATE Update,
                          BOOLEAN CaseSensitive);
+
+NTSTATUS
+NtfsUpdateDuplicatedInformation(PDEVICE_EXTENSION Vcb,
+                                PFILE_RECORD_HEADER FileRecord,
+                                ULONGLONG MFTIndex,
+                                ULONG Flags,
+                                BOOLEAN CaseSensitive);
 
 NTSTATUS
 UpdateFileNameRecord(PDEVICE_EXTENSION Vcb,

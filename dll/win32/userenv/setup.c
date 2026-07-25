@@ -130,7 +130,7 @@ CreateStandardProfile(IN LPCWSTR pszProfilesPath,
     {
         if (GetLastError() != ERROR_ALREADY_EXISTS)
         {
-            DPRINT1("Error: %lu\n", GetLastError());
+            DPRINT1("CreateDirectoryW(%S) failed: %lu\n", szProfilePath, GetLastError());
             return FALSE;
         }
 
@@ -151,7 +151,8 @@ CreateStandardProfile(IN LPCWSTR pszProfilesPath,
         {
             if (GetLastError() != ERROR_ALREADY_EXISTS)
             {
-                DPRINT1("Error: %lu\n", GetLastError());
+                DPRINT1("CreateDirectoryW(%S) [postfix] failed: %lu\n",
+                        szProfilePath, GetLastError());
                 return FALSE;
             }
         }
@@ -206,7 +207,7 @@ CreateStandardProfile(IN LPCWSTR pszProfilesPath,
         {
             if (GetLastError() != ERROR_ALREADY_EXISTS)
             {
-                DPRINT1("Error: %lu\n", GetLastError());
+                DPRINT1("CreateDirectoryW(%S) failed: %lu\n", szBuffer, GetLastError());
                 return FALSE;
             }
         }

@@ -122,6 +122,28 @@ NtfsGetBasicInformation(PFILE_OBJECT FileObject,
 }
 
 
+static
+NTSTATUS
+NtfsGetEaInformation(PNTFS_FCB Fcb,
+                     PFILE_EA_INFORMATION EaInfo,
+                     PULONG BufferLength)
+{
+    UNREFERENCED_PARAMETER(Fcb);
+
+    DPRINT("NtfsGetEaInformation(%p, %p, %p)\n", Fcb, EaInfo, BufferLength);
+
+    if (*BufferLength < sizeof(FILE_EA_INFORMATION))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    /* We do not support extended attributes yet, so there are none */
+    EaInfo->EaSize = 0;
+
+    *BufferLength -= sizeof(FILE_EA_INFORMATION);
+
+    return STATUS_SUCCESS;
+}
+
+
 /*
  * FUNCTION: Retrieve the file name information
  */
@@ -456,6 +478,12 @@ NtfsQueryInformation(PNTFS_IRP_CONTEXT IrpContext)
                                                 &BufferLength);
             break;
 
+        case FileEaInformation:
+            Status = NtfsGetEaInformation(Fcb,
+                                          SystemBuffer,
+                                          &BufferLength);
+            break;
+
         case FilePositionInformation:
             Status = NtfsGetPositionInformation(FileObject,
                                                 SystemBuffer,
@@ -572,11 +600,7 @@ NtfsSetEndOfFile(PNTFS_FCB Fcb,
     PNTFS_ATTR_CONTEXT DataContext;
     ULONG AttributeOffset;
     NTSTATUS Status = STATUS_SUCCESS;
-    ULONGLONG AllocationSize;
     PFILENAME_ATTRIBUTE FileNameAttribute;
-    ULONGLONG ParentMFTId;
-    UNICODE_STRING FileName;
-    NTFS_FILENAME_UPDATE Update;
 
 
     // Allocate non-paged memory for the file record
@@ -670,25 +694,11 @@ NtfsSetEndOfFile(PNTFS_FCB Fcb,
         return STATUS_INVALID_PARAMETER;
     }
 
-    ParentMFTId = FileNameAttribute->DirectoryFileReferenceNumber & NTFS_MFT_MASK;
-
-    FileName.Buffer = FileNameAttribute->Name;
-    FileName.Length = FileNameAttribute->NameLength * sizeof(WCHAR);
-    FileName.MaximumLength = FileName.Length;
-
-    AllocationSize = AttributeAllocatedLength(DataContext->pRecord);
-
-    RtlZeroMemory(&Update, sizeof(Update));
-    Update.Flags = NTFS_FILENAME_UPDATE_SIZES;
-    Update.DataSize = NewFileSize->QuadPart;
-    Update.AllocatedSize = AllocationSize;
-
-    Status = UpdateFileNameRecord(Fcb->Vcb,
-                                  ParentMFTId,
-                                  &FileName,
-                                  FALSE,
-                                  &Update,
-                                  CaseSensitive);
+    Status = NtfsUpdateDuplicatedInformation(Fcb->Vcb,
+                                             FileRecord,
+                                             Fcb->MFTIndex,
+                                             NTFS_FILENAME_UPDATE_SIZES,
+                                             CaseSensitive);
 
     ReleaseAttributeContext(DataContext);
     ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
@@ -762,7 +772,6 @@ NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
 {
     PFILE_RECORD_HEADER FileRecord;
     PSTANDARD_INFORMATION StdInfo;
-    PFILENAME_ATTRIBUTE FileName;
     NTSTATUS Status;
 
     DPRINT("NtfsSetBasicInformation(%p, %p, %p)\n", DeviceExt, Fcb, BasicInfo);
@@ -807,8 +816,7 @@ NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
         ULONG Attributes = BasicInfo->FileAttributes;
 
         /* Whether this is a directory isn't the caller's to say */
-        Attributes &= ~FILE_ATTRIBUTE_DIRECTORY;
-        Attributes |= (StdInfo->FileAttribute & NTFS_FILE_TYPE_DIRECTORY);
+        Attributes &= ~(FILE_ATTRIBUTE_DIRECTORY | NTFS_FILE_TYPE_DIRECTORY);
 
         /* NORMAL only means anything on its own */
         if ((Attributes & FILE_ATTRIBUTE_NORMAL) && Attributes != FILE_ATTRIBUTE_NORMAL)
@@ -817,15 +825,20 @@ NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
         StdInfo->FileAttribute = Attributes;
     }
 
-    /* Keep the $FILE_NAME copy in step with $STANDARD_INFORMATION */
-    FileName = GetBestFileNameFromRecord(DeviceExt, FileRecord);
-    if (FileName != NULL)
+    /* Everything else NTFS keeps a second and third copy of goes out through
+     * the one funnel, so the copies cannot drift apart. */
+    Status = NtfsUpdateDuplicatedInformation(DeviceExt,
+                                             FileRecord,
+                                             Fcb->MFTIndex,
+                                             NTFS_FILENAME_UPDATE_TIMES |
+                                             NTFS_FILENAME_UPDATE_ATTRS,
+                                             CaseSensitive);
+    if (!NT_SUCCESS(Status))
     {
-        FileName->CreationTime = StdInfo->CreationTime;
-        FileName->LastAccessTime = StdInfo->LastAccessTime;
-        FileName->LastWriteTime = StdInfo->LastWriteTime;
-        FileName->ChangeTime = StdInfo->ChangeTime;
-        FileName->FileAttributes = StdInfo->FileAttribute;
+        /* $STANDARD_INFORMATION is authoritative and is about to be written
+         * anyway, so a stale index entry is cosmetic; chkdsk repairs it. */
+        DPRINT1("Failed to refresh the duplicated information for %wS (Status %lx)\n",
+                Fcb->ObjectName, Status);
     }
 
     Status = UpdateFileRecord(DeviceExt, Fcb->MFTIndex, FileRecord);
@@ -834,44 +847,6 @@ NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
         DPRINT1("Failed to write the file record for %wS!\n", Fcb->ObjectName);
         ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
         return Status;
-    }
-
-    /* Refresh the third copy, in the parent directory's index */
-    if (FileName != NULL)
-    {
-        NTFS_FILENAME_UPDATE Update;
-        UNICODE_STRING Name;
-        ULONGLONG ParentMFTId;
-        NTSTATUS IndexStatus;
-
-        ParentMFTId = FileName->DirectoryFileReferenceNumber & NTFS_MFT_MASK;
-
-        Name.Buffer = FileName->Name;
-        Name.Length = FileName->NameLength * sizeof(WCHAR);
-        Name.MaximumLength = Name.Length;
-
-        RtlZeroMemory(&Update, sizeof(Update));
-        Update.Flags = NTFS_FILENAME_UPDATE_TIMES | NTFS_FILENAME_UPDATE_ATTRS;
-        Update.CreationTime = StdInfo->CreationTime;
-        Update.ChangeTime = StdInfo->ChangeTime;
-        Update.LastWriteTime = StdInfo->LastWriteTime;
-        Update.LastAccessTime = StdInfo->LastAccessTime;
-        Update.FileAttributes = StdInfo->FileAttribute;
-
-        IndexStatus = UpdateFileNameRecord(DeviceExt,
-                                           ParentMFTId,
-                                           &Name,
-                                           FALSE,
-                                           &Update,
-                                           CaseSensitive);
-
-        /* $STANDARD_INFORMATION is authoritative and already on disk, so a
-         * stale index entry is cosmetic and chkdsk can repair it */
-        if (!NT_SUCCESS(IndexStatus))
-        {
-            DPRINT1("Failed to refresh the index entry for %wS (Status %lx)\n",
-                    Fcb->ObjectName, IndexStatus);
-        }
     }
 
     ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);

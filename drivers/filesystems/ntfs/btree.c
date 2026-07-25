@@ -190,8 +190,9 @@ AllocateIndexNode(PDEVICE_EXTENSION DeviceExt,
     // Read the existing bitmap data
     Status = ReadAttribute(DeviceExt, BitmapCtx, 0, (PCHAR)BitmapPtr, BitmapLength);
 
-    // Initialize bitmap
-    RtlInitializeBitMap(&Bitmap, BitmapPtr, NextNodeNumber);
+    // Initialize bitmap. It has to describe the node we are about to add, so
+    // it needs NextNodeNumber + 1 bits, not NextNodeNumber.
+    RtlInitializeBitMap(&Bitmap, BitmapPtr, NextNodeNumber + 1);
 
     // Do we need to enlarge the bitmap?
     if (BytesNeeded > BitmapLength)
@@ -1732,12 +1733,19 @@ NtfsInsertKey(PB_TREE Tree,
         // Should the New Key go before the current key?
         LONG Comparison = CompareTreeKeys(NewKey, CurrentKey, CaseSensitive);
 
+        /* The name is already in this index. Inserting it again would leave
+         * two entries the lookup code can never tell apart, so refuse. */
         if (Comparison == 0)
         {
-            DPRINT1("\t\tComparison == 0: %.*S\n", NewKey->IndexEntry->FileName.NameLength, NewKey->IndexEntry->FileName.Name);
-            DPRINT1("\t\tComparison == 0: %.*S\n", CurrentKey->IndexEntry->FileName.NameLength, CurrentKey->IndexEntry->FileName.Name);
+            DPRINT1("Refusing duplicate index entry '%.*S' (existing file reference 0x%I64x)\n",
+                    NewKey->IndexEntry->FileName.NameLength,
+                    NewKey->IndexEntry->FileName.Name,
+                    CurrentKey->IndexEntry->Data.Directory.IndexedFile);
+
+            DestroyBTreeKey(NewKey);
+
+            return STATUS_OBJECT_NAME_COLLISION;
         }
-        ASSERT(Comparison != 0);
 
         // Is NewKey < CurrentKey?
         if (Comparison < 0)

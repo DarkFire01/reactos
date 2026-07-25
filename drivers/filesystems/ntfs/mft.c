@@ -1578,6 +1578,94 @@ WriteAttribute(PDEVICE_EXTENSION Vcb,
                                  NULL);
 }
 
+/**
+* @name NtfsReadUpCaseTable
+* @implemented
+*
+* Loads the volume's $UpCase file, which defines how NTFS folds case.
+*
+* @param Vcb
+* Volume to load the table for
+*
+* @return
+* STATUS_SUCCESS if the table was loaded, otherwise the failure that stopped
+* us. A volume without a usable $UpCase is not a valid NTFS volume.
+*
+* @remarks Every NTFS volume carries this file at a fixed MFT index. It is one
+* upcased code point per UCS-2 value, so exactly 128 KB.
+*
+*/
+static
+NTSTATUS
+NtfsReadUpCaseTable(PDEVICE_EXTENSION Vcb)
+{
+    PFILE_RECORD_HEADER FileRecord;
+    PNTFS_ATTR_CONTEXT DataContext;
+    NTSTATUS Status;
+    ULONGLONG Size;
+    ULONG Read;
+
+    FileRecord = ExAllocateFromNPagedLookasideList(&Vcb->FileRecLookasideList);
+    if (FileRecord == NULL)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Status = ReadFileRecord(Vcb, NTFS_FILE_UPCASE, FileRecord);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Couldn't read the $UpCase file record!\n");
+        ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, FileRecord);
+        return Status;
+    }
+
+    Status = FindAttribute(Vcb, FileRecord, AttributeData, L"", 0, &DataContext, NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("$UpCase has no data stream!\n");
+        ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, FileRecord);
+        return Status;
+    }
+
+    Size = AttributeDataLength(DataContext->pRecord);
+    if (Size != (0x10000 * sizeof(WCHAR)))
+    {
+        DPRINT1("$UpCase is %I64u bytes, expected %u\n", Size, 0x10000 * sizeof(WCHAR));
+        ReleaseAttributeContext(DataContext);
+        ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, FileRecord);
+        return STATUS_UNRECOGNIZED_VOLUME;
+    }
+
+    Vcb->UpCaseTable = ExAllocatePoolWithTag(NonPagedPool, (ULONG)Size, TAG_NTFS);
+    if (Vcb->UpCaseTable == NULL)
+    {
+        ReleaseAttributeContext(DataContext);
+        ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, FileRecord);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Read = ReadAttribute(Vcb, DataContext, 0, (PCHAR)Vcb->UpCaseTable, (ULONG)Size);
+
+    ReleaseAttributeContext(DataContext);
+    ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, FileRecord);
+
+    if (Read != Size)
+    {
+        DPRINT1("Short read of $UpCase: %lu of %I64u bytes\n", Read, Size);
+        ExFreePoolWithTag(Vcb->UpCaseTable, TAG_NTFS);
+        Vcb->UpCaseTable = NULL;
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NtfsLoadUpCaseTable(PDEVICE_EXTENSION Vcb)
+{
+    return NtfsReadUpCaseTable(Vcb);
+}
+
 NTSTATUS
 ReadFileRecord(PDEVICE_EXTENSION Vcb,
                ULONGLONG index,
@@ -1599,6 +1687,110 @@ ReadFileRecord(PDEVICE_EXTENSION Vcb,
     return FixupUpdateSequenceArray(Vcb, &file->Ntfs);
 }
 
+
+/**
+* @name NtfsUpdateDuplicatedInformation
+* @implemented
+*
+* Pushes the fields NTFS keeps in more than one place out to all of them.
+*
+* @param Vcb
+* Volume the file lives on
+*
+* @param FileRecord
+* The file's record, already holding the new values in $STANDARD_INFORMATION
+* and its $DATA attribute
+*
+* @param MFTIndex
+* MFT index of the file
+*
+* @param Flags
+* Which groups of fields changed; see NTFS_FILENAME_UPDATE_*
+*
+* @param CaseSensitive
+* Whether the parent's index should be searched case-sensitively
+*
+* @return
+* STATUS_SUCCESS once every copy agrees, or the status of the failing update.
+*
+* @remarks NTFS stores a file's sizes, timestamps and attributes three times:
+* in $STANDARD_INFORMATION, in the record's own $FILE_NAME, and again in the
+* parent directory's index entry. Windows funnels all three through one
+* routine (NtfsUpdateDuplicateInfo) precisely so they cannot drift; this is
+* that funnel. Callers change $STANDARD_INFORMATION and then say what moved.
+*
+* The directory flag is the one field that does not come from
+* $STANDARD_INFORMATION -- NTFS masks it out of there and keeps it in the
+* record header -- so it is restored from the header on the way past.
+*/
+NTSTATUS
+NtfsUpdateDuplicatedInformation(PDEVICE_EXTENSION Vcb,
+                                PFILE_RECORD_HEADER FileRecord,
+                                ULONGLONG MFTIndex,
+                                ULONG Flags,
+                                BOOLEAN CaseSensitive)
+{
+    NTFS_FILENAME_UPDATE Update;
+    PSTANDARD_INFORMATION StdInfo;
+    PFILENAME_ATTRIBUTE FileName;
+    UNICODE_STRING Name;
+    ULONGLONG ParentMFTIndex;
+    ULONG DirFlag;
+
+    if (Flags == 0)
+        return STATUS_SUCCESS;
+
+    StdInfo = GetStandardInformationFromRecord(Vcb, FileRecord);
+    FileName = GetBestFileNameFromRecord(Vcb, FileRecord);
+    if (StdInfo == NULL || FileName == NULL)
+    {
+        DPRINT1("Record %I64u is missing $STANDARD_INFORMATION or $FILE_NAME\n", MFTIndex);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    DirFlag = (FileRecord->Flags & FRH_DIRECTORY) ? NTFS_FILE_TYPE_DIRECTORY : 0;
+
+    RtlZeroMemory(&Update, sizeof(Update));
+    Update.Flags = Flags;
+
+    if (Flags & NTFS_FILENAME_UPDATE_TIMES)
+    {
+        Update.CreationTime = StdInfo->CreationTime;
+        Update.LastWriteTime = StdInfo->LastWriteTime;
+        Update.ChangeTime = StdInfo->ChangeTime;
+        Update.LastAccessTime = StdInfo->LastAccessTime;
+
+        FileName->CreationTime = StdInfo->CreationTime;
+        FileName->LastWriteTime = StdInfo->LastWriteTime;
+        FileName->ChangeTime = StdInfo->ChangeTime;
+        FileName->LastAccessTime = StdInfo->LastAccessTime;
+    }
+
+    if (Flags & NTFS_FILENAME_UPDATE_ATTRS)
+    {
+        Update.FileAttributes = StdInfo->FileAttribute | DirFlag;
+        FileName->FileAttributes = Update.FileAttributes;
+    }
+
+    if (Flags & NTFS_FILENAME_UPDATE_SIZES)
+    {
+        /* Sizes come from the unnamed $DATA attribute, the same way the times
+         * come from $STANDARD_INFORMATION: one source of truth per field. */
+        Update.DataSize = NtfsGetFileSize(Vcb, FileRecord, L"", 0, &Update.AllocatedSize);
+
+        FileName->DataSize = Update.DataSize;
+        FileName->AllocatedSize = Update.AllocatedSize;
+    }
+
+    /* Now the parent's index entry, which carries the same values */
+    ParentMFTIndex = FileName->DirectoryFileReferenceNumber & NTFS_MFT_MASK;
+
+    Name.Buffer = FileName->Name;
+    Name.Length = FileName->NameLength * sizeof(WCHAR);
+    Name.MaximumLength = Name.Length;
+
+    return UpdateFileNameRecord(Vcb, ParentMFTIndex, &Name, FALSE, &Update, CaseSensitive);
+}
 
 /**
 * Searches a file's parent directory (given the parent's index in the mft)
@@ -1676,7 +1868,9 @@ UpdateFileNameRecord(PDEVICE_EXTENSION Vcb,
     IndexRoot = (PINDEX_ROOT_ATTRIBUTE)IndexRecord;
     IndexEntry = (PINDEX_ENTRY_ATTRIBUTE)((PCHAR)&IndexRoot->Header + IndexRoot->Header.FirstEntryOffset);
     // Index root is always resident.
-    IndexEntryEnd = (PINDEX_ENTRY_ATTRIBUTE)(IndexRecord + IndexRoot->Header.TotalSizeOfEntries);
+    /* TotalSizeOfEntries is measured from the index header, not from the
+     * start of the attribute, and FirstEntryOffset above already is. */
+    IndexEntryEnd = (PINDEX_ENTRY_ATTRIBUTE)((ULONG_PTR)&IndexRoot->Header + IndexRoot->Header.TotalSizeOfEntries);
 
     DPRINT("IndexRecordSize: %x IndexBlockSize: %x\n", Vcb->NtfsInfo.BytesPerIndexRecord, IndexRoot->SizeOfEntry);
 
@@ -1760,7 +1954,7 @@ UpdateIndexEntryFileName(PDEVICE_EXTENSION Vcb,
         if ((IndexEntry->Data.Directory.IndexedFile & NTFS_MFT_MASK) > NTFS_FILE_FIRST_USER_FILE &&
             *CurrentEntry >= *StartEntry &&
             IndexEntry->FileName.NameType != NTFS_FILE_NAME_DOS &&
-            CompareFileName(FileName, IndexEntry, DirSearch, CaseSensitive))
+            CompareFileName(Vcb, FileName, IndexEntry, DirSearch, CaseSensitive))
         {
             *StartEntry = *CurrentEntry;
 
@@ -2297,7 +2491,11 @@ NtfsAddFilenameToDirectory(PDEVICE_EXTENSION DeviceExt,
                            &NewRightHandNode);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("ERROR: Failed to insert key into B-Tree!\n");
+        DPRINT1("ERROR: Failed to insert '%.*S' into the index of MFT record %I64u (Status %lx)\n",
+                FilenameAttribute->NameLength,
+                FilenameAttribute->Name,
+                DirectoryMftIndex,
+                Status);
         DestroyBTree(NewTree);
         ReleaseAttributeContext(IndexRootContext);
         ExFreePoolWithTag(I30IndexRoot, TAG_NTFS);
@@ -2613,7 +2811,8 @@ ReadLCN(PDEVICE_EXTENSION Vcb,
 
 
 BOOLEAN
-CompareFileName(PUNICODE_STRING FileName,
+CompareFileName(PDEVICE_EXTENSION Vcb,
+                PUNICODE_STRING FileName,
                 PINDEX_ENTRY_ATTRIBUTE IndexEntry,
                 BOOLEAN DirSearch,
                 BOOLEAN CaseSensitive)
@@ -2638,7 +2837,10 @@ CompareFileName(PUNICODE_STRING FileName,
             IntFileName = *FileName;
         }
 
-        Ret = FsRtlIsNameInExpression(&IntFileName, &EntryName, !CaseSensitive, NULL);
+        /* With a real upcase table the matcher folds both sides through it,
+         * which is what NTFS means by case-insensitive. */
+        Ret = FsRtlIsNameInExpression(&IntFileName, &EntryName, !CaseSensitive,
+                                      Vcb ? Vcb->UpCaseTable : NULL);
 
         if (Alloc)
         {
@@ -2927,7 +3129,7 @@ BrowseSubNodeIndexEntries(PNTFS_VCB Vcb,
         if ((IndexEntry->Data.Directory.IndexedFile & NTFS_MFT_MASK) >= NTFS_FILE_FIRST_USER_FILE &&
             *CurrentEntry >= *StartEntry &&
             IndexEntry->FileName.NameType != NTFS_FILE_NAME_DOS &&
-            CompareFileName(FileName, IndexEntry, DirSearch, CaseSensitive))
+            CompareFileName(Vcb, FileName, IndexEntry, DirSearch, CaseSensitive))
         {
             *StartEntry = *CurrentEntry;
             *OutMFTIndex = (IndexEntry->Data.Directory.IndexedFile & NTFS_MFT_MASK);
@@ -3061,6 +3263,15 @@ BrowseIndexEntries(PDEVICE_EXTENSION Vcb,
                                                    DirSearch,
                                                    CaseSensitive,
                                                    OutMFTIndex);
+
+                /* Anything other than "not in this subtree" means we gave up on
+                 * a subtree that may well have held the entry */
+                if (!NT_SUCCESS(Status) && Status != STATUS_OBJECT_PATH_NOT_FOUND)
+                {
+                    DPRINT1("Sub-node at VCN %I64u abandoned while looking for '%wZ' (Status %lx)\n",
+                            GetIndexEntryVCN(IndexEntry), FileName, Status);
+                }
+
                 if (NT_SUCCESS(Status))
                 {
                     ExFreePoolWithTag(BitmapMem, TAG_NTFS);
@@ -3079,7 +3290,7 @@ BrowseIndexEntries(PDEVICE_EXTENSION Vcb,
         if ((IndexEntry->Data.Directory.IndexedFile & NTFS_MFT_MASK) >= NTFS_FILE_FIRST_USER_FILE &&
             *CurrentEntry >= *StartEntry &&
             IndexEntry->FileName.NameType != NTFS_FILE_NAME_DOS &&
-            CompareFileName(FileName, IndexEntry, DirSearch, CaseSensitive))
+            CompareFileName(Vcb, FileName, IndexEntry, DirSearch, CaseSensitive))
         {
             *StartEntry = *CurrentEntry;
             *OutMFTIndex = (IndexEntry->Data.Directory.IndexedFile & NTFS_MFT_MASK);
@@ -3100,6 +3311,10 @@ BrowseIndexEntries(PDEVICE_EXTENSION Vcb,
 
     if (IndexAllocationContext)
     {
+        DPRINT("'%wZ' not found after scanning %lu entries of MFT record %I64u "
+               "(index allocation present)\n",
+               FileName, *CurrentEntry, MftRecord->MFTRecordNumber & NTFS_MFT_MASK);
+
         ExFreePoolWithTag(BitmapMem, TAG_NTFS);
         ReleaseAttributeContext(BitmapContext);
         ReleaseAttributeContext(IndexAllocationContext);
@@ -3167,7 +3382,9 @@ NtfsFindMftRecord(PDEVICE_EXTENSION Vcb,
     IndexRoot = (PINDEX_ROOT_ATTRIBUTE)IndexRecord;
     IndexEntry = (PINDEX_ENTRY_ATTRIBUTE)((PCHAR)&IndexRoot->Header + IndexRoot->Header.FirstEntryOffset);
     /* Index root is always resident. */
-    IndexEntryEnd = (PINDEX_ENTRY_ATTRIBUTE)(IndexRecord + IndexRoot->Header.TotalSizeOfEntries);
+    /* TotalSizeOfEntries is measured from the index header, not from the
+     * start of the attribute, and FirstEntryOffset above already is. */
+    IndexEntryEnd = (PINDEX_ENTRY_ATTRIBUTE)((ULONG_PTR)&IndexRoot->Header + IndexRoot->Header.TotalSizeOfEntries);
     ReleaseAttributeContext(IndexRootCtx);
 
     DPRINT("IndexRecordSize: %x IndexBlockSize: %x\n", Vcb->NtfsInfo.BytesPerIndexRecord, IndexRoot->SizeOfEntry);
@@ -3226,7 +3443,8 @@ NtfsLookupFileAt(PDEVICE_EXTENSION Vcb,
         if (Remaining.Length == 0)
             break;
 
-        FsRtlDissectName(Current, &Current, &Remaining);
+        /* Split what is left of the path, not the component we just resolved */
+        FsRtlDissectName(Remaining, &Current, &Remaining);
     }
 
     *FileRecord = ExAllocateFromNPagedLookasideList(&Vcb->FileRecLookasideList);

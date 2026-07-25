@@ -129,7 +129,7 @@ NtfsReadFile(PDEVICE_EXTENSION DeviceExt,
     NTSTATUS Status = STATUS_SUCCESS;
     PNTFS_FCB Fcb;
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_CONTEXT DataContext;
+    PNTFS_ATTR_CONTEXT DataContext = NULL;
     ULONG RealLength;
     ULONG RealReadOffset;
     ULONG RealLengthRead;
@@ -206,7 +206,8 @@ NtfsReadFile(PDEVICE_EXTENSION DeviceExt,
         }
         FindCloseAttribute(&Context);
 
-        ReleaseAttributeContext(DataContext);
+        /* FindAttribute() failed, so DataContext was never set; there is
+         * nothing to release here. */
         ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
         return Status;
     }
@@ -214,7 +215,7 @@ NtfsReadFile(PDEVICE_EXTENSION DeviceExt,
     StreamSize = AttributeDataLength(DataContext->pRecord);
     if (ReadOffset >= StreamSize)
     {
-        DPRINT1("Reading beyond stream end!\n");
+        DPRINT("Reading beyond stream end!\n");
         ReleaseAttributeContext(DataContext);
         ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
         return STATUS_END_OF_FILE;
@@ -431,7 +432,7 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
     NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
     PNTFS_FCB Fcb;
     PFILE_RECORD_HEADER FileRecord;
-    PNTFS_ATTR_CONTEXT DataContext;
+    PNTFS_ATTR_CONTEXT DataContext = NULL;
     ULONG AttributeOffset;
     ULONGLONG StreamSize;
     ULONG RequestedLength = 0;
@@ -526,7 +527,8 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
         }
         FindCloseAttribute(&Context);
 
-        ReleaseAttributeContext(DataContext);
+        /* FindAttribute() failed, so DataContext was never set; there is
+         * nothing to release here. */
         ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
         return Status;
     }
@@ -544,10 +546,6 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
             !(IrpFlags & IRP_PAGING_IO))
         {
             LARGE_INTEGER DataSize;
-            ULONGLONG AllocationSize;
-            PFILENAME_ATTRIBUTE fileNameAttribute;
-            ULONGLONG ParentMFTId;
-            UNICODE_STRING filename;
 
             DataSize.QuadPart = WriteOffset + Length;
 
@@ -561,34 +559,13 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
                 return Status;
             }
 
-            NTFS_FILENAME_UPDATE Update;
-
-            AllocationSize = AttributeAllocatedLength(DataContext->pRecord);
-
-            // now we need to update this file's size in every directory index entry that references it
-            // TODO: put this code in its own function and adapt it to work with every filename / hardlink
-            // stored in the file record.
-            fileNameAttribute = GetBestFileNameFromRecord(Fcb->Vcb, FileRecord);
-            ASSERT(fileNameAttribute);
-
-            ParentMFTId = fileNameAttribute->DirectoryFileReferenceNumber & NTFS_MFT_MASK;
-
-            filename.Buffer = fileNameAttribute->Name;
-            filename.Length = fileNameAttribute->NameLength * sizeof(WCHAR);
-            filename.MaximumLength = filename.Length;
-
-            RtlZeroMemory(&Update, sizeof(Update));
-            Update.Flags = NTFS_FILENAME_UPDATE_SIZES;
-            Update.DataSize = DataSize.QuadPart;
-            Update.AllocatedSize = AllocationSize;
-
-            Status = UpdateFileNameRecord(Fcb->Vcb,
-                                          ParentMFTId,
-                                          &filename,
-                                          FALSE,
-                                          &Update,
-                                          CaseSensitive);
-
+            // The file grew, so every copy of its size has to follow.
+            // TODO: adapt this to every filename / hardlink in the record.
+            Status = NtfsUpdateDuplicatedInformation(Fcb->Vcb,
+                                                     FileRecord,
+                                                     Fcb->MFTIndex,
+                                                     NTFS_FILENAME_UPDATE_SIZES,
+                                                     CaseSensitive);
         }
         else if (IrpFlags & IRP_PAGING_IO)
         {

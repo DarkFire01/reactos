@@ -563,7 +563,7 @@ NtfsDirFindFile(PNTFS_VCB Vcb,
 
         /* Skip colon */
         ++Colon;
-        DPRINT1("Will now look for file '%wZ' with stream '%S'\n", &File, Colon);
+        DPRINT("Will now look for file '%wZ' with stream '%S'\n", &File, Colon);
     }
 
     Status = NtfsLookupFileAt(Vcb, &File, CaseSensitive, &FileRecord, &MFTIndex, CurrentDir);
