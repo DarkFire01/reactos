@@ -407,6 +407,15 @@ NtfsGetVolumeData(PDEVICE_OBJECT DeviceObject,
 
     NtfsInfo->MftZoneReservation = NtfsQueryMftZoneReservation();
 
+    /* NTFS defines its own case folding through $UpCase; without it every
+     * case-insensitive comparison on this volume would use the wrong table. */
+    Status = NtfsLoadUpCaseTable(DeviceExt);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to load $UpCase (Status %lx)\n", Status);
+        return Status;
+    }
+
     return Status;
 }
 
@@ -563,6 +572,12 @@ ByeBye:
 
         if (Ccb)
             ExFreePool(Ccb);
+
+        if (Vcb != NULL && Vcb->UpCaseTable != NULL)
+        {
+            ExFreePoolWithTag(Vcb->UpCaseTable, TAG_NTFS);
+            Vcb->UpCaseTable = NULL;
+        }
 
         if (Lookaside)
             ExDeleteNPagedLookasideList(&Vcb->FileRecLookasideList);

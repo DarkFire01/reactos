@@ -276,18 +276,16 @@ AddFileName(PFILE_RECORD_HEADER FileRecord,
 
     FsRtlDissectName(FileObject->FileName, &Current, &Remaining);
 
-    FilenameNoPath.Buffer = Current.Buffer;
-    FilenameNoPath.MaximumLength = FilenameNoPath.Length = Current.Length;
-
-    while (Current.Length != 0)
+    /*
+     * Walk the directories of the path. Only the directories: the last
+     * component is the name we are about to create, and looking it up would
+     * either fail -- it does not exist yet, that is the point -- or, if
+     * something of that name is already there, hand it back to be used as its
+     * own parent.
+     */
+    while (Remaining.Length != 0)
     {
         DPRINT("Current: %wZ\n", &Current);
-
-        if (Remaining.Length != 0)
-        {
-            FilenameNoPath.Buffer = Remaining.Buffer;
-            FilenameNoPath.Length = FilenameNoPath.MaximumLength = Remaining.Length;
-        }
 
         FirstEntry = 0;
         Status = NtfsFindMftRecord(DeviceExt,
@@ -298,20 +296,17 @@ AddFileName(PFILE_RECORD_HEADER FileRecord,
                                    CaseSensitive,
                                    &CurrentMFTIndex);
         if (!NT_SUCCESS(Status))
-            break;
-
-        if (Remaining.Length == 0 )
         {
-            if (Current.Length != 0)
-            {
-                FilenameNoPath.Buffer = Current.Buffer;
-                FilenameNoPath.Length = FilenameNoPath.MaximumLength = Current.Length;
-            }
-            break;
+            DPRINT1("Path component '%wZ' of '%wZ' not found (Status %lx)\n",
+                    &Current, &FileObject->FileName, Status);
+            return Status;
         }
 
         FsRtlDissectName(Remaining, &Current, &Remaining);
     }
+
+    /* Whatever is left over is the file's own name */
+    FilenameNoPath = Current;
 
     DPRINT("MFT Index of parent: %I64u\n", CurrentMFTIndex);
 
