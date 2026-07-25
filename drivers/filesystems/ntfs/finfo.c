@@ -61,7 +61,7 @@ NtfsGetStandardInformation(PNTFS_FCB Fcb,
     StandardInfo->AllocationSize = Fcb->RFCB.AllocationSize;
     StandardInfo->EndOfFile = Fcb->RFCB.FileSize;
     StandardInfo->NumberOfLinks = Fcb->LinkCount;
-    StandardInfo->DeletePending = FALSE;
+    StandardInfo->DeletePending = BooleanFlagOn(Fcb->Flags, FCB_DELETE_PENDING);
     StandardInfo->Directory = NtfsFCBIsDirectory(Fcb);
 
     *BufferLength -= sizeof(FILE_STANDARD_INFORMATION);
@@ -117,6 +117,36 @@ NtfsGetBasicInformation(PFILE_OBJECT FileObject,
     NtfsFileFlagsToAttributes(FileName->FileAttributes, &BasicInfo->FileAttributes);
 
     *BufferLength -= sizeof(FILE_BASIC_INFORMATION);
+
+    return STATUS_SUCCESS;
+}
+
+
+/*
+ * FUNCTION: Retrieve the file attributes along with the reparse tag
+ */
+static
+NTSTATUS
+NtfsGetAttributeTagInformation(PNTFS_FCB Fcb,
+                               PFILE_ATTRIBUTE_TAG_INFORMATION AttributeTagInfo,
+                               PULONG BufferLength)
+{
+    PFILENAME_ATTRIBUTE FileName = &Fcb->Entry;
+
+    DPRINT("NtfsGetAttributeTagInformation(%p, %p, %p)\n", Fcb, AttributeTagInfo, BufferLength);
+
+    if (*BufferLength < sizeof(FILE_ATTRIBUTE_TAG_INFORMATION))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    RtlZeroMemory(AttributeTagInfo, sizeof(FILE_ATTRIBUTE_TAG_INFORMATION));
+
+    NtfsFileFlagsToAttributes(FileName->FileAttributes, &AttributeTagInfo->FileAttributes);
+
+    /* The tag is only meaningful for a reparse point, and reading it means reading the
+     * attribute itself. Callers use the attribute bit to decide whether to look. */
+    AttributeTagInfo->ReparseTag = 0;
+
+    *BufferLength -= sizeof(FILE_ATTRIBUTE_TAG_INFORMATION);
 
     return STATUS_SUCCESS;
 }
@@ -526,6 +556,12 @@ NtfsQueryInformation(PNTFS_IRP_CONTEXT IrpContext)
                                               &BufferLength);
             break;
 
+        case FileAttributeTagInformation:
+            Status = NtfsGetAttributeTagInformation(Fcb,
+                                                    SystemBuffer,
+                                                    &BufferLength);
+            break;
+
         case FileAlternateNameInformation:
         case FileAllInformation:
             DPRINT1("Unimplemented information class: %s\n", GetInfoClassName(FileInformationClass));
@@ -854,6 +890,94 @@ NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
     return STATUS_SUCCESS;
 }
 
+/**
+* @name NtfsSetDispositionInformation
+* @implemented
+*
+* Marks a file for deletion, or takes an existing mark back off it.
+*
+* @param DeviceExt
+* Points to the target disk's DEVICE_EXTENSION.
+*
+* @param Fcb
+* Pointer to the NTFS_FCB of the file. Fcb->MainResource should have been acquired.
+*
+* @param FileObject
+* Pointer to the FILE_OBJECT the request arrived on.
+*
+* @param CaseSensitive
+* Boolean indicating if the function should operate in case-sensitive mode. This will be TRUE
+* if an application created the file with the FILE_FLAG_POSIX_SEMANTICS flag.
+*
+* @param DispositionInfo
+* Pointer to the FILE_DISPOSITION_INFORMATION supplied by the caller.
+*
+* @return
+* STATUS_SUCCESS on success.
+* STATUS_CANNOT_DELETE if the file is read-only or is the volume root.
+* STATUS_DIRECTORY_NOT_EMPTY if the file is a directory that still holds entries.
+*
+* @remarks
+* Only records the intent. The file is taken apart at cleanup, once the last handle to it has
+* been closed, which is what lets a caller keep reading a file it has already marked.
+*/
+static
+NTSTATUS
+NtfsSetDispositionInformation(PDEVICE_EXTENSION DeviceExt,
+                              PNTFS_FCB Fcb,
+                              PFILE_OBJECT FileObject,
+                              BOOLEAN CaseSensitive,
+                              PFILE_DISPOSITION_INFORMATION DispositionInfo)
+{
+    DPRINT("NtfsSetDispositionInformation(%p, %p, %p, %s, %p)\n",
+           DeviceExt, Fcb, FileObject, CaseSensitive ? "TRUE" : "FALSE", DispositionInfo);
+
+    if (!DispositionInfo->DeleteFile)
+    {
+        Fcb->Flags &= ~FCB_DELETE_PENDING;
+        FileObject->DeletePending = FALSE;
+        return STATUS_SUCCESS;
+    }
+
+    if (!NtfsGlobalData->EnableWriteSupport)
+    {
+        DPRINT1("NTFS write-support is EXPERIMENTAL and is disabled by default!\n");
+        return STATUS_ACCESS_DENIED;
+    }
+
+    /* The volume root has no parent index to be removed from */
+    if (NtfsFCBIsRoot(Fcb))
+        return STATUS_CANNOT_DELETE;
+
+    if (Fcb->Entry.FileAttributes & NTFS_FILE_TYPE_READ_ONLY)
+        return STATUS_CANNOT_DELETE;
+
+    if (NtfsFCBIsDirectory(Fcb))
+    {
+        UNICODE_STRING Pattern = RTL_CONSTANT_STRING(L"*");
+        ULONGLONG EntryMftIndex;
+        ULONG FirstEntry = 0;
+        NTSTATUS Status;
+
+        /* "." and ".." are synthesized during enumeration and never appear in the index, so
+         * anything found here is a real child. */
+        Status = NtfsFindMftRecord(DeviceExt,
+                                   Fcb->MFTIndex,
+                                   &Pattern,
+                                   &FirstEntry,
+                                   FALSE,
+                                   CaseSensitive,
+                                   &EntryMftIndex);
+        if (NT_SUCCESS(Status))
+            return STATUS_DIRECTORY_NOT_EMPTY;
+    }
+
+    Fcb->Flags |= FCB_DELETE_PENDING;
+    FileObject->DeletePending = TRUE;
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NtfsSetInformation(PNTFS_IRP_CONTEXT IrpContext)
 {
@@ -916,6 +1040,20 @@ NtfsSetInformation(PNTFS_IRP_CONTEXT IrpContext)
                                       Irp->Flags,
                                       BooleanFlagOn(Stack->Flags, SL_CASE_SENSITIVE),
                                       &EndOfFileInfo->EndOfFile);
+            break;
+
+        case FileDispositionInformation:
+            if (BufferLength < sizeof(FILE_DISPOSITION_INFORMATION))
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                break;
+            }
+
+            Status = NtfsSetDispositionInformation(DeviceExt,
+                                                   Fcb,
+                                                   FileObject,
+                                                   BooleanFlagOn(Stack->Flags, SL_CASE_SENSITIVE),
+                                                   (PFILE_DISPOSITION_INFORMATION)SystemBuffer);
             break;
 
         // TODO: all other information classes

@@ -70,6 +70,34 @@ NtfsCleanupFile(PDEVICE_EXTENSION DeviceExt,
 
         Fcb->OpenHandleCount--;
 
+        /* The last handle to a file marked for deletion is where it actually goes. Truncate it
+         * first so the cache manager isn't left holding pages for a file that no longer has
+         * clusters, then take the file itself apart. */
+        if (Fcb->OpenHandleCount == 0 &&
+            BooleanFlagOn(Fcb->Flags, FCB_DELETE_PENDING))
+        {
+            LARGE_INTEGER Zero;
+            NTSTATUS Status;
+
+            Zero.QuadPart = 0;
+
+            if (!NtfsFCBIsDirectory(Fcb))
+            {
+                Fcb->RFCB.FileSize = Zero;
+                Fcb->RFCB.ValidDataLength = Zero;
+                CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&Fcb->RFCB.AllocationSize);
+            }
+
+            Status = NtfsDeleteFileRecord(DeviceExt, Fcb->MFTIndex, FALSE);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("ERROR: Failed to delete '%wS' (MFT record %I64u), Status %lx\n",
+                        Fcb->ObjectName, Fcb->MFTIndex, Status);
+            }
+
+            Fcb->Flags &= ~FCB_DELETE_PENDING;
+        }
+
         CcUninitializeCacheMap(FileObject, &Fcb->RFCB.FileSize, NULL);
 
         if (Fcb->OpenHandleCount != 0)

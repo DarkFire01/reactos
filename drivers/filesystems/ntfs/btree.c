@@ -263,8 +263,12 @@ AllocateIndexNode(PDEVICE_EXTENSION DeviceExt,
         DPRINT1("ERROR: Unable to write to $I30 bitmap attribute!\n");
     }
 
-    // Calculate VCN of new node number
-    *NewVCN = NextNodeNumber * (IndexBufferSize / DeviceExt->NtfsInfo.BytesPerCluster);
+    // Calculate VCN of new node number. An index record smaller than a cluster is addressed in
+    // sectors; dividing by the cluster size there would hand every node a VCN of zero.
+    if (IndexBufferSize < DeviceExt->NtfsInfo.BytesPerCluster)
+        *NewVCN = NextNodeNumber * (IndexBufferSize / DeviceExt->NtfsInfo.BytesPerSector);
+    else
+        *NewVCN = NextNodeNumber * (IndexBufferSize / DeviceExt->NtfsInfo.BytesPerCluster);
 
     DPRINT("New VCN: %I64u\n", *NewVCN);
 
@@ -1853,6 +1857,246 @@ NtfsInsertKey(PB_TREE Tree,
     return Status;
 }
 
+/**
+* @name FindLargestKeyInSubtree
+* @implemented
+*
+* Locates the greatest key in the subtree rooted at Node, along with the node that holds it
+* and the key that precedes it in that node's list.
+*
+* @param Node
+* Root of the subtree to search.
+*
+* @param OwnerNode
+* Receives the node containing the greatest key, or NULL if the subtree holds no filenames.
+*
+* @param PreviousKey
+* Receives the key before the greatest key in OwnerNode's list, or NULL if it's the first.
+*
+* @param LargestKey
+* Receives the greatest key, or NULL if the subtree holds no filenames.
+*
+* @remarks
+* Keys in a node are ordered, with each key's lesser child holding everything that sorts before
+* it and the end marker's child holding everything that sorts after the last real key. So the
+* greatest key of a subtree is the last real key of the rightmost node reachable through end
+* markers.
+*/
+static
+VOID
+FindLargestKeyInSubtree(PB_TREE_FILENAME_NODE Node,
+                        PB_TREE_FILENAME_NODE *OwnerNode,
+                        PB_TREE_KEY *PreviousKey,
+                        PB_TREE_KEY *LargestKey)
+{
+    PB_TREE_KEY CurrentKey = Node->FirstKey;
+    PB_TREE_KEY Previous = NULL;
+    PB_TREE_KEY BeforePrevious = NULL;
+
+    *OwnerNode = NULL;
+    *PreviousKey = NULL;
+    *LargestKey = NULL;
+
+    while (CurrentKey != NULL &&
+           !BooleanFlagOn(CurrentKey->IndexEntry->Flags, NTFS_INDEX_ENTRY_END))
+    {
+        BeforePrevious = Previous;
+        Previous = CurrentKey;
+        CurrentKey = CurrentKey->NextKey;
+    }
+
+    // Anything greater than the last real key lives beneath the end marker
+    if (CurrentKey != NULL && CurrentKey->LesserChild != NULL)
+    {
+        FindLargestKeyInSubtree(CurrentKey->LesserChild, OwnerNode, PreviousKey, LargestKey);
+        if (*LargestKey != NULL)
+            return;
+    }
+
+    // Nothing but an end marker means this subtree holds no filenames at all
+    if (Previous == NULL)
+        return;
+
+    *OwnerNode = Node;
+    *PreviousKey = BeforePrevious;
+    *LargestKey = Previous;
+}
+
+/**
+* @name ReplaceKeyIndexEntry
+* @implemented
+*
+* Replaces the index entry of Key with a copy of Source's, leaving Key's child pointer alone.
+*
+* @param Key
+* Key whose index entry will be replaced. It keeps whatever child it had.
+*
+* @param Source
+* Key to copy the file reference and $FILE_NAME from.
+*
+* @return
+* STATUS_SUCCESS on success, STATUS_INSUFFICIENT_RESOURCES if the allocation fails.
+*
+* @remarks
+* Key is known to have a child here, so the replacement is built with room for the VCN and with
+* NTFS_INDEX_ENTRY_NODE already set. UpdateIndexAllocation() only ever grows an entry to make
+* room for a VCN, so an entry that keeps its child has to arrive that way.
+*/
+static
+NTSTATUS
+ReplaceKeyIndexEntry(PB_TREE_KEY Key, PB_TREE_KEY Source)
+{
+    PINDEX_ENTRY_ATTRIBUTE NewEntry;
+    ULONG AttributeSize = GetFileNameAttributeLength(&Source->IndexEntry->FileName);
+    ULONG EntrySize = ALIGN_UP_BY(AttributeSize + FIELD_OFFSET(INDEX_ENTRY_ATTRIBUTE, FileName), 8);
+
+    EntrySize += sizeof(ULONGLONG); // for the VCN of the child Key keeps
+
+    NewEntry = ExAllocatePoolWithTag(NonPagedPool, EntrySize, TAG_NTFS);
+    if (!NewEntry)
+    {
+        DPRINT1("ERROR: Failed to allocate memory for replacement index entry!\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlZeroMemory(NewEntry, EntrySize);
+    NewEntry->Data.Directory.IndexedFile = Source->IndexEntry->Data.Directory.IndexedFile;
+    NewEntry->Length = EntrySize;
+    NewEntry->KeyLength = AttributeSize;
+    NewEntry->Flags = NTFS_INDEX_ENTRY_NODE;
+    RtlCopyMemory(&NewEntry->FileName, &Source->IndexEntry->FileName, AttributeSize);
+
+    ExFreePoolWithTag(Key->IndexEntry, TAG_NTFS);
+    Key->IndexEntry = NewEntry;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+* @name RemoveKeyFromNode
+* @implemented
+*
+* Removes a key that has already been located from the node that holds it.
+*
+* @param Node
+* Node containing Key.
+*
+* @param PreviousKey
+* The key before Key in Node's list, or NULL if Key is the first key.
+*
+* @param Key
+* The key to remove.
+*
+* @return
+* STATUS_SUCCESS on success, STATUS_INSUFFICIENT_RESOURCES if an allocation fails.
+*/
+static
+NTSTATUS
+RemoveKeyFromNode(PB_TREE_FILENAME_NODE Node,
+                  PB_TREE_KEY PreviousKey,
+                  PB_TREE_KEY Key)
+{
+    NTSTATUS Status;
+
+    if (Key->LesserChild != NULL)
+    {
+        PB_TREE_FILENAME_NODE OwnerNode;
+        PB_TREE_KEY PreviousLargest;
+        PB_TREE_KEY LargestKey;
+
+        FindLargestKeyInSubtree(Key->LesserChild, &OwnerNode, &PreviousLargest, &LargestKey);
+
+        if (LargestKey != NULL)
+        {
+            // Unlinking an interior key would orphan its child, so promote the greatest key
+            // beneath it in its place and delete that one from where it came from instead.
+            Status = ReplaceKeyIndexEntry(Key, LargestKey);
+            if (!NT_SUCCESS(Status))
+                return Status;
+
+            return RemoveKeyFromNode(OwnerNode, PreviousLargest, LargestKey);
+        }
+
+        // The child holds no filenames, so there's nothing to promote and Key can just go.
+        // DestroyBTreeKey() frees the empty child along with it.
+    }
+
+    if (PreviousKey == NULL)
+        Node->FirstKey = Key->NextKey;
+    else
+        PreviousKey->NextKey = Key->NextKey;
+
+    Node->KeyCount--;
+
+    Key->NextKey = NULL;
+    DestroyBTreeKey(Key);
+
+    return STATUS_SUCCESS;
+}
+
+/**
+* @name NtfsRemoveKey
+* @implemented
+*
+* Removes the key matching a given filename from a B-Tree.
+*
+* @param Node
+* Node to search. Callers start at the root node of the tree.
+*
+* @param SearchKey
+* Key describing the filename to remove. Only its $FILE_NAME is used, for comparison.
+*
+* @param CaseSensitive
+* Boolean indicating if the function should operate in case-sensitive mode. This will be TRUE
+* if an application created the file with the FILE_FLAG_POSIX_SEMANTICS flag.
+*
+* @return
+* STATUS_SUCCESS if the key was found and removed.
+* STATUS_OBJECT_NAME_NOT_FOUND if no key in the tree matches.
+* STATUS_INSUFFICIENT_RESOURCES if an allocation fails.
+*
+* @remarks
+* A node left holding nothing but its end marker is harmless: readers descend into it, find the
+* end marker and come back empty. Collapsing such nodes would mean freeing an index buffer that
+* a parent VCN still points at, so they're left in place.
+*/
+NTSTATUS
+NtfsRemoveKey(PB_TREE_FILENAME_NODE Node,
+              PB_TREE_KEY SearchKey,
+              BOOLEAN CaseSensitive)
+{
+    PB_TREE_KEY PreviousKey = NULL;
+    PB_TREE_KEY CurrentKey = Node->FirstKey;
+    ULONG i;
+
+    for (i = 0; i < Node->KeyCount; i++)
+    {
+        LONG Comparison;
+
+        if (CurrentKey == NULL)
+            break;
+
+        if (BooleanFlagOn(CurrentKey->IndexEntry->Flags, NTFS_INDEX_ENTRY_END))
+            break;
+
+        Comparison = CompareTreeKeys(SearchKey, CurrentKey, CaseSensitive);
+
+        if (Comparison == 0)
+            return RemoveKeyFromNode(Node, PreviousKey, CurrentKey);
+
+        // Everything that sorts before CurrentKey is beneath it
+        if (Comparison < 0)
+            break;
+
+        PreviousKey = CurrentKey;
+        CurrentKey = CurrentKey->NextKey;
+    }
+
+    if (CurrentKey != NULL && CurrentKey->LesserChild != NULL)
+        return NtfsRemoveKey(CurrentKey->LesserChild, SearchKey, CaseSensitive);
+
+    return STATUS_OBJECT_NAME_NOT_FOUND;
+}
 
 
 /**
