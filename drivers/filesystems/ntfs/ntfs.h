@@ -128,6 +128,11 @@ typedef struct
     ULONG Flags;
     ULONG OpenHandleCount;
 
+    /* Free cluster count, so a query need not re-read $Bitmap. Only NtfsAllocateClusters()
+     * and FreeClusters() change the volume bitmap, and both refresh this. */
+    ULONGLONG FreeClusterCount;
+    BOOLEAN FreeClusterCountValid;
+
 } DEVICE_EXTENSION, *PDEVICE_EXTENSION, NTFS_VCB, *PNTFS_VCB;
 
 #define VCB_VOLUME_LOCKED       0x0001
@@ -472,6 +477,12 @@ typedef struct _B_TREE_FILENAME_NODE
 typedef struct
 {
     PB_TREE_FILENAME_NODE RootNode;
+
+    /* Nodes are read on demand during a descent rather than all at once, so what it takes to
+     * read one is kept here. DestroyBTree() releases the context. */
+    PDEVICE_EXTENSION Vcb;
+    PINDEX_ROOT_ATTRIBUTE IndexRoot;
+    struct _NTFS_ATTR_CONTEXT *IndexAllocationContext;
 } B_TREE, *PB_TREE;
 
 typedef struct
@@ -917,7 +928,8 @@ NtfsInsertKey(PB_TREE Tree,
               PB_TREE_FILENAME_NODE *NewRightHandSibling);
 
 NTSTATUS
-NtfsRemoveKey(PB_TREE_FILENAME_NODE Node,
+NtfsRemoveKey(PB_TREE Tree,
+              PB_TREE_FILENAME_NODE Node,
               PB_TREE_KEY SearchKey,
               BOOLEAN CaseSensitive);
 

@@ -299,6 +299,82 @@ NtfsReadFile(PDEVICE_EXTENSION DeviceExt,
     return STATUS_SUCCESS;
 }
 
+/**
+* @name NtfsIsCachedIo
+* @implemented
+*
+* Decides whether a request should go through the cache manager rather than to the disk.
+*
+* @param IrpContext
+* Context of the request.
+*
+* @param Fcb
+* Fcb of the file being read or written.
+*
+* @return
+* TRUE if the request should be served from the cache.
+*
+* @remarks
+* Paging and no-cache requests are what fill the cache in the first place, so they always go
+* straight to the disk. The volume stream and directories have no cache map at all.
+*/
+static
+BOOLEAN
+NtfsIsCachedIo(PNTFS_IRP_CONTEXT IrpContext, PNTFS_FCB Fcb)
+{
+    if (BooleanFlagOn(IrpContext->Irp->Flags, IRP_PAGING_IO | IRP_NOCACHE))
+        return FALSE;
+
+    if (BooleanFlagOn(IrpContext->FileObject->Flags, FO_NO_INTERMEDIATE_BUFFERING))
+        return FALSE;
+
+    if (Fcb->Flags & FCB_IS_VOLUME)
+        return FALSE;
+
+    return !NtfsFCBIsDirectory(Fcb);
+}
+
+/**
+* @name NtfsEnsureCacheMap
+* @implemented
+*
+* Makes sure a file object has a private cache map before it is used for cached I/O.
+*
+* @param FileObject
+* File object the request arrived on.
+*
+* @param Fcb
+* Fcb of the file.
+*
+* @return
+* STATUS_SUCCESS on success, or the exception raised by CcInitializeCacheMap().
+*/
+static
+NTSTATUS
+NtfsEnsureCacheMap(PFILE_OBJECT FileObject, PNTFS_FCB Fcb)
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    if (FileObject->PrivateCacheMap != NULL)
+        return STATUS_SUCCESS;
+
+    _SEH2_TRY
+    {
+        CcInitializeCacheMap(FileObject,
+                             (PCC_FILE_SIZES)&Fcb->RFCB.AllocationSize,
+                             FALSE,
+                             &NtfsGlobalData->CacheMgrCallbacks,
+                             Fcb);
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    return Status;
+}
+
 
 NTSTATUS
 NtfsRead(PNTFS_IRP_CONTEXT IrpContext)
@@ -351,6 +427,65 @@ NtfsRead(PNTFS_IRP_CONTEXT IrpContext)
         /* A directory has no data stream to read */
         Irp->IoStatus.Information = 0;
         return STATUS_INVALID_DEVICE_REQUEST;
+    }
+    else if (NtfsIsCachedIo(IrpContext, (PNTFS_FCB)FileObject->FsContext))
+    {
+        PNTFS_FCB Fcb = FileObject->FsContext;
+
+        /* Held shared against a writer changing the file size underneath. The page-in this
+         * may trigger comes back as paging I/O, which takes PagingIoResource instead. */
+        if (!ExAcquireResourceSharedLite(&Fcb->MainResource,
+                                         BooleanFlagOn(IrpContext->Flags, IRPCONTEXT_CANWAIT)))
+        {
+            return NtfsMarkIrpContextForQueue(IrpContext);
+        }
+
+        /* CcCopyRead needs somewhere mapped to copy into */
+        Status = NtfsLockUserBuffer(Irp, ReadLength, IoWriteAccess);
+        if (NT_SUCCESS(Status))
+        {
+            Buffer = NtfsGetUserBuffer(Irp, FALSE);
+            if (Buffer == NULL)
+                Status = STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        if (NT_SUCCESS(Status))
+            Status = NtfsEnsureCacheMap(FileObject, Fcb);
+
+        if (!NT_SUCCESS(Status))
+        {
+            ExReleaseResourceLite(&Fcb->MainResource);
+            Irp->IoStatus.Information = 0;
+            return Status;
+        }
+
+        if (ReadOffset.QuadPart >= Fcb->RFCB.FileSize.QuadPart)
+        {
+            ExReleaseResourceLite(&Fcb->MainResource);
+            Irp->IoStatus.Information = 0;
+            return STATUS_END_OF_FILE;
+        }
+
+        /* The cache manager doesn't clamp, and reading past the end would fault it in */
+        if (ReadOffset.QuadPart + ReadLength > Fcb->RFCB.FileSize.QuadPart)
+            ReadLength = (ULONG)(Fcb->RFCB.FileSize.QuadPart - ReadOffset.QuadPart);
+
+        if (!CcCopyRead(FileObject,
+                        &ReadOffset,
+                        ReadLength,
+                        BooleanFlagOn(IrpContext->Flags, IRPCONTEXT_CANWAIT),
+                        Buffer,
+                        &Irp->IoStatus))
+        {
+            /* Would have blocked; a worker thread runs it with IRPCONTEXT_CANWAIT set */
+            ExReleaseResourceLite(&Fcb->MainResource);
+            return NtfsMarkIrpContextForQueue(IrpContext);
+        }
+
+        Status = Irp->IoStatus.Status;
+        ReturnedReadLength = (ULONG)Irp->IoStatus.Information;
+
+        ExReleaseResourceLite(&Fcb->MainResource);
     }
     else
     {
@@ -852,6 +987,41 @@ NtfsWrite(PNTFS_IRP_CONTEXT IrpContext)
         /* A directory has no data stream to write */
         Irp->IoStatus.Information = 0;
         return STATUS_INVALID_DEVICE_REQUEST;
+    }
+    else if (NtfsIsCachedIo(IrpContext, Fcb))
+    {
+        /* CcCopyWrite only fills pages; the clusters behind them have to exist first */
+        if (ByteOffset.QuadPart + Length > Fcb->RFCB.FileSize.QuadPart)
+        {
+            LARGE_INTEGER NewFileSize;
+
+            NewFileSize.QuadPart = ByteOffset.QuadPart + Length;
+            Status = NtfsSetEndOfFile(Fcb,
+                                      FileObject,
+                                      DeviceExt,
+                                      Irp->Flags,
+                                      BooleanFlagOn(IrpContext->Stack->Flags, SL_CASE_SENSITIVE),
+                                      &NewFileSize);
+        }
+
+        if (NT_SUCCESS(Status))
+            Status = NtfsEnsureCacheMap(FileObject, Fcb);
+
+        if (NT_SUCCESS(Status))
+        {
+            if (!CcCopyWrite(FileObject,
+                             &ByteOffset,
+                             Length,
+                             BooleanFlagOn(IrpContext->Flags, IRPCONTEXT_CANWAIT),
+                             Buffer))
+            {
+                /* Would have blocked; a worker thread runs it with IRPCONTEXT_CANWAIT set */
+                ExReleaseResourceLite(Resource);
+                return NtfsMarkIrpContextForQueue(IrpContext);
+            }
+
+            ReturnedWriteLength = Length;
+        }
     }
     else
     {

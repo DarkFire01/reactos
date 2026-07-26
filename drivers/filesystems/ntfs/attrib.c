@@ -1834,11 +1834,16 @@ FreeClusters(PNTFS_VCB Vcb,
     Status = WriteAttribute(Vcb, DataContext, 0, BitmapData, (ULONG)BitmapDataSize, &LengthWritten, FileRecord);
     if (!NT_SUCCESS(Status))
     {
+        Vcb->FreeClusterCountValid = FALSE;
         ReleaseAttributeContext(DataContext);
         ExFreePoolWithTag(BitmapData, TAG_NTFS);
         ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, BitmapRecord);
         return Status;
     }
+
+    /* The bitmap is in memory, so recounting costs nothing next to reading it again */
+    Vcb->FreeClusterCount = RtlNumberOfClearBits(&Bitmap);
+    Vcb->FreeClusterCountValid = TRUE;
 
     ReleaseAttributeContext(DataContext);
     ExFreePoolWithTag(BitmapData, TAG_NTFS);
