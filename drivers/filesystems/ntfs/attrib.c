@@ -557,6 +557,656 @@ AddIndexRoot(PNTFS_VCB Vcb,
 }
 
 /**
+* @name FindAttributeInRecord
+* @implemented
+*
+* Finds the first attribute of a given type within one file record, without following an
+* $ATTRIBUTE_LIST.
+*
+* @param Vcb
+* Pointer to an NTFS_VCB for the volume the record came from.
+*
+* @param FileRecord
+* The record to search.
+*
+* @param Type
+* Attribute type to look for.
+*
+* @param Offset
+* Optional; receives the byte offset of the attribute within FileRecord.
+*
+* @return
+* Pointer to the attribute, or NULL if this record doesn't hold one of that type.
+*/
+static
+PNTFS_ATTR_RECORD
+FindAttributeInRecord(PNTFS_VCB Vcb,
+                      PFILE_RECORD_HEADER FileRecord,
+                      ULONG Type,
+                      PULONG Offset)
+{
+    PNTFS_ATTR_RECORD Attribute;
+    ULONG AttributeOffset = FileRecord->AttributeOffset;
+
+    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + AttributeOffset);
+
+    while (AttributeOffset < Vcb->NtfsInfo.BytesPerFileRecord &&
+           Attribute->Type != AttributeEnd)
+    {
+        if (Attribute->Type == Type)
+        {
+            if (Offset != NULL)
+                *Offset = AttributeOffset;
+
+            return Attribute;
+        }
+
+        if (Attribute->Length == 0)
+            break;
+
+        AttributeOffset += Attribute->Length;
+        Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + AttributeOffset);
+    }
+
+    return NULL;
+}
+
+/**
+* @name AddAttributeListEntry
+* @implemented
+*
+* Writes one $ATTRIBUTE_LIST entry describing a given attribute.
+*
+* @param ListBuffer
+* Buffer receiving the entry.
+*
+* @param Offset
+* Byte offset within ListBuffer to write at.
+*
+* @param Attribute
+* Attribute the entry describes.
+*
+* @param FileReference
+* Reference of the file record the attribute actually lives in.
+*
+* @return
+* Length of the entry written, in bytes.
+*/
+static
+ULONG
+AddAttributeListEntry(PCHAR ListBuffer,
+                      ULONG Offset,
+                      PNTFS_ATTR_RECORD Attribute,
+                      ULONGLONG FileReference)
+{
+    PNTFS_ATTRIBUTE_LIST_ITEM Item = (PNTFS_ATTRIBUTE_LIST_ITEM)(ListBuffer + Offset);
+    ULONG EntryLength = ALIGN_UP_BY(ATTRIBUTE_LIST_ITEM_HEADER_SIZE +
+                                    (Attribute->NameLength * sizeof(WCHAR)),
+                                    ATTR_RECORD_ALIGNMENT);
+
+    RtlZeroMemory(Item, EntryLength);
+
+    Item->Type = Attribute->Type;
+    Item->Length = (USHORT)EntryLength;
+    Item->NameLength = Attribute->NameLength;
+    Item->NameOffset = ATTRIBUTE_LIST_ITEM_HEADER_SIZE;
+    Item->StartingVCN = Attribute->IsNonResident ? Attribute->NonResident.LowestVCN : 0ULL;
+    Item->MFTIndex = FileReference;
+    Item->Instance = Attribute->Instance;
+
+    if (Attribute->NameLength != 0)
+    {
+        RtlCopyMemory((PCHAR)Item + ATTRIBUTE_LIST_ITEM_HEADER_SIZE,
+                      (PCHAR)Attribute + Attribute->NameOffset,
+                      Attribute->NameLength * sizeof(WCHAR));
+    }
+
+    return EntryLength;
+}
+
+/**
+* @name ConvertMcbRangeToDataRuns
+* @implemented
+*
+* Encodes map control block entries into a buffer until it fills, starting at a given entry.
+*
+* @param DataRunsMCB
+* Map control block holding the attribute's complete run list.
+*
+* @param StartIndex
+* Index of the first map control block entry to encode.
+*
+* @param RunBuffer
+* Buffer receiving the encoded data runs.
+*
+* @param MaxBufferSize
+* Capacity of RunBuffer, including the terminating null.
+*
+* @param UsedBufferSize
+* Receives the number of bytes written to RunBuffer.
+*
+* @param NextIndex
+* Receives the index of the first entry that did not fit; equal to StartIndex if none fit.
+*
+* @param FirstVCN
+* Receives the first virtual cluster covered by the encoded runs.
+*
+* @param LastVCN
+* Receives the last virtual cluster covered by the encoded runs.
+*
+* @return
+* STATUS_SUCCESS if at least one run was encoded, STATUS_BUFFER_TOO_SMALL if not even one fit.
+*
+* @remarks
+* Each fragment of a split attribute has self-contained mapping pairs, so the running LCN
+* starts from zero rather than continuing from the previous fragment.
+*/
+static
+NTSTATUS
+ConvertMcbRangeToDataRuns(PLARGE_MCB DataRunsMCB,
+                          ULONG StartIndex,
+                          PUCHAR RunBuffer,
+                          ULONG MaxBufferSize,
+                          PULONG UsedBufferSize,
+                          PULONG NextIndex,
+                          PULONGLONG FirstVCN,
+                          PULONGLONG LastVCN)
+{
+    ULONG RunBufferOffset = 0;
+    LONGLONG DataRunOffset;
+    ULONGLONG LastLCN = 0;
+    LONGLONG Vbn, Lbn, Count;
+    BOOLEAN Encoded = FALSE;
+    ULONG i;
+
+    *UsedBufferSize = 0;
+    *NextIndex = StartIndex;
+    *FirstVCN = 0;
+    *LastVCN = 0;
+
+    for (i = StartIndex; FsRtlGetNextLargeMcbEntry(DataRunsMCB, i, &Vbn, &Lbn, &Count); i++)
+    {
+        UCHAR DataRunOffsetSize;
+        UCHAR DataRunLengthSize;
+        UCHAR ControlByte;
+
+        DataRunOffset = Lbn - LastLCN;
+        DataRunOffsetSize = GetPackedByteCount(DataRunOffset, TRUE);
+        DataRunLengthSize = GetPackedByteCount(Count, TRUE);
+
+        // Leave room for the run and the terminating null
+        if (RunBufferOffset + 2 + DataRunLengthSize + DataRunOffsetSize > MaxBufferSize)
+            break;
+
+        if (!Encoded)
+        {
+            *FirstVCN = Vbn;
+            Encoded = TRUE;
+        }
+
+        LastLCN = Lbn;
+
+        ControlByte = (DataRunOffsetSize << 4) + DataRunLengthSize;
+        RunBuffer[RunBufferOffset++] = ControlByte;
+
+        RtlCopyMemory(RunBuffer + RunBufferOffset, &Count, DataRunLengthSize);
+        RunBufferOffset += DataRunLengthSize;
+
+        RtlCopyMemory(RunBuffer + RunBufferOffset, &DataRunOffset, DataRunOffsetSize);
+        RunBufferOffset += DataRunOffsetSize;
+
+        *LastVCN = Vbn + Count - 1;
+        *NextIndex = i + 1;
+    }
+
+    RunBuffer[RunBufferOffset++] = 0;
+    *UsedBufferSize = RunBufferOffset;
+
+    return Encoded ? STATUS_SUCCESS : STATUS_BUFFER_TOO_SMALL;
+}
+
+/**
+* @name AttributeMatchesNameOfContext
+* @implemented
+*
+* Tests whether an attribute has the same type and name as the one a context describes.
+*/
+static
+BOOLEAN
+AttributeMatchesNameOfContext(PNTFS_ATTR_RECORD Attribute, PNTFS_ATTR_RECORD Wanted)
+{
+    if (Attribute->Type != Wanted->Type || Attribute->NameLength != Wanted->NameLength)
+        return FALSE;
+
+    if (Attribute->NameLength == 0)
+        return TRUE;
+
+    return RtlCompareMemory((PCHAR)Attribute + Attribute->NameOffset,
+                            (PCHAR)Wanted + Wanted->NameOffset,
+                            Attribute->NameLength * sizeof(WCHAR)) ==
+           (SIZE_T)(Attribute->NameLength * sizeof(WCHAR));
+}
+
+/**
+* @name ReleaseAttributeFragments
+* @implemented
+*
+* Frees every child record holding a fragment of a given attribute, as listed by the base
+* record's $ATTRIBUTE_LIST.
+*
+* @param Vcb
+* Pointer to an NTFS_VCB for the volume.
+*
+* @param FileRecord
+* The base file record.
+*
+* @param BaseMftIndex
+* Mft index of the base record; entries pointing at it are skipped.
+*
+* @param Wanted
+* Attribute record giving the type and name whose fragments are to be released.
+*
+* @remarks
+* A record that can't be freed is logged and skipped, leaking an MFT entry for chkdsk to
+* reclaim. Stopping here would leave the attribute half-rebuilt.
+*/
+static
+VOID
+ReleaseAttributeFragments(PNTFS_VCB Vcb,
+                          PFILE_RECORD_HEADER FileRecord,
+                          ULONGLONG BaseMftIndex,
+                          PNTFS_ATTR_RECORD Wanted)
+{
+    PNTFS_ATTR_RECORD ListAttribute;
+    PNTFS_ATTRIBUTE_LIST_ITEM Item;
+    PCHAR ListValue;
+    ULONG ListSize;
+    ULONG Offset = 0;
+
+    ListAttribute = FindAttributeInRecord(Vcb, FileRecord, AttributeAttributeList, NULL);
+    if (ListAttribute == NULL || ListAttribute->IsNonResident)
+        return;
+
+    ListValue = (PCHAR)ListAttribute + ListAttribute->Resident.ValueOffset;
+    ListSize = ListAttribute->Resident.ValueLength;
+
+    while (Offset + ATTRIBUTE_LIST_ITEM_HEADER_SIZE <= ListSize)
+    {
+        ULONGLONG ItemIndex;
+
+        Item = (PNTFS_ATTRIBUTE_LIST_ITEM)(ListValue + Offset);
+        if (Item->Length == 0)
+            break;
+
+        ItemIndex = Item->MFTIndex & NTFS_MFT_MASK;
+
+        if (Item->Type == Wanted->Type &&
+            Item->NameLength == Wanted->NameLength &&
+            ItemIndex != BaseMftIndex)
+        {
+            NTSTATUS Status = FreeMftEntry(Vcb, ItemIndex);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("Couldn't release child record %I64u (Status %lx)\n", ItemIndex, Status);
+            }
+        }
+
+        Offset += Item->Length;
+    }
+}
+
+/**
+* @name SpillAttributeToChildRecords
+* @implemented
+*
+* Moves a non-resident attribute whose data runs no longer fit into child MFT records, one per
+* VCN range, and gives the base record an $ATTRIBUTE_LIST describing where each lives.
+*
+* @param Vcb
+* Pointer to an NTFS_VCB for the destination volume.
+*
+* @param FileRecord
+* Complete copy of the base file record. Updated in place and written back before returning.
+*
+* @param BaseMftIndex
+* Mft index of the base file record.
+*
+* @param AttrContext
+* Context of the attribute being moved. Its DataRunsMCB supplies the run list; on success its
+* pRecord and FileMFTIndex are repointed at the first fragment.
+*
+* @return
+* STATUS_SUCCESS on success.
+* STATUS_NOT_IMPLEMENTED if the attribute may not leave the base record, or the resulting
+* $ATTRIBUTE_LIST won't fit there.
+* STATUS_INSUFFICIENT_RESOURCES if an allocation fails.
+*
+* @remarks
+* Previous child records are released and every fragment rebuilt on each call, so a file that
+* has never spilled and one that already has an $ATTRIBUTE_LIST take the same path.
+*
+* Only the first fragment carries the attribute's sizes, which is where the rest of the driver
+* reads them from. Later fragments describe only their own VCN range.
+*/
+static
+NTSTATUS
+SpillAttributeToChildRecords(PNTFS_VCB Vcb,
+                             PFILE_RECORD_HEADER FileRecord,
+                             ULONGLONG BaseMftIndex,
+                             PNTFS_ATTR_CONTEXT AttrContext)
+{
+    NTSTATUS Status;
+    PNTFS_ATTR_RECORD Source = AttrContext->pRecord;
+    PNTFS_ATTR_RECORD Attribute;
+    PNTFS_ATTR_RECORD ListAttribute;
+    PNTFS_ATTR_RECORD FinalAttribute;
+    PFILE_RECORD_HEADER ChildRecord = NULL;
+    PUCHAR RunBuffer = NULL;
+    PCHAR ListBuffer = NULL;
+    ULONG HeaderSize;
+    ULONG MaxRunSize;
+    ULONG ListSize = 0;
+    ULONG ListValueOffset;
+    ULONG ListAttrLength;
+    ULONG AttributeOffset;
+    ULONG InsertOffset;
+    ULONG McbIndex = 0;
+    ULONG FragmentCount = 0;
+    ULONGLONG BaseReference;
+    ULONGLONG FirstFragmentIndex = 0;
+    LONGLONG TotalVbn, TotalLbn, TotalCount;
+
+    if (!Source->IsNonResident)
+        return STATUS_INVALID_PARAMETER;
+
+    // NTFS needs these to reach a file before it can read a list at all
+    if (Source->Type == AttributeStandardInformation ||
+        Source->Type == AttributeFileName ||
+        Source->Type == AttributeAttributeList)
+    {
+        DPRINT1("Refusing to move attribute 0x%lx out of its base record\n", Source->Type);
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    if (!FsRtlGetNextLargeMcbEntry(&AttrContext->DataRunsMCB, 0, &TotalVbn, &TotalLbn, &TotalCount))
+    {
+        DPRINT1("Attribute has no data runs to spill\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    BaseReference = (FileRecord->MFTRecordNumber & NTFS_MFT_MASK) |
+                    ((ULONGLONG)FileRecord->SequenceNumber << 48);
+
+    // Everything up to the mapping pairs, the name included, is identical in every fragment
+    HeaderSize = Source->NonResident.MappingPairsOffset;
+
+    // Release the records holding the previous fragments before laying out the new ones
+    ReleaseAttributeFragments(Vcb, FileRecord, BaseMftIndex, Source);
+
+    // Remove the attribute from the base record if it is still there
+    Attribute = FindAttributeInRecord(Vcb, FileRecord, Source->Type, &AttributeOffset);
+    while (Attribute != NULL && !AttributeMatchesNameOfContext(Attribute, Source))
+    {
+        ULONG Skip = AttributeOffset + Attribute->Length;
+        Attribute = NULL;
+        if (Skip < Vcb->NtfsInfo.BytesPerFileRecord)
+        {
+            PNTFS_ATTR_RECORD Next = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + Skip);
+            if (Next->Type == Source->Type && AttributeMatchesNameOfContext(Next, Source))
+            {
+                Attribute = Next;
+                AttributeOffset = Skip;
+            }
+        }
+        break;
+    }
+
+    if (Attribute != NULL)
+    {
+        PNTFS_ATTR_RECORD Following =
+            (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + AttributeOffset + Attribute->Length);
+
+        FinalAttribute = MoveAttributes(Vcb, Following, AttributeOffset + Attribute->Length,
+                                        (ULONG_PTR)FileRecord + AttributeOffset);
+        SetFileRecordEnd(FileRecord, FinalAttribute, FILE_RECORD_END);
+    }
+
+    // Drop any existing $ATTRIBUTE_LIST; a fresh one is built below
+    ListAttribute = FindAttributeInRecord(Vcb, FileRecord, AttributeAttributeList, &AttributeOffset);
+    if (ListAttribute != NULL)
+    {
+        PNTFS_ATTR_RECORD Following =
+            (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + AttributeOffset + ListAttribute->Length);
+
+        FinalAttribute = MoveAttributes(Vcb, Following, AttributeOffset + ListAttribute->Length,
+                                        (ULONG_PTR)FileRecord + AttributeOffset);
+        SetFileRecordEnd(FileRecord, FinalAttribute, FILE_RECORD_END);
+    }
+
+    ListBuffer = ExAllocatePoolWithTag(NonPagedPool, Vcb->NtfsInfo.BytesPerFileRecord, TAG_NTFS);
+    RunBuffer = ExAllocatePoolWithTag(NonPagedPool, Vcb->NtfsInfo.BytesPerFileRecord, TAG_NTFS);
+    if (ListBuffer == NULL || RunBuffer == NULL)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Cleanup;
+    }
+
+    // List entries are ordered by type, so those sorting before this attribute go first
+    AttributeOffset = FileRecord->AttributeOffset;
+    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + AttributeOffset);
+    InsertOffset = AttributeOffset;
+
+    while (AttributeOffset < Vcb->NtfsInfo.BytesPerFileRecord &&
+           Attribute->Type != AttributeEnd && Attribute->Length != 0)
+    {
+        if (Attribute->Type > Source->Type)
+            break;
+
+        ListSize += AddAttributeListEntry(ListBuffer, ListSize, Attribute, BaseReference);
+
+        if (Attribute->Type < AttributeAttributeList)
+            InsertOffset = AttributeOffset + Attribute->Length;
+
+        AttributeOffset += Attribute->Length;
+        Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + AttributeOffset);
+    }
+
+    // Lay the run list out across as many child records as it takes
+    ChildRecord = NtfsCreateEmptyFileRecord(Vcb);
+    if (ChildRecord == NULL)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Cleanup;
+    }
+
+    if (ChildRecord->AttributeOffset + HeaderSize + (sizeof(ULONG) * 2) >=
+        Vcb->NtfsInfo.BytesPerFileRecord)
+    {
+        DPRINT1("Attribute header of 0x%lx bytes leaves no room for runs in a child record\n",
+                HeaderSize);
+        Status = STATUS_NOT_IMPLEMENTED;
+        goto Cleanup;
+    }
+
+    MaxRunSize = Vcb->NtfsInfo.BytesPerFileRecord
+                 - ChildRecord->AttributeOffset
+                 - HeaderSize
+                 - (sizeof(ULONG) * 2);
+
+    // Each fragment gets its own record, allocated at the top of the loop
+    ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, ChildRecord);
+    ChildRecord = NULL;
+
+    for (;;)
+    {
+        PNTFS_ATTR_RECORD Fragment;
+        ULONGLONG FragmentIndex = 0;
+        ULONGLONG FirstVCN, LastVCN;
+        ULONG RunSize;
+        ULONG NextMcbIndex;
+        ULONG FragmentLength;
+
+        Status = ConvertMcbRangeToDataRuns(&AttrContext->DataRunsMCB, McbIndex, RunBuffer,
+                                           MaxRunSize, &RunSize, &NextMcbIndex,
+                                           &FirstVCN, &LastVCN);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("A single data run doesn't fit a child record\n");
+            goto Cleanup;
+        }
+
+        ChildRecord = NtfsCreateEmptyFileRecord(Vcb);
+        if (ChildRecord == NULL)
+        {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto Cleanup;
+        }
+
+        ChildRecord->BaseFileRecord = BaseReference;
+
+        Fragment = (PNTFS_ATTR_RECORD)((ULONG_PTR)ChildRecord + ChildRecord->AttributeOffset);
+        FragmentLength = ALIGN_UP_BY(HeaderSize + RunSize, ATTR_RECORD_ALIGNMENT);
+
+        // Copy the header, and with it the attribute's name, from the original
+        RtlCopyMemory(Fragment, Source, HeaderSize);
+        RtlCopyMemory((PCHAR)Fragment + HeaderSize, RunBuffer, RunSize);
+
+        Fragment->Length = FragmentLength;
+        Fragment->Instance = ChildRecord->NextAttributeNumber++;
+        Fragment->NonResident.LowestVCN = FirstVCN;
+        Fragment->NonResident.HighestVCN = LastVCN;
+
+        // Only the first fragment describes the attribute as a whole
+        if (FragmentCount != 0)
+        {
+            Fragment->NonResident.AllocatedSize = 0;
+            Fragment->NonResident.DataSize = 0;
+            Fragment->NonResident.InitializedSize = 0;
+            Fragment->NonResident.CompressedSize = 0;
+        }
+
+        SetFileRecordEnd(ChildRecord,
+                         (PNTFS_ATTR_RECORD)((ULONG_PTR)Fragment + FragmentLength),
+                         FILE_RECORD_END);
+
+        Status = AddNewMftEntry(ChildRecord, Vcb, &FragmentIndex, TRUE);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Couldn't allocate a child record for fragment %lu (Status %lx)\n",
+                    FragmentCount, Status);
+            goto Cleanup;
+        }
+
+        // Add the fragment to the list, keyed by the VCN it starts at
+        ListSize += AddAttributeListEntry(ListBuffer, ListSize, Fragment,
+                                          (FragmentIndex & NTFS_MFT_MASK) |
+                                          ((ULONGLONG)ChildRecord->SequenceNumber << 48));
+
+        if (FragmentCount == 0)
+        {
+            FirstFragmentIndex = FragmentIndex;
+
+            // The rest of the driver reads sizes and runs through this copy
+            ExFreePoolWithTag(AttrContext->pRecord, TAG_NTFS);
+            AttrContext->pRecord = ExAllocatePoolWithTag(NonPagedPool, FragmentLength, TAG_NTFS);
+            if (AttrContext->pRecord == NULL)
+            {
+                Status = STATUS_INSUFFICIENT_RESOURCES;
+                goto Cleanup;
+            }
+            RtlCopyMemory(AttrContext->pRecord, Fragment, FragmentLength);
+            Source = AttrContext->pRecord;
+        }
+
+        FragmentCount++;
+        McbIndex = NextMcbIndex;
+
+        if (!FsRtlGetNextLargeMcbEntry(&AttrContext->DataRunsMCB, McbIndex,
+                                       &TotalVbn, &TotalLbn, &TotalCount))
+        {
+            break;
+        }
+
+        ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, ChildRecord);
+        ChildRecord = NULL;
+    }
+
+    // Attributes sorting after this one follow its fragments
+    AttributeOffset = FileRecord->AttributeOffset;
+    Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + AttributeOffset);
+
+    while (AttributeOffset < Vcb->NtfsInfo.BytesPerFileRecord &&
+           Attribute->Type != AttributeEnd && Attribute->Length != 0)
+    {
+        if (Attribute->Type > Source->Type)
+            ListSize += AddAttributeListEntry(ListBuffer, ListSize, Attribute, BaseReference);
+
+        AttributeOffset += Attribute->Length;
+        Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + AttributeOffset);
+    }
+
+    // Splice the new $ATTRIBUTE_LIST into the base record
+    ListValueOffset = ALIGN_UP_BY(FIELD_OFFSET(NTFS_ATTR_RECORD, Resident) +
+                                  sizeof(Source->Resident), VALUE_OFFSET_ALIGNMENT);
+    ListAttrLength = ALIGN_UP_BY(ListValueOffset + ListSize, ATTR_RECORD_ALIGNMENT);
+
+    if (FileRecord->BytesInUse + ListAttrLength > Vcb->NtfsInfo.BytesPerFileRecord)
+    {
+        DPRINT1("An $ATTRIBUTE_LIST of 0x%lx bytes for %lu fragments won't fit file record "
+                "%I64u; a non-resident list isn't supported\n",
+                ListAttrLength, FragmentCount, BaseMftIndex);
+        Status = STATUS_NOT_IMPLEMENTED;
+        goto Cleanup;
+    }
+
+    ListAttribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + InsertOffset);
+    FinalAttribute = MoveAttributes(Vcb, ListAttribute, InsertOffset,
+                                    (ULONG_PTR)ListAttribute + ListAttrLength);
+    SetFileRecordEnd(FileRecord, FinalAttribute, FILE_RECORD_END);
+
+    RtlZeroMemory(ListAttribute, ListAttrLength);
+    ListAttribute->Type = AttributeAttributeList;
+    ListAttribute->Length = ListAttrLength;
+    ListAttribute->IsNonResident = FALSE;
+    ListAttribute->NameLength = 0;
+    ListAttribute->NameOffset = 0;
+    ListAttribute->Flags = 0;
+    ListAttribute->Instance = FileRecord->NextAttributeNumber++;
+    ListAttribute->Resident.ValueLength = ListSize;
+    ListAttribute->Resident.ValueOffset = (USHORT)ListValueOffset;
+    ListAttribute->Resident.Flags = 0;
+
+    RtlCopyMemory((PCHAR)ListAttribute + ListValueOffset, ListBuffer, ListSize);
+
+    Status = UpdateFileRecord(Vcb, BaseMftIndex, FileRecord);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Couldn't write base file record %I64u after spilling (Status %lx)\n",
+                BaseMftIndex, Status);
+        goto Cleanup;
+    }
+
+    // Writes of this attribute now go to the record holding its first fragment
+    AttrContext->FileMFTIndex = FirstFragmentIndex;
+
+    DPRINT("Attribute 0x%lx of file record %I64u now spans %lu child records\n",
+           Source->Type, BaseMftIndex, FragmentCount);
+
+    Status = STATUS_SUCCESS;
+
+Cleanup:
+    if (ChildRecord != NULL)
+        ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, ChildRecord);
+    if (ListBuffer != NULL)
+        ExFreePoolWithTag(ListBuffer, TAG_NTFS);
+    if (RunBuffer != NULL)
+        ExFreePoolWithTag(RunBuffer, TAG_NTFS);
+
+    return Status;
+}
+
+
+/**
 * @name AddRun
 * @implemented
 *
@@ -607,6 +1257,7 @@ AddRun(PNTFS_VCB Vcb,
     PNTFS_ATTR_RECORD DestinationAttribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + AttrOffset);
     ULONG NextAttributeOffset = AttrOffset + AttrContext->pRecord->Length;
     ULONGLONG NextVBN = 0;
+    PFILE_RECORD_HEADER ChildRecord = NULL;
 
     PUCHAR RunBuffer;
     ULONG RunBufferSize;
@@ -672,9 +1323,23 @@ AddRun(PNTFS_VCB Vcb,
         // Can we resize the attribute?
         if (DataRunMaxLength < RunBufferSize)
         {
-            DPRINT1("FIXME: Need to create attribute list! Max Data Run Length available: %d, RunBufferSize: %d\n", DataRunMaxLength, RunBufferSize);
+            // The runs have outgrown this record. Move the attribute into child records and
+            // describe them in an $ATTRIBUTE_LIST. SpillAttributeToChildRecords() writes every
+            // record it touches, the base included.
+            AttrContext->pRecord->NonResident.HighestVCN =
+                max(NextVBN - 1 + RunLength, AttrContext->pRecord->NonResident.HighestVCN);
+
+            Status = SpillAttributeToChildRecords(Vcb, FileRecord, AttrContext->FileMFTIndex,
+                                                  AttrContext);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("Data runs need 0x%lx bytes, only 0x%x available, and the attribute "
+                        "couldn't be spilled to child records (Status %lx)\n",
+                        RunBufferSize, DataRunMaxLength, Status);
+            }
+
             ExFreePoolWithTag(RunBuffer, TAG_NTFS);
-            return STATUS_NOT_IMPLEMENTED;
+            return Status;
         }
 
         // Are there more attributes after the one we're resizing?
@@ -737,7 +1402,8 @@ AddRun(PNTFS_VCB Vcb,
                   RunBuffer,
                   RunBufferSize);
 
-    // Update the file record
+    // Update the file record. After a migration this is the child record, because the attribute
+    // context was repointed at it.
     Status = UpdateFileRecord(Vcb, AttrContext->FileMFTIndex, FileRecord);
 
     ExFreePoolWithTag(RunBuffer, TAG_NTFS);
@@ -745,6 +1411,9 @@ AddRun(PNTFS_VCB Vcb,
 #if NTFS_DUMP_DATA_RUNS
     NtfsDumpDataRuns((PUCHAR)((ULONG_PTR)DestinationAttribute + DestinationAttribute->NonResident.MappingPairsOffset), 0);
 #endif
+
+    if (ChildRecord != NULL)
+        ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, ChildRecord);
 
     return Status;
 }
