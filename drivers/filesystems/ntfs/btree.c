@@ -263,8 +263,8 @@ AllocateIndexNode(PDEVICE_EXTENSION DeviceExt,
         DPRINT1("ERROR: Unable to write to $I30 bitmap attribute!\n");
     }
 
-    // Calculate VCN of new node number. An index record smaller than a cluster is addressed in
-    // sectors; dividing by the cluster size there would hand every node a VCN of zero.
+    // Calculate VCN of new node number. An index record smaller than a cluster is addressed
+    // in sectors; dividing by the cluster size would give every node a VCN of zero.
     if (IndexBufferSize < DeviceExt->NtfsInfo.BytesPerCluster)
         *NewVCN = NextNodeNumber * (IndexBufferSize / DeviceExt->NtfsInfo.BytesPerSector);
     else
@@ -1861,8 +1861,8 @@ NtfsInsertKey(PB_TREE Tree,
 * @name FindLargestKeyInSubtree
 * @implemented
 *
-* Locates the greatest key in the subtree rooted at Node, along with the node that holds it
-* and the key that precedes it in that node's list.
+* Finds the greatest key in the subtree rooted at Node, along with the node holding it and the
+* key that precedes it in that node's list.
 *
 * @param Node
 * Root of the subtree to search.
@@ -1877,10 +1877,8 @@ NtfsInsertKey(PB_TREE Tree,
 * Receives the greatest key, or NULL if the subtree holds no filenames.
 *
 * @remarks
-* Keys in a node are ordered, with each key's lesser child holding everything that sorts before
-* it and the end marker's child holding everything that sorts after the last real key. So the
-* greatest key of a subtree is the last real key of the rightmost node reachable through end
-* markers.
+* An end marker's child holds everything sorting after the last real key, so the greatest key
+* of a subtree is the last real key of the rightmost node reachable through end markers.
 */
 static
 VOID
@@ -1913,7 +1911,7 @@ FindLargestKeyInSubtree(PB_TREE_FILENAME_NODE Node,
             return;
     }
 
-    // Nothing but an end marker means this subtree holds no filenames at all
+    // Nothing but an end marker: this subtree holds no filenames
     if (Previous == NULL)
         return;
 
@@ -1938,9 +1936,9 @@ FindLargestKeyInSubtree(PB_TREE_FILENAME_NODE Node,
 * STATUS_SUCCESS on success, STATUS_INSUFFICIENT_RESOURCES if the allocation fails.
 *
 * @remarks
-* Key is known to have a child here, so the replacement is built with room for the VCN and with
-* NTFS_INDEX_ENTRY_NODE already set. UpdateIndexAllocation() only ever grows an entry to make
-* room for a VCN, so an entry that keeps its child has to arrive that way.
+* Key always has a child here, so the replacement is built with room for the VCN and with
+* NTFS_INDEX_ENTRY_NODE set. UpdateIndexAllocation() only grows an entry to make room for a
+* VCN, never the reverse.
 */
 static
 NTSTATUS
@@ -1950,7 +1948,7 @@ ReplaceKeyIndexEntry(PB_TREE_KEY Key, PB_TREE_KEY Source)
     ULONG AttributeSize = GetFileNameAttributeLength(&Source->IndexEntry->FileName);
     ULONG EntrySize = ALIGN_UP_BY(AttributeSize + FIELD_OFFSET(INDEX_ENTRY_ATTRIBUTE, FileName), 8);
 
-    EntrySize += sizeof(ULONGLONG); // for the VCN of the child Key keeps
+    EntrySize += sizeof(ULONGLONG); // for the VCN of the child Key retains
 
     NewEntry = ExAllocatePoolWithTag(NonPagedPool, EntrySize, TAG_NTFS);
     if (!NewEntry)
@@ -2009,7 +2007,7 @@ RemoveKeyFromNode(PB_TREE_FILENAME_NODE Node,
         if (LargestKey != NULL)
         {
             // Unlinking an interior key would orphan its child, so promote the greatest key
-            // beneath it in its place and delete that one from where it came from instead.
+            // beneath it and remove that one instead
             Status = ReplaceKeyIndexEntry(Key, LargestKey);
             if (!NT_SUCCESS(Status))
                 return Status;
@@ -2017,8 +2015,8 @@ RemoveKeyFromNode(PB_TREE_FILENAME_NODE Node,
             return RemoveKeyFromNode(OwnerNode, PreviousLargest, LargestKey);
         }
 
-        // The child holds no filenames, so there's nothing to promote and Key can just go.
-        // DestroyBTreeKey() frees the empty child along with it.
+        // The child holds no filenames, so there is nothing to promote; DestroyBTreeKey()
+        // frees the empty child along with the key
     }
 
     if (PreviousKey == NULL)
@@ -2056,9 +2054,8 @@ RemoveKeyFromNode(PB_TREE_FILENAME_NODE Node,
 * STATUS_INSUFFICIENT_RESOURCES if an allocation fails.
 *
 * @remarks
-* A node left holding nothing but its end marker is harmless: readers descend into it, find the
-* end marker and come back empty. Collapsing such nodes would mean freeing an index buffer that
-* a parent VCN still points at, so they're left in place.
+* A node left holding only its end marker is left in place. Readers descend into it and come
+* back empty, whereas collapsing it would free an index buffer a parent VCN still points at.
 */
 NTSTATUS
 NtfsRemoveKey(PB_TREE_FILENAME_NODE Node,

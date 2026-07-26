@@ -208,17 +208,6 @@ NtfsGetDirectoryInformation(PDEVICE_EXTENSION DeviceExt,
         /* Convert file flags */
         NtfsFileFlagsToAttributes(FileName->FileAttributes | StdInfo->FileAttribute, &Info->FileAttributes);
 
-        /* Fires only when a directory is about to be reported as a plain file,
-         * which is the defect we are chasing rather than every entry. */
-        if ((FileRecord->Flags & FRH_DIRECTORY) &&
-            !(Info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-        {
-            DPRINT1("enum '%.*S': record is a directory but reported attributes are "
-                    "0x%lx ($FILE_NAME 0x%lx, $STD_INFO 0x%lx)\n",
-                    FileName->NameLength, FileName->Name, Info->FileAttributes,
-                    FileName->FileAttributes, StdInfo->FileAttribute);
-        }
-
         Info->EndOfFile.QuadPart = NtfsGetFileSize(DeviceExt, FileRecord, L"", 0, (PULONGLONG)&Info->AllocationSize.QuadPart);
 
         Info->FileIndex = MFTIndex;
@@ -303,17 +292,6 @@ NtfsGetFullDirectoryInformation(PDEVICE_EXTENSION DeviceExt,
 
         /* Convert file flags */
         NtfsFileFlagsToAttributes(FileName->FileAttributes | StdInfo->FileAttribute, &Info->FileAttributes);
-
-        /* Fires only when a directory is about to be reported as a plain file,
-         * which is the defect we are chasing rather than every entry. */
-        if ((FileRecord->Flags & FRH_DIRECTORY) &&
-            !(Info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-        {
-            DPRINT1("enum '%.*S': record is a directory but reported attributes are "
-                    "0x%lx ($FILE_NAME 0x%lx, $STD_INFO 0x%lx)\n",
-                    FileName->NameLength, FileName->Name, Info->FileAttributes,
-                    FileName->FileAttributes, StdInfo->FileAttribute);
-        }
 
         Info->EndOfFile.QuadPart = NtfsGetFileSize(DeviceExt, FileRecord, L"", 0, (PULONGLONG)&Info->AllocationSize.QuadPart);
 
@@ -414,17 +392,6 @@ NtfsGetBothDirectoryInformation(PDEVICE_EXTENSION DeviceExt,
 
         /* Convert file flags */
         NtfsFileFlagsToAttributes(FileName->FileAttributes | StdInfo->FileAttribute, &Info->FileAttributes);
-
-        /* Fires only when a directory is about to be reported as a plain file,
-         * which is the defect we are chasing rather than every entry. */
-        if ((FileRecord->Flags & FRH_DIRECTORY) &&
-            !(Info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-        {
-            DPRINT1("enum '%.*S': record is a directory but reported attributes are "
-                    "0x%lx ($FILE_NAME 0x%lx, $STD_INFO 0x%lx)\n",
-                    FileName->NameLength, FileName->Name, Info->FileAttributes,
-                    FileName->FileAttributes, StdInfo->FileAttribute);
-        }
 
         Info->EndOfFile.QuadPart = NtfsGetFileSize(DeviceExt, FileRecord, L"", 0, (PULONGLONG)&Info->AllocationSize.QuadPart);
 
@@ -831,8 +798,7 @@ NtfsDirectoryControl(PNTFS_IRP_CONTEXT IrpContext)
 
     DPRINT("NtfsDirectoryControl() called\n");
 
-    /* Default for the minor functions that transfer nothing. A handler that
-     * fills the caller's buffer overwrites this with the byte count. */
+    /* Handlers that fill the caller's buffer overwrite this with the byte count */
     IrpContext->Irp->IoStatus.Information = 0;
 
     switch (IrpContext->MinorFunction)

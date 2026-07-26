@@ -594,6 +594,7 @@ typedef struct _FCB
     LONG RefCount;
     ULONG Flags;
     ULONG OpenHandleCount;
+    SHARE_ACCESS ShareAccess;
 
     ULONGLONG MFTIndex;
     USHORT LinkCount;

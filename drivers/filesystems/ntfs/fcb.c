@@ -484,7 +484,9 @@ NtfsAttachFCBToFileObject(PNTFS_VCB Vcb,
     newCCB->PtrFileObject = FileObject;
     Fcb->Vcb = Vcb;
 
-    if (!(Fcb->Flags & FCB_CACHE_INITIALIZED))
+    /* Directories are excluded: they have no $DATA to map, and a data section on one gives Mm
+     * pages to fault in that we can never satisfy. */
+    if (!(Fcb->Flags & FCB_CACHE_INITIALIZED) && !NtfsFCBIsDirectory(Fcb))
     {
         _SEH2_TRY
         {
