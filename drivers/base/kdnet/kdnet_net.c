@@ -9,7 +9,7 @@ PDEBUG_NET_DATA      KdNetData = NULL;
 
 /* ----------------------------------------------------------- tiny utils ---*/
 
-static __forceinline USHORT KdNetSwap16(USHORT v)
+FORCEINLINE USHORT KdNetSwap16(USHORT v)
 {
     return (USHORT)((v >> 8) | (v << 8));
 }

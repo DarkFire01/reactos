@@ -48,7 +48,7 @@ static ULONGLONG KdNetBase36ToU64(const char* s, const char** end)
 static BOOLEAN KdNetReadTokenCI(const char* opts, const char* key, char* out, SIZE_T outChars);
 static BOOLEAN KdNetParseIpv4(const char* s, ULONG* outHostOrder);
 static BOOLEAN KdNetParseUlongDec(const char* s, ULONG* out);
-static __forceinline BOOLEAN KdNetHasFlagCI(const char* opts, const char* key);
+static __inline BOOLEAN KdNetHasFlagCI(const char* opts, const char* key);
 static KDNET_SHARED_DATA g_KdNetSharedData;
 
 static VOID KdNetWireRuntimeParameters(_In_opt_ PCHAR LoaderOptions)
@@ -127,12 +127,12 @@ static VOID KdNetWireRuntimeParameters(_In_opt_ PCHAR LoaderOptions)
     }
 }
 
-static __forceinline int KdNetIsSpace(char c)
+FORCEINLINE int KdNetIsSpace(char c)
 {
     return (c == ' ' || c == '\t' || c == '\r' || c == '\n');
 }
 
-static __forceinline char KdNetToUpper(char c)
+FORCEINLINE char KdNetToUpper(char c)
 {
     if (c >= 'a' && c <= 'z') return (char)(c - ('a' - 'A'));
     return c;
@@ -249,7 +249,7 @@ static BOOLEAN KdNetParseIpv4(const char* s, ULONG* outHostOrder)
     return TRUE;
 }
 
-static __forceinline BOOLEAN KdNetHasFlagCI(const char* opts, const char* key)
+static __inline BOOLEAN KdNetHasFlagCI(const char* opts, const char* key)
 {
     return (KdNetFindKeyCI(opts, key) != NULL);
 }
@@ -318,9 +318,11 @@ KdDebuggerInitialize0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
         {
             const char* p = bp;
             KdNetParseUlongDec(p, &bus);
-            while (*p && *p != '.') ++p; if (*p == '.') ++p;
+            while (*p && *p != '.') ++p;
+            if (*p == '.') ++p;
             KdNetParseUlongDec(p, &dev);
-            while (*p && *p != '.') ++p; if (*p == '.') ++p;
+            while (*p && *p != '.') ++p;
+            if (*p == '.') ++p;
             KdNetParseUlongDec(p, &fn);
 
             g_KdNetDeviceDescriptor.Bus = bus;
