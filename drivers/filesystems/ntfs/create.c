@@ -605,6 +605,38 @@ NtfsCreateFile(PDEVICE_OBJECT DeviceObject,
 
     if (NT_SUCCESS(Status))
     {
+        ACCESS_MASK DesiredAccess = 0;
+        ULONG ShareAccess = Stack->Parameters.Create.ShareAccess;
+
+        if (Stack->Parameters.Create.SecurityContext != NULL)
+            DesiredAccess = Stack->Parameters.Create.SecurityContext->DesiredAccess;
+
+        /* Callers rely on being refused: CmLoadKey() detects an already-loaded hive by the
+         * sharing violation it gets re-opening the hive file. */
+        if (Fcb->OpenHandleCount > 0)
+        {
+            Status = IoCheckShareAccess(DesiredAccess,
+                                        ShareAccess,
+                                        FileObject,
+                                        &Fcb->ShareAccess,
+                                        TRUE);
+        }
+        else
+        {
+            IoSetShareAccess(DesiredAccess,
+                             ShareAccess,
+                             FileObject,
+                             &Fcb->ShareAccess);
+        }
+
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT("Sharing violation opening '%wZ'\n", &FileObject->FileName);
+            NtfsCloseFile(DeviceExt, FileObject);
+            Irp->IoStatus.Information = 0;
+            return Status;
+        }
+
         Fcb->OpenHandleCount++;
         DeviceExt->OpenHandleCount++;
     }

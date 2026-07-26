@@ -187,7 +187,8 @@ NtfsReadFile(PDEVICE_EXTENSION DeviceExt,
         FIND_ATTR_CONTXT Context;
         PNTFS_ATTR_RECORD Attribute;
 
-        DPRINT1("No '%S' data stream associated with file!\n", Fcb->Stream);
+        DPRINT1("No '%S' data stream associated with file '%wS' (MFT record %I64u, record flags 0x%x)!\n",
+                Fcb->Stream, Fcb->ObjectName, Fcb->MFTIndex, FileRecord->Flags);
 
         BrowseStatus = FindFirstAttribute(&Context, DeviceExt, FileRecord, FALSE, &Attribute);
         while (NT_SUCCESS(BrowseStatus))
@@ -344,6 +345,12 @@ NtfsRead(PNTFS_IRP_CONTEXT IrpContext)
                                      ReadOffset.QuadPart,
                                      Irp,
                                      &ReturnedReadLength);
+    }
+    else if (NtfsFCBIsDirectory((PNTFS_FCB)FileObject->FsContext))
+    {
+        /* A directory has no data stream to read */
+        Irp->IoStatus.Information = 0;
+        return STATUS_INVALID_DEVICE_REQUEST;
     }
     else
     {
@@ -507,7 +514,8 @@ NTSTATUS NtfsWriteFile(PDEVICE_EXTENSION DeviceExt,
         FIND_ATTR_CONTXT Context;
         PNTFS_ATTR_RECORD Attribute;
 
-        DPRINT1("No '%S' data stream associated with file!\n", Fcb->Stream);
+        DPRINT1("No '%S' data stream associated with file '%wS' (MFT record %I64u, record flags 0x%x)!\n",
+                Fcb->Stream, Fcb->ObjectName, Fcb->MFTIndex, FileRecord->Flags);
 
         // Couldn't find the requested data stream; print a list of streams available
         BrowseStatus = FindFirstAttribute(&Context, DeviceExt, FileRecord, FALSE, &Attribute);
@@ -838,6 +846,12 @@ NtfsWrite(PNTFS_IRP_CONTEXT IrpContext)
                                      ByteOffset.QuadPart,
                                      Irp,
                                      &ReturnedWriteLength);
+    }
+    else if (NtfsFCBIsDirectory(Fcb))
+    {
+        /* A directory has no data stream to write */
+        Irp->IoStatus.Information = 0;
+        return STATUS_INVALID_DEVICE_REQUEST;
     }
     else
     {

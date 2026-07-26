@@ -1719,6 +1719,8 @@ ReadFileRecord(PDEVICE_EXTENSION Vcb,
 * routine (NtfsUpdateDuplicateInfo) precisely so they cannot drift; this is
 * that funnel. Callers change $STANDARD_INFORMATION and then say what moved.
 *
+* The file record is written back here, so callers need not write it again.
+*
 * The directory flag is the one field that does not come from
 * $STANDARD_INFORMATION -- NTFS masks it out of there and keeps it in the
 * record header -- so it is restored from the header on the way past.
@@ -1736,6 +1738,7 @@ NtfsUpdateDuplicatedInformation(PDEVICE_EXTENSION Vcb,
     UNICODE_STRING Name;
     ULONGLONG ParentMFTIndex;
     ULONG DirFlag;
+    NTSTATUS Status;
 
     if (Flags == 0)
         return STATUS_SUCCESS;
@@ -1780,6 +1783,15 @@ NtfsUpdateDuplicatedInformation(PDEVICE_EXTENSION Vcb,
 
         FileName->DataSize = Update.DataSize;
         FileName->AllocatedSize = Update.AllocatedSize;
+    }
+
+    /* Persist the $FILE_NAME just modified. Callers have no reason to write the record again,
+     * and leaving it unwritten would let the copy in the parent index disagree with it. */
+    Status = UpdateFileRecord(Vcb, MFTIndex, FileRecord);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to write file record %I64u (Status %lx)\n", MFTIndex, Status);
+        return Status;
     }
 
     /* Now the parent's index entry, which carries the same values */
@@ -3161,9 +3173,9 @@ FreeMftEntry(PDEVICE_EXTENSION DeviceExt,
 * STATUS_SUCCESS on success.
 *
 * @remarks
-* Callers are responsible for having established that the file may be deleted; in particular
-* that a directory is empty. Clusters are released before the names go, so a failure part-way
-* through leaves a reachable file rather than orphaned allocation.
+* Callers must have established that the file may be deleted, in particular that a directory
+* is empty. Clusters are released before the names, so a failure part-way through leaves a
+* reachable file rather than orphaned allocation.
 */
 NTSTATUS
 NtfsDeleteFileRecord(PDEVICE_EXTENSION DeviceExt,
@@ -3546,8 +3558,8 @@ BrowseSubNodeIndexEntries(PNTFS_VCB Vcb,
            CaseSensitive ? "TRUE" : "FALSE",
            OutMFTIndex);
 
-    // Calculate node number as VCN / Clusters per index record. An index record smaller than a
-    // cluster is addressed in sectors, the same way GetAllocationOffsetFromVCN() writes it.
+    // Calculate node number as VCN / Clusters per index record. An index record smaller than
+    // a cluster is addressed in sectors, matching GetAllocationOffsetFromVCN().
     if (IndexBlockSize < Vcb->NtfsInfo.BytesPerCluster)
         NodeNumber = VCN / (IndexBlockSize / Vcb->NtfsInfo.BytesPerSector);
     else
@@ -3568,8 +3580,7 @@ BrowseSubNodeIndexEntries(PNTFS_VCB Vcb,
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    // Calculate offset of index record. This has to agree with the offset the index buffer was
-    // written at, so it goes through the same helper the write path uses.
+    // Calculate offset of index record, using the same helper the write path does
     Offset = GetAllocationOffsetFromVCN(Vcb, IndexBlockSize, VCN);
 
     // Read the index record
@@ -3581,8 +3592,6 @@ BrowseSubNodeIndexEntries(PNTFS_VCB Vcb,
         return STATUS_UNSUCCESSFUL;
     }
 
-    /* Whatever is at that offset came off the disk, so it's data to be validated rather than an
-     * invariant to assert on. Refusing the directory beats halting the machine. */
     if (IndexRecord->Ntfs.Type != NRH_INDX_TYPE)
     {
         DPRINT1("File system corruption detected, no index record at VCN %I64u of MFT record %I64u "

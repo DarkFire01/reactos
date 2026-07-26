@@ -142,8 +142,7 @@ NtfsGetAttributeTagInformation(PNTFS_FCB Fcb,
 
     NtfsFileFlagsToAttributes(FileName->FileAttributes, &AttributeTagInfo->FileAttributes);
 
-    /* The tag is only meaningful for a reparse point, and reading it means reading the
-     * attribute itself. Callers use the attribute bit to decide whether to look. */
+    /* FIXME: Read the tag from $REPARSE_POINT for a reparse point */
     AttributeTagInfo->ReparseTag = 0;
 
     *BufferLength -= sizeof(FILE_ATTRIBUTE_TAG_INFORMATION);
@@ -861,8 +860,8 @@ NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
         StdInfo->FileAttribute = Attributes;
     }
 
-    /* Everything else NTFS keeps a second and third copy of goes out through
-     * the one funnel, so the copies cannot drift apart. */
+    /* Everything else NTFS keeps a second and third copy of goes out through the one funnel,
+     * which also writes the file record back. */
     Status = NtfsUpdateDuplicatedInformation(DeviceExt,
                                              FileRecord,
                                              Fcb->MFTIndex,
@@ -871,30 +870,20 @@ NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
                                              CaseSensitive);
     if (!NT_SUCCESS(Status))
     {
-        /* $STANDARD_INFORMATION is authoritative and is about to be written
-         * anyway, so a stale index entry is cosmetic; chkdsk repairs it. */
         DPRINT1("Failed to refresh the duplicated information for %wS (Status %lx)\n",
                 Fcb->ObjectName, Status);
     }
 
-    Status = UpdateFileRecord(DeviceExt, Fcb->MFTIndex, FileRecord);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to write the file record for %wS!\n", Fcb->ObjectName);
-        ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
-        return Status;
-    }
-
     ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, FileRecord);
 
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 /**
 * @name NtfsSetDispositionInformation
 * @implemented
 *
-* Marks a file for deletion, or takes an existing mark back off it.
+* Marks a file for deletion, or clears an existing mark.
 *
 * @param DeviceExt
 * Points to the target disk's DEVICE_EXTENSION.
@@ -918,8 +907,7 @@ NtfsSetBasicInformation(PDEVICE_EXTENSION DeviceExt,
 * STATUS_DIRECTORY_NOT_EMPTY if the file is a directory that still holds entries.
 *
 * @remarks
-* Only records the intent. The file is taken apart at cleanup, once the last handle to it has
-* been closed, which is what lets a caller keep reading a file it has already marked.
+* Only records the intent; the file is deleted at cleanup, once its last handle is closed.
 */
 static
 NTSTATUS
@@ -959,8 +947,8 @@ NtfsSetDispositionInformation(PDEVICE_EXTENSION DeviceExt,
         ULONG FirstEntry = 0;
         NTSTATUS Status;
 
-        /* "." and ".." are synthesized during enumeration and never appear in the index, so
-         * anything found here is a real child. */
+        /* "." and ".." are synthesized during enumeration and are not in the index, so any
+         * entry found here is a real child */
         Status = NtfsFindMftRecord(DeviceExt,
                                    Fcb->MFTIndex,
                                    &Pattern,
@@ -971,6 +959,10 @@ NtfsSetDispositionInformation(PDEVICE_EXTENSION DeviceExt,
         if (NT_SUCCESS(Status))
             return STATUS_DIRECTORY_NOT_EMPTY;
     }
+
+    /* Deleting a mapped file would free its record out from under the section */
+    if (!MmFlushImageSection(&Fcb->SectionObjectPointers, MmFlushForDelete))
+        return STATUS_CANNOT_DELETE;
 
     Fcb->Flags |= FCB_DELETE_PENDING;
     FileObject->DeletePending = TRUE;
