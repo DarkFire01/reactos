@@ -118,6 +118,188 @@ ReleaseAttributeContext(PNTFS_ATTR_CONTEXT Context)
 
 
 /**
+* @name AppendDataRunsToMcb
+* @implemented
+*
+* Decodes a run of mapping pairs into an already-initialized map control block.
+*
+* @param DataRun
+* Encoded mapping pairs.
+*
+* @param Mcb
+* Map control block to add the runs to.
+*
+* @param StartVCN
+* Virtual cluster the first run begins at.
+*
+* @return
+* STATUS_SUCCESS on success.
+*
+* @remarks
+* Each fragment of a split attribute encodes its mapping pairs from a zero LCN of its own, so
+* the running LCN starts fresh rather than continuing from the previous fragment.
+*/
+static
+NTSTATUS
+AppendDataRunsToMcb(PUCHAR DataRun,
+                    PLARGE_MCB Mcb,
+                    ULONGLONG StartVCN)
+{
+    LONGLONG DataRunOffset;
+    ULONGLONG DataRunLength;
+    LONGLONG DataRunStartLCN;
+    ULONGLONG LastLCN = 0;
+    ULONGLONG NextVBN = StartVCN;
+
+    while (*DataRun != 0)
+    {
+        DataRun = DecodeRun(DataRun, &DataRunOffset, &DataRunLength);
+
+        if (DataRunOffset != -1)
+        {
+            DataRunStartLCN = LastLCN + DataRunOffset;
+            LastLCN = DataRunStartLCN;
+
+            _SEH2_TRY
+            {
+                if (!FsRtlAddLargeMcbEntry(Mcb, NextVBN, DataRunStartLCN, DataRunLength))
+                {
+                    ExRaiseStatus(STATUS_UNSUCCESSFUL);
+                }
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                DPRINT1("Failed to add a fragment's runs to the MCB!\n");
+                _SEH2_YIELD(return _SEH2_GetExceptionCode());
+            }
+            _SEH2_END;
+        }
+
+        NextVBN += DataRunLength;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+* @name GatherAttributeFragments
+* @implemented
+*
+* Adds the runs of an attribute's remaining fragments to a context describing only its first.
+*
+* @param Vcb
+* Pointer to an NTFS_VCB for the volume.
+*
+* @param Context
+* Find-attribute context whose $ATTRIBUTE_LIST is loaded and positioned on the entry for the
+* first fragment.
+*
+* @param Type
+* Type of the attribute being assembled.
+*
+* @param Name
+* Name of the attribute, or L"" for an unnamed one.
+*
+* @param NameLength
+* Length of Name in characters.
+*
+* @param AttrCtx
+* Context to extend. Its DataRunsMCB ends up covering the attribute's whole VCN range.
+*
+* @return
+* STATUS_SUCCESS on success, or the status of the failing read.
+*
+* @remarks
+* An attribute with more data runs than a file record can hold is split across several records,
+* one per VCN range, each with its own $ATTRIBUTE_LIST entry. Only the first carries the
+* attribute's sizes, so the rest contribute only their runs.
+*/
+static
+NTSTATUS
+GatherAttributeFragments(PDEVICE_EXTENSION Vcb,
+                         PFIND_ATTR_CONTXT Context,
+                         ULONG Type,
+                         PCWSTR Name,
+                         ULONG NameLength,
+                         PNTFS_ATTR_CONTEXT AttrCtx)
+{
+    PNTFS_ATTRIBUTE_LIST_ITEM Item;
+    PFILE_RECORD_HEADER FragmentRecord;
+    NTSTATUS Status;
+
+    if (!AttrCtx->pRecord->IsNonResident)
+        return STATUS_SUCCESS;
+
+    FragmentRecord = ExAllocateFromNPagedLookasideList(&Vcb->FileRecLookasideList);
+    if (FragmentRecord == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = FindNextAttributeListItem(Context, &Item);
+    while (NT_SUCCESS(Status))
+    {
+        if (Item->Type == Type && Item->NameLength == NameLength && Item->StartingVCN != 0)
+        {
+            BOOLEAN Matches = TRUE;
+
+            if (NameLength != 0)
+            {
+                PWCHAR ItemName = (PWCHAR)((PCHAR)Item + Item->NameOffset);
+
+                Matches = RtlCompareMemory(ItemName, Name, NameLength * sizeof(WCHAR)) ==
+                          (SIZE_T)(NameLength * sizeof(WCHAR));
+            }
+
+            if (Matches)
+            {
+                PNTFS_ATTR_RECORD Fragment;
+                ULONG Offset;
+                NTSTATUS ReadStatus;
+
+                ReadStatus = ReadFileRecord(Vcb, Item->MFTIndex & NTFS_MFT_MASK, FragmentRecord);
+                if (!NT_SUCCESS(ReadStatus))
+                {
+                    DPRINT1("Couldn't read fragment record %I64u of attribute 0x%lx\n",
+                            Item->MFTIndex & NTFS_MFT_MASK, Type);
+                    ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, FragmentRecord);
+                    return ReadStatus;
+                }
+
+                Offset = FragmentRecord->AttributeOffset;
+                Fragment = (PNTFS_ATTR_RECORD)((ULONG_PTR)FragmentRecord + Offset);
+
+                while (Offset < Vcb->NtfsInfo.BytesPerFileRecord &&
+                       Fragment->Type != AttributeEnd && Fragment->Length != 0)
+                {
+                    if (Fragment->Type == Type && Fragment->IsNonResident &&
+                        Fragment->NonResident.LowestVCN == Item->StartingVCN)
+                    {
+                        ReadStatus = AppendDataRunsToMcb(
+                            (PUCHAR)((ULONG_PTR)Fragment + Fragment->NonResident.MappingPairsOffset),
+                            &AttrCtx->DataRunsMCB,
+                            Fragment->NonResident.LowestVCN);
+                        if (!NT_SUCCESS(ReadStatus))
+                        {
+                            ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, FragmentRecord);
+                            return ReadStatus;
+                        }
+                        break;
+                    }
+
+                    Offset += Fragment->Length;
+                    Fragment = (PNTFS_ATTR_RECORD)((ULONG_PTR)FragmentRecord + Offset);
+                }
+            }
+        }
+
+        Status = FindNextAttributeListItem(Context, &Item);
+    }
+
+    ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, FragmentRecord);
+
+    return STATUS_SUCCESS;
+}
+
+/**
 * @name FindAttribute
 * @implemented
 *
@@ -234,6 +416,21 @@ FindAttribute(PDEVICE_EXTENSION Vcb,
                 ReadFileRecord(Vcb, MftIndex, RemoteHdr);
                 Status = FindAttribute(Vcb, RemoteHdr, Type, Name, NameLength, AttrCtx, Offset);
                 ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, RemoteHdr);
+
+                if (NT_SUCCESS(Status))
+                {
+                    NTSTATUS GatherStatus;
+
+                    GatherStatus = GatherAttributeFragments(Vcb, &Context, Type, Name,
+                                                            NameLength, *AttrCtx);
+                    if (!NT_SUCCESS(GatherStatus))
+                    {
+                        ReleaseAttributeContext(*AttrCtx);
+                        *AttrCtx = NULL;
+                        Status = GatherStatus;
+                    }
+                }
+
                 FindCloseAttribute(&Context);
                 return Status;
             }

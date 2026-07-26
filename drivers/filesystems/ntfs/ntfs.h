@@ -329,6 +329,11 @@ typedef struct
     USHORT Instance;
 } NTFS_ATTRIBUTE_LIST_ITEM, *PNTFS_ATTRIBUTE_LIST_ITEM;
 
+/* On-disk size of the fixed part of an $ATTRIBUTE_LIST entry; the name follows Instance.
+ * Not sizeof(), which is 32 once the struct is padded out by its alignment. */
+#define ATTRIBUTE_LIST_ITEM_HEADER_SIZE \
+    (FIELD_OFFSET(NTFS_ATTRIBUTE_LIST_ITEM, Instance) + sizeof(USHORT))
+
 // The beginning and length of an attribute record are always aligned to an 8-byte boundary,
 // relative to the beginning of the file record.
 #define ATTR_RECORD_ALIGNMENT 8
