@@ -504,6 +504,55 @@ PB_TREE_FILENAME_NODE
 CreateBTreeNodeFromIndexNode(PDEVICE_EXTENSION Vcb,
                              PINDEX_ROOT_ATTRIBUTE IndexRoot,
                              PNTFS_ATTR_CONTEXT IndexAllocationAttributeCtx,
+                             PINDEX_ENTRY_ATTRIBUTE NodeEntry);
+
+/**
+* @name LoadBTreeChild
+* @implemented
+*
+* Reads the sub-node of a key, if it has one that isn't in memory yet.
+*
+* @param Tree
+* Tree the key belongs to.
+*
+* @param Key
+* Key whose sub-node is needed.
+*
+* @return
+* STATUS_SUCCESS if the key now has its sub-node, or never had one.
+* STATUS_INSUFFICIENT_RESOURCES if the node couldn't be read.
+*
+* @remarks
+* Callers tell "no sub-node" from "not read yet" by Key->LesserChild being NULL after this
+* returns success.
+*/
+static
+NTSTATUS
+LoadBTreeChild(PB_TREE Tree, PB_TREE_KEY Key)
+{
+    if (Key->LesserChild != NULL)
+        return STATUS_SUCCESS;
+
+    if (!BooleanFlagOn(Key->IndexEntry->Flags, NTFS_INDEX_ENTRY_NODE))
+        return STATUS_SUCCESS;
+
+    Key->LesserChild = CreateBTreeNodeFromIndexNode(Tree->Vcb,
+                                                    Tree->IndexRoot,
+                                                    Tree->IndexAllocationContext,
+                                                    Key->IndexEntry);
+    if (Key->LesserChild == NULL)
+    {
+        DPRINT1("ERROR: Couldn't read index node for key!\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+PB_TREE_FILENAME_NODE
+CreateBTreeNodeFromIndexNode(PDEVICE_EXTENSION Vcb,
+                             PINDEX_ROOT_ATTRIBUTE IndexRoot,
+                             PNTFS_ATTR_CONTEXT IndexAllocationAttributeCtx,
                              PINDEX_ENTRY_ATTRIBUTE NodeEntry)
 {
     PB_TREE_FILENAME_NODE NewNode;
@@ -622,14 +671,7 @@ CreateBTreeNodeFromIndexNode(PDEVICE_EXTENSION Vcb,
             // Copy the current entry to its key
             RtlCopyMemory(CurrentKey->IndexEntry, CurrentNodeEntry, CurrentNodeEntry->Length);
 
-            // See if the current key has a sub-node
-            if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
-            {
-                CurrentKey->LesserChild = CreateBTreeNodeFromIndexNode(Vcb,
-                                                                       IndexRoot,
-                                                                       IndexAllocationAttributeCtx,
-                                                                       CurrentKey->IndexEntry);
-            }
+            // The sub-node, if any, is left unread until a descent needs it
 
             CurrentKey = NextKey;
         }
@@ -639,14 +681,7 @@ CreateBTreeNodeFromIndexNode(PDEVICE_EXTENSION Vcb,
             RtlCopyMemory(CurrentKey->IndexEntry, CurrentNodeEntry, CurrentNodeEntry->Length);
             CurrentKey->NextKey = NULL;
 
-            // See if the current key has a sub-node
-            if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
-            {
-                CurrentKey->LesserChild = CreateBTreeNodeFromIndexNode(Vcb,
-                                                                       IndexRoot,
-                                                                       IndexAllocationAttributeCtx,
-                                                                       CurrentKey->IndexEntry);
-            }
+            // The sub-node, if any, is left unread until a descent needs it
 
             break;
         }
@@ -731,6 +766,9 @@ CreateBTreeFromIndex(PDEVICE_EXTENSION Vcb,
     // Setup the Tree
     RootNode->FirstKey = CurrentKey;
     Tree->RootNode = RootNode;
+    Tree->Vcb = Vcb;
+    Tree->IndexRoot = IndexRoot;
+    Tree->IndexAllocationContext = IndexAllocationContext;
 
     // Make sure we won't try reading past the attribute-end
     if (FIELD_OFFSET(INDEX_ROOT_ATTRIBUTE, Header) + IndexRoot->Header.TotalSizeOfEntries > IndexRootContext->pRecord->Resident.ValueLength)
@@ -782,22 +820,7 @@ CreateBTreeFromIndex(PDEVICE_EXTENSION Vcb,
             // Copy the current entry to its key
             RtlCopyMemory(CurrentKey->IndexEntry, CurrentNodeEntry, CurrentNodeEntry->Length);
 
-            // Does this key have a sub-node?
-            if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
-            {
-                // Create the child node
-                CurrentKey->LesserChild = CreateBTreeNodeFromIndexNode(Vcb,
-                                                                       IndexRoot,
-                                                                       IndexAllocationContext,
-                                                                       CurrentKey->IndexEntry);
-                if (!CurrentKey->LesserChild)
-                {
-                    DPRINT1("ERROR: Couldn't create child node!\n");
-                    DestroyBTree(Tree);
-                    Status = STATUS_NOT_IMPLEMENTED;
-                    goto Cleanup;
-                }
-            }
+            // The sub-node, if any, is left unread until a descent needs it
 
             // Advance to the next entry
             CurrentOffset += CurrentNodeEntry->Length;
@@ -810,29 +833,16 @@ CreateBTreeFromIndex(PDEVICE_EXTENSION Vcb,
             RtlCopyMemory(CurrentKey->IndexEntry, CurrentNodeEntry, CurrentNodeEntry->Length);
             CurrentKey->NextKey = NULL;
 
-            // Does this key have a sub-node?
-            if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
-            {
-                // Create the child node
-                CurrentKey->LesserChild = CreateBTreeNodeFromIndexNode(Vcb,
-                                                                       IndexRoot,
-                                                                       IndexAllocationContext,
-                                                                       CurrentKey->IndexEntry);
-                if (!CurrentKey->LesserChild)
-                {
-                    DPRINT1("ERROR: Couldn't create child node!\n");
-                    DestroyBTree(Tree);
-                    Status = STATUS_NOT_IMPLEMENTED;
-                    goto Cleanup;
-                }
-            }
+            // The sub-node, if any, is left unread until a descent needs it
 
             break;
         }
     }
 
     *NewTree = Tree;
-    Status = STATUS_SUCCESS;
+
+    // The tree keeps the context; DestroyBTree() releases it
+    return STATUS_SUCCESS;
 
 Cleanup:
     if (IndexAllocationContext)
@@ -981,9 +991,12 @@ CreateIndexRootFromBTree(PDEVICE_EXTENSION DeviceExt,
                 CurrentNodeEntry->KeyLength,
                 CurrentNodeEntry->Length);
 
-        // Does the current key have any sub-nodes?
-        if (CurrentKey->LesserChild)
+        // Does the current key have any sub-nodes? An unread one still counts.
+        if (CurrentKey->LesserChild ||
+            BooleanFlagOn(CurrentKey->IndexEntry->Flags, NTFS_INDEX_ENTRY_NODE))
+        {
             NewIndexRoot->Header.Flags = INDEX_ROOT_LARGE;
+        }
 
         // Add Length of Current Entry to Total Size of Entries
         NewIndexRoot->Header.TotalSizeOfEntries += CurrentKey->IndexEntry->Length;
@@ -1348,6 +1361,10 @@ UpdateIndexNode(PDEVICE_EXTENSION DeviceExt,
     {
         ASSERT(CurrentKey);
 
+        // A sub-node that was never read still has to be described as one
+        if (BooleanFlagOn(CurrentKey->IndexEntry->Flags, NTFS_INDEX_ENTRY_NODE))
+            HasChildren = TRUE;
+
         // If there's a child node
         if (CurrentKey->LesserChild)
         {
@@ -1547,6 +1564,10 @@ VOID
 DestroyBTree(PB_TREE Tree)
 {
     DestroyBTreeNode(Tree->RootNode);
+
+    if (Tree->IndexAllocationContext != NULL)
+        ReleaseAttributeContext(Tree->IndexAllocationContext);
+
     ExFreePoolWithTag(Tree, TAG_NTFS);
 }
 
@@ -1578,8 +1599,9 @@ DumpBTreeKey(PB_TREE Tree, PB_TREE_KEY Key, ULONG Number, ULONG Depth)
             DumpBTreeNode(Tree, Key->LesserChild, Number, Depth + 1);
         else
         {
-            // This will be an assert once nodes with arbitrary depth are debugged
-            DPRINT1("DRIVER ERROR: No Key->LesserChild despite Key->IndexEntry->Flags indicating this is a node!\n");
+            // Nodes are read on demand, so an unread one here is expected
+            DPRINT1("%*sSub-node at VCN %I64u (not read)\n",
+                    Depth * 2, "", GetIndexEntryVCN(Key->IndexEntry));
         }
     }
 }
@@ -1754,6 +1776,14 @@ NtfsInsertKey(PB_TREE Tree,
         // Is NewKey < CurrentKey?
         if (Comparison < 0)
         {
+            // Read the sub-node if it hasn't been needed until now
+            Status = LoadBTreeChild(Tree, CurrentKey);
+            if (!NT_SUCCESS(Status))
+            {
+                DestroyBTreeKey(NewKey);
+                return Status;
+            }
+
             // Does CurrentKey have a sub-node?
             if (CurrentKey->LesserChild)
             {
@@ -1882,7 +1912,8 @@ NtfsInsertKey(PB_TREE Tree,
 */
 static
 VOID
-FindLargestKeyInSubtree(PB_TREE_FILENAME_NODE Node,
+FindLargestKeyInSubtree(PB_TREE Tree,
+                        PB_TREE_FILENAME_NODE Node,
                         PB_TREE_FILENAME_NODE *OwnerNode,
                         PB_TREE_KEY *PreviousKey,
                         PB_TREE_KEY *LargestKey)
@@ -1904,9 +1935,10 @@ FindLargestKeyInSubtree(PB_TREE_FILENAME_NODE Node,
     }
 
     // Anything greater than the last real key lives beneath the end marker
-    if (CurrentKey != NULL && CurrentKey->LesserChild != NULL)
+    if (CurrentKey != NULL && NT_SUCCESS(LoadBTreeChild(Tree, CurrentKey)) &&
+        CurrentKey->LesserChild != NULL)
     {
-        FindLargestKeyInSubtree(CurrentKey->LesserChild, OwnerNode, PreviousKey, LargestKey);
+        FindLargestKeyInSubtree(Tree, CurrentKey->LesserChild, OwnerNode, PreviousKey, LargestKey);
         if (*LargestKey != NULL)
             return;
     }
@@ -1990,11 +2022,16 @@ ReplaceKeyIndexEntry(PB_TREE_KEY Key, PB_TREE_KEY Source)
 */
 static
 NTSTATUS
-RemoveKeyFromNode(PB_TREE_FILENAME_NODE Node,
+RemoveKeyFromNode(PB_TREE Tree,
+                  PB_TREE_FILENAME_NODE Node,
                   PB_TREE_KEY PreviousKey,
                   PB_TREE_KEY Key)
 {
     NTSTATUS Status;
+
+    Status = LoadBTreeChild(Tree, Key);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
     if (Key->LesserChild != NULL)
     {
@@ -2002,7 +2039,7 @@ RemoveKeyFromNode(PB_TREE_FILENAME_NODE Node,
         PB_TREE_KEY PreviousLargest;
         PB_TREE_KEY LargestKey;
 
-        FindLargestKeyInSubtree(Key->LesserChild, &OwnerNode, &PreviousLargest, &LargestKey);
+        FindLargestKeyInSubtree(Tree, Key->LesserChild, &OwnerNode, &PreviousLargest, &LargestKey);
 
         if (LargestKey != NULL)
         {
@@ -2012,7 +2049,7 @@ RemoveKeyFromNode(PB_TREE_FILENAME_NODE Node,
             if (!NT_SUCCESS(Status))
                 return Status;
 
-            return RemoveKeyFromNode(OwnerNode, PreviousLargest, LargestKey);
+            return RemoveKeyFromNode(Tree, OwnerNode, PreviousLargest, LargestKey);
         }
 
         // The child holds no filenames, so there is nothing to promote; DestroyBTreeKey()
@@ -2058,7 +2095,8 @@ RemoveKeyFromNode(PB_TREE_FILENAME_NODE Node,
 * back empty, whereas collapsing it would free an index buffer a parent VCN still points at.
 */
 NTSTATUS
-NtfsRemoveKey(PB_TREE_FILENAME_NODE Node,
+NtfsRemoveKey(PB_TREE Tree,
+              PB_TREE_FILENAME_NODE Node,
               PB_TREE_KEY SearchKey,
               BOOLEAN CaseSensitive)
 {
@@ -2079,7 +2117,7 @@ NtfsRemoveKey(PB_TREE_FILENAME_NODE Node,
         Comparison = CompareTreeKeys(SearchKey, CurrentKey, CaseSensitive);
 
         if (Comparison == 0)
-            return RemoveKeyFromNode(Node, PreviousKey, CurrentKey);
+            return RemoveKeyFromNode(Tree, Node, PreviousKey, CurrentKey);
 
         // Everything that sorts before CurrentKey is beneath it
         if (Comparison < 0)
@@ -2089,8 +2127,15 @@ NtfsRemoveKey(PB_TREE_FILENAME_NODE Node,
         CurrentKey = CurrentKey->NextKey;
     }
 
-    if (CurrentKey != NULL && CurrentKey->LesserChild != NULL)
-        return NtfsRemoveKey(CurrentKey->LesserChild, SearchKey, CaseSensitive);
+    if (CurrentKey != NULL)
+    {
+        NTSTATUS Status = LoadBTreeChild(Tree, CurrentKey);
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        if (CurrentKey->LesserChild != NULL)
+            return NtfsRemoveKey(Tree, CurrentKey->LesserChild, SearchKey, CaseSensitive);
+    }
 
     return STATUS_OBJECT_NAME_NOT_FOUND;
 }

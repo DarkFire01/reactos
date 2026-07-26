@@ -3095,7 +3095,7 @@ NtfsRemoveFilenameFromDirectory(PDEVICE_EXTENSION DeviceExt,
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    Status = NtfsRemoveKey(Tree->RootNode, SearchKey, CaseSensitive);
+    Status = NtfsRemoveKey(Tree, Tree->RootNode, SearchKey, CaseSensitive);
 
     DestroyBTreeKey(SearchKey);
 
