@@ -579,6 +579,9 @@ ByeBye:
             Vcb->UpCaseTable = NULL;
         }
 
+        if (Vcb != NULL)
+            NtfsFreeVolumeBitmap(Vcb);
+
         if (Lookaside)
             ExDeleteNPagedLookasideList(&Vcb->FileRecLookasideList);
 
@@ -966,6 +969,10 @@ NtfsDismountVolume(PDEVICE_EXTENSION DeviceExt,
     ExAcquireResourceExclusiveLite(&DeviceExt->DirResource, TRUE);
 
     DeviceExt->Flags |= VCB_VOLUME_DISMOUNTED;
+
+    /* The cached bitmap describes a volume we no longer own */
+    NtfsFreeVolumeBitmap(DeviceExt);
+    DeviceExt->FreeClusterCountValid = FALSE;
 
     /* Drop the mounted state and allow raw writes, so the I/O manager stops
      * handing us opens of a partition that's being overwritten */

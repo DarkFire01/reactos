@@ -34,15 +34,29 @@
 
 /* FUNCTIONS ****************************************************************/
 
+/*
+ * FUNCTION: Acquires a file for the cache manager's lazy writer
+ *
+ * Context is the FCB handed to CcInitializeCacheMap(). The flush that follows arrives as
+ * paging writes, which take PagingIoResource, so that is the one acquired here; ERESOURCE
+ * allows the recursive acquisition that results.
+ */
 BOOLEAN
 NTAPI
 NtfsAcqLazyWrite(PVOID Context,
                  BOOLEAN Wait)
 {
-    UNREFERENCED_PARAMETER(Context);
-    UNREFERENCED_PARAMETER(Wait);
-    UNIMPLEMENTED;
-    return FALSE;
+    PNTFS_FCB Fcb = (PNTFS_FCB)Context;
+
+    ASSERT(Fcb != NULL);
+
+    if (!ExAcquireResourceExclusiveLite(&Fcb->PagingIoResource, Wait))
+        return FALSE;
+
+    /* Mark the writes that follow as the cache manager's rather than a caller's */
+    IoSetTopLevelIrp((PIRP)FSRTL_CACHE_TOP_LEVEL_IRP);
+
+    return TRUE;
 }
 
 
@@ -50,20 +64,32 @@ VOID
 NTAPI
 NtfsRelLazyWrite(PVOID Context)
 {
-    UNREFERENCED_PARAMETER(Context);
-    UNIMPLEMENTED;
+    PNTFS_FCB Fcb = (PNTFS_FCB)Context;
+
+    ASSERT(Fcb != NULL);
+
+    IoSetTopLevelIrp(NULL);
+
+    ExReleaseResourceLite(&Fcb->PagingIoResource);
 }
 
 
+/*
+ * FUNCTION: Acquires a file for the cache manager's read-ahead
+ *
+ * Read-ahead only reads, so the file is taken shared. The page-ins it issues arrive as paging
+ * reads, which take no resource of their own.
+ */
 BOOLEAN
 NTAPI
 NtfsAcqReadAhead(PVOID Context,
                  BOOLEAN Wait)
 {
-    UNREFERENCED_PARAMETER(Context);
-    UNREFERENCED_PARAMETER(Wait);
-    UNIMPLEMENTED;
-    return FALSE;
+    PNTFS_FCB Fcb = (PNTFS_FCB)Context;
+
+    ASSERT(Fcb != NULL);
+
+    return ExAcquireResourceSharedLite(&Fcb->MainResource, Wait);
 }
 
 
@@ -71,8 +97,11 @@ VOID
 NTAPI
 NtfsRelReadAhead(PVOID Context)
 {
-    UNREFERENCED_PARAMETER(Context);
-    UNIMPLEMENTED;
+    PNTFS_FCB Fcb = (PNTFS_FCB)Context;
+
+    ASSERT(Fcb != NULL);
+
+    ExReleaseResourceLite(&Fcb->MainResource);
 }
 
 BOOLEAN
