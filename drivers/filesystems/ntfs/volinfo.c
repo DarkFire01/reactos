@@ -42,10 +42,12 @@ NtfsGetFreeClusters(PDEVICE_EXTENSION DeviceExt)
     ULONGLONG BitmapDataSize;
     PCHAR BitmapData;
     ULONGLONG FreeClusters = 0;
-    ULONG Read = 0;
     RTL_BITMAP Bitmap;
 
     DPRINT("NtfsGetFreeClusters(%p)\n", DeviceExt);
+
+    if (DeviceExt->FreeClusterCountValid)
+        return DeviceExt->FreeClusterCount;
 
     BitmapRecord = ExAllocateFromNPagedLookasideList(&DeviceExt->FileRecLookasideList);
     if (BitmapRecord == NULL)
@@ -68,6 +70,7 @@ NtfsGetFreeClusters(PDEVICE_EXTENSION DeviceExt)
     }
 
     BitmapDataSize = AttributeDataLength(DataContext->pRecord);
+    BitmapDataSize = min(BitmapDataSize, 0xffffffff);
     ASSERT((BitmapDataSize * 8) >= DeviceExt->NtfsInfo.ClusterCount);
     BitmapData = ExAllocatePoolWithTag(NonPagedPool, ROUND_UP(BitmapDataSize, DeviceExt->NtfsInfo.BytesPerSector), TAG_NTFS);
     if (BitmapData == NULL)
@@ -77,11 +80,8 @@ NtfsGetFreeClusters(PDEVICE_EXTENSION DeviceExt)
         return 0;
     }
 
-    /* FIXME: Totally underoptimized! */
-    for (; Read < BitmapDataSize; Read += DeviceExt->NtfsInfo.BytesPerSector)
-    {
-        ReadAttribute(DeviceExt, DataContext, Read, (PCHAR)((ULONG_PTR)BitmapData + Read), DeviceExt->NtfsInfo.BytesPerSector);
-    }
+    /* One read, not one per sector: $Bitmap is hundreds of kilobytes on a large volume */
+    ReadAttribute(DeviceExt, DataContext, 0, (PCHAR)BitmapData, (ULONG)BitmapDataSize);
     ReleaseAttributeContext(DataContext);
 
     /* $Bitmap is rounded up to a cluster, so it normally covers a few clusters more than the
@@ -92,6 +92,9 @@ NtfsGetFreeClusters(PDEVICE_EXTENSION DeviceExt)
 
     RtlInitializeBitMap(&Bitmap, (PULONG)BitmapData, DeviceExt->NtfsInfo.ClusterCount);
     FreeClusters = RtlNumberOfClearBits(&Bitmap);
+
+    DeviceExt->FreeClusterCount = FreeClusters;
+    DeviceExt->FreeClusterCountValid = TRUE;
 
     ExFreePoolWithTag(BitmapData, TAG_NTFS);
     ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, BitmapRecord);
@@ -195,6 +198,17 @@ NtfsAllocateClusters(PDEVICE_EXTENSION DeviceExt,
     }
 
     Status = WriteAttribute(DeviceExt, DataContext, 0, BitmapData, (ULONG)BitmapDataSize, &LengthWritten, BitmapRecord);
+
+    /* The bitmap is in memory, so recounting costs nothing next to reading it again */
+    if (NT_SUCCESS(Status))
+    {
+        DeviceExt->FreeClusterCount = RtlNumberOfClearBits(&Bitmap);
+        DeviceExt->FreeClusterCountValid = TRUE;
+    }
+    else
+    {
+        DeviceExt->FreeClusterCountValid = FALSE;
+    }
 
     ReleaseAttributeContext(DataContext);
 

@@ -484,9 +484,11 @@ NtfsAttachFCBToFileObject(PNTFS_VCB Vcb,
     newCCB->PtrFileObject = FileObject;
     Fcb->Vcb = Vcb;
 
-    /* Directories are excluded: they have no $DATA to map, and a data section on one gives Mm
+    /* Every file object needs its own private cache map, so this is gated on the file object
+     * rather than the FCB; the shared map behind them is created once.
+     * Directories are excluded: they have no $DATA to map, and a data section on one gives Mm
      * pages to fault in that we can never satisfy. */
-    if (!(Fcb->Flags & FCB_CACHE_INITIALIZED) && !NtfsFCBIsDirectory(Fcb))
+    if (FileObject->PrivateCacheMap == NULL && !NtfsFCBIsDirectory(Fcb))
     {
         _SEH2_TRY
         {
