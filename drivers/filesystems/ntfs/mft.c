@@ -2489,6 +2489,36 @@ AddNewMftEntry(PFILE_RECORD_HEADER FileRecord,
     // update file record with index
     FileRecord->MFTRecordNumber = MftIndex;
 
+    // A reused record carries on from the sequence number it had. FreeMftEntry() bumps that
+    // when a record is released, which is what makes a reference to the old occupant
+    // recognisably stale; letting the fresh record's number win here would hand the same
+    // reference to two different files. A record that has never held a file has nothing to
+    // carry forward, so the fresh number stands.
+    {
+        PFILE_RECORD_HEADER OldRecord;
+
+        OldRecord = ExAllocateFromNPagedLookasideList(&DeviceExt->FileRecLookasideList);
+        if (OldRecord != NULL)
+        {
+            /* Read it raw rather than through ReadFileRecord(): a record that has never held a
+             * file is blank, and running the update sequence array over it fails. Both fields
+             * read here sit at the front of the record, which fixups never touch. */
+            if (ReadAttribute(DeviceExt,
+                              DeviceExt->MFTContext,
+                              MftIndex * DeviceExt->NtfsInfo.BytesPerFileRecord,
+                              (PCHAR)OldRecord,
+                              DeviceExt->NtfsInfo.BytesPerFileRecord) ==
+                    DeviceExt->NtfsInfo.BytesPerFileRecord &&
+                OldRecord->Ntfs.Type == NRH_FILE_TYPE &&
+                OldRecord->SequenceNumber != 0)
+            {
+                FileRecord->SequenceNumber = OldRecord->SequenceNumber;
+            }
+
+            ExFreeToNPagedLookasideList(&DeviceExt->FileRecLookasideList, OldRecord);
+        }
+    }
+
     // [BitmapData should have been updated via RtlFindClearBitsAndSet()]
 
     // Restore the system reserved bits
