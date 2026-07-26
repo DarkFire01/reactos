@@ -1754,55 +1754,25 @@ FreeClusters(PNTFS_VCB Vcb,
 
     PFILE_RECORD_HEADER BitmapRecord;
     PNTFS_ATTR_CONTEXT DataContext;
-    ULONGLONG BitmapDataSize;
-    PUCHAR BitmapData;
-    RTL_BITMAP Bitmap;
-    ULONG LengthWritten;
+    PRTL_BITMAP Bitmap;
+    ULONG FirstFreedCluster = 0xFFFFFFFF;
+    ULONG LastFreedCluster = 0;
+    ULONG FreedCount = 0;
 
     if (!AttrContext->pRecord->IsNonResident)
     {
         return STATUS_INVALID_PARAMETER;
     }
 
-    // Read the $Bitmap file
-    BitmapRecord = ExAllocateFromNPagedLookasideList(&Vcb->FileRecLookasideList);
-    if (BitmapRecord == NULL)
-    {
-        DPRINT1("Error: Unable to allocate memory for bitmap file record!\n");
-        return STATUS_NO_MEMORY;
-    }
-
-    Status = ReadFileRecord(Vcb, NTFS_FILE_BITMAP, BitmapRecord);
+    // The volume bitmap is shared with the allocator, so work on the one copy of it
+    Status = NtfsMapVolumeBitmap(Vcb, &BitmapRecord, &DataContext);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("Error: Unable to read file record for bitmap!\n");
-        ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, BitmapRecord);
-        return 0;
+        DPRINT1("Error: Unable to map the volume bitmap!\n");
+        return Status;
     }
 
-    Status = FindAttribute(Vcb, BitmapRecord, AttributeData, L"", 0, &DataContext, NULL);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Error: Unable to find data attribute for bitmap file!\n");
-        ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, BitmapRecord);
-        return 0;
-    }
-
-    BitmapDataSize = AttributeDataLength(DataContext->pRecord);
-    BitmapDataSize = min(BitmapDataSize, ULONG_MAX);
-    ASSERT((BitmapDataSize * 8) >= Vcb->NtfsInfo.ClusterCount);
-    BitmapData = ExAllocatePoolWithTag(NonPagedPool, ROUND_UP(BitmapDataSize, Vcb->NtfsInfo.BytesPerSector), TAG_NTFS);
-    if (BitmapData == NULL)
-    {
-        DPRINT1("Error: Unable to allocate memory for bitmap file data!\n");
-        ReleaseAttributeContext(DataContext);
-        ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, BitmapRecord);
-        return 0;
-    }
-
-    ReadAttribute(Vcb, DataContext, 0, (PCHAR)BitmapData, (ULONG)BitmapDataSize);
-
-    RtlInitializeBitMap(&Bitmap, (PULONG)BitmapData, Vcb->NtfsInfo.ClusterCount);
+    Bitmap = &Vcb->VolumeBitmap;
 
     // free clusters in $BITMAP file
     while (ClustersLeftToFree > 0)
@@ -1821,7 +1791,11 @@ FreeClusters(PNTFS_VCB Vcb,
         if (LargeLbn != -1)
         {
             // deallocate this cluster
-            RtlClearBits(&Bitmap, LargeLbn, 1);
+            RtlClearBits(Bitmap, (ULONG)LargeLbn, 1);
+
+            FirstFreedCluster = min(FirstFreedCluster, (ULONG)LargeLbn);
+            LastFreedCluster = max(LastFreedCluster, (ULONG)LargeLbn);
+            FreedCount++;
         }
         FsRtlTruncateLargeMcb(&AttrContext->DataRunsMCB, AttrContext->pRecord->NonResident.HighestVCN);
 
@@ -1830,24 +1804,23 @@ FreeClusters(PNTFS_VCB Vcb,
         ClustersLeftToFree--;
     }
 
-    // update $BITMAP file on disk
-    Status = WriteAttribute(Vcb, DataContext, 0, BitmapData, (ULONG)BitmapDataSize, &LengthWritten, FileRecord);
-    if (!NT_SUCCESS(Status))
+    // Only the sectors holding the bits just cleared need to go back to disk
+    if (FreedCount != 0)
     {
-        Vcb->FreeClusterCountValid = FALSE;
-        ReleaseAttributeContext(DataContext);
-        ExFreePoolWithTag(BitmapData, TAG_NTFS);
-        ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, BitmapRecord);
-        return Status;
+        Status = NtfsFlushVolumeBitmapRange(Vcb, DataContext, BitmapRecord,
+                                            FirstFreedCluster,
+                                            LastFreedCluster - FirstFreedCluster + 1);
+        if (!NT_SUCCESS(Status))
+        {
+            NtfsUnmapVolumeBitmap(Vcb, BitmapRecord, DataContext);
+            return Status;
+        }
+
+        if (Vcb->FreeClusterCountValid)
+            Vcb->FreeClusterCount += FreedCount;
     }
 
-    /* The bitmap is in memory, so recounting costs nothing next to reading it again */
-    Vcb->FreeClusterCount = RtlNumberOfClearBits(&Bitmap);
-    Vcb->FreeClusterCountValid = TRUE;
-
-    ReleaseAttributeContext(DataContext);
-    ExFreePoolWithTag(BitmapData, TAG_NTFS);
-    ExFreeToNPagedLookasideList(&Vcb->FileRecLookasideList, BitmapRecord);
+    NtfsUnmapVolumeBitmap(Vcb, BitmapRecord, DataContext);
 
     // Save updated data runs to file record
 

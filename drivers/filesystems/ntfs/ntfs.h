@@ -133,6 +133,15 @@ typedef struct
     ULONGLONG FreeClusterCount;
     BOOLEAN FreeClusterCountValid;
 
+    /* The volume $Bitmap, held in memory. Allocating clusters would otherwise read and
+     * rewrite all of it - hundreds of kilobytes on a large volume - for every run. Only the
+     * sectors actually changed are written back. */
+    PVOID VolumeBitmapAllocation;
+    PUCHAR VolumeBitmapData;
+    ULONG VolumeBitmapSize;
+    RTL_BITMAP VolumeBitmap;
+    BOOLEAN VolumeBitmapValid;
+
 } DEVICE_EXTENSION, *PDEVICE_EXTENSION, NTFS_VCB, *PNTFS_VCB;
 
 #define VCB_VOLUME_LOCKED       0x0001
@@ -1468,6 +1477,26 @@ NtfsAllocateClusters(PDEVICE_EXTENSION DeviceExt,
 
 ULONGLONG
 NtfsGetFreeClusters(PDEVICE_EXTENSION DeviceExt);
+
+NTSTATUS
+NtfsMapVolumeBitmap(PDEVICE_EXTENSION DeviceExt,
+                    PFILE_RECORD_HEADER *BitmapRecord,
+                    struct _NTFS_ATTR_CONTEXT **DataContext);
+
+VOID
+NtfsUnmapVolumeBitmap(PDEVICE_EXTENSION DeviceExt,
+                      PFILE_RECORD_HEADER BitmapRecord,
+                      struct _NTFS_ATTR_CONTEXT *DataContext);
+
+NTSTATUS
+NtfsFlushVolumeBitmapRange(PDEVICE_EXTENSION DeviceExt,
+                           struct _NTFS_ATTR_CONTEXT *DataContext,
+                           PFILE_RECORD_HEADER BitmapRecord,
+                           ULONG FirstCluster,
+                           ULONG ClusterCount);
+
+VOID
+NtfsFreeVolumeBitmap(PDEVICE_EXTENSION DeviceExt);
 
 NTSTATUS
 NtfsQueryVolumeInformation(PNTFS_IRP_CONTEXT IrpContext);
