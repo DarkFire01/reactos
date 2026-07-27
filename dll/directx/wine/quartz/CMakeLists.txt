@@ -53,12 +53,17 @@ set_source_files_properties(quartz.rc PROPERTIES OBJECT_DEPENDS
     "${CMAKE_CURRENT_BINARY_DIR}/control_tlb.tlb;${CMAKE_CURRENT_SOURCE_DIR}/quartz.rgs")
 
 set_module_type(quartz win32dll)
-target_link_libraries(quartz wine strmbase strmiids uuid dxguid ${PSEH_LIB})
+# main.c defines DllRegisterServer/DllUnregisterServer itself; only the
+# DllCanUnloadNow helper is needed. oldnames covers the POSIX aliases.
+target_link_libraries(quartz wine wine_dll_canunload strmbase strmiids uuid dxguid oldnames ${PSEH_LIB})
 # ddraw is delay-loaded upstream: only the VMR7 path reaches for it.
 add_delay_importlibs(quartz ddraw)
+# kernel32_vista for SetThreadDescription: filesource.c, filtergraph.c and
+# systemclock.c name their worker threads, and the plain kernel32 importlib
+# is trimmed to DLL_EXPORT_VERSION and does not carry it.
 add_importlibs(quartz
     dsound msacm32 msvfw32 ole32 oleaut32 rpcrt4 user32 gdi32 advapi32 winmm
-    msvcrt kernel32 ntdll)
+    kernel32_vista msvcrt kernel32 ntdll)
 add_dependencies(quartz wineheaders dxsdk stdole2)
 add_cd_file(TARGET quartz DESTINATION reactos/system32 FOR all)
 set_wine_module(quartz)
