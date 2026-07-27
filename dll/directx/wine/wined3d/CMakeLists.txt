@@ -64,11 +64,16 @@ add_library(d3dwine MODULE
 if(MSVC)
     # C4098: 'void' function returning a void expression. Valid C99 and a
     #        pervasive Wine idiom; MSVC is being pedantic.
+    # C4312: context_gl.c passes (void *)FIELD_OFFSET(...) to
+    #        glVertexAttribPointer -- the standard GL idiom for an attribute
+    #        offset into a bound VBO. FIELD_OFFSET is LONG-typed, so widening
+    #        it to a 64-bit pointer trips the warning on x64; the value is a
+    #        small constant offset, never a real pointer.
     # C4319: context_vk.c masks a 64-bit VkDeviceSize with a size_t-wide
     #        alignment. Unreachable on a 32-bit target -- the result is stored
     #        in a size_t and no single buffer can exceed 4 GB -- and identical
     #        to what 32-bit Wine builds with GCC.
-    target_compile_options(d3dwine PRIVATE /wd4098 /wd4319)
+    target_compile_options(d3dwine PRIVATE /wd4098 /wd4312 /wd4319)
 endif()
 
 set_module_type(d3dwine win32dll)
