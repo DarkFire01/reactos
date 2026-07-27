@@ -20,6 +20,11 @@
 
 #define PV_NT351 0x00030033
 
+/* PROCESSOR_RELATIONSHIP.Flags value for SMT cores; not in the NT 5.2 PSDK headers */
+#ifndef LTP_PC_SMT
+#define LTP_PC_SMT 0x1
+#endif
+
 /* PRIVATE FUNCTIONS **********************************************************/
 
 VOID
@@ -259,6 +264,268 @@ GetLogicalProcessorInformation(OUT PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Buffer,
 
 /*
  * @implemented
+ *
+ * The kernel does not support SystemLogicalProcessorInformationEx, so the
+ * extended records are synthesized from the legacy information. ReactOS is
+ * a single-group system: every record gets group number 0, and the package
+ * and group records (which the legacy interface cannot describe) are
+ * generated to span all active processors.
+ */
+BOOL
+WINAPI
+GetLogicalProcessorInformationEx(IN LOGICAL_PROCESSOR_RELATIONSHIP RelationshipType,
+                                 OUT PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Buffer OPTIONAL,
+                                 IN OUT PDWORD ReturnedLength)
+{
+    /* Sizes of the variable-length records we emit, one group entry each */
+    const DWORD HeaderSize = FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor);
+    const DWORD ProcessorSize = HeaderSize + FIELD_OFFSET(PROCESSOR_RELATIONSHIP, GroupMask) + sizeof(GROUP_AFFINITY);
+    const DWORD NumaSize = HeaderSize + sizeof(NUMA_NODE_RELATIONSHIP);
+    const DWORD CacheSize = HeaderSize + sizeof(CACHE_RELATIONSHIP);
+    const DWORD GroupSize = HeaderSize + FIELD_OFFSET(GROUP_RELATIONSHIP, GroupInfo) + sizeof(PROCESSOR_GROUP_INFO);
+
+    NTSTATUS Status;
+    SYSTEM_BASIC_INFORMATION BasicInfo;
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION LegacyInfo = NULL;
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Entry;
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX ExEntry;
+    ULONG LegacyLength = 0;
+    ULONG Count, i;
+    DWORD RequiredLength;
+    KAFFINITY ActiveMask;
+    UCHAR ActiveCount;
+    BOOLEAN SeenPackage = FALSE;
+    PUCHAR Output;
+
+    if (!ReturnedLength ||
+        ((RelationshipType != RelationProcessorCore) &&
+         (RelationshipType != RelationNumaNode) &&
+         (RelationshipType != RelationCache) &&
+         (RelationshipType != RelationProcessorPackage) &&
+         (RelationshipType != RelationGroup) &&
+         (RelationshipType != RelationAll)))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    /* Needed for the synthesized package and group records */
+    Status = NtQuerySystemInformation(SystemBasicInformation,
+                                      &BasicInfo,
+                                      sizeof(BasicInfo),
+                                      NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    /* Grab the legacy processor topology, resizing if it grows under us */
+    for (;;)
+    {
+        Status = NtQuerySystemInformation(SystemLogicalProcessorInformation,
+                                          LegacyInfo,
+                                          LegacyLength,
+                                          &LegacyLength);
+        if (Status != STATUS_INFO_LENGTH_MISMATCH) break;
+
+        if (LegacyInfo) RtlFreeHeap(RtlGetProcessHeap(), 0, LegacyInfo);
+        LegacyInfo = RtlAllocateHeap(RtlGetProcessHeap(), 0, LegacyLength);
+        if (!LegacyInfo)
+        {
+            SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+            return FALSE;
+        }
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        if (LegacyInfo) RtlFreeHeap(RtlGetProcessHeap(), 0, LegacyInfo);
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    Count = LegacyLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+
+    /* First pass: compute the size of what we will return */
+    RequiredLength = 0;
+    for (i = 0; i < Count; i++)
+    {
+        Entry = &LegacyInfo[i];
+        switch (Entry->Relationship)
+        {
+            case RelationProcessorCore:
+                if ((RelationshipType == RelationProcessorCore) ||
+                    (RelationshipType == RelationAll))
+                {
+                    RequiredLength += ProcessorSize;
+                }
+                break;
+
+            case RelationProcessorPackage:
+                SeenPackage = TRUE;
+                if ((RelationshipType == RelationProcessorPackage) ||
+                    (RelationshipType == RelationAll))
+                {
+                    RequiredLength += ProcessorSize;
+                }
+                break;
+
+            case RelationNumaNode:
+                if ((RelationshipType == RelationNumaNode) ||
+                    (RelationshipType == RelationAll))
+                {
+                    RequiredLength += NumaSize;
+                }
+                break;
+
+            case RelationCache:
+                if ((RelationshipType == RelationCache) ||
+                    (RelationshipType == RelationAll))
+                {
+                    RequiredLength += CacheSize;
+                }
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    if (!SeenPackage &&
+        ((RelationshipType == RelationProcessorPackage) ||
+         (RelationshipType == RelationAll)))
+    {
+        RequiredLength += ProcessorSize;
+    }
+
+    if ((RelationshipType == RelationGroup) ||
+        (RelationshipType == RelationAll))
+    {
+        RequiredLength += GroupSize;
+    }
+
+    if (!Buffer || (*ReturnedLength < RequiredLength))
+    {
+        RtlFreeHeap(RtlGetProcessHeap(), 0, LegacyInfo);
+        *ReturnedLength = RequiredLength;
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return FALSE;
+    }
+
+    ActiveMask = (KAFFINITY)BasicInfo.ActiveProcessorsAffinityMask;
+
+    /* Second pass: convert each matching record */
+    Output = (PUCHAR)Buffer;
+    for (i = 0; i < Count; i++)
+    {
+        Entry = &LegacyInfo[i];
+        ExEntry = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)Output;
+
+        switch (Entry->Relationship)
+        {
+            case RelationProcessorCore:
+            case RelationProcessorPackage:
+                if ((RelationshipType != Entry->Relationship) &&
+                    (RelationshipType != RelationAll))
+                {
+                    break;
+                }
+
+                RtlZeroMemory(ExEntry, ProcessorSize);
+                ExEntry->Relationship = Entry->Relationship;
+                ExEntry->Size = ProcessorSize;
+                if (Entry->Relationship == RelationProcessorCore)
+                {
+                    ExEntry->Processor.Flags = Entry->ProcessorCore.Flags ? LTP_PC_SMT : 0;
+                }
+                ExEntry->Processor.GroupCount = 1;
+                ExEntry->Processor.GroupMask[0].Mask = (KAFFINITY)Entry->ProcessorMask;
+                Output += ProcessorSize;
+                break;
+
+            case RelationNumaNode:
+                if ((RelationshipType != RelationNumaNode) &&
+                    (RelationshipType != RelationAll))
+                {
+                    break;
+                }
+
+                RtlZeroMemory(ExEntry, NumaSize);
+                ExEntry->Relationship = RelationNumaNode;
+                ExEntry->Size = NumaSize;
+                ExEntry->NumaNode.NodeNumber = Entry->NumaNode.NodeNumber;
+                ExEntry->NumaNode.GroupMask.Mask = (KAFFINITY)Entry->ProcessorMask;
+                Output += NumaSize;
+                break;
+
+            case RelationCache:
+                if ((RelationshipType != RelationCache) &&
+                    (RelationshipType != RelationAll))
+                {
+                    break;
+                }
+
+                RtlZeroMemory(ExEntry, CacheSize);
+                ExEntry->Relationship = RelationCache;
+                ExEntry->Size = CacheSize;
+                ExEntry->Cache.Level = Entry->Cache.Level;
+                ExEntry->Cache.Associativity = Entry->Cache.Associativity;
+                ExEntry->Cache.LineSize = Entry->Cache.LineSize;
+                ExEntry->Cache.CacheSize = Entry->Cache.Size;
+                ExEntry->Cache.Type = Entry->Cache.Type;
+                ExEntry->Cache.GroupMask.Mask = (KAFFINITY)Entry->ProcessorMask;
+                Output += CacheSize;
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    if (!SeenPackage &&
+        ((RelationshipType == RelationProcessorPackage) ||
+         (RelationshipType == RelationAll)))
+    {
+        ExEntry = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)Output;
+        RtlZeroMemory(ExEntry, ProcessorSize);
+        ExEntry->Relationship = RelationProcessorPackage;
+        ExEntry->Size = ProcessorSize;
+        ExEntry->Processor.GroupCount = 1;
+        ExEntry->Processor.GroupMask[0].Mask = ActiveMask;
+        Output += ProcessorSize;
+    }
+
+    if ((RelationshipType == RelationGroup) ||
+        (RelationshipType == RelationAll))
+    {
+        KAFFINITY Mask;
+
+        ActiveCount = 0;
+        for (Mask = ActiveMask; Mask != 0; Mask >>= 1)
+        {
+            if (Mask & 1) ActiveCount++;
+        }
+
+        ExEntry = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)Output;
+        RtlZeroMemory(ExEntry, GroupSize);
+        ExEntry->Relationship = RelationGroup;
+        ExEntry->Size = GroupSize;
+        ExEntry->Group.MaximumGroupCount = 1;
+        ExEntry->Group.ActiveGroupCount = 1;
+        ExEntry->Group.GroupInfo[0].MaximumProcessorCount = BasicInfo.NumberOfProcessors;
+        ExEntry->Group.GroupInfo[0].ActiveProcessorCount = ActiveCount;
+        ExEntry->Group.GroupInfo[0].ActiveProcessorMask = ActiveMask;
+        Output += GroupSize;
+    }
+
+    RtlFreeHeap(RtlGetProcessHeap(), 0, LegacyInfo);
+    *ReturnedLength = RequiredLength;
+    return TRUE;
+}
+
+/*
+ * @implemented
  */
 BOOL
 WINAPI
@@ -376,6 +643,63 @@ GetNumaProcessorNode(IN UCHAR Processor,
 
     /* Return found node */
     *NodeNumber = Node;
+    return TRUE;
+}
+
+/*
+ * @implemented
+ *
+ * ReactOS only has processor group 0.
+ */
+BOOL
+WINAPI
+GetNumaProcessorNodeEx(IN PPROCESSOR_NUMBER Processor,
+                       OUT PUSHORT NodeNumber)
+{
+    NTSTATUS Status;
+    SYSTEM_NUMA_INFORMATION NumaInformation;
+    ULONG Length;
+    ULONG Node;
+    ULONGLONG Proc;
+
+    /* Only group 0 exists, and the processor must fit in the affinity mask */
+    if ((Processor->Group != 0) ||
+        (Processor->Number >= MAXIMUM_PROCESSORS))
+    {
+        *NodeNumber = (USHORT)-1;
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    /* Query NUMA information */
+    Status = NtQuerySystemInformation(SystemNumaProcessorMap,
+                                      &NumaInformation,
+                                      sizeof(NumaInformation),
+                                      &Length);
+    if (!NT_SUCCESS(Status))
+    {
+        *NodeNumber = (USHORT)-1;
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    /* Find the node owning the processor */
+    Node = 0;
+    Proc = 1ULL << Processor->Number;
+    while ((Proc & NumaInformation.ActiveProcessorsAffinityMask[Node]) == 0ULL)
+    {
+        ++Node;
+        /* Out of options */
+        if (Node > NumaInformation.HighestNodeNumber)
+        {
+            *NodeNumber = (USHORT)-1;
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return FALSE;
+        }
+    }
+
+    /* Return found node */
+    *NodeNumber = (USHORT)Node;
     return TRUE;
 }
 

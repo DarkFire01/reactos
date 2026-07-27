@@ -694,6 +694,84 @@ SetThreadAffinityMask(IN HANDLE hThread,
 
 /*
  * @implemented
+ *
+ * ReactOS only has processor group 0, so this maps directly onto the
+ * classic thread affinity mask.
+ */
+BOOL
+WINAPI
+GetThreadGroupAffinity(IN HANDLE hThread,
+                       OUT PGROUP_AFFINITY GroupAffinity)
+{
+    THREAD_BASIC_INFORMATION ThreadBasic;
+    NTSTATUS Status;
+
+    if (!GroupAffinity)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    Status = NtQueryInformationThread(hThread,
+                                      ThreadBasicInformation,
+                                      &ThreadBasic,
+                                      sizeof(THREAD_BASIC_INFORMATION),
+                                      NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    RtlZeroMemory(GroupAffinity, sizeof(GROUP_AFFINITY));
+    GroupAffinity->Mask = ThreadBasic.AffinityMask;
+    return TRUE;
+}
+
+/*
+ * @implemented
+ *
+ * ReactOS only has processor group 0, so this maps directly onto the
+ * classic thread affinity mask.
+ */
+BOOL
+WINAPI
+SetThreadGroupAffinity(IN HANDLE hThread,
+                       IN CONST GROUP_AFFINITY *GroupAffinity,
+                       OUT PGROUP_AFFINITY PreviousGroupAffinity OPTIONAL)
+{
+    KAFFINITY AffinityMask;
+    NTSTATUS Status;
+
+    if (!GroupAffinity || (GroupAffinity->Group != 0))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    /* Capture the previous affinity first so a failed set leaves it valid */
+    if (PreviousGroupAffinity &&
+        !GetThreadGroupAffinity(hThread, PreviousGroupAffinity))
+    {
+        return FALSE;
+    }
+
+    AffinityMask = (KAFFINITY)GroupAffinity->Mask;
+    Status = NtSetInformationThread(hThread,
+                                    ThreadAffinityMask,
+                                    &AffinityMask,
+                                    sizeof(KAFFINITY));
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/*
+ * @implemented
  */
 BOOL
 WINAPI

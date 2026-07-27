@@ -508,6 +508,7 @@
 @ stdcall GetLogicalDriveStringsW(long ptr)
 @ stdcall GetLogicalDrives()
 @ stdcall GetLogicalProcessorInformation(ptr ptr)
+@ stdcall -version=0x601+ GetLogicalProcessorInformationEx(long ptr ptr)
 @ stdcall GetLongPathNameA(str long long)
 @ stub -version=0x600+ GetLongPathNameTransactedA
 @ stub -version=0x600+ GetLongPathNameTransactedW
@@ -538,6 +539,7 @@
 @ stdcall GetNumaHighestNodeNumber(ptr)
 @ stdcall GetNumaNodeProcessorMask(long ptr)
 @ stdcall GetNumaProcessorNode(long ptr)
+@ stdcall -version=0x601+ GetNumaProcessorNodeEx(ptr ptr)
 @ stub -version=0x600+ GetNumaProximityNode
 @ stdcall GetNumberFormatA(long long str ptr ptr long)
 @ stdcall -version=0x600+ GetNumberFormatEx(wstr long wstr ptr wstr long)
@@ -624,6 +626,7 @@
 @ stdcall GetTempPathW(long ptr)
 @ stdcall GetThreadContext(long ptr)
 @ stdcall -stub -version=0x600+ GetThreadErrorMode()
+@ stdcall -version=0x601+ GetThreadGroupAffinity(long ptr)
 @ stdcall GetThreadIOPendingFlag(long ptr)
 @ stdcall GetThreadId(ptr)
 @ stdcall GetThreadLocale()
@@ -1107,6 +1110,7 @@
 @ stdcall -version=0xA00+ SetThreadDescription(ptr wstr)
 @ stdcall -stub -version=0x600+ SetThreadErrorMode(long ptr)
 @ stdcall SetThreadExecutionState(long)
+@ stdcall -version=0x601+ SetThreadGroupAffinity(long ptr ptr)
 @ stdcall SetThreadIdealProcessor(long long)
 @ stdcall SetThreadLocale(long)
 @ stdcall -version=0x600+ SetThreadPreferredUILanguages(long wstr ptr)
