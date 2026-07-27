@@ -1,11 +1,4 @@
 
-# Wine's bundled vkd3d, built as a single static library (matching upstream's
-# EXTLIB = libvkd3d.a). Consumers add ${VKD3D_INCLUDE_DIRS} and link "vkd3d".
-
-set(VKD3D_INCLUDE_DIRS
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/private
-    CACHE INTERNAL "vkd3d public and private include directories")
 
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -15,20 +8,11 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/vkd3d-shader
     ${CMAKE_CURRENT_BINARY_DIR})
 
-# vkd3d_common.h uses CONDITION_VARIABLE/SRWLOCK, which the PSDK gates behind
-# _WIN32_WINNT >= 0x600. The backing exports exist in kernel32/ntdll (and are
-# present in the import libs as long as DLL_EXPORT_VERSION >= 0x600).
-# Spelled 0x0600 to match vkd3d-common/debug.c's own #define token-for-token,
-# so its redefinition is benign rather than a -Werror redefinition warning.
 remove_definitions(-D_WIN32_WINNT=0x502 -DWINVER=0x502)
 add_definitions(
     -D_WIN32_WINNT=0x0600
     -DWINVER=0x0600
     -D_USE_MATH_DEFINES
-    # The flex scanners reference stdin/stdout/stderr. <stdio.h> defines those
-    # in terms of the _iob array, which msvcrt only exposes via __iob_func(),
-    # leaving an unresolved data import. Take the header's own
-    # _STDSTREAM_DEFINED override hook and route them through the function.
     -D_STDSTREAM_DEFINED
     "-Dstdin=(&__iob_func()[0])"
     "-Dstdout=(&__iob_func()[1])"
@@ -115,11 +99,6 @@ else()
     target_compile_options(vkd3d PRIVATE -Wno-unused-but-set-variable)
 endif()
 
-# d3d12shader.h (via vkd3d_shader.h) pulls in the widl-generated d3dcommon.h,
-# which lives in the d3d_idl_headers target rather than psdk.
-# preproc.y uses POSIX stat()/fstat()/fileno()/S_IFREG. oldnames provides those
-# aliases and, via INTERFACE definitions, the _CRT_DECLARE_NONSTDC_NAMES and
-# _CRT_NONSTDC_NO_DEPRECATE pair that makes them visible under MSVC.
 target_link_libraries(vkd3d oldnames)
 
 add_dependencies(vkd3d psdk d3d_idl_headers)
