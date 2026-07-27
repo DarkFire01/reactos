@@ -48,6 +48,15 @@ add_library(quartz MODULE
     quartz.rc
     ${CMAKE_CURRENT_BINARY_DIR}/quartz.def)
 
+# quartz_strmif.idl also carries "#pragma makedep register": it declares every
+# coclass this DLL exposes, CLSID_FilterMapper2 among them. Without this the
+# only registration data in the module is quartz.rgs (media types), so
+# DllRegisterServer registers its resources and then cannot CoCreateInstance
+# its own filter mapper. control_tlb.idl needs its regtypelib script too.
+# Both must come after add_library(): the helper appends to the target.
+add_idl_reg_scripts(quartz registry quartz_strmif.idl)
+add_idl_reg_scripts(quartz regtypelib control_tlb.idl)
+
 # quartz.rc pulls in quartz.rgs and the compiled typelib.
 set_source_files_properties(quartz.rc PROPERTIES OBJECT_DEPENDS
     "${CMAKE_CURRENT_BINARY_DIR}/control_tlb.tlb;${CMAKE_CURRENT_SOURCE_DIR}/quartz.rgs")
