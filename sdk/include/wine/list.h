@@ -21,6 +21,13 @@
 #ifndef __WINE_SERVER_LIST_H
 #define __WINE_SERVER_LIST_H
 
+/* Upstream's copy of this header includes <stddef.h>, and the inline helpers
+   below use NULL. Without it a source that reaches wine/list.h before any
+   Windows header only builds by accident, behind a precompiled header that
+   happened to pull one in first -- which is exactly how dxdiagn used to be
+   built here. */
+#include <stddef.h>
+
 #ifdef __cplusplus
 #define __WINE_SERVER_LIST_INLINE inline
 #else
