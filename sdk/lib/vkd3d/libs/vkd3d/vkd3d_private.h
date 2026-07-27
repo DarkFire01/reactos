@@ -815,6 +815,21 @@ struct d3d12_descriptor_heap_vk_set
     VkDescriptorType vk_type;
 };
 
+/* MSVC's __declspec(align()) only accepts an integer literal, so
+ * sizeof(void *) cannot be written directly in the descriptors[] declaration
+ * below. The value is identical either way -- do NOT work around this by
+ * giving the flexible array member a fixed size, which would change
+ * sizeof(struct d3d12_descriptor_heap) and corrupt the heap allocation. */
+#ifdef _MSC_VER
+# ifdef _WIN64
+#  define VKD3D_DESCRIPTOR_HEAP_ALIGN 8
+# else
+#  define VKD3D_DESCRIPTOR_HEAP_ALIGN 4
+# endif
+#else
+# define VKD3D_DESCRIPTOR_HEAP_ALIGN sizeof(void *)
+#endif
+
 /* ID3D12DescriptorHeap */
 struct d3d12_descriptor_heap
 {
@@ -835,7 +850,7 @@ struct d3d12_descriptor_heap
 
     unsigned int volatile dirty_list_head;
 
-    uint8_t DECLSPEC_ALIGN(sizeof(void *)) descriptors[];
+    uint8_t DECLSPEC_ALIGN(VKD3D_DESCRIPTOR_HEAP_ALIGN) descriptors[];
 };
 
 void d3d12_desc_flush_vk_heap_updates_locked(struct d3d12_descriptor_heap *descriptor_heap, struct d3d12_device *device);

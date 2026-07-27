@@ -22,7 +22,11 @@ add_dependencies(gdi32_vista_static psdk)
 
 target_link_libraries(gdi32_vista win32ksys)
 
-#add_importlibs(gdi32_vista user32 advapi32 kernel32 ntdll)
+# The D3DKMT adapter emulation in d3dkmt.c enumerates GDI display devices
+# (user32) and compares device names (msvcrt), so the standalone DLL now needs
+# real imports. gdi32.dll gets these symbols from its own import table via
+# gdi32_vista_static.
+add_importlibs(gdi32_vista user32 msvcrt kernel32 ntdll)
 #add_pch(gdi32_vista include/precomp.h SOURCE)
 add_dependencies(gdi32_vista psdk)
 add_cd_file(TARGET gdi32_vista DESTINATION reactos/system32 FOR all)

@@ -1,9 +1,13 @@
 
-add_definitions(
-    -D__ROS_LONG64__
-    -DUSE_WIN32_OPENGL)
+# Source list mirrors dlls/d3d8/Makefile.in upstream; keep them in sync on resync.
 
-spec2def(d3d8.dll d3d8.spec)
+add_definitions(
+    -D__WINESRC__
+    -D__ROS_LONG64__)
+
+include_directories(${VKD3D_INCLUDE_DIRS})
+
+spec2def(d3d8.dll d3d8.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
     buffer.c
@@ -17,23 +21,20 @@ list(APPEND SOURCE
     vertexdeclaration.c
     volume.c)
 
-list(APPEND PCH_SKIP_SOURCE
-    guid.c)
-
 add_library(d3d8 MODULE
     ${SOURCE}
-    ${PCH_SKIP_SOURCE}
     version.rc
     ${CMAKE_CURRENT_BINARY_DIR}/d3d8.def)
 
 if(MSVC)
-    # Disable C5286: implicit conversion from enum type 'x' to enum type 'y';
+    # C5286: implicit conversion between enum types, pervasive in the D3D headers.
     target_compile_options(d3d8 PRIVATE /wd5286)
 endif()
 
 set_module_type(d3d8 win32dll UNICODE)
-target_link_libraries(d3d8 uuid wine)
-add_importlibs(d3d8 d3dwine msvcrt kernel32 ntdll)
-add_pch(d3d8 precomp.h "${PCH_SKIP_SOURCE}")
+# dxguid and uuid are static libraries; wined3d ships as d3dwine.dll here.
+target_link_libraries(d3d8 wine dxguid uuid)
+add_importlibs(d3d8 d3dwine user32 msvcrt kernel32 ntdll)
+add_dependencies(d3d8 wineheaders d3d_idl_headers)
 add_cd_file(TARGET d3d8 DESTINATION reactos/system32 FOR all)
-set_wine_module_FIXME(d3d8) # CORE-5743: No CONST_VTABLE
+set_wine_module(d3d8)

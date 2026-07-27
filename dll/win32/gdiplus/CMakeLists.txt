@@ -2,14 +2,14 @@
 remove_definitions(-D_WIN32_WINNT=0x502 -DWINVER=0x502)
 add_definitions(-D_WIN32_WINNT=0x601)
 
+# fmin/fmax/fminf/fmaxf used to be mapped onto the min()/max() macros here.
+# <math.h> now provides real C99 implementations, which is what this code
+# wants: min()/max() evaluate their arguments twice and get NaN handling
+# backwards.
 add_definitions(
     -D__ROS_LONG64__
     -D_USE_MATH_DEFINES
     -Dwcsicmp=_wcsicmp
-    -Dfmin=min
-    -Dfmax=max
-    -Dfminf=min
-    -Dfmaxf=max
 )
 
 spec2def(gdiplus.dll gdiplus.spec ADD_IMPORTLIB)

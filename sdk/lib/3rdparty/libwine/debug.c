@@ -270,6 +270,15 @@ int wine_dbg_printf( const char *format, ... )
     return ret;
 }
 
+/* Write a raw, already-formatted string to the debug output. Upstream Wine
+   exports this from ntdll; here it maps onto the libwine printf path. The
+   string is passed through "%s" because callers (e.g. vkd3d's log callback)
+   hand us arbitrary text that may contain '%'. */
+int __wine_dbg_output( const char *str )
+{
+    return wine_dbg_printf( "%s", str );
+}
+
 /* printf with temp buffer allocation */
 const char *wine_dbg_sprintf( const char *format, ... )
 {

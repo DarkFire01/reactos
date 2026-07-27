@@ -36,7 +36,7 @@
 WINE_DEFAULT_DEBUG_CHANNEL(wincodecs);
 #ifdef __REACTOS__
 #include "wine/library.h"
-extern int isfinite(double x);
+/* isfinite() now comes from <math.h>. */
 static void tiff_error_handler( const char *module, const char *format, va_list args )
 {
 

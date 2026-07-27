@@ -103,6 +103,17 @@ static inline uint64_t align(uint64_t addr, size_t alignment)
 # endif
 # define VKD3D_UNUSED __attribute__((unused))
 # define VKD3D_UNREACHABLE __builtin_unreachable()
+#elif defined(_MSC_VER)
+/* Without these MSVC cannot see that the tail of an exhaustive switch is
+ * unreachable, and reports C4715 ("not all control paths return a value") for
+ * every function ending in vkd3d_unreachable(). __assume(0) is MSVC's
+ * equivalent of __builtin_unreachable(). */
+# define VKD3D_NORETURN __declspec(noreturn)
+# define VKD3D_PRINTF_FUNC(fmt, args)
+# define VKD3D_UNUSED
+# define VKD3D_UNREACHABLE __assume(0)
+/* MSVC spells the GCC alignof extension without the trailing underscores. */
+# define __alignof__(type) __alignof(type)
 #else
 # define VKD3D_NORETURN
 # define VKD3D_PRINTF_FUNC(fmt, args)
