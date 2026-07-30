@@ -192,7 +192,7 @@ static PVOID FASTCALL DesktopPtrToUser(PVOID ptr)
 
     ASSERT(ptr != NULL);
     ASSERT(pdi != NULL);
-    if (pdi->pvDesktopBase <= ptr && ptr < pdi->pvDesktopLimit)
+    if (WOW64_CAST_TO_PTR(pdi->pvDesktopBase) <= ptr && ptr < WOW64_CAST_TO_PTR(pdi->pvDesktopLimit))
         return (PVOID)((ULONG_PTR)ptr - pci->ulClientDelta);
     else
         return (PVOID)NtUserCallOneParam((DWORD_PTR)ptr, ONEPARAM_ROUTINE_GETDESKTOPMAPPING);
@@ -212,11 +212,11 @@ LPVOID FASTCALL ValidateHandleNoErr(HANDLE hObject, UINT uType)
         return NULL;
     }
 
-    ht = gSharedInfo.aheList; /* handle table */
+    ht = WOW64_CAST_TO_PTR(gSharedInfo.aheList); /* handle table */
     ASSERT(ht);
     /* ReactOS-Specific! */
     ASSERT(gSharedInfo.ulSharedDelta != 0);
-    he = (PUSER_HANDLE_ENTRY)((ULONG_PTR)ht->handles - gSharedInfo.ulSharedDelta);
+    he = (PUSER_HANDLE_ENTRY)WOW64_CAST_TO_PTR((ULONG_PTR)ht->handles - gSharedInfo.ulSharedDelta);
 
     index = (LOWORD(hObject) - FIRST_USER_HANDLE) >> 1;
     if ((INT)index < 0 || ht->nb_handles <= index || he[index].type != uType)
@@ -229,7 +229,7 @@ LPVOID FASTCALL ValidateHandleNoErr(HANDLE hObject, UINT uType)
     if (generation != he[index].generation && generation && generation != 0xFFFF)
         return NULL;
 
-    ptr = he[index].ptr;
+    ptr = WOW64_CAST_TO_PTR(he[index].ptr);
     if (ptr)
         ptr = DesktopPtrToUser(ptr);
 
@@ -257,10 +257,10 @@ BOOL Imm32CheckImcProcess(PIMC pIMC)
     if (IS_NULL_UNEXPECTEDLY(pIMC))
         return FALSE;
 
-    if (pIMC->head.pti == Imm32CurrentPti())
+    if (WOW64_CAST_TO_PTR(pIMC->head.pti) == Imm32CurrentPti())
         return TRUE;
 
-    hIMC = pIMC->head.h;
+    hIMC = WOW64_CAST_TO_PTR(pIMC->head.h);
     dwPID1 = (DWORD)NtUserQueryInputContext(hIMC, QIC_INPUTPROCESSID);
     dwPID2 = (DWORD_PTR)NtCurrentTeb()->ClientId.UniqueProcess;
     if (dwPID1 != dwPID2)

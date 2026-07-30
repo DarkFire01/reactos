@@ -606,23 +606,14 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
             SYSTEM_HANDLE_INFORMATION_EX *info;
             SYSTEM_HANDLE_INFORMATION_EX32 *info32 = ptr;
             ULONG count = (len - offsetof(SYSTEM_HANDLE_INFORMATION_EX32, Handles)) / sizeof(info32->Handles[0]);
-#ifndef __REACTOS__
             ULONG i, size = offsetof( SYSTEM_HANDLE_INFORMATION_EX, Handles[count] );
-#else
-            ULONG i, size = offsetof( SYSTEM_HANDLE_INFORMATION_EX, Handle[count] );
-#endif
 
             if (!ptr) return STATUS_ACCESS_VIOLATION;
             info = Wow64AllocateTemp( size );
             if (!(status = NtQuerySystemInformation( class, info, size, retlen )))
             {
-#ifndef __REACTOS__
                 info32->NumberOfHandles = info->NumberOfHandles;
-#else
-                info32->NumberOfHandles = info->Count;
-#endif
                 info32->Reserved        = info->Reserved;
-#ifndef __REACTOS__
                 for (i = 0; i < info->NumberOfHandles; i++)
                 {
                     info32->Handles[i].Object                = PtrToUlong( info->Handles[i].Object );
@@ -634,27 +625,10 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
                     info32->Handles[i].HandleAttributes      = info->Handles[i].HandleAttributes;
                     info32->Handles[i].Reserved              = info->Handles[i].Reserved;
                 }
-#else
-                for (i = 0; i < info->Count; i++)
-                {
-                    info32->Handles[i].Object                = PtrToUlong( info->Handle[i].Object );
-                    info32->Handles[i].UniqueProcessId       = info->Handle[i].UniqueProcessId;
-                    info32->Handles[i].HandleValue           = info->Handle[i].HandleValue;
-                    info32->Handles[i].GrantedAccess         = info->Handle[i].GrantedAccess;
-                    info32->Handles[i].CreatorBackTraceIndex = info->Handle[i].CreatorBackTraceIndex;
-                    info32->Handles[i].ObjectTypeIndex       = info->Handle[i].ObjectTypeIndex;
-                    info32->Handles[i].HandleAttributes      = info->Handle[i].HandleAttributes;
-                    info32->Handles[i].Reserved              = info->Handle[i].Reserved;
-                }
-#endif
             }
             if (retlen)
             {
-#ifndef __REACTOS__
                 ULONG count = (*retlen - offsetof(SYSTEM_HANDLE_INFORMATION_EX, Handles)) / sizeof(SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX);
-#else
-                ULONG count = (*retlen - offsetof(SYSTEM_HANDLE_INFORMATION_EX, Handle)) / sizeof(SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX);
-#endif
                 *retlen = offsetof( SYSTEM_HANDLE_INFORMATION_EX32, Handles[count] );
             }
             return status;

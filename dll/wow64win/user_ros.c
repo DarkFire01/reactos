@@ -1071,3 +1071,23 @@ wow64_NtGdiGetCharSet(UINT* pArgs)
     
     return NtGdiGetCharSet(hDc);
 }
+
+BOOL
+NTAPI
+wow64_NtUserValidateHandleSecure(UINT* pArgs)
+{
+    HANDLE hObject = get_handle(&pArgs);
+
+    return NtUserValidateHandleSecure(hObject);
+}
+
+DWORD 
+NTAPI
+wow64_NtUserNotifyIMEStatus(UINT *pArgs)
+{
+    HWND hWnd = get_handle(&pArgs);
+    BOOL fOpen = get_ulong(&pArgs);
+    DWORD dwConversion = get_ulong(&pArgs);
+
+    return NtUserNotifyIMEStatus(hWnd, fOpen, dwConversion);
+}

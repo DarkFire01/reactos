@@ -47,6 +47,8 @@
 
 #include <wine/debug.h>
 
+#include "../../../dll/ntdll/wow64/ntdll32.h"
+
 #define ERR_PRINTF(fmt, ...) (__WINE_IS_DEBUG_ON(_ERR, __wine_dbch___default) ? \
     (wine_dbg_printf("err:(%s:%d) " fmt, __RELFILE__, __LINE__, ##__VA_ARGS__), TRUE) : TRUE)
 

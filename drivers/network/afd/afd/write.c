@@ -389,7 +389,7 @@ AfdConnectedSocketWriteDataUdp(PAFD_FCB FCB,
     NTSTATUS Status;
 
     /* Check that the socket is bound */
-    if (FCB->State != SOCKET_STATE_BOUND || !FCB->RemoteAddress)
+    if (FCB->SharedData.State != SOCKET_STATE_BOUND || !FCB->RemoteAddress)
     {
         AFD_DbgPrint(MIN_TRACE,("Invalid parameter\n"));
         return UnlockAndMaybeComplete(FCB, 
@@ -521,7 +521,7 @@ AfdConnectedSocketWriteData(PDEVICE_OBJECT DeviceObject, PIRP Irp,
         SendReq->BufferArray = LockBuffers( SendReq->BufferArray,
                                             SendReq->BufferCount,
                                             NULL, NULL,
-                                            FALSE, FALSE, LockMode );
+                                            FALSE, FALSE, LockMode, FALSE );
 
         if( !SendReq->BufferArray ) {
             return UnlockAndMaybeComplete( FCB, STATUS_ACCESS_VIOLATION,

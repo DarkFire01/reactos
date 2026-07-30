@@ -85,19 +85,19 @@ typedef struct STRUCT(_AFD_LISTEN_DATA)
     BOOLEAN             UseDelayedAcceptance;
 } STRUCT(AFD_LISTEN_DATA), *STRUCT(PAFD_LISTEN_DATA);
 
-typedef struct STRUCT(_AFD_HANDLE)
+typedef struct STRUCT(_AFD_HANDLE_)
 {
-    PTR(SOCKET) Handle;
+    SOCKET      Handle;
     ULONG       Events;
     NTSTATUS    Status;
 } STRUCT(AFD_HANDLE), *STRUCT(PAFD_HANDLE);
 
 typedef struct STRUCT(_AFD_POLL_INFO)
 {
-    LARGE_INTEGER      Timeout;
-    ULONG              HandleCount;
-    PTR(ULONG_PTR)     Exclusive;
-    STRUCT(AFD_HANDLE) Handles[1];
+    LARGE_INTEGER   Timeout;
+    ULONG           HandleCount;
+    PTR(ULONG_PTR)  Exclusive;
+    AFD_HANDLE      Handles[1];
 } STRUCT(AFD_POLL_INFO), *STRUCT(PAFD_POLL_INFO);
 
 typedef struct STRUCT(_AFD_ACCEPT_DATA)
@@ -453,6 +453,7 @@ typedef struct STRUCT(_AFD_SOCKET_INFORMATION)
     SOCKADDR Name;
 } STRUCT(AFD_SOCKET_INFORMATION), *STRUCT(PAFD_SOCKET_INFORMATION);
 
+#if !defined(EXPLICIT_32BIT) && !defined(EXPLICIT_64BIT)
 typedef enum _SOCKET_STATE 
 {
     SocketOpen,
@@ -461,8 +462,9 @@ typedef enum _SOCKET_STATE
     SocketConnected,
     SocketClosed
 } SOCKET_STATE, *PSOCKET_STATE;
+#endif
 
-typedef struct _SOCK_SHARED_INFO 
+typedef struct STRUCT(_SOCK_SHARED_INFO) 
 {
     SOCKET_STATE    State;
     LONG						RefCount;
@@ -500,15 +502,15 @@ typedef struct _SOCK_SHARED_INFO
     DWORD						GroupType;
     INT							GroupPriority;
     INT							SocketLastError;
-    HWND						hWnd;
+    PTR(HWND)				hWnd;
     LONG						Unknown;
     DWORD						SequenceNumber;
     UINT						wMsg;
     LONG						AsyncEvents;
     LONG						AsyncDisabledEvents;
-    SOCKADDR					WSLocalAddress;
-    SOCKADDR					WSRemoteAddress;
-} SOCK_SHARED_INFO, *PSOCK_SHARED_INFO;
+    SOCKADDR				WSLocalAddress;
+    SOCKADDR				WSRemoteAddress;
+} STRUCT(SOCK_SHARED_INFO), *STRUCT(PSOCK_SHARED_INFO);
 
 typedef struct STRUCT(_FILE_REQUEST_BIND)
 {

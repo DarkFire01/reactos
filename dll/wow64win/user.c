@@ -5254,7 +5254,6 @@ NTSTATUS WINAPI wow64_NtUserUnregisterHotKey( UINT *args )
     return NtUserUnregisterHotKey( hwnd, id );
 }
 
-#ifndef __REACTOS__
 NTSTATUS WINAPI wow64_NtUserUpdateInputContext( UINT *args )
 {
     HIMC handle = get_handle( &args );
@@ -5263,7 +5262,6 @@ NTSTATUS WINAPI wow64_NtUserUpdateInputContext( UINT *args )
 
     return NtUserUpdateInputContext( handle, attr, value );
 }
-#endif
 
 NTSTATUS WINAPI wow64_NtUserUpdateLayeredWindow( UINT *args )
 {

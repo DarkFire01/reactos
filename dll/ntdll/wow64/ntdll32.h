@@ -288,6 +288,8 @@ C_ASSERT(sizeof(CONTEXT64) == sizeof(CONTEXT));
 #define NtCurrentPeb64() ((PPEB64)(((ULONG_PTR)NtCurrentPeb()) - ALIGN_UP_BY(sizeof(PEB64), PAGE_SIZE)))
 #define NtCurrentTeb64() ((PTEB64)(((ULONG_PTR)NtCurrentTeb()) - ALIGN_UP_BY(sizeof(TEB64), PAGE_SIZE)))
 
+typedef UINT64 ULONG_PTR_NATIVE;
+
 #else
 
 #define WOW64_READ_PTR_FIELD(Ptr, StructType, Field) (Ptr->Field)
@@ -307,5 +309,7 @@ C_ASSERT(sizeof(CONTEXT64) == sizeof(CONTEXT));
 #define WOW64_CAST_TO_HANDLE(H) (H)
 #define WOW64_CAST_FROM_PTR(Ptr) (Ptr)
 #define WOW64_CAST_FROM_HANDLE(H) (H)
+
+typedef ULONG_PTR ULONG_PTR_NATIVE;
 
 #endif

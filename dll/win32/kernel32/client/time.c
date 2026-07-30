@@ -42,12 +42,7 @@ GetTimeZoneBias(OUT PLARGE_INTEGER pTimeZoneBias)
               &BaseStaticServerData->ktTermsrvClientBias :
               &SharedUserData->TimeZoneBias;
 
-    do
-    {
-        pTimeZoneBias->HighPart = TimePtr->High1Time;
-        pTimeZoneBias->LowPart = TimePtr->LowPart;
-    }
-    while (pTimeZoneBias->HighPart != TimePtr->High2Time);
+    *pTimeZoneBias = KiReadSystemTime(TimePtr);
 #else
     UINT64 TimePtr;
 
@@ -55,7 +50,12 @@ GetTimeZoneBias(OUT PLARGE_INTEGER pTimeZoneBias)
               (BaseStaticServerData + offsetof(BASE_STATIC_SERVER_DATA, ktTermsrvClientBias)) :
               WOW64_CAST_FROM_PTR(&SharedUserData->TimeZoneBias);
 
-    *pTimeZoneBias = KiReadSystemTime(TimePtr);
+    do
+    {
+        pTimeZoneBias->HighPart = (LONG)WOW64_READ_ULONG_FIELD(TimePtr, volatile KSYSTEM_TIME, High1Time);
+        pTimeZoneBias->LowPart = WOW64_READ_ULONG_FIELD(TimePtr, volatile KSYSTEM_TIME, LowPart);
+    }
+    while (pTimeZoneBias->HighPart != (LONG)WOW64_READ_ULONG_FIELD(TimePtr, volatile KSYSTEM_TIME, High2Time));
 #endif
 }
 

@@ -1885,7 +1885,7 @@
 @ cdecl strstr(str str)
 @ cdecl strtol(str ptr long)
 @ cdecl strtoul(str ptr long)
-@ varargs swprintf(ptr wstr)
+@ varargs swprintf(ptr wstr) _swprintf # Non-conforming swprintf
 @ cdecl -arch=i386,x86_64 tan(double)
 @ cdecl tolower(long)
 @ cdecl toupper(long)
