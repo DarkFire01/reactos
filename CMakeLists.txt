@@ -137,7 +137,7 @@ if(MSVC_IDE)
     set(FLEX_EXECUTABLE "${CMAKE_BINARY_DIR}/flex_wrapper.cmd")
 endif()
 
-if(NOT CMAKE_CROSSCOMPILING)
+if(NOT SYSWOW64_BUILD AND NOT CMAKE_CROSSCOMPILING)
     set(TOOLS_FOLDER ${CMAKE_CURRENT_BINARY_DIR})
     add_definitions(-DTARGET_${ARCH})
 
@@ -174,6 +174,18 @@ else()
     # Add host tools target
     include(sdk/cmake/host-tools.cmake)
     setup_host_tools()
+
+    if (NOT SYSWOW64_BUILD)
+        # Add Wow64
+        include(sdk/cmake/wow64.cmake)
+        setup_wow64()
+    else()
+        function(add_wow64_executable)
+        endfunction()
+
+        function(add_wow64_library)
+        endfunction()
+    endif()
 
     # We don't need CMake importlib handling.
     unset(CMAKE_IMPORT_LIBRARY_SUFFIX)

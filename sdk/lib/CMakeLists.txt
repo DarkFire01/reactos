@@ -3,7 +3,7 @@ add_subdirectory(atl)
 add_subdirectory(cmlib)
 add_subdirectory(inflib)
 
-if(CMAKE_CROSSCOMPILING)
+if(CMAKE_CROSSCOMPILING OR SYSWOW64_BUILD)
 
 add_subdirectory(3rdparty)
 add_subdirectory(ansi_sync_hacks)
