@@ -190,6 +190,8 @@ add_compile_options(
     -Wno-format
     -Wno-maybe-uninitialized
     -Wno-nonnull-compare
+    # FIXME
+    -Wno-array-parameter
 )
 
 if(ARCH STREQUAL "arm")

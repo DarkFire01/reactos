@@ -40,8 +40,16 @@ function(setup_wow64)
             message(FATAL "Unable to figure out vcvarsall path")
         endif()
     else()
-        set(WOW64_CMAKE_COMMAND "${CMAKE_COMMAND}")
-        message("Cross-compiling on non-msvc, no special WOW64 cmake command")
+        if(WIN32)
+            set(WOW64_CMAKE_COMMAND "${REACTOS_BINARY_DIR}/wow64/cmake_shim.cmd")
+            file(WRITE ${WOW64_CMAKE_COMMAND}
+                "@call rosbe i386\n" 
+                "\"${CMAKE_COMMAND}\" %*"
+            )
+        else()
+            set(WOW64_CMAKE_COMMAND "${REACTOS_BINARY_DIR}/wow64/cmake_shim.sh")
+            message(FATAL_ERROR "Building WOW64 under RosBE-Unix is not supported yet.")
+        endif()
     endif()
 
     # CMake might choose clang if it finds it in the PATH. Always prefer cl for wow64
@@ -75,6 +83,9 @@ function(setup_wow64)
         CMAKE_ARGS
             -DCMAKE_TOOLCHAIN_FILE:FILEPATH=${WOW64_TOOLCHAIN_FILE}
             -UCMAKE_GENERATOR_PLATFORM
+            -UMINGW_TOOLCHAIN_PREFIX
+            -UMINGW_TOOLCHAIN_SUFFIX
+            -DNO_ROSSYM=1
             -DARCH:STRING=i386
             -DCMAKE_INSTALL_PREFIX=${REACTOS_BINARY_DIR}/wow64
             -DTOOLS_FOLDER=${REACTOS_BINARY_DIR}/host-tools/bin
@@ -84,7 +95,6 @@ function(setup_wow64)
             -DSYSWOW64_BUILD=1
             ${CMAKE_WOW64_TOOLS_EXTRA_ARGS}
         BUILD_ALWAYS TRUE
-        INSTALL_COMMAND ${CMAKE_COMMAND} -E true
         BUILD_BYPRODUCTS ${REACTOS_BINARY_DIR}/wow64/kernel32.dll
         DEPENDS host-tools
         USES_TERMINAL_BUILD TRUE

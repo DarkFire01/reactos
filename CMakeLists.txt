@@ -175,7 +175,7 @@ else()
     include(sdk/cmake/host-tools.cmake)
     setup_host_tools()
 
-    if (NOT SYSWOW64_BUILD)
+    if (ARCH STREQUAL "amd64" AND BUILD_WOW64_ENABLED AND NOT SYSWOW64_BUILD)
         # Add Wow64
         include(sdk/cmake/wow64.cmake)
         setup_wow64()

@@ -12,13 +12,7 @@ set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES ARCH)
 # Choose the right MinGW toolchain prefix
 if(NOT DEFINED MINGW_TOOLCHAIN_PREFIX)
     if(ARCH STREQUAL "i386")
-
-        if(CMAKE_HOST_WIN32)
-            set(MINGW_TOOLCHAIN_PREFIX "" CACHE STRING "MinGW Toolchain Prefix")
-        else()
-            set(MINGW_TOOLCHAIN_PREFIX "i686-w64-mingw32-" CACHE STRING "MinGW-W64 Toolchain Prefix")
-        endif()
-
+        set(MINGW_TOOLCHAIN_PREFIX "i686-w64-mingw32-" CACHE STRING "MinGW-W64 Toolchain Prefix")
     elseif(ARCH STREQUAL "amd64")
         set(MINGW_TOOLCHAIN_PREFIX "x86_64-w64-mingw32-" CACHE STRING "MinGW Toolchain Prefix")
     elseif(ARCH STREQUAL "arm")
