@@ -94,6 +94,25 @@ function(add_link name path)
         VERBATIM)
 endfunction()
 
+function(add_wow64_file_nocab _wow_destination _list)
+    if (_CD_WOW64_DESTINATION)
+        if (_CD_TARGET AND "${item}" STREQUAL "$<TARGET_FILE:${_CD_TARGET}>")
+            get_target_property(_native_dir ${_CD_TARGET} BINARY_DIR)
+            set(_item_name "$<TARGET_FILE_NAME:${_CD_TARGET}>")
+        else()
+            get_filename_component(_native_dir ${item} DIRECTORY)
+            get_filename_component(_item_name ${item} NAME)
+        endif()
+        file(RELATIVE_PATH _relative_dir ${CMAKE_BINARY_DIR} ${_native_dir})
+
+        if ("${_relative_dir}" MATCHES "^\.\.[\\\\\/]+.*")
+            set_property(GLOBAL APPEND PROPERTY ${_list} "${_wow_destination}/${__file}=${_native_dir}/${_item_name}")
+        else()
+            set_property(GLOBAL APPEND PROPERTY ${_list} "${_wow_destination}/${__file}=${CMAKE_BINARY_DIR}/wow64/${_relative_dir}/${_item_name}")
+        endif()
+    endif()
+endfunction()
+
 #
 # WARNING!
 # Please keep the numbering in this list in sync with
@@ -266,7 +285,7 @@ macro(dir_to_num dir var)
 endmacro()
 
 function(add_cd_file)
-    cmake_parse_arguments(_CD "NO_CAB" "DESTINATION;NAME_ON_CD;TARGET" "FILE;FOR" ${ARGN})
+    cmake_parse_arguments(_CD "NO_CAB;NO_WOW64" "DESTINATION;NAME_ON_CD;TARGET" "FILE;FOR" ${ARGN})
     if(NOT (_CD_TARGET OR _CD_FILE))
         message(FATAL_ERROR "You must provide a target or a file to install!")
     endif()
@@ -304,10 +323,12 @@ function(add_cd_file)
         list(APPEND _CD_FOR "bootcd;livecd;regtest")
     endif()
 
-    if (${_CD_DESTINATION} MATCHES "^reactos[\\\\/]+system32([\\\\/]+.*|$)")
+    if (NOT _CD_NO_WOW64 AND "${_CD_DESTINATION}" MATCHES "^reactos[\\\\/]+system32([\\\\/]+.*|$)")
         string(REGEX REPLACE "^reactos([\\\\/]+)system32" "reactos\\1SysWOW64" _CD_WOW64_DESTINATION "${_CD_DESTINATION}")
+        string(REGEX REPLACE "^reactos([\\\\/]+|$)" "${ARCH}\\1" _CD_WOW64_ARCH_DESTINATION "${_CD_WOW64_DESTINATION}")
     else()
         unset(_CD_WOW64_DESTINATION)
+        unset(_CD_WOW64_ARCH_DESTINATION)
     endif()
 
     # do we add it to bootcd?
@@ -327,17 +348,7 @@ function(add_cd_file)
                 endif()
                 set_property(GLOBAL APPEND PROPERTY BOOTCD_FILE_LIST "${_CD_ARCH_DESTINATION}/${__file}=${item}")
                 
-                if (_CD_WOW64_DESTINATION)
-                    if (_CD_TARGET AND "${item}" STREQUAL "$<TARGET_FILE:${_CD_TARGET}>")
-                        get_target_property(_native_dir ${_CD_TARGET} BINARY_DIR)
-                        set(_item_name "$<TARGET_FILE_NAME:${_CD_TARGET}>")
-                    else()
-                        get_filename_component(_native_dir ${item} DIRECTORY)
-                        get_filename_component(_item_name ${item} NAME)
-                    endif()
-                    file(RELATIVE_PATH _relative_dir ${CMAKE_BINARY_DIR} ${_native_dir})
-                    set_property(GLOBAL APPEND PROPERTY BOOTCD_FILE_LIST "${_CD_WOW64_DESTINATION}/${__file}=${CMAKE_BINARY_DIR}/wow64/${_relative_dir}/${_item_name}")
-                endif()
+                add_wow64_file_nocab("${_CD_WOW64_ARCH_DESTINATION}" BOOTCD_FILE_LIST)
             endforeach()
             # manage dependency
             if(_CD_TARGET)
@@ -375,6 +386,8 @@ function(add_cd_file)
                 get_filename_component(__file ${item} NAME)
             endif()
             set_property(GLOBAL APPEND PROPERTY LIVECD_FILE_LIST "${_CD_DESTINATION}/${__file}=${item}")
+
+            add_wow64_file_nocab("${_CD_WOW64_DESTINATION}" LIVECD_FILE_LIST)
         endforeach()
     endif() #end livecd
 
@@ -394,6 +407,8 @@ function(add_cd_file)
                     get_filename_component(__file ${item} NAME)
                 endif()
                 set_property(GLOBAL APPEND PROPERTY BOOTCDREGTEST_FILE_LIST "${_CD_ARCH_DESTINATION}/${__file}=${item}")
+
+                add_wow64_file_nocab("${_CD_WOW64_DESTINATION}" BOOTCDREGTEST_FILE_LIST)
             endforeach()
             # manage dependency
             if(_CD_TARGET)
@@ -908,7 +923,7 @@ function(create_registry_hives)
              ${CMAKE_BINARY_DIR}/boot/bootdata/security
         TARGET livecd_hives
         DESTINATION reactos/system32/config
-        FOR livecd)
+        NO_WOW64 FOR livecd)
 
     # BCD hive (for EFI-compatible platforms)
     if(NOT ARCH STREQUAL "i386" OR NOT (SARCH STREQUAL "pc98" OR SARCH STREQUAL "xbox"))

@@ -97,7 +97,7 @@ function(setup_wow64)
         BUILD_ALWAYS TRUE
         BUILD_BYPRODUCTS ${REACTOS_BINARY_DIR}/wow64/kernel32.dll
         DEPENDS host-tools
-        INSTALL_COMMAND ""
+        INSTALL_COMMAND ${CMAKE_COMMAND} -E true
         USES_TERMINAL_BUILD TRUE
         USES_TERMINAL_CONFIGURE TRUE
     )

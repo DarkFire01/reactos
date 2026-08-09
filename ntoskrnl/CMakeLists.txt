@@ -55,7 +55,7 @@ endif()
 add_importlibs(ntoskrnl hal kdcom bootvid)
 add_pch(ntoskrnl ${REACTOS_SOURCE_DIR}/ntoskrnl/include/ntoskrnl.h "${PCH_SKIP_SOURCE}")
 add_dependencies(ntoskrnl psdk asm)
-add_cd_file(TARGET ntoskrnl DESTINATION reactos/system32 NO_CAB FOR all)
+add_cd_file(TARGET ntoskrnl DESTINATION reactos/system32 NO_CAB NO_WOW64 FOR all)
 
 add_subdirectory(ntkrnlmp)
 

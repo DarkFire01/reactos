@@ -156,7 +156,7 @@ add_custom_target(bootcd
         ${ISO_COMMON_OPTIONS} ${ISO_BOOT_OPTIONS} ${ISO_BOOT_FILES_OPTIONS} ${ISO_LAYOUT_OPTIONS}
         -path-list ${CMAKE_CURRENT_BINARY_DIR}/bootcd.$<CONFIG>.lst
     ${ISO_HYBRID_BOOTCD}
-    DEPENDS ${ISO_HYBRID_DEPENDS} native-mkisofs livecd
+    DEPENDS ${ISO_HYBRID_DEPENDS} native-mkisofs livecd wow64-binaries
     VERBATIM)
 
 ## BootCDRegTest
@@ -168,7 +168,7 @@ add_custom_target(bootcdregtest
         ${ISO_COMMON_OPTIONS} ${ISO_BOOT_OPTIONS_REGTEST} ${ISO_BOOT_FILES_OPTIONS} ${ISO_LAYOUT_OPTIONS}
         -path-list ${CMAKE_CURRENT_BINARY_DIR}/bootcdregtest.$<CONFIG>.lst
     ${ISO_HYBRID_BOOTCDREGTEST}
-    DEPENDS ${ISO_HYBRID_DEPENDS} native-mkisofs
+    DEPENDS ${ISO_HYBRID_DEPENDS} native-mkisofs wow64-binaries
     VERBATIM)
 
 ## LiveImage -- Constitutes a small RAMDISK ISO, and is also merged with the BootCD
@@ -186,7 +186,7 @@ add_custom_target(livecd
     COMMAND native-mkisofs -quiet -o ${REACTOS_BINARY_DIR}/liveimg.iso
         ${ISO_COMMON_OPTIONS} ${ISO_LAYOUT_OPTIONS}
         -path-list ${CMAKE_CURRENT_BINARY_DIR}/livecd.$<CONFIG>.lst
-    DEPENDS native-mkisofs
+    DEPENDS native-mkisofs wow64-binaries
     VERBATIM)
 
 
