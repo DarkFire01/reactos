@@ -40,7 +40,7 @@ function(setup_wow64)
             message(FATAL "Unable to figure out vcvarsall path")
         endif()
     else()
-        if(WIN32)
+        if(CMAKE_HOST_WIN32)
             set(WOW64_CMAKE_COMMAND "${REACTOS_BINARY_DIR}/wow64/cmake_shim.cmd")
             file(WRITE ${WOW64_CMAKE_COMMAND}
                 "@call rosbe i386\n" 
