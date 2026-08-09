@@ -75,6 +75,18 @@ function(setup_wow64)
         set(WOW64_TOOLCHAIN_FILE ${REACTOS_SOURCE_DIR}/toolchain-gcc.cmake)
     endif()
 
+    if (ENABLE_ROSTESTS)
+        list(APPEND CMAKE_WOW64_TOOLS_EXTRA_ARGS
+            -DENABLE_ROSTESTS=${ENABLE_ROSTESTS}
+            )
+    endif()
+
+    if (ENABLE_ROSAPPS)
+        list(APPEND CMAKE_WOW64_TOOLS_EXTRA_ARGS
+            -DENABLE_ROSAPPS={ENABLE_ROSAPPS}
+            )
+    endif()
+
     ExternalProject_Add(wow64-binaries
         SOURCE_DIR ${REACTOS_SOURCE_DIR}
         PREFIX ${REACTOS_BINARY_DIR}/wow64
