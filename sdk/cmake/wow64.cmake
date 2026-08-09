@@ -48,7 +48,12 @@ function(setup_wow64)
             )
         else()
             set(WOW64_CMAKE_COMMAND "${REACTOS_BINARY_DIR}/wow64/cmake_shim.sh")
-            message(FATAL_ERROR "Building WOW64 under RosBE-Unix is not supported yet.")
+            file(WRITE ${WOW64_CMAKE_COMMAND}
+                "#!/bin/bash\n"
+                "source \"$_ROSBE_ROSSCRIPTDIR\"/charch.sh i386\n"
+                "\"${CMAKE_COMMAND}\" \"$@\""
+            )
+            execute_process(COMMAND "chmod" "+x" "${WOW64_CMAKE_COMMAND}")
         endif()
     endif()
 
