@@ -376,7 +376,7 @@ function(add_cd_file)
         list(APPEND _CD_FOR "bootcd;livecd;regtest")
     endif()
 
-    if (NOT _CD_NO_WOW64 AND "${_CD_DESTINATION}" MATCHES "^reactos[\\\\/]+system32([\\\\/]+.*|$)")
+    if (BUILD_WOW64_ENABLED AND NOT _CD_NO_WOW64 AND "${_CD_DESTINATION}" MATCHES "^reactos[\\\\/]+system32([\\\\/]+.*|$)")
         string(REGEX REPLACE "^reactos([\\\\/]+)system32" "reactos\\1SysWOW64" _CD_WOW64_DESTINATION "${_CD_DESTINATION}")
         string(REGEX REPLACE "^reactos([\\\\/]+|$)" "${ARCH}\\1" _CD_WOW64_ARCH_DESTINATION "${_CD_WOW64_DESTINATION}")
     else()
