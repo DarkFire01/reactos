@@ -113,6 +113,35 @@ function(add_wow64_file_nocab _wow_destination _list)
     endif()
 endfunction()
 
+function(add_wow64_file_cab)
+    if (_CD_WOW64_DESTINATION)
+        dir_to_num(${_CD_WOW64_DESTINATION} _wow_num)
+
+        if (_CD_TARGET AND "${item}" STREQUAL "$<TARGET_FILE:${_CD_TARGET}>")
+            get_target_property(_native_dir ${_CD_TARGET} BINARY_DIR)
+            set(_item_name "$<TARGET_FILE_NAME:${_CD_TARGET}>")
+        else()
+            get_filename_component(_native_dir ${item} DIRECTORY)
+            get_filename_component(_item_name ${item} NAME)
+        endif()
+        file(RELATIVE_PATH _relative_dir ${CMAKE_BINARY_DIR} ${_native_dir})
+
+        if ("${_relative_dir}" MATCHES "^\.\.[\\\\\/]+.*")
+            # add it in reactos.cab
+            file(APPEND ${REACTOS_BINARY_DIR}/boot/bootdata/packages/reactos.dff.cmake "\"${_native_dir}/${_item_name}\" ${_wow_num}\n")
+            
+            # manage dependency - file level
+            set_property(GLOBAL APPEND PROPERTY REACTOS_CAB_DEPENDS ${_native_dir}/${_item_name})
+        else()
+            # add it in reactos.cab
+            file(APPEND ${REACTOS_BINARY_DIR}/boot/bootdata/packages/reactos.dff.cmake "\"${CMAKE_BINARY_DIR}/wow64/${_relative_dir}/${_item_name}\" ${_wow_num}\n")
+
+            # manage dependency - file level
+            set_property(GLOBAL APPEND PROPERTY REACTOS_CAB_DEPENDS ${CMAKE_BINARY_DIR}/wow64/${_relative_dir}/${_item_name})
+        endif()
+    endif()
+endfunction()
+
 #
 # WARNING!
 # Please keep the numbering in this list in sync with
@@ -278,6 +307,30 @@ macro(dir_to_num dir var)
 
     elseif(${dir} STREQUAL reactos/SysWOW64)
         set(${var} 82)
+    elseif(${dir} STREQUAL reactos/SysWOW64/wbem)
+        set(${var} 83)
+    elseif(${dir} STREQUAL reactos/SysWOW64/wbem/Repository)
+        set(${var} 84)
+    elseif(${dir} STREQUAL reactos/SysWOW64/wbem/Repository/FS)
+        set(${var} 85)
+    elseif(${dir} STREQUAL reactos/SysWOW64/wbem/mof/good)
+        set(${var} 86)
+    elseif(${dir} STREQUAL reactos/SysWOW64/wbem/mof/bad)
+        set(${var} 87)
+    elseif(${dir} STREQUAL reactos/SysWOW64/wbem/AdStatus)
+        set(${var} 88)
+    elseif(${dir} STREQUAL reactos/SysWOW64/wbem/xml)
+        set(${var} 89)
+    elseif(${dir} STREQUAL reactos/SysWOW64/wbem/Logs)
+        set(${var} 90)
+    elseif(${dir} STREQUAL reactos/SysWOW64/wbem/AutoRecover)
+        set(${var} 91)
+    elseif(${dir} STREQUAL reactos/SysWOW64/wbem/snmp)
+        set(${var} 92)
+    elseif(${dir} STREQUAL reactos/SysWOW64/wbem/Performance)
+        set(${var} 93)
+    elseif(${dir} STREQUAL reactos/SysWOW64/drivers/etc)
+        set(${var} 102)
 
     else()
         message(FATAL_ERROR "Wrong destination: ${dir}")
@@ -347,8 +400,6 @@ function(add_cd_file)
                     get_filename_component(__file ${item} NAME)
                 endif()
                 set_property(GLOBAL APPEND PROPERTY BOOTCD_FILE_LIST "${_CD_ARCH_DESTINATION}/${__file}=${item}")
-                
-                add_wow64_file_nocab("${_CD_WOW64_ARCH_DESTINATION}" BOOTCD_FILE_LIST)
             endforeach()
             # manage dependency
             if(_CD_TARGET)
@@ -369,6 +420,11 @@ function(add_cd_file)
                 add_dependencies(reactos_cab_inf ${_CD_TARGET})
             endif()
         endif()
+
+        foreach(item ${_CD_FILE})
+            add_wow64_file_cab()
+        endforeach()
+
     endif() #end bootcd
 
     # do we add it to livecd?

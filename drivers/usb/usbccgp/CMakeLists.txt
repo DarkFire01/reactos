@@ -28,4 +28,4 @@ target_compile_definitions(usbccgp
 target_link_libraries(usbccgp ${PSEH_LIB})
 set_module_type(usbccgp kernelmodedriver)
 add_importlibs(usbccgp ntoskrnl hal usbd)
-add_cd_file(TARGET usbccgp DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_cd_file(TARGET usbccgp DESTINATION reactos/system32/drivers NO_WOW64 NO_CAB FOR all)

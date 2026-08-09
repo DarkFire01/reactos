@@ -14,6 +14,6 @@ else()
 endif()
 
 add_importlibs(pciide pciidex ntoskrnl)
-add_cd_file(TARGET pciide DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_cd_file(TARGET pciide DESTINATION reactos/system32/drivers NO_WOW64 NO_CAB FOR all)
 endif()
 add_registry_inf(pciide_reg.inf)

@@ -116,5 +116,5 @@ add_definitions(-D__KERNEL__ -D_CRT_NO_POSIX_ERROR_CODES -D_CRT_DECLARE_NONSTDC_
 set_module_type(ext2fs kernelmodedriver)
 add_importlibs(ext2fs ntoskrnl hal)
 
-add_cd_file(TARGET ext2fs DESTINATION reactos/system32/drivers FOR all)
+add_cd_file(TARGET ext2fs DESTINATION reactos/system32/drivers NO_WOW64 FOR all)
 add_registry_inf(ext2fs_reg.inf)

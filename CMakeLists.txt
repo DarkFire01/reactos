@@ -180,6 +180,9 @@ else()
         include(sdk/cmake/wow64.cmake)
         setup_wow64()
     else()
+        # Dummy Wow64 target
+        add_custom_target(wow64-binaries)
+
         function(add_wow64_executable)
         endfunction()
 

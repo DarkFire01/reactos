@@ -16,4 +16,4 @@ add_library(cmbatt MODULE
 set_module_type(cmbatt kernelmodedriver)
 add_importlibs(cmbatt ntoskrnl hal battc wmilib)
 add_pch(cmbatt cmbatt.h "${PCH_SKIP_SOURCE}")
-add_cd_file(TARGET cmbatt DESTINATION reactos/system32/drivers FOR all)
+add_cd_file(TARGET cmbatt DESTINATION reactos/system32/drivers NO_WOW64 FOR all)

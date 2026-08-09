@@ -7,4 +7,4 @@ add_library(cmicpl MODULE
 add_dependencies(cmicpl psdk)
 set_module_type(cmicpl cpl UNICODE)
 add_importlibs(cmicpl shell32 msvcrt kernel32)
-add_cd_file(TARGET cmicpl DESTINATION reactos/system32/drivers FOR all)
+add_cd_file(TARGET cmicpl DESTINATION reactos/system32/drivers NO_WOW64 FOR all)

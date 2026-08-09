@@ -9,4 +9,4 @@ list(APPEND SOURCE
 add_library(wmilib MODULE ${SOURCE})
 set_module_type(wmilib kernelmodedriver ENTRYPOINT 0)
 add_importlibs(wmilib ntoskrnl)
-add_cd_file(TARGET wmilib DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_cd_file(TARGET wmilib DESTINATION reactos/system32/drivers NO_WOW64 NO_CAB FOR all)

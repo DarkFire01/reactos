@@ -14,7 +14,7 @@ add_pch(pc98vid pc98vid.h SOURCE)
 add_importlibs(pc98vid ntoskrnl videoprt)
 
 if(SARCH STREQUAL "pc98")
-    add_cd_file(TARGET pc98vid DESTINATION reactos/system32/drivers FOR all)
+    add_cd_file(TARGET pc98vid DESTINATION reactos/system32/drivers NO_WOW64 FOR all)
     add_registry_inf(pc98vid_reg.inf)
     add_driver_inf(pc98vid pc98disp.inf)
 endif()

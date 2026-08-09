@@ -24,4 +24,4 @@ add_library(serial MODULE
 set_module_type(serial kernelmodedriver)
 add_importlibs(serial ntoskrnl hal)
 add_pch(serial serial.h "${PCH_SKIP_SOURCE}")
-add_cd_file(TARGET serial DESTINATION reactos/system32/drivers FOR all)
+add_cd_file(TARGET serial DESTINATION reactos/system32/drivers NO_WOW64 FOR all)

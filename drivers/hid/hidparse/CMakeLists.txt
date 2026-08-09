@@ -6,4 +6,4 @@ add_library(hidparse MODULE hidparse.c hidparse.rc ${CMAKE_CURRENT_BINARY_DIR}/h
 set_module_type(hidparse kernelmodedriver)
 add_importlibs(hidparse ntoskrnl)
 target_link_libraries(hidparse hidparser_km)
-add_cd_file(TARGET hidparse DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_cd_file(TARGET hidparse DESTINATION reactos/system32/drivers NO_WOW64 NO_CAB FOR all)

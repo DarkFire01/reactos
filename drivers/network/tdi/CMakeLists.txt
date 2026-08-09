@@ -25,4 +25,4 @@ add_library(tdi MODULE
 add_pch(tdi precomp.h SOURCE)
 set_module_type(tdi kernelmodedriver)
 add_importlibs(tdi ntoskrnl hal)
-add_cd_file(TARGET tdi DESTINATION reactos/system32/drivers FOR all)
+add_cd_file(TARGET tdi DESTINATION reactos/system32/drivers NO_WOW64 FOR all)

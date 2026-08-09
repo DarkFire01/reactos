@@ -40,7 +40,7 @@ endif()
 set_module_type(uniata kernelmodedriver)
 target_compile_definitions(uniata PRIVATE _CRT_NON_CONFORMING_SWPRINTFS)
 add_importlibs(uniata scsiport ntoskrnl hal)
-add_cd_file(TARGET uniata DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_cd_file(TARGET uniata DESTINATION reactos/system32/drivers NO_WOW64 NO_CAB FOR all)
 # add_registry_inf(uniata_reg.inf)
 add_driver_inf(uniata uniata_comm.inf)
 

@@ -17,4 +17,4 @@ target_compile_definitions(usbehci
 set_module_type(usbehci kernelmodedriver)
 add_importlibs(usbehci usbport usbd hal ntoskrnl)
 add_pch(usbehci usbehci.h SOURCE)
-add_cd_file(TARGET usbehci DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_cd_file(TARGET usbehci DESTINATION reactos/system32/drivers NO_WOW64 NO_CAB FOR all)

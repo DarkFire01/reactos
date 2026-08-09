@@ -71,7 +71,7 @@ add_library(acpi MODULE
 set_module_type(acpi kernelmodedriver)
 target_link_libraries(acpi uacpi arbiter ntoskrnl_vista wdmguid memcmp ${PSEH_LIB})
 add_importlibs(acpi wmilib ntoskrnl hal)
-add_cd_file(TARGET acpi DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_cd_file(TARGET acpi DESTINATION reactos/system32/drivers NO_WOW64 NO_CAB FOR all)
 
 set_target_properties(uacpi acpi PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
 

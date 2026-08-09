@@ -10,4 +10,4 @@ list(APPEND SOURCE
 add_library(drmk MODULE ${SOURCE})
 set_module_type(drmk kernelmodedriver ENTRYPOINT 0)
 add_importlibs(drmk ntoskrnl)
-add_cd_file(TARGET drmk DESTINATION reactos/system32/drivers FOR all)
+add_cd_file(TARGET drmk DESTINATION reactos/system32/drivers NO_WOW64 FOR all)

@@ -22,5 +22,5 @@ if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
     target_compile_options(nfs41_driver PRIVATE "-Wno-unused-value")
 endif()
 
-add_cd_file(TARGET nfs41_driver DESTINATION reactos/system32/drivers FOR all)
+add_cd_file(TARGET nfs41_driver DESTINATION reactos/system32/drivers NO_WOW64 FOR all)
 add_registry_inf(nfs41_reg.inf)
