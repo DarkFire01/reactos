@@ -46,12 +46,6 @@ function(add_d3dx9_target VERSION)
         ${_srcdir}
         ${CMAKE_CURRENT_BINARY_DIR})
 
-    if(MSVC)
-        # effect.c's SET_D3D_STATE forwards __VA_ARGS__ from one variadic macro
-        # into another.
-        target_compile_options(${_target} PRIVATE /Zc:preprocessor)
-    endif()
-
     set_module_type(${_target} win32dll)
     target_link_libraries(${_target} wine dxguid uuid oldnames)
     add_importlibs(${_target}
