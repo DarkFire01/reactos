@@ -136,7 +136,7 @@ Zw\Name:
 SyscallId = 0
 
 #ifdef _M_IX86
-#ifdef _WOW64
+#ifdef BUILD_WOW6432
 #define KUSER_SHARED_SYSCALL HEX(7ffe0300)
 MACRO(STUBCODE_U, Name, SyscallId, ArgCount)
 LOCAL x, x2, x3
@@ -151,29 +151,29 @@ LOCAL x, x2, x3
     push ebp
     mov ebp, esp
     
-    ; Align the stack, and allocate shadow space for the x64 calling convention
-    sub esp, 48
-    and esp, 0FFFFFFF0h
+    /* Align the stack, and allocate shadow space for the x64 calling convention */
+    sub esp, HEX(48)
+    and esp, HEX(FFFFFFF0)
     
     push 0
     push ebp
     
-    ljmp 33h, x
+    ljmp HEX(33), x
 x:
-    ; pop rdx
-    db 5ah
+    /* pop rdx */
+    .byte HEX(5a)
 
-    ; add rdx, 16
-    db 48h
-    db 83h
-    db 0c2h
-    db 10h
+    /* add rdx, 16 */
+    .byte HEX(48)
+    .byte HEX(83)
+    .byte HEX(c2)
+    .byte HEX(10)
     
     call x3
     
-    push 23h
+    push HEX(23)
     push x2
-    db 48h
+    .byte HEX(48)
     retf
 x2:
     mov esp, ebp
@@ -184,10 +184,10 @@ x2:
     
     ret StackBytes
 x3:
-    dd 25048b64h
-    dd 000000c0h
-    db 50h
-    db 0c3h
+    .long HEX(25048b64)
+    .long HEX(000000c0)
+    .byte HEX(50)
+    .byte HEX(c3)
 ENDM
 MACRO(STUBCODE_K, Name, SyscallId, ArgCount)
     int 3
