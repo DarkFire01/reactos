@@ -129,15 +129,9 @@ function(add_wow64_file_cab)
         if ("${_relative_dir}" MATCHES "^\.\.[\\\\\/]+.*")
             # add it in reactos.cab
             file(APPEND ${REACTOS_BINARY_DIR}/boot/bootdata/packages/reactos.dff.cmake "\"${_native_dir}/${_item_name}\" ${_wow_num}\n")
-            
-            # manage dependency - file level
-            set_property(GLOBAL APPEND PROPERTY REACTOS_CAB_DEPENDS ${_native_dir}/${_item_name})
         else()
             # add it in reactos.cab
             file(APPEND ${REACTOS_BINARY_DIR}/boot/bootdata/packages/reactos.dff.cmake "\"${CMAKE_BINARY_DIR}/wow64/${_relative_dir}/${_item_name}\" ${_wow_num}\n")
-
-            # manage dependency - file level
-            set_property(GLOBAL APPEND PROPERTY REACTOS_CAB_DEPENDS ${CMAKE_BINARY_DIR}/wow64/${_relative_dir}/${_item_name})
         endif()
     endif()
 endfunction()
@@ -500,6 +494,10 @@ function(create_iso_lists)
 
     add_custom_target(reactos_cab DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/reactos.cab)
     add_dependencies(reactos_cab reactos_cab_inf)
+
+    if (BUILD_WOW64_ENABLED)
+        add_dependencies(reactos_cab wow64-binaries)
+    endif()
 
     # Add reactos.cab into the BootCD
     add_cd_file(

@@ -22,7 +22,7 @@
 #pragma once
 
 /* FIXME: for now, the WOW64 directory path is hardcoded. */
-#define TMP_WOW_DIR L"D:"
+#define TMP_WOW_DIR L"C:\\ReactOS\\SysWOW64"
 
 #define WIN32_NO_STATUS
 #include <Windows.h>

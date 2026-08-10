@@ -258,7 +258,7 @@ add_pch(win32k pch.h SOURCE)
     endif()
 
     add_importlibs(win32k ntoskrnl hal ftfd)
-    add_cd_file(TARGET win32k DESTINATION reactos/system32 FOR all)
+    add_cd_file(TARGET win32k DESTINATION reactos/system32 NO_WOW64 FOR all)
 endif()
 
 if(ARCH STREQUAL "amd64")
