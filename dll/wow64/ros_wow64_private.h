@@ -25,7 +25,7 @@
 #define TMP_WOW_DIR L"C:\\ReactOS\\SysWOW64"
 
 #define WIN32_NO_STATUS
-#include <Windows.h>
+#include <windows.h>
 #include <stdio.h>
 #include <assert.h>
 #include <ntndk.h>
