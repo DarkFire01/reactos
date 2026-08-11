@@ -1,3 +1,5 @@
+#include <asm.inc>
+
 .code
 
 PUBLIC __readfsdword
@@ -27,14 +29,14 @@ EnterApc32:
     lea rcx, [return32]
     mov [rsp + 16], rcx
     
-    db 48h
+    .byte HEX(48)
     retf
 return32:
     call l
 l:
     pop rax
     add eax, return64 - l
-    push 33h
+    push HEX(33)
     push rax
     retf
 return64:
@@ -47,4 +49,21 @@ SetupFs:
     mov fs, rcx
     ret
     
+PUBLIC FarReturn32
+FarReturn32:
+    .byte HEX(CB) /* retf */
+
+PUBLIC FarReturn64
+FarReturn64:
+    .byte HEX(48) /* REX.W */
+    .byte HEX(CB) /* retf */
+
+PUBLIC Enter32
+Enter32:
+    .byte HEX(48) /* mov rsp, rcx */
+    .byte HEX(89)
+    .byte HEX(CC)
+    .byte HEX(48) /* REX.W */
+    .byte HEX(CB) /* retf*/
+
 END

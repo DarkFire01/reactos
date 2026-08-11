@@ -1,7 +1,7 @@
 add_definitions(-D_WOW64_)
 spec2def(wow64.dll def/wow64.spec ADD_IMPORTLIB)
 
-add_asm_files(wow64_asm srasm.S exception.S)
+add_asm_files(wow64_asm srasm.S)
 add_library(wow64 MODULE
     entrypoint.c
     exception.c
@@ -29,5 +29,6 @@ set_subsystem(wow64 console)
 # FIXME: force a base address below 4 GiB, this one was chosen arbitrarily
 set_image_base(wow64 0xFF000000)
 add_importlibs(wow64 ntdll)
+add_dependencies(wow64 psdk)
 
 add_cd_file(TARGET wow64 DESTINATION reactos/system32 NO_WOW64 FOR all)

@@ -12,8 +12,7 @@
 #define _NTGDIHDL_
 
 #include <winddi.h>
-
-#include "../../dll/ntdll/wow64/ntdll32.h"
+#include <wow64.h>
 
 /* DEFINES *******************************************************************/
 

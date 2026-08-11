@@ -750,7 +750,6 @@ wow64_NtContinue(UINT *pArgs)
     return NtContinue(&Context, bRasieAlert);
 }
 
-static
 NTSTATUS
 NTAPI
 wow64_NtCreateThread(UINT* pArgs)
@@ -1054,10 +1053,12 @@ wow64_NtQueryInformationThread(UINT* pArgs)
                                             pThreadInfo32,
                                             uInfoLength32,
                                             pRetLen32);
+        default:
+            break;
         /* TODO */
     }
 
-    DPRINT1("Invalid class %X given to " __FUNCTION__ ", investigate. \n", InfoClass);
+    DPRINT1("Invalid class %X given to %s, investigate. \n", InfoClass, __FUNCTION__);
     return STATUS_INVALID_INFO_CLASS;
 }
 
@@ -1253,8 +1254,9 @@ Wow64Trampoline(PCONTEXT pContext)
     }
     _SEH2_EXCEPT(Wow64UnhandledExceptionHandler(_SEH2_GetExceptionInformation()))
     {
-        
+         
     }
+    _SEH2_END;
 
     Wow64CopyContext32To64(pContext, &EnterApc32Stack.Context32);
     return STATUS_SUCCESS;

@@ -61,33 +61,12 @@ static USHORT native_machine = IMAGE_FILE_MACHINE_AMD64;
 
 #define WINE_WOW_IMPL_CASE(name) case Num ## name: {\
     NTSTATUS WINAPI wow64_Nt ## name (UINT* pArgs); \
-    status = wow64_Nt ## name (pArgs); \
+    status = wow64_Nt ## name ((UINT*)(PVOID)pArgs); \
     break; }
 
 unsigned long __readfsdword(unsigned long);
 
-#pragma section(".text")
-
-__declspec(allocate(".text"))
-static unsigned char FarReturn64Impl[] = 
-{
-    0x48, /* REX.W */
-    0xCB  /* retf*/
-};
-
-__declspec(allocate(".text"))
-static unsigned char FarReturn32Impl[] =
-{
-    0xCB  /* retf */
-};
-
-__declspec(allocate(".text"))
-static unsigned char Enter32Impl[] =
-{
-    0x48, 0x89, 0xCC, /* mov rsp, rcx */
-    0x48,             /* REX.W */
-    0xCB              /* retf*/
-};
+C_ASSERT(sizeof(ULONG) == sizeof(UINT));
 
 NTSTATUS 
 WINAPI 
@@ -133,9 +112,9 @@ CallOrJump32(ULONG Address, ULONG nArgc, PULONG Args, BOOL bJump)
         ULONG SegCs64;
     };        
     
-    typedef ULONG_PTR(*Enter32ImplType)(struct Enter32* enter);
+    ULONG_PTR Enter32(struct Enter32* enter);
+    VOID FarReturn32();
     
-    Enter32ImplType pfnEnter32 = (Enter32ImplType)Enter32Impl;
     struct Leave32* leave;
     struct Enter32* enter;
     
@@ -153,7 +132,7 @@ CallOrJump32(ULONG Address, ULONG nArgc, PULONG Args, BOOL bJump)
     
     if (!bJump)
     {
-        enter->FarReturn32 = PtrToUlong(FarReturn32Impl);
+        enter->FarReturn32 = PtrToUlong(FarReturn32);
     }
     
     for (int i = 0; i < nArgc + bJump; i++)
@@ -167,7 +146,7 @@ CallOrJump32(ULONG Address, ULONG nArgc, PULONG Args, BOOL bJump)
     leave->Rip64 = PtrToUlong(_ReturnAddress());
     leave->SegCs64 = 0x33;
     
-    pfnEnter32(enter);
+    Enter32(enter);
     
     /* We should never get here. */
     ASSERT(FALSE);
@@ -175,12 +154,12 @@ CallOrJump32(ULONG Address, ULONG nArgc, PULONG Args, BOOL bJump)
 #undef MAX_ARGS
 }
 
-static inline Call32(ULONG Addr, ULONG nArgc, PULONG Args)
+static inline ULONG_PTR Call32(ULONG Addr, ULONG nArgc, PULONG Args)
 {
     return CallOrJump32(Addr, nArgc, Args, FALSE);
 }
 
-static inline Jump32(ULONG Addr, ULONG nArgc, PULONG Args)
+static inline ULONG_PTR Jump32(ULONG Addr, ULONG nArgc, PULONG Args)
 {
     return CallOrJump32(Addr, nArgc, Args, TRUE);
 }
@@ -511,7 +490,8 @@ static void put_vm_counters( VM_COUNTERS_EX32 *info32, const VM_COUNTERS_EX *inf
     if (size == sizeof(VM_COUNTERS_EX32)) info32->PrivateUsage = info->PrivateUsage;
 }
 
-static 
+static
+inline 
 PPORT_VIEW 
 PortView32To64(PPORT_VIEW portView64, 
                PPORT_VIEW32 portView32)
@@ -527,6 +507,7 @@ PortView32To64(PPORT_VIEW portView64,
 }
 
 static 
+inline
 PREMOTE_PORT_VIEW 
 RemotePortView32To64(PREMOTE_PORT_VIEW portView64,
                      PREMOTE_PORT_VIEW32 portView32)
@@ -539,6 +520,7 @@ RemotePortView32To64(PREMOTE_PORT_VIEW portView64,
 }
 
 static 
+inline
 PPORT_VIEW32 
 PortView64To32(PPORT_VIEW32 portView32, 
                PPORT_VIEW portView64)
@@ -554,6 +536,7 @@ PortView64To32(PPORT_VIEW32 portView32,
 }
 
 static 
+inline
 PREMOTE_PORT_VIEW32 
 RemotePortView64To32(PREMOTE_PORT_VIEW32 portView32, 
                      PREMOTE_PORT_VIEW portView64)
