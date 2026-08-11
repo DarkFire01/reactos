@@ -11,6 +11,8 @@
 
 #pragma once
 
+#include <wow64.h>
+
 typedef
 BOOL
 (NTAPI *BASE_PROCESS_CREATE_NOTIFY_ROUTINE)(

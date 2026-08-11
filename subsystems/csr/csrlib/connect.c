@@ -20,7 +20,7 @@
 #include <csrsrv.h> // For CSR_CSRSS_SECTION_SIZE
 
 #ifdef BUILD_WOW6432
-#include "../../dll/ntdll/wow64/ntdll32.h"
+#include <wow64.h>
 #endif
 
 #define NDEBUG
@@ -104,7 +104,7 @@ CsrpConnectToServer(
 
     /* Set up the port view structures to match them with the section */
     LpcWrite.Length = sizeof(LpcWrite);
-    LpcWrite.SectionHandle = (LPC_HANDLE)(ULONG_PTR)CsrSectionHandle;
+    LpcWrite.SectionHandle = TO_LPC_HANDLE(CsrSectionHandle);
     LpcWrite.SectionOffset = 0;
     LpcWrite.ViewSize = CsrSectionViewSize.u.LowPart;
     LpcWrite.ViewBase = 0;
@@ -168,17 +168,11 @@ CsrpConnectToServer(
     CsrProcessId = (HANDLE)ConnectionInfo.ServerProcessId;
 
     /* Save CSR Section data */
-#ifndef BUILD_WOW6432
     NtCurrentPeb()->ReadOnlySharedMemoryBase = (PVOID)ConnectionInfo.SharedSectionBase;
 #if (NTDDI_VERSION < NTDDI_LONGHORN)
     NtCurrentPeb()->ReadOnlySharedMemoryHeap = (PVOID)ConnectionInfo.SharedSectionHeap;
 #endif
     NtCurrentPeb()->ReadOnlyStaticServerData = (PVOID)ConnectionInfo.SharedStaticServerData;
-#else
-    NtCurrentPeb64()->ReadOnlySharedMemoryBase = ConnectionInfo.SharedSectionBase;
-    NtCurrentPeb64()->ReadOnlySharedMemoryHeap = ConnectionInfo.SharedSectionHeap;
-    NtCurrentPeb64()->ReadOnlyStaticServerData = ConnectionInfo.SharedStaticServerData;
-#endif
 
     /* Create the port heap */
     CsrPortHeap = RtlCreateHeap(0,
@@ -308,10 +302,10 @@ CsrClientConnectToServer(
         }
 
         /* Capture the connection info data */
-        CsrCaptureMessageBufferNative(CaptureBuffer,
-                                      ConnectionInfo,
-                                      ClientConnect->ConnectionInfoSize,
-                                      &ClientConnect->ConnectionInfo);
+        CsrCaptureMessageBuffer(CaptureBuffer,
+                                ConnectionInfo,
+                                ClientConnect->ConnectionInfoSize,
+                                &ClientConnect->ConnectionInfo);
 
         /* Return the allocated length */
         *ConnectionInfoSize = ClientConnect->ConnectionInfoSize;

@@ -12,6 +12,8 @@ add_library(wow64 MODULE
     entrypoint.c
     exception.c
     wow64.c
+    lpc.c
+    service.cpp
     wine/registry.c
     wine/struct32.h
     wine/file.c
@@ -20,6 +22,7 @@ add_library(wow64 MODULE
     wine/syscall.c
     wine/sync.c
     wine/virtual.c
+    csr.c
     ros_wow64_private.h
     entrypoint.h
     ${CMAKE_CURRENT_BINARY_DIR}/wow64.def

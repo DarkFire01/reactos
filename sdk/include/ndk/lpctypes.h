@@ -19,10 +19,6 @@ Author:
 #ifndef _LPCTYPES_H
 #define _LPCTYPES_H
 
-#if defined(BUILD_WOW6432) && defined(_M_IX86)
-#define USE_LPC6432
-#endif
-
 //
 // Dependencies
 //
@@ -111,36 +107,28 @@ typedef enum _PORT_INFORMATION_CLASS
 //
 // Portable LPC Types for 32/64-bit compatibility
 //
-#ifdef USE_LPC6432
+typedef struct _CLIENT_ID32
+{
+    ULONG UniqueProcess;
+    ULONG UniqueThread;
+} CLIENT_ID32, *PCLIENT_ID32;
 
+typedef struct _CLIENT_ID64
+{
+    ULONG64 UniqueProcess;
+    ULONG64 UniqueThread;
+} CLIENT_ID64, *PCLIENT_ID64;
+
+#if defined(USE_LPC6432)
+#define LPC_CLIENT_ID CLIENT_ID64
 #define LPC_SIZE_T ULONGLONG
 #define LPC_PVOID ULONGLONG
 #define LPC_HANDLE ULONGLONG
-#define LPC_ULONG_PTR ULONGLONG
-typedef struct
-{
-    LPC_HANDLE UniqueProcess;
-    LPC_HANDLE UniqueThread; 
-} LPC_CLIENT_ID;
-#define LPC_UNICODE_STRING UNICODE_STRING64
-#define LPC_PTR(x) LPC_PVOID
-#define LPC_PTRTYPE(x) LPC_PVOID
-#define TO_LPC_HANDLE(h) ((LPC_HANDLE)(h))
-#define FROM_LPC_HANDLE(h) ((HANDLE)(h))
-
 #else
-    
 #define LPC_CLIENT_ID CLIENT_ID
 #define LPC_SIZE_T SIZE_T
 #define LPC_PVOID PVOID
 #define LPC_HANDLE HANDLE
-#define LPC_ULONG_PTR ULONG_PTR
-#define LPC_UNICODE_STRING UNICODE_STRING
-#define LPC_PTR(x) x*
-#define LPC_PTRTYPE(x) x
-#define TO_LPC_HANDLE(h) h
-#define FROM_LPC_HANDLE(h) h
-
 #endif
 
 //

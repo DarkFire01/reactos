@@ -791,6 +791,7 @@ typedef struct _TEB_ACTIVE_FRAME_EX
 } TEB_ACTIVE_FRAME_EX, *PTEB_ACTIVE_FRAME_EX;
 typedef const struct _TEB_ACTIVE_FRAME_EX *PCTEB_ACTIVE_FRAME_EX;
 
+#ifndef __REACTOS__
 typedef struct _CLIENT_ID32
 {
     ULONG UniqueProcess;
@@ -802,6 +803,7 @@ typedef struct _CLIENT_ID64
     ULONG64 UniqueProcess;
     ULONG64 UniqueThread;
 } CLIENT_ID64, *PCLIENT_ID64;
+#endif
 
 #if (NTDDI_VERSION < NTDDI_WS03)
 typedef struct _Wx86ThreadState

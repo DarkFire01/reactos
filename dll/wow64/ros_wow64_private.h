@@ -21,6 +21,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 #define WIN32_NO_STATUS
 #include <windows.h>
@@ -58,11 +62,6 @@ extern PVOID NtDll32KiUserExceptionDispatcher;
 static ULONG_PTR args_alignment = 4;
 static USHORT current_machine = IMAGE_FILE_MACHINE_I386;
 static USHORT native_machine = IMAGE_FILE_MACHINE_AMD64;
-
-#define WINE_WOW_IMPL_CASE(name) case Num ## name: {\
-    NTSTATUS WINAPI wow64_Nt ## name (UINT* pArgs); \
-    status = wow64_Nt ## name ((UINT*)(PVOID)pArgs); \
-    break; }
 
 unsigned long __readfsdword(unsigned long);
 
@@ -277,6 +276,7 @@ static inline SIZE_T *size_32to64( SIZE_T *size, ULONG *size32 )
     return size;
 }
 
+#ifndef __cplusplus
 static inline UNICODE_STRING *unicode_str_32to64( UNICODE_STRING *str, const UNICODE_STRING32 *str32 )
 {
     if (!str32) return NULL;
@@ -381,6 +381,7 @@ static inline void put_handle( ULONG *handle32, HANDLE handle )
 {
     *handle32 = HandleToULong( handle );
 }
+#endif
 
 static inline void put_addr( ULONG *addr32, void *addr )
 {
@@ -486,3 +487,7 @@ Wow64CopyContext32To64(PCONTEXT pContext,
 VOID
 Wow64CopyContext64To32(PI386_CONTEXT pContext32,
                        PCONTEXT pContext);
+
+#ifdef __cplusplus
+}
+#endif

@@ -27,21 +27,38 @@
 @ stdcall -stub -version=0x600+ AlpcRegisterCompletionListWorkerThread(ptr)
 @ stdcall -stub -version=0x600+ AlpcUnregisterCompletionList(ptr)
 @ stdcall -stub -version=0x600+ AlpcUnregisterCompletionListWorkerThread(ptr)
-@ stdcall CsrAllocateCaptureBuffer(long long)
-@ stdcall CsrAllocateMessagePointer(ptr long ptr)
-@ stdcall CsrCaptureMessageBuffer(ptr ptr long ptr)
-@ stdcall CsrCaptureMessageMultiUnicodeStringsInPlace(ptr long ptr)
-@ stdcall CsrCaptureMessageString(ptr str long long ptr)
-@ stdcall CsrCaptureTimeout(long ptr)
-@ stdcall CsrClientCallServer(ptr ptr long long)
-@ stdcall CsrClientConnectToServer(str long ptr ptr ptr)
-@ stdcall CsrFreeCaptureBuffer(ptr)
-@ stdcall CsrGetProcessId()
-@ stdcall CsrIdentifyAlertableThread()
-@ stdcall -version=0x502+ CsrNewThread() # Should be only 0x502, but we need it for now
-@ stdcall -version=0x502 CsrProbeForRead(ptr long long)
-@ stdcall -version=0x502 CsrProbeForWrite(ptr long long)
-@ stdcall CsrSetPriorityClass(ptr ptr)
+
+@ stdcall -nowow64 CsrAllocateCaptureBuffer(long long)
+@ stdcall -wow64 CsrAllocateCaptureBuffer(long long) NtWow64CsrAllocateCaptureBuffer
+@ stdcall -nowow64 CsrAllocateMessagePointer(ptr long ptr)
+@ stdcall -wow64 CsrAllocateMessagePointer(ptr long ptr) NtWow64CsrAllocateMessagePointer
+@ stdcall -nowow64 CsrCaptureMessageBuffer(ptr ptr long ptr)
+@ stdcall -wow64 CsrCaptureMessageBuffer(ptr ptr long ptr) NtWow64CsrCaptureMessageBuffer
+@ stdcall -nowow64 CsrCaptureMessageMultiUnicodeStringsInPlace(ptr long ptr)
+@ stdcall -wow64 CsrCaptureMessageMultiUnicodeStringsInPlace(ptr long ptr) NtWow64CsrCaptureMessageMultiUnicodeStringsInPlace
+@ stdcall -nowow64 CsrCaptureMessageString(ptr str long long ptr)
+@ stdcall -wow64 CsrCaptureMessageString(ptr str long long ptr) NtWow64CsrCaptureMessageString
+@ stdcall -nowow64 CsrCaptureTimeout(long ptr)
+@ stdcall -wow64 CsrCaptureTimeout(long ptr) NtWow64CsrCaptureTimeout
+@ stdcall -nowow64 CsrClientCallServer(ptr ptr long long)
+@ stdcall -wow64 CsrClientCallServer(ptr ptr long long) NtWow64CsrClientCallServer
+@ stdcall -nowow64 CsrClientConnectToServer(str long ptr ptr ptr)
+@ stdcall -wow64 CsrClientConnectToServer(str long ptr ptr ptr) NtWow64CsrClientConnectToServer
+@ stdcall -nowow64 CsrFreeCaptureBuffer(ptr)
+@ stdcall -wow64 CsrFreeCaptureBuffer(ptr) NtWow64CsrFreeCaptureBuffer
+@ stdcall -nowow64 CsrGetProcessId()
+@ stdcall -wow64 CsrGetProcessId() NtWow64CsrGetProcessId
+@ stdcall -nowow64 CsrIdentifyAlertableThread()
+@ stdcall -wow64 CsrIdentifyAlertableThread() NtWow64CsrIdentifyAlertableThread
+@ stdcall -nowow64 -version=0x502+ CsrNewThread() # Should be only 0x502, but we need it for now
+@ stdcall -wow64 -version=0x502+ CsrNewThread() NtWow64CsrNewThread
+@ stdcall -nowow64 -version=0x502 CsrProbeForRead(ptr long long)
+@ stdcall -wow64 -version=0x502 CsrProbeForRead(ptr long long) NtWow64CsrProbeForRead
+@ stdcall -nowow64 -version=0x502 CsrProbeForWrite(ptr long long)
+@ stdcall -wow64 -version=0x502 CsrProbeForWrite(ptr long long) NtWow64CsrProbeForWrite
+@ stdcall -nowow64 CsrSetPriorityClass(ptr ptr)
+@ stdcall -wow64 CsrSetPriorityClass(ptr ptr) NtWow64CsrSetPriorityClass
+
 @ stdcall -stub -version=0x600+ CsrVerifyRegion(ptr long)
 @ stdcall DbgBreakPoint()
 @ varargs DbgPrint(str)
@@ -1933,3 +1950,38 @@
 @ stdcall -arch=arm __rt_udiv()
 @ stdcall -arch=arm __rt_udiv64()
 @ stdcall -arch=arm __rt_srsh()
+
+@ stdcall -arch=wow64 NtWow64ReadVirtualMemory64(ptr long long ptr long long ptr)
+@ stdcall -arch=wow64 NtWow64WriteVirtualMemory64(ptr long long ptr long long ptr)
+
+@ stdcall -wow64 NtWow64CsrAllocateCaptureBuffer(long long) 
+@ stdcall -wow64 NtWow64CsrAllocateMessagePointer(ptr long ptr) 
+@ stdcall -wow64 NtWow64CsrCaptureMessageBuffer(ptr ptr long ptr) 
+@ stdcall -wow64 NtWow64CsrCaptureMessageString(ptr str long long ptr) 
+@ stdcall -wow64 NtWow64CsrClientCallServer(ptr ptr long long) 
+@ stdcall -wow64 NtWow64CsrClientConnectToServer(str long ptr ptr ptr) 
+@ stdcall -wow64 NtWow64CsrFreeCaptureBuffer(ptr) 
+@ stdcall -wow64 NtWow64CsrGetProcessId() 
+@ stdcall -wow64 NtWow64CsrIdentifyAlertableThread() 
+@ stdcall -wow64 -version=0x502+ NtWow64CsrNewThread()
+@ stdcall -wow64 -version=0x502 NtWow64CsrProbeForRead(ptr long long) 
+@ stdcall -wow64 -version=0x502 NtWow64CsrProbeForWrite(ptr long long) 
+@ stdcall -wow64 NtWow64CsrSetPriorityClass(ptr ptr) 
+@ stdcall -wow64 NtWow64CsrCaptureMessageMultiUnicodeStringsInPlace(ptr long ptr)
+@ stdcall -wow64 NtWow64CsrCaptureTimeout(long ptr)
+
+@ stdcall -wow64 ZwWow64CsrAllocateCaptureBuffer(long long) NtWow64CsrAllocateCaptureBuffer
+@ stdcall -wow64 ZwWow64CsrAllocateMessagePointer(ptr long ptr) NtWow64CsrAllocateMessagePointer
+@ stdcall -wow64 ZwWow64CsrCaptureMessageBuffer(ptr ptr long ptr) NtWow64CsrCaptureMessageBuffer
+@ stdcall -wow64 ZwWow64CsrCaptureMessageString(ptr str long long ptr) NtWow64CsrCaptureMessageString
+@ stdcall -wow64 ZwCsrClientCallServer(ptr ptr long long) NtWow64CsrClientCallServer
+@ stdcall -wow64 ZwCsrClientConnectToServer(str long ptr ptr ptr) NtWow64CsrClientConnectToServer
+@ stdcall -wow64 ZwCsrFreeCaptureBuffer(ptr) NtWow64CsrFreeCaptureBuffer
+@ stdcall -wow64 ZwCsrGetProcessId() NtWow64CsrGetProcessId
+@ stdcall -wow64 ZwCsrIdentifyAlertableThread() NtWow64CsrIdentifyAlertableThread
+@ stdcall -wow64 -version=0x502+ ZwCsrNewThread() NtWow64CsrNewThread
+@ stdcall -wow64 -version=0x502 ZwCsrProbeForRead(ptr long long) NtWow64CsrProbeForRead
+@ stdcall -wow64 -version=0x502 ZwCsrProbeForWrite(ptr long long) NtWow64CsrProbeForWrite
+@ stdcall -wow64 ZwCsrSetPriorityClass(ptr ptr) NtWow64CsrSetPriorityClass
+@ stdcall -wow64 ZwWow64CsrCaptureMessageMultiUnicodeStringsInPlace(ptr long ptr) NtWow64CsrCaptureMessageMultiUnicodeStringsInPlace
+@ stdcall -wow64 ZwWow64CsrCaptureTimeout(long ptr) NtWow64CsrCaptureTimeout

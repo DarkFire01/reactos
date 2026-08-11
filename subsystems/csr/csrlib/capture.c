@@ -143,11 +143,6 @@ CsrAllocateCaptureBuffer(
     return CaptureBuffer;
 }
 
-#ifdef USE_LPC6432
-#undef CsrAllocateMessagePointer
-#undef CsrCaptureMessageBuffer
-#endif
-
 /*
  * @implemented
  */

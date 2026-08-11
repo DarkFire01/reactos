@@ -1376,12 +1376,12 @@ NTSTATUS WINAPI wow64_NtResetEvent( UINT *args )
 }
 
 
+#ifndef __REACTOS__
 /**********************************************************************
  *           wow64_NtSecureConnectPort
  */
 NTSTATUS WINAPI wow64_NtSecureConnectPort( UINT *args )
 {
-#ifndef __REACTOS__
     ULONG *handle_ptr = get_ptr( &args );
     UNICODE_STRING32 *name32 = get_ptr( &args );
     SECURITY_QUALITY_OF_SERVICE *qos = get_ptr( &args );
@@ -1395,57 +1395,8 @@ NTSTATUS WINAPI wow64_NtSecureConnectPort( UINT *args )
     FIXME( "%p %p %p %p %p %p %p %p %p: stub\n",
            handle_ptr, name32, qos, write, sid, read, max_len, info, info_len );
     return STATUS_NOT_IMPLEMENTED;
-#else
-    /*
-    OUT PHANDLE PortHandle,
-    IN PUNICODE_STRING PortName,
-    IN PSECURITY_QUALITY_OF_SERVICE SecurityQos,
-    IN OUT PPORT_VIEW ClientView OPTIONAL,
-    IN PSID ServerSid OPTIONAL,
-    IN OUT PREMOTE_PORT_VIEW ServerView OPTIONAL,
-    OUT PULONG MaxMessageLength OPTIONAL,
-    IN OUT PVOID ConnectionInformation OPTIONAL,
-    IN OUT PULONG ConnectionInformationLength OPTIONAL
-    */
-    
-    ULONG *PortHandle = get_ptr(&args);
-    UNICODE_STRING32 *PortName32 = get_ptr(&args);
-    PSECURITY_QUALITY_OF_SERVICE SecurityQos = get_ptr(&args);
-    PORT_VIEW *ClientView = get_ptr(&args);
-    SID* ServerSid = get_ptr(&args);
-    REMOTE_PORT_VIEW *SecureView = get_ptr(&args);
-    PULONG MaxMessageLength = get_ptr(&args);
-    PVOID ConnectionInformation = get_ptr(&args);
-    PULONG ConnectionInformationLength = get_ptr(&args);
-    
-    NTSTATUS status;
-    
-    HANDLE result;
-    WCHAR buffer[MAX_PATH];
-    UNICODE_STRING portName;
-    portName.MaximumLength = sizeof(buffer);
-    portName.Buffer = buffer;
-    
-    unicode_str_32to64(&portName, PortName32);
-    
-    DPRINT("Port name %ls\n", portName.Buffer);
-    
-    status = NtSecureConnectPort(&result, 
-                                 &portName, 
-                                 SecurityQos, 
-                                 ClientView,
-                                 ServerSid, 
-                                 SecureView,
-                                 MaxMessageLength,
-                                 ConnectionInformation,
-                                 ConnectionInformationLength);
-    
-    *PortHandle = HandleToULong(result);
-    
-    DPRINT("SecureConnectPort: %lX\n", status);
-    return status;
-#endif
 }
+#endif
 
 
 

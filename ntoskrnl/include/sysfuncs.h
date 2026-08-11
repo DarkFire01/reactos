@@ -299,6 +299,21 @@
     SVC_(Wow64AllocateVirtualMemory64, 7)
     SVC_(Wow64ReadVirtualMemory64, 7)
     SVC_(Wow64WriteVirtualMemory64, 7)
+    SVC_(Wow64CsrAllocateCaptureBuffer, 2)
+    SVC_(Wow64CsrAllocateMessagePointer, 3)
+    SVC_(Wow64CsrCaptureMessageBuffer, 4)
+    SVC_(Wow64CsrCaptureMessageString, 5)
+    SVC_(Wow64CsrClientCallServer, 4)
+    SVC_(Wow64CsrClientConnectToServer, 6)
+    SVC_(Wow64CsrFreeCaptureBuffer, 1)
+    SVC_(Wow64CsrGetProcessId, 0)
+    SVC_(Wow64CsrIdentifyAlertableThread, 0)
+    SVC_(Wow64CsrNewThread, 0)
+    SVC_(Wow64CsrProbeForRead, 3)
+    SVC_(Wow64CsrProbeForWrite, 3)
+    SVC_(Wow64CsrSetPriorityClass, 2)
+    SVC_(Wow64CsrCaptureMessageMultiUnicodeStringsInPlace, 3)
+    SVC_(Wow64CsrCaptureTimeout, 2)
 #endif
 #endif // SYSFUNCS_NT6_ONLY
 
