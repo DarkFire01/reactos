@@ -39,5 +39,6 @@ set_image_base(wow64 0xFF000000)
 add_importlibs(wow64 ntdll)
 target_link_libraries(wow64 libwow64common)
 add_dependencies(wow64 psdk)
+add_dependencies(libwow64common psdk)
 
 add_cd_file(TARGET wow64 DESTINATION reactos/system32 NO_WOW64 FOR all)
