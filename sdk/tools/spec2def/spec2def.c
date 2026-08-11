@@ -68,6 +68,7 @@ int gbImportLib = 0;
 int gbNotPrivateNoWarn = 0;
 int gbTracing = 0;
 int giArch = ARCH_X86;
+int gbWow64 = 0;
 int gbDbgExports = 0;
 char *pszArchString = "i386";
 char *pszArchString2;
@@ -1217,6 +1218,20 @@ ParseFile(char* pcStart, FILE *fileDest, unsigned *cExports)
             {
                 /* The export is imported from an import library. Ignored. */
             }
+            else if (CompareToken(pc, "-wow64"))
+            {
+                if (!gbWow64)
+                {
+                    included = 0;
+                }
+            }
+            else if (CompareToken(pc, "-nowow64"))
+            {
+                if (gbWow64)
+                {
+                    included = 0;
+                }
+            }
             else
             {
                 fprintf(stdout,
@@ -1531,7 +1546,8 @@ void usage(void)
            "  --implib                generate a def file for an import library\n"
            "  --no-private-warnings   suppress warnings about symbols that should be -private\n"
            "  -a=<arch>               set architecture to <arch> (i386, x86_64, arm, arm64, arm64ec)\n"
-           "  --with-tracing          generate wine-like \"+relay\" trace trampolines (needs -s)\n");
+           "  --with-tracing          generate wine-like \"+relay\" trace trampolines (needs -s)\n"
+           "  --wow64                 include wow64 exports\n");
 }
 
 int main(int argc, char *argv[])
@@ -1612,6 +1628,10 @@ int main(int argc, char *argv[])
         else if (argv[i][1] == 'a' && argv[i][2] == '=')
         {
             pszArchString = argv[i] + 3;
+        }
+        else if (strcasecmp(argv[i], "--wow64") == 0)
+        {
+            gbWow64 = 1;
         }
         else
         {
