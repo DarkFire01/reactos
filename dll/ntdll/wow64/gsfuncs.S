@@ -21,8 +21,8 @@ ___readgsdword:
 
 PUBLIC ___writegsdword
 ___writegsdword:
-    mov eax, [esp + 8]
-    mov ecx, [esp + 4]
+    mov eax, [esp + 4]
+    mov ecx, [esp + 8]
     mov gs:[eax], ecx
     ret
     
