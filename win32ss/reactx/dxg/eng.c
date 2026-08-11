@@ -14,31 +14,39 @@ PDD_SURFACE_LOCAL
 NTAPI
 DxDdLockDirectDrawSurface(HANDLE hDdSurface)
 {
-   PEDD_SURFACE pEDDSurface = NULL;
-   PDD_SURFACE_LOCAL pSurfacelcl = NULL;
+    PEDD_SURFACE SurfaceObj;
+    PDD_SURFACE_LOCAL SurfaceLocal;
 
-   pEDDSurface = DdHmgLock(hDdSurface, ObjType_DDSURFACE_TYPE, FALSE);
-   if (pEDDSurface != NULL)
-   {
-        pSurfacelcl = &pEDDSurface->ddsSurfaceLocal;
-   }
+    SurfaceObj = (PEDD_SURFACE)DdHmgLock(hDdSurface, ObjType_DDSURFACE_TYPE, FALSE);
+    if (SurfaceObj != NULL)
+    {
+        SurfaceLocal = &SurfaceObj->ddsSurfaceLocal;
+    }
+    else
+    {
+        SurfaceLocal = NULL;
+    }
 
-   return pSurfacelcl;
+    return SurfaceLocal;
 }
 
 BOOL
 NTAPI
 DxDdUnlockDirectDrawSurface(PDD_SURFACE_LOCAL pSurface)
 {
-    BOOL retVal = FALSE;
-    //PEDD_SURFACE pEDDSurface  = NULL;
+    PEDD_SURFACE SurfaceObj;
 
-    if (pSurface)
+    if (!pSurface)
     {
-        // pEDDSurface = (PEDD_SURFACE)( ((PBYTE)pSurface) - sizeof(DD_BASEOBJECT));
-        // InterlockedDecrement(&pEDDSurface->pobj.cExclusiveLock);
-        retVal = TRUE;
+        return FALSE;
     }
 
-    return retVal;
+    /* Get base EDD_SURFACE from ddsSurfaceLocal member pointer */
+    /* ddsSurfaceLocal is the second member after pobj, so offset is sizeof(DD_BASEOBJECT) */
+    SurfaceObj = (PEDD_SURFACE)((PBYTE)pSurface - sizeof(DD_BASEOBJECT));
+
+    /* Decrement lock count that was incremented by DdHmgLock */
+    InterlockedDecrement((VOID*)&SurfaceObj->pobj.cExclusiveLock);
+
+    return TRUE;
 }

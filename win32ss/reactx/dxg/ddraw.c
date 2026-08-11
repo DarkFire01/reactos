@@ -254,15 +254,17 @@ intDdCreateDirectDrawLocal(HDEV hDev)
 {
     PEDD_DIRECTDRAW_GLOBAL peDdGl = NULL;
     PEDD_DIRECTDRAW_LOCAL peDdL = NULL;
-    PDD_ENTRY AllocRet;
+    HANDLE hDdL;
 
     peDdGl = (PEDD_DIRECTDRAW_GLOBAL)gpEngFuncs.DxEngGetHdevData(hDev, DxEGShDevData_eddg);
 
-    AllocRet = DdHmgAlloc(sizeof(EDD_DIRECTDRAW_LOCAL), ObjType_DDLOCAL_TYPE, TRUE);
-    if (!AllocRet) 
+    hDdL = DdHmgAlloc(sizeof(EDD_DIRECTDRAW_LOCAL), ObjType_DDLOCAL_TYPE, TRUE);
+    if (!hDdL)
         return NULL;
 
-    peDdL = (PEDD_DIRECTDRAW_LOCAL)AllocRet->pobj;
+    peDdL = (PEDD_DIRECTDRAW_LOCAL)DdHmgLock(hDdL, ObjType_DDLOCAL_TYPE, FALSE);
+    if (!peDdL)
+        return NULL;
 
     /* initialize DIRECTDRAW_LOCAL */
     peDdL->peDirectDrawLocal_prev = peDdGl->peDirectDrawLocalList;
@@ -278,7 +280,7 @@ intDdCreateDirectDrawLocal(HDEV hDev)
 
     InterlockedDecrement((VOID*)&peDdL->pobj.cExclusiveLock);
 
-    return peDdL->pobj.hHmgr;
+    return hDdL;
 }
 
 /*++
@@ -351,106 +353,168 @@ DWORD
 NTAPI
 DxDdGetDriverInfo(HANDLE DdHandle, PDD_GETDRIVERINFODATA drvInfoData)
 {
-    PEDD_DIRECTDRAW_LOCAL peDdL;
-    PEDD_DIRECTDRAW_GLOBAL peDdGl;
-    PVOID pInfo = NULL;
-    DWORD dwInfoSize = 0;
-    BYTE callbackStruct[1024];
-    DWORD RetVal = FALSE;
+    PEDD_DIRECTDRAW_LOCAL DdLocal;
+    PEDD_DIRECTDRAW_GLOBAL DdGlobal;
+    PVOID InfoData = NULL;
+    DWORD InfoSize = 0;
+    PVOID TempBuffer = NULL;
+    DWORD Result = DDHAL_DRIVER_HANDLED;
 
-    peDdL = (PEDD_DIRECTDRAW_LOCAL)DdHmgLock(DdHandle, ObjType_DDLOCAL_TYPE, FALSE);
-    if (!peDdL)
-        return RetVal;
-    
-    peDdGl = peDdL->peDirectDrawGlobal2;
+    if (!drvInfoData || drvInfoData->dwSize != sizeof(*drvInfoData))
+    {
+        return DDHAL_DRIVER_NOTHANDLED;
+    }
 
-    // check VideoPort related callbacks
-    if (peDdGl->dwCallbackFlags & EDDDGBL_VIDEOPORTCALLBACKS)
+    DdLocal = (PEDD_DIRECTDRAW_LOCAL)DdHmgLock(DdHandle, ObjType_DDLOCAL_TYPE, FALSE);
+    if (!DdLocal)
+    {
+        drvInfoData->ddRVal = DDERR_INVALIDOBJECT;
+        drvInfoData->dwActualSize = 0;
+        return DDHAL_DRIVER_HANDLED;
+    }
+
+    DdGlobal = DdLocal->peDirectDrawGlobal2;
+
+    /* Check VideoPort callbacks if available */
+    if (DdGlobal->dwCallbackFlags & EDDDGBL_VIDEOPORTCALLBACKS)
     {
         if (InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_VideoPortCallbacks))
         {
-            dwInfoSize = sizeof(DD_VIDEOPORTCALLBACKS);
-            pInfo = (VOID*)&peDdGl->ddVideoPortCallback;
+            InfoSize = sizeof(DD_VIDEOPORTCALLBACKS);
+            InfoData = (VOID*)&DdGlobal->ddVideoPortCallback;
         }
         if (InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_VideoPortCaps))
         {
-            pInfo = (VOID*)peDdGl->lpDDVideoPortCaps;
-            dwInfoSize = 72 * peDdGl->ddHalInfo.ddCaps.dwMaxVideoPorts;
+            InfoData = (VOID*)DdGlobal->lpDDVideoPortCaps;
+            InfoSize = 72 * DdGlobal->ddHalInfo.ddCaps.dwMaxVideoPorts;
         }
         if (InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_D3DCallbacks3))
         {
-            dwInfoSize = sizeof(D3DNTHAL_CALLBACKS3);
-            pInfo = (VOID*)&peDdGl->d3dNtHalCallbacks3;
+            InfoSize = sizeof(D3DNTHAL_CALLBACKS3);
+            InfoData = (VOID*)&DdGlobal->d3dNtHalCallbacks3;
         }
     }
 
-    // check ColorControl related callbacks
-    if (peDdGl->dwCallbackFlags & EDDDGBL_COLORCONTROLCALLBACKS)
+    /* Check ColorControl callbacks if available */
+    if (DdGlobal->dwCallbackFlags & EDDDGBL_COLORCONTROLCALLBACKS)
     {
         if (InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_ColorControlCallbacks))
         {
-            dwInfoSize = sizeof(DD_COLORCONTROLCALLBACKS);
-            pInfo = (VOID*)&peDdGl->ddColorControlCallbacks;
+            InfoSize = sizeof(DD_COLORCONTROLCALLBACKS);
+            InfoData = (VOID*)&DdGlobal->ddColorControlCallbacks;
         }
         if (InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_NTCallbacks))
         {
-            dwInfoSize = sizeof(DD_NTCALLBACKS);
-            pInfo = (VOID*)&peDdGl->ddNtCallbacks;
-        }      
+            InfoSize = sizeof(DD_NTCALLBACKS);
+            InfoData = (VOID*)&DdGlobal->ddNtCallbacks;
+        }
     }
 
-    // check Miscellaneous callbacks
-    if (peDdGl->dwCallbackFlags & EDDDGBL_MISCCALLBACKS)
+    /* Check Miscellaneous callbacks if available */
+    if (DdGlobal->dwCallbackFlags & EDDDGBL_MISCCALLBACKS)
     {
         if (InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_MiscellaneousCallbacks))
         {
-            dwInfoSize = sizeof(DD_MISCELLANEOUSCALLBACKS);
-            pInfo = (VOID*)&peDdGl->ddMiscellanousCallbacks;
+            InfoSize = sizeof(DD_MISCELLANEOUSCALLBACKS);
+            InfoData = (VOID*)&DdGlobal->ddMiscellanousCallbacks;
         }
         if (InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_DDMoreCaps))
         {
-            dwInfoSize = sizeof(DD_MORECAPS);
-            pInfo = &peDdGl->ddMoreCaps;
+            InfoSize = sizeof(DD_MORECAPS);
+            InfoData = &DdGlobal->ddMoreCaps;
         }
     }
 
-    if (peDdGl->dwCallbackFlags & EDDDGBL_MISC2CALLBACKS && 
+    if (DdGlobal->dwCallbackFlags & EDDDGBL_MISC2CALLBACKS &&
         InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_Miscellaneous2Callbacks))
     {
-        dwInfoSize = sizeof(DD_MISCELLANEOUS2CALLBACKS);
-        pInfo = (VOID*)&peDdGl->ddMiscellanous2Callbacks;
+        InfoSize = sizeof(DD_MISCELLANEOUS2CALLBACKS);
+        InfoData = (VOID*)&DdGlobal->ddMiscellanous2Callbacks;
     }
 
-    if (peDdGl->dwCallbackFlags & EDDDGBL_MOTIONCOMPCALLBACKS && 
+    if (DdGlobal->dwCallbackFlags & EDDDGBL_MOTIONCOMPCALLBACKS &&
         InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_MotionCompCallbacks))
     {
-        dwInfoSize = sizeof(DD_MOTIONCOMPCALLBACKS);
-        pInfo = (VOID*)&peDdGl->ddMotionCompCallbacks;
+        InfoSize = sizeof(DD_MOTIONCOMPCALLBACKS);
+        InfoData = (VOID*)&DdGlobal->ddMotionCompCallbacks;
     }
 
-    if (InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_KernelCaps) )
+    /* Kernel caps and callbacks are always available */
+    if (InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_KernelCaps))
     {
-        dwInfoSize = sizeof(DD_KERNELCALLBACKS);
-        pInfo = &peDdGl->ddKernelCaps;
+        InfoSize = sizeof(DDKERNELCAPS);
+        InfoData = &DdGlobal->ddKernelCaps;
+    }
+
+    if (InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_KernelCallbacks))
+    {
+        InfoSize = sizeof(DD_KERNELCALLBACKS);
+        InfoData = &DdGlobal->ddKernelCallbacks;
     }
 
     if (InlineIsEqualGUID(&drvInfoData->guidInfo, &GUID_DDMoreSurfaceCaps))
     {
-        dwInfoSize = sizeof(DDMORESURFACECAPS);
-        pInfo = &peDdGl->ddMoreSurfaceCaps;
+        InfoSize = sizeof(DDMORESURFACECAPS);
+        InfoData = &DdGlobal->ddMoreSurfaceCaps;
     }
 
-    if (dwInfoSize && pInfo)
+    /* If GUID not found, return error but indicate we handled it */
+    if (!InfoSize || !InfoData)
     {
-        gpEngFuncs.DxEngLockHdev(peDdGl->hDev);
-        intDdGetDriverInfo(peDdGl, drvInfoData->guidInfo, &callbackStruct, dwInfoSize, &dwInfoSize);
-        gpEngFuncs.DxEngUnlockHdev(peDdGl->hDev);
-        memcpy(drvInfoData->lpvData, callbackStruct, dwInfoSize);
+        drvInfoData->ddRVal = DDERR_CURRENTLYNOTAVAIL;
+        drvInfoData->dwActualSize = 0;
+        Result = DDHAL_DRIVER_HANDLED;
+        goto Cleanup;
     }
 
-    InterlockedDecrement((VOID*)&peDdL->pobj.cExclusiveLock);
+    /* Report required buffer size */
+    drvInfoData->dwActualSize = InfoSize;
 
-    return TRUE;
+    if (!drvInfoData->lpvData)
+    {
+        drvInfoData->ddRVal = DDERR_INVALIDPARAMS;
+        Result = DDHAL_DRIVER_HANDLED;
+        goto Cleanup;
+    }
+
+    if (drvInfoData->dwExpectedSize < InfoSize)
+    {
+        drvInfoData->ddRVal = DDERR_MOREDATA;
+        Result = DDHAL_DRIVER_HANDLED;
+        goto Cleanup;
+    }
+
+    /* Allocate temporary buffer for data copy */
+    TempBuffer = EngAllocMem(FL_ZERO_MEMORY, InfoSize, TAG_GDDF);
+    if (!TempBuffer)
+    {
+        drvInfoData->ddRVal = DDERR_OUTOFMEMORY;
+        Result = DDHAL_DRIVER_HANDLED;
+        goto Cleanup;
+    }
+
+    /* Copy data with device lock held */
+    gpEngFuncs.DxEngLockHdev(DdGlobal->hDev);
+    if (!intDdGetDriverInfo(DdGlobal, drvInfoData->guidInfo, TempBuffer, InfoSize, NULL))
+    {
+        memcpy(TempBuffer, InfoData, InfoSize);
+    }
+    gpEngFuncs.DxEngUnlockHdev(DdGlobal->hDev);
+
+    /* Copy to user buffer */
+    memcpy(drvInfoData->lpvData, TempBuffer, InfoSize);
+    drvInfoData->ddRVal = DD_OK;
+    Result = DDHAL_DRIVER_HANDLED;
+
+Cleanup:
+    if (TempBuffer)
+    {
+        EngFreeMem(TempBuffer);
+    }
+
+    InterlockedDecrement((VOID*)&DdLocal->pobj.cExclusiveLock);
+
+    return Result;
 }
 
 /*++
@@ -587,7 +651,7 @@ DxDdReenableDirectDrawObject(
 {
     PEDD_DIRECTDRAW_LOCAL peDdL;
     PEDD_DIRECTDRAW_GLOBAL peDdGl;
-    HDC hDC;                     
+    HDC hDC;
     DWORD RetVal = FALSE;
 
     peDdL = (PEDD_DIRECTDRAW_LOCAL)DdHmgLock(DdHandle, ObjType_DDLOCAL_TYPE, FALSE);
@@ -639,7 +703,8 @@ intDdCreateNewSurfaceObject(PEDD_DIRECTDRAW_LOCAL peDdL, HANDLE hDirectDrawLocal
         // check if surface is locked and belongs to correct DirectDrawLocal
         if ((pSurface)&&((pSurface->peDirectDrawLocal != peDdL)||(!pSurface->hSecure)))
         {
-            InterlockedDecrement((VOID*)&peDdL->pobj.cExclusiveLock);
+            /* Unlock the surface object we just locked */
+            InterlockedDecrement((VOID*)&pSurface->pobj.cExclusiveLock);
             return NULL;
         }
     }
@@ -647,35 +712,51 @@ intDdCreateNewSurfaceObject(PEDD_DIRECTDRAW_LOCAL peDdL, HANDLE hDirectDrawLocal
     // if surface not found from ddHandle or ddHandle not provided
     if (!pSurface)
     {
-        // create new surface object
-        pSurface = (PEDD_SURFACE)DdHmgAlloc(sizeof(EDD_SURFACE), ObjType_DDSURFACE_TYPE, TRUE);
-        if (pSurface)
-        {
-            pSurface->ddsSurfaceLocal.lpGbl = &pSurface->ddsSurfaceGlobal;
-            pSurface->ddsSurfaceLocal.lpSurfMore = &pSurface->ddsSurfaceMore;
-            pSurface->ddsSurfaceInt.lpLcl = &pSurface->ddsSurfaceLocal;
-            pSurface->peDirectDrawLocal = peDdL;
-            pSurface->peDirectDrawGlobalNext = peDdL->peDirectDrawGlobal2;
-            pSurface->ldev = gpEngFuncs.DxEngGetHdevData(pSurface->peDirectDrawGlobalNext->hDev, DxEGShDevData_ldev);
-            pSurface->gdev = gpEngFuncs.DxEngGetHdevData(pSurface->peDirectDrawGlobalNext->hDev, DxEGShDevData_GDev);
-            pSurface->hSecure = (VOID*)1;
-        }
+        HANDLE hSurf;
+
+        // create new surface object: first allocate a handle, then lock to get the pointer
+        hSurf = DdHmgAlloc(sizeof(EDD_SURFACE), ObjType_DDSURFACE_TYPE, TRUE);
+        if (!hSurf)
+            return NULL;
+
+        pSurface = (PEDD_SURFACE)DdHmgLock(hSurf, ObjType_DDSURFACE_TYPE, FALSE);
+        if (!pSurface)
+            return NULL;
+
+        pSurface->ddsSurfaceLocal.lpGbl = &pSurface->ddsSurfaceGlobal;
+        pSurface->ddsSurfaceLocal.lpSurfMore = &pSurface->ddsSurfaceMore;
+        pSurface->ddsSurfaceInt.lpLcl = &pSurface->ddsSurfaceLocal;
+        pSurface->peDirectDrawLocal = peDdL;
+        pSurface->peDirectDrawGlobalNext = peDdL->peDirectDrawGlobal2;
+        pSurface->ldev = gpEngFuncs.DxEngGetHdevData(pSurface->peDirectDrawGlobalNext->hDev, DxEGShDevData_ldev);
+        pSurface->gdev = gpEngFuncs.DxEngGetHdevData(pSurface->peDirectDrawGlobalNext->hDev, DxEGShDevData_GDev);
+        pSurface->hSecure = (VOID*)1;
+        pSurface->pobj.hHmgr = hSurf;
     }
 
     if (pSurface)
     {
-        pSurface->ddsSurfaceGlobal.fpVidMem = pDdSurfGlob->fpVidMem;
-        pSurface->ddsSurfaceGlobal.lPitch = pDdSurfGlob->lPitch;
-        pSurface->ddsSurfaceGlobal.wWidth = pDdSurfGlob->wWidth;
-        pSurface->ddsSurfaceGlobal.wHeight = pDdSurfGlob->wHeight;
-        pSurface->wWidth = pDdSurfGlob->wWidth;
-        pSurface->wHeight = pDdSurfGlob->wHeight;
-        memcpy(&pSurface->ddsSurfaceGlobal.ddpfSurface, &pDdSurfGlob->ddpfSurface, sizeof(pSurface->ddsSurfaceGlobal.ddpfSurface));
-        pSurface->ddsSurfaceLocal.ddsCaps.dwCaps = pDdSurfLoc->ddsCaps.dwCaps;
-        pSurface->ddsSurfaceMore.ddsCapsEx.dwCaps2 = pDdSurfMore->ddsCapsEx.dwCaps2;
-        pSurface->ddsSurfaceMore.ddsCapsEx.dwCaps3 = pDdSurfMore->ddsCapsEx.dwCaps3;
-        pSurface->ddsSurfaceMore.ddsCapsEx.dwCaps4 = pDdSurfMore->ddsCapsEx.dwCaps4;
-        pSurface->ddsSurfaceMore.dwSurfaceHandle = pDdSurfMore->dwSurfaceHandle;
+        /* Ensure internal pointers are always valid (needed by miniport callbacks) */
+        pSurface->ddsSurfaceLocal.lpGbl = &pSurface->ddsSurfaceGlobal;
+        pSurface->ddsSurfaceLocal.lpSurfMore = &pSurface->ddsSurfaceMore;
+        pSurface->ddsSurfaceInt.lpLcl = &pSurface->ddsSurfaceLocal;
+
+        /*
+         * Copy the full surface structs from usermode.
+         * Offscreen surfaces rely on more than fpVidMem/lPitch (e.g. heap info
+         * in the lpVidMemHeap/dwBlockSizeX union, heap offsets, etc).
+         */
+        memcpy(&pSurface->ddsSurfaceGlobal, pDdSurfGlob, sizeof(pSurface->ddsSurfaceGlobal));
+        memcpy(&pSurface->ddsSurfaceMore, pDdSurfMore, sizeof(pSurface->ddsSurfaceMore));
+        memcpy(&pSurface->ddsSurfaceLocal, pDdSurfLoc, sizeof(pSurface->ddsSurfaceLocal));
+
+        /* Re-point embedded pointers to our embedded storage */
+        pSurface->ddsSurfaceLocal.lpGbl = &pSurface->ddsSurfaceGlobal;
+        pSurface->ddsSurfaceLocal.lpSurfMore = &pSurface->ddsSurfaceMore;
+        pSurface->ddsSurfaceInt.lpLcl = &pSurface->ddsSurfaceLocal;
+
+        pSurface->wWidth = pSurface->ddsSurfaceGlobal.wWidth;
+        pSurface->wHeight = pSurface->ddsSurfaceGlobal.wHeight;
         pSurface->hSecure = (VOID*)1;
 
         peDdL->peSurface_DdList = pSurface;

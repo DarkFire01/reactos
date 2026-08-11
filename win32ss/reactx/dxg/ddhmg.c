@@ -13,10 +13,10 @@
 
 /* The DdHmgr manger stuff */
 ULONG gcSizeDdHmgr =  1024;
-PDD_ENTRY gpentDdHmgr = NULL;
+PDXG_HANDLE_ENTRY gpentDdHmgr = NULL;
 
 ULONG gcMaxDdHmgr = 0;
-PDD_ENTRY gpentDdHmgrLast = NULL;
+PDXG_HANDLE_ENTRY gpentDdHmgrLast = NULL;
 
 /* next free ddhmg handle number available to reuse */
 ULONG ghFreeDdHmgr = 0;
@@ -24,7 +24,7 @@ HSEMAPHORE ghsemHmgr = NULL;
 
 BOOL
 FASTCALL
-VerifyObjectOwner(PDD_ENTRY pEntry)
+VerifyObjectOwner(PDXG_HANDLE_ENTRY pEntry)
 {
     DWORD Pid = (DWORD)(DWORD_PTR)PsGetCurrentProcessId() & 0xFFFFFFFC;
     DWORD check = (DWORD_PTR)pEntry->Pid & 0xFFFFFFFE;
@@ -48,7 +48,7 @@ BOOL
 FASTCALL
 DdHmgCreate(VOID)
 {
-    gpentDdHmgr = EngAllocMem(FL_ZERO_MEMORY, gcSizeDdHmgr * sizeof(DD_ENTRY), TAG_THDD);
+    gpentDdHmgr = EngAllocMem(FL_ZERO_MEMORY, gcSizeDdHmgr * sizeof(DXG_HANDLE_ENTRY), TAG_THDD);
     ghFreeDdHmgr = 0;
     gcMaxDdHmgr = 1;
 
@@ -129,7 +129,7 @@ DdHmgDestroy(VOID)
 * value 0 is for ?
 * value 1 is for EDD_DIRECTDRAW_LOCAL
 * value 2 is for EDD_SURFACE
-* value 3 is for ?
+* value 3 is for EDD_D3D
 * value 4 is for EDD_VIDEOPORT
 * value 5 is for EDD_MOTIONCOMP
 
@@ -146,9 +146,8 @@ PVOID
 FASTCALL
 DdHmgLock(HANDLE DdHandle, UCHAR ObjectType, BOOLEAN LockOwned)
 {
-    DWORD Index = DDHMG_HTOI(DdHandle);
-
-    PDD_ENTRY pEntry = NULL;
+    DWORD Index = DXG_HANDLE_GET_INDEX(DdHandle);
+    PDXG_HANDLE_ENTRY pEntry = NULL;
     PVOID Object = NULL;
 
     if ( !LockOwned )
@@ -158,12 +157,12 @@ DdHmgLock(HANDLE DdHandle, UCHAR ObjectType, BOOLEAN LockOwned)
 
     if ( Index < gcMaxDdHmgr )
     {
-        pEntry = (PDD_ENTRY)((PBYTE)gpentDdHmgr + (sizeof(DD_ENTRY) * Index));
+        pEntry = (PDXG_HANDLE_ENTRY)((PBYTE)gpentDdHmgr + (sizeof(DXG_HANDLE_ENTRY) * Index));
 
         if ( VerifyObjectOwner(pEntry) )
         {
             if ( ( pEntry->Objt == ObjectType ) &&
-                 ( pEntry->FullUnique == (((ULONG_PTR)DdHandle >> 21) & 0x7FF) ) &&
+                 ( pEntry->FullUnique == DXG_HANDLE_GET_UNIQUE(DdHandle) ) &&
                  ( !pEntry->pobj->cExclusiveLock ) )
             {
                 InterlockedIncrement((VOID*)&pEntry->pobj->cExclusiveLock);
@@ -260,7 +259,7 @@ DdGetFreeHandle(UCHAR objType)
 {
     PVOID mAllocMem = NULL;
     ULONG mAllocEntries = 0;
-    PDD_ENTRY pEntry = NULL;
+    PDXG_HANDLE_ENTRY pEntry = NULL;
     ULONG_PTR retVal;
     ULONG index;
 
@@ -269,21 +268,27 @@ DdGetFreeHandle(UCHAR objType)
         return 0;
 
     // check if we reached maximum handle index
-    if (gcMaxDdHmgr == DDHMG_HANDLE_LIMIT)
+    if (gcMaxDdHmgr == DXG_HANDLE_MAX_COUNT)
         return 0;
 
     // check if we have free handle to reuse
     if (ghFreeDdHmgr)
     {
        index = ghFreeDdHmgr;
-       pEntry = (PDD_ENTRY)((PBYTE)gpentDdHmgr + (sizeof(DD_ENTRY) * index));
+       pEntry = (PDXG_HANDLE_ENTRY)((PBYTE)gpentDdHmgr + (sizeof(DXG_HANDLE_ENTRY) * index));
 
        // put next free index to our global variable
-       ghFreeDdHmgr = pEntry->NextFree;             
+       ghFreeDdHmgr = pEntry->NextFree;
 
-       // build handle 
-       pEntry->FullUnique = objType | 8;
-       retVal = (pEntry->FullUnique << 21) | index;
+       // build handle using struct for clarity
+       {
+           DXG_HANDLE Handle;
+           Handle.Fields.Index = index;
+           Handle.Fields.Type = objType & 0x7;
+           Handle.Fields.Unique = 0; /* Uniqueness managed separately in FullUnique */
+           pEntry->FullUnique = (USHORT)((objType & 0x7) << (DXG_HANDLE_TYPE_SHIFT - DXG_HANDLE_INDEX_SHIFT));
+           retVal = Handle.Value;
+       }
        return (HANDLE)retVal;
     }
 
@@ -292,22 +297,26 @@ DdGetFreeHandle(UCHAR objType)
     {
         // allocate buffer for next 1024 handles
         mAllocEntries = gcSizeDdHmgr + 1024;
-        mAllocMem = EngAllocMem(FL_ZERO_MEMORY, sizeof(DD_ENTRY) * (mAllocEntries), TAG_THDD);
+        mAllocMem = EngAllocMem(FL_ZERO_MEMORY, sizeof(DXG_HANDLE_ENTRY) * (mAllocEntries), TAG_THDD);
         if (!mAllocMem)
             return 0;
 
-        memmove(&mAllocMem, gpentDdHmgr, sizeof(DD_ENTRY) * gcSizeDdHmgr);
+        memmove(&mAllocMem, gpentDdHmgr, sizeof(DXG_HANDLE_ENTRY) * gcSizeDdHmgr);
         gcSizeDdHmgr = mAllocEntries;
         gpentDdHmgrLast = gpentDdHmgr;
         EngFreeMem(gpentDdHmgr);
         gpentDdHmgr = mAllocMem;
     }
 
-    pEntry = (PDD_ENTRY)((PBYTE)gpentDdHmgr + (sizeof(DD_ENTRY) * gcMaxDdHmgr));
+    pEntry = (PDXG_HANDLE_ENTRY)((PBYTE)gpentDdHmgr + (sizeof(DXG_HANDLE_ENTRY) * gcMaxDdHmgr));
 
-    // build handle 
-    pEntry->FullUnique = objType | 8;
-    retVal = (pEntry->FullUnique << 21) | gcMaxDdHmgr;
+    DXG_HANDLE Handle;
+    Handle.Fields.Index = gcMaxDdHmgr;
+    Handle.Fields.Type = objType & 0x7;
+    Handle.Fields.Unique = 0; /* Uniqueness managed separately in FullUnique */
+    pEntry->FullUnique = (USHORT)((objType & 0x7) << (DXG_HANDLE_TYPE_SHIFT - DXG_HANDLE_INDEX_SHIFT));
+    retVal = Handle.Value;
+
     gcMaxDdHmgr = gcMaxDdHmgr + 1;
 
     return (HANDLE)retVal;
@@ -341,7 +350,7 @@ DdHmgAlloc(ULONG objSize, CHAR objType, BOOLEAN objLock)
 {
     PVOID pObject = NULL;
     HANDLE DdHandle = NULL;
-    PDD_ENTRY pEntry = NULL;
+    PDXG_HANDLE_ENTRY pEntry = NULL;
     DWORD Index;
 
     pObject = DdAllocateObject(objSize, objType, TRUE);
@@ -355,29 +364,21 @@ DdHmgAlloc(ULONG objSize, CHAR objType, BOOLEAN objLock)
 
     if (DdHandle)
     {
-        Index = DDHMG_HTOI(DdHandle);
+        Index = DXG_HANDLE_GET_INDEX(DdHandle);
 
-        pEntry = (PDD_ENTRY)((PBYTE)gpentDdHmgr + (sizeof(DD_ENTRY) * Index));
+        pEntry = (PDXG_HANDLE_ENTRY)((PBYTE)gpentDdHmgr + (sizeof(DXG_HANDLE_ENTRY) * Index));
 
         pEntry->pobj = pObject;
         pEntry->Objt = objType;
 
         pEntry->Pid = (HANDLE)(((ULONG_PTR)PsGetCurrentProcessId() & 0xFFFFFFFC) | ((ULONG_PTR)(pEntry->Pid) & 1));
 
-        if (objLock)
-        {
-            InterlockedIncrement((VOID*)&pEntry->pobj->cExclusiveLock);
-            pEntry->pobj->Tid = KeGetCurrentThread();
-        }
+        /* Newly created objects start unlocked; callers lock explicitly via DdHmgLock. */
         pEntry->pobj->hHmgr = DdHandle;
-        
+
         EngReleaseSemaphore(ghsemHmgr);
 
-        /* Return handle if object not locked */
-        if (!objLock)
-           return DdHandle;
-
-        return (HANDLE)pEntry;
+        return DdHandle;
     }
 
     EngReleaseSemaphore(ghsemHmgr);
@@ -402,13 +403,13 @@ VOID
 FASTCALL
 DdHmgFree(HANDLE DdHandle)
 {
-    PDD_ENTRY pEntry = NULL;
+    PDXG_HANDLE_ENTRY pEntry = NULL;
 
-    DWORD Index = DDHMG_HTOI(DdHandle);
+    DWORD Index = DXG_HANDLE_GET_INDEX(DdHandle);
 
     EngAcquireSemaphore(ghsemHmgr);
 
-    pEntry = (PDD_ENTRY)((PBYTE)gpentDdHmgr + (sizeof(DD_ENTRY) * Index));
+    pEntry = (PDXG_HANDLE_ENTRY)((PBYTE)gpentDdHmgr + (sizeof(DXG_HANDLE_ENTRY) * Index));
 
     // check if we have object that should be freed
     if (pEntry->pobj)

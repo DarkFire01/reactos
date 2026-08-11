@@ -6,8 +6,64 @@
 /* Win32 Headers */
 #define WINBASEAPI
 
-#define DDHMG_HANDLE_LIMIT 0x200000
-#define DDHMG_HTOI(DdHandle) ((DWORD_PTR)DdHandle & (DDHMG_HANDLE_LIMIT-1))
+/* 
+ * DXG handle layout (index + type + unique).
+ *
+ * The lower bits form an index into the DXG handle table. A small type
+ * field and an 8‑bit uniqueness counter live in the upper bits.  The bit
+ * distribution is chosen so we can support a large number of handles while
+ * still being able to cheaply extract the index and the type from any
+ * handle value.
+ */
+
+typedef UCHAR DXG_OBJECT_TYPE;
+
+/* Object type identifiers for DXG handle manager */
+#define DXG_OBJTYPE_NONE        0
+#define DXG_OBJTYPE_DIRECTDRAW  1
+#define DXG_OBJTYPE_SURFACE     2
+#define DXG_OBJTYPE_D3D         3
+#define DXG_OBJTYPE_VIDEOPORT   4
+#define DXG_OBJTYPE_MOTIONCOMP  5
+
+/* Handle structure: 32-bit value with bit fields
+ * Layout: [unique(8) | type(3) | index(21)]
+ * This union allows both direct access to fields and raw handle value */
+typedef union _DXG_HANDLE
+{
+    ULONG Value;
+    struct
+    {
+        ULONG Index : 21;      /* Table index (0-2097151) */
+        ULONG Type  : 3;       /* Object type (0-7) */
+        ULONG Unique: 8;       /* Uniqueness counter */
+    } Fields;
+} DXG_HANDLE, *PDXG_HANDLE;
+
+#define DXG_HANDLE_INDEX_BITS   21
+#define DXG_HANDLE_TYPE_BITS    3
+#define DXG_HANDLE_UNIQUE_BITS  8
+#define DXG_HANDLE_NONINDEX_BITS (32 - DXG_HANDLE_INDEX_BITS)
+#define DXG_HANDLE_INDEX_BITPOS   0
+#define DXG_HANDLE_TYPE_BITPOS    DXG_HANDLE_INDEX_BITS
+#define DXG_HANDLE_UNIQUE_BITPOS  (DXG_HANDLE_TYPE_BITPOS + DXG_HANDLE_TYPE_BITS)
+#define DXG_HANDLE_CREATE_MASK(bitpos, width)  (((1UL << (width)) - 1) << (bitpos))
+#define DXG_HANDLE_INDEX_MASK      DXG_HANDLE_CREATE_MASK(DXG_HANDLE_INDEX_BITPOS, DXG_HANDLE_INDEX_BITS)
+#define DXG_HANDLE_TYPE_MASK       DXG_HANDLE_CREATE_MASK(DXG_HANDLE_TYPE_BITPOS, DXG_HANDLE_TYPE_BITS)
+#define DXG_HANDLE_UNIQUE_MASK     DXG_HANDLE_CREATE_MASK(DXG_HANDLE_UNIQUE_BITPOS, DXG_HANDLE_UNIQUE_BITS)
+#define DXG_HANDLE_FULLUNIQUE_MASK (DXG_HANDLE_UNIQUE_MASK | DXG_HANDLE_TYPE_MASK)
+#define DXG_HANDLE_INDEX_SHIFT    DXG_HANDLE_INDEX_BITPOS
+#define DXG_HANDLE_TYPE_SHIFT     DXG_HANDLE_TYPE_BITPOS
+#define DXG_HANDLE_UNIQUE_SHIFT   DXG_HANDLE_UNIQUE_BITPOS
+#define DXG_HANDLE_GET_INDEX(h)   (((DXG_HANDLE){.Value = (ULONG)(ULONG_PTR)(h)}).Fields.Index)
+#define DXG_HANDLE_GET_UNIQUE(h)  (((DXG_HANDLE){.Value = (ULONG)(ULONG_PTR)(h)}).Fields.Unique)
+#define DXG_HANDLE_GET_TYPE(h)    ((DXG_OBJECT_TYPE)(((DXG_HANDLE){.Value = (ULONG)(ULONG_PTR)(h)}).Fields.Type))
+#define DXG_HANDLE_MAKE(index, type, unique) \
+    ((HANDLE)(ULONG)((DXG_HANDLE){.Fields = {.Index = (index), .Type = (type), .Unique = (unique)}}.Value))
+#define DXG_HANDLE_TABLE_GROWTH   ((PAGE_SIZE * 4) / sizeof(DXG_HANDLE_ENTRY))
+#define DXG_HANDLE_MAX_COUNT     (1 << (32 - DXG_HANDLE_NONINDEX_BITS))
+#define DXG_HANDLE_BASE          1
+#define DXG_HANDLE_LIMIT          (1u << DXG_HANDLE_INDEX_BITS)
 
 #include <windef.h>
 #include <winerror.h>
@@ -40,6 +96,21 @@ typedef struct _DD_BASEOBJECT
 #include <drivers/directx/dxg.h>
 #include <drivers/directx/dxeng.h>
 
+/* Forward declarations for GDI types needed for palette support */
+typedef struct _SURFACE *PSURFACE;
+typedef struct _PALETTE *PPALETTE;
+typedef struct _BASEOBJECT BASEOBJECT;
+typedef struct _BASEOBJECT *POBJ;
+
+/* GDI object type constants */
+#define GDI_OBJECT_TYPE_PALETTE  0x06
+#define GDI_OBJECT_TYPE_BITMAP   0x07
+
+/* Forward declare GDI functions we need */
+PVOID NTAPI GDIOBJ_ShareLockObj(HGDIOBJ hobj, ULONG ulType);
+VOID FASTCALL GDIOBJ_vDereferenceObject(POBJ pobj);
+VOID FASTCALL GDIOBJ_vReferenceObjectByPointer(POBJ pobj);
+
 #include "tags.h"
 
 #define CapOver_DisableAccel      0x1
@@ -48,13 +119,14 @@ typedef struct _DD_BASEOBJECT
 #define CapOver_DisableOGL        0x8
 #define CapOver_DisableEscapes    0x10
 
-#define ObjType_DDLOCAL_TYPE      1
-#define ObjType_DDSURFACE_TYPE    2
-#define ObjType_DDCONTEXT_TYPE    3
-#define ObjType_DDVIDEOPORT_TYPE  4
-#define ObjType_DDMOTIONCOMP_TYPE 5
+/* Legacy object type defines - use DXG_OBJTYPE_* instead */
+#define ObjType_DDLOCAL_TYPE      DXG_OBJTYPE_DIRECTDRAW
+#define ObjType_DDSURFACE_TYPE    DXG_OBJTYPE_SURFACE
+#define ObjType_DDCONTEXT_TYPE    DXG_OBJTYPE_D3D
+#define ObjType_DDVIDEOPORT_TYPE  DXG_OBJTYPE_VIDEOPORT
+#define ObjType_DDMOTIONCOMP_TYPE DXG_OBJTYPE_MOTIONCOMP
 
-typedef struct _DD_ENTRY
+typedef struct _DXG_HANDLE_ENTRY
 {
     union
     {
@@ -64,7 +136,7 @@ typedef struct _DD_ENTRY
     HANDLE Pid;
     USHORT FullUnique;
     UCHAR Objt;
-} DD_ENTRY, *PDD_ENTRY;
+} DXG_HANDLE_ENTRY, *PDXG_HANDLE_ENTRY;
 
 typedef struct _EDD_SURFACE_LOCAL
 {
@@ -103,11 +175,11 @@ typedef PDC       (APIENTRY* PFN_DxEngLockDC)(HDC);
 typedef BOOLEAN   (APIENTRY* PFN_DxEngUnlockDC)(PDC);
 typedef BOOLEAN   (APIENTRY* PFN_DxEngSetDCState)(HDC, DWORD, DWORD);
 typedef DWORD_PTR (APIENTRY* PFN_DxEngGetDCState)(HDC, DWORD);
-typedef DWORD     (APIENTRY* PFN_DxEngSelectBitmap)(DWORD, DWORD);
-typedef DWORD     (APIENTRY* PFN_DxEngSetBitmapOwner)(DWORD, DWORD);
-typedef DWORD     (APIENTRY* PFN_DxEngDeleteSurface)(DWORD);
+typedef HBITMAP   (APIENTRY* PFN_DxEngSelectBitmap)(HDC, HBITMAP);
+typedef BOOLEAN   (APIENTRY* PFN_DxEngSetBitmapOwner)(HBITMAP, ULONG);
+typedef BOOLEAN   (APIENTRY* PFN_DxEngDeleteSurface)(HSURF);
 typedef DWORD     (APIENTRY* PFN_DxEngGetSurfaceData)(DWORD, DWORD);
-typedef DWORD     (APIENTRY* PFN_DxEngAltLockSurface)(DWORD);
+typedef SURFOBJ * (APIENTRY* PFN_DxEngAltLockSurface)(HSURF);
 typedef DWORD     (APIENTRY* PFN_DxEngUploadPaletteEntryToSurface)(DWORD, DWORD, DWORD, DWORD);
 typedef DWORD     (APIENTRY* PFN_DxEngMarkSurfaceAsDirectDraw)(DWORD, DWORD);
 typedef DWORD     (APIENTRY* PFN_DxEngSelectPaletteToSurface)(DWORD, DWORD);
@@ -173,9 +245,9 @@ DWORD NTAPI DxDdCreateDirectDrawObject(HDC hDC);
 
 /* Global pointers */
 extern ULONG gcSizeDdHmgr;
-extern PDD_ENTRY gpentDdHmgr;
+extern PDXG_HANDLE_ENTRY gpentDdHmgr;
 extern ULONG gcMaxDdHmgr;
-extern PDD_ENTRY gpentDdHmgrLast;
+extern PDXG_HANDLE_ENTRY gpentDdHmgrLast;
 extern ULONG ghFreeDdHmgr;
 extern HSEMAPHORE ghsemHmgr;
 extern LONG gcDummyPageRefCnt;
@@ -197,6 +269,10 @@ BOOL NTAPI DxDdQueryDirectDrawObject(HANDLE DdHandle, DD_HALINFO* pDdHalInfo, DW
 DWORD NTAPI DxDdReenableDirectDrawObject(HANDLE DdHandle, PVOID p2);
 DWORD NTAPI DxDdCanCreateSurface(HANDLE DdHandle, PDD_CANCREATESURFACEDATA SurfaceData);
 DWORD NTAPI DxDdCanCreateD3DBuffer(HANDLE DdHandle, PDD_CANCREATESURFACEDATA SurfaceData);
+DWORD NTAPI DxDdCreateSurface(HANDLE hDirectDrawLocal, HANDLE *hSurface, DDSURFACEDESC *puSurfaceDescription,
+                              DD_SURFACE_GLOBAL *puSurfaceGlobalData, DD_SURFACE_LOCAL *puSurfaceLocalData,
+                              DD_SURFACE_MORE *puSurfaceMoreData, PDD_CREATESURFACEDATA puCreateSurfaceData,
+                              HANDLE *puhSurface);
 DWORD NTAPI DxDdCreateD3DBuffer(HANDLE hDirectDrawLocal, PEDD_SURFACE pDdSurfList, DDSURFACEDESC2 *a3, DD_SURFACE_GLOBAL *pDdSurfGlob, DD_SURFACE_LOCAL *pDdSurfLoc,
                                 DD_SURFACE_MORE *pDdSurfMore, DD_CREATESURFACEDATA *pDdCreateSurfaceData, PVOID Address);
 DWORD NTAPI DxDdLock(HANDLE hSurface, PDD_LOCKDATA puLockData, HDC hdcClip);
@@ -205,7 +281,7 @@ HANDLE NTAPI DxDdCreateSurfaceObject(HANDLE hDirectDrawLocal, HANDLE hSurface, P
 
 
 /* Internal functions */
-BOOL FASTCALL VerifyObjectOwner(PDD_ENTRY pEntry);
+BOOL FASTCALL VerifyObjectOwner(PDXG_HANDLE_ENTRY pEntry);
 BOOL FASTCALL DdHmgCreate(VOID);
 BOOL FASTCALL DdHmgDestroy(VOID);
 PVOID FASTCALL DdHmgLock(HANDLE DdHandle, UCHAR ObjectType, BOOLEAN LockOwned);
