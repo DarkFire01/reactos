@@ -26,11 +26,11 @@ EnterApc32:
     pop rsi
     pop rdi
     
-    lea rcx, [return32]
+    lea rcx, [rip + return32]
     mov [rsp + 16], rcx
     
-    .byte HEX(48)
-    retf
+    .byte HEX(48) /* REX.W */
+    .byte HEX(CB) /* retf */
 return32:
     call l
 l:
@@ -38,7 +38,7 @@ l:
     add eax, return64 - l
     push HEX(33)
     push rax
-    retf
+    .byte HEX(CB) /* retf */
 return64:
     mov rsp, r12
     pop r12

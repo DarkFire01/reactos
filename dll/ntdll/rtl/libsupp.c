@@ -19,6 +19,7 @@
 #ifdef BUILD_WOW6432
 void __writegsdword(ULONG offset, ULONG value);
 ULONG __readgsdword(ULONG offset);
+#include <wow64.h>
 #endif
 
 SIZE_T RtlpAllocDeallocQueryBufferSize = PAGE_SIZE;

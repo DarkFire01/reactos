@@ -8,10 +8,10 @@
 
 #pragma once
 
-#ifdef BUILD_WOW6432
-
 #define TEB64_TLS_OFFSET            0x1480
 #define WOW64_TLS_FILESYSREDIR      8
+
+#ifdef BUILD_WOW6432
 
 /**********************************************************************
  * Exported functions 
@@ -198,5 +198,21 @@ typedef UINT64 ULONG_PTR_NATIVE;
 #define WOW64_CAST_FROM_HANDLE(H) (H)
 
 typedef ULONG_PTR ULONG_PTR_NATIVE;
+
+#endif
+
+#ifdef USE_LPC6432
+
+#define LPC_PTR(x) LPC_PVOID
+#define LPC_PTRTYPE(x) LPC_PVOID
+#define TO_LPC_HANDLE(h) ((LPC_HANDLE)(h))
+#define FROM_LPC_HANDLE(h) ((HANDLE)(h))
+
+#else
+
+#define LPC_PTR(x) x*
+#define LPC_PTRTYPE(x) x
+#define TO_LPC_HANDLE(h) h
+#define FROM_LPC_HANDLE(h) h
 
 #endif

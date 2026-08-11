@@ -36,7 +36,7 @@
 #include "../../../win32ss/w32ksvc32.h"
 #undef SVC_
 
-#define SVC_(name,numArgs) static int Num ## name = __COUNTER__;
+#define SVC_(name,numArgs) int Num ## name = __COUNTER__;
 #include "../../../win32ss/w32ksvc32.h"
 #undef SVC_
 
@@ -96,7 +96,7 @@ const SYSTEM_SERVICE_TABLE sdwhwin32 =
 
 PSERVERINFO g_ServerInfo = NULL;
 
-static BOOL wow64_NtGdiInit(UINT* pArgs)
+NTSTATUS wow64_NtGdiInit(UINT* pArgs)
 {
     return NtGdiInit();
 }
