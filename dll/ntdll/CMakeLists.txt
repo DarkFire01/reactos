@@ -56,9 +56,8 @@ else()
     list(APPEND SOURCE dispatch/dispatch.c)
 endif()
 
-if(ARCH STREQUAL "i386")
+if(SYSWOW64_BUILD)
     list(APPEND ASM_SOURCE wow64/gsfuncs.S)
-    list(APPEND SOURCE wow64/memory.c)
 endif()
 
 add_asm_files(ntdll_asm ${ASM_SOURCE})

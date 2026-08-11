@@ -93,7 +93,7 @@ static inline WCHAR toupperW( WCHAR ch )
 }
 
 /* WOW64 */
-#include "../../ntdll/wow64/ntdll32.h"
+#include <wow64.h>
 #include "../../wow64/wine/struct32.h"
 
 #endif /* __K32_H */

@@ -17,7 +17,8 @@
 #include <debug.h>
 
 #ifdef BUILD_WOW6432
-#include "../wow64/ntdll32.h"
+void __writegsdword(ULONG offset, ULONG value);
+ULONG __readgsdword(ULONG offset);
 #endif
 
 SIZE_T RtlpAllocDeallocQueryBufferSize = PAGE_SIZE;
