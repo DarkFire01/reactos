@@ -204,70 +204,6 @@ typedef struct tagSYSTEM_SERVICE_TABLE
     BYTE *ArgumentTable;
 } SYSTEM_SERVICE_TABLE, *PSYSTEM_SERVICE_TABLE;
 
-typedef struct _I386_FLOATING_SAVE_AREA
-{
-    DWORD ControlWord;
-    DWORD StatusWord;
-    DWORD TagWord;
-    DWORD ErrorOffset;
-    DWORD ErrorSelector;
-    DWORD DataOffset;
-    DWORD DataSelector;
-    BYTE  RegisterArea[80];
-    DWORD Cr0NpxState;
-} I386_FLOATING_SAVE_AREA, *PI386_FLOATING_SAVE_AREA;
-
-#include "pshpack4.h"
-typedef struct _I386_CONTEXT 
-{
-    ULONG ContextFlags;
-    ULONG Dr0;
-    ULONG Dr1;
-    ULONG Dr2;
-    ULONG Dr3;
-    ULONG Dr6;
-    ULONG Dr7;
-    I386_FLOATING_SAVE_AREA FloatSave;
-    ULONG SegGs;
-    ULONG SegFs;
-    ULONG SegEs;
-    ULONG SegDs;
-    ULONG Edi;
-    ULONG Esi;
-    ULONG Ebx;
-    ULONG Edx;
-    ULONG Ecx;
-    ULONG Eax;
-    ULONG Ebp;
-    ULONG Eip;
-    ULONG SegCs;
-    ULONG EFlags;
-    ULONG Esp;
-    ULONG SegSs;
-    UCHAR ExtendedRegisters[512];
-} I386_CONTEXT, *PI386_CONTEXT;
-C_ASSERT(sizeof(I386_CONTEXT) == 716);
-#include "poppack.h"
-
-typedef struct _THREAD_BASIC_INFORMATION32
-{
-    LONG ExitStatus;
-    ULONG TebBaseAddress;
-    CLIENT_ID32 ClientId;
-    ULONG AffinityMask;
-    LONG Priority;
-    LONG BasePriority;
-} THREAD_BASIC_INFORMATION32, *PTHREAD_BASIC_INFORMATION32;
-
-typedef struct _INITIAL_TEB32
-{
-    ULONG PreviousStackBase;
-    ULONG PreviousStackLimit;
-    ULONG StackBase;
-    ULONG StackLimit;
-    ULONG AllocatedStackBase;
-} INITIAL_TEB32, *PINITIAL_TEB32;
-
 typedef IO_STATUS_BLOCK32 *PIO_STATUS_BLOCK32;
 
 static inline void *
@@ -399,7 +335,9 @@ static inline OBJECT_ATTRIBUTES *objattr_32to64( struct object_attr64 *out, cons
     return &out->attr;
 }
 
-static inline OBJECT_ATTRIBUTES*
+static 
+inline 
+OBJECT_ATTRIBUTES*
 RosWow64RedirObjAttributes(struct object_attr64 *out,
                            const OBJECT_ATTRIBUTES32 *in)
 {
@@ -413,13 +351,6 @@ RosWow64RedirObjAttributes(struct object_attr64 *out,
 }
  
 #define objattr_32to64_redirect(out, in) RosWow64RedirObjAttributes(out, in)
-
-#define FIXME_DECLARE_TMP_BUF1 \
-    WCHAR tmpBuf[MAX_PATH]; \
-    UNICODE_STRING tmpStr;\
-    tmpStr.Buffer = tmpBuf;\
-    tmpStr.Length = 0;\
-    tmpStr.MaximumLength = sizeof(tmpBuf)\
 
 static inline TOKEN_USER *token_user_32to64( TOKEN_USER *out, const TOKEN_USER32 *in )
 {

@@ -94,19 +94,6 @@ const SYSTEM_SERVICE_TABLE sdwhwin32 =
 
 #ifdef __REACTOS__
 
-__declspec(allocate(".text"))
-static unsigned char ReadFsDwordImpl[] =
-{
-    0x64, 0x8B, 0x01, /* mov eax, fs:[rcx] */
-    0xC3              /* ret */
-};
-
-ULONG __readfsdword(ULONG x)
-{
-    typedef ULONG(*__readfsdwordImplType)(ULONG);
-    return ((__readfsdwordImplType)ReadFsDwordImpl)(x);
-}
-
 PSERVERINFO g_ServerInfo = NULL;
 
 static BOOL wow64_NtGdiInit(UINT* pArgs)

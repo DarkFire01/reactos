@@ -780,6 +780,70 @@ typedef struct
 
 #ifdef __REACTOS__
 
+typedef struct _I386_FLOATING_SAVE_AREA
+{
+    DWORD ControlWord;
+    DWORD StatusWord;
+    DWORD TagWord;
+    DWORD ErrorOffset;
+    DWORD ErrorSelector;
+    DWORD DataOffset;
+    DWORD DataSelector;
+    BYTE  RegisterArea[80];
+    DWORD Cr0NpxState;
+} I386_FLOATING_SAVE_AREA, *PI386_FLOATING_SAVE_AREA;
+
+#include "pshpack4.h"
+typedef struct _I386_CONTEXT 
+{
+    ULONG ContextFlags;
+    ULONG Dr0;
+    ULONG Dr1;
+    ULONG Dr2;
+    ULONG Dr3;
+    ULONG Dr6;
+    ULONG Dr7;
+    I386_FLOATING_SAVE_AREA FloatSave;
+    ULONG SegGs;
+    ULONG SegFs;
+    ULONG SegEs;
+    ULONG SegDs;
+    ULONG Edi;
+    ULONG Esi;
+    ULONG Ebx;
+    ULONG Edx;
+    ULONG Ecx;
+    ULONG Eax;
+    ULONG Ebp;
+    ULONG Eip;
+    ULONG SegCs;
+    ULONG EFlags;
+    ULONG Esp;
+    ULONG SegSs;
+    UCHAR ExtendedRegisters[512];
+} I386_CONTEXT, *PI386_CONTEXT;
+C_ASSERT(sizeof(I386_CONTEXT) == 716);
+#include "poppack.h"
+
+typedef struct _THREAD_BASIC_INFORMATION32
+{
+    LONG ExitStatus;
+    ULONG TebBaseAddress;
+    CLIENT_ID32 ClientId;
+    ULONG AffinityMask;
+    LONG Priority;
+    LONG BasePriority;
+} THREAD_BASIC_INFORMATION32, *PTHREAD_BASIC_INFORMATION32;
+
+typedef struct _INITIAL_TEB32
+{
+    ULONG PreviousStackBase;
+    ULONG PreviousStackLimit;
+    ULONG StackBase;
+    ULONG StackLimit;
+    ULONG AllocatedStackBase;
+} INITIAL_TEB32, *PINITIAL_TEB32;
+
 typedef struct _CPTABLEINFO32 
 {
     USHORT CodePage;

@@ -8,7 +8,7 @@ set_module_type(wow64win win32dll UNICODE ENTRYPOINT DllMain 12)
 set_subsystem(wow64win console)
 ################# END  HACK #################
 
-target_link_libraries(wow64win win32ksys)
+target_link_libraries(wow64win win32ksys libwow64common)
 add_importlibs(wow64win ntdll wow64)
-add_dependencies(wow64win xdk)
+add_dependencies(wow64win xdk psdk)
 add_cd_file(TARGET wow64win DESTINATION reactos/system32 NO_WOW64 FOR all)
