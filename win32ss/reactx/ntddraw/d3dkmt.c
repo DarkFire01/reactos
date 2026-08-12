@@ -12,8 +12,14 @@ DWORD
 APIENTRY
 NtGdiDdDDICreateDCFromMemory(D3DKMT_CREATEDCFROMMEMORY *desc)
 {
-    PSURFACE psurf;
-    HDC hDC;
+    D3DKMT_CREATEDCFROMMEMORY info;
+    PALETTEENTRY aPalEntries[256];
+    PPALETTE ppal = NULL;
+    PSURFACE psurf = NULL;
+    HANDLE hSecure = NULL;
+    HDC hDC = NULL;
+    HBITMAP hBitmap;
+    ULONG cjBits;
 
     const struct d3dddi_format_info
     {
@@ -27,9 +33,9 @@ NtGdiDdDDICreateDCFromMemory(D3DKMT_CREATEDCFROMMEMORY *desc)
 
     static const struct d3dddi_format_info format_info[] =
     {
-        { D3DDDIFMT_R8G8B8,   24, BI_RGB,       0,   0x00000000, 0x00000000, 0x00000000 },
-        { D3DDDIFMT_A8R8G8B8, 32, BI_RGB,       0,   0x00000000, 0x00000000, 0x00000000 },
-        { D3DDDIFMT_X8R8G8B8, 32, BI_RGB,       0,   0x00000000, 0x00000000, 0x00000000 },
+        { D3DDDIFMT_R8G8B8,   24, BI_RGB,       0,   0x00ff0000, 0x0000ff00, 0x000000ff },
+        { D3DDDIFMT_A8R8G8B8, 32, BI_RGB,       0,   0x00ff0000, 0x0000ff00, 0x000000ff },
+        { D3DDDIFMT_X8R8G8B8, 32, BI_RGB,       0,   0x00ff0000, 0x0000ff00, 0x000000ff },
         { D3DDDIFMT_R5G6B5,   16, BI_BITFIELDS, 0,   0x0000f800, 0x000007e0, 0x0000001f },
         { D3DDDIFMT_X1R5G5B5, 16, BI_BITFIELDS, 0,   0x00007c00, 0x000003e0, 0x0000001f },
         { D3DDDIFMT_A1R5G5B5, 16, BI_BITFIELDS, 0,   0x00007c00, 0x000003e0, 0x0000001f },
@@ -41,12 +47,24 @@ NtGdiDdDDICreateDCFromMemory(D3DKMT_CREATEDCFROMMEMORY *desc)
     if (!desc)
         return STATUS_INVALID_PARAMETER;
 
-    if (!desc->pMemory)
+    /* Capture the request from user mode */
+    _SEH2_TRY
+    {
+        ProbeForWrite(desc, sizeof(*desc), 1);
+        info = *desc;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        _SEH2_YIELD(return STATUS_INVALID_PARAMETER);
+    }
+    _SEH2_END;
+
+    if (!info.pMemory)
         return STATUS_INVALID_PARAMETER;
 
     for (i = 0; i < sizeof(format_info) / sizeof(*format_info); ++i)
     {
-        if (format_info[i].format == desc->Format)
+        if (format_info[i].format == info.Format)
         {
             format = &format_info[i];
             break;
@@ -56,50 +74,99 @@ NtGdiDdDDICreateDCFromMemory(D3DKMT_CREATEDCFROMMEMORY *desc)
     if (!format)
         return STATUS_INVALID_PARAMETER;
 
-    if (desc->Width > (UINT_MAX & ~3) / (format->bit_count / 8) ||
-        !desc->Pitch || desc->Pitch < (((desc->Width * format->bit_count + 31) >> 3) & ~3) ||
-        !desc->Height || desc->Height > UINT_MAX / desc->Pitch)
+    if (info.Width > (UINT_MAX & ~3) / (format->bit_count / 8) ||
+        !info.Pitch || info.Pitch < (((info.Width * format->bit_count + 31) >> 3) & ~3) ||
+        !info.Height || info.Height > UINT_MAX / info.Pitch)
     {
         return STATUS_INVALID_PARAMETER;
     }
 
-    if (!desc->hDeviceDc || !(hDC = NtGdiCreateCompatibleDC(desc->hDeviceDc)))
+    /* Capture the color table, if the format is paletted and one was given */
+    if (format->palette_size && info.pColorTable)
     {
+        _SEH2_TRY
+        {
+            ProbeForRead(info.pColorTable, format->palette_size * sizeof(PALETTEENTRY), 1);
+            RtlCopyMemory(aPalEntries, info.pColorTable, format->palette_size * sizeof(PALETTEENTRY));
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            _SEH2_YIELD(return STATUS_INVALID_PARAMETER);
+        }
+        _SEH2_END;
+    }
+
+    cjBits = info.Pitch * info.Height;
+    hSecure = EngSecureMem(info.pMemory, cjBits);
+    if (!hSecure)
+        return STATUS_INVALID_PARAMETER;
+
+    if (!info.hDeviceDc || !(hDC = NtGdiCreateCompatibleDC(info.hDeviceDc)))
+    {
+        EngUnsecureMem(hSecure);
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Allocate a surface */
     psurf = SURFACE_AllocSurface(STYPE_BITMAP,
-                                 desc->Width,
-                                 desc->Height,
+                                 info.Width,
+                                 info.Height,
                                  BitmapFormat(format->bit_count, format->compression),
                                  BMF_TOPDOWN | BMF_NOZEROINIT,
-                                 desc->Pitch,
-                                 0,
-                                 desc->pMemory);
-
-    /* Mark as API bitmap */
-    psurf->flags |= (DDB_SURFACE | API_BITMAP);
-
-    desc->hDc = hDC;
-    /* Get the handle for the bitmap */
-    desc->hBitmap = (HBITMAP)psurf->SurfObj.hsurf;
-
-    /* Allocate a palette for this surface */
-    if (format->bit_count <= 8)
+                                 info.Pitch,
+                                 cjBits,
+                                 info.pMemory);
+    if (!psurf)
     {
-        PPALETTE palette = PALETTE_AllocPalette(PAL_INDEXED, 1 << format->bit_count, NULL, 0, 0, 0);
-        if (palette)
-        {
-            SURFACE_vSetPalette(psurf, palette);
-            PALETTE_ShareUnlockPalette(palette);
-        }
+        NtGdiDeleteObjectApp(hDC);
+        EngUnsecureMem(hSecure);
+        return STATUS_NO_MEMORY;
     }
 
-    /* Unlock the surface and return */
+    /* Mark as API bitmap. The secured range is released when the DC pair is
+     * destroyed, see NtGdiDdDDIDestroyDCFromMemory. */
+    psurf->flags |= (DDB_SURFACE | API_BITMAP);
+    psurf->hSecure = hSecure;
+
+    hBitmap = (HBITMAP)psurf->SurfObj.hsurf;
+
+    /* Give the surface a palette matching the format */
+    if (format->palette_size)
+        ppal = PALETTE_AllocPalette(PAL_INDEXED, format->palette_size,
+                                    info.pColorTable ? aPalEntries : NULL, 0, 0, 0);
+    else
+        ppal = PALETTE_AllocPalette(PAL_BITFIELDS, 0, NULL,
+                                    format->mask_r, format->mask_g, format->mask_b);
+    if (ppal)
+    {
+        SURFACE_vSetPalette(psurf, ppal);
+        PALETTE_ShareUnlockPalette(ppal);
+    }
+
+    /* Unlock the surface */
     SURFACE_UnlockSurface(psurf);
 
-    NtGdiSelectBitmap(desc->hDc, desc->hBitmap);
+    if (!NtGdiSelectBitmap(hDC, hBitmap))
+    {
+        NtGdiDeleteObjectApp(hBitmap);
+        NtGdiDeleteObjectApp(hDC);
+        EngUnsecureMem(hSecure);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Return the handles to user mode */
+    _SEH2_TRY
+    {
+        desc->hDc = hDC;
+        desc->hBitmap = hBitmap;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        NtGdiDeleteObjectApp(hDC);
+        NtGdiDeleteObjectApp(hBitmap);
+        EngUnsecureMem(hSecure);
+        _SEH2_YIELD(return STATUS_INVALID_PARAMETER);
+    }
+    _SEH2_END;
 
     return STATUS_SUCCESS;
 }
@@ -108,15 +175,44 @@ DWORD
 APIENTRY
 NtGdiDdDDIDestroyDCFromMemory(const D3DKMT_DESTROYDCFROMMEMORY *desc)
 {
+    D3DKMT_DESTROYDCFROMMEMORY info;
+    HANDLE hSecure = NULL;
+    PSURFACE psurf;
+
     if (!desc)
         return STATUS_INVALID_PARAMETER;
 
-    if (GDI_HANDLE_GET_TYPE(desc->hDc) != GDI_OBJECT_TYPE_DC ||
-        GDI_HANDLE_GET_TYPE(desc->hBitmap) != GDI_OBJECT_TYPE_BITMAP)
+    /* Capture the request from user mode */
+    _SEH2_TRY
+    {
+        ProbeForRead(desc, sizeof(*desc), 1);
+        info = *desc;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        _SEH2_YIELD(return STATUS_INVALID_PARAMETER);
+    }
+    _SEH2_END;
+
+    if (GDI_HANDLE_GET_TYPE(info.hDc) != GDI_OBJECT_TYPE_DC ||
+        GDI_HANDLE_GET_TYPE(info.hBitmap) != GDI_OBJECT_TYPE_BITMAP)
         return STATUS_INVALID_PARAMETER;
 
-    NtGdiDeleteObjectApp(desc->hBitmap);
-    NtGdiDeleteObjectApp(desc->hDc);
+    /* Grab the secured memory handle before the surface goes away */
+    psurf = SURFACE_ShareLockSurface(info.hBitmap);
+    if (psurf)
+    {
+        hSecure = psurf->hSecure;
+        psurf->hSecure = NULL;
+        SURFACE_ShareUnlockSurface(psurf);
+    }
+
+    /* Delete the DC first, so the bitmap is no longer selected into it */
+    NtGdiDeleteObjectApp(info.hDc);
+    NtGdiDeleteObjectApp(info.hBitmap);
+
+    if (hSecure)
+        EngUnsecureMem(hSecure);
 
     return STATUS_SUCCESS;
 }

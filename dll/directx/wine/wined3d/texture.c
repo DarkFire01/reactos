@@ -3763,6 +3763,19 @@ static HRESULT wined3d_texture_init(struct wined3d_texture *texture, const struc
         texture->flags |= WINED3D_TEXTURE_GET_DC_LENIENT;
         texture->resource.pin_sysmem = 1;
     }
+#ifdef __REACTOS__
+    /* textures with WINED3DUSAGE_OWNDC hold a DC over their system memory for
+     * their entire lifetime (see wined3d_texture_create_dc() and
+     * wined3d_texture_release_dc()), so that memory must never be removed.
+     * Otherwise validating WINED3D_LOCATION_DISCARDED on a no3d swapchain
+     * buffer after a present frees the memory the DC's bitmap points to.
+     *
+     * This wouldnt matter as much in normal wine, but it can trigger with
+     * reactos's usage.
+     */
+    if (desc->usage & WINED3DUSAGE_OWNDC)
+        texture->resource.pin_sysmem = 1;
+#endif
     if (flags & (WINED3D_TEXTURE_CREATE_GET_DC | WINED3D_TEXTURE_CREATE_GET_DC_LENIENT))
         texture->flags |= WINED3D_TEXTURE_GET_DC;
     if (flags & WINED3D_TEXTURE_CREATE_DISCARD)
