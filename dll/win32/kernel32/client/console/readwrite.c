@@ -84,7 +84,7 @@ IntReadConsole(IN HANDLE hConsoleInput,
      */
     if (SizeBytes <= sizeof(ReadConsoleRequest->StaticBuffer))
     {
-        ReadConsoleRequest->Buffer = (LPC_PVOID)ReadConsoleRequest->StaticBuffer;
+        ReadConsoleRequest->Buffer = WOW64_CAST_FROM_PTR(ReadConsoleRequest->StaticBuffer);
         // CaptureBuffer = NULL;
     }
     else
@@ -99,6 +99,7 @@ IntReadConsole(IN HANDLE hConsoleInput,
         }
 
         /* Allocate space in the Buffer */
+        ReadConsoleRequest->Buffer = 0;
         CsrAllocateMessagePointer(CaptureBuffer,
                                   SizeBytes,
                                   (PVOID*)&ReadConsoleRequest->Buffer);
@@ -135,9 +136,9 @@ IntReadConsole(IN HANDLE hConsoleInput,
                      * stored in the static buffer because it was first grabbed when
                      * we started the first read.
                      */
-                    RtlCopyMemory((PVOID)(PVOID)ReadConsoleRequest->Buffer,
-                                  lpBuffer,
-                                  ReadConsoleRequest->InitialNumBytes);
+                    Wow64WriteNative(ReadConsoleRequest->Buffer,
+                                     lpBuffer,
+                                     ReadConsoleRequest->InitialNumBytes);
                 }
 
                 ReadConsoleRequest->CtrlWakeupMask = pInputControl->dwCtrlWakeupMask;
@@ -191,9 +192,9 @@ IntReadConsole(IN HANDLE hConsoleInput,
             if (bUnicode && pInputControl)
                 pInputControl->dwControlKeyState = ReadConsoleRequest->ControlKeyState;
 
-            RtlCopyMemory(lpBuffer,
-                          (PVOID)ReadConsoleRequest->Buffer,
-                          ReadConsoleRequest->NumBytes);
+            Wow64ReadNative(ReadConsoleRequest->Buffer,
+                            lpBuffer,
+                            ReadConsoleRequest->NumBytes);
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {
@@ -289,6 +290,7 @@ IntGetConsoleInput(IN HANDLE hConsoleInput,
         }
 
         /* Allocate space in the Buffer */
+        GetInputRequest->RecordBufPtr = 0;
         CsrAllocateMessagePointer(CaptureBuffer,
                                   Size,
                                   (PVOID*)&GetInputRequest->RecordBufPtr);
@@ -311,9 +313,9 @@ IntGetConsoleInput(IN HANDLE hConsoleInput,
 
         if (Success)
         {
-            RtlCopyMemory(lpBuffer,
-                          (PVOID)GetInputRequest->RecordBufPtr,
-                          GetInputRequest->NumRecords * sizeof(INPUT_RECORD));
+            Wow64ReadNative(GetInputRequest->RecordBufPtr,
+                            lpBuffer,
+                            GetInputRequest->NumRecords * sizeof(INPUT_RECORD));
         }
         else
         {
@@ -390,7 +392,7 @@ IntReadConsoleOutput(IN HANDLE hConsoleOutput,
      */
     if (NumCells <= 1)
     {
-        ReadOutputRequest->CharInfo = (LPC_PVOID)&ReadOutputRequest->StaticBuffer;
+        ReadOutputRequest->CharInfo = WOW64_CAST_FROM_PTR(&ReadOutputRequest->StaticBuffer);
         // CaptureBuffer = NULL;
     }
     else
@@ -407,6 +409,7 @@ IntReadConsoleOutput(IN HANDLE hConsoleOutput,
         }
 
         /* Allocate space in the Buffer */
+        ReadOutputRequest->CharInfo = 0;
         CsrAllocateMessagePointer(CaptureBuffer,
                                   Size,
                                   (PVOID*)&ReadOutputRequest->CharInfo);
@@ -439,9 +442,9 @@ IntReadConsoleOutput(IN HANDLE hConsoleOutput,
 
             for (y = 0, Y = ReadOutputRequest->ReadRegion.Top; Y <= ReadOutputRequest->ReadRegion.Bottom; ++y, ++Y)
             {
-                RtlCopyMemory(lpBuffer + (y + dwBufferCoord.Y) * dwBufferSize.X + dwBufferCoord.X,
-                              (CHAR_INFO*)ReadOutputRequest->CharInfo + y * SizeX,
-                              SizeX * sizeof(CHAR_INFO));
+                Wow64ReadNative(WOW64_CAST_FROM_PTR((ULONG_PTR_NATIVE)ReadOutputRequest->CharInfo + y * SizeX * sizeof(CHAR_INFO)),
+                                lpBuffer + (y + dwBufferCoord.Y) * dwBufferSize.X + dwBufferCoord.X,
+                                SizeX * sizeof(CHAR_INFO));
 #if 0
                 for (x = 0, X = ReadOutputRequest->ReadRegion.Left; X <= ReadOutputRequest->ReadRegion.Right; ++x, ++X)
                 {
@@ -543,6 +546,7 @@ IntReadConsoleOutputCode(IN HANDLE hConsoleOutput,
         }
 
         /* Allocate space in the Buffer */
+        ReadOutputCodeRequest->pCode = 0;
         CsrAllocateMessagePointer(CaptureBuffer,
                                   SizeBytes,
                                   (PVOID*)&ReadOutputCodeRequest->pCode);
@@ -564,9 +568,9 @@ IntReadConsoleOutputCode(IN HANDLE hConsoleOutput,
 
         if (Success)
         {
-            RtlCopyMemory(pCode,
-                          (PVOID)ReadOutputCodeRequest->pCode,
-                          ReadOutputCodeRequest->NumCodes * CodeSize);
+            Wow64ReadNative(ReadOutputCodeRequest->pCode,
+                            pCode,
+                            ReadOutputCodeRequest->NumCodes * CodeSize);
         }
         else
         {
@@ -638,9 +642,9 @@ IntWriteConsole(IN HANDLE hConsoleOutput,
 
         _SEH2_TRY
         {
-            RtlCopyMemory((PVOID)WriteConsoleRequest->Buffer,
-                          lpBuffer,
-                          SizeBytes);
+            Wow64WriteNative(WriteConsoleRequest->Buffer,
+                             lpBuffer,
+                             SizeBytes);
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {
@@ -740,9 +744,9 @@ IntWriteConsoleInput(IN HANDLE hConsoleInput,
 
         _SEH2_TRY
         {
-            RtlCopyMemory((PVOID)WriteInputRequest->RecordBufPtr,
-                          lpBuffer,
-                          nLength * sizeof(INPUT_RECORD));
+            Wow64WriteNative(WriteInputRequest->RecordBufPtr,
+                             lpBuffer,
+                             nLength * sizeof(INPUT_RECORD));
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {
@@ -872,6 +876,7 @@ IntWriteConsoleOutput(IN HANDLE hConsoleOutput,
         if (CaptureBuffer)
         {
             /* Allocate space in the Buffer */
+            WriteOutputRequest->CharInfo = 0;
             CsrAllocateMessagePointer(CaptureBuffer,
                                       Size,
                                       (PVOID*)&WriteOutputRequest->CharInfo);
@@ -892,7 +897,7 @@ IntWriteConsoleOutput(IN HANDLE hConsoleOutput,
             WriteOutputRequest->UseVirtualMemory = TRUE;
 
             /* Bail out if we still cannot allocate memory */
-            if (WriteOutputRequest->CharInfo == (LPC_PVOID)NULL)
+            if (!WriteOutputRequest->CharInfo)
             {
                 DPRINT1("Failed to allocate heap buffer with size %ld!\n", Size);
                 SetLastError(ERROR_NOT_ENOUGH_MEMORY);
@@ -915,9 +920,9 @@ IntWriteConsoleOutput(IN HANDLE hConsoleOutput,
 
         for (y = 0, Y = WriteOutputRequest->WriteRegion.Top; Y <= WriteOutputRequest->WriteRegion.Bottom; ++y, ++Y)
         {
-            RtlCopyMemory((CHAR_INFO*)WriteOutputRequest->CharInfo + y * SizeX,
-                          lpBuffer + (y + dwBufferCoord.Y) * dwBufferSize.X + dwBufferCoord.X,
-                          SizeX * sizeof(CHAR_INFO));
+            Wow64WriteNative(WOW64_CAST_FROM_PTR((ULONG_PTR_NATIVE)WriteOutputRequest->CharInfo + y * SizeX * sizeof(CHAR_INFO*)),
+                             lpBuffer + (y + dwBufferCoord.Y) * dwBufferSize.X + dwBufferCoord.X,
+                             SizeX * sizeof(CHAR_INFO));
 #if 0
             for (x = 0, X = WriteOutputRequest->WriteRegion.Left; X <= WriteOutputRequest->WriteRegion.Right; ++x, ++X)
             {
@@ -1037,9 +1042,9 @@ IntWriteConsoleOutputCode(IN HANDLE hConsoleOutput,
 
         _SEH2_TRY
         {
-            RtlCopyMemory((PVOID)WriteOutputCodeRequest->pCode,
-                          pCode,
-                          SizeBytes);
+            Wow64WriteNative(WriteOutputCodeRequest->pCode,
+                             pCode,
+                             SizeBytes);
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {

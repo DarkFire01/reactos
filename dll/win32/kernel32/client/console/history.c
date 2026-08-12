@@ -79,6 +79,7 @@ IntGetConsoleCommandHistory(LPVOID lpHistory, DWORD cbHistory, LPCVOID lpExeName
     CONSOLE_API_MESSAGE ApiMessage;
     PCONSOLE_GETCOMMANDHISTORY GetCommandHistoryRequest = &ApiMessage.Data.GetCommandHistoryRequest;
     PCSR_CAPTURE_BUFFER CaptureBuffer;
+    PVOID ExeName, History;
 
     USHORT NumChars = (USHORT)(lpExeName ? (bUnicode ? wcslen(lpExeName) : strlen(lpExeName)) : 0);
 
@@ -108,10 +109,12 @@ IntGetConsoleCommandHistory(LPVOID lpHistory, DWORD cbHistory, LPCVOID lpExeName
     CsrCaptureMessageBuffer(CaptureBuffer,
                             (PVOID)lpExeName,
                             GetCommandHistoryRequest->ExeLength,
-                            (PVOID)&GetCommandHistoryRequest->ExeName);
+                            &ExeName);
+    GetCommandHistoryRequest->ExeName = WOW64_CAST_FROM_PTR(ExeName);
 
     CsrAllocateMessagePointer(CaptureBuffer, GetCommandHistoryRequest->HistoryLength,
-                              (PVOID*)&GetCommandHistoryRequest->History);
+                              &History);
+    GetCommandHistoryRequest->History = WOW64_CAST_FROM_PTR(History);
 
     CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage,
                         CaptureBuffer,
@@ -125,7 +128,7 @@ IntGetConsoleCommandHistory(LPVOID lpHistory, DWORD cbHistory, LPCVOID lpExeName
     }
 
     RtlCopyMemory(lpHistory,
-                  (PVOID)GetCommandHistoryRequest->History,
+                  History,
                   GetCommandHistoryRequest->HistoryLength);
 
     CsrFreeCaptureBuffer(CaptureBuffer);

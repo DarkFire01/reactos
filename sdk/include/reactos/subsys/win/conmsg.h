@@ -197,7 +197,7 @@ typedef struct _CONSRV_API_CONNECTINFO
     ULONG  TitleLength;
     WCHAR  ConsoleTitle[MAX_PATH + 1];  // Console title or full path to the startup shortcut
     ULONG  DesktopLength;
-    LPC_PTR(WCHAR) Desktop;                     // Contrary to the case of CONSOLE_ALLOCCONSOLE, the
+    LPC_PTR(WCHAR) Desktop;             // Contrary to the case of CONSOLE_ALLOCCONSOLE, the
                                         // desktop string is allocated in the process' heap,
                                         // and CSR will read it via NtReadVirtualMemory.
     ULONG  AppNameLength;

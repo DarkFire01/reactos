@@ -91,7 +91,7 @@ IntAddConsoleAlias(LPCVOID Source,
     }
     else
     {
-        ConsoleAliasRequest->Target = (LPC_PVOID)NULL;
+        ConsoleAliasRequest->Target = WOW64_CAST_FROM_PTR(NULL);
     }
 
     CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage,
@@ -210,18 +210,22 @@ IntGetConsoleAlias(LPCVOID Source,
         return 0;
     }
 
+
     /* Capture the strings */
+    ConsoleAliasRequest->Source = 0;
     CsrCaptureMessageBuffer(CaptureBuffer,
                             (PVOID)Source,
                             ConsoleAliasRequest->SourceLength,
                             (PVOID*)&ConsoleAliasRequest->Source);
 
+    ConsoleAliasRequest->ExeName = 0;
     CsrCaptureMessageBuffer(CaptureBuffer,
                             (PVOID)ExeName,
                             ConsoleAliasRequest->ExeLength,
                             (PVOID*)&ConsoleAliasRequest->ExeName);
 
     /* Allocate space for the target buffer */
+    ConsoleAliasRequest->Target = 0;
     CsrAllocateMessagePointer(CaptureBuffer,
                               ConsoleAliasRequest->TargetLength,
                               (PVOID*)&ConsoleAliasRequest->Target);
@@ -243,7 +247,7 @@ IntGetConsoleAlias(LPCVOID Source,
 
     /* Copy the returned target string into the user buffer */
     RtlCopyMemory(Target,
-                  (PVOID)ConsoleAliasRequest->Target,
+                  WOW64_CAST_TO_PTR(ConsoleAliasRequest->Target),
                   ConsoleAliasRequest->TargetLength);
 
     /* Release the capture buffer and exit */
@@ -361,7 +365,7 @@ IntGetConsoleAliases(LPVOID AliasBuffer,
 
     /* Copy the returned aliases string into the user buffer */
     RtlCopyMemory(AliasBuffer,
-                  (PVOID)GetAllAliasesRequest->AliasesBuffer,
+                  WOW64_CAST_TO_PTR(GetAllAliasesRequest->AliasesBuffer),
                   GetAllAliasesRequest->AliasesBufferLength);
 
     /* Release the capture buffer and exit */
@@ -510,6 +514,7 @@ IntGetConsoleAliasExes(PVOID lpExeNameBuffer,
         return 0;
     }
 
+    GetAliasesExesRequest->ExeNames = 0;
     CsrAllocateMessagePointer(CaptureBuffer,
                               ExeNameBufferLength,
                               (PVOID*)&GetAliasesExesRequest->ExeNames);
@@ -526,7 +531,7 @@ IntGetConsoleAliasExes(PVOID lpExeNameBuffer,
     }
 
     RtlCopyMemory(lpExeNameBuffer,
-                  (PVOID)GetAliasesExesRequest->ExeNames,
+                  WOW64_CAST_TO_PTR(GetAliasesExesRequest->ExeNames),
                   GetAliasesExesRequest->Length);
 
     CsrFreeCaptureBuffer(CaptureBuffer);

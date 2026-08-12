@@ -566,6 +566,7 @@ GetConsoleFontInfo(IN HANDLE hConsoleOutput,
     CONSOLE_API_MESSAGE ApiMessage;
     PCONSOLE_GETFONTINFO GetFontInfoRequest = &ApiMessage.Data.GetFontInfoRequest;
     PCSR_CAPTURE_BUFFER CaptureBuffer;
+    PVOID FontInfoPtr;
 
     GetFontInfoRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
     GetFontInfoRequest->OutputHandle  = TO_LPC_HANDLE(hConsoleOutput);
@@ -582,7 +583,8 @@ GetConsoleFontInfo(IN HANDLE hConsoleOutput,
 
     CsrAllocateMessagePointer(CaptureBuffer,
                               nFontCount * sizeof(CONSOLE_FONT_INFO),
-                              (PVOID*)&GetFontInfoRequest->FontInfo);
+                              &FontInfoPtr);
+    GetFontInfoRequest->FontInfo = WOW64_CAST_FROM_PTR(FontInfoPtr);
 
     CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage,
                         CaptureBuffer,
@@ -595,7 +597,7 @@ GetConsoleFontInfo(IN HANDLE hConsoleOutput,
     else
     {
         RtlCopyMemory(lpConsoleFontInfo,
-                      (PVOID)GetFontInfoRequest->FontInfo,
+                      FontInfoPtr,
                       GetFontInfoRequest->NumFonts * sizeof(CONSOLE_FONT_INFO));
     }
 
@@ -1049,7 +1051,7 @@ SetConsolePalette(HANDLE hConsoleOutput,
 
     SetPaletteRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
     SetPaletteRequest->OutputHandle  = TO_LPC_HANDLE(hConsoleOutput);
-    SetPaletteRequest->PaletteHandle = (LPC_PTRTYPE(HPALETTE))hPalette;
+    SetPaletteRequest->PaletteHandle = TO_LPC_HANDLE(hPalette);
     SetPaletteRequest->Usage         = dwUsage;
 
     CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage,
@@ -1119,7 +1121,7 @@ VerifyConsoleIoHandle(HANDLE hIoHandle)
     VerifyHandleRequest->IsValid       = FALSE;
 
     /* If the process is not attached to a console, return invalid handle */
-    if (VerifyHandleRequest->ConsoleHandle == (LPC_HANDLE)NULL) return FALSE;
+    if (VerifyHandleRequest->ConsoleHandle == 0) return FALSE;
 
     CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage,
                         NULL,
@@ -1275,8 +1277,8 @@ IntAllocConsole(LPWSTR Title,
     PCONSOLE_ALLOCCONSOLE AllocConsoleRequest = &ApiMessage.Data.AllocConsoleRequest;
     PCSR_CAPTURE_BUFFER CaptureBuffer;
 
-    AllocConsoleRequest->CtrlRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))CtrlRoutine;
-    AllocConsoleRequest->PropRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))PropRoutine;
+    AllocConsoleRequest->CtrlRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))(ULONG_PTR)CtrlRoutine;
+    AllocConsoleRequest->PropRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))(ULONG_PTR)PropRoutine;
 
     CaptureBuffer = CsrAllocateCaptureBuffer(5, TitleLength   +
                                                 DesktopLength +
@@ -1330,7 +1332,7 @@ IntAllocConsole(LPWSTR Title,
         goto Quit;
     }
 
-    for (i = 0; i < MAX_INIT_EVENTS; i++) Temp[i] = FROM_LPC_HANDLE(((PCONSOLE_START_INFO)AllocConsoleRequest->ConsoleStartInfo)->InitEvents[i]);
+    for (i = 0; i < MAX_INIT_EVENTS; i++) Temp[i] = WOW64_READ_HANDLE_FIELD(AllocConsoleRequest->ConsoleStartInfo, CONSOLE_START_INFO, InitEvents[i]);
 
     // Is ((PCONSOLE_START_INFO)AllocConsoleRequest->ConsoleStartInfo)->InitEvents aligned on handle boundary ????
     Status = NtWaitForMultipleObjects(MAX_INIT_EVENTS,
@@ -1343,8 +1345,8 @@ IntAllocConsole(LPWSTR Title,
         goto Quit;
     }
 
-    NtClose(FROM_LPC_HANDLE(((PCONSOLE_START_INFO)AllocConsoleRequest->ConsoleStartInfo)->InitEvents[INIT_SUCCESS]));
-    NtClose(FROM_LPC_HANDLE(((PCONSOLE_START_INFO)AllocConsoleRequest->ConsoleStartInfo)->InitEvents[INIT_FAILURE]));
+    NtClose(WOW64_READ_HANDLE_FIELD(AllocConsoleRequest->ConsoleStartInfo, CONSOLE_START_INFO, InitEvents[INIT_SUCCESS]));
+    NtClose(WOW64_READ_HANDLE_FIELD(AllocConsoleRequest->ConsoleStartInfo, CONSOLE_START_INFO, InitEvents[INIT_FAILURE]));
     if (Status != INIT_SUCCESS)
     {
         NtCurrentPeb()->ProcessParameters->ConsoleHandle = NULL;
@@ -1352,9 +1354,9 @@ IntAllocConsole(LPWSTR Title,
     }
     else
     {
-        RtlCopyMemory(ConsoleStartInfo,
-                      (PVOID)AllocConsoleRequest->ConsoleStartInfo,
-                      sizeof(CONSOLE_START_INFO));
+        Wow64ReadNative(AllocConsoleRequest->ConsoleStartInfo,
+                        ConsoleStartInfo,
+                        sizeof(CONSOLE_START_INFO));
         Success = TRUE;
     }
 
@@ -1372,7 +1374,7 @@ AllocConsole(VOID)
     CONSOLE_START_INFO ConsoleStartInfo;
 
     PWCHAR ConsoleTitle;
-    LPC_PTRTYPE(PWCHAR) Desktop;
+    PWCHAR Desktop;
     PWCHAR AppName;
     PWCHAR CurDir;
 
@@ -1413,7 +1415,7 @@ AllocConsole(VOID)
 
     Success = IntAllocConsole(ConsoleTitle,
                               TitleLength,
-                              (PVOID)Desktop,
+                              Desktop,
                               DesktopLength,
                               CurDir,
                               CurDirLength,
@@ -2205,7 +2207,7 @@ IntGetConsoleTitle(LPVOID lpConsoleTitle, DWORD dwNumChars, BOOLEAN bUnicode)
 
     if (dwNumChars > 0)
     {
-        RtlCopyMemory(lpConsoleTitle, (PVOID)TitleRequest->Title, TitleRequest->Length);
+        Wow64ReadNative(TitleRequest->Title, lpConsoleTitle, TitleRequest->Length);
 
         if (bUnicode)
             ((LPWSTR)lpConsoleTitle)[dwNumChars] = UNICODE_NULL;
@@ -2522,6 +2524,7 @@ GetConsoleProcessList(LPDWORD lpdwProcessList,
     CONSOLE_API_MESSAGE ApiMessage;
     PCONSOLE_GETPROCESSLIST GetProcessListRequest = &ApiMessage.Data.GetProcessListRequest;
     PCSR_CAPTURE_BUFFER CaptureBuffer;
+    PVOID ProcessIdsList;
     ULONG nProcesses = 0;
 
     if (lpdwProcessList == NULL || dwProcessCount == 0)
@@ -2543,7 +2546,8 @@ GetConsoleProcessList(LPDWORD lpdwProcessList,
 
     CsrAllocateMessagePointer(CaptureBuffer,
                               dwProcessCount * sizeof(DWORD),
-                              (PVOID*)&GetProcessListRequest->ProcessIdsList);
+                              &ProcessIdsList);
+    GetProcessListRequest->ProcessIdsList = WOW64_CAST_FROM_PTR(ProcessIdsList);
 
     CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage,
                         CaptureBuffer,
@@ -2558,7 +2562,7 @@ GetConsoleProcessList(LPDWORD lpdwProcessList,
         nProcesses = GetProcessListRequest->ProcessCount;
         if (dwProcessCount >= nProcesses)
         {
-            RtlCopyMemory(lpdwProcessList, (PVOID)GetProcessListRequest->ProcessIdsList, nProcesses * sizeof(DWORD));
+            RtlCopyMemory(lpdwProcessList, ProcessIdsList, nProcesses * sizeof(DWORD));
         }
     }
 
@@ -2621,8 +2625,8 @@ IntAttachConsole(DWORD ProcessId,
     PCSR_CAPTURE_BUFFER CaptureBuffer;
 
     AttachConsoleRequest->ProcessId   = ProcessId;
-    AttachConsoleRequest->CtrlRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))CtrlRoutine;
-    AttachConsoleRequest->PropRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))PropRoutine;
+    AttachConsoleRequest->CtrlRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))(ULONG_PTR)CtrlRoutine;
+    AttachConsoleRequest->PropRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))(ULONG_PTR)PropRoutine;
 
     CaptureBuffer = CsrAllocateCaptureBuffer(1, sizeof(CONSOLE_START_INFO));
     if (CaptureBuffer == NULL)
@@ -2648,8 +2652,8 @@ IntAttachConsole(DWORD ProcessId,
         goto Quit;
     }
     
-    for (i = 0; i < MAX_INIT_EVENTS; i++) Temp[i] = FROM_LPC_HANDLE(((PCONSOLE_START_INFO)AttachConsoleRequest->ConsoleStartInfo)->InitEvents[i]);
-    
+    for (i = 0; i < MAX_INIT_EVENTS; i++) Temp[i] = WOW64_READ_HANDLE_FIELD(AttachConsoleRequest->ConsoleStartInfo, CONSOLE_START_INFO, InitEvents[i]);
+
     // Is AttachConsoleRequest->ConsoleStartInfo->InitEvents aligned on handle boundary ????
     Status = NtWaitForMultipleObjects(MAX_INIT_EVENTS,
                                       Temp,
@@ -2661,8 +2665,8 @@ IntAttachConsole(DWORD ProcessId,
         goto Quit;
     }
 
-    NtClose(FROM_LPC_HANDLE(((PCONSOLE_START_INFO)AttachConsoleRequest->ConsoleStartInfo)->InitEvents[INIT_SUCCESS]));
-    NtClose(FROM_LPC_HANDLE(((PCONSOLE_START_INFO)AttachConsoleRequest->ConsoleStartInfo)->InitEvents[INIT_FAILURE]));
+    NtClose(WOW64_READ_HANDLE_FIELD(AttachConsoleRequest->ConsoleStartInfo, CONSOLE_START_INFO, InitEvents[INIT_SUCCESS]));
+    NtClose(WOW64_READ_HANDLE_FIELD(AttachConsoleRequest->ConsoleStartInfo, CONSOLE_START_INFO, InitEvents[INIT_FAILURE]));
     if (Status != INIT_SUCCESS)
     {
         NtCurrentPeb()->ProcessParameters->ConsoleHandle = NULL;
@@ -2670,9 +2674,9 @@ IntAttachConsole(DWORD ProcessId,
     }
     else
     {
-        RtlCopyMemory(ConsoleStartInfo,
-                      (PVOID)AttachConsoleRequest->ConsoleStartInfo,
-                      sizeof(CONSOLE_START_INFO));
+        Wow64ReadNative(AttachConsoleRequest->ConsoleStartInfo,
+                        ConsoleStartInfo,
+                        sizeof(CONSOLE_START_INFO));
         Success = TRUE;
     }
 
@@ -2769,7 +2773,7 @@ SetConsoleIcon(HICON hIcon)
     PCONSOLE_SETICON SetIconRequest = &ApiMessage.Data.SetIconRequest;
 
     SetIconRequest->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
-    SetIconRequest->IconHandle    = (LPC_PTRTYPE(HICON))hIcon;
+    SetIconRequest->IconHandle    = TO_LPC_HANDLE(hIcon);
 
     CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage,
                         NULL,
@@ -3065,7 +3069,7 @@ IntRegisterConsoleIME(
     cbDesktop = min(cbDesktop, (MAX_PATH + 1) * sizeof(WCHAR));
 
     RegisterConsoleIME->ConsoleHandle = TO_LPC_HANDLE(NtCurrentPeb()->ProcessParameters->ConsoleHandle);
-    RegisterConsoleIME->hWnd = (LPC_PTRTYPE(HWND))hWnd;
+    RegisterConsoleIME->hWnd = TO_LPC_HANDLE(hWnd);
     RegisterConsoleIME->dwThreadId = dwThreadId;
     RegisterConsoleIME->cbDesktop = cbDesktop;
 

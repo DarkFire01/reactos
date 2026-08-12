@@ -30,7 +30,7 @@ NTSTATUS
 NTAPI
 NtWow64WriteVirtualMemory64(HANDLE ProcessHandle,
                             UINT64 BaseAddress,
-                            PVOID Buffer,
+                            CONST VOID* Buffer,
                             UINT64 BufferSize,
                             PUINT64 NumberOfBytesWritten);
 
@@ -149,6 +149,48 @@ Wow64WriteNativePtr(UINT64 Address, UINT64 Value)
     }
 }
 
+static
+inline
+void
+Wow64WriteNative(UINT64 NativeAddress, CONST VOID* Address, SIZE_T Size)
+{
+    UINT64 BytesWritten = 0;
+    
+    NTSTATUS Status = 
+        NtWow64WriteVirtualMemory64(NtCurrentProcess(),
+                                    NativeAddress,
+                                    Address,
+                                    Size,
+                                    &BytesWritten);
+
+    if (!NT_SUCCESS(Status) || BytesWritten != Size)
+    {
+        __debugbreak();
+        ASSERT(FALSE);
+    }
+}
+
+static
+inline
+void
+Wow64ReadNative(UINT64 NativeAddress, PVOID Address, SIZE_T Size)
+{
+    UINT64 BytesRead = 0;
+    
+    NTSTATUS Status = 
+        NtWow64ReadVirtualMemory64(NtCurrentProcess(),
+                                   NativeAddress,
+                                   Address,
+                                   Size,
+                                   &BytesRead);
+
+    if (!NT_SUCCESS(Status) || BytesRead != Size)
+    {
+        __debugbreak();
+        ASSERT(FALSE);
+    }
+}
+
 #define WOW64_READ_PTR_FIELD(Ptr, StructType, Field) \
     Wow64ReadNativePtr((UINT64)(Ptr) + (ULONG_PTR)&((StructType*)0)->Field)
 #define WOW64_WRITE_PTR_FIELD(Ptr, StructType, Field, Value) \
@@ -179,6 +221,9 @@ typedef UINT64 ULONG_PTR_NATIVE;
 
 #else
 
+#define Wow64WriteNative(NativeAddress, Address, Size) memcpy(NativeAddress, Address, Size)
+#define Wow64ReadNative(NativeAddress, Address, Size) memcpy(Address, NativeAddress, Size)
+
 #define WOW64_READ_PTR_FIELD(Ptr, StructType, Field) (Ptr->Field)
 #define WOW64_WRITE_PTR_FIELD(Ptr, StructType, Field, Value) (Ptr->Field = (Value))
 #define WOW64_READ_ULONG_FIELD(Ptr, StructType, Field) (Ptr->Field)
@@ -192,9 +237,9 @@ typedef UINT64 ULONG_PTR_NATIVE;
 #define WOW64_CONTAINING_RECORD(Ptr, StructType, Field) CONTAINING_RECORD(Ptr, StructType, Field)
 #define WOW64_FIELD_PTR(Ptr, Type, Field) (&(Ptr)->Field)
 
-#define WOW64_CAST_TO_PTR(Ptr) (Ptr)
+#define WOW64_CAST_TO_PTR(Ptr) ((PVOID)(Ptr))
 #define WOW64_CAST_TO_HANDLE(H) (H)
-#define WOW64_CAST_FROM_PTR(Ptr) (Ptr)
+#define WOW64_CAST_FROM_PTR(Ptr) ((PVOID)(Ptr))
 #define WOW64_CAST_FROM_HANDLE(H) (H)
 
 typedef ULONG_PTR ULONG_PTR_NATIVE;
@@ -202,21 +247,16 @@ typedef ULONG_PTR ULONG_PTR_NATIVE;
 #endif
 
 #ifdef USE_LPC6432
-
 #define LPC_ULONG_PTR ULONGLONG
 #define LPC_UNICODE_STRING UNICODE_STRING64
 #define LPC_PTR(x) LPC_PVOID
 #define LPC_PTRTYPE(x) LPC_PVOID
-#define TO_LPC_HANDLE(h) ((LPC_HANDLE)(h))
-#define FROM_LPC_HANDLE(h) ((HANDLE)(h))
-
 #else
-
-#define LPC_PTR(x) x*
-#define LPC_PTRTYPE(x) x
-#define TO_LPC_HANDLE(h) ((HANDLE)(h))
-#define FROM_LPC_HANDLE(h) h
 #define LPC_ULONG_PTR ULONG_PTR
 #define LPC_UNICODE_STRING UNICODE_STRING
-
+#define LPC_PTR(x) x*
+#define LPC_PTRTYPE(x) x
 #endif
+
+#define TO_LPC_HANDLE(h) WOW64_CAST_FROM_HANDLE(h)
+#define FROM_LPC_HANDLE(h) WOW64_CAST_TO_HANDLE(h)

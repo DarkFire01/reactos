@@ -1895,8 +1895,8 @@ RegisterConsoleVDM(IN DWORD dwRegisterFlags,
             _SEH2_TRY
             {
                 *lpVideoStateLength = RegisterVDMRequest->VideoStateLength;
-                *lpVideoState       = (PVOID)RegisterVDMRequest->VideoState;
-                *lpVDMBuffer        = (PVOID)RegisterVDMRequest->VDMBuffer;
+                *lpVideoState       = WOW64_CAST_TO_PTR(RegisterVDMRequest->VideoState);
+                *lpVDMBuffer        = WOW64_CAST_TO_PTR(RegisterVDMRequest->VDMBuffer);
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {

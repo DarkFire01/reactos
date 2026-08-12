@@ -136,7 +136,7 @@ SetUpConsoleInfo(IN BOOLEAN CaptureTitle,
                  IN OUT LPDWORD pTitleLength,
                  IN OUT LPWSTR* lpTitle OPTIONAL,
                  IN OUT LPDWORD pDesktopLength,
-                 IN OUT LPC_PTRTYPE(LPWSTR)* lpDesktop OPTIONAL,
+                 IN OUT LPWSTR* lpDesktop OPTIONAL,
                  IN OUT PCONSOLE_START_INFO ConsoleStartInfo)
 {
     PRTL_USER_PROCESS_PARAMETERS Parameters = NtCurrentPeb()->ProcessParameters;
@@ -145,8 +145,8 @@ SetUpConsoleInfo(IN BOOLEAN CaptureTitle,
     /* Initialize the fields */
 
     ConsoleStartInfo->IconIndex = 0;
-    ConsoleStartInfo->hIcon   = (LPC_PTRTYPE(HICON))NULL;
-    ConsoleStartInfo->hIconSm = (LPC_PTRTYPE(HICON))NULL;
+    ConsoleStartInfo->hIcon   = TO_LPC_HANDLE(NULL);
+    ConsoleStartInfo->hIconSm = TO_LPC_HANDLE(NULL);
     ConsoleStartInfo->dwStartupFlags = Parameters->WindowFlags;
     ConsoleStartInfo->nFont = 0;
     ConsoleStartInfo->nInputBufferSize = 0;
@@ -202,12 +202,12 @@ SetUpConsoleInfo(IN BOOLEAN CaptureTitle,
         *pDesktopLength = Length;
 
         /* Return a pointer to the data */
-        *lpDesktop = (LPC_PTRTYPE(LPWSTR))Parameters->DesktopInfo.Buffer;
+        *lpDesktop = Parameters->DesktopInfo.Buffer;
     }
     else
     {
         *pDesktopLength = 0;
-        if (lpDesktop) *lpDesktop = (LPC_PTRTYPE(LPWSTR))NULL;
+        if (lpDesktop) *lpDesktop = NULL;
     }
 
     if (Parameters->WindowFlags & STARTF_USEFILLATTRIBUTE)
@@ -656,9 +656,9 @@ ConDllInitialize(IN ULONG Reason,
     ConnectInfo.ConsoleStartInfo.ConsoleHandle = TO_LPC_HANDLE(Parameters->ConsoleHandle);
 
     /* Initialize the console dispatchers */
-    ConnectInfo.CtrlRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))ConsoleControlDispatcher;
-    ConnectInfo.PropRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))PropDialogHandler;
-    ConnectInfo.ImeRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))ConsoleIMERoutine;
+    ConnectInfo.CtrlRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))(ULONG_PTR)ConsoleControlDispatcher;
+    ConnectInfo.PropRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))(ULONG_PTR)PropDialogHandler;
+    ConnectInfo.ImeRoutine = (LPC_PTRTYPE(LPTHREAD_START_ROUTINE))(ULONG_PTR)ConsoleIMERoutine;
 
     /* Set up the console properties */
     if (ConnectInfo.IsConsoleApp && Parameters->ConsoleHandle == NULL)
@@ -672,12 +672,13 @@ ConDllInitialize(IN ULONG Reason,
 
         ConnectInfo.TitleLength   = sizeof(ConnectInfo.ConsoleTitle);
         ConnectInfo.DesktopLength = 0; // SetUpConsoleInfo will give us the real length.
+        ConnectInfo.Desktop = 0;
 
         SetUpConsoleInfo(TRUE,
                          &ConnectInfo.TitleLength,
                          &ConsoleTitle,
                          &ConnectInfo.DesktopLength,
-                         &ConnectInfo.Desktop,
+                         (PWSTR*)&ConnectInfo.Desktop,
                          &ConnectInfo.ConsoleStartInfo);
         DPRINT("ConsoleTitle = '%S' - Desktop = '%S'\n",
                ConsoleTitle, ConnectInfo.Desktop);

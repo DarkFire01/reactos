@@ -2411,13 +2411,13 @@ CreateProcessInternalW(IN HANDLE hUserToken,
     PPEB RemotePeb;
     PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
     PVOID TibValue;
+    PTEB Teb;
 #else
     UINT64 ProcessParameters;
     UINT64 RemotePeb;
     UINT64 TibValue;
 #endif
     PPEB Peb;
-    PTEB Teb;
     INITIAL_TEB InitialTeb;
     PIMAGE_NT_HEADERS NtHeaders;
     STARTUPINFOW StartupInfo;
@@ -2577,7 +2577,9 @@ CreateProcessInternalW(IN HANDLE hUserToken,
     DPRINT("CreateProcessInternalW: '%S' '%S' %lx\n", lpApplicationName, lpCommandLine, dwCreationFlags);
 
     /* Finally, set our TEB and PEB */
+#ifndef BUILD_WOW6432
     Teb = NtCurrentTeb();
+#endif
     Peb = NtCurrentPeb();
 
     /* This combination is illegal (see MSDN) */
