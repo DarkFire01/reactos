@@ -186,12 +186,6 @@ else()
     else()
         # Dummy Wow64 target
         add_custom_target(wow64-binaries)
-
-        function(add_wow64_executable)
-        endfunction()
-
-        function(add_wow64_library)
-        endfunction()
     endif()
 
     if (SYSWOW64_BUILD)

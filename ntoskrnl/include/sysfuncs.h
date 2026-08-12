@@ -304,7 +304,7 @@
     SVC_(Wow64CsrCaptureMessageBuffer, 4)
     SVC_(Wow64CsrCaptureMessageString, 5)
     SVC_(Wow64CsrClientCallServer, 4)
-    SVC_(Wow64CsrClientConnectToServer, 6)
+    SVC_(Wow64CsrClientConnectToServer, 5)
     SVC_(Wow64CsrFreeCaptureBuffer, 1)
     SVC_(Wow64CsrGetProcessId, 0)
     SVC_(Wow64CsrIdentifyAlertableThread, 0)

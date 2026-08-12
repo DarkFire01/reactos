@@ -39,7 +39,7 @@ NTAPI
 CsrAllocateMessagePointer(
     _Inout_ PCSR_CAPTURE_BUFFER CaptureBuffer,
     _In_ ULONG MessageLength,
-    _Out_ LPC_PVOID* CapturedData);
+    _Out_ PVOID* CapturedData);
 
 VOID
 NTAPI
@@ -47,7 +47,7 @@ CsrCaptureMessageBuffer(
     _Inout_ PCSR_CAPTURE_BUFFER CaptureBuffer,
     _In_opt_ PVOID MessageBuffer,
     _In_ ULONG MessageLength,
-    _Out_ LPC_PVOID* CapturedData);
+    _Out_ PVOID* CapturedData);
 
 VOID
 NTAPI

@@ -151,17 +151,17 @@ NTAPI
 CsrAllocateMessagePointer(
     _Inout_ PCSR_CAPTURE_BUFFER CaptureBuffer,
     _In_ ULONG MessageLength,
-    _Out_ LPC_PVOID* CapturedData)
+    _Out_ PVOID* CapturedData)
 {
     if (MessageLength == 0)
     {
-        *CapturedData = (LPC_PVOID)NULL;
+        *CapturedData = NULL;
         CapturedData = NULL;
     }
     else
     {
         /* Set the capture data at our current available buffer */
-        *CapturedData = (LPC_PVOID)CaptureBuffer->BufferEnd;
+        *CapturedData = CaptureBuffer->BufferEnd;
 
         /* Validate the size */
         if (MessageLength >= MAXLONG) return 0;
@@ -189,7 +189,7 @@ CsrCaptureMessageBuffer(
     _Inout_ PCSR_CAPTURE_BUFFER CaptureBuffer,
     _In_opt_ PVOID MessageBuffer,
     _In_ ULONG MessageLength,
-    _Out_ LPC_PVOID* CapturedData)
+    _Out_ PVOID* CapturedData)
 {
     /* Simply allocate a message pointer in the buffer */
     CsrAllocateMessagePointer(CaptureBuffer, MessageLength, CapturedData);
@@ -198,13 +198,8 @@ CsrCaptureMessageBuffer(
     if (!MessageBuffer || !MessageLength) return;
 
     /* Copy the data into the buffer */
-    RtlMoveMemory((PVOID)*CapturedData, MessageBuffer, MessageLength);
+    RtlMoveMemory(*CapturedData, MessageBuffer, MessageLength);
 }
-
-#ifdef USE_LPC6432
-#define CsrAllocateMessagePointer CsrAllocateMessagePointer32
-#define CsrCaptureMessageBuffer CsrCaptureMessageBuffer32
-#endif
 
 /*
  * @implemented

@@ -1,6 +1,8 @@
 add_definitions(-D_WOW64_)
 spec2def(wow64.dll def/wow64.spec ADD_IMPORTLIB)
 
+include_directories(${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys)
+
 add_asm_files(libwow64common_asm srasm.S)
 add_library(libwow64common STATIC 
     ${libwow64common_asm} 

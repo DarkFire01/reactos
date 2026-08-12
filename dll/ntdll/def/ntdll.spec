@@ -1951,8 +1951,8 @@
 @ stdcall -arch=arm __rt_udiv64()
 @ stdcall -arch=arm __rt_srsh()
 
-@ stdcall -arch=wow64 NtWow64ReadVirtualMemory64(ptr long long ptr long long ptr)
-@ stdcall -arch=wow64 NtWow64WriteVirtualMemory64(ptr long long ptr long long ptr)
+@ stdcall -wow64 NtWow64ReadVirtualMemory64(ptr long long ptr long long ptr)
+@ stdcall -wow64 NtWow64WriteVirtualMemory64(ptr long long ptr long long ptr)
 
 @ stdcall -wow64 NtWow64CsrAllocateCaptureBuffer(long long) 
 @ stdcall -wow64 NtWow64CsrAllocateMessagePointer(ptr long ptr) 

@@ -214,7 +214,7 @@ typedef ULONG_PTR ULONG_PTR_NATIVE;
 
 #define LPC_PTR(x) x*
 #define LPC_PTRTYPE(x) x
-#define TO_LPC_HANDLE(h) h
+#define TO_LPC_HANDLE(h) ((HANDLE)(h))
 #define FROM_LPC_HANDLE(h) h
 #define LPC_ULONG_PTR ULONG_PTR
 #define LPC_UNICODE_STRING UNICODE_STRING

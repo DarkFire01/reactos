@@ -92,7 +92,7 @@ typedef struct _CSR_CLIENT_CONNECT
 typedef struct _CSR_CAPTURE_BUFFER
 {
     ULONG Size;
-    LPC_PVOID /* struct _CSR_CAPTURE_BUFFER * */ PreviousCaptureBuffer;
+    LPC_PTR(struct _CSR_CAPTURE_BUFFER) PreviousCaptureBuffer;
     ULONG PointerCount;
     LPC_PVOID BufferEnd;
     LPC_ULONG_PTR PointerOffsetsArray[ANYSIZE_ARRAY];
