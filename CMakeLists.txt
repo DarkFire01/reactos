@@ -42,8 +42,8 @@ string(TOLOWER ${ARCH} ARCH)
 # set possible values for cmake GUI
 set_property(CACHE ARCH PROPERTY STRINGS "i386" "amd64" "arm" "arm64" "arm64ec")
 
-# ARM64EC only provides the user mode half of an ARM64X image
-if(ARCH STREQUAL "arm64ec")
+# SysWOW64 and ARM64EC builds only provide user mode modules, the outer build makes the media
+if(SYSWOW64_BUILD OR ARCH STREQUAL "arm64ec")
     set(USERMODE_ONLY_BUILD TRUE)
 endif()
 

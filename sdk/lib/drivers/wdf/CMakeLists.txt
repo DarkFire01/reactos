@@ -1,5 +1,7 @@
 
-add_subdirectory(wdfldr)
+if (NOT SYSWOW64_BUILD)
+    add_subdirectory(wdfldr)
+endif()
 add_subdirectory(wdfdriverentry)
 
 remove_definitions(-D_WIN32_WINNT=0x502)
@@ -185,43 +187,45 @@ list(APPEND SOURCE_KM
     reactos_special.cpp
     )
 
-add_library(wdf01000 SHARED ${SOURCE_SHARED} ${SOURCE_KM} wdf01000.rc)
+if (NOT SYSWOW64_BUILD)
+    add_library(wdf01000 SHARED ${SOURCE_SHARED} ${SOURCE_KM} wdf01000.rc)
 
-set_module_type(wdf01000 kernelmodedriver)
+    set_module_type(wdf01000 kernelmodedriver)
 
-add_cd_file(TARGET wdf01000 DESTINATION reactos/system32/drivers NO_WOW64 NO_CAB FOR all)
-add_registry_inf(wdf01000_reg.inf)
+    add_cd_file(TARGET wdf01000 DESTINATION reactos/system32/drivers NO_WOW64 NO_CAB FOR all)
+    add_registry_inf(wdf01000_reg.inf)
 
-target_compile_definitions(wdf01000
-    PUBLIC WDF_DEVICE_NO_WDMSEC_H _WIN32_WINNT=0x603 NTDDI_VERSION=0x06030000 # NTDDI_WINBLUE
-    PRIVATE FX_CORE_MODE=1 FX_CORE_KERNEL_MODE=1
-    PRIVATE __WDF_MAJOR_VERSION=1 __WDF_MINOR_VERSION=17 __WDF_BUILD_NUMBER=7600
-    PRIVATE __WDF_MAJOR_VERSION_STRING=01
-    # wdf01000 is primarily 3rd party code, and we cannot control what crap vendor drivers do
-    PRIVATE NO_KERNEL_LIST_ENTRY_CHECKS)
+    target_compile_definitions(wdf01000
+        PUBLIC WDF_DEVICE_NO_WDMSEC_H _WIN32_WINNT=0x603 NTDDI_VERSION=0x06030000 # NTDDI_WINBLUE
+        PRIVATE FX_CORE_MODE=1 FX_CORE_KERNEL_MODE=1
+        PRIVATE __WDF_MAJOR_VERSION=1 __WDF_MINOR_VERSION=17 __WDF_BUILD_NUMBER=7600
+        PRIVATE __WDF_MAJOR_VERSION_STRING=01
+        # wdf01000 is primarily 3rd party code, and we cannot control what crap vendor drivers do
+        PRIVATE NO_KERNEL_LIST_ENTRY_CHECKS)
 
-target_include_directories(wdf01000
-    PUBLIC ${REACTOS_SOURCE_DIR}/sdk/include/wdf/kmdf/1.17
-    PRIVATE
-        ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/wdfldr
-        shared/inc/primitives/common
-        shared/inc/primitives/km
-        shared/inc/private/common
-        shared/inc/private/km
-        kmdf/inc/private
-        shared/object # fxobjectpch.hpp
-        shared/support # fxsupportpch.hpp
-        shared/core # coreprivshared.hpp
-        shared/irphandlers # irphandlerspriv.hpp
-        shared/irphandlers/pnp # pnppriv.hpp
-        shared/irphandlers/pnp/km # pnpprivkm.hpp
-    )
+    target_include_directories(wdf01000
+        PUBLIC ${REACTOS_SOURCE_DIR}/sdk/include/wdf/kmdf/1.17
+        PRIVATE
+            ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/wdfldr
+            shared/inc/primitives/common
+            shared/inc/primitives/km
+            shared/inc/private/common
+            shared/inc/private/km
+            kmdf/inc/private
+            shared/object # fxobjectpch.hpp
+            shared/support # fxsupportpch.hpp
+            shared/core # coreprivshared.hpp
+            shared/irphandlers # irphandlerspriv.hpp
+            shared/irphandlers/pnp # pnppriv.hpp
+            shared/irphandlers/pnp/km # pnpprivkm.hpp
+        )
 
-target_link_libraries(wdf01000 aux_klib usbdex ntoskrnl_vista ${PSEH_LIB})
-add_importlibs(wdf01000 wdfldr ntoskrnl hal)
+    target_link_libraries(wdf01000 aux_klib usbdex ntoskrnl_vista ${PSEH_LIB})
+    add_importlibs(wdf01000 wdfldr ntoskrnl hal)
 
-if(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(wdf01000
-        PRIVATE -Wno-write-strings -Wno-unknown-pragmas -Wno-switch
-        PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wno-reorder -Wno-invalid-offsetof -Wno-delete-non-virtual-dtor -Wno-class-memaccess>)
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
+        target_compile_options(wdf01000
+            PRIVATE -Wno-write-strings -Wno-unknown-pragmas -Wno-switch
+            PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wno-reorder -Wno-invalid-offsetof -Wno-delete-non-virtual-dtor -Wno-class-memaccess>)
+    endif()
 endif()

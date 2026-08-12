@@ -112,22 +112,9 @@ function(setup_wow64)
             -DSYSWOW64_BUILD=1
             ${CMAKE_WOW64_TOOLS_EXTRA_ARGS}
         BUILD_ALWAYS TRUE
-        BUILD_BYPRODUCTS ${REACTOS_BINARY_DIR}/wow64/kernel32.dll
         DEPENDS host-tools
         INSTALL_COMMAND ${CMAKE_COMMAND} -E true
-        USES_TERMINAL_BUILD TRUE
-        USES_TERMINAL_CONFIGURE TRUE
+        #USES_TERMINAL_BUILD TRUE
+        #USES_TERMINAL_CONFIGURE TRUE
     )
-endfunction()
-
-function(add_wow64_executable _target)
-    add_executable(wow64-${_target} IMPORTED)
-    set_target_properties(wow64-${_target} PROPERTIES IMPORTED_LOCATION ${REACTOS_BINARY_DIR}/wow64/${_target}.exe)
-    add_dependencies(wow64-${_target} wow64-binaries ${REACTOS_BINARY_DIR}/wow64/${_target}.exe)
-endfunction()
-
-function(add_wow64_library _target)
-    add_library(wow64-${_target} SHARED IMPORTED)
-    set_target_properties(wow64-${_target} PROPERTIES IMPORTED_LOCATION ${REACTOS_BINARY_DIR}/wow64/${_target}.dll)
-    add_dependencies(wow64-${_target} wow64-binaries ${REACTOS_BINARY_DIR}/wow64/${_target}.dll)
 endfunction()
