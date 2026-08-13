@@ -259,6 +259,80 @@ IopRegisterRootArbiters(
 
 /**
  * @brief
+ * Answers the root PDO's IRP_MN_QUERY_INTERFACE for
+ * GUID_ARBITER_INTERFACE_STANDARD with the root arbiter of the
+ * requested resource type.
+ *
+ * @param[in] IoStack
+ * The QUERY_INTERFACE stack location; InterfaceSpecificData
+ * carries the CmResourceType*.
+ *
+ * @param[in] ExistingStatus
+ * The IRP's current status, returned unchanged when the query is
+ * declined so the IRP is left untouched per the QUERY_INTERFACE
+ * protocol.
+ *
+ * @return
+ * Returns STATUS_SUCCESS with the interface copied into the
+ * caller's buffer, or ExistingStatus when the query is not for
+ * this interface, is for an unknown resource type, asks for a
+ * version other than 0, or provides too small a buffer.
+ *
+ * @remarks
+ * This makes the root just another bus in the discovery walk (no
+ * special "root" code path): the same IopQueryArbiterInterface
+ * query that discovers a bus driver's arbiters discovers the root
+ * arbiters when it reaches the root PDO.  The registration cache
+ * on the root devnode normally answers first, so this handler is
+ * the protocol-faithful backstop for queriers that come through
+ * the IRP path.  A version other than 0 is declined, matching how
+ * pci.sys treats the never-revised ARBITER interface.
+ */
+NTSTATUS
+NTAPI
+IopArbiterQueryRootInterface(
+    _In_ PIO_STACK_LOCATION IoStack,
+    _In_ NTSTATUS ExistingStatus)
+{
+    PARBITER_INTERFACE Published;
+    PARBITER_INTERFACE Out;
+    UCHAR ResourceType;
+
+    PAGED_CODE();
+
+    if (!IsEqualGUID(IoStack->Parameters.QueryInterface.InterfaceType,
+                     &GUID_ARBITER_INTERFACE_STANDARD))
+    {
+        return ExistingStatus;   /* not ours - leave the IRP untouched */
+    }
+
+    if (IoStack->Parameters.QueryInterface.Version != 0 ||
+        IoStack->Parameters.QueryInterface.Size < sizeof(ARBITER_INTERFACE) ||
+        IoStack->Parameters.QueryInterface.Interface == NULL)
+    {
+        return ExistingStatus;   /* decline: wrong version or short buffer */
+    }
+
+    ResourceType = (UCHAR)(ULONG_PTR)IoStack->Parameters.QueryInterface.InterfaceSpecificData;
+    Published = IopGetRootArbiterInterface(ResourceType);
+    if (Published == NULL || Published->ArbiterHandler == NULL)
+    {
+        /* No root arbiter for the type, or registration has not run yet. */
+        return ExistingStatus;
+    }
+
+    Out = (PARBITER_INTERFACE)IoStack->Parameters.QueryInterface.Interface;
+    RtlCopyMemory(Out, Published, sizeof(ARBITER_INTERFACE));
+
+    /* The provider references the interface before returning it (a no-op for
+     * the immortal root arbiters, but the protocol requires the call). */
+    Out->InterfaceReference(Out->Context);
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
  * Finds the arbiter that owns ResourceType for a device by walking
  * its ancestry.
  *

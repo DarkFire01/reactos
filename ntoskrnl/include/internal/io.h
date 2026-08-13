@@ -578,6 +578,13 @@ IopFindArbiterForResourceType(
 
 NTSTATUS
 NTAPI
+IopArbiterQueryRootInterface(
+    _In_ PIO_STACK_LOCATION IoStack,
+    _In_ NTSTATUS ExistingStatus
+);
+
+NTSTATUS
+NTAPI
 IopArbiterAllocateResources(
     _In_ PDEVICE_NODE DeviceNode,
     _In_ PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList,
