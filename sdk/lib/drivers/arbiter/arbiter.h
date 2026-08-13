@@ -9,6 +9,35 @@
 
 #define TAG_ARBITER  'ibrA'
 
+/*
+ * ARBITER_ALTERNATIVE.Priority sentinels.  The allocation engine walks the
+ * alternatives in ascending priority: an ordinary alternative's priority is its
+ * ordering-list index biased by one (negated for IO_RESOURCE_PREFERRED, so
+ * preferred ranges sort first), and once the orderings are exhausted it gets one
+ * final whole-window pass at (PREFERRED_)RESERVED before going EXHAUSTED.
+ */
+#define ARBITER_PRIORITY_NULL               0x00000000
+#define ARBITER_PRIORITY_PREFERRED_RESERVED 0x7FFFFFFD
+#define ARBITER_PRIORITY_RESERVED           0x7FFFFFFE
+#define ARBITER_PRIORITY_EXHAUSTED          0x7FFFFFFF
+
+/* ARBITER_ALTERNATIVE.Flags */
+#define ARBITER_ALTERNATIVE_FLAG_FIXED      0x00000001  // one placement only
+#define ARBITER_ALTERNATIVE_FLAG_SHARED     0x00000002  // CmResourceShareShared
+
+/*
+ * RTL range attribute bits the arbiter tags its allocations with.
+ * BOOT_ALLOCATED marks firmware boot configurations, made available again to
+ * legacy requests so a boot-configured device does not conflict with itself.
+ * SHARED_DRIVER tags a range a CmResourceShareDriverExclusive requirement was
+ * allowed to share (same driver, or another root-enumerated device).
+ */
+#define ARBITER_RANGE_SHARED_DRIVER         0x02
+#define ARBITER_RANGE_BOOT_ALLOCATED        0x04
+
+/* ARBITER_ALLOCATION_STATE.Flags */
+#define ARBITER_STATE_FLAG_NULL_CONFLICT_OK 0x0001  // a NULL-owner conflict is OK
+
 typedef struct _ARBITER_ALTERNATIVE
 {
     UINT64 Minimum;
