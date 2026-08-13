@@ -24,6 +24,12 @@ HalpAcpiGetTable(
     IN ULONG Signature
 );
 
+VOID
+NTAPI
+HalpPublishMmConfigRanges(
+    VOID
+);
+
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
