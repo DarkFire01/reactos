@@ -374,3 +374,79 @@ ArbiterLibStartArbiter(
     return STATUS_SUCCESS;
 #endif
 }
+
+/* EXTERNAL RESERVATIONS ******************************************************/
+
+/**
+ * @brief
+ * Commits a single [Start, End] range into the arbiter as an
+ * ordinary allocation owned by Owner.
+ *
+ * @param[in] Arbiter
+ * The arbiter instance to reserve the range in.
+ *
+ * @param[in] Start
+ * The first address (or unit) of the range.
+ *
+ * @param[in] End
+ * The last address (or unit) of the range, inclusive.
+ *
+ * @param[in] Owner
+ * The owning device object, or NULL for a system reservation.
+ *
+ * @param[in] Shared
+ * TRUE if the range may be shared with other shareable owners.
+ *
+ * @remarks
+ * Used to record resources assigned outside the PnP transaction
+ * (e.g. a legacy device's IoAssignResources), so later arbitration
+ * sees them. Unlike a boot reservation this carries no
+ * BOOT_ALLOCATED attribute, so it is not treated as reclaimable.
+ */
+CODE_SEG("PAGE")
+VOID
+NTAPI
+ArbiterLibReserveRange(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_ ULONGLONG Start,
+    _In_ ULONGLONG End,
+    _In_opt_ PVOID Owner,
+    _In_ BOOLEAN Shared)
+{
+    PAGED_CODE();
+
+    ArbpAcquireLock(Arbiter);
+    RtlAddRange(Arbiter->Allocation, Start, End, 0,
+                RTL_RANGE_LIST_ADD_IF_CONFLICT | (Shared ? RTL_RANGE_LIST_ADD_SHARED : 0),
+                NULL, Owner);
+    ArbpReleaseLock(Arbiter);
+}
+
+/**
+ * @brief
+ * Releases every committed range owned by Owner, returning the
+ * resources it held to the free pool.
+ *
+ * @param[in] Arbiter
+ * The arbiter instance to release the ranges from.
+ *
+ * @param[in] Owner
+ * The owning device object (a removed device's PDO).
+ *
+ * @remarks
+ * Without this a torn-down device's ranges stay reserved forever
+ * and later devices see phantom conflicts.
+ */
+CODE_SEG("PAGE")
+VOID
+NTAPI
+ArbiterLibReleaseResources(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_ PVOID Owner)
+{
+    PAGED_CODE();
+
+    ArbpAcquireLock(Arbiter);
+    RtlDeleteOwnersRanges(Arbiter->Allocation, Owner);
+    ArbpReleaseLock(Arbiter);
+}

@@ -559,6 +559,66 @@ IopDetectResourceConflict(
 );
 
 //
+// Resource arbiter discovery (pnparb.c)
+//
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+IopRegisterRootArbiters(
+    _In_ PDEVICE_NODE RootNode
+);
+
+NTSTATUS
+NTAPI
+IopFindArbiterForResourceType(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ UCHAR ResourceType,
+    _Out_ PARBITER_INTERFACE *ArbiterInterface
+);
+
+NTSTATUS
+NTAPI
+IopArbiterAllocateResources(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList,
+    _Out_ PCM_RESOURCE_LIST *ResourceList
+);
+
+NTSTATUS
+NTAPI
+IopArbiterReserveBootConfig(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+VOID
+NTAPI
+IopArbiterReleaseResources(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+VOID
+NTAPI
+IopArbiterReserveResourceList(
+    _In_ PCM_RESOURCE_LIST ResourceList,
+    _In_opt_ PVOID Owner
+);
+
+BOOLEAN
+NTAPI
+IopArbiterResourceConflict(
+    _In_ PCM_RESOURCE_LIST ResourceList,
+    _Out_opt_ PCM_PARTIAL_RESOURCE_DESCRIPTOR ConflictingDescriptor
+);
+
+BOOLEAN
+NTAPI
+IopArbiterQueryConflict(
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _In_ PCM_RESOURCE_LIST ResourceList,
+    _Out_opt_ PCM_PARTIAL_RESOURCE_DESCRIPTOR ConflictingDescriptor
+);
+
+//
 // PNP Routines
 //
 NTSTATUS

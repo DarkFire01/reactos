@@ -560,6 +560,25 @@ ArbiterLibIsConflictWithMmConfigRange(
     _In_ ULONGLONG End
 );
 
+CODE_SEG("PAGE")
+VOID
+NTAPI
+ArbiterLibReserveRange(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_ ULONGLONG Start,
+    _In_ ULONGLONG End,
+    _In_opt_ PVOID Owner,
+    _In_ BOOLEAN Shared
+);
+
+CODE_SEG("PAGE")
+VOID
+NTAPI
+ArbiterLibReleaseResources(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_ PVOID Owner
+);
+
 #if (NTDDI_VERSION >= NTDDI_VISTA)
 CODE_SEG("PAGE")
 NTSTATUS
