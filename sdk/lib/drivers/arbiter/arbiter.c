@@ -17,47 +17,6 @@
 #define ARBITER_SIG  'sbrA'
 
 CODE_SEG("PAGE")
-NTSTATUS
-NTAPI
-#if (NTDDI_VERSION >= NTDDI_VISTA)
-ArbiterLibBootAllocation(
-    _In_ PARBITER_INSTANCE Arbiter,
-    _Inout_ PARBITER_BOOT_ALLOCATION_PARAMETERS Parameters)
-#else
-ArbiterLibBootAllocation(
-    _In_ PARBITER_INSTANCE Arbiter,
-    _Inout_ PLIST_ENTRY ArbitrationList)
-#endif
-{
-    PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-CODE_SEG("PAGE")
-NTSTATUS
-NTAPI
-#if (NTDDI_VERSION >= NTDDI_VISTA)
-ArbiterLibQueryConflict(
-    _In_ PARBITER_INSTANCE Arbiter,
-    _Inout_ PARBITER_QUERY_CONFLICT_PARAMETERS Parameters)
-#else
-ArbiterLibQueryConflict(
-    _In_ PARBITER_INSTANCE Arbiter,
-    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
-    _In_ PIO_RESOURCE_DESCRIPTOR ConflictingResource,
-    _Out_ PULONG ConflictCount,
-    _Out_ PARBITER_CONFLICT_INFO *Conflicts)
-#endif
-{
-    PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-CODE_SEG("PAGE")
 VOID
 NTAPI
 ArbiterLibConfirmAllocation(

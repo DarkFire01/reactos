@@ -38,6 +38,7 @@
 
 /* ARBITER_ALLOCATION_STATE.Flags */
 #define ARBITER_STATE_FLAG_NULL_CONFLICT_OK 0x0001  // a NULL-owner conflict is OK
+#define ARBITER_STATE_FLAG_BOOT             0x0004  // reserving a firmware boot config
 #define ARBITER_STATE_FLAG_WORKSPACE        0x0010  // WorkSpace holds a pool block to free
 
 typedef struct _ARBITER_ALTERNATIVE
