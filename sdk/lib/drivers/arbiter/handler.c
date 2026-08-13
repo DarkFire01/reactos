@@ -19,11 +19,17 @@
 /**
  * @brief
  * Acquires the arbiter's per-instance lock: one arbitration at a
- * time. Kernel APCs are disabled for the hold, so the owning
- * thread cannot be suspended while it holds the lock.
+ * time.
  *
  * @param[in] Arbiter
  * The arbiter instance to lock.
+ *
+ * @remarks
+ * NT brackets the hold with KeEnterCriticalRegion so the owning
+ * thread cannot be suspended holding the lock. This library links
+ * into ntoskrnl itself, where ReactOS provides that routine only
+ * as an internal macro (internal/ke_x.h) with no linkable symbol,
+ * so the bracket cannot be expressed here portably.
  */
 CODE_SEG("PAGE")
 static
@@ -32,7 +38,6 @@ ArbpAcquireLock(
     _In_ PARBITER_INSTANCE Arbiter)
 {
     PAGED_CODE();
-    KeEnterCriticalRegion();
     KeWaitForSingleObject(Arbiter->MutexEvent, Executive, KernelMode, FALSE, NULL);
 }
 
@@ -51,7 +56,6 @@ ArbpReleaseLock(
 {
     PAGED_CODE();
     KeSetEvent(Arbiter->MutexEvent, IO_NO_INCREMENT, FALSE);
-    KeLeaveCriticalRegion();
 }
 
 /**
