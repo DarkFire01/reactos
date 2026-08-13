@@ -19,18 +19,6 @@
 CODE_SEG("PAGE")
 VOID
 NTAPI
-ArbiterLibConfirmAllocation(
-    _In_ PARBITER_INSTANCE Arbiter,
-    _Inout_ PARBITER_ALLOCATION_STATE ArbState)
-{
-    PAGED_CODE();
-
-    UNIMPLEMENTED;
-}
-
-CODE_SEG("PAGE")
-VOID
-NTAPI
 ArbiterLibDeleteInstance(
     _In_ PARBITER_INSTANCE Arbiter)
 {

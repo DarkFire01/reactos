@@ -536,6 +536,30 @@ ArbiterLibOverrideConflict(
     _Inout_ PARBITER_ALLOCATION_STATE ArbState
 );
 
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+ArbiterLibAddInaccessibleAllocationRange(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_ PCWSTR OrderingName,
+    _Inout_ PRTL_RANGE_LIST RangeList
+);
+
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+ArbiterLibAddMmConfigRangeAsBootReserved(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _Inout_ PRTL_RANGE_LIST RangeList
+);
+
+BOOLEAN
+NTAPI
+ArbiterLibIsConflictWithMmConfigRange(
+    _In_ ULONGLONG Start,
+    _In_ ULONGLONG End
+);
+
 #if (NTDDI_VERSION >= NTDDI_VISTA)
 CODE_SEG("PAGE")
 NTSTATUS
