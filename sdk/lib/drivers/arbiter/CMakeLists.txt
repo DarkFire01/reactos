@@ -3,6 +3,7 @@ add_definitions(-D_NTSYSTEM_)
 
 list(APPEND SOURCE
     arbiter.c
+    entry.c
     ordering.c
     range.c)
 

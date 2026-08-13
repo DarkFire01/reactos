@@ -16,6 +16,13 @@
 
 /* RANGE WALKER ***************************************************************/
 
+/*
+ * ARBITER_ALTERNATIVE.Reserved[0] doubles as the reserved-pass cursor: the next
+ * ReservedList index the last-resort pass will consider, or PASS_DONE once the
+ * final whole-window try has been handed out too.
+ */
+#define ARBITER_RESERVED_PASS_DONE  0xFFFFFFFF
+
 /**
  * @brief
  * Advances an alternative's priority to the next ordering-list
@@ -50,7 +57,9 @@ ArbpUpdatePriority(
     if (Priority == ARBITER_PRIORITY_RESERVED ||
         Priority == ARBITER_PRIORITY_PREFERRED_RESERVED)
     {
-        Alternative->Priority = ARBITER_PRIORITY_EXHAUSTED;
+        /* Stay in the reserved pass until its final whole-window try is spent. */
+        if (Alternative->Reserved[0] == ARBITER_RESERVED_PASS_DONE)
+            Alternative->Priority = ARBITER_PRIORITY_EXHAUSTED;
         return;
     }
 
@@ -72,6 +81,7 @@ ArbpUpdatePriority(
         Index = (Priority < 0) ? (ULONG)(-(Priority + 1)) : (ULONG)(Priority - 1);
         if (Index >= Arbiter->OrderingList.Count)
         {
+            Alternative->Reserved[0] = 0;
             Alternative->Priority = Preferred ? ARBITER_PRIORITY_PREFERRED_RESERVED
                                               : ARBITER_PRIORITY_RESERVED;
             return;
@@ -103,6 +113,7 @@ ArbpUpdatePriority(
         }
     }
 
+    Alternative->Reserved[0] = 0;
     Alternative->Priority = Preferred ? ARBITER_PRIORITY_PREFERRED_RESERVED
                                       : ARBITER_PRIORITY_RESERVED;
 }
@@ -370,6 +381,86 @@ ArbpReuseOwnedInterrupt(
 
 /**
  * @brief
+ * Takes the next window of the reserved (last-resort) pass for an
+ * alternative: each ReservedList range intersecting the
+ * requirement in turn, then one final try over the whole
+ * requirement window.
+ *
+ * @param[in] Arbiter
+ * The arbiter instance whose ReservedList supplies the windows.
+ *
+ * @param[in,out] Alternative
+ * The alternative in its reserved pass. Reserved[0] holds the
+ * pass cursor: the next ReservedList index to consider, or
+ * ARBITER_RESERVED_PASS_DONE once the whole-window try is spent.
+ *
+ * @param[out] Minimum
+ * Receives the start of the produced window.
+ *
+ * @param[out] Maximum
+ * Receives the end of the produced window.
+ *
+ * @return
+ * Returns TRUE with a window to try, FALSE when the pass is spent.
+ *
+ * @remarks
+ * This is what makes the RESERVED pass more than a duplicate of
+ * the ordering walk: once ReservedResources data populates the
+ * ReservedList, its windows are only ever offered here - after
+ * every ordering window has failed. With an empty ReservedList
+ * the pass degenerates to the single whole-window try.
+ */
+CODE_SEG("PAGE")
+static
+BOOLEAN
+ArbpTakeReservedWindow(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _Inout_ PARBITER_ALTERNATIVE Alternative,
+    _Out_ PUINT64 Minimum,
+    _Out_ PUINT64 Maximum)
+{
+    ULONG Index;
+
+    PAGED_CODE();
+
+    if (Alternative->Reserved[0] == ARBITER_RESERVED_PASS_DONE)
+        return FALSE;
+
+    for (Index = Alternative->Reserved[0];
+         Index < Arbiter->ReservedList.Count;
+         ++Index)
+    {
+        PARBITER_ORDERING Window = &Arbiter->ReservedList.Orderings[Index];
+        UINT64 Lo, Hi;
+
+        if (Window->Start > Alternative->Maximum ||
+            Alternative->Minimum > Window->End)
+        {
+            continue;  /* no intersection with this alternative's window */
+        }
+
+        Lo = (Alternative->Minimum <= Window->Start) ? Window->Start
+                                                     : Alternative->Minimum;
+        Hi = (Alternative->Maximum >= Window->End) ? Window->End
+                                                   : Alternative->Maximum;
+        if ((Hi - Lo + 1) < Alternative->Length)
+            continue;
+
+        Alternative->Reserved[0] = Index + 1;
+        *Minimum = Lo;
+        *Maximum = Hi;
+        return TRUE;
+    }
+
+    /* No reserved window left: one final try over the whole requirement. */
+    Alternative->Reserved[0] = ARBITER_RESERVED_PASS_DONE;
+    *Minimum = Alternative->Minimum;
+    *Maximum = Alternative->Maximum;
+    return TRUE;
+}
+
+/**
+ * @brief
  * Moves the working window to the next candidate range, walking
  * the entry's alternatives in priority order across the arbiter's
  * ordering list.
@@ -438,9 +529,15 @@ ArbiterLibGetNextAllocationRange(
         if (Lowest->Priority == ARBITER_PRIORITY_RESERVED ||
             Lowest->Priority == ARBITER_PRIORITY_PREFERRED_RESERVED)
         {
-            /* Final pass: the whole requirement window. */
-            Minimum = Lowest->Minimum;
-            Maximum = Lowest->Maximum;
+            /*
+             * Last-resort pass: the reserved windows in turn, then the whole
+             * requirement window (see ArbpTakeReservedWindow).
+             */
+            if (!ArbpTakeReservedWindow(Arbiter, Lowest, &Minimum, &Maximum))
+            {
+                Lowest->Priority = ARBITER_PRIORITY_EXHAUSTED;
+                continue;
+            }
         }
         else
         {

@@ -493,3 +493,26 @@ ArbiterLibBacktrackAllocation(
     _In_ PARBITER_INSTANCE Arbiter,
     _Inout_ PARBITER_ALLOCATION_STATE ArbState
 );
+
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+ArbiterLibPreprocessEntry(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _Inout_ PARBITER_ALLOCATION_STATE ArbState
+);
+
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+ArbiterLibSortArbitrationList(
+    _Inout_ PLIST_ENTRY ArbitrationList
+);
+
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+ArbiterLibAllocateEntry(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _Inout_ PARBITER_ALLOCATION_STATE ArbState
+);
