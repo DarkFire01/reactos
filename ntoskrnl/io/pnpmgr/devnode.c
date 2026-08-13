@@ -60,6 +60,7 @@ PipAllocateDeviceNode(
     InitializeListHead(&DeviceNode->TargetDeviceNotify);
     InitializeListHead(&DeviceNode->DockInfo.ListEntry);
     InitializeListHead(&DeviceNode->PendedSetInterfaceState);
+    InitializeListHead(&DeviceNode->DeviceProperties);
 
     /* Check if there is a PDO */
     if (PhysicalDeviceObject)
@@ -390,6 +391,9 @@ IopFreeDeviceNode(
     {
         ExFreePool(DeviceNode->BootResources);
     }
+
+    /* Release any stored device properties (IoSetDevicePropertyData) */
+    IopFreeDeviceProperties(DeviceNode);
 
     IoGetDevObjExtension(DeviceNode->PhysicalDeviceObject)->DeviceNode = NULL;
     ExFreePoolWithTag(DeviceNode, TAG_IO_DEVNODE);

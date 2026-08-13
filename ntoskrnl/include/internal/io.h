@@ -720,6 +720,42 @@ IopGetDeviceNode(
     IN PDEVICE_OBJECT DeviceObject
 );
 
+/* Device property store (io/pnpmgr/devprop.c) */
+VOID
+IopFreeDeviceProperties(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+/* The public IoGet/SetDevicePropertyData prototypes (iofuncs.h) are gated to
+   NTDDI_VISTA and therefore invisible in this NTDDI_WS03SP1 (0x502) build, even
+   though the exports and implementation (io/pnpmgr/devprop.c) exist. Declare
+   them here for internal callers. Types are spelled with the struct tag and
+   ULONG (== DEVPROPTYPE/LCID) so no NTDDI-gated typedef is required. */
+struct _DEVPROPKEY;
+
+NTSTATUS
+NTAPI
+IoGetDevicePropertyData(
+    _In_ PDEVICE_OBJECT Pdo,
+    _In_ const struct _DEVPROPKEY *PropertyKey,
+    _In_ ULONG Lcid,
+    _In_ ULONG Flags,
+    _In_ ULONG Size,
+    _Out_ PVOID Data,
+    _Out_ PULONG RequiredSize,
+    _Out_ PULONG Type);
+
+NTSTATUS
+NTAPI
+IoSetDevicePropertyData(
+    _In_ PDEVICE_OBJECT Pdo,
+    _In_ const struct _DEVPROPKEY *PropertyKey,
+    _In_ ULONG Lcid,
+    _In_ ULONG Flags,
+    _In_ ULONG Type,
+    _In_ ULONG Size,
+    _In_opt_ PVOID Data);
+
 CODE_SEG("INIT")
 NTSTATUS
 IopInitPlugPlayEvents(VOID);

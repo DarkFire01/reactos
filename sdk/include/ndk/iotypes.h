@@ -1062,6 +1062,10 @@ typedef struct _DEVICE_NODE
 #if (NTDDI_VERSION >= NTDDI_LONGHORN)
     ULONG NumaNodeIndex;
 #endif
+    /* In-memory device-property store (IoGet/SetDevicePropertyData); holds e.g.
+       the INTERRUPT_CONNECTION_DATA handed from the interrupt-assignment path to
+       the bus driver (pci.sys). List of IOP_DEVICE_PROPERTY. */
+    LIST_ENTRY DeviceProperties;
 } DEVICE_NODE, *PDEVICE_NODE;
 
 //
