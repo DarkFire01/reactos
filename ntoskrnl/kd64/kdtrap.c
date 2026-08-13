@@ -30,8 +30,8 @@
 //
 // R8/R9 on AMD64
 //
-#define KdpGetParameterThree(Context)  ((Context)->R8)
-#define KdpGetParameterFour(Context)   ((Context)->R9)
+#define KdpGetParameterThree(Context)  ((((Context)->SegCs & (~RPL_MASK)) != KGDT64_R3_CMCODE) ? (Context)->R8 : ((Context)->Rbx & ULONG_MAX))
+#define KdpGetParameterFour(Context)   ((((Context)->SegCs & (~RPL_MASK)) != KGDT64_R3_CMCODE) ? (Context)->R9 : ((Context)->Rdi & ULONG_MAX))
 
 #elif defined(_ARM_)
 
