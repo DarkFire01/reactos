@@ -5,7 +5,8 @@ list(APPEND SOURCE
     arbiter.c
     entry.c
     ordering.c
-    range.c)
+    range.c
+    transaction.c)
 
 add_library(arbiter ${SOURCE})
 add_dependencies(arbiter bugcodes xdk)
