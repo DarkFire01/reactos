@@ -1003,9 +1003,12 @@ wow64_NtUserUnregisterClass(UINT* pArgs)
         return FALSE;
     }
     
-    pClassMenuName32->pszClientAnsiMenuName = PtrToUlong(ClassMenuName.pszClientAnsiMenuName);
-    pClassMenuName32->pwszClientUnicodeMenuName = PtrToUlong(ClassMenuName.pwszClientUnicodeMenuName);
-    pClassMenuName32->pusMenuName = PtrToUlong(ClassMenuName.pusMenuName);
+    if (pClassMenuName32 != NULL)
+    {
+        pClassMenuName32->pszClientAnsiMenuName = PtrToUlong(ClassMenuName.pszClientAnsiMenuName);
+        pClassMenuName32->pwszClientUnicodeMenuName = PtrToUlong(ClassMenuName.pwszClientUnicodeMenuName);
+        pClassMenuName32->pusMenuName = PtrToUlong(ClassMenuName.pusMenuName);
+    }
 
     return TRUE;
 }
