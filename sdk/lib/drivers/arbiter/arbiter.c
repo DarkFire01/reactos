@@ -39,26 +39,6 @@ CODE_SEG("PAGE")
 NTSTATUS
 NTAPI
 #if (NTDDI_VERSION >= NTDDI_VISTA)
-ArbiterLibAddReserved(
-    _In_ PARBITER_INSTANCE Arbiter,
-    _Inout_ PARBITER_ADD_RESERVED_PARAMETERS Parameters)
-#else
-ArbiterLibAddReserved(
-    _In_ PARBITER_INSTANCE Arbiter,
-    _In_opt_ PIO_RESOURCE_DESCRIPTOR Requirement,
-    _In_opt_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource)
-#endif
-{
-    PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-CODE_SEG("PAGE")
-NTSTATUS
-NTAPI
-#if (NTDDI_VERSION >= NTDDI_VISTA)
 ArbiterLibQueryConflict(
     _In_ PARBITER_INSTANCE Arbiter,
     _Inout_ PARBITER_QUERY_CONFLICT_PARAMETERS Parameters)
@@ -70,36 +50,6 @@ ArbiterLibQueryConflict(
     _Out_ PULONG ConflictCount,
     _Out_ PARBITER_CONFLICT_INFO *Conflicts)
 #endif
-{
-    PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-#if (NTDDI_VERSION >= NTDDI_VISTA)
-CODE_SEG("PAGE")
-NTSTATUS
-NTAPI
-ArbiterLibInitializeRangeList(
-    _In_ PARBITER_INSTANCE Arbiter,
-    _In_ ULONG ResourceCount,
-    _In_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Resources,
-    _Inout_ PRTL_RANGE_LIST RangeList)
-{
-    PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
-#endif
-
-CODE_SEG("PAGE")
-NTSTATUS
-NTAPI
-ArbiterLibStartArbiter(
-    _In_ PARBITER_INSTANCE Arbiter,
-    _In_ PCM_RESOURCE_LIST StartResources)
 {
     PAGED_CODE();
 
@@ -130,20 +80,6 @@ ArbiterLibOverrideConflict(
 
     UNIMPLEMENTED;
     return FALSE;
-}
-
-CODE_SEG("PAGE")
-NTSTATUS
-NTAPI
-ArbiterLibHandler(
-    _In_ PVOID Context,
-    _In_ ARBITER_ACTION Action,
-    _Inout_ PARBITER_PARAMETERS Parameters)
-{
-    PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
 }
 
 CODE_SEG("PAGE")
@@ -284,6 +220,8 @@ ArbiterLibInitializeInstance(
         Arbiter->AddReserved = ArbiterLibAddReserved;
     if (!Arbiter->QueryConflict)
         Arbiter->QueryConflict = ArbiterLibQueryConflict;
+    if (!Arbiter->QueryArbitrate)
+        Arbiter->QueryArbitrate = ArbiterLibQueryArbitrate;
     if (!Arbiter->StartArbiter)
         Arbiter->StartArbiter = ArbiterLibStartArbiter;
     if (!Arbiter->PreprocessEntry)

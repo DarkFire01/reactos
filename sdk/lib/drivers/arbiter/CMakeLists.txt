@@ -4,6 +4,7 @@ add_definitions(-D_NTSYSTEM_)
 list(APPEND SOURCE
     arbiter.c
     entry.c
+    handler.c
     ordering.c
     range.c
     transaction.c)

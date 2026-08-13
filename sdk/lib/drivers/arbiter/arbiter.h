@@ -518,3 +518,56 @@ ArbiterLibAllocateEntry(
     _In_ PARBITER_INSTANCE Arbiter,
     _Inout_ PARBITER_ALLOCATION_STATE ArbState
 );
+
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+ArbiterLibStartArbiter(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_ PCM_RESOURCE_LIST StartResources
+);
+
+#if (NTDDI_VERSION >= NTDDI_VISTA)
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+ArbiterLibQueryArbitrate(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _Inout_ PARBITER_QUERY_ARBITRATE_PARAMETERS Parameters
+);
+
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+ArbiterLibAddReserved(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _Inout_ PARBITER_ADD_RESERVED_PARAMETERS Parameters
+);
+
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+ArbiterLibInitializeRangeList(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_ ULONG ResourceCount,
+    _In_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Resources,
+    _Inout_ PRTL_RANGE_LIST RangeList
+);
+#else
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+ArbiterLibQueryArbitrate(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_ PLIST_ENTRY ArbitrationList
+);
+
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+ArbiterLibAddReserved(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_opt_ PIO_RESOURCE_DESCRIPTOR Requirement,
+    _In_opt_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource
+);
+#endif
