@@ -25,6 +25,86 @@
 
 /**
  * @brief
+ * The OverrideConflict default, the last of the conflict escapes:
+ * grants a FIXED requirement whose window conflicts only with
+ * ranges the requesting device itself already owns.
+ *
+ * @param[in] Arbiter
+ * The arbiter instance whose tentative allocation list is walked.
+ *
+ * @param[in,out] ArbState
+ * The allocation state of the requirement. On a grant, Start and
+ * End receive the requested window.
+ *
+ * @return
+ * Returns TRUE if at least one conflicting range was found and
+ * every one of them is owned by the requesting device, FALSE if
+ * any conflict belongs to someone else (or to no one).
+ *
+ * @remarks
+ * This is how a device is re-assigned its own boot configuration:
+ * a fixed requirement has exactly one possible placement, and when
+ * re-arbitration finds that window "occupied" by the device's own
+ * earlier reservation, moving elsewhere is not an option - the
+ * self-conflict must be allowed. A missing override here is the
+ * classic 0x7B INACCESSIBLE_BOOT_DEVICE failure: the boot
+ * controller's fixed config conflicts with itself, assignment
+ * fails, and the boot volume never arrives.
+ */
+CODE_SEG("PAGE")
+BOOLEAN
+NTAPI
+ArbiterLibOverrideConflict(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _Inout_ PARBITER_ALLOCATION_STATE ArbState)
+{
+    RTL_RANGE_LIST_ITERATOR Iterator;
+    PRTL_RANGE Range;
+    BOOLEAN SelfConflictOnly = FALSE;
+
+    PAGED_CODE();
+
+    /*
+     * Only a fixed requirement may reclaim its window - anything else still
+     * has other placements to try, and letting it overlap would paper over
+     * real conflicts.
+     */
+    if (ArbState->CurrentAlternative == NULL ||
+        !(ArbState->CurrentAlternative->Flags & ARBITER_ALTERNATIVE_FLAG_FIXED))
+    {
+        return FALSE;
+    }
+
+    if (ArbState->Entry == NULL || ArbState->Entry->PhysicalDeviceObject == NULL)
+        return FALSE;
+
+    if (!NT_SUCCESS(RtlGetFirstRange(Arbiter->PossibleAllocation, &Iterator, &Range)))
+        return FALSE;
+
+    while (Range != NULL)
+    {
+        /* A real conflict: overlaps the window and is not made available. */
+        if (Range->Start <= ArbState->CurrentMaximum &&
+            Range->End >= ArbState->CurrentMinimum &&
+            !(Range->Attributes & ArbState->RangeAvailableAttributes))
+        {
+            if ((PDEVICE_OBJECT)Range->Owner != ArbState->Entry->PhysicalDeviceObject)
+                return FALSE;  /* someone else's range: the conflict is real */
+
+            SelfConflictOnly = TRUE;
+            ArbState->Start = ArbState->CurrentMinimum;
+            ArbState->End = ArbState->CurrentMaximum;
+        }
+
+        if (!NT_SUCCESS(RtlGetNextRange(&Iterator, &Range, TRUE)))
+            break;
+    }
+
+    return SelfConflictOnly;
+}
+
+/**
+ * @brief
  * Advances an alternative's priority to the next ordering-list
  * range it can be satisfied from.
  *

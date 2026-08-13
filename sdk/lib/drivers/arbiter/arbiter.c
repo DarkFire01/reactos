@@ -70,19 +70,6 @@ ArbiterLibConfirmAllocation(
 }
 
 CODE_SEG("PAGE")
-BOOLEAN
-NTAPI
-ArbiterLibOverrideConflict(
-    _In_ PARBITER_INSTANCE Arbiter,
-    _Inout_ PARBITER_ALLOCATION_STATE ArbState)
-{
-    PAGED_CODE();
-
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
-CODE_SEG("PAGE")
 VOID
 NTAPI
 ArbiterLibDeleteInstance(

@@ -527,6 +527,14 @@ ArbiterLibStartArbiter(
     _In_ PCM_RESOURCE_LIST StartResources
 );
 
+CODE_SEG("PAGE")
+BOOLEAN
+NTAPI
+ArbiterLibOverrideConflict(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _Inout_ PARBITER_ALLOCATION_STATE ArbState
+);
+
 #if (NTDDI_VERSION >= NTDDI_VISTA)
 CODE_SEG("PAGE")
 NTSTATUS
