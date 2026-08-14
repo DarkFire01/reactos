@@ -41,13 +41,27 @@ wow64_NtWow64CsrAllocateCaptureBuffer(UINT* pArgs)
 }
 
 static
-VOID
-Wow64CsrCapturePtrHelper(PWOW64_CSR_CAPTURE_BUFFER pBuffer, ULONG* pData32, PVOID Data, ULONG Size)
+PVOID
+Wow64WrapCsrPtr(PVOID Ptr, PWOW64_CSR_CAPTURE_BUFFER pBuffer)
 {
-    ASSERT(Data != NULL && pData32 != NULL);
-    *pData32 = (ULONG_PTR)pBuffer->Data + (ULONG_PTR)Data - pBuffer->BufferStartOffset;
+    return (PVOID)((ULONG_PTR)Ptr + (ULONG_PTR)pBuffer->Data - (ULONG_PTR)pBuffer->pNativeBuffer - pBuffer->BufferStartOffset);
+}
 
-    RtlCopyMemory(UlongToPtr(*pData32), Data, Size);
+static
+PVOID
+Wow64UnwrapCsrPtr(PVOID Ptr, PWOW64_CSR_CAPTURE_BUFFER pBuffer)
+{
+    return (PVOID)((ULONG_PTR)Ptr - (ULONG_PTR)pBuffer->Data + (ULONG_PTR)pBuffer->pNativeBuffer + pBuffer->BufferStartOffset);
+}
+
+static
+VOID
+Wow64CsrCapturePtrHelper(PWOW64_CSR_CAPTURE_BUFFER pBuffer, PVOID* pData32, ULONG Size)
+{
+    ASSERT(pData32 != NULL && *pData32 != NULL);
+
+    RtlCopyMemory(Wow64WrapCsrPtr(*pData32, pBuffer), *pData32, Size);
+    *pData32 = Wow64WrapCsrPtr(*pData32, pBuffer);
 }
 
 ULONG 
@@ -56,13 +70,12 @@ wow64_NtWow64CsrAllocateMessagePointer(UINT* pArgs)
 {
     PWOW64_CSR_CAPTURE_BUFFER pBuffer = get_ptr(&pArgs);
     ULONG MessageSize = get_ulong(&pArgs);
-    ULONG* pData32 = get_ptr(&pArgs);
+    PVOID* pData32 = get_ptr(&pArgs);
     
     ULONG result;
-    PVOID Data;
 
-    result = CsrAllocateMessagePointer(pBuffer->pNativeBuffer, MessageSize, &Data);
-    Wow64CsrCapturePtrHelper(pBuffer, pData32, Data, MessageSize);
+    result = CsrAllocateMessagePointer(pBuffer->pNativeBuffer, MessageSize, pData32);
+    Wow64CsrCapturePtrHelper(pBuffer, pData32, MessageSize);
     return result;
 }
 
@@ -73,12 +86,10 @@ wow64_NtWow64CsrCaptureMessageBuffer(UINT* pArgs)
     PWOW64_CSR_CAPTURE_BUFFER pBuffer = get_ptr(&pArgs);
     PVOID Message = get_ptr(&pArgs);
     ULONG MessageSize = get_ulong(&pArgs);
-    ULONG* pData32 = get_ptr(&pArgs);
+    PVOID* pData32 = get_ptr(&pArgs);
 
-    PVOID Data;
-
-    CsrCaptureMessageBuffer(pBuffer->pNativeBuffer, Message, MessageSize, &Data);
-    Wow64CsrCapturePtrHelper(pBuffer, pData32, Data, MessageSize);
+    CsrCaptureMessageBuffer(pBuffer->pNativeBuffer, Message, MessageSize, pData32);
+    Wow64CsrCapturePtrHelper(pBuffer, pData32, MessageSize);
 }
 
 VOID 
@@ -89,14 +100,10 @@ wow64_NtWow64CsrCaptureMessageString(UINT* pArgs)
     PCSTR String = get_ptr(&pArgs);
     ULONG StringLength = get_ulong(&pArgs);
     ULONG MaximumLength = get_ulong(&pArgs);
-    PSTRING32 CapturedString = get_ptr(&pArgs);
-
-    STRING DataStr;
+    PSTRING CapturedString = get_ptr(&pArgs);
     
-    CsrCaptureMessageString(pBuffer->pNativeBuffer, String, StringLength, MaximumLength, &DataStr);
-    Wow64CsrCapturePtrHelper(pBuffer, &CapturedString->Buffer, DataStr.Buffer, StringLength);
-    CapturedString->MaximumLength = DataStr.MaximumLength;
-    CapturedString->Length = DataStr.Length;
+    CsrCaptureMessageString(pBuffer->pNativeBuffer, String, StringLength, MaximumLength, CapturedString);
+    Wow64CsrCapturePtrHelper(pBuffer, &CapturedString->Buffer, StringLength);
 }
 
 NTSTATUS 
@@ -110,11 +117,21 @@ wow64_NtWow64CsrClientCallServer(UINT* pArgs)
 
     NTSTATUS status;
     PVOID NativeBufferData = NULL; 
-    
+    PCSR_CAPTURE_BUFFER pNativeBuffer;
+    SIZE_T i;
+
     if (pBuffer != NULL) 
     {
-        NativeBufferData = (PVOID)((ULONG_PTR)pBuffer->pNativeBuffer + pBuffer->BufferStartOffset);
+        pNativeBuffer = pBuffer->pNativeBuffer;
+        NativeBufferData = (PVOID)((ULONG_PTR)pNativeBuffer + pBuffer->BufferStartOffset);
+
         RtlCopyMemory(NativeBufferData, &pBuffer->Data, pBuffer->BufferSize);
+
+        for (i = 0; i < pNativeBuffer->PointerCount; i++)
+        {
+            PVOID* pPointer = (PVOID*)(pNativeBuffer->PointerOffsetsArray[i]);
+            *pPointer = Wow64UnwrapCsrPtr(*pPointer, pBuffer);
+        }
     }
 
     status = CsrClientCallServer(ApiMessage, pBuffer ? pBuffer->pNativeBuffer : NULL, ApiNumber, DataLength);
@@ -122,6 +139,12 @@ wow64_NtWow64CsrClientCallServer(UINT* pArgs)
     if (pBuffer != NULL)
     {
         RtlCopyMemory(&pBuffer->Data, NativeBufferData, pBuffer->BufferSize);
+
+        for (i = 0; i < pNativeBuffer->PointerCount; i++)
+        {
+            PVOID* pPointer = (PVOID*)(pNativeBuffer->PointerOffsetsArray[i]);
+            *pPointer = Wow64WrapCsrPtr(*pPointer, pBuffer);
+        }
     }
 
     return status;
