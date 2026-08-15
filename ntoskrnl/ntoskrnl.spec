@@ -1732,6 +1732,7 @@
 @ stdcall -version=0x601+ KeQueryMaximumProcessorCountEx(long)
 @ stdcall -version=0x601+ KeQueryNodeActiveAffinity(long ptr ptr)
 @ stdcall -version=0x600+ KeRegisterProcessorChangeCallback(ptr ptr long)
+@ stdcall KeDeregisterProcessorChangeCallback(ptr)
 @ stdcall -version=0x600+ KeRevertToUserAffinityThreadEx(long)
 @ stdcall -version=0x601+ KeRevertToUserGroupAffinityThread(ptr)
 @ stdcall -version=0x600+ KeSetSystemAffinityThreadEx(long)

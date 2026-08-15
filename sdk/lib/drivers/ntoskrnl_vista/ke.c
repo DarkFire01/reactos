@@ -408,6 +408,14 @@ KeRegisterProcessorChangeCallback(
 
     return NULL;
 }
+VOID
+NTAPI
+KeDeregisterProcessorChangeCallback
+(
+    _In_ PVOID CallbackHandle)
+{
+    UNREFERENCED_PARAMETER(CallbackHandle);
+}
 
 /**
  * @brief
