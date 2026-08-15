@@ -68,6 +68,7 @@ list(APPEND SOURCE
     gdi/eng/clip.c
     gdi/eng/debug.c
     gdi/eng/device.c
+    gdi/eng/dxgkrnl.c
     gdi/eng/driverobj.c
     gdi/eng/error.c
     gdi/eng/float.c

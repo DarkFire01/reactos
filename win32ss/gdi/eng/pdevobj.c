@@ -15,6 +15,9 @@ DBG_DEFAULT_CHANNEL(EngPDev);
 static PPDEVOBJ gppdevList = NULL;
 static HSEMAPHORE ghsemPDEV;
 
+/* Set TRUE once the WDDM stack (dxgkrnl) is up - see gdi/eng/dxgkrnl.c (DlInitDxgkrnl). */
+extern BOOLEAN gbDxgkInitialized;
+
 BOOL
 APIENTRY
 MultiEnableDriver(
@@ -510,9 +513,27 @@ PDEVOBJ_Create(
 
     /* Try to get a display driver */
     if (ldevtype == LDEV_DEVICE_META)
+    {
         pldev = LDEVOBJ_pLoadInternal(MultiEnableDriver, ldevtype);
+    }
     else
-        pldev = LDEVOBJ_pLoadDriver(pdm->dmDeviceName, ldevtype);
+    {
+        /*
+         * When the WDDM stack is up (dxgkrnl + a WDDM miniport bound), prefer the Canonical
+         * Display Driver (cdd_ms) which bridges GDI to dxgkrnl. gbDxgkInitialized is FALSE on a
+         * legacy XPDM system, so this leaves the normal path untouched there. Fall back to the
+         * device's registry driver if the CDD image cannot be loaded.
+         */
+        pldev = NULL;
+        if (gbDxgkInitialized && ldevtype == LDEV_DEVICE_DISPLAY)
+        {
+            pldev = LDEVOBJ_pLoadDriver(L"cdd_ms", ldevtype);
+            if (pldev)
+                TRACE("WDDM: using CDD (cdd_ms) display driver\n");
+        }
+        if (!pldev)
+            pldev = LDEVOBJ_pLoadDriver(pdm->dmDeviceName, ldevtype);
+    }
     if (!pldev)
     {
         ERR("Could not load display driver '%S'\n",

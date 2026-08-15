@@ -7,6 +7,7 @@
 
 #include <win32k.h>
 #include <reactos/rddm/rxgkinterface.h>
+#include <reactos/rddm/rddm_private.h>
 #include <debug.h>
 
 /*
@@ -15,6 +16,42 @@
  * we obtained with the IOCTL.
  */
 static REACTOS_WIN32K_DXGKRNL_INTERFACE DxgAdapterCallbacks = {0};
+
+/**
+ * @brief Populate DxgAdapterCallbacks from dxgkrnl. Sends IOCTL_VIDEO_REGISTER_RXGK to \Device\DxgKrnl;
+ *        DxgKrnl_ms fills the RxgkIntPfn* slots with its D3DKMT entry points (device/reactosif.cpp).
+ *        Called once from the WDDM bootstrap (gdi/eng/dxgkrnl.c) after the device is open.
+ */
+NTSTATUS
+NTAPI
+DxgRegisterAdapterCallbacks(
+    _In_ PDEVICE_OBJECT pDxgkrnl)
+{
+    KEVENT          Event;
+    IO_STATUS_BLOCK Iosb;
+    PIRP            Irp;
+    NTSTATUS        Status;
+
+    if (pDxgkrnl == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
+    Irp = IoBuildDeviceIoControlRequest(IOCTL_VIDEO_REGISTER_RXGK,
+                                        pDxgkrnl,
+                                        &DxgAdapterCallbacks, sizeof(DxgAdapterCallbacks),
+                                        &DxgAdapterCallbacks, sizeof(DxgAdapterCallbacks),
+                                        TRUE, &Event, &Iosb);
+    if (Irp == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = IoCallDriver(pDxgkrnl, Irp);
+    if (Status == STATUS_PENDING)
+    {
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = Iosb.Status;
+    }
+    return Status;
+}
 
 /*
  * This looks like it's done inside DxDdStartupDxGraphics, but I'd rather keep this organized.
