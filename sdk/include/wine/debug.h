@@ -33,9 +33,10 @@
 #define __RELFILE__ __FILE__
 #endif
 
-#ifdef __WINE_WINE_TEST_H
-#error This file should not be used in Wine tests
-#endif
+/* Tests are not supposed to pull this in, but current Wine tests reach it
+ * through wine/strmbase.h, which needs wine_dbg_sprintf() for debugstr_time().
+ * When wine/test.h got here first it already supplies every debugstr_*/
+/* helper below, so defer to it rather than declaring them a second time. */
 
 #ifdef __cplusplus
 extern "C" {

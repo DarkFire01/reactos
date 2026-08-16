@@ -4,7 +4,7 @@
 #ifdef __REACTOS__
 #include <limits.h>
 #ifndef PATH_MAX
-#define PATH_MAX 1024
+#define PATH_MAX 260
 #endif
 #endif
 #define SONAME_LIBVULKAN "vulkan-1.dll"

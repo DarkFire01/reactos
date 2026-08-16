@@ -195,6 +195,7 @@ list(APPEND SOURCE
     wincodec.idl
     wincodecsdk.idl
     winsxs.idl
+    wmcodecdsp.idl
     wmdrmsdk.idl
     wmiutils.idl
     wmsbuffer.idl
