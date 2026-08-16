@@ -398,16 +398,6 @@ ArbpAddOrderingCallback(
     ArbiterLibAddOrdering(&Arbiter->OrderingList, Start, End);
 }
 
-<<<<<<< HEAD
-/*
- * Build the arbiter's allocation ordering.  The registry-described preferred
- * ranges (AllocationOrder\<AllocationOrderName>) the engine walks the
- * list in index order, so index 0 is the most-preferred window. If one isnt
- * found its followed by a full-range fallback so the arbiter can always search the whole space
- *
- * Both ordering lists are (re)created here: callers may rebuild an existing
- * ordering against a different policy table (see pcix ario_ApplyBrokenVideoHack).
-=======
 /**
  * @brief
  * Range callback moving one reserved window into last-resort
@@ -549,7 +539,6 @@ ArbpMmConfigCallback(
  * registry policy is not a failure; the ordering then holds only
  * the full-range fallback, so the arbiter can always search the
  * whole space.
->>>>>>> 569025779e0 ([SDK:ARBITER] Populate the ReservedList and exclude it from the orderings — the ordering.c reserved walk + ArbpExcludeOrderingRange)
  */
 CODE_SEG("PAGE")
 NTSTATUS
