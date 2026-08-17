@@ -74,6 +74,29 @@ HRESULT WINAPI DwmIsCompositionEnabled(BOOL *enabled)
     return S_OK;
 }
 
+#ifdef __REACTOS__
+/**********************************************************************
+ *           DwmpDxGetWindowSharedSurface         (DWMAPI.100)
+ *
+ * Undocumented. opengl32 calls this once per SwapBuffers to obtain the DWM-composited shared
+ * surface for a window, and presents the finished frame into it.
+ *
+ * As a raising .spec stub this was the end of the line for OpenGL presentation: rendering
+ * completed, the frame was handed nowhere, and nothing reached the screen. Answering
+ * DWM_E_COMPOSITIONDISABLED tells the caller what is actually true here - there is no compositor,
+ * so there is no shared surface - and lets it fall back to presenting directly.
+ *
+ * @note The parameter list follows the arity already declared for this export in dwmapi.spec.
+ *       It is __stdcall, so if the real function takes more arguments the callee-side cleanup is
+ *       wrong; that is inherited from the existing declaration rather than established here.
+ */
+HRESULT WINAPI DwmpDxGetWindowSharedSurface(HWND hwnd)
+{
+    FIXME("(%p): no compositor, reporting composition disabled\n", hwnd);
+    return DWM_E_COMPOSITIONDISABLED;
+}
+#endif /* __REACTOS__ */
+
 /**********************************************************************
  *           DwmEnableComposition         (DWMAPI.102)
  */

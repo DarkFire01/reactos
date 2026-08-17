@@ -1,4 +1,4 @@
-100 stdcall -stub DwmpDxGetWindowSharedSurface(ptr)
+100 stdcall DwmpDxGetWindowSharedSurface(ptr)
 101 stub DwmpDxUpdateWindowSharedSurface
 102 stdcall DwmEnableComposition(long)
 103 stub -noname DwmpRestartComposition
