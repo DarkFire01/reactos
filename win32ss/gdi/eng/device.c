@@ -1070,4 +1070,46 @@ EngDeviceIoControl(
     return Status;
 }
 
+/*
+ * GDI drivers that import win32k (e.g. the CDD) may not also import ntoskrnl (see the
+ * GdiLink/NormalLink check in MiResolveImageReferences), so win32k does the \Device\DxgKrnl
+ * open on their behalf; callers then use EngDeviceIoControl() with the returned handle.
+ */
+HANDLE
+APIENTRY
+EngOpenDxgkrnl(
+    _Out_ HANDLE *phFileObject)
+{
+    UNICODE_STRING DeviceName;
+    PFILE_OBJECT FileObject;
+    PDEVICE_OBJECT DeviceObject;
+    NTSTATUS Status;
+
+    RtlInitUnicodeString(&DeviceName, L"\\Device\\DxgKrnl");
+    Status = IoGetDeviceObjectPointer(&DeviceName,
+                                      GENERIC_READ | GENERIC_WRITE,
+                                      &FileObject,
+                                      &DeviceObject);
+    if (!NT_SUCCESS(Status))
+    {
+        *phFileObject = NULL;
+        return NULL;
+    }
+
+    *phFileObject = (HANDLE)FileObject;
+    return (HANDLE)DeviceObject;
+}
+
+/*
+ * @brief Release a device handle obtained from EngOpenDxgkrnl().
+ */
+VOID
+APIENTRY
+EngCloseDxgkrnl(
+    _In_ HANDLE hFileObject)
+{
+    if (hFileObject)
+        ObDereferenceObject((PFILE_OBJECT)hFileObject);
+}
+
 /* EOF */

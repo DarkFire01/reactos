@@ -74,6 +74,7 @@ GdiThreadDestroy(PETHREAD Thread)
 {
     return STATUS_SUCCESS;
 }
+extern BOOLEAN gbDxgkInitialized;
 
 BOOL
 InitializeGreCSRSS(VOID)
@@ -81,11 +82,16 @@ InitializeGreCSRSS(VOID)
     /* Initialize Dxgkrnl interfaces and run startup routine */
     DxStartupDxgkInt();
 
-    /* Initialize Legacy DirectX graphics driver */
-    if (DxDdStartupDxGraphics(0, NULL, 0, NULL, NULL, gpepCSRSS) != STATUS_SUCCESS)
+    extern BOOLEAN gbDxgkInitialized;
+
+    if (gbDxgkInitialized == FALSE)
     {
-        ERR("Unable to initialize DirectX graphics\n");
-        return FALSE;
+       /* Initialize Legacy DirectX graphics driver */
+        if (DxDdStartupDxGraphics(0, NULL, 0, NULL, NULL, gpepCSRSS) != STATUS_SUCCESS)
+        {
+           ERR("Unable to initialize DirectX graphics\n");
+           return FALSE;
+        }
     }
 
     /* Get global language ID */

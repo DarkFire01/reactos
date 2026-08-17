@@ -16,6 +16,7 @@
 @ stdcall EngBugCheckEx(long ptr ptr ptr ptr) NTOSKRNL.KeBugCheckEx
 @ stdcall EngCheckAbort(ptr)
 @ stdcall EngClearEvent(ptr)
+@ stdcall EngCloseDxgkrnl(ptr)
 @ stdcall EngComputeGlyphSet(long long long)
 @ stdcall EngControlSprites(ptr long)
 @ stdcall EngCopyBits(ptr ptr ptr ptr ptr ptr)
@@ -100,6 +101,7 @@
 @ stdcall EngMultiByteToUnicodeN(ptr long ptr ptr long) NTOSKRNL.RtlMultiByteToUnicodeN
 @ stdcall EngMultiByteToWideChar(long ptr long ptr long)
 @ stdcall EngNineGrid(ptr ptr ptr ptr ptr ptr ptr ptr ptr)
+@ stdcall EngOpenDxgkrnl(ptr)
 @ stdcall EngPaint(ptr ptr ptr ptr long)
 @ stdcall EngPlgBlt(ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr long)
 @ stdcall EngProbeForRead(ptr long long) NTOSKRNL.ProbeForRead
