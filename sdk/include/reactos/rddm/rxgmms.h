@@ -33,7 +33,7 @@ typedef struct _VIDMM_GLOBAL  VIDMM_GLOBAL,  *PVIDMM_GLOBAL;
 typedef struct _VIDSCH_GLOBAL VIDSCH_GLOBAL, *PVIDSCH_GLOBAL;
 
 /* Bump on any incompatible change to ADAPTER_RENDER below. */
-#define RXGMMS_INTERFACE_VERSION 2
+#define RXGMMS_INTERFACE_VERSION 3
 
 /**
  * @brief Per-adapter render core passed from dxgkrnl into VidMm/VidSch at init.
@@ -123,12 +123,36 @@ VidSchNotifyInterrupt(
     _In_ PVIDSCH_GLOBAL VidSch,
     _In_ ULONGLONG      CompletedFenceId);
 
+/* --- VidMm allocations ------------------------------------------------------------------ */
+
+/** @brief The allocation must land in a segment whose descriptor has Flags.CpuVisible set. */
+#define VIDMM_ALLOC_F_CPU_VISIBLE  0x00000001
+/**
+ * @brief A scan-out primary. Implies CPU_VISIBLE (GDI/the CDD draws into it through the CPU
+ *        aperture while the display engine scans it out) and biases placement toward the low end
+ *        of the segment, since a display engine derives its start x/y from the byte offset.
+ */
+#define VIDMM_ALLOC_F_PRIMARY      0x00000002
+
+/**
+ * @brief Placement request for VidMmCreateAllocation. Mirrors the subset of the reference
+ *        _VIDMM_GLOBAL_ALLOC (Reference/win10/dxgmms2.h:18401) that drives segment selection:
+ *        RealSize, Alignment and SupportedSegmentSet.
+ */
+typedef struct _VIDMM_ALLOCATION_INFO
+{
+    SIZE_T Size;                /* RealSize; 0 is treated as one page */
+    ULONG  Alignment;           /* 0 = PAGE_SIZE */
+    ULONG  SupportedSegmentSet; /* bit (SegmentId - 1) per permitted segment; 0 = any */
+    ULONG  Flags;               /* VIDMM_ALLOC_F_* */
+} VIDMM_ALLOCATION_INFO, *PVIDMM_ALLOCATION_INFO;
+
 /** @brief Allocate and track a video-memory allocation; returns an opaque handle (NULL on fail). */
 PVOID
 NTAPI
 VidMmCreateAllocation(
-    _In_ PVIDMM_GLOBAL VidMm,
-    _In_ SIZE_T        Size);
+    _In_ PVIDMM_GLOBAL                VidMm,
+    _In_ const VIDMM_ALLOCATION_INFO *Info);
 
 /** @brief Destroy a VidMm allocation obtained from VidMmCreateAllocation. */
 VOID
@@ -149,6 +173,47 @@ VidMmGetAllocationPhysicalAddress(
     _In_      PVIDMM_GLOBAL VidMm,
     _In_      PVOID         Allocation,
     _Out_opt_ PULONG        SegmentId);
+
+/**
+ * @brief Return an allocation's offset WITHIN its segment, plus the segment id.
+ *
+ * This - not the physical address above - is what DxgkDdiSetVidPnSourceAddress wants: WDDM
+ * defines DXGKARG_SETVIDPNSOURCEADDRESS::PrimaryAddress as an offset from the start of
+ * PrimarySegment. The two coincide only for a segment whose BaseAddress is 0.
+ */
+ULONGLONG
+NTAPI
+VidMmGetAllocationSegmentOffset(
+    _In_      PVIDMM_GLOBAL VidMm,
+    _In_      PVOID         Allocation,
+    _Out_opt_ PULONG        SegmentId);
+
+/**
+ * @brief Map an allocation for CPU access and return a kernel VA, or NULL.
+ *        Reference VIDMM_PAGE_TABLE_BASE::GetCpuVisibleAddress (dxgmms2.c:88797).
+ *
+ * For a CpuVisible segment this maps segment.CpuTranslatedAddress + allocation offset as
+ * write-combined I/O space - the aperture through which the CPU reaches video memory. @p pContext
+ * receives an opaque token that must be handed back to VidMmFreeCpuVisibleAddress.
+ */
+PVOID
+NTAPI
+VidMmGetCpuVisibleAddress(
+    _In_  PVIDMM_GLOBAL VidMm,
+    _In_  PVOID         Allocation,
+    _Out_ PVOID        *pContext);
+
+/**
+ * @brief Undo VidMmGetCpuVisibleAddress.
+ *        Reference VIDMM_PAGE_TABLE_BASE::FreeCpuVisibleAddress (dxgmms2.c:88755).
+ */
+VOID
+NTAPI
+VidMmFreeCpuVisibleAddress(
+    _In_ PVIDMM_GLOBAL VidMm,
+    _In_ PVOID         Allocation,
+    _In_ PVOID         Address,
+    _In_ PVOID         Context);
 
 /* --- VidMm DMA-buffer pool (per-context pool of pooled, refcounted GPU command buffers) ---- */
 

@@ -26,17 +26,35 @@ typedef struct _DXGK_SEGMENTFLAGS
     {
         struct
         {
-            UINT Aperture                        : 1;
-            UINT Agp                             : 1;
-            UINT CpuVisible                      : 1;
-            UINT UseBanking                      : 1;
-            UINT CacheCoherent                   : 1;
-            UINT PitchAlignment                  : 1;
-            UINT PopulatedFromSystemMemory       : 1;
-            UINT PreservedDuringStandby          : 1;
-            UINT PreservedDuringHibernate        : 1;
-            UINT PartiallyPreservedDuringHibernate : 1;
-            UINT Reserved                        : 22;
+            /*
+             * Bit assignment verified against Reference/win10/dxgmms2.h:18620. VidMm branches on
+             * Aperture (0x1), CpuVisible (0x4), ReservedSysMem (0x1000) and
+             * SupportsCpuHostAperture (0x2000) when mapping an allocation for CPU access
+             * (VIDMM_PAGE_TABLE_BASE::GetCpuVisibleAddress, dxgmms2.c:88797), so the whole set is
+             * named here rather than folded into Reserved.
+             */
+            UINT Aperture                        : 1;   /* 0x00000001 */
+            UINT Agp                             : 1;   /* 0x00000002 */
+            UINT CpuVisible                      : 1;   /* 0x00000004 */
+            UINT UseBanking                      : 1;   /* 0x00000008 */
+            UINT CacheCoherent                   : 1;   /* 0x00000010 */
+            UINT PitchAlignment                  : 1;   /* 0x00000020 */
+            UINT PopulatedFromSystemMemory       : 1;   /* 0x00000040 */
+            UINT PreservedDuringStandby          : 1;   /* 0x00000080 */
+            UINT PreservedDuringHibernate        : 1;   /* 0x00000100 */
+            UINT PartiallyPreservedDuringHibernate : 1; /* 0x00000200 */
+            UINT DirectFlip                      : 1;   /* 0x00000400 */
+            UINT Use64KBPages                    : 1;   /* 0x00000800 */
+            UINT ReservedSysMem                  : 1;   /* 0x00001000 */
+            UINT SupportsCpuHostAperture         : 1;   /* 0x00002000 */
+            UINT SupportsCachedCpuHostAperture   : 1;   /* 0x00004000 */
+            UINT ApplicationTarget               : 1;   /* 0x00008000 */
+            UINT VprSupported                    : 1;   /* 0x00010000 */
+            UINT VprPreservedDuringStandby       : 1;   /* 0x00020000 */
+            UINT EncryptedPagingSupported        : 1;   /* 0x00040000 */
+            UINT LocalBudgetGroup                : 1;   /* 0x00080000 */
+            UINT NonLocalBudgetGroup             : 1;   /* 0x00100000 */
+            UINT Reserved                        : 11;
         };
         UINT Value;
     };
