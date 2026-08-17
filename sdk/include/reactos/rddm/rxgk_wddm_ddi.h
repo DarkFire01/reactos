@@ -445,6 +445,13 @@ typedef NTSTATUS (NTAPI *RXGK_PFN_QUERYADAPTERINFO)(_In_ const PVOID MiniportDev
                                                     _In_ const DXGKARG_QUERYADAPTERINFO *pQuery);
 typedef NTSTATUS (NTAPI *RXGK_PFN_CREATECONTEXT)(_In_ const PVOID MiniportDeviceContext,
                                                  _Inout_ DXGKARG_CREATECONTEXT *pCreateContext);
+
+/*
+ * DxgkDdiDestroyDevice releases the miniport device object created by DxgkDdiCreateDevice. The
+ * ReactOS DDK declares PDXGKDDI_DESTROYDEVICE as a `UINT32*` placeholder (d3dkmddi.h:1957), so
+ * the slot in DRIVER_INITIALIZATION_DATA is not callable as-is; cast it to this.
+ */
+typedef NTSTATUS (APIENTRY *RXGK_PFN_DESTROYDEVICE)(_In_ const HANDLE hDevice);
 typedef NTSTATUS (NTAPI *RXGK_PFN_DESTROYCONTEXT)(_In_ const HANDLE hContext);
 
 #ifdef __cplusplus
