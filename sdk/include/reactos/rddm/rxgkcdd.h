@@ -66,7 +66,16 @@ typedef struct _DXGKCDD_INTERFACE
 
     /* +0x18 */
     int  (NTAPI *pfnDxgkCddEtwLoggerEnabled)(VOID);
-    PVOID pfnDxgkCddCreate;
+    /*
+     * Create the CDD's D3D device + context (Reference cdd.c CreateAndEnableDevice:16887). The CDD
+     * is a D3DKMT client: everything after this - Enable, CreateAllocation, Present - is scoped to
+     * the returned handles, exactly as a user-mode D3D client's would be. hContext is what the CDD
+     * later puts in D3DKMT_PRESENT::hDevice (Reference cdd.c:9150).
+     */
+    NTSTATUS (NTAPI *pfnDxgkCddCreate)(VOID *const Adapter, VOID *pDxgkW32kInterface,
+                                       D3DKMT_HANDLE *phDevice, D3DKMT_HANDLE *phContext,
+                                       VOID *pDriverInfo, VOID *pRenderAdapterDriverInfo,
+                                       VOID **ppAdapterRender, VOID **ppSharedAllocObjectType);
     NTSTATUS (NTAPI *pfnDxgkCddDestroy)(D3DKMT_HANDLE hDevice, D3DKMT_HANDLE hContext,
                                         VOID *const Adapter, UCHAR DeviceRemoved);
     NTSTATUS (NTAPI *pfnDxgkCddEnable)(D3DKMT_HANDLE hDevice, UINT Win32kCommand,

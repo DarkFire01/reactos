@@ -106,18 +106,35 @@ NtGdiDdDDISharedPrimaryUnLockNotification(_In_ const D3DKMT_SHAREDPRIMARYUNLOCKN
     return 1;
 }
 
+/*
+ * The adapter-open family. These used to `return 0` - STATUS_SUCCESS with the output struct
+ * untouched - so a caller believed it had an adapter and carried on with a zero handle. Dispatch
+ * them like every other D3DKMT entry point instead.
+ */
 NTSTATUS
 APIENTRY
 NtGdiDdDDIOpenAdapterFromGdiDisplayName(_Inout_ D3DKMT_OPENADAPTERFROMGDIDISPLAYNAME* unnamedParam1)
 {
-   return 0;
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    if (!DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromGdiDisplayName)
+        return STATUS_PROCEDURE_NOT_FOUND;
+
+    return DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromGdiDisplayName(unnamedParam1);
 }
 
 NTSTATUS
 APIENTRY
 NtGdiDdDDIOpenAdapterFromHdc(_Inout_ D3DKMT_OPENADAPTERFROMHDC* unnamedParam1)
 {
-    return 0;
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    if (!DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromHdc)
+        return STATUS_PROCEDURE_NOT_FOUND;
+
+    return DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromHdc(unnamedParam1);
 }
 
 
@@ -125,7 +142,13 @@ NTSTATUS
 APIENTRY
 NtGdiDdDDIOpenAdapterFromDeviceName(_Inout_ D3DKMT_OPENADAPTERFROMDEVICENAME* unnamedParam1)
 {
-    return 0;
+    if (!unnamedParam1)
+        return STATUS_INVALID_PARAMETER;
+
+    if (!DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromDeviceName)
+        return STATUS_PROCEDURE_NOT_FOUND;
+
+    return DxgAdapterCallbacks.RxgkIntPfnOpenAdapterFromDeviceName(unnamedParam1);
 }
 
 

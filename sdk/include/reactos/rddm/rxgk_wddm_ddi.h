@@ -379,6 +379,54 @@ typedef struct _DXGK_PRESENTALLOCATIONINFO
     WORD                   PhysicalAdapterIndex;
 } DXGK_PRESENTALLOCATIONINFO;
 
+/*
+ * DxgkDdiOpenAllocation - open a created allocation ON A DEVICE. This is the step that produces
+ * hDeviceSpecificAllocation, which is what a miniport actually finds in a present/render
+ * allocation list; DxgkDdiCreateAllocation's hAllocation is an adapter-wide handle and is NOT
+ * interchangeable with it. VBoxWddm, for instance, treats the two as different structures
+ * (VBOXWDDM_OPENALLOCATION vs VBOXWDDM_ALLOCATION), so handing it the wrong one faults.
+ *
+ * The DDK forward-declares DXGKARG_OPENALLOCATION (d3dkmddi.h:1970) and never defines it, nor
+ * DXGK_OPENALLOCATIONINFO. Layouts from Reference/win10/dxgkrnl.h:16971 and :17001.
+ */
+typedef struct _DXGK_OPENALLOCATIONFLAGS
+{
+    union
+    {
+        struct
+        {
+            UINT Create      : 1;
+            UINT ReadOnly    : 1;
+            UINT Reserved    : 30;
+        };
+        UINT Value;
+    };
+} DXGK_OPENALLOCATIONFLAGS;
+
+typedef struct _DXGK_OPENALLOCATIONINFO
+{
+    D3DKMT_HANDLE hAllocation;                 /* in: from DxgkDdiCreateAllocation */
+    VOID         *pPrivateDriverData;          /* in: the allocation's private data */
+    UINT          PrivateDriverDataSize;       /* in */
+    VOID         *hDeviceSpecificAllocation;   /* out: what goes in an allocation list */
+} DXGK_OPENALLOCATIONINFO;
+
+struct _DXGKARG_OPENALLOCATION
+{
+    UINT                     NumAllocations;
+    DXGK_OPENALLOCATIONINFO *pOpenAllocation;
+    VOID                    *pPrivateDriverData;
+    UINT                     PrivateDriverSize;
+    DXGK_OPENALLOCATIONFLAGS Flags;
+    UINT                     SubresourceIndex;
+    UINT                     SubresourceOffset;
+    UINT                     Pitch;
+};
+
+typedef NTSTATUS (APIENTRY *RXGK_PFN_OPENALLOCATION)(
+    _In_ const HANDLE hDevice,
+    _In_ const struct _DXGKARG_OPENALLOCATION *pOpenAllocation);
+
 /* Completes the DDK's forward-declared DXGKARG_PRESENT (d3dkmddi.h ~1978). WDDM2.0 layout. */
 struct _DXGKARG_PRESENT
 {
@@ -452,6 +500,47 @@ typedef NTSTATUS (NTAPI *RXGK_PFN_CREATECONTEXT)(_In_ const PVOID MiniportDevice
  * the slot in DRIVER_INITIALIZATION_DATA is not callable as-is; cast it to this.
  */
 typedef NTSTATUS (APIENTRY *RXGK_PFN_DESTROYDEVICE)(_In_ const HANDLE hDevice);
+
+/*
+ * DxgkDdiGetStandardAllocationDriverData - dxgkrnl asks the miniport to produce ITS OWN allocation
+ * private data for one of the well-known surface types, so dxgkrnl can create a driver allocation
+ * (the desktop primary, a shadow, ...) without knowing the driver's private format. Called twice:
+ * once with pAllocationPrivateDriverData NULL to learn the size, then with a buffer to fill it.
+ *
+ * The ReactOS DDK declares PDXGKDDI_GETSTANDARDALLOCATIONDRIVERDATA as a `UINT32*` placeholder
+ * (d3dkmddi.h:1856) and never defines the argument struct at all. Layout below is transcribed from
+ * Reference/win10/dxgkrnl.h:16026.
+ */
+typedef enum _RXGK_STANDARDALLOCATION_TYPE
+{
+    RXGK_STANDARDALLOCATION_SHAREDPRIMARYSURFACE = 1,
+    RXGK_STANDARDALLOCATION_SHADOWSURFACE        = 2,
+    RXGK_STANDARDALLOCATION_STAGINGSURFACE       = 3,
+    RXGK_STANDARDALLOCATION_GDISURFACE           = 4,
+    RXGK_STANDARDALLOCATION_VGPU                 = 5,
+} RXGK_STANDARDALLOCATION_TYPE;
+
+typedef struct _RXGK_ARG_GETSTANDARDALLOCATIONDRIVERDATA
+{
+    RXGK_STANDARDALLOCATION_TYPE StandardAllocationType;
+    union
+    {
+        D3DKMDT_SHAREDPRIMARYSURFACEDATA *pCreateSharedPrimarySurfaceData;
+        D3DKMDT_SHADOWSURFACEDATA        *pCreateShadowSurfaceData;
+        D3DKMDT_STAGINGSURFACEDATA       *pCreateStagingSurfaceData;
+        VOID                             *pCreateGdiSurfaceData;
+        VOID                             *pCreateVirtualGpuSurfaceData;
+    };
+    VOID *pAllocationPrivateDriverData;      /* in opt / out */
+    UINT  AllocationPrivateDriverDataSize;   /* in / out */
+    VOID *pResourcePrivateDriverData;        /* in opt / out */
+    UINT  ResourcePrivateDriverDataSize;     /* in / out */
+    UINT  PhysicalAdapterIndex;
+} RXGK_ARG_GETSTANDARDALLOCATIONDRIVERDATA;
+
+typedef NTSTATUS (APIENTRY *RXGK_PFN_GETSTANDARDALLOCATIONDRIVERDATA)(
+    _In_ const HANDLE hAdapter,
+    _Inout_ RXGK_ARG_GETSTANDARDALLOCATIONDRIVERDATA *pGetStandardAllocationDriverData);
 typedef NTSTATUS (NTAPI *RXGK_PFN_DESTROYCONTEXT)(_In_ const HANDLE hContext);
 
 #ifdef __cplusplus

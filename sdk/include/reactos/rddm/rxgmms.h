@@ -103,13 +103,23 @@ VidSchSubmitCommand(
  *        present and render paths. The buffer is referenced until its GPU fence completes and then
  *        released to its pool; the caller must NOT free or reuse it after this call. @p Context is
  *        an opaque VidSch context handle.
+ *
+ * @param DmaBufferBytes    Bytes of command data the miniport actually wrote into the buffer.
+ * @param PrivateDataBytes  Bytes of private data the miniport actually wrote.
+ *
+ * Both are the USED extents, not the buffer capacities. A miniport parses its private data as a
+ * packed array of its own descriptors and walks exactly the range it is given, so submitting the
+ * whole buffer makes it read uninitialised memory past what it wrote - and act on the pointers it
+ * finds there.
  */
 NTSTATUS
 NTAPI
 VidSchSubmitDmaBuffer(
     _In_     PVIDSCH_GLOBAL VidSch,
     _In_opt_ PVOID          Context,
-    _In_     PVOID          DmaBuffer);
+    _In_     PVOID          DmaBuffer,
+    _In_     UINT           DmaBufferBytes,
+    _In_     UINT           PrivateDataBytes);
 
 /** @brief Block until the GPU has finished all submitted work (CDD flush before GDI draws). */
 NTSTATUS
