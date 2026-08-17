@@ -126,6 +126,12 @@ NTSTATUS
 NTAPI
 VidSchFlush(_In_ PVIDSCH_GLOBAL VidSch);
 
+/** @brief Diagnostic: submitted/completed fences and the in-flight packet count. */
+VOID
+NTAPI
+VidSchGetFenceState(_In_ PVIDSCH_GLOBAL VidSch, _Out_ ULONGLONG *Submitted,
+                    _Out_ ULONGLONG *Completed, _Out_ ULONG *InFlight);
+
 /** @brief Advance the completed-fence value from the miniport ISR/DPC. */
 VOID
 NTAPI

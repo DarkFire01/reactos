@@ -37,6 +37,7 @@ typedef enum _W32PROF_TEST_ID
     W32PROF_TEST_D3D7_CUBE,
     W32PROF_TEST_D3D8_CUBE,
     W32PROF_TEST_D3D9_CUBE,
+    W32PROF_TEST_D3D10_DEVICE,
     W32PROF_TEST_GL11_CUBE,
     W32PROF_TEST_GL20_CUBE,
     W32PROF_TEST_GL42_CUBE,
@@ -106,6 +107,7 @@ void ProfilerRunContinuous(const ProfilerConfig* cfg, W32PROF_TEST_ID id);
 void ProfilerRunAll(const ProfilerConfig* cfg);
 
 void W32Prof_Test_D3D9Cube(const ProfilerConfig* cfg);
+void W32Prof_Test_D3D10Device(const ProfilerConfig* cfg);
 void W32Prof_Test_GL11Cube(const ProfilerConfig* cfg);
 void W32Prof_Test_GL20Cube(const ProfilerConfig* cfg);
 void W32Prof_Test_D3D7Cube(const ProfilerConfig* cfg);

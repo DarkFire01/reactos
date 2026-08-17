@@ -176,6 +176,41 @@ W32Prof_Test_D3D9Cube(const ProfilerConfig* cfg)
         return;
     }
 
+    /*
+     * Direct3DCreate9 enumerates adapters through EnumDisplayDevices + CreateDC BEFORE it makes a
+     * single D3DKMT call, and returns NULL if that yields no usable adapter - which looks identical
+     * to "the driver is broken" while producing no kernel-side trace at all. Report what it sees.
+     */
+    {
+        DISPLAY_DEVICE dd;
+        DWORD i;
+
+        for (i = 0; ; i++)
+        {
+            ZeroMemory(&dd, sizeof(dd));
+            dd.cb = sizeof(dd);
+            if (!EnumDisplayDevices(NULL, i, &dd, 0))
+                break;
+
+            ResultsPrint(TEXT("D3D9 adapter %lu: '%s' (%s) flags 0x%08lx%s%s"),
+                         i, dd.DeviceName, dd.DeviceString, dd.StateFlags,
+                         (dd.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) ? TEXT(" ATTACHED") : TEXT(""),
+                         (dd.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) ? TEXT(" PRIMARY") : TEXT(""));
+            ResultsPrint(TEXT("D3D9 adapter %lu: DeviceID '%s'"), i, dd.DeviceID);
+
+            /* This is the HDC D3DKMTOpenAdapterFromHdc would be handed. */
+            {
+                HDC hdcAdapter = CreateDC(TEXT("DISPLAY"), dd.DeviceName, NULL, NULL);
+                ResultsPrint(TEXT("D3D9 adapter %lu: CreateDC('DISPLAY','%s') -> %p (err %lu)"),
+                             i, dd.DeviceName, hdcAdapter, hdcAdapter ? 0 : GetLastError());
+                if (hdcAdapter)
+                    DeleteDC(hdcAdapter);
+            }
+        }
+        if (i == 0)
+            ResultsPrint(TEXT("D3D9: EnumDisplayDevices returned NO display devices"));
+    }
+
     d3d = Direct3DCreate9(D3D_SDK_VERSION);
     if (!d3d)
     {

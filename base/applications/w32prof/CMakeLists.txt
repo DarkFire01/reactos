@@ -20,6 +20,7 @@ list(APPEND SOURCE
     test_d3d7_textured_fs.c
     test_d3d8.c
     test_d3d9.c
+    test_d3d10.c
     test_d3d9_textured.c
     test_d3d9_textured_fs.c
     test_gl11.c

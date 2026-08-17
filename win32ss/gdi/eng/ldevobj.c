@@ -685,6 +685,45 @@ LDEVOBJ_bGetClosestMode(
     PDEVMODEW pdmCurrent, pdmBest = NULL;
     ULONG i;
 
+    /*
+     * Nothing asked for a resolution - no DefaultSettings.* in the registry, as on a fresh
+     * install. Rather than letting the answer fall out of the mode list's ordering, pick the
+     * largest mode the device offers: on a WDDM adapter the mode list is the monitor's real
+     * capability, so the biggest entry is the display's native size.
+     */
+    if (RequestedMode->dmPelsWidth == 0 && RequestedMode->dmPelsHeight == 0)
+    {
+        for (i = 0; i < pGraphicsDevice->cDevModes; i++)
+        {
+            pdmCurrent = pGraphicsDevice->pDevModeList[i].pdm;
+
+            /* Honour a requested colour depth if there was one. */
+            if (RequestedMode->dmBitsPerPel != 0 &&
+                pdmCurrent->dmBitsPerPel != RequestedMode->dmBitsPerPel)
+                continue;
+
+            if (pdmBest == NULL ||
+                (ULONGLONG)pdmCurrent->dmPelsWidth * pdmCurrent->dmPelsHeight >
+                (ULONGLONG)pdmBest->dmPelsWidth * pdmBest->dmPelsHeight ||
+                ((ULONGLONG)pdmCurrent->dmPelsWidth * pdmCurrent->dmPelsHeight ==
+                 (ULONGLONG)pdmBest->dmPelsWidth * pdmBest->dmPelsHeight &&
+                 pdmCurrent->dmBitsPerPel > pdmBest->dmBitsPerPel))
+            {
+                pdmBest = pdmCurrent;
+            }
+        }
+
+        if (pdmBest)
+        {
+            TRACE("No mode requested; defaulting to the largest: '%dx%dx%d %d Hz'\n",
+                  pdmBest->dmPelsWidth, pdmBest->dmPelsHeight,
+                  pdmBest->dmBitsPerPel, pdmBest->dmDisplayFrequency);
+            *pSelectedMode = pdmBest;
+            return TRUE;
+        }
+        /* No mode passed the colour-depth filter - fall through to the general search. */
+    }
+
     /* Use a DEVMODE to keep the differences between best mode found and expected mode.
      * Initialize fields to max value so we can find better modes. */
     dmDiff.dmPelsWidth = 0xffffffff;

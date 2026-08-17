@@ -147,6 +147,9 @@ DumpShaderLog(GLuint obj, BOOL isProgram)
     buf[(len >= (GLsizei)sizeof(buf)) ? (sizeof(buf) - 1) : len] = 0;
     if (len > 0)
         ResultsPrint(TEXT("GL2 log: %hs"), buf);
+    else
+        ResultsPrint(TEXT("GL2: %s failed with an empty info log"),
+                     isProgram ? TEXT("link") : TEXT("compile"));
 }
 
 static GLuint
@@ -173,15 +176,50 @@ BuildProgram(void)
     GLuint vs, fs, prog;
     GLint ok = 0;
 
-    if (!pglCreateShader || !pglShaderSource || !pglCompileShader || !pglGetShaderiv ||
-        !pglCreateProgram || !pglAttachShader || !pglLinkProgram || !pglGetProgramiv ||
-        !pglUseProgram || !pglDeleteShader || !pglDeleteProgram || !pglGetUniformLocation || !pglUniform1i)
-        return 0;
+    /*
+     * Name every entry point we could not resolve. "shader program build failed" on its own is
+     * ambiguous - it covers both "the GL2 API is missing" and "the GLSL compiler rejected us", and
+     * those have nothing to do with each other.
+     */
+#define REPORT_IF_MISSING(p) \
+    do { if (!(p)) { ResultsPrint(TEXT("GL2 missing entry point: %hs"), #p + 3); missing++; } } while (0)
+
+    {
+        int missing = 0;
+
+        REPORT_IF_MISSING(pglCreateShader);
+        REPORT_IF_MISSING(pglShaderSource);
+        REPORT_IF_MISSING(pglCompileShader);
+        REPORT_IF_MISSING(pglGetShaderiv);
+        REPORT_IF_MISSING(pglGetShaderInfoLog);
+        REPORT_IF_MISSING(pglCreateProgram);
+        REPORT_IF_MISSING(pglAttachShader);
+        REPORT_IF_MISSING(pglLinkProgram);
+        REPORT_IF_MISSING(pglGetProgramiv);
+        REPORT_IF_MISSING(pglGetProgramInfoLog);
+        REPORT_IF_MISSING(pglUseProgram);
+        REPORT_IF_MISSING(pglDeleteShader);
+        REPORT_IF_MISSING(pglDeleteProgram);
+        REPORT_IF_MISSING(pglGetUniformLocation);
+        REPORT_IF_MISSING(pglUniform1i);
+
+        if (missing)
+        {
+            ResultsPrint(TEXT("GL2: %d entry point(s) missing - GL_VERSION '%hs'"),
+                         missing, (const char*)glGetString(GL_VERSION));
+            return 0;
+        }
+    }
+#undef REPORT_IF_MISSING
 
     vs = pglCreateShader(GL_VERTEX_SHADER);
     fs = pglCreateShader(GL_FRAGMENT_SHADER);
     if (!vs || !fs)
+    {
+        ResultsPrint(TEXT("GL2: glCreateShader returned 0 (vs %u, fs %u), GL error 0x%04x"),
+                     vs, fs, (unsigned)glGetError());
         return 0;
+    }
 
     pglShaderSource(vs, 1, &vsSrc, NULL);
     pglCompileShader(vs);

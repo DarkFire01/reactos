@@ -57,8 +57,19 @@ HRESULT WINAPI DwmIsCompositionEnabled(BOOL *enabled)
 
     *enabled = FALSE;
     version.dwOSVersionInfoSize = sizeof(version);
+#ifdef __REACTOS__
+    /*
+     * ReactOS has no compositor. Deriving this from the reported OS version says "composition is
+     * on" simply because we claim to be Windows 10, and a caller that believes it goes looking for
+     * DWM services that do not exist - opengl32 answers it by calling DwmpDxGetWindowSharedSurface,
+     * which is a raising .spec stub, so the application dies with 0x80000100 instead of falling
+     * back to the ordinary non-composited path.
+     */
+    UNREFERENCED_PARAMETER(version);
+#else
     if (!RtlGetVersion(&version))
         *enabled = (version.dwMajorVersion > 6 || (version.dwMajorVersion == 6 && version.dwMinorVersion >= 3));
+#endif
 
     return S_OK;
 }

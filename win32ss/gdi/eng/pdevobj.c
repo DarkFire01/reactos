@@ -15,8 +15,6 @@ DBG_DEFAULT_CHANNEL(EngPDev);
 static PPDEVOBJ gppdevList = NULL;
 static HSEMAPHORE ghsemPDEV;
 
-/* Set TRUE once the WDDM stack (dxgkrnl) is up - see gdi/eng/dxgkrnl.c (DlInitDxgkrnl). */
-extern BOOLEAN gbDxgkInitialized;
 
 BOOL
 APIENTRY
@@ -347,6 +345,17 @@ PDEVOBJ_bEnableDirectDraw(
     PGD_DXDDENABLEDIRECTDRAW pfnDdEnableDirectDraw = (PGD_DXDDENABLEDIRECTDRAW)gpDxFuncs[DXG_INDEX_DxDdEnableDirectDraw].pfn;
     BOOL Success;
 
+    /*
+     * gpDxFuncs is filled by DxDdStartupDxGraphics (dxg.sys), which is deliberately not started on
+     * a WDDM system - the legacy DirectDraw HAL drives an XPDM driver's DdXxx callbacks and the CDD
+     * has none. A PDEV without legacy DirectDraw is a normal, working PDEV, so report success.
+     */
+    if (pfnDdEnableDirectDraw == NULL)
+    {
+        TRACE("DxDdEnableDirectDraw: no legacy DirectDraw (WDDM path)\n");
+        return TRUE;
+    }
+
     /* Enable DirectDraw */
     TRACE("DxDdEnableDirectDraw(ppdev %p)\n", ppdev);
     Success = pfnDdEnableDirectDraw((HDEV)ppdev, TRUE);
@@ -361,6 +370,10 @@ PDEVOBJ_vResumeDirectDraw(
 {
     PGD_DXDDRESUMEDIRECTDRAW pfnDdResumeDirectDraw = (PGD_DXDDRESUMEDIRECTDRAW)gpDxFuncs[DXG_INDEX_DxDdResumeDirectDraw].pfn;
 
+    /* No legacy DirectDraw on the WDDM path - see PDEVOBJ_bEnableDirectDraw. */
+    if (pfnDdResumeDirectDraw == NULL)
+        return;
+
     /* Resume DirectDraw after mode change */
     TRACE("DxDdResumeDirectDraw(ppdev %p)\n", ppdev);
     pfnDdResumeDirectDraw((HDEV)ppdev, 0);
@@ -371,6 +384,10 @@ PDEVOBJ_vSuspendDirectDraw(
     _Inout_ PPDEVOBJ ppdev)
 {
     PGD_DXDDSUSPENDDIRECTDRAW pfnDdSuspendDirectDraw = (PGD_DXDDSUSPENDDIRECTDRAW)gpDxFuncs[DXG_INDEX_DxDdSuspendDirectDraw].pfn;
+
+    /* No legacy DirectDraw on the WDDM path - see PDEVOBJ_bEnableDirectDraw. */
+    if (pfnDdSuspendDirectDraw == NULL)
+        return;
 
     /* Suspend DirectDraw for mode change */
     TRACE("DxDdSuspendDirectDraw(ppdev %p)\n", ppdev);
@@ -383,6 +400,10 @@ PDEVOBJ_vSwitchDirectDraw(
     _Inout_ PPDEVOBJ ppdev2)
 {
     PGD_DXDDDYNAMICMODECHANGE pfnDdDynamicModeChange = (PGD_DXDDDYNAMICMODECHANGE)gpDxFuncs[DXG_INDEX_DxDdDynamicModeChange].pfn;
+
+    /* No legacy DirectDraw on the WDDM path - see PDEVOBJ_bEnableDirectDraw. */
+    if (pfnDdDynamicModeChange == NULL)
+        return;
 
     /* Switch DirectDraw instances between the PDEVs */
     TRACE("DxDdDynamicModeChange(ppdev %p, ppdev2 %p)\n", ppdev, ppdev2);
@@ -519,20 +540,13 @@ PDEVOBJ_Create(
     else
     {
         /*
-         * When the WDDM stack is up (dxgkrnl + a WDDM miniport bound), prefer the Canonical
-         * Display Driver (cdd_ms) which bridges GDI to dxgkrnl. gbDxgkInitialized is FALSE on a
-         * legacy XPDM system, so this leaves the normal path untouched there. Fall back to the
-         * device's registry driver if the CDD image cannot be loaded.
+         * No WDDM special case here: a WDDM adapter advertises cdd_ms as its InstalledDisplayDrivers
+         * through the \Device\VideoN key dxgkrnl publishes, so the ordinary path already selects the
+         * CDD for it - and only for it. Forcing cdd_ms whenever any WDDM adapter existed also
+         * hijacked unrelated display devices (the VGA one), binding the CDD to a graphics device
+         * that is not the adapter it actually drives.
          */
-        pldev = NULL;
-        if (gbDxgkInitialized && ldevtype == LDEV_DEVICE_DISPLAY)
-        {
-            pldev = LDEVOBJ_pLoadDriver(L"cdd_ms", ldevtype);
-            if (pldev)
-                TRACE("WDDM: using CDD (cdd_ms) display driver\n");
-        }
-        if (!pldev)
-            pldev = LDEVOBJ_pLoadDriver(pdm->dmDeviceName, ldevtype);
+        pldev = LDEVOBJ_pLoadDriver(pdm->dmDeviceName, ldevtype);
     }
     if (!pldev)
     {

@@ -82,9 +82,13 @@ InitializeGreCSRSS(VOID)
     /* Initialize Dxgkrnl interfaces and run startup routine */
     DxStartupDxgkInt();
 
-    extern BOOLEAN gbDxgkInitialized;
-
-    if (gbDxgkInitialized == FALSE)
+    /*
+     * The legacy DirectDraw/D3D path (dxg.sys) drives an XPDM display driver's DdXxx callbacks,
+     * which the CDD does not have - so it must not come up on a WDDM system. But it MUST still
+     * come up on a machine that merely has dxgkrnl.sys loaded with no WDDM display driver
+     * installed, which is why the test is a live adapter count and not gbDxgkInitialized.
+     */
+    if (!DxIsWddmDisplayAvailable())
     {
        /* Initialize Legacy DirectX graphics driver */
         if (DxDdStartupDxGraphics(0, NULL, 0, NULL, NULL, gpepCSRSS) != STATUS_SUCCESS)
@@ -92,6 +96,10 @@ InitializeGreCSRSS(VOID)
            ERR("Unable to initialize DirectX graphics\n");
            return FALSE;
         }
+    }
+    else
+    {
+        TRACE("WDDM display present - skipping legacy dxg.sys startup\n");
     }
 
     /* Get global language ID */

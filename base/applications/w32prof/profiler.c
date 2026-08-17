@@ -34,6 +34,7 @@ static const W32PROF_TEST_ENTRY g_Tests[] =
     { W32PROF_TEST_D3D7_CUBE,     TEXT("Direct3D7 Cube"),     TEXT("Create D3D7 device and render a spinning cube") },
     { W32PROF_TEST_D3D8_CUBE,     TEXT("Direct3D8 Cube"),     TEXT("Create D3D8 device and render a spinning cube") },
     { W32PROF_TEST_D3D9_CUBE,     TEXT("Direct3D9 Cube"),    TEXT("Create D3D9 device and render a spinning cube") },
+    { W32PROF_TEST_D3D10_DEVICE,  TEXT("Direct3D10 Device"), TEXT("Load dxgi/d3d10 and create a D3D10 device (hardware, WARP, reference)") },
     { W32PROF_TEST_GL11_CUBE,     TEXT("OpenGL 1.1 Cube"),   TEXT("Create WGL context (fixed pipeline) and render a spinning cube") },
     { W32PROF_TEST_GL20_CUBE,     TEXT("OpenGL 2.0 Cube"),   TEXT("Create WGL context + GLSL program and render a spinning cube") },
     { W32PROF_TEST_GL42_CUBE,     TEXT("OpenGL 4.2 Cube"),   TEXT("Create a 4.2 context (best-effort) and render a spinning cube") },
@@ -809,6 +810,10 @@ RunTestBody(const ProfilerConfig* cfg, W32PROF_TEST_ID id, LONGLONG freq)
 
         case W32PROF_TEST_D3D9_CUBE:
             W32Prof_Test_D3D9Cube(cfg);
+            break;
+
+        case W32PROF_TEST_D3D10_DEVICE:
+            W32Prof_Test_D3D10Device(cfg);
             break;
 
         case W32PROF_TEST_GL11_CUBE:

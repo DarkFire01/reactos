@@ -7,9 +7,29 @@
 
 #pragma once
 
-/* Create an IO request to fill out the function pointer list */
+/*
+ * Create an IO request to fill out the function pointer list.
+ *
+ * A WDDM miniport's DriverEntry calls DxgkInitialize, which is not an export but an inline stub in
+ * the WDK's dispmprt.h: it opens \Device\DxgKrnl, sends one of these codes, and calls back through
+ * the returned function pointer. WHICH code it sends depends on the WDK the miniport was built
+ * with, not on the WDDM version it implements - so all three must be answered or the driver's
+ * DriverEntry fails outright (Reference dxgkrnl.c:179719-179740).
+ *
+ *   0x23003F -> DpiInitialize        (original DxgkInitialize)
+ *   0x230043 -> DpiKmdDodInitialize  (DxgkInitializeDisplayOnlyDriver)
+ *   0x230047 -> DpiInitializeWin8    (DxgkInitialize on Win8+ WDKs)
+ */
 #define IOCTL_VIDEO_DDI_FUNC_REGISTER \
 	CTL_CODE( FILE_DEVICE_VIDEO, 0xF, METHOD_NEITHER, FILE_ANY_ACCESS  )
+
+/* EXACT value 0x230043 - DxgkInitializeDisplayOnlyDriver (Reference dxgkrnl.c:179726). */
+#define IOCTL_VIDEO_DDI_FUNC_REGISTER_KMDDOD \
+	CTL_CODE( FILE_DEVICE_VIDEO, 0x10, METHOD_NEITHER, FILE_ANY_ACCESS  )
+
+/* EXACT value 0x230047 - DxgkInitialize as emitted by Win8 and later WDKs (Reference :179733). */
+#define IOCTL_VIDEO_DDI_FUNC_REGISTER_WIN8 \
+	CTL_CODE( FILE_DEVICE_VIDEO, 0x11, METHOD_NEITHER, FILE_ANY_ACCESS  )
 
 /*
  * win32k passes a PDXGKWIN32K_INTERFACE (rxgkwddminterface.h, Version 22, 944 bytes) in

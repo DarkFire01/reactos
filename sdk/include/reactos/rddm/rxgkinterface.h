@@ -19,6 +19,19 @@
 
 /* REACTOS_WIN32K_DXGKRNL_INTERFACE function Pointers: */
 
+/*
+ * Not a D3DKMT entry point - a ReactOS addition. Reports how many display adapters have finished
+ * DxgkDdiStartDevice, i.e. how many displays WDDM can actually drive right now. win32k needs this
+ * to decide whether to use the CDD at all: dxgkrnl.sys loads on every boot, so "dxgkrnl answered"
+ * says nothing about whether a WDDM miniport was ever installed.
+ */
+typedef
+NTSTATUS
+NTAPI
+DXGADAPTER_GETADAPTERCOUNT(_Out_ ULONG* unnamedParam1);
+
+typedef DXGADAPTER_GETADAPTERCOUNT *PDXGADAPTER_GETADAPTERCOUNT;
+
 typedef
 NTSTATUS
 NTAPI
@@ -493,4 +506,6 @@ typedef struct _REACTOS_WIN32K_DXGKRNL_INTERFACE
     PDXGADAPTER_OPENADAPTERFROMHDC RxgkIntPfnOpenAdapterFromHdc;
     PDXGADAPTER_OPENADAPTERFROMGDIDISPLAYNAME RxgkIntPfnOpenAdapterFromGdiDisplayName;
     PDXGADAPTER_OPENADAPTERFROMDEVICENAME RxgkIntPfnOpenAdapterFromDeviceName;
+    /* Appended - lets win32k ask whether WDDM can actually drive a display yet. */
+    PDXGADAPTER_GETADAPTERCOUNT RxgkIntPfnGetAdapterCount;
 } REACTOS_WIN32K_DXGKRNL_INTERFACE, *PREACTOS_WIN32K_DXGKRNL_INTERFACE;
