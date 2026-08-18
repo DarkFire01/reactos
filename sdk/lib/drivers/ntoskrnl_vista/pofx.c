@@ -103,3 +103,23 @@ PoFxReportDevicePoweredOn(
 {
     UNIMPLEMENTED;
 }
+
+NTKRNLVISTAAPI
+NTSTATUS
+NTAPI
+PoFxPowerControl(
+    _In_ POHANDLE Handle,
+    _In_ LPCGUID PowerControlCode,
+    _In_reads_bytes_opt_(InBufferSize) PVOID InBuffer,
+    _In_ SIZE_T InBufferSize,
+    _Out_writes_bytes_opt_(OutBufferSize) PVOID OutBuffer,
+    _In_ SIZE_T OutBufferSize,
+    _Out_opt_ PSIZE_T BytesReturned)
+{
+    UNIMPLEMENTED;
+
+    if (BytesReturned != NULL)
+        *BytesReturned = 0;
+
+    return STATUS_NOT_IMPLEMENTED;
+}

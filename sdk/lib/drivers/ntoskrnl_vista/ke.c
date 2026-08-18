@@ -34,6 +34,13 @@ KeQueryHighestNodeNumber()
 	return 0;
 }
 
+ULONG
+NTAPI
+KeQueryMaximumProcessorCount()
+{
+    return 1;
+}
+
 NTKRNLVISTAAPI
 USHORT
 NTAPI

@@ -264,6 +264,22 @@ NTAPI
 PoFxNotifySurprisePowerOn(
     _In_ PDEVICE_OBJECT Pdo);
 
+/*
+ * The power-control code is a driver/PEP-private GUID, so the buffers are
+ * opaque to the kernel and are simply relayed to the platform extension.
+ */
+NTKRNLVISTAAPI
+NTSTATUS
+NTAPI
+PoFxPowerControl(
+    _In_ POHANDLE Handle,
+    _In_ LPCGUID PowerControlCode,
+    _In_reads_bytes_opt_(InBufferSize) PVOID InBuffer,
+    _In_ SIZE_T InBufferSize,
+    _Out_writes_bytes_opt_(OutBufferSize) PVOID OutBuffer,
+    _In_ SIZE_T OutBufferSize,
+    _Out_opt_ PSIZE_T BytesReturned);
+
 NTKRNLVISTAAPI
 NTSTATUS
 NTAPI
@@ -303,6 +319,19 @@ PoSetThermalPassiveCooling(
     _In_ ULONG Throttle);
 
 /* Rtl ---------------------------------------------------------------------- */
+
+/*
+ * rtlfuncs.h redirects this name to the WDM-library helper
+ * (WdmlibRtlIsNtDdiVersionAvailable), which looks the kernel export up
+ * dynamically. Undo the redirection so the real export can be declared here.
+ */
+#undef RtlIsNtDdiVersionAvailable
+
+NTKRNLVISTAAPI
+BOOLEAN
+NTAPI
+RtlIsNtDdiVersionAvailable(
+    _In_ ULONG Version);
 
 /*
  * The range list operated on is the NDK-internal RTL_RANGE_LIST type, which is
@@ -378,4 +407,5 @@ typedef size_t rsize_t;
 unsigned __int64 __cdecl _strtoui64(const char *String, char **EndPointer, int Base);
 errno_t __cdecl memcpy_s(void *Destination, rsize_t DestinationSize, const void *Source, rsize_t Count);
 errno_t __cdecl strncpy_s(char *Destination, rsize_t DestinationSize, const char *Source, rsize_t Count);
+errno_t __cdecl wcsncpy_s(WCHAR *Destination, rsize_t DestinationSize, const WCHAR *Source, rsize_t Count);
 char * __cdecl strtok_s(char *String, const char *Delimiters, char **Context);

@@ -1608,7 +1608,7 @@
 @ cdecl mbstowcs()
 @ cdecl mbtowc()
 @ cdecl memchr()
-@ cdecl -arch=x86_64 memcmp()
+@ cdecl memcmp()
 @ cdecl memcpy()
 @ cdecl memmove()
 @ cdecl memset()
@@ -1671,6 +1671,7 @@
 @ cdecl memcpy_s()
 @ cdecl strncpy_s()
 @ cdecl strtok_s()
+@ cdecl wcsncpy_s()
 
 # --- Errata Manager (Em) ---
 @ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
@@ -1753,6 +1754,7 @@
 @ stdcall -version=0x603+ PoCreateThermalRequest(ptr ptr ptr ptr ptr long)
 @ stdcall -version=0x603+ PoDeleteThermalRequest(ptr)
 @ stdcall -version=0x602+ PoFxNotifySurprisePowerOn(ptr)
+@ stdcall -version=0x602+ PoFxPowerControl(ptr ptr ptr long ptr long ptr)
 @ stdcall -version=0x600+ PoGetSystemWake(ptr)
 @ stdcall -version=0x603+ PoGetThermalRequestSupport(ptr ptr)
 @ stdcall -version=0x600+ PoRegisterPowerSettingCallback(ptr ptr ptr ptr ptr)
@@ -1765,9 +1767,9 @@
 @ stdcall -version=0x600+ RtlCmDecodeMemIoResource(ptr ptr)
 @ stdcall -version=0x600+ RtlCmEncodeMemIoResource(ptr long int64 int64)
 @ stdcall -version=0x600+ RtlFindClosestEncodableLength(int64 ptr)
-@ stdcall -version=0x601+ RtlInvertRangeListEx(ptr ptr int64 int64)
 @ stdcall -version=0x600+ RtlIoDecodeMemIoResource(ptr ptr ptr ptr)
 @ stdcall -version=0x600+ RtlIoEncodeMemIoResource(ptr long int64 int64 int64 int64)
+@ stdcall -version=0x600+ RtlIsNtDdiVersionAvailable(long)
 @ stdcall -version=0x600+ RtlNumberOfSetBitsUlongPtr(long)
 @ stdcall -version=0x602+ RtlQueryRegistryValuesEx(long wstr ptr ptr ptr)
 

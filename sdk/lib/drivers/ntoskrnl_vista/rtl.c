@@ -421,44 +421,6 @@ RtlIoDecodeMemIoResource(
 
 /**
  * @brief
- * Builds the inverse of a range list within given bounds.
- *
- * @param[out] InvertedRangeList
- * Receives the inverted range list (an RTL_RANGE_LIST).
- *
- * @param[in] RangeList
- * The range list to invert (an RTL_RANGE_LIST).
- *
- * @param[in] Minimum
- * The lower bound of the range to invert.
- *
- * @param[in] Maximum
- * The upper bound of the range to invert.
- *
- * @return
- * STATUS_SUCCESS on success, or an appropriate NTSTATUS error code.
- *
- * @unimplemented
- * ReactOS does not yet implement bounded range-list inversion.
- */
-NTSTATUS
-NTAPI
-RtlInvertRangeListEx(
-    _Out_ PVOID InvertedRangeList,
-    _In_ PVOID RangeList,
-    _In_ ULONGLONG Minimum,
-    _In_ ULONGLONG Maximum)
-{
-    UNREFERENCED_PARAMETER(InvertedRangeList);
-    UNREFERENCED_PARAMETER(RangeList);
-    UNREFERENCED_PARAMETER(Minimum);
-    UNREFERENCED_PARAMETER(Maximum);
-
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-/**
- * @brief
  * Queries multiple registry values in a single call, rejecting the unchecked
  * RTL_QUERY_REGISTRY_DIRECT form for security.
  *
@@ -494,4 +456,28 @@ RtlQueryRegistryValuesEx(
     _In_opt_ PVOID Environment)
 {
     return RtlQueryRegistryValues(RelativeTo, Path, QueryTable, Context, Environment);
+}
+
+/**
+ * @brief
+ * Determines whether the running system implements a given NTDDI version.
+ *
+ * @param[in] Version
+ * An NTDDI_* version constant. Only values that do not encode a service pack
+ * level (that is, whose low word is zero) are accepted, matching Windows.
+ *
+ * @return
+ * TRUE if the running system is at least @p Version, FALSE otherwise.
+ */
+BOOLEAN
+NTAPI
+RtlIsNtDdiVersionAvailable(
+    _In_ ULONG Version)
+{
+    /* Windows rejects any value carrying a service pack level outright. */
+    if ((Version & 0xFFFF) != 0)
+        return FALSE;
+
+    return Version <= ((SharedUserData->NtMajorVersion << 24) |
+                       (SharedUserData->NtMinorVersion << 16));
 }
