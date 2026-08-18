@@ -34,6 +34,12 @@
 @ stdcall RtlLcidToLocaleName(long ptr long long)
 @ stdcall RtlLocaleNameToLcid(wstr ptr long)
 @ stdcall RtlCompareUnicodeStrings(wstr long wstr long long)
+@ stdcall RtlGetLocaleFileMappingAddress(ptr ptr ptr)
+@ stdcall RtlNormalizeString(long long long long ptr)
+@ stdcall RtlGetSystemPreferredUILanguages(long ptr ptr ptr ptr)
+@ stdcall RtlGetThreadPreferredUILanguages(long long ptr ptr)
+@ stdcall RtlSetProcessPreferredUILanguages(long ptr ptr)
+@ stdcall RtlSetThreadPreferredUILanguages(long ptr ptr)
 @ stdcall RtlGetCurrentProcessorNumberEx(ptr)
 @ stdcall -arch=i386 RtlInterlockedPushListSListEx(ptr ptr ptr long)
 @ stdcall -arch=!i386 RtlInterlockedPushListSListEx(ptr ptr ptr long) ntdll.RtlInterlockedPushListSList
@@ -56,6 +62,8 @@
 @ stdcall RtlGetExtendedFeaturesMask(ptr)
 @ stdcall RtlSetExtendedFeaturesMask(ptr int64)
 @ stdcall RtlCopyExtendedContext(ptr long ptr)
+@ stdcall RtlQueryDynamicTimeZoneInformation(ptr)
+@ stdcall RtlSetDynamicTimeZoneInformation(ptr)
 
 @ stdcall TpAllocCleanupGroup(ptr)
 @ stdcall TpAllocIoCompletion(ptr ptr ptr ptr ptr)
