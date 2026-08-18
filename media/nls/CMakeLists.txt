@@ -139,7 +139,7 @@ list(TRANSFORM GEN_NLS APPEND ".nls")
 list(TRANSFORM GEN_NLS PREPEND "${CMAKE_CURRENT_BINARY_DIR}/")
 add_custom_target(gen_nls DEPENDS ${GEN_NLS})
 
-# Imported from Wine-11.15
+# Imported from Wine-11.20
 add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/l_intl.nls DESTINATION reactos/system32 NO_CAB FOR all)
 list(APPEND NLS_FILES
     l_intl.nls
