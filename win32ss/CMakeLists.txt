@@ -86,6 +86,7 @@ list(APPEND SOURCE
     gdi/eng/paint.c
     gdi/eng/pathobj.c
     gdi/eng/pdevobj.c
+    gdi/eng/rgnobj.c
     gdi/eng/perfcnt.c
     gdi/eng/rlecomp.c
     gdi/eng/semaphor.c

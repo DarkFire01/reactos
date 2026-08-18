@@ -83,23 +83,18 @@ InitializeGreCSRSS(VOID)
     DxStartupDxgkInt();
 
     /*
-     * The legacy DirectDraw/D3D path (dxg.sys) drives an XPDM display driver's DdXxx callbacks,
-     * which the CDD does not have - so it must not come up on a WDDM system. But it MUST still
-     * come up on a machine that merely has dxgkrnl.sys loaded with no WDDM display driver
-     * installed, which is why the test is a live adapter count and not gbDxgkInitialized.
+     * Start the legacy DirectDraw/D3D path (dxg.sys) unconditionally - it coexists with WDDM
+     * rather than being replaced by it.
+     *
+     * Vista ships dxg.sys alongside dxgkrnl.sys, and its d3d9.dll statically imports d3d8thk.dll
+     * (47 OsThunk* entry points) as well as gdi32's D3DKMT*: the runtime uses BOTH paths, and
+     * OsThunk* reaches dxg.sys through NtGdiDd* and gpDxFuncs. Skipping dxg.sys therefore breaks
+     * DirectDraw outright and stops Direct3DCreate9 before it makes its first D3DKMT call.
      */
-    if (!DxIsWddmDisplayAvailable())
+    if (DxDdStartupDxGraphics(0, NULL, 0, NULL, NULL, gpepCSRSS) != STATUS_SUCCESS)
     {
-       /* Initialize Legacy DirectX graphics driver */
-        if (DxDdStartupDxGraphics(0, NULL, 0, NULL, NULL, gpepCSRSS) != STATUS_SUCCESS)
-        {
-           ERR("Unable to initialize DirectX graphics\n");
-           return FALSE;
-        }
-    }
-    else
-    {
-        TRACE("WDDM display present - skipping legacy dxg.sys startup\n");
+       ERR("Unable to initialize DirectX graphics\n");
+       return FALSE;
     }
 
     /* Get global language ID */
