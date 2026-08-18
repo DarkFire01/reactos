@@ -335,8 +335,6 @@ RtlFindNextForwardRunSet64(
 #define TAG_ASTR        'RTSA'
 #define TAG_OSTR        'RTSO'
 
-/* nls.c */
-
 #ifndef _BLDR_
 
 /* ReactOS only */
