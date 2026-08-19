@@ -210,14 +210,15 @@ Wow64ReadNative(UINT64 NativeAddress, PVOID Address, SIZE_T Size)
 #define WOW64_FIELD_PTR(Ptr, Type, Field) ((Ptr) + (ULONG_PTR)&((Type*)NULL)->Field)
 
 #define WOW64_CAST_TO_PTR(Ptr) ((PVOID)(ULONG_PTR)(Ptr))
-#define WOW64_CAST_TO_HANDLE(H) ((HANDLE)(ULONG_PTR)(H))
+#define WOW64_CAST_TO_HANDLE(H) ((HANDLE)(LONG_PTR)(H))
 #define WOW64_CAST_FROM_PTR(Ptr) ((UINT64)((ULONG_PTR)(Ptr)))
-#define WOW64_CAST_FROM_HANDLE(H) ((UINT64)((ULONG_PTR)(H)))
+#define WOW64_CAST_FROM_HANDLE(H) ((INT64)((LONG_PTR)(H)))
 
 #define NtCurrentPeb64() ((PPEB64)(((ULONG_PTR)NtCurrentPeb()) - ALIGN_UP_BY(sizeof(PEB64), PAGE_SIZE)))
 #define NtCurrentTeb64() ((PTEB64)(((ULONG_PTR)NtCurrentTeb()) - ALIGN_UP_BY(sizeof(TEB64), PAGE_SIZE)))
 
 typedef UINT64 ULONG_PTR_NATIVE;
+typedef INT64 HANDLE_NATIVE;
 
 #else
 
@@ -243,6 +244,7 @@ typedef UINT64 ULONG_PTR_NATIVE;
 #define WOW64_CAST_FROM_HANDLE(H) (H)
 
 typedef ULONG_PTR ULONG_PTR_NATIVE;
+typedef HANDLE HANDLE_NATIVE;
 
 #endif
 

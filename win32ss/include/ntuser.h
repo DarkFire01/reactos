@@ -18,14 +18,14 @@ struct tagPOPUPMENU;
 
 typedef struct _USER_HANDLE_ENTRY
 {
-#if defined(_M_IX86) && defined(BUILD_WOW6432)
+#if defined(BUILD_WOW6432)
     UINT64 ptr;
 #else
     void *ptr; /* pointer to object */
 #endif
     union
     {
-#if defined(_M_IX86) && defined(BUILD_WOW6432)
+#if defined(BUILD_WOW6432)
         UINT64 pi;
         UINT64 pti;
         UINT64 ppi;
@@ -1473,11 +1473,24 @@ typedef struct tagCURSORDATA
 
 typedef struct tagIMEUI
 {
+#ifndef BUILD_WOW6432
     PWND spwnd;
     HIMC hIMC;
     HWND hwndIMC;
     HKL hKL;
     HWND hwndUI;
+#else
+    PWND spwnd;
+    ULONG Pad1;
+    HIMC hIMC;
+    ULONG Pad2;
+    HWND hwndIMC;
+    ULONG Pad3;
+    HKL hKL;
+    ULONG Pad4;
+    HWND hwndUI;
+    ULONG Pad5;
+#endif
     LONG nCntInIMEProc;
     struct {
         UINT fShowStatus:1;
