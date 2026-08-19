@@ -2804,11 +2804,17 @@ NTSTATUS WINAPI wow64_NtUserGetIconInfo( UINT *args )
     {
         module32->Buffer = PtrToUlong( module.Buffer );
         module32->Length = module.Length;
+#ifdef __REACTOS__
+        module32->MaximumLength = module.MaximumLength;
+#endif
     }
     if (res_name32)
     {
         res_name32->Buffer = PtrToUlong( res_name.Buffer );
         res_name32->Length = res_name.Length;
+#ifdef __REACTOS__
+        res_name32->MaximumLength = res_name.MaximumLength;
+#endif
     }
     return TRUE;
 }
