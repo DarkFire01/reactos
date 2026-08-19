@@ -4781,8 +4781,14 @@ NTSTATUS WINAPI wow64_NtUserSetWindowLong( UINT *args )
     switch (offset)
     {
     case GWLP_HINSTANCE:
+#ifndef __REACTOS__
     case GWLP_WNDPROC:
+#endif
         return NtUserSetWindowLongPtr( hwnd, offset, (ULONG)newval, ansi );
+#ifdef __REACTOS__
+    case GWLP_WNDPROC:
+        return Translate64WndProc((PVOID)NtUserSetWindowLongPtr(hwnd, offset, (ULONG)newval, ansi), ansi);
+#endif
     }
 
     return NtUserSetWindowLong( hwnd, offset, newval, ansi );

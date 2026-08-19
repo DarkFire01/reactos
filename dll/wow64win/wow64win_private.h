@@ -52,9 +52,13 @@
 extern NTSTATUS WINAPI (*UserCallbacks[])(PVOID Arguments, ULONG ArgumentLength);
 NTSTATUS WINAPI wow64_NtUserCallWinProc( void *arg, ULONG size );
 
+ULONG Translate64WndProc(WNDPROC WndProc, BOOLEAN bIsAnsi);
+
 #define DEFINE_USER32_CALLBACK(id, value, fn) static const ULONG Num ## fn = value;
 #include "u32cb.h"  
 #undef DEFINE_USER32_CALLBACK 
+
+#include "../wow64/ros_wow64_private.h"
 
 #endif
 

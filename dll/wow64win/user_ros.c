@@ -75,7 +75,6 @@ NTSTATUS WINAPI wow64_NtUserProcessConnect(UINT* pArgs)
    
    Is there even a guarantee, that we can't get a 64 bit WndProc from places
    other than PFNCLIENT tables? */
-static
 ULONG
 Translate64WndProc(WNDPROC WndProc, BOOLEAN bIsAnsi)
 {
