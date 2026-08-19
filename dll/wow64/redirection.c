@@ -59,7 +59,7 @@ GetFileRedirect(OBJECT_ATTRIBUTES* attr)
 {
     size_t i;
 
-    if (PtrToUlong(NtCurrentTeb()->TlsSlots[WOW64_TLS_FILESYSREDIR]) == 0)
+    if (PtrToUlong(NtCurrentTeb()->TlsSlots[WOW64_TLS_FILESYSREDIR]))
     {
         return FALSE;
     }

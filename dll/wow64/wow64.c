@@ -28,11 +28,11 @@ static PCPTABLEINFO32 AnsiCpTable;
 static PCPTABLEINFO32 OemCpTable;
 
 static UNICODE_STRING NtDll32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR L"\\ntdll.dll");
+static UNICODE_STRING Kernel32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR L"\\kernel32.dll");
+
 static ANSI_STRING ImportLdrInitializeThunkStr = RTL_CONSTANT_STRING("LdrInitializeThunk");
 static ANSI_STRING ImportUserExceptionDispatcherStr = RTL_CONSTANT_STRING("KiUserExceptionDispatcher");
 static PVOID NtDll32 = NULL;
-
-static UNICODE_STRING Kernel32Str = RTL_CONSTANT_STRING(L"" TMP_WOW_DIR L"\\kernel32.dll");
 static ANSI_STRING ImportBaseStr = RTL_CONSTANT_STRING("Base");
 
 PVOID NtDll32LdrpRoutine = NULL;
@@ -965,7 +965,7 @@ Wow64InitThread(PCONTEXT pContext)
     NtCurrentTeb()->TlsSlots[WOW64_TLS_TEMPLIST] = NULL;
     NtCurrentTeb()->TlsSlots[WOW64_TLS_APCLIST] = NULL;
     NtCurrentTeb()->TlsSlots[WOW64_TLS_USERCALLBACKDATA] = NULL;
-    NtCurrentTeb()->TlsSlots[WOW64_TLS_FILESYSREDIR] = (PVOID)TRUE;
+    NtCurrentTeb()->TlsSlots[WOW64_TLS_FILESYSREDIR] = (PVOID)FALSE;
 
     /* Make sure the handler routine pointer fits into the 32-bit TEB */
     ASSERT((((ULONG_PTR)Wow64SystemServiceEx) & ~0xFFFFFFFF) == 0);
