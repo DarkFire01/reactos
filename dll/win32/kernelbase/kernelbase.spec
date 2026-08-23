@@ -261,7 +261,7 @@
 @ stdcall DeleteFiber(ptr)
 @ stdcall DeleteFileA(str)
 @ stdcall DeleteFileW(wstr)
-@ stdcall DeleteProcThreadAttributeList(ptr)
+@ stdcall -version=0x600+ DeleteProcThreadAttributeList(ptr)
 # @ stub DeleteStateAtomValue
 # @ stub DeleteStateContainer
 # @ stub DeleteStateContainerValue
@@ -846,7 +846,7 @@
 @ stdcall InitializeCriticalSectionAndSpinCount(ptr long)
 @ stdcall InitializeCriticalSectionEx(ptr long long)
 # @ stub InitializeEnclave
-@ stdcall InitializeProcThreadAttributeList(ptr long long ptr)
+@ stdcall -version=0x600+ InitializeProcThreadAttributeList(ptr long long ptr)
 @ stdcall InitializeProcessForWsWatch(long)
 @ stdcall InitializeSListHead(ptr) ntdll.RtlInitializeSListHead
 @ stdcall InitializeSRWLock(ptr) ntdll.RtlInitializeSRWLock
@@ -1684,7 +1684,7 @@
 # @ stub UnsubscribeStateChangeNotification
 # @ stub UpdatePackageStatus
 # @ stub UpdatePackageStatusForUser
-@ stdcall UpdateProcThreadAttribute(ptr long long ptr long ptr ptr)
+@ stdcall -version=0x600+ UpdateProcThreadAttribute(ptr long ptr ptr ptr ptr ptr)
 @ stdcall UrlApplySchemeA(str ptr ptr long)
 @ stdcall UrlApplySchemeW(wstr ptr ptr long)
 @ stdcall UrlCanonicalizeA(str ptr ptr long)
