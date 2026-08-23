@@ -4464,4 +4464,58 @@ CreateProcessW(LPCWSTR lpApplicationName,
                                   NULL);
 }
 
+/* kernel32 is built targeting NT 5.2, where winbase.h does not define these */
+#ifndef PROCESS_DEP_ENABLE
+#define PROCESS_DEP_ENABLE                      0x00000001
+#define PROCESS_DEP_DISABLE_ATL_THUNK_EMULATION 0x00000002
+#endif
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+SetProcessDEPPolicy(IN DWORD dwFlags)
+{
+#ifdef _WIN64
+    /* Data execution prevention is always on for 64-bit processes and
+       cannot be changed */
+    UNREFERENCED_PARAMETER(dwFlags);
+    SetLastError(ERROR_NOT_SUPPORTED);
+    return FALSE;
+#else
+    ULONG ExecuteOptions;
+    NTSTATUS Status;
+
+    if (dwFlags & ~(PROCESS_DEP_ENABLE | PROCESS_DEP_DISABLE_ATL_THUNK_EMULATION))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    /* Whatever the caller asks for is permanent for the lifetime of the
+       process: the kernel refuses any later change, and returns
+       STATUS_ACCESS_DENIED for it. */
+    if (dwFlags & PROCESS_DEP_ENABLE)
+        ExecuteOptions = MEM_EXECUTE_OPTION_DISABLE | MEM_EXECUTE_OPTION_PERMANENT;
+    else
+        ExecuteOptions = MEM_EXECUTE_OPTION_ENABLE | MEM_EXECUTE_OPTION_PERMANENT;
+
+    if (dwFlags & PROCESS_DEP_DISABLE_ATL_THUNK_EMULATION)
+        ExecuteOptions |= MEM_EXECUTE_OPTION_DISABLE_THUNK_EMULATION;
+
+    Status = NtSetInformationProcess(NtCurrentProcess(),
+                                     ProcessExecuteFlags,
+                                     &ExecuteOptions,
+                                     sizeof(ExecuteOptions));
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+#endif
+}
+
 /* EOF */
