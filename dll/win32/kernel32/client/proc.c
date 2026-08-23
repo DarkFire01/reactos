@@ -4518,4 +4518,31 @@ SetProcessDEPPolicy(IN DWORD dwFlags)
 #endif
 }
 
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+CancelIoEx(IN HANDLE hFile,
+           IN LPOVERLAPPED lpOverlapped OPTIONAL)
+{
+    IO_STATUS_BLOCK IoStatusBlock;
+    NTSTATUS Status;
+
+    /* Unlike CancelIo(), this cancels the requests of every thread of the
+       process, and lpOverlapped may name a single one of them. The OVERLAPPED
+       a caller hands us starts with the I/O status block the request was
+       issued with, which is what the kernel matches on. */
+    Status = NtCancelIoFileEx(hFile,
+                              (PIO_STATUS_BLOCK)lpOverlapped,
+                              &IoStatusBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 /* EOF */

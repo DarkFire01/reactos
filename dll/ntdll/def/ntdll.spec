@@ -251,7 +251,7 @@
 @ stdcall NtCallbackReturn(ptr long long)
 @ stdcall NtCancelDeviceWakeupRequest(ptr)
 @ stdcall NtCancelIoFile(long ptr)
-@ stdcall -stub -version=0x600+ NtCancelIoFileEx(long ptr ptr)
+@ stdcall -version=0x600+ NtCancelIoFileEx(long ptr ptr)
 @ stdcall -stub -version=0x600+ NtCancelSynchronousIoFile(long ptr ptr)
 @ stdcall NtCancelTimer(long ptr)
 @ stdcall NtClearEvent(long)
@@ -1426,7 +1426,7 @@
 @ stdcall ZwCallbackReturn(ptr long long)
 @ stdcall ZwCancelDeviceWakeupRequest(ptr)
 @ stdcall ZwCancelIoFile(long ptr)
-@ stdcall -stub -version=0x600+ ZwCancelIoFileEx(ptr ptr ptr)
+@ stdcall -version=0x600+ ZwCancelIoFileEx(long ptr ptr) NtCancelIoFileEx
 @ stdcall -stub -version=0x600+ ZwCancelSynchronousIoFile(ptr ptr ptr)
 @ stdcall ZwCancelTimer(long ptr)
 @ stdcall ZwClearEvent(long)
