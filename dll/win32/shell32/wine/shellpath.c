@@ -3397,3 +3397,136 @@ HRESULT WINAPI SHGetSpecialFolderLocation(
     hr = SHGetFolderLocation(hwndOwner, nFolder, NULL, 0, ppidl);
     return hr;
 }
+
+/*************************************************************************
+ * SHGetKnownFolderPath			[SHELL32.@]
+ *
+ * Retrieves the path of a known folder, identified by its KNOWNFOLDERID
+ * rather than by a CSIDL.
+ *
+ * PARAMS
+ *  rfid      [I] the folder to look up
+ *  dwFlags   [I] KF_FLAG_* flags
+ *  hToken    [I] access token of the user, or NULL for the current one
+ *  ppszPath  [O] receives the path, to be freed with CoTaskMemFree()
+ *
+ * RETURNS
+ *  Success: S_OK
+ *  Failure: standard HRESULT error codes.
+ *
+ * NOTES
+ *  Every known folder we support has an entry in CSIDL_Data, so this is a
+ *  reverse lookup of that table followed by the CSIDL path resolution.
+ *  The KF_FLAG_* values that matter here are deliberately the same bits as
+ *  the corresponding CSIDL_FLAG_* ones, so they can be passed straight down.
+ */
+HRESULT WINAPI SHGetKnownFolderPath(
+	REFKNOWNFOLDERID rfid,   /* [I] known folder identifier */
+	DWORD dwFlags,           /* [I] KF_FLAG_* */
+	HANDLE hToken,           /* [I] access token */
+	PWSTR *ppszPath)         /* [O] converted path */
+{
+    WCHAR szPath[MAX_PATH];
+    DWORD dwType;
+    UINT csidl;
+    HRESULT hr;
+    SIZE_T cb;
+
+    TRACE("(%s, 0x%08lx, %p, %p)\n", debugstr_guid(rfid), dwFlags, hToken, ppszPath);
+
+    if (ppszPath == NULL)
+        return E_INVALIDARG;
+
+    *ppszPath = NULL;
+
+    /* The top byte is reserved */
+    if (dwFlags & 0xFF000000)
+        return E_INVALIDARG;
+
+    /* Find the CSIDL this known folder corresponds to */
+    for (csidl = 0; csidl < ARRAY_SIZE(CSIDL_Data); csidl++)
+    {
+        if (CSIDL_Data[csidl].id != NULL && IsEqualGUID(CSIDL_Data[csidl].id, rfid))
+            break;
+    }
+
+    if (csidl >= ARRAY_SIZE(CSIDL_Data))
+    {
+        FIXME("Unknown folder %s\n", debugstr_guid(rfid));
+        return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+    }
+
+    dwType = (dwFlags & KF_FLAG_DEFAULT_PATH) ? SHGFP_TYPE_DEFAULT : SHGFP_TYPE_CURRENT;
+
+    /* KF_FLAG_CREATE, KF_FLAG_DONT_VERIFY, KF_FLAG_NO_ALIAS and KF_FLAG_INIT
+       share their values with the CSIDL_FLAG_* they map to */
+    csidl |= (dwFlags & (KF_FLAG_CREATE | KF_FLAG_DONT_VERIFY |
+                         KF_FLAG_NO_ALIAS | KF_FLAG_INIT));
+
+    hr = SHGetFolderPathW(NULL, csidl, hToken, dwType, szPath);
+    if (FAILED(hr))
+        return hr;
+
+    cb = (wcslen(szPath) + 1) * sizeof(WCHAR);
+    *ppszPath = CoTaskMemAlloc(cb);
+    if (*ppszPath == NULL)
+        return E_OUTOFMEMORY;
+
+    memcpy(*ppszPath, szPath, cb);
+    return S_OK;
+}
+
+/*************************************************************************
+ * SHGetStockIconInfo			[SHELL32.@]
+ *
+ * Retrieves the location, and optionally a handle, of one of the system's
+ * stock icons.
+ *
+ * PARAMS
+ *  siid    [I] the stock icon wanted
+ *  uFlags  [I] SHGSI_* flags
+ *  psii    [IO] caller allocated SHSTOCKICONINFO, cbSize must be set
+ *
+ * RETURNS
+ *  Success: S_OK
+ *  Failure: E_INVALIDARG for a bad icon id or a malformed structure.
+ *
+ * BUGS
+ *  The icon indices are our own shell32 resource indices, so they only match
+ *  Windows for the icons the two happen to share. Callers that just want a
+ *  usable icon, which is what SHGSI_ICON is for, get the right thing.
+ */
+HRESULT WINAPI SHGetStockIconInfo(SHSTOCKICONID siid, UINT uFlags, SHSTOCKICONINFO *psii)
+{
+    UINT cIcons;
+
+    TRACE("(%d, 0x%x, %p)\n", siid, uFlags, psii);
+
+    if (psii == NULL || psii->cbSize != sizeof(SHSTOCKICONINFO))
+        return E_INVALIDARG;
+
+    if (siid < SIID_DOCNOASSOC || siid >= SIID_MAX_ICONS)
+        return E_INVALIDARG;
+
+    /* All of our stock icons live in shell32 itself */
+    if (!GetSystemDirectoryW(psii->szPath, MAX_PATH))
+        return HRESULT_FROM_WIN32(GetLastError());
+
+    PathAppendW(psii->szPath, L"shell32.dll");
+
+    psii->iSysImageIndex = -1;
+    psii->iIcon = -(IDI_SHELL_DOCUMENT + (int)siid);
+    psii->hIcon = NULL;
+
+    if (uFlags & SHGSI_ICON)
+    {
+        cIcons = ExtractIconExW(psii->szPath, psii->iIcon, &psii->hIcon, NULL, 1);
+        if (cIcons != 1 || psii->hIcon == NULL)
+        {
+            psii->hIcon = NULL;
+            return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+        }
+    }
+
+    return S_OK;
+}
