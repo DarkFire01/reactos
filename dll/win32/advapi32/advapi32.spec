@@ -29,7 +29,7 @@
 @ stdcall -import AddAuditAccessAceEx(ptr long long long ptr long long)
 @ stdcall -import AddAuditAccessObjectAce(ptr long long long ptr ptr ptr long long)
 @ stdcall -stub AddConditionalAce(ptr long long long long ptr wstr ptr)
-@ stdcall -import -stub AddMandatoryAce(ptr long long long ptr)
+@ stdcall AddMandatoryAce(ptr long long long ptr)
 # @ stub AddUsersToEncryptedFile
 # @ stub AddUsersToEncryptedFileEx
 @ stdcall -import AdjustTokenGroups(long long ptr long ptr ptr)
