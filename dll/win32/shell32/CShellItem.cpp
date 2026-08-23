@@ -611,6 +611,30 @@ SHGetItemFromObject(_In_ IUnknown *punk, _In_ REFIID riid, _Out_ void **ppv)
 }
 
 /***********************************************************************
+ *   SHGetPropertyStoreForWindow [SHELL32.@]
+ *
+ * Hands back the property store a window keeps for the shell: the application
+ * user model id it is grouped under on the taskbar, its relaunch command, and
+ * so on. We keep no such store yet, so report that rather than inventing one.
+ * Callers use this to decorate a window and carry on without it.
+ */
+EXTERN_C HRESULT WINAPI
+SHGetPropertyStoreForWindow(_In_ HWND hwnd, _In_ REFIID riid, _Out_ void **ppv)
+{
+    FIXME("(%p,%s,%p) stub\n", hwnd, debugstr_guid(&riid), ppv);
+
+    if (ppv == NULL)
+        return E_INVALIDARG;
+
+    *ppv = NULL;
+
+    if (!IsWindow(hwnd))
+        return E_INVALIDARG;
+
+    return E_NOTIMPL;
+}
+
+/***********************************************************************
  *   SHGetPropertyStoreFromParsingName [SHELL32.@]
  */
 EXTERN_C HRESULT WINAPI

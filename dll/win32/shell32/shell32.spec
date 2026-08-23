@@ -658,6 +658,7 @@
 @ stdcall -stub -version=0x601+ Shell_NotifyIconGetRect(ptr ptr)
 @ stdcall -stub -version=0x601+ SHGetKnownFolderItem(ptr ptr ptr ptr ptr)
 @ stdcall -version=0x601+ SHGetItemFromObject(ptr long ptr)
+@ stdcall -version=0x601+ SHGetPropertyStoreForWindow(ptr ptr ptr)
 @ stdcall -version=0x600+ SHGetItemFromDataObject(ptr long ptr ptr)
 
 @ stdcall -version=0x601+ GetCurrentProcessExplicitAppUserModelID(wstr)
