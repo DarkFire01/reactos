@@ -230,3 +230,124 @@ SetThreadExecutionState(EXECUTION_STATE esFlags)
 
     return esFlags;
 }
+
+
+/* kernel32 targets NT 5.2, where potypes.h keeps these behind its Win7 guard */
+#ifndef POWER_REQUEST_CONTEXT_VERSION
+#define POWER_REQUEST_CONTEXT_VERSION            0
+#define POWER_REQUEST_CONTEXT_SIMPLE_STRING      0x00000001
+#define POWER_REQUEST_CONTEXT_DETAILED_STRING    0x00000002
+#define PowerRequestMaximum                      3
+
+typedef enum _POWER_REQUEST_TYPE {
+  PowerRequestDisplayRequired,
+  PowerRequestSystemRequired,
+  PowerRequestAwayModeRequired
+} POWER_REQUEST_TYPE, *PPOWER_REQUEST_TYPE;
+#endif
+
+/*
+ * Power requests keep the machine, or just the display, awake while something
+ * that matters to the user is going on. We do not act on them yet: the request
+ * is validated and given a handle the caller can hold and close, but nothing
+ * feeds into power policy. Callers treat a failure here as fatal, so refusing
+ * outright is worse than accepting and ignoring.
+ */
+
+/*
+ * @unimplemented
+ */
+HANDLE
+WINAPI
+PowerCreateRequest(IN PREASON_CONTEXT Context)
+{
+    HANDLE RequestHandle;
+    NTSTATUS Status;
+
+    if (Context == NULL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return INVALID_HANDLE_VALUE;
+    }
+
+    /* Only version 0 exists, and the reason is either a plain string or one
+       pulled out of a module's resources, never both and never neither */
+    if (Context->Version != POWER_REQUEST_CONTEXT_VERSION ||
+        (Context->Flags & ~(POWER_REQUEST_CONTEXT_SIMPLE_STRING |
+                            POWER_REQUEST_CONTEXT_DETAILED_STRING)) != 0 ||
+        (Context->Flags & (POWER_REQUEST_CONTEXT_SIMPLE_STRING |
+                           POWER_REQUEST_CONTEXT_DETAILED_STRING)) == 0 ||
+        (Context->Flags & POWER_REQUEST_CONTEXT_SIMPLE_STRING &&
+         Context->Flags & POWER_REQUEST_CONTEXT_DETAILED_STRING))
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return INVALID_HANDLE_VALUE;
+    }
+
+    /* The caller owns this handle and closes it with CloseHandle(), so it has
+       to be a real kernel handle rather than something we made up */
+    Status = NtCreateEvent(&RequestHandle,
+                           EVENT_ALL_ACCESS,
+                           NULL,
+                           NotificationEvent,
+                           FALSE);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return INVALID_HANDLE_VALUE;
+    }
+
+    DPRINT1("PowerCreateRequest(%p): power requests are not honoured yet\n", Context);
+
+    return RequestHandle;
+}
+
+/*
+ * @unimplemented
+ */
+BOOL
+WINAPI
+PowerSetRequest(IN HANDLE PowerRequest,
+                IN POWER_REQUEST_TYPE RequestType)
+{
+    if (PowerRequest == NULL || PowerRequest == INVALID_HANDLE_VALUE)
+    {
+        SetLastError(ERROR_INVALID_HANDLE);
+        return FALSE;
+    }
+
+    if (RequestType >= PowerRequestMaximum)
+    {
+        SetLastError(ERROR_NOT_SUPPORTED);
+        return FALSE;
+    }
+
+    DPRINT1("PowerSetRequest(%p, %d): ignored\n", PowerRequest, RequestType);
+
+    return TRUE;
+}
+
+/*
+ * @unimplemented
+ */
+BOOL
+WINAPI
+PowerClearRequest(IN HANDLE PowerRequest,
+                  IN POWER_REQUEST_TYPE RequestType)
+{
+    if (PowerRequest == NULL || PowerRequest == INVALID_HANDLE_VALUE)
+    {
+        SetLastError(ERROR_INVALID_HANDLE);
+        return FALSE;
+    }
+
+    if (RequestType >= PowerRequestMaximum)
+    {
+        SetLastError(ERROR_NOT_SUPPORTED);
+        return FALSE;
+    }
+
+    DPRINT1("PowerClearRequest(%p, %d): ignored\n", PowerRequest, RequestType);
+
+    return TRUE;
+}
