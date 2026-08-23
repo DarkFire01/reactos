@@ -402,6 +402,87 @@ NtOpenKey(OUT PHANDLE KeyHandle,
     return Status;
 }
 
+NTSTATUS
+NTAPI
+NtOpenKeyEx(OUT PHANDLE KeyHandle,
+            IN ACCESS_MASK DesiredAccess,
+            IN POBJECT_ATTRIBUTES ObjectAttributes,
+            IN ULONG OpenOptions)
+{
+    CM_PARSE_CONTEXT ParseContext = {0};
+    HANDLE Handle;
+    NTSTATUS Status;
+    KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
+    PAGED_CODE();
+    DPRINT("NtOpenKeyEx(Path: %wZ, Root %x, Access: %x, Options: %x)\n",
+            ObjectAttributes->ObjectName, ObjectAttributes->RootDirectory,
+            DesiredAccess, OpenOptions);
+
+    /* Reject options we do not know about */
+    if (OpenOptions & ~(REG_OPTION_BACKUP_RESTORE | REG_OPTION_OPEN_LINK))
+        return STATUS_INVALID_PARAMETER;
+
+    /* FIXME: Neither REG_OPTION_BACKUP_RESTORE nor REG_OPTION_OPEN_LINK is
+       honoured yet, the key is opened the way NtOpenKey() would open it */
+    if (OpenOptions != 0)
+        DPRINT1("NtOpenKeyEx: ignoring open options %x\n", OpenOptions);
+
+    /* Ignore the WOW64 flag, it's not valid in the kernel */
+    DesiredAccess &= ~KEY_WOW64_RES;
+
+    /* Check for user-mode caller */
+    if (PreviousMode != KernelMode)
+    {
+        /* Prepare to probe parameters */
+        _SEH2_TRY
+        {
+            /* Probe the key handle */
+            ProbeForWriteHandle(KeyHandle);
+            *KeyHandle = NULL;
+
+            /* Probe object attributes */
+            ProbeForRead(ObjectAttributes,
+                         sizeof(OBJECT_ATTRIBUTES),
+                         sizeof(ULONG));
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            /* Return the exception code */
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+    }
+
+    /* Just let the object manager handle this */
+    Status = ObOpenObjectByName(ObjectAttributes,
+                                CmpKeyObjectType,
+                                PreviousMode,
+                                NULL,
+                                DesiredAccess,
+                                &ParseContext,
+                                &Handle);
+
+    /* Only do this if we succeeded */
+    if (NT_SUCCESS(Status))
+    {
+        _SEH2_TRY
+        {
+            /* Return the handle to caller */
+            *KeyHandle = Handle;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            /* Get the status */
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+    }
+
+    DPRINT("Returning handle %x, Status %x.\n", Handle, Status);
+
+    /* Return status */
+    return Status;
+}
 
 NTSTATUS
 NTAPI

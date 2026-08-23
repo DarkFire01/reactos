@@ -300,4 +300,5 @@
 #ifndef SYSFUNCS_NT5_ONLY
     SVC_(GetCurrentProcessorNumberEx, 1)
     SVC_(CancelIoFileEx, 3)
+    SVC_(OpenKeyEx, 4)
 #endif

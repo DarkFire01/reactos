@@ -386,6 +386,7 @@
 @ stdcall NtOpenIoCompletion(ptr long ptr)
 @ stdcall NtOpenJobObject(ptr long ptr)
 @ stdcall NtOpenKey(ptr long ptr)
+@ stdcall -version=0x600+ NtOpenKeyEx(ptr long ptr long)
 @ stdcall -stub -version=0x600+ NtOpenKeyTransacted(ptr long ptr ptr)
 @ stdcall NtOpenKeyedEvent(ptr long ptr)
 @ stdcall NtOpenMutant(ptr long ptr)
@@ -1558,6 +1559,7 @@
 @ stdcall ZwOpenIoCompletion(ptr long ptr)
 @ stdcall ZwOpenJobObject(ptr long ptr)
 @ stdcall ZwOpenKey(ptr long ptr)
+@ stdcall -version=0x600+ ZwOpenKeyEx(ptr long ptr long) NtOpenKeyEx
 @ stdcall -stub -version=0x600+ ZwOpenKeyTransacted(ptr long ptr ptr)
 @ stdcall ZwOpenKeyedEvent(ptr long ptr)
 @ stdcall ZwOpenMutant(ptr long ptr)
