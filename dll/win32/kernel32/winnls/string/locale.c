@@ -6154,3 +6154,74 @@ INT WINAPI ResolveLocaleName(LPCWSTR name, LPWSTR localename, INT len)
     return 0;
 }
 #endif // !__REACTOS__
+
+/******************************************************************************
+ *           ResolveLocaleName (KERNEL32.@)
+ *
+ * Finds the locale we support that is the closest match for the name we are
+ * given. A name we support resolves to itself; otherwise the language on its
+ * own is tried, so that "en-XX" lands on "en" rather than on nothing.
+ *
+ * FIXME: Windows walks a real fallback table, so it resolves names this does
+ * not, and can answer with a different language entirely.
+ */
+INT
+WINAPI
+ResolveLocaleName(
+    _In_opt_ LPCWSTR lpNameToResolve,
+    _Out_writes_opt_(cchLocaleName) LPWSTR lpLocaleName,
+    _In_ INT cchLocaleName)
+{
+    WCHAR Candidate[LOCALE_NAME_MAX_LENGTH];
+    PWCHAR Dash;
+    INT Needed;
+
+    if (lpNameToResolve == NULL ||
+        (lpLocaleName == NULL && cchLocaleName != 0) ||
+        cchLocaleName < 0)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+
+    if (lstrlenW(lpNameToResolve) >= LOCALE_NAME_MAX_LENGTH)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+
+    lstrcpyW(Candidate, lpNameToResolve);
+
+    /* The name as given, then the language on its own */
+    if (LocaleNameToLCID(Candidate, 0) == 0)
+    {
+        Dash = wcschr(Candidate, L'-');
+        if (Dash != NULL)
+        {
+            *Dash = UNICODE_NULL;
+        }
+
+        if (Dash == NULL || LocaleNameToLCID(Candidate, 0) == 0)
+        {
+            /* Nothing we have is a match. This is not an error. */
+            return 0;
+        }
+    }
+
+    Needed = lstrlenW(Candidate) + 1;
+
+    /* A zero length is how a caller asks how much room it needs */
+    if (cchLocaleName == 0)
+    {
+        return Needed;
+    }
+
+    if (cchLocaleName < Needed)
+    {
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return 0;
+    }
+
+    lstrcpyW(lpLocaleName, Candidate);
+    return Needed;
+}
