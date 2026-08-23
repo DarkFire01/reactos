@@ -29,9 +29,10 @@ list(APPEND SOURCE
     ${CMAKE_CURRENT_BINARY_DIR}/dwrite.def)
 
 add_library(dwrite SHARED ${SOURCE})
-set_module_type(dwrite win32dll)
+# DllMain is the entry point itself: there is no CRT startup to run, and it has
+# to run - it is what initialises the local font file loader.
+set_module_type(dwrite win32dll ENTRYPOINT DllMain 12)
 target_link_libraries(dwrite wine uuid oldnames freetype)
 add_dependencies(dwrite psdk)
-set_module_type(dwrite win32dll ENTRYPOINT 0)
 add_importlibs(dwrite shell32 shlwapi oleaut32 ole32 combase user32 user32_vista gdi32 ucrtbase advapi32 advapi32_vista kernel32 kernel32_vista ntdll )
 add_cd_file(TARGET dwrite DESTINATION reactos/system32 FOR all)
