@@ -55,6 +55,22 @@ static const INFORMATION_CLASS_INFO SeTokenInformationClass[] = {
     IQS_SAME(TOKEN_AUDIT_POLICY_INFORMATION, ULONG, ICIF_SET | ICIF_SET_SIZE_VARIABLE),
     /* TokenOrigin */
     IQS_SAME(TOKEN_ORIGIN, ULONG, ICIF_QUERY | ICIF_SET),
+    /* TokenElevationType */
+    IQS_NONE,
+    /* TokenLinkedToken */
+    IQS_NONE,
+    /* TokenElevation */
+    IQS_NONE,
+    /* TokenHasRestrictions */
+    IQS_NONE,
+    /* TokenAccessInformation */
+    IQS_NONE,
+    /* TokenVirtualizationAllowed */
+    IQS_NONE,
+    /* TokenVirtualizationEnabled */
+    IQS_NONE,
+    /* TokenIntegrityLevel */
+    IQS_SAME(TOKEN_MANDATORY_LABEL, ULONG, ICIF_QUERY | ICIF_SET | ICIF_SIZE_VARIABLE),
 };
 
 /* PUBLIC FUNCTIONS *****************************************************************/
@@ -1072,6 +1088,51 @@ NtQueryInformationToken(
                 break;
             }
 
+            case TokenIntegrityLevel:
+            {
+                PTOKEN_MANDATORY_LABEL Label = (PTOKEN_MANDATORY_LABEL)TokenInformation;
+                PSID_AND_ATTRIBUTES Integrity;
+
+                DPRINT("NtQueryInformationToken(TokenIntegrityLevel)\n");
+
+                /* Every token is created carrying one, so this is always found */
+                Integrity = SepGetIntegrityLevelFromToken(Token);
+                if (Integrity == NULL)
+                {
+                    Status = STATUS_INVALID_PARAMETER;
+                    break;
+                }
+
+                RequiredLength = sizeof(TOKEN_MANDATORY_LABEL) +
+                                 RtlLengthSid(Integrity->Sid);
+
+                _SEH2_TRY
+                {
+                    if (TokenInformationLength >= RequiredLength)
+                    {
+                        /* The SID is returned right behind the structure that names it */
+                        Label->Label.Sid = (PSID)(Label + 1);
+                        Label->Label.Attributes = Integrity->Attributes;
+                        RtlCopySid(RtlLengthSid(Integrity->Sid),
+                                   Label->Label.Sid,
+                                   Integrity->Sid);
+                    }
+                    else
+                    {
+                        Status = STATUS_BUFFER_TOO_SMALL;
+                    }
+
+                    *ReturnLength = RequiredLength;
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    Status = _SEH2_GetExceptionCode();
+                }
+                _SEH2_END;
+
+                break;
+            }
+
             default:
                 DPRINT1("NtQueryInformationToken(%d) invalid information class\n", TokenInformationClass);
                 Status = STATUS_INVALID_INFO_CLASS;
@@ -1684,6 +1745,92 @@ NtSetInformationToken(
 
                     ExAllocateLocallyUniqueId(&Token->ModifiedId);
                 }
+
+                /* Unlock the token */
+                SepReleaseTokenLock(Token);
+
+                break;
+            }
+
+            case TokenIntegrityLevel:
+            {
+                TOKEN_MANDATORY_LABEL TokenLabel;
+                PSID_AND_ATTRIBUTES Integrity;
+                UCHAR NewSidBuffer[SECURITY_MAX_SID_SIZE];
+                PSID NewSid = (PSID)NewSidBuffer;
+                ULONG NewLevel, CurrentLevel;
+
+                _SEH2_TRY
+                {
+                    /* Copy the label, and the SID it points at */
+                    TokenLabel = *(PTOKEN_MANDATORY_LABEL)TokenInformation;
+
+                    if (PreviousMode != KernelMode)
+                    {
+                        ProbeForRead(TokenLabel.Label.Sid,
+                                     sizeof(SID),
+                                     sizeof(ULONG));
+                    }
+
+                    if (!RtlValidSid(TokenLabel.Label.Sid) ||
+                        RtlLengthSid(TokenLabel.Label.Sid) > sizeof(NewSidBuffer))
+                    {
+                        Status = STATUS_INVALID_PARAMETER;
+                        _SEH2_YIELD(goto Cleanup);
+                    }
+
+                    RtlCopySid(sizeof(NewSidBuffer),
+                               NewSid,
+                               TokenLabel.Label.Sid);
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    Status = _SEH2_GetExceptionCode();
+                    _SEH2_YIELD(goto Cleanup);
+                }
+                _SEH2_END;
+
+                /* Only a mandatory label SID names an integrity level */
+                if (!SepIsMandatorySid(NewSid))
+                {
+                    DPRINT1("NtSetInformationToken(TokenIntegrityLevel): not a mandatory SID\n");
+                    Status = STATUS_INVALID_PARAMETER;
+                    break;
+                }
+
+                /* Lock the token */
+                SepAcquireTokenLockExclusive(Token);
+
+                Integrity = SepGetIntegrityLevelFromToken(Token);
+                if (Integrity == NULL)
+                {
+                    SepReleaseTokenLock(Token);
+                    Status = STATUS_INVALID_PARAMETER;
+                    break;
+                }
+
+                NewLevel = *RtlSubAuthoritySid(NewSid, 0);
+                CurrentLevel = *RtlSubAuthoritySid(Integrity->Sid, 0);
+
+                /*
+                 * A token may lower its own integrity level freely, but raising
+                 * it is a relabel, which needs the privilege for it.
+                 */
+                if (NewLevel > CurrentLevel &&
+                    !SeSinglePrivilegeCheck(SeRelabelPrivilege, PreviousMode))
+                {
+                    SepReleaseTokenLock(Token);
+                    Status = STATUS_PRIVILEGE_NOT_HELD;
+                    break;
+                }
+
+                /*
+                 * Every mandatory SID has exactly one sub-authority, so they are
+                 * all the same length and the level can be changed in place.
+                 */
+                *RtlSubAuthoritySid(Integrity->Sid, 0) = NewLevel;
+
+                ExAllocateLocallyUniqueId(&Token->ModifiedId);
 
                 /* Unlock the token */
                 SepReleaseTokenLock(Token);
