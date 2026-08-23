@@ -578,3 +578,28 @@ SetClientTimeZoneInformation(IN CONST TIME_ZONE_INFORMATION *lpTimeZoneInformati
 }
 
 /* EOF */
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+QueryUnbiasedInterruptTime(OUT PULONGLONG UnbiasedTime)
+{
+    LARGE_INTEGER InterruptTime;
+
+    if (UnbiasedTime == NULL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    /* The unbiased time is the interrupt time without whatever the machine
+       spent asleep. We do not keep that bias, and nothing here sleeps without
+       the interrupt time stopping with it, so the two are the same for us. */
+    InterruptTime = KiReadSystemTime(&SharedUserData->InterruptTime);
+    *UnbiasedTime = (ULONGLONG)InterruptTime.QuadPart;
+
+    return TRUE;
+}
+
