@@ -1393,7 +1393,7 @@
 @ stdcall -stub -version=0xA00+ ResizePseudoConsole(ptr long)
 @ stdcall -stub -version=0x602+ ResolveDelayLoadedAPI(ptr ptr ptr ptr ptr long)
 # @ stub ResolveDelayLoadsFromDll
-@ stdcall ResolveLocaleName(wstr ptr long)
+@ stdcall -version=0x600+ ResolveLocaleName(wstr ptr long)
 @ stdcall RestoreLastError(long) ntdll.RtlRestoreLastWin32Error
 @ stdcall ResumeThread(long)
 @ stdcall RevertToSelf()
