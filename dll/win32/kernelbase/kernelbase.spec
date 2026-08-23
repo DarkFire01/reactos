@@ -1260,7 +1260,7 @@
 # @ stub QueryStateContainerItemInfo
 @ stdcall -version=0x600+ QueryThreadCycleTime(ptr ptr)
 @ stdcall QueryThreadpoolStackInformation(ptr ptr)
-@ stdcall QueryUnbiasedInterruptTime(ptr) QueryUnbiasedInterruptTimePrecise
+@ stdcall -version=0x601+ QueryUnbiasedInterruptTime(ptr)
 @ stdcall -version=0xA00+ QueryUnbiasedInterruptTimePrecise(ptr)
 @ stdcall -stub -version=0xA00+ QueryVirtualMemoryInformation(long ptr long ptr long ptr)
 @ stdcall QueryWorkingSet(long ptr long)
