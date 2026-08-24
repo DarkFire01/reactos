@@ -36,6 +36,10 @@ struct key
 
 struct storage_provider
 {
+    /* Nothing is kept per provider yet. C has no empty struct, and only GCC
+       accepts one as an extension, so name a placeholder rather than leave
+       the MSVC build broken. */
+    int placeholder;
 };
 
 enum object_type

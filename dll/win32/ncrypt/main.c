@@ -20,6 +20,8 @@
 
 #include <stdarg.h>
 #include <stdlib.h>
+/* For wcsdup, which MSVC only declares here and reaches through oldnames */
+#include <wchar.h>
 
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
