@@ -259,6 +259,150 @@ GetLogicalProcessorInformation(OUT PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Buffer,
 
 /*
  * @implemented
+ *
+ * The grouped form of GetLogicalProcessorInformation. There is no processor
+ * group support here, so everything sits in the one group and the answer is
+ * built from the active processor mask rather than queried: a core record per
+ * logical processor, one package covering them all, one NUMA node, and the
+ * group itself. Caches are not described, which callers have to tolerate
+ * anyway since a machine may report none.
+ */
+BOOL
+WINAPI
+GetLogicalProcessorInformationEx(
+    IN LOGICAL_PROCESSOR_RELATIONSHIP RelationshipType,
+    OUT PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Buffer,
+    IN OUT PDWORD ReturnedLength)
+{
+    SYSTEM_BASIC_INFORMATION BasicInfo;
+    NTSTATUS Status;
+    KAFFINITY ActiveMask;
+    ULONG ProcessorCount, Index;
+    ULONG Needed = 0, Offset = 0;
+    ULONG CoreSize, NodeSize, GroupSize;
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Entry;
+    BOOL WantCore, WantPackage, WantNode, WantGroup;
+
+    if (!ReturnedLength)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    switch (RelationshipType)
+    {
+        case RelationProcessorCore:
+        case RelationProcessorPackage:
+        case RelationNumaNode:
+        case RelationCache:
+        case RelationGroup:
+        case RelationAll:
+            break;
+        default:
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return FALSE;
+    }
+
+    Status = NtQuerySystemInformation(SystemBasicInformation,
+                                      &BasicInfo,
+                                      sizeof(BasicInfo),
+                                      NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    ActiveMask = BasicInfo.ActiveProcessorsAffinityMask;
+    ProcessorCount = BasicInfo.NumberOfProcessors;
+
+    WantCore = (RelationshipType == RelationAll) ||
+               (RelationshipType == RelationProcessorCore);
+    WantPackage = (RelationshipType == RelationAll) ||
+                  (RelationshipType == RelationProcessorPackage);
+    WantNode = (RelationshipType == RelationAll) ||
+               (RelationshipType == RelationNumaNode);
+    WantGroup = (RelationshipType == RelationAll) ||
+                (RelationshipType == RelationGroup);
+
+    /* Each record carries exactly one group, so the sizes are fixed */
+    CoreSize = FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor) +
+               FIELD_OFFSET(PROCESSOR_RELATIONSHIP, GroupMask) +
+               sizeof(GROUP_AFFINITY);
+    NodeSize = FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, NumaNode) +
+               sizeof(NUMA_NODE_RELATIONSHIP);
+    GroupSize = FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Group) +
+                FIELD_OFFSET(GROUP_RELATIONSHIP, GroupInfo) +
+                sizeof(PROCESSOR_GROUP_INFO);
+
+    if (WantCore) Needed += CoreSize * ProcessorCount;
+    if (WantPackage) Needed += CoreSize;
+    if (WantNode) Needed += NodeSize;
+    if (WantGroup) Needed += GroupSize;
+
+    if (!Buffer || *ReturnedLength < Needed)
+    {
+        *ReturnedLength = Needed;
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return FALSE;
+    }
+
+    RtlZeroMemory(Buffer, Needed);
+
+#define NEXT_ENTRY(size) \
+    (Entry = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)((PUCHAR)Buffer + Offset), \
+     Entry->Size = (size), Offset += (size), Entry)
+
+    if (WantCore)
+    {
+        for (Index = 0; Index < ProcessorCount; Index++)
+        {
+            NEXT_ENTRY(CoreSize);
+            Entry->Relationship = RelationProcessorCore;
+            Entry->Processor.Flags = 0; /* One logical processor per core */
+            Entry->Processor.GroupCount = 1;
+            Entry->Processor.GroupMask[0].Mask = (KAFFINITY)1 << Index;
+            Entry->Processor.GroupMask[0].Group = 0;
+        }
+    }
+
+    if (WantPackage)
+    {
+        NEXT_ENTRY(CoreSize);
+        Entry->Relationship = RelationProcessorPackage;
+        Entry->Processor.GroupCount = 1;
+        Entry->Processor.GroupMask[0].Mask = ActiveMask;
+        Entry->Processor.GroupMask[0].Group = 0;
+    }
+
+    if (WantNode)
+    {
+        NEXT_ENTRY(NodeSize);
+        Entry->Relationship = RelationNumaNode;
+        Entry->NumaNode.NodeNumber = 0;
+        Entry->NumaNode.GroupMask.Mask = ActiveMask;
+        Entry->NumaNode.GroupMask.Group = 0;
+    }
+
+    if (WantGroup)
+    {
+        NEXT_ENTRY(GroupSize);
+        Entry->Relationship = RelationGroup;
+        Entry->Group.MaximumGroupCount = 1;
+        Entry->Group.ActiveGroupCount = 1;
+        Entry->Group.GroupInfo[0].MaximumProcessorCount = (UCHAR)ProcessorCount;
+        Entry->Group.GroupInfo[0].ActiveProcessorCount = (UCHAR)ProcessorCount;
+        Entry->Group.GroupInfo[0].ActiveProcessorMask = ActiveMask;
+    }
+
+#undef NEXT_ENTRY
+
+    *ReturnedLength = Needed;
+    return TRUE;
+}
+
+/*
+ * @implemented
  */
 BOOL
 WINAPI
