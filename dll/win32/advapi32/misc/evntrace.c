@@ -9,6 +9,17 @@
 #include <wmistr.h>
 #include <evntrace.h>
 
+/*
+ * The provider side of event tracing arrived in Vista, so <evntprov.h> hides
+ * its declarations at the WINVER this module is built for. We are the ones
+ * exporting them, so ask for them, and for the definitions rather than the
+ * imports.
+ */
+#undef WINVER
+#define WINVER _WIN32_WINNT_VISTA
+#define _EVNT_SOURCE_
+#include <evntprov.h>
+
 WINE_DEFAULT_DEBUG_CHANNEL(advapi);
 
 
@@ -39,5 +50,76 @@ ProcessTrace(IN PTRACEHANDLE HandleArray,
 {
     UNIMPLEMENTED;
     return ERROR_NOACCESS;
+}
+
+/*
+ * The provider side of event tracing. There is no session to trace to here, so
+ * these do what Windows does when nobody is listening: registration succeeds,
+ * the provider is never enabled, and writing an event is quietly dropped.
+ *
+ * They cannot be forwarded to ntdll's EtwEventRegister and friends, the way the
+ * consumer side is, because those are stub entries that raise when called, and
+ * a provider registers as it starts up. Failing here is not an option either:
+ * callers treat it as fatal.
+ */
+
+ULONG
+EVNTAPI
+EventRegister(
+    _In_ LPCGUID ProviderId,
+    _In_opt_ PENABLECALLBACK EnableCallback,
+    _In_opt_ PVOID CallbackContext,
+    _Out_ PREGHANDLE RegHandle)
+{
+    UNREFERENCED_PARAMETER(ProviderId);
+    UNREFERENCED_PARAMETER(EnableCallback);
+    UNREFERENCED_PARAMETER(CallbackContext);
+
+    if (RegHandle == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    /* No session, so nothing to hand back but a handle that does nothing */
+    *RegHandle = 0;
+    return ERROR_SUCCESS;
+}
+
+ULONG
+EVNTAPI
+EventUnregister(
+    _In_ REGHANDLE RegHandle)
+{
+    UNREFERENCED_PARAMETER(RegHandle);
+    return ERROR_SUCCESS;
+}
+
+BOOLEAN
+EVNTAPI
+EventEnabled(
+    _In_ REGHANDLE RegHandle,
+    _In_ PCEVENT_DESCRIPTOR EventDescriptor)
+{
+    UNREFERENCED_PARAMETER(RegHandle);
+    UNREFERENCED_PARAMETER(EventDescriptor);
+
+    /* Nothing is collecting, so no event is worth building */
+    return FALSE;
+}
+
+ULONG
+EVNTAPI
+EventWrite(
+    _In_ REGHANDLE RegHandle,
+    _In_ PCEVENT_DESCRIPTOR EventDescriptor,
+    _In_ ULONG UserDataCount,
+    _In_reads_opt_(UserDataCount) PEVENT_DATA_DESCRIPTOR UserData)
+{
+    UNREFERENCED_PARAMETER(RegHandle);
+    UNREFERENCED_PARAMETER(UserDataCount);
+    UNREFERENCED_PARAMETER(UserData);
+
+    if (EventDescriptor == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    return ERROR_SUCCESS;
 }
 
