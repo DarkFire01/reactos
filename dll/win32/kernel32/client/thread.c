@@ -1029,6 +1029,46 @@ QueryThreadCycleTime(
 }
 
 /*
+ * @implemented
+ *
+ * The same for a whole process: the cycles its threads have spent between them,
+ * counting the ones that have already exited.
+ */
+BOOL
+WINAPI
+QueryProcessCycleTime(
+    _In_ HANDLE ProcessHandle,
+    _Out_ PULONG64 CycleTime)
+{
+    PROCESS_CYCLE_TIME_INFORMATION CycleTimeInfo;
+    NTSTATUS Status;
+
+    Status = NtQueryInformationProcess(ProcessHandle,
+                                       ProcessCycleTime,
+                                       &CycleTimeInfo,
+                                       sizeof(CycleTimeInfo),
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    _SEH2_TRY
+    {
+        *CycleTime = CycleTimeInfo.AccumulatedCycles;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        BaseSetLastNTError(_SEH2_GetExceptionCode());
+        _SEH2_YIELD(return FALSE);
+    }
+    _SEH2_END;
+
+    return TRUE;
+}
+
+/*
  * @unimplemented
  */
 LANGID

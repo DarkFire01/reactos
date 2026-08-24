@@ -921,7 +921,7 @@
 @ stdcall QueryPerformanceFrequency(ptr)
 @ stdcall -version=0x601+ QueryUnbiasedInterruptTime(ptr)
 @ stub -version=0x600+ QueryProcessAffinityUpdateMode
-@ stub -version=0x600+ QueryProcessCycleTime
+@ stdcall -version=0x600+ QueryProcessCycleTime(ptr ptr)
 @ stdcall -version=0x600+ QueryThreadCycleTime(ptr ptr)
 @ stdcall QueueUserAPC(ptr long long)
 @ stdcall QueueUserWorkItem(ptr ptr long)

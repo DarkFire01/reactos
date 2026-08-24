@@ -1132,6 +1132,52 @@ NtQueryInformationProcess(
             _SEH2_END;
             break;
 
+        case ProcessCycleTime:
+        {
+            PPROCESS_CYCLE_TIME_INFORMATION CycleTimeInfo =
+                (PPROCESS_CYCLE_TIME_INFORMATION)ProcessInformation;
+            ULONG64 CycleTime, CycleTimeStamp;
+
+            Length = sizeof(PROCESS_CYCLE_TIME_INFORMATION);
+
+            if (ProcessInformationLength != Length)
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                break;
+            }
+
+            /* Reference the process */
+            Status = ObReferenceObjectByHandle(ProcessHandle,
+                                               PROCESS_QUERY_INFORMATION,
+                                               PsProcessType,
+                                               PreviousMode,
+                                               (PVOID*)&Process,
+                                               NULL);
+            if (!NT_SUCCESS(Status))
+                break;
+
+            /* Ask what this process has burned so far, its exited threads
+               included */
+            CycleTime = PsQueryTotalCycleTimeProcess(Process, &CycleTimeStamp);
+
+            /* Protect write with SEH */
+            _SEH2_TRY
+            {
+                CycleTimeInfo->AccumulatedCycles = CycleTime;
+                CycleTimeInfo->CurrentCycleCount = CycleTimeStamp;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                /* Get exception code */
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+
+            /* Dereference the process */
+            ObDereferenceObject(Process);
+            break;
+        }
+
         case ProcessDebugObjectHandle:
         {
             HANDLE DebugPort = NULL;

@@ -1132,6 +1132,16 @@ typedef struct _THREAD_CYCLE_TIME_INFORMATION
     ULONGLONG CurrentCycleCount;
 } THREAD_CYCLE_TIME_INFORMATION, *PTHREAD_CYCLE_TIME_INFORMATION;
 
+//
+// The same for a whole process, answered by ProcessCycleTime: the sum over its
+// threads, including the ones that have already exited.
+//
+typedef struct _PROCESS_CYCLE_TIME_INFORMATION
+{
+    ULONGLONG AccumulatedCycles;
+    ULONGLONG CurrentCycleCount;
+} PROCESS_CYCLE_TIME_INFORMATION, *PPROCESS_CYCLE_TIME_INFORMATION;
+
 typedef struct _THREAD_NAME_INFORMATION
 {
     UNICODE_STRING ThreadName;
