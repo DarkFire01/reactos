@@ -1199,15 +1199,32 @@ SepPerformTokenFiltering(
         /*
          * Now let's begin inserting the restricted SIDs into the filtered
          * access token from the list the caller gave us.
+         *
+         * The SIDs themselves have to be copied into the token's variable
+         * part, not just the array that points at them: the list the caller
+         * gave us is the captured copy, which NtFilterToken releases as soon
+         * as it returns. Copying only the SID_AND_ATTRIBUTES array would
+         * leave the token pointing at freed pool for the rest of its life,
+         * and the restricted pass of an access check would then match against
+         * whatever happened to be there.
          */
         AccessToken->RestrictedSidCount = RestrictedSidsCount;
         AccessToken->RestrictedSids = EndMem;
-        EndMem = (PVOID)((ULONG_PTR)EndMem + RestrictedSidsLength);
-        VariableLength -= RestrictedSidsLength;
+        EndMem = &AccessToken->RestrictedSids[AccessToken->RestrictedSidCount];
+        VariableLength -= ((ULONG_PTR)EndMem - (ULONG_PTR)AccessToken->RestrictedSids);
 
-        RtlCopyMemory(AccessToken->RestrictedSids,
-                      RestrictedSidsIntoToken,
-                      AccessToken->RestrictedSidCount * sizeof(SID_AND_ATTRIBUTES));
+        Status = RtlCopySidAndAttributesArray(AccessToken->RestrictedSidCount,
+                                              RestrictedSidsIntoToken,
+                                              VariableLength,
+                                              AccessToken->RestrictedSids,
+                                              EndMem,
+                                              &EndMem,
+                                              &VariableLength);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("SepPerformTokenFiltering(): Failed to copy the restricted SIDs from the caller (Status 0x%lx)\n", Status);
+            goto Quit;
+        }
 
         /*
          * As we've copied the restricted SIDs into
