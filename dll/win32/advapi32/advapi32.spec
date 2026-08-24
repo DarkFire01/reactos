@@ -291,12 +291,12 @@
 # @ stub EventAccessQuery
 # @ stub EventAccessRemove
 @ stdcall EventActivityIdControl(long ptr) ntdll.EtwEventActivityIdControl
-@ stdcall EventEnabled(int64 ptr) ntdll.EtwEventEnabled
+@ stdcall EventEnabled(int64 ptr)
 @ stdcall EventProviderEnabled(int64 long int64) ntdll.EtwEventProviderEnabled
-@ stdcall EventRegister(ptr ptr ptr ptr) ntdll.EtwEventRegister
+@ stdcall EventRegister(ptr ptr ptr ptr)
 @ stdcall EventSetInformation(int64 long ptr long) ntdll.EtwEventSetInformation
-@ stdcall EventUnregister(int64) ntdll.EtwEventUnregister
-@ stdcall EventWrite(int64 ptr long ptr) ntdll.EtwEventWrite
+@ stdcall EventUnregister(int64)
+@ stdcall EventWrite(int64 ptr long ptr)
 # @ stub EventWriteEndScenario
 @ stdcall -stub EventWriteEx(int64 ptr int64 long ptr ptr long ptr)
 # @ stub EventWriteStartScenario
