@@ -1128,6 +1128,78 @@ BaseQueryModuleData(IN LPSTR ModuleName,
 
 /*
  * @implemented
+ *
+ * These three were forwarded straight to their Ldr counterparts in the spec
+ * file, which quietly inverted them: the Ldr routines answer with an NTSTATUS,
+ * and STATUS_SUCCESS is 0, so every call reported failure to a caller reading
+ * the result as a Win32 BOOL. Convert the status instead.
+ */
+BOOL
+WINAPI
+SetDefaultDllDirectories(IN DWORD DirectoryFlags)
+{
+    NTSTATUS Status;
+
+    Status = LdrSetDefaultDllDirectories(DirectoryFlags);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+DLL_DIRECTORY_COOKIE
+WINAPI
+AddDllDirectory(IN PCWSTR NewDirectory)
+{
+    UNICODE_STRING Directory;
+    NTSTATUS Status;
+    PVOID Cookie = NULL;
+
+    if (!RtlCreateUnicodeString(&Directory, NewDirectory))
+    {
+        BaseSetLastNTError(STATUS_NO_MEMORY);
+        return NULL;
+    }
+
+    Status = LdrAddDllDirectory(&Directory, &Cookie);
+    RtlFreeUnicodeString(&Directory);
+
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return NULL;
+    }
+
+    return Cookie;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+RemoveDllDirectory(IN DLL_DIRECTORY_COOKIE Cookie)
+{
+    NTSTATUS Status;
+
+    Status = LdrRemoveDllDirectory(Cookie);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/*
+ * @implemented
  */
 NTSTATUS
 WINAPI

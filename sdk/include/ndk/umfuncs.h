@@ -214,6 +214,25 @@ LdrUnloadDll(
     _In_ PVOID BaseAddress
 );
 
+NTSTATUS
+NTAPI
+LdrSetDefaultDllDirectories(
+    _In_ ULONG DirectoryFlags
+);
+
+NTSTATUS
+NTAPI
+LdrAddDllDirectory(
+    _In_ PUNICODE_STRING NewDirectory,
+    _Out_ PVOID *Cookie
+);
+
+NTSTATUS
+NTAPI
+LdrRemoveDllDirectory(
+    _In_ PVOID Cookie
+);
+
 typedef VOID (NTAPI *PLDR_CALLBACK)(PVOID CallbackContext, PCHAR Name);
 NTSTATUS
 NTAPI

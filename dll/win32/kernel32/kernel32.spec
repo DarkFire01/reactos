@@ -5,6 +5,7 @@
 @ stdcall AddAtomW(wstr)
 @ stdcall AddConsoleAliasA(str str str) ;check
 @ stdcall AddConsoleAliasW(wstr wstr wstr) ;check
+@ stdcall -version=0x600+ AddDllDirectory(wstr)
 @ stdcall AddLocalAlternateComputerNameA(str ptr)
 @ stdcall AddLocalAlternateComputerNameW(wstr ptr)
 @ stdcall AddRefActCtx(ptr)
@@ -974,7 +975,7 @@
 @ stdcall ReplaceFile(wstr wstr wstr long ptr ptr) ReplaceFileW
 @ stdcall ReplaceFileA(str str str long ptr ptr)
 @ stdcall ReplaceFileW(wstr wstr wstr long ptr ptr)
-@ stdcall -version=0x600+ RemoveDllDirectory(ptr) ntdll.LdrRemoveDllDirectory
+@ stdcall -version=0x600+ RemoveDllDirectory(ptr)
 @ stdcall -version=0x600+ ResolveLocaleName(wstr ptr long)
 @ stub -version=0x600+ ReplacePartitionUnit
 @ stdcall RequestDeviceWakeup(long)
@@ -1052,7 +1053,7 @@
 @ stdcall SetConsoleWindowInfo(long long ptr)
 @ stdcall SetCriticalSectionSpinCount(ptr long) ntdll.RtlSetCriticalSectionSpinCount
 @ stub -version=0x600+ SetCurrentConsoleFontEx
-@ stdcall -version=0x600+ SetDefaultDllDirectories(long) ntdll.LdrSetDefaultDllDirectories
+@ stdcall -version=0x600+ SetDefaultDllDirectories(long)
 @ stdcall SetCurrentDirectoryA(str)
 @ stdcall SetCurrentDirectoryW(wstr)
 @ stdcall SetDefaultCommConfigA(str ptr long)
