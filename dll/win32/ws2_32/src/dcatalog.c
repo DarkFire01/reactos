@@ -587,6 +587,16 @@ WsTcGetEntryFromTriplet(IN PTCATALOG Catalog,
     /* Release the catalog */
     WsTcUnlock();
 
+    /* Name every triple we have no provider for. The catalog only carries
+       AF_INET, so an application asking for AF_INET6 lands here, and this
+       says how often that happens rather than leaving it to be inferred
+       from one WSAEAFNOSUPPORT surfacing in an application's own log. */
+    if (ErrorCode != ERROR_SUCCESS)
+    {
+        DPRINT1("WS2_32: no provider for af %d type %d protocol %d -> %d\n",
+                af, type, protocol, ErrorCode);
+    }
+
     /* Return */
     return ErrorCode;
 }

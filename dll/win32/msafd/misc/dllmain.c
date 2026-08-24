@@ -2879,6 +2879,38 @@ WSPIoctl(IN  SOCKET Handle,
             Errno = NO_ERROR;
             Ret = NO_ERROR;
             break;
+        case SIO_KEEPALIVE_VALS:
+        {
+            struct tcp_keepalive *KeepAlive = lpvInBuffer;
+            LARGE_INTEGER Values;
+            ULONG OnOff;
+
+            if (!KeepAlive || cbInBuffer < sizeof(*KeepAlive))
+            {
+                Errno = WSAEFAULT;
+                break;
+            }
+
+            /* Both halves go through AFD, which can address this socket's own
+             * connection object instead of guessing at a TDI entity. */
+            OnOff = KeepAlive->onoff ? 1 : 0;
+            Values.u.LowPart = KeepAlive->keepalivetime;
+            Values.u.HighPart = KeepAlive->keepaliveinterval;
+
+            if (SetSocketInformation(Socket, AFD_INFO_KEEPALIVE, NULL, &OnOff,
+                                     NULL, NULL, NULL) == SOCKET_ERROR ||
+                SetSocketInformation(Socket, AFD_INFO_KEEPALIVE_VALS, NULL, NULL,
+                                     &Values, NULL, NULL) == SOCKET_ERROR)
+            {
+                Errno = WSAEINVAL;
+                break;
+            }
+
+            cbRet = 0;
+            Errno = NO_ERROR;
+            Ret = NO_ERROR;
+            break;
+        }
         default:
             Errno = Socket->HelperData->WSHIoctl(Socket->HelperContext,
                                                  Handle,
@@ -3222,6 +3254,7 @@ WSPSetSockOpt(
     OUT LPINT lpErrno)
 {
     PSOCKET_INFORMATION Socket;
+    ULONG DwordValue;
     INT Errno;
 
     /* Get the Socket Structure associate to this Socket*/
@@ -3392,6 +3425,31 @@ WSPSetSockOpt(
               return NO_ERROR;
 
            case SO_KEEPALIVE:
+              if (optlen < sizeof(BOOL))
+              {
+                  if (lpErrno) *lpErrno = WSAEFAULT;
+                  return SOCKET_ERROR;
+              }
+
+              /* AFD owns the connection object, so it can address this socket
+               * rather than guessing at a TDI entity the way the helper dll
+               * has to. */
+              DwordValue = (*(BOOL *)optval != 0) ? 1 : 0;
+
+              if (SetSocketInformation(Socket,
+                                       AFD_INFO_KEEPALIVE,
+                                       NULL,
+                                       &DwordValue,
+                                       NULL,
+                                       NULL,
+                                       NULL) == SOCKET_ERROR)
+              {
+                  if (lpErrno) *lpErrno = WSAEINVAL;
+                  return SOCKET_ERROR;
+              }
+
+              return NO_ERROR;
+
            case SO_DONTROUTE:
               /* These go directly to the helper dll */
               goto SendToHelper;
