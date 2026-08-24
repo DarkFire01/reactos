@@ -710,6 +710,112 @@ NTSTATUS get_buffer(LPWSTR *buffer, SIZE_T needed, PUNICODE_STRING CallerBuffer,
     return STATUS_SUCCESS;
 }
 
+/*
+ * A <file> element in a manifest may carry a loadFrom attribute, naming the
+ * path the file is to be loaded from. Build the name it asks for: the path is
+ * held in the section as a run of segments, may need environment expansion,
+ * and may or may not already end with the file name.
+ */
+static
+NTSTATUS
+get_actctx_redirect_path(IN PACTCTX_SECTION_KEYED_DATA Data,
+                         IN PACTIVATION_CONTEXT_DATA_DLL_REDIRECTION Redirect,
+                         IN PUNICODE_STRING Name,
+                         OUT LPWSTR *FullName,
+                         IN OUT PUNICODE_STRING CallerBuffer,
+                         IN BOOLEAN AllocateBuffer)
+{
+    PACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_SEGMENT Segment;
+    UNICODE_STRING RawPath, ExpandedPath, Part, *Path;
+    WCHAR RawBuffer[MAX_PATH], ExpandedBuffer[MAX_PATH];
+    BOOLEAN HasBaseName;
+    NTSTATUS Status;
+    SIZE_T Needed;
+    ULONG i;
+    PWSTR p;
+
+    /* Gather the segments into one string */
+    if (Redirect->TotalPathLength > sizeof(RawBuffer) - sizeof(UNICODE_NULL))
+    {
+        return STATUS_NAME_TOO_LONG;
+    }
+
+    RtlInitEmptyUnicodeString(&RawPath, RawBuffer, sizeof(RawBuffer));
+    Segment = (PACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_SEGMENT)
+              ((PUCHAR)Data->lpSectionBase + Redirect->PathSegmentOffset);
+
+    for (i = 0; i < Redirect->PathSegmentCount; i++)
+    {
+        Part.Buffer = (PWSTR)((PUCHAR)Data->lpSectionBase + Segment[i].Offset);
+        Part.Length = (USHORT)Segment[i].Length;
+        Part.MaximumLength = Part.Length;
+
+        Status = RtlAppendUnicodeStringToString(&RawPath, &Part);
+        if (!NT_SUCCESS(Status))
+        {
+            return Status;
+        }
+    }
+
+    /* The expansion below reads it as a string, so terminate it */
+    RawPath.Buffer[RawPath.Length / sizeof(WCHAR)] = UNICODE_NULL;
+
+    Path = &RawPath;
+    if (Redirect->Flags & ACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_EXPAND)
+    {
+        RtlInitEmptyUnicodeString(&ExpandedPath, ExpandedBuffer, sizeof(ExpandedBuffer));
+        Status = RtlExpandEnvironmentStrings_U(NULL, &RawPath, &ExpandedPath, NULL);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Cannot expand '%wZ': 0x%lx\n", &RawPath, Status);
+            return Status;
+        }
+
+        Path = &ExpandedPath;
+    }
+
+    /* Work out the room the name needs, appending the file name to a path
+       that is only a directory */
+    HasBaseName = (Redirect->Flags &
+                   ACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_INCLUDES_BASE_NAME) != 0;
+
+    Needed = Path->Length + sizeof(UNICODE_NULL);
+    if (!HasBaseName)
+    {
+        Needed += Name->Length;
+        if ((Path->Length != 0) &&
+            (Path->Buffer[Path->Length / sizeof(WCHAR) - 1] != L'\\'))
+        {
+            Needed += sizeof(WCHAR);
+        }
+    }
+
+    Status = get_buffer(FullName, Needed, CallerBuffer, AllocateBuffer);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+
+    p = *FullName;
+    RtlCopyMemory(p, Path->Buffer, Path->Length);
+    p += Path->Length / sizeof(WCHAR);
+
+    if (!HasBaseName)
+    {
+        if ((p != *FullName) && (p[-1] != L'\\'))
+        {
+            *p++ = L'\\';
+        }
+
+        RtlCopyMemory(p, Name->Buffer, Name->Length);
+        p += Name->Length / sizeof(WCHAR);
+    }
+
+    *p = UNICODE_NULL;
+
+    return STATUS_SUCCESS;
+}
+
 /* NOTE: Remove this one once our actctx support becomes better */
 NTSTATUS find_actctx_dll( PUNICODE_STRING pnameW, LPWSTR *fullname, PUNICODE_STRING CallerBuffer, BOOLEAN bAllocateBuffer)
 {
@@ -717,6 +823,7 @@ NTSTATUS find_actctx_dll( PUNICODE_STRING pnameW, LPWSTR *fullname, PUNICODE_STR
     static const WCHAR dotManifestW[] = {'.','m','a','n','i','f','e','s','t',0};
 
     ACTIVATION_CONTEXT_ASSEMBLY_DETAILED_INFORMATION *info;
+    PACTIVATION_CONTEXT_DATA_DLL_REDIRECTION redirect;
     ACTCTX_SECTION_KEYED_DATA data;
     NTSTATUS status;
     SIZE_T needed, size = 1024;
@@ -729,6 +836,25 @@ NTSTATUS find_actctx_dll( PUNICODE_STRING pnameW, LPWSTR *fullname, PUNICODE_STR
     if (status != STATUS_SUCCESS)
     {
         //DPRINT1("RtlFindActivationContextSectionString returned 0x%x for %wZ\n", status, pnameW);
+        return status;
+    }
+
+    /* A loadFrom path names where the file is to come from, which is not the
+     * assembly's own directory, so honour it before asking for the assembly */
+    redirect = (PACTIVATION_CONTEXT_DATA_DLL_REDIRECTION)data.lpData;
+    if ((redirect) &&
+        (data.ulLength >= sizeof(*redirect)) &&
+        (redirect->PathSegmentCount != 0) &&
+        (redirect->TotalPathLength != 0))
+    {
+        status = get_actctx_redirect_path(&data, redirect, pnameW, fullname,
+                                          CallerBuffer, bAllocateBuffer);
+        if (NT_SUCCESS(status))
+        {
+            DPRINT("Redirecting %wZ to %S\n", pnameW, *fullname);
+        }
+
+        RtlReleaseActivationContext( data.hActCtx );
         return status;
     }
 
