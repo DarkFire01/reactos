@@ -595,6 +595,8 @@ WsTcGetEntryFromTriplet(IN PTCATALOG Catalog,
     {
         DPRINT1("WS2_32: no provider for af %d type %d protocol %d -> %d\n",
                 af, type, protocol, ErrorCode);
+        WsDiagLog("socket: no provider for af %d type %d protocol %d -> %d\r\n",
+                  af, type, protocol, ErrorCode);
     }
 
     /* Return */

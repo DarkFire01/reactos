@@ -12,6 +12,61 @@
 
 /* FUNCTIONS *****************************************************************/
 
+/*
+ * Diagnostic only. Appends a line to C:\ws2log.txt, tagged with the calling
+ * process, so a failing winsock call can be read back from a guest that has no
+ * way to capture the debug port for a whole application run. Only the failure
+ * paths call this, so the file stays small. Remove with the DPRINT1s it
+ * accompanies once the fault being chased is found.
+ */
+VOID
+WSAAPI
+WsDiagLog(IN LPCSTR Format, ...)
+{
+    CHAR Buffer[512];
+    CHAR Name[MAX_PATH];
+    HANDLE File;
+    DWORD Written;
+    va_list Args;
+    INT Length, Prefix;
+    LPSTR Leaf;
+
+    Name[0] = ANSI_NULL;
+    if (GetModuleFileNameA(NULL, Name, ARRAYSIZE(Name)) == 0)
+        Name[0] = ANSI_NULL;
+
+    Leaf = strrchr(Name, '\\');
+    Leaf = Leaf ? Leaf + 1 : Name;
+
+    Prefix = _snprintf(Buffer,
+                       sizeof(Buffer) - 1,
+                       "[%lu %s] ",
+                       GetCurrentProcessId(),
+                       Leaf);
+    if (Prefix < 0) return;
+
+    va_start(Args, Format);
+    Length = _vsnprintf(Buffer + Prefix,
+                        sizeof(Buffer) - 1 - Prefix,
+                        Format,
+                        Args);
+    va_end(Args);
+    if (Length < 0) return;
+
+    File = CreateFileA("C:\\ws2log.txt",
+                       FILE_APPEND_DATA,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE,
+                       NULL,
+                       OPEN_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL,
+                       NULL);
+    if (File == INVALID_HANDLE_VALUE) return;
+
+    SetFilePointer(File, 0, NULL, FILE_END);
+    WriteFile(File, Buffer, Prefix + Length, &Written, NULL);
+    CloseHandle(File);
+}
+
 HKEY
 WSAAPI
 WsOpenRegistryRoot(VOID)
