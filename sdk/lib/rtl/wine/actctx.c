@@ -3705,6 +3705,9 @@ static NTSTATUS build_dllredirect_section(ACTIVATION_CONTEXT* actctx, struct str
                 memcpy( ptrW, dll->load_from, len );
                 if (wcschr( dll->load_from, '%' ))
                     data->Flags |= ACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_EXPAND;
+                /* A path that does not end in a separator names the file itself */
+                if (len && ptrW[len / sizeof(WCHAR) - 1] != '\\')
+                    data->Flags |= ACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_INCLUDES_BASE_NAME;
             }
             else
             {
