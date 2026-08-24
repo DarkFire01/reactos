@@ -98,6 +98,7 @@ TDI_STATUS InfoTdiQueryInformationEx(
 
 TDI_STATUS InfoTdiSetInformationEx(
     PTDI_REQUEST Request,
+    ULONG RequestType,
     TDIObjectID *ID,
     PVOID Buffer,
     UINT BufferSize);

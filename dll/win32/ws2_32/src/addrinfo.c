@@ -753,6 +753,9 @@ GetAddrInfoW(IN PCWSTR pszNodeName,
         /* Free the address info and return nothing */
         FreeAddrInfoW(*pptResult);
         *pptResult = NULL;
+
+        DPRINT1("WS2_32: getaddrinfo('%S') hints family %d -> %d\n",
+                pszNodeName ? pszNodeName : L"(null)", iFamily, iError);
     }
 
     /* Return to caller */

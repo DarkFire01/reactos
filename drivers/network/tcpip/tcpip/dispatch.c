@@ -1515,13 +1515,16 @@ NTSTATUS DispTdiSetInformationEx(
     PTCP_REQUEST_SET_INFORMATION_EX Info;
     TDI_REQUEST Request;
     TDI_STATUS Status;
+    ULONG RequestType;
 
     TI_DbgPrint(DEBUG_IRP, ("Called.\n"));
 
     TranContext = (PTRANSPORT_CONTEXT)IrpSp->FileObject->FsContext;
     Info        = (PTCP_REQUEST_SET_INFORMATION_EX)Irp->AssociatedIrp.SystemBuffer;
 
-    switch ((ULONG_PTR)IrpSp->FileObject->FsContext2) {
+    RequestType = (ULONG)(ULONG_PTR)IrpSp->FileObject->FsContext2;
+
+    switch (RequestType) {
     case TDI_TRANSPORT_ADDRESS_FILE:
         Request.Handle.AddressHandle = TranContext->Handle.AddressHandle;
         break;
@@ -1546,7 +1549,7 @@ NTSTATUS DispTdiSetInformationEx(
     Request.RequestNotifyObject = NULL;
     Request.RequestContext      = NULL;
 
-    Status = InfoTdiSetInformationEx(&Request, &Info->ID,
+    Status = InfoTdiSetInformationEx(&Request, RequestType, &Info->ID,
             &Info->Buffer, Info->BufferSize);
 
     return Status;

@@ -110,6 +110,15 @@ connect(IN SOCKET s,
         ErrorCode = WSAEINVAL;
     }
 
+    /* WSAEWOULDBLOCK is the normal answer for a non-blocking connect, so it is
+       not worth a line. Anything else means the caller really did fail. */
+    if (ErrorCode != WSAEWOULDBLOCK)
+    {
+        DPRINT1("WS2_32: connect(%lx) family %d failed -> %d\n",
+                s, IsBadReadPtr(name, sizeof(struct sockaddr)) ? -1 : name->sa_family,
+                ErrorCode);
+    }
+
     /* Return with an Error */
     SetLastError(ErrorCode);
     return SOCKET_ERROR;

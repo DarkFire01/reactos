@@ -202,6 +202,8 @@ typedef struct _AFD_TDI_HANDLE_DATA
 #define AFD_INFO_SEND_WINDOW_SIZE	0x07L
 #define AFD_INFO_GROUP_ID_TYPE	        0x10L
 #define AFD_INFO_RECEIVE_CONTENT_SIZE   0x11L
+#define AFD_INFO_KEEPALIVE              0x12L
+#define AFD_INFO_KEEPALIVE_VALS         0x13L
 
 /* AFD Share Flags */
 #define AFD_SHARE_UNIQUE		0x0L
