@@ -381,6 +381,7 @@ TDI_STATUS InfoTdiQueryInformationEx(
 
 TDI_STATUS InfoTdiSetInformationEx
 (PTDI_REQUEST Request,
+ ULONG RequestType,
  TDIObjectID *ID,
  PVOID Buffer,
  UINT BufferSize)
@@ -388,6 +389,7 @@ TDI_STATUS InfoTdiSetInformationEx
  * FUNCTION: Sets extended information
  * ARGUMENTS:
  *   Request    = Pointer to TDI request structure for the request
+ *   RequestType = TDI_* type of the file object the request was issued on
  *   ID         = Pointer to TDI object ID
  *   Buffer     = Pointer to buffer with data to use
  *   BufferSize = Size of Buffer
@@ -405,17 +407,49 @@ TDI_STATUS InfoTdiSetInformationEx
             {
                 case INFO_TYPE_ADDRESS_OBJECT:
                 {
-                    if ((EntityListContext = GetContext(ID->toi_entity)))
-                        return SetAddressFileInfo(ID, EntityListContext, Buffer, BufferSize);
+                    PADDRESS_FILE AddressFile;
+
+                    /* The entity list is global and carries no way of telling
+                     * one socket's address file from another's, so only fall
+                     * back to it when the request came down the control
+                     * channel. Otherwise use the object it was issued on. */
+                    if (RequestType == TDI_TRANSPORT_ADDRESS_FILE)
+                        AddressFile = (PADDRESS_FILE)Request->Handle.AddressHandle;
                     else
+                        AddressFile = GetContext(ID->toi_entity);
+
+                    if (AddressFile == NULL)
                         return TDI_INVALID_PARAMETER;
+
+                    return SetAddressFileInfo(ID, AddressFile, Buffer, BufferSize);
                 }
                 case INFO_TYPE_CONNECTION:
                 {
-                    PADDRESS_FILE AddressFile = GetContext(ID->toi_entity);
-                    if (AddressFile == NULL)
+                    PCONNECTION_ENDPOINT Connection;
+
+                    if (RequestType == TDI_CONNECTION_FILE)
+                    {
+                        Connection = (PCONNECTION_ENDPOINT)Request->Handle.ConnectionContext;
+                    }
+                    else
+                    {
+                        PADDRESS_FILE AddressFile;
+
+                        if (RequestType == TDI_TRANSPORT_ADDRESS_FILE)
+                            AddressFile = (PADDRESS_FILE)Request->Handle.AddressHandle;
+                        else
+                            AddressFile = GetContext(ID->toi_entity);
+
+                        if (AddressFile == NULL)
+                            return TDI_INVALID_PARAMETER;
+
+                        Connection = AddressFile->Connection;
+                    }
+
+                    if (Connection == NULL)
                         return TDI_INVALID_PARAMETER;
-                    return SetConnectionInfo(ID, AddressFile->Connection, Buffer, BufferSize);
+
+                    return SetConnectionInfo(ID, Connection, Buffer, BufferSize);
                 }
                 case INFO_TYPE_PROVIDER:
                 {

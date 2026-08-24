@@ -10,6 +10,123 @@
 
 #include "afd.h"
 
+typedef struct _TCP_KEEPALIVE_VALS {
+    ULONG onoff;
+    ULONG keepalivetime;
+    ULONG keepaliveinterval;
+} TCP_KEEPALIVE_VALS;
+
+/* Push a TDI connection option down the socket's own connection object.
+ *
+ * IOCTL_TCP_SET_INFORMATION_EX used to reach tcpip only from wshtcpip, on the
+ * \Device\Tcp control channel, carrying an entity ID picked out of the driver's
+ * *global* entity list. That list cannot tell one socket's address file from
+ * another's, so the option landed on whichever address file happened to be last
+ * - a different socket, or a UDP/ICMP one with no connection at all, which
+ * failed the request and surfaced as WSAEINVAL. Sending it down
+ * FCB->Connection lets tcpip resolve the target from the file object instead. */
+static
+NTSTATUS
+AfdSetTcpConnectionInfo(PAFD_FCB FCB,
+                        ULONG TdiId,
+                        PVOID Buffer,
+                        ULONG BufferSize)
+{
+    PTCP_REQUEST_SET_INFORMATION_EX Info;
+    PDEVICE_OBJECT DeviceObject;
+    IO_STATUS_BLOCK Iosb;
+    KEVENT Event;
+    PIRP Irp;
+    NTSTATUS Status;
+    ULONG Size;
+
+    if (!FCB->Connection.Object)
+        return STATUS_INVALID_CONNECTION;
+
+    DeviceObject = IoGetRelatedDeviceObject(FCB->Connection.Object);
+    if (!DeviceObject)
+        return STATUS_INVALID_CONNECTION;
+
+    Size = FIELD_OFFSET(TCP_REQUEST_SET_INFORMATION_EX, Buffer) + BufferSize;
+
+    Info = ExAllocatePoolWithTag(NonPagedPool, Size, TAG_AFD_TCP_SET_INFO);
+    if (!Info)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlZeroMemory(Info, Size);
+    Info->ID.toi_entity.tei_entity = CO_TL_ENTITY;
+    Info->ID.toi_entity.tei_instance = 0;
+    Info->ID.toi_class = INFO_CLASS_PROTOCOL;
+    Info->ID.toi_type = INFO_TYPE_CONNECTION;
+    Info->ID.toi_id = TdiId;
+    Info->BufferSize = BufferSize;
+    RtlCopyMemory(Info->Buffer, Buffer, BufferSize);
+
+    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+
+    Irp = IoBuildDeviceIoControlRequest(IOCTL_TCP_SET_INFORMATION_EX,
+                                        DeviceObject,
+                                        Info,
+                                        Size,
+                                        NULL,
+                                        0,
+                                        FALSE,
+                                        &Event,
+                                        &Iosb);
+    if (!Irp)
+    {
+        ExFreePoolWithTag(Info, TAG_AFD_TCP_SET_INFO);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    /* IoBuildDeviceIoControlRequest() does not fill this in, and it is the
+       whole point of going through our own object. */
+    IoGetNextIrpStackLocation(Irp)->FileObject = FCB->Connection.Object;
+
+    Status = IoCallDriver(DeviceObject, Irp);
+    if (Status == STATUS_PENDING)
+    {
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = Iosb.Status;
+    }
+
+    ExFreePoolWithTag(Info, TAG_AFD_TCP_SET_INFO);
+
+    AFD_DbgPrint(MID_TRACE,("TdiId %u returned 0x%x\n", TdiId, Status));
+
+    return Status;
+}
+
+/* Applied once the socket actually has a connection to carry them. */
+NTSTATUS
+AfdApplyPendingTcpOptions(PAFD_FCB FCB)
+{
+    TCP_KEEPALIVE_VALS Vals;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    if (FCB->KeepAliveValid)
+    {
+        Status = AfdSetTcpConnectionInfo(FCB,
+                                         TCP_SOCKET_KEEPALIVE,
+                                         &FCB->KeepAlive,
+                                         sizeof(FCB->KeepAlive));
+    }
+
+    if (NT_SUCCESS(Status) && FCB->KeepAliveValsValid)
+    {
+        Vals.onoff = FCB->KeepAliveValid ? FCB->KeepAlive : 1;
+        Vals.keepalivetime = FCB->KeepAliveTime;
+        Vals.keepaliveinterval = FCB->KeepAliveInterval;
+
+        Status = AfdSetTcpConnectionInfo(FCB,
+                                         TCP_SOCKET_KEEPALIVEVALS,
+                                         &Vals,
+                                         sizeof(Vals));
+    }
+
+    return Status;
+}
+
 NTSTATUS NTAPI
 AfdGetInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp,
             PIO_STACK_LOCATION IrpSp ) {
@@ -214,6 +331,28 @@ AfdSetInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp,
                     Status = STATUS_INVALID_PARAMETER;
                 }
                 break;
+            case AFD_INFO_KEEPALIVE:
+                FCB->KeepAlive = InfoReq->Information.Ulong ? 1 : 0;
+                FCB->KeepAliveValid = TRUE;
+
+                /* Nothing to push it down yet; MakeSocketIntoConnection() will */
+                if (FCB->Connection.Object)
+                    Status = AfdApplyPendingTcpOptions(FCB);
+                else
+                    Status = STATUS_SUCCESS;
+                break;
+
+            case AFD_INFO_KEEPALIVE_VALS:
+                FCB->KeepAliveTime = InfoReq->Information.LargeInteger.u.LowPart;
+                FCB->KeepAliveInterval = InfoReq->Information.LargeInteger.u.HighPart;
+                FCB->KeepAliveValsValid = TRUE;
+
+                if (FCB->Connection.Object)
+                    Status = AfdApplyPendingTcpOptions(FCB);
+                else
+                    Status = STATUS_SUCCESS;
+                break;
+
             default:
                 AFD_DbgPrint(MIN_TRACE,("Unknown request %u\n", InfoReq->InformationClass));
                 break;

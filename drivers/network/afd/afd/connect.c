@@ -300,6 +300,9 @@ MakeSocketIntoConnection(PAFD_FCB FCB, BOOL Receive) {
     FCB->SharedData.State = SOCKET_STATE_CONNECTED;
     FCB->SharedData.ConnectTime = 0; // Not used
 
+    /* Options set before there was a connection to carry them */
+    AfdApplyPendingTcpOptions(FCB);
+
     if (Receive)
     {
         Status = TdiReceive( &FCB->ReceiveIrp.InFlightRequest,

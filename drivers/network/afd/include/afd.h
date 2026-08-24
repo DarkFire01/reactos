@@ -15,6 +15,7 @@
 #include <ndk/obtypes.h>
 #include <tdi.h>
 #include <tcpioctl.h>
+#include <tdiinfo.h>
 #define _WINBASE_
 #define _WINDOWS_H
 #define _INC_WINDOWS
@@ -52,6 +53,7 @@
 #define TAG_AFD_STORED_DATAGRAM            'gsfA'
 #define TAG_AFD_SNMP_ADDRESS_INFO          'asfA'
 #define TAG_AFD_TDI_CONNECTION_INFORMATION 'cTfA'
+#define TAG_AFD_TCP_SET_INFO               'iTfA'
 #define TAG_AFD_WSA_BUFFER                 'bWfA'
 
 typedef struct IPADDR_ENTRY {
@@ -176,6 +178,13 @@ typedef struct _AFD_FCB {
     PTRANSPORT_ADDRESS LocalAddress, RemoteAddress;
     PTDI_CONNECTION_INFORMATION AddressFrom, ConnectCallInfo, ConnectReturnInfo;
     AFD_TDI_OBJECT AddressFile, Connection;
+    /* Transport options recorded before there is a connection to apply
+       them to. They are pushed down in MakeSocketIntoConnection(). */
+    BOOLEAN KeepAliveValid;
+    BOOLEAN KeepAliveValsValid;
+    ULONG KeepAlive;
+    ULONG KeepAliveTime;
+    ULONG KeepAliveInterval;
     AFD_IN_FLIGHT_REQUEST ConnectIrp, ListenIrp, ReceiveIrp, SendIrp, DisconnectIrp;
     PIRP AcceptIrp;
     AFD_DATA_WINDOW Send, Recv;
@@ -257,6 +266,8 @@ AfdSetContext( PDEVICE_OBJECT DeviceObject, PIRP Irp,
 	       PIO_STACK_LOCATION IrpSp );
 
 /* info.c */
+
+NTSTATUS AfdApplyPendingTcpOptions( PAFD_FCB FCB );
 
 NTSTATUS NTAPI
 AfdGetInfo( PDEVICE_OBJECT DeviceObject, PIRP Irp,
