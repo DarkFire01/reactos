@@ -589,6 +589,18 @@ GetActiveProcessorGroupCount(VOID)
 /*
  * @implemented
  */
+WORD
+WINAPI
+GetMaximumProcessorGroupCount(VOID)
+{
+    STUB; // FIXME: Real group support
+    /* Without group support there is the one group and no room for another */
+    return 1; // TODO: SharedUserData->MaximumGroupCount?
+}
+
+/*
+ * @implemented
+ */
 DWORD
 WINAPI
 GetActiveProcessorCount(IN WORD GroupNumber)
