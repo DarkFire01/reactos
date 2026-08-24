@@ -74,6 +74,10 @@ recv(IN SOCKET s,
         }
     }
 
+    /* Diagnostic - WSAEWOULDBLOCK is normal on a non-blocking socket */
+    if (ErrorCode != WSAEWOULDBLOCK)
+        WsDiagLog("recv: socket %lx len %d -> %d\r\n", s, len, ErrorCode);
+
     /* Return with an Error */
     SetLastError(ErrorCode);
     return SOCKET_ERROR;
@@ -142,6 +146,10 @@ recvfrom(IN SOCKET s,
         }
     }
 
+
+    /* Diagnostic - WSAEWOULDBLOCK / WSA_IO_PENDING are normal here */
+    if (ErrorCode != WSAEWOULDBLOCK && ErrorCode != WSA_IO_PENDING)
+        WsDiagLog("recvfrom: socket %lx -> %d\r\n", s, ErrorCode);
     /* Return with an Error */
     SetLastError(ErrorCode);
     return SOCKET_ERROR;
@@ -198,6 +206,10 @@ WSARecv(IN SOCKET s,
         }
     }
 
+
+    /* Diagnostic - WSAEWOULDBLOCK / WSA_IO_PENDING are normal here */
+    if (ErrorCode != WSAEWOULDBLOCK && ErrorCode != WSA_IO_PENDING)
+        WsDiagLog("WSARecv: socket %lx -> %d\r\n", s, ErrorCode);
     /* Return with an Error */
     SetLastError(ErrorCode);
     return SOCKET_ERROR;
@@ -301,6 +313,10 @@ WSARecvFrom(IN SOCKET s,
         }
     }
 
+
+    /* Diagnostic - WSAEWOULDBLOCK / WSA_IO_PENDING are normal here */
+    if (ErrorCode != WSAEWOULDBLOCK && ErrorCode != WSA_IO_PENDING)
+        WsDiagLog("WSARecvFrom: socket %lx -> %d\r\n", s, ErrorCode);
     /* Return with an Error */
     SetLastError(ErrorCode);
     return SOCKET_ERROR;
