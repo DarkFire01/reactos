@@ -221,7 +221,7 @@
 @ stdcall CreateProcessW(wstr wstr ptr ptr long long ptr wstr ptr ptr)
 @ stdcall -stub -version=0xA00+ CreatePseudoConsole(long long long long ptr)
 @ stdcall CreateRemoteThread(long ptr long ptr long long ptr)
-@ stdcall CreateRemoteThreadEx(long ptr long ptr ptr long ptr ptr)
+@ stdcall -version=0x600+ CreateRemoteThreadEx(long ptr long ptr long long ptr ptr)
 @ stdcall CreateRestrictedToken(long long long ptr long ptr long ptr ptr)
 @ stdcall CreateSemaphoreExW(ptr long long wstr long long)
 @ stdcall CreateSemaphoreW(ptr long long wstr)
