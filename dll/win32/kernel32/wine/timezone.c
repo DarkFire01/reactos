@@ -448,4 +448,97 @@ TzSpecificLocalTimeToSystemTime(CONST TIME_ZONE_INFORMATION *lpTimeZoneInformati
     return FileTimeToSystemTime(&ft, lpUniversalTime);
 }
 
+/*
+ * @implemented
+ *
+ * The same answer as GetTimeZoneInformation(), plus the name of the registry
+ * key the zone came from, which is what lets a caller find the historical
+ * rules for it rather than only the ones in force now.
+ */
+DWORD
+WINAPI
+GetDynamicTimeZoneInformation(
+    _Out_ PDYNAMIC_TIME_ZONE_INFORMATION pTimeZoneInformation)
+{
+    UCHAR Buffer[sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
+                 sizeof(pTimeZoneInformation->TimeZoneKeyName)];
+    PKEY_VALUE_PARTIAL_INFORMATION Info = (PKEY_VALUE_PARTIAL_INFORMATION)Buffer;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    UNICODE_STRING KeyName, ValueName;
+    HANDLE hKey;
+    NTSTATUS Status;
+    ULONG Length;
+    DWORD Result;
+
+    if (pTimeZoneInformation == NULL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return TIME_ZONE_ID_INVALID;
+    }
+
+    RtlZeroMemory(pTimeZoneInformation, sizeof(*pTimeZoneInformation));
+
+    Result = GetTimeZoneInformation((LPTIME_ZONE_INFORMATION)pTimeZoneInformation);
+    if (Result == TIME_ZONE_ID_INVALID)
+        return TIME_ZONE_ID_INVALID;
+
+    /*
+     * The key name is not part of what the kernel keeps, so read it from where
+     * the control panel wrote it. A zone that was never set through the control
+     * panel has no name, which is not an error: the caller then only has the
+     * rules currently in force, exactly as if it had asked the non-dynamic way.
+     * The registry is reached natively here, because kernel32 cannot import
+     * advapi32 - advapi32 imports us.
+     */
+    RtlInitUnicodeString(&KeyName,
+                         L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation");
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &KeyName,
+                               OBJ_CASE_INSENSITIVE,
+                               NULL,
+                               NULL);
+
+    Status = NtOpenKey(&hKey, KEY_QUERY_VALUE, &ObjectAttributes);
+    if (NT_SUCCESS(Status))
+    {
+        RtlInitUnicodeString(&ValueName, L"TimeZoneKeyName");
+        Status = NtQueryValueKey(hKey,
+                                 &ValueName,
+                                 KeyValuePartialInformation,
+                                 Info,
+                                 sizeof(Buffer),
+                                 &Length);
+        if (NT_SUCCESS(Status) && Info->Type == REG_SZ)
+        {
+            RtlCopyMemory(pTimeZoneInformation->TimeZoneKeyName,
+                          Info->Data,
+                          min(Info->DataLength,
+                              sizeof(pTimeZoneInformation->TimeZoneKeyName)));
+
+            /* A value written without one is not required to be terminated */
+            pTimeZoneInformation->TimeZoneKeyName[
+                ARRAYSIZE(pTimeZoneInformation->TimeZoneKeyName) - 1] = UNICODE_NULL;
+        }
+
+        RtlInitUnicodeString(&ValueName, L"DynamicDaylightTimeDisabled");
+        Status = NtQueryValueKey(hKey,
+                                 &ValueName,
+                                 KeyValuePartialInformation,
+                                 Info,
+                                 sizeof(Buffer),
+                                 &Length);
+        if (NT_SUCCESS(Status) &&
+            Info->Type == REG_DWORD &&
+            Info->DataLength >= sizeof(DWORD))
+        {
+            pTimeZoneInformation->DynamicDaylightTimeDisabled =
+                (*(PDWORD)Info->Data != 0);
+        }
+
+        NtClose(hKey);
+    }
+
+    return Result;
+}
+
 /* EOF */
