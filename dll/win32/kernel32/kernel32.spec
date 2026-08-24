@@ -518,6 +518,7 @@
 @ stdcall GetLongPathNameW(wstr long long)
 @ stdcall GetMailslotInfo(long ptr ptr ptr ptr)
 @ stdcall -version=0x601+ GetMaximumProcessorCount(long)
+@ stdcall -version=0x601+ GetMaximumProcessorGroupCount()
 @ stdcall GetModuleFileNameA(long ptr long)
 @ stdcall GetModuleFileNameW(long ptr long)
 @ stdcall GetModuleHandleA(str)
