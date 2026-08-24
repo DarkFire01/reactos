@@ -158,6 +158,7 @@
 @ stdcall CreateProcessInternalW(ptr wstr wstr ptr ptr long long ptr wstr ptr ptr long)
 @ stdcall CreateProcessW(wstr wstr ptr ptr long long ptr wstr ptr ptr)
 @ stdcall CreateRemoteThread(long ptr long ptr long long ptr)
+@ stdcall -version=0x600+ CreateRemoteThreadEx(long ptr long ptr long long ptr ptr)
 @ stdcall CreateSemaphoreA(ptr long long str)
 @ stdcall -version=0x600+ CreateSemaphoreExA(ptr long long str long long)
 @ stdcall -version=0x600+ CreateSemaphoreExW(ptr long long wstr long long)

@@ -359,6 +359,41 @@ Quit:
 
 /*
  * @implemented
+ *
+ * CreateRemoteThread with a process/thread attribute list. The list can only
+ * carry the ideal processor and the group affinity for a thread, neither of
+ * which is honoured here yet - the same caveat CreateProcess already has - so
+ * this is CreateRemoteThread with the list ignored rather than rejected.
+ * Refusing the call outright would be worse: a caller that merely wants to
+ * pick a processor would fail to create its thread at all.
+ */
+HANDLE
+WINAPI
+CreateRemoteThreadEx(IN HANDLE hProcess,
+                     IN LPSECURITY_ATTRIBUTES lpThreadAttributes,
+                     IN SIZE_T dwStackSize,
+                     IN LPTHREAD_START_ROUTINE lpStartAddress,
+                     IN LPVOID lpParameter,
+                     IN DWORD dwCreationFlags,
+                     IN LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList,
+                     OUT LPDWORD lpThreadId)
+{
+    if (lpAttributeList != NULL)
+    {
+        DPRINT1("CreateRemoteThreadEx: ignoring the attribute list\n");
+    }
+
+    return CreateRemoteThread(hProcess,
+                              lpThreadAttributes,
+                              (DWORD)dwStackSize,
+                              lpStartAddress,
+                              lpParameter,
+                              dwCreationFlags,
+                              lpThreadId);
+}
+
+/*
+ * @implemented
  */
 VOID
 WINAPI
