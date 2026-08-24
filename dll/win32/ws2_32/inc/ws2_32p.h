@@ -355,6 +355,11 @@ HKEY
 WSAAPI
 WsOpenRegistryRoot(VOID);
 
+/* Diagnostic only - see wsautil.c */
+VOID
+WSAAPI
+WsDiagLog(IN LPCSTR Format, ...);
+
 VOID
 WSAAPI
 WsCreateStartupSynchronization(VOID);
