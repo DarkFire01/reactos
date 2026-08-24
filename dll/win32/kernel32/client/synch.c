@@ -379,6 +379,13 @@ SetWaitableTimer(IN HANDLE hTimer,
     return FALSE;
 }
 
+BOOL WINAPI DECLSPEC_HOTPATCH SetWaitableTimerEx( HANDLE handle, const LARGE_INTEGER *when, LONG period,
+                                                  PTIMERAPCROUTINE callback, LPVOID arg,
+                                                  REASON_CONTEXT *context, ULONG tolerabledelay )
+{
+    return SetWaitableTimer( handle, when, period, callback, arg, FALSE );
+}
+
 /*
  * @implemented
  */

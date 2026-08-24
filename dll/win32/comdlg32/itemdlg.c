@@ -397,7 +397,8 @@ static void fill_filename_from_selection(FileDialogImpl *This)
     IShellItem *psi;
     LPWSTR *names;
     HRESULT hr;
-    UINT item_count, valid_count;
+    DWORD item_count;
+    UINT valid_count;
     UINT len_total, i;
 
     if(!This->psia_selection)
@@ -416,7 +417,7 @@ static void fill_filename_from_selection(FileDialogImpl *This)
         hr = IShellItemArray_GetItemAt(This->psia_selection, i, &psi);
         if(SUCCEEDED(hr))
         {
-            UINT attr;
+            SFGAOF attr;
 
             hr = IShellItem_GetAttributes(psi, SFGAO_FOLDER, &attr);
             if(SUCCEEDED(hr) &&
@@ -2236,7 +2237,7 @@ static LRESULT on_wm_command(FileDialogImpl *This, WPARAM wparam, LPARAM lparam)
     return FALSE;
 }
 
-static LRESULT CALLBACK itemdlg_dlgproc(HWND hwnd, UINT umessage, WPARAM wparam, LPARAM lparam)
+static INT_PTR CALLBACK itemdlg_dlgproc(HWND hwnd, UINT umessage, WPARAM wparam, LPARAM lparam)
 {
     FileDialogImpl *This = (FileDialogImpl*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
 
@@ -2688,7 +2689,7 @@ static HRESULT WINAPI IFileDialog2_fnGetResult(IFileDialog2 *iface, IShellItem *
 
     if(This->psia_results)
     {
-        UINT item_count;
+        DWORD item_count;
         hr = IShellItemArray_GetCount(This->psia_results, &item_count);
         if(SUCCEEDED(hr))
         {

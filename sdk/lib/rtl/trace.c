@@ -13,6 +13,14 @@
 static RTL_UNLOAD_EVENT_TRACE RtlpUnloadEventTrace[RTL_UNLOAD_EVENT_TRACE_NUMBER];
 static UINT RtlpUnloadEventTraceIndex = 0;
 
+/*
+ * RtlGetUnloadEventTraceEx hands out the addresses of these two, not their
+ * values, so a debugger reading them out of another process sees the count
+ * grow as that process unloads more modules.
+ */
+static ULONG RtlpUnloadEventTraceExSize = sizeof(RTL_UNLOAD_EVENT_TRACE);
+static ULONG RtlpUnloadEventTraceExCount = 0;
+
 /* FUNCTIONS ******************************************************************/
 
 PRTL_UNLOAD_EVENT_TRACE
@@ -23,6 +31,23 @@ RtlGetUnloadEventTrace(VOID)
     return RtlpUnloadEventTrace;
 }
 
+/*
+ * Used out of process: a crash reporter reads the three values here, then
+ * reads the array itself out of the faulted process to name the modules that
+ * had already been unloaded when it died.
+ */
+VOID
+NTAPI
+RtlGetUnloadEventTraceEx(
+    _Out_ PULONG *ElementSize,
+    _Out_ PULONG *ElementCount,
+    _Out_ PVOID *EventTrace)
+{
+    *ElementSize = &RtlpUnloadEventTraceExSize;
+    *ElementCount = &RtlpUnloadEventTraceExCount;
+    *EventTrace = RtlpUnloadEventTrace;
+}
+
 VOID
 NTAPI
 LdrpRecordUnloadEvent(_In_ PLDR_DATA_TABLE_ENTRY LdrEntry)
@@ -31,6 +56,10 @@ LdrpRecordUnloadEvent(_In_ PLDR_DATA_TABLE_ENTRY LdrEntry)
     UINT Sequence = RtlpUnloadEventTraceIndex++;
     UINT Index = Sequence % RTL_UNLOAD_EVENT_TRACE_NUMBER;
     USHORT StringLen;
+
+    /* The count saturates: once the ring is full every entry is valid */
+    if (RtlpUnloadEventTraceExCount < RTL_UNLOAD_EVENT_TRACE_NUMBER)
+        RtlpUnloadEventTraceExCount++;
 
     DPRINT("LdrpRecordUnloadEvent(%wZ, %p - %p)\n", &LdrEntry->BaseDllName, LdrEntry->DllBase,
         (ULONG_PTR)LdrEntry->DllBase + LdrEntry->SizeOfImage);

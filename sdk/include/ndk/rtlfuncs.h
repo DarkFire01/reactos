@@ -885,6 +885,22 @@ RtlLogStackBackTrace(
     VOID
 );
 
+NTSYSAPI
+PRTL_UNLOAD_EVENT_TRACE
+NTAPI
+RtlGetUnloadEventTrace(
+    VOID
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlGetUnloadEventTraceEx(
+    _Out_ PULONG *ElementSize,
+    _Out_ PULONG *ElementCount,
+    _Out_ PVOID *EventTrace
+);
+
 #ifdef NTOS_MODE_USER
 //
 // Heap Functions

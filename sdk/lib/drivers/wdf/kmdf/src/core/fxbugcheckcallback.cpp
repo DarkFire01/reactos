@@ -1054,23 +1054,10 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Register(
             m_Number = ((PFN_KE_QUERY_MAXIMUM_PROCESSOR_COUNT)funcPtr)();
         }
         else {
-            if ((5 == FxLibraryGlobals.OsVersionInfo.dwMajorVersion &&
-                 0 <  FxLibraryGlobals.OsVersionInfo.dwMinorVersion) ||
-                (6 == FxLibraryGlobals.OsVersionInfo.dwMajorVersion &&
-                 0 == FxLibraryGlobals.OsVersionInfo.dwMinorVersion)){
                 //
                 // XP (Major=5, Minor>0) and Vista (Major=6, Minor=0).
                 //
                 m_Number = (ULONG)(*((CCHAR *)&KeNumberProcessors));
-            }
-            else {
-                //
-                // This feature is not supported for Windows 2000.
-                //
-                ASSERT(FALSE);
-                status = STATUS_NOT_SUPPORTED;
-                goto Done;
-            }
         }
     }
 

@@ -549,7 +549,12 @@ static const INFORMATION_CLASS_INFO PsThreadInfoClass[] =
     IQS_NONE,
 
     /* ThreadCycleTime */
-    IQS_NONE,
+    IQS_SAME
+    (
+        THREAD_CYCLE_TIME_INFORMATION,
+        ULONG,
+        ICIF_QUERY
+    ),
 
     /* ThreadPagePriority */
     IQS_NONE,
