@@ -905,9 +905,25 @@ IntWindowFromDC(HDC hDc)
       if (Dce->hDC == hDc)
       {
          if (Dce->DCXFlags & DCX_INDESTROY)
+         {
             Ret = NULL;
+         }
+         else if (Dce->hwndCurrent == NULL &&
+                  !(Dce->DCXFlags & DCX_DCEEMPTY))
+         {
+            /*
+             * A DC handed out by GetDC(NULL) covers the whole screen and is
+             * recorded here with no window of its own, but the window it
+             * belongs to is the desktop, and that is what this has to name.
+             * The bookkeeping is deliberately left alone: only the answer
+             * given out changes, so nothing about caching or clipping moves.
+             */
+            Ret = IntGetDesktopWindow();
+         }
          else
+         {
             Ret = Dce->hwndCurrent;
+         }
          break;
       }
   }
