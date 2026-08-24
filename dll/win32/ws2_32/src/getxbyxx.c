@@ -294,6 +294,22 @@ gethostbyname(IN const char FAR * name)
     /* Check if we received a newly allocated buffer; free it. */
     if (Results != ResultsBuffer) HeapFree(WsSockHeap, 0, Results);
 
+    /* Diagnostic: both outcomes, because a caller that resolves here rather
+       than through getaddrinfo leaves no other trace. */
+    if (Hostent)
+    {
+        WsDiagLog("gethostbyname: '%s' -> addrtype %d length %d first %lu.%lu.%lu.%lu\r\n",
+                  pszName, Hostent->h_addrtype, Hostent->h_length,
+                  (ULONG)(UCHAR)Hostent->h_addr_list[0][0],
+                  (ULONG)(UCHAR)Hostent->h_addr_list[0][1],
+                  (ULONG)(UCHAR)Hostent->h_addr_list[0][2],
+                  (ULONG)(UCHAR)Hostent->h_addr_list[0][3]);
+    }
+    else
+    {
+        WsDiagLog("gethostbyname: '%s' FAILED -> %ld\r\n", pszName, GetLastError());
+    }
+
     /* Notify RAS Auto-dial helper */
     if (Hostent) WSNoteSuccessfulHostentLookup(name, *Hostent->h_addr);
 

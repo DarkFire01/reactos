@@ -85,7 +85,25 @@ connect(IN SOCKET s,
                 WsSockDereference(Socket);
 
                 /* Return Provider Value */
-                if (Status == ERROR_SUCCESS) return Status;
+                if (Status == ERROR_SUCCESS)
+                {
+                    /* Diagnostic: log successes too, so a caller that never
+                       reaches connect() at all is distinguishable from one
+                       whose connect() fails. */
+                    if (namelen >= (INT)sizeof(struct sockaddr_in) &&
+                        name->sa_family == AF_INET)
+                    {
+                        const struct sockaddr_in *in = (const struct sockaddr_in *)name;
+
+                        WsDiagLog("connect: socket %lx -> %lu.%lu.%lu.%lu:%u ok\r\n", s,
+                                  (ULONG)in->sin_addr.S_un.S_un_b.s_b1,
+                                  (ULONG)in->sin_addr.S_un.S_un_b.s_b2,
+                                  (ULONG)in->sin_addr.S_un.S_un_b.s_b3,
+                                  (ULONG)in->sin_addr.S_un.S_un_b.s_b4,
+                                  ntohs(in->sin_port));
+                    }
+                    return Status;
+                }
 
                 /* If everything seemed fine, then the WSP call failed itself */
                 if (ErrorCode == NO_ERROR) ErrorCode = WSASYSCALLFAILURE;
@@ -110,13 +128,31 @@ connect(IN SOCKET s,
         ErrorCode = WSAEINVAL;
     }
 
-    /* WSAEWOULDBLOCK is the normal answer for a non-blocking connect, so it is
-       not worth a line. Anything else means the caller really did fail. */
+    /* Diagnostic: log every outcome, WSAEWOULDBLOCK included - that is the
+       normal answer for a non-blocking connect and therefore the interesting
+       one, since it says the attempt was made at all. */
+    if (!IsBadReadPtr(name, sizeof(struct sockaddr)) && name->sa_family == AF_INET &&
+        namelen >= (INT)sizeof(struct sockaddr_in))
+    {
+        const struct sockaddr_in *in = (const struct sockaddr_in *)name;
+
+        WsDiagLog("connect: socket %lx -> %lu.%lu.%lu.%lu:%u -> %d\r\n", s,
+                  (ULONG)in->sin_addr.S_un.S_un_b.s_b1,
+                  (ULONG)in->sin_addr.S_un.S_un_b.s_b2,
+                  (ULONG)in->sin_addr.S_un.S_un_b.s_b3,
+                  (ULONG)in->sin_addr.S_un.S_un_b.s_b4,
+                  ntohs(in->sin_port), ErrorCode);
+    }
+    else
+    {
+        WsDiagLog("connect: socket %lx family %d -> %d\r\n", s,
+                  IsBadReadPtr(name, sizeof(struct sockaddr)) ? -1 : name->sa_family,
+                  ErrorCode);
+    }
+
     if (ErrorCode != WSAEWOULDBLOCK)
     {
-        DPRINT1("WS2_32: connect(%lx) family %d failed -> %d\n",
-                s, IsBadReadPtr(name, sizeof(struct sockaddr)) ? -1 : name->sa_family,
-                ErrorCode);
+        DPRINT1("WS2_32: connect(%lx) failed -> %d\n", s, ErrorCode);
     }
 
     /* Return with an Error */

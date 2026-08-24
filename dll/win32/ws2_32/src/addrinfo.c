@@ -756,6 +756,9 @@ GetAddrInfoW(IN PCWSTR pszNodeName,
 
         DPRINT1("WS2_32: getaddrinfo('%S') hints family %d -> %d\n",
                 pszNodeName ? pszNodeName : L"(null)", iFamily, iError);
+        WsDiagLog("getaddrinfo: '%S' hints family %d socktype %d flags %x -> %d\r\n",
+                  pszNodeName ? pszNodeName : L"(null)",
+                  iFamily, iSocketType, iFlags, iError);
     }
 
     /* Return to caller */
