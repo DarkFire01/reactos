@@ -3325,6 +3325,51 @@ NtQueryInformationThread(
             break;
         }
 
+        case ThreadCycleTime:
+        {
+            PTHREAD_CYCLE_TIME_INFORMATION CycleTimeInfo =
+                (PTHREAD_CYCLE_TIME_INFORMATION)ThreadInformation;
+            ULONG64 CycleTime, CycleTimeStamp;
+
+            Length = sizeof(THREAD_CYCLE_TIME_INFORMATION);
+
+            if (ThreadInformationLength != Length)
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                break;
+            }
+
+            /* Reference the thread */
+            Status = ObReferenceObjectByHandle(ThreadHandle,
+                                               Access,
+                                               PsThreadType,
+                                               PreviousMode,
+                                               (PVOID*)&Thread,
+                                               NULL);
+            if (!NT_SUCCESS(Status))
+                break;
+
+            /* Ask the kernel what this thread has burned so far */
+            CycleTime = KeQueryTotalCycleTimeThread(&Thread->Tcb, &CycleTimeStamp);
+
+            /* Protect write with SEH */
+            _SEH2_TRY
+            {
+                CycleTimeInfo->AccumulatedCycles = CycleTime;
+                CycleTimeInfo->CurrentCycleCount = CycleTimeStamp;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                /* Get exception code */
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+
+            /* Dereference the thread */
+            ObDereferenceObject(Thread);
+            break;
+        }
+
         /* LDT and GDT information */
         case ThreadDescriptorTableEntry:
         {

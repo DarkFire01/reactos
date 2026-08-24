@@ -1121,6 +1121,17 @@ typedef struct _THREAD_BASIC_INFORMATION
     KPRIORITY BasePriority;
 } THREAD_BASIC_INFORMATION, *PTHREAD_BASIC_INFORMATION;
 
+//
+// What a thread has spent, answered by ThreadCycleTime. The cycles are the
+// processor's own counter, so they only mean anything next to another reading
+// of the same counter.
+//
+typedef struct _THREAD_CYCLE_TIME_INFORMATION
+{
+    ULONGLONG AccumulatedCycles;
+    ULONGLONG CurrentCycleCount;
+} THREAD_CYCLE_TIME_INFORMATION, *PTHREAD_CYCLE_TIME_INFORMATION;
+
 typedef struct _THREAD_NAME_INFORMATION
 {
     UNICODE_STRING ThreadName;

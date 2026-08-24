@@ -930,6 +930,47 @@ GetThreadId(IN HANDLE Thread)
 }
 
 /*
+ * @implemented
+ *
+ * The processor cycles a thread has spent running. This is not a time, and the
+ * counter is the processor's own, so a reading is only meaningful next to
+ * another reading of the same counter.
+ */
+BOOL
+WINAPI
+QueryThreadCycleTime(
+    _In_ HANDLE ThreadHandle,
+    _Out_ PULONG64 CycleTime)
+{
+    THREAD_CYCLE_TIME_INFORMATION CycleTimeInfo;
+    NTSTATUS Status;
+
+    Status = NtQueryInformationThread(ThreadHandle,
+                                      ThreadCycleTime,
+                                      &CycleTimeInfo,
+                                      sizeof(CycleTimeInfo),
+                                      NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    _SEH2_TRY
+    {
+        *CycleTime = CycleTimeInfo.AccumulatedCycles;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        BaseSetLastNTError(_SEH2_GetExceptionCode());
+        _SEH2_YIELD(return FALSE);
+    }
+    _SEH2_END;
+
+    return TRUE;
+}
+
+/*
  * @unimplemented
  */
 LANGID
