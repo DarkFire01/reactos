@@ -1045,4 +1045,62 @@ GetLastError(VOID)
     return NtCurrentTeb()->LastErrorValue;
 }
 
+#ifndef FAIL_FAST_GENERATE_EXCEPTION_ADDRESS
+#define FAIL_FAST_GENERATE_EXCEPTION_ADDRESS 0x1
+#endif
+
+/*
+ * @implemented
+ *
+ * Ends the process on an error the caller has decided is not survivable.
+ *
+ * The point of a fail fast is that it is not catchable: no frame based handler
+ * gets a say, because the state that would run them is the state the caller has
+ * given up on. So this reports to whatever is watching - a debugger first, then
+ * the unhandled exception filter - and then ends the process, rather than
+ * raising through the normal dispatcher.
+ */
+VOID
+WINAPI
+RaiseFailFastException(
+    _In_opt_ PEXCEPTION_RECORD pExceptionRecord,
+    _In_opt_ PCONTEXT pContextRecord,
+    _In_ DWORD dwFlags)
+{
+    EXCEPTION_RECORD LocalRecord;
+    CONTEXT LocalContext;
+    EXCEPTION_POINTERS Pointers;
+
+    if (pExceptionRecord == NULL)
+    {
+        RtlZeroMemory(&LocalRecord, sizeof(LocalRecord));
+        LocalRecord.ExceptionCode = STATUS_FAIL_FAST_EXCEPTION;
+        LocalRecord.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
+        LocalRecord.ExceptionAddress = _ReturnAddress();
+        pExceptionRecord = &LocalRecord;
+    }
+    else if (dwFlags & FAIL_FAST_GENERATE_EXCEPTION_ADDRESS)
+    {
+        /* The caller wants to be named as the place this happened */
+        pExceptionRecord->ExceptionAddress = _ReturnAddress();
+    }
+
+    if (pContextRecord == NULL)
+    {
+        RtlZeroMemory(&LocalContext, sizeof(LocalContext));
+        LocalContext.ContextFlags = CONTEXT_FULL;
+        RtlCaptureContext(&LocalContext);
+        pContextRecord = &LocalContext;
+    }
+
+    Pointers.ExceptionRecord = pExceptionRecord;
+    Pointers.ContextRecord = pContextRecord;
+
+    /* Let a debugger and then the unhandled filter see it */
+    UnhandledExceptionFilter(&Pointers);
+
+    /* Whatever they decided, this process does not continue */
+    TerminateProcess(GetCurrentProcess(), pExceptionRecord->ExceptionCode);
+}
+
 /* EOF */
