@@ -82,6 +82,8 @@
 @ stdcall SetThreadpoolThreadMaximum(ptr long) ntdll_vista.TpSetPoolMaxThreads
 @ stdcall SetThreadpoolThreadMinimum(ptr long) ntdll_vista.TpSetPoolMinThreads
 @ stdcall SetThreadpoolTimer(ptr ptr long long) ntdll_vista.TpSetTimer
+@ stdcall GetThreadInformation(long long ptr long)
+@ stdcall SetThreadInformation(long long ptr long)
 @ stdcall SetThreadpoolTimerEx(ptr ptr long long) ntdll_vista.TpSetTimerEx
 @ stdcall SetThreadpoolWait(ptr long ptr) ntdll_vista.TpSetWait
 @ stdcall SubmitThreadpoolWork(ptr) ntdll_vista.TpPostWork
