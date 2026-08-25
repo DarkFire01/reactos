@@ -56,6 +56,46 @@ HMODULE SWScale = NULL;
     } while (0)
 
 
+static DWORD WINAPI NoFFmpegWarningProc(void *param)
+{
+    MessageBoxW(
+        NULL,
+        L"FFMpeg is required to view this media.\nPlease install FFmpeg from RAPPS to proceed",
+        L"ReactOS - Media Foundation Error",
+        MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST
+    );
+    return 0;
+}
+
+/*
+ * Say so once, on a thread of its own, and let the caller carry on.
+ *
+ * This is called from whoever first wants a codec, which is not always
+ * somebody who can answer a dialog: Media Foundation is loaded during setup,
+ * and inside Chromium's sandboxed children, which run on a desktop of their
+ * own with no way to reach a message box and nobody to click it. A modal box
+ * on the calling thread stops that caller until someone dismisses it - it
+ * held up ReactOS setup - and in a sandboxed process it may never be
+ * dismissed at all.
+ *
+ * wined3d does the same thing for its "no 3D acceleration" notice, and for
+ * the same reason.
+ */
+static void WarnNoFFmpeg(void)
+{
+    static LONG Warned = 0;
+    HANDLE Thread;
+
+    /* Once per process: a caller that keeps asking for codecs would
+       otherwise get a box each time */
+    if (InterlockedCompareExchange(&Warned, 1, 0) != 0)
+        return;
+
+    Thread = CreateThread(NULL, 0, NoFFmpegWarningProc, NULL, 0, NULL);
+    if (Thread != NULL)
+        CloseHandle(Thread);
+}
+
 BOOL LoadFFmpeg()
 {
     BOOL Result = FALSE;
@@ -76,13 +116,8 @@ BOOL LoadFFmpeg()
 end:
 
     if (!Result)
-    {
-        MessageBoxW(
-            GetActiveWindow(), 
-            L"FFMpeg is required to view this media.\nPlease install FFmpeg from RAPPS to proceed", 
-            L"ReactOS - Media Foundation Error", MB_ICONERROR
-        );
-    }
+        WarnNoFFmpeg();
+
     return Result;
 }
 
