@@ -41,6 +41,48 @@ AddMandatoryAce(PACL pAcl,
 }
 
 /*
+ * @unimplemented
+ */
+BOOL
+WINAPI
+AddConditionalAce(PACL pAcl,
+                  DWORD dwAceRevision,
+                  DWORD AceFlags,
+                  UCHAR AceType,
+                  DWORD AccessMask,
+                  PSID pSid,
+                  PWCHAR ConditionStr,
+                  DWORD *ReturnLength)
+{
+    UNREFERENCED_PARAMETER(pAcl);
+    UNREFERENCED_PARAMETER(dwAceRevision);
+    UNREFERENCED_PARAMETER(AceFlags);
+    UNREFERENCED_PARAMETER(AceType);
+    UNREFERENCED_PARAMETER(AccessMask);
+    UNREFERENCED_PARAMETER(pSid);
+    UNREFERENCED_PARAMETER(ReturnLength);
+
+    /*
+     * A conditional ACE carries a compiled boolean expression after the SID,
+     * and the access it names applies only where that expression holds. There
+     * is no compiler for those expressions here and nothing that would
+     * evaluate one during an access check.
+     *
+     * So this refuses rather than building the ACE without its condition.
+     * That is not caution for its own sake: the condition is the whole of
+     * what makes the grant narrow, and an ACE that lost it would allow
+     * everyone the access that was meant for the few. Failing tells the
+     * caller its rule was not applied; succeeding would tell it the opposite
+     * of the truth.
+     */
+    FIXME("(%p %lu %lu %u %lu %p %s %p): stub\n", pAcl, dwAceRevision, AceFlags,
+          AceType, AccessMask, pSid, debugstr_w(ConditionStr), ReturnLength);
+
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+/*
  * @implemented
  */
 BOOL
