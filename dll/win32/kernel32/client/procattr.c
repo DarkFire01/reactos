@@ -14,6 +14,13 @@
  *
  * The layout matches the one used by kernelbase, so that a list built here
  * stays readable if process creation ever starts honouring these attributes.
+ *
+ * Taking an attribute here says the list is well formed, not that the policy
+ * behind it is applied: CreateProcess still ignores the list. Refusing one
+ * outright is worse than taking it, because a caller that builds a list of
+ * several attributes gets nothing at all - Chromium's sandbox asks for the
+ * child process policy and the component filter as it spawns a renderer, and
+ * a refusal there fails the whole spawn rather than weakening it.
  */
 
 #include <k32.h>
@@ -63,12 +70,42 @@ ValidateProcThreadAttribute(
             break;
 
         case PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY:
+        case PROC_THREAD_ATTRIBUTE_MITIGATION_AUDIT_POLICY:
             if (Size != sizeof(DWORD) &&
                 Size != sizeof(DWORD64) &&
                 Size != sizeof(DWORD64) * 2)
             {
                 return ERROR_BAD_LENGTH;
             }
+            break;
+
+        case PROC_THREAD_ATTRIBUTE_GROUP_AFFINITY:
+            if (Size != sizeof(GROUP_AFFINITY)) return ERROR_BAD_LENGTH;
+            break;
+
+        case PROC_THREAD_ATTRIBUTE_PREFERRED_NODE:
+        case PROC_THREAD_ATTRIBUTE_MACHINE_TYPE:
+            if (Size != sizeof(USHORT)) return ERROR_BAD_LENGTH;
+            break;
+
+        case PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES:
+            if (Size != sizeof(SECURITY_CAPABILITIES)) return ERROR_BAD_LENGTH;
+            break;
+
+        case PROC_THREAD_ATTRIBUTE_JOB_LIST:
+            if ((Size / sizeof(HANDLE)) * sizeof(HANDLE) != Size) return ERROR_BAD_LENGTH;
+            break;
+
+        case PROC_THREAD_ATTRIBUTE_PROTECTION_LEVEL:
+        case PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY:
+        case PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY:
+        case PROC_THREAD_ATTRIBUTE_DESKTOP_APP_POLICY:
+        case PROC_THREAD_ATTRIBUTE_COMPONENT_FILTER:
+            if (Size != sizeof(DWORD)) return ERROR_BAD_LENGTH;
+            break;
+
+        case PROC_THREAD_ATTRIBUTE_ENABLE_OPTIONAL_XSTATE_FEATURES:
+            if (Size != sizeof(DWORD64)) return ERROR_BAD_LENGTH;
             break;
 
         default:
