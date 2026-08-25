@@ -26,7 +26,7 @@ GENERIC_MAPPING PspProcessMapping =
     PROCESS_TERMINATE       | PROCESS_SET_QUOTA         | PROCESS_SET_INFORMATION |
     PROCESS_SUSPEND_RESUME,
     STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE,
-    PROCESS_ALL_ACCESS
+    PSP_PROCESS_ALL_ACCESS
 };
 
 GENERIC_MAPPING PspThreadMapping =
@@ -35,7 +35,7 @@ GENERIC_MAPPING PspThreadMapping =
     STANDARD_RIGHTS_WRITE   | THREAD_TERMINATE        | THREAD_SUSPEND_RESUME    |
     THREAD_ALERT            | THREAD_SET_INFORMATION  | THREAD_SET_CONTEXT,
     STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE,
-    THREAD_ALL_ACCESS
+    PSP_THREAD_ALL_ACCESS
 };
 
 PVOID PspSystemDllBase;
@@ -414,7 +414,8 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     RtlInitUnicodeString(&Name, L"Process");
     ObjectTypeInitializer.DefaultNonPagedPoolCharge = sizeof(EPROCESS);
     ObjectTypeInitializer.GenericMapping = PspProcessMapping;
-    ObjectTypeInitializer.ValidAccessMask = PROCESS_ALL_ACCESS;
+    /* See PSP_PROCESS_ALL_ACCESS: the 5.2 mask leaves out the Vista rights */
+    ObjectTypeInitializer.ValidAccessMask = PSP_PROCESS_ALL_ACCESS;
     ObjectTypeInitializer.DeleteProcedure = PspDeleteProcess;
     ObCreateObjectType(&Name, &ObjectTypeInitializer, NULL, &PsProcessType);
 
@@ -423,7 +424,8 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     ObjectTypeInitializer.Length = sizeof(ObjectTypeInitializer);
     ObjectTypeInitializer.DefaultNonPagedPoolCharge = sizeof(ETHREAD);
     ObjectTypeInitializer.GenericMapping = PspThreadMapping;
-    ObjectTypeInitializer.ValidAccessMask = THREAD_ALL_ACCESS;
+    /* Likewise for threads */
+    ObjectTypeInitializer.ValidAccessMask = PSP_THREAD_ALL_ACCESS;
     ObjectTypeInitializer.DeleteProcedure = PspDeleteThread;
     ObCreateObjectType(&Name, &ObjectTypeInitializer, NULL, &PsThreadType);
 
@@ -466,7 +468,7 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     /* Create the Initial System Process */
     Status = PspCreateProcess(&PspInitialSystemProcessHandle,
-                              PROCESS_ALL_ACCESS,
+                              PSP_PROCESS_ALL_ACCESS,
                               &ObjectAttributes,
                               0,
                               FALSE,
@@ -506,7 +508,7 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     /* Setup the system initialization thread */
     Status = PsCreateSystemThread(&SysThreadHandle,
-                                  THREAD_ALL_ACCESS,
+                                  PSP_THREAD_ALL_ACCESS,
                                   &ObjectAttributes,
                                   0,
                                   NULL,

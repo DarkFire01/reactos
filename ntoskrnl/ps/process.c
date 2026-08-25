@@ -860,6 +860,7 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
                                    PROCESS_VM_READ |
                                    PROCESS_VM_WRITE |
                                    PROCESS_QUERY_INFORMATION |
+                                   PROCESS_QUERY_LIMITED_INFORMATION |
                                    PROCESS_TERMINATE |
                                    PROCESS_CREATE_THREAD |
                                    PROCESS_DUP_HANDLE |
@@ -871,7 +872,7 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
     else
     {
         /* Set full granted access */
-        Process->GrantedAccess = PROCESS_ALL_ACCESS;
+        Process->GrantedAccess = PSP_PROCESS_ALL_ACCESS;
     }
 
     /* Set the Creation Time */
@@ -1549,7 +1550,7 @@ NtOpenProcess(OUT PHANDLE ProcessHandle,
         if (AccessState.RemainingDesiredAccess & MAXIMUM_ALLOWED)
         {
             /* Give it to him */
-            AccessState.PreviouslyGrantedAccess |= PROCESS_ALL_ACCESS;
+            AccessState.PreviouslyGrantedAccess |= PSP_PROCESS_ALL_ACCESS;
         }
         else
         {

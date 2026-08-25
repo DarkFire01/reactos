@@ -555,12 +555,13 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
         /* Set least some minimum access */
         Thread->GrantedAccess |= (THREAD_TERMINATE |
                                   THREAD_SET_INFORMATION |
-                                  THREAD_QUERY_INFORMATION);
+                                  THREAD_QUERY_INFORMATION |
+                                  THREAD_QUERY_LIMITED_INFORMATION);
     }
     else
     {
         /* Set the thread access mask to maximum */
-        Thread->GrantedAccess = THREAD_ALL_ACCESS;
+        Thread->GrantedAccess = PSP_THREAD_ALL_ACCESS;
     }
 
     /* Dispatch thread */
@@ -1091,7 +1092,7 @@ NtOpenThread(OUT PHANDLE ThreadHandle,
         if (AccessState.RemainingDesiredAccess & MAXIMUM_ALLOWED)
         {
             /* Give it to him */
-            AccessState.PreviouslyGrantedAccess |= THREAD_ALL_ACCESS;
+            AccessState.PreviouslyGrantedAccess |= PSP_THREAD_ALL_ACCESS;
         }
         else
         {
