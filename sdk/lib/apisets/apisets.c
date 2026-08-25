@@ -113,7 +113,8 @@ ApiSetResolveToHost(
             /* The newest revision present in the requested OS version wins */
             for (Probe = Last; Probe >= First; Probe--)
             {
-                if (g_Apisets[Probe].dwOsVersions & ApisetVersion)
+                /* A set stays present in every version after the one it appeared in */
+                if (g_Apisets[Probe].dwOsVersions & (ApisetVersion | (ApisetVersion - 1)))
                 {
                     *Resolved = TRUE;
                     *Output = g_Apisets[Probe].Target;
