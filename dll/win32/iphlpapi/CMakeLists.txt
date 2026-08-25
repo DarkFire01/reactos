@@ -15,6 +15,7 @@ list(APPEND SOURCE
     dhcp_reactos.c
     icmp.c
     ifenum_reactos.c
+    ifluid.c
     ipstats_reactos.c
     iphlpapi_reactos.c
     iphlpapi_main.c
