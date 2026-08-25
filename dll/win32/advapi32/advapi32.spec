@@ -222,6 +222,7 @@
 @ stdcall EnumServicesStatusW(long long long ptr long ptr ptr ptr)
 @ stdcall -version=0x600+ EventEnabled(int64 ptr)
 @ stdcall -version=0x600+ EventRegister(ptr ptr ptr ptr)
+@ stdcall -version=0x602+ EventSetInformation(int64 long ptr long)
 @ stdcall -version=0x600+ EventUnregister(int64)
 @ stdcall -version=0x600+ EventWrite(int64 ptr long ptr)
 @ stdcall -version=0x600+ EventWriteTransfer(int64 ptr ptr ptr long ptr)

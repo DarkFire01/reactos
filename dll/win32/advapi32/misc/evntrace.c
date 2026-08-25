@@ -10,13 +10,13 @@
 #include <evntrace.h>
 
 /*
- * The provider side of event tracing arrived in Vista, so <evntprov.h> hides
- * its declarations at the WINVER this module is built for. We are the ones
- * exporting them, so ask for them, and for the definitions rather than the
- * imports.
+ * The provider side of event tracing arrived in Vista, and EventSetInformation
+ * with it in Windows 8, so <evntprov.h> hides those declarations at the WINVER
+ * this module is built for. We are the ones exporting them, so ask for them,
+ * and for the definitions rather than the imports.
  */
 #undef WINVER
-#define WINVER _WIN32_WINNT_VISTA
+#define WINVER _WIN32_WINNT_WIN8
 #define _EVNT_SOURCE_
 #include <evntprov.h>
 
@@ -90,6 +90,36 @@ EventUnregister(
 {
     UNREFERENCED_PARAMETER(RegHandle);
     return ERROR_SUCCESS;
+}
+
+ULONG
+EVNTAPI
+EventSetInformation(
+    _In_ REGHANDLE RegHandle,
+    _In_ EVENT_INFO_CLASS InformationClass,
+    _In_reads_bytes_(InformationLength) PVOID EventInformation,
+    _In_ ULONG InformationLength)
+{
+    UNREFERENCED_PARAMETER(RegHandle);
+
+    if (EventInformation == NULL && InformationLength != 0)
+        return ERROR_INVALID_PARAMETER;
+
+    switch (InformationClass)
+    {
+        case EventProviderBinaryTrackInfo:
+        case EventProviderSetTraits:
+        case EventProviderUseDescriptorType:
+            /* All of these describe the provider to a session, which is
+               where the description would be read back. There is no session,
+               so there is nothing to tell and nothing to keep. A caller
+               registers its traits as it starts up and treats a failure here
+               as fatal, so take them. */
+            return ERROR_SUCCESS;
+
+        default:
+            return ERROR_INVALID_PARAMETER;
+    }
 }
 
 BOOLEAN
