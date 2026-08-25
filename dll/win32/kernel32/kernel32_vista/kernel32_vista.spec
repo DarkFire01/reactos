@@ -82,6 +82,8 @@
 @ stdcall SetThreadpoolThreadMaximum(ptr long) ntdll_vista.TpSetPoolMaxThreads
 @ stdcall SetThreadpoolThreadMinimum(ptr long) ntdll_vista.TpSetPoolMinThreads
 @ stdcall SetThreadpoolTimer(ptr ptr long long) ntdll_vista.TpSetTimer
+@ stdcall GetProcessInformation(long long ptr long)
+@ stdcall SetProcessInformation(long long ptr long)
 @ stdcall GetProcessMitigationPolicy(long long ptr long)
 @ stdcall SetProcessMitigationPolicy(long ptr long)
 @ stdcall GetThreadInformation(long long ptr long)

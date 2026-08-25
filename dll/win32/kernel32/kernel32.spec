@@ -578,6 +578,7 @@
 @ stdcall GetProcessHeaps(long ptr)
 @ stdcall GetProcessId(long)
 @ stdcall GetProcessIdOfThread(ptr)
+@ stdcall -version=0x602+ GetProcessInformation(long long ptr long)
 @ stdcall GetProcessIoCounters(long ptr)
 @ stdcall -version=0x602+ GetProcessMitigationPolicy(long long ptr long)
 @ stdcall GetProcessPriorityBoost(long ptr)
@@ -1112,6 +1113,7 @@
 @ stdcall SetProcessAffinityMask(long long)
 @ stub -version=0x600+ SetProcessAffinityUpdateMode
 @ stdcall -version=0x600+ SetProcessDEPPolicy(long)
+@ stdcall -version=0x602+ SetProcessInformation(long long ptr long)
 @ stdcall -version=0x602+ SetProcessMitigationPolicy(long ptr long)
 @ stdcall SetProcessPriorityBoost(long long)
 @ stdcall SetProcessShutdownParameters(long long)
