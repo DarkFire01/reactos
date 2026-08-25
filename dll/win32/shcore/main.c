@@ -37,6 +37,17 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(shcore);
 
+#ifdef __REACTOS__
+/*
+ * The DPI functions below are the documented face of three undocumented
+ * user32 entry points, which is where the awareness a process declares is
+ * actually kept. They are not in <winuser.h> on any Windows SDK either.
+ */
+BOOL WINAPI GetProcessDpiAwarenessInternal(HANDLE, DPI_AWARENESS *);
+BOOL WINAPI SetProcessDpiAwarenessInternal(DPI_AWARENESS);
+BOOL WINAPI GetDpiForMonitorInternal(HMONITOR, UINT, UINT *, UINT *);
+#endif
+
 static DWORD shcore_tls;
 static IUnknown *process_ref;
 
@@ -60,7 +71,6 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void *reserved)
     return TRUE;
 }
 
-#ifndef __REACTOS__
 HRESULT WINAPI GetProcessDpiAwareness(HANDLE process, PROCESS_DPI_AWARENESS *value)
 {
     if (GetProcessDpiAwarenessInternal( process, (DPI_AWARENESS *)value )) return S_OK;
@@ -78,7 +88,6 @@ HRESULT WINAPI GetDpiForMonitor(HMONITOR monitor, MONITOR_DPI_TYPE type, UINT *x
     if (GetDpiForMonitorInternal( monitor, type, x, y )) return S_OK;
     return HRESULT_FROM_WIN32( GetLastError() );
 }
-#endif /* __REACTOS__ */
 
 HRESULT WINAPI GetScaleFactorForMonitor(HMONITOR monitor, DEVICE_SCALE_FACTOR *scale)
 {
