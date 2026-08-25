@@ -23,6 +23,13 @@
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
 
+/* swscale's types are only ever passed through here - every function is
+   resolved at run time - so a forward declaration is all they need. Without
+   one, SwsFilter's first mention is inside a parameter list, where C scopes
+   it to that one declaration and nothing else can name the same type. */
+struct SwsContext;
+struct SwsFilter;
+
 HMODULE AVUtilLibrary = NULL;
 HMODULE AVCodecLibrary = NULL;
 HMODULE AVFormatLibrary = NULL;

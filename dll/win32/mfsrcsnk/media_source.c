@@ -17,6 +17,10 @@
  */
 
 #include "ntstatus.h"
+/* ntstatus.h has just defined the STATUS_ values, so tell the windows headers
+   that mfsrcsnk_private.h pulls in not to define them a second time. This is
+   what combase, crypt32 and the rest of the tree do at the same point. */
+#define WIN32_NO_STATUS
 #include "mfsrcsnk_private.h"
 
 #include "wine/list.h"

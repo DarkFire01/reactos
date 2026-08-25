@@ -20,6 +20,14 @@
 # error You must include config.h to use this header
 #endif
 
+#ifdef __REACTOS__
+/* The ffmpeg headers below reach windows.h themselves, so this has to be set
+   before them rather than beside the ntstatus.h include in unixlib.h: once
+   winnt.h has been through once its include guard makes a later attempt a
+   no-op, and ntstatus.h then defines the STATUS_ values a second time. */
+#define WIN32_NO_STATUS
+#endif
+
 #include <stdint.h>
 
 #ifdef HAVE_FFMPEG

@@ -25,8 +25,13 @@ struct dispatch_callback_params
     UINT64 callback;
 };
 
-extern NTSTATUS _seek_callback( void *args, ULONG size );
-extern NTSTATUS _read_callback( void *args, ULONG size );
+/* main.c defines both of these WINAPI, and unixlib.c calls them through here.
+   On amd64 that goes unnoticed because there is only the one convention, but
+   on i386 a declaration without it is a different type - and worse than a
+   compile error, a caller that believed it would emit a cdecl call into a
+   stdcall function and unbalance the stack. */
+extern NTSTATUS WINAPI _seek_callback( void *args, ULONG size );
+extern NTSTATUS WINAPI _read_callback( void *args, ULONG size );
 extern BOOL LoadFFmpeg();
 
 static inline int __reactos_call_unix_process_attach(PVOID args)

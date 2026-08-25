@@ -24,7 +24,11 @@
 #include <stdint.h>
 
 #ifdef __REACTOS__
+/* Keep the windows headers off the STATUS_ values so that ntstatus.h, which
+   is the one we want them from, is not defining them a second time. */
+#define WIN32_NO_STATUS
 #include <Windows.h>
+#undef WIN32_NO_STATUS
 #include <ntstatus.h>
 #else
 #include "ntstatus.h"
