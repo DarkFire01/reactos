@@ -22,7 +22,11 @@
 /* Kernel stacks come out of the system PTE space here. amd64 carves them from
  * a region of its own (mm/amd64/kstack.c) so that a stack is aligned and can
  * be found by its address; there is no such region on x86, and the shared code
- * in ARM3/procsup.c asks for these by name either way. */
+ * in ARM3/procsup.c asks for these by name either way.
+ *
+ * This file is built for amd64 as well, which takes its own definitions from
+ * mm/amd64/kstack.c, so leave these to x86. */
+#ifndef _M_AMD64
 PMMPTE
 MiReserveKernelStackPtes(
     _In_ ULONG NumberOfPtes)
@@ -37,6 +41,7 @@ MiReleaseKernelStackPtes(
 {
     MiReleaseSystemPtes(FirstPte, NumberOfPtes, SystemPteSpace);
 }
+#endif /* !_M_AMD64 */
 
 /* GLOBALS *****************************************************************/
 const
