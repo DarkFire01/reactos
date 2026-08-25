@@ -310,12 +310,9 @@ NtQueryInformationProcess(
             Length = sizeof(PROCESS_BASIC_INFORMATION);
 
             /* Reference the process */
-            Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
-                                               PsProcessType,
-                                               PreviousMode,
-                                               (PVOID*)&Process,
-                                               NULL);
+            Status = PspReferenceProcessForQuery(ProcessHandle,
+                                                 PreviousMode,
+                                                 &Process);
             if (!NT_SUCCESS(Status)) break;
 
             /* Protect writes with SEH */
@@ -447,12 +444,9 @@ NtQueryInformationProcess(
             Length = sizeof(IO_COUNTERS);
 
             /* Reference the process */
-            Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
-                                               PsProcessType,
-                                               PreviousMode,
-                                               (PVOID*)&Process,
-                                               NULL);
+            Status = PspReferenceProcessForQuery(ProcessHandle,
+                                                 PreviousMode,
+                                                 &Process);
             if (!NT_SUCCESS(Status)) break;
 
             /* Query IO counters from the process */
@@ -572,12 +566,9 @@ NtQueryInformationProcess(
             Length = sizeof(ULONG);
 
             /* Reference the process */
-            Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
-                                               PsProcessType,
-                                               PreviousMode,
-                                               (PVOID*)&Process,
-                                               NULL);
+            Status = PspReferenceProcessForQuery(ProcessHandle,
+                                                 PreviousMode,
+                                                 &Process);
             if (!NT_SUCCESS(Status)) break;
 
             /* Count the number of handles this process has */
@@ -616,12 +607,9 @@ NtQueryInformationProcess(
             Length = sizeof(PROCESS_SESSION_INFORMATION);
 
             /* Reference the process */
-            Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
-                                               PsProcessType,
-                                               PreviousMode,
-                                               (PVOID*)&Process,
-                                               NULL);
+            Status = PspReferenceProcessForQuery(ProcessHandle,
+                                                 PreviousMode,
+                                                 &Process);
             if (!NT_SUCCESS(Status)) break;
 
             /* Enter SEH for write safety */
@@ -656,12 +644,9 @@ NtQueryInformationProcess(
             }
 
             /* Reference the process */
-            Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
-                                               PsProcessType,
-                                               PreviousMode,
-                                               (PVOID*)&Process,
-                                               NULL);
+            Status = PspReferenceProcessForQuery(ProcessHandle,
+                                                 PreviousMode,
+                                                 &Process);
             if (!NT_SUCCESS(Status)) break;
 
             /* Enter SEH for write safety */
@@ -855,12 +840,9 @@ NtQueryInformationProcess(
             Length = sizeof(PROCESS_PRIORITY_CLASS);
 
             /* Reference the process */
-            Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
-                                               PsProcessType,
-                                               PreviousMode,
-                                               (PVOID*)&Process,
-                                               NULL);
+            Status = PspReferenceProcessForQuery(ProcessHandle,
+                                                 PreviousMode,
+                                                 &Process);
             if (!NT_SUCCESS(Status)) break;
 
             /* Enter SEH for writing back data */
@@ -1178,12 +1160,9 @@ NtQueryInformationProcess(
             }
 
             /* Reference the process */
-            Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
-                                               PsProcessType,
-                                               PreviousMode,
-                                               (PVOID*)&Process,
-                                               NULL);
+            Status = PspReferenceProcessForQuery(ProcessHandle,
+                                                 PreviousMode,
+                                                 &Process);
             if (!NT_SUCCESS(Status))
                 break;
 
