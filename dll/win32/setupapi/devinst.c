@@ -3265,6 +3265,93 @@ BOOL WINAPI SetupDiGetDeviceRegistryPropertyA(
 }
 
 /***********************************************************************
+ *		SetupDiGetDevicePropertyW (SETUPAPI.@)
+ *
+ * The unified property store is a superset of the old registry properties,
+ * and for the device fmtid the two are the same set: property id N there is
+ * SPDRP_ N-1 here, the same relation CM_Get_DevNode_PropertyW uses. So the
+ * keys in that fmtid are answered from the registry property they already
+ * are, and a key from any other fmtid is reported as not present rather
+ * than guessed at.
+ *
+ * This was a raising stub, which a caller enumerating device properties has
+ * no reason to expect: it asks for one it may well not get and is written to
+ * handle being told so.
+ */
+BOOL WINAPI SetupDiGetDevicePropertyW(
+        HDEVINFO DeviceInfoSet,
+        PSP_DEVINFO_DATA DeviceInfoData,
+        CONST DEVPROPKEY *PropertyKey,
+        DEVPROPTYPE *PropertyType,
+        PBYTE PropertyBuffer,
+        DWORD PropertyBufferSize,
+        PDWORD RequiredSize,
+        DWORD Flags)
+{
+    /* {a45c254e-df1c-4efd-8020-67d146a850e0}, the device properties */
+    static const GUID DevicePropertyFmtid =
+        { 0xa45c254e, 0xdf1c, 0x4efd,
+          { 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0 } };
+
+    DWORD RegDataType = REG_NONE;
+    DWORD Property;
+    BOOL ret;
+
+    TRACE("%p %p %p %p %p %lu %p 0x%08lx\n", DeviceInfoSet, DeviceInfoData,
+          PropertyKey, PropertyType, PropertyBuffer, PropertyBufferSize,
+          RequiredSize, Flags);
+
+    if (PropertyKey == NULL || PropertyType == NULL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    if (Flags != 0)
+    {
+        SetLastError(ERROR_INVALID_FLAGS);
+        return FALSE;
+    }
+
+    if (!IsEqualGUID(&PropertyKey->fmtid, &DevicePropertyFmtid) ||
+        PropertyKey->pid < 2 ||
+        PropertyKey->pid > SPDRP_ENUMERATOR_NAME + 1)
+    {
+        SetLastError(ERROR_NOT_FOUND);
+        return FALSE;
+    }
+
+    Property = PropertyKey->pid - 1;
+
+    ret = SetupDiGetDeviceRegistryPropertyW(DeviceInfoSet,
+                                            DeviceInfoData,
+                                            Property,
+                                            &RegDataType,
+                                            PropertyBuffer,
+                                            PropertyBufferSize,
+                                            RequiredSize);
+
+    /* Report the shape the caller expects, not the registry's name for it */
+    switch (RegDataType)
+    {
+        case REG_SZ:
+            *PropertyType = DEVPROP_TYPE_STRING;
+            break;
+        case REG_MULTI_SZ:
+            *PropertyType = DEVPROP_TYPE_STRING_LIST;
+            break;
+        case REG_DWORD:
+            *PropertyType = DEVPROP_TYPE_UINT32;
+            break;
+        default:
+            *PropertyType = DEVPROP_TYPE_BINARY;
+            break;
+    }
+
+    return ret;
+}
+
+/***********************************************************************
  *		SetupDiGetDeviceRegistryPropertyW (SETUPAPI.@)
  */
 BOOL WINAPI SetupDiGetDeviceRegistryPropertyW(

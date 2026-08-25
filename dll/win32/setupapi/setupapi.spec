@@ -367,7 +367,7 @@
 @ stub -version=0x600+ SetupDiGetDeviceInterfacePropertyKeys
 @ stub -version=0x600+ SetupDiGetDeviceInterfacePropertyW
 @ stub -version=0x600+ SetupDiGetDevicePropertyKeys
-@ stdcall -stub -version=0x600+ SetupDiGetDevicePropertyW(ptr ptr ptr ptr ptr long ptr long)
+@ stdcall -version=0x600+ SetupDiGetDevicePropertyW(ptr ptr ptr ptr ptr long ptr long)
 @ stdcall SetupDiGetDeviceRegistryPropertyA(long ptr long ptr ptr long ptr)
 @ stdcall SetupDiGetDeviceRegistryPropertyW(long ptr long ptr ptr long ptr)
 @ stdcall SetupDiGetDriverInfoDetailA(ptr ptr ptr ptr long ptr)
