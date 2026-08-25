@@ -87,6 +87,9 @@
 @ stdcall GetProcessMitigationPolicy(long long ptr long)
 @ stdcall SetProcessMitigationPolicy(long ptr long)
 @ stdcall GetThreadInformation(long long ptr long)
+@ stdcall WaitOnAddress(ptr ptr long long)
+@ stdcall WakeByAddressAll(ptr)
+@ stdcall WakeByAddressSingle(ptr)
 @ stdcall SetThreadInformation(long long ptr long)
 @ stdcall SetThreadpoolTimerEx(ptr ptr long long) ntdll_vista.TpSetTimerEx
 @ stdcall SetThreadpoolWait(ptr long ptr) ntdll_vista.TpSetWait
