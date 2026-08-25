@@ -1901,6 +1901,14 @@ GetFileInformationByHandleEx(
   _In_ FILE_INFO_BY_HANDLE_CLASS FileInformationClass,
   _Out_writes_bytes_(dwBufferSize) LPVOID lpFileInformation,
   _In_ DWORD dwBufferSize);
+
+BOOL
+WINAPI
+SetFileInformationByHandle(
+  _In_ HANDLE hFile,
+  _In_ FILE_INFO_BY_HANDLE_CLASS FileInformationClass,
+  _In_reads_bytes_(dwBufferSize) LPVOID lpFileInformation,
+  _In_ DWORD dwBufferSize);
 #endif
 
 BOOL
