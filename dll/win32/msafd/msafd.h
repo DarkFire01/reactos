@@ -30,6 +30,16 @@
 #include <mswsock.h>
 #include <mstcpip.h>
 
+/* mswsock.h only declares these for Vista and later, which is about what an
+ * application may call, not about what a service provider has to answer. This
+ * is the base provider, so it answers them whatever version it is built for. */
+#ifndef SIO_BSP_HANDLE
+#define SIO_BSP_HANDLE          _WSAIOR(IOC_WS2, 27)
+#define SIO_BSP_HANDLE_SELECT   _WSAIOR(IOC_WS2, 28)
+#define SIO_BSP_HANDLE_POLL     _WSAIOR(IOC_WS2, 29)
+#define SIO_BASE_HANDLE         _WSAIOR(IOC_WS2, 34)
+#endif
+
 #include <wine/debug.h>
 WINE_DEFAULT_DEBUG_CHANNEL(msafd);
 
