@@ -416,4 +416,74 @@ MapUserPhysicalPagesScatter(IN PVOID *VirtualAddresses,
     return TRUE;
 }
 
+/* kernel32 is built targeting NT 5.2, where winbase.h does not define this */
+#ifndef WIN32_MEMORY_RANGE_ENTRY_DEFINED
+typedef struct _WIN32_MEMORY_RANGE_ENTRY
+{
+    PVOID VirtualAddress;
+    SIZE_T NumberOfBytes;
+} WIN32_MEMORY_RANGE_ENTRY, *PWIN32_MEMORY_RANGE_ENTRY;
+#endif
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+PrefetchVirtualMemory(
+    _In_ HANDLE hProcess,
+    _In_ ULONG_PTR NumberOfEntries,
+    _In_reads_(NumberOfEntries) PWIN32_MEMORY_RANGE_ENTRY VirtualAddresses,
+    _In_ ULONG Flags)
+{
+    UNREFERENCED_PARAMETER(hProcess);
+
+    if (NumberOfEntries == 0 || VirtualAddresses == NULL || Flags != 0)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    /* This only ever asks the memory manager to bring pages in ahead of the
+       fault that would have brought them in anyway. There is nothing here to
+       ask - the information class Windows uses for it, VmPrefetchInformation,
+       is not implemented - so the ranges are left to fault in normally.
+       Saying so by failing would be worse than useless: a caller reads that
+       as an error on memory it has just described correctly, where the pages
+       are in fact perfectly reachable. */
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+DWORD
+WINAPI
+DiscardVirtualMemory(
+    _In_ PVOID VirtualAddress,
+    _In_ SIZE_T Size)
+{
+    NTSTATUS Status;
+    PVOID BaseAddress = VirtualAddress;
+    SIZE_T RegionSize = Size;
+
+    if (VirtualAddress == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    /* Discarding is MEM_RESET: the pages keep their addresses and their
+       protection, and only their contents stop being worth writing out.
+       A caller must already treat what it reads back as undefined, so the
+       contents surviving is within what it was promised. */
+    Status = NtAllocateVirtualMemory(NtCurrentProcess(),
+                                     &BaseAddress,
+                                     0,
+                                     &RegionSize,
+                                     MEM_RESET,
+                                     PAGE_READWRITE);
+    if (!NT_SUCCESS(Status))
+        return RtlNtStatusToDosError(Status);
+
+    return ERROR_SUCCESS;
+}
+
 /* EOF */
