@@ -22,6 +22,7 @@ list(APPEND SOURCE
     brfolder.cpp
     CActiveDesktop.cpp
     CActiveDesktop.h
+    CAssocRegistration.cpp
     CIDLDataObj.cpp
     CQueryAssociations.cpp
     changenotify.cpp
