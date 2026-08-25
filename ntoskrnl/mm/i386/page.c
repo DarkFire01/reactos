@@ -19,6 +19,25 @@
 #error "Dude, fix your stuff before using this file"
 #endif
 
+/* Kernel stacks come out of the system PTE space here. amd64 carves them from
+ * a region of its own (mm/amd64/kstack.c) so that a stack is aligned and can
+ * be found by its address; there is no such region on x86, and the shared code
+ * in ARM3/procsup.c asks for these by name either way. */
+PMMPTE
+MiReserveKernelStackPtes(
+    _In_ ULONG NumberOfPtes)
+{
+    return MiReserveSystemPtes(NumberOfPtes, SystemPteSpace);
+}
+
+VOID
+MiReleaseKernelStackPtes(
+    _In_ PMMPTE FirstPte,
+    _In_ ULONG NumberOfPtes)
+{
+    MiReleaseSystemPtes(FirstPte, NumberOfPtes, SystemPteSpace);
+}
+
 /* GLOBALS *****************************************************************/
 const
 ULONG_PTR

@@ -278,7 +278,6 @@ MmDeleteKernelStack(IN PVOID StackBase,
 
     /* Acquire the PFN lock */
     OldIrql = MiAcquirePfnLock();
-    //__debugbreak();
     //
     // Loop them
     //
@@ -292,9 +291,6 @@ MmDeleteKernelStack(IN PVOID StackBase,
             /* Get the PTE's page */
             PageFrameNumber = PFN_FROM_PTE(PointerPte);
             Pfn1 = MiGetPfnEntry(PageFrameNumber);
-            if (Pfn1->u3.e1.PageLocation != ActiveAndValid) __debugbreak();
-
-            //PointerPte->u.Long = 0;
 
             /* Now get the page of the page table mapping it */
             PageTableFrameNumber = Pfn1->u4.PteFrame;
