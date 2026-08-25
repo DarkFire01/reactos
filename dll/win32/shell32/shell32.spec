@@ -496,7 +496,7 @@
 @ stdcall SHChangeNotify(long long ptr ptr) # 2k3:276, Vista:320
 @ stub -version=0x600+ SHChangeNotifyRegisterThread # Vista:321
 @ stdcall SHChangeNotifySuspendResume(long ptr long long) # 2k3:277, Vista:322
-@ stub -version=0x600+ SHCreateAssociationRegistration # Vista:323
+@ stdcall -version=0x600+ SHCreateAssociationRegistration(ptr ptr) # Vista:323
 @ stdcall -version=0x600+ SHCreateDataObject(ptr long ptr ptr ptr ptr) # Vista:324
 @ stdcall -version=0x600+ SHCreateDefaultContextMenu(ptr ptr ptr) # Vista:325
 @ stdcall -version=0x600+ SHCreateDefaultExtractIcon(ptr ptr) # Vista:326
