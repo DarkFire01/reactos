@@ -668,8 +668,10 @@ NTSYSCALLAPI NTSTATUS NTAPI NtAlpcRevokeSecurityContext(void);
 NTSYSCALLAPI NTSTATUS NTAPI NtAlpcSendWaitReceivePort(void);
 NTSYSCALLAPI NTSTATUS NTAPI NtAlpcSetInformation(void);
 NTSYSCALLAPI NTSTATUS NTAPI NtAssociateWaitCompletionPacket(void);
-NTSYSCALLAPI NTSTATUS NTAPI NtCancelIoFileEx(void);
+/* NtCancelIoFileEx and NtOpenKeyEx are declared with their real prototypes
+   in the NDK (iofuncs.h, cmfuncs.h), which is what the implementations use. */
 NTSYSCALLAPI NTSTATUS NTAPI NtCancelSynchronousIoFile(void);
+NTSYSCALLAPI NTSTATUS NTAPI NtDrawText(PVOID);
 NTSYSCALLAPI NTSTATUS NTAPI NtNtCancelTimer2(void);
 NTSYSCALLAPI NTSTATUS NTAPI NtCancelWaitCompletionPacket(void);
 NTSYSCALLAPI NTSTATUS NTAPI NtCreateDirectoryObjectEx(void);
@@ -759,7 +761,6 @@ NTSYSCALLAPI NTSTATUS NTAPI NtRevertContainerImpersonation(void);
 NTSYSCALLAPI NTSTATUS NTAPI NtSetCachedSigningLevel(void);
 NTSYSCALLAPI NTSTATUS NTAPI NtCompareObjects(void);
 NTSYSCALLAPI NTSTATUS NTAPI NtWorkerFactoryWorkerReady(ULONG);
-NTSYSCALLAPI NTSTATUS NTAPI NtOpenKeyEx(PHANDLE,ACCESS_MASK,const OBJECT_ATTRIBUTES*,ULONG);
 
 #define COMPRESSION_FORMAT_NONE         (0x0000)
 #define COMPRESSION_FORMAT_DEFAULT      (0x0001)

@@ -1,8 +1,9 @@
 
 #include <syscalls.inc>
 
-/* This file only has the NT5 syscalls */
-#define SYSFUNCS_NT5_ONLY
+/* The table is a single Win10-ordered list now, so every syscall stub comes
+   from here. It cannot be split into an NT5 half and an NT6 half any more:
+   the two are interleaved by the Win10 numbering. */
 
 #ifdef _M_ARM
 

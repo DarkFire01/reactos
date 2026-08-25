@@ -337,7 +337,7 @@ SVC_(GetCompleteWnfStateSubscription, 0)
 SVC_(GetContextThread, 2)
 SVC_(GetCurrentProcessorNumber, 0)
 #if (NTDDI_VERSION >= NTDDI_WIN10)
-SVC_(GetCurrentProcessorNumberEx, 0)
+SVC_(GetCurrentProcessorNumberEx, 1)
 #endif
 SVC_(GetDevicePowerState, 2)
 #if (NTDDI_VERSION >= NTDDI_VISTA)

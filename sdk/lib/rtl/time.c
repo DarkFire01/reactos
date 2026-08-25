@@ -420,4 +420,34 @@ RtlSecondsSince1980ToTime(IN ULONG SecondsSince1980,
     Time->QuadPart = ((LONGLONG)SecondsSince1980 * TICKSPERSEC) + TICKSTO1980;
 }
 
+
+/*
+ * @implemented
+ */
+BOOLEAN
+NTAPI
+RtlQueryUnbiasedInterruptTime(
+    _Out_ PULONGLONG Interrupt)
+{
+    LARGE_INTEGER InterruptTime;
+
+    if (Interrupt == NULL)
+        return FALSE;
+
+    /* The unbiased time is the interrupt time without whatever the machine
+       spent asleep. That bias is not kept here, and nothing sleeps without the
+       interrupt time stopping with it, so the two are the same. kernel32's
+       QueryUnbiasedInterruptTime answers from the same place. */
+    do
+    {
+        InterruptTime.HighPart = SharedUserData->InterruptTime.High1Time;
+        InterruptTime.LowPart = SharedUserData->InterruptTime.LowPart;
+    }
+    while (InterruptTime.HighPart != SharedUserData->InterruptTime.High2Time);
+
+    *Interrupt = (ULONGLONG)InterruptTime.QuadPart;
+
+    return TRUE;
+}
+
 /* EOF */

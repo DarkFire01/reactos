@@ -38,7 +38,8 @@ NTSTATUS NTAPI NtAlpcRevokeSecurityContext() { UNIMPLEMENTED; return STATUS_NOT_
 NTSTATUS NTAPI NtAlpcSendWaitReceivePort() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtAlpcSetInformation() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtAssociateWaitCompletionPacket() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
-NTSTATUS NTAPI NtCancelIoFileEx() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
+/* NtCancelIoFileEx (io/iomgr/file.c) and NtOpenKeyEx (config/ntapi.c) are
+   implemented for real, so no stub for them here. */
 NTSTATUS NTAPI NtCancelSynchronousIoFile() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtNtCancelTimer2() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtCancelWaitCompletionPacket() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
@@ -283,8 +284,9 @@ NTSTATUS NTAPI NtRevertContainerImpersonation() { UNIMPLEMENTED; return STATUS_N
 NTSTATUS NTAPI NtSetCachedSigningLevel() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtSavepointTransaction() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtCompareObjects() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
+/* Named by the syscall table but nothing else in the tree declares them */
+NTSTATUS NTAPI NtDrawText(PVOID a) { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI NtWorkerFactoryWorkerReady(ULONG a) { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
-NTSTATUS NTAPI NtOpenKeyEx(PHANDLE a, ACCESS_MASK b, const OBJECT_ATTRIBUTES* c, ULONG d) { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS
 NTAPI
 NtAllocateVirtualMemoryEx(HANDLE ProcessHandle, IN OUT PVOID* UBaseAddress, PSIZE_T RegionSize, ULONG AllocationType,
