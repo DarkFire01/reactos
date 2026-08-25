@@ -201,6 +201,44 @@ PspDumpThreadInfoClassName(
 }
 #endif // #if DBG
 
+/*
+ * Reference a process for an information class that Windows lets a caller
+ * reach with either PROCESS_QUERY_INFORMATION or, since Vista, the narrower
+ * PROCESS_QUERY_LIMITED_INFORMATION.
+ *
+ * The two are separate bits, so a handle cut down to the limited one does not
+ * carry the other, and asking for the wider right alone turns a query a
+ * caller is entitled to make into STATUS_ACCESS_DENIED. Callers do cut their
+ * handles down: Chromium duplicates a process handle to exactly
+ * PROCESS_QUERY_LIMITED_INFORMATION before asking it for its times, and takes
+ * the refusal as impossible - it dies on the spot.
+ */
+static
+NTSTATUS
+PspReferenceProcessForQuery(
+    _In_ HANDLE ProcessHandle,
+    _In_ KPROCESSOR_MODE PreviousMode,
+    _Out_ PEPROCESS *Process)
+{
+    NTSTATUS Status;
+
+    Status = ObReferenceObjectByHandle(ProcessHandle,
+                                       PROCESS_QUERY_INFORMATION,
+                                       PsProcessType,
+                                       PreviousMode,
+                                       (PVOID*)Process,
+                                       NULL);
+    if (Status != STATUS_ACCESS_DENIED)
+        return Status;
+
+    return ObReferenceObjectByHandle(ProcessHandle,
+                                     PROCESS_QUERY_LIMITED_INFORMATION,
+                                     PsProcessType,
+                                     PreviousMode,
+                                     (PVOID*)Process,
+                                     NULL);
+}
+
 /* PUBLIC FUNCTIONS **********************************************************/
 
 /*
@@ -454,12 +492,9 @@ NtQueryInformationProcess(
             Length = sizeof(KERNEL_USER_TIMES);
 
             /* Reference the process */
-            Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
-                                               PsProcessType,
-                                               PreviousMode,
-                                               (PVOID*)&Process,
-                                               NULL);
+            Status = PspReferenceProcessForQuery(ProcessHandle,
+                                                 PreviousMode,
+                                                 &Process);
             if (!NT_SUCCESS(Status)) break;
 
             /* Protect writes with SEH */
@@ -911,13 +946,9 @@ NtQueryInformationProcess(
             POBJECT_NAME_INFORMATION ObjectNameInformation;
 
             /* Reference the process */
-            Status = ObReferenceObjectByHandle(ProcessHandle,
-            // FIXME: Use PROCESS_QUERY_LIMITED_INFORMATION when implemented
-                                               PROCESS_QUERY_INFORMATION,
-                                               PsProcessType,
-                                               PreviousMode,
-                                               (PVOID*)&Process,
-                                               NULL);
+            Status = PspReferenceProcessForQuery(ProcessHandle,
+                                                 PreviousMode,
+                                                 &Process);
             if (!NT_SUCCESS(Status))
             {
                 break;
