@@ -3186,6 +3186,29 @@ VOID WINAPI TpSetTimer( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LO
 }
 
 /***********************************************************************
+ *           TpSetTimerEx    (NTDLL.@)
+ *
+ * Sets the timer the way TpSetTimer does, and answers whether it had already
+ * been set beforehand. The state is read before the new one is applied, so a
+ * caller can tell whether it replaced a pending timeout or armed a fresh one.
+ */
+BOOLEAN WINAPI TpSetTimerEx( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LONG window_length )
+{
+    struct threadpool_object *this = impl_from_TP_TIMER( timer );
+    BOOLEAN was_set;
+
+    TRACE( "%p %p %lu %lu\n", timer, timeout, period, window_length );
+
+    RtlEnterCriticalSection( &timerqueue.cs );
+    was_set = this->u.timer.timer_set;
+    RtlLeaveCriticalSection( &timerqueue.cs );
+
+    TpSetTimer( timer, timeout, period, window_length );
+
+    return was_set;
+}
+
+/***********************************************************************
  *           TpSetWait    (NTDLL.@)
  */
 VOID WINAPI TpSetWait( TP_WAIT *wait, HANDLE handle, LARGE_INTEGER *timeout )
