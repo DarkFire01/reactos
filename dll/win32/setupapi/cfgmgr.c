@@ -3488,6 +3488,83 @@ CM_Get_DevNode_Registry_PropertyW(
 
 
 /***********************************************************************
+ * CM_Get_DevNode_PropertyW [SETUPAPI.@]
+ *
+ * The unified property store is a superset of the old registry properties,
+ * and for the device fmtid the two are the same set: property id N there is
+ * CM_DRP_ N-1 here, which is how Windows lays them out too. So the keys in
+ * that fmtid are answered from the registry property they already are, and
+ * a key from any other fmtid is reported as not present rather than guessed
+ * at - there is no store behind those here.
+ */
+CONFIGRET
+WINAPI
+CM_Get_DevNode_PropertyW(
+    _In_ DEVINST dnDevInst,
+    _In_ CONST DEVPROPKEY *PropertyKey,
+    _Out_ DEVPROPTYPE *PropertyType,
+    _Out_writes_bytes_opt_(*PropertyBufferSize) PBYTE PropertyBuffer,
+    _Inout_ PULONG PropertyBufferSize,
+    _In_ ULONG ulFlags)
+{
+    /* {a45c254e-df1c-4efd-8020-67d146a850e0}, the device properties */
+    static const GUID DevicePropertyFmtid =
+        { 0xa45c254e, 0xdf1c, 0x4efd,
+          { 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0 } };
+
+    ULONG ulProperty, ulRegDataType = REG_NONE;
+    CONFIGRET ret;
+
+    TRACE("CM_Get_DevNode_PropertyW(%lx %p %p %p %p %lx)\n",
+          dnDevInst, PropertyKey, PropertyType, PropertyBuffer,
+          PropertyBufferSize, ulFlags);
+
+    if (PropertyKey == NULL || PropertyType == NULL || PropertyBufferSize == NULL)
+        return CR_INVALID_POINTER;
+
+    if (ulFlags != 0)
+        return CR_INVALID_FLAG;
+
+    if (!IsEqualGUID(&PropertyKey->fmtid, &DevicePropertyFmtid) ||
+        PropertyKey->pid < 2 ||
+        PropertyKey->pid > CM_DRP_ENUMERATOR_NAME + 1)
+    {
+        return CR_NO_SUCH_VALUE;
+    }
+
+    ulProperty = PropertyKey->pid - 1;
+
+    ret = CM_Get_DevNode_Registry_PropertyW(dnDevInst,
+                                            ulProperty,
+                                            &ulRegDataType,
+                                            PropertyBuffer,
+                                            PropertyBufferSize,
+                                            0);
+    if (ret != CR_SUCCESS && ret != CR_BUFFER_SMALL)
+        return ret;
+
+    /* Report the shape the caller expects, not the registry's name for it */
+    switch (ulRegDataType)
+    {
+        case REG_SZ:
+            *PropertyType = DEVPROP_TYPE_STRING;
+            break;
+        case REG_MULTI_SZ:
+            *PropertyType = DEVPROP_TYPE_STRING_LIST;
+            break;
+        case REG_DWORD:
+            *PropertyType = DEVPROP_TYPE_UINT32;
+            break;
+        default:
+            *PropertyType = DEVPROP_TYPE_BINARY;
+            break;
+    }
+
+    return ret;
+}
+
+
+/***********************************************************************
  * CM_Get_DevNode_Registry_Property_ExA [SETUPAPI.@]
  */
 CONFIGRET
