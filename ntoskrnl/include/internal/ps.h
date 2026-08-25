@@ -59,6 +59,29 @@
 #endif
 
 //
+// The access a process or thread object can hold
+//
+// ntoskrnl is compiled against NT 5.2, where PROCESS_ALL_ACCESS is 0x1F0FFF
+// and THREAD_ALL_ACCESS is 0x1F03FF, so both stop below the rights Vista
+// added. Windows Vista and later use 0x1FFFFF for each, and the difference
+// is not cosmetic: a right left out of an object type's ValidAccessMask
+// cannot be held at all, because ObpIncrementHandleCount and
+// ObDuplicateObject mask what the caller asks for against it. Nor can a
+// duplicate be granted more access than the handle it is duplicated from,
+// so the mask the kernel hands itself has to carry the right too.
+//
+// Callers ask for the Vista rights on their own, because they are the least
+// they need - Chromium duplicates a process handle down to
+// PROCESS_QUERY_LIMITED_INFORMATION before reading process times, and reads
+// a refusal there as proof the handle was invalid.
+//
+// Use the NT 6 masks for what the kernel grants, rather than move the whole
+// of ntoskrnl to a later NTDDI.
+//
+#define PSP_PROCESS_ALL_ACCESS  (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0xFFFF)
+#define PSP_THREAD_ALL_ACCESS   (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0xFFFF)
+
+//
 // Maximum Count of Notification Routines
 //
 #define PSP_MAX_CREATE_THREAD_NOTIFY            8
