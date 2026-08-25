@@ -1187,3 +1187,54 @@ NetWkstaUserSetInfo(
 }
 
 /* EOF */
+
+
+/*
+ * Azure Active Directory join. This machine can be joined to a domain, which
+ * NetGetJoinInformation above answers for, but there is nothing here that
+ * joins it to a directory in the cloud and no registration to read back.
+ *
+ * "Not joined" is a real state with a documented shape, and a caller asks
+ * this exactly to find out whether to take its work-account path or its
+ * ordinary one. Answering that it is not joined sends it down the right one;
+ * leaving the entry point out only stops it loading.
+ */
+
+typedef enum
+{
+    DSREG_UNKNOWN_JOIN = 0,
+    DSREG_DEVICE_JOIN = 1,
+    DSREG_WORKPLACE_JOIN = 2
+} BASE_DSREG_JOIN_TYPE;
+
+NET_API_STATUS
+WINAPI
+NetGetAadJoinInformation(
+    _In_opt_ LPCWSTR pcszTenantId,
+    _Out_ PVOID *ppJoinInfo)
+{
+    TRACE("NetGetAadJoinInformation(%s %p)\n",
+          debugstr_w(pcszTenantId), ppJoinInfo);
+
+    if (ppJoinInfo == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    *ppJoinInfo = NULL;
+
+    /* Windows answers a machine that is not joined with this, and a caller
+       that handles the state at all handles this value */
+    return ERROR_NOT_FOUND;
+}
+
+VOID
+WINAPI
+NetFreeAadJoinInformation(
+    _In_opt_ PVOID pJoinInfo)
+{
+    TRACE("NetFreeAadJoinInformation(%p)\n", pJoinInfo);
+
+    /* Nothing was ever handed out for this to release. A caller is entitled
+       to call it with what it was given, which is always NULL here. */
+    if (pJoinInfo != NULL)
+        ERR("Asked to free join information we never handed out\n");
+}
