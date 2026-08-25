@@ -459,6 +459,37 @@ typedef struct _PROCESS_MITIGATION_REDIRECTION_TRUST_POLICY
     } DUMMYUNIONNAME;
 } PROCESS_MITIGATION_REDIRECTION_TRUST_POLICY, *PPROCESS_MITIGATION_REDIRECTION_TRUST_POLICY;
 
+#define PROCESS_POWER_THROTTLING_CURRENT_VERSION 1
+#define PROCESS_POWER_THROTTLING_EXECUTION_SPEED 0x1
+#define PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION 0x4
+
+typedef struct _PROCESS_POWER_THROTTLING_STATE
+{
+    ULONG Version;
+    ULONG ControlMask;
+    ULONG StateMask;
+} PROCESS_POWER_THROTTLING_STATE, *PPROCESS_POWER_THROTTLING_STATE;
+
+#define MEMORY_PRIORITY_LOWEST       0
+#define MEMORY_PRIORITY_VERY_LOW     1
+#define MEMORY_PRIORITY_LOW          2
+#define MEMORY_PRIORITY_MEDIUM       3
+#define MEMORY_PRIORITY_BELOW_NORMAL 4
+#define MEMORY_PRIORITY_NORMAL       5
+
+typedef struct _MEMORY_PRIORITY_INFORMATION
+{
+    ULONG MemoryPriority;
+} MEMORY_PRIORITY_INFORMATION, *PMEMORY_PRIORITY_INFORMATION;
+
+typedef struct _APP_MEMORY_INFORMATION
+{
+    ULONG64 AvailableCommit;
+    ULONG64 PrivateCommitUsage;
+    ULONG64 PeakPrivateCommitUsage;
+    ULONG64 TotalCommitUsage;
+} APP_MEMORY_INFORMATION, *PAPP_MEMORY_INFORMATION;
+
 typedef enum _THREAD_INFORMATION_CLASS
 {
     ThreadMemoryPriority,
@@ -494,6 +525,22 @@ SetThreadInformation(
   _In_ THREAD_INFORMATION_CLASS ThreadInformationClass,
   _In_reads_bytes_(ThreadInformationSize) LPVOID ThreadInformation,
   _In_ DWORD ThreadInformationSize);
+
+BOOL
+WINAPI
+GetProcessInformation(
+  _In_ HANDLE hProcess,
+  _In_ PROCESS_INFORMATION_CLASS ProcessInformationClass,
+  _Out_writes_bytes_(ProcessInformationSize) LPVOID ProcessInformation,
+  _In_ DWORD ProcessInformationSize);
+
+BOOL
+WINAPI
+SetProcessInformation(
+  _In_ HANDLE hProcess,
+  _In_ PROCESS_INFORMATION_CLASS ProcessInformationClass,
+  _In_reads_bytes_(ProcessInformationSize) LPVOID ProcessInformation,
+  _In_ DWORD ProcessInformationSize);
 
 BOOL
 WINAPI
