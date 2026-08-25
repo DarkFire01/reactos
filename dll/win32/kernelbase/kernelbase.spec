@@ -274,7 +274,7 @@
 @ stdcall -stub -version=0x602+ DisablePredefinedHandleTableInternal(long)
 @ stdcall DisableThreadLibraryCalls(long)
 @ stdcall DisassociateCurrentThreadFromCallback(ptr) ntdll.TpDisassociateCallback
-@ stdcall -stub -version=0x603+ DiscardVirtualMemory(ptr long)
+@ stdcall -version=0x603+ DiscardVirtualMemory(ptr long)
 @ stdcall DisconnectNamedPipe(long)
 @ stdcall -version=0x603+ DnsHostnameToComputerNameExW(wstr ptr ptr)
 # @ stub DsBindWithSpnExW
@@ -1205,7 +1205,7 @@
 @ stdcall PerfStopProvider(long)
 # @ stub PoolPerAppKeyStateInternal
 @ stdcall PostQueuedCompletionStatus(long long ptr ptr)
-@ stdcall -stub -version=0x602+ PrefetchVirtualMemory(ptr ptr ptr long)
+@ stdcall -version=0x602+ PrefetchVirtualMemory(long long ptr long)
 @ stdcall PrivCopyFileExW(wstr wstr ptr ptr long long) 
 @ stdcall PrivilegeCheck(ptr ptr ptr)
 @ stdcall PrivilegedServiceAuditAlarmW(wstr wstr long ptr long)

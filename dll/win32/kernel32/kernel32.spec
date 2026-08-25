@@ -1041,7 +1041,7 @@
 @ stdcall -version=0x601+ PowerClearRequest(long long)
 @ stdcall -version=0x601+ PowerCreateRequest(ptr)
 @ stdcall -version=0x601+ PowerSetRequest(long long)
-@ stdcall -version=0x602+ PrefetchVirtualMemory(ptr ptr ptr long)
+@ stdcall -version=0x602+ PrefetchVirtualMemory(long long ptr long)
 @ stdcall PrepareTape(ptr long long)
 @ stdcall PrivCopyFileExW(wstr wstr ptr ptr long long)
 @ stdcall PrivMoveFileIdentityW(long long long)
