@@ -125,8 +125,14 @@ BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, void *reserved )
             .read_callback = (UINT_PTR)_read_callback,
         };
 
-        if (!LoadFFmpeg()) return FALSE;
-
+        /* ffmpeg is optional at load time. Every wrapper in reactos.c checks
+           its module handle and fails on its own when it is absent, so a
+           process that never asks for a codec is unaffected by not having it.
+           Failing DllMain instead refuses the whole module, and takes down
+           everything that imports it: that is what made registering the Media
+           Foundation DLLs fail during ReactOS setup with "a dynamic link
+           library (DLL) initialization routine failed". */
+        LoadFFmpeg();
 #else
         struct process_attach_params params =
         {
