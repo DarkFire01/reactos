@@ -17,6 +17,7 @@ add_definitions(
 spec2def(${KERNELBASE_NAME}.dll kernelbase.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
+    client/ProcessInformation.c
     client/ProcessMitigation.c
     client/ThreadInformation.c
     client/procattr.c
