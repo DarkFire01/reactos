@@ -301,7 +301,7 @@
 @ stdcall -stub EventWriteEx(int64 ptr int64 long ptr ptr long ptr)
 # @ stub EventWriteStartScenario
 @ stdcall EventWriteString(int64 long int64 ptr) ntdll.EtwEventWriteString
-@ stdcall EventWriteTransfer(int64 ptr ptr ptr long ptr) ntdll.EtwEventWriteTransfer
+@ stdcall EventWriteTransfer(int64 ptr ptr ptr long ptr)
 @ stdcall FileEncryptionStatusA(str ptr)
 @ stdcall FileEncryptionStatusW(wstr ptr)
 @ stdcall -import FindFirstFreeAce(ptr ptr)
