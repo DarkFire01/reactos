@@ -1189,6 +1189,7 @@
 @ stdcall -arch=x86_64,arm64 RtlUnwindEx(ptr ptr ptr ptr ptr ptr) ntdll.RtlUnwindEx
 @ stdcall -arch=x86_64,arm64 RtlVirtualUnwind(long int64 int64 ptr ptr ptr ptr ptr) ntdll.RtlVirtualUnwind
 @ stdcall RtlZeroMemory(ptr long) ntdll.RtlZeroMemory
+@ stdcall SetThreadpoolTimerEx(ptr ptr long long) ntdll_vista.TpSetTimerEx
 @ stdcall SHExpandEnvironmentStringsA(str ptr long) ExpandEnvironmentStringsA
 @ stdcall SHExpandEnvironmentStringsW(wstr ptr long) ExpandEnvironmentStringsW
 @ stdcall SHLoadIndirectString(wstr ptr long ptr)
