@@ -1089,3 +1089,26 @@ Quickie:
     SetLastError(ErrorCode);
     return ErrorCode;
 }
+
+/*
+ * @implemented
+ */
+INT
+WSAAPI
+GetAddrInfoExCancel(IN LPHANDLE lpHandle)
+{
+    /*
+     * This cancels a lookup that GetAddrInfoEx started asynchronously and
+     * handed back a handle for. Nothing here starts one - GetAddrInfoExA and
+     * GetAddrInfoExW are not implemented - so no handle this could be given
+     * names a lookup in flight, and saying so is the whole of the answer.
+     */
+    if (lpHandle == NULL)
+    {
+        SetLastError(WSAEFAULT);
+        return WSAEFAULT;
+    }
+
+    SetLastError(WSA_INVALID_HANDLE);
+    return WSA_INVALID_HANDLE;
+}
