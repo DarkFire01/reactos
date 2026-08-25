@@ -255,6 +255,13 @@ PVOID
 WINAPI
 BasepIsRealtimeAllowed(IN BOOLEAN Keep);
 
+PVOID
+WINAPI
+BasepFindProcThreadAttribute(
+    _In_opt_ LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList,
+    _In_ DWORD_PTR Attribute,
+    _Out_opt_ PSIZE_T pSize);
+
 VOID
 WINAPI
 BasepAnsiStringToHeapUnicodeString(IN LPCSTR AnsiString,
