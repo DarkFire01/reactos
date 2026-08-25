@@ -2911,6 +2911,29 @@ WSPIoctl(IN  SOCKET Handle,
             Ret = NO_ERROR;
             break;
         }
+        case SIO_BASE_HANDLE:
+        case SIO_BSP_HANDLE:
+        case SIO_BSP_HANDLE_SELECT:
+        case SIO_BSP_HANDLE_POLL:
+            /* These ask what handle lies underneath this one. A layered
+             * provider would answer with the handle it was built on; this is
+             * the base provider, so the answer is the socket itself.
+             *
+             * Callers use this to reach past any layered providers before
+             * handing a socket to something that only understands base
+             * handles, and a failure here reads to them as a broken socket. */
+            if (!lpvOutBuffer || cbOutBuffer < sizeof(SOCKET))
+            {
+                Errno = WSAEFAULT;
+                break;
+            }
+
+            *((SOCKET *)lpvOutBuffer) = Handle;
+
+            cbRet = sizeof(SOCKET);
+            Errno = NO_ERROR;
+            Ret = NO_ERROR;
+            break;
         default:
             Errno = Socket->HelperData->WSHIoctl(Socket->HelperContext,
                                                  Handle,
