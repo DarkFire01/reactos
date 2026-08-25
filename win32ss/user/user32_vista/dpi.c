@@ -162,6 +162,30 @@ GetDpiForWindow(
 /*
  * @implemented
  */
+INT
+WINAPI
+GetSystemMetricsForDpi(
+    _In_ INT nIndex,
+    _In_ UINT dpi)
+{
+    /*
+     * The metric a caller wants is the one that would apply if the window
+     * were being drawn at the DPI it names. There is one DPI here, so every
+     * answer is the system one, and scaling it by a ratio that is always 1
+     * would only introduce rounding.
+     *
+     * This was a raising stub, which is worse than a wrong number: a caller
+     * asks for a border width or a scrollbar size while laying out a window
+     * and has no reason to expect an exception from it.
+     */
+    UNREFERENCED_PARAMETER(dpi);
+
+    return GetSystemMetrics(nIndex);
+}
+
+/*
+ * @implemented
+ */
 BOOL
 WINAPI
 IsProcessDPIAware(VOID)

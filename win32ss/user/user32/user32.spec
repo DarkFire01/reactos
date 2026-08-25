@@ -811,7 +811,7 @@
 @ stdcall -stub EvaluateProximityToPolygon(long ptr ptr ptr)
 @ stdcall -stub GetPointerDevice(ptr ptr)
 @ stdcall -stub GetPointerPenInfo(long ptr)
-@ stdcall -stub GetSystemMetricsForDpi(long long)
+@ stdcall GetSystemMetricsForDpi(long long)
 @ stdcall GetWindowDpiAwarenessContext(ptr)
 @ stdcall -stub GetDpiAwarenessContextForProcess(ptr)
 @ stdcall -stub GetWindowDpiHostingBehavior(ptr)
