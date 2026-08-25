@@ -2407,12 +2407,41 @@ ObDuplicateObject(IN PEPROCESS SourceProcess,
         /* We are. We need the security procedure to validate this */
         if (ObjectType->TypeInfo.SecurityProcedure == SeDefaultObjectMethod)
         {
-            /* Use our built-in access state */
-            PassedAccessState = &AccessState;
-            Status = SeCreateAccessState(&AccessState,
-                                         &AuxData,
-                                         TargetAccess,
-                                         &ObjectType->TypeInfo.GenericMapping);
+            PSECURITY_DESCRIPTOR SecurityDescriptor = NULL;
+            BOOLEAN SdAllocated = FALSE;
+
+            /*
+             * Access beyond what the source handle holds has to be granted by
+             * the object's own security. An object with no security descriptor
+             * has nothing to grant it with: ObCheckObjectAccess lets a caller
+             * through when there is no descriptor, which is right for opening
+             * an object but would hand out here whatever access was asked for.
+             * A handle would then gain rights it was never given, and the
+             * read-only view of a section could be widened back to a writable
+             * one by whoever it was handed to.
+             */
+            Status = ObGetObjectSecurity(SourceObject,
+                                         &SecurityDescriptor,
+                                         &SdAllocated);
+            if (NT_SUCCESS(Status))
+            {
+                if (SecurityDescriptor == NULL)
+                {
+                    Status = STATUS_ACCESS_DENIED;
+                }
+
+                ObReleaseObjectSecurity(SecurityDescriptor, SdAllocated);
+            }
+
+            if (NT_SUCCESS(Status))
+            {
+                /* Use our built-in access state */
+                PassedAccessState = &AccessState;
+                Status = SeCreateAccessState(&AccessState,
+                                             &AuxData,
+                                             TargetAccess,
+                                             &ObjectType->TypeInfo.GenericMapping);
+            }
         }
         else
         {
