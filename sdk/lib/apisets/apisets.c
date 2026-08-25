@@ -69,8 +69,18 @@ ApiSetResolveToHost(
         LONG result = RtlCompareUnicodeString(&Tmp, &g_Apisets[Index].Name, TRUE);
         if (result == 0)
         {
-            // Check if this version is included
-            if (g_Apisets[Index].dwOsVersions & ApisetVersion)
+            /* An apiset does not go away as Windows moves on: one that shipped
+             * in Windows 8 is still there in Windows 10. The table records the
+             * versions each set was actually seen in, which is not always every
+             * later one, so a set can be listed for 8 and 8.1 and nothing else
+             * while really being present in 10 as well.
+             *
+             * Accept an entry that appeared at or before the version being
+             * asked for. ApisetVersion is a single bit, so the bits below it
+             * are exactly the older versions. A set introduced later than the
+             * version being asked for still does not resolve, which is what
+             * makes a Win8 set correctly fail to load on Win7. */
+            if (g_Apisets[Index].dwOsVersions & (ApisetVersion | (ApisetVersion - 1)))
             {
                 // Return a static string (does not have to be freed)
                 *Resolved = TRUE;
