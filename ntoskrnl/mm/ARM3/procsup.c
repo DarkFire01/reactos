@@ -385,8 +385,6 @@ MmCreateKernelStack(IN BOOLEAN GuiStack,
     //
     BaseAddress = MiPteToAddress(StackPte + StackPtes + 1);
 
-    DbgPrint("## CREATE BaseAddress %p, PTE %p, PDE %p\n", BaseAddress, StackPte, MiAddressToPte(StackPte));;
-
     //
     // Select the right PTE address where we actually start committing pages
     //

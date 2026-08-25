@@ -1190,8 +1190,12 @@ FsRtlProcessFileLock(IN PFILE_LOCK FileLock,
                                           Irp,
                                           Context,
                                           FALSE);
-        /* FsRtlPrivateLock has _Must_inspect_result_. Just check this is consistent on debug builds */
-        NT_ASSERT(Result == NT_SUCCESS(IoStatusBlock.Status));
+        /* FsRtlPrivateLock has _Must_inspect_result_. Just check this is consistent on debug builds.
+         * A lock that could not be taken at once and was queued instead reports
+         * STATUS_PENDING, which is a success code, and answers FALSE because it
+         * did not grant anything yet; the two disagree there by design. */
+        NT_ASSERT((IoStatusBlock.Status == STATUS_PENDING) ||
+                  (Result == NT_SUCCESS(IoStatusBlock.Status)));
         (void)Result;
         return IoStatusBlock.Status;
     }
