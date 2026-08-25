@@ -39,6 +39,65 @@ PFromRva(RVA rva)
 }
 
 
+/**** Say what could not be resolved ****
+
+ A delay load that fails leaves nothing behind to look at: the thunk jumps to
+ whatever it was handed, so an unresolved import reads as a call to address
+ zero, a long way from the name that was actually missing. Name it here, on
+ the debug port, so the module and the function are in the log.
+
+ Only kernel32 is used, which the helper already needs for LoadLibraryA. ****/
+
+static
+void
+DelayLoadReportFailure(
+    LPCSTR Dll,
+    const DelayLoadProc *Proc,
+    DWORD Error)
+{
+    CHAR Buffer[256];
+    CHAR Number[16];
+    DWORD Value;
+    int i;
+
+    lstrcpynA(Buffer, "delayimp: ", sizeof(Buffer));
+    lstrcatA(Buffer, Dll ? Dll : "<no name>");
+    lstrcatA(Buffer, "!");
+
+    if (Proc->fImportByName)
+    {
+        lstrcatA(Buffer, Proc->szProcName ? Proc->szProcName : "<no name>");
+    }
+    else
+    {
+        lstrcatA(Buffer, "#");
+        Value = Proc->dwOrdinal;
+        i = sizeof(Number) - 1;
+        Number[i] = '\0';
+        do
+        {
+            Number[--i] = (CHAR)('0' + (Value % 10));
+            Value /= 10;
+        } while (Value != 0 && i > 0);
+        lstrcatA(Buffer, &Number[i]);
+    }
+
+    lstrcatA(Buffer, " could not be resolved, error ");
+
+    Value = Error;
+    i = sizeof(Number) - 1;
+    Number[i] = '\0';
+    do
+    {
+        Number[--i] = (CHAR)('0' + (Value % 10));
+        Value /= 10;
+    } while (Value != 0 && i > 0);
+    lstrcatA(Buffer, &Number[i]);
+    lstrcatA(Buffer, "\n");
+
+    OutputDebugStringA(Buffer);
+}
+
 /**** load helper ****/
 
 FARPROC WINAPI
@@ -102,6 +161,8 @@ __delayLoadHelper2(PCImgDelayDescr pidd, PImgThunkData pIATEntry)
                 if (dli.hmodCur == NULL)
                 {
                     ULONG_PTR args[] = { (ULONG_PTR)&dli };
+
+                    DelayLoadReportFailure(dli.szDll, &dli.dlp, dli.dwLastError);
                     RaiseException(VcppException(ERROR_SEVERITY_ERROR, ERROR_MOD_NOT_FOUND), 0, 1, args);
 
                     /* If we survive the exception, we are expected to use pfnCur directly.. */
@@ -129,10 +190,18 @@ __delayLoadHelper2(PCImgDelayDescr pidd, PImgThunkData pIATEntry)
             if (dli.pfnCur == NULL)
             {
                 ULONG_PTR args[] = { (ULONG_PTR)&dli };
-                RaiseException(VcppException(ERROR_SEVERITY_ERROR, ERROR_PROC_NOT_FOUND), 0, 1, args);
-            }
 
-            //return NULL;
+                DelayLoadReportFailure(dli.szDll, &dli.dlp, dli.dwLastError);
+                RaiseException(VcppException(ERROR_SEVERITY_ERROR, ERROR_PROC_NOT_FOUND), 0, 1, args);
+
+                /* Surviving the exception does not make the import resolvable.
+                   Leave the thunk pointing at this helper rather than writing
+                   the NULL into it: a later call then comes back through here
+                   and raises again, where a patched-in NULL would instead be
+                   called as a function and fault at address zero, naming
+                   nothing. */
+                return dli.pfnCur;
+            }
         }
     }
 
