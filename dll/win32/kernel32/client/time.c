@@ -603,3 +603,24 @@ QueryUnbiasedInterruptTime(OUT PULONGLONG UnbiasedTime)
     return TRUE;
 }
 
+/*
+ * @implemented
+ */
+VOID
+WINAPI
+QueryUnbiasedInterruptTimePrecise(OUT PULONGLONG UnbiasedTime)
+{
+    LARGE_INTEGER InterruptTime;
+
+    if (UnbiasedTime == NULL)
+        return;
+
+    /* The precise form is the same clock read against the hardware timer
+       rather than the last tick. There is no finer source to reach for here
+       than the one the ordinary form already uses, so the two agree, which
+       is allowed: this is documented as being at least as precise, not as
+       being of a stated resolution. */
+    InterruptTime = KiReadSystemTime(&SharedUserData->InterruptTime);
+    *UnbiasedTime = (ULONGLONG)InterruptTime.QuadPart;
+}
+
