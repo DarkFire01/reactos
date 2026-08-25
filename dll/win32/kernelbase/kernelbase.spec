@@ -104,7 +104,7 @@
 @ stub BemFreeReference
 # @ stub CLOSE_LOCAL_HANDLE_INTERNAL
 @ stdcall CallNamedPipeW(wstr ptr long ptr long ptr long)
-@ stdcall CallbackMayRunLong(ptr)
+@ stdcall -version=0x600+ CallbackMayRunLong(ptr)
 @ stdcall CancelIo(long)
 @ stdcall CancelIoEx(ptr ptr)
 @ stdcall -stub CancelSynchronousIo(long)
