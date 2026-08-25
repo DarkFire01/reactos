@@ -647,6 +647,7 @@
 @ stdcall GetThreadContext(long ptr)
 @ stdcall -stub -version=0x600+ GetThreadErrorMode()
 @ stdcall -version=0x601+ GetThreadGroupAffinity(ptr ptr)
+@ stdcall -version=0x602+ GetThreadInformation(long long ptr long)
 @ stdcall GetThreadIOPendingFlag(long ptr)
 @ stdcall GetThreadId(ptr)
 @ stdcall -version=0x601+ GetThreadIdealProcessorEx(ptr ptr)
@@ -1153,6 +1154,7 @@
 @ stdcall -version=0x600+ SetThreadpoolThreadMaximum(ptr long) ntdll.TpSetPoolMaxThreads
 @ stdcall -version=0x600+ SetThreadpoolThreadMinimum(ptr long) ntdll.TpSetPoolMinThreads
 @ stdcall -version=0x600+ SetThreadpoolTimer(ptr ptr long long) ntdll.TpSetTimer
+@ stdcall -version=0x602+ SetThreadInformation(long long ptr long)
 @ stdcall -version=0x602+ SetThreadpoolTimerEx(ptr ptr long long) ntdll.TpSetTimerEx
 @ stdcall -version=0x600+ SetThreadpoolWait(ptr long ptr) ntdll.TpSetWait
 @ stdcall SetTimeZoneInformation(ptr)

@@ -16,6 +16,7 @@ list(APPEND SOURCE
     GetTickCount64.c
     InitOnce.c
     SetFileInformationByHandle.c
+    ThreadInformation.c
     sync.c
     ThreadDescription.c
     threadpool.c
