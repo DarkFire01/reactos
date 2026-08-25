@@ -19,6 +19,38 @@ extern "C" {
 #include <ntddndis.h>
 #include <ifdef.h>
 
+NETIOAPI_API
+ConvertInterfaceIndexToLuid(
+  _In_ NET_IFINDEX InterfaceIndex,
+  _Out_ PNET_LUID InterfaceLuid);
+
+NETIOAPI_API
+ConvertInterfaceLuidToIndex(
+  _In_ const NET_LUID *InterfaceLuid,
+  _Out_ PNET_IFINDEX InterfaceIndex);
+
+NETIOAPI_API
+ConvertInterfaceLuidToNameA(
+  _In_ const NET_LUID *InterfaceLuid,
+  _Out_writes_(Length) PSTR InterfaceName,
+  _In_ SIZE_T Length);
+
+NETIOAPI_API
+ConvertInterfaceLuidToNameW(
+  _In_ const NET_LUID *InterfaceLuid,
+  _Out_writes_(Length) PWSTR InterfaceName,
+  _In_ SIZE_T Length);
+
+NETIOAPI_API
+ConvertInterfaceNameToLuidA(
+  _In_ const CHAR *InterfaceName,
+  _Out_ PNET_LUID InterfaceLuid);
+
+NETIOAPI_API
+ConvertInterfaceNameToLuidW(
+  _In_ const WCHAR *InterfaceName,
+  _Out_ PNET_LUID InterfaceLuid);
+
 typedef struct _MIB_IF_ROW2 {
     NET_LUID InterfaceLuid;
     NET_IFINDEX InterfaceIndex;
