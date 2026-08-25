@@ -675,6 +675,27 @@ GetCurrentPackageFamilyName(
 
 /**
  * @brief
+ * Gets the package full name of the calling process.
+ *
+ * @return
+ * APPMODEL_ERROR_NO_PACKAGE, since no process here runs with package identity.
+ */
+LONG
+WINAPI
+GetCurrentPackageFullName(
+    _Inout_ UINT32 *packageFullNameLength,
+    _Out_writes_opt_(*packageFullNameLength) PWSTR packageFullName)
+{
+    UNREFERENCED_PARAMETER(packageFullName);
+
+    if (!packageFullNameLength)
+        return ERROR_INVALID_PARAMETER;
+
+    return APPMODEL_ERROR_NO_PACKAGE;
+}
+
+/**
+ * @brief
  * Looks up the package identity of a process.
  *
  * @return
@@ -764,6 +785,29 @@ GetPackageFamilyName(
     UNREFERENCED_PARAMETER(packageFamilyName);
 
     if (!packageFamilyNameLength)
+        return ERROR_INVALID_PARAMETER;
+
+    return BasepQueryProcessPackage(hProcess);
+}
+
+/**
+ * @brief
+ * Gets the package full name of a process.
+ *
+ * @return
+ * APPMODEL_ERROR_NO_PACKAGE for any valid process, since no process here runs
+ * with package identity.
+ */
+LONG
+WINAPI
+GetPackageFullName(
+    _In_ HANDLE hProcess,
+    _Inout_ UINT32 *packageFullNameLength,
+    _Out_writes_opt_(*packageFullNameLength) PWSTR packageFullName)
+{
+    UNREFERENCED_PARAMETER(packageFullName);
+
+    if (!packageFullNameLength)
         return ERROR_INVALID_PARAMETER;
 
     return BasepQueryProcessPackage(hProcess);
