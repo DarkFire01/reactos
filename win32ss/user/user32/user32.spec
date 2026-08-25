@@ -469,6 +469,7 @@
 @ stdcall IsWindowEnabled(long)
 @ stdcall IsWindowInDestroy(long)
 @ stdcall -version=0x600+ IsWindowRedirectedForPrint(long)
+@ stdcall -version=0xA00+ IsWindowArranged(long)
 @ stdcall IsWindowUnicode(long)
 @ stdcall IsWindowVisible(long)
 @ stdcall -stub IsWow64Message()

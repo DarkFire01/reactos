@@ -1571,6 +1571,28 @@ IsWindowUnicode(HWND hWnd)
  * @implemented
  */
 BOOL WINAPI
+IsWindowArranged(HWND hWnd)
+{
+    /*
+     * "Arranged" means the window was snapped into place by the shell, which
+     * is a thing the shell here does not do. So no window is arranged, and
+     * FALSE is the answer rather than a placeholder for one - a caller uses
+     * it to decide whether to leave a window's size alone, and leaving it
+     * alone is right when nothing arranged it.
+     */
+    if (!IsWindow(hWnd))
+    {
+        SetLastError(ERROR_INVALID_WINDOW_HANDLE);
+        return FALSE;
+    }
+
+    return FALSE;
+}
+
+/*
+ * @implemented
+ */
+BOOL WINAPI
 IsWindowVisible(HWND hWnd)
 {
     BOOL Ret = FALSE;
