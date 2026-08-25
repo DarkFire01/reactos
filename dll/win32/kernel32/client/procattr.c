@@ -222,6 +222,40 @@ UpdateProcThreadAttribute(
 }
 
 /*
+ * Find one attribute in a list a caller handed to CreateProcess.
+ *
+ * The list is opaque to the caller but not to us, so process creation can ask
+ * for the attributes it is able to honour and leave the rest alone. Returns
+ * NULL when the attribute is not in the list.
+ */
+PVOID
+WINAPI
+BasepFindProcThreadAttribute(
+    _In_opt_ LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList,
+    _In_ DWORD_PTR Attribute,
+    _Out_opt_ PSIZE_T pSize)
+{
+    struct _PROC_THREAD_ATTRIBUTE_LIST *List = (PVOID)lpAttributeList;
+    DWORD i;
+
+    if (List == NULL)
+        return NULL;
+
+    for (i = 0; i < List->count; i++)
+    {
+        if (List->attrs[i].attr != Attribute)
+            continue;
+
+        if (pSize != NULL)
+            *pSize = List->attrs[i].size;
+
+        return List->attrs[i].value;
+    }
+
+    return NULL;
+}
+
+/*
  * @implemented
  */
 VOID

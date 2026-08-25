@@ -15,6 +15,11 @@
 #define NDEBUG
 #include <debug.h>
 
+/* kernel32 is built targeting NT 5.2, where winbase.h does not define this */
+#ifndef EXTENDED_STARTUPINFO_PRESENT
+#define EXTENDED_STARTUPINFO_PRESENT 0x00080000
+#endif
+
 /* GLOBALS *******************************************************************/
 
 UNICODE_STRING BaseUnicodeCommandLine;
@@ -2187,6 +2192,7 @@ CreateProcessInternalW(IN HANDLE hUserToken,
     PVOID TibValue;
     PIMAGE_NT_HEADERS NtHeaders;
     STARTUPINFOW StartupInfo;
+    LPPROC_THREAD_ATTRIBUTE_LIST AttributeList = NULL;
     PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
     UNICODE_STRING DebuggerString;
     BOOL Result;
@@ -2477,6 +2483,18 @@ CreateProcessInternalW(IN HANDLE hUserToken,
 
     /* Make a copy of the caller's startup info since we'll modify it */
     StartupInfo = *lpStartupInfo;
+
+    /*
+     * An extended startup info carries an attribute list after the ordinary
+     * one. Only take it when the caller both asked for it and gave us a
+     * structure big enough to hold it - a caller that sets the flag but
+     * passes a plain STARTUPINFOW would otherwise have us read past its end.
+     */
+    if ((dwCreationFlags & EXTENDED_STARTUPINFO_PRESENT) &&
+        (lpStartupInfo->cb >= sizeof(STARTUPINFOEXW)))
+    {
+        AttributeList = ((LPSTARTUPINFOEXW)lpStartupInfo)->lpAttributeList;
+    }
 
     /* Check if private data is being sent on the same channel as std handles */
     if ((StartupInfo.dwFlags & STARTF_USESTDHANDLES) &&
@@ -3799,6 +3817,45 @@ StartScan:
         BaseSetLastNTError(Status);
         Result = FALSE;
         goto Quickie;
+    }
+
+    /*
+     * Put the process into the jobs the caller named, while it still has no
+     * thread to run.
+     *
+     * This is the only way a caller can ask for it any more: a sandbox used to
+     * create the target suspended and call AssignProcessToJobObject itself,
+     * but that leaves a window where the process exists outside the job, so
+     * Chromium and others now state the job at creation and nothing else.
+     * Ignoring the attribute leaves the target in no job at all, which is not
+     * a weaker sandbox but a broken one - the broker watches the job's
+     * completion port to learn that its target started, and never hears
+     * anything.
+     */
+    if (dwCreationFlags & EXTENDED_STARTUPINFO_PRESENT)
+    {
+        SIZE_T JobListSize = 0;
+        PHANDLE JobList = BasepFindProcThreadAttribute(AttributeList,
+                                                       PROC_THREAD_ATTRIBUTE_JOB_LIST,
+                                                       &JobListSize);
+
+        if (JobList != NULL)
+        {
+            SIZE_T i, JobCount = JobListSize / sizeof(HANDLE);
+
+            for (i = 0; i < JobCount; i++)
+            {
+                Status = NtAssignProcessToJobObject(JobList[i], ProcessHandle);
+                if (!NT_SUCCESS(Status))
+                {
+                    DPRINT1("Failed to assign the new process to job %p: %lx\n",
+                            JobList[i], Status);
+                    BaseSetLastNTError(Status);
+                    Result = FALSE;
+                    goto Quickie;
+                }
+            }
+        }
     }
 
     /* Check if there is a priority class to set */
