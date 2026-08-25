@@ -17,6 +17,7 @@ add_definitions(
 spec2def(${KERNELBASE_NAME}.dll kernelbase.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
+    client/ThreadInformation.c
     client/procattr.c
     client/SetFileInformationByHandle.c
     client/XState.c

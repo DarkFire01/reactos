@@ -757,7 +757,7 @@
 @ stdcall GetThreadIOPendingFlag(long ptr)
 @ stdcall GetThreadId(ptr)
 @ stdcall -version=0x601+ GetThreadIdealProcessorEx(ptr ptr)
-# @ stub GetThreadInformation
+@ stdcall GetThreadInformation(long long ptr long)
 @ stdcall GetThreadLocale()
 @ stdcall GetThreadPreferredUILanguages(long ptr ptr ptr)
 @ stdcall GetThreadPriority(long)
