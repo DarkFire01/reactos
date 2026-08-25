@@ -2966,6 +2966,27 @@ SetFirmwareEnvironmentVariableW(
 
 #if (_WIN32_WINNT >= 0x0602)
 
+typedef struct _WIN32_MEMORY_RANGE_ENTRY
+{
+    PVOID VirtualAddress;
+    SIZE_T NumberOfBytes;
+} WIN32_MEMORY_RANGE_ENTRY, *PWIN32_MEMORY_RANGE_ENTRY;
+
+BOOL
+WINAPI
+PrefetchVirtualMemory(
+  _In_ HANDLE hProcess,
+  _In_ ULONG_PTR NumberOfEntries,
+  _In_reads_(NumberOfEntries) PWIN32_MEMORY_RANGE_ENTRY VirtualAddresses,
+  _In_ ULONG Flags);
+
+DWORD
+WINAPI
+DiscardVirtualMemory(
+  _In_ PVOID VirtualAddress,
+  _In_ SIZE_T Size);
+
+
 _Success_(return > 0)
 WINBASEAPI
 DWORD

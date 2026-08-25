@@ -214,6 +214,7 @@
 @ stdcall DisableThreadLibraryCalls(ptr)
 @ stub -version=0x600+ DisassociateCurrentThreadFromCallback
 @ stdcall DisconnectNamedPipe(long)
+@ stdcall -version=0x603+ DiscardVirtualMemory(ptr long)
 @ stdcall DnsHostnameToComputerNameA(str ptr ptr)
 @ stdcall DnsHostnameToComputerNameW(wstr ptr ptr)
 @ stdcall DosDateTimeToFileTime(long long ptr)
@@ -901,6 +902,7 @@
 @ stdcall -version=0x601+ PowerCreateRequest(ptr)
 @ stdcall -version=0x601+ PowerSetRequest(long long)
 @ stdcall PostQueuedCompletionStatus(long long ptr ptr)
+@ stdcall -version=0x602+ PrefetchVirtualMemory(long long ptr long)
 @ stdcall PrepareTape(ptr long long)
 @ stdcall PrivCopyFileExW(wstr wstr ptr ptr long long)
 @ stdcall PrivMoveFileIdentityW(long long long)
