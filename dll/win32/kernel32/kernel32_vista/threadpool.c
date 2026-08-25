@@ -11,6 +11,7 @@ extern NTSTATUS WINAPI TpAllocCleanupGroup(TP_CLEANUP_GROUP** Group);
 extern NTSTATUS WINAPI TpAllocWait(TP_WAIT** out, PTP_WAIT_CALLBACK callback, PVOID userdata, TP_CALLBACK_ENVIRON* environment);
 extern NTSTATUS WINAPI TpAllocTimer(TP_TIMER** out, PTP_TIMER_CALLBACK callback, PVOID userdata, TP_CALLBACK_ENVIRON* environment);
 extern NTSTATUS WINAPI TpAllocPool(TP_POOL** out,PVOID reserved);
+extern NTSTATUS WINAPI TpCallbackMayRunLong(TP_CALLBACK_INSTANCE *instance);
 extern NTSTATUS WINAPI TpAllocIoCompletion(TP_IO **out, HANDLE file, PTP_IO_CALLBACK callback,
                                      void *userdata, TP_CALLBACK_ENVIRON *environment);
 
@@ -140,4 +141,24 @@ PTP_POOL WINAPI DECLSPEC_HOTPATCH CreateThreadpool(void *reserved)
         return NULL;
     }
     return pool;
+}
+
+/***********************************************************************
+ *           CallbackMayRunLong   (kernelbase.@)
+ *
+ * The native call answers with a status, where this one answers with a
+ * BOOL - and STATUS_SUCCESS is zero, so the two cannot be forwarded onto
+ * one another.
+ */
+BOOL WINAPI DECLSPEC_HOTPATCH CallbackMayRunLong( PTP_CALLBACK_INSTANCE instance )
+{
+    NTSTATUS status = TpCallbackMayRunLong( instance );
+
+    if (!NT_SUCCESS(status))
+    {
+        SetLastError(RtlNtStatusToDosError(status));
+        return FALSE;
+    }
+
+    return TRUE;
 }
