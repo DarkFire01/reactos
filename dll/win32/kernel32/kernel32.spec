@@ -927,6 +927,7 @@
 @ stdcall QueryPerformanceCounter(ptr)
 @ stdcall QueryPerformanceFrequency(ptr)
 @ stdcall -version=0x601+ QueryUnbiasedInterruptTime(ptr)
+@ stdcall -version=0x602+ QueryUnbiasedInterruptTimePrecise(ptr)
 @ stub -version=0x600+ QueryProcessAffinityUpdateMode
 @ stdcall -version=0x600+ QueryProcessCycleTime(ptr ptr)
 @ stdcall -version=0x600+ QueryThreadCycleTime(ptr ptr)
