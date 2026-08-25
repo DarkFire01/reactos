@@ -188,6 +188,33 @@ typedef enum _THREAD_INFORMATION_CLASS
     ThreadInformationClassMax
 } THREAD_INFORMATION_CLASS;
 
+#define THREAD_POWER_THROTTLING_CURRENT_VERSION 1
+#define THREAD_POWER_THROTTLING_EXECUTION_SPEED 0x1
+#define THREAD_POWER_THROTTLING_VALID_FLAGS     THREAD_POWER_THROTTLING_EXECUTION_SPEED
+
+typedef struct _THREAD_POWER_THROTTLING_STATE
+{
+    ULONG Version;
+    ULONG ControlMask;
+    ULONG StateMask;
+} THREAD_POWER_THROTTLING_STATE;
+
+BOOL
+WINAPI
+GetThreadInformation(
+  _In_ HANDLE hThread,
+  _In_ THREAD_INFORMATION_CLASS ThreadInformationClass,
+  _Out_writes_bytes_(ThreadInformationSize) LPVOID ThreadInformation,
+  _In_ DWORD ThreadInformationSize);
+
+BOOL
+WINAPI
+SetThreadInformation(
+  _In_ HANDLE hThread,
+  _In_ THREAD_INFORMATION_CLASS ThreadInformationClass,
+  _In_reads_bytes_(ThreadInformationSize) LPVOID ThreadInformation,
+  _In_ DWORD ThreadInformationSize);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif
