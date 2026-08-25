@@ -1366,6 +1366,7 @@
 @ stdcall -version=0x600+ TpSetPoolMinThreads(ptr long)
 @ stdcall -version=0x601+ TpSetPoolStackInformation(ptr ptr)
 @ stdcall -version=0x600+ TpSetTimer(ptr ptr long long)
+@ stdcall -version=0x602+ TpSetTimerEx(ptr ptr long long)
 @ stdcall -version=0x600+ TpSetWait(ptr long ptr)
 @ stdcall -version=0x600+ TpSimpleTryPost(ptr ptr ptr)
 @ stdcall -version=0x600+ TpStartAsyncIoOperation(ptr)
