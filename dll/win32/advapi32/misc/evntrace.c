@@ -123,3 +123,22 @@ EventWrite(
     return ERROR_SUCCESS;
 }
 
+ULONG
+EVNTAPI
+EventWriteTransfer(
+    _In_ REGHANDLE RegHandle,
+    _In_ PCEVENT_DESCRIPTOR EventDescriptor,
+    _In_opt_ LPCGUID ActivityId,
+    _In_opt_ LPCGUID RelatedActivityId,
+    _In_ ULONG UserDataCount,
+    _In_reads_opt_(UserDataCount) PEVENT_DATA_DESCRIPTOR UserData)
+{
+    /* The activity and the one it relates to only mean something to a session
+       reading the events back, and there is none, so this is EventWrite with
+       two more arguments to ignore. */
+    UNREFERENCED_PARAMETER(ActivityId);
+    UNREFERENCED_PARAMETER(RelatedActivityId);
+
+    return EventWrite(RegHandle, EventDescriptor, UserDataCount, UserData);
+}
+

@@ -224,6 +224,7 @@
 @ stdcall -version=0x600+ EventRegister(ptr ptr ptr ptr)
 @ stdcall -version=0x600+ EventUnregister(int64)
 @ stdcall -version=0x600+ EventWrite(int64 ptr long ptr)
+@ stdcall -version=0x600+ EventWriteTransfer(int64 ptr ptr ptr long ptr)
 @ stdcall -version=0x502 EnumerateTraceGuids(ptr long ptr) ntdll.EtwEnumerateTraceGuids
 @ stdcall -stub -version=0x600+ EnumerateTraceGuids(ptr long ptr) # EtwEnumerateTraceGuids
 @ stdcall EqualDomainSid(ptr ptr ptr)
