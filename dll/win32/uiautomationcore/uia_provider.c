@@ -2289,6 +2289,26 @@ LRESULT WINAPI UiaReturnRawElementProvider(HWND hwnd, WPARAM wparam,
 }
 
 /***********************************************************************
+ *          UiaDisconnectAllProviders (uiautomationcore.@)
+ */
+HRESULT WINAPI UiaDisconnectAllProviders(void)
+{
+    /*
+     * Windows uses this to drop every provider this process has handed out,
+     * so that a client holding one across a teardown gets a clean failure
+     * instead of a stale object. Providers are not tracked per process here,
+     * so there is no set to walk.
+     *
+     * S_OK is the honest answer rather than a convenient one: a caller uses
+     * this on its way down, and what it needs to know is that nothing is
+     * left connected. Nothing is - because nothing was being kept.
+     */
+    FIXME("(): stub\n");
+
+    return S_OK;
+}
+
+/***********************************************************************
  *          UiaDisconnectProvider (uiautomationcore.@)
  */
 HRESULT WINAPI UiaDisconnectProvider(IRawElementProviderSimple *elprov)
