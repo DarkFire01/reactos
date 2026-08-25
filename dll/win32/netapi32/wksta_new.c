@@ -1198,6 +1198,12 @@ NetWkstaUserSetInfo(
  * this exactly to find out whether to take its work-account path or its
  * ordinary one. Answering that it is not joined sends it down the right one;
  * leaving the entry point out only stops it loading.
+ *
+ * Note the return type. Unlike the rest of netapi32 this one answers with an
+ * HRESULT rather than a NET_API_STATUS, so a bare Win32 error code is the
+ * wrong thing to hand back: ERROR_NOT_FOUND is 0x00000490, whose top bit is
+ * clear, so a caller testing SUCCEEDED() is told the call worked and then
+ * goes on to use join information that was never produced.
  */
 
 typedef enum
@@ -1207,7 +1213,7 @@ typedef enum
     DSREG_WORKPLACE_JOIN = 2
 } BASE_DSREG_JOIN_TYPE;
 
-NET_API_STATUS
+HRESULT
 WINAPI
 NetGetAadJoinInformation(
     _In_opt_ LPCWSTR pcszTenantId,
@@ -1217,13 +1223,12 @@ NetGetAadJoinInformation(
           debugstr_w(pcszTenantId), ppJoinInfo);
 
     if (ppJoinInfo == NULL)
-        return ERROR_INVALID_PARAMETER;
+        return E_INVALIDARG;
 
     *ppJoinInfo = NULL;
 
-    /* Windows answers a machine that is not joined with this, and a caller
-       that handles the state at all handles this value */
-    return ERROR_NOT_FOUND;
+    /* What Windows answers for a machine that is not joined */
+    return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 
 VOID
