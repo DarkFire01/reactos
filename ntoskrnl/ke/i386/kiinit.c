@@ -859,6 +859,16 @@ AppCpuInit:
     KeActiveProcessors |= __readfsdword(KPCR_SET_MEMBER);
     KeNumberProcessors++;
 
+    /*
+     * We are running the initial system process now. This has to be recorded
+     * here and not left to the first context switch: KeFlushProcessTb() and
+     * friends take KPROCESS::ActiveProcessors as the set of processors to
+     * shoot down, so while the bit is clear the flush is sent to nobody at
+     * all - not even to this processor - and stale translations are used.
+     */
+    InterlockedOr((PLONG)&KiInitialProcess.Pcb.ActiveProcessors,
+                  (LONG)__readfsdword(KPCR_SET_MEMBER));
+
     /* Check if this is the boot CPU */
     if (!Cpu)
     {

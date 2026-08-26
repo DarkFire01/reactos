@@ -25,10 +25,12 @@ KiSwapProcess(IN PKPROCESS NewProcess,
 #ifdef CONFIG_SMP
     LONG SetMember;
 
-    /* Update active processor mask */
+    /* Update active processor mask. Set and clear explicitly rather than
+       toggling: an unbalanced switch would otherwise invert the bit for good,
+       and a process whose bit is clear gets no TLB shootdowns at all. */
     SetMember = (LONG)Pcr->SetMember;
-    InterlockedXor((PLONG)&NewProcess->ActiveProcessors, SetMember);
-    InterlockedXor((PLONG)&OldProcess->ActiveProcessors, SetMember);
+    InterlockedOr((PLONG)&NewProcess->ActiveProcessors, SetMember);
+    InterlockedAnd((PLONG)&OldProcess->ActiveProcessors, ~SetMember);
 #endif
 
     /* Check for new LDT */
