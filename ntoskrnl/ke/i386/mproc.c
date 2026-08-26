@@ -141,7 +141,15 @@ KeStartAllProcessors(VOID)
         // Update the LOADER_PARAMETER_BLOCK structure for the new processor
         KeLoaderBlock->KernelStack = (ULONG_PTR)KernelStack;
         KeLoaderBlock->Prcb = (ULONG_PTR)&APInfo->Pcr.Prcb;
-        KeLoaderBlock->Thread = (ULONG_PTR)&APInfo->Pcr.Prcb->IdleThread;
+        /*
+         * Hand over the thread itself. This used to be
+         * &APInfo->Pcr.Prcb->IdleThread, which is the address of the PRCB's
+         * IdleThread pointer rather than any thread, so KiSystemStartup() and
+         * KiInitializeKernel() built the new processor's idle KTHREAD on top of
+         * its own PRCB. APINFO carries storage for it, and KiInitializePcr()
+         * above is already given the same pointer.
+         */
+        KeLoaderBlock->Thread = (ULONG_PTR)&APInfo->Thread;
 
         // Start the CPU
         DPRINT("Attempting to Start a CPU with number: %lu\n", ProcessorCount);
