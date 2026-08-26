@@ -535,6 +535,18 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     }
     else
     {
+        /*
+         * Come down from HIGH_LEVEL, the way the boot processor does above.
+         *
+         * KeInitializeThread() below ends in KeStartThread(), which takes the
+         * process lock at SYNCH_LEVEL - IPI_LEVEL - 2 on a multiprocessor
+         * kernel - and asking for that from HIGH_LEVEL is a lower, not a
+         * raise, so the APIC HAL bugchecks IRQL_NOT_GREATER_OR_EQUAL. The boot
+         * processor never met this because its KeLowerIrql() sits inside the
+         * branch above, and no application processor used to get this far.
+         */
+        KeLowerIrql(APC_LEVEL);
+
         /* FIXME */
         DPRINT1("Starting CPU#%u - you are brave\n", Number);
     }
