@@ -531,6 +531,9 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
     HalpVectorToIndex[APIC_CLOCK_VECTOR] = 8;
     HalpVectorToIndex[CLOCK_IPI_VECTOR] = APIC_RESERVED_VECTOR;
     HalpVectorToIndex[APIC_SPURIOUS_VECTOR] = APIC_RESERVED_VECTOR;
+#ifndef _M_AMD64
+    HalpVectorToIndex[APIC_IPI_VECTOR] = APIC_RESERVED_VECTOR;
+#endif
 
     /* Set interrupt handlers in the IDT */
     KeRegisterInterruptHandler(APIC_CLOCK_VECTOR, HalpClockInterrupt);
@@ -538,6 +541,13 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
 #ifndef _M_AMD64
     KeRegisterInterruptHandler(APC_VECTOR, HalpApcInterrupt);
     KeRegisterInterruptHandler(DISPATCH_VECTOR, HalpDispatchInterrupt);
+
+    /* The kernel sends this one to make another processor look at its own
+       RequestSummary. On x64 the equivalent entry is KiIpiInterrupt, which
+       the kernel installs itself; here the HAL owns the whole APIC vector
+       range, so it has to be registered from this side. A UP HAL never has
+       anyone to send it, so registering it costs nothing there. */
+    KeRegisterInterruptHandler(APIC_IPI_VECTOR, HalpIpiInterrupt);
 #endif
 
     /* Register the vectors for APC and dispatch interrupts */
@@ -635,6 +645,40 @@ HalpDispatchInterruptHandler(IN PKTRAP_FRAME TrapFrame)
     _enable();
     KiDispatchInterrupt();
     _disable();
+
+    /* Restore the old IRQL */
+    ApicLowerIrql(OldIrql);
+
+    /* Exit the interrupt */
+    KiEoiHelper(TrapFrame);
+}
+
+VOID
+DECLSPEC_NORETURN
+FASTCALL
+HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
+{
+    KIRQL OldIrql;
+
+    /* Enter trap */
+    KiEnterInterruptTrap(TrapFrame);
+
+    /* Get the current IRQL */
+    OldIrql = ApicGetCurrentIrql();
+
+    /* Raise to IPI_LEVEL */
+    ApicRaiseIrql(IPI_LEVEL);
+
+    /* Acknowledge the interrupt before servicing it. A freeze request does
+       not return until the debugger lets this processor go, and the local
+       APIC must not be left holding an unacknowledged interrupt for that
+       long - nothing else would get in, including the thaw. */
+    ApicSendEOI();
+
+    /* Service the requests. Interrupts stay disabled: everything here is
+       either a flag to be acted on at a lower IRQL later, or a spin that
+       must not be re-entered by a second IPI. */
+    KiIpiServiceRoutine(TrapFrame, NULL);
 
     /* Restore the old IRQL */
     ApicLowerIrql(OldIrql);
