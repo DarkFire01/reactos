@@ -485,7 +485,7 @@
 @ stdcall -version=0x600+ GetCurrencyFormatEx(wstr long wstr ptr ptr long)
 @ stdcall GetCurrencyFormatW(long long wstr ptr ptr long)
 @ stdcall GetCurrentActCtx(ptr)
-@ stdcall -stub GetCurrentApplicationUserModelId(ptr wstr)
+@ stdcall -version=0x602+ GetCurrentApplicationUserModelId(ptr ptr)
 @ stdcall GetCurrentConsoleFont(long long ptr)
 @ stdcall -version=0x600+ GetCurrentConsoleFontEx(long long ptr)
 @ stdcall GetCurrentDirectoryA(long ptr)
@@ -717,7 +717,7 @@
 @ stdcall GetStringTypeW(long wstr long ptr)
 # @ stub GetSystemAppDataFolder
 # @ stub GetSystemAppDataKey
-@ stdcall -stub -version=0xA00+ GetSystemCpuSetInformation(ptr long ptr ptr long)
+@ stdcall -version=0xA00+ GetSystemCpuSetInformation(ptr long ptr ptr long)
 @ stdcall GetSystemDefaultLCID()
 @ stdcall GetSystemDefaultLangID()
 @ stdcall GetSystemDefaultLocaleName(ptr long)
@@ -1036,7 +1036,7 @@
 # @ stub OpenPackageInfoByFullNameForUser
 # @ stub OpenPrivateNamespaceW
 @ stdcall OpenProcess(long long long)
-@ stdcall OpenProcessToken(long long ptr)
+@ stdcall OpenProcessToken(long long ptr) advapi32.OpenProcessToken
 @ stub OpenRegKey
 @ stdcall OpenSemaphoreW(long long wstr)
 # @ stub OpenState
