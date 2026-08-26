@@ -112,10 +112,43 @@ KxFreezeExecution(
                                              CurrentPrcb,
                                              NULL) != NULL)
     {
-        /* Someone else was faster. We expect a freeze IPI any time.
-           Spin here until the freeze owner is available. */
+        /* Someone else was faster. Spin here until the freeze owner is
+           available again. */
         while (KiFreezeOwner != NULL)
         {
+            /*
+             * Answer a freeze aimed at us right here, rather than waiting for
+             * the IPI to tell us about it.
+             *
+             * KeFreezeExecution() disabled interrupts before calling us, so the
+             * freeze IPI the owner has just sent cannot be delivered and
+             * KiIpiServiceRoutine() will never run for it. The owner would wait
+             * for a FROZEN we are unable to report while we wait for it to
+             * finish, and both processors would spin until the machine was
+             * reset - which is what two processors entering the debugger at
+             * once produced. x64 does not have to do this because it freezes
+             * with an NMI, which is not maskable.
+             *
+             * Nothing saves our processor state here, so the debugger cannot
+             * show this processor's context. It can still inspect the owner and
+             * continue the system, which is the part that matters.
+             */
+            if (CurrentPrcb->IpiFrozen == IPI_FROZEN_STATE_TARGET_FREEZE)
+            {
+                CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_FROZEN;
+
+                while (CurrentPrcb->IpiFrozen != IPI_FROZEN_STATE_THAW)
+                {
+                    YieldProcessor();
+                    KeMemoryBarrier();
+                }
+
+                /* Flush the TLB on this processor, as the freeze handler does */
+                KxFlushEntireCurrentTb();
+
+                CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_RUNNING;
+            }
+
             YieldProcessor();
             KeMemoryBarrier();
         }
