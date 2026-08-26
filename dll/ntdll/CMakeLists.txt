@@ -19,6 +19,7 @@ include_directories(
 
 add_library(rtl_um OBJECT
     rtl/libsupp.c
+    rtl/perfcount.c
     rtl/uilist.c
     rtl/version.c)
 target_link_libraries(rtl_um apisets ${PSEH_LIB})
