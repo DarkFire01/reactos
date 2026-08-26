@@ -14,6 +14,7 @@ list(APPEND SOURCE
     GetFinalPathNameByHandle.c
     SetFileInformationByHandle.c
     appmodel.c
+    cpusets.c
     ProcessInformation.c
     ProcessMitigation.c
     ThreadInformation.c

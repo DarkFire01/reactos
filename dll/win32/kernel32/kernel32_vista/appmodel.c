@@ -146,3 +146,23 @@ GetPackagesByPackageFamily(
 
     return ERROR_SUCCESS;
 }
+
+/*
+ * @implemented
+ */
+LONG
+WINAPI
+GetCurrentApplicationUserModelId(
+    _Inout_ UINT32 *applicationUserModelIdLength,
+    _Out_writes_opt_(*applicationUserModelIdLength) PWSTR applicationUserModelId)
+{
+    if (applicationUserModelIdLength == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    UNREFERENCED_PARAMETER(applicationUserModelId);
+
+    /* Nothing here runs as a packaged application, so there is no AUMID to
+       report. This is the answer Windows gives an unpackaged process, and
+       callers test for it - it is not a failure to paper over. */
+    return APPMODEL_ERROR_NO_APPLICATION;
+}
