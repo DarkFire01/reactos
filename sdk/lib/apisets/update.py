@@ -19,6 +19,28 @@ REDIRECT_HOSTS = {
     'gdi32full.dll': 'gdi32.dll'
 }
 
+# Windows keeps most of these in kernelbase.dll, and REDIRECT_HOSTS above
+# sends the whole of kernelbase to kernel32. That is right for the bulk of
+# it and wrong for the sets below, because ReactOS did not consolidate the
+# same way: security and registry live in advapi32 and the version resource
+# calls live in version.dll. Sent to kernel32 they resolve to a DLL that
+# does not export them, and an application importing one at load time simply
+# does not start - mozglue.dll pulls AddAccessAllowedAce and RegOpenKeyExW
+# in through these, so Firefox does not start.
+#
+# Keyed on the apiset name without the .dll, lowercased. Wins over
+# REDIRECT_HOSTS.
+SET_HOSTS = {
+    'api-ms-win-core-registry-l1-1-0': 'advapi32.dll',
+    'api-ms-win-core-registry-l1-1-2': 'advapi32.dll',
+    'api-ms-win-core-version-l1-1-0': 'version.dll',
+    'api-ms-win-core-version-l1-1-1': 'version.dll',
+    'api-ms-win-security-base-l1-1-0': 'advapi32.dll',
+    'api-ms-win-security-base-l1-1-1': 'advapi32.dll',
+    'api-ms-win-security-base-l1-2-0': 'advapi32.dll',
+    'api-ms-win-security-base-l1-2-2': 'advapi32.dll',
+}
+
 OUTPUT_HEADER = """/*
  * PROJECT:     ReactOS apisets
  * LICENSE:     LGPL-2.1-or-later (https://spdx.org/licenses/LGPL-2.1-or-later)
@@ -78,6 +100,11 @@ class Apiset:
             if replace:
                 postfix = ' // ' + host
                 host = replace
+            # A per-set override wins: see SET_HOSTS
+            override = SET_HOSTS.get(name.lower(), None)
+            if override:
+                postfix = ' // ' + self.host
+                host = override
         return f'    {prefix}{{ RTL_CONSTANT_STRING(L"{name}"), RTL_CONSTANT_STRING(L"{host}"), {version_str} }},{postfix}'
 
 
