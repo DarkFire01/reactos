@@ -5,13 +5,6 @@
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
-/*
- * The restriction classes exercised here are the ones the Chromium sandbox
- * applies to its renderer and GPU processes, which is the reason ReactOS has
- * to get them right: sandbox::Job::Init() gives up and forces --no-sandbox
- * when SetInformationJobObject(JobObjectBasicUIRestrictions) fails.
- */
-
 #include "precomp.h"
 
 #define JOB_LOCKDOWN_UI (JOB_OBJECT_UILIMIT_HANDLES         | \
@@ -78,8 +71,7 @@ test_RoundTrip(void)
     ok_long(Info.UIRestrictionsClass, 0);
     ok_long(Returned, sizeof(Info));
 
-    /* Every flag on its own, so that a mistake in one of them does not hide
-       behind the others */
+    /* Every flag on its own, so one mistake cannot hide behind the others */
     for (i = 0; i < _countof(SingleRestrictions); i++)
     {
         SetLastError(0xDEADBEEF);
@@ -99,8 +91,7 @@ test_RoundTrip(void)
         ok_long(Info.UIRestrictionsClass, SingleRestrictions[i]);
         ok_long(Returned, sizeof(Info));
 
-        /* Back to nothing, so the next round has to apply the flag again.
-           This is also what drops the per-job state win32k keeps. */
+        /* Back to nothing, which drops the per-job state win32k keeps */
         SetLastError(0xDEADBEEF);
         Success = SetRestrictions(hJob, 0);
         ok(Success == TRUE, "Clearing 0x%lx failed with %lu\n",
@@ -130,15 +121,13 @@ test_RoundTrip(void)
     ok(Success == TRUE, "QueryInformationJobObject failed with %lu\n", GetLastError());
     ok_long(Info.UIRestrictionsClass, JOB_OBJECT_UILIMIT_ALL);
 
-    /* Setting the same value twice is not an error, even though nothing
-       changes and the subsystem is never told about it */
+    /* Setting the same value twice is not an error */
     SetLastError(0xDEADBEEF);
     Success = SetRestrictions(hJob, JOB_OBJECT_UILIMIT_ALL);
     ok(Success == TRUE, "Setting the same restrictions again failed with %lu\n",
        GetLastError());
 
-    /* Close the job while it is still restricted, so that the subsystem has
-       to tear its state down from the delete path */
+    /* Close it while still restricted, to exercise the delete path */
     CloseHandle(hJob);
 }
 
@@ -216,10 +205,7 @@ test_InvalidParameters(void)
     CloseHandle(hJob);
 }
 
-/*
- * A job handle that may not be modified must not be able to change the
- * restrictions, since they are what the sandbox relies on.
- */
+/* A handle without JOB_OBJECT_SET_ATTRIBUTES may not change the restrictions */
 static
 void
 test_Access(void)
@@ -265,11 +251,9 @@ test_Access(void)
 }
 
 /*
- * The two policies the Chromium sandbox actually builds, in the order it
- * builds them. JOB_LOCKDOWN is what the renderer gets; the GPU process is
- * given JOB_LIMITED_USER and then has every UI restriction excepted away
- * again, which is the path that has to end up clearing them rather than
- * failing.
+ * The two policies the Chromium sandbox builds, in the order it builds them.
+ * The GPU one excepts every UI restriction away again, which has to end up
+ * clearing them rather than failing.
  */
 static
 void

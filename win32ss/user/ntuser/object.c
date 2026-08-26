@@ -442,6 +442,10 @@ __inline static void *free_user_entry(PUSER_HANDLE_TABLE ht, PUSER_HANDLE_ENTRY 
    }
 #endif
 
+   /* The slot is about to be reused, so no job may keep a grant on it */
+   if (entry->flags & HANDLEENTRY_GRANTED)
+      IntCleanupGrantedHandle(entry_to_handle(ht, entry));
+
    ret = entry->ptr;
    entry->ptr  = ht->freelist;
    entry->type = 0;
@@ -692,7 +696,8 @@ UserFreeHandle(PUSER_HANDLE_TABLE ht,  HANDLE handle )
      return FALSE;
   }
 
-  entry->flags = HANDLEENTRY_INDESTROY;
+  /* HANDLEENTRY_GRANTED has to survive for free_user_entry */
+  entry->flags = (entry->flags & HANDLEENTRY_GRANTED) | HANDLEENTRY_INDESTROY;
 
   return UserDereferenceObject(entry->ptr);
 }
@@ -712,14 +717,9 @@ UserObjectInDestroy(HANDLE h)
 }
 
 /*
- * Validates a USER handle that is about to be named in a job grant, and
- * records on the handle itself that a job has named it.
- *
- * The mark is only ever set, never cleared, so it cannot say whether any
- * particular job still grants the handle - the granted lists remain the
- * authority for that. What it does say, cheaply, is that a handle whose mark
- * is clear was never granted to anything, which is the answer for very nearly
- * every handle the enforcement of JOB_OBJECT_UILIMIT_HANDLES will ever look at.
+ * Validates a USER handle that is about to be granted to a job, and marks it
+ * so that freeing it withdraws the grant again. The mark is not cleared on
+ * revoke; it only says the granted lists are worth sweeping.
  */
 BOOL
 FASTCALL

@@ -5,14 +5,6 @@
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
-/*
- * A job that restricts the UI has state on the win32k side as well, which the
- * kernel asks win32k to create, populate and tear down through a callout. The
- * process tests below drive that callout in both of the orders it can happen
- * in: a process that is already talking to win32k being put into a restricted
- * job, and a job being restricted while it already contains such a process.
- */
-
 #include "precomp.h"
 
 #include <strsafe.h>
@@ -80,8 +72,7 @@ test_GrantAccess(void)
     if (hWnd == NULL)
         return;
 
-    /* A job is only asked about granted handles once it restricts them, so a
-       job that restricts nothing has nothing to grant against */
+    /* A job that restricts nothing keeps no granted list */
     hJob = CreateRestrictedJob(0);
     if (hJob != NULL)
     {
@@ -124,9 +115,7 @@ test_GrantAccess(void)
         Success = UserHandleGrantAccess(hWnd, hJob, FALSE);
         ok(Success == TRUE, "Revoking twice failed with %lu\n", GetLastError());
 
-        /* Only a handle that exists can be granted, otherwise the caller
-           could name handle values it does not own and wait for one of them
-           to be handed out to somebody else */
+        /* Only a handle that exists can be granted */
         SetLastError(0xDEADBEEF);
         Success = UserHandleGrantAccess((HANDLE)(ULONG_PTR)0x0000BEEF, hJob, TRUE);
         ok(Success == FALSE, "Granting a handle that does not exist succeeded\n");
@@ -145,8 +134,7 @@ test_GrantAccess(void)
                 Success = UserHandleGrantAccess(hWndGone, hJob, TRUE);
                 ok(Success == FALSE, "Granting a destroyed window succeeded\n");
 
-                /* Revoking one is still allowed: a handle can be destroyed
-                   after it was granted, and the grant has to be removable */
+                /* Revoking a destroyed handle is still allowed */
                 SetLastError(0xDEADBEEF);
                 Success = UserHandleGrantAccess(hWndGone, hJob, FALSE);
                 ok(Success == TRUE, "Revoking a destroyed window failed with %lu\n",
@@ -184,8 +172,44 @@ test_GrantAccess(void)
             }
         }
 
-        /* Closing the job while handles are still granted has to release the
-           list rather than leak it */
+        /* Destroying a granted window has to withdraw the grant. The list
+           cannot be read from here, so this only shows it stays intact. */
+        {
+            HWND Windows[8];
+            ULONG i;
+
+            for (i = 0; i < _countof(Windows); i++)
+            {
+                Windows[i] = CreateWindowExW(0, L"Static", NULL, WS_POPUP,
+                                             0, 0, 10, 10,
+                                             NULL, NULL, NULL, NULL);
+                if (Windows[i] == NULL)
+                {
+                    skip("CreateWindowEx failed with %lu\n", GetLastError());
+                    break;
+                }
+
+                Success = UserHandleGrantAccess(Windows[i], hJob, TRUE);
+                ok(Success == TRUE, "Granting window %lu failed with %lu\n",
+                   i, GetLastError());
+            }
+
+            /* Destroy them without revoking first */
+            while (i-- > 0)
+                DestroyWindow(Windows[i]);
+
+            /* The list has to still work afterwards */
+            SetLastError(0xDEADBEEF);
+            Success = UserHandleGrantAccess(hWnd, hJob, TRUE);
+            ok(Success == TRUE, "Granting after a sweep failed with %lu\n",
+               GetLastError());
+            SetLastError(0xDEADBEEF);
+            Success = UserHandleGrantAccess(hWnd, hJob, FALSE);
+            ok(Success == TRUE, "Revoking after a sweep failed with %lu\n",
+               GetLastError());
+        }
+
+        /* Close the job with handles still granted, to free the list */
         Success = UserHandleGrantAccess(hWnd, hJob, TRUE);
         ok(Success == TRUE, "Granting failed with %lu\n", GetLastError());
         CloseHandle(hJob);
@@ -243,11 +267,9 @@ StartChild(_Out_ PHANDLE Thread)
 }
 
 /*
- * Runs one child through a job. When RestrictFirst is TRUE the job already
- * restricts the UI when the process is assigned to it, so the kernel hands the
- * process to win32k from the assignment path. When it is FALSE the process is
- * assigned first and the restrictions are applied afterwards, so win32k has to
- * find the process itself.
+ * Runs a child through a job. RestrictFirst TRUE assigns into an already
+ * restricted job, so the kernel hands the process over from the assignment
+ * path; FALSE restricts afterwards, so win32k has to find it itself.
  */
 static
 void
@@ -288,8 +310,7 @@ test_ProcessInJob(_In_ BOOL RestrictFirst)
         return;
     }
 
-    /* Wait until the child is a win32k client, otherwise there is nothing for
-       the callout to restrict and it is never made */
+    /* The callout is only made for a process that is a win32k client */
     Wait = WaitForSingleObject(hReady, 10000);
     ok(Wait == WAIT_OBJECT_0, "The child did not become ready, wait returned %lu\n", Wait);
 
@@ -308,10 +329,9 @@ test_ProcessInJob(_In_ BOOL RestrictFirst)
             ok(Success == TRUE, "AssignProcessToJobObject failed with %lu\n",
                GetLastError());
 
-            /* When the job was restricted up front the child stays in it and
-               leaves by exiting. Otherwise restrict it now, with the process
-               already inside, and then lift the restrictions again so that the
-               state win32k keeps has to let go of a process it still holds. */
+            /* Restricted up front, the child leaves the job by exiting.
+               Otherwise restrict it now and lift it again, so win32k has to
+               let go of a process it still holds. */
             if (!RestrictFirst)
             {
                 Info.UIRestrictionsClass = JOB_LOCKDOWN_UI;
@@ -348,10 +368,7 @@ test_ProcessInJob(_In_ BOOL RestrictFirst)
     CloseHandle(hReady);
 }
 
-/*
- * The child half: become a win32k client, say so, and stay alive until the
- * parent is done putting us in and out of its job.
- */
+/* The child: become a win32k client, say so, and wait to be let go */
 static
 void
 RunChild(void)

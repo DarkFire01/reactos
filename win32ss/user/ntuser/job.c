@@ -6,20 +6,14 @@
  */
 
 /*
- * A job object may restrict what the processes it contains are allowed to do
- * to the user interface (JOB_OBJECT_UILIMIT_*). The kernel stores the mask,
- * but it is win32k that has to honour it, so the kernel hands each restricted
- * job over to us through a callout (see PspInvokeW32JobCallout).
+ * The kernel keeps the JOB_OBJECT_UILIMIT_* mask of a job, but it is win32k
+ * that enforces it, so every restricted job is handed to us through a callout
+ * (see PspInvokeW32JobCallout). We keep a JOBINFO per such job.
  *
- * For every such job we keep a JOBINFO, which owns the list of USER-connected
- * processes of the job, the handles that have been explicitly granted to it
- * (see NtUserUserHandleGrantAccess) and, for JOB_OBJECT_UILIMIT_GLOBALATOMS,
- * a private global atom table.
- *
- * Locking: the kernel acquires the job lock before invoking a callout, and the
- * callout then takes the USER lock. To keep that the only order in which the
- * two are ever held, win32k never acquires the job lock itself: gJobInfoList
- * and everything hanging off it is protected by the USER lock alone.
+ * Locking: the kernel takes the job lock before calling out, and the callout
+ * then takes the USER lock. To keep that the only order the two are held in,
+ * win32k never takes the job lock itself; gJobInfoList and everything on it
+ * is protected by the USER lock alone.
  */
 
 #include <win32k.h>
@@ -32,10 +26,7 @@ static PJOBINFO gJobInfoList = NULL;
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
-/*
- * Looks up the JOBINFO of a kernel job object.
- * The USER lock must be held.
- */
+/* The USER lock must be held */
 static
 PJOBINFO
 IntFindJobInfo(_In_ PEJOB pEJob)
@@ -51,10 +42,7 @@ IntFindJobInfo(_In_ PEJOB pEJob)
     return NULL;
 }
 
-/*
- * Creates the JOBINFO of a kernel job object and links it into the global list.
- * The USER lock must be held.
- */
+/* The USER lock must be held */
 static
 PJOBINFO
 IntCreateJobInfo(_In_ PEJOB pEJob)
@@ -78,13 +66,9 @@ IntCreateJobInfo(_In_ PEJOB pEJob)
 }
 
 /*
- * Marks or unmarks a process, and every thread it has, as belonging to a job
- * that restricts the UI.
- *
- * Enforcement sites test these instead of walking back to the job on every
- * call, and user32 sees the thread flag through the CLIENTINFO it shares with
- * us, so a restricted call can be refused without a syscall at all.
- *
+ * Marks a process and its threads as belonging to a restricted job, so that
+ * enforcement is a flag test rather than a walk back to the job. user32 sees
+ * the thread flag through the CLIENTINFO.
  * The USER lock must be held.
  */
 static
@@ -104,13 +88,11 @@ IntSetProcessRestricted(
     else
         ppi->W32PF_flags &= ~W32PF_JOBRESTRICTED;
 
-    /* A process on its way out is losing its threads and its address space,
-       so there is nothing left that marking them could be good for */
+    /* The threads and the address space are going away anyway */
     if (ppi->W32PF_flags & W32PF_TERMINATED)
         return;
 
-    /* The CLIENTINFO of a thread lives in the address space of its own
-       process, which is not necessarily the one we are running in */
+    /* The CLIENTINFO of a thread lives in its own process */
     if (ppi->peProcess != NULL && ppi != PsGetCurrentProcessWin32Process())
     {
         KeStackAttachProcess(&ppi->peProcess->Pcb, &ApcState);
@@ -131,8 +113,7 @@ IntSetProcessRestricted(
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {
-            /* The thread is going away; what it can no longer do does not
-               matter, and the kernel side copy of the flags still stands */
+            /* Do nothing, the kernel side copy still stands */
             (void)0;
         }
         _SEH2_END;
@@ -142,10 +123,7 @@ IntSetProcessRestricted(
         KeUnstackDetachProcess(&ApcState);
 }
 
-/*
- * Unlinks and frees a JOBINFO, detaching any process still pointing at it.
- * The USER lock must be held.
- */
+/* The USER lock must be held */
 static
 VOID
 IntDestroyJobInfo(_In_ PJOBINFO pJobInfo)
@@ -153,7 +131,7 @@ IntDestroyJobInfo(_In_ PJOBINFO pJobInfo)
     PJOBINFO *ppJobInfo;
     ULONG i;
 
-    /* Unlink it first, so that nothing can find it any more */
+    /* Unlink it first, so nothing can find it */
     for (ppJobInfo = &gJobInfoList; *ppJobInfo != NULL; ppJobInfo = &(*ppJobInfo)->Next)
     {
         if (*ppJobInfo == pJobInfo)
@@ -163,7 +141,6 @@ IntDestroyJobInfo(_In_ PJOBINFO pJobInfo)
         }
     }
 
-    /* Detach the processes that are still around */
     for (i = 0; i < pJobInfo->ProcessCount; i++)
     {
         if (pJobInfo->pProcesses[i] != NULL)
@@ -186,10 +163,7 @@ IntDestroyJobInfo(_In_ PJOBINFO pJobInfo)
     ExFreePoolWithTag(pJobInfo, USERTAG_W32JOB);
 }
 
-/*
- * Grows one of the arrays of a job geometrically.
- * Returns the new array, or NULL when out of memory (the old one is kept).
- */
+/* Returns the new array, or NULL when out of memory (the old one is kept) */
 static
 PVOID
 IntGrowJobArray(
@@ -217,10 +191,7 @@ IntGrowJobArray(
     return pNewArray;
 }
 
-/*
- * Adds a USER-connected process to a job.
- * The USER lock must be held.
- */
+/* The USER lock must be held */
 static
 NTSTATUS
 IntAddProcessToJobInfo(
@@ -260,9 +231,7 @@ IntAddProcessToJobInfo(
     return STATUS_SUCCESS;
 }
 
-/*
- * Applies a new restriction mask to a job, creating its JOBINFO on first use.
- */
+/* Handles PsW32JobCalloutSetInformation */
 static
 NTSTATUS
 IntJobSetRestrictions(
@@ -277,7 +246,7 @@ IntJobSetRestrictions(
 
     pJobInfo = IntFindJobInfo(pEJob);
 
-    /* Dropping all restrictions: the job no longer needs any state here */
+    /* No restrictions left, so no state to keep */
     if (UIRestrictions == 0)
     {
         if (pJobInfo != NULL)
@@ -299,8 +268,8 @@ IntJobSetRestrictions(
 
         Created = TRUE;
 
-        /* The job may already contain processes that connected to USER before
-           the restrictions were applied. Collect them now. */
+        /* The job may already hold processes that connected to USER before
+           the restrictions were applied */
         for (ppi = gppiList; ppi != NULL; ppi = ppi->ppiNext)
         {
             if (ppi->peProcess != NULL &&
@@ -335,7 +304,7 @@ IntJobSetRestrictions(
     pJobInfo->UIRestrictions = UIRestrictions;
 
 Quit:
-    /* Leave nothing behind if we could not finish what we just started */
+    /* Undo a job we did not manage to finish building */
     if (!NT_SUCCESS(Status) && Created)
         IntDestroyJobInfo(pJobInfo);
 
@@ -343,9 +312,7 @@ Quit:
     return Status;
 }
 
-/*
- * Handles PsW32JobCalloutAddProcess.
- */
+/* Handles PsW32JobCalloutAddProcess */
 static
 NTSTATUS
 IntJobAddProcess(
@@ -361,7 +328,7 @@ IntJobAddProcess(
     if (pJobInfo == NULL)
     {
         /* The kernel only calls us for jobs that have restrictions, so we
-           should have been told about this job already. */
+           should have been told about this job already */
         ERR("No JOBINFO for job %p\n", pEJob);
         Status = STATUS_UNSUCCESSFUL;
     }
@@ -374,9 +341,7 @@ IntJobAddProcess(
     return Status;
 }
 
-/*
- * Handles PsW32JobCalloutTerminate. The job object is going away.
- */
+/* Handles PsW32JobCalloutTerminate */
 static
 NTSTATUS
 IntJobTerminate(_In_ PEJOB pEJob)
@@ -393,10 +358,32 @@ IntJobTerminate(_In_ PEJOB pEJob)
     return STATUS_SUCCESS;
 }
 
-/*
- * Tests whether a USER handle has been explicitly granted to a job.
- * The USER lock must be held.
- */
+/* Returns whether the handle was on the list. The USER lock must be held */
+static
+BOOL
+IntRemoveGrantedHandle(
+    _In_ PJOBINFO pJobInfo,
+    _In_ HANDLE hUserHandle)
+{
+    ULONG i;
+
+    for (i = 0; i < pJobInfo->GrantedHandleCount; i++)
+    {
+        if (pJobInfo->pGrantedHandles[i] == hUserHandle)
+        {
+            /* Keep the array dense */
+            pJobInfo->pGrantedHandles[i] =
+                pJobInfo->pGrantedHandles[pJobInfo->GrantedHandleCount - 1];
+            pJobInfo->pGrantedHandles[pJobInfo->GrantedHandleCount - 1] = NULL;
+            pJobInfo->GrantedHandleCount--;
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+/* The USER lock must be held */
 static
 BOOL
 IntIsHandleGrantedToJob(
@@ -414,11 +401,7 @@ IntIsHandleGrantedToJob(
     return FALSE;
 }
 
-/*
- * Grants or revokes access to a USER handle for the processes of a job that is
- * otherwise restricted by JOB_OBJECT_UILIMIT_HANDLES.
- * The USER lock must be held.
- */
+/* The USER lock must be held */
 static
 BOOL
 IntGrantHandleToJob(
@@ -426,32 +409,16 @@ IntGrantHandleToJob(
     _In_ HANDLE hUserHandle,
     _In_ BOOL bGrant)
 {
-    ULONG i;
-
     if (!bGrant)
     {
-        for (i = 0; i < pJobInfo->GrantedHandleCount; i++)
-        {
-            if (pJobInfo->pGrantedHandles[i] == hUserHandle)
-            {
-                /* Keep the array dense */
-                pJobInfo->pGrantedHandles[i] =
-                    pJobInfo->pGrantedHandles[pJobInfo->GrantedHandleCount - 1];
-                pJobInfo->pGrantedHandles[pJobInfo->GrantedHandleCount - 1] = NULL;
-                pJobInfo->GrantedHandleCount--;
-                return TRUE;
-            }
-        }
-
-        /* Revoking an access that was never granted is not an error. Note
-           that the handle is deliberately not validated here: a handle that
-           has since been destroyed must still be removable from the list. */
+        /* Revoking what was never granted is not an error, and the handle is
+           deliberately not validated: a destroyed one must still come off */
+        (VOID)IntRemoveGrantedHandle(pJobInfo, hUserHandle);
         return TRUE;
     }
 
-    /* Only a live USER handle can be granted. Without this the caller could
-       seed the list with handle values it does not own and wait for one of
-       them to be handed out to somebody else. */
+    /* Only a live handle can be granted, or the caller could name values it
+       does not own and wait for one to be handed out to somebody else */
     if (!UserMarkHandleGranted(hUserHandle))
     {
         EngSetLastError(ERROR_INVALID_HANDLE);
@@ -484,10 +451,7 @@ IntGrantHandleToJob(
 
 /* PUBLIC FUNCTIONS ***********************************************************/
 
-/*
- * The entry point of the kernel into the job support of win32k.
- * Called with the job lock held and without the USER lock.
- */
+/* Called with the job lock held and without the USER lock */
 NTSTATUS
 NTAPI
 Win32kJobCallout(_In_ PWIN32_JOBCALLOUT_PARAMETERS Parameters)
@@ -512,14 +476,12 @@ Win32kJobCallout(_In_ PWIN32_JOBCALLOUT_PARAMETERS Parameters)
 }
 
 /*
- * Called when a process connects to USER. A process is usually assigned to its
- * job while it is still suspended, long before it ever calls into win32k, so
- * this is where restricted processes normally join their job.
+ * Called when a process connects to USER. A process is normally assigned to
+ * its job while still suspended, so this is where restricted processes join.
  *
- * The USER lock must be held. We deliberately do not take the job lock here,
- * as that would invert the order the callout path establishes; the caller has
- * already linked ppi into gppiList, so restrictions applied concurrently pick
- * this process up in IntJobSetRestrictions instead.
+ * The USER lock must be held. The job lock is deliberately not taken, as that
+ * would invert the order the callout path establishes; ppi is already on
+ * gppiList, so a concurrent restriction picks it up in IntJobSetRestrictions.
  */
 NTSTATUS
 FASTCALL
@@ -541,8 +503,7 @@ IntJobConnectProcess(_In_ PPROCESSINFO ppi)
     pJobInfo = IntFindJobInfo(pEJob);
     if (pJobInfo == NULL)
     {
-        /* Either the restrictions have not reached us yet, or they are being
-           torn down. The callout handles both, so there is nothing to do. */
+        /* The restrictions have not reached us yet, or are being torn down */
         return STATUS_SUCCESS;
     }
 
@@ -583,9 +544,26 @@ IntJobDisconnectProcess(_In_ PPROCESSINFO ppi)
 }
 
 /*
- * Grants or revokes access to a USER handle for a job whose processes are
- * restricted by JOB_OBJECT_UILIMIT_HANDLES.
+ * Withdraws a freed USER handle from every job it was granted to. Handle
+ * values are reused, so a grant left on a dead handle would be inherited by
+ * whatever object is given the slot next.
+ * The USER lock must be held.
  */
+VOID
+FASTCALL
+IntCleanupGrantedHandle(_In_ HANDLE hUserHandle)
+{
+    PJOBINFO pJobInfo;
+
+    ASSERT(UserIsEnteredExclusive());
+
+    for (pJobInfo = gJobInfoList; pJobInfo != NULL; pJobInfo = pJobInfo->Next)
+    {
+        if (IntRemoveGrantedHandle(pJobInfo, hUserHandle))
+            TRACE("Withdrew handle %p from JOBINFO %p\n", hUserHandle, pJobInfo);
+    }
+}
+
 BOOL
 APIENTRY
 NtUserUserHandleGrantAccess(

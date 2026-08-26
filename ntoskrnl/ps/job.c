@@ -523,10 +523,8 @@ PspAssignProcessToJob(
                                       FALSE);
     }
 
-    /* If the job restricts what its processes may do to the UI, hand the
-       process over to win32k so that it can enforce those restrictions.
-       A process that has not connected to win32k yet has no state there to
-       restrict; win32k picks it up itself when it does connect. */
+    /* Hand the process to win32k, which enforces the UI restrictions. One
+       that has not connected to win32k yet is picked up when it does. */
     if (Job->UIRestrictionsClass != 0 && Process->Win32Process != NULL)
     {
         CalloutStatus = PspInvokeW32JobCallout(Job,
@@ -538,12 +536,9 @@ Exit:
     ExReleaseResourceAndLeaveCriticalRegion(&Job->JobLock);
     ExReleaseRundownProtection(&Process->RundownProtect);
 
-    /* The assignment is committed, but win32k could not take on enforcing the
-       UI restrictions of the job. Leaving the process alive would leave it
-       running unrestricted inside a job that exists precisely to restrict it,
-       so it does not run at all. The caller is told the assignment failed
-       because what it asked for - a process running under these restrictions -
-       did not happen. */
+    /* The assignment is committed, but win32k will not be enforcing the UI
+       restrictions, so the process must not run at all. The caller is told
+       the assignment failed, since that is what it asked for. */
     if (!NT_SUCCESS(CalloutStatus))
     {
         DPRINT1("Failed to apply the UI restrictions of job %p to process %p: 0x%lx\n",
@@ -1634,8 +1629,8 @@ PsSetJobUIRestrictionsClass(
  *     been registered (i.e. the win32 subsystem is not loaded yet).
  *
  * @remarks
- *     Unlike Windows, we do not attach to the job's session before calling
- *     out: ReactOS' win32k is only ever loaded in one session.
+ *     We do not attach to the session of the job, as win32k is only ever
+ *     loaded in one session.
  */
 NTSTATUS
 NTAPI
@@ -1675,9 +1670,8 @@ PspInvokeW32JobCallout(
  *     An appropriate NTSTATUS error code otherwise.
  *
  * @remarks
- *     The restrictions are only stored once win32k has accepted them: it is
- *     win32k that enforces them, and it may fail to allocate the per-job state
- *     it needs to do so.
+ *     The restrictions are only stored once win32k has accepted them, as it
+ *     may fail to allocate the per-job state it needs to enforce them.
  */
 static
 NTSTATUS

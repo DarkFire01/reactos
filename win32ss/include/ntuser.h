@@ -12,9 +12,8 @@ struct tagPOPUPMENU;
 
 #define HANDLEENTRY_DESTROY 1
 #define HANDLEENTRY_INDESTROY 2
-/* The handle has been named in a job grant at least once. Only a hint: it
-   is never cleared, so a set bit means the granted lists have to be asked,
-   while a clear bit means no job can possibly have been granted it. */
+/* A job was granted access to this handle, so freeing it has to sweep the
+   granted lists (see IntCleanupGrantedHandle) */
 #define HANDLEENTRY_GRANTED 4
 
 typedef struct _USER_HANDLE_ENTRY
