@@ -491,6 +491,14 @@ typedef struct _FAIR_WORKER
     volatile LONG Work;     /* bursts completed                         */
     int Index;
     BOOL Yields;
+    /* How long the yield itself takes. If a thread only manages ten
+       bursts a second, either it is waiting a long time for its turn or
+       the burst is slow; timing the Sleep(0) says which, and no amount of
+       reasoning about queue order will. */
+    volatile LONG YieldMaxUs;
+    ULONGLONG YieldTotalUs;
+    volatile LONG YieldCount;
+    ULONGLONG BurstTotalUs;
 } FAIR_WORKER;
 
 static FAIR_WORKER gFair[FAIR_MAX];
@@ -504,15 +512,32 @@ static DWORD WINAPI FairThread(LPVOID Param)
 
     while (gRunning)
     {
+        ULONGLONG Before, AfterBurst, AfterYield;
+
+        Before = QpcUs();
+
         /* A burst short enough that a yielding thread can usually finish one
            between two clock ticks - which is the whole point */
         for (i = 0; i < 20000; i++)
             Accumulator += i ^ (Accumulator >> 3);
 
+        AfterBurst = QpcUs();
+        Worker->BurstTotalUs += (AfterBurst - Before);
         InterlockedIncrement(&Worker->Work);
 
         if (Worker->Yields)
+        {
+            LONG Elapsed;
+
             Sleep(0);
+
+            AfterYield = QpcUs();
+            Elapsed = (LONG)(AfterYield - AfterBurst);
+            Worker->YieldTotalUs += (ULONGLONG)Elapsed;
+            Worker->YieldCount++;
+            if (Elapsed > Worker->YieldMaxUs)
+                Worker->YieldMaxUs = Elapsed;
+        }
     }
 
     return Accumulator & 1;
@@ -565,8 +590,21 @@ static void FairReport(void)
     {
         ULONG Cpu = FairThreadCpuMs(gFair[i].Thread);
 
-        Log("fair thread %2d %-7s work=%ld cpu=%lums\n",
-            i, gFair[i].Yields ? "yields" : "hogs", gFair[i].Work, Cpu);
+        if (gFair[i].Yields && gFair[i].YieldCount)
+        {
+            Log("fair thread %2d yields  work=%ld cpu=%lums "
+                "burst_avg=%luus yield_avg=%luus yield_max=%luus\n",
+                i, gFair[i].Work, Cpu,
+                (ULONG)(gFair[i].BurstTotalUs / (gFair[i].Work ? gFair[i].Work : 1)),
+                (ULONG)(gFair[i].YieldTotalUs / gFair[i].YieldCount),
+                (ULONG)gFair[i].YieldMaxUs);
+        }
+        else
+        {
+            Log("fair thread %2d hogs    work=%ld cpu=%lums burst_avg=%luus\n",
+                i, gFair[i].Work, Cpu,
+                (ULONG)(gFair[i].BurstTotalUs / (gFair[i].Work ? gFair[i].Work : 1)));
+        }
 
         if (gFair[i].Yields)
         {
