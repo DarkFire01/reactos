@@ -38,15 +38,21 @@ KeFreezeExecution(IN PKTRAP_FRAME TrapFrame,
     Enable = KeDisableInterrupts();
     KiFreezeFlag = 4;
 
-#ifndef CONFIG_SMP
-    /* Raise IRQL if we have to */
+    /*
+     * Raise to DISPATCH_LEVEL, on one processor and on many alike.
+     *
+     * The SMP path used to raise to HIGH_LEVEL here. That buys nothing on this
+     * processor - KeDisableInterrupts() above has already made it
+     * uninterruptible - and it costs the debugger the ability to allocate,
+     * because pool allocation is not legal above DISPATCH_LEVEL. KDBG does
+     * allocate: loading a driver's symbols out of DbgLoadImageSymbols() does,
+     * and on the MP kernel that turned every driver load into a kernel stack
+     * overflow and a double fault. The other processors are held by
+     * KxFreezeExecution() below, which does not depend on our IRQL.
+     */
     OldIrql = KeGetCurrentIrql();
     if (OldIrql < DISPATCH_LEVEL)
         OldIrql = KeRaiseIrqlToDpcLevel();
-#else
-    /* Raise IRQL to HIGH_LEVEL */
-    KeRaiseIrql(HIGH_LEVEL, &OldIrql);
-#endif
 
 #ifdef CONFIG_SMP
     /* Architecture specific freeze code */
@@ -78,10 +84,8 @@ KeThawExecution(IN BOOLEAN Enable)
     KxFlushEntireCurrentTb();
 
     /* Restore the old IRQL */
-#ifndef CONFIG_SMP
     if (OldIrql < DISPATCH_LEVEL)
-#endif
-    KeLowerIrql(OldIrql);
+        KeLowerIrql(OldIrql);
 
     /* Re-enable interrupts */
     KeRestoreInterrupts(Enable);
