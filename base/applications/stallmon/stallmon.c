@@ -317,6 +317,20 @@ static void RequestHighResolutionTimer(void)
 /* Heartbeats                                                          */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Gap buckets, in milliseconds. A single worst-case number is the wrong
+ * statistic for something intermittent: one run's maximum is a sample from
+ * the tail, so two runs of the same build can differ wildly and neither is
+ * wrong. Comparing builds needs the shape of the whole distribution and a
+ * count of how often it actually stalled, not one extreme.
+ */
+#define HIST_BUCKETS 10
+
+static const LONG gHistLimit[HIST_BUCKETS] =
+{
+    15, 30, 60, 125, 250, 500, 1000, 2000, 5000, 0x7FFFFFFF
+};
+
 typedef struct _HEARTBEAT
 {
     const char *Name;
@@ -324,6 +338,8 @@ typedef struct _HEARTBEAT
     volatile LONG LastTick;     /* GetTickCount of the last beat        */
     volatile LONG GapMaxMs;     /* worst gap seen between beats         */
     volatile LONG Reported;     /* already called out as stalled        */
+    volatile LONG Stalls;       /* gaps over the stall threshold        */
+    volatile LONG Hist[HIST_BUCKETS];
 } HEARTBEAT;
 
 static HEARTBEAT gCpuBeat = { "CPU" };
@@ -341,9 +357,23 @@ static void Beat(HEARTBEAT *Hb)
 
     if (Last != 0)
     {
+        int b;
+
         Gap = (LONG)(Now - (DWORD)Last);
         if (Gap > Hb->GapMaxMs)
             Hb->GapMaxMs = Gap;
+
+        for (b = 0; b < HIST_BUCKETS; b++)
+        {
+            if (Gap <= gHistLimit[b])
+            {
+                Hb->Hist[b]++;
+                break;
+            }
+        }
+
+        if (Gap > STALL_REPORT_MS)
+            Hb->Stalls++;
     }
 
     Hb->LastTick = (LONG)Now;
@@ -1586,9 +1616,43 @@ static int ParentMain(void)
     for (i = 0; i < (int)(sizeof(gAllBeats) / sizeof(gAllBeats[0])); i++)
     {
         HEARTBEAT *Hb = gAllBeats[i];
-        Log("%s beats=%ld gapmax=%ldms%s\n",
-            Hb->Name, Hb->Beats, Hb->GapMaxMs,
-            Hb->LastTick == 0 ? "  (never ran)" : "");
+        LONG Total = 0, Running = 0, P50 = -1, P95 = -1, P99 = -1;
+        int b;
+
+        if (Hb->LastTick == 0)
+        {
+            Log("%s  (never ran)\n", Hb->Name);
+            continue;
+        }
+
+        for (b = 0; b < HIST_BUCKETS; b++)
+            Total += Hb->Hist[b];
+
+        /* Percentiles from the buckets: the value reported is the upper edge
+           of the bucket the percentile falls in, so it is an upper bound
+           rather than an interpolation - honest, and enough to compare two
+           runs without pretending to more precision than buckets give. */
+        for (b = 0; b < HIST_BUCKETS; b++)
+        {
+            Running += Hb->Hist[b];
+            if (P50 < 0 && Total && Running * 100 >= Total * 50)
+                P50 = gHistLimit[b];
+            if (P95 < 0 && Total && Running * 100 >= Total * 95)
+                P95 = gHistLimit[b];
+            if (P99 < 0 && Total && Running * 100 >= Total * 99)
+                P99 = gHistLimit[b];
+        }
+
+        Log("%s beats=%ld samples=%ld p50<=%ldms p95<=%ldms p99<=%ldms "
+            "max=%ldms stalls=%ld\n",
+            Hb->Name, Hb->Beats, Total, P50, P95, P99,
+            Hb->GapMaxMs, Hb->Stalls);
+
+        Log("%s hist 15/30/60/125/250/500/1k/2k/5k/more: "
+            "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n",
+            Hb->Name,
+            Hb->Hist[0], Hb->Hist[1], Hb->Hist[2], Hb->Hist[3], Hb->Hist[4],
+            Hb->Hist[5], Hb->Hist[6], Hb->Hist[7], Hb->Hist[8], Hb->Hist[9]);
     }
 
     for (i = 0; i < gOpt.Procs; i++)
