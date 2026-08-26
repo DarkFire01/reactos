@@ -1087,6 +1087,59 @@ Exit:
 
 
 /************************************************************************
+ *  RegCreateKeyTransactedW
+ *
+ * Create a key inside a transaction.
+ *
+ * There is no transacted registry here - KTM exists as an API surface and
+ * nothing beneath the configuration manager honours it - so the transaction
+ * handle is ignored and the key is created immediately. A caller therefore
+ * loses atomicity: the writes it makes inside its transaction land as it
+ * makes them, and a rollback it asks for later does not take them back.
+ *
+ * That is worth stating plainly, but it is the better of the two available
+ * behaviours. xul.dll imports this at load time, so without the export
+ * Firefox does not start at all, and a caller that gets ERROR_SUCCESS and
+ * unrolled-back writes is in a far better position than one that never ran.
+ *
+ * @implemented
+ */
+LONG
+WINAPI
+RegCreateKeyTransactedW(
+    _In_ HKEY hKey,
+    _In_ LPCWSTR lpSubKey,
+    _Reserved_ DWORD Reserved,
+    _In_opt_ LPWSTR lpClass,
+    _In_ DWORD dwOptions,
+    _In_ REGSAM samDesired,
+    _In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+    _Out_ PHKEY phkResult,
+    _Out_opt_ LPDWORD lpdwDisposition,
+    _In_ HANDLE hTransaction,
+    _Reserved_ PVOID pExtendedParemeter)
+{
+    if (hTransaction == NULL || hTransaction == INVALID_HANDLE_VALUE)
+        return ERROR_INVALID_HANDLE;
+
+    if (pExtendedParemeter != NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    FIXME("Transaction %p ignored, the key is created outside it\n",
+          hTransaction);
+
+    return RegCreateKeyExW(hKey,
+                           lpSubKey,
+                           Reserved,
+                           lpClass,
+                           dwOptions,
+                           samDesired,
+                           lpSecurityAttributes,
+                           phkResult,
+                           lpdwDisposition);
+}
+
+/************************************************************************
  *  RegCreateKeyExW
  *
  * @implemented
