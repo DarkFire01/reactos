@@ -555,8 +555,7 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         __writecr3(InitialThread->ApcState.Process->DirectoryTableBase[0]);
     }
 
-    DPRINT1("Cpu %u: Pcr = %p, Gdt = %p, Idt = %p, Tss = %p
-",
+    DPRINT1("Cpu %u: Pcr = %p, Gdt = %p, Idt = %p, Tss = %p\n",
             Cpu, Pcr, Pcr->GdtBase, Pcr->IdtBase, Pcr->TssBase);
 
     /* Acquire lock */
