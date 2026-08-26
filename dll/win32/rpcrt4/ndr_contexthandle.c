@@ -26,7 +26,10 @@
 #include "rpcndr.h"
 #include "cguid.h"
 
+#include "excpt.h"
+
 #include "wine/debug.h"
+#include "wine/exception.h"
 #include "wine/list.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(ole);
@@ -61,20 +64,27 @@ static CRITICAL_SECTION ndr_context_cs = { &ndr_context_debug, -1, 0, 0, 0, 0 };
 static struct context_handle_entry *get_context_entry(NDR_CCONTEXT CContext)
 {
     struct context_handle_entry *che = CContext;
-
 #ifdef __REACTOS__
+    DWORD Magic;
+
+    /* The caller can hand us a stale or bogus handle, so reading the magic
+       may fault. PSEH does not allow returning out of a guarded block, so
+       take a copy here and decide once we are back outside it. */
     __TRY
     {
-#endif
-    if (che->magic != NDR_CONTEXT_HANDLE_MAGIC)
-        return NULL;
-#ifdef __REACTOS__
+        Magic = che->magic;
     }
     __EXCEPT_ALL
     {
-        return NULL;
+        Magic = 0;
     }
     __ENDTRY
+
+    if (Magic != NDR_CONTEXT_HANDLE_MAGIC)
+        return NULL;
+#else
+    if (che->magic != NDR_CONTEXT_HANDLE_MAGIC)
+        return NULL;
 #endif
     return che;
 }
