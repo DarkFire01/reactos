@@ -1083,6 +1083,30 @@ KiSaveProcessorState(IN PKTRAP_FRAME TrapFrame,
     KiSaveProcessorControlState(&Prcb->ProcessorState);
 }
 
+VOID
+NTAPI
+KiRestoreProcessorState(OUT PKTRAP_FRAME TrapFrame,
+                        OUT PKEXCEPTION_FRAME ExceptionFrame)
+{
+    PKPRCB Prcb = KeGetCurrentPrcb();
+
+    //
+    // Restore the context we saved on the way in. The same flags have to be
+    // used here as were used to save it, or the halves disagree about which
+    // registers the frame actually carries.
+    //
+    KeContextToTrapFrame(&Prcb->ProcessorState.ContextFrame,
+                         ExceptionFrame,
+                         TrapFrame,
+                         CONTEXT_FULL | CONTEXT_DEBUG_REGISTERS,
+                         KernelMode);
+
+    //
+    // Restore control registers
+    //
+    KiRestoreProcessorControlState(&Prcb->ProcessorState);
+}
+
 CODE_SEG("INIT")
 BOOLEAN
 NTAPI
