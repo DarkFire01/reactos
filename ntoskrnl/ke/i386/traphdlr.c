@@ -1258,16 +1258,24 @@ KiCheckForSListFault(PKTRAP_FRAME TrapFrame)
     {
         ULARGE_INTEGER SListHeader;
         PVOID ResumeAddress;
+        PUCHAR Instruction = (PUCHAR)TrapFrame->Eip;
 
-        /* Sanity check that the assembly is correct:
-           This must be mov ebx, [eax]
-           Followed by cmpxchg8b [ebp] */
-        ASSERT((((UCHAR*)TrapFrame->Eip)[0] == 0x8B) &&
-               (((UCHAR*)TrapFrame->Eip)[1] == 0x18) &&
-               (((UCHAR*)TrapFrame->Eip)[2] == 0x0F) &&
-               (((UCHAR*)TrapFrame->Eip)[3] == 0xC7) &&
-               (((UCHAR*)TrapFrame->Eip)[4] == 0x4D) &&
-               (((UCHAR*)TrapFrame->Eip)[5] == 0x00));
+        /*
+         * Sanity check that the assembly is correct: this must be
+         * mov ebx, [eax] followed by cmpxchg8b [ebp].
+         *
+         * The cmpxchg8b carries a LOCK prefix in the MP kernel, where the LOCK
+         * macro expands to lock, and unconditionally in the user mode RTL,
+         * which is built only once. Only the UP kernel's encoding was accepted
+         * here, so on the MP kernel every S-List fault - the very race this
+         * fixup exists for, and one that only real concurrency produces - broke
+         * into the debugger instead of being repaired. Skip the prefix if it is
+         * there rather than demanding one encoding.
+         */
+        ASSERT((Instruction[0] == 0x8B) && (Instruction[1] == 0x18));
+        Instruction += (Instruction[2] == 0xF0) ? 3 : 2;
+        ASSERT((Instruction[0] == 0x0F) && (Instruction[1] == 0xC7) &&
+               (Instruction[2] == 0x4D) && (Instruction[3] == 0x00));
 
         /* Check if this is a user fault */
         if (TrapFrame->Eip == (ULONG_PTR)KeUserPopEntrySListFault)
