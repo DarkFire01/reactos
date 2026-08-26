@@ -350,24 +350,15 @@ KiSwapContextExit(IN PKTHREAD OldThread,
     NewProcess = NewThread->ApcState.Process;
     if (OldProcess != NewProcess)
     {
-        /* Check if there is a different LDT */
-        if (*(PULONGLONG)&OldProcess->LdtDescriptor != *(PULONGLONG)&NewProcess->LdtDescriptor)
-        {
-            if (NewProcess->LdtDescriptor.LimitLow)
-            {
-                KeSetGdtSelector(KGDT_LDT,
-                                 ((PULONG)&NewProcess->LdtDescriptor)[0],
-                                 ((PULONG)&NewProcess->LdtDescriptor)[1]);
-                Ke386SetLocalDescriptorTable(KGDT_LDT);
-            }
-            else
-            {
-                Ke386SetLocalDescriptorTable(0);
-            }
-        }
-
-        /* Switch address space and flush TLB */
-        __writecr3(NewProcess->DirectoryTableBase[0]);
+        /*
+         * Do the whole switch through KiSwapProcess rather than repeating the
+         * LDT and CR3 half of it here. The part that was missing is
+         * KPROCESS::ActiveProcessors: KeFlushProcessTb() and the other
+         * per-process flushes use it as the set of processors to shoot down,
+         * so while it is not maintained every one of those flushes is sent to
+         * an empty set and the stale translations are simply kept.
+         */
+        KiSwapProcess(NewProcess, OldProcess);
     }
 
     /* Update the old thread's cycle time */
