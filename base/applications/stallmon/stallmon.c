@@ -157,6 +157,7 @@ typedef struct _OPTIONS
     int Pool;               /* thread pool workers per process          */
     int PostHz;             /* cross-thread task posts per second       */
     BOOL SpinYield;         /* spin-then-yield lock contention          */
+    BOOL NoYield;           /* CPU heartbeat never calls Sleep(0)       */
     WCHAR PipeName[128];
 } OPTIONS;
 
@@ -368,7 +369,9 @@ static DWORD WINAPI CpuBeatThread(LPVOID Param)
             Accumulator += i ^ (Accumulator >> 3);
 
         Beat(&gCpuBeat);
-        Sleep(0);
+
+        if (!gOpt.NoYield)
+            Sleep(0);
     }
 
     return Accumulator & 1;
@@ -1467,6 +1470,8 @@ static BOOL SpawnChild(int Index)
             lstrcatW(Command, L" --chromepump");
         if (gOpt.SpinYield)
             lstrcatW(Command, L" --spinyield");
+        if (gOpt.NoYield)
+            lstrcatW(Command, L" --noyield");
         if (gOpt.Pool > 0)
         {
             WCHAR Pool[64];
@@ -1676,6 +1681,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--hirestimer")) gOpt.HiResTimer = TRUE;
         else if (!strcmp(argv[i], "--chromepump")) gOpt.ChromePump = TRUE;
         else if (!strcmp(argv[i], "--spinyield")) gOpt.SpinYield = TRUE;
+        else if (!strcmp(argv[i], "--noyield")) gOpt.NoYield = TRUE;
         else if (!strcmp(argv[i], "--pool") && i + 1 < argc)
             gOpt.Pool = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--posthz") && i + 1 < argc)
