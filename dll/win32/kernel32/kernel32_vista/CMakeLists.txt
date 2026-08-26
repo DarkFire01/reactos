@@ -19,6 +19,7 @@ list(APPEND SOURCE
     ProcessInformation.c
     ProcessMitigation.c
     ThreadInformation.c
+    wer.c
     sync.c
     ThreadDescription.c
     threadpool.c
