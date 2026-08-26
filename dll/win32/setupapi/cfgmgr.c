@@ -8953,3 +8953,111 @@ CM_Unregister_Device_Interface_ExW(
 
     return ret;
 }
+
+/*
+ * A device notification registration. Nothing walks this list yet - see
+ * CM_Register_Notification for why the callback never fires - but the
+ * handle has to be something a caller can hand back, and something we can
+ * tell from a stale one.
+ */
+#define CM_NOTIFY_SIGNATURE 0x4D4E4D43 /* "CMNM" */
+
+typedef struct _CM_NOTIFY_REGISTRATION
+{
+    ULONG Signature;
+    PCM_NOTIFY_CALLBACK Callback;
+    PVOID Context;
+    CM_NOTIFY_FILTER Filter;
+} CM_NOTIFY_REGISTRATION, *PCM_NOTIFY_REGISTRATION;
+
+
+/***********************************************************************
+ * CM_Register_Notification [SETUPAPI.@]
+ *
+ * Ask to be told when a device or device interface arrives, goes away or
+ * changes state.
+ *
+ * The registration is accepted and the callback is never invoked. That is
+ * not a placeholder for "we could not do it": there is no PnP notification
+ * path behind this yet, and on a machine where devices do not come and go
+ * the difference between "no notifications" and "no notifications yet" is
+ * invisible to the caller. What a caller does notice is a refusal, and it
+ * notices the export being absent even more - xul.dll imports this at load
+ * time, so Firefox does not start without it.
+ *
+ * The handle handed back is real and must be released by
+ * CM_Unregister_Notification, so a caller that tracks its registrations
+ * balances out and does not leak or double free.
+ */
+CONFIGRET
+WINAPI
+CM_Register_Notification(
+    _In_ PCM_NOTIFY_FILTER pFilter,
+    _In_opt_ PVOID pContext,
+    _In_opt_ PCM_NOTIFY_CALLBACK pCallback,
+    _Out_ PHCMNOTIFICATION pNotifyContext)
+{
+    PCM_NOTIFY_REGISTRATION Registration;
+
+    TRACE("CM_Register_Notification(%p %p %p %p)\n",
+          pFilter, pContext, pCallback, pNotifyContext);
+
+    if (pNotifyContext == NULL)
+        return CR_INVALID_POINTER;
+
+    /* Windows writes the handle before validating the rest, and a caller
+       that gets a failure still closes what it was given */
+    *pNotifyContext = NULL;
+
+    if (pFilter == NULL || pCallback == NULL)
+        return CR_INVALID_POINTER;
+
+    if (pFilter->cbSize != sizeof(CM_NOTIFY_FILTER))
+        return CR_INVALID_DATA;
+
+    if (pFilter->FilterType >= CM_NOTIFY_FILTER_TYPE_MAX)
+        return CR_INVALID_DATA;
+
+    Registration = HeapAlloc(GetProcessHeap(),
+                             HEAP_ZERO_MEMORY,
+                             sizeof(CM_NOTIFY_REGISTRATION));
+    if (Registration == NULL)
+        return CR_OUT_OF_MEMORY;
+
+    Registration->Signature = CM_NOTIFY_SIGNATURE;
+    Registration->Callback = pCallback;
+    Registration->Context = pContext;
+    Registration->Filter = *pFilter;
+
+    FIXME("Registered for device notifications that will never be sent\n");
+
+    *pNotifyContext = (HCMNOTIFICATION)Registration;
+    return CR_SUCCESS;
+}
+
+
+/***********************************************************************
+ * CM_Unregister_Notification [SETUPAPI.@]
+ */
+CONFIGRET
+WINAPI
+CM_Unregister_Notification(
+    _In_ HCMNOTIFICATION NotifyContext)
+{
+    PCM_NOTIFY_REGISTRATION Registration = (PCM_NOTIFY_REGISTRATION)NotifyContext;
+
+    TRACE("CM_Unregister_Notification(%p)\n", NotifyContext);
+
+    if (Registration == NULL ||
+        Registration->Signature != CM_NOTIFY_SIGNATURE)
+    {
+        return CR_INVALID_POINTER;
+    }
+
+    /* Clear the signature first, so a second release of the same handle is
+       refused rather than freeing the block twice */
+    Registration->Signature = 0;
+    HeapFree(GetProcessHeap(), 0, Registration);
+
+    return CR_SUCCESS;
+}

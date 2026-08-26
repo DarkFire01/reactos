@@ -181,6 +181,8 @@
 @ stdcall CM_Query_Remove_SubTree_Ex(long long ptr)
 @ stdcall CM_Query_Resource_Conflict_List(ptr long long ptr long long ptr)
 @ stdcall CM_Reenumerate_DevNode(long long)
+@ stdcall -version=0x602+ CM_Register_Notification(ptr ptr ptr ptr)
+@ stdcall -version=0x602+ CM_Unregister_Notification(ptr)
 @ stdcall CM_Reenumerate_DevNode_Ex(long long ptr)
 @ stdcall CM_Register_Device_Driver(long long)
 @ stdcall CM_Register_Device_Driver_Ex(long long ptr)

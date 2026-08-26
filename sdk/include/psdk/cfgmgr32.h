@@ -3217,6 +3217,112 @@ CMP_WaitNoPendingInstallEvents(
 
 #endif /* (WINVER >= _WIN32_WINNT_WIN2K) */
 
+/*
+ * Device notification, Windows 8 and later. Declared unconditionally
+ * rather than behind a WINVER guard: the tree builds setupapi - which is
+ * where these are implemented - at WINVER 0x502, so a guard would hide the
+ * types from their own implementation. The spec entries gate the exports.
+ */
+DECLARE_HANDLE(HCMNOTIFICATION);
+typedef HCMNOTIFICATION *PHCMNOTIFICATION;
+
+#define CM_NOTIFY_FILTER_FLAG_ALL_INTERFACE_CLASSES 0x00000001
+#define CM_NOTIFY_FILTER_FLAG_ALL_DEVICE_INSTANCES  0x00000002
+
+typedef enum _CM_NOTIFY_FILTER_TYPE
+{
+    CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE = 0,
+    CM_NOTIFY_FILTER_TYPE_DEVICEHANDLE,
+    CM_NOTIFY_FILTER_TYPE_DEVICEINSTANCE,
+    CM_NOTIFY_FILTER_TYPE_MAX
+} CM_NOTIFY_FILTER_TYPE, *PCM_NOTIFY_FILTER_TYPE;
+
+typedef enum _CM_NOTIFY_ACTION
+{
+    CM_NOTIFY_ACTION_DEVICEINTERFACEARRIVAL = 0,
+    CM_NOTIFY_ACTION_DEVICEINTERFACEREMOVAL,
+    CM_NOTIFY_ACTION_DEVICEQUERYREMOVE,
+    CM_NOTIFY_ACTION_DEVICEQUERYREMOVEFAILED,
+    CM_NOTIFY_ACTION_DEVICEREMOVEPENDING,
+    CM_NOTIFY_ACTION_DEVICEREMOVECOMPLETE,
+    CM_NOTIFY_ACTION_DEVICECUSTOMEVENT,
+    CM_NOTIFY_ACTION_DEVICEINSTANCEENUMERATED,
+    CM_NOTIFY_ACTION_DEVICEINSTANCESTARTED,
+    CM_NOTIFY_ACTION_DEVICEINSTANCEREMOVED,
+    CM_NOTIFY_ACTION_MAX
+} CM_NOTIFY_ACTION, *PCM_NOTIFY_ACTION;
+
+typedef struct _CM_NOTIFY_FILTER
+{
+    DWORD cbSize;
+    DWORD Flags;
+    CM_NOTIFY_FILTER_TYPE FilterType;
+    DWORD Reserved;
+    union
+    {
+        struct
+        {
+            GUID ClassGuid;
+        } DeviceInterface;
+        struct
+        {
+            HANDLE hTarget;
+        } DeviceHandle;
+        struct
+        {
+            WCHAR InstanceId[MAX_DEVICE_ID_LEN];
+        } DeviceInstance;
+    } u;
+} CM_NOTIFY_FILTER, *PCM_NOTIFY_FILTER;
+
+typedef struct _CM_NOTIFY_EVENT_DATA
+{
+    CM_NOTIFY_FILTER_TYPE FilterType;
+    DWORD Reserved;
+    union
+    {
+        struct
+        {
+            GUID ClassGuid;
+            WCHAR SymbolicLink[ANYSIZE_ARRAY];
+        } DeviceInterface;
+        struct
+        {
+            GUID EventGuid;
+            LONG NameOffset;
+            DWORD DataSize;
+            BYTE Data[ANYSIZE_ARRAY];
+        } DeviceHandle;
+        struct
+        {
+            WCHAR InstanceId[ANYSIZE_ARRAY];
+        } DeviceInstance;
+    } u;
+} CM_NOTIFY_EVENT_DATA, *PCM_NOTIFY_EVENT_DATA;
+
+typedef DWORD
+(CALLBACK *PCM_NOTIFY_CALLBACK)(
+  _In_ HCMNOTIFICATION hNotify,
+  _In_opt_ PVOID Context,
+  _In_ CM_NOTIFY_ACTION Action,
+  _In_reads_bytes_(EventDataSize) PCM_NOTIFY_EVENT_DATA EventData,
+  _In_ DWORD EventDataSize);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Register_Notification(
+  _In_ PCM_NOTIFY_FILTER pFilter,
+  _In_opt_ PVOID pContext,
+  _In_opt_ PCM_NOTIFY_CALLBACK pCallback,
+  _Out_ PHCMNOTIFICATION pNotifyContext);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Unregister_Notification(
+  _In_ HCMNOTIFICATION NotifyContext);
+
 #ifdef __cplusplus
 }
 #endif

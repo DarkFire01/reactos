@@ -159,6 +159,8 @@
 @ stdcall CM_Query_Remove_SubTree_Ex(long long long) setupapi.CM_Query_Remove_SubTree_Ex
 @ stub CM_Query_Resource_Conflict_List # setupapi.CM_Query_Resource_Conflict_List
 @ stdcall CM_Reenumerate_DevNode(long long) setupapi.CM_Reenumerate_DevNode
+@ stdcall -version=0x602+ CM_Register_Notification(ptr ptr ptr ptr) setupapi.CM_Register_Notification
+@ stdcall -version=0x602+ CM_Unregister_Notification(ptr) setupapi.CM_Unregister_Notification
 @ stdcall CM_Reenumerate_DevNode_Ex(long long long) setupapi.CM_Reenumerate_DevNode_Ex
 @ stdcall CM_Register_Device_Driver(long long) setupapi.CM_Register_Device_Driver
 @ stdcall CM_Register_Device_Driver_Ex(long long ptr) setupapi.CM_Register_Device_Driver_Ex
