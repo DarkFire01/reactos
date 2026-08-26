@@ -159,6 +159,7 @@ typedef struct _OPTIONS
     BOOL SpinYield;         /* spin-then-yield lock contention          */
     BOOL NoYield;           /* CPU heartbeat never calls Sleep(0)       */
     int Fairness;           /* equal-priority fairness probe, N threads */
+    BOOL FairOne;           /* confine the fairness probe to one processor */
     WCHAR PipeName[128];
 } OPTIONS;
 
@@ -499,10 +500,42 @@ typedef struct _FAIR_WORKER
     ULONGLONG YieldTotalUs;
     volatile LONG YieldCount;
     ULONGLONG BurstTotalUs;
+    /* Bitmask of the processors this thread was observed on. If a run is a
+       valid single-core comparison every thread reports exactly one bit, and
+       every thread reports the same bit. */
+    volatile LONG CpuSeen;
 } FAIR_WORKER;
 
 static FAIR_WORKER gFair[FAIR_MAX];
 static int gFairCount;
+
+/* Vista+, and resolved rather than imported so this still loads where it is
+   absent - the answer is only diagnostic, so degrading to "unknown" is fine. */
+typedef DWORD (WINAPI *PFN_GETCURRENTPROCESSORNUMBER)(void);
+static PFN_GETCURRENTPROCESSORNUMBER pGetCurrentProcessorNumber;
+
+static void FairResolveCpuQuery(void)
+{
+    HMODULE Kernel32 = GetModuleHandleA("kernel32.dll");
+
+    if (Kernel32)
+    {
+        pGetCurrentProcessorNumber = (PFN_GETCURRENTPROCESSORNUMBER)
+            GetProcAddress(Kernel32, "GetCurrentProcessorNumber");
+    }
+}
+
+static void FairNoteCpu(FAIR_WORKER *Worker)
+{
+    DWORD Cpu;
+
+    if (!pGetCurrentProcessorNumber)
+        return;
+
+    Cpu = pGetCurrentProcessorNumber();
+    if (Cpu < 32)
+        Worker->CpuSeen |= (1L << Cpu);
+}
 
 static DWORD WINAPI FairThread(LPVOID Param)
 {
@@ -524,6 +557,7 @@ static DWORD WINAPI FairThread(LPVOID Param)
         AfterBurst = QpcUs();
         Worker->BurstTotalUs += (AfterBurst - Before);
         InterlockedIncrement(&Worker->Work);
+        FairNoteCpu(Worker);
 
         if (Worker->Yields)
         {
@@ -543,12 +577,47 @@ static DWORD WINAPI FairThread(LPVOID Param)
     return Accumulator & 1;
 }
 
+static void FairPinToOneCpu(void)
+{
+    DWORD_PTR ProcessMask, SystemMask;
+    DWORD_PTR One;
+
+    if (!GetProcessAffinityMask(GetCurrentProcess(), &ProcessMask, &SystemMask))
+    {
+        Log("fairness: cannot read affinity mask\n");
+        return;
+    }
+
+    /* Lowest processor we are allowed to use */
+    One = ProcessMask & (~ProcessMask + 1);
+    if (!One)
+    {
+        Log("fairness: empty affinity mask\n");
+        return;
+    }
+
+    if (!SetProcessAffinityMask(GetCurrentProcess(), One))
+        Log("fairness: cannot pin to one cpu\n");
+}
+
 static void FairStart(int Count)
 {
     int i;
+    DWORD_PTR ProcessMask, SystemMask;
 
     if (Count > FAIR_MAX)
         Count = FAIR_MAX;
+
+    FairResolveCpuQuery();
+
+    if (gOpt.FairOne)
+        FairPinToOneCpu();
+
+    if (GetProcessAffinityMask(GetCurrentProcess(), &ProcessMask, &SystemMask))
+    {
+        Log("fairness: process affinity=0x%lx system=0x%lx\n",
+            (ULONG)ProcessMask, (ULONG)SystemMask);
+    }
 
     for (i = 0; i < Count; i++)
     {
@@ -592,17 +661,17 @@ static void FairReport(void)
 
         if (gFair[i].Yields && gFair[i].YieldCount)
         {
-            Log("fair thread %2d yields  work=%ld cpu=%lums "
+            Log("fair thread %2d yields  cpus=0x%lx work=%ld cpu=%lums "
                 "burst_avg=%luus yield_avg=%luus yield_max=%luus\n",
-                i, gFair[i].Work, Cpu,
+                i, (ULONG)gFair[i].CpuSeen, gFair[i].Work, Cpu,
                 (ULONG)(gFair[i].BurstTotalUs / (gFair[i].Work ? gFair[i].Work : 1)),
                 (ULONG)(gFair[i].YieldTotalUs / gFair[i].YieldCount),
                 (ULONG)gFair[i].YieldMaxUs);
         }
         else
         {
-            Log("fair thread %2d hogs    work=%ld cpu=%lums burst_avg=%luus\n",
-                i, gFair[i].Work, Cpu,
+            Log("fair thread %2d hogs    cpus=0x%lx work=%ld cpu=%lums burst_avg=%luus\n",
+                i, (ULONG)gFair[i].CpuSeen, gFair[i].Work, Cpu,
                 (ULONG)(gFair[i].BurstTotalUs / (gFair[i].Work ? gFair[i].Work : 1)));
         }
 
@@ -1949,6 +2018,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--noyield")) gOpt.NoYield = TRUE;
         else if (!strcmp(argv[i], "--fairness") && i + 1 < argc)
             gOpt.Fairness = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--fairone")) gOpt.FairOne = TRUE;
         else if (!strcmp(argv[i], "--pool") && i + 1 < argc)
             gOpt.Pool = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--posthz") && i + 1 < argc)
