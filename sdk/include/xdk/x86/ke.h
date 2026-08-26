@@ -55,7 +55,15 @@ KeMemoryBarrier(VOID)
   (VOID)Dummy;
 
 #if defined(__GNUC__)
-  __asm__ __volatile__ ("xchg %%eax, %0" : : "m" (Barrier) : "%eax");
+  /* The locked xchg is the processor fence. The "memory" clobber is what
+     makes this a compiler fence as well, and it is the half that matters
+     most here: without it GCC may keep a shared value in a register across
+     the barrier, which turns a spin loop such as
+         while (Shared != x) { KeMemoryBarrier(); YieldProcessor(); }
+     into an unconditional "pause; jmp" that never re-reads Shared and never
+     exits. The amd64 and ARM versions of this function are compiler fences
+     already, by virtue of the intrinsics they use. */
+  __asm__ __volatile__ ("xchg %%eax, %0" : : "m" (Barrier) : "%eax", "memory");
 #elif defined(_MSC_VER)
   __asm xchg [Barrier], eax
 #endif
