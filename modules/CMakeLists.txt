@@ -36,6 +36,19 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/livecd_extras/)
     endforeach(item)
 endif()
 
+## Prebuilt debugging and bring-up tools, dropped straight into system32 so they
+## are on PATH in the live environment - these get typed into the Run dialog, and
+## a bare name is far easier to drive than a path whose drive letter varies.
+## Unlike [boot|live]cd_extras above, which land in \extras, the layout here is
+## flat: just put the executables in the folder.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/testapps/)
+    file(GLOB TESTAPP_FILES ${CMAKE_CURRENT_SOURCE_DIR}/testapps/*)
+    foreach(item ${TESTAPP_FILES})
+        get_filename_component(_testapp_name ${item} NAME)
+        add_cd_file(FILE ${item} DESTINATION reactos/system32 NO_CAB NAME_ON_CD ${_testapp_name} FOR all)
+    endforeach(item)
+endif()
+
 ## Extra files which you need existing on the hard drive after the installation.
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/)
     file(GLOB_RECURSE EXTRA_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/*)

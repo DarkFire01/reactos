@@ -3,6 +3,7 @@ output-*
 modules/optional
 modules/bootcd_extras
 modules/livecd_extras
+modules/testapps
 modules/3rdparty
 modules/[Aa][Hh][Kk]_[Tt]ests
 .cache
