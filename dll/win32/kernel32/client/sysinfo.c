@@ -696,6 +696,27 @@ GetCurrentPackageFullName(
 
 /**
  * @brief
+ * Gets the application user model ID of the calling process.
+ *
+ * @return
+ * APPMODEL_ERROR_NO_APPLICATION, since no process here runs as a packaged application.
+ */
+LONG
+WINAPI
+GetCurrentApplicationUserModelId(
+    _Inout_ UINT32 *applicationUserModelIdLength,
+    _Out_writes_opt_(*applicationUserModelIdLength) PWSTR applicationUserModelId)
+{
+    UNREFERENCED_PARAMETER(applicationUserModelId);
+
+    if (!applicationUserModelIdLength)
+        return ERROR_INVALID_PARAMETER;
+
+    return APPMODEL_ERROR_NO_APPLICATION;
+}
+
+/**
+ * @brief
  * Looks up the package identity of a process.
  *
  * @return
