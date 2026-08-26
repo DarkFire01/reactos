@@ -12,6 +12,10 @@ struct tagPOPUPMENU;
 
 #define HANDLEENTRY_DESTROY 1
 #define HANDLEENTRY_INDESTROY 2
+/* The handle has been named in a job grant at least once. Only a hint: it
+   is never cleared, so a set bit means the granted lists have to be asked,
+   while a clear bit means no job can possibly have been granted it. */
+#define HANDLEENTRY_GRANTED 4
 
 typedef struct _USER_HANDLE_ENTRY
 {
@@ -289,6 +293,7 @@ typedef struct tagCLIPBOARDDATA
 #define TIF_INGETTEXTLENGTH         0x08000000
 #define TIF_ANSILENGTH              0x10000000
 #define TIF_DISABLEHOOKS            0x20000000
+#define TIF_JOBRESTRICTED           0x40000000
 
 typedef struct _CALLBACKWND
 {

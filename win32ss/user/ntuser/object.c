@@ -711,6 +711,30 @@ UserObjectInDestroy(HANDLE h)
   return (entry->flags & HANDLEENTRY_INDESTROY);
 }
 
+/*
+ * Validates a USER handle that is about to be named in a job grant, and
+ * records on the handle itself that a job has named it.
+ *
+ * The mark is only ever set, never cleared, so it cannot say whether any
+ * particular job still grants the handle - the granted lists remain the
+ * authority for that. What it does say, cheaply, is that a handle whose mark
+ * is clear was never granted to anything, which is the answer for very nearly
+ * every handle the enforcement of JOB_OBJECT_UILIMIT_HANDLES will ever look at.
+ */
+BOOL
+FASTCALL
+UserMarkHandleGranted(HANDLE h)
+{
+    PUSER_HANDLE_ENTRY entry;
+
+    entry = handle_to_entry(gHandleTable, h);
+    if (entry == NULL)
+        return FALSE;
+
+    entry->flags |= HANDLEENTRY_GRANTED;
+    return TRUE;
+}
+
 BOOL
 FASTCALL
 UserDeleteObject(HANDLE h, HANDLE_TYPE type )
@@ -827,7 +851,7 @@ NtUserValidateHandleSecure(
        goto Exit; // Return FALSE
 
    // Same process job returns TRUE.
-   if (gptiCurrent->ppi->pW32Job == ppi->pW32Job) Ret = TRUE;
+   if (gptiCurrent->ppi->pJobInfo == ppi->pJobInfo) Ret = TRUE;
 
 Exit:
    UserLeave();
