@@ -4839,6 +4839,18 @@ RtlCutoverTimeToSystemTime(
     _In_ BOOLEAN ThisYearsCutoverOnly);
 
 NTSYSAPI
+BOOLEAN
+NTAPI
+RtlQueryPerformanceCounter(
+    _Out_ PLARGE_INTEGER PerformanceCounter);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlQueryPerformanceFrequency(
+    _Out_ PLARGE_INTEGER PerformanceFrequency);
+
+NTSYSAPI
 NTSTATUS
 NTAPI
 RtlQueryTimeZoneInformation(
