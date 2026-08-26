@@ -879,11 +879,17 @@ KfLowerIrql(
     IN KIRQL OldIrql)
 {
 #if DBG
-    /* Validate correct lower */
+    /* Validate correct lower. Say which IRQLs and who asked: a bare
+       KeBugCheck() here leaves all four parameters zero, which names neither
+       the caller nor the levels involved. */
     if (OldIrql > ApicGetCurrentIrql())
     {
         /* Crash system */
-        KeBugCheck(IRQL_NOT_LESS_OR_EQUAL);
+        KeBugCheckEx(IRQL_NOT_LESS_OR_EQUAL,
+                     ApicGetCurrentIrql(),
+                     OldIrql,
+                     (ULONG_PTR)_ReturnAddress(),
+                     0);
     }
 #endif
     /* Set the new IRQL */
@@ -896,15 +902,32 @@ KfRaiseIrql(
     IN KIRQL NewIrql)
 {
     KIRQL OldIrql;
+#if DBG
+    ULONG_PTR Caller = 0, *Frame;
+#endif
 
     /* Read the current IRQL */
     OldIrql = ApicGetCurrentIrql();
 #if DBG
-    /* Validate correct raise */
+    /* Validate correct raise. Report the levels, our caller and its caller -
+       a bare KeBugCheck() here leaves all four parameters zero, which names
+       nothing. The lock wrappers are one frame thick, so the interesting name
+       is usually the second one. */
     if (OldIrql > NewIrql)
     {
+        /* Walk one frame past our caller. Everything here is built with
+           -fno-omit-frame-pointer, so [ebp] is the caller's frame and
+           [ebp + 4] the address it will return to. */
+        Frame = (ULONG_PTR *)__builtin_frame_address(0);
+        if (Frame != NULL && Frame[0] != 0)
+            Caller = ((ULONG_PTR *)Frame[0])[1];
+
         /* Crash system */
-        KeBugCheck(IRQL_NOT_GREATER_OR_EQUAL);
+        KeBugCheckEx(IRQL_NOT_GREATER_OR_EQUAL,
+                     OldIrql,
+                     NewIrql,
+                     (ULONG_PTR)_ReturnAddress(),
+                     Caller);
     }
 #endif
     /* Convert the new IRQL to a TPR value and write the register */
