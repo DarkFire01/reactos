@@ -262,6 +262,9 @@ KiIdleLoop(VOID)
     PKPRCB Prcb = KeGetCurrentPrcb();
     PKTHREAD OldThread, NewThread;
 
+    /* This processor is going idle */
+    InterlockedBitTestAndSetAffinity(&KiIdleSummary, Prcb->Number);
+
     /* Now loop forever */
     while (TRUE)
     {
@@ -305,8 +308,16 @@ KiIdleLoop(VOID)
             KfRaiseIrql(SYNCH_LEVEL);
 #endif
 
+            /* No longer idle: a real thread is about to run here */
+            InterlockedBitTestAndResetAffinity(&KiIdleSummary,
+                                               Prcb->Number);
+
             /* Switch away from the idle thread */
             KiSwapContext(APC_LEVEL, OldThread);
+
+            /* Back in the idle loop, so idle again */
+            InterlockedBitTestAndSetAffinity(&KiIdleSummary,
+                                             Prcb->Number);
 
 #ifdef CONFIG_SMP
             /* Go back to DISPATCH_LEVEL */
