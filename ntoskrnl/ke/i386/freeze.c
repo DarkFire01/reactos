@@ -25,6 +25,23 @@
 
 PKPRCB KiFreezeOwner;
 
+/*
+ * How many processors KxFreezeExecution() actually froze.
+ *
+ * KeNumberProcessors is not stable across a freeze. An application processor
+ * increments it from KiSystemStartup() as it comes up, and on this kernel every
+ * DbgPrint freezes and thaws - KdpPrint() enters the debugger - so the two do
+ * overlap in practice. Reading the count again at thaw time made the boot
+ * processor try to thaw a processor it had never frozen: the "Successful AP
+ * startup count" print froze while the count was still one and thawed once the
+ * application processor had made it two, and the target was still RUNNING.
+ *
+ * Only the freeze owner touches this, and there is one of those at a time.
+ */
+#ifdef CONFIG_SMP
+static ULONG KiFrozenProcessorCount;
+#endif
+
 /* FUNCTIONS ******************************************************************/
 
 BOOLEAN
@@ -157,8 +174,11 @@ KxFreezeExecution(
     /* We are the owner now and active */
     CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_OWNER | IPI_FROZEN_FLAG_ACTIVE;
 
+    /* Take the processor count once, and thaw exactly this set later */
+    KiFrozenProcessorCount = (ULONG)KeNumberProcessors;
+
     /* Loop all processors */
-    for (i = 0; i < (ULONG)KeNumberProcessors; i++)
+    for (i = 0; i < KiFrozenProcessorCount; i++)
     {
         PKPRCB TargetPrcb = KiProcessorBlock[i];
         if (TargetPrcb != CurrentPrcb)
@@ -175,7 +195,7 @@ KxFreezeExecution(
     KiIpiSend(KeActiveProcessors & ~CurrentPrcb->SetMember, IPI_FREEZE);
 
     /* Wait for all targets to be frozen */
-    for (i = 0; i < (ULONG)KeNumberProcessors; i++)
+    for (i = 0; i < KiFrozenProcessorCount; i++)
     {
         PKPRCB TargetPrcb = KiProcessorBlock[i];
         if (TargetPrcb != CurrentPrcb)
@@ -204,8 +224,8 @@ KxThawExecution(
 
     ASSERT(CurrentPrcb->IpiFrozen & IPI_FROZEN_FLAG_ACTIVE);
 
-    /* Loop all processors */
-    for (i = 0; i < (ULONG)KeNumberProcessors; i++)
+    /* Loop the processors we froze, not however many there are now */
+    for (i = 0; i < KiFrozenProcessorCount; i++)
     {
         PKPRCB TargetPrcb = KiProcessorBlock[i];
         if (TargetPrcb != CurrentPrcb)
@@ -219,7 +239,7 @@ KxThawExecution(
     }
 
     /* Wait for all targets to be running */
-    for (i = 0; i < (ULONG)KeNumberProcessors; i++)
+    for (i = 0; i < KiFrozenProcessorCount; i++)
     {
         PKPRCB TargetPrcb = KiProcessorBlock[i];
         if (TargetPrcb != CurrentPrcb)
