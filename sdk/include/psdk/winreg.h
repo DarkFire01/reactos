@@ -113,6 +113,7 @@ LSTATUS WINAPI RegCreateKeyA(_In_ HKEY hKey, _In_opt_ LPCSTR lpSubKey, _Out_ PHK
 LSTATUS WINAPI RegCreateKeyW(_In_ HKEY hKey, _In_opt_ LPCWSTR lpSubKey, _Out_ PHKEY phkResult);
 LSTATUS WINAPI RegCreateKeyExA(_In_ HKEY hKey, _In_ LPCSTR lpSubKey, _Reserved_ DWORD Reserved, _In_opt_ LPSTR lpClass, _In_ DWORD dwOptions, _In_ REGSAM samDesired, _In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes, _Out_ PHKEY phkResult, _Out_opt_ PDWORD lpdwDisposition);
 LSTATUS WINAPI RegCreateKeyExW(_In_ HKEY hKey, _In_ LPCWSTR lpSubKey, _Reserved_ DWORD Reserved, _In_opt_ LPWSTR lpClass, _In_ DWORD dwOptions, _In_ REGSAM samDesired, _In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes, _Out_ PHKEY phkResult, _Out_opt_ PDWORD lpdwDisposition);
+LSTATUS WINAPI RegCreateKeyTransactedW(_In_ HKEY hKey, _In_ LPCWSTR lpSubKey, _Reserved_ DWORD Reserved, _In_opt_ LPWSTR lpClass, _In_ DWORD dwOptions, _In_ REGSAM samDesired, _In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes, _Out_ PHKEY phkResult, _Out_opt_ PDWORD lpdwDisposition, _In_ HANDLE hTransaction, _Reserved_ PVOID pExtendedParemeter);
 LSTATUS WINAPI RegDeleteKeyA(_In_ HKEY hKey, _In_ LPCSTR lpSubKey);
 LSTATUS WINAPI RegDeleteKeyW(_In_ HKEY hKey, _In_ LPCWSTR lpSubKey);
 LSTATUS WINAPI RegDeleteKeyExA(_In_ HKEY hKey, _In_ LPCSTR lpSubKey, _In_ REGSAM samDesired, _Reserved_ DWORD Reserved);
