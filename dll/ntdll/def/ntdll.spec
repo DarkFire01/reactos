@@ -1017,6 +1017,8 @@
 @ stdcall -version=0x601+ -stub RtlQueryPackageIdentity(long ptr ptr ptr ptr ptr)
 @ stdcall -stub -version=0x600+ RtlQueryModuleInformation(ptr long ptr)
 @ stdcall -stub RtlQueryProcessBackTraceInformation(ptr)
+@ stdcall RtlQueryPerformanceCounter(ptr)
+@ stdcall RtlQueryPerformanceFrequency(ptr)
 @ stdcall RtlQueryProcessDebugInformation(long long ptr)
 @ stdcall RtlQueryProcessHeapInformation(ptr)
 @ stdcall -stub RtlQueryProcessLockInformation(ptr)
