@@ -67,7 +67,7 @@ GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime)
 }
 
 /*
- * @unimplemented
+ * @implemented
  */
 VOID
 WINAPI
