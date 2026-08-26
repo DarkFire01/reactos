@@ -158,6 +158,7 @@ typedef struct _OPTIONS
     int PostHz;             /* cross-thread task posts per second       */
     BOOL SpinYield;         /* spin-then-yield lock contention          */
     BOOL NoYield;           /* CPU heartbeat never calls Sleep(0)       */
+    int Fairness;           /* equal-priority fairness probe, N threads */
     WCHAR PipeName[128];
 } OPTIONS;
 
@@ -450,6 +451,162 @@ static DWORD WINAPI SpinThread(LPVOID Param)
         Accumulator++;
 
     return Accumulator & 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Fairness                                                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Does a thread that yields get the same share as one that does not, at the
+ * same priority?
+ *
+ * It should. Threads here are identical in every way the scheduler is
+ * supposed to care about - same process, same base priority, same work - and
+ * differ only in whether they hand the processor back voluntarily between
+ * bursts. Any large difference in what they get done is the scheduler
+ * charging them differently for the same amount of CPU.
+ *
+ * There is a specific reason to suspect that. Quantum is charged by the clock
+ * interrupt, to whichever thread is running at that instant:
+ *
+ *     Thread->Quantum -= CLOCK_QUANTUM_DECREMENT;    (KeUpdateRunTime)
+ *
+ * so a thread that runs almost a whole tick and yields just before it lands
+ * pays nothing, while one that happens to be running when it lands pays for
+ * a full tick it may only just have started. Windows moved to counting
+ * cycles for exactly this reason - Vista's KiDeferredReadyThread compares
+ * against a QuantumTarget in cycles, not a tick countdown.
+ *
+ * If the yielding half of these threads systematically outruns the other
+ * half, that sampling bias is real and quantified, and it makes scheduling
+ * erratic in a way that would look exactly like "sometimes it is fine".
+ */
+
+#define FAIR_MAX 16
+
+typedef struct _FAIR_WORKER
+{
+    HANDLE Thread;
+    volatile LONG Work;     /* bursts completed                         */
+    int Index;
+    BOOL Yields;
+} FAIR_WORKER;
+
+static FAIR_WORKER gFair[FAIR_MAX];
+static int gFairCount;
+
+static DWORD WINAPI FairThread(LPVOID Param)
+{
+    FAIR_WORKER *Worker = (FAIR_WORKER *)Param;
+    volatile ULONG Accumulator = 0;
+    ULONG i;
+
+    while (gRunning)
+    {
+        /* A burst short enough that a yielding thread can usually finish one
+           between two clock ticks - which is the whole point */
+        for (i = 0; i < 20000; i++)
+            Accumulator += i ^ (Accumulator >> 3);
+
+        InterlockedIncrement(&Worker->Work);
+
+        if (Worker->Yields)
+            Sleep(0);
+    }
+
+    return Accumulator & 1;
+}
+
+static void FairStart(int Count)
+{
+    int i;
+
+    if (Count > FAIR_MAX)
+        Count = FAIR_MAX;
+
+    for (i = 0; i < Count; i++)
+    {
+        gFair[i].Index = i;
+        /* Alternate, so the two groups are interleaved in creation order and
+           neither gets an accident of position */
+        gFair[i].Yields = ((i & 1) == 0);
+        gFair[i].Thread = CreateThread(NULL, 0, FairThread, &gFair[i], 0, NULL);
+    }
+
+    gFairCount = Count;
+    Log("fairness probe: %d threads at equal priority, "
+        "even ones yield between bursts\n", Count);
+}
+
+/* CPU milliseconds a thread has been charged, kernel and user together */
+static ULONG FairThreadCpuMs(HANDLE Thread)
+{
+    FILETIME Creation, Exit, Kernel, User;
+    ULONGLONG Total;
+
+    if (!GetThreadTimes(Thread, &Creation, &Exit, &Kernel, &User))
+        return 0;
+
+    Total = (((ULONGLONG)Kernel.dwHighDateTime << 32) | Kernel.dwLowDateTime) +
+            (((ULONGLONG)User.dwHighDateTime << 32) | User.dwLowDateTime);
+
+    return (ULONG)(Total / 10000);
+}
+
+static void FairReport(void)
+{
+    LONG YieldWork = 0, HogWork = 0;
+    ULONG YieldCpu = 0, HogCpu = 0;
+    int Yielders = 0, Hogs = 0;
+    int i;
+
+    for (i = 0; i < gFairCount; i++)
+    {
+        ULONG Cpu = FairThreadCpuMs(gFair[i].Thread);
+
+        Log("fair thread %2d %-7s work=%ld cpu=%lums\n",
+            i, gFair[i].Yields ? "yields" : "hogs", gFair[i].Work, Cpu);
+
+        if (gFair[i].Yields)
+        {
+            YieldWork += gFair[i].Work;
+            YieldCpu += Cpu;
+            Yielders++;
+        }
+        else
+        {
+            HogWork += gFair[i].Work;
+            HogCpu += Cpu;
+            Hogs++;
+        }
+    }
+
+    if (Yielders && Hogs)
+    {
+        LONG YieldAvg = YieldWork / Yielders;
+        LONG HogAvg = HogWork / Hogs;
+        ULONG YieldCpuAvg = YieldCpu / Yielders;
+        ULONG HogCpuAvg = HogCpu / Hogs;
+
+        /*
+         * The CPU ratio is the one that means something. Work done is
+         * confounded - a yielding thread pays for a syscall every burst, so
+         * it does less work even when it is given exactly the same time.
+         * Time charged is what the scheduler decided; work done is what the
+         * thread managed with it.
+         */
+        Log("fairness work: yielding avg=%ld  non-yielding avg=%ld  "
+            "ratio=%ld%% (confounded by yield cost)\n",
+            YieldAvg, HogAvg, HogAvg ? (YieldAvg * 100 / HogAvg) : 0);
+
+        Log("fairness cpu : yielding avg=%lums non-yielding avg=%lums "
+            "ratio=%lu%% (this is the scheduler's decision)\n",
+            YieldCpuAvg, HogCpuAvg,
+            HogCpuAvg ? (YieldCpuAvg * 100 / HogCpuAvg) : 0);
+
+        Log("fairness: equal priority and equal work, so 100%% is fair\n");
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1564,6 +1721,9 @@ static int ParentMain(void)
     Beats[BeatCount++] = CreateThread(NULL, 0, CpuBeatThread, NULL, 0, NULL);
     Beats[BeatCount++] = CreateThread(NULL, 0, RtBeatThread, NULL, 0, NULL);
 
+    if (gOpt.Fairness > 0)
+        FairStart(gOpt.Fairness);
+
     if (gOpt.Pool > 0)
     {
         PoolStart(gOpt.Pool);
@@ -1613,6 +1773,9 @@ static int ParentMain(void)
 
     ReportTimerResolution("at end");
     Log("=== summary ===\n");
+
+    if (gFairCount > 0)
+        FairReport();
     for (i = 0; i < (int)(sizeof(gAllBeats) / sizeof(gAllBeats[0])); i++)
     {
         HEARTBEAT *Hb = gAllBeats[i];
@@ -1746,6 +1909,8 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--chromepump")) gOpt.ChromePump = TRUE;
         else if (!strcmp(argv[i], "--spinyield")) gOpt.SpinYield = TRUE;
         else if (!strcmp(argv[i], "--noyield")) gOpt.NoYield = TRUE;
+        else if (!strcmp(argv[i], "--fairness") && i + 1 < argc)
+            gOpt.Fairness = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--pool") && i + 1 < argc)
             gOpt.Pool = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--posthz") && i + 1 < argc)
