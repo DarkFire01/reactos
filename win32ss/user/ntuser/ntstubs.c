@@ -293,6 +293,13 @@ NtUserSetSysColors(
 {
    DWORD Ret = TRUE;
 
+   /* The colours are a system parameter like any other */
+   if (IntIsUIRestricted(JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS))
+   {
+      EngSetLastError(ERROR_ACCESS_DENIED);
+      return FALSE;
+   }
+
    if (cElements == 0)
       return TRUE;
 

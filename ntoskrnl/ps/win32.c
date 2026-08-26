@@ -27,6 +27,7 @@ extern PKWIN32_SESSION_CALLOUT ExpDesktopObjectDelete;
 extern PKWIN32_SESSION_CALLOUT ExpDesktopObjectOpen;
 extern PKWIN32_SESSION_CALLOUT ExpDesktopObjectClose;
 extern PKWIN32_POWEREVENT_CALLOUT PopEventCallout;
+extern PKWIN32_GLOBALATOMTABLE_CALLOUT ExpGlobalAtomTableCallout;
 
 /* PRIVATE FUNCTIONS *********************************************************/
 
@@ -116,6 +117,7 @@ PsEstablishWin32Callouts(IN PWIN32_CALLOUTS_FPNS CalloutData)
     PspW32ProcessCallout = CalloutData->ProcessCallout;
     PspW32ThreadCallout = CalloutData->ThreadCallout;
     PspW32JobCallout = CalloutData->JobCallout;
+    ExpGlobalAtomTableCallout = CalloutData->GlobalAtomTableCallout;
     ExpWindowStationObjectParse = CalloutData->WindowStationParseProcedure;
     ExpWindowStationObjectDelete = CalloutData->WindowStationDeleteProcedure;
     ExpWindowStationObjectOkToClose = CalloutData->WindowStationOkToCloseProcedure;

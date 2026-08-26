@@ -2573,6 +2573,13 @@ NtUserCreateDesktop(
     HDESK hDesk;
     HDESK Ret = NULL;
 
+    /* A job may forbid its processes from creating desktops */
+    if (IntIsUIRestricted(JOB_OBJECT_UILIMIT_DESKTOP))
+    {
+        EngSetLastError(ERROR_ACCESS_DENIED);
+        return NULL;
+    }
+
     TRACE("Enter NtUserCreateDesktop\n");
     UserEnterExclusive();
 
@@ -2975,6 +2982,13 @@ NtUserSwitchDesktop(HDESK hdesk)
     NTSTATUS Status;
     BOOL bRedrawDesktop;
     BOOL Ret = FALSE;
+
+    /* A job may forbid its processes from switching desktops */
+    if (IntIsUIRestricted(JOB_OBJECT_UILIMIT_DESKTOP))
+    {
+        EngSetLastError(ERROR_ACCESS_DENIED);
+        return FALSE;
+    }
 
     UserEnterExclusive();
     TRACE("Enter NtUserSwitchDesktop(0x%p)\n", hdesk);

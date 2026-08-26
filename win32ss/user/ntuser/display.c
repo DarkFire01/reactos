@@ -961,6 +961,13 @@ NtUserChangeDisplaySettings(
     DEVMODEW dmLocal;
     LONG lRet;
 
+    /* A job may forbid its processes from changing the display settings */
+    if (IntIsUIRestricted(JOB_OBJECT_UILIMIT_DISPLAYSETTINGS))
+    {
+        EngSetLastError(ERROR_ACCESS_DENIED);
+        return DISP_CHANGE_FAILED;
+    }
+
     /* Check arguments */
     if ((dwflags != CDS_VIDEOPARAMETERS) && (lParam != NULL))
     {

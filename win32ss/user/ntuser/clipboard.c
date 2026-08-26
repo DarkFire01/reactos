@@ -901,6 +901,12 @@ NtUserGetClipboardData(UINT fmt, PGETCLIPBDATA pgcd)
     PWINSTATION_OBJECT pWinStaObj;
     UINT uSourceFmt = fmt;
 
+    if (IntIsUIRestricted(JOB_OBJECT_UILIMIT_READCLIPBOARD))
+    {
+        EngSetLastError(ERROR_ACCESS_DENIED);
+        return NULL;
+    }
+
     TRACE("NtUserGetClipboardData(%x, %p)\n", fmt, pgcd);
 
     UserEnterShared();
@@ -1085,6 +1091,12 @@ NtUserSetClipboardData(UINT fmt, HANDLE hData, PSETCLIPBDATA pUnsafeScd)
 {
     SETCLIPBDATA scd;
     HANDLE hRet;
+
+    if (IntIsUIRestricted(JOB_OBJECT_UILIMIT_WRITECLIPBOARD))
+    {
+        EngSetLastError(ERROR_ACCESS_DENIED);
+        return NULL;
+    }
 
     TRACE("NtUserSetClipboardData(%x %p %p)\n", fmt, hData, pUnsafeScd);
 

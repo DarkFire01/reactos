@@ -495,6 +495,71 @@ PVOID UserGetObjectNoErr(PUSER_HANDLE_TABLE ht, HANDLE handle, HANDLE_TYPE type 
    return entry->ptr;
 }
 
+/*
+ * The PROCESSINFO a handle belongs to, or NULL for the types nobody owns.
+ * Which of the two the owner field holds follows from ObjectCallbacks above:
+ * the AllocThreadObject and AllocDeskThreadObject types keep a THREADINFO,
+ * the AllocDeskProcObject and AllocProcMarkObject types a PROCESSINFO, and
+ * the AllocSysObject types keep nothing.
+ */
+static
+PPROCESSINFO
+UserGetHandleOwner(PUSER_HANDLE_ENTRY entry)
+{
+    switch (entry->type)
+    {
+        case TYPE_WINDOW:
+        case TYPE_HOOK:
+        case TYPE_WINEVENTHOOK:
+        case TYPE_INPUTCONTEXT:
+            return entry->pi != NULL ? ((PTHREADINFO)entry->pi)->ppi : NULL;
+
+        case TYPE_MENU:
+        case TYPE_CURSOR:
+        case TYPE_CALLPROC:
+        case TYPE_ACCELTABLE:
+            return entry->pi;
+
+        default:
+            return NULL;
+    }
+}
+
+/*
+ * Whether the caller may reach a handle at all. Only a process in a job
+ * restricted by JOB_OBJECT_UILIMIT_HANDLES is limited: it reaches what its
+ * own job owns, plus what the job was granted with NtUserUserHandleGrantAccess.
+ * The USER lock must be held.
+ */
+static
+BOOL
+UserIsHandleReachable(PUSER_HANDLE_ENTRY entry, HANDLE handle)
+{
+    PTHREADINFO pti = PsGetCurrentThreadWin32Thread();
+    PPROCESSINFO ppiOwner;
+
+    /* Everybody else pays no more than this test */
+    if (pti == NULL || !(pti->TIF_flags & TIF_JOBRESTRICTED))
+        return TRUE;
+
+    if (pti->ppi == NULL ||
+        pti->ppi->pJobInfo == NULL ||
+        !(pti->ppi->pJobInfo->UIRestrictions & JOB_OBJECT_UILIMIT_HANDLES))
+    {
+        return TRUE;
+    }
+
+    /* Nothing owns it, so there is nobody to keep the job away from */
+    ppiOwner = UserGetHandleOwner(entry);
+    if (ppiOwner == NULL)
+        return TRUE;
+
+    if (ppiOwner->pJobInfo == pti->ppi->pJobInfo)
+        return TRUE;
+
+    return IntIsHandleGrantedToCurrentJob(handle);
+}
+
 /* return a pointer to a user object from its handle */
 PVOID UserGetObject(PUSER_HANDLE_TABLE ht, HANDLE handle, HANDLE_TYPE type )
 {
@@ -507,6 +572,13 @@ PVOID UserGetObject(PUSER_HANDLE_TABLE ht, HANDLE handle, HANDLE_TYPE type )
       EngSetLastError(ERROR_INVALID_HANDLE);
       return NULL;
    }
+
+   if (!UserIsHandleReachable(entry, handle))
+   {
+      EngSetLastError(ERROR_ACCESS_DENIED);
+      return NULL;
+   }
+
    return entry->ptr;
 }
 
@@ -815,8 +887,6 @@ APIENTRY
 NtUserValidateHandleSecure(
    HANDLE handle)
 {
-   UINT uType;
-   PPROCESSINFO ppi;
    PUSER_HANDLE_ENTRY entry;
    BOOL Ret = FALSE;
 
@@ -827,31 +897,8 @@ NtUserValidateHandleSecure(
       EngSetLastError(ERROR_INVALID_HANDLE);
       goto Exit; // Return FALSE
    }
-   uType = entry->type;
-   switch (uType)
-   {
-       case TYPE_WINDOW:
-       case TYPE_INPUTCONTEXT:
-          ppi = ((PTHREADINFO)entry->pi)->ppi;
-          break;
-       case TYPE_MENU:
-       case TYPE_ACCELTABLE:
-       case TYPE_CURSOR:
-       case TYPE_HOOK:
-       case TYPE_CALLPROC:
-       case TYPE_SETWINDOWPOS:
-          ppi = entry->pi;
-          break;
-       default:
-          ppi = NULL;
-          break;
-   }
 
-   if (!ppi)
-       goto Exit; // Return FALSE
-
-   // Same process job returns TRUE.
-   if (gptiCurrent->ppi->pJobInfo == ppi->pJobInfo) Ret = TRUE;
+   Ret = UserIsHandleReachable(entry, handle);
 
 Exit:
    UserLeave();

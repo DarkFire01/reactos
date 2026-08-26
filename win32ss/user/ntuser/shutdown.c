@@ -180,6 +180,10 @@ UserInitiateShutdown(IN PETHREAD Thread,
 
     TRACE("UserInitiateShutdown\n");
 
+    /* A job may forbid its processes from shutting the system down */
+    if (IntIsUIRestricted(JOB_OBJECT_UILIMIT_EXITWINDOWS))
+        return STATUS_ACCESS_DENIED;
+
     /* Get the caller's LUID */
     Status = GetProcessLuid(Thread, NULL, &CallerLuid);
     if (!NT_SUCCESS(Status))

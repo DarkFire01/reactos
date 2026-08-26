@@ -24,6 +24,10 @@
  */
 PRTL_ATOM_TABLE GlobalAtomTable;
 
+/* Asks win32k whether the caller has a table of its own, see
+   PsEstablishWin32Callouts */
+PKWIN32_GLOBALATOMTABLE_CALLOUT ExpGlobalAtomTableCallout = NULL;
+
 /* PRIVATE FUNCTIONS *********************************************************/
 
 /*++
@@ -42,6 +46,13 @@ NTAPI
 ExpGetGlobalAtomTable(VOID)
 {
     NTSTATUS Status;
+
+    /* A job may restrict its processes to a table of their own */
+    if (ExpGlobalAtomTableCallout != NULL)
+    {
+        PRTL_ATOM_TABLE PrivateTable = ExpGlobalAtomTableCallout();
+        if (PrivateTable != NULL) return PrivateTable;
+    }
 
     /* Return it if we have one */
     if (GlobalAtomTable) return GlobalAtomTable;

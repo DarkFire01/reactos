@@ -20,4 +20,7 @@ NTSTATUS NTAPI Win32kJobCallout(_In_ PWIN32_JOBCALLOUT_PARAMETERS Parameters);
 NTSTATUS FASTCALL IntJobConnectProcess(_In_ PPROCESSINFO ppi);
 VOID FASTCALL IntJobDisconnectProcess(_In_ PPROCESSINFO ppi);
 
+BOOL FASTCALL IntIsUIRestricted(_In_ ULONG Restriction);
+PRTL_ATOM_TABLE NTAPI UserGetGlobalAtomTable(VOID);
+BOOL FASTCALL IntIsHandleGrantedToCurrentJob(_In_ HANDLE hUserHandle);
 VOID FASTCALL IntCleanupGrantedHandle(_In_ HANDLE hUserHandle);

@@ -596,8 +596,13 @@ NTSTATUS
     _In_ PSW32THREADCALLOUTTYPE Type
 );
 
+//
+// Returns the global atom table the calling process must use, or NULL to use
+// the default one. A job restricted by JOB_OBJECT_UILIMIT_GLOBALATOMS gets a
+// private table, so that its processes cannot see anybody else's atoms.
+//
 typedef
-NTSTATUS
+PRTL_ATOM_TABLE
 (NTAPI *PKWIN32_GLOBALATOMTABLE_CALLOUT)(
     VOID
 );

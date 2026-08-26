@@ -818,6 +818,120 @@ SpiNotifyNCMetricsChanged(VOID)
     return TRUE;
 }
 
+/*
+ * Whether an action changes a system parameter rather than reading one.
+ * Must be kept in step with the SPI_SET cases of SpiGetSet below.
+ */
+static
+BOOL
+SpiIsSetAction(UINT uiAction)
+{
+    switch (uiAction)
+    {
+        case SPI_SETACCESSTIMEOUT:
+        case SPI_SETACTIVEWINDOWTRACKING:
+        case SPI_SETACTIVEWNDTRKTIMEOUT:
+        case SPI_SETACTIVEWNDTRKZORDER:
+        case SPI_SETANIMATION:
+        case SPI_SETAUDIODESCRIPTION:
+        case SPI_SETBEEP:
+        case SPI_SETBLOCKSENDINPUTRESETS:
+        case SPI_SETBORDER:
+        case SPI_SETCARETWIDTH:
+        case SPI_SETCLEARTYPE:
+        case SPI_SETCLIENTAREAANIMATION:
+        case SPI_SETCOMBOBOXANIMATION:
+        case SPI_SETCURSORS:
+        case SPI_SETCURSORSHADOW:
+        case SPI_SETDEFAULTINPUTLANG:
+        case SPI_SETDESKPATTERN:
+        case SPI_SETDESKWALLPAPER:
+        case SPI_SETDISABLEOVERLAPPEDCONTENT:
+        case SPI_SETDOCKMOVING:
+        case SPI_SETDOUBLECLICKTIME:
+        case SPI_SETDOUBLECLKHEIGHT:
+        case SPI_SETDOUBLECLKWIDTH:
+        case SPI_SETDRAGFULLWINDOWS:
+        case SPI_SETDRAGHEIGHT:
+        case SPI_SETDRAGWIDTH:
+        case SPI_SETDROPSHADOW:
+        case SPI_SETFASTTASKSWITCH:
+        case SPI_SETFILTERKEYS:
+        case SPI_SETFLATMENU:
+        case SPI_SETFOCUSBORDERHEIGHT:
+        case SPI_SETFOCUSBORDERWIDTH:
+        case SPI_SETFONTSMOOTHING:
+        case SPI_SETFONTSMOOTHINGCONTRAST:
+        case SPI_SETFONTSMOOTHINGORIENTATION:
+        case SPI_SETFONTSMOOTHINGTYPE:
+        case SPI_SETFOREGROUNDFLASHCOUNT:
+        case SPI_SETFOREGROUNDLOCKTIMEOUT:
+        case SPI_SETGRADIENTCAPTIONS:
+        case SPI_SETGRIDGRANULARITY:
+        case SPI_SETHANDHELD:
+        case SPI_SETHIGHCONTRAST:
+        case SPI_SETHOTTRACKING:
+        case SPI_SETICONMETRICS:
+        case SPI_SETICONS:
+        case SPI_SETICONTITLELOGFONT:
+        case SPI_SETICONTITLEWRAP:
+        case SPI_SETKEYBOARDCUES:
+        case SPI_SETKEYBOARDDELAY:
+        case SPI_SETKEYBOARDPREF:
+        case SPI_SETKEYBOARDSPEED:
+        case SPI_SETLANGTOGGLE:
+        case SPI_SETLISTBOXSMOOTHSCROLLING:
+        case SPI_SETLOWPOWERACTIVE:
+        case SPI_SETLOWPOWERTIMEOUT:
+        case SPI_SETMENUANIMATION:
+        case SPI_SETMENUDROPALIGNMENT:
+        case SPI_SETMENUFADE:
+        case SPI_SETMENUSHOWDELAY:
+        case SPI_SETMINIMIZEDMETRICS:
+        case SPI_SETMOUSE:
+        case SPI_SETMOUSEBUTTONSWAP:
+        case SPI_SETMOUSECLICKLOCK:
+        case SPI_SETMOUSECLICKLOCKTIME:
+        case SPI_SETMOUSEHOVERHEIGHT:
+        case SPI_SETMOUSEHOVERTIME:
+        case SPI_SETMOUSEHOVERWIDTH:
+        case SPI_SETMOUSEKEYS:
+        case SPI_SETMOUSESONAR:
+        case SPI_SETMOUSESPEED:
+        case SPI_SETMOUSETRAILS:
+        case SPI_SETMOUSEVANISH:
+        case SPI_SETNONCLIENTMETRICS:
+        case SPI_SETPENWINDOWS:
+        case SPI_SETPOWEROFFACTIVE:
+        case SPI_SETPOWEROFFTIMEOUT:
+        case SPI_SETSCREENREADER:
+        case SPI_SETSCREENSAVEACTIVE:
+        case SPI_SETSCREENSAVERRUNNING:
+        case SPI_SETSCREENSAVESECURE:
+        case SPI_SETSCREENSAVETIMEOUT:
+        case SPI_SETSELECTIONFADE:
+        case SPI_SETSERIALKEYS:
+        case SPI_SETSHOWIMEUI:
+        case SPI_SETSHOWSOUNDS:
+        case SPI_SETSNAPTODEFBUTTON:
+        case SPI_SETSOUNDSENTRY:
+        case SPI_SETSPEECHRECOGNITION:
+        case SPI_SETSTICKYKEYS:
+        case SPI_SETTOGGLEKEYS:
+        case SPI_SETTOOLTIPANIMATION:
+        case SPI_SETTOOLTIPFADE:
+        case SPI_SETUIEFFECTS:
+        case SPI_SETWHEELSCROLLCHARS:
+        case SPI_SETWHEELSCROLLLINES:
+        case SPI_SETWINARRANGING:
+        case SPI_SETWORKAREA:
+            return TRUE;
+
+        default:
+            return FALSE;
+    }
+}
+
 static
 UINT_PTR
 SpiGetSet(UINT uiAction, UINT uiParam, PVOID pvParam, FLONG fl)
@@ -2135,6 +2249,14 @@ UserSystemParametersInfo(
     {
         KeRosDumpStackFrames(NULL, 20);
         //ASSERT(FALSE);
+        return FALSE;
+    }
+
+    /* A job may forbid its processes from changing system parameters */
+    if (SpiIsSetAction(uiAction) &&
+        IntIsUIRestricted(JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS))
+    {
+        EngSetLastError(ERROR_ACCESS_DENIED);
         return FALSE;
     }
 

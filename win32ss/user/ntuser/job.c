@@ -401,6 +401,24 @@ IntIsHandleGrantedToJob(
     return FALSE;
 }
 
+/*
+ * Whether a USER handle has been granted to the job of the calling process.
+ * The USER lock must be held.
+ */
+BOOL
+FASTCALL
+IntIsHandleGrantedToCurrentJob(_In_ HANDLE hUserHandle)
+{
+    PPROCESSINFO ppi = PsGetCurrentProcessWin32Process();
+
+    ASSERT(UserIsEntered());
+
+    if (ppi == NULL || ppi->pJobInfo == NULL)
+        return FALSE;
+
+    return IntIsHandleGrantedToJob(ppi->pJobInfo, hUserHandle);
+}
+
 /* The USER lock must be held */
 static
 BOOL
@@ -541,6 +559,64 @@ IntJobDisconnectProcess(_In_ PPROCESSINFO ppi)
 
     IntSetProcessRestricted(ppi, FALSE);
     ppi->pJobInfo = NULL;
+}
+
+/*
+ * Tests one JOB_OBJECT_UILIMIT_* against the job of the calling process.
+ * The thread flag keeps this to a single test for everybody else.
+ */
+BOOL
+FASTCALL
+IntIsUIRestricted(_In_ ULONG Restriction)
+{
+    PTHREADINFO pti = PsGetCurrentThreadWin32Thread();
+    BOOL bRestricted;
+
+    /* Nobody else pays for more than this test, and the flag only ever
+       changes under the USER lock */
+    if (pti == NULL || !(pti->TIF_flags & TIF_JOBRESTRICTED))
+        return FALSE;
+
+    /* The JOBINFO may be torn down by another thread, so take the lock to
+       look at it. Callers that already hold it recurse harmlessly. */
+    UserEnterShared();
+
+    bRestricted = (pti->ppi != NULL &&
+                   pti->ppi->pJobInfo != NULL &&
+                   (pti->ppi->pJobInfo->UIRestrictions & Restriction) != 0);
+
+    UserLeave();
+
+    return bRestricted;
+}
+
+/*
+ * The kernel asks this for every global atom operation. A job restricted by
+ * JOB_OBJECT_UILIMIT_GLOBALATOMS gets a table of its own, so that it neither
+ * sees nor disturbs the atoms of anybody else. NULL means the default table.
+ */
+PRTL_ATOM_TABLE
+NTAPI
+UserGetGlobalAtomTable(VOID)
+{
+    PTHREADINFO pti = PsGetCurrentThreadWin32Thread();
+    PRTL_ATOM_TABLE pAtomTable = NULL;
+
+    if (pti == NULL || !(pti->TIF_flags & TIF_JOBRESTRICTED))
+        return NULL;
+
+    UserEnterShared();
+
+    if (pti->ppi != NULL &&
+        pti->ppi->pJobInfo != NULL &&
+        (pti->ppi->pJobInfo->UIRestrictions & JOB_OBJECT_UILIMIT_GLOBALATOMS))
+    {
+        pAtomTable = pti->ppi->pJobInfo->pAtomTable;
+    }
+
+    UserLeave();
+
+    return pAtomTable;
 }
 
 /*
