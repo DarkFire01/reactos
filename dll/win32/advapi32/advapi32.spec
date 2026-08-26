@@ -618,7 +618,7 @@
 @ stdcall -import RegCreateKeyExA(long str long ptr long long ptr ptr ptr)
 @ stdcall -import RegCreateKeyExW(long wstr long ptr long long ptr ptr ptr)
 @ stdcall -stub RegCreateKeyTransactedA(long str long ptr long long ptr ptr ptr long ptr)
-@ stdcall -stub RegCreateKeyTransactedW(long wstr long ptr long long ptr ptr ptr long ptr)
+@ stdcall RegCreateKeyTransactedW(long wstr long ptr long long ptr ptr ptr ptr ptr)
 @ stdcall RegCreateKeyW(long wstr ptr)
 @ stdcall RegDeleteKeyA(long str)
 @ stdcall -import RegDeleteKeyExA(long str long long)
