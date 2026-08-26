@@ -1539,6 +1539,14 @@
 @ stdcall -version=0x602+ WaitOnAddress(ptr ptr long long)
 @ stdcall -version=0x602+ WakeByAddressAll(ptr) ntdll.RtlWakeAddressAll
 @ stdcall -version=0x602+ WakeByAddressSingle(ptr) ntdll.RtlWakeAddressSingle
+@ stdcall -version=0xA00+ WerRegisterAdditionalProcess(long long)
+@ stdcall -version=0xA00+ WerRegisterAppLocalDump(wstr)
+@ stdcall -version=0xA00+ WerRegisterCustomMetadata(wstr wstr)
+@ stdcall -version=0xA00+ WerRegisterExcludedMemoryBlock(ptr long)
+@ stdcall -version=0xA00+ WerUnregisterAdditionalProcess(long)
+@ stdcall -version=0xA00+ WerUnregisterAppLocalDump()
+@ stdcall -version=0xA00+ WerUnregisterCustomMetadata(wstr)
+@ stdcall -version=0xA00+ WerUnregisterExcludedMemoryBlock(ptr)
 @ stdcall WTSGetActiveConsoleSessionId()
 @ stdcall WaitCommEvent(long ptr ptr)
 @ stdcall WaitForDebugEvent(ptr long)

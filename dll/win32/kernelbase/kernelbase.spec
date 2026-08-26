@@ -1740,6 +1740,14 @@
 @ stdcall VirtualQuery(ptr ptr long)
 @ stdcall VirtualQueryEx(long ptr ptr long)
 @ stdcall VirtualUnlock(ptr long)
+@ stdcall -version=0xA00+ WerRegisterAdditionalProcess(long long)
+@ stdcall -version=0xA00+ WerRegisterAppLocalDump(wstr)
+@ stdcall -version=0xA00+ WerRegisterCustomMetadata(wstr wstr)
+@ stdcall -version=0xA00+ WerRegisterExcludedMemoryBlock(ptr long)
+@ stdcall -version=0xA00+ WerUnregisterAdditionalProcess(long)
+@ stdcall -version=0xA00+ WerUnregisterAppLocalDump()
+@ stdcall -version=0xA00+ WerUnregisterCustomMetadata(wstr)
+@ stdcall -version=0xA00+ WerUnregisterExcludedMemoryBlock(ptr)
 # @ stub WTSGetServiceSessionId
 # @ stub WTSIsServerContainer
 @ stdcall WaitCommEvent(long ptr ptr)
@@ -1761,14 +1769,14 @@
 @ stdcall -version=0x602+ WakeByAddressAll(ptr) ntdll.RtlWakeAddressAll
 @ stdcall -version=0x602+ WakeByAddressSingle(ptr) ntdll.RtlWakeAddressSingle
 @ stdcall WakeConditionVariable(ptr) ntdll.RtlWakeConditionVariable
-@ stdcall WerGetFlags(ptr ptr)
-@ stdcall WerRegisterFile(wstr long long)
-@ stdcall WerRegisterMemoryBlock(ptr long)
-@ stdcall WerRegisterRuntimeExceptionModule(wstr ptr)
-@ stdcall WerSetFlags(long)
-@ stdcall WerUnregisterFile(wstr)
-@ stdcall WerUnregisterMemoryBlock(ptr)
-@ stdcall WerUnregisterRuntimeExceptionModule(wstr ptr)
+@ stdcall -version=0x600+ WerGetFlags(ptr ptr)
+@ stdcall -version=0x600+ WerRegisterFile(wstr long long)
+@ stdcall -version=0x600+ WerRegisterMemoryBlock(ptr long)
+@ stdcall -version=0x601+ WerRegisterRuntimeExceptionModule(wstr ptr)
+@ stdcall -version=0x600+ WerSetFlags(long)
+@ stdcall -version=0x600+ WerUnregisterFile(wstr)
+@ stdcall -version=0x600+ WerUnregisterMemoryBlock(ptr)
+@ stdcall -version=0x601+ WerUnregisterRuntimeExceptionModule(wstr ptr)
 # @ stub WerpNotifyLoadStringResource
 # @ stub WerpNotifyUseStringResource
 @ stdcall WideCharToMultiByte(long long wstr long ptr long ptr ptr)
