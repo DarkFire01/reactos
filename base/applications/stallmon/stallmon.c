@@ -160,6 +160,8 @@ typedef struct _OPTIONS
     BOOL NoYield;           /* CPU heartbeat never calls Sleep(0)       */
     int Fairness;           /* equal-priority fairness probe, N threads */
     BOOL FairOne;           /* confine the fairness probe to one processor */
+    BOOL PinOne;            /* confine the whole run to one processor      */
+    const char *SinkFile;   /* where to leave the log-sink cost at exit    */
     WCHAR PipeName[128];
 } OPTIONS;
 
@@ -202,6 +204,31 @@ static ULONGLONG QpcUs(void)
     return (ULONGLONG)((Now.QuadPart * 1000000) / gQpcFreq.QuadPart);
 }
 
+/* Worst time one Log call spent in each of its two sinks */
+static volatile LONG gLogDbgMaxUs;
+static volatile LONG gLogOutMaxUs;
+
+static void Log(const char *Format, ...);
+
+static void ReportSinkCost(void)
+{
+    FILE *f;
+
+    Log("log sink cost: debugport_max=%ldus stdout_max=%ldus\n",
+        gLogDbgMaxUs, gLogOutMaxUs);
+
+    if (!gOpt.SinkFile)
+        return;
+
+    f = fopen(gOpt.SinkFile, "a");
+    if (!f)
+        return;
+
+    fprintf(f, "sink %s: debugport_max=%ldus stdout_max=%ldus\n",
+            gOpt.IsChild ? "child" : "parent", gLogDbgMaxUs, gLogOutMaxUs);
+    fclose(f);
+}
+
 static void Log(const char *Format, ...)
 {
     char Buffer[512];
@@ -220,9 +247,21 @@ static void Log(const char *Format, ...)
               Buffer);
     Line[sizeof(Line) - 1] = '\0';
 
-    OutputDebugStringA(Line);
-    fputs(Line, stdout);
-    fflush(stdout);
+    {
+        ULONGLONG A, B, C;
+
+        A = QpcUs();
+        OutputDebugStringA(Line);
+        B = QpcUs();
+        fputs(Line, stdout);
+        fflush(stdout);
+        C = QpcUs();
+
+        if ((LONG)(B - A) > gLogDbgMaxUs)
+            gLogDbgMaxUs = (LONG)(B - A);
+        if ((LONG)(C - B) > gLogOutMaxUs)
+            gLogOutMaxUs = (LONG)(C - B);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -342,6 +381,13 @@ typedef struct _HEARTBEAT
     volatile LONG Reported;     /* already called out as stalled        */
     volatile LONG Stalls;       /* gaps over the stall threshold        */
     volatile LONG Hist[HIST_BUCKETS];
+    /*
+     * The thread itself, so the summary can say how much CPU it was given.
+     * A heartbeat that stopped because it never got the processor and one
+     * that stopped while blocked on I/O look identical from the outside,
+     * and they have completely different causes.
+     */
+    HANDLE Thread;
 } HEARTBEAT;
 
 static HEARTBEAT gCpuBeat = { "CPU" };
@@ -350,6 +396,33 @@ static HEARTBEAT gRtBeat  = { "RT " };
 static HEARTBEAT gIpcBeat = { "IPC" };
 
 static volatile LONG gRunning = 1;
+
+/* Called by a heartbeat thread on entry, so the summary can charge it */
+static void BeatRegisterSelf(HEARTBEAT *Hb)
+{
+    HANDLE Dup = NULL;
+
+    DuplicateHandle(GetCurrentProcess(), GetCurrentThread(),
+                    GetCurrentProcess(), &Dup,
+                    0, FALSE, DUPLICATE_SAME_ACCESS);
+    Hb->Thread = Dup;
+}
+
+/* CPU milliseconds charged to a heartbeat thread, kernel and user together */
+static ULONG BeatCpuMs(HEARTBEAT *Hb)
+{
+    FILETIME Creation, Exit, Kernel, User;
+    ULONGLONG Total;
+
+    if (!Hb->Thread || !GetThreadTimes(Hb->Thread, &Creation, &Exit,
+                                       &Kernel, &User))
+        return 0;
+
+    Total = (((ULONGLONG)Kernel.dwHighDateTime << 32) | Kernel.dwLowDateTime) +
+            (((ULONGLONG)User.dwHighDateTime << 32) | User.dwLowDateTime);
+
+    return (ULONG)(Total / 10000);
+}
 
 static void Beat(HEARTBEAT *Hb)
 {
@@ -394,6 +467,8 @@ static DWORD WINAPI CpuBeatThread(LPVOID Param)
 
     UNREFERENCED_PARAMETER(Param);
 
+    BeatRegisterSelf(&gCpuBeat);
+
     while (gRunning)
     {
         /* Enough work to be visible, little enough to beat often */
@@ -422,6 +497,8 @@ static DWORD WINAPI RtBeatThread(LPVOID Param)
     UNREFERENCED_PARAMETER(Param);
 
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+
+    BeatRegisterSelf(&gRtBeat);
 
     while (gRunning)
     {
@@ -1419,11 +1496,21 @@ static HANDLE gChildPipe = INVALID_HANDLE_VALUE;
  * the same shape as the applications that provoke this - a UI thread and an
  * IO thread that must hand work to each other.
  */
+static volatile LONG gChildPings;    /* PINGs this child pulled off the pipe */
+static volatile LONG gChildPongs;    /* PONGs it managed to write back       */
+static HANDLE gChildPipeThread;      /* to charge it for CPU at the end      */
+
 static DWORD WINAPI ChildPipeThread(LPVOID Param)
 {
     DWORD LastStatus = 0;
 
     UNREFERENCED_PARAMETER(Param);
+
+    DuplicateHandle(GetCurrentProcess(), GetCurrentThread(),
+                    GetCurrentProcess(), &gChildPipeThread,
+                    0, FALSE, DUPLICATE_SAME_ACCESS);
+
+    Log("child pipe thread entered\n");
 
     while (gRunning)
     {
@@ -1443,6 +1530,7 @@ static DWORD WINAPI ChildPipeThread(LPVOID Param)
 
         if (In.Type == MSG_PING)
         {
+            InterlockedIncrement(&gChildPings);
             ZeroMemory(&Out, sizeof(Out));
             Out.Magic = PIPE_MAGIC;
             Out.Type = MSG_PONG;
@@ -1455,6 +1543,8 @@ static DWORD WINAPI ChildPipeThread(LPVOID Param)
                 Log("pipe write failed, error %lu\n", GetLastError());
                 break;
             }
+
+            InterlockedIncrement(&gChildPongs);
         }
 
         Now = GetTickCount();
@@ -1587,8 +1677,27 @@ static int ChildMain(void)
     }
 
     gRunning = 0;
+    {
+        FILETIME Creation, Exit, Kernel, User;
+        ULONGLONG PipeCpu = 0;
+
+        if (gChildPipeThread &&
+            GetThreadTimes(gChildPipeThread, &Creation, &Exit, &Kernel, &User))
+        {
+            PipeCpu = ((((ULONGLONG)Kernel.dwHighDateTime << 32) |
+                        Kernel.dwLowDateTime) +
+                       (((ULONGLONG)User.dwHighDateTime << 32) |
+                        User.dwLowDateTime)) / 10000;
+        }
+
+        Log("child pipe: pings=%ld pongs=%ld cpu=%lums\n",
+            gChildPings, gChildPongs, (ULONG)PipeCpu);
+    }
+
     Log("child finished: frames=%ld paintmax=%ldms guigap=%ldms cpugap=%ldms\n",
         gTotalFrames, gPaintMaxMs, gGuiBeat.GapMaxMs, gCpuBeat.GapMaxMs);
+
+    ReportSinkCost();
 
     if (gOpt.ChromePump)
     {
@@ -1651,6 +1760,14 @@ static DWORD WINAPI ParentChildThread(LPVOID Param)
 
     Log("child %d connected\n", Child->Index);
 
+    Log("ipc mark A\n");
+
+    BeatRegisterSelf(&gIpcBeat);
+
+    Log("ipc mark B\n");
+
+    Log("parent ipc loop starting\n");
+
     while (gRunning)
     {
         STALL_MSG Out, In;
@@ -1667,8 +1784,19 @@ static DWORD WINAPI ParentChildThread(LPVOID Param)
         SentAtUs = QpcUs();
         Out.Tick = SentAt;
 
+        if (Seq <= 3)
+            Log("parent about to write seq=%lu\n", (unsigned long)Seq);
+
         if (!WriteFile(Child->Pipe, &Out, sizeof(Out), &Written, NULL))
+        {
+            Log("parent ping write failed seq=%lu error=%lu\n",
+                (unsigned long)Seq, GetLastError());
             break;
+        }
+
+        if (Seq <= 3)
+            Log("parent wrote ping seq=%lu bytes=%lu\n",
+                (unsigned long)Seq, (unsigned long)Written);
 
         /* Read until the echo comes back, folding in any status seen on the
            way. A pong that never arrives shows up as the IPC heartbeat going
@@ -1690,6 +1818,9 @@ static DWORD WINAPI ParentChildThread(LPVOID Param)
                 Child->PaintMaxMs = (LONG)In.PaintMaxMs;
                 continue;
             }
+
+            if (Seq <= 3 && In.Type == MSG_PONG)
+                Log("parent saw pong seq=%lu\n", (unsigned long)In.Seq);
 
             if (In.Type == MSG_PONG && In.Seq == Seq)
             {
@@ -1817,11 +1948,18 @@ static int ParentMain(void)
         gOpt.NoGui, gOpt.IpcMs, gOpt.Seconds);
     if (gOpt.SpinEnabled)
         Log("spinner enabled at thread priority %d\n", gOpt.SpinPriority);
+    if (gOpt.PinOne)
+        FairPinToOneCpu();
+
     {
         SYSTEM_INFO SystemInfo;
+        DWORD_PTR ProcessMask = 0, SystemMask = 0;
+
         GetSystemInfo(&SystemInfo);
-        Log("processors=%lu qpcfreq=%lu\n",
+        GetProcessAffinityMask(GetCurrentProcess(), &ProcessMask, &SystemMask);
+        Log("processors=%lu affinity=0x%lx qpcfreq=%lu\n",
             (unsigned long)SystemInfo.dwNumberOfProcessors,
+            (unsigned long)ProcessMask,
             (unsigned long)gQpcFreq.LowPart);
     }
 
@@ -1891,7 +2029,8 @@ static int ParentMain(void)
 
         if (Hb->LastTick == 0)
         {
-            Log("%s  (never ran)\n", Hb->Name);
+            Log("%s  (never ran, cpu=%lums)\n",
+                Hb->Name, BeatCpuMs(Hb));
             continue;
         }
 
@@ -1913,9 +2052,9 @@ static int ParentMain(void)
                 P99 = gHistLimit[b];
         }
 
-        Log("%s beats=%ld samples=%ld p50<=%ldms p95<=%ldms p99<=%ldms "
-            "max=%ldms stalls=%ld\n",
-            Hb->Name, Hb->Beats, Total, P50, P95, P99,
+        Log("%s beats=%ld samples=%ld cpu=%lums p50<=%ldms p95<=%ldms "
+            "p99<=%ldms max=%ldms stalls=%ld\n",
+            Hb->Name, Hb->Beats, Total, BeatCpuMs(Hb), P50, P95, P99,
             Hb->GapMaxMs, Hb->Stalls);
 
         Log("%s hist 15/30/60/125/250/500/1k/2k/5k/more: "
@@ -1951,6 +2090,8 @@ static int ParentMain(void)
 
     WaitForMultipleObjects(BeatCount, Beats, TRUE, 3000);
     WaitForSingleObject(Watchdog, 3000);
+
+    ReportSinkCost();
 
     Log("=== done ===\n");
     return 0;
@@ -2019,6 +2160,9 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--fairness") && i + 1 < argc)
             gOpt.Fairness = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--fairone")) gOpt.FairOne = TRUE;
+        else if (!strcmp(argv[i], "--pinone")) gOpt.PinOne = TRUE;
+        else if (!strcmp(argv[i], "--sinkfile") && i + 1 < argc)
+            gOpt.SinkFile = argv[++i];
         else if (!strcmp(argv[i], "--pool") && i + 1 < argc)
             gOpt.Pool = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--posthz") && i + 1 < argc)
