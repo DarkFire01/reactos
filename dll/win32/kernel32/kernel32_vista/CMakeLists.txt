@@ -18,6 +18,7 @@ list(APPEND SOURCE
     ProcessMitigation.c
     ThreadInformation.c
     waitaddress.c
+    wer.c
     GetNamedPipeClientProcessId.c
     GetSystemDefaultLocaleName.c
     GetTickCount64.c
