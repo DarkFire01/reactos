@@ -136,13 +136,25 @@ GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime)
 }
 
 /*
- * @unimplemented
+ * @implemented
  */
 VOID
 WINAPI
 GetSystemTimePreciseAsFileTime(OUT PFILETIME lpFileTime)
 {
-    STUB;
+    /*
+     * Windows interpolates the system clock with the performance counter here
+     * to get below the clock's tick, which we do not do - this answers at the
+     * same resolution as GetSystemTimeAsFileTime.
+     *
+     * That is a shortfall in precision, not in correctness, and it is the far
+     * smaller of the two problems this had: as a stub it returned without
+     * writing lpFileTime at all, so the caller read whatever was on its stack
+     * and took it for the current time. Chromium reaches this rather than
+     * GetSystemTimeAsFileTime whenever the reported version is Windows 8 or
+     * later, and every timer it schedules is computed from the answer.
+     */
+    GetSystemTimeAsFileTime(lpFileTime);
 }
 
 /*
