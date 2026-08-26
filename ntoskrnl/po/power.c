@@ -1030,6 +1030,45 @@ NtPowerInformation(IN POWER_INFORMATION_LEVEL PowerInformationLevel,
             break;
         }
 
+        case SystemPowerInformation:
+        {
+            PSYSTEM_POWER_INFORMATION PowerInformation =
+                (PSYSTEM_POWER_INFORMATION)OutputBuffer;
+
+            if (InputBuffer != NULL)
+                return STATUS_INVALID_PARAMETER;
+            if (OutputBufferLength < sizeof(SYSTEM_POWER_INFORMATION))
+                return STATUS_BUFFER_TOO_SMALL;
+
+            _SEH2_TRY
+            {
+                /*
+                 * Idle detection and thermal throttling are not implemented,
+                 * so report a machine that is fully busy and not being cooled
+                 * down. That is the answer least likely to make a caller act:
+                 * an idleness below MaxIdlenessAllowed is what would have it
+                 * throttle, and PO_TZ_INVALID_MODE says there is no thermal
+                 * zone to consult.
+                 *
+                 * Answering matters more than the values. A caller told
+                 * STATUS_NOT_IMPLEMENTED can sit and retry - Chromium does,
+                 * tightly enough to keep a core busy for as long as it runs.
+                 */
+                PowerInformation->MaxIdlenessAllowed = 100;
+                PowerInformation->Idleness = 100;
+                PowerInformation->TimeRemaining = 0;
+                PowerInformation->CoolingMode = 0;
+
+                Status = STATUS_SUCCESS;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+
+            break;
+        }
         default:
             Status = STATUS_NOT_IMPLEMENTED;
             DPRINT1("PowerInformationLevel 0x%x is UNIMPLEMENTED! Have a nice day.\n",
