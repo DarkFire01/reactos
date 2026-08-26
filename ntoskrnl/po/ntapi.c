@@ -173,10 +173,10 @@ static const INFORMATION_CLASS_INFO PoPowerInformationClass[] =
     IQS_NONE,
 
     /* ProcessorInformation */
-    IQS_SAME(PROCESSOR_POWER_INFORMATION, ULONG, ICIF_QUERY),
+    IQS_SAME(PROCESSOR_POWER_INFORMATION, ULONG, ICIF_QUERY | ICIF_QUERY_SIZE_VARIABLE),
 
     /* SystemPowerInformation */
-    IQS_NONE,
+    IQS_SAME(SYSTEM_POWER_INFORMATION, ULONG, ICIF_QUERY),
 
     /* ProcessorStateHandler2 */
     IQS_NONE,
@@ -941,6 +941,80 @@ NtPowerInformation(
                 RtlCopyMemory(CurrentPolicy,
                               PopDefaultPowerPolicy,
                               sizeof(SYSTEM_POWER_CAPABILITIES));
+
+                Status = STATUS_SUCCESS;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+            break;
+        }
+
+        case ProcessorInformation:
+        {
+            PPROCESSOR_POWER_INFORMATION ProcessorInfo = (PPROCESSOR_POWER_INFORMATION)OutputBuffer;
+            PKPRCB Prcb;
+            ULONG Index;
+
+            if (InputBuffer)
+            {
+                Status = STATUS_INVALID_PARAMETER;
+                goto Quit;
+            }
+
+            /* One entry per processor, like Windows */
+            if (OutputBufferLength < KeNumberProcessors * sizeof(*ProcessorInfo))
+            {
+                Status = STATUS_BUFFER_TOO_SMALL;
+                goto Quit;
+            }
+
+            _SEH2_TRY
+            {
+                for (Index = 0; Index < (ULONG)KeNumberProcessors; Index++)
+                {
+                    /* No performance states are managed, so every processor runs at its rated speed */
+                    Prcb = KiProcessorBlock[Index];
+                    ProcessorInfo[Index].Number = Index;
+                    ProcessorInfo[Index].MaxMhz = Prcb->MHz;
+                    ProcessorInfo[Index].CurrentMhz = Prcb->MHz;
+                    ProcessorInfo[Index].MhzLimit = Prcb->MHz;
+                    ProcessorInfo[Index].MaxIdleState = 0;
+                    ProcessorInfo[Index].CurrentIdleState = 0;
+                }
+
+                Status = STATUS_SUCCESS;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+            break;
+        }
+
+        case SystemPowerInformation:
+        {
+            PSYSTEM_POWER_INFORMATION PowerInformation = (PSYSTEM_POWER_INFORMATION)OutputBuffer;
+
+            if (InputBuffer)
+            {
+                Status = STATUS_INVALID_PARAMETER;
+                goto Quit;
+            }
+
+            _SEH2_TRY
+            {
+                /*
+                 * No idle detection or thermal zones yet: report a busy machine that is not
+                 * being cooled. Failing instead makes Chromium retry in a tight loop.
+                 */
+                PowerInformation->MaxIdlenessAllowed = 100;
+                PowerInformation->Idleness = 100;
+                PowerInformation->TimeRemaining = 0;
+                PowerInformation->CoolingMode = 0;
 
                 Status = STATUS_SUCCESS;
             }
