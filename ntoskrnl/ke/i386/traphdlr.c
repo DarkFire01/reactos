@@ -1253,8 +1253,17 @@ KiCheckForSListFault(PKTRAP_FRAME TrapFrame)
         both fields to make sure we catch any concurrent modification of the
         S-List-header.
     */
+    /*
+     * KeUserPopEntrySListFault is a pointer that ntdll fills in, so it is still
+     * NULL for the whole of early boot. Comparing a faulting Eip against it
+     * unguarded means every call through a NULL pointer before then looks like
+     * the S-List race: the fixup below is entered with Eip zero and faults
+     * again reading the instruction at address zero, which buries the original
+     * fault under a second one at whatever IRQL the first arrived at.
+     */
     if ((TrapFrame->Eip == (ULONG_PTR)ExpInterlockedPopEntrySListFault) ||
-        (TrapFrame->Eip == (ULONG_PTR)KeUserPopEntrySListFault))
+        ((KeUserPopEntrySListFault != NULL) &&
+         (TrapFrame->Eip == (ULONG_PTR)KeUserPopEntrySListFault)))
     {
         ULARGE_INTEGER SListHeader;
         PVOID ResumeAddress;
