@@ -16,6 +16,7 @@
 typedef struct _APINFO
 {
     DECLSPEC_ALIGN(PAGE_SIZE) KGDTENTRY Gdt[128];
+    DECLSPEC_ALIGN(PAGE_SIZE) KIDTENTRY Idt[256];
     DECLSPEC_ALIGN(16) UINT8 NMIStackData[DOUBLE_FAULT_STACK_SIZE];
     KIPCR Pcr;
     ETHREAD Thread;
@@ -84,27 +85,31 @@ KeStartAllProcessors(VOID)
         __sidt(&bspIdt.Limit);
 
         /*
-         * Share the boot processor's IDT rather than taking a copy.
+         * Give this processor its own IDT, seeded with the boot processor's.
          *
-         * KeRegisterInterruptHandler() writes KeGetPcr()->IDT, so it only
-         * updates the table of whichever processor happens to run it. A private
-         * copy is a snapshot of what was registered by the time this processor
-         * was created, and everything connected afterwards - which is every
-         * driver ISR, since KeStartAllProcessors() runs in Phase 1 before the
-         * device tree is walked - is missing from it. HalInitializeProcessor()
-         * then puts this processor into HalpDefaultInterruptAffinity, so
-         * interrupts do get routed here and are dispatched through stale
-         * entries.
+         * The per-processor table is what the rest of the kernel is written
+         * against. IoConnectInterrupt() builds one KINTERRUPT per processor in
+         * the affinity mask and calls KeConnectInterrupt() for each, which
+         * moves itself onto that processor and then refuses the vector if
+         * KiGetVectorDispatch() says it is already taken and not shareable.
+         * With a single table shared by everyone, the first processor connects
+         * and every one after it collides with that entry - so on a two
+         * processor machine no unshared device interrupt can be connected at
+         * all, and IoConnectInterrupt() answers STATUS_INVALID_PARAMETER. The
+         * PS/2 keyboard and mouse were the visible casualties: i8042prt could
+         * not connect either interrupt and PnP removed both devices.
          *
-         * One table for everyone is what NT does on x86 and costs nothing: the
-         * double fault and NMI entries are task gates naming KGDT_DF_TSS and
-         * KGDT_NMI_TSS, and a selector resolves through the GDT of whichever
-         * processor took the fault, so each still lands in its own TSS.
+         * Copying the boot processor's table carries over everything
+         * registered before this processor existed; anything connected
+         * afterwards arrives through KeConnectInterrupt(), which visits each
+         * processor in the mask and writes the table it is running on.
          */
+        RtlCopyMemory(&APInfo->Idt, (PVOID)bspIdt.Base, bspIdt.Limit + 1);
+
         // Initalize a new PCR for the specific AP
         KiInitializePcr(ProcessorCount,
                         &APInfo->Pcr,
-                        (PKIDTENTRY)bspIdt.Base,
+                        &APInfo->Idt[0],
                         &APInfo->Gdt[0],
                         &APInfo->Tss,
                         (PKTHREAD)&APInfo->Thread,
