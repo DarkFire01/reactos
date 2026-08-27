@@ -1608,8 +1608,19 @@ MiQueryAddressState(IN PVOID Va,
                     (Vad->u.VadFlags.PrivateMemory == 0) &&
                     (Vad->ControlArea))
                 {
-                    DPRINT1("Not supported\n");
-                    ASSERT(FALSE);
+                    /*
+                     * An image backed page whose PTE is still a prototype
+                     * PTE. Nothing is left to work out here:
+                     * MiGetPageProtection() above already follows a
+                     * prototype PTE to the protection it carries, the state
+                     * is committed, and MiQueryMemoryBasicInformation()
+                     * decides MEM_IMAGE from the VAD type on its own. The
+                     * ASSERT(FALSE) that stood here stopped the machine on
+                     * an ordinary VirtualQuery() of a mapped image - which
+                     * is exactly what a process asks for while reporting a
+                     * crash of its own, so one faulting application took the
+                     * whole system into the debugger with it.
+                     */
                 }
             }
         }

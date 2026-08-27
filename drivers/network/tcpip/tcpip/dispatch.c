@@ -712,7 +712,10 @@ NTSTATUS DispTdiQueryInformation(
             if (AddrFile == NULL)
             {
                 TI_DbgPrint(MIN_TRACE, ("FIXME: No address file object.\n"));
-                ASSERT(AddrFile != NULL);
+                /* Not an error worth stopping the machine for: this is what
+                 * an address query on a socket that is not bound yet looks
+                 * like, and getsockname() on one is ordinary use. The caller
+                 * is told with STATUS_INVALID_PARAMETER just below. */
                 return STATUS_INVALID_PARAMETER;
             }
 
@@ -732,7 +735,10 @@ NTSTATUS DispTdiQueryInformation(
             if (Endpoint == NULL || Endpoint->AddressFile == NULL)
             {
                 TI_DbgPrint(MIN_TRACE, ("FIXME: No connection endpoint file object.\n"));
-                ASSERT(Endpoint != NULL && Endpoint->AddressFile != NULL);
+                /* Not an error worth stopping the machine for: this is what
+                 * an address query on a socket that is not bound yet looks
+                 * like, and getsockname() on one is ordinary use. The caller
+                 * is told with STATUS_INVALID_PARAMETER just below. */
                 return STATUS_INVALID_PARAMETER;
             }
 
