@@ -39,6 +39,7 @@ NTAPI
 KeStartAllProcessors(VOID)
 {
     PVOID KernelStack, DPCStack;
+    ULONG_PTR StackTop;
     PAPINFO APInfo;
     ULONG ProcessorCount;
     ULONG MaximumProcessors;
@@ -102,11 +103,42 @@ KeStartAllProcessors(VOID)
         // Clear TSS Busy flag (aka set the type to "TSS (Available)")
         KiGetGdtEntry(&APInfo->Gdt, KGDT_TSS)->HighWord.Bits.Type = I386_TSS;
 
-        APInfo->TssDoubleFault.Esp0 = (ULONG_PTR)&APInfo->NMIStackData;
-        APInfo->TssDoubleFault.Esp = (ULONG_PTR)&APInfo->NMIStackData;
+        /*
+         * Build the double fault and NMI task state segments the way
+         * Ki386InitializeTss() does for the boot processor.
+         *
+         * Only Esp0 and Esp used to be filled in, which leaves CR3, Eip and
+         * every selector zero. A task gate loads all of those from the TSS, so
+         * the first double fault or NMI on this processor switched to a task
+         * with no address space and no entry point and the machine simply
+         * stopped - no bugcheck, no output, just a busy TSS and a halted
+         * processor. Both stack pointers also addressed the bottom of the
+         * stack rather than the top, so the handler would have run off the end
+         * of it immediately even had it started.
+         */
+        StackTop = (ULONG_PTR)&APInfo->NMIStackData[sizeof(APInfo->NMIStackData)];
 
-        APInfo->TssNMI.Esp0 = (ULONG_PTR)&APInfo->NMIStackData;
-        APInfo->TssNMI.Esp = (ULONG_PTR)&APInfo->NMIStackData;
+        KiInitializeTSS(&APInfo->TssDoubleFault);
+        APInfo->TssDoubleFault.CR3 = __readcr3();
+        APInfo->TssDoubleFault.Esp0 = StackTop;
+        APInfo->TssDoubleFault.Esp = StackTop;
+        APInfo->TssDoubleFault.Eip = PtrToUlong(KiTrap08);
+        APInfo->TssDoubleFault.Cs = KGDT_R0_CODE;
+        APInfo->TssDoubleFault.Fs = KGDT_R0_PCR;
+        APInfo->TssDoubleFault.Ss = Ke386GetSs();
+        APInfo->TssDoubleFault.Es = KGDT_R3_DATA | RPL_MASK;
+        APInfo->TssDoubleFault.Ds = KGDT_R3_DATA | RPL_MASK;
+
+        KiInitializeTSS(&APInfo->TssNMI);
+        APInfo->TssNMI.CR3 = __readcr3();
+        APInfo->TssNMI.Esp0 = StackTop;
+        APInfo->TssNMI.Esp = StackTop;
+        APInfo->TssNMI.Eip = PtrToUlong(KiTrap02);
+        APInfo->TssNMI.Cs = KGDT_R0_CODE;
+        APInfo->TssNMI.Fs = KGDT_R0_PCR;
+        APInfo->TssNMI.Ss = Ke386GetSs();
+        APInfo->TssNMI.Es = KGDT_R3_DATA | RPL_MASK;
+        APInfo->TssNMI.Ds = KGDT_R3_DATA | RPL_MASK;
 
         // Fill the processor state
         PKPROCESSOR_STATE ProcessorState = &APInfo->Pcr.Prcb->ProcessorState;
