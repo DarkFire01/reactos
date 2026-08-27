@@ -466,6 +466,14 @@ KiInitializeTSS(
 
 CODE_SEG("INIT")
 VOID
+NTAPI
+KiInitializeTSS2(
+    IN PKTSS Tss,
+    IN PKGDTENTRY TssEntry OPTIONAL
+);
+
+CODE_SEG("INIT")
+VOID
 FASTCALL
 Ki386InitializeTss(
     IN PKTSS Tss,

@@ -121,6 +121,21 @@ KeStartAllProcessors(VOID)
         KiGetGdtEntry(&APInfo->Gdt, KGDT_TSS)->HighWord.Bits.Type = I386_TSS;
 
         /*
+         * Initialise the task state segment itself, the way Ki386InitializeTss()
+         * does for the boot processor. Only its GDT entry was being set up here,
+         * which leaves the segment's own fields zero - and Ss0 among them.
+         *
+         * Ss0 is the ring 0 stack selector the processor loads on a transition
+         * out of user mode. A null selector there faults immediately, and the
+         * handler for that fault needs the very stack that could not be loaded,
+         * so it escalated to a double fault the first time anything on this
+         * processor entered the kernel from user mode. It presented as
+         * UNEXPECTED_KERNEL_MODE_TRAP with the task segment's Cs reading 0x1b.
+         */
+        KiInitializeTSS2(&APInfo->Tss, KiGetGdtEntry(&APInfo->Gdt, KGDT_TSS));
+        KiInitializeTSS(&APInfo->Tss);
+
+        /*
          * Build the double fault and NMI task state segments the way
          * Ki386InitializeTss() does for the boot processor.
          *
