@@ -292,6 +292,26 @@ KiIdleLoop(VOID)
             /* Enable interrupts */
             _enable();
 
+#ifdef CONFIG_SMP
+            /* Do the swap at SYNCH_LEVEL */
+            KfRaiseIrql(SYNCH_LEVEL);
+#endif
+
+            /* This thread is about to be swapped away */
+            KiSetThreadSwapBusy(Prcb->IdleThread);
+
+            /*
+             * Take the PRCB lock over the handover below.
+             *
+             * Prcb->NextThread is written by other processors - that is the
+             * whole point of it - and they do so under this lock. Reading it
+             * and clearing it without the lock races with those writers: the
+             * assignment can be lost, or picked up half made, and the thread
+             * then runs on two processors or on none. x64 has always taken the
+             * lock here.
+             */
+            KiAcquirePrcbLock(Prcb);
+
             /* Capture current thread data */
             OldThread = Prcb->CurrentThread;
             NewThread = Prcb->NextThread;
@@ -300,24 +320,31 @@ KiIdleLoop(VOID)
             Prcb->NextThread = NULL;
             Prcb->CurrentThread = NewThread;
 
+            /* Release the PRCB lock */
+            KiReleasePrcbLock(Prcb);
+
             /* The thread is now running */
             NewThread->State = Running;
 
-#ifdef CONFIG_SMP
-            /* Do the swap at SYNCH_LEVEL */
-            KfRaiseIrql(SYNCH_LEVEL);
-#endif
+            /* It may be the idle thread itself, and then there is nothing to do */
+            if (NewThread != OldThread)
+            {
+                /* No longer idle: a real thread is about to run here */
+                InterlockedBitTestAndResetAffinity(&KiIdleSummary,
+                                                   Prcb->Number);
 
-            /* No longer idle: a real thread is about to run here */
-            InterlockedBitTestAndResetAffinity(&KiIdleSummary,
-                                               Prcb->Number);
+                /* Switch away from the idle thread */
+                KiSwapContext(APC_LEVEL, OldThread);
 
-            /* Switch away from the idle thread */
-            KiSwapContext(APC_LEVEL, OldThread);
-
-            /* Back in the idle loop, so idle again */
-            InterlockedBitTestAndSetAffinity(&KiIdleSummary,
-                                             Prcb->Number);
+                /* Back in the idle loop, so idle again */
+                InterlockedBitTestAndSetAffinity(&KiIdleSummary,
+                                                 Prcb->Number);
+            }
+            else
+            {
+                /* Nothing was swapped, so drop the claim taken above */
+                NewThread->SwapBusy = FALSE;
+            }
 
 #ifdef CONFIG_SMP
             /* Go back to DISPATCH_LEVEL */
