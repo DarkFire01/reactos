@@ -601,6 +601,25 @@ KiDispatchInterrupt(VOID)
         /* Acquire the PRCB lock */
         KiAcquirePrcbLock(Prcb);
 
+        /*
+         * The thread scheduled next may be the one already running here: it
+         * happens when this processor is in its idle thread and another
+         * processor picks that same thread to run. There is nothing to switch
+         * to, and going on regardless is actively harmful - the code below
+         * would hand the running thread to KxQueueReadyThread(), leaving it on
+         * a ready list while it is still Prcb->CurrentThread, so a second
+         * processor can select a thread this one has not finished with. The
+         * thread state assertions in KxQueueReadyThread() and KiSwapThread()
+         * are what report the damage, some way from where it was done.
+         * KiDispatchInterrupt() on x64 has always tested for this.
+         */
+        if (Prcb->NextThread == Prcb->CurrentThread)
+        {
+            Prcb->NextThread = NULL;
+            KiReleasePrcbLock(Prcb);
+            return;
+        }
+
         /* Capture current thread data */
         OldThread = Prcb->CurrentThread;
         NewThread = Prcb->NextThread;
