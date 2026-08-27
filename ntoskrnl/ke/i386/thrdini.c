@@ -345,20 +345,50 @@ KiSwapContextExit(IN PKTHREAD OldThread,
     /* We are on the new thread stack now */
     NewThread = Pcr->PrcbData.CurrentThread;
 
+    /* The old thread's context is saved, so it may be picked up elsewhere */
+    OldThread->SwapBusy = FALSE;
+
     /* Now we are the new thread. Check if it's in a new process */
     OldProcess = OldThread->ApcState.Process;
     NewProcess = NewThread->ApcState.Process;
     if (OldProcess != NewProcess)
     {
+#ifdef CONFIG_SMP
         /*
-         * Do the whole switch through KiSwapProcess rather than repeating the
-         * LDT and CR3 half of it here. The part that was missing is
-         * KPROCESS::ActiveProcessors: KeFlushProcessTb() and the other
-         * per-process flushes use it as the set of processors to shoot down,
-         * so while it is not maintained every one of those flushes is sent to
-         * an empty set and the stale translations are simply kept.
+         * Record which processors a process is live on. KeFlushProcessTb() and
+         * the other per-process flushes take KPROCESS::ActiveProcessors as the
+         * set to shoot down, so while it is not maintained every one of those
+         * is sent to an empty set and stale translations are simply kept. Set
+         * and clear explicitly rather than toggling: an unbalanced switch would
+         * otherwise invert the bit for good.
+         *
+         * This is done here rather than by calling KiSwapProcess(), which would
+         * do the same work but writes CR3 before the rest of the switch below
+         * has finished with the TSS - a reordering of this path that is not
+         * needed to maintain the mask.
          */
-        KiSwapProcess(NewProcess, OldProcess);
+        InterlockedOr((PLONG)&NewProcess->ActiveProcessors, (LONG)Pcr->SetMember);
+        InterlockedAnd((PLONG)&OldProcess->ActiveProcessors, ~(LONG)Pcr->SetMember);
+#endif
+
+        /* Check if there is a different LDT */
+        if (*(PULONGLONG)&OldProcess->LdtDescriptor != *(PULONGLONG)&NewProcess->LdtDescriptor)
+        {
+            if (NewProcess->LdtDescriptor.LimitLow)
+            {
+                KeSetGdtSelector(KGDT_LDT,
+                                 ((PULONG)&NewProcess->LdtDescriptor)[0],
+                                 ((PULONG)&NewProcess->LdtDescriptor)[1]);
+                Ke386SetLocalDescriptorTable(KGDT_LDT);
+            }
+            else
+            {
+                Ke386SetLocalDescriptorTable(0);
+            }
+        }
+
+        /* Switch address space and flush TLB */
+        __writecr3(NewProcess->DirectoryTableBase[0]);
     }
 
     /* Update the old thread's cycle time */
@@ -448,8 +478,25 @@ KiSwapContextEntry(IN PKSWITCHFRAME SwitchFrame,
     /* Get the old thread and set its kernel stack */
     OldThread->KernelStack = SwitchFrame;
 
-    /* Set swapbusy to false for the new thread */
-    NewThread->SwapBusy = FALSE;
+    /*
+     * Wait until the processor that was running this thread has finished
+     * saving it.
+     *
+     * A thread marks itself SwapBusy before it swaps away, and stays that way
+     * until its KernelStack has been written. Until then its saved switch
+     * frame does not exist, and reading NewThread->KernelStack below picks up
+     * whatever the stack happened to hold. This path used to clear the flag
+     * and read straight through it: on a multiprocessor that resumed a thread
+     * another processor was still in the middle of saving, and returning
+     * through the half-written frame jumped to whatever RetAddr contained -
+     * usually zero. x64 does this wait in KiSwapContextInternal, before it
+     * touches KTHREAD_KernelStack; the flag is dropped for the outgoing thread
+     * in KiSwapContextExit(), once its context really is on its stack.
+     */
+    while (*(volatile BOOLEAN *)&NewThread->SwapBusy)
+    {
+        YieldProcessor();
+    }
 
     /* ISRs can change FPU state, so disable interrupts while checking */
     _disable();
