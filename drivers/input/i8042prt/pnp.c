@@ -394,7 +394,7 @@ static NTSTATUS
 StartProcedure(
     IN PPORT_DEVICE_EXTENSION DeviceExtension)
 {
-    NTSTATUS Status = STATUS_UNSUCCESSFUL;
+    NTSTATUS Status = STATUS_SUCCESS;
     UCHAR FlagsToDisable = 0;
     UCHAR FlagsToEnable = 0;
     KIRQL Irql;
@@ -504,7 +504,18 @@ StartProcedure(
         }
     }
 
-    return Status;
+    /*
+     * Connecting an interrupt is not part of starting the device, and neither
+     * outcome above should fail the IRP_MN_START_DEVICE that brought us here.
+     * Both blocks only run once the class driver has connected, which may not
+     * have happened yet, and both leave their INITIALIZED flag clear when they
+     * fail so that the next call retries. Returning the last one's status
+     * instead removed the device outright when a start arrived with nothing
+     * left to do - Status was still the STATUS_UNSUCCESSFUL it was declared
+     * with - and masked a keyboard failure behind a mouse success when both
+     * blocks ran.
+     */
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS
