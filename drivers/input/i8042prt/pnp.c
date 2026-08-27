@@ -481,16 +481,27 @@ StartProcedure(
             WARN_(I8042PRT, "i8042ConnectMouseInterrupt failed: %lx\n", Status);
         }
 
-        /* Start the mouse */
-        Irql = KeAcquireInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt);
-        /* HACK: the mouse has already been reset in i8042DetectMouse. This second
-           reset prevents some touchpads/mice from working (Dell D531, D600).
-           See CORE-6901 */
-        if (!(i8042HwFlags & FL_INITHACK))
+        /* Start the mouse, if there is an interrupt to serialise against.
+         *
+         * HighestDIRQLInterrupt is only published by the two connect routines
+         * above, and only when they succeed. i8042ConnectMouseInterrupt()
+         * failing falls back to the keyboard's object, which is itself NULL
+         * when the keyboard did not connect either - and that failure is only
+         * warned about here, so this ran anyway and carried the NULL into
+         * KeAcquireInterruptSpinLock(). keyboard.c already tests the pointer
+         * before using it; do the same. */
+        if (DeviceExtension->HighestDIRQLInterrupt != NULL)
         {
-            i8042IsrWritePort(DeviceExtension, MOU_CMD_RESET, CTRL_WRITE_MOUSE);
+            Irql = KeAcquireInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt);
+            /* HACK: the mouse has already been reset in i8042DetectMouse. This second
+               reset prevents some touchpads/mice from working (Dell D531, D600).
+               See CORE-6901 */
+            if (!(i8042HwFlags & FL_INITHACK))
+            {
+                i8042IsrWritePort(DeviceExtension, MOU_CMD_RESET, CTRL_WRITE_MOUSE);
+            }
+            KeReleaseInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt, Irql);
         }
-        KeReleaseInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt, Irql);
     }
 
     return Status;
