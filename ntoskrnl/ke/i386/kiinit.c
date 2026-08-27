@@ -840,42 +840,37 @@ AppCpuInit:
     if (Cpu)
     {
         /*
-         * Report that we have taken our PRCB, which releases the BSP from the
-         * wait loop at the end of KeStartAllProcessors().
+         * An application processor used to park in an infinite
+         * YieldProcessor() loop right here, because there was no IPI support
+         * to freeze it with later on. That is no longer true, and the loop had
+         * become actively harmful: KiSystemStartup() is CODE_SEG("INIT"), so
+         * once the boot processor discarded the initialisation sections the
+         * parked processor was spinning on unmapped memory, and the next
+         * instruction fetch raised a page fault that presented as
+         * KMODE_EXCEPTION_NOT_HANDLED with Cr2 equal to the faulting Eip.
+         * Falling through instead lets this processor finish its own
+         * initialisation and reach KiIdleLoop(), which lives outside INIT and
+         * is therefore still mapped once the sections are gone.
          *
-         * An application processor used to park in an infinite YieldProcessor()
-         * loop right here, because there was no IPI support to freeze it with
-         * later on. That is no longer true, and the loop had become actively
-         * harmful: KiSystemStartup() is CODE_SEG("INIT"), so once the boot
-         * processor discarded the initialisation sections the parked processor
-         * was spinning on unmapped memory, and the next instruction fetch
-         * raised a page fault that presented as KMODE_EXCEPTION_NOT_HANDLED
-         * with Cr2 equal to the faulting Eip. Falling through instead lets the
-         * processor finish its own initialisation and reach KiIdleLoop(), which
-         * lives outside INIT, so it is still there once the sections are gone.
+         * The park also reported LoaderBlock->Prcb = 0 from here, because it
+         * was never going to reach the place that normally does so. Do not:
+         * that report is what releases KeStartAllProcessors() to build the
+         * loader block for the next processor, and we are not finished with
+         * it. KiSystemStartupBootStack() still has to read Thread and
+         * KernelStack out of it, so reporting this early let the boot
+         * processor overwrite both - and free the APINFO they point into -
+         * while we were still reading them. KiInitializeKernel() makes the
+         * report at the right moment instead.
          *
-         * Note the loader block is handed to each processor in turn and is only
-         * safe to reuse once we have finished reading it, which happens later
-         * in KiSystemStartupBootStack(). With more than two processors the boot
-         * processor can start the next one before then; that race is not
-         * addressed here.
-         */
-        /*
-         * Pick up our own PCR. The "goto AppCpuInit" above jumps over
-         * KiGetMachineBootPointers(), which is the only place Pcr is assigned,
-         * so on an application processor it is still an uninitialised local
-         * here. It read as NULL and the first use below,
-         * KiVerifyCpuFeatures(Pcr->Prcb), faulted on address 0x20. This went
-         * unnoticed for as long as the processor parked before reaching it.
-         *
-         * KeStartAllProcessors() has already run KiInitializePcr() for this
-         * processor and pointed KGDT_R0_PCR at the result, so the self pointer
-         * FS is loaded with is valid by the time we get here.
+         * Pick up our own PCR while we are here. The "goto AppCpuInit" above
+         * jumps over KiGetMachineBootPointers(), which is the only place Pcr
+         * is assigned, so it is otherwise an uninitialised local: it read as
+         * NULL and KiVerifyCpuFeatures(Pcr->Prcb) below faulted on address
+         * 0x20. KeStartAllProcessors() has already run KiInitializePcr() for
+         * this processor and pointed KGDT_R0_PCR at the result, so the self
+         * pointer FS carries is valid by now.
          */
         Pcr = (PKIPCR)KeGetPcr();
-
-        KeMemoryBarrier();
-        LoaderBlock->Prcb = 0;
     }
 
     /* Acquire the freeze lock, which serialises the per-processor HAL
