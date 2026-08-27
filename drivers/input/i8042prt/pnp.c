@@ -667,11 +667,51 @@ i8042RemoveDevice(
     IN PDEVICE_OBJECT DeviceObject)
 {
     PI8042_DRIVER_EXTENSION DriverExtension;
+    PPORT_DEVICE_EXTENSION PortDeviceExtension;
     KIRQL OldIrql;
     PFDO_DEVICE_EXTENSION DeviceExtension;
 
     DriverExtension = (PI8042_DRIVER_EXTENSION)IoGetDriverObjectExtension(DeviceObject->DriverObject, DeviceObject->DriverObject);
     DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    PortDeviceExtension = DeviceExtension->PortDeviceExtension;
+
+    /* The port extension outlives this device object, and both the back pointer
+     * it keeps and the interrupt service context name the extension that
+     * IoDeleteDevice() is about to free. Drop them here: a device whose start
+     * failed is removed with its flags still saying it is there, and the next
+     * StartProcedure() - the one the other device's start makes - then walks
+     * into the freed extension. */
+    if (PortDeviceExtension != NULL)
+    {
+        if ((PVOID)PortDeviceExtension->KeyboardExtension == (PVOID)DeviceExtension)
+        {
+            if (PortDeviceExtension->Flags & KEYBOARD_INITIALIZED)
+            {
+                IoDisconnectInterrupt(PortDeviceExtension->KeyboardInterrupt.Object);
+                PortDeviceExtension->KeyboardInterrupt.Object = NULL;
+                PortDeviceExtension->HighestDIRQLInterrupt =
+                    PortDeviceExtension->MouseInterrupt.Object;
+            }
+
+            PortDeviceExtension->KeyboardExtension = NULL;
+            PortDeviceExtension->Flags &=
+                ~(KEYBOARD_CONNECTED | KEYBOARD_STARTED | KEYBOARD_INITIALIZED);
+        }
+        else if ((PVOID)PortDeviceExtension->MouseExtension == (PVOID)DeviceExtension)
+        {
+            if (PortDeviceExtension->Flags & MOUSE_INITIALIZED)
+            {
+                IoDisconnectInterrupt(PortDeviceExtension->MouseInterrupt.Object);
+                PortDeviceExtension->MouseInterrupt.Object = NULL;
+                PortDeviceExtension->HighestDIRQLInterrupt =
+                    PortDeviceExtension->KeyboardInterrupt.Object;
+            }
+
+            PortDeviceExtension->MouseExtension = NULL;
+            PortDeviceExtension->Flags &=
+                ~(MOUSE_CONNECTED | MOUSE_STARTED | MOUSE_INITIALIZED);
+        }
+    }
 
     KeAcquireSpinLock(&DriverExtension->DeviceListLock, &OldIrql);
     RemoveEntryList(&DeviceExtension->ListEntry);
