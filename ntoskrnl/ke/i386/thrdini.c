@@ -345,9 +345,6 @@ KiSwapContextExit(IN PKTHREAD OldThread,
     /* We are on the new thread stack now */
     NewThread = Pcr->PrcbData.CurrentThread;
 
-    /* The old thread's context is saved, so it may be picked up elsewhere */
-    OldThread->SwapBusy = FALSE;
-
     /* Now we are the new thread. Check if it's in a new process */
     OldProcess = OldThread->ApcState.Process;
     NewProcess = NewThread->ApcState.Process;
@@ -430,6 +427,18 @@ KiSwapContextExit(IN PKTHREAD OldThread,
                      (ULONG_PTR)OldThread->InitialStack,
                      0);
     }
+
+    /*
+     * The old thread is no longer busy, so another processor may pick it up
+     * from here on. Everything above still reads it - its process, for the
+     * address space and the ActiveProcessors mask, and its cycle time - so the
+     * release has to come after all of it, which is where x64 puts it too.
+     * Clearing the flag first let a second processor resume the thread and run
+     * it out of that process while this one was still walking it, and the read
+     * of ApcState.Process then came back NULL: a page fault at offset 0x34,
+     * KPROCESS::ActiveProcessors, taken at SYNCH_LEVEL.
+     */
+    OldThread->SwapBusy = FALSE;
 
     /* Kernel APCs may be pending */
     if (NewThread->ApcState.KernelApcPending)
