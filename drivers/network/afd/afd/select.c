@@ -244,7 +244,6 @@ AfdSelect( PDEVICE_OBJECT DeviceObject, PIRP Irp,
           InsertTailList( &DeviceExt->Polls, &Poll->ListEntry );
 
           KeSetTimer( &Poll->Timer, PollReq->Timeout, &Poll->TimeoutDpc );
-          Irp->Flags |= 0x10000000;
           Status = STATUS_PENDING;
           IoMarkIrpPending( Irp );
           (void)IoSetCancelRoutine(Irp, AfdCancelHandler);
