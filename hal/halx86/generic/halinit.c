@@ -88,6 +88,25 @@ HalInitSystem(
     PKPRCB Prcb = KeGetCurrentPrcb();
     NTSTATUS Status;
 
+    /*
+     * Both phases here are global, one-time initialisation - the ACPI tables,
+     * the PICs, the CMOS lock, the dispatch tables, the address usage list, the
+     * clock, the bus handlers and the x86 BIOS emulator. None of it is
+     * per-processor: that is HalInitializeProcessor()'s job, and it has already
+     * run for this processor out of KiSystemStartup().
+     *
+     * An application processor reaches us anyway, because
+     * ExpInitializeExecutive() calls HalInitSystem(ExpInitializationPhase) for
+     * every processor and KeStartAllProcessors() runs from Phase 1. So all of
+     * the below used to run a second time on the first application processor:
+     * the bus handlers were registered again, the BIOS emulator re-mapped, and
+     * on the boot processor's own path HalpDefaultIoSpace is prepended to the
+     * address usage list, so a repeat links it to itself and anything walking
+     * that list goes round forever.
+     */
+    if (Prcb->Number != 0)
+        return TRUE;
+
     /* Check the boot phase */
     if (BootPhase == 0)
     {
