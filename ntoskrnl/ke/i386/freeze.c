@@ -40,6 +40,21 @@ PKPRCB KiFreezeOwner;
  */
 #ifdef CONFIG_SMP
 static ULONG KiFrozenProcessorCount;
+
+/*
+ * How deep the freeze owner is nested.
+ *
+ * KxFreezeExecution() lets the owner re-enter without doing anything, so that
+ * a debug action taken while already frozen does not block on itself. Thawing
+ * had no matching guard, so the inner thaw released every processor and
+ * cleared the ownership while the outer freeze was still relying on it, and
+ * the outer thaw then found its own IPI_FROZEN_FLAG_ACTIVE gone and asserted.
+ * Because that assertion enters the debugger, which freezes and thaws again,
+ * the failure sustained itself and buried the boot in repeats of it.
+ *
+ * Only the owner reads or writes this, and there is one of those at a time.
+ */
+static ULONG KiFreezeDepth;
 #endif
 
 /* FUNCTIONS ******************************************************************/
@@ -121,6 +136,7 @@ KxFreezeExecution(
     /* Avoid blocking on recursive debug action */
     if (KiFreezeOwner == CurrentPrcb)
     {
+        KiFreezeDepth++;
         return;
     }
 
@@ -173,6 +189,7 @@ KxFreezeExecution(
 
     /* We are the owner now and active */
     CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_OWNER | IPI_FROZEN_FLAG_ACTIVE;
+    KiFreezeDepth = 1;
 
     /* Take the processor count once, and thaw exactly this set later */
     KiFrozenProcessorCount = (ULONG)KeNumberProcessors;
@@ -221,6 +238,13 @@ KxThawExecution(
 #ifdef CONFIG_SMP
     PKPRCB CurrentPrcb = KeGetCurrentPrcb();
     ULONG i;
+
+    /* Only the outermost thaw releases anybody */
+    ASSERT(KiFreezeDepth != 0);
+    if (--KiFreezeDepth != 0)
+    {
+        return;
+    }
 
     ASSERT(CurrentPrcb->IpiFrozen & IPI_FROZEN_FLAG_ACTIVE);
 
