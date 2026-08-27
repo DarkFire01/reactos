@@ -439,6 +439,12 @@ KiSetTebBase(PKPCR Pcr, PNT_TIB TebAddress)
     Ke386SetGdtEntryBase(&Pcr->GDT[KGDT_R3_TEB / sizeof(KGDTENTRY)], TebAddress);
 }
 
+VOID
+NTAPI
+KiInitializeTSS(
+    IN PKTSS Tss
+);
+
 CODE_SEG("INIT")
 VOID
 FASTCALL
