@@ -15,7 +15,6 @@
 
 typedef struct _APINFO
 {
-    DECLSPEC_ALIGN(PAGE_SIZE) KIDTENTRY Idt[256];
     DECLSPEC_ALIGN(PAGE_SIZE) KGDTENTRY Gdt[128];
     DECLSPEC_ALIGN(16) UINT8 NMIStackData[DOUBLE_FAULT_STACK_SIZE];
     KIPCR Pcr;
@@ -79,21 +78,39 @@ KeStartAllProcessors(VOID)
         if (!DPCStack)
             break;
 
+        // Prepare descriptor tables
+        KDESCRIPTOR bspGdt, bspIdt;
+        __sgdt(&bspGdt.Limit);
+        __sidt(&bspIdt.Limit);
+
+        /*
+         * Share the boot processor's IDT rather than taking a copy.
+         *
+         * KeRegisterInterruptHandler() writes KeGetPcr()->IDT, so it only
+         * updates the table of whichever processor happens to run it. A private
+         * copy is a snapshot of what was registered by the time this processor
+         * was created, and everything connected afterwards - which is every
+         * driver ISR, since KeStartAllProcessors() runs in Phase 1 before the
+         * device tree is walked - is missing from it. HalInitializeProcessor()
+         * then puts this processor into HalpDefaultInterruptAffinity, so
+         * interrupts do get routed here and are dispatched through stale
+         * entries.
+         *
+         * One table for everyone is what NT does on x86 and costs nothing: the
+         * double fault and NMI entries are task gates naming KGDT_DF_TSS and
+         * KGDT_NMI_TSS, and a selector resolves through the GDT of whichever
+         * processor took the fault, so each still lands in its own TSS.
+         */
         // Initalize a new PCR for the specific AP
         KiInitializePcr(ProcessorCount,
                         &APInfo->Pcr,
-                        &APInfo->Idt[0],
+                        (PKIDTENTRY)bspIdt.Base,
                         &APInfo->Gdt[0],
                         &APInfo->Tss,
                         (PKTHREAD)&APInfo->Thread,
                         DPCStack);
 
-        // Prepare descriptor tables
-        KDESCRIPTOR bspGdt, bspIdt;
-        __sgdt(&bspGdt.Limit);
-        __sidt(&bspIdt.Limit);
         RtlCopyMemory(&APInfo->Gdt, (PVOID)bspGdt.Base, bspGdt.Limit + 1);
-        RtlCopyMemory(&APInfo->Idt, (PVOID)bspIdt.Base, bspIdt.Limit + 1);
 
         KiSetGdtDescriptorBase(KiGetGdtEntry(&APInfo->Gdt, KGDT_R0_PCR), (ULONG_PTR)&APInfo->Pcr);
         KiSetGdtDescriptorBase(KiGetGdtEntry(&APInfo->Gdt, KGDT_DF_TSS), (ULONG_PTR)&APInfo->TssDoubleFault);
@@ -156,8 +173,8 @@ KeStartAllProcessors(VOID)
 
         ProcessorState->SpecialRegisters.Gdtr.Base = (ULONG_PTR)APInfo->Gdt;
         ProcessorState->SpecialRegisters.Gdtr.Limit = sizeof(APInfo->Gdt) - 1;
-        ProcessorState->SpecialRegisters.Idtr.Base = (ULONG_PTR)APInfo->Idt;
-        ProcessorState->SpecialRegisters.Idtr.Limit = sizeof(APInfo->Idt) - 1;
+        ProcessorState->SpecialRegisters.Idtr.Base = bspIdt.Base;
+        ProcessorState->SpecialRegisters.Idtr.Limit = bspIdt.Limit;
 
         ProcessorState->SpecialRegisters.Tr = KGDT_TSS;
 
