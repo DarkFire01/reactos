@@ -501,6 +501,51 @@ KiSwapContextEntry(IN PKSWITCHFRAME SwitchFrame,
     /* ISRs can change FPU state, so disable interrupts while checking */
     _disable();
 
+#ifdef CONFIG_SMP
+    /*
+     * Give up this processor's claim on the outgoing thread's FPU state.
+     *
+     * The lazy scheme leaves Prcb->NpxThread pointing at whoever last loaded
+     * the unit here, and the only thing that clears it is KiRundownThread() -
+     * on whichever processor the thread happens to die on. A thread that
+     * loaded its state here and then ran, and exited, elsewhere left this
+     * processor holding a pointer to a freed KTHREAD, and the next
+     * KiFlushNPXState() read InitialStack out of it, got zero, and issued
+     * FXSAVE against 0 - sizeof(FX_SAVE_AREA).
+     *
+     * Saving here also keeps a migrating thread's state correct, which lazy
+     * ownership cannot: a stale owner would otherwise write this processor's
+     * registers over state the thread had already rebuilt somewhere else.
+     */
+    if (Pcr->PrcbData.NpxThread == OldThread)
+    {
+        if (OldThread->NpxState == NPX_STATE_LOADED)
+        {
+            PFX_SAVE_AREA FxSaveArea = KiGetThreadNpxArea(OldThread);
+
+            /* A save faults while the task switched flag is set */
+            Cr0 = __readcr0();
+            if (Cr0 & (CR0_MP | CR0_TS | CR0_EM))
+            {
+                __writecr0(Cr0 & ~(CR0_MP | CR0_TS | CR0_EM));
+            }
+
+            if (KeI386FxsrPresent)
+            {
+                Ke386FxSave(FxSaveArea);
+            }
+            else
+            {
+                Ke386FnSave((PFLOATING_SAVE_AREA)FxSaveArea);
+            }
+
+            OldThread->NpxState = NPX_STATE_NOT_LOADED;
+        }
+
+        Pcr->PrcbData.NpxThread = NULL;
+    }
+#endif
+
     /* Get current and new CR0 and check if they've changed */
     Cr0 = __readcr0();
     NewCr0 = NewThread->NpxState |
