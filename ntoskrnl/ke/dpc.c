@@ -533,6 +533,26 @@ KiQuantumEnd(VOID)
     /* Get the next thread now */
     NextThread = Prcb->NextThread;
 
+    /*
+     * That may be the thread already running here: KiSelectReadyThread() above
+     * can return it when it is on a ready list, and another processor can have
+     * scheduled it onto this one. There is nothing to switch to, and going on
+     * regardless is what does the damage - the running thread would be handed
+     * to KxQueueReadyThread() below and left on a ready list while it is still
+     * Prcb->CurrentThread, so a second processor can select a thread this one
+     * has not finished with. Everything after that reads as a thread state
+     * assertion somewhere else entirely. Put the state back, since the
+     * selection above may have moved it to Standby, and leave.
+     */
+    if (NextThread == Thread)
+    {
+        Thread->State = Running;
+        Prcb->NextThread = NULL;
+        KiReleasePrcbLock(Prcb);
+        KeLowerIrql(DISPATCH_LEVEL);
+        return;
+    }
+
     /* Set current thread's swap busy to true */
     KiSetThreadSwapBusy(Thread);
 
