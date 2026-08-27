@@ -74,12 +74,21 @@ Author:
 //
 #define K0IPCR                  ((ULONG_PTR)(KIP0PCRADDRESS))
 #define PCR                     ((KPCR *)K0IPCR)
-#if defined(CONFIG_SMP) || defined(NT_BUILD)
-//#undef  KeGetPcr
+//
+// Always go through the self pointer, even in a uniprocessor build.
+//
+// PCR is KIP0PCRADDRESS - the *boot* processor's PCR - so resolving KeGetPcr()
+// to it is only right while there is one processor. This used to be gated on
+// CONFIG_SMP, which is not a property of the machine but of the translation
+// unit: the shared HAL libraries are compiled once, without it, because the
+// same objects are linked into both the uniprocessor and the multiprocessor
+// HAL. So every KeGetPcr() in the HAL - HalInitializeProcessor() storing
+// StallScaleFactor, ApicInitializeLocalApic() reading Irql, and the copy of
+// KiEnterInterruptTrap() inlined into each interrupt handler - reached the boot
+// processor's PCR whatever processor it was running on. The extra load costs
+// nothing next to being wrong on every processor but the first.
+//
 #define KeGetPcr()              ((KPCR *)__readfsdword(FIELD_OFFSET(KPCR, SelfPcr)))
-#else
-#define KeGetPcr()              PCR
-#endif
 
 //
 // CPU Vendors
