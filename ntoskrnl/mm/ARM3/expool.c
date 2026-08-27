@@ -2436,9 +2436,18 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
     else
     {
         //
-        // Simply do a sanity check
+        // Simply do a sanity check. ExpCheckPoolBlocks() reads every header on
+        // the page, so it has to be done under the pool lock: another processor
+        // splitting or merging a block in this page moves BlockSize and the
+        // next block's PreviousSize one after the other, and a walk that reads
+        // between the two sees a chain that does not add up and bugchecks a
+        // perfectly healthy pool. That is a false BAD_POOL_HEADER, and the
+        // giveaway is that the page reads back consistent once the other
+        // processor has been frozen for the bugcheck.
         //
+        OldIrql = ExLockPool(PoolDesc);
         ExpCheckPoolBlocks(Entry);
+        ExUnlockPool(PoolDesc, OldIrql);
     }
 
     //
@@ -2450,9 +2459,10 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
                          OriginalType);
 
     //
-    // And return the pool allocation
+    // And return the pool allocation. The page was already checked above,
+    // under the lock; repeating it here unlocked is what produced the false
+    // bugchecks described there.
     //
-    ExpCheckPoolBlocks(Entry);
     Entry->PoolTag = Tag;
     return POOL_FREE_BLOCK(Entry);
 }
