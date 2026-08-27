@@ -106,8 +106,21 @@ KiProcessorFreezeHandler(
         KeMemoryBarrier();
     }
 
-    /* Restore the processor state */
-    KiRestoreProcessorState(TrapFrame, ExceptionFrame);
+    /*
+     * Put the control registers back, but leave the trap frame alone.
+     *
+     * KiSaveProcessorState() above snapshots this processor into
+     * Prcb->ProcessorState so the debugger can show it. Feeding that snapshot
+     * back through KeContextToTrapFrame() is only useful if the debugger edited
+     * it, and it is not a lossless round trip: ProcessorState is per-processor
+     * state that other debugger paths also write, so the context restored here
+     * need not belong to the frame we are returning through. When it did not,
+     * KiEspToTrapFrame() saw a user mode Esp against a kernel mode frame,
+     * refused to lower the stack pointer, and brought the machine down with
+     * SET_OF_INVALID_CONTEXT. We were interrupted by an IPI and are returning
+     * to exactly where we left off, so the frame is already correct.
+     */
+    KiRestoreProcessorControlState(&CurrentPrcb->ProcessorState);
 
     /* Flush the TLB on this processor */
     KxFlushEntireCurrentTb();
@@ -177,6 +190,23 @@ KxFreezeExecution(
                 }
 
                 /* Flush the TLB on this processor, as the freeze handler does */
+                KxFlushEntireCurrentTb();
+
+                CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_RUNNING;
+            }
+            else if (CurrentPrcb->IpiFrozen == IPI_FROZEN_STATE_THAW)
+            {
+                /*
+                 * Answer a thaw as well, not just a freeze.
+                 *
+                 * The owner sets a target to THAW and then waits for it to
+                 * report RUNNING. Reacting only to TARGET_FREEZE above left
+                 * that transition to whoever was inside the inner wait, and a
+                 * processor that had already completed a cycle and gone back
+                 * to spinning here was not: it sat with IpiFrozen at THAW while
+                 * the owner waited for a RUNNING that nobody was going to
+                 * write, and both spun until the machine was reset.
+                 */
                 KxFlushEntireCurrentTb();
 
                 CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_RUNNING;
