@@ -408,8 +408,10 @@ function(create_iso_lists)
         DESTINATION reactos
         NO_CAB FOR bootcd regtest)
 
-if(FALSE) ## Disabled until we want a RAMDISK ISO
-    # Add the LiveImage into the BootCD
+if(RAMDISK_ISO)
+    # Add the LiveImage into the BootCD, so that a ramdisk boot entry can
+    # name it with /RDPATH. It roughly doubles the size of the boot media,
+    # hence the option.
     add_cd_file(
         TARGET livecd
         FILE ${CMAKE_CURRENT_BINARY_DIR}/liveimg.iso
