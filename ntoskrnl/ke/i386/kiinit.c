@@ -295,8 +295,19 @@ KiInitializePcr(IN ULONG ProcessorNumber,
     Pcr->NtTib.StackLimit = 0;
     Pcr->NtTib.Self = NULL;
 
-    /* Set the Current Thread */
+    /*
+     * Set the Current Thread, and the idle thread with it.
+     *
+     * KiSelectNextThread() falls back to Prcb->IdleThread when nothing is
+     * ready, and dereferences what it returns. Leaving the field NULL here
+     * opens a window: this runs on the boot processor and publishes the new
+     * KiProcessorBlock entry, while the processor being set up goes on to add
+     * itself to KeActiveProcessors and KeNumberProcessors in KiSystemStartup()
+     * - both before KiInitializeKernel() fills IdleThread in. Anything that
+     * schedules against the new processor in between selects a NULL thread.
+     */
     Pcr->PrcbData.CurrentThread = IdleThread;
+    Pcr->PrcbData.IdleThread = IdleThread;
 
     /* Set pointers to ourselves */
     Pcr->SelfPcr = (PKPCR)Pcr;
