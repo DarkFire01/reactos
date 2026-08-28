@@ -139,14 +139,53 @@ KiSelectNextProcessor(
     IdleSet = PreferredSet & KiIdleSummary;
     while (IdleSet != 0)
     {
-        /* Prefer the ideal processor when it is one of the idle ones */
+            /*
+         * Choose among the idle ones the way Vista does, in this order:
+         * the ideal processor, then the node it belongs to, then a processor
+         * whose whole physical core is idle, then the processor this thread
+         * last ran on, then the processor doing the readying, and only then
+         * whatever is left. The two middle preferences are the ones that were
+         * missing here: sending a thread back to where it last ran, or to the
+         * processor that woke it, keeps its working set and the data being
+         * handed to it in a cache that already has them, where picking the
+         * lowest numbered idle processor throws both away every time.
+         *
+         * Vista scans the remainder from the top (BitScanReverse); this used
+         * to take the bottom, which also concentrated unrelated threads onto
+         * the same low processors.
+         */
         if (IdleSet & AFFINITY_MASK(Thread->IdealProcessor))
         {
             Processor = Thread->IdealProcessor;
         }
         else
         {
-            NT_VERIFY(BitScanForwardAffinity(&Processor, IdleSet) != FALSE);
+            KAFFINITY Candidates = IdleSet;
+            KAFFINITY NodeSet;
+
+            /* Stay on the ideal processor's node if any of it is idle */
+            NodeSet = Candidates &
+                      KiProcessorBlock[Thread->IdealProcessor]->ParentNode->ProcessorMask;
+            if (NodeSet != 0) Candidates = NodeSet;
+
+            /* Prefer a processor whose physical core is entirely idle */
+            NodeSet = Candidates & KiIdleSMTSummary;
+            if (NodeSet != 0) Candidates = NodeSet;
+
+            if (Candidates & AFFINITY_MASK(Thread->NextProcessor))
+            {
+                /* Where it last ran: its working set may still be there */
+                Processor = Thread->NextProcessor;
+            }
+            else if (Candidates & KeGetCurrentPrcb()->SetMember)
+            {
+                /* Failing that, here - we are holding what it is about to read */
+                Processor = KeGetCurrentPrcb()->Number;
+            }
+            else
+            {
+                NT_VERIFY(BitScanReverseAffinity(&Processor, Candidates) != FALSE);
+            }
         }
 
         /* Ours only if the bit was still set when we cleared it */
