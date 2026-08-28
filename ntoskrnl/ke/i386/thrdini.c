@@ -364,7 +364,20 @@ KiIdleLoop(VOID)
              * some unrelated event to come along and dispatch it. Vista's
              * KiIdleSchedule() reads Prcb->ReadySummary here for exactly this
              * reason (ntoskrnl_analysis.c, KiIdleSchedule).
+             *
+             * Take the lock the way the branch above does, with interrupts on
+             * and at SYNCH_LEVEL. Spinning on a PRCB lock with interrupts
+             * disabled - which is how this loop arrives here - deadlocks
+             * against whoever holds it if that processor is waiting on an IPI
+             * from us, and a shootdown or a freeze is exactly such a wait. It
+             * needs contention to show: sixteen runnable threads over eight
+             * processors hung the machine every time under VirtualBox.
              */
+            _enable();
+#ifdef CONFIG_SMP
+            KfRaiseIrql(SYNCH_LEVEL);
+#endif
+
             KiAcquirePrcbLock(Prcb);
             NewThread = KiSelectReadyThread(0, Prcb);
             if (NewThread)
@@ -373,6 +386,11 @@ KiIdleLoop(VOID)
                 Prcb->NextThread = NewThread;
             }
             KiReleasePrcbLock(Prcb);
+
+#ifdef CONFIG_SMP
+            /* Back to where the loop expects to be */
+            KeLowerIrql(DISPATCH_LEVEL);
+#endif
         }
         else
         {
