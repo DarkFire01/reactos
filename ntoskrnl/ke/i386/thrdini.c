@@ -385,31 +385,8 @@ KiIdleLoop(VOID)
              */
             InterlockedBitTestAndSetAffinity(&KiIdleSummary, Prcb->Number);
 
-            /*
-             * Say that we are about to halt, then look once more before doing
-             * it.
-             *
-             * KiDeferredReadyThread() only interrupts a processor it can see is
-             * sleeping - waking one that is still going round this loop costs an
-             * interrupt to tell it something it was about to notice anyway. That
-             * leaves a window: it could set Prcb->NextThread and find us not yet
-             * sleeping, while we had already looked and found no next thread,
-             * and then we would halt on top of work and sit there until the next
-             * tick. Publishing Sleeping first and re-reading NextThread after
-             * closes it - one of the two orderings must see the other, and the
-             * PRCB lock it drops before reading Sleeping is the matching
-             * barrier on that side.
-             */
-            Prcb->Sleeping = TRUE;
-            KeMemoryBarrier();
-
-            if (Prcb->NextThread == NULL)
-            {
-                /* Note the HAL returns with interrupts on */
-                Prcb->PowerState.IdleFunction(&Prcb->PowerState);
-            }
-
-            Prcb->Sleeping = FALSE;
+            /* Continue staying idle. Note the HAL returns with interrupts on */
+            Prcb->PowerState.IdleFunction(&Prcb->PowerState);
         }
     }
 }
