@@ -38,6 +38,15 @@ HalpSetupAcpiPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     return STATUS_SUCCESS;
 }
 
+PVOID
+NTAPI
+HalAcpiGetTable(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
+                IN ULONG Signature)
+{
+    /* There is no ACPI on these HALs */
+    return NULL;
+}
+
 CODE_SEG("INIT")
 VOID
 NTAPI

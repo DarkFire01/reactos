@@ -41,6 +41,7 @@ typedef struct _ACPI_BIOS_MULTI_NODE
 #define SRAT_SIGNATURE 'TARS'
 #define WDRT_SIGNATURE 'TRDW'
 #define BGRT_SIGNATURE  0x54524742      	// "BGRT"
+#define HPET_SIGNATURE 'TEPH'
 
 //
 // FADT Flags
@@ -212,6 +213,21 @@ typedef struct _XSDT
     PHYSICAL_ADDRESS Tables[ANYSIZE_ARRAY];
 } XSDT;
 typedef XSDT *PXSDT;
+
+//
+// IA-PC High Precision Event Timer Table, as described by the HPET
+// specification revision 1.0a, section 3.2.4.
+//
+typedef struct _HPET_TABLE
+{
+    DESCRIPTION_HEADER Header;
+    ULONG EventTimerBlockId;
+    GEN_ADDR BaseAddress;
+    UCHAR HpetNumber;
+    USHORT MinimumClockTick;
+    UCHAR PageProtection;
+} HPET_TABLE;
+typedef HPET_TABLE *PHPET_TABLE;
 #include <poppack.h>
 
 //

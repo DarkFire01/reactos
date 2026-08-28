@@ -66,6 +66,15 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                                APIC_PROFILE_LEVEL,
                                HalpProfileInterrupt,
                                Latched);
+
+    /*
+     * Hand the clock over to the HPET, where the firmware describes one. This
+     * cannot happen in HalpInitializeClock(), which has already run: reaching
+     * the ACPI tables needs the loader block, and that only arrives here.
+     * Interrupts are still disabled, and the RTC keeps the clock if the HPET
+     * turns out to be unusable.
+     */
+    HalpHpetInitializeClock(LoaderBlock);
 }
 
 VOID

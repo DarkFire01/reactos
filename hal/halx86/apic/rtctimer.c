@@ -138,6 +138,29 @@ HalpInitializeClock(VOID)
     DPRINT1("Clock initialized\n");
 }
 
+/*!
+    \brief Stops the RTC periodic interrupt.
+
+    Called when the HPET takes the clock over, since HalpInitializeClock() has
+    already started the RTC by then - see the commentary in hpet.c. Register C
+    is read afterwards so that a tick already latched cannot be delivered once
+    interrupts are enabled.
+*/
+VOID
+NTAPI
+HalpRtcDisableClock(VOID)
+{
+    UCHAR RegisterB;
+
+    HalpAcquireCmosSpinLock();
+
+    RegisterB = HalpReadCmos(RTC_REGISTER_B);
+    HalpWriteCmos(RTC_REGISTER_B, RegisterB & ~RTC_REG_B_PI);
+    HalpReadCmos(RTC_REGISTER_C);
+
+    HalpReleaseCmosSpinLock();
+}
+
 VOID
 FASTCALL
 HalpClockInterruptHandler(IN PKTRAP_FRAME TrapFrame)
@@ -162,28 +185,40 @@ HalpClockInterruptHandler(IN PKTRAP_FRAME TrapFrame)
         return;
     }
 
-    /* Read register C, so that the next interrupt can happen */
-    HalpReadCmos(RTC_REGISTER_C);
-
-    /* Save increment */
-    LastIncrement = HalpCurrentTimeIncrement;
-
-    /* Check if the running fraction has accounted for 100 ns */
-    HalpRunningFraction += HalpCurrentFractionalIncrement;
-    if (HalpRunningFraction >= 1000)
+    if (HalpHpetEnabled)
     {
-        LastIncrement++;
-        HalpRunningFraction -= 1000;
+        /*
+         * The HPET is programmed edge triggered and periodic, so there is
+         * nothing to acknowledge and nothing to re-arm. All this tick owes us
+         * is its increment, and any pending rate change.
+         */
+        LastIncrement = HalpHpetUpdateClockRate();
     }
-
-    /* Check if someone changed the time rate */
-    if (HalpSetClockRate)
+    else
     {
-        /* Set new clock rate */
-        RtcSetClockRate(HalpNextClockRate);
+        /* Read register C, so that the next interrupt can happen */
+        HalpReadCmos(RTC_REGISTER_C);
 
-        /* We're done */
-        HalpSetClockRate = FALSE;
+        /* Save increment */
+        LastIncrement = HalpCurrentTimeIncrement;
+
+        /* Check if the running fraction has accounted for 100 ns */
+        HalpRunningFraction += HalpCurrentFractionalIncrement;
+        if (HalpRunningFraction >= 1000)
+        {
+            LastIncrement++;
+            HalpRunningFraction -= 1000;
+        }
+
+        /* Check if someone changed the time rate */
+        if (HalpSetClockRate)
+        {
+            /* Set new clock rate */
+            RtcSetClockRate(HalpNextClockRate);
+
+            /* We're done */
+            HalpSetClockRate = FALSE;
+        }
     }
 
     /* Send the clock IPI to all other CPUs */
@@ -232,6 +267,10 @@ HalSetTimeIncrement(IN ULONG Increment)
 {
     UCHAR Rate;
     ULONG NextIncrement;
+
+    /* The HPET keeps its own set of rates */
+    if (HalpHpetEnabled)
+        return HalpHpetSetTimeIncrement(Increment);
 
     /* Lookup largest value below given Increment */
     for (Rate = RtcMinimumClockRate; Rate < RtcMaximumClockRate; Rate++)

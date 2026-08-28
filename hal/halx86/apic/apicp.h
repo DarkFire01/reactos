@@ -327,9 +327,34 @@ ApicWrite(APIC_REGISTER Register, ULONG Value)
     WRITE_REGISTER_ULONG((PULONG)(APIC_BASE + Register), Value);
 }
 
+/* Maps a vector to the I/O APIC input that raises it, see apic.c */
+extern UCHAR HalpVectorToIndex[256];
+
+/* The system clock runs off the HPET rather than the RTC, see hpet.c */
+extern BOOLEAN HalpHpetEnabled;
+
 VOID
 NTAPI
 ApicInitializeTimer(ULONG Cpu);
+
+CODE_SEG("INIT")
+BOOLEAN
+NTAPI
+HalpHpetInitializeClock(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock);
+
+ULONG
+NTAPI
+HalpHpetUpdateClockRate(VOID);
+
+ULONG
+NTAPI
+HalpHpetSetTimeIncrement(
+    _In_ ULONG Increment);
+
+VOID
+NTAPI
+HalpRtcDisableClock(VOID);
 
 VOID
 NTAPI
