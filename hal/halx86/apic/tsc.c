@@ -19,6 +19,18 @@ LARGE_INTEGER HalpCpuClockFrequency = {{INITIAL_STALL_COUNT * 1000000}};
 UCHAR TscCalibrationPhase;
 ULONG64 TscCalibrationArray[NUM_SAMPLES];
 
+/*
+ * Ticks per microsecond, once the calibration below has run.
+ *
+ * KeStallExecutionProcessor() used to read this out of the PCR, and only the
+ * boot processor's PCR ever got the calibrated value: HalInitSystem() does the
+ * calibration and only the boot processor runs it, so every application
+ * processor was left with the INITIAL_STALL_COUNT that HalInitializeProcessor()
+ * puts there - about fifty times too small here. A driver stalling for hardware
+ * on one of those processors did not stall for anything like as long as it
+ * asked for. */
+static ULONG HalpStallScaleFactor = INITIAL_STALL_COUNT;
+
 #define RTC_MODE 6 /* Mode 6 is 1024 Hz */
 #define SAMPLE_FREQUENCY ((32768 << 1) >> RTC_MODE)
 
@@ -83,8 +95,22 @@ HalpInitializeTsc(VOID)
     /* Set the calibration ISR */
     KeRegisterInterruptHandler(APIC_CLOCK_VECTOR, TscCalibrationISR);
 
-    /* Reset TSC value to 0 */
-    __writemsr(MSR_RDTSC, 0);
+    /*
+     * Do not reset the TSC.
+     *
+     * This used to do __writemsr(MSR_RDTSC, 0) so that the samples below would
+     * start from zero, which DoLinearRegression() does not need - it works on
+     * ArrayY[X] - ArrayY[0] and only ever wants the slope. What zeroing it does
+     * do is desynchronise this processor from the others: the write happens on
+     * whichever processor runs HalInitSystem(), the application processors are
+     * started long afterwards and keep the platform's own counter, and the two
+     * then disagree for the life of the boot. Measured here at eight
+     * processors: the boot processor read 47 seconds behind all seven others,
+     * so a thread that migrated saw KeQueryPerformanceCounter() jump 47 seconds
+     * backwards or forwards. Any interval measured across that is nonsense, and
+     * KeStallExecutionProcessor() computing an end time on one processor and
+     * finishing the wait on another can spin for the whole 47 seconds.
+     */
 
     /* Enable the timer interrupt */
     HalEnableSystemInterrupt(APIC_CLOCK_VECTOR, CLOCK_LEVEL, Latched);
@@ -124,7 +150,8 @@ HalpCalibrateStallExecution(VOID)
 
     HalpInitializeTsc();
 
-    KeGetPcr()->StallScaleFactor = (ULONG)(HalpCpuClockFrequency.QuadPart / 1000000);
+    HalpStallScaleFactor = (ULONG)(HalpCpuClockFrequency.QuadPart / 1000000);
+    KeGetPcr()->StallScaleFactor = HalpStallScaleFactor;
 }
 
 /* PUBLIC FUNCTIONS ***********************************************************/
@@ -161,7 +188,7 @@ KeStallExecutionProcessor(ULONG MicroSeconds)
     StartTime = __rdtsc();
 
     /* Calculate the ending time */
-    EndTime = StartTime + KeGetPcr()->StallScaleFactor * MicroSeconds;
+    EndTime = StartTime + (ULONG64)HalpStallScaleFactor * MicroSeconds;
 
     /* Loop until time is elapsed */
     while (__rdtsc() < EndTime);
