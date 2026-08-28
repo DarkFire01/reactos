@@ -387,8 +387,14 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
             Prcb->NextThread = Thread;
             KiReleasePrcbLock(Prcb);
 
-            /* Tell it, if it is not us */
-            if (Prcb != KeGetCurrentPrcb())
+            /*
+             * Interrupt it only if it has actually gone to sleep. A processor
+             * still going round its idle loop will see Prcb->NextThread by
+             * itself, and an interrupt to tell it so is wasted. KiIdleLoop()
+             * publishes Sleeping before it takes its last look at NextThread,
+             * so it cannot halt on work we have just given it.
+             */
+            if ((Prcb != KeGetCurrentPrcb()) && (Prcb->Sleeping))
             {
                 KiIpiSend(AFFINITY_MASK(Processor), IPI_DPC);
             }
