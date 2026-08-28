@@ -351,6 +351,29 @@ KiIdleLoop(VOID)
             KeLowerIrql(DISPATCH_LEVEL);
 #endif
         }
+        else if (Prcb->ReadySummary)
+        {
+            /*
+             * Nothing has been handed to us, but our own ready queues are not
+             * empty - so take from them rather than halting on top of work.
+             *
+             * KiDeferredReadyThread() leaves a thread on the target's ready
+             * list whenever it does not put it on standby, and nothing tells a
+             * processor about its own list: this loop only ever looked at
+             * Prcb->NextThread and the DPC queues, so such a thread waited for
+             * some unrelated event to come along and dispatch it. Vista's
+             * KiIdleSchedule() reads Prcb->ReadySummary here for exactly this
+             * reason (ntoskrnl_analysis.c, KiIdleSchedule).
+             */
+            KiAcquirePrcbLock(Prcb);
+            NewThread = KiSelectReadyThread(0, Prcb);
+            if (NewThread)
+            {
+                NewThread->State = Standby;
+                Prcb->NextThread = NewThread;
+            }
+            KiReleasePrcbLock(Prcb);
+        }
         else
         {
             /*
