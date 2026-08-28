@@ -126,7 +126,34 @@ KiSelectNextProcessor(
     IdleSet = PreferredSet & KiIdleSummary;
     if (IdleSet != 0)
     {
-        PreferredSet = IdleSet;
+        /* Prefer the ideal processor when it is one of the idle ones */
+        if (IdleSet & AFFINITY_MASK(Thread->IdealProcessor))
+        {
+            Processor = Thread->IdealProcessor;
+        }
+        else
+        {
+            NT_VERIFY(BitScanForwardAffinity(&Processor, IdleSet) != FALSE);
+        }
+
+        /*
+         * Take the processor out of the idle set here, rather than leaving it
+         * to whenever it actually starts running something.
+         *
+         * Nothing else claims it, and a processor stays in KiIdleSummary until
+         * it has swapped a thread in - which is long after this decision. So
+         * every thread readied in the same breath saw the same idle set and
+         * chose the same processor, and they then ran one after another on it
+         * while the rest of the machine stayed idle. Measured: two threads
+         * woken together both went to cpu1 and took two bursts to do one
+         * burst's work; eight threads only ever occupied six processors.
+         *
+         * KiIdleLoop() puts the bit back before it idles again, so a processor
+         * that ends up with nothing to do does not stay out of the set.
+         */
+        InterlockedBitTestAndResetAffinity(&KiIdleSummary, Processor);
+        ASSERT(Processor < KeNumberProcessors);
+        return Processor;
     }
 
     /* Check if we can use the ideal processor */
@@ -352,7 +379,23 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
     {
         /* Set the next thread as the current thread */
         NextThread = Prcb->CurrentThread;
-        if (OldPriority > NextThread->Priority)
+
+        /*
+         * Take the processor if it has nothing better to do.
+         *
+         * An idle processor is running its idle thread, and that thread is
+         * given HIGH_PRIORITY when it is built - so this comparison answered
+         * "do not preempt" for every ordinary thread, and the wake fell through
+         * to the ready list below. Nothing tells a processor about its own
+         * ready list: KiIdleLoop() looks at Prcb->NextThread and the DPC lists
+         * and nothing else, so the thread sat there until some later tick
+         * happened to dispatch. KiSelectNextProcessor() prefers an idle
+         * processor, so this was the common case, not a corner: waking eight
+         * blocked threads got 2.1x out of 8 processors, while sixteen threads
+         * that never block saturated all eight.
+         */
+        if ((OldPriority > NextThread->Priority) ||
+            (NextThread == Prcb->IdleThread))
         {
             /* Preempt it if it's already running */
             if (NextThread->State == Running) NextThread->Preempted = TRUE;
