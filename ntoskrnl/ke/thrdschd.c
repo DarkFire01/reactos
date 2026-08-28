@@ -122,9 +122,22 @@ KiSelectNextProcessor(
     /* Start with the affinity */
     PreferredSet = Thread->Affinity;
 
-    /* If we have matching idle processors, use them */
+    /*
+     * If a processor this thread may run on is idle, take one - exclusively.
+     *
+     * A processor stays in KiIdleSummary until it has actually swapped a
+     * thread in, which is long after this decision, so nothing stopped two
+     * threads readied in the same breath from choosing the same "idle"
+     * processor and running one after the other on it. Clearing the bit is not
+     * enough by itself either: two processors can read the set, pick the same
+     * bit and both clear it. Only the one whose clear found the bit still set
+     * has really claimed the processor - anybody else has to look again.
+     *
+     * KiIdleLoop() puts the bit back before it halts, so a processor that ends
+     * up with nothing to do does not drop out of the set for good.
+     */
     IdleSet = PreferredSet & KiIdleSummary;
-    if (IdleSet != 0)
+    while (IdleSet != 0)
     {
         /* Prefer the ideal processor when it is one of the idle ones */
         if (IdleSet & AFFINITY_MASK(Thread->IdealProcessor))
@@ -136,27 +149,19 @@ KiSelectNextProcessor(
             NT_VERIFY(BitScanForwardAffinity(&Processor, IdleSet) != FALSE);
         }
 
-        /*
-         * Take the processor out of the idle set here, rather than leaving it
-         * to whenever it actually starts running something.
-         *
-         * Nothing else claims it, and a processor stays in KiIdleSummary until
-         * it has swapped a thread in - which is long after this decision. So
-         * every thread readied in the same breath saw the same idle set and
-         * chose the same processor, and they then ran one after another on it
-         * while the rest of the machine stayed idle. Measured: two threads
-         * woken together both went to cpu1 and took two bursts to do one
-         * burst's work; eight threads only ever occupied six processors.
-         *
-         * KiIdleLoop() puts the bit back before it idles again, so a processor
-         * that ends up with nothing to do does not stay out of the set.
-         */
-        InterlockedBitTestAndResetAffinity(&KiIdleSummary, Processor);
-        ASSERT(Processor < KeNumberProcessors);
-        return Processor;
+        /* Ours only if the bit was still set when we cleared it */
+        if (InterlockedBitTestAndResetAffinity(&KiIdleSummary, Processor))
+        {
+            ASSERT(Processor < KeNumberProcessors);
+            return Processor;
+        }
+
+        /* Somebody else took it, so drop it and re-read what is left */
+        IdleSet &= ~AFFINITY_MASK(Processor);
+        IdleSet &= KiIdleSummary;
     }
 
-    /* Check if we can use the ideal processor */
+    /* Nothing idle. Check if we can use the ideal processor */
     if (PreferredSet & AFFINITY_MASK(Thread->IdealProcessor))
     {
         return Thread->IdealProcessor;
