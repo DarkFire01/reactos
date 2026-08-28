@@ -353,6 +353,15 @@ KiIdleLoop(VOID)
         }
         else
         {
+            /*
+             * Still idle, so make sure this processor is advertised as such.
+             * KiSelectNextProcessor() clears the bit when it hands this
+             * processor a thread; if that thread went elsewhere in the end, or
+             * has already come and gone, the bit has to come back or nothing
+             * would ever be sent here again.
+             */
+            InterlockedBitTestAndSetAffinity(&KiIdleSummary, Prcb->Number);
+
             /* Continue staying idle. Note the HAL returns with interrupts on */
             Prcb->PowerState.IdleFunction(&Prcb->PowerState);
         }
