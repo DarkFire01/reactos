@@ -111,94 +111,81 @@ KiFindIdealProcessor(
     return Processor;
 }
 
+/*
+ * Pick an idle processor for this thread, without claiming it.
+ *
+ * The claim belongs to the caller, made with that processor's PRCB lock held
+ * and re-checked there: reading KiIdleSummary and clearing a bit in it are two
+ * steps, and in between the processor can be given work by somebody else.
+ * Vista tests and claims together under the lock and re-selects from scratch
+ * when it loses, which is what KiDeferredReadyThread() does with this.
+ *
+ * The order of preference is Vista's: the ideal processor, then its node, then
+ * a processor whose whole physical core is idle, then the one this thread last
+ * ran on, then the one doing the readying, then whatever is left taken from the
+ * top. The two middle preferences keep the thread's working set and the data
+ * being handed to it in a cache that already holds them.
+ */
+static
+BOOLEAN
+KiSelectIdleProcessor(
+    _In_ PKTHREAD Thread,
+    _Out_ PULONG Candidate)
+{
+    KAFFINITY IdleSet, Candidates, NodeSet;
+    ULONG Processor;
+
+    IdleSet = Thread->Affinity & KiIdleSummary;
+    if (IdleSet == 0) return FALSE;
+
+    if (IdleSet & AFFINITY_MASK(Thread->IdealProcessor))
+    {
+        Processor = Thread->IdealProcessor;
+    }
+    else
+    {
+        Candidates = IdleSet;
+
+        /* Stay on the ideal processor's node if any of it is idle */
+        NodeSet = Candidates &
+                  KiProcessorBlock[Thread->IdealProcessor]->ParentNode->ProcessorMask;
+        if (NodeSet != 0) Candidates = NodeSet;
+
+        /* Prefer a processor whose physical core is entirely idle */
+        NodeSet = Candidates & KiIdleSMTSummary;
+        if (NodeSet != 0) Candidates = NodeSet;
+
+        if (Candidates & AFFINITY_MASK(Thread->NextProcessor))
+        {
+            /* Where it last ran: its working set may still be there */
+            Processor = Thread->NextProcessor;
+        }
+        else if (Candidates & KeGetCurrentPrcb()->SetMember)
+        {
+            /* Failing that, here - we hold what it is about to read */
+            Processor = KeGetCurrentPrcb()->Number;
+        }
+        else
+        {
+            NT_VERIFY(BitScanReverseAffinity(&Processor, Candidates) != FALSE);
+        }
+    }
+
+    ASSERT(Processor < KeNumberProcessors);
+    *Candidate = Processor;
+    return TRUE;
+}
+
 static
 ULONG
 KiSelectNextProcessor(
     _In_ PKTHREAD Thread)
 {
-    KAFFINITY PreferredSet, IdleSet;
+    KAFFINITY PreferredSet;
     ULONG Processor;
 
     /* Start with the affinity */
     PreferredSet = Thread->Affinity;
-
-    /*
-     * If a processor this thread may run on is idle, take one - exclusively.
-     *
-     * A processor stays in KiIdleSummary until it has actually swapped a
-     * thread in, which is long after this decision, so nothing stopped two
-     * threads readied in the same breath from choosing the same "idle"
-     * processor and running one after the other on it. Clearing the bit is not
-     * enough by itself either: two processors can read the set, pick the same
-     * bit and both clear it. Only the one whose clear found the bit still set
-     * has really claimed the processor - anybody else has to look again.
-     *
-     * KiIdleLoop() puts the bit back before it halts, so a processor that ends
-     * up with nothing to do does not drop out of the set for good.
-     */
-    IdleSet = PreferredSet & KiIdleSummary;
-    while (IdleSet != 0)
-    {
-            /*
-         * Choose among the idle ones the way Vista does, in this order:
-         * the ideal processor, then the node it belongs to, then a processor
-         * whose whole physical core is idle, then the processor this thread
-         * last ran on, then the processor doing the readying, and only then
-         * whatever is left. The two middle preferences are the ones that were
-         * missing here: sending a thread back to where it last ran, or to the
-         * processor that woke it, keeps its working set and the data being
-         * handed to it in a cache that already has them, where picking the
-         * lowest numbered idle processor throws both away every time.
-         *
-         * Vista scans the remainder from the top (BitScanReverse); this used
-         * to take the bottom, which also concentrated unrelated threads onto
-         * the same low processors.
-         */
-        if (IdleSet & AFFINITY_MASK(Thread->IdealProcessor))
-        {
-            Processor = Thread->IdealProcessor;
-        }
-        else
-        {
-            KAFFINITY Candidates = IdleSet;
-            KAFFINITY NodeSet;
-
-            /* Stay on the ideal processor's node if any of it is idle */
-            NodeSet = Candidates &
-                      KiProcessorBlock[Thread->IdealProcessor]->ParentNode->ProcessorMask;
-            if (NodeSet != 0) Candidates = NodeSet;
-
-            /* Prefer a processor whose physical core is entirely idle */
-            NodeSet = Candidates & KiIdleSMTSummary;
-            if (NodeSet != 0) Candidates = NodeSet;
-
-            if (Candidates & AFFINITY_MASK(Thread->NextProcessor))
-            {
-                /* Where it last ran: its working set may still be there */
-                Processor = Thread->NextProcessor;
-            }
-            else if (Candidates & KeGetCurrentPrcb()->SetMember)
-            {
-                /* Failing that, here - we are holding what it is about to read */
-                Processor = KeGetCurrentPrcb()->Number;
-            }
-            else
-            {
-                NT_VERIFY(BitScanReverseAffinity(&Processor, Candidates) != FALSE);
-            }
-        }
-
-        /* Ours only if the bit was still set when we cleared it */
-        if (InterlockedBitTestAndResetAffinity(&KiIdleSummary, Processor))
-        {
-            ASSERT(Processor < KeNumberProcessors);
-            return Processor;
-        }
-
-        /* Somebody else took it, so drop it and re-read what is left */
-        IdleSet &= ~AFFINITY_MASK(Processor);
-        IdleSet &= KiIdleSummary;
-    }
 
     /* Nothing idle. Check if we can use the ideal processor */
     if (PreferredSet & AFFINITY_MASK(Thread->IdealProcessor))
@@ -370,7 +357,50 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
     OldPriority = Thread->Priority;
     Thread->Preempted = FALSE;
 
-    /* Select a processor to run on */
+#ifdef CONFIG_SMP
+    /*
+     * Hand this thread to an idle processor if there is one, and make the claim
+     * stick.
+     *
+     * The processor has to still be idle when we take its PRCB lock: choosing it
+     * and clearing its bit in KiIdleSummary are two steps, and in between
+     * somebody else can take it. Losing that race used to mean two threads were
+     * sent to one processor and ran there one after the other while the rest of
+     * the machine stayed idle. Test and claim together under the lock, and start
+     * the selection again if the processor is gone - Vista's
+     * KiDeferredReadyThread() is built the same way. Each failed attempt leaves
+     * the bit clear, so KiSelectIdleProcessor() cannot offer it again and this
+     * terminates.
+     */
+    while (KiSelectIdleProcessor(Thread, &Processor))
+    {
+        Prcb = KiProcessorBlock[Processor];
+        KiAcquirePrcbLock(Prcb);
+
+        if ((KiIdleSummary & Prcb->SetMember) &&
+            (Thread->Affinity & Prcb->SetMember))
+        {
+            /* Still idle and still ours to use, so take it */
+            InterlockedBitTestAndResetAffinity(&KiIdleSummary, Processor);
+            Thread->State = Standby;
+            Thread->NextProcessor = (UCHAR)Processor;
+            Prcb->NextThread = Thread;
+            KiReleasePrcbLock(Prcb);
+
+            /* Tell it, if it is not us */
+            if (Prcb != KeGetCurrentPrcb())
+            {
+                KiIpiSend(AFFINITY_MASK(Processor), IPI_DPC);
+            }
+            return;
+        }
+
+        /* Somebody got there first. Drop the lock and choose again */
+        KiReleasePrcbLock(Prcb);
+    }
+#endif
+
+    /* Nothing idle, so select a processor the ordinary way */
     Processor = KiSelectNextProcessor(Thread);
     Thread->NextProcessor = Processor;
 
