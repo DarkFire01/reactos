@@ -1224,3 +1224,24 @@ HRESULT WINAPI VariantToPropVariant(const VARIANT *var, PROPVARIANT *propvar)
 
     return S_OK;
 }
+
+/***********************************************************************
+ *              VariantCompare (PROPSYS.@)
+ *
+ * Orders two VARIANTs the way PropVariantCompareEx orders two PROPVARIANTs.
+ * The two structures have the same layout for every type a VARIANT can hold,
+ * which is why Windows documents this as the VARIANT form of the same call
+ * rather than a separate comparison.
+ *
+ * This was a `stub` spec entry, so it was not exported at all and anything
+ * binding it at load time failed to start.
+ */
+INT WINAPI VariantCompare(REFVARIANT var1, REFVARIANT var2)
+{
+    TRACE("%p,%p\n", var1, var2);
+
+    return PropVariantCompareEx((REFPROPVARIANT)var1,
+                                (REFPROPVARIANT)var2,
+                                PVCU_DEFAULT,
+                                PVCF_DEFAULT);
+}
