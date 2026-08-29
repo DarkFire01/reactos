@@ -291,6 +291,16 @@ typedef struct _NOTIFYICONDATAW {
 #define NOTIFYICONDATAA_V3_SIZE FIELD_OFFSET(NOTIFYICONDATAA, hBalloonIcon)
 #define NOTIFYICONDATAW_V3_SIZE FIELD_OFFSET(NOTIFYICONDATAW, hBalloonIcon)
 
+typedef struct _NOTIFYICONIDENTIFIER {
+    DWORD cbSize;
+    HWND  hWnd;
+    UINT  uID;
+    GUID  guidItem;
+} NOTIFYICONIDENTIFIER, *PNOTIFYICONIDENTIFIER;
+
+STDAPI Shell_NotifyIconGetRect(_In_ const NOTIFYICONIDENTIFIER *identifier,
+                                 _Out_ RECT *iconLocation);
+
 #if WINVER >= 0x400
 typedef struct _DRAGINFOA {
 	UINT uSize;

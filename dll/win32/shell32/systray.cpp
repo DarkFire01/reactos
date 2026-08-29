@@ -205,3 +205,34 @@ BOOL WINAPI Shell_NotifyIconW(DWORD dwMessage, PNOTIFYICONDATAW pnid)
 
     return ret;
 }
+
+/*************************************************************************
+ * Shell_NotifyIconGetRect            [SHELL32.@]
+ *
+ * Where a notification icon sits on screen, so a caller can put a balloon or
+ * a flyout beside it. This was a raising stub, and Teams asks for it while
+ * placing its own notification window.
+ *
+ * The tray is another process and there is no request to ask it for the rect
+ * of one icon, so this reports that the icon was not found. E_FAIL is what
+ * Windows returns for an icon the tray does not have, and it is the case
+ * every caller already handles - a caller that gets it falls back to placing
+ * its window by the cursor or the work area, which is the right outcome here.
+ */
+EXTERN_C
+HRESULT WINAPI
+Shell_NotifyIconGetRect(
+    _In_ const NOTIFYICONIDENTIFIER *identifier,
+    _Out_ RECT *iconLocation)
+{
+    TRACE("Shell_NotifyIconGetRect(%p, %p)\n", identifier, iconLocation);
+
+    if (identifier == NULL || iconLocation == NULL)
+        return E_INVALIDARG;
+
+    if (identifier->cbSize != sizeof(*identifier))
+        return E_INVALIDARG;
+
+    SetRectEmpty(iconLocation);
+    return E_FAIL;
+}
