@@ -334,4 +334,27 @@ CancelIoEx(
     return TRUE;
 }
 
+/**
+ * @brief
+ * Cancels the synchronous I/O another thread is blocked in.
+ *
+ * @return
+ * FALSE with ERROR_NOT_FOUND, the answer for a thread with nothing to cancel,
+ * until the kernel implements NtCancelSynchronousIoFile.
+ */
+BOOL
+WINAPI
+CancelSynchronousIo(
+    _In_ HANDLE hThread)
+{
+    if (!hThread)
+    {
+        SetLastError(ERROR_INVALID_HANDLE);
+        return FALSE;
+    }
+
+    SetLastError(ERROR_NOT_FOUND);
+    return FALSE;
+}
+
 /* EOF */
