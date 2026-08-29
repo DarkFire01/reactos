@@ -9736,3 +9736,146 @@ CM_Unregister_Notification(
 
     return CR_SUCCESS;
 }
+
+
+/***********************************************************************
+ * CM_MapCrToWin32Err [SETUPAPI.@]
+ *
+ * Maps a CONFIGRET onto the Win32 error a caller would rather report. The
+ * table is the one Windows documents; anything not in it becomes the default
+ * the caller supplied, which is the whole reason that argument exists.
+ */
+DWORD
+WINAPI
+CM_MapCrToWin32Err(
+    _In_ CONFIGRET CmReturnCode,
+    _In_ DWORD DefaultErr)
+{
+    TRACE("CM_MapCrToWin32Err(%lx %lu)\n", CmReturnCode, DefaultErr);
+
+    switch (CmReturnCode)
+    {
+        case CR_SUCCESS:                  return ERROR_SUCCESS;
+        case CR_OUT_OF_MEMORY:            return ERROR_NOT_ENOUGH_MEMORY;
+        case CR_INVALID_POINTER:          return ERROR_INVALID_USER_BUFFER;
+        case CR_INVALID_FLAG:             return ERROR_INVALID_FLAGS;
+        case CR_INVALID_DEVNODE:
+        case CR_INVALID_DEVICE_ID:
+        case CR_INVALID_MACHINENAME:
+        case CR_INVALID_PROPERTY:
+        case CR_INVALID_REFERENCE_STRING: return ERROR_INVALID_DATA;
+        case CR_NO_SUCH_DEVINST:
+        case CR_NO_SUCH_VALUE:
+        case CR_NO_SUCH_DEVICE_INTERFACE: return ERROR_NOT_FOUND;
+        case CR_ALREADY_SUCH_DEVNODE:     return ERROR_ALREADY_EXISTS;
+        case CR_BUFFER_SMALL:             return ERROR_INSUFFICIENT_BUFFER;
+        case CR_NO_REGISTRY_HANDLE:       return ERROR_INVALID_HANDLE;
+        case CR_REGISTRY_ERROR:           return ERROR_REGISTRY_CORRUPT;
+        case CR_ACCESS_DENIED:            return ERROR_ACCESS_DENIED;
+        case CR_CALL_NOT_IMPLEMENTED:     return ERROR_CALL_NOT_IMPLEMENTED;
+        case CR_NOT_DISABLEABLE:          return ERROR_NOT_DISABLEABLE;
+        case CR_FAILURE:                  return ERROR_GEN_FAILURE;
+        case CR_NO_MORE_HW_PROFILES:      return ERROR_NO_MORE_ITEMS;
+        case CR_DEVICE_NOT_THERE:         return ERROR_DEVICE_NOT_CONNECTED;
+        case CR_MACHINE_UNAVAILABLE:      return ERROR_BAD_NET_NAME;
+        case CR_NO_CM_SERVICES:           return ERROR_SERVICE_NOT_ACTIVE;
+        default:                          return DefaultErr;
+    }
+}
+
+
+/***********************************************************************
+ * CM_Open_Device_Interface_KeyW [SETUPAPI.@]
+ *
+ * Opens the "Device Parameters" style key a device interface keeps under its
+ * class entry. SetupDiOpenDeviceInterfaceRegKey does the same job through a
+ * device information set, so this reaches it the same way the rest of the
+ * CM_* interface functions reach their SetupDi equivalent.
+ */
+CONFIGRET
+WINAPI
+CM_Open_Device_Interface_KeyW(
+    _In_ LPCWSTR pszDeviceInterface,
+    _In_ REGSAM samDesired,
+    _In_ REGDISPOSITION Disposition,
+    _Out_ PHKEY phkDeviceInterface,
+    _In_ ULONG ulFlags)
+{
+    HDEVINFO DeviceInfoSet;
+    SP_DEVICE_INTERFACE_DATA InterfaceData;
+    HKEY hKey;
+    CONFIGRET ret = CR_SUCCESS;
+
+    TRACE("CM_Open_Device_Interface_KeyW(%s %lx %lx %p %lx)\n",
+          debugstr_w(pszDeviceInterface), samDesired, Disposition,
+          phkDeviceInterface, ulFlags);
+
+    if (pszDeviceInterface == NULL || phkDeviceInterface == NULL)
+        return CR_INVALID_POINTER;
+
+    if (ulFlags != 0)
+        return CR_INVALID_FLAG;
+
+    /* Only opening an existing key is possible without a class installer */
+    if (Disposition != RegDisposition_OpenExisting)
+        return CR_CALL_NOT_IMPLEMENTED;
+
+    DeviceInfoSet = SetupDiCreateDeviceInfoList(NULL, NULL);
+    if (DeviceInfoSet == INVALID_HANDLE_VALUE)
+        return CR_FAILURE;
+
+    InterfaceData.cbSize = sizeof(InterfaceData);
+    if (!SetupDiOpenDeviceInterfaceW(DeviceInfoSet, pszDeviceInterface,
+                                     0, &InterfaceData))
+    {
+        SetupDiDestroyDeviceInfoList(DeviceInfoSet);
+        return CR_NO_SUCH_DEVICE_INTERFACE;
+    }
+
+    hKey = SetupDiOpenDeviceInterfaceRegKey(DeviceInfoSet, &InterfaceData,
+                                            0, samDesired);
+    if (hKey == INVALID_HANDLE_VALUE)
+        ret = CR_NO_SUCH_VALUE;
+    else
+        *phkDeviceInterface = hKey;
+
+    SetupDiDeleteDeviceInterfaceData(DeviceInfoSet, &InterfaceData);
+    SetupDiDestroyDeviceInfoList(DeviceInfoSet);
+
+    return ret;
+}
+
+
+/***********************************************************************
+ * CM_Open_Device_Interface_KeyA [SETUPAPI.@]
+ */
+CONFIGRET
+WINAPI
+CM_Open_Device_Interface_KeyA(
+    _In_ LPCSTR pszDeviceInterface,
+    _In_ REGSAM samDesired,
+    _In_ REGDISPOSITION Disposition,
+    _Out_ PHKEY phkDeviceInterface,
+    _In_ ULONG ulFlags)
+{
+    LPWSTR pszDeviceInterfaceW = NULL;
+    CONFIGRET ret;
+
+    TRACE("CM_Open_Device_Interface_KeyA(%s %lx %lx %p %lx)\n",
+          debugstr_a(pszDeviceInterface), samDesired, Disposition,
+          phkDeviceInterface, ulFlags);
+
+    if (pszDeviceInterface == NULL)
+        return CR_INVALID_POINTER;
+
+    if (!pSetupCaptureAndConvertAnsiArg(pszDeviceInterface, &pszDeviceInterfaceW))
+        return CR_INVALID_DATA;
+
+    ret = CM_Open_Device_Interface_KeyW(pszDeviceInterfaceW, samDesired,
+                                        Disposition, phkDeviceInterface,
+                                        ulFlags);
+
+    MyFree(pszDeviceInterfaceW);
+    return ret;
+}
+
