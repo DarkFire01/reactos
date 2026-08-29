@@ -1743,8 +1743,6 @@ typedef struct _KTHREAD
             UCHAR SuspendApcFill5[FIELD_OFFSET(KAPC, Inserted) + 1]; // 47 / 83
 #if (NTDDI_VERSION >= NTDDI_WIN7) // [
             UCHAR LargeStack;
-#else // ][
-            UCHAR PowerState;
 #endif // ]
 #ifdef _WIN64 // [
             ULONG UserTime;
@@ -2266,7 +2264,6 @@ typedef struct _KPROCESS
     SCHAR QuantumReset;
     UCHAR State;
     UCHAR ThreadSeed;
-    UCHAR PowerState;
     UCHAR IdealNode;
     UCHAR Visited;
     union
