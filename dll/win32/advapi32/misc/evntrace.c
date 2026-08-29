@@ -172,3 +172,186 @@ EventWriteTransfer(
     return EventWrite(RegHandle, EventDescriptor, UserDataCount, UserData);
 }
 
+
+/*
+ * The rest of the provider surface. These arrived alongside the ones above and
+ * are reached through api-ms-win-eventing-provider-l1-1-0, which names the
+ * whole set - an apiset resolves to one module, so a set that is only half
+ * exported here leaves the other half unresolvable no matter which module the
+ * table points at.
+ *
+ * They answer the way the others do: there is no session, so nothing is
+ * enabled and nothing is written, and every caller is told so truthfully.
+ */
+
+/*
+ * An activity id has to be unique within the trace and nothing more - no
+ * session ever reads these back here. RPC's UuidCreate would be the usual
+ * source, but advapi32 does not import rpcrt4 and should not start over this,
+ * so the id is built from the clock and a per-process counter.
+ */
+static
+VOID
+EtwpMakeActivityId(
+    _Out_ LPGUID ActivityId)
+{
+    static LONG Sequence = 0;
+    FILETIME Now;
+    ULARGE_INTEGER Time;
+    ULONG Seed;
+
+    GetSystemTimeAsFileTime(&Now);
+    Time.LowPart = Now.dwLowDateTime;
+    Time.HighPart = Now.dwHighDateTime;
+
+    Seed = Time.LowPart ^ GetCurrentThreadId();
+
+    ActivityId->Data1 = Time.LowPart;
+    ActivityId->Data2 = (USHORT)(Time.HighPart & 0xFFFF);
+    ActivityId->Data3 = (USHORT)(InterlockedIncrement(&Sequence) & 0xFFFF);
+    *(PULONG)&ActivityId->Data4[0] = RtlRandom(&Seed);
+    *(PULONG)&ActivityId->Data4[4] = RtlRandom(&Seed);
+}
+
+ULONG
+EVNTAPI
+EventActivityIdControl(
+    _In_ ULONG ControlCode,
+    _Inout_ LPGUID ActivityId)
+{
+    if (ActivityId == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    switch (ControlCode)
+    {
+        case EVENT_ACTIVITY_CTRL_GET_ID:
+        case EVENT_ACTIVITY_CTRL_CREATE_ID:
+        case EVENT_ACTIVITY_CTRL_GET_SET_ID:
+        case EVENT_ACTIVITY_CTRL_CREATE_SET_ID:
+            /*
+             * An activity id only has to be unique, not meaningful, and a
+             * caller that asks for one and is refused often gives up on
+             * tracing altogether. Handing back a fresh GUID costs nothing and
+             * is what a caller does with the answer anyway - tags events that
+             * nothing here collects.
+             */
+            if (ControlCode != EVENT_ACTIVITY_CTRL_SET_ID)
+                EtwpMakeActivityId(ActivityId);
+            return ERROR_SUCCESS;
+
+        case EVENT_ACTIVITY_CTRL_SET_ID:
+            return ERROR_SUCCESS;
+
+        default:
+            return ERROR_INVALID_PARAMETER;
+    }
+}
+
+BOOLEAN
+EVNTAPI
+EventProviderEnabled(
+    _In_ REGHANDLE RegHandle,
+    _In_ UCHAR Level,
+    _In_ ULONGLONG Keyword)
+{
+    UNREFERENCED_PARAMETER(RegHandle);
+    UNREFERENCED_PARAMETER(Level);
+    UNREFERENCED_PARAMETER(Keyword);
+
+    /* Nothing is collecting, so no level or keyword is ever enabled */
+    return FALSE;
+}
+
+ULONG
+EVNTAPI
+EventWriteEx(
+    _In_ REGHANDLE RegHandle,
+    _In_ PCEVENT_DESCRIPTOR EventDescriptor,
+    _In_ ULONG64 Filter,
+    _In_ ULONG Flags,
+    _In_opt_ LPCGUID ActivityId,
+    _In_opt_ LPCGUID RelatedActivityId,
+    _In_ ULONG UserDataCount,
+    _In_reads_opt_(UserDataCount) PEVENT_DATA_DESCRIPTOR UserData)
+{
+    UNREFERENCED_PARAMETER(Filter);
+    UNREFERENCED_PARAMETER(Flags);
+
+    return EventWriteTransfer(RegHandle, EventDescriptor, ActivityId,
+                              RelatedActivityId, UserDataCount, UserData);
+}
+
+ULONG
+EVNTAPI
+EventWriteString(
+    _In_ REGHANDLE RegHandle,
+    _In_ UCHAR Level,
+    _In_ ULONGLONG Keyword,
+    _In_ PCWSTR String)
+{
+    UNREFERENCED_PARAMETER(RegHandle);
+    UNREFERENCED_PARAMETER(Level);
+    UNREFERENCED_PARAMETER(Keyword);
+
+    if (String == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    return ERROR_SUCCESS;
+}
+
+/*
+ * The controller side. EnableTraceEx2 is how a session turns a provider on,
+ * and CloseTrace ends a consumer session opened by OpenTrace - which here
+ * always fails, so there is never a handle to close.
+ */
+ULONG
+WINAPI
+EnableTraceEx2(
+    _In_ TRACEHANDLE TraceHandle,
+    _In_ LPCGUID ProviderId,
+    _In_ ULONG ControlCode,
+    _In_ UCHAR Level,
+    _In_ ULONGLONG MatchAnyKeyword,
+    _In_ ULONGLONG MatchAllKeyword,
+    _In_ ULONG Timeout,
+    _In_opt_ PVOID EnableParameters)
+{
+    UNREFERENCED_PARAMETER(Level);
+    UNREFERENCED_PARAMETER(MatchAnyKeyword);
+    UNREFERENCED_PARAMETER(MatchAllKeyword);
+    UNREFERENCED_PARAMETER(Timeout);
+    UNREFERENCED_PARAMETER(EnableParameters);
+
+    if (ProviderId == NULL)
+        return ERROR_INVALID_PARAMETER;
+
+    if (ControlCode != EVENT_CONTROL_CODE_DISABLE_PROVIDER &&
+        ControlCode != EVENT_CONTROL_CODE_ENABLE_PROVIDER &&
+        ControlCode != EVENT_CONTROL_CODE_CAPTURE_STATE)
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    /*
+     * There is no session behind the handle, so say so rather than reporting
+     * that a provider was enabled. A caller that gets this back stops trying;
+     * one that is told ERROR_SUCCESS waits for events that never arrive.
+     */
+    if (TraceHandle == 0)
+        return ERROR_INVALID_HANDLE;
+
+    return ERROR_WMI_INSTANCE_NOT_FOUND;
+}
+
+ULONG
+WINAPI
+CloseTrace(
+    _In_ TRACEHANDLE TraceHandle)
+{
+    /* OpenTrace never hands out a handle, so there is never one to close */
+    UNREFERENCED_PARAMETER(TraceHandle);
+
+    return ERROR_INVALID_HANDLE;
+}
+
+/* EOF */

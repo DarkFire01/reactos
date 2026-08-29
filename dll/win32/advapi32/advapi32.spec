@@ -67,7 +67,7 @@
 @ stdcall CloseEncryptedFileRaw(ptr)
 @ stdcall CloseEventLog(long)
 @ stdcall CloseServiceHandle(long)
-@ stdcall -stub CloseTrace(int64)
+@ stdcall CloseTrace(int64)
 @ stdcall CommandLineFromMsiDescriptor(wstr ptr ptr)
 @ stub ComputeAccessTokenFromCodeAuthzLevel
 @ stdcall ControlService(long long ptr)
@@ -209,6 +209,7 @@
 @ stdcall ElfReportEventAndSourceW(long long ptr long long long ptr ptr long long ptr ptr long ptr ptr)
 @ stdcall ElfReportEventW(long long long long ptr long long ptr ptr long ptr ptr)
 @ stdcall -version=0x502 EnableTrace(long long long ptr double) ntdll.EtwEnableTrace
+@ stdcall -version=0x600+ EnableTraceEx2(int64 ptr long long int64 int64 long ptr)
 @ stdcall -version=0x600+ EnableTrace(long long long ptr double) EtwEnableTrace
 @ stdcall EncryptFileA(str)
 @ stdcall EncryptFileW(wstr)
@@ -222,10 +223,14 @@
 @ stdcall EnumServicesStatusExW(long long long long ptr long ptr ptr ptr wstr)
 @ stdcall EnumServicesStatusW(long long long ptr long ptr ptr ptr)
 @ stdcall -version=0x600+ EventEnabled(int64 ptr)
+@ stdcall -version=0x600+ EventActivityIdControl(long ptr)
+@ stdcall -version=0x600+ EventProviderEnabled(int64 long int64)
 @ stdcall -version=0x600+ EventRegister(ptr ptr ptr ptr)
 @ stdcall -version=0x602+ EventSetInformation(int64 long ptr long)
 @ stdcall -version=0x600+ EventUnregister(int64)
 @ stdcall -version=0x600+ EventWrite(int64 ptr long ptr)
+@ stdcall -version=0x600+ EventWriteEx(int64 ptr int64 long ptr ptr long ptr)
+@ stdcall -version=0x600+ EventWriteString(int64 long int64 wstr)
 @ stdcall -version=0x600+ EventWriteTransfer(int64 ptr ptr ptr long ptr)
 @ stdcall -version=0x502 EnumerateTraceGuids(ptr long ptr) ntdll.EtwEnumerateTraceGuids
 @ stdcall -stub -version=0x600+ EnumerateTraceGuids(ptr long ptr) # EtwEnumerateTraceGuids
