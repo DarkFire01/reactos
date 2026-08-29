@@ -57,7 +57,7 @@
 @ stdcall CancelDeviceWakeupRequest(long)
 @ stdcall CancelIo(long)
 @ stdcall -version=0x600+ CancelIoEx(ptr ptr)
-@ stdcall -stub -version=0x600+ CancelSynchronousIo(ptr)
+@ stdcall -version=0x600+ CancelSynchronousIo(ptr)
 @ stdcall -version=0x600+ CancelThreadpoolIo(ptr) ntdll.TpCancelAsyncIoOperation
 @ stdcall CancelTimerQueueTimer(long long)
 @ stdcall CancelWaitableTimer(long)
@@ -181,8 +181,8 @@
 @ stdcall CreateTimerQueueTimer(ptr long ptr ptr long long long)
 @ stdcall CreateToolhelp32Snapshot(long long)
 @ stdcall CreateWaitableTimerA(ptr long str)
-@ stub -version=0x600+ CreateWaitableTimerExA
-@ stub -version=0x600+ CreateWaitableTimerExW
+@ stdcall -version=0x600+ CreateWaitableTimerExA(ptr str long long)
+@ stdcall -version=0x600+ CreateWaitableTimerExW(ptr wstr long long)
 @ stdcall CreateWaitableTimerW(ptr long wstr)
 ;@ stdcall -arch=x86_64 CtrlRoutine()
 @ stdcall DeactivateActCtx(long ptr)
@@ -541,7 +541,7 @@
 @ stdcall GetNamedPipeHandleStateA(long ptr ptr ptr ptr str long)
 @ stdcall GetNamedPipeHandleStateW(long ptr ptr ptr ptr wstr long)
 @ stdcall GetNamedPipeInfo(long ptr ptr ptr ptr)
-@ stub -version=0x600+ GetNamedPipeServerProcessId
+@ stdcall -version=0x600+ GetNamedPipeServerProcessId(long ptr)
 @ stub -version=0x600+ GetNamedPipeServerSessionId
 @ stdcall GetNativeSystemInfo(ptr)
 @ stdcall GetNextVDMCommand(long)

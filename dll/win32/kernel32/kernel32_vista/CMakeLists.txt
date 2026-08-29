@@ -29,6 +29,7 @@ list(APPEND SOURCE
     LCIDToLocaleName.c
     LocaleNameToLCID.c
     sync.c
+    syncio.c
     ThreadDescription.c
     threadpool.c
     vista.c)
