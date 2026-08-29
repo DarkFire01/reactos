@@ -105,7 +105,7 @@
 @ stdcall CloseEventLog (long)
 @ stdcall -import CloseServiceHandle(long)
 # @ stub CloseThreadWaitChainSession
-@ stdcall -import -stub CloseTrace(int64)
+@ stdcall CloseTrace(int64)
 @ stdcall CommandLineFromMsiDescriptor(wstr ptr ptr)
 # @ stub ComputeAccessTokenFromCodeAuthzLevel
 @ stdcall -import ControlService(long long ptr)
@@ -268,7 +268,7 @@
 @ stdcall -version=0x502 EnableTrace(long long long ptr double) ntdll.EtwEnableTrace
 @ stdcall -version=0x600+ EnableTrace(long long long ptr double) EtwEnableTrace
 @ stdcall -stub EnableTraceEx(ptr ptr int64 long long int64 int64 long ptr)
-@ stdcall -import -stub EnableTraceEx2(int64 ptr long long int64 int64 long ptr)
+@ stdcall EnableTraceEx2(int64 ptr long long int64 int64 long ptr)
 @ stdcall EncryptFileA(str)
 @ stdcall EncryptFileW(wstr)
 # @ stub EncryptedFileKeyInfo
@@ -290,9 +290,9 @@
 # @ stub EventAccessControl
 # @ stub EventAccessQuery
 # @ stub EventAccessRemove
-@ stdcall EventActivityIdControl(long ptr) ntdll.EtwEventActivityIdControl
+@ stdcall EventActivityIdControl(long ptr)
 @ stdcall EventEnabled(int64 ptr)
-@ stdcall EventProviderEnabled(int64 long int64) ntdll.EtwEventProviderEnabled
+@ stdcall EventProviderEnabled(int64 long int64)
 @ stdcall EventRegister(ptr ptr ptr ptr)
 @ stdcall EventSetInformation(int64 long ptr long)
 @ stdcall EventUnregister(int64)
@@ -300,7 +300,7 @@
 # @ stub EventWriteEndScenario
 @ stdcall EventWriteEx(int64 ptr int64 long ptr ptr long ptr) ntdll.EtwEventWriteEx
 # @ stub EventWriteStartScenario
-@ stdcall EventWriteString(int64 long int64 ptr) ntdll.EtwEventWriteString
+@ stdcall EventWriteString(int64 long int64 ptr)
 @ stdcall EventWriteTransfer(int64 ptr ptr ptr long ptr)
 @ stdcall FileEncryptionStatusA(str ptr)
 @ stdcall FileEncryptionStatusW(wstr ptr)
