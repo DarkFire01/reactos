@@ -15,8 +15,6 @@ list(APPEND SOURCE
     ke.c
     mm.c
     nt.c
-    po.c
-    pofx.c
     rtl.c
     string.c
     whea.c
