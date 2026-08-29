@@ -20,6 +20,7 @@ list(APPEND SOURCE
     iphlpapi_reactos.c
     iphlpapi_main.c
     media.c
+    netioapi.c
     registry.c
     resinfo_reactos.c
     route_reactos.c
