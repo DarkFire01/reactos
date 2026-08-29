@@ -915,11 +915,14 @@ KfRaiseIrql(
        is usually the second one. */
     if (OldIrql > NewIrql)
     {
-        /* Walk one frame past our caller. Everything here is built with
-           -fno-omit-frame-pointer, so [ebp] is the caller's frame and
-           [ebp + 4] the address it will return to. */
-        Frame = (ULONG_PTR *)__builtin_frame_address(0);
-        if (Frame != NULL && Frame[0] != 0)
+        /* Walk one frame past our caller. This is a checked build, so there is
+           a frame pointer: the return address sits one slot above it, which is
+           what _AddressOfReturnAddress() names, so the slot below that is our
+           own frame. From there [0] is the caller's frame and [1] the address
+           it will return to. _AddressOfReturnAddress() is used rather than a
+           frame-pointer builtin because only it exists on both toolchains. */
+        Frame = (ULONG_PTR *)_AddressOfReturnAddress() - 1;
+        if (Frame[0] != 0)
             Caller = ((ULONG_PTR *)Frame[0])[1];
 
         /* Crash system */
