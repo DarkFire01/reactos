@@ -534,3 +534,95 @@ Win32PoolAllocationStats(DWORD dw1, DWORD dw2, DWORD dw3, DWORD dw4, DWORD dw5)
     return FALSE;
 }
 
+
+/*
+ * The DPI virtualisation and pointer-input entry points below were `-stub`
+ * spec entries, which raise EXCEPTION_WINE_STUB on the first call. All three
+ * are reached by ordinary programs - Teams delay-loads the pointer pair and
+ * calls the point conversion during window placement - and none of them has a
+ * caller prepared for an exception. They answer instead.
+ */
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+PhysicalToLogicalPoint(
+    _In_ HWND hWnd,
+    _Inout_ LPPOINT lpPoint)
+{
+    /*
+     * Physical and logical coordinates only differ for a process that is being
+     * DPI virtualised, and nothing here virtualises one, so the conversion is
+     * the identity. Windows answers exactly this way for a process that is not
+     * virtualised, so a caller cannot tell the difference - what it must not
+     * get is a failure, which it would read as "this window is gone".
+     */
+    if (lpPoint == NULL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    if (!IsWindow(hWnd))
+    {
+        SetLastError(ERROR_INVALID_WINDOW_HANDLE);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+GetPointerDevice(
+    _In_ HANDLE device,
+    _Out_ PVOID pointerDevice)
+{
+    /*
+     * There is no pointer device stack here, so no handle can name a device.
+     * ERROR_INVALID_PARAMETER is what Windows reports for a handle it does not
+     * know, and a caller enumerating devices already handles it.
+     *
+     * POINTER_DEVICE_INFO is not declared in our SDK yet, hence the PVOID.
+     * Nothing is written through it either way: the call fails, and Windows
+     * does not touch the caller's buffer when it fails.
+     */
+    UNREFERENCED_PARAMETER(device);
+
+    if (pointerDevice == NULL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    SetLastError(ERROR_INVALID_PARAMETER);
+    return FALSE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+GetPointerPenInfo(
+    _In_ UINT32 pointerId,
+    _Out_ PVOID penInfo)
+{
+    /* No pen input, so no pointer id ever refers to a pen. POINTER_PEN_INFO
+       is not declared in our SDK yet, and nothing is written through it. */
+    UNREFERENCED_PARAMETER(pointerId);
+
+    if (penInfo == NULL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    SetLastError(ERROR_INVALID_PARAMETER);
+    return FALSE;
+}

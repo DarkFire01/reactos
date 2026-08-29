@@ -504,6 +504,7 @@
 @ stdcall LockWindowUpdate(long) NtUserLockWindowUpdate
 @ stdcall LockWorkStation() NtUserLockWorkStation
 @ stdcall -version=0x600+ LogicalToPhysicalPoint(long ptr)
+@ stdcall -version=0x600+ PhysicalToLogicalPoint(long ptr)
 @ stdcall -stub -version=0x602+ LogicalToPhysicalPointForPerMonitorDPI(long ptr)
 @ stdcall LookupIconIdFromDirectory(ptr long)
 @ stdcall LookupIconIdFromDirectoryEx(ptr long long long long)
@@ -809,8 +810,8 @@
 @ stdcall -stub GetPointerFrameTouchInfo(long ptr ptr)
 @ stdcall -stub InjectSyntheticPointerInput(ptr ptr long)
 @ stdcall -stub EvaluateProximityToPolygon(long ptr ptr ptr)
-@ stdcall -stub GetPointerDevice(ptr ptr)
-@ stdcall -stub GetPointerPenInfo(long ptr)
+@ stdcall GetPointerDevice(ptr ptr)
+@ stdcall GetPointerPenInfo(long ptr)
 @ stdcall GetSystemMetricsForDpi(long long)
 @ stdcall GetWindowDpiAwarenessContext(ptr)
 @ stdcall -stub GetDpiAwarenessContextForProcess(ptr)
