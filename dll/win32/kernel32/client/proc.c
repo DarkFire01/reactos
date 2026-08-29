@@ -4664,4 +4664,36 @@ CancelIoEx(IN HANDLE hFile,
     return TRUE;
 }
 
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+OpenProcessToken(
+    IN HANDLE ProcessHandle,
+    IN DWORD DesiredAccess,
+    OUT PHANDLE TokenHandle)
+{
+    NTSTATUS Status;
+
+    /*
+     * advapi32 is the traditional home of this, and kernel32 used to forward
+     * to it. It cannot: kernel32 does not link advapi32's import library, and
+     * must not start - advapi32 imports kernel32, so the dependency only goes
+     * one way. A .def forwarder to a module whose import library is absent is
+     * an unresolved external under MSVC, which is what that forward became.
+     *
+     * There is nothing to forward for anyway. The whole of the work is one
+     * system call, and advapi32's own copy is the same call.
+     */
+    Status = NtOpenProcessToken(ProcessHandle, DesiredAccess, TokenHandle);
+    if (!NT_SUCCESS(Status))
+    {
+        BaseSetLastNTError(Status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 /* EOF */

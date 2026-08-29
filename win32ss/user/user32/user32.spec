@@ -354,7 +354,7 @@
 @ stdcall -version=0x602+ GetPointerType(long ptr)
 @ stdcall GetPriorityClipboardFormat(ptr long) NtUserGetPriorityClipboardFormat
 @ stdcall GetProcessDefaultLayout(ptr)
-@ stdcall -version=0xA00+ GetProcessDpiAwarenessInternal(long ptr)
+@ stdcall GetProcessDpiAwarenessInternal(long ptr)
 @ stdcall GetProcessWindowStation() NtUserGetProcessWindowStation
 @ stdcall GetProgmanWindow ()
 @ stdcall GetPropA(long str)
@@ -675,7 +675,7 @@
 @ stdcall -version=0x600+ SetProcessDPIAware()
 @ stdcall SetProcessDefaultLayout(long)
 @ stdcall -version=0xA00+ SetProcessDpiAwarenessContext(long)
-@ stdcall -version=0xA00+ SetProcessDpiAwarenessInternal(long)
+@ stdcall SetProcessDpiAwarenessInternal(long)
 @ stdcall SetProcessWindowStation(long) NtUserSetProcessWindowStation
 @ stdcall SetProgmanWindow (long)
 @ stdcall SetPropA(long str long)

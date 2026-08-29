@@ -896,7 +896,7 @@
 @ stub -version=0x600+ OpenPrivateNamespaceA
 @ stub -version=0x600+ OpenPrivateNamespaceW
 @ stdcall OpenProcess(long long long)
-@ stdcall OpenProcessToken(long long ptr) advapi32.OpenProcessToken
+@ stdcall OpenProcessToken(long long ptr)
 @ stdcall OpenProfileUserMapping()
 @ stdcall OpenSemaphoreA(long long str)
 @ stdcall OpenSemaphoreW(long long wstr)

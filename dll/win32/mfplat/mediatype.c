@@ -3835,8 +3835,11 @@ HRESULT WINAPI MFInitMediaTypeFromMFVideoFormat(IMFMediaType *media_type, const 
 
         if (video_format && (stride = mf_get_stride_for_format(video_format, format->videoInfo.dwWidth)))
         {
+            /* A bottom-up image is described by a negative stride, which is
+               what MF_MT_DEFAULT_STRIDE carries as a signed value in an
+               otherwise unsigned attribute - so negate it as one */
             if (!video_format->yuv && (format->videoInfo.VideoFlags & MFVideoFlag_BottomUpLinearRep))
-                stride = -stride;
+                stride = (UINT32)(-(INT32)stride);
             mediatype_set_uint32(media_type, &MF_MT_DEFAULT_STRIDE, stride, &hr);
         }
 

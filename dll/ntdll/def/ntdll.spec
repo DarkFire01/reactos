@@ -305,7 +305,7 @@
 @ stdcall NtFsControlFile(long long long long long long long long long long)
 @ stdcall NtGetContextThread(long ptr)
 @ stdcall NtGetCurrentProcessorNumber() ; 5.2 and higher
-@ stdcall -version=0xA00+ NtGetCurrentProcessorNumberEx(ptr)
+@ stdcall -version=0x601+ NtGetCurrentProcessorNumberEx(ptr)
 @ stdcall NtGetDevicePowerState(ptr ptr)
 @ stdcall NtGetPlugPlayEvent(long long ptr long)
 @ stdcall NtGetTickCount() RtlGetTickCount
@@ -1403,7 +1403,7 @@
 @ stdcall ZwFsControlFile(long long long long long long long long long long)
 @ stdcall ZwGetContextThread(long ptr)
 @ stdcall ZwGetCurrentProcessorNumber()
-@ stdcall -version=0xA00+ ZwGetCurrentProcessorNumberEx(ptr)
+@ stdcall -version=0x601+ ZwGetCurrentProcessorNumberEx(ptr)
 @ stdcall ZwGetDevicePowerState(ptr ptr)
 #@ stdcall ZwGetPlugPlayEvent(long long ptr long)
 @ stdcall ZwGetWriteWatch(long long ptr long ptr ptr ptr)
