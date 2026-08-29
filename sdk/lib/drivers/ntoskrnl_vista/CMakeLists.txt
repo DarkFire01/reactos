@@ -9,8 +9,6 @@ list(APPEND SOURCE
     etw.c
     fsrtl.c
     io.c
-    po.c
-    pofx.c
     ke.c)
 
 add_library(ntoskrnl_vista ${SOURCE})
