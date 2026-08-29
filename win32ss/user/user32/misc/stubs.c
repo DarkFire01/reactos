@@ -556,3 +556,43 @@ Win32PoolAllocationStats(DWORD dw1, DWORD dw2, DWORD dw3, DWORD dw4, DWORD dw5)
     return FALSE;
 }
 
+/**
+ * @brief
+ * Gets information about a pointer device.
+ *
+ * @return
+ * FALSE with ERROR_INVALID_PARAMETER, since there is no pointer device stack to name a device.
+ */
+BOOL
+WINAPI
+GetPointerDevice(
+    _In_ HANDLE device,
+    _Out_ PVOID pointerDevice)
+{
+    UNREFERENCED_PARAMETER(device);
+    UNREFERENCED_PARAMETER(pointerDevice);
+
+    SetLastError(ERROR_INVALID_PARAMETER);
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Gets the pen information of a pointer.
+ *
+ * @return
+ * FALSE with ERROR_INVALID_PARAMETER, since no pointer is ever a pen here.
+ */
+BOOL
+WINAPI
+GetPointerPenInfo(
+    _In_ UINT32 pointerId,
+    _Out_ PVOID penInfo)
+{
+    UNREFERENCED_PARAMETER(pointerId);
+    UNREFERENCED_PARAMETER(penInfo);
+
+    SetLastError(ERROR_INVALID_PARAMETER);
+    return FALSE;
+}
+
