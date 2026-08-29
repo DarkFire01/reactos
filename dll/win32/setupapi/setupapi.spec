@@ -78,6 +78,8 @@
 @ stdcall CM_Get_DevNode_Custom_Property_ExW(long wstr ptr ptr ptr long ptr)
 @ stdcall CM_Get_DevNode_Registry_PropertyA(long long ptr ptr ptr long)
 @ stdcall CM_Get_DevNode_PropertyW(long ptr ptr ptr ptr long)
+@ stdcall -version=0x600+ CM_Get_Device_Interface_PropertyW(wstr ptr ptr ptr ptr long)
+@ stdcall -version=0x600+ CM_MapCrToWin32Err(long long)
 @ stdcall CM_Get_DevNode_Registry_PropertyW(long long ptr ptr ptr long)
 @ stdcall CM_Get_DevNode_Registry_Property_ExA(long long ptr ptr ptr long ptr)
 @ stdcall CM_Get_DevNode_Registry_Property_ExW(long long ptr ptr ptr long ptr)
@@ -165,8 +167,8 @@
 @ stdcall CM_Open_Class_Key_ExW(ptr wstr long long ptr long ptr)
 @ stdcall CM_Open_DevNode_Key(ptr long long long ptr long)
 @ stdcall CM_Open_DevNode_Key_Ex(ptr long long long ptr long ptr)
-@ stub -version=0x600+ CM_Open_Device_Interface_KeyA
-@ stub -version=0x600+ CM_Open_Device_Interface_KeyW
+@ stdcall -version=0x600+ CM_Open_Device_Interface_KeyA(str long long ptr long)
+@ stdcall -version=0x600+ CM_Open_Device_Interface_KeyW(wstr long long ptr long)
 @ stub -version=0x600+ CM_Open_Device_Interface_Key_ExA
 @ stub -version=0x600+ CM_Open_Device_Interface_Key_ExW
 @ stdcall CM_Query_And_Remove_SubTreeA(long ptr str long long)

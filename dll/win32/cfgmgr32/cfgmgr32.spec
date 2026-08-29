@@ -65,6 +65,10 @@
 @ stdcall CM_Get_Depth_Ex(ptr long long long) setupapi.CM_Get_Depth_Ex
 @ stdcall CM_Get_DevNode_Registry_PropertyA(long long ptr ptr ptr long) setupapi.CM_Get_DevNode_Registry_PropertyA
 @ stdcall CM_Get_DevNode_PropertyW(long ptr ptr ptr ptr long) setupapi.CM_Get_DevNode_PropertyW
+@ stdcall -version=0x600+ CM_MapCrToWin32Err(long long) setupapi.CM_MapCrToWin32Err
+@ stdcall -version=0x600+ CM_Open_Device_Interface_KeyA(str long long ptr long) setupapi.CM_Open_Device_Interface_KeyA
+@ stdcall -version=0x600+ CM_Open_Device_Interface_KeyW(wstr long long ptr long) setupapi.CM_Open_Device_Interface_KeyW
+@ stdcall -version=0x600+ CM_Get_Device_Interface_PropertyW(wstr ptr ptr ptr ptr long) setupapi.CM_Get_Device_Interface_PropertyW
 @ stdcall CM_Get_DevNode_Registry_PropertyW(long long ptr ptr ptr long) setupapi.CM_Get_DevNode_Registry_PropertyW
 @ stdcall CM_Get_DevNode_Registry_Property_ExA(long long ptr ptr ptr long long) setupapi.CM_Get_DevNode_Registry_Property_ExA
 @ stdcall CM_Get_DevNode_Registry_Property_ExW(long long ptr ptr ptr long long) setupapi.CM_Get_DevNode_Registry_Property_ExW
