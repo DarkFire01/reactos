@@ -37,7 +37,7 @@
 @ stdcall EnableRouter(ptr ptr)
 @ stdcall FlushIpNetTable(long)
 @ stub FlushIpNetTableFromStack
-@ stdcall -stub -version=0x600+ FreeMibTable(ptr)
+@ stdcall -version=0x600+ FreeMibTable(ptr)
 @ stdcall GetAdapterIndex(wstr ptr)
 @ stdcall GetAdapterOrderMap()
 @ stdcall GetAdaptersAddresses(long long ptr ptr ptr)
@@ -46,6 +46,7 @@
 @ stdcall GetBestInterfaceEx(ptr ptr)
 @ stub GetBestInterfaceFromStack
 @ stdcall GetBestRoute(long long long)
+@ stdcall -version=0x600+ GetBestRoute2(ptr long ptr ptr long ptr ptr)
 @ stub GetBestRouteFromStack
 @ stdcall -stub -version=0x600+ GetCurrentThreadCompartmentId()
 @ stdcall GetExtendedTcpTable(ptr ptr long long long long)
@@ -111,8 +112,8 @@
 @ stdcall IcmpParseReplies(ptr long)
 @ stdcall IcmpSendEcho2(ptr ptr ptr ptr long ptr long ptr ptr long long)
 @ stdcall IcmpSendEcho(ptr long ptr long ptr ptr long long)
-@ stdcall -stub -version=0x600+ if_indextoname(long ptr)
-@ stdcall -stub -version=0x600+ if_nametoindex(str)
+@ stdcall -version=0x600+ if_indextoname(long ptr)
+@ stdcall -version=0x600+ if_nametoindex(str)
 @ stub InternalCreateIpForwardEntry
 @ stub InternalCreateIpNetEntry
 @ stub InternalDeleteIpForwardEntry
@@ -181,7 +182,8 @@
 @ stub do_echo_rep
 @ stub do_echo_req
 @ stub register_icmp
-@ stdcall -stub CancelMibChangeNotify2(ptr)
-@ stdcall -stub NotifyIpInterfaceChange(long ptr ptr long ptr)
+@ stdcall -version=0x600+ CancelMibChangeNotify2(ptr)
+@ stdcall -version=0x600+ NotifyIpInterfaceChange(long ptr ptr long ptr)
 @ stdcall GetIpInterfaceTable(ptr ptr)
 @ stdcall NotifyRouteChange2(ptr ptr ptr long ptr)
+@ stdcall -version=0x600+ NotifyUnicastIpAddressChange(long ptr ptr long ptr)
