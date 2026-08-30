@@ -2047,13 +2047,26 @@ NtSetInformationProcess(
                 break;
             }
 
-            /* Check if it's within job affinity limits */
-            if (Process->Job)
+            /*
+             * A job only constrains the affinity of its processes when it was
+             * given an affinity limit; otherwise it has nothing to say about
+             * this and the request is an ordinary one. Refusing every process
+             * that is in a job, which is what this did, refuses it for every
+             * sandboxed process in the system - they are all in one.
+             */
+            if (Process->Job != NULL)
             {
-                /* Not yet implemented */
-                UNIMPLEMENTED;
-                Status = STATUS_NOT_IMPLEMENTED;
-                break;
+                PEJOB Job = Process->Job;
+
+                if (Job->LimitFlags & JOB_OBJECT_LIMIT_AFFINITY)
+                {
+                    /* The mask may only narrow the job's, never widen it */
+                    if ((ValidAffinity & Job->Affinity) != ValidAffinity)
+                    {
+                        Status = STATUS_INVALID_PARAMETER;
+                        break;
+                    }
+                }
             }
 
             /* Make sure the process isn't dying */
