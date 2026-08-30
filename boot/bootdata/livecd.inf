@@ -54,7 +54,7 @@ HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon","DisableLockWorksta
 ; Run the slipstreamed test apps once the shell is up. Explorer processes
 ; this key asynchronously, which is the only way to drive them here: the
 ; live environment has no working PS/2 input under the APIC HAL.
-HKLM,"SOFTWARE\Microsoft\Windows\CurrentVersion\Run","TestApps",0x00020000,"%SystemRoot%\system32\testall.cmd"
+HKLM,"SOFTWARE\Microsoft\Windows\CurrentVersion\Run","TestApps",0x00020000,"cmd.exe /k %SystemRoot%\system32\testall.cmd"
 ; and do not stop the sequence behind a modal hard-error box: a test app
 ; that deliberately fails to start would otherwise wait for a click.
 HKLM,"SYSTEM\CurrentControlSet\Control\Windows","ErrorMode",0x00010001,2
