@@ -21,6 +21,7 @@ list(APPEND SOURCE
     pci/busno.c
     pci/config.c
     pci/ecam.c
+    pci/express.c
     pci/devhere.c
     pci/id.c
     pci/ppbridge.c
