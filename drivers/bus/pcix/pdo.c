@@ -546,18 +546,68 @@ PciPdoIrpQueryBusInformation(IN PIRP Irp,
                                   IoStatus.Information);
 }
 
+/*
+ * Serve a driver's request to reach its own device's configuration space. Only
+ * the space this driver owns can be served; the option ROM is decoded by the
+ * device rather than read out of configuration space, so it is not handled here.
+ */
+static
+NTSTATUS
+NTAPI
+PciPdoReadWriteConfig(IN PIRP Irp,
+                      IN PIO_STACK_LOCATION IoStackLocation,
+                      IN PPCI_PDO_EXTENSION DeviceExtension,
+                      IN BOOLEAN Read)
+{
+    ULONG Offset, Length, Limit;
+    PAGED_CODE();
+
+    if (IoStackLocation->Parameters.ReadWriteConfig.WhichSpace !=
+        PCI_WHICHSPACE_CONFIG)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    Offset = IoStackLocation->Parameters.ReadWriteConfig.Offset;
+    Length = IoStackLocation->Parameters.ReadWriteConfig.Length;
+
+    /* Only a function on an Express machine has anything past the first 256 */
+    Limit = PciEcamEnabled ? PCI_EXTENDED_CONFIG_LENGTH : PCI_LEGACY_CONFIG_LENGTH;
+
+    /* The whole run has to land inside that space */
+    if ((Offset >= Limit) || (Length > (Limit - Offset)))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (Read)
+    {
+        PciReadDeviceConfig(DeviceExtension,
+                            IoStackLocation->Parameters.ReadWriteConfig.Buffer,
+                            Offset,
+                            Length);
+    }
+    else
+    {
+        PciWriteDeviceConfig(DeviceExtension,
+                             IoStackLocation->Parameters.ReadWriteConfig.Buffer,
+                             Offset,
+                             Length);
+    }
+
+    Irp->IoStatus.Information = Length;
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NTAPI
 PciPdoIrpReadConfig(IN PIRP Irp,
                     IN PIO_STACK_LOCATION IoStackLocation,
                     IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PAGED_CODE();
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    return PciPdoReadWriteConfig(Irp, IoStackLocation, DeviceExtension, TRUE);
 }
 
 NTSTATUS
@@ -566,12 +616,9 @@ PciPdoIrpWriteConfig(IN PIRP Irp,
                      IN PIO_STACK_LOCATION IoStackLocation,
                      IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PAGED_CODE();
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    return PciPdoReadWriteConfig(Irp, IoStackLocation, DeviceExtension, FALSE);
 }
 
 NTSTATUS
