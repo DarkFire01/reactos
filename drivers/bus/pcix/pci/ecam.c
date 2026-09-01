@@ -18,7 +18,7 @@
 #define PCI_ECAM_BUS_SIZE   (PCI_MAX_DEVICES * PCI_MAX_FUNCTION * PCI_EXTENDED_CONFIG_LENGTH)
 
 static BOOLEAN PciEcamWindowQueried;
-static BOOLEAN PciEcamVerified;
+BOOLEAN PciEcamVerified;
 static BOOLEAN PciEcamSkipK8Northbridge;
 static ULONGLONG PciEcamWindowStart;
 static ULONG PciEcamWindowBuses;

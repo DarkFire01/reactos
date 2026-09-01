@@ -328,6 +328,9 @@ typedef struct _PCI_PDO_EXTENSION
     BOOLEAN TargetAgpCapabilityId;
     USHORT CommandEnables;
     USHORT InitialCommand;
+    USHORT ExpressCapabilityPtr;
+    UCHAR ExpressDeviceType;
+    BOOLEAN IsExtendedConfigReachable;
 } PCI_PDO_EXTENSION, *PPCI_PDO_EXTENSION;
 
 //
@@ -1200,6 +1203,19 @@ PciInitializeEcam(
     IN PPCI_FDO_EXTENSION FdoExtension
 );
 
+ULONG
+NTAPI
+PciReadDeviceExtendedCapability(
+    _In_ PPCI_PDO_EXTENSION DeviceExtension,
+    _In_ ULONG CapabilityId,
+    _Out_writes_bytes_(Length) PPCI_EXPRESS_ENHANCED_CAPABILITY_HEADER Buffer,
+    _In_ ULONG Length);
+
+VOID
+NTAPI
+PciGetExpressCapabilities(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension);
+
 BOOLEAN
 NTAPI
 PciEcamReadWriteConfig(
@@ -1941,6 +1957,7 @@ PciCacheLegacyDeviceRouting(
 extern SINGLE_LIST_ENTRY PciFdoExtensionListHead;
 extern KEVENT PciGlobalLock;
 extern PPCI_INTERFACE PciInterfaces[];
+extern BOOLEAN PciEcamVerified;
 extern PCI_INTERFACE ArbiterInterfaceBusNumber;
 extern PCI_INTERFACE ArbiterInterfaceMemory;
 extern PCI_INTERFACE ArbiterInterfaceIo;
