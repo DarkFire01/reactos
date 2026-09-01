@@ -412,17 +412,14 @@ PciGetMessageAddressAndData(
     return STATUS_SUCCESS;
 }
 
-/* Some functions only raise messages with the legacy interrupt disable bit clear */
 static
 VOID
 NTAPI
-PciApplyMessageCommandHack(
+PciClearInterruptDisable(
     _In_ PPCI_PDO_EXTENSION PdoExtension)
 {
     USHORT Command;
-
-    if (!(PdoExtension->HackFlags & PCI_HACK_CLEAR_INT_DISABLE_FOR_MSI))
-        return;
+    PAGED_CODE();
 
     PciReadDeviceConfig(PdoExtension,
                         &Command,
@@ -510,7 +507,9 @@ PciProgramMsi(
                          Offset + PCI_MESSAGE_CONTROL_OFFSET,
                          sizeof(Control));
 
-    PciApplyMessageCommandHack(PdoExtension);
+    /* Some functions only raise messages with the legacy interrupt disable bit clear */
+    if (PdoExtension->HackFlags & PCI_HACK_CLEAR_INT_DISABLE_FOR_MSI)
+        PciClearInterruptDisable(PdoExtension);
 
     MessageInfo->GrantedCount = (USHORT)Enabled;
     DPRINT1("PCI: MSI enabled on %p, %lu message(s) at 0x%08lx data 0x%lx\n",
@@ -615,7 +614,8 @@ PciProgramMsiX(
                          Offset + PCI_MESSAGE_CONTROL_OFFSET,
                          sizeof(Control));
 
-    PciApplyMessageCommandHack(PdoExtension);
+    if (PdoExtension->HackFlags & PCI_HACK_CLEAR_INT_DISABLE_FOR_MSI)
+        PciClearInterruptDisable(PdoExtension);
 
     MessageInfo->GrantedCount = (USHORT)Count;
     DPRINT1("PCI: MSI-X enabled on %p, %lu message(s)\n", PdoExtension, Count);
@@ -679,41 +679,135 @@ PciProgramMessageInterrupt(
     return Status;
 }
 
+static
+VOID
+NTAPI
+PciClearMessageEnable(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_ ULONG CapabilityId,
+    _In_ USHORT EnableBit)
+{
+    PCI_CAPABILITIES_HEADER Header;
+    USHORT Control;
+    UCHAR Offset;
+    PAGED_CODE();
+
+    Offset = PciReadDeviceCapability(PdoExtension,
+                                     PdoExtension->CapabilitiesPtr,
+                                     CapabilityId,
+                                     &Header,
+                                     sizeof(Header));
+    if (!Offset)
+        return;
+
+    PciReadDeviceConfig(PdoExtension,
+                        &Control,
+                        Offset + PCI_MESSAGE_CONTROL_OFFSET,
+                        sizeof(Control));
+    if (!(Control & EnableBit))
+        return;
+
+    Control &= ~EnableBit;
+    PciWriteDeviceConfig(PdoExtension,
+                         &Control,
+                         Offset + PCI_MESSAGE_CONTROL_OFFSET,
+                         sizeof(Control));
+}
+
 /**
  * @brief
- * Turns off message interrupts on a function that has them enabled.
+ * Turns off MSI and MSI-X on a function, including whichever one this
+ * driver does not use but firmware may have left enabled.
  *
  * @param[in,out] PdoExtension
- * The PDO extension of the function being stopped.
+ * The PDO extension of the function.
  */
 VOID
 NTAPI
 PciDisableMessageInterrupt(
     _Inout_ PPCI_PDO_EXTENSION PdoExtension)
 {
-    PPCI_MESSAGE_INFO MessageInfo = &PdoExtension->MessageInfo;
-    USHORT Control, EnableBit;
     PAGED_CODE();
 
-    if ((MessageInfo->Type == PciMessageNone) || !MessageInfo->GrantedCount)
+    PdoExtension->MessageInfo.GrantedCount = 0;
+
+    if (!PdoExtension->CapabilitiesPtr)
         return;
 
-    if (MessageInfo->Type == PciMessageMsiX)
-        EnableBit = PCI_MSIX_CONTROL_ENABLE;
-    else
-        EnableBit = PCI_MSI_CONTROL_ENABLE;
+    PciClearMessageEnable(PdoExtension, PCI_CAPABILITY_ID_MSIX, PCI_MSIX_CONTROL_ENABLE);
+    PciClearMessageEnable(PdoExtension, PCI_CAPABILITY_ID_MSI, PCI_MSI_CONTROL_ENABLE);
+}
 
-    PciReadDeviceConfig(PdoExtension,
-                        &Control,
-                        MessageInfo->CapabilityPtr + PCI_MESSAGE_CONTROL_OFFSET,
-                        sizeof(Control));
-    Control &= ~EnableBit;
-    PciWriteDeviceConfig(PdoExtension,
-                         &Control,
-                         MessageInfo->CapabilityPtr + PCI_MESSAGE_CONTROL_OFFSET,
-                         sizeof(Control));
+static
+PCM_PARTIAL_RESOURCE_DESCRIPTOR
+NTAPI
+PciFindInterruptResource(
+    _In_opt_ PCM_RESOURCE_LIST ResourceList)
+{
+    PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial;
+    ULONG ListIndex, PartialIndex;
 
-    MessageInfo->GrantedCount = 0;
+    if (!ResourceList)
+        return NULL;
+
+    FullDescriptor = ResourceList->List;
+    for (ListIndex = 0; ListIndex < ResourceList->Count; ListIndex++)
+    {
+        Partial = FullDescriptor->PartialResourceList.PartialDescriptors;
+        for (PartialIndex = 0;
+             PartialIndex < FullDescriptor->PartialResourceList.Count;
+             PartialIndex++)
+        {
+            if (Partial->Type == CmResourceTypeInterrupt)
+                return Partial;
+
+            Partial = CmiGetNextPartialDescriptor(Partial);
+        }
+
+        /* The next full descriptor starts right after the last partial one */
+        FullDescriptor = (PCM_FULL_RESOURCE_DESCRIPTOR)Partial;
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief
+ * Programs the interrupt the arbiter granted a starting function. Called
+ * once its windows decode, since an MSI-X table lives inside one of them.
+ *
+ * @param[in,out] PdoExtension
+ * The PDO extension of the function being started.
+ *
+ * @param[in] ResourceList
+ * The raw resources assigned in the start request.
+ *
+ * @return
+ * STATUS_SUCCESS if the function can raise the interrupt it was given.
+ */
+NTSTATUS
+NTAPI
+PciProgramGrantedInterrupt(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_opt_ PCM_RESOURCE_LIST ResourceList)
+{
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Interrupt;
+    PAGED_CODE();
+
+    /* The grant can differ on every start, so nothing enabled before it is kept */
+    PciDisableMessageInterrupt(PdoExtension);
+
+    Interrupt = PciFindInterruptResource(ResourceList);
+    if (!Interrupt)
+        return STATUS_SUCCESS;
+
+    if (Interrupt->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
+        return PciProgramMessageInterrupt(PdoExtension, Interrupt);
+
+    /* A wired line only fires with the interrupt disable bit clear */
+    PciClearInterruptDisable(PdoExtension);
+    return STATUS_SUCCESS;
 }
 
 /* EOF */
