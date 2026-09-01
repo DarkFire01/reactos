@@ -120,6 +120,26 @@
 #define PCI_MAX_MEMORY_DESCRIPTOR_LENGTH    0x80000000ULL
 
 //
+// _OSC on a host bridge: the revision of the PCI Express capability layout,
+// what this driver tells the firmware it understands, and how the call went
+//
+#define PCI_OSC_REVISION                    1
+#define PCI_OSC_SUPPORT_EXTENDED_CONFIG     0x00000001
+#define PCI_OSC_SUPPORT_ASPM                0x00000002
+#define PCI_OSC_SUPPORT_CLOCK_PM            0x00000004
+#define PCI_OSC_SUPPORT_SEGMENTS            0x00000008
+#define PCI_OSC_SUPPORT_MSI                 0x00000010
+#define PCI_OSC_CONTROL_EXPRESS_HOTPLUG     0x00000001
+#define PCI_OSC_CONTROL_SHPC_HOTPLUG        0x00000002
+#define PCI_OSC_CONTROL_EXPRESS_PME         0x00000004
+#define PCI_OSC_CONTROL_EXPRESS_AER         0x00000008
+#define PCI_OSC_CONTROL_EXPRESS_CAPABILITY  0x00000010
+#define PCI_OSC_STATUS_FAILURE              0x00000002
+#define PCI_OSC_STATUS_UNRECOGNISED_UUID    0x00000004
+#define PCI_OSC_STATUS_UNRECOGNISED_REVISION 0x00000008
+#define PCI_OSC_STATUS_CAPABILITIES_MASKED  0x00000010
+
+//
 // Most messages a single function can ever be given
 //
 #define PCI_MAX_MESSAGES                    0x800
@@ -338,6 +358,8 @@ typedef struct _PCI_FDO_EXTENSION
     } HotPlugParameters;
     LONG BusHackFlags;
     LONG PciPmeInterfaceCount;
+    BOOLEAN OscEvaluated;
+    ULONG OscControlGranted;
 } PCI_FDO_EXTENSION, *PPCI_FDO_EXTENSION;
 
 typedef struct _PCI_FUNCTION_RESOURCES
@@ -1299,6 +1321,12 @@ PciGetConfigHandlers(
 VOID
 NTAPI
 PciInitializeEcam(
+    IN PPCI_FDO_EXTENSION FdoExtension
+);
+
+VOID
+NTAPI
+PciEvaluateOsc(
     IN PPCI_FDO_EXTENSION FdoExtension
 );
 
