@@ -180,14 +180,11 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
                     /* Check what kind of data this was */
                     switch (Partial->u.DevicePrivate.Data[0])
                     {
-                        /* Not used in the driver yet */
+                        /* Not produced by this driver, so not consumed here */
                         case 1:
-                            UNIMPLEMENTED_DBGBREAK();
-                            break;
-
-                        /* Not used in the driver yet */
                         case 2:
-                            UNIMPLEMENTED_DBGBREAK();
+                            DPRINT1("PCI - ignoring device-private data type %u\n",
+                                    Partial->u.DevicePrivate.Data[0]);
                             break;
 
                         /* A drain request */
@@ -855,8 +852,13 @@ PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
             (PciHeader.RevisionID == 17) &&
             (ExIsProcessorFeaturePresent(PF_PAE_ENABLED)))
         {
-            /* Have not tested this on eVb's machine yet */
-            UNIMPLEMENTED_DBGBREAK();
+            /*
+             * This controller cannot address memory above 4GB, so on a machine
+             * running with physical address extension its requirements would
+             * have to be held below that line. Nothing does that here.
+             */
+            DPRINT1("PCI - hotplug controller %p may be placed above 4GB\n",
+                    PdoExtension);
         }
 
         /* Check if the requirements are actually the zero list */
@@ -1971,8 +1973,12 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
             /* Check if there is an ACPI Watchdog Table */
             if (WdTable)
             {
-                /* Check if this PCI device is the ACPI Watchdog Device... */
-                UNIMPLEMENTED_DBGBREAK();
+                /*
+                 * The firmware describes a watchdog behind PCI. Matching this
+                 * device against it, so its resources could be kept clear of
+                 * whatever else wants them, is not done yet.
+                 */
+                DPRINT1("PCI - a watchdog is described but is not matched\n");
             }
 
             /* Check for non-simple devices */
