@@ -80,11 +80,20 @@ PciPdoWaitWake(IN PIRP Irp,
                IN PIO_STACK_LOCATION IoStackLocation,
                IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
+    /*
+     * Arming a device to wake the machine means leaving its power management
+     * event signal enabled across the transition and routing what it raises,
+     * neither of which this driver does yet. A caller told the device cannot
+     * wake will not sit waiting on a signal that would never come.
+     */
+    Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+    PoStartNextPowerIrp(Irp);
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return STATUS_NOT_SUPPORTED;
 }
 
@@ -94,12 +103,37 @@ PciPdoSetPowerState(IN PIRP Irp,
                     IN PIO_STACK_LOCATION IoStackLocation,
                     IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    POWER_STATE State;
+    NTSTATUS Status;
+    PAGED_CODE();
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_SUPPORTED;
+    UNREFERENCED_PARAMETER(Irp);
+
+    State = IoStackLocation->Parameters.Power.State;
+
+    /*
+     * A system state change does not by itself move the device anywhere. It
+     * only decides which device state will be asked for, in a request of its
+     * own that follows this one.
+     */
+    if (IoStackLocation->Parameters.Power.Type == SystemPowerState)
+    {
+        DeviceExtension->PowerState.CurrentSystemState = State.SystemState;
+        return STATUS_SUCCESS;
+    }
+
+    /* Put the device where it has been asked to go */
+    Status = PciSetPowerManagedDevicePowerState(DeviceExtension,
+                                                State.DeviceState,
+                                                TRUE);
+    if (!NT_SUCCESS(Status)) return Status;
+
+    /* And record where it ended up, for the power manager and for later */
+    PoSetPowerState(DeviceExtension->PhysicalDeviceObject,
+                    DevicePowerState,
+                    State);
+    DeviceExtension->PowerState.CurrentDeviceState = State.DeviceState;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -108,12 +142,23 @@ PciPdoIrpQueryPower(IN PIRP Irp,
                     IN PIO_STACK_LOCATION IoStackLocation,
                     IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PAGED_CODE();
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    UNREFERENCED_PARAMETER(Irp);
+
+    /*
+     * A device with no power management support has only one state it can be
+     * in, so asking it to enter another is refused rather than quietly
+     * accepted and then not done.
+     */
+    if ((IoStackLocation->Parameters.Power.Type == DevicePowerState) &&
+        (IoStackLocation->Parameters.Power.State.DeviceState != PowerDeviceD0) &&
+        (DeviceExtension->HackFlags & PCI_HACK_NO_PM_CAPS))
+    {
+        return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
