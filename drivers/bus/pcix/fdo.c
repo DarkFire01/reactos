@@ -640,6 +640,9 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
         Status = PciGetConfigHandlers(FdoExtension);
         if (!NT_SUCCESS(Status)) break;
 
+        /* Tell the firmware what this driver understands, and what it wants */
+        if (PCI_IS_ROOT_FDO(FdoExtension)) PciEvaluateOsc(FdoExtension);
+
         /* Initialize all the supported PCI arbiters */
         Status = PciInitializeArbiters(FdoExtension);
         if (!NT_SUCCESS(Status)) break;
