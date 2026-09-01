@@ -1952,6 +1952,12 @@ PciSetResources(
     IN BOOLEAN SomethingSomethingDarkSide
 );
 
+BOOLEAN
+NTAPI
+PciIsRequirementDescriptor(
+    IN PIO_RESOURCE_DESCRIPTOR Limit
+);
+
 PCM_PARTIAL_RESOURCE_DESCRIPTOR
 NTAPI
 PciBootConfigRequirement(
