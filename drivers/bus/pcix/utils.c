@@ -1350,7 +1350,7 @@ PciDetermineSlotNumber(IN PPCI_PDO_EXTENSION PdoExtension,
 
     /* Check if a $PIR from the BIOS is used (legacy IRQ routing) */
     ParentExtension = PdoExtension->ParentFdoExtension;
-    DPRINT1("Slot lookup for %d.%u.%u\n",
+    DPRINT("Slot lookup for %d.%u.%u\n",
             ParentExtension ? ParentExtension->BaseBus : -1,
             PdoExtension->Slot.u.bits.DeviceNumber,
             PdoExtension->Slot.u.bits.FunctionNumber);
@@ -1358,12 +1358,12 @@ PciDetermineSlotNumber(IN PPCI_PDO_EXTENSION PdoExtension,
     {
         /* Read every slot information entry */
         SlotInfo = &PciIrqRoutingTable->Slot[0];
-        DPRINT1("PIR$ %p is %lx bytes, slot 0 is at: %p\n",
+        DPRINT("PIR$ %p is %u bytes, slot 0 is at: %p\n",
                 PciIrqRoutingTable, PciIrqRoutingTable->TableSize, SlotInfo);
         while (SlotInfo < (PSLOT_INFO)((ULONG_PTR)PciIrqRoutingTable +
                                        PciIrqRoutingTable->TableSize))
         {
-            DPRINT1("Slot Info: %u.%u->#%u\n",
+            DPRINT("Slot Info: %u.%u->#%u\n",
                     SlotInfo->BusNumber,
                     SlotInfo->DeviceNumber,
                     SlotInfo->SlotNumber);
