@@ -27,6 +27,59 @@ PCHAR PciArbiterNames[] =
 
 VOID
 NTAPI
+PciArbiter_Reference(IN PVOID Context)
+{
+    PARBITER_INSTANCE Arbiter = (PARBITER_INSTANCE)Context;
+
+    InterlockedIncrement((PLONG)&Arbiter->ReferenceCount);
+}
+
+VOID
+NTAPI
+PciArbiter_Dereference(IN PVOID Context)
+{
+    PARBITER_INSTANCE Arbiter = (PARBITER_INSTANCE)Context;
+
+    InterlockedDecrement((PLONG)&Arbiter->ReferenceCount);
+}
+
+NTSTATUS
+NTAPI
+PciArbiterConstructor(IN PPCI_FDO_EXTENSION FdoExtension,
+                      IN PCI_SIGNATURE ArbiterType,
+                      OUT PARBITER_INTERFACE Interface)
+{
+    PPCI_ARBITER_INSTANCE Arbiter;
+    PAGED_CODE();
+
+    /* Nothing can be handed out before the bus has built its arbiters */
+    if (!FdoExtension->ArbitersInitialized) return STATUS_NOT_SUPPORTED;
+
+    /* Find the instance this bus built for the requested resource type */
+    Arbiter = (PVOID)PciFindNextSecondaryExtension(FdoExtension->
+                                                   SecondaryExtension.Next,
+                                                   ArbiterType);
+    if (!Arbiter)
+    {
+        DPRINT1("PCI - FDO ext 0x%p has no %s arbiter to hand out.\n",
+                FdoExtension,
+                PciArbiterNames[ArbiterType - PciArb_Io]);
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    /* Point the caller at the engine instance behind it */
+    Interface->Size = sizeof(ARBITER_INTERFACE);
+    Interface->Version = ARBITER_INTERFACE_VERSION;
+    Interface->Context = &Arbiter->CommonInstance;
+    Interface->InterfaceReference = PciArbiter_Reference;
+    Interface->InterfaceDereference = PciArbiter_Dereference;
+    Interface->ArbiterHandler = ArbiterLibHandler;
+    Interface->Flags = 0;
+    return STATUS_SUCCESS;
+}
+
+VOID
+NTAPI
 PciArbiterDestructor(IN PPCI_ARBITER_INSTANCE Arbiter)
 {
     UNREFERENCED_PARAMETER(Arbiter);
