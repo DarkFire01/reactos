@@ -191,9 +191,12 @@ PciSetPowerManagedDevicePowerState(IN PPCI_PDO_EXTENSION DeviceExtension,
         /* Check if the new device state is lower (higher power) than now */
         if (DeviceState < DeviceExtension->PowerState.CurrentDeviceState)
         {
-            /* We would normally re-assign resources after powerup */
-            UNIMPLEMENTED_DBGBREAK();
-            Status = STATUS_NOT_IMPLEMENTED;
+            /*
+             * A device coming back up may well have forgotten everything that
+             * was written into it while it was down - leaving D3 is allowed to
+             * reset a function - so its configuration is programmed again.
+             */
+            Status = PciSetResources(DeviceExtension, FALSE, FALSE);
         }
     }
 
