@@ -106,25 +106,29 @@ PciInitializeArbiters(IN PPCI_FDO_EXTENSION FdoExtension)
     /* A bus that ends up needing no arbiter at all is not a failure */
     Status = STATUS_SUCCESS;
 
+    /*
+     * A subtractive bridge arbitrates nothing: what reaches its bus is whatever
+     * the buses above it left unclaimed, so there is no window to hand out of
+     * and the ranges belong to an ancestor's arbiters. Asking once is enough -
+     * the answer does not change from one resource type to the next.
+     */
+    if (!PCI_IS_ROOT_FDO(FdoExtension))
+    {
+        /* Get the PDO extension */
+        PdoExtension = FdoExtension->PhysicalDeviceObject->DeviceExtension;
+        ASSERT_PDO(PdoExtension);
+
+        if (PdoExtension->Dependent.type1.SubtractiveDecode)
+        {
+            DPRINT1("PCI Not creating arbiters for subtractive bus 0x%x\n",
+                    FdoExtension->BaseBus);
+            return Status;
+        }
+    }
+
     /* Loop all the arbiters */
     for (ArbiterType = PciArb_Io; ArbiterType <= PciArb_BusNumber; ArbiterType++)
     {
-        /* Check if this is the extension for the Root PCI Bus */
-        if (!PCI_IS_ROOT_FDO(FdoExtension))
-        {
-            /* Get the PDO extension */
-            PdoExtension = FdoExtension->PhysicalDeviceObject->DeviceExtension;
-            ASSERT_PDO(PdoExtension);
-
-            /* Skip this bus if it does subtractive decode */
-            if (PdoExtension->Dependent.type1.SubtractiveDecode)
-            {
-                DPRINT1("PCI Not creating arbiters for subtractive bus %u\n",
-                        PdoExtension->Dependent.type1.SubtractiveDecode);
-                continue;
-            }
-        }
-
         /* Query all the registered arbiter interfaces */
         Interfaces = PciInterfaces;
         while (*Interfaces)
