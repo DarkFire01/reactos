@@ -569,7 +569,7 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
     PIO_RESOURCE_DESCRIPTOR Descriptor, Limit;
     PCI_CONFIGURATOR_CONTEXT Context;
-    ULONG Count, i;
+    ULONG Count, i, Messages;
     BOOLEAN HaveInterrupt;
 
     PAGED_CODE();
@@ -590,6 +590,10 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
                     !(PdoExtension->HackFlags & PCI_HACK_NO_ENUM_AT_ALL);
     if (HaveInterrupt)
         Count++;
+
+    /* And one that can raise messages instead gets to ask for those first */
+    Messages = PciGetMessageCount(PdoExtension);
+    if (Messages) Count++;
 
     /* And a bridge with legacy decodes enabled needs those ranges locked down */
     Count += PdoExtension->AdditionalResourceCount;
@@ -639,11 +643,40 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
         }
     }
 
+    /*
+     * Then the interrupts. A message interrupt is asked for first, because it
+     * needs no wire and cannot be shared with anything. The count rides in the
+     * span of the vector range, which is how the interrupt arbiter is told how
+     * many consecutive messages to reserve.
+     */
+    if (Messages)
+    {
+        Descriptor->Type = CmResourceTypeInterrupt;
+        Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+        Descriptor->Flags = CM_RESOURCE_INTERRUPT_LATCHED |
+                            CM_RESOURCE_INTERRUPT_MESSAGE;
+        Descriptor->u.Interrupt.MinimumVector =
+            CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN - Messages + 1;
+        Descriptor->u.Interrupt.MaximumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
+        Descriptor++;
+    }
+
+    /*
+     * And then the interrupt line. Its vector range is deliberately left wide
+     * open: the pin is routed by the firmware, and it is the interrupt arbiter
+     * that knows that routing, so pinning the range here would only stop it
+     * from placing the line where the routing table actually points.
+     *
+     * A device that asked for messages above lists this as an alternative to
+     * them, so that failing to get messages costs it a wired line rather than
+     * the whole start.
+     */
     if (HaveInterrupt)
     {
         Descriptor->Type = CmResourceTypeInterrupt;
         Descriptor->ShareDisposition = CmResourceShareShared;
         Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+        Descriptor->Option = Messages ? IO_RESOURCE_ALTERNATIVE : 0;
         Descriptor->u.Interrupt.MinimumVector = 0;
         Descriptor->u.Interrupt.MaximumVector = MAXULONG;
         Descriptor++;
