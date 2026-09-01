@@ -124,14 +124,13 @@ PciFdoIrpStartDevice(IN PIRP Irp,
     Status = PciBeginStateTransition(DeviceExtension, PciStarted);
     if (!NT_SUCCESS(Status)) return Status;
 
-    /* Check for any boot-provided resources */
+    /*
+     * A bus behind a bridge is started with the windows that bridge forwards,
+     * which are exactly the ranges it has to hand out to the devices on it.
+     * The root bus is started with the ranges its host bridge decodes. Either
+     * way they go to the arbiters, which is all this driver does with them.
+     */
     Resources = IoStackLocation->Parameters.StartDevice.AllocatedResources;
-    if ((Resources) && !(PCI_IS_ROOT_FDO(DeviceExtension)))
-    {
-        /* These resources would only be for non-root FDOs, unhandled for now */
-        ASSERT(Resources->Count == 1);
-        UNIMPLEMENTED_DBGBREAK();
-    }
 
     /* Initialize the arbiter for this FDO */
     Status = PciInitializeArbiterRanges(DeviceExtension, Resources);
@@ -140,14 +139,6 @@ PciFdoIrpStartDevice(IN PIRP Irp,
         /* Cancel the transition if this failed */
         PciCancelStateTransition(DeviceExtension, PciStarted);
         return Status;
-    }
-
-    /* Again, check for boot-provided resources for non-root FDO */
-    if ((Resources) && !(PCI_IS_ROOT_FDO(DeviceExtension)))
-    {
-        /* Unhandled for now */
-        ASSERT(Resources->Count == 1);
-        UNIMPLEMENTED_DBGBREAK();
     }
 
     /* Commit the transition to the started state */
