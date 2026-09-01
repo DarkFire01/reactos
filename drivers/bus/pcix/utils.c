@@ -1559,8 +1559,14 @@ PciQueryPowerCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
         }
         else
         {
-            /* Take the minimums? -- need to check with briang at work */
-            UNIMPLEMENTED;
+            /*
+             * The device is behind a bridge. Waking the machine from D3 would
+             * need the bridge to carry the event up as well as the device to
+             * raise it, and whether it does is not tracked, so the answer is
+             * the one thing that is known: whether the device itself can.
+             */
+            DeviceCapability->WakeFromD3 =
+                PdoExtension->PowerCapabilities.Support.PMED3Hot;
         }
     }
 
