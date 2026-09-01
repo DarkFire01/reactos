@@ -20,6 +20,7 @@ list(APPEND SOURCE
     intrface/routintf.c
     pci/busno.c
     pci/config.c
+    pci/ecam.c
     pci/devhere.c
     pci/id.c
     pci/ppbridge.c
