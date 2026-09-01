@@ -72,6 +72,11 @@
 #define PCI_HACK_FIXUP_BEFORE_UPDATE        0x03
 
 //
+// PCI Arbiter Interface Version
+//
+#define ARBITER_INTERFACE_VERSION           0
+
+//
 // PCI Debugging Device Support
 //
 #define MAX_DEBUGGING_DEVICES_SUPPORTED     0x04
@@ -1462,6 +1467,90 @@ VOID
 NTAPI
 ario_ApplyBrokenVideoHack(
     IN PPCI_FDO_EXTENSION FdoExtension
+);
+
+NTSTATUS
+NTAPI
+ario_UnpackRequirement(
+    IN PIO_RESOURCE_DESCRIPTOR Descriptor,
+    OUT PULONGLONG Minimum,
+    OUT PULONGLONG Maximum,
+    OUT PULONGLONG Length,
+    OUT PULONGLONG Alignment
+);
+
+NTSTATUS
+NTAPI
+ario_PackResource(
+    IN PIO_RESOURCE_DESCRIPTOR Descriptor,
+    IN ULONGLONG Start,
+    OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource
+);
+
+NTSTATUS
+NTAPI
+ario_UnpackResource(
+    IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource,
+    OUT PULONGLONG Start,
+    OUT PULONGLONG Length
+);
+
+INT32
+NTAPI
+ario_ScoreRequirement(
+    IN PIO_RESOURCE_DESCRIPTOR Descriptor
+);
+
+NTSTATUS
+NTAPI
+armem_UnpackRequirement(
+    IN PIO_RESOURCE_DESCRIPTOR Descriptor,
+    OUT PULONGLONG Minimum,
+    OUT PULONGLONG Maximum,
+    OUT PULONGLONG Length,
+    OUT PULONGLONG Alignment
+);
+
+NTSTATUS
+NTAPI
+armem_PackResource(
+    IN PIO_RESOURCE_DESCRIPTOR Descriptor,
+    IN ULONGLONG Start,
+    OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource
+);
+
+NTSTATUS
+NTAPI
+armem_UnpackResource(
+    IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource,
+    OUT PULONGLONG Start,
+    OUT PULONGLONG Length
+);
+
+INT32
+NTAPI
+armem_ScoreRequirement(
+    IN PIO_RESOURCE_DESCRIPTOR Descriptor
+);
+
+VOID
+NTAPI
+PciArbiter_Reference(
+    IN PVOID Context
+);
+
+VOID
+NTAPI
+PciArbiter_Dereference(
+    IN PVOID Context
+);
+
+NTSTATUS
+NTAPI
+PciArbiterConstructor(
+    IN PPCI_FDO_EXTENSION FdoExtension,
+    IN PCI_SIGNATURE ArbiterType,
+    OUT PARBITER_INTERFACE Interface
 );
 
 NTSTATUS
