@@ -72,6 +72,11 @@
 #define PCI_HACK_FIXUP_BEFORE_UPDATE        0x03
 
 //
+// PCI Legacy Configuration Space Length
+//
+#define PCI_LEGACY_CONFIG_LENGTH            0x100
+
+//
 // PCI Arbiter Interface Version
 //
 #define ARBITER_INTERFACE_VERSION           0
@@ -1187,6 +1192,23 @@ NTSTATUS
 NTAPI
 PciGetConfigHandlers(
     IN PPCI_FDO_EXTENSION FdoExtension
+);
+
+VOID
+NTAPI
+PciInitializeEcam(
+    IN PPCI_FDO_EXTENSION FdoExtension
+);
+
+BOOLEAN
+NTAPI
+PciEcamReadWriteConfig(
+    IN ULONG Bus,
+    IN PCI_SLOT_NUMBER Slot,
+    IN PVOID Buffer,
+    IN ULONG Offset,
+    IN ULONG Length,
+    IN BOOLEAN Read
 );
 
 VOID
