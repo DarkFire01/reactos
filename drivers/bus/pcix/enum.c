@@ -2355,8 +2355,33 @@ PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
     if ((PdoExtension->NeedsHotPlugConfiguration) &&
         (FdoExtension->HotPlugParameters.Acquired))
     {
-        /* Don't have hotplug devices to test with yet, QEMU 0.14 should */
-        UNIMPLEMENTED_DBGBREAK();
+        /*
+         * A device that appeared in a hot plug slot was never seen by the
+         * firmware, so the settings its configuration pass would have written
+         * are applied here from what the firmware asked for through _HPP.
+         */
+        PdoExtension->SavedCacheLineSize = FdoExtension->HotPlugParameters.CacheLineSize;
+
+        /* A bridge times its secondary bus with a register of its own */
+        if (PdoExtension->HeaderType == PCI_DEVICE_TYPE)
+        {
+            PdoExtension->SavedLatencyTimer = FdoExtension->HotPlugParameters.LatencyTimer;
+        }
+        else
+        {
+            PciData.u.type1.SecondaryLatency = FdoExtension->HotPlugParameters.LatencyTimer;
+        }
+
+        /* And whether it reports the errors it detects */
+        if (FdoExtension->HotPlugParameters.EnablePERR)
+        {
+            PdoExtension->CommandEnables |= PCI_ENABLE_PARITY;
+        }
+
+        if (FdoExtension->HotPlugParameters.EnableSERR)
+        {
+            PdoExtension->CommandEnables |= PCI_ENABLE_SERR;
+        }
     }
 
     /* Locate the correct resource configurator for this type of device */
