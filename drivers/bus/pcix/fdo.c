@@ -441,9 +441,9 @@ PciFdoIrpQueryLegacyBusInformation(IN PIRP Irp,
                                    IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     PLEGACY_BUS_INFORMATION BusInformation;
+    PAGED_CODE();
 
     UNREFERENCED_PARAMETER(IoStackLocation);
-    PAGED_CODE();
 
     BusInformation = ExAllocatePoolWithTag(PagedPool,
                                            sizeof(LEGACY_BUS_INFORMATION),
