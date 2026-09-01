@@ -207,12 +207,19 @@ PciFdoWaitWake(IN PIRP Irp,
                IN PIO_STACK_LOCATION IoStackLocation,
                IN PPCI_FDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED;
-    while (TRUE);
+    /*
+     * Arming a bus to wake the machine would mean keeping its power event
+     * signal live across the transition, which nothing here does. Say so
+     * plainly: a caller told the bus cannot wake will simply not rely on it.
+     */
+    Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+    PoStartNextPowerIrp(Irp);
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return STATUS_NOT_SUPPORTED;
 }
 
@@ -222,13 +229,28 @@ PciFdoSetPowerState(IN PIRP Irp,
                     IN PIO_STACK_LOCATION IoStackLocation,
                     IN PPCI_FDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PAGED_CODE();
 
-    UNIMPLEMENTED;
-    while (TRUE);
-    return STATUS_NOT_SUPPORTED;
+    UNREFERENCED_PARAMETER(Irp);
+
+    /*
+     * Both a host bridge and a PCI-PCI bridge are powered by whatever sits
+     * above them, so there is nothing in configuration space to write for
+     * this. What matters is remembering where the bus now is, because how far
+     * down a device on it may go is bounded by the state of its bus.
+     */
+    if (IoStackLocation->Parameters.Power.Type == SystemPowerState)
+    {
+        DeviceExtension->PowerState.CurrentSystemState =
+            IoStackLocation->Parameters.Power.State.SystemState;
+    }
+    else
+    {
+        DeviceExtension->PowerState.CurrentDeviceState =
+            IoStackLocation->Parameters.Power.State.DeviceState;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -237,13 +259,18 @@ PciFdoIrpQueryPower(IN PIRP Irp,
                     IN PIO_STACK_LOCATION IoStackLocation,
                     IN PPCI_FDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED;
-    while (TRUE);
-    return STATUS_NOT_SUPPORTED;
+    /*
+     * A bus has no state of its own that a power transition would lose, and
+     * the devices on it are asked separately, so there is nothing here that
+     * could be a reason to refuse one.
+     */
+    return STATUS_SUCCESS;
 }
 
 /* EOF */
