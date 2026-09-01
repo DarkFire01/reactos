@@ -62,6 +62,22 @@ PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
     /* Only the root FDO can access configuration space */
     ASSERT(PCI_IS_ROOT_FDO(DeviceExtension->BusRootFdoExtension));
 
+    /*
+     * Anything past the first 256 bytes is a PCI Express extended capability,
+     * which the legacy mechanism cannot see at all. Those go through the
+     * enhanced aperture, when the firmware described one.
+     */
+    if (((Offset + Length) > PCI_LEGACY_CONFIG_LENGTH) &&
+        (PciEcamReadWriteConfig(DeviceExtension->BaseBus,
+                                Slot,
+                                Buffer,
+                                Offset,
+                                Length,
+                                Read)))
+    {
+        return;
+    }
+
     /* Get the ACPI-compliant PCI interface from the root */
     PciInterface = DeviceExtension->BusRootFdoExtension->PciBusInterface;
     if (PciInterface)
@@ -301,6 +317,12 @@ PciGetConfigHandlers(IN PPCI_FDO_EXTENSION FdoExtension)
         /* Fail if the HAL does not have a PCI Bus Handler for this bus */
         if (!BusHandler) return STATUS_INVALID_DEVICE_REQUEST;
     }
+
+    /*
+     * Both mechanisms only reach the first 256 bytes of a function, so also
+     * look for the enhanced aperture that reaches the rest.
+     */
+    PciInitializeEcam(FdoExtension);
 
     /* Appropriate interface was obtained */
     return STATUS_SUCCESS;
