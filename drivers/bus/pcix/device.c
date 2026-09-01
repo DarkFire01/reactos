@@ -304,6 +304,16 @@ Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
             Bar = BarArray[i];
             if (!(Bar & ~PCI_ADDRESS_IO_SPACE)) continue;
 
+            /*
+             * A BAR that was given nothing decodes nothing. Zeroing it is the
+             * only safe thing to write, since there is no address to put in it.
+             */
+            if (CmDescriptor->Type == CmResourceTypeNull)
+            {
+                BarArray[i] = Bar & ~PCI_ADDRESS_MEMORY_ADDRESS_MASK;
+                continue;
+            }
+
             /* Work out which bits of this BAR are the address */
             if (Bar & PCI_ADDRESS_IO_SPACE)
             {
