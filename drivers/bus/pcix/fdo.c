@@ -71,6 +71,42 @@ PCI_MJ_DISPATCH_TABLE PciFdoDispatchTable =
 
 /* FUNCTIONS ******************************************************************/
 
+/*
+ * Find the bus number a host bridge produces, out of the ranges the firmware
+ * says it decodes. Returns FALSE when the list names no bus numbers at all,
+ * which leaves the caller to fall back on a default.
+ */
+BOOLEAN
+NTAPI
+PciGetRootBusNumber(IN PCM_RESOURCE_LIST Descriptor,
+                    OUT PUCHAR BaseBus)
+{
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial;
+    PCM_FULL_RESOURCE_DESCRIPTOR FullList;
+    ULONG i, j;
+    PAGED_CODE();
+
+    FullList = Descriptor->List;
+    for (i = 0; i < Descriptor->Count; i++)
+    {
+        Partial = FullList->PartialResourceList.PartialDescriptors;
+        for (j = 0; j < FullList->PartialResourceList.Count; j++)
+        {
+            if (Partial->Type == CmResourceTypeBusNumber)
+            {
+                *BaseBus = (UCHAR)Partial->u.BusNumber.Start;
+                return TRUE;
+            }
+
+            Partial = CmiGetNextPartialDescriptor(Partial);
+        }
+
+        FullList = (PVOID)Partial;
+    }
+
+    return FALSE;
+}
+
 NTSTATUS
 NTAPI
 PciFdoIrpStartDevice(IN PIRP Irp,
@@ -648,17 +684,18 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
                 /* No configuration has been set */
                 Descriptor = NULL;
             }
-            else
-            {
-                /* Root PDO in ReactOS does not assign boot resources */
-                UNIMPLEMENTED_DBGBREAK("Encountered during setup\n");
-                Descriptor = NULL;
-            }
 
-            if (Descriptor)
+            /*
+             * The firmware describes a host bridge by the ranges it decodes,
+             * and among them the bus numbers it produces. The first of those
+             * is the bus this FDO is the root of; everything else in the list
+             * is a window, and those are handed to the arbiters when the bus
+             * is started rather than here.
+             */
+            if ((Descriptor) && (PciGetRootBusNumber(Descriptor,
+                                                     &FdoExtension->BaseBus)))
             {
-                /* Root PDO in ReactOS does not assign boot resources */
-                UNIMPLEMENTED_DBGBREAK();
+                DPRINT1("PCI   Root bus is bus 0x%x.\n", FdoExtension->BaseBus);
             }
             else
             {
@@ -678,6 +715,9 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
                 PciBreakOnDefault = TRUE;
                 FdoExtension->BaseBus = 0;
             }
+
+            /* The list was allocated for this query alone */
+            if (Descriptor) ExFreePoolWithTag(Descriptor, 0);
 
             /* This is the root bus */
             FdoExtension->BusRootFdoExtension = FdoExtension;
