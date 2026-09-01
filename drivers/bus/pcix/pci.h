@@ -1462,6 +1462,13 @@ PciGetAdjustedInterruptLine(
 //
 VOID
 NTAPI
+PciApplyDeviceUsage(
+    IN PPCI_POWER_STATE PowerState,
+    IN PIO_STACK_LOCATION IoStackLocation
+);
+
+VOID
+NTAPI
 PciInitializeState(
     IN PPCI_FDO_EXTENSION DeviceExtension
 );
