@@ -99,6 +99,27 @@
 #define PCI_MSIX_OFFSET_MASK                0xFFFFFFF8
 
 //
+// Resizable BAR extended capability. Each entry is a capability register
+// naming the sizes a BAR can decode, followed by the control register that
+// selects one of them.
+//
+#define PCI_EXPRESS_RESIZABLE_BAR_CAP_ID    0x0015
+#define PCI_RESIZABLE_BAR_COUNT_MAX         6
+#define PCI_RBAR_ENTRY_CAPABILITY(n)        (4 + (n) * 8)
+#define PCI_RBAR_ENTRY_CONTROL(n)           (8 + (n) * 8)
+#define PCI_RBAR_CAPABILITY_SIZES_SHIFT     4
+#define PCI_RBAR_CONTROL_BAR_INDEX_MASK     0x00000007
+#define PCI_RBAR_CONTROL_COUNT_MASK         0x000000E0
+#define PCI_RBAR_CONTROL_COUNT_SHIFT        5
+#define PCI_RBAR_CONTROL_SIZE_MASK          0x00003F00
+#define PCI_RBAR_CONTROL_SIZE_SHIFT         8
+
+//
+// Largest window a memory descriptor can describe, its length being a ULONG
+//
+#define PCI_MAX_MEMORY_DESCRIPTOR_LENGTH    0x80000000ULL
+
+//
 // Most messages a single function can ever be given
 //
 #define PCI_MAX_MESSAGES                    0x800
@@ -236,6 +257,16 @@ typedef struct _PCI_MESSAGE_INFO
     PPCI_MSIX_TABLE_ENTRY Table;
     ULONG TableLength;
 } PCI_MESSAGE_INFO, *PPCI_MESSAGE_INFO;
+
+//
+// Resizable BAR State of a Device
+//
+typedef struct _PCI_RESIZABLE_BAR_INFO
+{
+    USHORT CapabilityPtr;
+    ULONG SizesSupported[PCI_RESIZABLE_BAR_COUNT_MAX];
+    UCHAR ControlRegister[PCI_RESIZABLE_BAR_COUNT_MAX];
+} PCI_RESIZABLE_BAR_INFO, *PPCI_RESIZABLE_BAR_INFO;
 
 //
 // Power State Information for Device Extension
@@ -398,6 +429,7 @@ typedef struct _PCI_PDO_EXTENSION
     USHORT ExpressCapabilityPtr;
     UCHAR ExpressDeviceType;
     PCI_MESSAGE_INFO MessageInfo;
+    PCI_RESIZABLE_BAR_INFO ResizableBar;
 } PCI_PDO_EXTENSION, *PPCI_PDO_EXTENSION;
 
 //
@@ -1301,6 +1333,42 @@ PCM_PARTIAL_RESOURCE_DESCRIPTOR
 NTAPI
 PciFindMessageInterruptResource(
     IN PCM_RESOURCE_LIST ResourceList
+);
+
+VOID
+NTAPI
+PciResizableBarInitialize(
+    IN PPCI_PDO_EXTENSION PdoExtension
+);
+
+ULONGLONG
+NTAPI
+PciResizableBarRequirement(
+    IN PPCI_PDO_EXTENSION PdoExtension,
+    IN ULONG BarIndex,
+    IN PIO_RESOURCE_DESCRIPTOR Limit
+);
+
+ULONGLONG
+NTAPI
+PciResizableBarLargestSize(
+    IN PPCI_PDO_EXTENSION PdoExtension,
+    IN ULONG BarIndex,
+    IN ULONGLONG MaximumLength
+);
+
+NTSTATUS
+NTAPI
+PciResizableBarSetSize(
+    IN PPCI_PDO_EXTENSION PdoExtension,
+    IN ULONG BarIndex,
+    IN ULONGLONG Length
+);
+
+VOID
+NTAPI
+PciResizableBarApplySettings(
+    IN PPCI_PDO_EXTENSION PdoExtension
 );
 
 NTSTATUS

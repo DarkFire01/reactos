@@ -23,6 +23,7 @@ list(APPEND SOURCE
     pci/ecam.c
     pci/express.c
     pci/msi.c
+    pci/rbar.c
     pci/devhere.c
     pci/id.c
     pci/ppbridge.c
