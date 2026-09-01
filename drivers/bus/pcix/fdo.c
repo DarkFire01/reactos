@@ -125,12 +125,21 @@ PciFdoIrpQueryRemoveDevice(IN PIRP Irp,
                            IN PIO_STACK_LOCATION IoStackLocation,
                            IN PPCI_FDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_SUPPORTED;
+    /* A bus carrying something the system cannot lose must stay where it is */
+    if ((DeviceExtension->PowerState.Paging) ||
+        (DeviceExtension->PowerState.Hibernate) ||
+        (DeviceExtension->PowerState.CrashDump))
+    {
+        return STATUS_DEVICE_BUSY;
+    }
+
+    /* Ask the state machine whether leaving the started state is legal */
+    return PciBeginStateTransition(DeviceExtension, PciNotStarted);
 }
 
 NTSTATUS
@@ -153,12 +162,14 @@ PciFdoIrpCancelRemoveDevice(IN PIRP Irp,
                             IN PIO_STACK_LOCATION IoStackLocation,
                             IN PPCI_FDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /* The remove is off, so the bus stays where it was */
+    PciCancelStateTransition(DeviceExtension, PciNotStarted);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -167,12 +178,19 @@ PciFdoIrpStopDevice(IN PIRP Irp,
                     IN PIO_STACK_LOCATION IoStackLocation,
                     IN PPCI_FDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /*
+     * The bus is giving up the windows it was placed in, so the arbiters that
+     * hand pieces of them out have nothing left to give and are torn down. A
+     * later start builds them again from whatever it is given then.
+     */
+    PciCommitStateTransition(DeviceExtension, PciStopped);
+    DeviceExtension->ArbitersInitialized = FALSE;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -181,12 +199,27 @@ PciFdoIrpQueryStopDevice(IN PIRP Irp,
                          IN PIO_STACK_LOCATION IoStackLocation,
                          IN PPCI_FDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /* A bus carrying something the system cannot lose must stay where it is */
+    if ((DeviceExtension->PowerState.Paging) ||
+        (DeviceExtension->PowerState.Hibernate) ||
+        (DeviceExtension->PowerState.CrashDump))
+    {
+        return STATUS_DEVICE_BUSY;
+    }
+
+    /*
+     * Stopping a bus takes away the windows its children were placed inside,
+     * so it can only happen while there are no children holding any.
+     */
+    if (DeviceExtension->ChildPdoList) return STATUS_UNSUCCESSFUL;
+
+    /* Ask the state machine whether the bus may be stopped at all */
+    return PciBeginStateTransition(DeviceExtension, PciStopped);
 }
 
 NTSTATUS
@@ -195,12 +228,14 @@ PciFdoIrpCancelStopDevice(IN PIRP Irp,
                           IN PIO_STACK_LOCATION IoStackLocation,
                           IN PPCI_FDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /* The stop is off, so the bus keeps its resources */
+    PciCancelStateTransition(DeviceExtension, PciStopped);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -357,12 +392,19 @@ PciFdoIrpSurpriseRemoval(IN PIRP Irp,
                          IN PIO_STACK_LOCATION IoStackLocation,
                          IN PPCI_FDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /* The bus is already gone, so all that is left is to write it off */
+    if (DeviceExtension->TentativeNextState == DeviceExtension->DeviceState)
+    {
+        PciBeginStateTransition(DeviceExtension, PciSurpriseRemoved);
+    }
+
+    PciCommitStateTransition(DeviceExtension, PciSurpriseRemoved);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
