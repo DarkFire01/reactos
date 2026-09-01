@@ -580,12 +580,29 @@ PciPdoIrpQueryDeviceState(IN PIRP Irp,
                           IN PIO_STACK_LOCATION IoStackLocation,
                           IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PNP_DEVICE_STATE State;
+    PAGED_CODE();
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_SUPPORTED;
+    UNREFERENCED_PARAMETER(IoStackLocation);
+
+    /* Whatever the rest of the stack decided about this device still holds */
+    State = (PNP_DEVICE_STATE)Irp->IoStatus.Information;
+
+    /*
+     * A device the system cannot be taken away from must not be offered up for
+     * disabling: the hardware the debugger talks through, and anything
+     * carrying the paging file, the hibernation image or the crash dump.
+     */
+    if ((DeviceExtension->OnDebugPath) ||
+        (DeviceExtension->PowerState.Paging) ||
+        (DeviceExtension->PowerState.Hibernate) ||
+        (DeviceExtension->PowerState.CrashDump))
+    {
+        State |= PNP_DEVICE_NOT_DISABLEABLE;
+    }
+
+    Irp->IoStatus.Information = State;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
