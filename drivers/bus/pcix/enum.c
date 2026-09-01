@@ -135,8 +135,14 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
                      */
                     if (PciResources)
                     {
+<<<<<<< HEAD
                         while ((BarIndex < RTL_NUMBER_OF(ResourceArray)) &&
                                (PciResources->Limit[BarIndex].Type == CmResourceTypeNull))
+=======
+                        while ((BarIndex < 7) &&
+                               !(PciIsRequirementDescriptor(&PciResources->
+                                                            Limit[BarIndex])))
+>>>>>>> cd70b7dd72d ([PCIX] Only ask the arbiter for limits that actually request a range)
                         {
                             BarIndex++;
                         }
@@ -562,6 +568,21 @@ PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
 }
 
 /*
+ * Whether a discovered limit is something to ask the arbiter for. A bridge
+ * records its forwarding windows here too, but their size is decided by
+ * whatever sits behind them rather than by the bridge, so they carry no length
+ * and are left exactly as the firmware programmed them.
+ */
+BOOLEAN
+NTAPI
+PciIsRequirementDescriptor(IN PIO_RESOURCE_DESCRIPTOR Limit)
+{
+    if (Limit->Type == CmResourceTypeNull) return FALSE;
+
+    return Limit->u.Generic.Length != 0;
+}
+
+/*
  * The range the firmware already programmed into one BAR, or NULL when it left
  * the BAR unset or gave it something the BAR cannot actually decode. What comes
  * back is offered to the arbiter as the preferred placement for that BAR.
@@ -615,8 +636,11 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     {
         for (i = 0; i < (PCI_TYPE0_ADDRESSES + 1); i++)
         {
-            if (PdoExtension->Resources->Limit[i].Type == CmResourceTypeNull)
+            if (!PciIsRequirementDescriptor(&PdoExtension->Resources->Limit[i]))
+            {
                 continue;
+            }
+
             Count++;
 
             /* Where the firmware already placed the BAR, that placement is
@@ -680,9 +704,14 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
         Limit = PdoExtension->Resources->Limit;
         for (i = 0; i < (PCI_TYPE0_ADDRESSES + 1); i++)
         {
+<<<<<<< HEAD
             /* Skip the BARs this function does not implement */
             if (Limit[i].Type == CmResourceTypeNull)
                 continue;
+=======
+            /* Skip the BARs this function does not ask for anything for */
+            if (!PciIsRequirementDescriptor(&Limit[i])) continue;
+>>>>>>> cd70b7dd72d ([PCIX] Only ask the arbiter for limits that actually request a range)
 
             Alternative = FALSE;
 
