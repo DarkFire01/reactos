@@ -136,7 +136,7 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
                     if (PciResources)
                     {
                         while ((BarIndex < RTL_NUMBER_OF(ResourceArray)) &&
-                               (PciResources->Limit[BarIndex].Type == CmResourceTypeNull))
+                               !PciIsRequirementDescriptor(&PciResources->Limit[BarIndex]))
                         {
                             BarIndex++;
                         }
@@ -712,7 +712,7 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     {
         for (i = 0; i < (PCI_TYPE0_ADDRESSES + 1); i++)
         {
-            if (PdoExtension->Resources->Limit[i].Type == CmResourceTypeNull)
+            if (!PciIsRequirementDescriptor(&PdoExtension->Resources->Limit[i]))
                 continue;
 
             /* A resizable BAR also asks for the larger sizes it can decode */
@@ -777,8 +777,8 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
         Limit = PdoExtension->Resources->Limit;
         for (i = 0; i < (PCI_TYPE0_ADDRESSES + 1); i++)
         {
-            /* Skip the BARs this function does not implement */
-            if (Limit[i].Type == CmResourceTypeNull)
+            /* Skip unimplemented BARs and bridge windows, neither asks for a range */
+            if (!PciIsRequirementDescriptor(&Limit[i]))
                 continue;
 
             /* Larger resizable sizes, then the current placement, then the default size */
