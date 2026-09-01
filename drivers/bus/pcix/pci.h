@@ -1910,6 +1910,13 @@ NTAPI
 PciIsRequirementDescriptor(
     _In_ PIO_RESOURCE_DESCRIPTOR Limit);
 
+BOOLEAN
+NTAPI
+PcipIsSameDevice(
+    IN PPCI_PDO_EXTENSION DeviceExtension,
+    IN PPCI_COMMON_HEADER PciData
+);
+
 NTSTATUS
 NTAPI
 PciBuildRequirementsList(
