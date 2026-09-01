@@ -24,6 +24,7 @@ list(APPEND SOURCE
     pci/id.c
     pci/msi.c
     pci/ppbridge.c
+    pci/rbar.c
     pci/romimage.c
     pci/state.c
     debug.c
