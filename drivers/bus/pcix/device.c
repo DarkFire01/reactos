@@ -211,6 +211,17 @@ Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     PciCreateIoDescriptorFromBarLimit(&Limit[i],
                                       &PciData->u.type0.ROMBaseAddress,
                                       TRUE);
+
+    /*
+     * A device's option ROM is only of use to whatever ran before the operating
+     * system did. Asking for a window for one the firmware left switched off
+     * would spend address space the ROM will never decode, and hand the
+     * device's driver a range it never asked for, so it is not asked for.
+     */
+    if (!(Current->u.type0.ROMBaseAddress & PCI_ROMADDRESS_ENABLED))
+    {
+        Limit[i].Type = CmResourceTypeNull;
+    }
 }
 
 VOID
