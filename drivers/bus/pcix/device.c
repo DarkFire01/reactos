@@ -274,8 +274,13 @@ Device_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(PciData);
     UNREFERENCED_PARAMETER(IoDescriptor);
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
+
+    /*
+     * Nothing here. A plain device decodes what its base address registers
+     * say it decodes and nothing besides, so there is never anything to add
+     * beyond the descriptors already built from them. Only a bridge answers
+     * for ranges it was not given, and it has its own version of this.
+     */
 }
 
 VOID
