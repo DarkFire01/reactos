@@ -1363,6 +1363,11 @@ PciProgramGrantedInterrupt(
     _Inout_ PPCI_PDO_EXTENSION PdoExtension,
     _In_opt_ PCM_RESOURCE_LIST ResourceList);
 
+NTSTATUS
+NTAPI
+PciRestoreGrantedInterrupt(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension);
+
 VOID
 NTAPI
 PciGetResizableBarCapability(
