@@ -1952,6 +1952,13 @@ PciSetResources(
     IN BOOLEAN SomethingSomethingDarkSide
 );
 
+PCM_PARTIAL_RESOURCE_DESCRIPTOR
+NTAPI
+PciBootConfigRequirement(
+    IN PPCI_PDO_EXTENSION PdoExtension,
+    IN ULONG BarIndex
+);
+
 NTSTATUS
 NTAPI
 PciBuildRequirementsList(
