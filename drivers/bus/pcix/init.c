@@ -321,11 +321,10 @@ PciGetIrqRoutingTableFromRegistry(OUT PPCI_IRQ_ROUTING_TABLE *PciRoutingTable)
     PKEY_BASIC_INFORMATION KeyInfo;
     PKEY_VALUE_PARTIAL_INFORMATION ValueInfo;
     UNICODE_STRING ValueName;
-    struct
-    {
-        CM_FULL_RESOURCE_DESCRIPTOR Descriptor;
-        PCI_IRQ_ROUTING_TABLE Table;
-    } *Package;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial;
+    PPCI_IRQ_ROUTING_TABLE Table;
+    ULONG TableLength;
+    PCM_FULL_RESOURCE_DESCRIPTOR Package;
 
     /* So we know what to free at the end of the body */
     Package = NULL;
@@ -442,10 +441,38 @@ PciGetIrqRoutingTableFromRegistry(OUT PPCI_IRQ_ROUTING_TABLE *PciRoutingTable)
         /* Check if a descriptor was found */
         if (!Package) break;
 
-        /* Make sure the buffer is large enough to hold the table */
-        if ((NumberOfBytes < sizeof(*Package)) ||
-            (Package->Table.TableSize >
-             (NumberOfBytes - sizeof(CM_FULL_RESOURCE_DESCRIPTOR))))
+        /*
+         * The table travels as the device-specific data of a resource list,
+         * and it is not the first descriptor in that list - the loader reports
+         * the bus the table belongs to ahead of it. So walk to the descriptor
+         * that says it carries data rather than assuming where it starts:
+         * reading the descriptor itself as the table header is what leaves the
+         * table claiming to be zero bytes long, and a zero-length table hides
+         * every slot number from the caller below.
+         */
+        Table = NULL;
+        TableLength = 0;
+        Partial = Package->PartialResourceList.PartialDescriptors;
+        for (i = 0; i < Package->PartialResourceList.Count; i++)
+        {
+            if (Partial->Type == CmResourceTypeDeviceSpecific)
+            {
+                /* The data follows the descriptor that announces it */
+                TableLength = Partial->u.DeviceSpecificData.DataSize;
+                Table = (PPCI_IRQ_ROUTING_TABLE)(Partial + 1);
+                break;
+            }
+
+            Partial++;
+        }
+
+        /* Make sure a whole table, and one this driver knows, is really there */
+        if ((!Table) ||
+            (TableLength < FIELD_OFFSET(PCI_IRQ_ROUTING_TABLE, Slot)) ||
+            (TableLength > (NumberOfBytes - ((ULONG_PTR)Table -
+                                             (ULONG_PTR)Package))) ||
+            (Table->Signature != PCI_IRQ_ROUTING_TABLE_SIGNATURE) ||
+            (Table->TableSize > TableLength))
         {
             /* Invalid package size */
             Status = STATUS_UNSUCCESSFUL;
@@ -455,14 +482,12 @@ PciGetIrqRoutingTableFromRegistry(OUT PPCI_IRQ_ROUTING_TABLE *PciRoutingTable)
         /* Allocate space for the table */
         Status = STATUS_INSUFFICIENT_RESOURCES;
         *PciRoutingTable = ExAllocatePoolWithTag(PagedPool,
-                                                 NumberOfBytes,
+                                                 TableLength,
                                                  PCI_POOL_TAG);
         if (!*PciRoutingTable) break;
 
         /* Copy the registry data */
-        RtlCopyMemory(*PciRoutingTable,
-                      &Package->Table,
-                      NumberOfBytes - sizeof(CM_FULL_RESOURCE_DESCRIPTOR));
+        RtlCopyMemory(*PciRoutingTable, Table, TableLength);
         Status = STATUS_SUCCESS;
     } while (FALSE);
 
