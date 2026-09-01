@@ -202,9 +202,9 @@ PciIdPrintfAppend(IN PPCI_ID_BUFFER IdBuffer,
     /* Calculate the final size of the string, in Unicode */
     Size = RtlAnsiStringToUnicodeSize(AnsiString);
 
-    /* Update the buffer with the size, and update the character pointer */
+    /* Only the growth of this string adds to the total, then move the character pointer */
+    IdBuffer->TotalLength += Size - IdBuffer->StringSize[NextId];
     IdBuffer->StringSize[NextId] = Size;
-    IdBuffer->TotalLength += Size;
     IdBuffer->CharBuffer += Length;
 
     /* Return the size */
@@ -355,12 +355,23 @@ PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
             ParentExtension = DeviceExtension->ParentFdoExtension;
             while (!PCI_IS_ROOT_FDO(ParentExtension))
             {
+                /* Two more digits and their terminator have to fit */
+                if ((IdBuffer.CharBuffer + 2) >
+                    (IdBuffer.BufferData + sizeof(IdBuffer.BufferData)))
+                {
+                    DPRINT1("Bridge chain too deep for an instance ID\n");
+                    return STATUS_BUFFER_OVERFLOW;
+                }
+
                 /* And encode the parent's device and function number as well */
                 PdoExtension = ParentExtension->PhysicalDeviceObject->DeviceExtension;
                 PciIdPrintfAppend(&IdBuffer,
                                   "%02X",
                                   (PdoExtension->Slot.u.bits.DeviceNumber << 3) |
                                   PdoExtension->Slot.u.bits.FunctionNumber);
+
+                /* Then climb, since a bridge can just as well sit behind one */
+                ParentExtension = PdoExtension->ParentFdoExtension;
             }
             break;
 
