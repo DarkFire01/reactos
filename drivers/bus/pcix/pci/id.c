@@ -362,6 +362,9 @@ PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
                                   "%02X",
                                   (PdoExtension->Slot.u.bits.DeviceNumber << 3) |
                                   PdoExtension->Slot.u.bits.FunctionNumber);
+
+                /* Then climb, since a bridge can just as well sit behind one */
+                ParentExtension = PdoExtension->ParentFdoExtension;
             }
             break;
 
