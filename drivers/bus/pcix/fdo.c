@@ -380,7 +380,8 @@ PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
 {
     ACPI_EVAL_INPUT_BUFFER InputBuffer;
     PACPI_EVAL_OUTPUT_BUFFER OutputBuffer;
-    ULONG Length;
+    PACPI_METHOD_ARGUMENT Argument;
+    ULONG Length, i;
     NTSTATUS Status;
     PAGED_CODE();
 
@@ -420,8 +421,37 @@ PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
         /* ACPI sent back some data. 4 parameters are expected in the output */
         if (OutputBuffer->Count != 4) break;
 
-        /* HotPlug PCI Support not yet implemented */
-        UNIMPLEMENTED_DBGBREAK();
+        /* Every one of them has to be an integer for the set to mean anything */
+        Argument = OutputBuffer->Argument;
+        for (i = 0; i < 4; i++)
+        {
+            if (Argument[i].Type != ACPI_METHOD_ARGUMENT_INTEGER) break;
+        }
+
+        if (i != 4)
+        {
+            DPRINT1("PCI - _HPP returned something other than four integers\n");
+            break;
+        }
+
+        /*
+         * These are the settings the firmware wants written into anything that
+         * appears in a hot plug slot on this bus, which has no firmware pass of
+         * its own to configure it.
+         */
+        FdoExtension->HotPlugParameters.CacheLineSize = (BOOLEAN)Argument[0].Argument;
+        FdoExtension->HotPlugParameters.LatencyTimer = (BOOLEAN)Argument[1].Argument;
+        FdoExtension->HotPlugParameters.EnableSERR = (BOOLEAN)Argument[2].Argument;
+        FdoExtension->HotPlugParameters.EnablePERR = (BOOLEAN)Argument[3].Argument;
+        FdoExtension->HotPlugParameters.Acquired = TRUE;
+
+        DPRINT1("PCI - _HPP for FDO ext 0x%p: cache line %u, latency %u, "
+                "SERR %u, PERR %u\n",
+                FdoExtension,
+                FdoExtension->HotPlugParameters.CacheLineSize,
+                FdoExtension->HotPlugParameters.LatencyTimer,
+                FdoExtension->HotPlugParameters.EnableSERR,
+                FdoExtension->HotPlugParameters.EnablePERR);
     } while (FALSE);
 
     /* Free the buffer and return */
