@@ -82,10 +82,14 @@ VOID
 NTAPI
 PciArbiterDestructor(IN PPCI_ARBITER_INSTANCE Arbiter)
 {
-    UNREFERENCED_PARAMETER(Arbiter);
-    /* This function is not yet implemented */
-    UNIMPLEMENTED;
-    while (TRUE);
+    PAGED_CODE();
+
+    /*
+     * Tear down the engine instance. The wrapper itself is freed by whoever
+     * walks the secondary extension list, so only what the engine allocated
+     * for itself is released here.
+     */
+    ArbiterLibDeleteInstance(&Arbiter->CommonInstance);
 }
 
 NTSTATUS
