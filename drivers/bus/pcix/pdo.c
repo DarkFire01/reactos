@@ -230,18 +230,81 @@ PciPdoIrpStartDevice(IN PIRP Irp,
     return Status;
 }
 
+/*
+ * A device the system is leaning on cannot be taken away from it. Losing the
+ * device underneath the paging file, the hibernation image or the crash dump
+ * would take the system with it, so those requests are refused outright.
+ */
+static
+BOOLEAN
+NTAPI
+PciPdoIsDeviceRemovable(IN PPCI_PDO_EXTENSION DeviceExtension)
+{
+    return !((DeviceExtension->PowerState.Paging) ||
+             (DeviceExtension->PowerState.Hibernate) ||
+             (DeviceExtension->PowerState.CrashDump));
+}
+
+/*
+ * Stop the device using the resources it was given. Once its decodes are off
+ * and its messages are disabled, the addresses and vectors it was holding can
+ * safely be handed to something else.
+ */
+static
+VOID
+NTAPI
+PciPdoReleaseDevice(IN PPCI_PDO_EXTENSION DeviceExtension)
+{
+    if (DeviceExtension->DeviceState != PciStarted) return;
+
+    PciDisableMessageInterrupt(DeviceExtension);
+    PciDecodeEnable(DeviceExtension, FALSE, NULL);
+}
+
+/*
+ * Move to a state the device was not already asked to move to. A request that
+ * follows a successful query has already begun its transition, and only needs
+ * committing.
+ */
+static
+VOID
+NTAPI
+PciPdoEnterState(IN PPCI_PDO_EXTENSION DeviceExtension,
+                 IN PCI_STATE NewState)
+{
+    if (DeviceExtension->DeviceState == NewState) return;
+
+    if (DeviceExtension->TentativeNextState == DeviceExtension->DeviceState)
+    {
+        if (!NT_SUCCESS(PciBeginStateTransition((PVOID)DeviceExtension, NewState))) return;
+    }
+    else if (DeviceExtension->TentativeNextState != NewState)
+    {
+        /* Something else is pending, so abandon that first */
+        PciCancelStateTransition((PVOID)DeviceExtension,
+                                 DeviceExtension->TentativeNextState);
+        if (!NT_SUCCESS(PciBeginStateTransition((PVOID)DeviceExtension, NewState))) return;
+    }
+
+    PciCommitStateTransition((PVOID)DeviceExtension, NewState);
+}
+
 NTSTATUS
 NTAPI
 PciPdoIrpQueryRemoveDevice(IN PIRP Irp,
                            IN PIO_STACK_LOCATION IoStackLocation,
                            IN PPCI_PDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED;
-    return STATUS_NOT_SUPPORTED;
+    /* Refuse to give up a device the system cannot do without */
+    if (!PciPdoIsDeviceRemovable(DeviceExtension)) return STATUS_DEVICE_BUSY;
+
+    /* Ask the state machine whether leaving the started state is legal */
+    return PciBeginStateTransition((PVOID)DeviceExtension, PciNotStarted);
 }
 
 NTSTATUS
@@ -250,12 +313,16 @@ PciPdoIrpRemoveDevice(IN PIRP Irp,
                       IN PIO_STACK_LOCATION IoStackLocation,
                       IN PPCI_PDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /* A device that is still there just goes back to being merely enumerated */
+    PciPdoReleaseDevice(DeviceExtension);
+    PciPdoEnterState(DeviceExtension,
+                     DeviceExtension->ReportedMissing ? PciDeleted : PciNotStarted);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -264,12 +331,14 @@ PciPdoIrpCancelRemoveDevice(IN PIRP Irp,
                             IN PIO_STACK_LOCATION IoStackLocation,
                             IN PPCI_PDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /* The remove is off, so the device stays where it was */
+    PciCancelStateTransition((PVOID)DeviceExtension, PciNotStarted);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -278,12 +347,15 @@ PciPdoIrpStopDevice(IN PIRP Irp,
                     IN PIO_STACK_LOCATION IoStackLocation,
                     IN PPCI_PDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /* The device is losing its resources, so it must stop using them first */
+    PciPdoReleaseDevice(DeviceExtension);
+    PciPdoEnterState(DeviceExtension, PciStopped);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -292,12 +364,16 @@ PciPdoIrpQueryStopDevice(IN PIRP Irp,
                          IN PIO_STACK_LOCATION IoStackLocation,
                          IN PPCI_PDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /* Refuse to give up a device the system cannot do without */
+    if (!PciPdoIsDeviceRemovable(DeviceExtension)) return STATUS_DEVICE_BUSY;
+
+    /* Ask the state machine whether the device may be stopped at all */
+    return PciBeginStateTransition((PVOID)DeviceExtension, PciStopped);
 }
 
 NTSTATUS
@@ -306,12 +382,14 @@ PciPdoIrpCancelStopDevice(IN PIRP Irp,
                           IN PIO_STACK_LOCATION IoStackLocation,
                           IN PPCI_PDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /* The stop is off, so the device keeps what it has */
+    PciCancelStateTransition((PVOID)DeviceExtension, PciStopped);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -530,12 +608,19 @@ PciPdoIrpSurpriseRemoval(IN PIRP Irp,
                          IN PIO_STACK_LOCATION IoStackLocation,
                          IN PPCI_PDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /*
+     * The device is already gone, so its configuration space cannot be touched
+     * to turn anything off - there is nothing left to turn off. All that is
+     * left is to write it off, so nothing tries to use it again.
+     */
+    DeviceExtension->ReportedMissing = TRUE;
+    PciPdoEnterState(DeviceExtension, PciSurpriseRemoved);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
