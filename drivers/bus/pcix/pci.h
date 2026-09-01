@@ -1291,6 +1291,12 @@ PciGetMessageCapabilities(
     IN PPCI_PDO_EXTENSION PdoExtension
 );
 
+ULONG
+NTAPI
+PciGetMessageCount(
+    IN PPCI_PDO_EXTENSION PdoExtension
+);
+
 NTSTATUS
 NTAPI
 PciProgramMessageInterrupt(
