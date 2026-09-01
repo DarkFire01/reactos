@@ -155,6 +155,108 @@ PciGetInterruptConnectionData(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_SUCCESS;
 }
 
+
+/*
+ * The registry key a driver declares its message support under.
+ */
+static PWCHAR PciRegMsiProperties =
+    L"Interrupt Management\\MessageSignaledInterruptProperties";
+
+/*
+ * Read one REG_DWORD out of a device's message-interrupt policy key.
+ */
+static
+BOOLEAN
+NTAPI
+PciGetMessagePolicyValue(IN HANDLE KeyHandle,
+                         IN PWCHAR ValueName,
+                         OUT PULONG Value)
+{
+    PULONG Buffer;
+    ULONG Length;
+    PAGED_CODE();
+
+    if (!NT_SUCCESS(PciGetRegistryValue(ValueName,
+                                        PciRegMsiProperties,
+                                        KeyHandle,
+                                        REG_DWORD,
+                                        (PVOID*)&Buffer,
+                                        &Length)))
+    {
+        return FALSE;
+    }
+
+    if (Length < sizeof(ULONG))
+    {
+        ExFreePoolWithTag(Buffer, 0);
+        return FALSE;
+    }
+
+    *Value = *Buffer;
+    ExFreePoolWithTag(Buffer, 0);
+    return TRUE;
+}
+
+ULONG
+NTAPI
+PciGetMessageCount(IN PPCI_PDO_EXTENSION PdoExtension)
+{
+    PPCI_MESSAGE_INFO MessageInfo = &PdoExtension->MessageInfo;
+    HANDLE KeyHandle;
+    ULONG Count, Value;
+    PAGED_CODE();
+
+    /* A function with no message capability has nothing to ask for */
+    if (MessageInfo->Type == PciMessageNone) return 0;
+
+    if (!NT_SUCCESS(IoOpenDeviceRegistryKey(PdoExtension->PhysicalDeviceObject,
+                                            PLUGPLAY_REGKEY_DEVICE,
+                                            KEY_READ,
+                                            &KeyHandle)))
+    {
+        return 0;
+    }
+
+    /*
+     * A function that also has a wired pin may well be driven by something that
+     * knows nothing about messages, and giving it one would leave its interrupt
+     * permanently unconnected. Those only get messages once their driver has
+     * said it understands them. Express root and downstream ports are the
+     * exception: a message is the only way they can report anything at all.
+     */
+    Count = 0;
+    if ((PdoExtension->InterruptPin) &&
+        (PdoExtension->ExpressDeviceType != PciExpressRootPort) &&
+        (PdoExtension->ExpressDeviceType != PciExpressDownstreamSwitchPort))
+    {
+        if (!PciGetMessagePolicyValue(KeyHandle, L"MSISupported", &Value) ||
+            !(Value))
+        {
+            ZwClose(KeyHandle);
+            return 0;
+        }
+    }
+
+    /* The driver may want fewer messages than the hardware can raise */
+    Count = MessageInfo->MessagesRequested;
+    if ((PciGetMessagePolicyValue(KeyHandle, L"MessageNumberLimit", &Value)) &&
+        (Value < Count))
+    {
+        Count = Value;
+    }
+
+    ZwClose(KeyHandle);
+
+    /*
+     * Plain MSI numbers its messages by counting up from one vector, so the
+     * whole run has to sit inside a single interrupt priority level. Asking for
+     * more than one level holds can never be satisfied.
+     */
+    if ((MessageInfo->Type == PciMessageMsi) && (Count > 16)) Count = 16;
+
+    return Count;
+}
+
 VOID
 NTAPI
 PciGetMessageCapabilities(IN PPCI_PDO_EXTENSION PdoExtension)
