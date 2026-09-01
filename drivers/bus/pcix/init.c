@@ -679,8 +679,20 @@ NTAPI
 PciGetDebugPorts(IN HANDLE DebugKey)
 {
     UNREFERENCED_PARAMETER(DebugKey);
-    /* This function is not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
+
+    /*
+     * A debugging port behind PCI has to be left alone: it must not be powered
+     * down, and its resources must not be moved, or the connection the machine
+     * is being debugged over dies with it. Recording which devices those are
+     * is not implemented, so none are recorded and every device is treated as
+     * an ordinary one. Say so rather than stop, so a machine that has ports
+     * listed here still boots.
+     */
+    if (DebugKey)
+    {
+        DPRINT1("PCI - debugging ports are listed but are not tracked yet\n");
+    }
+
     return STATUS_SUCCESS;
 }
 

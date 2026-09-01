@@ -758,8 +758,12 @@ PciIsDeviceOnDebugPath(IN PPCI_PDO_EXTENSION DeviceExtension)
     ASSERT(PciDebugPortsCount <= MAX_DEBUGGING_DEVICES_SUPPORTED);
     if (!PciDebugPortsCount) return FALSE;
 
-    /* eVb has not been able to test such devices yet */
-    UNIMPLEMENTED_DBGBREAK();
+    /*
+     * Which devices the debugger is talking through is not tracked, so there
+     * is nothing to compare this one against. Treating it as an ordinary
+     * device is the safe answer: it costs the debugger nothing here, where
+     * claiming a device is on that path would stop it being managed at all.
+     */
     return FALSE;
 }
 
