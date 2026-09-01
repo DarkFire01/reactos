@@ -122,6 +122,7 @@ PciPdoIrpStartDevice(IN PIRP Irp,
                      IN PIO_STACK_LOCATION IoStackLocation,
                      IN PPCI_PDO_EXTENSION DeviceExtension)
 {
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR MessageResource;
     NTSTATUS Status;
     BOOLEAN Changed, DoReset;
     POWER_STATE PowerState;
@@ -207,6 +208,20 @@ PciPdoIrpStartDevice(IN PIRP Irp,
     }
     else
     {
+        /*
+         * The device is decoding its windows now, so if the arbiter granted it
+         * message interrupts they can be written in. That has to happen here
+         * rather than earlier, because an MSI-X table lives inside one of those
+         * windows and is not reachable until the window is programmed.
+         */
+        MessageResource = PciFindMessageInterruptResource(IoStackLocation->
+                                                          Parameters.StartDevice.
+                                                          AllocatedResources);
+        if (MessageResource)
+        {
+            PciProgramMessageInterrupt(DeviceExtension, MessageResource);
+        }
+
         /* Fully commit, as the device is now started up and ready to go */
         PciCommitStateTransition((PVOID)DeviceExtension, PciStarted);
     }

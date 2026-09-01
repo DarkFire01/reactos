@@ -1297,6 +1297,12 @@ PciGetMessageCount(
     IN PPCI_PDO_EXTENSION PdoExtension
 );
 
+PCM_PARTIAL_RESOURCE_DESCRIPTOR
+NTAPI
+PciFindMessageInterruptResource(
+    IN PCM_RESOURCE_LIST ResourceList
+);
+
 NTSTATUS
 NTAPI
 PciProgramMessageInterrupt(
