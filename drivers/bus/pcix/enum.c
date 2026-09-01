@@ -589,7 +589,7 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
     PIO_RESOURCE_DESCRIPTOR Descriptor, Limit;
     PCI_CONFIGURATOR_CONTEXT Context;
-    ULONG Count, i, Messages;
+    ULONG Count, i, Messages, Resized;
     BOOLEAN HaveInterrupt;
 
     PAGED_CODE();
@@ -600,8 +600,15 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     {
         for (i = 0; i < (PCI_TYPE0_ADDRESSES + 1); i++)
         {
-            if (PdoExtension->Resources->Limit[i].Type != CmResourceTypeNull)
-                Count++;
+            if (PdoExtension->Resources->Limit[i].Type == CmResourceTypeNull)
+                continue;
+
+            /* A resizable BAR also asks for the larger sizes it can decode */
+            Count++;
+            Count += PciAddResizableBarRequirements(PdoExtension,
+                                                    i,
+                                                    &PdoExtension->Resources->Limit[i],
+                                                    NULL);
         }
     }
 
@@ -659,9 +666,15 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
             if (Limit[i].Type == CmResourceTypeNull)
                 continue;
 
+            /* The larger sizes of a resizable BAR come first, its default size is the fallback */
+            Resized = PciAddResizableBarRequirements(PdoExtension, i, &Limit[i], Descriptor);
+            Descriptor += Resized;
+
             /* A BAR decodes for one function only, so it cannot be shared */
             *Descriptor = Limit[i];
             Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+            if (Resized)
+                Descriptor->Option = IO_RESOURCE_ALTERNATIVE;
             Descriptor++;
         }
     }
@@ -1415,6 +1428,9 @@ PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 
     /* And whether it can raise message interrupts instead of a wired line */
     PciGetMessageCapabilities(PdoExtension);
+
+    /* And whether any of its BARs can be resized */
+    PciGetResizableBarCapability(PdoExtension);
 
     /* At the very end of all this, does this device not have power management? */
     if (PdoExtension->HackFlags & PCI_HACK_NO_PM_CAPS)
@@ -2394,6 +2410,13 @@ PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
     {
         /* Don't turn on the decode */
         PdoExtension->CommandEnables &= ~PCI_ENABLE_IO_SPACE;
+    }
+
+    /* A BAR size can only change with the decodes off, before the BAR gets its address */
+    if (PdoExtension->ResizableBarState.CapabilityPtr)
+    {
+        PciDecodeEnable(PdoExtension, FALSE, &PdoExtension->CommandEnables);
+        PciApplyResizableBarSizes(PdoExtension);
     }
 
     /* Update the device with the new settings */

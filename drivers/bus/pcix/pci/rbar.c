@@ -1,0 +1,258 @@
+/*
+ * PROJECT:     ReactOS PCI Bus Driver
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     PCI Express Resizable BAR Support
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+/* INCLUDES *******************************************************************/
+
+#include <pci.h>
+
+#define NDEBUG
+#include <debug.h>
+
+/* GLOBALS ********************************************************************/
+
+/* Size bits up to 2 GB, the largest power of two a memory descriptor length can hold */
+#define PCI_RBAR_DESCRIPTOR_SIZE_MASK   0x00000FFF
+
+#define PCI_RBAR_SIZE_TO_LENGTH(Bit)    (1UL << ((Bit) + 20))
+
+/* FUNCTIONS ******************************************************************/
+
+/**
+ * @brief
+ * Records which BARs of a new function can be resized and the sizes each
+ * of them supports.
+ *
+ * @param[in,out] PdoExtension
+ * The PDO extension of the function being enumerated.
+ */
+VOID
+NTAPI
+PciGetResizableBarCapability(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension)
+{
+    PPCI_RESIZABLE_BAR_STATE State = &PdoExtension->ResizableBarState;
+    PCI_EXPRESS_ENHANCED_CAPABILITY_HEADER Header;
+    ULONG Offset, Entry, EntryCount, Control, SizeMask, BarIndex;
+    PAGED_CODE();
+
+    RtlZeroMemory(State, sizeof(*State));
+
+    /* Bridges keep their windows after the first two BARs, so only endpoints are resized */
+    if (PdoExtension->HeaderType != PCI_DEVICE_TYPE)
+        return;
+
+    Offset = PciReadDeviceExtendedCapability(PdoExtension,
+                                             PCI_RBAR_EXTENDED_CAP_ID,
+                                             &Header,
+                                             sizeof(Header));
+    if (!Offset)
+        return;
+
+    /* Only the first control register holds the number of entries */
+    PciReadDeviceConfig(PdoExtension,
+                        &Control,
+                        Offset + PCI_RBAR_ENTRY_CONTROL(0),
+                        sizeof(Control));
+    EntryCount = (Control & PCI_RBAR_CONTROL_COUNT_MASK) >> PCI_RBAR_CONTROL_COUNT_SHIFT;
+    if (EntryCount > PCI_RBAR_MAX_ENTRIES)
+        EntryCount = PCI_RBAR_MAX_ENTRIES;
+
+    State->CapabilityPtr = (USHORT)Offset;
+
+    for (Entry = 0; Entry < EntryCount; Entry++)
+    {
+        PciReadDeviceConfig(PdoExtension,
+                            &SizeMask,
+                            Offset + PCI_RBAR_ENTRY_CAPABILITY(Entry),
+                            sizeof(SizeMask));
+        PciReadDeviceConfig(PdoExtension,
+                            &Control,
+                            Offset + PCI_RBAR_ENTRY_CONTROL(Entry),
+                            sizeof(Control));
+
+        SizeMask >>= PCI_RBAR_CAPABILITY_SIZES_SHIFT;
+        BarIndex = Control & PCI_RBAR_CONTROL_BAR_INDEX_MASK;
+
+        /* Skip entries with no sizes, a BAR that cannot exist, or a BAR already seen */
+        if (!SizeMask ||
+            (BarIndex >= PCI_RBAR_MAX_ENTRIES) ||
+            State->SizeMask[BarIndex])
+        {
+            continue;
+        }
+
+        State->SizeMask[BarIndex] = SizeMask;
+        State->EntryIndex[BarIndex] = (UCHAR)Entry;
+
+        DPRINT1("PCI: BAR %lu of %p is resizable, sizes 0x%08lx\n",
+                BarIndex,
+                PdoExtension,
+                SizeMask);
+    }
+}
+
+static
+VOID
+NTAPI
+PciFillResizedBarRequirement(
+    _Out_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ PIO_RESOURCE_DESCRIPTOR Limit,
+    _In_ ULONG Length,
+    _In_ UCHAR Option)
+{
+    *Descriptor = *Limit;
+    Descriptor->Option = Option;
+    Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+    Descriptor->u.Memory.Length = Length;
+    Descriptor->u.Memory.Alignment = Length;
+}
+
+/**
+ * @brief
+ * Writes the requirements for the sizes a resizable BAR can grow to. They
+ * go ahead of the default requirement, which the caller then lists as the
+ * alternative. The largest size is preferred, and the smallest supported
+ * size follows it when that is also bigger than the default.
+ *
+ * @param[in] PdoExtension
+ * The PDO extension of the function.
+ *
+ * @param[in] BarIndex
+ * The BAR the default requirement describes.
+ *
+ * @param[in] Limit
+ * The default requirement of the BAR.
+ *
+ * @param[out] Descriptors
+ * Receives up to two descriptors, or NULL to only count them.
+ *
+ * @return
+ * The number of descriptors written, which is 0 when the BAR cannot grow.
+ */
+ULONG
+NTAPI
+PciAddResizableBarRequirements(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_ ULONG BarIndex,
+    _In_ PIO_RESOURCE_DESCRIPTOR Limit,
+    _Out_writes_opt_(2) PIO_RESOURCE_DESCRIPTOR Descriptors)
+{
+    ULONG SizeMask, Largest, Smallest, Count;
+    PAGED_CODE();
+
+    if ((BarIndex >= PCI_RBAR_MAX_ENTRIES) || (Limit->Type != CmResourceTypeMemory))
+        return 0;
+
+    SizeMask = PdoExtension->ResizableBarState.SizeMask[BarIndex] &
+               PCI_RBAR_DESCRIPTOR_SIZE_MASK;
+    if (!SizeMask)
+        return 0;
+
+    Largest = PCI_RBAR_SIZE_TO_LENGTH(RtlFindMostSignificantBit(SizeMask));
+    if (Largest <= Limit->u.Memory.Length)
+        return 0;
+
+    if (Descriptors)
+        PciFillResizedBarRequirement(&Descriptors[0], Limit, Largest, IO_RESOURCE_PREFERRED);
+    Count = 1;
+
+    Smallest = PCI_RBAR_SIZE_TO_LENGTH(RtlFindLeastSignificantBit(SizeMask));
+    if ((Smallest > Limit->u.Memory.Length) && (Smallest < Largest))
+    {
+        if (Descriptors)
+        {
+            PciFillResizedBarRequirement(&Descriptors[1],
+                                         Limit,
+                                         Smallest,
+                                         IO_RESOURCE_ALTERNATIVE);
+        }
+        Count++;
+    }
+
+    return Count;
+}
+
+static
+VOID
+NTAPI
+PciSelectResizableBarSize(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_ ULONG BarIndex,
+    _In_ ULONG Length)
+{
+    PPCI_RESIZABLE_BAR_STATE State = &PdoExtension->ResizableBarState;
+    ULONG Megabytes, SizeBit, Control, Offset;
+    PAGED_CODE();
+
+    /* Only a power of two of at least a megabyte can be named in the size field */
+    Megabytes = Length >> 20;
+    if (!Megabytes || (Megabytes & (Megabytes - 1)) || (Length & 0xFFFFF))
+        return;
+
+    if (!(State->SizeMask[BarIndex] & Megabytes))
+        return;
+
+    SizeBit = (ULONG)RtlFindMostSignificantBit(Megabytes);
+
+    Offset = State->CapabilityPtr + PCI_RBAR_ENTRY_CONTROL(State->EntryIndex[BarIndex]);
+    PciReadDeviceConfig(PdoExtension, &Control, Offset, sizeof(Control));
+    if (((Control & PCI_RBAR_CONTROL_SIZE_MASK) >> PCI_RBAR_CONTROL_SIZE_SHIFT) == SizeBit)
+        return;
+
+    Control &= ~PCI_RBAR_CONTROL_SIZE_MASK;
+    Control |= SizeBit << PCI_RBAR_CONTROL_SIZE_SHIFT;
+    PciWriteDeviceConfig(PdoExtension, &Control, Offset, sizeof(Control));
+
+    DPRINT1("PCI: BAR %lu of %p resized to %lu MB\n", BarIndex, PdoExtension, Megabytes);
+}
+
+/**
+ * @brief
+ * Sets every resizable BAR to the length it was assigned. The memory decode
+ * has to be off, since the size field changes what the BAR decodes.
+ *
+ * @param[in] PdoExtension
+ * The PDO extension of the function whose resources are being set.
+ */
+VOID
+NTAPI
+PciApplyResizableBarSizes(
+    _In_ PPCI_PDO_EXTENSION PdoExtension)
+{
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Current;
+    USHORT Command;
+    ULONG BarIndex;
+    PAGED_CODE();
+
+    if (!PdoExtension->ResizableBarState.CapabilityPtr || !PdoExtension->Resources)
+        return;
+
+    /* A function whose decodes could not be turned off keeps the sizes it has */
+    PciReadDeviceConfig(PdoExtension,
+                        &Command,
+                        FIELD_OFFSET(PCI_COMMON_HEADER, Command),
+                        sizeof(Command));
+    if (Command & PCI_ENABLE_MEMORY_SPACE)
+    {
+        DPRINT1("PCI: Memory decode of %p is still on, not resizing BARs\n", PdoExtension);
+        return;
+    }
+
+    for (BarIndex = 0; BarIndex < PCI_RBAR_MAX_ENTRIES; BarIndex++)
+    {
+        if (!PdoExtension->ResizableBarState.SizeMask[BarIndex])
+            continue;
+
+        Current = &PdoExtension->Resources->Current[BarIndex];
+        if (Current->Type != CmResourceTypeMemory)
+            continue;
+
+        PciSelectResizableBarSize(PdoExtension, BarIndex, Current->u.Memory.Length);
+    }
+}
+
+/* EOF */

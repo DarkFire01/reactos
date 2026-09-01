@@ -105,6 +105,20 @@
 #define PCI_MSIX_OFFSET_MASK                0xFFFFFFF8
 
 //
+// Resizable BAR extended capability, one capability and control register pair per BAR
+//
+#define PCI_RBAR_EXTENDED_CAP_ID            0x0015
+#define PCI_RBAR_MAX_ENTRIES                6
+#define PCI_RBAR_ENTRY_CAPABILITY(n)        (0x04 + ((n) * 8))
+#define PCI_RBAR_ENTRY_CONTROL(n)           (0x08 + ((n) * 8))
+#define PCI_RBAR_CAPABILITY_SIZES_SHIFT     4
+#define PCI_RBAR_CONTROL_BAR_INDEX_MASK     0x00000007
+#define PCI_RBAR_CONTROL_COUNT_MASK         0x000000E0
+#define PCI_RBAR_CONTROL_COUNT_SHIFT        5
+#define PCI_RBAR_CONTROL_SIZE_MASK          0x00003F00
+#define PCI_RBAR_CONTROL_SIZE_SHIFT         8
+
+//
 // PCI Arbiter Interface Version
 //
 #define ARBITER_INTERFACE_VERSION           0
@@ -235,6 +249,16 @@ typedef struct _PCI_MESSAGE_INFO
     UCHAR TableBarIndex;
     ULONG TableBarOffset;
 } PCI_MESSAGE_INFO, *PPCI_MESSAGE_INFO;
+
+//
+// Resizable BAR State of a Device, indexed by BAR
+//
+typedef struct _PCI_RESIZABLE_BAR_STATE
+{
+    USHORT CapabilityPtr;
+    ULONG SizeMask[PCI_RBAR_MAX_ENTRIES];
+    UCHAR EntryIndex[PCI_RBAR_MAX_ENTRIES];
+} PCI_RESIZABLE_BAR_STATE, *PPCI_RESIZABLE_BAR_STATE;
 
 //
 // Power State Information for Device Extension
@@ -398,6 +422,7 @@ typedef struct _PCI_PDO_EXTENSION
     UCHAR ExpressDeviceType;
     BOOLEAN IsExtendedConfigReachable;
     PCI_MESSAGE_INFO MessageInfo;
+    PCI_RESIZABLE_BAR_STATE ResizableBarState;
 } PCI_PDO_EXTENSION, *PPCI_PDO_EXTENSION;
 
 //
@@ -1310,6 +1335,24 @@ NTAPI
 PciProgramGrantedInterrupt(
     _Inout_ PPCI_PDO_EXTENSION PdoExtension,
     _In_opt_ PCM_RESOURCE_LIST ResourceList);
+
+VOID
+NTAPI
+PciGetResizableBarCapability(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension);
+
+ULONG
+NTAPI
+PciAddResizableBarRequirements(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_ ULONG BarIndex,
+    _In_ PIO_RESOURCE_DESCRIPTOR Limit,
+    _Out_writes_opt_(2) PIO_RESOURCE_DESCRIPTOR Descriptors);
+
+VOID
+NTAPI
+PciApplyResizableBarSizes(
+    _In_ PPCI_PDO_EXTENSION PdoExtension);
 
 BOOLEAN
 NTAPI
