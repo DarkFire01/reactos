@@ -212,6 +212,14 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     /* Loop all the PCI function resources */
     for (i = 0; i < RTL_NUMBER_OF(ResourceArray); i++)
     {
+        /*
+         * Nothing was asked for at this index, so nothing can have been
+         * assigned to it. A bridge's forwarding windows come through here:
+         * they keep whatever the firmware programmed, and clearing them would
+         * cut off everything on the bus behind the bridge.
+         */
+        if (!PciIsRequirementDescriptor(&PciResources->Limit[i])) continue;
+
         /* Get the current function resource descriptor, and the new one */
         CurrentDescriptor = &PciResources->Current[i];
         Partial = &ResourceArray[i];
