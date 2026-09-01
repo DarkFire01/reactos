@@ -18,6 +18,10 @@
     (FIELD_OFFSET(INTERRUPT_CONNECTION_DATA, Vectors) + \
      ((Count) * sizeof(INTERRUPT_VECTOR_DATA)))
 
+#define PCI_MESSAGE_POLICY_KEY      L"Interrupt Management\\MessageSignaledInterruptProperties"
+#define PCI_MSI_MAX_LEVEL_MESSAGES  16
+#define PCI_MAX_REQUESTED_MESSAGES  32
+
 /* The interrupt arbiter publishes the messages it granted under this property */
 static const DEVPROPKEY PciInterruptConnectionDataKey =
 {
@@ -349,6 +353,124 @@ PciSelectMessageType(
 
     if (MessageInfo->MsiCap.CapabilityPtr)
         MessageInfo->Type = PciMessageMsi;
+}
+
+static
+NTSTATUS
+NTAPI
+PciReadMessagePolicyDword(
+    _In_ HANDLE DeviceKey,
+    _In_ PWCHAR ValueName,
+    _Out_ PULONG Value)
+{
+    NTSTATUS Status;
+    PULONG Buffer;
+    ULONG Length;
+    PAGED_CODE();
+
+    Status = PciGetRegistryValue(ValueName,
+                                 PCI_MESSAGE_POLICY_KEY,
+                                 DeviceKey,
+                                 REG_DWORD,
+                                 (PVOID*)&Buffer,
+                                 &Length);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (Length >= sizeof(ULONG))
+        *Value = *Buffer;
+    else
+        Status = STATUS_BUFFER_TOO_SMALL;
+
+    ExFreePoolWithTag(Buffer, 0);
+    return Status;
+}
+
+/**
+ * @brief
+ * Works out how many messages to ask the interrupt arbiter for.
+ *
+ * @param[in] PdoExtension
+ * The PDO extension of the function.
+ *
+ * @param[in] HasLineInterrupt
+ * TRUE if the function also asks for a wired interrupt line.
+ *
+ * @return
+ * The number of messages to request, or 0 to only use the wired line.
+ */
+ULONG
+NTAPI
+PciGetRequestableMessageCount(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_ BOOLEAN HasLineInterrupt)
+{
+    PPCI_MESSAGE_INFO MessageInfo = &PdoExtension->MessageInfo;
+    PCI_CAPABILITIES_HEADER Header;
+    HANDLE DeviceKey;
+    NTSTATUS Status;
+    ULONG Count, Value;
+    BOOLEAN IsExpressPort;
+    PAGED_CODE();
+
+    if (MessageInfo->Type == PciMessageNone)
+        return 0;
+
+    /* Some chipsets cannot forward messages from AGP devices, so none of them get any */
+    if (PdoExtension->CapabilitiesPtr &&
+        PciReadDeviceCapability(PdoExtension,
+                                PdoExtension->CapabilitiesPtr,
+                                PCI_CAPABILITY_ID_AGP,
+                                &Header,
+                                sizeof(Header)))
+    {
+        return 0;
+    }
+
+    if (!NT_SUCCESS(IoOpenDeviceRegistryKey(PdoExtension->PhysicalDeviceObject,
+                                            PLUGPLAY_REGKEY_DEVICE,
+                                            KEY_READ,
+                                            &DeviceKey)))
+    {
+        return 0;
+    }
+
+    /* With a wired line to fall back on, the driver has to opt in to messages */
+    IsExpressPort = (PdoExtension->ExpressDeviceType == PciExpressRootPort) ||
+                    (PdoExtension->ExpressDeviceType == PciExpressDownstreamSwitchPort);
+    if (HasLineInterrupt && !IsExpressPort)
+    {
+        Status = PciReadMessagePolicyDword(DeviceKey, L"MSISupported", &Value);
+        if (!NT_SUCCESS(Status) || !Value)
+        {
+            ZwClose(DeviceKey);
+            return 0;
+        }
+    }
+
+    if (MessageInfo->Type == PciMessageMsiX)
+        Count = MessageInfo->MsiXCap.RequestedCount;
+    else
+        Count = MessageInfo->MsiCap.RequestedCount;
+
+    Status = PciReadMessagePolicyDword(DeviceKey, L"MessageNumberLimit", &Value);
+    ZwClose(DeviceKey);
+
+    if (Status == STATUS_BUFFER_TOO_SMALL)
+        return 0;
+
+    if (NT_SUCCESS(Status) && (Value < Count))
+        Count = Value;
+
+    /* An MSI run has to fit inside one interrupt level */
+    if ((MessageInfo->Type == PciMessageMsi) && (Count > PCI_MSI_MAX_LEVEL_MESSAGES))
+        Count = PCI_MSI_MAX_LEVEL_MESSAGES;
+
+    /* The interrupt arbiter reserves at most this many messages for one request */
+    if (Count > PCI_MAX_REQUESTED_MESSAGES)
+        Count = PCI_MAX_REQUESTED_MESSAGES;
+
+    return Count;
 }
 
 /* Turns one granted message into the address and data the device writes to raise it */

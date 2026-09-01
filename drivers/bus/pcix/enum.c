@@ -567,6 +567,26 @@ PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_NOT_IMPLEMENTED;
 }
 
+static
+VOID
+NTAPI
+PciFillMessageRequirement(
+    _Out_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ ULONG MessageCount,
+    _In_ BOOLEAN HasLineFallback)
+{
+    Descriptor->Type = CmResourceTypeInterrupt;
+    Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+    Descriptor->Flags = CM_RESOURCE_INTERRUPT_LATCHED | CM_RESOURCE_INTERRUPT_MESSAGE;
+
+    /* Otherwise the arbiter ranks the wired line ahead of the messages */
+    if (HasLineFallback)
+        Descriptor->Option = IO_RESOURCE_PREFERRED;
+
+    Descriptor->u.Interrupt.MinimumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN - MessageCount + 1;
+    Descriptor->u.Interrupt.MaximumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
+}
+
 /**
  * @brief
  * Tells whether a discovered limit asks the arbiter for a range.
@@ -597,7 +617,7 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
     PIO_RESOURCE_DESCRIPTOR Descriptor, Limit;
     PCI_CONFIGURATOR_CONTEXT Context;
-    ULONG Count, i;
+    ULONG Count, i, Messages;
     BOOLEAN HaveInterrupt;
 
     PAGED_CODE();
@@ -617,6 +637,13 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     HaveInterrupt = (PdoExtension->InterruptPin) &&
                     !(PdoExtension->HackFlags & PCI_HACK_NO_ENUM_AT_ALL);
     if (HaveInterrupt)
+        Count++;
+
+    /* Messages are asked for first, with a single message as the fallback for a run */
+    Messages = PciGetRequestableMessageCount(PdoExtension, HaveInterrupt);
+    if (Messages > 1)
+        Count += 2;
+    else if (Messages)
         Count++;
 
     /* And a bridge with legacy decodes enabled needs those ranges locked down */
@@ -667,11 +694,29 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
         }
     }
 
+    /* The message count is the span below the message token */
+    if (Messages > 1)
+    {
+        PciFillMessageRequirement(Descriptor, Messages, HaveInterrupt);
+        Descriptor++;
+    }
+
+    if (Messages)
+    {
+        PciFillMessageRequirement(Descriptor, 1, HaveInterrupt);
+        if (Messages > 1)
+            Descriptor->Option = IO_RESOURCE_ALTERNATIVE;
+        Descriptor++;
+    }
+
+    /* The wired line becomes the last resort once messages are offered */
     if (HaveInterrupt)
     {
         Descriptor->Type = CmResourceTypeInterrupt;
         Descriptor->ShareDisposition = CmResourceShareShared;
         Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+        if (Messages)
+            Descriptor->Option = IO_RESOURCE_ALTERNATIVE;
         Descriptor->u.Interrupt.MinimumVector = 0;
         Descriptor->u.Interrupt.MaximumVector = MAXULONG;
         Descriptor++;

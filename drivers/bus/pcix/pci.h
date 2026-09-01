@@ -1313,6 +1313,12 @@ NTAPI
 PciSelectMessageType(
     _Inout_ PPCI_PDO_EXTENSION PdoExtension);
 
+ULONG
+NTAPI
+PciGetRequestableMessageCount(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_ BOOLEAN HasLineInterrupt);
+
 NTSTATUS
 NTAPI
 PciProgramMessageInterrupt(
