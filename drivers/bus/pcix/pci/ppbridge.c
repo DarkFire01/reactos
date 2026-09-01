@@ -674,8 +674,13 @@ PPBridge_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
                      IN PPCI_COMMON_HEADER PciData)
 {
     UNREFERENCED_PARAMETER(PdoExtension);
-    UNREFERENCED_PARAMETER(PciData);
-    UNIMPLEMENTED_DBGBREAK();
+
+    /*
+     * Unlike a plain device, a bridge has one piece of state the caller does
+     * not deal with: it must not be left holding the bus behind it in reset,
+     * or nothing on that bus would ever answer again.
+     */
+    PciData->u.type1.BridgeControl &= ~PCI_ASSERT_BRIDGE_RESET;
 }
 
 /*

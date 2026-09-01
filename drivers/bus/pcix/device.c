@@ -285,8 +285,13 @@ Device_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
 {
     UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(PciData);
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
+
+    /*
+     * Nothing here. A plain device keeps all of its state in the header the
+     * caller is about to write out in full - the decodes, the BARs, the
+     * interrupt line, and a status word it clears on the way past - so coming
+     * out of a reset leaves it nothing of its own to undo.
+     */
 }
 
 VOID
