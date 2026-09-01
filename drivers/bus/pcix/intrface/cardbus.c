@@ -35,7 +35,13 @@ NTAPI
 Cardbus_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     UNREFERENCED_PARAMETER(Context);
-    UNIMPLEMENTED_DBGBREAK();
+
+    /*
+     * CardBus is not configured by this driver. A CardBus bridge is left
+     * exactly as the firmware programmed it: it keeps whatever windows it was
+     * given, no resources are discovered for it and none are assigned to it,
+     * so it neither loses what it has nor takes anything from anyone else.
+     */
 }
 
 VOID
@@ -43,7 +49,8 @@ NTAPI
 Cardbus_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     UNREFERENCED_PARAMETER(Context);
-    UNIMPLEMENTED_DBGBREAK();
+
+    /* No limits are discovered, so nothing is ever asked for on its behalf */
 }
 
 VOID
@@ -51,7 +58,8 @@ NTAPI
 Cardbus_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     UNREFERENCED_PARAMETER(Context);
-    UNIMPLEMENTED_DBGBREAK();
+
+    /* Nothing is probed, so the header needs no preparing for a probe */
 }
 
 VOID
@@ -59,7 +67,8 @@ NTAPI
 Cardbus_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     UNREFERENCED_PARAMETER(Context);
-    UNIMPLEMENTED_DBGBREAK();
+
+    /* Nothing was changed for the probe, so nothing needs putting back */
 }
 
 VOID
@@ -71,7 +80,8 @@ Cardbus_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(PciData);
     UNREFERENCED_PARAMETER(IoDescriptor);
-    UNIMPLEMENTED_DBGBREAK();
+
+    /* No extra ranges are claimed for a bridge that is not configured */
 }
 
 VOID
@@ -81,7 +91,8 @@ Cardbus_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
 {
     UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(PciData);
-    UNIMPLEMENTED_DBGBREAK();
+
+    /* Nothing was programmed into it, so a reset leaves nothing to redo */
 }
 
 VOID
@@ -91,7 +102,8 @@ Cardbus_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 {
     UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(PciData);
-    UNIMPLEMENTED_DBGBREAK();
+
+    /* The windows the firmware programmed are left exactly as they are */
 }
 
 NTSTATUS
@@ -120,9 +132,12 @@ pcicbintrf_Constructor(IN PVOID DeviceExtension,
     UNREFERENCED_PARAMETER(Size);
     UNREFERENCED_PARAMETER(Interface);
 
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_IMPLEMENTED;
+    /*
+     * Not provided. A CardBus driver told this is unavailable does without it,
+     * where stopping here would take the whole machine down with a bridge that
+     * may well have nothing plugged into it.
+     */
+    return STATUS_NOT_SUPPORTED;
 }
 
 /* EOF */
