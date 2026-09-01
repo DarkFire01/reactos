@@ -56,9 +56,12 @@ lddintrf_Constructor(IN PVOID DeviceExtension,
     UNREFERENCED_PARAMETER(Size);
     UNREFERENCED_PARAMETER(Interface);
 
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_IMPLEMENTED;
+    /*
+     * Not provided. Declining is the whole answer a caller needs: the query
+     * fails, and whoever asked falls back to doing without, which is what it
+     * would have to do on a machine whose bus driver never offered this.
+     */
+    return STATUS_NOT_SUPPORTED;
 }
 
 /* EOF */

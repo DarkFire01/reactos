@@ -60,9 +60,12 @@ routeintrf_Constructor(IN PVOID DeviceExtension,
     /* Only version 1 is supported */
     if (Version != PCI_INT_ROUTE_INTRF_STANDARD_VER) return STATUS_NOINTERFACE;
 
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_IMPLEMENTED;
+    /*
+     * Not provided. Declining is the whole answer a caller needs: the query
+     * fails, and whoever asked falls back to doing without, which is what it
+     * would have to do on a machine whose bus driver never offered this.
+     */
+    return STATUS_NOT_SUPPORTED;
 }
 
 NTSTATUS
