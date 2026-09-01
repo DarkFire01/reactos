@@ -175,12 +175,57 @@ PciFdoIrpRemoveDevice(IN PIRP Irp,
                       IN PIO_STACK_LOCATION IoStackLocation,
                       IN PPCI_FDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PDEVICE_OBJECT DeviceObject, AttachedDeviceObject;
+    PSINGLE_LIST_ENTRY Entry;
+    NTSTATUS Status;
+    PAGED_CODE();
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    UNREFERENCED_PARAMETER(IoStackLocation);
+
+    /* The bus is going, so it must stop answering for anything on it */
+    if (DeviceExtension->DeviceState != PciDeleted)
+    {
+        if (DeviceExtension->TentativeNextState == DeviceExtension->DeviceState)
+        {
+            PciBeginStateTransition(DeviceExtension, PciDeleted);
+        }
+
+        PciCommitStateTransition(DeviceExtension, PciDeleted);
+    }
+
+    /*
+     * Take it off the list of buses before anything else, so that nothing
+     * looking a bus up by number can still find this one while it comes apart.
+     */
+    KeEnterCriticalRegion();
+    KeWaitForSingleObject(&PciGlobalLock, Executive, KernelMode, FALSE, NULL);
+
+    for (Entry = &PciFdoExtensionListHead; Entry->Next; Entry = Entry->Next)
+    {
+        if (Entry->Next == &DeviceExtension->List)
+        {
+            Entry->Next = DeviceExtension->List.Next;
+            break;
+        }
+    }
+
+    KeSetEvent(&PciGlobalLock, IO_NO_INCREMENT, FALSE);
+    KeLeaveCriticalRegion();
+
+    /*
+     * The rest of the stack has to see the removal before this end of it goes
+     * away, so the request goes down first and is completed down there. The
+     * device object can only be taken apart once it comes back.
+     */
+    DeviceObject = DeviceExtension->FunctionalDeviceObject;
+    AttachedDeviceObject = DeviceExtension->AttachedDeviceObject;
+
+    Irp->IoStatus.Status = STATUS_SUCCESS;
+    Status = PciPassIrpFromFdoToPdo(DeviceExtension, Irp);
+
+    IoDetachDevice(AttachedDeviceObject);
+    IoDeleteDevice(DeviceObject);
+    return Status;
 }
 
 NTSTATUS
