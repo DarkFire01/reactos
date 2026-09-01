@@ -569,6 +569,7 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
     PIO_RESOURCE_DESCRIPTOR Descriptor, Limit;
     PCI_CONFIGURATOR_CONTEXT Context;
+    ULONGLONG Resized;
     ULONG Count, i, Messages;
     BOOLEAN HaveInterrupt;
 
@@ -580,8 +581,17 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     {
         for (i = 0; i < (PCI_TYPE0_ADDRESSES + 1); i++)
         {
-            if (PdoExtension->Resources->Limit[i].Type != CmResourceTypeNull)
+            if (PdoExtension->Resources->Limit[i].Type == CmResourceTypeNull)
+                continue;
+            Count++;
+
+            /* A resizable BAR is offered at two sizes, so it needs two of them */
+            if (PciResizableBarRequirement(PdoExtension,
+                                           i,
+                                           &PdoExtension->Resources->Limit[i]))
+            {
                 Count++;
+            }
         }
     }
 
@@ -636,9 +646,29 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
             if (Limit[i].Type == CmResourceTypeNull)
                 continue;
 
-            /* A BAR decodes for one function only, so it cannot be shared */
+            /*
+             * A resizable BAR is asked for at the largest size it can decode
+             * first, so a machine with room gives the device its whole memory
+             * rather than the small window it would otherwise default to.
+             */
+            Resized = PciResizableBarRequirement(PdoExtension, i, &Limit[i]);
+            if (Resized)
+            {
+                *Descriptor = Limit[i];
+                Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+                Descriptor->u.Memory.Length = (ULONG)Resized;
+                Descriptor->u.Memory.Alignment = (ULONG)Resized;
+                Descriptor++;
+            }
+
+            /*
+             * Then the size the BAR reads back as. A resizable BAR lists this
+             * as the alternative to the large window above, so a machine with
+             * no room for that still ends up with a working device.
+             */
             *Descriptor = Limit[i];
             Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+            if (Resized) Descriptor->Option = IO_RESOURCE_ALTERNATIVE;
             Descriptor++;
         }
     }
@@ -1403,6 +1433,9 @@ PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 
     /* And whether it can raise message interrupts instead of a wired line */
     PciGetMessageCapabilities(PdoExtension);
+
+    /* And whether any of its windows can be made bigger than they read back */
+    PciResizableBarInitialize(PdoExtension);
 
     /* At the very end of all this, does this device not have power management? */
     if (PdoExtension->HackFlags & PCI_HACK_NO_PM_CAPS)
@@ -2382,6 +2415,18 @@ PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
     {
         /* Don't turn on the decode */
         PdoExtension->CommandEnables &= ~PCI_ENABLE_IO_SPACE;
+    }
+
+    /*
+     * A resizable BAR has to be told how much to decode before it is given an
+     * address, and changing that is only legal while the decode is off. Turn
+     * the decodes off here; the hardware update below leaves them off while it
+     * writes the header and turns them back on when it is done.
+     */
+    if (PdoExtension->ResizableBar.CapabilityPtr)
+    {
+        PciDecodeEnable(PdoExtension, FALSE, &PdoExtension->CommandEnables);
+        PciResizableBarApplySettings(PdoExtension);
     }
 
     /* Update the device with the new settings */
