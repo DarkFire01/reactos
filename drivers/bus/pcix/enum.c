@@ -1683,20 +1683,23 @@ PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
     PhysicalDeviceObject = DeviceExtension->PhysicalDeviceObject;
     PdoExtension = (PPCI_PDO_EXTENSION)PhysicalDeviceObject->DeviceExtension;
 
-    /* Cheeck if this is the root bus */
+    /* Check if this is the root bus */
     if (!PCI_IS_ROOT_FDO(DeviceExtension))
     {
-        /* Not really handling this year */
-        UNIMPLEMENTED_DBGBREAK();
-
         /* Check for PCI bridges with the ISA bit set, or required */
         if ((PdoExtension) &&
             (PciClassifyDeviceType(PdoExtension) == PciTypePciBridge) &&
             ((PdoExtension->Dependent.type1.IsaBitRequired) ||
              (PdoExtension->Dependent.type1.IsaBitSet)))
         {
-            /* We'll need to do some legacy support */
-            UNIMPLEMENTED_DBGBREAK();
+            /*
+             * The bridge only forwards the top 768 bytes of each 1KB of I/O
+             * space, so the ranges behind it have to be kept clear of the
+             * aliases the ISA devices in front of it answer to. Nothing here
+             * does that yet, so say so rather than assign into them silently.
+             */
+            DPRINT1("PCI - bridge FDO ext 0x%p decodes legacy ISA ranges\n",
+                    DeviceExtension);
         }
     }
     else
@@ -1709,17 +1712,31 @@ PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
             /* Find any that have the VGA decode bit on */
             if (PdoExtension->Dependent.type1.VgaBitSet)
             {
-                /* Again, some more legacy support we'll have to do */
-                UNIMPLEMENTED_DBGBREAK();
+                /* The same goes for the legacy VGA ranges behind a bridge */
+                DPRINT1("PCI - bridge PDO ext 0x%p decodes legacy VGA ranges\n",
+                        PdoExtension);
             }
         }
     }
 
-    /* Check for ACPI systems where the OS assigns bus numbers */
+    /*
+     * On a system whose firmware hands bus numbering to the operating system,
+     * a bridge the firmware left unnumbered would have to be numbered here.
+     * Renumbering is not implemented, so such a bridge is reported rather than
+     * quietly left with nothing behind it.
+     */
     if (PciAssignBusNumbers)
     {
-        /* Not yet supported */
-        UNIMPLEMENTED_DBGBREAK();
+        for (PdoExtension = DeviceExtension->ChildBridgePdoList;
+             PdoExtension;
+             PdoExtension = PdoExtension->NextBridge)
+        {
+            if (!PciAreBusNumbersConfigured(PdoExtension))
+            {
+                DPRINT1("PCI - bridge PDO ext 0x%p has no bus numbers assigned\n",
+                        PdoExtension);
+            }
+        }
     }
 }
 
