@@ -84,8 +84,11 @@ PciVerifierProfileChangeCallback(IN PVOID NotificationStructure,
     UNREFERENCED_PARAMETER(NotificationStructure);
     UNREFERENCED_PARAMETER(Context);
 
-    /* This function is not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
+    /*
+     * A hardware profile change is where the verifier would re-examine the
+     * firmware's description of the buses against what is really there. That
+     * comparison is not made, so the notification is simply accepted.
+     */
     return STATUS_SUCCESS;
 }
 
