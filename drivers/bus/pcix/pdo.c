@@ -594,12 +594,18 @@ PciPdoIrpDeviceUsageNotification(IN PIRP Irp,
                                  IN PIO_STACK_LOCATION IoStackLocation,
                                  IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PAGED_CODE();
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    UNREFERENCED_PARAMETER(Irp);
+
+    /*
+     * Record it against the device, and against the bus it sits on: both have
+     * to stay where they are for as long as anything depends on the device.
+     */
+    PciApplyDeviceUsage(&DeviceExtension->PowerState, IoStackLocation);
+    PciApplyDeviceUsage(&DeviceExtension->ParentFdoExtension->PowerState,
+                        IoStackLocation);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
