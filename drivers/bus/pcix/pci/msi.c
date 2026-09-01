@@ -530,6 +530,38 @@ PciProgramMsiX(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_SUCCESS;
 }
 
+
+PCM_PARTIAL_RESOURCE_DESCRIPTOR
+NTAPI
+PciFindMessageInterruptResource(IN PCM_RESOURCE_LIST ResourceList)
+{
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial;
+    PCM_FULL_RESOURCE_DESCRIPTOR FullList;
+    ULONG i, j;
+
+    if (!ResourceList) return NULL;
+
+    FullList = ResourceList->List;
+    for (i = 0; i < ResourceList->Count; i++)
+    {
+        Partial = FullList->PartialResourceList.PartialDescriptors;
+        for (j = 0; j < FullList->PartialResourceList.Count; j++)
+        {
+            if ((Partial->Type == CmResourceTypeInterrupt) &&
+                (Partial->Flags & CM_RESOURCE_INTERRUPT_MESSAGE))
+            {
+                return Partial;
+            }
+
+            Partial = CmiGetNextPartialDescriptor(Partial);
+        }
+
+        FullList = (PVOID)Partial;
+    }
+
+    return NULL;
+}
+
 NTSTATUS
 NTAPI
 PciProgramMessageInterrupt(IN PPCI_PDO_EXTENSION PdoExtension,
