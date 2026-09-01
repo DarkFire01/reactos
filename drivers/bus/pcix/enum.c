@@ -560,6 +560,39 @@ PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_NOT_IMPLEMENTED;
 }
 
+/*
+ * The range the firmware already programmed into one BAR, or NULL when it left
+ * the BAR unset or gave it something the BAR cannot actually decode. What comes
+ * back is offered to the arbiter as the preferred placement for that BAR.
+ */
+PCM_PARTIAL_RESOURCE_DESCRIPTOR
+NTAPI
+PciBootConfigRequirement(IN PPCI_PDO_EXTENSION PdoExtension,
+                         IN ULONG BarIndex)
+{
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Current;
+    PIO_RESOURCE_DESCRIPTOR Limit;
+
+    if (!PdoExtension->Resources) return NULL;
+
+    Current = &PdoExtension->Resources->Current[BarIndex];
+    Limit = &PdoExtension->Resources->Limit[BarIndex];
+
+    /* Only a BAR the firmware set to something is worth asking to keep */
+    if (Current->Type != Limit->Type) return NULL;
+    if (!Current->u.Generic.Start.QuadPart) return NULL;
+
+    /* And only when it set it to a range the BAR can really decode */
+    if (Current->u.Generic.Length != Limit->u.Generic.Length) return NULL;
+    if ((ULONGLONG)Current->u.Generic.Start.QuadPart >
+        (ULONGLONG)Limit->u.Generic.MaximumAddress.QuadPart)
+    {
+        return NULL;
+    }
+
+    return Current;
+}
+
 NTSTATUS
 NTAPI
 PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
@@ -568,11 +601,11 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
 {
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
     PIO_RESOURCE_DESCRIPTOR Descriptor, Limit;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Current;
     PCI_CONFIGURATOR_CONTEXT Context;
     ULONGLONG Resized;
     ULONG Count, i, Messages;
-    BOOLEAN HaveInterrupt;
-
+    BOOLEAN HaveInterrupt, Alternative;
     PAGED_CODE();
 
     /* Count the BAR limits that resource discovery found for this function */
@@ -585,7 +618,11 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
                 continue;
             Count++;
 
-            /* A resizable BAR is offered at two sizes, so it needs two of them */
+            /* Where the firmware already placed the BAR, that placement is
+               offered as well, so it needs a descriptor of its own */
+            if (PciBootConfigRequirement(PdoExtension, i)) Count++;
+
+            /* And a resizable BAR is offered at a second, larger size */
             if (PciResizableBarRequirement(PdoExtension,
                                            i,
                                            &PdoExtension->Resources->Limit[i]))
@@ -646,10 +683,32 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
             if (Limit[i].Type == CmResourceTypeNull)
                 continue;
 
+            Alternative = FALSE;
+
             /*
-             * A resizable BAR is asked for at the largest size it can decode
-             * first, so a machine with room gives the device its whole memory
-             * rather than the small window it would otherwise default to.
+             * Ask first for exactly the range the firmware already programmed
+             * into this BAR. Moving a device that is working where it is buys
+             * nothing and risks a great deal, so that placement is preferred
+             * and everything below it is only a fallback.
+             */
+            Current = PciBootConfigRequirement(PdoExtension, i);
+            if (Current)
+            {
+                *Descriptor = Limit[i];
+                Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+                Descriptor->Option = IO_RESOURCE_PREFERRED;
+                Descriptor->u.Generic.MinimumAddress = Current->u.Generic.Start;
+                Descriptor->u.Generic.MaximumAddress.QuadPart =
+                    Current->u.Generic.Start.QuadPart +
+                    Current->u.Generic.Length - 1;
+                Descriptor++;
+                Alternative = TRUE;
+            }
+
+            /*
+             * Then, for a resizable BAR, the largest size it can decode, so a
+             * machine with room can give the device its whole memory rather
+             * than the small window it would otherwise default to.
              */
             Resized = PciResizableBarRequirement(PdoExtension, i, &Limit[i]);
             if (Resized)
@@ -658,17 +717,18 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
                 Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
                 Descriptor->u.Memory.Length = (ULONG)Resized;
                 Descriptor->u.Memory.Alignment = (ULONG)Resized;
+                if (Alternative) Descriptor->Option = IO_RESOURCE_ALTERNATIVE;
                 Descriptor++;
+                Alternative = TRUE;
             }
 
             /*
-             * Then the size the BAR reads back as. A resizable BAR lists this
-             * as the alternative to the large window above, so a machine with
-             * no room for that still ends up with a working device.
+             * And last the size the BAR reads back as, placed anywhere it will
+             * go. This is what a device gets when neither of the above fits.
              */
             *Descriptor = Limit[i];
             Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
-            if (Resized) Descriptor->Option = IO_RESOURCE_ALTERNATIVE;
+            if (Alternative) Descriptor->Option = IO_RESOURCE_ALTERNATIVE;
             Descriptor++;
         }
     }
