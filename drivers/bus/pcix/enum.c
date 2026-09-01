@@ -1368,6 +1368,9 @@ PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
     /* Now find out whether this is an Express function, and what kind */
     PciGetExpressCapabilities(PdoExtension);
 
+    /* And whether it can raise message interrupts instead of a wired line */
+    PciGetMessageCapabilities(PdoExtension);
+
     /* At the very end of all this, does this device not have power management? */
     if (PdoExtension->HackFlags & PCI_HACK_NO_PM_CAPS)
     {

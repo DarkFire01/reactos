@@ -79,6 +79,31 @@
 #define PCI_EXTENDED_CONFIG_LENGTH          0x1000
 
 //
+// MSI Message Control register
+//
+#define PCI_MSI_CONTROL_ENABLE              0x0001
+#define PCI_MSI_CONTROL_MMC_MASK            0x000E
+#define PCI_MSI_CONTROL_MMC_SHIFT           1
+#define PCI_MSI_CONTROL_MME_MASK            0x0070
+#define PCI_MSI_CONTROL_MME_SHIFT           4
+#define PCI_MSI_CONTROL_64BIT               0x0080
+#define PCI_MSI_CONTROL_MASKING             0x0100
+
+//
+// MSI-X Message Control register, and its table and pending-bit pointers
+//
+#define PCI_MSIX_CONTROL_TABLE_SIZE_MASK    0x07FF
+#define PCI_MSIX_CONTROL_FUNCTION_MASK      0x4000
+#define PCI_MSIX_CONTROL_ENABLE             0x8000
+#define PCI_MSIX_BIR_MASK                   0x00000007
+#define PCI_MSIX_OFFSET_MASK                0xFFFFFFF8
+
+//
+// Most messages a single function can ever be given
+//
+#define PCI_MAX_MESSAGES                    0x800
+
+//
 // PCI Arbiter Interface Version
 //
 #define ARBITER_INTERFACE_VERSION           0
@@ -171,6 +196,46 @@ typedef struct _PCI_HACK_ENTRY
     USHORT RevisionID;
     UCHAR Flags;
 } PCI_HACK_ENTRY, *PPCI_HACK_ENTRY;
+
+//
+// Style of message-signalled interrupt a function supports
+//
+typedef enum _PCI_MESSAGE_TYPE
+{
+    PciMessageNone,
+    PciMessageMsi,
+    PciMessageMsiX
+} PCI_MESSAGE_TYPE;
+
+//
+// One entry of a function's MSI-X table
+//
+typedef struct _PCI_MSIX_TABLE_ENTRY
+{
+    ULONG MessageAddressLower;
+    ULONG MessageAddressUpper;
+    ULONG MessageData;
+    ULONG VectorControl;
+} PCI_MSIX_TABLE_ENTRY, *PPCI_MSIX_TABLE_ENTRY;
+
+#define PCI_MSIX_VECTOR_CONTROL_MASK        0x00000001
+
+//
+// Message-Signalled Interrupt State of a Device
+//
+typedef struct _PCI_MESSAGE_INFO
+{
+    PCI_MESSAGE_TYPE Type;
+    USHORT CapabilityPtr;
+    USHORT MessagesRequested;
+    USHORT MessagesGranted;
+    BOOLEAN Is64Bit;
+    BOOLEAN MaskCapable;
+    UCHAR TableBarIndex;
+    ULONG TableOffset;
+    PPCI_MSIX_TABLE_ENTRY Table;
+    ULONG TableLength;
+} PCI_MESSAGE_INFO, *PPCI_MESSAGE_INFO;
 
 //
 // Power State Information for Device Extension
@@ -332,6 +397,7 @@ typedef struct _PCI_PDO_EXTENSION
     USHORT InitialCommand;
     USHORT ExpressCapabilityPtr;
     UCHAR ExpressDeviceType;
+    PCI_MESSAGE_INFO MessageInfo;
 } PCI_PDO_EXTENSION, *PPCI_PDO_EXTENSION;
 
 //
@@ -1216,6 +1282,25 @@ PciReadDeviceExtendedCapability(
 VOID
 NTAPI
 PciGetExpressCapabilities(
+    IN PPCI_PDO_EXTENSION PdoExtension
+);
+
+VOID
+NTAPI
+PciGetMessageCapabilities(
+    IN PPCI_PDO_EXTENSION PdoExtension
+);
+
+NTSTATUS
+NTAPI
+PciProgramMessageInterrupt(
+    IN PPCI_PDO_EXTENSION PdoExtension,
+    IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource
+);
+
+VOID
+NTAPI
+PciDisableMessageInterrupt(
     IN PPCI_PDO_EXTENSION PdoExtension
 );
 
