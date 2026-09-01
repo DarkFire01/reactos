@@ -28,13 +28,29 @@ PciTranslateBusAddress(IN INTERFACE_TYPE InterfaceType,
                        OUT PULONG AddressSpace,
                        OUT PPHYSICAL_ADDRESS TranslatedAddress)
 {
-    UNREFERENCED_PARAMETER(InterfaceType);
-    UNREFERENCED_PARAMETER(BusNumber);
-    UNREFERENCED_PARAMETER(AddressSpace);
+    /*
+     * The HAL knows how to translate for every bus it was told about, which is
+     * all of them on a machine whose firmware describes its buses. Its answer
+     * is authoritative wherever it has one, so it gets asked first.
+     */
+    if (PcipSavedTranslateBusAddress(InterfaceType,
+                                     BusNumber,
+                                     BusAddress,
+                                     AddressSpace,
+                                     TranslatedAddress))
+    {
+        return TRUE;
+    }
 
-    /* FIXME: Broken translation */
-    UNIMPLEMENTED;
-    TranslatedAddress->QuadPart = BusAddress.QuadPart;
+    /*
+     * This hook exists for the buses it did not hear about - the ones behind a
+     * bridge this driver enumerated after the HAL had finished looking. On
+     * this architecture a PCI bus address is already the processor address, so
+     * such a bus translates to itself. Nothing else does.
+     */
+    if (InterfaceType != PCIBus) return FALSE;
+
+    *TranslatedAddress = BusAddress;
     return TRUE;
 }
 
