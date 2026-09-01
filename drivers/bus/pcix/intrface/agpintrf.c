@@ -67,9 +67,13 @@ agpintrf_Constructor(IN PVOID DeviceExtension,
         return STATUS_NOT_SUPPORTED;
     }
 
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_IMPLEMENTED;
+    /*
+     * Not provided. Reaching an AGP bridge's target capability through this
+     * would let a graphics driver set the aperture and the transfer rate;
+     * without it such a driver keeps whatever the firmware chose, which is a
+     * working configuration rather than a broken one.
+     */
+    return STATUS_NOT_SUPPORTED;
 }
 
 /* EOF */
