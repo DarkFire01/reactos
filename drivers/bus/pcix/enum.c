@@ -567,12 +567,18 @@ NTAPI
 PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
                           IN OUT PDEVICE_RELATIONS *pDeviceRelations)
 {
+    PAGED_CODE();
+
     UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(pDeviceRelations);
 
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_IMPLEMENTED;
+    /*
+     * Ejection relations are the other devices that would have to go when this
+     * one is ejected. Nothing this driver enumerates is ejectable on its own -
+     * a device only leaves with the slot or the dock it sits in, and whoever
+     * owns that names the relations - so the list is left as it was found.
+     */
+    return STATUS_SUCCESS;
 }
 
 /*
