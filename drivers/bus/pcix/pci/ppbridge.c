@@ -678,6 +678,120 @@ PPBridge_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
     UNIMPLEMENTED_DBGBREAK();
 }
 
+/*
+ * A bridge forwards an I/O window in units of 4KB. The base and limit
+ * registers hold address bits 15:12; a bridge that can forward above 64KB
+ * keeps bits 31:16 in a second pair, and says so in the low nibble of both.
+ */
+static
+VOID
+NTAPI
+PciBridgeSetIoWindow(IN PPCI_COMMON_HEADER PciData,
+                     IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource)
+{
+    ULONG Base, Limit;
+    BOOLEAN Is32Bit;
+
+    /* Whether the window can reach above 64KB is fixed in the hardware */
+    Is32Bit = (PciData->u.type1.IOBase & 0xF) == 1;
+
+    if ((Resource->Type != CmResourceTypePort) || !(Resource->u.Port.Length))
+    {
+        /* Nothing to forward: a base above the limit closes the window */
+        PciData->u.type1.IOBase |= 0xF0;
+        PciData->u.type1.IOLimit &= 0x0F;
+        PciData->u.type1.IOBaseUpper16 = 0xFFFF;
+        PciData->u.type1.IOLimitUpper16 = 0;
+        return;
+    }
+
+    Base = Resource->u.Port.Start.LowPart;
+    Limit = Base + Resource->u.Port.Length - 1;
+
+    PciData->u.type1.IOBase = (UCHAR)((PciData->u.type1.IOBase & 0x0F) |
+                                      ((Base >> 8) & 0xF0));
+    PciData->u.type1.IOLimit = (UCHAR)((PciData->u.type1.IOLimit & 0x0F) |
+                                       ((Limit >> 8) & 0xF0));
+
+    if (Is32Bit)
+    {
+        PciData->u.type1.IOBaseUpper16 = (USHORT)(Base >> 16);
+        PciData->u.type1.IOLimitUpper16 = (USHORT)(Limit >> 16);
+    }
+}
+
+/*
+ * A bridge forwards a memory window in units of 1MB, with address bits 31:20
+ * held in bits 15:4 of the base and limit registers.
+ */
+static
+VOID
+NTAPI
+PciBridgeSetMemoryWindow(IN PPCI_COMMON_HEADER PciData,
+                         IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource)
+{
+    ULONG Base, Limit;
+
+    if ((Resource->Type != CmResourceTypeMemory) ||
+        !(Resource->u.Memory.Length))
+    {
+        /* Nothing to forward: a base above the limit closes the window */
+        PciData->u.type1.MemoryBase = 0xFFF0;
+        PciData->u.type1.MemoryLimit = 0;
+        return;
+    }
+
+    Base = Resource->u.Memory.Start.LowPart;
+    Limit = Base + Resource->u.Memory.Length - 1;
+
+    PciData->u.type1.MemoryBase = (USHORT)((Base >> 16) & 0xFFF0);
+    PciData->u.type1.MemoryLimit = (USHORT)((Limit >> 16) & 0xFFF0);
+}
+
+/*
+ * The prefetchable window works the same way, except that a bridge able to
+ * forward it above 4GB keeps the high halves in a second pair of registers.
+ */
+static
+VOID
+NTAPI
+PciBridgeSetPrefetchWindow(IN PPCI_COMMON_HEADER PciData,
+                           IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource)
+{
+    ULONGLONG Base, Limit;
+    BOOLEAN Is64Bit;
+
+    /* Whether the window can reach above 4GB is fixed in the hardware */
+    Is64Bit = (PciData->u.type1.PrefetchBase & 0xF) == 1;
+
+    if ((Resource->Type != CmResourceTypeMemory) ||
+        !(Resource->u.Memory.Length))
+    {
+        /* Nothing to forward: a base above the limit closes the window */
+        PciData->u.type1.PrefetchBase |= 0xFFF0;
+        PciData->u.type1.PrefetchLimit &= 0x000F;
+        PciData->u.type1.PrefetchBaseUpper32 = 0xFFFFFFFF;
+        PciData->u.type1.PrefetchLimitUpper32 = 0;
+        return;
+    }
+
+    Base = (ULONGLONG)Resource->u.Memory.Start.QuadPart;
+    Limit = Base + Resource->u.Memory.Length - 1;
+
+    PciData->u.type1.PrefetchBase =
+        (USHORT)((PciData->u.type1.PrefetchBase & 0x000F) |
+                 ((ULONG)(Base >> 16) & 0xFFF0));
+    PciData->u.type1.PrefetchLimit =
+        (USHORT)((PciData->u.type1.PrefetchLimit & 0x000F) |
+                 ((ULONG)(Limit >> 16) & 0xFFF0));
+
+    if (Is64Bit)
+    {
+        PciData->u.type1.PrefetchBaseUpper32 = (ULONG)(Base >> 32);
+        PciData->u.type1.PrefetchLimitUpper32 = (ULONG)(Limit >> 32);
+    }
+}
+
 VOID
 NTAPI
 PPBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
@@ -686,7 +800,9 @@ PPBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     //BOOLEAN IoActive;
     PPCI_FDO_EXTENSION FdoExtension;
     PPCI_FUNCTION_RESOURCES PciResources;
-    ULONG i;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDescriptor;
+    PULONG BarArray;
+    ULONG Bar, BarMask, i;
 
     /* Check if I/O Decodes are enabled */
     //IoActive = (PciData->u.type1.IOBase & 0xF) == 1;
@@ -744,10 +860,77 @@ PPBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     PciResources = PdoExtension->Resources;
     if (PciResources)
     {
-        /* Loop each resource type (the BARs, ROM BAR and Prefetch) */
+        /*
+         * The windows were closed above, so whatever this bridge is to forward
+         * has to be written back in. The first two entries are the bridge's
+         * own BARs, then its three forwarding windows, then its option ROM.
+         */
+        BarArray = PciData->u.type1.BaseAddresses;
         for (i = 0; i < 6; i++)
         {
-            UNIMPLEMENTED;
+            CmDescriptor = &PciResources->Current[i];
+
+            switch (i)
+            {
+                case 0:
+                case 1:
+
+                    /* A BAR the bridge does not implement reads back as zero */
+                    Bar = BarArray[i];
+                    if (!(Bar & ~PCI_ADDRESS_IO_SPACE)) break;
+
+                    /* One that was given nothing is left decoding nothing */
+                    if (CmDescriptor->Type == CmResourceTypeNull)
+                    {
+                        BarArray[i] = Bar & ~PCI_ADDRESS_MEMORY_ADDRESS_MASK;
+                        break;
+                    }
+
+                    /* Otherwise keep the type bits and drop in the address */
+                    BarMask = (Bar & PCI_ADDRESS_IO_SPACE) ?
+                              PCI_ADDRESS_IO_ADDRESS_MASK :
+                              PCI_ADDRESS_MEMORY_ADDRESS_MASK;
+                    BarArray[i] = (Bar & ~BarMask) |
+                                  (CmDescriptor->u.Memory.Start.LowPart & BarMask);
+                    break;
+
+                case 2:
+
+                    /* The I/O window forwarded to the bus behind the bridge */
+                    PciBridgeSetIoWindow(PciData, CmDescriptor);
+                    break;
+
+                case 3:
+
+                    /* And the memory window */
+                    PciBridgeSetMemoryWindow(PciData, CmDescriptor);
+                    break;
+
+                case 4:
+
+                    /* And the prefetchable one */
+                    PciBridgeSetPrefetchWindow(PciData, CmDescriptor);
+                    break;
+
+                default:
+
+                    /* The bridge's own option ROM, enabled only if assigned */
+                    Bar = PciData->u.type1.ROMBaseAddress;
+                    if (CmDescriptor->Type == CmResourceTypeNull)
+                    {
+                        PciData->u.type1.ROMBaseAddress =
+                            Bar & ~PCI_ROMADDRESS_ENABLED;
+                    }
+                    else
+                    {
+                        PciData->u.type1.ROMBaseAddress =
+                            (Bar & ~PCI_ADDRESS_ROM_ADDRESS_MASK) |
+                            (CmDescriptor->u.Memory.Start.LowPart &
+                             PCI_ADDRESS_ROM_ADDRESS_MASK) |
+                            PCI_ROMADDRESS_ENABLED;
+                    }
+                    break;
+            }
         }
     }
 
