@@ -338,12 +338,17 @@ PciFdoIrpDeviceUsageNotification(IN PIRP Irp,
                                  IN PIO_STACK_LOCATION IoStackLocation,
                                  IN PPCI_FDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PAGED_CODE();
 
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    /*
+     * This one goes down the stack before it reaches here, so a device below
+     * that refused it has already decided the answer for everyone above.
+     */
+    if (!NT_SUCCESS(Irp->IoStatus.Status)) return Irp->IoStatus.Status;
+
+    /* The bus is now carrying one more, or one fewer, of these */
+    PciApplyDeviceUsage(&DeviceExtension->PowerState, IoStackLocation);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
