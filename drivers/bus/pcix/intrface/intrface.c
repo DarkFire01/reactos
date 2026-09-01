@@ -55,9 +55,9 @@ PciQueryInterface(IN PPCI_FDO_EXTENSION DeviceExtension,
     PPCI_INTERFACE *InterfaceList;
     PPCI_INTERFACE PciInterface;
     RtlStringFromGUID(InterfaceType, &GuidString);
-    DPRINT1("PCI - PciQueryInterface TYPE = %wZ\n", &GuidString);
+    DPRINT("PCI - PciQueryInterface TYPE = %wZ\n", &GuidString);
     RtlFreeUnicodeString(&GuidString);
-    DPRINT1("      Size = %u, Version = %u, InterfaceData = %p, LastChance = %s\n",
+    DPRINT("      Size = %u, Version = %u, InterfaceData = %p, LastChance = %s\n",
             Size,
             Version,
             InterfaceData,
@@ -81,7 +81,7 @@ PciQueryInterface(IN PPCI_FDO_EXTENSION DeviceExtension,
             if (!(PciInterface->Flags & PCI_INTERFACE_FDO))
             {
                 /* This interface is not for FDOs, skip it */
-                DPRINT1("PCI - PciQueryInterface: guid = %wZ only for FDOs\n",
+                DPRINT("PCI - PciQueryInterface: guid = %wZ only for FDOs\n",
                         &GuidString);
                 RtlFreeUnicodeString(&GuidString);
                 continue;
@@ -92,7 +92,7 @@ PciQueryInterface(IN PPCI_FDO_EXTENSION DeviceExtension,
                 (!PCI_IS_ROOT_FDO(DeviceExtension)))
             {
                 /* This FDO isn't the root, skip the interface */
-                DPRINT1("PCI - PciQueryInterface: guid = %wZ only for ROOT\n",
+                DPRINT("PCI - PciQueryInterface: guid = %wZ only for ROOT\n",
                         &GuidString);
                 RtlFreeUnicodeString(&GuidString);
                 continue;
@@ -104,7 +104,7 @@ PciQueryInterface(IN PPCI_FDO_EXTENSION DeviceExtension,
             if (!(PciInterface->Flags & PCI_INTERFACE_PDO))
             {
                 /* It isn't, skip it */
-                DPRINT1("PCI - PciQueryInterface: guid = %wZ only for PDOs\n",
+                DPRINT("PCI - PciQueryInterface: guid = %wZ only for PDOs\n",
                         &GuidString);
                 RtlFreeUnicodeString(&GuidString);
                 continue;
@@ -112,7 +112,7 @@ PciQueryInterface(IN PPCI_FDO_EXTENSION DeviceExtension,
         }
 
         /* Print the GUID for debugging, and then free the string */
-        DPRINT1("PCI - PciQueryInterface looking at guid = %wZ\n", &GuidString);
+        DPRINT("PCI - PciQueryInterface looking at guid = %wZ\n", &GuidString);
         RtlFreeUnicodeString(&GuidString);
 
         /* Check if the GUID, version, and size all match */
@@ -131,20 +131,26 @@ PciQueryInterface(IN PPCI_FDO_EXTENSION DeviceExtension,
             if (!NT_SUCCESS(Status))
             {
                 /* This interface was not initialized correctly, skip it */
-                DPRINT1("PCI - PciQueryInterface - Constructor %p = %08lx\n",
+                DPRINT("PCI - PciQueryInterface - Constructor %p = %08lx\n",
                         PciInterface->Constructor, Status);
                 continue;
             }
 
             /* Reference the interface and return success, all is good */
             Interface->InterfaceReference(Interface->Context);
-            DPRINT1("PCI - PciQueryInterface returning SUCCESS\n");
+            DPRINT("PCI - PciQueryInterface returning SUCCESS\n");
             return Status;
         }
     }
 
-    /* An interface of this type, and for this device, could not be found */
-    DPRINT1("PCI - PciQueryInterface FAILED TO FIND INTERFACE\n");
+    /*
+     * An interface of this type, and for this device, could not be found.
+     * That is an ordinary answer rather than a failure: the caller asks
+     * every bus in a device's ancestry in turn, and each one that does not
+     * serve the interface says so and is passed over. An FDO goes on to
+     * offer the request to the drivers below it before giving up.
+     */
+    DPRINT("PCI - PciQueryInterface FAILED TO FIND INTERFACE\n");
     return STATUS_NOT_SUPPORTED;
 }
 
