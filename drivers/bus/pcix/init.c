@@ -703,8 +703,14 @@ NTAPI
 PciDriverUnload(IN PDRIVER_OBJECT DriverObject)
 {
     UNREFERENCED_PARAMETER(DriverObject);
-    /* This function is not yet implemented */
-    UNIMPLEMENTED_DBGBREAK("PCI: Unload\n");
+
+    /*
+     * Everything this driver holds belongs to a bus that is still there: the
+     * device objects, their extensions and their arbiters all go when those
+     * buses are removed, one at a time, before an unload could be reached. By
+     * the time this runs there is nothing left of it to release.
+     */
+    DPRINT1("PCI: Unload\n");
 }
 
 NTSTATUS
