@@ -22,7 +22,7 @@ PciGetDescriptionMessage(IN ULONG Identifier,
                          OUT PULONG Length)
 {
     PMESSAGE_RESOURCE_ENTRY Entry;
-    ULONG TextLength;
+    ULONG TextLength, Count;
     PWCHAR Description, Buffer;
     ANSI_STRING MessageString;
     UNICODE_STRING UnicodeString;
@@ -48,28 +48,45 @@ PciGetDescriptionMessage(IN ULONG Identifier,
         /* Grab the text */
         Description = (PWCHAR)Entry->Text;
 
-        /* Validate the message length, ending with a newline character */
-        ASSERT(TextLength > sizeof(WCHAR));
-        ASSERT(Description[(TextLength / sizeof(WCHAR)) - 1] == L'\n');
+        ASSERT(TextLength >= sizeof(WCHAR));
+
+        /*
+         * A message is normally stored with a trailing newline that is not
+         * part of the description. Not every one of them has it, so it is
+         * only dropped where it is actually there.
+         */
+        Count = TextLength / sizeof(WCHAR);
+        while ((Count) && ((Description[Count - 1] == L'\n') ||
+                           (Description[Count - 1] == L'\r')))
+        {
+            Count--;
+        }
 
         /* Allocate the buffer to hold the message string */
-        Buffer = ExAllocatePoolWithTag(PagedPool, TextLength, 'BicP');
+        Buffer = ExAllocatePoolWithTag(PagedPool,
+                                       (Count + 1) * sizeof(WCHAR),
+                                       'BicP');
         if (!Buffer) return NULL;
 
-        /* Copy the message, minus the newline character, and terminate it */
-        RtlCopyMemory(Buffer, Description, TextLength - sizeof(WCHAR));
-        Buffer[(TextLength / sizeof(WCHAR)) - 1] = UNICODE_NULL;
+        /* Copy the message across and terminate it */
+        RtlCopyMemory(Buffer, Description, Count * sizeof(WCHAR));
+        Buffer[Count] = UNICODE_NULL;
 
         /* Return the length to the caller, minus the terminating NULL */
-        if (Length) *Length = TextLength - sizeof(WCHAR);
+        if (Length) *Length = Count * sizeof(WCHAR);
     }
     else
     {
         /* Initialize the entry as a string */
         RtlInitAnsiString(&MessageString, (PCHAR)Entry->Text);
 
-        /* Remove the newline character */
-        MessageString.Length -= sizeof(CHAR);
+        /* Remove the trailing newline, where there is one */
+        while ((MessageString.Length) &&
+               ((MessageString.Buffer[MessageString.Length - 1] == '\n') ||
+                (MessageString.Buffer[MessageString.Length - 1] == '\r')))
+        {
+            MessageString.Length -= sizeof(CHAR);
+        }
 
         /* Convert it to Unicode */
         RtlAnsiStringToUnicodeString(&UnicodeString, &MessageString, TRUE);
