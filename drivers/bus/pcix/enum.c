@@ -568,17 +568,86 @@ PciQueryTargetDeviceRelations(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief Checks whether Candidate is another present function in the same slot as PdoExtension.
+ */
+static
+BOOLEAN
+NTAPI
+PciIsOtherFunction(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_ PPCI_PDO_EXTENSION Candidate)
+{
+    if ((Candidate == PdoExtension) || (Candidate->NotPresent))
+        return FALSE;
+
+    return (Candidate->Slot.u.bits.DeviceNumber == PdoExtension->Slot.u.bits.DeviceNumber);
+}
+
 NTSTATUS
 NTAPI
 PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
                           IN OUT PDEVICE_RELATIONS *pDeviceRelations)
 {
-    UNREFERENCED_PARAMETER(PdoExtension);
-    UNREFERENCED_PARAMETER(pDeviceRelations);
+    PPCI_FDO_EXTENSION FdoExtension;
+    PPCI_PDO_EXTENSION Child;
+    PDEVICE_RELATIONS OldRelations, NewRelations;
+    ULONG OldCount, FunctionCount;
+    PAGED_CODE();
 
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_IMPLEMENTED;
+    FdoExtension = PdoExtension->ParentFdoExtension;
+    OldRelations = *pDeviceRelations;
+    OldCount = OldRelations ? OldRelations->Count : 0;
+
+    KeEnterCriticalRegion();
+    KeWaitForSingleObject(&FdoExtension->ChildListLock, Executive, KernelMode, FALSE, NULL);
+
+    /* The other functions of the same device leave the machine with this one */
+    FunctionCount = 0;
+    for (Child = FdoExtension->ChildPdoList; Child; Child = Child->Next)
+    {
+        if (PciIsOtherFunction(PdoExtension, Child))
+            FunctionCount++;
+    }
+
+    if (FunctionCount == 0)
+        goto Exit;
+
+    NewRelations = ExAllocatePoolWithTag(NonPagedPool,
+                                         FIELD_OFFSET(DEVICE_RELATIONS, Objects) +
+                                         (OldCount + FunctionCount) * sizeof(PDEVICE_OBJECT),
+                                         PCI_POOL_TAG);
+    if (!NewRelations)
+    {
+        /* Leave the list from above intact rather than fail the whole query */
+        goto Exit;
+    }
+
+    NewRelations->Count = OldCount;
+    if (OldRelations)
+    {
+        RtlCopyMemory(NewRelations->Objects,
+                      OldRelations->Objects,
+                      OldCount * sizeof(PDEVICE_OBJECT));
+        ExFreePoolWithTag(OldRelations, 0);
+    }
+
+    for (Child = FdoExtension->ChildPdoList; Child; Child = Child->Next)
+    {
+        if (!PciIsOtherFunction(PdoExtension, Child))
+            continue;
+
+        ObReferenceObject(Child->PhysicalDeviceObject);
+        NewRelations->Objects[NewRelations->Count++] = Child->PhysicalDeviceObject;
+    }
+
+    ASSERT(NewRelations->Count == OldCount + FunctionCount);
+    *pDeviceRelations = NewRelations;
+
+Exit:
+    KeSetEvent(&FdoExtension->ChildListLock, IO_NO_INCREMENT, FALSE);
+    KeLeaveCriticalRegion();
+    return STATUS_SUCCESS;
 }
 
 static
