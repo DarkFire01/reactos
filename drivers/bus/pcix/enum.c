@@ -1887,7 +1887,31 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
                             sizeof(UCHAR));
         if (SecondaryBus != PdoExtension->Dependent.type1.SecondaryBus)
         {
-            UNIMPLEMENTED_DBGBREAK("PCI: Bus numbers have been changed!  Restoring originals.\n");
+            /*
+             * Something outside this driver renumbered the bridge - firmware
+             * left over from a warm boot, or another operating system that ran
+             * before this one. The devices behind it were enumerated under the
+             * numbers recorded here, so those are what get put back; scanning
+             * against numbers the bridge no longer answers to would find an
+             * empty bus where a populated one is.
+             */
+            DPRINT1("PCI: Bus numbers have been changed!  Restoring originals.\n");
+
+            PciWriteDeviceConfig(PdoExtension,
+                                 &PdoExtension->Dependent.type1.PrimaryBus,
+                                 FIELD_OFFSET(PCI_COMMON_HEADER,
+                                              u.type1.PrimaryBus),
+                                 sizeof(UCHAR));
+            PciWriteDeviceConfig(PdoExtension,
+                                 &PdoExtension->Dependent.type1.SecondaryBus,
+                                 FIELD_OFFSET(PCI_COMMON_HEADER,
+                                              u.type1.SecondaryBus),
+                                 sizeof(UCHAR));
+            PciWriteDeviceConfig(PdoExtension,
+                                 &PdoExtension->Dependent.type1.SubordinateBus,
+                                 FIELD_OFFSET(PCI_COMMON_HEADER,
+                                              u.type1.SubordinateBus),
+                                 sizeof(UCHAR));
         }
     }
 
