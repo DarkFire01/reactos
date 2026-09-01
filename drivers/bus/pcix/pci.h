@@ -1460,6 +1460,13 @@ PciGetAdjustedInterruptLine(
 //
 // State Machine Logic Transition Routines
 //
+BOOLEAN
+NTAPI
+PciGetRootBusNumber(
+    IN PCM_RESOURCE_LIST Descriptor,
+    OUT PUCHAR BaseBus
+);
+
 VOID
 NTAPI
 PciApplyDeviceUsage(
