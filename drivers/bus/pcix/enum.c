@@ -567,6 +567,27 @@ PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_NOT_IMPLEMENTED;
 }
 
+/**
+ * @brief
+ * Tells whether a discovered limit asks the arbiter for a range.
+ *
+ * @param[in] Limit
+ * The limit of one BAR or bridge window.
+ *
+ * @return
+ * TRUE when the limit has a type and a length. A bridge window has no length of its own.
+ */
+BOOLEAN
+NTAPI
+PciIsRequirementDescriptor(
+    _In_ PIO_RESOURCE_DESCRIPTOR Limit)
+{
+    if (Limit->Type == CmResourceTypeNull)
+        return FALSE;
+
+    return (Limit->u.Generic.Length != 0);
+}
+
 NTSTATUS
 NTAPI
 PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
@@ -1375,6 +1396,9 @@ PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
     /* Now find out whether this is an Express function, and what kind */
     PciGetExpressCapabilities(PdoExtension);
 
+    /* And whether it can raise message interrupts instead of a wired line */
+    PciGetMessageCapabilities(PdoExtension);
+
     /* At the very end of all this, does this device not have power management? */
     if (PdoExtension->HackFlags & PCI_HACK_NO_PM_CAPS)
     {
@@ -1945,6 +1969,9 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 
             /* Now configure the BARs */
             Status = PciGetFunctionLimits(NewExtension, PciData, HackFlags);
+
+            /* With the BAR limits known, pick MSI-X or MSI */
+            PciSelectMessageType(NewExtension);
 
             /* Power up the device */
             PciSetPowerManagedDevicePowerState(NewExtension, PowerDeviceD0, FALSE);
