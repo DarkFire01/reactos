@@ -922,4 +922,47 @@ PciProgramGrantedInterrupt(
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Programs the interrupt of a started function again after a power up that
+ * may have reset its configuration space.
+ *
+ * @param[in,out] PdoExtension
+ * The PDO extension of the function, back in D0 with its windows decoding.
+ *
+ * @return
+ * STATUS_SUCCESS if the function can raise its interrupt again.
+ */
+NTSTATUS
+NTAPI
+PciRestoreGrantedInterrupt(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension)
+{
+    CM_PARTIAL_RESOURCE_DESCRIPTOR Grant;
+    USHORT Messages;
+    PAGED_CODE();
+
+    if (PdoExtension->DeviceState != PciStarted)
+        return STATUS_SUCCESS;
+
+    Messages = PdoExtension->MessageInfo.GrantedCount;
+    PciDisableMessageInterrupt(PdoExtension);
+
+    if (Messages)
+    {
+        /* The start resource list is gone, only the count it granted is still known */
+        RtlZeroMemory(&Grant, sizeof(Grant));
+        Grant.Type = CmResourceTypeInterrupt;
+        Grant.Flags = CM_RESOURCE_INTERRUPT_MESSAGE;
+        Grant.u.Interrupt.Level = (ULONG)Messages << 16;
+        return PciProgramMessageInterrupt(PdoExtension, &Grant);
+    }
+
+    /* Without messages a started function with a pin was given its wired line */
+    if (PdoExtension->InterruptPin)
+        PciClearInterruptDisable(PdoExtension);
+
+    return STATUS_SUCCESS;
+}
+
 /* EOF */
