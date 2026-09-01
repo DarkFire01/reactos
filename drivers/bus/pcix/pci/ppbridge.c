@@ -808,24 +808,36 @@ PPBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDescriptor;
     PULONG BarArray;
     ULONG Bar, BarMask, i;
+    BOOLEAN Preserved;
 
     /* Check if I/O Decodes are enabled */
     //IoActive = (PciData->u.type1.IOBase & 0xF) == 1;
 
     /*
-     * Check for Intel ICH PCI-to-PCI (i82801) bridges (used on the i810,
-     * i820, i840, i845 Chipsets) that don't have subtractive decode broken.
-     * If they do have broken subtractive support, or if they are not ICH bridges,
-     * then check if the bridge supports subtractive decode at all.
+     * Only a bridge whose firmware window settings were actually put aside on
+     * the way in gets them written back, and PPBridge_SaveCurrentSettings puts
+     * them aside for exactly one kind of bridge: an Intel ICH PCI-to-PCI part
+     * (i82801, as used on the i810, i820, i840 and i845 chipsets), or anything
+     * else marked as having broken subtractive decode, and then only when it
+     * really is decoding subtractively. Asking the same question here in a
+     * different form is how an ordinary subtractive bridge - an AMD southbridge,
+     * say - ends up reading a header that was never saved.
+     *
+     * Every other bridge has its windows closed instead, which costs a working
+     * subtractive bridge nothing: what it forwards is whatever no one else on
+     * the bus claimed, and no window has to be open to say so.
      */
-    if ((((PdoExtension->VendorId == 0x8086) &&
-         ((PdoExtension->DeviceId == 0x2418) ||
-          (PdoExtension->DeviceId == 0x2428) ||
-          (PdoExtension->DeviceId == 0x244E) ||
-          (PdoExtension->DeviceId == 0x2448))) &&
-         (!(PdoExtension->HackFlags & PCI_HACK_BROKEN_SUBTRACTIVE_DECODE) ||
-         (PdoExtension->Dependent.type1.SubtractiveDecode == FALSE))) ||
-        (PdoExtension->Dependent.type1.SubtractiveDecode == FALSE))
+    FdoExtension = PdoExtension->ParentFdoExtension;
+    Preserved = ((((PdoExtension->VendorId == 0x8086) &&
+                   ((PdoExtension->DeviceId == 0x2418) ||
+                    (PdoExtension->DeviceId == 0x2428) ||
+                    (PdoExtension->DeviceId == 0x244E) ||
+                    (PdoExtension->DeviceId == 0x2448))) ||
+                  (PdoExtension->HackFlags & PCI_HACK_BROKEN_SUBTRACTIVE_DECODE)) &&
+                 (PdoExtension->Dependent.type1.SubtractiveDecode) &&
+                 (FdoExtension->PreservedConfig != NULL));
+
+    if (!Preserved)
     {
         /* No resources are needed on a subtractive decode bridge */
         PciData->u.type1.MemoryBase = 0xFFFF;
@@ -841,11 +853,7 @@ PPBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     }
     else
     {
-        /*
-         * Otherwise, get the FDO to read the old PCI configuration header that
-         * had been saved by the hack in PPBridge_SaveCurrentSettings.
-         */
-        FdoExtension = PdoExtension->ParentFdoExtension;
+        /* Otherwise put back the header the hack saved on the way in */
         ASSERT(PdoExtension->Resources == NULL);
 
         /* Read the PCI header data and use that here */
