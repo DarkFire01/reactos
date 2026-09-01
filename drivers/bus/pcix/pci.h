@@ -1331,6 +1331,12 @@ NTAPI
 PciDisableMessageInterrupt(
     _Inout_ PPCI_PDO_EXTENSION PdoExtension);
 
+NTSTATUS
+NTAPI
+PciProgramGrantedInterrupt(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_opt_ PCM_RESOURCE_LIST ResourceList);
+
 BOOLEAN
 NTAPI
 PciEcamReadWriteConfig(
