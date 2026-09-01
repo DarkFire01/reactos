@@ -278,8 +278,8 @@ Device_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
 {
     UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(PciData);
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
+
+    /* Nothing to undo, the caller writes the whole header back */
 }
 
 VOID
