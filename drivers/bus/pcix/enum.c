@@ -2006,8 +2006,17 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
                                                 PciData);
             if (PdoExtension)
             {
-                /* Rescan scenarios are not yet implemented */
-                UNIMPLEMENTED_DBGBREAK();
+                /*
+                 * The bus has been enumerated before and this device was found
+                 * then as well - same slot, same identity. The description
+                 * made for it then still describes it, so it is marked as
+                 * still being here and left alone. Every child was marked
+                 * absent before this scan began, and only being found again
+                 * clears that, which is what tells the caller it is still
+                 * there rather than gone.
+                 */
+                PdoExtension->NotPresent = FALSE;
+                continue;
             }
 
             /* Bus processing will need to happen */
