@@ -549,19 +549,33 @@ IopReleaseDeviceResources(
     _In_ PDEVICE_NODE DeviceNode
 );
 
+//
+// Legacy (non-PnP) resource claims (pnparb.c)
+//
 NTSTATUS
 NTAPI
-IopFixupResourceListWithRequirements(
-    IN PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList,
-    OUT PCM_RESOURCE_LIST *ResourceList
+IopLegacyAssignResources(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_opt_ PDEVICE_OBJECT DeviceObject,
+    _In_opt_ PIO_RESOURCE_REQUIREMENTS_LIST Requirements,
+    _Out_opt_ PCM_RESOURCE_LIST *AllocatedResources
 );
 
 NTSTATUS
 NTAPI
-IopDetectResourceConflict(
-     IN PCM_RESOURCE_LIST ResourceList,
-     IN BOOLEAN Silent,
-     OUT OPTIONAL PCM_PARTIAL_RESOURCE_DESCRIPTOR ConflictingDescriptor
+IopLegacyReportResources(
+    _In_opt_ PCUNICODE_STRING DriverClassName,
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_opt_ PDEVICE_OBJECT DeviceObject,
+    _In_opt_ PCM_RESOURCE_LIST ResourceList,
+    _In_ BOOLEAN OverrideConflict,
+    _Out_ PBOOLEAN ConflictDetected
+);
+
+VOID
+NTAPI
+IopReleaseLegacyResources(
+    _In_ PDRIVER_OBJECT DriverObject
 );
 
 //
@@ -607,6 +621,28 @@ VOID
 NTAPI
 IopArbiterReleaseResources(
     _In_ PDEVICE_NODE DeviceNode
+);
+
+VOID
+NTAPI
+IopArbiterReserveResourceList(
+    _In_ PCM_RESOURCE_LIST ResourceList,
+    _In_opt_ PVOID Owner
+);
+
+BOOLEAN
+NTAPI
+IopArbiterResourceConflict(
+    _In_ PCM_RESOURCE_LIST ResourceList,
+    _Out_opt_ PCM_PARTIAL_RESOURCE_DESCRIPTOR ConflictingDescriptor
+);
+
+BOOLEAN
+NTAPI
+IopArbiterQueryConflict(
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _In_ PCM_RESOURCE_LIST ResourceList,
+    _Out_opt_ PCM_PARTIAL_RESOURCE_DESCRIPTOR ConflictingDescriptor
 );
 
 //
