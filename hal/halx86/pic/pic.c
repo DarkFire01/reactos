@@ -1262,6 +1262,260 @@ HalpGetRootInterruptVector(IN ULONG BusInterruptLevel,
     return SystemVector;
 }
 
+/* CONNECTION-DATA INTERRUPT CONTROL ******************************************/
+
+/**
+ * @brief
+ * Returns the IRQL of a device vector. On the 8259 HAL the vector is the
+ * IRQ biased by the vector base and the IRQL follows from the IRQ.
+ */
+KIRQL
+NTAPI
+HalConvertDeviceIdtToIrql(
+    _In_ ULONG IdtEntry)
+{
+    if ((IdtEntry < PRIMARY_VECTOR_BASE) || (IdtEntry >= PRIMARY_VECTOR_BASE + 16))
+    {
+        return PASSIVE_LEVEL;
+    }
+
+    return HalpVectorToIrql((UCHAR)IdtEntry);
+}
+
+/**
+ * @brief
+ * Connects the interrupt described by a single-element connection data
+ * block. Only controller inputs exist on the 8259; the input must be the
+ * IRQ that the vector already belongs to.
+ */
+NTSTATUS
+NTAPI
+HalEnableInterrupt(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData)
+{
+    PINTERRUPT_VECTOR_DATA VectorData;
+
+    if ((ConnectionData == NULL) || (ConnectionData->Count != 1))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    VectorData = &ConnectionData->Vectors[0];
+    if (VectorData->Type != InterruptTypeControllerInput)
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    if ((VectorData->ControllerInput.Gsiv >= 16) ||
+        (VectorData->Vector != HalpIrqToVector((UCHAR)VectorData->ControllerInput.Gsiv)) ||
+        (VectorData->Irql != HalpVectorToIrql((UCHAR)VectorData->Vector)))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (!HalEnableSystemInterrupt(VectorData->Vector,
+                                  VectorData->Irql,
+                                  VectorData->Mode))
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Undoes HalEnableInterrupt by masking the IRQ again.
+ */
+NTSTATUS
+NTAPI
+HalDisableInterrupt(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData)
+{
+    PINTERRUPT_VECTOR_DATA VectorData;
+
+    if ((ConnectionData == NULL) || (ConnectionData->Count != 1))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    VectorData = &ConnectionData->Vectors[0];
+    if (VectorData->Type != InterruptTypeControllerInput)
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    if ((VectorData->ControllerInput.Gsiv >= 16) ||
+        (VectorData->Vector != HalpIrqToVector((UCHAR)VectorData->ControllerInput.Gsiv)))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    HalDisableSystemInterrupt(VectorData->Vector, VectorData->Irql);
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Maps a vector back to its IRQ. An installed private-dispatch override
+ * is asked first; otherwise the fixed 8259 mapping answers, with the
+ * polarity taken from the edge/level control register.
+ */
+NTSTATUS
+NTAPI
+HalGetVectorInput(
+    _In_ ULONG Vector,
+    _In_ KAFFINITY Affinity,
+    _Out_ PULONG Input,
+    _Out_ PKINTERRUPT_POLARITY Polarity)
+{
+    ULONG Irq;
+
+    if (HalGetVectorInputOverride != NULL)
+    {
+        return HalGetVectorInputOverride(Vector, Affinity, Input, Polarity);
+    }
+
+    if ((Vector < PRIMARY_VECTOR_BASE) || (Vector >= PRIMARY_VECTOR_BASE + 16))
+    {
+        return STATUS_NOT_FOUND;
+    }
+
+    Irq = Vector - PRIMARY_VECTOR_BASE;
+    *Input = Irq;
+    *Polarity = (HalpEisaELCR & (1 << Irq)) ? InterruptActiveLow : InterruptActiveHigh;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Describes interrupt targeting on the 8259 HAL: one processor, fixed
+ * physical delivery, no message-signalled interrupts.
+ */
+NTSTATUS
+NTAPI
+HalGetInterruptTargetInformation(
+    _In_ HAL_INTERRUPT_TARGET_TYPE Type,
+    _In_ ULONG Id,
+    _Out_ PHAL_INTERRUPT_TARGET_INFORMATION Information)
+{
+    if ((Type != InterruptTargetTypeGlobal) && (Type != InterruptTargetTypeApic))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    RtlZeroMemory(Information, sizeof(*Information));
+    Information->Type = Type;
+    Information->Flags = HAL_INTERRUPT_TARGET_STATIC_DESTINATIONS;
+    Information->Apic.DestinationMode = ApicDestinationModePhysical;
+
+    if (Type == InterruptTargetTypeApic)
+    {
+        /* The only processor is number 0 with hardware id 0 */
+        if (Id != 0)
+        {
+            return STATUS_NOT_FOUND;
+        }
+        Information->ProcessorNumber.Group = 0;
+        Information->ProcessorNumber.Number = 0;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Message-signalled interrupts cannot be delivered through the 8259.
+ */
+NTSTATUS
+NTAPI
+HalGetMessageRoutingInfo(
+    _In_ PHAL_MESSAGE_TARGET_REQUEST Request,
+    _Out_ PINTERRUPT_CONNECTION_DATA ConnectionData)
+{
+    UNREFERENCED_PARAMETER(Request);
+    UNREFERENCED_PARAMETER(ConnectionData);
+
+    return STATUS_NOT_SUPPORTED;
+}
+
+/**
+ * @brief
+ * Maps an NT processor number to its hardware id. The 8259 HAL runs a
+ * single processor, whose id is 0.
+ */
+NTSTATUS
+NTAPI
+HalGetProcessorIdByNtNumber(
+    _In_ ULONG ProcessorNumber,
+    _Out_ PULONG ProcessorId)
+{
+    if (ProcessorNumber != 0)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    *ProcessorId = 0;
+    return STATUS_SUCCESS;
+}
+
+/* ACPI POWER-MANAGEMENT HOOKS ************************************************/
+
+/**
+ * @brief
+ * There is no I/O APIC on the 8259 HAL, so no controller version.
+ */
+ULONG
+NTAPI
+HalpGetInterruptControllerVersion(
+    _In_ ULONG InterruptBase)
+{
+    UNREFERENCED_PARAMETER(InterruptBase);
+    return 0;
+}
+
+/**
+ * @brief
+ * Tells whether an interrupt input exists on the cascaded 8259 pair.
+ */
+BOOLEAN
+NTAPI
+HalpIsInterruptInputValid(
+    _In_ ULONG Input)
+{
+    return (Input < 16);
+}
+
+/**
+ * @brief
+ * Reprograms the 8259 pair and restores the masks and trigger modes in
+ * effect before a transition that reset them.
+ */
+VOID
+NTAPI
+HalpRestoreInterruptController(VOID)
+{
+    ULONG_PTR Flags;
+    PKPCR Pcr = KeGetPcr();
+    PIC_MASK PicMask;
+
+    Flags = __readeflags();
+    _disable();
+
+    HalpInitializeLegacyPICs();
+
+    /* Level-triggered lines are recorded in the edge/level control register */
+    __outbyte(EISA_ELCR_MASTER, (UCHAR)HalpEisaELCR);
+    __outbyte(EISA_ELCR_SLAVE, (UCHAR)(HalpEisaELCR >> 8));
+
+    /* Masks follow the current IRQL and the lines that were disabled */
+    PicMask.Both = (KiI8259MaskTable[Pcr->Irql] | Pcr->IDR) & 0xFFFF;
+    __outbyte(PIC1_DATA_PORT, PicMask.Master);
+    __outbyte(PIC2_DATA_PORT, PicMask.Slave);
+
+    __writeeflags(Flags);
+}
+
 #else /* _MINIHAL_ */
 
 KIRQL
