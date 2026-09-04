@@ -540,7 +540,13 @@ PnpDetermineResourceListSize(IN PCM_RESOURCE_LIST ResourceList);
 NTSTATUS
 NTAPI
 IopAssignDeviceResources(
-    IN PDEVICE_NODE DeviceNode
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+NTSTATUS
+NTAPI
+IopReleaseDeviceResources(
+    _In_ PDEVICE_NODE DeviceNode
 );
 
 NTSTATUS
@@ -586,6 +592,20 @@ IopFindArbiterForResourceType(
 NTSTATUS
 NTAPI
 IopArbiterReserveBootConfig(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+NTSTATUS
+NTAPI
+IopArbiterAllocateResources(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList,
+    _Out_ PCM_RESOURCE_LIST *ResourceList
+);
+
+VOID
+NTAPI
+IopArbiterReleaseResources(
     _In_ PDEVICE_NODE DeviceNode
 );
 

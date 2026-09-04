@@ -1761,15 +1761,11 @@ IopSendRemoveDevice(IN PDEVICE_OBJECT DeviceObject)
     /* Drivers should never fail a IRP_MN_REMOVE_DEVICE request */
     PiIrpSendRemoveCheckVpb(DeviceObject, IRP_MN_REMOVE_DEVICE);
 
-    /* Start of HACK: update resources stored in registry, so IopDetectResourceConflict works */
-    if (DeviceNode->ResourceList)
-    {
-        ASSERT(DeviceNode->ResourceListTranslated);
-        DeviceNode->ResourceList->Count = 0;
-        DeviceNode->ResourceListTranslated->Count = 0;
-        IopUpdateResourceMapForPnPDevice(DeviceNode);
-    }
-    /* End of HACK */
+    /*
+     * Return the device's resources to the arbiters, clear the registry
+     * mirror and free the lists.
+     */
+    IopReleaseDeviceResources(DeviceNode);
 
     PiSetDevNodeState(DeviceNode, DeviceNodeRemoved);
     PiNotifyTargetDeviceChange(&GUID_TARGET_DEVICE_REMOVE_COMPLETE, DeviceObject, NULL);
