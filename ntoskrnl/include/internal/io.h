@@ -559,6 +559,31 @@ IopDetectResourceConflict(
 );
 
 //
+// Resource arbiters (pnparb.c)
+//
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+IopRegisterRootArbiters(
+    _In_ PDEVICE_NODE RootNode
+);
+
+NTSTATUS
+NTAPI
+IopArbiterQueryRootInterface(
+    _In_ PIO_STACK_LOCATION IoStack,
+    _In_ NTSTATUS ExistingStatus
+);
+
+NTSTATUS
+NTAPI
+IopFindArbiterForResourceType(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ UCHAR ResourceType,
+    _Out_ PARBITER_INTERFACE *ArbiterInterface
+);
+
+//
 // PNP Routines
 //
 NTSTATUS

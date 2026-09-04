@@ -1002,8 +1002,17 @@ PnpRootFdoPnpControl(
             Status = PnpRootQueryDeviceRelations(DeviceObject, Irp);
             break;
 
+        case IRP_MN_QUERY_INTERFACE:
+            DPRINT("IRP_MJ_PNP / IRP_MN_QUERY_INTERFACE\n");
+            /*
+             * The root bus answers GUID_ARBITER_INTERFACE_STANDARD with the
+             * five root arbiters, like any other bus in the discovery walk.
+             */
+            Status = IopArbiterQueryRootInterface(IrpSp, Status);
+            break;
+
         default:
-            // The root device object can receive only IRP_MN_QUERY_DEVICE_RELATIONS
+            // The root device object can receive only the minor codes above
             ASSERT(FALSE);
             DPRINT("IRP_MJ_PNP / Unknown minor function 0x%lx\n", IrpSp->MinorFunction);
             break;
