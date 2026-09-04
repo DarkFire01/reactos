@@ -559,6 +559,174 @@ IopDetectResourceConflict(
 );
 
 //
+// Resource arbiters (pnparb.c)
+//
+
+/*
+ * One requirement of a device as it is arbitrated. The device level has the
+ * alternatives of the device. Each translator found before the arbiter adds a
+ * level with the alternatives for the parent of its bus, and the arbiter gets
+ * the entry of the top level.
+ */
+typedef struct _IOP_REQUIREMENT_LEVEL
+{
+    struct _IOP_REQUIREMENT_LEVEL *Lower;
+    PTRANSLATOR_INTERFACE Translator;
+    ARBITER_LIST_ENTRY Entry;
+    CM_PARTIAL_RESOURCE_DESCRIPTOR Assignment;
+} IOP_REQUIREMENT_LEVEL, *PIOP_REQUIREMENT_LEVEL;
+
+typedef struct _IOP_REQUIREMENT
+{
+    IOP_REQUIREMENT_LEVEL Device;
+    PIOP_REQUIREMENT_LEVEL Top;
+    PPI_RESOURCE_ARBITER_ENTRY Arbiter;
+    INTERFACE_TYPE InterfaceType;
+    ULONG BusNumber;
+} IOP_REQUIREMENT, *PIOP_REQUIREMENT;
+
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+IopRegisterRootArbiters(
+    _In_ PDEVICE_NODE RootNode
+);
+
+NTSTATUS
+NTAPI
+IopArbiterQueryRootInterface(
+    _In_ PIO_STACK_LOCATION IoStack,
+    _In_ NTSTATUS ExistingStatus
+);
+
+VOID
+NTAPI
+IopUncacheResourceHandlers(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+VOID
+NTAPI
+IopInitializeRequirement(
+    _Out_ PIOP_REQUIREMENT Requirement,
+    _In_opt_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _In_ ARBITER_REQUEST_SOURCE RequestSource,
+    _In_ INTERFACE_TYPE InterfaceType,
+    _In_ ULONG BusNumber,
+    _In_reads_(AlternativeCount) PIO_RESOURCE_DESCRIPTOR Alternatives,
+    _In_ ULONG AlternativeCount
+);
+
+NTSTATUS
+NTAPI
+IopFindRequirementHandlers(
+    _Inout_ PIOP_REQUIREMENT Requirement,
+    _In_ INTERFACE_TYPE ListInterfaceType
+);
+
+VOID
+NTAPI
+IopFreeRequirementLevels(
+    _Inout_ PIOP_REQUIREMENT Requirement
+);
+
+NTSTATUS
+NTAPI
+IopTranslateAssignmentToDevice(
+    _Inout_ PIOP_REQUIREMENT Requirement
+);
+
+//
+// Resource translators (pnptrans.c)
+//
+NTSTATUS
+NTAPI
+IopTranslatorQueryRootInterface(
+    _In_ PIO_STACK_LOCATION IoStack,
+    _In_ NTSTATUS ExistingStatus
+);
+
+BOOLEAN
+NTAPI
+IopCanQueryResourceHandlers(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+NTSTATUS
+NTAPI
+IopGetDeviceTranslator(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ UCHAR ResourceType,
+    _Out_ PTRANSLATOR_INTERFACE *Translator
+);
+
+VOID
+NTAPI
+IopFreeDeviceNodeTranslators(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+IopInitializeLegacyBusLists(VOID);
+
+PDEVICE_NODE
+NTAPI
+IopFindLegacyBusDeviceNode(
+    _In_ INTERFACE_TYPE InterfaceType,
+    _In_ ULONG BusNumber
+);
+
+VOID
+NTAPI
+IopRegisterLegacyBus(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+VOID
+NTAPI
+IopUnregisterLegacyBus(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+PDEVICE_NODE
+NTAPI
+IopFindResourceBus(
+    _In_ INTERFACE_TYPE InterfaceType,
+    _In_ ULONG BusNumber,
+    _In_ INTERFACE_TYPE ListInterfaceType
+);
+
+PDEVICE_NODE
+NTAPI
+IopGetResourceParent(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+NTSTATUS
+NTAPI
+IopTranslateRequirement(
+    _In_ PTRANSLATOR_INTERFACE Translator,
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _In_reads_(AlternativeCount) PIO_RESOURCE_DESCRIPTOR Alternatives,
+    _In_ ULONG AlternativeCount,
+    _Out_ PIO_RESOURCE_DESCRIPTOR *Translated,
+    _Out_ PULONG TranslatedCount
+);
+
+NTSTATUS
+NTAPI
+IopTranslateResourceToRoot(
+    _In_opt_ PDEVICE_NODE DeviceNode,
+    _In_ INTERFACE_TYPE InterfaceType,
+    _In_ ULONG BusNumber,
+    _In_ ARBITER_REQUEST_SOURCE RequestSource,
+    _In_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Raw,
+    _Out_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Translated
+);
+
+//
 // PNP Routines
 //
 NTSTATUS
