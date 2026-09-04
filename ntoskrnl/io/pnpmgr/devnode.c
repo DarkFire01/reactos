@@ -56,6 +56,7 @@ PipAllocateDeviceNode(
     DeviceNode->State = DeviceNodeUninitialized;
 //    KeInitializeEvent(&DeviceNode->EnumerationMutex, SynchronizationEvent, TRUE);
     InitializeListHead(&DeviceNode->DeviceArbiterList);
+    InitializeListHead(&DeviceNode->DeviceProperties);
     InitializeListHead(&DeviceNode->DeviceTranslatorList);
     InitializeListHead(&DeviceNode->TargetDeviceNotify);
     InitializeListHead(&DeviceNode->DockInfo.ListEntry);
@@ -390,6 +391,9 @@ IopFreeDeviceNode(
     {
         ExFreePool(DeviceNode->BootResources);
     }
+
+    /* Release any stored device properties (IoSetDevicePropertyData) */
+    IopFreeDeviceProperties(DeviceNode);
 
     IoGetDevObjExtension(DeviceNode->PhysicalDeviceObject)->DeviceNode = NULL;
     ExFreePoolWithTag(DeviceNode, TAG_IO_DEVNODE);

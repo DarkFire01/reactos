@@ -578,6 +578,46 @@ IopReleaseLegacyResources(
     _In_ PDRIVER_OBJECT DriverObject
 );
 
+/* Device property store (io/pnpmgr/devprop.c) */
+VOID
+IopFreeDeviceProperties(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+/*
+ * The public IoGet/SetDevicePropertyData prototypes in iofuncs.h are gated to
+ * NTDDI_VISTA and so are invisible in this NTDDI_WS03SP1 build, even though the
+ * exports and the implementation exist. Declare them here for internal callers.
+ * The types are spelled with the struct tag and ULONG, which is DEVPROPTYPE and
+ * LCID, so that no NTDDI-gated typedef is required.
+ */
+struct _DEVPROPKEY;
+
+NTSTATUS
+NTAPI
+IoGetDevicePropertyData(
+    _In_ PDEVICE_OBJECT Pdo,
+    _In_ const struct _DEVPROPKEY *PropertyKey,
+    _In_ ULONG Lcid,
+    _In_ ULONG Flags,
+    _In_ ULONG Size,
+    _Out_ PVOID Data,
+    _Out_ PULONG RequiredSize,
+    _Out_ PULONG Type
+);
+
+NTSTATUS
+NTAPI
+IoSetDevicePropertyData(
+    _In_ PDEVICE_OBJECT Pdo,
+    _In_ const struct _DEVPROPKEY *PropertyKey,
+    _In_ ULONG Lcid,
+    _In_ ULONG Flags,
+    _In_ ULONG Type,
+    _In_ ULONG Size,
+    _In_opt_ PVOID Data
+);
+
 //
 // Resource arbiters (pnparb.c)
 //
