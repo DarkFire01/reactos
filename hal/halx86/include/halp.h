@@ -634,4 +634,28 @@ extern KAFFINITY HalpDefaultInterruptAffinity;
 extern IDTUsageFlags HalpIDTUsageFlags[MAXIMUM_IDTVECTOR+1];
 
 extern BOOLEAN HalBootViaEfi;
+
+/* Interrupt controller used by this HAL: 0 for the PIC, 1 for the APIC */
+extern ULONG HalpInterruptControllerType;
+
+/* FORCEMSI and NOMSI boot options */
+#define HALP_MESSAGE_INTERRUPTS_FORCE_ON   0x00000001
+#define HALP_MESSAGE_INTERRUPTS_FORCE_OFF  0x00000002
+extern ULONG HalpMessageInterruptPolicy;
+
+/* Interrupt controller routines for the ACPI power management dispatch */
+ULONG
+NTAPI
+HalpGetInterruptControllerVersion(
+    _In_ ULONG InterruptBase);
+
+BOOLEAN
+NTAPI
+HalpIsInterruptInputValid(
+    _In_ ULONG Input);
+
+VOID
+NTAPI
+HalpRestoreInterruptController(
+    VOID);
 extern const USHORT HalpBuildType;

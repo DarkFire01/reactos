@@ -51,6 +51,12 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     HalpPrintApicTables();
 
+    /* This HAL uses the APIC */
+    HalpInterruptControllerType = 1;
+
+    /* Initialize message-signaled interrupt support */
+    HalpInitializeMessageInterrupts();
+
     /* Enable clock interrupt handler */
     HalpEnableInterruptHandler(IDT_INTERNAL,
                                0,
