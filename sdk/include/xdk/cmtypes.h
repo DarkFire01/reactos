@@ -154,7 +154,7 @@ typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
       ULONG Vector;
       KAFFINITY Affinity;
     } Interrupt;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if (NTDDI_VERSION >= NTDDI_LONGHORN) || defined(__REACTOS__)
     struct {
       _ANONYMOUS_UNION union {
         struct {
@@ -179,7 +179,7 @@ typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
         } Translated;
       } DUMMYUNIONNAME;
     } MessageInterrupt;
-#endif
+#endif /* NTDDI_LONGHORN || __REACTOS__ */
     struct {
       PHYSICAL_ADDRESS Start;
       ULONG Length;
