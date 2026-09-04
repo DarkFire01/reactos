@@ -34,7 +34,8 @@
 
 /* GLOBALS ********************************************************************/
 
-HALP_APIC_INFO_TABLE HalpApicInfoTable;
+/* Defined by the APIC component; the tables parsed here fill it in */
+extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
 
 // ACPI_MADT_LOCAL_APIC.LapicFlags masks
 #define LAPIC_FLAG_ENABLED          0x00000001
@@ -44,9 +45,9 @@ HALP_APIC_INFO_TABLE HalpApicInfoTable;
 static PROCESSOR_IDENTITY HalpStaticProcessorIdentity[MAXIMUM_PROCESSORS];
 const PPROCESSOR_IDENTITY HalpProcessorIdentity = HalpStaticProcessorIdentity;
 
-#if 0
+/* ISA line to global interrupt mapping, filled from the overrides below */
 extern ULONG HalpPicVectorRedirect[16];
-#endif
+extern ULONG HalpPicVectorFlags[16];
 
 /* FUNCTIONS ******************************************************************/
 
@@ -196,7 +197,7 @@ HalpParseApicTables(
                     return;
                 }
 
-                DPRINT00(" Interrupt Override: Bus %u, SourceIrq %u, GlobalIrq %08X, IntiFlags %04X / UNIMPLEMENTED\n",
+                DPRINT00(" Interrupt Override: Bus %u, SourceIrq %u, GlobalIrq %08X, IntiFlags %04X\n",
                          InterruptOverride->Bus, InterruptOverride->SourceIrq,
                          InterruptOverride->GlobalIrq, InterruptOverride->IntiFlags);
 
@@ -206,20 +207,17 @@ HalpParseApicTables(
                     return;
                 }
 
-#if 1
-                // TODO: Implement it.
-#else // TODO: Is that correct?
-                if (InterruptOverride->SourceIrq > _countof(HalpPicVectorRedirect))
+                if (InterruptOverride->SourceIrq >= _countof(HalpPicVectorRedirect))
                 {
                     DPRINT01("Invalid SourceIrq: %p, %u\n",
                              InterruptOverride, InterruptOverride->SourceIrq);
                     return;
                 }
 
-                // Note: GlobalIrq is not validated in any way (yet).
+                /* The firmware wires this ISA line to another global interrupt,
+                   possibly with a non-default polarity and trigger */
                 HalpPicVectorRedirect[InterruptOverride->SourceIrq] = InterruptOverride->GlobalIrq;
-                // TODO: What about 'InterruptOverride->IntiFlags'?
-#endif
+                HalpPicVectorFlags[InterruptOverride->SourceIrq] = InterruptOverride->IntiFlags;
 
                 break;
             }

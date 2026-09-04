@@ -8,11 +8,22 @@
 /* INCLUDES *******************************************************************/
 
 #include <hal.h>
+#include "smp.h"
 
 #define NDEBUG
 #include <debug.h>
 
 /* GLOBALS  *******************************************************************/
+
+/*
+ * What the firmware said about the interrupt controllers. An ACPI HAL fills
+ * this in while parsing the MADT; a HAL built without ACPI leaves it zeroed,
+ * and the APIC code then assumes the one standard I/O APIC.
+ *
+ * It lives in the generic component because the producer (acpi/madt.c) and the
+ * consumer (apic/apic.c) are in components that are not always linked together.
+ */
+HALP_APIC_INFO_TABLE HalpApicInfoTable;
 
 UCHAR HalpSerialLen;
 CHAR HalpSerialNumber[31];
