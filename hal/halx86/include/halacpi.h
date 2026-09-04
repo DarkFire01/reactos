@@ -24,6 +24,9 @@ HalpAcpiGetTable(
     IN ULONG Signature
 );
 
+/* The Fixed ACPI Description Table, parsed at phase 0 */
+extern FADT HalpFixedAcpiDescTable;
+
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
