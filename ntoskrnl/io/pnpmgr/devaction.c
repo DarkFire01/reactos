@@ -1287,6 +1287,24 @@ PiInitializeDevNode(
         DeviceNode->ChildBusTypeIndex = -1;
     }
 
+    /* Free the lists left from a previous initialization */
+    if (DeviceNode->BootResources != NULL)
+    {
+        ExFreePool(DeviceNode->BootResources);
+        DeviceNode->BootResources = NULL;
+    }
+    if (DeviceNode->BootResourcesTranslated != NULL)
+    {
+        ExFreePool(DeviceNode->BootResourcesTranslated);
+        DeviceNode->BootResourcesTranslated = NULL;
+    }
+    if (DeviceNode->ResourceRequirements != NULL)
+    {
+        ExFreePool(DeviceNode->ResourceRequirements);
+        DeviceNode->ResourceRequirements = NULL;
+    }
+    IopDeviceNodeClearFlag(DeviceNode, DNF_HAS_BOOT_CONFIG);
+
     DPRINT("Sending IRP_MN_QUERY_RESOURCES to device stack\n");
 
     Status = IopInitiatePnpIrp(DeviceNode->PhysicalDeviceObject,
@@ -1296,7 +1314,6 @@ PiInitializeDevNode(
     if (NT_SUCCESS(Status) && IoStatusBlock.Information)
     {
         DeviceNode->BootResources = (PCM_RESOURCE_LIST)IoStatusBlock.Information;
-        IopDeviceNodeSetFlag(DeviceNode, DNF_HAS_BOOT_CONFIG);
     }
     else
     {
@@ -1323,6 +1340,21 @@ PiInitializeDevNode(
     if (InstanceKey != NULL)
     {
         IopSetDeviceInstanceData(InstanceKey, DeviceNode);
+    }
+
+    /* Keep other devices from being assigned the boot configuration */
+    if (DeviceNode->BootResources != NULL)
+    {
+        Status = IopReserveBootConfig(DeviceNode);
+        if (NT_SUCCESS(Status))
+        {
+            IopDeviceNodeSetFlag(DeviceNode, DNF_HAS_BOOT_CONFIG);
+        }
+        else
+        {
+            DPRINT1("Failed to reserve the boot config of %wZ (Status 0x%08lx)\n",
+                    &DeviceNode->InstancePath, Status);
+        }
     }
 
     // Try installing a critical device, so its Service key is populated
