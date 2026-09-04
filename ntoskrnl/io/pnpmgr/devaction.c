@@ -1283,6 +1283,19 @@ PiInitializeDevNode(
         DeviceNode->ChildBusTypeIndex = -1;
     }
 
+    /* A node reset back to this state still carries its previous lists */
+    if (DeviceNode->BootResources != NULL)
+    {
+        ExFreePool(DeviceNode->BootResources);
+        DeviceNode->BootResources = NULL;
+    }
+    if (DeviceNode->ResourceRequirements != NULL)
+    {
+        ExFreePool(DeviceNode->ResourceRequirements);
+        DeviceNode->ResourceRequirements = NULL;
+    }
+    IopDeviceNodeClearFlag(DeviceNode, DNF_HAS_BOOT_CONFIG);
+
     DPRINT("Sending IRP_MN_QUERY_RESOURCES to device stack\n");
 
     Status = IopInitiatePnpIrp(DeviceNode->PhysicalDeviceObject,
@@ -1292,7 +1305,6 @@ PiInitializeDevNode(
     if (NT_SUCCESS(Status) && IoStatusBlock.Information)
     {
         DeviceNode->BootResources = (PCM_RESOURCE_LIST)IoStatusBlock.Information;
-        IopDeviceNodeSetFlag(DeviceNode, DNF_HAS_BOOT_CONFIG);
     }
     else
     {
@@ -1319,6 +1331,28 @@ PiInitializeDevNode(
     if (InstanceKey != NULL)
     {
         IopSetDeviceInstanceData(InstanceKey, DeviceNode);
+    }
+
+    /*
+     * The LogConf values are on record, so the firmware configuration can now
+     * be reserved in the arbiters. Before the boot drivers are up a
+     * root-enumerated device's claim is queued instead, and drained later by
+     * IopReserveDeferredBootConfigs.
+     */
+    if (DeviceNode->BootResources != NULL)
+    {
+        Status = (*IopReserveBootConfigRoutine)(ArbiterRequestPnpEnumerated,
+                                                DeviceNode->PhysicalDeviceObject,
+                                                DeviceNode->BootResources);
+        if (NT_SUCCESS(Status))
+        {
+            IopDeviceNodeSetFlag(DeviceNode, DNF_HAS_BOOT_CONFIG);
+        }
+        else
+        {
+            DPRINT1("Failed to reserve the boot config of %wZ (Status 0x%08lx)\n",
+                    &DeviceNode->InstancePath, Status);
+        }
     }
 
     // Try installing a critical device, so its Service key is populated
