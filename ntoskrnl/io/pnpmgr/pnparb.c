@@ -2672,6 +2672,107 @@ IopTranslateDeviceResources(
             case CmResourceTypeInterrupt:
             {
                KIRQL Irql;
+
+               /*
+                * A message interrupt has no line to translate. What the arbiter
+                * placed is a slot in the message window rather than a bus line,
+                * and the vector behind it is decided when the device is
+                * connected, from the connection data the arbiter published.
+                *
+                * Copying the raw descriptor alone would leave the translated
+                * form describing nothing: its Level and Vector alias the raw
+                * message form's Group and message-window slot, so a driver reads
+                * IRQL 0 back, and KMDF fails on m_SynchronizeIrql != PASSIVE_LEVEL
+                * before the device ever sees an interrupt.
+                */
+               if (DescriptorRaw->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
+               {
+                   PINTERRUPT_CONNECTION_DATA ConnectionData;
+                   NTSTATUS ReadStatus;
+
+                   ReadStatus = IopReadInterruptConnectionData(
+                                    DeviceNode->PhysicalDeviceObject,
+                                    &ConnectionData);
+                   if (!NT_SUCCESS(ReadStatus))
+                   {
+                       DPRINT1("Message interrupt for %wZ: connection data read 0x%08lx\n",
+                               &DeviceNode->InstancePath, ReadStatus);
+                       break;
+                   }
+
+                   DescriptorTranslated->u.MessageInterrupt.Translated.Level =
+                       ConnectionData->Vectors[0].Irql;
+                   DescriptorTranslated->u.MessageInterrupt.Translated.Vector =
+                       ConnectionData->Vectors[0].Vector;
+                   DescriptorTranslated->u.MessageInterrupt.Translated.Affinity =
+                       ConnectionData->Vectors[0].TargetProcessors.Mask;
+#if defined(NT_PROCESSOR_GROUPS)
+                   DescriptorTranslated->u.MessageInterrupt.Translated.Group =
+                       ConnectionData->Vectors[0].TargetProcessors.Group;
+#endif
+
+                   DPRINT("Message interrupt for %wZ: vector 0x%lx irql %u\n",
+                          &DeviceNode->InstancePath,
+                          ConnectionData->Vectors[0].Vector,
+                          (ULONG)ConnectionData->Vectors[0].Irql);
+
+                   ExFreePoolWithTag(ConnectionData, TAG_IO_INTERRUPT);
+                   break;
+               }
+
+               /*
+                * A line whose vector the arbiter already assigned. Whoever owns
+                * the interrupt arbiter picks the vector, programs the controller
+                * and publishes the result as the device's
+                * INTERRUPT_CONNECTION_DATA. Translating the line a second time
+                * through the HAL invents a different vector for the same input,
+                * and the translated resource a driver reads its vector out of
+                * then no longer matches the property IoConnectInterruptEx looks
+                * that vector up in. The arbiter's assignment is the one that
+                * reached the hardware, so it is the one that has to appear here.
+                */
+               {
+                   PINTERRUPT_CONNECTION_DATA LineData;
+                   BOOLEAN Assigned = FALSE;
+
+                   if (NT_SUCCESS(IopReadInterruptConnectionData(
+                                      DeviceNode->PhysicalDeviceObject, &LineData)))
+                   {
+                       ULONG Index;
+
+                       for (Index = 0; Index < LineData->Count; Index++)
+                       {
+                           PINTERRUPT_VECTOR_DATA Line = &LineData->Vectors[Index];
+
+                           if (Line->Type != InterruptTypeControllerInput)
+                               continue;
+
+                           if (Line->ControllerInput.Gsiv != DescriptorRaw->u.Interrupt.Level)
+                               continue;
+
+                           DescriptorTranslated->u.Interrupt.Vector = Line->Vector;
+                           DescriptorTranslated->u.Interrupt.Level = Line->Irql;
+                           DescriptorTranslated->u.Interrupt.Affinity =
+                               Line->TargetProcessors.Mask ? Line->TargetProcessors.Mask
+                                                           : KeActiveProcessors;
+                           Assigned = TRUE;
+
+                           DPRINT("Line interrupt for %wZ: gsiv %lu, vector 0x%lx irql %u\n",
+                                  &DeviceNode->InstancePath,
+                                  Line->ControllerInput.Gsiv,
+                                  Line->Vector,
+                                  (ULONG)Line->Irql);
+                           break;
+                       }
+
+                       ExFreePoolWithTag(LineData, TAG_IO_INTERRUPT);
+                   }
+
+                   if (Assigned)
+                       break;
+               }
+
+               /* Nobody published a vector for this line, so ask the HAL */
                DescriptorTranslated->u.Interrupt.Vector = HalGetInterruptVector(
                   DeviceNode->ResourceList->List[i].InterfaceType,
                   DeviceNode->ResourceList->List[i].BusNumber,
@@ -2683,8 +2784,10 @@ IopTranslateDeviceResources(
                if (!DescriptorTranslated->u.Interrupt.Vector)
                {
                    Status = STATUS_UNSUCCESSFUL;
-                   DPRINT1("Failed to translate interrupt resource (Vector: 0x%x | Level: 0x%x)\n", DescriptorRaw->u.Interrupt.Vector,
-                                                                                                   DescriptorRaw->u.Interrupt.Level);
+                   DPRINT1("Failed to translate interrupt resource "
+                           "(Vector: 0x%x | Level: 0x%x)\n",
+                           DescriptorRaw->u.Interrupt.Vector,
+                           DescriptorRaw->u.Interrupt.Level);
                    goto cleanup;
                }
                break;

@@ -578,6 +578,16 @@ IopReleaseLegacyResources(
     _In_ PDRIVER_OBJECT DriverObject
 );
 
+/*
+ * Reads a device's published INTERRUPT_CONNECTION_DATA (io/iomgr/irq.c).
+ * The caller frees the buffer with TAG_IO_INTERRUPT.
+ */
+NTSTATUS
+IopReadInterruptConnectionData(
+    _In_ PDEVICE_OBJECT Pdo,
+    _Out_ PINTERRUPT_CONNECTION_DATA *ConnectionData
+);
+
 /* Device property store (io/pnpmgr/devprop.c) */
 VOID
 IopFreeDeviceProperties(
