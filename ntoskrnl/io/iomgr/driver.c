@@ -1204,6 +1204,15 @@ IopInitializeBootDrivers(VOID)
         }
     }
 
+    /*
+     * All boot bus extenders are up, so reserve the boot configurations that
+     * were deferred at enumeration, and reserve later ones right away. This
+     * has to happen before the enumeration pass below, or a device assigned
+     * in that pass could take a boot device's firmware ranges and leave the
+     * system with bugcheck 0x7B INACCESSIBLE_BOOT_DEVICE.
+     */
+    IopReserveDeferredBootConfigs();
+
     /* HAL Root Bus is being initialized before loading the boot drivers so this may cause issues
      * when some devices are not being initialized with their drivers. This flag is used to delay
      * all actions with devices (except PnP root device) until boot drivers are loaded.

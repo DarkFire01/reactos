@@ -583,6 +583,49 @@ IopFindArbiterForResourceType(
     _Out_ PARBITER_INTERFACE *ArbiterInterface
 );
 
+NTSTATUS
+NTAPI
+IopArbiterReserveBootConfig(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+//
+// Boot-configuration reservation (pnparb.c)
+//
+typedef NTSTATUS
+(NTAPI *PIOP_RESERVE_BOOT_CONFIG_ROUTINE)(
+    _In_ ARBITER_REQUEST_SOURCE RequestSource,
+    _In_opt_ PDEVICE_OBJECT DeviceObject,
+    _In_ PCM_RESOURCE_LIST BootResources
+);
+
+NTSTATUS
+NTAPI
+IopQueueBootConfig(
+    _In_ ARBITER_REQUEST_SOURCE RequestSource,
+    _In_opt_ PDEVICE_OBJECT DeviceObject,
+    _In_ PCM_RESOURCE_LIST BootResources
+);
+
+NTSTATUS
+NTAPI
+IopReserveBootConfig(
+    _In_ ARBITER_REQUEST_SOURCE RequestSource,
+    _In_opt_ PDEVICE_OBJECT DeviceObject,
+    _In_ PCM_RESOURCE_LIST BootResources
+);
+
+VOID
+NTAPI
+IopReserveDeferredBootConfigs(VOID);
+
+/* IopQueueBootConfig until the boot drivers are up, IopReserveBootConfig
+   afterwards, switched by IopReserveDeferredBootConfigs */
+extern PIOP_RESERVE_BOOT_CONFIG_ROUTINE IopReserveBootConfigRoutine;
+
+/* TRUE once the deferred boot configurations are on record in the arbiters */
+extern BOOLEAN IopDeferredBootConfigsReserved;
+
 //
 // PNP Routines
 //
