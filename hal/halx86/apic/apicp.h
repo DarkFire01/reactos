@@ -384,3 +384,55 @@ HalpProgramInterruptInput(
     _In_ KINTERRUPT_POLARITY Polarity,
     _In_ KAFFINITY TargetProcessors);
 
+/* msi.c */
+BOOLEAN
+NTAPI
+HalpMessageInterruptsAllowed(VOID);
+
+NTSTATUS
+NTAPI
+HalpGetLocalApicIdForProcessor(
+    _In_ ULONG ProcessorNumber,
+    _Out_ PULONG ApicId);
+
+NTSTATUS
+NTAPI
+HalpBuildInterruptDestination(
+    _In_ KAFFINITY TargetProcessors,
+    _Out_ PBOOLEAN Logical,
+    _Out_ PUCHAR Destination);
+
+NTSTATUS
+NTAPI
+HalpAllocateMessageVectors(
+    _In_ ULONG Count,
+    _Out_ PUCHAR BaseVector);
+
+VOID
+NTAPI
+HalpFreeMessageVectors(
+    _In_ UCHAR BaseVector,
+    _In_ ULONG Count);
+
+NTSTATUS
+NTAPI
+HalpAllocateMessageTarget(
+    _In_ PDEVICE_OBJECT Owner,
+    _In_ KAFFINITY ProcessorSet,
+    _In_ ULONG NumberOfIdtEntries,
+    _In_ KINTERRUPT_MODE Mode,
+    _In_ BOOLEAN ShareVector,
+    _Out_ PULONG Vector,
+    _Out_ PKIRQL Irql,
+    _Out_ PULONG IdtEntry);
+
+VOID
+NTAPI
+HalpFreeMessageTarget(
+    _In_ PDEVICE_OBJECT Owner,
+    _In_ ULONG Vector,
+    _In_ KAFFINITY ProcessorSet);
+
+VOID
+NTAPI
+HalpInitializeMessageInterrupts(VOID);

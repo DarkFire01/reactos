@@ -634,4 +634,37 @@ extern KAFFINITY HalpDefaultInterruptAffinity;
 extern IDTUsageFlags HalpIDTUsageFlags[MAXIMUM_IDTVECTOR+1];
 
 extern BOOLEAN HalBootViaEfi;
+
+/*
+ * Interrupt controller this HAL image drives: 0 for the 8259 PIC, 1 for the
+ * APIC. Reported to the ACPI driver, which routes interrupts accordingly.
+ */
+extern ULONG HalpInterruptModel;
+
+/*
+ * Boot option override of the message-signalled interrupt policy, from the
+ * FORCEMSI and NOMSI options.
+ */
+#define HALP_MESSAGE_INTERRUPTS_FORCE_ON   0x00000001
+#define HALP_MESSAGE_INTERRUPTS_FORCE_OFF  0x00000002
+extern ULONG HalpMessageInterruptPolicy;
+
+/*
+ * Interrupt controller services the APIC and PIC components each provide for
+ * the ACPI power management dispatch.
+ */
+ULONG
+NTAPI
+HalpGetInterruptControllerVersion(
+    _In_ ULONG InterruptBase);
+
+BOOLEAN
+NTAPI
+HalpIsInterruptInputValid(
+    _In_ ULONG Input);
+
+VOID
+NTAPI
+HalpRestoreInterruptController(
+    VOID);
 extern const USHORT HalpBuildType;
