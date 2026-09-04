@@ -38,6 +38,8 @@ LIST_ENTRY HalpAcpiTableMatchList;
 ULONG HalpInvalidAcpiTable;
 
 ULONG HalpPicVectorRedirect[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+/* Polarity and trigger flags of each ISA IRQ, from the MADT interrupt source overrides */
+USHORT HalpIsaOverrideFlags[16];
 
 /* This determines the HAL type */
 BOOLEAN HalDisableFirmwareMapper = TRUE;

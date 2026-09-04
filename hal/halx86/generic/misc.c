@@ -8,11 +8,20 @@
 /* INCLUDES *******************************************************************/
 
 #include <hal.h>
+#include "smp.h"
 
 #define NDEBUG
 #include <debug.h>
 
 /* GLOBALS  *******************************************************************/
+
+/*
+ * Interrupt controller information from the firmware tables. The ACPI HAL
+ * fills it in from the MADT. Without ACPI it stays zeroed and the APIC code
+ * uses the default I/O APIC. It is defined here because acpi/madt.c and
+ * apic/apic.c are not always linked together.
+ */
+HALP_APIC_INFO_TABLE HalpApicInfoTable;
 
 UCHAR HalpSerialLen;
 CHAR HalpSerialNumber[31];

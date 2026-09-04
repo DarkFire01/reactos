@@ -34,7 +34,8 @@
 
 /* GLOBALS ********************************************************************/
 
-HALP_APIC_INFO_TABLE HalpApicInfoTable;
+/* Defined in generic/misc.c */
+extern HALP_APIC_INFO_TABLE HalpApicInfoTable;
 
 // ACPI_MADT_LOCAL_APIC.LapicFlags masks
 #define LAPIC_FLAG_ENABLED          0x00000001
@@ -44,9 +45,9 @@ HALP_APIC_INFO_TABLE HalpApicInfoTable;
 static PROCESSOR_IDENTITY HalpStaticProcessorIdentity[MAXIMUM_PROCESSORS];
 const PPROCESSOR_IDENTITY HalpProcessorIdentity = HalpStaticProcessorIdentity;
 
-#if 0
+/* ISA IRQ overrides, defined in halacpi.c */
 extern ULONG HalpPicVectorRedirect[16];
-#endif
+extern USHORT HalpIsaOverrideFlags[16];
 
 /* FUNCTIONS ******************************************************************/
 
@@ -196,7 +197,7 @@ HalpParseApicTables(
                     return;
                 }
 
-                DPRINT00(" Interrupt Override: Bus %u, SourceIrq %u, GlobalIrq %08X, IntiFlags %04X / UNIMPLEMENTED\n",
+                DPRINT00(" Interrupt Override: Bus %u, SourceIrq %u, GlobalIrq %08X, IntiFlags %04X\n",
                          InterruptOverride->Bus, InterruptOverride->SourceIrq,
                          InterruptOverride->GlobalIrq, InterruptOverride->IntiFlags);
 
@@ -206,10 +207,7 @@ HalpParseApicTables(
                     return;
                 }
 
-#if 1
-                // TODO: Implement it.
-#else // TODO: Is that correct?
-                if (InterruptOverride->SourceIrq > _countof(HalpPicVectorRedirect))
+                if (InterruptOverride->SourceIrq >= _countof(HalpPicVectorRedirect))
                 {
                     DPRINT01("Invalid SourceIrq: %p, %u\n",
                              InterruptOverride, InterruptOverride->SourceIrq);
@@ -218,8 +216,7 @@ HalpParseApicTables(
 
                 // Note: GlobalIrq is not validated in any way (yet).
                 HalpPicVectorRedirect[InterruptOverride->SourceIrq] = InterruptOverride->GlobalIrq;
-                // TODO: What about 'InterruptOverride->IntiFlags'?
-#endif
+                HalpIsaOverrideFlags[InterruptOverride->SourceIrq] = InterruptOverride->IntiFlags;
 
                 break;
             }
