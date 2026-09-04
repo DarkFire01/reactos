@@ -1029,6 +1029,13 @@ typedef struct _DEVICE_NODE
     LIST_ENTRY TargetDeviceNotify;
     LIST_ENTRY DeviceArbiterList;
     LIST_ENTRY DeviceTranslatorList;
+    /*
+     * In-memory device property store (IoGet/SetDevicePropertyData). It holds,
+     * among other things, the INTERRUPT_CONNECTION_DATA handed from whoever
+     * arbitrates interrupts to the bus driver and to IoConnectInterruptEx.
+     * A list of IOP_DEVICE_PROPERTY.
+     */
+    LIST_ENTRY DeviceProperties;
     USHORT NoTranslatorMask;
     USHORT QueryTranslatorMask;
     USHORT NoArbiterMask;

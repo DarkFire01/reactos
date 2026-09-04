@@ -87,6 +87,7 @@
 #define TAG_IO_INTERRUPT        'nioI'
 #define TAG_MDL                 ' LDM'
 #define TAG_IO_DEVNODE          'donD'
+#define TAG_IO_DEVPROP          'pDoI'
 #define TAG_PNP_NOTIFY          'NPnP'
 #define TAG_PNP_ROOT            'RPnP'
 #define TAG_PNP_GUIDS           'GPnP'
