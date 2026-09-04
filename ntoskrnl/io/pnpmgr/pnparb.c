@@ -1,16 +1,483 @@
 /*
- * PROJECT:         ReactOS Kernel
- * COPYRIGHT:       GPL - See COPYING in the top level directory
- * FILE:            ntoskrnl/io/pnpmgr/pnpres.c
- * PURPOSE:         Resource handling code
- * PROGRAMMERS:     Cameron Gutman (cameron.gutman@reactos.org)
- *                  ReactOS Portable Systems Group
+ * PROJECT:     ReactOS Kernel
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     PnP manager resource arbitration and assignment
+ * COPYRIGHT:   Copyright 2005 Cameron Gutman <cameron.gutman@reactos.org>
+ *              Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+/*
+ * Every device gets its resources through a resource arbiter. An arbiter is
+ * owned by a bus, specifically the ancestor that decodes the resource, and is
+ * published through IRP_MN_QUERY_INTERFACE for GUID_ARBITER_INTERFACE_STANDARD
+ * with the resource type passed in InterfaceSpecificData. When no bus in the
+ * parent chain arbitrates a given type, the five root arbiters (Port, Memory,
+ * Dma, Interrupt and BusNumber) pre-registered on the root device node act as
+ * the terminal fallback.
+ *
+ * This file holds the discovery half of that machinery: publishing the root
+ * arbiters, and walking a device's ancestry to find the arbiter for a resource
+ * type while caching the answer on the providing node through
+ * DeviceArbiterList together with QueryArbiterMask and NoArbiterMask.
+ *
+ * It also holds the registry mirror of the assignment results, under
+ * RESOURCEMAP and the device's AllocConfig value.
  */
 
 #include <ntoskrnl.h>
+#include <wdmguid.h>
 
 #define NDEBUG
 #include <debug.h>
+
+/* GLOBALS ******************************************************************/
+
+#define TAG_IO_ARBITER 'AbrI'
+
+/* The five root arbiter instances, initialized by IopInitializeArbiters. */
+extern ARBITER_INSTANCE IopRootBusNumberArbiter;
+extern ARBITER_INSTANCE IopRootIrqArbiter;
+extern ARBITER_INSTANCE IopRootDmaArbiter;
+extern ARBITER_INSTANCE IopRootMemArbiter;
+extern ARBITER_INSTANCE IopRootPortArbiter;
+
+static const struct
+{
+    UCHAR ResourceType;
+    PARBITER_INSTANCE Instance;
+} IopRootArbiterTable[] =
+{
+    { CmResourceTypePort,      &IopRootPortArbiter },
+    { CmResourceTypeInterrupt, &IopRootIrqArbiter },
+    { CmResourceTypeMemory,    &IopRootMemArbiter },
+    { CmResourceTypeDma,       &IopRootDmaArbiter },
+    { CmResourceTypeBusNumber, &IopRootBusNumberArbiter },
+};
+
+/* One published ARBITER_INTERFACE per root arbiter, in the table's order. */
+static ARBITER_INTERFACE IopRootArbiterInterface[RTL_NUMBER_OF(IopRootArbiterTable)];
+
+/*
+ * A cached arbiter entry. An arbiter discovered by querying a bus has its
+ * ARBITER_INTERFACE copied out of the transient IRP buffer into the Interface
+ * member, so that the cached PI_RESOURCE_ARBITER_ENTRY has stable storage to
+ * point at. Root entries point at IopRootArbiterInterface instead and leave
+ * Interface unused. PI_RESOURCE_ARBITER_ENTRY is the first member, so a
+ * DeviceArbiterList link resolves to the whole IOP_ARBITER_ENTRY.
+ */
+typedef struct _IOP_ARBITER_ENTRY
+{
+    PI_RESOURCE_ARBITER_ENTRY Entry;
+    ARBITER_INTERFACE Interface;
+} IOP_ARBITER_ENTRY, *PIOP_ARBITER_ENTRY;
+
+/* FUNCTIONS ****************************************************************/
+
+/* ARBITER DISCOVERY ********************************************************/
+
+/*
+ * The root arbiters live for the life of the system, so their interfaces are
+ * static and their reference counting callbacks have nothing to do.
+ */
+static
+VOID
+NTAPI
+IopRootArbiterReference(
+    _In_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+}
+
+static
+VOID
+NTAPI
+IopRootArbiterDereference(
+    _In_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+}
+
+/**
+ * @brief
+ * Returns the published interface of the root arbiter for a resource type.
+ *
+ * @param[in] ResourceType
+ * The CmResourceType to look up. CmResourceTypeMemoryLarge resolves to the
+ * Memory arbiter.
+ *
+ * @return
+ * The static root interface, or NULL for a type that has no root arbiter.
+ */
+CODE_SEG("PAGE")
+static
+PARBITER_INTERFACE
+IopGetRootArbiterInterface(
+    _In_ UCHAR ResourceType)
+{
+    ULONG Index;
+
+    PAGED_CODE();
+
+    for (Index = 0; Index < RTL_NUMBER_OF(IopRootArbiterTable); Index++)
+    {
+        if (IopRootArbiterTable[Index].ResourceType == ResourceType ||
+            (IopRootArbiterTable[Index].ResourceType == CmResourceTypeMemory &&
+             ResourceType == CmResourceTypeMemoryLarge))
+        {
+            return &IopRootArbiterInterface[Index];
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief
+ * Returns the cached arbiter entry of a given resource type on a device node.
+ *
+ * @param[in] Node
+ * The device node whose DeviceArbiterList is searched.
+ *
+ * @param[in] ResourceType
+ * The CmResourceType the arbiter must own.
+ *
+ * @return
+ * The cached PI_RESOURCE_ARBITER_ENTRY, or NULL if this node has none for the
+ * type.
+ */
+static
+PPI_RESOURCE_ARBITER_ENTRY
+IopFindArbiterEntry(
+    _In_ PDEVICE_NODE Node,
+    _In_ UCHAR ResourceType)
+{
+    PLIST_ENTRY ListEntry;
+
+    for (ListEntry = Node->DeviceArbiterList.Flink;
+         ListEntry != &Node->DeviceArbiterList;
+         ListEntry = ListEntry->Flink)
+    {
+        PPI_RESOURCE_ARBITER_ENTRY Entry =
+            CONTAINING_RECORD(ListEntry, PI_RESOURCE_ARBITER_ENTRY, DeviceArbiterList);
+
+        if (Entry->ResourceType == ResourceType)
+            return Entry;
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief
+ * Asks a bus PDO for the arbiter of a resource type, through
+ * IRP_MN_QUERY_INTERFACE for GUID_ARBITER_INTERFACE_STANDARD.
+ *
+ * @param[in] Pdo
+ * The bus's physical device object to query.
+ *
+ * @param[in] ResourceType
+ * The CmResourceType, passed as InterfaceSpecificData.
+ *
+ * @param[out] Interface
+ * Receives the bus's ARBITER_INTERFACE on success.
+ *
+ * @return
+ * The IRP completion status. A bus that does not arbitrate the type fails the
+ * IRP, leaving it at the STATUS_NOT_SUPPORTED default.
+ *
+ * @remarks
+ * GUID_ARBITER_INTERFACE_STANDARD is version 0, as the interface has never
+ * been revised. pci.sys advertises its per-bus arbiters with MinVersion and
+ * MaxVersion both zero and rejects anything else, so the query has to ask for
+ * exactly 0. Asking for 1 makes pci.sys decline, every PCI device then falls
+ * through to the root arbiter, and those grants never reach pci.sys's own
+ * allocation. PciTranslateBusAddress goes on to reject the now unowned range,
+ * so HalTranslateBusAddress fails for every PCI BAR.
+ */
+static
+NTSTATUS
+IopQueryArbiterInterface(
+    _In_ PDEVICE_OBJECT Pdo,
+    _In_ UCHAR ResourceType,
+    _Out_ PARBITER_INTERFACE Interface)
+{
+    IO_STATUS_BLOCK IoStatusBlock;
+    IO_STACK_LOCATION Stack;
+
+    RtlZeroMemory(&Stack, sizeof(Stack));
+    Stack.Parameters.QueryInterface.Size = sizeof(ARBITER_INTERFACE);
+    Stack.Parameters.QueryInterface.Version = 0;
+    Stack.Parameters.QueryInterface.Interface = (PINTERFACE)Interface;
+    Stack.Parameters.QueryInterface.InterfaceType = &GUID_ARBITER_INTERFACE_STANDARD;
+    Stack.Parameters.QueryInterface.InterfaceSpecificData = (PVOID)(ULONG_PTR)ResourceType;
+
+    return IopInitiatePnpIrp(Pdo, &IoStatusBlock, IRP_MN_QUERY_INTERFACE, &Stack);
+}
+
+/**
+ * @brief
+ * Publishes the five root arbiters on the root device node, so that the
+ * ancestry walk always terminates with a fallback arbiter for every resource
+ * type.
+ *
+ * @param[in] RootNode
+ * The root device node, IopRootDeviceNode.
+ *
+ * @return
+ * STATUS_SUCCESS, or STATUS_INSUFFICIENT_RESOURCES if an entry allocation
+ * fails.
+ *
+ * @remarks
+ * Called once from IopInitializePlugPlayServices, after the root node exists
+ * and after IopInitializeArbiters has initialized the instances themselves.
+ */
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+IopRegisterRootArbiters(
+    _In_ PDEVICE_NODE RootNode)
+{
+    ULONG Index;
+
+    for (Index = 0; Index < RTL_NUMBER_OF(IopRootArbiterTable); Index++)
+    {
+        PARBITER_INTERFACE Interface = &IopRootArbiterInterface[Index];
+        PPI_RESOURCE_ARBITER_ENTRY Entry;
+
+        Interface->Size = sizeof(ARBITER_INTERFACE);
+        Interface->Version = 0;
+        Interface->Context = IopRootArbiterTable[Index].Instance;
+        Interface->InterfaceReference = IopRootArbiterReference;
+        Interface->InterfaceDereference = IopRootArbiterDereference;
+        Interface->ArbiterHandler = ArbiterLibHandler;
+        Interface->Flags = 0;
+
+        Entry = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Entry), TAG_IO_ARBITER);
+        if (Entry == NULL)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        RtlZeroMemory(Entry, sizeof(*Entry));
+        Entry->ResourceType = IopRootArbiterTable[Index].ResourceType;
+        Entry->ArbiterInterface = Interface;
+        InitializeListHead(&Entry->ResourceList);
+        InitializeListHead(&Entry->BestResourceList);
+        InitializeListHead(&Entry->BestConfig);
+        InitializeListHead(&Entry->ActiveArbiterList);
+
+        InsertTailList(&RootNode->DeviceArbiterList, &Entry->DeviceArbiterList);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Answers the root PDO's IRP_MN_QUERY_INTERFACE for
+ * GUID_ARBITER_INTERFACE_STANDARD with the root arbiter of the requested
+ * resource type.
+ *
+ * @param[in] IoStack
+ * The QUERY_INTERFACE stack location. InterfaceSpecificData carries the
+ * CmResourceType.
+ *
+ * @param[in] ExistingStatus
+ * The IRP's current status, returned unchanged when the query is declined, so
+ * that a declined IRP is left exactly as it was found.
+ *
+ * @return
+ * STATUS_SUCCESS with the interface copied into the caller's buffer, or
+ * ExistingStatus when the query is not for this interface, names an unknown
+ * resource type, asks for a version other than 0, or supplies too small a
+ * buffer.
+ *
+ * @remarks
+ * This makes the root just another bus in the discovery walk, with no special
+ * case for the root: the same query that discovers a bus driver's arbiters
+ * discovers the root arbiters once it reaches the root PDO. The cache on the
+ * root devnode normally answers first, so this handler is the backstop for
+ * queriers that arrive through the IRP path. A version other than 0 is
+ * declined, matching how pci.sys treats the never revised ARBITER interface.
+ */
+NTSTATUS
+NTAPI
+IopArbiterQueryRootInterface(
+    _In_ PIO_STACK_LOCATION IoStack,
+    _In_ NTSTATUS ExistingStatus)
+{
+    PARBITER_INTERFACE Published;
+    PARBITER_INTERFACE Out;
+    UCHAR ResourceType;
+
+    PAGED_CODE();
+
+    /* Not our interface, so leave the IRP untouched */
+    if (!IsEqualGUID(IoStack->Parameters.QueryInterface.InterfaceType,
+                     &GUID_ARBITER_INTERFACE_STANDARD))
+    {
+        return ExistingStatus;
+    }
+
+    /* Decline a wrong version or a short buffer */
+    if (IoStack->Parameters.QueryInterface.Version != 0 ||
+        IoStack->Parameters.QueryInterface.Size < sizeof(ARBITER_INTERFACE) ||
+        IoStack->Parameters.QueryInterface.Interface == NULL)
+    {
+        return ExistingStatus;
+    }
+
+    ResourceType = (UCHAR)(ULONG_PTR)IoStack->Parameters.QueryInterface.InterfaceSpecificData;
+
+    /* No root arbiter for the type, or registration has not run yet */
+    Published = IopGetRootArbiterInterface(ResourceType);
+    if (Published == NULL || Published->ArbiterHandler == NULL)
+        return ExistingStatus;
+
+    Out = (PARBITER_INTERFACE)IoStack->Parameters.QueryInterface.Interface;
+    RtlCopyMemory(Out, Published, sizeof(ARBITER_INTERFACE));
+
+    /*
+     * The provider references the interface before returning it. That is a
+     * no-op for the immortal root arbiters, but the protocol requires the call.
+     */
+    Out->InterfaceReference(Out->Context);
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Finds the arbiter that owns a resource type for a device, by walking the
+ * device's ancestry.
+ *
+ * @param[in] DeviceNode
+ * The device whose resource is being arbitrated.
+ *
+ * @param[in] ResourceType
+ * The CmResourceType to find an arbiter for.
+ *
+ * @param[out] ArbiterInterface
+ * Receives the owning arbiter's interface.
+ *
+ * @return
+ * STATUS_SUCCESS with the interface, STATUS_INSUFFICIENT_RESOURCES if caching
+ * an answer fails, or STATUS_NOT_FOUND if no arbiter exists for the type,
+ * which is only reachable before the root arbiters are registered.
+ *
+ * @remarks
+ * Arbitration is always provided by an ancestor bus and never by the device
+ * itself, so the walk starts at the parent. A cached entry wins outright;
+ * otherwise each bus's PDO is queried exactly once, tracked by
+ * QueryArbiterMask and NoArbiterMask, and the answer is cached on the node
+ * that provided it. The walk terminates at the root node, whose arbiters cover
+ * every resource type.
+ */
+NTSTATUS
+NTAPI
+IopFindArbiterForResourceType(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ UCHAR ResourceType,
+    _Out_ PARBITER_INTERFACE *ArbiterInterface)
+{
+    PDEVICE_NODE Node;
+    USHORT Mask;
+
+    PAGED_CODE();
+
+    *ArbiterInterface = NULL;
+
+    ASSERT(ResourceType < RTL_FIELD_SIZE(DEVICE_NODE, NoArbiterMask) * 8);
+    Mask = (USHORT)(1 << ResourceType);
+
+    for (Node = DeviceNode->Parent; Node != NULL; Node = Node->Parent)
+    {
+        PPI_RESOURCE_ARBITER_ENTRY Cached = IopFindArbiterEntry(Node, ResourceType);
+        PIOP_ARBITER_ENTRY NewEntry;
+        ARBITER_INTERFACE Queried;
+
+        if (Cached != NULL)
+        {
+            *ArbiterInterface = Cached->ArbiterInterface;
+            return STATUS_SUCCESS;
+        }
+
+        /* This bus is already known not to arbitrate the type, so keep walking */
+        if (Node->NoArbiterMask & Mask)
+            continue;
+
+        /* Query this bus for the arbiter exactly once */
+        Node->QueryArbiterMask |= Mask;
+
+        /*
+         * A bus that does not arbitrate this type leaves the IRP at its
+         * STATUS_NOT_SUPPORTED default, so failure is the ordinary answer.
+         * Zero the buffer and insist on a handler even on success, so that a
+         * driver reporting success without filling the interface in cannot be
+         * cached and later called.
+         */
+        RtlZeroMemory(&Queried, sizeof(Queried));
+
+        if (Node->PhysicalDeviceObject == NULL ||
+            !NT_SUCCESS(IopQueryArbiterInterface(Node->PhysicalDeviceObject,
+                                                 ResourceType,
+                                                 &Queried)) ||
+            Queried.ArbiterHandler == NULL)
+        {
+            /* Nothing here, so do not ask this bus again */
+            Node->NoArbiterMask |= Mask;
+            continue;
+        }
+
+        NewEntry = ExAllocatePoolWithTag(NonPagedPool, sizeof(*NewEntry), TAG_IO_ARBITER);
+        if (NewEntry == NULL)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        RtlZeroMemory(NewEntry, sizeof(*NewEntry));
+        NewEntry->Interface = Queried;
+        NewEntry->Entry.ResourceType = ResourceType;
+        NewEntry->Entry.ArbiterInterface = &NewEntry->Interface;
+        InitializeListHead(&NewEntry->Entry.ResourceList);
+        InitializeListHead(&NewEntry->Entry.BestResourceList);
+        InitializeListHead(&NewEntry->Entry.BestConfig);
+        InitializeListHead(&NewEntry->Entry.ActiveArbiterList);
+
+        InsertTailList(&Node->DeviceArbiterList, &NewEntry->Entry.DeviceArbiterList);
+
+        /*
+         * Which ancestor bus arbitrates a resource matters for a device behind
+         * a PCI to PCI bridge: a memory BAR has to resolve to the bridge's
+         * arbiter, so that the child is carved out of the bridge's forwarding
+         * window. Falling through to the root arbiter instead lets the child
+         * occupy root space, and the bridge's own window can then no longer be
+         * placed.
+         */
+        DPRINT("Device %wZ resource type %u arbitrated by ancestor %wZ\n",
+               &DeviceNode->InstancePath, ResourceType, &Node->InstancePath);
+
+        *ArbiterInterface = &NewEntry->Interface;
+        return STATUS_SUCCESS;
+    }
+
+    /*
+     * No bus in the ancestry arbitrates this type, so fall back to the root
+     * arbiter, which owns every type. This also covers a device whose parent
+     * chain does not reach the root node, for instance one that is not yet
+     * fully linked: the published interface is static, so it is available as
+     * soon as the root arbiters have been registered.
+     */
+    *ArbiterInterface = IopGetRootArbiterInterface(ResourceType);
+    if (*ArbiterInterface != NULL && (*ArbiterInterface)->Context != NULL)
+    {
+        DPRINT("Device %wZ resource type %u arbitrated by the root arbiter\n",
+               &DeviceNode->InstancePath, ResourceType);
+        return STATUS_SUCCESS;
+    }
+
+    DPRINT1("No arbiter for resource type %u\n", ResourceType);
+    return STATUS_NOT_FOUND;
+}
+
+/* LEGACY RESOURCE HANDLING *************************************************/
+
 
 FORCEINLINE
 PIO_RESOURCE_LIST

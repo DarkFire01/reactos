@@ -439,6 +439,17 @@ IopInitializePlugPlayServices(VOID)
 
     PiSetDevNodeState(IopRootDeviceNode, DeviceNodeStarted);
 
+    /*
+     * Publish the root arbiters on the root node, as the arbitration
+     * fallback for every device that no bus arbiter covers.
+     */
+    Status = IopRegisterRootArbiters(IopRootDeviceNode);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("IopRegisterRootArbiters() failed, Status 0x%08lx\n", Status);
+        return Status;
+    }
+
     /* Initialize PnP-Event notification support */
     Status = IopInitPlugPlayEvents();
     if (!NT_SUCCESS(Status)) return Status;
