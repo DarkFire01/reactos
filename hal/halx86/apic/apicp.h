@@ -60,7 +60,24 @@
 
 #define APIC_MAX_IRQ 24
 #define APIC_FREE_VECTOR 0xFF
+/* Global system interrupts must fit HalpVectorToIndex below its sentinels */
+#define HALP_MAX_INPUTS 0xFD
+/* I/O APIC units mapped, one page each behind IOAPIC_BASE */
+#define HALP_MAX_IOAPICS 8
 #define APIC_RESERVED_VECTOR 0xFE
+/* HalpVectorToIndex value of a vector that carries a message-signalled
+   interrupt: it belongs to a device, but owns no I/O APIC input */
+#define APIC_MSI_VECTOR 0xFD
+
+/* Local APIC window a device writes to raise a message-signalled interrupt */
+#define APIC_MSI_ADDRESS_BASE       0xFEE00000
+#define APIC_MSI_ADDRESS_LOGICAL    0x00000004
+#define APIC_MSI_ADDRESS_REDIRHINT  0x00000008
+/* Message data: bit 8 selects lowest-priority delivery, bit 11 marks a
+   logical destination, bit 14 is the (edge-ignored) level assert */
+#define APIC_MSI_DATA_LOWEST_PRIORITY   0x00000100
+#define APIC_MSI_DATA_LOGICAL           0x00000800
+#define APIC_MSI_DATA_ASSERT            0x00004000
 
 /* The IMCR is supported by two read/writable or write-only I/O ports,
    22h and 23h, which receive address and data respectively.
@@ -340,3 +357,30 @@ NTAPI
 HalpInitApicInfo(IN PLOADER_PARAMETER_BLOCK KeLoaderBlock);
 
 VOID __cdecl ApicSpuriousService(VOID);
+
+/* apic.c */
+typedef struct _HALP_IOAPIC_UNIT
+{
+    ULONG_PTR Base;         /* mapped registers */
+    ULONG InputBase;        /* first global system interrupt served */
+    ULONG InputCount;       /* redirection entries */
+} HALP_IOAPIC_UNIT, *PHALP_IOAPIC_UNIT;
+
+extern HALP_IOAPIC_UNIT HalpIoApics[HALP_MAX_IOAPICS];
+extern ULONG HalpIoApicCount;
+extern ULONG HalpMaxGsi;
+extern UCHAR HalpVectorToIndex[256];
+#ifndef _M_AMD64
+extern const UCHAR HalpIRQLtoTPR[32];
+extern const KIRQL HalVectorToIRQL[16];
+#endif
+
+NTSTATUS
+NTAPI
+HalpProgramInterruptInput(
+    _In_ ULONG Input,
+    _In_ ULONG Vector,
+    _In_ KINTERRUPT_MODE Mode,
+    _In_ KINTERRUPT_POLARITY Polarity,
+    _In_ KAFFINITY TargetProcessors);
+
