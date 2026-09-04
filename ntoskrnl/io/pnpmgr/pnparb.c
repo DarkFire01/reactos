@@ -1397,6 +1397,839 @@ IopArbiterSeedFromResourceMap(VOID)
     ZwClose(Key);
 }
 
+/* RESOURCE ARBITRATION *****************************************************/
+
+/**
+ * @brief
+ * Advances to the next alternative IO_RESOURCE_LIST in a variable length
+ * requirements list.
+ *
+ * @param[in] List
+ * The current alternative configuration.
+ *
+ * @return
+ * The next alternative, immediately past this one's descriptor array.
+ */
+static
+PIO_RESOURCE_LIST
+IopArbiterNextList(
+    _In_ PIO_RESOURCE_LIST List)
+{
+    return (PIO_RESOURCE_LIST)&List->Descriptors[List->Count];
+}
+
+/**
+ * @brief
+ * Reports whether two single placement requirements of the same type ask for
+ * exactly the same range.
+ *
+ * @param[in] A
+ * The first requirement.
+ *
+ * @param[in] B
+ * The second requirement.
+ *
+ * @return
+ * TRUE if the type and the placement window match.
+ */
+static
+BOOLEAN
+IopArbiterSamePlacement(
+    _In_ PIO_RESOURCE_DESCRIPTOR A,
+    _In_ PIO_RESOURCE_DESCRIPTOR B)
+{
+    if (A->Type != B->Type)
+        return FALSE;
+
+    switch (A->Type)
+    {
+        case CmResourceTypePort:
+        case CmResourceTypeMemory:
+        case CmResourceTypeMemoryLarge:
+            return (A->u.Generic.Length == B->u.Generic.Length &&
+                    A->u.Generic.MinimumAddress.QuadPart ==
+                    B->u.Generic.MinimumAddress.QuadPart &&
+                    A->u.Generic.MaximumAddress.QuadPart ==
+                    B->u.Generic.MaximumAddress.QuadPart);
+
+        case CmResourceTypeInterrupt:
+            return (A->u.Interrupt.MinimumVector == B->u.Interrupt.MinimumVector &&
+                    A->u.Interrupt.MaximumVector == B->u.Interrupt.MaximumVector);
+
+        case CmResourceTypeDma:
+            return (A->u.Dma.MinimumChannel == B->u.Dma.MinimumChannel &&
+                    A->u.Dma.MaximumChannel == B->u.Dma.MaximumChannel);
+
+        case CmResourceTypeBusNumber:
+            return (A->u.BusNumber.Length == B->u.BusNumber.Length &&
+                    A->u.BusNumber.MinBusNumber == B->u.BusNumber.MinBusNumber &&
+                    A->u.BusNumber.MaxBusNumber == B->u.BusNumber.MaxBusNumber);
+
+        default:
+            return FALSE;
+    }
+}
+
+/**
+ * @brief
+ * Reports whether a requirement group asks for one of the device's own
+ * firmware boot configuration placements.
+ *
+ * @param[in] DeviceNode
+ * The device whose BootResources are consulted.
+ *
+ * @param[in] Entry
+ * The requirement group, a lead alternative plus its followers.
+ *
+ * @return
+ * TRUE if any alternative of the group is the exact fixed placement of a
+ * descriptor of the device's boot configuration.
+ *
+ * @remarks
+ * Bus drivers report the firmware placement as a fixed, usually preferred,
+ * alternative of the requirement, so it is recognized by value against
+ * BootResources.
+ */
+static
+BOOLEAN
+IopArbiterIsBootRequirement(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ PARBITER_LIST_ENTRY Entry)
+{
+    PCM_RESOURCE_LIST BootResources = DeviceNode->BootResources;
+    PCM_PARTIAL_RESOURCE_LIST PartialList;
+    ULONG Alt;
+    ULONG Index;
+
+    if (!(DeviceNode->Flags & DNF_HAS_BOOT_CONFIG) ||
+        BootResources == NULL || BootResources->Count == 0)
+    {
+        return FALSE;
+    }
+
+    PartialList = &BootResources->List[0].PartialResourceList;
+
+    for (Alt = 0; Alt < Entry->AlternativeCount; Alt++)
+    {
+        PIO_RESOURCE_DESCRIPTOR Requirement = &Entry->Alternatives[Alt];
+
+        for (Index = 0; Index < PartialList->Count; Index++)
+        {
+            IO_RESOURCE_DESCRIPTOR Fixed;
+
+            if (!IopArbiterCmToFixedRequirement(&PartialList->PartialDescriptors[Index],
+                                                TRUE,
+                                                &Fixed))
+            {
+                continue;
+            }
+
+            if (IopArbiterSamePlacement(Requirement, &Fixed))
+                return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Names whatever already holds the range an arbiter just refused.
+ *
+ * @param[in] Interface
+ * The arbiter that refused. This has to be one of the kernel's own root
+ * arbiters, because only for those is Context known to be an ARBITER_INSTANCE.
+ * A bus driver's arbiter hands back an opaque Context in whatever shape that
+ * driver keeps privately, and walking it as ours reads a garbage Allocation
+ * pointer. The caller does the check, since the resource type is not known
+ * here.
+ *
+ * @param[in] Start
+ * The first address of the requested range, in untranslated arbiter units.
+ *
+ * @param[in] End
+ * The last address of the requested range.
+ *
+ * @remarks
+ * An "ExternalConflict" result says a range was taken but not by whom, and the
+ * owner is the whole answer. A boot reserved range, whose attributes carry
+ * ARBITER_RANGE_BOOT_ALLOCATED, is reclaimable in phase 1 by the device that
+ * owns it, whereas a range owned by another device is a genuine collision that
+ * needs a different fix. Printing Owner and Attributes tells those two apart
+ * without another boot.
+ *
+ * This reads Allocation, the committed list. PossibleAllocation is scratch and
+ * is only meaningful in the middle of a transaction.
+ */
+CODE_SEG("PAGE")
+static
+VOID
+IopArbiterReportOccupants(
+    _In_ PARBITER_INTERFACE Interface,
+    _In_ ULONGLONG Start,
+    _In_ ULONGLONG End)
+{
+    PARBITER_INSTANCE Arbiter;
+    RTL_RANGE_LIST_ITERATOR Iterator;
+    PRTL_RANGE Range;
+    BOOLEAN Any = FALSE;
+
+    PAGED_CODE();
+
+    if (Interface == NULL || Interface->Context == NULL)
+        return;
+
+    Arbiter = (PARBITER_INSTANCE)Interface->Context;
+    if (Arbiter->Allocation == NULL)
+        return;
+
+    for (RtlGetFirstRange(Arbiter->Allocation, &Iterator, &Range);
+         Range != NULL;
+         RtlGetNextRange(&Iterator, &Range, TRUE))
+    {
+        if (Range->Start > End || Start > Range->End)
+            continue;
+
+        Any = TRUE;
+        DPRINT1("      occupied by %I64x..%I64x owner %p attr 0x%x flags 0x%x%s\n",
+                Range->Start, Range->End, Range->Owner,
+                Range->Attributes, Range->Flags,
+                (Range->Attributes & ARBITER_RANGE_BOOT_ALLOCATED) ? " BOOT_ALLOCATED" : "");
+    }
+
+    if (!Any)
+    {
+        DPRINT1("      nothing in Allocation overlaps, so the refusal is not an "
+                "occupancy conflict\n");
+    }
+}
+
+/**
+ * @brief
+ * Reports why an arbiter refused a device's requirements.
+ *
+ * @param[in] Interface
+ * The arbiter that refused.
+ *
+ * @param[in] ResourceType
+ * The CmResourceType being arbitrated when the refusal happened.
+ *
+ * @param[in] Phase
+ * 0 when boot reserved ranges are off limits, 1 when this device's own firmware
+ * configuration may reclaim them.
+ *
+ * @param[in] DeviceNode
+ * The device whose configuration failed.
+ *
+ * @param[in] ArbitrationList
+ * The entries handed to the arbiter, each still carrying its requirement
+ * alternatives and its Result.
+ *
+ * @remarks
+ * Without this an arbitration failure is silent: IopArbiterInvoke returns an
+ * error and the caller rolls back, so the only evidence is that all N
+ * configurations failed, which says nothing about which requirement could not
+ * be placed or why. That is not enough to act on, and every diagnosis then
+ * costs a boot. A refusal is rare and is exactly the event worth seeing, so
+ * this prints unconditionally.
+ *
+ * Read it together with the arbiter's ordering and reserved lists under
+ * HKLM\SYSTEM\CurrentControlSet\Control\Arbiters. A fixed requirement that
+ * overlaps a reserved range can only be placed in phase 1, and only if it
+ * matched the device's boot configuration.
+ */
+CODE_SEG("PAGE")
+static
+VOID
+IopArbiterReportFailure(
+    _In_ PARBITER_INTERFACE Interface,
+    _In_ UCHAR ResourceType,
+    _In_ ULONG Phase,
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ PLIST_ENTRY ArbitrationList)
+{
+    PLIST_ENTRY Link;
+    BOOLEAN OwnArbiter;
+
+    PAGED_CODE();
+
+    /*
+     * Occupancy can only be read out of an arbiter whose bookkeeping is ours,
+     * as a bus driver's Context is opaque. See IopArbiterReportOccupants.
+     */
+    OwnArbiter = (Interface == IopGetRootArbiterInterface(ResourceType));
+
+    DPRINT1("Arbitration failed: type %u, phase %lu, device %wZ%s\n",
+            ResourceType, Phase, &DeviceNode->InstancePath,
+            OwnArbiter ? "" : " (external arbiter)");
+
+    for (Link = ArbitrationList->Flink; Link != ArbitrationList; Link = Link->Flink)
+    {
+        PARBITER_LIST_ENTRY Entry = CONTAINING_RECORD(Link, ARBITER_LIST_ENTRY, ListEntry);
+        ULONG Alt;
+
+        DPRINT1("  entry: %lu alternative(s), flags 0x%lx%s, source %u, result %u\n",
+                Entry->AlternativeCount, Entry->Flags,
+                (Entry->Flags & ARBITER_FLAG_BOOT_CONFIG) ? " (BOOT_CONFIG)" : "",
+                Entry->RequestSource, Entry->Result);
+
+        for (Alt = 0; Alt < Entry->AlternativeCount; Alt++)
+        {
+            PIO_RESOURCE_DESCRIPTOR Desc = &Entry->Alternatives[Alt];
+
+            switch (Desc->Type)
+            {
+                case CmResourceTypePort:
+                case CmResourceTypeMemory:
+                case CmResourceTypeMemoryLarge:
+                    DPRINT1("    [%lu] type %u opt 0x%x flags 0x%x len 0x%lx align 0x%lx "
+                            "%I64x..%I64x%s\n",
+                            Alt, Desc->Type, Desc->Option, Desc->Flags,
+                            Desc->u.Generic.Length, Desc->u.Generic.Alignment,
+                            Desc->u.Generic.MinimumAddress.QuadPart,
+                            Desc->u.Generic.MaximumAddress.QuadPart,
+                            (Desc->u.Generic.MaximumAddress.QuadPart -
+                             Desc->u.Generic.MinimumAddress.QuadPart + 1 ==
+                             Desc->u.Generic.Length) ? " FIXED" : "");
+
+                    if (OwnArbiter)
+                    {
+                        IopArbiterReportOccupants(Interface,
+                                                  Desc->u.Generic.MinimumAddress.QuadPart,
+                                                  Desc->u.Generic.MaximumAddress.QuadPart);
+                    }
+                    break;
+
+                case CmResourceTypeBusNumber:
+                    DPRINT1("    [%lu] bus opt 0x%x len 0x%lx %lx..%lx\n",
+                            Alt, Desc->Option, Desc->u.BusNumber.Length,
+                            Desc->u.BusNumber.MinBusNumber, Desc->u.BusNumber.MaxBusNumber);
+                    break;
+
+                case CmResourceTypeInterrupt:
+                    DPRINT1("    [%lu] irq opt 0x%x flags 0x%x %lx..%lx\n",
+                            Alt, Desc->Option, Desc->Flags,
+                            Desc->u.Interrupt.MinimumVector,
+                            Desc->u.Interrupt.MaximumVector);
+                    break;
+
+                default:
+                    DPRINT1("    [%lu] type %u opt 0x%x (not decoded)\n",
+                            Alt, Desc->Type, Desc->Option);
+                    break;
+            }
+        }
+    }
+}
+
+/**
+ * @brief
+ * Tries to place one alternative configuration, a single IO_RESOURCE_LIST,
+ * through the arbiters.
+ *
+ * @param[in] DeviceNode
+ * The device being assigned resources.
+ *
+ * @param[in] RequirementsList
+ * The full requirements list, for the bus identity fields.
+ *
+ * @param[in] Configuration
+ * The alternative configuration to try.
+ *
+ * @param[in] Phase
+ * 0 to leave every other device's boot reserved range alone, 1 to let the
+ * requirements that are this device's own firmware configuration take boot
+ * reserved ranges.
+ *
+ * @param[in] RequestSource
+ * Who is asking. A legacy request may take boot reserved ranges.
+ *
+ * @param[out] ResourceList
+ * On success, receives the packed CM_RESOURCE_LIST of assignments, or NULL for
+ * an empty configuration.
+ *
+ * @return
+ * STATUS_SUCCESS when every resource type was placed and committed,
+ * STATUS_CONFLICTING_ADDRESSES or the arbiter's own failure status when any
+ * type could not be placed, or STATUS_INSUFFICIENT_RESOURCES.
+ *
+ * @remarks
+ * The descriptors are grouped into requirements, a lead descriptor plus its
+ * IO_RESOURCE_ALTERNATIVE followers, one ARBITER_LIST_ENTRY each. They are
+ * grouped by resource type and handed to the owning arbiter's TestAllocation.
+ * If every type is placed the arbiters commit and the packed assignments become
+ * the returned CM_RESOURCE_LIST; if any type fails, the arbiters already tested
+ * roll back and the caller tries the next alternative.
+ *
+ * Phase 0 never takes a range that another device's boot configuration
+ * reserved. Only when that yields no solution does phase 1 tag the requirements
+ * matching this device's own boot configuration with ARBITER_FLAG_BOOT_CONFIG.
+ * The port and memory arbiters then treat boot reserved ranges as available,
+ * since the firmware put both devices there.
+ */
+static
+NTSTATUS
+IopArbiterTryConfiguration(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList,
+    _In_ PIO_RESOURCE_LIST Configuration,
+    _In_ ULONG Phase,
+    _In_ ARBITER_REQUEST_SOURCE RequestSource,
+    _Out_ PCM_RESOURCE_LIST *ResourceList)
+{
+    PARBITER_LIST_ENTRY Entries;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Assignments;
+    PARBITER_INTERFACE Tested[RTL_NUMBER_OF(IopArbiterResourceTypes)];
+    ULONG TestedCount = 0;
+    ULONG GroupCount = 0;
+    ULONG Index;
+    ULONG Which;
+    ULONG TypeIndex;
+    NTSTATUS Status = STATUS_CONFLICTING_ADDRESSES;
+    PCM_RESOURCE_LIST CmList;
+    ULONG CmListSize;
+
+    /* Count the requirement groups, as each non-alternative descriptor starts one */
+    for (Index = 0; Index < Configuration->Count; Index++)
+    {
+        if (!(Configuration->Descriptors[Index].Option & IO_RESOURCE_ALTERNATIVE))
+            GroupCount++;
+    }
+
+    if (GroupCount == 0)
+    {
+        /* An empty but otherwise valid configuration, so nothing to arbitrate */
+        *ResourceList = NULL;
+        return STATUS_SUCCESS;
+    }
+
+    Entries = ExAllocatePoolWithTag(PagedPool,
+                                    GroupCount * sizeof(ARBITER_LIST_ENTRY),
+                                    TAG_IO_ARBITER);
+    Assignments = ExAllocatePoolWithTag(PagedPool,
+                                        GroupCount * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR),
+                                        TAG_IO_ARBITER);
+    if (Entries == NULL || Assignments == NULL)
+    {
+        if (Entries != NULL)
+            ExFreePoolWithTag(Entries, TAG_IO_ARBITER);
+        if (Assignments != NULL)
+            ExFreePoolWithTag(Assignments, TAG_IO_ARBITER);
+
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlZeroMemory(Entries, GroupCount * sizeof(ARBITER_LIST_ENTRY));
+    RtlZeroMemory(Assignments, GroupCount * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR));
+
+    /* Build one ARBITER_LIST_ENTRY per requirement group */
+    Which = 0;
+    for (Index = 0; Index < Configuration->Count; )
+    {
+        PARBITER_LIST_ENTRY Entry = &Entries[Which];
+        ULONG AlternativeCount = 1;
+
+        /* The group runs from this lead descriptor across its alternatives */
+        while (Index + AlternativeCount < Configuration->Count &&
+               (Configuration->Descriptors[Index + AlternativeCount].Option &
+                IO_RESOURCE_ALTERNATIVE))
+        {
+            AlternativeCount++;
+        }
+
+        Entry->AlternativeCount = AlternativeCount;
+        Entry->Alternatives = &Configuration->Descriptors[Index];
+        Entry->PhysicalDeviceObject = DeviceNode->PhysicalDeviceObject;
+        Entry->RequestSource = RequestSource;
+        Entry->Flags = 0;
+
+        if (Phase != 0 && IopArbiterIsBootRequirement(DeviceNode, Entry))
+            Entry->Flags |= ARBITER_FLAG_BOOT_CONFIG;
+
+        Entry->InterfaceType = RequirementsList->InterfaceType;
+        Entry->SlotNumber = RequirementsList->SlotNumber;
+        Entry->BusNumber = RequirementsList->BusNumber;
+        Entry->Assignment = &Assignments[Which];
+        Entry->Result = ArbiterResultUndefined;
+
+        Index += AlternativeCount;
+        Which++;
+    }
+
+    /* Arbitrate one resource type at a time */
+    for (TypeIndex = 0; TypeIndex < RTL_NUMBER_OF(IopArbiterResourceTypes); TypeIndex++)
+    {
+        UCHAR ResourceType = IopArbiterResourceTypes[TypeIndex];
+        PARBITER_INTERFACE Interface;
+        LIST_ENTRY ArbitrationList;
+        ULONG InList = 0;
+
+        InitializeListHead(&ArbitrationList);
+
+        for (Which = 0; Which < GroupCount; Which++)
+        {
+            if (IopArbiterTypeMatches(Entries[Which].Alternatives[0].Type, ResourceType))
+            {
+                InsertTailList(&ArbitrationList, &Entries[Which].ListEntry);
+                InList++;
+            }
+        }
+
+        if (InList == 0)
+            continue;
+
+        Status = IopFindArbiterForResourceType(DeviceNode, ResourceType, &Interface);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("No arbiter for resource type %u (device %wZ)\n",
+                    ResourceType, &DeviceNode->InstancePath);
+            goto Rollback;
+        }
+
+        Status = IopArbiterInvoke(Interface, ArbiterActionTestAllocation, &ArbitrationList);
+        if (!NT_SUCCESS(Status))
+        {
+            IopArbiterReportFailure(Interface, ResourceType, Phase, DeviceNode, &ArbitrationList);
+            goto Rollback;
+        }
+
+        Tested[TestedCount++] = Interface;
+    }
+
+    /* Every type is placed, so make the tentative allocations permanent */
+    for (Index = 0; Index < TestedCount; Index++)
+        IopArbiterInvoke(Tested[Index], ArbiterActionCommitAllocation, NULL);
+
+    /*
+     * Pass through any requirement whose type no arbiter owns, whose Assignment
+     * is therefore still zeroed, copying the descriptor identity from its
+     * preferred alternative so that the output list carries a well formed
+     * descriptor rather than a null one.
+     *
+     * This is a common path rather than a rare one. Every PCI root bridge and
+     * PCI to PCI bridge carries a CmResourceTypeDevicePrivate marker after each
+     * producer window, and pci.sys emits CmResourceTypeNull placeholders to keep
+     * descriptor positions aligned with BAR indices. Both are expected on every
+     * successful arbitration of every bridge.
+     */
+    for (Which = 0; Which < GroupCount; Which++)
+    {
+        PIO_RESOURCE_DESCRIPTOR Lead = &Entries[Which].Alternatives[0];
+        BOOLEAN Arbitrated = FALSE;
+
+        for (TypeIndex = 0; TypeIndex < RTL_NUMBER_OF(IopArbiterResourceTypes); TypeIndex++)
+        {
+            if (IopArbiterTypeMatches(Lead->Type, IopArbiterResourceTypes[TypeIndex]))
+            {
+                Arbitrated = TRUE;
+                break;
+            }
+        }
+
+        if (Arbitrated)
+            continue;
+
+        /*
+         * The expected types stay quiet. A PCIe host bridge (PNP0A08) can carry
+         * twenty-odd producer windows, so one line per marker per bridge floods
+         * the debug port on a machine with many bridges. Over a 115200 serial
+         * link that is seconds of stall per device, it reads as a hang, and it
+         * buries whatever the machine did next under a screenful of messages
+         * that only mean everything is normal.
+         *
+         * An unexpected type is still worth shouting about, because it means a
+         * requirement reached the assignment list that no arbiter claimed and
+         * that is not known to be benign.
+         */
+        if (Lead->Type == CmResourceTypeDevicePrivate ||
+            Lead->Type == CmResourceTypeNull)
+        {
+            DPRINT("Passing through non-arbitrated resource type %u for %wZ\n",
+                   Lead->Type, &DeviceNode->InstancePath);
+        }
+        else
+        {
+            DPRINT1("Passing through unexpected non-arbitrated resource type %u for %wZ\n",
+                    Lead->Type, &DeviceNode->InstancePath);
+        }
+
+        Assignments[Which].Type = Lead->Type;
+        Assignments[Which].Flags = Lead->Flags;
+        Assignments[Which].ShareDisposition = Lead->ShareDisposition;
+
+        /*
+         * A DevicePrivate descriptor carries the bus driver's own opaque state,
+         * which it round-trips from requirements through assigned resources to
+         * IRP_MN_START_DEVICE. pci.sys uses it to remember how to map each
+         * assigned range back onto hardware, in particular which assigned memory
+         * range is a PCI to PCI bridge's forwarding window and therefore what to
+         * write into the Memory and Prefetch Base/Limit registers. The payload
+         * lives in u.DevicePrivate.Data, the same ULONG Data[3] shape in both the
+         * IO_RESOURCE_DESCRIPTOR and the CM descriptor, and has to be copied
+         * verbatim. Dropping it corrupts pci.sys's state, so it cannot program
+         * the bridge window and leaves it disabled at 0xFFF0/0x0000, which makes
+         * every device behind the bridge unreachable.
+         */
+        if (Lead->Type == CmResourceTypeDevicePrivate)
+        {
+            Assignments[Which].u.DevicePrivate.Data[0] = Lead->u.DevicePrivate.Data[0];
+            Assignments[Which].u.DevicePrivate.Data[1] = Lead->u.DevicePrivate.Data[1];
+            Assignments[Which].u.DevicePrivate.Data[2] = Lead->u.DevicePrivate.Data[2];
+        }
+    }
+
+    /* Assemble the packed assignments into a resource list */
+    CmListSize = sizeof(CM_RESOURCE_LIST) +
+                 (GroupCount - 1) * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
+
+    CmList = ExAllocatePoolWithTag(PagedPool, CmListSize, TAG_IO_ARBITER);
+    if (CmList == NULL)
+    {
+        /* The arbiters have already committed, so there is nothing to undo */
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Cleanup;
+    }
+
+    RtlZeroMemory(CmList, CmListSize);
+    CmList->Count = 1;
+    CmList->List[0].InterfaceType = RequirementsList->InterfaceType;
+    CmList->List[0].BusNumber = RequirementsList->BusNumber;
+    CmList->List[0].PartialResourceList.Version = 1;
+    CmList->List[0].PartialResourceList.Revision = 1;
+    CmList->List[0].PartialResourceList.Count = GroupCount;
+    RtlCopyMemory(CmList->List[0].PartialResourceList.PartialDescriptors,
+                  Assignments,
+                  GroupCount * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR));
+
+    *ResourceList = CmList;
+    Status = STATUS_SUCCESS;
+    goto Cleanup;
+
+Rollback:
+    /* Discard the tentative allocations of every arbiter tested so far */
+    for (Index = 0; Index < TestedCount; Index++)
+        IopArbiterInvoke(Tested[Index], ArbiterActionRollbackAllocation, NULL);
+
+Cleanup:
+    ExFreePoolWithTag(Entries, TAG_IO_ARBITER);
+    ExFreePoolWithTag(Assignments, TAG_IO_ARBITER);
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Assigns a device's resources through the arbiters.
+ *
+ * @param[in] DeviceNode
+ * The device being assigned resources.
+ *
+ * @param[in] RequirementsList
+ * The device's resource requirements.
+ *
+ * @param[in] RequestSource
+ * Who is asking.
+ *
+ * @param[out] ResourceList
+ * On success, receives the CM_RESOURCE_LIST of assignments.
+ *
+ * @return
+ * STATUS_SUCCESS when an alternative configuration was fully placed, or the
+ * last failure status when every alternative failed.
+ *
+ * @remarks
+ * Each alternative configuration is tried in turn until one is fully placed,
+ * first without touching any boot reserved range in phase 0, then with the
+ * device's own boot configuration requirements allowed to reclaim boot reserved
+ * ranges in phase 1. Phase 1 only runs for a device that has a boot
+ * configuration.
+ */
+static
+NTSTATUS
+IopArbiterAllocateResourcesEx(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList,
+    _In_ ARBITER_REQUEST_SOURCE RequestSource,
+    _Out_ PCM_RESOURCE_LIST *ResourceList)
+{
+    PIO_RESOURCE_LIST Configuration;
+    ULONG Index;
+    ULONG Phase;
+    ULONG PhaseCount;
+    NTSTATUS Status = STATUS_CONFLICTING_ADDRESSES;
+
+    PAGED_CODE();
+
+    *ResourceList = NULL;
+
+    PhaseCount = ((DeviceNode->Flags & DNF_HAS_BOOT_CONFIG) &&
+                  DeviceNode->BootResources != NULL) ? 2 : 1;
+
+    for (Phase = 0; Phase < PhaseCount; Phase++)
+    {
+        Configuration = &RequirementsList->List[0];
+
+        for (Index = 0;
+             Index < RequirementsList->AlternativeLists;
+             Index++, Configuration = IopArbiterNextList(Configuration))
+        {
+            Status = IopArbiterTryConfiguration(DeviceNode,
+                                                RequirementsList,
+                                                Configuration,
+                                                Phase,
+                                                RequestSource,
+                                                ResourceList);
+            if (NT_SUCCESS(Status))
+                return STATUS_SUCCESS;
+        }
+    }
+
+    DPRINT1("All %lu configurations failed for %wZ\n",
+            RequirementsList->AlternativeLists, &DeviceNode->InstancePath);
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Assigns a PnP enumerated device's resources through the arbiters.
+ *
+ * @param[in] DeviceNode
+ * The device being assigned resources.
+ *
+ * @param[in] RequirementsList
+ * The device's resource requirements.
+ *
+ * @param[out] ResourceList
+ * On success, receives the CM_RESOURCE_LIST of assignments.
+ *
+ * @return
+ * IopArbiterAllocateResourcesEx's status.
+ *
+ * @remarks
+ * One line in and one line out per device. Resource assignment is a long silent
+ * stretch of boot: the requirements are queried from the bus driver,
+ * arbitrated, and then the device is started, and none of that prints anything
+ * on success. When a machine wedges somewhere in there the last visible line is
+ * whatever the bus driver happened to log beforehand, which says nothing about
+ * which of the three stages it died in. Bracketing arbitration alone splits the
+ * window three ways: no "arbitrating" line means it never got past building the
+ * requirements list, an "arbitrating" line with no result means the arbiter
+ * itself is stuck, and both lines mean the device's start is at fault.
+ */
+NTSTATUS
+NTAPI
+IopArbiterAllocateResources(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList,
+    _Out_ PCM_RESOURCE_LIST *ResourceList)
+{
+    NTSTATUS Status;
+
+    DPRINT1("Arbitrating resources for %wZ (%lu configuration(s))\n",
+            &DeviceNode->InstancePath, RequirementsList->AlternativeLists);
+
+    Status = IopArbiterAllocateResourcesEx(DeviceNode,
+                                           RequirementsList,
+                                           ArbiterRequestPnpEnumerated,
+                                           ResourceList);
+
+    DPRINT1("Arbitration for %wZ returned 0x%08lx\n",
+            &DeviceNode->InstancePath, Status);
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Releases everything a device owns in one arbiter.
+ *
+ * @param[in] Interface
+ * The arbiter to release from.
+ *
+ * @param[in] PhysicalDeviceObject
+ * The owner whose ranges are released.
+ *
+ * @remarks
+ * A TestAllocation whose entry has no alternatives makes the arbiter drop the
+ * owner's ranges from its working copy without adding anything back, and the
+ * commit makes that permanent. Going through the interface this way works for a
+ * bus driver's arbiter as much as for the root ones. A failed test is rolled
+ * back, so the committed state is left as it was found.
+ */
+static
+VOID
+IopArbiterReleaseOwner(
+    _In_ PARBITER_INTERFACE Interface,
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject)
+{
+    ARBITER_LIST_ENTRY Entry;
+    LIST_ENTRY ArbitrationList;
+    NTSTATUS Status;
+
+    RtlZeroMemory(&Entry, sizeof(Entry));
+    Entry.AlternativeCount = 0;
+    Entry.Alternatives = NULL;
+    Entry.PhysicalDeviceObject = PhysicalDeviceObject;
+    Entry.RequestSource = ArbiterRequestPnpEnumerated;
+    Entry.Result = ArbiterResultUndefined;
+
+    InitializeListHead(&ArbitrationList);
+    InsertTailList(&ArbitrationList, &Entry.ListEntry);
+
+    Status = IopArbiterInvoke(Interface, ArbiterActionTestAllocation, &ArbitrationList);
+    if (NT_SUCCESS(Status))
+    {
+        IopArbiterInvoke(Interface, ArbiterActionCommitAllocation, NULL);
+    }
+    else
+    {
+        DPRINT1("Arbiter rejected the release request (Status 0x%08lx)\n", Status);
+        IopArbiterInvoke(Interface, ArbiterActionRollbackAllocation, NULL);
+    }
+}
+
+/**
+ * @brief
+ * Frees every arbiter range a device holds, both its committed allocations and
+ * any reserved boot configuration, so that the ranges return to the free pool.
+ *
+ * @param[in] DeviceNode
+ * The device being released, either removed or about to be reassigned.
+ *
+ * @remarks
+ * A no-op for the resource types the device never held. DNF_BOOT_CONFIG_RESERVED
+ * is cleared, since the boot reservation goes with the rest.
+ */
+VOID
+NTAPI
+IopArbiterReleaseResources(
+    _In_ PDEVICE_NODE DeviceNode)
+{
+    ULONG TypeIndex;
+
+    PAGED_CODE();
+
+    if (DeviceNode->PhysicalDeviceObject == NULL)
+        return;
+
+    for (TypeIndex = 0; TypeIndex < RTL_NUMBER_OF(IopArbiterResourceTypes); TypeIndex++)
+    {
+        PARBITER_INTERFACE Interface;
+
+        if (NT_SUCCESS(IopFindArbiterForResourceType(DeviceNode,
+                                                     IopArbiterResourceTypes[TypeIndex],
+                                                     &Interface)))
+        {
+            IopArbiterReleaseOwner(Interface, DeviceNode->PhysicalDeviceObject);
+        }
+    }
+
+    IopDeviceNodeClearFlag(DeviceNode, DNF_BOOT_CONFIG_RESERVED);
+}
+
+/* REGISTRY MIRROR AND ASSIGNMENT *******************************************/
+
 /* LEGACY RESOURCE HANDLING *************************************************/
 
 
@@ -2499,108 +3332,150 @@ cleanup:
    return Status;
 }
 
+/**
+ * @brief
+ * Assigns a device its resources.
+ *
+ * @param[in] DeviceNode
+ * The device to assign.
+ *
+ * @return
+ * STATUS_SUCCESS once the device holds an arbitrated, translated and recorded
+ * assignment, or a failure status with the device left with a problem code.
+ *
+ * @remarks
+ * Anything a previous pass or a boot reservation holds is returned to the
+ * arbiters first, so that re-arbitration does not see the device conflict with
+ * itself. A device with no requirements keeps its firmware configuration as its
+ * assignment; otherwise the requirements are arbitrated and the result replaces
+ * it.
+ */
 NTSTATUS
 NTAPI
 IopAssignDeviceResources(
-   IN PDEVICE_NODE DeviceNode)
+    _In_ PDEVICE_NODE DeviceNode)
 {
-   NTSTATUS Status;
-   ULONG ListSize;
+    NTSTATUS Status;
+    ULONG ListSize;
 
-   Status = IopFilterResourceRequirements(DeviceNode);
-   if (!NT_SUCCESS(Status))
-       goto ByeBye;
+    PAGED_CODE();
 
-   if (!DeviceNode->BootResources && !DeviceNode->ResourceRequirements)
-   {
-      /* No resource needed for this device */
-      DeviceNode->ResourceList = NULL;
-      DeviceNode->ResourceListTranslated = NULL;
-      PiSetDevNodeState(DeviceNode, DeviceNodeResourcesAssigned);
-      DeviceNode->Flags |= DNF_NO_RESOURCE_REQUIRED;
+    IopLockResourceAssignment();
 
-      return STATUS_SUCCESS;
-   }
+    /*
+     * Give up any ranges a previous assignment or boot reservation holds, so
+     * that re-arbitration does not see this device conflict with itself.
+     */
+    IopArbiterReleaseResources(DeviceNode);
 
-   if (DeviceNode->BootResources)
-   {
-       ListSize = PnpDetermineResourceListSize(DeviceNode->BootResources);
+    Status = IopFilterResourceRequirements(DeviceNode);
+    if (!NT_SUCCESS(Status))
+        goto Failure;
 
-       DeviceNode->ResourceList = ExAllocatePool(PagedPool, ListSize);
-       if (!DeviceNode->ResourceList)
-       {
-           Status = STATUS_NO_MEMORY;
-           goto ByeBye;
-       }
+    if (DeviceNode->BootResources == NULL && DeviceNode->ResourceRequirements == NULL)
+    {
+        /* This device needs no resources at all */
+        DeviceNode->ResourceList = NULL;
+        DeviceNode->ResourceListTranslated = NULL;
+        DeviceNode->Flags |= DNF_NO_RESOURCE_REQUIRED;
+        PiSetDevNodeState(DeviceNode, DeviceNodeResourcesAssigned);
 
-       RtlCopyMemory(DeviceNode->ResourceList, DeviceNode->BootResources, ListSize);
+        IopUnlockResourceAssignment();
+        return STATUS_SUCCESS;
+    }
 
-       Status = IopDetectResourceConflict(DeviceNode->ResourceList, FALSE, NULL);
-       if (!NT_SUCCESS(Status))
-       {
-           DPRINT1("Boot resources for %wZ cause a resource conflict!\n", &DeviceNode->InstancePath);
-           ExFreePool(DeviceNode->ResourceList);
-           DeviceNode->ResourceList = NULL;
-       }
-   }
-   else
-   {
-       /* We'll make this from the requirements */
-       DeviceNode->ResourceList = NULL;
-   }
+    if (DeviceNode->BootResources != NULL)
+    {
+        ListSize = PnpDetermineResourceListSize(DeviceNode->BootResources);
 
-   /* No resources requirements */
-   if (!DeviceNode->ResourceRequirements)
-       goto Finish;
+        DeviceNode->ResourceList = ExAllocatePool(PagedPool, ListSize);
+        if (DeviceNode->ResourceList == NULL)
+        {
+            Status = STATUS_NO_MEMORY;
+            goto Failure;
+        }
 
-   /* Call HAL to fixup our resource requirements list */
-   HalAdjustResourceList(&DeviceNode->ResourceRequirements);
+        RtlCopyMemory(DeviceNode->ResourceList, DeviceNode->BootResources, ListSize);
 
-   /* Add resource requirements that aren't in the list we already got */
-   Status = IopFixupResourceListWithRequirements(DeviceNode->ResourceRequirements,
-                                                 &DeviceNode->ResourceList);
-   if (!NT_SUCCESS(Status))
-   {
-       DPRINT1("Failed to fixup a resource list from supplied resources for %wZ\n", &DeviceNode->InstancePath);
-       DeviceNode->Problem = CM_PROB_NORMAL_CONFLICT;
-       goto ByeBye;
-   }
+        /*
+         * Put the firmware boot configuration back on record in the arbiters.
+         * Firmware configurations are trusted, and a real conflict is settled by
+         * the arbitration below rather than by dropping the configuration here.
+         */
+        IopArbiterReserveBootConfig(DeviceNode);
+    }
+    else
+    {
+        /* The assignment is built from the requirements instead */
+        DeviceNode->ResourceList = NULL;
+    }
 
-   /* IopFixupResourceListWithRequirements should NEVER give us a conflicting list */
-   ASSERT(IopDetectResourceConflict(DeviceNode->ResourceList, FALSE, NULL) != STATUS_CONFLICTING_ADDRESSES);
+    /* With no requirements to arbitrate, the boot configuration is the answer */
+    if (DeviceNode->ResourceRequirements == NULL)
+        goto Translate;
 
-Finish:
-   Status = IopTranslateDeviceResources(DeviceNode);
-   if (!NT_SUCCESS(Status))
-   {
-       DeviceNode->Problem = CM_PROB_TRANSLATION_FAILED;
-       DPRINT1("Failed to translate resources for %wZ\n", &DeviceNode->InstancePath);
-       goto ByeBye;
-   }
+    /* Let the HAL adjust the requirements for the platform */
+    HalAdjustResourceList(&DeviceNode->ResourceRequirements);
 
-   Status = IopUpdateResourceMapForPnPDevice(DeviceNode);
-   if (!NT_SUCCESS(Status))
-       goto ByeBye;
+    /* The boot copy, if there is one, is superseded by the arbitrated result */
+    if (DeviceNode->ResourceList != NULL)
+    {
+        ExFreePool(DeviceNode->ResourceList);
+        DeviceNode->ResourceList = NULL;
+    }
 
-   Status = IopUpdateControlKeyWithResources(DeviceNode);
-   if (!NT_SUCCESS(Status))
-       goto ByeBye;
+    Status = IopArbiterAllocateResources(DeviceNode,
+                                         DeviceNode->ResourceRequirements,
+                                         &DeviceNode->ResourceList);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to arbitrate resources for %wZ (Status 0x%08lx)\n",
+                &DeviceNode->InstancePath, Status);
+        PiSetDevNodeProblem(DeviceNode, CM_PROB_NORMAL_CONFLICT);
+        goto Failure;
+    }
 
-   PiSetDevNodeState(DeviceNode, DeviceNodeResourcesAssigned);
+Translate:
+    Status = IopTranslateDeviceResources(DeviceNode);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to translate resources for %wZ (Status 0x%08lx)\n",
+                &DeviceNode->InstancePath, Status);
+        PiSetDevNodeProblem(DeviceNode, CM_PROB_TRANSLATION_FAILED);
+        goto Failure;
+    }
 
-   return STATUS_SUCCESS;
+    /* Record the assignment under RESOURCEMAP and Control\AllocConfig */
+    Status = IopUpdateResourceMapForPnPDevice(DeviceNode);
+    if (!NT_SUCCESS(Status))
+        goto Failure;
 
-ByeBye:
-   if (DeviceNode->ResourceList)
-   {
-      ExFreePool(DeviceNode->ResourceList);
-      DeviceNode->ResourceList = NULL;
-   }
+    Status = IopUpdateControlKeyWithResources(DeviceNode);
+    if (!NT_SUCCESS(Status))
+        goto Failure;
 
-   DeviceNode->ResourceListTranslated = NULL;
+    PiSetDevNodeState(DeviceNode, DeviceNodeResourcesAssigned);
 
-   return Status;
+    IopUnlockResourceAssignment();
+    return STATUS_SUCCESS;
+
+Failure:
+    if (DeviceNode->ResourceList != NULL)
+    {
+        ExFreePool(DeviceNode->ResourceList);
+        DeviceNode->ResourceList = NULL;
+    }
+
+    if (DeviceNode->ResourceListTranslated != NULL)
+    {
+        ExFreePool(DeviceNode->ResourceListTranslated);
+        DeviceNode->ResourceListTranslated = NULL;
+    }
+
+    IopUnlockResourceAssignment();
+    return Status;
 }
+
 
 static
 BOOLEAN
@@ -2884,3 +3759,162 @@ cleanup:
    return Status;
 }
 
+
+/**
+ * @brief
+ * Tree walk callback that lets a device which failed resource assignment try
+ * again.
+ *
+ * @param[in] DeviceNode
+ * The visited node.
+ *
+ * @param[in] Context
+ * A PULONG counting the devices released for a retry.
+ *
+ * @return
+ * STATUS_SUCCESS, to keep the walk going.
+ *
+ * @remarks
+ * A device whose arbitration failed stays in DeviceNodeDriversAdded with
+ * CM_PROB_NORMAL_CONFLICT or CM_PROB_TRANSLATION_FAILED. Clearing the problem
+ * lets the next state machine pass call IopAssignDeviceResources for it again.
+ */
+static
+NTSTATUS
+IopClearResourceProblem(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ PVOID Context)
+{
+    if (DeviceNode->State == DeviceNodeDriversAdded &&
+        (DeviceNode->Flags & DNF_HAS_PROBLEM) &&
+        (DeviceNode->Problem == CM_PROB_NORMAL_CONFLICT ||
+         DeviceNode->Problem == CM_PROB_TRANSLATION_FAILED))
+    {
+        DPRINT("Retrying resource assignment for %wZ\n", &DeviceNode->InstancePath);
+        PiClearDevNodeProblem(DeviceNode);
+        (*(PULONG)Context)++;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Asks that every device which failed resource assignment be re-arbitrated.
+ *
+ * @remarks
+ * Called once ranges have been returned to the arbiters. The failed devices'
+ * problems are cleared and a tree pass is queued, so the state machine re-runs
+ * their assignment.
+ */
+static
+VOID
+IopRequestResourceRetry(VOID)
+{
+    DEVICETREE_TRAVERSE_CONTEXT Context;
+    ULONG Released = 0;
+
+    if (IopRootDeviceNode == NULL)
+        return;
+
+    IopInitDeviceTreeTraverseContext(&Context,
+                                     IopRootDeviceNode,
+                                     IopClearResourceProblem,
+                                     &Released);
+    IopTraverseDeviceTree(&Context);
+
+    if (Released != 0)
+    {
+        PiQueueDeviceAction(IopRootDeviceNode->PhysicalDeviceObject,
+                            PiActionEnumDeviceTree,
+                            NULL,
+                            NULL);
+    }
+}
+
+/**
+ * @brief
+ * Releases the resources a device holds: its arbiter ranges, its registry
+ * mirror and its resource lists.
+ *
+ * @param[in] DeviceNode
+ * The device being removed or restarted.
+ *
+ * @return
+ * STATUS_SUCCESS.
+ *
+ * @remarks
+ * Every owning arbiter releases the device's ranges, the Control\AllocConfig
+ * value and the RESOURCEMAP pair are deleted, and the raw and translated lists
+ * are freed.
+ *
+ * A root-enumerated device, marked DNF_MADEUP, keeps its firmware claim and has
+ * its boot configuration re-reserved right away. Any other device's boot
+ * configuration goes with the device, and the bus reports it again when the
+ * device is re-enumerated. Finally the devices that failed assignment are asked
+ * to retry, since what was just freed may be exactly what they were waiting for.
+ */
+NTSTATUS
+NTAPI
+IopReleaseDeviceResources(
+    _In_ PDEVICE_NODE DeviceNode)
+{
+    BOOLEAN HeldResources;
+
+    PAGED_CODE();
+
+    IopLockResourceAssignment();
+
+    HeldResources = (DeviceNode->ResourceList != NULL) ||
+                    (DeviceNode->Flags & DNF_BOOT_CONFIG_RESERVED);
+
+    if (HeldResources)
+    {
+        /* Return this device's assigned and reserved ranges to the arbiters */
+        IopArbiterReleaseResources(DeviceNode);
+
+        if (DeviceNode->ResourceList != NULL)
+        {
+            ExFreePool(DeviceNode->ResourceList);
+            DeviceNode->ResourceList = NULL;
+        }
+
+        if (DeviceNode->ResourceListTranslated != NULL)
+        {
+            ExFreePool(DeviceNode->ResourceListTranslated);
+            DeviceNode->ResourceListTranslated = NULL;
+        }
+
+        /* Clear the registry mirror, best effort */
+        if (DeviceNode->PhysicalDeviceObject != NULL)
+        {
+            IopUpdateResourceMapForPnPDevice(DeviceNode);
+            IopUpdateControlKeyWithResources(DeviceNode);
+        }
+    }
+
+    if ((DeviceNode->Flags & (DNF_MADEUP | DNF_DEVICE_GONE)) == DNF_MADEUP)
+    {
+        /* A root-enumerated device keeps its firmware claim */
+        if ((DeviceNode->Flags & DNF_HAS_BOOT_CONFIG) && DeviceNode->BootResources != NULL)
+            IopArbiterReserveBootConfig(DeviceNode);
+    }
+    else
+    {
+        IopDeviceNodeClearFlag(DeviceNode, DNF_HAS_BOOT_CONFIG | DNF_BOOT_CONFIG_RESERVED);
+
+        if (DeviceNode->BootResources != NULL)
+        {
+            ExFreePool(DeviceNode->BootResources);
+            DeviceNode->BootResources = NULL;
+        }
+    }
+
+    /* Whatever was freed may be what a conflicting device is waiting for */
+    if (HeldResources)
+        IopRequestResourceRetry();
+
+    IopUnlockResourceAssignment();
+
+    return STATUS_SUCCESS;
+}
