@@ -99,12 +99,15 @@ typedef struct _INTERRUPT_VECTOR_DATA
     KINTERRUPT_MODE Mode;
     GROUP_AFFINITY TargetProcessors;
     INTERRUPT_REMAPPING_INFO IntRemapInfo;
-#if (NTDDI_VERSION >= NTDDI_WIN10)
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
+    /* ReactOS always uses this layout (80 bytes on x86, 88 on x64): it is the
+       one the HAL, the kernel and the PCI/ACPI bus drivers exchange */
     struct {
         ULONG Gsiv;
         ULONG WakeInterrupt : 1;
         ULONG ReservedFlags : 31;
     } ControllerInput;
+    ULONGLONG HvDeviceId;
     union {
 #else
     union {
@@ -134,7 +137,7 @@ typedef struct _INTERRUPT_VECTOR_DATA
 typedef struct _INTERRUPT_CONNECTION_DATA
 {
     ULONG Count;
-#if (NTDDI_VERSION < NTDDI_WIN10)
+#if (NTDDI_VERSION < NTDDI_WIN10) && !defined(__REACTOS__)
     GROUP_AFFINITY OriginalAffinity;
     LIST_ENTRY SteeringListEntry;
     VOID* SteeringListRoot;
@@ -166,6 +169,35 @@ typedef struct _HAL_MESSAGE_SIGNAL_TARGET_REQUEST {
         INTERRUPT_REMAPPING_INFO InterruptRemapInfo;
     } ApicTarget;
 } HAL_MESSAGE_SIGNAL_TARGET_REQUEST, *PHAL_MESSAGE_SIGNAL_TARGET_REQUEST;
+
+//
+// HAL_INTERRUPT_TARGET_DESCRIPTOR.Capabilities
+//
+#define HAL_TARGET_MSI_CAPABLE                  0x00000001
+#define HAL_TARGET_LOGICAL_DESTINATION_VALID    0x00000002
+#define HAL_TARGET_FIXED_DESTINATIONS           0x00000010
+
+typedef struct _HAL_INTERRUPT_TARGET_DESCRIPTOR
+{
+    INTERRUPT_TARGET_TYPE TargetType;
+    PROCESSOR_NUMBER Processor;
+    ULONG Capabilities;
+    union
+    {
+        struct
+        {
+            ULONG LogicalDestination;
+            ULONG ClusterDestination;
+            HAL_APIC_DESTINATION_MODE DestinationFormat;
+        } ApicRouting;
+        struct
+        {
+            UCHAR Present;
+            ULONG LowestEntry;
+            ULONG HighestEntry;
+        } RemapTable;
+    };
+} HAL_INTERRUPT_TARGET_DESCRIPTOR, *PHAL_INTERRUPT_TARGET_DESCRIPTOR;
 
 //
 // HalShutdownSystem Types
@@ -1607,7 +1639,12 @@ BOOLEAN
 #if (NTDDI_VERSION < NTDDI_WINXP)
 #define HAL_PRIVATE_DISPATCH_VERSION        1
 #elif (NTDDI_VERSION < NTDDI_LONGHORN)
+#ifdef __REACTOS__
+/* ReactOS carries the Windows 10 table below whatever the build floor is */
+#define HAL_PRIVATE_DISPATCH_VERSION        32
+#else
 #define HAL_PRIVATE_DISPATCH_VERSION        2
+#endif
 #elif (NTDDI_VERSION < NTDDI_VISTASP1)
 #define HAL_PRIVATE_DISPATCH_VERSION        5
 #elif (NTDDI_VERSION < NTDDI_VISTASP2)
@@ -1651,7 +1688,7 @@ typedef struct _HAL_PRIVATE_DISPATCH
     pKdMapPhysicalMemory64 KdMapPhysicalMemory64;
     pKdUnmapVirtualAddress KdUnmapVirtualAddress;
 #endif
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if (NTDDI_VERSION >= NTDDI_LONGHORN) || defined(__REACTOS__)
     pKdGetPciDataByOffset KdGetPciDataByOffset;
     pKdSetPciDataByOffset KdSetPciDataByOffset;
     pHalGetInterruptVector HalGetInterruptVectorOverride;
@@ -1660,7 +1697,7 @@ typedef struct _HAL_PRIVATE_DISPATCH
     pHalUnloadMicrocode HalUnloadMicrocode;
     pHalPostMicrocodeUpdate HalPostMicrocodeUpdate;
 #endif
-#if (NTDDI_VERSION >= NTDDI_VISTASP1)
+#if (NTDDI_VERSION >= NTDDI_VISTASP1) || defined(__REACTOS__)
     pHalAllocateMessageTarget HalAllocateMessageTargetOverride;
     pHalFreeMessageTarget HalFreeMessageTargetOverride;
     pHalDpReplaceBegin HalDpReplaceBegin;
@@ -1669,34 +1706,34 @@ typedef struct _HAL_PRIVATE_DISPATCH
     pHalDpReplaceEnd HalDpReplaceEnd;
     pHalPrepareForBugcheck HalPrepareForBugcheck;
 #endif
-#if (NTDDI_VERSION >= NTDDI_WIN7)
+#if (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__)
     pHalQueryWakeTime HalQueryWakeTime;
     pHalReportIdleStateUsage HalReportIdleStateUsage;
     pHalTscSynchronization HalTscSynchronization;
     pHalWheaInitProcessorGenericSection HalWheaInitProcessorGenericSection;
     pHalStopLegacyUsbInterrupts HalStopLegacyUsbInterrupts;
 #endif
-#if (NTDDI_VERSION >= NTDDI_VISTASP2)
+#if (NTDDI_VERSION >= NTDDI_VISTASP2) || defined(__REACTOS__)
     pHalReadWheaPhysicalMemory HalReadWheaPhysicalMemory;
     pHalWriteWheaPhysicalMemory HalWriteWheaPhysicalMemory;
 #endif
-#if (NTDDI_VERSION >= NTDDI_WIN7)
+#if (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__)
     pHalDpMaskLevelTriggeredInterrupts HalDpMaskLevelTriggeredInterrupts;
     pHalDpUnmaskLevelTriggeredInterrupts HalDpUnmaskLevelTriggeredInterrupts;
     pHalDpGetInterruptReplayState HalDpGetInterruptReplayState;
     pHalDpReplayInterrupts HalDpReplayInterrupts;
     pHalQueryIoPortAccessSupported HalQueryIoPortAccessSupported;
 #endif
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
     pKdSetupIntegratedDeviceForDebugging KdSetupIntegratedDeviceForDebugging;
     pKdReleaseIntegratedDeviceForDebugging KdReleaseIntegratedDeviceForDebugging;
     pHalGetEnlightenmentInformation HalGetEnlightenmentInformation;
     pHalAllocateEarlyPages HalAllocateEarlyPages;
     pHalMapEarlyPages HalMapEarlyPages;
-#if (NTDDI_VERSION == NTDDI_WIN8)
+#if (NTDDI_VERSION == NTDDI_WIN8) && !defined(__REACTOS__)
     pHalGetClockOwner HalGetClockOwner;
     pHalGetClockConfiguration HalGetClockConfiguration;
-#elif (NTDDI_VERSION >= NTDDI_WINBLUE)
+#elif (NTDDI_VERSION >= NTDDI_WINBLUE) || defined(__REACTOS__)
     PVOID Dummy1;
     PVOID Dummy2;
 #endif
@@ -1724,9 +1761,9 @@ typedef struct _HAL_PRIVATE_DISPATCH
     pHalFreePmcCounterSet HalFreePmcCounterSet;
     pHalProcessorHalt HalProcessorHalt;
     pHalTimerQueryCycleCounter HalTimerQueryCycleCounter;
-#if (NTDDI_VERSION == NTDDI_WIN8)
+#if (NTDDI_VERSION == NTDDI_WIN8) && !defined(__REACTOS__)
     pHalGetNextTickDuration HalGetNextTickDuration;
-#elif (NTDDI_VERSION >= NTDDI_WINBLUE)
+#elif (NTDDI_VERSION >= NTDDI_WINBLUE) || defined(__REACTOS__)
     PVOID Dummy3;
 #endif
     pHalPciMarkHiberPhase HalPciMarkHiberPhase;
@@ -1743,7 +1780,7 @@ typedef struct _HAL_PRIVATE_DISPATCH
     pHalDmaFreeCrashDumpRegisters HalDmaFreeCrashDumpRegisters;
     pHalAcpiAoacCapable HalAcpiAoacCapable;
 #endif
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
+#if (NTDDI_VERSION >= NTDDI_WINBLUE) || defined(__REACTOS__)
     pHalInterruptSetDestination HalInterruptSetDestination;
     pHalGetClockConfiguration HalGetClockConfiguration;
     pHalClockTimerActivate HalClockTimerActivate;
@@ -1760,7 +1797,7 @@ typedef struct _HAL_PRIVATE_DISPATCH
     pHalTimerWatchdogGeneratedLastReset HalTimerWatchdogGeneratedLastReset;
     pHalTimerWatchdogTriggerSystemReset HalTimerWatchdogTriggerSystemReset;
 #endif
-#if (NTDDI_VERSION >= NTDDI_WIN10)
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
     pHalInterruptVectorDataToGsiv HalInterruptVectorDataToGsiv;
     pHalInterruptGetHighestPriorityInterrupt HalInterruptGetHighestPriorityInterrupt;
     pHalProcessorOn HalProcessorOn;
