@@ -867,6 +867,9 @@ HalpSetupAcpiPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     HalpVirtAddrForFlush = HalpMapPhysicalMemory64(PhysicalAddress, 1);
     HalpPteForFlush = HalAddressToPte(HalpVirtAddrForFlush);
 
+    /* Use the ISA interrupt translator */
+    HalGetInterruptTranslator = HaliGetInterruptTranslator;
+
     /* Don't do this again */
     HalpProcessedACPIPhase0 = TRUE;
 
