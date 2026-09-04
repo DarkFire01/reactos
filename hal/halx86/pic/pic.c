@@ -1262,6 +1262,224 @@ HalpGetRootInterruptVector(IN ULONG BusInterruptLevel,
     return SystemVector;
 }
 
+/* INTERRUPT CONNECTION *******************************************************/
+
+/* Returns the IRQL of a device vector */
+KIRQL
+NTAPI
+HalConvertDeviceIdtToIrql(
+    _In_ ULONG IdtEntry)
+{
+    if ((IdtEntry < PRIMARY_VECTOR_BASE) || (IdtEntry >= PRIMARY_VECTOR_BASE + 16))
+    {
+        return PASSIVE_LEVEL;
+    }
+
+    return HalpVectorToIrql((UCHAR)IdtEntry);
+}
+
+/**
+ * @brief
+ * Enables the interrupt described by a connection data block with one vector.
+ * Only controller inputs are supported, and the vector must match the IRQ.
+ */
+NTSTATUS
+NTAPI
+HalEnableInterrupt(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData)
+{
+    PINTERRUPT_VECTOR_DATA VectorData;
+
+    if ((ConnectionData == NULL) || (ConnectionData->Count != 1))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    VectorData = &ConnectionData->Vectors[0];
+    if (VectorData->Type != InterruptTypeControllerInput)
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    if ((VectorData->ControllerInput.Gsiv >= 16) ||
+        (VectorData->Vector != HalpIrqToVector((UCHAR)VectorData->ControllerInput.Gsiv)) ||
+        (VectorData->Irql != HalpVectorToIrql((UCHAR)VectorData->Vector)))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (!HalEnableSystemInterrupt(VectorData->Vector,
+                                  VectorData->Irql,
+                                  VectorData->Mode))
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/* Disables an interrupt enabled with HalEnableInterrupt */
+NTSTATUS
+NTAPI
+HalDisableInterrupt(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData)
+{
+    PINTERRUPT_VECTOR_DATA VectorData;
+
+    if ((ConnectionData == NULL) || (ConnectionData->Count != 1))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    VectorData = &ConnectionData->Vectors[0];
+    if (VectorData->Type != InterruptTypeControllerInput)
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    if ((VectorData->ControllerInput.Gsiv >= 16) ||
+        (VectorData->Vector != HalpIrqToVector((UCHAR)VectorData->ControllerInput.Gsiv)))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    HalDisableSystemInterrupt(VectorData->Vector, VectorData->Irql);
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Returns the IRQ and polarity of a vector. The private dispatch override
+ * is used when one is installed.
+ */
+NTSTATUS
+NTAPI
+HalGetVectorInput(
+    _In_ ULONG Vector,
+    _In_ KAFFINITY Affinity,
+    _Out_ PULONG Input,
+    _Out_ PKINTERRUPT_POLARITY Polarity)
+{
+    ULONG Irq;
+
+    if (HalGetVectorInputOverride != NULL)
+    {
+        return HalGetVectorInputOverride(Vector, Affinity, Input, Polarity);
+    }
+
+    if ((Vector < PRIMARY_VECTOR_BASE) || (Vector >= PRIMARY_VECTOR_BASE + 16))
+    {
+        return STATUS_NOT_FOUND;
+    }
+
+    /* Level-triggered IRQs are active low */
+    Irq = Vector - PRIMARY_VECTOR_BASE;
+    *Input = Irq;
+    *Polarity = (HalpEisaELCR & (1 << Irq)) ? InterruptActiveLow : InterruptActiveHigh;
+    return STATUS_SUCCESS;
+}
+
+/* Only one processor with physical delivery, and no MSI support */
+NTSTATUS
+NTAPI
+HalGetInterruptTargetInformation(
+    _In_ HAL_INTERRUPT_TARGET_TYPE Type,
+    _In_ ULONG Id,
+    _Out_ PHAL_INTERRUPT_TARGET_INFORMATION Information)
+{
+    if ((Type != InterruptTargetTypeGlobal) && (Type != InterruptTargetTypeApic))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    RtlZeroMemory(Information, sizeof(*Information));
+    Information->Type = Type;
+    Information->Flags = HAL_INTERRUPT_TARGET_STATIC_DESTINATIONS;
+    Information->Apic.DestinationMode = ApicDestinationModePhysical;
+
+    /* Processor 0 has ID 0 and ProcessorNumber is already zeroed */
+    if ((Type == InterruptTargetTypeApic) && (Id != 0))
+    {
+        return STATUS_NOT_FOUND;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/* Message-signaled interrupts are not supported with the PIC */
+NTSTATUS
+NTAPI
+HalGetMessageRoutingInfo(
+    _In_ PHAL_MESSAGE_TARGET_REQUEST Request,
+    _Out_ PINTERRUPT_CONNECTION_DATA ConnectionData)
+{
+    UNREFERENCED_PARAMETER(Request);
+    UNREFERENCED_PARAMETER(ConnectionData);
+
+    return STATUS_NOT_SUPPORTED;
+}
+
+/* Only processor 0 exists, with ID 0 */
+NTSTATUS
+NTAPI
+HalGetProcessorIdByNtNumber(
+    _In_ ULONG ProcessorNumber,
+    _Out_ PULONG ProcessorId)
+{
+    if (ProcessorNumber != 0)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    *ProcessorId = 0;
+    return STATUS_SUCCESS;
+}
+
+/* ACPI POWER MANAGEMENT ******************************************************/
+
+/* There is no I/O APIC */
+ULONG
+NTAPI
+HalpGetInterruptControllerVersion(
+    _In_ ULONG InterruptBase)
+{
+    UNREFERENCED_PARAMETER(InterruptBase);
+    return 0;
+}
+
+BOOLEAN
+NTAPI
+HalpIsInterruptInputValid(
+    _In_ ULONG Input)
+{
+    return (Input < 16);
+}
+
+/* Reinitializes the PICs and restores the trigger modes and masks */
+VOID
+NTAPI
+HalpRestoreInterruptController(VOID)
+{
+    ULONG_PTR Flags;
+    PKPCR Pcr = KeGetPcr();
+    PIC_MASK PicMask;
+
+    Flags = __readeflags();
+    _disable();
+
+    HalpInitializeLegacyPICs();
+
+    __outbyte(EISA_ELCR_MASTER, (UCHAR)HalpEisaELCR);
+    __outbyte(EISA_ELCR_SLAVE, (UCHAR)(HalpEisaELCR >> 8));
+
+    /* Mask for the current IRQL plus the disabled IRQs */
+    PicMask.Both = (KiI8259MaskTable[Pcr->Irql] | Pcr->IDR) & 0xFFFF;
+    __outbyte(PIC1_DATA_PORT, PicMask.Master);
+    __outbyte(PIC2_DATA_PORT, PicMask.Slave);
+
+    __writeeflags(Flags);
+}
+
 #else /* _MINIHAL_ */
 
 KIRQL
