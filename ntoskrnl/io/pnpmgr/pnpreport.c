@@ -387,7 +387,7 @@ IoReportDetectedDevice(
 }
 
 /*
- * @halfplemented
+ * @implemented
  */
 NTSTATUS
 NTAPI
@@ -413,19 +413,13 @@ IoReportResourceForDetection(IN PDRIVER_OBJECT DriverObject,
     else
         ResourceList = DriverList;
 
-    /* Look for a resource conflict */
-    Status = IopDetectResourceConflict(ResourceList, TRUE, NULL);
-    if (Status == STATUS_CONFLICTING_ADDRESSES)
-    {
-        /* Oh noes */
-        *ConflictDetected = TRUE;
-    }
-    else if (NT_SUCCESS(Status))
-    {
-        /* Looks like we're good to go */
-
-        /* TODO: Claim the resources in the ResourceMap */
-    }
+    /* Claim the resources in the arbiters, without overriding conflicts */
+    Status = IopLegacyReportResources(NULL,
+                                      DriverObject,
+                                      DeviceObject,
+                                      ResourceList,
+                                      FALSE,
+                                      ConflictDetected);
 
     return Status;
 }
