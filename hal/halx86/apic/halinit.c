@@ -51,6 +51,12 @@ HalpInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     HalpPrintApicTables();
 
+    /* This image routes interrupts through the APICs */
+    HalpInterruptModel = 1;
+
+    /* Offer message-signalled interrupt vectors to the kernel */
+    HalpInitializeMessageInterrupts();
+
     /* Enable clock interrupt handler */
     HalpEnableInterruptHandler(IDT_INTERNAL,
                                0,
