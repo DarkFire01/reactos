@@ -168,6 +168,64 @@ ArbpFreeAllocationWorkSpaces(
  * STATUS_UNSUCCESSFUL if even the first entry has no solution, or
  * a PreprocessEntry / PackResource failure status.
  */
+/**
+ * @brief
+ * Says what an arbiter is already holding across a window.
+ *
+ * The bare "arbitration failed" a caller reports names the device that could
+ * not be placed but not what stopped it, which is the half worth knowing: a
+ * fixed requirement can fail either because the window belongs to somebody
+ * else or because it was never the arbiter's to give. Both look the same from
+ * outside, and they lead in opposite directions.
+ *
+ * @param[in] Arbiter
+ * The arbiter whose bookkeeping to read.
+ *
+ * @param[in] Minimum
+ * The bottom of the window that could not be satisfied.
+ *
+ * @param[in] Maximum
+ * The top of it.
+ */
+CODE_SEG("PAGE")
+static
+VOID
+ArbpReportConflictingRanges(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_ ULONGLONG Minimum,
+    _In_ ULONGLONG Maximum)
+{
+    RTL_RANGE_LIST_ITERATOR Iterator;
+    PRTL_RANGE Range;
+    BOOLEAN Overlapped = FALSE;
+
+    PAGED_CODE();
+
+    if (!NT_SUCCESS(RtlGetFirstRange(Arbiter->PossibleAllocation, &Iterator, &Range)))
+        return;
+
+    while (Range != NULL)
+    {
+        if ((Range->Start <= Maximum) && (Range->End >= Minimum))
+        {
+            Overlapped = TRUE;
+            DPRINT1("  0x%I64x..0x%I64x held by %p, attributes 0x%x%s\n",
+                    Range->Start, Range->End, Range->Owner, Range->Attributes,
+                    (Range->Flags & RTL_RANGE_SHARED) ? " (shared)" : "");
+        }
+
+        if (!NT_SUCCESS(RtlGetNextRange(&Iterator, &Range, TRUE)))
+            break;
+    }
+
+    if (!Overlapped)
+    {
+        DPRINT1("  nothing holds 0x%I64x..0x%I64x, so it is outside what this "
+                "arbiter was given\n",
+                Minimum, Maximum);
+    }
+}
+
 CODE_SEG("PAGE")
 NTSTATUS
 NTAPI
@@ -294,6 +352,13 @@ Backtrack:
             /* Even the first entry has no solution. */
             if (Current->Entry != NULL)
                 Current->Entry->Result = ArbiterResultExternalConflict;
+
+            DPRINT1("Arbiter %ws: nowhere to put 0x%I64x..0x%I64x\n",
+                    Arbiter->Name ? Arbiter->Name : L"(unnamed)",
+                    Current->CurrentMinimum, Current->CurrentMaximum);
+            ArbpReportConflictingRanges(Arbiter,
+                                        Current->CurrentMinimum,
+                                        Current->CurrentMaximum);
 
             ArbpFreeAllocationWorkSpaces(ArbState);
             return McfgConflict ? STATUS_BAD_MCFG_TABLE : STATUS_UNSUCCESSFUL;
