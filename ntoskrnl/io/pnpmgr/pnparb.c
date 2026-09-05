@@ -2728,6 +2728,25 @@ IopTranslateDeviceResources(
                }
 
                /*
+                * A PNPBus list describes its resources in the system's own
+                * terms rather than in a child bus's, which is why the HAL uses
+                * it for the interrupts its root device reserves: on an APIC
+                * image the block of device IDT vectors it hands out, on a PIC
+                * image the SCI. Neither translator factory will produce a
+                * translator for PNPBus - xHalGetInterruptTranslator and
+                * HaliGetInterruptTranslator both answer STATUS_NOT_IMPLEMENTED
+                * for it - and a resource with no translator above it is already
+                * in its translated form. So the copy made when the translated
+                * list was allocated is the answer. Passing it to
+                * HalGetInterruptVector, which expects a bus line, would only
+                * fail the whole device.
+                */
+               if (DeviceNode->ResourceList->List[i].InterfaceType == PNPBus)
+               {
+                   break;
+               }
+
+               /*
                 * A line whose vector the arbiter already assigned. Whoever owns
                 * the interrupt arbiter picks the vector, programs the controller
                 * and publishes the result as the device's
