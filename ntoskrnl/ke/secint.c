@@ -432,7 +432,7 @@ KeDispatchSecondaryInterrupt(
     {
         if (Interrupt->SynchronizeIrql > Interrupt->Irql)
         {
-            OldInterruptIrql = KfRaiseIrql(Interrupt->SynchronizeIrql);
+            KeRaiseIrql(Interrupt->SynchronizeIrql, &OldInterruptIrql);
         }
         else
         {
@@ -447,7 +447,7 @@ KeDispatchSecondaryInterrupt(
 
         if (Interrupt->SynchronizeIrql > Interrupt->Irql)
         {
-            KfLowerIrql(OldInterruptIrql);
+            KeLowerIrql(OldInterruptIrql);
         }
 
         /* A level source stays asserted until someone services it */
