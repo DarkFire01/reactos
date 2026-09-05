@@ -439,6 +439,9 @@ ReferenceClassVersion(
 
     if (!NT_SUCCESS(status))
     {
+        DPRINT_ERROR(("no service path for class %S, status 0x%x - it has no "
+                      "Control\\Wdf\\Kmdf\\<class>\\Versions\\<major>\\<minor> key\n",
+                      ClassBindInfo->ClassName, status));
         RtlFreeUnicodeString(&driverServiceName);
         return status;
     }
@@ -511,9 +514,21 @@ ReferenceClassVersion(
                 /* Driver might already be loaded as boot driver - UCX*/
                 status = STATUS_SUCCESS;
             }
+            else
+            {
+                DPRINT_ERROR(("could not load %wZ for class %S, status 0x%x\n",
+                              &driverServiceName, ClassBindInfo->ClassName, status));
+            }
         }
         else if (pClassModule && !pClassModule->ClassLibraryInfo)
         {
+            /*
+             * The image loaded but never called WdfRegisterClassLibrary, so
+             * there is nothing to bind a client to. Its own DriverEntry most
+             * likely failed.
+             */
+            DPRINT_ERROR(("%wZ loaded but registered no class library for %S\n",
+                          &driverServiceName, ClassBindInfo->ClassName));
             status = STATUS_DRIVER_INTERNAL_ERROR;
         }
     }

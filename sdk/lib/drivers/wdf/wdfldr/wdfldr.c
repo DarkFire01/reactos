@@ -122,6 +122,14 @@ DllInitialize(
     RtlZeroMemory(&WdfLdrGlobals, sizeof(WdfLdrGlobals));
     RtlZeroMemory(&WdfLdrDiags, sizeof(WdfLdrDiags));
 
+    /*
+     * Errors and warnings report themselves whatever the registry says. Every
+     * one of them is a driver that will not load, and the failure is otherwise
+     * silent: the device shows up with a problem code and nothing in the log
+     * says why. The registry values below only add the chattier levels.
+     */
+    WdfLdrDiags.DiagFlags |= DIAGFLAG_LOG_ERRORS | DIAGFLAG_LOG_WARNINGS;
+
     InitializeListHead(&WdfLdrGlobals.LoadedModulesList);
     status = ExInitializeResourceLite(&WdfLdrGlobals.LoadedModulesListLock);
     if (!NT_SUCCESS(status))
@@ -812,6 +820,13 @@ WdfVersionBindClass(
     status = ReferenceClassVersion(ClassBindInfo, BindInfo, &pClassModule);
     if (!NT_SUCCESS(status))
     {
+        DPRINT_ERROR(("could not resolve class %S v%d.%d.%d for client %S, status 0x%x\n",
+                      ClassBindInfo->ClassName,
+                      ClassBindInfo->Version.Major,
+                      ClassBindInfo->Version.Minor,
+                      ClassBindInfo->Version.Build,
+                      BindInfo->Component,
+                      status));
         ExFreePoolWithTag(pClassClientModule, WDFLDR_TAG);
         return status;
     }
@@ -832,7 +847,7 @@ WdfVersionBindClass(
             return status;
         }
 
-        DPRINT_ERROR(("ClassLibraryBindClient failed, status 0x%x\n", status));
+        DPRINT_ERROR(("class refused the client, status 0x%x\n", status));
     }
 
     if (pClassModule != NULL)

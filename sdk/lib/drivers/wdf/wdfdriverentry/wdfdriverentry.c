@@ -9,6 +9,7 @@
 #include <windef.h>
 #include <fxldr.h>
 #include "wdf.h"
+#include <debug.h>
 
 
 #define WDFENTRY_TAG 'EFDW'
@@ -188,6 +189,19 @@ FxBindClasses(VOID)
                                      entry);
         if (!NT_SUCCESS(status))
         {
+            /*
+             * This is what the device manager ends up showing as a failed
+             * driver entry, so say which class could not be bound: without it
+             * the only symptom is a problem code on a device whose own
+             * DriverEntry was never even reached.
+             */
+            DPRINT1("WDF: could not bind class %S v%d.%d.%d, status 0x%08lx\n",
+                    entry->ClassName,
+                    entry->Version.Major,
+                    entry->Version.Minor,
+                    entry->Version.Build,
+                    status);
+
             /* Leave the client no half-bound classes to trip over. */
             FxUnbindClassesUpTo(entry);
             return status;
@@ -260,6 +274,8 @@ FxDriverEntry(
     status = FxBindClasses();
     if (!NT_SUCCESS(status))
     {
+        DPRINT1("WDF: class binding failed for %wZ, its DriverEntry will not run\n",
+                RegistryPath);
         WdfVersionUnbind(&gRegistryPath, &BindInfo, (PWDF_COMPONENT_GLOBALS)WdfDriverGlobals);
         return status;
     }
