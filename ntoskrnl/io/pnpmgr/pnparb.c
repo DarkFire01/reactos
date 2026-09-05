@@ -1871,7 +1871,14 @@ IopArbiterTryConfiguration(
         Entry->RequestSource = RequestSource;
         Entry->Flags = 0;
 
-        if (Phase != 0 && IopArbiterIsBootRequirement(DeviceNode, Entry))
+        /*
+         * A requirement that asks for the device's own firmware placement is
+         * allowed to reclaim it in either phase. The reservation made for this
+         * device just before arbitration would otherwise block the placement it
+         * is meant to protect, and the search would fall through to a flexible
+         * alternative and take the top of its window.
+         */
+        if (IopArbiterIsBootRequirement(DeviceNode, Entry))
             Entry->Flags |= ARBITER_FLAG_BOOT_CONFIG;
 
         Entry->InterfaceType = RequirementsList->InterfaceType;
