@@ -4193,4 +4193,68 @@ NtDeleteFile(IN POBJECT_ATTRIBUTES ObjectAttributes)
     return OpenPacket.FinalStatus;
 }
 
+/*
+ * @implemented
+ *
+ * Replaces a file object's name. Used by drivers that answer IRP_MJ_CREATE with
+ * STATUS_REPARSE to send the open somewhere else - the ACPI resource hub turns a
+ * connection id into the owning bus controller this way.
+ *
+ * Reconstructed from the Win10 1607 kernel (ntoskrnl.exe.c:944768), including
+ * its allocation buckets: the reference rounds the buffer up to 56, 120 or 248
+ * bytes before falling back to the exact length, so repeated renames of a short
+ * name stop reallocating.
+ */
+NTSTATUS
+NTAPI
+IoReplaceFileObjectName(
+    IN PFILE_OBJECT FileObject,
+    IN PWSTR NewFileName,
+    IN USHORT FileNameLength)
+{
+    PWSTR NewBuffer;
+    USHORT NewMaximumLength;
+
+    PAGED_CODE();
+
+    if (FileNameLength > FileObject->FileName.MaximumLength)
+    {
+        NewMaximumLength = 56;
+        if (FileNameLength >= 56)
+        {
+            NewMaximumLength = 120;
+            if (FileNameLength >= 120)
+            {
+                NewMaximumLength = 248;
+                if (FileNameLength >= 248)
+                    NewMaximumLength = FileNameLength;
+            }
+        }
+
+        NewBuffer = ExAllocatePoolWithTag(PagedPool, NewMaximumLength, TAG_IO_NAME);
+        if (!NewBuffer)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        if (FileObject->FileName.Buffer)
+        {
+            /*
+             * Not TAG_IO_NAME: a filesystem may have reallocated the name with
+             * a tag of its own.
+             */
+            ExFreePoolWithTag(FileObject->FileName.Buffer, 0);
+        }
+
+        FileObject->FileName.Buffer = NewBuffer;
+        FileObject->FileName.MaximumLength = NewMaximumLength;
+    }
+
+    /* The reference wipes the whole buffer, not just the tail */
+    FileObject->FileName.Length = FileNameLength;
+    RtlZeroMemory(FileObject->FileName.Buffer, FileObject->FileName.MaximumLength);
+    RtlCopyMemory(FileObject->FileName.Buffer, NewFileName, FileNameLength);
+
+    return STATUS_SUCCESS;
+}
+
 /* EOF */
+
