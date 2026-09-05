@@ -440,7 +440,7 @@ PiAttachFilterDriversCallback(
             PiSetDevNodeProblem(context->DeviceNode, CM_PROB_DISABLED_SERVICE);
         }
 
-        DPRINT("Service \"%wZ\" is disabled (start type %u)\n", &serviceName, startType);
+        DPRINT1("Service \"%wZ\" is disabled (start type %u)\n", &serviceName, startType);
         Status = STATUS_UNSUCCESSFUL;
         goto Cleanup;
     }
@@ -474,7 +474,7 @@ PiAttachFilterDriversCallback(
         }
         else
         {
-            DPRINT("Service \"%wZ\" will not be loaded now\n", &serviceName);
+            DPRINT1("Service \"%wZ\" will not be loaded now\n", &serviceName);
             // return failure, the driver will be loaded later (in a subsequent call)
             Status = STATUS_UNSUCCESSFUL;
             goto Cleanup;
@@ -742,7 +742,7 @@ PiCallDriverAddDevice(
         {
             PiSetDevNodeProblem(DeviceNode, CM_PROB_REGISTRY);
         }
-        DPRINT("No service for \"%wZ\" (loadDrv: %u)\n", &DeviceNode->InstancePath, LoadDrivers);
+        DPRINT1("No service for \"%wZ\" (loadDrv: %u)\n", &DeviceNode->InstancePath, LoadDrivers);
         goto Cleanup;
     }
 
