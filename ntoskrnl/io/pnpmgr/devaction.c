@@ -1265,11 +1265,11 @@ PiInitializeDevNode(
      *
      * This has to happen before the device is asked for its resource
      * requirements below, not after. The database entry can carry settings the
-     * device needs in order to answer that question at all: a PCI function's
-     * MSISupported, which decides whether pci.sys offers it message interrupts.
-     * Installing afterwards writes them where nothing will read them until the
-     * device is restarted, which for the device the system booted from is
-     * never.
+     * device needs in order to answer that question at all - a PCI function's
+     * MSISupported, which decides whether pci.sys offers it message interrupts
+     * - and installing afterwards writes them where nothing will read them
+     * until the device is restarted, which for the device the system booted
+     * from is never.
      */
     IopInstallCriticalDevice(DeviceNode);
 
@@ -2196,6 +2196,16 @@ PiEnumerateDevice(
                 /* Mark the node as enumerated */
                 ChildDeviceNode->Flags |= DNF_ENUMERATED;
 
+                /*
+                 * The root enumerator's PDOs are the PnP manager's own: their
+                 * boot configuration is reserved once the boot drivers are up,
+                 * and again whenever their resources are released.
+                 */
+                if (DeviceNode == IopRootDeviceNode)
+                {
+                    ChildDeviceNode->Flags |= DNF_MADEUP;
+                }
+
                 /* Mark the DO as bus enumerated */
                 ChildDeviceObject->Flags |= DO_BUS_ENUMERATED_DEVICE;
             }
@@ -2346,12 +2356,30 @@ PiFakeResourceRebalance(
     PiIrpQueryResources(DeviceNode, &bootConfig);
     PiIrpQueryResourceRequirements(DeviceNode, &resourceRequirements);
 
+    /*
+     * What came back replaces what the node was holding; IopAssignDeviceResources
+     * releases the device and re-arbitrates it against the new lists.
+     */
+    if (DeviceNode->BootResources != NULL)
+    {
+        ExFreePool(DeviceNode->BootResources);
+    }
+    if (DeviceNode->ResourceRequirements != NULL)
+    {
+        ExFreePool(DeviceNode->ResourceRequirements);
+    }
+
     DeviceNode->BootResources = bootConfig;
     DeviceNode->ResourceRequirements = resourceRequirements;
 
-    if (bootConfig)
+    if (bootConfig != NULL)
     {
         DeviceNode->Flags |= DNF_HAS_BOOT_CONFIG;
+    }
+    else
+    {
+        /* The device no longer reports one, so the node must stop claiming it */
+        DeviceNode->Flags &= ~DNF_HAS_BOOT_CONFIG;
     }
 
     DeviceNode->Flags &= ~DNF_RESOURCE_REQUIREMENTS_CHANGED;
@@ -2603,14 +2631,26 @@ PipDeviceActionWorker(
         ASSERT(Request->DeviceObject);
 
         deviceNode = IopGetDeviceNode(Request->DeviceObject);
-        ASSERT(deviceNode);
 
         status = STATUS_SUCCESS;
 
         DPRINT("Processing PnP request %p: DeviceObject - %p, Action - %s\n",
                Request, Request->DeviceObject, ActionToStr(Request->Action));
 
-        switch (Request->Action)
+        /*
+         * The device can have been removed while the request sat on the queue,
+         * which leaves nothing to act on. Drop the action but fall through to
+         * the completion below rather than skipping it: anything less leaks the
+         * request and its object reference, and leaves whoever queued it
+         * waiting on CompletionEvent forever.
+         */
+        if (deviceNode == NULL)
+        {
+            DPRINT1("Dropping device action %u for %p: the device node is gone\n",
+                    Request->Action, Request->DeviceObject);
+            status = STATUS_NO_SUCH_DEVICE;
+        }
+        else switch (Request->Action)
         {
             case PiActionAddBootDevices:
             {

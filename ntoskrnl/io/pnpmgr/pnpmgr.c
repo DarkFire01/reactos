@@ -1761,9 +1761,20 @@ IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
             PIP_REGISTRY_DATA(REGSTR_VAL_CONFIGFLAGS, REG_DWORD);
             break;
         case DevicePropertyResourceRequirements:
-            PIP_UNIMPLEMENTED();
+            if (DeviceNode->ResourceRequirements != NULL)
+            {
+                PIP_RETURN_DATA(DeviceNode->ResourceRequirements->ListSize,
+                                DeviceNode->ResourceRequirements);
+            }
+            /* A device with no requirements has an empty answer, not no answer */
+            PIP_RETURN_DATA(0, NULL);
         case DevicePropertyAllocatedResources:
-            PIP_UNIMPLEMENTED();
+            if (DeviceNode->ResourceList != NULL)
+            {
+                PIP_RETURN_DATA(PnpDetermineResourceListSize(DeviceNode->ResourceList),
+                                DeviceNode->ResourceList);
+            }
+            PIP_RETURN_DATA(0, NULL);
         default:
             return STATUS_INVALID_PARAMETER_2;
     }
