@@ -1259,6 +1259,20 @@ PiInitializeDevNode(
     // Set the device's DeviceDesc and LocationInformation fields
     PiSetDevNodeText(DeviceNode, InstanceKey);
 
+    /*
+     * Install a critical device, so that its Service key is populated and it
+     * can be started during an early boot.
+     *
+     * This has to happen before the device is asked for its resource
+     * requirements below, not after. The database entry can carry settings the
+     * device needs in order to answer that question at all: a PCI function's
+     * MSISupported, which decides whether pci.sys offers it message interrupts.
+     * Installing afterwards writes them where nothing will read them until the
+     * device is restarted, which for the device the system booted from is
+     * never.
+     */
+    IopInstallCriticalDevice(DeviceNode);
+
     DPRINT("Sending IRP_MN_QUERY_BUS_INFORMATION to device stack\n");
 
     Status = IopInitiatePnpIrp(DeviceNode->PhysicalDeviceObject,
@@ -1355,10 +1369,7 @@ PiInitializeDevNode(
         }
     }
 
-    // Try installing a critical device, so its Service key is populated
-    // then call IopSetServiceEnumData to populate service's Enum key.
-    // That allows us to start devices during an early boot
-    IopInstallCriticalDevice(DeviceNode);
+    // Populate the service's Enum key now that the device is installed
     IopSetServiceEnumData(DeviceNode, InstanceKey);
 
     ZwClose(InstanceKey);

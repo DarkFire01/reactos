@@ -28,6 +28,13 @@ IO_BUS_TYPE_GUID_LIST PnpBusTypeGuidList;
 
 /* FUNCTIONS *****************************************************************/
 
+/*
+ * A CriticalDeviceDatabase entry's parameters are a handful of values a couple
+ * of keys deep. The cap is there so that a hand-edited or corrupt hive cannot
+ * recurse the kernel stack out, not because anything legitimate approaches it.
+ */
+#define IOP_MAX_CRITICAL_PARAMETER_DEPTH 8
+
 VOID
 IopFixupDeviceId(PWCHAR String)
 {
@@ -38,6 +45,210 @@ IopFixupDeviceId(PWCHAR String)
         if (String[i] == L'\\')
             String[i] = L'#';
     }
+}
+
+/**
+ * \nbrief
+ * Copies every value and subkey of one registry key into another.
+ *
+ * \nparam[in] SourceKey
+ * The key to copy from.
+ *
+ * \nparam[in] TargetKey
+ * The key to copy into. A value of the same name is overwritten.
+ *
+ * \nparam[in] Depth
+ * How deep the recursion has gone, so that a pathological tree cannot run the
+ * kernel stack out.
+ *
+ * \nreturn
+ * STATUS_SUCCESS, or the first failure met.
+ */
+static
+NTSTATUS
+IopCopyRegistryTree(
+    _In_ HANDLE SourceKey,
+    _In_ HANDLE TargetKey,
+    _In_ ULONG Depth)
+{
+    PKEY_VALUE_FULL_INFORMATION ValueInfo;
+    PKEY_BASIC_INFORMATION BasicInfo;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    UNICODE_STRING Name;
+    NTSTATUS Status;
+    ULONG Index, Length;
+
+    if (Depth > IOP_MAX_CRITICAL_PARAMETER_DEPTH)
+    {
+        return STATUS_SUCCESS;
+    }
+
+    /* The values first */
+    for (Index = 0; ; Index++)
+    {
+        Status = ZwEnumerateValueKey(SourceKey, Index, KeyValueFullInformation,
+                                     NULL, 0, &Length);
+        if (Status == STATUS_NO_MORE_ENTRIES)
+            break;
+        if ((Status != STATUS_BUFFER_TOO_SMALL) && (Status != STATUS_BUFFER_OVERFLOW))
+            return Status;
+
+        ValueInfo = ExAllocatePoolWithTag(PagedPool, Length, TAG_IO);
+        if (ValueInfo == NULL)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        Status = ZwEnumerateValueKey(SourceKey, Index, KeyValueFullInformation,
+                                     ValueInfo, Length, &Length);
+        if (NT_SUCCESS(Status))
+        {
+            Name.Buffer = ValueInfo->Name;
+            Name.Length = (USHORT)ValueInfo->NameLength;
+            Name.MaximumLength = Name.Length;
+
+            Status = ZwSetValueKey(TargetKey, &Name, ValueInfo->TitleIndex,
+                                   ValueInfo->Type,
+                                   (PUCHAR)ValueInfo + ValueInfo->DataOffset,
+                                   ValueInfo->DataLength);
+        }
+
+        ExFreePoolWithTag(ValueInfo, TAG_IO);
+
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+
+    /* Then the subkeys */
+    for (Index = 0; ; Index++)
+    {
+        HANDLE SourceSubKey, TargetSubKey;
+
+        Status = ZwEnumerateKey(SourceKey, Index, KeyBasicInformation,
+                                NULL, 0, &Length);
+        if (Status == STATUS_NO_MORE_ENTRIES)
+            break;
+        if ((Status != STATUS_BUFFER_TOO_SMALL) && (Status != STATUS_BUFFER_OVERFLOW))
+            return Status;
+
+        BasicInfo = ExAllocatePoolWithTag(PagedPool, Length, TAG_IO);
+        if (BasicInfo == NULL)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        Status = ZwEnumerateKey(SourceKey, Index, KeyBasicInformation,
+                                BasicInfo, Length, &Length);
+        if (!NT_SUCCESS(Status))
+        {
+            ExFreePoolWithTag(BasicInfo, TAG_IO);
+            return Status;
+        }
+
+        Name.Buffer = BasicInfo->Name;
+        Name.Length = (USHORT)BasicInfo->NameLength;
+        Name.MaximumLength = Name.Length;
+
+        InitializeObjectAttributes(&ObjectAttributes, &Name,
+                                   OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+                                   SourceKey, NULL);
+        Status = ZwOpenKey(&SourceSubKey, KEY_READ, &ObjectAttributes);
+        if (NT_SUCCESS(Status))
+        {
+            InitializeObjectAttributes(&ObjectAttributes, &Name,
+                                       OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+                                       TargetKey, NULL);
+            Status = ZwCreateKey(&TargetSubKey, KEY_READ | KEY_WRITE,
+                                 &ObjectAttributes, 0, NULL,
+                                 REG_OPTION_NON_VOLATILE, NULL);
+            if (NT_SUCCESS(Status))
+            {
+                Status = IopCopyRegistryTree(SourceSubKey, TargetSubKey, Depth + 1);
+                ZwClose(TargetSubKey);
+            }
+
+            ZwClose(SourceSubKey);
+        }
+
+        ExFreePoolWithTag(BasicInfo, TAG_IO);
+
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * \nbrief
+ * Carries a CriticalDeviceDatabase entry's "Device Parameters" subtree over to
+ * the device's own instance key.
+ *
+ * \nparam[in] DatabaseKey
+ * The matched database entry.
+ *
+ * \nparam[in] InstanceKey
+ * The device's instance key.
+ *
+ * \nparam[in] DeviceNode
+ * The device, for the trace.
+ *
+ * \nremarks
+ * A boot-critical device is started from this database before any INF for it
+ * has been processed, so every setting an INF would have written through an
+ * AddReg in its DDInstall.HW section is absent for the whole of boot. That
+ * stays invisible until a driver needs one of them. A PCI function whose INF
+ * sets Interrupt Management\MessageSignaledInterruptProperties\MSISupported
+ * gets message interrupts once it has been installed the ordinary way, and a
+ * wired line when the very same device is the one the system booted from,
+ * which is the hard version to diagnose: the device works perfectly the moment
+ * it is not the boot device.
+ *
+ * Copying the subtree closes that gap for exactly the devices that cannot wait
+ * for an INF, and costs nothing for an entry that carries no parameters.
+ */
+static
+VOID
+IopCopyCriticalDeviceParameters(
+    _In_ HANDLE DatabaseKey,
+    _In_ HANDLE InstanceKey,
+    _In_ PDEVICE_NODE DeviceNode)
+{
+    UNICODE_STRING DeviceParametersU = RTL_CONSTANT_STRING(L"Device Parameters");
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    HANDLE SourceKey, TargetKey;
+    NTSTATUS Status;
+
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &DeviceParametersU,
+                               OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+                               DatabaseKey,
+                               NULL);
+    Status = ZwOpenKey(&SourceKey, KEY_READ, &ObjectAttributes);
+    if (!NT_SUCCESS(Status))
+    {
+        /* Nothing to carry over, which is the ordinary case */
+        return;
+    }
+
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &DeviceParametersU,
+                               OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+                               InstanceKey,
+                               NULL);
+    Status = ZwCreateKey(&TargetKey,
+                         KEY_READ | KEY_WRITE,
+                         &ObjectAttributes,
+                         0,
+                         NULL,
+                         REG_OPTION_NON_VOLATILE,
+                         NULL);
+    if (NT_SUCCESS(Status))
+    {
+        Status = IopCopyRegistryTree(SourceKey, TargetKey, 0);
+        ZwClose(TargetKey);
+
+        DPRINT("Carried the critical device parameters of %wZ over: 0x%08lx\n",
+               &DeviceNode->InstancePath, Status);
+    }
+
+    ZwClose(SourceKey);
 }
 
 VOID
@@ -359,6 +570,9 @@ IopInstallCriticalDevice(PDEVICE_NODE DeviceNode)
                     {
                         DPRINT1("Installed NULL service for critical device '%wZ'\n", &ChildIdNameU);
                     }
+
+                    /* Anything the entry says this device needs before an INF can */
+                    IopCopyCriticalDeviceParameters(ChildKeyHandle, InstanceKey, DeviceNode);
 
                     ExFreePool(OriginalIdBuffer);
                     ExFreePool(PartialInfo);
