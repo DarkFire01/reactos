@@ -254,8 +254,15 @@ char _RTL_CONSTANT_STRING_type_check(const void *s);
   const UNICODE_STRING _var = { sizeof(_string) - sizeof(WCHAR), sizeof(_string), (PWCH)_var##_buffer }
 #endif
 
+#if defined(__GNUC__)
+/* selectany already places the variable in its own COMDAT, and GCC rejects an
+   initializer on a declaration that also says extern. */
+#define DECLARE_GLOBAL_CONST_UNICODE_STRING(_var, _str) \
+  const __declspec(selectany) UNICODE_STRING _var = RTL_CONSTANT_STRING(_str)
+#else
 #define DECLARE_GLOBAL_CONST_UNICODE_STRING(_var, _str) \
   extern const __declspec(selectany) UNICODE_STRING _var = RTL_CONSTANT_STRING(_str)
+#endif
 
 /* Object Attributes */
 typedef struct _OBJECT_ATTRIBUTES {
