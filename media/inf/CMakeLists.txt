@@ -10,6 +10,7 @@ list(APPEND INF_FILES
     flpydisk.inf
     hal.inf
     hdc.inf
+    hidi2c.inf
     ialpss2i_gpio.inf
     ialpss2i_i2c.inf
     input.inf
@@ -18,6 +19,7 @@ list(APPEND INF_FILES
     kscaptur.inf
     legcydrv.inf
     machine.inf
+    mshidkmdf.inf
     monitor.inf
     msmouse.inf
     ndisuio.inf

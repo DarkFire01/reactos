@@ -1919,18 +1919,6 @@ HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","ImagePath",0x00020000,"system32
 HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Type",0x00010001,0x00000001
 
-<<<<<<< HEAD
-=======
-; GPIO class extension. Demand start: wdfldr loads it when a GPIO controller
-; driver binds to the class at load time. Windows registers the same driver as
-; "GPIOClx0101" in the System Bus Extender group; the name here follows the
-; spbcx one instead, since nothing outside the class key refers to it.
-; A class extension is loaded by wdfldr when a client binds to it, not by
-; PnP, and that load goes through ZwLoadDriver from inside the client's own
-; start. Boot-starting it instead means the image is already there and the
-; bind has nothing to load - which is why ucx01000 and acpiex, both boot
-; start, bind today while these two did not.
->>>>>>> d6920f5b8d1 ([BOOTDATA] Boot-start the GPIO and SPB class extensions)
 HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","ErrorControl",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","Group",0x00000000,"System Bus Extender"
 HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","ImagePath",0x00020000,"system32\drivers\gpioclx.sys"
