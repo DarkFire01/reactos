@@ -12,12 +12,13 @@
 ;   ACPI\INT345D  index 3   Kaby Lake-LP    _GPIO_CONTROLLER_SKL_LP
 ;   ACPI\INT3451  index 7   Skylake-H       _GPIO_CONTROLLER_SKL_H
 ;   ACPI\INT34BB  index 5   Comet Lake-LP   _GPIO_CONTROLLER_CNL_LP
+;   ACPI\INT3450  index 10  Cannon Lake-H   _GPIO_CONTROLLER_CNL_H
 ;
 ; Every other id that binary binds needs a layout this driver does not have,
 ; so none of them is listed:
 ;
-;   ACPI\INT3450  index 10  Cannon Lake-H   _GPIO_CONTROLLER_CNL_H
-;   ACPI\INT3452, INT3453, INT3455, INT34C3..INT34C5, INT34D1, INT3456
+;   ACPI\INT3452, INT3453, INT3455, INT34C3..INT34C6, INT34D1, INT3456
+;   ACPI\INTC1055, INTC1056, INTC1057, INTC105E, INTC105F
 ;
 ; Community count, group count and pad offsets all differ per layout, so
 ; binding an id here before its table exists would write the wrong pads on
@@ -47,6 +48,7 @@ DefaultDestDir = 12
 %iaLPSS2i_GPIO.DeviceDesc_KBL%  = iaLPSS2i_GPIO_Device, ACPI\INT345D
 %iaLPSS2i_GPIO.DeviceDesc_SKLH% = iaLPSS2i_GPIO_Device, ACPI\INT3451
 %iaLPSS2i_GPIO.DeviceDesc_CML%  = iaLPSS2i_GPIO_Device, ACPI\INT34BB
+%iaLPSS2i_GPIO.DeviceDesc_CNLH% = iaLPSS2i_GPIO_Device, ACPI\INT3450
 
 [iaLPSS2i_GPIO_Device.NT]
 CopyFiles = iaLPSS2i_GPIO_Device.CopyFiles
@@ -72,4 +74,5 @@ iaLPSS2i_GPIO.DeviceDesc_SKL  = "Intel(R) Serial IO GPIO Host Controller - INT34
 iaLPSS2i_GPIO.DeviceDesc_KBL  = "Intel(R) Serial IO GPIO Host Controller - INT345D"
 iaLPSS2i_GPIO.DeviceDesc_SKLH = "Intel(R) Serial IO GPIO Host Controller - INT3451"
 iaLPSS2i_GPIO.DeviceDesc_CML  = "Intel(R) Serial IO GPIO Host Controller - INT34BB"
+iaLPSS2i_GPIO.DeviceDesc_CNLH = "Intel(R) Serial IO GPIO Host Controller - INT3450"
 iaLPSS2i_GPIO.SvcDesc = "Intel(R) Serial IO GPIO Driver"
