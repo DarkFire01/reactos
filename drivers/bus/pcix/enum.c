@@ -149,10 +149,23 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
                 /* Interrupt resource */
                 case CmResourceTypeInterrupt:
 
-                    /* Make sure it's a compatible (and the only) PCI interrupt */
+                    /* Make sure it's the only PCI interrupt */
                     ASSERT(InterruptResource == NULL);
-                    ASSERT(Partial->u.Interrupt.Level == Partial->u.Interrupt.Vector);
                     InterruptResource = Partial;
+
+                    /*
+                     * A message interrupt names no wire. Its Level holds an
+                     * IRQL and its Vector a system vector, which are two
+                     * different numbers, so neither the equality below nor the
+                     * interrupt line it feeds says anything about one. Only a
+                     * line-based descriptor is read that way.
+                     */
+                    if (Partial->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
+                    {
+                        break;
+                    }
+
+                    ASSERT(Partial->u.Interrupt.Level == Partial->u.Interrupt.Vector);
 
                     /* Only 255 interrupts on x86/x64 hardware */
                     if (Partial->u.Interrupt.Level < 256)
@@ -775,6 +788,14 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
         Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
         Descriptor->Flags = CM_RESOURCE_INTERRUPT_LATCHED |
                             CM_RESOURCE_INTERRUPT_MESSAGE;
+        /*
+         * Messages are what this function would rather have. The wired line
+         * below is offered as an alternative to them, and without this the
+         * arbiter has no reason to prefer a window it holds nothing in over a
+         * line its ordering list already ranks, so the line wins every time
+         * and the message capability is never used.
+         */
+        Descriptor->Option = IO_RESOURCE_PREFERRED;
         Descriptor->u.Interrupt.MinimumVector =
             CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN - Messages + 1;
         Descriptor->u.Interrupt.MaximumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
