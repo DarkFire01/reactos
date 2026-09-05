@@ -259,7 +259,7 @@ ZwQuerySystemInformationEx(
 /* Po ---------------------------------------------------------------------- */
 
 NTKRNLVISTAAPI
-NTSTATUS
+VOID
 NTAPI
 PoFxNotifySurprisePowerOn(
     _In_ PDEVICE_OBJECT Pdo);
@@ -280,43 +280,13 @@ PoFxPowerControl(
     _In_ SIZE_T OutBufferSize,
     _Out_opt_ PSIZE_T BytesReturned);
 
-NTKRNLVISTAAPI
-NTSTATUS
-NTAPI
-PoCreateThermalRequest(
-    _Outptr_ PVOID *ThermalRequest,
-    _In_ PDEVICE_OBJECT TargetDeviceObject,
-    _In_ PDEVICE_OBJECT PolicyDeviceObject,
-    _In_ PVOID Callback,
-    _In_opt_ PVOID Context,
-    _In_ ULONG Flags);
-
-NTKRNLVISTAAPI
-VOID
-NTAPI
-PoDeleteThermalRequest(
-    _In_ PVOID ThermalRequest);
-
-NTKRNLVISTAAPI
-NTSTATUS
-NTAPI
-PoGetThermalRequestSupport(
-    _In_ PVOID ThermalRequest,
-    _Out_ PULONG Support);
-
-NTKRNLVISTAAPI
-NTSTATUS
-NTAPI
-PoSetThermalActiveCooling(
-    _In_ PVOID ThermalRequest,
-    _In_ ULONG Engaged);
-
-NTKRNLVISTAAPI
-NTSTATUS
-NTAPI
-PoSetThermalPassiveCooling(
-    _In_ PVOID ThermalRequest,
-    _In_ ULONG Throttle);
+/*
+ * The thermal-request routines are not declared here any more. The power
+ * manager implements them (ntoskrnl/po/thermreq.c) and pofuncs.h declares
+ * them for everyone, so a second set of prototypes could only disagree with
+ * the first - which is what it did, on the return type of
+ * PoGetThermalRequestSupport as well as on four parameters.
+ */
 
 /* Rtl ---------------------------------------------------------------------- */
 
