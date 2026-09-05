@@ -302,11 +302,26 @@ ArbiterLibHandler(
  * windows.
  *
  * @param[in,out] RangeList
- * The range list to rebuild from the descriptors.
+ * The range list to rebuild from the descriptors. What lands in it is
+ * everything outside those windows, because a range list records what is
+ * unavailable.
  *
  * @return
- * Returns STATUS_SUCCESS.
+ * STATUS_SUCCESS, or STATUS_INSUFFICIENT_RESOURCES.
  */
+/* The top of the space an arbiter addresses; ranges are inclusive */
+#define ARBITER_MAXIMUM_ADDRESS ((ULONGLONG)~0ULL)
+
+/**
+ * @brief
+ * One window a bus decodes, while the windows are being sorted.
+ */
+typedef struct _ARBITER_SEED_WINDOW
+{
+    ULONGLONG Start;
+    ULONGLONG End;
+} ARBITER_SEED_WINDOW, *PARBITER_SEED_WINDOW;
+
 CODE_SEG("PAGE")
 static
 NTSTATUS
@@ -316,6 +331,9 @@ ArbpSeedRangeList(
     _In_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Resources,
     _Inout_ PRTL_RANGE_LIST RangeList)
 {
+    PARBITER_SEED_WINDOW Windows;
+    ULONG WindowCount = 0;
+    ULONGLONG Next;
     ULONG Index;
 
     PAGED_CODE();
@@ -323,23 +341,83 @@ ArbpSeedRangeList(
     RtlFreeRangeList(RangeList);
     RtlInitializeRangeList(RangeList);
 
-    if (Arbiter->UnpackResource == NULL)
+    if ((Arbiter->UnpackResource == NULL) || (ResourceCount == 0))
         return STATUS_SUCCESS;
 
+    Windows = ExAllocatePoolWithTag(PagedPool,
+                                    ResourceCount * sizeof(ARBITER_SEED_WINDOW),
+                                    TAG_ARBITER);
+    if (Windows == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    /* Collect the windows of our own resource type, lowest first */
     for (Index = 0; Index < ResourceCount; ++Index)
     {
-        UINT64 Start, Length;
+        ULONGLONG Start, Length;
+        ULONG Insert;
 
         if (Resources[Index].Type != (UCHAR)Arbiter->ResourceType)
             continue;
 
         Arbiter->UnpackResource(&Resources[Index], &Start, &Length);
-        if (Length != 0)
+        if (Length == 0)
+            continue;
+
+        for (Insert = WindowCount; Insert > 0; --Insert)
         {
-            RtlAddRange(RangeList, Start, Start + Length - 1, 0,
+            if (Windows[Insert - 1].Start <= Start)
+                break;
+
+            Windows[Insert] = Windows[Insert - 1];
+        }
+
+        Windows[Insert].Start = Start;
+        Windows[Insert].End = Start + Length - 1;
+        WindowCount++;
+    }
+
+    /*
+     * A bus that reports no window of this kind is not saying it decodes
+     * nothing; it is saying it has nothing to add. Leaving the list empty
+     * leaves every address available, which is how the root arbiters run.
+     */
+    if (WindowCount == 0)
+    {
+        ExFreePoolWithTag(Windows, TAG_ARBITER);
+        return STATUS_SUCCESS;
+    }
+
+    /*
+     * What goes in the list is what the arbiter may NOT hand out, so the
+     * windows themselves are the gaps in it. Recording the windows instead
+     * would wall off exactly the addresses the bus exists to give away.
+     */
+    Next = 0;
+
+    for (Index = 0; Index < WindowCount; ++Index)
+    {
+        if (Windows[Index].Start > Next)
+        {
+            RtlAddRange(RangeList, Next, Windows[Index].Start - 1, 0,
                         RTL_RANGE_LIST_ADD_IF_CONFLICT, NULL, NULL);
         }
+
+        /* Overlapping windows merge, so only ever move the mark forward */
+        if (Windows[Index].End >= Next)
+            Next = Windows[Index].End + 1;
+
+        /* A window running to the top of the space leaves no tail to block */
+        if (Windows[Index].End == ARBITER_MAXIMUM_ADDRESS)
+        {
+            ExFreePoolWithTag(Windows, TAG_ARBITER);
+            return STATUS_SUCCESS;
+        }
     }
+
+    RtlAddRange(RangeList, Next, ARBITER_MAXIMUM_ADDRESS, 0,
+                RTL_RANGE_LIST_ADD_IF_CONFLICT, NULL, NULL);
+
+    ExFreePoolWithTag(Windows, TAG_ARBITER);
 
     return STATUS_SUCCESS;
 }
