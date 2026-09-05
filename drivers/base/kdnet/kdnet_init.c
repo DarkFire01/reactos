@@ -312,6 +312,11 @@ static ULONG g_KdNetLinkSpeed;
 static ULONG g_KdNetLinkDuplex;
 static PVOID g_KdNetHardwareContext;
 
+/* What KdDebuggerInitialize1 reports: how phase 0 ended, and how many times
+   the controller has been brought up (once at boot, again after each D0). */
+static NTSTATUS g_KdNetInitStatus = STATUS_SUCCESS;
+ULONG KdNetInitializeCount = 0;
+
 /* Defined in kdnet_ext.c; the extension writes its failure reason / chip id here
  * (via the import table) so we can report it when KdInitializeController fails. */
 extern PWCHAR KdNetErrorString;
@@ -329,9 +334,9 @@ extern ULONG  KdNetHardwareId;
  * @param LoaderBlock Optional loader parameter block (LoadOptions contain kdnet params).
  * @return STATUS_SUCCESS if debugger transport is ready; error code otherwise.
  */
+static
 NTSTATUS
-NTAPI
-KdDebuggerInitialize0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
+KdNetInitializePhase0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
     PCHAR LoaderOptions = NULL;
     NTSTATUS Status;
@@ -567,6 +572,7 @@ KdDebuggerInitialize0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
 
         if (FrLdrDbgPrint)
             FrLdrDbgPrint("kdnet: calling KdInitializeController...\n");
+        KdNetInitializeCount++;
         Status = g_KdNetExtExports.KdInitializeController(&g_KdNetSharedData);
         if (FrLdrDbgPrint)
             FrLdrDbgPrint("kdnet: KdInitializeController -> 0x%08lx\n", Status);
@@ -616,34 +622,229 @@ KdDebuggerInitialize0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
     }
 
     /*
-     * The link is up and the parameters are known, but the debugger is not
-     * connected yet. That takes the offer and ping exchange, which
-     * kdnet_net.c drives on the first KdSendPacket.
+     * The transport is up. KdNetInitializeNetwork above has already run the
+     * offer and connect exchange with the host, so by this point either
+     * Parameters->Connected is set or the offers timed out; a later
+     * KdSendPacket works or does not on that basis.
      */
     return STATUS_SUCCESS;
 }
 
 /**
- * @brief Phase-1 initialization of the kernel debugger over network.
+ * @brief
+ * Phase 0 of the debug transport, recording how it ended.
  *
- * Called after phase 0. Windows implementation: writes KdInitStatus, KdInitResultString,
- * KdNetHardwareID to \\REGISTRY\\MACHINE\\SYSTEM\\CURRENTCONTROLSET\\SERVICES\\kdnet;
- * creates kdnic subkey with DebugParameters and KdNic physical addresses for the
- * kdnic driver.
+ * @param[in] LoaderBlock
+ * Optional loader parameter block; its LoadOptions carry the kdnet settings.
  *
- * @return STATUS_SUCCESS on success.
+ * @return
+ * STATUS_SUCCESS when the transport is ready, otherwise the failure.
+ */
+NTSTATUS
+NTAPI
+KdDebuggerInitialize0(
+    _In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+    g_KdNetInitStatus = KdNetInitializePhase0(LoaderBlock);
+    return g_KdNetInitStatus;
+}
+
+/* SERVICE KEY REPORTING ******************************************************/
+
+/**
+ * @brief
+ * Opens the transport's own service key, creating it if it is not there.
+ *
+ * The real kdnet.dll creates this key rather than expecting an installer to
+ * have made it: a machine with network debugging switched off has no
+ * Services\kdnet key at all until the transport has run once.
+ *
+ * @param[out] KeyHandle
+ * Receives the open key.
+ *
+ * @return
+ * STATUS_SUCCESS, or the failure from the registry.
+ */
+static
+NTSTATUS
+KdNetOpenServiceKey(
+    _Out_ PHANDLE KeyHandle)
+{
+    UNICODE_STRING KeyName = RTL_CONSTANT_STRING(
+        L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\kdnet");
+    OBJECT_ATTRIBUTES ObjectAttributes;
+
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &KeyName,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               NULL,
+                               NULL);
+
+    return ZwCreateKey(KeyHandle,
+                       KEY_SET_VALUE,
+                       &ObjectAttributes,
+                       0,
+                       NULL,
+                       REG_OPTION_NON_VOLATILE,
+                       NULL);
+}
+
+/**
+ * @brief
+ * Writes one REG_DWORD under the service key.
+ *
+ * A failure is not reported. These values are a record of what happened, so
+ * losing one is not worth abandoning the rest of the report for.
+ *
+ * @param[in] KeyHandle
+ * The open service key.
+ *
+ * @param[in] Name
+ * The value name.
+ *
+ * @param[in] Value
+ * The value to write.
+ */
+static
+VOID
+KdNetReportDword(
+    _In_ HANDLE KeyHandle,
+    _In_ PCWSTR Name,
+    _In_ ULONG Value)
+{
+    UNICODE_STRING ValueName;
+
+    RtlInitUnicodeString(&ValueName, Name);
+    ZwSetValueKey(KeyHandle, &ValueName, 0, REG_DWORD, &Value, sizeof(Value));
+}
+
+/**
+ * @brief
+ * Writes one REG_BINARY under the service key.
+ *
+ * @param[in] KeyHandle
+ * The open service key.
+ *
+ * @param[in] Name
+ * The value name.
+ *
+ * @param[in] Data
+ * The bytes to write.
+ *
+ * @param[in] Length
+ * How many bytes to write.
+ */
+static
+VOID
+KdNetReportBinary(
+    _In_ HANDLE KeyHandle,
+    _In_ PCWSTR Name,
+    _In_reads_bytes_(Length) PVOID Data,
+    _In_ ULONG Length)
+{
+    UNICODE_STRING ValueName;
+
+    RtlInitUnicodeString(&ValueName, Name);
+    ZwSetValueKey(KeyHandle, &ValueName, 0, REG_BINARY, Data, Length);
+}
+
+/**
+ * @brief
+ * Writes one REG_SZ under the service key.
+ *
+ * @param[in] KeyHandle
+ * The open service key.
+ *
+ * @param[in] Name
+ * The value name.
+ *
+ * @param[in] Value
+ * The string to write.
+ */
+static
+VOID
+KdNetReportString(
+    _In_ HANDLE KeyHandle,
+    _In_ PCWSTR Name,
+    _In_ PCWSTR Value)
+{
+    UNICODE_STRING ValueName;
+    UNICODE_STRING Data;
+
+    RtlInitUnicodeString(&ValueName, Name);
+    RtlInitUnicodeString(&Data, Value);
+    ZwSetValueKey(KeyHandle, &ValueName, 0, REG_SZ,
+                  Data.Buffer, Data.Length + sizeof(UNICODE_NULL));
+}
+
+/**
+ * @brief
+ * Packs the debug device's PCI location the way a BDF is normally written.
+ *
+ * The descriptor carries the bus, and the device and function packed into Slot
+ * the way PCI_SLOT_NUMBER does. This uses the conventional bus, device and
+ * function encoding: the reference binary does not pin the layout down, and
+ * nothing reads the value back here.
+ *
+ * @return
+ * The packed location.
+ */
+static
+ULONG
+KdNetBusDeviceFunction(VOID)
+{
+    ULONG Device = g_KdNetDeviceDescriptor.Slot & 0x1F;
+    ULONG Function = (g_KdNetDeviceDescriptor.Slot >> 5) & 0x7;
+
+    return (g_KdNetDeviceDescriptor.Bus << 8) | (Device << 3) | Function;
+}
+
+/**
+ * @brief
+ * Records how the debug transport came up, under its own service key.
+ *
+ * The values are the ones the Windows transport writes: how phase 0 ended and
+ * the string an extension left behind when it failed, the chip it recognized,
+ * the address and MAC the target answers on, and the transfer counters.
+ *
+ * Nothing in ReactOS reads them back, because the kdnic driver that consumes
+ * the other half of this key does not exist here. They are written anyway
+ * because they are the only durable record of why a debug session did or did
+ * not come up: the boot log is gone by the time anyone thinks to ask.
+ *
+ * @param[in] LoaderBlock
+ * Unused. Everything reported here was captured during phase 0.
+ *
+ * @return
+ * STATUS_SUCCESS once the values are written, otherwise the registry failure.
  */
 NTSTATUS
 NTAPI
 KdDebuggerInitialize1(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
+    NTSTATUS Status;
+    HANDLE KeyHandle;
+
     UNREFERENCED_PARAMETER(LoaderBlock);
 
-    /*
-     * Neither half is implemented, so the caller is told plainly rather than
-     * being given a success it cannot rely on. Nothing in the transport needs
-     * this: it reports state for the kdnic driver and for tooling that reads
-     * the service key, and both are absent here.
-     */
-    return STATUS_NOT_IMPLEMENTED;
+    Status = KdNetOpenServiceKey(&KeyHandle);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    KdNetReportDword(KeyHandle, L"KdInitStatus", (ULONG)g_KdNetInitStatus);
+    KdNetReportDword(KeyHandle, L"KdNetHardwareID", KdNetHardwareId);
+    KdNetReportDword(KeyHandle, L"KdNetInitializeCount", KdNetInitializeCount);
+    KdNetReportDword(KeyHandle, L"KdNetTxSuccess", KdNetTxSuccessCount);
+    KdNetReportDword(KeyHandle, L"KdNetRxSuccess", KdNetRxSuccessCount);
+    KdNetReportDword(KeyHandle, L"KdNetIPAddress", KdNetParameters.TargetIP);
+    KdNetReportDword(KeyHandle, L"KdNet2PfBDF", KdNetBusDeviceFunction());
+
+    KdNetReportBinary(KeyHandle, L"KdNetMacAddress",
+                      g_KdNetTargetMac, sizeof(g_KdNetTargetMac));
+
+    if (KdNetErrorString != NULL)
+        KdNetReportString(KeyHandle, L"KdInitResultString", KdNetErrorString);
+
+    ZwClose(KeyHandle);
+    return STATUS_SUCCESS;
 }

@@ -16,6 +16,7 @@ KdD0Transition(VOID)
         KdNetExtensibilityExports &&
         KdNetExtensibilityExports->KdInitializeController)
     {
+        KdNetInitializeCount++;
         (VOID)KdNetExtensibilityExports->KdInitializeController(&KdNetSharedData);
     }
 
