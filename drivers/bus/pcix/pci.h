@@ -95,6 +95,13 @@
 //
 #define PCI_MSIX_CONTROL_TABLE_SIZE_MASK    0x07FF
 #define PCI_MSIX_CONTROL_FUNCTION_MASK      0x4000
+//
+// A function whose interrupt pin was never routed reads back 0xFF in its
+// interrupt line register: the PCI specification reserves that value for
+// "unknown", so it names no line and cannot be used as a boot configuration.
+//
+#define PCI_INTERRUPT_LINE_UNKNOWN          0xFF
+
 #define PCI_MSIX_CONTROL_ENABLE             0x8000
 #define PCI_MSIX_BIR_MASK                   0x00000007
 #define PCI_MSIX_OFFSET_MASK                0xFFFFFFF8
@@ -416,9 +423,9 @@ typedef struct _PCI_PDO_EXTENSION
     BOOLEAN SubClass;
     BOOLEAN BaseClass;
     BOOLEAN AdditionalResourceCount;
-    BOOLEAN AdjustedInterruptLine;
+    UCHAR AdjustedInterruptLine;
     BOOLEAN InterruptPin;
-    BOOLEAN RawInterruptLine;
+    UCHAR RawInterruptLine;
     BOOLEAN CapabilitiesPtr;
     BOOLEAN SavedLatencyTimer;
     BOOLEAN SavedCacheLineSize;
