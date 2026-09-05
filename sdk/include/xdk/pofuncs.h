@@ -61,6 +61,24 @@ NTAPI
 PoSetSystemState(
   _In_ EXECUTION_STATE Flags);
 
+/* Flags for PoSetHiberRange */
+#define PO_MEM_PRESERVE     0x00000001
+#define PO_MEM_CLONE        0x00000002
+#define PO_MEM_CL_OR_NCHK   0x00000004
+#define PO_MEM_PAGE_ADDRESS 0x00004000
+#define PO_MEM_DISCARD      0x00008000
+#define PO_MEM_BOOT_PHASE   0x00010000
+
+NTKERNELAPI
+VOID
+NTAPI
+PoSetHiberRange(
+  _In_opt_ PVOID HiberContext,
+  _In_ ULONG Flags,
+  _In_ PVOID StartPage,
+  _In_ ULONG Length,
+  _In_ ULONG PageTag);
+
 _IRQL_requires_max_(DISPATCH_LEVEL)
 NTKERNELAPI
 VOID
