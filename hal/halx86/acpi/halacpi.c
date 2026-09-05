@@ -48,6 +48,13 @@ PWCHAR HalName = L"ACPI Compatible Eisa/Isa HAL";
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
+/* The power management services this HAL offers the ACPI driver (acpi/acpidisp.c) */
+NTSTATUS
+NTAPI
+HaliInitPowerManagement(
+    _In_ PPM_DISPATCH_TABLE PmDriverDispatchTable,
+    _Out_ PPM_DISPATCH_TABLE *PmHalDispatchTable);
+
 /* The interrupt translator this HAL hands to the ACPI driver (acpi/irqtrans.c) */
 NTSTATUS
 NTAPI
@@ -782,22 +789,33 @@ HalpAcpiTableCacheInit(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
 VOID
 NTAPI
-HaliAcpiTimerInit(IN ULONG TimerPort,
-                  IN ULONG TimerValExt)
+HaliAcpiTimerInit(
+    _In_opt_ PULONG TimerPort,
+    _In_ BOOLEAN TimerValExt)
 {
+    ULONG Port;
+    BOOLEAN ValueExtended;
+
     PAGED_CODE();
 
-    /* Is this in the init phase? */
-    if (!TimerPort)
+    if (TimerPort != NULL)
     {
-        /* Get the data from the FADT */
-        TimerPort = HalpFixedAcpiDescTable.pm_tmr_blk_io_port;
-        TimerValExt = HalpFixedAcpiDescTable.flags & ACPI_TMR_VAL_EXT;
-        DPRINT1("ACPI Timer at: %lXh (EXT: %lu)\n", TimerPort, TimerValExt);
+        Port = *TimerPort;
+        ValueExtended = TimerValExt;
+    }
+    else
+    {
+        /* The init phase, so take both from the FADT */
+        Port = HalpFixedAcpiDescTable.pm_tmr_blk_io_port;
+        ValueExtended =
+            (HalpFixedAcpiDescTable.flags & ACPI_TMR_VAL_EXT) ? TRUE : FALSE;
+
+        DPRINT1("ACPI timer at 0x%lX (%u-bit)\n", Port, ValueExtended ? 32 : 24);
     }
 
-    /* FIXME: Now proceed to the timer initialization */
-    //HalaAcpiTimerInit(TimerPort, TimerValExt);
+    /* FIXME: program the timer from Port and ValueExtended */
+    UNREFERENCED_PARAMETER(Port);
+    UNREFERENCED_PARAMETER(ValueExtended);
 }
 
 CODE_SEG("INIT")
@@ -856,8 +874,8 @@ HalpSetupAcpiPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         HalpPhysicalMemoryMayAppearAbove4GB = TRUE;
     }
 
-    /* Setup the ACPI timer */
-    HaliAcpiTimerInit(0, 0);
+    /* Setup the ACPI timer from the FADT */
+    HaliAcpiTimerInit(NULL, FALSE);
 
     /* Do we have a low stub address yet? */
     if (!HalpLowStubPhysicalAddress.QuadPart)
@@ -968,6 +986,7 @@ HalpSetupAcpiPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         DbgPrint("\n");
     }
 
+    HalInitPowerManagement = HaliInitPowerManagement;
     HalGetInterruptTranslator = HaliGetInterruptTranslator;
 
     /* Return success */
