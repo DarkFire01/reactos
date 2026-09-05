@@ -1898,6 +1898,8 @@ HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache","AppCompa
 HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager\kernel","ObUnsecureGlobalNames",0x00010000,"netfxcustomerfcounters.1.0","SharedPerfIPCBlock","Cor_Private_IPCBlock","Cor_Public_IPCBlock_"
 
 HKLM,"System\CurrentControlSet\Control\Wdf\Kmdf\Ucx\Versions\1\1","Service",0x00000000,"ucx01000"
+HKLM,"System\CurrentControlSet\Control\Wdf\Kmdf\GPIOClx\Versions\1\1","Service",0x00000000,"gpioclx"
+HKLM,"System\CurrentControlSet\Control\Wdf\Kmdf\SPBCx\Versions\1\1","Service",0x00000000,"spbcx"
 
 ; WOW Support
 HKLM,"SYSTEM\CurrentControlSet\Control\WOW",,0x00000012
@@ -1910,6 +1912,23 @@ HKLM,"SYSTEM\CurrentControlSet\Services\swenum","ErrorControl",0x00010001,0x0000
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","ImagePath",0x00020000,"system32\drivers\swenum.sys"
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","Type",0x00010001,0x00000001
+
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Group",0x00000000,"Boot Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","ImagePath",0x00020000,"system32\drivers\acpiex.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Type",0x00010001,0x00000001
+
+HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","Group",0x00000000,"System Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","ImagePath",0x00020000,"system32\drivers\gpioclx.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","Type",0x00010001,0x00000001
+
+HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","ImagePath",0x00020000,"system32\drivers\spbcx.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","Type",0x00010001,0x00000001
 
 ; Audio Service
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","DisplayName",0x00000000,%AUDIO_SERVICE%
