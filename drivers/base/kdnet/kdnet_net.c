@@ -12,6 +12,15 @@ DEBUG_NET_DATA       KdNetDataStorage = {0};
 DEBUG_NET_PARAMETERS KdNetParameters = {0};
 PDEBUG_NET_DATA      KdNetData = NULL;
 
+/*
+ * Reported through the service key by KdDebuggerInitialize1, the way the
+ * Windows transport reports KdNetTxSuccess and KdNetRxSuccess. They count
+ * frames the transport itself placed on or took off the wire, so a session
+ * that never comes up can be told apart from one that comes up and is ignored.
+ */
+ULONG KdNetTxSuccessCount = 0;
+ULONG KdNetRxSuccessCount = 0;
+
 /* UTILITIES ******************************************************************/
 
 static USHORT KdNetSwap16(USHORT v)
@@ -234,6 +243,7 @@ KdNetSendKdPacket(PDEBUG_NET_DATA Adapter, ULONG Handle, ULONG Length,
                   USHORT SourcePort, USHORT DestinationPort)
 {
     PDEBUG_NET_PARAMETERS prm = Adapter->Parameters;
+    NTSTATUS Status;
 
     if (prm->EncryptedLink)
     {
@@ -243,7 +253,7 @@ KdNetSendKdPacket(PDEBUG_NET_DATA Adapter, ULONG Handle, ULONG Length,
 
         if (!prm->Connected)
         {
-            /* No data channel yet — the offer handshake must complete first. */
+            /* No data channel yet: the offer handshake must complete first. */
             return STATUS_DEVICE_NOT_READY;
         }
 
@@ -262,10 +272,14 @@ KdNetSendKdPacket(PDEBUG_NET_DATA Adapter, ULONG Handle, ULONG Length,
                              seq, 0);
     }
 
-    return KdNetSendUDPPacketEx(Adapter, Handle,
-                               &Adapter->TargetMac, &Adapter->Parameters->HostMac,
-                               Adapter->TargetIP, Adapter->Parameters->HostIP,
-                               0, 0x10, Length, SourcePort, DestinationPort);
+    Status = KdNetSendUDPPacketEx(Adapter, Handle,
+                                  &Adapter->TargetMac, &Adapter->Parameters->HostMac,
+                                  Adapter->TargetIP, Adapter->Parameters->HostIP,
+                                  0, 0x10, Length, SourcePort, DestinationPort);
+    if (NT_SUCCESS(Status))
+        KdNetTxSuccessCount++;
+
+    return Status;
 }
 
 /* ARP AND RECEIVE ************************************************************/
@@ -541,6 +555,7 @@ KdNetWaitForSpecificRxUdpPacketEx(PDEBUG_NET_DATA Adapter, PULONG Handle, PVOID 
         /* Report the received ports back to the caller (host order). */
         *SourcePort = KdNetSwap16(*(PUSHORT)&udp[0]);
         *DestinationPort = KdNetSwap16(*(PUSHORT)&udp[2]);
+        KdNetRxSuccessCount++;
         return status;
     }
 }
@@ -670,7 +685,7 @@ Done:
 #define DHCP_ACK      5
 #define DHCP_NAK      6
 
-/* "Keep waiting" (malformed/irrelevant reply) and "NAK received" sentinels —
+/* "Keep waiting" (malformed/irrelevant reply) and "NAK received" sentinels.
  * the numeric values match the reference so the retry logic behaves the same. */
 #define KDNET_DHCP_INVALID ((NTSTATUS)0xC00000C3L)
 #define KDNET_DHCP_NAK     ((NTSTATUS)0xC00000BDL)

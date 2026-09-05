@@ -24,10 +24,11 @@ DriverEntry(
  * Marks this extension's memory as needed across hibernation.
  *
  * Nothing is claimed. The adapter's descriptor rings and buffers live in the
- * hardware context the kdnet module allocated, so they would have to be
- * claimed through the SetHiberRange import using that context's base and
- * size. Until a debug session is expected to survive a hibernate there is
- * nothing this has to do.
+ * hardware context kdnet allocated, so they would be claimed through the
+ * SetHiberRange import using that context's base and size. That import lands
+ * on PoSetHiberRange, which is @unimplemented in this kernel, so the claim
+ * would be discarded and the only visible effect would be UNIMPLEMENTED in the
+ * boot log. Worth doing once the kernel side exists.
  */
 VOID
 NTAPI
