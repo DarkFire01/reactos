@@ -477,7 +477,7 @@ E1000InitializeController(PKDNET_SHARED_DATA KdNet)
     E1kWrite(a, E1000_FCTTV, 0);
 
     /* Read the MAC from the receive address registers. If they weren't
-     * auto-loaded from the EEPROM (RA0 empty — happens on some real hardware /
+     * auto-loaded from the EEPROM (RA0 empty, which happens on some real hardware and
      * after certain resets), read the MAC straight out of the EEPROM. */
     {
         ULONG ral = E1kRead(a, E1000_RAL0);
