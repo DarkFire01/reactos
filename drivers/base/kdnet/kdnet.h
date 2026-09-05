@@ -17,15 +17,6 @@
 /* slight hack, but will allow us to debug this kdnet across x86/x64/arm64 easier */
 extern ULONG (*FrLdrDbgPrint)(const char *Format, ...);
 
-//TODO: This needs to get moved.
-VOID
-NTAPI
-PoSetHiberRange(IN PVOID HiberContext,
-                IN ULONG Flags,
-                IN OUT PVOID StartPage,
-                IN ULONG Length,
-                IN ULONG PageTag);
-
 extern BOOLEAN KdNetInitialized;
 extern KDNET_SHARED_DATA KdNetSharedData;
 extern PVOID KdNetHardwareContext;
@@ -44,4 +35,13 @@ KdNetInitializeExtensibility(
     _Inout_ struct _DEBUG_DEVICE_DESCRIPTOR *Device,
     _In_opt_ PKDNET_INITIALIZE_LIBRARY KdInitializeLibrary,
     _Out_ PKDNET_EXTENSIBILITY_EXPORTS ExtensibilityExports,
-    _Out_opt_ PVOID SerialExtensibility);
+    _Out_opt_ void *SerialExtensibility);
+ULONG KdpComputeChecksum(const UCHAR *Buffer, ULONG Length);
+
+/*
+ * Architecture-specific timing primitives (implemented per-arch under i386/,
+ * amd64/, ...). Used instead of KeStallExecutionProcessor in the kdnet init
+ * path, which runs before the HAL calibrates the stall scale factor.
+ */
+ULONG64 KdNetReadTimeStampCounter(VOID);
+ULONG64 KdNetGetTicksPerMicrosecond(VOID);
