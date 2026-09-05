@@ -41,14 +41,6 @@ ULONG HalpPicVectorRedirect[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 1
 /* Per ISA line polarity and trigger mode, from the MADT interrupt overrides */
 ULONG HalpPicVectorFlags[16];
 
-/*
- * The interrupt vectors the ACPI root device claims on the APIC HALs, so that
- * the ACPI driver can hand them out to devices. The vectors below and above
- * this band belong to the HAL and to the kernel.
- */
-#define HALP_DEVICE_VECTOR_FIRST    0x51
-#define HALP_DEVICE_VECTOR_COUNT    110
-
 /* This determines the HAL type */
 BOOLEAN HalDisableFirmwareMapper = TRUE;
 PWCHAR HalHardwareIdString = L"acpipic_up";
