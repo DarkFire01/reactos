@@ -363,7 +363,9 @@ HalpQueryResources(IN PDEVICE_OBJECT DeviceObject,
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
     PIO_RESOURCE_DESCRIPTOR Descriptor;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDesc;
-    ULONG i;
+    ULONG i, Vector;
+    KIRQL Irql;
+    KAFFINITY Affinity;
     PAGED_CODE();
 
     /* Only the ACPI PDO has requirements */
@@ -414,9 +416,26 @@ HalpQueryResources(IN PDEVICE_OBJECT DeviceObject,
                 PartialDesc->Flags = Descriptor->Flags;
                 ASSERT(Descriptor->u.Interrupt.MinimumVector ==
                        Descriptor->u.Interrupt.MaximumVector);
-                PartialDesc->u.Interrupt.Vector = Descriptor->u.Interrupt.MinimumVector;
-                PartialDesc->u.Interrupt.Level = Descriptor->u.Interrupt.MinimumVector;
-                PartialDesc->u.Interrupt.Affinity = 0xFFFFFFFF;
+
+                if (HalpInterruptModel == 0)
+                {
+                    Vector = HalGetInterruptVector(Isa,
+                                                   0,
+                                                   Descriptor->u.Interrupt.MinimumVector,
+                                                   Descriptor->u.Interrupt.MinimumVector,
+                                                   &Irql,
+                                                   &Affinity);
+
+                    PartialDesc->u.Interrupt.Vector = Vector;
+                    PartialDesc->u.Interrupt.Level = Irql;
+                    PartialDesc->u.Interrupt.Affinity = Affinity;
+                }
+                else
+                {
+                    PartialDesc->u.Interrupt.Vector = Descriptor->u.Interrupt.MinimumVector;
+                    PartialDesc->u.Interrupt.Level = Descriptor->u.Interrupt.MinimumVector;
+                    PartialDesc->u.Interrupt.Affinity = 0xFFFFFFFF;
+                }
 
                 ResourceList->List[0].PartialResourceList.Count++;
 
