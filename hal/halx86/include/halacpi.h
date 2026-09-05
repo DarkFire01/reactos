@@ -24,6 +24,17 @@ HalpAcpiGetTable(
     IN ULONG Signature
 );
 
+/*
+ * The ACPI power management timer setup (acpi/halacpi.c). A NULL TimerPort
+ * means the values come from the FADT.
+ */
+VOID
+NTAPI
+HaliAcpiTimerInit(
+    _In_opt_ PULONG TimerPort,
+    _In_ BOOLEAN TimerValExt
+);
+
 /* The Fixed ACPI Description Table, parsed at phase 0 */
 extern FADT HalpFixedAcpiDescTable;
 
