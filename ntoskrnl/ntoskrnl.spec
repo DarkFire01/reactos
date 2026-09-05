@@ -1720,7 +1720,6 @@
 # --- I/O Manager (Io) ---
 @ stdcall -version=0x602+ IoDuplicateDependency(ptr ptr)
 @ stdcall -version=0x602+ IoGetDeviceNumaNode(ptr ptr)
-@ stdcall -version=0x600+ IoGetDevicePropertyData(ptr ptr long long long ptr ptr ptr)
 @ stdcall IoInitializeWorkItem(ptr ptr)
 @ stdcall -version=0x600+ IoQueueWorkItemEx(ptr ptr long ptr)
 @ stdcall -version=0x601+ IoRegisterContainerNotification(long ptr ptr long ptr)
@@ -1731,7 +1730,6 @@
 @ stdcall -version=0x602+ IoReserveDependency(ptr ptr)
 @ stdcall -version=0x602+ IoResolveDependency(ptr)
 @ stdcall -version=0x602+ IoSetDependency(ptr ptr)
-@ stdcall -version=0x602+ IoSetDevicePropertyData(ptr ptr long long long long ptr)
 @ stdcall -version=0x600+ IoSizeofWorkItem()
 @ stdcall -version=0x600+ IoSynchronousCallDriver(ptr ptr)
 @ stdcall -version=0x602+ IoTestDependency(ptr)
@@ -1771,17 +1769,20 @@
 @ fastcall -version=0x601+ ObfReferenceObjectWithTag(ptr long)
 
 # --- Power Manager (Po) ---
-@ stdcall -version=0x603+ PoCreateThermalRequest(ptr ptr ptr ptr ptr long)
+@ stdcall -version=0x603+ PoCreateThermalRequest(ptr ptr ptr ptr long)
 @ stdcall -version=0x603+ PoDeleteThermalRequest(ptr)
 @ stdcall -version=0x602+ PoFxNotifySurprisePowerOn(ptr)
 @ stdcall -version=0x602+ PoFxPowerControl(ptr ptr ptr long ptr long ptr)
-@ stdcall -version=0x600+ PoGetSystemWake(ptr)
 @ stdcall -version=0x603+ PoGetThermalRequestSupport(ptr ptr)
-@ stdcall -version=0x600+ PoRegisterPowerSettingCallback(ptr ptr ptr ptr ptr)
-@ stdcall -version=0x600+ PoSetSystemWake(ptr)
 @ stdcall -version=0x603+ PoSetThermalActiveCooling(ptr long)
 @ stdcall -version=0x603+ PoSetThermalPassiveCooling(ptr long)
-@ stdcall -version=0x600+ PoUnregisterPowerSettingCallback(ptr)
+
+# NOTE: IoGetDevicePropertyData, IoSetDevicePropertyData, PoGetSystemWake,
+# PoRegisterPowerSettingCallback, PoSetSystemWake and
+# PoUnregisterPowerSettingCallback are already listed in the alphabetical
+# section above. Do not repeat them here: two entries for one name emit two
+# _stub_<name> labels into libntoskrnl_stubs.asm, which the assembler rejects
+# (A2005), so the tree stops building for MSVC while GCC says nothing.
 
 # --- Runtime Library (Rtl) ---
 @ stdcall -version=0x600+ RtlCmDecodeMemIoResource(ptr ptr)
