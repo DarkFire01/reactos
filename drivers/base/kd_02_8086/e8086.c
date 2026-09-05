@@ -199,15 +199,14 @@ typedef struct _E1000_ADAPTER
     BOOLEAN            IsIgb;      /* igb family: advanced descriptors + per-queue regs */
 } E1000_ADAPTER, *PE1000_ADAPTER;
 
-/* ---- register helpers: MMIO access to the mapped BAR via the KDNET
- * extensibility imports (READ/WRITE_REGISTER_ULONG) ---- */
-ULONG E1kRead(PE1000_ADAPTER E1kAdapter, ULONG off)
+/* ---- register helpers: direct MMIO access to the mapped BAR ---- */
+ULONG E1kRead(PE1000_ADAPTER a, ULONG off)
 {
-    return READ_REGISTER_ULONG((PULONG)(E1kAdapter->RegBase + off));
+    return *(volatile ULONG *)(a->RegBase + off);
 }
-VOID E1kWrite(PE1000_ADAPTER E1kAdapter, ULONG off, ULONG val)
+VOID E1kWrite(PE1000_ADAPTER a, ULONG off, ULONG val)
 {
-    WRITE_REGISTER_ULONG((PULONG)(E1kAdapter->RegBase + off), val);
+    *(volatile ULONG *)(a->RegBase + off) = val;
 }
 
 static VOID E1kDelayMicroseconds(ULONG Microseconds)
@@ -232,14 +231,14 @@ ULONG E1kAlignUp(ULONG v, ULONG a)
 
 /* Read an internal PHY register over MDIC. Returns 0xFFFF if there's no MDIO
  * PHY or the access errors/times out (e.g. emulated/fiber NICs). */
-static USHORT E1kPhyRead(PE1000_ADAPTER E1kAdapter, ULONG reg)
+static USHORT E1kPhyRead(PE1000_ADAPTER a, ULONG reg)
 {
     ULONG mdic, i;
-    E1kWrite(E1kAdapter, E1000_MDIC,
+    E1kWrite(a, E1000_MDIC,
              (reg << E1000_MDIC_REG_SHIFT) | (E1000_PHY_ADDR << E1000_MDIC_PHY_SHIFT) | E1000_MDIC_OP_READ);
     for (i = 0; i < 2000; i++)
     {
-        mdic = E1kRead(E1kAdapter, E1000_MDIC);
+        mdic = E1kRead(a, E1000_MDIC);
         if (mdic & E1000_MDIC_READY)
             return (mdic & E1000_MDIC_ERROR) ? 0xFFFF : (USHORT)(mdic & E1000_MDIC_DATA);
         E1kDelayMicroseconds(50);
@@ -247,15 +246,15 @@ static USHORT E1kPhyRead(PE1000_ADAPTER E1kAdapter, ULONG reg)
     return 0xFFFF;
 }
 
-static VOID E1kPhyWrite(PE1000_ADAPTER E1kAdapter, ULONG reg, USHORT val)
+static VOID E1kPhyWrite(PE1000_ADAPTER a, ULONG reg, USHORT val)
 {
     ULONG i;
-    E1kWrite(E1kAdapter, E1000_MDIC,
+    E1kWrite(a, E1000_MDIC,
              (ULONG)val | (reg << E1000_MDIC_REG_SHIFT) |
              (E1000_PHY_ADDR << E1000_MDIC_PHY_SHIFT) | E1000_MDIC_OP_WRITE);
     for (i = 0; i < 2000; i++)
     {
-        if (E1kRead(E1kAdapter, E1000_MDIC) & E1000_MDIC_READY)
+        if (E1kRead(a, E1000_MDIC) & E1000_MDIC_READY)
             return;
         E1kDelayMicroseconds(50);
     }
@@ -263,15 +262,15 @@ static VOID E1kPhyWrite(PE1000_ADAPTER E1kAdapter, ULONG reg, USHORT val)
 
 /* Read an EEPROM word. The address-shift and DONE bit differ between the legacy
  * 8254x and the 82571+/82574 families. */
-static USHORT E1kEepromRead(PE1000_ADAPTER E1kAdapter, ULONG word, BOOLEAN newFormat)
+static USHORT E1kEepromRead(PE1000_ADAPTER a, ULONG word, BOOLEAN newFormat)
 {
     ULONG addrShift = newFormat ? 2 : 8;
     ULONG doneBit   = newFormat ? 0x02 : 0x10;
     ULONG eerd, i;
-    E1kWrite(E1kAdapter, E1000_EERD, (word << addrShift) | E1000_EERD_START);
+    E1kWrite(a, E1000_EERD, (word << addrShift) | E1000_EERD_START);
     for (i = 0; i < 2000; i++)
     {
-        eerd = E1kRead(E1kAdapter, E1000_EERD);
+        eerd = E1kRead(a, E1000_EERD);
         if (eerd & doneBit)
             return (USHORT)(eerd >> 16);
         E1kDelayMicroseconds(50);
@@ -299,62 +298,62 @@ static BOOLEAN E1kIsIgb(USHORT id)
             id == 0x1F40 || id == 0x1F41 || id == 0x1F45);                       /* I354   */
 }
 
-ULONGLONG E1kPhys(PE1000_ADAPTER E1kAdapter, PVOID Va);
+ULONGLONG E1kPhys(PE1000_ADAPTER a, PVOID Va);
 
 /* ---- descriptor accessors (branch legacy vs igb advanced) ---- */
 
-BOOLEAN E1kTxDescDone(PE1000_ADAPTER E1kAdapter, ULONG idx)
+BOOLEAN E1kTxDescDone(PE1000_ADAPTER a, ULONG idx)
 {
-    if (E1kAdapter->IsIgb)
-        return (((PIGB_ADV_TX_DESC)E1kAdapter->TxRing)[idx].OlinfoStatus & IGB_TXD_STAT_DD) != 0;
-    return (E1kAdapter->TxRing[idx].Status & E1000_TXD_STAT_DD) != 0;
+    if (a->IsIgb)
+        return (((PIGB_ADV_TX_DESC)a->TxRing)[idx].OlinfoStatus & IGB_TXD_STAT_DD) != 0;
+    return (a->TxRing[idx].Status & E1000_TXD_STAT_DD) != 0;
 }
 
-VOID E1kTxDescSubmit(PE1000_ADAPTER E1kAdapter, ULONG idx, ULONG len)
+VOID E1kTxDescSubmit(PE1000_ADAPTER a, ULONG idx, ULONG len)
 {
-    if (E1kAdapter->IsIgb)
+    if (a->IsIgb)
     {
-        PIGB_ADV_TX_DESC d = &((PIGB_ADV_TX_DESC)E1kAdapter->TxRing)[idx];
+        PIGB_ADV_TX_DESC d = &((PIGB_ADV_TX_DESC)a->TxRing)[idx];
         d->CmdTypeLen = (len & 0xFFFF) | IGB_TXD_DTYP_DATA | IGB_TXD_DCMD_DEXT |
                         IGB_TXD_DCMD_EOP | IGB_TXD_DCMD_IFCS | IGB_TXD_DCMD_RS;
         d->OlinfoStatus = len << 14;   /* PAYLEN; hw clears DD then sets it on done */
     }
     else
     {
-        PE1000_TX_DESC d = &E1kAdapter->TxRing[idx];
+        PE1000_TX_DESC d = &a->TxRing[idx];
         d->Length = (USHORT)len;
         d->Cso = 0; d->Css = 0; d->Special = 0; d->Status = 0;
         d->Cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_IFCS | E1000_TXD_CMD_RS;
     }
 }
 
-BOOLEAN E1kRxDescDone(PE1000_ADAPTER E1kAdapter, ULONG idx)
+BOOLEAN E1kRxDescDone(PE1000_ADAPTER a, ULONG idx)
 {
-    if (E1kAdapter->IsIgb)
-        return (((PIGB_ADV_RX_DESC)E1kAdapter->RxRing)[idx].u.Wb.StatusError & IGB_RXD_STAT_DD) != 0;
-    return (E1kAdapter->RxRing[idx].Status & E1000_RXD_STAT_DD) != 0;
+    if (a->IsIgb)
+        return (((PIGB_ADV_RX_DESC)a->RxRing)[idx].u.Wb.StatusError & IGB_RXD_STAT_DD) != 0;
+    return (a->RxRing[idx].Status & E1000_RXD_STAT_DD) != 0;
 }
 
-USHORT E1kRxDescLength(PE1000_ADAPTER E1kAdapter, ULONG idx)
+USHORT E1kRxDescLength(PE1000_ADAPTER a, ULONG idx)
 {
-    if (E1kAdapter->IsIgb)
-        return ((PIGB_ADV_RX_DESC)E1kAdapter->RxRing)[idx].u.Wb.Length;
-    return E1kAdapter->RxRing[idx].Length;
+    if (a->IsIgb)
+        return ((PIGB_ADV_RX_DESC)a->RxRing)[idx].u.Wb.Length;
+    return a->RxRing[idx].Length;
 }
 
 /* Re-arm an RX descriptor for hardware reuse (restore the read format). */
-VOID E1kRxDescRecycle(PE1000_ADAPTER E1kAdapter, ULONG idx)
+VOID E1kRxDescRecycle(PE1000_ADAPTER a, ULONG idx)
 {
-    if (E1kAdapter->IsIgb)
+    if (a->IsIgb)
     {
-        PIGB_ADV_RX_DESC d = &((PIGB_ADV_RX_DESC)E1kAdapter->RxRing)[idx];
-        d->PktAddr = E1kPhys(E1kAdapter, E1kAdapter->RxBuffers + idx * E1000_BUF_SIZE);
+        PIGB_ADV_RX_DESC d = &((PIGB_ADV_RX_DESC)a->RxRing)[idx];
+        d->PktAddr = E1kPhys(a, a->RxBuffers + idx * E1000_BUF_SIZE);
         d->u.HdrAddr = 0;
     }
     else
     {
-        E1kAdapter->RxRing[idx].Status = 0;
-        E1kAdapter->RxRing[idx].Length = 0;
+        a->RxRing[idx].Status = 0;
+        a->RxRing[idx].Length = 0;
     }
 }
 
@@ -372,20 +371,20 @@ E1000GetHardwareContextSize(VOID)
 }
 
 ULONGLONG
-E1kPhys(PE1000_ADAPTER E1kAdapter, PVOID Va)
+E1kPhys(PE1000_ADAPTER a, PVOID Va)
 {
-    return E1kAdapter->CtxPhys + (ULONGLONG)((PUCHAR)Va - E1kAdapter->CtxVa);
+    return a->CtxPhys + (ULONGLONG)((PUCHAR)Va - a->CtxVa);
 }
 
-#define E1kDbg(E1kAdapter, ...) \
-    do { if ((E1kAdapter)->Shared && KdNetExtensibilityImports && KdNetDbgPrintf) \
+#define E1kDbg(a, ...) \
+    do { if ((a)->Shared && KdNetExtensibilityImports && KdNetDbgPrintf) \
             KdNetDbgPrintf(__VA_ARGS__); } while (0)
 
 NTSTATUS
 NTAPI
 E1000InitializeController(PKDNET_SHARED_DATA KdNet)
 {
-    PE1000_ADAPTER E1kAdapter;
+    PE1000_ADAPTER a;
     PUCHAR base;
     ULONG off, i, status;
 
@@ -407,242 +406,263 @@ E1000InitializeController(PKDNET_SHARED_DATA KdNet)
             KdNet->Device->BaseAddress[0].TranslatedAddress);
 
     /* Carve the context: adapter, rings, buffers. */
-    E1kAdapter = (PE1000_ADAPTER)KdNet->Hardware;
+    a = (PE1000_ADAPTER)KdNet->Hardware;
     base = (PUCHAR)KdNet->Hardware;
 
     /* Zero only the adapter header (kdnet already zeroed the whole context). */
-    RtlZeroMemory(E1kAdapter, sizeof(*E1kAdapter));
+    {
+        PUCHAR z = (PUCHAR)a; ULONG n = sizeof(*a);
+        while (n--) *z++ = 0;
+    }
 
-    E1kAdapter->RegBase = KdNet->Device->BaseAddress[0].TranslatedAddress;
-    E1kAdapter->Shared = KdNet;
-    E1kAdapter->CtxVa = (PUCHAR)KdNet->Hardware;
-    E1kAdapter->CtxPhys = (ULONGLONG)KdNet->Device->Memory.Start.QuadPart;
-    E1kAdapter->DeviceId = KdNet->Device->DeviceID;
-    E1kAdapter->IsIgb = E1kIsIgb(E1kAdapter->DeviceId);
+    a->RegBase = KdNet->Device->BaseAddress[0].TranslatedAddress;
+    a->Shared = KdNet;
+    a->CtxVa = (PUCHAR)KdNet->Hardware;
+    a->CtxPhys = (ULONGLONG)KdNet->Device->Memory.Start.QuadPart;
+    a->DeviceId = KdNet->Device->DeviceID;
+    a->IsIgb = E1kIsIgb(a->DeviceId);
 
-    E1kDbg(E1kAdapter, "e1000: chip 8086:%04x%s\n", (ULONG)E1kAdapter->DeviceId,
-           E1kAdapter->IsIgb ? " (igb/advanced)" : "");
+    E1kDbg(a, "e1000: chip 8086:%04x%s\n", (ULONG)a->DeviceId,
+           a->IsIgb ? " (igb/advanced)" : "");
 
-    E1kDbg(E1kAdapter, "e1000: RegBase=%p CtxVa=%p CtxPhysLo=0x%lx\n",
-           E1kAdapter->RegBase, E1kAdapter->CtxVa, (ULONG)E1kAdapter->CtxPhys);
+    E1kDbg(a, "e1000: RegBase=%p CtxVa=%p CtxPhysLo=0x%lx\n",
+           a->RegBase, a->CtxVa, (ULONG)a->CtxPhys);
 
     /* Ensure PCI Bus Master + Memory Space decode are enabled. QEMU's e1000
      * refuses to DMA received packets unless Bus Master is set, and the bit can
-     * be left clear here. Use config-space I/O (0xCF8/0xCFC) through the KDNET
-     * extensibility port accessors. */
+     * be left clear here. Use direct config-space I/O (0xCF8/0xCFC). */
      ULONG slot = KdNet->Device->Slot;
      ULONG bus = KdNet->Device->Bus;
      ULONG devn = slot & 0x1F;
      ULONG func = (slot >> 5) & 0x7;
      ULONG cfg = 0x80000000UL | (bus << 16) | (devn << 11) | (func << 8) | 0x04;
      ULONG cmd;
-     WRITE_PORT_ULONG((PULONG)0xCF8, cfg);
-     cmd = READ_PORT_ULONG((PULONG)0xCFC);
-     WRITE_PORT_ULONG((PULONG)0xCF8, cfg);
-     WRITE_PORT_ULONG((PULONG)0xCFC, cmd | 0x06);   /* Memory Space (1) + Bus Master (2) */
-     E1kDbg(E1kAdapter, "e1000: PCI cmd 0x%lx -> 0x%lx (BM+MEM)\n", cmd, cmd | 0x06);
+     __outdword(0xCF8, cfg);
+     cmd = __indword(0xCFC);
+     __outdword(0xCF8, cfg);
+     __outdword(0xCFC, cmd | 0x06);   /* Memory Space (1) + Bus Master (2) */
+     E1kDbg(a, "e1000: PCI cmd 0x%lx -> 0x%lx (BM+MEM)\n", cmd, cmd | 0x06);
 
 
     off = E1kAlignUp((ULONG)sizeof(E1000_ADAPTER), 128);
-    E1kAdapter->TxRing = (PE1000_TX_DESC)(base + off);
+    a->TxRing = (PE1000_TX_DESC)(base + off);
     off = E1kAlignUp(off + E1000_NUM_TX * (ULONG)sizeof(E1000_TX_DESC), 128);
-    E1kAdapter->RxRing = (PE1000_RX_DESC)(base + off);
+    a->RxRing = (PE1000_RX_DESC)(base + off);
     off = E1kAlignUp(off + E1000_NUM_RX * (ULONG)sizeof(E1000_RX_DESC), 16);
-    E1kAdapter->TxBuffers = base + off;
+    a->TxBuffers = base + off;
     off = E1kAlignUp(off + E1000_NUM_TX * E1000_BUF_SIZE, 16);
-    E1kAdapter->RxBuffers = base + off;
+    a->RxBuffers = base + off;
 
     /* Mask interrupts, then reset the device. */
-    E1kWrite(E1kAdapter, E1000_IMC, 0xFFFFFFFF);
-    (void)E1kRead(E1kAdapter, E1000_ICR);
-    E1kWrite(E1kAdapter, E1000_CTRL, E1kRead(E1kAdapter, E1000_CTRL) | E1000_CTRL_RST);
+    E1kWrite(a, E1000_IMC, 0xFFFFFFFF);
+    (void)E1kRead(a, E1000_ICR);
+    E1kWrite(a, E1000_CTRL, E1kRead(a, E1000_CTRL) | E1000_CTRL_RST);
     KeStallExecutionProcessor(20000);   /* ~20ms for reset to settle */
 
     /* Re-mask interrupts (reset clears the mask). */
-    E1kWrite(E1kAdapter, E1000_IMC, 0xFFFFFFFF);
-    (void)E1kRead(E1kAdapter, E1000_ICR);
+    E1kWrite(a, E1000_IMC, 0xFFFFFFFF);
+    (void)E1kRead(a, E1000_ICR);
 
-    E1kWrite(E1kAdapter, E1000_CTRL, E1000_CTRL_SLU | E1000_CTRL_ASDE);
-    E1kWrite(E1kAdapter, E1000_FCAL, 0);
-    E1kWrite(E1kAdapter, E1000_FCAH, 0);
-    E1kWrite(E1kAdapter, E1000_FCT, 0);
-    E1kWrite(E1kAdapter, E1000_FCTTV, 0);
+    /* Bring the link up via auto-negotiation; disable flow control.
+     * Do NOT force speed/duplex: 1000BASE-T copper MANDATES auto-negotiation and
+     * cannot be force-selected, so SPEED_1000|FRCSPD|FRCDPLX is invalid on real
+     * hardware: the PHY never links, STATUS.LU stays clear, and a real MAC won't
+     * complete a transmit with no link (observed as ARP "sends=0"). Set SLU + ASDE
+     * so the MAC adopts whatever speed/duplex the PHY negotiates. Emulators
+     * (QEMU/VBox) honor SLU+ASDE as well, so this path is universal. */
+    E1kWrite(a, E1000_CTRL, E1000_CTRL_SLU | E1000_CTRL_ASDE);
+    E1kWrite(a, E1000_FCAL, 0);
+    E1kWrite(a, E1000_FCAH, 0);
+    E1kWrite(a, E1000_FCT, 0);
+    E1kWrite(a, E1000_FCTTV, 0);
 
     /* Read the MAC from the receive address registers. If they weren't
-     * auto-loaded from the EEPROM (RA0 empty; happens on some real hardware,
-     * or after certain resets), read the MAC straight out of the EEPROM. */
+     * auto-loaded from the EEPROM (RA0 empty — happens on some real hardware /
+     * after certain resets), read the MAC straight out of the EEPROM. */
     {
-        ULONG ral = E1kRead(E1kAdapter, E1000_RAL0);
-        ULONG rah = E1kRead(E1kAdapter, E1000_RAH0);
-        E1kAdapter->Mac[0] = (UCHAR)(ral);
-        E1kAdapter->Mac[1] = (UCHAR)(ral >> 8);
-        E1kAdapter->Mac[2] = (UCHAR)(ral >> 16);
-        E1kAdapter->Mac[3] = (UCHAR)(ral >> 24);
-        E1kAdapter->Mac[4] = (UCHAR)(rah);
-        E1kAdapter->Mac[5] = (UCHAR)(rah >> 8);
+        ULONG ral = E1kRead(a, E1000_RAL0);
+        ULONG rah = E1kRead(a, E1000_RAH0);
+        a->Mac[0] = (UCHAR)(ral);
+        a->Mac[1] = (UCHAR)(ral >> 8);
+        a->Mac[2] = (UCHAR)(ral >> 16);
+        a->Mac[3] = (UCHAR)(ral >> 24);
+        a->Mac[4] = (UCHAR)(rah);
+        a->Mac[5] = (UCHAR)(rah >> 8);
 
         if (ral == 0 && (rah & 0xFFFF) == 0)
         {
-            BOOLEAN newF = E1kIsNewerFamily(E1kAdapter->DeviceId);
-            USHORT w0 = E1kEepromRead(E1kAdapter, 0, newF);
-            USHORT w1 = E1kEepromRead(E1kAdapter, 1, newF);
-            USHORT w2 = E1kEepromRead(E1kAdapter, 2, newF);
+            BOOLEAN newF = E1kIsNewerFamily(a->DeviceId);
+            USHORT w0 = E1kEepromRead(a, 0, newF);
+            USHORT w1 = E1kEepromRead(a, 1, newF);
+            USHORT w2 = E1kEepromRead(a, 2, newF);
             if (!(w0 == 0xFFFF && w1 == 0xFFFF && w2 == 0xFFFF))
             {
-                E1kAdapter->Mac[0] = (UCHAR)w0; E1kAdapter->Mac[1] = (UCHAR)(w0 >> 8);
-                E1kAdapter->Mac[2] = (UCHAR)w1; E1kAdapter->Mac[3] = (UCHAR)(w1 >> 8);
-                E1kAdapter->Mac[4] = (UCHAR)w2; E1kAdapter->Mac[5] = (UCHAR)(w2 >> 8);
+                a->Mac[0] = (UCHAR)w0;       a->Mac[1] = (UCHAR)(w0 >> 8);
+                a->Mac[2] = (UCHAR)w1;       a->Mac[3] = (UCHAR)(w1 >> 8);
+                a->Mac[4] = (UCHAR)w2;       a->Mac[5] = (UCHAR)(w2 >> 8);
                 /* Program it back into RA0 so the hardware filters on it. */
-                E1kWrite(E1kAdapter, E1000_RAL0,
-                         (ULONG)E1kAdapter->Mac[0] | ((ULONG)E1kAdapter->Mac[1] << 8) |
-                         ((ULONG)E1kAdapter->Mac[2] << 16) | ((ULONG)E1kAdapter->Mac[3] << 24));
-                E1kWrite(E1kAdapter, E1000_RAH0,
-                         (ULONG)E1kAdapter->Mac[4] | ((ULONG)E1kAdapter->Mac[5] << 8) | 0x80000000u /* AV */);
-                E1kDbg(E1kAdapter, "e1000: MAC read from EEPROM\n");
+                E1kWrite(a, E1000_RAL0,
+                         (ULONG)a->Mac[0] | ((ULONG)a->Mac[1] << 8) |
+                         ((ULONG)a->Mac[2] << 16) | ((ULONG)a->Mac[3] << 24));
+                E1kWrite(a, E1000_RAH0,
+                         (ULONG)a->Mac[4] | ((ULONG)a->Mac[5] << 8) | 0x80000000u /* AV */);
+                E1kDbg(a, "e1000: MAC read from EEPROM\n");
             }
         }
 
         if (KdNet->TargetMacAddress)
         {
             for (i = 0; i < 6; i++)
-                KdNet->TargetMacAddress[i] = E1kAdapter->Mac[i];
+                KdNet->TargetMacAddress[i] = a->Mac[i];
         }
-        E1kDbg(E1kAdapter, "e1000: MAC %02x-%02x-%02x-%02x-%02x-%02x RAL=0x%lx RAH=0x%lx\n",
-               E1kAdapter->Mac[0], E1kAdapter->Mac[1], E1kAdapter->Mac[2], E1kAdapter->Mac[3], E1kAdapter->Mac[4], E1kAdapter->Mac[5], ral, rah);
+        E1kDbg(a, "e1000: MAC %02x-%02x-%02x-%02x-%02x-%02x RAL=0x%lx RAH=0x%lx\n",
+               a->Mac[0], a->Mac[1], a->Mac[2], a->Mac[3], a->Mac[4], a->Mac[5], ral, rah);
     }
 
     /* Clear the multicast table. */
     for (i = 0; i < 128; i++)
-        E1kWrite(E1kAdapter, E1000_MTA + i * 4, 0);
+        E1kWrite(a, E1000_MTA + i * 4, 0);
 
-    E1kAdapter->RxNext = 0;
-    E1kAdapter->TxNext = 0;
+    a->RxNext = 0;
+    a->TxNext = 0;
 
-    if (E1kAdapter->IsIgb)
+    if (a->IsIgb)
     {
-        ULONGLONG rphys = E1kPhys(E1kAdapter, E1kAdapter->RxRing);
-        ULONGLONG tphys = E1kPhys(E1kAdapter, E1kAdapter->TxRing);
+        ULONGLONG rphys = E1kPhys(a, a->RxRing);
+        ULONGLONG tphys = E1kPhys(a, a->TxRing);
         ULONG t;
 
         /* igb: advanced descriptors + per-queue register block. Mask the
          * extended interrupts too. */
-        E1kWrite(E1kAdapter, IGB_EIMC, 0xFFFFFFFF);
+        E1kWrite(a, IGB_EIMC, 0xFFFFFFFF);
 
         /* --- RX queue 0 --- */
-        E1kWrite(E1kAdapter, E1000_RCTL, 0);   /* disable RX while configuring */
+        E1kWrite(a, E1000_RCTL, 0);   /* disable RX while configuring */
 
         for (i = 0; i < E1000_NUM_RX; i++)
         {
-            PIGB_ADV_RX_DESC d = &((PIGB_ADV_RX_DESC)E1kAdapter->RxRing)[i];
-            d->PktAddr = E1kPhys(E1kAdapter, E1kAdapter->RxBuffers + i * E1000_BUF_SIZE);
+            PIGB_ADV_RX_DESC d = &((PIGB_ADV_RX_DESC)a->RxRing)[i];
+            d->PktAddr = E1kPhys(a, a->RxBuffers + i * E1000_BUF_SIZE);
             d->u.HdrAddr = 0;
         }
-        E1kWrite(E1kAdapter, IGB_RDBAL0, (ULONG)rphys);
-        E1kWrite(E1kAdapter, IGB_RDBAH0, (ULONG)(rphys >> 32));
-        E1kWrite(E1kAdapter, IGB_RDLEN0, E1000_NUM_RX * (ULONG)sizeof(IGB_ADV_RX_DESC));
-        E1kWrite(E1kAdapter, IGB_SRRCTL0, IGB_SRRCTL_BSIZE_2K | IGB_SRRCTL_DESCTYPE_ADV);
-        E1kWrite(E1kAdapter, IGB_RDH0, 0);
-        E1kWrite(E1kAdapter, IGB_RDT0, 0);
+        E1kWrite(a, IGB_RDBAL0, (ULONG)rphys);
+        E1kWrite(a, IGB_RDBAH0, (ULONG)(rphys >> 32));
+        E1kWrite(a, IGB_RDLEN0, E1000_NUM_RX * (ULONG)sizeof(IGB_ADV_RX_DESC));
+        E1kWrite(a, IGB_SRRCTL0, IGB_SRRCTL_BSIZE_2K | IGB_SRRCTL_DESCTYPE_ADV);
+        E1kWrite(a, IGB_RDH0, 0);
+        E1kWrite(a, IGB_RDT0, 0);
         /* Enable the queue and wait for hardware to acknowledge. */
-        E1kWrite(E1kAdapter, IGB_RXDCTL0, IGB_XDCTL_ENABLE);
+        E1kWrite(a, IGB_RXDCTL0, IGB_XDCTL_ENABLE);
         for (t = 0; t < 1000; t++)
         {
-            if (E1kRead(E1kAdapter, IGB_RXDCTL0) & IGB_XDCTL_ENABLE) break;
+            if (E1kRead(a, IGB_RXDCTL0) & IGB_XDCTL_ENABLE) break;
             E1kDelayMicroseconds(100);
         }
-        E1kWrite(E1kAdapter, E1000_RCTL,
+        E1kWrite(a, E1000_RCTL,
                  E1000_RCTL_EN | E1000_RCTL_UPE | E1000_RCTL_MPE |
                  E1000_RCTL_BAM | E1000_RCTL_SECRC);
-        E1kWrite(E1kAdapter, IGB_RDT0, E1000_NUM_RX - 1);
+        E1kWrite(a, IGB_RDT0, E1000_NUM_RX - 1);
 
         /* --- TX queue 0 --- */
         for (i = 0; i < E1000_NUM_TX; i++)
         {
-            PIGB_ADV_TX_DESC d = &((PIGB_ADV_TX_DESC)E1kAdapter->TxRing)[i];
-            d->BufferAddr = E1kPhys(E1kAdapter, E1kAdapter->TxBuffers + i * E1000_BUF_SIZE);
+            PIGB_ADV_TX_DESC d = &((PIGB_ADV_TX_DESC)a->TxRing)[i];
+            d->BufferAddr = E1kPhys(a, a->TxBuffers + i * E1000_BUF_SIZE);
             d->CmdTypeLen = 0;
             d->OlinfoStatus = IGB_TXD_STAT_DD;   /* mark free */
         }
-        E1kWrite(E1kAdapter, IGB_TDBAL0, (ULONG)tphys);
-        E1kWrite(E1kAdapter, IGB_TDBAH0, (ULONG)(tphys >> 32));
-        E1kWrite(E1kAdapter, IGB_TDLEN0, E1000_NUM_TX * (ULONG)sizeof(IGB_ADV_TX_DESC));
-        E1kWrite(E1kAdapter, IGB_TDH0, 0);
-        E1kWrite(E1kAdapter, IGB_TDT0, 0);
-        E1kWrite(E1kAdapter, IGB_TXDCTL0, IGB_XDCTL_ENABLE);
+        E1kWrite(a, IGB_TDBAL0, (ULONG)tphys);
+        E1kWrite(a, IGB_TDBAH0, (ULONG)(tphys >> 32));
+        E1kWrite(a, IGB_TDLEN0, E1000_NUM_TX * (ULONG)sizeof(IGB_ADV_TX_DESC));
+        E1kWrite(a, IGB_TDH0, 0);
+        E1kWrite(a, IGB_TDT0, 0);
+        E1kWrite(a, IGB_TXDCTL0, IGB_XDCTL_ENABLE);
         for (t = 0; t < 1000; t++)
         {
-            if (E1kRead(E1kAdapter, IGB_TXDCTL0) & IGB_XDCTL_ENABLE) break;
+            if (E1kRead(a, IGB_TXDCTL0) & IGB_XDCTL_ENABLE) break;
             E1kDelayMicroseconds(100);
         }
-        E1kWrite(E1kAdapter, E1000_TCTL, E1000_TCTL_EN | E1000_TCTL_PSP | E1000_TCTL_CT | E1000_TCTL_COLD);
+        E1kWrite(a, E1000_TCTL, E1000_TCTL_EN | E1000_TCTL_PSP | E1000_TCTL_CT | E1000_TCTL_COLD);
     }
     else
     {
         /* Legacy 8254x/8257x descriptors. */
         for (i = 0; i < E1000_NUM_RX; i++)
         {
-            E1kAdapter->RxRing[i].BufferAddr = E1kPhys(E1kAdapter, E1kAdapter->RxBuffers + i * E1000_BUF_SIZE);
-            E1kAdapter->RxRing[i].Status = 0;
-            E1kAdapter->RxRing[i].Length = 0;
+            a->RxRing[i].BufferAddr = E1kPhys(a, a->RxBuffers + i * E1000_BUF_SIZE);
+            a->RxRing[i].Status = 0;
+            a->RxRing[i].Length = 0;
         }
         {
-            ULONGLONG rphys = E1kPhys(E1kAdapter, E1kAdapter->RxRing);
-            E1kWrite(E1kAdapter, E1000_RDBAL, (ULONG)rphys);
-            E1kWrite(E1kAdapter, E1000_RDBAH, (ULONG)(rphys >> 32));
-            E1kWrite(E1kAdapter, E1000_RDLEN, E1000_NUM_RX * (ULONG)sizeof(E1000_RX_DESC));
-            E1kWrite(E1kAdapter, E1000_RDH, 0);
-            E1kWrite(E1kAdapter, E1000_RDT, 0);
-            E1kWrite(E1kAdapter, E1000_RCTL,
+            ULONGLONG rphys = E1kPhys(a, a->RxRing);
+            E1kWrite(a, E1000_RDBAL, (ULONG)rphys);
+            E1kWrite(a, E1000_RDBAH, (ULONG)(rphys >> 32));
+            E1kWrite(a, E1000_RDLEN, E1000_NUM_RX * (ULONG)sizeof(E1000_RX_DESC));
+            E1kWrite(a, E1000_RDH, 0);
+            E1kWrite(a, E1000_RDT, 0);
+            E1kWrite(a, E1000_RCTL,
                      E1000_RCTL_EN | E1000_RCTL_UPE | E1000_RCTL_MPE |
                      E1000_RCTL_BAM | E1000_RCTL_BSIZE_2048 | E1000_RCTL_SECRC);
             /* Release all descriptors to hardware AFTER enabling RX. */
-            E1kWrite(E1kAdapter, E1000_RDT, E1000_NUM_RX - 1);
+            E1kWrite(a, E1000_RDT, E1000_NUM_RX - 1);
         }
 
         for (i = 0; i < E1000_NUM_TX; i++)
         {
-            E1kAdapter->TxRing[i].BufferAddr = E1kPhys(E1kAdapter, E1kAdapter->TxBuffers + i * E1000_BUF_SIZE);
-            E1kAdapter->TxRing[i].Status = E1000_TXD_STAT_DD;   /* mark free */
-            E1kAdapter->TxRing[i].Cmd = 0;
+            a->TxRing[i].BufferAddr = E1kPhys(a, a->TxBuffers + i * E1000_BUF_SIZE);
+            a->TxRing[i].Status = E1000_TXD_STAT_DD;   /* mark free */
+            a->TxRing[i].Cmd = 0;
         }
         {
-            ULONGLONG tphys = E1kPhys(E1kAdapter, E1kAdapter->TxRing);
-            E1kWrite(E1kAdapter, E1000_TDBAL, (ULONG)tphys);
-            E1kWrite(E1kAdapter, E1000_TDBAH, (ULONG)(tphys >> 32));
-            E1kWrite(E1kAdapter, E1000_TDLEN, E1000_NUM_TX * (ULONG)sizeof(E1000_TX_DESC));
-            E1kWrite(E1kAdapter, E1000_TDH, 0);
-            E1kWrite(E1kAdapter, E1000_TDT, 0);
-            E1kWrite(E1kAdapter, E1000_TIPG, 0x00602008);
-            E1kWrite(E1kAdapter, E1000_TCTL, E1000_TCTL_EN | E1000_TCTL_PSP | E1000_TCTL_CT | E1000_TCTL_COLD);
+            ULONGLONG tphys = E1kPhys(a, a->TxRing);
+            E1kWrite(a, E1000_TDBAL, (ULONG)tphys);
+            E1kWrite(a, E1000_TDBAH, (ULONG)(tphys >> 32));
+            E1kWrite(a, E1000_TDLEN, E1000_NUM_TX * (ULONG)sizeof(E1000_TX_DESC));
+            E1kWrite(a, E1000_TDH, 0);
+            E1kWrite(a, E1000_TDT, 0);
+            E1kWrite(a, E1000_TIPG, 0x00602008);
+            E1kWrite(a, E1000_TCTL, E1000_TCTL_EN | E1000_TCTL_PSP | E1000_TCTL_CT | E1000_TCTL_COLD);
         }
     }
 
-    if (!(E1kRead(E1kAdapter, E1000_STATUS) & E1000_STATUS_LU))
+    if (!(E1kRead(a, E1000_STATUS) & E1000_STATUS_LU))
     {
-        USHORT phyCtrl = E1kPhyRead(E1kAdapter, MII_PHY_CONTROL);
+        USHORT phyCtrl = E1kPhyRead(a, MII_PHY_CONTROL);
         if (phyCtrl != 0xFFFF)
         {
-            E1kPhyWrite(E1kAdapter, MII_PHY_CONTROL,
+            E1kPhyWrite(a, MII_PHY_CONTROL,
                         (USHORT)(phyCtrl | MII_CR_AUTO_NEG_EN | MII_CR_RESTART_AUTO_NEG));
-            E1kDbg(E1kAdapter, "e1000: PHY present (ctrl=0x%x), restarted auto-neg\n", (ULONG)phyCtrl);
+            E1kDbg(a, "e1000: PHY present (ctrl=0x%x), restarted auto-neg\n", (ULONG)phyCtrl);
         }
     }
 
+    /*
+     * Wait for the MAC link (STATUS.LU) to come up.
+     *
+     * Poll STATUS.LU specifically: do NOT accept the PHY link bit as a
+     * substitute. VirtualBox's e1000 asserts the PHY link almost immediately but
+     * defers the MAC's STATUS.LU behind a timer (~5s) and holds TX until then;
+     * trusting the PHY bit makes this loop exit early, so the first transmit
+     * finds no MAC link and the TX descriptor DD bit is never set (seen upstream
+     * as ARP "sends=0"). On real silicon STATUS.LU follows the PHY within a
+     * millisecond, so waiting on it costs nothing there. Timeout generously to
+     * cover VirtualBox's link-up delay.
+     */
     ULONG ms = 0;
     BOOLEAN linkUp;
-    status = E1kRead(E1kAdapter, E1000_STATUS);
+    status = E1kRead(a, E1000_STATUS);
     linkUp = (status & E1000_STATUS_LU) != 0;
     while (ms < 10000 && !linkUp)
     {
-        E1kDelayMicroseconds(1000);
-        status = E1kRead(E1kAdapter, E1000_STATUS);
+        E1kDelayMicroseconds(1000);   /* 1ms real time (PIT) */
+        status = E1kRead(a, E1000_STATUS);
         linkUp = (status & E1000_STATUS_LU) != 0;
         ms++;
     }
-    E1kDbg(E1kAdapter, "e1000: link wait %lums LU=%u STATUS=0x%lx\n",
+    E1kDbg(a, "e1000: link wait %lums LU=%u STATUS=0x%lx\n",
            ms, (ULONG)(linkUp ? 1 : 0), status);
-
-    /* Ensure at least ~1.3s elapsed */
+    /* Ensure at least ~1.3s elapsed for QEMU's flush_queue_timer even if the
+     * link came up sooner. */
     for (; ms < 1300; ms++)
         E1kDelayMicroseconds(1000);
 
@@ -655,7 +675,7 @@ E1000InitializeController(PKDNET_SHARED_DATA KdNet)
         KdNet->LinkDuplex = (status & E1000_STATUS_FD) ? 1 : 0;
     }
 
-    E1kDbg(E1kAdapter, "e1000: init done STATUS=0x%lx LinkUp=%u\n", status, (ULONG)(linkUp ? 1 : 0));
+    E1kDbg(a, "e1000: init done STATUS=0x%lx LinkUp=%u\n", status, (ULONG)(linkUp ? 1 : 0));
 
     return STATUS_SUCCESS;
 }
@@ -664,12 +684,12 @@ VOID
 NTAPI
 E1000ShutdownController(PVOID Adapter)
 {
-    PE1000_ADAPTER E1kAdapter = (PE1000_ADAPTER)Adapter;
-    if (E1kAdapter)
+    PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
+    if (a)
     {
-        E1kWrite(E1kAdapter, E1000_RCTL, 0);
-        E1kWrite(E1kAdapter, E1000_TCTL, 0);
-        E1kWrite(E1kAdapter, E1000_IMC, 0xFFFFFFFF);
+        E1kWrite(a, E1000_RCTL, 0);
+        E1kWrite(a, E1000_TCTL, 0);
+        E1kWrite(a, E1000_IMC, 0xFFFFFFFF);
     }
 }
 
@@ -677,18 +697,18 @@ NTSTATUS
 NTAPI
 E1000GetTxPacket(PVOID Adapter, PULONG Handle)
 {
-    PE1000_ADAPTER E1kAdapter = (PE1000_ADAPTER)Adapter;
+    PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
     ULONG idx;
 
-    if (!E1kAdapter || !Handle)
+    if (!a || !Handle)
         return STATUS_INVALID_PARAMETER;
 
-    idx = E1kAdapter->TxNext;
+    idx = a->TxNext;
     /* The descriptor must be done (DD) before reuse. */
-    if (!E1kTxDescDone(E1kAdapter, idx))
+    if (!E1kTxDescDone(a, idx))
         return STATUS_IO_TIMEOUT;
 
-    E1kAdapter->TxNext = (idx + 1) % E1000_NUM_TX;
+    a->TxNext = (idx + 1) % E1000_NUM_TX;
     *Handle = idx | TRANSMIT_HANDLE;
     return STATUS_SUCCESS;
 }
@@ -697,22 +717,22 @@ NTSTATUS
 NTAPI
 E1000SendTxPacket(PVOID Adapter, ULONG Handle, ULONG Length)
 {
-    PE1000_ADAPTER E1kAdapter = (PE1000_ADAPTER)Adapter;
+    PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
     ULONG idx = Handle & ~HANDLE_FLAGS;
     ULONG spin;
 
-    if (!E1kAdapter || idx >= E1000_NUM_TX)
+    if (!a || idx >= E1000_NUM_TX)
         return STATUS_INVALID_PARAMETER;
 
-    E1kTxDescSubmit(E1kAdapter, idx, Length);
+    E1kTxDescSubmit(a, idx, Length);
 
     /* Advance the tail to the descriptor after this one. */
-    E1kWrite(E1kAdapter, E1kAdapter->IsIgb ? IGB_TDT0 : E1000_TDT, (idx + 1) % E1000_NUM_TX);
+    E1kWrite(a, a->IsIgb ? IGB_TDT0 : E1000_TDT, (idx + 1) % E1000_NUM_TX);
 
     /* Poll for completion. */
     for (spin = 0; spin < 100000; spin++)
     {
-        if (E1kTxDescDone(E1kAdapter, idx))
+        if (E1kTxDescDone(a, idx))
             return STATUS_SUCCESS;
         KeStallExecutionProcessor(2);
     }
@@ -723,19 +743,19 @@ NTSTATUS
 NTAPI
 E1000GetRxPacket(PVOID Adapter, PULONG Handle, PVOID *Packet, PULONG Length)
 {
-    PE1000_ADAPTER E1kAdapter = (PE1000_ADAPTER)Adapter;
+    PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
     ULONG idx;
 
-    if (!E1kAdapter || !Handle || !Packet || !Length)
+    if (!a || !Handle || !Packet || !Length)
         return STATUS_INVALID_PARAMETER;
 
-    idx = E1kAdapter->RxNext;
-    if (!E1kRxDescDone(E1kAdapter, idx))
+    idx = a->RxNext;
+    if (!E1kRxDescDone(a, idx))
         return STATUS_IO_TIMEOUT;   /* nothing received */
 
     *Handle = idx;
-    *Packet = E1kAdapter->RxBuffers + idx * E1000_BUF_SIZE;
-    *Length = E1kRxDescLength(E1kAdapter, idx);
+    *Packet = a->RxBuffers + idx * E1000_BUF_SIZE;
+    *Length = E1kRxDescLength(a, idx);
     return STATUS_SUCCESS;
 }
 
@@ -743,43 +763,42 @@ VOID
 NTAPI
 E1000ReleaseRxPacket(PVOID Adapter, ULONG Handle)
 {
-    PE1000_ADAPTER E1kAdapter = (PE1000_ADAPTER)Adapter;
+    PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
     ULONG idx = Handle & ~HANDLE_FLAGS;
 
-    if (!E1kAdapter || idx >= E1000_NUM_RX)
+    if (!a || idx >= E1000_NUM_RX)
         return;
 
-    E1kRxDescRecycle(E1kAdapter, idx);
-
+    E1kRxDescRecycle(a, idx);
     /* Return the descriptor to hardware and advance. */
-    E1kWrite(E1kAdapter, E1kAdapter->IsIgb ? IGB_RDT0 : E1000_RDT, idx);
-    E1kAdapter->RxNext = (idx + 1) % E1000_NUM_RX;
+    E1kWrite(a, a->IsIgb ? IGB_RDT0 : E1000_RDT, idx);
+    a->RxNext = (idx + 1) % E1000_NUM_RX;
 }
 
 PVOID
 NTAPI
 E1000GetPacketAddress(PVOID Adapter, ULONG Handle)
 {
-    PE1000_ADAPTER E1kAdapter = (PE1000_ADAPTER)Adapter;
+    PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
     ULONG idx = Handle & ~HANDLE_FLAGS;
 
-    if (!E1kAdapter)
+    if (!a)
         return NULL;
     if (Handle & TRANSMIT_HANDLE)
-        return (idx < E1000_NUM_TX) ? (E1kAdapter->TxBuffers + idx * E1000_BUF_SIZE) : NULL;
-    return (idx < E1000_NUM_RX) ? (E1kAdapter->RxBuffers + idx * E1000_BUF_SIZE) : NULL;
+        return (idx < E1000_NUM_TX) ? (a->TxBuffers + idx * E1000_BUF_SIZE) : NULL;
+    return (idx < E1000_NUM_RX) ? (a->RxBuffers + idx * E1000_BUF_SIZE) : NULL;
 }
 
 ULONG
 NTAPI
 E1000GetPacketLength(PVOID Adapter, ULONG Handle)
 {
-    PE1000_ADAPTER E1kAdapter = (PE1000_ADAPTER)Adapter;
+    PE1000_ADAPTER a = (PE1000_ADAPTER)Adapter;
     ULONG idx = Handle & ~HANDLE_FLAGS;
 
-    if (!E1kAdapter)
+    if (!a)
         return 0;
     if (Handle & TRANSMIT_HANDLE)
         return E1000_BUF_SIZE;
-    return (idx < E1000_NUM_RX) ? E1kRxDescLength(E1kAdapter, idx) : 0;
+    return (idx < E1000_NUM_RX) ? E1kRxDescLength(a, idx) : 0;
 }
