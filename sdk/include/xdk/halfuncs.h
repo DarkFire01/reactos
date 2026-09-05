@@ -323,7 +323,7 @@ HalGetDmaAlignmentRequirement(VOID);
 #define HalGetDmaAlignmentRequirement() 1L
 #endif
 
-#if (NTDDI_VERSION >= NTDDI_WIN7)
+#if (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__)
 
 typedef struct _WHEA_ERROR_SOURCE_DESCRIPTOR *PWHEA_ERROR_SOURCE_DESCRIPTOR;
 typedef struct _WHEA_ERROR_RECORD *PWHEA_ERROR_RECORD;
