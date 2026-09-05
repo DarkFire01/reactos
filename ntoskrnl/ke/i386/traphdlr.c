@@ -1220,6 +1220,8 @@ BOOLEAN
 FASTCALL
 KiCheckForSListFault(PKTRAP_FRAME TrapFrame)
 {
+    BOOLEAN IsUserFault;
+
     /* Explanation: An S-List fault can occur due to a race condition between 2
        threads simultaneously trying to pop an element from the S-List. After
        thread 1 has read the pointer to the top element on the S-List it is
@@ -1253,8 +1255,19 @@ KiCheckForSListFault(PKTRAP_FRAME TrapFrame)
         both fields to make sure we catch any concurrent modification of the
         S-List-header.
     */
+    /* KeUserPopEntrySListFault is resolved out of ntdll during phase 1 of
+       process initialization, which runs after the boot drivers have been
+       loaded and started. Until then it holds NULL, so it must not take part
+       in the comparison: otherwise a call through a NULL function pointer -
+       Eip zero, one of the most common ways for a driver to fault - is taken
+       for an S-List fault, and the sanity check below faults a second time
+       reading the instruction bytes at address zero. That turns a legible
+       page fault into an unhandled exception inside the trap handler. */
+    IsUserFault = (KeUserPopEntrySListFault != NULL) &&
+                  (TrapFrame->Eip == (ULONG_PTR)KeUserPopEntrySListFault);
+
     if ((TrapFrame->Eip == (ULONG_PTR)ExpInterlockedPopEntrySListFault) ||
-        (TrapFrame->Eip == (ULONG_PTR)KeUserPopEntrySListFault))
+        IsUserFault)
     {
         ULARGE_INTEGER SListHeader;
         PVOID ResumeAddress;
@@ -1270,7 +1283,7 @@ KiCheckForSListFault(PKTRAP_FRAME TrapFrame)
                (((UCHAR*)TrapFrame->Eip)[5] == 0x00));
 
         /* Check if this is a user fault */
-        if (TrapFrame->Eip == (ULONG_PTR)KeUserPopEntrySListFault)
+        if (IsUserFault)
         {
             /* EBP points to the S-List-header. Copy it inside SEH, to protect
                against a bogus pointer from user mode */
