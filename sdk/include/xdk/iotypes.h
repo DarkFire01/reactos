@@ -2729,6 +2729,21 @@ typedef struct _IO_RESOURCE_DESCRIPTOR {
       ULONG Reserved1;
       ULONG Reserved2;
     } ConfigData;
+    /*
+     * CmResourceTypeConnection, the form ACPI uses to hand a peripheral a
+     * connection id in place of the bus address its firmware declared. Win8
+     * gates this behind NTDDI_WIN8, but a union member cannot change the
+     * containing struct's layout or size, and gating it at this tree's default
+     * version would only force every consumer to redefine NTDDI to name it.
+     */
+    struct {
+      UCHAR Class;
+      UCHAR Type;
+      UCHAR Reserved1;
+      UCHAR Reserved2;
+      ULONG IdLowPart;
+      ULONG IdHighPart;
+    } Connection;
   } u;
 } IO_RESOURCE_DESCRIPTOR, *PIO_RESOURCE_DESCRIPTOR;
 
