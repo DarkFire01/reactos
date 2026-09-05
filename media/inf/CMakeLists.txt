@@ -13,6 +13,7 @@ list(APPEND INF_FILES
     hidi2c.inf
     ialpss2i_gpio.inf
     ialpss2i_i2c.inf
+    intelpch.inf
     input.inf
     keyboard.inf
     ks.inf
