@@ -11,12 +11,14 @@
  * @brief
  * Marks the memory the debug transport needs across hibernation.
  *
- * Only the extension's ranges are marked. This module's own image and its
- * packet buffers are not, which would have to change before a debug session
- * could survive a hibernate: the loader frees anything not claimed here, and
- * the transport would resume against memory that has since been reused.
- * Claiming them needs this image's base and extent, which the module is not
- * told at the point the range is set.
+ * Only the extension is asked to claim its ranges. This module's own image and
+ * packet buffers are not claimed, and there is no point claiming them yet:
+ * PoSetHiberRange is @unimplemented in this kernel (ntoskrnl/po/power.c), so
+ * every range handed to it is discarded. Marking anything here would only add
+ * UNIMPLEMENTED noise to the boot log.
+ *
+ * The extension is still called, because whatever it does with the import is
+ * its own business and it may not go through PoSetHiberRange at all.
  */
 VOID
 NTAPI
