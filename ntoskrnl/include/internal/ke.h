@@ -941,6 +941,54 @@ KiInitSystem(
     VOID
 );
 
+/* Secondary interrupts (ke/secint.c) ****************************************/
+
+/*
+ * A secondary interrupt is delivered by a call from the driver of the
+ * controller that multiplexes it, so its vector is an index into the kernel's
+ * own table rather than a processor vector. The base is the reference's: the
+ * ACPI arbiter allocates these from 256 upwards (acpi.sys.c:49602).
+ */
+#define SECONDARY_VECTOR_BASE       256
+#define MAXIMUM_SECONDARY_VECTORS   256
+
+/* No line has been given this slot yet; a real GSIV is never this */
+#define KI_SECONDARY_VECTOR_FREE    MAXULONG
+
+extern BOOLEAN KiSecondaryInterruptServicesEnabled;
+
+BOOLEAN
+NTAPI
+KiIsInterruptTypeSecondary(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData
+);
+
+NTSTATUS
+NTAPI
+KiConnectSecondaryInterrupt(
+    _In_ PKINTERRUPT Interrupt
+);
+
+NTSTATUS
+NTAPI
+KiDisconnectSecondaryInterrupt(
+    _In_ PKINTERRUPT Interrupt
+);
+
+NTSTATUS
+NTAPI
+KiMaskSecondaryInterrupt(
+    _In_ ULONG Vector,
+    _In_ ULONG Gsiv
+);
+
+NTSTATUS
+NTAPI
+KiUnmaskSecondaryInterrupt(
+    _In_ ULONG Vector,
+    _In_ ULONG Gsiv
+);
+
 VOID
 FASTCALL
 KiInsertQueueApc(

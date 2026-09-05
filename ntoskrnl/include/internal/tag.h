@@ -170,6 +170,9 @@
 #define TAG_DACL                'lcaD'
 #define TAG_LOGON_TERMINATED    'eToL'
 
+/* Secondary interrupt Tags */
+#define TAG_KERNEL_SECONDARY    'iSeK'
+
 /* LPC Tags */
 #define TAG_LPC_MESSAGE         'McpL'
 #define TAG_LPC_ZONE            'ZcpL'

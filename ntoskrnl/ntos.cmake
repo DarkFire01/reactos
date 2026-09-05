@@ -195,6 +195,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/procobj.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/profobj.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/queue.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/secint.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/semphobj.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/spinlock.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/thrdobj.c

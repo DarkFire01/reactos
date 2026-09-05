@@ -152,6 +152,20 @@ IoDisconnectInterrupt(PKINTERRUPT InterruptObject)
                                     IO_INTERRUPT,
                                     FirstInterrupt);
 
+    /*
+     * An interrupt on a secondary vector was never placed in the IDT, so the
+     * ordinary disconnect would go looking for a dispatch entry that does not
+     * exist. It also only ever has the one object: delivery is a call from the
+     * controller's driver rather than a hardware route, so there is nothing
+     * per-processor about it.
+     */
+    if (IoInterrupt->FirstInterrupt.Vector >= SECONDARY_VECTOR_BASE)
+    {
+        KiDisconnectSecondaryInterrupt(&IoInterrupt->FirstInterrupt);
+        ExFreePoolWithTag(IoInterrupt, TAG_IO_INTERRUPT);
+        return;
+    }
+
     /* Disconnect the first one */
     KeDisconnectInterrupt(&IoInterrupt->FirstInterrupt);
 
@@ -302,6 +316,123 @@ IopIsMessageVector(
  * takes ownership of the vector (and routes the input for a line), then
  * the interrupt object is connected on the element's processors.
  */
+/**
+ * @brief
+ * Connects a service routine to an interrupt another driver delivers.
+ *
+ * The interrupt object is built exactly as it would be for a line, because
+ * from the driver's side nothing about it differs: it still has an IRQL, a
+ * lock and a mode, and KeSynchronizeExecution still has to mean something. All
+ * that changes is where it is registered, and that only one is needed - a
+ * secondary interrupt is delivered by a call on whichever processor the
+ * controller's own interrupt landed on, so there is nothing to place per
+ * processor.
+ *
+ * @param[in] VectorData
+ * The line, already carrying the secondary vector it was given.
+ *
+ * @param[in] ServiceRoutine
+ * The driver's ISR.
+ *
+ * @param[in] ServiceContext
+ * What to hand it.
+ *
+ * @param[in] SpinLock
+ * The driver's interrupt lock, or NULL to use the one in the block.
+ *
+ * @param[in] SynchronizeIrql
+ * The IRQL to synchronize to, or zero for the interrupt's own.
+ *
+ * @param[in] ShareVector
+ * Whether the driver will share the pin.
+ *
+ * @param[in] Affinity
+ * Recorded on the object, for the sake of anything that reads it back.
+ *
+ * @param[out] InterruptObject
+ * Receives the interrupt object.
+ *
+ * @return
+ * STATUS_SUCCESS, or the failure that stopped the connect.
+ */
+static
+NTSTATUS
+IopConnectSecondaryInterrupt(
+    _In_ PINTERRUPT_VECTOR_DATA VectorData,
+    _In_ PKSERVICE_ROUTINE ServiceRoutine,
+    _In_opt_ PVOID ServiceContext,
+    _In_opt_ PKSPIN_LOCK SpinLock,
+    _In_ KIRQL SynchronizeIrql,
+    _In_ BOOLEAN ShareVector,
+    _In_ KAFFINITY Affinity,
+    _Out_ PKINTERRUPT *InterruptObject)
+{
+    PIO_INTERRUPT IoInterrupt;
+    NTSTATUS Status;
+    CCHAR Number;
+
+    PAGED_CODE();
+
+    *InterruptObject = NULL;
+
+    IoInterrupt = ExAllocatePoolZero(NonPagedPool,
+                                     sizeof(IO_INTERRUPT),
+                                     TAG_IO_INTERRUPT);
+    if (IoInterrupt == NULL)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    if (SpinLock == NULL)
+    {
+        SpinLock = &IoInterrupt->SpinLock;
+        KeInitializeSpinLock(SpinLock);
+    }
+
+    /* The processor the object records is the first one the line may target */
+    Number = (CCHAR)(Affinity ? (CCHAR)RtlFindLeastSignificantBit(Affinity) : 0);
+
+    KeInitializeInterrupt(&IoInterrupt->FirstInterrupt,
+                          ServiceRoutine,
+                          ServiceContext,
+                          SpinLock,
+                          VectorData->Vector,
+                          VectorData->Irql,
+                          SynchronizeIrql ? SynchronizeIrql : VectorData->Irql,
+                          VectorData->Mode,
+                          ShareVector,
+                          Number,
+                          FALSE);
+
+    Status = KiConnectSecondaryInterrupt(&IoInterrupt->FirstInterrupt);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Secondary vector %lu would not take another interrupt: 0x%08lx\n",
+                VectorData->Vector, Status);
+        ExFreePoolWithTag(IoInterrupt, TAG_IO_INTERRUPT);
+        return Status;
+    }
+
+    /*
+     * A pin is armed masked so that nothing is delivered between the
+     * controller enabling it and the ISR being on the vector; now that it is,
+     * the line can be let through.
+     */
+    Status = KiUnmaskSecondaryInterrupt(VectorData->Vector,
+                                        VectorData->ControllerInput.Gsiv);
+    if (!NT_SUCCESS(Status) && (Status != STATUS_NOT_SUPPORTED))
+    {
+        DPRINT1("GSIV %lu would not unmask: 0x%08lx\n",
+                VectorData->ControllerInput.Gsiv, Status);
+        KiDisconnectSecondaryInterrupt(&IoInterrupt->FirstInterrupt);
+        ExFreePoolWithTag(IoInterrupt, TAG_IO_INTERRUPT);
+        return Status;
+    }
+
+    *InterruptObject = &IoInterrupt->FirstInterrupt;
+    return STATUS_SUCCESS;
+}
+
 static
 NTSTATUS
 IopConnectVectorData(
@@ -330,6 +461,46 @@ IopConnectVectorData(
     if (Affinity == 0)
     {
         Affinity = KeActiveProcessors;
+    }
+
+    /*
+     * An interrupt another driver demultiplexes has no processor vector of its
+     * own. It is named by one of the kernel's secondary vectors instead, and
+     * that name has to be settled before the HAL is told to enable the line,
+     * because what the HAL records is what the controller quotes back when the
+     * line fires.
+     */
+    if (KiIsInterruptTypeSecondary(&Single))
+    {
+        Status = KeAllocateSecondaryVector(VectorData->ControllerInput.Gsiv,
+                                           &Single.Vectors[0].Vector);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("No secondary vector for GSIV %lu: 0x%08lx\n",
+                    VectorData->ControllerInput.Gsiv, Status);
+            return Status;
+        }
+
+        Status = HalEnableInterrupt(&Single);
+        if (!NT_SUCCESS(Status))
+        {
+            return Status;
+        }
+
+        Status = IopConnectSecondaryInterrupt(&Single.Vectors[0],
+                                              ServiceRoutine,
+                                              ServiceContext,
+                                              SpinLock,
+                                              SynchronizeIrql,
+                                              ShareVector,
+                                              Affinity,
+                                              InterruptObject);
+        if (!NT_SUCCESS(Status))
+        {
+            HalDisableInterrupt(&Single);
+        }
+
+        return Status;
     }
 
     Status = HalEnableInterrupt(&Single);

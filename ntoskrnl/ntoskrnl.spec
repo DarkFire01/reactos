@@ -567,6 +567,7 @@
 @ fastcall KeAcquireSpinLockForDpc(ptr)
 @ stdcall -arch=x86_64 KeAcquireSpinLockRaiseToDpc(ptr)
 @ stdcall -arch=x86_64 KeAcquireSpinLockRaiseToSynch(ptr)
+@ stdcall -version=0x600+ KeAllocateSecondaryVector(long ptr)
 @ stdcall KeAddSystemServiceTable(ptr ptr long ptr long)
 @ stdcall KeAreAllApcsDisabled()
 @ stdcall KeAreApcsDisabled()
@@ -583,6 +584,7 @@
 @ stdcall KeDeregisterNmiCallback(ptr)
 @ stdcall KeDetachProcess()
 @ stdcall KeDisconnectInterrupt(ptr)
+@ stdcall -version=0x600+ KeDispatchSecondaryInterrupt(long long)
 @ stdcall KeEnterCriticalRegion() _KeEnterCriticalRegion
 @ stdcall KeEnterGuardedRegion() _KeEnterGuardedRegion
 @ stdcall KeEnterKernelDebugger()
@@ -613,6 +615,7 @@
 @ stdcall KeInitializeEvent(ptr long long)
 @ fastcall KeInitializeGuardedMutex(ptr)
 @ stdcall KeInitializeInterrupt(ptr ptr ptr ptr long long long long long long long)
+@ stdcall -version=0x600+ KeInitializeSecondaryInterruptServices(ptr)
 @ stdcall KeInitializeMutant(ptr long)
 @ stdcall KeInitializeMutex(ptr long)
 @ stdcall KeInitializeQueue(ptr long)
