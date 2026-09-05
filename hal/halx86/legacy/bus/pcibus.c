@@ -752,6 +752,237 @@ PciSize(ULONG Base, ULONG Mask)
     return Size;
 }
 
+/**
+ * @brief
+ * The supported range chain that governs one kind of resource.
+ *
+ * @param[in] SupportedRanges
+ * What the bus decodes.
+ *
+ * @param[in] InterruptRange
+ * The bus's interrupt range, which is not part of SUPPORTED_RANGES because it
+ * is worked out per slot.
+ *
+ * @param[in] Descriptor
+ * The requirement being adjusted.
+ *
+ * @return
+ * The chain to clamp against, or NULL for a resource the bus does not gate.
+ */
+static
+PSUPPORTED_RANGE
+HalpSupportedRangeForDescriptor(
+    _In_ PSUPPORTED_RANGES SupportedRanges,
+    _In_opt_ PSUPPORTED_RANGE InterruptRange,
+    _In_ PIO_RESOURCE_DESCRIPTOR Descriptor)
+{
+    switch (Descriptor->Type)
+    {
+        case CmResourceTypePort:
+            return &SupportedRanges->IO;
+
+        case CmResourceTypeMemory:
+            /*
+             * A prefetchable window is a separate chain, and a bus that has
+             * none leaves it empty rather than absent - Base above Limit is
+             * how HalpAllocateBusHandler spells that.
+             */
+            if ((Descriptor->Flags & CM_RESOURCE_MEMORY_PREFETCHABLE) &&
+                (SupportedRanges->PrefetchMemory.Base <=
+                 SupportedRanges->PrefetchMemory.Limit))
+            {
+                return &SupportedRanges->PrefetchMemory;
+            }
+            return &SupportedRanges->Memory;
+
+        case CmResourceTypeInterrupt:
+            return InterruptRange;
+
+        case CmResourceTypeDma:
+            return &SupportedRanges->Dma;
+
+        default:
+            return NULL;
+    }
+}
+
+/**
+ * @brief
+ * Narrows one requirement to a window the bus can actually decode.
+ *
+ * @param[in] Chain
+ * The supported range chain for this resource type.
+ *
+ * @param[in,out] Minimum
+ * The lowest address the device will accept, raised to the window's base.
+ *
+ * @param[in,out] Maximum
+ * The highest, lowered to the window's limit.
+ *
+ * @return
+ * TRUE if some window overlaps what the device asked for.
+ *
+ * @remarks
+ * A chain can describe several windows. Only the first that overlaps is used,
+ * because a requirement is a single interval and splitting it would mean
+ * growing the caller's list into extra alternatives. Every bus this HAL builds
+ * has one window per resource type, so the distinction has yet to arise; a bus
+ * that grows a second window will want that refinement.
+ */
+static
+BOOLEAN
+HalpClampToSupportedRange(
+    _In_ PSUPPORTED_RANGE Chain,
+    _Inout_ PLONGLONG Minimum,
+    _Inout_ PLONGLONG Maximum)
+{
+    PSUPPORTED_RANGE Range;
+
+    for (Range = Chain; Range != NULL; Range = Range->Next)
+    {
+        /* Base above Limit is an empty window, not a window at zero */
+        if (Range->Base > Range->Limit)
+            continue;
+
+        if ((*Minimum > Range->Limit) || (*Maximum < Range->Base))
+            continue;
+
+        if (*Minimum < Range->Base)
+            *Minimum = Range->Base;
+        if (*Maximum > Range->Limit)
+            *Maximum = Range->Limit;
+
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Trims a device's resource requirements to what its bus decodes.
+ *
+ * A device describes what it can accept; the bus decides which of that it can
+ * actually reach. Without this step a PCI function's I/O requirement keeps the
+ * full 32-bit range it was born with, and the arbiter is free to place a
+ * sixteen-byte port window at the very top of it - which is exactly what
+ * happened to the PIIX3 bus-master IDE registers, landing at 0xFFFFFFF0 and
+ * leaving the controller unable to do DMA.
+ *
+ * @param[in] SupportedRanges
+ * What the bus decodes.
+ *
+ * @param[in] InterruptRange
+ * The interrupt range for this slot, or NULL to leave interrupts alone.
+ *
+ * @param[in,out] pResourceList
+ * The requirements list, adjusted in place.
+ *
+ * @return
+ * STATUS_SUCCESS. A requirement that no window can satisfy is left as the
+ * device stated it and traced: refusing the whole list would take the device
+ * down over one descriptor the bus merely does not gate.
+ */
+NTSTATUS
+NTAPI
+HaliAdjustResourceListRange(
+    _In_ PSUPPORTED_RANGES SupportedRanges,
+    _In_opt_ PSUPPORTED_RANGE InterruptRange,
+    _Inout_ PIO_RESOURCE_REQUIREMENTS_LIST *pResourceList)
+{
+    PIO_RESOURCE_REQUIREMENTS_LIST List = *pResourceList;
+    PIO_RESOURCE_LIST Alternative;
+    ULONG AlternativeIndex;
+
+    if (List == NULL)
+        return STATUS_SUCCESS;
+
+    Alternative = List->List;
+
+    for (AlternativeIndex = 0;
+         AlternativeIndex < List->AlternativeLists;
+         AlternativeIndex++)
+    {
+        ULONG Index;
+
+        for (Index = 0; Index < Alternative->Count; Index++)
+        {
+            PIO_RESOURCE_DESCRIPTOR Descriptor = &Alternative->Descriptors[Index];
+            PSUPPORTED_RANGE Chain;
+            LONGLONG Minimum, Maximum;
+
+            Chain = HalpSupportedRangeForDescriptor(SupportedRanges,
+                                                    InterruptRange,
+                                                    Descriptor);
+            if (Chain == NULL)
+                continue;
+
+            /*
+             * Every one of these unions places Minimum and Maximum the same
+             * way, but they are different widths, so each is read and written
+             * through its own member.
+             */
+            switch (Descriptor->Type)
+            {
+                case CmResourceTypePort:
+                    Minimum = Descriptor->u.Port.MinimumAddress.QuadPart;
+                    Maximum = Descriptor->u.Port.MaximumAddress.QuadPart;
+                    break;
+
+                case CmResourceTypeMemory:
+                    Minimum = Descriptor->u.Memory.MinimumAddress.QuadPart;
+                    Maximum = Descriptor->u.Memory.MaximumAddress.QuadPart;
+                    break;
+
+                case CmResourceTypeInterrupt:
+                    Minimum = Descriptor->u.Interrupt.MinimumVector;
+                    Maximum = Descriptor->u.Interrupt.MaximumVector;
+                    break;
+
+                default:
+                    Minimum = Descriptor->u.Dma.MinimumChannel;
+                    Maximum = Descriptor->u.Dma.MaximumChannel;
+                    break;
+            }
+
+            if (!HalpClampToSupportedRange(Chain, &Minimum, &Maximum))
+            {
+                DPRINT1("No window on this bus for a type %u requirement of "
+                        "0x%I64x..0x%I64x\n",
+                        Descriptor->Type, Minimum, Maximum);
+                continue;
+            }
+
+            switch (Descriptor->Type)
+            {
+                case CmResourceTypePort:
+                    Descriptor->u.Port.MinimumAddress.QuadPart = Minimum;
+                    Descriptor->u.Port.MaximumAddress.QuadPart = Maximum;
+                    break;
+
+                case CmResourceTypeMemory:
+                    Descriptor->u.Memory.MinimumAddress.QuadPart = Minimum;
+                    Descriptor->u.Memory.MaximumAddress.QuadPart = Maximum;
+                    break;
+
+                case CmResourceTypeInterrupt:
+                    Descriptor->u.Interrupt.MinimumVector = (ULONG)Minimum;
+                    Descriptor->u.Interrupt.MaximumVector = (ULONG)Maximum;
+                    break;
+
+                default:
+                    Descriptor->u.Dma.MinimumChannel = (ULONG)Minimum;
+                    Descriptor->u.Dma.MaximumChannel = (ULONG)Maximum;
+                    break;
+            }
+        }
+
+        Alternative = (PIO_RESOURCE_LIST)&Alternative->Descriptors[Alternative->Count];
+    }
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NTAPI
 HalpAdjustPCIResourceList(IN PBUS_HANDLER BusHandler,
@@ -778,15 +1009,10 @@ HalpAdjustPCIResourceList(IN PBUS_HANDLER BusHandler,
         UNIMPLEMENTED_DBGBREAK("/PCILOCK boot switch is not yet supported.");
     }
 #endif
-    /* Now create the correct resource list based on the supported bus ranges */
-#if 0
+    /* Now narrow the requirements to what this bus can actually decode */
     Status = HaliAdjustResourceListRange(BusHandler->BusAddresses,
                                          Interrupt,
                                          pResourceList);
-#else
-    DPRINT1("HAL: No PCI Resource Adjustment done! Hardware may malfunction\n");
-    Status = STATUS_SUCCESS;
-#endif
 
     /* Return to caller */
     ExFreePool(Interrupt);

@@ -538,6 +538,13 @@ HaliFindBusAddressTranslation(
 
 NTSTATUS
 NTAPI
+HaliAdjustResourceListRange(
+    _In_ PSUPPORTED_RANGES SupportedRanges,
+    _In_opt_ PSUPPORTED_RANGE InterruptRange,
+    _Inout_ PIO_RESOURCE_REQUIREMENTS_LIST *pResourceList);
+
+NTSTATUS
+NTAPI
 HalpAdjustPCIResourceList(IN PBUS_HANDLER BusHandler,
                           IN PBUS_HANDLER RootHandler,
                           IN OUT PIO_RESOURCE_REQUIREMENTS_LIST *pResourceList);
