@@ -576,3 +576,65 @@ HalpSetupPciDeviceForDebugging(
 
     return STATUS_SUCCESS;
 }
+extern BOOLEAN HalpPCIConfigInitialized;
+CODE_SEG("INIT")
+ULONG
+NTAPI
+HalpGetPciDataByOffset(
+    _In_ ULONG BusNumber,
+    _In_ ULONG SlotNumber,
+    _Out_writes_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length)
+{
+    if (HalpPCIConfigInitialized)
+    {
+        return HalGetBusDataByOffset(PCIConfiguration,
+                                     BusNumber,
+                                     SlotNumber,
+                                     Buffer,
+                                     Offset,
+                                     Length);
+    }
+    else
+    {
+        PCI_SLOT_NUMBER PciSlot;
+        PciSlot.u.AsULONG = SlotNumber;
+        return HalpPhase0GetPciDataByOffset(BusNumber,
+                                            PciSlot,
+                                            Buffer,
+                                            Offset,
+                                            Length);
+    }
+}
+
+CODE_SEG("INIT")
+ULONG
+NTAPI
+HalpSetPciDataByOffset(
+    _In_ ULONG BusNumber,
+    _In_ ULONG SlotNumber,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length)
+{
+    if (HalpPCIConfigInitialized)
+    {
+        return HalSetBusDataByOffset(PCIConfiguration,
+                                     BusNumber,
+                                     SlotNumber,
+                                     Buffer,
+                                     Offset,
+                                     Length);
+    }
+    else
+    {
+        PCI_SLOT_NUMBER PciSlot;
+        PciSlot.u.AsULONG = SlotNumber;
+        return HalpPhase0SetPciDataByOffset(BusNumber,
+                                            PciSlot,
+                                            Buffer,
+                                            Offset,
+                                            Length);
+    }
+}
