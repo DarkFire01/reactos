@@ -9,6 +9,11 @@
 /* INCLUDES *******************************************************************/
 
 #include <hal.h>
+
+#include <initguid.h>
+#include <wdmguid.h>
+
+
 #define NDEBUG
 #include <debug.h>
 
@@ -135,6 +140,103 @@ HalpAddDevice(IN PDRIVER_OBJECT DriverObject,
     return Status;
 }
 
+/*
+ * The root PCI bus PDO hands these interfaces to the PCI bus driver (and to
+ * legacy children). The interface context is the PDO itself, whose reference
+ * count keeps it alive for as long as the interface is held.
+ */
+
+static
+VOID
+NTAPI
+HalpPnpInterfaceReference(IN PVOID Context)
+{
+    PPDO_EXTENSION PdoExtension = ((PDEVICE_OBJECT)Context)->DeviceExtension;
+    InterlockedIncrement(&PdoExtension->InterfaceReferenceCount);
+}
+
+static
+VOID
+NTAPI
+HalpPnpInterfaceDereference(IN PVOID Context)
+{
+    PPDO_EXTENSION PdoExtension = ((PDEVICE_OBJECT)Context)->DeviceExtension;
+    InterlockedDecrement(&PdoExtension->InterfaceReferenceCount);
+}
+
+/*
+ * RootBusCapability entry point of the version-2 PCI bus interface.  This HAL
+ * enumerates a legacy PC-AT PCI host bridge: conventional PCI only (no PCI-X
+ * or PCI Express), and no ACPI _OSC feature/control negotiation.  Report that
+ * so a Win8+ PCI driver takes the conventional-bus path and does not attempt
+ * to build a PCI Express root-complex hierarchy.
+ */
+static
+VOID
+NTAPI
+HalpPciRootBusCapability(IN PVOID Context,
+                         OUT PPCI_ROOT_BUS_HARDWARE_CAPABILITY Capability)
+{
+    UNREFERENCED_PARAMETER(Context);
+
+    RtlZeroMemory(Capability, sizeof(*Capability));
+    Capability->SecondaryInterface = PciConventional;
+    /* BusCapabilitiesFound / OscFeatureSupport left zeroed: none present. */
+}
+
+/* ExpressWakeControl entry point: no PCI Express, so wake control is a no-op. */
+static
+VOID
+NTAPI
+HalpPciExpressWakeControl(IN PVOID Context,
+                          IN BOOLEAN EnableWake)
+{
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(EnableWake);
+}
+
+static
+BOOLEAN
+NTAPI
+HalpPnpTranslateBusAddress(IN PVOID Context,
+                           IN PHYSICAL_ADDRESS BusAddress,
+                           IN ULONG Length,
+                           IN OUT PULONG AddressSpace,
+                           OUT PPHYSICAL_ADDRESS TranslatedAddress)
+{
+    PBUS_HANDLER BusHandler;
+
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(Length);
+
+    /*
+     * Translate through the root PCI bus handler directly. We intentionally do
+     * not call the public HalTranslateBusAddress(): for PCIBus it routes through
+     * the (possibly hooked) PCI translation pointer and would bounce back into
+     * the PCI driver, whereas the caller asked us for the raw HAL translation.
+     */
+    BusHandler = HalHandlerForBus(PCIBus, 0);
+    if (!BusHandler || !BusHandler->TranslateBusAddress) return FALSE;
+
+    return BusHandler->TranslateBusAddress(BusHandler,
+                                           BusHandler,
+                                           BusAddress,
+                                           AddressSpace,
+                                           TranslatedAddress);
+}
+
+static
+PDMA_ADAPTER
+NTAPI
+HalpPnpGetDmaAdapter(IN PVOID Context,
+                     IN PDEVICE_DESCRIPTION DeviceDescription,
+                     OUT PULONG NumberOfMapRegisters)
+{
+    /* Pin the request to our root PCI bus, then let the HAL build the adapter */
+    DeviceDescription->BusNumber = 0;
+    return HalpGetDmaAdapter(Context, DeviceDescription, NumberOfMapRegisters);
+}
+
 NTSTATUS
 NTAPI
 HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
@@ -145,13 +247,91 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
                    IN PINTERFACE Interface,
                    OUT PULONG Length)
 {
-    DPRINT1("HalpQueryInterface({%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}) is UNIMPLEMENTED\n",
-            InterfaceType->Data1, InterfaceType->Data2, InterfaceType->Data3,
-            InterfaceType->Data4[0], InterfaceType->Data4[1],
-            InterfaceType->Data4[2], InterfaceType->Data4[3],
-            InterfaceType->Data4[4], InterfaceType->Data4[5],
-            InterfaceType->Data4[6], InterfaceType->Data4[7]);
-    return STATUS_NOT_SUPPORTED;
+    PPDO_EXTENSION PdoExtension = DeviceObject->DeviceExtension;
+
+    UNREFERENCED_PARAMETER(Version);
+
+    /*
+     * The root FDO offers no interface of its own. On Windows it publishes the
+     * PCI interrupt arbiter here, driven by the legacy $PIR routing engine,
+     * which this tree does not have yet.
+     */
+    if (((PFDO_EXTENSION)DeviceObject->DeviceExtension)->ExtensionType == FdoExtensionType)
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    if (IsEqualIID(InterfaceType, &GUID_BUS_INTERFACE_STANDARD))
+    {
+        PBUS_INTERFACE_STANDARD BusInterface = (PBUS_INTERFACE_STANDARD)Interface;
+
+        /* Generic bus interface: bus-address translation and DMA adapters */
+        *Length = sizeof(BUS_INTERFACE_STANDARD);
+        if (InterfaceBufferSize < sizeof(BUS_INTERFACE_STANDARD))
+            return STATUS_BUFFER_TOO_SMALL;
+
+        BusInterface->Size = sizeof(BUS_INTERFACE_STANDARD);
+        BusInterface->Version = 1;
+        BusInterface->Context = DeviceObject;
+        BusInterface->InterfaceReference = HalpPnpInterfaceReference;
+        BusInterface->InterfaceDereference = HalpPnpInterfaceDereference;
+        BusInterface->TranslateBusAddress = HalpPnpTranslateBusAddress;
+        BusInterface->GetDmaAdapter = HalpPnpGetDmaAdapter;
+        BusInterface->SetBusData = NULL;
+        BusInterface->GetBusData = NULL;
+    }
+    else if ((IsEqualIID(InterfaceType, &GUID_PCI_BUS_INTERFACE_STANDARD) ||
+              IsEqualIID(InterfaceType, &GUID_PCI_BUS_INTERFACE_STANDARD2)) &&
+             (PdoExtension->PdoType == AcpiPdo))
+    {
+        PPCI_BUS_INTERFACE_STANDARD PciInterface = (PPCI_BUS_INTERFACE_STANDARD)Interface;
+        ULONG MinSize = FIELD_OFFSET(PCI_BUS_INTERFACE_STANDARD, RootBusCapability);
+        BOOLEAN Version2 = IsEqualIID(InterfaceType, &GUID_PCI_BUS_INTERFACE_STANDARD2);
+
+        /*
+         * PCI configuration-space access interface. We support the classic
+         * layout (through LineToPin); a caller whose structure is larger also
+         * gets the version-2 direct-call fields. The version-1 GUID leaves
+         * those NULL; the version-2 GUID exposes the root-bus capability query
+         * and Express wake control (both required by a Win8+ PCI driver).
+         */
+        if (InterfaceBufferSize < MinSize)
+        {
+            *Length = MinSize;
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+
+        PciInterface->Version = Version2 ? 2 : PCI_BUS_INTERFACE_STANDARD_VERSION;
+        PciInterface->Context = DeviceObject;
+        PciInterface->InterfaceReference = HalpPnpInterfaceReference;
+        PciInterface->InterfaceDereference = HalpPnpInterfaceDereference;
+        PciInterface->ReadConfig = (PCI_READ_WRITE_CONFIG)HaliPciInterfaceReadConfig;
+        PciInterface->WriteConfig = (PCI_READ_WRITE_CONFIG)HaliPciInterfaceWriteConfig;
+        PciInterface->PinToLine = NULL;
+        PciInterface->LineToPin = NULL;
+
+        if (InterfaceBufferSize >= sizeof(PCI_BUS_INTERFACE_STANDARD))
+        {
+            PciInterface->RootBusCapability = Version2 ? HalpPciRootBusCapability : NULL;
+            PciInterface->ExpressWakeControl = Version2 ? HalpPciExpressWakeControl : NULL;
+            PciInterface->Size = sizeof(PCI_BUS_INTERFACE_STANDARD);
+            *Length = sizeof(PCI_BUS_INTERFACE_STANDARD);
+        }
+        else
+        {
+            PciInterface->Size = (USHORT)MinSize;
+            *Length = MinSize;
+        }
+    }
+    else
+    {
+        /* Not an interface the HAL provides on this device */
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    /* Keep the PDO referenced for as long as the interface is held */
+    InterlockedIncrement(&PdoExtension->InterfaceReferenceCount);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -329,87 +509,212 @@ HalpQueryCapabilities(IN PDEVICE_OBJECT DeviceObject,
     return Status;
 }
 
+/*
+ * Return the first byte above all physical RAM, rounded up to a 1 MB boundary,
+ * or 0 if it cannot be determined.  The root PCI memory window handed to the PCI
+ * driver must not overlap RAM: the driver's memory arbiter is bounded only by
+ * this window (it is NOT seeded with the system RAM map the way the kernel's own
+ * root arbiters are), so if the window covers RAM the arbiter can place a device
+ * BAR on top of RAM.  The device then decodes over RAM and silently displays/does
+ * nothing - a black screen with no error, because arbitration "succeeded".
+ */
+static
+ULONGLONG
+HalpHighestRamAddress(VOID)
+{
+    PPHYSICAL_MEMORY_RANGE Ranges, Entry;
+    ULONGLONG Top = 0, End;
+
+    Ranges = MmGetPhysicalMemoryRanges();
+    if (!Ranges) return 0;
+
+    for (Entry = Ranges;
+         (Entry->BaseAddress.QuadPart != 0) || (Entry->NumberOfBytes.QuadPart != 0);
+         Entry++)
+    {
+        End = (ULONGLONG)Entry->BaseAddress.QuadPart + (ULONGLONG)Entry->NumberOfBytes.QuadPart;
+        if (End > Top) Top = End;
+    }
+
+    ExFreePool(Ranges);
+
+    /* Round up to a 1 MB boundary - PCI memory holes are MB-aligned. */
+    return (Top + 0xFFFFFULL) & ~0xFFFFFULL;
+}
+
+/* Append one CmResourceTypeMemory descriptor for [Base, Limit] (inclusive). */
+static
+VOID
+HalpAddMemoryDescriptor(
+    IN OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR *Descriptor,
+    IN ULONGLONG Base,
+    IN ULONGLONG Limit)
+{
+    ULONGLONG Length = Limit - Base + 1;
+
+    /* A full 32-bit window's inclusive length overflows the ULONG field. */
+    if (Length > MAXULONG) Length = MAXULONG;
+
+    (*Descriptor)->Type = CmResourceTypeMemory;
+    (*Descriptor)->ShareDisposition = CmResourceShareShared;
+    (*Descriptor)->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
+    (*Descriptor)->u.Memory.Start.QuadPart = (LONGLONG)Base;
+    (*Descriptor)->u.Memory.Length = (ULONG)Length;
+    (*Descriptor)++;
+}
+
+/*
+ * Emit the PCI-decodable sub-ranges of memory window [Base, Limit]: the legacy
+ * compatibility hole [0xA0000, 0xFFFFF] (VGA aperture + option ROMs) and
+ * everything at or above the top of RAM (RamTop) - skipping the RAM regions in
+ * between so the PCI driver never allocates a BAR over RAM.  With Descriptor ==
+ * NULL it only counts.  Returns the number of descriptors produced.  If RamTop
+ * is 0 (unknown) it reports the whole window, the pre-existing behavior.
+ */
+static
+ULONG
+HalpReportPciMemoryWindow(
+    IN ULONGLONG Base,
+    IN ULONGLONG Limit,
+    IN ULONGLONG RamTop,
+    IN OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR *Descriptor OPTIONAL)
+{
+    ULONG Count = 0;
+    ULONGLONG SubBase, SubLimit;
+
+    if (RamTop == 0)
+    {
+        /* RAM extent unknown - report the window as-is (length capped downstream). */
+        if (Descriptor) HalpAddMemoryDescriptor(Descriptor, Base, Limit);
+        return 1;
+    }
+
+    /* Legacy compatibility region [0xA0000, 0xFFFFF]. */
+    SubBase = (Base > 0xA0000ULL) ? Base : 0xA0000ULL;
+    SubLimit = (Limit < 0xFFFFFULL) ? Limit : 0xFFFFFULL;
+    if (SubBase <= SubLimit)
+    {
+        if (Descriptor) HalpAddMemoryDescriptor(Descriptor, SubBase, SubLimit);
+        Count++;
+    }
+
+    /* High MMIO hole: everything at or above the top of RAM. */
+    if ((RamTop < 0xFFFFFFFFULL) && (Limit >= RamTop))
+    {
+        SubBase = (Base > RamTop) ? Base : RamTop;
+        SubLimit = Limit;
+        if (Descriptor) HalpAddMemoryDescriptor(Descriptor, SubBase, SubLimit);
+        Count++;
+    }
+
+    return Count;
+}
+
 NTSTATUS
 NTAPI
 HalpQueryResources(IN PDEVICE_OBJECT DeviceObject,
                    OUT PCM_RESOURCE_LIST *Resources)
 {
     PPDO_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
-    NTSTATUS Status;
     PCM_RESOURCE_LIST ResourceList;
-//    PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
-//    PIO_RESOURCE_DESCRIPTOR Descriptor;
-//    PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDesc;
-//    ULONG i;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor;
+    PBUS_HANDLER BusHandler;
+    PSUPPORTED_RANGE Range;
+    ULONGLONG RangeLength;
+    ULONGLONG RamTop;
+    ULONG Count, Size;
     PAGED_CODE();
 
-    /* Only the ACPI PDO has requirements */
+    /* The root PCI bus PDO tells the PCI driver which resources it owns */
     if (DeviceExtension->PdoType == AcpiPdo)
     {
-#if 0
-        /* Query ACPI requirements */
-        Status = HalpQueryAcpiResourceRequirements(&RequirementsList);
-        if (!NT_SUCCESS(Status)) return Status;
+        /* Grab the root PCI bus handler so we can report its decode windows */
+        BusHandler = HalHandlerForBus(PCIBus, 0);
 
-        ASSERT(RequirementsList->AlternativeLists == 1);
-#endif
+        /* Learn where RAM ends so we never report it as a PCI memory window */
+        RamTop = HalpHighestRamAddress();
 
-        /* Allocate the resourcel ist */
-        ResourceList = ExAllocatePoolWithTag(PagedPool,
-                                             sizeof(CM_RESOURCE_LIST),
-                                             TAG_HAL);
-        if (!ResourceList )
+        /* Always one descriptor for the bus-number range this root heads... */
+        Count = 1;
+
+        /* ...plus one per non-empty I/O window and per PCI memory sub-window */
+        if (BusHandler && BusHandler->BusAddresses)
         {
-            /* Fail, no memory */
-            Status = STATUS_INSUFFICIENT_RESOURCES;
-//            ExFreePoolWithTag(RequirementsList, TAG_HAL);
-            return Status;
+            for (Range = &BusHandler->BusAddresses->IO; Range; Range = Range->Next)
+            {
+                if (Range->Limit) Count++;
+            }
+            for (Range = &BusHandler->BusAddresses->Memory; Range; Range = Range->Next)
+            {
+                if (Range->Limit)
+                    Count += HalpReportPciMemoryWindow(Range->Base, Range->Limit, RamTop, NULL);
+            }
         }
 
-        /* Initialize it */
-        RtlZeroMemory(ResourceList, sizeof(CM_RESOURCE_LIST));
-        ResourceList->Count = 1;
+        /* Allocate a resource list big enough for all of the descriptors */
+        Size = sizeof(CM_RESOURCE_LIST) +
+               (Count - 1) * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
+        ResourceList = ExAllocatePoolWithTag(PagedPool, Size, TAG_HAL);
+        if (!ResourceList) return STATUS_INSUFFICIENT_RESOURCES;
 
-        /* Setup the list fields */
+        /* Initialize the list header */
+        RtlZeroMemory(ResourceList, Size);
+        ResourceList->Count = 1;
         ResourceList->List[0].BusNumber = 0;
         ResourceList->List[0].InterfaceType = PCIBus;
         ResourceList->List[0].PartialResourceList.Version = 1;
         ResourceList->List[0].PartialResourceList.Revision = 1;
-        ResourceList->List[0].PartialResourceList.Count = 0;
+        ResourceList->List[0].PartialResourceList.Count = Count;
 
-        /* Setup the first descriptor */
-        //PartialDesc = ResourceList->List[0].PartialResourceList.PartialDescriptors;
+        Descriptor = ResourceList->List[0].PartialResourceList.PartialDescriptors;
 
-        /* Find the requirement descriptor for the SCI */
-#if 0
-        for (i = 0; i < RequirementsList->List[0].Count; i++)
+        /* Report the range of PCI bus numbers this root owns */
+        Descriptor->Type = CmResourceTypeBusNumber;
+        Descriptor->ShareDisposition = CmResourceShareShared;
+        Descriptor->u.BusNumber.Start = 0;
+        Descriptor->u.BusNumber.Length = HalpMaxPciBus + 1;
+        Descriptor++;
+
+        /* Report the I/O and memory windows the root bus decodes */
+        if (BusHandler && BusHandler->BusAddresses)
         {
-            /* Get this descriptor */
-            Descriptor = &RequirementsList->List[0].Descriptors[i];
-            if (Descriptor->Type == CmResourceTypeInterrupt)
+            for (Range = &BusHandler->BusAddresses->IO; Range; Range = Range->Next)
             {
-                /* Copy requirements descriptor into resource descriptor */
-                PartialDesc->Type = CmResourceTypeInterrupt;
-                PartialDesc->ShareDisposition = Descriptor->ShareDisposition;
-                PartialDesc->Flags = Descriptor->Flags;
-                ASSERT(Descriptor->u.Interrupt.MinimumVector ==
-                       Descriptor->u.Interrupt.MaximumVector);
-                PartialDesc->u.Interrupt.Vector = Descriptor->u.Interrupt.MinimumVector;
-                PartialDesc->u.Interrupt.Level = Descriptor->u.Interrupt.MinimumVector;
-                PartialDesc->u.Interrupt.Affinity = 0xFFFFFFFF;
+                if (!Range->Limit) continue;
 
-                ResourceList->List[0].PartialResourceList.Count++;
+                /*
+                 * The inclusive length Limit-Base+1 is 2^32 for a full 32-bit
+                 * window, which does not fit the descriptor's ULONG Length.
+                 * Cap it to MAXULONG so the window is still reported (as
+                 * [Base, Base+MAXULONG-1]) rather than dropped - otherwise the
+                 * PCI driver's arbiter is started with no window and can place
+                 * nothing.
+                 */
+                RangeLength = (ULONGLONG)Range->Limit - Range->Base + 1;
+                if (RangeLength > MAXULONG) RangeLength = MAXULONG;
 
-                break;
+                Descriptor->Type = CmResourceTypePort;
+                Descriptor->ShareDisposition = CmResourceShareShared;
+                Descriptor->Flags = CM_RESOURCE_PORT_IO;
+                Descriptor->u.Port.Start.QuadPart = Range->Base;
+                Descriptor->u.Port.Length = (ULONG)RangeLength;
+                Descriptor++;
+            }
+            for (Range = &BusHandler->BusAddresses->Memory; Range; Range = Range->Next)
+            {
+                if (!Range->Limit) continue;
+
+                /*
+                 * Report the PCI-decodable sub-ranges of this window, carving out
+                 * the RAM regions so the PCI driver's arbiter cannot place a BAR
+                 * over RAM (which decodes nothing -> silent black screen).
+                 */
+                HalpReportPciMemoryWindow(Range->Base, Range->Limit, RamTop, &Descriptor);
             }
         }
-#endif
 
         /* Return resources and success */
         *Resources = ResourceList;
-
-//        ExFreePoolWithTag(RequirementsList, TAG_HAL);
-
         return STATUS_SUCCESS;
     }
     else if (DeviceExtension->PdoType == WdPdo)
@@ -647,9 +952,9 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
                 DPRINT("Querying interface for FDO\n");
                 Status = HalpQueryInterface(DeviceObject,
                                             IoStackLocation->Parameters.QueryInterface.InterfaceType,
-                                            IoStackLocation->Parameters.QueryInterface.Size,
-                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
                                             IoStackLocation->Parameters.QueryInterface.Version,
+                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
+                                            IoStackLocation->Parameters.QueryInterface.Size,
                                             IoStackLocation->Parameters.QueryInterface.Interface,
                                             (PVOID)&Irp->IoStatus.Information);
                 break;
@@ -710,9 +1015,7 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
         {
             case IRP_MN_START_DEVICE:
 
-                /* We only care about a PCI PDO */
                 DPRINT("Start device received\n");
-                /* Complete the IRP normally */
                 break;
 
             case IRP_MN_REMOVE_DEVICE:
@@ -746,9 +1049,9 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
                 DPRINT("Querying interface for PDO\n");
                 Status = HalpQueryInterface(DeviceObject,
                                             IoStackLocation->Parameters.QueryInterface.InterfaceType,
-                                            IoStackLocation->Parameters.QueryInterface.Size,
-                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
                                             IoStackLocation->Parameters.QueryInterface.Version,
+                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
+                                            IoStackLocation->Parameters.QueryInterface.Size,
                                             IoStackLocation->Parameters.QueryInterface.Interface,
                                             (PVOID)&Irp->IoStatus.Information);
                 break;
