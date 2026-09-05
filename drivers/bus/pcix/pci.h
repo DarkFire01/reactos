@@ -78,6 +78,11 @@
 #define PCI_LEGACY_CONFIG_LENGTH            0x100
 
 //
+// Interrupt line register value meaning unknown or not connected
+//
+#define PCI_INTERRUPT_LINE_UNKNOWN          0xFF
+
+//
 // MSI and MSI-X Capability Register Offsets
 //
 #define PCI_MESSAGE_CONTROL_OFFSET          0x02
@@ -408,9 +413,9 @@ typedef struct _PCI_PDO_EXTENSION
     BOOLEAN SubClass;
     BOOLEAN BaseClass;
     BOOLEAN AdditionalResourceCount;
-    BOOLEAN AdjustedInterruptLine;
+    UCHAR AdjustedInterruptLine;
     BOOLEAN InterruptPin;
-    BOOLEAN RawInterruptLine;
+    UCHAR RawInterruptLine;
     BOOLEAN CapabilitiesPtr;
     BOOLEAN SavedLatencyTimer;
     BOOLEAN SavedCacheLineSize;
