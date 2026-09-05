@@ -21,7 +21,7 @@ extern "C" {
 
 #ifdef _WS2DEF_
 
-const UCHAR sockaddr_size[AF_MAX];
+extern const UCHAR sockaddr_size[AF_MAX];
 
 MSWSOCKDEF_INLINE
 UCHAR
