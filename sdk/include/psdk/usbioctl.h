@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "usb100.h"
+#include "usb200.h"
 #include "usbiodef.h"
 
 #ifdef __cplusplus
@@ -666,6 +666,153 @@ typedef struct _USB_DEVICE_PERFORMANCE_INFO {
 #include <poppack.h>
 
 #endif /* USB_KERNEL_IOCTL */
+
+
+/*
+ * USB 3.0 additions to the user-mode hub interface: the extended hub and node
+ * information, and the connector properties a port reports.
+ */
+
+#define IOCTL_USB_GET_PORT_STATUS \
+  CTL_CODE(FILE_DEVICE_USB, USB_GET_PORT_STATUS, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+#define IOCTL_USB_GET_HUB_INFORMATION_EX \
+  CTL_CODE(FILE_DEVICE_USB, USB_GET_HUB_INFORMATION_EX, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+#define IOCTL_USB_GET_PORT_CONNECTOR_PROPERTIES \
+  CTL_CODE(FILE_DEVICE_USB, USB_GET_PORT_CONNECTOR_PROPERTIES, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+#define IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX_V2 \
+  CTL_CODE(FILE_DEVICE_USB, USB_GET_NODE_CONNECTION_INFORMATION_EX_V2, METHOD_BUFFERED, \
+           FILE_ANY_ACCESS)
+
+typedef enum _USB_HUB_TYPE {
+    UsbRootHub        = 1,
+    Usb20Hub          = 2,
+    Usb30Hub          = 3
+} USB_HUB_TYPE;
+
+/*
+ * What a hub reports about itself. Which arm of the union is valid follows
+ * from HubType: a 3.0 hub describes itself with the longer descriptor.
+ */
+typedef struct _USB_HUB_INFORMATION_EX {
+    USB_HUB_TYPE             HubType;
+
+    /* Ports are numbered from one, so this is also how many there are */
+    USHORT   HighestPortNumber;
+
+    union {
+        USB_HUB_DESCRIPTOR  UsbHubDescriptor;
+        USB_30_HUB_DESCRIPTOR  Usb30HubDescriptor;
+    } u;
+
+} USB_HUB_INFORMATION_EX, *PUSB_HUB_INFORMATION_EX;
+
+typedef union _USB_PORT_PROPERTIES {
+    ULONG  ul;
+
+    struct {
+        ULONG PortIsUserConnectable  :1;
+        ULONG PortIsDebugCapable  :1;
+        ULONG PortHasMultipleCompanions  :1;
+        ULONG PortConnectorIsTypeC  :1;
+        ULONG ReservedMBZ  :28;
+    };
+
+} USB_PORT_PROPERTIES, *PUSB_PORT_PROPERTIES;
+
+/*
+ * What one port of a hub is physically wired as. A USB 3 port is really two
+ * ports sharing a connector, one on each of the 2.0 and 3.0 buses, so a caller
+ * asks about each companion in turn by index.
+ *
+ * The name at the end is variable length: ActualLength says how much of the
+ * structure the hub wanted to write, so a short first call sizes the second.
+ */
+typedef struct _USB_PORT_CONNECTOR_PROPERTIES {
+    /* The port to ask about, numbered from one */
+    ULONG  ConnectionIndex;
+
+    /* Size of the whole answer, name included, whether or not it fitted */
+    ULONG  ActualLength;
+
+    /* What the connector is capable of */
+    USB_PORT_PROPERTIES  UsbPortProperties;
+
+    /* Which companion of this connector, numbered from zero */
+    USHORT                CompanionIndex;
+
+    /* That companion's port number on its own hub */
+    USHORT                CompanionPortNumber;
+
+    /* And the name that hub can be opened by */
+    WCHAR                 CompanionHubSymbolicLinkName[1];
+} USB_PORT_CONNECTOR_PROPERTIES, *PUSB_PORT_CONNECTOR_PROPERTIES;
+
+typedef union _USB_PROTOCOLS {
+    ULONG  ul;
+
+    struct {
+        ULONG Usb110 :1;
+        ULONG Usb200 :1;
+        ULONG Usb300 :1;
+        ULONG ReservedMBZ  :29;
+    };
+
+} USB_PROTOCOLS, *PUSB_PROTOCOLS;
+
+typedef union _USB_NODE_CONNECTION_INFORMATION_EX_V2_FLAGS {
+    ULONG  ul;
+
+    struct {
+        ULONG DeviceIsOperatingAtSuperSpeedOrHigher  :1;
+        ULONG DeviceIsSuperSpeedCapableOrHigher  :1;
+        ULONG DeviceIsOperatingAtSuperSpeedPlusOrHigher  :1;
+        ULONG DeviceIsSuperSpeedPlusCapableOrHigher  :1;
+        ULONG ReservedMBZ  :28;
+    };
+
+} USB_NODE_CONNECTION_INFORMATION_EX_V2_FLAGS, *PUSB_NODE_CONNECTION_INFORMATION_EX_V2_FLAGS;
+
+/*
+ * What a port and the device on it are running at, as opposed to what either
+ * of them could manage. The protocol field is answered in the caller's own
+ * terms: it says on the way in which protocols it knows how to be told about,
+ * and the hub replies only within that set, so an older caller is never handed
+ * a speed it cannot name.
+ */
+typedef struct _USB_NODE_CONNECTION_INFORMATION_EX_V2 {
+    /* The port to ask about, numbered from one */
+    ULONG  ConnectionIndex;
+
+    /* Size of this structure, so the hub knows which version it was given */
+    ULONG  Length;
+
+    /* In: what the caller understands. Out: what the port actually supports */
+    USB_PROTOCOLS SupportedUsbProtocols;
+
+    /* How the device and the port ended up operating */
+    USB_NODE_CONNECTION_INFORMATION_EX_V2_FLAGS Flags;
+} USB_NODE_CONNECTION_INFORMATION_EX_V2, *PUSB_NODE_CONNECTION_INFORMATION_EX_V2;
+
+
+/*
+ * The composite-device and remote-wake requests a hub sends on behalf of a
+ * function driver.  These use FILE_DEVICE_USBEX, not FILE_DEVICE_USB.
+ */
+#define IOCTL_INTERNAL_USB_REGISTER_COMPOSITE_DEVICE \
+  CTL_CODE(FILE_DEVICE_USBEX, USB_REGISTER_COMPOSITE_DEVICE, METHOD_NEITHER, FILE_ANY_ACCESS)
+
+#define IOCTL_INTERNAL_USB_UNREGISTER_COMPOSITE_DEVICE \
+  CTL_CODE(FILE_DEVICE_USBEX, USB_UNREGISTER_COMPOSITE_DEVICE, METHOD_NEITHER, FILE_ANY_ACCESS)
+
+#define IOCTL_INTERNAL_USB_REQUEST_REMOTE_WAKE_NOTIFICATION \
+  CTL_CODE(FILE_DEVICE_USBEX, USB_REQUEST_REMOTE_WAKE_NOTIFICATION, METHOD_NEITHER, \
+           FILE_ANY_ACCESS)
+
+#define IOCTL_INTERNAL_USB_FAIL_GET_STATUS_FROM_DEVICE \
+  CTL_CODE(FILE_DEVICE_USB, USB_FAIL_GET_STATUS, METHOD_NEITHER, FILE_ANY_ACCESS)
 
 #ifdef __cplusplus
 }
