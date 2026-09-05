@@ -11,6 +11,8 @@
 #define NDEBUG
 #include <debug.h>
 
+#define TAG_ARB_MEM 'MbrA'
+
 /* GLOBALS *******************************************************************/
 
 extern ARBITER_INSTANCE IopRootMemArbiter;
@@ -393,6 +395,164 @@ IopArbMemFindSuitableRange(
     return ArbiterLibFindSuitableRange(Arbiter, ArbState);
 }
 
+/* Hardware IDs of PCI and PCI Express host bridges */
+static const PCWSTR IopArbMemHostBridgeIds[] =
+{
+    L"ACPI\\PNP0A03",
+    L"ACPI\\PNP0A08",
+};
+
+/* Checks one ID of a hardware ID list against the host bridge IDs */
+static
+BOOLEAN
+IopArbMemIsHostBridgeId(
+    _In_ PCWSTR Id)
+{
+    ULONG Index;
+
+    for (Index = 0; Index < RTL_NUMBER_OF(IopArbMemHostBridgeIds); Index++)
+    {
+        if (_wcsicmp(Id, IopArbMemHostBridgeIds[Index]) == 0)
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Checks if a device is a PCI host bridge from its hardware IDs.
+ *
+ * @param[out] IsHostBridge
+ * Receives TRUE for a host bridge.
+ *
+ * @return
+ * STATUS_SUCCESS, or the status that kept the hardware IDs from being read.
+ */
+static
+NTSTATUS
+IopArbMemIsHostBridge(
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _Out_ PBOOLEAN IsHostBridge)
+{
+    PWSTR HardwareIds;
+    PWSTR Id;
+    ULONG Length = 0;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    *IsHostBridge = FALSE;
+
+    Status = IoGetDeviceProperty(PhysicalDeviceObject, DevicePropertyHardwareID, 0, NULL, &Length);
+    if (Status != STATUS_BUFFER_TOO_SMALL)
+        return Status;
+
+    HardwareIds = ExAllocatePoolWithTag(PagedPool, Length, TAG_ARB_MEM);
+    if (HardwareIds == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = IoGetDeviceProperty(PhysicalDeviceObject, DevicePropertyHardwareID, Length, HardwareIds, &Length);
+    if (NT_SUCCESS(Status))
+    {
+        Status = STATUS_SUCCESS;
+
+        for (Id = HardwareIds; *Id != UNICODE_NULL && !*IsHostBridge; Id += wcslen(Id) + 1)
+            *IsHostBridge = IopArbMemIsHostBridgeId(Id);
+    }
+
+    ExFreePoolWithTag(HardwareIds, TAG_ARB_MEM);
+    return Status;
+}
+
+/**
+ * @brief
+ * Removes the conflicts inside the PCI configuration space window from the
+ * conflicts of a host bridge. Its memory window contains the configuration
+ * space window, which is reserved at initialization.
+ */
+static
+VOID
+IopArbMemRemoveMmConfigConflicts(
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _Inout_ PULONG ConflictCount,
+    _In_ PARBITER_CONFLICT_INFO Conflicts)
+{
+    BOOLEAN IsHostBridge;
+    ULONG Count = *ConflictCount;
+    ULONG Index;
+
+    PAGED_CODE();
+
+    if (Conflicts == NULL || Count == 0)
+        return;
+
+    if (!NT_SUCCESS(IopArbMemIsHostBridge(PhysicalDeviceObject, &IsHostBridge)) || !IsHostBridge)
+        return;
+
+    for (Index = Count; Index > 0; Index--)
+    {
+        PARBITER_CONFLICT_INFO Conflict = &Conflicts[Index - 1];
+
+        if (ArbiterLibIsConflictWithMmConfigRange(Conflict->Start, Conflict->End))
+            *Conflict = Conflicts[--Count];
+    }
+
+    *ConflictCount = Count;
+}
+
+/* The QueryConflict callback of the Root Memory arbiter */
+#if (NTDDI_VERSION >= NTDDI_VISTA)
+static
+NTSTATUS
+NTAPI
+IopArbMemQueryConflict(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _Inout_ PARBITER_QUERY_CONFLICT_PARAMETERS Parameters)
+{
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    Status = ArbiterLibQueryConflict(Arbiter, Parameters);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    IopArbMemRemoveMmConfigConflicts(Parameters->PhysicalDeviceObject,
+                                     Parameters->ConflictCount,
+                                     *Parameters->Conflicts);
+
+    return STATUS_SUCCESS;
+}
+#else
+static
+NTSTATUS
+NTAPI
+IopArbMemQueryConflict(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _In_ PIO_RESOURCE_DESCRIPTOR ConflictingResource,
+    _Out_ PULONG ConflictCount,
+    _Out_ PARBITER_CONFLICT_INFO *Conflicts)
+{
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    Status = ArbiterLibQueryConflict(Arbiter,
+                                     PhysicalDeviceObject,
+                                     ConflictingResource,
+                                     ConflictCount,
+                                     Conflicts);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    IopArbMemRemoveMmConfigConflicts(PhysicalDeviceObject, ConflictCount, *Conflicts);
+
+    return STATUS_SUCCESS;
+}
+#endif
+
 /**
  * @brief Initialize the RootMemoryArbiter
  *
@@ -404,6 +564,8 @@ IopArbMemFindSuitableRange(
  * availability mask can hand it out: the real-mode interrupt vector table and
  * the BIOS data area live there, and a device decoding over them corrupts the
  * machine rather than merely failing.
+ *
+ * The PCI configuration space window is reserved as a boot allocated range.
  *
  * @return NTSTATUS
  * @retval STATUS_SUCCESS
@@ -424,6 +586,7 @@ IopArbMemInitialize(VOID)
     IopRootMemArbiter.UnpackResource = IopArbMemUnpackResource;
     IopRootMemArbiter.ScoreRequirement = IopArbMemScoreRequirement;
     IopRootMemArbiter.FindSuitableRange = IopArbMemFindSuitableRange;
+    IopRootMemArbiter.QueryConflict = IopArbMemQueryConflict;
 
     Status = ArbiterLibInitializeInstance(&IopRootMemArbiter,
                                           NULL,
@@ -441,7 +604,13 @@ IopArbMemInitialize(VOID)
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("IopArbMemInitialize: Reserving page 0 failed with %X\n", Status);
+        return Status;
     }
+
+    Status = ArbiterLibAddMmConfigRangeAsBootReserved(&IopRootMemArbiter,
+                                                     IopRootMemArbiter.Allocation);
+    if (!NT_SUCCESS(Status))
+        DPRINT1("IopArbMemInitialize: Reserving MmConfigRange failed with %X\n", Status);
 
     return Status;
 }
