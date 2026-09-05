@@ -41,6 +41,14 @@ ULONG HalpPicVectorRedirect[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 1
 /* Per ISA line polarity and trigger mode, from the MADT interrupt overrides */
 ULONG HalpPicVectorFlags[16];
 
+/*
+ * The interrupt vectors the ACPI root device claims on the APIC HALs, so that
+ * the ACPI driver can hand them out to devices. The vectors below and above
+ * this band belong to the HAL and to the kernel.
+ */
+#define HALP_DEVICE_VECTOR_FIRST    0x51
+#define HALP_DEVICE_VECTOR_COUNT    110
+
 /* This determines the HAL type */
 BOOLEAN HalDisableFirmwareMapper = TRUE;
 PWCHAR HalHardwareIdString = L"acpipic_up";
@@ -1056,8 +1064,18 @@ HalpAcpiDetectResourceListSize(OUT PULONG ListSize)
 {
     PAGED_CODE();
 
-    /* One element if there is a SCI */
-    *ListSize = HalpFixedAcpiDescTable.sci_int_vector ? 1: 0;
+    /*
+     * The APIC HALs list the device vector band. The PIC HAL lists the SCI
+     * line instead, so that the arbiter keeps it shareable.
+     */
+    if (HalpInterruptModel != 0)
+    {
+        *ListSize = HALP_DEVICE_VECTOR_COUNT;
+    }
+    else
+    {
+        *ListSize = HalpFixedAcpiDescTable.sci_int_vector ? 1 : 0;
+    }
 }
 
 NTSTATUS
@@ -1076,8 +1094,8 @@ HalpBuildAcpiResourceList(IN PIO_RESOURCE_REQUIREMENTS_LIST ResourceList)
     ResourceList->List[0].Revision = 1;
     ResourceList->List[0].Count = 0;
 
-    /* Is there a SCI? */
-    if (HalpFixedAcpiDescTable.sci_int_vector)
+    /* Is there a SCI? Only the PIC HAL reports it here */
+    if ((HalpInterruptModel == 0) && HalpFixedAcpiDescTable.sci_int_vector)
     {
         /* Fill out the entry for it */
         ResourceList->List[0].Descriptors[0].Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
@@ -1091,6 +1109,30 @@ HalpBuildAcpiResourceList(IN PIO_RESOURCE_REQUIREMENTS_LIST ResourceList)
 
         /* One more */
         ++ResourceList->List[0].Count;
+    }
+
+    /*
+     * On the APIC HALs the root device also owns the block of interrupt
+     * vectors that devices are assigned from, one descriptor per vector.
+     */
+    if (HalpInterruptModel != 0)
+    {
+        PIO_RESOURCE_DESCRIPTOR Descriptor;
+        ULONG Vector;
+
+        Descriptor = &ResourceList->List[0].Descriptors[ResourceList->List[0].Count];
+
+        for (Vector = HALP_DEVICE_VECTOR_FIRST;
+             Vector < HALP_DEVICE_VECTOR_FIRST + HALP_DEVICE_VECTOR_COUNT;
+             Vector++, Descriptor++)
+        {
+            Descriptor->Type = CmResourceTypeInterrupt;
+            Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+            Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+            Descriptor->u.Interrupt.MinimumVector = Vector;
+            Descriptor->u.Interrupt.MaximumVector = Vector;
+            ++ResourceList->List[0].Count;
+        }
     }
 
     /* All good */
