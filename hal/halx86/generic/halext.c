@@ -79,7 +79,6 @@ HalRegisterErrataCallbacks(VOID)
  * @param[in] ErrorRecord
  * The error record describing the fault.
  */
-#if (NTDDI_VERSION >= NTDDI_WIN7)
 DECLSPEC_NORETURN
 VOID
 NTAPI
@@ -93,20 +92,6 @@ HalBugCheckSystem(
                  (ULONG_PTR)ErrorSource,
                  0);
 }
-#else
-DECLSPEC_NORETURN
-VOID
-NTAPI
-HalBugCheckSystem(
-    _In_ PWHEA_ERROR_RECORD ErrorRecord)
-{
-    KeBugCheckEx(WHEA_UNCORRECTABLE_ERROR,
-                 0,
-                 (ULONG_PTR)ErrorRecord,
-                 0,
-                 0);
-}
-#endif // (NTDDI_VERSION >= NTDDI_WIN7)
 
 /**
  * @brief
