@@ -40,8 +40,16 @@ typedef NTSTATUS
     _Out_ PULONG RequiredSize,
     _Out_ PDEVPROPTYPE Type);
 
+typedef NTSTATUS
+(NTAPI *PCI_GET_INTERRUPT_TARGET_INFORMATION)(
+    _In_ HAL_INTERRUPT_TARGET_TYPE Type,
+    _In_ ULONG Id,
+    _Out_ PHAL_INTERRUPT_TARGET_INFORMATION Information);
+
 static PCI_GET_DEVICE_PROPERTY_DATA PciGetDevicePropertyDataRoutine;
 static BOOLEAN PciGetDevicePropertyDataResolved;
+static BOOLEAN PciPlatformDeliversMessages;
+static BOOLEAN PciPlatformMessageSupportKnown;
 
 /* FUNCTIONS ******************************************************************/
 
@@ -386,6 +394,41 @@ PciReadMessagePolicyDword(
     return Status;
 }
 
+/* HalGetInterruptTargetInformation is newer than this driver's import floor */
+static
+BOOLEAN
+NTAPI
+PciCanPlatformDeliverMessages(VOID)
+{
+    PCI_GET_INTERRUPT_TARGET_INFORMATION GetTargetInformation;
+    HAL_INTERRUPT_TARGET_INFORMATION TargetInformation;
+    UNICODE_STRING RoutineName;
+    NTSTATUS Status;
+    BOOLEAN Supported;
+    PAGED_CODE();
+
+    if (PciPlatformMessageSupportKnown)
+        return PciPlatformDeliversMessages;
+
+    Supported = FALSE;
+    RtlInitUnicodeString(&RoutineName, L"HalGetInterruptTargetInformation");
+    GetTargetInformation = MmGetSystemRoutineAddress(&RoutineName);
+    if (GetTargetInformation)
+    {
+        RtlZeroMemory(&TargetInformation, sizeof(TargetInformation));
+        Status = GetTargetInformation(InterruptTargetTypeGlobal, 0, &TargetInformation);
+        Supported = NT_SUCCESS(Status) &&
+                    (TargetInformation.Flags & HAL_INTERRUPT_TARGET_MSI_SUPPORTED);
+    }
+
+    PciPlatformDeliversMessages = Supported;
+    PciPlatformMessageSupportKnown = TRUE;
+
+    DPRINT1("PCI: Message signaled interrupts are %s on this machine\n",
+            Supported ? "available" : "unavailable");
+    return Supported;
+}
+
 /**
  * @brief
  * Works out how many messages to ask the interrupt arbiter for.
@@ -414,6 +457,10 @@ PciGetRequestableMessageCount(
     PAGED_CODE();
 
     if (MessageInfo->Type == PciMessageNone)
+        return 0;
+
+    /* Never ask for a message the HAL cannot deliver, so the wired line is used instead */
+    if (!PciCanPlatformDeliverMessages())
         return 0;
 
     /* Some chipsets cannot forward messages from AGP devices, so none of them get any */
