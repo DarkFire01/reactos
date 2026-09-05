@@ -1239,6 +1239,43 @@ HidClassDispatch(
     }
 }
 
+/*
+ * Lets a minidriver tell hidclass that the device behind it has come or gone
+ * without the device stack itself being torn down. The transport can outlive
+ * the peripheral, which is how HID over I2C and HID over Bluetooth behave.
+ *
+ * DIVERGENCE: only the presence state is recorded. The real hidclass also acts
+ * on the transition, and what it does to the read loop and to outstanding
+ * requests cannot be pinned down without a hidclass.sys decomp, which is not in
+ * the reference set. Nothing calls this today - mshidkmdf publishes it to the
+ * KMDF stack below and ReactOS's KMDF answers no such interface - so the gap is
+ * inert rather than wrong. Finish it against the oracle before relying on it.
+ */
+NTSTATUS
+NTAPI
+HidNotifyPresence(
+    IN PDEVICE_OBJECT DeviceObject,
+    IN BOOLEAN IsPresent)
+{
+    PHIDCLASS_FDO_EXTENSION FDODeviceExtension;
+
+    FDODeviceExtension = DeviceObject->DeviceExtension;
+
+    /* Only the FDO carries the presence state */
+    if (!FDODeviceExtension->Common.IsFDO)
+    {
+        DPRINT1("[HIDCLASS] HidNotifyPresence on a PDO\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    InterlockedExchange(&FDODeviceExtension->DeviceNotPresent, IsPresent ? 0 : 1);
+
+    DPRINT("[HIDCLASS] HidNotifyPresence: device %p is %s\n",
+           DeviceObject, IsPresent ? "present" : "not present");
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NTAPI
 HidRegisterMinidriver(
