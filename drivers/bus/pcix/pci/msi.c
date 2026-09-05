@@ -209,6 +209,19 @@ PciGetMessageCount(IN PPCI_PDO_EXTENSION PdoExtension)
     /* A function with no message capability has nothing to ask for */
     if (MessageInfo->Type == PciMessageNone) return 0;
 
+    /*
+     * And neither has one on a machine that cannot deliver a message at all.
+     * Asking anyway would put a message descriptor in front of the interrupt
+     * arbiter, which has no way to place it and no way to say so: the device
+     * would come out of arbitration holding a vector that never fires.
+     *
+     * The reference consults PciSystemMsiEnabled only for an express bridge
+     * enumerated in legacy mode, because every machine Windows runs on has an
+     * APIC. ReactOS still supports the 8259 HAL, where the answer is no for
+     * every device, so the same question is asked of every device here.
+     */
+    if (!PciSystemMsiEnabled) return 0;
+
     if (!NT_SUCCESS(IoOpenDeviceRegistryKey(PdoExtension->PhysicalDeviceObject,
                                             PLUGPLAY_REGKEY_DEVICE,
                                             KEY_READ,
