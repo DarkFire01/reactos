@@ -12,6 +12,7 @@
 #include <ntifs.h>
 #include <wdmguid.h>
 #include <wchar.h>
+#include <devpropdef.h>
 #include <acpiioct.h>
 #include <drivers/pci/pci.h>
 #include <drivers/acpi/acpi.h>
