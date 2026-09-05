@@ -11,6 +11,8 @@
 #define NDEBUG
 #include <debug.h>
 
+#define TAG_ARB_MEM 'MbrA'
+
 /* GLOBALS *******************************************************************/
 
 extern ARBITER_INSTANCE IopRootMemArbiter;
@@ -410,6 +412,195 @@ IopArbMemFindSuitableRange(
  * @retval STATUS_UNSUCCESSFUL
  * @retval STATUS_INSUFFICIENT_RESOURCES
  */
+/**
+ * @brief
+ * Reports whether a device is a PCI or PCIe host bridge.
+ *
+ * @param[in] PhysicalDeviceObject
+ * The device to test.
+ *
+ * @param[out] IsRootBus
+ * Receives TRUE for a host bridge.
+ *
+ * @return
+ * STATUS_SUCCESS with the answer, or the failure that stopped the hardware ID
+ * from being read.
+ */
+static
+NTSTATUS
+IopArbMemIsPciRootBus(
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _Out_ PBOOLEAN IsRootBus)
+{
+    PWSTR HardwareIds;
+    PWSTR Id;
+    ULONG Length = 0;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    *IsRootBus = FALSE;
+
+    Status = IoGetDeviceProperty(PhysicalDeviceObject,
+                                 DevicePropertyHardwareID,
+                                 0,
+                                 NULL,
+                                 &Length);
+    if (Status != STATUS_BUFFER_TOO_SMALL)
+        return Status;
+
+    HardwareIds = ExAllocatePoolWithTag(PagedPool, Length, TAG_ARB_MEM);
+    if (HardwareIds == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = IoGetDeviceProperty(PhysicalDeviceObject,
+                                 DevicePropertyHardwareID,
+                                 Length,
+                                 HardwareIds,
+                                 &Length);
+    if (NT_SUCCESS(Status))
+    {
+        /* The hardware ID is a REG_MULTI_SZ, so walk the NUL-separated strings */
+        for (Id = HardwareIds; *Id != UNICODE_NULL; Id += wcslen(Id) + 1)
+        {
+            /* PNP0A03 is a PCI host bridge, PNP0A08 a PCIe one */
+            if (_wcsicmp(Id, L"ACPI\\PNP0A03") == 0 ||
+                _wcsicmp(Id, L"ACPI\\PNP0A08") == 0)
+            {
+                *IsRootBus = TRUE;
+                break;
+            }
+        }
+    }
+
+    ExFreePoolWithTag(HardwareIds, TAG_ARB_MEM);
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Drops the conflicts that a host bridge's own ECAM aperture accounts for.
+ *
+ * @param[in] PhysicalDeviceObject
+ * The device the conflicts were reported for.
+ *
+ * @param[in,out] ConflictCount
+ * The number of conflicts, reduced by whatever is filtered out.
+ *
+ * @param[in,out] Conflicts
+ * The conflict array, compacted in place.
+ *
+ * @remarks
+ * A host bridge legitimately owns a memory aperture that contains the
+ * configuration space window the arbiter itself boot-reserved, so that overlap
+ * is not a real conflict. The window is recorded by
+ * ArbiterLibAddMmConfigRangeAsBootReserved and tested through
+ * ArbiterLibIsConflictWithMmConfigRange.
+ */
+static
+VOID
+IopArbMemFilterEcamConflicts(
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _Inout_ PULONG ConflictCount,
+    _Inout_ PARBITER_CONFLICT_INFO *Conflicts)
+{
+    PARBITER_CONFLICT_INFO List = *Conflicts;
+    BOOLEAN IsRootBus = FALSE;
+    ULONG Count = *ConflictCount;
+    ULONG Index;
+
+    PAGED_CODE();
+
+    if (List == NULL || Count == 0)
+        return;
+
+    /* Only a PCI host bridge owns an ECAM aperture */
+    if (!NT_SUCCESS(IopArbMemIsPciRootBus(PhysicalDeviceObject, &IsRootBus)) || !IsRootBus)
+        return;
+
+    Index = 0;
+    while (Index < Count)
+    {
+        if (ArbiterLibIsConflictWithMmConfigRange(List[Index].Start, List[Index].End))
+        {
+            List[Index] = List[Count - 1];
+            Count--;
+        }
+        else
+        {
+            Index++;
+        }
+    }
+
+    *ConflictCount = Count;
+}
+
+/**
+ * @brief
+ * The memory arbiter's QueryConflict: the library default, then the false ECAM
+ * conflicts a PCI host bridge's aperture would otherwise report are suppressed.
+ *
+ * @param[in] Arbiter
+ * The memory arbiter instance.
+ *
+ * @param[in,out] Parameters
+ * The query parameters.
+ *
+ * @return
+ * The library QueryConflict status.
+ */
+#if (NTDDI_VERSION >= NTDDI_VISTA)
+static
+NTSTATUS
+NTAPI
+IopArbMemQueryConflict(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _Inout_ PARBITER_QUERY_CONFLICT_PARAMETERS Parameters)
+{
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    Status = ArbiterLibQueryConflict(Arbiter, Parameters);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    IopArbMemFilterEcamConflicts(Parameters->PhysicalDeviceObject,
+                                 Parameters->ConflictCount,
+                                 Parameters->Conflicts);
+
+    return STATUS_SUCCESS;
+}
+#else
+static
+NTSTATUS
+NTAPI
+IopArbMemQueryConflict(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _In_ PIO_RESOURCE_DESCRIPTOR ConflictingResource,
+    _Out_ PULONG ConflictCount,
+    _Out_ PARBITER_CONFLICT_INFO *Conflicts)
+{
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    Status = ArbiterLibQueryConflict(Arbiter,
+                                     PhysicalDeviceObject,
+                                     ConflictingResource,
+                                     ConflictCount,
+                                     Conflicts);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    IopArbMemFilterEcamConflicts(PhysicalDeviceObject, ConflictCount, Conflicts);
+
+    return STATUS_SUCCESS;
+}
+#endif // (NTDDI_VERSION >= NTDDI_VISTA)
+
 NTSTATUS
 NTAPI
 IopArbMemInitialize(VOID)
@@ -424,6 +615,9 @@ IopArbMemInitialize(VOID)
     IopRootMemArbiter.UnpackResource = IopArbMemUnpackResource;
     IopRootMemArbiter.ScoreRequirement = IopArbMemScoreRequirement;
     IopRootMemArbiter.FindSuitableRange = IopArbMemFindSuitableRange;
+
+    /* Memory-specific override: the ECAM conflict filter */
+    IopRootMemArbiter.QueryConflict = IopArbMemQueryConflict;
 
     Status = ArbiterLibInitializeInstance(&IopRootMemArbiter,
                                           NULL,
@@ -441,7 +635,20 @@ IopArbMemInitialize(VOID)
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("IopArbMemInitialize: Reserving page 0 failed with %X\n", Status);
+        return Status;
     }
 
-    return Status;
+    /*
+     * Reserve the PCIe ECAM window that the HAL published, and record it for
+     * the conflict filter above. Best effort: a legacy machine has no window,
+     * and a machine whose firmware describes none publishes nothing.
+     */
+    Status = ArbiterLibAddMmConfigRangeAsBootReserved(&IopRootMemArbiter,
+                                                     IopRootMemArbiter.Allocation);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("IopArbMemInitialize: Reserving MmConfigRange failed with %X\n", Status);
+    }
+
+    return STATUS_SUCCESS;
 }
