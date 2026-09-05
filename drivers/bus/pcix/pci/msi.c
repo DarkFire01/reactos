@@ -42,6 +42,8 @@ typedef NTSTATUS
 
 static PCI_GET_DEVICE_PROPERTY_DATA PciGetDevicePropertyDataRoutine;
 static BOOLEAN PciGetDevicePropertyDataResolved;
+static BOOLEAN PciPlatformDeliversMessages;
+static BOOLEAN PciPlatformMessageSupportKnown;
 
 /* FUNCTIONS ******************************************************************/
 
@@ -386,6 +388,41 @@ PciReadMessagePolicyDword(
     return Status;
 }
 
+/* Asks the HAL once whether it can deliver message-signaled interrupts */
+static
+BOOLEAN
+NTAPI
+PciCanPlatformDeliverMessages(VOID)
+{
+    HAL_INTERRUPT_TARGET_DESCRIPTOR Target;
+    NTSTATUS Status;
+    BOOLEAN Supported;
+    ULONG Id;
+    PAGED_CODE();
+
+    if (PciPlatformMessageSupportKnown)
+        return PciPlatformDeliversMessages;
+
+    RtlZeroMemory(&Target, sizeof(Target));
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+    Id = 0;
+    Status = HalGetInterruptTargetInformation(TargetGlobal, Id, &Target);
+#else
+    /* Without a global target, ask about the boot processor */
+    Status = HalGetProcessorIdByNtNumber(0, &Id);
+    if (NT_SUCCESS(Status))
+        Status = HalGetInterruptTargetInformation(TargetApic, Id, &Target);
+#endif
+    Supported = NT_SUCCESS(Status) && (Target.Capabilities & HAL_TARGET_MSI_CAPABLE);
+
+    PciPlatformDeliversMessages = Supported;
+    PciPlatformMessageSupportKnown = TRUE;
+
+    DPRINT1("PCI: Message signaled interrupts are %s on this machine\n",
+            Supported ? "available" : "unavailable");
+    return Supported;
+}
+
 /**
  * @brief
  * Works out how many messages to ask the interrupt arbiter for.
@@ -413,6 +450,10 @@ PciGetRequestableMessageCount(
     PAGED_CODE();
 
     if (MessageInfo->Type == PciMessageNone)
+        return 0;
+
+    /* Never ask for a message the HAL cannot deliver, so the wired line is used instead */
+    if (!PciCanPlatformDeliverMessages())
         return 0;
 
     if (!NT_SUCCESS(IoOpenDeviceRegistryKey(PdoExtension->PhysicalDeviceObject,
