@@ -135,14 +135,8 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
                      */
                     if (PciResources)
                     {
-<<<<<<< HEAD
                         while ((BarIndex < RTL_NUMBER_OF(ResourceArray)) &&
-                               (PciResources->Limit[BarIndex].Type == CmResourceTypeNull))
-=======
-                        while ((BarIndex < 7) &&
-                               !(PciIsRequirementDescriptor(&PciResources->
-                                                            Limit[BarIndex])))
->>>>>>> cd70b7dd72d ([PCIX] Only ask the arbiter for limits that actually request a range)
+                               !PciIsRequirementDescriptor(&PciResources->Limit[BarIndex]))
                         {
                             BarIndex++;
                         }
@@ -715,14 +709,9 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
         Limit = PdoExtension->Resources->Limit;
         for (i = 0; i < (PCI_TYPE0_ADDRESSES + 1); i++)
         {
-<<<<<<< HEAD
-            /* Skip the BARs this function does not implement */
-            if (Limit[i].Type == CmResourceTypeNull)
+            /* Skip the BARs this function asks for nothing for */
+            if (!PciIsRequirementDescriptor(&Limit[i]))
                 continue;
-=======
-            /* Skip the BARs this function does not ask for anything for */
-            if (!PciIsRequirementDescriptor(&Limit[i])) continue;
->>>>>>> cd70b7dd72d ([PCIX] Only ask the arbiter for limits that actually request a range)
 
             Alternative = FALSE;
 
