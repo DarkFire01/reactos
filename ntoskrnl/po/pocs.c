@@ -322,57 +322,49 @@ PopControlSwitchCleanup(
 
 /**
  * @brief
- * The core control switch IRP completion routine, called by the
- * I/O manager whenever the ACPI driver completes our policy IRP.
- * The Power Manager retrieves information passed by the ACPI
- * driver about actions and events done by a control switch.
- * Said information is forwarded to the control switch policy
- * device handler.
+ * Interprets a control switch request that the ACPI driver has completed.
  *
- * @param[in] DeviceObject
- * A pointer to a device object, which refers to the ACPI
- * driver itself. This parameter is unused.
- *
- * @param[in] Irp
- * A pointer to the IRP passed by the ACPI driver.
- * This parameter is unused.
- *
- * @param[in] Context
- * A pointer to a context supplied by the ACPI driver.
- * This points to a control switch that performed an action
- * and generated an event.
- *
- * @return
- * Returns STATUS_MORE_PROCESSING_REQUIRED to indicate more I/O action
- * is required (generally this means the completion operation has succeeded).
- * A failure NTSTATUS code is returned otherwise.
+ * @param[in] ControlSwitch
+ * A pointer to the control switch whose request has been completed.
+ * The switch must be holding the completed IRP.
  */
 static
-NTSTATUS
-NTAPI
-PopControlSwitchIrpCompletion(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP Irp,
-    _In_ PVOID Context)
+VOID
+PopProcessControlSwitchIrp(
+    _In_ PPOP_CONTROL_SWITCH ControlSwitch)
 {
     NTSTATUS Status;
     UCHAR Mode;
-    ULONG IrpData;
-    PPOP_DEVICE_POLICY_WORKITEM_DATA WorkItemData;
-    PPOP_CONTROL_SWITCH ControlSwitch = (PPOP_CONTROL_SWITCH)Context;
+    ULONG IrpData = 0;
+    PIRP Irp = ControlSwitch->Irp;
 
-    /* We do not care about these as we already have them in the control switch */
-    UNREFERENCED_PARAMETER(DeviceObject);
-    UNREFERENCED_PARAMETER(Irp);
+    PAGED_CODE();
 
-    /* Check if our I/O request has succeeded */
-    Status = ControlSwitch->Irp->IoStatus.Status;
+    /* The switch is only ever touched with the policy lock held */
+    POP_ASSERT_POWER_POLICY_LOCK_OWNERSHIP();
+
+    /*
+     * Reclaim the buffer the request was answered into. It belongs to this
+     * side of the conversation whichever way the request went, so it is taken
+     * back before the status is even looked at.
+     */
+    Status = Irp->IoStatus.Status;
+    if (NT_SUCCESS(Status))
+    {
+        IrpData = *(PULONG)Irp->AssociatedIrp.SystemBuffer;
+    }
+    PopFreePool(Irp->AssociatedIrp.SystemBuffer, TAG_PO_CONTROL_SWITCH_IO_DATA);
+    Irp->AssociatedIrp.SystemBuffer = NULL;
+
+    /*
+     * The request failed. Leave the IRP on the switch and ask for the switch to
+     * be torn down; the cleanup path frees the IRP it finds there.
+     */
     if (!NT_SUCCESS(Status))
     {
-        /* It failed, invoke the CS handler to cleanup this switch */
         DPRINT1("The control switch I/O request has failed (Status 0x%08lx)\n", Status);
         ControlSwitch->Flags |= POP_CS_CLEANUP;
-        goto InvokeHandler;
+        return;
     }
 
     /* Process this request depending on what we actually asked */
@@ -382,8 +374,6 @@ PopControlSwitchIrpCompletion(
         case POP_CS_QUERY_CAPS_MODE:
         {
             /* Query the capabilities of this switch and set the appropriate button type */
-            IrpData = *(PULONG)Irp->AssociatedIrp.SystemBuffer;
-            PopFreePool(Irp->AssociatedIrp.SystemBuffer, TAG_PO_CONTROL_SWITCH_IO_DATA);
             DPRINT1("Captured control switch capabilities: 0x%x\n", IrpData);
             if (IrpData & SYS_BUTTON_POWER)
             {
@@ -412,8 +402,6 @@ PopControlSwitchIrpCompletion(
         case POP_CS_QUERY_EVENT_MODE:
         {
             /* Perform a power action, depending on the inquired button event */
-            IrpData = *(PULONG)Irp->AssociatedIrp.SystemBuffer;
-            PopFreePool(Irp->AssociatedIrp.SystemBuffer, TAG_PO_CONTROL_SWITCH_IO_DATA);
             PopPerformButtonAction(ControlSwitch, IrpData);
             break;
         }
@@ -430,11 +418,62 @@ PopControlSwitchIrpCompletion(
     }
 
     /* Free the current IRP so that the handler can issue a new one */
-    IoFreeIrp(ControlSwitch->Irp);
+    IoFreeIrp(Irp);
     ControlSwitch->Irp = NULL;
+}
 
-InvokeHandler:
-    /* Allocate a policy workitem data so that we can invoke the CS handler */
+/**
+ * @brief
+ * The core control switch IRP completion routine, called by the
+ * I/O manager whenever the ACPI driver completes our policy IRP.
+ * The Power Manager retrieves information passed by the ACPI
+ * driver about actions and events done by a control switch.
+ * Said information is forwarded to the control switch policy
+ * device handler.
+ *
+ * @param[in] DeviceObject
+ * A pointer to a device object, which refers to the ACPI
+ * driver itself. This parameter is unused.
+ *
+ * @param[in] Irp
+ * A pointer to the IRP passed by the ACPI driver.
+ * This parameter is unused.
+ *
+ * @param[in] Context
+ * A pointer to a context supplied by the ACPI driver.
+ * This points to a control switch that performed an action
+ * and generated an event.
+ *
+ * @return
+ * Always STATUS_MORE_PROCESSING_REQUIRED: the switch keeps the IRP so that
+ * the worker queued here can read the answer out of it, and completion must
+ * not run on past this routine and reclaim it.
+ */
+static
+NTSTATUS
+NTAPI
+PopControlSwitchIrpCompletion(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp,
+    _In_ PVOID Context)
+{
+    PPOP_DEVICE_POLICY_WORKITEM_DATA WorkItemData;
+    PPOP_CONTROL_SWITCH ControlSwitch = (PPOP_CONTROL_SWITCH)Context;
+
+    /* We do not care about these as we already have them in the control switch */
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
+
+    /*
+     * Nothing about the answer is looked at here. A completion routine runs at
+     * up to DISPATCH_LEVEL - the ACPI driver completes this one straight out of
+     * the DPC its system control interrupt runs in - and reading the answer
+     * means touching the control switch, which is only ever done under the
+     * power policy lock. That lock is an ERESOURCE, so it cannot be taken above
+     * APC_LEVEL, and acting on a button event goes on to reach the power policy
+     * and Win32k. So the completed request is only handed to a worker, and the
+     * switch keeps hold of the IRP until that worker has read it.
+     */
     WorkItemData = PopAllocatePool(sizeof(POP_DEVICE_POLICY_WORKITEM_DATA),
                                    FALSE,
                                    TAG_PO_POLICY_DEVICE_WORKITEM_DATA);
@@ -616,6 +655,16 @@ PopControlSwitchHandler(
     ControlSwitch = WorkItemData->PolicyData;
 
     /*
+     * The switch is holding a request the ACPI driver has completed. Its
+     * completion routine could not look at it, so that is done here, where the
+     * pageable answer buffer can be touched and a button event can be acted on.
+     */
+    if (ControlSwitch->Irp != NULL)
+    {
+        PopProcessControlSwitchIrp(ControlSwitch);
+    }
+
+    /*
      * This control switch asked for cleanup. This could be caused by the ACPI
      * driver disabling that switch or we got an unexpected error. Tear the
      * switch apart.
@@ -653,9 +702,15 @@ PopControlSwitchHandler(
                      (ULONG_PTR)DeviceObject);
     }
 
-    /* Allocate a buffer to hold the returned CS state event */
+    /*
+     * Allocate a buffer to hold the returned CS state event. It is an IRP
+     * system buffer, and the ACPI driver writes the answer into it from the
+     * DPC its system control interrupt runs in, so it cannot be pageable -
+     * which is why the I/O manager allocates every system buffer of its own
+     * from non-paged pool.
+     */
     ControlSwitchData = PopAllocatePool(sizeof(ULONG),
-                                        TRUE,
+                                        FALSE,
                                         TAG_PO_CONTROL_SWITCH_IO_DATA);
     NT_ASSERT(ControlSwitchData != NULL);
 
