@@ -77,6 +77,12 @@ typedef struct
     //
     PDEVICE_RELATIONS DeviceRelations;
 
+    //
+    // set by HidNotifyPresence when a minidriver reports its device gone.
+    // the sense is inverted so that the zero-initialised state means present.
+    //
+    volatile LONG DeviceNotPresent;
+
 } HIDCLASS_FDO_EXTENSION, *PHIDCLASS_FDO_EXTENSION;
 
 typedef struct
