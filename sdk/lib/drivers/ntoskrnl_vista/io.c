@@ -66,40 +66,11 @@ IoQueueWorkItemEx(
     IoQueueWorkItem(IoWorkItem, IopWorkItemExCallback, QueueType, newContext);
 }
 
-_IRQL_requires_max_(PASSIVE_LEVEL)
-_Must_inspect_result_
-NTKRNLVISTAAPI
-NTSTATUS
-NTAPI
-IoSetDevicePropertyData(
-    _In_ PDEVICE_OBJECT Pdo,
-    _In_ CONST DEVPROPKEY *PropertyKey,
-    _In_ LCID Lcid,
-    _In_ ULONG Flags,
-    _In_ DEVPROPTYPE Type,
-    _In_ ULONG Size,
-    _In_opt_ PVOID Data)
-{
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-_IRQL_requires_max_(PASSIVE_LEVEL)
-_Must_inspect_result_
-NTKRNLVISTAAPI
-NTSTATUS
-NTAPI
-IoGetDevicePropertyData(
-    _In_ PDEVICE_OBJECT Pdo,
-    _In_ CONST DEVPROPKEY *PropertyKey,
-    _In_ LCID Lcid,
-    _Reserved_ ULONG Flags,
-    _In_ ULONG Size,
-    _Out_ PVOID Data,
-    _Out_ PULONG RequiredSize,
-    _Out_ PDEVPROPTYPE Type)
-{
-    return STATUS_NOT_IMPLEMENTED;
-}
+/*
+ * IoGetDevicePropertyData and IoSetDevicePropertyData are implemented by the
+ * kernel itself, in ntoskrnl/io/pnpmgr/devprop.c. ntoskrnl links this library,
+ * so stubbing them here would be a duplicate definition.
+ */
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 _Must_inspect_result_
