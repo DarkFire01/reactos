@@ -216,6 +216,21 @@ typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
       ULONG Length64;
     } Memory64;
 #endif
+    /*
+     * CmResourceTypeConnection, the form ACPI uses to hand a peripheral a
+     * connection id in place of the bus address its firmware declared. Win8
+     * gates this behind NTDDI_WIN8, but a union member cannot change the
+     * containing struct's layout or size, and gating it at this tree's default
+     * version would only force every consumer to redefine NTDDI to name it.
+     */
+    struct {
+      UCHAR Class;
+      UCHAR Type;
+      UCHAR Reserved1;
+      UCHAR Reserved2;
+      ULONG IdLowPart;
+      ULONG IdHighPart;
+    } Connection;
   } u;
 } CM_PARTIAL_RESOURCE_DESCRIPTOR, *PCM_PARTIAL_RESOURCE_DESCRIPTOR;
 #include <poppack.h>
@@ -234,6 +249,19 @@ typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
 #define CmResourceTypeDevicePrivate       129
 #define CmResourceTypePcCardConfig        130
 #define CmResourceTypeMfCardConfig        131
+#define CmResourceTypeConnection          132
+
+/* CM_PARTIAL_RESOURCE_DESCRIPTOR.u.Connection.Class */
+#define CM_RESOURCE_CONNECTION_CLASS_GPIO             0x01
+#define CM_RESOURCE_CONNECTION_CLASS_SERIAL           0x02
+#define CM_RESOURCE_CONNECTION_CLASS_FUNCTION_CONFIG  0x03
+
+/* CM_PARTIAL_RESOURCE_DESCRIPTOR.u.Connection.Type, scoped by Class */
+#define CM_RESOURCE_CONNECTION_TYPE_GPIO_IO           0x02
+#define CM_RESOURCE_CONNECTION_TYPE_SERIAL_I2C        0x01
+#define CM_RESOURCE_CONNECTION_TYPE_SERIAL_SPI        0x02
+#define CM_RESOURCE_CONNECTION_TYPE_SERIAL_UART       0x03
+#define CM_RESOURCE_CONNECTION_TYPE_FUNCTION_CONFIG   0x01
 
 /* CM_PARTIAL_RESOURCE_DESCRIPTOR.ShareDisposition */
 typedef enum _CM_SHARE_DISPOSITION {
