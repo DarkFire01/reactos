@@ -664,9 +664,9 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
                 DPRINT("Querying interface for FDO\n");
                 Status = HalpQueryInterface(DeviceObject,
                                             IoStackLocation->Parameters.QueryInterface.InterfaceType,
-                                            IoStackLocation->Parameters.QueryInterface.Size,
-                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
                                             IoStackLocation->Parameters.QueryInterface.Version,
+                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
+                                            IoStackLocation->Parameters.QueryInterface.Size,
                                             IoStackLocation->Parameters.QueryInterface.Interface,
                                             (PVOID)&Irp->IoStatus.Information);
                 break;
@@ -763,9 +763,9 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
                 DPRINT("Querying interface for PDO\n");
                 Status = HalpQueryInterface(DeviceObject,
                                             IoStackLocation->Parameters.QueryInterface.InterfaceType,
-                                            IoStackLocation->Parameters.QueryInterface.Size,
-                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
                                             IoStackLocation->Parameters.QueryInterface.Version,
+                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
+                                            IoStackLocation->Parameters.QueryInterface.Size,
                                             IoStackLocation->Parameters.QueryInterface.Interface,
                                             (PVOID)&Irp->IoStatus.Information);
                 break;
