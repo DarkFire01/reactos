@@ -1189,6 +1189,8 @@ HalpRegisterKdSupportFunctions(VOID)
 {
     /* Register PCI Device Functions */
     KdSetupPciDeviceForDebugging = HalpSetupPciDeviceForDebugging;
+    KdGetPciDataByOffset = HalpGetPciDataByOffset;
+    KdSetPciDataByOffset = HalpSetPciDataByOffset;
     KdReleasePciDeviceforDebugging = HalpReleasePciDeviceForDebugging;
 
     /* Register memory functions */
