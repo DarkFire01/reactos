@@ -1735,6 +1735,13 @@ HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache","AppCompa
 ; Unsecure objects names
 HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager\kernel","ObUnsecureGlobalNames",0x00010000,"netfxcustomerfcounters.1.0","SharedPerfIPCBlock","Cor_Private_IPCBlock","Cor_Public_IPCBlock_"
 
+; WDF UCX class extension. The USB 3 stack is not built yet, so nothing asks
+; wdfldr for this class today; the mapping is here so that enabling the stack
+; does not also need a hive change. The ucx01000 service key that would go with
+; it is deliberately absent - it is boot start, and a boot-start service whose
+; image is not on the media is a way to fail a boot rather than a no-op.
+HKLM,"System\CurrentControlSet\Control\Wdf\Kmdf\Ucx\Versions\1\1","Service",0x00000000,"ucx01000"
+
 ; WDF SPBCx class extension. This is how wdfldr turns the ClassName in a
 ; client's .kmdfclassbind descriptor into a driver to load: an I2C, SPI or UART
 ; controller driver names "SPBCx" 1.1 and lands on spbcx.sys.
