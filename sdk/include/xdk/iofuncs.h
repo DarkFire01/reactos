@@ -316,6 +316,14 @@ READ_REGISTER_ULONG(
 }
 
 FORCEINLINE
+ULONG64
+READ_REGISTER_ULONG64(
+  IN volatile ULONG64 *Register)
+{
+  return *Register;
+}
+
+FORCEINLINE
 USHORT
 READ_REGISTER_USHORT(
   IN volatile USHORT *Register)
@@ -432,6 +440,17 @@ VOID
 WRITE_REGISTER_ULONG(
   IN volatile ULONG *Register,
   IN ULONG Value)
+{
+  LONG Synch;
+  *Register = Value;
+  InterlockedOr(&Synch, 1);
+}
+
+FORCEINLINE
+VOID
+WRITE_REGISTER_ULONG64(
+  IN volatile ULONG64 *Register,
+  IN ULONG64 Value)
 {
   LONG Synch;
   *Register = Value;
