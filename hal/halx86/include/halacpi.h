@@ -27,6 +27,16 @@ HalpAcpiGetTable(
 /* The Fixed ACPI Description Table, parsed at phase 0 */
 extern FADT HalpFixedAcpiDescTable;
 
+/*
+ * Publishes this machine's PCIe MMCONFIG (ECAM) windows under the arbiters'
+ * ReservedResources key, so that the root memory arbiter boot-reserves them.
+ */
+VOID
+NTAPI
+HalpPublishMmConfigRanges(
+    VOID
+);
+
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI

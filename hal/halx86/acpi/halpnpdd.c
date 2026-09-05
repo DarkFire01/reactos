@@ -909,6 +909,9 @@ HaliInitPnpDriver(VOID)
     UNICODE_STRING DriverString;
     PAGED_CODE();
 
+    /* Publish this machine's PCIe MMCONFIG (ECAM) windows for the arbiters */
+    HalpPublishMmConfigRanges();
+
     /* Create the driver */
     RtlInitUnicodeString(&DriverString, L"\\Driver\\ACPI_HAL");
     Status = IoCreateDriver(&DriverString, HalpDriverEntry);
