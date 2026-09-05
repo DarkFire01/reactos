@@ -39,6 +39,12 @@ HaliGetInterruptTranslator(
     _Out_ PTRANSLATOR_INTERFACE Translator,
     _Out_ PULONG BridgeBusNumber);
 
+VOID
+NTAPI
+HalpPublishMmConfigRanges(
+    VOID
+);
+
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
