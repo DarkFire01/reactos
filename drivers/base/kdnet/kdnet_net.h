@@ -178,6 +178,10 @@ extern PDEBUG_NET_DATA      KdNetData;
 extern DEBUG_NET_DATA       KdNetDataStorage;
 extern DEBUG_NET_PARAMETERS KdNetParameters;
 
+/* Frames the transport put on and took off the wire */
+extern ULONG KdNetTxSuccessCount;
+extern ULONG KdNetRxSuccessCount;
+
 /* Byteswap an ethernet frame's headers between host and network order. */
 VOID KdNetSwapPacket(PETHERNET_PACKET Packet, BOOLEAN ToNetwork);
 
