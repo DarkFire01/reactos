@@ -474,54 +474,12 @@ typedef struct _SYSTEM_POWER_POLICY {
 #define POWER_USER_NOTIFY_SHUTDOWN        0x00000010
 #define POWER_FORCE_TRIGGER_RESET         0x80000000
 
-#define DISCHARGE_POLICY_CRITICAL         0
-#define DISCHARGE_POLICY_LOW              1
-#define NUM_DISCHARGE_POLICIES            4
-
+/* SYSTEM_POWER_POLICY.FanThrottleTolerance and .MinThrottle constants */
 #define PO_THROTTLE_NONE                  0
 #define PO_THROTTLE_CONSTANT              1
 #define PO_THROTTLE_DEGRADE               2
 #define PO_THROTTLE_ADAPTIVE              3
 #define PO_THROTTLE_MAXIMUM               4
-
-typedef struct _SYSTEM_POWER_LEVEL {
-  BOOLEAN Enable;
-  UCHAR Spare[3];
-  ULONG BatteryLevel;
-  POWER_ACTION_POLICY PowerPolicy;
-  SYSTEM_POWER_STATE MinSystemState;
-} SYSTEM_POWER_LEVEL, *PSYSTEM_POWER_LEVEL;
-
-typedef struct _SYSTEM_POWER_POLICY {
-  ULONG Revision;
-  POWER_ACTION_POLICY PowerButton;
-  POWER_ACTION_POLICY SleepButton;
-  POWER_ACTION_POLICY LidClose;
-  SYSTEM_POWER_STATE LidOpenWake;
-  ULONG Reserved;
-  POWER_ACTION_POLICY Idle;
-  ULONG IdleTimeout;
-  UCHAR IdleSensitivity;
-  UCHAR DynamicThrottle;
-  UCHAR Spare2[2];
-  SYSTEM_POWER_STATE MinSleep;
-  SYSTEM_POWER_STATE MaxSleep;
-  SYSTEM_POWER_STATE ReducedLatencySleep;
-  ULONG WinLogonFlags;
-  ULONG Spare3;
-  ULONG DozeS4Timeout;
-  ULONG BroadcastCapacityResolution;
-  SYSTEM_POWER_LEVEL DischargePolicy[NUM_DISCHARGE_POLICIES];
-  ULONG VideoTimeout;
-  BOOLEAN VideoDimDisplay;
-  ULONG VideoReserved[3];
-  ULONG SpindownTimeout;
-  BOOLEAN OptimizeForPower;
-  UCHAR FanThrottleTolerance;
-  UCHAR ForcedThrottle;
-  UCHAR MinThrottle;
-  POWER_ACTION_POLICY OverThrottled;
-} SYSTEM_POWER_POLICY, *PSYSTEM_POWER_POLICY;
 
 #ifdef __cplusplus
 }
