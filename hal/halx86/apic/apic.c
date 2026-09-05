@@ -37,6 +37,11 @@ ULONG ApicVersion;
  * HalpSetVectorState, and are the only authority on what is allocated.  A
  * redirection register is never read back to answer that question - see
  * HalpIrqToVector.  Both are APIC_FREE_VECTOR-filled in ApicInitializeIOApic.
+ *
+ * They record what is CONNECTED, not what has been translated.  Translating an
+ * input to a vector leaves them alone, so that the arbiter can ask about a line
+ * as often as it likes without consuming one - HalEnableSystemInterrupt is the
+ * only place a binding is made.
  */
 UCHAR HalpVectorToIndex[256];
 UCHAR HalpGsivToVector[256];
@@ -537,14 +542,13 @@ HalpGetRootInterruptVector(
     _Out_ PKAFFINITY OutAffinity)
 {
     UCHAR Vector;
-    KIRQL Irql;
 
     /* No I/O APIC serves this input */
     if (BusInterruptLevel >= HalpMaxGsi)
     {
         /* Not an error path.  The ACPI root PDO advertises the whole block
-         * of device IDT vectors it owns on an APIC HAL (halacpi.c:
-         * HALP_DEVICE_VECTOR_FIRST 0x51, HALP_DEVICE_VECTOR_COUNT 110),
+         * of device IDT vectors it owns on an APIC HAL (HALP_DEVICE_VECTOR_FIRST
+         * and HALP_DEVICE_VECTOR_COUNT),
          * and IopTranslateDeviceResources runs every one of them through
          * HalGetInterruptVector precisely to learn that they are already
          * system vectors rather than bus lines - it takes the 0 return as
@@ -556,60 +560,53 @@ HalpGetRootInterruptVector(
         return 0;
     }
 
-    /* Get the vector currently registered */
-    Vector = HalpIrqToVector(BusInterruptLevel);
-
     /*
-     * A non-free answer now means WE allocated it: HalpIrqToVector reads the
-     * software record, and both halves of that record are only ever written
-     * together, so HalpVectorToIndex[Vector] == BusInterruptLevel holds by
-     * construction.  Anything the firmware or another agent left in a
-     * redirection register is invisible here, which is the point - a vector
-     * this HAL never handed out must never be returned, or the caller's
-     * IoConnectInterrupt -> HalEnableSystemInterrupt fails it as "not in use".
-     *
-     * Shared lines land here too: the second device on a PCI INTx line gets
-     * back the SAME vector as the first, which is what sharing requires.
+     * An input that already carries a vector keeps it. That covers the lines
+     * this HAL binds for itself, and every device that joins a PCI INTx line
+     * something is already connected to: sharing requires the second device to
+     * be handed the same vector as the first.
      */
-    if (Vector != APIC_FREE_VECTOR)
+    Vector = HalpIrqToVector((UCHAR)BusInterruptLevel);
+    if (Vector == APIC_FREE_VECTOR)
     {
-        NT_ASSERT(HalpVectorToIndex[Vector] == BusInterruptLevel);
-
-        /* Calculate IRQL */
-        *OutIrql = HalpVectorToIrql(Vector);
-    }
-    else
-    {
-        ULONG Offset;
-
-        /* Outer loop to find alternative slots, when all IRQLs are in use */
-        for (Offset = 0; Offset < 15; Offset++)
+        /*
+         * Nothing is bound to it yet, so answer from the fixed band instead.
+         *
+         * This must not allocate. Translation is a question the resource
+         * arbiter asks speculatively, once per candidate line while it is
+         * still deciding what to assign, so the answer has to stay a pure
+         * function of the input. An allocating translator burns a vector per
+         * question and leaves the eventual owner of the line holding a
+         * redirection entry that is already spoken for. Committing to a line
+         * is what HalEnableSystemInterrupt is for, and that is where the
+         * binding is made.
+         *
+         * The band holds one vector per input, so biasing the input keeps two
+         * inputs off one vector without recording anything - the same scheme
+         * the 8259 HAL uses in its own HalpIrqToVector.
+         */
+        if (BusInterruptLevel >= HALP_DEVICE_VECTOR_COUNT)
         {
-            /* Loop allowed IRQL range */
-            for (Irql = CLOCK_LEVEL - 1; Irql >= CMCI_LEVEL; Irql--)
-            {
-                /* Calculate the vactor */
-                Vector = IrqlToTpr(Irql) + Offset;
-
-                /* Check if the vector is free */
-                if (HalpVectorToIrq(Vector) == APIC_FREE_VECTOR)
-                {
-                    /* Found one, allocate the interrupt */
-                    Vector = HalpAllocateSystemInterrupt(BusInterruptLevel, Vector);
-                    *OutIrql = Irql;
-                    goto Exit;
-                }
-            }
+            DPRINT1("No device vector for interrupt input %lu\n", BusInterruptLevel);
+            *OutAffinity = 0;
+            *OutIrql = 0;
+            return 0;
         }
 
-        DPRINT1("Failed to get an interrupt vector for IRQ %lu\n", BusInterruptLevel);
-        *OutAffinity = 0;
-        *OutIrql = 0;
-        return 0;
+        Vector = (UCHAR)(HALP_DEVICE_VECTOR_FIRST + BusInterruptLevel);
+
+        /* Nothing outside the band's own scheme may hold one of its vectors */
+        if (HalpVectorToIndex[Vector] != APIC_FREE_VECTOR)
+        {
+            DPRINT1("Device vector 0x%x for input %lu is held by input %u\n",
+                    Vector, BusInterruptLevel, HalpVectorToIndex[Vector]);
+            *OutAffinity = 0;
+            *OutIrql = 0;
+            return 0;
+        }
     }
 
-Exit:
-
+    *OutIrql = HalpVectorToIrql(Vector);
     *OutAffinity = HalpDefaultInterruptAffinity;
     ASSERT(HalpDefaultInterruptAffinity);
 
@@ -1047,11 +1044,32 @@ HalEnableSystemInterrupt(
         }
         if (Kind == HalpVectorInputUnknown)
         {
-            /* Interrupt is not in use, or not routed through the I/O APIC */
-            DPRINT1("HalEnableSystemInterrupt: vector 0x%lx irql %u - no input "
-                    "(HalpVectorToIndex=%u, HalpMaxGsi=%lu)\n",
-                    Vector, Irql, Index, HalpMaxGsi);
-            return FALSE;
+            /*
+             * No owner claims it, so it can only be one this HAL translated
+             * itself, and HalpGetRootInterruptVector answers those straight
+             * out of the device vector band. Invert that. The owner is asked
+             * first because its assignment is authoritative: it routes lines
+             * from the firmware tables and its vectors carry no relation to
+             * the input they serve.
+             */
+            if ((Vector < HALP_DEVICE_VECTOR_FIRST) ||
+                (Vector >= HALP_DEVICE_VECTOR_FIRST + HALP_DEVICE_VECTOR_COUNT))
+            {
+                /* Interrupt is not in use, or not routed through the I/O APIC */
+                DPRINT1("HalEnableSystemInterrupt: vector 0x%lx irql %u - no input "
+                        "(HalpVectorToIndex=%u, HalpMaxGsi=%lu)\n",
+                        Vector, Irql, Index, HalpMaxGsi);
+                return FALSE;
+            }
+
+            Input = Vector - HALP_DEVICE_VECTOR_FIRST;
+            if (Input >= HalpMaxGsi)
+            {
+                DPRINT1("HalEnableSystemInterrupt: vector 0x%lx maps to input %lu, "
+                        "past the %lu this machine has\n",
+                        Vector, Input, HalpMaxGsi);
+                return FALSE;
+            }
         }
 
         /*
