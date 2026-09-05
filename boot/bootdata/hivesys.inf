@@ -1759,12 +1759,19 @@ HKLM,"SYSTEM\CurrentControlSet\Services\swenum","ImagePath",0x00020000,"system32
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","Type",0x00010001,0x00000001
 
-; ACPI Resource Hub. Demand start: acpi loads it by service name the first time
-; it needs to publish a connection, exactly as the real acpi.sys ZwLoadDriver's
-; the acpiex service before opening \Device\RESOURCE_HUB.
+; ACPI Resource Hub. Boot start, in the Boot Bus Extender group, which is what
+; Windows uses: acpi.sys wants the hub while it is starting its own FDO, long
+; before there is a filesystem to load a driver image from, so the loader has to
+; have brought it in already. The ZwLoadDriver call in acpi.sys is the
+; already-running fallback, not the normal path.
+;
+; ErrorControl is 1 rather than the 3 Windows uses. A critical driver that fails
+; to load takes the boot down with it, and this one is new enough here that a
+; failure should leave a diagnosable machine.
 HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Group",0x00000000,"Boot Bus Extender"
 HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","ImagePath",0x00020000,"system32\drivers\acpiex.sys"
-HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Type",0x00010001,0x00000001
 
 ; SPB class extension. Demand start: wdfldr loads it when an I2C, SPI or UART
