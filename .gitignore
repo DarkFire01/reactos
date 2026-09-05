@@ -14,3 +14,6 @@ modules/[Aa][Hh][Kk]_[Tt]ests
 .vs
 .vscode
 sdk/tools/winesync/winesync.cfg
+
+# Local import from the Arbiter-AllTogether branch; built here but not pushed
+/drivers/bus/acpi_new/
