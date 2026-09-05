@@ -2839,15 +2839,19 @@ IopTranslateDeviceResources(
    return STATUS_SUCCESS;
 
 cleanup:
-   /* Yes! Also delete ResourceList because ResourceList and
-    * ResourceListTranslated should be a pair! */
-   ExFreePool(DeviceNode->ResourceList);
-   DeviceNode->ResourceList = NULL;
-   if (DeviceNode->ResourceListTranslated)
+   /* The raw and translated lists are a pair, so neither outlives the other */
+   if (DeviceNode->ResourceList != NULL)
    {
-      ExFreePool(DeviceNode->ResourceListTranslated);
+      ExFreePool(DeviceNode->ResourceList);
       DeviceNode->ResourceList = NULL;
    }
+
+   if (DeviceNode->ResourceListTranslated != NULL)
+   {
+      ExFreePool(DeviceNode->ResourceListTranslated);
+      DeviceNode->ResourceListTranslated = NULL;
+   }
+
    return Status;
 }
 
