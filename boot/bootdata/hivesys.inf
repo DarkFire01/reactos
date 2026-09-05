@@ -1742,6 +1742,11 @@ HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager\kernel","ObUnsecureGlobal
 ; image is not on the media is a way to fail a boot rather than a no-op.
 HKLM,"System\CurrentControlSet\Control\Wdf\Kmdf\Ucx\Versions\1\1","Service",0x00000000,"ucx01000"
 
+; WDF GPIOClx class extension. A GPIO controller driver names "GPIOClx" 1.1 in
+; its .kmdfclassbind descriptor and lands here. The casing matters: it is what
+; the reference client carries and how Windows spells the key.
+HKLM,"System\CurrentControlSet\Control\Wdf\Kmdf\GPIOClx\Versions\1\1","Service",0x00000000,"gpioclx"
+
 ; WDF SPBCx class extension. This is how wdfldr turns the ClassName in a
 ; client's .kmdfclassbind descriptor into a driver to load: an I2C, SPI or UART
 ; controller driver names "SPBCx" 1.1 and lands on spbcx.sys.
@@ -1773,6 +1778,16 @@ HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Group",0x00000000,"Boot Bus Ext
 HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","ImagePath",0x00020000,"system32\drivers\acpiex.sys"
 HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Type",0x00010001,0x00000001
+
+; GPIO class extension. Demand start: wdfldr loads it when a GPIO controller
+; driver binds to the class at load time. Windows registers the same driver as
+; "GPIOClx0101" in the System Bus Extender group; the name here follows the
+; spbcx one instead, since nothing outside the class key refers to it.
+HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","Group",0x00000000,"System Bus Extender"
+HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","ImagePath",0x00020000,"system32\drivers\gpioclx.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\gpioclx","Type",0x00010001,0x00000001
 
 ; SPB class extension. Demand start: wdfldr loads it when an I2C, SPI or UART
 ; controller driver binds to the SpbCx class at load time.
