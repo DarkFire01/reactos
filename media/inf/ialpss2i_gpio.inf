@@ -1,0 +1,75 @@
+; IALPSS2I_GPIO.INF
+;
+; Intel LPSS gen-2 GPIO controller.
+;
+; These four ids, and only these four, are the parts whose pad geometry this
+; driver carries. iaLPSS2i_GPIO2_CNL.sys -- the binary it was reconstructed
+; from -- keeps one C++ layout class per part and picks between them on the
+; enumerated _HID; what was decoded here is _GPIO_CONTROLLER_SKL_LP, which
+; serves layout indices 1 and 3:
+;
+;   ACPI\INT344B  index 1   Skylake-LP      _GPIO_CONTROLLER_SKL_LP
+;   ACPI\INT345D  index 3   Kaby Lake-LP    _GPIO_CONTROLLER_SKL_LP
+;   ACPI\INT3451  index 7   Skylake-H       _GPIO_CONTROLLER_SKL_H
+;   ACPI\INT34BB  index 5   Comet Lake-LP   _GPIO_CONTROLLER_CNL_LP
+;
+; Every other id that binary binds needs a layout this driver does not have,
+; so none of them is listed:
+;
+;   ACPI\INT3450  index 10  Cannon Lake-H   _GPIO_CONTROLLER_CNL_H
+;   ACPI\INT3452, INT3453, INT3455, INT34C3..INT34C5, INT34D1, INT3456
+;
+; Community count, group count and pad offsets all differ per layout, so
+; binding an id here before its table exists would write the wrong pads on
+; real hardware -- add each id alongside its own layout. The driver refuses to
+; start on an id it has no table for rather than borrow a neighbour's.
+;
+; The controller is an ACPI device, not a PCI function: it is described in the
+; namespace under the PCI root and enumerated by acpi.sys, so a machine that
+; hides it behind a firmware _STA will show nothing here at all.
+
+[Version]
+Signature  = "$Windows NT$"
+LayoutFile = layout.inf
+Class      = System
+ClassGUID  = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider   = %ReactOS%
+DriverVer  = 09/05/2026,1.00
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%Intel% = Intel
+
+[Intel]
+%iaLPSS2i_GPIO.DeviceDesc_SKL%  = iaLPSS2i_GPIO_Device, ACPI\INT344B
+%iaLPSS2i_GPIO.DeviceDesc_KBL%  = iaLPSS2i_GPIO_Device, ACPI\INT345D
+%iaLPSS2i_GPIO.DeviceDesc_SKLH% = iaLPSS2i_GPIO_Device, ACPI\INT3451
+%iaLPSS2i_GPIO.DeviceDesc_CML%  = iaLPSS2i_GPIO_Device, ACPI\INT34BB
+
+[iaLPSS2i_GPIO_Device.NT]
+CopyFiles = iaLPSS2i_GPIO_Device.CopyFiles
+
+[iaLPSS2i_GPIO_Device.CopyFiles]
+ialpss2i_gpio.sys
+
+[iaLPSS2i_GPIO_Device.NT.Services]
+AddService = ialpss2i_gpio, 0x00000002, iaLPSS2i_GPIO_Service
+
+[iaLPSS2i_GPIO_Service]
+DisplayName    = %iaLPSS2i_GPIO.SvcDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\ialpss2i_gpio.sys
+LoadOrderGroup = Extended Base
+
+[Strings]
+ReactOS = "ReactOS Team"
+Intel = "Intel"
+iaLPSS2i_GPIO.DeviceDesc_SKL  = "Intel(R) Serial IO GPIO Host Controller - INT344B"
+iaLPSS2i_GPIO.DeviceDesc_KBL  = "Intel(R) Serial IO GPIO Host Controller - INT345D"
+iaLPSS2i_GPIO.DeviceDesc_SKLH = "Intel(R) Serial IO GPIO Host Controller - INT3451"
+iaLPSS2i_GPIO.DeviceDesc_CML  = "Intel(R) Serial IO GPIO Host Controller - INT34BB"
+iaLPSS2i_GPIO.SvcDesc = "Intel(R) Serial IO GPIO Driver"
