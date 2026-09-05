@@ -160,7 +160,7 @@ KdReceivePacket(
         {
             /* Non-blocking break-in poll. A host-initiated break (windbg's
              * Break/Pause) arrives as a short packet whose first decrypted byte
-             * is the break-in byte (0x62) — NetReadKdPacket copies it into
+             * is the break-in byte (0x62). NetReadKdPacket copies it into
              * PacketHeader and returns the short/error code, so check the byte
              * regardless of rc. On a real timeout PacketHeader is zeroed (so it
              * isn't 0x62) and we keep the target running. */

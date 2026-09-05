@@ -23,6 +23,9 @@ extern PVOID KdNetHardwareContext;
 
 extern PKDNET_EXTENSIBILITY_EXPORTS KdNetExtensibilityExports;
 
+/* How many times the controller has been brought up, reported at phase 1 */
+extern ULONG KdNetInitializeCount;
+
 typedef NTSTATUS
 (NTAPI *PKDNET_INITIALIZE_LIBRARY)(
     _In_ PKDNET_EXTENSIBILITY_IMPORTS ImportTable,
