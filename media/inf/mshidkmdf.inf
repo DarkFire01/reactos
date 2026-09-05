@@ -1,0 +1,46 @@
+; MSHIDKMDF.INF
+;
+; The pass-through shim that lets a KMDF driver be a WDM HID minidriver.
+;
+; Ported from Microsoft's MsHidKmdf.inf, which binds no hardware of its own:
+; it exists so that a HID miniport's INF can pull the service in. The
+; reference does that with Include/Needs against the sections below, and they
+; are kept here for any INF written that way.
+;
+; ReactOS's setupapi does not implement the AddFilter directive the reference
+; uses to place the shim, so an INF in this tree writes the filter itself with
+; the classic LowerFilters AddReg -- see hidi2c.inf. The service install below
+; is the part that is genuinely shared.
+
+[Version]
+Signature  = "$Windows NT$"
+LayoutFile = layout.inf
+Class      = System
+ClassGUID  = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider   = %ReactOS%
+DriverVer  = 09/05/2026,1.00
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[MsHidKmdf.NT]
+CopyFiles = MsHidKmdf.CopyFiles
+
+[MsHidKmdf.CopyFiles]
+mshidkmdf.sys
+
+[MsHidKmdf.NT.HW]
+
+[MsHidKmdf.NT.Services]
+AddService = mshidkmdf, 0x00000002, MsHidKmdf_ServiceInstall
+
+[MsHidKmdf_ServiceInstall]
+DisplayName   = %mshidkmdf.SvcName%
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %12%\mshidkmdf.sys
+
+[Strings]
+ReactOS = "ReactOS Team"
+mshidkmdf.SvcName = "Pass-through HID to KMDF Filter Driver"

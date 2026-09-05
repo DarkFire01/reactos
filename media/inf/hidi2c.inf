@@ -1,0 +1,74 @@
+; HIDI2C.INF
+;
+; HID over I2C (HID Protocol over I2C, the PNP0C50 device).
+;
+; A HID-over-I2C peripheral is an ACPI device carrying an I2cSerialBus
+; connection resource and, usually, a GpioInt for its interrupt. The spec
+; gives every one of them the same compatible id, so one entry covers the lot
+; and the vendor id above it is never matched here.
+;
+; The stack this builds is hidclass over mshidkmdf over this driver: hidi2c is
+; a KMDF driver, and mshidkmdf is the shim that presents it to the WDM hidclass
+; as a minidriver. That shim has to sit below hidclass on the same stack, which
+; is what the LowerFilters value does -- the reference reaches the same place
+; with an AddFilter directive that ReactOS's setupapi does not implement.
+;
+; Starting also needs the resource hub (acpiex.sys) up, since the I2cSerialBus
+; resource reaches this driver as a connection id that only the hub can turn
+; back into the controller that owns it.
+
+[Version]
+Signature  = "$Windows NT$"
+LayoutFile = layout.inf
+Class      = HIDClass
+ClassGUID  = {745A17A0-74D3-11D0-B6FE-00A0C90F57DA}
+Provider   = %ReactOS%
+DriverVer  = 09/05/2026,1.00
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%Generic% = Generic
+
+[Generic]
+%HidI2c.DeviceDesc% = HidI2c_Inst, ACPI\PNP0C50
+%HidI2c.DeviceDesc% = HidI2c_Inst, *PNP0C50
+
+[HidI2c_Inst.NT]
+CopyFiles = HidI2c_Inst.CopyFiles
+
+[HidI2c_Inst.CopyFiles]
+hidi2c.sys
+mshidkmdf.sys
+
+[HidI2c_Inst.NT.HW]
+AddReg = HidI2c_Inst.AddReg.NT
+
+[HidI2c_Inst.AddReg.NT]
+HKR,, LowerFilters, 0x00010000, "mshidkmdf"
+
+[HidI2c_Inst.NT.Services]
+AddService = hidi2c, 0x00000002, HidI2c_Service
+AddService = mshidkmdf,, MsHidKmdf_Service
+
+[HidI2c_Service]
+DisplayName   = %HidI2c.SvcDesc%
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %12%\hidi2c.sys
+
+[MsHidKmdf_Service]
+DisplayName   = %MsHidKmdf.SvcDesc%
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %12%\mshidkmdf.sys
+
+[Strings]
+ReactOS = "ReactOS Team"
+Generic = "Generic"
+HidI2c.DeviceDesc = "I2C HID Device"
+HidI2c.SvcDesc = "HID over I2C Miniport Driver"
+MsHidKmdf.SvcDesc = "Pass-through HID to KMDF Filter Driver"
