@@ -13,6 +13,10 @@
 #include <initguid.h>
 #include <wdmguid.h>
 
+#ifdef HAL_PIR_EXTENSIONS
+#include "pciirq/pciirq.h"
+#endif
+
 
 #define NDEBUG
 #include <debug.h>
@@ -252,13 +256,33 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
     UNREFERENCED_PARAMETER(Version);
 
     /*
-     * The root FDO offers no interface of its own. On Windows it publishes the
-     * PCI interrupt arbiter here, driven by the legacy $PIR routing engine,
-     * which this tree does not have yet.
+     * The PCI interrupt arbiter is published on the root FDO, not on a PDO. The
+     * PnP manager queries it for CmResourceTypeInterrupt while arbitrating the
+     * interrupts of the PCI devices enumerated beneath us, and it is driven by
+     * the legacy $PIR routing engine, so it is only offered once that engine is
+     * up. Without the engine the root FDO has no interface of its own.
      */
     if (((PFDO_EXTENSION)DeviceObject->DeviceExtension)->ExtensionType == FdoExtensionType)
     {
+#if defined(HAL_PIR_EXTENSIONS) && !defined(SARCH_XBOX) && !defined(SARCH_PC98)
+        NTSTATUS Status;
+
+        if (((CM_RESOURCE_TYPE)(ULONG_PTR)InterfaceSpecificData != CmResourceTypeInterrupt) ||
+            !HalpPirEnabled() ||
+            !IsEqualIID(InterfaceType, &GUID_ARBITER_INTERFACE_STANDARD))
+        {
+            return STATUS_NOT_SUPPORTED;
+        }
+
+        Status = HalpPirCreateArbiter(DeviceObject);
+        if (NT_SUCCESS(Status))
+        {
+            Status = HalpPirQueryArbiterInterface(Interface, InterfaceBufferSize, Length);
+        }
+        return Status;
+#else
         return STATUS_NOT_SUPPORTED;
+#endif
     }
 
     if (IsEqualIID(InterfaceType, &GUID_BUS_INTERFACE_STANDARD))
@@ -1015,7 +1039,16 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
         {
             case IRP_MN_START_DEVICE:
 
+                /*
+                 * The PCI bus driver is now running on top of this root PDO,
+                 * which is the point at which its interrupt-routing interface
+                 * can be obtained and legacy PCI IRQ routing brought up. It is
+                 * a no-op when the driver offers no such interface.
+                 */
                 DPRINT("Start device received\n");
+#if defined(HAL_PIR_EXTENSIONS) && !defined(SARCH_XBOX) && !defined(SARCH_PC98)
+                HalpPirActivate(DeviceObject);
+#endif
                 break;
 
             case IRP_MN_REMOVE_DEVICE:
