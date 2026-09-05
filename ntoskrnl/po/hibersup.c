@@ -70,7 +70,7 @@ PoSetHiberRange(
     _In_ PVOID HiberContext,
     _In_ ULONG Flags,
     _In_ PVOID StartPage,
-    _In_ ULONG Length,
+    _In_ ULONG_PTR Length,
     _In_ ULONG PageTag)
 {
     PPOP_HIBER_CONTEXT Context;

@@ -794,4 +794,84 @@ PoFxReportDevicePoweredOn(
     KeSetEvent(&FxDevice->IrpCompleteEvent, IO_NO_INCREMENT, FALSE);
 }
 
+/**
+ * @brief
+ * Tells the power manager that a device came back under power without the
+ * usual sequence, so whatever state was recorded for it is no longer true.
+ *
+ * @param[in] Pdo
+ * The device that was powered on.
+ *
+ * @unimplemented
+ * ReactOS tracks no surprise power-on state to invalidate yet.
+ */
+VOID
+NTAPI
+PoFxNotifySurprisePowerOn(
+    _In_ PDEVICE_OBJECT Pdo)
+{
+    UNREFERENCED_PARAMETER(Pdo);
+}
+
+/**
+ * @brief
+ * Relays a power control request to the platform extension that registered
+ * the device.
+ *
+ * @param[in] Handle
+ * The registration the request is for.
+ *
+ * @param[in] PowerControlCode
+ * What is being asked. The code and both buffers are private between the
+ * driver and its platform extension, so nothing here reads them.
+ *
+ * @param[in] InBuffer
+ * The request, or NULL.
+ *
+ * @param[in] InBufferSize
+ * Its length.
+ *
+ * @param[out] OutBuffer
+ * Where the answer goes, or NULL.
+ *
+ * @param[in] OutBufferSize
+ * Its length.
+ *
+ * @param[out] BytesReturned
+ * How much of the answer was written.
+ *
+ * @return
+ * STATUS_NOT_SUPPORTED.
+ *
+ * @unimplemented
+ * There is no platform extension to relay to: ReactOS has no PEP support, so
+ * a caller is told the control code went unrecognized rather than being led
+ * to believe its request was acted on.
+ */
+NTSTATUS
+NTAPI
+PoFxPowerControl(
+    _In_ POHANDLE Handle,
+    _In_ LPCGUID PowerControlCode,
+    _In_reads_bytes_opt_(InBufferSize) PVOID InBuffer,
+    _In_ SIZE_T InBufferSize,
+    _Out_writes_bytes_opt_(OutBufferSize) PVOID OutBuffer,
+    _In_ SIZE_T OutBufferSize,
+    _Out_opt_ PSIZE_T BytesReturned)
+{
+    UNREFERENCED_PARAMETER(Handle);
+    UNREFERENCED_PARAMETER(PowerControlCode);
+    UNREFERENCED_PARAMETER(InBuffer);
+    UNREFERENCED_PARAMETER(InBufferSize);
+    UNREFERENCED_PARAMETER(OutBuffer);
+    UNREFERENCED_PARAMETER(OutBufferSize);
+
+    if (BytesReturned != NULL)
+    {
+        *BytesReturned = 0;
+    }
+
+    return STATUS_NOT_SUPPORTED;
+}
+
 /* EOF */
