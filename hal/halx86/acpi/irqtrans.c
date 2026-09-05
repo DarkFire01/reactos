@@ -369,7 +369,148 @@ HalpIsaTranslatorReference(
     UNREFERENCED_PARAMETER(Context);
 }
 
+/* Maps a line of the PIC HAL to its vector, or a vector back to its line */
+static
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+HalpTranslatePicLine(
+    _Inout_opt_ PVOID Context,
+    _In_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Source,
+    _In_ RESOURCE_TRANSLATION_DIRECTION Direction,
+    _In_opt_ ULONG AlternativesCount,
+    _In_reads_opt_(AlternativesCount) IO_RESOURCE_DESCRIPTOR Alternatives[],
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _Out_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Target)
+{
+    KAFFINITY Affinity;
+    KIRQL Irql;
+    ULONG Vector;
+    UCHAR Line;
+
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(AlternativesCount);
+    UNREFERENCED_PARAMETER(Alternatives);
+    UNREFERENCED_PARAMETER(PhysicalDeviceObject);
+
+    PAGED_CODE();
+
+    *Target = *Source;
+
+    if (Direction == TranslateChildToParent)
+    {
+        Vector = HalpGetRootInterruptVector(Source->u.Interrupt.Level,
+                                            Source->u.Interrupt.Vector,
+                                            &Irql,
+                                            &Affinity);
+        if (Vector == 0)
+            return STATUS_UNSUCCESSFUL;
+
+        Target->u.Interrupt.Level = Irql;
+        Target->u.Interrupt.Vector = Vector;
+        Target->u.Interrupt.Affinity = Affinity;
+        return STATUS_TRANSLATION_COMPLETE;
+    }
+
+    if (Direction == TranslateParentToChild)
+    {
+        if (Source->u.Interrupt.Vector > MAXUCHAR)
+            return STATUS_UNSUCCESSFUL;
+
+        Line = HalpVectorToIrq((UCHAR)Source->u.Interrupt.Vector);
+        if (Line >= HALP_ISA_IRQ_COUNT)
+            return STATUS_UNSUCCESSFUL;
+
+        Target->u.Interrupt.Level = Line;
+        Target->u.Interrupt.Vector = Line;
+        Target->u.Interrupt.Affinity = (KAFFINITY)-1;
+        return STATUS_SUCCESS;
+    }
+
+    return STATUS_INVALID_PARAMETER;
+}
+
+static
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+HalpTranslatePicLineRequirement(
+    _Inout_opt_ PVOID Context,
+    _In_ PIO_RESOURCE_DESCRIPTOR Source,
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _Out_ PULONG TargetCount,
+    _Out_ PIO_RESOURCE_DESCRIPTOR *Target)
+{
+    PIO_RESOURCE_DESCRIPTOR Output;
+    KAFFINITY Affinity;
+    KIRQL Irql;
+    ULONG First, Last;
+
+    UNREFERENCED_PARAMETER(Context);
+    UNREFERENCED_PARAMETER(PhysicalDeviceObject);
+
+    PAGED_CODE();
+
+    *TargetCount = 0;
+    *Target = NULL;
+
+    First = HalpGetRootInterruptVector(Source->u.Interrupt.MinimumVector,
+                                       Source->u.Interrupt.MinimumVector,
+                                       &Irql,
+                                       &Affinity);
+    Last = HalpGetRootInterruptVector(Source->u.Interrupt.MaximumVector,
+                                      Source->u.Interrupt.MaximumVector,
+                                      &Irql,
+                                      &Affinity);
+    if ((First == 0) || (Last == 0))
+        return STATUS_UNSUCCESSFUL;
+
+    Output = ExAllocatePoolWithTag(PagedPool, sizeof(*Output), TAG_HAL);
+    if (Output == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    *Output = *Source;
+    Output->u.Interrupt.MinimumVector = First;
+    Output->u.Interrupt.MaximumVector = Last;
+
+    *TargetCount = 1;
+    *Target = Output;
+    return STATUS_TRANSLATION_COMPLETE;
+}
+
 /* PUBLIC FUNCTIONS ***********************************************************/
+
+/**
+ * @brief
+ * Returns the interrupt translator of the HAL bus devices on the PIC HAL,
+ * which turns the SCI line into its vector.
+ */
+CODE_SEG("PAGE")
+NTSTATUS
+NTAPI
+HalpQueryPicLineTranslator(
+    _Out_writes_bytes_(Size) PVOID Interface,
+    _In_ ULONG Size,
+    _Out_ PULONG Length)
+{
+    PTRANSLATOR_INTERFACE Translator = Interface;
+
+    PAGED_CODE();
+
+    *Length = sizeof(TRANSLATOR_INTERFACE);
+    if (Size < sizeof(TRANSLATOR_INTERFACE))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    RtlZeroMemory(Translator, sizeof(TRANSLATOR_INTERFACE));
+    Translator->Size = sizeof(TRANSLATOR_INTERFACE);
+    Translator->Version = HAL_IRQ_TRANSLATOR_VERSION;
+    Translator->InterfaceReference = HalpIsaTranslatorReference;
+    Translator->InterfaceDereference = HalpIsaTranslatorReference;
+    Translator->TranslateResources = HalpTranslatePicLine;
+    Translator->TranslateResourceRequirements = HalpTranslatePicLineRequirement;
+
+    return STATUS_SUCCESS;
+}
 
 /**
  * @brief
