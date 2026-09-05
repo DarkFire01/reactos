@@ -49,6 +49,17 @@ HKR, , Icon,           0, "-27"
 %*PNP0C0E.DeviceDesc% = NO_DRV,*PNP0C0E
 %*PNP0C0F.DeviceDesc% = NO_DRV,*PNP0C0F
 %*PNP0C15.DeviceDesc% = NO_DRV,*PNP0C15
+%*PNP0C09.DeviceDesc% = NO_DRV,*PNP0C09
+%*PNP0C31.DeviceDesc% = NO_DRV,*PNP0C31
+%*PNP0C33.DeviceDesc% = NO_DRV,*PNP0C33
+%ACPI\ACPI0004.DeviceDesc% = NO_DRV,ACPI\ACPI0004
+%ACPI\ACPI0005.DeviceDesc% = NO_DRV,ACPI\ACPI0005
+%ACPI\ACPI0007.DeviceDesc% = NO_DRV,ACPI\ACPI0007
+%ACPI\ACPI000C.DeviceDesc% = NO_DRV,ACPI\ACPI000C
+%ACPI\ACPI000E.DeviceDesc% = NO_DRV,ACPI\ACPI000E
+%ACPI\ACPI0010.DeviceDesc% = NO_DRV,ACPI\ACPI0010
+%ACPI\Processor.DeviceDesc% = NO_DRV,ACPI\Processor
+%ACPI\MSFT0101.DeviceDesc% = NO_DRV,ACPI\MSFT0101
 
 %SWENUM.DeviceDesc%   = SWENUM_Inst, ROOT\SWENUM
 %ACPI\FixedButton.DeviceDesc% = NO_DRV,ACPI\FixedButton
@@ -165,6 +176,23 @@ LoadOrderGroup = Boot Bus Extender
 [Strings]
 ; Non-localizable
 ReactOS = "ReactOS Project"
+
+; Standard ACPI devices. Every id here is one the ACPI specification or the
+; PnP id registry assigns, and the text is the name it assigns with it -
+; nothing is named from guesswork. None of them needs a driver in this tree;
+; the entries exist so the devices are identified rather than sitting in
+; Device Manager as unknown.
+*PNP0C09.DeviceDesc = "ACPI Embedded Controller"
+*PNP0C31.DeviceDesc = "Trusted Platform Module 1.2"
+*PNP0C33.DeviceDesc = "ACPI Error Device"
+ACPI\ACPI0004.DeviceDesc = "ACPI Module Device"
+ACPI\ACPI0005.DeviceDesc = "SMBus 1.0 Host Controller"
+ACPI\ACPI0007.DeviceDesc = "ACPI Processor"
+ACPI\ACPI000C.DeviceDesc = "ACPI Processor Aggregator"
+ACPI\ACPI000E.DeviceDesc = "ACPI Time and Alarm Device"
+ACPI\ACPI0010.DeviceDesc = "ACPI Processor Container"
+ACPI\Processor.DeviceDesc = "ACPI Processor"
+ACPI\MSFT0101.DeviceDesc = "Trusted Platform Module 2.0"
 
 IntelMfg = "Intel"
 NecMfg = "NEC"
