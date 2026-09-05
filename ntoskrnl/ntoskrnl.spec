@@ -951,7 +951,7 @@
 @ stdcall PoRegisterSystemState(ptr long)
 @ stdcall PoRequestPowerIrp(ptr long long ptr ptr ptr)
 @ stdcall PoRequestShutdownEvent(ptr)
-@ stdcall PoSetHiberRange(ptr long ptr long long)
+@ stdcall PoSetHiberRange(ptr long ptr ptr long)
 @ stdcall PoSetPowerState(ptr long long)
 @ stdcall PoSetSystemState(long)
 @ stdcall PoShutdownBugCheck(long long ptr ptr ptr ptr)
