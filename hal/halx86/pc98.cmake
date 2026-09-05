@@ -17,6 +17,7 @@ list(APPEND HAL_PC98_SOURCE
     generic/kdpci.c
     generic/memory.c
     generic/misc.c
+    generic/secint.c
     generic/nmi.c
     generic/portio.c
     generic/sysinfo.c

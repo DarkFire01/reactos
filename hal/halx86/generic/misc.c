@@ -25,21 +25,6 @@
  */
 HALP_APIC_INFO_TABLE HalpApicInfoTable;
 
-/*
- * Secondary interrupts are not lines on the primary controller. They stand for
- * a pin that a secondary controller (a GPIO controller, say) demultiplexes out
- * of one of its own inputs, so nothing programs an I/O APIC redirection entry
- * for one and the number only has to be unique.
- *
- * The base sits far above any GSI a platform can describe - an I/O APIC tops
- * out well below this, and the 8259 at sixteen - so the two number spaces
- * cannot collide.
- */
-#define HALP_SECONDARY_GSIV_BASE    0x1000
-#define HALP_SECONDARY_GSIV_LIMIT   0x2000
-
-static volatile LONG HalpNextSecondaryGsiv = HALP_SECONDARY_GSIV_BASE;
-
 UCHAR HalpSerialLen;
 CHAR HalpSerialNumber[31];
 
@@ -324,44 +309,4 @@ KeReleaseSpinLock(PKSPIN_LOCK SpinLock,
 
 #endif /* _M_IX86 */
 
-/**
- * @brief
- * Mints a GSIV for an interrupt that a secondary controller demultiplexes.
- *
- * The caller is whoever knows a firmware descriptor names a pin rather than a
- * line: on this system the ACPI driver, on behalf of the resource hub, when it
- * translates a GpioInt.
- *
- * @param[in] OwnerName
- * Name of the descriptor the GSIV is for. Diagnostics only, and optional.
- *
- * @param[in] OwnerNameLength
- * Length of that name in bytes.
- *
- * @param[out] Gsiv
- * Receives the allocated number.
- *
- * @return
- * STATUS_SUCCESS, or STATUS_INSUFFICIENT_RESOURCES once the range is spent.
- */
-NTSTATUS
-NTAPI
-HalpAllocateGsivForSecondaryInterrupt(
-    _In_reads_bytes_(OwnerNameLength) PCCHAR OwnerName,
-    _In_ USHORT OwnerNameLength,
-    _Out_ PULONG Gsiv)
-{
-    LONG Allocated;
 
-    UNREFERENCED_PARAMETER(OwnerName);
-    UNREFERENCED_PARAMETER(OwnerNameLength);
-
-    Allocated = InterlockedIncrement(&HalpNextSecondaryGsiv) - 1;
-    if (Allocated >= HALP_SECONDARY_GSIV_LIMIT)
-    {
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    *Gsiv = (ULONG)Allocated;
-    return STATUS_SUCCESS;
-}

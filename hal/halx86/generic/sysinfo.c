@@ -153,6 +153,24 @@ HaliQuerySystemInformation(IN HAL_QUERY_INFORMATION_CLASS InformationClass,
         REPORT_THIS_CASE(HalHypervisorInformation);
         REPORT_THIS_CASE(HalPlatformTimerInformation);
         REPORT_THIS_CASE(HalAcpiAuditInformation);
+        REPORT_THIS_CASE(HalQueryHypervisorInformation);
+        REPORT_THIS_CASE(HalIrtInformation);
+
+        case HalSecondaryInterruptInformation:
+        {
+            /*
+             * What a driver that multiplexes interrupts of its own reads
+             * before it registers: the GSIV range it may claim, and the
+             * routines it drives its lines with once it has.
+             */
+            *ReturnedLength = sizeof(HAL_SECONDARY_INTERRUPT_INFORMATION);
+            if (BufferSize < sizeof(HAL_SECONDARY_INTERRUPT_INFORMATION))
+            {
+                return STATUS_BUFFER_TOO_SMALL;
+            }
+
+            return HalpQuerySecondaryInterruptInformation(Buffer);
+        }
     }
 #undef REPORT_THIS_CASE
 
@@ -166,6 +184,28 @@ HaliSetSystemInformation(IN HAL_SET_INFORMATION_CLASS InformationClass,
                          IN ULONG BufferSize,
                          IN OUT PVOID Buffer)
 {
+    switch (InformationClass)
+    {
+        case HalRegisterSecondaryInterruptInterface:
+        {
+            /*
+             * A GPIO or SPB controller claiming a slice of the GSIV space. The
+             * size is checked here rather than in the registration itself, so
+             * that a caller built against a later version of the block is told
+             * what went wrong instead of having it read short.
+             */
+            if (BufferSize < sizeof(SECONDARY_INTERRUPT_PROVIDER_INTERFACE))
+            {
+                return STATUS_INFO_LENGTH_MISMATCH;
+            }
+
+            return HalpRegisterSecondaryIcInterface(Buffer);
+        }
+
+        default:
+            break;
+    }
+
     UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }

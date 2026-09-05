@@ -1390,6 +1390,18 @@ HalEnableInterrupt(
     }
 
     VectorData = &ConnectionData->Vectors[0];
+
+    /*
+     * A line another driver demultiplexes is that driver's to arm; nothing in
+     * the interrupt controller answers for it, and its vector is a name rather
+     * than a processor vector, so the checks below do not apply.
+     */
+    if (HalpIsInterruptTypeSecondary(VectorData->Type,
+                                     VectorData->ControllerInput.Gsiv))
+    {
+        return HalpEnableSecondaryInterrupt(ConnectionData);
+    }
+
     Vector = VectorData->Vector;
     if (Vector > 0xFF)
     {
@@ -1489,6 +1501,13 @@ HalDisableInterrupt(
     }
 
     VectorData = &ConnectionData->Vectors[0];
+
+    if (HalpIsInterruptTypeSecondary(VectorData->Type,
+                                     VectorData->ControllerInput.Gsiv))
+    {
+        return HalpDisableSecondaryInterrupt(ConnectionData);
+    }
+
     Vector = VectorData->Vector;
     if (Vector > 0xFF)
     {

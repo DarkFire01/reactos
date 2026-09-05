@@ -426,14 +426,120 @@ HaliHaltSystem(
 );
 
 //
-// Secondary interrupt routines
+// Secondary interrupt routines (generic/secint.c)
 //
+
+/*
+ * Secondary interrupts are not lines on the primary controller. They stand for
+ * a pin that a secondary controller (a GPIO controller, say) demultiplexes out
+ * of one of its own inputs, so nothing programs an I/O APIC redirection entry
+ * for one and the number only has to be unique.
+ *
+ * The base sits far above any GSI a platform can describe - an I/O APIC tops
+ * out well below this, and the 8259 at sixteen - so the two number spaces
+ * cannot collide.
+ */
+#define HALP_SECONDARY_GSIV_BASE    0x1000
+#define HALP_SECONDARY_GSIV_LIMIT   0x2000
+
+extern BOOLEAN HalpSecondaryIcServicesEnabled;
+extern ULONG HalpSecondaryGsivRangeStart;
+extern ULONG HalpSecondaryGsivRangeSize;
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+HalpInitializeSecondaryInterruptServices(
+    VOID
+);
+
 NTSTATUS
 NTAPI
 HalpAllocateGsivForSecondaryInterrupt(
     _In_reads_bytes_(OwnerNameLength) PCCHAR OwnerName,
     _In_ USHORT OwnerNameLength,
     _Out_ PULONG Gsiv
+);
+
+BOOLEAN
+NTAPI
+HalpIsInterruptTypeSecondary(
+    _In_ ULONG Type,
+    _In_ ULONG InputGsiv
+);
+
+BOOLEAN
+NTAPI
+HalpInvokeIsrForGsiv(
+    _In_ ULONG InputGsiv,
+    _In_ PVOID ControllerContext
+);
+
+NTSTATUS
+NTAPI
+HalpRegisterSecondaryIcInterface(
+    _In_ PSECONDARY_INTERRUPT_PROVIDER_INTERFACE Interface
+);
+
+NTSTATUS
+NTAPI
+HalpUnregisterSecondaryIcInterface(
+    _In_ ULONG GsivBase,
+    _In_ ULONG GsivSize,
+    _In_ PDRIVER_OBJECT DriverObject
+);
+
+NTSTATUS
+NTAPI
+HalpHandleMaskUnmaskSecondaryInterrupt(
+    _In_ ULONG InputGsiv,
+    _In_ ULONG Flags,
+    _In_ BOOLEAN MaskRequest
+);
+
+NTSTATUS
+NTAPI
+HalpMaskSecondaryInterrupt(
+    _In_ ULONG InputGsiv,
+    _In_ ULONG Flags
+);
+
+NTSTATUS
+NTAPI
+HalpUnmaskSecondaryInterrupt(
+    _In_ ULONG InputGsiv,
+    _In_ ULONG Flags
+);
+
+NTSTATUS
+NTAPI
+HalpSecondaryInterruptQueryPrimaryInformation(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData,
+    _Out_ PULONG PrimaryGsiv
+);
+
+NTSTATUS
+NTAPI
+HalpEnableSecondaryInterrupt(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData
+);
+
+NTSTATUS
+NTAPI
+HalpDisableSecondaryInterrupt(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData
+);
+
+NTSTATUS
+NTAPI
+HalpRequestSecondaryInterrupt(
+    _In_ ULONG Gsiv
+);
+
+NTSTATUS
+NTAPI
+HalpQuerySecondaryInterruptInformation(
+    _Out_ PHAL_SECONDARY_INTERRUPT_INFORMATION Information
 );
 
 //

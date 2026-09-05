@@ -161,6 +161,14 @@ HalInitSystem(
          * this assigns through the table rather than to a variable.
          */
         HalAllocateGsivForSecondaryInterrupt = HalpAllocateGsivForSecondaryInterrupt;
+        HalIsInterruptTypeSecondary = HalpIsInterruptTypeSecondary;
+        HalSecondaryInterruptQueryPrimaryInformation =
+            HalpSecondaryInterruptQueryPrimaryInformation;
+        HalMaskInterrupt = HalpMaskSecondaryInterrupt;
+        HalUnmaskInterrupt = HalpUnmaskSecondaryInterrupt;
+
+        /* Nothing is allocated until a controller actually registers */
+        HalpInitializeSecondaryInterruptServices();
 
         /* Setup I/O space */
         HalpDefaultIoSpace.Next = HalpAddressUsageList;

@@ -16,6 +16,7 @@ list(APPEND HAL_XBOX_SOURCE
     generic/kdpci.c
     generic/memory.c
     generic/misc.c
+    generic/secint.c
     generic/nmi.c
     generic/pic.c
     generic/sysinfo.c
