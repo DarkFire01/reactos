@@ -863,6 +863,44 @@ IopGetRegistryValue(
     OUT PKEY_VALUE_FULL_INFORMATION *Information
 );
 
+/*
+ * Boot device polling.
+ *
+ * A boot device does not have to exist by the time the boot drivers have
+ * finished loading: anything that enumerates asynchronously, a disk behind a
+ * USB hub above all, is still being addressed and configured long after its
+ * driver's DriverEntry returned. The budget comes from
+ * Control\PnP\PollBootPartitionTimeout, in milliseconds.
+ */
+#define PNP_POLL_BOOT_PARTITION_INTERVAL    200     /* milliseconds */
+#define PNP_MAX_POLL_BOOT_PARTITION_TIMEOUT 180000  /* milliseconds */
+
+typedef
+NTSTATUS
+(NTAPI *PIOP_BOOT_DEVICE_WAIT_ROUTINE)(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
+    _In_opt_ PVOID Context,
+    _Out_ PUNICODE_STRING BootDeviceName
+);
+
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+IopWaitForBootDevice(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
+    _In_ PIOP_BOOT_DEVICE_WAIT_ROUTINE DeviceWaitCallback,
+    _In_opt_ PVOID Context
+);
+
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+IopMarkBootPartition(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
+    _In_opt_ PVOID Context,
+    _Out_ PUNICODE_STRING BootDeviceName
+);
+
 NTSTATUS
 NTAPI
 IopCreateRegistryKeyEx(

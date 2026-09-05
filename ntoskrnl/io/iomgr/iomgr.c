@@ -396,10 +396,35 @@ IopCreateRootDirectories(VOID)
     return TRUE;
 }
 
+/**
+ * @brief
+ * Opens the ARC name the loader booted from and marks it as the boot
+ * partition.
+ *
+ * Written to be retried: nothing here is fatal, because a boot device that
+ * enumerates asynchronously is legitimately still arriving. Giving up is
+ * IopWaitForBootDevice's decision, not this routine's.
+ *
+ * @param[in] LoaderBlock
+ * The loader parameter block, which carries the ARC name.
+ *
+ * @param[in] Context
+ * Unused.
+ *
+ * @param[out] BootDeviceName
+ * Receives the name that was looked for, on every path including the failures,
+ * so the caller can free it between polls and quote it if it bugchecks.
+ *
+ * @return
+ * STATUS_SUCCESS, or the reason the device could not be opened.
+ */
 CODE_SEG("INIT")
-BOOLEAN
+NTSTATUS
 NTAPI
-IopMarkBootPartition(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
+IopMarkBootPartition(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
+    _In_opt_ PVOID Context,
+    _Out_ PUNICODE_STRING BootDeviceName)
 {
     OBJECT_ATTRIBUTES ObjectAttributes;
     STRING DeviceString;
@@ -410,11 +435,15 @@ IopMarkBootPartition(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     IO_STATUS_BLOCK IoStatusBlock;
     PFILE_OBJECT FileObject;
 
+    UNREFERENCED_PARAMETER(Context);
+
     /* Build the ARC device name */
     sprintf(Buffer, "\\ArcName\\%s", LoaderBlock->ArcBootDeviceName);
     RtlInitAnsiString(&DeviceString, Buffer);
     Status = RtlAnsiStringToUnicodeString(&DeviceName, &DeviceString, TRUE);
-    if (!NT_SUCCESS(Status)) return FALSE;
+    if (!NT_SUCCESS(Status)) return Status;
+
+    *BootDeviceName = DeviceName;
 
     /* Open it */
     InitializeObjectAttributes(&ObjectAttributes,
@@ -430,12 +459,7 @@ IopMarkBootPartition(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                         FILE_NON_DIRECTORY_FILE);
     if (!NT_SUCCESS(Status))
     {
-        /* Fail */
-        KeBugCheckEx(INACCESSIBLE_BOOT_DEVICE,
-                     (ULONG_PTR)&DeviceName,
-                     Status,
-                     0,
-                     0);
+        return Status;
     }
 
     /* Get the DO */
@@ -447,9 +471,8 @@ IopMarkBootPartition(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                                        NULL);
     if (!NT_SUCCESS(Status))
     {
-        /* Fail */
-        RtlFreeUnicodeString(&DeviceName);
-        return FALSE;
+        NtClose(FileHandle);
+        return Status;
     }
 
     /* Mark it as the boot partition */
@@ -460,10 +483,54 @@ IopMarkBootPartition(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     IopErrorLogObject = FileObject->DeviceObject;
 
     /* Cleanup and return success */
-    RtlFreeUnicodeString(&DeviceName);
     NtClose(FileHandle);
     ObDereferenceObject(FileObject);
-    return TRUE;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * One poll for the boot partition: name whatever disks exist now, then look.
+ *
+ * Windows can retry IopMarkBootPartition on its own, because its storage class
+ * driver publishes an ARC name as each disk arrives. Here every ARC name is
+ * made in one central pass, so a disk that turns up after that pass has no
+ * symbolic link and would never grow one however long the wait. Re-running the
+ * pass is what closes that: it sizes itself from the configuration
+ * information's DiskCount and opens each \Device\HarddiskN by name, so a disk
+ * that has appeared since is picked up, and it reports success whether or not
+ * any particular link could be made.
+ *
+ * @param[in] LoaderBlock
+ * The loader parameter block.
+ *
+ * @param[in] Context
+ * Unused.
+ *
+ * @param[out] BootDeviceName
+ * Receives the name that was looked for.
+ *
+ * @return
+ * STATUS_SUCCESS, or the reason the device is not there yet.
+ */
+CODE_SEG("INIT")
+static
+NTSTATUS
+NTAPI
+IopPollForBootPartition(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
+    _In_opt_ PVOID Context,
+    _Out_ PUNICODE_STRING BootDeviceName)
+{
+    NTSTATUS Status;
+
+    Status = IopCreateArcNames(LoaderBlock);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+
+    return IopMarkBootPartition(LoaderBlock, Context, BootDeviceName);
 }
 
 CODE_SEG("INIT")
@@ -584,12 +651,12 @@ IoInitSystem(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         return FALSE;
     }
 
-    /* Mark the system boot partition */
-    if (!IopMarkBootPartition(LoaderBlock))
-    {
-        DPRINT1("IopMarkBootPartition failed!\n");
-        return FALSE;
-    }
+    /*
+     * Poll for the boot device rather than demanding that it already exist: a
+     * disk behind a USB hub is still being addressed and configured at this
+     * point. A device that never arrives bugchecks inside here.
+     */
+    IopWaitForBootDevice(LoaderBlock, IopPollForBootPartition, NULL);
 
     /* The disk subsystem is initialized here and the SystemRoot is set too.
      * We can finally load other drivers from the boot volume. */

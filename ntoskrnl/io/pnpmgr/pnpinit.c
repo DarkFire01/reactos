@@ -485,4 +485,143 @@ IopInitializePlugPlayServices(VOID)
     return STATUS_SUCCESS;
 }
 
+/**
+ * \nbrief
+ * Reads how long the system may spend waiting for its boot device to appear.
+ *
+ * \nreturn
+ * The budget in milliseconds. Below one polling interval it is zero, which
+ * means check once and give up; a value past the ceiling is clamped, so that a
+ * mistyped registry entry cannot hang the machine for hours. An unreadable key
+ * and an absent value both give zero, which is how a system that never asked
+ * for polling behaves.
+ */
+CODE_SEG("INIT")
+static
+LONG
+IopQueryBootDevicePollTimeout(
+    VOID)
+{
+    UNICODE_STRING KeyName =
+        RTL_CONSTANT_STRING(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\PnP");
+    PKEY_VALUE_FULL_INFORMATION ValueInformation;
+    LONG Timeout = 0;
+    HANDLE PnpKey;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    Status = IopOpenRegistryKeyEx(&PnpKey, NULL, &KeyName, KEY_READ);
+    if (!NT_SUCCESS(Status))
+    {
+        return 0;
+    }
+
+    Status = IopGetRegistryValue(PnpKey, L"PollBootPartitionTimeout", &ValueInformation);
+    if (NT_SUCCESS(Status))
+    {
+        if ((ValueInformation->Type == REG_DWORD) &&
+            (ValueInformation->DataLength == sizeof(ULONG)))
+        {
+            ULONG Value = *(PULONG)((PUCHAR)ValueInformation +
+                                    ValueInformation->DataOffset);
+
+            if (Value < PNP_POLL_BOOT_PARTITION_INTERVAL)
+            {
+                Timeout = 0;
+            }
+            else if (Value > PNP_MAX_POLL_BOOT_PARTITION_TIMEOUT)
+            {
+                Timeout = PNP_MAX_POLL_BOOT_PARTITION_TIMEOUT;
+            }
+            else
+            {
+                Timeout = (LONG)Value;
+            }
+        }
+
+        ExFreePool(ValueInformation);
+    }
+
+    ZwClose(PnpKey);
+
+    return Timeout;
+}
+
+/**
+ * \nbrief
+ * Retries a boot device lookup until it succeeds or the budget runs out.
+ *
+ * A boot device does not have to exist by the time the boot drivers have
+ * finished loading. Anything that enumerates asynchronously arrives later, and
+ * a disk behind a USB hub is the usual case: the hub is still addressing and
+ * configuring the device long after usbstor's DriverEntry returned, so
+ * resolving its ARC name the instant IopInitializeBootDrivers returns races it.
+ *
+ * \nparam[in] LoaderBlock
+ * The loader parameter block, passed through to the callback.
+ *
+ * \nparam[in] DeviceWaitCallback
+ * What to retry. It reports the device name it looked for on every path,
+ * successes and failures alike, so the name can be freed between polls and
+ * quoted in the bugcheck.
+ *
+ * \nparam[in] Context
+ * Caller context, passed through to the callback.
+ *
+ * \nreturn
+ * STATUS_SUCCESS. There is no failure return: a boot device that never arrives
+ * bugchecks with INACCESSIBLE_BOOT_DEVICE.
+ */
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+IopWaitForBootDevice(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
+    _In_ PIOP_BOOT_DEVICE_WAIT_ROUTINE DeviceWaitCallback,
+    _In_opt_ PVOID Context)
+{
+    UNICODE_STRING BootDeviceName;
+    LARGE_INTEGER Interval;
+    LONG Remaining;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    RtlInitUnicodeString(&BootDeviceName, NULL);
+
+    Remaining = IopQueryBootDevicePollTimeout();
+    Interval.QuadPart = Int32x32To64(PNP_POLL_BOOT_PARTITION_INTERVAL, -10000);
+
+    DPRINT1("Waiting up to %ld ms for the boot device\n", Remaining);
+
+    for (;;)
+    {
+        RtlFreeUnicodeString(&BootDeviceName);
+
+        Status = DeviceWaitCallback(LoaderBlock, Context, &BootDeviceName);
+        if (NT_SUCCESS(Status) || (Remaining <= 0))
+        {
+            break;
+        }
+
+        KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+        Remaining -= PNP_POLL_BOOT_PARTITION_INTERVAL;
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        KeBugCheckEx(INACCESSIBLE_BOOT_DEVICE,
+                     (ULONG_PTR)&BootDeviceName,
+                     Status,
+                     0,
+                     0);
+    }
+
+    RtlFreeUnicodeString(&BootDeviceName);
+
+    return STATUS_SUCCESS;
+}
+
 /* EOF */
+
