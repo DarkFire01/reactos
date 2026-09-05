@@ -49,6 +49,12 @@ HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#CC_0C0320","Cl
 
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#CC_0C0330","Service",0x00000000,"usbxhci"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#CC_0C0330","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
+; usbxhci.inf sets this through an AddReg in its DDInstall.HW section, which
+; never runs for the controller the system booted from - it is started from
+; this database, before any INF is processed. Without it pci.sys sees no
+; opt-in and gives the controller a wired line instead of message interrupts,
+; so an xHCI works as an ordinary device but not as the boot device.
+HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\PCI#CC_0C0330\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties","MSISupported",0x00010001,0x00000001
 
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_08&SubClass_06&Prot_50","Service",0x00000000,"usbstor"
 HKLM,"SYSTEM\CurrentControlSet\Control\CriticalDeviceDatabase\USB#Class_08&SubClass_06&Prot_50","ClassGUID",0x00000000,"{36FC9E60-C465-11CF-8056-444553540000}"
