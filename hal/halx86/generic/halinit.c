@@ -155,6 +155,13 @@ HalInitSystem(
         HalResetDisplay = HalpBiosDisplayReset;
         HalHaltSystem = HaliHaltSystem;
 
+        /*
+         * The private dispatch table belongs to the kernel; the HAL fills in
+         * the slots it owns. The name is a macro onto HALPRIVATEDISPATCH, so
+         * this assigns through the table rather than to a variable.
+         */
+        HalAllocateGsivForSecondaryInterrupt = HalpAllocateGsivForSecondaryInterrupt;
+
         /* Setup I/O space */
         HalpDefaultIoSpace.Next = HalpAddressUsageList;
         HalpAddressUsageList = &HalpDefaultIoSpace;

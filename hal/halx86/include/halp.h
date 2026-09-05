@@ -426,6 +426,17 @@ HaliHaltSystem(
 );
 
 //
+// Secondary interrupt routines
+//
+NTSTATUS
+NTAPI
+HalpAllocateGsivForSecondaryInterrupt(
+    _In_reads_bytes_(OwnerNameLength) PCCHAR OwnerName,
+    _In_ USHORT OwnerNameLength,
+    _Out_ PULONG Gsiv
+);
+
+//
 // CMOS Routines
 //
 CODE_SEG("INIT")
