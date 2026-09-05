@@ -1,0 +1,77 @@
+; IALPSS2I_I2C.INF
+;
+; Intel LPSS gen-2 I2C controller, Cannon Lake family.
+;
+; These twenty ids are exactly the set iaLPSS2i_I2C_CNL.inf binds, and exactly
+; the platforms iaLPSS2i_I2C_CNL.sys -- the driver this was reconstructed from --
+; supports. The other Intel LPSS I2C parts are deliberately NOT listed:
+;
+;   iaLPSSi_I2C        Haswell / Broadwell, ACPI\INT33C2..INT3433
+;   iaLPSS2i_I2C       Skylake / Kaby Lake, DEV_9D60..A163
+;   iaLPSS2i_I2C_BXT_P Apollo Lake,         DEV_5AAC..5ABA
+;   iaLPSS2i_I2C_GLK   Gemini Lake,         DEV_31AC..31BA
+;
+; They share the DesignWare core but not the rest: each carries its own SCL
+; timing (the input clock differs per SoC), its own errata handling, and a
+; CheckSupportedHardware gate that refuses silicon it was not built for. Their
+; .text sections differ by three to six kilobytes. Binding them here would claim
+; behaviour nobody has read -- add each one only alongside its own reference.
+
+[Version]
+Signature  = "$Windows NT$"
+LayoutFile = layout.inf
+Class      = System
+ClassGUID  = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider   = %ReactOS%
+DriverVer  = 09/02/2026,1.00
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%Intel% = Intel
+
+[Intel]
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02C5
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02C6
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02E8
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02E9
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02EA
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02EB
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_06E8
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_06E9
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_06EA
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_06EB
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9DC5
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9DC6
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9DE8
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9DE9
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9DEA
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9DEB
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A368
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A369
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A36A
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A36B
+
+[iaLPSS2i_I2C_Device.NT]
+CopyFiles = iaLPSS2i_I2C_Device.CopyFiles
+
+[iaLPSS2i_I2C_Device.CopyFiles]
+ialpss2i_i2c.sys
+
+[iaLPSS2i_I2C_Device.NT.Services]
+AddService = ialpss2i_i2c, 0x00000002, iaLPSS2i_I2C_Service
+
+[iaLPSS2i_I2C_Service]
+DisplayName   = %iaLPSS2i_I2C.SvcDesc%
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %12%\ialpss2i_i2c.sys
+LoadOrderGroup = Base
+
+[Strings]
+ReactOS = "ReactOS Team"
+Intel = "Intel"
+iaLPSS2i_I2C.DeviceDesc = "Intel(R) Serial IO I2C Host Controller"
+iaLPSS2i_I2C.SvcDesc = "Intel(R) Serial IO I2C Driver"

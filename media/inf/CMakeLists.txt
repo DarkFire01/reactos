@@ -10,6 +10,7 @@ list(APPEND INF_FILES
     flpydisk.inf
     hal.inf
     hdc.inf
+    ialpss2i_i2c.inf
     input.inf
     keyboard.inf
     ks.inf

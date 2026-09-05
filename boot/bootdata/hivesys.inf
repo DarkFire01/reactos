@@ -1735,6 +1735,11 @@ HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache","AppCompa
 ; Unsecure objects names
 HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager\kernel","ObUnsecureGlobalNames",0x00010000,"netfxcustomerfcounters.1.0","SharedPerfIPCBlock","Cor_Private_IPCBlock","Cor_Public_IPCBlock_"
 
+; WDF SPBCx class extension. This is how wdfldr turns the ClassName in a
+; client's .kmdfclassbind descriptor into a driver to load: an I2C, SPI or UART
+; controller driver names "SPBCx" 1.1 and lands on spbcx.sys.
+HKLM,"System\CurrentControlSet\Control\Wdf\Kmdf\SPBCx\Versions\1\1","Service",0x00000000,"spbcx"
+
 ; WOW Support
 HKLM,"SYSTEM\CurrentControlSet\Control\WOW",,0x00000012
 
@@ -1746,6 +1751,21 @@ HKLM,"SYSTEM\CurrentControlSet\Services\swenum","ErrorControl",0x00010001,0x0000
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","ImagePath",0x00020000,"system32\drivers\swenum.sys"
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","Type",0x00010001,0x00000001
+
+; ACPI Resource Hub. Demand start: acpi loads it by service name the first time
+; it needs to publish a connection, exactly as the real acpi.sys ZwLoadDriver's
+; the acpiex service before opening \Device\RESOURCE_HUB.
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","ImagePath",0x00020000,"system32\drivers\acpiex.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\acpiex","Type",0x00010001,0x00000001
+
+; SPB class extension. Demand start: wdfldr loads it when an I2C, SPI or UART
+; controller driver binds to the SpbCx class at load time.
+HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","ImagePath",0x00020000,"system32\drivers\spbcx.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\spbcx","Type",0x00010001,0x00000001
 
 ; Audio Service
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","DisplayName",0x00000000,%AUDIO_SERVICE%
