@@ -363,7 +363,9 @@ HalpQueryResources(IN PDEVICE_OBJECT DeviceObject,
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
     PIO_RESOURCE_DESCRIPTOR Descriptor;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDesc;
-    ULONG i;
+    ULONG i, Vector;
+    KIRQL Irql;
+    KAFFINITY Affinity;
     PAGED_CODE();
 
     /* Only the ACPI PDO has requirements */
@@ -414,9 +416,41 @@ HalpQueryResources(IN PDEVICE_OBJECT DeviceObject,
                 PartialDesc->Flags = Descriptor->Flags;
                 ASSERT(Descriptor->u.Interrupt.MinimumVector ==
                        Descriptor->u.Interrupt.MaximumVector);
-                PartialDesc->u.Interrupt.Vector = Descriptor->u.Interrupt.MinimumVector;
-                PartialDesc->u.Interrupt.Level = Descriptor->u.Interrupt.MinimumVector;
-                PartialDesc->u.Interrupt.Affinity = 0xFFFFFFFF;
+
+                if (HalpInterruptModel == 0)
+                {
+                    /*
+                     * On the PIC model this descriptor is the SCI, and what
+                     * HalpBuildAcpiResourceList put in it is the bus line the
+                     * firmware routed the SCI to, not a system vector. The
+                     * list this goes into is a PNPBus one, which declares its
+                     * contents to already be in the system's own terms, so
+                     * nothing above will translate it: the line has to become
+                     * a vector here or the driver receives an interrupt
+                     * descriptor it cannot connect.
+                     */
+                    Vector = HalGetInterruptVector(Isa,
+                                                   0,
+                                                   Descriptor->u.Interrupt.MinimumVector,
+                                                   Descriptor->u.Interrupt.MinimumVector,
+                                                   &Irql,
+                                                   &Affinity);
+
+                    PartialDesc->u.Interrupt.Vector = Vector;
+                    PartialDesc->u.Interrupt.Level = Irql;
+                    PartialDesc->u.Interrupt.Affinity = Affinity;
+                }
+                else
+                {
+                    /*
+                     * The APIC model reports the block of device vectors the
+                     * root owns. Those are system vectors already, which is
+                     * what makes the PNPBus claim true without any work here.
+                     */
+                    PartialDesc->u.Interrupt.Vector = Descriptor->u.Interrupt.MinimumVector;
+                    PartialDesc->u.Interrupt.Level = Descriptor->u.Interrupt.MinimumVector;
+                    PartialDesc->u.Interrupt.Affinity = 0xFFFFFFFF;
+                }
 
                 ResourceList->List[0].PartialResourceList.Count++;
 
