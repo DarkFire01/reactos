@@ -473,6 +473,7 @@
 @ stdcall IoReleaseRemoveLockAndWaitEx(ptr ptr long)
 @ stdcall IoReleaseRemoveLockEx(ptr ptr long)
 @ stdcall IoReleaseVpbSpinLock(long)
+@ stdcall -version=0x601+ IoReplaceFileObjectName(ptr wstr long)
 @ stdcall IoRemoveShareAccess(ptr ptr)
 @ stdcall IoReportDetectedDevice(ptr long long long ptr ptr long ptr)
 @ stdcall IoReportHalResourceUsage(ptr ptr ptr long)
