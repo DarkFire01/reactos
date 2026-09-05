@@ -22,6 +22,7 @@ KEVENT PciBusLock;
 KEVENT PciLegacyDescriptionLock;
 BOOLEAN PciLockDeviceResources;
 BOOLEAN PciEnableNativeModeATA;
+BOOLEAN PciSystemMsiEnabled;
 ULONG PciSystemWideHackFlags;
 PPCI_IRQ_ROUTING_TABLE PciIrqRoutingTable;
 PWATCHDOG_TABLE WdTable;
@@ -750,6 +751,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
     PULONG Value;
     PWCHAR StartOptions;
     UNICODE_STRING OptionString, PciLockString;
+    HAL_INTERRUPT_TARGET_INFORMATION TargetInformation;
     NTSTATUS Status;
     DPRINT1("PCI: DriverEntry!\n");
 
@@ -886,6 +888,27 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
             if (ResultLength == sizeof(ULONG)) PciEnableNativeModeATA = *Value;
             ExFreePoolWithTag(Value, 0);
         }
+
+        /*
+         * Ask the HAL how interrupts can be targeted on this machine. Only the
+         * answer to the global query is wanted here: whether messages are
+         * deliverable at all. The APIC HAL says yes once it has a usable I/O
+         * APIC; the 8259 HAL always says no, because a message has nowhere to
+         * land on a PIC.
+         */
+        PciSystemMsiEnabled = FALSE;
+        RtlZeroMemory(&TargetInformation, sizeof(TargetInformation));
+        Status = HalGetInterruptTargetInformation(InterruptTargetTypeGlobal,
+                                                  0,
+                                                  &TargetInformation);
+        if ((NT_SUCCESS(Status)) &&
+            (TargetInformation.Flags & HAL_INTERRUPT_TARGET_MSI_SUPPORTED))
+        {
+            PciSystemMsiEnabled = TRUE;
+        }
+
+        DPRINT1("PCI - message signaled interrupts are %s on this machine\n",
+                PciSystemMsiEnabled ? "available" : "unavailable");
 
         /* Build the range lists for all the excluded resource areas */
         Status = PciBuildDefaultExclusionLists();
