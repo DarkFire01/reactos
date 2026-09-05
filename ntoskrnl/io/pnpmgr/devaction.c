@@ -742,7 +742,22 @@ PiCallDriverAddDevice(
         {
             PiSetDevNodeProblem(DeviceNode, CM_PROB_REGISTRY);
         }
-        DPRINT1("No service for \"%wZ\" (loadDrv: %u)\n", &DeviceNode->InstancePath, LoadDrivers);
+        /*
+         * On the passes that are not allowed to load anything, this is where
+         * every not-yet-installed device lands, and saying so each time buries
+         * the log. It is only worth reporting when a driver would have been
+         * loaded and there was none: that device is going to sit there
+         * without one.
+         */
+        if (LoadDrivers)
+        {
+            DPRINT1("No service for \"%wZ\"\n", &DeviceNode->InstancePath);
+        }
+        else
+        {
+            DPRINT("No service for \"%wZ\" yet (not loading on this pass)\n",
+                   &DeviceNode->InstancePath);
+        }
         goto Cleanup;
     }
 
