@@ -56,6 +56,12 @@ DefaultDestDir = 12
 [iaLPSS2i_I2C_Device.NT]
 CopyFiles = iaLPSS2i_I2C_Device.CopyFiles
 
+[iaLPSS2i_I2C_Device.NT.HW]
+AddReg = iaLPSS2i_I2C_Device.NT.HW.AddReg
+
+[iaLPSS2i_I2C_Device.NT.HW.AddReg]
+HKR,"WDF","WdfDirectedPowerTransitionEnable",0x00010001,1
+
 [iaLPSS2i_I2C_Device.CopyFiles]
 ialpss2i_i2c.sys
 
@@ -69,6 +75,10 @@ StartType     = 3
 ErrorControl  = 1
 ServiceBinary = %12%\ialpss2i_i2c.sys
 LoadOrderGroup = Base
+; The controller is nothing without its class extension: this driver is an SPB
+; controller, and every one of its callbacks is reached through SpbCx. The
+; reference declares the same dependency.
+Dependencies   = spbcx
 
 [Strings]
 ReactOS = "ReactOS Team"
