@@ -2,28 +2,22 @@
 ;
 ; Intel LPSS gen-2 GPIO controller.
 ;
-; These four ids, and only these four, are the parts whose pad geometry this
-; driver carries. iaLPSS2i_GPIO2_CNL.sys -- the binary it was reconstructed
-; from -- keeps one C++ layout class per part and picks between them on the
-; enumerated _HID; what was decoded here is _GPIO_CONTROLLER_SKL_LP, which
-; serves layout indices 1 and 3:
+; The ids listed here are the parts whose pad geometry the driver carries. The
+; binaries they were reconstructed from -- iaLPSS2i_GPIO2_CNL.sys for Skylake
+; and Cannon Lake, iaLPSS2_GPIO2_WCL.sys from Ice Lake on -- keep one C++
+; layout class per part and pick between them on the enumerated _HID, through a
+; table of {id, index} pairs and a switch that constructs the matching class.
 ;
-;   ACPI\INT344B  index 1   Skylake-LP      _GPIO_CONTROLLER_SKL_LP
-;   ACPI\INT345D  index 3   Kaby Lake-LP    _GPIO_CONTROLLER_SKL_LP
-;   ACPI\INT3451  index 7   Skylake-H       _GPIO_CONTROLLER_SKL_H
-;   ACPI\INT34BB  index 5   Comet Lake-LP   _GPIO_CONTROLLER_CNL_LP
-;   ACPI\INT3450  index 10  Cannon Lake-H   _GPIO_CONTROLLER_CNL_H
+; Each id below has its own table in controller.c. Community count, group count
+; and pad offsets all differ per layout, so an id must not be listed before its
+; table exists: the wrong table writes the wrong pads on real hardware. The
+; driver refuses to start on an id it has no table for rather than borrow a
+; neighbour's numbers.
 ;
-; Every other id that binary binds needs a layout this driver does not have,
-; so none of them is listed:
-;
-;   ACPI\INT3452, INT3453, INT3455, INT34C3..INT34C6, INT34D1, INT3456
-;   ACPI\INTC1055, INTC1056, INTC1057, INTC105E, INTC105F
-;
-; Community count, group count and pad offsets all differ per layout, so
-; binding an id here before its table exists would write the wrong pads on
-; real hardware -- add each id alongside its own layout. The driver refuses to
-; start on an id it has no table for rather than borrow a neighbour's.
+; Not listed are the Broxton, Gemini Lake and Lakefield families (INT3452,
+; INT3453, INT34C4, INT34D1, INT34C8) which expose one community per ACPI
+; device instead of one per group, and INTC105F, which the reference builds
+; through a separate chassis class with different register semantics.
 ;
 ; The controller is an ACPI device, not a PCI function: it is described in the
 ; namespace under the PCI root and enumerated by acpi.sys, so a machine that
@@ -44,11 +38,24 @@ DefaultDestDir = 12
 %Intel% = Intel
 
 [Intel]
-%iaLPSS2i_GPIO.DeviceDesc_SKL%  = iaLPSS2i_GPIO_Device, ACPI\INT344B
-%iaLPSS2i_GPIO.DeviceDesc_KBL%  = iaLPSS2i_GPIO_Device, ACPI\INT345D
-%iaLPSS2i_GPIO.DeviceDesc_SKLH% = iaLPSS2i_GPIO_Device, ACPI\INT3451
-%iaLPSS2i_GPIO.DeviceDesc_CML%  = iaLPSS2i_GPIO_Device, ACPI\INT34BB
-%iaLPSS2i_GPIO.DeviceDesc_CNLH% = iaLPSS2i_GPIO_Device, ACPI\INT3450
+%iaLPSS2i_GPIO.DeviceDesc_SKL%   = iaLPSS2i_GPIO_Device, ACPI\INT344B
+%iaLPSS2i_GPIO.DeviceDesc_SKLH2% = iaLPSS2i_GPIO_Device, ACPI\INT345D
+%iaLPSS2i_GPIO.DeviceDesc_SKLH%  = iaLPSS2i_GPIO_Device, ACPI\INT3451
+%iaLPSS2i_GPIO.DeviceDesc_CNL%   = iaLPSS2i_GPIO_Device, ACPI\INT34BB
+%iaLPSS2i_GPIO.DeviceDesc_CNLH%  = iaLPSS2i_GPIO_Device, ACPI\INT3450
+%iaLPSS2i_GPIO.DeviceDesc_ICL%   = iaLPSS2i_GPIO_Device, ACPI\INT3455
+%iaLPSS2i_GPIO.DeviceDesc_ICLN%  = iaLPSS2i_GPIO_Device, ACPI\INT34C3
+%iaLPSS2i_GPIO.DeviceDesc_ICLH%  = iaLPSS2i_GPIO_Device, ACPI\INT3456
+%iaLPSS2i_GPIO.DeviceDesc_TGL%   = iaLPSS2i_GPIO_Device, ACPI\INT34C5
+%iaLPSS2i_GPIO.DeviceDesc_TGLH%  = iaLPSS2i_GPIO_Device, ACPI\INT34C6
+%iaLPSS2i_GPIO.DeviceDesc_ADLP%  = iaLPSS2i_GPIO_Device, ACPI\INTC1055
+%iaLPSS2i_GPIO.DeviceDesc_ADLN%  = iaLPSS2i_GPIO_Device, ACPI\INTC1057
+%iaLPSS2i_GPIO.DeviceDesc_ADLS%  = iaLPSS2i_GPIO_Device, ACPI\INTC1085
+%iaLPSS2i_GPIO.DeviceDesc_RPLS%  = iaLPSS2i_GPIO_Device, ACPI\INTC1056
+%iaLPSS2i_GPIO.DeviceDesc_MTLM%  = iaLPSS2i_GPIO_Device, ACPI\INTC1082
+%iaLPSS2i_GPIO.DeviceDesc_MTLP%  = iaLPSS2i_GPIO_Device, ACPI\INTC1083
+%iaLPSS2i_GPIO.DeviceDesc_MTLP2% = iaLPSS2i_GPIO_Device, ACPI\INTC105E
+%iaLPSS2i_GPIO.DeviceDesc_MTLS%  = iaLPSS2i_GPIO_Device, ACPI\INTC1084
 
 [iaLPSS2i_GPIO_Device.NT]
 CopyFiles = iaLPSS2i_GPIO_Device.CopyFiles
@@ -70,9 +77,22 @@ LoadOrderGroup = Extended Base
 [Strings]
 ReactOS = "ReactOS Team"
 Intel = "Intel"
-iaLPSS2i_GPIO.DeviceDesc_SKL  = "Intel(R) Serial IO GPIO Host Controller - INT344B"
-iaLPSS2i_GPIO.DeviceDesc_KBL  = "Intel(R) Serial IO GPIO Host Controller - INT345D"
-iaLPSS2i_GPIO.DeviceDesc_SKLH = "Intel(R) Serial IO GPIO Host Controller - INT3451"
-iaLPSS2i_GPIO.DeviceDesc_CML  = "Intel(R) Serial IO GPIO Host Controller - INT34BB"
-iaLPSS2i_GPIO.DeviceDesc_CNLH = "Intel(R) Serial IO GPIO Host Controller - INT3450"
+iaLPSS2i_GPIO.DeviceDesc_SKL   = "Intel(R) Serial IO GPIO Host Controller - Skylake-LP"
+iaLPSS2i_GPIO.DeviceDesc_SKLH2 = "Intel(R) Serial IO GPIO Host Controller - Skylake-H"
+iaLPSS2i_GPIO.DeviceDesc_SKLH  = "Intel(R) Serial IO GPIO Host Controller - Skylake-H"
+iaLPSS2i_GPIO.DeviceDesc_CNL   = "Intel(R) Serial IO GPIO Host Controller - Cannon Lake-LP"
+iaLPSS2i_GPIO.DeviceDesc_CNLH  = "Intel(R) Serial IO GPIO Host Controller - Cannon Lake-H"
+iaLPSS2i_GPIO.DeviceDesc_ICL   = "Intel(R) Serial IO GPIO Host Controller - Ice Lake-LP"
+iaLPSS2i_GPIO.DeviceDesc_ICLN  = "Intel(R) Serial IO GPIO Host Controller - Ice Lake-N"
+iaLPSS2i_GPIO.DeviceDesc_ICLH  = "Intel(R) Serial IO GPIO Host Controller - Ice Lake-H"
+iaLPSS2i_GPIO.DeviceDesc_TGL   = "Intel(R) Serial IO GPIO Host Controller - Tiger Lake-LP"
+iaLPSS2i_GPIO.DeviceDesc_TGLH  = "Intel(R) Serial IO GPIO Host Controller - Tiger Lake-H"
+iaLPSS2i_GPIO.DeviceDesc_ADLP  = "Intel(R) Serial IO GPIO Host Controller - Alder Lake-P"
+iaLPSS2i_GPIO.DeviceDesc_ADLN  = "Intel(R) Serial IO GPIO Host Controller - Alder Lake-N"
+iaLPSS2i_GPIO.DeviceDesc_ADLS  = "Intel(R) Serial IO GPIO Host Controller - Alder Lake-S"
+iaLPSS2i_GPIO.DeviceDesc_RPLS  = "Intel(R) Serial IO GPIO Host Controller - Raptor Lake-S"
+iaLPSS2i_GPIO.DeviceDesc_MTLM  = "Intel(R) Serial IO GPIO Host Controller - Meteor Lake-M"
+iaLPSS2i_GPIO.DeviceDesc_MTLP  = "Intel(R) Serial IO GPIO Host Controller - Meteor Lake-P"
+iaLPSS2i_GPIO.DeviceDesc_MTLP2 = "Intel(R) Serial IO GPIO Host Controller - Meteor Lake-P"
+iaLPSS2i_GPIO.DeviceDesc_MTLS  = "Intel(R) Serial IO GPIO Host Controller - Meteor Lake-S"
 iaLPSS2i_GPIO.SvcDesc = "Intel(R) Serial IO GPIO Driver"

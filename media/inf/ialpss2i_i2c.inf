@@ -1,21 +1,31 @@
 ; IALPSS2I_I2C.INF
 ;
-; Intel LPSS gen-2 I2C controller, Cannon Lake family.
+; Intel LPSS gen-2 I2C controller.
 ;
-; These twenty ids are exactly the set iaLPSS2i_I2C_CNL.inf binds, and exactly
-; the platforms iaLPSS2i_I2C_CNL.sys -- the driver this was reconstructed from --
-; supports. The other Intel LPSS I2C parts are deliberately NOT listed:
+; Intel used to ship one driver binary per SoC family, each with its own
+; compiled-in SCL timing and a gate that refused silicon it was not built for.
+; The newest one, iaLPSS2_I2C_WCL.sys, dropped both: it carries a single set of
+; counts for every family and keys nothing off the PCI device id, leaving the
+; registry and the firmware's SSCN, FMCN, FPCN and HSCN methods to adjust them
+; per board. This driver follows that shape, so a part is listed here as soon
+; as it is a gen-2 LPSS controller.
 ;
-;   iaLPSSi_I2C        Haswell / Broadwell, ACPI\INT33C2..INT3433
-;   iaLPSS2i_I2C       Skylake / Kaby Lake, DEV_9D60..A163
-;   iaLPSS2i_I2C_BXT_P Apollo Lake,         DEV_5AAC..5ABA
-;   iaLPSS2i_I2C_GLK   Gemini Lake,         DEV_31AC..31BA
+; The ids come from the PCI id database the tree already ships in
+; hal/halx86/legacy/bus/pci_vendors.ids -- every Intel device it names as a
+; Serial IO I2C controller from Sunrise Point through Meteor Lake. Five ids
+; below (9DC6, 9DEA, 9DEB, 02C6, 02EB) are not in that database but sit inside
+; a family's contiguous block and were already bound here.
 ;
-; They share the DesignWare core but not the rest: each carries its own SCL
-; timing (the input clock differs per SoC), its own errata handling, and a
-; CheckSupportedHardware gate that refuses silicon it was not built for. Their
-; .text sections differ by three to six kilobytes. Binding them here would claim
-; behaviour nobody has read -- add each one only alongside its own reference.
+; Still not listed:
+;
+;   iaLPSSi_I2C        Haswell / Broadwell, ACPI\INT33C2..INT3433 -- gen 1, a
+;                      different register map, and enumerated through ACPI
+;                      rather than PCI.
+;   iaLPSS2i_I2C_BXT_P Apollo Lake, DEV_5AAC..5ABA
+;   iaLPSS2i_I2C_GLK   Gemini Lake, DEV_31AC..31BA
+;
+; The two Atom families keep their own driver binaries in the reference with
+; errata handling this one does not carry, so they stay out until that is read.
 
 [Version]
 Signature  = "$Windows NT$"
@@ -32,16 +42,24 @@ DefaultDestDir = 12
 %Intel% = Intel
 
 [Intel]
-%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02C5
-%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02C6
-%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02E8
-%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02E9
-%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02EA
-%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02EB
-%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_06E8
-%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_06E9
-%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_06EA
-%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_06EB
+
+; Sunrise Point / 100 and 200 Series
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9D60
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9D61
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9D62
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9D63
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9D64
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9D65
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A160
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A161
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A162
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A163
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A2E0
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A2E1
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A2E2
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A2E3
+
+; Cannon Point and Cannon Lake
 %iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9DC5
 %iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9DC6
 %iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_9DE8
@@ -52,6 +70,80 @@ DefaultDestDir = 12
 %iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A369
 %iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A36A
 %iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A36B
+
+; Comet Lake
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02C5
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02C6
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02E8
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02E9
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02EA
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_02EB
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_06E8
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_06E9
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_06EA
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_06EB
+
+; Ice Lake-LP
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_34E8
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_34E9
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_34EA
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_34EB
+
+; Jasper Lake
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_4DC5
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_4DC6
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_4DE8
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_4DE9
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_4DEA
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_4DEB
+
+; Tiger Lake
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A0C5
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A0C6
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A0E8
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A0E9
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A0EA
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_A0EB
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_43E8
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_43E9
+
+; Alder Lake, 12th generation
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_51C5
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_51C6
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_51D8
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_51D9
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_51E8
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_51E9
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_51EA
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_51EB
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_54C5
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_54C6
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_54E8
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_54E9
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_54EA
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_54EB
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7ACC
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7ACD
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7ACE
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7ACF
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7AFC
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7AFD
+
+; Raptor Lake, 13th generation
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7A4C
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7A4D
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7A4E
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7A4F
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7A7C
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7A7D
+
+; Meteor Lake
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7E50
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7E51
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7E78
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7E79
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7E7A
+%iaLPSS2i_I2C.DeviceDesc% = iaLPSS2i_I2C_Device, PCI\VEN_8086&DEV_7E7B
 
 [iaLPSS2i_I2C_Device.NT]
 CopyFiles = iaLPSS2i_I2C_Device.CopyFiles
