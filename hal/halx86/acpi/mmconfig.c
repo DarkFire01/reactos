@@ -110,7 +110,7 @@ HalpOpenReservedResourcesKey(
  *
  * Must run at PASSIVE_LEVEL with the registry available; the
  * caller is HaliInitPnpDriver.  Note the kernel's arbiters
- * initialise slightly earlier in IoInitSystem than the HAL's PnP
+ * initialize slightly earlier in IoInitSystem than the HAL's PnP
  * driver, so a freshly published window takes effect on the NEXT
  * boot; the hive carries it from then on.
  */
