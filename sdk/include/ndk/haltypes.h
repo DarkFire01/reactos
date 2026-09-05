@@ -1131,7 +1131,7 @@ ULONG
 typedef
 NTSTATUS
 (NTAPI *pHalSecondaryInterruptQueryPrimaryInformation)(
-    _In_ PINTERRUPT_VECTOR_DATA VectorData,
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData,
     _Out_ PULONG PrimaryGsiv
 );
 
@@ -1163,6 +1163,171 @@ NTSTATUS
     _In_ USHORT OwnerNameLength,
     _Out_ PULONG Gsiv
 );
+
+/* SECONDARY INTERRUPT CONTROLLERS *********************************************/
+
+/*
+ * A GPIO or SPB controller multiplexes many device interrupts onto its own
+ * line. The controller's driver registers itself with the HAL as a secondary
+ * interrupt controller, taking a slice of the GSIV space with it, and the HAL
+ * then routes connect, mask and unmask requests for those GSIVs back to it.
+ *
+ * The layouts are the Win8 ones: hal.dll.h:8307 for the provider interface and
+ * :8285 for the primary information block.
+ */
+
+/**
+ * @brief
+ * What a secondary controller reports about the line it sits on.
+ *
+ * A secondary interrupt has no line of its own, so the IRQL a device connected
+ * to one runs at is the IRQL of the controller's own interrupt.
+ */
+typedef struct _PRIMARY_INTERRUPT_INFORMATION
+{
+    USHORT Size;
+    USHORT Version;
+    ULONG PrimaryGsiv;
+    KIRQL PrimaryIrql;
+    GROUP_AFFINITY PrimaryAffinity;
+    KINTERRUPT_MODE InterruptMode;
+    KINTERRUPT_POLARITY Polarity;
+} PRIMARY_INTERRUPT_INFORMATION, *PPRIMARY_INTERRUPT_INFORMATION;
+
+typedef
+NTSTATUS
+(NTAPI *PSECONDARY_INTERRUPT_ENABLE)(
+    _In_ PVOID Context,
+    _In_ ULONG Gsiv,
+    _In_ KINTERRUPT_MODE Mode,
+    _In_ KINTERRUPT_POLARITY Polarity,
+    _In_ PVOID ControllerContext
+);
+
+typedef
+NTSTATUS
+(NTAPI *PSECONDARY_INTERRUPT_DISABLE)(
+    _In_ PVOID Context,
+    _In_ ULONG Gsiv
+);
+
+typedef
+NTSTATUS
+(NTAPI *PSECONDARY_INTERRUPT_MASK)(
+    _In_ PVOID Context,
+    _In_ ULONG Flags,
+    _In_ ULONG Gsiv
+);
+
+typedef
+NTSTATUS
+(NTAPI *PSECONDARY_INTERRUPT_UNMASK)(
+    _In_ PVOID Context,
+    _In_ ULONG Flags,
+    _In_ ULONG Gsiv
+);
+
+typedef
+NTSTATUS
+(NTAPI *PSECONDARY_INTERRUPT_QUERY_PRIMARY_INFORMATION)(
+    _In_ PVOID Context,
+    _In_ ULONG Gsiv,
+    _Out_ PPRIMARY_INTERRUPT_INFORMATION PrimaryInformation
+);
+
+typedef
+NTSTATUS
+(NTAPI *PSECONDARY_INTERRUPT_REQUEST)(
+    _In_ PVOID Context,
+    _In_ ULONG Gsiv,
+    _Out_ PULONG PrimaryGsiv
+);
+
+typedef
+NTSTATUS
+(NTAPI *PSECONDARY_INTERRUPT_QUERY_LINE_INFORMATION)(
+    _In_ PVOID Context,
+    _In_ ULONG Gsiv,
+    _Out_ PUSHORT PinNumber,
+    _Outptr_ PVOID *DeviceHandle
+);
+
+#define SECONDARY_INTERRUPT_PROVIDER_INTERFACE_VERSION 1
+
+/**
+ * @brief
+ * What a secondary interrupt controller hands the HAL to register itself.
+ *
+ * Passed to HalSetSystemInformation under HalRegisterSecondaryInterruptInterface.
+ * The five callbacks the HAL insists on are the ones HalpValidateInterface
+ * checks; the last two are optional, and are used for diagnostics and waking.
+ */
+typedef struct _SECONDARY_INTERRUPT_PROVIDER_INTERFACE
+{
+    USHORT Size;
+    USHORT Version;
+    PVOID Context;
+    ULONG GsivBase;
+    USHORT GsivSize;
+    struct _DRIVER_OBJECT *DriverObject;
+
+    PSECONDARY_INTERRUPT_ENABLE EnableInterrupt;
+    PSECONDARY_INTERRUPT_DISABLE DisableInterrupt;
+    PSECONDARY_INTERRUPT_MASK MaskInterrupt;
+    PSECONDARY_INTERRUPT_UNMASK UnmaskInterrupt;
+    PSECONDARY_INTERRUPT_QUERY_PRIMARY_INFORMATION QueryPrimaryInterrupt;
+    PSECONDARY_INTERRUPT_REQUEST RequestInterrupt;
+    PSECONDARY_INTERRUPT_QUERY_LINE_INFORMATION QueryLineInformation;
+} SECONDARY_INTERRUPT_PROVIDER_INTERFACE, *PSECONDARY_INTERRUPT_PROVIDER_INTERFACE;
+
+typedef
+BOOLEAN
+(NTAPI *PHAL_INVOKE_ISR_FOR_GSIV)(
+    _In_ ULONG Gsiv,
+    _In_ PVOID ControllerContext
+);
+
+typedef
+NTSTATUS
+(NTAPI *PHAL_UNREGISTER_SECONDARY_IC)(
+    _In_ ULONG GsivBase,
+    _In_ ULONG GsivSize,
+    _In_ struct _DRIVER_OBJECT *DriverObject
+);
+
+typedef
+NTSTATUS
+(NTAPI *PHAL_REQUEST_SECONDARY_INTERRUPT)(
+    _In_ ULONG Gsiv
+);
+
+#define HAL_SECONDARY_INTERRUPT_INFORMATION_VERSION 1
+
+/**
+ * @brief
+ * What HalQuerySystemInformation returns for HalSecondaryInterruptInformation.
+ *
+ * A controller reads this before registering: the range says which GSIVs it may
+ * claim, and the routines are how it raises and quietens a line once it has.
+ * InvokeIsrForGsiv is the one that matters at run time - it turns a
+ * demultiplexed pin back into the connected driver's ISR.
+ */
+typedef struct _HAL_SECONDARY_INTERRUPT_INFORMATION
+{
+    USHORT Version;
+    USHORT Reserved;
+
+    /* The GSIV space set aside for secondary controllers */
+    ULONG GsivRangeStart;
+    ULONG GsivRangeSize;
+    ULONG Reserved2;
+
+    pHalMaskInterrupt MaskInterrupt;
+    pHalUnmaskInterrupt UnmaskInterrupt;
+    PHAL_INVOKE_ISR_FOR_GSIV InvokeIsrForGsiv;
+    PHAL_UNREGISTER_SECONDARY_IC UnregisterInterface;
+    PHAL_REQUEST_SECONDARY_INTERRUPT RequestInterrupt;
+} HAL_SECONDARY_INTERRUPT_INFORMATION, *PHAL_SECONDARY_INTERRUPT_INFORMATION;
 
 typedef
 NTSTATUS

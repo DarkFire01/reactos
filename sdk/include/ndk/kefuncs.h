@@ -229,6 +229,29 @@ KeDisconnectInterrupt(
     _Inout_ PKINTERRUPT InterruptObject
 );
 
+//
+// Secondary interrupt functions, for the HAL's use
+//
+NTSTATUS
+NTAPI
+KeInitializeSecondaryInterruptServices(
+    _In_opt_ PVOID HalExports
+);
+
+NTSTATUS
+NTAPI
+KeAllocateSecondaryVector(
+    _In_ ULONG Gsiv,
+    _Out_ PULONG Vector
+);
+
+BOOLEAN
+NTAPI
+KeDispatchSecondaryInterrupt(
+    _In_ ULONG Vector,
+    _In_ ULONG Flags
+);
+
 VOID
 NTAPI
 KiDispatchInterrupt(
