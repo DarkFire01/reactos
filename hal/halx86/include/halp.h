@@ -643,6 +643,9 @@ extern ULONG HalpInterruptControllerType;
 #define HALP_MESSAGE_INTERRUPTS_FORCE_OFF  0x00000002
 extern ULONG HalpMessageInterruptPolicy;
 
+/* CONFIGACCESSPOLICY=DISALLOWMMCONFIG boot option */
+extern BOOLEAN HalpMmConfigDisallowed;
+
 /* Interrupt controller routines for the ACPI power management dispatch */
 ULONG
 NTAPI

@@ -21,6 +21,7 @@ BOOLEAN HalpPciLockSettings;
 BOOLEAN HalBootViaEfi;
 ULONG HalpMessageInterruptPolicy;
 ULONG HalpInterruptControllerType;
+BOOLEAN HalpMmConfigDisallowed;
 
 /* PRIVATE FUNCTIONS *********************************************************/
 
@@ -51,6 +52,10 @@ HalpGetParameters(
             HalpMessageInterruptPolicy |= HALP_MESSAGE_INTERRUPTS_FORCE_ON;
         if (strstr(CommandLine, "NOMSI"))
             HalpMessageInterruptPolicy |= HALP_MESSAGE_INTERRUPTS_FORCE_OFF;
+
+        /* Check if the PCI Express configuration windows must not be used */
+        if (strstr(CommandLine, "CONFIGACCESSPOLICY=DISALLOWMMCONFIG"))
+            HalpMmConfigDisallowed = TRUE;
 
         /* Check for initial breakpoint */
         if (strstr(CommandLine, "BREAK"))
