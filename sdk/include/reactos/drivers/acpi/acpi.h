@@ -45,7 +45,10 @@ typedef struct _ACPI_BIOS_MULTI_NODE
 //
 // FADT Flags
 //
+/* uacpi's <uacpi/acpi.h> defines this identically as (1 << 8); guard against C4005. */
+#ifndef ACPI_TMR_VAL_EXT
 #define ACPI_TMR_VAL_EXT 	0x100
+#endif
 
 //
 // BGRT Flags

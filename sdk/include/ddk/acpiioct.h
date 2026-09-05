@@ -98,6 +98,16 @@ typedef struct _ACPI_EVAL_OUTPUT_BUFFER {
 } ACPI_EVAL_OUTPUT_BUFFER;
 typedef ACPI_EVAL_OUTPUT_BUFFER UNALIGNED *PACPI_EVAL_OUTPUT_BUFFER;
 
+/* Versioned names for the original (V1) layouts */
+typedef ACPI_EVAL_INPUT_BUFFER ACPI_EVAL_INPUT_BUFFER_V1, *PACPI_EVAL_INPUT_BUFFER_V1;
+typedef ACPI_EVAL_INPUT_BUFFER_SIMPLE_INTEGER ACPI_EVAL_INPUT_BUFFER_SIMPLE_INTEGER_V1, *PACPI_EVAL_INPUT_BUFFER_SIMPLE_INTEGER_V1;
+typedef ACPI_EVAL_INPUT_BUFFER_SIMPLE_STRING ACPI_EVAL_INPUT_BUFFER_SIMPLE_STRING_V1, *PACPI_EVAL_INPUT_BUFFER_SIMPLE_STRING_V1;
+typedef ACPI_METHOD_ARGUMENT ACPI_METHOD_ARGUMENT_V1;
+typedef ACPI_METHOD_ARGUMENT_V1 UNALIGNED *PACPI_METHOD_ARGUMENT_V1;
+typedef ACPI_EVAL_INPUT_BUFFER_COMPLEX ACPI_EVAL_INPUT_BUFFER_COMPLEX_V1, *PACPI_EVAL_INPUT_BUFFER_COMPLEX_V1;
+typedef ACPI_EVAL_OUTPUT_BUFFER ACPI_EVAL_OUTPUT_BUFFER_V1;
+typedef ACPI_EVAL_OUTPUT_BUFFER_V1 UNALIGNED *PACPI_EVAL_OUTPUT_BUFFER_V1;
+
 typedef struct _ACPI_MANIPULATE_GLOBAL_LOCK_BUFFER {
   ULONG Signature;
   PVOID LockObject;
@@ -199,6 +209,99 @@ typedef ACPI_ENUM_CHILDREN_OUTPUT_BUFFER UNALIGNED *PACPI_ENUM_CHILDREN_OUTPUT_B
 #define IOCTL_ACPI_EVAL_METHOD_EX       CTL_CODE(FILE_DEVICE_ACPI, 6, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
 #define IOCTL_ACPI_ASYNC_EVAL_METHOD_EX CTL_CODE(FILE_DEVICE_ACPI, 7, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
 #define IOCTL_ACPI_ENUM_CHILDREN        CTL_CODE(FILE_DEVICE_ACPI, 8, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
+#endif
+
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+#define IOCTL_ACPI_GET_DEVICE_INFORMATION CTL_CODE(FILE_DEVICE_ACPI, 10, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
+#endif
+
+
+/*
+ * _PLD - the physical location of a device, as an ACPI package the firmware
+ * returns.  Bit-exact wire format; do not reorder.
+ */
+
+typedef struct _ACPI_PLD_BUFFER {
+    UINT32 Revision:7;
+    UINT32 IgnoreColor:1;
+    UINT32 Color:24;
+    UINT32 Width:16;
+    UINT32 Height:16;
+    UINT32 UserVisible:1;
+    UINT32 Dock:1;
+    UINT32 Lid:1;
+    UINT32 Panel:3;
+    UINT32 VerticalPosition:2;
+    UINT32 HorizontalPosition:2;
+    UINT32 Shape:4;
+    UINT32 GroupOrientation:1;
+    UINT32 GroupToken:8;
+    UINT32 GroupPosition:8;
+    UINT32 Bay:1;
+    UINT32 Ejectable:1;
+    UINT32 EjectionRequired:1;
+    UINT32 CabinetNumber:8;
+    UINT32 CardCageNumber:8;
+    UINT32 Reserved:14;
+} ACPI_PLD_BUFFER, *PACPI_PLD_BUFFER;
+
+/*
+ * The IOCTL_ACPI_GET_DEVICE_INFORMATION reply.  Windows gates this behind
+ * NTDDI_WIN8; the layout is the same at every level, and drivers here need it
+ * regardless of the floor they build at.
+ */
+#ifndef ACPI_DEVICE_INFORMATION_OUTPUT_BUFFER_DEFINED
+#define ACPI_DEVICE_INFORMATION_OUTPUT_BUFFER_DEFINED
+
+
+typedef struct _ACPI_DEVICE_INFORMATION_OUTPUT_BUFFER {
+    ULONG Signature;
+    USHORT Size;
+    UCHAR Revision;
+    UCHAR Reserved0;
+
+    //
+    // Vendor and device strings.
+    //
+
+    USHORT VendorIdStringOffset;
+    USHORT VendorStringLength;
+    USHORT DeviceIdStringOffset;
+
+    //
+    // Sub system and sub device strings.
+    //
+
+    USHORT SubSystemIdStringOffset;
+    USHORT SubSystemStringLength;
+    USHORT SubDeviceIdStringOffset;
+
+    //
+    // Instance string.
+    //
+
+    USHORT InstanceIdLength;
+    USHORT InstanceIdOffset;
+
+    //
+    // Classcodes hardware revision and programming interface.
+    //
+
+    USHORT BaseClassCode;
+    USHORT HardwareRevision;
+    UCHAR ProgrammingInterface;
+    UCHAR Reserved1;
+    USHORT SubClassCode;
+
+    //
+    // Strings are appended after the structure. e.g.:
+    //
+    // BYTE[SubVendorStringLength+1]   SubSystemIdString;
+    // BYTE[VendorIdStringOffset+1]    VendorIdString;
+    // BYTE[InstanceIdOffset+1]        InstanceIdString;
+    //
+
+} ACPI_DEVICE_INFORMATION_OUTPUT_BUFFER, *PACPI_DEVICE_INFORMATION_OUTPUT_BUFFER;
 #endif
 
 #ifdef __cplusplus
