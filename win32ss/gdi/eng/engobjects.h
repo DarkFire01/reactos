@@ -126,6 +126,14 @@ typedef struct _SHARED_FACE_CACHE {
     UINT OutlineRequiredSize;
     UNICODE_STRING FontFamily;
     UNICODE_STRING FullName;
+    /*
+     * IntInitFontNames() asks for four names and these two were not kept, so
+     * every OUTLINETEXTMETRIC rescanned the whole sfnt name table for them. Each
+     * FT_Get_Sfnt_Name() looks its service up by string, which is why strcmp,
+     * FT_Get_Module and ft_service_list_lookup showed up while drawing.
+     */
+    UNICODE_STRING StyleName;
+    UNICODE_STRING UniqueName;
 } SHARED_FACE_CACHE, *PSHARED_FACE_CACHE;
 
 typedef struct _SHARED_FACE {
