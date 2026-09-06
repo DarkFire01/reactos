@@ -614,6 +614,28 @@ CreateBitCase(FILE *Out, unsigned Bpp, PROPINFO RopInfo, int Flags,
         Output(Out, "{\n");
         Output(Out, "PatternRow = PatternRowCache;\n");
         Output(Out, "}\n");
+
+        if (32 == Bpp && ROPCODE_PATCOPY == RopInfo->RopCode)
+        {
+            /*
+             * PATCOPY takes nothing from the destination, so a row depends only
+             * on which row of the pattern it lands on - and that repeats every
+             * pattern height.  Draw the first repeat and copy it down the rest
+             * of the rectangle; for the usual 8 high brush that is eight rows
+             * drawn and everything below them a memcpy.
+             *
+             * Only the starting row of the pattern has to be right for this,
+             * which BasePatternY already is, so it needs no separate condition
+             * beyond having the cached row at all.
+             */
+            Output(Out, "PatternCacheHeight = BltInfo->PatternSurface->sizlBitmap.cy;\n");
+            Output(Out, "if (PatternRow && PatternCacheHeight > 0 &&\n");
+            Output(Out, "    LineCount > (ULONG)PatternCacheHeight)\n");
+            Output(Out, "{\n");
+            Output(Out, "ReplicateCount = LineCount - (ULONG)PatternCacheHeight;\n");
+            Output(Out, "LineCount = (ULONG)PatternCacheHeight;\n");
+            Output(Out, "}\n");
+        }
     }
 
     Output(Out, "for (LineIndex = 0; LineIndex < LineCount; LineIndex++)\n");
@@ -772,6 +794,22 @@ CreateBitCase(FILE *Out, unsigned Bpp, PROPINFO RopInfo, int Flags,
     Output(Out, "DestBase %c= BltInfo->DestSurface->lDelta;\n",
            0 == (Flags & FLAG_BOTTOMUP) ? '+' : '-');
     Output(Out, "}\n");
+
+    if (32 == Bpp && ROPCODE_PATCOPY == RopInfo->RopCode &&
+        0 != (Flags & FLAG_PATTERNSURFACE))
+    {
+        /* Everything past the first repeat is a copy of a row already drawn */
+        Output(Out, "\n");
+        Output(Out, "while (ReplicateCount-- != 0)\n");
+        Output(Out, "{\n");
+        Output(Out, "RtlCopyMemory(DestBase,\n");
+        Output(Out, "              DestBase %c PatternCacheHeight * BltInfo->DestSurface->lDelta,\n",
+               0 == (Flags & FLAG_BOTTOMUP) ? '-' : '+');
+        Output(Out, "              CenterCount * 4);\n");
+        Output(Out, "DestBase %c= BltInfo->DestSurface->lDelta;\n",
+               0 == (Flags & FLAG_BOTTOMUP) ? '+' : '-');
+        Output(Out, "}\n");
+    }
 }
 
 static void
@@ -909,6 +947,11 @@ CreatePrimitive(FILE *Out, unsigned Bpp, PROPINFO RopInfo)
             {
                 /* Only the 32bpp centre run is walked in stretches */
                 Output(Out, "LONG PatternRun = 0, PatternIndex = 0;\n");
+            }
+            if (32 == Bpp && ROPCODE_PATCOPY == RopInfo->RopCode)
+            {
+                Output(Out, "LONG PatternCacheHeight = 0;\n");
+                Output(Out, "ULONG ReplicateCount = 0;\n");
             }
         }
         First = 1;
