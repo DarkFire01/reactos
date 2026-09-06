@@ -59,6 +59,14 @@ typedef struct _FONT_CACHE_ENTRY
     /* Hash bucket, for lookup */
     LIST_ENTRY HashEntry;
     FT_BitmapGlyph BitmapGlyph;
+    /*
+     * The glyph bitmap wrapped as a GDI surface, made on first use and kept for
+     * the life of the entry. Drawing used to create, lock, unlock and delete one
+     * of these for every glyph of every string - four handle table operations
+     * per character, all of them inside the global FreeType lock.
+     */
+    HBITMAP hbmGlyph;
+    SURFOBJ *psoGlyph;
     DWORD dwHash;
     FONT_CACHE_HASHED Hashed;
 } FONT_CACHE_ENTRY, *PFONT_CACHE_ENTRY;

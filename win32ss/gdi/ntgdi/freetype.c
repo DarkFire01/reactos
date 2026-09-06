@@ -479,6 +479,18 @@ RemoveCachedEntry(PFONT_CACHE_ENTRY Entry)
 {
     ASSERT_FREETYPE_LOCK_HELD();
 
+    /* The surface wraps the glyph bitmap, so it has to go first */
+    if (Entry->psoGlyph)
+    {
+        EngUnlockSurface(Entry->psoGlyph);
+        Entry->psoGlyph = NULL;
+    }
+    if (Entry->hbmGlyph)
+    {
+        EngDeleteSurface((HSURF)Entry->hbmGlyph);
+        Entry->hbmGlyph = NULL;
+    }
+
     FT_Done_Glyph((FT_Glyph)Entry->BitmapGlyph);
     RemoveEntryList(&Entry->ListEntry);
     RemoveEntryList(&Entry->HashEntry);
@@ -3799,7 +3811,7 @@ IntGetHash(IN LPCVOID pv, IN DWORD cdw)
     return dwHash;
 }
 
-static FT_BitmapGlyph
+static PFONT_CACHE_ENTRY
 IntFindGlyphCache(IN const FONT_CACHE_ENTRY *pCache)
 {
     PLIST_ENTRY Bucket, CurrentEntry;
@@ -3829,14 +3841,14 @@ IntFindGlyphCache(IN const FONT_CACHE_ENTRY *pCache)
                who gets evicted when the cache is full */
             RemoveEntryList(&FontEntry->ListEntry);
             InsertHeadList(&g_FontCacheListHead, &FontEntry->ListEntry);
-            return FontEntry->BitmapGlyph;
+            return FontEntry;
         }
     }
 
     return NULL;
 }
 
-static FT_BitmapGlyph
+static PFONT_CACHE_ENTRY
 IntGetBitmapGlyphWithCache(
     IN OUT PFONT_CACHE_ENTRY Cache,
     IN FT_GlyphSlot GlyphSlot)
@@ -3888,6 +3900,8 @@ IntGetBitmapGlyphWithCache(
     BitmapGlyph->bitmap = AlignedBitmap;
 
     NewEntry->BitmapGlyph = BitmapGlyph;
+    NewEntry->hbmGlyph = NULL;
+    NewEntry->psoGlyph = NULL;
     NewEntry->dwHash = Cache->dwHash;
     NewEntry->Hashed = Cache->Hashed;
 
@@ -3896,11 +3910,15 @@ IntGetBitmapGlyphWithCache(
                    &NewEntry->HashEntry);
     if (++g_FontCacheNumEntries > MAX_FONT_CACHE)
     {
-        NewEntry = CONTAINING_RECORD(g_FontCacheListHead.Blink, FONT_CACHE_ENTRY, ListEntry);
-        RemoveCachedEntry(NewEntry);
+        /* Evict the least recently used one - a separate variable, so the entry
+           we just made is still the one returned */
+        PFONT_CACHE_ENTRY Victim =
+            CONTAINING_RECORD(g_FontCacheListHead.Blink, FONT_CACHE_ENTRY, ListEntry);
+        ASSERT(Victim != NewEntry);
+        RemoveCachedEntry(Victim);
     }
 
-    return BitmapGlyph;
+    return NewEntry;
 }
 
 
@@ -4949,21 +4967,21 @@ ftGdiGetGlyphOutline(
     return needed;
 }
 
-static FT_BitmapGlyph
-IntGetRealGlyph(
+static PFONT_CACHE_ENTRY
+IntGetRealGlyphEntry(
     IN OUT PFONT_CACHE_ENTRY Cache)
 {
     INT error;
     FT_GlyphSlot glyph;
-    FT_BitmapGlyph realglyph;
+    PFONT_CACHE_ENTRY Entry;
 
     ASSERT_FREETYPE_LOCK_HELD();
 
     Cache->dwHash = IntGetHash(&Cache->Hashed, sizeof(Cache->Hashed) / sizeof(DWORD));
 
-    realglyph = IntFindGlyphCache(Cache);
-    if (realglyph)
-        return realglyph;
+    Entry = IntFindGlyphCache(Cache);
+    if (Entry)
+        return Entry;
 
     error = FT_Load_Glyph(Cache->Hashed.Face, Cache->Hashed.GlyphIndex, FT_LOAD_DEFAULT);
     if (error)
@@ -4980,12 +4998,63 @@ IntGetRealGlyph(
     if (Cache->Hashed.Aspect.Emu.Italic)
         FT_GlyphSlot_Oblique(glyph); /* Emulate Italic */
 
-    realglyph = IntGetBitmapGlyphWithCache(Cache, glyph);
+    Entry = IntGetBitmapGlyphWithCache(Cache, glyph);
 
-    if (!realglyph)
+    if (!Entry)
         DPRINT1("Failed to render glyph! [index: %d]\n", Cache->Hashed.GlyphIndex);
 
-    return realglyph;
+    return Entry;
+}
+
+/*
+ * The glyph bitmap as a GDI surface, made once and kept with the cache entry.
+ * Only the drawing path needs it; measuring never touches a surface.
+ */
+static SURFOBJ *
+IntGetGlyphSurface(
+    IN OUT PFONT_CACHE_ENTRY Entry)
+{
+    FT_BitmapGlyph realglyph = Entry->BitmapGlyph;
+    SIZEL glyphSize;
+
+    ASSERT_FREETYPE_LOCK_HELD();
+
+    if (Entry->psoGlyph)
+        return Entry->psoGlyph;
+
+    glyphSize.cx = realglyph->bitmap.width;
+    glyphSize.cy = realglyph->bitmap.rows;
+
+    Entry->hbmGlyph = EngCreateBitmap(glyphSize,
+                                      realglyph->bitmap.pitch,
+                                      BMF_8BPP,
+                                      BMF_TOPDOWN,
+                                      realglyph->bitmap.buffer);
+    if (!Entry->hbmGlyph)
+    {
+        DPRINT1("WARNING: EngCreateBitmap() failed!\n");
+        return NULL;
+    }
+
+    Entry->psoGlyph = EngLockSurface((HSURF)Entry->hbmGlyph);
+    if (!Entry->psoGlyph)
+    {
+        DPRINT1("WARNING: EngLockSurface() failed!\n");
+        EngDeleteSurface((HSURF)Entry->hbmGlyph);
+        Entry->hbmGlyph = NULL;
+        return NULL;
+    }
+
+    return Entry->psoGlyph;
+}
+
+static FT_BitmapGlyph
+IntGetRealGlyph(
+    IN OUT PFONT_CACHE_ENTRY Cache)
+{
+    PFONT_CACHE_ENTRY Entry = IntGetRealGlyphEntry(Cache);
+
+    return Entry ? Entry->BitmapGlyph : NULL;
 }
 
 BOOL
@@ -6709,6 +6778,7 @@ IntExtTextOutW(
 
     PDC_ATTR pdcattr;
     SURFOBJ *psoDest, *psoGlyph;
+    PFONT_CACHE_ENTRY pGlyphEntry;
     SURFACE *psurf;
     INT glyph_index, i;
     FT_Face face;
@@ -6716,7 +6786,6 @@ IntExtTextOutW(
     LONGLONG X64, Y64, RealXStart64, RealYStart64, DeltaX64, DeltaY64;
     ULONG previous;
     RECTL DestRect, MaskRect;
-    HBITMAP hbmGlyph;
     SIZEL glyphSize;
     FONTOBJ *FontObj;
     PFONTGDI FontGDI;
@@ -6977,12 +7046,13 @@ IntExtTextOutW(
                                                (fuOptions & ETO_GLYPH_INDEX));
         Cache.Hashed.GlyphIndex = glyph_index;
 
-        realglyph = IntGetRealGlyph(&Cache);
-        if (!realglyph)
+        pGlyphEntry = IntGetRealGlyphEntry(&Cache);
+        if (!pGlyphEntry)
         {
             bResult = FALSE;
             break;
         }
+        realglyph = pGlyphEntry->BitmapGlyph;
 
         /* retrieve kerning distance and move pen position */
         if (use_kerning && previous && glyph_index && NULL == Dx)
@@ -7029,26 +7099,11 @@ IntExtTextOutW(
         /* Check if the bitmap has any pixels */
         if ((glyphSize.cx != 0) && (glyphSize.cy != 0))
         {
-            /*
-             * We should create the bitmap out of the loop at the biggest possible
-             * glyph size. Then use memset with 0 to clear it and sourcerect to
-             * limit the work of the transbitblt.
-             */
-            hbmGlyph = EngCreateBitmap(glyphSize, realglyph->bitmap.pitch,
-                                       BMF_8BPP, BMF_TOPDOWN,
-                                       realglyph->bitmap.buffer);
-            if (!hbmGlyph)
-            {
-                DPRINT1("WARNING: EngCreateBitmap() failed!\n");
-                bResult = FALSE;
-                break;
-            }
-
-            psoGlyph = EngLockSurface((HSURF)hbmGlyph);
+            /* Made once and kept with the cache entry, so after the first time
+               this glyph is drawn it costs nothing */
+            psoGlyph = IntGetGlyphSurface(pGlyphEntry);
             if (!psoGlyph)
             {
-                EngDeleteSurface((HSURF)hbmGlyph);
-                DPRINT1("WARNING: EngLockSurface() failed!\n");
                 bResult = FALSE;
                 break;
             }
@@ -7087,8 +7142,6 @@ IntExtTextOutW(
                 DPRINT1("Failed to MaskBlt a glyph!\n");
             }
 
-            EngUnlockSurface(psoGlyph);
-            EngDeleteSurface((HSURF)hbmGlyph);
         }
 
         if (DoBreak)
