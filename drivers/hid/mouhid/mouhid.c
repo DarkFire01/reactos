@@ -476,8 +476,13 @@ MouHid_ReadCompletion(
         }
         Hex[Count * 3] = '\0';
 
-        DPRINT1("[MOUHID] len %lu  %s -> X %ld Y %ld btn 0x%x %s\n",
-                DeviceExtension->ReportLength, Hex,
+        /* Information is how many bytes the read actually produced. A report
+           that comes up short leaves the tail of the buffer holding whatever
+           was there before, which for a 16-bit field split across the end
+           means an axis that can only ever express its low byte */
+        DPRINT1("[MOUHID] len %lu got %lu  %s -> X %ld Y %ld btn 0x%x %s\n",
+                DeviceExtension->ReportLength,
+                (ULONG)Irp->IoStatus.Information, Hex,
                 LastX, LastY, ButtonFlags,
                 DeviceExtension->MouseAbsolute ? "ABSOLUTE" : "relative");
     }

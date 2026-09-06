@@ -82,7 +82,14 @@ typedef struct
 
     BOOLEAN IsReadLoopStarted;
     PUCHAR InputBuffer;
+    /* The whole input report, id byte included - what a client is handed */
     USHORT InputBufferSize;
+    /* What the minidriver is asked to transfer, which is the report minus the
+       id byte this driver synthesises for a device that has no report ids.
+       These were one value, and it was decremented into meaning the second
+       while everything reading it still meant the first, so the last byte of
+       every report was dropped on its way to the client */
+    USHORT InputTransferSize;
     PUCHAR InputWriteAddress;
     PIRP InputIRP;
 

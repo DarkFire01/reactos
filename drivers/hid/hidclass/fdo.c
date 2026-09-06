@@ -459,10 +459,19 @@ HidClassFDO_ReadCompletion(
         // returns a short report cannot leak whatever the previous one left in
         // this buffer.
         //
-        if (Irp->IoStatus.Information < DeviceExtension->InputBufferSize)
+        //
+        // Zero from where the minidriver stopped writing, which is
+        // InputWriteAddress and not InputBuffer: on a device with no report
+        // ids those differ by the one byte holding the synthesised id. Zeroing
+        // from InputBuffer wiped the last byte the device HAD written and left
+        // the byte past it holding whatever the previous report put there -
+        // exactly backwards, and only on short reports, which is the case this
+        // is here to handle.
+        //
+        if (Irp->IoStatus.Information < DeviceExtension->InputTransferSize)
         {
-            RtlZeroMemory(DeviceExtension->InputBuffer + Irp->IoStatus.Information,
-                          DeviceExtension->InputBufferSize - Irp->IoStatus.Information);
+            RtlZeroMemory(DeviceExtension->InputWriteAddress + Irp->IoStatus.Information,
+                          DeviceExtension->InputTransferSize - Irp->IoStatus.Information);
         }
 
         if (DeviceExtension->DeviceRelations->Count > 0)
@@ -650,7 +659,7 @@ HidClassFDO_SubmitRead(IN PHIDCLASS_FDO_EXTENSION DeviceExtension)
         /* init stack location */
         IoStack->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
         IoStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_HID_READ_REPORT;
-        IoStack->Parameters.DeviceIoControl.OutputBufferLength = DeviceExtension->InputBufferSize;
+        IoStack->Parameters.DeviceIoControl.OutputBufferLength = DeviceExtension->InputTransferSize;
         IoStack->Parameters.DeviceIoControl.InputBufferLength = 0;
         IoStack->Parameters.DeviceIoControl.Type3InputBuffer = NULL;
         IoStack->DeviceObject = ((PHIDCLASS_PDO_DEVICE_EXTENSION)DeviceExtension->DeviceRelations->Objects[0]->DeviceExtension)->FDODeviceObject;
@@ -678,14 +687,21 @@ HidClassFDO_InitiateRead(IN PHIDCLASS_FDO_EXTENSION DeviceExtension)
         DeviceExtension->IsReadLoopStarted = TRUE;
 
         DeviceExtension->InputWriteAddress = DeviceExtension->InputBuffer;
+        DeviceExtension->InputTransferSize = DeviceExtension->InputBufferSize;
         if (DeviceExtension->Common.DeviceDescription.ReportIDsLength == 1 && DeviceExtension->Common.DeviceDescription.ReportIDs[0].ReportID == 0)
         {
+            /* The device sends no id byte, so synthesise one and read the rest
+               in behind it. Only the transfer shrinks - the report a client
+               gets is still the full length */
             DeviceExtension->InputWriteAddress[0] = 0;
             DeviceExtension->InputWriteAddress++;
-            DeviceExtension->InputBufferSize--;
+            DeviceExtension->InputTransferSize--;
         }
 
-        DPRINT1("[HIDCLASS] HidClassFDO_InitiateRead for address %p and size %x\n", DeviceExtension->InputWriteAddress, DeviceExtension->InputBufferSize);
+        DPRINT1("[HIDCLASS] HidClassFDO_InitiateRead for address %p, transfer %x of report %x\n",
+                DeviceExtension->InputWriteAddress,
+                DeviceExtension->InputTransferSize,
+                DeviceExtension->InputBufferSize);
 
         HidClassFDO_SubmitRead(DeviceExtension);
     }
