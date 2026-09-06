@@ -1920,8 +1920,9 @@ KdEnterDebugger(IN PKTRAP_FRAME TrapFrame,
     /* Freeze all CPUs, raising also the IRQL to HIGH_LEVEL */
     Enable = KeFreezeExecution(TrapFrame, ExceptionFrame);
 
-    /* Lock the port, save its state and set the debugger entered flag */
-    KdpPortLocked = KeTryToAcquireSpinLockAtDpcLevel(&KdpDebuggerLock);
+    /* Save the port state and set the debugger entered flag.  The port itself
+       was locked by KeFreezeExecution, before anything was frozen - see the
+       comment there for why it cannot be done from here. */
     KdSave(FALSE);
     KdEnteredDebugger = TRUE;
 
@@ -1952,12 +1953,11 @@ KdExitDebugger(IN BOOLEAN Enable)
 {
     ULONG TimeSlip;
 
-    /* Reset the debugger entered flag, restore the port state and unlock it */
+    /* Reset the debugger entered flag and restore the port state */
     KdEnteredDebugger = FALSE;
     KdRestore(FALSE);
-    if (KdpPortLocked) KdpPortUnlock();
 
-    /* Unfreeze the CPUs, restoring also the IRQL */
+    /* Unfreeze the CPUs, restoring also the IRQL, and release the port */
     KeThawExecution(Enable);
 
     /* Compare time with the one from KdEnterDebugger */

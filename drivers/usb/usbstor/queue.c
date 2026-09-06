@@ -21,6 +21,7 @@ USBSTOR_QueueInitialize(
     KeInitializeSpinLock(&FDODeviceExtension->IrpListLock);
     InitializeListHead(&FDODeviceExtension->IrpListHead);
     KeInitializeEvent(&FDODeviceExtension->NoPendingRequests, NotificationEvent, TRUE);
+    FDODeviceExtension->QueueBusy = FALSE;
 }
 
 VOID
@@ -35,7 +36,7 @@ USBSTOR_CancelIo(
     ASSERT_IRQL_EQUAL(DISPATCH_LEVEL);
     ASSERT(FDODeviceExtension->Common.IsFDO);
 
-    // this IRP isn't in our list here
+    // this IRP is not in our list here
     // now release the cancel lock
     IoReleaseCancelSpinLock(Irp->CancelIrql);
     Irp->IoStatus.Status = STATUS_CANCELLED;
@@ -43,6 +44,7 @@ USBSTOR_CancelIo(
     USBSTOR_QueueTerminateRequest(DeviceObject, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
+    // this irp owned the queue, hand it over to the next one
     USBSTOR_QueueNextRequest(DeviceObject);
 }
 
@@ -68,7 +70,9 @@ USBSTOR_Cancel(
     USBSTOR_QueueTerminateRequest(DeviceObject, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-    USBSTOR_QueueNextRequest(DeviceObject);
+    // this irp was only waiting in the list and never owned the queue, so it is
+    // not ours to hand over - the request which does own it also owns the device
+    // queue entry and calls USBSTOR_QueueNextRequest when it completes
 }
 
 BOOLEAN
@@ -76,11 +80,9 @@ USBSTOR_QueueAddIrp(
     IN PDEVICE_OBJECT DeviceObject,
     IN PIRP Irp)
 {
-    PDRIVER_CANCEL OldDriverCancel;
-    KIRQL OldLevel;
+    PDRIVER_CANCEL CancelRoutine, OldDriverCancel;
     PFDO_DEVICE_EXTENSION FDODeviceExtension;
-    BOOLEAN IrpListFreeze;
-    BOOLEAN SrbProcessing;
+    BOOLEAN QueueRequest;
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     PSCSI_REQUEST_BLOCK Request = (PSCSI_REQUEST_BLOCK)IoStack->Parameters.Others.Argument1;
 
@@ -89,77 +91,96 @@ USBSTOR_QueueAddIrp(
 
     IoMarkIrpPending(Irp);
 
-    KeAcquireSpinLock(&FDODeviceExtension->IrpListLock, &OldLevel);
+    // the cancel lock is taken before the list lock, the same order USBSTOR_Cancel
+    // uses, so that the queue decision and the cancel routine set for this irp
+    // cannot disagree
+    IoAcquireCancelSpinLock(&Irp->CancelIrql);
+    KeAcquireSpinLockAtDpcLevel(&FDODeviceExtension->IrpListLock);
 
-    SrbProcessing = FDODeviceExtension->IrpPendingCount != 0;
+    // the request can only be started right away when no other request owns the
+    // queue and there is nothing waiting in front of it
+    QueueRequest = FDODeviceExtension->QueueBusy ||
+                   !IsListEmpty(&FDODeviceExtension->IrpListHead) ||
+                   BooleanFlagOn(FDODeviceExtension->Flags, USBSTOR_FDO_FLAGS_IRP_LIST_FREEZE);
 
-    if (SrbProcessing)
+    if (QueueRequest)
     {
         // add irp to queue
         InsertTailList(&FDODeviceExtension->IrpListHead, &Irp->Tail.Overlay.ListEntry);
-    }
-
-    FDODeviceExtension->IrpPendingCount++;
-    KeClearEvent(&FDODeviceExtension->NoPendingRequests);
-
-    // check if queue is freezed
-    IrpListFreeze = BooleanFlagOn(FDODeviceExtension->Flags, USBSTOR_FDO_FLAGS_IRP_LIST_FREEZE);
-
-    KeReleaseSpinLock(&FDODeviceExtension->IrpListLock, OldLevel);
-
-    // synchronize with cancellations by holding the cancel lock
-    IoAcquireCancelSpinLock(&Irp->CancelIrql);
-
-    if (SrbProcessing)
-    {
-        ASSERT(FDODeviceExtension->ActiveSrb != NULL);
-
-        OldDriverCancel = IoSetCancelRoutine(Irp, USBSTOR_Cancel);
+        CancelRoutine = USBSTOR_Cancel;
     }
     else
     {
         ASSERT(FDODeviceExtension->ActiveSrb == NULL);
 
         FDODeviceExtension->ActiveSrb = Request;
-        OldDriverCancel = IoSetCancelRoutine(Irp, USBSTOR_CancelIo);
+        FDODeviceExtension->QueueBusy = TRUE;
+        CancelRoutine = USBSTOR_CancelIo;
     }
+
+    FDODeviceExtension->IrpPendingCount++;
+    KeClearEvent(&FDODeviceExtension->NoPendingRequests);
+
+    OldDriverCancel = IoSetCancelRoutine(Irp, CancelRoutine);
+
+    KeReleaseSpinLockFromDpcLevel(&FDODeviceExtension->IrpListLock);
 
     // check if the irp has already been cancelled
     if (Irp->Cancel && OldDriverCancel == NULL)
     {
-        // cancel irp
-        Irp->CancelRoutine(DeviceObject, Irp);
-        return FALSE;
+        // it was cancelled before it had a cancel routine, so nobody ran one for
+        // it - cancel it here. this releases the cancel lock and completes the
+        // irp, so the caller must not start it
+        IoSetCancelRoutine(Irp, NULL);
+        CancelRoutine(DeviceObject, Irp);
+        return TRUE;
     }
 
     IoReleaseCancelSpinLock(Irp->CancelIrql);
 
-    // if list is freezed, dont start this packet
-    DPRINT("IrpListFreeze: %lu IrpPendingCount %lu\n", IrpListFreeze, FDODeviceExtension->IrpPendingCount);
+    DPRINT("QueueRequest: %lu IrpPendingCount %lu\n", QueueRequest, FDODeviceExtension->IrpPendingCount);
 
-    return (IrpListFreeze || SrbProcessing);
+    return QueueRequest;
 }
 
+//
+// Hands the queue to the oldest irp in the list and returns it, or leaves the
+// queue idle when there is nothing to start. The queue is busy from the moment
+// a request is handed to USBSTOR_StartIo until it is handed over here, which
+// happens after that request has been completed - a request arriving from
+// within that completion waits in the list instead of starting on top of the
+// one which is still being completed. Only the owner of the queue may hand it
+// over, everybody else has to leave a busy queue alone.
+//
+static
 PIRP
-USBSTOR_RemoveIrp(
-    IN PDEVICE_OBJECT DeviceObject)
+USBSTOR_QueueTakeIrp(
+    IN PFDO_DEVICE_EXTENSION FDODeviceExtension,
+    IN BOOLEAN OwnsQueue)
 {
     KIRQL OldLevel;
-    PFDO_DEVICE_EXTENSION FDODeviceExtension;
     PLIST_ENTRY Entry;
+    PIO_STACK_LOCATION IoStack;
     PIRP Irp = NULL;
-
-    FDODeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-    ASSERT(FDODeviceExtension->Common.IsFDO);
 
     KeAcquireSpinLock(&FDODeviceExtension->IrpListLock, &OldLevel);
 
-    if (!IsListEmpty(&FDODeviceExtension->IrpListHead))
+    if (OwnsQueue || !FDODeviceExtension->QueueBusy)
     {
-        Entry = RemoveHeadList(&FDODeviceExtension->IrpListHead);
+        if (!BooleanFlagOn(FDODeviceExtension->Flags, USBSTOR_FDO_FLAGS_IRP_LIST_FREEZE) &&
+            !IsListEmpty(&FDODeviceExtension->IrpListHead))
+        {
+            Entry = RemoveHeadList(&FDODeviceExtension->IrpListHead);
 
-        // get offset to start of irp
-        Irp = (PIRP)CONTAINING_RECORD(Entry, IRP, Tail.Overlay.ListEntry);
+            // get offset to start of irp
+            Irp = (PIRP)CONTAINING_RECORD(Entry, IRP, Tail.Overlay.ListEntry);
+
+            IoStack = IoGetCurrentIrpStackLocation(Irp);
+            FDODeviceExtension->ActiveSrb = (PSCSI_REQUEST_BLOCK)IoStack->Parameters.Others.Argument1;
+            ASSERT(FDODeviceExtension->ActiveSrb);
+        }
+
+        FDODeviceExtension->QueueBusy = (Irp != NULL);
     }
 
     KeReleaseSpinLock(&FDODeviceExtension->IrpListLock, OldLevel);
@@ -202,7 +223,8 @@ USBSTOR_QueueTerminateRequest(
     // check if this was our current active SRB
     if (FDODeviceExtension->ActiveSrb == Request)
     {
-        // indicate processing is completed
+        // indicate processing is completed. the queue itself stays busy until
+        // USBSTOR_QueueNextRequest hands it over, this request is not done yet
         FDODeviceExtension->ActiveSrb = NULL;
     }
 
@@ -228,34 +250,26 @@ USBSTOR_QueueNextRequest(
     FDODeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
     ASSERT(FDODeviceExtension->Common.IsFDO);
 
-    // check first if there's already a request pending or the queue is frozen
-    if (FDODeviceExtension->ActiveSrb != NULL ||
-        BooleanFlagOn(FDODeviceExtension->Flags, USBSTOR_FDO_FLAGS_IRP_LIST_FREEZE))
-    {
-        // no work to do yet
-        return;
-    }
+    // release the device queue entry the finished request was started with.
+    // only one packet is in flight at a time, so the device queue is empty here
+    // and this just marks the device idle again
+    IoStartNextPacket(DeviceObject, TRUE);
 
-    // remove first irp from list
-    Irp = USBSTOR_RemoveIrp(DeviceObject);
+    // hand the queue over to the next request
+    Irp = USBSTOR_QueueTakeIrp(FDODeviceExtension, TRUE);
 
     // is there an irp pending
     if (!Irp)
     {
         // no work to do
-        IoStartNextPacket(DeviceObject, TRUE);
         return;
     }
 
     IoStack = IoGetCurrentIrpStackLocation(Irp);
     Request = (PSCSI_REQUEST_BLOCK)IoStack->Parameters.Others.Argument1;
-    ASSERT(Request);
-
-    FDODeviceExtension->ActiveSrb = Request;
 
     // start next packet
     IoStartPacket(DeviceObject, Irp, &Request->QueueSortKey, USBSTOR_CancelIo);
-    IoStartNextPacket(DeviceObject, TRUE);
 }
 
 VOID
@@ -278,8 +292,9 @@ USBSTOR_QueueRelease(
 
     KeReleaseSpinLock(&FDODeviceExtension->IrpListLock, OldLevel);
 
-    // grab newest irp
-    Irp = USBSTOR_RemoveIrp(DeviceObject);
+    // grab the oldest irp, unless a request already owns the queue - that one
+    // picks the list up itself when it completes
+    Irp = USBSTOR_QueueTakeIrp(FDODeviceExtension, FALSE);
 
     if (!Irp)
     {

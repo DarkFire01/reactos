@@ -49,7 +49,18 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/welcome_config/)
 endif()
 
 # freeldr.ini
-add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/bootcd.ini DESTINATION root NO_CAB NAME_ON_CD freeldr.ini FOR bootcd)
+# The SMP boot entries name a HAL, and the SMP HAL is not called the same
+# thing everywhere: i386 builds it as halmacpi.dll (see hal/halx86, where
+# halmp is commented out for this architecture), amd64 as halmp.dll.  Naming
+# one of them here left the other architecture's default debug entry unable
+# to boot at all - freeldr fails PeLdrLoadImage and stops.
+if(ARCH STREQUAL "i386")
+    set(HAL_SMP "HALMACPI.DLL")
+else()
+    set(HAL_SMP "HALMP.DLL")
+endif()
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/bootcd.ini ${CMAKE_CURRENT_BINARY_DIR}/bootcd.ini @ONLY)
+add_cd_file(FILE ${CMAKE_CURRENT_BINARY_DIR}/bootcd.ini DESTINATION root NO_CAB NAME_ON_CD freeldr.ini FOR bootcd)
 add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/bootcd_regtest.ini DESTINATION root NO_CAB NAME_ON_CD freeldr.ini FOR regtest)
 
 # Unattend

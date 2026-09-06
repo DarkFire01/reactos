@@ -309,6 +309,12 @@ USBSTOR_DataCompletionRoutine(
     }
     else
     {
+        // a failing sense request left its own srb in the stack location, put
+        // the active one back so the irp is terminated and completed with the
+        // srb the class driver sent down
+        Request = FDODeviceExtension->ActiveSrb;
+        IoStack->Parameters.Scsi.Srb = Request;
+
         Irp->IoStatus.Information = 0;
         Irp->IoStatus.Status = STATUS_IO_DEVICE_ERROR;
         Request->SrbStatus = SRB_STATUS_BUS_RESET;

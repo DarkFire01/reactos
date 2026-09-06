@@ -138,6 +138,7 @@ typedef struct
     LIST_ENTRY IrpListHead;                                                              // irp list head
     ULONG IrpPendingCount;                                                               // count of irp pending
     PSCSI_REQUEST_BLOCK ActiveSrb;                                                       // stores the current active SRB
+    BOOLEAN QueueBusy;                                                                   // set while a request owns the queue, cleared when it is handed over
     KEVENT NoPendingRequests;                                                            // set if no pending or in progress requests
     PSCSI_REQUEST_BLOCK LastTimerActiveSrb;                                              // last timer tick active srb
     ULONG SrbErrorHandlingActive;                                                        // error handling of srb is activated

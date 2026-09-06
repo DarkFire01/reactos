@@ -899,7 +899,19 @@ NtUserCtxDisplayIOCtl(
 BOOL APIENTRY
 NtUserLockWindowUpdate(HWND hWnd)
 {
-    STUB;
+    /*
+     * Explorer and comctl32 call this around every batched repaint, so a
+     * per-call warning is a storm rather than a diagnostic.  Returning FALSE
+     * is the honest answer while there is nothing behind it: a caller that is
+     * told the lock failed just draws unlocked, which is what happens anyway.
+     *
+     * Implementing it means tracking the one locked window and honouring
+     * DCX_LOCKWINDOWUPDATE in UserGetDCEx, so that drawing to it accumulates a
+     * region instead of reaching the screen and the unlock invalidates that
+     * region.  Only the flag's name exists today, in the validity mask in
+     * windc.c.
+     */
+    STUB_ONCE;
     return FALSE;
 }
 

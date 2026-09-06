@@ -158,6 +158,14 @@
 
     #define STUB         DbgPrint("WARNING:  %s at %s:%d is UNIMPLEMENTED!\n",__FUNCTION__,__RELFILE__,__LINE__);
 
+    /* For a stub the UI calls in a loop.  Every DbgPrint stops the machine -
+       on a multiprocessor kernel it freezes every other processor for the
+       length of a debugger write - so a per-call warning from something like a
+       list view repaint costs far more than the information is worth.  Says it
+       once and then keeps quiet, the way UNIMPLEMENTED_ONCE does. */
+    #define STUB_ONCE \
+        do { static int bStubbedOnce = 0; if (!bStubbedOnce) { bStubbedOnce++; STUB; } } while (0)
+
 #else
     #define DBG_GET_PPI
     #define DBG_DEFAULT_CHANNEL(x)
@@ -184,6 +192,7 @@
     #define TRACE_PPI(ppi,ch,fmt, ...)
 
     #define STUB
+    #define STUB_ONCE
 
 #endif
 

@@ -1195,6 +1195,30 @@ USBPORT_CreateDevice(IN OUT PUSB_DEVICE_HANDLE *pUsbdDeviceHandle,
             TransferedLen,
             Status);
 
+    /*
+     * Say what actually arrived.  Reaching here with a successful status and a
+     * full 0x12 bytes means the transfer worked and the descriptor did not pass
+     * the checks above - bLength, bDescriptorType or bMaxPacketSize0 - so the
+     * bytes themselves are the whole question, and the length alone cannot
+     * tell zeros from an uninitialised fill from a plausible-but-shifted
+     * descriptor.
+     */
+    {
+        const UCHAR *Bytes = (const UCHAR *)&DeviceHandle->DeviceDescriptor;
+        ULONG Index;
+
+        DPRINT1("USBPORT_CreateDevice: descriptor bytes:");
+        for (Index = 0; Index < sizeof(USB_DEVICE_DESCRIPTOR); Index++)
+        {
+            DbgPrint(" %02x", Bytes[Index]);
+        }
+        DbgPrint("\n");
+        DPRINT1("USBPORT_CreateDevice: bLength %u bDescriptorType %u bMaxPacketSize0 %u\n",
+                DeviceHandle->DeviceDescriptor.bLength,
+                DeviceHandle->DeviceDescriptor.bDescriptorType,
+                DeviceHandle->DeviceDescriptor.bMaxPacketSize0);
+    }
+
 ErrorExit:
 
     if (TtExtension && TtDeviceHandle)

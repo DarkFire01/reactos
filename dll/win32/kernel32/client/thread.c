@@ -1004,7 +1004,8 @@ SetThreadUILanguage(IN LANGID LangId)
     }
 #endif
 
-    UNIMPLEMENTED;
+    /* Said once: the shell asks for this on every thread it starts */
+    UNIMPLEMENTED_ONCE;
 
     return LANGIDFROMLCID(NtCurrentTeb()->CurrentLocale);
 }

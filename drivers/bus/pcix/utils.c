@@ -1122,7 +1122,10 @@ PciExecuteCriticalSystemRoutine(IN ULONG_PTR IpiContext)
     else
     {
         /* Spin until it has finished running */
-        while (Context->Barrier);
+        while (Context->Barrier)
+        {
+            YieldProcessor();
+        }
     }
 
     /* Done */

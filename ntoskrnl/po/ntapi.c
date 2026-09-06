@@ -173,7 +173,7 @@ static const INFORMATION_CLASS_INFO PoPowerInformationClass[] =
     IQS_NONE,
 
     /* ProcessorInformation */
-    IQS_SAME(PROCESSOR_POWER_INFORMATION, ULONG, ICIF_QUERY),
+    IQS_SAME(PROCESSOR_POWER_INFORMATION, ULONG, ICIF_QUERY | ICIF_QUERY_SIZE_VARIABLE),
 
     /* SystemPowerInformation */
     IQS_NONE,
@@ -606,6 +606,7 @@ NtPowerInformation(
     PSYSTEM_POWER_CAPABILITIES PowerCapabilities;
     PPOWER_STATE_HANDLER StateHandler;
     PSYSTEM_POWER_POLICY CurrentPolicy;
+    PPROCESSOR_POWER_INFORMATION ProcessorInfo;
     PVOID LocalBuffer = NULL;
 
     PAGED_CODE();
@@ -808,6 +809,72 @@ NtPowerInformation(
                 RtlCopyMemory(PlatformInfo,
                               &LocalPlatformInfo,
                               sizeof(POWER_PLATFORM_INFORMATION));
+
+                Status = STATUS_SUCCESS;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+            break;
+        }
+
+        case ProcessorInformation:
+        {
+            ULONG Index, Count;
+
+            ProcessorInfo = (PPROCESSOR_POWER_INFORMATION)OutputBuffer;
+
+            /* The caller provided an input buffer on a Query class, bail out */
+            if (InputBuffer)
+            {
+                DPRINT1("InputBuffer provided on ProcessorInformation class when it should not be\n");
+                Status = STATUS_INVALID_PARAMETER;
+                goto Quit;
+            }
+
+            /*
+             * One entry per processor, not one entry.  PopProcessorInformation
+             * walks the group's affinity and fills the buffer as it goes, so a
+             * caller asking about a sixteen processor machine passes sixteen
+             * structures; the class list used to demand exactly one and every
+             * such caller was answered STATUS_INFO_LENGTH_MISMATCH before ever
+             * reaching this switch.  Task Manager asks once a second.
+             */
+            Count = (ULONG)KeNumberProcessors;
+            if (OutputBufferLength < Count * sizeof(PROCESSOR_POWER_INFORMATION))
+            {
+                DPRINT1("OutputBufferLength too small (length %lu, %lu processors)\n",
+                        OutputBufferLength, Count);
+                Status = STATUS_BUFFER_TOO_SMALL;
+                goto Quit;
+            }
+
+            _SEH2_TRY
+            {
+                for (Index = 0; Index < Count; Index++)
+                {
+                    PKPRCB Prcb = KiProcessorBlock[Index];
+
+                    ProcessorInfo[Index].Number = Index;
+
+                    /*
+                     * The reference takes MaxMhz from the performance domain's
+                     * nominal frequency and falls back on Prcb->MHz when the
+                     * processor has no domain, and reads the current and limit
+                     * frequencies from PpmPerfGetCurrentState().  There is no
+                     * processor power management here at all, which is the
+                     * no-domain case: the calibrated frequency is all three.
+                     */
+                    ProcessorInfo[Index].MaxMhz = Prcb->MHz;
+                    ProcessorInfo[Index].CurrentMhz = Prcb->MHz;
+                    ProcessorInfo[Index].MhzLimit = Prcb->MHz;
+
+                    /* Idle states come from the same place, so there are none */
+                    ProcessorInfo[Index].MaxIdleState = 0;
+                    ProcessorInfo[Index].CurrentIdleState = 0;
+                }
 
                 Status = STATUS_SUCCESS;
             }

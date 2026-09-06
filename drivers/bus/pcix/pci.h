@@ -664,8 +664,25 @@ typedef VOID (NTAPI *PCI_IPI_FUNCTION)(
 //
 typedef struct _PCI_IPI_CONTEXT
 {
-    LONG RunCount;
-    ULONG Barrier;
+    /*
+     * Both of these are written by one processor and read by the others while
+     * they spin, so both have to be volatile - PCI_CRITICAL_ROUTINE_CONTEXT
+     * declares its Gate and Barrier that way for the same reason.
+     *
+     * Without it GCC hoists the load of Barrier out of the wait in
+     * PciExecuteCriticalSystemRoutine and spins on a register that nothing can
+     * ever change:
+     *
+     *     mov  0x4(%ebx),%eax   ; Context->Barrier, loaded once
+     *     test %eax,%eax
+     *     jne  <back to test>   ; forever
+     *
+     * which hung every SMP boot at the first critical device with BARs - the
+     * VGA adapter - with the application processors stuck at IPI_LEVEL inside
+     * the IPI and the caller waiting for a packet they could never retire.
+     */
+    volatile LONG RunCount;
+    volatile ULONG Barrier;
     PVOID DeviceExtension;
     PCI_IPI_FUNCTION Function;
     PVOID Context;

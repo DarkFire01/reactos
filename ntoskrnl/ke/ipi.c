@@ -18,7 +18,7 @@ extern KSPIN_LOCK KiReverseStallIpiLock;
 
 /*
  * How long to wait for a target to retire a packet, in YieldProcessor() spins.
- * Deliberately generous, and the same shape as KI_FREEZE_SPIN_LIMIT: a false
+ * Deliberately generous, and the same shape as the freeze timeout: a false
  * timeout costs a broken completion guarantee and a loud message, where too
  * short a wait on a healthy machine would be a regression that only shows up
  * under load.
@@ -446,21 +446,42 @@ KiIpiSendRequest(
     }
 
     /*
-     * Serialise senders: a processor may only have one packet outstanding,
-     * and TargetSet below is what tells us it has been retired.
-     *
      * Raise only if this is a raise.  SYNCH_LEVEL is below IPI_LEVEL on both
      * i386 flavours (IPI_LEVEL - 1 or - 2), so a caller already at or above it
      * - a KeIpiGenericCall broadcast worker that reaches a remote TLB shootdown
      * is the way in - would ask KeRaiseIrql to lower, and DBG builds bugcheck
      * IRQL_NOT_GREATER_OR_EQUAL on exactly that.
+     *
+     * No global lock is taken here, and taking one was extremely expensive.
+     *
+     * Senders do have to be serialised per target - a target has one SignalDone
+     * slot, so only one packet may be in flight to it at a time - but
+     * KiIpiPublishPacket() above already does exactly that, and does it per
+     * target, by claiming each slot with a compare-exchange and stalling only
+     * on the ones that are busy.  Wrapping the whole transaction in a single
+     * machine-wide spinlock on top of that serialised every TLB shootdown in
+     * the system against every other one, and held the lock across the entire
+     * round trip - publish, interrupt, remote execution, acknowledgement.
+     * KeFlushSingleTb() is called for essentially every page table edit, so on
+     * a busy multiprocessor machine that lock was the memory manager's
+     * throughput, and starting an application went from seconds to minutes.
+     *
+     * The reference agrees: KiReverseStallIpiLock exists there too, and is
+     * acquired by exactly two functions - KeIpiGenericCall and
+     * KeInvalidateAllCaches.  Nothing on the shootdown path touches it.
+     *
+     * Targets release their own slot in KiIpiServiceRoutine() before running
+     * the worker, and this processor's own packet state cannot overlap with
+     * itself because we do not return until TargetSet has drained.  The spins
+     * below and in KiIpiPublishPacket() run at SYNCH_LEVEL, which is under
+     * IPI_LEVEL, so a processor stalled for a slot still answers packets aimed
+     * at it and two senders that target each other both make progress.
      */
     OldIrql = KeGetCurrentIrql();
     if (OldIrql < SYNCH_LEVEL)
     {
         KeRaiseIrql(SYNCH_LEVEL, &OldIrql);
     }
-    KeAcquireSpinLockAtDpcLevel(&KiReverseStallIpiLock);
 
     KiIpiPublishPacket(RemoteSet,
                        WorkerRoutine,
@@ -506,7 +527,6 @@ KiIpiSendRequest(
         KeMemoryBarrier();
     }
 
-    KeReleaseSpinLockFromDpcLevel(&KiReverseStallIpiLock);
     KeLowerIrql(OldIrql);
 #else
     UNREFERENCED_PARAMETER(TargetSet);

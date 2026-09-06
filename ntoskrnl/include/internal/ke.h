@@ -1049,7 +1049,16 @@ NTAPI
 KxFreezeExecution(
     VOID);
 
-VOID
+/* Set while a freeze is in progress, by the processor that owns it.  This is
+   the KiFreezeExecutionLock of the reference as much as it is its KiFreezeOwner:
+   there is no separate lock here, so it is taken by compare-exchange before any
+   target is signalled and released once the thaw has finished waiting. */
+extern PKPRCB KiFreezeOwner;
+
+/* Returns TRUE when this call was the one that actually thawed, i.e. it was the
+   outermost of a nest.  Only that one may drop what the freeze took. */
+_Must_inspect_result_
+BOOLEAN
 NTAPI
 KxThawExecution(
     VOID);

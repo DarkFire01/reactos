@@ -944,7 +944,7 @@ DWORD
 WINAPI
 GetActiveProcessorCount(IN WORD GroupNumber)
 {
-    STUB; // FIXME: Real group support
+    /* FIXME: Real group support */
     return GetProcessorCountInfo(GroupNumber, FALSE);
 }
 
@@ -955,7 +955,7 @@ DWORD
 WINAPI
 GetMaximumProcessorCount(IN WORD GroupNumber)
 {
-    STUB; // FIXME: Real group support
+    /* FIXME: Real group support */
     return GetProcessorCountInfo(GroupNumber, TRUE);
 }
 
