@@ -256,6 +256,15 @@ KxFreezeExecution(
     {
         PKPRCB TargetPrcb = KiProcessorBlock[i];
 
+        /* A processor can be counted before its block exists: KiSystemStartup
+           does Cpu = KeNumberProcessors++ and publishes KiProcessorBlock[Cpu]
+           afterwards, so a freeze that lands in that window - a DbgPrint from
+           KeStartAllProcessors is enough - finds a hole here */
+        if (TargetPrcb == NULL)
+        {
+            continue;
+        }
+
         if ((KiFreezeRequested & AFFINITY_MASK(i)) == 0)
         {
             continue;
@@ -341,6 +350,15 @@ KxThawExecution(
     {
         PKPRCB TargetPrcb = KiProcessorBlock[i];
 
+        /* A processor can be counted before its block exists: KiSystemStartup
+           does Cpu = KeNumberProcessors++ and publishes KiProcessorBlock[Cpu]
+           afterwards, so a freeze that lands in that window - a DbgPrint from
+           KeStartAllProcessors is enough - finds a hole here */
+        if (TargetPrcb == NULL)
+        {
+            continue;
+        }
+
         if (TargetPrcb == CurrentPrcb)
         {
             continue;
@@ -369,6 +387,15 @@ KxThawExecution(
     for (i = 0; i < KiFrozenProcessorCount; i++)
     {
         PKPRCB TargetPrcb = KiProcessorBlock[i];
+
+        /* A processor can be counted before its block exists: KiSystemStartup
+           does Cpu = KeNumberProcessors++ and publishes KiProcessorBlock[Cpu]
+           afterwards, so a freeze that lands in that window - a DbgPrint from
+           KeStartAllProcessors is enough - finds a hole here */
+        if (TargetPrcb == NULL)
+        {
+            continue;
+        }
 
         if ((Thawing & AFFINITY_MASK(i)) == 0)
         {
