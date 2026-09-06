@@ -1299,13 +1299,22 @@ GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer)
                                       PerformanceInfo.AvailablePages) * 100) /
                                       BaseStaticServerData->SysInfo.NumberOfPhysicalPages;
 
-    /* Save physical memory */
-    PhysicalMemory = BaseStaticServerData->SysInfo.NumberOfPhysicalPages *
+    /*
+     * Save physical memory.
+     *
+     * NumberOfPhysicalPages and PageSize are both ULONG, so the product is
+     * computed in 32 bits and wraps before it is widened into the 64-bit field:
+     * 48 GB of RAM is 12.5M pages, and 12.5M * 4096 overflows to about 3.8 GB.
+     * That is why anything asking for the machine's memory - Task Manager, the
+     * System control panel - reported a 32-bit-looking number on a large-memory
+     * machine. Widen one operand so the multiply is done in 64 bits.
+     */
+    PhysicalMemory = (ULONGLONG)BaseStaticServerData->SysInfo.NumberOfPhysicalPages *
                      BaseStaticServerData->SysInfo.PageSize;
     lpBuffer->ullTotalPhys = PhysicalMemory;
 
     /* Now save available physical memory */
-    PhysicalMemory = PerformanceInfo.AvailablePages *
+    PhysicalMemory = (ULONGLONG)PerformanceInfo.AvailablePages *
                      BaseStaticServerData->SysInfo.PageSize;
     lpBuffer->ullAvailPhys = PhysicalMemory;
 
