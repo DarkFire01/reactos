@@ -201,9 +201,8 @@ KiSystemStartupBootStack(VOID)
         InterlockedBitTestAndSetAffinity(&KiIdleSummary, Prcb->Number);
     KiReleasePrcbLock(Prcb);
 
-    /* Raise back to HIGH_LEVEL and clear the PRCB for the loader block */
+    /* Raise back to HIGH_LEVEL */
     KfRaiseIrql(HIGH_LEVEL);
-    LoaderBlock->Prcb = 0;
 
     /* Set the priority of this thread to 0 */
     Thread = KeGetCurrentThread();
@@ -212,6 +211,25 @@ KiSystemStartupBootStack(VOID)
     /* Force interrupts enabled and lower IRQL back to DISPATCH_LEVEL */
     _enable();
     KeLowerIrql(DISPATCH_LEVEL);
+
+    /*
+     * Clearing this releases KeStartAllProcessors(), which goes straight on to
+     * announce and start the next processor - and announcing it is a DbgPrint,
+     * which freezes every processor in KeActiveProcessors and waits for each to
+     * answer.  This processor put itself in that set back in KiSystemStartup(),
+     * so from here on it is expected to answer.
+     *
+     * It could not have, until now.  The freeze request arrives as an IPI at
+     * IPI_LEVEL, so it is blocked while this processor sits at HIGH_LEVEL, and
+     * blocked outright while interrupts are off - which is how it was released
+     * before, several statements ahead of the _enable() above.  The freeze then
+     * timed out on a processor that was up, in the set, and unable to say so:
+     * "Some processors not frozen in debugger!", after which the debugger runs
+     * with a processor it does not have stopped.
+     *
+     * So report readiness only once this processor can actually be frozen.
+     */
+    LoaderBlock->Prcb = 0;
 
     /* Set the right wait IRQL */
     Thread->WaitIrql = DISPATCH_LEVEL;

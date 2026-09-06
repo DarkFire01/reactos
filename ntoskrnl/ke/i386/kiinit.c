@@ -658,9 +658,10 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     if (!Prcb->NextThread) KiIdleSummary |= 1 << Number;
     KiReleasePrcbLock(Prcb);
 
-    /* Raise back to HIGH_LEVEL and clear the PRCB for the loader block */
+    /* Raise back to HIGH_LEVEL. The loader block is not released here - see
+       KiSystemStartupBootStack(), which does it once this processor is able to
+       answer a freeze. */
     KeRaiseIrql(HIGH_LEVEL, &DummyIrql);
-    LoaderBlock->Prcb = 0;
 }
 
 CODE_SEG("INIT")
@@ -727,6 +728,23 @@ KiSystemStartupBootStack(VOID)
     /* Force interrupts enabled and lower IRQL back to DISPATCH_LEVEL */
     _enable();
     KeLowerIrql(DISPATCH_LEVEL);
+
+    /*
+     * Release KeStartAllProcessors() only now.  Clearing this sends it off to
+     * announce the next processor, and the announcement is a DbgPrint, which
+     * freezes everything in KeActiveProcessors and waits for each to answer.
+     * This processor joined that set in KiSystemStartup(), so it is expected
+     * to answer - and could not have until the two lines above, because the
+     * freeze arrives as an IPI at IPI_LEVEL, blocked both by HIGH_LEVEL and by
+     * interrupts being off.  Reporting before that is what leaves the debugger
+     * running with a processor it believes it stopped.
+     *
+     * This is also later than the old report site, never earlier, so it keeps
+     * the property that matters above: everything this processor needs out of
+     * the loader block has been read by now, so the boot processor is free to
+     * overwrite it for the next one.
+     */
+    KeLoaderBlock->Prcb = 0;
 
     /* Set the right wait IRQL */
     Thread->WaitIrql = DISPATCH_LEVEL;
