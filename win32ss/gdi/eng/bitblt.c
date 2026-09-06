@@ -843,12 +843,70 @@ AlphaBltMask(SURFOBJ* psoDest,
 
     if (psoMask != NULL)
     {
+        PFN_DIB_PutPixel fnDest_PutPixel;
+        PFN_DIB_GetPixel fnDest_GetPixel;
+        ULONG SolidColor;
+
         BrushColor = XLATEOBJ_iXlate(pxloBrush, pbo ? pbo->iSolidColor : 0);
         r = (int)GetRValue(BrushColor);
         g = (int)GetGValue(BrushColor);
         b = (int)GetBValue(BrushColor);
+        SolidColor = pbo ? pbo->iSolidColor : 0;
+
+        /* This is the glyph blit: every anti-aliased character comes through
+           here, so the destination format is looked up once rather than for
+           each pixel. */
+        fnDest_PutPixel = DibFunctionsForBitmapFormat[psoDest->iBitmapFormat].DIB_PutPixel;
+        fnDest_GetPixel = DibFunctionsForBitmapFormat[psoDest->iBitmapFormat].DIB_GetPixel;
 
         tMask = (PBYTE)psoMask->pvScan0 + (pptlMask->y * psoMask->lDelta) + pptlMask->x;
+
+        if (psoDest->iBitmapFormat == BMF_32BPP)
+        {
+            /*
+             * The usual case, and worth its own path. Walking the destination
+             * scanline directly costs one add per pixel; going through
+             * DIB_GetPixel/DIB_PutPixel costs two indirect calls and two
+             * multiplies, since each recomputes pvScan0 + y * lDelta. The reads
+             * and writes are the same 32-bit accesses those two make.
+             */
+            PBYTE pjDstLine = (PBYTE)psoDest->pvScan0 +
+                              (prclDest->top * psoDest->lDelta) +
+                              (prclDest->left * sizeof(ULONG));
+
+            for (j = 0; j < dy; j++)
+            {
+                PULONG pulDst = (PULONG)pjDstLine;
+
+                lMask = tMask;
+                for (i = 0; i < dx; i++)
+                {
+                    if (*lMask > 0)
+                    {
+                        if (*lMask == 0xff)
+                        {
+                            pulDst[i] = SolidColor;
+                        }
+                        else
+                        {
+                            Background = XLATEOBJ_iXlate(pxloBrush, pulDst[i]);
+
+                            NewColor =
+                                RGB((*lMask * (r - GetRValue(Background)) >> 8) + GetRValue(Background),
+                                    (*lMask * (g - GetGValue(Background)) >> 8) + GetGValue(Background),
+                                    (*lMask * (b - GetBValue(Background)) >> 8) + GetBValue(Background));
+
+                            pulDst[i] = XLATEOBJ_iXlate(pxloRGB2Dest, NewColor);
+                        }
+                    }
+                    lMask++;
+                }
+                pjDstLine += psoDest->lDelta;
+                tMask += psoMask->lDelta;
+            }
+            return TRUE;
+        }
+
         for (j = 0; j < dy; j++)
         {
             lMask = tMask;
@@ -858,13 +916,15 @@ AlphaBltMask(SURFOBJ* psoDest,
                 {
                     if (*lMask == 0xff)
                     {
-                        DibFunctionsForBitmapFormat[psoDest->iBitmapFormat].DIB_PutPixel(
-                            psoDest, prclDest->left + i, prclDest->top + j, pbo ? pbo->iSolidColor : 0);
+                        fnDest_PutPixel(psoDest, prclDest->left + i, prclDest->top + j,
+                                        SolidColor);
                     }
                     else
                     {
-                        Background = DIB_GetSource(psoDest, prclDest->left + i, prclDest->top + j,
-                                                   pxloBrush);
+                        Background = XLATEOBJ_iXlate(pxloBrush,
+                                                     fnDest_GetPixel(psoDest,
+                                                                     prclDest->left + i,
+                                                                     prclDest->top + j));
 
                         NewColor =
                             RGB((*lMask * (r - GetRValue(Background)) >> 8) + GetRValue(Background),
@@ -872,8 +932,8 @@ AlphaBltMask(SURFOBJ* psoDest,
                                 (*lMask * (b - GetBValue(Background)) >> 8) + GetBValue(Background));
 
                         Background = XLATEOBJ_iXlate(pxloRGB2Dest, NewColor);
-                        DibFunctionsForBitmapFormat[psoDest->iBitmapFormat].DIB_PutPixel(
-                            psoDest, prclDest->left + i, prclDest->top + j, Background);
+                        fnDest_PutPixel(psoDest, prclDest->left + i, prclDest->top + j,
+                                        Background);
                     }
                 }
                 lMask++;
