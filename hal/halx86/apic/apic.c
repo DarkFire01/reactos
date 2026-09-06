@@ -268,9 +268,20 @@ HalpIoApicServesInput(
             continue;
         }
 
-        /* In this unit's span but past what it last said. Ask it again */
+        /*
+         * In this unit's span but past what it last said. Ask it again -
+         * upwards only.
+         *
+         * What was recorded at init is what HalpMeasureIoApicInputs found the
+         * unit really implements, and a version register that understated it
+         * once will understate it again; letting this re-derivation win would
+         * undo the measurement on the first lookup that needed it. The
+         * reference does not re-derive a count it already holds either:
+         * HalpProbeIoApic writes one only when the recorded count is zero or
+         * the caller forces it.
+         */
         Count = ((IOApicRead(HalpIoApics[i].Base, IOAPIC_VER) >> 16) & 0xFF) + 1;
-        if (Count != HalpIoApics[i].InputCount)
+        if (Count > HalpIoApics[i].InputCount)
         {
             DPRINT1("I/O APIC %lu now reports %lu input(s), was %lu\n",
                     i, Count, HalpIoApics[i].InputCount);
@@ -782,6 +793,131 @@ HalpGetRootInterruptVector(
 
 /**
  * @brief
+ * Whether an I/O APIC really implements a redirection entry.
+ *
+ * The version register carries the number of entries a unit has, and the
+ * reference takes it at its word - halmacpi's HalpProbeIoApic records
+ * BYTE2(version) + 1 and every input above that is refused, in Vista and in
+ * Win10 1607 alike. On a machine whose only described unit reports 24 entries
+ * while its firmware routes PCI interrupts through _PRT to global system
+ * interrupts 27, 29, 40 and 43, that word cannot be right: the entries are
+ * there, they hold what firmware programmed into them, and no other unit in
+ * the machine could deliver those lines.
+ *
+ * Firmware does not publish routing it cannot deliver, so the entry itself is
+ * asked rather than the register that claims to count them.
+ *
+ * ClaimedPins is how many entries the unit does admit to, and asks for the
+ * alias check below; zero skips it, for a sweep that has already been decided.
+ */
+static
+BOOLEAN
+HalpIoApicInputImplemented(
+    _In_ ULONG_PTR Base,
+    _In_ ULONG Pin,
+    _In_ ULONG ClaimedPins)
+{
+    UCHAR Register = (UCHAR)(IOAPIC_REDTBL + 2 * Pin);
+    ULONG Saved, ReadBack, Other;
+    BOOLEAN Implemented;
+
+    Saved = IOApicRead(Base, Register);
+
+    /*
+     * An entry holding contents is an entry that exists, and one the platform
+     * may still be using for itself.
+     *
+     * Firmware leaves the lines it owns programmed and masked - a thermal or
+     * legacy-USB-emulation line delivered as an SMI reads back exactly so -
+     * while a register the unit does not implement reads as all-zeroes or
+     * all-ones. Believing the contents keeps the write below off those lines,
+     * the same care HalpInitializeIOUnit takes when it masks a unit. Only once
+     * the unit is known to understate itself, though: the entry that settles
+     * that is worth disturbing, and is checked properly instead.
+     */
+    if ((ClaimedPins == 0) && (Saved != 0) && (Saved != 0xFFFFFFFF))
+    {
+        return TRUE;
+    }
+
+    /* Masked (bit 16) with vector 0xEF and everything else clear, so nothing
+       can be delivered through the entry while it carries the probe */
+    IOApicWrite(Base, Register, 0x000100EF);
+    ReadBack = IOApicRead(Base, Register);
+    Implemented = (ReadBack == 0x000100EF);
+
+    /*
+     * Retaining a write is not enough on its own.
+     *
+     * A unit that ignores the index bits above the entries it implements
+     * answers a probe of entry 24 out of an entry it does have. That retains
+     * the write while proving nothing, and routing an interrupt to 24 would
+     * then quietly take over a line that already works. So while the probe
+     * value is still in place, check that no entry the unit claims has grown
+     * it.
+     */
+    if (Implemented && (ClaimedPins != 0))
+    {
+        for (Other = 0; Other < ClaimedPins; Other++)
+        {
+            if (IOApicRead(Base, (UCHAR)(IOAPIC_REDTBL + 2 * Other)) == 0x000100EF)
+            {
+                DPRINT1("I/O APIC entry %lu is an alias of entry %lu, not an entry\n",
+                        Pin, Other);
+                Implemented = FALSE;
+                break;
+            }
+        }
+    }
+
+    IOApicWrite(Base, Register, Saved);
+    return Implemented;
+}
+
+/**
+ * @brief
+ * How many redirection entries a unit implements, which is not always how many
+ * it reports.
+ *
+ * Starts from the count the version register gave and walks up while the
+ * entries are really there. Only the first entry past the reported count is
+ * checked for aliasing: that one decides whether the unit understates itself
+ * at all, and the sweep after it has only to find where the table stops.
+ *
+ * DIVERGENCE from the reference, which trusts the version register alone and
+ * on such a machine leaves every interrupt above the reported count unroutable
+ * - which is every Serial IO controller on an Intel PCH.
+ */
+static
+ULONG
+HalpMeasureIoApicInputs(
+    _In_ ULONG_PTR Base,
+    _In_ ULONG Reported)
+{
+    ULONG Count = Reported;
+
+    if ((Count == 0) || (Count >= HALP_MAX_IOAPIC_INPUTS))
+    {
+        return Count;
+    }
+
+    if (!HalpIoApicInputImplemented(Base, Count, Reported))
+    {
+        return Count;
+    }
+
+    do
+    {
+        Count++;
+    }
+    while ((Count < HALP_MAX_IOAPIC_INPUTS) &&
+           HalpIoApicInputImplemented(Base, Count, 0));
+
+    return Count;
+}
+
+/**
+ * @brief
  * Maps one I/O APIC page and records the inputs it serves.
  */
 static
@@ -792,7 +928,7 @@ HalpMapIoApic(
 {
     PHARDWARE_PTE Pte;
     ULONG_PTR Base;
-    ULONG Count, Version;
+    ULONG Count, Measured, Version;
 
     if (HalpIoApicCount >= HALP_MAX_IOAPICS)
     {
@@ -844,6 +980,16 @@ HalpMapIoApic(
      */
     DPRINT1("I/O APIC at %lx: id %08lx ver %08lx -> %lu input(s)\n",
             PhysicalBase, IOApicRead(Base, IOAPIC_ID), Version, Count);
+
+    /* ...and how many entries it has, which is not always what it just said */
+    Measured = HalpMeasureIoApicInputs(Base, Count);
+    if (Measured != Count)
+    {
+        DPRINT1("I/O APIC at %lx implements %lu input(s), not the %lu it reports\n",
+                PhysicalBase, Measured, Count);
+        Count = Measured;
+    }
+
     if (InputBase >= HALP_MAX_INPUTS)
     {
         DPRINT1("I/O APIC at %lx starts past the input space, ignored\n", PhysicalBase);

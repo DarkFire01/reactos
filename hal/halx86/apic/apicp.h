@@ -62,6 +62,9 @@
 #define APIC_FREE_VECTOR 0xFF
 /* Global system interrupts must fit HalpVectorToIndex below its sentinels */
 #define HALP_MAX_INPUTS 0xFD
+/* The most redirection entries an 8-bit IOREGSEL can name: entry 119 lives in
+   registers 0xFE and 0xFF, so no unit can expose more than this many */
+#define HALP_MAX_IOAPIC_INPUTS 120
 /* I/O APIC units mapped, one page each behind IOAPIC_BASE */
 #define HALP_MAX_IOAPICS 8
 #define APIC_RESERVED_VECTOR 0xFE
