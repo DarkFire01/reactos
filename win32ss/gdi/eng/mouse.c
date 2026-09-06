@@ -588,6 +588,37 @@ EngMovePointer(
 
     pgp = &ppdev->Pointer;
 
+    /*
+     * A move to where the pointer already is has nothing to draw, and this is
+     * reached for every packet the mouse sends: the pointer is moved from the
+     * raw input path, before the WM_MOUSEMOVE is coalesced, so a mouse
+     * reporting at 500 or 1000Hz asks for the same pixel many times over while
+     * it is moved slowly.  Each of those asks costs the restore blit below,
+     * the save blit and the draw that follow it, and - because the caller holds
+     * the PDEV lock across all of it - blocks every thread trying to draw to
+     * the screen for the duration.
+     *
+     * Enabled says the pointer is currently on the screen at ptlPointer, so it
+     * is the condition that makes this safe: while it is hidden the position
+     * compares equal to nothing, and the hide/show pairing that
+     * MouseSafetyOnDrawStart() and MouseSafetyOnDrawEnd() depend on is
+     * untouched.
+     */
+    if (pgp->Enabled &&
+        x == ppdev->ptlPointer.x &&
+        y == ppdev->ptlPointer.y)
+    {
+        /* The exclusion rectangle is still owed to the caller */
+        if (prcl != NULL)
+        {
+            prcl->left = x - pgp->HotSpot.x;
+            prcl->top = y - pgp->HotSpot.y;
+            prcl->right = prcl->left + pgp->Size.cx;
+            prcl->bottom = prcl->top + pgp->Size.cy;
+        }
+        return;
+    }
+
     IntHideMousePointer(ppdev, pso);
 
     ppdev->ptlPointer.x = x;
@@ -835,6 +866,11 @@ GreMovePointer(
         if (pdc->ppdev->devinfo.flGraphicsCaps & GCAPS_PANNING && y >= 0)
             pdc->ppdev->pfnMovePointer(pso, x, y - pso->sizlBitmap.cy, NULL);
     }
+
+    /* Drain the write combining buffers, so the pointer lands with the move
+       that asked for it rather than whenever a buffer next fills. See
+       DC_vFinishBlit(), which does the same for ordinary drawing. */
+    KeMemoryBarrier();
 
     /* Release PDEV lock */
     EngReleaseSemaphore(pdc->ppdev->hsemDevLock);

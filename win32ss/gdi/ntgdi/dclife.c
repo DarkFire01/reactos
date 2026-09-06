@@ -616,6 +616,26 @@ DC_vFinishBlit(PDC pdc1, PDC pdc2)
     if (pdc1->dctype == DCTYPE_DIRECT)
     {
         MouseSafetyOnDrawEnd(pdc1->ppdev);
+
+        /*
+         * Push what was just drawn out to the frame buffer.
+         *
+         * The frame buffer is mapped write combining, so stores to it are
+         * collected in the processor's write combining buffers and land in
+         * bursts, whenever a buffer happens to fill or something else evicts
+         * it - not when the drawing operation finishes. Nothing reads them
+         * back to force the issue either, because the thing that consumes them
+         * is the display scanning out. The result is a frame that appears in
+         * pieces over the following moments rather than when it was drawn.
+         *
+         * A fence drains the buffers, so a completed drawing operation is a
+         * frame that has actually been handed over. This is once per operation,
+         * not per pixel, and is what makes the write combining mapping behave
+         * like the uncached one looked - without the per store bus round trip
+         * that mapping cost.
+         */
+        KeMemoryBarrier();
+
         EngReleaseSemaphore(pdc1->ppdev->hsemDevLock);
     }
 #if DBG
@@ -627,6 +647,10 @@ DC_vFinishBlit(PDC pdc1, PDC pdc2)
         if (pdc2->dctype == DCTYPE_DIRECT)
         {
             MouseSafetyOnDrawEnd(pdc2->ppdev);
+
+            /* Drain the write combining buffers; see above */
+            KeMemoryBarrier();
+
             EngReleaseSemaphore(pdc2->ppdev->hsemDevLock);
         }
 #if DBG
