@@ -1095,11 +1095,21 @@ KiRestoreProcessorState(OUT PKTRAP_FRAME TrapFrame,
     // used here as were used to save it, or the halves disagree about which
     // registers the frame actually carries.
     //
+    // The mode has to be the frame's own, not KernelMode. KeContextToTrapFrame
+    // runs the saved CS through Ke386SanitizeSeg, which strips the RPL bits
+    // when it is told KernelMode - so a processor frozen in user mode came back
+    // with CS 0x1B rewritten to 0x18. KiEspToTrapFrame, three lines later,
+    // decides what to do with ESP by looking at exactly those bits, saw a
+    // kernel frame, and refused the user ESP as an attempt to lower it:
+    // bugcheck 0x30, SET_OF_INVALID_CONTEXT. amd64 passes
+    // TrapFrame->PreviousMode here for the same reason; i386 keeps the mode in
+    // CS instead, so read it from there.
+    //
     KeContextToTrapFrame(&Prcb->ProcessorState.ContextFrame,
                          ExceptionFrame,
                          TrapFrame,
                          CONTEXT_FULL | CONTEXT_DEBUG_REGISTERS,
-                         KernelMode);
+                         KiUserTrap(TrapFrame) ? UserMode : KernelMode);
 
     //
     // Restore control registers
