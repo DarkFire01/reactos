@@ -151,6 +151,17 @@ typedef struct _SHARED_FACE {
   BOOLEAN       SizeRequested;
   FT_Long       LastReqWidth;
   FT_Long       LastReqHeight;
+  /*
+   * The sfnt tables, looked up once. FT_Get_Sfnt_Table() resolves the SFNT_TABLE
+   * service by walking module service lists and comparing their names, so the
+   * two lookups every text operation makes cost a string search each. The
+   * pointers are into the loaded face and are stable for its lifetime.
+   * Typed void so this header need not pull in the TrueType table headers.
+   */
+  BOOLEAN       TablesCached;
+  PVOID         pOS2;
+  PVOID         pHori;
+  PVOID         pPost;
 } SHARED_FACE, *PSHARED_FACE;
 
 typedef struct _FONTGDI {

@@ -361,6 +361,10 @@ FindBestFontFromList(FONTOBJ **FontObj, ULONG *MatchPenalty,
 static BOOL
 MatchFontName(PSHARED_FACE SharedFace, PUNICODE_STRING Name1, FT_UShort NameID, FT_UShort LangID);
 
+static VOID
+IntCacheFaceTables(
+    _Inout_ PSHARED_FACE pSharedFace);
+
 static BOOL
 FontLink_PrepareFontInfo(
     _Inout_ PFONTLINK pFontLink)
@@ -446,6 +450,10 @@ SharedFace_Create(FT_Face Face, PSHARED_MEM Memory)
         Ptr->SizeRequested = FALSE;
         Ptr->LastReqWidth = 0;
         Ptr->LastReqHeight = 0;
+        Ptr->TablesCached = FALSE;
+        Ptr->pOS2 = NULL;
+        Ptr->pHori = NULL;
+        Ptr->pPost = NULL;
         SharedFaceCache_Init(&Ptr->EnglishUS);
         SharedFaceCache_Init(&Ptr->UserLanguage);
 
@@ -3245,9 +3253,10 @@ IntGetOutlineTextMetrics(PFONTGDI FontGDI,
     XScale = Face->size->metrics.x_scale;
     YScale = Face->size->metrics.y_scale;
 
-    pOS2 = FT_Get_Sfnt_Table(Face, FT_SFNT_OS2);
-    pHori = FT_Get_Sfnt_Table(Face, FT_SFNT_HHEA);
-    pPost = FT_Get_Sfnt_Table(Face, FT_SFNT_POST); /* We can live with this failing */
+    IntCacheFaceTables(SharedFace);
+    pOS2 = (TT_OS2 *)SharedFace->pOS2;
+    pHori = (TT_HoriHeader *)SharedFace->pHori;
+    pPost = (TT_Postscript *)SharedFace->pPost; /* We can live with this failing */
     Error = FT_Get_WinFNT_Header(Face, &WinFNT);
 
     if (pOS2 == NULL && Error)
@@ -4142,6 +4151,27 @@ static unsigned int get_bezier_glyph_outline(FT_Outline *outline, unsigned int b
     return needed;
 }
 
+/*
+ * The face's OS/2, hhea and post tables. FT_Get_Sfnt_Table() has to resolve the
+ * SFNT_TABLE service first, and that walks module service lists comparing names,
+ * so calling it on every text operation costs a string search each time. The
+ * tables belong to the loaded face and do not move, so look them up once.
+ */
+static VOID
+IntCacheFaceTables(
+    _Inout_ PSHARED_FACE pSharedFace)
+{
+    ASSERT_FREETYPE_LOCK_HELD();
+
+    if (pSharedFace->TablesCached)
+        return;
+
+    pSharedFace->pOS2 = FT_Get_Sfnt_Table(pSharedFace->Face, FT_SFNT_OS2);
+    pSharedFace->pHori = FT_Get_Sfnt_Table(pSharedFace->Face, FT_SFNT_HHEA);
+    pSharedFace->pPost = FT_Get_Sfnt_Table(pSharedFace->Face, FT_SFNT_POST);
+    pSharedFace->TablesCached = TRUE;
+}
+
 static FT_Error
 IntRequestFontSizeEx(
     _In_opt_ PSHARED_FACE pSharedFace,
@@ -4181,8 +4211,17 @@ IntRequestFontSizeEx(
         lfHeight = -2;
 
     ASSERT_FREETYPE_LOCK_HELD();
-    pOS2 = (TT_OS2 *)FT_Get_Sfnt_Table(face, FT_SFNT_OS2);
-    pHori = (TT_HoriHeader *)FT_Get_Sfnt_Table(face, FT_SFNT_HHEA);
+    if (pSharedFace != NULL)
+    {
+        IntCacheFaceTables(pSharedFace);
+        pOS2 = (TT_OS2 *)pSharedFace->pOS2;
+        pHori = (TT_HoriHeader *)pSharedFace->pHori;
+    }
+    else
+    {
+        pOS2 = (TT_OS2 *)FT_Get_Sfnt_Table(face, FT_SFNT_OS2);
+        pHori = (TT_HoriHeader *)FT_Get_Sfnt_Table(face, FT_SFNT_HHEA);
+    }
 
     if (!pOS2 || !pHori)
     {
