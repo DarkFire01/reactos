@@ -73,6 +73,20 @@ static KAFFINITY KiFreezeStalled;
  */
 #define KI_FREEZE_STALL_COUNT 20000
 #define KI_FREEZE_STALL_TIME  50
+
+/*
+ * Spin this many times before falling back to a timed stall.
+ *
+ * An IPI round trip is a fraction of a microsecond, so the answer is normally
+ * here almost immediately - but the loops below went straight to
+ * KeStallExecutionProcessor, which costs the full KI_FREEZE_STALL_TIME whether
+ * it was needed or not. That put a floor of one stall per processor on both
+ * halves of every freeze, and every DbgPrint does a freeze: on a twelve
+ * processor machine roughly a millisecond of pure spinning per line printed,
+ * none of it on a uniprocessor. Catch the normal case in the tight spin and
+ * keep the stall for the timeout budget it was written for.
+ */
+#define KI_FREEZE_SPIN_COUNT  40000
 #endif
 
 /* FUNCTIONS *****************************************************************/
@@ -195,6 +209,7 @@ KxFreezeExecution(
 #ifdef CONFIG_SMP
     PKPRCB CurrentPrcb = KeGetCurrentPrcb();
     ULONG StallsLeft;
+    ULONG Spins;
     ULONG i;
 
     /* Avoid blocking on recursive debug action */
@@ -300,8 +315,18 @@ KxFreezeExecution(
             continue;
         }
 
+        Spins = KI_FREEZE_SPIN_COUNT;
         while (TargetPrcb->IpiFrozen != IPI_FROZEN_STATE_FROZEN)
         {
+            /* The answer is almost always here, in the first few */
+            if (Spins != 0)
+            {
+                Spins--;
+                YieldProcessor();
+                KeMemoryBarrier();
+                continue;
+            }
+
             if (StallsLeft == 0)
             {
                 /* Out of time - give up on this one and on the rest */
@@ -349,6 +374,7 @@ KxThawExecution(
     KAFFINITY Thawing = 0;
     KAFFINITY Stalled = 0;
     ULONG StallsLeft;
+    ULONG Spins;
     ULONG i;
 
     /* Only the outermost thaw releases anybody */
@@ -434,8 +460,18 @@ KxThawExecution(
             continue;
         }
 
+        Spins = KI_FREEZE_SPIN_COUNT;
         while (TargetPrcb->IpiFrozen == IPI_FROZEN_STATE_THAW)
         {
+            /* The answer is almost always here, in the first few */
+            if (Spins != 0)
+            {
+                Spins--;
+                YieldProcessor();
+                KeMemoryBarrier();
+                continue;
+            }
+
             if (StallsLeft == 0)
             {
                 Stalled |= AFFINITY_MASK(i);
