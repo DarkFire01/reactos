@@ -459,7 +459,17 @@ VOID
 NTAPI
 RtlpInitializeKeyedEvent(VOID)
 {
-    ASSERT(CondVarKeyedEventHandle == NULL);
+    /*
+     * This has two callers - LdrpInitializeProcess in ntdll and DllMain in
+     * ntdll_vista - and they both run for a process that loads both. The
+     * second call used to assert, and in a release build would have replaced
+     * the handle and leaked the first one.
+     */
+    if (CondVarKeyedEventHandle != NULL)
+    {
+        return;
+    }
+
     NtCreateKeyedEvent(&CondVarKeyedEventHandle, EVENT_ALL_ACCESS, NULL, 0);
 }
 
@@ -467,7 +477,12 @@ VOID
 NTAPI
 RtlpCloseKeyedEvent(VOID)
 {
-    ASSERT(CondVarKeyedEventHandle != NULL);
+    /* Symmetrical with the above: whoever gets here second finds it gone */
+    if (CondVarKeyedEventHandle == NULL)
+    {
+        return;
+    }
+
     NtClose(CondVarKeyedEventHandle);
     CondVarKeyedEventHandle = NULL;
 }
