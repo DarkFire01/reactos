@@ -54,7 +54,10 @@ typedef struct _FONT_CACHE_HASHED
 
 typedef struct _FONT_CACHE_ENTRY
 {
+    /* Least-recently-used order, for eviction */
     LIST_ENTRY ListEntry;
+    /* Hash bucket, for lookup */
+    LIST_ENTRY HashEntry;
     FT_BitmapGlyph BitmapGlyph;
     DWORD dwHash;
     FONT_CACHE_HASHED Hashed;
