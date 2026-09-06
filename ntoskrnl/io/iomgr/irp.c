@@ -292,6 +292,7 @@ IopCompleteRequest(IN PKAPC Apc,
     PMDL Mdl, NextMdl;
     PVOID Port = NULL, Key = NULL;
     BOOLEAN SignaledCreateRequest = FALSE;
+    BOOLEAN StaleUserEvent = FALSE;
 
     /* Get data from the APC */
     FileObject = (PFILE_OBJECT)*SystemArgument1;
@@ -391,14 +392,72 @@ IopCompleteRequest(IN PKAPC Apc,
         /* Check if we have an event or a file object */
         if (Irp->UserEvent)
         {
-            /* At the very least, this is a PKEVENT, so signal it always */
-            KeSetEvent(Irp->UserEvent, 0, FALSE);
+            /*
+             * The event belongs to whoever issued this IRP, and for the
+             * synchronous senders throughout the tree that is a local on their
+             * stack. They only wait when the driver returned STATUS_PENDING,
+             * so a driver that completes from a DPC or another thread while
+             * returning something else lets that frame go while this APC is
+             * still queued - and by the time it runs the event is whatever now
+             * occupies that stack.
+             *
+             * Signalling it then corrupts an unrelated frame, or faults, a long
+             * way from the driver responsible. Check it first and name the IRP
+             * instead: nobody can be waiting on an event that is no longer one.
+             */
+            if ((Irp->UserEvent->Header.Type != EventNotificationObject) &&
+                (Irp->UserEvent->Header.Type != EventSynchronizationObject))
+            {
+                PKTHREAD CurrentThread = KeGetCurrentThread();
+                PVOID Ev = Irp->UserEvent;
+
+                StaleUserEvent = TRUE;
+
+                /*
+                 * Say where the pointer landed. This APC runs in the thread
+                 * that issued the IRP, so an address inside that thread
+                 * stack means a synchronous sender returned while this was
+                 * still queued and its frame has since been reused. Anywhere
+                 * else means the IRP itself is not what it was - freed and
+                 * reused, or completed twice.
+                 */
+                DPRINT1("IRP %p: UserEvent %p is not an event (type %u), %s - "
+                        "not signalling\n",
+                        Irp,
+                        Ev,
+                        Irp->UserEvent->Header.Type,
+                        ((Ev < CurrentThread->StackBase) &&
+                         (Ev >= (PVOID)CurrentThread->StackLimit))
+                            ? "in this thread stack (stale frame)"
+                            : "not in this thread stack (bad IRP)");
+
+                if (Irp->CurrentLocation <= Irp->StackCount)
+                {
+                    PIO_STACK_LOCATION Sl = IoGetCurrentIrpStackLocation(Irp);
+
+                    DPRINT1("IRP %p: major %u minor %u device %p\n",
+                            Irp,
+                            Sl->MajorFunction,
+                            Sl->MinorFunction,
+                            Sl->DeviceObject);
+                }
+            }
+            else
+            {
+                /* At the very least, this is a PKEVENT, so signal it always */
+                KeSetEvent(Irp->UserEvent, 0, FALSE);
+            }
 
             /* Check if we also have a File Object */
             if (FileObject)
             {
-                /* Check if this is an Asynch API */
-                if (!(Irp->Flags & IRP_SYNCHRONOUS_API))
+                /*
+                 * Check if this is an Asynch API. Skip a pointer that just
+                 * failed the check above: whatever it is now, it is not the
+                 * object the reference was taken on, and decrementing a count
+                 * inside it would corrupt whoever does own that memory now.
+                 */
+                if (!(Irp->Flags & IRP_SYNCHRONOUS_API) && !StaleUserEvent)
                 {
                     /* Dereference the event */
                     ObDereferenceObject(Irp->UserEvent);
