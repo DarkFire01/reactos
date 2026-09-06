@@ -237,11 +237,29 @@ typedef struct _FILE_OBJECT_EXTENSION
  * BOOLEAN
  * IopIsValidPhysicalDeviceObject(
  *   IN PDEVICE_OBJECT PhysicalDeviceObject);
+ *
+ * A PDO is a device object the PnP manager owns a device node for, and that
+ * node has to be a real one: DNF_LEGACY_RESOURCE_DEVICENODE marks the synthetic
+ * nodes made to hold a legacy driver's resource claim, which have no device
+ * behind them.
+ *
+ * Enumeration state deliberately does not enter into it. A node loses
+ * DNF_ENUMERATED for the length of its parent's PiEnumerateDevice pass, and
+ * keeps it clear from the moment it is found missing until its removal is
+ * processed - while its device object stays named and openable the whole time.
+ * Requiring the flag here turns an ordinary race into a bugcheck: mount a
+ * partition in that window and IoReportTargetDeviceChangeAsynchronous kills the
+ * machine. The reference tests existence and DNF_LEGACY_RESOURCE_DEVICENODE and
+ * nothing else - Vista ntoskrnl.exe.c:71002 and Win10 1607
+ * ntoskrnl.exe.c:296263 are both `!DeviceNode || (DeviceNode->Flags & 0x20000)`.
  */
-#define IopIsValidPhysicalDeviceObject(PhysicalDeviceObject)                                                            \
-        (((PEXTENDED_DEVOBJ_EXTENSION)PhysicalDeviceObject) &&                                                          \
-        (((PEXTENDED_DEVOBJ_EXTENSION)PhysicalDeviceObject->DeviceObjectExtension)->DeviceNode) &&                      \
-        (((PEXTENDED_DEVOBJ_EXTENSION)PhysicalDeviceObject->DeviceObjectExtension)->DeviceNode->Flags & DNF_ENUMERATED))
+#define IopIsValidPhysicalDeviceObject(PhysicalDeviceObject)                    \
+    (((PDEVICE_OBJECT)(PhysicalDeviceObject)) &&                                \
+     (((PEXTENDED_DEVOBJ_EXTENSION)((PDEVICE_OBJECT)(PhysicalDeviceObject))->   \
+       DeviceObjectExtension)->DeviceNode) &&                                   \
+     !(((PEXTENDED_DEVOBJ_EXTENSION)((PDEVICE_OBJECT)(PhysicalDeviceObject))->  \
+        DeviceObjectExtension)->DeviceNode->Flags &                             \
+       DNF_LEGACY_RESOURCE_DEVICENODE))
 
 //
 // Device List Operations
