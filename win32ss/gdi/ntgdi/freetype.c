@@ -441,6 +441,9 @@ SharedFace_Create(FT_Face Face, PSHARED_MEM Memory)
         Ptr->Face = Face;
         Ptr->RefCount = 1;
         Ptr->Memory = Memory;
+        Ptr->SizeRequested = FALSE;
+        Ptr->LastReqWidth = 0;
+        Ptr->LastReqHeight = 0;
         SharedFaceCache_Init(&Ptr->EnglishUS);
         SharedFaceCache_Init(&Ptr->UserLanguage);
 
@@ -4121,6 +4124,7 @@ static unsigned int get_bezier_glyph_outline(FT_Outline *outline, unsigned int b
 
 static FT_Error
 IntRequestFontSizeEx(
+    _In_opt_ PSHARED_FACE pSharedFace,
     _In_ FT_Face face,
     _In_ LONG lfWidth,
     _In_ LONG lfHeight,
@@ -4260,11 +4264,43 @@ IntRequestFontSizeEx(
     req.height         = (EmHeight << 6);
     req.horiResolution = 0;
     req.vertResolution = 0;
-    error = FT_Request_Size(face, &req);
-    if (error)
+
+    /*
+     * Only touch the face if the size actually changes. FT_Request_Size() has no
+     * early out: tt_size_reset() ends with cvt_ready = -1 unconditionally, so the
+     * next FT_Load_Glyph() re-runs the font's CVT program through TT_RunIns().
+     * This is called once per ExtTextOut and once per GetTextExtentPoint, before
+     * the glyph cache is even consulted, so every text operation was re-hinting
+     * the font from scratch however well the cache performed - which is why the
+     * TrueType interpreter dominated a text-heavy profile.
+     *
+     * The metrics above are pure arithmetic off the OS/2 and hhea tables and are
+     * still returned to the caller; only the FreeType request is skipped.
+     */
+    if (pSharedFace != NULL &&
+        pSharedFace->SizeRequested &&
+        pSharedFace->LastReqWidth == req.width &&
+        pSharedFace->LastReqHeight == req.height)
     {
-        ERR("%s: Failed to request font size.\n", face->family_name);
-        return error;
+        ASSERT(pSharedFace->Face == face);
+    }
+    else
+    {
+        error = FT_Request_Size(face, &req);
+        if (error)
+        {
+            ERR("%s: Failed to request font size.\n", face->family_name);
+            if (pSharedFace != NULL)
+                pSharedFace->SizeRequested = FALSE;
+            return error;
+        }
+
+        if (pSharedFace != NULL)
+        {
+            pSharedFace->LastReqWidth = req.width;
+            pSharedFace->LastReqHeight = req.height;
+            pSharedFace->SizeRequested = TRUE;
+        }
     }
 
     if (ptmHeight)
@@ -4289,7 +4325,8 @@ IntRequestFontSize(
     _In_ LONG lfHeight)
 {
     FT_Error Error;
-    Error = IntRequestFontSizeEx(FontGDI->SharedFace->Face, lfWidth, lfHeight,
+    Error = IntRequestFontSizeEx(FontGDI->SharedFace, FontGDI->SharedFace->Face,
+                                 lfWidth, lfHeight,
                                  &FontGDI->tmHeight, &FontGDI->tmAscent,
                                  &FontGDI->tmDescent, &FontGDI->tmInternalLeading,
                                  &FontGDI->lfHeight, &FontGDI->lfWidth);
@@ -4451,7 +4488,7 @@ FontLink_Chain_FindGlyph(
         pCache->Hashed.Face = *pFace = face;
         if (IntNeedRequestFontSize(pChain, face, Entry))
         {
-            IntRequestFontSizeEx(face,
+            IntRequestFontSizeEx(pFontLink->SharedFace, face,
                                  pChain->LogFont.lfWidth,
                                  pChain->LogFont.lfHeight,
                                  NULL, NULL, NULL, NULL, NULL, NULL);

@@ -134,6 +134,15 @@ typedef struct _SHARED_FACE {
   PSHARED_MEM   Memory;
   SHARED_FACE_CACHE EnglishUS;
   SHARED_FACE_CACHE UserLanguage;
+  /*
+   * The size last requested on Face. FT_Request_Size() has no early out for an
+   * unchanged size: tt_size_reset() always ends with cvt_ready = -1, so the next
+   * glyph load re-executes the font's CVT program. Recording what the face is
+   * already set to lets an identical request be skipped.
+   */
+  BOOLEAN       SizeRequested;
+  FT_Long       LastReqWidth;
+  FT_Long       LastReqHeight;
 } SHARED_FACE, *PSHARED_FACE;
 
 typedef struct _FONTGDI {
