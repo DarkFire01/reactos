@@ -780,6 +780,15 @@ VBEMapVideoMemory(
    if (DeviceExtension->ModeInfo[DeviceExtension->CurrentMode].ModeAttributes &
        VBE_MODEATTR_LINEAR)
    {
+      /*
+       * A linear frame buffer is write combining memory: it is written far
+       * more than it is read, and the writes are sequential, so combining them
+       * into bursts is the difference between one bus transaction per pixel
+       * and one per cache line.  Ask for it - VideoPortMapMemory leaves the
+       * mapping uncached without this.
+       */
+      inIoSpace |= VIDEO_MEMORY_SPACE_P6CACHE;
+
       FrameBuffer.QuadPart =
          DeviceExtension->ModeInfo[DeviceExtension->CurrentMode].PhysBasePtr;
       MapInformation->VideoRamBase = RequestedAddress->RequestedVirtualAddress;

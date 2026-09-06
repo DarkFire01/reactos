@@ -436,10 +436,24 @@ IntVideoPortMapMemory(
    }
    else /* kernel space */
    {
+      /*
+       * Honour VIDEO_MEMORY_SPACE_P6CACHE here exactly as the user-mode path
+       * above does.  A miniport sets it on a linear frame buffer to ask for
+       * write combining, and a frame buffer is the case write combining exists
+       * for: without it every store is its own uncached bus transaction, so a
+       * fill or a blit pays one round trip per pixel instead of one per burst.
+       * The display driver draws through this mapping, not the user-mode one,
+       * so leaving the flag unread here made the request have no effect on
+       * anything that actually draws.
+       *
+       * Register apertures must stay uncached - combining would batch and
+       * reorder register writes - which is why this follows the miniport's
+       * flag rather than assuming the mapping is a frame buffer.
+       */
       MappedAddress = MmMapIoSpace(
          TranslatedAddress,
          NumberOfUchars,
-         MmNonCached);
+         (InIoSpace & VIDEO_MEMORY_SPACE_P6CACHE) ? MmWriteCombined : MmNonCached);
    }
 
    if (MappedAddress != NULL)
