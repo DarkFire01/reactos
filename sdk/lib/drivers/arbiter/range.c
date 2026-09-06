@@ -764,8 +764,8 @@ ArbiterLibFindSuitableRange(
         Flags |= RTL_RANGE_LIST_NULL_CONFLICT_OK;
     if (Alternative->Flags & ARBITER_ALTERNATIVE_FLAG_SHARED)
         Flags |= RTL_RANGE_LIST_SHARED_OK;
-    if (Alternative->Flags & ARBITER_ALTERNATIVE_FLAG_PREFETCH)
-        ArbState->RangeAvailableAttributes |= ARBITER_RANGE_PREFETCHABLE;
+    if (Alternative->Flags & ARBITER_ALTERNATIVE_FLAG_INACCESSIBLE_OK)
+        ArbState->RangeAvailableAttributes |= ARBITER_RANGE_INACCESSIBLE;
 
     Status = RtlFindRange(Arbiter->PossibleAllocation,
                           ArbState->CurrentMinimum,

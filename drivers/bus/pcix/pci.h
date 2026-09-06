@@ -17,6 +17,7 @@
 #include <drivers/pci/pci.h>
 #include <drivers/acpi/acpi.h>
 #include <ndk/halfuncs.h>
+#include <ndk/iotypes.h>
 #include <ndk/rtlfuncs.h>
 #include <ndk/vffuncs.h>
 #include <arbiter.h>
@@ -161,6 +162,17 @@
 // PCI Debugging Device Support
 //
 #define MAX_DEBUGGING_DEVICES_SUPPORTED     0x04
+
+//
+// One PCI device the kernel debugger is talking through. The HAL records
+// these under the driver's Debug key as it hands each device to the debug
+// transport; see HalpRegisterPciDebuggingDeviceInfo.
+//
+typedef struct _PCI_DEBUG_PORT
+{
+    ULONG Bus;
+    PCI_SLOT_NUMBER Slot;
+} PCI_DEBUG_PORT, *PPCI_DEBUG_PORT;
 
 //
 // PCI Driver Verifier Failures
@@ -2210,6 +2222,8 @@ extern BOOLEAN PciEnableNativeModeATA;
 extern PPCI_IRQ_ROUTING_TABLE PciIrqRoutingTable;
 extern BOOLEAN PciRunningDatacenter;
 extern BOOLEAN PciSystemMsiEnabled;
+extern PCI_DEBUG_PORT PciDebugPorts[MAX_DEBUGGING_DEVICES_SUPPORTED];
+extern ULONG PciDebugPortsCount;
 
 /* Exported by NTOS, should this go in the NDK? */
 extern NTSYSAPI BOOLEAN InitSafeBootMode;

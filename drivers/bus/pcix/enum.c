@@ -2210,6 +2210,18 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 
             /* Check if this device is used for PCI debugger cards */
             NewExtension->OnDebugPath = PciIsDeviceOnDebugPath(NewExtension);
+            if ((NewExtension->OnDebugPath) &&
+                (NewExtension->HeaderType == PCI_DEVICE_TYPE))
+            {
+                /*
+                 * This is the debug device itself, not merely a bridge on
+                 * the way to one. Say so on the device object: the PnP
+                 * manager will not call AddDevice for it, because starting
+                 * a function driver would reset the hardware and take the
+                 * connection the machine is being debugged over with it.
+                 */
+                DeviceObject->Flags |= DO_DEVICE_USED_BY_DEBUGGER;
+            }
 
             /* Check for devices with invalid/bogus subsystem data */
             if (HackFlags & PCI_HACK_NO_SUBSYSTEM)

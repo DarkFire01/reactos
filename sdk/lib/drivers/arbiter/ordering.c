@@ -497,7 +497,7 @@ ArbpAddRangeCallback(
 {
     PAGED_CODE();
     UNREFERENCED_PARAMETER(Arbiter);
-    RtlAddRange((PRTL_RANGE_LIST)Context, Start, End, 0,
+    RtlAddRange((PRTL_RANGE_LIST)Context, Start, End, ARBITER_RANGE_INACCESSIBLE,
                 RTL_RANGE_LIST_ADD_IF_CONFLICT, NULL, NULL);
 }
 

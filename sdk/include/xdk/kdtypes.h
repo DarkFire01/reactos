@@ -29,7 +29,7 @@ typedef struct _DEBUG_MEMORY_REQUIREMENTS {
   BOOLEAN Aligned;
 } DEBUG_MEMORY_REQUIREMENTS, *PDEBUG_MEMORY_REQUIREMENTS;
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
 typedef enum {
   KdNameSpacePCI,
   KdNameSpaceACPI,
@@ -46,7 +46,7 @@ typedef enum {
     KdSkipDeviceAndStop,
 } KD_CALLBACK_ACTION, *PKD_CALLBACK_ACTION;
 
-#if (NTDDI_VERSION >= NTDDI_WIN10)
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
 typedef struct _DEBUG_TRANSPORT_DATA {
   ULONG HwContextSize;
   BOOLEAN UseSerialFraming;
@@ -59,7 +59,7 @@ typedef struct _DEBUG_TRANSPORT_DATA {
 
 #define MAXIMUM_DEBUG_BARS 6
 
-#if (NTDDI_VERSION >= NTDDI_WIN10)
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
 #define DBG_DEVICE_FLAG_HAL_SCRATCH_ALLOCATED 0x01
 #define DBG_DEVICE_FLAG_BARS_MAPPED           0x02
 #define DBG_DEVICE_FLAG_SCRATCH_ALLOCATED     0x04
@@ -73,11 +73,11 @@ typedef struct _DEBUG_TRANSPORT_DATA {
 
 typedef struct _DEBUG_DEVICE_DESCRIPTOR {
   ULONG Bus;
-#if (NTDDI_VERSION >= NTDDI_VISTA) && (NTDDI_VERSION < NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_VISTA) && (NTDDI_VERSION < NTDDI_WIN8) && !defined(__REACTOS__)
   USHORT Segment;
 #endif
   ULONG Slot;
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
   USHORT Segment;
 #endif
   USHORT VendorID;
@@ -85,7 +85,7 @@ typedef struct _DEBUG_DEVICE_DESCRIPTOR {
   UCHAR BaseClass;
   UCHAR SubClass;
   UCHAR ProgIf;
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
 #if (NTDDI_VERSION >= NTDDI_WIN10)
   union {
 #endif
@@ -100,7 +100,7 @@ typedef struct _DEBUG_DEVICE_DESCRIPTOR {
 #endif
 #endif
   BOOLEAN Initialized;
-#if (NTDDI_VERSION >= NTDDI_VISTA)
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
   BOOLEAN Configured;
 #endif
   DEBUG_DEVICE_ADDRESS BaseAddress[MAXIMUM_DEBUG_BARS];
@@ -108,7 +108,7 @@ typedef struct _DEBUG_DEVICE_DESCRIPTOR {
 #if (NTDDI_VERSION >= NTDDI_WIN10_19H1)
   ULONG Dbg2TableIndex;
 #endif
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
   USHORT PortType;
   USHORT PortSubtype;
   PVOID OemData;
@@ -117,7 +117,7 @@ typedef struct _DEBUG_DEVICE_DESCRIPTOR {
   PWCHAR NameSpacePath;
   ULONG NameSpacePathLength;
 #endif
-#if (NTDDI_VERSION >= NTDDI_WIN10)
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
   ULONG TransportType;
   DEBUG_TRANSPORT_DATA TransportData;
 #endif

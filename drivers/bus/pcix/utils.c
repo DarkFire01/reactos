@@ -16,6 +16,7 @@
 /* GLOBALS ********************************************************************/
 
 ULONG PciDebugPortsCount;
+PCI_DEBUG_PORT PciDebugPorts[MAX_DEBUGGING_DEVICES_SUPPORTED];
 
 RTL_RANGE_LIST PciIsaBitExclusionList;
 RTL_RANGE_LIST PciVgaAndIsaBitExclusionList;
@@ -749,20 +750,56 @@ BOOLEAN
 NTAPI
 PciIsDeviceOnDebugPath(IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    PAGED_CODE();
+    ULONG i;
+    UCHAR Secondary, Subordinate;
 
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PAGED_CODE();
 
     /* Check for too many, or no, debug ports */
     ASSERT(PciDebugPortsCount <= MAX_DEBUGGING_DEVICES_SUPPORTED);
     if (!PciDebugPortsCount) return FALSE;
 
     /*
-     * Which devices the debugger is talking through is not tracked, so there
-     * is nothing to compare this one against. Treating it as an ordinary
-     * device is the safe answer: it costs the debugger nothing here, where
-     * claiming a device is on that path would stop it being managed at all.
+     * A bridge is on the path when a debug device sits on one of the buses
+     * behind it. The secondary and subordinate numbers are the ones the
+     * firmware programmed, saved into the extension by the configurator just
+     * before this runs; a bridge the firmware left unnumbered has nothing
+     * reachable behind it.
      */
+    if ((DeviceExtension->HeaderType == PCI_BRIDGE_TYPE) ||
+        (DeviceExtension->HeaderType == PCI_CARDBUS_BRIDGE_TYPE))
+    {
+        Secondary = DeviceExtension->Dependent.type1.SecondaryBus;
+        Subordinate = DeviceExtension->Dependent.type1.SubordinateBus;
+        if (!Secondary || !Subordinate) return FALSE;
+
+        for (i = 0; i < PciDebugPortsCount; i++)
+        {
+            if ((PciDebugPorts[i].Bus >= Secondary) &&
+                (PciDebugPorts[i].Bus <= Subordinate))
+            {
+                return TRUE;
+            }
+        }
+
+        return FALSE;
+    }
+
+    /*
+     * Anything else is on the path only by being the debug device itself.
+     * The bus compared against is the parent bus as it is numbered now, which
+     * is what the HAL recorded, because this driver is not renumbering buses
+     * out from under the firmware assignment.
+     */
+    for (i = 0; i < PciDebugPortsCount; i++)
+    {
+        if ((PciDebugPorts[i].Bus == DeviceExtension->ParentFdoExtension->BaseBus) &&
+            (PciDebugPorts[i].Slot.u.AsULONG == DeviceExtension->Slot.u.AsULONG))
+        {
+            return TRUE;
+        }
+    }
+
     return FALSE;
 }
 
@@ -1239,8 +1276,7 @@ PciCreateIoDescriptorFromBarLimit(PIO_RESOURCE_DESCRIPTOR ResourceDescriptor,
         /* Check if it's 64-bit or 20-bit decode */
         if ((CurrentBar & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_64BIT)
         {
-            /* The next BAR has the high word, read it */
-            ResourceDescriptor->u.Port.MaximumAddress.HighPart = BarArray[1];
+            /* The next BAR holds the high word, which is dealt with below */
             Is64BitBar = TRUE;
         }
         else if ((CurrentBar & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_20BIT)
@@ -1260,6 +1296,19 @@ PciCreateIoDescriptorFromBarLimit(PIO_RESOURCE_DESCRIPTOR ResourceDescriptor,
     /* Now write down the maximum address based on the base + length */
     ResourceDescriptor->u.Port.MaximumAddress.QuadPart = (CurrentBar & BarMask) +
                                                          BarLength - 1;
+
+    /*
+     * A 64-bit BAR decodes above 4GB, and how far above is what the high half
+     * of the probe read back. It goes on after the low half, not before it, or
+     * writing the maximum takes it away again and the BAR is left looking like
+     * it cannot decode past 4GB. A device the firmware placed above that line
+     * would then have its own setting rejected as out of range and be moved to
+     * somewhere the host bridge does not decode at all.
+     */
+    if (Is64BitBar)
+    {
+        ResourceDescriptor->u.Port.MaximumAddress.HighPart = BarArray[1];
+    }
 
     /* Return if this is a 64-bit BAR, so the loop code knows to skip the next one */
     return Is64BitBar;

@@ -148,6 +148,16 @@ extern POBJECT_TYPE NTSYSAPI IoDriverObjectType;
 #define FO_FILE_OBJECT_HAS_EXTENSION            0x00800000
 
 //
+// Device Object Flags (DEVICE_OBJECT.Flags) that are not in the public DDK
+//
+// A bus driver sets DO_DEVICE_USED_BY_DEBUGGER on a PDO whose device the
+// kernel debugger is talking through. The PnP manager refuses to hand such a
+// device to a function driver, because starting one would reset the hardware
+// out from under the debugger and take the connection with it.
+//
+#define DO_DEVICE_USED_BY_DEBUGGER              0x02000000
+
+//
 // Device Object Extension Flags
 //
 #define DOE_UNLOAD_PENDING                      0x1

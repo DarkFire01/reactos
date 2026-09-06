@@ -461,6 +461,10 @@ VidInitialize(
         }
     }
 
+    /* Everything past here draws; say the display is up so a hang before the
+     * first bitmap can be told from one inside this routine */
+    DbgPrint("VidInitialize: display ready (VgaBase %p)\n", (PVOID)VgaBase);
+
     return TRUE;
 }
 

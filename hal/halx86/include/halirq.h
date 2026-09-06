@@ -14,6 +14,14 @@
 #define HALP_DEVICE_VECTOR_FIRST    0x51
 #define HALP_DEVICE_VECTOR_COUNT    110
 
+/*
+ * The equivalent band on the 8259 HAL: the sixteen vectors the two PICs are
+ * programmed to raise, one per IRQ. The ACPI root claims this one too, less
+ * the vectors the HAL drives itself.
+ */
+#define HALP_PIC_VECTOR_FIRST       PRIMARY_VECTOR_BASE
+#define HALP_PIC_VECTOR_COUNT       16
+
 #ifdef _MINIHAL_
 #define VECTOR2IRQ(vector)	((vector) - PRIMARY_VECTOR_BASE)
 #define VECTOR2IRQL(vector)	(PROFILE_LEVEL - VECTOR2IRQ(vector))

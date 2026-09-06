@@ -17,6 +17,15 @@
 
 void __cdecl HalpTrap0D();
 
+/* DEFINES ********************************************************************/
+
+//
+// Where the video BIOS option ROM lives, and the two bytes every option ROM
+// starts with
+//
+#define VIDEO_BIOS_ROM_BASE         0xC0000
+#define VIDEO_BIOS_ROM_SIGNATURE    0xAA55
+
 /* GLOBALS ********************************************************************/
 
 //
@@ -650,6 +659,14 @@ HalpBiosDisplayReset(VOID)
     BOOLEAN RestoreWriteProtection = FALSE;
 
     //
+    // This runs the machine's own video BIOS in virtual-8086 mode with
+    // interrupts off, so a BIOS that never returns takes the boot with it and
+    // leaves no way in for the debugger. Say when it is entered and when it
+    // comes back, so a hang here is not silent.
+    //
+    DPRINT1("HalpBiosDisplayReset: entering V86 mode for INT 10h, AX=0012h\n");
+
+    //
     // Disable interrupts
     //
     Flags = __readeflags();
@@ -659,6 +676,22 @@ HalpBiosDisplayReset(VOID)
     // Map memory available to the V8086 real-mode code
     //
     HalpMapRealModeMemory();
+
+    //
+    // The first megabyte is identity mapped now, so the option ROM region can
+    // be read directly. Without a video BIOS there is nothing for INT 10h to
+    // reach, and running it anyway would execute whatever happens to be at
+    // C000:0000; report failure instead and let the caller program the VGA
+    // registers itself.
+    //
+    if (*(PUSHORT)(ULONG_PTR)VIDEO_BIOS_ROM_BASE != VIDEO_BIOS_ROM_SIGNATURE)
+    {
+        HalpUnmapRealModeMemory();
+        __writeeflags(Flags);
+        DPRINT1("HalpBiosDisplayReset: no video BIOS at 0x%lx, not calling INT 10h\n",
+                VIDEO_BIOS_ROM_BASE);
+        return FALSE;
+    }
 
     //
     // On P5, the first 7 entries of the IDT are write protected to work around
@@ -708,6 +741,8 @@ HalpBiosDisplayReset(VOID)
     // Restore interrupts if they were previously enabled
     //
     __writeeflags(Flags);
+
+    DPRINT1("HalpBiosDisplayReset: returned from V86 mode\n");
     return TRUE;
 #endif
 }

@@ -28,7 +28,7 @@
 #define ARBITER_ALTERNATIVE_FLAG_SHARED     0x00000001  // CmResourceShareShared
 #define ARBITER_ALTERNATIVE_FLAG_FIXED      0x00000002  // one placement only
 #define ARBITER_ALTERNATIVE_FLAG_BADRANGE   0x00000004  // Maximum < Minimum
-#define ARBITER_ALTERNATIVE_FLAG_PREFETCH   0x00000008  // prefetchable memory
+#define ARBITER_ALTERNATIVE_FLAG_INACCESSIBLE_OK 0x00000008  // may sit in an inaccessible range
 
 /*
  * Range attribute bits
@@ -43,13 +43,15 @@
  * Marks a phantom I/O-port range that a partially-decoding ISA card shadows,
  * rather than one the device asked for.  Set by the root port arbiter.
  *
- * ARBITER_RANGE_PREFETCHABLE:
- * Marks prefetchable memory, which only a prefetchable requirement may take.
+ * ARBITER_RANGE_INACCESSIBLE:
+ * Marks a range the firmware reported as inaccessible
+ * (Arbiters\InaccessibleRange).  Only a requirement whose descriptor carries
+ * CM_RESOURCE_MEMORY_COMPAT_FOR_INACCESSIBLE_RANGE may be placed over one.
  */
 #define ARBITER_RANGE_BOOT_ALLOCATED        0x01
 #define ARBITER_RANGE_SHARED_DRIVER         0x02
 #define ARBITER_RANGE_PORT_ALIAS            0x10
-#define ARBITER_RANGE_PREFETCHABLE          0x40
+#define ARBITER_RANGE_INACCESSIBLE          0x40
 
 /* ARBITER_ALLOCATION_STATE.Flags */
 #define ARBITER_STATE_FLAG_BOOT             0x0004  // reserving a firmware boot config

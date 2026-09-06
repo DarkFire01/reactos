@@ -624,6 +624,46 @@ PiCallDriverAddDevice(
         return Status;
     }
 
+    /*
+     * The kernel debugger may be talking through this device. Starting a
+     * function driver on it would reset the hardware and take the connection
+     * the machine is being debugged over with it, so the device is left
+     * without one unless its driver has said it can coexist with the
+     * debugger. Windows carries that opt-in as DEVPKEY_Device_DebuggerSafe;
+     * there is no devnode property store here yet, so a DebuggerSafe value on
+     * the instance key stands in for it.
+     */
+    if (DeviceNode->PhysicalDeviceObject->Flags & DO_DEVICE_USED_BY_DEBUGGER)
+    {
+        ULONG DebuggerSafe = 0;
+
+        Status = IopGetRegistryValue(SubKey, L"DebuggerSafe", &kvInfo);
+        if (NT_SUCCESS(Status))
+        {
+            if ((kvInfo->Type == REG_DWORD) &&
+                (kvInfo->DataLength == sizeof(ULONG)))
+            {
+                DebuggerSafe = *(PULONG)((ULONG_PTR)kvInfo + kvInfo->DataOffset);
+            }
+            ExFreePool(kvInfo);
+            kvInfo = NULL;
+        }
+
+        if (!DebuggerSafe)
+        {
+            DPRINT1("Device \"%wZ\" is in use by the kernel debugger, no driver loaded\n",
+                    &DeviceNode->InstancePath);
+            /*
+             * Leave the node where it is. Flagged with a problem it is skipped
+             * on every later pass, whereas queueing it for removal would send
+             * PnP removal IRPs to a PDO that was never started.
+             */
+            PiSetDevNodeProblem(DeviceNode, CM_PROB_USED_BY_DEBUGGER);
+            ZwClose(SubKey);
+            return STATUS_PNP_RESTART_ENUMERATION;
+        }
+    }
+
     // try to get the class GUID of an instance and its registry key
     Status = IopGetRegistryValue(SubKey, REGSTR_VAL_CLASSGUID, &kvInfo);
     if (NT_SUCCESS(Status))

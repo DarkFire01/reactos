@@ -46,7 +46,7 @@ NTSTATUS PnpStateTransitionArray[PciMaxObjectState * PciMaxObjectState] =
     STATUS_FAIL_CHECK,              // Synchronized Operation -> Not Started
 
     STATUS_SUCCESS,                 // Not Started -> Started
-    STATUS_FAIL_CHECK,              // Started -> Started
+    STATUS_SUCCESS,                 // Started -> Started
     STATUS_FAIL_CHECK,              // Deleted -> Started
     STATUS_SUCCESS,                 // Stopped -> Started
     STATUS_FAIL_CHECK,              // Surprise Removed -> Started
@@ -131,11 +131,18 @@ PciBeginStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
                 PciTransitionText[CurrentState]);
     }
 
-    /* New state must be different from current, unless request is at fault */
-    ASSERT((NewState != DeviceExtension->DeviceState) || (!NT_SUCCESS(Status)));
-
     /* Enter the new state if successful, and return state status */
-    if (NT_SUCCESS(Status)) DeviceExtension->TentativeNextState = NewState;
+    if (NT_SUCCESS(Status))
+    {
+        /*
+         * Re-entering the current state only makes sense for a start, as PnP
+         * may start a device that is already started without stopping it in
+         * between. Any other repeat means a caller lost track of the state.
+         */
+        ASSERT((NewState != CurrentState) || (NewState == PciStarted));
+
+        DeviceExtension->TentativeNextState = NewState;
+    }
     DbgPrint("%x\n", Status);
     return Status;
 }

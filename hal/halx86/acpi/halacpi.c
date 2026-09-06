@@ -46,6 +46,17 @@ BOOLEAN HalDisableFirmwareMapper = TRUE;
 PWCHAR HalHardwareIdString = L"acpipic_up";
 PWCHAR HalName = L"ACPI Compatible Eisa/Isa HAL";
 
+/*
+ * The two 8259 vectors the HAL drives itself and never hands to a device:
+ * IRQ 0's clock and IRQ 8's RTC. The root device's interrupt band is the
+ * rest of the 8259 range.
+ */
+static const ULONG HalpPicIdtExclusionList[] =
+{
+    HALP_PIC_VECTOR_FIRST + PIC_TIMER_IRQ,
+    HALP_PIC_VECTOR_FIRST + PIC_RTC_IRQ
+};
+
 /* PRIVATE FUNCTIONS **********************************************************/
 
 /* The power management services this HAL offers the ACPI driver (acpi/acpidisp.c) */
@@ -1057,8 +1068,9 @@ HalpAcpiDetectResourceListSize(OUT PULONG ListSize)
     PAGED_CODE();
 
     /*
-     * The APIC HALs list the device vector band. The PIC HAL lists the SCI
-     * line instead, so that the arbiter keeps it shareable.
+     * Either way this is the band of interrupt vectors the root device owns:
+     * the device vectors on the APIC HALs, the 8259 range less the vectors the
+     * HAL drives itself on the PIC HAL.
      */
     if (HalpInterruptModel != 0)
     {
@@ -1066,7 +1078,7 @@ HalpAcpiDetectResourceListSize(OUT PULONG ListSize)
     }
     else
     {
-        *ListSize = HalpFixedAcpiDescTable.sci_int_vector ? 1 : 0;
+        *ListSize = HALP_PIC_VECTOR_COUNT - RTL_NUMBER_OF(HalpPicIdtExclusionList);
     }
 }
 
@@ -1074,7 +1086,8 @@ NTSTATUS
 NTAPI
 HalpBuildAcpiResourceList(IN PIO_RESOURCE_REQUIREMENTS_LIST ResourceList)
 {
-    ULONG Interrupt;
+    PIO_RESOURCE_DESCRIPTOR Descriptor;
+    ULONG Vector, i, j;
     PAGED_CODE();
     ASSERT(ResourceList != NULL);
 
@@ -1086,34 +1099,21 @@ HalpBuildAcpiResourceList(IN PIO_RESOURCE_REQUIREMENTS_LIST ResourceList)
     ResourceList->List[0].Revision = 1;
     ResourceList->List[0].Count = 0;
 
-    /* Is there a SCI? Only the PIC HAL reports it here */
-    if ((HalpInterruptModel == 0) && HalpFixedAcpiDescTable.sci_int_vector)
-    {
-        /* Fill out the entry for it */
-        ResourceList->List[0].Descriptors[0].Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
-        ResourceList->List[0].Descriptors[0].Type = CmResourceTypeInterrupt;
-        ResourceList->List[0].Descriptors[0].ShareDisposition = CmResourceShareShared;
-
-        /* Get the interrupt number */
-        Interrupt = HalpPicVectorRedirect[HalpFixedAcpiDescTable.sci_int_vector];
-        ResourceList->List[0].Descriptors[0].u.Interrupt.MinimumVector = Interrupt;
-        ResourceList->List[0].Descriptors[0].u.Interrupt.MaximumVector = Interrupt;
-
-        /* One more */
-        ++ResourceList->List[0].Count;
-    }
-
     /*
-     * On the APIC HALs the root device also owns the block of interrupt
-     * vectors that devices are assigned from, one descriptor per vector.
+     * The root device owns a band of interrupt vectors, one descriptor per
+     * vector, and every descriptor in this list is a system vector - which is
+     * what the PNPBus interface type above declares and what lets the resource
+     * reach a driver without anything translating it on the way.
+     *
+     * The SCI is deliberately not among them. The ACPI driver takes it from the
+     * FADT and routes it through its own arbiter, and a bus line reported here
+     * would arrive at that driver looking like a vector.
      */
+    Descriptor = &ResourceList->List[0].Descriptors[0];
+
     if (HalpInterruptModel != 0)
     {
-        PIO_RESOURCE_DESCRIPTOR Descriptor;
-        ULONG Vector;
-
-        Descriptor = &ResourceList->List[0].Descriptors[ResourceList->List[0].Count];
-
+        /* The APIC HALs hand out the device vector band */
         for (Vector = HALP_DEVICE_VECTOR_FIRST;
              Vector < HALP_DEVICE_VECTOR_FIRST + HALP_DEVICE_VECTOR_COUNT;
              Vector++, Descriptor++)
@@ -1123,6 +1123,30 @@ HalpBuildAcpiResourceList(IN PIO_RESOURCE_REQUIREMENTS_LIST ResourceList)
             Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
             Descriptor->u.Interrupt.MinimumVector = Vector;
             Descriptor->u.Interrupt.MaximumVector = Vector;
+            ++ResourceList->List[0].Count;
+        }
+    }
+    else
+    {
+        /* The PIC HAL hands out the 8259 range, less what it drives itself */
+        Vector = HALP_PIC_VECTOR_FIRST;
+
+        for (i = 0;
+             i < HALP_PIC_VECTOR_COUNT - RTL_NUMBER_OF(HalpPicIdtExclusionList);
+             i++, Descriptor++)
+        {
+            /* Step over any vector the HAL kept */
+            for (j = 0; j < RTL_NUMBER_OF(HalpPicIdtExclusionList); j++)
+            {
+                if (Vector == HalpPicIdtExclusionList[j]) ++Vector;
+            }
+
+            Descriptor->Type = CmResourceTypeInterrupt;
+            Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+            Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+            Descriptor->u.Interrupt.MinimumVector = Vector;
+            Descriptor->u.Interrupt.MaximumVector = Vector;
+            ++Vector;
             ++ResourceList->List[0].Count;
         }
     }

@@ -704,19 +704,60 @@ NTSTATUS
 NTAPI
 PciGetDebugPorts(IN HANDLE DebugKey)
 {
-    UNREFERENCED_PARAMETER(DebugKey);
+    ULONG i, Length;
+    NTSTATUS Status;
+    WCHAR NameBuffer[8];
+    PULONG Value;
+    PCI_DEBUG_PORT Port;
+
+    PAGED_CODE();
 
     /*
      * A debugging port behind PCI has to be left alone: it must not be powered
-     * down, and its resources must not be moved, or the connection the machine
-     * is being debugged over dies with it. Recording which devices those are
-     * is not implemented, so none are recorded and every device is treated as
-     * an ordinary one. Say so rather than stop, so a machine that has ports
-     * listed here still boots.
+     * down, its resources must not be moved, and no function driver may be let
+     * near it, or the connection the machine is being debugged over dies with
+     * it. The HAL numbers the devices it handed to the debug transport from
+     * zero and writes each one a subkey of that name holding its Bus and Slot
+     * (HalpRegisterPciDebuggingDeviceInfo), which is what is read back here.
      */
-    if (DebugKey)
+    PciDebugPortsCount = 0;
+    if (!DebugKey) return STATUS_SUCCESS;
+
+    for (i = 0; i < MAX_DEBUGGING_DEVICES_SUPPORTED; i++)
     {
-        DPRINT1("PCI - debugging ports are listed but are not tracked yet\n");
+        _swprintf(NameBuffer, L"%lu", i);
+
+        /* The HAL writes these consecutively, so the first gap is the end */
+        Status = PciGetRegistryValue(L"Bus",
+                                     NameBuffer,
+                                     DebugKey,
+                                     REG_DWORD,
+                                     (PVOID*)&Value,
+                                     &Length);
+        if (!NT_SUCCESS(Status)) break;
+
+        Port.Bus = (Length == sizeof(ULONG)) ? *Value : 0;
+        ExFreePoolWithTag(Value, 0);
+        if (Length != sizeof(ULONG)) continue;
+
+        Status = PciGetRegistryValue(L"Slot",
+                                     NameBuffer,
+                                     DebugKey,
+                                     REG_DWORD,
+                                     (PVOID*)&Value,
+                                     &Length);
+        if (!NT_SUCCESS(Status)) continue;
+
+        Port.Slot.u.AsULONG = (Length == sizeof(ULONG)) ? *Value : 0;
+        ExFreePoolWithTag(Value, 0);
+        if (Length != sizeof(ULONG)) continue;
+
+        DPRINT1("PCI - debugger is using bus %lu device %u function %u\n",
+                Port.Bus,
+                Port.Slot.u.bits.DeviceNumber,
+                Port.Slot.u.bits.FunctionNumber);
+
+        PciDebugPorts[PciDebugPortsCount++] = Port;
     }
 
     return STATUS_SUCCESS;

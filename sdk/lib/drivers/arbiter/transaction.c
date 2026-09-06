@@ -87,11 +87,18 @@ ArbpBuildAlternative(
     else if ((Alternative->Maximum - Alternative->Minimum + 1) == Alternative->Length)
         Alternative->Flags |= ARBITER_ALTERNATIVE_FLAG_FIXED;
 
+    /*
+     * A descriptor marked compatible with an inaccessible range is the only
+     * kind allowed over the ranges ArbiterLibAddInaccessibleAllocationRange
+     * reserved, so classify it here and let ArbiterLibFindSuitableRange widen
+     * the available-attribute mask for it.  Prefetchability is not the test:
+     * it says how the range may be accessed, not whether it may be used at all.
+     */
     if ((Descriptor->Type == CmResourceTypeMemory ||
          Descriptor->Type == CmResourceTypeMemoryLarge) &&
-        (Descriptor->Flags & CM_RESOURCE_MEMORY_PREFETCHABLE))
+        (Descriptor->Flags & CM_RESOURCE_MEMORY_COMPAT_FOR_INACCESSIBLE_RANGE))
     {
-        Alternative->Flags |= ARBITER_ALTERNATIVE_FLAG_PREFETCH;
+        Alternative->Flags |= ARBITER_ALTERNATIVE_FLAG_INACCESSIBLE_OK;
     }
 
     return STATUS_SUCCESS;

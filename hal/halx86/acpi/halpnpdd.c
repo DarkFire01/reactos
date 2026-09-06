@@ -363,9 +363,7 @@ HalpQueryResources(IN PDEVICE_OBJECT DeviceObject,
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
     PIO_RESOURCE_DESCRIPTOR Descriptor;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDesc;
-    ULONG i, Vector;
-    KIRQL Irql;
-    KAFFINITY Affinity;
+    ULONG i, ListSize;
     PAGED_CODE();
 
     /* Only the ACPI PDO has requirements */
@@ -377,85 +375,50 @@ HalpQueryResources(IN PDEVICE_OBJECT DeviceObject,
 
         ASSERT(RequirementsList->AlternativeLists == 1);
 
-        /* Allocate the resourcel ist */
-        ResourceList = ExAllocatePoolWithTag(PagedPool,
-                                             sizeof(CM_RESOURCE_LIST),
-                                             TAG_HAL);
-        if (!ResourceList )
+        /*
+         * One full descriptor holding every requirement the list carries. They
+         * are all system vectors, so each becomes a resource verbatim, with the
+         * IRQL that the vector implies. Nothing here translates: a PNPBus list
+         * says its contents are already in the system's own terms, and that is
+         * true because HalpBuildAcpiResourceList only ever puts vectors in it.
+         */
+        ListSize = FIELD_OFFSET(CM_RESOURCE_LIST,
+                                List[0].PartialResourceList.PartialDescriptors) +
+                   RequirementsList->List[0].Count *
+                   sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
+        ResourceList = ExAllocatePoolWithTag(PagedPool, ListSize, TAG_HAL);
+        if (!ResourceList)
         {
             /* Fail, no memory */
-            Status = STATUS_INSUFFICIENT_RESOURCES;
             ExFreePoolWithTag(RequirementsList, TAG_HAL);
-            return Status;
+            return STATUS_INSUFFICIENT_RESOURCES;
         }
 
         /* Initialize it */
-        RtlZeroMemory(ResourceList, sizeof(CM_RESOURCE_LIST));
+        RtlZeroMemory(ResourceList, ListSize);
         ResourceList->Count = 1;
-
-        /* Setup the list fields */
         ResourceList->List[0].BusNumber = -1;
         ResourceList->List[0].InterfaceType = PNPBus;
         ResourceList->List[0].PartialResourceList.Version = 1;
         ResourceList->List[0].PartialResourceList.Revision = 1;
-        ResourceList->List[0].PartialResourceList.Count = 0;
+        ResourceList->List[0].PartialResourceList.Count =
+            RequirementsList->List[0].Count;
 
-        /* Setup the first descriptor */
         PartialDesc = ResourceList->List[0].PartialResourceList.PartialDescriptors;
 
-        /* Find the requirement descriptor for the SCI */
-        for (i = 0; i < RequirementsList->List[0].Count; i++)
+        for (i = 0; i < RequirementsList->List[0].Count; i++, PartialDesc++)
         {
-            /* Get this descriptor */
             Descriptor = &RequirementsList->List[0].Descriptors[i];
-            if (Descriptor->Type == CmResourceTypeInterrupt)
-            {
-                /* Copy requirements descriptor into resource descriptor */
-                PartialDesc->Type = CmResourceTypeInterrupt;
-                PartialDesc->ShareDisposition = Descriptor->ShareDisposition;
-                PartialDesc->Flags = Descriptor->Flags;
-                ASSERT(Descriptor->u.Interrupt.MinimumVector ==
-                       Descriptor->u.Interrupt.MaximumVector);
+            ASSERT(Descriptor->u.Interrupt.MinimumVector ==
+                   Descriptor->u.Interrupt.MaximumVector);
 
-                if (HalpInterruptModel == 0)
-                {
-                    /*
-                     * On the PIC model this descriptor is the SCI, and what
-                     * HalpBuildAcpiResourceList put in it is the bus line the
-                     * firmware routed the SCI to, not a system vector. The
-                     * list this goes into is a PNPBus one, which declares its
-                     * contents to already be in the system's own terms, so
-                     * nothing above will translate it: the line has to become
-                     * a vector here or the driver receives an interrupt
-                     * descriptor it cannot connect.
-                     */
-                    Vector = HalGetInterruptVector(Isa,
-                                                   0,
-                                                   Descriptor->u.Interrupt.MinimumVector,
-                                                   Descriptor->u.Interrupt.MinimumVector,
-                                                   &Irql,
-                                                   &Affinity);
-
-                    PartialDesc->u.Interrupt.Vector = Vector;
-                    PartialDesc->u.Interrupt.Level = Irql;
-                    PartialDesc->u.Interrupt.Affinity = Affinity;
-                }
-                else
-                {
-                    /*
-                     * The APIC model reports the block of device vectors the
-                     * root owns. Those are system vectors already, which is
-                     * what makes the PNPBus claim true without any work here.
-                     */
-                    PartialDesc->u.Interrupt.Vector = Descriptor->u.Interrupt.MinimumVector;
-                    PartialDesc->u.Interrupt.Level = Descriptor->u.Interrupt.MinimumVector;
-                    PartialDesc->u.Interrupt.Affinity = 0xFFFFFFFF;
-                }
-
-                ResourceList->List[0].PartialResourceList.Count++;
-
-                break;
-            }
+            PartialDesc->Type = Descriptor->Type;
+            PartialDesc->ShareDisposition = Descriptor->ShareDisposition;
+            PartialDesc->Flags = Descriptor->Flags;
+            PartialDesc->u.Interrupt.Level =
+                HalConvertDeviceIdtToIrql(Descriptor->u.Interrupt.MinimumVector);
+            PartialDesc->u.Interrupt.Vector = Descriptor->u.Interrupt.MinimumVector;
+            PartialDesc->u.Interrupt.Affinity = (KAFFINITY)-1;
         }
 
         /* Return resources and success */
