@@ -141,3 +141,8 @@ ULONG DIB_DoRop(ULONG Rop, ULONG Dest, ULONG Source, ULONG Pattern);
 #define DIB_GetSourceIndex(SourceSurf,sx,sy)                \
   DibFunctionsForBitmapFormat[SourceSurf->iBitmapFormat].   \
     DIB_GetPixel(SourceSurf, sx, sy)
+
+/* Widest brush pattern the generated blt primitives will hold a row of on the
+   stack.  Every stock brush is 8x8; wider ones fall back to reading the
+   pattern a pixel at a time.  See gendib.c. */
+#define DIB_PATTERN_CACHE_MAX 64

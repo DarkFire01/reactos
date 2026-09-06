@@ -543,6 +543,19 @@ CreateBitCase(FILE *Out, unsigned Bpp, PROPINFO RopInfo, int Flags,
     {
         Output(Out, "BasePatternX = (BltInfo->DestRect.left - BltInfo->BrushOrigin.x) %%\n");
         Output(Out, "           BltInfo->PatternSurface->sizlBitmap.cx;\n");
+        /*
+         * Only cache a row that fits, and only when the starting column is in
+         * range: C leaves a %% with a negative left operand negative, so a
+         * brush origin to the right of the blt yields a negative BasePatternX.
+         * The uncached path is kept for those, unchanged.
+         */
+        Output(Out, "PatternCacheWidth = BltInfo->PatternSurface->sizlBitmap.cx;\n");
+        Output(Out, "if (PatternCacheWidth > 0 &&\n");
+        Output(Out, "    PatternCacheWidth <= DIB_PATTERN_CACHE_MAX &&\n");
+        Output(Out, "    BasePatternX >= 0)\n");
+        Output(Out, "{\n");
+        Output(Out, "PatternRow = PatternRowCache;\n");
+        Output(Out, "}\n");
     }
 
     Output(Out, "for (LineIndex = 0; LineIndex < LineCount; LineIndex++)\n");
@@ -565,6 +578,17 @@ CreateBitCase(FILE *Out, unsigned Bpp, PROPINFO RopInfo, int Flags,
     if (RopInfo->UsesPattern && 0 != (Flags & FLAG_PATTERNSURFACE))
     {
         Output(Out, "PatternX = BasePatternX;\n");
+        /* Read this scanline's pattern row once, ahead of the pixel loop */
+        Output(Out, "if (PatternRow)\n");
+        Output(Out, "{\n");
+        Output(Out, "for (PatternCacheIndex = 0;\n");
+        Output(Out, "     PatternCacheIndex < PatternCacheWidth;\n");
+        Output(Out, "     PatternCacheIndex++)\n");
+        Output(Out, "{\n");
+        Output(Out, "PatternRow[PatternCacheIndex] =\n");
+        Output(Out, "    DIB_GetSourceIndex(BltInfo->PatternSurface, PatternCacheIndex, PatternY);\n");
+        Output(Out, "}\n");
+        Output(Out, "}\n");
     }
 
     if (ROPCODE_SRCCOPY == RopInfo->RopCode &&
@@ -612,11 +636,13 @@ CreateBitCase(FILE *Out, unsigned Bpp, PROPINFO RopInfo, int Flags,
             {
                 if (0 == Partial)
                 {
-                    Output(Out, "Pattern = DIB_GetSourceIndex(BltInfo->PatternSurface, PatternX, PatternY);\n");
+                    Output(Out, "Pattern = PatternRow ? PatternRow[PatternX] :\n");
+                    Output(Out, "    DIB_GetSourceIndex(BltInfo->PatternSurface, PatternX, PatternY);\n");
                 }
                 else
                 {
-                    Output(Out, "Pattern |= DIB_GetSourceIndex(BltInfo->PatternSurface, PatternX, PatternY) << %u;\n", Partial * Bpp);
+                    Output(Out, "Pattern |= (PatternRow ? PatternRow[PatternX] :\n");
+                    Output(Out, "    DIB_GetSourceIndex(BltInfo->PatternSurface, PatternX, PatternY)) << %u;\n", Partial * Bpp);
                 }
                 Output(Out, "if (BltInfo->PatternSurface->sizlBitmap.cx <= ++PatternX)\n");
                 Output(Out, "{\n");
@@ -795,6 +821,18 @@ CreatePrimitive(FILE *Out, unsigned Bpp, PROPINFO RopInfo)
         if (RopInfo->UsesPattern)
         {
             Output(Out, "LONG PatternX =0, PatternY = 0, BasePatternX = 0;\n");
+            /*
+             * One row of the brush pattern, held for the length of a scanline.
+             * The pattern is a small bitmap - 8x8 for every stock brush - and
+             * the inner loop walks it with wraparound, so a scanline reads the
+             * same handful of values over and over.  Each of those reads went
+             * through DIB_GetSourceIndex, which indexes a table of per-format
+             * routines and calls through it: an indirect call per pixel to
+             * re-fetch one of eight values.  Read the row once instead.
+             */
+            Output(Out, "ULONG PatternRowCache[DIB_PATTERN_CACHE_MAX];\n");
+            Output(Out, "PULONG PatternRow = NULL;\n");
+            Output(Out, "LONG PatternCacheIndex, PatternCacheWidth = 0;\n");
         }
         First = 1;
         if (RopInfo->UsesSource)
