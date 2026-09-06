@@ -251,6 +251,126 @@ HidParser_GetMaxUsageListLengthWithReportAndPage(
 }
 
 NTSTATUS
+HidParser_GetSpecificButtonCapsWithReport(
+    IN PVOID CollectionContext,
+    IN UCHAR ReportType,
+    IN USHORT UsagePage,
+    IN USHORT Usage,
+    OUT PHIDP_BUTTON_CAPS ButtonCaps,
+    IN OUT PUSHORT ButtonCapsLength)
+{
+    ULONG Index;
+    PHID_REPORT Report;
+    USHORT ItemCount = 0;
+    USHORT CurrentUsagePage;
+    USHORT CurrentUsage;
+    USHORT CurrentUsageMaxPage;
+    USHORT CurrentUsageMax;
+    PHID_REPORT_ITEM Item;
+
+    //
+    // get report
+    //
+    Report = HidParser_GetReportInCollection(CollectionContext, ReportType);
+    if (!Report)
+    {
+        //
+        // no such report
+        //
+        return HIDP_STATUS_REPORT_DOES_NOT_EXIST;
+    }
+
+    for(Index = 0; Index < Report->ItemCount; Index++)
+    {
+        Item = &Report->Items[Index];
+
+        //
+        // A button is a one bit field, or an array item - an array reports
+        // which of its usages are currently selected, which is the same thing
+        // as a set of buttons.  Anything wider than a bit and not an array is
+        // a value and belongs to HidParser_GetSpecificValueCaps instead.
+        //
+        if (!Item->Array && Item->BitCount != 1)
+            continue;
+
+        //
+        // usages are stored packed, page in the high half
+        //
+        CurrentUsagePage = (USHORT)(Item->UsageMinimum >> 16);
+        CurrentUsage = (USHORT)(Item->UsageMinimum & 0xFFFF);
+        CurrentUsageMaxPage = (USHORT)(Item->UsageMaximum >> 16);
+        CurrentUsageMax = (USHORT)(Item->UsageMaximum & 0xFFFF);
+
+        //
+        // a zero filter matches everything, which is what
+        // HidParser_GetButtonCaps asks for
+        //
+        if (UsagePage != 0 && UsagePage != CurrentUsagePage)
+            continue;
+
+        if (Usage != 0)
+        {
+            //
+            // match anywhere in the item's usage range, not just its first
+            // usage - a keyboard describes its whole key set as one ranged
+            // item, and asking for one key has to find it
+            //
+            if (CurrentUsageMaxPage == CurrentUsagePage &&
+                CurrentUsageMax > CurrentUsage)
+            {
+                if (Usage < CurrentUsage || Usage > CurrentUsageMax)
+                    continue;
+            }
+            else if (Usage != CurrentUsage)
+            {
+                continue;
+            }
+        }
+
+        if (ItemCount < *ButtonCapsLength)
+        {
+            ZeroFunction(&ButtonCaps[ItemCount], sizeof(HIDP_BUTTON_CAPS));
+
+            ButtonCaps[ItemCount].UsagePage = CurrentUsagePage;
+            ButtonCaps[ItemCount].ReportID = Report->ReportID;
+            ButtonCaps[ItemCount].IsAbsolute = !Item->Relative;
+            ButtonCaps[ItemCount].LinkCollection = 0;
+
+            if (CurrentUsageMaxPage == CurrentUsagePage &&
+                CurrentUsageMax > CurrentUsage)
+            {
+                ButtonCaps[ItemCount].IsRange = TRUE;
+                ButtonCaps[ItemCount].Range.UsageMin = CurrentUsage;
+                ButtonCaps[ItemCount].Range.UsageMax = CurrentUsageMax;
+                ButtonCaps[ItemCount].Range.DataIndexMin = ItemCount;
+                ButtonCaps[ItemCount].Range.DataIndexMax =
+                    (USHORT)(ItemCount + (CurrentUsageMax - CurrentUsage));
+            }
+            else
+            {
+                ButtonCaps[ItemCount].IsRange = FALSE;
+                ButtonCaps[ItemCount].NotRange.Usage = CurrentUsage;
+                ButtonCaps[ItemCount].NotRange.DataIndex = ItemCount;
+            }
+        }
+
+        ItemCount++;
+    }
+
+    //
+    // store result
+    //
+    *ButtonCapsLength = ItemCount;
+
+    if (ItemCount)
+    {
+        return HIDP_STATUS_SUCCESS;
+    }
+
+    return HIDP_STATUS_USAGE_NOT_FOUND;
+}
+
+NTSTATUS
 HidParser_GetSpecificValueCapsWithReport(
     IN PVOID CollectionContext,
     IN UCHAR ReportType,

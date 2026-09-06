@@ -296,6 +296,15 @@ HidParser_GetMaxUsageListLengthWithReportAndPage(
     IN USAGE  UsagePage  OPTIONAL);
 
 NTSTATUS
+HidParser_GetSpecificButtonCapsWithReport(
+    IN PVOID CollectionContext,
+    IN UCHAR ReportType,
+    IN USHORT UsagePage,
+    IN USHORT Usage,
+    OUT PHIDP_BUTTON_CAPS ButtonCaps,
+    IN OUT PUSHORT ButtonCapsLength);
+
+NTSTATUS
 HidParser_GetSpecificValueCapsWithReport(
     IN PVOID CollectionContext,
     IN UCHAR ReportType,

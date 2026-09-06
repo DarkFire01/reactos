@@ -1,16 +1,16 @@
 /*
  * PROJECT:     ReactOS Universal Serial Bus Human Interface Device Driver
- * LICENSE:     GPL - See COPYING in the top level directory
- * FILE:        drivers/hid/hidclass/fdo.c
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
  * PURPOSE:     HID Class Driver
- * PROGRAMMERS:
- *              Michael Martin (michael.martin@reactos.org)
- *              Johannes Anderwald (johannes.anderwald@reactos.org)
+ * COPYRIGHT:   Copyright  Michael Martin <michael.martin@reactos.org>
+ *              Copyright  Johannes Anderwald <johannes.anderwald@reactos.org>
+ *              Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 #include "precomp.h"
 
 #include <wdmguid.h>
+#include "cyclicbuffer.h"
 
 #define NDEBUG
 #include <debug.h>
@@ -62,8 +62,11 @@ HidClassPDO_GetReportDescription(
     //
     // failed to find collection
     //
+    //
+    // Every caller checks for NULL, so this is a result rather than a bug.
+    // Asserting broke into the debugger instead of letting them handle it.
+    //
     DPRINT1("[HIDCLASS] GetReportDescription CollectionNumber %x not found\n", CollectionNumber);
-    ASSERT(FALSE);
     return NULL;
 }
 
@@ -86,10 +89,12 @@ HidClassPDO_GetReportDescriptionByReportID(
     }
 
     //
-    // failed to find report id
+    // Not finding the id is a legitimate outcome, not an internal error: the
+    // feature ioctls take the id straight out of a caller supplied buffer, so
+    // any process could break the machine into the debugger by asking for a
+    // report that does not exist.  Both of those callers already handle NULL.
     //
-    DPRINT1("[HIDCLASS] GetReportDescriptionByReportID ReportID %x not found\n", ReportID);
-    ASSERT(FALSE);
+    DPRINT("[HIDCLASS] GetReportDescriptionByReportID ReportID %x not found\n", ReportID);
     return NULL;
 }
 
@@ -98,6 +103,7 @@ HidClassPDO_HandleQueryDeviceId(
     IN PDEVICE_OBJECT DeviceObject,
     IN PIRP Irp)
 {
+    const WCHAR HidBusName[] = L"HID\\";
     NTSTATUS Status;
     LPWSTR Buffer;
     LPWSTR NewBuffer, Ptr;
@@ -124,12 +130,18 @@ HidClassPDO_HandleQueryDeviceId(
     // get buffer
     //
     Buffer = (LPWSTR)Irp->IoStatus.Information;
-    Length = wcslen(Buffer);
+    Length = (ULONG)(wcslen(Buffer) + 1);
+
+    // Make sure busName fit
+    Length *= sizeof(WCHAR);
+    Length += sizeof(HidBusName);
+
+    ASSERT(Length > 10);
 
     //
     // allocate new buffer
     //
-    NewBuffer = ExAllocatePoolWithTag(NonPagedPool, (Length + 1) * sizeof(WCHAR), HIDCLASS_TAG);
+    NewBuffer = ExAllocatePoolWithTag(NonPagedPool, Length, HIDCLASS_TAG);
     if (!NewBuffer)
     {
         //
@@ -141,7 +153,7 @@ HidClassPDO_HandleQueryDeviceId(
     //
     // replace bus
     //
-    wcscpy(NewBuffer, L"HID\\");
+    wcscpy(NewBuffer, HidBusName);
 
     //
     // get offset to first '\\'
@@ -313,7 +325,10 @@ HidClassPDO_HandleQueryInstanceId(
     IN PDEVICE_OBJECT DeviceObject,
     IN PIRP Irp)
 {
+    NTSTATUS Status;
     LPWSTR Buffer;
+    LPWSTR NewBuffer;
+    ULONG Length;
     PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension;
 
     //
@@ -322,23 +337,79 @@ HidClassPDO_HandleQueryInstanceId(
     PDODeviceExtension = DeviceObject->DeviceExtension;
     ASSERT(PDODeviceExtension->Common.IsFDO == FALSE);
 
+    /*
+     * The collection number alone does not identify this child. Our device id
+     * is built from the vendor and product id only, so two devices of the same
+     * model give their collections the same device id, and a bare collection
+     * number then makes the whole instance path a duplicate - which the PnP
+     * manager bugchecks on. Qualify it with the instance id of the device we
+     * are enumerating from, which is what tells the two apart.
+     */
+    IoCopyCurrentIrpStackLocationToNext(Irp);
+
+    //
+    // call mini-driver
+    //
+    Status = HidClassFDO_DispatchRequestSynchronous(DeviceObject, Irp);
+    if (NT_SUCCESS(Status))
+    {
+        Buffer = (LPWSTR)Irp->IoStatus.Information;
+    }
+    else
+    {
+        //
+        // no parent instance id to qualify with, use the collection alone
+        //
+        Buffer = NULL;
+    }
+
+    //
+    // room for the parent instance id, a separator and the collection number
+    //
+    Length = 5;
+    if (Buffer != NULL)
+    {
+        Length += (ULONG)(wcslen(Buffer) + 1);
+    }
+
     //
     // allocate buffer
     //
-    Buffer = ExAllocatePoolWithTag(NonPagedPool, 5 * sizeof(WCHAR), HIDCLASS_TAG);
-    if (!Buffer)
+    NewBuffer = ExAllocatePoolWithTag(NonPagedPool, Length * sizeof(WCHAR), HIDCLASS_TAG);
+    if (!NewBuffer)
     {
         //
         // failed
         //
+        if (Buffer != NULL)
+        {
+            ExFreePoolWithTag(Buffer, 0);
+        }
+
+        Irp->IoStatus.Information = 0;
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     //
-    // write device id
+    // write instance id
     //
-    _swprintf(Buffer, L"%04x", PDODeviceExtension->CollectionNumber);
-    Irp->IoStatus.Information = (ULONG_PTR)Buffer;
+    NewBuffer[0] = UNICODE_NULL;
+    if (Buffer != NULL)
+    {
+        wcscpy(NewBuffer, Buffer);
+        wcscat(NewBuffer, L"&");
+        ExFreePoolWithTag(Buffer, 0);
+    }
+
+    _swprintf(NewBuffer + wcslen(NewBuffer),
+              L"%04x",
+              (UINT16)(PDODeviceExtension->CollectionNumber & 0xFFFF));
+
+    //
+    // store result
+    //
+    DPRINT("[HIDCLASS] InstanceId %S\n", NewBuffer);
+    Irp->IoStatus.Information = (ULONG_PTR)NewBuffer;
 
     //
     // done
@@ -352,6 +423,8 @@ HidClassPDO_HandleQueryCompatibleId(
     IN PIRP Irp)
 {
     LPWSTR Buffer;
+
+    UNREFERENCED_PARAMETER(DeviceObject);
 
     Buffer = ExAllocatePoolWithTag(NonPagedPool, 2 * sizeof(WCHAR), HIDCLASS_TAG);
     if (!Buffer)
@@ -453,6 +526,21 @@ HidClassPDO_PnP(
                 Status = STATUS_DEVICE_CONFIGURATION_ERROR;
                 break;
             }
+            PHIDP_COLLECTION_DESC ColDesc;
+            ColDesc = HidClassPDO_GetCollectionDescription(&PDODeviceExtension->Common.DeviceDescription,
+                                                           PDODeviceExtension->CollectionNumber);
+            if (ColDesc->UsagePage == HID_USAGE_PAGE_GENERIC &&
+                (ColDesc->Usage == HID_USAGE_GENERIC_MOUSE ||
+                 ColDesc->Usage == HID_USAGE_GENERIC_KEYBOARD))
+            {
+                // Disable raw access for mouses and keybords
+                PDODeviceExtension->Capabilities.RawDeviceOK = FALSE;
+            }
+            else
+            {
+                // And enable for others
+                PDODeviceExtension->Capabilities.RawDeviceOK = TRUE;
+            }
 
             //
             // copy capabilities
@@ -477,6 +565,8 @@ HidClassPDO_PnP(
             //
             //
             BusInformation = ExAllocatePoolWithTag(NonPagedPool, sizeof(PNP_BUS_INFORMATION), HIDCLASS_TAG);
+            // TODO: handle error
+            ASSERT(BusInformation != NULL);
 
             //
             // fill in result
@@ -545,37 +635,35 @@ HidClassPDO_PnP(
         {
             //
             // FIXME: support polled devices
+            // FIXME: START LOOPS
             //
+            HidClassFDO_InitiateRead(PDODeviceExtension->FDODeviceExtension);
+
             ASSERT(PDODeviceExtension->Common.DriverExtension->DevicesArePolled == FALSE);
 
-            //
             // now register the device interface
-            //
-            Status = IoRegisterDeviceInterface(PDODeviceExtension->Common.HidDeviceExtension.PhysicalDeviceObject,
+            Status = IoRegisterDeviceInterface(
+                                               DeviceObject,
                                                &GUID_DEVINTERFACE_HID,
                                                NULL,
                                                &PDODeviceExtension->DeviceInterface);
-            DPRINT("[HIDCLASS] IoRegisterDeviceInterfaceState Status %x\n", Status);
+            DPRINT("[HIDCLASS] IRP_MN_START_DEVICE IoRegisterDeviceInterfaceState Status %x\n", Status);
             if (NT_SUCCESS(Status))
             {
-                //
                 // enable device interface
-                //
                 Status = IoSetDeviceInterfaceState(&PDODeviceExtension->DeviceInterface, TRUE);
-                DPRINT("[HIDCLASS] IoSetDeviceInterFaceState %x\n", Status);
+                DPRINT("[HIDCLASS] IRP_MN_START_DEVICE IoSetDeviceInterFaceState %x\n", Status);
             }
-
-            //
-            // done
-            //
-            Status = STATUS_SUCCESS;
             break;
         }
         case IRP_MN_REMOVE_DEVICE:
         {
             /* Disable the device interface */
             if (PDODeviceExtension->DeviceInterface.Length != 0)
-                IoSetDeviceInterfaceState(&PDODeviceExtension->DeviceInterface, FALSE);
+            {
+                Status = IoSetDeviceInterfaceState(&PDODeviceExtension->DeviceInterface, FALSE);
+                DPRINT("[HIDCLASS] IRP_MN_REMOVE_DEVICE IoSetDeviceInterFaceState %x\n", Status);
+            }
 
             //
             // remove us from the fdo's pdo list
@@ -748,6 +836,10 @@ HidClassPDO_CreatePDO(
         PDODeviceExtension->Common.DriverExtension = FDODeviceExtension->Common.DriverExtension;
         PDODeviceExtension->CollectionNumber = FDODeviceExtension->Common.DeviceDescription.CollectionDesc[Index].CollectionNumber;
 
+        HidClass_CyclicBufferInitialize(&PDODeviceExtension->InputBuffer, FDODeviceExtension->Common.DeviceDescription.CollectionDesc[Index].InputLength);
+        InitializeListHead(&PDODeviceExtension->PendingIRPList);
+        KeInitializeSpinLock(&PDODeviceExtension->ReadLock);
+
         //
         // copy device data
         //
@@ -758,7 +850,8 @@ HidClassPDO_CreatePDO(
         //
         // set device flags
         //
-        PDODeviceObject->Flags |= DO_MAP_IO_BUFFER;
+        PDODeviceObject->Flags |= DO_DIRECT_IO;
+
 
         //
         // device is initialized

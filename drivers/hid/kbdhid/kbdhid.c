@@ -137,6 +137,37 @@ KbdHid_ReadCompletion(
         return STATUS_MORE_PROCESSING_REQUIRED;
     }
 
+    /*
+     * A completion that failed, or that carries no report, has nothing in it
+     * to parse.
+     *
+     * Only three statuses were treated as terminal, so every other failure fell
+     * straight through into the parser, which read whatever the previous report
+     * had left in the buffer and delivered it as real input - and then re-armed.
+     * A device erroring in a loop therefore produced a stream of phantom input
+     * and a tight resubmit loop at DISPATCH_LEVEL.
+     *
+     * Re-arm without parsing, and stop if it never recovers rather than
+     * spinning forever.
+     */
+    if (!NT_SUCCESS(Irp->IoStatus.Status) || Irp->IoStatus.Information == 0)
+    {
+        if (++DeviceExtension->ReadErrorCount > KBDHID_MAX_READ_ERRORS)
+        {
+            DPRINT1("[KBDHID] giving up after %lu bad reads, last Status %x\n",
+                    DeviceExtension->ReadErrorCount, Irp->IoStatus.Status);
+            DeviceExtension->ReadReportActive = FALSE;
+            DeviceExtension->StopReadReport = FALSE;
+            KeSetEvent(&DeviceExtension->ReadCompletionEvent, 0, 0);
+            return STATUS_MORE_PROCESSING_REQUIRED;
+        }
+
+        KbdHid_InitiateRead(DeviceExtension);
+        return STATUS_MORE_PROCESSING_REQUIRED;
+    }
+
+    DeviceExtension->ReadErrorCount = 0;
+
     //
     // print out raw report
     //
@@ -204,6 +235,27 @@ KbdHid_InitiateRead(
     PIO_STACK_LOCATION IoStack;
     NTSTATUS Status;
 
+    /*
+     * Do not re-enter on the caller's stack.
+     *
+     * KbdHid_ReadCompletion re-arms by calling straight back in here, and the
+     * request below can complete inline - hidclass refuses a malformed read
+     * without ever pending it.  The completion routine then runs on this very
+     * stack and calls in again, and the whole thing recurses until the kernel
+     * stack is gone.  That is a double fault, seen as 0x7F(8) after a dozen
+     * rejected reads.
+     *
+     * Count the submissions instead: the first caller owns the loop below and
+     * a caller nested inside it only leaves its request behind and returns.
+     * HidClassFDO_SubmitRead solves the identical problem the identical way.
+     */
+    if (InterlockedIncrement(&DeviceExtension->ReadSubmitCount) > 1)
+    {
+        return STATUS_PENDING;
+    }
+
+    do
+    {
     /* re-use irp */
     IoReuseIrp(DeviceExtension->Irp, STATUS_SUCCESS);
 
@@ -228,6 +280,8 @@ KbdHid_InitiateRead(
 
     /* start the read */
     Status = IoCallDriver(DeviceExtension->NextDeviceObject, DeviceExtension->Irp);
+
+    } while (InterlockedDecrement(&DeviceExtension->ReadSubmitCount) > 0);
 
     /* done */
     return Status;
@@ -279,6 +333,20 @@ KbdHid_Create(
     {
         /* request pending */
         KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+
+        /*
+         * Take the result out of the irp.
+         *
+         * The completion routine returns STATUS_MORE_PROCESSING_REQUIRED, so
+         * the irp is still ours and its IoStatus holds what actually happened.
+         * Status is still STATUS_PENDING at this point, and
+         * NT_SUCCESS(STATUS_PENDING) is TRUE, so the check below used to pass
+         * for a create the stack had refused - and this then stored the file
+         * object and started the read cycle on a device that never opened,
+         * leaving ReadReportActive set on a stack that is not going to deliver
+         * anything.  Every close and remove path keys off that flag.
+         */
+        Status = Irp->IoStatus.Status;
     }
 
     /* check for success */
@@ -328,22 +396,80 @@ KbdHid_Close(
     IN PIRP Irp)
 {
     PKBDHID_DEVICE_EXTENSION DeviceExtension;
+    PIO_STACK_LOCATION IoStack;
 
     /* get device extension */
     DeviceExtension = DeviceObject->DeviceExtension;
+    IoStack = IoGetCurrentIrpStackLocation(Irp);
 
     DPRINT("[KBDHID] IRP_MJ_CLOSE ReadReportActive %x\n", DeviceExtension->ReadReportActive);
 
+    /*
+     * Only the handle that started the report cycle may stop it.
+     *
+     * KbdHid_Create hands ownership to the first opener and starts reading on
+     * its behalf; a later opener is let in but starts nothing.  Tearing the
+     * cycle down for any close at all meant that when something opened the
+     * collection briefly and closed it again - the power manager does exactly
+     * that to every HID collection, to ask for its system button capabilities -
+     * the read that kbdclass owned was cancelled and never restarted.  The
+     * device then stopped responding with the whole stack still loaded and
+     * looking perfectly healthy.
+     *
+     * This was previously hidden by the deadlock in this function: such a close
+     * never reached the teardown at all.
+     */
+    if (IoStack->FileObject != DeviceExtension->FileObject)
+    {
+        IoSkipCurrentIrpStackLocation(Irp);
+        return IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
+    }
+
     if (DeviceExtension->ReadReportActive)
     {
+        LARGE_INTEGER Timeout;
+
         /* request stopping of the report cycle */
         DeviceExtension->StopReadReport = TRUE;
 
-        /* wait until the reports have been read */
-        KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent, Executive, KernelMode, FALSE, NULL);
-
-        /* cancel irp */
+        /*
+         * Cancel first, then wait.  This used to be the other way round, and
+         * it could not work.
+         *
+         * StopReadReport is only ever looked at by KbdHid_ReadCompletion, which
+         * runs when the outstanding IOCTL_HID_READ_REPORT completes - and that
+         * only happens when the device actually has something to report.  A
+         * keyboard nobody is touching never completes one, so the wait was
+         * waiting for something that only the cancel underneath it could
+         * produce.
+         *
+         * It deadlocked the whole boot: the power manager opens and closes
+         * every HID collection to ask for its button capabilities
+         * (PopAddPolicyDevice -> PopGetPolicyDeviceObject -> NtClose), so
+         * Phase 1 initialisation came through here and stopped for ever.  The
+         * machine then sits with every processor idle and never reaches smss.
+         *
+         * Cancelling completes the request with STATUS_CANCELLED, which is one
+         * of the statuses the completion routine treats as terminal, so it
+         * signals the event and this wait ends.
+         */
         IoCancelIrp(DeviceExtension->Irp);
+
+        /*
+         * Bounded, deliberately - the reference waits without a limit.  The
+         * cancel above should always produce a completion, but a lower driver
+         * that does not honour it would otherwise take the machine with it,
+         * and losing a boot to a silent wait is exactly what this is fixing.
+         */
+        Timeout.QuadPart = -50000000LL;   /* 5 seconds */
+        if (KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent,
+                                  Executive,
+                                  KernelMode,
+                                  FALSE,
+                                  &Timeout) == STATUS_TIMEOUT)
+        {
+            DPRINT1("[KBDHID] read cycle did not stop after cancel\n");
+        }
     }
 
     DPRINT("[KBDHID] IRP_MJ_CLOSE ReadReportActive %x\n", DeviceExtension->ReadReportActive);
@@ -906,10 +1032,44 @@ KbdHid_Pnp(
     case IRP_MN_REMOVE_DEVICE:
         /* FIXME synchronization */
 
+        /* request stop */
+        DeviceExtension->StopReadReport = TRUE;
+
         /* cancel irp */
         IoCancelIrp(DeviceExtension->Irp);
 
-        /* free resources */
+        /*
+         * Let the read cycle actually stop before anything it is still using
+         * is freed.
+         *
+         * Only if there is one to stop: ReadCompletionEvent is a manual reset
+         * event that starts unsignalled and is only ever signalled by a read
+         * completion, so a device that was never opened - or whose cycle has
+         * already stopped - would wait here for something that is never going
+         * to happen.  Bounded as well, because the cancel above is the only
+         * thing that can produce the completion and a lower driver that
+         * ignores it would otherwise take PnP down with it.
+         */
+        if (DeviceExtension->ReadReportActive)
+        {
+            LARGE_INTEGER Timeout;
+
+            Timeout.QuadPart = -50000000LL;   /* 5 seconds */
+            if (KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent,
+                                      Executive,
+                                      KernelMode,
+                                      FALSE,
+                                      &Timeout) == STATUS_TIMEOUT)
+            {
+                DPRINT1("[KBDHID] read cycle did not stop before remove\n");
+            }
+        }
+
+        /*
+         * This waited for nothing at all before, and then freed the report
+         * buffer and the irp itself while a cancelled read could still have
+         * been completing into them.
+         */
         KbdHid_FreeResources(DeviceObject);
 
         /* indicate success */

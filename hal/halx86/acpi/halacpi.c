@@ -830,6 +830,32 @@ HaliAcpiTimerInit(
 }
 
 CODE_SEG("INIT")
+static
+VOID
+HalpDumpLowMemoryDescriptors(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock)
+{
+    PLIST_ENTRY NextEntry;
+    PMEMORY_ALLOCATION_DESCRIPTOR MdBlock;
+
+    DPRINT1("HAL: Loader memory descriptors below 1 MB:\n");
+    for (NextEntry = LoaderBlock->MemoryDescriptorListHead.Flink;
+         NextEntry != &LoaderBlock->MemoryDescriptorListHead;
+         NextEntry = NextEntry->Flink)
+    {
+        MdBlock = CONTAINING_RECORD(NextEntry,
+                                    MEMORY_ALLOCATION_DESCRIPTOR,
+                                    ListEntry);
+        if (MdBlock->BasePage >= 0x100) continue;
+
+        DPRINT1("HAL:   Pages 0x%lx-0x%lx, MemoryType %lu\n",
+                (ULONG)MdBlock->BasePage,
+                (ULONG)(MdBlock->BasePage + MdBlock->PageCount),
+                (ULONG)MdBlock->MemoryType);
+    }
+}
+
+CODE_SEG("INIT")
 NTSTATUS
 NTAPI
 HalpSetupAcpiPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
@@ -888,7 +914,11 @@ HalpSetupAcpiPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     /* Setup the ACPI timer from the FADT */
     HaliAcpiTimerInit(NULL, FALSE);
 
-    /* Do we have a low stub address yet? */
+    /*
+     * Do we have a low stub address yet? An application processor leaves INIT
+     * in real mode and starts executing at (SIPI vector << 12), so its entry
+     * stub has to live below 1 MB - nothing else will do.
+     */
     if (!HalpLowStubPhysicalAddress.QuadPart)
     {
         /* Allocate it */
@@ -900,6 +930,23 @@ HalpSetupAcpiPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         {
             /* Map it */
             HalpLowStub = HalpMapPhysicalMemory64(HalpLowStubPhysicalAddress, HALP_LOW_STUB_SIZE_IN_PAGES);
+            if (!HalpLowStub)
+            {
+                DPRINT1("HAL: Could not map the %u-page AP low stub at 0x%I64x\n",
+                        HALP_LOW_STUB_SIZE_IN_PAGES,
+                        HalpLowStubPhysicalAddress.QuadPart);
+            }
+        }
+        else
+        {
+            /*
+             * The loader described no usable memory under 1 MB. That costs us
+             * every application processor, so say so and dump what we were
+             * given down there - that list is the whole story.
+             */
+            DPRINT1("HAL: No free memory below 1 MB for the AP low stub, "
+                    "the system will stay uniprocessor\n");
+            HalpDumpLowMemoryDescriptors(LoaderBlock);
         }
     }
 

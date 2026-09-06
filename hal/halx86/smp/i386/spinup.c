@@ -98,6 +98,20 @@ HalStartNextProcessor(
     if (HalpStartedProcessorCount == HalpApicInfoTable.ProcessorCount)
         return FALSE;
 
+    /*
+     * The entry stub has to sit below 1 MB and HalpSetupAcpiPhase0() is the
+     * only thing that can put it there. If the loader described no memory we
+     * could take down there - which is what EFI firmware tends to leave us
+     * with - then there is nothing to start an application processor from,
+     * and every access below would fault on a NULL pointer.
+     */
+    if (!HalpLowStub)
+    {
+        DPRINT1("HAL: No AP low stub, cannot start processor %lu\n",
+                HalpStartedProcessorCount);
+        return FALSE;
+    }
+
     // Initalize the temporary page table
     // TODO: clean it up after an AP boots successfully
     ULONG initialCr3 = HalpSetupTemporaryMappings(ProcessorState);

@@ -702,24 +702,36 @@ PUBLIC KiIpiInterrupt
 .ENDP
 
 
+EXTERN KiReportUnexpectedInterrupt:PROC
+
 PUBLIC KiUnexpectedInterrupt
 FUNC KiUnexpectedInterrupt
     /* The error code is the vector */
     EnterTrap (TF_HAS_ERROR_CODE OR TF_SAVE_ALL)
 
-#if 0
-    /* Set bugcheck parameters */
-    mov ecx, TRAP_CAUSE_UNKNOWN
-    mov rdx, [rbp + KTRAP_FRAME_ErrorCode] // the vector
-    mov r8, 0 // The unknown floating-point exception
-    mov r9, 0 // The enabled and asserted status bits
-    sub rsp, 8
-    mov [rbp + KTRAP_FRAME_P5 + 8], rbp // trap frame
-    call KeBugCheckWithTf
-    jmp $
-#endif
-    /* Return */
-    ExitTrap TF_SAVE_ALL
+    /* Say which vector arrived with nothing connected to it. The i386 build
+       has warned about this since forever (KiUnexpectedInterruptTailHandler);
+       here the whole handler was a bugcheck behind an #if 0 and a return, so
+       a stray interrupt was completely silent */
+    mov rcx, [rbp + KTRAP_FRAME_ErrorCode]
+    call KiReportUnexpectedInterrupt
+
+    /*
+     * Acknowledge it on the way out.
+     *
+     * Returning without an EOI leaves the local APIC holding the in-service
+     * bit for this vector for the rest of the boot, which pins the processor
+     * priority at that vector's class: every interrupt at or below it is then
+     * never delivered again. One stray message interrupt on vector 0x6C is
+     * enough to silence every device at IRQL 6 and below on that processor -
+     * the machine stops making progress while the clock and IPI vectors, being
+     * higher, carry on as though nothing were wrong.
+     *
+     * i386 gets this right by going through HalBeginSystemInterrupt and
+     * KiExitInterrupt; TF_SEND_EOI is the same acknowledgement here, and it is
+     * what KiInterruptDispatch below already uses.
+     */
+    ExitTrap (TF_SAVE_ALL or TF_SEND_EOI)
 ENDFUNC
 
 PUBLIC KiInterruptDispatch

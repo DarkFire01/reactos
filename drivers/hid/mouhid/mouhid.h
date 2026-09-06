@@ -12,6 +12,10 @@
 #include <debug.h>
 
 
+/* How many consecutive failed or empty reads to ride out before giving up
+   on the report cycle rather than resubmitting for ever. */
+#define MOUHID_MAX_READ_ERRORS 32
+
 typedef struct
 {
     //
@@ -113,6 +117,16 @@ typedef struct
     // stop reading flag
     //
     UCHAR StopReadReport;
+
+    /* consecutive failed or empty reads, see MouHid_ReadCompletion */
+    ULONG ReadErrorCount;
+
+    /* how many reports have been dumped to the log so far */
+    ULONG ReportsTraced;
+
+    /* guards against MouHid_InitiateRead re-entering on its own stack
+       when the request below it completes inline */
+    volatile LONG ReadSubmitCount;
 
     //
     // mouse absolute

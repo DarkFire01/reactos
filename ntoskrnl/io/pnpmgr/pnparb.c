@@ -2781,6 +2781,39 @@ IopTranslateDeviceResources(
                            DescriptorTranslated->u.Interrupt.Affinity =
                                Line->TargetProcessors.Mask ? Line->TargetProcessors.Mask
                                                            : KeActiveProcessors;
+
+                           /*
+                            * Carry the mode and polarity across as well.
+                            *
+                            * These flags used to be left at whatever the raw
+                            * descriptor said, while the vector, irql and
+                            * affinity beside them came from the published
+                            * data - so a device whose _CRS says one thing and
+                            * whose resolved routing says another ended up with
+                            * a translated descriptor that disagreed with its
+                            * own connection data.
+                            *
+                            * That is not cosmetic: IoConnectInterruptEx picks
+                            * its candidate by matching vector, irql, mode,
+                            * group and affinity against exactly this published
+                            * data, and a driver takes the mode it asks for out
+                            * of the translated descriptor.  One field out of
+                            * five disagreeing rejects every candidate and the
+                            * connect fails with STATUS_NOT_SUPPORTED, reported
+                            * as the device publishing no such vector - even
+                            * though the vector was right there and matched.
+                            */
+                           if (Line->Mode == Latched)
+                           {
+                               DescriptorTranslated->Flags |=
+                                   CM_RESOURCE_INTERRUPT_LATCHED;
+                           }
+                           else
+                           {
+                               DescriptorTranslated->Flags &=
+                                   ~CM_RESOURCE_INTERRUPT_LATCHED;
+                           }
+
                            Assigned = TRUE;
 
                            DPRINT("Line interrupt for %wZ: gsiv %lu, vector 0x%lx irql %u\n",

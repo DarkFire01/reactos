@@ -585,6 +585,11 @@ IopInitializeDriverModule(
     Status = ObInsertObject(driverObject, NULL, FILE_READ_DATA, 0, NULL, &hDriver);
     if (!NT_SUCCESS(Status))
     {
+        /* Name the driver: a collision here means the object already exists,
+         * and which one it is is the whole diagnosis. The image is unmapped
+         * for us - ObInsertObject drops the last reference on failure and
+         * IopDeleteDriver unloads DriverSection */
+        DPRINT1("Failed to insert driver object \"%wZ\", status %lx\n", &DriverName, Status);
         ExFreePoolWithTag(nameInfo, TAG_IO);
         RtlFreeUnicodeString(&ServiceName);
         RtlFreeUnicodeString(&DriverName);

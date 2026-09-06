@@ -205,8 +205,20 @@ VOID
 PopDisableControlSwitchCaps(
     _In_ POP_SWITCH_TYPE SwitchType)
 {
-    /* We should already know what is the capability of this switch */
-    ASSERT(SwitchType != SwitchNone);
+    /*
+     * A switch we never learned the capabilities of has nothing to disable.
+     *
+     * This is reached whenever the capability query itself failed - the
+     * completion marks the switch for cleanup and returns without ever
+     * setting SwitchType - and also for a device that simply has no buttons,
+     * because none of the cases below set it either.  Asserting broke into
+     * the debugger once per such device, and every HID collection in the
+     * machine is one of them.
+     */
+    if (SwitchType == SwitchNone)
+    {
+        return;
+    }
 
     /* Disable the capability based on the switch */
     switch (SwitchType)

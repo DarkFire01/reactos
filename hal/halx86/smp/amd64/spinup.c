@@ -16,6 +16,7 @@
 
 /* GLOBALS *******************************************************************/
 
+extern BOOLEAN HalpOnlyBootProcessor;
 extern PPROCESSOR_IDENTITY HalpProcessorIdentity;
 extern PHYSICAL_ADDRESS HalpLowStubPhysicalAddress;
 extern PVOID HalpLowStub;
@@ -95,8 +96,27 @@ HalStartNextProcessor(
     PAP_ENTRY_DATA APEntryData;
     ULONG InitialCr3;
 
+    /* Bail out if we only use the boot CPU */
+    if (HalpOnlyBootProcessor)
+        return FALSE;
+
+    /* Bail out if we have started all available CPUs */
     if (HalpStartedProcessorCount == HalpApicInfoTable.ProcessorCount)
         return FALSE;
+
+    /*
+     * The entry stub has to sit below 1 MB and HalpSetupAcpiPhase0() is the
+     * only thing that can put it there. If the loader described no memory we
+     * could take down there - which is what EFI firmware tends to leave us
+     * with - then there is nothing to start an application processor from,
+     * and every access below would fault on a NULL pointer.
+     */
+    if (!HalpLowStub)
+    {
+        DPRINT1("HAL: No AP low stub, cannot start processor %lu\n",
+                HalpStartedProcessorCount);
+        return FALSE;
+    }
 
     /* Clean up low stub from any previous data */
     RtlZeroMemory(HalpLowStub, HALP_LOW_STUB_SIZE_IN_PAGES * PAGE_SIZE);

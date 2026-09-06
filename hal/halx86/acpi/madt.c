@@ -32,6 +32,55 @@
 #endif // _MSC_VER
 #endif // DBG && 0
 
+/*
+ * What the parse below found, for HalpPrintApicTables to report once the debug
+ * output is up.
+ *
+ * HalpParseApicTables runs too early to print anything - that is what the note
+ * above is about - so every reason it can refuse a subtable is invisible at the
+ * time, and it refuses easily. A machine whose firmware routes PCI interrupts
+ * to global system interrupt 27 booted believing its only I/O APIC served
+ * inputs 0..23, because ApicInitializeIOApic had fallen back to assuming a
+ * single legacy unit at the historical address, and that fallback is
+ * indistinguishable from a real unit afterwards. Recording it costs nothing
+ * here and the print costs nothing later.
+ */
+typedef struct _HALP_MADT_RECORD
+{
+    ULONG Subtables;                /* subtables walked */
+    ULONG TypeSeen[256 / 32];       /* one bit per subtable type encountered */
+    ULONG IoApicSeen;               /* type 1 subtables encountered */
+    ULONG IoApicBadLength;          /* ...refused for their size */
+    ULONG IoApicDuplicateId;        /* ...refused as a duplicate Id */
+    ULONG LocalApicBadLength;
+    ULONG OverrideRefused;
+    ULONG SkippedUnknown;
+    ULONG StopReason;               /* HALP_MADT_STOP_* */
+    ULONG StopType;                 /* subtable type the walk stopped on */
+    ULONG StopLength;
+} HALP_MADT_RECORD;
+
+#define HALP_MADT_STOP_COMPLETE       0
+#define HALP_MADT_STOP_NO_TABLE       1
+#define HALP_MADT_STOP_TABLE_SHORT    2
+#define HALP_MADT_STOP_SUBTABLE_SHORT 3
+#define HALP_MADT_STOP_PAST_END       4
+#define HALP_MADT_STOP_TRAILING       5
+
+static HALP_MADT_RECORD HalpMadtRecord;
+
+#if DBG
+static PCSTR HalpMadtStopReason[] =
+{
+    "ran to the end of the table",
+    "no MADT was found",
+    "the MADT header was too short",
+    "a subtable length was smaller than a subtable header",
+    "a subtable ran past the end of the table",
+    "the last subtable did not end on the end of the table"
+};
+#endif // DBG
+
 /* GLOBALS ********************************************************************/
 
 /* Defined by the APIC component; the tables parsed here fill it in */
@@ -64,12 +113,14 @@ HalpParseApicTables(
     if (!MadtTable)
     {
         DPRINT01("MADT table not found\n");
+        HalpMadtRecord.StopReason = HALP_MADT_STOP_NO_TABLE;
         return;
     }
 
     if (MadtTable->Header.Length < sizeof(*MadtTable))
     {
         DPRINT01("Length is too short: %p, %u\n", MadtTable, MadtTable->Header.Length);
+        HalpMadtRecord.StopReason = HALP_MADT_STOP_TABLE_SHORT;
         return;
     }
 
@@ -110,6 +161,9 @@ HalpParseApicTables(
         if (AcpiHeader->Length < sizeof(*AcpiHeader))
         {
             DPRINT01("Length is too short: %p, %u\n", AcpiHeader, AcpiHeader->Length);
+            HalpMadtRecord.StopReason = HALP_MADT_STOP_SUBTABLE_SHORT;
+            HalpMadtRecord.StopType = AcpiHeader->Type;
+            HalpMadtRecord.StopLength = AcpiHeader->Length;
             return;
         }
 
@@ -117,8 +171,16 @@ HalpParseApicTables(
         {
             DPRINT01("Length mismatch: %p, %u, %p\n",
                      AcpiHeader, AcpiHeader->Length, (PVOID)TableEnd);
+            HalpMadtRecord.StopReason = HALP_MADT_STOP_PAST_END;
+            HalpMadtRecord.StopType = AcpiHeader->Type;
+            HalpMadtRecord.StopLength = AcpiHeader->Length;
             return;
         }
+
+        /* Note it was walked, and which type it was, for the later report */
+        HalpMadtRecord.Subtables++;
+        HalpMadtRecord.TypeSeen[AcpiHeader->Type >> 5] |=
+            (1UL << (AcpiHeader->Type & 31));
 
         switch (AcpiHeader->Type)
         {
@@ -129,7 +191,8 @@ HalpParseApicTables(
                 if (AcpiHeader->Length != sizeof(*LocalApic))
                 {
                     DPRINT01("Type/Length mismatch: %p, %u\n", AcpiHeader, AcpiHeader->Length);
-                    return;
+                    HalpMadtRecord.LocalApicBadLength++;
+                    break;
                 }
 
                 DPRINT00(" Local Apic, Processor %lu: ProcessorId %u, Id %u, LapicFlags %08X\n",
@@ -162,20 +225,26 @@ HalpParseApicTables(
             {
                 ACPI_MADT_IO_APIC *IoApic = (ACPI_MADT_IO_APIC *)AcpiHeader;
 
+                /* Which units the firmware describes decides which
+                   interrupts can be routed at all, so a unit refused here is
+                   one the machine cannot use. Count both, and let
+                   HalpPrintApicTables say so once printing works */
+                HalpMadtRecord.IoApicSeen++;
+
                 if (AcpiHeader->Length != sizeof(*IoApic))
                 {
                     DPRINT01("Type/Length mismatch: %p, %u\n", AcpiHeader, AcpiHeader->Length);
-                    return;
+                    HalpMadtRecord.IoApicBadLength++;
+                    HalpMadtRecord.StopLength = AcpiHeader->Length;
+                    break;
                 }
-
-                DPRINT00(" Io Apic: Id %u, Address %08X, GlobalIrqBase %08X\n",
-                         IoApic->Id, IoApic->Address, IoApic->GlobalIrqBase);
 
                 // Ensure HalpApicInfoTable.IOAPICCount consistency.
                 if (HalpApicInfoTable.IoApicPA[IoApic->Id] != 0)
                 {
                     DPRINT01("Id duplication: %p, %u\n", IoApic, IoApic->Id);
-                    return;
+                    HalpMadtRecord.IoApicDuplicateId++;
+                    break;
                 }
 
                 // Note: Address and GlobalIrqBase are not validated in any way (yet).
@@ -194,7 +263,8 @@ HalpParseApicTables(
                 if (AcpiHeader->Length != sizeof(*InterruptOverride))
                 {
                     DPRINT01("Type/Length mismatch: %p, %u\n", AcpiHeader, AcpiHeader->Length);
-                    return;
+                    HalpMadtRecord.OverrideRefused++;
+                    break;
                 }
 
                 DPRINT00(" Interrupt Override: Bus %u, SourceIrq %u, GlobalIrq %08X, IntiFlags %04X\n",
@@ -204,14 +274,16 @@ HalpParseApicTables(
                 if (InterruptOverride->Bus != 0) // 0 = ISA
                 {
                     DPRINT01("Invalid Bus: %p, %u\n", InterruptOverride, InterruptOverride->Bus);
-                    return;
+                    HalpMadtRecord.OverrideRefused++;
+                    break;
                 }
 
                 if (InterruptOverride->SourceIrq >= _countof(HalpPicVectorRedirect))
                 {
                     DPRINT01("Invalid SourceIrq: %p, %u\n",
                              InterruptOverride, InterruptOverride->SourceIrq);
-                    return;
+                    HalpMadtRecord.OverrideRefused++;
+                    break;
                 }
 
                 /* The firmware wires this ISA line to another global interrupt,
@@ -223,9 +295,27 @@ HalpParseApicTables(
             }
             default:
             {
-                DPRINT01(" UNIMPLEMENTED: Type %u, Length %u\n",
+                /*
+                 * Skip it - do not abandon the table.
+                 *
+                 * Returning here threw away every subtable behind the first one
+                 * of a type this parser does not implement, and a modern MADT is
+                 * full of them: Local APIC NMI (4), Local APIC Address Override
+                 * (5), the x2APIC pair (9, 10). Anything the firmware listed
+                 * after one of those was never seen - including further I/O
+                 * APICs, which is how a machine whose _PRT routes PCI interrupts
+                 * to global system interrupt 27 and up came up believing it had
+                 * a single unit serving inputs 0..23, and then refused to
+                 * connect every interrupt above that.
+                 *
+                 * Walking past an unknown subtable is exactly what its Length
+                 * field is for, and the loop above has already checked that the
+                 * Length keeps us inside the table.
+                 */
+                DPRINT01(" Skipped: Type %u, Length %u\n",
                          AcpiHeader->Type, AcpiHeader->Length);
-                return;
+                HalpMadtRecord.SkippedUnknown++;
+                break;
             }
         }
 
@@ -235,6 +325,7 @@ HalpParseApicTables(
     if ((ULONG_PTR)AcpiHeader != TableEnd)
     {
         DPRINT01("Length mismatch: %p, %p, %p\n", MadtTable, AcpiHeader, (PVOID)TableEnd);
+        HalpMadtRecord.StopReason = HALP_MADT_STOP_TRAILING;
         return;
     }
 }
@@ -255,6 +346,68 @@ HalpPrintApicTables(VOID)
                 HalpProcessorIdentity[i].ProcessorStarted,
                 HalpProcessorIdentity[i].BSPCheck,
                 HalpProcessorIdentity[i].ProcessorPrcb);
+    }
+
+    /*
+     * Now what the MADT walk actually did, recorded at the time because
+     * nothing could be printed from there.
+     */
+    DPRINT1("MADT: %lu subtable(s), %s\n",
+            HalpMadtRecord.Subtables,
+            HalpMadtStopReason[HalpMadtRecord.StopReason]);
+
+    if (HalpMadtRecord.StopReason != HALP_MADT_STOP_COMPLETE &&
+        HalpMadtRecord.StopType != 0)
+    {
+        DPRINT1("MADT: stopped on a type %lu subtable of length %lu\n",
+                HalpMadtRecord.StopType, HalpMadtRecord.StopLength);
+    }
+
+    /* Which subtable types the firmware listed. Types this parser does not
+       implement are skipped, but knowing they were there is what says whether
+       the walk reached the end of the firmware's list or gave up part way */
+    for (i = 0; i < 256; i++)
+    {
+        if (HalpMadtRecord.TypeSeen[i >> 5] & (1UL << (i & 31)))
+        {
+            DPRINT1("MADT:   saw subtable type %lu\n", i);
+        }
+    }
+
+    DPRINT1("MADT: %lu I/O APIC subtable(s), %lu recorded"
+            " (%lu bad length, %lu duplicate Id)\n",
+            HalpMadtRecord.IoApicSeen,
+            HalpApicInfoTable.IOAPICCount,
+            HalpMadtRecord.IoApicBadLength,
+            HalpMadtRecord.IoApicDuplicateId);
+
+    if (HalpMadtRecord.LocalApicBadLength != 0 ||
+        HalpMadtRecord.OverrideRefused != 0 ||
+        HalpMadtRecord.SkippedUnknown != 0)
+    {
+        DPRINT1("MADT: %lu local APIC(s) of bad length, %lu override(s) refused,"
+                " %lu subtable(s) of unimplemented types skipped\n",
+                HalpMadtRecord.LocalApicBadLength,
+                HalpMadtRecord.OverrideRefused,
+                HalpMadtRecord.SkippedUnknown);
+    }
+
+    /* The units themselves, by the Id the firmware gave them */
+    for (i = 0; i < HALP_APIC_INFO_TABLE_IOAPIC_NUMBER; i++)
+    {
+        if (HalpApicInfoTable.IoApicPA[i] != 0)
+        {
+            DPRINT1("MADT:   I/O APIC Id %lu at %08X, global interrupt base %lu\n",
+                    i,
+                    HalpApicInfoTable.IoApicPA[i],
+                    HalpApicInfoTable.IoApicIrqBase[i]);
+        }
+    }
+
+    if (HalpApicInfoTable.IOAPICCount == 0)
+    {
+        DPRINT1("MADT: no I/O APIC was recorded - the interrupt controller was "
+                "assumed, not described\n");
     }
 #endif
 }

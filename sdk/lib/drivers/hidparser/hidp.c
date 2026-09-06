@@ -273,9 +273,22 @@ HidP_GetSpecificButtonCaps(
     IN OUT PUSHORT ButtonCapsLength,
     IN PHIDP_PREPARSED_DATA  PreparsedData)
 {
-    UNIMPLEMENTED;
-    ASSERT(FALSE);
-    return STATUS_NOT_IMPLEMENTED;
+    ULONG Length;
+    NTSTATUS Status;
+
+    //
+    // sanity check
+    //
+    ASSERT(ReportType == HidP_Input || ReportType == HidP_Output || ReportType == HidP_Feature);
+
+    //
+    // get button caps
+    //
+    Length = *ButtonCapsLength;
+    Status = HidParser_GetSpecificButtonCaps(PreparsedData, ReportType, UsagePage, LinkCollection, Usage, ButtonCaps, &Length);
+    *ButtonCapsLength = (USHORT)Length;
+
+    return Status;
 }
 
 HIDAPI

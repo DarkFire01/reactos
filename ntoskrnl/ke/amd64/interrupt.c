@@ -76,6 +76,39 @@ KeInitializeInterrupt(
     Interrupt->DispatchAddress = 0;
 }
 
+/**
+ * @brief
+ * Reports an interrupt that arrived on a vector with no interrupt object
+ * connected to it, once per vector.
+ *
+ * Called from KiUnexpectedInterrupt, which acknowledges the interrupt and
+ * returns. There is a window during device start where this is expected: PCI
+ * arms a device's message interrupt as part of START, and the driver connects
+ * its service routine afterwards, so a controller the firmware left with work
+ * pending can raise one in between. Bugchecking the machine over that would be
+ * wrong; leaving it unsaid was what made it expensive to find.
+ *
+ * @param ErrorCode
+ * What the vector stub pushed. The stubs push (Vector - 128) so that the 8-bit
+ * push, which sign extends, still names the whole range.
+ */
+VOID
+NTAPI
+KiReportUnexpectedInterrupt(
+    _In_ ULONG64 ErrorCode)
+{
+    static ULONG Reported[256 / 32];
+    ULONG Vector = (ULONG)(ErrorCode + 128) & 0xFF;
+    ULONG Bit = 1UL << (Vector & 31);
+
+    /* Racing processors can duplicate a line here; they cannot lose one */
+    if (Reported[Vector >> 5] & Bit) return;
+    Reported[Vector >> 5] |= Bit;
+
+    DPRINT1("Unexpected interrupt on vector 0x%02lx - nothing is connected to "
+            "it; acknowledged and ignored\n", Vector);
+}
+
 BOOLEAN
 NTAPI
 KeConnectInterrupt(IN PKINTERRUPT Interrupt)
@@ -142,6 +175,20 @@ KeConnectInterrupt(IN PKINTERRUPT Interrupt)
             (ConnectedInterrupt->ShareVector == 0) ||
             (Interrupt->Mode != ConnectedInterrupt->Mode))
         {
+            /* Say who is already on the vector and which of the three tests
+             * refused. This is the one failure here that used to be silent,
+             * and it surfaces as a bare STATUS_INVALID_PARAMETER four frames
+             * up in IoConnectInterruptEx - which says nothing about a vector
+             * being occupied, let alone by what */
+            DPRINT1("Vector %lu is held by interrupt %p (share %u mode %u); "
+                    "cannot connect %p (share %u mode %u)\n",
+                    Interrupt->Vector,
+                    ConnectedInterrupt,
+                    ConnectedInterrupt->ShareVector,
+                    ConnectedInterrupt->Mode,
+                    Interrupt,
+                    Interrupt->ShareVector,
+                    Interrupt->Mode);
             goto Cleanup;
         }
 

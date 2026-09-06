@@ -441,7 +441,19 @@ HidParser_SignRange(
             Minimum |= Mask;
             if (Maximum & Mask)
                 Maximum |= Mask;
-            return;
+
+            //
+            // Store the extended pair - this is the whole point of the routine
+            // and the one path that used to return without writing it. The
+            // caller passes its own locals in and keeps whatever it already
+            // had, so a descriptor declaring LOGICAL_MINIMUM(-127) came out of
+            // here still holding 129, and every consumer of the item's bounds
+            // saw an unsigned range: HidP_GetValueCaps reports LogicalMin 129
+            // with LogicalMax 127, and a driver dividing by LogicalMax or
+            // comparing the two gets nonsense out of a perfectly ordinary
+            // mouse axis.
+            //
+            break;
         }
 
         Mask >>= 8;

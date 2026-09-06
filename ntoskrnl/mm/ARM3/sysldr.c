@@ -3147,7 +3147,28 @@ LoaderScan:
         LdrEntry = CONTAINING_RECORD(NextEntry,
                                      LDR_DATA_TABLE_ENTRY,
                                      InLoadOrderLinks);
-        if (RtlEqualUnicodeString(&PrefixName, &LdrEntry->FullDllName, TRUE))
+
+        /*
+         * Match on the base name, not the full path.
+         *
+         * An image can be in the list under a spelling this caller would never
+         * produce: the boot loader records its modules as
+         * "multi(0)disk(0)rdisk(0)partition(1)\reactos\system32\drivers\x.sys"
+         * while everything afterwards asks for "\SystemRoot\system32\drivers\
+         * x.sys". Comparing FullDllName made every boot driver invisible to a
+         * later load, so ZwLoadDriver on one mapped a second copy of an image
+         * that was already resident and then failed in
+         * IopInitializeDriverModule, which could not insert \Driver\<service>
+         * over the object the boot load had already created. The caller got
+         * STATUS_OBJECT_NAME_COLLISION where it should have got
+         * STATUS_IMAGE_ALREADY_LOADED.
+         *
+         * Windows compares the base name here, which is also the only part
+         * this function guarantees is spelled the same way for every caller:
+         * BaseName is what goes into LdrEntry->BaseDllName below, prefix and
+         * LoadedName override included.
+         */
+        if (RtlEqualUnicodeString(&BaseName, &LdrEntry->BaseDllName, TRUE))
         {
             /* Found it, break out */
             break;

@@ -667,6 +667,23 @@ HalpMapIoApic(
     Pte->Global = 1;
     _ReadWriteBarrier();
 
+    /*
+     * Flush before touching the page.
+     *
+     * _ReadWriteBarrier only stops the compiler from moving the access; it does
+     * nothing to the TLB. The PTE above is also built field by field rather
+     * than written once, so the entry is briefly valid with an address that is
+     * not yet the caller's - long enough for the processor to cache it. The
+     * first unit gets away with it because IOAPIC_BASE is the historical
+     * address and is already mapped; every unit after it is at a page that has
+     * never been touched, and its very first access is the version register
+     * read below. A bad count there decides HalpMaxGsi, and every input above
+     * whatever that lands on is then refused - silently, both in translation
+     * and in HalEnableInterrupt. HalpMapPhysicalMemory64 does the same flush
+     * for the same reason.
+     */
+    HalpFlushTLB();
+
     /* The version register carries the number of entries, minus one */
     Count = ((IOApicRead(Base, IOAPIC_VER) >> 16) & 0xFF) + 1;
     if (InputBase >= HALP_MAX_INPUTS)
@@ -678,6 +695,11 @@ HalpMapIoApic(
     {
         Count = HALP_MAX_INPUTS - InputBase;
     }
+
+    /* What each unit serves decides which interrupts can be routed at all, so
+     * say it once rather than leaving it to be inferred from a failure */
+    DPRINT1("I/O APIC %lu at %lx serves inputs %lu..%lu\n",
+            HalpIoApicCount, PhysicalBase, InputBase, InputBase + Count - 1);
 
     HalpIoApics[HalpIoApicCount].Base = Base;
     HalpIoApics[HalpIoApicCount].InputBase = InputBase;
@@ -711,8 +733,16 @@ ApicInitializeIOApic(VOID)
     }
     if (HalpIoApicCount == 0)
     {
+        /* Nothing was described, so assume the historical single unit. Say so:
+         * an assumed unit is indistinguishable from a described one once it is
+         * mapped, and it decides HalpMaxGsi - which is what refuses every
+         * interrupt input above whatever that unit happens to report */
+        DPRINT1("No I/O APIC was described; assuming one at %x\n", IOAPIC_PHYS_BASE);
         HalpMapIoApic(IOAPIC_PHYS_BASE, 0);
     }
+
+    DPRINT1("%lu I/O APIC(s), highest routable interrupt input %lu\n",
+            HalpIoApicCount, HalpMaxGsi ? HalpMaxGsi - 1 : 0);
 
     /* Setup a redirection entry */
     ReDirReg.LongLong = 0;
@@ -1519,6 +1549,8 @@ HalEnableInterrupt(
             }
             else if (Index != APIC_MSI_VECTOR)
             {
+                DPRINT1("Vector 0x%lx cannot carry a message: it serves input %u\n",
+                        Vector, Index);
                 return STATUS_INVALID_PARAMETER;
             }
             return STATUS_SUCCESS;
@@ -1529,6 +1561,8 @@ HalEnableInterrupt(
             Input = VectorData->ControllerInput.Gsiv;
             if (Input >= HalpMaxGsi)
             {
+                DPRINT1("Input %lu is not served by any I/O APIC (max %lu)\n",
+                        Input, HalpMaxGsi);
                 return STATUS_INVALID_PARAMETER;
             }
 
@@ -1554,6 +1588,19 @@ HalEnableInterrupt(
             }
             else if (Index != Input)
             {
+                /* Whatever holds the vector, it is not this input. Say which,
+                 * spelling out the marker rather than printing 0xFD as though
+                 * it were an interrupt input */
+                if (Index == APIC_MSI_VECTOR)
+                {
+                    DPRINT1("Input %lu cannot take vector 0x%lx: it carries "
+                            "message interrupts\n", Input, Vector);
+                }
+                else
+                {
+                    DPRINT1("Input %lu cannot take vector 0x%lx: it serves "
+                            "input %u\n", Input, Vector, Index);
+                }
                 return STATUS_INVALID_PARAMETER;
             }
 

@@ -31,6 +31,33 @@ static USHORT MouHid_ButtonDownFlags[] =
 };
 
 
+/*
+ * Report an axis this driver could not read, once per axis.
+ *
+ * GetButtonMove acts on HIDP_STATUS_BAD_LOG_PHY_VALUES and silently ignores
+ * every other failure, leaving that axis at zero.  A device whose X resolves
+ * and whose Y does not therefore moves only left and right, with nothing said
+ * anywhere - which is a hard thing to find from the outside.  Say it once so
+ * the status is on the record.
+ */
+static
+VOID
+MouHid_ReportAxisFailure(
+    IN PCSTR Axis,
+    IN NTSTATUS Status)
+{
+    static BOOLEAN Reported[2] = { FALSE, FALSE };
+    ULONG Index = (Axis[0] == 'Y') ? 1 : 0;
+
+    if (!Reported[Index])
+    {
+        Reported[Index] = TRUE;
+        DPRINT1("[MOUHID] could not read %s: 0x%08lX - this axis reads as zero\n",
+                Axis, Status);
+    }
+}
+
+
 VOID
 MouHid_GetButtonMove(
     IN PMOUHID_DEVICE_EXTENSION DeviceExtension,
@@ -58,12 +85,15 @@ MouHid_GetButtonMove(
 
         if (Status != HIDP_STATUS_SUCCESS)
         {
-            /* FIXME: handle more errors */
+            MouHid_ReportAxisFailure("X", Status);
+
+            /*
+             * Do not re-decide the pointer's mode from a failed read - that is
+             * settled at start from the caps.  Fall back to the unscaled value
+             * for this report only.
+             */
             if (Status == HIDP_STATUS_BAD_LOG_PHY_VALUES)
             {
-                /* FIXME: assume it operates in absolute mode */
-                DeviceExtension->MouseAbsolute = TRUE;
-
                 /* get unscaled value */
                 Status = HidP_GetUsageValue(HidP_Input,
                                         HID_USAGE_PAGE_GENERIC,
@@ -123,12 +153,11 @@ MouHid_GetButtonMove(
 
         if (Status != HIDP_STATUS_SUCCESS)
         {
-            // FIXME: handle more errors
+            MouHid_ReportAxisFailure("Y", Status);
+
+            /* As above: the mode is not re-decided here. */
             if (Status == HIDP_STATUS_BAD_LOG_PHY_VALUES)
             {
-                // assume it operates in absolute mode
-                DeviceExtension->MouseAbsolute = TRUE;
-
                 // get unscaled value
                 Status = HidP_GetUsageValue(HidP_Input,
                                         HID_USAGE_PAGE_GENERIC,
@@ -335,6 +364,37 @@ MouHid_ReadCompletion(
         return STATUS_MORE_PROCESSING_REQUIRED;
     }
 
+    /*
+     * A completion that failed, or that carries no report, has nothing in it
+     * to parse.
+     *
+     * Only three statuses were treated as terminal, so every other failure fell
+     * straight through into the parser, which read whatever the previous report
+     * had left in the buffer and delivered it as real input - and then re-armed.
+     * A device erroring in a loop therefore produced a stream of phantom input
+     * and a tight resubmit loop at DISPATCH_LEVEL.
+     *
+     * Re-arm without parsing, and stop if it never recovers rather than
+     * spinning forever.
+     */
+    if (!NT_SUCCESS(Irp->IoStatus.Status) || Irp->IoStatus.Information == 0)
+    {
+        if (++DeviceExtension->ReadErrorCount > MOUHID_MAX_READ_ERRORS)
+        {
+            DPRINT1("[MOUHID] giving up after %lu bad reads, last Status %x\n",
+                    DeviceExtension->ReadErrorCount, Irp->IoStatus.Status);
+            DeviceExtension->ReadReportActive = FALSE;
+            DeviceExtension->StopReadReport = FALSE;
+            KeSetEvent(&DeviceExtension->ReadCompletionEvent, 0, 0);
+            return STATUS_MORE_PROCESSING_REQUIRED;
+        }
+
+        MouHid_InitiateRead(DeviceExtension);
+        return STATUS_MORE_PROCESSING_REQUIRED;
+    }
+
+    DeviceExtension->ReadErrorCount = 0;
+
     /* get mouse change */
     MouHid_GetButtonMove(DeviceExtension, &LastX, &LastY);
 
@@ -375,11 +435,52 @@ MouHid_ReadCompletion(
         }
     }
 
-    DPRINT("[MOUHID] ReportData %02x %02x %02x %02x %02x %02x %02x\n",
-        DeviceExtension->Report[0] & 0xFF,
-        DeviceExtension->Report[1] & 0xFF, DeviceExtension->Report[2] & 0xFF,
-        DeviceExtension->Report[3] & 0xFF, DeviceExtension->Report[4] & 0xFF,
-        DeviceExtension->Report[5] & 0xFF, DeviceExtension->Report[6] & 0xFF);
+    /*
+     * The first few reports, raw and decoded, so a misbehaving axis can be
+     * read straight off the log instead of guessed at.
+     *
+     * Bounded two ways: a handful of reports, because on a multiprocessor
+     * kernel every debug print freezes every other processor; and by
+     * ReportLength, because the dump this replaces named seven bytes
+     * unconditionally - more than a boot mouse report actually holds.
+     */
+    if (DeviceExtension->ReportsTraced < 8)
+    {
+        CHAR  Hex[3 * 24 + 1];
+        ULONG Count = DeviceExtension->ReportLength;
+        ULONG i;
+
+        DeviceExtension->ReportsTraced++;
+
+        /*
+         * Every byte the report holds, not a fixed eight.
+         *
+         * The fixed count was wrong in both directions: it named more bytes
+         * than a boot mouse report has, and fewer than this one does. A nine
+         * byte report was dumped as eight, and the byte it left out was the
+         * high half of the very field that was reading back wrong.
+         */
+        if (Count > 24)
+        {
+            Count = 24;
+        }
+
+        for (i = 0; i < Count; i++)
+        {
+            CHAR *p = &Hex[i * 3];
+            UCHAR b = (UCHAR)DeviceExtension->Report[i];
+
+            p[0] = "0123456789abcdef"[b >> 4];
+            p[1] = "0123456789abcdef"[b & 0xF];
+            p[2] = ' ';
+        }
+        Hex[Count * 3] = '\0';
+
+        DPRINT1("[MOUHID] len %lu  %s -> X %ld Y %ld btn 0x%x %s\n",
+                DeviceExtension->ReportLength, Hex,
+                LastX, LastY, ButtonFlags,
+                DeviceExtension->MouseAbsolute ? "ABSOLUTE" : "relative");
+    }
 
     DPRINT("[MOUHID] LastX %ld LastY %ld Flags %x ButtonFlags %x ButtonData %x\n", MouseInputData.LastX, MouseInputData.LastY, MouseInputData.Flags, MouseInputData.ButtonFlags, MouseInputData.ButtonData);
 
@@ -400,6 +501,27 @@ MouHid_InitiateRead(
     PIO_STACK_LOCATION IoStack;
     NTSTATUS Status;
 
+    /*
+     * Do not re-enter on the caller's stack.
+     *
+     * MouHid_ReadCompletion re-arms by calling straight back in here, and the
+     * request below can complete inline - hidclass refuses a malformed read
+     * without ever pending it.  The completion routine then runs on this very
+     * stack and calls in again, and the whole thing recurses until the kernel
+     * stack is gone.  That is a double fault, seen as 0x7F(8) after a dozen
+     * rejected reads.
+     *
+     * Count the submissions instead: the first caller owns the loop below and
+     * a caller nested inside it only leaves its request behind and returns.
+     * HidClassFDO_SubmitRead solves the identical problem the identical way.
+     */
+    if (InterlockedIncrement(&DeviceExtension->ReadSubmitCount) > 1)
+    {
+        return STATUS_PENDING;
+    }
+
+    do
+    {
     /* re-use irp */
     IoReuseIrp(DeviceExtension->Irp, STATUS_SUCCESS);
 
@@ -424,6 +546,8 @@ MouHid_InitiateRead(
 
     /* start the read */
     Status = IoCallDriver(DeviceExtension->NextDeviceObject, DeviceExtension->Irp);
+
+    } while (InterlockedDecrement(&DeviceExtension->ReadSubmitCount) > 0);
 
     /* done */
     return Status;
@@ -475,6 +599,20 @@ MouHid_Create(
     {
         /* request pending */
         KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+
+        /*
+         * Take the result out of the irp.
+         *
+         * The completion routine returns STATUS_MORE_PROCESSING_REQUIRED, so
+         * the irp is still ours and its IoStatus holds what actually happened.
+         * Status is still STATUS_PENDING at this point, and
+         * NT_SUCCESS(STATUS_PENDING) is TRUE, so the check below used to pass
+         * for a create the stack had refused - and this then stored the file
+         * object and started the read cycle on a device that never opened,
+         * leaving ReadReportActive set on a stack that is not going to deliver
+         * anything.  Every close and remove path keys off that flag.
+         */
+        Status = Irp->IoStatus.Status;
     }
 
     /* check for success */
@@ -524,22 +662,80 @@ MouHid_Close(
     IN PIRP Irp)
 {
     PMOUHID_DEVICE_EXTENSION DeviceExtension;
+    PIO_STACK_LOCATION IoStack;
 
     /* get device extension */
     DeviceExtension = DeviceObject->DeviceExtension;
+    IoStack = IoGetCurrentIrpStackLocation(Irp);
 
     DPRINT("[MOUHID] IRP_MJ_CLOSE ReadReportActive %x\n", DeviceExtension->ReadReportActive);
 
+    /*
+     * Only the handle that started the report cycle may stop it.
+     *
+     * MouHid_Create hands ownership to the first opener and starts reading on
+     * its behalf; a later opener is let in but starts nothing.  Tearing the
+     * cycle down for any close at all meant that when something opened the
+     * collection briefly and closed it again - the power manager does exactly
+     * that to every HID collection, to ask for its system button capabilities -
+     * the read that mouclass owned was cancelled and never restarted.  The
+     * device then stopped responding with the whole stack still loaded and
+     * looking perfectly healthy.
+     *
+     * This was previously hidden by the deadlock in this function: such a close
+     * never reached the teardown at all.
+     */
+    if (IoStack->FileObject != DeviceExtension->FileObject)
+    {
+        IoSkipCurrentIrpStackLocation(Irp);
+        return IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
+    }
+
     if (DeviceExtension->ReadReportActive)
     {
+        LARGE_INTEGER Timeout;
+
         /* request stopping of the report cycle */
         DeviceExtension->StopReadReport = TRUE;
 
-        /* wait until the reports have been read */
-        KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent, Executive, KernelMode, FALSE, NULL);
-
-        /* cancel irp */
+        /*
+         * Cancel first, then wait.  This used to be the other way round, and
+         * it could not work.
+         *
+         * StopReadReport is only ever looked at by MouHid_ReadCompletion, which
+         * runs when the outstanding IOCTL_HID_READ_REPORT completes - and that
+         * only happens when the device actually has something to report.  A
+         * mouse nobody is touching never completes one, so the wait was
+         * waiting for something that only the cancel underneath it could
+         * produce.
+         *
+         * It deadlocked the whole boot: the power manager opens and closes
+         * every HID collection to ask for its button capabilities
+         * (PopAddPolicyDevice -> PopGetPolicyDeviceObject -> NtClose), so
+         * Phase 1 initialisation came through here and stopped for ever.  The
+         * machine then sits with every processor idle and never reaches smss.
+         *
+         * Cancelling completes the request with STATUS_CANCELLED, which is one
+         * of the statuses the completion routine treats as terminal, so it
+         * signals the event and this wait ends.
+         */
         IoCancelIrp(DeviceExtension->Irp);
+
+        /*
+         * Bounded, deliberately - the reference waits without a limit.  The
+         * cancel above should always produce a completion, but a lower driver
+         * that does not honour it would otherwise take the machine with it,
+         * and losing a boot to a silent wait is exactly what this is fixing.
+         */
+        Timeout.QuadPart = -50000000LL;   /* 5 seconds */
+        if (KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent,
+                                  Executive,
+                                  KernelMode,
+                                  FALSE,
+                                  &Timeout) == STATUS_TIMEOUT)
+        {
+            DPRINT1("[MOUHID] read cycle did not stop after cancel\n");
+        }
     }
 
     DPRINT("[MOUHID] IRP_MJ_CLOSE ReadReportActive %x\n", DeviceExtension->ReadReportActive);
@@ -892,14 +1088,39 @@ MouHid_StartDevice(
     /* store preparsed data */
     DeviceExtension->PreparsedData = PreparsedData;
 
+    /*
+     * Whether this is a relative or an absolute pointer is a property of the
+     * device, and the descriptor states it: HIDP_VALUE_CAPS.IsAbsolute on the
+     * X axis.  Read it once, here, and believe it.
+     *
+     * MouHid_GetButtonMove used to infer it instead, by treating
+     * HIDP_STATUS_BAD_LOG_PHY_VALUES from HidP_GetScaledUsageValue as "this
+     * must be an absolute device" and latching MouseAbsolute for good.  That
+     * inference is not in the reference and it is wrong here, because this
+     * tree's parser returns that status for any axis whose logical range is
+     * not negative - which plenty of ordinary relative mice have.  A relative
+     * mouse so misdetected then had every delta run through
+     * (Value * VIRTUAL_SCREEN_SIZE_X) / LogicalMax, turning one count of
+     * movement into most of a screen: the pointer jumps to the edge and stays
+     * there.
+     *
+     * The reference does exactly this and nothing more - one
+     * HidP_GetSpecificValueCaps for usage 0x30 on the Generic Desktop page,
+     * then "if (ValueCaps.IsAbsolute)".
+     */
     ValueCapsLength = 1;
-    HidP_GetSpecificValueCaps(HidP_Input,
-                              HID_USAGE_PAGE_GENERIC,
-                              HIDP_LINK_COLLECTION_UNSPECIFIED,
-                              HID_USAGE_GENERIC_X,
-                              &DeviceExtension->ValueCapsX,
-                              &ValueCapsLength,
-                              PreparsedData);
+    Status = HidP_GetSpecificValueCaps(HidP_Input,
+                                       HID_USAGE_PAGE_GENERIC,
+                                       HIDP_LINK_COLLECTION_UNSPECIFIED,
+                                       HID_USAGE_GENERIC_X,
+                                       &DeviceExtension->ValueCapsX,
+                                       &ValueCapsLength,
+                                       PreparsedData);
+    if (Status == HIDP_STATUS_SUCCESS)
+    {
+        DeviceExtension->MouseAbsolute = DeviceExtension->ValueCapsX.IsAbsolute
+                                             ? TRUE : FALSE;
+    }
 
     ValueCapsLength = 1;
     HidP_GetSpecificValueCaps(HidP_Input,
@@ -909,6 +1130,27 @@ MouHid_StartDevice(
                               &DeviceExtension->ValueCapsY,
                               &ValueCapsLength,
                               PreparsedData);
+
+    /*
+     * Both axes, once, at a level that survives NDEBUG.
+     *
+     * BitSize is the field that decides how the value is read back: the parser
+     * sign-extends through a mask built from it, so an axis matched against a
+     * wider item than it occupies comes back unsigned. Two axes of the same
+     * device disagreeing here is exactly the shape of a pointer that moves on
+     * one axis and runs to the edge on the other, and none of it was visible.
+     */
+    DPRINT1("[MOUHID] X caps: bits %u abs %u logical %ld..%ld | "
+            "Y caps: bits %u abs %u logical %ld..%ld -> %s pointer\n",
+            DeviceExtension->ValueCapsX.BitSize,
+            DeviceExtension->ValueCapsX.IsAbsolute,
+            DeviceExtension->ValueCapsX.LogicalMin,
+            DeviceExtension->ValueCapsX.LogicalMax,
+            DeviceExtension->ValueCapsY.BitSize,
+            DeviceExtension->ValueCapsY.IsAbsolute,
+            DeviceExtension->ValueCapsY.LogicalMin,
+            DeviceExtension->ValueCapsY.LogicalMax,
+            DeviceExtension->MouseAbsolute ? "absolute" : "relative");
 
     /* now check for wheel mouse support */
     ValueCapsLength = 1;
@@ -1083,7 +1325,39 @@ MouHid_Pnp(
         /* cancel irp */
         IoCancelIrp(DeviceExtension->Irp);
 
-        /* free resources */
+        /*
+         * Let the read cycle actually stop before anything it is still using
+         * is freed.
+         *
+         * Only if there is one to stop: ReadCompletionEvent is a manual reset
+         * event that starts unsignalled and is only ever signalled by a read
+         * completion, so a device that was never opened - or whose cycle has
+         * already stopped - would wait here for something that is never going
+         * to happen.  Bounded as well, because the cancel above is the only
+         * thing that can produce the completion and a lower driver that
+         * ignores it would otherwise take PnP down with it.
+         */
+        if (DeviceExtension->ReadReportActive)
+        {
+            LARGE_INTEGER Timeout;
+
+            Timeout.QuadPart = -50000000LL;   /* 5 seconds */
+            if (KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent,
+                                      Executive,
+                                      KernelMode,
+                                      FALSE,
+                                      &Timeout) == STATUS_TIMEOUT)
+            {
+                DPRINT1("[MOUHID] read cycle did not stop before remove\n");
+            }
+        }
+
+        /*
+         * Only now free what the read was using.  This used to happen straight
+         * after the cancel and before the wait, so the report buffer and its
+         * MDL were released while a cancelled read could still be completing
+         * into them.
+         */
         MouHid_FreeResources(DeviceObject);
 
         /* indicate success */
@@ -1094,9 +1368,6 @@ MouHid_Pnp(
 
         /* dispatch to lower device */
         Status = IoCallDriver(DeviceExtension->NextDeviceObject, Irp);
-
-        /* wait for completion of stop event */
-        KeWaitForSingleObject(&DeviceExtension->ReadCompletionEvent, Executive, KernelMode, FALSE, NULL);
 
         /* free irp */
         IoFreeIrp(DeviceExtension->Irp);

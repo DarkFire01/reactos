@@ -312,7 +312,20 @@ HidParser_GetButtonCaps(
     IN PHIDP_BUTTON_CAPS ButtonCaps,
     IN PUSHORT ButtonCapsLength)
 {
-    return HidParser_GetSpecificButtonCaps(CollectionContext, ReportType, HID_USAGE_PAGE_UNDEFINED, HIDP_LINK_COLLECTION_UNSPECIFIED, HID_USAGE_PAGE_UNDEFINED, ButtonCaps, (PULONG)ButtonCapsLength);
+    NTSTATUS Status;
+    ULONG Length;
+
+    //
+    // The caller's count is a USHORT and the callee takes a PULONG, so it
+    // needs a real ULONG to write through - casting the pointer wrote four
+    // bytes into a two byte object.  Harmless only while the callee was a
+    // stub that never wrote anything.
+    //
+    Length = *ButtonCapsLength;
+    Status = HidParser_GetSpecificButtonCaps(CollectionContext, ReportType, HID_USAGE_PAGE_UNDEFINED, HIDP_LINK_COLLECTION_UNSPECIFIED, HID_USAGE_PAGE_UNDEFINED, ButtonCaps, &Length);
+    *ButtonCapsLength = (USHORT)Length;
+
+    return Status;
 }
 
 HIDAPI
@@ -824,9 +837,36 @@ HidParser_GetSpecificButtonCaps(
     OUT PHIDP_BUTTON_CAPS  ButtonCaps,
     IN OUT PULONG  ButtonCapsLength)
 {
-    UNIMPLEMENTED;
-    ASSERT(FALSE);
-    return STATUS_NOT_IMPLEMENTED;
+    NTSTATUS ParserStatus;
+    USHORT Length;
+
+    //
+    // FIXME: implement searching in specific collection - the value caps
+    // side has the same limitation
+    //
+    ASSERT(LinkCollection == HIDP_LINK_COLLECTION_UNSPECIFIED);
+
+    Length = (USHORT)*ButtonCapsLength;
+
+    if (ReportType == HidP_Input)
+    {
+        ParserStatus = HidParser_GetSpecificButtonCapsWithReport(CollectionContext, HID_REPORT_TYPE_INPUT, UsagePage, Usage, ButtonCaps, &Length);
+    }
+    else if (ReportType == HidP_Output)
+    {
+        ParserStatus = HidParser_GetSpecificButtonCapsWithReport(CollectionContext, HID_REPORT_TYPE_OUTPUT, UsagePage, Usage, ButtonCaps, &Length);
+    }
+    else if (ReportType == HidP_Feature)
+    {
+        ParserStatus = HidParser_GetSpecificButtonCapsWithReport(CollectionContext, HID_REPORT_TYPE_FEATURE, UsagePage, Usage, ButtonCaps, &Length);
+    }
+    else
+    {
+        return HIDP_STATUS_INVALID_REPORT_TYPE;
+    }
+
+    *ButtonCapsLength = Length;
+    return ParserStatus;
 }
 
 

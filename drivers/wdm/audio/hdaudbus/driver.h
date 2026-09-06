@@ -78,9 +78,29 @@ static inline void mdelay(LONG msec) {
 }
 
 static inline void udelay(LONG usec) {
-	LARGE_INTEGER Interval;
-	Interval.QuadPart = -10 * (LONGLONG)usec;
-	KeDelayExecutionThread(KernelMode, FALSE, &Interval);
+	/*
+	 * Microsecond delays have to busy-wait.
+	 *
+	 * KeDelayExecutionThread cannot resolve finer than one clock tick, which
+	 * is 15.625 ms on a PC - so every udelay(10) here actually slept about
+	 * fifteen milliseconds, roughly 1500 times longer than it asked for.
+	 * ResetHDAController polls up to 1000 times with udelay(10), twice, so a
+	 * controller that does not answer cost half a minute in that function
+	 * alone instead of the 20 ms intended, and the whole start path took
+	 * minutes while everything behind it in PnP waited.
+	 *
+	 * KeStallExecutionProcessor is the microsecond-resolution one.  It is
+	 * chunked because a single stall is meant to be short - the DDK guidance
+	 * is 50 us at a time - and this is also called at raised IRQL.
+	 */
+	while (usec > 50) {
+		KeStallExecutionProcessor(50);
+		usec -= 50;
+	}
+
+	if (usec > 0) {
+		KeStallExecutionProcessor(usec);
+	}
 }
 
 //

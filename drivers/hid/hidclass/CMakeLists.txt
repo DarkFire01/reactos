@@ -4,7 +4,8 @@ spec2def(hidclass.sys hidclass.spec ADD_IMPORTLIB)
 list(APPEND SOURCE
     fdo.c
     hidclass.c
-    pdo.c)
+    pdo.c
+    cyclicbuffer.c)
 
 list(APPEND PCH_SKIP_SOURCE
     guid.c)
@@ -14,6 +15,10 @@ add_library(hidclass MODULE
     ${PCH_SKIP_SOURCE}
     hidclass.rc
     ${CMAKE_CURRENT_BINARY_DIR}/hidclass.def)
+
+if(MSVC)
+    target_compile_options(hidclass PRIVATE /wd4047 /wd4024)
+endif()
 
 set_module_type(hidclass kernelmodedriver ENTRYPOINT 0)
 add_importlibs(hidclass ntoskrnl hidparse hal)

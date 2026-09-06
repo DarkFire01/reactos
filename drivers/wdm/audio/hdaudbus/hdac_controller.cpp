@@ -74,6 +74,21 @@ NTSTATUS GetHDACapabilities(PFDO_CONTEXT fdoCtx) {
 	SklHdAudBusPrint(DEBUG_LEVEL_INFO, DBG_INIT,
 		"chipset global capabilities = 0x%x\n", gcap);
 
+	/*
+	 * All ones is not a capability word, it is the bus telling us nothing
+	 * answered - the BAR is not decoding, or the controller is powered down.
+	 *
+	 * Believing it is expensive rather than merely wrong: 0xFFFF decodes as
+	 * 15 capture plus 15 playback streams, so every loop below that walks
+	 * numStreams then walks thirty streams that do not exist, resetting each
+	 * one and waiting for it.  Stop here instead.
+	 */
+	if (gcap == 0xFFFF) {
+		SklHdAudBusPrint(DEBUG_LEVEL_ERROR, DBG_INIT,
+			"%s Error: controller is not responding (GCAP reads all ones)\n", __func__);
+		return STATUS_DEVICE_NOT_CONNECTED;
+	}
+
 	fdoCtx->is64BitOK = !!(gcap & 0x1);
 	SklHdAudBusPrint(DEBUG_LEVEL_INFO, DBG_INIT,
 		"64 bit OK? %d\n", fdoCtx->is64BitOK);

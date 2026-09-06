@@ -9,7 +9,7 @@
 /* INCLUDES ******************************************************************/
 
 #include <hal.h>
-//#define NDEBUG
+#define NDEBUG
 #include <debug.h>
 
 #include <fast486.h>
@@ -256,6 +256,44 @@ x86BiosWriteMemory(
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Answers whether this particular event has already been reported.
+ *
+ * Everything in this file runs inside the BIOS emulator, which the video path
+ * drives in tight loops - one mode set produced hundreds of identical lines.
+ * Every one of them is a debugger write, and on a multiprocessor kernel a
+ * debugger write freezes every other processor for its duration, so the cost
+ * of saying it repeatedly dwarfs the value of hearing it more than once.
+ *
+ * The first occurrence is the informative one; the rest are noise.
+ */
+static
+BOOLEAN
+x86BiosReportOnce(
+    ULONG Key)
+{
+    static ULONG Seen[32];
+    static ULONG SeenCount = 0;
+    ULONG Count, i;
+
+    /* Snapshot and clamp: a torn count must not walk off the array */
+    Count = SeenCount;
+    if (Count > RTL_NUMBER_OF(Seen))
+        Count = RTL_NUMBER_OF(Seen);
+
+    for (i = 0; i < Count; i++)
+    {
+        if (Seen[i] == Key)
+            return FALSE;
+    }
+
+    if (SeenCount < RTL_NUMBER_OF(Seen))
+        Seen[SeenCount++] = Key;
+
+    return TRUE;
+}
+
 static
 VOID
 FASTCALL
@@ -273,7 +311,10 @@ x86MemRead(
     else
     {
         RtlFillMemory(Buffer, Size, 0xCC);
-        DPRINT1("x86MemRead: invalid read at 0x%lx (size 0x%lx)\n", Address, Size);
+        if (x86BiosReportOnce(Address ^ 0x10000000))
+        {
+            DPRINT1("x86MemRead: invalid read at 0x%lx (size 0x%lx)\n", Address, Size);
+        }
     }
 }
 
@@ -293,7 +334,10 @@ x86MemWrite(
     }
     else
     {
-        DPRINT1("x86MemWrite: invalid write at 0x%lx (size 0x%lx)\n", Address, Size);
+        if (x86BiosReportOnce(Address ^ 0x20000000))
+        {
+            DPRINT1("x86MemWrite: invalid write at 0x%lx (size 0x%lx)\n", Address, Size);
+        }
     }
 }
 
@@ -377,7 +421,10 @@ x86IoWrite(
     /* Validate the port */
     if (!ValidatePort(Port, DataSize, TRUE))
     {
-        DPRINT1("Invalid IO port write access (port: 0x%x, count: 0x%x)\n", Port, DataSize);
+        if (x86BiosReportOnce(0x30000000 | ((ULONG)Port << 8) | DataSize))
+        {
+            DPRINT1("Invalid IO port write access (port: 0x%x, count: 0x%x)\n", Port, DataSize);
+        }
     }
 
     switch (DataSize)

@@ -1,11 +1,10 @@
 /*
  * PROJECT:     ReactOS Universal Serial Bus Human Interface Device Driver
- * LICENSE:     GPL - See COPYING in the top level directory
- * FILE:        drivers/hid/hidclass/hidclass.c
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
  * PURPOSE:     HID Class Driver
- * PROGRAMMERS:
- *              Michael Martin (michael.martin@reactos.org)
- *              Johannes Anderwald (johannes.anderwald@reactos.org)
+ * COPYRIGHT:   Copyright  Michael Martin <michael.martin@reactos.org>
+ *              Copyright  Johannes Anderwald <johannes.anderwald@reactos.org>
+ *              Copyright 2022 Roman Masanin <36927roma@gmail.com>
  */
 
 #include "precomp.h"
@@ -14,13 +13,19 @@
 #include <debug.h>
 
 static LPWSTR ClientIdentificationAddress = L"HIDCLASS";
-static ULONG HidClassDeviceNumber = 0;
+static LONG HidClassDeviceNumber = 0;
+
+DRIVER_DISPATCH HidClassDispatch;
+DRIVER_UNLOAD HidClassDriverUnload;
+DRIVER_ADD_DEVICE HidClassAddDevice;
 
 NTSTATUS
 NTAPI
 DllInitialize(
     IN PUNICODE_STRING RegistryPath)
 {
+    UNREFERENCED_PARAMETER(RegistryPath);
+
     return STATUS_SUCCESS;
 }
 
@@ -46,10 +51,10 @@ HidClassAddDevice(
     PHIDCLASS_DRIVER_EXTENSION DriverExtension;
 
     /* increment device number */
-    InterlockedIncrement((PLONG)&HidClassDeviceNumber);
+    UINT32 hidclassDevNum = InterlockedIncrement(&HidClassDeviceNumber) & 0xFFFFFFFF;
 
     /* construct device name */
-    _swprintf(CharDeviceName, L"\\Device\\_HID%08x", HidClassDeviceNumber);
+    _swprintf(CharDeviceName, L"\\Device\\_HID%08x", hidclassDevNum);
 
     /* initialize device name */
     RtlInitUnicodeString(&DeviceName, CharDeviceName);
@@ -103,7 +108,7 @@ HidClassAddDevice(
 
     /* init device object */
     NewDeviceObject->Flags |= DO_BUFFERED_IO | DO_POWER_PAGABLE;
-    NewDeviceObject->Flags  &= ~DO_DEVICE_INITIALIZING;
+    NewDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
     /* now call driver provided add device routine */
     ASSERT(DriverExtension->AddDevice != 0);
@@ -126,6 +131,8 @@ NTAPI
 HidClassDriverUnload(
     IN PDRIVER_OBJECT DriverObject)
 {
+    UNREFERENCED_PARAMETER(DriverObject);
+
     UNIMPLEMENTED;
 }
 
@@ -137,8 +144,8 @@ HidClass_Create(
 {
     PIO_STACK_LOCATION IoStack;
     PHIDCLASS_COMMON_DEVICE_EXTENSION CommonDeviceExtension;
-    PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension;
-    PHIDCLASS_FILEOP_CONTEXT Context;
+
+    DPRINT("[HIDCLASS] HidClass_Create\n");
 
     //
     // get device extension
@@ -146,6 +153,7 @@ HidClass_Create(
     CommonDeviceExtension = DeviceObject->DeviceExtension;
     if (CommonDeviceExtension->IsFDO)
     {
+        DPRINT("[HIDCLASS] HidClass_Create fdo\n");
          //
          // only supported for PDO
          //
@@ -160,11 +168,6 @@ HidClass_Create(
     ASSERT(CommonDeviceExtension->IsFDO == FALSE);
 
     //
-    // get device extension
-    //
-    PDODeviceExtension = DeviceObject->DeviceExtension;
-
-    //
     // get stack location
     //
     IoStack = IoGetCurrentIrpStackLocation(Irp);
@@ -172,36 +175,6 @@ HidClass_Create(
     DPRINT("ShareAccess %x\n", IoStack->Parameters.Create.ShareAccess);
     DPRINT("Options %x\n", IoStack->Parameters.Create.Options);
     DPRINT("DesiredAccess %x\n", IoStack->Parameters.Create.SecurityContext->DesiredAccess);
-
-    //
-    // allocate context
-    //
-    Context = ExAllocatePoolWithTag(NonPagedPool, sizeof(HIDCLASS_FILEOP_CONTEXT), HIDCLASS_TAG);
-    if (!Context)
-    {
-        //
-        // no memory
-        //
-        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    //
-    // init context
-    //
-    RtlZeroMemory(Context, sizeof(HIDCLASS_FILEOP_CONTEXT));
-    Context->DeviceExtension = PDODeviceExtension;
-    KeInitializeSpinLock(&Context->Lock);
-    InitializeListHead(&Context->ReadPendingIrpListHead);
-    InitializeListHead(&Context->IrpCompletedListHead);
-    KeInitializeEvent(&Context->IrpReadComplete, NotificationEvent, FALSE);
-
-    //
-    // store context
-    //
-    ASSERT(IoStack->FileObject);
-    IoStack->FileObject->FsContext = Context;
 
     //
     // done
@@ -217,13 +190,7 @@ HidClass_Close(
     IN PDEVICE_OBJECT DeviceObject,
     IN PIRP Irp)
 {
-    PIO_STACK_LOCATION IoStack;
     PHIDCLASS_COMMON_DEVICE_EXTENSION CommonDeviceExtension;
-    PHIDCLASS_FILEOP_CONTEXT IrpContext;
-    BOOLEAN IsRequestPending = FALSE;
-    KIRQL OldLevel;
-    PLIST_ENTRY Entry;
-    PIRP ListIrp;
 
     //
     // get device extension
@@ -244,101 +211,6 @@ HidClass_Close(
     }
 
     //
-    // get stack location
-    //
-    IoStack = IoGetCurrentIrpStackLocation(Irp);
-
-    //
-    // sanity checks
-    //
-    ASSERT(IoStack->FileObject);
-    ASSERT(IoStack->FileObject->FsContext);
-
-    //
-    // get irp context
-    //
-    IrpContext = IoStack->FileObject->FsContext;
-    ASSERT(IrpContext);
-
-    //
-    // acquire lock
-    //
-    KeAcquireSpinLock(&IrpContext->Lock, &OldLevel);
-
-    if (!IsListEmpty(&IrpContext->ReadPendingIrpListHead))
-    {
-        //
-        // FIXME cancel irp
-        //
-        IsRequestPending = TRUE;
-    }
-
-    //
-    // signal stop
-    //
-    IrpContext->StopInProgress = TRUE;
-
-    //
-    // release lock
-    //
-    KeReleaseSpinLock(&IrpContext->Lock, OldLevel);
-
-    if (IsRequestPending)
-    {
-        //
-        // wait for request to complete
-        //
-        DPRINT1("[HIDCLASS] Waiting for read irp completion...\n");
-        KeWaitForSingleObject(&IrpContext->IrpReadComplete, Executive, KernelMode, FALSE, NULL);
-    }
-
-    //
-    // acquire lock
-    //
-    KeAcquireSpinLock(&IrpContext->Lock, &OldLevel);
-
-    //
-    // sanity check
-    //
-    ASSERT(IsListEmpty(&IrpContext->ReadPendingIrpListHead));
-
-    //
-    // now free all irps
-    //
-    while (!IsListEmpty(&IrpContext->IrpCompletedListHead))
-    {
-        //
-        // remove head irp
-        //
-        Entry = RemoveHeadList(&IrpContext->IrpCompletedListHead);
-
-        //
-        // get irp
-        //
-        ListIrp = CONTAINING_RECORD(Entry, IRP, Tail.Overlay.ListEntry);
-
-        //
-        // free the irp
-        //
-        IoFreeIrp(ListIrp);
-    }
-
-    //
-    // release lock
-    //
-    KeReleaseSpinLock(&IrpContext->Lock, OldLevel);
-
-    //
-    // remove context
-    //
-    IoStack->FileObject->FsContext = NULL;
-
-    //
-    // free context
-    //
-    ExFreePoolWithTag(IrpContext, HIDCLASS_TAG);
-
-    //
     // complete request
     //
     Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -346,337 +218,69 @@ HidClass_Close(
     return STATUS_SUCCESS;
 }
 
-NTSTATUS
-NTAPI
-HidClass_ReadCompleteIrp(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp,
-    IN PVOID Ctx)
+BOOLEAN HidClass_QueueIrp(PHIDCLASS_PDO_DEVICE_EXTENSION deviceContext, PIRP Irp)
 {
-    PHIDCLASS_IRP_CONTEXT IrpContext;
-    KIRQL OldLevel;
-    PUCHAR Address;
-    ULONG Offset;
-    PHIDP_COLLECTION_DESC CollectionDescription;
-    PHIDP_REPORT_IDS ReportDescription;
-    BOOLEAN IsEmpty;
+    PDRIVER_CANCEL oldCancelRoutine;
 
-    //
-    // get irp context
-    //
-    IrpContext = Ctx;
+    IoMarkIrpPending(Irp);
 
-    DPRINT("HidClass_ReadCompleteIrp Irql %lu\n", KeGetCurrentIrql());
-    DPRINT("HidClass_ReadCompleteIrp Status %lx\n", Irp->IoStatus.Status);
-    DPRINT("HidClass_ReadCompleteIrp Length %lu\n", Irp->IoStatus.Information);
-    DPRINT("HidClass_ReadCompleteIrp Irp %p\n", Irp);
-    DPRINT("HidClass_ReadCompleteIrp InputReportBuffer %p\n", IrpContext->InputReportBuffer);
-    DPRINT("HidClass_ReadCompleteIrp InputReportBufferLength %li\n", IrpContext->InputReportBufferLength);
-    DPRINT("HidClass_ReadCompleteIrp OriginalIrp %p\n", IrpContext->OriginalIrp);
+    /*
+     * The cancel routine removes this entry unconditionally, and it can already
+     * be running by the time we decide not to insert the IRP below - the
+     * "cancel routine is called" path leaves it to complete an IRP that never
+     * reached the list. Give the entry a valid empty state first so that
+     * removal writes to itself instead of through two uninitialised pointers.
+     * HidClass_DequeueIrp does the same thing for the same reason.
+     */
+    InitializeListHead(&Irp->Tail.Overlay.ListEntry);
 
-    //
-    // copy result
-    //
-    if (Irp->IoStatus.Information)
+    // check if canceled
+    oldCancelRoutine = IoSetCancelRoutine(Irp, HidClassPDO_IrpCancelRoutine);
+    ASSERT(oldCancelRoutine == NULL);
+
+    if (Irp->Cancel == TRUE)
     {
-        //
-        // get address
-        //
-        Address = MmGetSystemAddressForMdlSafe(IrpContext->OriginalIrp->MdlAddress, NormalPagePriority);
-        if (Address)
+        // Is cancel routine called?
+        oldCancelRoutine = IoSetCancelRoutine(Irp, NULL);
+        if (oldCancelRoutine != NULL)
         {
-            //
-            // reports may have a report id prepended
-            //
-            Offset = 0;
-
-            //
-            // get collection description
-            //
-            CollectionDescription = HidClassPDO_GetCollectionDescription(&IrpContext->FileOp->DeviceExtension->Common.DeviceDescription,
-                                                                         IrpContext->FileOp->DeviceExtension->CollectionNumber);
-            ASSERT(CollectionDescription);
-
-            //
-            // get report description
-            //
-            ReportDescription = HidClassPDO_GetReportDescription(&IrpContext->FileOp->DeviceExtension->Common.DeviceDescription,
-                                                                 IrpContext->FileOp->DeviceExtension->CollectionNumber);
-            ASSERT(ReportDescription);
-
-            if (CollectionDescription && ReportDescription)
-            {
-                //
-                // calculate offset
-                //
-                ASSERT(CollectionDescription->InputLength >= ReportDescription->InputLength);
-                Offset = CollectionDescription->InputLength - ReportDescription->InputLength;
-            }
-
-            //
-            // copy result
-            //
-            RtlCopyMemory(&Address[Offset], IrpContext->InputReportBuffer, IrpContext->InputReportBufferLength);
+            // cancel routine not called
+            // IRP must be completed
+            return FALSE;
         }
-    }
-
-    //
-    // copy result status
-    //
-    IrpContext->OriginalIrp->IoStatus.Status = Irp->IoStatus.Status;
-    IrpContext->OriginalIrp->IoStatus.Information = Irp->IoStatus.Information;
-
-    //
-    // free input report buffer
-    //
-    ExFreePoolWithTag(IrpContext->InputReportBuffer, HIDCLASS_TAG);
-
-    //
-    // remove us from pending list
-    //
-    KeAcquireSpinLock(&IrpContext->FileOp->Lock, &OldLevel);
-
-    //
-    // remove from pending list
-    //
-    RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
-
-    //
-    // is list empty
-    //
-    IsEmpty = IsListEmpty(&IrpContext->FileOp->ReadPendingIrpListHead);
-
-    //
-    // insert into completed list
-    //
-    InsertTailList(&IrpContext->FileOp->IrpCompletedListHead, &Irp->Tail.Overlay.ListEntry);
-
-    //
-    // release lock
-    //
-    KeReleaseSpinLock(&IrpContext->FileOp->Lock, OldLevel);
-
-    //
-    // complete original request
-    //
-    IoCompleteRequest(IrpContext->OriginalIrp, IO_NO_INCREMENT);
-
-
-    DPRINT("StopInProgress %x IsEmpty %x\n", IrpContext->FileOp->StopInProgress, IsEmpty);
-    if (IrpContext->FileOp->StopInProgress && IsEmpty)
-    {
-        //
-        // last pending irp
-        //
-        DPRINT1("[HIDCLASS] LastPendingTransfer Signalling\n");
-        KeSetEvent(&IrpContext->FileOp->IrpReadComplete, 0, FALSE);
-    }
-
-    if (IrpContext->FileOp->StopInProgress && IsEmpty)
-    {
-        //
-        // last pending irp
-        //
-        DPRINT1("[HIDCLASS] LastPendingTransfer Signalling\n");
-        KeSetEvent(&IrpContext->FileOp->IrpReadComplete, 0, FALSE);
-    }
-
-    //
-    // free irp context
-    //
-    ExFreePoolWithTag(IrpContext, HIDCLASS_TAG);
-
-    //
-    // done
-    //
-    return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-PIRP
-HidClass_GetIrp(
-    IN PHIDCLASS_FILEOP_CONTEXT Context)
-{
-   KIRQL OldLevel;
-   PIRP Irp = NULL;
-   PLIST_ENTRY ListEntry;
-
-    //
-    // acquire lock
-    //
-    KeAcquireSpinLock(&Context->Lock, &OldLevel);
-
-    //
-    // is list empty?
-    //
-    if (!IsListEmpty(&Context->IrpCompletedListHead))
-    {
-        //
-        // grab first entry
-        //
-        ListEntry = RemoveHeadList(&Context->IrpCompletedListHead);
-
-        //
-        // get irp
-        //
-        Irp = CONTAINING_RECORD(ListEntry, IRP, Tail.Overlay.ListEntry);
-    }
-
-    //
-    // release lock
-    //
-    KeReleaseSpinLock(&Context->Lock, OldLevel);
-
-    //
-    // done
-    //
-    return Irp;
-}
-
-NTSTATUS
-HidClass_BuildIrp(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP RequestIrp,
-    IN PHIDCLASS_FILEOP_CONTEXT Context,
-    IN ULONG DeviceIoControlCode,
-    IN ULONG BufferLength,
-    OUT PIRP *OutIrp,
-    OUT PHIDCLASS_IRP_CONTEXT *OutIrpContext)
-{
-    PIRP Irp;
-    PIO_STACK_LOCATION IoStack;
-    PHIDCLASS_IRP_CONTEXT IrpContext;
-    PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension;
-    PHIDP_COLLECTION_DESC CollectionDescription;
-    PHIDP_REPORT_IDS ReportDescription;
-
-    //
-    // get an irp from fresh list
-    //
-    Irp = HidClass_GetIrp(Context);
-    if (!Irp)
-    {
-        //
-        // build new irp
-        //
-        Irp = IoAllocateIrp(DeviceObject->StackSize, FALSE);
-        if (!Irp)
+        else
         {
-            //
-            // no memory
-            //
-            return STATUS_INSUFFICIENT_RESOURCES;
+            // cancel routine is called
+            // IRP will be closed by it
+            return TRUE;
         }
     }
     else
     {
-        //
-        // re-use irp
-        //
-        IoReuseIrp(Irp, STATUS_SUCCESS);
+        InsertTailList(&deviceContext->PendingIRPList, &Irp->Tail.Overlay.ListEntry);
     }
 
-    //
-    // allocate completion context
-    //
-    IrpContext = ExAllocatePoolWithTag(NonPagedPool, sizeof(HIDCLASS_IRP_CONTEXT), HIDCLASS_TAG);
-    if (!IrpContext)
-    {
-        //
-        // no memory
-        //
-        IoFreeIrp(Irp);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
+    return TRUE;
+}
 
-    //
-    // get device extension
-    //
-    PDODeviceExtension = DeviceObject->DeviceExtension;
-    ASSERT(PDODeviceExtension->Common.IsFDO == FALSE);
+VOID
+NTAPI
+HidClassPDO_IrpCancelRoutine(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+{
+    PHIDCLASS_PDO_DEVICE_EXTENSION deviceContext = DeviceObject->DeviceExtension;
+    KIRQL  oldIrql;
 
-    //
-    // init irp context
-    //
-    RtlZeroMemory(IrpContext, sizeof(HIDCLASS_IRP_CONTEXT));
-    IrpContext->OriginalIrp = RequestIrp;
-    IrpContext->FileOp = Context;
+    IoReleaseCancelSpinLock(Irp->CancelIrql);
 
-    //
-    // get collection description
-    //
-    CollectionDescription = HidClassPDO_GetCollectionDescription(&IrpContext->FileOp->DeviceExtension->Common.DeviceDescription,
-                                                                 IrpContext->FileOp->DeviceExtension->CollectionNumber);
-    ASSERT(CollectionDescription);
+    KeAcquireSpinLock(&deviceContext->ReadLock, &oldIrql);
 
-    //
-    // get report description
-    //
-    ReportDescription = HidClassPDO_GetReportDescription(&IrpContext->FileOp->DeviceExtension->Common.DeviceDescription,
-                                                         IrpContext->FileOp->DeviceExtension->CollectionNumber);
-    ASSERT(ReportDescription);
+    RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
 
-    //
-    // sanity check
-    //
-    ASSERT(CollectionDescription->InputLength >= ReportDescription->InputLength);
+    KeReleaseSpinLock(&deviceContext->ReadLock, oldIrql);
 
-    if (Context->StopInProgress)
-    {
-         //
-         // stop in progress
-         //
-         DPRINT1("[HIDCLASS] Stop In Progress\n");
-         Irp->IoStatus.Status = STATUS_CANCELLED;
-         IoCompleteRequest(Irp, IO_NO_INCREMENT);
-         return STATUS_CANCELLED;
-
-    }
-
-    //
-    // store report length
-    //
-    IrpContext->InputReportBufferLength = ReportDescription->InputLength;
-
-    //
-    // allocate buffer
-    //
-    IrpContext->InputReportBuffer = ExAllocatePoolWithTag(NonPagedPool, IrpContext->InputReportBufferLength, HIDCLASS_TAG);
-    if (!IrpContext->InputReportBuffer)
-    {
-        //
-        // no memory
-        //
-        IoFreeIrp(Irp);
-        ExFreePoolWithTag(IrpContext, HIDCLASS_TAG);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    //
-    // get stack location
-    //
-    IoStack = IoGetNextIrpStackLocation(Irp);
-
-    //
-    // init stack location
-    //
-    IoStack->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
-    IoStack->Parameters.DeviceIoControl.IoControlCode = DeviceIoControlCode;
-    IoStack->Parameters.DeviceIoControl.OutputBufferLength = IrpContext->InputReportBufferLength;
-    IoStack->Parameters.DeviceIoControl.InputBufferLength = 0;
-    IoStack->Parameters.DeviceIoControl.Type3InputBuffer = NULL;
-    Irp->UserBuffer = IrpContext->InputReportBuffer;
-    IoStack->DeviceObject = DeviceObject;
-
-    //
-    // store result
-    //
-    *OutIrp = Irp;
-    *OutIrpContext = IrpContext;
-
-    //
-    // done
-    //
-    return STATUS_SUCCESS;
+    Irp->IoStatus.Status = STATUS_CANCELLED;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return;
 }
 
 NTSTATUS
@@ -685,116 +289,112 @@ HidClass_Read(
     IN PDEVICE_OBJECT DeviceObject,
     IN PIRP Irp)
 {
+    NTSTATUS status = STATUS_SUCCESS;
+    BOOLEAN isCompletionRequired = TRUE;
+    PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension;
+    PHIDP_COLLECTION_DESC CollectionDescription;
     PIO_STACK_LOCATION IoStack;
-    PHIDCLASS_FILEOP_CONTEXT Context;
-    KIRQL OldLevel;
-    NTSTATUS Status;
-    PIRP NewIrp;
-    PHIDCLASS_IRP_CONTEXT NewIrpContext;
-    PHIDCLASS_COMMON_DEVICE_EXTENSION CommonDeviceExtension;
+    PUCHAR Address;
+    KIRQL CurrentIRQL;
 
-    //
-    // get current stack location
-    //
-    IoStack = IoGetCurrentIrpStackLocation(Irp);
+    //DPRINT("[HIDCLASS] HidClass_Read\n");
 
     //
     // get device extension
     //
-    CommonDeviceExtension = DeviceObject->DeviceExtension;
-    ASSERT(CommonDeviceExtension->IsFDO == FALSE);
+    PDODeviceExtension = DeviceObject->DeviceExtension;
+    ASSERT(PDODeviceExtension->Common.IsFDO == FALSE);
 
     //
-    // sanity check
+    // The caller's buffer has to hold a whole input report before anything is
+    // allowed to copy one into it.
     //
-    ASSERT(IoStack->FileObject);
-    ASSERT(IoStack->FileObject->FsContext);
-
+    // Both delivery paths write a full report and neither looks at how much
+    // the caller asked for: HidClass_CyclicBufferGet() below copies
+    // elementSize bytes into the mapped address, and HidClassFDO_ReadCompletion
+    // copies InputLength into a queued request.  A short read therefore
+    // overran the caller's buffer from kernel mode.  Checking once here covers
+    // both, because an IRP only reaches the queue after passing this.
     //
-    // get context
-    //
-    Context = IoStack->FileObject->FsContext;
-    ASSERT(Context);
-
-    //
-    // FIXME support polled devices
-    //
-    ASSERT(Context->DeviceExtension->Common.DriverExtension->DevicesArePolled == FALSE);
-
-    if (Context->StopInProgress)
+    CollectionDescription = HidClassPDO_GetCollectionDescription(&PDODeviceExtension->Common.DeviceDescription,
+                                                                PDODeviceExtension->CollectionNumber);
+    if (CollectionDescription == NULL)
     {
         //
-        // stop in progress
+        // Nothing describes this collection, so there is no report to deliver.
+        // The buffered path below used to dereference this result without
+        // checking it.
         //
-        DPRINT1("[HIDCLASS] Stop In Progress\n");
-        Irp->IoStatus.Status = STATUS_CANCELLED;
+        Irp->IoStatus.Information = 0;
+        Irp->IoStatus.Status = STATUS_DEVICE_NOT_CONNECTED;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        return STATUS_CANCELLED;
+        return STATUS_DEVICE_NOT_CONNECTED;
+    }
+
+    IoStack = IoGetCurrentIrpStackLocation(Irp);
+    if (IoStack->Parameters.Read.Length < CollectionDescription->InputLength)
+    {
+        /* Said quietly: a caller that ignores the failure just asks again,
+           and at DPRINT1 that filled the log by itself */
+        DPRINT("[HIDCLASS] Read buffer too small: %lu, report is %lu\n",
+               IoStack->Parameters.Read.Length, CollectionDescription->InputLength);
+        Irp->IoStatus.Information = 0;
+        Irp->IoStatus.Status = STATUS_INVALID_BUFFER_SIZE;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_INVALID_BUFFER_SIZE;
     }
 
     //
-    // build irp request
+    // A read with no buffer has nowhere to deliver a report to. Refuse it here
+    // rather than handing NULL to HidClass_CyclicBufferGet, which copies into
+    // it. MmGetSystemAddressForMdlSafe dereferences the MDL, so a NULL
+    // MdlAddress faults on its flags before we would even get that far, and it
+    // can also legitimately return NULL when the pages cannot be mapped.
     //
-    Status = HidClass_BuildIrp(DeviceObject,
-                               Irp,
-                               Context,
-                               IOCTL_HID_READ_REPORT,
-                               IoStack->Parameters.Read.Length,
-                               &NewIrp,
-                               &NewIrpContext);
-    if (!NT_SUCCESS(Status))
+    Address = (Irp->MdlAddress != NULL)
+                  ? MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority)
+                  : NULL;
+    if (Address == NULL)
     {
-        //
-        // failed
-        //
-        DPRINT1("HidClass_BuildIrp failed with %x\n", Status);
-        Irp->IoStatus.Status = Status;
+        Irp->IoStatus.Information = 0;
+        Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        return Status;
+        return STATUS_INVALID_PARAMETER;
     }
 
-    //
-    // acquire lock
-    //
-    KeAcquireSpinLock(&Context->Lock, &OldLevel);
+    KeAcquireSpinLock(&PDODeviceExtension->ReadLock, &CurrentIRQL);
+    if (HidClass_CyclicBufferGet(&PDODeviceExtension->InputBuffer, Address) == TRUE)
+    {
+        Irp->IoStatus.Information = CollectionDescription->InputLength;
+        Irp->IoStatus.Status = STATUS_SUCCESS;
+        status = STATUS_SUCCESS;
+        isCompletionRequired = TRUE;
+    }
+    else
+    {
+        if (HidClass_QueueIrp(PDODeviceExtension, Irp) == TRUE)
+        {
+            status = STATUS_PENDING;
+            isCompletionRequired = FALSE;
+        }
+        else
+        {
+            Irp->IoStatus.Information = 0;
+            Irp->IoStatus.Status = STATUS_CANCELLED;
+            status = STATUS_PENDING;
+            isCompletionRequired = TRUE;
+        }
+    }
+    KeReleaseSpinLock(&PDODeviceExtension->ReadLock, CurrentIRQL);
 
-    //
-    // insert irp into pending list
-    //
-    InsertTailList(&Context->ReadPendingIrpListHead, &NewIrp->Tail.Overlay.ListEntry);
+    // complete request outside spinLock, if required
+    if (isCompletionRequired == TRUE)
+    {
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    }
 
-    //
-    // set completion routine
-    //
-    IoSetCompletionRoutine(NewIrp, HidClass_ReadCompleteIrp, NewIrpContext, TRUE, TRUE, TRUE);
-
-    //
-    // make next location current
-    //
-    IoSetNextIrpStackLocation(NewIrp);
-
-    //
-    // release spin lock
-    //
-    KeReleaseSpinLock(&Context->Lock, OldLevel);
-
-    //
-    // mark irp pending
-    //
-    IoMarkIrpPending(Irp);
-
-    //
-    // let's dispatch the request
-    //
-    ASSERT(Context->DeviceExtension);
-    Status = Context->DeviceExtension->Common.DriverExtension->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL](Context->DeviceExtension->FDODeviceObject, NewIrp);
-
-    //
-    // complete
-    //
-    return STATUS_PENDING;
+    return status;
 }
-
 NTSTATUS
 NTAPI
 HidClass_Write(
@@ -825,6 +425,7 @@ HidClass_Write(
     XferPacket.reportId = XferPacket.reportBuffer[0];
 
     CommonDeviceExtension = DeviceObject->DeviceExtension;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     SubIrp = IoBuildDeviceIoControlRequest(
         IOCTL_HID_WRITE_REPORT,
         CommonDeviceExtension->HidDeviceExtension.NextDeviceObject,
@@ -840,7 +441,6 @@ HidClass_Write(
         return STATUS_NOT_IMPLEMENTED;
     }
     SubIrp->UserBuffer = &XferPacket;
-    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     Status = IoCallDriver(CommonDeviceExtension->HidDeviceExtension.NextDeviceObject, SubIrp);
     if (Status == STATUS_PENDING)
     {
@@ -1012,6 +612,7 @@ HidClass_DeviceControl(
                 return STATUS_INSUFFICIENT_RESOURCES;
             }
 
+            KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
             SubIrp = IoBuildDeviceIoControlRequest(
                 IOCTL_HID_GET_FEATURE,
                 CommonDeviceExtension->HidDeviceExtension.NextDeviceObject,
@@ -1027,7 +628,6 @@ HidClass_DeviceControl(
                 return STATUS_NOT_IMPLEMENTED;
             }
             SubIrp->UserBuffer = &XferPacket;
-            KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
             Status = IoCallDriver(CommonDeviceExtension->HidDeviceExtension.NextDeviceObject, SubIrp);
             if (Status == STATUS_PENDING)
             {
@@ -1066,6 +666,7 @@ HidClass_DeviceControl(
             XferPacket.reportBuffer = Irp->AssociatedIrp.SystemBuffer;
             XferPacket.reportId = XferPacket.reportBuffer[0];
 
+            KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
             SubIrp = IoBuildDeviceIoControlRequest(
                 IOCTL_HID_SET_FEATURE,
                 CommonDeviceExtension->HidDeviceExtension.NextDeviceObject,
@@ -1081,7 +682,6 @@ HidClass_DeviceControl(
                 return STATUS_NOT_IMPLEMENTED;
             }
             SubIrp->UserBuffer = &XferPacket;
-            KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
             Status = IoCallDriver(CommonDeviceExtension->HidDeviceExtension.NextDeviceObject, SubIrp);
             if (Status == STATUS_PENDING)
             {
@@ -1091,6 +691,165 @@ HidClass_DeviceControl(
             Irp->IoStatus.Status = Status;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return Status;
+        }
+        case IOCTL_HID_GET_MANUFACTURER_STRING:
+        case IOCTL_HID_GET_PRODUCT_STRING:
+        case IOCTL_HID_GET_SERIALNUMBER_STRING:
+        {
+            NTSTATUS Status;
+            UINT_PTR StringId;
+            UINT_PTR Lang = 0;
+            PIO_STACK_LOCATION SubIoStack;
+            PIRP SubIrp;
+
+            if (IoStack->Parameters.DeviceIoControl.OutputBufferLength < 1)
+            {
+                Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                return STATUS_INVALID_PARAMETER;
+            }
+
+            switch (IoStack->Parameters.DeviceIoControl.IoControlCode)
+            {
+                case IOCTL_HID_GET_MANUFACTURER_STRING:
+                    StringId = HID_STRING_ID_IMANUFACTURER;
+                    break;
+                case IOCTL_HID_GET_SERIALNUMBER_STRING:
+                    StringId = HID_STRING_ID_ISERIALNUMBER;
+                    break;
+                default: //IOCTL_HID_GET_PRODUCT_STRING
+                    StringId = HID_STRING_ID_IPRODUCT;
+                    break;
+            }
+
+            SubIrp = IoAllocateIrp(DeviceObject->StackSize, FALSE);
+            if (!SubIrp)
+            {
+                Irp->IoStatus.Status = STATUS_NO_MEMORY;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+
+            // Get next stack location
+            SubIoStack = IoGetNextIrpStackLocation(SubIrp);
+
+            // Setup request
+            SubIoStack->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
+            SubIoStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_HID_GET_STRING;
+            SubIoStack->Parameters.DeviceIoControl.OutputBufferLength = IoStack->Parameters.DeviceIoControl.OutputBufferLength;
+            SubIoStack->Parameters.DeviceIoControl.InputBufferLength = 0;
+            SubIoStack->Parameters.DeviceIoControl.Type3InputBuffer = (PVOID)((Lang << 16) | StringId);
+            SubIrp->UserBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+
+            Status = HidClassFDO_DispatchRequestSynchronous(DeviceObject, SubIrp);
+
+            Irp->IoStatus.Status = Status;
+            Irp->IoStatus.Information = SubIrp->IoStatus.Information;
+            IoFreeIrp(SubIrp);
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return Status;
+        }
+        case IOCTL_GET_SYS_BUTTON_CAPS:
+        {
+            //
+            // The power manager asks every HID collection whether it carries
+            // the system power, sleep or wake controls.
+            //
+            // Answering STATUS_NOT_IMPLEMENTED was not harmless: po treats the
+            // failure as a switch it must tear down, and tore it down without
+            // ever learning a switch type.  Report what the collection really
+            // has - which for a mouse or a keyboard is nothing - and it stops
+            // asking.
+            //
+            // The controls are buttons on the Generic Desktop page:
+            // 0x81 System Power Down, 0x82 System Sleep, 0x83 System Wake Up.
+            //
+            PHIDP_BUTTON_CAPS ButtonCaps;
+            HIDP_CAPS Caps;
+            USHORT CapsLength;
+            USHORT Index;
+            ULONG Result = 0;
+
+            if (IoStack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(ULONG))
+            {
+                Irp->IoStatus.Information = 0;
+                Irp->IoStatus.Status = STATUS_BUFFER_TOO_SMALL;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                return STATUS_BUFFER_TOO_SMALL;
+            }
+
+            CollectionDescription = HidClassPDO_GetCollectionDescription(&PDODeviceExtension->Common.DeviceDescription,
+                                                                        PDODeviceExtension->CollectionNumber);
+            if (CollectionDescription == NULL)
+            {
+                Irp->IoStatus.Information = 0;
+                Irp->IoStatus.Status = STATUS_DEVICE_NOT_CONNECTED;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                return STATUS_DEVICE_NOT_CONNECTED;
+            }
+
+            if (HidP_GetCaps(CollectionDescription->PreparsedData, &Caps) == HIDP_STATUS_SUCCESS &&
+                Caps.NumberInputButtonCaps != 0)
+            {
+                ButtonCaps = ExAllocatePoolWithTag(NonPagedPool,
+                                                   Caps.NumberInputButtonCaps * sizeof(HIDP_BUTTON_CAPS),
+                                                   HIDCLASS_TAG);
+                if (ButtonCaps != NULL)
+                {
+                    CapsLength = Caps.NumberInputButtonCaps;
+                    // HidP_GetButtonCaps is only a macro over this in the DDK
+                    if (HidP_GetSpecificButtonCaps(HidP_Input,
+                                                   0,
+                                                   0,
+                                                   0,
+                                                   ButtonCaps,
+                                                   &CapsLength,
+                                                   CollectionDescription->PreparsedData) == HIDP_STATUS_SUCCESS)
+                    {
+                        for (Index = 0; Index < CapsLength; Index++)
+                        {
+                            USAGE Low, High, Usage;
+
+                            if (ButtonCaps[Index].UsagePage != HID_USAGE_PAGE_GENERIC)
+                                continue;
+
+                            if (ButtonCaps[Index].IsRange)
+                            {
+                                Low = ButtonCaps[Index].Range.UsageMin;
+                                High = ButtonCaps[Index].Range.UsageMax;
+                            }
+                            else
+                            {
+                                Low = High = ButtonCaps[Index].NotRange.Usage;
+                            }
+
+                            for (Usage = Low; Usage <= High; Usage++)
+                            {
+                                if (Usage == 0x81)
+                                    Result |= SYS_BUTTON_POWER;
+                                else if (Usage == 0x82)
+                                    Result |= SYS_BUTTON_SLEEP;
+                                else if (Usage == 0x83)
+                                    Result |= SYS_BUTTON_WAKE;
+
+                                if (High == 0xFFFF && Usage == 0xFFFF)
+                                    break;
+                            }
+                        }
+                    }
+
+                    ExFreePoolWithTag(ButtonCaps, HIDCLASS_TAG);
+                }
+            }
+
+            DPRINT("[HIDCLASS] SysButtonCaps collection %u -> 0x%lx\n",
+                   PDODeviceExtension->CollectionNumber, Result);
+
+            *(PULONG)Irp->AssociatedIrp.SystemBuffer = Result;
+            Irp->IoStatus.Information = sizeof(ULONG);
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return STATUS_SUCCESS;
         }
         default:
         {
@@ -1108,6 +867,8 @@ HidClass_InternalDeviceControl(
     IN PDEVICE_OBJECT DeviceObject,
     IN PIRP Irp)
 {
+    UNREFERENCED_PARAMETER(DeviceObject);
+
     UNIMPLEMENTED;
     ASSERT(FALSE);
     Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
@@ -1241,14 +1002,14 @@ HidClassDispatch(
 
 /*
  * Lets a minidriver tell hidclass that the device behind it has come or gone
- * without the device stack itself being torn down. The transport can outlive
- * the peripheral, which is how HID over I2C and HID over Bluetooth behave.
+ * without the device stack itself being torn down -- the transport can outlive
+ * the peripheral (HID-over-I2C, HID-over-Bluetooth).
  *
- * DIVERGENCE: only the presence state is recorded. The real hidclass also acts
- * on the transition, and what it does to the read loop and to outstanding
- * requests cannot be pinned down without a hidclass.sys decomp, which is not in
- * the reference set. Nothing calls this today - mshidkmdf publishes it to the
- * KMDF stack below and ReactOS's KMDF answers no such interface - so the gap is
+ * DIVERGENCE: only the presence state is recorded so far. The real hidclass also
+ * acts on the transition, and what exactly it does to the read loop and to
+ * outstanding requests cannot be pinned down without a hidclass.sys decomp; that
+ * is not yet in HidRef. Nothing calls this today -- mshidkmdf publishes it to the
+ * KMDF stack below, and ReactOS's KMDF answers no such interface -- so the gap is
  * inert rather than wrong. Finish it against the oracle before relying on it.
  */
 NTSTATUS

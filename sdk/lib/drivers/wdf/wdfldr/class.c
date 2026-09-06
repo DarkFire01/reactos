@@ -511,7 +511,7 @@ ReferenceClassVersion(
                 status == STATUS_OBJECT_NAME_NOT_FOUND ||
                 status == STATUS_IMAGE_ALREADY_LOADED)
             {
-                /* Driver might already be loaded as boot driver - UCX*/
+                /* Driver might already be loaded as boot driver - UCX */
                 status = STATUS_SUCCESS;
             }
             else
@@ -520,16 +520,28 @@ ReferenceClassVersion(
                               &driverServiceName, ClassBindInfo->ClassName, status));
             }
         }
-        else if (pClassModule && !pClassModule->ClassLibraryInfo)
+
+        /*
+         * However the load ended, there is nothing to bind a client to unless
+         * the image registered a class library on its way in. The reference
+         * checks this on every path that reaches here and refuses the bind
+         * otherwise (ReferenceClassVersion c:1085).
+         *
+         * The check has to sit outside the load result, not on its success
+         * branch: WdfVersionBindClass reaches straight through
+         * ClassLibraryInfo->ClassLibraryBindClient with no NULL test - so does
+         * the reference, c:867 - so handing it a class module with no library
+         * is a bugcheck rather than a failed bind. It cost a 0x7E on
+         * NULL + 0x20 when a tolerated ZwLoadDriver failure was let through
+         * here with nothing registered behind it.
+         */
+        if (NT_SUCCESS(status) && pClassModule && !pClassModule->ClassLibraryInfo)
         {
-            /*
-             * The image loaded but never called WdfRegisterClassLibrary, so
-             * there is nothing to bind a client to. Its own DriverEntry most
-             * likely failed.
-             */
             DPRINT_ERROR(("%wZ loaded but registered no class library for %S\n",
                           &driverServiceName, ClassBindInfo->ClassName));
-            status = STATUS_DRIVER_INTERNAL_ERROR;
+
+            /* 0xC000035F, the code the reference returns here (c:1096) */
+            status = STATUS_NOT_SAFE_MODE_DRIVER;
         }
     }
     else
@@ -571,12 +583,43 @@ ClassUnload(
     pClassModule = ClassModule;
     pClassLibInfo = ClassModule->ClassLibraryInfo;
 
+    /*
+     * A boot start class extension is not ours to unload.
+     *
+     * Its image was brought in by the loader and its driver object created
+     * before any client existed, so there is nothing here that ZwUnloadDriver
+     * can undo. Tearing the class module down anyway throws away the
+     * registration its DriverEntry made, and DriverEntry does not run a second
+     * time to make it again: the next client finds no class module, creates a
+     * fresh one, and calls ZwLoadDriver, which maps a second copy of an image
+     * that is already resident and then fails inserting \Driver\<service> over
+     * the object already sitting there.
+     *
+     * That is what happened to SpbCx. The first I2C controller bound and
+     * started; when its interrupt failed to connect the device went away, this
+     * routine ran, and every controller after it was refused with
+     * STATUS_OBJECT_NAME_COLLISION.
+     *
+     * The reference guards the whole routine on the flag - ClassUnload
+     * c:4368, "if (Class->IsBootDriver != 1)". ClassCreate has always computed
+     * IsBootDriver through ServiceCheckBootStart; nothing ever read it.
+     */
+    if (ClassModule->IsBootDriver)
+    {
+        __DBGPRINT(("class %wZ is boot start, leaving it loaded\n",
+                    &ClassModule->Service));
+        return;
+    }
+
     if (pClassLibInfo && pClassLibInfo->ClassLibraryDeinitialize)
     {
         __DBGPRINT(("calling ClassLibraryDeinitialize (%p)\n",
                 ClassModule->ClassLibraryInfo->ClassLibraryDeinitialize));
 
         ClassModule->ClassLibraryInfo->ClassLibraryDeinitialize();
+
+        /* The class library is gone once deinitialized (c:4383) */
+        ClassModule->ClassLibraryInfo = NULL;
     }
 
     __DBGPRINT(("Unload class library %wZ\n", &ClassModule->Service));
