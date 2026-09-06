@@ -771,8 +771,25 @@ KeInsertQueueDpc(IN PKDPC Dpc,
         Cpu = Prcb->Number;
     }
 
-    /* ROS Sanity Check */
-    ASSERT(Prcb == CurrentPrcb);
+    /*
+     * No sanity check that Prcb == CurrentPrcb.
+     *
+     * Queueing to another processor is the whole point of the branch above:
+     * KeSetTargetProcessorDpc() records its target as Number + MAXIMUM_PROCESSORS,
+     * and this reads it back to pick that processor's PRCB. The rest of this
+     * function is written for exactly that - it takes the remote branch of
+     * "if (Prcb != CurrentPrcb)" when deciding whether to request an interrupt,
+     * and finishes by sending IPI_DPC to that processor rather than raising a
+     * local software interrupt.
+     *
+     * The assertion that used to be here therefore contradicted the code below
+     * it. It could never fire on one processor, where KiProcessorBlock[0] is
+     * the current PRCB, so it went unnoticed; on a multiprocessor it fires the
+     * first time any driver targets a DPC elsewhere, and a checked build stops
+     * dead in the debugger. That is what wedged second-stage setup at
+     * "Installing devices..." with four processors while one processor
+     * installed the same image without complaint.
+     */
 
     /* Check if this is a threaded DPC and threaded DPCs are enabled */
     if ((Dpc->Type == ThreadedDpcObject) && (Prcb->ThreadDpcEnable))
