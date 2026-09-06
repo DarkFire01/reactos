@@ -1677,8 +1677,85 @@ HalEnableInterrupt(
             Input = VectorData->ControllerInput.Gsiv;
             if (!HalpIoApicServesInput(Input))
             {
+                ULONG Unit;
+
                 DPRINT1("Input %lu is not served by any I/O APIC (max %lu)\n",
                         Input, HalpMaxGsi);
+
+                /*
+                 * Say what each unit reports *now*, not what it reported during
+                 * HalpInitializeIOUnits().
+                 *
+                 * This machine's firmware routes 22 of its 42 _PRT entries to
+                 * inputs 27..43 while the single unit's version register reads
+                 * back 24 entries, and firmware does not publish routing that
+                 * cannot be delivered. The count is derived exactly as the
+                 * reference derives it (halmacpi HalpProbeIoApic takes
+                 * BYTE2(version) + 1), so the arithmetic is not the difference -
+                 * either the register reads differently once the chipset is
+                 * further along, or we are not reading what we think we are.
+                 * A second read from here, long after init, tells those apart:
+                 * a larger count now means the probe is simply too early, and
+                 * an identical one means the register really does say 24.
+                 *
+                 * Read the version twice and report both, the way the reference's
+                 * HalpVerifyIOUnit() validates a unit - it requires the version
+                 * and entry-count bytes to agree across two reads before
+                 * trusting either.
+                 */
+                for (Unit = 0; Unit < HalpIoApicCount; Unit++)
+                {
+                    ULONG First = IOApicRead(HalpIoApics[Unit].Base, IOAPIC_VER);
+                    ULONG Second = IOApicRead(HalpIoApics[Unit].Base, IOAPIC_VER);
+
+                    DPRINT1("  late re-read: unit %lu inputs %lu..%lu, "
+                            "ver %08lx/%08lx -> %lu/%lu entries, id %08lx\n",
+                            Unit,
+                            HalpIoApics[Unit].InputBase,
+                            HalpIoApics[Unit].InputCount ?
+                                HalpIoApics[Unit].InputBase +
+                                HalpIoApics[Unit].InputCount - 1 : 0,
+                            First, Second,
+                            ((First >> 16) & 0xFF) + 1,
+                            ((Second >> 16) & 0xFF) + 1,
+                            IOApicRead(HalpIoApics[Unit].Base, IOAPIC_ID));
+                }
+
+                /*
+                 * Does the entry actually exist, whatever the version says?
+                 *
+                 * Reading an unimplemented register is undefined, so a read
+                 * alone proves nothing. Writing a distinctive value and reading
+                 * it back does: a redirection entry that retains what was
+                 * written is implemented, and one that is not there returns
+                 * all-ones or all-zeroes. The value written keeps the mask bit
+                 * set the whole time, so nothing can be delivered through it,
+                 * and the original contents are put back either way.
+                 *
+                 * This settles whether the unit understates itself - which is
+                 * what firmware routing PCI interrupts to input 32 while the
+                 * version register claims 24 entries implies - without guessing.
+                 */
+                if (HalpIoApicCount != 0 && Input < 240)
+                {
+                    ULONG_PTR Base = HalpIoApics[0].Base;
+                    UCHAR Reg = (UCHAR)(IOAPIC_REDTBL + 2 * Input);
+                    ULONG Saved, Probe, ReadBack;
+
+                    Saved = IOApicRead(Base, Reg);
+                    /* masked (bit 16), vector 0xEF, everything else clear */
+                    IOApicWrite(Base, Reg, 0x000100EF);
+                    ReadBack = IOApicRead(Base, Reg);
+                    IOApicWrite(Base, Reg, Saved);
+                    Probe = IOApicRead(Base, Reg);
+
+                    DPRINT1("  input %lu redir probe: was %08lx, wrote 000100EF, "
+                            "read %08lx, restored %08lx -> entry %s\n",
+                            Input, Saved, ReadBack, Probe,
+                            (ReadBack == 0x000100EF) ? "EXISTS (unit understates itself)"
+                                                     : "absent");
+                }
+
                 return STATUS_INVALID_PARAMETER;
             }
 
