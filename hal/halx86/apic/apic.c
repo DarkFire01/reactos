@@ -167,6 +167,76 @@ IOApicWrite(ULONG_PTR Base, UCHAR Register, ULONG Value)
  * Finds the I/O APIC that serves a global system interrupt and the
  * redirection entry (pin) it uses for it.
  */
+/**
+ * @brief
+ * Whether any I/O APIC serves this interrupt input, re-reading the units'
+ * entry counts rather than trusting what they said at init.
+ *
+ * The reference does not cache this. HalpGetApicInti works out which unit's
+ * span an interrupt falls in - base to the next unit's base, capped at 240 -
+ * and calls HalpProbeIoApic on that unit before deciding, so the version
+ * register is read at lookup time and not once during ApicInitializeIOApic.
+ * Only then does it compare against the count that probe produced.
+ *
+ * Ours read the count exactly once, at the earliest possible moment, and every
+ * refusal afterwards came from that one number. On a machine whose firmware
+ * routes PCI interrupts to global system interrupt 27 while its only unit
+ * reports 24 inputs, the two cannot both be right, and a count read once can
+ * never notice.
+ */
+BOOLEAN
+NTAPI
+HalpIoApicServesInput(
+    _In_ ULONG Input)
+{
+    ULONG i;
+
+    /* Already known to be within reach */
+    if (Input < HalpMaxGsi)
+    {
+        return TRUE;
+    }
+
+    for (i = 0; i < HalpIoApicCount; i++)
+    {
+        ULONG InputBase = HalpIoApics[i].InputBase;
+        ULONG Span;
+        ULONG Count;
+
+        /* The span this unit could own: up to the next unit's base, and no
+           more than 240 inputs - HalpGetApicInti */
+        Span = (i + 1 < HalpIoApicCount) ? HalpIoApics[i + 1].InputBase
+                                         : (InputBase + 240);
+        if (Span > InputBase + 240)
+        {
+            Span = InputBase + 240;
+        }
+
+        if ((Input < InputBase) || (Input >= Span))
+        {
+            continue;
+        }
+
+        /* In this unit's span but past what it last said. Ask it again */
+        Count = ((IOApicRead(HalpIoApics[i].Base, IOAPIC_VER) >> 16) & 0xFF) + 1;
+        if (Count != HalpIoApics[i].InputCount)
+        {
+            DPRINT1("I/O APIC %lu now reports %lu input(s), was %lu\n",
+                    i, Count, HalpIoApics[i].InputCount);
+
+            HalpIoApics[i].InputCount = Count;
+            if (InputBase + Count > HalpMaxGsi)
+            {
+                HalpMaxGsi = InputBase + Count;
+            }
+        }
+
+        return (Input < InputBase + HalpIoApics[i].InputCount);
+    }
+
+    return FALSE;
+}
+
 FORCEINLINE
 BOOLEAN
 HalpFindIoApicInput(
@@ -175,6 +245,9 @@ HalpFindIoApicInput(
     _Out_ PUCHAR Pin)
 {
     ULONG i;
+
+    /* Give a unit the chance to report a count it did not report at init */
+    (VOID)HalpIoApicServesInput(Input);
 
     for (i = 0; i < HalpIoApicCount; i++)
     {
@@ -567,7 +640,7 @@ HalpGetRootInterruptVector(
     UCHAR Vector;
 
     /* No I/O APIC serves this input */
-    if (BusInterruptLevel >= HalpMaxGsi)
+    if (!HalpIoApicServesInput(BusInterruptLevel))
     {
         /* Not an error path.  The ACPI root PDO advertises the whole block
          * of device IDT vectors it owns on an APIC HAL (HALP_DEVICE_VECTOR_FIRST
@@ -648,7 +721,7 @@ HalpMapIoApic(
 {
     PHARDWARE_PTE Pte;
     ULONG_PTR Base;
-    ULONG Count;
+    ULONG Count, Version;
 
     if (HalpIoApicCount >= HALP_MAX_IOAPICS)
     {
@@ -685,7 +758,21 @@ HalpMapIoApic(
     HalpFlushTLB();
 
     /* The version register carries the number of entries, minus one */
-    Count = ((IOApicRead(Base, IOAPIC_VER) >> 16) & 0xFF) + 1;
+    Version = IOApicRead(Base, IOAPIC_VER);
+    Count = ((Version >> 16) & 0xFF) + 1;
+
+    /*
+     * Print the registers themselves, not just the count derived from them.
+     *
+     * A count that lands on the legacy 24 for a machine whose _PRT routes PCI
+     * interrupts to global system interrupt 43 is either a unit understating
+     * itself or a register we are not really reading, and the derived number
+     * cannot tell those apart. The raw values can: an id and version that read
+     * as a plausible I/O APIC mean the mapping is good, and all-ones or all-
+     * zeroes mean it is not.
+     */
+    DPRINT1("I/O APIC at %lx: id %08lx ver %08lx -> %lu input(s)\n",
+            PhysicalBase, IOApicRead(Base, IOAPIC_ID), Version, Count);
     if (InputBase >= HALP_MAX_INPUTS)
     {
         DPRINT1("I/O APIC at %lx starts past the input space, ignored\n", PhysicalBase);
@@ -723,13 +810,12 @@ ApicInitializeIOApic(VOID)
        tables did not name any */
     HalpIoApicCount = 0;
     HalpMaxGsi = 0;
-    for (Index = 0; Index < HALP_APIC_INFO_TABLE_IOAPIC_NUMBER; Index++)
+    /* The units are recorded in the order the firmware described them, so map
+     * that many rather than scanning a 256-entry array for non-zero slots */
+    for (Index = 0; Index < HalpApicInfoTable.IOAPICCount; Index++)
     {
-        if (HalpApicInfoTable.IoApicPA[Index] != 0)
-        {
-            HalpMapIoApic(HalpApicInfoTable.IoApicPA[Index],
-                          HalpApicInfoTable.IoApicIrqBase[Index]);
-        }
+        HalpMapIoApic(HalpApicInfoTable.IoApicPA[Index],
+                      HalpApicInfoTable.IoApicIrqBase[Index]);
     }
     if (HalpIoApicCount == 0)
     {
@@ -744,22 +830,52 @@ ApicInitializeIOApic(VOID)
     DPRINT1("%lu I/O APIC(s), highest routable interrupt input %lu\n",
             HalpIoApicCount, HalpMaxGsi ? HalpMaxGsi - 1 : 0);
 
-    /* Setup a redirection entry */
-    ReDirReg.LongLong = 0;
-    ReDirReg.Vector = APIC_FREE_VECTOR;
-    ReDirReg.MessageType = APIC_MT_Fixed;
-    ReDirReg.DestinationMode = APIC_DM_Physical;
-    ReDirReg.TriggerMode = APIC_TGM_Edge;
-    ReDirReg.Mask = 1;
-    ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
+    /*
+     * Give each described unit the id the firmware named it by.
+     *
+     * The reference writes this into the id register before it reads anything
+     * else out of the unit (HalpInitializeIOUnit); we never wrote it at all
+     * and simply hoped the firmware had. Skipped for a unit that was assumed
+     * rather than described, since there is no id to write.
+     */
+    for (Index = 0; (Index < HalpIoApicCount) &&
+                    (Index < HalpApicInfoTable.IOAPICCount); Index++)
+    {
+        ULONG IdRegister = IOApicRead(HalpIoApics[Index].Base, IOAPIC_ID);
 
-    /* Mask every input of every unit */
+        IdRegister &= 0x00FFFFFF;
+        IdRegister |= (HalpApicInfoTable.IoApicId[Index] & 0xFF) << 24;
+        IOApicWrite(HalpIoApics[Index].Base, IOAPIC_ID, IdRegister);
+    }
+
+    /*
+     * Mask every input of every unit, without rewriting the entries wholesale
+     * and without touching the ones the firmware owns.
+     *
+     * The reference reads each entry, leaves it alone if its delivery mode is
+     * SMI, and otherwise only sets the mask bit and vector 0xFF - it ORs in
+     * 0x100FF and keeps trigger mode, polarity and destination as it found
+     * them (HalpInitializeIOUnit). Writing a fresh zeroed entry over the top
+     * loses all of that, and on an entry the firmware routes to SMI it takes
+     * away a line the platform is still using for itself: thermal, legacy USB
+     * emulation, the power button.
+     */
     for (Index = 0; Index < HalpIoApicCount; Index++)
     {
         for (Input = HalpIoApics[Index].InputBase;
              Input < HalpIoApics[Index].InputBase + HalpIoApics[Index].InputCount;
              Input++)
         {
+            ReDirReg = ApicReadIORedirectionEntry(Input);
+
+            /* The firmware's, not ours */
+            if (ReDirReg.MessageType == APIC_MT_SMI)
+            {
+                continue;
+            }
+
+            ReDirReg.Vector = APIC_FREE_VECTOR;
+            ReDirReg.Mask = 1;
             ApicWriteIORedirectionEntry(Input, ReDirReg);
         }
     }
@@ -1437,7 +1553,7 @@ HalpProgramInterruptInput(
     UCHAR Destination;
     NTSTATUS Status;
 
-    if ((Input >= HalpMaxGsi) || (Vector > 0xFF))
+    if (!HalpIoApicServesInput(Input) || (Vector > 0xFF))
     {
         return STATUS_INVALID_PARAMETER;
     }
@@ -1559,7 +1675,7 @@ HalEnableInterrupt(
         case InterruptTypeControllerInput:
         {
             Input = VectorData->ControllerInput.Gsiv;
-            if (Input >= HalpMaxGsi)
+            if (!HalpIoApicServesInput(Input))
             {
                 DPRINT1("Input %lu is not served by any I/O APIC (max %lu)\n",
                         Input, HalpMaxGsi);

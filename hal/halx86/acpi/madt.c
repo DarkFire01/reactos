@@ -51,7 +51,7 @@ typedef struct _HALP_MADT_RECORD
     ULONG TypeSeen[256 / 32];       /* one bit per subtable type encountered */
     ULONG IoApicSeen;               /* type 1 subtables encountered */
     ULONG IoApicBadLength;          /* ...refused for their size */
-    ULONG IoApicDuplicateId;        /* ...refused as a duplicate Id */
+    ULONG IoApicOverflow;           /* ...refused, no room left */
     ULONG LocalApicBadLength;
     ULONG OverrideRefused;
     ULONG SkippedUnknown;
@@ -239,17 +239,32 @@ HalpParseApicTables(
                     break;
                 }
 
-                // Ensure HalpApicInfoTable.IOAPICCount consistency.
-                if (HalpApicInfoTable.IoApicPA[IoApic->Id] != 0)
+                if (HalpApicInfoTable.IOAPICCount >= HALP_APIC_INFO_TABLE_IOAPIC_NUMBER)
                 {
-                    DPRINT01("Id duplication: %p, %u\n", IoApic, IoApic->Id);
-                    HalpMadtRecord.IoApicDuplicateId++;
+                    DPRINT01("Too many I/O APICs: %p\n", IoApic);
+                    HalpMadtRecord.IoApicOverflow++;
                     break;
                 }
 
+                /*
+                 * Store it at the next free slot, in the order the firmware
+                 * described it.
+                 *
+                 * This used to index by IoApic->Id and refuse an Id it had
+                 * already seen. Nothing makes that Id unique - it is the
+                 * unit's APIC id, and firmware is free to leave every unit on
+                 * zero - so a second unit was dropped, and with it every
+                 * global system interrupt it served. A machine whose _PRT
+                 * routes PCI interrupts to interrupt 27 then had no unit that
+                 * could deliver them.
+                 *
+                 * The reference stores each unit at a running counter and
+                 * keeps the Id only as data, which is what this does.
+                 */
                 // Note: Address and GlobalIrqBase are not validated in any way (yet).
-                HalpApicInfoTable.IoApicPA[IoApic->Id] = IoApic->Address;
-                HalpApicInfoTable.IoApicIrqBase[IoApic->Id] = IoApic->GlobalIrqBase;
+                HalpApicInfoTable.IoApicId[HalpApicInfoTable.IOAPICCount] = IoApic->Id;
+                HalpApicInfoTable.IoApicPA[HalpApicInfoTable.IOAPICCount] = IoApic->Address;
+                HalpApicInfoTable.IoApicIrqBase[HalpApicInfoTable.IOAPICCount] = IoApic->GlobalIrqBase;
 
                 HalpApicInfoTable.IOAPICCount++;
 
@@ -375,11 +390,11 @@ HalpPrintApicTables(VOID)
     }
 
     DPRINT1("MADT: %lu I/O APIC subtable(s), %lu recorded"
-            " (%lu bad length, %lu duplicate Id)\n",
+            " (%lu bad length, %lu no room)\n",
             HalpMadtRecord.IoApicSeen,
             HalpApicInfoTable.IOAPICCount,
             HalpMadtRecord.IoApicBadLength,
-            HalpMadtRecord.IoApicDuplicateId);
+            HalpMadtRecord.IoApicOverflow);
 
     if (HalpMadtRecord.LocalApicBadLength != 0 ||
         HalpMadtRecord.OverrideRefused != 0 ||
@@ -392,16 +407,14 @@ HalpPrintApicTables(VOID)
                 HalpMadtRecord.SkippedUnknown);
     }
 
-    /* The units themselves, by the Id the firmware gave them */
-    for (i = 0; i < HALP_APIC_INFO_TABLE_IOAPIC_NUMBER; i++)
+    /* The units themselves, in the order the firmware described them */
+    for (i = 0; i < HalpApicInfoTable.IOAPICCount; i++)
     {
-        if (HalpApicInfoTable.IoApicPA[i] != 0)
-        {
-            DPRINT1("MADT:   I/O APIC Id %lu at %08X, global interrupt base %lu\n",
-                    i,
-                    HalpApicInfoTable.IoApicPA[i],
-                    HalpApicInfoTable.IoApicIrqBase[i]);
-        }
+        DPRINT1("MADT:   I/O APIC %lu: Id %lu at %08X, global interrupt base %lu\n",
+                i,
+                HalpApicInfoTable.IoApicId[i],
+                HalpApicInfoTable.IoApicPA[i],
+                HalpApicInfoTable.IoApicIrqBase[i]);
     }
 
     if (HalpApicInfoTable.IOAPICCount == 0)

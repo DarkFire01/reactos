@@ -17,8 +17,16 @@ typedef struct _PROCESSOR_IDENTITY
     PKPRCB ProcessorPrcb;
 } PROCESSOR_IDENTITY, *PPROCESSOR_IDENTITY;
 
-/* This table is counter of the overall APIC constants acquired from madt */
-#define HALP_APIC_INFO_TABLE_IOAPIC_NUMBER 256 // ACPI_MADT_IO_APIC.Id is a UINT8.
+/* This table is counter of the overall APIC constants acquired from madt.
+ *
+ * The I/O APIC arrays are indexed by the order the units were described, not
+ * by the Id the firmware gave them. The Id is not an index: nothing requires
+ * it to be unique or small, and a firmware that leaves two units on the same
+ * Id used to cost us the second one entirely. The reference does the same -
+ * see the MADT walk in halmacpi, which stores each unit at a running counter
+ * and keeps the Id only as data (HalpGetIoApicId).
+ */
+#define HALP_APIC_INFO_TABLE_IOAPIC_NUMBER 256
 typedef struct _HALP_APIC_INFO_TABLE
 {
     ULONG ApicMode;
@@ -28,6 +36,7 @@ typedef struct _HALP_APIC_INFO_TABLE
     ULONG IoApicVA[HALP_APIC_INFO_TABLE_IOAPIC_NUMBER];
     ULONG IoApicPA[HALP_APIC_INFO_TABLE_IOAPIC_NUMBER];
     ULONG IoApicIrqBase[HALP_APIC_INFO_TABLE_IOAPIC_NUMBER]; // Global system interrupt base
+    ULONG IoApicId[HALP_APIC_INFO_TABLE_IOAPIC_NUMBER];      // As the firmware named it
 } HALP_APIC_INFO_TABLE, *PHALP_APIC_INFO_TABLE;
 
 /* HALP_APIC_INFO_TABLE.ApicMode values */
