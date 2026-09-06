@@ -443,9 +443,21 @@ MiSetupPfnForPageTable(
     /* Get the pfn entry for this page */
     Pfn = MiGetPfnEntry(PageFrameIndex);
 
-    /* Check if it's valid memory */
+    /*
+     * Check if it's valid memory.  The database is mapped one memory
+     * descriptor at a time, so a described frame can sit right next to a hole
+     * left by one the loader never described, which is what this walk of the
+     * page tables runs into: a PTE may point at firmware or MMIO space that
+     * has no entry at all.  An MMPFN is 48 bytes and does not divide the page
+     * size, so two entries in every three pages begin in one page and end in
+     * the next, and one of those can have its first byte mapped and its last
+     * byte in the hole.  This runs at DISPATCH_LEVEL with the PFN lock held,
+     * where that fault cannot be serviced, so both ends have to be checked -
+     * not only the one the pointer names.
+     */
     if ((PageFrameIndex <= MmHighestPhysicalPage) &&
         (MmIsAddressValid(Pfn)) &&
+        (MmIsAddressValid((PUCHAR)Pfn + sizeof(MMPFN) - 1)) &&
         (Pfn->u3.e1.PageLocation == ActiveAndValid))
     {
         /* Setup the PFN entry */
@@ -688,6 +700,24 @@ MiBuildPfnDatabase(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         /* Add this descriptor to the database */
         MiAddDescriptorToDatabase(BasePage, PageCount, Descriptor->MemoryType);
     }
+
+    /*
+     * The loop above mapped the database one descriptor at a time, so it is
+     * left with a hole wherever the loader described nothing: a firmware
+     * range, the PCI hole, or simply a gap between two descriptors.  Nothing
+     * that reads the database afterwards knows where those holes are -
+     * MiFindContiguousPages walks the runs of MmPhysicalMemoryBlock, which is
+     * built from its own set of loader types, and MiBuildPfnDatabaseFromPageTables
+     * walks page tables that can point anywhere at all.  An MMPFN is 48 bytes
+     * and does not divide the page size, so a hole is fatal even to the entry
+     * beside it: that one straddles the boundary and faults on its own last
+     * bytes, at DISPATCH_LEVEL under the PFN lock where the fault cannot be
+     * serviced.  Fill the gaps - MiMapPTEs leaves the pages that are already
+     * there alone, so this costs only the holes - and the invariant the
+     * comment below has always stated becomes true.
+     */
+    MiMapPTEs(&MmPfnDatabase[0],
+              (PUCHAR)(&MmPfnDatabase[MmHighestPhysicalPage + 1]) - 1);
 
     /* At this point the whole pfn database is mapped. We are about to add the
        pages from the free descriptor to the database, so from now on we cannot
