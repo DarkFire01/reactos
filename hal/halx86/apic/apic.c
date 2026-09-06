@@ -61,6 +61,9 @@ ULONG HalpMaxGsi;
    reprogrammed after a transition that lost them */
 IOAPIC_REDIRECTION_REGISTER HalpIoApicShadow[HALP_MAX_INPUTS];
 
+/* Serialises the I/O APIC index/data pair across processors; see IOApicRead */
+LONG HalpIoApicLock;
+
 #ifndef _M_AMD64
 const UCHAR
 HalpIRQLtoTPR[32] =
@@ -123,6 +126,63 @@ HalVectorToIRQL[16] =
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
+/*
+ * The I/O APIC is addressed through an index/data register pair: a caller
+ * writes the register number to IOREGSEL, then accesses IOWIN.  The pair is a
+ * single piece of shared hardware, so a select and the access that belongs to
+ * it must not be separated - by anything, on any processor.
+ *
+ * Holding interrupts off closes only the local window, where a higher-IRQL
+ * caller (an ISR or DPC masking a line) reselects the index between our select
+ * and our access.  It does nothing about a second processor, which writes that
+ * same IOREGSEL: with two of them programming entries at once, one lands its
+ * data in the register the other selected, and a redirection entry is left
+ * holding the wrong vector or the wrong destination.  What that looks like
+ * afterwards is an interrupt delivered to nobody, or delivered to a processor
+ * whose driver has no data for it - a spurious interrupt, intermittently, and
+ * only ever on a multiprocessor machine.
+ *
+ * So hold both: interrupts off for this processor, and a lock for the rest of
+ * the machine.  Interrupts are already off before the lock is taken, so the
+ * holder cannot be preempted here and the spin cannot deadlock against itself.
+ */
+FORCEINLINE
+VOID
+HalpAcquireIoApicLock(VOID)
+{
+    while (InterlockedCompareExchange(&HalpIoApicLock, 1, 0) != 0)
+    {
+        while (*(volatile LONG *)&HalpIoApicLock != 0)
+        {
+            YieldProcessor();
+        }
+    }
+}
+
+FORCEINLINE
+VOID
+HalpReleaseIoApicLock(VOID)
+{
+    InterlockedExchange(&HalpIoApicLock, 0);
+}
+
+/* Select and access, for a caller that already holds both guards */
+FORCEINLINE
+ULONG
+IOApicReadLocked(ULONG_PTR Base, UCHAR Register)
+{
+    WRITE_REGISTER_ULONG((PULONG)(Base + IOAPIC_IOREGSEL), Register);
+    return READ_REGISTER_ULONG((PULONG)(Base + IOAPIC_IOWIN));
+}
+
+FORCEINLINE
+VOID
+IOApicWriteLocked(ULONG_PTR Base, UCHAR Register, ULONG Value)
+{
+    WRITE_REGISTER_ULONG((PULONG)(Base + IOAPIC_IOREGSEL), Register);
+    WRITE_REGISTER_ULONG((PULONG)(Base + IOAPIC_IOWIN), Value);
+}
+
 FORCEINLINE
 ULONG
 IOApicRead(ULONG_PTR Base, UCHAR Register)
@@ -130,20 +190,11 @@ IOApicRead(ULONG_PTR Base, UCHAR Register)
     ULONG_PTR Flags;
     ULONG Value;
 
-    /*
-     * The I/O APIC is addressed through an index/data register pair: the caller
-     * writes the register number to IOREGSEL then accesses IOWIN.  That pair is
-     * shared global state, so the select+access must be atomic against local
-     * preemption - otherwise a higher-IRQL caller (e.g. an ISR/DPC masking a
-     * line) can reselect the index between our select and our access, and we
-     * read/program a DIFFERENT redirection entry.  The HAL's own callers happen
-     * not to overlap, but a driver-level line mask legitimately can; guard the
-     * sequence with a local interrupt hold rather than relying on that.
-     */
     Flags = __readeflags();
     _disable();
-    WRITE_REGISTER_ULONG((PULONG)(Base + IOAPIC_IOREGSEL), Register);
-    Value = READ_REGISTER_ULONG((PULONG)(Base + IOAPIC_IOWIN));
+    HalpAcquireIoApicLock();
+    Value = IOApicReadLocked(Base, Register);
+    HalpReleaseIoApicLock();
     __writeeflags(Flags);
     return Value;
 }
@@ -154,11 +205,11 @@ IOApicWrite(ULONG_PTR Base, UCHAR Register, ULONG Value)
 {
     ULONG_PTR Flags;
 
-    /* Atomic select+write of the shared index/data pair; see IOApicRead. */
     Flags = __readeflags();
     _disable();
-    WRITE_REGISTER_ULONG((PULONG)(Base + IOAPIC_IOREGSEL), Register);
-    WRITE_REGISTER_ULONG((PULONG)(Base + IOAPIC_IOWIN), Value);
+    HalpAcquireIoApicLock();
+    IOApicWriteLocked(Base, Register, Value);
+    HalpReleaseIoApicLock();
     __writeeflags(Flags);
 }
 
@@ -270,6 +321,7 @@ ApicWriteIORedirectionEntry(
     IOAPIC_REDIRECTION_REGISTER ReDirReg)
 {
     ULONG_PTR Base;
+    ULONG_PTR Flags;
     UCHAR Pin;
 
     if (!HalpFindIoApicInput(Input, &Base, &Pin))
@@ -278,9 +330,21 @@ ApicWriteIORedirectionEntry(
         return;
     }
 
+    /*
+     * A redirection entry is 64 bits reached through two 32-bit registers, and
+     * it is live between the two writes.  Hold the guards across both so no
+     * other processor can select a register in between, and so the entry is
+     * never left half-updated - the half that carries the vector written while
+     * the half that carries the destination still names the old target.
+     */
+    Flags = __readeflags();
+    _disable();
+    HalpAcquireIoApicLock();
     HalpIoApicShadow[Input] = ReDirReg;
-    IOApicWrite(Base, IOAPIC_REDTBL + 2 * Pin, ReDirReg.Long0);
-    IOApicWrite(Base, IOAPIC_REDTBL + 2 * Pin + 1, ReDirReg.Long1);
+    IOApicWriteLocked(Base, IOAPIC_REDTBL + 2 * Pin, ReDirReg.Long0);
+    IOApicWriteLocked(Base, IOAPIC_REDTBL + 2 * Pin + 1, ReDirReg.Long1);
+    HalpReleaseIoApicLock();
+    __writeeflags(Flags);
 }
 
 FORCEINLINE
@@ -290,6 +354,7 @@ ApicReadIORedirectionEntry(
 {
     IOAPIC_REDIRECTION_REGISTER ReDirReg;
     ULONG_PTR Base;
+    ULONG_PTR Flags;
     UCHAR Pin;
 
     if (!HalpFindIoApicInput(Input, &Base, &Pin))
@@ -301,8 +366,14 @@ ApicReadIORedirectionEntry(
         return ReDirReg;
     }
 
-    ReDirReg.Long0 = IOApicRead(Base, IOAPIC_REDTBL + 2 * Pin);
-    ReDirReg.Long1 = IOApicRead(Base, IOAPIC_REDTBL + 2 * Pin + 1);
+    /* Both halves under one hold, so the two belong to the same entry state */
+    Flags = __readeflags();
+    _disable();
+    HalpAcquireIoApicLock();
+    ReDirReg.Long0 = IOApicReadLocked(Base, IOAPIC_REDTBL + 2 * Pin);
+    ReDirReg.Long1 = IOApicReadLocked(Base, IOAPIC_REDTBL + 2 * Pin + 1);
+    HalpReleaseIoApicLock();
+    __writeeflags(Flags);
 
     return ReDirReg;
 }
