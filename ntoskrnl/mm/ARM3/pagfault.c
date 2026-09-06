@@ -791,11 +791,11 @@ MiMakeKernelPageTableValid(
 {
     PEPROCESS CurrentProcess = PsGetCurrentProcess();
     PMMPTE PointerPte = MiAddressToPte(Address);
-    PMMPPE PointerPde = MiAddressToPde(Address);
+    PMMPDE PointerPde = MiAddressToPde(Address);
 
 #if (_MI_PAGING_LEVELS >= 3)
     /* Check if the PPE is valid */
-    PMMPXE PointerPpe = MiAddressToPpe(Address);
+    PMMPPE PointerPpe = MiAddressToPpe(Address);
     if (PointerPpe->u.Hard.Valid == 0)
     {
         /* Right now, we only handle scenarios where the PPE is totally empty */

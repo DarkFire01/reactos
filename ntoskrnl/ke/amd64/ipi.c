@@ -77,8 +77,16 @@ KiIpiGenericCallWorker(
     ULONG_PTR Argument = (ULONG_PTR)Parameter2;
     PULONG Count = (PULONG)Parameter3;
 
-    /* Acknowledge receival by decrementing the count */
-    InterlockedDecrementUL(Count);
+    UNREFERENCED_PARAMETER(PacketContext);
+
+    /* Acknowledge receipt, when the sender asked to be counted in.  The
+       sender waits on its own TargetSet, which KiIpiInterruptHandler clears,
+       so a caller that passes no counter simply is not using this one -
+       KeIpiGenericCall below is exactly that caller. */
+    if (Count != NULL)
+    {
+        InterlockedDecrementUL(Count);
+    }
 
     /* Call the broadcast function */
     BroadcastWorker(Argument);
@@ -239,13 +247,27 @@ KeIpiGenericCall(
 {
     KREQUEST_PACKET RequestPacket;
     KAFFINITY TargetSet = KeActiveProcessors & ~KeGetCurrentPrcb()->SetMember;
+    ULONG_PTR Status;
+    KIRQL OldIrql;
 
-    __debugbreak();
     RequestPacket.WorkerRoutine = KiIpiGenericCallWorker;
     RequestPacket.CurrentPacket[0] = BroadcastFunction;
     RequestPacket.CurrentPacket[1] = (PVOID)Argument;
-    RequestPacket.CurrentPacket[2] = 0;
+    RequestPacket.CurrentPacket[2] = NULL;
     KiIpiSendRequestPacket(TargetSet, &RequestPacket);
 
-    return 0;
+    /*
+     * And run it here.  The routine has to run on every processor, this one
+     * included - callers reach for this rather than a DPC precisely because
+     * of that, and PciExecuteCriticalSystemRoutine counts on it: it arrives
+     * with RunCount 1, so whoever decrements it to zero does the work and the
+     * rest spin on its barrier.  Leaving the caller out meant nothing ran at
+     * all on a single-processor machine, where TargetSet is empty.  The
+     * result this processor produces is also what the caller reads back.
+     */
+    KeRaiseIrql(IPI_LEVEL, &OldIrql);
+    Status = BroadcastFunction(Argument);
+    KeLowerIrql(OldIrql);
+
+    return Status;
 }

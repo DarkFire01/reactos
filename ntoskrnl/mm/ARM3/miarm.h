@@ -2048,6 +2048,32 @@ MiReleaseSystemPtes(
     IN MMSYSTEM_PTE_POOL_TYPE SystemPtePoolType
 );
 
+#ifndef _M_AMD64
+/*
+ * Kernel stacks come out of the system PTE pool everywhere except amd64,
+ * which has its own size-classed allocator (mm/amd64/kstack.c) so that a
+ * stack is naturally aligned and its guard page is free.  MmCreateKernelStack
+ * and MmDeleteKernelStack are shared, so give the other architectures the two
+ * names that allocator publishes rather than branching at every call site.
+ */
+FORCEINLINE
+PMMPTE
+MiReserveKernelStackPtes(
+    _In_ ULONG NumberOfPtes)
+{
+    return MiReserveSystemPtes(NumberOfPtes, SystemPteSpace);
+}
+
+FORCEINLINE
+VOID
+MiReleaseKernelStackPtes(
+    _In_ PMMPTE FirstPte,
+    _In_ ULONG NumberOfPtes)
+{
+    MiReleaseSystemPtes(FirstPte, NumberOfPtes, SystemPteSpace);
+}
+#endif
+
 
 PFN_NUMBER
 NTAPI

@@ -914,8 +914,26 @@ HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
     /* Get the current IRQL */
     OldIrql = ApicGetCurrentIrql();
 
-    /* Raise to IPI_LEVEL */
-    ApicRaiseIrql(IPI_LEVEL);
+    /*
+     * Raise to IPI_LEVEL, unless the interrupted code was already above it.
+     *
+     * APIC_LAZY_IRQL leaves the TPR alone when software raises IRQL, so this
+     * interrupt is delivered even at POWER_LEVEL or HIGH_LEVEL - a processor
+     * sitting in KeFreezeExecution or a bugcheck path is exactly where an IPI
+     * has to reach.  ApicRaiseIrql is a plain store, so raising to IPI_LEVEL
+     * from above would silently LOWER the recorded IRQL for the whole of
+     * KiIpiServiceRoutine and put it back afterwards.
+     *
+     * The APC and dispatch handlers get this from HalBeginSystemInterrupt,
+     * which is not usable here: its success path calls _enable(), and the
+     * freeze spin below must not be re-entered by a second IPI.  Deferring the
+     * way that routine does is wrong for this vector too - a freeze request
+     * that is postponed until IRQL drops is a freeze that never arrives.
+     */
+    if (OldIrql < IPI_LEVEL)
+    {
+        ApicRaiseIrql(IPI_LEVEL);
+    }
 
     /* Acknowledge the interrupt before servicing it. A freeze request does
        not return until the debugger lets this processor go, and the local
@@ -928,8 +946,11 @@ HalpIpiInterruptHandler(IN PKTRAP_FRAME TrapFrame)
        must not be re-entered by a second IPI. */
     KiIpiServiceRoutine(TrapFrame, NULL);
 
-    /* Restore the old IRQL */
-    ApicLowerIrql(OldIrql);
+    /* Restore the old IRQL, if this raised it */
+    if (OldIrql < IPI_LEVEL)
+    {
+        ApicLowerIrql(OldIrql);
+    }
 
     /* Exit the interrupt */
     KiEoiHelper(TrapFrame);
@@ -1746,10 +1767,16 @@ KfRaiseIrql(
        is usually the second one. */
     if (OldIrql > NewIrql)
     {
-        /* Walk one frame past our caller. Everything here is built with
-           -fno-omit-frame-pointer, so [ebp] is the caller's frame and
-           [ebp + 4] the address it will return to. */
+        /* Walk one frame past our caller. This configuration keeps a frame
+           pointer, so [Frame] is the caller's frame and [Frame + 1] the
+           address it will return to. */
+#if defined(__GNUC__)
         Frame = (ULONG_PTR *)__builtin_frame_address(0);
+#else
+        /* MSVC has no __builtin_frame_address.  The return address sits one
+           slot above the frame pointer, so back up from it. */
+        Frame = (ULONG_PTR *)_AddressOfReturnAddress() - 1;
+#endif
         if (Frame != NULL && Frame[0] != 0)
             Caller = ((ULONG_PTR *)Frame[0])[1];
 
