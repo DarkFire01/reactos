@@ -561,14 +561,38 @@ PciBuildHackTable(IN HANDLE KeyHandle)
                                           sizeof(KEY_VALUE_FULL_INFORMATION) +
                                           PCI_HACK_ENTRY_FULL_SIZE,
                                           PCI_POOL_TAG);
-        if (!PciHackTable) break;
+        /* This is the allocation being checked, not the one above it */
+        if (!ValueInfo) break;
 
-        /* Loop each value in the registry */
+        /*
+         * Both allocations are in hand, so nothing has failed. Say so:
+         * Status still carries the STATUS_INSUFFICIENT_RESOURCES set to cover
+         * them, and the only thing that assigns it from here is the body of
+         * the loop below. A key with no values does not enter that loop, so
+         * the check that follows it read a failure that never happened, and
+         * took the failure path on a table that had been built correctly.
+         */
+        Status = STATUS_SUCCESS;
+
+        /*
+         * Loop each value in the registry.
+         *
+         * Entry walks the table, i walks the registry, and they are not the
+         * same thing: a value that does not parse is skipped, and the entry it
+         * would have filled has to be left for the next value that does. Index
+         * the table by i instead and every skipped value leaves a hole - and a
+         * hole before the terminator is not skipped by the reader, it is an
+         * entry, matched against every device enumerated, out of whatever the
+         * pool happened to hold. Several of the skips below occur before the
+         * entry is even zeroed.
+         *
+         * Advancing only on success also leaves Entry one past the last entry
+         * filled, which is where the terminator belongs and what the spare
+         * element allocated above is for.
+         */
         Entry = &PciHackTable[0];
         for (i = 0; i < HackCount; i++)
         {
-            /* Get the entry for this value */
-            Entry = &PciHackTable[i];
 
             /* Query the value in the key */
             Status = ZwEnumerateValueKey(KeyHandle,
@@ -678,6 +702,9 @@ PciBuildHackTable(IN HANDLE KeyHandle)
                 DbgPrint("Revision:0x%02x", Entry->RevisionID);
             DbgPrint(" = 0x%I64x\n", Entry->HackFlags);
 #endif
+
+            /* This one is filled in, so the next value gets the next entry */
+            Entry++;
         }
 
         /* Bail out in case of failure */
@@ -696,7 +723,27 @@ PciBuildHackTable(IN HANDLE KeyHandle)
     ASSERT(!NT_SUCCESS(Status));
     if (FullInfo) ExFreePool(FullInfo);
     if (ValueInfo) ExFreePool(ValueInfo);
-    if (PciHackTable) ExFreePool(PciHackTable);
+
+    /*
+     * PciHackTable is a global, and the caller does not stop when this fails -
+     * the check in PciAddDevice()'s init path is deliberately commented out, so
+     * a driver with no erratum table carries on without one. That is fine, and
+     * PciGetHackFlags() is written for it: it returns no flags when the table
+     * is absent. Absent has to mean NULL for that to work, so say so - leaving
+     * the pointer behind means the guard sees a non-NULL table and walks freed
+     * pool, entry by entry, until it reaches something unmapped.
+     *
+     * The walk ends at an entry whose VendorID reads PCI_INVALID_VENDORID, so
+     * whether it survives depends on what the freed block still happens to
+     * hold; it is the build that recycles pool soonest, not the checked one,
+     * that loses the terminator and runs off the end.
+     */
+    if (PciHackTable)
+    {
+        ExFreePool(PciHackTable);
+        PciHackTable = NULL;
+    }
+
     return Status;
 }
 
