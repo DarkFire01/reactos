@@ -644,9 +644,10 @@ CreateBitCase(FILE *Out, unsigned Bpp, PROPINFO RopInfo, int Flags,
                     Output(Out, "Pattern |= (PatternRow ? PatternRow[PatternX] :\n");
                     Output(Out, "    DIB_GetSourceIndex(BltInfo->PatternSurface, PatternX, PatternY)) << %u;\n", Partial * Bpp);
                 }
-                Output(Out, "if (BltInfo->PatternSurface->sizlBitmap.cx <= ++PatternX)\n");
+                /* PatternCacheWidth holds the same value, already in a register */
+                Output(Out, "if (PatternCacheWidth <= ++PatternX)\n");
                 Output(Out, "{\n");
-                Output(Out, "PatternX -= BltInfo->PatternSurface->sizlBitmap.cx;\n");
+                Output(Out, "PatternX -= PatternCacheWidth;\n");
                 Output(Out, "}\n");
             }
             Output(Out, "\n");
