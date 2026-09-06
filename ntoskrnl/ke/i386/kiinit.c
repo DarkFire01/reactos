@@ -653,9 +653,16 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     /* Set the Idle Priority to 0. This will jump into Phase 1 */
     KeSetPriorityThread(InitThread, 0);
 
-    /* If there's no thread scheduled, put this CPU in the Idle summary */
+    /* If there's no thread scheduled, put this CPU in the Idle summary.
+       The PRCB lock serialises this against this processor's own scheduling
+       decisions and nothing else - KiIdleSummary is shared with every other
+       processor, which reach it under their own PRCB locks, so the update has
+       to be atomic in its own right. Every other site already does it this
+       way; a plain read-modify-write here could drop another processor's
+       concurrent clear and leave a running processor advertised as idle. */
     KiAcquirePrcbLock(Prcb);
-    if (!Prcb->NextThread) KiIdleSummary |= 1 << Number;
+    if (!Prcb->NextThread)
+        InterlockedBitTestAndSetAffinity(&KiIdleSummary, Number);
     KiReleasePrcbLock(Prcb);
 
     /* Raise back to HIGH_LEVEL. The loader block is not released here - see
