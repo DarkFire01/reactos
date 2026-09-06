@@ -1332,9 +1332,21 @@ co_IntGetPeekMessage( PMSG pMsg,
            if (!(RemoveMsg & PM_NOYIELD))
            {
               IdlePing();
-              // Yield this thread!
+
+              /*
+               * Drop the lock so anyone waiting on it gets in, but do not
+               * yield the processor as well.
+               *
+               * This is every PeekMessage that finds nothing, which is what an
+               * idle GUI application spends its life doing. Releasing and
+               * retaking the lock is cheap and is what actually lets another
+               * thread make progress; NtYieldExecution on top of it is a
+               * syscall that, once anything is ready, raises to SYNCH_LEVEL,
+               * takes the thread and PRCB locks, runs KiSelectReadyThread,
+               * swaps, and resets this thread's quantum on the way. The
+               * reference calls NtYieldExecution nowhere in win32k at all.
+               */
               UserLeave();
-              ZwYieldExecution();
               UserEnterExclusive();
               // Fall through to exit.
               IdlePong();
