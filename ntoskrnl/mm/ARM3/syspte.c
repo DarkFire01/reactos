@@ -231,18 +231,16 @@ MiReserveAlignedSystemPtes(IN ULONG NumberOfPtes,
     KeReleaseQueuedSpinLock(LockQueueSystemSpaceLock, OldIrql);
 
     //
-    // Flush the range being handed out, not the whole TLB.
+    // Flush the TLB.
     //
-    // This ran on every system PTE reservation - so on every MDL mapping and
-    // every MmMapIoSpace, which is to say on essentially every I/O. On a
-    // uniprocessor a full flush is a CR3 reload; on a multiprocessor it is a
-    // broadcast IPI, a total TLB wipe on every processor, and the sender
-    // spinning until they all acknowledge, followed by everyone taking misses
-    // on everything they had cached. KeFlushRangeTb still falls back to the
-    // entire TLB past KxFlushIndividualGlobalPagesMaximum, so large mappings
-    // behave as they did.
+    // This is a broadcast IPI and a total TLB wipe on every processor, on
+    // every system PTE reservation - every MDL mapping, every MmMapIoSpace -
+    // and narrowing it to the range being handed out measurably destabilised
+    // the system around driver image unloads. Something on an unmap path is
+    // relying on this blanket flush rather than flushing what it invalidated,
+    // so it stays until that is found.
     //
-    KeFlushRangeTb(MiPteToAddress(ReturnPte), NumberOfPtes, TRUE);
+    KeFlushEntireTb(TRUE, TRUE);
 
     //
     // Return the reserved PTEs
