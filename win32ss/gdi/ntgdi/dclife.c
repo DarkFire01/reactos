@@ -571,6 +571,43 @@ DC_vPrepareDCsForBlit(
                                prcFirst->top,
                                prcFirst->right,
                                prcFirst->bottom) ;
+
+        /*
+         * The device state has been read and the pointer is excluded, so let
+         * the device lock go. The drawing itself does not run under it.
+         *
+         * The reference does not hold it there either. Windows' counterpart to
+         * this function, DEVLOCKBLTOBJ::bPrepareTrgDco(), locks the DC through
+         * the handle manager - HmgLockEx() and the DC's own cExclusiveLock -
+         * and never touches hsemDevLock. That semaphore is the device's, and
+         * the reference keeps it for the device: PDEVOBJ construction,
+         * vSynchronizeDriver, driver object and RFONT teardown, palette
+         * animation, escapes. Not for pixels.
+         *
+         * Held across the drawing it made every operation that reaches the
+         * screen - every fill, line, glyph and blit, from any thread - wait for
+         * every other one, on a lock whose cache line has to be carried between
+         * processors at each handover. That is the whole display serialised
+         * onto one processor however many are present, and it costs more as
+         * more are added rather than less.
+         *
+         * Two things make it safe to let go of here, and both have to hold:
+         *
+         * The surface cannot be freed while the drawing runs. DC_vUpdateDC()
+         * took a counted reference through PDEVOBJ_pSurface(), and the DC keeps
+         * it until the surface is updated again.
+         *
+         * The pointer cannot be drawn back over the region while the drawing
+         * runs. MouseSafetyOnDrawStart() has left SafetyRemoveLevel set for as
+         * long as this operation is outstanding, and GreMovePointer() does
+         * nothing at all while that is non-zero.
+         *
+         * What is given up is that two operations drawing to overlapping parts
+         * of the screen can now interleave. The reference accepts exactly that;
+         * disjoint regions, which is the ordinary case of two windows, do not
+         * interact at all.
+         */
+        EngReleaseSemaphore(pdcFirst->ppdev->hsemDevLock);
     }
 
 #if DBG
@@ -601,6 +638,9 @@ DC_vPrepareDCsForBlit(
                                prcSecond->top,
                                prcSecond->right,
                                prcSecond->bottom) ;
+
+        /* Released for the drawing, as for the first DC above */
+        EngReleaseSemaphore(pdcSecond->ppdev->hsemDevLock);
     }
 
 #if DBG
@@ -615,6 +655,10 @@ DC_vFinishBlit(PDC pdc1, PDC pdc2)
 {
     if (pdc1->dctype == DCTYPE_DIRECT)
     {
+        /* Retaken for the pointer state alone - DC_vPrepareDCsForBlit()
+           released it before the drawing, and says why */
+        EngAcquireSemaphore(pdc1->ppdev->hsemDevLock);
+
         MouseSafetyOnDrawEnd(pdc1->ppdev);
 
         /*
@@ -646,6 +690,9 @@ DC_vFinishBlit(PDC pdc1, PDC pdc2)
     {
         if (pdc2->dctype == DCTYPE_DIRECT)
         {
+            /* Retaken for the pointer state, as for the first DC above */
+            EngAcquireSemaphore(pdc2->ppdev->hsemDevLock);
+
             MouseSafetyOnDrawEnd(pdc2->ppdev);
 
             /* Drain the write combining buffers; see above */
