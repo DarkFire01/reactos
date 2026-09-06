@@ -127,7 +127,7 @@ KiIpiSendRequestPacket(
     _In_ PKREQUEST_PACKET RequestPacket)
 {
     PKPRCB CurrentPrcb = KeGetCurrentPrcb();
-    KAFFINITY RemainingSet, SetMember;
+    KAFFINITY RemainingSet, SetMember, RemoteSet;
     PKPRCB TargetPrcb;
     KIRQL OldIrql;
     ULONG ProcessorIndex;
@@ -138,7 +138,8 @@ KiIpiSendRequestPacket(
     TargetSet &= KeActiveProcessors;
 
     /* Remove the current processor from the target set */
-    CurrentPrcb->TargetSet = TargetSet & ~CurrentPrcb->SetMember;
+    RemoteSet = TargetSet & ~CurrentPrcb->SetMember;
+    CurrentPrcb->TargetSet = RemoteSet;
 
     SenderIndex = CurrentPrcb->Number;
 
@@ -188,8 +189,24 @@ KiIpiSendRequestPacket(
         InterlockedOr64(&TargetPrcb->SenderSummary, CurrentPrcb->SetMember);
     }
 
-    /* Request an IPI with hal for all processors, except ourselves */
-    HalRequestIpi(TargetSet & ~CurrentPrcb->SetMember);
+    /*
+     * Request an IPI with hal for all processors, except ourselves - and only
+     * if that leaves anyone to interrupt.
+     *
+     * A request aimed at this processor alone reduces to an empty set here,
+     * and asking the HAL to interrupt nobody is not a harmless no-op: the
+     * uniprocessor HAL implements HalRequestIpi as __debugbreak(), on the
+     * grounds that it should never be reached. With no debugger to take the
+     * breakpoint that is STATUS_BREAKPOINT with nothing to handle it, and the
+     * machine stops at SYSTEM_THREAD_EXCEPTION_NOT_HANDLED inside hal.dll.
+     *
+     * The generic implementation in ke/ipi.c already returns early on an empty
+     * remote set for the same reason; this is the same test.
+     */
+    if (RemoteSet != 0)
+    {
+        HalRequestIpi(RemoteSet);
+    }
 
     /* Run on the current processor, if requested */
     if (TargetSet & CurrentPrcb->SetMember)
