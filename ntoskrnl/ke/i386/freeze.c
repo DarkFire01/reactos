@@ -76,6 +76,7 @@ static ULONG KiFreezeDepth;
  *
  * Only the freeze owner touches these, and there is one of those at a time.
  */
+static KAFFINITY KiFreezeActiveSet;
 static KAFFINITY KiFreezeRequested;
 static KAFFINITY KiFreezeStalled;
 
@@ -251,8 +252,26 @@ KxFreezeExecution(
     CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_OWNER | IPI_FROZEN_FLAG_ACTIVE;
     KiFreezeDepth = 1;
 
-    /* Take the processor count once, and thaw exactly this set later */
+    /*
+     * Take the processor count once, and thaw exactly this set later.
+     *
+     * Take the active set too, and drive everything below from it rather than
+     * from the count.  The two disagree for a window during AP startup:
+     * KiSystemStartup() counts a processor and publishes KiProcessorBlock[Cpu]
+     * well before it sets that processor bit in KeActiveProcessors, and in
+     * between the PRCB is still zeroed - which reads as
+     * IPI_FROZEN_STATE_RUNNING, that state being 0 - while the processor is in
+     * no position to answer anything.
+     *
+     * Iterating the count therefore asked such a processor to freeze while
+     * KiIpiSend() below, which targets KeActiveProcessors, did not signal it.
+     * The bounded waits keep that from hanging, but it still left the target
+     * holding TARGET_FREEZE, so the next freeze IPI it ever took would stop it
+     * at a moment nobody asked for.  One snapshot for both decisions keeps the
+     * set we ask and the set we signal identical.
+     */
     KiFrozenProcessorCount = (ULONG)KeNumberProcessors;
+    KiFreezeActiveSet = KeActiveProcessors;
 
     /* Nothing requested or outstanding yet */
     KiFreezeRequested = 0;
@@ -262,7 +281,8 @@ KxFreezeExecution(
     for (i = 0; i < KiFrozenProcessorCount; i++)
     {
         PKPRCB TargetPrcb = KiProcessorBlock[i];
-        if (TargetPrcb != CurrentPrcb)
+        if ((TargetPrcb != CurrentPrcb) &&
+            (KiFreezeActiveSet & AFFINITY_MASK(i)))
         {
             ULONG Spin = KI_FREEZE_SPIN_LIMIT;
 
@@ -294,7 +314,7 @@ KxFreezeExecution(
     }
 
     /* Send the freeze IPI */
-    KiIpiSend(KeActiveProcessors & ~CurrentPrcb->SetMember, IPI_FREEZE);
+    KiIpiSend(KiFreezeActiveSet & ~CurrentPrcb->SetMember, IPI_FREEZE);
 
     /* Wait for the targets we asked to be frozen */
     for (i = 0; i < KiFrozenProcessorCount; i++)

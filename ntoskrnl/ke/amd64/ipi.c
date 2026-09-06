@@ -15,6 +15,14 @@
 
 KSPIN_LOCK KiIpiSpinLock;
 
+/*
+ * How long to wait for a target, in YieldProcessor() spins.  Both waits below
+ * were unbounded, and both are held with KiIpiSpinLock, so a target that could
+ * not answer hung every sender behind it rather than just this one.  Generous
+ * enough that a healthy machine never reaches it.
+ */
+#define KI_IPI_SPIN_LIMIT 500000000
+
 /* FUNCTIONS *****************************************************************/
 
 static PKIPI_BROADCAST_WORKER KiIpiBroadcastWorkerTable[] =
@@ -124,6 +132,7 @@ KiIpiSendRequestPacket(
     KIRQL OldIrql;
     ULONG ProcessorIndex;
     ULONG SenderIndex;
+    ULONG Spin;
 
     /* Sanitize the target set */
     TargetSet &= KeActiveProcessors;
@@ -156,9 +165,18 @@ KiIpiSendRequestPacket(
         // TODO: Don't use the current processor's index, but find a free one,
         // so we can support more than 64 CPUs.
 
-        /* Wait for the mailbox slot to be available */
+        /* Wait for the mailbox slot to be available, but not for ever - a
+           target wedged with our previous packet must not wedge us too */
+        Spin = KI_IPI_SPIN_LIMIT;
         while (TargetPrcb->SenderSummary & CurrentPrcb->SetMember)
         {
+            if (--Spin == 0)
+            {
+                DPRINT1("KiIpiSendRequestPacket: processor %lu never freed our "
+                        "mailbox slot; overwriting it\n", ProcessorIndex);
+                break;
+            }
+            YieldProcessor();
             KeMemoryBarrier();
         }
 
@@ -184,9 +202,23 @@ KiIpiSendRequestPacket(
                       RequestPacket->CurrentPacket[2]);
     }
 
-    /* Wait for acknowledgement */
+    /*
+     * Wait for acknowledgement.  Bounded: giving up breaks the caller's
+     * assumption that the work ran everywhere, so say so rather than hang the
+     * machine silently with KiIpiSpinLock held.
+     */
+    Spin = KI_IPI_SPIN_LIMIT;
     while (CurrentPrcb->TargetSet != 0)
     {
+        if (--Spin == 0)
+        {
+            DPRINT1("KiIpiSendRequestPacket: worker %p still owed by processor "
+                    "set %p; giving up - the work did NOT complete everywhere\n",
+                    RequestPacket->WorkerRoutine, (PVOID)CurrentPrcb->TargetSet);
+            CurrentPrcb->TargetSet = 0;
+            break;
+        }
+        YieldProcessor();
         KeMemoryBarrier();
     }
 

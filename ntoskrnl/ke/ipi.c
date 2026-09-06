@@ -16,6 +16,15 @@
 
 extern KSPIN_LOCK KiReverseStallIpiLock;
 
+/*
+ * How long to wait for a target to retire a packet, in YieldProcessor() spins.
+ * Deliberately generous, and the same shape as KI_FREEZE_SPIN_LIMIT: a false
+ * timeout costs a broken completion guarantee and a loud message, where too
+ * short a wait on a healthy machine would be a regression that only shows up
+ * under load.
+ */
+#define KI_IPI_SPIN_LIMIT 500000000
+
 /* PRIVATE FUNCTIONS *********************************************************/
 
 #ifndef _M_AMD64
@@ -420,6 +429,7 @@ KiIpiSendRequest(
     KAFFINITY SetMember = Prcb->SetMember;
     KAFFINITY RemoteSet;
     KIRQL OldIrql;
+    ULONG Spin;
 
     /* Only ever talk to processors that are actually running */
     TargetSet &= KeActiveProcessors;
@@ -435,9 +445,21 @@ KiIpiSendRequest(
         return;
     }
 
-    /* Serialise senders: a processor may only have one packet outstanding,
-       and TargetSet below is what tells us it has been retired */
-    KeRaiseIrql(SYNCH_LEVEL, &OldIrql);
+    /*
+     * Serialise senders: a processor may only have one packet outstanding,
+     * and TargetSet below is what tells us it has been retired.
+     *
+     * Raise only if this is a raise.  SYNCH_LEVEL is below IPI_LEVEL on both
+     * i386 flavours (IPI_LEVEL - 1 or - 2), so a caller already at or above it
+     * - a KeIpiGenericCall broadcast worker that reaches a remote TLB shootdown
+     * is the way in - would ask KeRaiseIrql to lower, and DBG builds bugcheck
+     * IRQL_NOT_GREATER_OR_EQUAL on exactly that.
+     */
+    OldIrql = KeGetCurrentIrql();
+    if (OldIrql < SYNCH_LEVEL)
+    {
+        KeRaiseIrql(SYNCH_LEVEL, &OldIrql);
+    }
     KeAcquireSpinLockAtDpcLevel(&KiReverseStallIpiLock);
 
     KiIpiPublishPacket(RemoteSet,
@@ -454,10 +476,32 @@ KiIpiSendRequest(
         WorkerRoutine(NULL, Parameter1, Parameter2, Parameter3);
     }
 
-    /* The caller is entitled to assume the work is done everywhere when we
-       return - a TLB shootdown that is still in flight is worse than none */
+    /*
+     * The caller is entitled to assume the work is done everywhere when we
+     * return - a TLB shootdown that is still in flight is worse than none.
+     *
+     * Bounded, the way the freeze protocol's waits are: a target that cannot
+     * answer - already uninterruptible somewhere else, or never sent the IPI
+     * at all - held this spin for ever, and it is held with
+     * KiReverseStallIpiLock, so one stuck target took every other sender down
+     * with it.  A silent hang of the whole machine is the worst of the
+     * available outcomes.
+     *
+     * Giving up does break the guarantee in the first line, so it is not
+     * something to pass over quietly - say which processors are outstanding
+     * and which worker they owed it to.
+     */
+    Spin = KI_IPI_SPIN_LIMIT;
     while (Prcb->TargetSet != 0)
     {
+        if (--Spin == 0)
+        {
+            DPRINT1("KiIpiSendRequest: worker %p still owed by processor set %p; "
+                    "giving up - the work did NOT complete everywhere\n",
+                    WorkerRoutine, (PVOID)Prcb->TargetSet);
+            Prcb->TargetSet = 0;
+            break;
+        }
         YieldProcessor();
         KeMemoryBarrier();
     }

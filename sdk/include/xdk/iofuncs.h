@@ -276,7 +276,11 @@ READ_REGISTER_BUFFER_UCHAR(
   IN PUCHAR Buffer,
   IN ULONG Count)
 {
-  __movsb(Register, Buffer, Count);
+  /* Destination first: this reads the register INTO the buffer.  The write
+     counterparts below pass (Register, Buffer) because there the register is
+     the destination; copying that order here sent the caller's buffer into
+     the device and left the buffer untouched. */
+  __movsb(Buffer, Register, Count);
 }
 
 FORCEINLINE
@@ -286,7 +290,8 @@ READ_REGISTER_BUFFER_ULONG(
   IN PULONG Buffer,
   IN ULONG Count)
 {
-  __movsd(Register, Buffer, Count);
+  /* Destination first - see READ_REGISTER_BUFFER_UCHAR above. */
+  __movsd(Buffer, Register, Count);
 }
 
 FORCEINLINE
@@ -296,7 +301,8 @@ READ_REGISTER_BUFFER_USHORT(
   IN PUSHORT Buffer,
   IN ULONG Count)
 {
-  __movsw(Register, Buffer, Count);
+  /* Destination first - see READ_REGISTER_BUFFER_UCHAR above. */
+  __movsw(Buffer, Register, Count);
 }
 
 FORCEINLINE
