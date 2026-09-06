@@ -2129,8 +2129,23 @@ co_MsqWaitForNewMessages(PTHREADINFO pti, PWND WndFilter,
 
    UserLeaveCo();
 
-   ZwYieldExecution(); // Let someone else run!
-
+   /*
+    * No yield here: the wait below is the yield.
+    *
+    * This is the steady state of every GUI thread - queue empty, about to
+    * block - and NtYieldExecution on the way into a block is not free. Once
+    * anything at all is ready it raises to SYNCH_LEVEL, takes the thread and
+    * PRCB locks, runs KiSelectReadyThread and swaps, and on the way it resets
+    * the caller's quantum and recomputes its priority. So every pass round an
+    * idle message loop paid for a full context switch that the KeWaitForSingle
+    * Object immediately after it was going to do anyway, and on a
+    * multiprocessor the lock traffic is real rather than uncontended.
+    *
+    * The reference has no yield here. It has no NtYieldExecution call
+    * anywhere in win32k at all - the only deliberate stalls in it are
+    * KeDelayExecutionThread(0, 0, gpLockShortDelay) on specific lock retry
+    * paths, which is a different thing entirely.
+    */
    ret = KeWaitForSingleObject( pti->pEventQueueServer,
                                 UserRequest,
                                 UserMode,
