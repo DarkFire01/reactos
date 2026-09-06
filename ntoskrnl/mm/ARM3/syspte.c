@@ -231,9 +231,18 @@ MiReserveAlignedSystemPtes(IN ULONG NumberOfPtes,
     KeReleaseQueuedSpinLock(LockQueueSystemSpaceLock, OldIrql);
 
     //
-    // Flush the TLB
+    // Flush the range being handed out, not the whole TLB.
     //
-    KeFlushEntireTb(TRUE, TRUE);
+    // This ran on every system PTE reservation - so on every MDL mapping and
+    // every MmMapIoSpace, which is to say on essentially every I/O. On a
+    // uniprocessor a full flush is a CR3 reload; on a multiprocessor it is a
+    // broadcast IPI, a total TLB wipe on every processor, and the sender
+    // spinning until they all acknowledge, followed by everyone taking misses
+    // on everything they had cached. KeFlushRangeTb still falls back to the
+    // entire TLB past KxFlushIndividualGlobalPagesMaximum, so large mappings
+    // behave as they did.
+    //
+    KeFlushRangeTb(MiPteToAddress(ReturnPte), NumberOfPtes, TRUE);
 
     //
     // Return the reserved PTEs
@@ -282,9 +291,15 @@ MiReleaseSystemPtes(IN PMMPTE StartingPte,
     RtlZeroMemory(StartingPte, NumberOfPtes * sizeof(MMPTE));
 
     //
-    // Flush the TLB
+    // Flush the range these PTEs map.
     //
-    KeFlushRangeTb(StartingPte, NumberOfPtes, TRUE);
+    // This passed StartingPte - the address OF the page table entries - where
+    // a virtual address to invalidate was wanted, so the unmapped range was
+    // never actually flushed out of any TLB and some unrelated addresses were.
+    // The stale entries that left behind are why reserving a PTE had to flush
+    // the entire TLB to be safe.
+    //
+    KeFlushRangeTb(MiPteToAddress(StartingPte), NumberOfPtes, TRUE);
 
     //
     // Acquire the System PTE lock
