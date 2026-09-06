@@ -435,6 +435,10 @@ SharedFaceCache_Init(PSHARED_FACE_CACHE Cache)
     RtlInitUnicodeString(&Cache->FullName, NULL);
     RtlInitUnicodeString(&Cache->StyleName, NULL);
     RtlInitUnicodeString(&Cache->UniqueName, NULL);
+    Cache->Otm = NULL;
+    Cache->OtmSize = 0;
+    Cache->OtmWidth = 0;
+    Cache->OtmHeight = 0;
 }
 
 static PSHARED_FACE
@@ -561,6 +565,12 @@ SharedFaceCache_Release(PSHARED_FACE_CACHE Cache)
     RtlFreeUnicodeString(&Cache->FullName);
     RtlFreeUnicodeString(&Cache->StyleName);
     RtlFreeUnicodeString(&Cache->UniqueName);
+    if (Cache->Otm)
+    {
+        ExFreePoolWithTag(Cache->Otm, GDITAG_TEXT);
+        Cache->Otm = NULL;
+        Cache->OtmSize = 0;
+    }
 }
 
 static void
@@ -3226,6 +3236,26 @@ IntGetOutlineTextMetrics(PFONTGDI FontGDI,
     if (!bLocked)
         IntLockFreeType();
 
+    /*
+     * Serve a repeat request for this face at the same size from the cached
+     * blob. FindBestFontFromList() builds one of these for every installed font
+     * on every realization, and rebuilding costs a metrics pass plus four name
+     * lookups with a pool allocation each. The blob's name fields are byte
+     * offsets, so copying it out is enough. Checked under the lock: the store
+     * side below reallocates this buffer.
+     */
+    if (Otm != NULL && Cache->Otm != NULL &&
+        SharedFace->SizeRequested &&
+        Cache->OtmWidth == (LONG)SharedFace->LastReqWidth &&
+        Cache->OtmHeight == (LONG)SharedFace->LastReqHeight &&
+        Size >= Cache->OtmSize)
+    {
+        RtlCopyMemory(Otm, Cache->Otm, Cache->OtmSize);
+        if (!bLocked)
+            IntUnLockFreeType();
+        return Cache->OtmSize;
+    }
+
     IntInitFontNames(&FontNames, SharedFace);
     Cache->OutlineRequiredSize = FontNames.OtmSize;
 
@@ -3342,6 +3372,26 @@ skip_os2:
     ASSERT(pb - (BYTE*)Otm == Cache->OutlineRequiredSize);
 
     IntFreeFontNames(&FontNames);
+
+    /* Keep it for the next request at this size */
+    if (SharedFace->SizeRequested)
+    {
+        if (Cache->Otm && Cache->OtmSize != Cache->OutlineRequiredSize)
+        {
+            ExFreePoolWithTag(Cache->Otm, GDITAG_TEXT);
+            Cache->Otm = NULL;
+        }
+        if (!Cache->Otm)
+            Cache->Otm = ExAllocatePoolWithTag(PagedPool, Cache->OutlineRequiredSize,
+                                               GDITAG_TEXT);
+        if (Cache->Otm)
+        {
+            RtlCopyMemory(Cache->Otm, Otm, Cache->OutlineRequiredSize);
+            Cache->OtmSize = Cache->OutlineRequiredSize;
+            Cache->OtmWidth = (LONG)SharedFace->LastReqWidth;
+            Cache->OtmHeight = (LONG)SharedFace->LastReqHeight;
+        }
+    }
 
     return Cache->OutlineRequiredSize;
 }

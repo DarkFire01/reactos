@@ -134,6 +134,17 @@ typedef struct _SHARED_FACE_CACHE {
      */
     UNICODE_STRING StyleName;
     UNICODE_STRING UniqueName;
+    /*
+     * The last built OUTLINETEXTMETRICW for this face, and the size it was built
+     * at. FindBestFontFromList() rebuilds one of these for *every installed
+     * font* on every font realization, and each rebuild re-reads the metric
+     * tables and re-stores four names. The blob keeps its name fields as byte
+     * offsets, so it is position independent and can simply be copied out.
+     */
+    PVOID Otm;
+    UINT OtmSize;
+    LONG OtmWidth;
+    LONG OtmHeight;
 } SHARED_FACE_CACHE, *PSHARED_FACE_CACHE;
 
 typedef struct _SHARED_FACE {
