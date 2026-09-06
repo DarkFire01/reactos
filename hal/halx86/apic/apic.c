@@ -431,11 +431,22 @@ ApicInitializeLocalApic(ULONG Cpu)
     /* Read the version and save it globally */
     if (Cpu == 0) ApicVersion = ApicRead(APIC_VER);
 
-    /* Set the mode to flat (max 8 CPUs supported!) */
+    /*
+     * Flat logical destination.  The LDR carries one bit per processor in a
+     * single byte, so only the first eight can have a logical id at all; past
+     * that the machine is addressed by physical APIC id instead.
+     * HalpGetApicDestinationMode switches everything over once the processor
+     * count passes eight, and HalpBuildInterruptDestination refuses a
+     * multi-processor logical target there rather than aliasing one.
+     *
+     * ApicLogicalId is (UCHAR)(1 << Cpu), which quietly becomes 0 from
+     * processor eight on - and 0 is not a harmless value, it is the "match
+     * nothing" encoding.  Written while the DFR still claims flat mode, it
+     * leaves a processor that looks addressable and is not.  Be explicit:
+     * those processors have no logical id, and nothing may try to use one.
+     */
     ApicWrite(APIC_DFR, APIC_DF_Flat);
-
-    /* Set logical apic ID */
-    ApicWrite(APIC_LDR, ApicLogicalId(Cpu) << 24);
+    ApicWrite(APIC_LDR, (Cpu < 8) ? ((ULONG)ApicLogicalId(Cpu) << 24) : 0);
 
     /* Set the spurious ISR */
     KeRegisterInterruptHandler(APIC_SPURIOUS_VECTOR, ApicSpuriousService);
@@ -511,10 +522,22 @@ HalpAllocateSystemInterrupt(
     ASSERT(Irq < HalpMaxGsi);
     ASSERT(HalpVectorToIndex[Vector] == APIC_FREE_VECTOR);
 
-    /* Setup a redirection entry */
+    /*
+     * Set up a masked redirection entry aimed at this processor.
+     *
+     * Destination below is ApicRead(APIC_ID) >> 24 - a physical APIC id - so
+     * the mode has to say physical.  Declaring logical made the field a flat
+     * bitmask of logical ids instead, which for the boot processor (APIC id 0)
+     * is the encoding that matches no processor at all.  It went unnoticed
+     * because the entry is created masked and HalpSetRedirectionEntry rewrites
+     * mode and destination together before unmasking it; anything that enabled
+     * one without going through there would have found a line that fires into
+     * nowhere.  Physical/fixed is also what the two sibling initialisers in
+     * ApicInitializeIOApic write.
+     */
     ReDirReg.Vector = Vector;
-    ReDirReg.MessageType = APIC_MT_LowestPriority;
-    ReDirReg.DestinationMode = APIC_DM_Logical;
+    ReDirReg.MessageType = APIC_MT_Fixed;
+    ReDirReg.DestinationMode = APIC_DM_Physical;
     ReDirReg.DeliveryStatus = 0;
     ReDirReg.Polarity = 0;
     ReDirReg.RemoteIRR = 0;
