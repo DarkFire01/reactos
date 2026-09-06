@@ -655,11 +655,10 @@ KiGeneralProtectionFaultHandler(
     {
         /* Not implemented */
         UNIMPLEMENTED;
-        ASSERT(FALSE);
     }
 
     /* Check for RDMSR/WRMSR */
-    if ((Instructions[0] == 0xF) &&            // 2-byte opcode
+    else if ((Instructions[0] == 0xF) &&       // 2-byte opcode
         ((Instructions[1] == 0x30) ||        // RDMSR
          (Instructions[1] == 0x32)))         // WRMSR
     {
@@ -667,8 +666,27 @@ KiGeneralProtectionFaultHandler(
         return STATUS_ACCESS_VIOLATION;
     }
 
-    ASSERT(FALSE);
-    return STATUS_UNSUCCESSFUL;
+    /*
+     * Every other kernel-mode general protection fault is dispatched as an
+     * exception, which is what the caller is written to do: KiGpfExit in
+     * trap.S turns this status into a DispatchException, and from there it
+     * reaches the frames that might handle it and, failing that, a bugcheck
+     * that carries the faulting context.
+     *
+     * Asserting here instead took all of that away. An assertion is a
+     * breakpoint, so on a machine with no debugger to answer it the fault
+     * became STATUS_ASSERTION_FAILURE inside this handler - a bugcheck that
+     * names except.c and says nothing whatsoever about the instruction that
+     * actually faulted, which is the only thing worth knowing.
+     *
+     * The reference does not examine opcodes here at all: KiGeneralProtectionFault
+     * dispatches an exception with two parameters, the shape the caller's
+     * DispatchAccessViolation path already produces.
+     */
+    DPRINT1("Kernel-mode general protection fault at %p (opcode %02x %02x)\n",
+            (PVOID)TrapFrame->Rip, Instructions[0], Instructions[1]);
+
+    return STATUS_ACCESS_VIOLATION;
 }
 
 NTSTATUS
