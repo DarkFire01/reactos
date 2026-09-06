@@ -502,12 +502,70 @@ CreateSetSinglePixel(FILE *Out, unsigned Bpp, PROPINFO RopInfo, int Flags,
     Output(Out, "DestPtr = (PULONG)((char *) DestPtr + %u);\n", Bpp / 8);
 }
 
+/*
+ * The work done for one destination unit of the centre run: fetch the source,
+ * fetch the pattern, apply the rop, step the destination.
+ *
+ * Chunked says the caller has already established that this unit cannot reach
+ * the end of the pattern row, so the pattern is a plain indexed read with no
+ * wrap test - see CreateBitCase() for why that is worth separating out.
+ */
+static void
+CreateCenterBody(FILE *Out, unsigned Bpp, PROPINFO RopInfo, int Flags,
+                 unsigned SourceBpp, int Chunked)
+{
+    unsigned Partial;
+
+    if (RopInfo->UsesSource && 0 == (Flags & FLAG_FORCENOUSESSOURCE))
+    {
+        for (Partial = 0; Partial < 32 / Bpp; Partial++)
+        {
+            CreateGetSource(Out, Bpp, RopInfo, Flags, SourceBpp, Partial * Bpp);
+            MARK(Out);
+        }
+        Output(Out, "\n");
+    }
+    if (RopInfo->UsesPattern && 0 != (Flags & FLAG_PATTERNSURFACE))
+    {
+        if (Chunked)
+        {
+            Output(Out, "Pattern = PatternRow[PatternX + PatternIndex];\n");
+            Output(Out, "\n");
+        }
+        else
+        {
+            for (Partial = 0; Partial < 32 / Bpp; Partial++)
+            {
+                if (0 == Partial)
+                {
+                    Output(Out, "Pattern = PatternRow ? PatternRow[PatternX] :\n");
+                    Output(Out, "    DIB_GetSourceIndex(BltInfo->PatternSurface, PatternX, PatternY);\n");
+                }
+                else
+                {
+                    Output(Out, "Pattern |= (PatternRow ? PatternRow[PatternX] :\n");
+                    Output(Out, "    DIB_GetSourceIndex(BltInfo->PatternSurface, PatternX, PatternY)) << %u;\n", Partial * Bpp);
+                }
+                /* PatternCacheWidth holds the same value, already in a register */
+                Output(Out, "if (PatternCacheWidth <= ++PatternX)\n");
+                Output(Out, "{\n");
+                Output(Out, "PatternX -= PatternCacheWidth;\n");
+                Output(Out, "}\n");
+            }
+            Output(Out, "\n");
+        }
+    }
+    CreateOperation(Out, Bpp, RopInfo, SourceBpp, 32);
+    Output(Out, ";\n");
+    MARK(Out);
+    Output(Out, "\n");
+    Output(Out, "DestPtr++;\n");
+}
+
 static void
 CreateBitCase(FILE *Out, unsigned Bpp, PROPINFO RopInfo, int Flags,
               unsigned SourceBpp)
 {
-    unsigned Partial;
-
     MARK(Out);
     if (RopInfo->UsesSource)
     {
@@ -618,46 +676,59 @@ CreateBitCase(FILE *Out, unsigned Bpp, PROPINFO RopInfo, int Flags,
             Output(Out, "}\n");
             Output(Out, "\n");
         }
-        Output(Out, "for (i = 0; i < CenterCount; i++)\n");
-        Output(Out, "{\n");
-        if (RopInfo->UsesSource && 0 == (Flags & FLAG_FORCENOUSESSOURCE))
+        if (32 == Bpp && RopInfo->UsesPattern &&
+            0 != (Flags & FLAG_PATTERNSURFACE))
         {
-            for (Partial = 0; Partial < 32 / Bpp; Partial++)
-            {
-                CreateGetSource(Out, Bpp, RopInfo, Flags, SourceBpp,
-                                Partial * Bpp);
-                MARK(Out);
-            }
+            /*
+             * Walk the run in stretches that stop where the pattern row wraps.
+             * Inside a stretch the pattern index only ever increases, so the
+             * wrap test - a compare and a branch that was being paid on every
+             * destination unit to re-derive an index into an eight entry row -
+             * leaves the loop entirely, and what is left is two arrays being
+             * combined at a fixed offset.
+             *
+             * Needs the cached row, so the uncached case keeps the plain loop.
+             */
+            Output(Out, "if (PatternRow)\n");
+            Output(Out, "{\n");
+            Output(Out, "i = 0;\n");
+            Output(Out, "while (i < CenterCount)\n");
+            Output(Out, "{\n");
+            Output(Out, "PatternRun = PatternCacheWidth - PatternX;\n");
+            Output(Out, "if (PatternRun > (LONG)(CenterCount - i))\n");
+            Output(Out, "{\n");
+            Output(Out, "PatternRun = (LONG)(CenterCount - i);\n");
+            Output(Out, "}\n");
             Output(Out, "\n");
+            Output(Out, "for (PatternIndex = 0; PatternIndex < PatternRun; PatternIndex++)\n");
+            Output(Out, "{\n");
+            CreateCenterBody(Out, Bpp, RopInfo, Flags, SourceBpp, 1);
+            Output(Out, "}\n");
+            Output(Out, "\n");
+            Output(Out, "i += PatternRun;\n");
+            /* The run stopped on the wrap, so this lands exactly on zero */
+            Output(Out, "PatternX += PatternRun;\n");
+            Output(Out, "if (PatternX >= PatternCacheWidth)\n");
+            Output(Out, "{\n");
+            Output(Out, "PatternX = 0;\n");
+            Output(Out, "}\n");
+            Output(Out, "}\n");
+            Output(Out, "}\n");
+            Output(Out, "else\n");
+            Output(Out, "{\n");
+            Output(Out, "for (i = 0; i < CenterCount; i++)\n");
+            Output(Out, "{\n");
+            CreateCenterBody(Out, Bpp, RopInfo, Flags, SourceBpp, 0);
+            Output(Out, "}\n");
+            Output(Out, "}\n");
         }
-        if (RopInfo->UsesPattern && 0 != (Flags & FLAG_PATTERNSURFACE))
+        else
         {
-            for (Partial = 0; Partial < 32 / Bpp; Partial++)
-            {
-                if (0 == Partial)
-                {
-                    Output(Out, "Pattern = PatternRow ? PatternRow[PatternX] :\n");
-                    Output(Out, "    DIB_GetSourceIndex(BltInfo->PatternSurface, PatternX, PatternY);\n");
-                }
-                else
-                {
-                    Output(Out, "Pattern |= (PatternRow ? PatternRow[PatternX] :\n");
-                    Output(Out, "    DIB_GetSourceIndex(BltInfo->PatternSurface, PatternX, PatternY)) << %u;\n", Partial * Bpp);
-                }
-                /* PatternCacheWidth holds the same value, already in a register */
-                Output(Out, "if (PatternCacheWidth <= ++PatternX)\n");
-                Output(Out, "{\n");
-                Output(Out, "PatternX -= PatternCacheWidth;\n");
-                Output(Out, "}\n");
-            }
-            Output(Out, "\n");
+            Output(Out, "for (i = 0; i < CenterCount; i++)\n");
+            Output(Out, "{\n");
+            CreateCenterBody(Out, Bpp, RopInfo, Flags, SourceBpp, 0);
+            Output(Out, "}\n");
         }
-        CreateOperation(Out, Bpp, RopInfo, SourceBpp, 32);
-        Output(Out, ";\n");
-        MARK(Out);
-        Output(Out, "\n");
-        Output(Out, "DestPtr++;\n");
-        Output(Out, "}\n");
         Output(Out, "\n");
         if (32 != Bpp)
         {
@@ -834,6 +905,11 @@ CreatePrimitive(FILE *Out, unsigned Bpp, PROPINFO RopInfo)
             Output(Out, "ULONG PatternRowCache[DIB_PATTERN_CACHE_MAX];\n");
             Output(Out, "PULONG PatternRow = NULL;\n");
             Output(Out, "LONG PatternCacheIndex, PatternCacheWidth = 0;\n");
+            if (32 == Bpp)
+            {
+                /* Only the 32bpp centre run is walked in stretches */
+                Output(Out, "LONG PatternRun = 0, PatternIndex = 0;\n");
+            }
         }
         First = 1;
         if (RopInfo->UsesSource)
