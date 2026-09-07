@@ -137,6 +137,26 @@ OpenInputDevice(PHANDLE pHandle, PFILE_OBJECT *ppObject, CONST WCHAR *pszDeviceN
  * Reads data from input devices and supports win32 timers
  */
 VOID NTAPI
+/*
+ * How many input packets to lift out of a class driver per read.
+ *
+ * mouclass and kbdclass already hand back as many as fit in the buffer and
+ * report the count in IoStatus.Information; asking for exactly one was what
+ * limited us to one. Each packet then cost its own wait, its own read and -
+ * the part that hurts - its own acquisition of the global USER lock, taken
+ * exclusively, against every GUI thread in the system. Dragging a window is
+ * precisely when that thread is producing packets fastest and the dragged
+ * application is pumping messages hardest, so the two fought over the lock
+ * for every single mouse report.
+ *
+ * Batching is self-correcting: when the machine is idle a read returns the
+ * one packet that is there and nothing changes, and when it falls behind the
+ * batches grow, so the lock cost per packet drops exactly when it matters.
+ * A read still completes as soon as one packet is available - the class
+ * driver does not wait to fill the buffer - so this adds no latency.
+ */
+#define RIT_INPUT_BATCH 16
+
 RawInputThreadMain(VOID)
 {
     NTSTATUS MouStatus = STATUS_UNSUCCESSFUL, KbdStatus = STATUS_UNSUCCESSFUL, Status;
@@ -147,8 +167,9 @@ RawInputThreadMain(VOID)
     PVOID WaitObjects[4], pSignaledObject = NULL;
     KWAIT_BLOCK WaitBlockArray[RTL_NUMBER_OF(WaitObjects)];
     ULONG cWaitObjects = 0, cMaxWaitObjects = 2;
-    MOUSE_INPUT_DATA MouseInput;
-    KEYBOARD_INPUT_DATA KeyInput;
+    MOUSE_INPUT_DATA MouseInput[RIT_INPUT_BATCH];
+    KEYBOARD_INPUT_DATA KeyInput[RIT_INPUT_BATCH];
+    ULONG cInput, iInput;
     PVOID ShutdownEvent;
     HWINSTA hWinSta;
 
@@ -240,8 +261,8 @@ RawInputThreadMain(VOID)
                                        NULL,
                                        NULL,
                                        &MouIosb,
-                                       &MouseInput,
-                                       sizeof(MOUSE_INPUT_DATA),
+                                       MouseInput,
+                                       sizeof(MouseInput),
                                        &ByteOffset,
                                        NULL);
             }
@@ -260,8 +281,8 @@ RawInputThreadMain(VOID)
                                        NULL,
                                        NULL,
                                        &KbdIosb,
-                                       &KeyInput,
-                                       sizeof(KEYBOARD_INPUT_DATA),
+                                       KeyInput,
+                                       sizeof(KeyInput),
                                        &ByteOffset,
                                        NULL);
 
@@ -320,8 +341,12 @@ RawInputThreadMain(VOID)
             IntLastInputTick(TRUE);
 
             /* Process data */
+            cInput = (ULONG)(MouIosb.Information / sizeof(MOUSE_INPUT_DATA));
+
+            /* One acquisition for the whole batch, not one per packet */
             UserEnterExclusive();
-            UserProcessMouseInput(&MouseInput);
+            for (iInput = 0; iInput < cInput; iInput++)
+                UserProcessMouseInput(&MouseInput[iInput]);
             UserLeave();
         }
         else if (MouStatus != STATUS_PENDING)
@@ -331,15 +356,18 @@ RawInputThreadMain(VOID)
         if (NT_SUCCESS(KbdStatus) && KbdStatus != STATUS_PENDING)
         {
             TRACE("KeyboardEvent: %s %04x\n",
-                  (KeyInput.Flags & KEY_BREAK) ? "up" : "down",
-                  KeyInput.MakeCode);
+                  (KeyInput[0].Flags & KEY_BREAK) ? "up" : "down",
+                  KeyInput[0].MakeCode);
 
             /* Set LastInputTick */
             IntLastInputTick(TRUE);
 
             /* Process data */
+            cInput = (ULONG)(KbdIosb.Information / sizeof(KEYBOARD_INPUT_DATA));
+
             UserEnterExclusive();
-            UserProcessKeyboardInput(&KeyInput);
+            for (iInput = 0; iInput < cInput; iInput++)
+                UserProcessKeyboardInput(&KeyInput[iInput]);
             UserLeave();
         }
         else if (KbdStatus != STATUS_PENDING)
