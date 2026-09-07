@@ -1528,8 +1528,12 @@ KdbEnterDebuggerException(
             return kdHandleException;
         }
 
-        KdbPrintf("\nEntered debugger on embedded INT3 at 0x%04x:0x%p.\n",
-                  Context->SegCs & 0xffff, KeGetContextPc(Context));
+        KdbPrintf("\nEntered debugger on embedded INT3 at 0x%04x:0x%p "
+                  "(subcode %lu, %lu parameter(s)).\n",
+                  Context->SegCs & 0xffff, KeGetContextPc(Context),
+                  (ExceptionRecord && (ExceptionRecord->NumberParameters > 0)) ?
+                      (ULONG)ExceptionRecord->ExceptionInformation[0] : 0,
+                  ExceptionRecord ? ExceptionRecord->NumberParameters : 0);
 
         /*
          * Show the bytes around it. An INT3 is one 0xCC byte, so if none is
