@@ -141,7 +141,11 @@ HalInitializeBios(
         x86BiosMemoryMapping = MmGetSystemAddressForMdlSafe(Mdl, HighPagePriority);
         ASSERT(x86BiosMemoryMapping);
 
-        DPRINT1("*x86BiosMemoryMapping: %p, %p\n",
+        /* Say where it landed, not just what is in it: this is a megabyte of
+           System PTE space holding low physical memory, and an address that
+           falls inside it is real-mode data rather than anybody's code. */
+        DPRINT1("x86BiosMemoryMapping at %p..%p, first words %p %p\n",
+                x86BiosMemoryMapping, x86BiosMemoryMapping + 0x100000,
                 *(PVOID*)x86BiosMemoryMapping, *(PVOID*)(x86BiosMemoryMapping + 8));
         //DbgDumpPage(x86BiosMemoryMapping, 0xc351);
 
