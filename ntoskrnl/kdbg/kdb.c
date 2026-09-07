@@ -1536,6 +1536,26 @@ KdbEnterDebuggerException(
                   ExceptionRecord ? ExceptionRecord->NumberParameters : 0);
 
         /*
+         * The address the trap itself reported, and which processor saw it.
+         *
+         * KiDebugHandler() puts TrapFrame->Eip - (subcode == BREAKPOINT_BREAK)
+         * in the record and KiDispatchException() then decrements the context
+         * PC again for every STATUS_BREAKPOINT, so the two disagree by exactly
+         * one for a real INT3 and by nothing for the DebugService subclasses.
+         * Which of those happened is not otherwise recoverable from here.
+         */
+        if (ExceptionRecord != NULL)
+        {
+            KdbPrintf("  cpu %u  ExceptionAddress 0x%p  params %p %p\n",
+                      KeGetCurrentProcessorNumber(),
+                      (PVOID)(ULONG_PTR)ExceptionRecord->ExceptionAddress,
+                      (ExceptionRecord->NumberParameters > 1) ?
+                          (PVOID)(ULONG_PTR)ExceptionRecord->ExceptionInformation[1] : NULL,
+                      (ExceptionRecord->NumberParameters > 2) ?
+                          (PVOID)(ULONG_PTR)ExceptionRecord->ExceptionInformation[2] : NULL);
+        }
+
+        /*
          * Show the bytes around it. An INT3 is one 0xCC byte, so if none is
          * here then whatever stopped us was not an embedded breakpoint at
          * this address and the report is describing the wrong thing.
