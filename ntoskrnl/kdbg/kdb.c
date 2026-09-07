@@ -1507,6 +1507,23 @@ KdbEnterDebuggerException(
 
         KdbPrintf("\nEntered debugger on embedded INT3 at 0x%04x:0x%p.\n",
                   Context->SegCs & 0xffff, KeGetContextPc(Context));
+
+        /*
+         * Show the bytes around it. An INT3 is one 0xCC byte, so if none is
+         * here then whatever stopped us was not an embedded breakpoint at
+         * this address and the report is describing the wrong thing.
+         */
+        {
+            UCHAR Bytes[8] = {0};
+            PVOID At = (PVOID)((ULONG_PTR)KeGetContextPc(Context) - 4);
+
+            if (NT_SUCCESS(KdbpSafeReadMemory(Bytes, At, sizeof(Bytes))))
+            {
+                KdbPrintf("Bytes at 0x%p: %02x %02x %02x %02x [%02x] %02x %02x %02x\n",
+                          At, Bytes[0], Bytes[1], Bytes[2], Bytes[3],
+                          Bytes[4], Bytes[5], Bytes[6], Bytes[7]);
+            }
+        }
 EnterKdbg:;
     }
     else
