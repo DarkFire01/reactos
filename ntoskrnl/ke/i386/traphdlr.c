@@ -1208,7 +1208,22 @@ KiTrap0DHandler(IN PKTRAP_FRAME TrapFrame)
     }
     else
     {
-        /* Whatever it is, we can't handle it */
+        /*
+         * Whatever it is, we can't handle it. Name it on the way out.
+         *
+         * Bugcheck 0x7F carries only the trap number - 0xD and three
+         * zeroes - and KDB's frame walk off a general protection fault
+         * routinely lands in garbage, so on a machine with no debugger
+         * attached this said nothing at all about where the fault was.
+         * The faulting address, the error code and the first bytes at that
+         * address are enough to place it in a module and disassemble it.
+         */
+        DPRINT1("Kernel-mode general protection fault at %p, error code %lx, "
+                "opcode %02x %02x %02x\n",
+                (PVOID)TrapFrame->Eip,
+                TrapFrame->ErrCode,
+                Instructions[0], Instructions[1], Instructions[2]);
+
         KiSystemFatalException(EXCEPTION_GP_FAULT, TrapFrame);
     }
 
