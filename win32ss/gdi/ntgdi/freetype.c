@@ -6936,7 +6936,7 @@ IntExtTextOutW(
      */
 
     PDC_ATTR pdcattr;
-    SURFOBJ *psoDest, *psoGlyph;
+    SURFOBJ *psoDest, *psoGlyph, *psoGlyphRef;
     PFONT_CACHE_ENTRY pGlyphEntry;
     SURFACE *psurf;
     INT glyph_index, i;
@@ -7268,6 +7268,19 @@ IntExtTextOutW(
             }
 
             /*
+             * A reference of our own on the glyph bitmap, so that the blit
+             * below can run with the font lock dropped.
+             *
+             * The cache entry owns the only other one, and may be evicted the
+             * moment the lock is released. That is survivable: deleting a GDI
+             * object that still has references outstanding only marks it
+             * BASEFLAG_READY_TO_DIE, and the memory goes when the last
+             * reference does - so the surface stays valid for as long as this
+             * one is held, whatever happens to the entry that cached it.
+             */
+            psoGlyphRef = EngLockSurface((HSURF)pGlyphEntry->hbmGlyph);
+
+            /*
              * Use the font data as a mask to paint onto the DCs surface using a
              * brush.
              */
@@ -7288,8 +7301,28 @@ IntExtTextOutW(
                 }
             }
 
+            /*
+             * Drawing the glyph is the bulk of drawing text, and none of it
+             * touches FreeType: it reads a bitmap that is already rendered and
+             * writes the destination surface. The lock it was being done under
+             * is a single exclusive fast mutex covering every font operation in
+             * the system, so holding it here made all text drawing serial - one
+             * processor's worth, no matter how many are present, and worse with
+             * each one added, because each handover moves the mutex between
+             * caches and blocks the loser.
+             *
+             * The reference does not have this to give up: its glyph cache
+             * belongs to the realized font (RFONTOBJ::bAllocateCache, vInsert,
+             * vRemove), so two threads drawing text contend only when they
+             * share a font, and never for the blit.
+             */
+            if (psoGlyphRef != NULL)
+            {
+                IntUnLockFreeType();
+            }
+
             if (!IntEngMaskBlt(psoDest,
-                               psoGlyph,
+                               psoGlyphRef ? psoGlyphRef : psoGlyph,
                                (CLIPOBJ *)&dc->co,
                                &exloRGB2Dst.xlo,
                                &exloDst2RGB.xlo,
@@ -7299,6 +7332,13 @@ IntExtTextOutW(
                                &g_PointZero))
             {
                 DPRINT1("Failed to MaskBlt a glyph!\n");
+            }
+
+            if (psoGlyphRef != NULL)
+            {
+                IntLockFreeType();
+                EngUnlockSurface(psoGlyphRef);
+                psoGlyphRef = NULL;
             }
 
         }
