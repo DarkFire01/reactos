@@ -505,7 +505,7 @@ IopQueryBootDevicePollTimeout(
     UNICODE_STRING KeyName =
         RTL_CONSTANT_STRING(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\PnP");
     PKEY_VALUE_FULL_INFORMATION ValueInformation;
-    LONG Timeout = 0;
+    LONG Timeout = PNP_DEFAULT_POLL_BOOT_PARTITION_TIMEOUT;
     HANDLE PnpKey;
     NTSTATUS Status;
 
@@ -514,7 +514,7 @@ IopQueryBootDevicePollTimeout(
     Status = IopOpenRegistryKeyEx(&PnpKey, NULL, &KeyName, KEY_READ);
     if (!NT_SUCCESS(Status))
     {
-        return 0;
+        return Timeout;
     }
 
     Status = IopGetRegistryValue(PnpKey, L"PollBootPartitionTimeout", &ValueInformation);

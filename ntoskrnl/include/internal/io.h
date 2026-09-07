@@ -893,6 +893,19 @@ IopGetRegistryValue(
 #define PNP_POLL_BOOT_PARTITION_INTERVAL    200     /* milliseconds */
 #define PNP_MAX_POLL_BOOT_PARTITION_TIMEOUT 180000  /* milliseconds */
 
+/*
+ * What to allow when the registry says nothing, which is the ordinary case:
+ * nothing in the tree writes PollBootPartitionTimeout, so an installation does
+ * not have it. Reading that absence as a budget of zero left the loop below
+ * making one attempt and bugchecking - the wait existed but never waited, and
+ * whether the machine booted came down to whether the disk happened to have
+ * finished enumerating at that instant.
+ *
+ * A value in the registry still decides, including a deliberate zero to switch
+ * the polling off.
+ */
+#define PNP_DEFAULT_POLL_BOOT_PARTITION_TIMEOUT 10000 /* milliseconds */
+
 typedef
 NTSTATUS
 (NTAPI *PIOP_BOOT_DEVICE_WAIT_ROUTINE)(
