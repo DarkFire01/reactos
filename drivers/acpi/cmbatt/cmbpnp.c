@@ -722,6 +722,14 @@ CmBattAddBattery(IN PDRIVER_OBJECT DriverObject,
         FdoExtension->DbgString = "CmBattWmiRegistration failed";
         if (CmBattDebug & 0xC)
             DbgPrint("CmBattAddBattery: Could not register as a WMI provider, status = %Lx\n", Status);
+
+        /* Undo the rest, the way every other failure here does - returning
+           an error while leaving the FDO attached leaves a battery in the
+           stack that PnP believes was never added */
+        BatteryClassUnload(FdoExtension->ClassData);
+        FdoExtension->ClassData = NULL;
+        IoDetachDevice(FdoExtension->AttachedDevice);
+        CmBattDestroyFdo(FdoExtension->FdoDeviceObject);
         return Status;
     }
 
@@ -734,10 +742,16 @@ CmBattAddBattery(IN PDRIVER_OBJECT DriverObject,
         FdoExtension->DbgString = "RegisterForDeviceNotifications failed";
         CmBattWmiDeRegistration(FdoExtension);
         BatteryClassUnload(FdoExtension->ClassData);
+        FdoExtension->ClassData = NULL;
         IoDetachDevice(FdoExtension->AttachedDevice);
         CmBattDestroyFdo(FdoExtension->FdoDeviceObject);
         if (CmBattDebug & 0xC)
             DbgPrint("CmBattAddBattery: Could not register for battery notify, status = %Lx\n", Status);
+
+        /* The extension lived in the device object that was just deleted,
+           so nothing below may touch it - this used to fall through and
+           write DbgString into freed memory */
+        return Status;
     }
 
     /* Return status */
