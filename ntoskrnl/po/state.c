@@ -181,10 +181,10 @@ PopInvokeSystemStateHandler(
 {
     NTSTATUS Status;
     KIRQL OldIrql;
-    KDPC StateHandlerDpc;
+    PKDPC StateHandlerDpc = NULL;
     ULONG ProcessorsCount, ProcessorIndex;
     PPOWER_STATE_HANDLER StateHandler;
-    LONG CpuNumber = KeGetCurrentPrcb()->Number;
+    LONG CpuNumber;
 
     /* FIXME: Hibernation support is currently not implemented yet */
     UNREFERENCED_PARAMETER(HiberContext);
@@ -217,6 +217,29 @@ PopInvokeSystemStateHandler(
     ProcessorsCount = PopQueryActiveProcessors();
 
     /*
+     * A DPC object can only be queued to one processor at a time:
+     * KeInsertQueueDpc claims it with an interlocked compare-exchange on
+     * Dpc->DpcData and does nothing at all when that field is already set.
+     * Reusing a single object around the loop below therefore queues the
+     * handler to the first target only and silently drops every other
+     * processor, which then keeps running while the machine is being powered
+     * down. Give each target its own object, and take them from pool rather
+     * than from this frame: a processor that receives one halts inside the
+     * handler and never dequeues it, so it has to outlive this function.
+     */
+    if (ProcessorsCount > 1)
+    {
+        StateHandlerDpc = ExAllocatePoolZero(NonPagedPool,
+                                             ProcessorsCount * sizeof(KDPC),
+                                             TAG_PO);
+        if (StateHandlerDpc == NULL)
+        {
+            DPRINT1("Failed to allocate %lu state handler DPCs, only the boot "
+                    "processor will be handled\n", ProcessorsCount);
+        }
+    }
+
+    /*
      * Have the function calling thread be running on the boot processor and
      * increase the IRQL to dispatch level. We do this because the boot processor
      * is the one invoking issuing state handler DPC to every other processor of
@@ -224,6 +247,15 @@ PopInvokeSystemStateHandler(
      */
     KeSetSystemAffinityThread(1);
     KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
+
+    /*
+     * We are pinned to the boot processor from here on, so read our own number
+     * now. It is what the state handler is told below, and the default handler
+     * uses it to decide which processor draws the shutdown screen - reading it
+     * before the affinity change above would name whichever processor this
+     * thread happened to be running on at the time.
+     */
+    CpuNumber = KeGetCurrentPrcb()->Number;
 
     /*
      * If this is a MP machine we have to invoke the system state
@@ -255,7 +287,7 @@ PopInvokeSystemStateHandler(
      * state handler for PowerStateShutdownOff as such systems by definition might not support any of the
      * system states mentioned.
      */
-    if (ProcessorsCount > 1)
+    if (StateHandlerDpc != NULL)
     {
         /*
          * Setup a state handler command DPC which we will enqueue it to every
@@ -263,9 +295,6 @@ PopInvokeSystemStateHandler(
          * processor executes the system state handler separately and handles
          * their own processor context data by themselves.
          */
-        KeInitializeDpc(&StateHandlerDpc, PopStateHandlerProcessorDpc, StateHandler);
-        KeSetImportanceDpc(&StateHandlerDpc, HighImportance);
-
         for (ProcessorIndex = 0;
              ProcessorIndex < ProcessorsCount;
              ProcessorIndex++)
@@ -274,13 +303,19 @@ PopInvokeSystemStateHandler(
              * Of course make sure that we do not insert the DPC for the boot
              * processor, thereby hurting ourselves by spinning it forever.
              */
-            if (ProcessorIndex != KeGetCurrentPrcb()->Number)
+            if (ProcessorIndex != (ULONG)CpuNumber)
             {
+                KeInitializeDpc(&StateHandlerDpc[ProcessorIndex],
+                                PopStateHandlerProcessorDpc,
+                                StateHandler);
+                KeSetImportanceDpc(&StateHandlerDpc[ProcessorIndex], HighImportance);
+
                 /* Assign the DPC to the target processor */
-                KeSetTargetProcessorDpc(&StateHandlerDpc, ProcessorIndex);
+                KeSetTargetProcessorDpc(&StateHandlerDpc[ProcessorIndex],
+                                        (CCHAR)ProcessorIndex);
 
                 /* Insert the DPC to the target processor in queue */
-                KeInsertQueueDpc(&StateHandlerDpc, NULL, NULL);
+                KeInsertQueueDpc(&StateHandlerDpc[ProcessorIndex], NULL, NULL);
             }
         }
     }
