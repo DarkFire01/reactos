@@ -1413,6 +1413,8 @@ HalEnableSystemInterrupt(
     IOAPIC_REDIRECTION_REGISTER ReDirReg;
     KINTERRUPT_POLARITY ResolvedPolarity = InterruptPolarityUnknown;
     UCHAR Index;
+    ULONG Cpu;
+    BOOLEAN UseLogical;
     ASSERT(Irql <= HIGH_LEVEL);
     ASSERT((IrqlToTpr(Irql) & 0xF0) == (Vector & 0xF0));
 
@@ -1497,25 +1499,69 @@ HalEnableSystemInterrupt(
     /* Read the redirection entry */
     ReDirReg = ApicReadIORedirectionEntry(Index);
 
+    /*
+     * Work out how this processor is to be addressed.
+     *
+     * KeConnectInterrupt() calls here once for every processor in the
+     * interrupt's affinity, each time running on that processor, and the
+     * reference HAL folds those calls together. halmacpi's
+     * HalpEnableSystemInterrupt (VistaHal/interrupt/interrupt.c, c:15073)
+     * composes the redirection low word once - logical lowest-priority
+     * delivery, unless physical mode is forced - and then walks the affinity
+     * mask calling HalpEnableRedirEntry(Inti, entryLow, proc) once per
+     * processor, so the entry ends up naming all of them.
+     *
+     * Programming Destination to the running processor's physical APIC id
+     * instead, and then returning early for every processor after the first
+     * because the entry is no longer masked, pinned every device interrupt to
+     * whichever processor happened to connect it first. The others carry the
+     * vector in their IDTs and never see it.
+     *
+     * Flat logical addressing carries one bit per processor and so reaches
+     * only the first eight - which is what HalpGetApicDestinationMode()
+     * reports. Past that the reference forces physical mode and refuses a
+     * multi-processor target; do the same and leave the entry naming the
+     * connecting processor.
+     */
+    Cpu = KeGetCurrentProcessorNumber();
+    UseLogical = (HalpGetApicDestinationMode() == ApicDestinationModeLogicalFlat) &&
+                 (Cpu < 8);
+
     /* Check if the interrupt is already enabled */
     if (ReDirReg.Mask == FALSE)
     {
-        /* If the vector matches, there is nothing more to do,
-           otherwise something is wrong. */
-        if (ReDirReg.Vector != Vector)
+        /* Carrying this vector already: add this processor to it as well */
+        if (ReDirReg.Vector == Vector)
         {
-            DPRINT1("HalEnableSystemInterrupt: vector 0x%lx irql %u input %u - "
-                    "already unmasked carrying vector 0x%lx\n",
-                    Vector, Irql, Index, (ULONG)ReDirReg.Vector);
+            if (UseLogical && (ReDirReg.DestinationMode == APIC_DM_Logical))
+            {
+                ReDirReg.Destination |= ApicLogicalId(Cpu);
+                ApicWriteIORedirectionEntry(Index, ReDirReg);
+            }
+            return TRUE;
         }
-        return (ReDirReg.Vector == Vector);
+
+        /* Something else owns the input - leave it alone */
+        DPRINT1("HalEnableSystemInterrupt: vector 0x%lx irql %u input %u - "
+                "already unmasked carrying vector 0x%lx\n",
+                Vector, Irql, Index, (ULONG)ReDirReg.Vector);
+        return FALSE;
     }
 
     /* Set up the redirection entry */
     ReDirReg.Vector = Vector;
-    ReDirReg.MessageType = APIC_MT_Fixed;
-    ReDirReg.DestinationMode = APIC_DM_Physical;
-    ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
+    if (UseLogical)
+    {
+        ReDirReg.MessageType = APIC_MT_LowestPriority;
+        ReDirReg.DestinationMode = APIC_DM_Logical;
+        ReDirReg.Destination = ApicLogicalId(Cpu);
+    }
+    else
+    {
+        ReDirReg.MessageType = APIC_MT_Fixed;
+        ReDirReg.DestinationMode = APIC_DM_Physical;
+        ReDirReg.Destination = ApicRead(APIC_ID) >> 24;
+    }
     ReDirReg.TriggerMode = (InterruptMode == LevelSensitive) ?
         APIC_TGM_Level : APIC_TGM_Edge;
 

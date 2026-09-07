@@ -108,7 +108,6 @@ HalpMessageInterruptsAllowed(VOID)
  * carries one bit per processor and therefore stops at eight of them;
  * larger machines fall back to physical ids and single-processor targets.
  */
-static
 HAL_APIC_DESTINATION_MODE
 HalpGetApicDestinationMode(VOID)
 {
