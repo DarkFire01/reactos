@@ -885,11 +885,23 @@ KiDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
         }
 
         /* Third strike; you're out */
+        /*
+         * The last two arguments of bugcheck 0x1E are the exception's own
+         * first two parameters, not the trap frame. For the exception this
+         * fires on most - an access violation - they are the only two facts
+         * worth having: a page fault reports read/write/execute and the
+         * address it touched, while a general protection fault reports 0 and
+         * -1. Passing the trap frame instead made those two indistinguishable
+         * on a machine with no debugger attached, which is precisely where a
+         * bugcheck screen is all there is to go on.
+         */
         KeBugCheckEx(KMODE_EXCEPTION_NOT_HANDLED,
                      ExceptionRecord->ExceptionCode,
                      (ULONG_PTR)ExceptionRecord->ExceptionAddress,
-                     (ULONG_PTR)TrapFrame,
-                     0);
+                     ExceptionRecord->NumberParameters > 0 ?
+                         ExceptionRecord->ExceptionInformation[0] : 0,
+                     ExceptionRecord->NumberParameters > 1 ?
+                         ExceptionRecord->ExceptionInformation[1] : 0);
     }
     else
     {
@@ -1032,11 +1044,23 @@ DispatchToUser:
                 ExceptionRecord->ExceptionInformation[1]);
 
         ZwTerminateProcess(NtCurrentProcess(), ExceptionRecord->ExceptionCode);
+        /*
+         * The last two arguments of bugcheck 0x1E are the exception's own
+         * first two parameters, not the trap frame. For the exception this
+         * fires on most - an access violation - they are the only two facts
+         * worth having: a page fault reports read/write/execute and the
+         * address it touched, while a general protection fault reports 0 and
+         * -1. Passing the trap frame instead made those two indistinguishable
+         * on a machine with no debugger attached, which is precisely where a
+         * bugcheck screen is all there is to go on.
+         */
         KeBugCheckEx(KMODE_EXCEPTION_NOT_HANDLED,
                      ExceptionRecord->ExceptionCode,
                      (ULONG_PTR)ExceptionRecord->ExceptionAddress,
-                     (ULONG_PTR)TrapFrame,
-                     0);
+                     ExceptionRecord->NumberParameters > 0 ?
+                         ExceptionRecord->ExceptionInformation[0] : 0,
+                     ExceptionRecord->NumberParameters > 1 ?
+                         ExceptionRecord->ExceptionInformation[1] : 0);
     }
 
 Handled:
