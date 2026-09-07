@@ -212,6 +212,7 @@ UNICODE_STRING g_FontRegPath =
 /* The FreeType library is not thread safe, so we have
    to serialize access to it */
 static PFAST_MUTEX      g_FreeTypeLock;
+ULONG gFreeTypeLockBlocked = 0;
 
 static RTL_STATIC_LIST_HEAD(g_FontListHead);
 static BOOL             g_RenderingEnabled = TRUE;
@@ -225,6 +226,17 @@ static BOOL             g_RenderingEnabled = TRUE;
 #define IntLockFreeType() \
 do { \
     ASSERT_FREETYPE_LOCK_NOT_HELD(); \
+    /* Count of how often a thread had to wait for the font lock. Count is
+       positive only while the mutex is free, so this samples whether the
+       acquisition below is about to block. Racy by nature - it is a rate, not
+       a tally - and it costs an interlocked write only when contended, so it
+       does not create the contention it is here to find. */ \
+    if (g_FreeTypeLock->Count <= 0) \
+    { \
+        ULONG Blocked_ = InterlockedIncrement((PLONG)&gFreeTypeLockBlocked); \
+        if ((Blocked_ % 512) == 0) \
+            DPRINT1("FreeTypeLock: %lu waits\n", Blocked_); \
+    } \
     ExEnterCriticalRegionAndAcquireFastMutexUnsafe(g_FreeTypeLock); \
 } while (0)
 

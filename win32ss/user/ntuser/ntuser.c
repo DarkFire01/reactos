@@ -238,17 +238,55 @@ VOID FASTCALL CleanupUserImpl(VOID)
     ExDeleteResourceLite(&UserLock);
 }
 
+/*
+ * How often a thread had to wait for the USER lock, rather than how often it
+ * was taken.
+ *
+ * Only the waiting case is counted, and only with one interlocked increment,
+ * because a counter on every acquisition would be a write to one cache line
+ * from every processor - which is the very cost being measured here, and would
+ * manufacture it. The lock is an ERESOURCE, so asking for it without waiting
+ * says whether it would have blocked at no cost when it would not have.
+ */
+ULONG gUserLockBlockedExclusive = 0;
+ULONG gUserLockBlockedShared = 0;
+
 VOID FASTCALL UserEnterShared(VOID)
 {
     KeEnterCriticalRegion();
-    ExAcquireResourceSharedLite(&UserLock, TRUE);
+
+    if (!ExAcquireResourceSharedLite(&UserLock, FALSE))
+    {
+        ULONG Blocked = InterlockedIncrement((PLONG)&gUserLockBlockedShared);
+
+        if ((Blocked % 512) == 0)
+        {
+            ERR("UserLock: %lu shared waits, %lu exclusive\n",
+                    Blocked, gUserLockBlockedExclusive);
+        }
+
+        ExAcquireResourceSharedLite(&UserLock, TRUE);
+    }
 }
 
 VOID FASTCALL UserEnterExclusive(VOID)
 {
     ASSERT_NOGDILOCKS();
     KeEnterCriticalRegion();
-    ExAcquireResourceExclusiveLite(&UserLock, TRUE);
+
+    if (!ExAcquireResourceExclusiveLite(&UserLock, FALSE))
+    {
+        ULONG Blocked = InterlockedIncrement((PLONG)&gUserLockBlockedExclusive);
+
+        if ((Blocked % 512) == 0)
+        {
+            ERR("UserLock: %lu exclusive waits, %lu shared\n",
+                    Blocked, gUserLockBlockedShared);
+        }
+
+        ExAcquireResourceExclusiveLite(&UserLock, TRUE);
+    }
+
     gptiCurrent = PsGetCurrentThreadWin32Thread();
 }
 
