@@ -1137,13 +1137,26 @@ EHCI_TakeControlHC(IN PEHCI_EXTENSION EhciExtension)
                                               sizeof(LegacyCapability));
         KeQuerySystemTime(&CurrentTime);
 
-        if (LegacyCapability.BiosOwnedSemaphore)
+        /*
+         * Ownership has passed to us once the BIOS clears its own semaphore
+         * - EHCI 1.0 section 5.1. Waiting for that bit to be *set* declared
+         * success while the BIOS still owned the controller, so the driver
+         * went on to drive a host controller SMM was still servicing. On a
+         * machine booting from USB that traps every register access into SMM
+         * and wedges the box.
+         */
+        if (LegacyCapability.BiosOwnedSemaphore == 0)
         {
             DPRINT("EHCI_TakeControlHC: Ownership is ok\n");
             break;
         }
     }
     while (CurrentTime.QuadPart <= EndTime.QuadPart);
+
+    if (LegacyCapability.BiosOwnedSemaphore)
+    {
+        DPRINT1("EHCI_TakeControlHC: BIOS did not release the controller\n");
+    }
 
     return MP_STATUS_SUCCESS;
 }
