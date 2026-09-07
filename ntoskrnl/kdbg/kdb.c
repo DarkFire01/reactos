@@ -1531,6 +1531,25 @@ EnterKdbg:;
         }
     }
 
+    /*
+     * Take the debugger before touching any of its state.
+     *
+     * Everything below this point is global - KdbCurrentProcess,
+     * KdbCurrentThread, KdbCurrentTrapFrame, and the KdbTrapFrame copy of
+     * the context itself - so a second processor arriving here overwrote
+     * the context of the one already stopped in the main loop, and only
+     * then found out it was not wanted. The debugger was left describing a
+     * processor that had never broken: that is how a break reported an
+     * embedded INT3 at an address holding no INT3 at all, with the frames
+     * of an idle processor. On the way out it also put back the flags but
+     * not the IRQL it had lowered.
+     */
+    if (InterlockedIncrement(&KdbEntryCount) > 1)
+    {
+        /* Someone is already in, or we faulted inside the debugger */
+        return kdHandleException;
+    }
+
     /* Once we enter the debugger we do not expect any more single steps to happen */
     KdbNumSingleSteps = 0;
 
@@ -1551,12 +1570,6 @@ EnterKdbg:;
     if (OldIrql > DISPATCH_LEVEL)
         KeLowerIrql(DISPATCH_LEVEL);
 
-    /* Exception inside the debugger? Game over. */
-    if (InterlockedIncrement(&KdbEntryCount) > 1)
-    {
-        __writeeflags(OldEflags);
-        return kdHandleException;
-    }
 
     /* Enter KDBG proper and run either the main loop or the KDBinit file */
     KdbpInternalEnter(EntryPoint);
