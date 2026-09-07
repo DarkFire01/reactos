@@ -1500,6 +1500,29 @@ KdbEnterDebuggerException(
             goto EnterKdbg;
         }
 
+        /*
+         * Only a real INT3 stops here.
+         *
+         * KiDebugHandler() raises STATUS_BREAKPOINT for the DebugService
+         * calls too - printing, prompting and symbol load/unload all arrive
+         * with this same exception code, and are told apart only by the
+         * first exception parameter. Those belong to KD, which has already
+         * dealt with them by the time we get here; stopping for one halts a
+         * perfectly healthy machine.
+         *
+         * It also reports the stop at an address holding no INT3 at all,
+         * because KiDebugHandler() backs the address up over the
+         * instruction only for BREAKPOINT_BREAK. That is the signature this
+         * was found by: a break whose reported address disassembles as
+         * ordinary code, with a coherent stack behind it.
+         */
+        if ((ExceptionRecord != NULL) &&
+            (ExceptionRecord->NumberParameters > 0) &&
+            (ExceptionRecord->ExceptionInformation[0] != BREAKPOINT_BREAK))
+        {
+            return kdHandleException;
+        }
+
         if (!EnterConditionMet)
         {
             return kdHandleException;
