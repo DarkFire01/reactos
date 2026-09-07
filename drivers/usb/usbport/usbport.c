@@ -2337,6 +2337,10 @@ USBPORT_CompleteTransfer(IN PURB Urb,
 
     DPRINT_CORE("USBPORT_CompleteTransfer: exit\n");
 }
+/* Reported once per boot. The device extension cannot carry this: its size
+   is pinned to the reference layout by C_ASSERT. */
+static BOOLEAN UsbPortMapAbove4GbReported = FALSE;
+
 
 IO_ALLOCATION_ACTION
 NTAPI
@@ -2409,6 +2413,32 @@ USBPORT_MapTransfer(IN PDEVICE_OBJECT FdoDevice,
                PhAddress.LowPart,
                PhAddress.HighPart,
                TransferLength);
+
+        /*
+         * An address the controller cannot reach, said once.
+         *
+         * USBPORT_StartDevice() asks for a 32-bit adapter - Dma32BitAddresses
+         * with DmaWidth Width32Bits - so every address handed back here should
+         * be below 4GB, bounced through a map register if the buffer itself is
+         * not. A high part that is not zero means it was not, and the transfer
+         * that follows writes to the low 32 bits of it: the descriptor read
+         * then reports the byte count it expected and leaves the buffer as it
+         * found it, which is how a device arrives with a length, type and
+         * packet size that are all zero.
+         *
+         * Only the bad case is reported, and only the first one, so this costs
+         * nothing on a machine whose memory the controller can address.
+         */
+        if ((PhAddress.HighPart != 0) && !UsbPortMapAbove4GbReported)
+        {
+            UsbPortMapAbove4GbReported = TRUE;
+
+            DPRINT1("USBPORT_MapTransfer: address above 4GB for a 32-bit "
+                    "controller - %08lx`%08lx length %lx\n",
+                    PhAddress.HighPart,
+                    PhAddress.LowPart,
+                    TransferLength);
+        }
 
         PhAddress.HighPart = 0;
         SgCurrentLength = TransferLength;
