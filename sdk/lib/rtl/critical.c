@@ -29,6 +29,7 @@ BOOLEAN RtlpCriticalSectionVerifier = FALSE;
 
 extern BOOLEAN LdrpShutdownInProgress;
 extern HANDLE LdrpShutdownThreadId;
+extern RTL_CRITICAL_SECTION LdrpLoaderLock;
 
 /* FUNCTIONS *****************************************************************/
 
@@ -120,7 +121,10 @@ RtlpWaitForCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
 {
     NTSTATUS Status;
     EXCEPTION_RECORD ExceptionRecord;
-    BOOLEAN LastChance = FALSE;
+    PTEB Teb = NtCurrentTeb();
+    ULONG TimeoutCount = 0;
+    ULONG OldContention = 0;
+    ULONG NewContention = 0;
 
     /* Increase the Debug Entry count */
     DPRINT("Waiting on Critical Section Event: %p %p\n",
@@ -147,12 +151,18 @@ RtlpWaitForCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
         RtlpCreateCriticalSectionSem(CriticalSection);
     }
 
+    /*
+     * Count this contention once, before waiting - not once per timeout. The
+     * count is what says whether anyone else is still arriving at this lock,
+     * and that is the progress signal the deadlock test below reads. Bumping it
+     * on every retry would make the lock look busy purely because we are the
+     * ones retrying, and no wait would ever be declared stuck.
+     */
+    if (CRITSECT_HAS_DEBUG_INFO(CriticalSection))
+        CriticalSection->DebugInfo->ContentionCount++;
+
     for (;;)
     {
-        /* Increase the number of times we've had contention */
-        if (CRITSECT_HAS_DEBUG_INFO(CriticalSection))
-            CriticalSection->DebugInfo->ContentionCount++;
-
         /* Check if allocating the event failed */
         if (CriticalSection->LockSemaphore == INVALID_HANDLE_VALUE)
         {
@@ -170,32 +180,59 @@ RtlpWaitForCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
                                            (RtlpTimeoutDisable ? NULL : &RtlpTimeout));
         }
 
-        /* We have Timed out */
-        if (Status == STATUS_TIMEOUT)
-        {
-            /* Is this the 2nd time we've timed out? */
-            if (LastChance)
-            {
-                ERROR_DBGBREAK("Deadlock: 0x%p\n", CriticalSection);
-
-                /* Yes it is, we are raising an exception */
-                ExceptionRecord.ExceptionCode    = STATUS_POSSIBLE_DEADLOCK;
-                ExceptionRecord.ExceptionFlags   = 0;
-                ExceptionRecord.ExceptionRecord  = NULL;
-                ExceptionRecord.ExceptionAddress = RtlRaiseException;
-                ExceptionRecord.NumberParameters = 1;
-                ExceptionRecord.ExceptionInformation[0] = (ULONG_PTR)CriticalSection;
-                RtlRaiseException(&ExceptionRecord);
-            }
-
-            /* One more try */
-            LastChance = TRUE;
-        }
-        else
+        /* Anything but a timeout means we got the section */
+        if (Status != STATUS_TIMEOUT)
         {
             /* If we are here, everything went fine */
             return STATUS_SUCCESS;
         }
+
+        /*
+         * Name the thread that is holding this, not just the section. Without
+         * the owner a report of this says only that something is slow, and the
+         * lock address alone cannot be traced back to whoever took it.
+         */
+        DPRINT1("RTL: Enter Critical Section Timeout (%I64u secs) %lu\n",
+                RtlpTimeout.QuadPart / -10000000,
+                TimeoutCount);
+        DPRINT1("RTL: Pid.Tid %p.%p, owner tid %p Critical Section %p - "
+                "ContentionCount == %lu\n",
+                Teb->ClientId.UniqueProcess,
+                Teb->ClientId.UniqueThread,
+                CriticalSection->OwningThread,
+                CriticalSection,
+                CRITSECT_HAS_DEBUG_INFO(CriticalSection)
+                    ? CriticalSection->DebugInfo->ContentionCount : 0);
+
+        TimeoutCount++;
+        if (CRITSECT_HAS_DEBUG_INFO(CriticalSection))
+            NewContention = CriticalSection->DebugInfo->ContentionCount;
+
+        /*
+         * Three timeouts with nobody else arriving in between is the reference's
+         * bar for calling this stuck, and the loader lock is exempt from it
+         * outright: a load can legitimately block for as long as whatever it is
+         * loading takes, so a slow one is not evidence of a cycle. Declaring a
+         * deadlock there converts every slow load into a fatal exception at a
+         * point where the process is merely waiting.
+         */
+        if ((TimeoutCount > 2) &&
+            (CriticalSection != &LdrpLoaderLock) &&
+            (NewContention == OldContention))
+        {
+            ExceptionRecord.ExceptionCode    = STATUS_POSSIBLE_DEADLOCK;
+            ExceptionRecord.ExceptionFlags   = 0;
+            ExceptionRecord.ExceptionRecord  = NULL;
+            ExceptionRecord.ExceptionAddress = RtlRaiseException;
+            ExceptionRecord.NumberParameters = 1;
+            ExceptionRecord.ExceptionInformation[0] = (ULONG_PTR)CriticalSection;
+            RtlRaiseException(&ExceptionRecord);
+        }
+
+        OldContention = NewContention;
+
+        /* Keep waiting. Giving up here would abandon a lock we still need */
+        DPRINT1("RTL: Re-Waiting\n");
     }
 }
 
