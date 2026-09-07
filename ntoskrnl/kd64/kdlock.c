@@ -45,6 +45,16 @@ KdpPollBreakInWithPortLock(VOID)
             /* Set it and prepare for break */
             DoBreak = TRUE;
             KdpContext.KdpControlCPending = FALSE;
+
+            /*
+             * Say where this came from. A break taken here turns an
+             * ordinary DbgPrint into STATUS_BREAKPOINT at the print site,
+             * which the debugger then reports as an embedded INT3 at an
+             * address holding no INT3 at all. Nothing else distinguishes a
+             * real Ctrl-C from a pending flag that KdReceivePacket() set
+             * because the port reported a framing or overrun error.
+             */
+            KdpDprintf("KD: break-in from a pending Ctrl-C\n");
         }
         else
         {
@@ -57,6 +67,7 @@ KdpPollBreakInWithPortLock(VOID)
             {
                 /* Successful breakin */
                 DoBreak = TRUE;
+                KdpDprintf("KD: break-in from a received breakin byte\n");
             }
         }
     }
