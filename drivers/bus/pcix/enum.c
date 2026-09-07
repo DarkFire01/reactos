@@ -846,8 +846,30 @@ PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
     PCI_COMMON_HEADER PciHeader;
     PAGED_CODE();
 
-    /* Check if the PDO has any resources, or at least an interrupt pin */
-    if ((PdoExtension->Resources) || (PdoExtension->InterruptPin))
+    /*
+     * Ask for the requirements unconditionally, the way the reference does:
+     * it calls PciBuildRequirementsList() straight out of the
+     * QUERY_RESOURCE_REQUIREMENTS handler with no test in front of it.
+     *
+     * Skipping the call for a function with no BAR and no interrupt pin
+     * looks safe and is not. The ranges a function decodes on the side are
+     * counted inside PciBuildRequirementsList(), out of
+     * AdditionalResourceCount, and a PCI-to-PCI bridge has neither a BAR
+     * nor an interrupt pin - so every bridge in the machine fell out here.
+     * A bridge with the VGA decode bit set therefore never got to ask for
+     * the legacy ranges PPBridge_GetAdditionalResourceDescriptors() builds
+     * for it: 0xA0000-0xBFFFF, 0x3B0-0x3BB and 0x3C0-0x3DF.
+     *
+     * Nothing then claimed those ranges on the bus behind the bridge, so
+     * the arbiter down there had nowhere to put the fixed 0xA0000 request
+     * every VGA device makes, and the display adapter lost arbitration
+     * outright - nowhere to put 0xa0000..0xbffff, then vga.sys failing
+     * HwFindAdapter, and the desktop left on the boot framebuffer.
+     *
+     * Asking costs nothing for a function that really does need nothing:
+     * PciBuildRequirementsList() counts zero and hands back
+     * PciZeroIoResourceRequirements, which becomes NULL just below.
+     */
     {
         /* Read the current PCI header */
         PciReadDeviceConfig(PdoExtension, &PciHeader, 0, PCI_COMMON_HDR_LENGTH);
@@ -876,19 +898,13 @@ PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
         {
             /* A simple NULL will suffice for the PnP Manager */
             *RequirementsList = NULL;
-            DPRINT1("Returning NULL requirements list\n");
+            DPRINT("Returning NULL requirements list\n");
         }
         else
         {
             /* Otherwise, print out the requirements list */
             PciDebugPrintIoResReqList(*RequirementsList);
         }
-    }
-    else
-    {
-        /* There aren't any resources, so simply return NULL */
-        DPRINT1("PciQueryRequirements returning NULL requirements list\n");
-        *RequirementsList = NULL;
     }
 
     /* This call always succeeds (but maybe with no requirements) */
