@@ -33,6 +33,21 @@ HalpReboot(VOID)
        reset itself may not take effect immediately */
     HalpStopOtherProcessors();
 
+    /*
+     * Whatever was stopped above was stopped where it stood, and that
+     * includes inside a CMOS critical section - HalpAcquireCmosSpinLock() is
+     * taken on every processor by the RTC clock interrupt, among others. A
+     * processor halted while holding HalpSystemHardwareLock never releases
+     * it, and the acquire further down spins for it with interrupts
+     * disabled: a machine that hangs instead of rebooting.
+     *
+     * This processor is the only one still running, so the lock guards
+     * nothing any more. Drop whatever state it was left in. That also covers
+     * reaching here from a bug check taken inside a CMOS critical section on
+     * this processor itself.
+     */
+    KeInitializeSpinLock(&HalpSystemHardwareLock);
+
     /* Map the first physical page */
     PhysicalAddress.QuadPart = 0;
     ZeroPageMapping = HalpMapPhysicalMemory64(PhysicalAddress, 1);
