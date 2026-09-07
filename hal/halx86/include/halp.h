@@ -245,6 +245,9 @@ extern BOOLEAN HalpProfilingStopped;
 /* timer.c */
 CODE_SEG("INIT") VOID NTAPI HalpInitializeClock(VOID);
 VOID __cdecl HalpClockInterrupt(VOID);
+/* Parks every processor but this one. A no-op on a uniprocessor HAL. */
+VOID HalpStopOtherProcessors(VOID);
+
 VOID __cdecl HalpClockIpi(VOID);
 VOID __cdecl HalpIpiInterrupt(VOID);
 VOID __cdecl HalpProfileInterrupt(VOID);

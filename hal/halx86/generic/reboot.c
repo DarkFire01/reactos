@@ -28,6 +28,11 @@ HalpReboot(VOID)
     UCHAR Data;
     PVOID ZeroPageMapping;
 
+    /* Nothing below this point is safe to do while other processors are
+       still running: the RTC is reprogrammed in several steps and the
+       reset itself may not take effect immediately */
+    HalpStopOtherProcessors();
+
     /* Map the first physical page */
     PhysicalAddress.QuadPart = 0;
     ZeroPageMapping = HalpMapPhysicalMemory64(PhysicalAddress, 1);

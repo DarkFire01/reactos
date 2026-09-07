@@ -131,6 +131,36 @@ ApicStartApplicationProcessor(
         APIC_MT_Startup, APIC_TGM_Edge, APIC_DSH_Destination);
 }
 
+VOID
+HalpStopOtherProcessors(VOID)
+{
+    /*
+     * Park every other processor before the machine is reset.
+     *
+     * HalpReboot() reprograms the RTC and pulses the keyboard controller's
+     * reset line, then halts the processor it happens to be running on. On a
+     * multiprocessor machine that left all the others running throughout:
+     * executing, writing memory and doing I/O while the RTC was half
+     * reprogrammed, and still running afterwards if the reset did not take
+     * immediately - which is what a reboot that does not reboot looks like.
+     *
+     * An INIT IPI puts them back into wait-for-SIPI. It is the same
+     * primitive ApicStartApplicationProcessor() uses to bring them up, and
+     * unlike a fixed vector it needs no handler on the receiving side, so
+     * there is nothing left to go wrong on a processor that is already in
+     * trouble.
+     */
+    ApicRequestGlobalInterrupt(0,
+                               0,
+                               APIC_MT_INIT,
+                               APIC_TGM_Edge,
+                               APIC_DSH_AllExcludingSelf);
+
+    /* Give them time to take it - the same wait the MPS spec asks for
+       between an INIT and what follows it (MPS 1.4, B.4) */
+    KeStallExecutionProcessor(200);
+}
+
 /* HAL IPI FUNCTIONS **********************************************************/
 
 /*!

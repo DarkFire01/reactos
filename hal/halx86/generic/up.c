@@ -68,3 +68,11 @@ HalSendSoftwareInterrupt(
 }
 
 #endif // _M_AMD64
+
+VOID
+HalpStopOtherProcessors(VOID)
+{
+    /* There are none */
+}
+
+/* EOF */
