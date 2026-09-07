@@ -193,8 +193,20 @@ KeStartAllProcessors(VOID)
 
         ProcessorState->SpecialRegisters.Gdtr.Base = (ULONG_PTR)APInfo->Gdt;
         ProcessorState->SpecialRegisters.Gdtr.Limit = sizeof(APInfo->Gdt) - 1;
-        ProcessorState->SpecialRegisters.Idtr.Base = bspIdt.Base;
-        ProcessorState->SpecialRegisters.Idtr.Limit = bspIdt.Limit;
+        /*
+         * The table built above, not the boot processor's.
+         *
+         * Loading bspIdt here threw away everything the copy was for: the
+         * PCR was published with &APInfo->Idt, so KiGetVectorDispatch() and
+         * KeConnectInterrupt() read and write that table, while the
+         * processor itself dispatched through the boot processor's. An
+         * interrupt connected on this processor landed in a table the
+         * hardware never consults, and one taken here was dispatched by
+         * whatever the boot processor's entry happened to hold - another
+         * device's KINTERRUPT, or a stale one.
+         */
+        ProcessorState->SpecialRegisters.Idtr.Base = (ULONG_PTR)APInfo->Idt;
+        ProcessorState->SpecialRegisters.Idtr.Limit = sizeof(APInfo->Idt) - 1;
 
         ProcessorState->SpecialRegisters.Tr = KGDT_TSS;
 
