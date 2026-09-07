@@ -919,6 +919,18 @@ i8042MouInterruptService(
 	__analysis_assume(Context != NULL);
 	DeviceExtension = Context;
 	PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
+	/*
+	 * The keyboard and the mouse share one port extension, and the control
+	 * port only appears in it when whichever PDO carries that resource is
+	 * started. An interrupt arriving before that has nothing to read the
+	 * status from - i8042ReadStatus() asserts on exactly this - and cannot
+	 * be ours yet in any case, so decline it rather than break into the
+	 * debugger. With four processors the start and the first interrupt
+	 * overlap often enough to stop most boots.
+	 */
+	if (PortDeviceExtension->ControlPort == NULL)
+		return FALSE;
+
 	Counter = PortDeviceExtension->Settings.PollStatusIterations;
 
 	while (Counter)
