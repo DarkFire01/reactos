@@ -517,11 +517,47 @@ KiIpiSendRequest(
     {
         if (--Spin == 0)
         {
-            DPRINT1("KiIpiSendRequest: worker %p still owed by processor set %p; "
-                    "giving up - the work did NOT complete everywhere\n",
+            /*
+             * One case of silence is expected and is not a fault: while
+             * the debugger has the machine, a frozen processor sits in
+             * KiProcessorFreezeHandler() and answers nothing until it is
+             * let go. Wait that out - whoever is at the prompt is in
+             * control and will release them.
+             */
+            if (KdEnteredDebugger)
+            {
+                Spin = KI_IPI_SPIN_LIMIT;
+                continue;
+            }
+
+            /*
+             * Otherwise the targets are simply not coming, and there is
+             * no version of returning from here that is safe. The caller
+             * is entitled to assume the work happened everywhere; on the
+             * shootdown path that assumption is what keeps translations
+             * coherent, so returning hands it a machine where three
+             * processors still hold stale entries and memory quietly
+             * rots from here on.
+             *
+             * Clearing TargetSet and carrying on - which is what this did
+             * - is worse still: the targets keep their claim on the
+             * mailbox slot pointing at this PRCB, so the next packet sent
+             * from this processor is retired by whichever of them
+             * eventually wakes, against a set that no longer means what
+             * it meant when they claimed it.
+             *
+             * Stop instead. A bugcheck naming the processors that owed
+             * the work is recoverable information; silent incoherence is
+             * not.
+             */
+            DPRINT1("KiIpiSendRequest: worker %p still owed by processor set %p\n",
                     WorkerRoutine, (PVOID)Prcb->TargetSet);
-            Prcb->TargetSet = 0;
-            break;
+
+            KeBugCheckEx(MULTIPROCESSOR_CONFIGURATION_NOT_SUPPORTED,
+                         (ULONG_PTR)Prcb->TargetSet,
+                         (ULONG_PTR)WorkerRoutine,
+                         (ULONG_PTR)Prcb->Number,
+                         0);
         }
         YieldProcessor();
         KeMemoryBarrier();

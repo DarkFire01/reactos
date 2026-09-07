@@ -173,9 +173,23 @@ KiIpiSendRequestPacket(
         {
             if (--Spin == 0)
             {
+                /* Same reasoning as the acknowledgement wait below:
+                   overwriting a slot the target still owns retires our
+                   new packet against its old one */
+                if (KdEnteredDebugger)
+                {
+                    Spin = KI_IPI_SPIN_LIMIT;
+                    continue;
+                }
+
                 DPRINT1("KiIpiSendRequestPacket: processor %lu never freed our "
-                        "mailbox slot; overwriting it\n", ProcessorIndex);
-                break;
+                        "mailbox slot\n", ProcessorIndex);
+
+                KeBugCheckEx(MULTIPROCESSOR_CONFIGURATION_NOT_SUPPORTED,
+                             (ULONG_PTR)TargetPrcb->SenderSummary,
+                             (ULONG_PTR)ProcessorIndex,
+                             (ULONG_PTR)CurrentPrcb->Number,
+                             1);
             }
             YieldProcessor();
             KeMemoryBarrier();
@@ -229,11 +243,28 @@ KiIpiSendRequestPacket(
     {
         if (--Spin == 0)
         {
+            /* Expected while the debugger holds the machine: a frozen
+               processor answers nothing until it is let go */
+            if (KdEnteredDebugger)
+            {
+                Spin = KI_IPI_SPIN_LIMIT;
+                continue;
+            }
+
+            /* Otherwise there is no safe way to return. The caller is
+               entitled to assume the work ran everywhere, and on the
+               shootdown path that is what keeps translations coherent -
+               returning leaves those processors holding stale entries and
+               the machine quietly corrupting memory from here on. */
             DPRINT1("KiIpiSendRequestPacket: worker %p still owed by processor "
-                    "set %p; giving up - the work did NOT complete everywhere\n",
+                    "set %p\n",
                     RequestPacket->WorkerRoutine, (PVOID)CurrentPrcb->TargetSet);
-            CurrentPrcb->TargetSet = 0;
-            break;
+
+            KeBugCheckEx(MULTIPROCESSOR_CONFIGURATION_NOT_SUPPORTED,
+                         (ULONG_PTR)CurrentPrcb->TargetSet,
+                         (ULONG_PTR)RequestPacket->WorkerRoutine,
+                         (ULONG_PTR)CurrentPrcb->Number,
+                         0);
         }
         YieldProcessor();
         KeMemoryBarrier();
