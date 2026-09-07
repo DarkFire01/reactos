@@ -584,7 +584,20 @@ SharedFace_Release(PSHARED_FACE Ptr, BOOL bDoLock)
     ASSERT(Ptr->RefCount > 0);
 
     if (Ptr->RefCount <= 0)
+    {
+        /*
+         * Leaving from here has to undo the lock taken above, and the assert
+         * on the line before is no substitute for doing so: it is compiled out
+         * of a release build, so there the count simply arrives at zero and
+         * this returns still holding the FreeType lock. That lock is a single
+         * global one, so every glyph the system draws afterwards waits on it,
+         * for ever.
+         */
+        if (bDoLock)
+            IntUnLockFreeType();
+
         return;
+    }
 
     --Ptr->RefCount;
     if (Ptr->RefCount == 0)
