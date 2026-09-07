@@ -29,7 +29,6 @@ BOOLEAN RtlpCriticalSectionVerifier = FALSE;
 
 extern BOOLEAN LdrpShutdownInProgress;
 extern HANDLE LdrpShutdownThreadId;
-extern RTL_CRITICAL_SECTION LdrpLoaderLock;
 
 /* FUNCTIONS *****************************************************************/
 
@@ -209,16 +208,20 @@ RtlpWaitForCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
             NewContention = CriticalSection->DebugInfo->ContentionCount;
 
         /*
-         * Three timeouts with nobody else arriving in between is the reference's
-         * bar for calling this stuck, and the loader lock is exempt from it
-         * outright: a load can legitimately block for as long as whatever it is
-         * loading takes, so a slow one is not evidence of a cycle. Declaring a
-         * deadlock there converts every slow load into a fatal exception at a
-         * point where the process is merely waiting.
+         * Two timeouts with nobody else arriving in between means this is not
+         * merely slow: the contention count is what separates the two, because
+         * a lock that others are still queueing behind is making progress while
+         * one that nobody new has touched in five minutes is stuck.
+         *
+         * That check is the whole test, and it applies to the loader lock too.
+         * Exempting the loader lock on the grounds that a load may legitimately
+         * take a long time sounds right and is not: a genuine loader-lock cycle
+         * then never gets declared at all and the process waits for ever. At
+         * shutdown that is worse than the exception it was avoiding - the
+         * machine stops with the disk still dirty, which is a corrupt volume on
+         * the next boot rather than one failed process.
          */
-        if ((TimeoutCount > 2) &&
-            (CriticalSection != &LdrpLoaderLock) &&
-            (NewContention == OldContention))
+        if ((TimeoutCount > 1) && (NewContention == OldContention))
         {
             ExceptionRecord.ExceptionCode    = STATUS_POSSIBLE_DEADLOCK;
             ExceptionRecord.ExceptionFlags   = 0;
