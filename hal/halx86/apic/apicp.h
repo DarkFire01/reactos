@@ -397,3 +397,6 @@ HalpBuildInterruptDestination(
 VOID
 NTAPI
 HalpInitializeMessageInterrupts(VOID);
+
+HAL_APIC_DESTINATION_MODE
+HalpGetApicDestinationMode(VOID);

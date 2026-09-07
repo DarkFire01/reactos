@@ -63,8 +63,12 @@ HalpCpuSupportsMessageInterrupts(VOID)
     return IsIntel && (Prcb->CpuType == 6) && ((Prcb->CpuStep >> 8) >= 0x0D);
 }
 
-/* Flat logical mode holds one bit per processor, so it only covers 8 of them */
-static
+/**
+ * @brief
+ * Tells how the local APICs are addressed. Flat logical addressing
+ * carries one bit per processor and therefore stops at eight of them;
+ * larger machines fall back to physical ids and single-processor targets.
+ */
 HAL_APIC_DESTINATION_MODE
 HalpGetApicDestinationMode(VOID)
 {
