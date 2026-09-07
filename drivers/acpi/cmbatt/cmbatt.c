@@ -643,6 +643,25 @@ CmBattIoctl(IN PDEVICE_OBJECT DeviceObject,
         return Status;
     }
 
+    /*
+     * The FDO is live in the device stack from the moment CmBattCreateFdo()
+     * clears DO_DEVICE_INITIALIZING and attaches it, but CmBattAddBattery()
+     * types it as a battery well before it registers with the class driver,
+     * and evaluates the ACPI _BTP method in between. An IOCTL arriving in
+     * that window reaches here as a battery with no class data yet, and
+     * battc takes what it is given without checking - BatteryClassIoctl()
+     * dereferences ClassData at the first IOCTL it recognises, which is a
+     * read of NULL + 8 and a 0x7E in battc.sys. Say the device is not ready.
+     */
+    if (DeviceExtension->ClassData == NULL)
+    {
+        Irp->IoStatus.Status = STATUS_DEVICE_NOT_READY;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        IoReleaseRemoveLock(&DeviceExtension->RemoveLock, Irp);
+        return STATUS_DEVICE_NOT_READY;
+    }
+
     /* Send to class driver */
     Status = BatteryClassIoctl(DeviceExtension->ClassData, Irp);
     if (Status == STATUS_NOT_SUPPORTED)
