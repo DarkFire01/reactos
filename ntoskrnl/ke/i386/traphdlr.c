@@ -1224,6 +1224,26 @@ KiTrap0DHandler(IN PKTRAP_FRAME TrapFrame)
                 TrapFrame->ErrCode,
                 Instructions[0], Instructions[1], Instructions[2]);
 
+        /*
+         * And what called it. A fault inside a module is placed by its
+         * address alone, but one that has run off into data - which is what
+         * an EA far jump sitting in the middle of nothing means - can only
+         * be traced through the return address the call left behind.
+         */
+        {
+            PULONG Stack = (PULONG)((TrapFrame->SegCs & FRAME_EDITED) ?
+                                    (ULONG_PTR)&TrapFrame->HardwareEsp :
+                                    (ULONG_PTR)TrapFrame->TempEsp);
+
+            DPRINT1("  Ebp %p Esp %p\n", (PVOID)TrapFrame->Ebp, Stack);
+            if (MmIsAddressValid(Stack) && MmIsAddressValid(&Stack[7]))
+            {
+                DPRINT1("  stack %08lx %08lx %08lx %08lx %08lx %08lx %08lx %08lx\n",
+                        Stack[0], Stack[1], Stack[2], Stack[3],
+                        Stack[4], Stack[5], Stack[6], Stack[7]);
+            }
+        }
+
         KiSystemFatalException(EXCEPTION_GP_FAULT, TrapFrame);
     }
 
