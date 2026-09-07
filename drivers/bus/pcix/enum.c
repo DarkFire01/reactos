@@ -1753,8 +1753,14 @@ PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
         /* This is a null descriptor, have all of them been scanned now? */
         if (IoDescriptor == &PdoExtension->Resources->Limit[0])
         {
-            /* This means the descriptor is NULL, which means discovery failed */
-            DPRINT1("PCI Resources fail!\n");
+            /*
+             * Every limit descriptor came back null, so this function
+             * decodes no BAR at all. That is the normal shape of a
+             * PCI-to-PCI bridge, not a failure, and saying so 150 times
+             * on a large machine stops every processor in it once per
+             * message on a debug build.
+             */
+            DPRINT("PCI function %p decodes no BAR\n", PdoExtension);
 
             /* No resources will be assigned for the device */
             ExFreePoolWithTag(PdoExtension->Resources, 0);
