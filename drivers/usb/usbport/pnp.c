@@ -1223,7 +1223,29 @@ Exit:
             if (FdoCommonExtension->PnpStateFlags & USBPORT_PNP_STATE_STARTED &&
                !(FdoCommonExtension->PnpStateFlags & USBPORT_PNP_STATE_NOT_INIT))
             {
-                DPRINT1("USBPORT_FdoPnP: stop fdo FIXME\n");
+                /*
+                 * Stop the worker thread, and let any deferred routine that is
+                 * already queued run out, before the device extension is freed
+                 * with the device object below.
+                 *
+                 * The worker reaches the extension through the endpoints it is
+                 * given - USBPORT_EndpointWorker() reads
+                 * Endpoint->FdoDevice->DeviceExtension on its first line - and
+                 * the endpoints outlive nothing here: they are still on the
+                 * worker list when IoDeleteDevice() takes the extension away.
+                 * A worker that ran afterwards read a freed extension and
+                 * faulted on the miniport packet inside it.
+                 *
+                 * USBPORT_StopWorkerThread() sets the exit flag, wakes the
+                 * thread and waits for it, which is what the failure path in
+                 * USBPORT_StartDevice() already does for the same reason. This
+                 * runs at PASSIVE_LEVEL, so the wait is allowed.
+                 */
+                USBPORT_StopWorkerThread(FdoDevice);
+                KeFlushQueuedDpcs();
+
+                /* Note the controller itself is still not halted here:
+                   USBPORT_StopDevice() remains unimplemented. */
                 FdoCommonExtension->PnpStateFlags |= USBPORT_PNP_STATE_NOT_INIT;
             }
 
