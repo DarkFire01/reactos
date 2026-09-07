@@ -1334,20 +1334,32 @@ co_IntGetPeekMessage( PMSG pMsg,
               IdlePing();
 
               /*
-               * Drop the lock so anyone waiting on it gets in, but do not
-               * yield the processor as well.
+               * Hand the lock to anyone waiting on it, but do not yield
+               * the processor as well, and do not bother when nobody is
+               * waiting.
                *
-               * This is every PeekMessage that finds nothing, which is what an
-               * idle GUI application spends its life doing. Releasing and
-               * retaking the lock is cheap and is what actually lets another
-               * thread make progress; NtYieldExecution on top of it is a
-               * syscall that, once anything is ready, raises to SYNCH_LEVEL,
-               * takes the thread and PRCB locks, runs KiSelectReadyThread,
-               * swaps, and resets this thread's quantum on the way. The
-               * reference calls NtYieldExecution nowhere in win32k at all.
+               * This is every PeekMessage that finds nothing, which is
+               * what an idle GUI application spends its life doing.
+               * Releasing and retaking the lock is what actually lets
+               * another thread make progress, so it stays - but it is two
+               * interlocked writes to the one cache line every GUI thread
+               * in the system shares, and with no waiter they buy nothing.
+               * The more processors there are, the more time the polling
+               * threads spend invalidating each other's copy of the lock
+               * to give way to no one, which is why this got worse with
+               * every core added.
+               *
+               * NtYieldExecution on top of it would be worse still: once
+               * anything is ready it raises to SYNCH_LEVEL, takes the
+               * thread and PRCB locks, runs KiSelectReadyThread, swaps,
+               * and resets this thread's quantum on the way. The reference
+               * calls NtYieldExecution nowhere in win32k at all.
                */
-              UserLeave();
-              UserEnterExclusive();
+              if (UserLockHasWaiters())
+              {
+                 UserLeave();
+                 UserEnterExclusive();
+              }
               // Fall through to exit.
               IdlePong();
            }

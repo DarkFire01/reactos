@@ -32,6 +32,7 @@ VOID FASTCALL UserEnterExclusive(VOID);
 VOID FASTCALL UserLeave(VOID);
 BOOL FASTCALL UserIsEntered(VOID);
 BOOL FASTCALL UserIsEnteredExclusive(VOID);
+BOOL FASTCALL UserLockHasWaiters(VOID);
 DWORD FASTCALL UserGetLanguageToggle(_In_ LPCWSTR pszType, _In_ DWORD dwDefaultValue);
 
 _Success_(return != FALSE)

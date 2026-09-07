@@ -233,6 +233,18 @@ BOOL FASTCALL UserIsEnteredExclusive(VOID)
     return ExIsResourceAcquiredExclusiveLite(&UserLock);
 }
 
+/*
+ * Whether anybody is queued behind the USER lock right now.
+ *
+ * Reading the two waiter counts is a plain load; asking for the lock to find
+ * out would be the interlocked write this is here to avoid.
+ */
+BOOL FASTCALL UserLockHasWaiters(VOID)
+{
+    return (ExGetExclusiveWaiterCount(&UserLock) != 0) ||
+           (ExGetSharedWaiterCount(&UserLock) != 0);
+}
+
 VOID FASTCALL CleanupUserImpl(VOID)
 {
     ExDeleteResourceLite(&UserLock);
