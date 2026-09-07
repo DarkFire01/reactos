@@ -500,7 +500,7 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     //FrLdrDbgPrint("Hello from KiSystemStartup!!!\n");
 
     /* Get the current CPU number */
-    Cpu = KeNumberProcessors++; // FIXME
+    Cpu = KeNumberProcessors;
 
     /* LoaderBlock initialization for Cpu 0 */
     if (Cpu == 0)
@@ -517,6 +517,22 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     /* Set the PRCB for this Processor */
     KiProcessorBlock[Cpu] = &Pcr->Prcb;
+
+    /*
+     * Only now count this processor. Everything that walks the
+     * processors does it as "for (i = 0; i < KeNumberProcessors; i++)"
+     * over KiProcessorBlock[i], so raising the count first - as
+     * Cpu = KeNumberProcessors++ did - opens a window in which that
+     * range contains an entry no one has published yet. A walk landing
+     * in it reads NULL and faults on the first field it touches, which
+     * is how ObInit2() died writing PPLookasideList at 0x8B8. The i386
+     * path publishes before counting for the same reason.
+     *
+     * The barrier is for the compiler: the two stores are independent,
+     * so nothing but this stops them being emitted the other way round.
+     */
+    KeMemoryBarrier();
+    KeNumberProcessors = (CCHAR)(Cpu + 1);
 
     /* Save the initial thread */
     InitialThread = (PKTHREAD)LoaderBlock->Thread;
