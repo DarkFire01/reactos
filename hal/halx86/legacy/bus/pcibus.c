@@ -9,6 +9,11 @@
 /* INCLUDES ******************************************************************/
 
 #include <hal.h>
+
+#ifdef HAL_PIR_EXTENSIONS
+#include "pciirq/pciirq.h"
+#endif
+
 #define NDEBUG
 #include <debug.h>
 
@@ -727,7 +732,39 @@ HalpGetISAFixedPCIIrq(IN PBUS_HANDLER BusHandler,
     /* If the PCI device has no IRQ, nothing to do */
     if (!PciData.u.type0.InterruptPin) return STATUS_SUCCESS;
 
-    /* FIXME: The PCI IRQ Routing Miniport should be called */
+#if defined(HAL_PIR_EXTENSIONS) && !defined(SARCH_XBOX) && !defined(SARCH_PC98)
+    {
+        ULONG RoutedIrq, IrqMask;
+
+        /*
+         * With $PIR routing up, the interrupt router - not the interrupt-line
+         * register - decides which ISA IRQ this pin raises, so ask it first.
+         * The register is only believed when the router has the link switched
+         * off, and even then only if the link could carry that IRQ at all; a
+         * pin the table leaves unwired gets no IRQ.
+         */
+        if (NT_SUCCESS(HalpPirQueryPin(BusHandler->BusNumber,
+                                       PciSlot.u.bits.DeviceNumber,
+                                       PciData.u.type0.InterruptPin,
+                                       &RoutedIrq,
+                                       &IrqMask)))
+        {
+            if (!RoutedIrq &&
+                (PciData.u.type0.InterruptLine < 16) &&
+                (IrqMask & (1UL << PciData.u.type0.InterruptLine)))
+            {
+                RoutedIrq = PciData.u.type0.InterruptLine;
+            }
+
+            if (RoutedIrq)
+            {
+                (*Range)->Base = RoutedIrq;
+                (*Range)->Limit = RoutedIrq;
+            }
+            return STATUS_SUCCESS;
+        }
+    }
+#endif
 
     /* Also if the INT# seems bogus, nothing to do either */
     if ((PciData.u.type0.InterruptLine == 0) ||
