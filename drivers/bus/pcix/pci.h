@@ -472,6 +472,7 @@ typedef struct _PCI_PDO_EXTENSION
     UCHAR ExpressDeviceType;
     PCI_MESSAGE_INFO MessageInfo;
     PCI_RESIZABLE_BAR_INFO ResizableBar;
+    ROUTING_TOKEN RoutingToken;
 } PCI_PDO_EXTENSION, *PPCI_PDO_EXTENSION;
 
 //
