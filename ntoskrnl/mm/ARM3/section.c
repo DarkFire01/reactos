@@ -1921,15 +1921,10 @@ MiFlushTbAndCapture(IN PMMVAD FoundVad,
 #endif
     ASSERT(PreviousPte.u.Hard.Valid == 1);
 
-    //
-    // Windows updates the relevant PFN1 information, we currently don't.
-    //
+    /* The rebuilt PTE is clean, keep a write that already happened */
     if (UpdateDirty && PreviousPte.u.Hard.Dirty)
     {
-        if (!Pfn1->u3.e1.Modified)
-        {
-            DPRINT1("FIXME: Mark PFN as dirty\n");
-        }
+        Pfn1->u3.e1.Modified = 1;
     }
 
     //
