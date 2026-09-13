@@ -964,6 +964,9 @@ EarlyQuit:
     KeReleaseSpinLock(&MiPageFileLock, OldIrql);
     KeReleaseGuardedMutex(&MmPageFileCreationLock);
 
+    /* The modified page writer can use it from now on */
+    MiWakeModifiedPageWriter();
+
     MmSwapSpaceMessage = FALSE;
 
     if (!MmSystemPageFileLocated && BooleanFlagOn(FileObject->DeviceObject->Flags, DO_SYSTEM_BOOT_PARTITION))
