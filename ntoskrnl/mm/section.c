@@ -5465,8 +5465,13 @@ MmExtendSection(
     if (!MiIsRosSectionObject(Section))
         return STATUS_NOT_IMPLEMENTED;
 
-    /* We just extend the sizes. Shrinking is a no-op ? */
-    if (NewSize->QuadPart > Section->SizeOfSection.QuadPart)
+    /* A section never shrinks, report the size it already has */
+    if (NewSize->QuadPart <= Section->SizeOfSection.QuadPart)
+    {
+        *NewSize = Section->SizeOfSection;
+        return STATUS_SUCCESS;
+    }
+
     {
         PMM_SECTION_SEGMENT Segment = (PMM_SECTION_SEGMENT)Section->Segment;
         Section->SizeOfSection = *NewSize;
@@ -5477,7 +5482,7 @@ MmExtendSection(
             if (Segment->RawLength.QuadPart < NewSize->QuadPart)
             {
                 Segment->RawLength = *NewSize;
-                Segment->Length.QuadPart = (NewSize->QuadPart + PAGE_SIZE - 1) & ~((LONGLONG)PAGE_SIZE);
+                Segment->Length.QuadPart = PAGE_ROUND_UP(NewSize->QuadPart);
             }
             MmUnlockSectionSegment(Segment);
         }
