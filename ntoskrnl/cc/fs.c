@@ -337,7 +337,9 @@ CcSetFileSizes (
     else
     {
         /* Extend our section object, Mm reports the section size back */
-        LARGE_INTEGER NewSectionSize = FileSizes->AllocationSize;
+        LARGE_INTEGER NewSectionSize;
+        NewSectionSize.QuadPart = CcRosRoundSectionSize(FileSizes->AllocationSize.QuadPart,
+                                                        CC_SECTION_GROWTH);
         MmExtendSection(SharedCacheMap->Section, &NewSectionSize);
     }
 }
