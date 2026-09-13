@@ -27,7 +27,6 @@ typedef struct _HWPROFILEINFO {
 } HWPROFILEINFO;
 
 cpp_quote("#endif")
-typedef unsigned long DEVPROPTYPE;
 typedef [range(0, PNP_MAX_PROP_SIZE)] unsigned long PNP_PROP_SIZE;
 typedef [range(0, PNP_MAX_PROP_COUNT)] unsigned long PNP_PROP_COUNT;
 typedef [range(0, PNP_MAX_STRING_LEN)] unsigned long PNP_RPC_STRING_LEN;
@@ -247,11 +246,20 @@ typedef struct _PNP_CONFLICT_STRINGS {
     WCHAR DeviceInstanceStrings[1];
 } PNP_CONFLICT_STRINGS, *PPNP_CONFLICT_STRINGS;
 
+cpp_quote("#include <devpropdef.h>")
 cpp_quote("#ifndef _DEVPROPDEF_H_")
+typedef unsigned long DEVPROPTYPE;
 typedef struct _DEVPROPKEY {
     GUID fmtid;
     DWORD pid;
 } DEVPROPKEY;
+cpp_quote("#endif")
+
+cpp_quote("#ifndef PNP_PROP_OBJECT_DEVICE")
+cpp_quote("#define PNP_PROP_OBJECT_DEVICE              1")
+cpp_quote("#define PNP_PROP_OBJECT_INSTALLER_CLASS     2")
+cpp_quote("#define PNP_PROP_OBJECT_INTERFACE           3")
+cpp_quote("#define PNP_PROP_OBJECT_INTERFACE_CLASS     4")
 cpp_quote("#endif")
 
 [
@@ -936,7 +944,53 @@ cpp_quote("#if _WIN32_WINNT >= 0x0501")
         [out] DWORD *pulSSDIFlags,
         [in] DWORD ulFlags);
 
-    /* Functions 65 to 74 are Vista+, see r63565 */
+cpp_quote("#if (_WIN32_WINNT >= 0x0600) || defined(__REACTOS__)")
+
+    /* Function 65 */
+    DWORD
+    __stdcall
+    PNP_GetObjectPropKeys(
+        [in] handle_t hBinding,
+        [in, string, ref] LPWSTR ObjectName,
+        [in] DWORD ObjectType,
+        [in, string, unique] LPWSTR PropertyCultureName,
+        [in, out] PNP_PROP_COUNT *PropertyCount,
+        [out] PNP_PROP_COUNT *TransferLen,
+        [out, size_is(*PropertyCount), length_is(*TransferLen)] DEVPROPKEY *PropertyKeys,
+        [in] DWORD Flags);
+
+    /* Function 66 */
+    DWORD
+    __stdcall
+    PNP_GetObjectProp(
+        [in] handle_t hBinding,
+        [in, string, ref] LPWSTR ObjectName,
+        [in] DWORD ObjectType,
+        [in, string, unique] LPWSTR PropertyCultureName,
+        [in] DEVPROPKEY *PropertyKey,
+        [out] DEVPROPTYPE *PropertyType,
+        [in, out] PNP_PROP_SIZE *PropertySize,
+        [out] PNP_PROP_SIZE *TransferLen,
+        [out, size_is(*PropertySize), length_is(*TransferLen)] BYTE *PropertyBuffer,
+        [in] DWORD Flags);
+
+    /* Function 67 */
+    DWORD
+    __stdcall
+    PNP_SetObjectProp(
+        [in] handle_t hBinding,
+        [in, string, ref] LPWSTR ObjectName,
+        [in] DWORD ObjectType,
+        [in, string, unique] LPWSTR PropertyCultureName,
+        [in] DEVPROPKEY *PropertyKey,
+        [in] DEVPROPTYPE PropertyType,
+        [in] PNP_PROP_SIZE PropertySize,
+        [in, unique, size_is(PropertySize)] BYTE *PropertyBuffer,
+        [in] DWORD Flags);
+
+cpp_quote("#endif")
+
+    /* Functions 68 to 74 are Vista+, see r63565 */
 
 cpp_quote("#endif /* _WIN32_WINNT >= 0x0501 */")
 
