@@ -99,12 +99,9 @@ MiInitializeSessionSpaceLayout(VOID)
     //
     MiSessionSpaceEnd = MiSessionImageEnd;
 
-    //
-    // System view space ends at session space, so now that we know where
-    // this is, we can compute the base address of system view space itself.
-    //
-    MiSystemViewStart = (PVOID)((ULONG_PTR)MmSessionBase -
-                                MmSystemViewSize);
+    /* System views hold the file cache views, give them the system cache range */
+    MiSystemViewStart = MI_SYSTEM_CACHE_START;
+    ASSERT((ULONG_PTR)MiSystemViewStart + MmSystemViewSize <= (ULONG_PTR)MI_PAGED_POOL_START);
 
     /* Compute the PTE addresses for all the addresses we carved out */
     MiSessionImagePteStart = MiAddressToPte(MiSessionImageStart);
