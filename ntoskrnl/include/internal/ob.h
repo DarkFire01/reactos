@@ -6,6 +6,10 @@
 * PROGRAMMERS:     Alex Ionescu (alex.ionescu@reactos.org)
 */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //
 // Define this if you want debugging support
 //
@@ -648,3 +652,7 @@ extern ULONG ObpLUIDDeviceMapsEnabled;
 // Inlined Functions
 //
 #include "ob_x.h"
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
