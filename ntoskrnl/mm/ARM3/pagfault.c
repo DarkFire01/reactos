@@ -2404,6 +2404,9 @@ UserFault:
 
                 MiReleasePfnLock(LockIrql);
 
+                /* The private copy belongs to the working set now */
+                MiAddPrivatePageToWorkingSet(Address);
+
                 /* Return the status */
                 MiUnlockProcessWorkingSet(CurrentProcess, CurrentThread);
                 return STATUS_PAGE_FAULT_COPY_ON_WRITE;
@@ -2466,6 +2469,8 @@ UserFault:
         else
             MiGetPfnEntry(PointerPte->u.Hard.PageFrameNumber)->CallSite = _ReturnAddress();
 #endif
+
+        MiAddPrivatePageToWorkingSet(Address);
 
         /* Return the status */
         MiUnlockProcessWorkingSet(CurrentProcess, CurrentThread);
@@ -2621,6 +2626,8 @@ UserFault:
             Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
             ASSERT(Pfn1->u1.Event == NULL);
 
+            MiAddPrivatePageToWorkingSet(Address);
+
             /* Demand zero */
             ASSERT(KeGetCurrentIrql() <= APC_LEVEL);
             MiUnlockProcessWorkingSet(CurrentProcess, CurrentThread);
@@ -2717,6 +2724,10 @@ UserFault:
                              CurrentProcess,
                              TrapInformation,
                              Vad);
+
+    /* Private pages the fault made valid go to the working set */
+    if (NT_SUCCESS(Status))
+        MiAddPrivatePageToWorkingSet(Address);
 
 ExitUser:
 

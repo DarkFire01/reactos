@@ -400,10 +400,10 @@ MmInsertRmap(PFN_NUMBER Page, PEPROCESS Process,
     if (!RMAP_IS_SEGMENT(Address))
     {
         ASSERT(Process != NULL);
-        PrevSize = InterlockedExchangeAddUL(&Process->Vm.WorkingSetSize, PAGE_SIZE);
+        PrevSize = InterlockedExchangeAddUL(&Process->Vm.WorkingSetSize, 1);
         if (PrevSize >= Process->Vm.PeakWorkingSetSize)
         {
-            Process->Vm.PeakWorkingSetSize = PrevSize + PAGE_SIZE;
+            Process->Vm.PeakWorkingSetSize = PrevSize + 1;
         }
     }
 }
@@ -439,7 +439,7 @@ MmDeleteRmap(PFN_NUMBER Page, PEPROCESS Process,
             if (!RMAP_IS_SEGMENT(Address))
             {
                 ASSERT(Process != NULL);
-                (void)InterlockedExchangeAddUL(&Process->Vm.WorkingSetSize, -PAGE_SIZE);
+                (void)InterlockedExchangeAddUL(&Process->Vm.WorkingSetSize, -1);
             }
             return;
         }
