@@ -65,11 +65,13 @@ list(APPEND SOURCE
     uacpi-host/uacpi_host.c
     uacpi-host/uacpi_isr.c)
 
-add_library(acpi_new MODULE
+add_library(acpi MODULE
     ${SOURCE}
     acpi.rc)
 
-set_target_properties(acpi_new PROPERTIES C_STANDARD 11)
-set_module_type(acpi_new kernelmodedriver)
-target_link_libraries(acpi_new uacpi acpi_arbiter wdmguid memcmp ${PSEH_LIB})
-add_importlibs(acpi_new wmilib ntoskrnl hal)
+set_target_properties(acpi PROPERTIES C_STANDARD 11)
+set_module_type(acpi kernelmodedriver)
+target_link_libraries(acpi uacpi acpi_arbiter wdmguid memcmp ${PSEH_LIB})
+add_importlibs(acpi wmilib ntoskrnl hal)
+add_cd_file(TARGET acpi DESTINATION reactos/system32/drivers NO_CAB FOR all)
+add_driver_inf(acpi acpi.inf)
