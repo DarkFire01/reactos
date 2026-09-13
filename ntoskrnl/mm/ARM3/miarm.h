@@ -2102,6 +2102,10 @@ MiWakeModifiedPageWriter(VOID);
 
 VOID
 NTAPI
+MiWakeWorkingSetManager(VOID);
+
+VOID
+NTAPI
 MiStopModifiedPageWriter(VOID);
 
 VOID
