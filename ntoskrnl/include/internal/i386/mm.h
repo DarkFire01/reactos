@@ -51,7 +51,7 @@
 #define MI_MIN_INIT_PAGED_POOLSIZE              (32 * _1MB)
 #define MI_MAX_INIT_NONPAGED_POOL_SIZE          (128 * _1MB)
 #define MI_MAX_NONPAGED_POOL_SIZE               (128 * _1MB)
-#define MI_SYSTEM_VIEW_SIZE                     (32 * _1MB)
+#define MI_SYSTEM_VIEW_SIZE                     (256 * _1MB)
 #define MI_SESSION_VIEW_SIZE                    (48 * _1MB)
 #define MI_SESSION_POOL_SIZE                    (16 * _1MB)
 #define MI_SESSION_IMAGE_SIZE                   (8 * _1MB)
