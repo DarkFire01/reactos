@@ -607,6 +607,8 @@ extern ULONG MmMaximumNonPagedPoolPercent;
 extern ULONG MmLargeStackSize;
 extern PMMCOLOR_TABLES MmFreePagesByColor[FreePageList + 1];
 extern MMPFNLIST MmStandbyPageListByPriority[8];
+extern MMPFNLIST MmModifiedPageListByColor[1];
+extern MMPFNLIST MmModifiedNoWritePageListHead;
 extern ULONG MmProductType;
 extern MM_SYSTEMSIZE MmSystemSize;
 extern PKEVENT MiLowMemoryEvent;
@@ -623,6 +625,7 @@ extern PFN_NUMBER MiLowNonPagedPoolThreshold;
 extern PFN_NUMBER MiHighNonPagedPoolThreshold;
 extern PFN_NUMBER MmMinimumFreePages;
 extern PFN_NUMBER MmPlentyFreePages;
+extern PFN_NUMBER MmModifiedPageMaximum;
 extern SIZE_T MmMinimumStackCommitInBytes;
 extern PFN_COUNT MiExpansionPoolPagesInitialCharge;
 extern PFN_NUMBER MmResidentAvailableAtInit;
@@ -2059,6 +2062,57 @@ NTAPI
 MiUnlinkPageFromList(
     IN PMMPFN Pfn
 );
+
+VOID
+NTAPI
+MiRestoreTransitionPte(
+    _In_ PMMPFN Pfn1
+);
+
+BOOLEAN
+NTAPI
+MiReservePageFileSpace(
+    _Inout_ PULONG PageCount,
+    _Out_ PULONG PageFileIndex,
+    _Out_ PULONG_PTR PageFileOffset
+);
+
+BOOLEAN
+NTAPI
+MiReleasePageFileSpace(
+    _In_ MMPTE PteContents
+);
+
+NTSTATUS
+NTAPI
+MiWritePageFile(
+    _In_ PMDL Mdl,
+    _In_ ULONG PageFileIndex,
+    _In_ ULONG_PTR PageFileOffset
+);
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+MiInitializeModifiedPageWriter(VOID);
+
+VOID
+NTAPI
+MiWakeModifiedPageWriter(VOID);
+
+VOID
+NTAPI
+MiStopModifiedPageWriter(VOID);
+
+VOID
+NTAPI
+MiNotifyAvailablePages(
+    _In_ BOOLEAN Available
+);
+
+VOID
+NTAPI
+MiWaitForFreePage(VOID);
 
 VOID
 NTAPI
