@@ -24,6 +24,9 @@ MiShutdownSystem(VOID)
     PFN_NUMBER Page;
     BOOLEAN Dirty;
 
+    /* No more paging file writes from here on */
+    MiStopModifiedPageWriter();
+
     /* Loop through all the paging files */
     for (i = 0; i < MmNumberOfPagingFiles; i++)
     {

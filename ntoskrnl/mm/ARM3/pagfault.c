@@ -15,10 +15,6 @@
 #define MODULE_INVOLVED_IN_ARM3
 #include <mm/ARM3/miarm.h>
 
-VOID
-NTAPI
-MmRebalanceMemoryConsumersAndWait(VOID);
-
 /* GLOBALS ********************************************************************/
 
 #define HYDRA_PROCESS (PEPROCESS)1
@@ -844,8 +840,9 @@ MiCompleteProtoPteFault(IN BOOLEAN StoreInstruction,
     DirtyPage = FALSE;
     if ((StoreInstruction) && ((Protection & MM_WRITECOPY) != MM_WRITECOPY))
     {
-        /* Then the page should be marked dirty */
+        /* Then the page should be marked dirty, a paged out copy is stale now */
         DirtyPage = TRUE;
+        Pfn1->u3.e1.Modified = 1;
     }
 
     /* Did we get a locked incoming PFN? */
@@ -920,11 +917,10 @@ MiResolvePageFileFault(_In_ BOOLEAN StoreInstruction,
     ULONG Protection = TempPte.u.Soft.Protection;
 
     /* Things we don't support yet */
-    ASSERT(CurrentProcess > HYDRA_PROCESS);
     ASSERT(*OldIrql != MM_NOIRQL);
 
     MI_SET_USAGE(MI_USAGE_PAGE_FILE);
-    MI_SET_PROCESS(CurrentProcess);
+    if (CurrentProcess > HYDRA_PROCESS) MI_SET_PROCESS(CurrentProcess);
 
     /* We must hold the PFN lock */
     MI_ASSERT_PFN_LOCK_HELD();
@@ -935,7 +931,10 @@ MiResolvePageFileFault(_In_ BOOLEAN StoreInstruction,
     ASSERT(TempPte.u.Soft.PageFileHigh != MI_PTE_LOOKUP_NEEDED);
 
     /* Get any page, it will be overwritten */
-    Color = MI_GET_NEXT_PROCESS_COLOR(CurrentProcess);
+    if (CurrentProcess > HYDRA_PROCESS)
+        Color = MI_GET_NEXT_PROCESS_COLOR(CurrentProcess);
+    else
+        Color = MI_GET_NEXT_COLOR();
     Page = MiRemoveAnyPage(Color);
     if (Page == 0)
     {
@@ -1019,11 +1018,14 @@ MiResolveTransitionFault(IN BOOLEAN StoreInstruction,
     /* ARM3 doesn't support this path */
     ASSERT(OldIrql != MM_NOIRQL);
 
-    /* Capture the PTE and make sure it's in transition format */
+    /* The page may have been repurposed before we got the PFN lock, retry the access then */
     TempPte = *PointerPte;
-    ASSERT((TempPte.u.Soft.Valid == 0) &&
-           (TempPte.u.Soft.Prototype == 0) &&
-           (TempPte.u.Soft.Transition == 1));
+    if ((TempPte.u.Hard.Valid == 1) ||
+        (TempPte.u.Soft.Prototype == 1) ||
+        (TempPte.u.Soft.Transition == 0))
+    {
+        return STATUS_SUCCESS;
+    }
 
     /* Get the PFN and the PFN entry */
     PageFrameIndex = TempPte.u.Trans.PageFrameNumber;
@@ -1036,26 +1038,21 @@ MiResolveTransitionFault(IN BOOLEAN StoreInstruction,
     /* This is from ARM3 -- Windows normally handles this here */
     ASSERT(Pfn1->u4.InPageError == 0);
 
-    /* See if we should wait before terminating the fault */
-    if ((Pfn1->u3.e1.ReadInProgress == 1)
-            || ((Pfn1->u3.e1.WriteInProgress == 1) && StoreInstruction))
+    /* A page being read in has to wait. One being written out can be reused right away */
+    if (Pfn1->u3.e1.ReadInProgress == 1)
     {
-        DPRINT1("The page is currently in a page transition !\n");
+        DPRINT("The page is currently being read in\n");
         *InPageBlock = &Pfn1->u1.Event;
         if (PointerPte == Pfn1->PteAddress)
         {
-            DPRINT1("And this if for this particular PTE.\n");
             /* The PTE will be made valid by the thread serving the fault */
-            return STATUS_SUCCESS; // FIXME: Maybe something more descriptive
+            return STATUS_SUCCESS;
         }
     }
 
     /* Windows checks there's some free pages and this isn't an in-page error */
     ASSERT(MmAvailablePages > 0);
     ASSERT(Pfn1->u4.InPageError == 0);
-
-    /* ReactOS checks for this */
-    ASSERT(MmAvailablePages > 32);
 
     /* Was this a transition page in the valid list, or free/zero list? */
     if (Pfn1->u3.e1.PageLocation == ActiveAndValid)
@@ -1067,10 +1064,16 @@ MiResolveTransitionFault(IN BOOLEAN StoreInstruction,
         ASSERT(Pfn1->u2.ShareCount != 0);
         ASSERT(Pfn1->u3.e2.ReferenceCount != 0);
     }
+    else if (Pfn1->u3.e1.PageLocation == TransitionPage)
+    {
+        /* Still referenced by a lock or a write, so it is on no list */
+        ASSERT(Pfn1->u3.e2.ReferenceCount != 0);
+        MiReferenceUnusedPageAndBumpLockCount(Pfn1);
+    }
     else
     {
         /* Otherwise, the page is removed from its list */
-        DPRINT("Transition page in free/zero list\n");
+        DPRINT("Transition page in standby/modified list\n");
         MiUnlinkPageFromList(Pfn1);
         MiReferenceUnusedPageAndBumpLockCount(Pfn1);
     }
@@ -1106,6 +1109,14 @@ MiResolveTransitionFault(IN BOOLEAN StoreInstruction,
     TempPte.u.Long = (MmProtectToPteMask[PointerPte->u.Trans.Protection]) |
                      MiDetermineUserGlobalPteMask(PointerPte);
     TempPte.u.Hard.PageFrameNumber = PointerPte->u.Hard.PageFrameNumber;
+
+    /* A write makes any paged out copy stale */
+    if (StoreInstruction &&
+        MI_IS_PAGE_WRITEABLE(&TempPte) &&
+        !MI_IS_PAGE_COPY_ON_WRITE(&TempPte))
+    {
+        Pfn1->u3.e1.Modified = 1;
+    }
 
     /* Is the PTE writeable? */
     if ((Pfn1->u3.e1.Modified) &&
@@ -1239,6 +1250,13 @@ MiResolveProtoPteFault(IN BOOLEAN StoreInstruction,
         /* Lock again the PFN lock, MiResolveProtoPteFault unlocked it */
         OldIrql = MiAcquirePfnLock();
 
+        /* It only returns without mapping the page when the access has to be retried */
+        if (PointerPte->u.Hard.Valid == 0)
+        {
+            MiReleasePfnLock(OldIrql);
+            return STATUS_SUCCESS;
+        }
+
         /* And re-read the proto PTE */
         TempPte = *PointerProtoPte;
         ASSERT(TempPte.u.Hard.Valid == 1);
@@ -1313,18 +1331,55 @@ MiResolveProtoPteFault(IN BOOLEAN StoreInstruction,
                                           OldIrql,
                                           &InPageBlock);
         ASSERT(NT_SUCCESS(Status));
+
+        if (InPageBlock != NULL)
+        {
+            KEVENT CurrentPageEvent;
+            PKEVENT PreviousPageEvent;
+
+            /* Another thread is reading the page in, queue up behind it and retry */
+            KeInitializeEvent(&CurrentPageEvent, NotificationEvent, FALSE);
+            PreviousPageEvent = *InPageBlock;
+            *InPageBlock = &CurrentPageEvent;
+            MiReleasePfnLock(OldIrql);
+
+            KeWaitForSingleObject(&CurrentPageEvent, WrPageIn, KernelMode, FALSE, NULL);
+            if (PreviousPageEvent)
+            {
+                KeSetEvent(PreviousPageEvent, IO_NO_INCREMENT, FALSE);
+            }
+
+            return STATUS_SUCCESS;
+        }
+    }
+    else if (TempPte.u.Soft.PageFileHigh != 0)
+    {
+        /* The shared page was paged out, bring it back */
+        Status = MiResolvePageFileFault(StoreInstruction,
+                                        Address,
+                                        PointerProtoPte,
+                                        Process,
+                                        &OldIrql);
+        if (!NT_SUCCESS(Status))
+        {
+            /* Out of pages, the caller retries */
+            MiReleasePfnLock(OldIrql);
+            return Status;
+        }
     }
     else
     {
-        /* We also don't support paged out pages */
-        ASSERT(TempPte.u.Soft.PageFileHigh == 0);
-
         /* Resolve the demand zero fault */
         Status = MiResolveDemandZeroFault(Address,
                                           PointerProtoPte,
                                           (ULONG)TempPte.u.Soft.Protection,
                                           Process,
                                           OldIrql);
+
+        /* Out of pages, the PFN lock is already released and the caller retries */
+        if (!NT_SUCCESS(Status))
+            return Status;
+
 #if MI_TRACE_PFNS
         /* Update debug info */
         if (TrapInformation)
@@ -1332,8 +1387,6 @@ MiResolveProtoPteFault(IN BOOLEAN StoreInstruction,
         else
             MiGetPfnEntry(PointerProtoPte->u.Hard.PageFrameNumber)->CallSite = _ReturnAddress();
 #endif
-
-        ASSERT(NT_SUCCESS(Status));
     }
 
     /* Complete the prototype PTE fault -- this will release the PFN lock */
@@ -1417,7 +1470,7 @@ MiDispatchFault(IN ULONG FaultCode,
                                             Process,
                                             LockIrql,
                                             TrapInformation);
-            ASSERT(Status == STATUS_SUCCESS);
+            ASSERT((Status == STATUS_SUCCESS) || (Status == STATUS_NO_MEMORY));
 
             /* Complete this as a transition fault */
             ASSERT(OldIrql == KeGetCurrentIrql());
@@ -1472,13 +1525,15 @@ MiDispatchFault(IN ULONG FaultCode,
                     DPRINT("oooh, shiny, a soft fault! 0x%lx\n", PageFrameIndex);
                     Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
                     ASSERT(Pfn1->u3.e1.PageLocation != ActiveAndValid);
-
-                    /* Should not yet happen in ReactOS */
-                    ASSERT(Pfn1->u3.e1.ReadInProgress == 0);
                     ASSERT(Pfn1->u4.InPageError == 0);
 
-                    /* Get the page */
-                    MiUnlinkPageFromList(Pfn1);
+                    /* A page still being read in is handled by the slow path */
+                    if (Pfn1->u3.e1.ReadInProgress)
+                        break;
+
+                    /* Get the page, unless a lock or a write keeps it off the lists */
+                    if (Pfn1->u3.e1.PageLocation != TransitionPage)
+                        MiUnlinkPageFromList(Pfn1);
 
                     /* Bump its reference count */
                     ASSERT(Pfn1->u2.ShareCount == 0);
@@ -2126,7 +2181,7 @@ RetryKernel:
 
         if (Status == STATUS_NO_MEMORY)
         {
-            MmRebalanceMemoryConsumersAndWait();
+            MiWaitForFreePage();
             goto RetryKernel;
         }
 
@@ -2669,12 +2724,13 @@ ExitUser:
         if (CurrentProcess->AddressCreationLock.Owner == KeGetCurrentThread())
         {
             static LARGE_INTEGER TinyTime = {{-1L, -1L}};
+            MiWakeModifiedPageWriter();
             MmRebalanceMemoryConsumers();
             KeDelayExecutionThread(KernelMode, FALSE, &TinyTime);
         }
         else
         {
-            MmRebalanceMemoryConsumersAndWait();
+            MiWaitForFreePage();
         }
 
         goto UserFault;
