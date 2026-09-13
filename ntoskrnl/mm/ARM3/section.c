@@ -287,7 +287,10 @@ static
 PVOID
 MiInsertInSystemSpace(IN PMMSESSION Session,
                       IN ULONG Buckets,
-                      IN PCONTROL_AREA ControlArea)
+                      IN PCONTROL_AREA ControlArea,
+                      IN ULONG_PTR StartingPage,
+                      IN BOOLEAN UserReference,
+                      IN BOOLEAN ReadOnly)
 {
     PVOID Base;
     ULONG Hash, i, HashSize;
@@ -389,6 +392,9 @@ MiInsertInSystemSpace(IN PMMSESSION Session,
     /* Add this entry into the hash table */
     Session->SystemSpaceViewTable[Hash].Entry = Entry;
     Session->SystemSpaceViewTable[Hash].ControlArea = ControlArea;
+    Session->SystemSpaceViewTable[Hash].StartingPage = StartingPage;
+    Session->SystemSpaceViewTable[Hash].UserReference = UserReference;
+    Session->SystemSpaceViewTable[Hash].ReadOnly = ReadOnly;
 
     /* Hash entry found, increment total and return the base address */
     Session->SystemSpaceHashEntries++;
@@ -396,67 +402,82 @@ MiInsertInSystemSpace(IN PMMSESSION Session,
     return Base;
 }
 
+/**
+ * @brief Points system view PTEs at the prototype PTEs of a section.
+ *
+ * @param[in] FirstPte
+ * PTE mapping the first page of the view.
+ *
+ * @param[in] PteCount
+ * Number of PTEs of the view.
+ *
+ * @param[in] ControlArea
+ * Control area of the section.
+ *
+ * @param[in] StartingPage
+ * Section page mapped by the first PTE.
+ *
+ * @param[in] ReadOnly
+ * TRUE if the view must not allow writes.
+ *
+ * @remarks PTEs already set are left alone, and so are PTEs past the end of a file segment.
+ */
 static
-NTSTATUS
-MiAddMappedPtes(IN PMMPTE FirstPte,
-                IN PFN_NUMBER PteCount,
-                IN PCONTROL_AREA ControlArea,
-                IN LONGLONG SectionOffset)
+VOID
+MiAddMappedPtes(
+    _In_ PMMPTE FirstPte,
+    _In_ ULONG PteCount,
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ ULONG64 StartingPage,
+    _In_ BOOLEAN ReadOnly)
 {
+    PMMPTE PointerPte, LastPte, ProtoPte, LastProtoPte;
+    PMSUBSECTION Subsection;
+    ULONG64 Page = StartingPage;
     MMPTE TempPte;
-    PMMPTE PointerPte, ProtoPte, LastProtoPte, LastPte;
-    PSUBSECTION Subsection;
 
-    /* Mapping at offset not supported yet */
-    ASSERT(SectionOffset == 0);
-
-    /* ARM3 doesn't support this yet */
     ASSERT(ControlArea->u.Flags.GlobalOnlyPerSession == 0);
     ASSERT(ControlArea->u.Flags.Rom == 0);
-    ASSERT(ControlArea->FilePointer == NULL);
-
-    /* Sanity checks */
-    ASSERT(PteCount != 0);
-    ASSERT(ControlArea->NumberOfMappedViews >= 1);
-    ASSERT(ControlArea->NumberOfUserReferences >= 1);
-    ASSERT(ControlArea->NumberOfSectionReferences != 0);
-    ASSERT(ControlArea->u.Flags.BeingCreated == 0);
     ASSERT(ControlArea->u.Flags.BeingDeleted == 0);
-    ASSERT(ControlArea->u.Flags.BeingPurged == 0);
+    ASSERT(PteCount != 0);
 
-    /* Get the PTEs for the actual mapping */
     PointerPte = FirstPte;
     LastPte = FirstPte + PteCount;
 
-    /* Get the prototype PTEs that desribe the section mapping in the subsection */
-    Subsection = (PSUBSECTION)(ControlArea + 1);
-    ProtoPte = Subsection->SubsectionBase;
-    LastProtoPte = &Subsection->SubsectionBase[Subsection->PtesInSubsection];
-
-    /* Loop the PTEs for the mapping */
     while (PointerPte < LastPte)
     {
-        /* We may have run out of prototype PTEs in this subsection */
-        if (ProtoPte >= LastProtoPte)
+        if (ControlArea->FilePointer)
         {
-            /* But we don't handle this yet */
-            ASSERT(FALSE);
+            ProtoPte = MiGetDataFileProtoPte(ControlArea, Page, &Subsection);
+            if (!ProtoPte)
+                break;
+        }
+        else
+        {
+            Subsection = (PMSUBSECTION)(ControlArea + 1);
+            ASSERT(Page + PteCount <= Subsection->PtesInSubsection);
+            ProtoPte = &Subsection->SubsectionBase[Page];
         }
 
-        /* The PTE should be completely clear */
-        ASSERT(PointerPte->u.Long == 0);
+        LastProtoPte = &Subsection->SubsectionBase[Subsection->PtesInSubsection];
+        while ((PointerPte < LastPte) && (ProtoPte < LastProtoPte))
+        {
+            if (PointerPte->u.Long == 0)
+            {
+                MI_MAKE_PROTOTYPE_PTE(&TempPte, ProtoPte);
+                TempPte.u.Proto.ReadOnly = ReadOnly;
+                MI_WRITE_INVALID_PTE(PointerPte, TempPte);
+            }
 
-        /* Build the prototype PTE and write it */
-        MI_MAKE_PROTOTYPE_PTE(&TempPte, ProtoPte);
-        MI_WRITE_INVALID_PTE(PointerPte, TempPte);
+            PointerPte++;
+            ProtoPte++;
+            Page++;
+        }
 
-        /* Keep going */
-        PointerPte++;
-        ProtoPte++;
+        /* Paging file backed sections have a single subsection */
+        if (!ControlArea->FilePointer)
+            break;
     }
-
-    /* No failure path */
-    return STATUS_SUCCESS;
 }
 
 VOID
@@ -530,62 +551,24 @@ MiFillSystemPageDirectory(IN PVOID Base,
 static
 NTSTATUS
 MiCheckPurgeAndUpMapCount(IN PCONTROL_AREA ControlArea,
-                          IN BOOLEAN FailIfSystemViews)
+                          IN BOOLEAN UserReference)
 {
     KIRQL OldIrql;
-
-    /* Flag not yet supported */
-    ASSERT(FailIfSystemViews == FALSE);
 
     /* Lock the PFN database */
     OldIrql = MiAcquirePfnLock();
 
-    /* State not yet supported */
-    ASSERT(ControlArea->u.Flags.BeingPurged == 0);
-
-    /* Increase the reference counts */
+    /* Increase the reference counts, cache views are not user references */
     ControlArea->NumberOfMappedViews++;
-    ControlArea->NumberOfUserReferences++;
+    if (UserReference)
+        ControlArea->NumberOfUserReferences++;
+    else
+        ControlArea->NumberOfSystemCacheViews++;
     ASSERT(ControlArea->NumberOfSectionReferences != 0);
 
     /* Release the PFN lock and return success */
     MiReleasePfnLock(OldIrql);
     return STATUS_SUCCESS;
-}
-
-PSUBSECTION
-NTAPI
-MiLocateSubsection(IN PMMVAD Vad,
-                   IN ULONG_PTR Vpn)
-{
-    PSUBSECTION Subsection;
-    PCONTROL_AREA ControlArea;
-    ULONG_PTR PteOffset;
-
-    /* Get the control area */
-    ControlArea = Vad->ControlArea;
-    ASSERT(ControlArea->u.Flags.Rom == 0);
-    ASSERT(ControlArea->u.Flags.Image == 0);
-    ASSERT(ControlArea->u.Flags.GlobalOnlyPerSession == 0);
-
-    /* Get the subsection */
-    Subsection = (PSUBSECTION)(ControlArea + 1);
-
-    /* We only support single-subsection segments */
-    ASSERT(Subsection->SubsectionBase != NULL);
-    ASSERT(Vad->FirstPrototypePte >= Subsection->SubsectionBase);
-    ASSERT(Vad->FirstPrototypePte < &Subsection->SubsectionBase[Subsection->PtesInSubsection]);
-
-    /* Compute the PTE offset */
-    PteOffset = Vpn - Vad->StartingVpn;
-    PteOffset += Vad->FirstPrototypePte - Subsection->SubsectionBase;
-
-    /* Again, we only support single-subsection segments */
-    ASSERT(PteOffset < 0xF0000000);
-    ASSERT(PteOffset < Subsection->PtesInSubsection);
-
-    /* Return the subsection */
-    return Subsection;
 }
 
 static
@@ -720,8 +703,8 @@ MiSegmentDelete(IN PSEGMENT Segment)
     ExFreePool(Segment);
 }
 
-static
 VOID
+NTAPI
 MiCheckControlArea(IN PCONTROL_AREA ControlArea,
                    IN KIRQL OldIrql)
 {
@@ -735,12 +718,17 @@ MiCheckControlArea(IN PCONTROL_AREA ControlArea,
         /* There should be no more user references either */
         ASSERT(ControlArea->NumberOfUserReferences == 0);
 
-        /* Not yet supported */
-        ASSERT(ControlArea->FilePointer == NULL);
-
-        /* The control area is being destroyed */
-        ControlArea->u.Flags.BeingDeleted = TRUE;
-        DeleteSegment = TRUE;
+        if (ControlArea->FilePointer)
+        {
+            /* File data has to be written out first, that needs a thread able to wait */
+            MiQueueDataFileCleanup(ControlArea);
+        }
+        else
+        {
+            /* The control area is being destroyed */
+            ControlArea->u.Flags.BeingDeleted = TRUE;
+            DeleteSegment = TRUE;
+        }
     }
 
     /* Release the PFN lock */
@@ -757,7 +745,8 @@ MiCheckControlArea(IN PCONTROL_AREA ControlArea,
 
 static
 VOID
-MiDereferenceControlArea(IN PCONTROL_AREA ControlArea)
+MiDereferenceControlArea(IN PCONTROL_AREA ControlArea,
+                         IN BOOLEAN UserReference)
 {
     KIRQL OldIrql;
 
@@ -766,7 +755,10 @@ MiDereferenceControlArea(IN PCONTROL_AREA ControlArea)
 
     /* Drop reference counts */
     ControlArea->NumberOfMappedViews--;
-    ControlArea->NumberOfUserReferences--;
+    if (UserReference)
+        ControlArea->NumberOfUserReferences--;
+    else
+        ControlArea->NumberOfSystemCacheViews--;
 
     /* Check if it's time to delete the CA. This releases the lock */
     MiCheckControlArea(ControlArea, OldIrql);
@@ -784,11 +776,10 @@ MiRemoveMappedView(IN PEPROCESS CurrentProcess,
     /* Get the control area */
     ControlArea = Vad->ControlArea;
 
-    /* We only support non-extendable, non-image, pagefile-backed regular sections */
+    /* We only support non-extendable, non-image regular sections */
     ASSERT(Vad->u.VadFlags.VadType == VadNone);
     ASSERT(Vad->u2.VadFlags2.ExtendableFile == FALSE);
     ASSERT(ControlArea);
-    ASSERT(ControlArea->FilePointer == NULL);
     ASSERT(!MI_IS_MEMORY_AREA_VAD(Vad));
 
     /* Delete the actual virtual memory pages */
@@ -822,6 +813,8 @@ MiUnmapViewOfSection(IN PEPROCESS Process,
     PVOID DbgBase = NULL;
     SIZE_T RegionSize;
     NTSTATUS Status;
+    PCONTROL_AREA ControlArea;
+    KIRQL OldIrql;
     PETHREAD CurrentThread = PsGetCurrentThread();
     PEPROCESS CurrentProcess = PsGetCurrentProcess();
     PAGED_CODE();
@@ -909,6 +902,15 @@ MiUnmapViewOfSection(IN PEPROCESS Process,
     MiRemoveNode((PMMADDRESS_NODE)Vad, &Process->VadRoot);
     PsReturnProcessNonPagedPoolQuota(Process, sizeof(MMVAD_LONG));
 
+    /* A file section may go away with this view, which is only done once the locks are gone */
+    ControlArea = Vad->ControlArea;
+    if (ControlArea->FilePointer)
+    {
+        OldIrql = MiAcquirePfnLock();
+        MiReferenceDataFileMapForIoUnsafe(ControlArea);
+        MiReleasePfnLock(OldIrql);
+    }
+
     /* Remove the PTEs for this view, which also releases the working set lock */
     MiRemoveMappedView(Process, Vad);
 
@@ -917,6 +919,9 @@ MiUnmapViewOfSection(IN PEPROCESS Process,
     /* Update performance counter and release the lock */
     Process->VirtualSize -= RegionSize;
     if (!Flags) MmUnlockAddressSpace(&Process->Vm);
+
+    if (ControlArea->FilePointer)
+        MiDereferenceDataFileMapForIo(ControlArea);
 
     /* Destroy the VAD and return success */
     ExFreePool(Vad);
@@ -1059,31 +1064,44 @@ MiMapViewInSystemSpace(
     ULONG Buckets;
     LONGLONG SectionSize;
     NTSTATUS Status;
+    BOOLEAN UserReference, ReadOnly;
+    ULONG PageOffset;
     PAGED_CODE();
 
     /* Get the control area, check for any flags ARM3 doesn't yet support */
     ControlArea = ((PSECTION)Section)->Segment->ControlArea;
     ASSERT(ControlArea->u.Flags.Image == 0);
-    ASSERT(ControlArea->FilePointer == NULL);
     ASSERT(ControlArea->u.Flags.GlobalOnlyPerSession == 0);
     ASSERT(ControlArea->u.Flags.Rom == 0);
     ASSERT(ControlArea->u.Flags.WasPurged == 0);
 
+    /* Views of sections the cache manager made do not hold the file for truncation */
+    UserReference = (BOOLEAN)((PSECTION)Section)->u.Flags.UserReference;
+    ReadOnly = (BOOLEAN)!(((PSECTION)Section)->InitialPageProtection &
+                          (PAGE_READWRITE | PAGE_EXECUTE_READWRITE));
+
     /* Increase the reference and map count on the control area, no purges yet */
-    Status = MiCheckPurgeAndUpMapCount(ControlArea, FALSE);
+    Status = MiCheckPurgeAndUpMapCount(ControlArea, UserReference);
     ASSERT(NT_SUCCESS(Status));
 
     /* Get the section size at creation time */
     SectionSize = ((PSECTION)Section)->SizeOfSection.QuadPart;
 
+    /* Views start on a page, the part of the first page before the offset is mapped too */
+    PageOffset = SectionOffset->LowPart & (PAGE_SIZE - 1);
+    SectionOffset->LowPart &= ~(PAGE_SIZE - 1);
+    if (*ViewSize)
+        *ViewSize += PageOffset;
+
     /* If the caller didn't specify a view size, assume until the end of the section */
     if (!(*ViewSize))
     {
         /* Check for overflow first */
-        if ((SectionSize - SectionOffset->QuadPart) > SIZE_T_MAX)
+        if ((SectionOffset->QuadPart > SectionSize) ||
+            ((SectionSize - SectionOffset->QuadPart) > SIZE_T_MAX))
         {
             DPRINT1("Section end is too far away from the specified offset.\n");
-            MiDereferenceControlArea(ControlArea);
+            MiDereferenceControlArea(ControlArea, UserReference);
             return STATUS_INVALID_VIEW_SIZE;
         }
         *ViewSize = SectionSize - SectionOffset->QuadPart;
@@ -1093,16 +1111,26 @@ MiMapViewInSystemSpace(
     if ((SectionOffset->QuadPart + *ViewSize) < SectionOffset->QuadPart)
     {
         DPRINT1("Integer overflow between size & offset!\n");
-        MiDereferenceControlArea(ControlArea);
+        MiDereferenceControlArea(ControlArea, UserReference);
         return STATUS_INVALID_VIEW_SIZE;
     }
 
     /* Check if the caller wanted a larger section than the view */
-    if (SectionOffset->QuadPart + *ViewSize > SectionSize)
+    if (ControlArea->FilePointer)
+    {
+        /* The cache maps whole chunks, the part past the end is filled when the file grows */
+        if (SectionOffset->QuadPart > SectionSize)
+        {
+            DPRINT1("View starts past the end of the section\n");
+            MiDereferenceControlArea(ControlArea, UserReference);
+            return STATUS_INVALID_VIEW_SIZE;
+        }
+    }
+    else if (SectionOffset->QuadPart + *ViewSize > SectionSize)
     {
         /* Fail */
         DPRINT1("View is too large\n");
-        MiDereferenceControlArea(ControlArea);
+        MiDereferenceControlArea(ControlArea, UserReference);
         return STATUS_INVALID_VIEW_SIZE;
     }
 
@@ -1111,21 +1139,26 @@ MiMapViewInSystemSpace(
     if (*ViewSize & (MI_SYSTEM_VIEW_BUCKET_SIZE - 1)) Buckets++;
 
     /* Check if the view is more than 4GB large */
-    if (Buckets >= MI_SYSTEM_VIEW_BUCKET_SIZE)
+    if ((*ViewSize == 0) || (Buckets >= MI_SYSTEM_VIEW_BUCKET_SIZE))
     {
         /* Fail */
         DPRINT1("View is too large\n");
-        MiDereferenceControlArea(ControlArea);
+        MiDereferenceControlArea(ControlArea, UserReference);
         return STATUS_INVALID_VIEW_SIZE;
     }
 
     /* Insert this view into system space and get a base address for it */
-    Base = MiInsertInSystemSpace(Session, Buckets, ControlArea);
+    Base = MiInsertInSystemSpace(Session,
+                                 Buckets,
+                                 ControlArea,
+                                 (ULONG_PTR)(SectionOffset->QuadPart >> PAGE_SHIFT),
+                                 UserReference,
+                                 ReadOnly);
     if (!Base)
     {
         /* Fail */
         DPRINT1("Out of system space\n");
-        MiDereferenceControlArea(ControlArea);
+        MiDereferenceControlArea(ControlArea, UserReference);
         return STATUS_NO_MEMORY;
     }
 
@@ -1146,15 +1179,68 @@ MiMapViewInSystemSpace(
     }
 
     /* Create the actual prototype PTEs for this mapping */
-    Status = MiAddMappedPtes(MiAddressToPte(Base),
-                             BYTES_TO_PAGES(*ViewSize),
-                             ControlArea,
-                             SectionOffset->QuadPart);
-    ASSERT(NT_SUCCESS(Status));
+    MiAddMappedPtes(MiAddressToPte(Base),
+                    BYTES_TO_PAGES(*ViewSize),
+                    ControlArea,
+                    (ULONG64)SectionOffset->QuadPart >> PAGE_SHIFT,
+                    ReadOnly);
 
     /* Return the base address of the mapping and success */
     *MappedBase = Base;
     return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Lets system views of a file section use pages the segment just got.
+ *
+ * @param[in] ControlArea
+ * Data control area that was extended.
+ *
+ * @param[in] OldPtes
+ * Number of prototype PTEs before the extension.
+ */
+VOID
+NTAPI
+MiExtendSystemViews(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ ULONG OldPtes)
+{
+    PMMSESSION Session = &MmSession;
+    ULONG64 FirstPage, EndPage;
+    PMMVIEW View;
+    PVOID Base;
+    ULONG i;
+
+    PAGED_CODE();
+    ASSERT(ControlArea->FilePointer != NULL);
+
+    KeAcquireGuardedMutex(Session->SystemSpaceViewLockPointer);
+
+    for (i = 0; i < Session->SystemSpaceHashSize; i++)
+    {
+        View = &Session->SystemSpaceViewTable[i];
+        if (!View->Entry || (View->ControlArea != ControlArea))
+            continue;
+
+        /* Only the part of the view past the old end has PTEs to fill */
+        EndPage = View->StartingPage +
+                  (View->Entry & (MI_SYSTEM_VIEW_BUCKET_SIZE - 1)) *
+                  (MI_SYSTEM_VIEW_BUCKET_SIZE >> PAGE_SHIFT);
+        if (EndPage <= OldPtes)
+            continue;
+
+        FirstPage = max(View->StartingPage, OldPtes);
+        Base = (PVOID)(View->Entry & ~(MI_SYSTEM_VIEW_BUCKET_SIZE - 1));
+
+        MiAddMappedPtes(MiAddressToPte((PVOID)((ULONG_PTR)Base +
+                                               (ULONG_PTR)((FirstPage - View->StartingPage) << PAGE_SHIFT))),
+                        (ULONG)(EndPage - FirstPage),
+                        ControlArea,
+                        FirstPage,
+                        View->ReadOnly);
+    }
+
+    KeReleaseGuardedMutex(Session->SystemSpaceViewLockPointer);
 }
 
 static
@@ -1176,11 +1262,12 @@ MiMapViewOfDataSection(
     ULONG_PTR StartAddress;
     ULONG_PTR ViewSizeInPages;
     PSUBSECTION Subsection;
+    PMSUBSECTION MappedSubsection;
     PSEGMENT Segment;
     PFN_NUMBER PteOffset;
     NTSTATUS Status;
     ULONG QuotaCharge = 0, QuotaExcess = 0;
-    PMMPTE PointerPte, LastPte;
+    PMMPTE PointerPte, LastPte, FirstProtoPte;
     MMPTE TempPte;
     ULONG Granularity = MM_VIRTMEM_GRANULARITY;
 
@@ -1205,7 +1292,7 @@ MiMapViewOfDataSection(
     }
 
     /* First, increase the map count. No purging is supported yet */
-    Status = MiCheckPurgeAndUpMapCount(ControlArea, FALSE);
+    Status = MiCheckPurgeAndUpMapCount(ControlArea, TRUE);
     if (!NT_SUCCESS(Status)) return Status;
 
     /* Check if the caller specified the view size */
@@ -1221,7 +1308,7 @@ MiMapViewOfDataSection(
             || !NT_SUCCESS(RtlLongLongToSIZET(ViewSizeLL, ViewSize))
             || (*ViewSize > MAXLONG_PTR))
         {
-            MiDereferenceControlArea(ControlArea);
+            MiDereferenceControlArea(ControlArea, TRUE);
             return STATUS_INVALID_VIEW_SIZE;
         }
     }
@@ -1232,7 +1319,7 @@ MiMapViewOfDataSection(
         if (!NT_SUCCESS(RtlSIZETAdd(*ViewSize, SectionOffset->LowPart & (_64K - 1), ViewSize))
             || (*ViewSize > MAXLONG_PTR))
         {
-            MiDereferenceControlArea(ControlArea);
+            MiDereferenceControlArea(ControlArea, TRUE);
             return STATUS_INVALID_VIEW_SIZE;
         }
 
@@ -1248,7 +1335,6 @@ MiMapViewOfDataSection(
 
     /* Get the subsection. We don't support LARGE_CONTROL_AREA in ARM3 */
     ASSERT(ControlArea->u.Flags.Rom == 0);
-    Subsection = (PSUBSECTION)(ControlArea + 1);
 
     /* Sections with extended segments are not supported in ARM3 */
     ASSERT(Segment->SegmentFlags.TotalNumberOfPtes4132 == 0);
@@ -1260,20 +1346,27 @@ MiMapViewOfDataSection(
     ASSERT(PteOffset < Segment->TotalNumberOfPtes);
     ASSERT(((SectionOffset->QuadPart + *ViewSize + PAGE_SIZE - 1) >> PAGE_SHIFT) >= PteOffset);
 
-    /* In ARM3, only one subsection is used for now. It must contain these PTEs */
-    ASSERT(PteOffset < Subsection->PtesInSubsection);
-
-    /* In ARM3, only page-file backed sections (shared memory) are supported now */
-    ASSERT(ControlArea->FilePointer == NULL);
-
-    /* Windows ASSERTs for this too -- there must be a subsection base address */
-    ASSERT(Subsection->SubsectionBase != NULL);
-
-    /* Compute how much commit space the segment will take */
-    if ((CommitSize) && (Segment->NumberOfCommittedPages < Segment->TotalNumberOfPtes))
+    if (ControlArea->FilePointer)
     {
-        /* Charge for the maximum pages */
-        QuotaCharge = BYTES_TO_PAGES(CommitSize);
+        /* File data lives in chained subsections */
+        FirstProtoPte = MiGetDataFileProtoPte(ControlArea, PteOffset, &MappedSubsection);
+        ASSERT(FirstProtoPte != NULL);
+        Subsection = (PSUBSECTION)MappedSubsection;
+    }
+    else
+    {
+        /* Paging file backed sections have a single subsection holding every PTE */
+        Subsection = (PSUBSECTION)(ControlArea + 1);
+        ASSERT(PteOffset < Subsection->PtesInSubsection);
+        ASSERT(Subsection->SubsectionBase != NULL);
+        FirstProtoPte = &Subsection->SubsectionBase[PteOffset];
+
+        /* Compute how much commit space the segment will take */
+        if ((CommitSize) && (Segment->NumberOfCommittedPages < Segment->TotalNumberOfPtes))
+        {
+            /* Charge for the maximum pages */
+            QuotaCharge = BYTES_TO_PAGES(CommitSize);
+        }
     }
 
     /* ARM3 does not currently support large pages */
@@ -1288,7 +1381,7 @@ MiMapViewOfDataSection(
     Vad = ExAllocatePoolWithTag(NonPagedPool, sizeof(MMVAD_LONG), 'ldaV');
     if (!Vad)
     {
-        MiDereferenceControlArea(ControlArea);
+        MiDereferenceControlArea(ControlArea, TRUE);
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -1308,10 +1401,11 @@ MiMapViewOfDataSection(
         Vad->u2.VadFlags2.SecNoChange = 1;
     }
 
-    /* Finally, write down the first and last prototype PTE */
-    Vad->FirstPrototypePte = &Subsection->SubsectionBase[PteOffset];
-    PteOffset += ViewSizeInPages - 1;
-    ASSERT(PteOffset < Subsection->PtesInSubsection);
+    /* Finally, write down the first and last prototype PTE of the first subsection */
+    Vad->FirstPrototypePte = FirstProtoPte;
+    PteOffset = (FirstProtoPte - Subsection->SubsectionBase) + ViewSizeInPages - 1;
+    if (PteOffset >= Subsection->PtesInSubsection)
+        PteOffset = Subsection->PtesInSubsection - 1;
     Vad->LastContiguousPte = &Subsection->SubsectionBase[PteOffset];
 
     /* Make sure the prototype PTE ranges make sense, this is a Windows ASSERT */
@@ -1378,7 +1472,7 @@ MiMapViewOfDataSection(
     if (!NT_SUCCESS(Status))
     {
         ExFreePoolWithTag(Vad, 'ldaV');
-        MiDereferenceControlArea(ControlArea);
+        MiDereferenceControlArea(ControlArea, TRUE);
 
         KeAcquireGuardedMutex(&MmSectionCommitMutex);
         Segment->NumberOfCommittedPages -= QuotaCharge;
@@ -1396,7 +1490,7 @@ MiMapViewOfDataSection(
     if (!NT_SUCCESS(Status))
     {
         ExFreePoolWithTag(Vad, 'ldaV');
-        MiDereferenceControlArea(ControlArea);
+        MiDereferenceControlArea(ControlArea, TRUE);
 
         KeAcquireGuardedMutex(&MmSectionCommitMutex);
         Segment->NumberOfCommittedPages -= QuotaCharge;
@@ -1416,19 +1510,82 @@ MiMapViewOfDataSection(
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief Sizes a data section of a file and references the segment describing it.
+ *
+ * @param[in] File
+ * File to map.
+ *
+ * @param[out] Segment
+ * Receives the segment, with one more section reference on its control area.
+ *
+ * @param[in] MaximumSize
+ * Size asked for, 0 to use the file size.
+ *
+ * @param[in] SectionPageProtection
+ * Protection of the section.
+ *
+ * @param[out] SectionSize
+ * Receives the size the section gets.
+ *
+ * @param[in] IgnoreFileSizing
+ * TRUE for the cache manager, which keeps the file size in step itself.
+ */
 static
 NTSTATUS
-MiCreateDataFileMap(IN PFILE_OBJECT File,
-                    OUT PSEGMENT *Segment,
-                    IN PLARGE_INTEGER MaximumSize,
-                    IN ULONG SectionPageProtection,
-                    IN ULONG AllocationAttributes,
-                    IN ULONG IgnoreFileSizing)
+MiCreateDataFileMap(
+    _In_ PFILE_OBJECT File,
+    _Out_ PSEGMENT *Segment,
+    _In_ PLARGE_INTEGER MaximumSize,
+    _In_ ULONG SectionPageProtection,
+    _Out_ PLARGE_INTEGER SectionSize,
+    _In_ BOOLEAN IgnoreFileSizing)
 {
-    /* Not yet implemented */
-    ASSERT(FALSE);
-    *Segment = NULL;
-    return STATUS_NOT_IMPLEMENTED;
+    PCONTROL_AREA ControlArea;
+    LARGE_INTEGER FileSize;
+    NTSTATUS Status;
+
+    if (MaximumSize->QuadPart < 0)
+        return STATUS_INVALID_PARAMETER_4;
+
+    if (IgnoreFileSizing)
+    {
+        FileSize = *MaximumSize;
+    }
+    else
+    {
+        Status = FsRtlGetFileSize(File, &FileSize);
+        if (Status == STATUS_FILE_IS_A_DIRECTORY)
+            return STATUS_INVALID_FILE_FOR_SECTION;
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        if ((FileSize.QuadPart == 0) && (MaximumSize->QuadPart == 0))
+            return STATUS_MAPPED_FILE_SIZE_ZERO;
+
+        if (MaximumSize->QuadPart > FileSize.QuadPart)
+        {
+            /* Only a writable section can make its file grow */
+            if (!(SectionPageProtection & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)))
+                return STATUS_SECTION_TOO_BIG;
+
+            FileSize = *MaximumSize;
+            Status = IoSetInformation(File,
+                                      FileEndOfFileInformation,
+                                      sizeof(LARGE_INTEGER),
+                                      &FileSize);
+            if (!NT_SUCCESS(Status))
+                return Status;
+        }
+    }
+
+    Status = MiReferenceDataFileMap(File, FileSize.QuadPart, !IgnoreFileSizing, &ControlArea);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    *Segment = ControlArea->Segment;
+    SectionSize->QuadPart = MaximumSize->QuadPart ? MaximumSize->QuadPart : FileSize.QuadPart;
+    return STATUS_SUCCESS;
 }
 
 static
@@ -1613,7 +1770,7 @@ MiGetFileObjectForVad(
 
         /* Get the control area */
         ControlArea = Vad->ControlArea;
-        if ((ControlArea == NULL) || !ControlArea->u.Flags.Image)
+        if ((ControlArea == NULL) || !ControlArea->FilePointer)
         {
             DPRINT1("Address is not a section\n");
             return NULL;
@@ -1932,7 +2089,8 @@ VOID
 MiRemoveMappedPtes(IN PVOID BaseAddress,
                    IN ULONG NumberOfPtes,
                    IN PCONTROL_AREA ControlArea,
-                   IN PMMSUPPORT Ws)
+                   IN PMMSUPPORT Ws,
+                   IN BOOLEAN UserReference)
 {
     PMMPTE PointerPte;
     PMMPDE PointerPde, SystemMapPde;
@@ -1958,9 +2116,8 @@ MiRemoveMappedPtes(IN PVOID BaseAddress,
             /* Get the PTE */
             PointerPde = MiPteToPde(PointerPte);
 
-            /* Lock the PFN database and make sure this isn't a mapped file */
+            /* Lock the PFN database */
             OldIrql = MiAcquirePfnLock();
-            ASSERT(((Pfn1->u3.e1.PrototypePte) && (Pfn1->OriginalPte.u.Soft.Prototype)) == 0);
 
             /* Mark the page as modified accordingly */
             if (MI_IS_PAGE_DIRTY(&PteContents))
@@ -2012,7 +2169,10 @@ MiRemoveMappedPtes(IN PVOID BaseAddress,
     OldIrql = MiAcquirePfnLock();
 
     /* Decrement the accounting counters */
-    ControlArea->NumberOfUserReferences--;
+    if (UserReference)
+        ControlArea->NumberOfUserReferences--;
+    else
+        ControlArea->NumberOfSystemCacheViews--;
     ControlArea->NumberOfMappedViews--;
 
     /* Check if we should destroy the CA and release the lock */
@@ -2023,7 +2183,8 @@ static
 ULONG
 MiRemoveFromSystemSpace(IN PMMSESSION Session,
                         IN PVOID Base,
-                        OUT PCONTROL_AREA *ControlArea)
+                        OUT PCONTROL_AREA *ControlArea,
+                        OUT PBOOLEAN UserReference)
 {
     ULONG Hash, Size, Count = 0;
     ULONG_PTR Entry;
@@ -2060,6 +2221,7 @@ MiRemoveFromSystemSpace(IN PMMSESSION Session,
 
     /* Return the control area and the size */
     *ControlArea = Session->SystemSpaceViewTable[Hash].ControlArea;
+    *UserReference = Session->SystemSpaceViewTable[Hash].UserReference;
     return Size;
 }
 
@@ -2070,11 +2232,13 @@ MiUnmapViewInSystemSpace(IN PMMSESSION Session,
 {
     ULONG Size;
     PCONTROL_AREA ControlArea;
+    BOOLEAN UserReference;
+    KIRQL OldIrql;
     PAGED_CODE();
 
     /* Remove this mapping */
     KeAcquireGuardedMutex(Session->SystemSpaceViewLockPointer);
-    Size = MiRemoveFromSystemSpace(Session, MappedBase, &ControlArea);
+    Size = MiRemoveFromSystemSpace(Session, MappedBase, &ControlArea, &UserReference);
 
     /* Clear the bits for this mapping */
     RtlClearBits(Session->SystemSpaceBitMap,
@@ -2084,9 +2248,20 @@ MiUnmapViewInSystemSpace(IN PMMSESSION Session,
     /* Convert the size from a bit size into the actual size */
     Size = Size * (_64K >> PAGE_SHIFT);
 
+    /* A file section losing its last view is deleted once the view lock is released */
+    if (ControlArea->FilePointer)
+    {
+        OldIrql = MiAcquirePfnLock();
+        MiReferenceDataFileMapForIoUnsafe(ControlArea);
+        MiReleasePfnLock(OldIrql);
+    }
+
     /* Remove the PTEs now */
-    MiRemoveMappedPtes(MappedBase, Size, ControlArea, NULL);
+    MiRemoveMappedPtes(MappedBase, Size, ControlArea, NULL, UserReference);
     KeReleaseGuardedMutex(Session->SystemSpaceViewLockPointer);
+
+    if (ControlArea->FilePointer)
+        MiDereferenceDataFileMapForIo(ControlArea);
 
     /* Return success */
     return STATUS_SUCCESS;
@@ -2111,16 +2286,15 @@ MmCreateArm3Section(OUT PVOID *SectionObject,
     SECTION Section;
     PSECTION NewSection;
     PSUBSECTION Subsection;
-    PSEGMENT NewSegment, Segment;
+    PSEGMENT NewSegment;
     NTSTATUS Status;
     PCONTROL_AREA ControlArea;
-    ULONG ProtectionMask, ControlAreaSize, Size, NonPagedCharge, PagedCharge;
+    ULONG ProtectionMask, Size, NonPagedCharge, PagedCharge;
     KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
     BOOLEAN FileLock = FALSE, KernelCall = FALSE;
     KIRQL OldIrql;
     PFILE_OBJECT File;
     BOOLEAN UserRefIncremented = FALSE;
-    PVOID PreviousSectionPointer;
 
     /* Make the same sanity checks that the Nt interface should've validated */
     ASSERT((AllocationAttributes & ~(SEC_COMMIT | SEC_RESERVE | SEC_BASED |
@@ -2154,17 +2328,27 @@ MmCreateArm3Section(OUT PVOID *SectionObject,
         /* These cannot be mapped with large pages */
         if (AllocationAttributes & SEC_LARGE_PAGES) return STATUS_INVALID_PARAMETER_6;
 
-        /* For now, only support the mechanism through a file handle */
-        ASSERT(FileObject == NULL);
+        /* Image-file backed sections are not yet supported */
+        ASSERT((AllocationAttributes & SEC_IMAGE) == 0);
 
-        /* Reference the file handle to get the object */
-        Status = ObReferenceObjectByHandle(FileHandle,
-                                           MmMakeFileAccess[ProtectionMask],
-                                           IoFileObjectType,
-                                           PreviousMode,
-                                           (PVOID*)&File,
-                                           NULL);
-        if (!NT_SUCCESS(Status)) return Status;
+        if (FileObject)
+        {
+            /* Without a handle the caller, like the cache manager, sizes the file itself */
+            File = FileObject;
+            ObReferenceObject(File);
+            KernelCall = (FileHandle == NULL);
+        }
+        else
+        {
+            /* Reference the file handle to get the object */
+            Status = ObReferenceObjectByHandle(FileHandle,
+                                               MmMakeFileAccess[ProtectionMask],
+                                               IoFileObjectType,
+                                               PreviousMode,
+                                               (PVOID*)&File,
+                                               NULL);
+            if (!NT_SUCCESS(Status)) return Status;
+        }
 
         /* Make sure Cc has been doing its job */
         if (!File->SectionObjectPointer)
@@ -2174,128 +2358,39 @@ MmCreateArm3Section(OUT PVOID *SectionObject,
             return STATUS_INVALID_FILE_FOR_SECTION;
         }
 
-        /* Image-file backed sections are not yet supported */
-        ASSERT((AllocationAttributes & SEC_IMAGE) == 0);
-
-        /* Compute the size of the control area, and allocate it */
-        ControlAreaSize = sizeof(CONTROL_AREA) + sizeof(MSUBSECTION);
-        ControlArea = ExAllocatePoolWithTag(NonPagedPool, ControlAreaSize, 'aCmM');
-        if (!ControlArea)
-        {
-            ObDereferenceObject(File);
-            return STATUS_INSUFFICIENT_RESOURCES;
-        }
-
-        /* Zero it out */
-        RtlZeroMemory(ControlArea, ControlAreaSize);
-
-        /* Did we get a handle, or an object? */
-        if (FileHandle)
+        /* Did we get only a handle? */
+        if (!FileObject)
         {
             /* We got a file handle so we have to lock down the file */
-#if 0
             Status = FsRtlAcquireToCreateMappedSection(File, SectionPageProtection);
             if (!NT_SUCCESS(Status))
             {
-                ExFreePool(ControlArea);
                 ObDereferenceObject(File);
                 return Status;
             }
-#else
-            /* ReactOS doesn't support this API yet, so do nothing */
-            UNIMPLEMENTED;
-            Status = STATUS_SUCCESS;
-#endif
-            /* Update the top-level IRP so that drivers know what's happening */
-            IoSetTopLevelIrp((PIRP)FSRTL_FSP_TOP_LEVEL_IRP);
+
             FileLock = TRUE;
         }
 
-        /* Lock the PFN database while we play with the section pointers */
-        OldIrql = MiAcquirePfnLock();
-
-        /* Image-file backed sections are not yet supported */
-        ASSERT((AllocationAttributes & SEC_IMAGE) == 0);
-
-        /* There should not already be a control area for this file */
-        ASSERT(File->SectionObjectPointer->DataSectionObject == NULL);
-        NewSegment = NULL;
-
-        /* Write down that this CA is being created, and set it */
-        ControlArea->u.Flags.BeingCreated = TRUE;
-        ASSERT((AllocationAttributes & SEC_IMAGE) == 0);
-        PreviousSectionPointer = File->SectionObjectPointer;
-        File->SectionObjectPointer->DataSectionObject = ControlArea;
-
-        /* We can release the PFN lock now */
-        MiReleasePfnLock(OldIrql);
-
-        /* We don't support previously-mapped file */
-        ASSERT(NewSegment == NULL);
-
-        /* Image-file backed sections are not yet supported */
-        ASSERT((AllocationAttributes & SEC_IMAGE) == 0);
-
-        /* So we always create a data file map */
+        /* The control area of the file takes its own reference on the file */
         Status = MiCreateDataFileMap(File,
-                                     &Segment,
+                                     &NewSegment,
                                      InputMaximumSize,
                                      SectionPageProtection,
-                                     AllocationAttributes,
+                                     &Section.SizeOfSection,
                                      KernelCall);
-        if (!NT_SUCCESS(Status))
+
+        if (FileLock)
         {
-            /* Lock the PFN database while we play with the section pointers */
-            OldIrql = MiAcquirePfnLock();
-
-            /* Reset the waiting-for-deletion event */
-            ASSERT(ControlArea->WaitingForDeletion == NULL);
-            ControlArea->WaitingForDeletion = NULL;
-
-            /* Set the file pointer NULL flag */
-            ASSERT(ControlArea->u.Flags.FilePointerNull == 0);
-            ControlArea->u.Flags.FilePointerNull = TRUE;
-
-            /* Delete the data section object */
-            ASSERT((AllocationAttributes & SEC_IMAGE) == 0);
-            File->SectionObjectPointer->DataSectionObject = NULL;
-
-            /* No longer being created */
-            ControlArea->u.Flags.BeingCreated = FALSE;
-
-            /* We can release the PFN lock now */
-            MiReleasePfnLock(OldIrql);
-
-            /* Check if we locked and set the IRP */
-            if (FileLock)
-            {
-                /* Undo */
-                IoSetTopLevelIrp(NULL);
-                //FsRtlReleaseFile(File);
-            }
-
-            /* Free the control area and de-ref the file object */
-            ExFreePool(ControlArea);
-            ObDereferenceObject(File);
-
-            /* All done */
-            return Status;
+            FsRtlReleaseFile(File);
+            FileLock = FALSE;
         }
 
-        /* On success, we expect this */
-        ASSERT(PreviousSectionPointer == File->SectionObjectPointer);
+        ObDereferenceObject(File);
+        if (!NT_SUCCESS(Status)) return Status;
 
-        /* Check if a maximum size was specified */
-        if (!InputMaximumSize->QuadPart)
-        {
-            /* Nope, use the segment size */
-            Section.SizeOfSection.QuadPart = (LONGLONG)Segment->SizeOfSegment;
-        }
-        else
-        {
-            /* Yep, use the entered size */
-            Section.SizeOfSection.QuadPart = InputMaximumSize->QuadPart;
-        }
+        ControlArea = NewSegment->ControlArea;
+        UserRefIncremented = TRUE;
     }
     else
     {
@@ -2318,38 +2413,6 @@ MmCreateArm3Section(OUT PVOID *SectionObject,
 
         /* MiCreatePagingFileMap increments user references */
         UserRefIncremented = TRUE;
-    }
-
-    /* Did we already have a segment? */
-    if (!NewSegment)
-    {
-        /* This must be the file path and we created a segment */
-        NewSegment = Segment;
-        ASSERT(File != NULL);
-
-        /* Acquire the PFN lock while we set control area flags */
-        OldIrql = MiAcquirePfnLock();
-
-        /* We don't support this race condition yet, so assume no waiters */
-        ASSERT(ControlArea->WaitingForDeletion == NULL);
-        ControlArea->WaitingForDeletion = NULL;
-
-        /* Image-file backed sections are not yet supported, nor ROM images */
-        ASSERT((AllocationAttributes & SEC_IMAGE) == 0);
-        ASSERT(Segment->ControlArea->u.Flags.Rom == 0);
-
-        /* Take off the being created flag, and then release the lock */
-        ControlArea->u.Flags.BeingCreated = FALSE;
-        MiReleasePfnLock(OldIrql);
-    }
-
-    /* Check if we locked the file earlier */
-    if (FileLock)
-    {
-        /* Reset the top-level IRP and release the lock */
-        IoSetTopLevelIrp(NULL);
-        //FsRtlReleaseFile(File);
-        FileLock = FALSE;
     }
 
     /* Set the initial section object data */
@@ -2392,9 +2455,9 @@ MmCreateArm3Section(OUT PVOID *SectionObject,
     NonPagedCharge = sizeof(CONTROL_AREA);
     Subsection = (PSUBSECTION)(ControlArea + 1);
 
-    /* We only support single-subsection mappings */
+    /* Only file data sections chain more subsections */
     NonPagedCharge += Size;
-    ASSERT(Subsection->NextSubsection == NULL);
+    ASSERT((Subsection->NextSubsection == NULL) || (ControlArea->FilePointer != NULL));
 
     /* Create the actual section object, with enough space for the prototype PTEs */
     Status = ObCreateObject(PreviousMode,
@@ -2427,8 +2490,11 @@ MmCreateArm3Section(OUT PVOID *SectionObject,
 
             /* Decrement the accounting counters */
             ControlArea->NumberOfSectionReferences--;
-            ASSERT((LONG)ControlArea->NumberOfUserReferences > 0);
-            ControlArea->NumberOfUserReferences--;
+            if (!KernelCall)
+            {
+                ASSERT((LONG)ControlArea->NumberOfUserReferences > 0);
+                ControlArea->NumberOfUserReferences--;
+            }
 
             /* Check if we should destroy the CA and release the lock */
             MiCheckControlArea(ControlArea, OldIrql);
@@ -2444,9 +2510,8 @@ MmCreateArm3Section(OUT PVOID *SectionObject,
     RtlCopyMemory(NewSection, &Section, sizeof(SECTION));
     NewSection->Address.StartingVpn = 0;
 
-    /* For now, only user calls are supported */
-    ASSERT(KernelCall == FALSE);
-    NewSection->u.Flags.UserReference = TRUE;
+    /* Sections made by kernel callers do not count against truncating their file */
+    NewSection->u.Flags.UserReference = !KernelCall;
 
     /* Is this a "based" allocation, in which all mappings are identical? */
     if (AllocationAttributes & SEC_BASED)
@@ -2510,10 +2575,6 @@ MmCreateArm3Section(OUT PVOID *SectionObject,
     {
         NewSection->u.Flags.CopyOnWrite = TRUE;
     }
-
-    /* Write down if this was a kernel call */
-    ControlArea->u.Flags.WasPurged |= KernelCall;
-    ASSERT(ControlArea->u.Flags.WasPurged == FALSE);
 
     /* Make sure the segment and the section are the same size, or the section is smaller */
     ASSERT((ULONG64)NewSection->SizeOfSection.QuadPart <= NewSection->Segment->SizeOfSegment);
@@ -2979,23 +3040,26 @@ MiDeleteARM3Section(PVOID ObjectBody)
     ASSERT(SectionObject->Segment->ControlArea);
 
     ControlArea = SectionObject->Segment->ControlArea;
+    ASSERT(ControlArea->u.Flags.BeingDeleted == 0);
 
     /* Dereference */
     ControlArea->NumberOfSectionReferences--;
-    ControlArea->NumberOfUserReferences--;
+    if (SectionObject->u.Flags.UserReference)
+        ControlArea->NumberOfUserReferences--;
+    if (SectionObject->u.Flags.UserWritable)
+        InterlockedDecrement((volatile LONG*)&ControlArea->WritableUserReferences);
 
-    ASSERT(ControlArea->u.Flags.BeingDeleted == 0);
+    if (ControlArea->FilePointer)
+    {
+        /* The last section of a file writes its data out right here when it can */
+        MiReferenceDataFileMapForIoUnsafe(ControlArea);
+        MiReleasePfnLock(OldIrql);
+        MiDereferenceDataFileMapForIo(ControlArea);
+        return;
+    }
 
     /* Check it. It will delete it if there is no more reference to it */
     MiCheckControlArea(ControlArea, OldIrql);
-}
-
-ULONG
-NTAPI
-MmDoesFileHaveUserWritableReferences(IN PSECTION_OBJECT_POINTERS SectionPointer)
-{
-    UNIMPLEMENTED_ONCE;
-    return 0;
 }
 
 /* SYSTEM CALLS ***************************************************************/
