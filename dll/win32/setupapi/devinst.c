@@ -119,6 +119,33 @@ GetErrorCodeFromCrCode(const IN CONFIGRET cr)
   /* Does not happen */
 }
 
+DWORD
+GetPropertyErrorFromCrCode(
+    _In_ CONFIGRET cr)
+{
+    switch (cr)
+    {
+        case CR_NO_SUCH_VALUE:
+            return ERROR_NOT_FOUND;
+
+        case CR_INVALID_DATA:
+            return ERROR_INVALID_DATA;
+
+        case CR_INVALID_DEVNODE:
+        case CR_NO_SUCH_DEVNODE:
+            return ERROR_NO_SUCH_DEVINST;
+
+        case CR_NO_SUCH_DEVICE_INTERFACE:
+            return ERROR_NO_SUCH_DEVICE_INTERFACE;
+
+        case CR_NO_SUCH_REGISTRY_KEY:
+            return ERROR_INVALID_CLASS;
+
+        default:
+            return GetErrorCodeFromCrCode(cr);
+    }
+}
+
 /* Lower scores are best ones */
 static BOOL
 CheckSectionValid(
@@ -3505,6 +3532,195 @@ BOOL WINAPI SetupDiGetDeviceRegistryPropertyA(
 
     HeapFree(GetProcessHeap(), 0, PropertyBufferW);
     return ret;
+}
+
+static
+struct DeviceInfo *
+GetPropertyDeviceInfo(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData)
+{
+    struct DeviceInfoSet *set = (struct DeviceInfoSet *)DeviceInfoSet;
+
+    if (!DeviceInfoSet || DeviceInfoSet == INVALID_HANDLE_VALUE ||
+        set->magic != SETUP_DEVICE_INFO_SET_MAGIC)
+    {
+        SetLastError(ERROR_INVALID_HANDLE);
+        return NULL;
+    }
+
+    if (!DeviceInfoData || DeviceInfoData->cbSize != sizeof(SP_DEVINFO_DATA) ||
+        !DeviceInfoData->Reserved)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
+
+    return (struct DeviceInfo *)DeviceInfoData->Reserved;
+}
+
+/***********************************************************************
+ *		SetupDiGetDevicePropertyW (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupDiGetDevicePropertyW(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _Out_ DEVPROPTYPE *PropertyType,
+    _Out_writes_bytes_to_opt_(PropertyBufferSize, *RequiredSize) PBYTE PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _Out_opt_ PDWORD RequiredSize,
+    _In_ DWORD Flags)
+{
+    struct DeviceInfo *devInfo;
+    ULONG Size = PropertyBufferSize;
+    CONFIGRET cr;
+
+    TRACE("%s(%p %p %p %p %p %lu %p 0x%lx)\n", __FUNCTION__, DeviceInfoSet, DeviceInfoData,
+          PropertyKey, PropertyType, PropertyBuffer, PropertyBufferSize, RequiredSize, Flags);
+
+    devInfo = GetPropertyDeviceInfo(DeviceInfoSet, DeviceInfoData);
+    if (!devInfo)
+        return FALSE;
+
+    if (!PropertyKey)
+    {
+        SetLastError(ERROR_INVALID_DATA);
+        return FALSE;
+    }
+
+    if (!PropertyType || (!PropertyBuffer && PropertyBufferSize))
+    {
+        SetLastError(ERROR_INVALID_USER_BUFFER);
+        return FALSE;
+    }
+
+    if (Flags)
+    {
+        SetLastError(ERROR_INVALID_FLAGS);
+        return FALSE;
+    }
+
+    cr = CM_Get_DevNode_Property_ExW(devInfo->dnDevInst, PropertyKey, PropertyType,
+                                     PropertyBuffer, &Size, 0, devInfo->set->hMachine);
+
+    if ((cr == CR_SUCCESS || cr == CR_BUFFER_SMALL) && RequiredSize)
+        *RequiredSize = Size;
+
+    if (cr != CR_SUCCESS)
+    {
+        SetLastError(GetPropertyErrorFromCrCode(cr));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/***********************************************************************
+ *		SetupDiSetDevicePropertyW (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupDiSetDevicePropertyW(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _In_ DEVPROPTYPE PropertyType,
+    _In_reads_bytes_opt_(PropertyBufferSize) const BYTE *PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _In_ DWORD Flags)
+{
+    struct DeviceInfo *devInfo;
+    CONFIGRET cr;
+
+    TRACE("%s(%p %p %p 0x%lx %p %lu 0x%lx)\n", __FUNCTION__, DeviceInfoSet, DeviceInfoData,
+          PropertyKey, PropertyType, PropertyBuffer, PropertyBufferSize, Flags);
+
+    devInfo = GetPropertyDeviceInfo(DeviceInfoSet, DeviceInfoData);
+    if (!devInfo)
+        return FALSE;
+
+    if (!PropertyKey)
+    {
+        SetLastError(ERROR_INVALID_DATA);
+        return FALSE;
+    }
+
+    if (!PropertyBuffer && PropertyBufferSize)
+    {
+        SetLastError(ERROR_INVALID_USER_BUFFER);
+        return FALSE;
+    }
+
+    if (Flags)
+    {
+        SetLastError(ERROR_INVALID_FLAGS);
+        return FALSE;
+    }
+
+    cr = CM_Set_DevNode_Property_ExW(devInfo->dnDevInst, PropertyKey, PropertyType,
+                                     (PBYTE)PropertyBuffer, PropertyBufferSize, 0,
+                                     devInfo->set->hMachine);
+    if (cr != CR_SUCCESS)
+    {
+        SetLastError(GetPropertyErrorFromCrCode(cr));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/***********************************************************************
+ *		SetupDiGetDevicePropertyKeys (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupDiGetDevicePropertyKeys(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _Out_writes_opt_(PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+    _In_ DWORD PropertyKeyCount,
+    _Out_opt_ PDWORD RequiredPropertyKeyCount,
+    _In_ DWORD Flags)
+{
+    struct DeviceInfo *devInfo;
+    ULONG Count = PropertyKeyCount;
+    CONFIGRET cr;
+
+    TRACE("%s(%p %p %p %lu %p 0x%lx)\n", __FUNCTION__, DeviceInfoSet, DeviceInfoData,
+          PropertyKeyArray, PropertyKeyCount, RequiredPropertyKeyCount, Flags);
+
+    devInfo = GetPropertyDeviceInfo(DeviceInfoSet, DeviceInfoData);
+    if (!devInfo)
+        return FALSE;
+
+    if (!PropertyKeyArray && PropertyKeyCount)
+    {
+        SetLastError(ERROR_INVALID_USER_BUFFER);
+        return FALSE;
+    }
+
+    if (Flags)
+    {
+        SetLastError(ERROR_INVALID_FLAGS);
+        return FALSE;
+    }
+
+    cr = CM_Get_DevNode_Property_Keys_Ex(devInfo->dnDevInst, PropertyKeyArray, &Count, 0,
+                                         devInfo->set->hMachine);
+
+    if ((cr == CR_SUCCESS || cr == CR_BUFFER_SMALL) && RequiredPropertyKeyCount)
+        *RequiredPropertyKeyCount = Count;
+
+    if (cr != CR_SUCCESS)
+    {
+        SetLastError(GetPropertyErrorFromCrCode(cr));
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 /***********************************************************************

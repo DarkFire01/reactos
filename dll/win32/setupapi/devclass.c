@@ -1739,3 +1739,259 @@ done:
     SetLastError(Error);
     return (cr == CR_SUCCESS);
 }
+
+static
+BOOL
+PrepareClassPropertyCall(
+    _In_opt_ const GUID *ClassGuid,
+    _In_ DWORD Flags,
+    _In_opt_ PCWSTR MachineName,
+    _In_opt_ PVOID Reserved,
+    _Out_ PULONG CmFlags,
+    _Out_ HMACHINE *hMachine)
+{
+    CONFIGRET cr;
+
+    *hMachine = NULL;
+
+    if (!ClassGuid || Reserved)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    switch (Flags)
+    {
+        case DICLASSPROP_INSTALLER:
+            *CmFlags = CM_CLASS_PROPERTY_INSTALLER;
+            break;
+
+        case DICLASSPROP_INTERFACE:
+            *CmFlags = CM_CLASS_PROPERTY_INTERFACE;
+            break;
+
+        default:
+            SetLastError(ERROR_INVALID_FLAGS);
+            return FALSE;
+    }
+
+    if (MachineName && *MachineName)
+    {
+        cr = CM_Connect_MachineW(MachineName, hMachine);
+        if (cr != CR_SUCCESS)
+        {
+            SetLastError(GetErrorCodeFromCrCode(cr));
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+/***********************************************************************
+ *		SetupDiGetClassPropertyExW (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupDiGetClassPropertyExW(
+    _In_ const GUID *ClassGuid,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _Out_ DEVPROPTYPE *PropertyType,
+    _Out_writes_bytes_to_opt_(PropertyBufferSize, *RequiredSize) PBYTE PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _Out_opt_ PDWORD RequiredSize,
+    _In_ DWORD Flags,
+    _In_opt_ PCWSTR MachineName,
+    _Reserved_ PVOID Reserved)
+{
+    HMACHINE hMachine;
+    ULONG CmFlags, Size = PropertyBufferSize;
+    CONFIGRET cr;
+
+    TRACE("%s %p %p %p %lu %p 0x%lx %s %p\n", debugstr_guid(ClassGuid), PropertyKey,
+          PropertyType, PropertyBuffer, PropertyBufferSize, RequiredSize, Flags,
+          debugstr_w(MachineName), Reserved);
+
+    if (!PropertyKey)
+    {
+        SetLastError(ERROR_INVALID_DATA);
+        return FALSE;
+    }
+
+    if (!PropertyType || (!PropertyBuffer && PropertyBufferSize))
+    {
+        SetLastError(ERROR_INVALID_USER_BUFFER);
+        return FALSE;
+    }
+
+    if (!PrepareClassPropertyCall(ClassGuid, Flags, MachineName, Reserved, &CmFlags, &hMachine))
+        return FALSE;
+
+    cr = CM_Get_Class_Property_ExW(ClassGuid, PropertyKey, PropertyType, PropertyBuffer,
+                                   &Size, CmFlags, hMachine);
+
+    if ((cr == CR_SUCCESS || cr == CR_BUFFER_SMALL) && RequiredSize)
+        *RequiredSize = Size;
+
+    if (hMachine != NULL)
+        CM_Disconnect_Machine(hMachine);
+
+    if (cr != CR_SUCCESS)
+    {
+        SetLastError(GetPropertyErrorFromCrCode(cr));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/***********************************************************************
+ *		SetupDiGetClassPropertyW (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupDiGetClassPropertyW(
+    _In_ const GUID *ClassGuid,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _Out_ DEVPROPTYPE *PropertyType,
+    _Out_writes_bytes_to_opt_(PropertyBufferSize, *RequiredSize) PBYTE PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _Out_opt_ PDWORD RequiredSize,
+    _In_ DWORD Flags)
+{
+    return SetupDiGetClassPropertyExW(ClassGuid, PropertyKey, PropertyType, PropertyBuffer,
+                                      PropertyBufferSize, RequiredSize, Flags, NULL, NULL);
+}
+
+/***********************************************************************
+ *		SetupDiSetClassPropertyExW (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupDiSetClassPropertyExW(
+    _In_ const GUID *ClassGuid,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _In_ DEVPROPTYPE PropertyType,
+    _In_reads_bytes_opt_(PropertyBufferSize) const BYTE *PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _In_ DWORD Flags,
+    _In_opt_ PCWSTR MachineName,
+    _Reserved_ PVOID Reserved)
+{
+    HMACHINE hMachine;
+    ULONG CmFlags;
+    CONFIGRET cr;
+
+    TRACE("%s %p 0x%lx %p %lu 0x%lx %s %p\n", debugstr_guid(ClassGuid), PropertyKey,
+          PropertyType, PropertyBuffer, PropertyBufferSize, Flags,
+          debugstr_w(MachineName), Reserved);
+
+    if (!PropertyKey)
+    {
+        SetLastError(ERROR_INVALID_DATA);
+        return FALSE;
+    }
+
+    if (!PropertyBuffer && PropertyBufferSize)
+    {
+        SetLastError(ERROR_INVALID_USER_BUFFER);
+        return FALSE;
+    }
+
+    if (!PrepareClassPropertyCall(ClassGuid, Flags, MachineName, Reserved, &CmFlags, &hMachine))
+        return FALSE;
+
+    cr = CM_Set_Class_Property_ExW(ClassGuid, PropertyKey, PropertyType, (PBYTE)PropertyBuffer,
+                                   PropertyBufferSize, CmFlags, hMachine);
+
+    if (hMachine != NULL)
+        CM_Disconnect_Machine(hMachine);
+
+    if (cr != CR_SUCCESS)
+    {
+        SetLastError(GetPropertyErrorFromCrCode(cr));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/***********************************************************************
+ *		SetupDiSetClassPropertyW (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupDiSetClassPropertyW(
+    _In_ const GUID *ClassGuid,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _In_ DEVPROPTYPE PropertyType,
+    _In_reads_bytes_opt_(PropertyBufferSize) const BYTE *PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _In_ DWORD Flags)
+{
+    return SetupDiSetClassPropertyExW(ClassGuid, PropertyKey, PropertyType, PropertyBuffer,
+                                      PropertyBufferSize, Flags, NULL, NULL);
+}
+
+/***********************************************************************
+ *		SetupDiGetClassPropertyKeysExW (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupDiGetClassPropertyKeysExW(
+    _In_ const GUID *ClassGuid,
+    _Out_writes_opt_(PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+    _In_ DWORD PropertyKeyCount,
+    _Out_opt_ PDWORD RequiredPropertyKeyCount,
+    _In_ DWORD Flags,
+    _In_opt_ PCWSTR MachineName,
+    _Reserved_ PVOID Reserved)
+{
+    HMACHINE hMachine;
+    ULONG CmFlags, Count = PropertyKeyCount;
+    CONFIGRET cr;
+
+    TRACE("%s %p %lu %p 0x%lx %s %p\n", debugstr_guid(ClassGuid), PropertyKeyArray,
+          PropertyKeyCount, RequiredPropertyKeyCount, Flags, debugstr_w(MachineName), Reserved);
+
+    if (!PropertyKeyArray && PropertyKeyCount)
+    {
+        SetLastError(ERROR_INVALID_USER_BUFFER);
+        return FALSE;
+    }
+
+    if (!PrepareClassPropertyCall(ClassGuid, Flags, MachineName, Reserved, &CmFlags, &hMachine))
+        return FALSE;
+
+    cr = CM_Get_Class_Property_Keys_Ex(ClassGuid, PropertyKeyArray, &Count, CmFlags, hMachine);
+
+    if ((cr == CR_SUCCESS || cr == CR_BUFFER_SMALL) && RequiredPropertyKeyCount)
+        *RequiredPropertyKeyCount = Count;
+
+    if (hMachine != NULL)
+        CM_Disconnect_Machine(hMachine);
+
+    if (cr != CR_SUCCESS)
+    {
+        SetLastError(GetPropertyErrorFromCrCode(cr));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/***********************************************************************
+ *		SetupDiGetClassPropertyKeys (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupDiGetClassPropertyKeys(
+    _In_ const GUID *ClassGuid,
+    _Out_writes_opt_(PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+    _In_ DWORD PropertyKeyCount,
+    _Out_opt_ PDWORD RequiredPropertyKeyCount,
+    _In_ DWORD Flags)
+{
+    return SetupDiGetClassPropertyKeysExW(ClassGuid, PropertyKeyArray, PropertyKeyCount,
+                                          RequiredPropertyKeyCount, Flags, NULL, NULL);
+}
