@@ -547,7 +547,7 @@ MiDeleteVirtualAddresses(
     _In_ ULONG_PTR EndingAddress,
     _In_opt_ PMMVAD Vad)
 {
-    PMMPTE PointerPte, PrototypePte, LastPrototypePte;
+    PMMPTE PointerPte, PrototypePte;
     PMMPDE PointerPde;
 #if (_MI_PAGING_LEVELS >= 3)
     PMMPPE PointerPpe;
@@ -558,8 +558,7 @@ MiDeleteVirtualAddresses(
     MMPTE TempPte;
     PEPROCESS CurrentProcess;
     KIRQL OldIrql;
-    BOOLEAN AddressGap = FALSE;
-    PSUBSECTION Subsection;
+    BOOLEAN SectionVad;
 
     /* We should never get RosMm memory areas here */
     ASSERT((Vad == NULL) || !MI_IS_MEMORY_AREA_VAD(Vad));
@@ -568,17 +567,7 @@ MiDeleteVirtualAddresses(
     CurrentProcess = PsGetCurrentProcess();
 
     /* Check if this is a section VAD or a VM VAD */
-    if (!(Vad) || (Vad->u.VadFlags.PrivateMemory) || !(Vad->FirstPrototypePte))
-    {
-        /* Don't worry about prototypes */
-        PrototypePte = LastPrototypePte = NULL;
-    }
-    else
-    {
-        /* Get the prototype PTE */
-        PrototypePte = Vad->FirstPrototypePte;
-        LastPrototypePte = Vad->FirstPrototypePte + 1;
-    }
+    SectionVad = (BOOLEAN)((Vad) && !(Vad->u.VadFlags.PrivateMemory) && (Vad->FirstPrototypePte));
 
     /* In all cases, we don't support fork() yet */
     ASSERT(CurrentProcess->CloneRoot == NULL);
@@ -594,9 +583,6 @@ MiDeleteVirtualAddresses(
             /* Check for unmapped range and skip it */
             if (!PointerPxe->u.Long)
             {
-                /* There are gaps in the address space */
-                AddressGap = TRUE;
-
                 /* Update Va and continue looping */
                 Va = (ULONG_PTR)MiPxeToAddress(PointerPxe + 1);
                 continue;
@@ -614,9 +600,6 @@ MiDeleteVirtualAddresses(
             /* Check for unmapped range and skip it */
             if (!PointerPpe->u.Long)
             {
-                /* There are gaps in the address space */
-                AddressGap = TRUE;
-
                 /* Update Va and continue looping */
                 Va = (ULONG_PTR)MiPpeToAddress(PointerPpe + 1);
                 continue;
@@ -630,9 +613,6 @@ MiDeleteVirtualAddresses(
         PointerPde = MiAddressToPde((PVOID)Va);
         if (!PointerPde->u.Long)
         {
-            /* There are gaps in the address space */
-            AddressGap = TRUE;
-
             /* Check if all the PDEs are invalid, so there's nothing to free */
             Va = (ULONG_PTR)MiPdeToAddress(PointerPde + 1);
             continue;
@@ -650,26 +630,6 @@ MiDeleteVirtualAddresses(
         ASSERT(PointerPde->u.Hard.Valid == 1);
         ASSERT(Va <= EndingAddress);
 
-        /* Check if this is a section VAD with gaps in it */
-        if ((AddressGap) && (LastPrototypePte))
-        {
-            /* We need to skip to the next correct prototype PTE */
-            PrototypePte = MI_GET_PROTOTYPE_PTE_FOR_VPN(Vad, Va >> PAGE_SHIFT);
-
-            /* And we need the subsection to skip to the next last prototype PTE */
-            Subsection = MiLocateSubsection(Vad, Va >> PAGE_SHIFT);
-            if (Subsection)
-            {
-                /* Found it! */
-                LastPrototypePte = &Subsection->SubsectionBase[Subsection->PtesInSubsection];
-            }
-            else
-            {
-                /* No more subsections, we are done with prototype PTEs */
-                PrototypePte = NULL;
-            }
-        }
-
         /* Lock the PFN Database while we delete the PTEs */
         OldIrql = MiAcquirePfnLock();
         PointerPte = MiAddressToPte(Va);
@@ -685,26 +645,6 @@ MiDeleteVirtualAddresses(
                 /* Check if the PTE is actually mapped in */
                 if (MI_IS_MAPPED_PTE(&TempPte))
                 {
-                    /* Are we dealing with section VAD? */
-                    if ((LastPrototypePte) && (PrototypePte > LastPrototypePte))
-                    {
-                        /* We need to skip to the next correct prototype PTE */
-                        PrototypePte = MI_GET_PROTOTYPE_PTE_FOR_VPN(Vad, Va >> PAGE_SHIFT);
-
-                        /* And we need the subsection to skip to the next last prototype PTE */
-                        Subsection = MiLocateSubsection(Vad, Va >> PAGE_SHIFT);
-                        if (Subsection)
-                        {
-                            /* Found it! */
-                            LastPrototypePte = &Subsection->SubsectionBase[Subsection->PtesInSubsection];
-                        }
-                        else
-                        {
-                            /* No more subsections, we are done with prototype PTEs */
-                            PrototypePte = NULL;
-                        }
-                    }
-
                     /* Check for prototype PTE */
                     if ((TempPte.u.Hard.Valid == 0) &&
                         (TempPte.u.Soft.Prototype == 1))
@@ -714,6 +654,11 @@ MiDeleteVirtualAddresses(
                     }
                     else
                     {
+                        /* A valid page of a section view must come from the view's prototype PTE */
+                        PrototypePte = NULL;
+                        if (SectionVad && (TempPte.u.Hard.Valid == 1))
+                            PrototypePte = MI_GET_PROTOTYPE_PTE_FOR_VPN(Vad, Va >> PAGE_SHIFT);
+
                         /* Delete the PTE proper */
                         MiDeletePte(PointerPte,
                                     (PVOID)Va,
@@ -736,11 +681,6 @@ MiDeleteVirtualAddresses(
 
                     /* Continue with the next PDE */
                     Va = (ULONG_PTR)MiPdeToAddress(PointerPde + 1);
-
-                    /* Use this to detect address gaps */
-                    PointerPte++;
-
-                    PrototypePte++;
                     break;
                 }
             }
@@ -748,16 +688,12 @@ MiDeleteVirtualAddresses(
             /* Update the address and PTE for it */
             Va += PAGE_SIZE;
             PointerPte++;
-            PrototypePte++;
         } while ((Va & (PDE_MAPPED_VA - 1)) && (Va <= EndingAddress));
 
         /* Release the lock */
         MiReleasePfnLock(OldIrql);
 
         if (Va > EndingAddress) return;
-
-        /* Check if we exited the loop regularly */
-        AddressGap = (PointerPte != MiAddressToPte(Va));
     }
 }
 
@@ -1359,16 +1295,117 @@ MmFlushVirtualMemory(IN PEPROCESS Process,
                      IN OUT PSIZE_T RegionSize,
                      OUT PIO_STATUS_BLOCK IoStatusBlock)
 {
+    PETHREAD Thread = PsGetCurrentThread();
+    ULONG_PTR StartingAddress, EndingAddress, Va;
+    PCONTROL_AREA ControlArea = NULL;
+    ULONG64 StartPage = 0, EndPage = 0;
+    BOOLEAN Attached = FALSE;
+    KAPC_STATE ApcState;
+    PMMPTE PointerPte;
+    NTSTATUS Status;
+    MMPTE TempPte;
+    KIRQL OldIrql;
+    PMMVAD Vad;
+    PMMPFN Pfn1;
     PAGED_CODE();
 
-    UNIMPLEMENTED;
-
-    // Report actual state.
-    IoStatusBlock->Status = STATUS_NOT_IMPLEMENTED;
+    IoStatusBlock->Status = STATUS_SUCCESS;
     IoStatusBlock->Information = 0;
 
-    // Pretend success.
-    return STATUS_SUCCESS; // STATUS_NOT_IMPLEMENTED
+    StartingAddress = (ULONG_PTR)PAGE_ALIGN(*BaseAddress);
+
+    if (PsGetCurrentProcess() != Process)
+    {
+        KeStackAttachProcess(&Process->Pcb, &ApcState);
+        Attached = TRUE;
+    }
+
+    MmLockAddressSpace(&Process->Vm);
+
+    Vad = MiLocateAddress((PVOID)StartingAddress);
+    if (!(Vad) || (Vad->u.VadFlags.PrivateMemory))
+    {
+        Status = STATUS_NOT_MAPPED_VIEW;
+        goto Quit;
+    }
+
+    /* Legacy views have nothing to flush from here */
+    if (MI_IS_MEMORY_AREA_VAD(Vad))
+    {
+        Status = STATUS_SUCCESS;
+        goto Quit;
+    }
+
+    if (*RegionSize == 0)
+        EndingAddress = (Vad->EndingVpn << PAGE_SHIFT) | (PAGE_SIZE - 1);
+    else
+        EndingAddress = ((ULONG_PTR)*BaseAddress + *RegionSize - 1) | (PAGE_SIZE - 1);
+
+    if ((EndingAddress < StartingAddress) || ((EndingAddress >> PAGE_SHIFT) > Vad->EndingVpn))
+    {
+        Status = STATUS_NOT_MAPPED_VIEW;
+        goto Quit;
+    }
+
+    ControlArea = Vad->ControlArea;
+    if (!(ControlArea) || !(ControlArea->FilePointer))
+    {
+        /* Only the paging file backs this view */
+        ControlArea = NULL;
+        Status = STATUS_NOT_MAPPED_DATA;
+        goto Quit;
+    }
+
+    /* Writes through this view are only known to its page tables so far */
+    MiLockProcessWorkingSetUnsafe(Process, Thread);
+    for (Va = StartingAddress; Va < EndingAddress; Va += PAGE_SIZE)
+    {
+        PointerPte = MiAddressToPte((PVOID)Va);
+        if (!MmIsAddressValid(PointerPte))
+            continue;
+
+        TempPte = *PointerPte;
+        if (!(TempPte.u.Hard.Valid) || !MI_IS_PAGE_DIRTY(&TempPte))
+            continue;
+
+        OldIrql = MiAcquirePfnLock();
+        Pfn1 = MI_PFN_ELEMENT(PFN_FROM_PTE(&TempPte));
+        if (Pfn1->u3.e1.PrototypePte)
+        {
+            Pfn1->u3.e1.Modified = 1;
+            MI_MAKE_CLEAN_PAGE(&TempPte);
+            MI_UPDATE_VALID_PTE(PointerPte, TempPte);
+            KeInvalidateTlbEntry((PVOID)Va);
+        }
+        MiReleasePfnLock(OldIrql);
+    }
+    MiUnlockProcessWorkingSetUnsafe(Process, Thread);
+
+    StartPage = (((ULONG64)Vad->u2.VadFlags2.FileOffset << 16) >> PAGE_SHIFT) +
+                ((StartingAddress >> PAGE_SHIFT) - Vad->StartingVpn);
+    EndPage = StartPage + ((EndingAddress - StartingAddress + 1) >> PAGE_SHIFT);
+
+    OldIrql = MiAcquirePfnLock();
+    MiReferenceDataFileMapForIoUnsafe(ControlArea);
+    MiReleasePfnLock(OldIrql);
+
+    Status = STATUS_SUCCESS;
+
+Quit:
+    MmUnlockAddressSpace(&Process->Vm);
+    if (Attached)
+        KeUnstackDetachProcess(&ApcState);
+
+    if (ControlArea)
+    {
+        Status = MiFlushDataFileView(ControlArea, StartPage, EndPage, IoStatusBlock);
+        MiDereferenceDataFileMapForIo(ControlArea);
+
+        *BaseAddress = (PVOID)StartingAddress;
+        *RegionSize = EndingAddress - StartingAddress + 1;
+    }
+
+    return Status;
 }
 
 ULONG
@@ -1615,16 +1652,6 @@ MiQueryAddressState(IN PVOID Va,
 
                 /* Get protection state of this page */
                 Protect = MiGetPageProtection(PointerPte);
-
-                /* Check if this is an image-backed VAD */
-                if ((TempPte.u.Soft.Valid == 0) &&
-                    (TempPte.u.Soft.Prototype == 1) &&
-                    (Vad->u.VadFlags.PrivateMemory == 0) &&
-                    (Vad->ControlArea))
-                {
-                    DPRINT1("Not supported\n");
-                    ASSERT(FALSE);
-                }
             }
         }
     }
@@ -4985,10 +5012,12 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
             }
         }
 
-        //
-        // ARM3 does not support file-backed sections, only shared memory
-        //
-        ASSERT(FoundVad->ControlArea->FilePointer == NULL);
+        /* A view of a file is backed by the file already */
+        if (FoundVad->ControlArea->FilePointer)
+        {
+            Status = STATUS_ALREADY_COMMITTED;
+            goto FailPath;
+        }
 
         //
         // Rotate VADs cannot be guard pages or inaccessible, nor copy on write

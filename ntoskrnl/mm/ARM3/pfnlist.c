@@ -44,6 +44,7 @@ MMPFNLIST MmStandbyPageListHead = {0, StandbyPageList, LIST_HEAD, LIST_HEAD};
 MMPFNLIST MmStandbyPageListByPriority[8];
 MMPFNLIST MmModifiedPageListHead = {0, ModifiedPageList, LIST_HEAD, LIST_HEAD};
 MMPFNLIST MmModifiedPageListByColor[1] = {{0, ModifiedPageList, LIST_HEAD, LIST_HEAD}};
+MMPFNLIST MmModifiedMappedPageListHead = {0, ModifiedPageList, LIST_HEAD, LIST_HEAD};
 MMPFNLIST MmModifiedNoWritePageListHead = {0, ModifiedNoWritePageList, LIST_HEAD, LIST_HEAD};
 MMPFNLIST MmBadPageListHead = {0, BadPageList, LIST_HEAD, LIST_HEAD};
 MMPFNLIST MmRomPageListHead = {0, StandbyPageList, LIST_HEAD, LIST_HEAD};
@@ -153,7 +154,10 @@ MiRestoreTransitionPte(
     ASSERT(Pfn1->u3.e2.ReferenceCount == 0);
     ASSERT(Pfn1->u2.ShareCount == 0);
     ASSERT(!MI_IS_PFN_DELETED(Pfn1));
-    ASSERT(Pfn1->OriginalPte.u.Soft.Transition == 0);
+
+    /* A subsection PTE uses the transition bit for its address */
+    ASSERT((Pfn1->OriginalPte.u.Soft.Prototype == 1) ||
+           (Pfn1->OriginalPte.u.Soft.Transition == 0));
 
     /* Contents of a private page are only kept in a paging file */
     ASSERT((Pfn1->u3.e1.PrototypePte == 1) ||
@@ -408,15 +412,19 @@ MiUnlinkPageFromList(IN PMMPFN Pfn)
     }
     else if (ListHead == &MmModifiedPageListHead)
     {
-        /* Only paging file bound modified pages for now */
-        ASSERT(Pfn->OriginalPte.u.Soft.Prototype == 0);
-
         /* Decrement the counters */
         ListHead->Total--;
-        MmTotalPagesForPagingFile--;
 
-        /* Pick the correct colored list */
-        ListHead = &MmModifiedPageListByColor[0];
+        /* Pick the list for a paging file or for a mapped file */
+        if (Pfn->OriginalPte.u.Soft.Prototype == 0)
+        {
+            MmTotalPagesForPagingFile--;
+            ListHead = &MmModifiedPageListByColor[0];
+        }
+        else
+        {
+            ListHead = &MmModifiedMappedPageListHead;
+        }
 
         if (Pfn->u3.e1.PrototypePte)
             MmTransitionSharedPages--;
@@ -943,17 +951,24 @@ MiInsertPageInList(IN PMMPFNLIST ListHead,
     /* Is a modified page being inserted? */
     if (ListHead == &MmModifiedPageListHead)
     {
-        /* For now, only single-prototype pages should end up in this path */
         DPRINT("Modified page being added: %lx\n", PageFrameIndex);
-        ASSERT(Pfn1->OriginalPte.u.Soft.Prototype == 0);
 
-        /* Modified pages are colored when they are selected for page file */
-        ListHead = &MmModifiedPageListByColor[0];
+        if (Pfn1->OriginalPte.u.Soft.Prototype == 0)
+        {
+            /* Pages bound for a paging file are colored when they are selected for it */
+            ListHead = &MmModifiedPageListByColor[0];
+
+            /* Increment the number of paging file modified pages */
+            MmTotalPagesForPagingFile++;
+        }
+        else
+        {
+            /* Mapped file pages go back to their file */
+            ListHead = &MmModifiedMappedPageListHead;
+        }
+
         ASSERT (ListHead->ListName == ListName);
         ListHead->Total++;
-
-        /* Increment the number of paging file modified pages */
-        MmTotalPagesForPagingFile++;
     }
 
     /* Don't handle bad pages yet yet */
@@ -1069,9 +1084,6 @@ MiInsertPageInList(IN PMMPFNLIST ListHead,
     }
     else if (ListName == ModifiedPageList)
     {
-        /* In ARM3, page must be destined for page file. A stale slot is replaced when written */
-        ASSERT(Pfn1->OriginalPte.u.Soft.Prototype == 0);
-
         if (Pfn1->u3.e1.PrototypePte)
             MmTransitionSharedPages++;
 
