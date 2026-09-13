@@ -49,7 +49,7 @@
 #define MI_MIN_INIT_PAGED_POOLSIZE              (32 * _1MB)
 #define MI_MAX_INIT_NONPAGED_POOL_SIZE          (128 * _1MB)
 #define MI_MAX_NONPAGED_POOL_SIZE               (128 * _1MB)
-#define MI_SYSTEM_VIEW_SIZE                     (32 * _1MB)
+#define MI_SYSTEM_VIEW_SIZE                     (256 * _1MB)
 #define MI_SESSION_VIEW_SIZE                    (48 * _1MB)
 #define MI_SESSION_POOL_SIZE                    (16 * _1MB)
 #define MI_SESSION_IMAGE_SIZE                   (8 * _1MB)
@@ -125,7 +125,7 @@
 #define MI_WRITE_VALID_PPE MI_WRITE_VALID_PTE
 
 /*  Translating virtual addresses to physical addresses
-        (See: "Intel® 64 and IA-32 Architectures Software Developer’s Manual
+        (See: "Intelï¿½ 64 and IA-32 Architectures Software Developerï¿½s Manual
               Volume 3A: System Programming Guide, Part 1, CHAPTER 4 PAGING")
     Page directory (PD) and Page table (PT) definitions
     Page directory entry (PDE) and Page table entry (PTE) definitions
