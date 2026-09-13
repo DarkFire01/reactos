@@ -71,7 +71,7 @@ HalpIrqTranslateResourcesRoot(
     }
 }
 
-/* Translates an IRQ requirement to the system vectors of its IRQs */
+/* IRQ requirement to system vectors */
 static
 NTSTATUS
 NTAPI

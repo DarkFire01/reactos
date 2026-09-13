@@ -21,6 +21,7 @@ BOOLEAN HalpPciLockSettings;
 BOOLEAN HalBootViaEfi;
 ULONG HalpMessageInterruptPolicy;
 ULONG HalpInterruptControllerType;
+BOOLEAN HalpIrqRouterInitialized;
 
 /* PRIVATE FUNCTIONS *********************************************************/
 

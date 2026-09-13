@@ -6,7 +6,9 @@ list(APPEND HAL_LEGACY_SOURCE
     legacy/bus/cmosbus.c
     legacy/bus/isabus.c
     legacy/bus/pcibus.c
+    legacy/pir/intelirq.c
     legacy/pir/legacypcirqarb.c
+    legacy/pir/pirroute.c
     legacy/irqtrans.c
     ${CMAKE_CURRENT_BINARY_DIR}/pci_classes.c
     ${CMAKE_CURRENT_BINARY_DIR}/pci_vendors.c
