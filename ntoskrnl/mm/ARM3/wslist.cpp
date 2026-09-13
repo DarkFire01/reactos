@@ -177,8 +177,18 @@ static ULONG GetFreeWsleIndex(PMMWSL WsList)
             {
                 ntoskrnl::MiPfnLockGuard PfnLock;
 
-                TempPte.u.Hard.PageFrameNumber = MiRemoveAnyPage(GetNextPageColorForWsList(WsList));
-                MiInitializePfnAndMakePteValid(TempPte.u.Hard.PageFrameNumber, PointerPte, TempPte);
+                PFN_NUMBER Page = MiRemoveAnyPage(GetNextPageColorForWsList(WsList));
+                if (Page == 0)
+                {
+                    KeBugCheckEx(NO_PAGES_AVAILABLE,
+                                 WsList->LastInitializedWsle,
+                                 MmAvailablePages,
+                                 (ULONG_PTR)WsList,
+                                 0);
+                }
+
+                TempPte.u.Hard.PageFrameNumber = Page;
+                MiInitializePfnAndMakePteValid(Page, PointerPte, TempPte);
             }
 
             WsList->LastInitializedWsle += PAGE_SIZE / sizeof(MMWSLE);
@@ -268,32 +278,36 @@ TrimWsList(PMMWSL WsList)
 
         /* Please put yourself aside and make place for the younger ones */
         PFN_NUMBER Page = PFN_FROM_PTE(PointerPte);
+        PMMPFN Pfn = MiGetPfnEntry(Page);
+
+        /* Not supported yet */
+        ASSERT(Pfn->u3.e1.PrototypePte == 0);
+        ASSERT(!MI_IS_ROS_PFN(Pfn));
+
+        /* FIXME: Remove this hack when possible */
+        if (Pfn->Wsle.u1.e1.LockedInMemory || (Pfn->Wsle.u1.e1.LockedInWs))
+        {
+            continue;
+        }
+
+        /* The entry is wiped when released, keep what we need */
+        PVOID VirtualAddress = PAGE_ALIGN(Entry.u1.VirtualAddress);
+        ULONG Protection = Entry.u1.e1.Protection;
+
+        /* Releasing the index may touch the PFN database for the list itself */
+        RemoveFromWsList(WsList, VirtualAddress);
+
         {
             ntoskrnl::MiPfnLockGuard PfnLock;
 
-            PMMPFN Pfn = MiGetPfnEntry(Page);
-
-            /* Not supported yet */
-            ASSERT(Pfn->u3.e1.PrototypePte == 0);
-            ASSERT(!MI_IS_ROS_PFN(Pfn));
-
-            /* FIXME: Remove this hack when possible */
-            if (Pfn->Wsle.u1.e1.LockedInMemory || (Pfn->Wsle.u1.e1.LockedInWs))
-            {
-                continue;
-            }
-
-            /* We can remove it from the list. Save Protection first */
-            ULONG Protection = Entry.u1.e1.Protection;
-            RemoveFromWsList(WsList, Entry.u1.VirtualAddress);
+            /* Make this a transition PTE */
+            MMPTE OldPte = *PointerPte;
+            MI_MAKE_TRANSITION_PTE(PointerPte, Page, Protection);
+            KeInvalidateTlbEntry(VirtualAddress);
 
             /* Dirtify the page, if needed */
-            if (PointerPte->u.Hard.Dirty)
+            if (OldPte.u.Hard.Dirty)
                 Pfn->u3.e1.Modified = 1;
-
-            /* Make this a transition PTE */
-            MI_MAKE_TRANSITION_PTE(PointerPte, Page, Protection);
-            KeInvalidateTlbEntry(MiAddressToPte(PointerPte));
 
             /* Drop the share count. This will take care of putting it in the standby or modified list. */
             MiDecrementShareCount(Pfn, Page);
