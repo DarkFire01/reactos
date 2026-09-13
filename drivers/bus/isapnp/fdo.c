@@ -50,6 +50,35 @@ IsaFdoQueryBusRelations(
     return IsaPnpFillDeviceRelations(FdoExt, Irp, TRUE);
 }
 
+/*
+ * Reports the ISA bus provided by this bridge, so resources of legacy ISA
+ * devices that are not on the bus in the device tree are routed through it.
+ */
+static
+CODE_SEG("PAGE")
+NTSTATUS
+IsaFdoQueryLegacyBusInformation(
+    _In_ PISAPNP_FDO_EXTENSION FdoExt,
+    _Inout_ PIRP Irp)
+{
+    PLEGACY_BUS_INFORMATION BusInformation;
+
+    PAGED_CODE();
+
+    BusInformation = ExAllocatePoolWithTag(PagedPool,
+                                           sizeof(LEGACY_BUS_INFORMATION),
+                                           TAG_ISAPNP);
+    if (!BusInformation)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    BusInformation->BusTypeGuid = GUID_BUS_TYPE_ISAPNP;
+    BusInformation->LegacyBusType = Isa;
+    BusInformation->BusNumber = FdoExt->BusNumber;
+
+    Irp->IoStatus.Information = (ULONG_PTR)BusInformation;
+    return STATUS_SUCCESS;
+}
+
 static
 CODE_SEG("PAGE")
 NTSTATUS
@@ -165,6 +194,14 @@ IsaFdoPnp(
 
         case IRP_MN_REMOVE_DEVICE:
             return IsaFdoRemoveDevice(FdoExt, Irp);
+
+        /* Completed here, the PCI PDO below would report its own bus instead */
+        case IRP_MN_QUERY_LEGACY_BUS_INFORMATION:
+            Status = IsaFdoQueryLegacyBusInformation(FdoExt, Irp);
+
+            Irp->IoStatus.Status = Status;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return Status;
 
         case IRP_MN_QUERY_PNP_DEVICE_STATE:
             Irp->IoStatus.Information |= PNP_DEVICE_NOT_DISABLEABLE;
