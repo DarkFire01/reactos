@@ -17,7 +17,6 @@
 
 /* GLOBALS ********************************************************************/
 
-#define HYDRA_PROCESS (PEPROCESS)1
 #if MI_TRACE_PFNS
 BOOLEAN UserPdeFault = FALSE;
 #endif
@@ -314,9 +313,8 @@ MiCheckVirtualAddress(IN PVOID VirtualAddress,
             *ProtoVad = Vad;
 
             /* Get the prototype PTE for this page */
-            PointerPte = (((ULONG_PTR)VirtualAddress >> PAGE_SHIFT) - Vad->StartingVpn) + Vad->FirstPrototypePte;
+            PointerPte = MI_GET_PROTOTYPE_PTE_FOR_VPN(Vad, (ULONG_PTR)VirtualAddress >> PAGE_SHIFT);
             ASSERT(PointerPte != NULL);
-            ASSERT(PointerPte <= Vad->LastContiguousPte);
 
             /* Return the Prototype PTE and the protection for the page mapping */
             *ProtectCode = (ULONG)Vad->u.VadFlags.Protection;
@@ -829,6 +827,10 @@ MiCompleteProtoPteFault(IN BOOLEAN StoreInstruction,
         OriginalPte = &Pfn1->OriginalPte;
         Protection = OriginalPte->u.Soft.Protection;
 
+        /* A read only system view of a writable section */
+        if (PointerPte->u.Proto.ReadOnly)
+            Protection = MM_READONLY;
+
         /* Remember that we used the original protection */
         OriginalProtection = TRUE;
 
@@ -1153,8 +1155,7 @@ MiResolveProtoPteFault(IN BOOLEAN StoreInstruction,
                        IN PMMPTE PointerPte,
                        IN PMMPTE PointerProtoPte,
                        IN OUT PMMPFN *OutPfn,
-                       OUT PVOID *PageFileData,
-                       OUT PMMPTE PteValue,
+                       OUT PMI_PAGE_READ PageRead,
                        IN PEPROCESS Process,
                        IN KIRQL OldIrql,
                        IN PVOID TrapInformation)
@@ -1242,8 +1243,7 @@ MiResolveProtoPteFault(IN BOOLEAN StoreInstruction,
                                         PointerPte,
                                         PointerProtoPte,
                                         OutPfn,
-                                        PageFileData,
-                                        PteValue,
+                                        PageRead,
                                         Process,
                                         OldIrql,
                                         TrapInformation);
@@ -1322,8 +1322,12 @@ MiResolveProtoPteFault(IN BOOLEAN StoreInstruction,
     /* Check for clone PTEs */
     if (PointerPte <= MiHighestUserPte) ASSERT(Process->CloneRoot == NULL);
 
-    /* We don't support mapped files yet */
-    ASSERT(TempPte.u.Soft.Prototype == 0);
+    /* A file page that is not in memory has to be read, which is done without the locks */
+    if (TempPte.u.Soft.Prototype == 1)
+    {
+        ASSERT(OldIrql != MM_NOIRQL);
+        return MiResolveMappedFileFault(PointerProtoPte, PageRead, Process, OldIrql);
+    }
 
     /* We might however have transition PTEs */
     if (TempPte.u.Soft.Transition == 1)
@@ -1340,22 +1344,14 @@ MiResolveProtoPteFault(IN BOOLEAN StoreInstruction,
 
         if (InPageBlock != NULL)
         {
-            KEVENT CurrentPageEvent;
-            PKEVENT PreviousPageEvent;
-
-            /* Another thread is reading the page in, queue up behind it and retry */
-            KeInitializeEvent(&CurrentPageEvent, NotificationEvent, FALSE);
-            PreviousPageEvent = *InPageBlock;
-            *InPageBlock = &CurrentPageEvent;
+            /* Another thread is reading the page in, wait behind it without the working set lock */
+            KeInitializeEvent(&PageRead->Event, NotificationEvent, FALSE);
+            PageRead->PreviousEvent = *InPageBlock;
+            PageRead->Collided = TRUE;
+            *InPageBlock = &PageRead->Event;
             MiReleasePfnLock(OldIrql);
 
-            KeWaitForSingleObject(&CurrentPageEvent, WrPageIn, KernelMode, FALSE, NULL);
-            if (PreviousPageEvent)
-            {
-                KeSetEvent(PreviousPageEvent, IO_NO_INCREMENT, FALSE);
-            }
-
-            return STATUS_SUCCESS;
+            return STATUS_MM_PAGE_READ_NEEDED;
         }
     }
     else if (TempPte.u.Soft.PageFileHigh != 0)
@@ -1414,7 +1410,8 @@ MiDispatchFault(IN ULONG FaultCode,
                 IN BOOLEAN Recursive,
                 IN PEPROCESS Process,
                 IN PVOID TrapInformation,
-                IN PMMVAD Vad)
+                IN PMMVAD Vad,
+                OUT PMI_PAGE_READ PageRead)
 {
     MMPTE TempPte;
     KIRQL OldIrql, LockIrql;
@@ -1471,12 +1468,13 @@ MiDispatchFault(IN ULONG FaultCode,
                                             PointerPte,
                                             PointerProtoPte,
                                             &OutPfn,
-                                            NULL,
-                                            NULL,
+                                            PageRead,
                                             Process,
                                             LockIrql,
                                             TrapInformation);
-            ASSERT((Status == STATUS_SUCCESS) || (Status == STATUS_NO_MEMORY));
+            ASSERT((Status == STATUS_SUCCESS) ||
+                   (Status == STATUS_NO_MEMORY) ||
+                   (Status == STATUS_MM_PAGE_READ_NEEDED));
 
             /* Complete this as a transition fault */
             ASSERT(OldIrql == KeGetCurrentIrql());
@@ -1629,8 +1627,7 @@ MiDispatchFault(IN ULONG FaultCode,
                                             PointerPte,
                                             PointerProtoPte,
                                             &OutPfn,
-                                            NULL,
-                                            NULL,
+                                            PageRead,
                                             Process,
                                             LockIrql,
                                             TrapInformation);
@@ -1795,7 +1792,11 @@ MmArmAccessFault(IN ULONG FaultCode,
     ULONG Color;
     BOOLEAN IsSessionAddress;
     PMMPFN Pfn1;
+    MI_PAGE_READ PageRead;
     DPRINT("ARM3 FAULT AT: %p\n", Address);
+
+    PageRead.FileObject = NULL;
+    PageRead.Collided = FALSE;
 
     /* Check for page fault on high IRQL */
     if (OldIrql > APC_LEVEL)
@@ -2178,7 +2179,8 @@ RetryKernel:
                                  FALSE,
                                  CurrentProcess,
                                  TrapInformation,
-                                 NULL);
+                                 NULL,
+                                 &PageRead);
 
         /* Release the working set */
         ASSERT(KeAreAllApcsDisabled() == TRUE);
@@ -2189,6 +2191,15 @@ RetryKernel:
         {
             MiWaitForFreePage();
             goto RetryKernel;
+        }
+
+        if (Status == STATUS_MM_PAGE_READ_NEEDED)
+        {
+            Status = MiCompletePageRead(&PageRead);
+            if (NT_SUCCESS(Status))
+                goto RetryKernel;
+
+            return Status;
         }
 
         /* We are done! */
@@ -2723,7 +2734,8 @@ UserFault:
                              FALSE,
                              CurrentProcess,
                              TrapInformation,
-                             Vad);
+                             Vad,
+                             &PageRead);
 
     /* Private pages the fault made valid go to the working set */
     if (NT_SUCCESS(Status))
@@ -2739,6 +2751,13 @@ ExitUser:
     {
         MiWaitForFreePage();
         goto UserFault;
+    }
+
+    if (Status == STATUS_MM_PAGE_READ_NEEDED)
+    {
+        Status = MiCompletePageRead(&PageRead);
+        if (NT_SUCCESS(Status))
+            goto UserFault;
     }
 
     return Status;

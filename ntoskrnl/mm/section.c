@@ -83,37 +83,6 @@ _MmUnlockSectionSegment(PMM_SECTION_SEGMENT Segment, const char *file, int line)
 }
 #endif
 
-static
-PMM_SECTION_SEGMENT
-MiGrabDataSection(PSECTION_OBJECT_POINTERS SectionObjectPointer)
-{
-    KIRQL OldIrql = MiAcquirePfnLock();
-    PMM_SECTION_SEGMENT Segment = NULL;
-
-    while (TRUE)
-    {
-        Segment = SectionObjectPointer->DataSectionObject;
-        if (!Segment)
-            break;
-
-        if (Segment->SegFlags & (MM_SEGMENT_INCREATE | MM_SEGMENT_INDELETE))
-        {
-            MiReleasePfnLock(OldIrql);
-            KeDelayExecutionThread(KernelMode, FALSE, &TinyTime);
-            OldIrql = MiAcquirePfnLock();
-            continue;
-        }
-
-        ASSERT(Segment->SegFlags & MM_DATAFILE_SEGMENT);
-        InterlockedIncrement64(&Segment->RefCount);
-        break;
-    }
-
-    MiReleasePfnLock(OldIrql);
-
-    return Segment;
-}
-
 /* Somewhat grotesque, but eh... */
 PMM_IMAGE_SECTION_OBJECT ImageSectionObjectFromSegment(PMM_SECTION_SEGMENT Segment)
 {
@@ -2357,233 +2326,6 @@ MmInitSectionImplementation(VOID)
     return STATUS_SUCCESS;
 }
 
-static
-NTSTATUS
-NTAPI
-MmCreateDataFileSection(PSECTION *SectionObject,
-                        ACCESS_MASK DesiredAccess,
-                        POBJECT_ATTRIBUTES ObjectAttributes,
-                        PLARGE_INTEGER UMaximumSize,
-                        ULONG SectionPageProtection,
-                        ULONG AllocationAttributes,
-                        PFILE_OBJECT FileObject,
-                        BOOLEAN GotFileHandle)
-/*
- * Create a section backed by a data file
- */
-{
-    PSECTION Section;
-    NTSTATUS Status;
-    LARGE_INTEGER MaximumSize;
-    PMM_SECTION_SEGMENT Segment;
-    KIRQL OldIrql;
-
-    /*
-     * Create the section
-     */
-    Status = ObCreateObject(ExGetPreviousMode(),
-                            MmSectionObjectType,
-                            ObjectAttributes,
-                            ExGetPreviousMode(),
-                            NULL,
-                            sizeof(*Section),
-                            0,
-                            0,
-                            (PVOID*)&Section);
-    if (!NT_SUCCESS(Status))
-    {
-        return Status;
-    }
-    /*
-     * Initialize it
-     */
-    RtlZeroMemory(Section, sizeof(*Section));
-
-    /* Mark this as a "ROS" section */
-    Section->u.Flags.filler = 1;
-    Section->InitialPageProtection = SectionPageProtection;
-    Section->u.Flags.File = 1;
-
-    if (AllocationAttributes & SEC_NO_CHANGE)
-        Section->u.Flags.NoChange = 1;
-
-    if (!GotFileHandle)
-    {
-        ASSERT(UMaximumSize != NULL);
-        // ASSERT(UMaximumSize->QuadPart != 0);
-        MaximumSize = *UMaximumSize;
-    }
-    else
-    {
-        LARGE_INTEGER FileSize;
-        Status = FsRtlGetFileSize(FileObject, &FileSize);
-        if (!NT_SUCCESS(Status))
-        {
-            ObDereferenceObject(Section);
-            return Status;
-        }
-
-        /*
-         * FIXME: Revise this once a locking order for file size changes is
-         * decided
-         */
-        if ((UMaximumSize != NULL) && (UMaximumSize->QuadPart != 0))
-        {
-            MaximumSize = *UMaximumSize;
-        }
-        else
-        {
-            MaximumSize = FileSize;
-            /* Mapping zero-sized files isn't allowed. */
-            if (MaximumSize.QuadPart == 0)
-            {
-                ObDereferenceObject(Section);
-                return STATUS_MAPPED_FILE_SIZE_ZERO;
-            }
-        }
-
-        if (MaximumSize.QuadPart > FileSize.QuadPart)
-        {
-            Status = IoSetInformation(FileObject,
-                                      FileEndOfFileInformation,
-                                      sizeof(LARGE_INTEGER),
-                                      &MaximumSize);
-            if (!NT_SUCCESS(Status))
-            {
-                ObDereferenceObject(Section);
-                return STATUS_SECTION_NOT_EXTENDED;
-            }
-        }
-    }
-
-    if (FileObject->SectionObjectPointer == NULL)
-    {
-        ObDereferenceObject(Section);
-        return STATUS_INVALID_FILE_FOR_SECTION;
-    }
-
-    /*
-     * Lock the file
-     */
-    Status = MmspWaitForFileLock(FileObject);
-    if (Status != STATUS_SUCCESS)
-    {
-        ObDereferenceObject(Section);
-        return Status;
-    }
-
-    /* Lock the PFN lock while messing with Section Object pointers */
-grab_segment:
-    OldIrql = MiAcquirePfnLock();
-    Segment = FileObject->SectionObjectPointer->DataSectionObject;
-
-    while (Segment && (Segment->SegFlags & (MM_SEGMENT_INDELETE | MM_SEGMENT_INCREATE)))
-    {
-        MiReleasePfnLock(OldIrql);
-        KeDelayExecutionThread(KernelMode, FALSE, &TinyTime);
-        OldIrql = MiAcquirePfnLock();
-        Segment = FileObject->SectionObjectPointer->DataSectionObject;
-    }
-
-    /*
-     * If this file hasn't been mapped as a data file before then allocate a
-     * section segment to describe the data file mapping
-     */
-    if (Segment == NULL)
-    {
-        /* Release the lock. ExAllocatePoolWithTag might acquire it */
-        MiReleasePfnLock(OldIrql);
-
-        Segment = ExAllocatePoolWithTag(NonPagedPool, sizeof(MM_SECTION_SEGMENT),
-                                        TAG_MM_SECTION_SEGMENT);
-        if (Segment == NULL)
-        {
-            //KeSetEvent((PVOID)&FileObject->Lock, IO_NO_INCREMENT, FALSE);
-            ObDereferenceObject(Section);
-            return STATUS_NO_MEMORY;
-        }
-
-        /* We are creating it */
-        RtlZeroMemory(Segment, sizeof(*Segment));
-        Segment->SegFlags = MM_DATAFILE_SEGMENT | MM_SEGMENT_INCREATE;
-        Segment->RefCount = 1;
-
-        /* Acquire lock again */
-        OldIrql = MiAcquirePfnLock();
-
-        if (FileObject->SectionObjectPointer->DataSectionObject != NULL)
-        {
-            /* Well that's bad luck. Restart it all over */
-            MiReleasePfnLock(OldIrql);
-            ExFreePoolWithTag(Segment, TAG_MM_SECTION_SEGMENT);
-            goto grab_segment;
-        }
-
-        FileObject->SectionObjectPointer->DataSectionObject = Segment;
-
-        /* We're safe to release the lock now */
-        MiReleasePfnLock(OldIrql);
-
-        Section->Segment = (PSEGMENT)Segment;
-
-        /* Self-referencing segment */
-        Segment->Flags = &Segment->SegFlags;
-        Segment->ReferenceCount = &Segment->RefCount;
-
-        Segment->SectionCount = 1;
-
-        ExInitializeFastMutex(&Segment->Lock);
-        Segment->FileObject = FileObject;
-        ObReferenceObject(FileObject);
-
-        Segment->Image.FileOffset = 0;
-        Segment->Protection = SectionPageProtection;
-
-        Segment->Image.Characteristics = 0;
-        Segment->WriteCopy = (SectionPageProtection & (PAGE_WRITECOPY | PAGE_EXECUTE_WRITECOPY));
-        if (AllocationAttributes & SEC_RESERVE)
-        {
-            Segment->Length.QuadPart = Segment->RawLength.QuadPart = 0;
-        }
-        else
-        {
-            Segment->RawLength.QuadPart = MaximumSize.QuadPart;
-            Segment->Length.QuadPart = PAGE_ROUND_UP(Segment->RawLength.QuadPart);
-        }
-        Segment->Image.VirtualAddress = 0;
-        MiInitializeSectionPageTable(Segment);
-
-        /* We're good to use it now */
-        OldIrql = MiAcquirePfnLock();
-        Segment->SegFlags &= ~MM_SEGMENT_INCREATE;
-        MiReleasePfnLock(OldIrql);
-    }
-    else
-    {
-        Section->Segment = (PSEGMENT)Segment;
-        InterlockedIncrement64(&Segment->RefCount);
-        InterlockedIncrementUL(&Segment->SectionCount);
-
-        MiReleasePfnLock(OldIrql);
-
-        MmLockSectionSegment(Segment);
-
-        if (MaximumSize.QuadPart > Segment->RawLength.QuadPart &&
-                !(AllocationAttributes & SEC_RESERVE))
-        {
-            Segment->RawLength.QuadPart = MaximumSize.QuadPart;
-            Segment->Length.QuadPart = PAGE_ROUND_UP(Segment->RawLength.QuadPart);
-        }
-
-        MmUnlockSectionSegment(Segment);
-    }
-    Section->SizeOfSection = MaximumSize;
-
-    //KeSetEvent((PVOID)&FileObject->Lock, IO_NO_INCREMENT, FALSE);
-    *SectionObject = Section;
-    return STATUS_SUCCESS;
-}
-
 /*
  TODO: not that great (declaring loaders statically, having to declare all of
  them, having to keep them extern, etc.), will fix in the future
@@ -4304,64 +4046,6 @@ Exit:
     return Status;
 }
 
-/*
- * @unimplemented
- */
-BOOLEAN
-NTAPI
-MmCanFileBeTruncated(
-    _In_ PSECTION_OBJECT_POINTERS SectionObjectPointer,
-    _In_opt_ PLARGE_INTEGER NewFileSize)
-{
-    BOOLEAN Ret;
-    PMM_SECTION_SEGMENT Segment;
-
-    /* Check whether an ImageSectionObject exists */
-    if (SectionObjectPointer->ImageSectionObject != NULL)
-    {
-        DPRINT1("ERROR: File can't be truncated because it has an image section\n");
-        return FALSE;
-    }
-
-    Segment = MiGrabDataSection(SectionObjectPointer);
-    if (!Segment)
-    {
-        /* There is no data section. It's fine to do anything. */
-        return TRUE;
-    }
-
-    MmLockSectionSegment(Segment);
-    if ((Segment->SectionCount == 0) ||
-        ((Segment->SectionCount == 1) && (SectionObjectPointer->SharedCacheMap != NULL)))
-    {
-        /* If the cache is the only one holding a reference to the segment, then it's fine to resize */
-        Ret = TRUE;
-    }
-    else if (NewFileSize != NULL)
-    {
-        /* We can't shrink, but we can extend */
-        Ret = NewFileSize->QuadPart >= Segment->RawLength.QuadPart;
-#if DBG
-        if (!Ret)
-        {
-            DPRINT1("Cannot truncate data: New Size %I64d, Segment Size %I64d\n", NewFileSize->QuadPart, Segment->RawLength.QuadPart);
-        }
-#endif
-    }
-    else
-    {
-        DPRINT1("ERROR: File can't be truncated because it has references held to its data section\n");
-        Ret = FALSE;
-    }
-
-    MmUnlockSectionSegment(Segment);
-    MmDereferenceSegment(Segment);
-
-    DPRINT("FIXME: didn't check for outstanding write probes\n");
-
-    return Ret;
-}
-
 static
 BOOLEAN
 MiPurgeImageSegment(PMM_SECTION_SEGMENT Segment)
@@ -4417,10 +4101,17 @@ MmFlushImageSection (IN PSECTION_OBJECT_POINTERS SectionObjectPointer,
     {
         case MmFlushForDelete:
         {
-            /*
-             * FIXME: Check for outstanding write probes on Data section.
-             * How do we do that ?
-             */
+            KIRQL OldIrql = MiAcquirePfnLock();
+            PCONTROL_AREA ControlArea = SectionObjectPointer->DataSectionObject;
+
+            /* User sections and views of the data keep the file from going away */
+            if (ControlArea && (ControlArea->NumberOfUserReferences != 0))
+            {
+                MiReleasePfnLock(OldIrql);
+                return FALSE;
+            }
+
+            MiReleasePfnLock(OldIrql);
         }
         /* Fall-through */
         case MmFlushForWrite:
@@ -4696,20 +4387,17 @@ MmCreateSection (OUT PVOID  * Section,
         return STATUS_INVALID_PARAMETER_6;
     }
 
-    /* Check if an ARM3 section is being created instead */
+    /* Data sections, backed by a file or by the paging files, are ARM3 sections */
     if (!(AllocationAttributes & SEC_IMAGE))
     {
-        if (!(FileObject) && !(FileHandle))
-        {
-            return MmCreateArm3Section(Section,
-                                       DesiredAccess,
-                                       ObjectAttributes,
-                                       MaximumSize,
-                                       SectionPageProtection,
-                                       AllocationAttributes &~ 1,
-                                       FileHandle,
-                                       FileObject);
-        }
+        return MmCreateArm3Section(Section,
+                                   DesiredAccess,
+                                   ObjectAttributes,
+                                   MaximumSize,
+                                   SectionPageProtection,
+                                   AllocationAttributes &~ 1,
+                                   FileHandle,
+                                   FileObject);
     }
 
     /* Convert section flag to page flag */
@@ -4791,47 +4479,26 @@ MmCreateSection (OUT PVOID  * Section,
         goto Exit;
     }
 
-    if (AllocationAttributes & SEC_IMAGE)
-    {
-        Status = MmCreateImageSection(SectionObject,
-                                      DesiredAccess,
-                                      ObjectAttributes,
-                                      MaximumSize,
-                                      SectionPageProtection,
-                                      AllocationAttributes,
-                                      FileObject);
+    Status = MmCreateImageSection(SectionObject,
+                                  DesiredAccess,
+                                  ObjectAttributes,
+                                  MaximumSize,
+                                  SectionPageProtection,
+                                  AllocationAttributes,
+                                  FileObject);
 
-        /* If the file was ivalid, and we got a FileObject passed, fall back to data section */
-        if (!NT_SUCCESS(Status) && HaveFileObject)
-        {
-            AllocationAttributes &= ~SEC_IMAGE;
-        }
-    }
-
-#ifndef NEWCC
-    if (!(AllocationAttributes & SEC_IMAGE))
+    /* If the file was invalid, and we got a FileObject passed, fall back to data section */
+    if (!NT_SUCCESS(Status) && HaveFileObject)
     {
-        Status =  MmCreateDataFileSection(SectionObject,
-                                          DesiredAccess,
-                                          ObjectAttributes,
-                                          MaximumSize,
-                                          SectionPageProtection,
-                                          AllocationAttributes,
-                                          FileObject,
-                                          FileHandle != NULL);
+        Status = MmCreateArm3Section(Section,
+                                     DesiredAccess,
+                                     ObjectAttributes,
+                                     MaximumSize,
+                                     SectionPageProtection,
+                                     SEC_COMMIT,
+                                     NULL,
+                                     FileObject);
     }
-#else
-    else
-    {
-        Status = MmCreateCacheSection(SectionObject,
-                                      DesiredAccess,
-                                      ObjectAttributes,
-                                      MaximumSize,
-                                      SectionPageProtection,
-                                      AllocationAttributes,
-                                      FileObject);
-    }
-#endif
 
 Exit:
 
@@ -4898,301 +4565,6 @@ MmArePagesResident(
     return Ret;
 }
 #endif
-
-/* Like CcPurgeCache but for the in-memory segment */
-BOOLEAN
-NTAPI
-MmPurgeSegment(
-    _In_ PSECTION_OBJECT_POINTERS SectionObjectPointer,
-    _In_opt_ PLARGE_INTEGER Offset,
-    _In_ ULONG Length)
-{
-    LARGE_INTEGER PurgeStart, PurgeEnd;
-    PMM_SECTION_SEGMENT Segment;
-
-    PurgeStart.QuadPart = Offset ? Offset->QuadPart : 0LL;
-    if (Length && Offset)
-    {
-        if (!NT_SUCCESS(RtlLongLongAdd(PurgeStart.QuadPart, Length, &PurgeEnd.QuadPart)))
-            return FALSE;
-    }
-
-    Segment = MiGrabDataSection(SectionObjectPointer);
-    if (!Segment)
-    {
-        /* Nothing to purge */
-        return TRUE;
-    }
-
-    MmLockSectionSegment(Segment);
-
-    if (!Length || !Offset)
-    {
-        /* We must calculate the length for ourselves */
-        /* FIXME: All of this is suboptimal */
-        ULONG ElemCount = RtlNumberGenericTableElements(&Segment->PageTable);
-        if (!ElemCount)
-        {
-            /* No page. Nothing to purge */
-            MmUnlockSectionSegment(Segment);
-            MmDereferenceSegment(Segment);
-            return TRUE;
-        }
-
-        PCACHE_SECTION_PAGE_TABLE PageTable = RtlGetElementGenericTable(&Segment->PageTable, ElemCount - 1);
-        PurgeEnd.QuadPart = PageTable->FileOffset.QuadPart + _countof(PageTable->PageEntries) * PAGE_SIZE;
-    }
-
-    /* Find byte offset of the page to start */
-    PurgeStart.QuadPart = PAGE_ROUND_DOWN_64(PurgeStart.QuadPart);
-
-    while (PurgeStart.QuadPart < PurgeEnd.QuadPart)
-    {
-        ULONG_PTR Entry = MmGetPageEntrySectionSegment(Segment, &PurgeStart);
-
-        if (Entry == 0)
-        {
-            PurgeStart.QuadPart += PAGE_SIZE;
-            continue;
-        }
-
-        if (IS_SWAP_FROM_SSE(Entry))
-        {
-            ASSERT(SWAPENTRY_FROM_SSE(Entry) == MM_WAIT_ENTRY);
-            /* The page is currently being read. Meaning someone will need it soon. Bad luck */
-            MmUnlockSectionSegment(Segment);
-            MmDereferenceSegment(Segment);
-            return FALSE;
-        }
-
-        if (IS_WRITE_SSE(Entry))
-        {
-            /* We're trying to purge an entry which is being written. Restart this loop iteration */
-            MmUnlockSectionSegment(Segment);
-            KeDelayExecutionThread(KernelMode, FALSE, &TinyTime);
-            MmLockSectionSegment(Segment);
-            continue;
-        }
-
-        if (SHARE_COUNT_FROM_SSE(Entry) > 0)
-        {
-            /* This page is currently in use. Bad luck */
-            MmUnlockSectionSegment(Segment);
-            MmDereferenceSegment(Segment);
-            return FALSE;
-        }
-
-        /* We can let this page go */
-        MmSetPageEntrySectionSegment(Segment, &PurgeStart, 0);
-        MmReleasePageMemoryConsumer(MC_USER, PFN_FROM_SSE(Entry));
-
-        PurgeStart.QuadPart += PAGE_SIZE;
-    }
-
-    /* This page is currently in use. Bad luck */
-    MmUnlockSectionSegment(Segment);
-    MmDereferenceSegment(Segment);
-    return TRUE;
-}
-
-BOOLEAN
-NTAPI
-MmIsDataSectionResident(
-    _In_ PSECTION_OBJECT_POINTERS SectionObjectPointer,
-    _In_ LONGLONG Offset,
-    _In_ ULONG Length)
-{
-    PMM_SECTION_SEGMENT Segment;
-    LARGE_INTEGER RangeStart, RangeEnd;
-    BOOLEAN Ret = TRUE;
-
-    RangeStart.QuadPart = Offset;
-    if (!NT_SUCCESS(RtlLongLongAdd(RangeStart.QuadPart, Length, &RangeEnd.QuadPart)))
-        return FALSE;
-
-    Segment = MiGrabDataSection(SectionObjectPointer);
-    if (!Segment)
-        return FALSE;
-
-    /* Find byte offset of the page to start */
-    RangeStart.QuadPart = PAGE_ROUND_DOWN_64(RangeStart.QuadPart);
-
-    MmLockSectionSegment(Segment);
-
-    while (RangeStart.QuadPart < RangeEnd.QuadPart)
-    {
-        ULONG_PTR Entry = MmGetPageEntrySectionSegment(Segment, &RangeStart);
-        if ((Entry == 0) || IS_SWAP_FROM_SSE(Entry))
-        {
-            Ret = FALSE;
-            break;
-        }
-
-        RangeStart.QuadPart += PAGE_SIZE;
-    }
-
-    MmUnlockSectionSegment(Segment);
-    MmDereferenceSegment(Segment);
-
-    return Ret;
-}
-
-NTSTATUS
-NTAPI
-MmMakeDataSectionResident(
-    _In_ PSECTION_OBJECT_POINTERS SectionObjectPointer,
-    _In_ LONGLONG Offset,
-    _In_ ULONG Length,
-    _In_ PLARGE_INTEGER ValidDataLength)
-{
-    PMM_SECTION_SEGMENT Segment = MiGrabDataSection(SectionObjectPointer);
-
-    /* There must be a segment for this call */
-    ASSERT(Segment);
-
-    NTSTATUS Status = MmMakeSegmentResident(Segment, Offset, Length, ValidDataLength, FALSE);
-
-    MmDereferenceSegment(Segment);
-
-    return Status;
-}
-
-NTSTATUS
-NTAPI
-MmMakeSegmentDirty(
-    _In_ PSECTION_OBJECT_POINTERS SectionObjectPointer,
-    _In_ LONGLONG Offset,
-    _In_ ULONG Length)
-{
-    PMM_SECTION_SEGMENT Segment;
-    LARGE_INTEGER RangeStart, RangeEnd;
-    NTSTATUS Status;
-
-    RangeStart.QuadPart = Offset;
-    Status = RtlLongLongAdd(RangeStart.QuadPart, Length, &RangeEnd.QuadPart);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    Segment = MiGrabDataSection(SectionObjectPointer);
-    if (!Segment)
-        return STATUS_NOT_MAPPED_VIEW;
-
-    /* Find byte offset of the page to start */
-    RangeStart.QuadPart = PAGE_ROUND_DOWN_64(RangeStart.QuadPart);
-
-    MmLockSectionSegment(Segment);
-
-    while (RangeStart.QuadPart < RangeEnd.QuadPart)
-    {
-        ULONG_PTR Entry = MmGetPageEntrySectionSegment(Segment, &RangeStart);
-
-        /* Let any pending read proceed */
-        while (MM_IS_WAIT_PTE(Entry))
-        {
-            MmUnlockSectionSegment(Segment);
-            KeDelayExecutionThread(KernelMode, FALSE, &TinyTime);
-            MmLockSectionSegment(Segment);
-            Entry = MmGetPageEntrySectionSegment(Segment, &RangeStart);
-        }
-
-        /* We are called from Cc, this can't be backed by the page files */
-        ASSERT(!IS_SWAP_FROM_SSE(Entry));
-
-        /* If there is no page there, there is nothing to make dirty */
-        if (Entry != 0)
-        {
-            /* Dirtify the entry */
-            MmSetPageEntrySectionSegment(Segment, &RangeStart, DIRTY_SSE(Entry));
-        }
-
-        RangeStart.QuadPart += PAGE_SIZE;
-    }
-
-    MmUnlockSectionSegment(Segment);
-    MmDereferenceSegment(Segment);
-
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS
-NTAPI
-MmFlushSegment(
-    _In_ PSECTION_OBJECT_POINTERS SectionObjectPointer,
-    _In_opt_ PLARGE_INTEGER Offset,
-    _In_ ULONG Length,
-    _Out_opt_ PIO_STATUS_BLOCK Iosb)
-{
-    LARGE_INTEGER FlushStart, FlushEnd;
-    NTSTATUS Status;
-
-    if (Offset)
-    {
-        FlushStart = *Offset;
-        Status = RtlLongLongAdd(FlushStart.QuadPart, Length, &FlushEnd.QuadPart);
-        if (!NT_SUCCESS(Status))
-            return Status;
-    }
-
-    if (Iosb)
-        Iosb->Information = 0;
-
-    PMM_SECTION_SEGMENT Segment = MiGrabDataSection(SectionObjectPointer);
-    if (!Segment)
-    {
-        /* Nothing to flush */
-        goto Quit;
-    }
-
-    ASSERT(*Segment->Flags & MM_DATAFILE_SEGMENT);
-
-    MmLockSectionSegment(Segment);
-
-    if (!Offset)
-    {
-        FlushStart.QuadPart = 0;
-
-        /* FIXME: All of this is suboptimal */
-        ULONG ElemCount = RtlNumberGenericTableElements(&Segment->PageTable);
-        if (!ElemCount)
-        {
-            /* No page. Nothing to flush */
-            MmUnlockSectionSegment(Segment);
-            MmDereferenceSegment(Segment);
-            goto Quit;
-        }
-
-        PCACHE_SECTION_PAGE_TABLE PageTable = RtlGetElementGenericTable(&Segment->PageTable, ElemCount - 1);
-        FlushEnd.QuadPart = PageTable->FileOffset.QuadPart + _countof(PageTable->PageEntries) * PAGE_SIZE;
-    }
-
-    /* Find byte offset of the page to start */
-    FlushStart.QuadPart = PAGE_ROUND_DOWN_64(FlushStart.QuadPart);
-
-    while (FlushStart.QuadPart < FlushEnd.QuadPart)
-    {
-        ULONG_PTR Entry = MmGetPageEntrySectionSegment(Segment, &FlushStart);
-
-        if (IS_DIRTY_SSE(Entry))
-        {
-            MmCheckDirtySegment(Segment, &FlushStart, FALSE, FALSE);
-
-            if (Iosb)
-                Iosb->Information += PAGE_SIZE;
-        }
-
-        FlushStart.QuadPart += PAGE_SIZE;
-    }
-
-    MmUnlockSectionSegment(Segment);
-    MmDereferenceSegment(Segment);
-
-Quit:
-    /* FIXME: Handle failures */
-    if (Iosb)
-        Iosb->Status = STATUS_SUCCESS;
-
-    return STATUS_SUCCESS;
-}
 
 _Requires_exclusive_lock_held_(Segment->Lock)
 BOOLEAN
@@ -5445,50 +4817,5 @@ MmMakePagesDirty(
     return STATUS_SUCCESS;
 }
 #endif
-
-NTSTATUS
-NTAPI
-MmExtendSection(
-    _In_ PVOID _Section,
-    _Inout_ PLARGE_INTEGER NewSize)
-{
-    PSECTION Section = _Section;
-
-    /* It makes no sense to extend an image mapping */
-    if (Section->u.Flags.Image)
-        return STATUS_SECTION_NOT_EXTENDED;
-
-    /* Nor is it possible to extend a page file mapping */
-    if (!Section->u.Flags.File)
-        return STATUS_SECTION_NOT_EXTENDED;
-
-    if (!MiIsRosSectionObject(Section))
-        return STATUS_NOT_IMPLEMENTED;
-
-    /* A section never shrinks, report the size it already has */
-    if (NewSize->QuadPart <= Section->SizeOfSection.QuadPart)
-    {
-        *NewSize = Section->SizeOfSection;
-        return STATUS_SUCCESS;
-    }
-
-    {
-        PMM_SECTION_SEGMENT Segment = (PMM_SECTION_SEGMENT)Section->Segment;
-        Section->SizeOfSection = *NewSize;
-
-        if (!Section->u.Flags.Reserve)
-        {
-            MmLockSectionSegment(Segment);
-            if (Segment->RawLength.QuadPart < NewSize->QuadPart)
-            {
-                Segment->RawLength = *NewSize;
-                Segment->Length.QuadPart = PAGE_ROUND_UP(NewSize->QuadPart);
-            }
-            MmUnlockSectionSegment(Segment);
-        }
-    }
-
-    return STATUS_SUCCESS;
-}
 
 /* EOF */

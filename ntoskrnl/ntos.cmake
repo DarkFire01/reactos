@@ -220,6 +220,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/kdbg.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/largepag.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/mdlsup.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/mapped.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/mmdbg.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/mminit.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/mmsup.c
