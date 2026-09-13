@@ -68,6 +68,10 @@
 @ stdcall CM_Get_Class_NameW(ptr wstr ptr long)
 @ stdcall CM_Get_Class_Name_ExA(ptr str ptr long ptr)
 @ stdcall CM_Get_Class_Name_ExW(ptr wstr ptr long ptr)
+@ stdcall CM_Get_Class_PropertyW(ptr ptr ptr ptr ptr long)
+@ stdcall CM_Get_Class_Property_ExW(ptr ptr ptr ptr ptr long ptr)
+@ stdcall CM_Get_Class_Property_Keys(ptr ptr ptr long)
+@ stdcall CM_Get_Class_Property_Keys_Ex(ptr ptr ptr long ptr)
 @ stdcall CM_Get_Class_Registry_PropertyA(ptr long ptr ptr ptr long ptr)
 @ stdcall CM_Get_Class_Registry_PropertyW(ptr long ptr ptr ptr long ptr)
 @ stdcall CM_Get_Depth(ptr long long)
@@ -76,6 +80,10 @@
 @ stdcall CM_Get_DevNode_Custom_PropertyW(long wstr ptr ptr ptr long)
 @ stdcall CM_Get_DevNode_Custom_Property_ExA(long str ptr ptr ptr long ptr)
 @ stdcall CM_Get_DevNode_Custom_Property_ExW(long wstr ptr ptr ptr long ptr)
+@ stdcall CM_Get_DevNode_PropertyW(long ptr ptr ptr ptr long)
+@ stdcall CM_Get_DevNode_Property_ExW(long ptr ptr ptr ptr long ptr)
+@ stdcall CM_Get_DevNode_Property_Keys(long ptr ptr long)
+@ stdcall CM_Get_DevNode_Property_Keys_Ex(long ptr ptr long ptr)
 @ stdcall CM_Get_DevNode_Registry_PropertyA(long long ptr ptr ptr long)
 @ stdcall CM_Get_DevNode_Registry_PropertyW(long long ptr ptr ptr long)
 @ stdcall CM_Get_DevNode_Registry_Property_ExA(long long ptr ptr ptr long ptr)
@@ -108,6 +116,10 @@
 @ stdcall CM_Get_Device_Interface_List_SizeW(ptr ptr wstr long)
 @ stdcall CM_Get_Device_Interface_List_Size_ExA(ptr ptr str long ptr)
 @ stdcall CM_Get_Device_Interface_List_Size_ExW(ptr ptr wstr long ptr)
+@ stdcall CM_Get_Device_Interface_PropertyW(wstr ptr ptr ptr ptr long)
+@ stdcall CM_Get_Device_Interface_Property_ExW(wstr ptr ptr ptr ptr long ptr)
+@ stdcall CM_Get_Device_Interface_Property_KeysW(wstr ptr ptr long)
+@ stdcall CM_Get_Device_Interface_Property_Keys_ExW(wstr ptr ptr long ptr)
 @ stdcall CM_Get_First_Log_Conf(ptr long long)
 @ stdcall CM_Get_First_Log_Conf_Ex(ptr long long long)
 @ stdcall CM_Get_Global_State(ptr long)
@@ -200,14 +212,20 @@
 @ stdcall CM_Run_Detection(long)
 @ stdcall CM_Run_Detection_Ex(long ptr)
 @ stub -version=0x600+ CM_Set_ActiveScheme
+@ stdcall CM_Set_Class_PropertyW(ptr ptr long ptr long long)
+@ stdcall CM_Set_Class_Property_ExW(ptr ptr long ptr long long ptr)
 @ stdcall CM_Set_Class_Registry_PropertyA(ptr long ptr long long ptr)
 @ stdcall CM_Set_Class_Registry_PropertyW(ptr long ptr long long ptr)
 @ stdcall CM_Set_DevNode_Problem(long long long)
 @ stdcall CM_Set_DevNode_Problem_Ex(long long long ptr)
+@ stdcall CM_Set_DevNode_PropertyW(long ptr long ptr long long)
+@ stdcall CM_Set_DevNode_Property_ExW(long ptr long ptr long long ptr)
 @ stdcall CM_Set_DevNode_Registry_PropertyA(long long ptr long long)
 @ stdcall CM_Set_DevNode_Registry_PropertyW(long long ptr long long)
 @ stdcall CM_Set_DevNode_Registry_Property_ExA(long long ptr long long ptr)
 @ stdcall CM_Set_DevNode_Registry_Property_ExW(long long ptr long long ptr)
+@ stdcall CM_Set_Device_Interface_PropertyW(wstr ptr long ptr long long)
+@ stdcall CM_Set_Device_Interface_Property_ExW(wstr ptr long ptr long long ptr)
 @ stdcall CM_Set_HW_Prof(long long)
 @ stdcall CM_Set_HW_Prof_Ex(long long ptr)
 @ stdcall CM_Set_HW_Prof_FlagsA(str long long long)
@@ -345,10 +363,10 @@
 @ stdcall SetupDiGetClassImageListExW(ptr wstr ptr)
 @ stdcall SetupDiGetClassInstallParamsA(ptr ptr ptr long ptr)
 @ stdcall SetupDiGetClassInstallParamsW(ptr ptr ptr long ptr)
-@ stub -version=0x600+ SetupDiGetClassPropertyExW
-@ stub -version=0x600+ SetupDiGetClassPropertyKeys
-@ stub -version=0x600+ SetupDiGetClassPropertyKeysExW
-@ stub -version=0x600+ SetupDiGetClassPropertyW
+@ stdcall SetupDiGetClassPropertyExW(ptr ptr ptr ptr long ptr long wstr ptr)
+@ stdcall SetupDiGetClassPropertyKeys(ptr ptr long ptr long)
+@ stdcall SetupDiGetClassPropertyKeysExW(ptr ptr long ptr long wstr ptr)
+@ stdcall SetupDiGetClassPropertyW(ptr ptr ptr ptr long ptr long)
 @ stdcall SetupDiGetClassRegistryPropertyA(ptr long ptr ptr long ptr str ptr)
 @ stdcall SetupDiGetClassRegistryPropertyW(ptr long ptr ptr long ptr wstr ptr)
 @ stdcall SetupDiGetCustomDevicePropertyA(ptr ptr str long ptr ptr long ptr)
@@ -363,10 +381,10 @@
 @ stdcall SetupDiGetDeviceInterfaceAlias(ptr ptr ptr ptr)
 @ stdcall SetupDiGetDeviceInterfaceDetailA(long ptr ptr long ptr ptr)
 @ stdcall SetupDiGetDeviceInterfaceDetailW(long ptr ptr long ptr ptr)
-@ stub -version=0x600+ SetupDiGetDeviceInterfacePropertyKeys
-@ stub -version=0x600+ SetupDiGetDeviceInterfacePropertyW
-@ stub -version=0x600+ SetupDiGetDevicePropertyKeys
-@ stdcall -stub -version=0x600+ SetupDiGetDevicePropertyW(ptr ptr ptr ptr ptr long ptr long)
+@ stdcall SetupDiGetDeviceInterfacePropertyKeys(ptr ptr ptr long ptr long)
+@ stdcall SetupDiGetDeviceInterfacePropertyW(ptr ptr ptr ptr ptr long ptr long)
+@ stdcall SetupDiGetDevicePropertyKeys(ptr ptr ptr long ptr long)
+@ stdcall SetupDiGetDevicePropertyW(ptr ptr ptr ptr ptr long ptr long)
 @ stdcall SetupDiGetDeviceRegistryPropertyA(long ptr long ptr ptr long ptr)
 @ stdcall SetupDiGetDeviceRegistryPropertyW(long ptr long ptr ptr long ptr)
 @ stdcall SetupDiGetDriverInfoDetailA(ptr ptr ptr ptr long ptr)
@@ -420,15 +438,15 @@
 @ stub SetupDiSelectOEMDrv
 @ stdcall SetupDiSetClassInstallParamsA(ptr ptr ptr long)
 @ stdcall SetupDiSetClassInstallParamsW(ptr ptr ptr long)
-@ stub -version=0x600+ SetupDiSetClassPropertyExW
-@ stub -version=0x600+ SetupDiSetClassPropertyW
+@ stdcall SetupDiSetClassPropertyExW(ptr ptr long ptr long long wstr ptr)
+@ stdcall SetupDiSetClassPropertyW(ptr ptr long ptr long long)
 @ stdcall SetupDiSetClassRegistryPropertyA(ptr long ptr long str ptr)
 @ stdcall SetupDiSetClassRegistryPropertyW(ptr long ptr long wstr ptr)
 @ stdcall SetupDiSetDeviceInstallParamsA(ptr ptr ptr)
 @ stdcall SetupDiSetDeviceInstallParamsW(ptr ptr ptr)
 @ stub SetupDiSetDeviceInterfaceDefault
-@ stub -version=0x600+ SetupDiSetDeviceInterfacePropertyW
-@ stub -version=0x600+ SetupDiSetDevicePropertyW
+@ stdcall SetupDiSetDeviceInterfacePropertyW(ptr ptr ptr long ptr long long)
+@ stdcall SetupDiSetDevicePropertyW(ptr ptr ptr long ptr long long)
 @ stdcall SetupDiSetDeviceRegistryPropertyA(ptr ptr long ptr long)
 @ stdcall SetupDiSetDeviceRegistryPropertyW(ptr ptr long ptr long)
 @ stdcall SetupDiSetDriverInstallParamsA(ptr ptr ptr ptr)

@@ -683,6 +683,114 @@ done:
 }
 
 
+static
+BOOL
+IsCallerAdministrator(
+    _In_ handle_t hBinding)
+{
+    SID_IDENTIFIER_AUTHORITY NtAuthority = {SECURITY_NT_AUTHORITY};
+    PSID pAdminSid = NULL, pSystemSid = NULL;
+    BOOL bAdmin = FALSE, bSystem = FALSE;
+    HANDLE hToken;
+
+    if (!AllocateAndInitializeSid(&NtAuthority,
+                                  2,
+                                  SECURITY_BUILTIN_DOMAIN_RID,
+                                  DOMAIN_ALIAS_RID_ADMINS,
+                                  0, 0, 0, 0, 0, 0,
+                                  &pAdminSid) ||
+        !AllocateAndInitializeSid(&NtAuthority,
+                                  1,
+                                  SECURITY_LOCAL_SYSTEM_RID,
+                                  0, 0, 0, 0, 0, 0, 0,
+                                  &pSystemSid))
+    {
+        DPRINT1("AllocateAndInitializeSid failed\n");
+        goto done;
+    }
+
+    if (RpcImpersonateClient(hBinding) != RPC_S_OK)
+        goto done;
+
+    if (OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, FALSE, &hToken))
+    {
+        CheckTokenMembership(hToken, pAdminSid, &bAdmin);
+        CheckTokenMembership(hToken, pSystemSid, &bSystem);
+        CloseHandle(hToken);
+    }
+
+    RpcRevertToSelf();
+
+done:
+    if (pSystemSid)
+        FreeSid(pSystemSid);
+
+    if (pAdminSid)
+        FreeSid(pAdminSid);
+
+    return (bAdmin || bSystem);
+}
+
+
+static
+CONFIGRET
+CallObjectPropertyControl(
+    _In_ LPWSTR ObjectName,
+    _In_ DWORD ObjectType,
+    _In_opt_ LPWSTR PropertyCultureName,
+    _Inout_ PPLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA ControlData)
+{
+    NTSTATUS Status;
+
+    switch (ObjectType)
+    {
+        case PNP_PROP_OBJECT_DEVICE:
+            if (!IsValidDeviceInstanceID(ObjectName))
+                return CR_INVALID_DEVINST;
+            break;
+
+        case PNP_PROP_OBJECT_INTERFACE:
+        case PNP_PROP_OBJECT_INSTALLER_CLASS:
+        case PNP_PROP_OBJECT_INTERFACE_CLASS:
+            if (*ObjectName == UNICODE_NULL)
+                return CR_INVALID_DATA;
+            break;
+
+        default:
+            return CR_INVALID_DATA;
+    }
+
+    if (PropertyCultureName && (wcslen(PropertyCultureName) >= PNP_MAX_CULTURE_NAME_LEN))
+        return CR_INVALID_DATA;
+
+    RtlInitUnicodeString(&ControlData->ObjectName, ObjectName);
+    RtlInitUnicodeString(&ControlData->LocaleName, PropertyCultureName);
+    ControlData->ObjectType = ObjectType;
+
+    Status = NtPlugPlayControl(PlugPlayControlObjectProperty,
+                               ControlData,
+                               sizeof(*ControlData));
+    switch (Status)
+    {
+        case STATUS_SUCCESS:
+            return CR_SUCCESS;
+
+        case STATUS_INSUFFICIENT_RESOURCES:
+            return CR_OUT_OF_MEMORY;
+
+        case STATUS_NO_SUCH_DEVICE:
+            if (ObjectType == PNP_PROP_OBJECT_DEVICE)
+                return CR_NO_SUCH_DEVNODE;
+            if (ObjectType == PNP_PROP_OBJECT_INTERFACE)
+                return CR_NO_SUCH_DEVICE_INTERFACE;
+            return CR_NO_SUCH_REGISTRY_KEY;
+
+        default:
+            return NtStatusToCrError(Status);
+    }
+}
+
+
 VOID
 __RPC_USER
 PNP_NOTIFY_HANDLE_rundown(
@@ -5600,8 +5708,41 @@ PNP_GetObjectPropKeys(
     DEVPROPKEY *PropertyKeys,
     DWORD Flags)
 {
-    UNIMPLEMENTED;
-    return CR_CALL_NOT_IMPLEMENTED;
+    PLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA ControlData;
+    CONFIGRET ret;
+
+    UNREFERENCED_PARAMETER(hBinding);
+
+    DPRINT("PNP_GetObjectPropKeys(%p %S %lu %S %p %p %p 0x%lx)\n",
+           hBinding, ObjectName, ObjectType, PropertyCultureName,
+           PropertyCount, TransferLen, PropertyKeys, Flags);
+
+    if (ObjectName == NULL || PropertyCount == NULL || TransferLen == NULL)
+        return CR_INVALID_POINTER;
+
+    if (Flags != 0)
+        return CR_INVALID_FLAG;
+
+    *TransferLen = 0;
+
+    ZeroMemory(&ControlData, sizeof(ControlData));
+    ControlData.Operation = PNP_PROP_OPERATION_GET_KEYS;
+    ControlData.Buffer = PropertyKeys;
+    ControlData.BufferSize = *PropertyCount;
+
+    ret = CallObjectPropertyControl(ObjectName, ObjectType, PropertyCultureName, &ControlData);
+
+    if ((ret == CR_SUCCESS || ret == CR_BUFFER_SMALL) &&
+        (ControlData.BufferSize > PNP_MAX_PROP_COUNT))
+        return CR_FAILURE;
+
+    if (ret == CR_SUCCESS || ret == CR_BUFFER_SMALL)
+        *PropertyCount = ControlData.BufferSize;
+
+    if (ret == CR_SUCCESS)
+        *TransferLen = ControlData.BufferSize;
+
+    return ret;
 }
 
 
@@ -5613,15 +5754,54 @@ PNP_GetObjectProp(
     LPWSTR ObjectName,
     DWORD ObjectType,
     LPWSTR PropertyCultureName,
-    const DEVPROPKEY *PropertyKey,
+    DEVPROPKEY *PropertyKey,
     DEVPROPTYPE *PropertyType,
     PNP_PROP_SIZE *PropertySize,
     PNP_PROP_SIZE *TransferLen,
     BYTE *PropertyBuffer,
     DWORD Flags)
 {
-    UNIMPLEMENTED;
-    return CR_CALL_NOT_IMPLEMENTED;
+    PLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA ControlData;
+    CONFIGRET ret;
+
+    UNREFERENCED_PARAMETER(hBinding);
+
+    DPRINT("PNP_GetObjectProp(%p %S %lu %S %p %p %p %p %p 0x%lx)\n",
+           hBinding, ObjectName, ObjectType, PropertyCultureName, PropertyKey,
+           PropertyType, PropertySize, TransferLen, PropertyBuffer, Flags);
+
+    if (ObjectName == NULL || PropertyKey == NULL || PropertyType == NULL ||
+        PropertySize == NULL || TransferLen == NULL)
+        return CR_INVALID_POINTER;
+
+    if (Flags != 0)
+        return CR_INVALID_FLAG;
+
+    *PropertyType = DEVPROP_TYPE_EMPTY;
+    *TransferLen = 0;
+
+    ZeroMemory(&ControlData, sizeof(ControlData));
+    ControlData.Operation = PNP_PROP_OPERATION_GET;
+    ControlData.PropertyKey = *PropertyKey;
+    ControlData.Buffer = PropertyBuffer;
+    ControlData.BufferSize = *PropertySize;
+
+    ret = CallObjectPropertyControl(ObjectName, ObjectType, PropertyCultureName, &ControlData);
+
+    if ((ret == CR_SUCCESS || ret == CR_BUFFER_SMALL) &&
+        (ControlData.BufferSize > PNP_MAX_PROP_SIZE))
+        return CR_FAILURE;
+
+    if (ret == CR_SUCCESS || ret == CR_BUFFER_SMALL)
+    {
+        *PropertyType = ControlData.PropertyType;
+        *PropertySize = ControlData.BufferSize;
+    }
+
+    if (ret == CR_SUCCESS)
+        *TransferLen = ControlData.BufferSize;
+
+    return ret;
 }
 
 
@@ -5633,14 +5813,38 @@ PNP_SetObjectProp(
     LPWSTR ObjectName,
     DWORD ObjectType,
     LPWSTR PropertyCultureName,
-    const DEVPROPKEY *PropertyKey,
+    DEVPROPKEY *PropertyKey,
     DEVPROPTYPE PropertyType,
     PNP_PROP_SIZE PropertySize,
     BYTE *PropertyBuffer,
     DWORD Flags)
 {
-    UNIMPLEMENTED;
-    return CR_CALL_NOT_IMPLEMENTED;
+    PLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA ControlData;
+
+    DPRINT("PNP_SetObjectProp(%p %S %lu %S %p %lu %lu %p 0x%lx)\n",
+           hBinding, ObjectName, ObjectType, PropertyCultureName, PropertyKey,
+           PropertyType, PropertySize, PropertyBuffer, Flags);
+
+    if (ObjectName == NULL || PropertyKey == NULL)
+        return CR_INVALID_POINTER;
+
+    if (PropertySize != 0 && PropertyBuffer == NULL)
+        return CR_INVALID_POINTER;
+
+    if (Flags != 0)
+        return CR_INVALID_FLAG;
+
+    if (!g_IsMiniNT && !IsCallerAdministrator(hBinding))
+        return CR_ACCESS_DENIED;
+
+    ZeroMemory(&ControlData, sizeof(ControlData));
+    ControlData.Operation = PNP_PROP_OPERATION_SET;
+    ControlData.PropertyKey = *PropertyKey;
+    ControlData.PropertyType = PropertyType;
+    ControlData.Buffer = PropertyBuffer;
+    ControlData.BufferSize = PropertySize;
+
+    return CallObjectPropertyControl(ObjectName, ObjectType, PropertyCultureName, &ControlData);
 }
 
 
