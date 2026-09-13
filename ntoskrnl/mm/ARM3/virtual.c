@@ -515,6 +515,10 @@ MiDeletePte(IN PMMPTE PointerPte,
                          (ULONG_PTR)Pfn1->PteAddress);
         }
 
+        /* Leave the working set first */
+        if (Pfn1->u1.WsIndex != 0)
+            MiRemoveFromWorkingSetList(&CurrentProcess->Vm, VirtualAddress);
+
         /* Erase the PTE */
         MI_ERASE_PTE(PointerPte);
 
@@ -2396,9 +2400,13 @@ MiProtectVirtualMemory(IN PEPROCESS Process,
 
                     /* Paging the page out must not bring the old protection back */
                     Pfn1->OriginalPte.u.Soft.Protection = ProtectionMask;
+
+                    /* An inaccessible page is not part of the working set */
+                    if (Pfn1->u1.WsIndex != 0)
+                        MiRemoveFromWorkingSetList(&Process->Vm, MiPteToAddress(PointerPte));
+
                     /* Decrease PFN share count and write the PTE */
                     MiDecrementShareCount(Pfn1, PFN_FROM_PTE(&PteContents));
-                    // FIXME: remove the page from the WS
                     MI_WRITE_INVALID_PTE(PointerPte, PteContents);
 #ifdef CONFIG_SMP
                     // FIXME: Should invalidate entry in every CPU TLB
@@ -2594,6 +2602,10 @@ MiProcessValidPteList(IN PMMPTE *ValidPteList,
         PageFrameIndex = PFN_FROM_PTE(&TempPte);
         Pfn1 = MiGetPfnEntry(PageFrameIndex);
         Pfn2 = MiGetPfnEntry(Pfn1->u4.PteFrame);
+
+        /* Leave the working set first */
+        if (Pfn1->u1.WsIndex != 0)
+            MiRemoveFromWorkingSetList(&PsGetCurrentProcess()->Vm, MiPteToAddress(ValidPteList[i]));
 
         //
         // Decrement the share count on the page table, and then on the page
