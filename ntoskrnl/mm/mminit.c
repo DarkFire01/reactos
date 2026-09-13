@@ -292,11 +292,12 @@ MmInitSystem(IN ULONG Phase,
      */
     MiInitBalancerThread();
 
+    /* Initialize the balance set manager, it runs the working set manager */
+    KeInitializeEvent(&MmWorkingSetManagerEvent, SynchronizationEvent, FALSE);
+    MmInitBsmThread();
+
     /* Start writing modified pages once paging files show up */
     MiInitializeModifiedPageWriter();
-
-    /* Initialize the balance set manager */
-    MmInitBsmThread();
 
     /* Loop the boot loaded images (under lock) */
     ExAcquireResourceExclusiveLite(&PsLoadedModuleResource, TRUE);
