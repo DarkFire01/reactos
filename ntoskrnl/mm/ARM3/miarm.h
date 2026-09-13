@@ -447,7 +447,27 @@ typedef struct _MMVIEW
 {
     ULONG_PTR Entry;
     PCONTROL_AREA ControlArea;
+    ULONG_PTR StartingPage;
+    BOOLEAN UserReference;
+    BOOLEAN ReadOnly;
 } MMVIEW, *PMMVIEW;
+
+/* Process value used by faults on session space */
+#define HYDRA_PROCESS (PEPROCESS)1
+
+/* A fault needs file I/O or has to wait for it, done without the working set lock */
+#define STATUS_MM_PAGE_READ_NEEDED ((NTSTATUS)0xD0000002)
+
+typedef struct _MI_PAGE_READ
+{
+    PFILE_OBJECT FileObject;
+    LARGE_INTEGER FileOffset;
+    PFN_NUMBER PageFrameIndex;
+    ULONG ValidLength;
+    BOOLEAN Collided;
+    PKEVENT PreviousEvent;
+    KEVENT Event;
+} MI_PAGE_READ, *PMI_PAGE_READ;
 
 typedef struct _MMSESSION
 {
@@ -608,6 +628,7 @@ extern ULONG MmLargeStackSize;
 extern PMMCOLOR_TABLES MmFreePagesByColor[FreePageList + 1];
 extern MMPFNLIST MmStandbyPageListByPriority[8];
 extern MMPFNLIST MmModifiedPageListByColor[1];
+extern MMPFNLIST MmModifiedMappedPageListHead;
 extern MMPFNLIST MmModifiedNoWritePageListHead;
 extern ULONG MmProductType;
 extern MM_SYSTEMSIZE MmSystemSize;
@@ -1559,6 +1580,13 @@ MiReleaseExpansionLock(KIRQL OldIrql)
     ASSERT(KeGetCurrentIrql() <= APC_LEVEL);
 }
 
+PMMPTE
+NTAPI
+MiGetViewProtoPte(
+    _In_ PMMVAD Vad,
+    _In_ ULONG_PTR Vpn
+);
+
 //
 // Returns the ProtoPTE inside a VAD for the given VPN
 //
@@ -1571,7 +1599,9 @@ MI_GET_PROTOTYPE_PTE_FOR_VPN(IN PMMVAD Vad,
 
     /* Find the offset within the VAD's prototype PTEs */
     ProtoPte = Vad->FirstPrototypePte + (Vpn - Vad->StartingVpn);
-    ASSERT(ProtoPte <= Vad->LastContiguousPte);
+    if (ProtoPte > Vad->LastContiguousPte)
+        ProtoPte = MiGetViewProtoPte(Vad, Vpn);
+
     return ProtoPte;
 }
 
@@ -1604,14 +1634,6 @@ MiDropLockCount(IN PMMPFN Pfn1)
         /* It better not be valid */
         ASSERT(Pfn1->u3.e1.PageLocation != ActiveAndValid);
 
-        /* Is it a prototype PTE? */
-        if ((Pfn1->u3.e1.PrototypePte == 1) &&
-            (Pfn1->OriginalPte.u.Soft.Prototype == 1))
-        {
-            /* FIXME: We should return commit */
-            DPRINT1("Not returning commit for prototype PTE\n");
-        }
-
         /* Update the counter */
         InterlockedDecrementSizeT(&MmSystemLockPagesCount);
     }
@@ -1642,14 +1664,6 @@ MiDereferencePfnAndDropLockCount(IN PMMPFN Pfn1)
             ASSERT(Pfn1->u3.e1.PageLocation != ActiveAndValid);
             ASSERT(Pfn1->u2.ShareCount == 0);
 
-            /* Is it a prototype PTE? */
-            if ((Pfn1->u3.e1.PrototypePte == 1) &&
-                (Pfn1->OriginalPte.u.Soft.Prototype == 1))
-            {
-                /* FIXME: We should return commit */
-                DPRINT1("Not returning commit for prototype PTE\n");
-            }
-
             /* Update the counter, and drop a reference the long way */
             InterlockedDecrementSizeT(&MmSystemLockPagesCount);
             PageFrameIndex = MiGetPfnEntryIndex(Pfn1);
@@ -1673,14 +1687,6 @@ MiDereferencePfnAndDropLockCount(IN PMMPFN Pfn1)
         {
             /* Then it should be valid */
             ASSERT(Pfn1->u3.e1.PageLocation == ActiveAndValid);
-
-            /* Is it a prototype PTE? */
-            if ((Pfn1->u3.e1.PrototypePte == 1) &&
-                (Pfn1->OriginalPte.u.Soft.Prototype == 1))
-            {
-                /* We don't handle ethis */
-                ASSERT(FALSE);
-            }
 
             /* Update the counter */
             InterlockedDecrementSizeT(&MmSystemLockPagesCount);
@@ -1711,14 +1717,6 @@ MiReferenceProbedPageAndBumpLockCount(IN PMMPFN Pfn1)
     {
         /* On ARM3 pages, we should see a valid share count */
         ASSERT((Pfn1->u2.ShareCount != 0) && (Pfn1->u3.e1.PageLocation == ActiveAndValid));
-
-        /* Is it a prototype PTE? */
-        if ((Pfn1->u3.e1.PrototypePte == 1) &&
-            (Pfn1->OriginalPte.u.Soft.Prototype == 1))
-        {
-            /* FIXME: We should charge commit */
-            DPRINT1("Not charging commit for prototype PTE\n");
-        }
     }
 
     /* More locked pages! */
@@ -1752,14 +1750,6 @@ VOID
 MiReferenceUsedPageAndBumpLockCount(IN PMMPFN Pfn1)
 {
     USHORT NewRefCount;
-
-    /* Is it a prototype PTE? */
-    if ((Pfn1->u3.e1.PrototypePte == 1) &&
-        (Pfn1->OriginalPte.u.Soft.Prototype == 1))
-    {
-        /* FIXME: We should charge commit */
-        DPRINT1("Not charging commit for prototype PTE\n");
-    }
 
     /* More locked pages! */
     InterlockedIncrementSizeT(&MmSystemLockPagesCount);
@@ -1801,14 +1791,6 @@ MiReferenceUnusedPageAndBumpLockCount(IN PMMPFN Pfn1)
     /* Make sure the page isn't used yet */
     ASSERT(Pfn1->u2.ShareCount == 0);
     ASSERT(Pfn1->u3.e1.PageLocation != ActiveAndValid);
-
-    /* Is it a prototype PTE? */
-    if ((Pfn1->u3.e1.PrototypePte == 1) &&
-        (Pfn1->OriginalPte.u.Soft.Prototype == 1))
-    {
-        /* FIXME: We should charge commit */
-        DPRINT1("Not charging commit for prototype PTE\n");
-    }
 
     /* More locked pages! */
     InterlockedIncrementSizeT(&MmSystemLockPagesCount);
@@ -2417,12 +2399,97 @@ MiRemoveMappedView(
     IN PMMVAD Vad
 );
 
-PSUBSECTION
+VOID
 NTAPI
-MiLocateSubsection(
-    IN PMMVAD Vad,
-    IN ULONG_PTR Vpn
+MiCheckControlArea(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ KIRQL OldIrql
 );
+
+VOID
+NTAPI
+MiExtendSystemViews(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ ULONG OldPtes
+);
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+MiInitializeDataFileMaps(VOID);
+
+PMMPTE
+NTAPI
+MiGetDataFileProtoPte(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ ULONG64 PageIndex,
+    _Out_opt_ PMSUBSECTION *OutSubsection
+);
+
+NTSTATUS
+NTAPI
+MiReferenceDataFileMap(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ ULONG64 Size,
+    _In_ BOOLEAN UserReference,
+    _Out_ PCONTROL_AREA *OutControlArea
+);
+
+VOID
+NTAPI
+MiQueueDataFileCleanup(
+    _In_ PCONTROL_AREA ControlArea
+);
+
+PCONTROL_AREA
+NTAPI
+MiReferenceDataFileMapForIo(
+    _In_ PSECTION_OBJECT_POINTERS SectionObjectPointer
+);
+
+VOID
+NTAPI
+MiReferenceDataFileMapForIoUnsafe(
+    _In_ PCONTROL_AREA ControlArea
+);
+
+VOID
+NTAPI
+MiDereferenceDataFileMapForIo(
+    _In_ PCONTROL_AREA ControlArea
+);
+
+NTSTATUS
+NTAPI
+MiResolveMappedFileFault(
+    _In_ PMMPTE PointerProtoPte,
+    _Out_ PMI_PAGE_READ PageRead,
+    _In_ PEPROCESS Process,
+    _In_ KIRQL OldIrql
+);
+
+NTSTATUS
+NTAPI
+MiCompletePageRead(
+    _Inout_ PMI_PAGE_READ PageRead
+);
+
+NTSTATUS
+NTAPI
+MiFlushDataFileView(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ ULONG64 StartPage,
+    _In_ ULONG64 EndPage,
+    _Out_ PIO_STATUS_BLOCK IoStatusBlock
+);
+
+NTSTATUS
+NTAPI
+MiWriteModifiedMappedPages(VOID);
+
+VOID
+NTAPI
+MiWriteAllMappedPages(VOID);
 
 VOID
 NTAPI

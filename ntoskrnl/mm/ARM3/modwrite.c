@@ -35,26 +35,40 @@ static BOOLEAN MiModifiedPageWriterStopping;
 /* PRIVATE FUNCTIONS **********************************************************/
 
 /**
- * @brief Tells whether the modified list should be written out now.
+ * @brief Tells which parts of the modified list should be written out now.
+ *
+ * @param[out] PagingFile
+ * Receives TRUE when pages have to go to the paging files.
+ *
+ * @param[out] Mapped
+ * Receives TRUE when pages have to go back to their files.
+ *
+ * @return TRUE if there is anything to write.
+ *
  * @remarks The PFN lock must be held.
  */
 static
 BOOLEAN
-MiShouldWriteModifiedPages(VOID)
+MiShouldWriteModifiedPages(
+    _Out_ PBOOLEAN PagingFile,
+    _Out_ PBOOLEAN Mapped)
 {
+    BOOLEAN Needed;
+
     MI_ASSERT_PFN_LOCK_HELD();
 
-    if (MiModifiedPageWriterStopping || (MmNumberOfPagingFiles == 0))
-        return FALSE;
-
-    if (MmModifiedPageListByColor[0].Total == 0)
-        return FALSE;
-
     /* Under pressure everything goes, otherwise trim the list down to half */
-    if (MmAvailablePages < MmPlentyFreePages)
-        return TRUE;
+    Needed = (BOOLEAN)(!MiModifiedPageWriterStopping &&
+                       ((MmAvailablePages < MmPlentyFreePages) ||
+                        (MmModifiedPageListHead.Total > (MmModifiedPageMaximum / 2))));
 
-    return (MmModifiedPageListHead.Total > (MmModifiedPageMaximum / 2));
+    *PagingFile = (BOOLEAN)(Needed &&
+                            (MmNumberOfPagingFiles != 0) &&
+                            (MmModifiedPageListByColor[0].Total != 0));
+
+    *Mapped = (BOOLEAN)(Needed && (MmModifiedMappedPageListHead.Total != 0));
+
+    return (BOOLEAN)(*PagingFile || *Mapped);
 }
 
 /**
@@ -198,7 +212,8 @@ MiModifiedPageWriter(
 {
     UCHAR MdlBuffer[sizeof(MDL) + MI_WRITE_CLUSTER_PAGES * sizeof(PFN_NUMBER)];
     PFN_NUMBER Pages[MI_WRITE_CLUSTER_PAGES];
-    LARGE_INTEGER RetryDelay;
+    LARGE_INTEGER RetryDelay, BusyDelay;
+    BOOLEAN PagingFile, Mapped, Wrote;
     ULONG PageFileIndex, Count;
     ULONG_PTR PageFileOffset;
     NTSTATUS Status;
@@ -209,6 +224,7 @@ MiModifiedPageWriter(
 
     KeSetPriorityThread(&PsGetCurrentThread()->Tcb, LOW_REALTIME_PRIORITY + 1);
     RetryDelay.QuadPart = -10 * 1000 * 1000;
+    BusyDelay.QuadPart = -100 * 10000LL;
 
     for (;;)
     {
@@ -222,38 +238,62 @@ MiModifiedPageWriter(
         {
             OldIrql = MiAcquirePfnLock();
 
-            if (!MiShouldWriteModifiedPages())
+            if (!MiShouldWriteModifiedPages(&PagingFile, &Mapped))
             {
                 MiReleasePfnLock(OldIrql);
                 break;
             }
 
             KeClearEvent(&MiModifiedPageWriterIdleEvent);
-            Count = MiGatherPagefilePages(Pages, &PageFileIndex, &PageFileOffset);
+            Wrote = FALSE;
+
+            Count = PagingFile ? MiGatherPagefilePages(Pages, &PageFileIndex, &PageFileOffset) : 0;
             MiReleasePfnLock(OldIrql);
 
-            if (Count == 0)
+            if (Count != 0)
             {
-                KeSetEvent(&MiModifiedPageWriterIdleEvent, IO_NO_INCREMENT, FALSE);
-                break;
+                Mdl = (PMDL)MdlBuffer;
+                MmInitializeMdl(Mdl, NULL, (SIZE_T)Count << PAGE_SHIFT);
+                Mdl->MdlFlags |= MDL_PAGES_LOCKED;
+                RtlCopyMemory(MmGetMdlPfnArray(Mdl), Pages, Count * sizeof(PFN_NUMBER));
+
+                Status = MiWritePageFile(Mdl, PageFileIndex, PageFileOffset);
+                MiCompletePagefileWrite(Pages, Count, Status);
+
+                if (!NT_SUCCESS(Status))
+                {
+                    DPRINT1("Paging file write failed: 0x%lx\n", Status);
+                    KeSetEvent(&MiModifiedPageWriterIdleEvent, IO_NO_INCREMENT, FALSE);
+                    KeDelayExecutionThread(KernelMode, FALSE, &RetryDelay);
+                    break;
+                }
+
+                Wrote = TRUE;
             }
 
-            Mdl = (PMDL)MdlBuffer;
-            MmInitializeMdl(Mdl, NULL, (SIZE_T)Count << PAGE_SHIFT);
-            Mdl->MdlFlags |= MDL_PAGES_LOCKED;
-            RtlCopyMemory(MmGetMdlPfnArray(Mdl), Pages, Count * sizeof(PFN_NUMBER));
+            if (Mapped)
+            {
+                Status = MiWriteModifiedMappedPages();
+                if (NT_SUCCESS(Status))
+                {
+                    Wrote = TRUE;
+                }
+                else if (Status != STATUS_NO_MORE_ENTRIES)
+                {
+                    /* The file is busy or gone, its pages went back on the list */
+                    if (Status != STATUS_CANT_WAIT)
+                        DPRINT1("Mapped file write failed: 0x%lx\n", Status);
 
-            Status = MiWritePageFile(Mdl, PageFileIndex, PageFileOffset);
-            MiCompletePagefileWrite(Pages, Count, Status);
+                    KeSetEvent(&MiModifiedPageWriterIdleEvent, IO_NO_INCREMENT, FALSE);
+                    KeDelayExecutionThread(KernelMode, FALSE, &BusyDelay);
+                    break;
+                }
+            }
 
             KeSetEvent(&MiModifiedPageWriterIdleEvent, IO_NO_INCREMENT, FALSE);
 
-            if (!NT_SUCCESS(Status))
-            {
-                DPRINT1("Paging file write failed: 0x%lx\n", Status);
-                KeDelayExecutionThread(KernelMode, FALSE, &RetryDelay);
+            if (!Wrote)
                 break;
-            }
         }
     }
 }
@@ -316,7 +356,7 @@ VOID
 NTAPI
 MiWakeModifiedPageWriter(VOID)
 {
-    if (MiModifiedPageWriterStarted && (MmNumberOfPagingFiles != 0))
+    if (MiModifiedPageWriterStarted)
     {
         KeSetEvent(&MiModifiedPageWriterEvent, IO_NO_INCREMENT, FALSE);
     }
