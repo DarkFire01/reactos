@@ -121,6 +121,9 @@ MiDecrementAvailablePages(
         if (MmModifiedPageListHead.Total != 0)
             MiWakeModifiedPageWriter();
 
+        /* Trimmed pages end up there too */
+        MiWakeWorkingSetManager();
+
         /* Call RosMm and see if it can release any pages for us */
         MmRebalanceMemoryConsumers();
     }

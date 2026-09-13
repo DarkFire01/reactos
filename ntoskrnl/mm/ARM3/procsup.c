@@ -1401,6 +1401,10 @@ MmCleanProcessAddressSpace(IN PEPROCESS Process)
     /* Delete the shared user data section */
     MiDeleteVirtualAddresses(USER_SHARED_DATA, USER_SHARED_DATA, NULL);
 
+    /* Give back the working set list pages grown in hyperspace */
+    if (Process == PsGetCurrentProcess())
+        MiShrinkWorkingSetList(&Process->Vm);
+
     /* Release the working set */
     MiUnlockProcessWorkingSetUnsafe(Process, Thread);
 
