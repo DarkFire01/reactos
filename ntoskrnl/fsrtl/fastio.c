@@ -1817,19 +1817,20 @@ FsRtlpGetResourceForModWrite(_In_ PFSRTL_COMMON_FCB_HEADER FcbHeader,
                              _Outptr_result_maybenull_ PERESOURCE* ResourceToAcquire)
 {
     /*
-     * Decide on type of locking and type of resource based on
-     *  - Flags
-     *  - Whether we're extending ValidDataLength
+     * Extending the valid data length needs the main resource exclusive,
+     * the file system zeroes the gap before this write under it
      */
-    if (FlagOn(FcbHeader->Flags, FSRTL_FLAG_ACQUIRE_MAIN_RSRC_EX))
+    if (FlagOn(FcbHeader->Flags, FSRTL_FLAG_ACQUIRE_MAIN_RSRC_EX) ||
+        ((EndingOffset->QuadPart > FcbHeader->ValidDataLength.QuadPart) &&
+         (FcbHeader->ValidDataLength.QuadPart != FcbHeader->FileSize.QuadPart)))
     {
-        /* Acquire main resource, exclusive */
         *ResourceToAcquire = FcbHeader->Resource;
         return TRUE;
     }
 
-    /* We will acquire shared. Which one ? */
-    if (FlagOn(FcbHeader->Flags, FSRTL_FLAG_ACQUIRE_MAIN_RSRC_SH))
+    /* Everything else is shared, on the paging I/O resource when there is one */
+    if (FlagOn(FcbHeader->Flags, FSRTL_FLAG_ACQUIRE_MAIN_RSRC_SH) ||
+        (FcbHeader->PagingIoResource == NULL))
     {
         *ResourceToAcquire = FcbHeader->Resource;
     }
@@ -1838,8 +1839,7 @@ FsRtlpGetResourceForModWrite(_In_ PFSRTL_COMMON_FCB_HEADER FcbHeader,
         *ResourceToAcquire = FcbHeader->PagingIoResource;
     }
 
-    /* We force exclusive lock if this write modifies the valid data length */
-    return (EndingOffset->QuadPart > FcbHeader->ValidDataLength.QuadPart);
+    return FALSE;
 }
 
 /**
