@@ -16,6 +16,8 @@
 #define NDEBUG
 #include <debug.h>
 
+ULONG HalpInterruptModel;
+
 typedef enum _EXTENSION_TYPE
 {
     PdoExtensionType = 0xC0,
