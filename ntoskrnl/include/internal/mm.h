@@ -1809,10 +1809,42 @@ MmCopyVirtualMemory(IN PEPROCESS SourceProcess,
                     OUT PSIZE_T ReturnSize);
 
 /* wslist.cpp ****************************************************************/
+extern KEVENT MmWorkingSetManagerEvent;
+
 _Requires_exclusive_lock_held_(WorkingSet->WorkingSetMutex)
 VOID
 NTAPI
 MiInitializeWorkingSetList(_Inout_ PMMSUPPORT WorkingSet);
+
+_Requires_exclusive_lock_held_(Vm->WorkingSetMutex)
+VOID
+NTAPI
+MiInsertInWorkingSetList(
+    _Inout_ PMMSUPPORT Vm,
+    _In_ PVOID Address,
+    _In_ ULONG Protection);
+
+_Requires_exclusive_lock_held_(Vm->WorkingSetMutex)
+VOID
+NTAPI
+MiRemoveFromWorkingSetList(
+    _Inout_ PMMSUPPORT Vm,
+    _In_ PVOID Address);
+
+VOID
+NTAPI
+MiAddPrivatePageToWorkingSet(
+    _In_ PVOID Address);
+
+_Requires_exclusive_lock_held_(WorkingSet->WorkingSetMutex)
+VOID
+NTAPI
+MiShrinkWorkingSetList(
+    _Inout_ PMMSUPPORT WorkingSet);
+
+VOID
+NTAPI
+MmWorkingSetManager(VOID);
 
 #ifdef __cplusplus
 } // extern "C"
