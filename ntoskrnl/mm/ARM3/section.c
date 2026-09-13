@@ -668,25 +668,34 @@ MiSegmentDelete(IN PSEGMENT Segment)
                 PageFrameIndex = PFN_FROM_PTE(&TempPte);
                 Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
 
-                /* As this is a paged-backed section, nobody should reference it anymore (no cache or whatever) */
-                ASSERT(Pfn1->u3.ReferenceCount == 0);
+                /* Only the modified page writer can still hold it */
+                ASSERT(Pfn1->u3.ReferenceCount == Pfn1->u3.e1.WriteInProgress);
 
-                /* And it should be in standby or modified list */
-                ASSERT((Pfn1->u3.e1.PageLocation == ModifiedPageList) || (Pfn1->u3.e1.PageLocation == StandbyPageList));
-
-                /* Unlink it and put it back in free list */
-                MiUnlinkPageFromList(Pfn1);
-
-                /* Temporarily mark this as active and make it free again */
-                Pfn1->u3.e1.PageLocation = ActiveAndValid;
+                /* The page table of prototype PTEs does not reference it anymore */
+                MiDecrementShareCount(MI_PFN_ELEMENT(Pfn1->u4.PteFrame), Pfn1->u4.PteFrame);
                 MI_SET_PFN_DELETED(Pfn1);
 
-                MiInsertPageInFreeList(PageFrameIndex);
+                /* A page being written out is freed once the write completes */
+                if (Pfn1->u3.e1.WriteInProgress == 0)
+                {
+                    /* It should be in standby or modified list */
+                    ASSERT((Pfn1->u3.e1.PageLocation == ModifiedPageList) ||
+                           (Pfn1->u3.e1.PageLocation == StandbyPageList));
+
+                    /* Unlink it and put it back in free list */
+                    MiUnlinkPageFromList(Pfn1);
+
+                    /* Temporarily mark this as active and make it free again */
+                    Pfn1->u3.e1.PageLocation = ActiveAndValid;
+
+                    MiReleasePageFileSpace(Pfn1->OriginalPte);
+                    MiInsertPageInFreeList(PageFrameIndex);
+                }
             }
             else if (TempPte.u.Soft.PageFileHigh != 0)
             {
-                /* Should not happen for now */
-                ASSERT(FALSE);
+                /* Paged out, only the paging file copy is left */
+                MiReleasePageFileSpace(TempPte);
             }
         }
         else
@@ -1930,7 +1939,7 @@ MiRemoveMappedPtes(IN PVOID BaseAddress,
                    IN PCONTROL_AREA ControlArea,
                    IN PMMSUPPORT Ws)
 {
-    PMMPTE PointerPte, ProtoPte;//, FirstPte;
+    PMMPTE PointerPte;
     PMMPDE PointerPde, SystemMapPde;
     PMMPFN Pfn1, Pfn2;
     MMPTE PteContents;
@@ -1989,18 +1998,8 @@ MiRemoveMappedPtes(IN PVOID BaseAddress,
         }
         else
         {
-            /* Windows ASSERT */
+            /* A never touched view PTE only points at its prototype, nothing to undo */
             ASSERT((PteContents.u.Long == 0) || (PteContents.u.Soft.Prototype == 1));
-
-            /* Check if this is a prototype pointer PTE */
-            if (PteContents.u.Soft.Prototype == 1)
-            {
-                /* Get the prototype PTE */
-                ProtoPte = MiProtoPteToPte(&PteContents);
-
-                /* We don't support anything else atm */
-                ASSERT(ProtoPte->u.Long == 0);
-            }
         }
 
         /* Make the PTE into a zero PTE */

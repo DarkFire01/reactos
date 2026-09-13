@@ -391,11 +391,18 @@ MiDeletePte(IN PMMPTE PointerPte,
     /* See if the PTE is valid */
     if (TempPte.u.Hard.Valid == 0)
     {
-        /* Prototype and paged out PTEs not supported yet */
+        /* Prototype PTEs are handled by the callers */
         ASSERT(TempPte.u.Soft.Prototype == 0);
-        ASSERT((TempPte.u.Soft.PageFileHigh == 0) || (TempPte.u.Soft.Transition == 1));
 
-        if (TempPte.u.Soft.Transition)
+        if (!TempPte.u.Soft.Transition)
+        {
+            /* Paged out, only the paging file copy is left */
+            ASSERT(TempPte.u.Soft.PageFileHigh != 0);
+            MiReleasePageFileSpace(TempPte);
+            MI_ERASE_PTE(PointerPte);
+            return;
+        }
+        else
         {
             /* Get the PFN entry */
             PageFrameIndex = PFN_FROM_PTE(&TempPte);
@@ -468,6 +475,10 @@ MiDeletePte(IN PMMPTE PointerPte,
         PointerPde = MiPteToPde(PointerPte);
         MiDecrementShareCount(MiGetPfnEntry(PointerPde->u.Hard.PageFrameNumber),
             PointerPde->u.Hard.PageFrameNumber);
+
+        /* Writes through this mapping must not be lost when the page is written out */
+        if (MI_IS_PAGE_DIRTY(&TempPte))
+            Pfn1->u3.e1.Modified = 1;
 
         /* Drop the share count */
         MiDecrementShareCount(Pfn1, PageFrameIndex);
@@ -2382,6 +2393,9 @@ MiProtectVirtualMemory(IN PEPROCESS Process,
                     PteContents.u.Hard.Valid = 0;
                     PteContents.u.Soft.Transition = 1;
                     PteContents.u.Trans.Protection = ProtectionMask;
+
+                    /* Paging the page out must not bring the old protection back */
+                    Pfn1->OriginalPte.u.Soft.Protection = ProtectionMask;
                     /* Decrease PFN share count and write the PTE */
                     MiDecrementShareCount(Pfn1, PFN_FROM_PTE(&PteContents));
                     // FIXME: remove the page from the WS
@@ -2406,13 +2420,29 @@ MiProtectVirtualMemory(IN PEPROCESS Process,
                                         TRUE);
                 }
             }
+            else if (PteContents.u.Soft.Transition)
+            {
+                KIRQL OldIrql = MiAcquirePfnLock();
+
+                /* The page may have been repurposed while we were not holding the PFN lock */
+                PteContents = *PointerPte;
+                if (PteContents.u.Soft.Transition)
+                {
+                    Pfn1 = MiGetPfnEntry(PteContents.u.Trans.PageFrameNumber);
+                    Pfn1->OriginalPte.u.Soft.Protection = ProtectionMask;
+                }
+
+                /* Transition, paged out or demand zero, the protection field is the same */
+                PteContents.u.Soft.Protection = ProtectionMask;
+                MI_WRITE_INVALID_PTE(PointerPte, PteContents);
+                MiReleasePfnLock(OldIrql);
+            }
             else
             {
                 /* We don't support these cases yet */
                 ASSERT(PteContents.u.Soft.Prototype == 0);
-                //ASSERT(PteContents.u.Soft.Transition == 0);
 
-                /* The PTE is already demand-zero, just update the protection mask */
+                /* The PTE is paged out or demand-zero, just update the protection mask */
                 PteContents.u.Soft.Protection = ProtectionMask;
                 MI_WRITE_INVALID_PTE(PointerPte, PteContents);
                 ASSERT(PointerPte->u.Long != 0);
@@ -2691,16 +2721,23 @@ MiDecommitPages(IN PVOID StartingAddress,
                 else
                 {
                     //
-                    // We do not support any of these other scenarios at the moment
+                    // We do not support prototype PTEs at the moment
                     //
                     ASSERT(PteContents.u.Soft.Prototype == 0);
-                    ASSERT(PteContents.u.Soft.Transition == 0);
-                    ASSERT(PteContents.u.Soft.PageFileHigh == 0);
+
+                    /* A page in transition or paged out goes away with its paging file copy */
+                    if (PteContents.u.Soft.Transition ||
+                        (PteContents.u.Soft.PageFileHigh != 0))
+                    {
+                        KIRQL OldIrql = MiAcquirePfnLock();
+                        MiDeletePte(PointerPte, StartingAddress, Process, NULL);
+                        MiReleasePfnLock(OldIrql);
+                    }
 
                     //
-                    // So the only other possibility is that it is still a demand
-                    // zero PTE, in which case we undo the accounting we did
-                    // earlier and simply make the page decommitted.
+                    // Otherwise it is still a demand zero PTE, in which case we
+                    // undo the accounting we did earlier and simply make the page
+                    // decommitted.
                     //
                     //Process->NumberOfPrivatePages++;
                     MI_WRITE_INVALID_PTE(PointerPte, MmDecommittedPte);

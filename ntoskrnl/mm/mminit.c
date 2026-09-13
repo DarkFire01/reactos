@@ -292,6 +292,9 @@ MmInitSystem(IN ULONG Phase,
      */
     MiInitBalancerThread();
 
+    /* Start writing modified pages once paging files show up */
+    MiInitializeModifiedPageWriter();
+
     /* Initialize the balance set manager */
     MmInitBsmThread();
 
