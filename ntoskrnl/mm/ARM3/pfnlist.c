@@ -72,6 +72,10 @@ MiIncrementAvailablePages(
     /* Increment available pages */
     MmAvailablePages++;
 
+    /* Faults waiting for pages can go on */
+    if (MmAvailablePages == MmMinimumFreePages)
+        MiNotifyAvailablePages(TRUE);
+
     /* Check if we've reached the configured low memory threshold */
     if (MmAvailablePages == MmLowMemoryThreshold)
     {
@@ -108,13 +112,120 @@ MiDecrementAvailablePages(
     MmAvailablePages--;
     if (MmAvailablePages < MmMinimumFreePages)
     {
-        /* FIXME: Should wake up the MPW and working set manager, if we had one */
+        if (MmAvailablePages == MmMinimumFreePages - 1)
+            MiNotifyAvailablePages(FALSE);
 
-        DPRINT1("Running low on pages: %lu remaining\n", MmAvailablePages);
+        DPRINT("Running low on pages: %lu remaining\n", MmAvailablePages);
+
+        /* Written out modified pages can be repurposed from standby */
+        if (MmModifiedPageListHead.Total != 0)
+            MiWakeModifiedPageWriter();
 
         /* Call RosMm and see if it can release any pages for us */
         MmRebalanceMemoryConsumers();
     }
+}
+
+/**
+ * @brief Gives a standby page back to its owner as a paged out PTE.
+ *
+ * @param[in] Pfn1
+ * Standby page that was just unlinked.
+ *
+ * @remarks The PFN lock must be held. The PTE is reached through hyperspace
+ * so this works in any process context.
+ */
+VOID
+NTAPI
+MiRestoreTransitionPte(
+    _In_ PMMPFN Pfn1)
+{
+    PEPROCESS Process = PsGetCurrentProcess();
+    PFN_NUMBER PageTableFrame;
+    PMMPTE PointerPte;
+    PVOID Mapping;
+    KIRQL HyperIrql;
+
+    MI_ASSERT_PFN_LOCK_HELD();
+    ASSERT(Pfn1->u3.e2.ReferenceCount == 0);
+    ASSERT(Pfn1->u2.ShareCount == 0);
+    ASSERT(!MI_IS_PFN_DELETED(Pfn1));
+    ASSERT(Pfn1->OriginalPte.u.Soft.Transition == 0);
+
+    /* Contents of a private page are only kept in a paging file */
+    ASSERT((Pfn1->u3.e1.PrototypePte == 1) ||
+           (Pfn1->OriginalPte.u.Soft.PageFileHigh != 0));
+
+    PageTableFrame = Pfn1->u4.PteFrame;
+    Mapping = MiMapPageInHyperSpace(Process, PageTableFrame, &HyperIrql);
+    PointerPte = (PMMPTE)((ULONG_PTR)Mapping +
+                          ((ULONG_PTR)Pfn1->PteAddress & (PAGE_SIZE - 1)));
+
+    ASSERT(PointerPte->u.Hard.Valid == 0);
+    ASSERT(PointerPte->u.Soft.Prototype == 0);
+    ASSERT(PointerPte->u.Soft.Transition == 1);
+    ASSERT(PointerPte->u.Trans.PageFrameNumber == MiGetPfnEntryIndex(Pfn1));
+
+    MI_WRITE_INVALID_PTE(PointerPte, Pfn1->OriginalPte);
+    MiUnmapPageInHyperSpace(Process, Mapping, HyperIrql);
+
+    /* The page table does not reference this page anymore */
+    MiDecrementShareCount(MI_PFN_ELEMENT(PageTableFrame), PageTableFrame);
+}
+
+/**
+ * @brief Takes the oldest page of the lowest priority standby list.
+ *
+ * @return The page, ready to be initialized, or 0 if standby is empty.
+ *
+ * @remarks The PFN lock must be held.
+ */
+static
+PFN_NUMBER
+MiRemoveStandbyPage(VOID)
+{
+    PFN_NUMBER PageFrameIndex;
+    PMMPFN Pfn1;
+    ULONG Priority;
+    USHORT OldColor, OldCache;
+
+    MI_ASSERT_PFN_LOCK_HELD();
+
+    for (Priority = 0; Priority < RTL_NUMBER_OF(MmStandbyPageListByPriority); Priority++)
+    {
+        if (MmStandbyPageListByPriority[Priority].Total == 0)
+            continue;
+
+        PageFrameIndex = MmStandbyPageListByPriority[Priority].Blink;
+        Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
+        ASSERT(Pfn1->u3.e1.PageLocation == StandbyPageList);
+
+        MiUnlinkPageFromList(Pfn1);
+        MiRestoreTransitionPte(Pfn1);
+
+        /* Reset it like a page coming off the free list */
+        OldColor = Pfn1->u3.e1.PageColor;
+        OldCache = Pfn1->u3.e1.CacheAttribute;
+        Pfn1->u3.e2.ShortFlags = 0;
+        Pfn1->u3.e1.PageColor = OldColor;
+        Pfn1->u3.e1.CacheAttribute = OldCache;
+        Pfn1->u4.InPageError = 0;
+        Pfn1->u4.PteFrame = 0;
+        Pfn1->OriginalPte.u.Long = 0;
+        Pfn1->PteAddress = NULL;
+
+#if MI_TRACE_PFNS
+        ASSERT(MI_PFN_CURRENT_USAGE != MI_USAGE_NOT_SET);
+        Pfn1->PfnUsage = MI_PFN_CURRENT_USAGE;
+        memcpy(Pfn1->ProcessName, MI_PFN_CURRENT_PROCESS_NAME, 16);
+        Pfn1->CallSite = _ReturnAddress();
+        MI_PFN_CURRENT_USAGE = MI_USAGE_NOT_SET;
+        MI_SET_PROCESS2("Not Set");
+#endif
+        return PageFrameIndex;
+    }
+
+    return 0;
 }
 
 VOID
@@ -289,13 +400,12 @@ MiUnlinkPageFromList(IN PMMPFN Pfn)
         /* Decrement number of available pages */
         MiDecrementAvailablePages();
 
-        /* Decrease transition page counter */
-        ASSERT(Pfn->u3.e1.PrototypePte == 1); /* Only supported ARM3 case */
-        MmTransitionSharedPages--;
+        if (Pfn->u3.e1.PrototypePte)
+            MmTransitionSharedPages--;
     }
     else if (ListHead == &MmModifiedPageListHead)
     {
-        /* Only shared memory (page-file backed) modified pages are supported */
+        /* Only paging file bound modified pages for now */
         ASSERT(Pfn->OriginalPte.u.Soft.Prototype == 0);
 
         /* Decrement the counters */
@@ -305,13 +415,13 @@ MiUnlinkPageFromList(IN PMMPFN Pfn)
         /* Pick the correct colored list */
         ListHead = &MmModifiedPageListByColor[0];
 
-        /* Decrease transition page counter */
-        MmTransitionSharedPages--;
+        if (Pfn->u3.e1.PrototypePte)
+            MmTransitionSharedPages--;
     }
     else if (ListHead == &MmModifiedNoWritePageListHead)
     {
-        /* List not yet supported */
-        ASSERT(FALSE);
+        if (Pfn->u3.e1.PrototypePte)
+            MmTransitionSharedPages--;
     }
 
     /* Nothing should be in progress and the list should not be empty */
@@ -347,10 +457,7 @@ MiUnlinkPageFromList(IN PMMPFN Pfn)
         ListHead->Flink = OldFlink;
     }
 
-    /* ReactOS Hack */
-    Pfn->OriginalPte.u.Long = 0;
-
-    /* We are not on a list anymore */
+    /* We are not on a list anymore, the original PTE stays as it describes the backing */
     Pfn->u1.Flink = Pfn->u2.Blink = 0;
 
     /* Remove one entry from the list */
@@ -505,11 +612,13 @@ MiRemoveAnyPage(IN ULONG Color)
                 ASSERT_LIST_INVARIANT(&MmZeroedPageListHead);
                 PageIndex = MmZeroedPageListHead.Flink;
                 Color = PageIndex & MmSecondaryColorMask;
-                ASSERT(PageIndex != LIST_HEAD);
                 if (PageIndex == LIST_HEAD)
                 {
-                    /* FIXME: Should check the standby list */
+                    /* Only standby pages are left, repurpose one */
                     ASSERT(MmZeroedPageListHead.Total == 0);
+                    PageIndex = MiRemoveStandbyPage();
+                    ASSERT(PageIndex != 0);
+                    return PageIndex;
                 }
             }
         }
@@ -569,11 +678,14 @@ MiRemoveZeroPage(IN ULONG Color)
                 ASSERT_LIST_INVARIANT(&MmFreePageListHead);
                 PageIndex = MmFreePageListHead.Flink;
                 Color = PageIndex & MmSecondaryColorMask;
-                ASSERT(PageIndex != LIST_HEAD);
                 if (PageIndex == LIST_HEAD)
                 {
-                    /* FIXME: Should check the standby list */
-                    ASSERT(MmZeroedPageListHead.Total == 0);
+                    /* Only standby pages are left, repurpose and wipe one */
+                    ASSERT(MmFreePageListHead.Total == 0);
+                    PageIndex = MiRemoveStandbyPage();
+                    ASSERT(PageIndex != 0);
+                    MiZeroPhysicalPage(PageIndex);
+                    return PageIndex;
                 }
             }
         }
@@ -735,11 +847,11 @@ MiInsertStandbyListAtFront(IN PFN_NUMBER PageFrameIndex)
     Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
     ASSERT(Pfn1->u4.MustBeCached == 0);
     ASSERT(Pfn1->u3.e2.ReferenceCount == 0);
-    ASSERT(Pfn1->u3.e1.PrototypePte == 1);
     ASSERT(Pfn1->u3.e1.Rom != 1);
 
-    /* One more transition page on a list */
-    MmTransitionSharedPages++;
+    /* One more shared transition page on a list */
+    if (Pfn1->u3.e1.PrototypePte)
+        MmTransitionSharedPages++;
 
     /* Get the standby page list and increment its count */
     ListHead = &MmStandbyPageListByPriority [Pfn1->u4.Priority];
@@ -895,8 +1007,16 @@ MiInsertPageInList(IN PMMPFNLIST ListHead,
     /* Move the page onto its new location */
     Pfn1->u3.e1.PageLocation = ListName;
 
+    /* Standby pages are available but not colored */
+    if (ListName == StandbyPageList)
+    {
+        MiIncrementAvailablePages();
+
+        if (Pfn1->u3.e1.PrototypePte)
+            MmTransitionSharedPages++;
+    }
     /* For zero/free pages, we also have to handle the colored lists */
-    if (ListName <= StandbyPageList)
+    else if (ListName < StandbyPageList)
     {
         /* Increment number of available pages */
         MiIncrementAvailablePages();
@@ -946,22 +1066,20 @@ MiInsertPageInList(IN PMMPFNLIST ListHead,
     }
     else if (ListName == ModifiedPageList)
     {
-        /* In ARM3, page must be destined for page file, and not yet written out */
+        /* In ARM3, page must be destined for page file. A stale slot is replaced when written */
         ASSERT(Pfn1->OriginalPte.u.Soft.Prototype == 0);
-        ASSERT(Pfn1->OriginalPte.u.Soft.PageFileHigh == 0);
 
-        /* One more transition page */
-        MmTransitionSharedPages++;
+        if (Pfn1->u3.e1.PrototypePte)
+            MmTransitionSharedPages++;
 
-        /* Increment the number of per-process modified pages */
-        PsGetCurrentProcess()->ModifiedPageCount++;
-
-        /* FIXME: Wake up modified page writer if there are not enough free pages */
+        /* Get them written before the list grows too large */
+        if (MmModifiedPageListHead.Total >= MmModifiedPageMaximum)
+            MiWakeModifiedPageWriter();
     }
     else if (ListName == ModifiedNoWritePageList)
     {
-        /* This list is not yet implemented */
-        ASSERT(FALSE);
+        if (Pfn1->u3.e1.PrototypePte)
+            MmTransitionSharedPages++;
     }
 }
 
@@ -1207,6 +1325,9 @@ MiDecrementShareCount(IN PMMPFN Pfn1,
                 Pfn1->u3.e2.ReferenceCount = 0;
                 ASSERT(Pfn1->OriginalPte.u.Soft.Prototype == 0);
 
+                /* Nothing will read the paged out copy anymore */
+                MiReleasePageFileSpace(Pfn1->OriginalPte);
+
                 /* Mark the page temporarily as valid, we're going to make it free soon */
                 Pfn1->u3.e1.PageLocation = ActiveAndValid;
 
@@ -1277,7 +1398,8 @@ MiDecrementReferenceCount(IN PMMPFN Pfn1,
     /* Did someone set the delete flag? */
     if (MI_IS_PFN_DELETED(Pfn1))
     {
-        /* Insert it into the free list, there's nothing left to do */
+        /* Drop the paged out copy and free the page */
+        MiReleasePageFileSpace(Pfn1->OriginalPte);
         MiInsertPageInFreeList(PageFrameIndex);
         return;
     }
