@@ -801,6 +801,69 @@ CcFastCopyWrite (
     ASSERT(Success == TRUE);
 }
 
+/**
+ * @brief Zeroes part of a page of a cached file.
+ *
+ * @param[in] SharedCacheMap
+ * Cache map of the file.
+ *
+ * @param[in] Offset
+ * Start of the range, inside a single page.
+ *
+ * @param[in] Length
+ * Length of the range.
+ *
+ * @param[in] Wait
+ * FALSE if the page cannot be read in without blocking.
+ *
+ * @return FALSE if the page would have to be read and Wait is FALSE.
+ *
+ * @remarks A page in memory is left alone, it may hold data written through a mapping.
+ */
+static
+BOOLEAN
+CcpZeroPartialPage(
+    _In_ PROS_SHARED_CACHE_MAP SharedCacheMap,
+    _In_ LONGLONG Offset,
+    _In_ ULONG Length,
+    _In_ BOOLEAN Wait)
+{
+    PFILE_OBJECT FileObject = SharedCacheMap->FileObject;
+    ULONG VacbOffset = (ULONG)(Offset % VACB_MAPPING_GRANULARITY);
+    BOOLEAN Result = TRUE;
+    NTSTATUS Status;
+    PROS_VACB Vacb;
+
+    if (MmIsDataSectionResident(FileObject->SectionObjectPointer, Offset, Length))
+        return TRUE;
+
+    Status = CcRosGetVacb(SharedCacheMap, Offset, &Vacb);
+    if (!NT_SUCCESS(Status))
+        ExRaiseStatus(Status);
+
+    _SEH2_TRY
+    {
+        if (!CcRosEnsureVacbResident(Vacb, Wait, FALSE, VacbOffset, Length))
+        {
+            Result = FALSE;
+            _SEH2_LEAVE;
+        }
+
+        RtlZeroMemory((PVOID)((ULONG_PTR)Vacb->BaseAddress + VacbOffset), Length);
+
+        Status = MmMakeSegmentDirty(FileObject->SectionObjectPointer, Offset, Length);
+        if (!NT_SUCCESS(Status))
+            ExRaiseStatus(Status);
+    }
+    _SEH2_FINALLY
+    {
+        CcRosReleaseVacb(SharedCacheMap, Vacb, (BOOLEAN)(Result && !_SEH2_AbnormalTermination()), FALSE);
+    }
+    _SEH2_END;
+
+    return Result;
+}
+
 /*
  * @implemented
  */
@@ -814,8 +877,7 @@ CcZeroData (
 {
     NTSTATUS Status;
     LARGE_INTEGER WriteOffset;
-    LONGLONG Length;
-    PROS_VACB Vacb;
+    LONGLONG Length, HeadEnd, TailStart;
     PROS_SHARED_CACHE_MAP SharedCacheMap = FileObject->SectionObjectPointer->SharedCacheMap;
 
     CCTRACE(CC_API_DEBUG, "FileObject=%p StartOffset=%I64u EndOffset=%I64u Wait=%d\n",
@@ -890,43 +952,30 @@ CcZeroData (
 
     ASSERT(EndOffset->QuadPart <= SharedCacheMap->SectionSize.QuadPart);
 
-    while(WriteOffset.QuadPart < EndOffset->QuadPart)
+    /* The partial pages at both ends of the range */
+    HeadEnd = min((StartOffset->QuadPart + PAGE_SIZE - 1) & ~(LONGLONG)(PAGE_SIZE - 1), EndOffset->QuadPart);
+    TailStart = max(EndOffset->QuadPart & ~(LONGLONG)(PAGE_SIZE - 1), HeadEnd);
+
+    if ((HeadEnd > StartOffset->QuadPart) &&
+        !CcpZeroPartialPage(SharedCacheMap, StartOffset->QuadPart, (ULONG)(HeadEnd - StartOffset->QuadPart), Wait))
     {
-        ULONG VacbOffset = WriteOffset.QuadPart % VACB_MAPPING_GRANULARITY;
-        ULONG VacbLength = min(Length, VACB_MAPPING_GRANULARITY - VacbOffset);
+        return FALSE;
+    }
 
-        Status = CcRosGetVacb(SharedCacheMap, WriteOffset.QuadPart, &Vacb);
+    if ((TailStart < EndOffset->QuadPart) &&
+        !CcpZeroPartialPage(SharedCacheMap, TailStart, (ULONG)(EndOffset->QuadPart - TailStart), Wait))
+    {
+        return FALSE;
+    }
+
+    /* Whole pages not in memory come back as zeroes, the ones in memory keep their data */
+    for (WriteOffset.QuadPart = HeadEnd; WriteOffset.QuadPart < TailStart; WriteOffset.QuadPart += Length)
+    {
+        Length = min(TailStart - WriteOffset.QuadPart, VACB_MAPPING_GRANULARITY);
+
+        Status = MmZeroDataSection(FileObject->SectionObjectPointer, WriteOffset.QuadPart, (ULONG)Length);
         if (!NT_SUCCESS(Status))
-        {
             ExRaiseStatus(Status);
-            return FALSE;
-        }
-
-        _SEH2_TRY
-        {
-            if (!CcRosEnsureVacbResident(Vacb, Wait, FALSE, VacbOffset, VacbLength))
-            {
-                return FALSE;
-            }
-
-            RtlZeroMemory((PVOID)((ULONG_PTR)Vacb->BaseAddress + VacbOffset), VacbLength);
-
-            WriteOffset.QuadPart += VacbLength;
-            Length -= VacbLength;
-
-            /* Tell Mm */
-            Status = MmMakeSegmentDirty(FileObject->SectionObjectPointer,
-                                        Vacb->FileOffset.QuadPart + VacbOffset,
-                                        VacbLength);
-            if (!NT_SUCCESS(Status))
-                ExRaiseStatus(Status);
-        }
-        _SEH2_FINALLY
-        {
-            /* Do not mark the VACB as dirty if an exception was raised */
-            CcRosReleaseVacb(SharedCacheMap, Vacb, !_SEH2_AbnormalTermination(), FALSE);
-        }
-        _SEH2_END;
     }
 
     /* Flush if needed */

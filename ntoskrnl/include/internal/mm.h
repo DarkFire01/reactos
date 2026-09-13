@@ -1523,11 +1523,17 @@ MmFlushSegment(
 
 NTSTATUS
 NTAPI
+MmZeroDataSection(
+    _In_ PSECTION_OBJECT_POINTERS SectionObjectPointer,
+    _In_ LONGLONG Offset,
+    _In_ ULONG Length);
+
+NTSTATUS
+NTAPI
 MmMakeDataSectionResident(
     _In_ PSECTION_OBJECT_POINTERS SectionObjectPointer,
     _In_ LONGLONG Offset,
-    _In_ ULONG Length,
-    _In_ PLARGE_INTEGER ValidDataLength);
+    _In_ ULONG Length);
 
 BOOLEAN
 NTAPI
