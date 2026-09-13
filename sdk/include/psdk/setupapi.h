@@ -1671,6 +1671,151 @@ SetupDiGetDevicePropertyW(
     _Out_opt_ PDWORD RequiredSize,
     _In_ DWORD Flags);
 
+#if (_SETUPAPI_VER >= 0x0600) || defined(__REACTOS__)
+
+#define DICLASSPROP_INSTALLER   0x00000001
+#define DICLASSPROP_INTERFACE   0x00000002
+
+WINSETUPAPI
+BOOL
+WINAPI
+SetupDiSetDevicePropertyW(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _In_ DEVPROPTYPE PropertyType,
+    _In_reads_bytes_opt_(PropertyBufferSize) const BYTE *PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _In_ DWORD Flags);
+
+_Success_(return != FALSE)
+WINSETUPAPI
+BOOL
+WINAPI
+SetupDiGetDevicePropertyKeys(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVINFO_DATA DeviceInfoData,
+    _Out_writes_opt_(PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+    _In_ DWORD PropertyKeyCount,
+    _Out_opt_ PDWORD RequiredPropertyKeyCount,
+    _In_ DWORD Flags);
+
+_Success_(return != FALSE)
+WINSETUPAPI
+BOOL
+WINAPI
+SetupDiGetDeviceInterfacePropertyW(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _Out_ DEVPROPTYPE *PropertyType,
+    _Out_writes_bytes_to_opt_(PropertyBufferSize, *RequiredSize) PBYTE PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _Out_opt_ PDWORD RequiredSize,
+    _In_ DWORD Flags);
+
+WINSETUPAPI
+BOOL
+WINAPI
+SetupDiSetDeviceInterfacePropertyW(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _In_ DEVPROPTYPE PropertyType,
+    _In_reads_bytes_opt_(PropertyBufferSize) const BYTE *PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _In_ DWORD Flags);
+
+_Success_(return != FALSE)
+WINSETUPAPI
+BOOL
+WINAPI
+SetupDiGetDeviceInterfacePropertyKeys(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData,
+    _Out_writes_opt_(PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+    _In_ DWORD PropertyKeyCount,
+    _Out_opt_ PDWORD RequiredPropertyKeyCount,
+    _In_ DWORD Flags);
+
+_Success_(return != FALSE)
+WINSETUPAPI
+BOOL
+WINAPI
+SetupDiGetClassPropertyW(
+    _In_ const GUID *ClassGuid,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _Out_ DEVPROPTYPE *PropertyType,
+    _Out_writes_bytes_to_opt_(PropertyBufferSize, *RequiredSize) PBYTE PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _Out_opt_ PDWORD RequiredSize,
+    _In_ DWORD Flags);
+
+_Success_(return != FALSE)
+WINSETUPAPI
+BOOL
+WINAPI
+SetupDiGetClassPropertyExW(
+    _In_ const GUID *ClassGuid,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _Out_ DEVPROPTYPE *PropertyType,
+    _Out_writes_bytes_to_opt_(PropertyBufferSize, *RequiredSize) PBYTE PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _Out_opt_ PDWORD RequiredSize,
+    _In_ DWORD Flags,
+    _In_opt_ PCWSTR MachineName,
+    _Reserved_ PVOID Reserved);
+
+_Success_(return != FALSE)
+WINSETUPAPI
+BOOL
+WINAPI
+SetupDiGetClassPropertyKeys(
+    _In_ const GUID *ClassGuid,
+    _Out_writes_opt_(PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+    _In_ DWORD PropertyKeyCount,
+    _Out_opt_ PDWORD RequiredPropertyKeyCount,
+    _In_ DWORD Flags);
+
+_Success_(return != FALSE)
+WINSETUPAPI
+BOOL
+WINAPI
+SetupDiGetClassPropertyKeysExW(
+    _In_ const GUID *ClassGuid,
+    _Out_writes_opt_(PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+    _In_ DWORD PropertyKeyCount,
+    _Out_opt_ PDWORD RequiredPropertyKeyCount,
+    _In_ DWORD Flags,
+    _In_opt_ PCWSTR MachineName,
+    _Reserved_ PVOID Reserved);
+
+WINSETUPAPI
+BOOL
+WINAPI
+SetupDiSetClassPropertyW(
+    _In_ const GUID *ClassGuid,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _In_ DEVPROPTYPE PropertyType,
+    _In_reads_bytes_opt_(PropertyBufferSize) const BYTE *PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _In_ DWORD Flags);
+
+WINSETUPAPI
+BOOL
+WINAPI
+SetupDiSetClassPropertyExW(
+    _In_ const GUID *ClassGuid,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _In_ DEVPROPTYPE PropertyType,
+    _In_reads_bytes_opt_(PropertyBufferSize) const BYTE *PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _In_ DWORD Flags,
+    _In_opt_ PCWSTR MachineName,
+    _Reserved_ PVOID Reserved);
+
+#endif /* (_SETUPAPI_VER >= 0x0600) || defined(__REACTOS__) */
+
 _Success_(return != FALSE)
 _When_((*PropertyRegDataType == REG_SZ), _At_((PSTR) PropertyBuffer, _Post_valid_))
 _When_((*PropertyRegDataType == REG_MULTI_SZ), _At_((PZZSTR) PropertyBuffer, _Post_valid_))
@@ -2525,6 +2670,16 @@ WINSETUPAPI PSTR WINAPI UnicodeToMultiByte(PCWSTR lpUnicodeStr, UINT uCodePage);
 #define SetupDiGetDeviceInterfaceDetail	SetupDiGetDeviceInterfaceDetailW
 #define SetupDiGetInterfaceDeviceDetail	SetupDiGetDeviceInterfaceDetailW
 #define SetupDiGetDeviceProperty	SetupDiGetDevicePropertyW
+#if (_SETUPAPI_VER >= 0x0600) || defined(__REACTOS__)
+#define SetupDiSetDeviceProperty	SetupDiSetDevicePropertyW
+#define SetupDiGetDeviceInterfaceProperty	SetupDiGetDeviceInterfacePropertyW
+#define SetupDiSetDeviceInterfaceProperty	SetupDiSetDeviceInterfacePropertyW
+#define SetupDiGetClassProperty	SetupDiGetClassPropertyW
+#define SetupDiGetClassPropertyEx	SetupDiGetClassPropertyExW
+#define SetupDiGetClassPropertyKeysEx	SetupDiGetClassPropertyKeysExW
+#define SetupDiSetClassProperty	SetupDiSetClassPropertyW
+#define SetupDiSetClassPropertyEx	SetupDiSetClassPropertyExW
+#endif
 #define SetupDiGetDeviceRegistryProperty	SetupDiGetDeviceRegistryPropertyW
 #define SetupDiGetDriverInfoDetail	SetupDiGetDriverInfoDetailW
 #define SetupDiGetDriverInstallParams	SetupDiGetDriverInstallParamsW
