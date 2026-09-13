@@ -481,16 +481,19 @@ StartProcedure(
             WARN_(I8042PRT, "i8042ConnectMouseInterrupt failed: %lx\n", Status);
         }
 
-        /* Start the mouse */
-        Irql = KeAcquireInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt);
-        /* HACK: the mouse has already been reset in i8042DetectMouse. This second
-           reset prevents some touchpads/mice from working (Dell D531, D600).
-           See CORE-6901 */
-        if (!(i8042HwFlags & FL_INITHACK))
+        /* Start the mouse, unless no interrupt could be connected */
+        if (DeviceExtension->HighestDIRQLInterrupt)
         {
-            i8042IsrWritePort(DeviceExtension, MOU_CMD_RESET, CTRL_WRITE_MOUSE);
+            Irql = KeAcquireInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt);
+            /* HACK: the mouse has already been reset in i8042DetectMouse. This second
+               reset prevents some touchpads/mice from working (Dell D531, D600).
+               See CORE-6901 */
+            if (!(i8042HwFlags & FL_INITHACK))
+            {
+                i8042IsrWritePort(DeviceExtension, MOU_CMD_RESET, CTRL_WRITE_MOUSE);
+            }
+            KeReleaseInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt, Irql);
         }
-        KeReleaseInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt, Irql);
     }
 
     return Status;
