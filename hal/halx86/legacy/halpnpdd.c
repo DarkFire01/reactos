@@ -184,17 +184,25 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
     {
         //TODO: Does PC98 Have PIR? Or does it needs it's own Arbiter?
 #if !defined(SARCH_XBOX) && !defined(SARCH_PC98)
-        if (((CM_RESOURCE_TYPE)(ULONG_PTR)InterfaceSpecificData != CmResourceTypeInterrupt) ||
-            !IsEqualIID(InterfaceType, &GUID_ARBITER_INTERFACE_STANDARD))
+        if ((CM_RESOURCE_TYPE)(ULONG_PTR)InterfaceSpecificData != CmResourceTypeInterrupt)
         {
             return Status;
         }
 
-        Status = HalpLegacyPCCreateArbiter(DeviceObject);
-        if (NT_SUCCESS(Status))
+        if (IsEqualIID(InterfaceType, &GUID_ARBITER_INTERFACE_STANDARD))
         {
-            HalpLegacyPCQueryArbInterface(Interface, InterfaceBufferSize, Length);
+            Status = HalpLegacyPCCreateArbiter(DeviceObject);
+            if (NT_SUCCESS(Status))
+            {
+                Status = HalpLegacyPCQueryArbInterface(Interface, InterfaceBufferSize, Length);
+            }
         }
+        else if (IsEqualIID(InterfaceType, &GUID_TRANSLATOR_INTERFACE_STANDARD))
+        {
+            Status = HalpLegacyPCQueryIrqTranslator(DeviceObject, Interface, InterfaceBufferSize, Length);
+        }
+
+        return Status;
 #endif
     }
 
@@ -737,9 +745,9 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
                 DPRINT("Querying interface for FDO\n");
                 Status = HalpQueryInterface(DeviceObject,
                                             IoStackLocation->Parameters.QueryInterface.InterfaceType,
-                                            IoStackLocation->Parameters.QueryInterface.Size,
-                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
                                             IoStackLocation->Parameters.QueryInterface.Version,
+                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
+                                            IoStackLocation->Parameters.QueryInterface.Size,
                                             IoStackLocation->Parameters.QueryInterface.Interface,
                                             (PVOID)&Irp->IoStatus.Information);
                 break;
@@ -836,9 +844,9 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
                 DPRINT("Querying interface for PDO\n");
                 Status = HalpQueryInterface(DeviceObject,
                                             IoStackLocation->Parameters.QueryInterface.InterfaceType,
-                                            IoStackLocation->Parameters.QueryInterface.Size,
-                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
                                             IoStackLocation->Parameters.QueryInterface.Version,
+                                            IoStackLocation->Parameters.QueryInterface.InterfaceSpecificData,
+                                            IoStackLocation->Parameters.QueryInterface.Size,
                                             IoStackLocation->Parameters.QueryInterface.Interface,
                                             (PVOID)&Irp->IoStatus.Information);
                 break;

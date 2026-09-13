@@ -35,6 +35,10 @@ NTAPI
 HalpSetupAcpiPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
     /* There is no ACPI on these HALs */
+#if !defined(SARCH_XBOX) && !defined(SARCH_PC98)
+    /* Interrupts are translated by the HAL bus FDO, not by bridges */
+    HalGetInterruptTranslator = HaliGetInterruptTranslator;
+#endif
     return STATUS_SUCCESS;
 }
 
