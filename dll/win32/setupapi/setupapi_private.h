@@ -301,6 +301,10 @@ UINT CALLBACK QUEUE_callback_WtoA( void *context, UINT notification, UINT_PTR, U
 DWORD
 GetErrorCodeFromCrCode(const IN CONFIGRET cr);
 
+DWORD
+GetPropertyErrorFromCrCode(
+    _In_ CONFIGRET cr);
+
 BOOL
 CreateDeviceInfo(
     IN struct DeviceInfoSet *list,

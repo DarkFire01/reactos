@@ -1412,6 +1412,11 @@ VOID
 PiPropReleaseDevice(
     _In_ PDEVICE_OBJECT DeviceObject);
 
+CODE_SEG("PAGE")
+NTSTATUS
+PiControlObjectProperty(
+    _In_ PPLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA ControlData);
+
 //
 // PnP IRPs
 //

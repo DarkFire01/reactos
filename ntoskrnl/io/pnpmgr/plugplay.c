@@ -1720,6 +1720,11 @@ NtPlugPlayControl(IN PLUGPLAY_CONTROL_CLASS PlugPlayControlClass,
 //        case PlugPlayControlHaltDevice:
 //        case PlugPlayControlGetBlockedDriverList:
 
+        case PlugPlayControlObjectProperty:
+            if (!Buffer || BufferLength < sizeof(PLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA))
+                return STATUS_INVALID_PARAMETER;
+            return PiControlObjectProperty((PPLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA)Buffer);
+
         default:
             return STATUS_NOT_IMPLEMENTED;
     }

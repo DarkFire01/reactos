@@ -25,6 +25,9 @@ Author:
 #include <umtypes.h>
 #include <cfg.h>
 #include <iotypes.h>
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
+#include <devpropdef.h>
+#endif
 
 #define MAX_BUS_NAME 24
 
@@ -45,6 +48,23 @@ Author:
 #define PNP_PROPERTY_INSTALL_STATE                   11
 #define PNP_PROPERTY_LOCATION_PATHS                  12
 #define PNP_PROPERTY_CONTAINERID                     13
+
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
+//
+// PLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA.ObjectType
+//
+#define PNP_PROP_OBJECT_DEVICE                        1
+#define PNP_PROP_OBJECT_INSTALLER_CLASS               2
+#define PNP_PROP_OBJECT_INTERFACE                     3
+#define PNP_PROP_OBJECT_INTERFACE_CLASS               4
+
+//
+// PLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA.Operation
+//
+#define PNP_PROP_OPERATION_GET                        0
+#define PNP_PROP_OPERATION_SET                        1
+#define PNP_PROP_OPERATION_GET_KEYS                   2
+#endif
 
 //
 // PLUGPLAY_CONTROL_RELATED_DEVICE_DATA.Relations
@@ -243,6 +263,9 @@ typedef enum _PLUGPLAY_CONTROL_CLASS
     PlugPlayControlResetDevice,
     PlugPlayControlHaltDevice,
     PlugPlayControlGetBlockedDriverList,
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
+    PlugPlayControlObjectProperty,
+#endif
     MaxPlugPlayControl
 } PLUGPLAY_CONTROL_CLASS;
 
@@ -588,6 +611,21 @@ typedef struct _PLUGPLAY_CONTROL_RETRIEVE_DOCK_DATA
     ULONG DeviceInstanceLength;
     PWSTR DeviceInstance;
 } PLUGPLAY_CONTROL_RETRIEVE_DOCK_DATA, *PPLUGPLAY_CONTROL_RETRIEVE_DOCK_DATA;
+
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
+// PlugPlayControlObjectProperty (0x17)
+typedef struct _PLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA
+{
+    UNICODE_STRING ObjectName;
+    ULONG ObjectType;
+    ULONG Operation;
+    UNICODE_STRING LocaleName;
+    DEVPROPKEY PropertyKey;
+    DEVPROPTYPE PropertyType;
+    PVOID Buffer;
+    ULONG BufferSize;
+} PLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA, *PPLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA;
+#endif
 
 //
 // Plug and Play Bus Type Definition
