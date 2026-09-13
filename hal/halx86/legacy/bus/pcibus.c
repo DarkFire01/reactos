@@ -705,6 +705,8 @@ HalpGetISAFixedPCIIrq(IN PBUS_HANDLER BusHandler,
                       OUT PSUPPORTED_RANGE *Range)
 {
     PCI_COMMON_HEADER PciData;
+    UCHAR Line;
+    BOOLEAN HasLine, IsVga;
 
     /* Read PCI configuration data */
     HalGetBusData(PCIConfiguration,
@@ -720,29 +722,338 @@ HalpGetISAFixedPCIIrq(IN PBUS_HANDLER BusHandler,
     *Range = ExAllocatePoolWithTag(PagedPool, sizeof(SUPPORTED_RANGE), TAG_HAL);
     if (!*Range) return STATUS_INSUFFICIENT_RESOURCES;
 
-    /* Set it up */
+    /* Start with an empty range */
     RtlZeroMemory(*Range, sizeof(SUPPORTED_RANGE));
     (*Range)->Base = 1;
 
     /* If the PCI device has no IRQ, nothing to do */
     if (!PciData.u.type0.InterruptPin) return STATUS_SUCCESS;
 
-    /* FIXME: The PCI IRQ Routing Miniport should be called */
+    Line = PciData.u.type0.InterruptLine;
+    HasLine = (Line != 0) && (Line != 0xFF);
 
-    /* Also if the INT# seems bogus, nothing to do either */
-    if ((PciData.u.type0.InterruptLine == 0) ||
-        (PciData.u.type0.InterruptLine == 255))
+    if (HalpPciIrqRoutingActive)
     {
-        /* Fake success */
-        return STATUS_SUCCESS;
+        IsVga = ((PciData.BaseClass == PCI_CLASS_PRE_20) &&
+                 (PciData.SubClass == PCI_SUBCLASS_PRE_20_VGA)) ||
+                ((PciData.BaseClass == PCI_CLASS_DISPLAY_CTLR) &&
+                 (PciData.SubClass <= PCI_SUBCLASS_VID_XGA_CTLR));
+
+        /* A decoding VGA device the firmware gave no line stays without one */
+        if (IsVga && !HasLine &&
+            (PciData.Command & (PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE)))
+        {
+            return STATUS_SUCCESS;
+        }
+
+        /* The router can steer the pin to any line */
+        (*Range)->Base = 0;
+        (*Range)->Limit = 0xFF;
+    }
+    else if (HasLine)
+    {
+        /* Without a router, the line the firmware programmed is the only choice */
+        (*Range)->Base = Line;
+        (*Range)->Limit = Line;
     }
 
-    /* Otherwise, the INT# should be valid, return it to the caller */
-    (*Range)->Base = PciData.u.type0.InterruptLine;
-    (*Range)->Limit = PciData.u.type0.InterruptLine;
     return STATUS_SUCCESS;
 }
 #endif // _MINIHAL_
+
+static
+ULONG
+HalpSortSupportedRanges(
+    _Inout_opt_ PSUPPORTED_RANGE List)
+{
+    PSUPPORTED_RANGE Current, Scan, Highest, Next;
+    SUPPORTED_RANGE Swap;
+    ULONG Count = 0;
+
+    /* Order the ranges from the highest base down */
+    for (Current = List; Current; Current = Current->Next)
+    {
+        Highest = Current;
+        for (Scan = Current->Next; Scan; Scan = Scan->Next)
+        {
+            if (Scan->Base > Highest->Base)
+                Highest = Scan;
+        }
+
+        if (Highest != Current)
+        {
+            Swap = *Current;
+            Next = Highest->Next;
+
+            *Current = *Highest;
+            Current->Next = Swap.Next;
+
+            *Highest = Swap;
+            Highest->Next = Next;
+        }
+
+        Count++;
+    }
+
+    return Count;
+}
+
+static
+ULONG
+HalpCountSupportedRanges(
+    _In_opt_ PSUPPORTED_RANGE List)
+{
+    ULONG Count = 0;
+
+    for (; List; List = List->Next)
+        Count++;
+
+    return Count;
+}
+
+static
+BOOLEAN
+HalpSelectSupportedRanges(
+    _In_ PSUPPORTED_RANGES SupportedRanges,
+    _In_ PSUPPORTED_RANGE InterruptRanges,
+    _In_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _Out_ PSUPPORTED_RANGE *Ranges,
+    _Out_ PSUPPORTED_RANGE *PrefetchRanges)
+{
+    *PrefetchRanges = NULL;
+
+    switch (Descriptor->Type)
+    {
+        case CmResourceTypePort:
+            *Ranges = &SupportedRanges->IO;
+            return TRUE;
+
+        case CmResourceTypeInterrupt:
+            *Ranges = InterruptRanges;
+            return TRUE;
+
+        case CmResourceTypeMemory:
+            *Ranges = &SupportedRanges->Memory;
+            if (Descriptor->Flags & CM_RESOURCE_MEMORY_PREFETCHABLE)
+                *PrefetchRanges = &SupportedRanges->PrefetchMemory;
+            return TRUE;
+
+        case CmResourceTypeDma:
+            *Ranges = &SupportedRanges->Dma;
+            return TRUE;
+
+        default:
+            *Ranges = NULL;
+            return FALSE;
+    }
+}
+
+static
+VOID
+HalpGetDescriptorBounds(
+    _In_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _Out_ PLONGLONG Minimum,
+    _Out_ PLONGLONG Maximum)
+{
+    if (Descriptor->Type == CmResourceTypeInterrupt)
+    {
+        *Minimum = Descriptor->u.Interrupt.MinimumVector;
+        *Maximum = Descriptor->u.Interrupt.MaximumVector;
+    }
+    else if (Descriptor->Type == CmResourceTypeDma)
+    {
+        *Minimum = Descriptor->u.Dma.MinimumChannel;
+        *Maximum = Descriptor->u.Dma.MaximumChannel;
+    }
+    else
+    {
+        *Minimum = Descriptor->u.Generic.MinimumAddress.QuadPart;
+        *Maximum = Descriptor->u.Generic.MaximumAddress.QuadPart;
+    }
+}
+
+static
+VOID
+HalpSetDescriptorBounds(
+    _Inout_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ LONGLONG Minimum,
+    _In_ LONGLONG Maximum)
+{
+    if (Descriptor->Type == CmResourceTypeInterrupt)
+    {
+        Descriptor->u.Interrupt.MinimumVector = (ULONG)Minimum;
+        Descriptor->u.Interrupt.MaximumVector = (ULONG)Maximum;
+    }
+    else if (Descriptor->Type == CmResourceTypeDma)
+    {
+        Descriptor->u.Dma.MinimumChannel = (ULONG)Minimum;
+        Descriptor->u.Dma.MaximumChannel = (ULONG)Maximum;
+    }
+    else
+    {
+        Descriptor->u.Generic.MinimumAddress.QuadPart = Minimum;
+        Descriptor->u.Generic.MaximumAddress.QuadPart = Maximum;
+    }
+}
+
+static
+PIO_RESOURCE_DESCRIPTOR
+HalpClipDescriptorToRanges(
+    _In_ PIO_RESOURCE_DESCRIPTOR Source,
+    _In_opt_ PSUPPORTED_RANGE Ranges,
+    _In_ UCHAR ExtraOption,
+    _Inout_ PUCHAR Option,
+    _Out_ PIO_RESOURCE_DESCRIPTOR Target)
+{
+    LONGLONG Minimum, Maximum, Low, High;
+
+    HalpGetDescriptorBounds(Source, &Minimum, &Maximum);
+
+    for (; Ranges; Ranges = Ranges->Next)
+    {
+        Low = (Minimum > Ranges->Base) ? Minimum : Ranges->Base;
+        High = (Maximum < Ranges->Limit) ? Maximum : Ranges->Limit;
+        if (Low > High)
+            continue;
+
+        *Target = *Source;
+        Target->Option = *Option | ExtraOption;
+        HalpSetDescriptorBounds(Target, Low, High);
+        Target++;
+
+        /* Every piece after the first one is an alternative */
+        *Option |= IO_RESOURCE_ALTERNATIVE;
+    }
+
+    return Target;
+}
+
+/* Split every descriptor along the ranges the bus actually decodes */
+static
+NTSTATUS
+HaliAdjustResourceListRange(
+    _In_ PSUPPORTED_RANGES SupportedRanges,
+    _In_ PSUPPORTED_RANGE InterruptRanges,
+    _Inout_ PIO_RESOURCE_REQUIREMENTS_LIST *ResourceList)
+{
+    PIO_RESOURCE_REQUIREMENTS_LIST OldList, NewList;
+    PIO_RESOURCE_LIST OldAlternative, NewAlternative;
+    PIO_RESOURCE_DESCRIPTOR Source, Target;
+    PSUPPORTED_RANGE Ranges, PrefetchRanges;
+    ULONG ListIndex, Index, Slots, Count;
+    LONGLONG Minimum, Maximum;
+    SIZE_T Size;
+    UCHAR Option;
+
+    if (!SupportedRanges || (SupportedRanges->Version != HAL_SUPPORTED_RANGE_VERSION))
+        return STATUS_INVALID_PARAMETER;
+
+    if (!SupportedRanges->Sorted)
+    {
+        SupportedRanges->NoIO = HalpSortSupportedRanges(&SupportedRanges->IO);
+        SupportedRanges->NoMemory = HalpSortSupportedRanges(&SupportedRanges->Memory);
+        SupportedRanges->NoPrefetchMemory = HalpSortSupportedRanges(&SupportedRanges->PrefetchMemory);
+        SupportedRanges->NoDma = HalpSortSupportedRanges(&SupportedRanges->Dma);
+        SupportedRanges->Sorted = TRUE;
+    }
+    HalpSortSupportedRanges(InterruptRanges);
+
+    OldList = *ResourceList;
+
+    /* Size the new list for the worst case split */
+    Size = FIELD_OFFSET(IO_RESOURCE_REQUIREMENTS_LIST, List);
+    OldAlternative = OldList->List;
+    for (ListIndex = 0; ListIndex < OldList->AlternativeLists; ListIndex++)
+    {
+        if ((OldAlternative->Version != 1) || (OldAlternative->Revision == 0))
+            return STATUS_INVALID_PARAMETER;
+
+        Slots = 0;
+        for (Index = 0; Index < OldAlternative->Count; Index++)
+        {
+            Source = &OldAlternative->Descriptors[Index];
+            if (!HalpSelectSupportedRanges(SupportedRanges,
+                                           InterruptRanges,
+                                           Source,
+                                           &Ranges,
+                                           &PrefetchRanges))
+            {
+                return STATUS_INVALID_PARAMETER;
+            }
+
+            /* One slot per window, or one for the unsatisfiable copy */
+            Count = HalpCountSupportedRanges(Ranges);
+            Slots += max(Count, 1) + HalpCountSupportedRanges(PrefetchRanges);
+        }
+
+        Size += FIELD_OFFSET(IO_RESOURCE_LIST, Descriptors) +
+                Slots * sizeof(IO_RESOURCE_DESCRIPTOR);
+        OldAlternative = (PIO_RESOURCE_LIST)(OldAlternative->Descriptors +
+                                             OldAlternative->Count);
+    }
+
+    NewList = ExAllocatePoolWithTag(PagedPool, Size, TAG_HAL);
+    if (!NewList)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlZeroMemory(NewList, Size);
+    RtlCopyMemory(NewList, OldList, FIELD_OFFSET(IO_RESOURCE_REQUIREMENTS_LIST, List));
+
+    OldAlternative = OldList->List;
+    NewAlternative = NewList->List;
+    for (ListIndex = 0; ListIndex < OldList->AlternativeLists; ListIndex++)
+    {
+        NewAlternative->Version = 1;
+        NewAlternative->Revision = 1;
+        Target = NewAlternative->Descriptors;
+
+        for (Index = 0; Index < OldAlternative->Count; Index++)
+        {
+            Source = &OldAlternative->Descriptors[Index];
+            HalpSelectSupportedRanges(SupportedRanges,
+                                      InterruptRanges,
+                                      Source,
+                                      &Ranges,
+                                      &PrefetchRanges);
+            Option = Source->Option;
+
+            /* Prefetchable memory prefers the prefetch windows */
+            if (PrefetchRanges)
+            {
+                Target = HalpClipDescriptorToRanges(Source,
+                                                    PrefetchRanges,
+                                                    IO_RESOURCE_PREFERRED,
+                                                    &Option,
+                                                    Target);
+            }
+
+            Target = HalpClipDescriptorToRanges(Source, Ranges, 0, &Option, Target);
+
+            /* Nothing fits, so keep a descriptor that can never be satisfied */
+            if (!(Option & IO_RESOURCE_ALTERNATIVE))
+            {
+                *Target = *Source;
+                HalpGetDescriptorBounds(Source, &Minimum, &Maximum);
+                if (Minimum == 0)
+                    HalpSetDescriptorBounds(Target, 1, 0);
+                else
+                    HalpSetDescriptorBounds(Target, Minimum, Minimum - 1);
+                Target++;
+            }
+        }
+
+        NewAlternative->Count = (ULONG)(Target - NewAlternative->Descriptors);
+        NewAlternative = (PIO_RESOURCE_LIST)Target;
+        OldAlternative = (PIO_RESOURCE_LIST)(OldAlternative->Descriptors +
+                                             OldAlternative->Count);
+    }
+
+    NewList->ListSize = (ULONG)((ULONG_PTR)NewAlternative - (ULONG_PTR)NewList);
+
+    ExFreePoolWithTag(OldList, 0);
+    *ResourceList = NewList;
+    return STATUS_SUCCESS;
+}
 
 static ULONG NTAPI
 PciSize(ULONG Base, ULONG Mask)
@@ -779,14 +1090,9 @@ HalpAdjustPCIResourceList(IN PBUS_HANDLER BusHandler,
     }
 #endif
     /* Now create the correct resource list based on the supported bus ranges */
-#if 0
     Status = HaliAdjustResourceListRange(BusHandler->BusAddresses,
                                          Interrupt,
                                          pResourceList);
-#else
-    DPRINT1("HAL: No PCI Resource Adjustment done! Hardware may malfunction\n");
-    Status = STATUS_SUCCESS;
-#endif
 
     /* Return to caller */
     ExFreePool(Interrupt);

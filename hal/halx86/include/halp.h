@@ -653,6 +653,9 @@ extern ULONG HalpInterruptControllerType;
 /* Set when a PCI IRQ router owns the ELCR */
 extern BOOLEAN HalpIrqRouterInitialized;
 
+/* Set when PCI interrupts are routed through the $PIR links */
+extern BOOLEAN HalpPciIrqRoutingActive;
+
 /* FORCEMSI and NOMSI boot options */
 #define HALP_MESSAGE_INTERRUPTS_FORCE_ON   0x00000001
 #define HALP_MESSAGE_INTERRUPTS_FORCE_OFF  0x00000002

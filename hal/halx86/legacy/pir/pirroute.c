@@ -49,7 +49,6 @@ typedef struct _HALP_PCI_ROUTE
 
 static struct
 {
-    BOOLEAN Active;
     PHALP_IRQ_ROUTER Router;
     PPCI_IRQ_ROUTING_TABLE Table;
     PHALP_PCI_LINK Links;
@@ -545,7 +544,7 @@ HalpLegacyPCFindLink(
 
     *Link = NULL;
 
-    if (!HalpPciIrqRouting.Active)
+    if (!HalpPciIrqRoutingActive)
         return STATUS_NOT_SUPPORTED;
 
     if (!Device || !NT_SUCCESS(HalpPirQueryRoute(Device, &Route)))
@@ -582,7 +581,7 @@ PHALP_PCI_LINK
 NTAPI
 HalpLegacyPCFirstLink(VOID)
 {
-    return HalpPciIrqRouting.Active ? HalpPciIrqRouting.Links : NULL;
+    return HalpPciIrqRoutingActive ? HalpPciIrqRouting.Links : NULL;
 }
 
 NTSTATUS
@@ -622,7 +621,7 @@ BOOLEAN
 NTAPI
 HalpLegacyPCIrqRoutingActive(VOID)
 {
-    return HalpPciIrqRouting.Active;
+    return HalpPciIrqRoutingActive;
 }
 
 /* INITIALIZATION ***************************************************************/
@@ -933,5 +932,5 @@ HalpLegacyPCInitIrqRouting(
     }
 
     HalpPciIrqRouting.Table = Table;
-    HalpPciIrqRouting.Active = TRUE;
+    HalpPciIrqRoutingActive = TRUE;
 }
