@@ -393,7 +393,7 @@ BOOLEAN
 NTAPI
 KeConnectInterrupt(IN PKINTERRUPT Interrupt)
 {
-    BOOLEAN Connected, Error, Status;
+    BOOLEAN Connected, Error, Status, WasConnected;
     KIRQL Irql, OldIrql;
     UCHAR Number;
     ULONG Vector;
@@ -410,12 +410,17 @@ KeConnectInterrupt(IN PKINTERRUPT Interrupt)
         (Interrupt->SynchronizeIrql < Irql) ||
         (Interrupt->FloatingSave))
     {
+        DPRINT1("KeConnectInterrupt(%p): invalid settings, vector 0x%lx irql %u sync irql %u cpu %u floating %u\n",
+                Interrupt, Vector, Irql, Interrupt->SynchronizeIrql, Number, Interrupt->FloatingSave);
         return FALSE;
     }
 
     /* Set defaults */
     Connected = FALSE;
     Error = FALSE;
+    WasConnected = Interrupt->Connected;
+    Dispatch.Type = NoConnect;
+    Dispatch.Interrupt = NULL;
 
     /* Set the system affinity and acquire the dispatcher lock */
     KeSetSystemAffinityThread(1 << Number);
@@ -478,10 +483,36 @@ KeConnectInterrupt(IN PKINTERRUPT Interrupt)
     KiReleaseDispatcherLock(OldIrql);
     KeRevertToUserAffinityThread();
 
+    if (!Connected)
+    {
+        if (WasConnected)
+        {
+            DPRINT1("KeConnectInterrupt(%p): already connected to vector 0x%lx\n",
+                    Interrupt, Vector);
+        }
+        else if (Dispatch.Type == UnknownConnect)
+        {
+            DPRINT1("KeConnectInterrupt(%p): vector 0x%lx is owned by a non-object handler %p\n",
+                    Interrupt, Vector, &Dispatch.Interrupt->DispatchCode);
+        }
+        else
+        {
+            DPRINT1("KeConnectInterrupt(%p): vector 0x%lx busy (%s), new isr %p mode %u share %u irql %u, "
+                    "existing %p isr %p mode %u share %u irql %u\n",
+                    Interrupt, Vector,
+                    (Dispatch.Type == ChainConnect) ? "chained" : "normal",
+                    Interrupt->ServiceRoutine, Interrupt->Mode, Interrupt->ShareVector, Irql,
+                    Dispatch.Interrupt, Dispatch.Interrupt->ServiceRoutine,
+                    Dispatch.Interrupt->Mode, Dispatch.Interrupt->ShareVector,
+                    Dispatch.Interrupt->Irql);
+        }
+    }
+
     /* Check if we failed while trying to connect */
     if ((Connected) && (Error))
     {
-        DPRINT1("HalEnableSystemInterrupt failed\n");
+        DPRINT1("KeConnectInterrupt(%p): HalEnableSystemInterrupt failed, vector 0x%lx irql %u mode %u\n",
+                Interrupt, Vector, Irql, Interrupt->Mode);
         KeDisconnectInterrupt(Interrupt);
         Connected = FALSE;
     }
