@@ -164,7 +164,7 @@ MmWriteToSwapPage(SWAPENTRY SwapEntry, PFN_NUMBER Page)
     }
 
     i = FILE_FROM_ENTRY(SwapEntry);
-    offset = OFFSET_FROM_ENTRY(SwapEntry) - 1;
+    offset = OFFSET_FROM_ENTRY(SwapEntry);
 
     if (MmPagingFile[i]->FileObject == NULL ||
             MmPagingFile[i]->FileObject->DeviceObject == NULL)
@@ -223,14 +223,12 @@ MiReadPageFile(
 
     DPRINT("MiReadSwapFile\n");
 
+    /* Page zero is the header and is never handed out */
     if (PageFileOffset == 0)
     {
         KeBugCheck(MEMORY_MANAGEMENT);
         return(STATUS_UNSUCCESSFUL);
     }
-
-    /* Normalize offset. */
-    PageFileOffset--;
 
     ASSERT(PageFileIndex < MAX_PAGING_FILES);
 
@@ -295,17 +293,17 @@ MmFreeSwapPage(SWAPENTRY Entry)
     PMMPAGING_FILE PagingFile;
 
     i = FILE_FROM_ENTRY(Entry);
-    off = OFFSET_FROM_ENTRY(Entry) - 1;
+    off = OFFSET_FROM_ENTRY(Entry);
 
     KeAcquireGuardedMutex(&MmPageFileCreationLock);
 
     PagingFile = MmPagingFile[i];
-    if (PagingFile == NULL)
+    if (PagingFile == NULL || off == 0 || !RtlCheckBit(PagingFile->Bitmap, off))
     {
-        KeBugCheck(MEMORY_MANAGEMENT);
+        KeBugCheckEx(MEMORY_MANAGEMENT, 0x7001, Entry, i, off);
     }
 
-    RtlClearBit(PagingFile->Bitmap, off >> 5);
+    RtlClearBit(PagingFile->Bitmap, (ULONG)off);
 
     PagingFile->FreeSpace++;
     PagingFile->CurrentUsage--;
@@ -341,17 +339,19 @@ MmAllocSwapPage(VOID)
             off = RtlFindClearBitsAndSet(MmPagingFile[i]->Bitmap, 1, 0);
             if (off == 0xFFFFFFFF)
             {
-                KeBugCheck(MEMORY_MANAGEMENT);
-                KeReleaseGuardedMutex(&MmPageFileCreationLock);
-                return(STATUS_UNSUCCESSFUL);
+                KeBugCheckEx(MEMORY_MANAGEMENT, 0x7002, i, MmPagingFile[i]->FreeSpace, 0);
             }
+            ASSERT(off != 0);
+
+            MmPagingFile[i]->FreeSpace--;
+            MmPagingFile[i]->CurrentUsage++;
             MiUsedSwapPages++;
             MiFreeSwapPages--;
             UpdateTotalCommittedPages(1);
 
             KeReleaseGuardedMutex(&MmPageFileCreationLock);
 
-            entry = ENTRY_FROM_FILE_OFFSET(i, off + 1);
+            entry = ENTRY_FROM_FILE_OFFSET(i, off);
             return(entry);
         }
     }
@@ -717,7 +717,7 @@ EarlyQuit:
         ObDereferenceObject(FileObject);
         ZwClose(FileHandle);
         ExFreePoolWithTag(Buffer, TAG_MM);
-        return Status;
+        return STATUS_UNRECOGNIZED_VOLUME;
     }
 
     /* Deny page file creation on a floppy disk */
@@ -787,10 +787,12 @@ EarlyQuit:
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
+    /* Only the pages backed by the file are free, page zero is the header */
     RtlInitializeBitMap(PagingFile->Bitmap,
                         (PULONG)(PagingFile->Bitmap + 1),
                         (ULONG)(PagingFile->MaximumSize));
-    RtlClearAllBits(PagingFile->Bitmap);
+    RtlSetAllBits(PagingFile->Bitmap);
+    RtlClearBits(PagingFile->Bitmap, 1, (ULONG)(PagingFile->Size - 1));
 
     /* Insert the new paging file information into the list */
     KeAcquireGuardedMutex(&MmPageFileCreationLock);
