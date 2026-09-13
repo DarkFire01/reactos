@@ -1,7 +1,7 @@
 /*
  * PROJECT:     ReactOS Kernel
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     DEVPROPKEY property store for devices and device interfaces
+ * PURPOSE:     DEVPROPKEY property store for devices, device interfaces and classes
  * COPYRIGHT:   Copyright 2026 Justin Miller <justinmiller100@gmail.com>
  */
 
@@ -24,6 +24,8 @@
 #define PIP_PROP_PID_CHARS          (8 + 1)
 #define PIP_PROP_PATH_CHARS         (10 + 1 + 38 + 1 + 8 + 1)
 #define PIP_PROP_MAX_QUERY_SIZE     0x10000
+#define PIP_PROP_MAX_CONTROL_SIZE   0x100000
+#define PIP_PROP_MAX_INSTANCE_CHARS 200
 
 #define PIP_PROP_READ_ONLY          0x00000001
 #define PIP_PROP_ROOT_ENUM_WRITE    0x00000002
@@ -35,7 +37,9 @@
 typedef enum _PIP_PROP_OBJECT_KIND
 {
     PipPropObjectDevice,
-    PipPropObjectInterface
+    PipPropObjectInterface,
+    PipPropObjectInstallerClass,
+    PipPropObjectInterfaceClass
 } PIP_PROP_OBJECT_KIND;
 
 typedef struct _PIP_PROP_OBJECT
@@ -95,6 +99,15 @@ typedef struct _PIP_BUILTIN_PROPERTY
 
 static const PIP_BUILTIN_PROPERTY PipDeviceBuiltins[] =
 {
+    /* Keep above Capabilities, the address query updates it */
+    { &DEVPKEY_Device_PDOName,        DEVPROP_TYPE_STRING,      PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyPhysicalDeviceObjectName },
+    { &DEVPKEY_Device_BusTypeGuid,    DEVPROP_TYPE_GUID,        PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyBusTypeGuid },
+    { &DEVPKEY_Device_LegacyBusType,  DEVPROP_TYPE_UINT32,      PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyLegacyBusType },
+    { &DEVPKEY_Device_BusNumber,      DEVPROP_TYPE_UINT32,      PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyBusNumber },
+    { &DEVPKEY_Device_EnumeratorName, DEVPROP_TYPE_STRING,      PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyEnumeratorName },
+    { &DEVPKEY_Device_Address,        DEVPROP_TYPE_UINT32,      PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyAddress },
+    { &DEVPKEY_Device_RemovalPolicy,  DEVPROP_TYPE_UINT32,      PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyRemovalPolicy },
+
     { &DEVPKEY_Device_DeviceDesc,     DEVPROP_TYPE_STRING,      PipSourceKeyValue,         0,                        REGSTR_VAL_DEVDESC,              REG_SZ },
     { &DEVPKEY_Device_HardwareIds,    DEVPROP_TYPE_STRING_LIST, PipSourceKeyValue,         PIP_PROP_ROOT_ENUM_WRITE, REGSTR_VAL_HARDWAREID,           REG_MULTI_SZ },
     { &DEVPKEY_Device_CompatibleIds,  DEVPROP_TYPE_STRING_LIST, PipSourceKeyValue,         PIP_PROP_ROOT_ENUM_WRITE, REGSTR_VAL_COMPATIBLEIDS,        REG_MULTI_SZ },
@@ -110,14 +123,6 @@ static const PIP_BUILTIN_PROPERTY PipDeviceBuiltins[] =
     { &DEVPKEY_Device_UINumber,       DEVPROP_TYPE_UINT32,      PipSourceKeyValue,         PIP_PROP_READ_ONLY,       REGSTR_VAL_UI_NUMBER,            REG_DWORD },
     { &DEVPKEY_Device_UpperFilters,   DEVPROP_TYPE_STRING_LIST, PipSourceKeyValue,         0,                        REGSTR_VAL_UPPERFILTERS,         REG_MULTI_SZ },
     { &DEVPKEY_Device_LowerFilters,   DEVPROP_TYPE_STRING_LIST, PipSourceKeyValue,         0,                        REGSTR_VAL_LOWERFILTERS,         REG_MULTI_SZ },
-
-    { &DEVPKEY_Device_PDOName,        DEVPROP_TYPE_STRING,      PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyPhysicalDeviceObjectName },
-    { &DEVPKEY_Device_BusTypeGuid,    DEVPROP_TYPE_GUID,        PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyBusTypeGuid },
-    { &DEVPKEY_Device_LegacyBusType,  DEVPROP_TYPE_UINT32,      PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyLegacyBusType },
-    { &DEVPKEY_Device_BusNumber,      DEVPROP_TYPE_UINT32,      PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyBusNumber },
-    { &DEVPKEY_Device_EnumeratorName, DEVPROP_TYPE_STRING,      PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyEnumeratorName },
-    { &DEVPKEY_Device_Address,        DEVPROP_TYPE_UINT32,      PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyAddress },
-    { &DEVPKEY_Device_RemovalPolicy,  DEVPROP_TYPE_UINT32,      PipSourceRegistryProperty, PIP_PROP_READ_ONLY,       NULL, DevicePropertyRemovalPolicy },
 
     { &DEVPKEY_NAME,                  DEVPROP_TYPE_STRING,      PipSourceDeviceNode,       PIP_PROP_READ_ONLY,       NULL, PipFieldName },
     { &DEVPKEY_Device_InstanceId,     DEVPROP_TYPE_STRING,      PipSourceDeviceNode,       PIP_PROP_READ_ONLY,       NULL, PipFieldInstanceId },
@@ -135,11 +140,27 @@ static const PIP_BUILTIN_PROPERTY PipInterfaceBuiltins[] =
     { &DEVPKEY_Device_InstanceId,         DEVPROP_TYPE_STRING,  PipSourceInterface,        PIP_PROP_READ_ONLY,       NULL, PipFieldInterfaceDevice },
 };
 
+static const PIP_BUILTIN_PROPERTY PipInstallerClassBuiltins[] =
+{
+    { &DEVPKEY_DeviceClass_Name,             DEVPROP_TYPE_STRING,      PipSourceKeyValue,  0,                        L"",                             REG_SZ },
+    { &DEVPKEY_DeviceClass_ClassName,        DEVPROP_TYPE_STRING,      PipSourceKeyValue,  0,                        REGSTR_VAL_CLASS,                REG_SZ },
+    { &DEVPKEY_DeviceClass_Icon,             DEVPROP_TYPE_STRING,      PipSourceKeyValue,  0,                        L"Icon",                         REG_SZ },
+    { &DEVPKEY_DeviceClass_ClassInstaller,   DEVPROP_TYPE_STRING,      PipSourceKeyValue,  0,                        L"Installer32",                  REG_SZ },
+    { &DEVPKEY_DeviceClass_PropPageProvider, DEVPROP_TYPE_STRING,      PipSourceKeyValue,  0,                        L"EnumPropPages32",              REG_SZ },
+    { &DEVPKEY_DeviceClass_DefaultService,   DEVPROP_TYPE_STRING,      PipSourceKeyValue,  0,                        L"Default Service",              REG_SZ },
+    { &DEVPKEY_DeviceClass_IconPath,         DEVPROP_TYPE_STRING_LIST, PipSourceKeyValue,  0,                        L"IconPath",                     REG_MULTI_SZ },
+    { &DEVPKEY_DeviceClass_UpperFilters,     DEVPROP_TYPE_STRING_LIST, PipSourceKeyValue,  0,                        REGSTR_VAL_UPPERFILTERS,         REG_MULTI_SZ },
+    { &DEVPKEY_DeviceClass_LowerFilters,     DEVPROP_TYPE_STRING_LIST, PipSourceKeyValue,  0,                        REGSTR_VAL_LOWERFILTERS,         REG_MULTI_SZ },
+};
+
 static const DEVPROPKEY PiPropInterruptKey =
 {
     { 0xF0E20F09, 0xD97A, 0x49A9, { 0x80, 0x46, 0xBB, 0x6E, 0x22, 0xE6, 0xBB, 0x2E } },
     2
 };
+
+PDEVICE_OBJECT
+IopGetDeviceObjectFromDeviceInstance(PUNICODE_STRING DeviceInstance);
 
 /* PRIVATE FUNCTIONS *********************************************************/
 
@@ -339,11 +360,24 @@ static
 NTSTATUS
 PiPropInitLocale(
     _Out_ PPIP_PROP_NAME Name,
-    _In_ LCID Lcid)
+    _In_ LCID Lcid,
+    _In_opt_ PCUNICODE_STRING LocaleName)
 {
     RtlInitEmptyUnicodeString(&Name->Locale,
                               Name->LocaleBuffer,
                               sizeof(Name->LocaleBuffer));
+
+    if (LocaleName && LocaleName->Length)
+    {
+        if ((LocaleName->Length % sizeof(WCHAR)) ||
+            (LocaleName->Length >= sizeof(Name->LocaleBuffer)))
+        {
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        RtlCopyUnicodeString(&Name->Locale, LocaleName);
+        return STATUS_SUCCESS;
+    }
 
     if ((Lcid != LOCALE_NEUTRAL) && !RtlLCIDToCultureName(Lcid, &Name->Locale))
     {
@@ -359,14 +393,15 @@ NTSTATUS
 PiPropInitName(
     _Out_ PPIP_PROP_NAME Name,
     _In_ const DEVPROPKEY *Key,
-    _In_ LCID Lcid)
+    _In_ LCID Lcid,
+    _In_opt_ PCUNICODE_STRING LocaleName)
 {
     const GUID *Fmtid = &Key->fmtid;
     NTSTATUS Status;
 
     Name->Key = Key;
 
-    Status = PiPropInitLocale(Name, Lcid);
+    Status = PiPropInitLocale(Name, Lcid, LocaleName);
     if (!NT_SUCCESS(Status))
         return Status;
 
@@ -477,6 +512,32 @@ PiPropParseInterfaceName(
     return NT_SUCCESS(RtlGUIDFromString(&GuidString, ClassGuid));
 }
 
+static
+NTSTATUS
+PiPropOpenClassKey(
+    _In_ PCWSTR BaseKeyName,
+    _In_ const GUID *ClassGuid,
+    _In_ ACCESS_MASK DesiredAccess,
+    _Out_ PHANDLE ClassKey)
+{
+    WCHAR PathBuffer[128];
+    UNICODE_STRING Path, GuidString;
+    NTSTATUS Status;
+
+    Status = RtlStringFromGUID(ClassGuid, &GuidString);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    RtlInitEmptyUnicodeString(&Path, PathBuffer, sizeof(PathBuffer));
+    RtlAppendUnicodeToString(&Path, BaseKeyName);
+    Status = RtlAppendUnicodeStringToString(&Path, &GuidString);
+    RtlFreeUnicodeString(&GuidString);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    return IopOpenRegistryKeyEx(ClassKey, NULL, &Path, DesiredAccess);
+}
+
 /* Property store ************************************************************/
 
 static
@@ -497,6 +558,18 @@ PiPropOpenObjectKey(
     {
         case PipPropObjectInterface:
             return IopOpenDeviceInterfaceKeys(Object->Name, DesiredAccess, NULL, ObjectKey);
+
+        case PipPropObjectInstallerClass:
+            return PiPropOpenClassKey(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\Class\\",
+                                      &Object->ClassGuid,
+                                      DesiredAccess,
+                                      ObjectKey);
+
+        case PipPropObjectInterfaceClass:
+            return PiPropOpenClassKey(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\DeviceClasses\\",
+                                      &Object->ClassGuid,
+                                      DesiredAccess,
+                                      ObjectKey);
 
         default:
             break;
@@ -749,6 +822,136 @@ PiPropStoreDelete(
     return Status;
 }
 
+typedef VOID
+(*PIP_PROP_SUBKEY_VISITOR)(
+    _In_ HANDLE Key,
+    _In_ PUNICODE_STRING SubKeyName,
+    _Inout_ PVOID Context);
+
+typedef struct _PIP_PROP_KEY_LIST
+{
+    PPIP_PROP_OBJECT Object;
+    HANDLE ObjectKey;
+    PCUNICODE_STRING Locale;
+    DEVPROPKEY Current;
+    PDEVPROPKEY Keys;
+    ULONG Capacity;
+    ULONG Count;
+    NTSTATUS Failure;
+} PIP_PROP_KEY_LIST, *PPIP_PROP_KEY_LIST;
+
+static
+const PIP_BUILTIN_PROPERTY *
+PiPropFindBuiltin(
+    _In_ PPIP_PROP_OBJECT Object,
+    _In_ const DEVPROPKEY *Key);
+
+static
+VOID
+PiPropAppendKey(
+    _Inout_ PPIP_PROP_KEY_LIST List,
+    _In_ const DEVPROPKEY *Key)
+{
+    if (List->Count < List->Capacity)
+        List->Keys[List->Count] = *Key;
+
+    List->Count++;
+}
+
+static
+NTSTATUS
+PiPropVisitSubKeys(
+    _In_ HANDLE Key,
+    _In_ PIP_PROP_SUBKEY_VISITOR Visitor,
+    _Inout_ PVOID Context)
+{
+    KEY_FULL_INFORMATION KeyInfo;
+    PKEY_BASIC_INFORMATION Entry;
+    UNICODE_STRING SubKeyName;
+    ULONG EntrySize, Length, Index;
+    NTSTATUS Status;
+
+    Status = ZwQueryKey(Key, KeyFullInformation, &KeyInfo, sizeof(KeyInfo), &Length);
+    if (!NT_SUCCESS(Status) && (Status != STATUS_BUFFER_OVERFLOW))
+        return Status;
+
+    EntrySize = FIELD_OFFSET(KEY_BASIC_INFORMATION, Name) + KeyInfo.MaxNameLen;
+    Entry = ExAllocatePoolWithTag(PagedPool, EntrySize, TAG_PNP_PROPERTY);
+    if (!Entry)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    for (Index = 0; Index < KeyInfo.SubKeys; Index++)
+    {
+        Status = ZwEnumerateKey(Key, Index, KeyBasicInformation, Entry, EntrySize, &Length);
+        if (Status == STATUS_NO_MORE_ENTRIES)
+            break;
+        if (!NT_SUCCESS(Status))
+            continue;
+
+        SubKeyName.Buffer = Entry->Name;
+        SubKeyName.Length = SubKeyName.MaximumLength = (USHORT)Entry->NameLength;
+        Visitor(Key, &SubKeyName, Context);
+    }
+
+    ExFreePoolWithTag(Entry, TAG_PNP_PROPERTY);
+    return STATUS_SUCCESS;
+}
+
+static
+VOID
+PiPropVisitPid(
+    _In_ HANDLE FmtidKey,
+    _In_ PUNICODE_STRING SubKeyName,
+    _Inout_ PVOID Context)
+{
+    PPIP_PROP_KEY_LIST List = Context;
+    PIP_PROP_NAME Name;
+    DEVPROPTYPE Type;
+    ULONG Required;
+    NTSTATUS Status;
+
+    UNREFERENCED_PARAMETER(FmtidKey);
+
+    if (!NT_SUCCESS(RtlUnicodeStringToInteger(SubKeyName, 16, &List->Current.pid)))
+        return;
+
+    if (!List->Locale->Length && PiPropFindBuiltin(List->Object, &List->Current))
+        return;
+
+    if (!NT_SUCCESS(PiPropInitName(&Name, &List->Current, LOCALE_NEUTRAL, List->Locale)))
+        return;
+
+    Status = PiPropStoreQuery(List->ObjectKey, &Name, &Type, NULL, 0, &Required);
+    if (NT_SUCCESS(Status) || (Status == STATUS_BUFFER_TOO_SMALL))
+        PiPropAppendKey(List, &List->Current);
+    else if (Status == STATUS_INSUFFICIENT_RESOURCES)
+        List->Failure = Status;
+}
+
+static
+VOID
+PiPropVisitFmtid(
+    _In_ HANDLE PropertiesKey,
+    _In_ PUNICODE_STRING SubKeyName,
+    _Inout_ PVOID Context)
+{
+    PPIP_PROP_KEY_LIST List = Context;
+    HANDLE FmtidKey;
+    NTSTATUS Status;
+
+    if (!NT_SUCCESS(RtlGUIDFromString(SubKeyName, &List->Current.fmtid)))
+        return;
+
+    if (!NT_SUCCESS(IopOpenRegistryKeyEx(&FmtidKey, PropertiesKey, SubKeyName, KEY_READ)))
+        return;
+
+    Status = PiPropVisitSubKeys(FmtidKey, PiPropVisitPid, List);
+    if (!NT_SUCCESS(Status))
+        List->Failure = Status;
+
+    ZwClose(FmtidKey);
+}
+
 /* Saved interrupt data ******************************************************/
 
 typedef struct _PIP_PROP_SAVED_VALUE
@@ -847,6 +1050,10 @@ PiPropBuiltinTable(
         case PipPropObjectInterface:
             *Count = RTL_NUMBER_OF(PipInterfaceBuiltins);
             return PipInterfaceBuiltins;
+
+        case PipPropObjectInstallerClass:
+            *Count = RTL_NUMBER_OF(PipInstallerClassBuiltins);
+            return PipInstallerClassBuiltins;
 
         default:
             *Count = 0;
@@ -1459,6 +1666,7 @@ PiPropGet(
     _In_ PPIP_PROP_OBJECT Object,
     _In_ const DEVPROPKEY *PropertyKey,
     _In_ LCID Lcid,
+    _In_opt_ PCUNICODE_STRING LocaleName,
     _In_ ULONG Size,
     _Out_writes_bytes_to_opt_(Size, *RequiredSize) PVOID Data,
     _Out_ PULONG RequiredSize,
@@ -1474,7 +1682,7 @@ PiPropGet(
     if (!PropertyKey || !RequiredSize || !Type)
         return STATUS_INVALID_PARAMETER;
 
-    Status = PiPropInitName(&Name, PropertyKey, Lcid);
+    Status = PiPropInitName(&Name, PropertyKey, Lcid, LocaleName);
     if (NT_SUCCESS(Status))
     {
         Status = STATUS_OBJECT_NAME_NOT_FOUND;
@@ -1583,6 +1791,7 @@ PiPropSet(
     _In_ PPIP_PROP_OBJECT Object,
     _In_ const DEVPROPKEY *PropertyKey,
     _In_ LCID Lcid,
+    _In_opt_ PCUNICODE_STRING LocaleName,
     _In_ DEVPROPTYPE Type,
     _In_ ULONG Size,
     _In_reads_bytes_opt_(Size) PVOID Data)
@@ -1601,7 +1810,7 @@ PiPropSet(
     if (!NT_SUCCESS(Status))
         return Status;
 
-    Status = PiPropInitName(&Name, PropertyKey, Lcid);
+    Status = PiPropInitName(&Name, PropertyKey, Lcid, LocaleName);
     if (!NT_SUCCESS(Status))
         return Status;
 
@@ -1627,6 +1836,88 @@ PiPropSet(
         IopQueueDevicePropertyChangeEvent(&Object->DeviceNode->InstancePath);
 
     return PiPropNormalizeStatus(Status);
+}
+
+/* Listing *******************************************************************/
+
+static
+NTSTATUS
+PiPropGetKeys(
+    _In_ PPIP_PROP_OBJECT Object,
+    _In_opt_ PCUNICODE_STRING LocaleName,
+    _Out_writes_opt_(Capacity) PDEVPROPKEY Keys,
+    _In_ ULONG Capacity,
+    _Out_ PULONG Required)
+{
+    UNICODE_STRING PropertiesName = RTL_CONSTANT_STRING(REGSTR_KEY_DEVICE_PROPERTIES);
+    const PIP_BUILTIN_PROPERTY *Table;
+    PIP_PROP_OUTPUT Probe;
+    PIP_PROP_KEY_LIST List;
+    PIP_PROP_NAME Name;
+    HANDLE PropertiesKey;
+    NTSTATUS Status, ProbeStatus;
+    ULONG Count;
+
+    PAGED_CODE();
+
+    *Required = 0;
+
+    Status = PiPropInitLocale(&Name, LOCALE_NEUTRAL, LocaleName);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    RtlZeroMemory(&List, sizeof(List));
+    List.Object = Object;
+    List.Locale = &Name.Locale;
+    List.Keys = Keys;
+    List.Capacity = Keys ? Capacity : 0;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceSharedLite(&PpRegistryDeviceResource, TRUE);
+
+    Status = PiPropOpenObjectKey(Object, KEY_READ, &List.ObjectKey);
+    if (NT_SUCCESS(Status))
+    {
+        Status = IopOpenRegistryKeyEx(&PropertiesKey, List.ObjectKey, &PropertiesName, KEY_READ);
+        if (NT_SUCCESS(Status))
+        {
+            Status = PiPropVisitSubKeys(PropertiesKey, PiPropVisitFmtid, &List);
+            if (NT_SUCCESS(Status))
+                Status = List.Failure;
+
+            ZwClose(PropertiesKey);
+        }
+        else if (Status == STATUS_OBJECT_NAME_NOT_FOUND)
+        {
+            Status = STATUS_SUCCESS;
+        }
+
+        ZwClose(List.ObjectKey);
+    }
+
+    ExReleaseResourceLite(&PpRegistryDeviceResource);
+    KeLeaveCriticalRegion();
+
+    if (!NT_SUCCESS(Status))
+        return PiPropNormalizeStatus(Status);
+
+    if (!Name.Locale.Length)
+    {
+        for (Table = PiPropBuiltinTable(Object->Kind, &Count); Count; Count--, Table++)
+        {
+            RtlZeroMemory(&Probe, sizeof(Probe));
+            Name.Key = Table->Key;
+
+            if (PiPropReadFromBuiltin(Object, &Name, &Probe, &ProbeStatus) &&
+                (NT_SUCCESS(ProbeStatus) || (ProbeStatus == STATUS_BUFFER_TOO_SMALL)))
+            {
+                PiPropAppendKey(&List, Table->Key);
+            }
+        }
+    }
+
+    *Required = List.Count;
+    return (List.Count > List.Capacity) ? STATUS_BUFFER_TOO_SMALL : STATUS_SUCCESS;
 }
 
 /* Objects *******************************************************************/
@@ -1679,6 +1970,87 @@ PiPropInitInterfaceObject(
     return STATUS_SUCCESS;
 }
 
+static
+NTSTATUS
+PiPropInitNamedObject(
+    _In_ ULONG ObjectType,
+    _In_ PCUNICODE_STRING ObjectName,
+    _Out_ PPIP_PROP_OBJECT Object,
+    _Out_ PDEVICE_OBJECT *ReferencedPdo)
+{
+    PDEVICE_OBJECT DeviceObject;
+    PDEVICE_NODE DeviceNode;
+    HANDLE ObjectKey;
+    NTSTATUS Status;
+
+    *ReferencedPdo = NULL;
+    RtlZeroMemory(Object, sizeof(*Object));
+
+    switch (ObjectType)
+    {
+        case PNP_PROP_OBJECT_DEVICE:
+            if (!ObjectName->Length ||
+                (ObjectName->Length % sizeof(WCHAR)) ||
+                (ObjectName->Length > PIP_PROP_MAX_INSTANCE_CHARS * sizeof(WCHAR)))
+            {
+                return STATUS_INVALID_PARAMETER;
+            }
+
+            Object->Kind = PipPropObjectDevice;
+            Object->Name = ObjectName;
+
+            DeviceObject = IopGetDeviceObjectFromDeviceInstance((PUNICODE_STRING)ObjectName);
+            if (DeviceObject)
+            {
+                DeviceNode = IopGetDeviceNode(DeviceObject);
+                if (DeviceNode && !(DeviceNode->Flags & DNF_LEGACY_RESOURCE_DEVICENODE))
+                {
+                    Object->Pdo = DeviceObject;
+                    Object->DeviceNode = DeviceNode;
+                    Object->Name = &DeviceNode->InstancePath;
+                    *ReferencedPdo = DeviceObject;
+
+                    if (DeviceNode == IopRootDeviceNode)
+                        Object->Flags |= PIP_PROP_OBJECT_PROTECTED;
+                }
+                else
+                {
+                    ObDereferenceObject(DeviceObject);
+                }
+            }
+            break;
+
+        case PNP_PROP_OBJECT_INTERFACE:
+            Status = PiPropInitInterfaceObject(ObjectName, Object);
+            if (!NT_SUCCESS(Status))
+                return Status;
+            break;
+
+        case PNP_PROP_OBJECT_INSTALLER_CLASS:
+        case PNP_PROP_OBJECT_INTERFACE_CLASS:
+            if (!NT_SUCCESS(RtlGUIDFromString((PUNICODE_STRING)ObjectName, &Object->ClassGuid)))
+                return STATUS_INVALID_PARAMETER;
+
+            Object->Kind = (ObjectType == PNP_PROP_OBJECT_INSTALLER_CLASS) ?
+                           PipPropObjectInstallerClass : PipPropObjectInterfaceClass;
+            Object->Name = ObjectName;
+            break;
+
+        default:
+            return STATUS_INVALID_PARAMETER;
+    }
+
+    Status = PiPropOpenObjectKey(Object, KEY_READ, &ObjectKey);
+    if (!NT_SUCCESS(Status))
+    {
+        Status = PiPropNormalizeStatus(Status);
+        return (Status == STATUS_OBJECT_NAME_NOT_FOUND) ? STATUS_NO_SUCH_DEVICE : Status;
+    }
+
+    ZwClose(ObjectKey);
+    return STATUS_SUCCESS;
+}
+
 CODE_SEG("PAGE")
 VOID
 PiPropReleaseDevice(
@@ -1687,6 +2059,141 @@ PiPropReleaseDevice(
     PAGED_CODE();
 
     PiPropReplaceSaved(DeviceObject, DEVPROP_TYPE_EMPTY, NULL, 0, NULL);
+}
+
+CODE_SEG("PAGE")
+NTSTATUS
+PiControlObjectProperty(
+    _In_ PPLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA ControlData)
+{
+    PLUGPLAY_CONTROL_OBJECT_PROPERTY_DATA Request;
+    UNICODE_STRING ObjectName = { 0 }, LocaleName = { 0 };
+    PDEVICE_OBJECT ReferencedPdo = NULL;
+    PIP_PROP_OBJECT Object;
+    DEVPROPTYPE Type = DEVPROP_TYPE_EMPTY;
+    ULONG BufferBytes, Required = 0, CopyBytes = 0;
+    PVOID Buffer = NULL;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    _SEH2_TRY
+    {
+        Request = *ControlData;
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        _SEH2_YIELD(return _SEH2_GetExceptionCode());
+    }
+    _SEH2_END;
+
+    switch (Request.Operation)
+    {
+        case PNP_PROP_OPERATION_GET:
+        case PNP_PROP_OPERATION_SET:
+            if (Request.BufferSize > PIP_PROP_MAX_CONTROL_SIZE)
+                return STATUS_INVALID_PARAMETER;
+            BufferBytes = Request.BufferSize;
+            break;
+
+        case PNP_PROP_OPERATION_GET_KEYS:
+            if (Request.BufferSize > PIP_PROP_MAX_CONTROL_SIZE / sizeof(DEVPROPKEY))
+                return STATUS_INVALID_PARAMETER;
+            BufferBytes = Request.BufferSize * sizeof(DEVPROPKEY);
+            break;
+
+        default:
+            return STATUS_INVALID_PARAMETER;
+    }
+
+    if (BufferBytes && !Request.Buffer)
+        return STATUS_INVALID_PARAMETER;
+
+    Status = ProbeAndCaptureUnicodeString(&ObjectName, UserMode, &ControlData->ObjectName);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = ProbeAndCaptureUnicodeString(&LocaleName, UserMode, &ControlData->LocaleName);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
+
+    if (BufferBytes)
+    {
+        Buffer = ExAllocatePoolWithTag(PagedPool, BufferBytes, TAG_PNP_PROPERTY);
+        if (!Buffer)
+        {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto Quit;
+        }
+
+        if (Request.Operation == PNP_PROP_OPERATION_SET)
+        {
+            _SEH2_TRY
+            {
+                ProbeForRead(Request.Buffer, BufferBytes, sizeof(UCHAR));
+                RtlCopyMemory(Buffer, Request.Buffer, BufferBytes);
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+
+            if (!NT_SUCCESS(Status))
+                goto Quit;
+        }
+    }
+
+    Status = PiPropInitNamedObject(Request.ObjectType, &ObjectName, &Object, &ReferencedPdo);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
+
+    switch (Request.Operation)
+    {
+        case PNP_PROP_OPERATION_GET:
+            Status = PiPropGet(&Object, &Request.PropertyKey, LOCALE_NEUTRAL, &LocaleName,
+                               BufferBytes, Buffer, &Required, &Type);
+            CopyBytes = Required;
+            break;
+
+        case PNP_PROP_OPERATION_SET:
+            Status = PiPropSet(&Object, &Request.PropertyKey, LOCALE_NEUTRAL, &LocaleName,
+                               Request.PropertyType, BufferBytes, Buffer);
+            goto Quit;
+
+        case PNP_PROP_OPERATION_GET_KEYS:
+            Status = PiPropGetKeys(&Object, &LocaleName, Buffer, Request.BufferSize, &Required);
+            CopyBytes = Required * sizeof(DEVPROPKEY);
+            break;
+    }
+
+    _SEH2_TRY
+    {
+        ControlData->PropertyType = Type;
+        ControlData->BufferSize = Required;
+
+        if (NT_SUCCESS(Status) && CopyBytes)
+        {
+            ProbeForWrite(Request.Buffer, CopyBytes, sizeof(UCHAR));
+            RtlCopyMemory(Request.Buffer, Buffer, CopyBytes);
+        }
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+Quit:
+    if (ReferencedPdo)
+        ObDereferenceObject(ReferencedPdo);
+
+    if (Buffer)
+        ExFreePoolWithTag(Buffer, TAG_PNP_PROPERTY);
+
+    ReleaseCapturedUnicodeString(&LocaleName, UserMode);
+    ReleaseCapturedUnicodeString(&ObjectName, UserMode);
+    return Status;
 }
 
 /* PUBLIC FUNCTIONS **********************************************************/
@@ -1726,7 +2233,7 @@ IoSetDevicePropertyData(
         Size = 0;
     }
 
-    return PiPropSet(&Object, PropertyKey, Lcid, Type, Size, Data);
+    return PiPropSet(&Object, PropertyKey, Lcid, NULL, Type, Size, Data);
 }
 
 /*
@@ -1758,7 +2265,7 @@ IoGetDevicePropertyData(
     if (!NT_SUCCESS(Status))
         return Status;
 
-    return PiPropGet(&Object, PropertyKey, Lcid, Size, Data, RequiredSize, Type);
+    return PiPropGet(&Object, PropertyKey, Lcid, NULL, Size, Data, RequiredSize, Type);
 }
 
 /*
@@ -1795,7 +2302,7 @@ IoSetDeviceInterfacePropertyData(
         Size = 0;
     }
 
-    return PiPropSet(&Object, PropertyKey, Lcid, Type, Size, Data);
+    return PiPropSet(&Object, PropertyKey, Lcid, NULL, Type, Size, Data);
 }
 
 /*
@@ -1827,7 +2334,7 @@ IoGetDeviceInterfacePropertyData(
     if (!NT_SUCCESS(Status))
         return Status;
 
-    return PiPropGet(&Object, PropertyKey, Lcid, Size, Data, RequiredSize, Type);
+    return PiPropGet(&Object, PropertyKey, Lcid, NULL, Size, Data, RequiredSize, Type);
 }
 
 /* EOF */

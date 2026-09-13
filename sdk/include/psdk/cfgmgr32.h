@@ -3204,6 +3204,218 @@ CM_Uninstall_DevNode_Ex(
 #define CM_Uninstall_DevInst     CM_Uninstall_DevNode
 #define CM_Uninstall_DevInst_Ex  CM_Uninstall_DevNode_Ex
 
+#if (WINVER >= _WIN32_WINNT_VISTA) || defined(__REACTOS__)
+
+#include <devpropdef.h>
+
+#define CM_CLASS_PROPERTY_INSTALLER     0x00000000
+#define CM_CLASS_PROPERTY_INTERFACE     0x00000001
+#define CM_CLASS_PROPERTY_BITS          0x00000001
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Get_DevNode_PropertyW(
+  _In_ DEVINST dnDevInst,
+  _In_ const DEVPROPKEY *PropertyKey,
+  _Out_ DEVPROPTYPE *PropertyType,
+  _Out_writes_bytes_opt_(*PropertyBufferSize) PBYTE PropertyBuffer,
+  _Inout_ PULONG PropertyBufferSize,
+  _In_ ULONG ulFlags);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Get_DevNode_Property_ExW(
+  _In_ DEVINST dnDevInst,
+  _In_ const DEVPROPKEY *PropertyKey,
+  _Out_ DEVPROPTYPE *PropertyType,
+  _Out_writes_bytes_opt_(*PropertyBufferSize) PBYTE PropertyBuffer,
+  _Inout_ PULONG PropertyBufferSize,
+  _In_ ULONG ulFlags,
+  _In_opt_ HMACHINE hMachine);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Get_DevNode_Property_Keys(
+  _In_ DEVINST dnDevInst,
+  _Out_writes_opt_(*PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+  _Inout_ PULONG PropertyKeyCount,
+  _In_ ULONG ulFlags);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Get_DevNode_Property_Keys_Ex(
+  _In_ DEVINST dnDevInst,
+  _Out_writes_opt_(*PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+  _Inout_ PULONG PropertyKeyCount,
+  _In_ ULONG ulFlags,
+  _In_opt_ HMACHINE hMachine);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Set_DevNode_PropertyW(
+  _In_ DEVINST dnDevInst,
+  _In_ const DEVPROPKEY *PropertyKey,
+  _In_ DEVPROPTYPE PropertyType,
+  _In_reads_bytes_opt_(PropertyBufferSize) PBYTE PropertyBuffer,
+  _In_ ULONG PropertyBufferSize,
+  _In_ ULONG ulFlags);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Set_DevNode_Property_ExW(
+  _In_ DEVINST dnDevInst,
+  _In_ const DEVPROPKEY *PropertyKey,
+  _In_ DEVPROPTYPE PropertyType,
+  _In_reads_bytes_opt_(PropertyBufferSize) PBYTE PropertyBuffer,
+  _In_ ULONG PropertyBufferSize,
+  _In_ ULONG ulFlags,
+  _In_opt_ HMACHINE hMachine);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Get_Device_Interface_PropertyW(
+  _In_ LPCWSTR pszDeviceInterface,
+  _In_ const DEVPROPKEY *PropertyKey,
+  _Out_ DEVPROPTYPE *PropertyType,
+  _Out_writes_bytes_opt_(*PropertyBufferSize) PBYTE PropertyBuffer,
+  _Inout_ PULONG PropertyBufferSize,
+  _In_ ULONG ulFlags);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Get_Device_Interface_Property_ExW(
+  _In_ LPCWSTR pszDeviceInterface,
+  _In_ const DEVPROPKEY *PropertyKey,
+  _Out_ DEVPROPTYPE *PropertyType,
+  _Out_writes_bytes_opt_(*PropertyBufferSize) PBYTE PropertyBuffer,
+  _Inout_ PULONG PropertyBufferSize,
+  _In_ ULONG ulFlags,
+  _In_opt_ HMACHINE hMachine);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Get_Device_Interface_Property_KeysW(
+  _In_ LPCWSTR pszDeviceInterface,
+  _Out_writes_opt_(*PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+  _Inout_ PULONG PropertyKeyCount,
+  _In_ ULONG ulFlags);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Get_Device_Interface_Property_Keys_ExW(
+  _In_ LPCWSTR pszDeviceInterface,
+  _Out_writes_opt_(*PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+  _Inout_ PULONG PropertyKeyCount,
+  _In_ ULONG ulFlags,
+  _In_opt_ HMACHINE hMachine);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Set_Device_Interface_PropertyW(
+  _In_ LPCWSTR pszDeviceInterface,
+  _In_ const DEVPROPKEY *PropertyKey,
+  _In_ DEVPROPTYPE PropertyType,
+  _In_reads_bytes_opt_(PropertyBufferSize) PBYTE PropertyBuffer,
+  _In_ ULONG PropertyBufferSize,
+  _In_ ULONG ulFlags);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Set_Device_Interface_Property_ExW(
+  _In_ LPCWSTR pszDeviceInterface,
+  _In_ const DEVPROPKEY *PropertyKey,
+  _In_ DEVPROPTYPE PropertyType,
+  _In_reads_bytes_opt_(PropertyBufferSize) PBYTE PropertyBuffer,
+  _In_ ULONG PropertyBufferSize,
+  _In_ ULONG ulFlags,
+  _In_opt_ HMACHINE hMachine);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Get_Class_PropertyW(
+  _In_ LPCGUID ClassGUID,
+  _In_ const DEVPROPKEY *PropertyKey,
+  _Out_ DEVPROPTYPE *PropertyType,
+  _Out_writes_bytes_opt_(*PropertyBufferSize) PBYTE PropertyBuffer,
+  _Inout_ PULONG PropertyBufferSize,
+  _In_ ULONG ulFlags);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Get_Class_Property_ExW(
+  _In_ LPCGUID ClassGUID,
+  _In_ const DEVPROPKEY *PropertyKey,
+  _Out_ DEVPROPTYPE *PropertyType,
+  _Out_writes_bytes_opt_(*PropertyBufferSize) PBYTE PropertyBuffer,
+  _Inout_ PULONG PropertyBufferSize,
+  _In_ ULONG ulFlags,
+  _In_opt_ HMACHINE hMachine);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Get_Class_Property_Keys(
+  _In_ LPCGUID ClassGUID,
+  _Out_writes_opt_(*PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+  _Inout_ PULONG PropertyKeyCount,
+  _In_ ULONG ulFlags);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Get_Class_Property_Keys_Ex(
+  _In_ LPCGUID ClassGUID,
+  _Out_writes_opt_(*PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+  _Inout_ PULONG PropertyKeyCount,
+  _In_ ULONG ulFlags,
+  _In_opt_ HMACHINE hMachine);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Set_Class_PropertyW(
+  _In_ LPCGUID ClassGUID,
+  _In_ const DEVPROPKEY *PropertyKey,
+  _In_ DEVPROPTYPE PropertyType,
+  _In_reads_bytes_opt_(PropertyBufferSize) PBYTE PropertyBuffer,
+  _In_ ULONG PropertyBufferSize,
+  _In_ ULONG ulFlags);
+
+CMAPI
+CONFIGRET
+WINAPI
+CM_Set_Class_Property_ExW(
+  _In_ LPCGUID ClassGUID,
+  _In_ const DEVPROPKEY *PropertyKey,
+  _In_ DEVPROPTYPE PropertyType,
+  _In_reads_bytes_opt_(PropertyBufferSize) PBYTE PropertyBuffer,
+  _In_ ULONG PropertyBufferSize,
+  _In_ ULONG ulFlags,
+  _In_opt_ HMACHINE hMachine);
+
+#define CM_Get_DevInst_PropertyW        CM_Get_DevNode_PropertyW
+#define CM_Get_DevInst_Property_ExW     CM_Get_DevNode_Property_ExW
+#define CM_Get_DevInst_Property_Keys    CM_Get_DevNode_Property_Keys
+#define CM_Get_DevInst_Property_Keys_Ex CM_Get_DevNode_Property_Keys_Ex
+#define CM_Set_DevInst_PropertyW        CM_Set_DevNode_PropertyW
+#define CM_Set_DevInst_Property_ExW     CM_Set_DevNode_Property_ExW
+
+#endif /* (WINVER >= _WIN32_WINNT_VISTA) || defined(__REACTOS__) */
+
 
 #if (WINVER >= _WIN32_WINNT_WIN2K)
 
