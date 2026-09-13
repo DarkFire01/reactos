@@ -1102,6 +1102,9 @@ typedef struct _EXTENDED_DEVOBJ_EXTENSION
     PVOID DependencyNode;
 #if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
     PVOID InterruptContext;
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS1)
+    LONG InterruptCount;
+#endif
 #endif
     PVOID VerifierContext;
 #elif (NTDDI_VERSION >= NTDDI_VISTASP1)

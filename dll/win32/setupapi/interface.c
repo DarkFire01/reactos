@@ -613,3 +613,197 @@ SetupDiDeleteDeviceInterfaceData(
           DeviceInfoSet, DeviceInterfaceData);
     return TRUE;
 }
+
+static
+struct DeviceInterface *
+GetPropertyDeviceInterface(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData,
+    _Out_ HMACHINE *hMachine)
+{
+    struct DeviceInfoSet *set = (struct DeviceInfoSet *)DeviceInfoSet;
+
+    if (!DeviceInfoSet || DeviceInfoSet == INVALID_HANDLE_VALUE ||
+        set->magic != SETUP_DEVICE_INFO_SET_MAGIC)
+    {
+        SetLastError(ERROR_INVALID_HANDLE);
+        return NULL;
+    }
+
+    if (!DeviceInterfaceData ||
+        DeviceInterfaceData->cbSize != sizeof(SP_DEVICE_INTERFACE_DATA) ||
+        !DeviceInterfaceData->Reserved)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
+
+    *hMachine = set->hMachine;
+    return (struct DeviceInterface *)DeviceInterfaceData->Reserved;
+}
+
+/***********************************************************************
+ *		SetupDiGetDeviceInterfacePropertyW (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupDiGetDeviceInterfacePropertyW(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _Out_ DEVPROPTYPE *PropertyType,
+    _Out_writes_bytes_to_opt_(PropertyBufferSize, *RequiredSize) PBYTE PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _Out_opt_ PDWORD RequiredSize,
+    _In_ DWORD Flags)
+{
+    struct DeviceInterface *DevItf;
+    HMACHINE hMachine;
+    ULONG Size = PropertyBufferSize;
+    CONFIGRET cr;
+
+    TRACE("%p %p %p %p %p %lu %p 0x%lx\n", DeviceInfoSet, DeviceInterfaceData, PropertyKey,
+          PropertyType, PropertyBuffer, PropertyBufferSize, RequiredSize, Flags);
+
+    DevItf = GetPropertyDeviceInterface(DeviceInfoSet, DeviceInterfaceData, &hMachine);
+    if (!DevItf)
+        return FALSE;
+
+    if (!PropertyKey)
+    {
+        SetLastError(ERROR_INVALID_DATA);
+        return FALSE;
+    }
+
+    if (!PropertyType || (!PropertyBuffer && PropertyBufferSize))
+    {
+        SetLastError(ERROR_INVALID_USER_BUFFER);
+        return FALSE;
+    }
+
+    if (Flags)
+    {
+        SetLastError(ERROR_INVALID_FLAGS);
+        return FALSE;
+    }
+
+    cr = CM_Get_Device_Interface_Property_ExW(DevItf->SymbolicLink, PropertyKey, PropertyType,
+                                              PropertyBuffer, &Size, 0, hMachine);
+
+    if ((cr == CR_SUCCESS || cr == CR_BUFFER_SMALL) && RequiredSize)
+        *RequiredSize = Size;
+
+    if (cr != CR_SUCCESS)
+    {
+        SetLastError(GetPropertyErrorFromCrCode(cr));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/***********************************************************************
+ *		SetupDiSetDeviceInterfacePropertyW (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupDiSetDeviceInterfacePropertyW(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData,
+    _In_ const DEVPROPKEY *PropertyKey,
+    _In_ DEVPROPTYPE PropertyType,
+    _In_reads_bytes_opt_(PropertyBufferSize) const BYTE *PropertyBuffer,
+    _In_ DWORD PropertyBufferSize,
+    _In_ DWORD Flags)
+{
+    struct DeviceInterface *DevItf;
+    HMACHINE hMachine;
+    CONFIGRET cr;
+
+    TRACE("%p %p %p 0x%lx %p %lu 0x%lx\n", DeviceInfoSet, DeviceInterfaceData, PropertyKey,
+          PropertyType, PropertyBuffer, PropertyBufferSize, Flags);
+
+    DevItf = GetPropertyDeviceInterface(DeviceInfoSet, DeviceInterfaceData, &hMachine);
+    if (!DevItf)
+        return FALSE;
+
+    if (!PropertyKey)
+    {
+        SetLastError(ERROR_INVALID_DATA);
+        return FALSE;
+    }
+
+    if (!PropertyBuffer && PropertyBufferSize)
+    {
+        SetLastError(ERROR_INVALID_USER_BUFFER);
+        return FALSE;
+    }
+
+    if (Flags)
+    {
+        SetLastError(ERROR_INVALID_FLAGS);
+        return FALSE;
+    }
+
+    cr = CM_Set_Device_Interface_Property_ExW(DevItf->SymbolicLink, PropertyKey, PropertyType,
+                                              (PBYTE)PropertyBuffer, PropertyBufferSize, 0, hMachine);
+    if (cr != CR_SUCCESS)
+    {
+        SetLastError(GetPropertyErrorFromCrCode(cr));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/***********************************************************************
+ *		SetupDiGetDeviceInterfacePropertyKeys (SETUPAPI.@)
+ */
+BOOL
+WINAPI
+SetupDiGetDeviceInterfacePropertyKeys(
+    _In_ HDEVINFO DeviceInfoSet,
+    _In_ PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData,
+    _Out_writes_opt_(PropertyKeyCount) DEVPROPKEY *PropertyKeyArray,
+    _In_ DWORD PropertyKeyCount,
+    _Out_opt_ PDWORD RequiredPropertyKeyCount,
+    _In_ DWORD Flags)
+{
+    struct DeviceInterface *DevItf;
+    HMACHINE hMachine;
+    ULONG Count = PropertyKeyCount;
+    CONFIGRET cr;
+
+    TRACE("%p %p %p %lu %p 0x%lx\n", DeviceInfoSet, DeviceInterfaceData, PropertyKeyArray,
+          PropertyKeyCount, RequiredPropertyKeyCount, Flags);
+
+    DevItf = GetPropertyDeviceInterface(DeviceInfoSet, DeviceInterfaceData, &hMachine);
+    if (!DevItf)
+        return FALSE;
+
+    if (!PropertyKeyArray && PropertyKeyCount)
+    {
+        SetLastError(ERROR_INVALID_USER_BUFFER);
+        return FALSE;
+    }
+
+    if (Flags)
+    {
+        SetLastError(ERROR_INVALID_FLAGS);
+        return FALSE;
+    }
+
+    cr = CM_Get_Device_Interface_Property_Keys_ExW(DevItf->SymbolicLink, PropertyKeyArray,
+                                                   &Count, 0, hMachine);
+
+    if ((cr == CR_SUCCESS || cr == CR_BUFFER_SMALL) && RequiredPropertyKeyCount)
+        *RequiredPropertyKeyCount = Count;
+
+    if (cr != CR_SUCCESS)
+    {
+        SetLastError(GetPropertyErrorFromCrCode(cr));
+        return FALSE;
+    }
+
+    return TRUE;
+}
