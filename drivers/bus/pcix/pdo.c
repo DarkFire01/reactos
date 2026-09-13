@@ -533,7 +533,7 @@ PciPdoIrpQueryLegacyBusInformation(IN PIRP Irp,
     UNREFERENCED_PARAMETER(IoStackLocation);
     UNREFERENCED_PARAMETER(DeviceExtension);
 
-    UNIMPLEMENTED_DBGBREAK();
+    /* Only the bus FDO reports a legacy bus */
     return STATUS_NOT_SUPPORTED;
 }
 

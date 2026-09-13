@@ -50,6 +50,32 @@ IsaFdoQueryBusRelations(
     return IsaPnpFillDeviceRelations(FdoExt, Irp, TRUE);
 }
 
+/* Reports the ISA bus this bridge provides */
+static
+CODE_SEG("PAGE")
+NTSTATUS
+IsaFdoQueryLegacyBusInformation(
+    _In_ PISAPNP_FDO_EXTENSION FdoExt,
+    _Inout_ PIRP Irp)
+{
+    PLEGACY_BUS_INFORMATION BusInformation;
+
+    PAGED_CODE();
+
+    BusInformation = ExAllocatePoolWithTag(PagedPool,
+                                           sizeof(LEGACY_BUS_INFORMATION),
+                                           TAG_ISAPNP);
+    if (!BusInformation)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    BusInformation->BusTypeGuid = GUID_BUS_TYPE_ISAPNP;
+    BusInformation->LegacyBusType = Isa;
+    BusInformation->BusNumber = FdoExt->BusNumber;
+
+    Irp->IoStatus.Information = (ULONG_PTR)BusInformation;
+    return STATUS_SUCCESS;
+}
+
 static
 CODE_SEG("PAGE")
 NTSTATUS
@@ -165,6 +191,19 @@ IsaFdoPnp(
 
         case IRP_MN_REMOVE_DEVICE:
             return IsaFdoRemoveDevice(FdoExt, Irp);
+
+        case IRP_MN_QUERY_LEGACY_BUS_INFORMATION:
+            Status = IsaFdoQueryLegacyBusInformation(FdoExt, Irp);
+            if (!NT_SUCCESS(Status))
+            {
+                Irp->IoStatus.Status = Status;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+                return Status;
+            }
+
+            Irp->IoStatus.Status = Status;
+            break;
 
         case IRP_MN_QUERY_PNP_DEVICE_STATE:
             Irp->IoStatus.Information |= PNP_DEVICE_NOT_DISABLEABLE;
