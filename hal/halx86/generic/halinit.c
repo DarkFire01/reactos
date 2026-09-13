@@ -22,6 +22,7 @@ BOOLEAN HalBootViaEfi;
 ULONG HalpMessageInterruptPolicy;
 ULONG HalpInterruptControllerType;
 BOOLEAN HalpMmConfigDisallowed;
+BOOLEAN HalpIrqRouterInitialized;
 
 /* PRIVATE FUNCTIONS *********************************************************/
 

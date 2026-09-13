@@ -213,6 +213,9 @@ PHAL_SW_INTERRUPT_HANDLER_2ND_ENTRY SWInterruptHandlerTable2[3] =
 
 LONG HalpEisaELCR;
 
+/* IRQs whose ELCR bit is never changed */
+#define HALP_ELCR_FIXED_IRQS ((1 << 0) | (1 << 1) | (1 << 2) | (1 << 8) | (1 << 12) | (1 << 13))
+
 /* FUNCTIONS ******************************************************************/
 
 VOID
@@ -968,6 +971,20 @@ HalEnableSystemInterrupt(IN ULONG Vector,
 
     /* Disable interrupts */
     _disable();
+
+    /* Match the ELCR to the interrupt mode */
+    if (HalpIrqRouterInitialized && !(HALP_ELCR_FIXED_IRQS & (1 << Irq)))
+    {
+        HalpEisaELCR = (__inbyte(EISA_ELCR_SLAVE) << 8) | __inbyte(EISA_ELCR_MASTER);
+
+        if (InterruptMode == LevelSensitive)
+            HalpEisaELCR |= (1 << Irq);
+        else
+            HalpEisaELCR &= ~(1 << Irq);
+
+        __outbyte(EISA_ELCR_MASTER, (UCHAR)HalpEisaELCR);
+        __outbyte(EISA_ELCR_SLAVE, (UCHAR)(HalpEisaELCR >> 8));
+    }
 
     /* Update software IDR */
     Pcr->IDR &= ~(1 << Irq);
