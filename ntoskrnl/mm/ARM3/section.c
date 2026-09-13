@@ -3587,8 +3587,7 @@ NtExtendSection(IN HANDLE SectionHandle,
         _SEH2_END;
     }
 
-    /* Return the status */
-    return STATUS_NOT_IMPLEMENTED;
+    return Status;
 }
 
 /* EOF */
