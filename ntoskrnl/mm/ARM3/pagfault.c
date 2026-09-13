@@ -850,9 +850,6 @@ MiCompleteProtoPteFault(IN BOOLEAN StoreInstruction,
     {
         /* Then the page should be marked dirty */
         DirtyPage = TRUE;
-
-        /* ReactOS check */
-        ASSERT(Pfn1->OriginalPte.u.Soft.Prototype != 0);
     }
 
     /* Did we get a locked incoming PFN? */
@@ -997,6 +994,9 @@ MiResolvePageFileFault(_In_ BOOLEAN StoreInstruction,
     {
         /* Tell them we're done */
         KeSetEvent(Pfn1->u1.Event, IO_NO_INCREMENT, FALSE);
+
+        /* The field is the working set index again from now on */
+        Pfn1->u1.Event = NULL;
     }
 
     return Status;
@@ -1272,13 +1272,16 @@ MiResolveProtoPteFault(IN BOOLEAN StoreInstruction,
         /* This will drop everything MiResolveProtoPteFault referenced */
         MiDeletePte(PointerPte, Address, Process, PointerProtoPte);
 
+        /* The private copy is read/write, the PFN keeps that as its original PTE */
+        Protection &= ~MM_WRITECOPY;
+        Protection |= MM_READWRITE;
+        MI_MAKE_SOFTWARE_PTE(&PteContents, Protection);
+        MI_WRITE_INVALID_PTE(PointerPte, PteContents);
+
         /* Because now we use this */
         Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
         MiInitializePfn(PageFrameIndex, PointerPte, TRUE);
 
-        /* Fix the protection */
-        Protection &= ~MM_WRITECOPY;
-        Protection |= MM_READWRITE;
         if (Address < MmSystemRangeStart)
         {
             /* Build the user PTE */
@@ -1410,7 +1413,7 @@ MiDispatchFault(IN ULONG FaultCode,
             }
 
             /* Resolve the fault -- this will release the PFN lock */
-            Status = MiResolveProtoPteFault(!MI_IS_NOT_PRESENT_FAULT(FaultCode),
+            Status = MiResolveProtoPteFault(MI_IS_WRITE_ACCESS(FaultCode),
                                             Address,
                                             PointerPte,
                                             PointerProtoPte,
@@ -1527,7 +1530,7 @@ MiDispatchFault(IN ULONG FaultCode,
                 if (++ProcessedPtes == PteCount)
                 {
                     /* Complete the fault */
-                    MiCompleteProtoPteFault(!MI_IS_NOT_PRESENT_FAULT(FaultCode),
+                    MiCompleteProtoPteFault(MI_IS_WRITE_ACCESS(FaultCode),
                                             Address,
                                             PointerPte,
                                             PointerProtoPte,
@@ -1566,7 +1569,7 @@ MiDispatchFault(IN ULONG FaultCode,
             ASSERT(PointerPte->u.Hard.Valid == 0);
 
             /* Resolve the fault -- this will release the PFN lock */
-            Status = MiResolveProtoPteFault(!MI_IS_NOT_PRESENT_FAULT(FaultCode),
+            Status = MiResolveProtoPteFault(MI_IS_WRITE_ACCESS(FaultCode),
                                             Address,
                                             PointerPte,
                                             PointerProtoPte,
@@ -1614,7 +1617,7 @@ MiDispatchFault(IN ULONG FaultCode,
         LockIrql = MiAcquirePfnLock();
 
         /* Resolve */
-        Status = MiResolveTransitionFault(!MI_IS_NOT_PRESENT_FAULT(FaultCode), Address, PointerPte, Process, LockIrql, &InPageBlock);
+        Status = MiResolveTransitionFault(MI_IS_WRITE_ACCESS(FaultCode), Address, PointerPte, Process, LockIrql, &InPageBlock);
 
         ASSERT(NT_SUCCESS(Status));
 
@@ -1653,7 +1656,7 @@ MiDispatchFault(IN ULONG FaultCode,
         LockIrql = MiAcquirePfnLock();
 
         /* Resolve */
-        Status = MiResolvePageFileFault(!MI_IS_NOT_PRESENT_FAULT(FaultCode), Address, PointerPte, Process, &LockIrql);
+        Status = MiResolvePageFileFault(MI_IS_WRITE_ACCESS(FaultCode), Address, PointerPte, Process, &LockIrql);
 
         /* And now release the lock and leave*/
         MiReleasePfnLock(LockIrql);
@@ -2298,6 +2301,13 @@ UserFault:
             {
                 PFN_NUMBER PageFrameIndex, OldPageFrameIndex;
                 PMMPFN Pfn1;
+                MMPTE PteContents;
+
+                /* The view protection tells what the private copy becomes */
+                MiCheckVirtualAddress(Address, &ProtectionCode, &Vad);
+                ASSERT((ProtectionCode & MM_WRITECOPY) == MM_WRITECOPY);
+                ProtectionCode &= ~MM_WRITECOPY;
+                ProtectionCode |= MM_READWRITE;
 
                 LockIrql = MiAcquirePfnLock();
 
@@ -2324,6 +2334,10 @@ UserFault:
                 ASSERT(!MI_IS_PFN_DELETED(Pfn1));
                 ProtoPte = Pfn1->PteAddress;
                 MiDeletePte(PointerPte, Address, CurrentProcess, ProtoPte);
+
+                /* Record the private protection before the PFN captures the PTE */
+                MI_MAKE_SOFTWARE_PTE(&PteContents, ProtectionCode);
+                MI_WRITE_INVALID_PTE(PointerPte, PteContents);
 
                 /* And make a new shiny one with our page */
                 MiInitializePfn(PageFrameIndex, PointerPte, TRUE);
@@ -2613,7 +2627,7 @@ UserFault:
     {
         /* Run a software access check first, including to detect guard pages */
         Status = MiAccessCheck(PointerPte,
-                               !MI_IS_NOT_PRESENT_FAULT(FaultCode),
+                               MI_IS_WRITE_ACCESS(FaultCode),
                                Mode,
                                ProtectionCode,
                                TrapInformation,
