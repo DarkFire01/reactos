@@ -217,6 +217,14 @@ typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
       ULONG Length64;
     } Memory64;
 #endif
+    struct {
+      UCHAR Class;
+      UCHAR Type;
+      UCHAR Reserved1;
+      UCHAR Reserved2;
+      ULONG IdLowPart;
+      ULONG IdHighPart;
+    } Connection;
   } u;
 } CM_PARTIAL_RESOURCE_DESCRIPTOR, *PCM_PARTIAL_RESOURCE_DESCRIPTOR;
 #include <poppack.h>
