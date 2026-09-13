@@ -323,6 +323,20 @@ MiWakeModifiedPageWriter(VOID)
 }
 
 /**
+ * @brief Asks the balance set manager for a working set trimming pass.
+ * @remarks Callable up to DISPATCH_LEVEL.
+ */
+VOID
+NTAPI
+MiWakeWorkingSetManager(VOID)
+{
+    if (MiModifiedPageWriterStarted)
+    {
+        KeSetEvent(&MmWorkingSetManagerEvent, IO_NO_INCREMENT, FALSE);
+    }
+}
+
+/**
  * @brief Tracks whether faults can get pages again.
  *
  * @param[in] Available
@@ -364,6 +378,9 @@ MiWaitForFreePage(VOID)
 
     if (!MiModifiedPageWriterStarted)
         return;
+
+    /* And working sets trimmed */
+    KeSetEvent(&MmWorkingSetManagerEvent, IO_NO_INCREMENT, FALSE);
 
     /* The legacy balancer frees pages without telling anyone, so do not wait forever */
     Timeout.QuadPart = -100 * 10000LL;

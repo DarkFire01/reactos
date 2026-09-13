@@ -4,6 +4,7 @@
  * FILE:            ntoskrnl/mm/ARM3/wslist.cpp
  * PURPOSE:         Working set list management
  * PROGRAMMERS:     Jérôme Gardou
+ *                  Justin Miller <justin.miller@reactos.org>
  */
 
 /* INCLUDES *******************************************************************/
@@ -19,6 +20,13 @@
 PMMWSL MmWorkingSetList;
 KEVENT MmWorkingSetManagerEvent;
 
+/* A free entry keeps the index of the next free one, shifted past the valid bit */
+#define MI_WSLE_FREE_END ((ULONG)MAXLONG)
+
+/* Entries not accessed for this many passes get trimmed */
+#define MI_WSLE_TRIM_AGE        3
+#define MI_WSLE_TRIM_AGE_HARD   1
+
 /* LOCAL FUNCTIONS ************************************************************/
 
 static MMPTE GetPteTemplateForWsList(PMMWSL WsList)
@@ -31,172 +39,126 @@ static ULONG GetNextPageColorForWsList(PMMWSL WsList)
     return (WsList == MmSystemCacheWorkingSetList) ? MI_GET_NEXT_COLOR() : MI_GET_NEXT_PROCESS_COLOR(PsGetCurrentProcess());
 }
 
+static ULONG GetEntriesPerPage()
+{
+    return PAGE_SIZE / sizeof(MMWSLE);
+}
+
+/**
+ * @brief Pushes an entry on the free chain.
+ */
 static void FreeWsleIndex(PMMWSL WsList, ULONG Index)
 {
-    PMMWSLE Wsle = WsList->Wsle;
-    ULONG& LastEntry = WsList->LastEntry;
-    ULONG& FirstFree = WsList->FirstFree;
-    ULONG& LastInitializedWsle = WsList->LastInitializedWsle;
+    ASSERT(Index >= WsList->FirstDynamic);
+    ASSERT(Index < WsList->LastEntry);
 
-    /* Erase it now */
-    Wsle[Index].u1.Long = 0;
+    ULONG Next = (WsList->FirstFree == ULONG_MAX) ? MI_WSLE_FREE_END : WsList->FirstFree;
+    WsList->Wsle[Index].u1.Long = (ULONG_PTR)Next << 1;
+    WsList->FirstFree = Index;
+}
 
-    if (Index == (LastEntry - 1))
+/**
+ * @brief Maps one more page of entries at the end of the list.
+ * @return FALSE if no page could be had.
+ */
+static bool GrowWsList(PMMWSL WsList)
+{
+    PMMPTE PointerPte = MiAddressToPte(&WsList->Wsle[WsList->LastInitializedWsle]);
+    ASSERT(PointerPte->u.Hard.Valid == 0);
+
+    /* The list lives in hyperspace, it cannot run into the next region */
+    if ((ULONG_PTR)MiPteToAddress(PointerPte) >= HYPER_SPACE_END)
+        return false;
+
+    MMPTE TempPte = GetPteTemplateForWsList(WsList);
     {
-        /* We're freeing the last index of our list. */
-        while (Wsle[Index].u1.e1.Valid == 0)
-            Index--;
+        ntoskrnl::MiPfnLockGuard PfnLock;
 
-        /* Should we bother about the Free entries */
-        if (FirstFree < Index)
-        {
-            /* Try getting the index of the last free entry */
-            ASSERT(Wsle[Index + 1].u1.Free.MustBeZero == 0);
-            ULONG PreviousFree = Wsle[Index + 1].u1.Free.PreviousFree;
-            ASSERT(PreviousFree < LastEntry);
-            ULONG LastFree = Index + 1 - PreviousFree;
-#ifdef MMWSLE_PREVIOUS_FREE_JUMP
-            while (Wsle[LastFree].u1.e1.Valid)
-            {
-                ASSERT(LastFree > MMWSLE_PREVIOUS_FREE_JUMP);
-                LastFree -= MMWSLE_PREVIOUS_FREE_JUMP;
-            }
-#endif
-            /* Update */
-            ASSERT(LastFree >= FirstFree);
-            Wsle[FirstFree].u1.Free.PreviousFree = (Index + 1 - LastFree) & MMWSLE_PREVIOUS_FREE_MASK;
-            Wsle[LastFree].u1.Free.NextFree = 0;
-        }
-        else
-        {
-            /* No more free entries in our array */
-            FirstFree = ULONG_MAX;
-        }
-        /* This is the new size of our array */
-        LastEntry = Index + 1;
-        /* Should we shrink the alloc? */
-        while ((LastInitializedWsle - LastEntry) > (PAGE_SIZE / sizeof(MMWSLE)))
-        {
-            PMMPTE PointerPte = MiAddressToPte(Wsle + LastInitializedWsle - 1);
-            /* We must not free ourself! */
-            ASSERT(MiPteToAddress(PointerPte) != WsList);
+        PFN_NUMBER Page = MiRemoveAnyPage(GetNextPageColorForWsList(WsList));
+        if (Page == 0)
+            return false;
 
-            PFN_NUMBER Page = PFN_FROM_PTE(PointerPte);
-
-            {
-                ntoskrnl::MiPfnLockGuard PfnLock;
-
-                PMMPFN Pfn = MiGetPfnEntry(Page);
-                MI_SET_PFN_DELETED(Pfn);
-                MiDecrementShareCount(MiGetPfnEntry(Pfn->u4.PteFrame), Pfn->u4.PteFrame);
-                MiDecrementShareCount(Pfn, Page);
-            }
-
-            PointerPte->u.Long = 0;
-
-            KeInvalidateTlbEntry(Wsle + LastInitializedWsle - 1);
-            LastInitializedWsle -= PAGE_SIZE / sizeof(MMWSLE);
-        }
-        return;
+        TempPte.u.Hard.PageFrameNumber = Page;
+        MiInitializePfnAndMakePteValid(Page, PointerPte, TempPte);
     }
 
-    if (FirstFree == ULONG_MAX)
-    {
-        /* We're the first one. */
-        FirstFree = Index;
-        Wsle[FirstFree].u1.Free.PreviousFree = (LastEntry - FirstFree) & MMWSLE_PREVIOUS_FREE_MASK;
-        return;
-    }
-
-    /* We must find where to place ourself */
-    ULONG NextFree = FirstFree;
-    ULONG PreviousFree = 0;
-    while (NextFree < Index)
-    {
-        ASSERT(Wsle[NextFree].u1.Free.MustBeZero == 0);
-        if (Wsle[NextFree].u1.Free.NextFree == 0)
-            break;
-        PreviousFree = NextFree;
-        NextFree += Wsle[NextFree].u1.Free.NextFree;
-    }
-
-    if (NextFree < Index)
-    {
-        /* This is actually the last free entry */
-        Wsle[NextFree].u1.Free.NextFree = Index - NextFree;
-        Wsle[Index].u1.Free.PreviousFree = (Index - NextFree) & MMWSLE_PREVIOUS_FREE_MASK;
-        Wsle[FirstFree].u1.Free.PreviousFree = (LastEntry - Index) & MMWSLE_PREVIOUS_FREE_MASK;
-        return;
-    }
-
-    if (PreviousFree == 0)
-    {
-        /* This is the first free */
-        Wsle[Index].u1.Free.NextFree = FirstFree - Index;
-        Wsle[Index].u1.Free.PreviousFree = Wsle[FirstFree].u1.Free.PreviousFree;
-        Wsle[FirstFree].u1.Free.PreviousFree = (FirstFree - Index) & MMWSLE_PREVIOUS_FREE_MASK;
-        FirstFree = Index;
-        return;
-    }
-
-    /* Insert */
-    Wsle[PreviousFree].u1.Free.NextFree = (Index - PreviousFree);
-    Wsle[Index].u1.Free.PreviousFree = (Index - PreviousFree) & MMWSLE_PREVIOUS_FREE_MASK;
-    Wsle[Index].u1.Free.NextFree = NextFree - Index;
-    Wsle[NextFree].u1.Free.PreviousFree = (NextFree - Index) & MMWSLE_PREVIOUS_FREE_MASK;
+    WsList->LastInitializedWsle += GetEntriesPerPage();
+    return true;
 }
 
 static ULONG GetFreeWsleIndex(PMMWSL WsList)
 {
     ULONG Index;
+
     if (WsList->FirstFree != ULONG_MAX)
     {
         Index = WsList->FirstFree;
-        ASSERT(Index < WsList->LastInitializedWsle);
-        MMWSLE_FREE_ENTRY& FreeWsle = WsList->Wsle[Index].u1.Free;
-        ASSERT(FreeWsle.MustBeZero == 0);
-        if (FreeWsle.NextFree != 0)
-        {
-            WsList->FirstFree += FreeWsle.NextFree;
-            WsList->Wsle[WsList->FirstFree].u1.Free.PreviousFree = FreeWsle.PreviousFree;
-        }
-        else
-        {
-            WsList->FirstFree = ULONG_MAX;
-        }
+        ASSERT(Index < WsList->LastEntry);
+        ASSERT(WsList->Wsle[Index].u1.e1.Valid == 0);
+
+        ULONG Next = (ULONG)(WsList->Wsle[Index].u1.Long >> 1);
+        WsList->FirstFree = (Next == MI_WSLE_FREE_END) ? ULONG_MAX : Next;
     }
     else
     {
-        Index = WsList->LastEntry++;
-        if (Index >= WsList->LastInitializedWsle)
-        {
-            /* Grow our array */
-            PMMPTE PointerPte = MiAddressToPte(&WsList->Wsle[WsList->LastInitializedWsle]);
-            ASSERT(PointerPte->u.Hard.Valid == 0);
-            MMPTE TempPte = GetPteTemplateForWsList(WsList);
-            {
-                ntoskrnl::MiPfnLockGuard PfnLock;
+        Index = WsList->LastEntry;
+        if ((Index >= WsList->LastInitializedWsle) && !GrowWsList(WsList))
+            return ULONG_MAX;
 
-                PFN_NUMBER Page = MiRemoveAnyPage(GetNextPageColorForWsList(WsList));
-                if (Page == 0)
-                {
-                    KeBugCheckEx(NO_PAGES_AVAILABLE,
-                                 WsList->LastInitializedWsle,
-                                 MmAvailablePages,
-                                 (ULONG_PTR)WsList,
-                                 0);
-                }
-
-                TempPte.u.Hard.PageFrameNumber = Page;
-                MiInitializePfnAndMakePteValid(Page, PointerPte, TempPte);
-            }
-
-            WsList->LastInitializedWsle += PAGE_SIZE / sizeof(MMWSLE);
-        }
+        WsList->LastEntry++;
     }
 
     WsList->Wsle[Index].u1.Long = 0;
     return Index;
+}
+
+/**
+ * @brief Gives back the tail of the list and the pages behind it.
+ * @remarks The working set lock must be held, the PFN lock must not.
+ */
+static void ShrinkWsList(PMMWSL WsList)
+{
+    PMMWSLE Wsle = WsList->Wsle;
+    ULONG LastEntry = WsList->LastEntry;
+
+    while ((LastEntry > WsList->FirstDynamic) && (Wsle[LastEntry - 1].u1.e1.Valid == 0))
+        LastEntry--;
+
+    if (LastEntry != WsList->LastEntry)
+    {
+        WsList->LastEntry = LastEntry;
+
+        /* Chain the remaining holes again, lowest index first */
+        WsList->FirstFree = ULONG_MAX;
+        for (ULONG Index = LastEntry; Index-- > WsList->FirstDynamic;)
+        {
+            if (Wsle[Index].u1.e1.Valid == 0)
+                FreeWsleIndex(WsList, Index);
+        }
+    }
+
+    /* Keep one spare page of entries */
+    while ((WsList->LastInitializedWsle - WsList->LastEntry) > GetEntriesPerPage())
+    {
+        PMMPTE PointerPte = MiAddressToPte(Wsle + WsList->LastInitializedWsle - 1);
+
+        /* We must not free ourself! */
+        ASSERT(MiPteToAddress(PointerPte) != WsList);
+
+        PFN_NUMBER Page = PFN_FROM_PTE(PointerPte);
+        {
+            ntoskrnl::MiPfnLockGuard PfnLock;
+
+            PMMPFN Pfn = MiGetPfnEntry(Page);
+            MI_SET_PFN_DELETED(Pfn);
+            MiDecrementShareCount(MiGetPfnEntry(Pfn->u4.PteFrame), Pfn->u4.PteFrame);
+            MiDecrementShareCount(Pfn, Page);
+        }
+
+        PointerPte->u.Long = 0;
+        KeInvalidateTlbEntry(MiPteToAddress(PointerPte));
+        WsList->LastInitializedWsle -= GetEntriesPerPage();
+    }
 }
 
 static
@@ -221,21 +183,39 @@ RemoveFromWsList(PMMWSL WsList, PVOID Address)
 
     /* And we should have a valid index here */
     ASSERT(Pfn1->u1.WsIndex != 0);
+    ASSERT(WsList->Wsle[Pfn1->u1.WsIndex].u1.e1.Valid == 1);
+    ASSERT(PAGE_ALIGN(WsList->Wsle[Pfn1->u1.WsIndex].u1.VirtualAddress) == PAGE_ALIGN(Address));
 
     FreeWsleIndex(WsList, Pfn1->u1.WsIndex);
+    Pfn1->u1.WsIndex = 0;
 }
 
+/**
+ * @brief Moves pages that were not used lately out of a working set.
+ *
+ * @param[in] Vm
+ * Working set to trim, locked exclusively.
+ *
+ * @param[in] TrimAge
+ * Number of passes an entry must have gone unaccessed.
+ *
+ * @param[in] Target
+ * Maximum number of pages to trim.
+ *
+ * @return Number of pages trimmed.
+ */
 static
 ULONG
-TrimWsList(PMMWSL WsList)
+TrimWsList(PMMSUPPORT Vm, ULONG TrimAge, ULONG Target)
 {
-    /* This should be done under WS lock */
-    ASSERT(MM_ANY_WS_LOCK_HELD(PsGetCurrentThread()));
+    PMMWSL WsList = Vm->VmWorkingSetList;
+
+    ASSERT(MM_ANY_WS_LOCK_HELD_EXCLUSIVE(PsGetCurrentThread()));
 
     ULONG Ret = 0;
 
     /* Walk the array */
-    for (ULONG i = WsList->FirstDynamic; i < WsList->LastEntry; i++)
+    for (ULONG i = WsList->FirstDynamic; (i < WsList->LastEntry) && (Ret < Target); i++)
     {
         MMWSLE& Entry = WsList->Wsle[i];
         if (!Entry.u1.e1.Valid)
@@ -244,8 +224,8 @@ TrimWsList(PMMWSL WsList)
         /* Only direct entries for now */
         ASSERT(Entry.u1.e1.Direct == 1);
 
-        /* Check the PTE */
-        PMMPTE PointerPte = MiAddressToPte(Entry.u1.VirtualAddress);
+        PVOID VirtualAddress = PAGE_ALIGN(Entry.u1.VirtualAddress);
+        PMMPTE PointerPte = MiAddressToPte(VirtualAddress);
 
         /* This must be valid */
         ASSERT(PointerPte->u.Hard.Valid);
@@ -255,28 +235,21 @@ TrimWsList(PMMWSL WsList)
         {
             Entry.u1.e1.Age = 0;
             PointerPte->u.Hard.Accessed = 0;
-            KeInvalidateTlbEntry(Entry.u1.VirtualAddress);
+            KeInvalidateTlbEntry(VirtualAddress);
             continue;
         }
 
         /* If the entry is not so old, just age it */
-        if (Entry.u1.e1.Age < 3)
+        if (Entry.u1.e1.Age < TrimAge)
         {
             Entry.u1.e1.Age++;
             continue;
         }
 
-        if ((Entry.u1.e1.LockedInMemory) || (Entry.u1.e1.LockedInWs))
-        {
-            /* This one is locked. Next time, maybe... */
-            continue;
-        }
-
-        /* FIXME: Invalidating PDEs breaks legacy MMs */
-        if (MI_IS_PAGE_TABLE_ADDRESS(Entry.u1.VirtualAddress))
+        /* Page tables are never trimmed */
+        if (MI_IS_PAGE_TABLE_ADDRESS(VirtualAddress))
             continue;
 
-        /* Please put yourself aside and make place for the younger ones */
         PFN_NUMBER Page = PFN_FROM_PTE(PointerPte);
         PMMPFN Pfn = MiGetPfnEntry(Page);
 
@@ -284,25 +257,18 @@ TrimWsList(PMMWSL WsList)
         ASSERT(Pfn->u3.e1.PrototypePte == 0);
         ASSERT(!MI_IS_ROS_PFN(Pfn));
 
-        /* FIXME: Remove this hack when possible */
-        if (Pfn->Wsle.u1.e1.LockedInMemory || (Pfn->Wsle.u1.e1.LockedInWs))
-        {
+        /* Pages locked by VirtualLock stay */
+        if (Pfn->Wsle.u1.e1.LockedInMemory || Pfn->Wsle.u1.e1.LockedInWs)
             continue;
-        }
 
-        /* The entry is wiped when released, keep what we need */
-        PVOID VirtualAddress = PAGE_ALIGN(Entry.u1.VirtualAddress);
-        ULONG Protection = Entry.u1.e1.Protection;
-
-        /* Releasing the index may touch the PFN database for the list itself */
-        RemoveFromWsList(WsList, VirtualAddress);
+        MiRemoveFromWorkingSetList(Vm, VirtualAddress);
 
         {
             ntoskrnl::MiPfnLockGuard PfnLock;
 
-            /* Make this a transition PTE */
+            /* The PFN has the current protection, the entry may be stale */
             MMPTE OldPte = *PointerPte;
-            MI_MAKE_TRANSITION_PTE(PointerPte, Page, Protection);
+            MI_MAKE_TRANSITION_PTE(PointerPte, Page, Pfn->OriginalPte.u.Soft.Protection);
             KeInvalidateTlbEntry(VirtualAddress);
 
             /* Dirtify the page, if needed */
@@ -315,7 +281,28 @@ TrimWsList(PMMWSL WsList)
 
         Ret++;
     }
+
     return Ret;
+}
+
+/**
+ * @brief Counts the working sets that can be trimmed.
+ * @remarks The expansion lock must be held.
+ */
+static
+ULONG
+CountExpansionList()
+{
+    ULONG Count = 0;
+
+    for (PLIST_ENTRY Entry = MmWorkingSetExpansionHead.Flink;
+         Entry != &MmWorkingSetExpansionHead;
+         Entry = Entry->Flink)
+    {
+        Count++;
+    }
+
+    return Count;
 }
 
 /* GLOBAL FUNCTIONS ***********************************************************/
@@ -349,8 +336,13 @@ MiInsertInWorkingSetList(
     /* Nor are "ROS PFN" */
     ASSERT(MI_IS_ROS_PFN(Pfn1) == FALSE);
 
-    Pfn1->u1.WsIndex = GetFreeWsleIndex(WsList);
-    MMWSLENTRY& NewWsle = WsList->Wsle[Pfn1->u1.WsIndex].u1.e1;
+    /* Without an entry the page just cannot be trimmed */
+    ULONG Index = GetFreeWsleIndex(WsList);
+    if (Index == ULONG_MAX)
+        return;
+
+    Pfn1->u1.WsIndex = Index;
+    MMWSLENTRY& NewWsle = WsList->Wsle[Index].u1.e1;
     NewWsle.VirtualPageNumber = reinterpret_cast<ULONG_PTR>(Address) >> PAGE_SHIFT;
     NewWsle.Protection = Protection;
     NewWsle.Direct = 1;
@@ -360,7 +352,7 @@ MiInsertInWorkingSetList(
     NewWsle.Age = 0;
     NewWsle.Valid = 1;
 
-    Vm->WorkingSetSize += PAGE_SIZE;
+    Vm->WorkingSetSize++;
     if (Vm->WorkingSetSize > Vm->PeakWorkingSetSize)
         Vm->PeakWorkingSetSize = Vm->WorkingSetSize;
 }
@@ -374,7 +366,48 @@ MiRemoveFromWorkingSetList(
 {
     RemoveFromWsList(Vm->VmWorkingSetList, Address);
 
-    Vm->WorkingSetSize -= PAGE_SIZE;
+    ASSERT(Vm->WorkingSetSize != 0);
+    Vm->WorkingSetSize--;
+}
+
+/**
+ * @brief Adds a valid private user page to the current process working set.
+ *
+ * @param[in] Address
+ * Faulting address.
+ *
+ * @remarks The process working set lock must be held exclusively and the PFN lock must not be.
+ */
+VOID
+NTAPI
+MiAddPrivatePageToWorkingSet(
+    _In_ PVOID Address)
+{
+    PEPROCESS Process = PsGetCurrentProcess();
+
+    if (Address > MM_HIGHEST_USER_ADDRESS)
+        return;
+
+    /* Hand built processes share a list that is not set up for this */
+    if (Process->Vm.WorkingSetExpansionLinks.Flink == NULL)
+        return;
+
+    PMMPTE PointerPte = MiAddressToPte(Address);
+    if (MiAddressToPde(Address)->u.Hard.Valid == 0 || PointerPte->u.Hard.Valid == 0)
+        return;
+
+    PMMPFN Pfn1 = MiGetPfnEntry(PFN_FROM_PTE(PointerPte));
+    if ((Pfn1 == NULL) ||
+        (Pfn1->u3.e1.PrototypePte == 1) ||
+        MI_IS_ROS_PFN(Pfn1) ||
+        (Pfn1->u3.e1.PageLocation != ActiveAndValid) ||
+        (Pfn1->u1.WsIndex != 0) ||
+        ((PMMPTE)((ULONG_PTR)Pfn1->PteAddress & ~1) != PointerPte))
+    {
+        return;
+    }
+
+    MiInsertInWorkingSetList(&Process->Vm, PAGE_ALIGN(Address), (ULONG)Pfn1->OriginalPte.u.Soft.Protection);
 }
 
 _Use_decl_annotations_
@@ -388,6 +421,7 @@ MiInitializeWorkingSetList(_Inout_ PMMSUPPORT WorkingSet)
     WsList->FirstFree = ULONG_MAX;
     WsList->Wsle = reinterpret_cast<PMMWSLE>(WsList + 1);
     WsList->LastEntry = 0;
+    WsList->FirstDynamic = 0;
     /* The first page is already allocated */
     WsList->LastInitializedWsle = (PAGE_SIZE - sizeof(*WsList)) / sizeof(MMWSLE);
 
@@ -420,84 +454,110 @@ MiInitializeWorkingSetList(_Inout_ PMMSUPPORT WorkingSet)
     ExInterlockedInsertTailList(&MmWorkingSetExpansionHead, &WorkingSet->WorkingSetExpansionLinks, &MmExpansionLock);
 }
 
+/**
+ * @brief Gives back the working set list pages that are no longer needed.
+ * @remarks The process working set lock must be held exclusively.
+ */
+VOID
+NTAPI
+MiShrinkWorkingSetList(
+    _Inout_ PMMSUPPORT WorkingSet)
+{
+    ASSERT(MM_ANY_WS_LOCK_HELD_EXCLUSIVE(PsGetCurrentThread()));
+
+    if (WorkingSet->VmWorkingSetList != NULL)
+        ShrinkWsList(WorkingSet->VmWorkingSetList);
+}
+
+/**
+ * @brief Trims process working sets when physical memory runs low.
+ * @remarks Runs on the balance set manager thread.
+ */
 VOID
 NTAPI
 MmWorkingSetManager(VOID)
 {
-    PLIST_ENTRY VmListEntry;
-    PMMSUPPORT Vm = NULL;
+    PETHREAD CurrentThread = PsGetCurrentThread();
     KIRQL OldIrql;
 
-    OldIrql = MiAcquireExpansionLock();
+    if (MmAvailablePages >= MmPlentyFreePages)
+        return;
 
-    for (VmListEntry = MmWorkingSetExpansionHead.Flink;
-         VmListEntry != &MmWorkingSetExpansionHead;
-         VmListEntry = VmListEntry->Flink)
+    OldIrql = MiAcquireExpansionLock();
+    ULONG Count = CountExpansionList();
+    MiReleaseExpansionLock(OldIrql);
+
+    while (Count-- && (MmAvailablePages < MmPlentyFreePages))
     {
         BOOLEAN TrimHard = MmAvailablePages < MmMinimumFreePages;
+
+        /* Take the working set off the list while we work on it */
+        OldIrql = MiAcquireExpansionLock();
+        if (IsListEmpty(&MmWorkingSetExpansionHead))
+        {
+            MiReleaseExpansionLock(OldIrql);
+            break;
+        }
+
+        PLIST_ENTRY VmListEntry = RemoveHeadList(&MmWorkingSetExpansionHead);
+        PMMSUPPORT Vm = CONTAINING_RECORD(VmListEntry, MMSUPPORT, WorkingSetExpansionLinks);
         PEPROCESS Process = NULL;
 
-        /* Don't do anything if we have plenty of free pages. */
-        if ((MmAvailablePages + MmModifiedPageListHead.Total) >= MmPlentyFreePages)
-            break;
-
-        Vm = CONTAINING_RECORD(VmListEntry, MMSUPPORT, WorkingSetExpansionLinks);
-
-        /* Let the legacy Mm System space alone */
-        if (Vm == MmGetKernelAddressSpace())
-            continue;
-
-        if (MI_IS_PROCESS_WORKING_SET(Vm))
+        /* FIXME: Session & system space unsupported */
+        if (MI_IS_PROCESS_WORKING_SET(Vm) && (Vm != MmGetKernelAddressSpace()))
         {
             Process = CONTAINING_RECORD(Vm, EPROCESS, Vm);
 
-            /* Make sure the process is not terminating abd attach to it */
-            if (!ExAcquireRundownProtection(&Process->RundownProtect))
-                continue;
-            ASSERT(!KeIsAttachedProcess());
-            KeAttachProcess(&Process->Pcb);
+            /* The reference keeps it on our side of the list removal in process deletion */
+            if (!ObReferenceObjectSafe(Process))
+                Process = NULL;
         }
-        else
+
+        if (Process == NULL)
         {
-            /* FIXME: Session & system space unsupported */
+            InsertTailList(&MmWorkingSetExpansionHead, VmListEntry);
+            MiReleaseExpansionLock(OldIrql);
             continue;
         }
 
         MiReleaseExpansionLock(OldIrql);
 
-        /* Share-lock for now, we're only reading */
-        MiLockWorkingSetShared(PsGetCurrentThread(), Vm);
-
-        if (((Vm->WorkingSetSize > Vm->MaximumWorkingSetSize) ||
-            (TrimHard && (Vm->WorkingSetSize > Vm->MinimumWorkingSetSize))) &&
-            MiConvertSharedWorkingSetLockToExclusive(PsGetCurrentThread(), Vm))
+        if (!Process->VmDeleted && ExAcquireRundownProtection(&Process->RundownProtect))
         {
-            /* We're done */
-            Vm->Flags.BeingTrimmed = 1;
+            ASSERT(!KeIsAttachedProcess());
+            KeAttachProcess(&Process->Pcb);
+            MiLockProcessWorkingSet(Process, CurrentThread);
 
-            ULONG Trimmed = TrimWsList(Vm->VmWorkingSetList);
+            if (!Process->VmDeleted)
+            {
+                ULONG Target = 0;
 
-            /* We're done */
-            Vm->WorkingSetSize -= Trimmed * PAGE_SIZE;
-            Vm->Flags.BeingTrimmed = 0;
-            MiUnlockWorkingSet(PsGetCurrentThread(), Vm);
-        }
-        else
-        {
-            MiUnlockWorkingSetShared(PsGetCurrentThread(), Vm);
-        }
+                if (TrimHard)
+                    Target = (ULONG)Vm->WorkingSetSize;
+                else if (Vm->WorkingSetSize > Vm->MinimumWorkingSetSize)
+                    Target = (ULONG)(Vm->WorkingSetSize - Vm->MinimumWorkingSetSize);
 
-        /* Lock again */
-        OldIrql = MiAcquireExpansionLock();
+                if (Target != 0)
+                {
+                    Vm->Flags.BeingTrimmed = 1;
+                    TrimWsList(Vm, TrimHard ? MI_WSLE_TRIM_AGE_HARD : MI_WSLE_TRIM_AGE, Target);
+                    ShrinkWsList(Vm->VmWorkingSetList);
+                    Vm->Flags.BeingTrimmed = 0;
+                }
+            }
 
-        if (Process)
-        {
+            MiUnlockProcessWorkingSet(Process, CurrentThread);
             KeDetachProcess();
             ExReleaseRundownProtection(&Process->RundownProtect);
         }
-    }
 
-    MiReleaseExpansionLock(OldIrql);
+        /* Back at the tail, the others get their turn first next time */
+        OldIrql = MiAcquireExpansionLock();
+        InsertTailList(&MmWorkingSetExpansionHead, VmListEntry);
+        MiReleaseExpansionLock(OldIrql);
+
+        ObDereferenceObject(Process);
+    }
 }
 
 } // extern "C"
