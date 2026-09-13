@@ -296,7 +296,8 @@ MmInitSystem(IN ULONG Phase,
     KeInitializeEvent(&MmWorkingSetManagerEvent, SynchronizationEvent, FALSE);
     MmInitBsmThread();
 
-    /* Start writing modified pages once paging files show up */
+    /* Start writing modified pages to paging files and mapped files */
+    MiInitializeDataFileMaps();
     MiInitializeModifiedPageWriter();
 
     /* Loop the boot loaded images (under lock) */

@@ -204,6 +204,21 @@ typedef struct _ROS_SHARED_CACHE_MAP
 #define SHARED_CACHE_MAP_IN_CREATION 0x4
 #define SHARED_CACHE_MAP_IN_LAZYWRITE 0x8
 
+/* Sections of cached files grow in these steps */
+#define CC_SECTION_GROWTH (1024 * 1024)
+
+/**
+ * @brief Rounds a size up to a multiple of a power of two.
+ */
+FORCEINLINE
+LONGLONG
+CcRosRoundSectionSize(
+    _In_ LONGLONG Size,
+    _In_ ULONG Alignment)
+{
+    return (Size + Alignment - 1) & ~((LONGLONG)Alignment - 1);
+}
+
 typedef struct _ROS_VACB
 {
     /* Base address of the region where the view's data is mapped. */
