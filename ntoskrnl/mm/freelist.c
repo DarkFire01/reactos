@@ -163,7 +163,7 @@ NTAPI
 MiIsPfnFree(IN PMMPFN Pfn1)
 {
     /* Must be a free or zero page, with no references, linked */
-    return ((Pfn1->u3.e1.PageLocation <= StandbyPageList) &&
+    return ((Pfn1->u3.e1.PageLocation <= FreePageList) &&
             (Pfn1->u1.Flink) &&
             (Pfn1->u2.Blink) &&
             !(Pfn1->u3.e2.ReferenceCount));
