@@ -700,6 +700,84 @@ MiDeleteVirtualAddresses(
     }
 }
 
+/**
+ * @brief Removes the PTEs of a view that maps pages without referencing them.
+ *
+ * @param[in] StartingAddress
+ * First page of the view.
+ *
+ * @param[in] EndingAddress
+ * Last address of the view.
+ *
+ * @remarks The working set lock of the current process must be held exclusively.
+ */
+VOID
+NTAPI
+MiDeletePhysicalViewAddresses(
+    _In_ ULONG_PTR StartingAddress,
+    _In_ ULONG_PTR EndingAddress)
+{
+    PEPROCESS Process = PsGetCurrentProcess();
+    ULONG_PTR Address = StartingAddress;
+    PFN_NUMBER PageTable;
+    PMMPDE PointerPde;
+    PMMPTE PointerPte;
+    KIRQL OldIrql;
+
+    ASSERT(MM_ANY_WS_LOCK_HELD_EXCLUSIVE(PsGetCurrentThread()));
+
+    OldIrql = MiAcquirePfnLock();
+
+    while ((Address >= StartingAddress) && (Address <= EndingAddress))
+    {
+#if (_MI_PAGING_LEVELS >= 4)
+        if (MiAddressToPxe((PVOID)Address)->u.Long == 0)
+        {
+            Address = (ULONG_PTR)MiPxeToAddress(MiAddressToPxe((PVOID)Address) + 1);
+            continue;
+        }
+#endif
+#if (_MI_PAGING_LEVELS >= 3)
+        if (MiAddressToPpe((PVOID)Address)->u.Long == 0)
+        {
+            Address = (ULONG_PTR)MiPpeToAddress(MiAddressToPpe((PVOID)Address) + 1);
+            continue;
+        }
+#endif
+        PointerPde = MiAddressToPde((PVOID)Address);
+        if (PointerPde->u.Long == 0)
+        {
+            Address = (ULONG_PTR)MiPdeToAddress(PointerPde + 1);
+            continue;
+        }
+
+        /* Page tables of user space are never trimmed */
+        ASSERT(PointerPde->u.Hard.Valid == 1);
+
+        PointerPte = MiAddressToPte((PVOID)Address);
+        if (PointerPte->u.Long != 0)
+        {
+            ASSERT(PointerPte->u.Hard.Valid == 1);
+            MI_ERASE_PTE(PointerPte);
+
+            PageTable = PointerPde->u.Hard.PageFrameNumber;
+            MiDecrementShareCount(MiGetPfnEntry(PageTable), PageTable);
+
+            if (MiDecrementPageTableReferences((PVOID)Address) == 0)
+            {
+                MiDeletePde(PointerPde, Process);
+                Address = (ULONG_PTR)MiPdeToAddress(PointerPde + 1);
+                continue;
+            }
+        }
+
+        Address += PAGE_SIZE;
+    }
+
+    KeFlushProcessTb();
+    MiReleasePfnLock(OldIrql);
+}
+
 LONG
 MiGetExceptionInfo(IN PEXCEPTION_POINTERS ExceptionInfo,
                    OUT PBOOLEAN HaveBadAddress,
@@ -1564,6 +1642,14 @@ MiQueryAddressState(IN PVOID Va,
     ULONG State = MEM_RESERVE, Protect = 0;
     ASSERT((Vad->StartingVpn <= ((ULONG_PTR)Va >> PAGE_SHIFT)) &&
            (Vad->EndingVpn >= ((ULONG_PTR)Va >> PAGE_SHIFT)));
+
+    /* Physical memory views are mapped whole when they are created */
+    if (Vad->u.VadFlags.VadType == VadDevicePhysicalMemory)
+    {
+        *NextVa = (PVOID)((ULONG_PTR)Va + PAGE_SIZE);
+        *ReturnedProtect = MmProtectToValue[Vad->u.VadFlags.Protection];
+        return MEM_COMMIT;
+    }
 
     /* Only normal and image VADs supported */
     ASSERT((Vad->u.VadFlags.VadType == VadNone) ||

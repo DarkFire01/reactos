@@ -280,8 +280,12 @@ MiCheckVirtualAddress(IN PVOID VirtualAddress,
             return NULL;
         }
 
-        /* ReactOS does not handle physical memory VADs yet */
-        ASSERT(Vad->u.VadFlags.VadType != VadDevicePhysicalMemory);
+        /* Physical memory views are mapped whole, a fault on one is an access violation */
+        if (Vad->u.VadFlags.VadType == VadDevicePhysicalMemory)
+        {
+            *ProtectCode = MM_NOACCESS;
+            return NULL;
+        }
 
         /* Check if it's a section, or just an allocation */
         if (Vad->u.VadFlags.PrivateMemory)
