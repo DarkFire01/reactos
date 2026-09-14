@@ -214,6 +214,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/dynamic.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/expool.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/hypermap.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/image.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/iosup.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/kdbg.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/largepag.c
