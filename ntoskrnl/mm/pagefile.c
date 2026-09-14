@@ -96,29 +96,11 @@ static PFN_COUNT MiReservedSwapPages;
  */
 #define MM_PAGEFILE_COMMIT_GRACE      (256)
 
-/*
- * Translate between a swap entry and a file and offset pair.
- */
-#define FILE_FROM_ENTRY(i) ((i) & 0x0f)
-#define OFFSET_FROM_ENTRY(i) ((i) >> 11)
-#define ENTRY_FROM_FILE_OFFSET(i, j) ((i) | ((j) << 11) | 0x400)
-
-/* Make sure there can be only 16 paging files */
-C_ASSERT(FILE_FROM_ENTRY(0xffffffff) < MAX_PAGING_FILES);
-
 static BOOLEAN MmSwapSpaceMessage = FALSE;
 
 static BOOLEAN MmSystemPageFileLocated = FALSE;
 
 /* FUNCTIONS *****************************************************************/
-
-VOID
-NTAPI
-MmBuildMdlFromPages(PMDL Mdl, PPFN_NUMBER Pages)
-{
-    memcpy(Mdl + 1, Pages, sizeof(PFN_NUMBER) * (PAGE_ROUND_UP(Mdl->ByteOffset+Mdl->ByteCount)/PAGE_SIZE));
-}
-
 
 BOOLEAN
 NTAPI
@@ -146,70 +128,6 @@ MmShowOutOfSpaceMessagePagingFile(VOID)
         DPRINT1("MM: Out of swap space.\n");
         MmSwapSpaceMessage = TRUE;
     }
-}
-
-NTSTATUS
-NTAPI
-MmWriteToSwapPage(SWAPENTRY SwapEntry, PFN_NUMBER Page)
-{
-    ULONG i;
-    ULONG_PTR offset;
-    LARGE_INTEGER file_offset;
-    IO_STATUS_BLOCK Iosb;
-    NTSTATUS Status;
-    KEVENT Event;
-    UCHAR MdlBase[sizeof(MDL) + sizeof(PFN_NUMBER)];
-    PMDL Mdl = (PMDL)MdlBase;
-
-    DPRINT("MmWriteToSwapPage\n");
-
-    if (SwapEntry == 0)
-    {
-        KeBugCheck(MEMORY_MANAGEMENT);
-        return(STATUS_UNSUCCESSFUL);
-    }
-
-    i = FILE_FROM_ENTRY(SwapEntry);
-    offset = OFFSET_FROM_ENTRY(SwapEntry);
-
-    if (MmPagingFile[i]->FileObject == NULL ||
-            MmPagingFile[i]->FileObject->DeviceObject == NULL)
-    {
-        DPRINT1("Bad paging file 0x%.8X\n", SwapEntry);
-        KeBugCheck(MEMORY_MANAGEMENT);
-    }
-
-    MmInitializeMdl(Mdl, NULL, PAGE_SIZE);
-    MmBuildMdlFromPages(Mdl, &Page);
-    Mdl->MdlFlags |= MDL_PAGES_LOCKED;
-
-    file_offset.QuadPart = offset * PAGE_SIZE;
-
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
-    Status = IoSynchronousPageWrite(MmPagingFile[i]->FileObject,
-                                    Mdl,
-                                    &file_offset,
-                                    &Event,
-                                    &Iosb);
-    if (Status == STATUS_PENDING)
-    {
-        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-        Status = Iosb.Status;
-    }
-
-    if (Mdl->MdlFlags & MDL_MAPPED_TO_SYSTEM_VA)
-    {
-        MmUnmapLockedPages (Mdl->MappedSystemVa, Mdl);
-    }
-    return(Status);
-}
-
-
-NTSTATUS
-NTAPI
-MmReadFromSwapPage(SWAPENTRY SwapEntry, PFN_NUMBER Page)
-{
-    return MiReadPageFile(Page, FILE_FROM_ENTRY(SwapEntry), OFFSET_FROM_ENTRY(SwapEntry));
 }
 
 NTSTATUS
@@ -247,7 +165,7 @@ MiReadPageFile(
     }
 
     MmInitializeMdl(Mdl, NULL, PAGE_SIZE);
-    MmBuildMdlFromPages(Mdl, &Page);
+    *MmGetMdlPfnArray(Mdl) = Page;
     Mdl->MdlFlags |= MDL_PAGES_LOCKED | MDL_IO_PAGE_READ;
 
     file_offset.QuadPart = PageFileOffset * PAGE_SIZE;
@@ -479,44 +397,6 @@ MiReleasePageFileSpace(
     MiReleasePageFilePage((ULONG)PteContents.u.Soft.PageFileLow, PteContents.u.Soft.PageFileHigh);
     KeReleaseSpinLock(&MiPageFileLock, OldIrql);
     return TRUE;
-}
-
-VOID
-NTAPI
-MmFreeSwapPage(SWAPENTRY Entry)
-{
-    KIRQL OldIrql;
-
-    KeAcquireSpinLock(&MiPageFileLock, &OldIrql);
-    MiReleasePageFilePage(FILE_FROM_ENTRY(Entry), OFFSET_FROM_ENTRY(Entry));
-    KeReleaseSpinLock(&MiPageFileLock, OldIrql);
-
-    UpdateTotalCommittedPages(-1);
-}
-
-SWAPENTRY
-NTAPI
-MmAllocSwapPage(VOID)
-{
-    KIRQL OldIrql;
-    ULONG i, Offset;
-
-    KeAcquireSpinLock(&MiPageFileLock, &OldIrql);
-
-    for (i = 0; i < MmNumberOfPagingFiles; i++)
-    {
-        Offset = MiClaimPageFileRun(MmPagingFile[i], 1);
-        if (Offset != MAXULONG)
-        {
-            KeReleaseSpinLock(&MiPageFileLock, OldIrql);
-            UpdateTotalCommittedPages(1);
-            return ENTRY_FROM_FILE_OFFSET(i, Offset);
-        }
-    }
-
-    KeReleaseSpinLock(&MiPageFileLock, OldIrql);
-    MmShowOutOfSpaceMessagePagingFile();
-    return 0;
 }
 
 NTSTATUS

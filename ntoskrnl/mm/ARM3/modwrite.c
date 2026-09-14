@@ -399,6 +399,19 @@ MiNotifyAvailablePages(
 }
 
 /**
+ * @brief Gets modified pages written and working sets trimmed, without waiting for it.
+ */
+VOID
+NTAPI
+MiWakeMemoryReclaim(VOID)
+{
+    MiWakeModifiedPageWriter();
+
+    if (MiModifiedPageWriterStarted)
+        KeSetEvent(&MmWorkingSetManagerEvent, IO_NO_INCREMENT, FALSE);
+}
+
+/**
  * @brief Waits for pages to become available after an allocation failed.
  *
  * @remarks Must be called without any working set lock held, the fault is retried afterwards.
@@ -412,17 +425,12 @@ MiWaitForFreePage(VOID)
     ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
     ASSERT(!MM_ANY_WS_LOCK_HELD(PsGetCurrentThread()));
 
-    /* Get modified pages written and legacy pages trimmed */
-    MiWakeModifiedPageWriter();
-    MmRebalanceMemoryConsumers();
+    MiWakeMemoryReclaim();
 
     if (!MiModifiedPageWriterStarted)
         return;
 
-    /* And working sets trimmed */
-    KeSetEvent(&MmWorkingSetManagerEvent, IO_NO_INCREMENT, FALSE);
-
-    /* The legacy balancer frees pages without telling anyone, so do not wait forever */
+    /* A single freed page is enough to retry but does not reach the threshold that sets the event */
     Timeout.QuadPart = -100 * 10000LL;
     KeWaitForSingleObject(&MiAvailablePagesEvent, WrFreePage, KernelMode, FALSE, &Timeout);
 }

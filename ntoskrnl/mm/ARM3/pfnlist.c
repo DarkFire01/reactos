@@ -124,9 +124,6 @@ MiDecrementAvailablePages(
 
         /* Trimmed pages end up there too */
         MiWakeWorkingSetManager();
-
-        /* Call RosMm and see if it can release any pages for us */
-        MmRebalanceMemoryConsumers();
     }
 }
 
@@ -750,7 +747,6 @@ MiInsertPageInFreeList(IN PFN_NUMBER PageFrameIndex)
     Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
 
     /* Sanity checks that a right kind of page is being inserted here */
-    ASSERT(Pfn1->u4.MustBeCached == 0);
     ASSERT(Pfn1->u3.e1.Rom != 1);
     ASSERT(Pfn1->u3.e1.RemovalRequested == 0);
     ASSERT(Pfn1->u4.VerifierAllocation == 0);
@@ -856,7 +852,6 @@ MiInsertStandbyListAtFront(IN PFN_NUMBER PageFrameIndex)
 
     /* Grab the PFN and validate it is the right kind of PFN being inserted */
     Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
-    ASSERT(Pfn1->u4.MustBeCached == 0);
     ASSERT(Pfn1->u3.e2.ReferenceCount == 0);
     ASSERT(Pfn1->u3.e1.Rom != 1);
 
@@ -1280,7 +1275,6 @@ MiDecrementShareCount(IN PMMPFN Pfn1,
     ASSERT(PageFrameIndex > 0);
     ASSERT(MI_PFN_ELEMENT(PageFrameIndex) != NULL);
     ASSERT(Pfn1 == MI_PFN_ELEMENT(PageFrameIndex));
-    ASSERT(MI_IS_ROS_PFN(Pfn1) == FALSE);
 
     DPRINT("Decrementing %p from %p\n", Pfn1, _ReturnAddress());
 
@@ -1365,22 +1359,11 @@ MiDecrementShareCount(IN PMMPFN Pfn1,
 
 VOID
 NTAPI
-MmDereferencePage(PFN_NUMBER Pfn);
-
-VOID
-NTAPI
 MiDecrementReferenceCount(IN PMMPFN Pfn1,
                           IN PFN_NUMBER PageFrameIndex)
 {
     /* PFN lock must be held */
     MI_ASSERT_PFN_LOCK_HELD();
-
-    /* Handle RosMm PFNs here, too (in case they got locked/unlocked by ARM3) */
-    if (MI_IS_ROS_PFN(Pfn1))
-    {
-        MmDereferencePage(PageFrameIndex);
-        return;
-    }
 
     /* Sanity checks on the page */
     if (PageFrameIndex > MmHighestPhysicalPage ||
