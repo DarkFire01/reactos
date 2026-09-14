@@ -865,6 +865,19 @@ static PHALP_IRQ_ROUTER HalpPirRouters[] =
 {
     &HalpEscRouter,         /* 0x00 Intel 82375EB/SB */
     &HalpPiixRouter,        /* 0x01 Intel PIIX and ICH */
+    NULL,                   /* 0x02 */
+    NULL,                   /* 0x03 */
+    &HalpSisRouter,         /* 0x04 SiS 5503 */
+    NULL,                   /* 0x05 */
+    &HalpAli1523Router,     /* 0x06 ALi M1523 */
+    NULL,                   /* 0x07 */
+    &HalpCompaqMisc3Router, /* 0x08 Compaq MISC-3 */
+    &HalpAli1533Router,     /* 0x09 ALi M1533 */
+    NULL,                   /* 0x0A */
+    &HalpViaRouter,         /* 0x0B VIA VT82C586B, VT82C596B, VT82C686B */
+    &HalpCompaqOsbRouter,   /* 0x0C Compaq OSB */
+    &HalpCompaqCmc2Router,  /* 0x0D Compaq CMC-2 */
+    &HalpCx5520Router,      /* 0x0E Cyrix 5520 */
 };
 
 /*

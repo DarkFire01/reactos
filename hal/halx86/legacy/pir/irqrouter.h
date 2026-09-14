@@ -143,6 +143,24 @@ HalpPirSetNibble(
     return High ? (UCHAR)((Value & 0x0F) | (Nibble << 4)) : (UCHAR)((Value & 0xF0) | Nibble);
 }
 
+/* aliirq.c */
+extern HALP_IRQ_ROUTER HalpAli1523Router;
+extern HALP_IRQ_ROUTER HalpAli1533Router;
+
+/* compaqirq.c */
+extern HALP_IRQ_ROUTER HalpCompaqCmc2Router;
+extern HALP_IRQ_ROUTER HalpCompaqMisc3Router;
+extern HALP_IRQ_ROUTER HalpCompaqOsbRouter;
+
+/* cyrixirq.c */
+extern HALP_IRQ_ROUTER HalpCx5520Router;
+
 /* intelirq.c */
 extern HALP_IRQ_ROUTER HalpEscRouter;
 extern HALP_IRQ_ROUTER HalpPiixRouter;
+
+/* sisirq.c */
+extern HALP_IRQ_ROUTER HalpSisRouter;
+
+/* viairq.c */
+extern HALP_IRQ_ROUTER HalpViaRouter;
