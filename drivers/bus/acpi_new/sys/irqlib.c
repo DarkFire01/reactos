@@ -166,6 +166,8 @@ static PVOID              UacpiProcessorChangeHandle;
 static ULONG UacpiGsivVector[UACPI_MAX_GSIV];
 static ULONG UacpiGsivLevelMask[UACPI_MAX_GSIV / 32];   // 1 bit/GSIV: level/active-low
 static ULONG UacpiGsivIsoEdge[UACPI_MAX_GSIV / 32];     // 1 bit/GSIV: MADT ISO pinned EDGE
+static ULONG UacpiGsivIsoHigh[UACPI_MAX_GSIV / 32];     // 1 bit/GSIV: MADT ISO pinned active-high
+static ULONG UacpiGsivIsoLow[UACPI_MAX_GSIV / 32];      // 1 bit/GSIV: MADT ISO pinned active-low
 
 static FAST_MUTEX UacpiIrqLibLock;
 static BOOLEAN    UacpiIrqLibReady;
@@ -197,6 +199,22 @@ static BOOLEAN UacpipGsivIsLevel(ULONG Gsiv)
 {
     return (Gsiv < UACPI_MAX_GSIV) &&
            ((UacpiGsivLevelMask[Gsiv / 32] >> (Gsiv % 32)) & 1);
+}
+// A MADT ISO polarity wins; otherwise level lines are active-low and edge lines active-high.
+static BOOLEAN UacpipGsivIsActiveLow(ULONG Gsiv)
+{
+    if (Gsiv < UACPI_MAX_GSIV)
+    {
+        if ((UacpiGsivIsoHigh[Gsiv / 32] >> (Gsiv % 32)) & 1)
+        {
+            return FALSE;
+        }
+        if ((UacpiGsivIsoLow[Gsiv / 32] >> (Gsiv % 32)) & 1)
+        {
+            return TRUE;
+        }
+    }
+    return UacpipGsivIsLevel(Gsiv);
 }
 
 // IDT vectors the HAL granted the ACPI root at start; only these are ours.
@@ -769,7 +787,7 @@ UacpiIrqLibResolveVector(ULONG Gsiv,
         *Vector   = vector;
         *Irql     = irql;
         *Affinity = KeQueryActiveProcessors();
-        *Polarity = UacpipGsivIsLevel(Gsiv) ? 2 : 1;
+        *Polarity = UacpipGsivIsActiveLow(Gsiv) ? 2 : 1;
         *Mode     = UacpipGsivIsLevel(Gsiv) ? 0 : 1;
 
         UacpiTrace("[acpi] irqlib: secondary GSIV %u -> vector 0x%X irql %u\n",
@@ -843,12 +861,13 @@ UacpiIrqLibResolveVector(ULONG Gsiv,
     }
 
     *Affinity = affinity;
-    *Polarity = UacpipGsivIsLevel(Gsiv) ? 2: 1;               // ActiveLow: ActiveHigh
+    *Polarity = UacpipGsivIsActiveLow(Gsiv) ? 2: 1;           // ActiveLow: ActiveHigh
     *Mode     = UacpipGsivIsLevel(Gsiv) ? 0 /*Level*/: 1 /*Latched*/;
 
-    UacpiTrace("[acpi] irqlib: GSIV %u -> vector 0x%X irql %u affinity 0x%p %s (%s)\n",
+    UacpiTrace("[acpi] irqlib: GSIV %u -> vector 0x%X irql %u affinity 0x%p %s/%s (%s)\n",
               Gsiv, vector, irql, (PVOID)*Affinity,
-              *Polarity == 2 ? "level/low": "edge/high",
+              *Mode == 0 ? "level" : "edge",
+              *Polarity == 2 ? "low" : "high",
               g_AcpiInterruptModel == 1 ? "APIC" : "PIC");
     return STATUS_SUCCESS;
 }
@@ -1104,6 +1123,7 @@ UacpiIrqLibParseMadt(VOID)
             if (iso->bus == 0 && iso->source < 16)
             {
                 ULONG trig = iso->flags & ACPI_MADT_TRIGGERING_MASK;
+                ULONG pol  = iso->flags & ACPI_MADT_POLARITY_MASK;
                 UacpiIsaOverride[iso->source].Gsiv  = iso->gsi;
                 UacpiIsaOverride[iso->source].Valid = TRUE;
                 // Explicit ISO trigger wins over _CRS; conforming stays edge.
@@ -1114,6 +1134,18 @@ UacpiIrqLibParseMadt(VOID)
                 else if (trig == ACPI_MADT_TRIGGERING_EDGE)
                 {
                     UacpiIrqLibNoteEdgeGsiv(iso->gsi);
+                }
+                // An explicit ISO polarity also wins; conforming follows the trigger.
+                if (iso->gsi < UACPI_MAX_GSIV)
+                {
+                    if (pol == ACPI_MADT_POLARITY_ACTIVE_HIGH)
+                    {
+                        UacpiGsivIsoHigh[iso->gsi / 32] |= (1ul << (iso->gsi % 32));
+                    }
+                    else if (pol == ACPI_MADT_POLARITY_ACTIVE_LOW)
+                    {
+                        UacpiGsivIsoLow[iso->gsi / 32] |= (1ul << (iso->gsi % 32));
+                    }
                 }
                 UacpiTrace("[acpi] irqlib: MADT ISO IRQ %u -> GSIV %u flags 0x%X\n",
                           iso->source, iso->gsi, iso->flags);
@@ -1202,14 +1234,15 @@ UacpiHalGetVectorInputOverride(ULONG Vector, KAFFINITY Affinity,
         if (UacpiGsivVector[i] == Vector)
         {
             if (Input)    *Input    = i;
-            if (Polarity) *Polarity = UacpipGsivIsLevel(i) ? InterruptActiveLow
-                                                           : InterruptActiveHigh;
+            if (Polarity) *Polarity = UacpipGsivIsActiveLow(i) ? InterruptActiveLow
+                                                               : InterruptActiveHigh;
 #if (NTDDI_VERSION >= NTDDI_WIN7)
             // No interrupt remapping.
             if (IntRemapInfo) RtlZeroMemory(IntRemapInfo, sizeof(*IntRemapInfo));
 #endif
-            UacpiTrace("[acpi] irqlib: SLOT23 GetVectorInput(vector 0x%X) -> gsiv %u %s\n",
-                      Vector, i, UacpipGsivIsLevel(i) ? "level/low" : "edge/high");
+            UacpiTrace("[acpi] irqlib: SLOT23 GetVectorInput(vector 0x%X) -> gsiv %u %s/%s\n",
+                      Vector, i, UacpipGsivIsLevel(i) ? "level" : "edge",
+                      UacpipGsivIsActiveLow(i) ? "low" : "high");
             return STATUS_SUCCESS;
         }
     }
