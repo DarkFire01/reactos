@@ -563,9 +563,6 @@ MiDeleteVirtualAddresses(
     KIRQL OldIrql;
     BOOLEAN SectionVad;
 
-    /* We should never get RosMm memory areas here */
-    ASSERT((Vad == NULL) || !MI_IS_MEMORY_AREA_VAD(Vad));
-
     /* Get the current process */
     CurrentProcess = PsGetCurrentProcess();
 
@@ -1410,13 +1407,6 @@ MmFlushVirtualMemory(IN PEPROCESS Process,
         goto Quit;
     }
 
-    /* Legacy views have nothing to flush from here */
-    if (MI_IS_MEMORY_AREA_VAD(Vad))
-    {
-        Status = STATUS_SUCCESS;
-        goto Quit;
-    }
-
     if (*RegionSize == 0)
         EndingAddress = (Vad->EndingVpn << PAGE_SHIFT) | (PAGE_SIZE - 1);
     else
@@ -1830,7 +1820,6 @@ MiQueryMemoryBasicInformation(IN HANDLE ProcessHandle,
     MEMORY_BASIC_INFORMATION MemoryInfo;
     KAPC_STATE ApcState;
     KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
-    SIZE_T ResultLength;
 
     /* Check for illegal addresses in user-space, or the shared memory area */
     if ((BaseAddress > MM_HIGHEST_VAD_ADDRESS) ||
@@ -2055,57 +2044,42 @@ MiQueryMemoryBasicInformation(IN HANDLE ProcessHandle,
         MemoryInfo.Type = MEM_MAPPED;
     }
 
-    /* Check if this is a RosMM VAD */
-    if (MI_IS_ROSMM_VAD(Vad))
-    {
-        ASSERT(((PMEMORY_AREA)Vad)->Type == MEMORY_AREA_SECTION_VIEW);
-        Status = MmQuerySectionView((PMEMORY_AREA)Vad, BaseAddress, &MemoryInfo, &ResultLength);
-        if (!NT_SUCCESS(Status))
-        {
-            DPRINT1("MmQuerySectionView failed. MemoryArea=%p (%p-%p), BaseAddress=%p\n",
-                    Vad, Vad->StartingVpn, Vad->EndingVpn, BaseAddress);
-            ASSERT(NT_SUCCESS(Status));
-        }
-    }
-    else
-    {
-        /* Build the initial information block */
-        Address = PAGE_ALIGN(BaseAddress);
-        MemoryInfo.BaseAddress = Address;
-        MemoryInfo.AllocationBase = (PVOID)(Vad->StartingVpn << PAGE_SHIFT);
-        MemoryInfo.AllocationProtect = MmProtectToValue[Vad->u.VadFlags.Protection];
+    /* Build the initial information block */
+    Address = PAGE_ALIGN(BaseAddress);
+    MemoryInfo.BaseAddress = Address;
+    MemoryInfo.AllocationBase = (PVOID)(Vad->StartingVpn << PAGE_SHIFT);
+    MemoryInfo.AllocationProtect = MmProtectToValue[Vad->u.VadFlags.Protection];
 
-        /* Acquire the working set lock (shared is enough) */
-        MiLockProcessWorkingSetShared(TargetProcess, PsGetCurrentThread());
+    /* Acquire the working set lock (shared is enough) */
+    MiLockProcessWorkingSetShared(TargetProcess, PsGetCurrentThread());
 
-        /* Find the largest chunk of memory which has the same state and protection mask */
-        MemoryInfo.State = MiQueryAddressState(Address,
-                                               Vad,
-                                               TargetProcess,
-                                               &MemoryInfo.Protect,
-                                               &NextAddress);
+    /* Find the largest chunk of memory which has the same state and protection mask */
+    MemoryInfo.State = MiQueryAddressState(Address,
+                                           Vad,
+                                           TargetProcess,
+                                           &MemoryInfo.Protect,
+                                           &NextAddress);
+    Address = NextAddress;
+    while (((ULONG_PTR)Address >> PAGE_SHIFT) <= Vad->EndingVpn)
+    {
+        /* Keep going unless the state or protection mask changed */
+        NewState = MiQueryAddressState(Address, Vad, TargetProcess, &NewProtect, &NextAddress);
+        if ((NewState != MemoryInfo.State) || (NewProtect != MemoryInfo.Protect)) break;
         Address = NextAddress;
-        while (((ULONG_PTR)Address >> PAGE_SHIFT) <= Vad->EndingVpn)
-        {
-            /* Keep going unless the state or protection mask changed */
-            NewState = MiQueryAddressState(Address, Vad, TargetProcess, &NewProtect, &NextAddress);
-            if ((NewState != MemoryInfo.State) || (NewProtect != MemoryInfo.Protect)) break;
-            Address = NextAddress;
-        }
-
-        /* Release the working set lock */
-        MiUnlockProcessWorkingSetShared(TargetProcess, PsGetCurrentThread());
-
-        /* Check if we went outside of the VAD */
-         if (((ULONG_PTR)Address >> PAGE_SHIFT) > Vad->EndingVpn)
-         {
-            /* Set the end of the VAD as the end address */
-            Address = (PVOID)((Vad->EndingVpn + 1) << PAGE_SHIFT);
-         }
-
-        /* Now that we know the last VA address, calculate the region size */
-        MemoryInfo.RegionSize = ((ULONG_PTR)Address - (ULONG_PTR)MemoryInfo.BaseAddress);
     }
+
+    /* Release the working set lock */
+    MiUnlockProcessWorkingSetShared(TargetProcess, PsGetCurrentThread());
+
+    /* Check if we went outside of the VAD */
+    if (((ULONG_PTR)Address >> PAGE_SHIFT) > Vad->EndingVpn)
+    {
+        /* Set the end of the VAD as the end address */
+        Address = (PVOID)((Vad->EndingVpn + 1) << PAGE_SHIFT);
+    }
+
+    /* Now that we know the last VA address, calculate the region size */
+    MemoryInfo.RegionSize = ((ULONG_PTR)Address - (ULONG_PTR)MemoryInfo.BaseAddress);
 
     /* Unlock the address space of the process */
     MmUnlockAddressSpace(&TargetProcess->Vm);
@@ -2606,23 +2580,6 @@ MiProtectVirtualMemory(IN PEPROCESS Process,
         goto FailPath;
     }
 
-    /* Check if this is a ROSMM VAD */
-    if (MI_IS_ROSMM_VAD(Vad))
-    {
-        /* Not too shabby hack */
-        ASSERT(((PMEMORY_AREA)Vad)->Type == MEMORY_AREA_SECTION_VIEW);
-        *NumberOfBytesToProtect = PAGE_ROUND_UP((ULONG_PTR)(*BaseAddress) + (*NumberOfBytesToProtect)) - PAGE_ROUND_DOWN(*BaseAddress);
-        *BaseAddress = (PVOID)PAGE_ROUND_DOWN(*BaseAddress);
-        Status = MmProtectSectionView(AddressSpace,
-                                      (PMEMORY_AREA)Vad,
-                                      *BaseAddress,
-                                      *NumberOfBytesToProtect,
-                                      NewAccessProtection,
-                                      OldAccessProtection);
-        MmUnlockAddressSpace(AddressSpace);
-        return Status;
-    }
-
     /* Make sure the address is within this VAD's boundaries */
     if ((((ULONG_PTR)StartingAddress >> PAGE_SHIFT) < Vad->StartingVpn) ||
         (((ULONG_PTR)EndingAddress >> PAGE_SHIFT) > Vad->EndingVpn))
@@ -3025,7 +2982,6 @@ MiDecommitPages(IN PVOID StartingAddress,
                     // PFN. Also, we don't support ProtoPTEs in this code path.
                     //
                     Pfn1 = MiGetPfnEntry(PteContents.u.Hard.PageFrameNumber);
-                    ASSERT(MI_IS_ROS_PFN(Pfn1) == FALSE);
                     ASSERT(Pfn1->u3.e1.PrototypePte == FALSE);
 
                     //
@@ -3678,7 +3634,6 @@ MiCheckVadsForLockOperation(
         Vad = MiLocateAddress(CurrentVa);
         if (Vad == NULL)
         {
-            /// FIXME: this might be a memory area for a section view...
             return STATUS_ACCESS_VIOLATION;
         }
 
@@ -5232,16 +5187,6 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
         goto FailPath;
     }
 
-    //
-    // Make sure this is an ARM3 section
-    //
-    if (MI_IS_ROSMM_VAD(FoundVad))
-    {
-        DPRINT1("Illegal commit of non-ARM3 section!\n");
-        Status = STATUS_ALREADY_COMMITTED;
-        goto FailPath;
-    }
-
     // Is this a previously reserved section being committed? If so, enter the
     // special section path
     //
@@ -5902,7 +5847,6 @@ NtFreeVirtualMemory(IN HANDLE ProcessHandle,
                     //
                     // Now the addresses for both VADs are consistent,
                     // so insert the new one.
-                    // ReactOS: This will take care of creating a second MEMORY_AREA.
                     //
                     MiInsertVad(NewVad, &Process->VadRoot);
 

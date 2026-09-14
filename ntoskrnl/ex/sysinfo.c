@@ -1651,7 +1651,7 @@ QSI_DEF(SystemFullMemoryInformation)
            MiFreeSwapPages,
            MiUsedSwapPages);
 
-    *Spi = MiMemoryConsumers[MC_USER].PagesUsed;
+    *Spi = (ULONG)(MmNumberOfPhysicalPages - MmAvailablePages);
 
     return STATUS_SUCCESS;
 }

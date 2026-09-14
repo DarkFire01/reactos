@@ -2755,12 +2755,11 @@ ExitUser:
 
     if (Status == STATUS_NO_MEMORY)
     {
-        /* Don't wait on the balancer while holding AddressCreationLock (CORE-20761) */
+        /* Don't wait for free pages while holding AddressCreationLock (CORE-20761) */
         if (CurrentProcess->AddressCreationLock.Owner == KeGetCurrentThread())
         {
             static LARGE_INTEGER TinyTime = {{-1L, -1L}};
-            MiWakeModifiedPageWriter();
-            MmRebalanceMemoryConsumers();
+            MiWakeMemoryReclaim();
             KeDelayExecutionThread(KernelMode, FALSE, &TinyTime);
         }
         else
