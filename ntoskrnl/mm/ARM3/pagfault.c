@@ -1539,12 +1539,13 @@ MiDispatchFault(IN ULONG FaultCode,
                     PageFrameIndex = TempPte.u.Trans.PageFrameNumber;
                     DPRINT("oooh, shiny, a soft fault! 0x%lx\n", PageFrameIndex);
                     Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
-                    ASSERT(Pfn1->u3.e1.PageLocation != ActiveAndValid);
-                    ASSERT(Pfn1->u4.InPageError == 0);
 
-                    /* A page still being read in is handled by the slow path */
+                    /* A page still being read in is handled by the slow path, a paging file read keeps it active */
                     if (Pfn1->u3.e1.ReadInProgress)
                         break;
+
+                    ASSERT(Pfn1->u3.e1.PageLocation != ActiveAndValid);
+                    ASSERT(Pfn1->u4.InPageError == 0);
 
                     /* Get the page, unless a lock or a write keeps it off the lists */
                     if (Pfn1->u3.e1.PageLocation != TransitionPage)
