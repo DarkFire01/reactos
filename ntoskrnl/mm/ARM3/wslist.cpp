@@ -635,6 +635,10 @@ MmWorkingSetManager(VOID)
     if (MmAvailablePages >= MmPlentyFreePages)
         return;
 
+    /* Cache views nobody uses only keep their pages for later reads */
+    ULONG CachePagesFreed;
+    CcRosTrimCache((ULONG)(MmPlentyFreePages - MmAvailablePages), &CachePagesFreed);
+
     OldIrql = MiAcquireExpansionLock();
     ULONG Count = CountExpansionList();
     MiReleaseExpansionLock(OldIrql);
