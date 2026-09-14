@@ -158,19 +158,9 @@ KdbpOverwriteInstruction(
     IN  UCHAR NewInst,
     OUT PUCHAR OldInst  OPTIONAL)
 {
-    NTSTATUS Status;
-    ULONG Protect;
+    NTSTATUS Status = STATUS_SUCCESS;
     PEPROCESS CurrentProcess = PsGetCurrentProcess();
     KAPC_STATE ApcState;
-
-    /* Get the protection for the address. */
-    Protect = MmGetPageProtect(Process, (PVOID)PAGE_ROUND_DOWN(Address));
-
-    /* Return if that page isn't present. */
-    if (Protect & PAGE_NOACCESS)
-    {
-        return STATUS_MEMORY_NOT_ALLOCATED;
-    }
 
     /* Attach to the process */
     if (CurrentProcess != Process)
@@ -178,41 +168,16 @@ KdbpOverwriteInstruction(
         KeStackAttachProcess(&Process->Pcb, &ApcState);
     }
 
-    /* Make the page writeable if it is read only. */
-    if (Protect & (PAGE_READONLY|PAGE_EXECUTE|PAGE_EXECUTE_READ))
-    {
-        MmSetPageProtect(Process, (PVOID)PAGE_ROUND_DOWN(Address),
-                         (Protect & ~(PAGE_READONLY|PAGE_EXECUTE|PAGE_EXECUTE_READ)) | PAGE_READWRITE);
-    }
-
     /* Copy the old instruction back to the caller. */
     if (OldInst)
     {
         Status = KdbpSafeReadMemory(OldInst, (PUCHAR)Address, 1);
-        if (!NT_SUCCESS(Status))
-        {
-            if (Protect & (PAGE_READONLY|PAGE_EXECUTE|PAGE_EXECUTE_READ))
-            {
-                MmSetPageProtect(Process, (PVOID)PAGE_ROUND_DOWN(Address), Protect);
-            }
-
-            /* Detach from process */
-            if (CurrentProcess != Process)
-            {
-                KeUnstackDetachProcess(&ApcState);
-            }
-
-            return Status;
-        }
     }
 
-    /* Copy the new instruction in its place. */
-    Status = KdbpSafeWriteMemory((PUCHAR)Address, &NewInst, 1);
-
-    /* Restore the page protection. */
-    if (Protect & (PAGE_READONLY|PAGE_EXECUTE|PAGE_EXECUTE_READ))
+    /* Copy the new instruction in its place, a read only page is written through its physical page. */
+    if (NT_SUCCESS(Status))
     {
-        MmSetPageProtect(Process, (PVOID)PAGE_ROUND_DOWN(Address), Protect);
+        Status = KdbpSafeWriteMemory((PUCHAR)Address, &NewInst, 1);
     }
 
     /* Detach from process */
