@@ -650,9 +650,6 @@ extern BOOLEAN HalBootViaEfi;
 /* Interrupt controller used by this HAL: 0 for the PIC, 1 for the APIC */
 extern ULONG HalpInterruptControllerType;
 
-/* Set when a PCI IRQ router owns the ELCR */
-extern BOOLEAN HalpIrqRouterInitialized;
-
 /* Set when PCI interrupts are routed through the $PIR links */
 extern BOOLEAN HalpPciIrqRoutingActive;
 
