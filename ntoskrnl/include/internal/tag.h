@@ -103,16 +103,8 @@
 #define TAG_LDR_IMPORTS         'milk' /* klim - kernel ldr imports */
 
 /* Memory Manager Tags */
-#define TAG_PTRC                'CRTP'
-#define TAG_MAREA               'ERAM'
-#define TAG_MVAD                'VADM'
-#define TAG_MM_PAGEOP           'POPM'
 #define TAG_NONE                'enoN'
-#define TAG_MM_REGION           'NGRM'
-#define TAG_RMAP                'PAMR'
 #define TAG_MM                  '  mM'
-#define TAG_MM_SECTION_SEGMENT  'SSMM'
-#define TAG_SECTION_PAGE_TABLE  'TPSM'
 
 /* Object Manager Tags */
 #define OB_NAME_TAG             'mNbO'

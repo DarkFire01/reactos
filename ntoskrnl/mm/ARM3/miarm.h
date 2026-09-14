@@ -1122,18 +1122,6 @@ MI_WS_OWNER(IN PEPROCESS Process)
              (PsGetCurrentThread()->OwnsProcessWorkingSetShared)));
 }
 
-//
-// New ARM3<->RosMM PAGE Architecture
-//
-FORCEINLINE
-BOOLEAN
-MiIsRosSectionObject(IN PSECTION Section)
-{
-    return Section->u.Flags.filler;
-}
-
-#define MI_IS_ROS_PFN(x)     ((x)->u4.AweAllocation == TRUE)
-
 VOID
 NTAPI
 MiDecrementReferenceCount(
@@ -1707,18 +1695,7 @@ MiReferenceProbedPageAndBumpLockCount(IN PMMPFN Pfn1)
 
     /* Sanity check */
     ASSERT(Pfn1->u3.e2.ReferenceCount != 0);
-
-    /* Does ARM3 own the page? */
-    if (MI_IS_ROS_PFN(Pfn1))
-    {
-        /* ReactOS Mm doesn't track share count */
-        ASSERT(Pfn1->u3.e1.PageLocation == ActiveAndValid);
-    }
-    else
-    {
-        /* On ARM3 pages, we should see a valid share count */
-        ASSERT((Pfn1->u2.ShareCount != 0) && (Pfn1->u3.e1.PageLocation == ActiveAndValid));
-    }
+    ASSERT((Pfn1->u2.ShareCount != 0) && (Pfn1->u3.e1.PageLocation == ActiveAndValid));
 
     /* More locked pages! */
     InterlockedIncrementSizeT(&MmSystemLockPagesCount);
@@ -1895,23 +1872,6 @@ NTAPI
 MiPagesInLoaderBlock(
     IN PLOADER_PARAMETER_BLOCK LoaderBlock,
     IN PBOOLEAN IncludeType
-);
-
-VOID
-FASTCALL
-MiSyncARM3WithROS(
-    IN PVOID AddressStart,
-    IN PVOID AddressEnd
-);
-
-NTSTATUS
-NTAPI
-MiRosProtectVirtualMemory(
-    IN PEPROCESS Process,
-    IN OUT PVOID *BaseAddress,
-    IN OUT PSIZE_T NumberOfBytesToProtect,
-    IN ULONG NewAccessProtection,
-    OUT PULONG OldAccessProtection OPTIONAL
 );
 
 NTSTATUS
@@ -2294,14 +2254,6 @@ MiInsertBasedSection(
     IN PSECTION Section
 );
 
-NTSTATUS
-NTAPI
-MiRosUnmapViewOfSection(
-    _In_ PEPROCESS Process,
-    _In_ PMEMORY_AREA MemoryArea,
-    _In_ PVOID BaseAddress,
-    _In_ BOOLEAN SkipDebuggerNotify);
-
 VOID
 NTAPI
 MiInsertNode(
@@ -2539,12 +2491,6 @@ MiQueryMemorySectionName(
     OUT PVOID MemoryInformation,
     IN SIZE_T MemoryInformationLength,
     OUT PSIZE_T ReturnLength
-);
-
-NTSTATUS
-NTAPI
-MiRosUnmapViewInSystemSpace(
-    IN PVOID MappedBase
 );
 
 VOID

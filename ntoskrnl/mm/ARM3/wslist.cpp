@@ -239,9 +239,6 @@ RemoveFromWsList(PMMWSL WsList, PVOID Address)
     /* Shared pages not supported yet */
     ASSERT(Pfn1->u3.e1.PrototypePte == 0);
 
-    /* Nor are "ROS PFN" */
-    ASSERT(MI_IS_ROS_PFN(Pfn1) == FALSE);
-
     /* And we should have a valid index here */
     ASSERT(Pfn1->u1.WsIndex != 0);
     ASSERT(WsList->Wsle[Pfn1->u1.WsIndex].u1.e1.Valid == 1);
@@ -310,7 +307,6 @@ TrimWsList(PMMSUPPORT Vm, ULONG TrimAge, ULONG Target)
 
         PFN_NUMBER Page = PFN_FROM_PTE(PointerPte);
         PMMPFN Pfn = MiGetPfnEntry(Page);
-        ASSERT(!MI_IS_ROS_PFN(Pfn));
 
         /* Pages locked by VirtualLock stay */
         if (Pfn->Wsle.u1.e1.LockedInMemory || Pfn->Wsle.u1.e1.LockedInWs)
@@ -416,9 +412,6 @@ MiInsertInWorkingSetList(
     ASSERT(Pfn1->u1.WsIndex == 0);
     ASSERT(Pfn1->u3.e1.PrototypePte == 0);
 
-    /* Nor are "ROS PFN" */
-    ASSERT(MI_IS_ROS_PFN(Pfn1) == FALSE);
-
     /* Without an entry the page just cannot be trimmed */
     ULONG Index = GetFreeWsleIndex(WsList);
     if (Index == ULONG_MAX)
@@ -473,7 +466,6 @@ MiAddValidPageToWorkingSet(
 
     PMMPFN Pfn1 = MiGetPfnEntry(PFN_FROM_PTE(PointerPte));
     if ((Pfn1 == NULL) ||
-        MI_IS_ROS_PFN(Pfn1) ||
         (Pfn1->u3.e1.PageLocation != ActiveAndValid))
     {
         return;
