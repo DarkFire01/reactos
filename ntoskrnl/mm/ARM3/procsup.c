@@ -418,7 +418,7 @@ MmCreateKernelStack(IN BOOLEAN GuiStack,
         /* Get a page and write the current invalid PTE */
         MI_SET_USAGE(MI_USAGE_KERNEL_STACK);
         MI_SET_PROCESS2(PsGetCurrentProcess()->ImageFileName);
-        PageFrameIndex = MiRemoveAnyPage(MI_GET_NEXT_COLOR());
+        PageFrameIndex = MiRemoveAnyPageOrWait(MI_GET_NEXT_COLOR(), OldIrql);
         MI_WRITE_INVALID_PTE(PointerPte, InvalidPte);
 
         /* Initialize the PFN entry for this page */
@@ -503,7 +503,7 @@ MmGrowKernelStackEx(IN PVOID StackPointer,
         /* Get a page and write the current invalid PTE */
         MI_SET_USAGE(MI_USAGE_KERNEL_STACK_EXPANSION);
         MI_SET_PROCESS2(PsGetCurrentProcess()->ImageFileName);
-        PageFrameIndex = MiRemoveAnyPage(MI_GET_NEXT_COLOR());
+        PageFrameIndex = MiRemoveAnyPageOrWait(MI_GET_NEXT_COLOR(), OldIrql);
         MI_WRITE_INVALID_PTE(LimitPte, InvalidPte);
 
         /* Initialize the PFN entry for this page */
