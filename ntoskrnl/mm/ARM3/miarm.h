@@ -1915,15 +1915,6 @@ MiRosProtectVirtualMemory(
 );
 
 NTSTATUS
-NTAPI
-MmArmAccessFault(
-    IN ULONG FaultCode,
-    IN PVOID Address,
-    IN KPROCESSOR_MODE Mode,
-    IN PVOID TrapInformation
-);
-
-NTSTATUS
 FASTCALL
 MiCheckPdeForPagedPool(
     IN PVOID Address
