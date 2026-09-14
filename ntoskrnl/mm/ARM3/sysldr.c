@@ -186,7 +186,7 @@ MiLoadImageSection(_Inout_ PSECTION *SectionPtr,
 #endif
 
         /* Grab a page */
-        PageFrameIndex = MiRemoveAnyPage(MI_GET_NEXT_COLOR());
+        PageFrameIndex = MiRemoveAnyPageOrWait(MI_GET_NEXT_COLOR(), OldIrql);
 
         /* Initialize its PFN entry */
         MiInitializePfn(PageFrameIndex, PointerPte, TRUE);
