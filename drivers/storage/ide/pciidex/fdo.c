@@ -122,8 +122,6 @@ AtaCtrlSetTransferMode(
         NT_VERIFY(_BitScanReverse(&Device->PioMode, Device->SupportedModes & PIO_ALL));
     }
 
-    KeAcquireSpinLock(&Controller->Lock, &OldIrql);
-
     /*
      * _GTF should be executed after _STM has been evaluated,
      * because it is expected that ACPI BIOS will use the identity data buffers
@@ -132,6 +130,8 @@ AtaCtrlSetTransferMode(
      * Therefore for any new device we have to evaluate a dummy _STM
      * when the whole configuration of the channel's transfer timings
      * is done at the controller minidriver.
+     *
+     * ACPI methods are evaluated at PASSIVE_LEVEL, outside of the controller lock.
      */
     if (DiscoveredNewDevice && (ChanData->ChanInfo & CHANNEL_FLAG_HAS_ACPI_GTM))
     {
@@ -143,6 +143,15 @@ AtaCtrlSetTransferMode(
                              DeviceList[0] ? DeviceList[0]->IdentifyDeviceData : NULL,
                              DeviceList[1] ? DeviceList[1]->IdentifyDeviceData : NULL);
     }
+
+    /* The generic minidriver goes through ACPI and never touches the controller registers */
+    if (ChanData->SetTransferMode == PciIdeGenericSetTransferMode)
+    {
+        ChanData->SetTransferMode(Controller, ChanData->Channel, DeviceList);
+        return;
+    }
+
+    KeAcquireSpinLock(&Controller->Lock, &OldIrql);
 
     /* Set the PATA transfer timings */
     ChanData->SetTransferMode(Controller, ChanData->Channel, DeviceList);

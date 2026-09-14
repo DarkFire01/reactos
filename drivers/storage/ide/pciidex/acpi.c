@@ -33,8 +33,8 @@ AtaAcpiEvaluateObject(
     TopDeviceObject = IoGetAttachedDeviceReference(DeviceObject);
 
     /*
-     * We could be called at DISPATCH_LEVEL,
-     * so use IoAllocateIrp() rather going through IoBuildDeviceIoControlRequest().
+     * The ACPI driver may complete the request later,
+     * so this must be called below DISPATCH_LEVEL to wait for it.
      */
     Irp = IoAllocateIrp(TopDeviceObject->StackSize, 0);
     if (!Irp)
