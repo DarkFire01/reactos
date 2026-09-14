@@ -1005,8 +1005,15 @@ MiDetachDataFilePages(
             PointerPte = &Subsection->SubsectionBase[i];
             ASSERT(PointerPte->u.Hard.Valid == 0);
 
-            if ((PointerPte->u.Soft.Prototype == 1) || (PointerPte->u.Soft.Transition == 0))
+            if (PointerPte->u.Soft.Prototype == 1)
                 continue;
+
+            /* Shared image pages may only be left in the paging file */
+            if (PointerPte->u.Soft.Transition == 0)
+            {
+                MiReleasePageFileSpace(*PointerPte);
+                continue;
+            }
 
             PageFrameIndex = PointerPte->u.Trans.PageFrameNumber;
             Pfn1 = MI_PFN_ELEMENT(PageFrameIndex);
@@ -1022,6 +1029,9 @@ MiDetachDataFilePages(
 
                 MiUnlinkPageFromList(Pfn1);
 
+                /* Shared image pages may have a copy in the paging file */
+                MiReleasePageFileSpace(Pfn1->OriginalPte);
+
                 /* Active for a moment, the free list takes it from there */
                 Pfn1->u3.e1.PageLocation = ActiveAndValid;
                 MiInsertPageInFreeList(PageFrameIndex);
@@ -1031,7 +1041,7 @@ MiDetachDataFilePages(
 }
 
 /**
- * @brief Writes out and deletes a data control area nobody references.
+ * @brief Writes out and deletes a file control area nobody references.
  *
  * @param[in] ControlArea
  * Control area owned through its BeingPurged flag.
@@ -1045,7 +1055,8 @@ MiDetachDataFilePages(
  * @return FALSE when the cleanup must be tried again later.
  *
  * @remarks Writes take the file locks like the modified page writer, a paging write
- * without them races with others extending the valid data length.
+ * without them races with others extending the valid data length. Image pages are
+ * never written back, modified ones are simply dropped.
  */
 static
 BOOLEAN
@@ -1055,13 +1066,17 @@ MiDeleteDataFileMap(
     _In_ BOOLEAN Final)
 {
     PFILE_OBJECT FileObject = ControlArea->FilePointer;
+    BOOLEAN Image = (BOOLEAN)ControlArea->u.Flags.Image;
     NTSTATUS Status;
     ULONG Written;
     KIRQL OldIrql;
 
     ASSERT(ControlArea->u.Flags.BeingPurged == 1);
 
-    if (WriteModified)
+    if (Image)
+        Final = TRUE;
+
+    if (WriteModified && !Image)
     {
         /* A busy file is no reason to give up its data */
         Status = MiFlushDataFileMap(ControlArea, 0, (~0ULL), TRUE, &Written);
@@ -1089,13 +1104,21 @@ MiDeleteDataFileMap(
         return FALSE;
     }
 
-    if (MiHasModifiedDataFilePages(ControlArea))
+    if (!Image && MiHasModifiedDataFilePages(ControlArea))
         DPRINT1("Modified data of %wZ could not be written\n", &FileObject->FileName);
 
     /* Nothing reaches it once the file forgets it */
     ControlArea->u.Flags.BeingDeleted = 1;
-    ASSERT(FileObject->SectionObjectPointer->DataSectionObject == ControlArea);
-    FileObject->SectionObjectPointer->DataSectionObject = NULL;
+    if (Image)
+    {
+        ASSERT(FileObject->SectionObjectPointer->ImageSectionObject == ControlArea);
+        FileObject->SectionObjectPointer->ImageSectionObject = NULL;
+    }
+    else
+    {
+        ASSERT(FileObject->SectionObjectPointer->DataSectionObject == ControlArea);
+        FileObject->SectionObjectPointer->DataSectionObject = NULL;
+    }
 
     if (ControlArea->DereferenceList.Flink)
     {
@@ -1106,7 +1129,11 @@ MiDeleteDataFileMap(
     MiDetachDataFilePages(ControlArea);
     MiReleasePfnLock(OldIrql);
 
-    MiFreeDataFileMap(ControlArea);
+    if (Image)
+        MiFreeImageFileMap(ControlArea);
+    else
+        MiFreeDataFileMap(ControlArea);
+
     ObDereferenceObject(FileObject);
     return TRUE;
 }
@@ -1539,12 +1566,22 @@ MiResolveMappedFileFault(
     PageRead->FileObject = Subsection->ControlArea->FilePointer;
     ObReferenceObject(PageRead->FileObject);
     PageRead->PageFrameIndex = PageFrameIndex;
-    PageRead->FileOffset.QuadPart =
-        ((LONGLONG)Subsection->StartingSector +
-         (PointerProtoPte - Subsection->SubsectionBase)) << PAGE_SHIFT;
-    PageRead->ValidLength = MiGetDataFileReadLength(Subsection->ControlArea->Segment,
-                                                    PageRead->FileOffset.QuadPart,
-                                                    1);
+
+    if (Subsection->ControlArea->u.Flags.Image)
+    {
+        PageRead->ValidLength = MiGetImagePageFileOffset((PSUBSECTION)Subsection,
+                                                         PointerProtoPte,
+                                                         &PageRead->FileOffset);
+    }
+    else
+    {
+        PageRead->FileOffset.QuadPart =
+            ((LONGLONG)Subsection->StartingSector +
+             (PointerProtoPte - Subsection->SubsectionBase)) << PAGE_SHIFT;
+        PageRead->ValidLength = MiGetDataFileReadLength(Subsection->ControlArea->Segment,
+                                                        PageRead->FileOffset.QuadPart,
+                                                        1);
+    }
 
     MiReleasePfnLock(OldIrql);
     return STATUS_MM_PAGE_READ_NEEDED;
@@ -1627,6 +1664,16 @@ MiWriteModifiedMappedPages(VOID)
     ControlArea = Subsection->ControlArea;
     ASSERT(ControlArea->u.Flags.BeingDeleted == 0);
 
+    if (ControlArea->u.Flags.Image)
+    {
+        /* Image data never goes back to its file, the page is kept by the paging file instead */
+        MiUnlinkPageFromList(Pfn1);
+        MI_MAKE_SOFTWARE_PTE(&Pfn1->OriginalPte, Subsection->u.SubsectionFlags.Protection);
+        MiInsertPageInList(&MmModifiedPageListHead, MiGetPfnEntryIndex(Pfn1));
+        MiReleasePfnLock(OldIrql);
+        return STATUS_SUCCESS;
+    }
+
     Index = (ULONG)(Pfn1->PteAddress - Subsection->SubsectionBase);
     Count = MiTakeModifiedRun(Subsection,
                               &Index,
@@ -1700,6 +1747,12 @@ MiWriteAllMappedPages(VOID)
 
         Subsection = MiSubsectionFromPte(&Pfn1->OriginalPte);
         ControlArea = Subsection->ControlArea;
+        if (ControlArea->u.Flags.Image)
+        {
+            MiReleasePfnLock(OldIrql);
+            continue;
+        }
+
         Index = (ULONG)(Pfn1->PteAddress - Subsection->SubsectionBase);
 
         Count = MiTakeModifiedRun(Subsection,
