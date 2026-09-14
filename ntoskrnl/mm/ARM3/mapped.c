@@ -1730,7 +1730,6 @@ MiWriteAllMappedPages(VOID)
 
         Pfn1 = MiGetPfnEntry(PageFrameIndex);
         if (!Pfn1 ||
-            MI_IS_ROS_PFN(Pfn1) ||
             MI_IS_PFN_DELETED(Pfn1) ||
             !Pfn1->u3.e1.PrototypePte ||
             !Pfn1->u3.e1.Modified ||
@@ -1851,7 +1850,7 @@ MmExtendSection(
     NTSTATUS Status;
 
     /* Images and paging file backed sections have a fixed size */
-    if (Section->u.Flags.Image || !Section->u.Flags.File || MiIsRosSectionObject(Section))
+    if (Section->u.Flags.Image || !Section->u.Flags.File)
         return STATUS_SECTION_NOT_EXTENDED;
 
     /* A section never shrinks, report the size it already has */

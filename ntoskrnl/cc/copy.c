@@ -393,7 +393,7 @@ CcCanIWrite (
 
     /* If memory is what holds us back, have Mm reclaim some now */
     if (MmAvailablePages <= MmThrottleTop)
-        MmRebalanceMemoryConsumers();
+        MiWakeMemoryReclaim();
 
     /* If we can wait, we'll start the wait loop for waiting till we can
      * write for real

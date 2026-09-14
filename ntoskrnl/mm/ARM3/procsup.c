@@ -1348,17 +1348,6 @@ MmCleanProcessAddressSpace(IN PEPROCESS Process)
         /* Grab the current VAD */
         Vad = (PMMVAD)VadTree->BalancedRoot.RightChild;
 
-        /* Check for old-style memory areas */
-        if (MI_IS_MEMORY_AREA_VAD(Vad))
-        {
-            /* We do not expect ARM3 memory areas here, those are kernel only */
-            ASSERT(MI_IS_ROSMM_VAD(Vad));
-
-            /* Let RosMm handle this */
-            MiRosCleanupMemoryArea(Process, Vad);
-            continue;
-        }
-
         /* Lock the working set */
         MiLockProcessWorkingSetUnsafe(Process, Thread);
 
