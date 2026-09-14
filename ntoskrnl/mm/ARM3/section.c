@@ -902,6 +902,21 @@ MiUnmapViewOfSection(IN PEPROCESS Process,
     MiRemoveNode((PMMADDRESS_NODE)Vad, &Process->VadRoot);
     PsReturnProcessNonPagedPoolQuota(Process, sizeof(MMVAD_LONG));
 
+    /* Physical memory views only have their PTEs to go */
+    if (Vad->u.VadFlags.VadType == VadDevicePhysicalMemory)
+    {
+        MiDeletePhysicalViewAddresses(Vad->StartingVpn << PAGE_SHIFT,
+                                      (Vad->EndingVpn << PAGE_SHIFT) | (PAGE_SIZE - 1));
+        MiUnlockProcessWorkingSetUnsafe(Process, CurrentThread);
+
+        Process->VirtualSize -= RegionSize;
+        if (!Flags) MmUnlockAddressSpace(&Process->Vm);
+
+        ExFreePool(Vad);
+        Status = STATUS_SUCCESS;
+        goto Quickie;
+    }
+
     /* A file section may go away with this view, which is only done once the locks are gone */
     ControlArea = Vad->ControlArea;
     if (ControlArea->FilePointer)
@@ -1068,9 +1083,11 @@ MiMapViewInSystemSpace(
     ULONG PageOffset;
     PAGED_CODE();
 
-    /* Get the control area, check for any flags ARM3 doesn't yet support */
+    /* Get the control area, only data can be mapped in system space */
     ControlArea = ((PSECTION)Section)->Segment->ControlArea;
-    ASSERT(ControlArea->u.Flags.Image == 0);
+    if (ControlArea->u.Flags.Image || ControlArea->u.Flags.PhysicalMemory)
+        return STATUS_NOT_MAPPED_DATA;
+
     ASSERT(ControlArea->u.Flags.GlobalOnlyPerSession == 0);
     ASSERT(ControlArea->u.Flags.Rom == 0);
     ASSERT(ControlArea->u.Flags.WasPurged == 0);
@@ -1639,6 +1656,212 @@ MiMapViewOfImageSection(
     *ViewSize = ImageSize;
 
     return (StartAddress == (ULONG_PTR)Segment->BasedAddress) ? STATUS_SUCCESS : STATUS_IMAGE_NOT_AT_BASE;
+}
+
+/**
+ * @brief Maps a view of physical memory into the current process.
+ *
+ * @param[in] Process
+ * Current process.
+ *
+ * @param[in,out] BaseAddress
+ * Address wanted or NULL, receives where the view starts.
+ *
+ * @param[in,out] SectionOffset
+ * Physical address of the view, receives it rounded down to a page.
+ *
+ * @param[in,out] ViewSize
+ * Bytes to map, receives the page aligned size.
+ *
+ * @param[in] ProtectionMask
+ * Protection of the view, its caching bits apply to device memory.
+ *
+ * @param[in] ZeroBits
+ * High address bits that must be clear.
+ *
+ * @param[in] AllocationType
+ * MEM_TOP_DOWN picks the highest free address.
+ *
+ * @remarks The pages are mapped right away and not referenced. The view keeps
+ * the same offset into a 64K region as the physical address has.
+ */
+static
+NTSTATUS
+MiMapViewOfPhysicalSection(
+    _In_ PEPROCESS Process,
+    _Inout_ PVOID *BaseAddress,
+    _Inout_ PLARGE_INTEGER SectionOffset,
+    _Inout_ PSIZE_T ViewSize,
+    _In_ ULONG ProtectionMask,
+    _In_ ULONG_PTR ZeroBits,
+    _In_ ULONG AllocationType)
+{
+    PETHREAD Thread = PsGetCurrentThread();
+    MI_PFN_CACHE_ATTRIBUTE IoCacheAttribute, CacheAttribute;
+    ULONG_PTR StartingAddress, EndingAddress, Address, RegionOffset, HighestAddress;
+    TABLE_SEARCH_RESULT Result;
+    PMMADDRESS_NODE Parent;
+    PFN_NUMBER PageFrameIndex;
+    PMMPTE PointerPte;
+    PMMPDE PointerPde;
+    MMPTE TempPte;
+    PMMVAD_LONG Vad;
+    PMMPFN Pfn1;
+    NTSTATUS Status;
+    KIRQL OldIrql;
+    SIZE_T Size;
+
+    ASSERT(Process == PsGetCurrentProcess());
+
+    if (AllocationType & (MEM_RESERVE | MEM_LARGE_PAGES))
+        return STATUS_INVALID_PARAMETER_9;
+
+    /* Device memory cannot be guarded, copied on write or made inaccessible */
+    if (((ProtectionMask & MM_PROTECT_SPECIAL) == MM_GUARDPAGE) ||
+        ((ProtectionMask & MM_WRITECOPY) == MM_WRITECOPY) ||
+        (ProtectionMask == MM_NOACCESS))
+    {
+        return STATUS_INVALID_PAGE_PROTECTION;
+    }
+
+    if ((ProtectionMask & MM_PROTECT_SPECIAL) == MM_WRITECOMBINE)
+        IoCacheAttribute = MiPlatformCacheAttributes[TRUE][MmWriteCombined];
+    else if ((ProtectionMask & MM_PROTECT_SPECIAL) == MM_NOCACHE)
+        IoCacheAttribute = MiPlatformCacheAttributes[TRUE][MmNonCached];
+    else
+        IoCacheAttribute = MiPlatformCacheAttributes[TRUE][MmCached];
+
+    Size = ALIGN_UP_BY(*ViewSize + (SectionOffset->LowPart & (PAGE_SIZE - 1)), PAGE_SIZE);
+    if (Size == 0)
+        return STATUS_INVALID_VIEW_SIZE;
+
+    SectionOffset->LowPart &= ~(PAGE_SIZE - 1);
+    PageFrameIndex = (PFN_NUMBER)(SectionOffset->QuadPart >> PAGE_SHIFT);
+    RegionOffset = SectionOffset->LowPart & (MM_VIRTMEM_GRANULARITY - 1);
+    HighestAddress = min((ULONG_PTR)MM_HIGHEST_VAD_ADDRESS, MAXULONG_PTR >> ZeroBits);
+
+    Status = PsChargeProcessNonPagedPoolQuota(Process, sizeof(MMVAD_LONG));
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Vad = ExAllocatePoolZero(NonPagedPool, sizeof(MMVAD_LONG), 'ldaV');
+    if (!Vad)
+    {
+        PsReturnProcessNonPagedPoolQuota(Process, sizeof(MMVAD_LONG));
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Vad->u.VadFlags.VadType = VadDevicePhysicalMemory;
+    Vad->u.VadFlags.Protection = ProtectionMask;
+    Vad->u2.VadFlags2.LongVad = 1;
+
+    MmLockAddressSpace(&Process->Vm);
+    if (Process->VmDeleted)
+    {
+        Status = STATUS_PROCESS_IS_TERMINATING;
+        goto Fail;
+    }
+
+    if (*BaseAddress)
+    {
+        StartingAddress = ALIGN_DOWN_BY((ULONG_PTR)*BaseAddress, MM_VIRTMEM_GRANULARITY) + RegionOffset;
+        EndingAddress = StartingAddress + Size - 1;
+        if ((StartingAddress < MM_VIRTMEM_GRANULARITY) ||
+            (EndingAddress < StartingAddress) ||
+            (EndingAddress > HighestAddress) ||
+            (MiCheckForConflictingNode(StartingAddress >> PAGE_SHIFT,
+                                       EndingAddress >> PAGE_SHIFT,
+                                       &Process->VadRoot,
+                                       &Parent) == TableFoundNode))
+        {
+            Status = STATUS_CONFLICTING_ADDRESSES;
+            goto Fail;
+        }
+    }
+    else
+    {
+        if ((AllocationType & MEM_TOP_DOWN) || Process->VmTopDown)
+        {
+            Result = MiFindEmptyAddressRangeDownTree(Size + RegionOffset,
+                                                     HighestAddress,
+                                                     MM_VIRTMEM_GRANULARITY,
+                                                     &Process->VadRoot,
+                                                     &StartingAddress,
+                                                     &Parent);
+        }
+        else
+        {
+            Result = MiFindEmptyAddressRangeInTree(Size + RegionOffset,
+                                                   MM_VIRTMEM_GRANULARITY,
+                                                   &Process->VadRoot,
+                                                   &Parent,
+                                                   &StartingAddress);
+        }
+
+        StartingAddress += RegionOffset;
+        EndingAddress = StartingAddress + Size - 1;
+        if ((Result == TableFoundNode) || (EndingAddress > HighestAddress))
+        {
+            Status = STATUS_NO_MEMORY;
+            goto Fail;
+        }
+    }
+
+    Vad->StartingVpn = StartingAddress >> PAGE_SHIFT;
+    Vad->EndingVpn = EndingAddress >> PAGE_SHIFT;
+
+    MiLockProcessWorkingSetUnsafe(Process, Thread);
+    MiInsertVad((PMMVAD)Vad, &Process->VadRoot);
+
+    for (Address = StartingAddress; Address < EndingAddress; Address += PAGE_SIZE, PageFrameIndex++)
+    {
+        PointerPde = MiAddressToPde(Address);
+        PointerPte = MiAddressToPte(Address);
+        MiMakePdeExistAndMakeValid(PointerPde, Process, MM_NOIRQL);
+        ASSERT(PointerPte->u.Long == 0);
+        MiIncrementPageTableReferences((PVOID)Address);
+
+        MI_MAKE_HARDWARE_PTE_USER(&TempPte, PointerPte, ProtectionMask & ~MM_PROTECT_SPECIAL, PageFrameIndex);
+
+        /* RAM keeps the caching its other mappings use, device memory gets what the view asks for */
+        Pfn1 = MiGetPfnEntry(PageFrameIndex);
+        CacheAttribute = IoCacheAttribute;
+        if (Pfn1 && (Pfn1->u3.e1.CacheAttribute != MiNotMapped))
+            CacheAttribute = (MI_PFN_CACHE_ATTRIBUTE)Pfn1->u3.e1.CacheAttribute;
+
+        if (CacheAttribute == MiNonCached)
+        {
+            MI_PAGE_DISABLE_CACHE(&TempPte);
+            MI_PAGE_WRITE_THROUGH(&TempPte);
+        }
+        else if (CacheAttribute == MiWriteCombined)
+        {
+            MI_PAGE_DISABLE_CACHE(&TempPte);
+            MI_PAGE_WRITE_COMBINED(&TempPte);
+        }
+
+        MI_WRITE_VALID_PTE(PointerPte, TempPte);
+
+        /* The page table holds one more valid PTE */
+        OldIrql = MiAcquirePfnLock();
+        MiGetPfnEntry(PointerPde->u.Hard.PageFrameNumber)->u2.ShareCount++;
+        MiReleasePfnLock(OldIrql);
+    }
+
+    MiUnlockProcessWorkingSetUnsafe(Process, Thread);
+
+    Process->VirtualSize += Size;
+    MmUnlockAddressSpace(&Process->Vm);
+
+    *BaseAddress = (PVOID)StartingAddress;
+    *ViewSize = Size;
+    return STATUS_SUCCESS;
+
+Fail:
+    MmUnlockAddressSpace(&Process->Vm);
+    ExFreePoolWithTag(Vad, 'ldaV');
+    PsReturnProcessNonPagedPoolQuota(Process, sizeof(MMVAD_LONG));
+    return Status;
 }
 
 /**
@@ -2400,6 +2623,75 @@ MiUnmapViewInSystemSpace(IN PMMSESSION Session,
 
 /* PUBLIC FUNCTIONS ***********************************************************/
 
+/**
+ * @brief Creates the \Device\PhysicalMemory section.
+ */
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+MmCreatePhysicalMemorySection(VOID)
+{
+    UNICODE_STRING Name = RTL_CONSTANT_STRING(L"\\Device\\PhysicalMemory");
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    PCONTROL_AREA ControlArea;
+    PSEGMENT Segment;
+    PSECTION Section;
+    NTSTATUS Status;
+    HANDLE Handle;
+
+    ControlArea = ExAllocatePoolZero(NonPagedPool, sizeof(CONTROL_AREA) + sizeof(SUBSECTION), 'hPmM');
+    Segment = ExAllocatePoolZero(NonPagedPool, sizeof(SEGMENT), 'hPmM');
+    if (!ControlArea || !Segment)
+    {
+        if (ControlArea) ExFreePoolWithTag(ControlArea, 'hPmM');
+        if (Segment) ExFreePoolWithTag(Segment, 'hPmM');
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    /* Views map the pages directly, there are no prototype PTEs */
+    ControlArea->Segment = Segment;
+    ControlArea->NumberOfSectionReferences = 1;
+    ControlArea->u.Flags.PhysicalMemory = 1;
+    ((PSUBSECTION)(ControlArea + 1))->ControlArea = ControlArea;
+    Segment->ControlArea = ControlArea;
+    Segment->SizeOfSegment = ((ULONG64)MmHighestPhysicalPage + 1) << PAGE_SHIFT;
+
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &Name,
+                               OBJ_PERMANENT | OBJ_KERNEL_EXCLUSIVE,
+                               NULL,
+                               NULL);
+
+    Status = ObCreateObject(KernelMode,
+                            MmSectionObjectType,
+                            &ObjectAttributes,
+                            KernelMode,
+                            NULL,
+                            sizeof(SECTION),
+                            0,
+                            0,
+                            (PVOID*)&Section);
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(Segment, 'hPmM');
+        ExFreePoolWithTag(ControlArea, 'hPmM');
+        return Status;
+    }
+
+    RtlZeroMemory(Section, sizeof(SECTION));
+    Section->Segment = Segment;
+    Section->SizeOfSection.QuadPart = Segment->SizeOfSegment;
+    Section->InitialPageProtection = PAGE_EXECUTE_READWRITE;
+    Section->u.LongFlags = ControlArea->u.LongFlags;
+
+    Status = ObInsertObject(Section, NULL, SECTION_ALL_ACCESS, 0, NULL, &Handle);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    ObCloseHandle(Handle, KernelMode);
+    return STATUS_SUCCESS;
+}
+
 /*
  * @implemented
  */
@@ -2780,6 +3072,41 @@ MmMapViewOfArm3Section(
     /* Get the segment and control area */
     Section = (PSECTION)SectionObject;
     ControlArea = Section->Segment->ControlArea;
+
+    /* Physical memory has no pages of its own, kernel callers may map device memory past the end of RAM */
+    if (ControlArea->u.Flags.PhysicalMemory)
+    {
+        ProtectionMask = MiMakeProtectionMask(Protect);
+        if (ProtectionMask == MM_INVALID_PROTECTION)
+            return STATUS_INVALID_PAGE_PROTECTION;
+
+        if (*ViewSize == 0)
+        {
+            if ((ULONG64)SectionOffset->QuadPart >= (ULONG64)Section->SizeOfSection.QuadPart)
+                return STATUS_INVALID_VIEW_SIZE;
+
+            CalculatedViewSize = Section->SizeOfSection.QuadPart - SectionOffset->QuadPart;
+            if (!NT_SUCCESS(RtlULongLongToSIZET(CalculatedViewSize, ViewSize)))
+                return STATUS_INVALID_VIEW_SIZE;
+        }
+
+        if (PsGetCurrentProcess() != Process)
+        {
+            KeStackAttachProcess(&Process->Pcb, &ApcState);
+            Attached = TRUE;
+        }
+
+        Status = MiMapViewOfPhysicalSection(Process,
+                                            BaseAddress,
+                                            SectionOffset,
+                                            ViewSize,
+                                            ProtectionMask,
+                                            ZeroBits,
+                                            AllocationType);
+
+        if (Attached) KeUnstackDetachProcess(&ApcState);
+        return Status;
+    }
 
     /* An image is always mapped whole, its pages carry their own protection */
     if (Section->u.Flags.Image)
