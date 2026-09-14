@@ -232,8 +232,9 @@ MiAccessCheck(IN PMMPTE PointerPte,
         /* Attached processes can't expand their stack */
         if (KeIsAttachedProcess()) return STATUS_ACCESS_VIOLATION;
 
-        /* No support for prototype PTEs yet */
-        ASSERT(TempPte.u.Soft.Prototype == 0);
+        /* Only a view PTE keeps its own protection */
+        ASSERT((TempPte.u.Soft.Prototype == 0) ||
+               (TempPte.u.Soft.PageFileHigh == MI_PTE_LOOKUP_NEEDED));
 
         /* Remove the guard page bit, and return a guard page violation */
         TempPte.u.Soft.Protection = ProtectionMask & ~MM_GUARDPAGE;
@@ -306,7 +307,6 @@ MiCheckVirtualAddress(IN PVOID VirtualAddress,
         else
         {
             /* ReactOS does not supoprt these VADs yet */
-            ASSERT(Vad->u.VadFlags.VadType != VadImageMap);
             ASSERT(Vad->u2.VadFlags2.ExtendableFile == 0);
 
             /* Return the proto VAD */
@@ -316,8 +316,12 @@ MiCheckVirtualAddress(IN PVOID VirtualAddress,
             PointerPte = MI_GET_PROTOTYPE_PTE_FOR_VPN(Vad, (ULONG_PTR)VirtualAddress >> PAGE_SHIFT);
             ASSERT(PointerPte != NULL);
 
-            /* Return the Prototype PTE and the protection for the page mapping */
-            *ProtectCode = (ULONG)Vad->u.VadFlags.Protection;
+            /* Image pages are protected like the image section holding them */
+            if (Vad->u.VadFlags.VadType == VadImageMap)
+                *ProtectCode = MiGetImageProtoPteProtection(Vad->ControlArea, PointerPte);
+            else
+                *ProtectCode = (ULONG)Vad->u.VadFlags.Protection;
+
             return PointerPte;
         }
     }
@@ -1172,9 +1176,12 @@ MiResolveProtoPteFault(IN BOOLEAN StoreInstruction,
     ASSERT(PointerPte->u.Hard.Valid == 0);
     ASSERT(PointerPte->u.Soft.Prototype == 1);
 
-    /* Read the prototype PTE and check if it's valid */
+    /* Read the prototype PTE and check if it's valid, a write through a copy on write view copies it below */
     TempPte = *PointerProtoPte;
-    if (TempPte.u.Hard.Valid == 1)
+    if ((TempPte.u.Hard.Valid == 1) &&
+        !(StoreInstruction &&
+          (PointerPte->u.Soft.PageFileHigh == MI_PTE_LOOKUP_NEEDED) &&
+          ((PointerPte->u.Soft.Protection & MM_WRITECOPY) == MM_WRITECOPY)))
     {
         /* One more user of this mapped page */
         PageFrameIndex = PFN_FROM_PTE(&TempPte);
@@ -2369,11 +2376,9 @@ UserFault:
                 PMMPFN Pfn1;
                 MMPTE PteContents;
 
-                /* The view protection tells what the private copy becomes */
+                /* The private copy is writable and runs code if the view page could */
                 MiCheckVirtualAddress(Address, &ProtectionCode, &Vad);
-                ASSERT((ProtectionCode & MM_WRITECOPY) == MM_WRITECOPY);
-                ProtectionCode &= ~MM_WRITECOPY;
-                ProtectionCode |= MM_READWRITE;
+                ProtectionCode = (ProtectionCode & MM_EXECUTE) ? MM_EXECUTE_READWRITE : MM_READWRITE;
 
                 LockIrql = MiAcquirePfnLock();
 
@@ -2663,9 +2668,11 @@ UserFault:
             /* Do we need to go find the real PTE? */
             if (TempPte.u.Soft.PageFileHigh == MI_PTE_LOOKUP_NEEDED)
             {
-                /* Get the prototype pte and VAD for it */
+                ULONG ViewProtection;
+
+                /* The PTE keeps the protection, the view may have been reprotected */
                 ProtoPte = MiCheckVirtualAddress(Address,
-                                                 &ProtectionCode,
+                                                 &ViewProtection,
                                                  &Vad);
                 if (!ProtoPte)
                 {

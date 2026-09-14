@@ -3636,19 +3636,11 @@ NtQuerySection(
             if (Section->u.Flags.Based)
                 Sbi.Attributes |= SEC_BASED;
 
-            if (Section->u.Flags.Image)
-            {
-                if (!MiIsRosSectionObject(Section))
-                {
-                    /* Not supported yet */
-                    ASSERT(FALSE);
-                }
-            }
-            else if (MiIsRosSectionObject(Section))
+            if (MiIsRosSectionObject(Section))
             {
                 Sbi.BaseAddress = (PVOID)((PMM_SECTION_SEGMENT)Section->Segment)->Image.VirtualAddress;
             }
-            else
+            else if (!Section->u.Flags.Image)
             {
                 Sbi.BaseAddress = Section->Segment->BasedAddress;
             }
@@ -3791,14 +3783,18 @@ MmMapViewOfSection(
 
     if (MiIsRosSectionObject(SectionObject) == FALSE)
     {
+        LARGE_INTEGER ZeroOffset;
+
         DPRINT("Mapping ARM3 section into %s\n", Process->ImageFileName);
-        ASSERT(SectionOffset != NULL);
+
+        /* Image views ignore the offset, callers may leave it out */
+        ZeroOffset.QuadPart = 0;
         return MmMapViewOfArm3Section(SectionObject,
                                       Process,
                                       BaseAddress,
                                       ZeroBits,
                                       CommitSize,
-                                      SectionOffset,
+                                      SectionOffset ? SectionOffset : &ZeroOffset,
                                       ViewSize,
                                       InheritDisposition,
                                       AllocationType,
@@ -4046,146 +4042,6 @@ Exit:
     return Status;
 }
 
-static
-BOOLEAN
-MiPurgeImageSegment(PMM_SECTION_SEGMENT Segment)
-{
-    PCACHE_SECTION_PAGE_TABLE PageTable;
-
-    MmLockSectionSegment(Segment);
-
-    /* Loop over all entries */
-    for (PageTable = RtlEnumerateGenericTable(&Segment->PageTable, TRUE);
-         PageTable != NULL;
-         PageTable = RtlEnumerateGenericTable(&Segment->PageTable, FALSE))
-    {
-        for (ULONG i = 0; i < _countof(PageTable->PageEntries); i++)
-        {
-            ULONG_PTR Entry = PageTable->PageEntries[i];
-            LARGE_INTEGER Offset;
-
-            if (!Entry)
-                continue;
-
-            if (IS_SWAP_FROM_SSE(Entry) || (SHARE_COUNT_FROM_SSE(Entry) > 0))
-            {
-                /* I/O ongoing or swap entry. Someone mapped this file as we were not looking */
-                MmUnlockSectionSegment(Segment);
-                return FALSE;
-            }
-
-            /* Regular entry */
-            ASSERT(!IS_WRITE_SSE(Entry));
-            ASSERT(MmGetSavedSwapEntryPage(PFN_FROM_SSE(Entry)) == 0);
-
-            /* Properly remove using the used API */
-            Offset.QuadPart = PageTable->FileOffset.QuadPart + (i << PAGE_SHIFT);
-            MmSetPageEntrySectionSegment(Segment, &Offset, 0);
-            MmReleasePageMemoryConsumer(MC_USER, PFN_FROM_SSE(Entry));
-        }
-    }
-
-    MmUnlockSectionSegment(Segment);
-
-    return TRUE;
-}
-
-/*
- * @implemented
- */
-BOOLEAN NTAPI
-MmFlushImageSection (IN PSECTION_OBJECT_POINTERS SectionObjectPointer,
-                     IN MMFLUSH_TYPE FlushType)
-{
-    switch(FlushType)
-    {
-        case MmFlushForDelete:
-        {
-            KIRQL OldIrql = MiAcquirePfnLock();
-            PCONTROL_AREA ControlArea = SectionObjectPointer->DataSectionObject;
-
-            /* User sections and views of the data keep the file from going away */
-            if (ControlArea && (ControlArea->NumberOfUserReferences != 0))
-            {
-                MiReleasePfnLock(OldIrql);
-                return FALSE;
-            }
-
-            MiReleasePfnLock(OldIrql);
-        }
-        /* Fall-through */
-        case MmFlushForWrite:
-        {
-            KIRQL OldIrql = MiAcquirePfnLock();
-            PMM_IMAGE_SECTION_OBJECT ImageSectionObject = SectionObjectPointer->ImageSectionObject;
-
-            DPRINT("Deleting or modifying %p\n", SectionObjectPointer);
-
-            /* Wait for concurrent creation or deletion of image to be done */
-            ImageSectionObject = SectionObjectPointer->ImageSectionObject;
-            while (ImageSectionObject && (ImageSectionObject->SegFlags & (MM_SEGMENT_INCREATE | MM_SEGMENT_INDELETE)))
-            {
-                MiReleasePfnLock(OldIrql);
-                KeDelayExecutionThread(KernelMode, FALSE, &TinyTime);
-                OldIrql = MiAcquirePfnLock();
-                ImageSectionObject = SectionObjectPointer->ImageSectionObject;
-            }
-
-            if (!ImageSectionObject)
-            {
-                DPRINT("No image section object. Accepting\n");
-                /* Nothing to do */
-                MiReleasePfnLock(OldIrql);
-                return TRUE;
-            }
-
-            /* Do we have open sections or mappings on it ? */
-            if ((ImageSectionObject->SectionCount) || (ImageSectionObject->MapCount))
-            {
-                /* We do. No way to delete it */
-                MiReleasePfnLock(OldIrql);
-                DPRINT("Denying. There are mappings open\n");
-                return FALSE;
-            }
-
-            /* There are no sections open on it, but we must still have pages around. Discard everything */
-            ImageSectionObject->SegFlags |= MM_IMAGE_SECTION_FLUSH_DELETE;
-            InterlockedIncrement64(&ImageSectionObject->RefCount);
-            MiReleasePfnLock(OldIrql);
-
-            DPRINT("Purging\n");
-
-            for (ULONG i = 0; i < ImageSectionObject->NrSegments; i++)
-            {
-                if (!MiPurgeImageSegment(&ImageSectionObject->Segments[i]))
-                    break;
-            }
-
-            /* Grab lock again */
-            OldIrql = MiAcquirePfnLock();
-
-            if (!(ImageSectionObject->SegFlags & MM_IMAGE_SECTION_FLUSH_DELETE))
-            {
-                /*
-                 * Someone actually created a section while we were not looking.
-                 * Drop our ref and deny.
-                 * MmDereferenceSegmentWithLock releases Pfn lock
-                 */
-                MmDereferenceSegmentWithLock(&ImageSectionObject->Segments[0], OldIrql);
-                return FALSE;
-            }
-
-            /* We should be the last one holding a ref here. */
-            ASSERT(ImageSectionObject->RefCount == 1);
-            ASSERT(ImageSectionObject->SectionCount == 0);
-
-            /* Dereference the first segment, this will free everything & release the lock */
-            MmDereferenceSegmentWithLock(&ImageSectionObject->Segments[0], OldIrql);
-            return TRUE;
-        }
-    }
-    return FALSE;
-}
 
 /*
  * @implemented
@@ -4374,12 +4230,6 @@ MmCreateSection (OUT PVOID  * Section,
                  IN HANDLE   FileHandle   OPTIONAL,
                  IN PFILE_OBJECT  FileObject  OPTIONAL)
 {
-    NTSTATUS Status;
-    ULONG Protection;
-    PSECTION *SectionObject = (PSECTION *)Section;
-    BOOLEAN FileLock = FALSE;
-    BOOLEAN HaveFileObject = FALSE;
-
     // FIXME: Implement support for large pages
     if (AllocationAttributes & SEC_LARGE_PAGES)
     {
@@ -4387,127 +4237,14 @@ MmCreateSection (OUT PVOID  * Section,
         return STATUS_INVALID_PARAMETER_6;
     }
 
-    /* Data sections, backed by a file or by the paging files, are ARM3 sections */
-    if (!(AllocationAttributes & SEC_IMAGE))
-    {
-        return MmCreateArm3Section(Section,
-                                   DesiredAccess,
-                                   ObjectAttributes,
-                                   MaximumSize,
-                                   SectionPageProtection,
-                                   AllocationAttributes &~ 1,
-                                   FileHandle,
-                                   FileObject);
-    }
-
-    /* Convert section flag to page flag */
-    if (AllocationAttributes & SEC_NOCACHE) SectionPageProtection |= PAGE_NOCACHE;
-
-    /* Check to make sure the protection is correct. Nt* does this already */
-    Protection = MiMakeProtectionMask(SectionPageProtection);
-    if (Protection == MM_INVALID_PROTECTION)
-    {
-        DPRINT1("Page protection is invalid\n");
-        return STATUS_INVALID_PAGE_PROTECTION;
-    }
-
-    /* Check if this is going to be a data or image backed file section */
-    if ((FileHandle) || (FileObject))
-    {
-        /* These cannot be mapped with large pages */
-        if (AllocationAttributes & SEC_LARGE_PAGES)
-        {
-            DPRINT1("Large pages cannot be used with an image mapping\n");
-            return STATUS_INVALID_PARAMETER_6;
-        }
-
-        /* Did the caller pass a file object ? */
-        if (FileObject)
-        {
-            /* Reference the object directly */
-            ObReferenceObject(FileObject);
-            HaveFileObject = TRUE;
-        }
-        else
-        {
-            /* Reference the file handle to get the object */
-            Status = ObReferenceObjectByHandle(FileHandle,
-                                               MmMakeFileAccess[Protection],
-                                               IoFileObjectType,
-                                               ExGetPreviousMode(),
-                                               (PVOID*)&FileObject,
-                                               NULL);
-            if (!NT_SUCCESS(Status))
-            {
-                DPRINT1("Failed to get a handle to the FO: %lx\n", Status);
-                return Status;
-            }
-
-            /* Lock the file */
-            Status = FsRtlAcquireToCreateMappedSection(FileObject, SectionPageProtection);
-            if (!NT_SUCCESS(Status))
-            {
-                ObDereferenceObject(FileObject);
-                return Status;
-            }
-
-            FileLock = TRUE;
-
-            /* Deny access if there are writes on the file */
-#if 0
-            if ((AllocationAttributes & SEC_IMAGE) && (Status == STATUS_FILE_LOCKED_WITH_WRITERS))
-            {
-                DPRINT1("Cannot create image maps with writers open on the file!\n");
-                Status = STATUS_ACCESS_DENIED;
-                goto Quit;
-            }
-#else
-            if ((AllocationAttributes & SEC_IMAGE) && (Status == STATUS_FILE_LOCKED_WITH_WRITERS))
-                DPRINT1("Creating image map with writers open on the file!\n");
-#endif
-        }
-    }
-    else
-    {
-        /* A handle must be supplied with SEC_IMAGE, as this is the no-handle path */
-        if (AllocationAttributes & SEC_IMAGE) return STATUS_INVALID_FILE_FOR_SECTION;
-    }
-
-    if (FileObject == NULL)
-    {
-        Status = STATUS_INVALID_FILE_FOR_SECTION;
-        goto Exit;
-    }
-
-    Status = MmCreateImageSection(SectionObject,
-                                  DesiredAccess,
-                                  ObjectAttributes,
-                                  MaximumSize,
-                                  SectionPageProtection,
-                                  AllocationAttributes,
-                                  FileObject);
-
-    /* If the file was invalid, and we got a FileObject passed, fall back to data section */
-    if (!NT_SUCCESS(Status) && HaveFileObject)
-    {
-        Status = MmCreateArm3Section(Section,
-                                     DesiredAccess,
-                                     ObjectAttributes,
-                                     MaximumSize,
-                                     SectionPageProtection,
-                                     SEC_COMMIT,
-                                     NULL,
-                                     FileObject);
-    }
-
-Exit:
-
-    if (FileLock)
-        FsRtlReleaseFile(FileObject);
-    if (FileObject)
-        ObDereferenceObject(FileObject);
-
-    return Status;
+    return MmCreateArm3Section(Section,
+                               DesiredAccess,
+                               ObjectAttributes,
+                               MaximumSize,
+                               SectionPageProtection,
+                               AllocationAttributes &~ 1,
+                               FileHandle,
+                               FileObject);
 }
 
 /* This function is not used. It is left for future use, when per-process
