@@ -471,6 +471,9 @@ MiDeletePte(IN PMMPTE PointerPte,
 #if (_MI_PAGING_LEVELS == 2)
         }
 #endif
+        /* The working set of this process no longer holds it */
+        MiRemoveSharedPageFromWorkingSet(VirtualAddress, Pfn1);
+
         /* Drop the share count on the page table */
         PointerPde = MiPteToPde(PointerPte);
         MiDecrementShareCount(MiGetPfnEntry(PointerPde->u.Hard.PageFrameNumber),
