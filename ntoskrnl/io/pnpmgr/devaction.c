@@ -2620,14 +2620,21 @@ PipDeviceActionWorker(
         ASSERT(Request->DeviceObject);
 
         deviceNode = IopGetDeviceNode(Request->DeviceObject);
-        ASSERT(deviceNode);
 
         status = STATUS_SUCCESS;
 
         DPRINT("Processing PnP request %p: DeviceObject - %p, Action - %s\n",
                Request, Request->DeviceObject, ActionToStr(Request->Action));
 
-        switch (Request->Action)
+        /* The device can be removed while its request is queued. The request
+           is still completed, so the caller waiting on it is released */
+        if (!deviceNode)
+        {
+            DPRINT1("Dropping device action %u for %p, the device node is gone\n",
+                    Request->Action, Request->DeviceObject);
+            status = STATUS_NO_SUCH_DEVICE;
+        }
+        else switch (Request->Action)
         {
             case PiActionAddBootDevices:
             {
