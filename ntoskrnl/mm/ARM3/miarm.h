@@ -175,6 +175,7 @@ C_ASSERT(SYSTEM_PD_SIZE == PAGE_SIZE);
 
 extern const ULONG_PTR MmProtectToPteMask[32];
 extern const ULONG MmProtectToValue[32];
+extern ULONG MmCompatibleProtectionMask[8];
 
 //
 // Assertions for session images, addresses, and PTEs
@@ -2497,6 +2498,34 @@ MiWriteModifiedMappedPages(VOID);
 VOID
 NTAPI
 MiWriteAllMappedPages(VOID);
+
+NTSTATUS
+NTAPI
+MiReferenceImageFileMap(
+    _In_ PFILE_OBJECT File,
+    _Out_ PCONTROL_AREA *OutControlArea
+);
+
+VOID
+NTAPI
+MiFreeImageFileMap(
+    _In_ PCONTROL_AREA ControlArea
+);
+
+ULONG
+NTAPI
+MiGetImageProtoPteProtection(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ PMMPTE PointerProtoPte
+);
+
+ULONG
+NTAPI
+MiGetImagePageFileOffset(
+    _In_ PSUBSECTION Subsection,
+    _In_ PMMPTE PointerProtoPte,
+    _Out_ PLARGE_INTEGER FileOffset
+);
 
 VOID
 NTAPI
