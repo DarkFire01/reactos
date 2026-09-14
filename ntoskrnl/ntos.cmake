@@ -243,7 +243,6 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/balance.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/freelist.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/marea.c
-    ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/mmfault.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/mminit.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/pagefile.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/region.c
