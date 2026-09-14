@@ -338,12 +338,6 @@ MmRequestPageMemoryConsumer(ULONG Consumer, BOOLEAN CanWait,
 }
 
 VOID
-CcRosTrimCache(
-    _In_ ULONG Target,
-    _In_ BOOLEAN FlushDirty,
-    _Out_ PULONG NrFreed);
-
-VOID
 NTAPI
 MiBalancerThread(PVOID Unused)
 {
@@ -368,9 +362,6 @@ MiBalancerThread(PVOID Unused)
         if (Status == STATUS_WAIT_0 || Status == STATUS_WAIT_1)
         {
             ULONG InitialTarget = 0;
-            ULONG Target;
-            ULONG NrFreedPages;
-            BOOLEAN LowOnPages;
 
             do
             {
@@ -381,16 +372,6 @@ MiBalancerThread(PVOID Unused)
                 {
                     InitialTarget = MiTrimMemoryConsumer(i, InitialTarget);
                 }
-
-                /* Unused cache views always go, they hold system space and keep their
-                 * pages from being released. Flushing dirty data waits until we are short. */
-                LowOnPages = (MmAvailablePages < MiMinimumAvailablePages);
-                Target = InitialTarget;
-                if (LowOnPages)
-                    Target = max(Target, MiMinimumAvailablePages - MmAvailablePages);
-
-                CcRosTrimCache(LowOnPages ? Target : MAXULONG, LowOnPages, &NrFreedPages);
-                InitialTarget -= min(NrFreedPages, InitialTarget);
 
                 /* No pages left to swap! */
                 if (InitialTarget != 0 &&
