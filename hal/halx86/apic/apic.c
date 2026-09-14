@@ -1033,10 +1033,13 @@ HalEnableSystemInterrupt(
     ReDirReg.TriggerMode = (InterruptMode == LevelSensitive) ?
         APIC_TGM_Level : APIC_TGM_Edge;
 
-    /* Level-triggered sources, like PCI INTx, are active low. Edge-triggered
-       sources, like ISA IRQs, are active high. A level-triggered line left
-       active high would never fire */
-    ReDirReg.Polarity = (InterruptMode == LevelSensitive) ? 1 : 0;
+    /* Use the polarity the ACPI driver reported, since firmware can override it.
+       Otherwise level-triggered sources, like PCI INTx, are active low and
+       edge-triggered sources, like ISA IRQs, are active high */
+    if (ResolvedPolarity == InterruptPolarityUnknown)
+        ReDirReg.Polarity = (InterruptMode == LevelSensitive) ? 1 : 0;
+    else
+        ReDirReg.Polarity = (ResolvedPolarity == InterruptActiveLow) ? 1 : 0;
 
     ReDirReg.Mask = FALSE;
 
