@@ -345,11 +345,6 @@ MmRequestPageMemoryConsumer(ULONG Consumer, BOOLEAN CanWait,
 }
 
 VOID
-CcRosTrimCache(
-    _In_ ULONG Target,
-    _Out_ PULONG NrFreed);
-
-VOID
 NTAPI
 MiBalancerThread(PVOID Unused)
 {
@@ -374,8 +369,6 @@ MiBalancerThread(PVOID Unused)
         if (Status == STATUS_WAIT_0 || Status == STATUS_WAIT_1)
         {
             ULONG InitialTarget = 0;
-            ULONG Target;
-            ULONG NrFreedPages;
 
             do
             {
@@ -385,14 +378,6 @@ MiBalancerThread(PVOID Unused)
                 for (ULONG i = 0; i < MC_MAXIMUM; i++)
                 {
                     InitialTarget = MiTrimMemoryConsumer(i, InitialTarget);
-                }
-
-                /* Trim cache */
-                Target = max(InitialTarget, abs(MiMinimumAvailablePages - MmAvailablePages));
-                if (Target)
-                {
-                    CcRosTrimCache(Target, &NrFreedPages);
-                    InitialTarget -= min(NrFreedPages, InitialTarget);
                 }
 
                 /* No pages left to swap! */
