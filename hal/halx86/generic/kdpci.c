@@ -577,7 +577,9 @@ HalpSetupPciDeviceForDebugging(
     return STATUS_SUCCESS;
 }
 extern BOOLEAN HalpPCIConfigInitialized;
-CODE_SEG("INIT")
+
+/* Not INIT: KDNET extensions call these through the HAL private dispatch
+ * table after the INIT section has been discarded. */
 ULONG
 NTAPI
 HalpGetPciDataByOffset(
@@ -608,7 +610,6 @@ HalpGetPciDataByOffset(
     }
 }
 
-CODE_SEG("INIT")
 ULONG
 NTAPI
 HalpSetPciDataByOffset(

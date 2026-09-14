@@ -304,6 +304,26 @@ HalpReleasePciDeviceForDebugging(
     IN OUT PDEBUG_DEVICE_DESCRIPTOR PciDevice
 );
 
+ULONG
+NTAPI
+HalpGetPciDataByOffset(
+    _In_ ULONG BusNumber,
+    _In_ ULONG SlotNumber,
+    _Out_writes_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length
+);
+
+ULONG
+NTAPI
+HalpSetPciDataByOffset(
+    _In_ ULONG BusNumber,
+    _In_ ULONG SlotNumber,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length
+);
+
 //
 // Memory routines
 //
