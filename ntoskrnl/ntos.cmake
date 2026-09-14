@@ -13,38 +13,16 @@ add_definitions(
     -D_NTSYSTEM_
     -DNTDDI_VERSION=0x05020400)
 
-if(NOT DEFINED NEWCC)
-    set(NEWCC FALSE)
-endif()
-
-if(NEWCC)
-    add_definitions(-DNEWCC)
-    list(APPEND SOURCE
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/cachesub.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/copysup.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/fssup.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/lazyrite.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/logsup.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/mdlsup.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/pinsup.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/section/fault.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/section/swapout.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/section/data.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/section/reqtools.c)
-else()
-    list(APPEND SOURCE
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/cacheman.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/copy.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/fs.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/lazywrite.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/mdl.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/pin.c
-        ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/view.c)
-endif()
+list(APPEND SOURCE
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/cacheman.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/copy.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/fs.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/lazywrite.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/mdl.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/pin.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/cc/view.c)
 
 list(APPEND SOURCE
-    ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/section/io.c
-    ${REACTOS_SOURCE_DIR}/ntoskrnl/cache/section/sptab.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/config/cmalloc.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/config/cmapi.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/config/cmboot.c
@@ -238,14 +216,9 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/virtual.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/wslist.cpp
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/zeropage.c
-    ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/balance.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/freelist.c
-    ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/marea.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/mminit.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/pagefile.c
-    ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/region.c
-    ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/rmap.c
-    ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/section.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/shutdown.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ob/devicemap.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ob/obdir.c
