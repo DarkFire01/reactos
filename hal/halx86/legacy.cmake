@@ -1,6 +1,9 @@
 include_directories(
     ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/arbiter)
 
+list(APPEND HAL_LEGACY_ASM_SOURCE
+    legacy/pir/toshsmi.S)
+
 list(APPEND HAL_LEGACY_SOURCE
     legacy/bus/bushndlr.c
     legacy/bus/cmosbus.c
@@ -11,9 +14,14 @@ list(APPEND HAL_LEGACY_SOURCE
     legacy/pir/cyrixirq.c
     legacy/pir/intelirq.c
     legacy/pir/legacypcirqarb.c
+    legacy/pir/nsirq.c
+    legacy/pir/optiirq.c
     legacy/pir/pirroute.c
     legacy/pir/sisirq.c
+    legacy/pir/toshirq.c
+    legacy/pir/vesuvirq.c
     legacy/pir/viairq.c
+    legacy/pir/vlsiirq.c
     legacy/irqtrans.c
     ${CMAKE_CURRENT_BINARY_DIR}/pci_classes.c
     ${CMAKE_CURRENT_BINARY_DIR}/pci_vendors.c
@@ -23,6 +31,7 @@ list(APPEND HAL_LEGACY_SOURCE
     legacy/halpcat.c
     smp/mps/mps.c)
 
-add_library(lib_hal_legacy OBJECT ${HAL_LEGACY_SOURCE})
-add_dependencies(lib_hal_legacy bugcodes xdk)
+add_asm_files(lib_hal_legacy_asm ${HAL_LEGACY_ASM_SOURCE})
+add_library(lib_hal_legacy OBJECT ${HAL_LEGACY_SOURCE} ${lib_hal_legacy_asm})
+add_dependencies(lib_hal_legacy bugcodes xdk asm)
 #add_pch(lib_hal_legacy include/hal.h)
