@@ -161,6 +161,67 @@ static void ShrinkWsList(PMMWSL WsList)
     }
 }
 
+/**
+ * @brief Tells whether an index holds the shared entry of an address.
+ */
+static bool IsSharedWsle(PMMWSL WsList, ULONG Index, PVOID Address)
+{
+    if ((Index < WsList->FirstDynamic) || (Index >= WsList->LastEntry))
+        return false;
+
+    const MMWSLENTRY& Entry = WsList->Wsle[Index].u1.e1;
+    return Entry.Valid && !Entry.Direct &&
+           (Entry.VirtualPageNumber == (reinterpret_cast<ULONG_PTR>(Address) >> PAGE_SHIFT));
+}
+
+/**
+ * @brief Finds the entry of a shared page.
+ *
+ * @param[in] WsList
+ * Working set list to look in.
+ *
+ * @param[in] Address
+ * Address the page is mapped at.
+ *
+ * @param[in] Pfn
+ * The page, its index is where the last working set to take it put it.
+ *
+ * @return The index, or ULONG_MAX if the address is not in the list.
+ */
+static ULONG FindSharedWsleIndex(PMMWSL WsList, PVOID Address, PMMPFN Pfn)
+{
+    if (IsSharedWsle(WsList, (ULONG)Pfn->u1.WsIndex, Address))
+        return (ULONG)Pfn->u1.WsIndex;
+
+    for (ULONG Index = WsList->FirstDynamic; Index < WsList->LastEntry; Index++)
+    {
+        if (IsSharedWsle(WsList, Index, Address))
+            return Index;
+    }
+
+    return ULONG_MAX;
+}
+
+/**
+ * @brief Fills a free entry and counts it in the working set.
+ */
+static void SetWsle(PMMSUPPORT Vm, ULONG Index, PVOID Address, ULONG Protection, bool Direct)
+{
+    MMWSLENTRY& NewWsle = Vm->VmWorkingSetList->Wsle[Index].u1.e1;
+    NewWsle.VirtualPageNumber = reinterpret_cast<ULONG_PTR>(Address) >> PAGE_SHIFT;
+    NewWsle.Protection = Protection;
+    NewWsle.Direct = Direct;
+    NewWsle.Hashed = 0;
+    NewWsle.LockedInMemory = 0;
+    NewWsle.LockedInWs = 0;
+    NewWsle.Age = 0;
+    NewWsle.Valid = 1;
+
+    Vm->WorkingSetSize++;
+    if (Vm->WorkingSetSize > Vm->PeakWorkingSetSize)
+        Vm->PeakWorkingSetSize = Vm->WorkingSetSize;
+}
+
 static
 VOID
 RemoveFromWsList(PMMWSL WsList, PVOID Address)
@@ -221,9 +282,6 @@ TrimWsList(PMMSUPPORT Vm, ULONG TrimAge, ULONG Target)
         if (!Entry.u1.e1.Valid)
             continue;
 
-        /* Only direct entries for now */
-        ASSERT(Entry.u1.e1.Direct == 1);
-
         PVOID VirtualAddress = PAGE_ALIGN(Entry.u1.VirtualAddress);
         PMMPTE PointerPte = MiAddressToPte(VirtualAddress);
 
@@ -252,14 +310,39 @@ TrimWsList(PMMSUPPORT Vm, ULONG TrimAge, ULONG Target)
 
         PFN_NUMBER Page = PFN_FROM_PTE(PointerPte);
         PMMPFN Pfn = MiGetPfnEntry(Page);
-
-        /* Not supported yet */
-        ASSERT(Pfn->u3.e1.PrototypePte == 0);
         ASSERT(!MI_IS_ROS_PFN(Pfn));
 
         /* Pages locked by VirtualLock stay */
         if (Pfn->Wsle.u1.e1.LockedInMemory || Pfn->Wsle.u1.e1.LockedInWs)
             continue;
+
+        /* A shared page goes back to its prototype PTE, the PTE keeps the protection of this mapping */
+        if (Pfn->u3.e1.PrototypePte)
+        {
+            ASSERT(Entry.u1.e1.Direct == 0);
+
+            MMPTE TempPte = PrototypePte;
+            TempPte.u.Soft.Protection = Entry.u1.e1.Protection;
+
+            FreeWsleIndex(WsList, i);
+            Vm->WorkingSetSize--;
+
+            ntoskrnl::MiPfnLockGuard PfnLock;
+
+            MMPTE OldPte = *PointerPte;
+            PFN_NUMBER PageTable = MiPteToPde(PointerPte)->u.Hard.PageFrameNumber;
+            MI_WRITE_INVALID_PTE(PointerPte, TempPte);
+            KeInvalidateTlbEntry(VirtualAddress);
+
+            if (OldPte.u.Hard.Dirty)
+                Pfn->u3.e1.Modified = 1;
+
+            MiDecrementShareCount(MiGetPfnEntry(PageTable), PageTable);
+            MiDecrementShareCount(Pfn, Page);
+
+            Ret++;
+            continue;
+        }
 
         MiRemoveFromWorkingSetList(Vm, VirtualAddress);
 
@@ -342,19 +425,7 @@ MiInsertInWorkingSetList(
         return;
 
     Pfn1->u1.WsIndex = Index;
-    MMWSLENTRY& NewWsle = WsList->Wsle[Index].u1.e1;
-    NewWsle.VirtualPageNumber = reinterpret_cast<ULONG_PTR>(Address) >> PAGE_SHIFT;
-    NewWsle.Protection = Protection;
-    NewWsle.Direct = 1;
-    NewWsle.Hashed = 0;
-    NewWsle.LockedInMemory = 0;
-    NewWsle.LockedInWs = 0;
-    NewWsle.Age = 0;
-    NewWsle.Valid = 1;
-
-    Vm->WorkingSetSize++;
-    if (Vm->WorkingSetSize > Vm->PeakWorkingSetSize)
-        Vm->PeakWorkingSetSize = Vm->WorkingSetSize;
+    SetWsle(Vm, Index, Address, Protection, true);
 }
 
 _Use_decl_annotations_
@@ -371,17 +442,21 @@ MiRemoveFromWorkingSetList(
 }
 
 /**
- * @brief Adds a valid private user page to the current process working set.
+ * @brief Adds a valid user page to the current process working set.
  *
  * @param[in] Address
  * Faulting address.
+ *
+ * @param[in] Protection
+ * Protection the fault mapped a shared page with, private pages keep theirs in the PFN.
  *
  * @remarks The process working set lock must be held exclusively and the PFN lock must not be.
  */
 VOID
 NTAPI
-MiAddPrivatePageToWorkingSet(
-    _In_ PVOID Address)
+MiAddValidPageToWorkingSet(
+    _In_ PVOID Address,
+    _In_ ULONG Protection)
 {
     PEPROCESS Process = PsGetCurrentProcess();
 
@@ -398,16 +473,77 @@ MiAddPrivatePageToWorkingSet(
 
     PMMPFN Pfn1 = MiGetPfnEntry(PFN_FROM_PTE(PointerPte));
     if ((Pfn1 == NULL) ||
-        (Pfn1->u3.e1.PrototypePte == 1) ||
         MI_IS_ROS_PFN(Pfn1) ||
-        (Pfn1->u3.e1.PageLocation != ActiveAndValid) ||
-        (Pfn1->u1.WsIndex != 0) ||
+        (Pfn1->u3.e1.PageLocation != ActiveAndValid))
+    {
+        return;
+    }
+
+    /* A shared page has no room for our index, its entry is found by address */
+    if (Pfn1->u3.e1.PrototypePte == 1)
+    {
+        PMMWSL WsList = Process->Vm.VmWorkingSetList;
+
+        /* Without the protection of the mapping it could not be trimmed */
+        if ((Protection == MM_ZERO_ACCESS) || IsSharedWsle(WsList, (ULONG)Pfn1->u1.WsIndex, Address))
+            return;
+
+        ULONG Index = GetFreeWsleIndex(WsList);
+        if (Index != ULONG_MAX)
+        {
+            SetWsle(&Process->Vm, Index, PAGE_ALIGN(Address), Protection, false);
+            Pfn1->u1.WsIndex = Index;
+        }
+        return;
+    }
+
+    if ((Pfn1->u1.WsIndex != 0) ||
         ((PMMPTE)((ULONG_PTR)Pfn1->PteAddress & ~1) != PointerPte))
     {
         return;
     }
 
     MiInsertInWorkingSetList(&Process->Vm, PAGE_ALIGN(Address), (ULONG)Pfn1->OriginalPte.u.Soft.Protection);
+}
+
+/**
+ * @brief Takes a shared page out of the current process working set.
+ *
+ * @param[in] Address
+ * Address the page is mapped at.
+ *
+ * @param[in] Pfn
+ * The shared page.
+ *
+ * @remarks The process working set lock must be held exclusively.
+ */
+VOID
+NTAPI
+MiRemoveSharedPageFromWorkingSet(
+    _In_ PVOID Address,
+    _In_ PMMPFN Pfn)
+{
+    PEPROCESS Process = PsGetCurrentProcess();
+
+    ASSERT(MM_ANY_WS_LOCK_HELD_EXCLUSIVE(PsGetCurrentThread()));
+
+    /* A dying process throws its whole list away */
+    if ((Address > MM_HIGHEST_USER_ADDRESS) ||
+        (Process->Vm.WorkingSetExpansionLinks.Flink == NULL) ||
+        Process->VmDeleted)
+    {
+        return;
+    }
+
+    PMMWSL WsList = Process->Vm.VmWorkingSetList;
+    ULONG Index = FindSharedWsleIndex(WsList, Address, Pfn);
+    if (Index == ULONG_MAX)
+        return;
+
+    FreeWsleIndex(WsList, Index);
+
+    ASSERT(Process->Vm.WorkingSetSize != 0);
+    Process->Vm.WorkingSetSize--;
 }
 
 _Use_decl_annotations_
@@ -465,8 +601,24 @@ MiShrinkWorkingSetList(
 {
     ASSERT(MM_ANY_WS_LOCK_HELD_EXCLUSIVE(PsGetCurrentThread()));
 
-    if (WorkingSet->VmWorkingSetList != NULL)
-        ShrinkWsList(WorkingSet->VmWorkingSetList);
+    PMMWSL WsList = WorkingSet->VmWorkingSetList;
+    if (WsList == NULL)
+        return;
+
+    /* The address space of a dying process is gone, the shared pages left in its list with it */
+    if (MI_IS_PROCESS_WORKING_SET(WorkingSet) && CONTAINING_RECORD(WorkingSet, EPROCESS, Vm)->VmDeleted)
+    {
+        for (ULONG Index = WsList->FirstDynamic; Index < WsList->LastEntry; Index++)
+        {
+            if (WsList->Wsle[Index].u1.e1.Valid)
+            {
+                WsList->Wsle[Index].u1.Long = 0;
+                WorkingSet->WorkingSetSize--;
+            }
+        }
+    }
+
+    ShrinkWsList(WsList);
 }
 
 /**
