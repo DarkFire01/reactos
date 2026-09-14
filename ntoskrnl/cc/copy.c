@@ -47,26 +47,25 @@ ULONG CcDataFlushes = 0;
 
 VOID
 NTAPI
-MiZeroPhysicalPage (
-    IN PFN_NUMBER PageFrameIndex
-);
-
-VOID
-NTAPI
 CcInitCacheZeroPage (
     VOID)
 {
-    NTSTATUS Status;
+    PHYSICAL_ADDRESS LowAddress, HighAddress, SkipBytes;
+    PMDL Mdl;
 
-    MI_SET_USAGE(MI_USAGE_CACHE);
-    //MI_SET_PROCESS2(PsGetCurrentProcess()->ImageFileName);
-    Status = MmRequestPageMemoryConsumer(MC_SYSTEM, TRUE, &CcZeroPage);
-    if (!NT_SUCCESS(Status))
+    LowAddress.QuadPart = 0;
+    HighAddress.QuadPart = MAXLONGLONG;
+    SkipBytes.QuadPart = 0;
+
+    /* Pages allocated for an MDL come zeroed, this one is kept forever */
+    Mdl = MmAllocatePagesForMdl(LowAddress, HighAddress, SkipBytes, PAGE_SIZE);
+    if (!Mdl || (Mdl->ByteCount < PAGE_SIZE))
     {
         DbgPrint("Can't allocate CcZeroPage.\n");
         KeBugCheck(CACHE_MANAGER);
     }
-    MiZeroPhysicalPage(CcZeroPage);
+
+    CcZeroPage = *MmGetMdlPfnArray(Mdl);
 }
 
 VOID
