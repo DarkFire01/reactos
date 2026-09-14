@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //
 // Define this if you want debugging support
 //
@@ -393,6 +397,12 @@ CcRosFlushDirtyPages(
 );
 
 VOID
+CcRosTrimCache(
+    _In_ ULONG Target,
+    _In_ BOOLEAN FlushDirty,
+    _Out_ PULONG NrFreed);
+
+VOID
 CcRosDereferenceCache(PFILE_OBJECT FileObject);
 
 VOID
@@ -534,3 +544,7 @@ CcRosVacbDecRefCount(
 BOOLEAN
 CcRosFreeOneUnusedVacb(
     VOID);
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
