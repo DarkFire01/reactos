@@ -455,6 +455,8 @@ CcRosFlushDirtyPages (
         }
 
         IO_STATUS_BLOCK Iosb;
+        LONGLONG FileOffset = current->FileOffset.QuadPart;
+        PFILE_OBJECT FileObject = SharedCacheMap->FileObject;
         Status = CcRosFlushVacb(current, &Iosb);
 
         InterlockedExchange(&current->Flushing, 0);
@@ -477,9 +479,12 @@ CcRosFlushDirtyPages (
             (Status != STATUS_MEDIA_WRITE_PROTECTED))
         {
             DPRINT1("CC: Failed to flush VACB at 0x%I64x of file object %p: 0x%lx\n",
-                    current->FileOffset.QuadPart,
-                    SharedCacheMap->FileObject,
+                    FileOffset,
+                    FileObject,
                     Status);
+
+            /* The VACB is dirty again at the tail, retrying it now would only fail again */
+            break;
         }
         else
         {
@@ -503,10 +508,6 @@ CcRosFlushDirtyPages (
                 }
             }
         }
-
-        /* A failed VACB is dirty again and would be picked right back up. Retry it on the next pass */
-        if (!NT_SUCCESS(Status))
-            break;
 
         current_entry = DirtyVacbListHead.Flink;
     }
