@@ -39,8 +39,9 @@
 
 /* GLOBALS *******************************************************************/
 
-LIST_ENTRY DirtyVacbListHead;
-static LIST_ENTRY VacbLruListHead;
+/* Empty from the start, the working set manager may trim the cache before it is initialized */
+LIST_ENTRY DirtyVacbListHead = { &DirtyVacbListHead, &DirtyVacbListHead };
+static LIST_ENTRY VacbLruListHead = { &VacbLruListHead, &VacbLruListHead };
 
 NPAGED_LOOKASIDE_LIST iBcbLookasideList;
 static NPAGED_LOOKASIDE_LIST SharedCacheMapLookasideList;
