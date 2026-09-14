@@ -5371,14 +5371,8 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
         }
         else if (!(ChangeProtection) && (Protect != MiGetPageProtection(PointerPte)))
         {
-            //
-            // We don't handle these scenarios yet
-            //
-            if (PointerPte->u.Soft.Valid == 0)
-            {
-                ASSERT(PointerPte->u.Soft.Prototype == 0);
-                ASSERT((PointerPte->u.Soft.PageFileHigh == 0) || (PointerPte->u.Soft.Transition == 1));
-            }
+            /* Private memory, possibly paged out, never a prototype PTE */
+            ASSERT((PointerPte->u.Soft.Valid == 1) || (PointerPte->u.Soft.Prototype == 0));
 
             //
             // There's a change in protection, remember this for later, but do
