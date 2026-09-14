@@ -678,6 +678,19 @@ QSI_DEF(SystemProcessorInformation)
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief Counts the pages kept on standby, read without the PFN lock.
+ */
+static
+ULONG
+ExpGetStandbyPageCount(VOID)
+{
+    PFN_NUMBER Available = MmAvailablePages;
+    PFN_NUMBER Free = MmFreePageListHead.Total + MmZeroedPageListHead.Total;
+
+    return (Available > Free) ? (ULONG)(Available - Free) : 0;
+}
+
 /* Class 2 - Performance Information */
 QSI_DEF(SystemPerformanceInformation)
 {
@@ -723,7 +736,11 @@ QSI_DEF(SystemPerformanceInformation)
 
     Spi->AvailablePages = (ULONG)MmAvailablePages;
 
-    Spi->CommittedPages = MmTotalCommittedPages;
+    /* There is no commit accounting yet, count what memory and the paging files hold */
+    Spi->CommittedPages = (ULONG)(MmNumberOfPhysicalPages - MmAvailablePages) + MiUsedSwapPages;
+    if (Spi->CommittedPages > MmPeakCommitment)
+        MmPeakCommitment = Spi->CommittedPages;
+
     /*
      *  Add up the full system total + pagefile.
      *  All this make Taskmgr happy but not sure it is the right numbers.
@@ -769,7 +786,8 @@ QSI_DEF(SystemPerformanceInformation)
     Spi->TotalSystemDriverPages = 0; /* FIXME */
     Spi->Spare3Count = 0; /* FIXME */
 
-    Spi->ResidentSystemCachePage = MiMemoryConsumers[MC_USER].PagesUsed; /* FIXME */
+    /* File pages kept in memory after use */
+    Spi->ResidentSystemCachePage = ExpGetStandbyPageCount();
     Spi->ResidentPagedPoolPage = 0; /* FIXME */
 
     Spi->ResidentSystemDriverPage = 0; /* FIXME */
@@ -1523,11 +1541,11 @@ QSI_DEF(SystemFileCacheInformation)
     RtlZeroMemory(Sci, sizeof(SYSTEM_FILECACHE_INFORMATION));
 
     /* Return the Byte size not the page size. */
-    Sci->CurrentSize = MiMemoryConsumers[MC_USER].PagesUsed; /* FIXME */
-    Sci->PeakSize = MiMemoryConsumers[MC_USER].PagesUsed; /* FIXME */
+    /* The system cache has no working set yet, only the standby pages it left behind count */
+    Sci->CurrentSize = 0;
+    Sci->PeakSize = 0;
     /* Taskmgr multiplies this one by page size right away */
-    Sci->CurrentSizeIncludingTransitionInPages = MiMemoryConsumers[MC_USER].PagesUsed; /* FIXME: Should be */
-    /* system working set and standby pages. */
+    Sci->CurrentSizeIncludingTransitionInPages = ExpGetStandbyPageCount();
     Sci->PageFaultCount = 0; /* FIXME */
     Sci->MinimumWorkingSet = 0; /* FIXME */
     Sci->MaximumWorkingSet = 0; /* FIXME */
