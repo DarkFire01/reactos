@@ -428,6 +428,42 @@ MiWaitForFreePage(VOID)
 }
 
 /**
+ * @brief Takes any page, waiting until one is available.
+ *
+ * @param[in] Color
+ * Preferred page color.
+ *
+ * @param[in] OldIrql
+ * IRQL the PFN lock was acquired from, the lock is dropped while waiting.
+ *
+ * @return The page, ready to be initialized.
+ *
+ * @remarks The PFN lock must be held from below DISPATCH_LEVEL, without any working set lock.
+ */
+PFN_NUMBER
+NTAPI
+MiRemoveAnyPageOrWait(
+    _In_ ULONG Color,
+    _In_ KIRQL OldIrql)
+{
+    PFN_NUMBER PageFrameIndex;
+
+    MI_ASSERT_PFN_LOCK_HELD();
+    ASSERT(OldIrql < DISPATCH_LEVEL);
+
+    for (;;)
+    {
+        PageFrameIndex = MiRemoveAnyPage(Color);
+        if (PageFrameIndex != 0)
+            return PageFrameIndex;
+
+        MiReleasePfnLock(OldIrql);
+        MiWaitForFreePage();
+        MiAcquirePfnLock();
+    }
+}
+
+/**
  * @brief Stops writing and waits for a write in progress to finish.
  * @remarks Used at shutdown before the paging files go away.
  */
