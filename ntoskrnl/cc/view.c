@@ -456,7 +456,10 @@ CcRosFlushDirtyPages (
         if (!NT_SUCCESS(Status) && (Status != STATUS_END_OF_FILE) &&
             (Status != STATUS_MEDIA_WRITE_PROTECTED))
         {
-            DPRINT1("CC: Failed to flush VACB.\n");
+            DPRINT1("CC: Failed to flush VACB at 0x%I64x of file object %p: 0x%lx\n",
+                    current->FileOffset.QuadPart,
+                    SharedCacheMap->FileObject,
+                    Status);
         }
         else
         {
