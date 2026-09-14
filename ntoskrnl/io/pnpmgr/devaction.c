@@ -1287,6 +1287,10 @@ PiInitializeDevNode(
         DeviceNode->ChildBusTypeIndex = -1;
     }
 
+    /* Install a critical device before its resources are queried, since the
+       bus driver may read the parameters the database gives it, like MSISupported */
+    IopInstallCriticalDevice(DeviceNode);
+
     /* Free the lists left from a previous initialization */
     if (DeviceNode->BootResources != NULL)
     {
@@ -1357,10 +1361,7 @@ PiInitializeDevNode(
         }
     }
 
-    // Try installing a critical device, so its Service key is populated
-    // then call IopSetServiceEnumData to populate service's Enum key.
-    // That allows us to start devices during an early boot
-    IopInstallCriticalDevice(DeviceNode);
+    // Populate the service's Enum key, so the device can start during an early boot
     IopSetServiceEnumData(DeviceNode, InstanceKey);
 
     ZwClose(InstanceKey);
