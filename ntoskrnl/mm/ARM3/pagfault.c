@@ -1778,10 +1778,10 @@ MiDispatchFault(IN ULONG FaultCode,
 
 NTSTATUS
 NTAPI
-MmArmAccessFault(IN ULONG FaultCode,
-                 IN PVOID Address,
-                 IN KPROCESSOR_MODE Mode,
-                 IN PVOID TrapInformation)
+MmAccessFault(IN ULONG FaultCode,
+              IN PVOID Address,
+              IN KPROCESSOR_MODE Mode,
+              IN PVOID TrapInformation)
 {
     KIRQL OldIrql = KeGetCurrentIrql(), LockIrql;
     PMMPTE ProtoPte = NULL;
