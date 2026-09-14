@@ -110,6 +110,17 @@ MM_AVL_TABLE MmSectionBasedRoot;
 KGUARDED_MUTEX MmSectionBasedMutex;
 PVOID MmHighSectionBase;
 
+POBJECT_TYPE MmSectionObjectType;
+ULONG_PTR MmSubsectionBase;
+
+static GENERIC_MAPPING MiSectionMapping =
+{
+    STANDARD_RIGHTS_READ | SECTION_MAP_READ | SECTION_QUERY,
+    STANDARD_RIGHTS_WRITE | SECTION_MAP_WRITE,
+    STANDARD_RIGHTS_EXECUTE | SECTION_MAP_EXECUTE,
+    SECTION_ALL_ACCESS
+};
+
 /* PRIVATE FUNCTIONS **********************************************************/
 
 static
@@ -780,7 +791,6 @@ MiRemoveMappedView(IN PEPROCESS CurrentProcess,
     ASSERT((Vad->u.VadFlags.VadType == VadNone) || (Vad->u.VadFlags.VadType == VadImageMap));
     ASSERT(Vad->u2.VadFlags2.ExtendableFile == FALSE);
     ASSERT(ControlArea);
-    ASSERT(!MI_IS_MEMORY_AREA_VAD(Vad));
 
     /* Delete the actual virtual memory pages */
     MiDeleteVirtualAddresses(Vad->StartingVpn << PAGE_SHIFT,
@@ -830,16 +840,6 @@ MiUnmapViewOfSection(IN PEPROCESS Process,
         DPRINT1("No VAD or invalid VAD\n");
         if (!Flags) MmUnlockAddressSpace(&Process->Vm);
         return STATUS_NOT_MAPPED_VIEW;
-    }
-
-    /* Check for RosMm memory area */
-    if (MI_IS_MEMORY_AREA_VAD(Vad))
-    {
-        /* Call Mm API */
-        ASSERT(MI_IS_ROSMM_VAD(Vad));
-        Status = MiRosUnmapViewOfSection(Process, (PMEMORY_AREA)Vad, BaseAddress, Process->ProcessExiting);
-        if (!Flags) MmUnlockAddressSpace(&Process->Vm);
-        return Status;
     }
 
     /* Check if we should attach to the process */
@@ -2069,15 +2069,8 @@ MmGetFileObjectForSection(IN PVOID SectionObject)
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     ASSERT(SectionObject != NULL);
 
-    /* Check if it's an ARM3, or ReactOS section */
-    if (MiIsRosSectionObject(SectionObject) == FALSE)
-    {
-        /* Return the file pointer stored in the control area */
-        return Section->Segment->ControlArea->FilePointer;
-    }
-
-    /* Return the file object */
-    return ((PMM_SECTION_SEGMENT)Section->Segment)->FileObject;
+    /* Return the file pointer stored in the control area */
+    return Section->Segment->ControlArea->FilePointer;
 }
 
 static
@@ -2086,56 +2079,24 @@ MiGetFileObjectForVad(
     _In_ PMMVAD Vad)
 {
     PCONTROL_AREA ControlArea;
-    PFILE_OBJECT FileObject;
 
-    /* Check if this is a RosMm memory area */
-    if (MI_IS_MEMORY_AREA_VAD(Vad))
+    /* Make sure it's not a VM VAD */
+    if (Vad->u.VadFlags.PrivateMemory == 1)
     {
-        PMEMORY_AREA MemoryArea = (PMEMORY_AREA)Vad;
-
-        /* We do not expect ARM3 memory areas here, those are kernel only */
-        ASSERT(MI_IS_ROSMM_VAD(Vad));
-
-        /* Check if it's a section view (RosMm section) */
-        if (MemoryArea->Type == MEMORY_AREA_SECTION_VIEW)
-        {
-            /* Get the section pointer to the SECTION_OBJECT */
-            FileObject = MemoryArea->SectionData.Segment->FileObject;
-        }
-        else
-        {
-#ifdef NEWCC
-            ASSERT(MemoryArea->Type == MEMORY_AREA_CACHE);
-            DPRINT1("VAD is a cache section!\n");
-#else
-            ASSERT(FALSE);
-#endif
-            return NULL;
-        }
+        DPRINT1("VAD is not a section\n");
+        return NULL;
     }
-    else
+
+    /* Get the control area */
+    ControlArea = Vad->ControlArea;
+    if ((ControlArea == NULL) || !ControlArea->FilePointer)
     {
-        /* Make sure it's not a VM VAD */
-        if (Vad->u.VadFlags.PrivateMemory == 1)
-        {
-            DPRINT1("VAD is not a section\n");
-            return NULL;
-        }
-
-        /* Get the control area */
-        ControlArea = Vad->ControlArea;
-        if ((ControlArea == NULL) || !ControlArea->FilePointer)
-        {
-            DPRINT1("Address is not a section\n");
-            return NULL;
-        }
-
-        /* Get the file object */
-        FileObject = ControlArea->FilePointer;
+        DPRINT1("Address is not a section\n");
+        return NULL;
     }
 
     /* Return the file object */
-    return FileObject;
+    return ControlArea->FilePointer;
 }
 
 VOID
@@ -2147,7 +2108,6 @@ MmGetImageInformation (OUT PSECTION_IMAGE_INFORMATION ImageInformation)
     /* Get the section object of this process*/
     SectionObject = PsGetCurrentProcess()->SectionObject;
     ASSERT(SectionObject != NULL);
-    ASSERT(MiIsRosSectionObject(SectionObject) == FALSE);
 
     if (SectionObject->u.Flags.Image == 0)
     {
@@ -2692,19 +2652,47 @@ MmCreatePhysicalMemorySection(VOID)
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief Creates the section object type and the physical memory section.
+ */
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+MmInitSectionImplementation(VOID)
+{
+    OBJECT_TYPE_INITIALIZER ObjectTypeInitializer;
+    UNICODE_STRING Name = RTL_CONSTANT_STRING(L"Section");
+
+    ASSERT(MmSectionBasedRoot.NumberGenericTableElements == 0);
+    MmSectionBasedRoot.BalancedRoot.u1.Parent = &MmSectionBasedRoot.BalancedRoot;
+
+    RtlZeroMemory(&ObjectTypeInitializer, sizeof(ObjectTypeInitializer));
+    ObjectTypeInitializer.Length = sizeof(ObjectTypeInitializer);
+    ObjectTypeInitializer.DefaultPagedPoolCharge = sizeof(SECTION);
+    ObjectTypeInitializer.PoolType = PagedPool;
+    ObjectTypeInitializer.UseDefaultObject = TRUE;
+    ObjectTypeInitializer.GenericMapping = MiSectionMapping;
+    ObjectTypeInitializer.DeleteProcedure = MiDeleteARM3Section;
+    ObjectTypeInitializer.ValidAccessMask = SECTION_ALL_ACCESS;
+    ObjectTypeInitializer.InvalidAttributes = OBJ_OPENLINK;
+    ObCreateObjectType(&Name, &ObjectTypeInitializer, NULL, &MmSectionObjectType);
+
+    return MmCreatePhysicalMemorySection();
+}
+
 /*
  * @implemented
  */
 NTSTATUS
 NTAPI
-MmCreateArm3Section(OUT PVOID *SectionObject,
-                    IN ACCESS_MASK DesiredAccess,
-                    IN POBJECT_ATTRIBUTES ObjectAttributes OPTIONAL,
-                    IN PLARGE_INTEGER InputMaximumSize,
-                    IN ULONG SectionPageProtection,
-                    IN ULONG AllocationAttributes,
-                    IN HANDLE FileHandle OPTIONAL,
-                    IN PFILE_OBJECT FileObject OPTIONAL)
+MmCreateSection(OUT PVOID *SectionObject,
+                IN ACCESS_MASK DesiredAccess,
+                IN POBJECT_ATTRIBUTES ObjectAttributes OPTIONAL,
+                IN PLARGE_INTEGER InputMaximumSize,
+                IN ULONG SectionPageProtection,
+                IN ULONG AllocationAttributes,
+                IN HANDLE FileHandle OPTIONAL,
+                IN PFILE_OBJECT FileObject OPTIONAL)
 {
     SECTION Section;
     PSECTION NewSection;
@@ -2718,6 +2706,16 @@ MmCreateArm3Section(OUT PVOID *SectionObject,
     KIRQL OldIrql;
     PFILE_OBJECT File;
     BOOLEAN UserRefIncremented = FALSE;
+
+    // FIXME: Implement support for large pages
+    if (AllocationAttributes & SEC_LARGE_PAGES)
+    {
+        DPRINT1("SEC_LARGE_PAGES is not supported\n");
+        return STATUS_INVALID_PARAMETER_6;
+    }
+
+    /* Win32k still sets bit 0, it used to pick this implementation over the legacy one */
+    AllocationAttributes &= ~1;
 
     /* Make the same sanity checks that the Nt interface should've validated */
     ASSERT((AllocationAttributes & ~(SEC_COMMIT | SEC_RESERVE | SEC_BASED |
@@ -3041,7 +3039,7 @@ MmCreateArm3Section(OUT PVOID *SectionObject,
  */
 NTSTATUS
 NTAPI
-MmMapViewOfArm3Section(
+MmMapViewOfSection(
     _In_ PVOID SectionObject,
     _In_ PEPROCESS Process,
     _Outptr_result_bytebuffer_(*ViewSize)
@@ -3050,7 +3048,7 @@ MmMapViewOfArm3Section(
         PVOID *BaseAddress,
     _In_ ULONG_PTR ZeroBits,
     _In_ SIZE_T CommitSize,
-    _Inout_ PLARGE_INTEGER SectionOffset,
+    _Inout_opt_ PLARGE_INTEGER SectionOffset,
     _Inout_ PSIZE_T ViewSize,
     _In_range_(ViewShare, ViewUnmap) SECTION_INHERIT InheritDisposition,
     _In_ ULONG AllocationType,
@@ -3063,8 +3061,16 @@ MmMapViewOfArm3Section(
     ULONG ProtectionMask;
     NTSTATUS Status;
     ULONG64 CalculatedViewSize;
+    LARGE_INTEGER ZeroOffset;
 
     PAGED_CODE();
+
+    /* Image views ignore the offset, callers may leave it out */
+    if (SectionOffset == NULL)
+    {
+        ZeroOffset.QuadPart = 0;
+        SectionOffset = &ZeroOffset;
+    }
 
     /* Check for invalid inherit disposition */
     // Let MiMapViewOfDataSection() check InheritDisposition value.
@@ -3138,7 +3144,7 @@ MmMapViewOfArm3Section(
     /* FIXME */
     if ((AllocationType & MEM_RESERVE) != 0)
     {
-        DPRINT1("MmMapViewOfArm3Section called with MEM_RESERVE, this is not implemented yet!!!\n");
+        DPRINT1("MmMapViewOfSection called with MEM_RESERVE, this is not implemented yet!!!\n");
         return STATUS_NOT_IMPLEMENTED;
     }
 
@@ -3270,12 +3276,6 @@ MmMapViewInSessionSpace(IN PVOID Section,
     PAGED_CODE();
     LARGE_INTEGER SectionOffset;
 
-    // HACK
-    if (MiIsRosSectionObject(Section))
-    {
-        return MmMapViewInSystemSpace(Section, MappedBase, ViewSize);
-    }
-
     /* Process must be in a session */
     if (PsGetCurrentProcess()->ProcessInSession == FALSE)
     {
@@ -3339,22 +3339,43 @@ NTSTATUS
 NTAPI
 MmUnmapViewInSystemSpace(IN PVOID MappedBase)
 {
-    PMEMORY_AREA MemoryArea;
     PAGED_CODE();
 
-    /* Was this mapped by RosMm? */
-    MmLockAddressSpace(MmGetKernelAddressSpace());
-    MemoryArea = MmLocateMemoryAreaByAddress(MmGetKernelAddressSpace(), MappedBase);
-    if ((MemoryArea) && (MemoryArea->Type != MEMORY_AREA_OWNED_BY_ARM3))
-    {
-        NTSTATUS Status = MiRosUnmapViewInSystemSpace(MappedBase);
-        MmUnlockAddressSpace(MmGetKernelAddressSpace());
-        return Status;
-    }
-    MmUnlockAddressSpace(MmGetKernelAddressSpace());
-
-    /* It was not, call the ARM3 routine */
     return MiUnmapViewInSystemSpace(&MmSession, MappedBase);
+}
+
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+MmMapViewInSystemSpace(IN PVOID SectionObject,
+                       OUT PVOID *MappedBase,
+                       IN OUT PSIZE_T ViewSize)
+{
+    LARGE_INTEGER SectionOffset;
+
+    SectionOffset.QuadPart = 0;
+    return MmMapViewInSystemSpaceEx(SectionObject, MappedBase, ViewSize, &SectionOffset, 0);
+}
+
+NTSTATUS
+NTAPI
+MmMapViewInSystemSpaceEx(
+    _In_ PVOID SectionObject,
+    _Outptr_result_bytebuffer_(*ViewSize) PVOID *MappedBase,
+    _Inout_ PSIZE_T ViewSize,
+    _Inout_ PLARGE_INTEGER SectionOffset,
+    _In_ ULONG_PTR Flags)
+{
+    UNREFERENCED_PARAMETER(Flags);
+    PAGED_CODE();
+
+    return MiMapViewInSystemSpace(SectionObject,
+                                  &MmSession,
+                                  MappedBase,
+                                  ViewSize,
+                                  SectionOffset);
 }
 
 /*
@@ -4153,6 +4174,141 @@ NtExtendSection(IN HANDLE SectionHandle,
         _SEH2_END;
     }
 
+    return Status;
+}
+
+/**
+ * @brief Queries the information of a section object.
+ *
+ * @param[in] SectionHandle
+ * Handle to the section, opened with SECTION_QUERY access.
+ *
+ * @param[in] SectionInformationClass
+ * SectionBasicInformation, or SectionImageInformation for an image section.
+ *
+ * @param[out] SectionInformation
+ * Receives the information.
+ *
+ * @param[in] SectionInformationLength
+ * Size of the buffer.
+ *
+ * @param[out] ResultLength
+ * Receives the number of bytes written.
+ */
+NTSTATUS
+NTAPI
+NtQuerySection(
+    _In_ HANDLE SectionHandle,
+    _In_ SECTION_INFORMATION_CLASS SectionInformationClass,
+    _Out_ PVOID SectionInformation,
+    _In_ SIZE_T SectionInformationLength,
+    _Out_opt_ PSIZE_T ResultLength)
+{
+    PSECTION Section;
+    KPROCESSOR_MODE PreviousMode;
+    NTSTATUS Status;
+    PAGED_CODE();
+
+    PreviousMode = ExGetPreviousMode();
+    if (PreviousMode != KernelMode)
+    {
+        _SEH2_TRY
+        {
+            ProbeForWrite(SectionInformation,
+                          SectionInformationLength,
+                          __alignof(ULONG));
+            if (ResultLength != NULL)
+            {
+                ProbeForWrite(ResultLength,
+                              sizeof(*ResultLength),
+                              __alignof(SIZE_T));
+            }
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+    }
+
+    if (SectionInformationClass == SectionBasicInformation)
+    {
+        if (SectionInformationLength < sizeof(SECTION_BASIC_INFORMATION))
+            return STATUS_INFO_LENGTH_MISMATCH;
+    }
+    else if (SectionInformationClass == SectionImageInformation)
+    {
+        if (SectionInformationLength < sizeof(SECTION_IMAGE_INFORMATION))
+            return STATUS_INFO_LENGTH_MISMATCH;
+    }
+    else
+    {
+        return STATUS_INVALID_INFO_CLASS;
+    }
+
+    Status = ObReferenceObjectByHandle(SectionHandle,
+                                       SECTION_QUERY,
+                                       MmSectionObjectType,
+                                       PreviousMode,
+                                       (PVOID*)&Section,
+                                       NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to reference section: 0x%lx\n", Status);
+        return Status;
+    }
+
+    if (SectionInformationClass == SectionBasicInformation)
+    {
+        SECTION_BASIC_INFORMATION Sbi = { 0 };
+
+        Sbi.Size = Section->SizeOfSection;
+        if (!Section->u.Flags.Image)
+            Sbi.BaseAddress = Section->Segment->BasedAddress;
+
+        if (Section->u.Flags.File)
+            Sbi.Attributes |= SEC_FILE;
+        if (Section->u.Flags.Image)
+            Sbi.Attributes |= SEC_IMAGE;
+        if (Section->u.Flags.Commit)
+            Sbi.Attributes |= SEC_COMMIT;
+        if (Section->u.Flags.Reserve)
+            Sbi.Attributes |= SEC_RESERVE;
+        if (Section->u.Flags.Based)
+            Sbi.Attributes |= SEC_BASED;
+
+        _SEH2_TRY
+        {
+            *((SECTION_BASIC_INFORMATION*)SectionInformation) = Sbi;
+            if (ResultLength != NULL)
+                *ResultLength = sizeof(Sbi);
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+    }
+    else if (!Section->u.Flags.Image)
+    {
+        Status = STATUS_SECTION_NOT_IMAGE;
+    }
+    else
+    {
+        _SEH2_TRY
+        {
+            *((PSECTION_IMAGE_INFORMATION)SectionInformation) = *Section->Segment->u2.ImageInformation;
+            if (ResultLength != NULL)
+                *ResultLength = sizeof(SECTION_IMAGE_INFORMATION);
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Status = _SEH2_GetExceptionCode();
+        }
+        _SEH2_END;
+    }
+
+    ObDereferenceObject(Section);
     return Status;
 }
 
