@@ -2341,12 +2341,31 @@ PiFakeResourceRebalance(
     PiIrpQueryResources(DeviceNode, &bootConfig);
     PiIrpQueryResourceRequirements(DeviceNode, &resourceRequirements);
 
+    /* The new lists replace the old ones */
+    if (DeviceNode->BootResources)
+    {
+        ExFreePool(DeviceNode->BootResources);
+    }
+    if (DeviceNode->BootResourcesTranslated)
+    {
+        ExFreePool(DeviceNode->BootResourcesTranslated);
+        DeviceNode->BootResourcesTranslated = NULL;
+    }
+    if (DeviceNode->ResourceRequirements)
+    {
+        ExFreePool(DeviceNode->ResourceRequirements);
+    }
+
     DeviceNode->BootResources = bootConfig;
     DeviceNode->ResourceRequirements = resourceRequirements;
 
     if (bootConfig)
     {
         DeviceNode->Flags |= DNF_HAS_BOOT_CONFIG;
+    }
+    else
+    {
+        DeviceNode->Flags &= ~DNF_HAS_BOOT_CONFIG;
     }
 
     DeviceNode->Flags &= ~DNF_RESOURCE_REQUIREMENTS_CHANGED;
