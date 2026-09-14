@@ -1366,11 +1366,19 @@ MmCleanProcessAddressSpace(IN PEPROCESS Process)
         ASSERT(VadTree->NumberGenericTableElements >= 1);
         MiRemoveNode((PMMADDRESS_NODE)Vad, VadTree);
 
-        /* Only regular and image VADs supported for now */
-        ASSERT((Vad->u.VadFlags.VadType == VadNone) || (Vad->u.VadFlags.VadType == VadImageMap));
+        /* Only regular, image and physical memory VADs supported for now */
+        ASSERT((Vad->u.VadFlags.VadType == VadNone) ||
+               (Vad->u.VadFlags.VadType == VadImageMap) ||
+               (Vad->u.VadFlags.VadType == VadDevicePhysicalMemory));
 
-        /* Check if this is a section VAD */
-        if (!(Vad->u.VadFlags.PrivateMemory) && (Vad->ControlArea))
+        /* Pages mapped from physical memory or locked MDLs are not ours to free */
+        if (Vad->u.VadFlags.VadType == VadDevicePhysicalMemory)
+        {
+            MiDeletePhysicalViewAddresses(Vad->StartingVpn << PAGE_SHIFT,
+                                          (Vad->EndingVpn << PAGE_SHIFT) | (PAGE_SIZE - 1));
+            MiUnlockProcessWorkingSetUnsafe(Process, Thread);
+        }
+        else if (!(Vad->u.VadFlags.PrivateMemory) && (Vad->ControlArea))
         {
             /* Remove the view */
             MiRemoveMappedView(Process, Vad);
