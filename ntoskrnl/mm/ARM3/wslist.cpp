@@ -27,6 +27,9 @@ KEVENT MmWorkingSetManagerEvent;
 #define MI_WSLE_TRIM_AGE        3
 #define MI_WSLE_TRIM_AGE_HARD   1
 
+/* Pages kept available above the Cc write throttle */
+#define MI_WS_THROTTLE_MARGIN   256
+
 /* LOCAL FUNCTIONS ************************************************************/
 
 static MMPTE GetPteTemplateForWsList(PMMWSL WsList)
@@ -632,14 +635,21 @@ MmWorkingSetManager(VOID)
     PETHREAD CurrentThread = PsGetCurrentThread();
     KIRQL OldIrql;
 
-    if (MmAvailablePages >= MmPlentyFreePages)
+    /* Cc throttles writes below MmThrottleTop, so free pages before it gets there */
+    PFN_NUMBER PlentyPages = max(MmPlentyFreePages, MmThrottleTop + MI_WS_THROTTLE_MARGIN);
+
+    if (MmAvailablePages >= PlentyPages)
         return;
+
+    /* Cache views nobody uses only keep their pages for later reads. Dirty ones are flushed once Cc throttles */
+    ULONG CachePagesFreed;
+    CcRosTrimCache((ULONG)(PlentyPages - MmAvailablePages), MmAvailablePages < MmThrottleTop, &CachePagesFreed);
 
     OldIrql = MiAcquireExpansionLock();
     ULONG Count = CountExpansionList();
     MiReleaseExpansionLock(OldIrql);
 
-    while (Count-- && (MmAvailablePages < MmPlentyFreePages))
+    while (Count-- && (MmAvailablePages < PlentyPages))
     {
         BOOLEAN TrimHard = MmAvailablePages < MmMinimumFreePages;
 
