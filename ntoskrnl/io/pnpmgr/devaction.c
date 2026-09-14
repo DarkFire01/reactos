@@ -2353,19 +2353,19 @@ PiFakeResourceRebalance(
 {
     ASSERT(DeviceNode->Flags & DNF_RESOURCE_REQUIREMENTS_CHANGED);
 
-    PCM_RESOURCE_LIST bootConfig = NULL;
     PIO_RESOURCE_REQUIREMENTS_LIST resourceRequirements = NULL;
 
-    PiIrpQueryResources(DeviceNode, &bootConfig);
+    /* Only the requirements change, the boot configuration stays */
     PiIrpQueryResourceRequirements(DeviceNode, &resourceRequirements);
 
-    DeviceNode->BootResources = bootConfig;
-    DeviceNode->ResourceRequirements = resourceRequirements;
-
-    if (bootConfig)
+    /* The new requirements replace the old ones */
+    if (DeviceNode->ResourceRequirements)
     {
-        DeviceNode->Flags |= DNF_HAS_BOOT_CONFIG;
+        ExFreePool(DeviceNode->ResourceRequirements);
     }
+
+    DeviceNode->ResourceRequirements = resourceRequirements;
+    DeviceNode->Flags |= DNF_RESOURCE_REQUIREMENTS_NEED_FILTERED;
 
     DeviceNode->Flags &= ~DNF_RESOURCE_REQUIREMENTS_CHANGED;
 }
