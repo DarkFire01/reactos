@@ -1839,8 +1839,15 @@ MiRemoveFromWorkingSetList(
 
 VOID
 NTAPI
-MiAddPrivatePageToWorkingSet(
-    _In_ PVOID Address);
+MiAddValidPageToWorkingSet(
+    _In_ PVOID Address,
+    _In_ ULONG Protection);
+
+VOID
+NTAPI
+MiRemoveSharedPageFromWorkingSet(
+    _In_ PVOID Address,
+    _In_ PMMPFN Pfn);
 
 _Requires_exclusive_lock_held_(WorkingSet->WorkingSetMutex)
 VOID
