@@ -2209,6 +2209,13 @@ PiEnumerateDevice(
                 /* Mark the node as enumerated */
                 ChildDeviceNode->Flags |= DNF_ENUMERATED;
 
+                /* Devices of the root enumerator are made up by the PnP manager,
+                   which reserves their boot configuration itself */
+                if (DeviceNode == IopRootDeviceNode)
+                {
+                    ChildDeviceNode->Flags |= DNF_MADEUP;
+                }
+
                 /* Mark the DO as bus enumerated */
                 ChildDeviceObject->Flags |= DO_BUS_ENUMERATED_DEVICE;
             }
