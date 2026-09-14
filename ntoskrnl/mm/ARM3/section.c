@@ -90,7 +90,7 @@ ULONG MmCompatibleProtectionMask[8] =
     PAGE_NOACCESS | PAGE_EXECUTE,
 
     PAGE_NOACCESS | PAGE_READONLY | PAGE_WRITECOPY | PAGE_EXECUTE |
-    PAGE_EXECUTE_READ,
+    PAGE_EXECUTE_READ | PAGE_EXECUTE_WRITECOPY,
 
     PAGE_NOACCESS | PAGE_READONLY | PAGE_WRITECOPY | PAGE_READWRITE,
 
@@ -776,8 +776,8 @@ MiRemoveMappedView(IN PEPROCESS CurrentProcess,
     /* Get the control area */
     ControlArea = Vad->ControlArea;
 
-    /* We only support non-extendable, non-image regular sections */
-    ASSERT(Vad->u.VadFlags.VadType == VadNone);
+    /* We only support non-extendable regular and image sections */
+    ASSERT((Vad->u.VadFlags.VadType == VadNone) || (Vad->u.VadFlags.VadType == VadImageMap));
     ASSERT(Vad->u2.VadFlags2.ExtendableFile == FALSE);
     ASSERT(ControlArea);
     ASSERT(!MI_IS_MEMORY_AREA_VAD(Vad));
@@ -866,7 +866,7 @@ MiUnmapViewOfSection(IN PEPROCESS Process,
     /* We need the base address for the debugger message on image-backed VADs */
     if (Vad->u.VadFlags.VadType == VadImageMap)
     {
-        DbgBase = (PVOID)(Vad->StartingVpn >> PAGE_SHIFT);
+        DbgBase = (PVOID)(Vad->StartingVpn << PAGE_SHIFT);
     }
 
     /* Compute the size of the VAD region */
@@ -877,7 +877,7 @@ MiUnmapViewOfSection(IN PEPROCESS Process,
     {
         /* Are we allowed to mess with this VAD? */
         Status = MiCheckSecuredVad(Vad,
-                                   (PVOID)(Vad->StartingVpn >> PAGE_SHIFT),
+                                   (PVOID)(Vad->StartingVpn << PAGE_SHIFT),
                                    RegionSize,
                                    MM_DELETE_CHECK);
         if (!NT_SUCCESS(Status))
@@ -1511,6 +1511,137 @@ MiMapViewOfDataSection(
 }
 
 /**
+ * @brief Maps a whole image section into the current process.
+ *
+ * @param[in] ControlArea
+ * Image control area.
+ *
+ * @param[in] Process
+ * Current process.
+ *
+ * @param[in,out] BaseAddress
+ * Address wanted or NULL for the image base, receives where the image was mapped.
+ *
+ * @param[out] ViewSize
+ * Receives the size of the image.
+ *
+ * @param[in] Section
+ * Section being mapped.
+ *
+ * @param[in] InheritDisposition
+ * Whether child processes get the view.
+ *
+ * @param[in] ZeroBits
+ * High address bits that must be clear when the image moves.
+ *
+ * @param[in] AllocationType
+ * MEM_TOP_DOWN picks the highest free address when the image moves.
+ *
+ * @return STATUS_IMAGE_NOT_AT_BASE when the image is not at its preferred base.
+ */
+static
+NTSTATUS
+MiMapViewOfImageSection(
+    _In_ PCONTROL_AREA ControlArea,
+    _In_ PEPROCESS Process,
+    _Inout_ PVOID *BaseAddress,
+    _Out_ PSIZE_T ViewSize,
+    _In_ PSECTION Section,
+    _In_range_(ViewShare, ViewUnmap) SECTION_INHERIT InheritDisposition,
+    _In_ ULONG_PTR ZeroBits,
+    _In_ ULONG AllocationType)
+{
+    PSEGMENT Segment = ControlArea->Segment;
+    ULONG_PTR StartAddress;
+    SIZE_T ImageSize;
+    PMMVAD_LONG Vad;
+    NTSTATUS Status;
+
+    ASSERT(ControlArea->u.Flags.Image == 1);
+    ASSERT(Process == PsGetCurrentProcess());
+
+    ImageSize = (SIZE_T)Segment->SizeOfSegment;
+
+    Status = MiCheckPurgeAndUpMapCount(ControlArea, TRUE);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Vad = ExAllocatePoolWithTag(NonPagedPool, sizeof(MMVAD_LONG), 'ldaV');
+    if (!Vad)
+    {
+        MiDereferenceControlArea(ControlArea, TRUE);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlZeroMemory(Vad, sizeof(MMVAD_LONG));
+    Vad->u4.Banked = (PVOID)(ULONG_PTR)0xDEADBABEDEADBABEULL;
+
+    /* Pages take their protection from their image section */
+    Vad->ControlArea = ControlArea;
+    Vad->u.VadFlags.VadType = VadImageMap;
+    Vad->u.VadFlags.Protection = MM_EXECUTE_WRITECOPY;
+    Vad->u2.VadFlags2.Inherit = (InheritDisposition == ViewShare);
+    if (Section->u.Flags.NoChange)
+    {
+        Vad->u.VadFlags.NoChange = 1;
+        Vad->u2.VadFlags2.SecNoChange = 1;
+    }
+
+    Vad->FirstPrototypePte = Segment->PrototypePte;
+    Vad->LastContiguousPte = &Segment->PrototypePte[Segment->TotalNumberOfPtes - 1];
+
+    Status = PsChargeProcessNonPagedPoolQuota(Process, sizeof(MMVAD_LONG));
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(Vad, 'ldaV');
+        MiDereferenceControlArea(ControlArea, TRUE);
+        return Status;
+    }
+
+    /* An address from the caller is taken as it is, otherwise the image base comes first */
+    StartAddress = *BaseAddress ? ALIGN_DOWN_BY((ULONG_PTR)*BaseAddress, MM_VIRTMEM_GRANULARITY) :
+                                  (ULONG_PTR)Segment->BasedAddress;
+
+    Status = STATUS_CONFLICTING_ADDRESSES;
+    if ((StartAddress != 0) &&
+        (StartAddress <= (ULONG_PTR)MM_HIGHEST_VAD_ADDRESS) &&
+        (((ULONG_PTR)MM_HIGHEST_VAD_ADDRESS - StartAddress) >= (ImageSize - 1)))
+    {
+        Status = MiInsertVadEx((PMMVAD)Vad,
+                               &StartAddress,
+                               ImageSize,
+                               MAXULONG_PTR >> ZeroBits,
+                               MM_VIRTMEM_GRANULARITY,
+                               AllocationType);
+    }
+
+    /* Without an address from the caller the image goes wherever there is room */
+    if (!NT_SUCCESS(Status) && !*BaseAddress)
+    {
+        StartAddress = 0;
+        Status = MiInsertVadEx((PMMVAD)Vad,
+                               &StartAddress,
+                               ImageSize,
+                               MAXULONG_PTR >> ZeroBits,
+                               MM_VIRTMEM_GRANULARITY,
+                               AllocationType);
+    }
+
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(Vad, 'ldaV');
+        PsReturnProcessNonPagedPoolQuota(Process, sizeof(MMVAD_LONG));
+        MiDereferenceControlArea(ControlArea, TRUE);
+        return Status;
+    }
+
+    *BaseAddress = (PVOID)StartAddress;
+    *ViewSize = ImageSize;
+
+    return (StartAddress == (ULONG_PTR)Segment->BasedAddress) ? STATUS_SUCCESS : STATUS_IMAGE_NOT_AT_BASE;
+}
+
+/**
  * @brief Sizes a data section of a file and references the segment describing it.
  *
  * @param[in] File
@@ -1793,7 +1924,7 @@ MmGetImageInformation (OUT PSECTION_IMAGE_INFORMATION ImageInformation)
     /* Get the section object of this process*/
     SectionObject = PsGetCurrentProcess()->SectionObject;
     ASSERT(SectionObject != NULL);
-    ASSERT(MiIsRosSectionObject(SectionObject) == TRUE);
+    ASSERT(MiIsRosSectionObject(SectionObject) == FALSE);
 
     if (SectionObject->u.Flags.Image == 0)
     {
@@ -1802,7 +1933,7 @@ MmGetImageInformation (OUT PSECTION_IMAGE_INFORMATION ImageInformation)
     }
 
     /* Return the image information */
-    *ImageInformation = ((PMM_IMAGE_SECTION_OBJECT)SectionObject->Segment)->ImageInformation;
+    *ImageInformation = *SectionObject->Segment->u2.ImageInformation;
 }
 
 static
@@ -2328,9 +2459,6 @@ MmCreateArm3Section(OUT PVOID *SectionObject,
         /* These cannot be mapped with large pages */
         if (AllocationAttributes & SEC_LARGE_PAGES) return STATUS_INVALID_PARAMETER_6;
 
-        /* Image-file backed sections are not yet supported */
-        ASSERT((AllocationAttributes & SEC_IMAGE) == 0);
-
         if (FileObject)
         {
             /* Without a handle the caller, like the cache manager, sizes the file itself */
@@ -2373,12 +2501,44 @@ MmCreateArm3Section(OUT PVOID *SectionObject,
         }
 
         /* The control area of the file takes its own reference on the file */
-        Status = MiCreateDataFileMap(File,
-                                     &NewSegment,
-                                     InputMaximumSize,
-                                     SectionPageProtection,
-                                     &Section.SizeOfSection,
-                                     KernelCall);
+        if (AllocationAttributes & SEC_IMAGE)
+        {
+            /* Image sections always count as user references */
+            KernelCall = FALSE;
+            Status = MiReferenceImageFileMap(File, &ControlArea);
+            if (NT_SUCCESS(Status))
+            {
+                NewSegment = ControlArea->Segment;
+                Section.SizeOfSection.QuadPart = NewSegment->SizeOfSegment;
+
+                /* A given size may only be larger than the image for writable sections */
+                if (InputMaximumSize && InputMaximumSize->QuadPart)
+                {
+                    if (((ULONG64)InputMaximumSize->QuadPart <= NewSegment->SizeOfSegment) ||
+                        (SectionPageProtection & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)))
+                    {
+                        Section.SizeOfSection = *InputMaximumSize;
+                    }
+                    else
+                    {
+                        OldIrql = MiAcquirePfnLock();
+                        ControlArea->NumberOfSectionReferences--;
+                        ControlArea->NumberOfUserReferences--;
+                        MiCheckControlArea(ControlArea, OldIrql);
+                        Status = STATUS_SECTION_TOO_BIG;
+                    }
+                }
+            }
+        }
+        else
+        {
+            Status = MiCreateDataFileMap(File,
+                                         &NewSegment,
+                                         InputMaximumSize,
+                                         SectionPageProtection,
+                                         &Section.SizeOfSection,
+                                         KernelCall);
+        }
 
         if (FileLock)
         {
@@ -2621,8 +2781,29 @@ MmMapViewOfArm3Section(
     Section = (PSECTION)SectionObject;
     ControlArea = Section->Segment->ControlArea;
 
+    /* An image is always mapped whole, its pages carry their own protection */
+    if (Section->u.Flags.Image)
+    {
+        if (PsGetCurrentProcess() != Process)
+        {
+            KeStackAttachProcess(&Process->Pcb, &ApcState);
+            Attached = TRUE;
+        }
+
+        Status = MiMapViewOfImageSection(ControlArea,
+                                         Process,
+                                         BaseAddress,
+                                         ViewSize,
+                                         Section,
+                                         InheritDisposition,
+                                         ZeroBits,
+                                         AllocationType);
+
+        if (Attached) KeUnstackDetachProcess(&ApcState);
+        return Status;
+    }
+
     /* These flags/states are not yet supported by ARM3 */
-    ASSERT(Section->u.Flags.Image == 0);
     ASSERT(Section->u.Flags.NoCache == 0);
     ASSERT(Section->u.Flags.WriteCombined == 0);
     ASSERT(ControlArea->u.Flags.PhysicalMemory == 0);
