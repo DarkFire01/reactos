@@ -2100,6 +2100,13 @@ VOID
 NTAPI
 MiWaitForFreePage(VOID);
 
+PFN_NUMBER
+NTAPI
+MiRemoveAnyPageOrWait(
+    _In_ ULONG Color,
+    _In_ KIRQL OldIrql
+);
+
 VOID
 NTAPI
 MiInitializePfn(
