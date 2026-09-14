@@ -43,8 +43,6 @@ CHAR MmReadWrite[32] =
 
 /* FUNCTIONS ******************************************************************/
 
-extern MM_AVL_TABLE MiRosKernelVadRoot;
-
 #if DBG
 
 static
@@ -55,14 +53,6 @@ MiDbgAssertIsLockedForRead(_In_ PMM_AVL_TABLE Table)
     {
         /* Need to hold MmSectionBasedMutex */
         ASSERT(MmSectionBasedMutex.Owner == KeGetCurrentThread());
-    }
-    else if (Table == &MiRosKernelVadRoot)
-    {
-        /* Need to hold either the system working-set lock or
-           the idle process' AddressCreationLock */
-        ASSERT(PsGetCurrentThread()->OwnsSystemWorkingSetExclusive ||
-               PsGetCurrentThread()->OwnsSystemWorkingSetShared ||
-               (PsIdleProcess->AddressCreationLock.Owner == KeGetCurrentThread()));
     }
     else
     {
@@ -82,13 +72,6 @@ MiDbgAssertIsLockedForWrite(_In_ PMM_AVL_TABLE Table)
     {
         /* Need to hold MmSectionBasedMutex */
         ASSERT(MmSectionBasedMutex.Owner == KeGetCurrentThread());
-    }
-    else if (Table == &MiRosKernelVadRoot)
-    {
-        /* Need to hold both the system working-set lock exclusive and
-           the idle process' AddressCreationLock */
-        ASSERT(PsGetCurrentThread()->OwnsSystemWorkingSetExclusive);
-        ASSERT(PsIdleProcess->AddressCreationLock.Owner == KeGetCurrentThread());
     }
     else
     {
@@ -510,12 +493,6 @@ MiFindEmptyAddressRangeInTree(IN SIZE_T Length,
     AlignmentVpn = Alignment >> PAGE_SHIFT;
     LowVpn = ALIGN_UP_BY((ULONG_PTR)MM_LOWEST_USER_ADDRESS >> PAGE_SHIFT, AlignmentVpn);
 
-    /* Check for kernel mode table (memory areas) */
-    if (Table->Unused == 1)
-    {
-        LowVpn = ALIGN_UP_BY((ULONG_PTR)MmSystemRangeStart >> PAGE_SHIFT, AlignmentVpn);
-    }
-
     /* Check if the table is empty */
     if (Table->NumberGenericTableElements == 0)
     {
@@ -570,12 +547,6 @@ MiFindEmptyAddressRangeInTree(IN SIZE_T Length,
     /* We're up to the highest VAD, will this allocation fit above it? */
     HighestVpn = ((ULONG_PTR)MM_HIGHEST_VAD_ADDRESS + 1) / PAGE_SIZE;
 
-    /* Check for kernel mode table (memory areas) */
-    if (Table->Unused == 1)
-    {
-        HighestVpn = ALIGN_UP_BY((ULONG_PTR)(LONG_PTR)-1 >> PAGE_SHIFT, AlignmentVpn);
-    }
-
     if (HighestVpn >= LowVpn + PageCount)
     {
         /* Yes! Use this VAD to store the allocation */
@@ -612,16 +583,7 @@ MiFindEmptyAddressRangeDownTree(IN SIZE_T Length,
     Length = ROUND_TO_PAGES(Length);
     PageCount = Length >> PAGE_SHIFT;
     AlignmentVpn = Alignment / PAGE_SIZE;
-
-    /* Check for kernel mode table (memory areas) */
-    if (Table->Unused == 1)
-    {
-        LowVpn = ALIGN_UP_BY((ULONG_PTR)MmSystemRangeStart >> PAGE_SHIFT, AlignmentVpn);
-    }
-    else
-    {
-        LowVpn = ALIGN_UP_BY((ULONG_PTR)MM_LOWEST_USER_ADDRESS, Alignment);
-    }
+    LowVpn = ALIGN_UP_BY((ULONG_PTR)MM_LOWEST_USER_ADDRESS, Alignment);
 
     /* Check if there is enough space below the boundary */
     if ((LowVpn + Length) > (BoundaryAddress + 1))
