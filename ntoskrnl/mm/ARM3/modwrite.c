@@ -412,9 +412,8 @@ MiWaitForFreePage(VOID)
     ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
     ASSERT(!MM_ANY_WS_LOCK_HELD(PsGetCurrentThread()));
 
-    /* Get modified pages written and legacy pages trimmed */
+    /* Get modified pages written */
     MiWakeModifiedPageWriter();
-    MmRebalanceMemoryConsumers();
 
     if (!MiModifiedPageWriterStarted)
         return;
@@ -422,7 +421,7 @@ MiWaitForFreePage(VOID)
     /* And working sets trimmed */
     KeSetEvent(&MmWorkingSetManagerEvent, IO_NO_INCREMENT, FALSE);
 
-    /* The legacy balancer frees pages without telling anyone, so do not wait forever */
+    /* A single freed page is enough to retry but does not reach the threshold that sets the event */
     Timeout.QuadPart = -100 * 10000LL;
     KeWaitForSingleObject(&MiAvailablePagesEvent, WrFreePage, KernelMode, FALSE, &Timeout);
 }

@@ -53,8 +53,6 @@ extern KSPIN_LOCK MmPfnLock;
 
 struct _KTRAP_FRAME;
 struct _EPROCESS;
-struct _MM_RMAP_ENTRY;
-typedef ULONG_PTR SWAPENTRY;
 
 //
 // Pool Quota values
@@ -84,34 +82,9 @@ typedef ULONG_PTR SWAPENTRY;
 //
 #define MMDBG_COPY_MAX_SIZE         0x8
 
-#if defined(_X86_) // intenal for marea.c
-#define MI_STATIC_MEMORY_AREAS              (14)
-#else
-#define MI_STATIC_MEMORY_AREAS              (13)
-#endif
-
-#define MEMORY_AREA_SECTION_VIEW            (1)
-#ifdef NEWCC
-#define MEMORY_AREA_CACHE                   (2)
-#endif
-#define MEMORY_AREA_OWNED_BY_ARM3           (15)
-#define MEMORY_AREA_STATIC                  (0x80000000)
-
 /* Although Microsoft says this isn't hardcoded anymore,
    they won't be able to change it. Stuff depends on it */
 #define MM_VIRTMEM_GRANULARITY              (64 * 1024)
-
-#define STATUS_MM_RESTART_OPERATION         ((NTSTATUS)0xD0000001)
-
-/*
- * Additional flags for protection attributes
- */
-#define PAGE_WRITETHROUGH                   (1024)
-#define PAGE_SYSTEM                         (2048)
-
-#define MC_USER                             (0)
-#define MC_SYSTEM                           (1)
-#define MC_MAXIMUM                          (2)
 
 #define PAGED_POOL_MASK                     1
 #define MUST_SUCCEED_POOL_MASK              2
@@ -122,66 +95,12 @@ typedef ULONG_PTR SWAPENTRY;
 
 #define MAX_PAGING_FILES                    (16)
 
-// FIXME: use ALIGN_UP_BY
-#define MM_ROUND_UP(x,s)                    \
-    ((PVOID)(((ULONG_PTR)(x)+(s)-1) & ~((ULONG_PTR)(s)-1)))
-
-#define MM_ROUND_DOWN(x,s)                  \
-    ((PVOID)(((ULONG_PTR)(x)) & ~((ULONG_PTR)(s)-1)))
-
 /* PAGE_ROUND_UP and PAGE_ROUND_DOWN equivalent, with support for 64-bit-only data types */
 #define PAGE_ROUND_UP_64(x) \
     (((x) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
 
 #define PAGE_ROUND_DOWN_64(x) \
     ((x) & ~(PAGE_SIZE - 1))
-
-#define PAGE_FLAGS_VALID_FOR_SECTION \
-    (PAGE_READONLY | \
-     PAGE_READWRITE | \
-     PAGE_WRITECOPY | \
-     PAGE_EXECUTE | \
-     PAGE_EXECUTE_READ | \
-     PAGE_EXECUTE_READWRITE | \
-     PAGE_EXECUTE_WRITECOPY | \
-     PAGE_NOACCESS | \
-     PAGE_NOCACHE | \
-     PAGE_WRITECOMBINE)
-
-#define PAGE_IS_READABLE                    \
-    (PAGE_READONLY | \
-    PAGE_READWRITE | \
-    PAGE_WRITECOPY | \
-    PAGE_EXECUTE_READ | \
-    PAGE_EXECUTE_READWRITE | \
-    PAGE_EXECUTE_WRITECOPY)
-
-#define PAGE_IS_WRITABLE                    \
-    (PAGE_READWRITE | \
-    PAGE_WRITECOPY | \
-    PAGE_EXECUTE_READWRITE | \
-    PAGE_EXECUTE_WRITECOPY)
-
-#define PAGE_IS_EXECUTABLE                  \
-    (PAGE_EXECUTE | \
-    PAGE_EXECUTE_READ | \
-    PAGE_EXECUTE_READWRITE | \
-    PAGE_EXECUTE_WRITECOPY)
-
-#define PAGE_IS_WRITECOPY                   \
-    (PAGE_WRITECOPY | \
-    PAGE_EXECUTE_WRITECOPY)
-
-//
-// Wait entry for marking pages that are being serviced
-//
-#ifdef _M_IX86
-#define MM_WAIT_ENTRY            0x7ffffc00
-#elif defined(_M_AMD64)
-#define MM_WAIT_ENTRY            0x7FFFFFFFFFFFFC00ULL
-#else
-#error Unsupported architecture!
-#endif
 
 #ifdef _M_AMD64
 #define InterlockedCompareExchangePte(PointerPte, Exchange, Comperand) \
@@ -196,92 +115,6 @@ typedef ULONG_PTR SWAPENTRY;
 #define InterlockedExchangePte(PointerPte, Value) \
     InterlockedExchange((PLONG)(PointerPte), Value)
 #endif
-
-typedef struct _MM_SECTION_SEGMENT
-{
-    LONG64 RefCount;
-    PFILE_OBJECT FileObject;
-
-    FAST_MUTEX Lock;		/* lock which protects the page directory */
-    LARGE_INTEGER RawLength;		/* length of the segment which is part of the mapped file */
-    LARGE_INTEGER Length;			/* absolute length of the segment */
-    PLONG64 ReferenceCount;
-	ULONG SectionCount;
-    ULONG Protection;
-    PULONG Flags;
-    BOOLEAN WriteCopy;
-	BOOLEAN Locked;
-
-	struct
-	{
-		ULONGLONG FileOffset;		/* start offset into the file for image sections */
-		ULONG_PTR VirtualAddress;	/* start offset into the address range for image sections */
-		ULONG Characteristics;
-	} Image;
-
-	ULONG SegFlags;
-
-    ULONGLONG LastPage;
-
-	RTL_GENERIC_TABLE PageTable;
-} MM_SECTION_SEGMENT, *PMM_SECTION_SEGMENT;
-
-typedef struct _MM_IMAGE_SECTION_OBJECT
-{
-    LONG64 RefCount;
-    PFILE_OBJECT FileObject;
-    ULONG SectionCount;
-    LONG MapCount;
-    ULONG SegFlags;
-
-    SECTION_IMAGE_INFORMATION ImageInformation;
-    PVOID BasedAddress;
-    ULONG NrSegments;
-    PMM_SECTION_SEGMENT Segments;
-} MM_IMAGE_SECTION_OBJECT, *PMM_IMAGE_SECTION_OBJECT;
-
-#define MM_PHYSICALMEMORY_SEGMENT           (0x1)
-#define MM_DATAFILE_SEGMENT                 (0x2)
-#define MM_SEGMENT_INDELETE                 (0x4)
-#define MM_SEGMENT_INCREATE                 (0x8)
-#define MM_IMAGE_SECTION_FLUSH_DELETE       (0x10)
-
-
-#define MA_GetStartingAddress(_MemoryArea) ((_MemoryArea)->VadNode.StartingVpn << PAGE_SHIFT)
-#define MA_GetEndingAddress(_MemoryArea) (((_MemoryArea)->VadNode.EndingVpn + 1) << PAGE_SHIFT)
-
-typedef struct _MEMORY_AREA
-{
-    MMVAD VadNode;
-
-    ULONG Type;
-    ULONG Flags;
-    BOOLEAN DeleteInProgress;
-    ULONG Magic;
-
-    struct
-    {
-        LONGLONG ViewOffset;
-        PMM_SECTION_SEGMENT Segment;
-        LIST_ENTRY RegionListHead;
-    } SectionData;
-} MEMORY_AREA, *PMEMORY_AREA;
-
-#define MI_SET_MEMORY_AREA_VAD(Vad) do { (Vad)->u.VadFlags.Spare |= 1; } while (0)
-#define MI_IS_MEMORY_AREA_VAD(Vad) (((Vad)->u.VadFlags.Spare & 1) != 0)
-#define MI_SET_ROSMM_VAD(Vad) do { (Vad)->u.VadFlags.Spare |= 2; } while (0)
-#define MI_IS_ROSMM_VAD(Vad) (((Vad)->u.VadFlags.Spare & 2) != 0)
-
-typedef struct _MM_RMAP_ENTRY
-{
-   struct _MM_RMAP_ENTRY* Next;
-   PEPROCESS Process;
-   PVOID Address;
-#if DBG
-   PVOID Caller;
-#endif
-}
-MM_RMAP_ENTRY, *PMM_RMAP_ENTRY;
 
 #if MI_TRACE_PFNS
 extern ULONG MI_PFN_CURRENT_USAGE;
@@ -395,9 +228,6 @@ typedef struct _MMPFN
         PKEVENT Event;
         NTSTATUS ReadStatus;
         SINGLE_LIST_ENTRY NextStackPfn;
-
-        // HACK for ROSPFN
-        SWAPENTRY SwapEntry;
     } u1;
     PMMPTE PteAddress;
     union
@@ -425,9 +255,6 @@ typedef struct _MMPFN
     {
         MMPTE OriginalPte;
         LONG AweReferenceCount;
-
-        // HACK for ROSPFN
-        PMM_RMAP_ENTRY RmapListHead;
     };
     union
     {
@@ -439,7 +266,6 @@ typedef struct _MMPFN
             ULONG_PTR VerifierAllocation:1;
             ULONG_PTR AweAllocation:1;
             ULONG_PTR Priority:3;
-            ULONG_PTR MustBeCached:1;
         };
     } u4;
 #if MI_TRACE_PFNS
@@ -451,8 +277,6 @@ typedef struct _MMPFN
 
     // HACK until WS lists are supported
     MMWSLE Wsle;
-    struct _MMPFN* NextLRU;
-    struct _MMPFN* PreviousLRU;
 } MMPFN, *PMMPFN;
 
 extern PMMPFN MmPfnDatabase;
@@ -470,21 +294,6 @@ extern MMPFNLIST MmFreePageListHead;
 extern MMPFNLIST MmStandbyPageListHead;
 extern MMPFNLIST MmModifiedPageListHead;
 extern MMPFNLIST MmModifiedNoWritePageListHead;
-
-typedef struct _MM_MEMORY_CONSUMER
-{
-    ULONG PagesUsed;
-    ULONG PagesTarget;
-    NTSTATUS (*Trim)(ULONG Target, ULONG Priority, PULONG NrFreed);
-} MM_MEMORY_CONSUMER, *PMM_MEMORY_CONSUMER;
-
-typedef struct _MM_REGION
-{
-    ULONG Type;
-    ULONG Protect;
-    SIZE_T Length;
-    LIST_ENTRY RegionListEntry;
-} MM_REGION, *PMM_REGION;
 
 // Mm internal
 /* Entry describing free pool memory */
@@ -512,8 +321,6 @@ typedef struct _MM_PAGED_POOL_INFO
     SIZE_T AllocatedPagedPool;
 } MM_PAGED_POOL_INFO, *PMM_PAGED_POOL_INFO;
 
-extern MM_MEMORY_CONSUMER MiMemoryConsumers[MC_MAXIMUM];
-
 /* Page file information */
 typedef struct _MMPAGING_FILE
 {
@@ -530,27 +337,6 @@ typedef struct _MMPAGING_FILE
 MMPAGING_FILE, *PMMPAGING_FILE;
 
 extern PMMPAGING_FILE MmPagingFile[MAX_PAGING_FILES];
-
-typedef VOID
-(*PMM_ALTER_REGION_FUNC)(
-    PMMSUPPORT AddressSpace,
-    PVOID BaseAddress,
-    SIZE_T Length,
-    ULONG OldType,
-    ULONG OldProtect,
-    ULONG NewType,
-    ULONG NewProtect
-);
-
-typedef VOID
-(*PMM_FREE_PAGE_FUNC)(
-    PVOID Context,
-    PMEMORY_AREA MemoryArea,
-    PVOID Address,
-    PFN_NUMBER Page,
-    SWAPENTRY SwapEntry,
-    BOOLEAN Dirty
-);
 
 //
 // Mm copy support for Kd
@@ -583,67 +369,6 @@ ULONG
 NTAPI
 MmGetSessionIdEx(
     IN PEPROCESS Process
-);
-
-/* marea.c *******************************************************************/
-
-NTSTATUS
-NTAPI
-MmCreateMemoryArea(
-    PMMSUPPORT AddressSpace,
-    ULONG Type,
-    PVOID *BaseAddress,
-    SIZE_T Length,
-    ULONG Protection,
-    PMEMORY_AREA *Result,
-    ULONG AllocationFlags,
-    ULONG AllocationGranularity
-);
-
-PMEMORY_AREA
-NTAPI
-MmLocateMemoryAreaByAddress(
-    PMMSUPPORT AddressSpace,
-    PVOID Address
-);
-
-NTSTATUS
-NTAPI
-MmFreeMemoryArea(
-    PMMSUPPORT AddressSpace,
-    PMEMORY_AREA MemoryArea,
-    PMM_FREE_PAGE_FUNC FreePage,
-    PVOID FreePageContext
-);
-
-VOID
-NTAPI
-MiRosCleanupMemoryArea(
-    PEPROCESS Process,
-    PMMVAD Vad);
-
-PMEMORY_AREA
-NTAPI
-MmLocateMemoryAreaByRegion(
-    PMMSUPPORT AddressSpace,
-    PVOID Address,
-    SIZE_T Length
-);
-
-BOOLEAN
-NTAPI
-MmIsAddressRangeFree(
-    _In_ PMMSUPPORT AddressSpace,
-    _In_ PVOID Address,
-    _In_ ULONG_PTR Length);
-
-PVOID
-NTAPI
-MmFindGap(
-    PMMSUPPORT AddressSpace,
-    SIZE_T Length,
-    ULONG_PTR Granularity,
-    BOOLEAN TopDown
 );
 
 /* npool.c *******************************************************************/
@@ -691,15 +416,6 @@ MmReturnPoolQuota(
     _In_ SIZE_T QuotaToReturn
 );
 
-/* mdl.c *********************************************************************/
-
-VOID
-NTAPI
-MmBuildMdlFromPages(
-    PMDL Mdl,
-    PPFN_NUMBER Pages
-);
-
 /* mminit.c ******************************************************************/
 
 CODE_SEG("INIT")
@@ -711,14 +427,6 @@ MmInitSystem(IN ULONG Phase,
 
 /* pagefile.c ****************************************************************/
 
-SWAPENTRY
-NTAPI
-MmAllocSwapPage(VOID);
-
-VOID
-NTAPI
-MmFreeSwapPage(SWAPENTRY Entry);
-
 CODE_SEG("INIT")
 VOID
 NTAPI
@@ -727,20 +435,6 @@ MmInitPagingFile(VOID);
 BOOLEAN
 NTAPI
 MmIsFileObjectAPagingFile(PFILE_OBJECT FileObject);
-
-NTSTATUS
-NTAPI
-MmReadFromSwapPage(
-    SWAPENTRY SwapEntry,
-    PFN_NUMBER Page
-);
-
-NTSTATUS
-NTAPI
-MmWriteToSwapPage(
-    SWAPENTRY SwapEntry,
-    PFN_NUMBER Page
-);
 
 VOID
 NTAPI
@@ -865,128 +559,6 @@ NTAPI
 MmDeleteKernelStack(PVOID Stack,
                     BOOLEAN GuiStack);
 
-/* balance.c / pagefile.c******************************************************/
-
-FORCEINLINE VOID UpdateTotalCommittedPages(LONG Delta)
-{
-    /*
-     * Add up all the used "Committed" memory + pagefile.
-     * Not sure this is right. 8^\
-     * MmTotalCommittedPages should be adjusted consistently with
-     * other counters at different places.
-     *
-       MmTotalCommittedPages = MiMemoryConsumers[MC_SYSTEM].PagesUsed +
-                               MiMemoryConsumers[MC_USER].PagesUsed +
-                               MiUsedSwapPages;
-     */
-
-    /* Update Commitment */
-    SIZE_T TotalCommittedPages = InterlockedExchangeAddSizeT(&MmTotalCommittedPages, Delta) + Delta;
-
-    /* Update Peak = max(Peak, Total) in a lockless way */
-    SIZE_T PeakCommitment = MmPeakCommitment;
-    while (TotalCommittedPages > PeakCommitment &&
-           InterlockedCompareExchangeSizeT(&MmPeakCommitment, TotalCommittedPages, PeakCommitment) != PeakCommitment)
-    {
-        PeakCommitment = MmPeakCommitment;
-    }
-}
-
-/* balance.c *****************************************************************/
-
-CODE_SEG("INIT")
-VOID
-NTAPI
-MmInitializeMemoryConsumer(
-    ULONG Consumer,
-    NTSTATUS (*Trim)(ULONG Target, ULONG Priority, PULONG NrFreed)
-);
-
-CODE_SEG("INIT")
-VOID
-NTAPI
-MmInitializeBalancer(
-    ULONG NrAvailablePages,
-    ULONG NrSystemPages
-);
-
-NTSTATUS
-NTAPI
-MmReleasePageMemoryConsumer(
-    ULONG Consumer,
-    PFN_NUMBER Page
-);
-
-NTSTATUS
-NTAPI
-MmRequestPageMemoryConsumer(
-    ULONG Consumer,
-    BOOLEAN MyWait,
-    PPFN_NUMBER AllocatedPage
-);
-
-CODE_SEG("INIT")
-VOID
-NTAPI
-MiInitBalancerThread(VOID);
-
-VOID
-NTAPI
-MmRebalanceMemoryConsumers(VOID);
-
-/* rmap.c **************************************************************/
-#define RMAP_SEGMENT_MASK ~((ULONG_PTR)0xff)
-#define RMAP_IS_SEGMENT(x) (((ULONG_PTR)(x) & RMAP_SEGMENT_MASK) == RMAP_SEGMENT_MASK)
-
-VOID
-NTAPI
-MmSetRmapListHeadPage(
-    PFN_NUMBER Page,
-    struct _MM_RMAP_ENTRY* ListHead
-);
-
-struct _MM_RMAP_ENTRY*
-NTAPI
-MmGetRmapListHeadPage(PFN_NUMBER Page);
-
-VOID
-NTAPI
-MmInsertRmap(
-    PFN_NUMBER Page,
-    struct _EPROCESS *Process,
-    PVOID Address
-);
-
-VOID
-NTAPI
-MmDeleteAllRmaps(
-    PFN_NUMBER Page,
-    PVOID Context,
-    VOID (*DeleteMapping)(PVOID Context, struct _EPROCESS *Process, PVOID Address)
-);
-
-VOID
-NTAPI
-MmDeleteRmap(
-    PFN_NUMBER Page,
-    struct _EPROCESS *Process,
-    PVOID Address
-);
-
-CODE_SEG("INIT")
-VOID
-NTAPI
-MmInitializeRmapList(VOID);
-
-NTSTATUS
-NTAPI
-MmPageOutPhysicalAddress(PFN_NUMBER Page);
-
-PMM_SECTION_SEGMENT
-NTAPI
-MmGetSectionAssociation(PFN_NUMBER Page,
-                        PLARGE_INTEGER Offset);
-
 /* freelist.c **********************************************************/
 _IRQL_raises_(DISPATCH_LEVEL)
 _IRQL_requires_max_(DISPATCH_LEVEL)
@@ -1071,14 +643,6 @@ MiGetPfnEntryIndex(IN PMMPFN Pfn1)
     return Pfn1 - MmPfnDatabase;
 }
 
-PFN_NUMBER
-NTAPI
-MmGetLRUNextUserPage(PFN_NUMBER PreviousPage, BOOLEAN MoveToLast);
-
-PFN_NUMBER
-NTAPI
-MmGetLRUFirstUserPage(VOID);
-
 VOID
 NTAPI
 MmDumpArmPfnDatabase(
@@ -1116,154 +680,6 @@ MiUnmapPagesInZeroSpace(IN PVOID VirtualAddress,
 
 /* i386/page.c *********************************************************/
 
-NTSTATUS
-NTAPI
-MmCreateVirtualMapping(
-    struct _EPROCESS* Process,
-    PVOID Address,
-    ULONG flProtect,
-    PFN_NUMBER Page
-);
-
-NTSTATUS
-NTAPI
-MmCreateVirtualMappingUnsafe(
-    struct _EPROCESS* Process,
-    PVOID Address,
-    ULONG flProtect,
-    PFN_NUMBER Page
-);
-
-NTSTATUS
-NTAPI
-MmCreatePhysicalMapping(
-    _Inout_opt_ PEPROCESS Process,
-    _In_ PVOID Address,
-    _In_ ULONG flProtect,
-    _In_ PFN_NUMBER Page);
-
-ULONG
-NTAPI
-MmGetPageProtect(
-    struct _EPROCESS* Process,
-    PVOID Address);
-
-VOID
-NTAPI
-MmSetPageProtect(
-    struct _EPROCESS* Process,
-    PVOID Address,
-    ULONG flProtect
-);
-
-BOOLEAN
-NTAPI
-MmIsPagePresent(
-    struct _EPROCESS* Process,
-    PVOID Address
-);
-
-BOOLEAN
-NTAPI
-MmIsDisabledPage(
-    struct _EPROCESS* Process,
-    PVOID Address
-);
-
-CODE_SEG("INIT")
-VOID
-NTAPI
-MmInitGlobalKernelPageDirectory(VOID);
-
-VOID
-NTAPI
-MmDeletePageFileMapping(
-    struct _EPROCESS *Process,
-    PVOID Address,
-    SWAPENTRY* SwapEntry
-);
-
-NTSTATUS
-NTAPI
-MmCreatePageFileMapping(
-    struct _EPROCESS *Process,
-    PVOID Address,
-    SWAPENTRY SwapEntry
-);
-
-VOID
-NTAPI
-MmGetPageFileMapping(
-    PEPROCESS Process,
-    PVOID Address,
-    SWAPENTRY *SwapEntry);
-
-BOOLEAN
-NTAPI
-MmIsPageSwapEntry(
-    struct _EPROCESS *Process,
-    PVOID Address
-);
-
-PFN_NUMBER
-NTAPI
-MmAllocPage(
-    ULONG Consumer
-);
-
-VOID
-NTAPI
-MmDereferencePage(PFN_NUMBER Page);
-
-VOID
-NTAPI
-MmReferencePage(PFN_NUMBER Page);
-
-ULONG
-NTAPI
-MmGetReferenceCountPage(PFN_NUMBER Page);
-
-BOOLEAN
-NTAPI
-MmIsPageInUse(PFN_NUMBER Page);
-
-VOID
-NTAPI
-MmSetSavedSwapEntryPage(
-    PFN_NUMBER Page,
-    SWAPENTRY SavedSwapEntry);
-
-SWAPENTRY
-NTAPI
-MmGetSavedSwapEntryPage(PFN_NUMBER Page);
-
-VOID
-NTAPI
-MmSetCleanPage(
-    struct _EPROCESS *Process,
-    PVOID Address
-);
-
-VOID
-NTAPI
-MmSetDirtyBit(PEPROCESS Process, PVOID Address, BOOLEAN Bit);
-#define MmSetCleanPage(__P, __A) MmSetDirtyBit(__P, __A, FALSE)
-#define MmSetDirtyPage(__P, __A) MmSetDirtyBit(__P, __A, TRUE)
-
-VOID
-NTAPI
-MmDeletePageTable(
-    struct _EPROCESS *Process,
-    PVOID Address
-);
-
-PFN_NUMBER
-NTAPI
-MmGetPfnForProcess(
-    struct _EPROCESS *Process,
-    PVOID Address
-);
-
 BOOLEAN
 NTAPI
 MmCreateProcessAddressSpace(
@@ -1295,24 +711,6 @@ NTSTATUS
 NTAPI
 MmGetExecuteOptions(IN PULONG ExecuteOptions);
 
-_Success_(return)
-BOOLEAN
-MmDeleteVirtualMapping(
-    _Inout_opt_ PEPROCESS Process,
-    _In_ PVOID Address,
-    _Out_opt_ BOOLEAN* WasDirty,
-    _Out_opt_ PPFN_NUMBER Page
-);
-
-_Success_(return)
-BOOLEAN
-MmDeletePhysicalMapping(
-    _Inout_opt_ PEPROCESS Process,
-    _In_ PVOID Address,
-    _Out_opt_ BOOLEAN * WasDirty,
-    _Out_opt_ PPFN_NUMBER Page
-);
-
 /* arch/procsup.c ************************************************************/
 
 BOOLEAN
@@ -1320,88 +718,7 @@ MiArchCreateProcessAddressSpace(
     _In_ PEPROCESS Process,
     _In_ PULONG_PTR DirectoryTableBase);
 
-/* wset.c ********************************************************************/
-
-NTSTATUS
-MmTrimUserMemory(
-    ULONG Target,
-    ULONG Priority,
-    PULONG NrFreedPages
-);
-
-/* region.c ************************************************************/
-
-NTSTATUS
-NTAPI
-MmAlterRegion(
-    PMMSUPPORT AddressSpace,
-    PVOID BaseAddress,
-    PLIST_ENTRY RegionListHead,
-    PVOID StartAddress,
-    SIZE_T Length,
-    ULONG NewType,
-    ULONG NewProtect,
-    PMM_ALTER_REGION_FUNC AlterFunc
-);
-
-VOID
-NTAPI
-MmInitializeRegion(
-    PLIST_ENTRY RegionListHead,
-    SIZE_T Length,
-    ULONG Type,
-    ULONG Protect
-);
-
-PMM_REGION
-NTAPI
-MmFindRegion(
-    PVOID BaseAddress,
-    PLIST_ENTRY RegionListHead,
-    PVOID Address,
-    PVOID* RegionBaseAddress
-);
-
 /* section.c *****************************************************************/
-
-#define PFN_FROM_SSE(E)          ((PFN_NUMBER)((E) >> PAGE_SHIFT))
-#define IS_SWAP_FROM_SSE(E)      ((E) & 0x00000001)
-#define MM_IS_WAIT_PTE(E)        \
-    (IS_SWAP_FROM_SSE(E) && SWAPENTRY_FROM_SSE(E) == MM_WAIT_ENTRY)
-#define MAKE_PFN_SSE(P)          ((ULONG_PTR)((P) << PAGE_SHIFT))
-#define SWAPENTRY_FROM_SSE(E)    ((E) >> 1)
-#define MAKE_SWAP_SSE(S)         (((ULONG_PTR)(S) << 1) | 0x1)
-#define DIRTY_SSE(E)             ((E) | 2)
-#define CLEAN_SSE(E)             ((E) & ~2)
-#define IS_DIRTY_SSE(E)          ((E) & 2)
-#define WRITE_SSE(E)             ((E) | 4)
-#define IS_WRITE_SSE(E)          ((E) & 4)
-#ifdef _WIN64
-#define PAGE_FROM_SSE(E)         ((E) & 0xFFFFFFF000ULL)
-#else
-#define PAGE_FROM_SSE(E)         ((E) & 0xFFFFF000)
-#endif
-#define SHARE_COUNT_FROM_SSE(E)  (((E) & 0x00000FFC) >> 3)
-#define MAX_SHARE_COUNT          0x1FF
-#define MAKE_SSE(P, C)           ((ULONG_PTR)((P) | ((C) << 3)))
-#define BUMPREF_SSE(E)           (PAGE_FROM_SSE(E) | ((SHARE_COUNT_FROM_SSE(E) + 1) << 3) | ((E) & 0x7))
-#define DECREF_SSE(E)            (PAGE_FROM_SSE(E) | ((SHARE_COUNT_FROM_SSE(E) - 1) << 3) | ((E) & 0x7))
-
-VOID
-NTAPI
-_MmLockSectionSegment(PMM_SECTION_SEGMENT Segment,
-                      const char *file,
-                      int line);
-
-#define MmLockSectionSegment(x) _MmLockSectionSegment(x,__FILE__,__LINE__)
-
-VOID
-NTAPI
-_MmUnlockSectionSegment(PMM_SECTION_SEGMENT Segment,
-                        const char *file,
-                        int line);
-
-#define MmUnlockSectionSegment(x) _MmUnlockSectionSegment(x,__FILE__,__LINE__)
 
 VOID
 NTAPI
@@ -1428,66 +745,15 @@ MmGetFileNameForSection(
     OUT POBJECT_NAME_INFORMATION *ModuleName
 );
 
-NTSTATUS
-NTAPI
-MmQuerySectionView(
-    PMEMORY_AREA MemoryArea,
-    PVOID Address,
-    PMEMORY_BASIC_INFORMATION Info,
-    PSIZE_T ResultLength
-);
-
-NTSTATUS
-NTAPI
-MmProtectSectionView(
-    PMMSUPPORT AddressSpace,
-    PMEMORY_AREA MemoryArea,
-    PVOID BaseAddress,
-    SIZE_T Length,
-    ULONG Protect,
-    PULONG OldProtect
-);
-
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
 MmInitSectionImplementation(VOID);
 
-NTSTATUS
-NTAPI
-MmNotPresentFaultSectionView(
-    PMMSUPPORT AddressSpace,
-    MEMORY_AREA* MemoryArea,
-    PVOID Address,
-    BOOLEAN Locked
-);
-
-NTSTATUS
-NTAPI
-MmPageOutSectionView(
-    PMMSUPPORT AddressSpace,
-    PMEMORY_AREA MemoryArea,
-    PVOID Address,
-    ULONG_PTR Entry
-);
-
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
 MmCreatePhysicalMemorySection(VOID);
-
-NTSTATUS
-NTAPI
-MmAccessFaultSectionView(
-    PMMSUPPORT AddressSpace,
-    MEMORY_AREA* MemoryArea,
-    PVOID Address,
-    BOOLEAN Locked
-);
-
-VOID
-NTAPI
-MmFreeSectionSegments(PFILE_OBJECT FileObject);
 
 /* Exported from NT 6.2 onward. We keep it internal. */
 NTSTATUS
@@ -1542,69 +808,11 @@ MmPurgeSegment(
     _In_opt_ PLARGE_INTEGER Offset,
     _In_ ULONG Length);
 
-BOOLEAN
-NTAPI
-MmCheckDirtySegment(
-    PMM_SECTION_SEGMENT Segment,
-    PLARGE_INTEGER Offset,
-    BOOLEAN ForceDirty,
-    BOOLEAN PageOut);
-
-BOOLEAN
-NTAPI
-MmUnsharePageEntrySectionSegment(PMEMORY_AREA MemoryArea,
-                                 PMM_SECTION_SEGMENT Segment,
-                                 PLARGE_INTEGER Offset,
-                                 BOOLEAN Dirty,
-                                 BOOLEAN PageOut,
-                                 ULONG_PTR *InEntry);
-
-_When_(OldIrql == MM_NOIRQL, _IRQL_requires_max_(DISPATCH_LEVEL))
-_When_(OldIrql == MM_NOIRQL, _Requires_lock_not_held_(MmPfnLock))
-_When_(OldIrql != MM_NOIRQL, _Requires_lock_held_(MmPfnLock))
-_When_(OldIrql != MM_NOIRQL, _Releases_lock_(MmPfnLock))
-_When_(OldIrql != MM_NOIRQL, _IRQL_requires_(DISPATCH_LEVEL))
-VOID
-NTAPI
-MmDereferenceSegmentWithLock(
-    _In_ PMM_SECTION_SEGMENT Segment,
-    _In_ _When_(OldIrql != MM_NOIRQL, _IRQL_restores_) KIRQL OldIrql);
-
-_IRQL_requires_max_(DISPATCH_LEVEL)
-_Requires_lock_not_held_(MmPfnLock)
-FORCEINLINE
-VOID
-MmDereferenceSegment(PMM_SECTION_SEGMENT Segment)
-{
-    MmDereferenceSegmentWithLock(Segment, MM_NOIRQL);
-}
-
 NTSTATUS
 NTAPI
 MmExtendSection(
     _In_ PVOID Section,
     _Inout_ PLARGE_INTEGER NewSize);
-
-/* sptab.c *******************************************************************/
-
-NTSTATUS
-NTAPI
-_MmSetPageEntrySectionSegment(PMM_SECTION_SEGMENT Segment,
-                              PLARGE_INTEGER Offset,
-                              ULONG_PTR Entry,
-                              const char *file,
-                              int line);
-
-ULONG_PTR
-NTAPI
-_MmGetPageEntrySectionSegment(PMM_SECTION_SEGMENT Segment,
-                              PLARGE_INTEGER Offset,
-                              const char *file,
-                              int line);
-
-#define MmSetPageEntrySectionSegment(S,O,E) _MmSetPageEntrySectionSegment(S,O,E,__FILE__,__LINE__)
-
-#define MmGetPageEntrySectionSegment(S,O) _MmGetPageEntrySectionSegment(S,O,__FILE__,__LINE__)
 
 /* sysldr.c ******************************************************************/
 
