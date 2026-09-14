@@ -2472,6 +2472,13 @@ MiDeletePte(
     IN PMMPTE PrototypePte
 );
 
+VOID
+NTAPI
+MiDeletePhysicalViewAddresses(
+    _In_ ULONG_PTR StartingAddress,
+    _In_ ULONG_PTR EndingAddress
+);
+
 ULONG
 NTAPI
 MiMakeSystemAddressValid(
