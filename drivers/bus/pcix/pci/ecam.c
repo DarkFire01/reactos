@@ -19,7 +19,7 @@
 
 static BOOLEAN PciEcamWindowQueried;
 BOOLEAN PciEcamVerified;
-static BOOLEAN PciEcamSkipK8Northbridge;
+static BOOLEAN PciEcamSkipK8Northbridge = FALSE;
 static ULONGLONG PciEcamWindowStart;
 static ULONG PciEcamWindowBuses;
 static PUCHAR PciEcamBusView[PCI_ECAM_BUS_COUNT];
