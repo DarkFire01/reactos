@@ -9,6 +9,7 @@
 //
 // PCI Hack Flags
 //
+#define PCI_HACK_KEEP_DECODES_ON_STOP                       0x0000000000000002LL
 #define PCI_HACK_LOCK_RESOURCES                             0x0000000000000004LL
 #define PCI_HACK_NO_ENUM_AT_ALL                             0x0000000000000008LL
 #define PCI_HACK_ENUM_NO_RESOURCE                           0x0000000000000010LL
@@ -45,7 +46,7 @@
 #define PCI_HACK_DISABLE_IDE_NATIVE_MODE                    0x0000000800000000LL
 #define PCI_HACK_FAIL_QUERY_REMOVE                          0x0000001000000000LL
 #define PCI_HACK_CRITICAL_DEVICE                            0x0000002000000000LL
-#define PCI_HACK_UNUSED_4000000000                          0x0000004000000000LL
+#define PCI_HACK_NOT_CRITICAL_DEVICE                        0x0000004000000000LL
 #define PCI_HACK_BROKEN_SUBTRACTIVE_DECODE                  0x0000008000000000LL
 #define PCI_HACK_NO_REVISION_AFTER_D3                       0x0000010000000000LL
 #define PCI_HACK_ENABLE_MSI_MAPPING                         0x0000020000000000LL
