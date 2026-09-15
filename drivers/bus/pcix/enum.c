@@ -1786,10 +1786,10 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
             /* Check if this device is considered critical by the OS */
             if (PciIsCriticalDeviceClass(PciData->BaseClass, PciData->SubClass))
             {
-                /* Check if normally the decodes would be disabled */
-                if (!(HackFlags & PCI_HACK_DONT_DISABLE_DECODES))
+                /* The hack database can take a device out of its critical class */
+                if (!(HackFlags & PCI_HACK_NOT_CRITICAL_DEVICE))
                 {
-                    /* Because this device is critical, don't disable them */
+                    /* Because this device is critical, don't disable its decodes */
                     DPRINT1("Not allowing PM Because device is critical\n");
                     HackFlags |= PCI_HACK_CRITICAL_DEVICE;
                 }
@@ -1799,7 +1799,7 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
             if ((PciData->BaseClass == PCI_CLASS_BRIDGE_DEV) &&
                 (PciData->SubClass == PCI_SUBCLASS_BR_PCI_TO_PCI) &&
                 (PciData->u.type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) &&
-               !(HackFlags & PCI_HACK_DONT_DISABLE_DECODES))
+               !(HackFlags & PCI_HACK_NOT_CRITICAL_DEVICE))
             {
                 /* Do not disable their decodes either */
                 DPRINT1("Not allowing PM because device is VGA\n");
