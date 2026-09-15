@@ -30,7 +30,8 @@ static PUCHAR PciEcamBusView[PCI_ECAM_BUS_COUNT];
 static
 BOOLEAN
 NTAPI
-PciEcamParseWindow(IN PKEY_VALUE_PARTIAL_INFORMATION Value)
+PciEcamParseWindow(
+    _In_ PKEY_VALUE_PARTIAL_INFORMATION Value)
 {
     PIO_RESOURCE_REQUIREMENTS_LIST Requirements;
     PIO_RESOURCE_DESCRIPTOR Window;
@@ -157,7 +158,8 @@ PciEcamIsAmdK8(VOID)
 static
 PUCHAR
 NTAPI
-PciEcamMapBus(IN ULONG Bus)
+PciEcamMapBus(
+    _In_ ULONG Bus)
 {
     PHYSICAL_ADDRESS Address;
     PAGED_CODE();
@@ -197,8 +199,9 @@ PciEcamDiscardWindow(VOID)
 static
 PUCHAR
 NTAPI
-PciEcamFunctionBase(IN ULONG Bus,
-                    IN PCI_SLOT_NUMBER Slot)
+PciEcamFunctionBase(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER Slot)
 {
     ULONG Index;
 
@@ -219,11 +222,12 @@ PciEcamFunctionBase(IN ULONG Bus,
 static
 VOID
 NTAPI
-PciEcamTransfer(IN PUCHAR Function,
-                IN PUCHAR Buffer,
-                IN ULONG Offset,
-                IN ULONG Length,
-                IN BOOLEAN Read)
+PciEcamTransfer(
+    _In_ PUCHAR Function,
+    _Inout_updates_bytes_(Length) PUCHAR Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length,
+    _In_ BOOLEAN Read)
 {
     PUCHAR Register;
     ULONG Width;
@@ -279,7 +283,8 @@ PciEcamTransfer(IN PUCHAR Function,
 static
 NTSTATUS
 NTAPI
-PciEcamVerifyBus(IN PPCI_FDO_EXTENSION FdoExtension)
+PciEcamVerifyBus(
+    _In_ PPCI_FDO_EXTENSION FdoExtension)
 {
     PCI_SLOT_NUMBER Slot;
     PUCHAR Function;
@@ -327,7 +332,8 @@ PciEcamVerifyBus(IN PPCI_FDO_EXTENSION FdoExtension)
  */
 VOID
 NTAPI
-PciInitializeEcam(IN PPCI_FDO_EXTENSION FdoExtension)
+PciInitializeEcam(
+    _In_ PPCI_FDO_EXTENSION FdoExtension)
 {
     NTSTATUS Status;
     PAGED_CODE();
@@ -376,12 +382,13 @@ PciInitializeEcam(IN PPCI_FDO_EXTENSION FdoExtension)
  */
 BOOLEAN
 NTAPI
-PciEcamReadWriteConfig(IN ULONG Bus,
-                       IN PCI_SLOT_NUMBER Slot,
-                       IN PVOID Buffer,
-                       IN ULONG Offset,
-                       IN ULONG Length,
-                       IN BOOLEAN Read)
+PciEcamReadWriteConfig(
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER Slot,
+    _Inout_updates_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length,
+    _In_ BOOLEAN Read)
 {
     PUCHAR Function;
 

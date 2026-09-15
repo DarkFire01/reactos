@@ -1292,8 +1292,7 @@ PciGetConfigHandlers(
 VOID
 NTAPI
 PciInitializeEcam(
-    IN PPCI_FDO_EXTENSION FdoExtension
-);
+    _In_ PPCI_FDO_EXTENSION FdoExtension);
 
 ULONG
 NTAPI
@@ -1357,13 +1356,12 @@ PciApplyResizableBarSizes(
 BOOLEAN
 NTAPI
 PciEcamReadWriteConfig(
-    IN ULONG Bus,
-    IN PCI_SLOT_NUMBER Slot,
-    IN PVOID Buffer,
-    IN ULONG Offset,
-    IN ULONG Length,
-    IN BOOLEAN Read
-);
+    _In_ ULONG Bus,
+    _In_ PCI_SLOT_NUMBER Slot,
+    _Inout_updates_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length,
+    _In_ BOOLEAN Read);
 
 VOID
 NTAPI
