@@ -62,7 +62,8 @@ Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
             else
             {
                 /* It's a RAM BAR, use the right mask to get the base address */
-                ASSERT(CmDescriptor->Type == CmResourceTypeMemory);
+                ASSERT((CmDescriptor->Type == CmResourceTypeMemory) ||
+                       (CmDescriptor->Type == CmResourceTypeMemoryLarge));
                 BarMask = PCI_ADDRESS_MEMORY_ADDRESS_MASK;
 
                 /* Check if it's a 64-bit BAR */
@@ -121,7 +122,7 @@ Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     PPCI_PDO_EXTENSION PdoExtension;
     PULONG BarArray;
     PIO_RESOURCE_DESCRIPTOR Limit;
-    ULONG i;
+    ULONG i, NextBar;
 
     /* Get pointers from the context */
     PdoExtension = Context->PdoExtension;
@@ -197,8 +198,9 @@ Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     Limit = PdoExtension->Resources->Limit;
     for (i = 0; i < PCI_TYPE0_ADDRESSES; i++)
     {
-        /* And build them based on the BARs */
-        if (PciCreateIoDescriptorFromBarLimit(&Limit[i], &BarArray[i], FALSE))
+        /* And build them based on the BARs, the last one has no BAR after it for a high half */
+        NextBar = ((i + 1) < PCI_TYPE0_ADDRESSES) ? BarArray[i + 1] : 0;
+        if (PciCreateIoDescriptorFromBarLimit(&Limit[i], BarArray[i], NextBar, FALSE))
         {
             /* This function returns TRUE if the BAR was 64-bit, handle this */
             ASSERT((i + 1) < PCI_TYPE0_ADDRESSES);
@@ -208,9 +210,7 @@ Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 
     /* Create the last descriptor based on the ROM address */
-    PciCreateIoDescriptorFromBarLimit(&Limit[i],
-                                      &PciData->u.type0.ROMBaseAddress,
-                                      TRUE);
+    PciCreateIoDescriptorFromBarLimit(&Limit[i], PciData->u.type0.ROMBaseAddress, 0, TRUE);
 }
 
 VOID
