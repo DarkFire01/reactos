@@ -1,0 +1,148 @@
+/*
+ * PROJECT:     ReactOS HAL
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     PCI IRQ router miniports
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+#pragma once
+
+/* pirroute.c */
+VOID
+NTAPI
+HalpPirReadRouter(
+    _In_ ULONG Offset,
+    _Out_writes_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Length);
+
+VOID
+NTAPI
+HalpPirWriteRouter(
+    _In_ ULONG Offset,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Length);
+
+VOID
+NTAPI
+HalpPirLinkRange(
+    _In_ PPCI_IRQ_ROUTING_TABLE Table,
+    _Out_ PUCHAR Lowest,
+    _Out_ PUCHAR Highest);
+
+BOOLEAN
+NTAPI
+HalpPirAllLinks(
+    _In_ PPCI_IRQ_ROUTING_TABLE Table,
+    _In_ BOOLEAN (NTAPI *IsValid)(_In_ UCHAR Link));
+
+NTSTATUS
+NTAPI
+HalpElcrGetTrigger(
+    _Out_ PUSHORT LevelIrqs);
+
+NTSTATUS
+NTAPI
+HalpElcrSetTrigger(
+    _In_ USHORT LevelIrqs);
+
+FORCEINLINE
+UCHAR
+HalpPirReadRouterByte(
+    _In_ ULONG Offset)
+{
+    UCHAR Value = MAXUCHAR;
+
+    HalpPirReadRouter(Offset, &Value, sizeof(Value));
+    return Value;
+}
+
+FORCEINLINE
+VOID
+HalpPirWriteRouterByte(
+    _In_ ULONG Offset,
+    _In_ UCHAR Value)
+{
+    HalpPirWriteRouter(Offset, &Value, sizeof(Value));
+}
+
+FORCEINLINE
+USHORT
+HalpPirReadRouterWord(
+    _In_ ULONG Offset)
+{
+    USHORT Value = MAXUSHORT;
+
+    HalpPirReadRouter(Offset, &Value, sizeof(Value));
+    return Value;
+}
+
+FORCEINLINE
+VOID
+HalpPirWriteRouterWord(
+    _In_ ULONG Offset,
+    _In_ USHORT Value)
+{
+    HalpPirWriteRouter(Offset, &Value, sizeof(Value));
+}
+
+FORCEINLINE
+ULONG
+HalpPirReadRouterLong(
+    _In_ ULONG Offset)
+{
+    ULONG Value = MAXULONG;
+
+    HalpPirReadRouter(Offset, &Value, sizeof(Value));
+    return Value;
+}
+
+FORCEINLINE
+VOID
+HalpPirWriteRouterLong(
+    _In_ ULONG Offset,
+    _In_ ULONG Value)
+{
+    HalpPirWriteRouter(Offset, &Value, sizeof(Value));
+}
+
+/* Many routers pack two links per register, the odd link in the low nibble */
+FORCEINLINE
+UCHAR
+HalpPirPairRegister(
+    _In_ UCHAR Base,
+    _In_ UCHAR Link)
+{
+    return (UCHAR)(Base + ((Link - 1) >> 1));
+}
+
+FORCEINLINE
+BOOLEAN
+HalpPirPairHighNibble(
+    _In_ UCHAR Link)
+{
+    return !(Link & 1);
+}
+
+FORCEINLINE
+UCHAR
+HalpPirGetNibble(
+    _In_ UCHAR Value,
+    _In_ BOOLEAN High)
+{
+    return High ? (UCHAR)(Value >> 4) : (UCHAR)(Value & 0x0F);
+}
+
+FORCEINLINE
+UCHAR
+HalpPirSetNibble(
+    _In_ UCHAR Value,
+    _In_ BOOLEAN High,
+    _In_ UCHAR Nibble)
+{
+    Nibble &= 0x0F;
+    return High ? (UCHAR)((Value & 0x0F) | (Nibble << 4)) : (UCHAR)((Value & 0xF0) | Nibble);
+}
+
+/* intelirq.c */
+extern HALP_IRQ_ROUTER HalpEscRouter;
+extern HALP_IRQ_ROUTER HalpPiixRouter;
