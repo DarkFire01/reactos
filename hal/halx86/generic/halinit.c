@@ -19,6 +19,8 @@ BOOLEAN HalpOnlyBootProcessor;
 //#endif
 BOOLEAN HalpPciLockSettings;
 BOOLEAN HalBootViaEfi;
+ULONG HalpInterruptControllerType;
+ULONG HalpMessageInterruptPolicy;
 
 /* PRIVATE FUNCTIONS *********************************************************/
 
@@ -43,6 +45,12 @@ HalpGetParameters(
         /* Check if PCI is locked */
         if (strstr(CommandLine, "PCILOCK"))
             HalpPciLockSettings = TRUE;
+
+        /* Check for message-signaled interrupt overrides */
+        if (strstr(CommandLine, "FORCEMSI"))
+            HalpMessageInterruptPolicy |= HALP_MESSAGE_INTERRUPTS_FORCE_ON;
+        if (strstr(CommandLine, "NOMSI"))
+            HalpMessageInterruptPolicy |= HALP_MESSAGE_INTERRUPTS_FORCE_OFF;
 
         /* Check for initial breakpoint */
         if (strstr(CommandLine, "BREAK"))
