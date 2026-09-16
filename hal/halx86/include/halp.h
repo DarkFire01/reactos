@@ -660,3 +660,6 @@ HalpRestoreInterruptController(VOID);
 #define HALP_MESSAGE_INTERRUPTS_FORCE_ON   0x00000001
 #define HALP_MESSAGE_INTERRUPTS_FORCE_OFF  0x00000002
 extern ULONG HalpMessageInterruptPolicy;
+
+/* CONFIGACCESSPOLICY=DISALLOWMMCONFIG boot option */
+extern BOOLEAN HalpMmConfigDisallowed;
