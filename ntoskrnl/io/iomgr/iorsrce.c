@@ -1001,7 +1001,7 @@ IoGetConfigurationInformation(VOID)
 }
 
 /**
- * @halfplemented
+ * @implemented
  *
  * @brief
  * Reports hardware resources in the \Registry\Machine\Hardware\ResourceMap
@@ -1051,42 +1051,42 @@ IoReportResourceUsage(
 {
     NTSTATUS Status;
     PCM_RESOURCE_LIST ResourceList;
+    PDEVICE_NODE DeviceNode;
 
-    DPRINT1("IoReportResourceUsage is halfplemented!\n");
+    UNREFERENCED_PARAMETER(DriverClassName);
+    UNREFERENCED_PARAMETER(OverrideConflict);
 
-    if (!DriverList && !DeviceList)
-        return STATUS_INVALID_PARAMETER;
+    /* A PnP device gets its resources assigned, it does not report them */
+    if (DeviceObject)
+    {
+        DeviceNode = IopGetDeviceNode(DeviceObject);
+        if (DeviceNode && !(DeviceNode->Flags & DNF_LEGACY_RESOURCE_DEVICENODE))
+        {
+            KeBugCheckEx(PNP_DETECTED_FATAL_ERROR,
+                         0x2,
+                         (ULONG_PTR)DeviceObject,
+                         (ULONG_PTR)DriverObject,
+                         0);
+        }
+    }
 
     if (DeviceList)
         ResourceList = DeviceList;
     else
         ResourceList = DriverList;
 
-    Status = IopDetectResourceConflict(ResourceList, FALSE, NULL);
+    /* Claim the resources in the arbiters, a NULL list frees the previous claim */
+    Status = IopLegacyReportResources(ArbiterRequestLegacyReported,
+                                      DriverObject,
+                                      DeviceObject,
+                                      ResourceList,
+                                      ConflictDetected);
     if (Status == STATUS_CONFLICTING_ADDRESSES)
     {
-        *ConflictDetected = TRUE;
-
-        if (!OverrideConflict)
-        {
-            DPRINT1("Denying an attempt to claim resources currently in use by another device!\n");
-            return STATUS_CONFLICTING_ADDRESSES;
-        }
-        else
-        {
-            DPRINT1("Proceeding with conflicting resources\n");
-        }
-    }
-    else if (!NT_SUCCESS(Status))
-    {
-        return Status;
+        DPRINT1("Denying an attempt to claim resources currently in use by another device\n");
     }
 
-    /* TODO: Claim resources in registry */
-
-    *ConflictDetected = FALSE;
-
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 static NTSTATUS
@@ -1099,31 +1099,19 @@ IopLegacyResourceAllocation(
 {
     NTSTATUS Status;
 
-    DPRINT1("IopLegacyResourceAllocation is halfplemented!\n");
+    UNREFERENCED_PARAMETER(AllocationType);
 
-    if (!ResourceRequirements)
+    /* A NULL requirements list frees the resources claimed earlier */
+    Status = IopLegacyAssignResources(DriverObject,
+                                      DeviceObject,
+                                      ResourceRequirements,
+                                      AllocatedResources);
+    if (Status == STATUS_CONFLICTING_ADDRESSES)
     {
-        /* We can get there by calling IoAssignResources() with RequestedResources = NULL.
-         * TODO: not sure what we should do, but we shouldn't crash.
-         */
-        UNIMPLEMENTED;
-        return STATUS_NOT_IMPLEMENTED;
+        DPRINT1("Denying an attempt to claim resources currently in use by another device\n");
     }
 
-    Status = IopFixupResourceListWithRequirements(ResourceRequirements,
-                                                  AllocatedResources);
-    if (!NT_SUCCESS(Status))
-    {
-        if (Status == STATUS_CONFLICTING_ADDRESSES)
-        {
-            DPRINT1("Denying an attempt to claim resources currently in use by another device!\n");
-        }
-
-        return Status;
-    }
-
-    /* TODO: Claim resources in registry */
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 /*

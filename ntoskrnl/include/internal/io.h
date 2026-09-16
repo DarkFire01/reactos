@@ -540,12 +540,6 @@ PnpDetermineResourceListSize(IN PCM_RESOURCE_LIST ResourceList);
 
 NTSTATUS
 NTAPI
-IopAssignDeviceResources(
-    _In_ PDEVICE_NODE DeviceNode
-);
-
-NTSTATUS
-NTAPI
 IopFreeDeviceResources(
     _In_ PDEVICE_NODE DeviceNode,
     _In_ BOOLEAN ShouldReserveBootConfig
@@ -578,19 +572,46 @@ IopReallocateDeviceResources(
     _Out_ PULONG Problem
 );
 
+//
+// Legacy resource claims (pnparb.c)
+//
 NTSTATUS
 NTAPI
-IopFixupResourceListWithRequirements(
-    IN PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList,
-    OUT PCM_RESOURCE_LIST *ResourceList
+IopLegacyAssignResources(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_opt_ PDEVICE_OBJECT DeviceObject,
+    _In_opt_ PIO_RESOURCE_REQUIREMENTS_LIST Requirements,
+    _Out_opt_ PCM_RESOURCE_LIST *AllocatedResources
 );
 
 NTSTATUS
 NTAPI
-IopDetectResourceConflict(
-     IN PCM_RESOURCE_LIST ResourceList,
-     IN BOOLEAN Silent,
-     OUT OPTIONAL PCM_PARTIAL_RESOURCE_DESCRIPTOR ConflictingDescriptor
+IopLegacyReportResources(
+    _In_ ARBITER_REQUEST_SOURCE RequestSource,
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_opt_ PDEVICE_OBJECT DeviceObject,
+    _In_opt_ PCM_RESOURCE_LIST ResourceList,
+    _Out_ PBOOLEAN ConflictDetected
+);
+
+VOID
+NTAPI
+IopReleaseLegacyDeviceNode(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+VOID
+NTAPI
+IopReleaseLegacyDriverClaims(
+    _In_ PDRIVER_OBJECT DriverObject
+);
+
+NTSTATUS
+NTAPI
+IopReportDetectedResources(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_opt_ PCM_RESOURCE_LIST ResourceList,
+    _In_ BOOLEAN ResourceAssigned
 );
 
 //
