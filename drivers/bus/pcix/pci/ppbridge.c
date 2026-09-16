@@ -669,6 +669,11 @@ PPBridge_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
         IoDescriptor->u.DevicePrivate.Data[0] = 3;
         IoDescriptor->u.DevicePrivate.Data[1] = 3;
 
+        /* The adapter behind the bridge and VgaSave decode the same aperture */
+        IoDescriptor[1].ShareDisposition = CmResourceShareShared;
+        IoDescriptor[2].ShareDisposition = CmResourceShareShared;
+        IoDescriptor[3].ShareDisposition = CmResourceShareShared;
+
         /* First, the VGA range at 0xA0000 */
         IoDescriptor[1].Type = CmResourceTypeMemory;
         IoDescriptor[1].Flags = CM_RESOURCE_MEMORY_READ_WRITE;

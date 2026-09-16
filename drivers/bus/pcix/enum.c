@@ -496,6 +496,7 @@ PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
             Resource->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
             Resource->u.Generic.Start.HighPart = 0;
             Resource->Type = CmResourceTypeMemory;
+            Resource->ShareDisposition = CmResourceShareShared;
             Resource->u.Generic.Start.LowPart = 0xA0000;
             Resource->u.Generic.Length = 0x20000;
             Resource++;
@@ -507,6 +508,7 @@ PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
             /* Build an I/O descriptor for the graphic ports at 0x3B0 */
             Resource->Type = CmResourceTypePort;
             Resource->Flags = CM_RESOURCE_PORT_POSITIVE_DECODE | CM_RESOURCE_PORT_10_BIT_DECODE;
+            Resource->ShareDisposition = CmResourceShareShared;
             Resource->u.Port.Start.QuadPart = 0x3B0u;
             Resource->u.Port.Length = 0xC;
             Resource++;
@@ -514,6 +516,7 @@ PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
             /* Build an I/O descriptor for the graphic ports at 0x3C0 */
             Resource->Type = CmResourceTypePort;
             Resource->Flags = CM_RESOURCE_PORT_POSITIVE_DECODE | CM_RESOURCE_PORT_10_BIT_DECODE;
+            Resource->ShareDisposition = CmResourceShareShared;
             Resource->u.Port.Start.QuadPart = 0x3C0u;
             Resource->u.Port.Length = 0x20;
             Resource++;
