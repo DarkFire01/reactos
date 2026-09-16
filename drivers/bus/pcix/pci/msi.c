@@ -191,11 +191,11 @@ PciGetMsiXCapability(
     if (PdoExtension->HackFlags & PCI_HACK_MSIX_TABLE_SIZE_IS_COUNT)
         MsiX->RequestedCount &= ~1;
 
-    DPRINT1("PCI: MSI-X at 0x%x, %u message(s), table in BAR %u at 0x%lx\n",
-            Offset,
-            MsiX->RequestedCount,
-            MsiX->TableBarIndex,
-            MsiX->TableBarOffset);
+    DPRINT("PCI: MSI-X at 0x%x, %u message(s), table in BAR %u at 0x%lx\n",
+           Offset,
+           MsiX->RequestedCount,
+           MsiX->TableBarIndex,
+           MsiX->TableBarOffset);
 }
 
 static
@@ -233,10 +233,10 @@ PciGetMsiCapability(
     Msi->Is64Bit = (Control & PCI_MSI_CONTROL_64BIT) != 0;
     Msi->MaskCapable = (Control & PCI_MSI_CONTROL_MASKING) != 0;
 
-    DPRINT1("PCI: MSI at 0x%x, %u message(s), %s address\n",
-            Offset,
-            Msi->RequestedCount,
-            Msi->Is64Bit ? "64-bit" : "32-bit");
+    DPRINT("PCI: MSI at 0x%x, %u message(s), %s address\n",
+           Offset,
+           Msi->RequestedCount,
+           Msi->Is64Bit ? "64-bit" : "32-bit");
 }
 
 /**
@@ -424,8 +424,8 @@ PciCanPlatformDeliverMessages(VOID)
     PciPlatformDeliversMessages = Supported;
     PciPlatformMessageSupportKnown = TRUE;
 
-    DPRINT1("PCI: Message signaled interrupts are %s on this machine\n",
-            Supported ? "available" : "unavailable");
+    DPRINT("PCI: Message signaled interrupts are %s on this machine\n",
+           Supported ? "available" : "unavailable");
     return Supported;
 }
 
@@ -664,11 +664,11 @@ PciProgramMsi(
         PciClearInterruptDisable(PdoExtension);
 
     PdoExtension->MessageInfo.GrantedCount = (USHORT)Enabled;
-    DPRINT1("PCI: MSI enabled on %p, %lu message(s) at 0x%08lx data 0x%lx\n",
-            PdoExtension,
-            Enabled,
-            Address.LowPart,
-            Data);
+    DPRINT("PCI: MSI enabled on %p, %lu message(s) at 0x%08lx data 0x%lx\n",
+           PdoExtension,
+           Enabled,
+           Address.LowPart,
+           Data);
     return STATUS_SUCCESS;
 }
 
@@ -773,7 +773,7 @@ PciProgramMsiX(
         PciClearInterruptDisable(PdoExtension);
 
     PdoExtension->MessageInfo.GrantedCount = (USHORT)Count;
-    DPRINT1("PCI: MSI-X enabled on %p, %lu message(s)\n", PdoExtension, Count);
+    DPRINT("PCI: MSI-X enabled on %p, %lu message(s)\n", PdoExtension, Count);
     return STATUS_SUCCESS;
 }
 

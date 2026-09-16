@@ -85,10 +85,10 @@ PciGetResizableBarCapability(
         State->SizeMask[BarIndex] = SizeMask;
         State->EntryIndex[BarIndex] = (UCHAR)Entry;
 
-        DPRINT1("PCI: BAR %lu of %p is resizable, sizes 0x%08lx\n",
-                BarIndex,
-                PdoExtension,
-                SizeMask);
+        DPRINT("PCI: BAR %lu of %p is resizable, sizes 0x%08lx\n",
+               BarIndex,
+               PdoExtension,
+               SizeMask);
     }
 }
 
