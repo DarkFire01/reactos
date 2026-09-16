@@ -20,6 +20,7 @@ BOOLEAN HalpOnlyBootProcessor;
 BOOLEAN HalpPciLockSettings;
 BOOLEAN HalBootViaEfi;
 ULONG HalpInterruptControllerType;
+PHALP_IRQ_ROUTER HalpIrqRouter;
 
 /* PRIVATE FUNCTIONS *********************************************************/
 

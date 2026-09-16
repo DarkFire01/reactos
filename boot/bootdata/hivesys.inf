@@ -1510,6 +1510,138 @@ HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\76008086",
 HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\76008086","Instance",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\76008086","Parameters",0x00010001,0x00000000
 
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\71988086","Name",0x00000002,"Intel 82443MX"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\71988086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\71988086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24108086","Name",0x00000002,"Intel 82801AA ICH"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24108086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24108086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24208086","Name",0x00000002,"Intel 82801AB ICH0"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24208086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24208086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24408086","Name",0x00000002,"Intel 82801BA ICH2"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24408086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24408086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\244C8086","Name",0x00000002,"Intel 82801BAM ICH2-M"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\244C8086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\244C8086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24508086","Name",0x00000002,"Intel 82801E C-ICH"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24508086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24508086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24808086","Name",0x00000002,"Intel 82801CA ICH3-S"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24808086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24808086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\248C8086","Name",0x00000002,"Intel 82801CAM ICH3-M"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\248C8086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\248C8086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24C08086","Name",0x00000002,"Intel 82801DB ICH4"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24C08086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24C08086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24CC8086","Name",0x00000002,"Intel 82801DBM ICH4-M"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24CC8086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24CC8086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24D08086","Name",0x00000002,"Intel 82801EB ICH5"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24D08086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\24D08086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\25A18086","Name",0x00000002,"Intel 6300ESB"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\25A18086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\25A18086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\26408086","Name",0x00000002,"Intel ICH6"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\26408086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\26408086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\26418086","Name",0x00000002,"Intel ICH6-M"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\26418086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\26418086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\26708086","Name",0x00000002,"Intel 631xESB/632xESB"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\26708086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\26708086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\27B08086","Name",0x00000002,"Intel ICH7DH"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\27B08086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\27B08086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\27B88086","Name",0x00000002,"Intel ICH7"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\27B88086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\27B88086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\27B98086","Name",0x00000002,"Intel ICH7-M"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\27B98086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\27B98086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\27BD8086","Name",0x00000002,"Intel ICH7-MDH"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\27BD8086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\27BD8086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28108086","Name",0x00000002,"Intel ICH8"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28108086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28108086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28118086","Name",0x00000002,"Intel ICH8M-E"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28118086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28118086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28128086","Name",0x00000002,"Intel ICH8DH"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28128086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28128086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28148086","Name",0x00000002,"Intel ICH8DO"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28148086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28148086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28158086","Name",0x00000002,"Intel ICH8M"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28158086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\28158086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29128086","Name",0x00000002,"Intel ICH9DH"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29128086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29128086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29148086","Name",0x00000002,"Intel ICH9DO"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29148086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29148086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29168086","Name",0x00000002,"Intel ICH9R"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29168086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29168086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29188086","Name",0x00000002,"Intel ICH9"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29188086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29188086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29198086","Name",0x00000002,"Intel ICH9M"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29198086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\29198086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A148086","Name",0x00000002,"Intel ICH10DO"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A148086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A148086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A168086","Name",0x00000002,"Intel ICH10R"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A168086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A168086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A188086","Name",0x00000002,"Intel ICH10"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A188086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A188086","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A1A8086","Name",0x00000002,"Intel ICH10D"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A1A8086","Instance",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A1A8086","Parameters",0x00010001,0x00000000
+
 HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\80021066","Name",0x00000002,"Vesuvius"
 HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\80021066","Instance",0x00010001,0x00000011
 HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\80021066","Parameters",0x00010001,0x00000001

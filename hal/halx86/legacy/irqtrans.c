@@ -503,9 +503,9 @@ BOOLEAN
 NTAPI
 HalpLegacyPCArbitratesIrqs(VOID)
 {
-    /* FIXME: this stands for a $PIR routing table until the table is parsed.
-       The APIC HAL has no fixed line to vector mapping, so it never arbitrates lines */
-    return (HalpInterruptControllerType == HALP_INTERRUPT_CONTROLLER_PIC);
+    /* Lines are arbitrated on the bus FDO only with $PIR routing, which exists on the PIC HAL
+       alone. The APIC HAL has no fixed line to vector mapping, so it never arbitrates lines */
+    return HalpLegacyPCIrqRoutingActive();
 }
 
 /**
@@ -588,6 +588,7 @@ HaliGetInterruptTranslator(
     UNREFERENCED_PARAMETER(Version);
     UNREFERENCED_PARAMETER(BridgeBusNumber);
 
+    /* With $PIR routing the HAL bus FDO translates every interrupt */
     if (HalpLegacyPCArbitratesIrqs())
         return STATUS_NOT_SUPPORTED;
 

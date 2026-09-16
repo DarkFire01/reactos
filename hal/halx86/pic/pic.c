@@ -213,6 +213,9 @@ PHAL_SW_INTERRUPT_HANDLER_2ND_ENTRY SWInterruptHandlerTable2[3] =
 
 LONG HalpEisaELCR;
 
+/* IRQs whose trigger mode is never changed: IRQ 12, or all of them on EISA without a usable ELCR */
+static USHORT HalpElcrUnchangedIrqs = (1 << 12);
+
 /* FUNCTIONS ******************************************************************/
 
 VOID
@@ -233,6 +236,9 @@ HalpInitializePICs(IN BOOLEAN EnableInterrupts)
 
     /* Read EISA Edge/Level Register for master and slave */
     Elcr.Bits = (__inbyte(EISA_ELCR_SLAVE) << 8) | __inbyte(EISA_ELCR_MASTER);
+
+    if ((HalpBusType == MACHINE_TYPE_EISA) && ((Elcr.Bits == 0) || (Elcr.Bits == 0xFFFF)))
+        HalpElcrUnchangedIrqs = 0xFFFF;
 
 #if defined(SARCH_PC98)
     /* Force defaults when ELCR is not supported */
@@ -940,6 +946,36 @@ HalpHardwareInterruptLevel2(VOID)
 /* SYSTEM INTERRUPTS **********************************************************/
 
 /*
+ * Called with interrupts on, as the router may go through PCI configuration space.
+ * Runs at DISPATCH_LEVEL or above so it cannot interleave with a link update.
+ */
+static
+VOID
+NTAPI
+HalpSetRouterTrigger(
+    _In_ ULONG Irq,
+    _In_ KINTERRUPT_MODE InterruptMode)
+{
+    USHORT LevelIrqs;
+    KIRQL OldIrql;
+
+    KeRaiseIrql((KIRQL)max(KeGetCurrentIrql(), DISPATCH_LEVEL), &OldIrql);
+
+    /* The register belongs to the router, so the other lines are whatever it holds */
+    if (NT_SUCCESS(HalpIrqRouter->GetTrigger(&LevelIrqs)))
+        HalpEisaELCR = LevelIrqs;
+
+    if (InterruptMode == LevelSensitive)
+        HalpEisaELCR |= (1 << Irq);
+    else
+        HalpEisaELCR &= ~(1 << Irq);
+
+    HalpIrqRouter->SetTrigger((USHORT)HalpEisaELCR);
+
+    KeLowerIrql(OldIrql);
+}
+
+/*
  * @implemented
  */
 BOOLEAN
@@ -965,6 +1001,10 @@ HalEnableSystemInterrupt(IN ULONG Vector,
         /* Switch dismiss to level */
         HalpSpecialDismissTable[Irq] = HalpSpecialDismissLevelTable[Irq];
     }
+
+    /* Match the trigger mode to the interrupt mode */
+    if (HalpIrqRouter && !(HalpElcrUnchangedIrqs & (1 << Irq)))
+        HalpSetRouterTrigger(Irq, InterruptMode);
 
     /* Disable interrupts */
     _disable();
@@ -1432,8 +1472,12 @@ HalpRestoreInterruptController(VOID)
 
     HalpInitializeLegacyPICs();
 
-    /* Zero means boot rejected the ELCR or found every IRQ edge, so leave it alone */
-    if (HalpEisaELCR != 0)
+    /* Without a router, zero means boot rejected the ELCR or found every IRQ edge */
+    if (HalpIrqRouter)
+    {
+        HalpIrqRouter->SetTrigger((USHORT)HalpEisaELCR);
+    }
+    else if (HalpEisaELCR != 0)
     {
         __outbyte(EISA_ELCR_MASTER, (UCHAR)HalpEisaELCR);
         __outbyte(EISA_ELCR_SLAVE, (UCHAR)(HalpEisaELCR >> 8));
