@@ -752,6 +752,139 @@ PciSize(ULONG Base, ULONG Mask)
     return Size;
 }
 
+/* Returns the first range that already covers part of what is asked for */
+static
+PSUPPORTED_RANGE
+NTAPI
+HalpFindOverlappingRange(
+    _In_ PSUPPORTED_RANGE Ranges,
+    _In_ LONGLONG Lowest,
+    _In_ LONGLONG Highest)
+{
+    PSUPPORTED_RANGE Range;
+
+    for (Range = Ranges; Range; Range = Range->Next)
+    {
+        /* A base past the limit says nothing about this kind of resource */
+        if (Range->Base > Range->Limit)
+            continue;
+
+        if ((Lowest <= Range->Limit) && (Highest >= Range->Base))
+            return Range;
+    }
+
+    return NULL;
+}
+
+/* Trims an address requirement down to the part of it the bus drives */
+static
+VOID
+NTAPI
+HalpNarrowAddressRequirement(
+    _Inout_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ PSUPPORTED_RANGE Ranges)
+{
+    LONGLONG Lowest = Descriptor->u.Generic.MinimumAddress.QuadPart;
+    LONGLONG Highest = Descriptor->u.Generic.MaximumAddress.QuadPart;
+    PSUPPORTED_RANGE Range;
+
+    Range = HalpFindOverlappingRange(Ranges, Lowest, Highest);
+    if (!Range)
+        return;
+
+    if (Lowest < Range->Base)
+        Descriptor->u.Generic.MinimumAddress.QuadPart = Range->Base;
+
+    if (Highest > Range->Limit)
+        Descriptor->u.Generic.MaximumAddress.QuadPart = Range->Limit;
+}
+
+/* Does the same for a line requirement, on the lines the device can be given */
+static
+VOID
+NTAPI
+HalpNarrowInterruptRequirement(
+    _Inout_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ PSUPPORTED_RANGE Ranges)
+{
+    LONGLONG Lowest = Descriptor->u.Interrupt.MinimumVector;
+    LONGLONG Highest = Descriptor->u.Interrupt.MaximumVector;
+    PSUPPORTED_RANGE Range;
+
+    Range = HalpFindOverlappingRange(Ranges, Lowest, Highest);
+    if (!Range)
+        return;
+
+    if (Lowest < Range->Base)
+        Descriptor->u.Interrupt.MinimumVector = (ULONG)Range->Base;
+
+    if (Highest > Range->Limit)
+        Descriptor->u.Interrupt.MaximumVector = (ULONG)Range->Limit;
+}
+
+/**
+ * @brief
+ * Narrows the requirements of a device to what its bus really delivers, so
+ * that the arbiters never see an address or a line the bus cannot produce.
+ * A requirement no range overlaps is left alone for the arbiter to reject.
+ *
+ * @param[in] SupportedRanges
+ * The address ranges of the bus.
+ *
+ * @param[in] InterruptRange
+ * The lines the bus can deliver for this device.
+ *
+ * @param[in,out] ResourceList
+ * The requirements list, narrowed in place.
+ *
+ * @return
+ * STATUS_SUCCESS.
+ */
+NTSTATUS
+NTAPI
+HaliAdjustResourceListRange(
+    _In_ PSUPPORTED_RANGES SupportedRanges,
+    _In_ PSUPPORTED_RANGE InterruptRange,
+    _Inout_ PIO_RESOURCE_REQUIREMENTS_LIST *ResourceList)
+{
+    PIO_RESOURCE_LIST List = (*ResourceList)->List;
+    PIO_RESOURCE_DESCRIPTOR Descriptor;
+    ULONG Alternatives = (*ResourceList)->AlternativeLists;
+    ULONG Count;
+
+    while (Alternatives--)
+    {
+        Descriptor = List->Descriptors;
+
+        for (Count = List->Count; Count; Count--, Descriptor++)
+        {
+            switch (Descriptor->Type)
+            {
+                case CmResourceTypePort:
+                    HalpNarrowAddressRequirement(Descriptor, &SupportedRanges->IO);
+                    break;
+
+                case CmResourceTypeInterrupt:
+                    HalpNarrowInterruptRequirement(Descriptor, InterruptRange);
+                    break;
+
+                case CmResourceTypeMemory:
+                case CmResourceTypeMemoryLarge:
+                    HalpNarrowAddressRequirement(Descriptor, &SupportedRanges->Memory);
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        /* The descriptors run up to the list that follows them */
+        List = (PIO_RESOURCE_LIST)Descriptor;
+    }
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NTAPI
 HalpAdjustPCIResourceList(IN PBUS_HANDLER BusHandler,
