@@ -170,6 +170,9 @@ CcRosFlushVacb (
     BOOLEAN WasMarked;
     PROS_SHARED_CACHE_MAP SharedCacheMap = Vacb->SharedCacheMap;
 
+    /* Writes through a mapped page of the view are only known to its PTE */
+    MmCaptureDirtyPages(Vacb->BaseAddress, VACB_MAPPING_GRANULARITY);
+
     /*
      * Remove the VACB from the dirty list before flushing. The return value
      * tells us whether the VACB was actually dirty at this point.
@@ -300,6 +303,7 @@ CcRosDeleteFileCache (
             IO_STATUS_BLOCK Iosb;
             NTSTATUS Status;
 
+            MmCaptureDirtyPages(Vacb->BaseAddress, VACB_MAPPING_GRANULARITY);
             Status = MmFlushSegment(FileObject->SectionObjectPointer, &Vacb->FileOffset, VACB_MAPPING_GRANULARITY, &Iosb);
             if (!NT_SUCCESS(Status))
             {
