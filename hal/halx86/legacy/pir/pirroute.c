@@ -906,6 +906,7 @@ static PHALP_IRQ_ROUTER HalpPirRouters[] =
     &HalpToshibaRouter,     /* 0x0F Toshiba */
     NULL,                   /* 0x10 NEC, not supported */
     &HalpVesuviusRouter,    /* 0x11 PicoPower Vesuvius */
+    &HalpAtiRouter,         /* 0x12 ATI SB600 and AMD SB7x0 */
 };
 
 /*
