@@ -69,6 +69,7 @@ MiAllocatePagesForMdl(IN PHYSICAL_ADDRESS LowAddress,
     KIRQL OldIrql;
     PMMPFN Pfn1;
     INT LookForZeroedPages;
+    BOOLEAN Trimmed = FALSE;
 
     ASSERT(KeGetCurrentIrql() <= APC_LEVEL);
     DPRINT("ARM3-DEBUG: Being called with %I64x %I64x %I64x %lx %d %lu\n", LowAddress, HighAddress, SkipBytes, TotalBytes, CacheAttribute, MdlFlags);
@@ -143,16 +144,25 @@ MiAllocatePagesForMdl(IN PHYSICAL_ADDRESS LowAddress,
             MI_SET_USAGE(MI_USAGE_MDL);
             MI_SET_PROCESS2("Kernel");
 
-            /* FIXME: This check should be smarter */
+            /* Faults still need pages, a caller never gets the last ones */
             Page = 0;
-            if (MmAvailablePages != 0)
+            if (MmAvailablePages > MmMinimumFreePages)
                 Page = MiRemoveAnyPage(0);
 
             if (Page == 0)
             {
-                /* This is not good... hopefully we have at least SOME pages */
-                ASSERT(PagesFound);
-                break;
+                /* Out of pages, let the writer and the trimmers have one go at it */
+                if (Trimmed || (OldIrql >= DISPATCH_LEVEL))
+                {
+                    /* The caller has to make do with what we found, even nothing */
+                    break;
+                }
+
+                MiReleasePfnLock(OldIrql);
+                MiWaitForFreePage();
+                OldIrql = MiAcquirePfnLock();
+                Trimmed = TRUE;
+                continue;
             }
 
             /* Grab the page entry for it */
