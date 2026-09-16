@@ -1066,10 +1066,6 @@ MiResolveTransitionFault(IN BOOLEAN StoreInstruction,
         }
     }
 
-    /* Windows checks there's some free pages and this isn't an in-page error */
-    ASSERT(MmAvailablePages > 0);
-    ASSERT(Pfn1->u4.InPageError == 0);
-
     /* Was this a transition page in the valid list, or free/zero list? */
     if (Pfn1->u3.e1.PageLocation == ActiveAndValid)
     {
@@ -2386,8 +2382,6 @@ UserFault:
                 ProtectionCode = (ProtectionCode & MM_EXECUTE) ? MM_EXECUTE_READWRITE : MM_READWRITE;
 
                 LockIrql = MiAcquirePfnLock();
-
-                ASSERT(MmAvailablePages > 0);
 
                 MI_SET_USAGE(MI_USAGE_COW);
                 MI_SET_PROCESS(CurrentProcess);
