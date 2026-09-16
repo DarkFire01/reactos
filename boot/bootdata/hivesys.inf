@@ -1642,6 +1642,14 @@ HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A1A8086",
 HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A1A8086","Instance",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\3A1A8086","Parameters",0x00010001,0x00000000
 
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\438D1002","Name",0x00000002,"ATI SB600"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\438D1002","Instance",0x00010001,0x00000012
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\438D1002","Parameters",0x00010001,0x00000000
+
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\439D1002","Name",0x00000002,"AMD SB7x0"
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\439D1002","Instance",0x00010001,0x00000012
+HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\439D1002","Parameters",0x00010001,0x00000000
+
 HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\80021066","Name",0x00000002,"Vesuvius"
 HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\80021066","Instance",0x00010001,0x00000011
 HKLM,"SYSTEM\CurrentControlSet\Control\PnP\PciIrqRouting\IrqMiniports\80021066","Parameters",0x00010001,0x00000001
