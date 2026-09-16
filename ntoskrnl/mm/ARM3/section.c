@@ -3141,11 +3141,19 @@ MmMapViewOfSection(
     ASSERT(Section->u.Flags.WriteCombined == 0);
     ASSERT(ControlArea->u.Flags.PhysicalMemory == 0);
 
-    /* FIXME */
-    if ((AllocationType & MEM_RESERVE) != 0)
+    /*
+     * A view of a file is reserved and committed at once, its pages live in the file.
+     * Only a section that commits pages of its own can hold them back.
+     */
+    if (AllocationType & MEM_RESERVE)
     {
-        DPRINT1("MmMapViewOfSection called with MEM_RESERVE, this is not implemented yet!!!\n");
-        return STATUS_NOT_IMPLEMENTED;
+        if ((AllocationType & MEM_COMMIT) || !ControlArea->FilePointer)
+        {
+            DPRINT1("Cannot reserve this view\n");
+            return STATUS_INVALID_PARAMETER_9;
+        }
+
+        AllocationType &= ~MEM_RESERVE;
     }
 
     /* Check if the mapping protection is compatible with the create */
