@@ -37,6 +37,13 @@ HalpQueryPicLineTranslator(
 /* The Fixed ACPI Description Table, parsed at phase 0 */
 extern FADT HalpFixedAcpiDescTable;
 
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+HalpPublishMmConfigRanges(
+    VOID
+);
+
 /* irqtrans.c */
 NTSTATUS
 NTAPI
