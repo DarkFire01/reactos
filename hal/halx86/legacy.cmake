@@ -10,6 +10,7 @@ list(APPEND HAL_LEGACY_SOURCE
     legacy/bus/isabus.c
     legacy/bus/pcibus.c
     legacy/pir/aliirq.c
+    legacy/pir/atiirq.c
     legacy/pir/compaqirq.c
     legacy/pir/cyrixirq.c
     legacy/pir/intelirq.c
