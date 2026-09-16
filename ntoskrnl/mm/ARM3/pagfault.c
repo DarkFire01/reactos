@@ -2540,12 +2540,14 @@ UserFault:
             /* The VAD protection cannot be MM_DECOMMIT! */
             ASSERT(ProtectionCode != MM_DECOMMIT);
 
+            /* A view keeps the link to its prototype PTE, the page is still there */
+            if (ProtoPte != NULL)
+                TempPte = PrototypePte;
+
             /* Remove the bit */
             TempPte.u.Soft.Protection = ProtectionCode & ~MM_GUARDPAGE;
             MI_WRITE_INVALID_PTE(PointerPte, TempPte);
 
-            /* Not supported */
-            ASSERT(ProtoPte == NULL);
             ASSERT(CurrentThread->ApcNeeded == 0);
 
             /* Drop the working set lock */
