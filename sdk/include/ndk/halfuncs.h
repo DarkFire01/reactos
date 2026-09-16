@@ -440,6 +440,72 @@ HalGetProcessorIdByNtNumber(
     _Out_ PULONG ProcessorId
 );
 
+NTHALAPI
+ULONG
+NTAPI
+HalQueryMaximumProcessorCount(
+    VOID
+);
+
+NTHALAPI
+NTSTATUS
+NTAPI
+HalRegisterDynamicProcessor(
+    _In_ ULONG ProcessorNumber,
+    _In_ ULONG ProcessorId
+);
+
+NTHALAPI
+NTSTATUS
+NTAPI
+HalRegisterErrataCallbacks(
+    VOID
+);
+
+//
+// Firmware Environment Functions (NT 6+ surface)
+//
+NTHALAPI
+NTSTATUS
+NTAPI
+HalGetEnvironmentVariableEx(
+    _In_ PCWSTR VariableName,
+    _In_ LPGUID VendorGuid,
+    _Out_writes_bytes_opt_(*ValueLength) PVOID Value,
+    _Inout_ PULONG ValueLength,
+    _Out_opt_ PULONG Attributes
+);
+
+NTHALAPI
+NTSTATUS
+NTAPI
+HalSetEnvironmentVariableEx(
+    _In_ PCWSTR VariableName,
+    _In_ LPGUID VendorGuid,
+    _In_reads_bytes_opt_(ValueLength) PVOID Value,
+    _In_ ULONG ValueLength,
+    _In_ ULONG Attributes
+);
+
+NTHALAPI
+NTSTATUS
+NTAPI
+HalEnumerateEnvironmentVariablesEx(
+    _In_ ULONG InformationClass,
+    _Out_writes_bytes_opt_(*BufferLength) PVOID Buffer,
+    _Inout_ PULONG BufferLength
+);
+
+NTHALAPI
+NTSTATUS
+NTAPI
+HalQueryEnvironmentVariableInfoEx(
+    _In_ ULONG Attributes,
+    _Out_ PULONGLONG MaximumVariableStorageSize,
+    _Out_ PULONGLONG RemainingVariableStorageSize,
+    _Out_ PULONGLONG MaximumVariableSize
+);
+
 //
 // Bus Functions
 //
