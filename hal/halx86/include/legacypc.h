@@ -19,12 +19,18 @@ typedef struct _HALP_PCI_LINK
     USHORT IrqMask;
 } HALP_PCI_LINK, *PHALP_PCI_LINK;
 
+/* The trigger modes are carried as a mask of the level triggered IRQs */
 typedef struct _HALP_IRQ_ROUTER
 {
     NTSTATUS (NTAPI *ValidateTable)(_Inout_ PPCI_IRQ_ROUTING_TABLE Table);
     NTSTATUS (NTAPI *GetIrq)(_In_ UCHAR Link, _Out_ PUCHAR Irq);
     NTSTATUS (NTAPI *SetIrq)(_In_ UCHAR Link, _In_ UCHAR Irq);
+    NTSTATUS (NTAPI *GetTrigger)(_Out_ PUSHORT LevelIrqs);
+    NTSTATUS (NTAPI *SetTrigger)(_In_ USHORT LevelIrqs);
 } HALP_IRQ_ROUTER, *PHALP_IRQ_ROUTER;
+
+/* The PCI IRQ router in use, which also owns the trigger modes */
+extern PHALP_IRQ_ROUTER HalpIrqRouter;
 
 /* legacypcirqarb.c */
 CODE_SEG("PAGE")
@@ -93,12 +99,3 @@ HalpLegacyPCUpdateInterruptLine(
 BOOLEAN
 NTAPI
 HalpLegacyPCIrqRoutingActive(VOID);
-
-/* intelirq.c */
-CODE_SEG("PAGE")
-PHALP_IRQ_ROUTER
-NTAPI
-HalpIntelGetRouter(
-    _In_ ULONG Instance,
-    _In_ ULONG Bus,
-    _In_ PCI_SLOT_NUMBER Slot);

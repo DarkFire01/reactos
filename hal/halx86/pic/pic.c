@@ -942,6 +942,26 @@ HalpHardwareInterruptLevel2(VOID)
 
 /* SYSTEM INTERRUPTS **********************************************************/
 
+/* Called with interrupts on, the router may go through PCI configuration space */
+static
+VOID
+HalpSetRouterTrigger(
+    _In_ ULONG Irq,
+    _In_ KINTERRUPT_MODE InterruptMode)
+{
+    USHORT LevelIrqs;
+
+    if (NT_SUCCESS(HalpIrqRouter->GetTrigger(&LevelIrqs)))
+        HalpEisaELCR = LevelIrqs;
+
+    if (InterruptMode == LevelSensitive)
+        HalpEisaELCR |= (1 << Irq);
+    else
+        HalpEisaELCR &= ~(1 << Irq);
+
+    HalpIrqRouter->SetTrigger((USHORT)HalpEisaELCR);
+}
+
 /*
  * @implemented
  */
@@ -969,22 +989,12 @@ HalEnableSystemInterrupt(IN ULONG Vector,
         HalpSpecialDismissTable[Irq] = HalpSpecialDismissLevelTable[Irq];
     }
 
+    /* Match the trigger mode to the interrupt mode */
+    if (HalpIrqRouter && !(HALP_ELCR_FIXED_IRQS & (1 << Irq)))
+        HalpSetRouterTrigger(Irq, InterruptMode);
+
     /* Disable interrupts */
     _disable();
-
-    /* Match the ELCR to the interrupt mode */
-    if (HalpIrqRouterInitialized && !(HALP_ELCR_FIXED_IRQS & (1 << Irq)))
-    {
-        HalpEisaELCR = (__inbyte(EISA_ELCR_SLAVE) << 8) | __inbyte(EISA_ELCR_MASTER);
-
-        if (InterruptMode == LevelSensitive)
-            HalpEisaELCR |= (1 << Irq);
-        else
-            HalpEisaELCR &= ~(1 << Irq);
-
-        __outbyte(EISA_ELCR_MASTER, (UCHAR)HalpEisaELCR);
-        __outbyte(EISA_ELCR_SLAVE, (UCHAR)(HalpEisaELCR >> 8));
-    }
 
     /* Update software IDR */
     Pcr->IDR &= ~(1 << Irq);
@@ -1487,8 +1497,15 @@ HalpRestoreInterruptController(VOID)
 
     HalpInitializeLegacyPICs();
 
-    __outbyte(EISA_ELCR_MASTER, (UCHAR)HalpEisaELCR);
-    __outbyte(EISA_ELCR_SLAVE, (UCHAR)(HalpEisaELCR >> 8));
+    if (HalpIrqRouter)
+    {
+        HalpIrqRouter->SetTrigger((USHORT)HalpEisaELCR);
+    }
+    else
+    {
+        __outbyte(EISA_ELCR_MASTER, (UCHAR)HalpEisaELCR);
+        __outbyte(EISA_ELCR_SLAVE, (UCHAR)(HalpEisaELCR >> 8));
+    }
 
     /* Mask off both the IRQs below the current IRQL and the disabled ones */
     PicMask.Both = (KiI8259MaskTable[Pcr->Irql] | Pcr->IDR) & 0xFFFF;
