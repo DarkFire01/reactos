@@ -889,10 +889,10 @@ EngpFileIoRequest(
     /* Call the driver */
     Status = IoCallDriver(pDeviceObject, pIrp);
 
-    /* Wait if neccessary */
+    /* Wait if neccessary. The IRP owns the event on our stack until it completes */
     if (STATUS_PENDING == Status)
     {
-        KeWaitForSingleObject(&Event, Executive, KernelMode, TRUE, 0);
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, 0);
         Status = Iosb.Status;
     }
 
@@ -971,10 +971,10 @@ EngFileIoControl(
     /* Call the driver */
     Status = IoCallDriver(pDeviceObject, pIrp);
 
-    /* Wait if neccessary */
+    /* Wait if neccessary. The IRP owns the event on our stack until it completes */
     if (Status == STATUS_PENDING)
     {
-        KeWaitForSingleObject(&Event, Executive, KernelMode, TRUE, 0);
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, 0);
         Status = Iosb.Status;
     }
 
@@ -1032,7 +1032,12 @@ EngDeviceIoControl(
 
     if (Status == STATUS_PENDING)
     {
-        (VOID)KeWaitForSingleObject(&Event, Executive, KernelMode, TRUE, 0);
+        /* An alert leaves the IRP holding the event on our stack, so keep waiting */
+        do
+        {
+            Status = KeWaitForSingleObject(&Event, Executive, KernelMode, TRUE, 0);
+        } while (Status == STATUS_ALERTED);
+
         Status = Iosb.Status;
     }
 
