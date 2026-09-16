@@ -1204,6 +1204,11 @@ IopInitializeBootDrivers(VOID)
         }
     }
 
+    /* The boot drivers are started, reserve the boot configurations that
+     * were held back. This must be done before devices are assigned
+     * resources below. */
+    IopReserveDeferredBootConfigs();
+
     /* HAL Root Bus is being initialized before loading the boot drivers so this may cause issues
      * when some devices are not being initialized with their drivers. This flag is used to delay
      * all actions with devices (except PnP root device) until boot drivers are loaded.

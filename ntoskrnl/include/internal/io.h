@@ -636,6 +636,25 @@ IopTranslateAssignmentToDevice(
     _Inout_ PIOP_REQUIREMENT Requirement
 );
 
+NTSTATUS
+NTAPI
+IopArbiterReserveBootConfig(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+//
+// Boot configuration reservation (pnparb.c)
+//
+NTSTATUS
+NTAPI
+IopReserveBootConfig(
+    _In_ PDEVICE_NODE DeviceNode
+);
+
+VOID
+NTAPI
+IopReserveDeferredBootConfigs(VOID);
+
 //
 // Resource translators (pnptrans.c)
 //
