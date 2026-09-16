@@ -324,8 +324,20 @@ MiInsertVadEx(
         (!Vad->u.VadFlags.PrivateMemory &&
          (Vad->u.VadFlags.Protection & PAGE_WRITECOPY)))
     {
+        /* These pages need a place in memory or in a paging file */
+        if (!MiChargeCommitment(ViewSize / PAGE_SIZE))
+        {
+            KeReleaseGuardedMutex(&CurrentProcess->AddressCreationLock);
+            return STATUS_COMMITMENT_LIMIT;
+        }
+
         /* Set the commit charge */
         Vad->u.VadFlags.CommitCharge = ViewSize / PAGE_SIZE;
+        CurrentProcess->CommitCharge += ViewSize / PAGE_SIZE;
+        if (CurrentProcess->CommitCharge > CurrentProcess->CommitChargePeak)
+        {
+            CurrentProcess->CommitChargePeak = CurrentProcess->CommitCharge;
+        }
     }
 
     /* Check if the VAD is to be secured */
