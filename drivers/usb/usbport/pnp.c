@@ -721,7 +721,7 @@ USBPORT_StartDevice(IN PDEVICE_OBJECT FdoDevice,
     {
         Status = USBPORT_IsCompanionController(FdoDevice, &IsCompanion);
 
-        if (!NT_SUCCESS(Status))
+        if (NT_SUCCESS(Status))
         {
             if (IsCompanion)
             {
@@ -804,7 +804,7 @@ USBPORT_StartDevice(IN PDEVICE_OBJECT FdoDevice,
         goto ExitWithError;
     }
 
-    FdoExtension->Flags &= ~USBPORT_FLAG_INT_CONNECTED;
+    FdoExtension->Flags |= USBPORT_FLAG_INT_CONNECTED;
 
     if (Packet->MiniPortExtensionSize)
     {
