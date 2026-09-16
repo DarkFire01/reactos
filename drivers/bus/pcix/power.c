@@ -184,7 +184,7 @@ PciSetPowerManagedDevicePowerState(IN PPCI_PDO_EXTENSION DeviceExtension,
     else
     {
         /* Nothing to do! */
-        DPRINT1("No PM on this device, ignoring request\n");
+        DPRINT("No PM on this device, ignoring request\n");
     }
 
     /* Check if new resources have to be assigned */
