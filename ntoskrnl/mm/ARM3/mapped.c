@@ -1892,6 +1892,55 @@ MmExtendSection(
 }
 
 /**
+ * @brief Moves the dirty state of the pages of a mapped view into their page frames.
+ *
+ * @param[in] BaseAddress
+ * First page of the view.
+ *
+ * @param[in] Length
+ * Length of the range in bytes.
+ *
+ * @remarks A flush only writes pages the page frame calls modified. A write through a
+ * page that is already valid and writable leaves that state in the PTE alone, so the
+ * caller of a flush has to hand it over first.
+ */
+VOID
+NTAPI
+MmCaptureDirtyPages(
+    _In_ PVOID BaseAddress,
+    _In_ SIZE_T Length)
+{
+    PMMPTE PointerPte = MiAddressToPte(BaseAddress);
+    PMMPTE LastPte = MiAddressToPte((PUCHAR)BaseAddress + Length - 1);
+    PMMPFN Pfn1;
+    MMPTE TempPte;
+    KIRQL OldIrql;
+
+    OldIrql = MiAcquirePfnLock();
+
+    for (; PointerPte <= LastPte; PointerPte++)
+    {
+        TempPte = *PointerPte;
+        if (!TempPte.u.Hard.Valid || !MI_IS_PAGE_DIRTY(&TempPte))
+            continue;
+
+        /* Only a page of the file can be written back */
+        Pfn1 = MI_PFN_ELEMENT(PFN_FROM_PTE(&TempPte));
+        if (!Pfn1->u3.e1.PrototypePte)
+            continue;
+
+        Pfn1->u3.e1.Modified = 1;
+
+        /* The next write marks it again */
+        MI_MAKE_CLEAN_PAGE(&TempPte);
+        MI_UPDATE_VALID_PTE(PointerPte, TempPte);
+        KeInvalidateTlbEntry(MiPteToAddress(PointerPte));
+    }
+
+    MiReleasePfnLock(OldIrql);
+}
+
+/**
  * @brief Writes modified data of a file section to the file.
  *
  * @param[in] SectionObjectPointer
