@@ -2034,6 +2034,16 @@ MiReservePageFileSpace(
 
 BOOLEAN
 NTAPI
+MiChargeCommitment(
+    _In_ PFN_NUMBER Pages);
+
+VOID
+NTAPI
+MiReturnCommitment(
+    _In_ PFN_NUMBER Pages);
+
+BOOLEAN
+NTAPI
 MiReleasePageFileSpace(
     _In_ MMPTE PteContents
 );
