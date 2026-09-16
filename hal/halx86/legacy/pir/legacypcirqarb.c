@@ -191,6 +191,38 @@ HalpLegacyPCArbLinkAccepts(
     return Available;
 }
 
+/* Print every range holding an IRQ the link can reach */
+static
+VOID
+HalpLegacyPCArbDumpLinkRanges(
+    _In_ PARBITER_INSTANCE Arbiter,
+    _In_ PHALP_PCI_LINK Link)
+{
+    RTL_RANGE_LIST_ITERATOR Iterator;
+    PRTL_RANGE Range;
+    ULONG Irq;
+
+    if (!NT_SUCCESS(RtlGetFirstRange(Arbiter->PossibleAllocation, &Iterator, &Range)))
+        return;
+
+    while (Range)
+    {
+        for (Irq = (ULONG)Range->Start; Irq <= Range->End && Irq <= HALP_PIC_LAST_IRQ; Irq++)
+        {
+            if (Link->IrqMask & (1 << Irq))
+            {
+                DPRINT1("HalIRQ:   IRQ %lu-%lu owner %p link %p attributes 0x%x flags 0x%x\n",
+                        (ULONG)Range->Start, (ULONG)Range->End, Range->Owner,
+                        Range->UserData, Range->Attributes, Range->Flags);
+                break;
+            }
+        }
+
+        if (!NT_SUCCESS(RtlGetNextRange(&Iterator, &Range, TRUE)))
+            break;
+    }
+}
+
 /**
  * @brief
  * Picks the IRQ for a routed device.
@@ -207,18 +239,33 @@ HalpLegacyPCArbPickLinkIrq(
     _In_ PARBITER_ALLOCATION_STATE State,
     _In_ PHALP_PCI_LINK Link)
 {
+    PDEVICE_OBJECT DeviceObject = State->Entry->PhysicalDeviceObject;
     ULONG Irq, Best = 0, BestRank = 0, Rank;
     UCHAR Firmware;
 
     Irq = HalpLegacyPCArbLinkIrq(Arbiter->PossibleAllocation, Link);
     if (Irq != 0)
-        return (Irq >= State->CurrentMinimum && Irq <= State->CurrentMaximum) ? Irq : 0;
+    {
+        if (Irq < State->CurrentMinimum || Irq > State->CurrentMaximum)
+        {
+            DPRINT1("HalIRQ: %p link 0x%x already on IRQ %lu, outside %I64u-%I64u\n",
+                    DeviceObject, Link->Link, Irq, State->CurrentMinimum, State->CurrentMaximum);
+            return 0;
+        }
+
+        DPRINT1("HalIRQ: %p link 0x%x shares IRQ %lu\n", DeviceObject, Link->Link, Irq);
+        return Irq;
+    }
 
     if (!NT_SUCCESS(HalpLegacyPCGetLinkIrq(Link, &Firmware)))
         Firmware = 0;
 
     if (Firmware != 0 && (Firmware < State->CurrentMinimum || Firmware > State->CurrentMaximum))
+    {
+        DPRINT1("HalIRQ: %p link 0x%x firmware IRQ %u outside %I64u-%I64u\n",
+                DeviceObject, Link->Link, Firmware, State->CurrentMinimum, State->CurrentMaximum);
         return 0;
+    }
 
     for (Irq = 1; Irq <= HALP_PIC_LAST_IRQ; Irq++)
     {
@@ -226,7 +273,10 @@ HalpLegacyPCArbPickLinkIrq(
             continue;
 
         if (Irq == Firmware)
+        {
+            DPRINT1("HalIRQ: %p link 0x%x keeps firmware IRQ %lu\n", DeviceObject, Link->Link, Irq);
             return Irq;
+        }
 
         Rank = HalpLegacyPCArbFindRouted(Arbiter->PossibleAllocation, NULL, Irq) ? 1 : 2;
         if (Rank >= BestRank)
@@ -235,6 +285,10 @@ HalpLegacyPCArbPickLinkIrq(
             BestRank = Rank;
         }
     }
+
+    DPRINT1("HalIRQ: %p link 0x%x mask 0x%x firmware IRQ %u unavailable, picked %lu\n",
+            DeviceObject, Link->Link, Link->IrqMask, Firmware, Best);
+    HalpLegacyPCArbDumpLinkRanges(Arbiter, Link);
 
     return Best;
 }
@@ -322,7 +376,10 @@ HalpLegacyPCArbFindSuitableRange(
     }
 
     if (!Link)
+    {
+        DPRINT1("HalIRQ: %p is routed but has no link\n", State->Entry->PhysicalDeviceObject);
         return FALSE;
+    }
 
     Irq = HalpLegacyPCArbPickLinkIrq(Arbiter, State, Link);
     if (Irq == 0)
@@ -402,6 +459,7 @@ HalpLegacyPCArbCommitAllocation(
                 HalDisableSystemInterrupt(HalpIrqToVector(Current), 0);
         }
 
+        DPRINT1("HalIRQ: link 0x%x IRQ %u -> %u\n", Link->Link, Current, Wanted);
         HalpLegacyPCSetLinkIrq(Link, Wanted);
     }
 
