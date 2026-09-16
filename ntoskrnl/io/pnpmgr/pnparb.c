@@ -1,16 +1,701 @@
 /*
- * PROJECT:         ReactOS Kernel
- * COPYRIGHT:       GPL - See COPYING in the top level directory
- * FILE:            ntoskrnl/io/pnpmgr/pnpres.c
- * PURPOSE:         Resource handling code
- * PROGRAMMERS:     Cameron Gutman (cameron.gutman@reactos.org)
- *                  ReactOS Portable Systems Group
+ * PROJECT:     ReactOS Kernel
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     PnP manager resource arbitration and assignment
+ * COPYRIGHT:   Copyright 2005 Cameron Gutman <cameron.gutman@reactos.org>
+ *              Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
 #include <ntoskrnl.h>
+#include <wdmguid.h>
 
 #define NDEBUG
 #include <debug.h>
+
+/* GLOBALS ******************************************************************/
+
+#define TAG_IO_ARBITER 'AbrI'
+
+/* Initialized by IopInitializeArbiters */
+extern ARBITER_INSTANCE IopRootBusNumberArbiter;
+extern ARBITER_INSTANCE IopRootIrqArbiter;
+extern ARBITER_INSTANCE IopRootDmaArbiter;
+extern ARBITER_INSTANCE IopRootMemArbiter;
+extern ARBITER_INSTANCE IopRootPortArbiter;
+
+static const struct
+{
+    UCHAR ResourceType;
+    PARBITER_INSTANCE Instance;
+} IopRootArbiterTable[] =
+{
+    { CmResourceTypePort,      &IopRootPortArbiter },
+    { CmResourceTypeInterrupt, &IopRootIrqArbiter },
+    { CmResourceTypeMemory,    &IopRootMemArbiter },
+    { CmResourceTypeDma,       &IopRootDmaArbiter },
+    { CmResourceTypeBusNumber, &IopRootBusNumberArbiter },
+};
+
+/* Interfaces of the root arbiters, in the same order as IopRootArbiterTable */
+static ARBITER_INTERFACE IopRootArbiterInterface[RTL_NUMBER_OF(IopRootArbiterTable)];
+
+/*
+ * Arbiter cached on a device node, with its own copy of the interface. An entry
+ * without an interface records a device that has no arbiter for the type.
+ */
+typedef struct _IOP_ARBITER_ENTRY
+{
+    PI_RESOURCE_ARBITER_ENTRY Entry;
+    ARBITER_INTERFACE Interface;
+} IOP_ARBITER_ENTRY, *PIOP_ARBITER_ENTRY;
+
+/* Resource types with a bit in the arbiter masks of a device node */
+#define IOP_MASKED_RESOURCE_TYPES (RTL_FIELD_SIZE(DEVICE_NODE, NoArbiterMask) * 8)
+
+/* FUNCTIONS ****************************************************************/
+
+/* ARBITER DISCOVERY ********************************************************/
+
+/* The root arbiters are never freed, so there is nothing to count */
+static
+VOID
+NTAPI
+IopRootArbiterReference(
+    _In_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+}
+
+static
+VOID
+NTAPI
+IopRootArbiterDereference(
+    _In_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+}
+
+/* Large memory ranges are arbitrated with the memory ranges */
+static
+UCHAR
+IopArbitratedType(
+    _In_ UCHAR ResourceType)
+{
+    return (ResourceType == CmResourceTypeMemoryLarge) ? CmResourceTypeMemory : ResourceType;
+}
+
+/**
+ * @brief
+ * Returns the root arbiter interface for a resource type, or NULL.
+ * CmResourceTypeMemoryLarge uses the memory arbiter.
+ */
+static
+CODE_SEG("PAGE")
+PARBITER_INTERFACE
+IopGetRootArbiterInterface(
+    _In_ UCHAR ResourceType)
+{
+    ULONG Index;
+
+    PAGED_CODE();
+
+    ResourceType = IopArbitratedType(ResourceType);
+
+    for (Index = 0; Index < RTL_NUMBER_OF(IopRootArbiterTable); Index++)
+    {
+        if (IopRootArbiterTable[Index].ResourceType == ResourceType)
+            return &IopRootArbiterInterface[Index];
+    }
+
+    return NULL;
+}
+
+static
+VOID
+IopInitializeArbiterEntry(
+    _Out_ PPI_RESOURCE_ARBITER_ENTRY Entry,
+    _In_ UCHAR ResourceType,
+    _In_opt_ PARBITER_INTERFACE Interface,
+    _In_ ULONG Level)
+{
+    Entry->ResourceType = ResourceType;
+    Entry->ArbiterInterface = Interface;
+    Entry->Level = Level;
+    InitializeListHead(&Entry->ResourceList);
+    InitializeListHead(&Entry->BestResourceList);
+    InitializeListHead(&Entry->BestConfig);
+    InitializeListHead(&Entry->ActiveArbiterList);
+}
+
+/* Returns the arbiter entry of a resource type cached on a device node, or NULL */
+static
+PPI_RESOURCE_ARBITER_ENTRY
+IopFindArbiterEntry(
+    _In_ PDEVICE_NODE Node,
+    _In_ UCHAR ResourceType)
+{
+    PLIST_ENTRY ListEntry;
+
+    for (ListEntry = Node->DeviceArbiterList.Flink;
+         ListEntry != &Node->DeviceArbiterList;
+         ListEntry = ListEntry->Flink)
+    {
+        PPI_RESOURCE_ARBITER_ENTRY Entry =
+            CONTAINING_RECORD(ListEntry, PI_RESOURCE_ARBITER_ENTRY, DeviceArbiterList);
+
+        if (Entry->ResourceType == ResourceType)
+            return Entry;
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief
+ * Sends IRP_MN_QUERY_INTERFACE for GUID_ARBITER_INTERFACE_STANDARD to a device.
+ *
+ * @remarks
+ * The interface version is 0. The PCI driver refuses any other version, and
+ * PCI devices would then be assigned from the root arbiters instead.
+ */
+static
+NTSTATUS
+IopQueryArbiterInterface(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ UCHAR ResourceType,
+    _Out_ PARBITER_INTERFACE Interface)
+{
+    IO_STATUS_BLOCK IoStatusBlock;
+    IO_STACK_LOCATION Stack;
+    NTSTATUS Status;
+
+    RtlZeroMemory(Interface, sizeof(*Interface));
+
+    if (!IopCanQueryResourceHandlers(DeviceNode))
+        return STATUS_NOT_SUPPORTED;
+
+    RtlZeroMemory(&Stack, sizeof(Stack));
+    Stack.Parameters.QueryInterface.InterfaceType = &GUID_ARBITER_INTERFACE_STANDARD;
+    Stack.Parameters.QueryInterface.Size = sizeof(*Interface);
+    Stack.Parameters.QueryInterface.Version = 0;
+    Stack.Parameters.QueryInterface.Interface = (PINTERFACE)Interface;
+    Stack.Parameters.QueryInterface.InterfaceSpecificData = UlongToPtr(ResourceType);
+
+    Status = IopInitiatePnpIrp(DeviceNode->PhysicalDeviceObject,
+                               &IoStatusBlock,
+                               IRP_MN_QUERY_INTERFACE,
+                               &Stack);
+    if (NT_SUCCESS(Status) && Interface->ArbiterHandler == NULL)
+    {
+        DPRINT1("%wZ returned an arbiter without handler\n", &DeviceNode->InstancePath);
+
+        if (Interface->InterfaceDereference != NULL)
+            Interface->InterfaceDereference(Interface->Context);
+
+        Status = STATUS_UNSUCCESSFUL;
+    }
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Adds the root arbiters to the arbiter list of the root device node.
+ * Called once, after IopInitializeArbiters.
+ */
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+IopRegisterRootArbiters(
+    _In_ PDEVICE_NODE RootNode)
+{
+    ULONG Index;
+
+    for (Index = 0; Index < RTL_NUMBER_OF(IopRootArbiterTable); Index++)
+    {
+        PARBITER_INTERFACE Interface = &IopRootArbiterInterface[Index];
+        PPI_RESOURCE_ARBITER_ENTRY Entry;
+
+        Interface->Size = sizeof(*Interface);
+        Interface->Version = 0;
+        Interface->Context = IopRootArbiterTable[Index].Instance;
+        Interface->InterfaceReference = IopRootArbiterReference;
+        Interface->InterfaceDereference = IopRootArbiterDereference;
+        Interface->ArbiterHandler = ArbiterLibHandler;
+        Interface->Flags = 0;
+
+        Entry = ExAllocatePoolZero(NonPagedPool, sizeof(*Entry), TAG_IO_ARBITER);
+        if (Entry == NULL)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        IopInitializeArbiterEntry(Entry,
+                                  IopRootArbiterTable[Index].ResourceType,
+                                  Interface,
+                                  RootNode->Level);
+        InsertTailList(&RootNode->DeviceArbiterList, &Entry->DeviceArbiterList);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Handles IRP_MN_QUERY_INTERFACE on the root PDO for the root arbiters.
+ *
+ * @param[in] IoStack
+ * The stack location of the IRP. InterfaceSpecificData is the resource type.
+ *
+ * @param[in] ExistingStatus
+ * The current status of the IRP, returned when the query is not handled.
+ *
+ * @return
+ * STATUS_SUCCESS if the interface was returned, STATUS_INVALID_PARAMETER for
+ * a resource type without a root arbiter, ExistingStatus otherwise.
+ */
+NTSTATUS
+NTAPI
+IopArbiterQueryRootInterface(
+    _In_ PIO_STACK_LOCATION IoStack,
+    _In_ NTSTATUS ExistingStatus)
+{
+    PARBITER_INTERFACE Interface;
+    PARBITER_INTERFACE Output;
+    UCHAR ResourceType;
+    BOOLEAN IsSupported;
+
+    PAGED_CODE();
+
+    IsSupported = IsEqualGUID(IoStack->Parameters.QueryInterface.InterfaceType,
+                              &GUID_ARBITER_INTERFACE_STANDARD) &&
+                  IoStack->Parameters.QueryInterface.Size >= sizeof(*Output) &&
+                  IoStack->Parameters.QueryInterface.Interface != NULL;
+    if (!IsSupported)
+        return ExistingStatus;
+
+    ResourceType = (UCHAR)(ULONG_PTR)IoStack->Parameters.QueryInterface.InterfaceSpecificData;
+
+    Interface = IopGetRootArbiterInterface(ResourceType);
+    if (Interface == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    /* The handler is NULL until IopRegisterRootArbiters has run */
+    if (Interface->ArbiterHandler == NULL)
+        return ExistingStatus;
+
+    Output = (PARBITER_INTERFACE)IoStack->Parameters.QueryInterface.Interface;
+    *Output = *Interface;
+    Output->InterfaceReference(Output->Context);
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Returns the arbiter of a device node for a resource type. The stack of the
+ * device is asked once, and the answer is cached on the device node.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_NOT_FOUND if the device has no arbiter for the type,
+ * or STATUS_INSUFFICIENT_RESOURCES.
+ */
+static
+NTSTATUS
+IopGetDeviceArbiter(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ UCHAR ResourceType,
+    _Out_ PPI_RESOURCE_ARBITER_ENTRY *ArbiterEntry)
+{
+    USHORT TypeBit = (ResourceType < IOP_MASKED_RESOURCE_TYPES) ? (USHORT)(1 << ResourceType) : 0;
+    PPI_RESOURCE_ARBITER_ENTRY Cached;
+    PIOP_ARBITER_ENTRY NewEntry;
+    ARBITER_INTERFACE Queried;
+    NTSTATUS Status;
+
+    *ArbiterEntry = NULL;
+
+    Cached = IopFindArbiterEntry(DeviceNode, ResourceType);
+    if (Cached != NULL)
+    {
+        if (Cached->ArbiterInterface == NULL)
+            return STATUS_NOT_FOUND;
+
+        *ArbiterEntry = Cached;
+        return STATUS_SUCCESS;
+    }
+
+    if (DeviceNode->NoArbiterMask & TypeBit)
+        return STATUS_NOT_FOUND;
+
+    Status = IopQueryArbiterInterface(DeviceNode, ResourceType, &Queried);
+    DeviceNode->QueryArbiterMask |= TypeBit;
+
+    if (!NT_SUCCESS(Status))
+    {
+        DeviceNode->NoArbiterMask |= TypeBit;
+        if (TypeBit != 0)
+            return STATUS_NOT_FOUND;
+    }
+
+    NewEntry = ExAllocatePoolZero(NonPagedPool, sizeof(*NewEntry), TAG_IO_ARBITER);
+    if (NewEntry == NULL)
+    {
+        if (NT_SUCCESS(Status) && Queried.InterfaceDereference != NULL)
+            Queried.InterfaceDereference(Queried.Context);
+
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    NewEntry->Interface = Queried;
+    IopInitializeArbiterEntry(&NewEntry->Entry,
+                              ResourceType,
+                              NT_SUCCESS(Status) ? &NewEntry->Interface : NULL,
+                              DeviceNode->Level);
+    InsertTailList(&DeviceNode->DeviceArbiterList, &NewEntry->Entry.DeviceArbiterList);
+
+    if (!NT_SUCCESS(Status))
+        return STATUS_NOT_FOUND;
+
+    *ArbiterEntry = &NewEntry->Entry;
+    return STATUS_SUCCESS;
+}
+
+/* Releases the arbiters cached on a device node */
+static
+VOID
+IopFreeDeviceNodeArbiters(
+    _In_ PDEVICE_NODE DeviceNode)
+{
+    while (!IsListEmpty(&DeviceNode->DeviceArbiterList))
+    {
+        PPI_RESOURCE_ARBITER_ENTRY Entry =
+            CONTAINING_RECORD(RemoveHeadList(&DeviceNode->DeviceArbiterList),
+                              PI_RESOURCE_ARBITER_ENTRY,
+                              DeviceArbiterList);
+
+        if ((Entry->ArbiterInterface != NULL) &&
+            (Entry->ArbiterInterface->InterfaceDereference != NULL))
+        {
+            Entry->ArbiterInterface->InterfaceDereference(Entry->ArbiterInterface->Context);
+        }
+
+        ExFreePoolWithTag(Entry, TAG_IO_ARBITER);
+    }
+
+    DeviceNode->NoArbiterMask = 0;
+    DeviceNode->QueryArbiterMask = 0;
+}
+
+/**
+ * @brief
+ * Releases the arbiters and translators cached on a device node. The device
+ * is asked again the next time they are needed.
+ */
+VOID
+NTAPI
+IopUncacheResourceHandlers(
+    _In_ PDEVICE_NODE DeviceNode)
+{
+    PAGED_CODE();
+
+    IopFreeDeviceNodeArbiters(DeviceNode);
+    IopFreeDeviceNodeTranslators(DeviceNode);
+}
+
+/**
+ * @brief
+ * Asks an arbiter that only arbitrates some of the ranges of its type whether
+ * it arbitrates a requirement.
+ */
+static
+BOOLEAN
+IopArbiterTakesRequirement(
+    _In_ PARBITER_INTERFACE Interface,
+    _Inout_ PARBITER_LIST_ENTRY Entry)
+{
+    ARBITER_PARAMETERS Parameters;
+    LIST_ENTRY ArbitrationList;
+    NTSTATUS Status;
+
+    InitializeListHead(&ArbitrationList);
+    InsertTailList(&ArbitrationList, &Entry->ListEntry);
+
+    RtlZeroMemory(&Parameters, sizeof(Parameters));
+    Parameters.Parameters.QueryArbitrate.ArbitrationList = &ArbitrationList;
+
+    Status = Interface->ArbiterHandler(Interface->Context,
+                                      ArbiterActionQueryArbitrate,
+                                      &Parameters);
+
+    RemoveEntryList(&Entry->ListEntry);
+    InitializeListHead(&Entry->ListEntry);
+
+    return NT_SUCCESS(Status);
+}
+
+/**
+ * @brief
+ * Translates the top level of a requirement with the translator of a bus,
+ * which adds a level for the parent of the bus.
+ *
+ * @return
+ * The status of IopTranslateRequirement, or STATUS_INSUFFICIENT_RESOURCES.
+ */
+static
+NTSTATUS
+IopAddRequirementLevel(
+    _Inout_ PIOP_REQUIREMENT Requirement,
+    _In_ PTRANSLATOR_INTERFACE Translator)
+{
+    PIOP_REQUIREMENT_LEVEL Lower = Requirement->Top;
+    PIOP_REQUIREMENT_LEVEL Level;
+    PIO_RESOURCE_DESCRIPTOR Alternatives;
+    ULONG AlternativeCount;
+    NTSTATUS Status;
+
+    Status = IopTranslateRequirement(Translator,
+                                     Lower->Entry.PhysicalDeviceObject,
+                                     Lower->Entry.Alternatives,
+                                     Lower->Entry.AlternativeCount,
+                                     &Alternatives,
+                                     &AlternativeCount);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Level = ExAllocatePoolWithTag(PagedPool, sizeof(*Level), TAG_IO_ARBITER);
+    if (Level == NULL)
+    {
+        ExFreePool(Alternatives);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    *Level = *Lower;
+    Level->Lower = Lower;
+    Level->Translator = Translator;
+    InitializeListHead(&Level->Entry.ListEntry);
+    Level->Entry.Alternatives = Alternatives;
+    Level->Entry.AlternativeCount = AlternativeCount;
+    Level->Entry.Assignment = &Level->Assignment;
+
+    Requirement->Top = Level;
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Initializes a requirement of a device before its arbiter and translators
+ * are found.
+ *
+ * @param[in] InterfaceType
+ * The legacy bus of the requirement, used when the device tree does not lead
+ * to a translator.
+ */
+VOID
+NTAPI
+IopInitializeRequirement(
+    _Out_ PIOP_REQUIREMENT Requirement,
+    _In_opt_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _In_ ARBITER_REQUEST_SOURCE RequestSource,
+    _In_ INTERFACE_TYPE InterfaceType,
+    _In_ ULONG BusNumber,
+    _In_reads_(AlternativeCount) PIO_RESOURCE_DESCRIPTOR Alternatives,
+    _In_ ULONG AlternativeCount)
+{
+    PARBITER_LIST_ENTRY Entry = &Requirement->Device.Entry;
+
+    RtlZeroMemory(Requirement, sizeof(*Requirement));
+    Requirement->Top = &Requirement->Device;
+    Requirement->InterfaceType = InterfaceType;
+    Requirement->BusNumber = BusNumber;
+
+    InitializeListHead(&Entry->ListEntry);
+    Entry->Alternatives = Alternatives;
+    Entry->AlternativeCount = AlternativeCount;
+    Entry->PhysicalDeviceObject = PhysicalDeviceObject;
+    Entry->RequestSource = RequestSource;
+    Entry->InterfaceType = InterfaceType;
+    Entry->BusNumber = BusNumber;
+    Entry->Assignment = &Requirement->Device.Assignment;
+    Entry->Result = ArbiterResultUndefined;
+
+    Requirement->Device.Assignment.Type = CmResourceTypeMaximum;
+}
+
+/**
+ * @brief
+ * Finds the arbiter of a requirement and the translators below it, walking up
+ * the device tree from the device node, whose own arbiters are skipped.
+ *
+ * @param[in] ListInterfaceType
+ * The interface type of the whole requirements list.
+ *
+ * @remarks
+ * Reaching the root without a translator restarts the walk at the legacy bus.
+ * HAL reported resources start at the root, and skip the legacy bus when internal.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_RESOURCE_TYPE_NOT_FOUND if no arbiter was found, or
+ * the failure status of a translator.
+ */
+NTSTATUS
+NTAPI
+IopFindRequirementHandlers(
+    _Inout_ PIOP_REQUIREMENT Requirement,
+    _In_ INTERFACE_TYPE ListInterfaceType)
+{
+    PDEVICE_OBJECT PhysicalDeviceObject = Requirement->Device.Entry.PhysicalDeviceObject;
+    BOOLEAN IsHalReported = (Requirement->Device.Entry.RequestSource == ArbiterRequestHalReported);
+    BOOLEAN DidVisitLegacyBus = IsHalReported && Requirement->InterfaceType == Internal;
+    BOOLEAN DidFindTranslator = FALSE;
+    BOOLEAN IsTranslating = TRUE;
+    PDEVICE_NODE Node;
+    NTSTATUS Status;
+    UCHAR Type;
+
+    PAGED_CODE();
+
+    ASSERT(Requirement->Top == &Requirement->Device && Requirement->Arbiter == NULL);
+
+    Type = IopArbitratedType(Requirement->Top->Entry.Alternatives[0].Type);
+
+    if (PhysicalDeviceObject != NULL && !IsHalReported)
+        Node = IopGetDeviceNode(PhysicalDeviceObject);
+    else
+        Node = IopRootDeviceNode;
+
+    while (Node != NULL)
+    {
+        PTRANSLATOR_INTERFACE Translator;
+
+        if (Node == IopRootDeviceNode && !DidFindTranslator && !DidVisitLegacyBus)
+        {
+            DidVisitLegacyBus = TRUE;
+            Node = IopFindResourceBus(Requirement->InterfaceType,
+                                      Requirement->BusNumber,
+                                      ListInterfaceType);
+            continue;
+        }
+
+        if (Requirement->Arbiter == NULL && Node->PhysicalDeviceObject != PhysicalDeviceObject)
+        {
+            Status = IopGetDeviceArbiter(Node, Type, &Requirement->Arbiter);
+            if (Status == STATUS_INSUFFICIENT_RESOURCES)
+                return Status;
+
+            if (Requirement->Arbiter != NULL &&
+                (Requirement->Arbiter->ArbiterInterface->Flags & ARBITER_PARTIAL) &&
+                !IopArbiterTakesRequirement(Requirement->Arbiter->ArbiterInterface,
+                                            &Requirement->Top->Entry))
+            {
+                Requirement->Arbiter = NULL;
+            }
+        }
+
+        if (IsTranslating)
+        {
+            Status = IopGetDeviceTranslator(Node, Type, &Translator);
+            if (Status == STATUS_INSUFFICIENT_RESOURCES)
+                return Status;
+
+            if (NT_SUCCESS(Status))
+            {
+                DidFindTranslator = TRUE;
+
+                if (Requirement->Arbiter == NULL)
+                {
+                    Status = IopAddRequirementLevel(Requirement, Translator);
+                    if (!NT_SUCCESS(Status))
+                    {
+                        DPRINT1("Requirement translation by %wZ failed (Status 0x%08lx)\n",
+                                &Node->InstancePath, Status);
+                        return Status;
+                    }
+
+                    Type = IopArbitratedType(Requirement->Top->Entry.Alternatives[0].Type);
+
+                    if (Status == STATUS_TRANSLATION_COMPLETE)
+                        IsTranslating = FALSE;
+                }
+            }
+        }
+
+        Node = IopGetResourceParent(Node);
+    }
+
+    if (Requirement->Arbiter == NULL)
+    {
+        DPRINT1("No arbiter for resource type %u\n", Type);
+        return STATUS_RESOURCE_TYPE_NOT_FOUND;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/* Frees the translated levels of a requirement */
+VOID
+NTAPI
+IopFreeRequirementLevels(
+    _Inout_ PIOP_REQUIREMENT Requirement)
+{
+    while (Requirement->Top != &Requirement->Device)
+    {
+        PIOP_REQUIREMENT_LEVEL Level = Requirement->Top;
+
+        Requirement->Top = Level->Lower;
+        ExFreePool(Level->Entry.Alternatives);
+        ExFreePoolWithTag(Level, TAG_IO_ARBITER);
+    }
+
+    Requirement->Arbiter = NULL;
+}
+
+/**
+ * @brief
+ * Translates the assignment the arbiter made in the top level of a
+ * requirement back down to the device, with the translator of each level.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_INVALID_PARAMETER if a level has no assignment, or
+ * the failure status of a translator.
+ */
+NTSTATUS
+NTAPI
+IopTranslateAssignmentToDevice(
+    _Inout_ PIOP_REQUIREMENT Requirement)
+{
+    PIOP_REQUIREMENT_LEVEL Level;
+
+    PAGED_CODE();
+
+    for (Level = Requirement->Top; Level != NULL; Level = Level->Lower)
+    {
+        PIOP_REQUIREMENT_LEVEL Lower = Level->Lower;
+        NTSTATUS Status;
+
+        if (Level->Entry.AlternativeCount == 0 || Level->Assignment.Type == CmResourceTypeMaximum)
+        {
+            DPRINT1("Requirement level without assignment\n");
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        if (Lower == NULL)
+            break;
+
+        Status = Level->Translator->TranslateResources(Level->Translator->Context,
+                                                       &Level->Assignment,
+                                                       TranslateParentToChild,
+                                                       Lower->Entry.AlternativeCount,
+                                                       Lower->Entry.Alternatives,
+                                                       Lower->Entry.PhysicalDeviceObject,
+                                                       &Lower->Assignment);
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/* LEGACY RESOURCE HANDLING *************************************************/
 
 FORCEINLINE
 PIO_RESOURCE_LIST
