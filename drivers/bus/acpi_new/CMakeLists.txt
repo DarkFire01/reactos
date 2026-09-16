@@ -12,6 +12,12 @@ add_definitions(
     -D_WIN32_WINNT=0x600
     -DNTDDI_VERSION=0x06000000)
 
+# CMake 3.17 does not know how to pass a C version to MSVC, so C_STANDARD alone
+# is not enough. uACPI needs C11 for _Static_assert.
+if(MSVC)
+    add_compile_options(/std:c11)
+endif()
+
 set(UACPI_SOURCES "")
 macro(uacpi_add_sources)
     foreach(_src ${ARGN})
@@ -23,6 +29,11 @@ include(uacpi/source/files.cmake)
 add_library(uacpi ${UACPI_SOURCES})
 set_target_properties(uacpi PROPERTIES C_STANDARD 11)
 target_compile_definitions(uacpi PUBLIC UACPI_OVERRIDE_LIBC)
+
+# Upstream code, so do not police its narrowing conversions
+if(MSVC)
+    target_compile_options(uacpi PRIVATE /wd4267)
+endif()
 
 # The arbiter layout depends on NTDDI_VERSION, so it is built with the driver's
 set(ARBITER_SOURCE_DIR ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/arbiter)
