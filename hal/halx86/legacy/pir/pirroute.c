@@ -7,6 +7,7 @@
 
 #include <hal.h>
 #include <wdmguid.h>
+#include "irqrouter.h"
 
 #define NDEBUG
 #include <debug.h>
@@ -52,11 +53,64 @@ typedef struct _HALP_PCI_ROUTE
 static struct
 {
     BOOLEAN Active;
-    PHALP_IRQ_ROUTER Router;
+    ULONG RouterBus;
+    PCI_SLOT_NUMBER RouterSlot;
     PPCI_IRQ_ROUTING_TABLE Table;
     PHALP_PCI_LINK Links;
     INT_ROUTE_INTERFACE_STANDARD Interface;
 } HalpPciIrqRouting;
+
+/* ROUTER ACCESS ****************************************************************/
+
+VOID
+NTAPI
+HalpPirReadRouter(
+    _In_ ULONG Offset,
+    _Out_writes_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Length)
+{
+    HalGetBusDataByOffset(PCIConfiguration,
+                          HalpPciIrqRouting.RouterBus,
+                          HalpPciIrqRouting.RouterSlot.u.AsULONG,
+                          Buffer,
+                          Offset,
+                          Length);
+}
+
+VOID
+NTAPI
+HalpPirWriteRouter(
+    _In_ ULONG Offset,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Length)
+{
+    HalSetBusDataByOffset(PCIConfiguration,
+                          HalpPciIrqRouting.RouterBus,
+                          HalpPciIrqRouting.RouterSlot.u.AsULONG,
+                          Buffer,
+                          Offset,
+                          Length);
+}
+
+/* For the routers that leave the trigger modes in the EISA edge/level register */
+NTSTATUS
+NTAPI
+HalpElcrGetTrigger(
+    _Out_ PUSHORT LevelIrqs)
+{
+    *LevelIrqs = (USHORT)((__inbyte(EISA_ELCR_SLAVE) << 8) | __inbyte(EISA_ELCR_MASTER));
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NTAPI
+HalpElcrSetTrigger(
+    _In_ USHORT LevelIrqs)
+{
+    __outbyte(EISA_ELCR_MASTER, (UCHAR)LevelIrqs);
+    __outbyte(EISA_ELCR_SLAVE, (UCHAR)(LevelIrqs >> 8));
+    return STATUS_SUCCESS;
+}
 
 /* TABLE ************************************************************************/
 
@@ -66,6 +120,62 @@ HalpPirSlotEnd(
     _In_ PPCI_IRQ_ROUTING_TABLE Table)
 {
     return (PSLOT_INFO)((PUCHAR)Table + Table->TableSize);
+}
+
+/* Lowest and highest nonzero link values, both zero when nothing is routed */
+VOID
+NTAPI
+HalpPirLinkRange(
+    _In_ PPCI_IRQ_ROUTING_TABLE Table,
+    _Out_ PUCHAR Lowest,
+    _Out_ PUCHAR Highest)
+{
+    PSLOT_INFO Slot;
+    ULONG Pin;
+
+    *Lowest = MAXUCHAR;
+    *Highest = 0;
+
+    for (Slot = Table->Slot; Slot < HalpPirSlotEnd(Table); Slot++)
+    {
+        for (Pin = 0; Pin < PIR_PIN_COUNT; Pin++)
+        {
+            UCHAR Link = Slot->PinInfo[Pin].Link;
+
+            if (Link == 0)
+                continue;
+
+            *Lowest = (UCHAR)min(*Lowest, Link);
+            *Highest = (UCHAR)max(*Highest, Link);
+        }
+    }
+
+    if (*Highest == 0)
+        *Lowest = 0;
+}
+
+/* Tells whether every routed pin of the table names a link the router knows */
+BOOLEAN
+NTAPI
+HalpPirAllLinks(
+    _In_ PPCI_IRQ_ROUTING_TABLE Table,
+    _In_ BOOLEAN (NTAPI *IsValid)(_In_ UCHAR Link))
+{
+    PSLOT_INFO Slot;
+    ULONG Pin;
+
+    for (Slot = Table->Slot; Slot < HalpPirSlotEnd(Table); Slot++)
+    {
+        for (Pin = 0; Pin < PIR_PIN_COUNT; Pin++)
+        {
+            UCHAR Link = Slot->PinInfo[Pin].Link;
+
+            if (Link != 0 && !IsValid(Link))
+                return FALSE;
+        }
+    }
+
+    return TRUE;
 }
 
 static
@@ -593,7 +703,7 @@ HalpLegacyPCGetLinkIrq(
     _In_ PHALP_PCI_LINK Link,
     _Out_ PUCHAR Irq)
 {
-    return HalpPciIrqRouting.Router->GetIrq(Link->Link, Irq);
+    return HalpIrqRouter->GetIrq(Link->Link, Irq);
 }
 
 NTSTATUS
@@ -602,7 +712,7 @@ HalpLegacyPCSetLinkIrq(
     _In_ PHALP_PCI_LINK Link,
     _In_ UCHAR Irq)
 {
-    return HalpPciIrqRouting.Router->SetIrq(Link->Link, Irq);
+    return HalpIrqRouter->SetIrq(Link->Link, Irq);
 }
 
 VOID
@@ -754,6 +864,13 @@ HalpPirScanBusZero(
     return FALSE;
 }
 
+/* Indexed by the Instance value of the IrqMiniports entries */
+static PHALP_IRQ_ROUTER HalpPirRouters[] =
+{
+    &HalpEscRouter,     /* 0x00 Intel 82375EB/SB */
+    &HalpPiixRouter,    /* 0x01 Intel PIIX and ICH */
+};
+
 /*
  * The router is picked from the IrqMiniports key: an Override entry first,
  * then the device at the $PIR router location, the compatible router the
@@ -802,7 +919,18 @@ HalpPirFindRouter(
 
     ZwClose(MiniportsKey);
 
-    return Found ? HalpIntelGetRouter(Instance, Bus, Slot) : NULL;
+    if (!Found)
+        return NULL;
+
+    if (Instance >= RTL_NUMBER_OF(HalpPirRouters) || !HalpPirRouters[Instance])
+    {
+        DPRINT1("HAL: IRQ miniport instance %lu is not supported\n", Instance);
+        return NULL;
+    }
+
+    HalpPciIrqRouting.RouterBus = Bus;
+    HalpPciIrqRouting.RouterSlot = Slot;
+    return HalpPirRouters[Instance];
 }
 
 static
@@ -883,7 +1011,7 @@ HalpLegacyPCInitIrqRouting(
     PAGED_CODE();
 
     /* $PIR only covers the 8259 inputs */
-    if (HalpPciIrqRouting.Router || HalpInterruptControllerType != 0 || InitSafeBootMode)
+    if (HalpIrqRouter || HalpInterruptControllerType != 0 || InitSafeBootMode)
         return;
 
     /* Devices are matched to links through the PCI bus driver */
@@ -904,7 +1032,7 @@ HalpLegacyPCInitIrqRouting(
         Table = HalpPirFindTable();
     }
 
-    /* The router also owns the ELCR, so it is used even without links */
+    /* The router owns the trigger modes, so it is used even without links */
     Router = HalpPirFindRouter(Table);
     if (!Router)
     {
@@ -914,8 +1042,7 @@ HalpLegacyPCInitIrqRouting(
         return;
     }
 
-    HalpPciIrqRouting.Router = Router;
-    HalpIrqRouterInitialized = TRUE;
+    HalpIrqRouter = Router;
 
     if (!Table)
     {
