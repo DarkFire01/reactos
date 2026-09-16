@@ -951,8 +951,9 @@ HalpSetRouterTrigger(
 {
     USHORT LevelIrqs;
 
+    /* Drop the lines the router lost, level mode the HAL doesn't dismiss is never taken */
     if (NT_SUCCESS(HalpIrqRouter->GetTrigger(&LevelIrqs)))
-        HalpEisaELCR = LevelIrqs;
+        HalpEisaELCR &= LevelIrqs;
 
     if (InterruptMode == LevelSensitive)
         HalpEisaELCR |= (1 << Irq);
