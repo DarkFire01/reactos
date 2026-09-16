@@ -564,6 +564,9 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
         /* Check for break-in */
         if (KdPollBreakIn()) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
+
+        /* Decide where the kernel address space regions go */
+        MiInitializeKernelVaLayout(LoaderBlock);
     }
 
     DPRINT1("Pcr = %p, Gdt = %p, Idt = %p, Tss = %p\n",
