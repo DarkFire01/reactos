@@ -436,40 +436,58 @@ pCDevSettings_InitializeExtInterface(PCDevSettings This)
     if (hKeyDev != NULL)
     {
         DWORD dwType, dwMemSize = 0;
-        DWORD dwSize = sizeof(dwMemSize);
+        ULONG64 ullMemSize = 0;
+        DWORD dwSize = sizeof(ullMemSize);
 
+        /* Cards with more than 4 GB of memory report their size as a 64 bit value */
         if (RegQueryValueEx(hKeyDev,
-                            TEXT("HardwareInformation.MemorySize"),
+                            TEXT("HardwareInformation.qwMemorySize"),
                             NULL,
                             &dwType,
-                            (PBYTE)&dwMemSize,
-                            &dwSize) == ERROR_SUCCESS &&
-            (dwType == REG_BINARY || dwType == REG_DWORD) &&
-            dwSize == sizeof(dwMemSize))
+                            (PBYTE)&ullMemSize,
+                            &dwSize) != ERROR_SUCCESS ||
+            (dwType != REG_BINARY && dwType != REG_QWORD) ||
+            dwSize != sizeof(ullMemSize))
         {
-            dwMemSize /= 1024;
-
-            if (dwMemSize > 1024)
+            dwSize = sizeof(dwMemSize);
+            if (RegQueryValueEx(hKeyDev,
+                                TEXT("HardwareInformation.MemorySize"),
+                                NULL,
+                                &dwType,
+                                (PBYTE)&dwMemSize,
+                                &dwSize) == ERROR_SUCCESS &&
+                (dwType == REG_BINARY || dwType == REG_DWORD) &&
+                dwSize == sizeof(dwMemSize))
             {
-                dwMemSize /= 1024;
-                if (dwMemSize > 1024)
+                ullMemSize = dwMemSize;
+            }
+        }
+
+        if (ullMemSize != 0)
+        {
+            ullMemSize /= 1024;
+
+            if (ullMemSize > 1024)
+            {
+                ullMemSize /= 1024;
+                if (ullMemSize > 1024)
                 {
                     wsprintf(Interface->MemorySize,
-                             _T("%u GB"),
-                             dwMemSize / 1024);
+                             _T("%I64u GB"),
+                             ullMemSize / 1024);
                 }
                 else
                 {
                     wsprintf(Interface->MemorySize,
-                             _T("%u MB"),
-                             dwMemSize);
+                             _T("%I64u MB"),
+                             ullMemSize);
                 }
             }
             else
             {
                 wsprintf(Interface->MemorySize,
-                         _T("%u KB"),
-                         dwMemSize);
+                         _T("%I64u KB"),
+                         ullMemSize);
             }
         }
 
