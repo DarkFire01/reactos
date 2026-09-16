@@ -932,10 +932,6 @@ IopInitializeBuiltinDriver(IN PLDR_DATA_TABLE_ENTRY BootLdrEntry)
     // The check is possible because HKLM/SYSTEM/CCS/Services/<ServiceName>/Enum directory
     // is populated upon a new device arrival based on a (critical) device database
 
-    // Legacy drivers may add devices inside DriverEntry.
-    // We're lazy and always assume that they are doing so
-    BOOLEAN deviceAdded = !!(DriverObject->Flags & DRVO_LEGACY_DRIVER);
-
     HANDLE enumServiceHandle;
     UNICODE_STRING enumName = RTL_CONSTANT_STRING(L"Enum");
 
@@ -1004,7 +1000,6 @@ IopInitializeBuiltinDriver(IN PLDR_DATA_TABLE_ENTRY BootLdrEntry)
                 {
                     PiQueueDeviceAction(pdo, PiActionAddBootDevices, NULL, NULL);
                     ObDereferenceObject(pdo);
-                    deviceAdded = TRUE;
                 }
                 else
                 {
@@ -1021,7 +1016,7 @@ Cleanup:
     /* Remove extra reference from IopInitializeDriverModule */
     ObDereferenceObject(DriverObject);
 
-    return deviceAdded;
+    return TRUE;
 }
 
 /*
@@ -1198,7 +1193,9 @@ IopInitializeBootDrivers(VOID)
             /* Initialize it */
             if (IopInitializeBuiltinDriver(LdrEntry))
             {
-                // it does not make sense to enumerate the tree if there are no new devices added
+                /* Devices enumerated before this driver loaded may be waiting for it.
+                 * They must start before the next driver runs, so a detecting driver
+                 * sees the resources they claim. */
                 PiQueueDeviceAction(IopRootDeviceNode->PhysicalDeviceObject,
                                     PiActionEnumRootDevices,
                                     NULL,
