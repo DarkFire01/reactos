@@ -12,6 +12,7 @@ list(APPEND HAL_PC98_SOURCE
     generic/display.c
     generic/dma.c
     generic/drive.c
+    generic/halext.c
     generic/halinit.c
     generic/kdpci.c
     generic/memory.c
