@@ -1811,6 +1811,12 @@ MiBuildPagedPool(VOID)
     Size *= ((MmNumberOfPhysicalPages * PAGE_SIZE) / _1GB);
 #endif
 
+#ifdef _M_AMD64
+    /* But never past the region it was given */
+    if (Size > MiSystemVaRegions[AssignedRegionPagedPool].NumberOfBytes)
+        Size = MiSystemVaRegions[AssignedRegionPagedPool].NumberOfBytes;
+#endif
+
     if (Size < MI_MIN_INIT_PAGED_POOLSIZE) Size = MI_MIN_INIT_PAGED_POOLSIZE;
     NumberOfPages = BYTES_TO_PAGES(Size);
 
@@ -2326,7 +2332,7 @@ MmArmInitSystem(IN ULONG Phase,
         ASSERT(PointerPte == TestPte);
 
         /* Try the last nonpaged pool address */
-        PointerPte = (PMMPTE)MI_NONPAGED_POOL_END;
+        PointerPte = (PMMPTE)MmNonPagedPoolEnd;
         MI_MAKE_PROTOTYPE_PTE(&TempPte, PointerPte);
         TestPte = MiProtoPteToPte(&TempPte);
         ASSERT(PointerPte == TestPte);
@@ -2536,15 +2542,17 @@ MmArmInitSystem(IN ULONG Phase,
         }
 
         /* Define limits for system cache */
-#ifdef _WIN64
+#ifdef _M_AMD64
+        MmSizeOfSystemCacheInPages = MiSystemVaRegions[AssignedRegionSystemCache].NumberOfBytes / PAGE_SIZE;
+#elif defined(_WIN64)
         MmSizeOfSystemCacheInPages = ((MI_SYSTEM_CACHE_END + 1) - MI_SYSTEM_CACHE_START) / PAGE_SIZE;
 #else
         MmSizeOfSystemCacheInPages = ((ULONG_PTR)MI_PAGED_POOL_START - (ULONG_PTR)MI_SYSTEM_CACHE_START) / PAGE_SIZE;
 #endif
         MmSystemCacheEnd = (PVOID)((ULONG_PTR)MmSystemCacheStart + (MmSizeOfSystemCacheInPages * PAGE_SIZE) - 1);
-#ifdef _WIN64
+#if defined(_WIN64) && !defined(_M_AMD64)
         ASSERT(MmSystemCacheEnd == (PVOID)MI_SYSTEM_CACHE_END);
-#else
+#elif !defined(_M_AMD64)
         ASSERT(MmSystemCacheEnd == (PVOID)((ULONG_PTR)MI_PAGED_POOL_START - 1));
 #endif
 
