@@ -159,8 +159,25 @@ extern HALP_IRQ_ROUTER HalpCx5520Router;
 extern HALP_IRQ_ROUTER HalpEscRouter;
 extern HALP_IRQ_ROUTER HalpPiixRouter;
 
+/* nsirq.c */
+extern HALP_IRQ_ROUTER HalpNs87560Router;
+
+/* optiirq.c */
+extern HALP_IRQ_ROUTER HalpOptiFireStarRouter;
+extern HALP_IRQ_ROUTER HalpOptiViperRouter;
+
 /* sisirq.c */
 extern HALP_IRQ_ROUTER HalpSisRouter;
 
+/* toshirq.c */
+extern HALP_IRQ_ROUTER HalpToshibaRouter;
+
+/* vesuvirq.c */
+extern HALP_IRQ_ROUTER HalpVesuviusRouter;
+
 /* viairq.c */
 extern HALP_IRQ_ROUTER HalpViaRouter;
+
+/* vlsiirq.c */
+extern HALP_IRQ_ROUTER HalpVlsiEagleRouter;
+extern HALP_IRQ_ROUTER HalpVlsiRouter;
