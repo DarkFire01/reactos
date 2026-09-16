@@ -1383,6 +1383,13 @@ MmCleanProcessAddressSpace(IN PEPROCESS Process)
             MiUnlockProcessWorkingSetUnsafe(Process, Thread);
         }
 
+        /* The process is gone and so is what its pages were charged */
+        if (Vad->u.VadFlags.CommitCharge != 0)
+        {
+            MiReturnCommitment(Vad->u.VadFlags.CommitCharge);
+            Process->CommitCharge -= Vad->u.VadFlags.CommitCharge;
+        }
+
         /* Free the VAD memory */
         ExFreePool(Vad);
 
