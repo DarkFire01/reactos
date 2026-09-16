@@ -779,6 +779,12 @@ MmMakeSegmentDirty(
     _In_ LONGLONG Offset,
     _In_ ULONG Length);
 
+VOID
+NTAPI
+MmCaptureDirtyPages(
+    _In_ PVOID BaseAddress,
+    _In_ SIZE_T Length);
+
 NTSTATUS
 NTAPI
 MmFlushSegment(
