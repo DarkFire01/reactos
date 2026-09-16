@@ -457,8 +457,8 @@ NTAPI
 HalpLegacyPCArbitratesIrqs(VOID)
 {
     /* The APIC HAL has no fixed line to vector mapping, it assigns a vector
-       when a line is first mapped. There is no $PIR routing on the PIC HAL */
-    return (HalpInterruptControllerType == 1);
+       when a line is first mapped. The PIC HAL routes lines through $PIR links */
+    return (HalpInterruptControllerType == HALP_INTERRUPT_CONTROLLER_APIC) || HalpLegacyPCIrqRoutingActive();
 }
 
 /**
@@ -535,6 +535,10 @@ HaliGetInterruptTranslator(
     UNREFERENCED_PARAMETER(Size);
     UNREFERENCED_PARAMETER(Version);
     UNREFERENCED_PARAMETER(BridgeBusNumber);
+
+    /* With $PIR routing the HAL bus FDO translates every interrupt */
+    if (HalpLegacyPCIrqRoutingActive())
+        return STATUS_NOT_SUPPORTED;
 
     switch (BridgeInterfaceType)
     {

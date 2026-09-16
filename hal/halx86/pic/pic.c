@@ -213,6 +213,9 @@ PHAL_SW_INTERRUPT_HANDLER_2ND_ENTRY SWInterruptHandlerTable2[3] =
 
 LONG HalpEisaELCR;
 
+/* IRQs whose ELCR bit is never changed */
+#define HALP_ELCR_FIXED_IRQS ((1 << 0) | (1 << 1) | (1 << 2) | (1 << 8) | (1 << 13))
+
 /* FUNCTIONS ******************************************************************/
 
 VOID
@@ -939,6 +942,28 @@ HalpHardwareInterruptLevel2(VOID)
 
 /* SYSTEM INTERRUPTS **********************************************************/
 
+/* Called with interrupts on, the router may go through PCI configuration space */
+static
+VOID
+NTAPI
+HalpSetRouterTrigger(
+    _In_ ULONG Irq,
+    _In_ KINTERRUPT_MODE InterruptMode)
+{
+    USHORT LevelIrqs;
+
+    /* The register belongs to the router, so the other lines are whatever it holds */
+    if (NT_SUCCESS(HalpIrqRouter->GetTrigger(&LevelIrqs)))
+        HalpEisaELCR = LevelIrqs;
+
+    if (InterruptMode == LevelSensitive)
+        HalpEisaELCR |= (1 << Irq);
+    else
+        HalpEisaELCR &= ~(1 << Irq);
+
+    HalpIrqRouter->SetTrigger((USHORT)HalpEisaELCR);
+}
+
 /*
  * @implemented
  */
@@ -965,6 +990,10 @@ HalEnableSystemInterrupt(IN ULONG Vector,
         /* Switch dismiss to level */
         HalpSpecialDismissTable[Irq] = HalpSpecialDismissLevelTable[Irq];
     }
+
+    /* Match the trigger mode to the interrupt mode */
+    if (HalpIrqRouter && !(HALP_ELCR_FIXED_IRQS & (1 << Irq)))
+        HalpSetRouterTrigger(Irq, InterruptMode);
 
     /* Disable interrupts */
     _disable();
@@ -1470,8 +1499,15 @@ HalpRestoreInterruptController(VOID)
 
     HalpInitializeLegacyPICs();
 
-    __outbyte(EISA_ELCR_MASTER, (UCHAR)HalpEisaELCR);
-    __outbyte(EISA_ELCR_SLAVE, (UCHAR)(HalpEisaELCR >> 8));
+    if (HalpIrqRouter)
+    {
+        HalpIrqRouter->SetTrigger((USHORT)HalpEisaELCR);
+    }
+    else
+    {
+        __outbyte(EISA_ELCR_MASTER, (UCHAR)HalpEisaELCR);
+        __outbyte(EISA_ELCR_SLAVE, (UCHAR)(HalpEisaELCR >> 8));
+    }
 
     /* Mask off both the IRQs below the current IRQL and the disabled ones */
     PicMask.Both = (KiI8259MaskTable[Pcr->Irql] | Pcr->IDR) & 0xFFFF;
