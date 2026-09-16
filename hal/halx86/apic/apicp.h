@@ -28,9 +28,9 @@
     #define APIC_PERF_VECTOR     0xFE // IRQL 15 (PROFILE_LEVEL) - HalpPerfInterrupt
     #define APIC_NMI_VECTOR      0xFF
 
-    #define IrqlToTpr(Irql) (Irql << 4)
-    #define IrqlToSoftVector(Irql) ((Irql << 4)|0xf)
-    #define TprToIrql(Tpr) ((KIRQL)(Tpr >> 4))
+    #define IrqlToTpr(Irql) ((Irql) << 4)
+    #define IrqlToSoftVector(Irql) (((Irql) << 4) | 0xf)
+    #define TprToIrql(Tpr) ((KIRQL)((Tpr) >> 4))
     #define CLOCK2_LEVEL CLOCK_LEVEL
     #define APIC_PROFILE_LEVEL PROFILE_LEVEL
 #else
