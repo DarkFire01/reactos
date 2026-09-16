@@ -154,16 +154,62 @@ Cleanup:
     return Status;
 }
 
-/*
- * @unimplemented
+/**
+ * @brief Marks the pages of a mapped range as modified.
+ *
+ * @param[in] Address
+ * First page of the range.
+ *
+ * @param[in] Length
+ * Length of the range in bytes.
+ *
+ * @return TRUE if the range had a mapped page, FALSE otherwise.
+ *
+ * @remarks A flush only writes pages the page frame calls modified. A caller that
+ * wrote through another mapping of these pages, an MDL of a cached view for one,
+ * hands that state over here.
+ *
+ * @implemented
  */
 BOOLEAN
 NTAPI
 MmSetAddressRangeModified(IN PVOID Address,
                           IN SIZE_T Length)
 {
-   UNIMPLEMENTED;
-   return FALSE;
+    PMMPTE PointerPte = MiAddressToPte(Address);
+    PMMPTE LastPte = MiAddressToPte((PUCHAR)Address + Length - 1);
+    BOOLEAN Mapped = FALSE;
+    PMMPFN Pfn1;
+    MMPTE TempPte;
+    KIRQL OldIrql;
+
+    OldIrql = MiAcquirePfnLock();
+
+    for (; PointerPte <= LastPte; PointerPte++)
+    {
+        /* A range without a page table has nothing to hand over */
+        if (!MmIsAddressValid(PointerPte))
+            continue;
+
+        TempPte = *PointerPte;
+        if (!TempPte.u.Hard.Valid)
+            continue;
+
+        Mapped = TRUE;
+        Pfn1 = MI_PFN_ELEMENT(PFN_FROM_PTE(&TempPte));
+        Pfn1->u3.e1.Modified = 1;
+
+        /* The page frame has it now, the next write marks the PTE again */
+        if (MI_IS_PAGE_DIRTY(&TempPte))
+        {
+            MI_MAKE_CLEAN_PAGE(&TempPte);
+            MI_UPDATE_VALID_PTE(PointerPte, TempPte);
+            KeInvalidateTlbEntry(MiPteToAddress(PointerPte));
+        }
+    }
+
+    MiReleasePfnLock(OldIrql);
+    return Mapped;
 }
 
 /*
