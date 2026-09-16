@@ -841,6 +841,10 @@ EarlyQuit:
     MmPagingFile[MmNumberOfPagingFiles] = PagingFile;
     MmNumberOfPagingFiles++;
     MiFreeSwapPages = MiFreeSwapPages + PagingFile->FreeSpace;
+
+    /* Pages the file can hold are pages the system can promise */
+    MmTotalCommitLimit += PagingFile->FreeSpace;
+    MmTotalCommitLimitMaximum += PagingFile->MaximumSize - 1;
     KeReleaseSpinLock(&MiPageFileLock, OldIrql);
     KeReleaseGuardedMutex(&MmPageFileCreationLock);
 

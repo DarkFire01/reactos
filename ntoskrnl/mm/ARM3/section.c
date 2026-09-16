@@ -716,6 +716,12 @@ MiSegmentDelete(IN PSEGMENT Segment)
     /* Release the PFN lock */
     MiReleasePfnLock(OldIrql);
 
+    /* A section without a file kept its pages in a paging file */
+    if ((ControlArea->FilePointer == NULL) && (Segment->NumberOfCommittedPages != 0))
+    {
+        MiReturnCommitment(Segment->NumberOfCommittedPages);
+    }
+
     /* Free the structures */
     ExFreePool(ControlArea);
     ExFreePool(Segment);
@@ -899,7 +905,13 @@ MiUnmapViewOfSection(IN PEPROCESS Process,
     /* Not currently supported */
     ASSERT(Vad->u.VadFlags.VadType != VadRotatePhysical);
 
-    /* FIXME: Remove VAD charges */
+    /* Give back what the view was charged for its own pages */
+    if (Vad->u.VadFlags.CommitCharge != 0)
+    {
+        MiReturnCommitment(Vad->u.VadFlags.CommitCharge);
+        Process->CommitCharge -= Vad->u.VadFlags.CommitCharge;
+        Vad->u.VadFlags.CommitCharge = 0;
+    }
 
     /* Lock the working set */
     MiLockProcessWorkingSetUnsafe(Process, CurrentThread);
@@ -1390,6 +1402,11 @@ MiMapViewOfDataSection(
         {
             /* Charge for the maximum pages */
             QuotaCharge = BYTES_TO_PAGES(CommitSize);
+            if (!MiChargeCommitment(QuotaCharge))
+            {
+                MiDereferenceControlArea(ControlArea, TRUE);
+                return STATUS_COMMITMENT_LIMIT;
+            }
         }
     }
 
@@ -1469,6 +1486,7 @@ MiMapViewOfDataSection(
         /* Now check how many pages exactly we committed, and update accounting */
         ASSERT(QuotaCharge >= QuotaExcess);
         QuotaCharge -= QuotaExcess;
+        if (QuotaExcess != 0) MiReturnCommitment(QuotaExcess);
         Segment->NumberOfCommittedPages += QuotaCharge;
         ASSERT(Segment->NumberOfCommittedPages <= Segment->TotalNumberOfPtes);
 
@@ -1501,6 +1519,7 @@ MiMapViewOfDataSection(
         KeAcquireGuardedMutex(&MmSectionCommitMutex);
         Segment->NumberOfCommittedPages -= QuotaCharge;
         KeReleaseGuardedMutex(&MmSectionCommitMutex);
+        MiReturnCommitment(QuotaCharge);
         return Status;
     }
 
@@ -1519,6 +1538,7 @@ MiMapViewOfDataSection(
         KeAcquireGuardedMutex(&MmSectionCommitMutex);
         Segment->NumberOfCommittedPages -= QuotaCharge;
         KeReleaseGuardedMutex(&MmSectionCommitMutex);
+        MiReturnCommitment(QuotaCharge);
 
         PsReturnProcessNonPagedPoolQuota(PsGetCurrentProcess(), sizeof(MMVAD_LONG));
         return Status;
@@ -1983,6 +2003,12 @@ MiCreatePagingFileMap(OUT PSEGMENT *Segment,
     /* For commited memory, we must have a valid protection mask */
     if (AllocationAttributes & SEC_COMMIT) ASSERT(ProtectionMask != 0);
 
+    /* Pages of this section live in a paging file, they are charged up front */
+    if ((AllocationAttributes & SEC_COMMIT) && !MiChargeCommitment(PteCount))
+    {
+        return STATUS_COMMITMENT_LIMIT;
+    }
+
     /* The segment contains all the Prototype PTEs, allocate it in paged pool */
     NewSegment = ExAllocatePoolWithTag(PagedPool,
                                        sizeof(SEGMENT) +
@@ -1990,6 +2016,7 @@ MiCreatePagingFileMap(OUT PSEGMENT *Segment,
                                        'tSmM');
     if (!NewSegment)
     {
+        if (AllocationAttributes & SEC_COMMIT) MiReturnCommitment(PteCount);
         return STATUS_INSUFFICIENT_RESOURCES;
     }
     *Segment = NewSegment;
@@ -2001,6 +2028,7 @@ MiCreatePagingFileMap(OUT PSEGMENT *Segment,
     if (!ControlArea)
     {
         ExFreePoolWithTag(Segment, 'tSmM');
+        if (AllocationAttributes & SEC_COMMIT) MiReturnCommitment(PteCount);
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -3521,6 +3549,14 @@ MmCommitSessionMappedView(IN PVOID MappedBase,
         KeReleaseGuardedMutexUnsafe(&MmSectionCommitMutex);
         KeReleaseGuardedMutex(Session->SystemSpaceViewLockPointer);
         return STATUS_SUCCESS;
+    }
+
+    /* The pages of this section live in a paging file */
+    if (!MiChargeCommitment(QuotaCharge))
+    {
+        KeReleaseGuardedMutexUnsafe(&MmSectionCommitMutex);
+        KeReleaseGuardedMutex(Session->SystemSpaceViewLockPointer);
+        return STATUS_COMMITMENT_LIMIT;
     }
 
     /* Pick the segment and template PTE */

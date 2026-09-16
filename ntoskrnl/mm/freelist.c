@@ -31,9 +31,54 @@ SIZE_T MmDriverCommit;
 SIZE_T MmProcessCommit;
 SIZE_T MmPagedPoolCommit;
 SIZE_T MmPeakCommitment;
-SIZE_T MmtotalCommitLimitMaximum;
 
 /* FUNCTIONS *************************************************************/
+
+/**
+ * @brief Charges pages against the commit limit.
+ *
+ * @param[in] Pages
+ * Number of pages to charge.
+ *
+ * @return TRUE if the pages fit in the limit, FALSE otherwise.
+ *
+ * @remarks A committed page needs a place to live, in memory or in a paging file.
+ * Whoever takes a charge gives it back with MiReturnCommitment.
+ */
+BOOLEAN
+NTAPI
+MiChargeCommitment(
+    _In_ PFN_NUMBER Pages)
+{
+    SIZE_T Committed;
+
+    Committed = InterlockedExchangeAddSizeT(&MmTotalCommittedPages, Pages) + Pages;
+    if (Committed > MmTotalCommitLimit)
+    {
+        InterlockedExchangeAddSizeT(&MmTotalCommittedPages, -(SSIZE_T)Pages);
+        return FALSE;
+    }
+
+    if (Committed > MmPeakCommitment)
+        MmPeakCommitment = Committed;
+
+    return TRUE;
+}
+
+/**
+ * @brief Gives charged pages back to the commit limit.
+ *
+ * @param[in] Pages
+ * Number of pages to return.
+ */
+VOID
+NTAPI
+MiReturnCommitment(
+    _In_ PFN_NUMBER Pages)
+{
+    ASSERT(MmTotalCommittedPages >= Pages);
+    InterlockedExchangeAddSizeT(&MmTotalCommittedPages, -(SSIZE_T)Pages);
+}
 
 BOOLEAN
 NTAPI
