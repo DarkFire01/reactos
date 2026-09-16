@@ -949,18 +949,20 @@ HalpSetRouterTrigger(
     _In_ ULONG Irq,
     _In_ KINTERRUPT_MODE InterruptMode)
 {
-    USHORT LevelIrqs;
-
-    /* Drop the lines the router lost, level mode the HAL doesn't dismiss is never taken */
-    if (NT_SUCCESS(HalpIrqRouter->GetTrigger(&LevelIrqs)))
-        HalpEisaELCR &= LevelIrqs;
+    USHORT LevelIrqs, Readback;
 
     if (InterruptMode == LevelSensitive)
         HalpEisaELCR |= (1 << Irq);
     else
         HalpEisaELCR &= ~(1 << Irq);
 
-    HalpIrqRouter->SetTrigger((USHORT)HalpEisaELCR);
+    /* The shadow owns every line, a router that reads back short must not shrink it */
+    LevelIrqs = (USHORT)(HalpEisaELCR & ~HALP_ELCR_FIXED_IRQS);
+
+    if (NT_SUCCESS(HalpIrqRouter->GetTrigger(&Readback)) && (Readback != LevelIrqs))
+        DPRINT1("Trigger for IRQ %lu: router has 0x%04x, HAL wants 0x%04x\n", Irq, Readback, LevelIrqs);
+
+    HalpIrqRouter->SetTrigger(LevelIrqs);
 }
 
 /*
