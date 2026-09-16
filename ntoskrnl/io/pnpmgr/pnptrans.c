@@ -870,6 +870,7 @@ IoTranslateBusAddress(
 {
     CM_PARTIAL_RESOURCE_DESCRIPTOR Current, Next;
     BOOLEAN IsTranslated = TRUE;
+    BOOLEAN IsLocked;
     PDEVICE_NODE Node;
 
     /* Translators are only called at PASSIVE_LEVEL, and need the device tree */
@@ -900,7 +901,8 @@ IoTranslateBusAddress(
             return FALSE;
     }
 
-    /* The bus and its parents must stay in the device tree during the walk */
+    /* The bus, its parents and their cached translators must stay during the walk */
+    IsLocked = IopLockResourceHandlers();
     IopAcquireLegacyBuses(FALSE);
 
     for (Node = IopLookupLegacyBus(InterfaceType, BusNumber);
@@ -950,6 +952,8 @@ IoTranslateBusAddress(
     }
 
     IopReleaseLegacyBuses();
+    if (IsLocked)
+        IopUnlockResourceHandlers();
 
     if (!IsTranslated)
         return FALSE;

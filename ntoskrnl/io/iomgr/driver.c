@@ -36,6 +36,8 @@ POBJECT_TYPE IoDriverObjectType = NULL;
 extern BOOLEAN PnpSystemInit;
 extern BOOLEAN PnPBootDriversLoaded;
 extern KEVENT PiEnumerationFinished;
+extern PUNICODE_STRING PiInitGroupOrderTable;
+extern USHORT PiInitGroupOrderTableCount;
 
 USHORT IopGroupIndex;
 PLIST_ENTRY IopGroupTable;
@@ -1045,6 +1047,8 @@ IopInitializeBootDrivers(VOID)
     PDRIVER_INFORMATION DriverInfo, DriverInfoTag;
     HANDLE KeyHandle;
     PBOOT_DRIVER_LIST_ENTRY BootEntry;
+    UNICODE_STRING BusExtenderName = RTL_CONSTANT_STRING(L"Boot Bus Extender");
+    ULONG BusExtenderGroup = MAXULONG;
     DPRINT("IopInitializeBootDrivers()\n");
 
     /* Create the RAW FS built-in driver */
@@ -1176,6 +1180,16 @@ IopInitializeBootDrivers(VOID)
         }
     }
 
+    /* The boot configurations wait for the boot bus extenders */
+    for (i = 0; i < PiInitGroupOrderTableCount; i++)
+    {
+        if (RtlEqualUnicodeString(&PiInitGroupOrderTable[i], &BusExtenderName, TRUE))
+        {
+            BusExtenderGroup = i;
+            break;
+        }
+    }
+
     /* Loop each group index */
     for (i = 0; i < IopGroupIndex; i++)
     {
@@ -1202,7 +1216,18 @@ IopInitializeBootDrivers(VOID)
                                     NULL);
             }
         }
+
+        /* The buses of the bus extenders are started, so their boot configurations can go */
+        if (i == BusExtenderGroup)
+        {
+            PiPerformSyncDeviceAction(IopRootDeviceNode->PhysicalDeviceObject,
+                                      PiActionEnumRootDevices);
+            IopReserveDeferredBootConfigs();
+        }
     }
+
+    /* Without a bus extender group, the boot configurations are reserved now */
+    IopReserveDeferredBootConfigs();
 
     /* HAL Root Bus is being initialized before loading the boot drivers so this may cause issues
      * when some devices are not being initialized with their drivers. This flag is used to delay
