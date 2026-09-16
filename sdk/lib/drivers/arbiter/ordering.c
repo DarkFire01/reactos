@@ -21,12 +21,16 @@
 #define ARBP_LONGEST_SUBKEY L"ReservedResources"
 
 /*
- * The PCI-Express enhanced-config (MMCONFIG / ECAM) MMIO window the memory
- * arbiter must never hand out. Recorded by
- * ArbiterLibAddMmConfigRangeAsBootReserved; Start > End (the initial state)
+ * The PCI-Express enhanced-config (MMCONFIG / ECAM) MMIO windows the memory
+ * arbiter must never hand out, one per segment group. Recorded by
+ * ArbiterLibAddMmConfigRangeAsBootReserved.
  */
-static ULONGLONG ArbpMmConfigStart = 1;
-static ULONGLONG ArbpMmConfigEnd = 0;
+static struct
+{
+    ULONGLONG Start;
+    ULONGLONG End;
+} ArbpMmConfigRanges[16];
+static ULONG ArbpMmConfigRangeCount;
 
 /* ORDERING LISTS *************************************************************/
 
@@ -529,8 +533,13 @@ ArbpMmConfigCallback(
     PAGED_CODE();
     UNREFERENCED_PARAMETER(Arbiter);
 
-    ArbpMmConfigStart = Start;
-    ArbpMmConfigEnd = End;
+    if (ArbpMmConfigRangeCount < RTL_NUMBER_OF(ArbpMmConfigRanges))
+    {
+        ArbpMmConfigRanges[ArbpMmConfigRangeCount].Start = Start;
+        ArbpMmConfigRanges[ArbpMmConfigRangeCount].End = End;
+        ArbpMmConfigRangeCount++;
+    }
+
     RtlAddRange((PRTL_RANGE_LIST)Context, Start, End, ARBITER_RANGE_BOOT_ALLOCATED,
                 RTL_RANGE_LIST_ADD_IF_CONFLICT, NULL, NULL);
 }
@@ -665,14 +674,18 @@ ArbiterLibAddMmConfigRangeAsBootReserved(
     _Inout_ PRTL_RANGE_LIST RangeList)
 {
     PAGED_CODE();
+
+    /* The windows are recorded again for every read of the registry */
+    ArbpMmConfigRangeCount = 0;
+
     return ArbpForEachRegistryRange(Arbiter, L"ReservedResources", L"MmConfigRange",
                                     NULL, ArbpMmConfigCallback, RangeList);
 }
 
 /**
  * @brief
- * Determines whether a range overlaps the recorded MMCONFIG
- * window.
+ * Determines whether a range overlaps one of the recorded MMCONFIG
+ * windows.
  *
  * @param[in] Start
  * The inclusive start of the range to test.
@@ -681,7 +694,7 @@ ArbiterLibAddMmConfigRangeAsBootReserved(
  * The inclusive end of the range to test.
  *
  * @return
- * Returns TRUE if [Start, End] overlaps the recorded window,
+ * Returns TRUE if [Start, End] overlaps a recorded window,
  * FALSE otherwise or when no window was ever recorded.
  */
 BOOLEAN
@@ -690,8 +703,13 @@ ArbiterLibIsConflictWithMmConfigRange(
     _In_ ULONGLONG Start,
     _In_ ULONGLONG End)
 {
-    if (ArbpMmConfigStart > ArbpMmConfigEnd)
-        return FALSE;  /* No MMCONFIG window recorded */
+    ULONG Index;
 
-    return (BOOLEAN)(Start <= ArbpMmConfigEnd && ArbpMmConfigStart <= End);
+    for (Index = 0; Index < ArbpMmConfigRangeCount; Index++)
+    {
+        if (Start <= ArbpMmConfigRanges[Index].End && ArbpMmConfigRanges[Index].Start <= End)
+            return TRUE;
+    }
+
+    return FALSE;
 }
