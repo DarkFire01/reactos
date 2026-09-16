@@ -890,19 +890,22 @@ static PHALP_IRQ_ROUTER HalpPirRouters[] =
 {
     &HalpEscRouter,         /* 0x00 Intel 82375EB/SB */
     &HalpPiixRouter,        /* 0x01 Intel PIIX and ICH */
-    NULL,                   /* 0x02 */
-    NULL,                   /* 0x03 */
+    &HalpVlsiRouter,        /* 0x02 VLSI */
+    &HalpOptiViperRouter,   /* 0x03 OPTi Viper */
     &HalpSisRouter,         /* 0x04 SiS 5503 */
-    NULL,                   /* 0x05 */
+    &HalpVlsiEagleRouter,   /* 0x05 VLSI Eagle */
     &HalpAli1523Router,     /* 0x06 ALi M1523 */
-    NULL,                   /* 0x07 */
+    &HalpNs87560Router,     /* 0x07 NS 87560 */
     &HalpCompaqMisc3Router, /* 0x08 Compaq MISC-3 */
     &HalpAli1533Router,     /* 0x09 ALi M1533 */
-    NULL,                   /* 0x0A */
+    &HalpOptiFireStarRouter, /* 0x0A OPTi FireStar */
     &HalpViaRouter,         /* 0x0B VIA VT82C586B, VT82C596B and VT82C686B */
     &HalpCompaqOsbRouter,   /* 0x0C Compaq OSB */
     &HalpCompaqCmc2Router,  /* 0x0D Compaq CMC-2 */
     &HalpCx5520Router,      /* 0x0E Cyrix 5520 */
+    &HalpToshibaRouter,     /* 0x0F Toshiba */
+    NULL,                   /* 0x10 NEC, not supported */
+    &HalpVesuviusRouter,    /* 0x11 PicoPower Vesuvius */
 };
 
 /*
