@@ -52,7 +52,95 @@ typedef struct _IOP_ARBITER_ENTRY
 /* Resource types with a bit in the arbiter masks of a device node */
 #define IOP_MASKED_RESOURCE_TYPES (RTL_FIELD_SIZE(DEVICE_NODE, NoArbiterMask) * 8)
 
+/*
+ * Until the boot bus extenders are loaded, the resources reported by the HAL
+ * and the boot configurations of made up devices wait for the legacy bus
+ * they are on, whose arbiters may not exist yet.
+ */
+typedef struct _IOP_PENDING_BOOT_CONFIG
+{
+    LIST_ENTRY ListEntry;
+    PDEVICE_OBJECT DeviceObject;
+} IOP_PENDING_BOOT_CONFIG, *PIOP_PENDING_BOOT_CONFIG;
+
+static LIST_ENTRY IopPendingBootConfigList;
+static BOOLEAN IopHoldRootBootConfigs = TRUE;
+
+/* Raw resources reported by the HAL that are not reserved yet */
+static PCM_RESOURCE_LIST IopHalPendingResources;
+
+/* The device node that owns the resources reported by the HAL */
+static PDEVICE_NODE IopHalOwnerNode;
+
+/* Serializes all arbiter operations */
+static ERESOURCE IopResourceAssignmentLock;
+
+/* sdk/lib/rtl/memres.c */
+ULONGLONG
+NTAPI
+RtlCmDecodeMemIoResource(
+    _In_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor,
+    _Out_opt_ PULONGLONG Start);
+
+NTSTATUS
+NTAPI
+RtlIoEncodeMemIoResource(
+    _In_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ UCHAR Type,
+    _In_ ULONGLONG Length,
+    _In_ ULONGLONG Alignment,
+    _In_ ULONGLONG MinimumAddress,
+    _In_ ULONGLONG MaximumAddress);
+
 /* FUNCTIONS ****************************************************************/
+
+/* LOCKING *******************************************************************/
+
+static
+VOID
+IopLockResourceAssignment(VOID)
+{
+    KeEnterCriticalRegion();
+    ExAcquireResourceExclusiveLite(&IopResourceAssignmentLock, TRUE);
+}
+
+static
+VOID
+IopUnlockResourceAssignment(VOID)
+{
+    ExReleaseResourceLite(&IopResourceAssignmentLock);
+    KeLeaveCriticalRegion();
+}
+
+/* TRUE once the resource assignment lock is initialized */
+static BOOLEAN IopIsAssignmentLockReady;
+
+/**
+ * @brief
+ * Keeps the cached arbiters and translators from being freed, for a caller
+ * outside the PnP manager.
+ *
+ * @return
+ * TRUE if the lock was taken, which is not possible before the root arbiters
+ * are registered.
+ */
+BOOLEAN
+NTAPI
+IopLockResourceHandlers(VOID)
+{
+    if (!IopIsAssignmentLockReady)
+        return FALSE;
+
+    IopLockResourceAssignment();
+    return TRUE;
+}
+
+VOID
+NTAPI
+IopUnlockResourceHandlers(VOID)
+{
+    IopUnlockResourceAssignment();
+}
 
 /* ARBITER DISCOVERY ********************************************************/
 
@@ -235,6 +323,10 @@ IopRegisterRootArbiters(
         InsertTailList(&RootNode->DeviceArbiterList, &Entry->DeviceArbiterList);
     }
 
+    ExInitializeResourceLite(&IopResourceAssignmentLock);
+    IopIsAssignmentLockReady = TRUE;
+    InitializeListHead(&IopPendingBootConfigList);
+
     return STATUS_SUCCESS;
 }
 
@@ -397,8 +489,12 @@ IopUncacheResourceHandlers(
 {
     PAGED_CODE();
 
+    IopLockResourceAssignment();
+
     IopFreeDeviceNodeArbiters(DeviceNode);
     IopFreeDeviceNodeTranslators(DeviceNode);
+
+    IopUnlockResourceAssignment();
 }
 
 /**
@@ -693,6 +789,1057 @@ IopTranslateAssignmentToDevice(
     }
 
     return STATUS_SUCCESS;
+}
+
+/* BOOT CONFIGURATION RESERVATION *******************************************/
+
+/* The requirements of one configuration of a device */
+typedef struct _IOP_CONFIGURATION
+{
+    PIOP_REQUIREMENT Requirements;
+    PIO_RESOURCE_DESCRIPTOR Descriptors;
+    ULONG Count;
+    NTSTATUS Status;
+} IOP_CONFIGURATION, *PIOP_CONFIGURATION;
+
+/**
+ * @brief
+ * Calls an arbiter action. ArbitrationList is NULL for the commit and
+ * rollback actions, which take no parameters.
+ */
+static
+NTSTATUS
+IopArbiterInvoke(
+    _In_ PARBITER_INTERFACE Interface,
+    _In_ ARBITER_ACTION Action,
+    _In_opt_ PLIST_ENTRY ArbitrationList)
+{
+    ARBITER_PARAMETERS Parameters;
+
+    /* The list is the first field of every parameter block that has one */
+    RtlZeroMemory(&Parameters, sizeof(Parameters));
+    Parameters.Parameters.TestAllocation.ArbitrationList = ArbitrationList;
+
+    return Interface->ArbiterHandler(Interface->Context, Action, &Parameters);
+}
+
+/* Checks if a requirement of this type is given to an arbiter */
+static
+BOOLEAN
+IopIsArbitratedType(
+    _In_ UCHAR Type)
+{
+    return !(Type & CmResourceTypeNonArbitrated) && Type != CmResourceTypeNull;
+}
+
+/* Resources of an undefined interface are on the ISA bus */
+static
+INTERFACE_TYPE
+IopResourceInterface(
+    _In_ INTERFACE_TYPE InterfaceType)
+{
+    return (InterfaceType == InterfaceTypeUndefined) ? Isa : InterfaceType;
+}
+
+/* Returns the partial descriptor that follows Descriptor, past its device specific data */
+static
+PCM_PARTIAL_RESOURCE_DESCRIPTOR
+IopNextPartialDescriptor(
+    _In_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor)
+{
+    ULONG DataSize = 0;
+
+    if (Descriptor->Type == CmResourceTypeDeviceSpecific)
+        DataSize = Descriptor->u.DeviceSpecificData.DataSize;
+
+    return (PCM_PARTIAL_RESOURCE_DESCRIPTOR)((PUCHAR)(Descriptor + 1) + DataSize);
+}
+
+/* Returns the full descriptor that follows Full, past the device specific data it holds */
+static
+PCM_FULL_RESOURCE_DESCRIPTOR
+IopNextFullDescriptor(
+    _In_ PCM_FULL_RESOURCE_DESCRIPTOR Full)
+{
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial = &Full->PartialResourceList.PartialDescriptors[0];
+    ULONG Index;
+
+    for (Index = 0; Index < Full->PartialResourceList.Count; Index++)
+        Partial = IopNextPartialDescriptor(Partial);
+
+    return (PCM_FULL_RESOURCE_DESCRIPTOR)Partial;
+}
+
+/**
+ * @brief
+ * Converts an assigned descriptor to a requirement that only fits at the
+ * same place.
+ *
+ * @return
+ * FALSE for a device specific descriptor, which has no requirement.
+ */
+static
+BOOLEAN
+IopCmToFixedRequirement(
+    _In_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Cm,
+    _Out_ PIO_RESOURCE_DESCRIPTOR Io)
+{
+    ULONGLONG Start;
+    ULONGLONG Length;
+
+    RtlZeroMemory(Io, sizeof(*Io));
+    Io->Option = IO_RESOURCE_PREFERRED;
+    Io->Type = Cm->Type;
+    Io->ShareDisposition = Cm->ShareDisposition;
+    Io->Flags = Cm->Flags;
+
+    switch (Cm->Type)
+    {
+        case CmResourceTypeDeviceSpecific:
+            return FALSE;
+
+        case CmResourceTypeInterrupt:
+            if (Cm->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
+            {
+                /* The messages of a device are counted down from the message token */
+                Io->u.Interrupt.MaximumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
+                Io->u.Interrupt.MinimumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN -
+                                                Cm->u.MessageInterrupt.Raw.MessageCount + 1;
+                Io->u.Interrupt.AffinityPolicy = IrqPolicySpecifiedProcessors;
+                Io->u.Interrupt.PriorityPolicy = IrqPriorityUndefined;
+                Io->u.Interrupt.TargetedProcessors = Cm->u.MessageInterrupt.Raw.Affinity;
+#if defined(NT_PROCESSOR_GROUPS)
+                Io->u.Interrupt.Group = Cm->u.MessageInterrupt.Raw.Group;
+#endif
+                return TRUE;
+            }
+
+#if defined(_M_IX86)
+            /* On x86 the raw level is the bus IRQ */
+            Io->u.Interrupt.MinimumVector = Cm->u.Interrupt.Level;
+#else
+            Io->u.Interrupt.MinimumVector = Cm->u.Interrupt.Vector;
+#endif
+            Io->u.Interrupt.MaximumVector = Io->u.Interrupt.MinimumVector;
+            return TRUE;
+
+        case CmResourceTypePort:
+        case CmResourceTypeMemory:
+        case CmResourceTypeMemoryLarge:
+            /* The length keeps the large memory encoding its flags describe */
+            Length = RtlCmDecodeMemIoResource(Cm, &Start);
+            Io->u.Generic.Length = Cm->u.Generic.Length;
+            Io->u.Generic.Alignment = 1;
+            Io->u.Generic.MinimumAddress.QuadPart = Start;
+            Io->u.Generic.MaximumAddress.QuadPart = Start + Length - 1;
+            return TRUE;
+
+        case CmResourceTypeDma:
+            if (Cm->Flags & CM_RESOURCE_DMA_V3)
+            {
+                /* The arbiter takes the request line for the channel */
+                Io->u.DmaV3.RequestLine = Cm->u.DmaV3.RequestLine;
+                Io->u.DmaV3.Reserved = Cm->u.DmaV3.RequestLine;
+                Io->u.DmaV3.Channel = Cm->u.DmaV3.Channel;
+                Io->u.DmaV3.TransferWidth = Cm->u.DmaV3.TransferWidth;
+                return TRUE;
+            }
+
+            Io->u.Dma.MinimumChannel = Cm->u.Dma.Channel;
+            Io->u.Dma.MaximumChannel = Cm->u.Dma.Channel;
+            return TRUE;
+
+        case CmResourceTypeBusNumber:
+            Io->u.BusNumber.MinBusNumber = Cm->u.BusNumber.Start;
+            Io->u.BusNumber.MaxBusNumber = Cm->u.BusNumber.Start + Cm->u.BusNumber.Length - 1;
+            Io->u.BusNumber.Length = Cm->u.BusNumber.Length;
+            return TRUE;
+
+        default:
+            RtlCopyMemory(Io->u.DevicePrivate.Data,
+                          Cm->u.DevicePrivate.Data,
+                          sizeof(Io->u.DevicePrivate.Data));
+            return TRUE;
+    }
+}
+
+/* A failed translation is retried later only when the translator asks for it */
+static
+NTSTATUS
+IopTranslationFailureStatus(
+    _In_ NTSTATUS Status)
+{
+    return (Status == STATUS_RETRY) ? STATUS_RETRY : STATUS_INSUFFICIENT_RESOURCES;
+}
+
+/**
+ * @brief
+ * Adds the top entry of a requirement to the arbitration list of its arbiter.
+ * The first entry of an arbiter also adds it to the active arbiters, where
+ * the arbiters closer to the root come first.
+ */
+static
+VOID
+IopQueueRequirement(
+    _Inout_ PLIST_ENTRY ActiveArbiters,
+    _In_ PIOP_REQUIREMENT Requirement)
+{
+    PPI_RESOURCE_ARBITER_ENTRY Arbiter = Requirement->Arbiter;
+    PLIST_ENTRY Next;
+
+    InsertTailList(&Arbiter->ResourceList, &Requirement->Top->Entry.ListEntry);
+
+    if (!IsListEmpty(&Arbiter->ActiveArbiterList))
+        return;
+
+    for (Next = ActiveArbiters->Flink; Next != ActiveArbiters; Next = Next->Flink)
+    {
+        PPI_RESOURCE_ARBITER_ENTRY Active =
+            CONTAINING_RECORD(Next, PI_RESOURCE_ARBITER_ENTRY, ActiveArbiterList);
+
+        if (Active->Level >= Arbiter->Level)
+            break;
+    }
+
+    /* Goes before the arbiters of the same depth that are already there */
+    InsertTailList(Next, &Arbiter->ActiveArbiterList);
+}
+
+/* Empties the arbitration lists of the active arbiters */
+static
+VOID
+IopDequeueRequirements(
+    _Inout_ PLIST_ENTRY ActiveArbiters)
+{
+    while (!IsListEmpty(ActiveArbiters))
+    {
+        PPI_RESOURCE_ARBITER_ENTRY Arbiter =
+            CONTAINING_RECORD(RemoveHeadList(ActiveArbiters),
+                              PI_RESOURCE_ARBITER_ENTRY,
+                              ActiveArbiterList);
+
+        InitializeListHead(&Arbiter->ActiveArbiterList);
+
+        while (!IsListEmpty(&Arbiter->ResourceList))
+        {
+            PLIST_ENTRY Entry = RemoveHeadList(&Arbiter->ResourceList);
+            InitializeListHead(Entry);
+        }
+    }
+}
+
+/* Frees the requirements of a configuration */
+static
+VOID
+IopFreeConfiguration(
+    _Inout_ PIOP_CONFIGURATION Configuration)
+{
+    ULONG Index;
+
+    if (Configuration->Requirements != NULL)
+    {
+        for (Index = 0; Index < Configuration->Count; Index++)
+            IopFreeRequirementLevels(&Configuration->Requirements[Index]);
+
+        ExFreePoolWithTag(Configuration->Requirements, TAG_IO_ARBITER);
+        Configuration->Requirements = NULL;
+    }
+
+    if (Configuration->Descriptors != NULL)
+    {
+        ExFreePoolWithTag(Configuration->Descriptors, TAG_IO_ARBITER);
+        Configuration->Descriptors = NULL;
+    }
+
+    Configuration->Count = 0;
+}
+
+/**
+ * @brief
+ * Builds a fixed requirement for each descriptor of an assigned resource
+ * list, and finds the arbiter and translators of the arbitrated ones.
+ *
+ * @param[out] ArbitratedCount
+ * Receives the number of requirements that have an arbiter.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_UNSUCCESSFUL for a list without descriptors, or the
+ * failure status of the handler search.
+ */
+static
+NTSTATUS
+IopBuildFixedConfiguration(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ PCM_RESOURCE_LIST ResourceList,
+    _In_ ARBITER_REQUEST_SOURCE RequestSource,
+    _Out_ PIOP_CONFIGURATION Configuration,
+    _Out_ PULONG ArbitratedCount)
+{
+    INTERFACE_TYPE ListInterfaceType = IopResourceInterface(ResourceList->List[0].InterfaceType);
+    PCM_FULL_RESOURCE_DESCRIPTOR Full = &ResourceList->List[0];
+    BOOLEAN IsAfterArbitrated = FALSE;
+    ULONG Total = 0;
+    ULONG ListIndex;
+    NTSTATUS Status;
+
+    RtlZeroMemory(Configuration, sizeof(*Configuration));
+    *ArbitratedCount = 0;
+
+    for (ListIndex = 0; ListIndex < ResourceList->Count; ListIndex++)
+    {
+        Total += Full->PartialResourceList.Count;
+        Full = IopNextFullDescriptor(Full);
+    }
+
+    if (Total == 0)
+        return STATUS_UNSUCCESSFUL;
+
+    Configuration->Requirements = ExAllocatePoolZero(PagedPool,
+                                                     Total * sizeof(*Configuration->Requirements),
+                                                     TAG_IO_ARBITER);
+    Configuration->Descriptors = ExAllocatePoolZero(PagedPool,
+                                                    Total * sizeof(*Configuration->Descriptors),
+                                                    TAG_IO_ARBITER);
+    if (Configuration->Requirements == NULL || Configuration->Descriptors == NULL)
+    {
+        IopFreeConfiguration(Configuration);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Full = &ResourceList->List[0];
+    for (ListIndex = 0; ListIndex < ResourceList->Count; ListIndex++)
+    {
+        INTERFACE_TYPE InterfaceType = IopResourceInterface(Full->InterfaceType);
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR Cm = &Full->PartialResourceList.PartialDescriptors[0];
+        ULONG Index;
+
+        for (Index = 0; Index < Full->PartialResourceList.Count; Index++)
+        {
+            PIO_RESOURCE_DESCRIPTOR Io = &Configuration->Descriptors[Configuration->Count];
+            PIOP_REQUIREMENT Requirement = &Configuration->Requirements[Configuration->Count];
+
+            if (!IopCmToFixedRequirement(Cm, Io))
+            {
+                Cm = IopNextPartialDescriptor(Cm);
+                continue;
+            }
+
+            /* Private data describes the resource before it */
+            if (Io->Type == CmResourceTypeDevicePrivate && Configuration->Count == 0)
+            {
+                IopFreeConfiguration(Configuration);
+                return STATUS_INVALID_PARAMETER;
+            }
+
+            IopInitializeRequirement(Requirement,
+                                     DeviceNode->PhysicalDeviceObject,
+                                     RequestSource,
+                                     InterfaceType,
+                                     Full->BusNumber,
+                                     Io,
+                                     1);
+            Requirement->Device.Entry.BusNumber = ResourceList->List[0].BusNumber;
+            Configuration->Count++;
+
+            if (!IopIsArbitratedType(Io->Type))
+            {
+                PCM_PARTIAL_RESOURCE_DESCRIPTOR Copy = &Requirement->Device.Assignment;
+
+                Copy->Type = Io->Type;
+                Copy->ShareDisposition = Io->ShareDisposition;
+                Copy->Flags = Io->Flags;
+                RtlCopyMemory(Copy->u.DevicePrivate.Data,
+                              Io->u.DevicePrivate.Data,
+                              sizeof(Copy->u.DevicePrivate.Data));
+
+                /* Private data of an arbitrated resource belongs to the device alone */
+                if (Io->Type == CmResourceTypeDevicePrivate && IsAfterArbitrated)
+                    Copy->ShareDisposition = CmResourceShareDeviceExclusive;
+                else
+                    IsAfterArbitrated = FALSE;
+            }
+            else
+            {
+                IsAfterArbitrated = TRUE;
+
+                Status = IopFindRequirementHandlers(Requirement, ListInterfaceType);
+                if (!NT_SUCCESS(Status))
+                {
+                    IopFreeConfiguration(Configuration);
+                    return Status;
+                }
+
+                (*ArbitratedCount)++;
+            }
+
+            Cm = IopNextPartialDescriptor(Cm);
+        }
+
+        Full = (PCM_FULL_RESOURCE_DESCRIPTOR)Cm;
+    }
+
+    return (Configuration->Count != 0) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+}
+
+/**
+ * @brief
+ * Builds the raw and translated resource lists of a configuration the
+ * arbiters committed. Descriptors without an arbiter are copied.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_RETRY if a translator asked to be called again later,
+ * or STATUS_INSUFFICIENT_RESOURCES. A configuration without descriptors gets
+ * no lists.
+ */
+static
+NTSTATUS
+IopBuildResourceLists(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ PIOP_CONFIGURATION Configuration,
+    _In_ INTERFACE_TYPE InterfaceType,
+    _In_ ULONG BusNumber,
+    _Out_ PCM_RESOURCE_LIST *ResourceList,
+    _Out_ PCM_RESOURCE_LIST *TranslatedList)
+{
+    ULONG Size = FIELD_OFFSET(CM_RESOURCE_LIST, List[0].PartialResourceList.PartialDescriptors) +
+                 Configuration->Count * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
+    PCM_RESOURCE_LIST Lists[2];
+    NTSTATUS Status = STATUS_SUCCESS;
+    ULONG Index;
+
+    PAGED_CODE();
+
+    *ResourceList = NULL;
+    *TranslatedList = NULL;
+
+    if (Configuration->Count == 0)
+        return STATUS_SUCCESS;
+
+    Lists[0] = ExAllocatePoolZero(PagedPool, Size, TAG_IO_ARBITER);
+    Lists[1] = ExAllocatePoolZero(PagedPool, Size, TAG_IO_ARBITER);
+    if (Lists[0] == NULL || Lists[1] == NULL)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Failure;
+    }
+
+    for (Index = 0; Index < RTL_NUMBER_OF(Lists); Index++)
+    {
+        Lists[Index]->Count = 1;
+        Lists[Index]->List[0].InterfaceType = IopResourceInterface(InterfaceType);
+        Lists[Index]->List[0].BusNumber = BusNumber;
+        Lists[Index]->List[0].PartialResourceList.Version = 1;
+        Lists[Index]->List[0].PartialResourceList.Revision = 1;
+        Lists[Index]->List[0].PartialResourceList.Count = Configuration->Count;
+    }
+
+    for (Index = 0; Index < Configuration->Count; Index++)
+    {
+        PIOP_REQUIREMENT Requirement = &Configuration->Requirements[Index];
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR Raw =
+            &Lists[0]->List[0].PartialResourceList.PartialDescriptors[Index];
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR Translated =
+            &Lists[1]->List[0].PartialResourceList.PartialDescriptors[Index];
+
+        if (Requirement->Arbiter == NULL)
+        {
+            *Raw = Requirement->Device.Assignment;
+            *Translated = Requirement->Device.Assignment;
+            continue;
+        }
+
+        /* The arbiter did not assign anything, so there is nothing to translate */
+        if (Requirement->Top->Entry.Result == ArbiterResultNullRequest)
+        {
+            *Raw = Requirement->Top->Assignment;
+            *Translated = Requirement->Top->Assignment;
+            continue;
+        }
+
+        Status = IopTranslateAssignmentToDevice(Requirement);
+        if (NT_SUCCESS(Status))
+        {
+            *Raw = Requirement->Device.Assignment;
+
+            Status = IopTranslateResourceToRoot(DeviceNode,
+                                                Requirement->InterfaceType,
+                                                Requirement->BusNumber,
+                                                Requirement->Device.Entry.RequestSource,
+                                                Raw,
+                                                Translated);
+        }
+
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Assigned resource %lu of %wZ was not translated (Status 0x%08lx)\n",
+                    Index, &DeviceNode->InstancePath, Status);
+            Status = IopTranslationFailureStatus(Status);
+            goto Failure;
+        }
+    }
+
+    *ResourceList = Lists[0];
+    *TranslatedList = Lists[1];
+    return STATUS_SUCCESS;
+
+Failure:
+    for (Index = 0; Index < RTL_NUMBER_OF(Lists); Index++)
+    {
+        if (Lists[Index] != NULL)
+            ExFreePoolWithTag(Lists[Index], TAG_IO_ARBITER);
+    }
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Reserves an assigned resource list in the arbiters of a device with the
+ * BootAllocation action, so other devices are not given these resources.
+ *
+ * @param[out] TranslatedList
+ * Receives the translated resources, or NULL when nothing was reserved
+ * because the list has no arbitrated descriptor.
+ *
+ * @return
+ * STATUS_SUCCESS, or the failure status of the reservation. The ranges some
+ * arbiters took before a failure stay reserved.
+ */
+static
+NTSTATUS
+IopReserveResourceList(
+    _In_ PDEVICE_NODE DeviceNode,
+    _In_ PCM_RESOURCE_LIST ResourceList,
+    _In_ ARBITER_REQUEST_SOURCE RequestSource,
+    _Out_ PCM_RESOURCE_LIST *TranslatedList)
+{
+    IOP_CONFIGURATION Configuration;
+    PCM_RESOURCE_LIST Raw = NULL;
+    LIST_ENTRY ActiveArbiters;
+    PLIST_ENTRY ListEntry;
+    ULONG ArbitratedCount;
+    ULONG Index;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    *TranslatedList = NULL;
+
+    Status = IopBuildFixedConfiguration(DeviceNode,
+                                        ResourceList,
+                                        RequestSource,
+                                        &Configuration,
+                                        &ArbitratedCount);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (ArbitratedCount == 0)
+        goto Cleanup;
+
+    InitializeListHead(&ActiveArbiters);
+
+    for (Index = 0; Index < Configuration.Count; Index++)
+    {
+        if (Configuration.Requirements[Index].Arbiter != NULL)
+            IopQueueRequirement(&ActiveArbiters, &Configuration.Requirements[Index]);
+    }
+
+    for (ListEntry = ActiveArbiters.Flink;
+         ListEntry != &ActiveArbiters;
+         ListEntry = ListEntry->Flink)
+    {
+        PPI_RESOURCE_ARBITER_ENTRY Arbiter =
+            CONTAINING_RECORD(ListEntry, PI_RESOURCE_ARBITER_ENTRY, ActiveArbiterList);
+        NTSTATUS ArbiterStatus;
+
+        ArbiterStatus = IopArbiterInvoke(Arbiter->ArbiterInterface,
+                                         ArbiterActionBootAllocation,
+                                         &Arbiter->ResourceList);
+        if (!NT_SUCCESS(ArbiterStatus))
+        {
+            DPRINT1("Boot allocation of type %u failed for %wZ (Status 0x%08lx)\n",
+                    Arbiter->ResourceType, &DeviceNode->InstancePath, ArbiterStatus);
+            Status = ArbiterStatus;
+        }
+    }
+
+    IopDequeueRequirements(&ActiveArbiters);
+
+    if (!NT_SUCCESS(Status))
+        goto Cleanup;
+
+    IopDeviceNodeSetFlag(DeviceNode, DNF_BOOT_CONFIG_RESERVED);
+
+    Status = IopBuildResourceLists(DeviceNode,
+                                   &Configuration,
+                                   ResourceList->List[0].InterfaceType,
+                                   ResourceList->List[0].BusNumber,
+                                   &Raw,
+                                   TranslatedList);
+    if (Raw != NULL)
+        ExFreePoolWithTag(Raw, TAG_IO_ARBITER);
+
+Cleanup:
+    IopFreeConfiguration(&Configuration);
+    return Status;
+}
+
+/**
+ * @brief
+ * Reserves the boot configuration of a device in its arbiters, and keeps its
+ * translated boot configuration on the device node.
+ *
+ * @return
+ * STATUS_SUCCESS, or the failure status. On failure the boot configuration of
+ * the device is freed.
+ */
+NTSTATUS
+NTAPI
+IopArbiterReserveBootConfig(
+    _In_ PDEVICE_NODE DeviceNode)
+{
+    PCM_RESOURCE_LIST Translated;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    if (DeviceNode->BootResources == NULL)
+        return STATUS_SUCCESS;
+
+    Status = IopReserveResourceList(DeviceNode,
+                                    DeviceNode->BootResources,
+                                    ArbiterRequestPnpEnumerated,
+                                    &Translated);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to reserve the boot config of %wZ (Status 0x%08lx)\n",
+                &DeviceNode->InstancePath, Status);
+
+        ExFreePool(DeviceNode->BootResources);
+        DeviceNode->BootResources = NULL;
+
+        if (DeviceNode->BootResourcesTranslated != NULL)
+        {
+            ExFreePool(DeviceNode->BootResourcesTranslated);
+            DeviceNode->BootResourcesTranslated = NULL;
+        }
+
+        return Status;
+    }
+
+    /* A list without arbitrated resources has no translated list */
+    if (Translated != NULL)
+    {
+        if (DeviceNode->BootResourcesTranslated != NULL)
+            ExFreePool(DeviceNode->BootResourcesTranslated);
+
+        DeviceNode->BootResourcesTranslated = Translated;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/* LEGACY BOOT CONFIGURATIONS ***********************************************/
+
+/* Returns the size of a full resource descriptor, with its device specific data */
+static
+ULONG
+IopFullDescriptorSize(
+    _In_ PCM_FULL_RESOURCE_DESCRIPTOR Full)
+{
+    return (ULONG)((PUCHAR)IopNextFullDescriptor(Full) - (PUCHAR)Full);
+}
+
+/**
+ * @brief
+ * Moves the full descriptors of one legacy bus out of a resource list.
+ *
+ * @param[in,out] ResourceList
+ * The list to split. Receives the descriptors of the other buses, or NULL
+ * when none are left.
+ *
+ * @return
+ * The descriptors of the bus, or NULL when there are none or the allocation
+ * failed. The caller frees the list.
+ */
+static
+PCM_RESOURCE_LIST
+IopTakeBusDescriptors(
+    _Inout_ PCM_RESOURCE_LIST *ResourceList,
+    _In_ INTERFACE_TYPE InterfaceType,
+    _In_ ULONG BusNumber)
+{
+    PCM_RESOURCE_LIST Source = *ResourceList;
+    PCM_RESOURCE_LIST Lists[2];
+    PCM_FULL_RESOURCE_DESCRIPTOR Full;
+    PUCHAR Cursor[2];
+    ULONG Sizes[2];
+    ULONG Index;
+
+    Sizes[0] = Sizes[1] = FIELD_OFFSET(CM_RESOURCE_LIST, List);
+
+    Full = &Source->List[0];
+    for (Index = 0; Index < Source->Count; Index++)
+    {
+        BOOLEAN IsMatch = (Full->InterfaceType == InterfaceType && Full->BusNumber == BusNumber);
+
+        Sizes[IsMatch ? 0 : 1] += IopFullDescriptorSize(Full);
+        Full = IopNextFullDescriptor(Full);
+    }
+
+    if (Sizes[0] == FIELD_OFFSET(CM_RESOURCE_LIST, List))
+        return NULL;
+
+    if (Sizes[1] == FIELD_OFFSET(CM_RESOURCE_LIST, List))
+    {
+        *ResourceList = NULL;
+        return Source;
+    }
+
+    Lists[0] = ExAllocatePoolZero(PagedPool, Sizes[0], TAG_IO_ARBITER);
+    Lists[1] = ExAllocatePoolZero(PagedPool, Sizes[1], TAG_IO_ARBITER);
+    if (Lists[0] == NULL || Lists[1] == NULL)
+    {
+        if (Lists[0] != NULL)
+            ExFreePoolWithTag(Lists[0], TAG_IO_ARBITER);
+        if (Lists[1] != NULL)
+            ExFreePoolWithTag(Lists[1], TAG_IO_ARBITER);
+
+        return NULL;
+    }
+
+    Cursor[0] = (PUCHAR)&Lists[0]->List[0];
+    Cursor[1] = (PUCHAR)&Lists[1]->List[0];
+
+    Full = &Source->List[0];
+    for (Index = 0; Index < Source->Count; Index++)
+    {
+        BOOLEAN IsMatch = (Full->InterfaceType == InterfaceType && Full->BusNumber == BusNumber);
+        ULONG Target = IsMatch ? 0 : 1;
+        ULONG Size = IopFullDescriptorSize(Full);
+
+        RtlCopyMemory(Cursor[Target], Full, Size);
+        Cursor[Target] += Size;
+        Lists[Target]->Count++;
+
+        Full = IopNextFullDescriptor(Full);
+    }
+
+    ExFreePool(Source);
+    *ResourceList = Lists[1];
+    return Lists[0];
+}
+
+/**
+ * @brief
+ * Appends the full descriptors of one resource list to another.
+ *
+ * @return
+ * The combined list, which replaces both lists, or NULL if the allocation
+ * failed and both lists are kept.
+ */
+static
+PCM_RESOURCE_LIST
+IopAppendResourceList(
+    _In_opt_ PCM_RESOURCE_LIST First,
+    _In_opt_ PCM_RESOURCE_LIST Second)
+{
+    ULONG HeaderSize = FIELD_OFFSET(CM_RESOURCE_LIST, List);
+    PCM_RESOURCE_LIST Combined;
+    ULONG FirstSize;
+    ULONG SecondSize;
+
+    if (First == NULL)
+        return Second;
+
+    if (Second == NULL)
+        return First;
+
+    FirstSize = PnpDetermineResourceListSize(First);
+    SecondSize = PnpDetermineResourceListSize(Second);
+
+    Combined = ExAllocatePoolWithTag(PagedPool,
+                                     FirstSize + SecondSize - HeaderSize,
+                                     TAG_IO_ARBITER);
+    if (Combined == NULL)
+        return NULL;
+
+    RtlCopyMemory(Combined, First, FirstSize);
+    RtlCopyMemory((PUCHAR)Combined + FirstSize,
+                  (PUCHAR)Second + HeaderSize,
+                  SecondSize - HeaderSize);
+    Combined->Count += Second->Count;
+
+    ExFreePool(First);
+    ExFreePool(Second);
+    return Combined;
+}
+
+/**
+ * @brief
+ * Keeps a copy of the raw resources the HAL reports, to reserve them for
+ * the HAL device node once the legacy buses they are on exist.
+ */
+VOID
+NTAPI
+IopSaveHalResources(
+    _In_ PCM_RESOURCE_LIST RawResourceList,
+    _In_ ULONG ResourceListSize)
+{
+    PCM_RESOURCE_LIST Copy;
+
+    PAGED_CODE();
+
+    Copy = ExAllocatePoolWithTag(PagedPool, ResourceListSize, TAG_IO_ARBITER);
+    if (Copy == NULL)
+        return;
+
+    RtlCopyMemory(Copy, RawResourceList, ResourceListSize);
+
+    if (IopHalPendingResources != NULL)
+        ExFreePool(IopHalPendingResources);
+
+    IopHalPendingResources = Copy;
+}
+
+/**
+ * @brief
+ * Makes the first started device of the root the owner of the resources the
+ * HAL reports. Called right after the HAL has reported its device.
+ */
+CODE_SEG("INIT")
+VOID
+NTAPI
+IopMarkHalDeviceNode(VOID)
+{
+    PDEVICE_NODE Node;
+
+    PAGED_CODE();
+
+    for (Node = IopRootDeviceNode->Child; Node != NULL; Node = Node->Sibling)
+    {
+        if ((Node->State == DeviceNodeStarted || Node->State == DeviceNodeStartPostWork) &&
+            !(Node->Flags & DNF_LEGACY_DRIVER))
+        {
+            IopHalOwnerNode = Node;
+            IopDeviceNodeSetFlag(Node, DNF_HAL_NODE);
+            return;
+        }
+    }
+
+    DPRINT1("No HAL device node was found\n");
+}
+
+/* Reserves the resources the HAL reported on one legacy bus */
+static
+VOID
+IopReserveHalBusResources(
+    _In_ INTERFACE_TYPE InterfaceType,
+    _In_ ULONG BusNumber)
+{
+    PCM_RESOURCE_LIST BusList;
+    PCM_RESOURCE_LIST Translated;
+    PCM_RESOURCE_LIST Combined;
+    NTSTATUS Status;
+
+    if (IopHalOwnerNode == NULL || IopHalPendingResources == NULL)
+        return;
+
+    BusList = IopTakeBusDescriptors(&IopHalPendingResources, InterfaceType, BusNumber);
+    if (BusList == NULL)
+        return;
+
+    DPRINT("Reserving the HAL resources of bus %d/%lu\n", InterfaceType, BusNumber);
+
+    IopDeviceNodeSetFlag(IopHalOwnerNode, DNF_HAS_BOOT_CONFIG);
+
+    Status = IopReserveResourceList(IopHalOwnerNode,
+                                    BusList,
+                                    ArbiterRequestHalReported,
+                                    &Translated);
+    if (NT_SUCCESS(Status) && Translated != NULL)
+    {
+        Combined = IopAppendResourceList(IopHalOwnerNode->BootResourcesTranslated, Translated);
+        if (Combined != NULL)
+            IopHalOwnerNode->BootResourcesTranslated = Combined;
+        else
+            ExFreePoolWithTag(Translated, TAG_IO_ARBITER);
+    }
+
+    /* The boot configuration of the HAL grows with each bus */
+    Combined = IopAppendResourceList(IopHalOwnerNode->BootResources, BusList);
+    if (Combined != NULL)
+        IopHalOwnerNode->BootResources = Combined;
+    else
+        ExFreePool(BusList);
+}
+
+/* Reserves the held back boot configurations of one legacy bus */
+static
+VOID
+IopReserveBusBootConfigs(
+    _In_ INTERFACE_TYPE InterfaceType,
+    _In_ ULONG BusNumber)
+{
+    PLIST_ENTRY ListEntry;
+
+    IopReserveHalBusResources(InterfaceType, BusNumber);
+
+    ListEntry = IopPendingBootConfigList.Flink;
+    while (ListEntry != &IopPendingBootConfigList)
+    {
+        PIOP_PENDING_BOOT_CONFIG Pending =
+            CONTAINING_RECORD(ListEntry, IOP_PENDING_BOOT_CONFIG, ListEntry);
+        PDEVICE_NODE DeviceNode = IopGetDeviceNode(Pending->DeviceObject);
+
+        ListEntry = ListEntry->Flink;
+
+        if (DeviceNode != NULL &&
+            DeviceNode->BootResources != NULL &&
+            (DeviceNode->BootResources->List[0].InterfaceType != InterfaceType ||
+             DeviceNode->BootResources->List[0].BusNumber != BusNumber))
+        {
+            continue;
+        }
+
+        if (DeviceNode != NULL &&
+            DeviceNode->BootResources != NULL &&
+            !(DeviceNode->Flags & DNF_BOOT_CONFIG_RESERVED))
+        {
+            DPRINT("Reserving the boot config of %wZ\n", &DeviceNode->InstancePath);
+            IopArbiterReserveBootConfig(DeviceNode);
+        }
+
+        RemoveEntryList(&Pending->ListEntry);
+        ObDereferenceObject(Pending->DeviceObject);
+        ExFreePoolWithTag(Pending, TAG_IO_ARBITER);
+    }
+}
+
+/**
+ * @brief
+ * Reserves the held back boot configurations on the legacy bus a started
+ * device provides. An ISA bus also provides the EISA bus.
+ */
+VOID
+NTAPI
+IopReserveLegacyBusBootConfigs(
+    _In_ PDEVICE_NODE DeviceNode)
+{
+    PAGED_CODE();
+
+    if (DeviceNode->InterfaceType == InterfaceTypeUndefined)
+        return;
+
+    IopLockResourceAssignment();
+
+    if (IopHoldRootBootConfigs)
+    {
+        if (DeviceNode->InterfaceType == Isa)
+            IopReserveBusBootConfigs(Eisa, DeviceNode->BusNumber);
+
+        IopReserveBusBootConfigs(DeviceNode->InterfaceType, DeviceNode->BusNumber);
+    }
+
+    IopUnlockResourceAssignment();
+}
+
+/**
+ * @brief
+ * Reserves the boot configuration of a newly enumerated device. For a made
+ * up device the reservation waits for the legacy bus of its resources.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_INSUFFICIENT_RESOURCES if the device could not be
+ * added to the pending list, or the failure status of the reservation.
+ */
+NTSTATUS
+NTAPI
+IopReserveBootConfig(
+    _In_ PDEVICE_NODE DeviceNode)
+{
+    PIOP_PENDING_BOOT_CONFIG Pending;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    PAGED_CODE();
+
+    if (DeviceNode->BootResources == NULL ||
+        PnpDetermineResourceListSize(DeviceNode->BootResources) == 0)
+    {
+        return STATUS_SUCCESS;
+    }
+
+    IopLockResourceAssignment();
+
+    if (IopHoldRootBootConfigs && (DeviceNode->Flags & DNF_MADEUP))
+    {
+        Pending = ExAllocatePoolWithTag(PagedPool, sizeof(*Pending), TAG_IO_ARBITER);
+        if (Pending != NULL)
+        {
+            ObReferenceObject(DeviceNode->PhysicalDeviceObject);
+            Pending->DeviceObject = DeviceNode->PhysicalDeviceObject;
+            InsertTailList(&IopPendingBootConfigList, &Pending->ListEntry);
+        }
+        else
+        {
+            ExFreePool(DeviceNode->BootResources);
+            DeviceNode->BootResources = NULL;
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+        }
+    }
+    else if (!(DeviceNode->Flags & DNF_BOOT_CONFIG_RESERVED))
+    {
+        Status = IopArbiterReserveBootConfig(DeviceNode);
+    }
+
+    IopUnlockResourceAssignment();
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Reserves the boot configurations on internal bus 0 once the boot bus
+ * extenders are loaded. From then on boot configurations are reserved when
+ * the devices are enumerated, and the ones still held are never reserved.
+ */
+VOID
+NTAPI
+IopReserveDeferredBootConfigs(VOID)
+{
+    PAGED_CODE();
+
+    IopLockResourceAssignment();
+
+    if (!IopHoldRootBootConfigs)
+    {
+        IopUnlockResourceAssignment();
+        return;
+    }
+
+    IopReserveBusBootConfigs(Internal, 0);
+
+    IopHoldRootBootConfigs = FALSE;
+
+    while (!IsListEmpty(&IopPendingBootConfigList))
+    {
+        PIOP_PENDING_BOOT_CONFIG Pending =
+            CONTAINING_RECORD(RemoveHeadList(&IopPendingBootConfigList),
+                              IOP_PENDING_BOOT_CONFIG,
+                              ListEntry);
+
+        ObDereferenceObject(Pending->DeviceObject);
+        ExFreePoolWithTag(Pending, TAG_IO_ARBITER);
+    }
+
+    if (IopHalPendingResources != NULL)
+    {
+        DPRINT1("HAL resources on a bus that never started are not reserved\n");
+        ExFreePool(IopHalPendingResources);
+        IopHalPendingResources = NULL;
+    }
+
+    IopUnlockResourceAssignment();
 }
 
 /* LEGACY RESOURCE HANDLING *************************************************/
