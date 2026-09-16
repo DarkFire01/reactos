@@ -5271,6 +5271,14 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
         PointerPte = MI_GET_PROTOTYPE_PTE_FOR_VPN(FoundVad, StartingAddress >> PAGE_SHIFT);
         LastPte = MI_GET_PROTOTYPE_PTE_FOR_VPN(FoundVad, EndingAddress >> PAGE_SHIFT);
         QuotaCharge = (ULONG)(LastPte - PointerPte + 1);
+
+        /* The pages of this section live in a paging file */
+        if (!MiChargeCommitment(QuotaCharge))
+        {
+            Status = STATUS_COMMITMENT_LIMIT;
+            goto FailPath;
+        }
+
         KeAcquireGuardedMutexUnsafe(&MmSectionCommitMutex);
 
         //
@@ -5299,6 +5307,7 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
         //
         ASSERT(QuotaCharge >= QuotaFree);
         QuotaCharge -= QuotaFree;
+        if (QuotaFree != 0) MiReturnCommitment(QuotaFree);
         FoundVad->ControlArea->Segment->NumberOfCommittedPages += QuotaCharge;
         KeReleaseGuardedMutexUnsafe(&MmSectionCommitMutex);
 
@@ -5349,6 +5358,12 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
     // if this commit charge was now higher than the last recorded peak, in which
     // case we also update the peak
     //
+    if (!MiChargeCommitment(1 + LastPte - PointerPte))
+    {
+        Status = STATUS_COMMITMENT_LIMIT;
+        goto FailPath;
+    }
+
     FoundVad->u.VadFlags.CommitCharge += (1 + LastPte - PointerPte);
     Process->CommitCharge += (1 + LastPte - PointerPte);
     if (Process->CommitCharge > Process->CommitChargePeak)
@@ -5886,6 +5901,7 @@ FinalPath:
         //
         PRegionSize = EndingAddress - StartingAddress + 1;
         Process->CommitCharge -= CommitReduction;
+        if (CommitReduction != 0) MiReturnCommitment(CommitReduction);
         if (FreeType & MEM_RELEASE) Process->VirtualSize -= PRegionSize;
 
         //
@@ -5895,7 +5911,16 @@ FinalPath:
         // process.
         //
         MmUnlockAddressSpace(AddressSpace);
-        if (Vad) ExFreePool(Vad);
+        if (Vad)
+        {
+            if (Vad->u.VadFlags.CommitCharge != 0)
+            {
+                MiReturnCommitment(Vad->u.VadFlags.CommitCharge);
+                Process->CommitCharge -= Vad->u.VadFlags.CommitCharge;
+            }
+
+            ExFreePool(Vad);
+        }
         if (Attached) KeUnstackDetachProcess(&ApcState);
         if (ProcessHandle != NtCurrentProcess()) ObDereferenceObject(Process);
 

@@ -44,7 +44,7 @@ extern SIZE_T MmDriverCommit;
 extern SIZE_T MmProcessCommit;
 extern SIZE_T MmPagedPoolCommit;
 extern SIZE_T MmPeakCommitment;
-extern SIZE_T MmtotalCommitLimitMaximum;
+extern SIZE_T MmTotalCommitLimitMaximum;
 
 extern PVOID MiDebugMapping; // internal
 extern PMMPTE MmDebugPte; // internal
