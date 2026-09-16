@@ -1734,6 +1734,14 @@ Language=English
 A fatal error occurred in the USB driver stack.
 .
 
+MessageId=0x124
+Severity=Success
+Facility=System
+SymbolicName=WHEA_UNCORRECTABLE_ERROR
+Language=English
+A fatal hardware error has occurred.
+.
+
 MessageId=0x139
 Severity=Success
 Facility=System
