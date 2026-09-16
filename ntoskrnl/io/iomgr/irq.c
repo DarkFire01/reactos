@@ -314,9 +314,8 @@ IopIsMessageVector(
 
 /**
  * @brief
- * Enables the interrupt of one connection data element in the HAL, then
- * connects an interrupt object for it on the target processors that are
- * active.
+ * Connects an interrupt object for one connection data element on the target
+ * processors that are active, then enables the interrupt in the HAL.
  *
  * @param[in] SynchronizeIrql
  * The IRQL the service routine is synchronized at. PASSIVE_LEVEL asks for a
@@ -348,10 +347,8 @@ IopConnectVector(
         return STATUS_NOT_SUPPORTED;
     }
 
-    Status = HalEnableInterrupt(&Connection->Vector);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
+    /* The service routine has to be in place before the input is unmasked, or
+       a device that is already asserting storms a vector nothing answers */
     Status = IoConnectInterrupt(&Connection->Interrupt,
                                 ServiceRoutine,
                                 ServiceContext,
@@ -364,7 +361,14 @@ IopConnectVector(
                                 VectorData->TargetProcessors.Mask,
                                 FloatingSave);
     if (!NT_SUCCESS(Status))
-        HalDisableInterrupt(&Connection->Vector);
+        return Status;
+
+    Status = HalEnableInterrupt(&Connection->Vector);
+    if (!NT_SUCCESS(Status))
+    {
+        IoDisconnectInterrupt(Connection->Interrupt);
+        Connection->Interrupt = NULL;
+    }
 
     return Status;
 }
@@ -374,8 +378,9 @@ VOID
 IopDisconnectVector(
     _In_ PIOP_VECTOR_CONNECTION Connection)
 {
-    IoDisconnectInterrupt(Connection->Interrupt);
+    /* Mask the input first, so that nothing arrives once the object is gone */
     HalDisableInterrupt(&Connection->Vector);
+    IoDisconnectInterrupt(Connection->Interrupt);
 }
 
 /* Disconnects the line interrupts of a device and frees them */
