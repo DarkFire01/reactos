@@ -2913,18 +2913,27 @@ IopAssignDeviceResources(
     /* Write the resources to RESOURCEMAP and the Control key */
     Status = IopUpdateResourceMapForPnPDevice(DeviceNode);
     if (!NT_SUCCESS(Status))
-        goto Failure;
+        goto RegistryFailure;
 
     Status = IopUpdateControlKeyWithResources(DeviceNode);
     if (!NT_SUCCESS(Status))
-        goto Failure;
+        goto RegistryFailure;
 
     PiSetDevNodeState(DeviceNode, DeviceNodeResourcesAssigned);
 
     IopUnlockResourceAssignment();
     return STATUS_SUCCESS;
 
+RegistryFailure:
+    /* Without a problem the node is assigned again on every enumeration pass */
+    PiSetDevNodeProblem(DeviceNode, CM_PROB_REGISTRY);
+
 Failure:
+    /* The arbiters granted the ranges before this failed. Only the list freed
+     * below names them, so give them back while it still exists. */
+    if (DeviceNode->ResourceList != NULL)
+        IopArbiterReleaseResources(DeviceNode);
+
     if (DeviceNode->ResourceListTranslated != NULL)
     {
         ExFreePool(DeviceNode->ResourceListTranslated);
