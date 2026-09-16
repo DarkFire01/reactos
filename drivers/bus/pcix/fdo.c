@@ -666,13 +666,13 @@ PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
         FdoExtension->HotPlugParameters.EnablePERR = (BOOLEAN)Argument[3].Argument;
         FdoExtension->HotPlugParameters.Acquired = TRUE;
 
-        DPRINT1("PCI - _HPP for FDO ext 0x%p: cache line %u, latency %u, "
-                "SERR %u, PERR %u\n",
-                FdoExtension,
-                FdoExtension->HotPlugParameters.CacheLineSize,
-                FdoExtension->HotPlugParameters.LatencyTimer,
-                FdoExtension->HotPlugParameters.EnableSERR,
-                FdoExtension->HotPlugParameters.EnablePERR);
+        DPRINT("PCI - _HPP for FDO ext 0x%p: cache line %u, latency %u, "
+               "SERR %u, PERR %u\n",
+               FdoExtension,
+               FdoExtension->HotPlugParameters.CacheLineSize,
+               FdoExtension->HotPlugParameters.LatencyTimer,
+               FdoExtension->HotPlugParameters.EnableSERR,
+               FdoExtension->HotPlugParameters.EnablePERR);
     } while (FALSE);
 
     /* Free the buffer and return */
@@ -722,8 +722,8 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
     UNICODE_STRING ValueName;
     ULONG ResultLength;
     PAGED_CODE();
-    DPRINT1("PCI - AddDevice (a new bus). PDO: %p (Driver: %wZ)\n",
-            PhysicalDeviceObject, &PhysicalDeviceObject->DriverObject->DriverName);
+    DPRINT("PCI - AddDevice (a new bus). PDO: %p (Driver: %wZ)\n",
+           PhysicalDeviceObject, &PhysicalDeviceObject->DriverObject->DriverName);
 
     /* Zero out variables so failure path knows what to do */
     AttachedTo = NULL;
@@ -760,8 +760,8 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
             }
 
             /* Subordinate bus on the bridge */
-            DPRINT1("PCI - AddDevice (new bus is child of bus 0x%x).\n",
-                    ParentExtension->BaseBus);
+            DPRINT("PCI - AddDevice (new bus is child of bus 0x%x).\n",
+                   ParentExtension->BaseBus);
 
             /* Make sure PCI bus numbers are configured */
             if (!PciAreBusNumbersConfigured(PdoExtension))
@@ -829,9 +829,9 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
                                     &FdoExtension->BaseBus,
                                     &FdoExtension->MaxSubordinateBus)))
             {
-                DPRINT1("PCI   Root bus range 0x%x to 0x%x.\n",
-                        FdoExtension->BaseBus,
-                        FdoExtension->MaxSubordinateBus);
+                DPRINT("PCI   Root bus range 0x%x to 0x%x.\n",
+                       FdoExtension->BaseBus,
+                       FdoExtension->MaxSubordinateBus);
             }
             else
             {
@@ -847,7 +847,7 @@ PciAddDevice(IN PDRIVER_OBJECT DriverObject,
                 }
 
                 /* Warn that a default configuration will be used, and set bus 0 */
-                DPRINT1("PCI   Will use default configuration.\n");
+                DPRINT("PCI   Will use default configuration.\n");
                 PciBreakOnDefault = TRUE;
                 FdoExtension->BaseBus = 0;
                 FdoExtension->MaxSubordinateBus = 0xFF;

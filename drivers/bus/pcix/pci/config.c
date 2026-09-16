@@ -295,10 +295,10 @@ PciGetConfigHandlers(IN PPCI_FDO_EXTENSION FdoExtension)
                 PciInterface->RootBusCapability(PciInterface->Context,
                                                 &FdoExtension->RootBusHardwareCapability);
 
-                DPRINT1("PCI - Root bus interface %d, _OSC support 0x%08lx, granted 0x%08lx\n",
-                        FdoExtension->RootBusHardwareCapability.SecondaryInterface,
-                        FdoExtension->RootBusHardwareCapability.OscFeatureSupport.u.AsULONG,
-                        FdoExtension->RootBusHardwareCapability.OscControlGranted.u.AsULONG);
+                DPRINT("PCI - Root bus interface %d, _OSC support 0x%08lx, granted 0x%08lx\n",
+                       FdoExtension->RootBusHardwareCapability.SecondaryInterface,
+                       FdoExtension->RootBusHardwareCapability.OscFeatureSupport.u.AsULONG,
+                       FdoExtension->RootBusHardwareCapability.OscControlGranted.u.AsULONG);
             }
         }
     }
