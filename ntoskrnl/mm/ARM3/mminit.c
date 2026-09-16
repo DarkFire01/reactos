@@ -1805,6 +1805,12 @@ MiBuildPagedPool(VOID)
     // Get the size in pages and make sure paged pool is at least 32MB.
     //
     Size = MmSizeOfPagedPoolInBytes;
+
+#ifdef _WIN64
+    /* There is room for a larger paged pool, scale it with the memory size */
+    Size *= ((MmNumberOfPhysicalPages * PAGE_SIZE) / _1GB);
+#endif
+
     if (Size < MI_MIN_INIT_PAGED_POOLSIZE) Size = MI_MIN_INIT_PAGED_POOLSIZE;
     NumberOfPages = BYTES_TO_PAGES(Size);
 
