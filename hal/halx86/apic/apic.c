@@ -1118,6 +1118,340 @@ HalEndSystemInterrupt(
 }
 
 
+/* INTERRUPT CONNECTION *******************************************************/
+
+/**
+ * @brief
+ * Points an I/O APIC input at a vector and unmasks it.
+ *
+ * @param[in] Input
+ * Global system interrupt to program.
+ *
+ * @param[in] Vector
+ * Vector the input delivers.
+ *
+ * @param[in] Mode
+ * Level or edge triggered.
+ *
+ * @param[in] Polarity
+ * Polarity of the input. InterruptPolarityUnknown takes active low for a level
+ * input and active high for an edge one.
+ *
+ * @param[in] TargetProcessors
+ * Processors the input should reach.
+ */
+static
+NTSTATUS
+HalpProgramInterruptInput(
+    _In_ ULONG Input,
+    _In_ ULONG Vector,
+    _In_ KINTERRUPT_MODE Mode,
+    _In_ KINTERRUPT_POLARITY Polarity,
+    _In_ KAFFINITY TargetProcessors)
+{
+    IOAPIC_REDIRECTION_REGISTER ReDirReg;
+    BOOLEAN Logical;
+    UCHAR Destination;
+    NTSTATUS Status;
+
+    if ((Input >= HalpMaxGsi) || (Vector > 0xFF))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    Status = HalpBuildInterruptDestination(TargetProcessors, &Logical, &Destination);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+
+    if (Polarity == InterruptPolarityUnknown)
+    {
+        Polarity = (Mode == LevelSensitive) ? InterruptActiveLow : InterruptActiveHigh;
+    }
+
+    ReDirReg = ApicReadIORedirectionEntry(Input);
+    ReDirReg.Vector = Vector;
+    ReDirReg.Destination = Destination;
+    if (Logical)
+    {
+        ReDirReg.MessageType = APIC_MT_LowestPriority;
+        ReDirReg.DestinationMode = APIC_DM_Logical;
+    }
+    else
+    {
+        ReDirReg.MessageType = APIC_MT_Fixed;
+        ReDirReg.DestinationMode = APIC_DM_Physical;
+    }
+    ReDirReg.TriggerMode = (Mode == LevelSensitive) ? APIC_TGM_Level : APIC_TGM_Edge;
+    ReDirReg.Polarity = (Polarity == InterruptActiveLow);
+    ReDirReg.Mask = 0;
+    ApicWriteIORedirectionEntry(Input, ReDirReg);
+
+    return STATUS_SUCCESS;
+}
+
+/* Returns the IRQL a device vector runs at */
+KIRQL
+NTAPI
+HalConvertDeviceIdtToIrql(
+    _In_ ULONG IdtEntry)
+{
+    if (IdtEntry > 0xFF)
+    {
+        return PASSIVE_LEVEL;
+    }
+
+    return HalpVectorToIrql((UCHAR)IdtEntry);
+}
+
+/**
+ * @brief
+ * Enables the interrupt a connection data block describes. Only blocks holding
+ * a single vector are accepted.
+ */
+NTSTATUS
+NTAPI
+HalEnableInterrupt(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData)
+{
+    PINTERRUPT_VECTOR_DATA VectorData;
+    ULONG Vector, Input;
+    UCHAR Index, Previous;
+
+    if ((ConnectionData == NULL) || (ConnectionData->Count != 1))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    VectorData = &ConnectionData->Vectors[0];
+    Vector = VectorData->Vector;
+    if (Vector > 0xFF)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* The vector alone decides the IRQL, so the caller cannot ask for another */
+    if (VectorData->Irql != HalpVectorToIrql((UCHAR)Vector))
+    {
+        DPRINT1("Vector 0x%lx cannot run at IRQL %u\n", Vector, VectorData->Irql);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    Index = HalpVectorToIndex[Vector];
+
+    switch (VectorData->Type)
+    {
+        case InterruptTypeXapicMessage:
+        case InterruptTypeHypertransport:
+        case InterruptTypeMessageRequest:
+        {
+            /* The vector has to be free or already carrying messages */
+            if (Index == APIC_FREE_VECTOR)
+            {
+                HalpVectorToIndex[Vector] = APIC_MSI_VECTOR;
+            }
+            else if (Index != APIC_MSI_VECTOR)
+            {
+                return STATUS_INVALID_PARAMETER;
+            }
+
+            return STATUS_SUCCESS;
+        }
+
+        case InterruptTypeControllerInput:
+        {
+            Input = VectorData->ControllerInput.Gsiv;
+            if (Input >= HalpMaxGsi)
+            {
+                return STATUS_INVALID_PARAMETER;
+            }
+
+            if (Index == APIC_FREE_VECTOR)
+            {
+                /* Give up the vector this input was handed earlier */
+                Previous = HalpIrqToVector((UCHAR)Input);
+                if (Previous != APIC_FREE_VECTOR)
+                {
+                    HalpVectorToIndex[Previous] = APIC_FREE_VECTOR;
+                }
+
+                HalpVectorToIndex[Vector] = (UCHAR)Input;
+                HalpGsivToVector[Input] = (UCHAR)Vector;
+            }
+            else if (Index != Input)
+            {
+                return STATUS_INVALID_PARAMETER;
+            }
+
+            return HalpProgramInterruptInput(Input,
+                                             Vector,
+                                             VectorData->Mode,
+                                             VectorData->Polarity,
+                                             VectorData->TargetProcessors.Mask);
+        }
+
+        default:
+            return STATUS_INVALID_PARAMETER;
+    }
+}
+
+/**
+ * @brief
+ * Turns off an interrupt enabled through HalEnableInterrupt. A message vector
+ * stays allocated until its owner gives it back.
+ */
+NTSTATUS
+NTAPI
+HalDisableInterrupt(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData)
+{
+    PINTERRUPT_VECTOR_DATA VectorData;
+    IOAPIC_REDIRECTION_REGISTER ReDirReg;
+    ULONG Vector, Input;
+
+    if ((ConnectionData == NULL) || (ConnectionData->Count != 1))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    VectorData = &ConnectionData->Vectors[0];
+    Vector = VectorData->Vector;
+    if (Vector > 0xFF)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    switch (VectorData->Type)
+    {
+        case InterruptTypeXapicMessage:
+        case InterruptTypeHypertransport:
+        case InterruptTypeMessageRequest:
+            return STATUS_SUCCESS;
+
+        case InterruptTypeControllerInput:
+        {
+            Input = VectorData->ControllerInput.Gsiv;
+            if ((Input >= HalpMaxGsi) || (HalpVectorToIndex[Vector] != Input))
+            {
+                return STATUS_INVALID_PARAMETER;
+            }
+
+            ReDirReg = ApicReadIORedirectionEntry(Input);
+            ReDirReg.Mask = 1;
+            ApicWriteIORedirectionEntry(Input, ReDirReg);
+            return STATUS_SUCCESS;
+        }
+
+        default:
+            return STATUS_INVALID_PARAMETER;
+    }
+}
+
+/**
+ * @brief
+ * Reports the input a vector arrives on and the polarity that input carries.
+ * The private dispatch override answers instead when one is installed.
+ */
+NTSTATUS
+NTAPI
+HalGetVectorInput(
+    _In_ ULONG Vector,
+    _In_ KAFFINITY Affinity,
+    _Out_ PULONG Input,
+    _Out_ PKINTERRUPT_POLARITY Polarity)
+{
+    IOAPIC_REDIRECTION_REGISTER ReDirReg;
+    UCHAR Index;
+
+    if (HalGetVectorInputOverride != NULL)
+    {
+        return HalGetVectorInputOverride(Vector, Affinity, Input, Polarity);
+    }
+
+    if (Vector > 0xFF)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    Index = HalpVectorToIndex[Vector];
+    if (Index >= HalpMaxGsi)
+    {
+        return STATUS_NOT_FOUND;
+    }
+
+    ReDirReg = ApicReadIORedirectionEntry(Index);
+    *Input = Index;
+    *Polarity = ReDirReg.Polarity ? InterruptActiveLow : InterruptActiveHigh;
+    return STATUS_SUCCESS;
+}
+
+/* ACPI POWER MANAGEMENT ******************************************************/
+
+/**
+ * @brief
+ * Returns the version register of the I/O APIC whose first input is
+ * InterruptBase, or zero when no I/O APIC starts there. The reserved high byte
+ * carries the number of inputs instead.
+ */
+ULONG
+NTAPI
+HalpGetInterruptControllerVersion(
+    _In_ ULONG InterruptBase)
+{
+    PHALP_IOAPIC_UNIT Unit;
+    ULONG Version;
+
+    for (Unit = HalpIoApics; Unit < HalpIoApics + HalpIoApicCount; Unit++)
+    {
+        if (Unit->InputBase != InterruptBase)
+        {
+            continue;
+        }
+
+        Version = IOApicRead(Unit->Base, IOAPIC_VER);
+        Version &= ~(0xFFUL << 24);
+        Version |= Unit->InputCount << 24;
+        return Version;
+    }
+
+    return 0;
+}
+
+BOOLEAN
+NTAPI
+HalpIsInterruptInputValid(
+    _In_ ULONG Input)
+{
+    PHALP_IOAPIC_UNIT Unit;
+
+    return HalpFindIoApicInput(Input, &Unit);
+}
+
+/* Writes every redirection entry back from the shadow table */
+VOID
+NTAPI
+HalpRestoreInterruptController(VOID)
+{
+    PHALP_IOAPIC_UNIT Unit;
+    ULONG_PTR EFlags;
+    ULONG Input;
+
+    EFlags = __readeflags();
+    _disable();
+
+    for (Unit = HalpIoApics; Unit < HalpIoApics + HalpIoApicCount; Unit++)
+    {
+        for (Input = Unit->InputBase; Input < Unit->InputBase + Unit->InputCount; Input++)
+        {
+            ApicWriteIORedirectionEntry(Input, HalpIoApicShadow[Input]);
+        }
+    }
+
+    __writeeflags(EFlags);
+}
+
+
 /* IRQL MANAGEMENT ************************************************************/
 
 #ifndef _M_AMD64
