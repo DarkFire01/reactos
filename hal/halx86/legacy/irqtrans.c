@@ -140,6 +140,7 @@ HalpLegacyTranslateVectorRange(
     _Out_ PIO_RESOURCE_DESCRIPTOR *Target)
 {
     PIO_RESOURCE_DESCRIPTOR Output;
+    ULONG First, Last;
 
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(PhysicalDeviceObject);
@@ -153,13 +154,19 @@ HalpLegacyTranslateVectorRange(
     if (HalpLegacyPCArbitratesIrqs())
         return STATUS_NOT_SUPPORTED;
 
+    /* An end that maps to no vector would turn the range inside out */
+    First = HalpLineToVector(Source->u.Interrupt.MinimumVector);
+    Last = HalpLineToVector(Source->u.Interrupt.MaximumVector);
+    if ((First == 0) || (Last == 0))
+        return STATUS_UNSUCCESSFUL;
+
     Output = ExAllocatePoolWithTag(PagedPool, sizeof(*Output), TAG_HAL);
     if (Output == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
     *Output = *Source;
-    Output->u.Interrupt.MinimumVector = HalpLineToVector(Source->u.Interrupt.MinimumVector);
-    Output->u.Interrupt.MaximumVector = HalpLineToVector(Source->u.Interrupt.MaximumVector);
+    Output->u.Interrupt.MinimumVector = First;
+    Output->u.Interrupt.MaximumVector = Last;
 
     *TargetCount = 1;
     *Target = Output;

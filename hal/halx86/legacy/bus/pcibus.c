@@ -779,14 +779,9 @@ HalpAdjustPCIResourceList(IN PBUS_HANDLER BusHandler,
     }
 #endif
     /* Now create the correct resource list based on the supported bus ranges */
-#if 0
     Status = HaliAdjustResourceListRange(BusHandler->BusAddresses,
                                          Interrupt,
                                          pResourceList);
-#else
-    DPRINT1("HAL: No PCI Resource Adjustment done! Hardware may malfunction\n");
-    Status = STATUS_SUCCESS;
-#endif
 
     /* Return to caller */
     ExFreePool(Interrupt);
