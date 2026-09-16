@@ -15,9 +15,10 @@ extern "C" {
 #define MI_LOWEST_VAD_ADDRESS                   (PVOID)MM_LOWEST_USER_ADDRESS
 
 /* Make the code cleaner with some definitions for size multiples */
-#define _1KB (1024u)
+#define _1KB ((SIZE_T)1024u)
 #define _1MB (1024 * _1KB)
 #define _1GB (1024 * _1MB)
+#define _1TB (1024ULL * _1GB)
 
 /* Everyone loves 64K */
 #define _64K (64 * _1KB)
@@ -1943,6 +1944,26 @@ MiReleaseSystemPtes(
     IN ULONG NumberOfPtes,
     IN MMSYSTEM_PTE_POOL_TYPE SystemPtePoolType
 );
+
+#ifndef _M_AMD64
+/* Only amd64 gives kernel stacks a region of their own */
+FORCEINLINE
+PMMPTE
+MiReserveKernelStackPtes(
+    _In_ ULONG NumberOfPtes)
+{
+    return MiReserveSystemPtes(NumberOfPtes, SystemPteSpace);
+}
+
+FORCEINLINE
+VOID
+MiReleaseKernelStackPtes(
+    _In_ PMMPTE FirstPte,
+    _In_ ULONG NumberOfPtes)
+{
+    MiReleaseSystemPtes(FirstPte, NumberOfPtes, SystemPteSpace);
+}
+#endif
 
 
 PFN_NUMBER

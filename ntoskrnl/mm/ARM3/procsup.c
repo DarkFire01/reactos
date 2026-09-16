@@ -324,7 +324,7 @@ MmDeleteKernelStack(IN PVOID StackBase,
     //
     // Release the PTEs
     //
-    MiReleaseSystemPtes(PointerPte, StackPages + 1, SystemPteSpace);
+    MiReleaseKernelStackPtes(PointerPte, StackPages + 1);
 }
 
 PVOID
@@ -378,7 +378,7 @@ MmCreateKernelStack(IN BOOLEAN GuiStack,
     //
     // Reserve stack pages, plus a guard page
     //
-    StackPte = MiReserveSystemPtes(StackPtes + 1, SystemPteSpace);
+    StackPte = MiReserveKernelStackPtes(StackPtes + 1);
     if (!StackPte) return NULL;
 
     //
