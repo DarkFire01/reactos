@@ -653,6 +653,9 @@ extern const USHORT HalpBuildType;
 #define HALP_INTERRUPT_CONTROLLER_APIC  1
 extern ULONG HalpInterruptControllerType;
 
+/* Set when a PCI IRQ router owns the ELCR */
+extern BOOLEAN HalpIrqRouterInitialized;
+
 /* Interrupt controller routines for the ACPI power management dispatch */
 ULONG
 NTAPI

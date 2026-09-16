@@ -848,6 +848,9 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
 
                 /* We only care about a PCI PDO */
                 DPRINT("Start device received\n");
+#if !defined(SARCH_XBOX) && !defined(SARCH_PC98)
+                HalpLegacyPCInitIrqRouting(DeviceObject);
+#endif
                 /* Complete the IRP normally */
                 break;
 
