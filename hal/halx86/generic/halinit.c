@@ -152,7 +152,6 @@ HalInitSystem(
         HalInitPnpDriver = HaliInitPnpDriver;
         HalGetDmaAdapter = HalpGetDmaAdapter;
 
-        HalGetInterruptTranslator = NULL;  // FIXME: TODO
         HalResetDisplay = HalpBiosDisplayReset;
         HalHaltSystem = HaliHaltSystem;
 
