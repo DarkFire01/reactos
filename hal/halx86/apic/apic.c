@@ -196,9 +196,11 @@ ApicWriteIORedirectionEntry(
 
     HalpIoApicShadow[Input] = ReDirReg;
 
+    /* The destination has to be in place before the low half unmasks the
+       entry, so that an asserted input cannot reach a stale processor */
     Register = (UCHAR)(IOAPIC_REDTBL + 2 * (Input - Unit->InputBase));
-    IOApicWrite(Unit->Base, Register, ReDirReg.Long0);
     IOApicWrite(Unit->Base, Register + 1, ReDirReg.Long1);
+    IOApicWrite(Unit->Base, Register, ReDirReg.Long0);
 }
 
 /**
