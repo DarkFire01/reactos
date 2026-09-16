@@ -24,6 +24,28 @@ HalpAcpiGetTable(
     IN ULONG Signature
 );
 
+/* PM timer setup. TimerPort carries the port number; zero takes the FADT values. */
+VOID
+NTAPI
+HaliAcpiTimerInit(
+    _In_opt_ PULONG TimerPort,
+    _In_ BOOLEAN TimerValExt
+);
+
+/* ACPI power management services (acpi/acpidisp.c) */
+NTSTATUS
+NTAPI
+HaliInitPowerManagement(
+    _In_ PPM_DISPATCH_TABLE PmDriverDispatchTable,
+    _Out_ PPM_DISPATCH_TABLE *PmHalDispatchTable
+);
+
+VOID
+NTAPI
+HalpAcpiPollPowerButton(
+    VOID
+);
+
 /* acpi/irqtrans.c */
 CODE_SEG("PAGE")
 NTSTATUS
