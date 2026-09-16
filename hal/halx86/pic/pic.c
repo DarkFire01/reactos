@@ -214,7 +214,7 @@ PHAL_SW_INTERRUPT_HANDLER_2ND_ENTRY SWInterruptHandlerTable2[3] =
 LONG HalpEisaELCR;
 
 /* IRQs whose ELCR bit is never changed */
-#define HALP_ELCR_FIXED_IRQS ((1 << 0) | (1 << 1) | (1 << 2) | (1 << 8) | (1 << 12) | (1 << 13))
+#define HALP_ELCR_FIXED_IRQS ((1 << 0) | (1 << 1) | (1 << 2) | (1 << 8) | (1 << 13))
 
 /* FUNCTIONS ******************************************************************/
 
@@ -949,20 +949,18 @@ HalpSetRouterTrigger(
     _In_ ULONG Irq,
     _In_ KINTERRUPT_MODE InterruptMode)
 {
-    USHORT LevelIrqs, Readback;
+    USHORT LevelIrqs;
+
+    /* The register belongs to the router, so the other lines are whatever it holds */
+    if (NT_SUCCESS(HalpIrqRouter->GetTrigger(&LevelIrqs)))
+        HalpEisaELCR = LevelIrqs;
 
     if (InterruptMode == LevelSensitive)
         HalpEisaELCR |= (1 << Irq);
     else
         HalpEisaELCR &= ~(1 << Irq);
 
-    /* The shadow owns every line, a router that reads back short must not shrink it */
-    LevelIrqs = (USHORT)(HalpEisaELCR & ~HALP_ELCR_FIXED_IRQS);
-
-    if (NT_SUCCESS(HalpIrqRouter->GetTrigger(&Readback)) && (Readback != LevelIrqs))
-        DPRINT1("Trigger for IRQ %lu: router has 0x%04x, HAL wants 0x%04x\n", Irq, Readback, LevelIrqs);
-
-    HalpIrqRouter->SetTrigger(LevelIrqs);
+    HalpIrqRouter->SetTrigger((USHORT)HalpEisaELCR);
 }
 
 /*
