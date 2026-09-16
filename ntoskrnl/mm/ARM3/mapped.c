@@ -726,7 +726,6 @@ MiWriteMappedPages(
     IO_STATUS_BLOCK IoStatus;
     NTSTATUS Status;
     KEVENT Event;
-    KIRQL OldIrql;
 
     ASSERT((PageCount != 0) && (PageCount <= MI_MAPPED_IO_PAGES));
 
@@ -734,7 +733,8 @@ MiWriteMappedPages(
     Mdl->MdlFlags |= MDL_PAGES_LOCKED;
     RtlCopyMemory(MmGetMdlPfnArray(Mdl), Pages, PageCount * sizeof(PFN_NUMBER));
 
-    KeRaiseIrql(APC_LEVEL, &OldIrql);
+    /* The file system sees a paging write at passive level, only APCs are kept out */
+    KeEnterCriticalRegion();
 
     if (ModifiedWriter)
     {
@@ -742,7 +742,7 @@ MiWriteMappedPages(
         Status = FsRtlAcquireFileForModWriteEx(FileObject, &EndingOffset, &ResourceToRelease);
         if (!NT_SUCCESS(Status))
         {
-            KeLowerIrql(OldIrql);
+            KeLeaveCriticalRegion();
             return Status;
         }
 
@@ -767,7 +767,7 @@ MiWriteMappedPages(
             FsRtlReleaseFileForModWrite(FileObject, ResourceToRelease);
     }
 
-    KeLowerIrql(OldIrql);
+    KeLeaveCriticalRegion();
 
     /* Pages past the end of the file have nothing to go to */
     if (Status == STATUS_END_OF_FILE)
