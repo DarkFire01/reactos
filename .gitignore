@@ -14,3 +14,4 @@ modules/[Aa][Hh][Kk]_[Tt]ests
 .vs
 .vscode
 sdk/tools/winesync/winesync.cfg
+drivers/usb/usb3-reactos
