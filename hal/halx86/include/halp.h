@@ -641,6 +641,21 @@ extern const USHORT HalpBuildType;
 #define HALP_INTERRUPT_CONTROLLER_APIC  1
 extern ULONG HalpInterruptControllerType;
 
+/* Interrupt controller routines for the ACPI power management dispatch */
+ULONG
+NTAPI
+HalpGetInterruptControllerVersion(
+    _In_ ULONG InterruptBase);
+
+BOOLEAN
+NTAPI
+HalpIsInterruptInputValid(
+    _In_ ULONG Input);
+
+VOID
+NTAPI
+HalpRestoreInterruptController(VOID);
+
 /* FORCEMSI and NOMSI boot options */
 #define HALP_MESSAGE_INTERRUPTS_FORCE_ON   0x00000001
 #define HALP_MESSAGE_INTERRUPTS_FORCE_OFF  0x00000002
