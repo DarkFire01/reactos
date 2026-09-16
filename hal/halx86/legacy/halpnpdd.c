@@ -847,6 +847,11 @@ HalpDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
 
                 /* We only care about a PCI PDO */
                 DPRINT("Start device received\n");
+#if !defined(SARCH_XBOX) && !defined(SARCH_PC98)
+                /* The PCI bus PDO reports PNP0A03 */
+                if (((PPDO_EXTENSION)FdoExtension)->PdoType == AcpiPdo)
+                    HalpLegacyPCInitIrqRouting(DeviceObject);
+#endif
                 /* Complete the IRP normally */
                 break;
 
