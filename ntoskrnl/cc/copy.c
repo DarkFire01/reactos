@@ -163,6 +163,10 @@ CcPerformReadAhead(
         KeAcquireSpinLockAtDpcLevel(&PrivateCacheMap->ReadAheadSpinLock);
         CurrentOffset = PrivateCacheMap->ReadAheadOffset[1].QuadPart;
         Length = PrivateCacheMap->ReadAheadLength[1];
+
+        /* Whoever schedules the next one starts from where this one reaches */
+        PrivateCacheMap->ReadAheadOffset[0].QuadPart = CurrentOffset + Length;
+        PrivateCacheMap->ReadAheadLength[1] = 0;
         KeReleaseSpinLockFromDpcLevel(&PrivateCacheMap->ReadAheadSpinLock);
     }
     KeReleaseQueuedSpinLock(LockQueueMasterLock, OldIrql);
@@ -498,10 +502,13 @@ CcCopyRead (
 {
     PROS_VACB Vacb;
     PROS_SHARED_CACHE_MAP SharedCacheMap = FileObject->SectionObjectPointer->SharedCacheMap;
+    PPRIVATE_CACHE_MAP PrivateCacheMap;
     NTSTATUS Status;
     LONGLONG CurrentOffset;
     LONGLONG ReadEnd = FileOffset->QuadPart + Length;
     ULONG ReadLength = 0;
+    ULONG RequestedLength = Length;
+    BOOLEAN Fetched = FALSE;
 
     CCTRACE(CC_API_DEBUG, "FileObject=%p FileOffset=%I64d Length=%lu Wait=%d\n",
         FileObject, FileOffset->QuadPart, Length, Wait);
@@ -516,6 +523,11 @@ CcCopyRead (
 
     /* Documented to ASSERT, but KMTests test this case... */
     // ASSERT((FileOffset->QuadPart + Length) <= SharedCacheMap->FileSize.QuadPart);
+
+    /* A stream that reads ahead stays a step in front of the reader */
+    PrivateCacheMap = FileObject->PrivateCacheMap;
+    if ((PrivateCacheMap != NULL) && PrivateCacheMap->Flags.ReadAheadEnabled)
+        CcScheduleReadAhead(FileObject, FileOffset, Length);
 
     CurrentOffset = FileOffset->QuadPart;
     while(CurrentOffset < ReadEnd)
@@ -532,9 +544,13 @@ CcCopyRead (
             ULONG VacbOffset = CurrentOffset % VACB_MAPPING_GRANULARITY;
             ULONG VacbLength = min(Length, VACB_MAPPING_GRANULARITY - VacbOffset);
             SIZE_T CopyLength = VacbLength;
+            BOOLEAN VacbFetched;
 
-            if (!CcRosEnsureVacbResident(Vacb, Wait, FALSE, VacbOffset, VacbLength, NULL))
+            if (!CcRosEnsureVacbResident(Vacb, Wait, FALSE, VacbOffset, VacbLength, &VacbFetched))
                 return FALSE;
+
+            /* Any view of this read that came off the disk counts */
+            Fetched |= VacbFetched;
 
             _SEH2_TRY
             {
@@ -562,28 +578,20 @@ CcCopyRead (
     IoStatus->Status = STATUS_SUCCESS;
     IoStatus->Information = ReadLength;
 
-#if 0
-    /* If that was a successful sync read operation, let's handle read ahead */
-    if (Length == 0 && Wait)
+    /* The private map goes away with the handle, so take it again */
+    PrivateCacheMap = FileObject->PrivateCacheMap;
+    if (PrivateCacheMap != NULL)
     {
-        PPRIVATE_CACHE_MAP PrivateCacheMap = FileObject->PrivateCacheMap;
+        /* A read that went to the disk is the one that starts reading ahead */
+        if (Fetched && !PrivateCacheMap->Flags.ReadAheadEnabled)
+            CcScheduleReadAhead(FileObject, FileOffset, RequestedLength);
 
-        /* If file isn't random access and next read may get us cross VACB boundary,
-         * schedule next read
-         */
-        if (!BooleanFlagOn(FileObject->Flags, FO_RANDOM_ACCESS) &&
-            (CurrentOffset - 1) / VACB_MAPPING_GRANULARITY != (CurrentOffset + ReadLength - 1) / VACB_MAPPING_GRANULARITY)
-        {
-            CcScheduleReadAhead(FileObject, FileOffset, ReadLength);
-        }
-
-        /* And update read history in private cache map */
+        /* Read ahead reads this to tell how the file is walked */
         PrivateCacheMap->FileOffset1.QuadPart = PrivateCacheMap->FileOffset2.QuadPart;
         PrivateCacheMap->BeyondLastByte1.QuadPart = PrivateCacheMap->BeyondLastByte2.QuadPart;
         PrivateCacheMap->FileOffset2.QuadPart = FileOffset->QuadPart;
         PrivateCacheMap->BeyondLastByte2.QuadPart = FileOffset->QuadPart + ReadLength;
     }
-#endif
 
     return TRUE;
 }
