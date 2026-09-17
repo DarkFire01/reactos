@@ -57,6 +57,8 @@ typedef struct _LOADER_SYSTEM_BLOCK
     CHAR NtHalPathName[MAX_PATH+1];
     ARC_DISK_INFORMATION ArcDiskInformation;
     LOADER_PERFORMANCE_DATA LoaderPerformanceData;
+    /* Big enough for a 2.1 or a 3.0 anchor */
+    SMBIOS_TABLE_HEADER SmbiosEntryPoint;
 } LOADER_SYSTEM_BLOCK, *PLOADER_SYSTEM_BLOCK;
 
 extern PLOADER_SYSTEM_BLOCK WinLdrSystemBlock;

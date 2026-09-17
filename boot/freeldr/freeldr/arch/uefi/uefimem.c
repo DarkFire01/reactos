@@ -15,7 +15,13 @@ DBG_DEFAULT_CHANNEL(WARNING);
 #define NEXT_MEMORY_DESCRIPTOR(Descriptor, DescriptorSize) \
     (EFI_MEMORY_DESCRIPTOR*)((char*)(Descriptor) + (DescriptorSize))
 #define EXIT_STACK_SIZE 0x1000
-#define UNUSED_MAX_DESCRIPTOR_COUNT 10000
+
+/*
+ * Room on top of the firmware's own entries for the ranges set aside by hand
+ * below, the terminator, and the one descriptor each of them can split an
+ * existing range into.
+ */
+#define SPARE_DESCRIPTOR_COUNT 8
 
 ULONG
 AddMemoryDescriptor(
@@ -32,6 +38,7 @@ extern EFI_HANDLE GlobalImageHandle;
 
 EFI_MEMORY_DESCRIPTOR* EfiMemoryMap = NULL;
 UINT32 FreeldrDescCount;
+static ULONG FreeldrDescMax;
 PVOID OsLoaderBase;
 SIZE_T OsLoaderSize;
 EFI_HANDLE PublicBootHandle;
@@ -96,10 +103,55 @@ UefiSetMemory(
 
     /* Add the memory descriptor */
     FreeldrDescCount = AddMemoryDescriptor(MemoryMap,
-                                           UNUSED_MAX_DESCRIPTOR_COUNT,
+                                           FreeldrDescMax,
                                            BasePage,
                                            PageCount,
                                            MemoryType);
+}
+
+/**
+ * @brief
+ * Sets the pages holding the SMBIOS structures aside.
+ *
+ * @param[in,out] MemoryMap
+ * The map to set them aside in.
+ *
+ * @remarks
+ * The firmware is free to keep the structures in memory it gives up along
+ * with boot services, and the address the entry point carries is the only
+ * way the kernel has of reaching them, so those pages must outlive us.
+ */
+static
+VOID
+UefiReserveSmbiosTable(
+    _Inout_ PFREELDR_MEMORY_DESCRIPTOR MemoryMap)
+{
+    ULONGLONG TableAddress, LastPage, BasePage;
+    PVOID EntryPoint;
+    ULONG TableLength;
+
+    EntryPoint = UefiGetSmbiosEntryPoint(NULL);
+    if (EntryPoint == NULL)
+        return;
+
+    if (!UefiGetSmbiosTableRange(EntryPoint, &TableAddress, &TableLength))
+        return;
+
+    /* A table this loader cannot address is one it cannot hand over either */
+    if ((TableAddress + TableLength - 1) > (ULONGLONG)(ULONG_PTR)-1)
+    {
+        WARN("SMBIOS structures at %I64x are out of reach\n", TableAddress);
+        return;
+    }
+
+    BasePage = TableAddress / EFI_PAGE_SIZE;
+    LastPage = (TableAddress + TableLength - 1) / EFI_PAGE_SIZE;
+
+    TRACE("Reserving SMBIOS structures at %I64x, %lu bytes\n", TableAddress, TableLength);
+    UefiSetMemory(MemoryMap,
+                  (ULONG_PTR)(BasePage * EFI_PAGE_SIZE),
+                  (PFN_COUNT)(LastPage - BasePage + 1),
+                  LoaderSpecialMemory);
 }
 
 static
@@ -185,7 +237,9 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
 
     EntryCount = (MapSize / DescriptorSize);
 
-    FreeldrMemMapSize = (sizeof(FREELDR_MEMORY_DESCRIPTOR) * EntryCount);
+    /* One entry past the most we allow, so the terminator always has a home */
+    FreeldrDescMax = EntryCount + SPARE_DESCRIPTOR_COUNT;
+    FreeldrMemMapSize = (sizeof(FREELDR_MEMORY_DESCRIPTOR) * (FreeldrDescMax + 1));
     Status = GlobalSystemTable->BootServices->AllocatePool(EfiLoaderData,
                                                            FreeldrMemMapSize,
                                                            (void**)&FreeldrMem);
@@ -229,6 +283,10 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
     /* Windows expects the first page to be reserved, otherwise it asserts.
      * However it can be just a free page on some UEFI systems. */
     UefiSetMemory(FreeldrMem, 0x000000, 1, LoaderFirmwarePermanent);
+
+    /* Keep the firmware tables the kernel still needs */
+    UefiReserveSmbiosTable(FreeldrMem);
+
     *MemoryMapSize = FreeldrDescCount;
     return FreeldrMem;
 }

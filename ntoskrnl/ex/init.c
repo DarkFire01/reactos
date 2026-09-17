@@ -1700,6 +1700,9 @@ Phase1InitializationDiscard(IN PVOID Context)
     /* Initialize Cache Views */
     if (!CcInitializeCacheManager()) KeBugCheck(CACHE_INITIALIZATION_FAILED);
 
+    /* Take a copy of what the firmware says about this machine */
+    ExpInitializeSMBIOS(LoaderBlock);
+
     /* Initialize the Registry */
     if (!CmInitSystem1()) KeBugCheck(CONFIG_INITIALIZATION_FAILED);
 
