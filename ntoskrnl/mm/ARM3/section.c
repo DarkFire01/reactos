@@ -3297,18 +3297,6 @@ MmDisableModifiedWriteOfSection(IN PSECTION_OBJECT_POINTERS SectionObjectPointer
 }
 
 /*
- * @unimplemented
- */
-BOOLEAN
-NTAPI
-MmForceSectionClosed(IN PSECTION_OBJECT_POINTERS SectionObjectPointer,
-                     IN BOOLEAN DelayClose)
-{
-   UNIMPLEMENTED;
-   return FALSE;
-}
-
-/*
  * @implemented
  */
 NTSTATUS

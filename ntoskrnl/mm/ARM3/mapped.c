@@ -2490,6 +2490,80 @@ MmMakeDataSectionResident(
 }
 
 /**
+ * @brief Gets rid of the data section of a file.
+ *
+ * @param[in] SectionObjectPointer
+ * Section pointers of the file.
+ *
+ * @param[in] DelayClose
+ * Ignored, a section kept by someone else is never closed behind their back.
+ *
+ * @return TRUE if the file has no data section left.
+ *
+ * @remarks Modified pages are written back, whatever is left of them is dropped.
+ * This is what a caller letting go of a file for good needs, the cleanup thread
+ * only ages sections that may still be wanted.
+ */
+BOOLEAN
+NTAPI
+MmForceSectionClosed(
+    _In_ PSECTION_OBJECT_POINTERS SectionObjectPointer,
+    _In_ BOOLEAN DelayClose)
+{
+    PCONTROL_AREA ControlArea;
+    LARGE_INTEGER Delay;
+    KIRQL OldIrql;
+
+    UNREFERENCED_PARAMETER(DelayClose);
+
+    Delay.QuadPart = -10 * 10000LL;
+
+    for (;;)
+    {
+        OldIrql = MiAcquirePfnLock();
+
+        ControlArea = SectionObjectPointer->DataSectionObject;
+        if (!ControlArea)
+        {
+            MiReleasePfnLock(OldIrql);
+            return TRUE;
+        }
+
+        if (MiIsDataFileMapReferenced(ControlArea))
+        {
+            MiReleasePfnLock(OldIrql);
+            return FALSE;
+        }
+
+        /* The cleanup thread has it, wait for it to be done with it */
+        if (ControlArea->u.Flags.BeingPurged)
+        {
+            MiReleasePfnLock(OldIrql);
+            KeDelayExecutionThread(KernelMode, FALSE, &Delay);
+            continue;
+        }
+
+        if (ControlArea->DereferenceList.Flink)
+        {
+            RemoveEntryList(&ControlArea->DereferenceList);
+            ControlArea->DereferenceList.Flink = NULL;
+        }
+
+        ControlArea->u.Flags.BeingPurged = 1;
+        MiReleasePfnLock(OldIrql);
+
+        if (!MiDeleteDataFileMap(ControlArea, TRUE, TRUE))
+        {
+            OldIrql = MiAcquirePfnLock();
+            ControlArea->u.Flags.BeingPurged = 0;
+            MiQueueDataFileCleanup(ControlArea);
+            MiReleasePfnLock(OldIrql);
+            return FALSE;
+        }
+    }
+}
+
+/**
  * @brief Marks a range of a file section as modified.
  *
  * @param[in] SectionObjectPointer
