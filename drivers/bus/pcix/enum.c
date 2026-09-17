@@ -1929,7 +1929,7 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     ULONG MaxDevice = PCI_MAX_DEVICES;
     BOOLEAN ProcessFlag = FALSE;
-    ULONG i, j, k, Size;
+    ULONG i, j, k, Size, CapIndex;
     USHORT CapOffset, TempOffset;
     LONGLONG HackFlags;
     PDEVICE_OBJECT DeviceObject;
@@ -2334,8 +2334,8 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
                 /* Dump this capability */
                 DPRINT("CAP @%02x ID %02x (%s)\n",
                        CapOffset, CapHeader->CapabilityID, Name);
-                for (i = 0; i < Size; i += 2)
-                    DPRINT("  %04x\n", *(PUSHORT)((ULONG_PTR)CapBuffer + i));
+                for (CapIndex = 0; CapIndex < Size; CapIndex += 2)
+                    DPRINT("  %04x\n", *(PUSHORT)((ULONG_PTR)CapBuffer + CapIndex));
                 DPRINT("\n");
 
                 /* Check the next capability */
