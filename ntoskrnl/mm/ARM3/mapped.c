@@ -1137,7 +1137,11 @@ MiDeleteDataFileMap(
 }
 
 /**
- * @brief Deletes data control areas that were let go in a context unable to do it.
+ * @brief Ages and deletes unused file control areas.
+ *
+ * Resident pages stay available on the standby list while their control area
+ * is retained. This lets short-lived mappings reuse file data without keeping
+ * physical memory away from other consumers.
  */
 static
 VOID
@@ -1146,7 +1150,7 @@ MiDataFileCleanupThread(
     _In_ PVOID Context)
 {
     PCONTROL_AREA ControlArea;
-    LARGE_INTEGER Delay;
+    LARGE_INTEGER Delay, RetainDelay;
     PLIST_ENTRY Entry;
     ULONG Attempt;
     KIRQL OldIrql;
@@ -1154,6 +1158,7 @@ MiDataFileCleanupThread(
     UNREFERENCED_PARAMETER(Context);
 
     Delay.QuadPart = -100 * 10000LL;
+    RetainDelay.QuadPart = -60 * 1000 * 10000LL;
 
     for (;;)
     {
@@ -1161,6 +1166,9 @@ MiDataFileCleanupThread(
 
         for (;;)
         {
+            KeDelayExecutionThread(KernelMode, FALSE, &RetainDelay);
+
+ScanList:
             OldIrql = MiAcquirePfnLock();
 
             if (IsListEmpty(&MiDataFileCleanupList))
@@ -1169,25 +1177,35 @@ MiDataFileCleanupThread(
                 break;
             }
 
-            Entry = RemoveHeadList(&MiDataFileCleanupList);
-            ControlArea = CONTAINING_RECORD(Entry, CONTROL_AREA, DereferenceList);
-            ControlArea->DereferenceList.Flink = NULL;
-
-            if (MiIsDataFileMapReferenced(ControlArea) || ControlArea->u.Flags.BeingPurged)
+            for (Entry = MiDataFileCleanupList.Flink;
+                 Entry != &MiDataFileCleanupList;
+                 Entry = Entry->Flink)
             {
+                ControlArea = CONTAINING_RECORD(Entry, CONTROL_AREA, DereferenceList);
+
+                if (MiIsDataFileMapReferenced(ControlArea) || ControlArea->u.Flags.Accessed)
+                {
+                    ControlArea->u.Flags.Accessed = 0;
+                    continue;
+                }
+
+                ASSERT(ControlArea->u.Flags.BeingPurged == 0);
+                RemoveEntryList(Entry);
+                ControlArea->DereferenceList.Flink = NULL;
+                ControlArea->u.Flags.BeingPurged = 1;
                 MiReleasePfnLock(OldIrql);
-                continue;
+
+                for (Attempt = 1;
+                     !MiDeleteDataFileMap(ControlArea, TRUE, Attempt >= MI_CLEANUP_ATTEMPTS);
+                     Attempt++)
+                {
+                    KeDelayExecutionThread(KernelMode, FALSE, &Delay);
+                }
+
+                goto ScanList;
             }
 
-            ControlArea->u.Flags.BeingPurged = 1;
             MiReleasePfnLock(OldIrql);
-
-            for (Attempt = 1;
-                 !MiDeleteDataFileMap(ControlArea, TRUE, Attempt >= MI_CLEANUP_ATTEMPTS);
-                 Attempt++)
-            {
-                KeDelayExecutionThread(KernelMode, FALSE, &Delay);
-            }
         }
     }
 }
@@ -1342,6 +1360,8 @@ MiReferenceDataFileMap(
                 ControlArea->DereferenceList.Flink = NULL;
             }
 
+            ControlArea->u.Flags.Accessed = 1;
+
             ControlArea->NumberOfSectionReferences++;
             if (UserReference)
                 ControlArea->NumberOfUserReferences++;
@@ -1399,11 +1419,15 @@ MiQueueDataFileCleanup(
     ASSERT(ControlArea->u.Flags.File == 1);
 
     if (MiIsDataFileMapReferenced(ControlArea) ||
-        ControlArea->u.Flags.BeingPurged ||
-        ControlArea->DereferenceList.Flink)
+        ControlArea->u.Flags.BeingPurged)
     {
         return;
     }
+
+    ControlArea->u.Flags.Accessed = 1;
+
+    if (ControlArea->DereferenceList.Flink)
+        return;
 
     InsertTailList(&MiDataFileCleanupList, &ControlArea->DereferenceList);
     KeSetEvent(&MiDataFileCleanupEvent, IO_NO_INCREMENT, FALSE);
@@ -1432,6 +1456,7 @@ MiReferenceDataFileMapForIo(
     {
         ASSERT(ControlArea->u.Flags.File == 1);
         ASSERT(ControlArea->FlushInProgressCount != MAXUSHORT);
+        ControlArea->u.Flags.Accessed = 1;
         ControlArea->FlushInProgressCount++;
     }
 
@@ -1451,6 +1476,7 @@ MiReferenceDataFileMapForIoUnsafe(
     ASSERT(ControlArea->u.Flags.File == 1);
     ASSERT(ControlArea->FlushInProgressCount != MAXUSHORT);
 
+    ControlArea->u.Flags.Accessed = 1;
     ControlArea->FlushInProgressCount++;
 }
 
@@ -1460,49 +1486,64 @@ MiReferenceDataFileMapForIoUnsafe(
  * @param[in] ControlArea
  * Referenced data control area.
  *
- * @remarks The control area gets deleted right away when this was the last reference,
- * the caller is able to wait and no modified data is left. Otherwise the cleanup
- * thread takes care of it.
+ * @remarks An unused control area is aged by the cleanup thread so that a
+ * subsequent mapping can reuse its resident pages.
  */
 VOID
 NTAPI
 MiDereferenceDataFileMapForIo(
     _In_ PCONTROL_AREA ControlArea)
 {
-    BOOLEAN CanWait;
     KIRQL OldIrql;
-
-    CanWait = (BOOLEAN)((KeGetCurrentIrql() == PASSIVE_LEVEL) && !KeAreAllApcsDisabled());
 
     OldIrql = MiAcquirePfnLock();
 
     ASSERT(ControlArea->FlushInProgressCount != 0);
     ControlArea->FlushInProgressCount--;
 
-    if (CanWait &&
-        !MiIsDataFileMapReferenced(ControlArea) &&
-        !ControlArea->u.Flags.BeingPurged)
+    MiCheckControlArea(ControlArea, OldIrql);
+}
+
+/**
+ * @brief Drops an I/O reference and immediately purges an unused file map.
+ *
+ * This is reserved for callers whose contract requires the section object
+ * pointer to be cleared before they return.
+ */
+VOID
+NTAPI
+MiDereferenceDataFileMapForDelete(
+    _In_ PCONTROL_AREA ControlArea)
+{
+    KIRQL OldIrql;
+
+    OldIrql = MiAcquirePfnLock();
+
+    ASSERT(ControlArea->FlushInProgressCount != 0);
+    ControlArea->FlushInProgressCount--;
+
+    if (MiIsDataFileMapReferenced(ControlArea) || ControlArea->u.Flags.BeingPurged)
     {
-        if (ControlArea->DereferenceList.Flink)
-        {
-            RemoveEntryList(&ControlArea->DereferenceList);
-            ControlArea->DereferenceList.Flink = NULL;
-        }
-
-        ControlArea->u.Flags.BeingPurged = 1;
-        MiReleasePfnLock(OldIrql);
-
-        if (!MiDeleteDataFileMap(ControlArea, FALSE, FALSE))
-        {
-            OldIrql = MiAcquirePfnLock();
-            ControlArea->u.Flags.BeingPurged = 0;
-            MiQueueDataFileCleanup(ControlArea);
-            MiReleasePfnLock(OldIrql);
-        }
+        MiCheckControlArea(ControlArea, OldIrql);
         return;
     }
 
-    MiCheckControlArea(ControlArea, OldIrql);
+    if (ControlArea->DereferenceList.Flink)
+    {
+        RemoveEntryList(&ControlArea->DereferenceList);
+        ControlArea->DereferenceList.Flink = NULL;
+    }
+
+    ControlArea->u.Flags.BeingPurged = 1;
+    MiReleasePfnLock(OldIrql);
+
+    if (!MiDeleteDataFileMap(ControlArea, FALSE, FALSE))
+    {
+        OldIrql = MiAcquirePfnLock();
+        ControlArea->u.Flags.BeingPurged = 0;
+        MiQueueDataFileCleanup(ControlArea);
+        MiReleasePfnLock(OldIrql);
+    }
 }
 
 /**
