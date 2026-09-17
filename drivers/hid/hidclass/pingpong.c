@@ -315,25 +315,27 @@ HidClass_BackoffDpc(
  * @param[in] FDODeviceExtension
  * The device the report came from.
  *
- * @param[in] ReportID
- * Identifier of the report, zero on a device that does not number them.
+ * @param[in,out] Buffer
+ * The read buffer, whose first byte is the spare one kept in front of the
+ * report the device sent.
  *
- * @param[in] Report
- * The report, with its identifier in front, as a client expects to see it.
+ * @param[in] WireLength
+ * Number of bytes the device sent, as they sit in @p Buffer one byte along.
  *
- * @param[in] Length
- * Length of @p Report, in bytes.
+ * @remarks
+ * A client is owed the report its collection describes rather than whatever
+ * came off the wire, so a short report is padded out and a long one is cut.
  */
 static
 VOID
 HidClass_DeliverReport(
     _In_ PHIDCLASS_FDO_EXTENSION FDODeviceExtension,
-    _In_ UCHAR ReportID,
-    _In_reads_bytes_(Length) PVOID Report,
-    _In_ ULONG Length)
+    _Inout_updates_bytes_(FDODeviceExtension->MaxReportSize + 1) PUCHAR Buffer,
+    _In_ ULONG WireLength)
 {
     PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension;
     PHIDCLASS_FILEOP_CONTEXT FileOp;
+    PHIDP_COLLECTION_DESC CollectionDescription;
     PHIDP_REPORT_IDS ReportDescription;
     PDEVICE_RELATIONS DeviceRelations;
     PIO_STACK_LOCATION IoStack;
@@ -341,14 +343,33 @@ HidClass_DeliverReport(
     PLIST_ENTRY Entry;
     PIRP PendingIrp;
     PUCHAR Address;
+    PUCHAR Report;
+    UCHAR ReportID;
     KIRQL OldIrql;
     ULONG Index;
+    ULONG Length;
     ULONG Copied;
 
     DeviceRelations = FDODeviceExtension->DeviceRelations;
-    if (DeviceRelations == NULL || Length == 0)
+    if (DeviceRelations == NULL || WireLength == 0)
     {
         return;
+    }
+
+    if (FDODeviceExtension->UsesReportId)
+    {
+        /* The wire report already carries its identifier */
+        ReportID = Buffer[1];
+        Report = Buffer + 1;
+        Length = WireLength;
+    }
+    else
+    {
+        /* The spare byte stands in for the identifier the device leaves out */
+        ReportID = 0;
+        Buffer[0] = 0;
+        Report = Buffer;
+        Length = WireLength + 1;
     }
 
     ReportDescription = HidClassPDO_GetReportDescriptionByReportID(
@@ -359,6 +380,21 @@ HidClass_DeliverReport(
         DPRINT1("[HIDCLASS] Report %u belongs to no collection\n", ReportID);
         return;
     }
+
+    CollectionDescription = HidClassPDO_GetCollectionDescription(
+                                &FDODeviceExtension->Common.DeviceDescription,
+                                ReportDescription->CollectionNumber);
+    if (CollectionDescription == NULL)
+    {
+        return;
+    }
+
+    if (Length < CollectionDescription->InputLength)
+    {
+        RtlZeroMemory(Report + Length, CollectionDescription->InputLength - Length);
+    }
+
+    Length = CollectionDescription->InputLength;
 
     InitializeListHead(&CompletedList);
 
@@ -470,22 +506,11 @@ HidClass_ReadCompletion(
 
     if (NT_SUCCESS(Status) && Irp->IoStatus.Information != 0)
     {
-        PUCHAR Wire = (PUCHAR)PingPong->Report + 1;
-        ULONG WireLength = (ULONG)Irp->IoStatus.Information;
-
-        if (FDODeviceExtension->UsesReportId)
-        {
-            /* The wire report already carries its identifier */
-            HidClass_DeliverReport(FDODeviceExtension, Wire[0], Wire, WireLength);
-        }
-        else
-        {
-            /* The spare byte in front stays zero and stands in for one */
-            HidClass_DeliverReport(FDODeviceExtension,
-                                   0,
-                                   PingPong->Report,
-                                   WireLength + 1);
-        }
+        /* A minidriver handing back more than it was given room for is not believed */
+        HidClass_DeliverReport(FDODeviceExtension,
+                               PingPong->Report,
+                               min((ULONG)Irp->IoStatus.Information,
+                                   FDODeviceExtension->MaxReportSize));
     }
 
     if (!Running || Status == STATUS_DELETE_PENDING || Status == STATUS_DEVICE_NOT_CONNECTED)
@@ -512,14 +537,19 @@ HidClass_ReadCompletion(
 
 /**
  * @brief
- * Works out the largest input report the device can produce, which is the
- * size every read buffer and ring slot is cut to.
+ * Works out the largest input report the device puts on the wire, which is
+ * how much a read may ask the minidriver for.
  *
  * @param[in] FDODeviceExtension
  * The device to size.
  *
  * @return
  * The report size in bytes, or zero when no collection reports input.
+ *
+ * @remarks
+ * The collection is the report plus the identifier the parser puts in front
+ * of it for a client, so asking for that much would have the device overrun
+ * its endpoint by a byte. The report description holds the wire size.
  */
 static
 ULONG
@@ -532,12 +562,62 @@ HidClass_GetMaxReportSize(
 
     DeviceDescription = &FDODeviceExtension->Common.DeviceDescription;
 
-    for (Index = 0; Index < DeviceDescription->CollectionDescLength; Index++)
+    for (Index = 0; Index < DeviceDescription->ReportIDsLength; Index++)
     {
-        MaxReportSize = max(MaxReportSize, DeviceDescription->CollectionDesc[Index].InputLength);
+        MaxReportSize = max(MaxReportSize, DeviceDescription->ReportIDs[Index].InputLength);
     }
 
     return MaxReportSize;
+}
+
+/**
+ * @brief
+ * Works out whether the device puts an identifier in front of the reports it
+ * sends.
+ *
+ * @param[in] FDODeviceExtension
+ * The device to look at.
+ *
+ * @return
+ * TRUE when the wire report carries its own identifier.
+ *
+ * @remarks
+ * A client is handed an identifier whether the device sends one or not, so a
+ * collection that is a byte longer than its report is one whose reports the
+ * device does not number.
+ */
+static
+BOOLEAN
+HidClass_UsesReportId(
+    _In_ PHIDCLASS_FDO_EXTENSION FDODeviceExtension)
+{
+    PHIDP_DEVICE_DESC DeviceDescription;
+    PHIDP_COLLECTION_DESC CollectionDescription;
+    ULONG Index;
+
+    DeviceDescription = &FDODeviceExtension->Common.DeviceDescription;
+
+    for (Index = 0; Index < DeviceDescription->ReportIDsLength; Index++)
+    {
+        /* A collection that reports nothing says nothing about the wire */
+        if (DeviceDescription->ReportIDs[Index].InputLength == 0)
+        {
+            continue;
+        }
+
+        CollectionDescription = HidClassPDO_GetCollectionDescription(
+                                    DeviceDescription,
+                                    DeviceDescription->ReportIDs[Index].CollectionNumber);
+        if (CollectionDescription == NULL)
+        {
+            continue;
+        }
+
+        return (CollectionDescription->InputLength ==
+                DeviceDescription->ReportIDs[Index].InputLength);
+    }
+
+    return FALSE;
 }
 
 /**
@@ -575,14 +655,7 @@ HidClass_StartReads(
         return STATUS_SUCCESS;
     }
 
-    /*
-     * A collection is as long as its report only when that report carries an
-     * identifier, otherwise the collection is the longer of the two by the
-     * byte the parser puts in front.
-     */
-    FDODeviceExtension->UsesReportId =
-        (FDODeviceExtension->Common.DeviceDescription.CollectionDesc[0].InputLength ==
-         FDODeviceExtension->Common.DeviceDescription.ReportIDs[0].InputLength);
+    FDODeviceExtension->UsesReportId = HidClass_UsesReportId(FDODeviceExtension);
 
     StackSize = FDODeviceExtension->SelfDeviceObject->StackSize;
 

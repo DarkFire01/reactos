@@ -125,8 +125,8 @@ typedef struct
     ULONG PingPongCount;
 
     //
-    // largest input report any collection of this device can produce, the
-    // leading report id included
+    // largest input report the device puts on the wire, which is how much a
+    // read asks the minidriver for
     //
     ULONG MaxReportSize;
 
