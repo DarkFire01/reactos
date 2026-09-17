@@ -1057,9 +1057,22 @@ CcRosEnsureVacbResident(
 
         if (!NoRead)
         {
-            NTSTATUS Status = MmMakeDataSectionResident(SharedCacheMap->FileObject->SectionObjectPointer,
-                                                        Vacb->FileOffset.QuadPart + Offset,
-                                                        Length);
+            NTSTATUS Status;
+            ULONG ChunkStart, ChunkEnd;
+
+            /*
+             * Reaching the disk costs the same for a couple of kilobytes as it does
+             * for a chunk of them, and a file is rarely read only once. Bring in the
+             * whole chunk around what was asked for, the rest of it is what the next
+             * read of a file being walked forwards wants.
+             */
+            ChunkStart = ROUND_DOWN(Offset, CC_READ_CHUNK_SIZE);
+            ChunkEnd = min(ROUND_UP(Offset + Length, CC_READ_CHUNK_SIZE),
+                           VACB_MAPPING_GRANULARITY);
+
+            Status = MmMakeDataSectionResident(SharedCacheMap->FileObject->SectionObjectPointer,
+                                               Vacb->FileOffset.QuadPart + ChunkStart,
+                                               ChunkEnd - ChunkStart);
             if (!NT_SUCCESS(Status))
                 ExRaiseStatus(Status);
         }
