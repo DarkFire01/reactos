@@ -3,6 +3,7 @@
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     Power Manager Framework API (PoFx) support routines
  * COPYRIGHT:   Copyright 2023 George Bișoc <george.bisoc@reactos.org>
+ *              Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
 /* INCLUDES *******************************************************************/
@@ -792,6 +793,88 @@ PoFxReportDevicePoweredOn(
     FxDevice->Status.IrpInUse = 0;
     FxDevice->Status.IrpPending = 0;
     KeSetEvent(&FxDevice->IrpCompleteEvent, IO_NO_INCREMENT, FALSE);
+}
+
+/**
+ * @brief
+ * Tells the Power Framework that a device came back to D0 on its own,
+ * without the Power Manager having asked for it.
+ *
+ * @param[in] Pdo
+ * A pointer to the physical device object that powered on.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED.
+ *
+ * @unimplemented
+ */
+NTSTATUS
+NTAPI
+PoFxNotifySurprisePowerOn(
+    _In_ PDEVICE_OBJECT Pdo)
+{
+    UNREFERENCED_PARAMETER(Pdo);
+
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/**
+ * @brief
+ * Relays a driver defined power control request to the platform extension
+ * that owns the device.
+ *
+ * @param[in] Handle
+ * A pointer to a Framework handle that represents the
+ * registered handle with PoFx.
+ *
+ * @param[in] PowerControlCode
+ * The GUID naming the request. Both the code and the buffers below are
+ * private to the driver and its platform extension.
+ *
+ * @param[in] InBuffer
+ * An optional buffer holding the input of the request.
+ *
+ * @param[in] InBufferSize
+ * The size of @p InBuffer, in bytes.
+ *
+ * @param[out] OutBuffer
+ * An optional buffer that receives the output of the request.
+ *
+ * @param[in] OutBufferSize
+ * The size of @p OutBuffer, in bytes.
+ *
+ * @param[out] BytesReturned
+ * Optionally receives the number of bytes written to @p OutBuffer.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED.
+ *
+ * @unimplemented
+ */
+NTSTATUS
+NTAPI
+PoFxPowerControl(
+    _In_ POHANDLE Handle,
+    _In_ LPCGUID PowerControlCode,
+    _In_reads_bytes_opt_(InBufferSize) PVOID InBuffer,
+    _In_ SIZE_T InBufferSize,
+    _Out_writes_bytes_opt_(OutBufferSize) PVOID OutBuffer,
+    _In_ SIZE_T OutBufferSize,
+    _Out_opt_ PSIZE_T BytesReturned)
+{
+    UNREFERENCED_PARAMETER(Handle);
+    UNREFERENCED_PARAMETER(PowerControlCode);
+    UNREFERENCED_PARAMETER(InBuffer);
+    UNREFERENCED_PARAMETER(InBufferSize);
+    UNREFERENCED_PARAMETER(OutBuffer);
+    UNREFERENCED_PARAMETER(OutBufferSize);
+
+    if (BytesReturned != NULL)
+        *BytesReturned = 0;
+
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 /* EOF */
