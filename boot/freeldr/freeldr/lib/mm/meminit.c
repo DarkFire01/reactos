@@ -394,6 +394,22 @@ PFN_NUMBER MmGetPageNumberFromAddress(PVOID Address)
     return ((ULONG_PTR)Address) / MM_PAGE_SIZE;
 }
 
+static
+BOOLEAN
+MmIsUsableMemoryType(
+    _In_ TYPE_OF_MEMORY MemoryType)
+{
+    /*
+     * Both of these describe usable RAM. The UEFI path assigns the firmware
+     * temporary type to a free region it could not reserve through
+     * AllocatePages, and the kernel takes that as free memory either way, so
+     * the span has to cover it or everything past the last reserved region is
+     * dropped before the kernel ever sees it.
+     */
+    return ((MemoryType == LoaderFree) ||
+            (MemoryType == LoaderFirmwareTemporary));
+}
+
 PFN_NUMBER MmGetAddressablePageCountIncludingHoles(VOID)
 {
     const FREELDR_MEMORY_DESCRIPTOR* MemoryDescriptor = NULL;
@@ -412,7 +428,7 @@ PFN_NUMBER MmGetAddressablePageCountIncludingHoles(VOID)
             //
             // Yes, remember it if this is real memory
             //
-            if (MemoryDescriptor->MemoryType == LoaderFree)
+            if (MmIsUsableMemoryType(MemoryDescriptor->MemoryType))
                 MmHighestPhysicalPage = MemoryDescriptor->BasePage + MemoryDescriptor->PageCount;
         }
 
@@ -466,6 +482,16 @@ PVOID MmFindLocationForPageLookupTable(PFN_NUMBER TotalPageCount)
         // Memory block is more suitable than the previous one
         CandidateBasePage = MemoryDescriptor->BasePage;
         CandidatePageCount = MemoryDescriptor->PageCount;
+    }
+
+    // Bail out if nothing was big enough, or low enough to be mapped. Without
+    // this the arithmetic below wraps and returns a pointer that is not NULL,
+    // so the caller's check for failure does not catch it.
+    if (CandidatePageCount == 0)
+    {
+        ERR("No free block for a lookup table of %lu pages below page 0x%lx\n",
+            (ULONG)RequiredPages, (ULONG)MM_MAX_PAGE_LOADER);
+        return NULL;
     }
 
     // Calculate the end address for the lookup table
