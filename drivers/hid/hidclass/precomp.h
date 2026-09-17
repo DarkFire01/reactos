@@ -93,6 +93,12 @@ typedef struct
     HIDCLASS_COMMON_DEVICE_EXTENSION Common;
 
     //
+    // the device object this extension belongs to, which is what the
+    // minidriver is called on
+    //
+    PDEVICE_OBJECT SelfDeviceObject;
+
+    //
     // device capabilities
     //
     DEVICE_CAPABILITIES Capabilities;
