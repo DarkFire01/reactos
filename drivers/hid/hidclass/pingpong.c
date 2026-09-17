@@ -223,7 +223,22 @@ HidClass_IssueRead(
 
     IoSetCompletionRoutine(Irp, HidClass_ReadCompletion, PingPong, TRUE, TRUE, TRUE);
 
-    IoCallDriver(FDODeviceExtension->Common.HidDeviceExtension.NextDeviceObject, Irp);
+    /* Left failed so that a minidriver which answers nothing is not taken for a report */
+    Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+
+    /*
+     * The read is the minidriver's to answer rather than the bus driver's below
+     * us, so the stack location is made current and the minidriver called on it
+     * the way HidClassFDO_DispatchRequestSynchronous does.
+     */
+    ASSERT(Irp->CurrentLocation > 0);
+    IoSetNextIrpStackLocation(Irp);
+    IoStack = IoGetCurrentIrpStackLocation(Irp);
+    IoStack->DeviceObject = FDODeviceExtension->SelfDeviceObject;
+
+    FDODeviceExtension->Common.DriverExtension->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL](
+        FDODeviceExtension->SelfDeviceObject,
+        Irp);
 }
 
 /**
@@ -569,7 +584,7 @@ HidClass_StartReads(
         (FDODeviceExtension->Common.DeviceDescription.CollectionDesc[0].InputLength ==
          FDODeviceExtension->Common.DeviceDescription.ReportIDs[0].InputLength);
 
-    StackSize = FDODeviceExtension->Common.HidDeviceExtension.NextDeviceObject->StackSize;
+    StackSize = FDODeviceExtension->SelfDeviceObject->StackSize;
 
     /* Fall back to a single read when there is not room for the full set */
     for (Count = HIDCLASS_PING_PONG_COUNT; Count != 0; Count /= 2)
