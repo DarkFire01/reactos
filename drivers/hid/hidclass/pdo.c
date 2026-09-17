@@ -758,9 +758,9 @@ HidClassPDO_CreatePDO(
         RtlCopyMemory(&PDODeviceExtension->Capabilities, &FDODeviceExtension->Capabilities, sizeof(DEVICE_CAPABILITIES));
 
         //
-        // set device flags
+        // a report is handed over through an mdl, not copied
         //
-        PDODeviceObject->Flags |= DO_MAP_IO_BUFFER;
+        PDODeviceObject->Flags |= DO_DIRECT_IO | DO_POWER_PAGABLE;
 
         //
         // device is initialized

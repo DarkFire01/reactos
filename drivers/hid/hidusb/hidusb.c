@@ -357,50 +357,53 @@ HidUsb_ResetWorkerRoutine(
     //
     Status = HidUsb_GetPortStatus(ResetContext->DeviceObject, &PortStatus);
     DPRINT("[HIDUSB] ResetWorkerRoutine GetPortStatus %x PortStatus %x\n", Status, PortStatus);
-    if (NT_SUCCESS(Status))
+
+    //
+    // a port that is not enabled has nothing left to reset, the hub will say
+    // the device has gone
+    //
+    if (!NT_SUCCESS(Status) || !(PortStatus & USB_PORT_STATUS_ENABLE))
     {
-        if (!(PortStatus & USB_PORT_STATUS_ENABLE))
+        DPRINT1("[HIDUSB] ResetWorkerRoutine leaving port %x alone, status %x\n", PortStatus, Status);
+    }
+    else
+    {
+        //
+        // abort pipe
+        //
+        Status = HidUsb_AbortPipe(ResetContext->DeviceObject);
+        DPRINT("[HIDUSB] ResetWorkerRoutine AbortPipe %x\n", Status);
+        if (NT_SUCCESS(Status))
         {
             //
-            // port is disabled
+            // reset port
             //
-            Status = HidUsb_ResetInterruptPipe(ResetContext->DeviceObject);
-            DPRINT1("[HIDUSB] ResetWorkerRoutine ResetPipe %x\n", Status);
-        }
-        else
-        {
+            Status = HidUsb_ResetPort(ResetContext->DeviceObject);
+            DPRINT("[HIDUSB] ResetPort %x\n", Status);
+            if (Status == STATUS_DEVICE_DATA_ERROR)
+            {
+                //
+                // invalidate device state
+                //
+                IoInvalidateDeviceState(DeviceExtension->PhysicalDeviceObject);
+            }
+
             //
-            // abort pipe
+            // reset interrupt pipe
             //
-            Status = HidUsb_AbortPipe(ResetContext->DeviceObject);
-            DPRINT1("[HIDUSB] ResetWorkerRoutine AbortPipe %x\n", Status);
             if (NT_SUCCESS(Status))
             {
                 //
-                // reset port
+                // reset pipe
                 //
-                Status = HidUsb_ResetPort(ResetContext->DeviceObject);
-                DPRINT1("[HIDUSB] ResetPort %x\n", Status);
-                if (Status == STATUS_DEVICE_DATA_ERROR)
-                {
-                    //
-                    // invalidate device state
-                    //
-                    IoInvalidateDeviceState(DeviceExtension->PhysicalDeviceObject);
-                }
-
-                //
-                // reset interrupt pipe
-                //
-                if (NT_SUCCESS(Status))
-                {
-                    //
-                    // reset pipe
-                    //
-                    Status = HidUsb_ResetInterruptPipe(ResetContext->DeviceObject);
-                    DPRINT1("[HIDUSB] ResetWorkerRoutine ResetPipe %x\n", Status);
-                }
+                Status = HidUsb_ResetInterruptPipe(ResetContext->DeviceObject);
+                DPRINT("[HIDUSB] ResetWorkerRoutine ResetPipe %x\n", Status);
             }
+        }
+
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("[HIDUSB] ResetWorkerRoutine failed with %x\n", Status);
         }
     }
 
@@ -441,9 +444,9 @@ HidUsb_ReadReportCompletion(
     }
 
     //
-    // did the reading report succeed / cancelled
+    // did the reading report succeed
     //
-    if (NT_SUCCESS(Irp->IoStatus.Status) || Irp->IoStatus.Status == STATUS_CANCELLED || Irp->IoStatus.Status == STATUS_DEVICE_NOT_CONNECTED)
+    if (NT_SUCCESS(Irp->IoStatus.Status))
     {
         //
         // store result length
@@ -451,12 +454,22 @@ HidUsb_ReadReportCompletion(
         Irp->IoStatus.Information = Urb->UrbBulkOrInterruptTransfer.TransferBufferLength;
 
         //
-        // FIXME handle error
+        // free the urb
         //
-        ASSERT(Urb->UrbHeader.Status == USBD_STATUS_SUCCESS ||
-               Urb->UrbHeader.Status == USBD_STATUS_CANCELED ||
-               Urb->UrbHeader.Status == USBD_STATUS_DEVICE_GONE);
+        ExFreePoolWithTag(Urb, HIDUSB_URB_TAG);
 
+        //
+        // finish completion
+        //
+        return STATUS_CONTINUE_COMPLETION;
+    }
+
+    //
+    // a read that was taken away from us, or a device that has gone, is not
+    // something a reset would put right
+    //
+    if (Irp->IoStatus.Status == STATUS_CANCELLED || Irp->IoStatus.Status == STATUS_DEVICE_NOT_CONNECTED)
+    {
         //
         // free the urb
         //
