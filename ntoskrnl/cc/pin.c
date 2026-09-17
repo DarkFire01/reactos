@@ -293,7 +293,7 @@ CcpPinData(
         Result = CcRosEnsureVacbResident(NewBcb->Vacb,
                 BooleanFlagOn(Flags, PIN_WAIT),
                 BooleanFlagOn(Flags, PIN_NO_READ),
-                VacbOffset, Length);
+                VacbOffset, Length, NULL);
     }
     _SEH2_FINALLY
     {
@@ -403,7 +403,7 @@ CcMapData (
         Result = FALSE;
         /* Ensure the pages are resident */
         Result = CcRosEnsureVacbResident(iBcb->Vacb, BooleanFlagOn(Flags, MAP_WAIT),
-                BooleanFlagOn(Flags, MAP_NO_READ), VacbOffset, Length);
+                BooleanFlagOn(Flags, MAP_NO_READ), VacbOffset, Length, NULL);
     }
     _SEH2_FINALLY
     {
