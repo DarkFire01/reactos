@@ -42,6 +42,26 @@
 #define PLUGPLAY_REGKEY_DRIVER              2
 #endif
 
+#define USBD_TAG                'dbsU'
+
+/* Hub numbers come out of this bitmap, one bit each, counted from one */
+#define USBD_MAX_HUBS           256
+
+static RTL_BITMAP UsbdHubNumbers;
+static ULONG UsbdHubNumberBuffer[USBD_MAX_HUBS / (8 * sizeof(ULONG))];
+static KSPIN_LOCK UsbdHubNumberLock;
+
+/* The seven values a caller hands over have no documented meaning, so they
+   are kept as they came in */
+typedef struct _USBD_GLOBAL_DEVICE
+{
+    LIST_ENTRY Link;
+    ULONG_PTR Parameters[7];
+} USBD_GLOBAL_DEVICE, *PUSBD_GLOBAL_DEVICE;
+
+static LIST_ENTRY UsbdGlobalDeviceList;
+static KSPIN_LOCK UsbdGlobalDeviceLock;
+
 NTSTATUS NTAPI
 DriverEntry(PDRIVER_OBJECT DriverObject,
             PUNICODE_STRING RegistryPath)
@@ -52,19 +72,26 @@ DriverEntry(PDRIVER_OBJECT DriverObject,
 /*
  * @implemented
  */
-ULONG NTAPI
-DllInitialize(ULONG Unknown)
+NTSTATUS NTAPI
+DllInitialize(PUNICODE_STRING RegistryPath)
 {
-    return 0;
+    RtlInitializeBitMap(&UsbdHubNumbers, UsbdHubNumberBuffer, USBD_MAX_HUBS);
+    RtlClearAllBits(&UsbdHubNumbers);
+    KeInitializeSpinLock(&UsbdHubNumberLock);
+
+    InitializeListHead(&UsbdGlobalDeviceList);
+    KeInitializeSpinLock(&UsbdGlobalDeviceLock);
+
+    return STATUS_SUCCESS;
 }
 
 /*
  * @implemented
  */
-ULONG NTAPI
+NTSTATUS NTAPI
 DllUnload(VOID)
 {
-    return 0;
+    return STATUS_SUCCESS;
 }
 
 /*
@@ -252,7 +279,7 @@ USBD_RegisterHcFilter(
     PDEVICE_OBJECT FilterDeviceObject
     )
 {
-    UNIMPLEMENTED;
+    /* Windows 8 kept the export but dropped the body */
 }
 
 /*
@@ -685,4 +712,272 @@ USBD_GetPdoRegistryParameter(
         ZwClose(DevInstRegKey);
     }
     return Status;
+}
+
+/**
+ * @brief
+ * Walks a configuration descriptor and checks that every descriptor in it
+ * declares a length and stays inside the buffer.
+ *
+ * @param[in] ConfigDesc
+ * The configuration descriptor to check.
+ *
+ * @param[in] BufferLength
+ * Size of the buffer holding @p ConfigDesc, in bytes.
+ *
+ * @param[in] Level
+ * How strict the caller wants the check to be. Only the structural checks
+ * below are made, so the level makes no difference.
+ *
+ * @param[out] Offset
+ * Receives the descriptor the check tripped over, or NULL when it passes.
+ *
+ * @param[in] Tag
+ * Pool tag of the buffer. Unused.
+ *
+ * @return
+ * USBD_STATUS_SUCCESS, or the reason the descriptor was rejected.
+ */
+USBD_STATUS
+NTAPI
+USBD_ValidateConfigurationDescriptor(
+    _In_reads_bytes_(BufferLength) PUSB_CONFIGURATION_DESCRIPTOR ConfigDesc,
+    _In_ ULONG BufferLength,
+    _In_ USHORT Level,
+    _Out_ PUCHAR *Offset,
+    _In_opt_ ULONG Tag)
+{
+    PUSB_COMMON_DESCRIPTOR Descriptor;
+    ULONG Remaining;
+
+    UNREFERENCED_PARAMETER(Level);
+    UNREFERENCED_PARAMETER(Tag);
+
+    *Offset = (PUCHAR)ConfigDesc;
+
+    if (BufferLength < sizeof(USB_CONFIGURATION_DESCRIPTOR))
+    {
+        return USBD_STATUS_BUFFER_TOO_SMALL;
+    }
+
+    if ((ConfigDesc->bDescriptorType != USB_CONFIGURATION_DESCRIPTOR_TYPE) ||
+        (ConfigDesc->bLength < sizeof(USB_CONFIGURATION_DESCRIPTOR)))
+    {
+        return USBD_STATUS_INVALID_CONFIGURATION_DESCRIPTOR;
+    }
+
+    /* The device reports the size of the whole chain, which has to be there */
+    if ((ConfigDesc->wTotalLength < ConfigDesc->bLength) ||
+        (ConfigDesc->wTotalLength > BufferLength))
+    {
+        return USBD_STATUS_BAD_CONFIG_DESC_LENGTH;
+    }
+
+    Descriptor = (PUSB_COMMON_DESCRIPTOR)ConfigDesc;
+    Remaining = ConfigDesc->wTotalLength;
+
+    while (Remaining != 0)
+    {
+        *Offset = (PUCHAR)Descriptor;
+
+        if (Remaining < sizeof(USB_COMMON_DESCRIPTOR))
+        {
+            return USBD_STATUS_BAD_DESCRIPTOR;
+        }
+
+        /* A descriptor that is too short or overruns the chain ends the walk */
+        if ((Descriptor->bLength < sizeof(USB_COMMON_DESCRIPTOR)) ||
+            (Descriptor->bLength > Remaining))
+        {
+            return USBD_STATUS_BAD_DESCRIPTOR_BLEN;
+        }
+
+        Remaining -= Descriptor->bLength;
+        Descriptor = (PUSB_COMMON_DESCRIPTOR)((PUCHAR)Descriptor + Descriptor->bLength);
+    }
+
+    *Offset = NULL;
+    return USBD_STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Reads a value from the registry key of a USB device.
+ *
+ * @param[in] DeviceObject
+ * The device whose key is read.
+ *
+ * @param[in] ValueName
+ * Name of the value to read.
+ *
+ * @param[in] ValueNameLength
+ * Size of @p ValueName, in bytes.
+ *
+ * @param[out] Data
+ * Receives the value.
+ *
+ * @param[in] DataLength
+ * Size of @p Data, in bytes.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED.
+ *
+ * @unimplemented
+ */
+NTSTATUS
+NTAPI
+USBD_GetRegistryKeyValue(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PCWSTR ValueName,
+    _In_ ULONG ValueNameLength,
+    _Out_writes_bytes_(DataLength) PVOID Data,
+    _In_ ULONG DataLength)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(ValueName);
+    UNREFERENCED_PARAMETER(ValueNameLength);
+    UNREFERENCED_PARAMETER(Data);
+    UNREFERENCED_PARAMETER(DataLength);
+
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/**
+ * @brief
+ * Notes that a device has left the bus.
+ *
+ * @param[in] DeviceObject
+ * The device that went away.
+ *
+ * @unimplemented
+ */
+VOID
+NTAPI
+USBD_MarkDeviceAsDisconnected(
+    _In_ PDEVICE_OBJECT DeviceObject)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    UNIMPLEMENTED;
+}
+
+/**
+ * @brief
+ * Hands out a number for a newly arrived hub.
+ *
+ * @return
+ * The hub number, or zero when none is free.
+ */
+ULONG
+NTAPI
+USBD_AllocateHubNumber(VOID)
+{
+    KIRQL OldIrql;
+    ULONG Bit;
+
+    KeAcquireSpinLock(&UsbdHubNumberLock, &OldIrql);
+    Bit = RtlFindClearBitsAndSet(&UsbdHubNumbers, 1, 0);
+    KeReleaseSpinLock(&UsbdHubNumberLock, OldIrql);
+
+    if (Bit == MAXULONG)
+    {
+        return 0;
+    }
+
+    /* Zero is not a hub number, so the bit index counts from one */
+    return Bit + 1;
+}
+
+/**
+ * @brief
+ * Gives a hub number back.
+ *
+ * @param[in] HubNumber
+ * The number handed out by USBD_AllocateHubNumber().
+ */
+VOID
+NTAPI
+USBD_ReleaseHubNumber(
+    _In_ ULONG HubNumber)
+{
+    KIRQL OldIrql;
+
+    if (HubNumber == 0 || HubNumber > USBD_MAX_HUBS)
+    {
+        return;
+    }
+
+    KeAcquireSpinLock(&UsbdHubNumberLock, &OldIrql);
+    RtlClearBits(&UsbdHubNumbers, HubNumber - 1, 1);
+    KeReleaseSpinLock(&UsbdHubNumberLock, OldIrql);
+}
+
+/**
+ * @brief
+ * Adds a device to the list usbd keeps of every device on the machine.
+ *
+ * @return
+ * A handle for USBD_RemoveDeviceFromGlobalList(), or NULL on failure.
+ */
+PVOID
+NTAPI
+USBD_AddDeviceToGlobalList(
+    _In_ ULONG Parameter1,
+    _In_ PVOID Parameter2,
+    _In_ ULONG Parameter3,
+    _In_ PVOID Parameter4,
+    _In_ ULONG Parameter5,
+    _In_ ULONG Parameter6,
+    _In_ ULONG Parameter7)
+{
+    PUSBD_GLOBAL_DEVICE Device;
+    KIRQL OldIrql;
+
+    Device = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Device), USBD_TAG);
+    if (Device == NULL)
+    {
+        return NULL;
+    }
+
+    Device->Parameters[0] = Parameter1;
+    Device->Parameters[1] = (ULONG_PTR)Parameter2;
+    Device->Parameters[2] = Parameter3;
+    Device->Parameters[3] = (ULONG_PTR)Parameter4;
+    Device->Parameters[4] = Parameter5;
+    Device->Parameters[5] = Parameter6;
+    Device->Parameters[6] = Parameter7;
+
+    KeAcquireSpinLock(&UsbdGlobalDeviceLock, &OldIrql);
+    InsertTailList(&UsbdGlobalDeviceList, &Device->Link);
+    KeReleaseSpinLock(&UsbdGlobalDeviceLock, OldIrql);
+
+    return Device;
+}
+
+/**
+ * @brief
+ * Takes a device back off the global list.
+ *
+ * @param[in] Handle
+ * The handle returned by USBD_AddDeviceToGlobalList().
+ */
+VOID
+NTAPI
+USBD_RemoveDeviceFromGlobalList(
+    _In_ PVOID Handle)
+{
+    PUSBD_GLOBAL_DEVICE Device = Handle;
+    KIRQL OldIrql;
+
+    if (Device == NULL)
+    {
+        return;
+    }
+
+    KeAcquireSpinLock(&UsbdGlobalDeviceLock, &OldIrql);
+    RemoveEntryList(&Device->Link);
+    KeReleaseSpinLock(&UsbdGlobalDeviceLock, OldIrql);
+
+    ExFreePoolWithTag(Device, USBD_TAG);
 }
