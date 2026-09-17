@@ -84,6 +84,7 @@ HidClassAddDevice(
     /* initialize device extension */
     FDODeviceExtension->Common.IsFDO = TRUE;
     FDODeviceExtension->Common.DriverExtension = DriverExtension;
+    FDODeviceExtension->SelfDeviceObject = NewDeviceObject;
     KeInitializeSpinLock(&FDODeviceExtension->ReadLock);
     KeInitializeEvent(&FDODeviceExtension->ReadsDrained, NotificationEvent, FALSE);
     FDODeviceExtension->Common.HidDeviceExtension.PhysicalDeviceObject = PhysicalDeviceObject;
