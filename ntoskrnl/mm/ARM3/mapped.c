@@ -1065,6 +1065,7 @@ MiDeleteDataFileMap(
 {
     PFILE_OBJECT FileObject = ControlArea->FilePointer;
     BOOLEAN Image = (BOOLEAN)ControlArea->u.Flags.Image;
+    PSECTION_OBJECT_POINTERS SectionPointers;
     NTSTATUS Status;
     ULONG Written;
     KIRQL OldIrql;
@@ -1107,15 +1108,24 @@ MiDeleteDataFileMap(
 
     /* Nothing reaches it once the file forgets it */
     ControlArea->u.Flags.BeingDeleted = 1;
-    if (Image)
+
+    /*
+     * A file system recycles these pointers along with the structures it keeps
+     * them in, so a retained control area can outlive the ones it was put into.
+     * Clear only a pointer that still names this control area.
+     */
+    SectionPointers = FileObject->SectionObjectPointer;
+    if (SectionPointers != NULL)
     {
-        ASSERT(FileObject->SectionObjectPointer->ImageSectionObject == ControlArea);
-        FileObject->SectionObjectPointer->ImageSectionObject = NULL;
-    }
-    else
-    {
-        ASSERT(FileObject->SectionObjectPointer->DataSectionObject == ControlArea);
-        FileObject->SectionObjectPointer->DataSectionObject = NULL;
+        if (Image)
+        {
+            if (SectionPointers->ImageSectionObject == ControlArea)
+                SectionPointers->ImageSectionObject = NULL;
+        }
+        else if (SectionPointers->DataSectionObject == ControlArea)
+        {
+            SectionPointers->DataSectionObject = NULL;
+        }
     }
 
     if (ControlArea->DereferenceList.Flink)
