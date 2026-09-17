@@ -90,4 +90,43 @@ IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject)
     return IoWorkItem;
 }
 
+/*
+ * @implemented
+ */
+ULONG
+NTAPI
+IoSizeofWorkItem(VOID)
+{
+    /* Callers of IoInitializeWorkItem() need this much room */
+    return sizeof(IO_WORKITEM);
+}
+
+/*
+ * @implemented
+ */
+VOID
+NTAPI
+IoInitializeWorkItem(
+    _In_ PVOID IoObject,
+    _Out_ PIO_WORKITEM IoWorkItem)
+{
+    /* Set up the caller provided work item */
+    IoWorkItem->DeviceObject = IoObject;
+    ExInitializeWorkItem(&IoWorkItem->Item, IopWorkItemCallback, IoWorkItem);
+}
+
+/*
+ * @implemented
+ */
+VOID
+NTAPI
+IoUninitializeWorkItem(
+    _Inout_ PIO_WORKITEM IoWorkItem)
+{
+    /* The memory belongs to the caller, so only the contents are dropped */
+    IoWorkItem->DeviceObject = NULL;
+    IoWorkItem->WorkerRoutine = NULL;
+    IoWorkItem->Context = NULL;
+}
+
 /* EOF */
