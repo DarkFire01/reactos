@@ -453,6 +453,18 @@ HidClassFDO_StartDevice(
     }
 
     //
+    // the collections are known, so the device can start reporting
+    //
+    Status = HidClass_StartReads(FDODeviceExtension);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("[HIDCLASS] Failed to start the read loop %x\n", Status);
+        Irp->IoStatus.Status = Status;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return Status;
+    }
+
+    //
     // complete request
     //
     Irp->IoStatus.Status = Status;
@@ -473,6 +485,11 @@ HidClassFDO_RemoveDevice(
     //
     FDODeviceExtension = DeviceObject->DeviceExtension;
     ASSERT(FDODeviceExtension->Common.IsFDO);
+
+    //
+    // nothing may be left reading the device once it goes
+    //
+    HidClass_StopReads(FDODeviceExtension);
 
     /* FIXME cleanup */
 

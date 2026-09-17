@@ -747,6 +747,8 @@ HidClassPDO_CreatePDO(
         PDODeviceExtension->FDODeviceObject = DeviceObject;
         PDODeviceExtension->Common.DriverExtension = FDODeviceExtension->Common.DriverExtension;
         PDODeviceExtension->CollectionNumber = FDODeviceExtension->Common.DeviceDescription.CollectionDesc[Index].CollectionNumber;
+        InitializeListHead(&PDODeviceExtension->FileOpListHead);
+        KeInitializeSpinLock(&PDODeviceExtension->FileOpLock);
 
         //
         // copy device data
