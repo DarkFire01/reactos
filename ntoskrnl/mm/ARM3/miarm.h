@@ -2480,6 +2480,12 @@ MiDereferenceDataFileMapForIo(
     _In_ PCONTROL_AREA ControlArea
 );
 
+VOID
+NTAPI
+MiDereferenceDataFileMapForDelete(
+    _In_ PCONTROL_AREA ControlArea
+);
+
 NTSTATUS
 NTAPI
 MiResolveMappedFileFault(
