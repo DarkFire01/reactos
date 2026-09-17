@@ -2118,6 +2118,10 @@ MiReservePageFileSpace(
     _Out_ PULONG_PTR PageFileOffset
 );
 
+VOID
+NTAPI
+MiRequestPageFileExtension(VOID);
+
 BOOLEAN
 NTAPI
 MiChargeCommitment(
