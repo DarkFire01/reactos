@@ -727,14 +727,101 @@ PciBuildHackTable(IN HANDLE KeyHandle)
     return Status;
 }
 
+/**
+ * @brief Reads one REG_DWORD the HAL left under a debugging device's key.
+ *
+ * @param[in] KeyHandle
+ * The device's key.
+ *
+ * @param[in] ValueName
+ * The value to read.
+ *
+ * @param[out] Value
+ * Where the value is returned.
+ *
+ * @return TRUE if the value was read, FALSE otherwise.
+ */
+static
+BOOLEAN
+PciReadDebugDeviceUlong(
+    _In_ HANDLE KeyHandle,
+    _In_ PCWSTR ValueName,
+    _Out_ PULONG Value)
+{
+    UCHAR Buffer[sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(ULONG)];
+    PKEY_VALUE_PARTIAL_INFORMATION PartialInfo = (PVOID)Buffer;
+    UNICODE_STRING Name;
+    ULONG ResultLength;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    RtlInitUnicodeString(&Name, ValueName);
+    Status = ZwQueryValueKey(KeyHandle,
+                             &Name,
+                             KeyValuePartialInformation,
+                             PartialInfo,
+                             sizeof(Buffer),
+                             &ResultLength);
+    if (!NT_SUCCESS(Status) ||
+        PartialInfo->Type != REG_DWORD ||
+        PartialInfo->DataLength != sizeof(ULONG))
+    {
+        return FALSE;
+    }
+
+    RtlCopyMemory(Value, PartialInfo->Data, sizeof(ULONG));
+    return TRUE;
+}
+
 NTSTATUS
 NTAPI
 PciGetDebugPorts(IN HANDLE DebugKey)
 {
-    UNREFERENCED_PARAMETER(DebugKey);
+    WCHAR NameBuffer[16];
+    UNICODE_STRING KeyName;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    HANDLE DeviceKey;
+    ULONG Index;
+    ULONG BusNumber;
+    ULONG Slot;
+    NTSTATUS Status;
 
-    /* Only called when the Debug key exists, so this prints once per boot */
-    DPRINT1("PCI: Debugging devices are not tracked yet and will not be protected\n");
+    PAGED_CODE();
+
+    PciDebugPortsCount = 0;
+
+    for (Index = 0; Index < MAX_DEBUGGING_DEVICES_SUPPORTED; ++Index)
+    {
+        RtlInitEmptyUnicodeString(&KeyName, NameBuffer, sizeof(NameBuffer));
+        Status = RtlIntegerToUnicodeString(Index, 10, &KeyName);
+        if (!NT_SUCCESS(Status))
+            break;
+
+        InitializeObjectAttributes(&ObjectAttributes,
+                                   &KeyName,
+                                   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                                   DebugKey,
+                                   NULL);
+        Status = ZwOpenKey(&DeviceKey, KEY_QUERY_VALUE, &ObjectAttributes);
+        if (!NT_SUCCESS(Status))
+            continue;
+
+        if (PciReadDebugDeviceUlong(DeviceKey, L"Bus", &BusNumber) &&
+            PciReadDebugDeviceUlong(DeviceKey, L"Slot", &Slot))
+        {
+            PciDebugPorts[PciDebugPortsCount].BusNumber = BusNumber;
+            PciDebugPorts[PciDebugPortsCount].Slot.u.AsULONG = Slot;
+            PciDebugPortsCount++;
+
+            DPRINT1("PCI: Bus 0x%lx slot 0x%lx is in use by the debugger\n",
+                    BusNumber,
+                    Slot);
+        }
+
+        ZwClose(DeviceKey);
+    }
+
     return STATUS_SUCCESS;
 }
 

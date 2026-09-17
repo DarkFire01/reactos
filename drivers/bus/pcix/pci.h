@@ -2186,6 +2186,18 @@ PciFreeLegacyDeviceCache(VOID);
 //
 // External Resources
 //
+/*
+ * Where a device the debugger took over sits. The bus number is the one the
+ * firmware configured, which is what the HAL recorded before anything moved.
+ */
+typedef struct _PCI_DEBUG_DEVICE_LOCATION
+{
+    ULONG BusNumber;
+    PCI_SLOT_NUMBER Slot;
+} PCI_DEBUG_DEVICE_LOCATION, *PPCI_DEBUG_DEVICE_LOCATION;
+
+extern PCI_DEBUG_DEVICE_LOCATION PciDebugPorts[];
+extern ULONG PciDebugPortsCount;
 extern SINGLE_LIST_ENTRY PciFdoExtensionListHead;
 extern KEVENT PciGlobalLock;
 extern PPCI_INTERFACE PciInterfaces[];
