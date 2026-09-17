@@ -2581,7 +2581,13 @@ FORCEINLINE
 PFN_NUMBER
 MiRemoveZeroPageSafe(IN ULONG Color)
 {
-    if (MmFreePagesByColor[ZeroedPageList][Color].Flink != LIST_HEAD) return MiRemoveZeroPage(Color);
+    /* A page of another color still beats zeroing one here */
+    if ((MmFreePagesByColor[ZeroedPageList][Color].Flink != LIST_HEAD) ||
+        (MmZeroedPageListHead.Total != 0))
+    {
+        return MiRemoveZeroPage(Color);
+    }
+
     return 0;
 }
 
