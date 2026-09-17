@@ -116,10 +116,9 @@ FORCEINLINE
 ULONG
 IOApicRead(
     _In_ ULONG_PTR Base,
-    _In_ UCHAR Register)
+    _In_ ULONG Register)
 {
     /* Select the register, then do the read */
-    ASSERT(Register <= 0x3F);
     WRITE_REGISTER_ULONG((PULONG)(Base + IOAPIC_IOREGSEL), Register);
     return READ_REGISTER_ULONG((PULONG)(Base + IOAPIC_IOWIN));
 }
@@ -128,11 +127,10 @@ FORCEINLINE
 VOID
 IOApicWrite(
     _In_ ULONG_PTR Base,
-    _In_ UCHAR Register,
+    _In_ ULONG Register,
     _In_ ULONG Value)
 {
     /* Select the register, then do the write */
-    ASSERT(Register <= 0x3F);
     WRITE_REGISTER_ULONG((PULONG)(Base + IOAPIC_IOREGSEL), Register);
     WRITE_REGISTER_ULONG((PULONG)(Base + IOAPIC_IOWIN), Value);
 }
@@ -186,7 +184,8 @@ ApicWriteIORedirectionEntry(
     _In_ IOAPIC_REDIRECTION_REGISTER ReDirReg)
 {
     PHALP_IOAPIC_UNIT Unit;
-    UCHAR Register;
+    /* Past 24 inputs the table index no longer fits in a byte */
+    ULONG Register;
 
     if (!HalpFindIoApicInput(Input, &Unit))
     {
@@ -198,7 +197,7 @@ ApicWriteIORedirectionEntry(
 
     /* The destination has to be in place before the low half unmasks the
        entry, so that an asserted input cannot reach a stale processor */
-    Register = (UCHAR)(IOAPIC_REDTBL + 2 * (Input - Unit->InputBase));
+    Register = IOAPIC_REDTBL + 2 * (Input - Unit->InputBase);
     IOApicWrite(Unit->Base, Register + 1, ReDirReg.Long1);
     IOApicWrite(Unit->Base, Register, ReDirReg.Long0);
 }
