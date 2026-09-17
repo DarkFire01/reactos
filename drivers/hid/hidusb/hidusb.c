@@ -795,6 +795,94 @@ HidUsb_GetStringIndex(
     return STATUS_SUCCESS;
 }
 
+/* The class requests that move a single report over the control pipe */
+#define HIDUSB_GET_REPORT 0x01
+#define HIDUSB_SET_REPORT 0x09
+
+/* Report kinds, as the class request wants them in the high value byte */
+#define HIDUSB_REPORT_TYPE_INPUT   0x01
+#define HIDUSB_REPORT_TYPE_OUTPUT  0x02
+#define HIDUSB_REPORT_TYPE_FEATURE 0x03
+
+/**
+ * @brief
+ * Moves one report to or from the device over the control pipe.
+ *
+ * @param[in] DeviceObject
+ * The hidusb device object.
+ *
+ * @param[in] Irp
+ * The request, whose UserBuffer holds the transfer packet.
+ *
+ * @param[in] ReportType
+ * HID_REPORT_TYPE_INPUT, _OUTPUT or _FEATURE.
+ *
+ * @param[in] IsWrite
+ * TRUE to send the report to the device, FALSE to fetch it.
+ *
+ * @return
+ * STATUS_SUCCESS, or the reason the transfer did not happen.
+ *
+ * @remarks
+ * A device that numbers its reports expects the identifier in the low byte of
+ * the request value, and keeps it in front of the buffer as well.
+ */
+static
+NTSTATUS
+HidUsb_TransferReport(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp,
+    _In_ UCHAR ReportType,
+    _In_ BOOLEAN IsWrite)
+{
+    PHID_USB_DEVICE_EXTENSION HidDeviceExtension;
+    PHID_DEVICE_EXTENSION DeviceExtension;
+    PHID_XFER_PACKET Packet;
+    NTSTATUS Status;
+    PURB Urb;
+
+    DeviceExtension = DeviceObject->DeviceExtension;
+    HidDeviceExtension = DeviceExtension->MiniDeviceExtension;
+
+    Packet = Irp->UserBuffer;
+    if (Packet == NULL || Packet->reportBuffer == NULL || Packet->reportBufferLen == 0)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    Urb = ExAllocatePoolWithTag(NonPagedPool,
+                                sizeof(struct _URB_CONTROL_VENDOR_OR_CLASS_REQUEST),
+                                HIDUSB_URB_TAG);
+    if (Urb == NULL)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlZeroMemory(Urb, sizeof(struct _URB_CONTROL_VENDOR_OR_CLASS_REQUEST));
+
+    UsbBuildVendorRequest(Urb,
+                          URB_FUNCTION_CLASS_INTERFACE,
+                          sizeof(struct _URB_CONTROL_VENDOR_OR_CLASS_REQUEST),
+                          IsWrite ? 0 : USBD_TRANSFER_DIRECTION_IN,
+                          0,
+                          IsWrite ? HIDUSB_SET_REPORT : HIDUSB_GET_REPORT,
+                          (USHORT)((ReportType << 8) | Packet->reportId),
+                          HidDeviceExtension->InterfaceInfo->InterfaceNumber,
+                          Packet->reportBuffer,
+                          NULL,
+                          Packet->reportBufferLen,
+                          NULL);
+
+    Status = Hid_DispatchUrb(DeviceObject, Urb);
+    if (NT_SUCCESS(Status))
+    {
+        Irp->IoStatus.Information = Urb->UrbControlVendorClassRequest.TransferBufferLength;
+    }
+
+    ExFreePoolWithTag(Urb, HIDUSB_URB_TAG);
+    return Status;
+}
+
 NTSTATUS
 NTAPI
 HidUsb_GetReportDescriptor(
@@ -992,16 +1080,15 @@ HidInternalDeviceControl(
         }
         case IOCTL_HID_WRITE_REPORT:
         {
-            DPRINT1("[HIDUSB] IOCTL_HID_WRITE_REPORT not implemented \n");
-            ASSERT(FALSE);
-            Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
+            Status = HidUsb_TransferReport(DeviceObject, Irp, HIDUSB_REPORT_TYPE_OUTPUT, TRUE);
+            DPRINT("[HIDUSB] IOCTL_HID_WRITE_REPORT Status %x\n", Status);
+            Irp->IoStatus.Status = Status;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_NOT_IMPLEMENTED;
+            return Status;
         }
         case IOCTL_GET_PHYSICAL_DESCRIPTOR:
         {
-            DPRINT1("[HIDUSB] IOCTL_GET_PHYSICAL_DESCRIPTOR not implemented \n");
-            ASSERT(FALSE);
+            DPRINT1("[HIDUSB] IOCTL_GET_PHYSICAL_DESCRIPTOR not implemented\n");
             Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_NOT_IMPLEMENTED;
@@ -1016,35 +1103,35 @@ HidInternalDeviceControl(
         }
         case IOCTL_HID_GET_FEATURE:
         {
-            DPRINT1("[HIDUSB] IOCTL_HID_GET_FEATURE not implemented \n");
-            ASSERT(FALSE);
-            Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
+            Status = HidUsb_TransferReport(DeviceObject, Irp, HIDUSB_REPORT_TYPE_FEATURE, FALSE);
+            DPRINT("[HIDUSB] IOCTL_HID_GET_FEATURE Status %x\n", Status);
+            Irp->IoStatus.Status = Status;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_NOT_IMPLEMENTED;
+            return Status;
         }
         case IOCTL_HID_SET_FEATURE:
         {
-            DPRINT1("[HIDUSB] IOCTL_HID_SET_FEATURE not implemented \n");
-            ASSERT(FALSE);
-            Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
+            Status = HidUsb_TransferReport(DeviceObject, Irp, HIDUSB_REPORT_TYPE_FEATURE, TRUE);
+            DPRINT("[HIDUSB] IOCTL_HID_SET_FEATURE Status %x\n", Status);
+            Irp->IoStatus.Status = Status;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_NOT_IMPLEMENTED;
+            return Status;
         }
         case IOCTL_HID_SET_OUTPUT_REPORT:
         {
-            DPRINT1("[HIDUSB] IOCTL_HID_SET_OUTPUT_REPORT not implemented \n");
-            ASSERT(FALSE);
-            Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
+            Status = HidUsb_TransferReport(DeviceObject, Irp, HIDUSB_REPORT_TYPE_OUTPUT, TRUE);
+            DPRINT("[HIDUSB] IOCTL_HID_SET_OUTPUT_REPORT Status %x\n", Status);
+            Irp->IoStatus.Status = Status;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_NOT_IMPLEMENTED;
+            return Status;
         }
         case IOCTL_HID_GET_INPUT_REPORT:
         {
-            DPRINT1("[HIDUSB] IOCTL_HID_GET_INPUT_REPORT not implemented \n");
-            ASSERT(FALSE);
-            Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
+            Status = HidUsb_TransferReport(DeviceObject, Irp, HIDUSB_REPORT_TYPE_INPUT, FALSE);
+            DPRINT("[HIDUSB] IOCTL_HID_GET_INPUT_REPORT Status %x\n", Status);
+            Irp->IoStatus.Status = Status;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_NOT_IMPLEMENTED;
+            return Status;
         }
         case IOCTL_HID_GET_STRING:
         {
@@ -1091,8 +1178,7 @@ HidInternalDeviceControl(
         }
         case IOCTL_HID_GET_MS_GENRE_DESCRIPTOR:
         {
-            DPRINT1("[HIDUSB] IOCTL_HID_GET_MS_GENRE_DESCRIPTOR not implemented \n");
-            ASSERT(FALSE);
+            DPRINT1("[HIDUSB] IOCTL_HID_GET_MS_GENRE_DESCRIPTOR not implemented\n");
             Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_NOT_IMPLEMENTED;
