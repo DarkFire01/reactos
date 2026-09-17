@@ -36,30 +36,21 @@ WDF_BIND_INFO BindInfo =
 PDRIVER_UNLOAD pOriginalUnload = NULL;
 UNICODE_STRING gRegistryPath;
 
+/*
+ * A KMDF class extension such as ucx01000 is reached through a function table
+ * that stays empty until the framework binds the class to this client. Each
+ * client places a WDF_CLASS_BIND_INFO in ".kmdfclassbind$b", so the two markers
+ * below bracket every descriptor once the linker merges the section.
+ */
 
-/*
- * Class-library binding.
- *
- * A KMDF class extension (ucx01000, for one) is reached through a function
- * table that stays empty until the framework binds the class to this client.
- * Each client places a WDF_CLASS_BIND_INFO in ".kmdfclassbind$b"; the two
- * markers below sit in "$a" and "$c", so the linker's sorted merge of
- * ".kmdfclassbind$*" leaves every descriptor between them.
- *
- * Entries are validated by Size and ClassName rather than trusted blindly,
- * because the merge can pad between contributions.
- */
-/*
- * The whole section name is passed rather than just the suffix: MSVC does not
- * concatenate adjacent string literals inside __declspec(allocate()), so a
- * split name reaches the linker as ".kmdfclassbind$" with the suffix dropped.
- */
+/* MSVC does not join adjacent string literals inside __declspec(allocate()),
+   so the whole section name is passed rather than just the suffix. */
 #if defined(__GNUC__)
-#define FX_CLASS_BIND_SECTION(_section_)    __attribute__((section(_section_), used, aligned(4)))
+#define FX_CLASS_BIND_SECTION(_Section_) __attribute__((section(_Section_), used, aligned(4)))
 #else
 #pragma section(".kmdfclassbind$a", read, write)
 #pragma section(".kmdfclassbind$c", read, write)
-#define FX_CLASS_BIND_SECTION(_section_)    __declspec(allocate(_section_))
+#define FX_CLASS_BIND_SECTION(_Section_) __declspec(allocate(_Section_))
 #endif
 
 FX_CLASS_BIND_SECTION(".kmdfclassbind$a") WDF_CLASS_BIND_INFO FxClassBindStart = { 0 };
@@ -67,14 +58,12 @@ FX_CLASS_BIND_SECTION(".kmdfclassbind$c") WDF_CLASS_BIND_INFO FxClassBindEnd = {
 
 /**
  * @brief
- * Finds the next class-bind descriptor at or after a point in the merged
+ * Finds the next class bind descriptor at or after a point in the merged
  * section.
  *
- * The linker pads between the merged contributions, so the descriptors are not
- * evenly spaced and a fixed stride would walk into the padding. Scan forward a
- * word at a time and recognize an entry by its header instead. Padding is
- * zeroed, so a Size of sizeof(WDF_CLASS_BIND_INFO) together with a class name
- * and a function table identifies a real descriptor.
+ * The linker pads between the merged contributions, so a fixed stride would
+ * walk into the padding. Padding is zeroed, so a full sized header carrying a
+ * class name and a function table marks a real descriptor.
  *
  * @param[in] Cursor
  * Where to start looking.
@@ -93,11 +82,11 @@ FxNextClassBindEntry(
 {
     PWDF_CLASS_BIND_INFO entry;
 
-    while ((Cursor + sizeof(WDF_CLASS_BIND_INFO)) <= End)
+    while ((Cursor + sizeof(*entry)) <= End)
     {
         entry = (PWDF_CLASS_BIND_INFO)Cursor;
 
-        if ((entry->Size == sizeof(WDF_CLASS_BIND_INFO)) &&
+        if ((entry->Size == sizeof(*entry)) &&
             (entry->ClassName != NULL) &&
             (entry->FunctionTable != NULL))
         {
@@ -130,7 +119,7 @@ FxUnbindClassesUpTo(
     PUCHAR cursor;
     PUCHAR end;
 
-    cursor = (PUCHAR)&FxClassBindStart + sizeof(WDF_CLASS_BIND_INFO);
+    cursor = (PUCHAR)&FxClassBindStart + sizeof(FxClassBindStart);
     end = (PUCHAR)&FxClassBindEnd;
 
     while ((entry = FxNextClassBindEntry(cursor, end)) != NULL)
@@ -141,7 +130,7 @@ FxUnbindClassesUpTo(
         }
 
         WdfVersionUnbindClass(&BindInfo, (PWDF_COMPONENT_GLOBALS)WdfDriverGlobals, entry);
-        cursor = (PUCHAR)entry + sizeof(WDF_CLASS_BIND_INFO);
+        cursor = (PUCHAR)entry + sizeof(*entry);
     }
 }
 
@@ -163,8 +152,8 @@ FxUnbindClasses(VOID)
  * @brief
  * Binds every class library this driver declared a descriptor for.
  *
- * Until this runs the client's class function table is all zeroes, so the
- * first class API it calls is a call through a NULL pointer.
+ * Until this runs the client's class function table is all zeroes, so its first
+ * class API call goes through a NULL pointer.
  *
  * @return
  * STATUS_SUCCESS on success, or the NTSTATUS the failing bind produced.
@@ -178,7 +167,7 @@ FxBindClasses(VOID)
     PUCHAR end;
     NTSTATUS status;
 
-    cursor = (PUCHAR)&FxClassBindStart + sizeof(WDF_CLASS_BIND_INFO);
+    cursor = (PUCHAR)&FxClassBindStart + sizeof(FxClassBindStart);
     end = (PUCHAR)&FxClassBindEnd;
 
     while ((entry = FxNextClassBindEntry(cursor, end)) != NULL)
@@ -188,12 +177,12 @@ FxBindClasses(VOID)
                                      entry);
         if (!NT_SUCCESS(status))
         {
-            /* Leave the client no half-bound classes to trip over. */
+            /* Leave the client no partly bound classes to trip over */
             FxUnbindClassesUpTo(entry);
             return status;
         }
 
-        cursor = (PUCHAR)entry + sizeof(WDF_CLASS_BIND_INFO);
+        cursor = (PUCHAR)entry + sizeof(*entry);
     }
 
     return STATUS_SUCCESS;
