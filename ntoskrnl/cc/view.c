@@ -1030,12 +1030,16 @@ CcRosEnsureVacbResident(
     _In_ BOOLEAN Wait,
     _In_ BOOLEAN NoRead,
     _In_ ULONG Offset,
-    _In_ ULONG Length
+    _In_ ULONG Length,
+    _Out_opt_ PBOOLEAN Fetched
 )
 {
     PROS_SHARED_CACHE_MAP SharedCacheMap = Vacb->SharedCacheMap;
 
     ASSERT((Offset + Length) <= VACB_MAPPING_GRANULARITY);
+
+    if (Fetched != NULL)
+        *Fetched = FALSE;
 
 #if 0
     if ((Vacb->FileOffset.QuadPart + Offset) > SharedCacheMap->SectionSize.QuadPart)
@@ -1062,6 +1066,10 @@ CcRosEnsureVacbResident(
                                                         Length);
             if (!NT_SUCCESS(Status))
                 ExRaiseStatus(Status);
+
+            /* This one came off the disk, whoever asked may want the next one early */
+            if (Fetched != NULL)
+                *Fetched = TRUE;
         }
     }
 
