@@ -16,6 +16,7 @@
 /* GLOBALS ********************************************************************/
 
 ULONG PciDebugPortsCount;
+PCI_DEBUG_DEVICE_LOCATION PciDebugPorts[MAX_DEBUGGING_DEVICES_SUPPORTED];
 
 RTL_RANGE_LIST PciIsaBitExclusionList;
 RTL_RANGE_LIST PciVgaAndIsaBitExclusionList;
@@ -747,15 +748,25 @@ BOOLEAN
 NTAPI
 PciIsDeviceOnDebugPath(IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    PAGED_CODE();
+    ULONG Index;
 
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PAGED_CODE();
 
     /* Check for too many, or no, debug ports */
     ASSERT(PciDebugPortsCount <= MAX_DEBUGGING_DEVICES_SUPPORTED);
     if (!PciDebugPortsCount) return FALSE;
 
-    /* No debugging device locations are recorded, so there is nothing to match */
+    /* The recorded bus is the one the device was enumerated on */
+    for (Index = 0; Index < PciDebugPortsCount; ++Index)
+    {
+        if ((PciDebugPorts[Index].BusNumber ==
+             DeviceExtension->ParentFdoExtension->BaseBus) &&
+            (PciDebugPorts[Index].Slot.u.AsULONG == DeviceExtension->Slot.u.AsULONG))
+        {
+            return TRUE;
+        }
+    }
+
     return FALSE;
 }
 
