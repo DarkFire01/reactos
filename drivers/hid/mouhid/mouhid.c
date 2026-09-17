@@ -772,6 +772,7 @@ MouHid_StartDevice(
 {
     NTSTATUS Status;
     ULONG Buttons;
+    ULONG ListLength;
     HID_COLLECTION_INFORMATION Information;
     PVOID PreparsedData;
     HIDP_CAPS Capabilities;
@@ -864,10 +865,15 @@ MouHid_StartDevice(
                                       HID_USAGE_PAGE_BUTTON,
                                       PreparsedData);
     DPRINT("[MOUHID] Buttons %lu\n", Buttons);
-    ASSERT(Buttons > 0);
+
+    /*
+     * A pointer that reports nothing on the button page is still usable, so the
+     * lists are given room for one entry and left empty rather than refused.
+     */
+    ListLength = max(Buttons, 1);
 
     /* now allocate an array for those buttons */
-    Buffer = ExAllocatePoolWithTag(NonPagedPool, sizeof(USAGE) * 4 * Buttons, MOUHID_TAG);
+    Buffer = ExAllocatePoolWithTag(NonPagedPool, sizeof(USAGE) * 4 * ListLength, MOUHID_TAG);
     if (!Buffer)
     {
         /* no memory */
@@ -877,13 +883,13 @@ MouHid_StartDevice(
     DeviceExtension->UsageListBuffer = Buffer;
 
     /* init usage lists */
-    RtlZeroMemory(Buffer, sizeof(USAGE) * 4 * Buttons);
+    RtlZeroMemory(Buffer, sizeof(USAGE) * 4 * ListLength);
     DeviceExtension->CurrentUsageList = Buffer;
-    Buffer += Buttons;
+    Buffer += ListLength;
     DeviceExtension->PreviousUsageList = Buffer;
-    Buffer += Buttons;
+    Buffer += ListLength;
     DeviceExtension->MakeUsageList = Buffer;
-    Buffer += Buttons;
+    Buffer += ListLength;
     DeviceExtension->BreakUsageList = Buffer;
 
     /* store number of buttons */
