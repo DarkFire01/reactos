@@ -6,6 +6,7 @@
  */
 
 #include "kdnet.h"
+#include <stdio.h>          /* _vsnprintf, for the early log */
 #include <ndk/haltypes.h>
 #include <ndk/halfuncs.h>
 #include <reactos/kdnetextensibility.h>
@@ -16,12 +17,178 @@ extern PDEBUG_NET_DATA      KdNetData;
 extern DEBUG_NET_DATA       KdNetDataStorage;
 extern DEBUG_NET_PARAMETERS KdNetParameters;
 
+/*
+ * An extensibility module reads the debug device descriptor at fixed offsets,
+ * because it was built against the Windows headers. Keep ours at those offsets:
+ * a version-gated field that drops out shifts VendorID and BaseClass, and the
+ * extension then rejects a perfectly good adapter.
+ */
+C_ASSERT(FIELD_OFFSET(DEBUG_DEVICE_DESCRIPTOR, VendorID) == 0x0A);
+C_ASSERT(FIELD_OFFSET(DEBUG_DEVICE_DESCRIPTOR, DeviceID) == 0x0C);
+C_ASSERT(FIELD_OFFSET(DEBUG_DEVICE_DESCRIPTOR, BaseClass) == 0x0E);
+C_ASSERT(FIELD_OFFSET(DEBUG_DEVICE_DESCRIPTOR, SubClass) == 0x0F);
+#ifdef _WIN64
+C_ASSERT(FIELD_OFFSET(DEBUG_DEVICE_DESCRIPTOR, BaseAddress) == 0x18);
+C_ASSERT(FIELD_OFFSET(DEBUG_DEVICE_DESCRIPTOR, Memory.Length) == 0xC0);
+#endif
+
 KDNET_SHARED_DATA KdNetSharedData = {0};
 BOOLEAN KdNetInitialized = FALSE;
 PVOID KdNetHardwareContext = NULL;
 
 /* FrLdrDbgPrint is a very-early boot printf-like routine (COM1). */
 ULONG (*FrLdrDbgPrint)(const char *Format, ...);
+
+/*
+ * Early logging, off by default. It must not go through the loader's print
+ * routine: LoaderBlock->u.I386.CommonDataArea points into loader memory, the
+ * firmware has already been exited, and calling it from phase 0 hangs the
+ * machine. Switch this on to log through the port I/O below instead.
+ */
+#define KDNET_EARLY_LOG 1
+
+#if KDNET_EARLY_LOG
+
+/*
+ * kdnet's own serial output. COM1 at 115200 8N1; change the base for COM2.
+ *
+ * The transport cannot log through LoaderBlock->u.I386.CommonDataArea: that
+ * points at the loader's print routine, which runs from loader memory with the
+ * firmware already exited, and the kernel reclaims that memory underneath it.
+ * Everything here is self-contained port I/O, so a line printed at phase 0 does
+ * not depend on anything outside this module.
+ */
+#define KDNET_COM_BASE      0x3F8
+#define KDNET_COM_THR       (KDNET_COM_BASE + 0)
+#define KDNET_COM_DLL       (KDNET_COM_BASE + 0)
+#define KDNET_COM_IER       (KDNET_COM_BASE + 1)
+#define KDNET_COM_DLM       (KDNET_COM_BASE + 1)
+#define KDNET_COM_FCR       (KDNET_COM_BASE + 2)
+#define KDNET_COM_LCR       (KDNET_COM_BASE + 3)
+#define KDNET_COM_MCR       (KDNET_COM_BASE + 4)
+#define KDNET_COM_LSR       (KDNET_COM_BASE + 5)
+
+#define KDNET_LSR_THRE      0x20
+#define KDNET_LCR_DLAB      0x80
+#define KDNET_LCR_8N1       0x03
+#define KDNET_FCR_ENABLE    0x07  /* enable, clear both FIFOs */
+#define KDNET_MCR_DTR_RTS   0x03
+#define KDNET_DIVISOR_115200 1
+
+/**
+ * @brief
+ * Puts COM1 into a known state.
+ *
+ * The loader usually leaves it configured, but the transport has to be able to
+ * report even when it was not asked to run on the same port.
+ */
+static
+VOID
+NTAPI
+KdNetSerialInitialize(VOID)
+{
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_IER, 0);
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_LCR, KDNET_LCR_DLAB);
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_DLL, KDNET_DIVISOR_115200);
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_DLM, 0);
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_LCR, KDNET_LCR_8N1);
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_FCR, KDNET_FCR_ENABLE);
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_MCR, KDNET_MCR_DTR_RTS);
+}
+
+/**
+ * @brief
+ * Writes one byte, waiting for the holding register to drain.
+ *
+ * @param[in] Byte
+ * The byte to write.
+ */
+static
+VOID
+NTAPI
+KdNetSerialPutByte(
+    _In_ UCHAR Byte)
+{
+    ULONG Spin;
+
+    for (Spin = 0; Spin < 100000; Spin++)
+    {
+        if (READ_PORT_UCHAR((PUCHAR)KDNET_COM_LSR) & KDNET_LSR_THRE)
+            break;
+    }
+
+    WRITE_PORT_UCHAR((PUCHAR)KDNET_COM_THR, Byte);
+}
+
+/**
+ * @brief
+ * printf for the early transport, with the shape FrLdrDbgPrint has.
+ *
+ * Variadic, so it keeps the default calling convention rather than NTAPI.
+ *
+ * @param[in] Format
+ * A printf-style format string.
+ *
+ * @return
+ * How many characters were formatted.
+ */
+static
+ULONG
+KdNetSerialPrint(
+    const char *Format,
+    ...)
+{
+    CHAR Line[512];
+    va_list Arguments;
+    int Length;
+    int Index;
+
+    va_start(Arguments, Format);
+    Length = _vsnprintf(Line, sizeof(Line) - 1, Format, Arguments);
+    va_end(Arguments);
+
+    if (Length < 0 || Length > (int)(sizeof(Line) - 1))
+        Length = (int)(sizeof(Line) - 1);
+    Line[Length] = '\0';
+
+    for (Index = 0; Index < Length; Index++)
+    {
+        if (Line[Index] == '\n')
+            KdNetSerialPutByte('\r');
+
+        KdNetSerialPutByte((UCHAR)Line[Index]);
+    }
+
+    return (ULONG)Length;
+}
+
+#else /* KDNET_EARLY_LOG */
+
+/**
+ * @brief
+ * Swallows a trace line while the early log is off.
+ *
+ * A sink rather than a null pointer: the print sites are spread across this
+ * module and the import wrappers, and only some of them test the pointer.
+ *
+ * @param[in] Format
+ * A printf-style format string. Unused.
+ *
+ * @return
+ * Zero, always.
+ */
+static
+ULONG
+KdNetSerialPrintNull(
+    const char *Format,
+    ...)
+{
+    UNREFERENCED_PARAMETER(Format);
+
+    return 0;
+}
+
+#endif /* KDNET_EARLY_LOG */
 
 /* Base36 decode (windbg ENCRYPTION_KEY scheme): each dot-separated part is a
  * base36 number forming 64 bits of the 256-bit key. Stops at the first
@@ -344,10 +511,12 @@ KdNetInitializePhase0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
     if (KdNetInitialized)
         return STATUS_SUCCESS;
 
-    if (LoaderBlock)
-        FrLdrDbgPrint = (PVOID)LoaderBlock->u.I386.CommonDataArea;
-    else
-        FrLdrDbgPrint = NULL;
+#if KDNET_EARLY_LOG
+    KdNetSerialInitialize();
+    FrLdrDbgPrint = KdNetSerialPrint;
+#else
+    FrLdrDbgPrint = KdNetSerialPrintNull;
+#endif
 
     if (FrLdrDbgPrint)
         FrLdrDbgPrint("kdnet: KdDebuggerInitialize0 LoaderBlock=%p LoadOptions=%p\n",
@@ -474,8 +643,9 @@ KdNetInitializePhase0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
             Status = KdSetupPciDeviceForDebugging((PVOID)LoaderBlock, &g_KdNetDeviceDescriptor);
 
         if (FrLdrDbgPrint)
-            FrLdrDbgPrint("kdnet: KdSetupPciDeviceForDebugging -> 0x%08lx VA=%p Len=0x%lx\n",
+            FrLdrDbgPrint("kdnet: KdSetupPciDeviceForDebugging -> 0x%08lx PA=0x%I64x VA=%p Len=0x%lx\n",
                           Status,
+                          g_KdNetDeviceDescriptor.Memory.Start.QuadPart,
                           g_KdNetDeviceDescriptor.Memory.VirtualAddress,
                           g_KdNetDeviceDescriptor.Memory.Length);
 
@@ -506,38 +676,28 @@ KdNetInitializePhase0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
                               g_KdNetDeviceDescriptor.BaseAddress[_bar].Length);
             }
 
-            /* Probe the first memory BAR ourselves to prove the mapping reaches
-             * the NIC. For an e1000 these are CTRL(0x00)/STATUS(0x08)/EECD(0x10);
-             * sane values => the mapping is good and a hung KdInitializeController
-             * is the stub's own polling, not a ReactOS mapping bug. */
+            /* Read the first memory BAR to show the mapping reaches the NIC. For
+             * an e1000 these are CTRL(0x00)/STATUS(0x08)/EECD(0x10). Reads only:
+             * the device belongs to the extension, which resets and configures
+             * it from a known state, and a reset issued from here would land
+             * while nothing can service what the device does in response. */
             for (_bar = 0; _bar < MAXIMUM_DEBUG_BARS; _bar++)
             {
                 PUCHAR _va;
+
                 if (!g_KdNetDeviceDescriptor.BaseAddress[_bar].Valid ||
                     g_KdNetDeviceDescriptor.BaseAddress[_bar].Type != 3 /* CmResourceTypeMemory */)
                     continue;
+
                 _va = (PUCHAR)g_KdNetDeviceDescriptor.BaseAddress[_bar].TranslatedAddress;
                 if (!_va)
                     continue;
+
                 FrLdrDbgPrint("kdnet: MMIO probe BAR[%lu]: +0x00=0x%08lx +0x08=0x%08lx +0x10=0x%08lx\n",
                               _bar,
                               READ_REGISTER_ULONG((PULONG)(_va + 0x00)),
                               READ_REGISTER_ULONG((PULONG)(_va + 0x08)),
                               READ_REGISTER_ULONG((PULONG)(_va + 0x10)));
-                /* Device side-effect write test: CTRL.RST (bit 26) is self-clearing
-                 * BY THE NIC. If our write reaches the device it resets and clears
-                 * the bit; if the write is swallowed the bit stays set. Unambiguous
-                 * (a cached mapping would read back our written value with RST set).
-                 * The stub resets the chip itself first, so this is harmless. */
-                WRITE_REGISTER_ULONG((PULONG)(_va + 0x00), 0x04000000);
-                { volatile ULONG _d; for (_d = 0; _d < 2000000; _d++) { } }
-                {
-                    ULONG _ctrl = READ_REGISTER_ULONG((PULONG)(_va + 0x00));
-                    FrLdrDbgPrint("kdnet: CTRL.RST test: CTRL=0x%08lx -> %s\n",
-                                  _ctrl,
-                                  (_ctrl & 0x04000000) ? "RST STUCK (write NOT reaching NIC)"
-                                                       : "RST cleared (writes reach NIC)");
-                }
                 break;
             }
 
@@ -569,18 +729,19 @@ KdNetInitializePhase0(_In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock)
          * while the NIC driver is being developed.
          */
         KdNetWireRuntimeParameters(LoaderOptions);
-
+    
         if (FrLdrDbgPrint)
             FrLdrDbgPrint("kdnet: calling KdInitializeController...\n");
         KdNetInitializeCount++;
-        Status = g_KdNetExtExports.KdInitializeController(&g_KdNetSharedData);
-        if (FrLdrDbgPrint)
+            Status = g_KdNetExtExports.KdInitializeController(&g_KdNetSharedData);
+            if (FrLdrDbgPrint)
             FrLdrDbgPrint("kdnet: KdInitializeController -> 0x%08lx\n", Status);
         if (!NT_SUCCESS(Status))
         {
             if (FrLdrDbgPrint)
                 FrLdrDbgPrint("kdnet: ext failed: HardwareID=0x%08lx ErrorString=%ws\n",
-                              KdNetHardwareId, KdNetErrorString);
+                              KdNetHardwareId,
+                              KdNetErrorString ? KdNetErrorString : L"<none>");
             return Status;
         }
 
