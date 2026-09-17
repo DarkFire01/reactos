@@ -225,3 +225,57 @@ KeSetTargetProcessorDpcEx(
 
     return STATUS_SUCCESS;
 }
+
+/**
+ * @brief
+ * Returns how many processor groups are active.
+ *
+ * @return
+ * One, as ReactOS only ever builds group 0.
+ */
+NTKRNLVISTAAPI
+USHORT
+NTAPI
+KeQueryActiveGroupCount(VOID)
+{
+    return 1;
+}
+
+/**
+ * @brief
+ * Returns how many processor groups the system supports.
+ *
+ * @return
+ * One, as ReactOS only ever builds group 0.
+ */
+NTKRNLVISTAAPI
+USHORT
+NTAPI
+KeQueryMaximumGroupCount(VOID)
+{
+    return 1;
+}
+
+/**
+ * @brief
+ * Returns the affinity of the processors that are active in a group.
+ *
+ * @param[in] GroupNumber
+ * The group to look at.
+ *
+ * @return
+ * The affinity mask, or zero for a group that does not exist.
+ */
+NTKRNLVISTAAPI
+KAFFINITY
+NTAPI
+KeQueryGroupAffinity(
+    _In_ USHORT GroupNumber)
+{
+    if (GroupNumber != 0)
+    {
+        return 0;
+    }
+
+    return KeQueryActiveProcessors();
+}

@@ -640,9 +640,12 @@
 @ stdcall -arch=i386,arm KeProfileInterrupt(ptr)
 @ stdcall KeProfileInterruptWithSource(ptr long)
 @ stdcall KePulseEvent(ptr long long)
+@ stdcall -version=0x601+ KeQueryActiveGroupCount()
 @ stdcall -version=0x601+ KeQueryActiveProcessorCountEx(long)
 @ stdcall KeQueryActiveProcessors()
+@ stdcall -version=0x601+ KeQueryGroupAffinity(long)
 @ stdcall -arch=i386,arm KeQueryInterruptTime()
+@ stdcall -version=0x601+ KeQueryMaximumGroupCount()
 @ stdcall -version=0x601+ KeQueryMaximumProcessorCountEx(long)
 ;@ cdecl -arch=x86_64 KeQueryMultiThreadProcessorSet
 ;@ cdecl -arch=x86_64 KeQueryPrcbAddress
