@@ -2085,6 +2085,13 @@ MmArmInitSystem(IN ULONG Phase,
     IncludeType[LoaderFirmwarePermanent] = FALSE;
     IncludeType[LoaderSpecialMemory] = FALSE;
     IncludeType[LoaderBBTMemory] = FALSE;
+    //
+    // The PFN database is mapped per descriptor, skipping the types
+    // MiIsMemoryTypeInvisible names, and LoaderHALCachedMemory is one of them.
+    // Leaving it in the block would put a run in there with no database behind
+    // it, and the runs are walked with MI_PFN_ELEMENT, which does not check.
+    //
+    IncludeType[LoaderHALCachedMemory] = FALSE;
     if (Phase == 0)
     {
         /* Count physical pages on the system */
