@@ -624,6 +624,177 @@ HidUsb_ReadReport(
 }
 
 
+/**
+ * @brief
+ * Reads a string descriptor off the device and hands back its characters
+ * without the descriptor header.
+ *
+ * @param[in] DeviceObject
+ * The hidusb device object.
+ *
+ * @param[in] Index
+ * Index of the string descriptor.
+ *
+ * @param[in] LanguageId
+ * Language the string is wanted in.
+ *
+ * @param[out] Buffer
+ * Receives the characters, null terminated when there is room.
+ *
+ * @param[in] BufferLength
+ * Size of @p Buffer, in bytes.
+ *
+ * @param[out] BytesReturned
+ * Receives the number of bytes written to @p Buffer.
+ *
+ * @return
+ * STATUS_SUCCESS, or the reason the descriptor could not be read.
+ */
+static
+NTSTATUS
+HidUsb_GetStringDescriptor(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ UCHAR Index,
+    _In_ USHORT LanguageId,
+    _Out_writes_bytes_(BufferLength) PVOID Buffer,
+    _In_ ULONG BufferLength,
+    _Out_ PULONG BytesReturned)
+{
+    PUSB_STRING_DESCRIPTOR Descriptor = NULL;
+    ULONG DescriptorLength;
+    ULONG StringLength;
+    NTSTATUS Status;
+
+    *BytesReturned = 0;
+
+    /* The header of the descriptor states how long the whole of it is */
+    DescriptorLength = sizeof(USB_STRING_DESCRIPTOR);
+    Status = Hid_GetDescriptor(DeviceObject,
+                               URB_FUNCTION_GET_DESCRIPTOR_FROM_DEVICE,
+                               sizeof(struct _URB_CONTROL_DESCRIPTOR_REQUEST),
+                               (PVOID *)&Descriptor,
+                               &DescriptorLength,
+                               USB_STRING_DESCRIPTOR_TYPE,
+                               Index,
+                               LanguageId);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+
+    DescriptorLength = Descriptor->bLength;
+    ExFreePoolWithTag(Descriptor, HIDUSB_TAG);
+    Descriptor = NULL;
+
+    /* A descriptor with no characters in it is an empty string */
+    if (DescriptorLength <= FIELD_OFFSET(USB_STRING_DESCRIPTOR, bString))
+    {
+        if (BufferLength >= sizeof(WCHAR))
+        {
+            *(PWCHAR)Buffer = UNICODE_NULL;
+            *BytesReturned = sizeof(WCHAR);
+        }
+
+        return STATUS_SUCCESS;
+    }
+
+    /* Now that the length is known, read the descriptor for real */
+    Status = Hid_GetDescriptor(DeviceObject,
+                               URB_FUNCTION_GET_DESCRIPTOR_FROM_DEVICE,
+                               sizeof(struct _URB_CONTROL_DESCRIPTOR_REQUEST),
+                               (PVOID *)&Descriptor,
+                               &DescriptorLength,
+                               USB_STRING_DESCRIPTOR_TYPE,
+                               Index,
+                               LanguageId);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+
+    /* Trust whichever length is smaller, the device may report back less */
+    StringLength = min(DescriptorLength, Descriptor->bLength);
+    if (StringLength <= FIELD_OFFSET(USB_STRING_DESCRIPTOR, bString))
+    {
+        StringLength = 0;
+    }
+    else
+    {
+        StringLength -= FIELD_OFFSET(USB_STRING_DESCRIPTOR, bString);
+    }
+
+    if (StringLength > BufferLength)
+    {
+        ExFreePoolWithTag(Descriptor, HIDUSB_TAG);
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+
+    RtlCopyMemory(Buffer, Descriptor->bString, StringLength);
+    *BytesReturned = StringLength;
+
+    /* The device leaves the string unterminated, the caller expects it to be */
+    if (StringLength + sizeof(WCHAR) <= BufferLength)
+    {
+        *(PWCHAR)((PUCHAR)Buffer + StringLength) = UNICODE_NULL;
+        *BytesReturned = StringLength + sizeof(WCHAR);
+    }
+
+    ExFreePoolWithTag(Descriptor, HIDUSB_TAG);
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Turns the string identifier of IOCTL_HID_GET_STRING into the descriptor
+ * index the device published in its device descriptor.
+ *
+ * @param[in] DeviceDescriptor
+ * The device descriptor of the device.
+ *
+ * @param[in] StringId
+ * One of the HID_STRING_ID_Ixxx identifiers.
+ *
+ * @param[out] Index
+ * Receives the descriptor index.
+ *
+ * @return
+ * STATUS_SUCCESS, or STATUS_INVALID_PARAMETER for an identifier the device
+ * carries no string for.
+ */
+static
+NTSTATUS
+HidUsb_GetStringIndex(
+    _In_ PUSB_DEVICE_DESCRIPTOR DeviceDescriptor,
+    _In_ ULONG StringId,
+    _Out_ PUCHAR Index)
+{
+    switch (StringId)
+    {
+        case HID_STRING_ID_IMANUFACTURER:
+            *Index = DeviceDescriptor->iManufacturer;
+            break;
+
+        case HID_STRING_ID_IPRODUCT:
+            *Index = DeviceDescriptor->iProduct;
+            break;
+
+        case HID_STRING_ID_ISERIALNUMBER:
+            *Index = DeviceDescriptor->iSerialNumber;
+            break;
+
+        default:
+            return STATUS_INVALID_PARAMETER;
+    }
+
+    /* A zero index means the device does not carry that string */
+    if (*Index == 0)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NTAPI
 HidUsb_GetReportDescriptor(
@@ -875,13 +1046,48 @@ HidInternalDeviceControl(
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_NOT_IMPLEMENTED;
         }
+        case IOCTL_HID_GET_STRING:
+        {
+            ULONG StringId = (ULONG)(ULONG_PTR)IoStack->Parameters.DeviceIoControl.Type3InputBuffer;
+            UCHAR StringIndex;
+
+            /* The low word names the string, the high word the language */
+            Status = HidUsb_GetStringIndex(HidDeviceExtension->DeviceDescriptor,
+                                           StringId & 0xFFFF,
+                                           &StringIndex);
+            if (NT_SUCCESS(Status))
+            {
+                Status = HidUsb_GetStringDescriptor(DeviceObject,
+                                                    StringIndex,
+                                                    (USHORT)(StringId >> 16),
+                                                    Irp->UserBuffer,
+                                                    IoStack->Parameters.DeviceIoControl.OutputBufferLength,
+                                                    &Length);
+            }
+
+            DPRINT("[HIDUSB] IOCTL_HID_GET_STRING Status %x\n", Status);
+            Irp->IoStatus.Information = NT_SUCCESS(Status) ? Length : 0;
+            Irp->IoStatus.Status = Status;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return Status;
+        }
         case IOCTL_HID_GET_INDEXED_STRING:
         {
-            DPRINT1("[HIDUSB] IOCTL_HID_GET_INDEXED_STRING not implemented \n");
-            ASSERT(FALSE);
-            Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
+            ULONG StringId = (ULONG)(ULONG_PTR)IoStack->Parameters.DeviceIoControl.Type3InputBuffer;
+
+            /* Here the low word is the descriptor index itself */
+            Status = HidUsb_GetStringDescriptor(DeviceObject,
+                                                (UCHAR)(StringId & 0xFF),
+                                                (USHORT)(StringId >> 16),
+                                                Irp->UserBuffer,
+                                                IoStack->Parameters.DeviceIoControl.OutputBufferLength,
+                                                &Length);
+
+            DPRINT("[HIDUSB] IOCTL_HID_GET_INDEXED_STRING Status %x\n", Status);
+            Irp->IoStatus.Information = NT_SUCCESS(Status) ? Length : 0;
+            Irp->IoStatus.Status = Status;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_NOT_IMPLEMENTED;
+            return Status;
         }
         case IOCTL_HID_GET_MS_GENRE_DESCRIPTOR:
         {
