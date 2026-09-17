@@ -394,6 +394,11 @@ CcUninitializeCacheMap (
     }
 
     Status = CcRosReleaseFileCache(FileObject);
+
+    /* Nothing of a file cut down to nothing is worth keeping */
+    if ((TruncateSize != NULL) && (TruncateSize->QuadPart == 0))
+        MmForceSectionClosed(FileObject->SectionObjectPointer, FALSE);
+
     if (UninitializeCompleteEvent)
     {
         KeSetEvent(&UninitializeCompleteEvent->Event, IO_NO_INCREMENT, FALSE);
