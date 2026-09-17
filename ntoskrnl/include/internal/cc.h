@@ -203,6 +203,9 @@ typedef struct _ROS_SHARED_CACHE_MAP
 #endif
 } ROS_SHARED_CACHE_MAP, *PROS_SHARED_CACHE_MAP;
 
+/* What a view brings in at once when it has to reach the disk for any of it */
+#define CC_READ_CHUNK_SIZE (64 * 1024)
+
 #define READAHEAD_DISABLED 0x1
 #define WRITEBEHIND_DISABLED 0x2
 #define SHARED_CACHE_MAP_IN_CREATION 0x4
