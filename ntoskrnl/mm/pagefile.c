@@ -100,7 +100,137 @@ static BOOLEAN MmSwapSpaceMessage = FALSE;
 
 static BOOLEAN MmSystemPageFileLocated = FALSE;
 
+/* Smallest worthwhile growth of a paging file */
+#define MI_EXTEND_PAGE_FILE_PAGES ((16 * 1024 * 1024) / PAGE_SIZE)
+
+static WORK_QUEUE_ITEM MiPageFileExtendWorkItem;
+static LONG MiPageFileExtendPending;
+static BOOLEAN MiPageFilesCanExtend;
+
 /* FUNCTIONS *****************************************************************/
+
+/**
+ * @brief Grows one paging file towards its maximum size.
+ *
+ * @param[in,out] PagingFile
+ * The file to grow.
+ *
+ * @return TRUE if the file grew, FALSE otherwise.
+ *
+ * @remarks Runs at passive level, the file is written to.
+ */
+static
+BOOLEAN
+MiExtendPagingFile(
+    _Inout_ PMMPAGING_FILE PagingFile)
+{
+    PFN_NUMBER Extend, NewSize;
+    IO_STATUS_BLOCK IoStatus;
+    LARGE_INTEGER EndOfFile;
+    NTSTATUS Status;
+    KIRQL OldIrql;
+
+    if (PagingFile->Size >= PagingFile->MaximumSize)
+        return FALSE;
+
+    /* Take a quarter of what the file holds, the smallest step is worth the write */
+    Extend = max(PagingFile->Size / 4, MI_EXTEND_PAGE_FILE_PAGES);
+    Extend = min(Extend, PagingFile->MaximumSize - PagingFile->Size);
+    NewSize = PagingFile->Size + Extend;
+
+    EndOfFile.QuadPart = (LONGLONG)NewSize << PAGE_SHIFT;
+    Status = ZwSetInformationFile(PagingFile->FileHandle,
+                                  &IoStatus,
+                                  &EndOfFile,
+                                  sizeof(EndOfFile),
+                                  FileEndOfFileInformation);
+    if (Status == STATUS_PENDING)
+    {
+        /* The handle is asynchronous and paging reads and writes keep their own events */
+        Status = ZwWaitForSingleObject(PagingFile->FileHandle, FALSE, NULL);
+        if (NT_SUCCESS(Status))
+            Status = IoStatus.Status;
+    }
+
+    /* The space is only there once the file holds it */
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Cannot grow the paging file to %I64d bytes: 0x%lx\n",
+                EndOfFile.QuadPart, Status);
+        return FALSE;
+    }
+
+    KeAcquireSpinLock(&MiPageFileLock, &OldIrql);
+
+    /* The pages behind the old end of the file can be handed out now */
+    RtlClearBits(PagingFile->Bitmap, (ULONG)PagingFile->Size, (ULONG)Extend);
+    PagingFile->Size = NewSize;
+    PagingFile->FreeSpace += Extend;
+    MiFreeSwapPages += Extend;
+
+    /* The system can promise what the file can hold */
+    MmTotalCommitLimit += Extend;
+    MmSwapSpaceMessage = FALSE;
+
+    KeReleaseSpinLock(&MiPageFileLock, OldIrql);
+
+    DPRINT1("MM: Paging file grown to %I64d bytes\n", EndOfFile.QuadPart);
+    return TRUE;
+}
+
+/**
+ * @brief Grows the paging files when the commit limit runs out.
+ */
+static
+VOID
+NTAPI
+MiExtendPagingFilesWorker(
+    _In_ PVOID Context)
+{
+    BOOLEAN CanExtend = FALSE;
+    ULONG i;
+
+    UNREFERENCED_PARAMETER(Context);
+
+    KeAcquireGuardedMutex(&MmPageFileCreationLock);
+
+    for (i = 0; i < MmNumberOfPagingFiles; i++)
+    {
+        if (MmPagingFile[i]->Size < MmPagingFile[i]->MaximumSize)
+        {
+            CanExtend = TRUE;
+            if (MiExtendPagingFile(MmPagingFile[i]))
+                break;
+        }
+    }
+
+    /* Nothing is left to grow, stop asking */
+    if (!CanExtend)
+        MiPageFilesCanExtend = FALSE;
+
+    KeReleaseGuardedMutex(&MmPageFileCreationLock);
+
+    InterlockedExchange(&MiPageFileExtendPending, 0);
+}
+
+/**
+ * @brief Asks for more paging file space.
+ *
+ * @remarks The caller may hold locks, the growth happens in a worker.
+ */
+VOID
+NTAPI
+MiRequestPageFileExtension(VOID)
+{
+    if (!MiPageFilesCanExtend)
+        return;
+
+    /* One request at a time is enough */
+    if (InterlockedCompareExchange(&MiPageFileExtendPending, 1, 0) != 0)
+        return;
+
+    ExQueueWorkItem(&MiPageFileExtendWorkItem, DelayedWorkQueue);
+}
 
 BOOLEAN
 NTAPI
@@ -251,6 +381,7 @@ MmInitPagingFile(VOID)
 
     KeInitializeGuardedMutex(&MmPageFileCreationLock);
     KeInitializeSpinLock(&MiPageFileLock);
+    ExInitializeWorkItem(&MiPageFileExtendWorkItem, MiExtendPagingFilesWorker, NULL);
 
     MiFreeSwapPages = 0;
     MiUsedSwapPages = 0;
@@ -845,6 +976,8 @@ EarlyQuit:
     /* Pages the file can hold are pages the system can promise */
     MmTotalCommitLimit += PagingFile->FreeSpace;
     MmTotalCommitLimitMaximum += PagingFile->MaximumSize - 1;
+    if (PagingFile->Size < PagingFile->MaximumSize)
+        MiPageFilesCanExtend = TRUE;
     KeReleaseSpinLock(&MiPageFileLock, OldIrql);
     KeReleaseGuardedMutex(&MmPageFileCreationLock);
 
