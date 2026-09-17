@@ -149,8 +149,25 @@ CcRemapBcb (
     return 0;
 }
 
+/* How far apart two reads may sit and still count as one after the other */
+#define CC_READ_AHEAD_GAP 0x200
+
+static
+BOOLEAN
+CcpIsReadContiguous(
+    _In_ LONGLONG Offset,
+    _In_ LONGLONG PreviousEnd)
+{
+    LONGLONG Gap = Offset - PreviousEnd;
+
+    if (Gap < 0)
+        Gap = -Gap;
+
+    return (Gap <= CC_READ_AHEAD_GAP);
+}
+
 /*
- * @unimplemented
+ * @implemented
  */
 VOID
 NTAPI
@@ -161,62 +178,85 @@ CcScheduleReadAhead (
 	)
 {
     KIRQL OldIrql;
-    LARGE_INTEGER NewOffset;
+    BOOLEAN Sequential;
+    LONGLONG ReadEnd, ReaderOffset, LastEnd, TargetEnd;
+    ULONG ReadAheadUnit;
     PROS_SHARED_CACHE_MAP SharedCacheMap;
     PPRIVATE_CACHE_MAP PrivateCacheMap;
 
     SharedCacheMap = FileObject->SectionObjectPointer->SharedCacheMap;
     PrivateCacheMap = FileObject->PrivateCacheMap;
 
-    /* If file isn't cached, or if read ahead is disabled, this is no op */
-    if (SharedCacheMap == NULL || PrivateCacheMap == NULL ||
+    /* If file isn't cached, if read ahead is disabled, or nothing was read, no op */
+    if (SharedCacheMap == NULL || PrivateCacheMap == NULL || Length == 0 ||
         BooleanFlagOn(SharedCacheMap->Flags, READAHEAD_DISABLED))
     {
         return;
     }
 
-    /* Round read length with read ahead mask */
-    Length = ROUND_UP(Length, PrivateCacheMap->ReadAheadMask + 1);
-    /* Compute the offset we'll reach */
-    NewOffset.QuadPart = FileOffset->QuadPart + Length;
+    /* Read ahead moves in units of what the file system asked for */
+    ReadAheadUnit = (Length + PrivateCacheMap->ReadAheadMask) & ~PrivateCacheMap->ReadAheadMask;
+    ReadEnd = FileOffset->QuadPart + Length;
 
     /* Lock read ahead spin lock */
     KeAcquireSpinLock(&PrivateCacheMap->ReadAheadSpinLock, &OldIrql);
-    /* Easy case: the file is sequentially read */
-    if (BooleanFlagOn(FileObject->Flags, FO_SEQUENTIAL_ONLY))
-    {
-        /* If we went backward, this is no go! */
-        if (NewOffset.QuadPart < PrivateCacheMap->ReadAheadOffset[1].QuadPart)
-        {
-            KeReleaseSpinLock(&PrivateCacheMap->ReadAheadSpinLock, OldIrql);
-            return;
-        }
 
-        /* FIXME: hackish, but will do the job for now */
-        PrivateCacheMap->ReadAheadOffset[1].QuadPart = NewOffset.QuadPart;
-        PrivateCacheMap->ReadAheadLength[1] = Length;
-    }
-    /* Other cases: try to find some logic in that mess... */
-    else
+    /* From now on this stream reads ahead of whoever walks it */
+    InterlockedOr((volatile long *)&PrivateCacheMap->UlongFlags,
+                  PRIVATE_CACHE_MAP_READ_AHEAD_ENABLED);
+
+    Sequential = BooleanFlagOn(FileObject->Flags, FO_SEQUENTIAL_ONLY);
+    if (!Sequential)
     {
-        /* Let's check if we always read the same way (like going down in the file)
-         * and pretend it's enough for now
+        /*
+         * Without being told, a stream only counts as one being walked when this
+         * read carries on where the last one ended, and that one carried on from
+         * the one before it. A caller picking bytes out of a file is left alone.
          */
-        if (PrivateCacheMap->FileOffset2.QuadPart >= PrivateCacheMap->FileOffset1.QuadPart &&
-            FileOffset->QuadPart >= PrivateCacheMap->FileOffset2.QuadPart)
+        if (!CcpIsReadContiguous(FileOffset->QuadPart, PrivateCacheMap->BeyondLastByte2.QuadPart) ||
+            !CcpIsReadContiguous(PrivateCacheMap->FileOffset2.QuadPart,
+                                 PrivateCacheMap->BeyondLastByte1.QuadPart))
         {
-            /* FIXME: hackish, but will do the job for now */
-            PrivateCacheMap->ReadAheadOffset[1].QuadPart = NewOffset.QuadPart;
-            PrivateCacheMap->ReadAheadLength[1] = Length;
-        }
-        else
-        {
-            /* FIXME: handle the other cases */
+            PrivateCacheMap->ReadAheadLength[0] = 0;
             KeReleaseSpinLock(&PrivateCacheMap->ReadAheadSpinLock, OldIrql);
-            UNIMPLEMENTED_ONCE;
             return;
         }
     }
+
+    /*
+     * Reading ahead again only pays off once the reader has caught up with what
+     * the last one reaches. Without this a caller taking a file a couple of
+     * kilobytes at a time queues work for every single read it does.
+     */
+    ReaderOffset = ROUND_DOWN(ReadEnd, PAGE_SIZE);
+    LastEnd = PrivateCacheMap->ReadAheadOffset[0].QuadPart;
+    if ((ReadEnd + Length + 2 * ReadAheadUnit) < LastEnd)
+    {
+        KeReleaseSpinLock(&PrivateCacheMap->ReadAheadSpinLock, OldIrql);
+        return;
+    }
+
+    /* Carry on from there, or from this read once it has gone past it */
+    TargetEnd = LastEnd;
+    if (ReaderOffset >= LastEnd)
+        TargetEnd = ROUND_UP(ReadEnd, ReadAheadUnit);
+
+    /* A file taken straight through is worth running twice as far ahead of */
+    PrivateCacheMap->ReadAheadLength[0]++;
+    if (Sequential || (PrivateCacheMap->ReadAheadLength[0] >= 3))
+        TargetEnd += 2 * ReadAheadUnit;
+    else
+        TargetEnd += ReadAheadUnit;
+
+    /*
+     * One view at a time. A longer run holds a view while it reads it, and the
+     * reader walking into that same view then waits behind it for no gain.
+     */
+    if ((TargetEnd - ReaderOffset) > VACB_MAPPING_GRANULARITY)
+        TargetEnd = ReaderOffset + VACB_MAPPING_GRANULARITY;
+
+    PrivateCacheMap->ReadAheadOffset[1].QuadPart = ReaderOffset;
+    PrivateCacheMap->ReadAheadLength[1] = (ULONG)(TargetEnd - ReaderOffset);
 
     /* If read ahead isn't active yet */
     if (!PrivateCacheMap->Flags.ReadAheadActive)
