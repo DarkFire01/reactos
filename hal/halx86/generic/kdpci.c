@@ -179,10 +179,16 @@ HalpConfigureDebuggingDevice(
     PciDevice->SubClass = PciConfig->SubClass;
     PciDevice->ProgIf = PciConfig->ProgIf;
 
-    /* Enable decodes */
+    /*
+     * Enable decodes, and keep the device from asserting INTx. Nothing can
+     * service an interrupt from it: the debug device is claimed before the
+     * interrupt controllers are set up and it is never given a handler, so a
+     * line asserted here stays asserted.
+     */
     PciConfig->Command |= (PCI_ENABLE_MEMORY_SPACE |
                            PCI_ENABLE_IO_SPACE |
-                           PCI_ENABLE_BUS_MASTER);
+                           PCI_ENABLE_BUS_MASTER |
+                           PCI_DISABLE_LEVEL_INTERRUPT);
     HalpPhase0SetPciDataByOffset(PciBus,
                                  PciSlot,
                                  &PciConfig->Command,
