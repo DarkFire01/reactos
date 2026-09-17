@@ -100,7 +100,7 @@ UacpipGetDevicePropertyData(PDEVICE_OBJECT Pdo, CONST DEVPROPKEY *Key, LCID Lcid
 // DEVPKEY for the INTERRUPT_CONNECTION_DATA device property.
 static const DEVPROPKEY UacpiInterruptConnectionDataKey = {
     { 0xF0E20F09, 0xD97A, 0x49A9, { 0x80, 0x46, 0xBB, 0x6E, 0x22, 0xE6, 0xBB, 0x2E } },
-    1
+    2
 };
 #ifndef DEVPROP_TYPE_BINARY
 #define DEVPROP_TYPE_BINARY 0x00001003
