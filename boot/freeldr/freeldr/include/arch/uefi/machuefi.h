@@ -69,6 +69,16 @@ UefiGetDebugSerialPort(
     _Out_ PUSHORT Subtype,
     _Out_ PULONG64 Address);
 
+PVOID
+UefiGetSmbiosEntryPoint(
+    _Out_opt_ PULONG Length);
+
+BOOLEAN
+UefiGetSmbiosTableRange(
+    _In_ PVOID EntryPoint,
+    _Out_ PULONGLONG TableAddress,
+    _Out_ PULONG TableLength);
+
 VOID
 UefiVideoSync(VOID);
 
