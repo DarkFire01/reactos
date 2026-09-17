@@ -2558,7 +2558,7 @@ IoUnregisterContainerNotification(
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 __drv_freesMem(Pool)
-NTKERNELAPI
+NTKRNLVISTAAPI
 NTSTATUS
 NTAPI
 IoUnregisterPlugPlayNotificationEx(
