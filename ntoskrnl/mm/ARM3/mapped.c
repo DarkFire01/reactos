@@ -1103,7 +1103,7 @@ MiDeleteDataFileMap(
     }
 
     if (!Image && MiHasModifiedDataFilePages(ControlArea))
-        DPRINT1("Modified data of %wZ could not be written\n", &FileObject->FileName);
+        DPRINT1("Modified data of control area %p could not be written\n", ControlArea);
 
     /* Nothing reaches it once the file forgets it */
     ControlArea->u.Flags.BeingDeleted = 1;
