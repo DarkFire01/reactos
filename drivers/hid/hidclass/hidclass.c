@@ -515,6 +515,7 @@ HidClass_Write(
     IO_STATUS_BLOCK IoStatusBlock;
     HID_XFER_PACKET XferPacket;
     NTSTATUS Status;
+    PUCHAR Address;
     ULONG Length;
 
     IoStack = IoGetCurrentIrpStackLocation(Irp);
@@ -522,14 +523,24 @@ HidClass_Write(
     if (Length < 1)
     {
         Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
+        Irp->IoStatus.Information = 0;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_INVALID_PARAMETER;
     }
 
+    Address = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+    if (Address == NULL)
+    {
+        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
     RtlZeroMemory(&XferPacket, sizeof(XferPacket));
     XferPacket.reportBufferLen = Length;
-    XferPacket.reportBuffer = Irp->UserBuffer;
-    XferPacket.reportId = XferPacket.reportBuffer[0];
+    XferPacket.reportBuffer = Address;
+    XferPacket.reportId = Address[0];
 
     CommonDeviceExtension = DeviceObject->DeviceExtension;
     SubIrp = IoBuildDeviceIoControlRequest(
@@ -543,8 +554,9 @@ HidClass_Write(
     if (!SubIrp)
     {
         Irp->IoStatus.Status = STATUS_NO_MEMORY;
+        Irp->IoStatus.Information = 0;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        return STATUS_NOT_IMPLEMENTED;
+        return STATUS_NO_MEMORY;
     }
     SubIrp->UserBuffer = &XferPacket;
     KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
@@ -555,6 +567,7 @@ HidClass_Write(
         Status = IoStatusBlock.Status;
     }
     Irp->IoStatus.Status = Status;
+    Irp->IoStatus.Information = NT_SUCCESS(Status) ? Length : 0;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return Status;
 }
