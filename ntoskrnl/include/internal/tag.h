@@ -29,6 +29,7 @@
 #define TAG_ATOM                    'motA'
 #define TAG_PROFILE                 'forP'
 #define TAG_ERR                     ' rrE'
+#define TAG_SMBIOS                  'BTMS'
 
 /* User Mode Debugging Manager Tag */
 #define TAG_DEBUG_EVENT 'EgbD'
