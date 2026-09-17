@@ -1383,6 +1383,9 @@ MmCleanProcessAddressSpace(IN PEPROCESS Process)
             MiUnlockProcessWorkingSetUnsafe(Process, Thread);
         }
 
+        /* Nothing a driver held outlives the process */
+        MiFreeSecuredRanges(Vad);
+
         /* The process is gone and so is what its pages were charged */
         if (Vad->u.VadFlags.CommitCharge != 0)
         {
