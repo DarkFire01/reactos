@@ -56,8 +56,13 @@ MiChargeCommitment(
     if (Committed > MmTotalCommitLimit)
     {
         InterlockedExchangeAddSizeT(&MmTotalCommittedPages, -(SSIZE_T)Pages);
+        MiRequestPageFileExtension();
         return FALSE;
     }
+
+    /* Ask for more paging file space before the limit is in the way */
+    if (Committed > (MmTotalCommitLimit - (MmTotalCommitLimit / 8)))
+        MiRequestPageFileExtension();
 
     if (Committed > MmPeakCommitment)
         MmPeakCommitment = Committed;
