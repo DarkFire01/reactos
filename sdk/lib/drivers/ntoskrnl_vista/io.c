@@ -146,3 +146,23 @@ IoSetMasterIrpStatus(
         MasterIrp->IoStatus.Status = Status;
     }
 }
+
+/**
+ * @brief
+ * Drops a PnP notification registration.
+ *
+ * @param[in] NotificationEntry
+ * The entry returned by IoRegisterPlugPlayNotification().
+ *
+ * @return
+ * The status returned by IoUnregisterPlugPlayNotification().
+ */
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTKRNLVISTAAPI
+NTSTATUS
+NTAPI
+IoUnregisterPlugPlayNotificationEx(
+    _In_ PVOID NotificationEntry)
+{
+    return IoUnregisterPlugPlayNotification(NotificationEntry);
+}
