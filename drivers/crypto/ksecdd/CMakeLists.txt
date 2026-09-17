@@ -6,6 +6,7 @@ include_directories(
 
 list(APPEND SOURCE
     ksecdd.c
+    bcrypt.c
     dispatch.c
     crypt.c
     random.c
