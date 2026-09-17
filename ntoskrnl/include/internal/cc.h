@@ -348,7 +348,8 @@ CcRosEnsureVacbResident(
     _In_ BOOLEAN Wait,
     _In_ BOOLEAN NoRead,
     _In_ ULONG Offset,
-    _In_ ULONG Length
+    _In_ ULONG Length,
+    _Out_opt_ PBOOLEAN Fetched
 );
 
 CODE_SEG("INIT")
