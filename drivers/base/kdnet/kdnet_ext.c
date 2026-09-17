@@ -36,9 +36,16 @@ ULONG KdNetHardwareId = 0;
 /* Register and port traffic is far too noisy to leave on; switch it here */
 #define KDNET_PORTLOG(fmt, ...)
 
+/* An extension's link wait stalls hundreds of times; switch it here when the
+ * stall itself is what is in question */
+#define KDNET_STALLLOG(fmt, ...)
+
 /* Physical address lookups are logged, but only the first few */
 #define KDNET_ADDRESSLOG_MAX 120
 static ULONG KdNetAddressLogCount = 0;
+
+/* The first stall is reported once, to show the calibration was reached */
+static BOOLEAN KdNetStallReported = FALSE;
 
 static struct _DEBUG_DEVICE_DESCRIPTOR *KdNetDevice = NULL;
 
@@ -304,8 +311,9 @@ KdNetWritePortULong64(
  * HAL calibrates KeGetPcr()->StallScaleFactor. The factor is still
  * INITIAL_STALL_COUNT, so that routine under-delays by roughly a thousandfold
  * and an extension's multi-second auto-negotiation wait expires in a few
- * milliseconds. The architecture layer's cycle counter is calibrated against
- * an independent hardware timer and does not have that problem.
+ * milliseconds. The architecture layer's cycle counter takes its rate from
+ * CPUID, or from the 8254 on a part that does not report one, and does not
+ * have that problem.
  *
  * @param[in] Microseconds
  * How long to wait.
@@ -316,10 +324,24 @@ NTAPI
 KdNetStallExecutionProcessor(
     _In_ ULONG Microseconds)
 {
+    ULONG64 TicksPerUs;
     ULONG64 Target;
 
-    Target = KdNetReadTimeStampCounter() +
-             (ULONG64)Microseconds * KdNetGetTicksPerMicrosecond();
+    /* Reported before the rate is asked for. Calibration is the one thing on
+     * this path that can take real time, so this line says whether an
+     * extension that went quiet had even reached its first delay. */
+    if (!KdNetStallReported)
+    {
+        KdNetStallReported = TRUE;
+
+        if (FrLdrDbgPrint)
+            FrLdrDbgPrint("kdnet: first stall request %lu us\n", Microseconds);
+    }
+
+    KDNET_STALLLOG("kdnet: stall %lu us\n", Microseconds);
+
+    TicksPerUs = KdNetGetTicksPerMicrosecond();
+    Target = KdNetReadTimeStampCounter() + (ULONG64)Microseconds * TicksPerUs;
 
     while (KdNetReadTimeStampCounter() < Target)
         YieldProcessor();
