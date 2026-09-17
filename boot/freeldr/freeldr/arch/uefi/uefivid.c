@@ -496,9 +496,6 @@ UefiInitializeGop(VOID)
         return Status;
     }
 
-    /* We don't need high resolutions for freeldr */
-    gop->SetMode(gop, LOWEST_SUPPORTED_RES);
-
     /* Physical format of the pixel */
     PixelFormat = gop->Mode->Info->PixelFormat;
     switch (PixelFormat)
