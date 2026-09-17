@@ -2598,12 +2598,20 @@ MiProtectVirtualMemory(IN PEPROCESS Process,
         goto FailPath;
     }
 
-    /* Check for a VAD whose protection can't be changed */
-    if (Vad->u.VadFlags.NoChange == 1)
+    /* A VAD that cannot change, or holds a range for a driver, says what is allowed */
+    if ((Vad->u.VadFlags.NoChange == 1) ||
+        (Vad->u2.VadFlags2.OneSecured) ||
+        (Vad->u2.VadFlags2.MultipleSecured))
     {
-        DPRINT1("Trying to change protection of a NoChange VAD\n");
-        Status = STATUS_INVALID_PAGE_PROTECTION;
-        goto FailPath;
+        Status = MiCheckSecuredVad(Vad,
+                                   (PVOID)StartingAddress,
+                                   EndingAddress - StartingAddress + 1,
+                                   ProtectionMask);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Trying to change protection of a secured VAD\n");
+            goto FailPath;
+        }
     }
 
     /* Is this section, or private memory? */
@@ -3065,8 +3073,98 @@ MmGetVirtualForPhysical(IN PHYSICAL_ADDRESS PhysicalAddress)
     return 0;
 }
 
-/*
- * @unimplemented
+/**
+ * @brief Records a range of a VAD as held by a driver.
+ *
+ * @param[in,out] Vad
+ * VAD the range belongs to.
+ *
+ * @param[in] StartAddress
+ * First byte of the range.
+ *
+ * @param[in] EndAddress
+ * Last byte of the range.
+ *
+ * @param[in] ReadOnly
+ * The driver only needs the pages to stay readable.
+ *
+ * @return A handle for MmUnsecureVirtualMemory, NULL on failure.
+ *
+ * @remarks The address space of the process must be locked.
+ */
+static
+PVOID
+MiAddSecureEntry(
+    _Inout_ PMMVAD_LONG Vad,
+    _In_ ULONG_PTR StartAddress,
+    _In_ ULONG_PTR EndAddress,
+    _In_ BOOLEAN ReadOnly)
+{
+    PMMSECURE_ENTRY Secure;
+
+    /* The first range of a VAD lives in the VAD itself */
+    if (!Vad->u2.VadFlags2.OneSecured && !Vad->u2.VadFlags2.MultipleSecured)
+    {
+        Vad->u2.VadFlags2.OneSecured = 1;
+        Vad->u2.VadFlags2.ReadOnly = ReadOnly;
+        Vad->u3.Secured.StartVpn = StartAddress;
+        Vad->u3.Secured.EndVpn = EndAddress;
+
+        /* The VAD itself is the handle of this one */
+        return (PVOID)((ULONG_PTR)&Vad->u2 | 1);
+    }
+
+    /* Any range after the first one needs the list */
+    if (Vad->u2.VadFlags2.OneSecured)
+    {
+        Secure = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Secure), 'eSmM');
+        if (Secure == NULL)
+            return NULL;
+
+        Secure->u2.LongFlags2 = 0;
+        Secure->u2.VadFlags2.ReadOnly = Vad->u2.VadFlags2.ReadOnly;
+        Secure->Vad = Vad;
+        Secure->StartVpn = Vad->u3.Secured.StartVpn;
+        Secure->EndVpn = Vad->u3.Secured.EndVpn;
+
+        Vad->u2.VadFlags2.OneSecured = 0;
+        Vad->u2.VadFlags2.MultipleSecured = 1;
+        InitializeListHead(&Vad->u3.List);
+        InsertTailList(&Vad->u3.List, &Secure->List);
+    }
+
+    Secure = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Secure), 'eSmM');
+    if (Secure == NULL)
+        return NULL;
+
+    Secure->u2.LongFlags2 = 0;
+    Secure->u2.VadFlags2.ReadOnly = ReadOnly;
+    Secure->Vad = Vad;
+    Secure->StartVpn = StartAddress;
+    Secure->EndVpn = EndAddress;
+    InsertTailList(&Vad->u3.List, &Secure->List);
+
+    return Secure;
+}
+
+/**
+ * @brief Keeps a range of user memory in place for a driver.
+ *
+ * @param[in] Address
+ * First byte of the range.
+ *
+ * @param[in] Length
+ * Length of the range in bytes.
+ *
+ * @param[in] Mode
+ * PAGE_READONLY when the driver only reads the pages, PAGE_READWRITE otherwise.
+ *
+ * @return A handle for MmUnsecureVirtualMemory, NULL when the range cannot be held.
+ *
+ * @remarks Until the handle is given back, the process cannot free the range or
+ * take away the access the driver asked for.
+ *
+ * @implemented
  */
 PVOID
 NTAPI
@@ -3074,18 +3172,109 @@ MmSecureVirtualMemory(IN PVOID Address,
                       IN SIZE_T Length,
                       IN ULONG Mode)
 {
-    static ULONG Warn; if (!Warn++) UNIMPLEMENTED;
-    return Address;
+    PEPROCESS Process = PsGetCurrentProcess();
+    ULONG_PTR StartAddress, EndAddress;
+    PMMVAD_LONG Vad;
+    PVOID Handle = NULL;
+
+    if (Length == 0)
+        return NULL;
+
+    StartAddress = (ULONG_PTR)Address;
+    EndAddress = StartAddress + Length - 1;
+    if ((EndAddress < StartAddress) ||
+        (EndAddress > (ULONG_PTR)MM_HIGHEST_USER_ADDRESS))
+    {
+        return NULL;
+    }
+
+    /* The pages have to be there with the access the driver asks for */
+    _SEH2_TRY
+    {
+        if (Mode == PAGE_READONLY)
+            ProbeForRead(Address, Length, sizeof(CHAR));
+        else
+            ProbeForWrite(Address, Length, sizeof(CHAR));
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        _SEH2_YIELD(return NULL);
+    }
+    _SEH2_END;
+
+    StartAddress = (ULONG_PTR)PAGE_ALIGN(StartAddress);
+    EndAddress |= (PAGE_SIZE - 1);
+
+    MmLockAddressSpace(&Process->Vm);
+
+    Vad = (PMMVAD_LONG)MiLocateAddress((PVOID)StartAddress);
+    if ((Vad != NULL) &&
+        (Vad->u2.VadFlags2.LongVad == 1) &&
+        (Vad->u.VadFlags.VadType != VadAwe) &&
+        (Vad->u.VadFlags.VadType != VadDevicePhysicalMemory) &&
+        (Vad->u.VadFlags.VadType != VadLargePages) &&
+        ((EndAddress >> PAGE_SHIFT) <= Vad->EndingVpn))
+    {
+        Handle = MiAddSecureEntry(Vad,
+                                  StartAddress,
+                                  EndAddress,
+                                  (BOOLEAN)(Mode == PAGE_READONLY));
+    }
+
+    MmUnlockAddressSpace(&Process->Vm);
+    return Handle;
 }
 
-/*
- * @unimplemented
+/**
+ * @brief Gives a range of user memory back to its process.
+ *
+ * @param[in] SecureMem
+ * Handle from MmSecureVirtualMemory.
+ *
+ * @remarks Runs in the process the range was held in.
+ *
+ * @implemented
  */
 VOID
 NTAPI
 MmUnsecureVirtualMemory(IN PVOID SecureMem)
 {
-    static ULONG Warn; if (!Warn++) UNIMPLEMENTED;
+    PEPROCESS Process = PsGetCurrentProcess();
+    PMMSECURE_ENTRY Secure;
+    PMMVAD_LONG Vad;
+
+    if (SecureMem == NULL)
+        return;
+
+    MmLockAddressSpace(&Process->Vm);
+
+    if ((ULONG_PTR)SecureMem & 1)
+    {
+        /* The only range of the VAD was kept in the VAD */
+        Vad = CONTAINING_RECORD((ULONG_PTR)SecureMem & ~(ULONG_PTR)1, MMVAD_LONG, u2);
+        ASSERT(Vad->u2.VadFlags2.OneSecured == 1);
+        Vad->u2.VadFlags2.OneSecured = 0;
+        Vad->u3.Secured.StartVpn = 0;
+        Vad->u3.Secured.EndVpn = 0;
+    }
+    else
+    {
+        Secure = SecureMem;
+        Vad = Secure->Vad;
+        ASSERT(Vad->u2.VadFlags2.MultipleSecured == 1);
+        RemoveEntryList(&Secure->List);
+        ExFreePoolWithTag(Secure, 'eSmM');
+
+        /* The VAD is its own again once nothing is left */
+        if (IsListEmpty(&Vad->u3.List))
+        {
+            Vad->u2.VadFlags2.MultipleSecured = 0;
+            Vad->u3.Secured.StartVpn = 0;
+            Vad->u3.Secured.EndVpn = 0;
+        }
+    }
+
+    MmUnlockAddressSpace(&Process->Vm);
 }
 
 /* SYSTEM CALLS ***************************************************************/
@@ -5913,6 +6102,8 @@ FinalPath:
         MmUnlockAddressSpace(AddressSpace);
         if (Vad)
         {
+            MiFreeSecuredRanges(Vad);
+
             if (Vad->u.VadFlags.CommitCharge != 0)
             {
                 MiReturnCommitment(Vad->u.VadFlags.CommitCharge);
