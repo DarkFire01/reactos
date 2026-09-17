@@ -594,6 +594,8 @@
 @ stdcall KeGenericCallDpc(ptr ptr)
 @ stdcall KeGetCurrentThread()
 @ stdcall KeGetPreviousMode()
+@ stdcall -version=0x601+ KeGetProcessorIndexFromNumber(ptr)
+@ stdcall -version=0x601+ KeGetProcessorNumberFromIndex(long ptr)
 @ stdcall KeGetRecommendedSharedDataAlignment()
 @ stdcall -arch=i386 KeI386AbiosCall(long ptr ptr long)
 @ stdcall -arch=i386 KeI386AllocateGdtSelectors(ptr long)
@@ -640,8 +642,10 @@
 @ stdcall -arch=i386,arm KeProfileInterrupt(ptr)
 @ stdcall KeProfileInterruptWithSource(ptr long)
 @ stdcall KePulseEvent(ptr long long)
+@ stdcall -version=0x601+ KeQueryActiveProcessorCountEx(long)
 @ stdcall KeQueryActiveProcessors()
 @ stdcall -arch=i386,arm KeQueryInterruptTime()
+@ stdcall -version=0x601+ KeQueryMaximumProcessorCountEx(long)
 ;@ cdecl -arch=x86_64 KeQueryMultiThreadProcessorSet
 ;@ cdecl -arch=x86_64 KeQueryPrcbAddress
 @ stdcall KeQueryPriorityThread(ptr)
