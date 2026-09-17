@@ -254,6 +254,22 @@ extern ULONG MmCompatibleProtectionMask[8];
 #define MI_SESSION_TAG_PAGES_MAXIMUM  (MM_ALLOCATION_GRANULARITY / PAGE_SIZE)
 
 //
+// A range of a VAD a driver holds against changes, once there is more than one
+//
+typedef struct _MMSECURE_ENTRY
+{
+    union
+    {
+        ULONG LongFlags2;
+        MMVAD_FLAGS2 VadFlags2;
+    } u2;
+    struct _MMVAD_LONG *Vad;
+    LIST_ENTRY List;
+    ULONG_PTR StartVpn;
+    ULONG_PTR EndVpn;
+} MMSECURE_ENTRY, *PMMSECURE_ENTRY;
+
+//
 // Used by MiCheckSecuredVad
 //
 #define MM_READ_WRITE_ALLOWED   11
@@ -2042,6 +2058,11 @@ MiReservePageFileSpace(
 VOID
 NTAPI
 MiRequestPageFileExtension(VOID);
+
+VOID
+NTAPI
+MiFreeSecuredRanges(
+    _Inout_ PMMVAD Vad);
 
 BOOLEAN
 NTAPI

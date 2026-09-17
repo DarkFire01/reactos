@@ -784,6 +784,87 @@ MiFindEmptyAddressRangeDownBasedTree(IN SIZE_T Length,
     return STATUS_NO_MEMORY;
 }
 
+/**
+ * @brief Frees the ranges drivers held in a VAD that is going away.
+ *
+ * @param[in,out] Vad
+ * The VAD being destroyed.
+ */
+VOID
+NTAPI
+MiFreeSecuredRanges(
+    _Inout_ PMMVAD Vad)
+{
+    PMMSECURE_ENTRY Secure;
+    PLIST_ENTRY ListHead;
+
+    if (!Vad->u2.VadFlags2.MultipleSecured)
+        return;
+
+    ListHead = &((PMMVAD_LONG)Vad)->u3.List;
+    while (!IsListEmpty(ListHead))
+    {
+        Secure = CONTAINING_RECORD(RemoveHeadList(ListHead), MMSECURE_ENTRY, List);
+        ExFreePoolWithTag(Secure, 'eSmM');
+    }
+
+    Vad->u2.VadFlags2.MultipleSecured = 0;
+}
+
+/**
+ * @brief Checks a change against one range a driver holds.
+ *
+ * @param[in] StartAddress
+ * First byte of the range being changed.
+ *
+ * @param[in] EndAddress
+ * Last byte of the range being changed.
+ *
+ * @param[in] SecureStart
+ * First byte the driver holds.
+ *
+ * @param[in] SecureEnd
+ * Last byte the driver holds.
+ *
+ * @param[in] ReadOnly
+ * The driver only asked for the pages to stay readable.
+ *
+ * @param[in] ProtectionMask
+ * Protection the caller asks for, zero when the range is going away.
+ *
+ * @return STATUS_SUCCESS when the change is allowed.
+ */
+static
+NTSTATUS
+MiCheckSecuredRange(
+    _In_ ULONG_PTR StartAddress,
+    _In_ ULONG_PTR EndAddress,
+    _In_ ULONG_PTR SecureStart,
+    _In_ ULONG_PTR SecureEnd,
+    _In_ ULONG ReadOnly,
+    _In_ ULONG ProtectionMask)
+{
+    /* Only a change that touches what the driver holds is of interest */
+    if ((StartAddress > SecureEnd) || (EndAddress < SecureStart))
+        return STATUS_SUCCESS;
+
+    /* Guard page? */
+    if (ProtectionMask & MM_DECOMMIT)
+    {
+        DPRINT1("Not allowed to change protection on guard page!\n");
+        return STATUS_INVALID_PAGE_PROTECTION;
+    }
+
+    /* A driver that only reads the pages lets the caller drop write access */
+    if (MmReadWrite[ProtectionMask] < (ReadOnly ? MM_READ_ONLY_ALLOWED : MM_READ_WRITE_ALLOWED))
+    {
+        DPRINT1("Invalid protection mask for secured range!\n");
+        return STATUS_INVALID_PAGE_PROTECTION;
+    }
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NTAPI
 MiCheckSecuredVad(IN PMMVAD Vad,
@@ -816,32 +897,36 @@ MiCheckSecuredVad(IN PMMVAD Vad,
         ProtectionMask = 0;
     }
 
-    /* ARM3 doesn't support this yet */
-    ASSERT(Vad->u2.VadFlags2.MultipleSecured == 0);
-
     /* Is this a one-secured VAD, like a TEB or PEB? */
     if (Vad->u2.VadFlags2.OneSecured)
     {
-        /* Is this allocation being described by the VAD? */
-        if ((StartAddress <= ((PMMVAD_LONG)Vad)->u3.Secured.EndVpn) &&
-            (EndAddress >= ((PMMVAD_LONG)Vad)->u3.Secured.StartVpn))
+        return MiCheckSecuredRange(StartAddress,
+                                   EndAddress,
+                                   ((PMMVAD_LONG)Vad)->u3.Secured.StartVpn,
+                                   ((PMMVAD_LONG)Vad)->u3.Secured.EndVpn,
+                                   Vad->u2.VadFlags2.ReadOnly,
+                                   ProtectionMask);
+    }
+
+    /* Or does it hold a list of secured ranges? */
+    if (Vad->u2.VadFlags2.MultipleSecured)
+    {
+        PLIST_ENTRY ListHead, NextEntry;
+        PMMSECURE_ENTRY Secure;
+        NTSTATUS Status;
+
+        ListHead = &((PMMVAD_LONG)Vad)->u3.List;
+        for (NextEntry = ListHead->Flink; NextEntry != ListHead; NextEntry = NextEntry->Flink)
         {
-            /* Guard page? */
-            if (ProtectionMask & MM_DECOMMIT)
-            {
-                DPRINT1("Not allowed to change protection on guard page!\n");
-                return STATUS_INVALID_PAGE_PROTECTION;
-            }
-
-            /* ARM3 doesn't have read-only VADs yet */
-            ASSERT(Vad->u2.VadFlags2.ReadOnly == 0);
-
-            /* Check if read-write protections are allowed */
-            if (MmReadWrite[ProtectionMask] < MM_READ_WRITE_ALLOWED)
-            {
-                DPRINT1("Invalid protection mask for RW access!\n");
-                return STATUS_INVALID_PAGE_PROTECTION;
-            }
+            Secure = CONTAINING_RECORD(NextEntry, MMSECURE_ENTRY, List);
+            Status = MiCheckSecuredRange(StartAddress,
+                                         EndAddress,
+                                         Secure->StartVpn,
+                                         Secure->EndVpn,
+                                         Secure->u2.VadFlags2.ReadOnly,
+                                         ProtectionMask);
+            if (!NT_SUCCESS(Status))
+                return Status;
         }
     }
 

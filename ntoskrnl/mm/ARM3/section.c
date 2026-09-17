@@ -898,6 +898,9 @@ MiUnmapViewOfSection(IN PEPROCESS Process,
     /* Not currently supported */
     ASSERT(Vad->u.VadFlags.VadType != VadRotatePhysical);
 
+    /* Nothing a driver held outlives the view */
+    MiFreeSecuredRanges(Vad);
+
     /* Give back what the view was charged for its own pages */
     if (Vad->u.VadFlags.CommitCharge != 0)
     {
