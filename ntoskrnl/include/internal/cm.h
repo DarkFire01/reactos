@@ -1182,6 +1182,11 @@ CmpInitializeHardwareConfiguration(
     IN PLOADER_PARAMETER_BLOCK LoaderBlock
 );
 
+CODE_SEG("INIT")
+NTSTATUS
+NTAPI
+CmpInitializeSmbiosConfiguration(VOID);
+
 //
 // Wrapper Routines
 //
