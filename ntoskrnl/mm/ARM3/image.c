@@ -881,6 +881,7 @@ NTAPI
 MiGetImagePageFileOffset(
     _In_ PSUBSECTION Subsection,
     _In_ PMMPTE PointerProtoPte,
+    _In_ ULONG PageCount,
     _Out_ PLARGE_INTEGER FileOffset)
 {
     ULONG64 RawSize, PageOffset;
@@ -896,7 +897,7 @@ MiGetImagePageFileOffset(
     if (PageOffset >= RawSize)
         return 0;
 
-    return (ULONG)min(RawSize - PageOffset, PAGE_SIZE);
+    return (ULONG)min(RawSize - PageOffset, (ULONG64)PageCount << PAGE_SHIFT);
 }
 
 /**

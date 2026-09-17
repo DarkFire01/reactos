@@ -460,11 +460,18 @@ typedef struct _MMVIEW
 /* A fault needs file I/O or has to wait for it, done without the working set lock */
 #define STATUS_MM_PAGE_READ_NEEDED ((NTSTATUS)0xD0000002)
 
+/* Pages one read of a mapped file can hold */
+#define MI_MAPPED_IO_PAGES          16
+
+/* Pages a fault reads at once, the ones it did not ask for land on standby */
+#define MI_READ_CLUSTER_PAGES       8
+
 typedef struct _MI_PAGE_READ
 {
     PFILE_OBJECT FileObject;
     LARGE_INTEGER FileOffset;
-    PFN_NUMBER PageFrameIndex;
+    PFN_NUMBER Pages[MI_READ_CLUSTER_PAGES];
+    ULONG PageCount;
     ULONG ValidLength;
     BOOLEAN Collided;
     PKEVENT PreviousEvent;
@@ -2509,6 +2516,7 @@ NTAPI
 MiGetImagePageFileOffset(
     _In_ PSUBSECTION Subsection,
     _In_ PMMPTE PointerProtoPte,
+    _In_ ULONG PageCount,
     _Out_ PLARGE_INTEGER FileOffset
 );
 
