@@ -423,6 +423,7 @@ VOID KiRaiseAssertion(VOID);
 VOID KiDebugServiceTrap(VOID);
 VOID KiDpcInterrupt(VOID);
 VOID KiIpiInterrupt(VOID);
+VOID NTAPI KiIpiInterruptHandler(VOID);
 
 VOID KiGdtPrepareForApplicationProcessorInit(ULONG Id);
 VOID Ki386InitializeLdt(VOID);
