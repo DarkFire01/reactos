@@ -67,10 +67,10 @@
 VOID
 NTAPI
 PoSetHiberRange(
-    _In_ PVOID HiberContext,
+    _In_opt_ PVOID HiberContext,
     _In_ ULONG Flags,
     _In_ PVOID StartPage,
-    _In_ ULONG Length,
+    _In_ ULONG_PTR Length,
     _In_ ULONG PageTag)
 {
     PPOP_HIBER_CONTEXT Context;
@@ -124,7 +124,7 @@ PoSetHiberRange(
      *      (PO_MEM_PAGE_ADDRESS) are handled separately from virtual ones.
      *   4. Tag the range with PageTag for diagnostic/debugging purposes.
      */
-    DPRINT("PoSetHiberRange: Context 0x%p, Flags 0x%lx, StartPage 0x%p, Length 0x%lx, Tag 0x%lx\n",
+    DPRINT("PoSetHiberRange: Context 0x%p, Flags 0x%lx, StartPage 0x%p, Length 0x%Ix, Tag 0x%lx\n",
            Context, Flags, StartPage, Length, PageTag);
 }
 

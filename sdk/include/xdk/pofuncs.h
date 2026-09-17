@@ -76,7 +76,7 @@ PoSetHiberRange(
   _In_opt_ PVOID HiberContext,
   _In_ ULONG Flags,
   _In_ PVOID StartPage,
-  _In_ ULONG Length,
+  _In_ ULONG_PTR Length,
   _In_ ULONG PageTag);
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
