@@ -703,4 +703,34 @@ ObReferenceObjectByHandle(IN HANDLE Handle,
     return Status;
 }
 
+/*
+ * @implemented
+ */
+LONG_PTR
+FASTCALL
+ObfReferenceObjectWithTag(
+    _In_ PVOID Object,
+    _In_ ULONG Tag)
+{
+    UNREFERENCED_PARAMETER(Tag);
+
+    /* Per tag tracking is not implemented, so take the untagged path */
+    return ObfReferenceObject(Object);
+}
+
+/*
+ * @implemented
+ */
+LONG_PTR
+FASTCALL
+ObfDereferenceObjectWithTag(
+    _In_ PVOID Object,
+    _In_ ULONG Tag)
+{
+    UNREFERENCED_PARAMETER(Tag);
+
+    /* Per tag tracking is not implemented, so take the untagged path */
+    return ObfDereferenceObject(Object);
+}
+
 /* EOF */

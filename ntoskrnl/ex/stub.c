@@ -183,7 +183,6 @@ NtWorkerFactoryWorkerReady(IN ULONG TheUnknown)
 }
 
 
-NTSTATUS NTAPI IoUnregisterPlugPlayNotificationEx() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI KeQueryPrcbAddress() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI ObGetFilterVersion() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI ObRegisterCallbacks() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
@@ -208,13 +207,5 @@ int NTAPI strcpy_s( _Out_writes_z_(_Size) char *_Dst,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-int NTAPI strncpy_s(    _Out_writes_z_(_DstSizeInChars) char *_Dst,
-    _In_ size_t _DstSizeInChars,
-    _In_z_ const char *_Src,
-    _In_ size_t _MaxCount)
-{
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
 
 #pragma warning( pop )
