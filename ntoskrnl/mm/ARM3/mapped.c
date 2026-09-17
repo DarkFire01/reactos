@@ -20,8 +20,6 @@
 #define MI_SUBSECTION_PTES          ((ULONG)(_64K / sizeof(MMPTE)))
 
 /* Largest run of pages going through one paging I/O */
-#define MI_MAPPED_IO_PAGES          16
-
 /* Cleanup rounds before modified data that cannot be written is given up */
 #define MI_CLEANUP_ATTEMPTS         50
 
@@ -1536,6 +1534,7 @@ MiResolveMappedFileFault(
 {
     PFN_NUMBER PageFrameIndex;
     PMSUBSECTION Subsection;
+    PMMPTE LastProtoPte;
     ULONG Color;
 
     MI_ASSERT_PFN_LOCK_HELD();
@@ -1565,12 +1564,48 @@ MiResolveMappedFileFault(
     /* The file outlives the read even if the section goes away meanwhile */
     PageRead->FileObject = Subsection->ControlArea->FilePointer;
     ObReferenceObject(PageRead->FileObject);
-    PageRead->PageFrameIndex = PageFrameIndex;
+    PageRead->Pages[0] = PageFrameIndex;
+    PageRead->PageCount = 1;
+
+    /*
+     * Take the pages that follow along, they cost one read instead of a fault each.
+     * They live in the same subsection, so their file offsets follow as well.
+     */
+    LastProtoPte = &Subsection->SubsectionBase[Subsection->PtesInSubsection];
+    while ((PageRead->PageCount < MI_READ_CLUSTER_PAGES) &&
+           (MmAvailablePages > MmMinimumFreePages))
+    {
+        PMMPTE NextProtoPte = PointerProtoPte + PageRead->PageCount;
+
+        if (NextProtoPte >= LastProtoPte)
+            break;
+
+        /* Prototype PTEs live in paged pool and only the faulting one is known to be there */
+        if (((ULONG_PTR)NextProtoPte & (PAGE_SIZE - 1)) == 0)
+            break;
+
+        /* Only a page the file still holds is worth reading now */
+        if ((NextProtoPte->u.Long == 0) ||
+            (NextProtoPte->u.Hard.Valid == 1) ||
+            (NextProtoPte->u.Soft.Prototype == 0))
+        {
+            break;
+        }
+
+        PageFrameIndex = MiRemoveAnyPage(MI_GET_NEXT_COLOR());
+        if (PageFrameIndex == 0)
+            break;
+
+        MiInitializeReadPage(PageFrameIndex, NextProtoPte);
+        PageRead->Pages[PageRead->PageCount] = PageFrameIndex;
+        PageRead->PageCount++;
+    }
 
     if (Subsection->ControlArea->u.Flags.Image)
     {
         PageRead->ValidLength = MiGetImagePageFileOffset((PSUBSECTION)Subsection,
                                                          PointerProtoPte,
+                                                         PageRead->PageCount,
                                                          &PageRead->FileOffset);
     }
     else
@@ -1580,7 +1615,7 @@ MiResolveMappedFileFault(
              (PointerProtoPte - Subsection->SubsectionBase)) << PAGE_SHIFT;
         PageRead->ValidLength = MiGetDataFileReadLength(Subsection->ControlArea->Segment,
                                                         PageRead->FileOffset.QuadPart,
-                                                        1);
+                                                        PageRead->PageCount);
     }
 
     MiReleasePfnLock(OldIrql);
@@ -1619,8 +1654,8 @@ MiCompletePageRead(
 
     Status = MiReadMappedPages(PageRead->FileObject,
                                &PageRead->FileOffset,
-                               &PageRead->PageFrameIndex,
-                               1,
+                               PageRead->Pages,
+                               PageRead->PageCount,
                                PageRead->ValidLength);
 
     ObDereferenceObject(PageRead->FileObject);
