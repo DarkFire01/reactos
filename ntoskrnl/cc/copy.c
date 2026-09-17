@@ -209,7 +209,7 @@ CcPerformReadAhead(
         _SEH2_TRY
         {
             Success = CcRosEnsureVacbResident(Vacb, TRUE, FALSE,
-                    CurrentOffset % VACB_MAPPING_GRANULARITY, PartialLength);
+                    CurrentOffset % VACB_MAPPING_GRANULARITY, PartialLength, NULL);
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {
@@ -245,7 +245,7 @@ CcPerformReadAhead(
 
         _SEH2_TRY
         {
-            Success = CcRosEnsureVacbResident(Vacb, TRUE, FALSE, 0, PartialLength);
+            Success = CcRosEnsureVacbResident(Vacb, TRUE, FALSE, 0, PartialLength, NULL);
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {
@@ -533,7 +533,7 @@ CcCopyRead (
             ULONG VacbLength = min(Length, VACB_MAPPING_GRANULARITY - VacbOffset);
             SIZE_T CopyLength = VacbLength;
 
-            if (!CcRosEnsureVacbResident(Vacb, Wait, FALSE, VacbOffset, VacbLength))
+            if (!CcRosEnsureVacbResident(Vacb, Wait, FALSE, VacbOffset, VacbLength, NULL))
                 return FALSE;
 
             _SEH2_TRY
@@ -637,7 +637,7 @@ CcCopyWrite (
 
         _SEH2_TRY
         {
-            if (!CcRosEnsureVacbResident(Vacb, Wait, FALSE, VacbOffset, VacbLength))
+            if (!CcRosEnsureVacbResident(Vacb, Wait, FALSE, VacbOffset, VacbLength, NULL))
             {
                 return FALSE;
             }
@@ -847,7 +847,7 @@ CcpZeroPartialPage(
 
     _SEH2_TRY
     {
-        if (!CcRosEnsureVacbResident(Vacb, Wait, FALSE, VacbOffset, Length))
+        if (!CcRosEnsureVacbResident(Vacb, Wait, FALSE, VacbOffset, Length, NULL))
         {
             Result = FALSE;
             _SEH2_LEAVE;
