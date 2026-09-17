@@ -25,6 +25,9 @@ extern PCM_FRAMEBUF_DEVICE_DATA FrameBufferData;
 
 BOOLEAN AcpiPresent = FALSE;
 static EFI_EVENT IdleTimerEvent = NULL;
+static PVOID SmbiosEntryPoint = NULL;
+static ULONG SmbiosEntryPointLength = 0;
+static BOOLEAN SmbiosSearched = FALSE;
 
 /* FUNCTIONS *****************************************************************/
 
@@ -138,6 +141,164 @@ UefiFindAcpiTable(
     }
 
     return NULL;
+}
+
+/**
+ * @brief
+ * Adds up the bytes of an SMBIOS anchor, which is built to sum to zero.
+ *
+ * @param[in] Data
+ * The anchor to add up.
+ *
+ * @param[in] Length
+ * Length of @p Data, in bytes.
+ *
+ * @return
+ * The sum of the bytes.
+ */
+static
+UCHAR
+UefiSmbiosChecksum(
+    _In_reads_bytes_(Length) const UCHAR *Data,
+    _In_ ULONG Length)
+{
+    UCHAR Checksum = 0;
+    ULONG Index;
+
+    for (Index = 0; Index < Length; Index++)
+    {
+        Checksum += Data[Index];
+    }
+
+    return Checksum;
+}
+
+/**
+ * @brief
+ * Picks the SMBIOS entry point out of the firmware configuration table.
+ *
+ * @param[out] Length
+ * Receives the length of the entry point, in bytes.
+ *
+ * @return
+ * The entry point, or NULL when the firmware published none that holds up.
+ *
+ * @remarks
+ * A firmware that publishes both entry points describes the same structures
+ * through either of them, but only the 3.0 one can name a table above 4GB,
+ * so that is the one to take. The two anchors keep their length in different
+ * places, which is why the caller is handed it rather than reading it.
+ */
+PVOID
+UefiGetSmbiosEntryPoint(
+    _Out_opt_ PULONG Length)
+{
+    static const EFI_GUID Smbios3Guid = SMBIOS3_TABLE_GUID;
+    static const EFI_GUID SmbiosGuid = SMBIOS_TABLE_GUID;
+    PSMBIOS3_TABLE_HEADER Entry3 = NULL;
+    PSMBIOS_TABLE_HEADER Entry = NULL;
+    UINTN Index;
+
+    if (SmbiosSearched)
+    {
+        if (Length != NULL)
+            *Length = SmbiosEntryPointLength;
+
+        return SmbiosEntryPoint;
+    }
+
+    SmbiosSearched = TRUE;
+    if (Length != NULL)
+        *Length = 0;
+
+    for (Index = 0; Index < GlobalSystemTable->NumberOfTableEntries; Index++)
+    {
+        EFI_CONFIGURATION_TABLE *Table = &GlobalSystemTable->ConfigurationTable[Index];
+
+        if (!memcmp(&Table->VendorGuid, &Smbios3Guid, sizeof(Smbios3Guid)))
+            Entry3 = Table->VendorTable;
+        else if (!memcmp(&Table->VendorGuid, &SmbiosGuid, sizeof(SmbiosGuid)))
+            Entry = Table->VendorTable;
+    }
+
+    if ((Entry3 != NULL) &&
+        !memcmp(Entry3->Signature, "_SM3_", 5) &&
+        (Entry3->Length >= sizeof(*Entry3)) &&
+        (Entry3->Length <= sizeof(SMBIOS_TABLE_HEADER)) &&
+        (UefiSmbiosChecksum((const UCHAR *)Entry3, Entry3->Length) == 0))
+    {
+        TRACE("SMBIOS %u.%u entry point at %p\n",
+              Entry3->MajorVersion, Entry3->MinorVersion, Entry3);
+        SmbiosEntryPoint = Entry3;
+        SmbiosEntryPointLength = Entry3->Length;
+
+        if (Length != NULL)
+            *Length = SmbiosEntryPointLength;
+
+        return SmbiosEntryPoint;
+    }
+
+    if ((Entry != NULL) &&
+        !memcmp(Entry->Signature, "_SM_", 4) &&
+        (Entry->Length >= FIELD_OFFSET(SMBIOS_TABLE_HEADER, Revision)) &&
+        (Entry->Length <= sizeof(SMBIOS_TABLE_HEADER)) &&
+        (UefiSmbiosChecksum((const UCHAR *)Entry, Entry->Length) == 0))
+    {
+        TRACE("SMBIOS %u.%u entry point at %p\n",
+              Entry->MajorVersion, Entry->MinorVersion, Entry);
+        SmbiosEntryPoint = Entry;
+        SmbiosEntryPointLength = Entry->Length;
+
+        if (Length != NULL)
+            *Length = SmbiosEntryPointLength;
+
+        return SmbiosEntryPoint;
+    }
+
+    WARN("The firmware published no usable SMBIOS entry point\n");
+    return NULL;
+}
+
+/**
+ * @brief
+ * Reads where an entry point says the structure table sits.
+ *
+ * @param[in] EntryPoint
+ * The entry point to read, as handed back by UefiGetSmbiosEntryPoint.
+ *
+ * @param[out] TableAddress
+ * Receives the physical address of the structure table.
+ *
+ * @param[out] TableLength
+ * Receives the length of the structure table, in bytes.
+ *
+ * @return
+ * TRUE when the entry point names a table, FALSE otherwise.
+ */
+BOOLEAN
+UefiGetSmbiosTableRange(
+    _In_ PVOID EntryPoint,
+    _Out_ PULONGLONG TableAddress,
+    _Out_ PULONG TableLength)
+{
+    PSMBIOS3_TABLE_HEADER Entry3 = EntryPoint;
+    PSMBIOS_TABLE_HEADER Entry = EntryPoint;
+
+    *TableAddress = 0;
+    *TableLength = 0;
+
+    if (!memcmp(Entry3->Signature, "_SM3_", 5))
+    {
+        *TableAddress = Entry3->StructureTableAddress;
+        *TableLength = Entry3->StructureTableMaximumSize;
+    }
+    else
+    {
+        *TableAddress = Entry->StructureTableAddress;
+        *TableLength = Entry->StructureTableLength;
+    }
+
+    return ((*TableAddress != 0) && (*TableLength != 0));
 }
 
 VOID

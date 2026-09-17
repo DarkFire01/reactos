@@ -23,6 +23,10 @@ PARC_DISK_SIGNATURE_EX ArcGetDiskInfo(ULONG Index);
 
 BOOLEAN IsAcpiPresent(VOID);
 
+#ifdef UEFIBOOT
+PVOID UefiGetSmbiosEntryPoint(_Out_opt_ PULONG Length);
+#endif
+
 extern HEADLESS_LOADER_BLOCK LoaderRedirectionInformation;
 extern BOOLEAN WinLdrTerminalConnected;
 extern VOID WinLdrSetupEms(_In_ PCSTR BootOptions);
@@ -264,6 +268,23 @@ WinLdrInitializePhase1(
         Extension->AcpiTable = (PVOID)1;
         // FIXME: Extension->AcpiTableSize;
     }
+
+#ifdef UEFIBOOT
+    /*
+     * Hand over the SMBIOS anchor. There is no ROM area for the kernel to go
+     * looking for it in when the firmware is EFI.
+     */
+    {
+        ULONG Length;
+        PVOID EntryPoint = UefiGetSmbiosEntryPoint(&Length);
+
+        if (EntryPoint != NULL)
+        {
+            RtlCopyMemory(&WinLdrSystemBlock->SmbiosEntryPoint, EntryPoint, Length);
+            Extension->SMBiosEPSHeader = PaToVa(&WinLdrSystemBlock->SmbiosEntryPoint);
+        }
+    }
+#endif
 
     if (OperatingSystemVersion >= _WIN32_WINNT_VISTA)
     {

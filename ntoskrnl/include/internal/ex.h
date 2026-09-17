@@ -193,6 +193,51 @@ typedef struct _UUID_CACHED_VALUES_STRUCT
 
 C_ASSERT(RTL_FIELD_SIZE(UUID_CACHED_VALUES_STRUCT, GuidInit) == RTL_FIELD_SIZE(UUID, Data4));
 
+/* SMBIOS *******************************************************************/
+
+/* The structure types this kernel has a use for */
+#define SMBIOS_TYPE_BIOS_INFORMATION    0
+#define SMBIOS_TYPE_SYSTEM_INFORMATION  1
+#define SMBIOS_TYPE_BASEBOARD           2
+#define SMBIOS_TYPE_END_OF_TABLE        127
+
+#include <pshpack1.h>
+typedef struct _SMBIOS_STRUCTURE_HEADER
+{
+    UCHAR Type;
+    UCHAR Length;
+    USHORT Handle;
+} SMBIOS_STRUCTURE_HEADER, *PSMBIOS_STRUCTURE_HEADER;
+#include <poppack.h>
+
+typedef struct _SMBIOS_TABLE_INFORMATION
+{
+    PVOID TableData;
+    ULONG TableLength;
+    UCHAR MajorVersion;
+    UCHAR MinorVersion;
+    UCHAR DmiRevision;
+} SMBIOS_TABLE_INFORMATION, *PSMBIOS_TABLE_INFORMATION;
+
+extern SMBIOS_TABLE_INFORMATION ExpSmbiosTable;
+
+CODE_SEG("INIT")
+VOID
+NTAPI
+ExpInitializeSMBIOS(
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock);
+
+PSMBIOS_STRUCTURE_HEADER
+NTAPI
+ExpFindSmbiosStructure(
+    _In_ UCHAR Type);
+
+PCSTR
+NTAPI
+ExpGetSmbiosString(
+    _In_ PSMBIOS_STRUCTURE_HEADER Header,
+    _In_ UCHAR Index);
+
 /* INITIALIZATION FUNCTIONS *************************************************/
 
 CODE_SEG("INIT")

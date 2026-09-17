@@ -1843,6 +1843,9 @@ CmInitSystem1(VOID)
         KeBugCheckEx(CONFIG_INITIALIZATION_FAILED, 1, 14, Status, 0);
     }
 
+    /* Add what the firmware calls this machine. Not worth failing the boot over */
+    CmpInitializeSmbiosConfiguration();
+
     /* Initialize volatile registry settings */
     Status = CmpSetSystemValues(KeLoaderBlock);
     if (!NT_SUCCESS(Status))
