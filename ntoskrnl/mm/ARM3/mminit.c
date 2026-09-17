@@ -958,7 +958,8 @@ MiBuildPfnDatabaseFromLoaderBlock(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                     if (!Pfn1->u3.e2.ReferenceCount)
                     {
                         /* Add it to the free list */
-                        Pfn1->u3.e1.CacheAttribute = MiNonCached;
+                        /* Ordinary RAM uses the processor's default cached mapping. */
+                        Pfn1->u3.e1.CacheAttribute = MiCached;
                         MiInsertPageInFreeList(PageFrameIndex);
                     }
 
