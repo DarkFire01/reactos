@@ -21,108 +21,6 @@
 
 /* FUNCTIONS *****************************************************************/
 
-typedef struct _SMBIOS21_ENTRY_POINT
-{
- 	CHAR AnchorString[4];
- 	UCHAR Checksum;
- 	UCHAR Length;
- 	UCHAR MajorVersion;
- 	UCHAR MinorVersion;
- 	USHORT MaxStructureSize;
- 	UCHAR EntryPointRevision;
- 	CHAR FormattedArea[5];
- 	CHAR AnchorString2[5];
- 	UCHAR Checksum2;
- 	USHORT TableLength;
- 	ULONG TableAddress;
- 	USHORT NumberOfStructures;
- 	UCHAR BCDRevision;
-} SMBIOS21_ENTRY_POINT, *PSMBIOS21_ENTRY_POINT;
-
-typedef struct _SMBIOS30_ENTRY_POINT
-{
- 	CHAR AnchorString[5];
- 	UCHAR Checksum;
- 	UCHAR Length;
- 	UCHAR MajorVersion;
- 	UCHAR MinorVersion;
- 	UCHAR Docref;
-    UCHAR Revision;
-    UCHAR Reserved;
-    ULONG TableMaxSize;
-    ULONG64 TableAddress;
-} SMBIOS30_ENTRY_POINT, *PSMBIOS30_ENTRY_POINT;
-
-static
-BOOLEAN
-GetEntryPointData(
-    _In_ const UCHAR *EntryPointAddress,
-    _Out_ PULONG64 TableAddress,
-    _Out_ PULONG TableSize,
-    _Out_ PMSSmBios_RawSMBiosTables BiosTablesHeader)
-{
-    PSMBIOS21_ENTRY_POINT EntryPoint21;
-    PSMBIOS30_ENTRY_POINT EntryPoint30;
-    UCHAR Checksum;
-    ULONG i;
-
-    /* Check for SMBIOS 2.1 entry point */
-    EntryPoint21 = (PSMBIOS21_ENTRY_POINT)EntryPointAddress;
-    if (RtlEqualMemory(EntryPoint21->AnchorString, "_SM_", 4))
-    {
-        if (EntryPoint21->Length > 32)
-            return FALSE;
-
-        /* Calculate the checksum */
-        Checksum = 0;
-        for (i = 0; i < EntryPoint21->Length; i++)
-        {
-            Checksum += EntryPointAddress[i];
-        }
-
-        if (Checksum != 0)
-            return FALSE;
-
-        *TableAddress = EntryPoint21->TableAddress;
-        *TableSize = EntryPoint21->TableLength;
-        BiosTablesHeader->Used20CallingMethod = 0;
-        BiosTablesHeader->SmbiosMajorVersion = EntryPoint21->MajorVersion;
-        BiosTablesHeader->SmbiosMinorVersion = EntryPoint21->MinorVersion;
-        BiosTablesHeader->DmiRevision = 2;
-        BiosTablesHeader->Size = EntryPoint21->TableLength;
-        return TRUE;
-    }
-
-    /* Check for SMBIOS 3.0 entry point */
-    EntryPoint30 = (PSMBIOS30_ENTRY_POINT)EntryPointAddress;
-    if (RtlEqualMemory(EntryPoint30->AnchorString, "_SM3_", 5))
-    {
-        if (EntryPoint30->Length > 32)
-            return FALSE;
-
-        /* Calculate the checksum */
-        Checksum = 0;
-        for (i = 0; i < EntryPoint30->Length; i++)
-        {
-            Checksum += EntryPointAddress[i];
-        }
-
-        if (Checksum != 0)
-            return FALSE;
-
-        *TableAddress = EntryPoint30->TableAddress;
-        *TableSize = EntryPoint30->TableMaxSize;
-        BiosTablesHeader->Used20CallingMethod = 0;
-        BiosTablesHeader->SmbiosMajorVersion = EntryPoint30->MajorVersion;
-        BiosTablesHeader->SmbiosMinorVersion = EntryPoint30->MinorVersion;
-        BiosTablesHeader->DmiRevision = 3;
-        BiosTablesHeader->Size = EntryPoint30->TableMaxSize;
-        return TRUE;
-    }
-
-    return FALSE;
-}
-
 _At_(*OutTableData, __drv_allocatesMem(Mem))
 NTSTATUS
 NTAPI
@@ -130,87 +28,48 @@ WmipGetRawSMBiosTableData(
     _Outptr_opt_result_buffer_(*OutDataSize) PVOID *OutTableData,
     _Out_ PULONG OutDataSize)
 {
-    static const SIZE_T SearchSize = 0x10000;
     static const ULONG HeaderSize = FIELD_OFFSET(MSSmBios_RawSMBiosTables, SMBiosData);
-    PHYSICAL_ADDRESS PhysicalAddress;
-    PUCHAR EntryPointMapping;
     MSSmBios_RawSMBiosTables BiosTablesHeader;
-    PVOID BiosTables, TableMapping;
-    ULONG Offset, TableSize;
-    ULONG64 TableAddress = 0;
+    PVOID BiosTables;
 
-    /* This is where the range for the entry point starts */
-    PhysicalAddress.QuadPart = 0xF0000;
-
-    /* Map the range into the system address space */
-    EntryPointMapping = MmMapIoSpace(PhysicalAddress, SearchSize, MmCached);
-    if (EntryPointMapping == NULL)
+    /* The structures were taken down while the firmware memory was still ours */
+    if (ExpSmbiosTable.TableData == NULL)
     {
-        DPRINT1("Failed to map range for SMBIOS entry point\n");
-        return STATUS_UNSUCCESSFUL;
-    }
-
-    /* Loop the table memory in 16 byte steps */
-    for (Offset = 0; Offset <= (0x10000 - 32); Offset += 16)
-    {
-        /* Check if we have an entry point here and get it's data */
-        if (GetEntryPointData(EntryPointMapping + Offset,
-                              &TableAddress,
-                              &TableSize,
-                              &BiosTablesHeader))
-        {
-            break;
-        }
-    }
-
-    /* Unmap the entry point */
-    MmUnmapIoSpace(EntryPointMapping, SearchSize);
-
-    /* Did we find anything */
-    if (TableAddress == 0)
-    {
-        DPRINT1("Could not find the SMBIOS entry point\n");
+        DPRINT1("The firmware described no SMBIOS structures\n");
         return STATUS_NOT_FOUND;
     }
+
+    RtlZeroMemory(&BiosTablesHeader, sizeof(BiosTablesHeader));
+    BiosTablesHeader.Used20CallingMethod = 0;
+    BiosTablesHeader.SmbiosMajorVersion = ExpSmbiosTable.MajorVersion;
+    BiosTablesHeader.SmbiosMinorVersion = ExpSmbiosTable.MinorVersion;
+    BiosTablesHeader.DmiRevision = ExpSmbiosTable.DmiRevision;
+    BiosTablesHeader.Size = ExpSmbiosTable.TableLength;
 
     /* Check if the caller asked for the buffer */
     if (OutTableData != NULL)
     {
         /* Allocate a buffer for the result */
         BiosTables = ExAllocatePoolWithTag(PagedPool,
-                                           HeaderSize + TableSize,
-                                           'BTMS');
+                                           HeaderSize + ExpSmbiosTable.TableLength,
+                                           TAG_SMBIOS);
         if (BiosTables == NULL)
         {
             DPRINT1("Failed to allocate %lu bytes for the SMBIOS table\n",
-                    HeaderSize + TableSize);
+                    HeaderSize + ExpSmbiosTable.TableLength);
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
-        /* Copy the header */
+        /* Copy the header, then the structures behind it */
         RtlCopyMemory(BiosTables, &BiosTablesHeader, HeaderSize);
-
-        /* This is where the table is */
-        PhysicalAddress.QuadPart = TableAddress;
-
-        /* Map the table into the system address space */
-        TableMapping = MmMapIoSpace(PhysicalAddress, TableSize, MmCached);
-        if (TableMapping == NULL)
-        {
-            ExFreePoolWithTag(BiosTables, 'BTMS');
-            return STATUS_UNSUCCESSFUL;
-        }
-
-        /* Copy the table */
-        RtlCopyMemory((PUCHAR)BiosTables + HeaderSize, TableMapping, TableSize);
-
-        /* Unmap the table */
-        MmUnmapIoSpace(TableMapping, TableSize);
+        RtlCopyMemory((PUCHAR)BiosTables + HeaderSize,
+                      ExpSmbiosTable.TableData,
+                      ExpSmbiosTable.TableLength);
 
         *OutTableData = BiosTables;
     }
 
-    *OutDataSize = HeaderSize + TableSize;
+    *OutDataSize = HeaderSize + ExpSmbiosTable.TableLength;
     return STATUS_SUCCESS;
 }
 
@@ -273,7 +132,7 @@ WmipQueryRawSMBiosTables(
     /* Free the table buffer */
     if (TableData != NULL)
     {
-        ExFreePoolWithTag(TableData, 'BTMS');
+        ExFreePoolWithTag(TableData, TAG_SMBIOS);
     }
 
     return STATUS_SUCCESS;

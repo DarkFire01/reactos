@@ -39,6 +39,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/config/cmquota.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/config/cmse.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/config/cmsecach.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/config/cmsmbios.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/config/cmsysini.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/config/cmvalche.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/config/cmwraprs.c
@@ -68,6 +69,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/rundown.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/sem.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/shutdown.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/smbios.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/sysinfo.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/time.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/timer.c
