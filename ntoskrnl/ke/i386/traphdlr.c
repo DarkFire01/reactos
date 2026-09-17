@@ -1253,8 +1253,12 @@ KiCheckForSListFault(PKTRAP_FRAME TrapFrame)
         both fields to make sure we catch any concurrent modification of the
         S-List-header.
     */
+    /* KeUserPopEntrySListFault is only filled in once ntdll is up, which happens
+       after IoInitSystem. While it is still NULL a kernel branch to address 0
+       matches it, and the checks below then fault on address 0 themselves. */
     if ((TrapFrame->Eip == (ULONG_PTR)ExpInterlockedPopEntrySListFault) ||
-        (TrapFrame->Eip == (ULONG_PTR)KeUserPopEntrySListFault))
+        ((KeUserPopEntrySListFault != NULL) &&
+         (TrapFrame->Eip == (ULONG_PTR)KeUserPopEntrySListFault)))
     {
         ULARGE_INTEGER SListHeader;
         PVOID ResumeAddress;
