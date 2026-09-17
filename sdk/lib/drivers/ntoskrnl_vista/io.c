@@ -166,3 +166,30 @@ IoUnregisterPlugPlayNotificationEx(
 {
     return IoUnregisterPlugPlayNotification(NotificationEntry);
 }
+
+/**
+ * @brief
+ * Returns the NUMA node a physical device object sits on.
+ *
+ * @param[in] Pdo
+ * The physical device object to query.
+ *
+ * @param[out] NodeNumber
+ * Receives the NUMA node number.
+ *
+ * @return
+ * STATUS_SUCCESS. ReactOS models one NUMA node, so node 0 is always reported.
+ */
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTKRNLVISTAAPI
+NTSTATUS
+NTAPI
+IoGetDeviceNumaNode(
+    _In_ PDEVICE_OBJECT Pdo,
+    _Out_ PUSHORT NodeNumber)
+{
+    UNREFERENCED_PARAMETER(Pdo);
+
+    *NodeNumber = 0;
+    return STATUS_SUCCESS;
+}

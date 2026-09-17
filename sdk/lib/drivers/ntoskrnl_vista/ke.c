@@ -225,3 +225,52 @@ KeSetTargetProcessorDpcEx(
 
     return STATUS_SUCCESS;
 }
+
+/**
+ * @brief
+ * Pins the current thread to a group affinity.
+ *
+ * @param[in] Affinity
+ * The group affinity to apply.
+ *
+ * @param[out] PreviousAffinity
+ * Optionally receives the group affinity that was in force.
+ */
+NTKRNLVISTAAPI
+VOID
+NTAPI
+KeSetSystemGroupAffinityThread(
+    _In_ PGROUP_AFFINITY Affinity,
+    _Out_opt_ PGROUP_AFFINITY PreviousAffinity)
+{
+    KeSetSystemAffinityThread(Affinity->Mask);
+
+    /* An empty mask sends the matching revert back to the user affinity */
+    if (PreviousAffinity != NULL)
+    {
+        RtlZeroMemory(PreviousAffinity, sizeof(*PreviousAffinity));
+    }
+}
+
+/**
+ * @brief
+ * Puts the group affinity of the current thread back.
+ *
+ * @param[in] PreviousAffinity
+ * The group affinity handed out by KeSetSystemGroupAffinityThread().
+ */
+NTKRNLVISTAAPI
+VOID
+NTAPI
+KeRevertToUserGroupAffinityThread(
+    _In_ PGROUP_AFFINITY PreviousAffinity)
+{
+    if (PreviousAffinity != NULL && PreviousAffinity->Mask != 0)
+    {
+        KeSetSystemAffinityThread(PreviousAffinity->Mask);
+    }
+    else
+    {
+        KeRevertToUserAffinityThread();
+    }
+}

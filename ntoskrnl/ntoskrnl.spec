@@ -425,6 +425,7 @@
 @ stdcall IoGetDeviceAttachmentBaseRef(ptr)
 @ stdcall IoGetDeviceInterfaceAlias(ptr ptr ptr)
 @ stdcall IoGetDeviceInterfaces(ptr ptr long ptr)
+@ stdcall -version=0x602+ IoGetDeviceNumaNode(ptr ptr)
 @ stdcall IoGetDeviceObjectPointer(ptr long ptr ptr)
 @ stdcall IoGetDeviceProperty(ptr long long ptr ptr)
 @ stdcall IoGetDeviceToVerify(ptr)
@@ -701,6 +702,7 @@
 @ stdcall -arch=i386 KeRestoreFloatingPointState(ptr)
 @ stdcall -arch=x86_64 KeRestoreFloatingPointState(ptr) KxRestoreFloatingPointState
 @ stdcall KeRevertToUserAffinityThread()
+@ stdcall -version=0x601+ KeRevertToUserGroupAffinityThread(ptr)
 @ stdcall KeRundownQueue(ptr)
 @ stdcall -arch=i386 KeSaveFloatingPointState(ptr)
 @ stdcall -arch=x86_64 KeSaveFloatingPointState(ptr) KxSaveFloatingPointState
@@ -718,6 +720,7 @@
 @ stdcall KeSetPriorityThread(ptr long)
 @ stdcall KeSetProfileIrql(long)
 @ stdcall KeSetSystemAffinityThread(long)
+@ stdcall -version=0x601+ KeSetSystemGroupAffinityThread(ptr ptr)
 @ stdcall KeSetTargetProcessorDpc(ptr long)
 @ stdcall -version=0x601+ KeSetTargetProcessorDpcEx(ptr ptr)
 @ stdcall KeSetTimeIncrement(long long)

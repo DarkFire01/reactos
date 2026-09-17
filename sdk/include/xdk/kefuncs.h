@@ -1294,7 +1294,7 @@ KeSetTargetProcessorDpcEx(
 
 _IRQL_requires_min_(PASSIVE_LEVEL)
 _IRQL_requires_max_(APC_LEVEL)
-NTKERNELAPI
+NTKRNLVISTAAPI
 VOID
 NTAPI
 KeSetSystemGroupAffinityThread(
@@ -1303,7 +1303,7 @@ KeSetSystemGroupAffinityThread(
 
 _IRQL_requires_min_(PASSIVE_LEVEL)
 _IRQL_requires_max_(APC_LEVEL)
-NTKERNELAPI
+NTKRNLVISTAAPI
 VOID
 NTAPI
 KeRevertToUserGroupAffinityThread(
