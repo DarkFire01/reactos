@@ -952,6 +952,7 @@ PciProgramGrantedInterrupt(
     _In_opt_ PCM_RESOURCE_LIST ResourceList)
 {
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Interrupt;
+    NTSTATUS Status;
     PAGED_CODE();
 
     /* The grant can differ on every start, so nothing enabled before it is kept */
@@ -962,7 +963,14 @@ PciProgramGrantedInterrupt(
         return STATUS_SUCCESS;
 
     if (Interrupt->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
-        return PciProgramMessageInterrupt(PdoExtension, Interrupt);
+    {
+        Status = PciProgramMessageInterrupt(PdoExtension, Interrupt);
+        if (Status != STATUS_OBJECT_NAME_NOT_FOUND)
+            return Status;
+
+        /* Nothing published the grant, so the line the function still has is used */
+        DPRINT1("PCI: pdox %p has no connection data, using the wired line\n", PdoExtension);
+    }
 
     /* A wired line only fires with the interrupt disable bit clear */
     PciClearInterruptDisable(PdoExtension);
