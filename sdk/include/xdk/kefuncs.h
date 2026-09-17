@@ -1122,7 +1122,7 @@ NTAPI
 KeQueryActiveProcessorCount(
   _Out_opt_ PKAFFINITY ActiveProcessors);
 
-NTKERNELAPI
+NTKRNLVISTAAPI
 ULONG
 NTAPI
 KeQueryMaximumProcessorCount(VOID);
@@ -1134,7 +1134,7 @@ NTAPI
 KeQueryActiveProcessorCount(
   _Out_opt_ PKAFFINITY ActiveProcessors);
 
-NTKERNELAPI
+NTKRNLVISTAAPI
 ULONG
 NTAPI
 KeQueryMaximumProcessorCount(VOID);
@@ -1189,13 +1189,13 @@ $endif (_WDMDDK_)
 $if (_WDMDDK_ || _NTDDK_)
 #if (NTDDI_VERSION >= NTDDI_WIN7)
 
-NTKERNELAPI
+NTKRNLVISTAAPI
 ULONG
 NTAPI
 KeQueryActiveProcessorCountEx(
   _In_ USHORT GroupNumber);
 
-NTKERNELAPI
+NTKRNLVISTAAPI
 ULONG
 NTAPI
 KeQueryMaximumProcessorCountEx(
@@ -1331,12 +1331,14 @@ KeRestoreExtendedProcessorState(
   _In_ _Requires_lock_held_(*_Curr_) _Releases_lock_(*_Curr_)
     PXSTATE_SAVE XStateSave);
 
+NTKRNLVISTAAPI
 NTSTATUS
 NTAPI
 KeGetProcessorNumberFromIndex(
   _In_ ULONG ProcIndex,
   _Out_ PPROCESSOR_NUMBER ProcNumber);
 
+NTKRNLVISTAAPI
 ULONG
 NTAPI
 KeGetProcessorIndexFromNumber(
