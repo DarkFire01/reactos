@@ -1841,6 +1841,7 @@ DriveDlgProc(
                 PPARTENTRY PartEntry;
                 ULONGLONG PartSize;
                 ULONGLONG MaxPartSize;
+                ULONGLONG Reserved;
                 ULONG MaxSizeMB;
                 INT_PTR ret;
                 PARTCREATE_CTX PartCreateCtx = {0};
@@ -1868,6 +1869,21 @@ DriveDlgProc(
 
                 /* Retrieve the maximum size in MB (rounded up) the partition can have */
                 MaxPartSize = GetPartEntrySizeInBytes(PartEntry);
+
+                /*
+                 * Whatever the firmware needs for itself is not on offer, or the
+                 * installation would be left with nowhere to put its loader.
+                 */
+                Reserved = GetSystemPartitionReserve(pSetupData->PartitionList, PartEntry);
+                if (MaxPartSize <= Reserved)
+                {
+                    DisplayError(GetParent(hwndDlg),
+                                 IDS_ERROR_CREATE_PARTITION_TITLE,
+                                 IDS_ERROR_CREATE_PARTITION);
+                    break;
+                }
+                MaxPartSize -= Reserved;
+
                 MaxSizeMB = (ULONG)RoundingDivide(MaxPartSize, MB);
                 PartCreateCtx.MaxSizeMB = MaxSizeMB;
 
