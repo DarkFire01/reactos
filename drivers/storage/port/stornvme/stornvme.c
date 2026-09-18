@@ -119,10 +119,14 @@ NvmpReadCapabilities(
     Adapter->PageShift = HostShift;
     Adapter->PageSize = 1UL << HostShift;
 
-    /* The admin queue is never deeper than the controller allows */
-    Adapter->AdminQueueDepth = 64;
+    /* Neither queue is ever deeper than the controller allows */
+    Adapter->AdminQueueDepth = NVME_ADMIN_QUEUE_DEPTH;
     if (Adapter->AdminQueueDepth > (ULONG)Adapter->Capabilities.MQES + 1)
         Adapter->AdminQueueDepth = (ULONG)Adapter->Capabilities.MQES + 1;
+
+    Adapter->IoQueueDepth = NVME_IO_QUEUE_DEPTH;
+    if (Adapter->IoQueueDepth > (ULONG)Adapter->Capabilities.MQES + 1)
+        Adapter->IoQueueDepth = (ULONG)Adapter->Capabilities.MQES + 1;
 }
 
 

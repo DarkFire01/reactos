@@ -142,18 +142,28 @@ NvmpCreateAdminQueues(
     _In_ PPORT_CONFIGURATION_INFORMATION ConfigInfo)
 {
     PNVME_QUEUE_PAIR Queue = &Adapter->AdminQueue;
+    PNVME_QUEUE_PAIR IoQueue = &Adapter->IoQueue;
     NVME_ADMIN_QUEUE_ATTRIBUTES Attributes;
     ULONG SubmissionSize;
     ULONG CompletionSize;
+    ULONG IoSubmissionSize;
+    ULONG IoCompletionSize;
+    ULONG Offset;
     ULONG Length;
 
     /*
-     * Both queues have to start on a page boundary of their own, and one more
-     * page follows them for the controller to answer startup commands into.
+     * Storport hands out the uncached extension once and once only, so every
+     * queue has to be carved out of the same request. Each of them begins on
+     * a page boundary, and one more page follows for the controller to answer
+     * startup commands into.
      */
     SubmissionSize = ROUND_TO_PAGES(Adapter->AdminQueueDepth * sizeof(NVME_COMMAND));
     CompletionSize = ROUND_TO_PAGES(Adapter->AdminQueueDepth * sizeof(NVME_COMPLETION_ENTRY));
-    Length = SubmissionSize + CompletionSize + PAGE_SIZE;
+    IoSubmissionSize = ROUND_TO_PAGES(Adapter->IoQueueDepth * sizeof(NVME_COMMAND));
+    IoCompletionSize = ROUND_TO_PAGES(Adapter->IoQueueDepth * sizeof(NVME_COMPLETION_ENTRY));
+
+    Length = SubmissionSize + CompletionSize + PAGE_SIZE +
+             IoSubmissionSize + IoCompletionSize;
 
     Adapter->QueueMemory = StorPortGetUncachedExtension(Adapter, ConfigInfo, Length);
     if (Adapter->QueueMemory == NULL)
@@ -171,20 +181,36 @@ NvmpCreateAdminQueues(
                                                              &Length);
 
     RtlZeroMemory(Queue, sizeof(*Queue));
+    RtlZeroMemory(IoQueue, sizeof(*IoQueue));
+
+    Offset = 0;
 
     Queue->QueueId = NVME_ADMINQ_ID;
     Queue->Depth = Adapter->AdminQueueDepth;
     Queue->Phase = 1;
 
-    Queue->SubmissionQueue = Adapter->QueueMemory;
-    Queue->SubmissionAddress = Adapter->QueueMemoryAddress;
+    Queue->SubmissionQueue = (PNVME_COMMAND)((PUCHAR)Adapter->QueueMemory + Offset);
+    Queue->SubmissionAddress.QuadPart = Adapter->QueueMemoryAddress.QuadPart + Offset;
+    Offset += SubmissionSize;
 
-    Queue->CompletionQueue = (PNVME_COMPLETION_ENTRY)((PUCHAR)Adapter->QueueMemory + SubmissionSize);
-    Queue->CompletionAddress.QuadPart = Adapter->QueueMemoryAddress.QuadPart + SubmissionSize;
+    Queue->CompletionQueue = (PNVME_COMPLETION_ENTRY)((PUCHAR)Adapter->QueueMemory + Offset);
+    Queue->CompletionAddress.QuadPart = Adapter->QueueMemoryAddress.QuadPart + Offset;
+    Offset += CompletionSize;
 
-    Adapter->ScratchBuffer = (PUCHAR)Adapter->QueueMemory + SubmissionSize + CompletionSize;
-    Adapter->ScratchAddress.QuadPart = Adapter->QueueMemoryAddress.QuadPart +
-                                       SubmissionSize + CompletionSize;
+    Adapter->ScratchBuffer = (PUCHAR)Adapter->QueueMemory + Offset;
+    Adapter->ScratchAddress.QuadPart = Adapter->QueueMemoryAddress.QuadPart + Offset;
+    Offset += PAGE_SIZE;
+
+    IoQueue->QueueId = NVME_IO_QUEUE_ID;
+    IoQueue->Depth = Adapter->IoQueueDepth;
+    IoQueue->Phase = 1;
+
+    IoQueue->SubmissionQueue = (PNVME_COMMAND)((PUCHAR)Adapter->QueueMemory + Offset);
+    IoQueue->SubmissionAddress.QuadPart = Adapter->QueueMemoryAddress.QuadPart + Offset;
+    Offset += IoSubmissionSize;
+
+    IoQueue->CompletionQueue = (PNVME_COMPLETION_ENTRY)((PUCHAR)Adapter->QueueMemory + Offset);
+    IoQueue->CompletionAddress.QuadPart = Adapter->QueueMemoryAddress.QuadPart + Offset;
 
     /* Both queue sizes are reported one less than their real depth */
     Attributes.AsUlong = 0;
@@ -242,6 +268,9 @@ NvmpStartController(
         DPRINT1("Controller has no usable namespace\n");
         return FALSE;
     }
+
+    if (!NvmpCreateIoQueues(Adapter))
+        return FALSE;
 
     DPRINT1("Controller is ready\n");
 
