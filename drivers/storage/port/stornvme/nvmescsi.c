@@ -41,8 +41,11 @@ NvmpNamespaceFromLun(
 
 /**
  * @brief Describes a failure the way the class layer expects to read it.
+ *
+ * @return TRUE when the request carried somewhere to put the sense data, which
+ *         is what decides whether the caller may mark it valid.
  */
-VOID
+BOOLEAN
 NvmpSetSenseData(
     _In_ PVOID Srb,
     _In_ UCHAR SenseKey,
@@ -56,7 +59,7 @@ NvmpSetSenseData(
     Length = SrbGetSenseInfoBufferLength(Srb);
 
     if (Sense == NULL || Length < sizeof(SENSE_DATA))
-        return;
+        return FALSE;
 
     RtlZeroMemory(Sense, sizeof(SENSE_DATA));
 
@@ -69,6 +72,34 @@ NvmpSetSenseData(
     Sense->AdditionalSenseCodeQualifier = AdditionalSenseCodeQualifier;
 
     SrbSetScsiStatus(Srb, SCSISTAT_CHECK_CONDITION);
+
+    return TRUE;
+}
+
+
+/**
+ * @brief Finishes a request that failed, with the reason attached.
+ *
+ * Sense data the class layer is not told about is sense data it will not read,
+ * so the status carries the flag only when there was somewhere to write it.
+ */
+VOID
+NvmpCompleteWithSense(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PVOID Srb,
+    _In_ UCHAR SenseKey,
+    _In_ UCHAR AdditionalSenseCode,
+    _In_ UCHAR AdditionalSenseCodeQualifier)
+{
+    UCHAR SrbStatus = SRB_STATUS_ERROR;
+
+    if (NvmpSetSenseData(Srb, SenseKey, AdditionalSenseCode,
+                         AdditionalSenseCodeQualifier))
+    {
+        SrbStatus |= SRB_STATUS_AUTOSENSE_VALID;
+    }
+
+    NvmpCompleteRequest(Adapter, Srb, SrbStatus);
 }
 
 
@@ -465,9 +496,15 @@ NvmpTranslateScsi(
                 if (!NvmpInquiryVpd(Adapter, Srb, Namespace,
                                     Cdb->CDB6INQUIRY3.PageCode, Buffer, Length))
                 {
-                    NvmpSetSenseData(Srb, SCSI_SENSE_ILLEGAL_REQUEST,
-                                     SCSI_ADSENSE_INVALID_CDB, 0);
-                    SrbSetSrbStatus(Srb, SRB_STATUS_ERROR);
+                    UCHAR SrbStatus = SRB_STATUS_ERROR;
+
+                    if (NvmpSetSenseData(Srb, SCSI_SENSE_ILLEGAL_REQUEST,
+                                         SCSI_ADSENSE_INVALID_CDB, 0))
+                    {
+                        SrbStatus |= SRB_STATUS_AUTOSENSE_VALID;
+                    }
+
+                    SrbSetSrbStatus(Srb, SrbStatus);
                     return TRUE;
                 }
             }

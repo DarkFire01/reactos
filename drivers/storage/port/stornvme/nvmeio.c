@@ -237,9 +237,8 @@ NvmpBuildReadWrite(
 
     if (BlockAddress + BlockCount > Namespace->BlockCount)
     {
-        NvmpSetSenseData(Srb, SCSI_SENSE_ILLEGAL_REQUEST,
-                         SCSI_ADSENSE_ILLEGAL_BLOCK, 0);
-        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_ERROR);
+        NvmpCompleteWithSense(Adapter, Srb, SCSI_SENSE_ILLEGAL_REQUEST,
+                              SCSI_ADSENSE_ILLEGAL_BLOCK, 0);
         return TRUE;
     }
 
@@ -386,9 +385,8 @@ NvmpBuildCommand(
         case SCSIOP_WRITE16:
             if (!NvmpBuildReadWrite(Adapter, Srb, Namespace, Context, Cdb))
             {
-                NvmpSetSenseData(Srb, SCSI_SENSE_ILLEGAL_REQUEST,
-                                 SCSI_ADSENSE_INVALID_CDB, 0);
-                NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_ERROR);
+                NvmpCompleteWithSense(Adapter, Srb, SCSI_SENSE_ILLEGAL_REQUEST,
+                                      SCSI_ADSENSE_INVALID_CDB, 0);
                 return FALSE;
             }
 
@@ -400,9 +398,8 @@ NvmpBuildCommand(
             return NvmpBuildFlush(Adapter, Srb);
 
         default:
-            NvmpSetSenseData(Srb, SCSI_SENSE_ILLEGAL_REQUEST,
-                             SCSI_ADSENSE_ILLEGAL_COMMAND, 0);
-            NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_ERROR);
+            NvmpCompleteWithSense(Adapter, Srb, SCSI_SENSE_ILLEGAL_REQUEST,
+                                  SCSI_ADSENSE_ILLEGAL_COMMAND, 0);
             return FALSE;
     }
 }
@@ -471,6 +468,107 @@ NvmpPostCommand(
 
 
 /**
+ * @brief Says what a failed command should look like to the class layer.
+ *
+ * The status the controller reports is finer grained than the sense keys it
+ * has to be told in, so several codes land on the same answer.
+ */
+static
+VOID
+NvmpSenseForStatus(
+    _In_ NVME_COMMAND_STATUS Status,
+    _Out_ PUCHAR SenseKey,
+    _Out_ PUCHAR AdditionalSenseCode)
+{
+    *SenseKey = SCSI_SENSE_MEDIUM_ERROR;
+    *AdditionalSenseCode = SCSI_ADSENSE_NO_SENSE;
+
+    if (Status.SCT == NVME_STATUS_TYPE_MEDIA_ERROR)
+    {
+        switch (Status.SC)
+        {
+            case NVME_STATUS_NVM_WRITE_FAULT:
+                *AdditionalSenseCode = SCSI_ADSENSE_WRITE_ERROR;
+                break;
+
+            case NVME_STATUS_NVM_UNRECOVERED_READ_ERROR:
+            case NVME_STATUS_NVM_END_TO_END_GUARD_CHECK_ERROR:
+            case NVME_STATUS_NVM_END_TO_END_APPLICATION_TAG_CHECK_ERROR:
+            case NVME_STATUS_NVM_END_TO_END_REFERENCE_TAG_CHECK_ERROR:
+                *AdditionalSenseCode = SCSI_ADSENSE_UNRECOVERED_ERROR;
+                break;
+
+            case NVME_STATUS_NVM_ACCESS_DENIED:
+                *SenseKey = SCSI_SENSE_DATA_PROTECT;
+                *AdditionalSenseCode = SCSI_ADSENSE_WRITE_PROTECT;
+                break;
+
+            default:
+                break;
+        }
+
+        return;
+    }
+
+    if (Status.SCT != NVME_STATUS_TYPE_GENERIC_COMMAND)
+    {
+        /* Nothing else names a medium problem, so blame the request */
+        *SenseKey = SCSI_SENSE_ILLEGAL_REQUEST;
+        *AdditionalSenseCode = SCSI_ADSENSE_INVALID_CDB;
+        return;
+    }
+
+    switch (Status.SC)
+    {
+        case NVME_STATUS_INVALID_COMMAND_OPCODE:
+            *SenseKey = SCSI_SENSE_ILLEGAL_REQUEST;
+            *AdditionalSenseCode = SCSI_ADSENSE_ILLEGAL_COMMAND;
+            break;
+
+        case NVME_STATUS_INVALID_FIELD_IN_COMMAND:
+        case NVME_STATUS_INVALID_NAMESPACE_OR_FORMAT:
+        case NVME_STATUS_PRP_OFFSET_INVALID:
+            *SenseKey = SCSI_SENSE_ILLEGAL_REQUEST;
+            *AdditionalSenseCode = SCSI_ADSENSE_INVALID_CDB;
+            break;
+
+        case NVME_STATUS_NVM_LBA_OUT_OF_RANGE:
+            *SenseKey = SCSI_SENSE_ILLEGAL_REQUEST;
+            *AdditionalSenseCode = SCSI_ADSENSE_ILLEGAL_BLOCK;
+            break;
+
+        case NVME_STATUS_NVM_NAMESPACE_NOT_READY:
+        case NVME_STATUS_FORMAT_IN_PROGRESS:
+        case NVME_STATUS_ADMIN_COMMAND_MEDIA_NOT_READY:
+            *SenseKey = SCSI_SENSE_NOT_READY;
+            *AdditionalSenseCode = SCSI_ADSENSE_LUN_NOT_READY;
+            break;
+
+        case NVME_STATUS_NAMESPACE_IS_WRITE_PROTECTED:
+            *SenseKey = SCSI_SENSE_DATA_PROTECT;
+            *AdditionalSenseCode = SCSI_ADSENSE_WRITE_PROTECT;
+            break;
+
+        case NVME_STATUS_INTERNAL_DEVICE_ERROR:
+            *SenseKey = SCSI_SENSE_HARDWARE_ERROR;
+            break;
+
+        case NVME_STATUS_COMMAND_ABORT_REQUESTED:
+        case NVME_STATUS_COMMAND_ABORTED_DUE_TO_SQ_DELETION:
+        case NVME_STATUS_COMMAND_ABORTED_DUE_TO_FAILED_FUSED_COMMAND:
+        case NVME_STATUS_COMMAND_ABORTED_DUE_TO_FAILED_MISSING_COMMAND:
+        case NVME_STATUS_COMMAND_ABORTED_DUE_TO_POWER_LOSS_NOTIFICATION:
+        case NVME_STATUS_COMMAND_ABORTED_DUE_TO_PREEMPT_ABORT:
+            *SenseKey = SCSI_SENSE_ABORTED_COMMAND;
+            break;
+
+        default:
+            break;
+    }
+}
+
+
+/**
  * @brief Turns a completion into the result of the request that caused it.
  */
 VOID
@@ -480,7 +578,8 @@ NvmpCompleteFromEntry(
 {
     PNVME_REQUEST_CONTEXT Context;
     USHORT CommandId = Completion->DW3.CID;
-    UCHAR SrbStatus;
+    UCHAR SenseKey;
+    UCHAR AdditionalSenseCode;
     PVOID Srb;
 
     if (CommandId >= Adapter->IoQueueDepth)
@@ -503,18 +602,24 @@ NvmpCompleteFromEntry(
     if (Completion->DW3.Status.SC == NVME_STATUS_SUCCESS_COMPLETION &&
         Completion->DW3.Status.SCT == NVME_STATUS_TYPE_GENERIC_COMMAND)
     {
-        SrbStatus = SRB_STATUS_SUCCESS;
+        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_SUCCESS);
+        return;
     }
-    else
+
+    DPRINT1("Command %u failed, type %u code 0x%02x\n",
+            CommandId, Completion->DW3.Status.SCT, Completion->DW3.Status.SC);
+
+    SrbSetDataTransferLength(Srb, 0);
+
+    /* A reservation is reported by the status alone, with no sense behind it */
+    if (Completion->DW3.Status.SCT == NVME_STATUS_TYPE_GENERIC_COMMAND &&
+        Completion->DW3.Status.SC == NVME_STATUS_NVM_RESERVATION_CONFLICT)
     {
-        DPRINT1("Command %u failed, type %u code 0x%02x\n",
-                CommandId, Completion->DW3.Status.SCT, Completion->DW3.Status.SC);
-
-        NvmpSetSenseData(Srb, SCSI_SENSE_MEDIUM_ERROR,
-                         SCSI_ADSENSE_NO_SENSE, 0);
-        SrbStatus = SRB_STATUS_ERROR;
-        SrbSetDataTransferLength(Srb, 0);
+        SrbSetScsiStatus(Srb, SCSISTAT_RESERVATION_CONFLICT);
+        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_ERROR);
+        return;
     }
 
-    NvmpCompleteRequest(Adapter, Srb, SrbStatus);
+    NvmpSenseForStatus(Completion->DW3.Status, &SenseKey, &AdditionalSenseCode);
+    NvmpCompleteWithSense(Adapter, Srb, SenseKey, AdditionalSenseCode, 0);
 }
