@@ -1096,6 +1096,11 @@ FdoDeviceControlQueryProperty(
             .BusType = BusTypeSata, /* FIXME: ＲＥＡＤ　ＦＲＯＭ　ＲＥＧＩＳＴＲＹ */
             .BusMajorVersion = 2,
             .BusMinorVersion = 0,
+            /*
+             * This is the format we accept from the class layer, which is not
+             * the one we necessarily hand the miniport. We still translate
+             * every request ourselves, so keep asking for the legacy block.
+             */
             .SrbType = SRB_TYPE_SCSI_REQUEST_BLOCK,
             .AddressType = STORAGE_ADDRESS_TYPE_BTL8
         };
