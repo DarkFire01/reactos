@@ -316,6 +316,31 @@ USBD_UrbFree(
     _In_ PURB Urb
 );
 
+/*
+ * The two requests that take an interface list come ready built, since only
+ * the stack knows how much room the pipes of an interface need.
+ */
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Must_inspect_result_
+NTSTATUS
+USBD_SelectConfigUrbAllocateAndBuild(
+    _In_ USBD_HANDLE USBDHandle,
+    _In_ PUSB_CONFIGURATION_DESCRIPTOR ConfigurationDescriptor,
+    _Inout_ PUSBD_INTERFACE_LIST_ENTRY InterfaceList,
+    _Outptr_ PURB *Urb
+);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Must_inspect_result_
+NTSTATUS
+USBD_SelectInterfaceUrbAllocateAndBuild(
+    _In_ USBD_HANDLE USBDHandle,
+    _In_ USBD_CONFIGURATION_HANDLE ConfigurationHandle,
+    _Inout_ PUSBD_INTERFACE_LIST_ENTRY InterfaceList,
+    _Outptr_ PURB *Urb
+);
+
 #endif
 
 
