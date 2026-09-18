@@ -43,6 +43,10 @@
 /* Nothing larger is offered to the class layer, whatever the controller says */
 #define NVME_MAX_TRANSFER_LENGTH (2 * 1024 * 1024)
 
+/* The one IO queue pair this driver drives, and how deep it is willing to go */
+#define NVME_IO_QUEUE_ID        1
+#define NVME_IO_QUEUE_DEPTH     1024
+
 /* One namespace, as far as this driver is concerned */
 typedef struct _NVME_NAMESPACE
 {
@@ -127,6 +131,10 @@ typedef struct _NVME_ADAPTER_EXTENSION
 
     /* The admin queue pair, which carries every command before IO starts */
     NVME_QUEUE_PAIR AdminQueue;
+
+    /* The queue pair every read and write goes through */
+    NVME_QUEUE_PAIR IoQueue;
+    ULONG IoQueueDepth;
 
     /* Handed out so a completion can be matched to the command it answers */
     USHORT AdminCommandId;
@@ -241,6 +249,12 @@ NvmpIdentifyNamespace(
 
 BOOLEAN
 NvmpEnumerateNamespaces(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter);
+
+/* nvmeioq.c */
+
+BOOLEAN
+NvmpCreateIoQueues(
     _In_ PNVME_ADAPTER_EXTENSION Adapter);
 
 /* stornvme.c */
