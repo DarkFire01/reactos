@@ -125,6 +125,11 @@ NvmpCreateIoQueues(
     PNVME_QUEUE_PAIR Queue = &Adapter->IoQueue;
     USHORT Granted;
 
+    /*
+     * TODO: Ask for a queue pair per processor and build them all here, each
+     * against its own message vector, once storport can synchronize a miniport
+     * per message rather than on one interrupt object.
+     */
     if (!NvmpRequestQueueCount(Adapter, 1, &Granted))
     {
         DPRINT1("Controller would not say how many queues it has\n");

@@ -398,6 +398,9 @@ StorNvmeMessageInterrupt(
     /*
      * Every queue was created against vector zero, so whichever message
      * arrived, the one completion queue is where the work is.
+     *
+     * TODO: Drain the queue this message belongs to once there is more than
+     * one of them, rather than the only one there is.
      */
     return NvmpDrainQueue(Adapter, &Adapter->IoQueue);
 }
