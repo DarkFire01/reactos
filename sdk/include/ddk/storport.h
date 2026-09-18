@@ -7300,6 +7300,12 @@ typedef struct _HW_INITIALIZATION_DATA
 #endif
 } HW_INITIALIZATION_DATA, *PHW_INITIALIZATION_DATA;
 
+/* Size of the structure as it stood before the virtual miniport members */
+#define HW_INIT_DATA_SIZE_PHYSICAL     FIELD_OFFSET(HW_INITIALIZATION_DATA, HwFreeAdapterResources)
+
+/* Size of the structure as it stood before HwTracingEnabled */
+#define HW_INIT_DATA_SIZE_VIRTUAL     FIELD_OFFSET(HW_INITIALIZATION_DATA, HwTracingEnabled)
+
 #if (NTDDI_VERSION >= NTDDI_WIN8)
 
 /*
