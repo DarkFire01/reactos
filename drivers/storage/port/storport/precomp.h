@@ -97,6 +97,13 @@ typedef struct _MINIPORT
      */
     BOOLEAN AdapterControlSupported[ScsiAdapterControlMax];
     BOOLEAN UnitControlSupported[ScsiUnitControlMax];
+
+    /*
+     * A virtual miniport drives a device on a bus we know nothing about, so it
+     * gets no resources, no interrupt and no DMA adapter, and it is handed the
+     * device objects of its own stack instead.
+     */
+    BOOLEAN IsVirtual;
 } MINIPORT, *PMINIPORT;
 
 typedef struct _UNIT_DATA
@@ -447,6 +454,10 @@ BOOLEAN
 MiniportHwInterrupt(
     _In_ PMINIPORT Miniport);
 
+VOID
+MiniportFreeAdapterResources(
+    _In_ PMINIPORT Miniport);
+
 BOOLEAN
 MiniportHwMSInterrupt(
     _In_ PMINIPORT Miniport,
@@ -612,6 +623,10 @@ StorpIsExtendedSrb(
 
 PQUEUED_REQUEST_REFERENCE
 StorpRequestReference(
+    _In_ PSCSI_REQUEST_BLOCK Srb);
+
+PVOID
+StorpSrbDataBuffer(
     _In_ PSCSI_REQUEST_BLOCK Srb);
 
 VOID
