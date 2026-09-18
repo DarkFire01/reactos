@@ -41,12 +41,41 @@ typedef enum _BAD_HIVE_REASON
 
 /* FUNCTIONS **************************************************************/
 
+/*
+ * Says in a few words what became of a hive we could not load. A hive we
+ * never opened is told apart by what the open refused us, since a volume
+ * nothing could find is a different matter from a file that is not on one.
+ */
+static PCSTR
+BadHiveReason(
+    _In_ BAD_HIVE_REASON Reason,
+    _In_ ARC_STATUS ArcStatus)
+{
+    if (Reason == NoHive)
+    {
+        switch (ArcStatus)
+        {
+            case ENODEV: return "nothing knows of the volume it is on";
+            case ENOENT: return "the volume holds no file system, or not the file";
+            default:     return "it could not be opened";
+        }
+    }
+
+    switch (Reason)
+    {
+        case CorruptHive:  return "it could not be read";
+        case NoHiveAlloc:  return "there was no memory for it";
+        default:           return "it could not be imported";
+    }
+}
+
 static BOOLEAN
 WinLdrLoadSystemHive(
     _Inout_ PLOADER_PARAMETER_BLOCK LoaderBlock,
     _In_ PCSTR DirectoryPath,
     _In_ PCSTR HiveName,
-    _Out_ PBAD_HIVE_REASON Reason)
+    _Out_ PBAD_HIVE_REASON Reason,
+    _Out_ ARC_STATUS* ArcStatus)
 {
     ULONG FileId;
     CHAR FullHiveName[MAX_PATH];
@@ -59,6 +88,7 @@ WinLdrLoadSystemHive(
 
     /* Do not setup any bad reason for now */
     *Reason = GoodHive;
+    *ArcStatus = ESUCCESS;
 
     /* Concatenate path and filename to get the full name */
     RtlStringCbCopyA(FullHiveName, sizeof(FullHiveName), DirectoryPath);
@@ -70,6 +100,7 @@ WinLdrLoadSystemHive(
     {
         WARN("Error while opening '%s', Status: %u\n", FullHiveName, Status);
         *Reason = NoHive;
+        *ArcStatus = Status;
         return FALSE;
     }
 
@@ -79,6 +110,7 @@ WinLdrLoadSystemHive(
     {
         WARN("Hive file has 0 size!\n");
         *Reason = CorruptHive;
+        *ArcStatus = Status;
         ArcClose(FileId);
         return FALSE;
     }
@@ -110,6 +142,7 @@ WinLdrLoadSystemHive(
     {
         WARN("Error while reading '%s', Status: %u\n", FullHiveName, Status);
         *Reason = CorruptHive;
+        *ArcStatus = Status;
         ArcClose(FileId);
         return FALSE;
     }
@@ -132,6 +165,9 @@ WinLdrInitSystemHive(
     PCSTR HiveName;
     BOOLEAN Success;
     BAD_HIVE_REASON Reason;
+    BAD_HIVE_REASON PrimaryReason = GoodHive;
+    ARC_STATUS ArcStatus;
+    ARC_STATUS PrimaryStatus = ESUCCESS;
 
     /* Load the corresponding text-mode setup system hive or the standard hive */
     if (Setup)
@@ -147,18 +183,21 @@ WinLdrInitSystemHive(
     }
 
     TRACE("WinLdrInitSystemHive: loading hive %s%s\n", SearchPath, HiveName);
-    Success = WinLdrLoadSystemHive(LoaderBlock, SearchPath, HiveName, &Reason);
+    Success = WinLdrLoadSystemHive(LoaderBlock, SearchPath, HiveName, &Reason, &ArcStatus);
     if (!Success)
     {
         /* Check whether the SYSTEM hive does not exist or is too corrupt to be read */
         if (Reason == CorruptHive || Reason == NoHive)
         {
             /* Try loading the alternate hive, the main hive should be recovered later */
+            PrimaryReason = Reason;
+            PrimaryStatus = ArcStatus;
             goto LoadAlternateHive;
         }
 
         /* We are failing for other reason, bail out */
-        UiMessageBox("Could not load %s hive!", HiveName);
+        UiMessageBox("Could not load %s hive: %s!",
+                     HiveName, BadHiveReason(Reason, ArcStatus));
         return FALSE;
     }
 
@@ -192,10 +231,24 @@ WinLdrInitSystemHive(
          */
 LoadAlternateHive:
         HiveName = "SYSTEM.ALT";
-        Success = WinLdrLoadSystemHive(LoaderBlock, SearchPath, HiveName, &Reason);
+        Success = WinLdrLoadSystemHive(LoaderBlock, SearchPath, HiveName, &Reason, &ArcStatus);
         if (!Success)
         {
-            UiMessageBox("Could not load %s hive!", HiveName);
+            /*
+             * Name what became of the hive that matters. A system that has yet
+             * to run carries no alternate at all, the kernel writing the first
+             * one only once it starts, so saying that one is missing tells
+             * nobody anything.
+             */
+            UiMessageBox("Could not load the SYSTEM hive: %s (ARC %lu).\n"
+                         "Looked in %s\n"
+                         "%s is no help either: %s (ARC %lu).",
+                         BadHiveReason(PrimaryReason, PrimaryStatus),
+                         (ULONG)PrimaryStatus,
+                         SearchPath,
+                         HiveName,
+                         BadHiveReason(Reason, ArcStatus),
+                         (ULONG)ArcStatus);
             return FALSE;
         }
 
