@@ -1908,33 +1908,37 @@ InstallBootManagerAndBootEntries(
             goto Quit;
         }
 
-        /*
-         * Retrieve the volume's partition information.
-         * NOTE: Fails for floppy disks.
-         *
-         * NOTE: We can use the non-EX IOCTL because the super-floppy test will
-         * fail anyway if the disk is NOT MBR-partitioned. (If the disk is GPT,
-         * the IOCTL would return only the MBR protective partition, but the
-         * super-floppy test would fail due to the wrong partitioning style.)
-         */
-        Status = NtDeviceIoControlFile(DeviceHandle,
-                                       NULL, NULL, NULL,
-                                       &IoStatusBlock,
-                                       IOCTL_DISK_GET_PARTITION_INFO,
-                                       NULL, 0,
-                                       &PartitionInfo,
-                                       sizeof(PartitionInfo));
-        if (!NT_SUCCESS(Status))
-        {
-            DPRINT1("IOCTL_DISK_GET_PARTITION_INFO failed (Status 0x%08lx)\n", Status);
-            goto Quit;
-        }
-
         DiskNumber = DeviceNumber.DeviceNumber;
         PartitionStyle = DiskGeoEx.Partition.PartitionStyle;
-        IsSuperFloppy = IsDiskSuperFloppy2(&DiskGeoEx.Partition,
-                                           (PULONGLONG)&DiskGeoEx.DiskSize.QuadPart,
-                                           &PartitionInfo);
+        IsSuperFloppy = FALSE;
+
+        /*
+         * Only a disk written in the old style can be a super-floppy, that is
+         * one whose whole medium holds a single volume and no partition table.
+         * Asking any other kind about a partition the old way is refused, so
+         * only the old style is asked at all.
+         */
+        if (PartitionStyle == PARTITION_STYLE_MBR)
+        {
+            /* Retrieve the volume's partition information.
+             * NOTE: Fails for floppy disks. */
+            Status = NtDeviceIoControlFile(DeviceHandle,
+                                           NULL, NULL, NULL,
+                                           &IoStatusBlock,
+                                           IOCTL_DISK_GET_PARTITION_INFO,
+                                           NULL, 0,
+                                           &PartitionInfo,
+                                           sizeof(PartitionInfo));
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("IOCTL_DISK_GET_PARTITION_INFO failed (Status 0x%08lx)\n", Status);
+                goto Quit;
+            }
+
+            IsSuperFloppy = IsDiskSuperFloppy2(&DiskGeoEx.Partition,
+                                               (PULONGLONG)&DiskGeoEx.DiskSize.QuadPart,
+                                               &PartitionInfo);
+        }
     }
 
     Status = InstallBootManagerAndBootEntriesWorker(
