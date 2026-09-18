@@ -37,12 +37,12 @@ GetPartitionTypeString(
     OUT PSTR strBuffer,
     IN ULONG cchBuffer)
 {
-    if (PartEntry->PartitionType == PARTITION_ENTRY_UNUSED)
+    if (IsPartitionUnused(PartEntry))
     {
         RtlStringCchCopyA(strBuffer, cchBuffer,
                           MUIGetString(STRING_FORMATUNUSED));
     }
-    else if (IsContainerPartition(PartEntry->PartitionType))
+    else if (!IsGPTPartition(PartEntry) && IsContainerPartition(PartEntry->PartitionType))
     {
         RtlStringCchCopyA(strBuffer, cchBuffer,
                           MUIGetString(STRING_EXTENDED_PARTITION));
@@ -51,7 +51,7 @@ GetPartitionTypeString(
     {
         /* Do the table lookup */
         PCSTR Description = LookupPartitionTypeString(PartEntry->DiskEntry->DiskStyle,
-                                                      &PartEntry->PartitionType);
+                                                      GetPartitionType(PartEntry));
         if (Description)
         {
             RtlStringCchCopyA(strBuffer, cchBuffer, Description);
@@ -64,9 +64,20 @@ GetPartitionTypeString(
 
     if ((cchBuffer > 0) && (*strBuffer == '\0'))
     {
-        RtlStringCchPrintfA(strBuffer, cchBuffer,
-                            MUIGetString(STRING_PARTTYPE),
-                            PartEntry->PartitionType);
+        if (IsGPTPartition(PartEntry))
+        {
+            RtlStringCchPrintfA(strBuffer, cchBuffer,
+                                "Type %08lx-%04x-%04x",
+                                PartEntry->PartitionTypeGuid.Data1,
+                                PartEntry->PartitionTypeGuid.Data2,
+                                PartEntry->PartitionTypeGuid.Data3);
+        }
+        else
+        {
+            RtlStringCchPrintfA(strBuffer, cchBuffer,
+                                MUIGetString(STRING_PARTTYPE),
+                                PartEntry->PartitionType);
+        }
     }
 }
 
