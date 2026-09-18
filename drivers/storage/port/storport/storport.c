@@ -31,6 +31,7 @@ PortAddDriverInitData(
     PHW_INITIALIZATION_DATA HwInitializationData)
 {
     PDRIVER_INIT_DATA InitData;
+    ULONG Length;
 
     DPRINT1("PortAddDriverInitData()\n");
 
@@ -40,9 +41,18 @@ PortAddDriverInitData(
     if (InitData == NULL)
         return STATUS_NO_MEMORY;
 
+    /*
+     * The miniport may have been built against an older or a newer interface
+     * than ours, so only the part both sides agree on is worth copying. What
+     * is left over reads as zero, which is what an absent member means.
+     */
+    Length = min(HwInitializationData->HwInitializationDataSize,
+                 sizeof(HW_INITIALIZATION_DATA));
+
+    RtlZeroMemory(&InitData->HwInitData, sizeof(HW_INITIALIZATION_DATA));
     RtlCopyMemory(&InitData->HwInitData,
                   HwInitializationData,
-                  sizeof(HW_INITIALIZATION_DATA));
+                  Length);
 
     InsertHeadList(&DriverExtension->InitDataListHead,
                    &InitData->Entry);
@@ -1554,8 +1564,12 @@ StorPortInitialize(
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Check initialization data */
-    if ((HwInitializationData->HwInitializationDataSize < sizeof(HW_INITIALIZATION_DATA)) ||
+    /*
+     * Check initialization data. A miniport written against any interface from
+     * the original one onwards is welcome; the members it does not know about
+     * simply stay clear.
+     */
+    if ((HwInitializationData->HwInitializationDataSize < HW_INIT_DATA_SIZE_PHYSICAL) ||
         (HwInitializationData->HwInitialize == NULL) ||
         (HwInitializationData->HwStartIo == NULL) ||
         (HwInitializationData->HwFindAdapter == NULL) ||
