@@ -29,6 +29,8 @@ ULONG KeBugCheckCount = 1;
 ULONG KiHardwareTrigger;
 PUNICODE_STRING KiBugCheckDriver;
 ULONG_PTR KiBugCheckData[5];
+ULONG_PTR KiBugCheckFrames[10];
+ULONG KiBugCheckFrameCount;
 
 PKNMI_HANDLER_CALLBACK KiNmiCallbackListHead = NULL;
 KSPIN_LOCK KiNmiCallbackListLock;
@@ -607,6 +609,96 @@ KiDumpParameterImages(IN PCHAR Message,
     }
 }
 
+#ifdef _M_AMD64
+/**
+ * @brief Walks the frames a recorded context came through, for the cases where
+ *        the stack this runs on no longer holds them.
+ */
+static
+ULONG
+KiCaptureContextFrames(
+    _In_ PCONTEXT Context,
+    _Out_writes_(Count) PULONG_PTR Frames,
+    _In_ ULONG Count)
+{
+    CONTEXT Unwind = *Context;
+    ULONG Index;
+
+    for (Index = 0; Index < Count; Index++)
+    {
+        PRUNTIME_FUNCTION FunctionEntry;
+        ULONG64 ImageBase, EstablisherFrame;
+        PVOID HandlerData;
+
+        Frames[Index] = Unwind.Rip;
+
+        FunctionEntry = RtlLookupFunctionEntry(Unwind.Rip, &ImageBase, NULL);
+        if (FunctionEntry == NULL)
+            return Index + 1;
+
+        RtlVirtualUnwind(UNW_FLAG_NHANDLER,
+                         ImageBase,
+                         Unwind.Rip,
+                         FunctionEntry,
+                         &Unwind,
+                         &HandlerData,
+                         &EstablisherFrame,
+                         NULL);
+
+        if (Unwind.Rip == 0)
+            return Index + 1;
+    }
+
+    return Count;
+}
+#endif
+
+/**
+ * @brief Writes the frames captured at the bugcheck to the screen, since a
+ *        machine with no debug port has nowhere else to read them from.
+ */
+VOID
+NTAPI
+KiDisplayBacktrace(VOID)
+{
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    BOOLEAN InSystem;
+    CHAR Line[128];
+    CHAR AnsiName[64];
+    ULONG Index;
+
+    if (KiBugCheckFrameCount == 0)
+        return;
+
+    InbvDisplayString("\r\nStack:\r\n");
+
+    for (Index = 0; Index < KiBugCheckFrameCount; Index++)
+    {
+        ULONG_PTR Address = KiBugCheckFrames[Index];
+
+        if (Address == 0)
+            break;
+
+        if (KiPcToFileHeader((PVOID)Address, &LdrEntry, FALSE, &InSystem))
+        {
+            KeBugCheckUnicodeToAnsi(&LdrEntry->BaseDllName,
+                                    AnsiName,
+                                    sizeof(AnsiName));
+            RtlStringCbPrintfA(Line,
+                               sizeof(Line),
+                               " %s+%p\r\n",
+                               AnsiName,
+                               (PVOID)(Address - (ULONG_PTR)LdrEntry->DllBase));
+        }
+        else
+        {
+            RtlStringCbPrintfA(Line, sizeof(Line), " %p\r\n", (PVOID)Address);
+        }
+
+        InbvDisplayString(Line);
+    }
+}
+
 VOID
 NTAPI
 KiDisplayBlueScreen(IN ULONG MessageId,
@@ -716,6 +808,9 @@ KiDisplayBlueScreen(IN ULONG MessageId,
                               4,
                               KeBugCheckUnicodeToAnsi);
     }
+
+    /* Say how we got here */
+    KiDisplayBacktrace();
 }
 
 DECLSPEC_NORETURN
@@ -743,6 +838,39 @@ KeBugCheckWithTf(IN ULONG BugCheckCode,
     /* Set active bugcheck */
     KeBugCheckActive = TRUE;
     KiBugCheckDriver = NULL;
+
+    /* Take the frames now, before anything here disturbs the stack */
+    RtlZeroMemory(KiBugCheckFrames, sizeof(KiBugCheckFrames));
+    _SEH2_TRY
+    {
+#ifdef _M_AMD64
+        /*
+         * An unhandled exception has already been unwound by the time it gets
+         * here, so the frames that matter are the ones its context recorded,
+         * not the ones this stack still holds.
+         */
+        if (BugCheckCode == SYSTEM_THREAD_EXCEPTION_NOT_HANDLED)
+        {
+            KiBugCheckFrameCount =
+                KiCaptureContextFrames((PCONTEXT)BugCheckParameter4,
+                                       KiBugCheckFrames,
+                                       RTL_NUMBER_OF(KiBugCheckFrames));
+        }
+        else
+#endif
+        {
+            KiBugCheckFrameCount =
+                RtlCaptureStackBackTrace(1,
+                                         RTL_NUMBER_OF(KiBugCheckFrames),
+                                         (PVOID *)KiBugCheckFrames,
+                                         NULL);
+        }
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        KiBugCheckFrameCount = 0;
+    }
+    _SEH2_END;
 
     /* Check if this is power failure simulation */
     if (BugCheckCode == POWER_FAILURE_SIMULATE)
