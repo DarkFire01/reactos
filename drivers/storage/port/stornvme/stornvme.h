@@ -308,6 +308,11 @@ NvmpInitializeCommandIds(
     _In_ PNVME_ADAPTER_EXTENSION Adapter);
 
 BOOLEAN
+NvmpBuildFlush(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PVOID Srb);
+
+BOOLEAN
 NvmpBuildCommand(
     _In_ PNVME_ADAPTER_EXTENSION Adapter,
     _In_ PVOID Srb);

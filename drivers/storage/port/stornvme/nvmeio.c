@@ -286,6 +286,59 @@ NvmpBuildReadWrite(
 
 
 /**
+ * @brief Builds the command that pushes a namespace's write cache out.
+ *
+ * Reached both from the SCSI command that asks for it and from the request
+ * functions storport sends when the system is going down.
+ *
+ * @return TRUE when the request is ready to be posted, FALSE when it has
+ *         already been finished one way or another.
+ */
+BOOLEAN
+NvmpBuildFlush(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PVOID Srb)
+{
+    PNVME_REQUEST_CONTEXT Context;
+    PNVME_NAMESPACE Namespace;
+    UCHAR Lun;
+
+    SrbSetDataTransferLength(Srb, 0);
+
+    /* Nothing to push out when the controller holds nothing back */
+    if (!Adapter->VolatileWriteCache)
+    {
+        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_SUCCESS);
+        return FALSE;
+    }
+
+    Context = SrbGetMiniportContext(Srb);
+    if (Context == NULL)
+    {
+        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_ERROR);
+        return FALSE;
+    }
+
+    SrbGetPathTargetLun(Srb, NULL, NULL, &Lun);
+
+    Namespace = NvmpNamespaceFromLun(Adapter, Lun);
+    if (Namespace == NULL)
+    {
+        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_NO_DEVICE);
+        return FALSE;
+    }
+
+    RtlZeroMemory(Context, sizeof(*Context));
+    Context->Srb = Srb;
+
+    Context->Command.CDW0.OPC = NVME_NVM_COMMAND_FLUSH;
+    Context->Command.NSID = Namespace->NamespaceId;
+
+    return TRUE;
+}
+
+
+/**
  * @brief Builds the command a request will be carried out by.
  *
  * @return TRUE when the request is ready to be posted, FALSE when it has
@@ -298,7 +351,6 @@ NvmpBuildCommand(
 {
     PNVME_REQUEST_CONTEXT Context;
     PNVME_NAMESPACE Namespace;
-    PNVME_COMMAND Command;
     PCDB Cdb;
     UCHAR Lun;
 
@@ -321,8 +373,6 @@ NvmpBuildCommand(
         NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_NO_DEVICE);
         return FALSE;
     }
-
-    Command = &Context->Command;
 
     switch (Cdb->CDB6GENERIC.OperationCode)
     {
@@ -347,18 +397,7 @@ NvmpBuildCommand(
 
         case SCSIOP_SYNCHRONIZE_CACHE:
         case SCSIOP_SYNCHRONIZE_CACHE16:
-            /* Nothing to push out when the controller holds nothing back */
-            if (!Adapter->VolatileWriteCache)
-            {
-                SrbSetDataTransferLength(Srb, 0);
-                NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_SUCCESS);
-                return FALSE;
-            }
-
-            RtlZeroMemory(Command, sizeof(*Command));
-            Command->CDW0.OPC = NVME_NVM_COMMAND_FLUSH;
-            Command->NSID = Namespace->NamespaceId;
-            return TRUE;
+            return NvmpBuildFlush(Adapter, Srb);
 
         default:
             NvmpSetSenseData(Srb, SCSI_SENSE_ILLEGAL_REQUEST,
