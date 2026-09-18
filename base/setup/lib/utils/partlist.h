@@ -309,6 +309,11 @@ IsEfiSystemPartition(
  */
 #define EFI_SYSTEM_PARTITION_SIZE   (100 * 1024 * 1024)
 
+ULONGLONG
+GetSystemPartitionReserve(
+    _In_ PPARTLIST List,
+    _In_ PPARTENTRY PartEntry);
+
 PPARTENTRY
 FindEfiSystemPartition(
     _In_ PPARTLIST List,
