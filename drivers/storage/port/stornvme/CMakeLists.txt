@@ -5,6 +5,7 @@ add_definitions(
     -DNTDDI_VERSION=0x06020000) # NTDDI_WIN8
 
 list(APPEND SOURCE
+    nvmectrl.c
     stornvme.c)
 
 add_library(stornvme MODULE ${SOURCE} stornvme.rc)
