@@ -194,7 +194,7 @@ NvmpBuildPrp(
      * second entry then points at.
      */
     ListAddress = StorPortGetPhysicalAddress(Adapter, NULL, &List[1], &Length);
-    if (ListAddress.QuadPart == 0 || Length < (Count - 1) * sizeof(ULONGLONG))
+    if (ListAddress.QuadPart == 0 || Length < (Count - 1) * sizeof(*List))
     {
         DPRINT1("Region page list is not addressable\n");
         return FALSE;
