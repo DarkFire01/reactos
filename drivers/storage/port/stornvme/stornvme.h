@@ -34,6 +34,25 @@
 /* Entries in the admin queues. The specification caps this at 4096. */
 #define NVME_ADMIN_QUEUE_DEPTH  64
 
+/*
+ * Namespaces become logical units, so the count is what a single byte LUN can
+ * name. A controller with more than this keeps the rest to itself.
+ */
+#define NVME_MAX_NAMESPACES     255
+
+/* Nothing larger is offered to the class layer, whatever the controller says */
+#define NVME_MAX_TRANSFER_LENGTH (2 * 1024 * 1024)
+
+/* One namespace, as far as this driver is concerned */
+typedef struct _NVME_NAMESPACE
+{
+    ULONG NamespaceId;
+    ULONGLONG BlockCount;
+    ULONG BlockSize;
+    ULONG BlockShift;
+    BOOLEAN Present;
+} NVME_NAMESPACE, *PNVME_NAMESPACE;
+
 /* How long to wait between looks at CSTS while the controller settles */
 #define NVME_POLL_INTERVAL_US   10000
 
@@ -112,10 +131,29 @@ typedef struct _NVME_ADAPTER_EXTENSION
     /* Handed out so a completion can be matched to the command it answers */
     USHORT AdminCommandId;
 
-    /* Contiguous memory the queues were carved out of */
+    /* Contiguous memory the queues and the scratch buffer were carved out of */
     PVOID QueueMemory;
     PHYSICAL_ADDRESS QueueMemoryAddress;
     ULONG QueueMemorySize;
+
+    /*
+     * One page the controller can write results into. Only used while
+     * bringing the adapter up, where commands run one at a time.
+     */
+    PVOID ScratchBuffer;
+    PHYSICAL_ADDRESS ScratchAddress;
+
+    /* What the controller said about itself */
+    ULONG NamespaceCount;
+    UCHAR SerialNumber[20];
+    UCHAR ModelNumber[40];
+    UCHAR FirmwareRevision[8];
+
+    /* Set when the controller has a write cache that needs flushing */
+    BOOLEAN VolatileWriteCache;
+
+    /* Indexed by namespace identifier less one */
+    NVME_NAMESPACE Namespaces[NVME_MAX_NAMESPACES];
 
     /* Set while running as part of a crash dump or hibernation stack */
     BOOLEAN DumpMode;
@@ -188,6 +226,22 @@ NvmpIssueAdminCommand(
     _In_ PNVME_ADAPTER_EXTENSION Adapter,
     _In_ PNVME_COMMAND Command,
     _Out_opt_ PNVME_COMPLETION_ENTRY Completion);
+
+/* nvmeid.c */
+
+BOOLEAN
+NvmpIdentifyController(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter);
+
+BOOLEAN
+NvmpIdentifyNamespace(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ ULONG NamespaceId,
+    _Out_ PNVME_NAMESPACE Namespace);
+
+BOOLEAN
+NvmpEnumerateNamespaces(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter);
 
 /* stornvme.c */
 

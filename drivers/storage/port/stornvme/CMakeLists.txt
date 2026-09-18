@@ -6,6 +6,7 @@ add_definitions(
 
 list(APPEND SOURCE
     nvmectrl.c
+    nvmeid.c
     nvmequeue.c
     stornvme.c)
 
