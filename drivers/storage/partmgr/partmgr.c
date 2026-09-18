@@ -794,6 +794,7 @@ FdoIoctlDiskSetDriveLayoutEx(
     _In_ PIRP Irp)
 {
     PDRIVE_LAYOUT_INFORMATION_EX layoutEx, layoutUser = Irp->AssociatedIrp.SystemBuffer;
+    BOOLEAN layoutReturned = FALSE;
     NTSTATUS status;
 
     PAGED_CODE();
@@ -858,13 +859,13 @@ FdoIoctlDiskSetDriveLayoutEx(
         status = IoWritePartitionTableEx(FdoExtension->LowerDevice, layoutEx);
         if (NT_SUCCESS(status))
         {
-            // set updated partition numbers
+            // hand the caller back the partition numbers we just handed out
             for (UINT32 i = 0; i < layoutEx->PartitionCount; i++)
             {
-                PPARTITION_INFORMATION_EX part = &layoutEx->PartitionEntry[i];
-
-                part->PartitionNumber = layoutEx->PartitionEntry[i].PartitionNumber;
+                layoutUser->PartitionEntry[i].PartitionNumber =
+                    layoutEx->PartitionEntry[i].PartitionNumber;
             }
+            layoutReturned = TRUE;
         }
     }
 
@@ -903,7 +904,11 @@ FdoIoctlDiskSetDriveLayoutEx(
                                            NULL,
                                            NULL);
 
-    Irp->IoStatus.Information = layoutSize;
+    // only a caller that asked for the layout back is handed any of it
+    Irp->IoStatus.Information = layoutReturned
+        ? min(layoutSize,
+              IoGetCurrentIrpStackLocation(Irp)->Parameters.DeviceIoControl.OutputBufferLength)
+        : 0;
     return STATUS_SUCCESS;
 }
 
