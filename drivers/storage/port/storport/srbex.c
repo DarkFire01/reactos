@@ -27,6 +27,27 @@ C_ASSERT(FIELD_OFFSET(EXTENDED_REQUEST, Cdb) >=
 /* FUNCTIONS ******************************************************************/
 
 /**
+ * @brief Fills in the address of a logical unit.
+ *
+ * Bus, target and LUN is the only addressing storport hands out, so every
+ * caller that needs to name a unit to a miniport goes through here.
+ */
+VOID
+StorpBuildUnitAddress(
+    _In_ PPDO_DEVICE_EXTENSION PdoExtension,
+    _Out_ PSTOR_ADDR_BTL8 Address)
+{
+    RtlZeroMemory(Address, sizeof(*Address));
+
+    Address->Type = STOR_ADDRESS_TYPE_BTL8;
+    Address->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
+    Address->Path = (UCHAR)PdoExtension->Bus;
+    Address->Target = (UCHAR)PdoExtension->Target;
+    Address->Lun = (UCHAR)PdoExtension->Lun;
+}
+
+
+/**
  * @brief Tells whether a request block is in the extended format.
  *
  * The first four bytes mean the same thing in both formats, so the function
