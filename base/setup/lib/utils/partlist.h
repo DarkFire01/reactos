@@ -303,6 +303,17 @@ BOOLEAN
 IsEfiSystemPartition(
     _In_ const PARTENTRY* PartEntry);
 
+/*
+ * How much room an EFI system partition gets when Setup has to make one.
+ * The specification sets no size; this is what the other installers use.
+ */
+#define EFI_SYSTEM_PARTITION_SIZE   (100 * 1024 * 1024)
+
+PPARTENTRY
+FindEfiSystemPartition(
+    _In_ PPARTLIST List,
+    _In_opt_ PDISKENTRY PreferredDisk);
+
 
 BOOLEAN
 IsDiskSuperFloppy2(
