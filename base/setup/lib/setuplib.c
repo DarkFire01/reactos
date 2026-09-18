@@ -946,7 +946,20 @@ InitDestinationPaths(
 
     if (DiskEntry->MediaType == FixedMedia)
     {
-        if (DiskEntry->BiosFound)
+        /*
+         * A UEFI firmware hands its loader the disks itself, and the loader
+         * numbers them in the order it is given them, so a disk no BIOS ever
+         * listed is still named the ordinary way there.
+         */
+        if (IsUefiBoot())
+        {
+            Status = RtlStringCchPrintfW(PathBuffer, ARRAYSIZE(PathBuffer),
+                             L"multi(0)disk(0)rdisk(%lu)partition(%lu)\\",
+                             DiskEntry->DiskNumber,
+                             PartEntry->OnDiskPartitionNumber);
+            DPRINT1("UEFI firmware, using MULTI ARC path '%S'\n", PathBuffer);
+        }
+        else if (DiskEntry->BiosFound)
         {
 #if 1
             Status = RtlStringCchPrintfW(PathBuffer, ARRAYSIZE(PathBuffer),
