@@ -1815,21 +1815,35 @@ CreateInstallPartition:
         ULONGLONG Reserved;
 
         /*
-         * Whatever the firmware needs for itself has to stay free, so the
-         * region is taken whole only when nothing has to be held back.
+         * Whatever the firmware needs for itself is laid down first, at the
+         * front of the region, which is where every other installer puts it.
          */
         Reserved = GetSystemPartitionReserve(PartitionList, CurrentPartition);
         if (Reserved != 0ULL)
         {
-            ULONGLONG SizeAvailable = GetPartEntrySizeInBytes(CurrentPartition);
+            PPARTENTRY FreeEntry;
 
-            if (SizeAvailable <= Reserved)
+            if (GetPartEntrySizeInBytes(CurrentPartition) <= Reserved)
             {
                 MUIDisplayError(ERROR_INSUFFICIENT_PARTITION_SIZE, Ir, POPUP_WAIT_ANY_KEY,
                                 (ULONG)RoundingDivide(Reserved, MB));
                 return SELECT_PARTITION_PAGE;
             }
-            SizeBytes = SizeAvailable - Reserved;
+
+            CreatePartition(PartitionList,
+                            CurrentPartition,
+                            Reserved,
+                            PARTITION_SYSTEM);
+
+            /* Carry on in what is left of the region */
+            FreeEntry = GetAdjUnpartitionedEntry(CurrentPartition, TRUE);
+            if (!FreeEntry)
+            {
+                MUIDisplayError(ERROR_INSUFFICIENT_PARTITION_SIZE, Ir, POPUP_WAIT_ANY_KEY,
+                                (ULONG)RoundingDivide(Reserved, MB));
+                return SELECT_PARTITION_PAGE;
+            }
+            CurrentPartition = FreeEntry;
         }
 
         Error = PartitionCreateChecks(CurrentPartition, SizeBytes, 0);
