@@ -198,6 +198,20 @@ CheckUnattendedSetup(
             pSetupData->FsType = IntValue;
     }
 
+    /* Search for 'ComputerType' (optional). Detection never names anything
+     * but the plain PC and ACPI entries, so a HAL such as the ACPI APIC one
+     * can only be asked for here. */
+    if (SpInfFindFirstLine(UnattendInf, L"Unattend", L"ComputerType", &Context))
+    {
+        if (INF_GetData(&Context, NULL, &Value))
+        {
+            RtlStringCchCopyW(pSetupData->RequestedComputerType,
+                              ARRAYSIZE(pSetupData->RequestedComputerType),
+                              Value);
+            INF_FreeData(Value);
+        }
+    }
+
 Quit:
     SpInfCloseInfFile(UnattendInf);
     return IsUnattendedSetup;
