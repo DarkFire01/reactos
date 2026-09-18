@@ -36,6 +36,16 @@ typedef struct _REG_DISK_MOUNT_INFO
 
 /* FUNCTIONS ****************************************************************/
 
+static
+VOID
+CreatePartitionGuid(
+    _Out_ GUID* Guid);
+
+static
+VOID
+InitializeDiskStyle(
+    _In_ PDISKENTRY DiskEntry);
+
 #ifdef DUMP_PARTITION_TABLE
 static
 VOID
@@ -2068,11 +2078,21 @@ AddDiskToList(
     if (DiskEntry->LayoutBuffer->PartitionCount == 0)
     {
         DiskEntry->NewDisk = TRUE;
-        DiskEntry->LayoutBuffer->PartitionCount = 4;
 
-        for (i = 0; i < 4; i++)
+        /*
+         * The style has to be settled before the free space is worked out,
+         * since a GPT disk keeps sectors at both ends for its own tables.
+         */
+        InitializeDiskStyle(DiskEntry);
+
+        if (!IsGPTDisk(DiskEntry))
         {
-            GetLayoutEntry(DiskEntry, i)->RewritePartition = TRUE;
+            DiskEntry->LayoutBuffer->PartitionCount = 4;
+
+            for (i = 0; i < 4; i++)
+            {
+                GetLayoutEntry(DiskEntry, i)->RewritePartition = TRUE;
+            }
         }
     }
     else if (IsGPTDisk(DiskEntry))
@@ -2974,33 +2994,48 @@ UpdateGPTDiskLayout(
  *
  * A disk carrying no table yet has to be given one before anything can be
  * written to it. Which one it gets follows the firmware: a UEFI one reads
- * GPT, and everything that came before it reads an MBR.
+ * GPT, and everything that came before it reads an MBR. A disk holding no
+ * partition at all counts as one of these, whatever style the disk driver
+ * reported for the empty table it read.
+ *
+ * Calling this more than once on the same disk changes nothing the first
+ * call settled.
  **/
 static
 VOID
 InitializeDiskStyle(
     _In_ PDISKENTRY DiskEntry)
 {
-    if (DiskEntry->DiskStyle != PARTITION_STYLE_RAW)
+    PARTITION_STYLE NewStyle;
+
+    /* A disk with a partition on it keeps the style that partition sits in */
+    if ((DiskEntry->DiskStyle != PARTITION_STYLE_RAW) && !DiskEntry->NewDisk)
         return;
 
-    DiskEntry->DiskStyle = IsUefiBoot() ? PARTITION_STYLE_GPT
-                                        : PARTITION_STYLE_MBR;
+    NewStyle = IsUefiBoot() ? PARTITION_STYLE_GPT : PARTITION_STYLE_MBR;
 
-    DPRINT1("Disk %lu carries no partition table, laying it out as %s\n",
-            DiskEntry->DiskNumber,
-            IsGPTDisk(DiskEntry) ? "GPT" : "MBR");
-
-    if (DiskEntry->LayoutBuffer)
+    if (DiskEntry->DiskStyle != NewStyle)
     {
-        DiskEntry->LayoutBuffer->PartitionStyle = DiskEntry->DiskStyle;
-
-        if (IsGPTDisk(DiskEntry))
-        {
-            CreatePartitionGuid(&DiskEntry->LayoutBuffer->Gpt.DiskId);
-            DiskEntry->LayoutBuffer->Gpt.MaxPartitionCount = DEFAULT_GPT_PARTITION_COUNT;
-        }
+        DPRINT1("Disk %lu carries no partition table, laying it out as %s\n",
+                DiskEntry->DiskNumber,
+                (NewStyle == PARTITION_STYLE_GPT) ? "GPT" : "MBR");
     }
+    DiskEntry->DiskStyle = NewStyle;
+
+    if (!DiskEntry->LayoutBuffer)
+        return;
+
+    DiskEntry->LayoutBuffer->PartitionStyle = NewStyle;
+
+    if (!IsGPTDisk(DiskEntry))
+        return;
+
+    /* Keep whatever the disk was given the first time around */
+    if (IsEqualGUID(&DiskEntry->LayoutBuffer->Gpt.DiskId, &PARTITION_ENTRY_UNUSED_GUID))
+        CreatePartitionGuid(&DiskEntry->LayoutBuffer->Gpt.DiskId);
+
+    if (DiskEntry->LayoutBuffer->Gpt.MaxPartitionCount == 0)
+        DiskEntry->LayoutBuffer->Gpt.MaxPartitionCount = DEFAULT_GPT_PARTITION_COUNT;
 }
 
 static
