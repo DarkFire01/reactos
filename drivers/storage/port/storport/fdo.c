@@ -34,6 +34,89 @@ PortFdoInterruptRoutine(
 
 
 static
+BOOLEAN
+NTAPI
+PortFdoMessageInterruptRoutine(
+    _In_ PKINTERRUPT Interrupt,
+    _In_ PVOID ServiceContext,
+    _In_ ULONG MessageId)
+{
+    PFDO_DEVICE_EXTENSION DeviceExtension;
+
+    UNREFERENCED_PARAMETER(Interrupt);
+
+    DeviceExtension = (PFDO_DEVICE_EXTENSION)ServiceContext;
+
+    return MiniportHwMSInterrupt(&DeviceExtension->Miniport, MessageId);
+}
+
+
+/**
+ * @brief Connects the adapter on message signalled interrupts.
+ *
+ * Only tried when the miniport handed us a message interrupt routine from
+ * HwFindAdapter. The kernel falls back to a line interrupt on its own when the
+ * device has no MSI capability, which it reports back through the version.
+ */
+static
+NTSTATUS
+PortFdoConnectMessageInterrupt(
+    _In_ PFDO_DEVICE_EXTENSION DeviceExtension)
+{
+    IO_CONNECT_INTERRUPT_PARAMETERS Parameters;
+    NTSTATUS Status;
+
+    RtlZeroMemory(&Parameters, sizeof(Parameters));
+
+    Parameters.Version = CONNECT_MESSAGE_BASED;
+    Parameters.MessageBased.PhysicalDeviceObject = DeviceExtension->PhysicalDevice;
+    Parameters.MessageBased.ConnectionContext.InterruptMessageTable = &DeviceExtension->MessageInfo;
+    Parameters.MessageBased.MessageServiceRoutine = PortFdoMessageInterruptRoutine;
+    Parameters.MessageBased.ServiceContext = DeviceExtension;
+    Parameters.MessageBased.SpinLock = NULL;
+    Parameters.MessageBased.SynchronizeIrql = 0;
+    Parameters.MessageBased.FloatingSave = FALSE;
+    Parameters.MessageBased.FallBackServiceRoutine = PortFdoInterruptRoutine;
+
+    Status = IoConnectInterruptEx(&Parameters);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("IoConnectInterruptEx() failed (Status 0x%08lx)\n", Status);
+        return Status;
+    }
+
+    if (Parameters.Version == CONNECT_LINE_BASED)
+    {
+        /*
+         * No MSI on this device. The connection context is one union, so the
+         * line interrupt object came back where the message table would be.
+         */
+        DeviceExtension->Interrupt = (PKINTERRUPT)DeviceExtension->MessageInfo;
+        DeviceExtension->MessageInfo = NULL;
+
+        DPRINT1("Adapter fell back to a line interrupt\n");
+        return STATUS_SUCCESS;
+    }
+
+    DeviceExtension->MessageInterrupts = TRUE;
+    DeviceExtension->InterruptIrql = DeviceExtension->MessageInfo->UnifiedIrql;
+
+    /*
+     * The synchronization helpers work on a single interrupt object, so keep
+     * the first message around for them.
+     */
+    if (DeviceExtension->MessageInfo->MessageCount > 0)
+        DeviceExtension->Interrupt = DeviceExtension->MessageInfo->MessageInfo[0].InterruptObject;
+
+    DPRINT1("Connected %lu message interrupts at IRQL %lu\n",
+            DeviceExtension->MessageInfo->MessageCount,
+            DeviceExtension->InterruptIrql);
+
+    return STATUS_SUCCESS;
+}
+
+
+static
 NTSTATUS
 PortFdoConnectInterrupt(
     _In_ PFDO_DEVICE_EXTENSION DeviceExtension)
@@ -55,6 +138,10 @@ PortFdoConnectInterrupt(
         DPRINT("Checkpoint\n");
         return STATUS_SUCCESS;
     }
+
+    /* A miniport that can take messages gets them in preference to a line */
+    if (DeviceExtension->Miniport.PortConfig.HwMSInterruptRoutine != NULL)
+        return PortFdoConnectMessageInterrupt(DeviceExtension);
 
     /* Get the interrupt data from the resource list */
     Status = GetResourceListInterrupt(DeviceExtension,
@@ -96,6 +183,34 @@ PortFdoConnectInterrupt(
     }
 
     return Status;
+}
+
+
+static
+VOID
+PortFdoDisconnectInterrupt(
+    _In_ PFDO_DEVICE_EXTENSION DeviceExtension)
+{
+    IO_DISCONNECT_INTERRUPT_PARAMETERS Parameters;
+
+    DPRINT("PortFdoDisconnectInterrupt(%p)\n", DeviceExtension);
+
+    if (DeviceExtension->MessageInterrupts)
+    {
+        Parameters.Version = CONNECT_MESSAGE_BASED;
+        Parameters.ConnectionContext.InterruptMessageTable = DeviceExtension->MessageInfo;
+        IoDisconnectInterruptEx(&Parameters);
+
+        DeviceExtension->MessageInterrupts = FALSE;
+        DeviceExtension->MessageInfo = NULL;
+    }
+    else if (DeviceExtension->Interrupt != NULL)
+    {
+        IoDisconnectInterrupt(DeviceExtension->Interrupt);
+    }
+
+    DeviceExtension->Interrupt = NULL;
+    DeviceExtension->InterruptIrql = 0;
 }
 
 
@@ -1057,6 +1172,7 @@ PortFdoPnp(
 
         case IRP_MN_REMOVE_DEVICE: /* 0x02 */
             DPRINT1("IRP_MJ_PNP / IRP_MN_REMOVE_DEVICE\n");
+            PortFdoDisconnectInterrupt(DeviceExtension);
             break;
 
         case IRP_MN_CANCEL_REMOVE_DEVICE: /* 0x03 */
@@ -1065,6 +1181,8 @@ PortFdoPnp(
 
         case IRP_MN_STOP_DEVICE: /* 0x04 */
             DPRINT1("IRP_MJ_PNP / IRP_MN_STOP_DEVICE\n");
+            PortFdoDisconnectInterrupt(DeviceExtension);
+            DeviceExtension->PnpState = dsStopped;
             break;
 
         case IRP_MN_QUERY_STOP_DEVICE: /* 0x05 */

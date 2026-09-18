@@ -242,6 +242,14 @@ typedef struct _FDO_DEVICE_EXTENSION
     PKINTERRUPT Interrupt;
     ULONG InterruptIrql;
 
+    /*
+     * Set when the adapter runs on message signalled interrupts. MessageInfo
+     * then describes every connected message and Interrupt holds the object
+     * of the first one, so the spin lock helpers keep working either way.
+     */
+    BOOLEAN MessageInterrupts;
+    PIO_INTERRUPT_MESSAGE_INFO MessageInfo;
+
     KSPIN_LOCK PdoListLock;
     LIST_ENTRY PdoListHead;
     ULONG PdoCount;
@@ -406,6 +414,11 @@ MiniportHwInitialize(
 BOOLEAN
 MiniportHwInterrupt(
     _In_ PMINIPORT Miniport);
+
+BOOLEAN
+MiniportHwMSInterrupt(
+    _In_ PMINIPORT Miniport,
+    _In_ ULONG MessageId);
 
 BOOLEAN
 MiniportStartIo(
