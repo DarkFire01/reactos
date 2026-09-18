@@ -80,8 +80,8 @@ NvmpSetSenseData(
 /**
  * @brief Finishes a request that failed, with the reason attached.
  *
- * Sense data the class layer is not told about is sense data it will not read,
- * so the status carries the flag only when there was somewhere to write it.
+ * The status only claims the sense data is valid when there was a buffer to
+ * put it in, because that is the flag the class layer reads it on.
  */
 VOID
 NvmpCompleteWithSense(
