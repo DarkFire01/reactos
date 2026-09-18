@@ -90,6 +90,25 @@ InitializeConfiguration(
     /* Default per-adapter outstanding IO limit, as per storport documentation. */
     PortConfig->MaxNumberOfIO = 1000;
 
+    /*
+     * Only a miniport built against the Win8 or later interface declares an
+     * init data block long enough to carry the request format flags. Anything
+     * shorter, and anything that did not ask for the extended block, keeps the
+     * original SCSI_REQUEST_BLOCK.
+     */
+    PortConfig->SrbType = SRB_TYPE_SCSI_REQUEST_BLOCK;
+    if (InitData->HwInitializationDataSize >=
+        RTL_SIZEOF_THROUGH_FIELD(HW_INITIALIZATION_DATA, SrbTypeFlags) &&
+        TEST_FLAG(InitData->SrbTypeFlags, SRB_TYPE_FLAG_STORAGE_REQUEST_BLOCK))
+    {
+        PortConfig->SrbType = SRB_TYPE_STORAGE_REQUEST_BLOCK;
+    }
+
+    /* Bus, target and LUN is the only addressing we hand out */
+    PortConfig->AddressType = STORAGE_ADDRESS_TYPE_BTL8;
+
+    DPRINT1("SrbType: %u\n", PortConfig->SrbType);
+
     return STATUS_SUCCESS;
 }
 
