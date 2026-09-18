@@ -144,6 +144,8 @@ typedef struct _USETUP_DATA
 /* Settings *****/
     ARCHITECTURE_TYPE ArchType; //< Target architecture (MachineType)
     PCWSTR ComputerType;
+    /* Computer type an answer file asked for, empty when it named none */
+    WCHAR RequestedComputerType[32];
     PCWSTR DisplayType;
     // PCWSTR KeyboardDriver;
     // PCWSTR MouseDriver;

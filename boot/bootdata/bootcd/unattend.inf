@@ -38,6 +38,10 @@ FormatPartition=1
 ; 0 - disabled
 AutoPartition = 1
 
+; Choose the computer type, which picks the HAL. See [Computer.NTx86]
+; in txtsetup.sif for the ids. Detection never picks the APIC ones.
+;ComputerType = aacpi_up
+
 ; Choose default file system type.
 ; 0 - FAT
 ; 1 - BtrFS
