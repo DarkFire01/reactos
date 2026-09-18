@@ -540,6 +540,30 @@ PrepareCopyInfFile(
         /* Add specific files depending of computer type */
         {
         PGENERIC_LIST_ENTRY Entry;
+
+        /* An answer file naming a computer type wins over what was detected */
+        if (pSetupData->RequestedComputerType[0] != UNICODE_NULL)
+        {
+            for (Entry = GetFirstListEntry(pSetupData->ComputerList);
+                 Entry != NULL;
+                 Entry = GetNextListEntry(Entry))
+            {
+                PGENENTRY Computer = (PGENENTRY)GetListEntryData(Entry);
+
+                if (_wcsicmp(Computer->Id, pSetupData->RequestedComputerType) == 0)
+                {
+                    SetCurrentListEntry(pSetupData->ComputerList, Entry);
+                    break;
+                }
+            }
+
+            if (Entry == NULL)
+            {
+                DPRINT1("No computer type '%S', keeping the detected one\n",
+                        pSetupData->RequestedComputerType);
+            }
+        }
+
         Entry = GetCurrentListEntry(pSetupData->ComputerList);
         ASSERT(Entry);
         pSetupData->ComputerType = ((PGENENTRY)GetListEntryData(Entry))->Id;
