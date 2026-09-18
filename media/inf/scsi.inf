@@ -29,6 +29,7 @@ DefaultDestDir = 12
 %GEN_SCSIADAPTER.DeviceDesc% = NO_DRV,,GEN_SCSIADAPTER
 %PCI\VEN_104B&CC_0100.DeviceDesc% = BusLogic_Inst,PCI\VEN_104B&CC_0100
 %PCI\CC_010802.DeviceDesc% = StorNvme_Inst,PCI\CC_010802
+%USB\UASP.DeviceDesc% = UaspStor_Inst,USB\Class_08&SubClass_06&Prot_62
 
 ;--------------------------- SCSIPORT DRIVER ----------------------------
 
@@ -88,6 +89,29 @@ ErrorControl   = 1
 ServiceBinary  = %12%\stornvme.sys
 LoadOrderGroup = SCSI Miniport
 
+;--------------------------- UASPSTOR DRIVER ----------------------------
+
+[UaspStor_Inst.NT]
+CopyFiles = UaspStor_CopyFiles.NT, Storport_CopyFiles.NT
+
+[UaspStor_CopyFiles.NT]
+uaspstor.sys
+
+[UaspStor_Inst.NT.Services]
+AddService = uaspstor, 0x00000002, UaspStor_Service_Inst
+AddService = storport, , Storport_Service_Inst
+
+[UaspStor_Service_Inst]
+ServiceType    = 1
+StartType      = 0
+ErrorControl   = 1
+ServiceBinary  = %12%\uaspstor.sys
+LoadOrderGroup = SCSI Miniport
+AddReg         = UaspStor_Service_AddReg
+
+[UaspStor_Service_AddReg]
+HKR, Parameters, BusType, 0x00010001, 0x00000007
+
 ;--------------------------- BUSLOGIC DRIVER ----------------------------
 
 [BusLogic_Inst.NT]
@@ -121,6 +145,7 @@ GEN_SCSIADAPTER.DeviceDesc = "SCSI/RAID Host Controller"
 
 PCI\VEN_104B&CC_0100.DeviceDesc = "BusLogic SCSI Controller"
 PCI\CC_010802.DeviceDesc = "Standard NVM Express Controller"
+USB\UASP.DeviceDesc = "USB Attached SCSI (UAS) Mass Storage Device"
 
 [Strings.0404]
 SCSIClassName = "SCSI / RAID 控制器"
