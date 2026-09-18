@@ -237,8 +237,10 @@ PortPdoAfterBuildingScatterGatherList(
 
 
 /**
- * @brief Allocates SRB extension, Request reference. If it fails, the IO will be failed and return.
- * 
+ * @brief Allocates the SRB extension and the request reference.
+ *
+ * The request is left alone on failure, so the caller still owns it and is
+ * the one that completes it.
  */
 NTSTATUS
 PortPdoSrbAllocatePrivateContexts(
@@ -247,7 +249,6 @@ PortPdoSrbAllocatePrivateContexts(
     _In_ PFDO_DEVICE_EXTENSION FdoExtension)
 {
     PQUEUED_REQUEST_REFERENCE RequestReference;
-    NTSTATUS Status;
     PIRP Irp;
 
     Irp = (PIRP)Srb->OriginalRequest;
@@ -255,24 +256,26 @@ PortPdoSrbAllocatePrivateContexts(
     /* Allocate our private data area */
     RequestReference = StorpSrbAllocateRequestReference(Srb, Irp, PdoExtension);
     if (RequestReference == NULL)
-    {
-        Status = STATUS_INSUFFICIENT_RESOURCES;
-        StorpCompleteRequest(Irp, SRB_STATUS_ERROR, Status); /* FIXME: SRB error code? */
-        return Status;
-    }
+        return STATUS_INSUFFICIENT_RESOURCES;
 
-    /* Allocate SRB extension */
+    /*
+     * Allocate the SRB extension. A miniport that asked for none keeps
+     * everything it needs elsewhere, which is not a failure.
+     */
     if (FdoExtension->HwInitData->SrbExtensionSize != 0)
     {
         Srb->SrbExtension = ExAllocatePoolWithTag(NonPagedPool,
                                                   FdoExtension->HwInitData->SrbExtensionSize,
                                                   TAG_SRB_EXTENSION);
-    } else {
+        if (Srb->SrbExtension == NULL)
+        {
+            StorpSrbFreeRequestReference(Srb);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+    }
+    else
+    {
         Srb->SrbExtension = NULL;
-        Status = STATUS_INSUFFICIENT_RESOURCES;
-        StorpSrbFreeRequestReference(Srb);
-        StorpCompleteRequest(Irp, SRB_STATUS_ERROR, Status); /* FIXME: SRB error code? */
-        return Status;
     }
 
     /*
@@ -282,8 +285,7 @@ PortPdoSrbAllocatePrivateContexts(
     if (RequestReference->ExtendedRequest != NULL)
         StorpBuildExtendedSrb(Srb, RequestReference->ExtendedRequest);
 
-    Status = STATUS_SUCCESS;
-    return Status;
+    return STATUS_SUCCESS;
 }
 
 
@@ -336,6 +338,27 @@ PortPdoIssueRequest(
             MmProbeAndLockPages(Irp->MdlAddress, KernelMode, IoModifyAccess);
         }
 
+        RequestReference->WriteToDevice =
+            TEST_FLAG(RequestReference->Srb->SrbFlags, SRB_FLAGS_DATA_OUT);
+
+        /*
+         * A virtual miniport has no DMA adapter to build a list with. It moves
+         * the buffer itself, through the MDL it asks us for, so the request
+         * goes straight on with no list at all.
+         */
+        if (FdoExtension->Miniport.IsVirtual)
+        {
+            PortPdoAfterBuildingScatterGatherList(FdoExtension->Device,
+                                                  RequestReference->Irp,
+                                                  NULL,
+                                                  RequestReference);
+
+            /* FIXME: Is this correct? */
+            Status = STATUS_PENDING;
+
+            return Status;
+        }
+
         /* Following call requires DISPATCH_LEVEL. */
         OldIrql = KfRaiseIrql(DISPATCH_LEVEL);
         
@@ -343,8 +366,6 @@ PortPdoIssueRequest(
         /* FIXME: I don't know if we actually hit it */
         NT_ASSERT((RequestReference->Srb->SrbFlags & SRB_FLAGS_UNSPECIFIED_DIRECTION) !=
                   SRB_FLAGS_UNSPECIFIED_DIRECTION);
-        RequestReference->WriteToDevice =
-            TEST_FLAG(RequestReference->Srb->SrbFlags, SRB_FLAGS_DATA_OUT);
 
         FdoExtension->DmaAdapter->DmaOperations->
             GetScatterGatherList(FdoExtension->DmaAdapter,
