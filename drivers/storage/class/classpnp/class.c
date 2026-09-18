@@ -12258,10 +12258,14 @@ ClasspRetryRequestDpc(
         TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL, "ClassRetry:  -- %p\n", irp));
         retryList = retryList->Next;
         #if DBG
+            /*
+             * Only what the retry list itself wrote is invalidated. The slots
+             * past it carry things the request keeps for its whole life, such
+             * as whether it counts as an idle one, which the completion still
+             * has to be able to read.
+             */
+            C_ASSERT(sizeof(CLASS_RETRY_INFO) <= sizeof(irp->Tail.Overlay.DriverContext[0]));
             irp->Tail.Overlay.DriverContext[0] = ULongToPtr(0xdddddddd); // invalidate data
-            irp->Tail.Overlay.DriverContext[1] = ULongToPtr(0xdddddddd); // invalidate data
-            irp->Tail.Overlay.DriverContext[2] = ULongToPtr(0xdddddddd); // invalidate data
-            irp->Tail.Overlay.DriverContext[3] = ULongToPtr(0xdddddddd); // invalidate data
         #endif
 
 
