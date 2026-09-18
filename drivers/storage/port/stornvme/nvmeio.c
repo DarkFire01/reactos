@@ -1,0 +1,450 @@
+/*
+ * PROJECT:     ReactOS NVM Express Miniport Driver
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     Read, write and flush translation
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+/* INCLUDES *******************************************************************/
+
+#include "stornvme.h"
+
+#define NDEBUG
+#include <debug.h>
+
+
+/* FUNCTIONS ******************************************************************/
+
+/**
+ * @brief Finds the page aligned area of a request context.
+ *
+ * The context is one page larger than it needs to be so that a whole page can
+ * be found inside it. A page of virtual memory is one page of physical memory,
+ * which is what a list of region pages has to live in.
+ */
+static
+PULONGLONG
+NvmpPrpList(
+    _In_ PNVME_REQUEST_CONTEXT Context)
+{
+    ULONG_PTR Address = (ULONG_PTR)(Context + 1);
+
+    return (PULONGLONG)ROUND_TO_PAGES(Address);
+}
+
+
+/**
+ * @brief Pulls the block address and count out of a read or write command.
+ */
+static
+BOOLEAN
+NvmpReadWriteParameters(
+    _In_ PCDB Cdb,
+    _Out_ PULONGLONG BlockAddress,
+    _Out_ PULONG BlockCount)
+{
+    switch (Cdb->CDB6GENERIC.OperationCode)
+    {
+        case SCSIOP_READ6:
+        case SCSIOP_WRITE6:
+            *BlockAddress = ((ULONGLONG)(Cdb->CDB6READWRITE.LogicalBlockMsb1 & 0x1F) << 16) |
+                            ((ULONGLONG)Cdb->CDB6READWRITE.LogicalBlockMsb0 << 8) |
+                            Cdb->CDB6READWRITE.LogicalBlockLsb;
+
+            /* A count of zero means 256 blocks in the six byte form */
+            *BlockCount = Cdb->CDB6READWRITE.TransferBlocks;
+            if (*BlockCount == 0)
+                *BlockCount = 256;
+            return TRUE;
+
+        case SCSIOP_READ:
+        case SCSIOP_WRITE:
+        {
+            ULONG Address;
+            USHORT Count;
+
+            REVERSE_BYTES(&Address, &Cdb->CDB10.LogicalBlockByte0);
+            REVERSE_BYTES_SHORT(&Count, &Cdb->CDB10.TransferBlocksMsb);
+
+            *BlockAddress = Address;
+            *BlockCount = Count;
+            return TRUE;
+        }
+
+        case SCSIOP_READ12:
+        case SCSIOP_WRITE12:
+        {
+            ULONG Address;
+            ULONG Count;
+
+            REVERSE_BYTES(&Address, &Cdb->CDB12.LogicalBlock);
+            REVERSE_BYTES(&Count, &Cdb->CDB12.TransferLength);
+
+            *BlockAddress = Address;
+            *BlockCount = Count;
+            return TRUE;
+        }
+
+        case SCSIOP_READ16:
+        case SCSIOP_WRITE16:
+        {
+            ULONGLONG Address;
+            ULONG Count;
+
+            REVERSE_BYTES_QUAD(&Address, &Cdb->CDB16.LogicalBlock);
+            REVERSE_BYTES(&Count, &Cdb->CDB16.TransferLength);
+
+            *BlockAddress = Address;
+            *BlockCount = Count;
+            return TRUE;
+        }
+
+        default:
+            return FALSE;
+    }
+}
+
+
+/**
+ * @brief Describes a transfer to the controller as physical region pages.
+ *
+ * The first entry may begin part way into a page. Everything after it has to
+ * start on a page boundary, which is what the scatter gather list from
+ * storport already guarantees for a transfer of more than one element.
+ */
+static
+BOOLEAN
+NvmpBuildPrp(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PNVME_REQUEST_CONTEXT Context,
+    _In_ PSTOR_SCATTER_GATHER_LIST ScatterGather,
+    _In_ PNVME_COMMAND Command)
+{
+    PULONGLONG List;
+    PHYSICAL_ADDRESS ListAddress;
+    ULONGLONG Address;
+    ULONG Element;
+    ULONG Offset;
+    ULONG Count = 0;
+    ULONG Length;
+
+    List = NvmpPrpList(Context);
+
+    /*
+     * Walk every page each element covers, since one element may well span
+     * several of them.
+     */
+    for (Element = 0; Element < ScatterGather->NumberOfElements; Element++)
+    {
+        Address = ScatterGather->List[Element].PhysicalAddress.QuadPart;
+        Length = ScatterGather->List[Element].Length;
+
+        /* Only the very first page of the transfer may carry an offset */
+        Offset = (ULONG)(Address & (Adapter->PageSize - 1));
+        if (Offset != 0 && Count != 0)
+        {
+            DPRINT1("Transfer element %lu is not page aligned\n", Element);
+            return FALSE;
+        }
+
+        while (Length != 0)
+        {
+            ULONG Step = Adapter->PageSize - Offset;
+
+            if (Step > Length)
+                Step = Length;
+
+            if (Count >= NVME_MAX_PRP_ENTRIES)
+            {
+                DPRINT1("Transfer needs more than %lu region pages\n",
+                        (ULONG)NVME_MAX_PRP_ENTRIES);
+                return FALSE;
+            }
+
+            List[Count++] = Address;
+
+            Address += Step;
+            Length -= Step;
+            Offset = 0;
+        }
+    }
+
+    if (Count == 0)
+    {
+        DPRINT1("Transfer describes no memory\n");
+        return FALSE;
+    }
+
+    Command->PRP1 = List[0];
+
+    if (Count == 1)
+    {
+        Command->PRP2 = 0;
+        return TRUE;
+    }
+
+    if (Count == 2)
+    {
+        Command->PRP2 = List[1];
+        return TRUE;
+    }
+
+    /*
+     * With more than two pages the rest go in a list of their own, which the
+     * second entry then points at.
+     */
+    ListAddress = StorPortGetPhysicalAddress(Adapter, NULL, &List[1], &Length);
+    if (ListAddress.QuadPart == 0 || Length < (Count - 1) * sizeof(ULONGLONG))
+    {
+        DPRINT1("Region page list is not addressable\n");
+        return FALSE;
+    }
+
+    Command->PRP2 = ListAddress.QuadPart;
+
+    return TRUE;
+}
+
+
+/**
+ * @brief Turns a read or write into the matching NVM command.
+ */
+static
+BOOLEAN
+NvmpBuildReadWrite(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PVOID Srb,
+    _In_ PNVME_NAMESPACE Namespace,
+    _In_ PNVME_REQUEST_CONTEXT Context,
+    _In_ PCDB Cdb)
+{
+    PNVME_COMMAND Command = &Context->Command;
+    PSTOR_SCATTER_GATHER_LIST ScatterGather;
+    ULONGLONG BlockAddress;
+    ULONG BlockCount;
+    BOOLEAN Write;
+
+    if (!NvmpReadWriteParameters(Cdb, &BlockAddress, &BlockCount))
+        return FALSE;
+
+    if (BlockCount == 0)
+    {
+        /* A transfer of no blocks is not an error, it simply moves nothing */
+        SrbSetDataTransferLength(Srb, 0);
+        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_SUCCESS);
+        return TRUE;
+    }
+
+    if (BlockAddress + BlockCount > Namespace->BlockCount)
+    {
+        NvmpSetSenseData(Srb, SCSI_SENSE_ILLEGAL_REQUEST,
+                         SCSI_ADSENSE_ILLEGAL_BLOCK, 0);
+        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_ERROR);
+        return TRUE;
+    }
+
+    switch (Cdb->CDB6GENERIC.OperationCode)
+    {
+        case SCSIOP_WRITE6:
+        case SCSIOP_WRITE:
+        case SCSIOP_WRITE12:
+        case SCSIOP_WRITE16:
+            Write = TRUE;
+            break;
+
+        default:
+            Write = FALSE;
+            break;
+    }
+
+    RtlZeroMemory(Command, sizeof(*Command));
+
+    Command->CDW0.OPC = Write ? NVME_NVM_COMMAND_WRITE : NVME_NVM_COMMAND_READ;
+    Command->NSID = Namespace->NamespaceId;
+    Command->u.READWRITE.LBALOW = (ULONG)BlockAddress;
+    Command->u.READWRITE.LBAHIGH = (ULONG)(BlockAddress >> 32);
+
+    /* The block count is reported one less than the blocks moved */
+    Command->u.READWRITE.CDW12.NLB = (USHORT)(BlockCount - 1);
+
+    ScatterGather = StorPortGetScatterGatherList(Adapter, Srb);
+    if (ScatterGather == NULL)
+    {
+        DPRINT1("Request has no scatter gather list\n");
+        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_ERROR);
+        return TRUE;
+    }
+
+    if (!NvmpBuildPrp(Adapter, Context, ScatterGather, Command))
+    {
+        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_ERROR);
+        return TRUE;
+    }
+
+    return TRUE;
+}
+
+
+/**
+ * @brief Builds the command a request will be carried out by.
+ *
+ * @return TRUE when the request is ready to be posted, FALSE when it has
+ *         already been finished one way or another.
+ */
+BOOLEAN
+NvmpBuildCommand(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PVOID Srb)
+{
+    PNVME_REQUEST_CONTEXT Context;
+    PNVME_NAMESPACE Namespace;
+    PNVME_COMMAND Command;
+    PCDB Cdb;
+    UCHAR Lun;
+
+    Context = SrbGetMiniportContext(Srb);
+    if (Context == NULL)
+    {
+        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_ERROR);
+        return FALSE;
+    }
+
+    RtlZeroMemory(Context, sizeof(*Context));
+    Context->Srb = Srb;
+
+    Cdb = SrbGetCdb(Srb);
+    SrbGetPathTargetLun(Srb, NULL, NULL, &Lun);
+
+    Namespace = NvmpNamespaceFromLun(Adapter, Lun);
+    if (Cdb == NULL || Namespace == NULL)
+    {
+        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_NO_DEVICE);
+        return FALSE;
+    }
+
+    Command = &Context->Command;
+
+    switch (Cdb->CDB6GENERIC.OperationCode)
+    {
+        case SCSIOP_READ6:
+        case SCSIOP_READ:
+        case SCSIOP_READ12:
+        case SCSIOP_READ16:
+        case SCSIOP_WRITE6:
+        case SCSIOP_WRITE:
+        case SCSIOP_WRITE12:
+        case SCSIOP_WRITE16:
+            if (!NvmpBuildReadWrite(Adapter, Srb, Namespace, Context, Cdb))
+            {
+                NvmpSetSenseData(Srb, SCSI_SENSE_ILLEGAL_REQUEST,
+                                 SCSI_ADSENSE_INVALID_CDB, 0);
+                NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_ERROR);
+                return FALSE;
+            }
+
+            /* The helper finishes the request itself when it cannot proceed */
+            return (SrbGetSrbStatus(Srb) == SRB_STATUS_PENDING);
+
+        case SCSIOP_SYNCHRONIZE_CACHE:
+        case SCSIOP_SYNCHRONIZE_CACHE16:
+            /* Nothing to push out when the controller holds nothing back */
+            if (!Adapter->VolatileWriteCache)
+            {
+                SrbSetDataTransferLength(Srb, 0);
+                NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_SUCCESS);
+                return FALSE;
+            }
+
+            RtlZeroMemory(Command, sizeof(*Command));
+            Command->CDW0.OPC = NVME_NVM_COMMAND_FLUSH;
+            Command->NSID = Namespace->NamespaceId;
+            return TRUE;
+
+        default:
+            NvmpSetSenseData(Srb, SCSI_SENSE_ILLEGAL_REQUEST,
+                             SCSI_ADSENSE_ILLEGAL_COMMAND, 0);
+            NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_ERROR);
+            return FALSE;
+    }
+}
+
+
+/**
+ * @brief Posts a prepared command to the queue it belongs on.
+ */
+VOID
+NvmpPostCommand(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PVOID Srb)
+{
+    PNVME_REQUEST_CONTEXT Context;
+    PNVME_QUEUE_PAIR Queue = &Adapter->IoQueue;
+    USHORT CommandId;
+
+    Context = SrbGetMiniportContext(Srb);
+
+    KeAcquireSpinLockAtDpcLevel(&Adapter->SubmissionLock);
+
+    /*
+     * The slot a command goes into names it on the way back, which works
+     * because storport is never given more requests at once than the queue
+     * has slots, so a slot cannot come round again while it is still in use.
+     */
+    CommandId = (USHORT)Queue->SubmissionTail;
+    Context->Command.CDW0.CID = CommandId;
+
+    Adapter->Requests[CommandId] = Context;
+
+    NvmpSubmitCommand(Adapter, Queue, &Context->Command);
+
+    KeReleaseSpinLockFromDpcLevel(&Adapter->SubmissionLock);
+}
+
+
+/**
+ * @brief Turns a completion into the result of the request that caused it.
+ */
+VOID
+NvmpCompleteFromEntry(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PNVME_COMPLETION_ENTRY Completion)
+{
+    PNVME_REQUEST_CONTEXT Context;
+    USHORT CommandId = Completion->DW3.CID;
+    UCHAR SrbStatus;
+    PVOID Srb;
+
+    if (CommandId >= Adapter->IoQueueDepth)
+    {
+        DPRINT1("Completion names command %u, out of range\n", CommandId);
+        return;
+    }
+
+    Context = Adapter->Requests[CommandId];
+    if (Context == NULL)
+    {
+        DPRINT1("Completion names command %u, which is not outstanding\n", CommandId);
+        return;
+    }
+
+    Adapter->Requests[CommandId] = NULL;
+    Srb = Context->Srb;
+
+    if (Completion->DW3.Status.SC == NVME_STATUS_SUCCESS_COMPLETION &&
+        Completion->DW3.Status.SCT == NVME_STATUS_TYPE_GENERIC_COMMAND)
+    {
+        SrbStatus = SRB_STATUS_SUCCESS;
+    }
+    else
+    {
+        DPRINT1("Command %u failed, type %u code 0x%02x\n",
+                CommandId, Completion->DW3.Status.SCT, Completion->DW3.Status.SC);
+
+        NvmpSetSenseData(Srb, SCSI_SENSE_MEDIUM_ERROR,
+                         SCSI_ADSENSE_NO_SENSE, 0);
+        SrbStatus = SRB_STATUS_ERROR;
+        SrbSetDataTransferLength(Srb, 0);
+    }
+
+    NvmpCompleteRequest(Adapter, Srb, SrbStatus);
+}

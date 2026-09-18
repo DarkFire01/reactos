@@ -232,6 +232,17 @@ StorNvmeFindAdapter(
     ConfigInfo->NumberOfPhysicalBreaks =
         (Adapter->MaximumTransferLength / Adapter->PageSize) + 1;
 
+    /*
+     * One slot is always left free, because a submission queue counts as full
+     * when its tail would catch the head, and because a slot that is still in
+     * use must not be handed out again.
+     */
+    ConfigInfo->MaxNumberOfIO = Adapter->IoQueueDepth - 1;
+    ConfigInfo->MaxIOsPerLun = ConfigInfo->MaxNumberOfIO;
+    ConfigInfo->InitialLunQueueDepth = ConfigInfo->MaxNumberOfIO;
+
+    KeInitializeSpinLock(&Adapter->SubmissionLock);
+
     Adapter->State = NvmeAdapterFound;
 
     return SP_RETURN_FOUND;
@@ -292,11 +303,13 @@ StorNvmeBuildIo(
                 return FALSE;
             }
 
-            return TRUE;
+            /* The rest are carried out by the controller */
+            return NvmpBuildCommand(Adapter, Srb);
 
         case SRB_FUNCTION_FLUSH:
         case SRB_FUNCTION_SHUTDOWN:
-            return TRUE;
+            NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_SUCCESS);
+            return FALSE;
 
         case SRB_FUNCTION_PNP:
         case SRB_FUNCTION_POWER:
@@ -322,10 +335,34 @@ StorNvmeStartIo(
 {
     PNVME_ADAPTER_EXTENSION Adapter = DeviceExtension;
 
-    /* FIXME: Post read, write and flush to the submission queue */
-    NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_INVALID_REQUEST);
+    NvmpPostCommand(Adapter, Srb);
 
     return TRUE;
+}
+
+
+/**
+ * @brief Empties a completion queue, finishing every request it names.
+ *
+ * @return TRUE when at least one completion was found, which is what tells
+ *         the system the interrupt belonged to this adapter.
+ */
+static
+BOOLEAN
+NvmpDrainQueue(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PNVME_QUEUE_PAIR Queue)
+{
+    NVME_COMPLETION_ENTRY Completion;
+    BOOLEAN Handled = FALSE;
+
+    while (NvmpNextCompletion(Adapter, Queue, &Completion))
+    {
+        NvmpCompleteFromEntry(Adapter, &Completion);
+        Handled = TRUE;
+    }
+
+    return Handled;
 }
 
 
@@ -334,10 +371,10 @@ NTAPI
 StorNvmeInterrupt(
     _In_ PVOID DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PNVME_ADAPTER_EXTENSION Adapter = DeviceExtension;
 
-    /* FIXME: Drain every completion queue */
-    return FALSE;
+    /* A shared line says nothing about which queue has work */
+    return NvmpDrainQueue(Adapter, &Adapter->IoQueue);
 }
 
 
@@ -347,11 +384,15 @@ StorNvmeMessageInterrupt(
     _In_ PVOID DeviceExtension,
     _In_ ULONG MessageId)
 {
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PNVME_ADAPTER_EXTENSION Adapter = DeviceExtension;
+
     UNREFERENCED_PARAMETER(MessageId);
 
-    /* FIXME: Drain the completion queue this message belongs to */
-    return FALSE;
+    /*
+     * Every queue was created against vector zero, so whichever message
+     * arrived, the one completion queue is where the work is.
+     */
+    return NvmpDrainQueue(Adapter, &Adapter->IoQueue);
 }
 
 
@@ -470,6 +511,12 @@ DriverEntry(
     InitData.HwUnitControl = StorNvmeUnitControl;
 
     InitData.DeviceExtensionSize = sizeof(NVME_ADAPTER_EXTENSION);
+
+    /*
+     * The per request area carries the command and a page for the region
+     * page list, which has to be found on a page boundary inside it.
+     */
+    InitData.SrbExtensionSize = sizeof(NVME_REQUEST_CONTEXT) + (2 * PAGE_SIZE);
 
     /* The register block is the only resource the controller exposes */
     InitData.NumberOfAccessRanges = 1;
