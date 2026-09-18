@@ -4213,8 +4213,8 @@ WritePartitions(
                                    IOCTL_DISK_SET_DRIVE_LAYOUT_EX,
                                    DiskEntry->LayoutBuffer,
                                    BufferSize,
-                                   NULL,
-                                   0);
+                                   DiskEntry->LayoutBuffer,
+                                   BufferSize);
     NtClose(FileHandle);
 
     /*
