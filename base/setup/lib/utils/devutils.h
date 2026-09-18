@@ -38,4 +38,7 @@ pOpenDevice(
     _In_ PCWSTR DevicePath,
     _Out_ PHANDLE DeviceHandle);
 
+BOOLEAN
+IsUefiBoot(VOID);
+
 /* EOF */

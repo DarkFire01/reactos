@@ -15,6 +15,7 @@
 #include "inicache.h"
 
 #include "setuplib.h"
+#include "devutils.h"
 
 #define NDEBUG
 #include <debug.h>
@@ -685,31 +686,6 @@ LoadSetupInf(
     }
 
     return ERROR_SUCCESS;
-}
-
-/**
- * @brief   Tells whether a UEFI firmware started this system.
- **/
-static
-BOOLEAN
-IsUefiBoot(VOID)
-{
-    SYSTEM_BOOT_ENVIRONMENT_INFORMATION BootInfo;
-    NTSTATUS Status;
-
-    Status = NtQuerySystemInformation(SystemBootEnvironmentInformation,
-                                      &BootInfo,
-                                      sizeof(BootInfo),
-                                      NULL);
-    if (!NT_SUCCESS(Status))
-    {
-        /* A kernel that cannot say was started by a BIOS, as all of them were */
-        DPRINT1("Could not retrieve the firmware type (Status 0x%08lx)\n", Status);
-        return FALSE;
-    }
-
-    DPRINT1("Firmware type: %lu\n", BootInfo.FirmwareType);
-    return (BootInfo.FirmwareType == FirmwareTypeUefi);
 }
 
 /**

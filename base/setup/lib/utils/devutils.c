@@ -8,6 +8,9 @@
 #include "precomp.h"
 #include "devutils.h"
 
+#define NDEBUG
+#include <debug.h>
+
 /* FUNCTIONS *****************************************************************/
 
 /**
@@ -132,6 +135,33 @@ pOpenDevice(
     UNICODE_STRING Name;
     RtlInitUnicodeString(&Name, DevicePath);
     return pOpenDevice_UStr(&Name, DeviceHandle);
+}
+
+/**
+ * @brief   Tells whether a UEFI firmware started this system.
+ *
+ * What starts the installer is what will start the installation, so this is
+ * also what decides how the installed system is made bootable.
+ **/
+BOOLEAN
+IsUefiBoot(VOID)
+{
+    SYSTEM_BOOT_ENVIRONMENT_INFORMATION BootInfo;
+    NTSTATUS Status;
+
+    Status = NtQuerySystemInformation(SystemBootEnvironmentInformation,
+                                      &BootInfo,
+                                      sizeof(BootInfo),
+                                      NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        /* A kernel that cannot say was started by a BIOS, as all of them were */
+        DPRINT1("Could not retrieve the firmware type (Status 0x%08lx)\n", Status);
+        return FALSE;
+    }
+
+    DPRINT1("Firmware type: %lu\n", BootInfo.FirmwareType);
+    return (BootInfo.FirmwareType == FirmwareTypeUefi);
 }
 
 /* EOF */
