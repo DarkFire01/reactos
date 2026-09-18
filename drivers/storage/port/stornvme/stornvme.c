@@ -171,7 +171,6 @@ StorNvmeFindAdapter(
      */
     ConfigInfo->NumberOfBuses = 1;
     ConfigInfo->MaximumNumberOfTargets = 1;
-    ConfigInfo->MaximumNumberOfLogicalUnits = 1;
 
     /* Transfers are described by physical region pages, which are dword aligned */
     ConfigInfo->AlignmentMask = sizeof(ULONG) - 1;
@@ -216,6 +215,17 @@ StorNvmeFindAdapter(
         Adapter->State = NvmeAdapterFailed;
         return SP_RETURN_ERROR;
     }
+
+    /* Only now is it known how much the controller will actually take on */
+    ConfigInfo->MaximumNumberOfLogicalUnits = (UCHAR)Adapter->NamespaceCount;
+    ConfigInfo->MaximumTransferLength = Adapter->MaximumTransferLength;
+
+    /*
+     * A transfer is described by a list of pages, and one more than the pages
+     * it spans covers the case of a buffer that starts part way into one.
+     */
+    ConfigInfo->NumberOfPhysicalBreaks =
+        (Adapter->MaximumTransferLength / Adapter->PageSize) + 1;
 
     Adapter->State = NvmeAdapterFound;
 
