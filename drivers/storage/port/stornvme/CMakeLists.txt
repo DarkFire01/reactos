@@ -9,6 +9,7 @@ list(APPEND SOURCE
     nvmeid.c
     nvmeioq.c
     nvmequeue.c
+    nvmescsi.c
     stornvme.c)
 
 add_library(stornvme MODULE ${SOURCE} stornvme.rc)
