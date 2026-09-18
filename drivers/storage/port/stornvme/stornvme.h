@@ -31,6 +31,37 @@
 /* A page is the unit the controller addresses memory in */
 #define NVME_MIN_PAGE_SHIFT     12
 
+/* Entries in the admin queues. The specification caps this at 4096. */
+#define NVME_ADMIN_QUEUE_DEPTH  64
+
+/* How long to wait between looks at CSTS while the controller settles */
+#define NVME_POLL_INTERVAL_US   10000
+
+/*
+ * One submission and completion queue working as a pair. The admin pair is
+ * queue zero; every IO pair gets an identifier of its own.
+ */
+typedef struct _NVME_QUEUE_PAIR
+{
+    PNVME_COMMAND SubmissionQueue;
+    PHYSICAL_ADDRESS SubmissionAddress;
+    ULONG SubmissionTail;
+
+    PNVME_COMPLETION_ENTRY CompletionQueue;
+    PHYSICAL_ADDRESS CompletionAddress;
+    ULONG CompletionHead;
+
+    /*
+     * The controller flips the phase bit of an entry when it writes one, so
+     * the host can tell a fresh completion from a stale one without the
+     * queue being cleared. It starts at one and inverts on every wrap.
+     */
+    ULONG Phase;
+
+    ULONG Depth;
+    USHORT QueueId;
+} NVME_QUEUE_PAIR, *PNVME_QUEUE_PAIR;
+
 /* Where the controller came from, for the sake of reporting it */
 typedef enum _NVME_ADAPTER_STATE
 {
@@ -72,12 +103,65 @@ typedef struct _NVME_ADAPTER_EXTENSION
     /* Entries in the admin queues */
     ULONG AdminQueueDepth;
 
+    /* The admin queue pair, which carries every command before IO starts */
+    NVME_QUEUE_PAIR AdminQueue;
+
+    /* Contiguous memory the queues were carved out of */
+    PVOID QueueMemory;
+    PHYSICAL_ADDRESS QueueMemoryAddress;
+    ULONG QueueMemorySize;
+
     /* Set while running as part of a crash dump or hibernation stack */
     BOOLEAN DumpMode;
 
     /* Set once storport told us the adapter is on message interrupts */
     BOOLEAN MessageInterrupts;
 } NVME_ADAPTER_EXTENSION, *PNVME_ADAPTER_EXTENSION;
+
+/*
+ * Doorbells sit after the register block, two per queue, spaced by a stride
+ * the controller reports. The submission tail comes first, then the
+ * completion head.
+ */
+FORCEINLINE
+PULONG
+NvmpSubmissionDoorbell(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ ULONG QueueId)
+{
+    return (PULONG)((PUCHAR)Adapter->Doorbells +
+                    ((2 * QueueId) * Adapter->DoorbellStride));
+}
+
+FORCEINLINE
+PULONG
+NvmpCompletionDoorbell(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ ULONG QueueId)
+{
+    return (PULONG)((PUCHAR)Adapter->Doorbells +
+                    (((2 * QueueId) + 1) * Adapter->DoorbellStride));
+}
+
+/* nvmectrl.c */
+
+BOOLEAN
+NvmpDisableController(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter);
+
+BOOLEAN
+NvmpEnableController(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter);
+
+BOOLEAN
+NvmpCreateAdminQueues(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PPORT_CONFIGURATION_INFORMATION ConfigInfo);
+
+BOOLEAN
+NvmpStartController(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PPORT_CONFIGURATION_INFORMATION ConfigInfo);
 
 /* stornvme.c */
 

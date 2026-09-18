@@ -206,6 +206,17 @@ StorNvmeFindAdapter(
         ConfigInfo->InterruptSynchronizationMode = InterruptSynchronizeAll;
     }
 
+    /*
+     * Bring the controller up here rather than in HwInitialize, because the
+     * uncached extension can only be asked for while the port configuration
+     * is still in our hands.
+     */
+    if (!NvmpStartController(Adapter, ConfigInfo))
+    {
+        Adapter->State = NvmeAdapterFailed;
+        return SP_RETURN_ERROR;
+    }
+
     Adapter->State = NvmeAdapterFound;
 
     return SP_RETURN_FOUND;
