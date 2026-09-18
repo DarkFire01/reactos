@@ -91,10 +91,12 @@ typedef struct _MINIPORT
     PMINIPORT_DEVICE_EXTENSION MiniportExtension;
 
     /*
-     * What the miniport answered to ScsiQuerySupportedControlTypes. Anything
-     * it did not claim is never sent to it.
+     * What the miniport answered to ScsiQuerySupportedControlTypes and
+     * ScsiQuerySupportedUnitControlTypes. Anything it did not claim is never
+     * sent to it.
      */
     BOOLEAN AdapterControlSupported[ScsiAdapterControlMax];
+    BOOLEAN UnitControlSupported[ScsiUnitControlMax];
 } MINIPORT, *PMINIPORT;
 
 typedef struct _UNIT_DATA
@@ -455,6 +457,16 @@ MiniportAdapterControl(
     _In_ SCSI_ADAPTER_CONTROL_TYPE ControlType,
     _In_opt_ PVOID Parameters);
 
+VOID
+MiniportQueryUnitControl(
+    _In_ PMINIPORT Miniport);
+
+SCSI_UNIT_CONTROL_STATUS
+MiniportUnitControl(
+    _In_ PMINIPORT Miniport,
+    _In_ SCSI_UNIT_CONTROL_TYPE ControlType,
+    _In_opt_ PVOID Parameters);
+
 BOOLEAN
 MiniportStartIo(
     _In_ PMINIPORT Miniport,
@@ -583,6 +595,11 @@ PortPdoDeviceControl(
 
 
 /* srbex.c */
+
+VOID
+StorpBuildUnitAddress(
+    _In_ PPDO_DEVICE_EXTENSION PdoExtension,
+    _Out_ PSTOR_ADDR_BTL8 Address);
 
 BOOLEAN
 StorpIsExtendedSrb(
