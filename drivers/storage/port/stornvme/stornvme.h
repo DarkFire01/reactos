@@ -253,6 +253,10 @@ NvmpStartController(
     _In_ PNVME_ADAPTER_EXTENSION Adapter,
     _In_ PPORT_CONFIGURATION_INFORMATION ConfigInfo);
 
+BOOLEAN
+NvmpResetController(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter);
+
 /* nvmequeue.c */
 
 VOID
@@ -306,6 +310,11 @@ NvmpCompleteRequest(
 VOID
 NvmpInitializeCommandIds(
     _In_ PNVME_ADAPTER_EXTENSION Adapter);
+
+VOID
+NvmpFailOutstandingRequests(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ UCHAR SrbStatus);
 
 BOOLEAN
 NvmpBuildFlush(
