@@ -913,11 +913,22 @@ NTSTATUS SubmitTransferPacket(PTRANSFER_PACKET Pkt)
     // No need to lock for IdlePrioritySupported, since it will
     // be modified only at initialization time.
     //
+    /*
+     *  Remember which count this packet went into. The request carries what
+     *  it is in scratch space it shares with the retry list, so by the time
+     *  it comes back it may no longer say the same thing, and a count given
+     *  back to the wrong one runs away.
+     */
+    Pkt->CountedAsActive = FALSE;
+    Pkt->CountedAsIdle = FALSE;
+
     if (fdoData->IdlePrioritySupported == TRUE) {
         idleRequest = ClasspIsIdleRequest(Pkt->OriginalIrp);
         if (idleRequest) {
+            Pkt->CountedAsIdle = TRUE;
             InterlockedIncrement(&fdoData->ActiveIdleIoCount);
         } else {
+            Pkt->CountedAsActive = TRUE;
             InterlockedIncrement(&fdoData->ActiveIoCount);
         }
     }
@@ -973,16 +984,18 @@ TransferPktComplete(IN PDEVICE_OBJECT NullFdo, IN PIRP Irp, IN PVOID Context)
                                                         completionTime.QuadPart);
 #endif
 
-    if (fdoData->IdlePrioritySupported == TRUE) {
-        idleRequest = ClasspIsIdleRequest(pkt->OriginalIrp);
-        if (idleRequest) {
-            InterlockedDecrement(&fdoData->ActiveIdleIoCount);
-            NT_ASSERT(fdoData->ActiveIdleIoCount >= 0);
-        } else {
-            fdoData->LastNonIdleIoTime = completionTime;
-            InterlockedDecrement(&fdoData->ActiveIoCount);
-            NT_ASSERT(fdoData->ActiveIoCount >= 0);
-        }
+    /* Give the count back to whichever one took it */
+    idleRequest = pkt->CountedAsIdle;
+
+    if (pkt->CountedAsIdle) {
+        pkt->CountedAsIdle = FALSE;
+        InterlockedDecrement(&fdoData->ActiveIdleIoCount);
+        NT_ASSERT(fdoData->ActiveIdleIoCount >= 0);
+    } else if (pkt->CountedAsActive) {
+        pkt->CountedAsActive = FALSE;
+        fdoData->LastNonIdleIoTime = completionTime;
+        InterlockedDecrement(&fdoData->ActiveIoCount);
+        NT_ASSERT(fdoData->ActiveIoCount >= 0);
     }
 
     //
