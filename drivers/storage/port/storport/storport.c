@@ -1365,7 +1365,7 @@ StorPortGetPhysicalAddress(
 
     /* Inside of the uncached extension? */
     if (((ULONG_PTR)VirtualAddress >= (ULONG_PTR)DeviceExtension->UncachedExtensionVirtualBase) &&
-        ((ULONG_PTR)VirtualAddress <= (ULONG_PTR)DeviceExtension->UncachedExtensionVirtualBase + DeviceExtension->UncachedExtensionSize))
+        ((ULONG_PTR)VirtualAddress < (ULONG_PTR)DeviceExtension->UncachedExtensionVirtualBase + DeviceExtension->UncachedExtensionSize))
     {
         Offset = (ULONG_PTR)VirtualAddress - (ULONG_PTR)DeviceExtension->UncachedExtensionVirtualBase;
 
@@ -1375,15 +1375,18 @@ StorPortGetPhysicalAddress(
         return PhysicalAddress;
     }
 
-    // FIXME
-
-
     PhysicalAddress = MmGetPhysicalAddress(VirtualAddress);
-    *Length = 1;
-//    UNIMPLEMENTED;
+    if (PhysicalAddress.QuadPart == 0)
+    {
+        *Length = 0;
+        return PhysicalAddress;
+    }
 
-//    *Length = 0;
-//    PhysicalAddress.QuadPart = (LONGLONG)0;
+    /*
+     * Anywhere else only one page is known to be contiguous, because nothing
+     * says the page after it was mapped from the next frame.
+     */
+    *Length = PAGE_SIZE - BYTE_OFFSET(VirtualAddress);
 
     return PhysicalAddress;
 }
