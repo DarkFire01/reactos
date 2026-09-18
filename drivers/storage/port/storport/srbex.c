@@ -64,6 +64,27 @@ StorpIsExtendedSrb(
 
 
 /**
+ * @brief Finds the reference a request was handed to a miniport under.
+ *
+ * The back pointer lives at a different offset in each of the two formats, so
+ * every port routine that takes an SRB from a miniport comes through here.
+ */
+PQUEUED_REQUEST_REFERENCE
+StorpRequestReference(
+    _In_ PSCSI_REQUEST_BLOCK Srb)
+{
+    if (StorpIsExtendedSrb(Srb))
+    {
+        PSTORAGE_REQUEST_BLOCK Extended = (PSTORAGE_REQUEST_BLOCK)Srb;
+
+        return (PQUEUED_REQUEST_REFERENCE)Extended->OriginalRequest;
+    }
+
+    return (PQUEUED_REQUEST_REFERENCE)Srb->OriginalRequest;
+}
+
+
+/**
  * @brief Fills in the extended request a miniport will be given.
  *
  * @param Srb The request as the class layer built it.

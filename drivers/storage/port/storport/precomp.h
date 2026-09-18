@@ -605,6 +605,10 @@ BOOLEAN
 StorpIsExtendedSrb(
     _In_ PVOID Srb);
 
+PQUEUED_REQUEST_REFERENCE
+StorpRequestReference(
+    _In_ PSCSI_REQUEST_BLOCK Srb);
+
 VOID
 StorpBuildExtendedSrb(
     _In_ PSCSI_REQUEST_BLOCK Srb,
