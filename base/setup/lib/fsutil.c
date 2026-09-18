@@ -1144,6 +1144,45 @@ FsVolCommitOpsQueue(
         return FALSE;
     }
 
+    /*
+     * A partition the firmware itself reads has only one file system it may
+     * ever hold, so there is nothing here for the user to choose and nothing
+     * for the installer to skip. Lay it down now, before the queue below gets
+     * the chance to leave it raw.
+     */
+    if ((SystemVolume != InstallVolume) &&
+        (SystemVolume->FormatState == Unformatted) &&
+        SystemVolume->PartEntry &&
+        IsEfiSystemPartition(SystemVolume->PartEntry))
+    {
+        FORMAT_VOLUME_INFO FmtInfo = {0};
+
+        FmtInfo.Volume = SystemVolume;
+        FmtInfo.FileSystemName = L"FAT";
+        FmtInfo.MediaFlag = FMIFS_HARDDISK;
+        FmtInfo.QuickFormat = TRUE;
+
+        DPRINT1("Formatting the EFI system partition with %S\n", FmtInfo.FileSystemName);
+
+        FmtInfo.ErrorStatus = FormatPartition(SystemVolume->PartEntry,
+                                              FmtInfo.FileSystemName,
+                                              FmtInfo.MediaFlag,
+                                              FmtInfo.Label,
+                                              FmtInfo.QuickFormat,
+                                              FmtInfo.ClusterSize,
+                                              FmtInfo.Callback);
+        if (!NT_SUCCESS(FmtInfo.ErrorStatus))
+        {
+            DPRINT1("Could not format the EFI system partition, Status 0x%08lx\n",
+                    FmtInfo.ErrorStatus);
+            /* Result = */ FsVolCallback(Context,
+                                FSVOLNOTIFY_FORMATERROR,
+                                (ULONG_PTR)&FmtInfo,
+                                0);
+            return FALSE;
+        }
+    }
+
 //
 // FIXME: Should we do the following here, or in the caller?
 //
