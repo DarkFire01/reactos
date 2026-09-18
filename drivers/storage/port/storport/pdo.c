@@ -1286,15 +1286,19 @@ PortPdoScsi(
             PQUEUED_REQUEST_REFERENCE RequestReference;
             BOOLEAN IssueRequest;
 
-            /* Mark IRP as pending */
-            IoMarkIrpPending(Irp);
-
             /* Allocate private contexts */
             Status = PortPdoSrbAllocatePrivateContexts(Srb, PdoExtension, FdoExtension);
             if (!NT_SUCCESS(Status))
             {
+                /* Nothing was queued, so this one ends here */
+                StorpCompleteRequest(Irp, SRB_STATUS_ERROR, Status);
                 break;
             }
+
+            /* From here on the request outlives this call, so the caller has
+               to be told to wait for it */
+            IoMarkIrpPending(Irp);
+
             RequestReference = (PQUEUED_REQUEST_REFERENCE)Srb->OriginalRequest;
 
             /* Assign a tag to the SRB if it supports tagging */
@@ -1334,15 +1338,19 @@ PortPdoScsi(
         {
             PQUEUED_REQUEST_REFERENCE RequestReference;
 
-            /* Mark IRP as pending */
-            IoMarkIrpPending(Irp);
-
             /* Allocate private contexts */
             Status = PortPdoSrbAllocatePrivateContexts(Srb, PdoExtension, FdoExtension);
             if (!NT_SUCCESS(Status))
             {
+                /* Nothing was queued, so this one ends here */
+                StorpCompleteRequest(Irp, SRB_STATUS_ERROR, Status);
                 break;
             }
+
+            /* From here on the request outlives this call, so the caller has
+               to be told to wait for it */
+            IoMarkIrpPending(Irp);
+
             RequestReference = (PQUEUED_REQUEST_REFERENCE)Srb->OriginalRequest;
 
             /*
@@ -1352,7 +1360,7 @@ PortPdoScsi(
             PortPdoScheduleRequestNoFlowControl(FdoExtension, RequestReference);
 
             /* Fire up the request immediately */
-            PortPdoIssueRequest(PdoExtension, RequestReference);
+            Status = PortPdoIssueRequest(PdoExtension, RequestReference);
 
             break;
         }
