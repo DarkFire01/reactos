@@ -717,8 +717,13 @@ FUNC KiUnexpectedInterrupt
     call KeBugCheckWithTf
     jmp $
 #endif
-    /* Return */
-    ExitTrap TF_SAVE_ALL
+    /*
+     * Return, ending the interrupt. The local APIC holds it in service whether
+     * or not anything was there to handle it, and leaving it there keeps the
+     * processor priority above every lower vector for good, which costs us the
+     * APC and DPC software interrupts.
+     */
+    ExitTrap (TF_SAVE_ALL or TF_SEND_EOI)
 ENDFUNC
 
 PUBLIC KiInterruptDispatch
