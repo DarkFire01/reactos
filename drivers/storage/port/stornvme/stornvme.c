@@ -1,7 +1,8 @@
 /*
  * PROJECT:     ReactOS NVM Express Miniport Driver
- * LICENSE:     GPL-2.0+ (https://spdx.org/licenses/GPL-2.0+)
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     Driver entry and controller discovery
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
 /* INCLUDES *******************************************************************/
@@ -253,17 +254,63 @@ StorNvmeInitialize(
 }
 
 
+/**
+ * @brief Hands a finished request back to storport.
+ */
+VOID
+NvmpCompleteRequest(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PVOID Srb,
+    _In_ UCHAR SrbStatus)
+{
+    SrbSetSrbStatus(Srb, SrbStatus);
+    StorPortNotification(RequestComplete, Adapter, Srb);
+}
+
+
 BOOLEAN
 NTAPI
 StorNvmeBuildIo(
     _In_ PVOID DeviceExtension,
     _In_ PSCSI_REQUEST_BLOCK Srb)
 {
-    UNREFERENCED_PARAMETER(DeviceExtension);
-    UNREFERENCED_PARAMETER(Srb);
+    PNVME_ADAPTER_EXTENSION Adapter = DeviceExtension;
+    ULONG Function;
 
-    /* FIXME: Translate the request into an NVMe command */
-    return FALSE;
+    Function = SrbGetSrbFunction(Srb);
+
+    switch (Function)
+    {
+        case SRB_FUNCTION_EXECUTE_SCSI:
+            /*
+             * Anything this driver can answer from what it already knows is
+             * finished here, and never reaches the controller.
+             */
+            if (NvmpTranslateScsi(Adapter, Srb))
+            {
+                StorPortNotification(RequestComplete, Adapter, Srb);
+                return FALSE;
+            }
+
+            return TRUE;
+
+        case SRB_FUNCTION_FLUSH:
+        case SRB_FUNCTION_SHUTDOWN:
+            return TRUE;
+
+        case SRB_FUNCTION_PNP:
+        case SRB_FUNCTION_POWER:
+        case SRB_FUNCTION_RESET_BUS:
+        case SRB_FUNCTION_RESET_DEVICE:
+        case SRB_FUNCTION_RESET_LOGICAL_UNIT:
+            NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_SUCCESS);
+            return FALSE;
+
+        default:
+            DPRINT1("Unsupported request function 0x%02lx\n", Function);
+            NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_INVALID_REQUEST);
+            return FALSE;
+    }
 }
 
 
@@ -273,10 +320,11 @@ StorNvmeStartIo(
     _In_ PVOID DeviceExtension,
     _In_ PSCSI_REQUEST_BLOCK Srb)
 {
-    UNREFERENCED_PARAMETER(DeviceExtension);
-    UNREFERENCED_PARAMETER(Srb);
+    PNVME_ADAPTER_EXTENSION Adapter = DeviceExtension;
 
-    /* FIXME: Post the command to a submission queue */
+    /* FIXME: Post read, write and flush to the submission queue */
+    NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_INVALID_REQUEST);
+
     return TRUE;
 }
 
