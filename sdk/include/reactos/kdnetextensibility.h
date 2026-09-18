@@ -36,7 +36,7 @@ typedef NTSTATUS (NTAPI *DEBUG_SERIAL_OUTPUT_INIT)(_In_opt_ struct _DEBUG_DEVICE
     _Out_opt_ PPHYSICAL_ADDRESS PAddress);
 typedef VOID     (NTAPI *DEBUG_SERIAL_OUTPUT_BYTE)(_In_ UCHAR byte);
 
-#define KDNET_EXT_EXPORTS 15
+#define KDNET_EXT_EXPORTS 13
 
 typedef struct _KDNET_EXTENSIBILITY_EXPORTS
 {
@@ -92,7 +92,7 @@ typedef VOID (NTAPI *KDNET_UNMAP_VIRTUAL_ADDRESS)(_In_ PVOID VirtualAddress,
 typedef ULONG64 (NTAPI *KDNET_READ_CYCLE_COUNTER)(_Out_opt_ ULONG64 *Frequency);
 typedef VOID (NTAPI *KDNET_DBGPRINT)(_In_ PCHAR pFmt, ...);
 
-#define KDNET_EXT_IMPORTS 33
+#define KDNET_EXT_IMPORTS 30
 
 typedef struct _KDNET_EXTENSIBILITY_IMPORTS
 {
@@ -124,11 +124,6 @@ typedef struct _KDNET_EXTENSIBILITY_IMPORTS
     KDNET_UNMAP_VIRTUAL_ADDRESS UnmapVirtualAddress;
     KDNET_READ_CYCLE_COUNTER ReadCycleCounter;
     KDNET_DBGPRINT KdNetDbgPrintf;
-    /*
-     * None of the shipped extensions call these three. They are here so the
-     * fields behind them land where those binaries look for them.
-     */
-    PVOID Reserved[3];
     NTSTATUS *KdNetErrorStatus;
     PWCHAR *KdNetErrorString;
     PULONG KdNetHardwareID;
