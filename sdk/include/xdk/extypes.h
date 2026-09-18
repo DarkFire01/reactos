@@ -357,12 +357,12 @@ $if (_NTIFS_)
 $endif (_NTIFS_)
 
 $if (_WINNT_ || _WDMDDK_)
-#if (NTDDI_VERSION >= NTDDI_VISTA)
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
 typedef enum _FIRMWARE_TYPE {
     FirmwareTypeUnknown,
     FirmwareTypeBios,
     FirmwareTypeUefi,
     FirmwareTypeMax
 } FIRMWARE_TYPE, *PFIRMWARE_TYPE;
-#endif /* (NTDDI_VERSION >= NTDDI_VISTA) */
+#endif /* (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__) */
 $endif (_WINNT_ || _WDMDDK_)
