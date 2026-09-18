@@ -49,6 +49,15 @@
 #define NVME_IO_QUEUE_ID        1
 #define NVME_IO_QUEUE_DEPTH     1024
 
+/*
+ * A page of region page entries describes a transfer of up to this many pages
+ * beyond the first two, which are named by the command itself.
+ */
+#define NVME_MAX_PRP_ENTRIES    (PAGE_SIZE / sizeof(ULONGLONG))
+
+/* What a single command may be asked to carry */
+#define NVME_MAX_OUTSTANDING    NVME_IO_QUEUE_DEPTH
+
 /* One namespace, as far as this driver is concerned */
 typedef struct _NVME_NAMESPACE
 {
@@ -89,6 +98,17 @@ typedef struct _NVME_QUEUE_PAIR
     ULONG Depth;
     USHORT QueueId;
 } NVME_QUEUE_PAIR, *PNVME_QUEUE_PAIR;
+
+/*
+ * What storport keeps for us alongside each request. The region page list
+ * needs a page of its own, so the context is asked for one page more than it
+ * uses and the list is taken from the aligned part of that.
+ */
+typedef struct _NVME_REQUEST_CONTEXT
+{
+    PVOID Srb;
+    NVME_COMMAND Command;
+} NVME_REQUEST_CONTEXT, *PNVME_REQUEST_CONTEXT;
 
 /* Where the controller came from, for the sake of reporting it */
 typedef enum _NVME_ADAPTER_STATE
@@ -164,6 +184,15 @@ typedef struct _NVME_ADAPTER_EXTENSION
 
     /* Indexed by namespace identifier less one */
     NVME_NAMESPACE Namespaces[NVME_MAX_NAMESPACES];
+
+    /* Outstanding requests, indexed by the command identifier they carry */
+    PNVME_REQUEST_CONTEXT Requests[NVME_MAX_OUTSTANDING];
+
+    /*
+     * Held while a command is placed, since storport may start one request
+     * on every processor at once and they all share the one queue.
+     */
+    KSPIN_LOCK SubmissionLock;
 
     /* Set while running as part of a crash dump or hibernation stack */
     BOOLEAN DumpMode;
@@ -264,6 +293,23 @@ NvmpCompleteRequest(
     _In_ PNVME_ADAPTER_EXTENSION Adapter,
     _In_ PVOID Srb,
     _In_ UCHAR SrbStatus);
+
+/* nvmeio.c */
+
+BOOLEAN
+NvmpBuildCommand(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PVOID Srb);
+
+VOID
+NvmpPostCommand(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PVOID Srb);
+
+VOID
+NvmpCompleteFromEntry(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PNVME_COMPLETION_ENTRY Completion);
 
 /* nvmescsi.c */
 
