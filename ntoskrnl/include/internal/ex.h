@@ -27,6 +27,8 @@ extern PVOID ExpNlsSectionPointer;
 extern ULONG NtGlobalFlag;
 extern UNICODE_STRING NtSystemRoot;
 extern ULONG ExpInitializationPhase;
+extern FIRMWARE_TYPE ExpFirmwareType;
+extern GUID ExpBootIdentifier;
 extern ULONG ExpAltTimeZoneBias;
 extern LIST_ENTRY ExSystemLookasideListHead;
 extern PCALLBACK_OBJECT PowerStateCallback;
