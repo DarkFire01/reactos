@@ -157,7 +157,7 @@ NvmpProgramAdminQueues(
     Queue->Phase = 1;
 
     RtlZeroMemory(Queue->CompletionQueue,
-                  Queue->Depth * sizeof(NVME_COMPLETION_ENTRY));
+                  Queue->Depth * sizeof(*Queue->CompletionQueue));
 
     /* Both queue sizes are reported one less than their real depth */
     Attributes.AsUlong = 0;
@@ -295,7 +295,7 @@ NvmpResetController(
     IoQueue->Phase = 1;
 
     RtlZeroMemory(IoQueue->CompletionQueue,
-                  IoQueue->Depth * sizeof(NVME_COMPLETION_ENTRY));
+                  IoQueue->Depth * sizeof(*IoQueue->CompletionQueue));
 
     if (!NvmpEnableController(Adapter))
     {
