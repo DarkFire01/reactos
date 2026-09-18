@@ -2047,7 +2047,7 @@ CreatePartitionPage(PINPUT_RECORD Ir)
     PDISKENTRY DiskEntry;
     ULONG uID;
     ULONG MaxSize;
-    ULONGLONG MaxPartSize, PartSize;
+    ULONGLONG MaxPartSize, PartSize, Reserved;
     BOOLEAN Quit, Cancel;
     WCHAR InputBuffer[50];
     CHAR LineBuffer[100];
@@ -2083,6 +2083,19 @@ CreatePartitionPage(PINPUT_RECORD Ir)
     CONSOLE_SetStatusText(MUIGetString(STRING_CREATEPARTITION));
 
     MaxPartSize = GetPartEntrySizeInBytes(PartEntry);
+
+    /*
+     * Whatever the firmware needs for itself is not on offer, or the
+     * installation would be left with nowhere to put its loader.
+     */
+    Reserved = GetSystemPartitionReserve(PartitionList, PartEntry);
+    if (MaxPartSize <= Reserved)
+    {
+        MUIDisplayError(ERROR_INSUFFICIENT_PARTITION_SIZE, Ir, POPUP_WAIT_ANY_KEY,
+                        (ULONG)RoundingDivide(Reserved, MB));
+        return SELECT_PARTITION_PAGE;
+    }
+    MaxPartSize -= Reserved;
 
     while (TRUE)
     {
