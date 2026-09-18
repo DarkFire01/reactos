@@ -34,6 +34,16 @@ typedef struct _REG_DISK_MOUNT_INFO
 #include <poppack.h>
 
 
+/* How many entries a GPT table holds when the disk does not say otherwise */
+#define DEFAULT_GPT_PARTITION_COUNT 128
+
+/* No table names more than this many, whatever a disk claims of itself */
+#define MAX_GPT_PARTITION_COUNT 4096
+
+/* How much room one of those entries takes on the disk */
+#define GPT_PARTITION_ENTRY_SIZE 128
+
+
 /* FUNCTIONS ****************************************************************/
 
 static
@@ -136,10 +146,43 @@ IsEfiSystemPartition(
 }
 
 /**
+ * @brief   Tells how many entries a GPT disk names room for in its table.
+ **/
+static
+ULONG
+GetGPTEntryCount(
+    _In_ PDISKENTRY DiskEntry)
+{
+    ULONG EntryCount = 0;
+
+    if (DiskEntry->LayoutBuffer)
+        EntryCount = DiskEntry->LayoutBuffer->Gpt.MaxPartitionCount;
+
+    if ((EntryCount == 0) || (EntryCount > MAX_GPT_PARTITION_COUNT))
+        EntryCount = DEFAULT_GPT_PARTITION_COUNT;
+
+    return EntryCount;
+}
+
+/**
+ * @brief   Tells how many sectors the entry array takes at one end of a disk.
+ **/
+static
+ULONGLONG
+GetGPTEntrySectors(
+    _In_ PDISKENTRY DiskEntry)
+{
+    return ((ULONGLONG)GetGPTEntryCount(DiskEntry) * GPT_PARTITION_ENTRY_SIZE +
+            DiskEntry->BytesPerSector - 1) / DiskEntry->BytesPerSector;
+}
+
+/**
  * @brief   Returns the first sector a partition may start at.
  *
- * A GPT disk reserves room at both ends for its headers and its entry array,
- * and reports what is left as the usable range.
+ * A GPT disk keeps its first sectors for the protective MBR, the header and
+ * the entry array. Where those end is worked out from the disk itself rather
+ * than taken from the table on it, so that a table written by something that
+ * got this wrong cannot put a partition where one may not go.
  **/
 static
 ULONGLONG
@@ -153,13 +196,12 @@ GetDiskFirstUsableSector(
     else
         StartSector = (ULONGLONG)DiskEntry->SectorAlignment;
 
-    if (IsGPTDisk(DiskEntry) && DiskEntry->LayoutBuffer)
+    if (IsGPTDisk(DiskEntry))
     {
-        ULONGLONG Usable = DiskEntry->LayoutBuffer->Gpt.StartingUsableOffset.QuadPart /
-                           DiskEntry->BytesPerSector;
-        Usable = AlignUp(Usable, DiskEntry->SectorAlignment);
-        if (Usable > StartSector)
-            StartSector = Usable;
+        ULONGLONG Table = AlignUp(2ULL + GetGPTEntrySectors(DiskEntry),
+                                  DiskEntry->SectorAlignment);
+        if (Table > StartSector)
+            StartSector = Table;
     }
 
     return StartSector;
@@ -167,6 +209,9 @@ GetDiskFirstUsableSector(
 
 /**
  * @brief   Returns the sector past the last one a partition may occupy.
+ *
+ * The copy of the table a GPT disk keeps at its end is out of bounds, as
+ * above worked out from the disk and not from what it says of itself.
  **/
 static
 ULONGLONG
@@ -175,14 +220,11 @@ GetDiskLastUsableSector(
 {
     ULONGLONG EndSector = DiskEntry->SectorCount.QuadPart;
 
-    if (IsGPTDisk(DiskEntry) && DiskEntry->LayoutBuffer &&
-        DiskEntry->LayoutBuffer->Gpt.UsableLength.QuadPart != 0)
+    if (IsGPTDisk(DiskEntry))
     {
-        ULONGLONG Usable = (DiskEntry->LayoutBuffer->Gpt.StartingUsableOffset.QuadPart +
-                            DiskEntry->LayoutBuffer->Gpt.UsableLength.QuadPart) /
-                           DiskEntry->BytesPerSector;
-        if (Usable < EndSector)
-            EndSector = Usable;
+        ULONGLONG Table = 1ULL + GetGPTEntrySectors(DiskEntry);
+
+        EndSector = (EndSector > Table) ? (EndSector - Table) : 0ULL;
     }
 
     return EndSector;
@@ -804,7 +846,7 @@ InsertDiskRegion(
         PartEntry2 = CONTAINING_RECORD(Entry, PARTENTRY, ListEntry);
 
         /* Ignore any unused empty region */
-        if ((PartEntry2->PartitionType == PARTITION_ENTRY_UNUSED &&
+        if ((IsPartitionUnused(PartEntry2) &&
              PartEntry2->StartSector.QuadPart == 0) || PartEntry2->SectorCount.QuadPart == 0)
         {
             continue;
@@ -1250,6 +1292,24 @@ AddPartitionToDisk(
         ASSERT(!(LogicalPartition && IsContainerPartition(PartitionInfo->Mbr.PartitionType)));
     }
 
+    /*
+     * Ignore a partition that does not lie on the disk. A table naming one is
+     * damaged, and taking it at its word would put every free region worked
+     * out around it somewhere the disk does not reach.
+     */
+    if ((PartitionInfo->StartingOffset.QuadPart < 0) ||
+        (PartitionInfo->PartitionLength.QuadPart <= 0) ||
+        ((ULONGLONG)(PartitionInfo->StartingOffset.QuadPart +
+                     PartitionInfo->PartitionLength.QuadPart) >
+            (ULONGLONG)DiskEntry->SectorCount.QuadPart * DiskEntry->BytesPerSector))
+    {
+        DPRINT1("Partition %lu of disk %lu runs from %I64d for %I64d, which is not on it\n",
+                PartitionIndex, DiskNumber,
+                PartitionInfo->StartingOffset.QuadPart,
+                PartitionInfo->PartitionLength.QuadPart);
+        return;
+    }
+
     PartEntry = RtlAllocateHeap(ProcessHeap,
                                 HEAP_ZERO_MEMORY,
                                 sizeof(PARTENTRY));
@@ -1381,7 +1441,16 @@ ScanForUnpartitionedDiskSpace(
         /* Create a partition entry that represents the empty disk */
 
         StartSector = GetDiskFirstUsableSector(DiskEntry);
-        SectorCount = AlignDown(LastUsableSector, DiskEntry->SectorAlignment) - StartSector;
+        LastUsableSector = AlignDown(LastUsableSector, DiskEntry->SectorAlignment);
+
+        /* Nothing to hand out if the two ends meet */
+        if (LastUsableSector <= StartSector)
+        {
+            DPRINT1("Disk %lu has no room left between sectors %I64u and %I64u\n",
+                    DiskEntry->DiskNumber, StartSector, LastUsableSector);
+            return;
+        }
+        SectorCount = LastUsableSector - StartSector;
 
         NewPartEntry = CreateInsertBlankRegion(DiskEntry,
                                                &DiskEntry->PrimaryPartListHead,
@@ -2862,12 +2931,6 @@ GetPartitionCount(
     (((DiskEntry)->DiskStyle == PARTITION_STYLE_MBR) \
         ? GetPartitionCount(&(DiskEntry)->LogicalPartListHead) : 0)
 
-/* How many entries a GPT table holds when the disk does not say otherwise */
-#define DEFAULT_GPT_PARTITION_COUNT 128
-
-/* How much room one of those entries takes on the disk */
-#define GPT_PARTITION_ENTRY_SIZE 128
-
 
 static
 BOOLEAN
@@ -3339,7 +3402,7 @@ GetAdjUnpartitionedEntry(
         PartEntry = CONTAINING_RECORD(AdjEntry, PARTENTRY, ListEntry);
         if (!PartEntry->IsPartitioned)
         {
-            ASSERT(PartEntry->PartitionType == PARTITION_ENTRY_UNUSED);
+            ASSERT(IsPartitionUnused(PartEntry));
             return PartEntry;
         }
     }
@@ -3521,7 +3584,7 @@ DismountPartition(
         /* Partition validation checks */
         ASSERT(Volume->PartEntry == PartEntry);
         ASSERT(PartEntry->IsPartitioned);
-        ASSERT(PartEntry->PartitionType != PARTITION_ENTRY_UNUSED);
+        ASSERT(!IsPartitionUnused(PartEntry));
         ASSERT(!IsContainerPartition(PartEntry->PartitionType));
 
         /* Dismount the basic volume: unlink the volume from the list */
@@ -3571,7 +3634,7 @@ DeletePartition(
     }
 
     ASSERT(PartEntry->DiskEntry->PartList == List);
-    ASSERT(PartEntry->PartitionType != PARTITION_ENTRY_UNUSED);
+    ASSERT(!IsPartitionUnused(PartEntry));
 
     /* Clear the system partition if it is being deleted */
     if (List->SystemPartition == PartEntry)
@@ -3664,6 +3727,10 @@ DeletePartition(
         PartEntry->New = FALSE;
         PartEntry->IsPartitioned = FALSE;
         PartEntry->PartitionType = PARTITION_ENTRY_UNUSED;
+        PartEntry->PartitionTypeGuid = PARTITION_ENTRY_UNUSED_GUID;
+        PartEntry->PartitionIdGuid = PARTITION_ENTRY_UNUSED_GUID;
+        PartEntry->Attributes = 0;
+        RtlZeroMemory(PartEntry->PartitionName, sizeof(PartEntry->PartitionName));
         PartEntry->OnDiskPartitionNumber = 0;
         PartEntry->PartitionNumber = 0;
         // PartEntry->PartitionIndex = 0;
@@ -4017,7 +4084,7 @@ FindSupportedSystemPartition(
             if (PartEntry->IsPartitioned &&
                 !IsContainerPartition(PartEntry->PartitionType))
             {
-                ASSERT(PartEntry->PartitionType != PARTITION_ENTRY_UNUSED);
+                ASSERT(!IsPartitionUnused(PartEntry));
 
                 /* If we get a candidate active partition in the disk, validate it */
                 if (IsSupportedActivePartition(PartEntry))
@@ -4031,7 +4098,7 @@ FindSupportedSystemPartition(
             /* Check if the partition is partitioned and used */
             if (!PartEntry->IsPartitioned)
             {
-                ASSERT(PartEntry->PartitionType == PARTITION_ENTRY_UNUSED);
+                ASSERT(IsPartitionUnused(PartEntry));
 
                 // TODO: Check for minimal size!!
                 CandidatePartition = PartEntry;
@@ -4066,7 +4133,7 @@ FindSupportedSystemPartition(
                 /* Check for unpartitioned space */
                 if (!PartEntry->IsPartitioned)
                 {
-                    ASSERT(PartEntry->PartitionType == PARTITION_ENTRY_UNUSED);
+                    ASSERT(IsPartitionUnused(PartEntry));
 
                     // TODO: Check for minimal size!!
                     CandidatePartition = PartEntry;
