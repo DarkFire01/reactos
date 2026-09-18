@@ -1431,6 +1431,10 @@ CleanupPartitionList(
  * @brief
  * Create a partition in the selected disk region in the partition list,
  * and update the partition list UI.
+ *
+ * @param[out]  phNextItem
+ * Optionally receives the item of the space left over after the partition,
+ * or NULL when the partition took the whole region.
  **/
 static BOOLEAN
 DoCreatePartition(
@@ -1439,14 +1443,19 @@ DoCreatePartition(
     _Inout_ HTLITEM* phItem,
     _Inout_opt_ PPARTITEM* pPartItem,
     _In_opt_ ULONGLONG SizeBytes,
-    _In_opt_ ULONG_PTR PartitionInfo)
+    _In_opt_ ULONG_PTR PartitionInfo,
+    _Out_opt_ HTLITEM* phNextItem)
 {
     PPARTITEM PartItem;
     PPARTENTRY PartEntry;
     HTLITEM hParentItem;
     HTLITEM hInsertAfter;
+    HTLITEM hNextItem = NULL;
     PPARTENTRY NextPart;
     BOOLEAN Success;
+
+    if (phNextItem)
+        *phNextItem = NULL;
 
     PartItem = (pPartItem ? *pPartItem : GetItemPartition(hList, *phItem));
     if (!PartItem)
@@ -1518,7 +1527,10 @@ DoCreatePartition(
     // NextPart = GetAdjDiskRegion(NULL, PartEntry, ENUM_REGION_NEXT);
     NextPart = GetAdjUnpartitionedEntry(PartEntry, TRUE);
     if (NextPart /*&& !NextPart->IsPartitioned*/)
-        PrintPartitionData(hList, hParentItem, *phItem, NextPart);
+        hNextItem = PrintPartitionData(hList, hParentItem, *phItem, NextPart);
+
+    if (phNextItem)
+        *phNextItem = hNextItem;
 
     /* Select the created partition */
     TreeList_SelectItem(hList, *phItem);
@@ -1698,15 +1710,36 @@ SelectInstallPartition(
         Reserved = GetSystemPartitionReserve(pSetupData->PartitionList, PartEntry);
         if (Reserved != 0ULL)
         {
-            ULONGLONG SizeAvailable = GetPartEntrySizeInBytes(PartEntry);
+            HTLITEM hNextItem = NULL;
 
-            if (SizeAvailable <= Reserved)
+            if (GetPartEntrySizeInBytes(PartEntry) <= Reserved)
             {
                 DisplayMessage(hwndDlg, MB_ICONERROR | MB_OK, NULL,
                                L"Could not create a partition on the selected disk region.");
                 return FALSE; // Fail
             }
-            SizeBytes = SizeAvailable - Reserved;
+
+            /* Lay it down at the front of the region, ahead of the installation */
+            if (!DoCreatePartition(hList, pSetupData->PartitionList,
+                                   &hItem, &PartItem,
+                                   Reserved, PARTITION_SYSTEM, &hNextItem) ||
+                !hNextItem)
+            {
+                DisplayError(GetParent(hwndDlg),
+                             IDS_ERROR_CREATE_PARTITION_TITLE,
+                             IDS_ERROR_CREATE_PARTITION);
+                return FALSE; // Fail
+            }
+
+            /* Carry on in what is left of the region */
+            hItem = hNextItem;
+            PartItem = GetItemPartition(hList, hItem);
+            if (!PartItem)
+            {
+                ASSERT(FALSE);
+                return FALSE; // Fail
+            }
+            PartEntry = PartItem->PartEntry;
         }
 
         Error = PartitionCreateChecks(PartEntry, SizeBytes, 0);
@@ -1718,11 +1751,11 @@ SelectInstallPartition(
             return FALSE; // Fail
         }
 
-        /* Automatically create the partition on the empty space;
+        /* Automatically create the partition on the whole empty space;
          * it will be formatted later with default parameters */
         if (!DoCreatePartition(hList, pSetupData->PartitionList,
                                &hItem, &PartItem,
-                               SizeBytes, 0))
+                               SizeBytes, 0, NULL))
         {
             DisplayError(GetParent(hwndDlg),
                          IDS_ERROR_CREATE_PARTITION_TITLE,
@@ -1940,7 +1973,8 @@ DriveDlgProc(
                                        &hItem, &PartItem,
                                        PartSize,
                                        !PartCreateCtx.MBRExtPart
-                                           ? 0 : PARTITION_EXTENDED))
+                                           ? 0 : PARTITION_EXTENDED,
+                                       NULL))
                 {
                     DisplayError(GetParent(hwndDlg),
                                  IDS_ERROR_CREATE_PARTITION_TITLE,
