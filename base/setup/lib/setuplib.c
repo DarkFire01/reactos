@@ -957,7 +957,7 @@ InitDestinationPaths(
 #else
         Status = RtlStringCchPrintfW(PathBuffer, ARRAYSIZE(PathBuffer),
                          L"signature(%08x)disk(%u)rdisk(%u)partition(%lu)\\",
-                         DiskEntry->LayoutBuffer->Signature,
+                         DiskEntry->LayoutBuffer->Mbr.Signature,
                          DiskEntry->Bus,
                          DiskEntry->Id,
                          PartEntry->OnDiskPartitionNumber);
