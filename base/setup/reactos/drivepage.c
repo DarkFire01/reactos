@@ -1684,9 +1684,29 @@ SelectInstallPartition(
     /* If this is an empty region, auto-create the partition if conditions are OK */
     if (!PartEntry->IsPartitioned)
     {
+        ULONGLONG SizeBytes = 0ULL;
+        ULONGLONG Reserved;
         ULONG Error;
 
-        Error = PartitionCreateChecks(PartEntry, 0ULL, 0);
+        /*
+         * Whatever the firmware needs for itself has to stay free, so the
+         * region is taken whole only when nothing has to be held back.
+         */
+        Reserved = GetSystemPartitionReserve(pSetupData->PartitionList, PartEntry);
+        if (Reserved != 0ULL)
+        {
+            ULONGLONG SizeAvailable = GetPartEntrySizeInBytes(PartEntry);
+
+            if (SizeAvailable <= Reserved)
+            {
+                DisplayMessage(hwndDlg, MB_ICONERROR | MB_OK, NULL,
+                               L"Could not create a partition on the selected disk region.");
+                return FALSE; // Fail
+            }
+            SizeBytes = SizeAvailable - Reserved;
+        }
+
+        Error = PartitionCreateChecks(PartEntry, SizeBytes, 0);
         if (Error != NOT_AN_ERROR)
         {
             // MUIDisplayError(Error, Ir, POPUP_WAIT_ANY_KEY);
@@ -1695,11 +1715,11 @@ SelectInstallPartition(
             return FALSE; // Fail
         }
 
-        /* Automatically create the partition on the whole empty space;
+        /* Automatically create the partition on the empty space;
          * it will be formatted later with default parameters */
         if (!DoCreatePartition(hList, pSetupData->PartitionList,
                                &hItem, &PartItem,
-                               0ULL, 0))
+                               SizeBytes, 0))
         {
             DisplayError(GetParent(hwndDlg),
                          IDS_ERROR_CREATE_PARTITION_TITLE,
