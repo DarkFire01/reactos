@@ -3694,8 +3694,12 @@ FindEfiSystemPartition(
             if ((Pass == 1) && (DiskEntry == PreferredDisk))
                 continue;
 
-            /* The firmware only reads disks it can see */
-            if (DiskEntry->MediaType != FixedMedia || !DiskEntry->BiosFound)
+            /*
+             * Only fixed disks are considered. Whether the BIOS enumerated
+             * the disk says nothing here, since a UEFI firmware reads disks
+             * through drivers of its own and never through INT 13h.
+             */
+            if (DiskEntry->MediaType != FixedMedia)
                 continue;
 
             for (PartListEntry = DiskEntry->PrimaryPartListHead.Flink;
@@ -4080,8 +4084,8 @@ SetActivePartition(
             return FALSE;
         }
 
-        if (PartEntry->DiskEntry == GetSystemDisk(List))
-            List->SystemPartition = PartEntry;
+        /* Being of that type is what makes it the system partition */
+        List->SystemPartition = PartEntry;
 
         return TRUE;
     }
