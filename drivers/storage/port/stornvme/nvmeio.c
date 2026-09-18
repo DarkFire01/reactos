@@ -379,11 +379,17 @@ NvmpPostCommand(
 {
     PNVME_REQUEST_CONTEXT Context;
     PNVME_QUEUE_PAIR Queue = &Adapter->IoQueue;
+    STOR_LOCK_HANDLE LockHandle;
     USHORT CommandId;
 
     Context = SrbGetMiniportContext(Srb);
 
-    KeAcquireSpinLockAtDpcLevel(&Adapter->SubmissionLock);
+    /*
+     * The interrupt lock is the one that also shuts out the service
+     * routine, which is the other place the outstanding request table and
+     * the queue are touched.
+     */
+    StorPortAcquireSpinLock(Adapter, InterruptLock, NULL, &LockHandle);
 
     /*
      * The slot a command goes into names it on the way back, which works
@@ -397,7 +403,7 @@ NvmpPostCommand(
 
     NvmpSubmitCommand(Adapter, Queue, &Context->Command);
 
-    KeReleaseSpinLockFromDpcLevel(&Adapter->SubmissionLock);
+    StorPortReleaseSpinLock(Adapter, &LockHandle);
 }
 
 
