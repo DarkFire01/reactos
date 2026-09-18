@@ -3653,6 +3653,70 @@ IsSupportedActivePartition(
 }
 
 /**
+ * @brief   Tells how much of a free region has to stay free for the firmware.
+ *
+ * A UEFI firmware starts the system off a partition of its own, so the last
+ * free space able to hold one cannot be handed out whole. Everything else,
+ * and any disk already carrying such a partition, holds back nothing.
+ *
+ * @param[in]   List
+ * The partition list the region belongs to.
+ *
+ * @param[in]   PartEntry
+ * The free region about to be turned into a partition.
+ *
+ * @return  The number of bytes to leave unallocated.
+ **/
+ULONGLONG
+GetSystemPartitionReserve(
+    _In_ PPARTLIST List,
+    _In_ PPARTENTRY PartEntry)
+{
+    PLIST_ENTRY DiskListEntry, PartListEntry;
+    PDISKENTRY DiskEntry;
+    PPARTENTRY Current;
+
+    /* Only a UEFI firmware wants a partition of its own */
+    if (!IsUefiBoot())
+        return 0ULL;
+
+    /* An existing one anywhere is reused, so nothing has to be kept */
+    for (DiskListEntry = List->DiskListHead.Flink;
+         DiskListEntry != &List->DiskListHead;
+         DiskListEntry = DiskListEntry->Flink)
+    {
+        DiskEntry = CONTAINING_RECORD(DiskListEntry, DISKENTRY, ListEntry);
+
+        for (PartListEntry = DiskEntry->PrimaryPartListHead.Flink;
+             PartListEntry != &DiskEntry->PrimaryPartListHead;
+             PartListEntry = PartListEntry->Flink)
+        {
+            Current = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
+
+            if (IsEfiSystemPartition(Current))
+                return 0ULL;
+        }
+    }
+
+    /* Nor does it, as long as some other free space on the disk can take one */
+    DiskEntry = PartEntry->DiskEntry;
+    for (PartListEntry = DiskEntry->PrimaryPartListHead.Flink;
+         PartListEntry != &DiskEntry->PrimaryPartListHead;
+         PartListEntry = PartListEntry->Flink)
+    {
+        Current = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
+
+        if ((Current != PartEntry) && !Current->IsPartitioned &&
+            (GetPartEntrySizeInBytes(Current) >= EFI_SYSTEM_PARTITION_SIZE))
+        {
+            return 0ULL;
+        }
+    }
+
+    return EFI_SYSTEM_PARTITION_SIZE;
+}
+
+/**
  * @brief   Finds the partition a UEFI firmware would start the system from.
  *
  * A system installed under UEFI needs an EFI system partition to put its

@@ -40,6 +40,7 @@
 @ cdecl IsPartitionUnused(ptr)
 @ cdecl IsPartitionRecognized(ptr)
 @ cdecl IsEfiSystemPartition(ptr)
+@ cdecl -ret64 GetSystemPartitionReserve(ptr ptr)
 @ cdecl SelectPartition(ptr long long)
 
 ;; partinfo
