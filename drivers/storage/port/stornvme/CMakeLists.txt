@@ -6,6 +6,7 @@ add_definitions(
 
 list(APPEND SOURCE
     nvmectrl.c
+    nvmequeue.c
     stornvme.c)
 
 add_library(stornvme MODULE ${SOURCE} stornvme.rc)
