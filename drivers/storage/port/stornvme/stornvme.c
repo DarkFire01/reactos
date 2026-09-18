@@ -241,8 +241,6 @@ StorNvmeFindAdapter(
     ConfigInfo->MaxIOsPerLun = ConfigInfo->MaxNumberOfIO;
     ConfigInfo->InitialLunQueueDepth = ConfigInfo->MaxNumberOfIO;
 
-    KeInitializeSpinLock(&Adapter->SubmissionLock);
-
     Adapter->State = NvmeAdapterFound;
 
     return SP_RETURN_FOUND;
