@@ -10,27 +10,6 @@
 #define NDEBUG
 #include <debug.h>
 
-/**
- * @brief Ends the completion of a request sent by IopSynchronousCall, so that
- *        nothing reaches back into the caller's frame once it has returned.
- */
-static
-NTSTATUS
-NTAPI
-IopSynchronousCallCompletion(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP Irp,
-    _In_opt_ PVOID Context)
-{
-    UNREFERENCED_PARAMETER(DeviceObject);
-    UNREFERENCED_PARAMETER(Irp);
-
-    KeSetEvent((PKEVENT)Context, IO_NO_INCREMENT, FALSE);
-
-    /* The request belongs to us from here, so stop it travelling any further */
-    return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
 NTSTATUS
 IopSynchronousCall(
     _In_ PDEVICE_OBJECT DeviceObject,
@@ -39,6 +18,7 @@ IopSynchronousCall(
 {
     PIRP Irp;
     PIO_STACK_LOCATION IrpStack;
+    IO_STATUS_BLOCK IoStatusBlock;
     KEVENT Event;
     NTSTATUS Status;
     PDEVICE_OBJECT TopDeviceObject;
@@ -56,8 +36,8 @@ IopSynchronousCall(
     }
 
     /* Initialize to failure */
-    Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
-    Irp->IoStatus.Information = 0;
+    Irp->IoStatus.Status = IoStatusBlock.Status = STATUS_NOT_SUPPORTED;
+    Irp->IoStatus.Information = IoStatusBlock.Information = 0;
 
     /* Special case for IRP_MN_FILTER_RESOURCE_REQUIREMENTS */
     if ((IoStackLocation->MajorFunction == IRP_MJ_PNP) &&
@@ -65,48 +45,40 @@ IopSynchronousCall(
     {
         /* Copy the resource requirements list into the IOSB */
         Irp->IoStatus.Information =
-            (ULONG_PTR)IoStackLocation->Parameters.FilterResourceRequirements.IoResourceRequirementList;
+        IoStatusBlock.Information = (ULONG_PTR)IoStackLocation->Parameters.FilterResourceRequirements.IoResourceRequirementList;
     }
 
     /* Initialize the event */
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
-    /* Name the thread the request belongs to, but keep it off that thread's
-       list, because this call owns it all the way to the free below */
+    /* Set them up */
+    Irp->UserIosb = &IoStatusBlock;
+    Irp->UserEvent = &Event;
+
+    /* Queue the IRP */
     Irp->Tail.Overlay.Thread = PsGetCurrentThread();
+    IoQueueThreadIrp(Irp);
 
     /* Copy-in the stack */
     IrpStack = IoGetNextIrpStackLocation(Irp);
     *IrpStack = *IoStackLocation;
 
-    /*
-     * Take the completion instead of leaving it to the I/O manager. That one
-     * runs as an APC, which is not guaranteed to have been delivered by the
-     * time a driver returns anything other than STATUS_PENDING, and the event
-     * and status block it writes would by then belong to a frame this call
-     * has already given up.
-     */
-    IoSetCompletionRoutine(Irp,
-                           IopSynchronousCallCompletion,
-                           &Event,
-                           TRUE,
-                           TRUE,
-                           TRUE);
-
     /* Call the driver */
     Status = IoCallDriver(TopDeviceObject, Irp);
-
-    /* The completion routine runs whatever the driver returned */
-    KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-
-    /* Read the result out before the request goes away */
-    Status = Irp->IoStatus.Status;
-    *Information = (PVOID)Irp->IoStatus.Information;
-    IoFreeIrp(Irp);
+    /* Otherwise we may get stuck here or have IoStatusBlock not populated */
+    ASSERT(!KeAreAllApcsDisabled());
+    if (Status == STATUS_PENDING)
+    {
+        /* Wait for it */
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = IoStatusBlock.Status;
+    }
 
     /* Remove the reference */
     ObDereferenceObject(TopDeviceObject);
 
+    /* Return the information */
+    *Information = (PVOID)IoStatusBlock.Information;
     return Status;
 }
 
