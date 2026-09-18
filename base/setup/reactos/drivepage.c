@@ -1662,9 +1662,12 @@ SelectInstallPartition(
     /*
      * Check whether the user wants to install ReactOS on a disk that
      * is not recognized by the computer's firmware and if so, display
-     * a warning since such disks may not be bootable.
+     * a warning since such disks may not be bootable. A UEFI firmware
+     * reads disks through drivers of its own, so what the BIOS listed
+     * says nothing there.
      */
-    if (PartEntry->DiskEntry->MediaType == FixedMedia &&
+    if (!IsUefiBoot() &&
+        PartEntry->DiskEntry->MediaType == FixedMedia &&
         !PartEntry->DiskEntry->BiosFound)
     {
         INT nRet;
