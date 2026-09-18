@@ -52,7 +52,7 @@ PortFdoMessageInterruptRoutine(
 
 
 /**
- * @brief Connects the adapter on message signalled interrupts.
+ * @brief Connects the adapter on message signaled interrupts.
  *
  * Only tried when the miniport handed us a message interrupt routine from
  * HwFindAdapter. The kernel falls back to a line interrupt on its own when the
