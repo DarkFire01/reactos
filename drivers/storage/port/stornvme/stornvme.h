@@ -42,8 +42,12 @@
  */
 #define NVME_MAX_NAMESPACES     255
 
-/* Nothing larger is offered to the class layer, whatever the controller says */
-#define NVME_MAX_TRANSFER_LENGTH (2 * 1024 * 1024)
+/*
+ * Nothing larger is offered to the class layer, whatever the controller
+ * says. The limit is set so a transfer never needs more region pages than
+ * one page of them can name, even when it begins part way into a page.
+ */
+#define NVME_MAX_TRANSFER_LENGTH (1024 * 1024)
 
 /* The one IO queue pair this driver drives, and how deep it is willing to go */
 #define NVME_IO_QUEUE_ID        1
@@ -188,11 +192,6 @@ typedef struct _NVME_ADAPTER_EXTENSION
     /* Outstanding requests, indexed by the command identifier they carry */
     PNVME_REQUEST_CONTEXT Requests[NVME_MAX_OUTSTANDING];
 
-    /*
-     * Held while a command is placed, since storport may start one request
-     * on every processor at once and they all share the one queue.
-     */
-    KSPIN_LOCK SubmissionLock;
 
     /* Set while running as part of a crash dump or hibernation stack */
     BOOLEAN DumpMode;
