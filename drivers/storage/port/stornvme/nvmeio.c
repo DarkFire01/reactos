@@ -370,6 +370,25 @@ NvmpBuildCommand(
 
 
 /**
+ * @brief Fills the pool of command identifiers.
+ *
+ * One identifier short of the queue depth, so that the submission tail can
+ * never catch up with the head and make a full queue look like an empty one.
+ */
+VOID
+NvmpInitializeCommandIds(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter)
+{
+    ULONG Index;
+
+    Adapter->FreeCommandCount = Adapter->IoQueueDepth - 1;
+
+    for (Index = 0; Index < Adapter->FreeCommandCount; Index++)
+        Adapter->FreeCommandIds[Index] = (USHORT)Index;
+}
+
+
+/**
  * @brief Posts a prepared command to the queue it belongs on.
  */
 VOID
@@ -391,12 +410,17 @@ NvmpPostCommand(
      */
     StorPortAcquireSpinLock(Adapter, InterruptLock, NULL, &LockHandle);
 
-    /*
-     * The slot a command goes into names it on the way back, which works
-     * because storport is never given more requests at once than the queue
-     * has slots, so a slot cannot come round again while it is still in use.
-     */
-    CommandId = (USHORT)Queue->SubmissionTail;
+    if (Adapter->FreeCommandCount == 0)
+    {
+        StorPortReleaseSpinLock(Adapter, &LockHandle);
+
+        /* Nothing is lost, storport hands the request back later */
+        NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_BUSY);
+        return;
+    }
+
+    /* The identifier names the request when the controller answers */
+    CommandId = Adapter->FreeCommandIds[--Adapter->FreeCommandCount];
     Context->Command.CDW0.CID = CommandId;
 
     Adapter->Requests[CommandId] = Context;
@@ -434,6 +458,7 @@ NvmpCompleteFromEntry(
     }
 
     Adapter->Requests[CommandId] = NULL;
+    Adapter->FreeCommandIds[Adapter->FreeCommandCount++] = CommandId;
     Srb = Context->Srb;
 
     if (Completion->DW3.Status.SC == NVME_STATUS_SUCCESS_COMPLETION &&

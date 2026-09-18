@@ -273,6 +273,8 @@ NvmpStartController(
     if (!NvmpCreateIoQueues(Adapter))
         return FALSE;
 
+    NvmpInitializeCommandIds(Adapter);
+
     DPRINT1("Controller is ready\n");
 
     return TRUE;
