@@ -542,6 +542,15 @@ typedef struct _TRANSFER_PACKET {
          */
         BOOLEAN DriverUsesStartIO; // if this is set, then the below low-mem flags are always used
         BOOLEAN InLowMemRetry;
+
+        /*
+         *  Which of the two counts of outstanding transfers this packet was
+         *  added to when it went down. The completion gives it back to the
+         *  same one, since what the request says of itself may not survive
+         *  the journey.
+         */
+        BOOLEAN CountedAsActive;
+        BOOLEAN CountedAsIdle;
         PUCHAR LowMemRetry_remainingBufPtr;
         ULONG LowMemRetry_remainingBufLen;
         LARGE_INTEGER LowMemRetry_nextChunkTargetLocation;
