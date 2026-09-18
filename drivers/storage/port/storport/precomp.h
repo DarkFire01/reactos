@@ -251,7 +251,7 @@ typedef struct _FDO_DEVICE_EXTENSION
     ULONG InterruptIrql;
 
     /*
-     * Set when the adapter runs on message signalled interrupts. MessageInfo
+     * Set when the adapter runs on message signaled interrupts. MessageInfo
      * then describes every connected message and Interrupt holds the object
      * of the first one, so the spin lock helpers keep working either way.
      */
@@ -360,7 +360,12 @@ typedef struct _QUEUED_REQUEST_REFERENCE
     PIRP Irp;
     PSTOR_SCATTER_GATHER_LIST ScatterGatherList;
     PVOID MappedSystemVa;
-    ULONG TimeoutCounter; // FIXME: Implement timeout with a heap
+    /*
+     * TODO: Nothing counts this down yet, so a request the miniport never
+     * answers waits forever. It needs a timer that walks the outstanding
+     * requests and calls HwResetBus on the miniport when one runs out.
+     */
+    ULONG TimeoutCounter;
     /*
      * Indicates if the current request is outstanding. Some requests are for HBA, and shouldn't be
      * affected by outstanding requests flow controlling.
