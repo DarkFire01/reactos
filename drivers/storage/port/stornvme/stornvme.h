@@ -334,8 +334,16 @@ NvmpNamespaceFromLun(
     _In_ PNVME_ADAPTER_EXTENSION Adapter,
     _In_ ULONG Lun);
 
-VOID
+BOOLEAN
 NvmpSetSenseData(
+    _In_ PVOID Srb,
+    _In_ UCHAR SenseKey,
+    _In_ UCHAR AdditionalSenseCode,
+    _In_ UCHAR AdditionalSenseCodeQualifier);
+
+VOID
+NvmpCompleteWithSense(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
     _In_ PVOID Srb,
     _In_ UCHAR SenseKey,
     _In_ UCHAR AdditionalSenseCode,
