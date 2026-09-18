@@ -306,8 +306,8 @@ StorNvmeBuildIo(
 
         case SRB_FUNCTION_FLUSH:
         case SRB_FUNCTION_SHUTDOWN:
-            NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_SUCCESS);
-            return FALSE;
+            /* The write cache has to reach the medium before the power does */
+            return NvmpBuildFlush(Adapter, Srb);
 
         case SRB_FUNCTION_PNP:
         case SRB_FUNCTION_POWER:
