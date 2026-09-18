@@ -1982,7 +1982,654 @@ typedef struct
     } u;
 } NVME_COMMAND, *PNVME_COMMAND;
 
+/* Identify namespace descriptor list is always one page */
+#define NVME_IDENTIFY_CNS_DESCRIPTOR_NAMESPACE_SIZE 0x1000
+
+/* Last index of a UUID list */
+#define NVME_MAX_UUID_INDEX                 127
+#define NVME_NUM_UUID_LIST_ENTRIES          128
+
+typedef enum
+{
+    NVME_IDENTIFY_CNS_SPECIFIC_NAMESPACE                    = 0x0,
+    NVME_IDENTIFY_CNS_CONTROLLER                            = 0x1,
+    NVME_IDENTIFY_CNS_ACTIVE_NAMESPACES                     = 0x2,
+    NVME_IDENTIFY_CNS_DESCRIPTOR_NAMESPACE                  = 0x3,
+    NVME_IDENTIFY_CNS_NVM_SET                               = 0x4,
+    NVME_IDENTIFY_CNS_SPECIFIC_NAMESPACE_IO_COMMAND_SET     = 0x5,
+    NVME_IDENTIFY_CNS_SPECIFIC_CONTROLLER_IO_COMMAND_SET    = 0x6,
+    NVME_IDENTIFY_CNS_ACTIVE_NAMESPACE_LIST_IO_COMMAND_SET  = 0x7,
+    NVME_IDENTIFY_CNS_ALLOCATED_NAMESPACE_LIST              = 0x10,
+    NVME_IDENTIFY_CNS_ALLOCATED_NAMESPACE                   = 0x11,
+    NVME_IDENTIFY_CNS_CONTROLLER_LIST_OF_NSID               = 0x12,
+    NVME_IDENTIFY_CNS_CONTROLLER_LIST_OF_NVM_SUBSYSTEM      = 0x13,
+    NVME_IDENTIFY_CNS_PRIMARY_CONTROLLER_CAPABILITIES       = 0x14,
+    NVME_IDENTIFY_CNS_SECONDARY_CONTROLLER_LIST             = 0x15,
+    NVME_IDENTIFY_CNS_NAMESPACE_GRANULARITY_LIST            = 0x16,
+    NVME_IDENTIFY_CNS_UUID_LIST                             = 0x17,
+    NVME_IDENTIFY_CNS_DOMAIN_LIST                           = 0x18,
+    NVME_IDENTIFY_CNS_ENDURANCE_GROUP_LIST                  = 0x19,
+    NVME_IDENTIFY_CNS_ALLOCATED_NAMSPACE_LIST_IO_COMMAND_SET= 0x1A,
+    NVME_IDENTIFY_CNS_ALLOCATED_NAMESPACE_IO_COMMAND_SET    = 0x1B,
+    NVME_IDENTIFY_CNS_IO_COMMAND_SET                        = 0x1C,
+} NVME_IDENTIFY_CNS_CODES;
+
+typedef enum
+{
+    NVME_COMMAND_SET_NVM                                = 0x0,
+    NVME_COMMAND_SET_KEY_VALUE                          = 0x1,
+    NVME_COMMAND_SET_ZONED_NAMESPACE                    = 0x2,
+} NVME_COMMAND_SET_IDENTIFIERS;
+
+typedef enum
+{
+    NVME_READ_BEHAVIOR_NOT_REPORTED     = 0x0,
+    NVME_READ_BEHAVIOR_RETURN_ZERO      = 0x1,
+    NVME_READ_BEHAVIOR_RETURN_ONES      = 0x2
+} NVME_DEALLOCATE_READ_BEHAVIOR;
+
+typedef union
+{
+    struct
+    {
+        USHORT MS;
+        UCHAR LBADS;
+        UCHAR RP:2;
+        UCHAR Reserved0:6;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_LBA_FORMAT, *PNVME_LBA_FORMAT;
+
+typedef union
+{
+    struct
+    {
+        UCHAR PersistThroughPowerLoss:1;
+        UCHAR WriteExclusiveReservation:1;
+        UCHAR ExclusiveAccessReservation:1;
+        UCHAR WriteExclusiveRegistrantsOnlyReservation:1;
+        UCHAR ExclusiveAccessRegistrantsOnlyReservation:1;
+        UCHAR WriteExclusiveAllRegistrantsReservation:1;
+        UCHAR ExclusiveAccessAllRegistrantsReservation:1;
+        UCHAR Reserved:1;
+    } DUMMYSTRUCTNAME;
+    UCHAR AsUchar;
+} NVM_RESERVATION_CAPABILITIES, *PNVME_RESERVATION_CAPABILITIES;
+
+typedef struct
+{
+    ULONGLONG NVMCommandSet:1;
+    ULONGLONG KVCommandSet:1;
+    ULONGLONG ZNCommandSet:1;
+    ULONGLONG Reserved:61;
+} IO_COMMAND_SET_VECTOR, *PIO_COMMAND_SET_VECTOR;
+
+typedef struct
+{
+    ULONGLONG NSZE;
+    ULONGLONG NCAP;
+    ULONGLONG NUSE;
+    struct
+    {
+        UCHAR ThinProvisioning:1;
+        UCHAR NameSpaceAtomicWriteUnit:1;
+        UCHAR DeallocatedOrUnwrittenError:1;
+        UCHAR SkipReuseUI:1;
+        UCHAR NameSpaceIoOptimization:1;
+        UCHAR Reserved:3;
+    } NSFEAT;
+    UCHAR NLBAF;
+    struct
+    {
+        UCHAR LbaFormatIndex:4;
+        UCHAR MetadataInExtendedDataLBA:1;
+        UCHAR LbaFormatIndexMS:2;
+        UCHAR Reserved:1;
+    } FLBAS;
+    struct
+    {
+        UCHAR MetadataInExtendedDataLBA:1;
+        UCHAR MetadataInSeparateBuffer:1;
+        UCHAR Reserved:6;
+    } MC;
+    struct
+    {
+        UCHAR ProtectionInfoType1:1;
+        UCHAR ProtectionInfoType2:1;
+        UCHAR ProtectionInfoType3:1;
+        UCHAR InfoAtBeginningOfMetadata:1;
+        UCHAR InfoAtEndOfMetadata:1;
+        UCHAR Reserved:3;
+    } DPC;
+    struct
+    {
+        UCHAR ProtectionInfoTypeEnabled:3;
+        UCHAR InfoAtBeginningOfMetadata:1;
+        UCHAR Reserved:4;
+    } DPS;
+    struct
+    {
+        UCHAR SharedNameSpace:1;
+        UCHAR Reserved:7;
+    } NMIC;
+    NVM_RESERVATION_CAPABILITIES RESCAP;
+    struct
+    {
+        UCHAR PercentageRemained:7;
+        UCHAR Supported:1;
+    } FPI;
+    struct
+    {
+        UCHAR ReadBehavior:3;
+        UCHAR WriteZeroes:1;
+        UCHAR GuardFieldWithCRC:1;
+        UCHAR Reserved:3;
+    } DLFEAT;
+    USHORT NAWUN;
+    USHORT NAWUPF;
+    USHORT NACWU;
+    USHORT NABSN;
+    USHORT NABO;
+    USHORT NABSPF;
+    USHORT NOIOB;
+    UCHAR NVMCAP[16];
+    USHORT NPWG;
+    USHORT NPWA;
+    USHORT NPDG;
+    USHORT NPDA;
+    USHORT NOWS;
+    USHORT MSSRL;
+    ULONG MCL;
+    UCHAR MSRC;
+    UCHAR Reserved2[11];
+    ULONG ANAGRPID;
+    UCHAR Reserved3[3];
+    struct
+    {
+        UCHAR WriteProtected:1;
+        UCHAR Reserved:7;
+    } NSATTR;
+    USHORT NVMSETID;
+    USHORT ENDGID;
+    UCHAR NGUID[16];
+    UCHAR EUI64[8];
+    NVME_LBA_FORMAT LBAF[64];
+    UCHAR VS[3712];
+} NVME_IDENTIFY_NAMESPACE_DATA, *PNVME_IDENTIFY_NAMESPACE_DATA;
+
+typedef enum _NVME_DISC_CTRL_TYPE
+{
+    NvmeDiscCtrlTypeUnspecified = 0,
+    NvmeDiscCtrlTypeDDC         = 1,
+    NvmeDiscCtrlTypeCDC         = 2,
+    NvmeDiscCtrlTypeReserved1   = 3,
+    NvmeDiscCtrlTypeReservedMax = 255,
+} NVME_DISC_CTRL_TYPE;
+
+typedef struct
+{
+    USHORT MP;
+    UCHAR Reserved0;
+    UCHAR MPS:1;
+    UCHAR NOPS:1;
+    UCHAR Reserved1:6;
+    ULONG ENLAT;
+    ULONG EXLAT;
+    UCHAR RRT:5;
+    UCHAR Reserved2:3;
+    UCHAR RRL:5;
+    UCHAR Reserved3:3;
+    UCHAR RWT:5;
+    UCHAR Reserved4:3;
+    UCHAR RWL:5;
+    UCHAR Reserved5:3;
+    USHORT IDLP;
+    UCHAR Reserved6:6;
+    UCHAR IPS:2;
+    UCHAR Reserved7;
+    USHORT ACTP;
+    UCHAR APW:3;
+    UCHAR Reserved8:3;
+    UCHAR APS:2;
+    UCHAR Reserved9[9];
+} NVME_POWER_STATE_DESC, *PNVME_POWER_STATE_DESC;
+
+typedef struct
+{
+    USHORT VID;
+    USHORT SSVID;
+    UCHAR SN[20];
+    UCHAR MN[40];
+    UCHAR FR[8];
+    UCHAR RAB;
+    UCHAR IEEE[3];
+    struct
+    {
+        UCHAR MultiPorts:1;
+        UCHAR MultiControllers:1;
+        UCHAR SRIOV:1;
+        UCHAR ANAR:1;
+        UCHAR Reserved:4;
+    } CMIC;
+    UCHAR MDTS;
+    USHORT CNTLID;
+    ULONG VER;
+    ULONG RTD3R;
+    ULONG RTD3E;
+    struct
+    {
+        ULONG Reserved0:8;
+        ULONG NamespaceAttributeChanged:1;
+        ULONG FirmwareActivation:1;
+        ULONG Reserved1:1;
+        ULONG AsymmetricAccessChanged:1;
+        ULONG PredictableLatencyAggregateLogChanged:1;
+        ULONG LbaStatusChanged:1;
+        ULONG EnduranceGroupAggregateLogChanged:1;
+        ULONG NormalNvmSubsystemShutdown:1;
+        ULONG Reserved2:11;
+        ULONG ZoneInformation:1;
+        ULONG Reserved3:3;
+        ULONG DiscoveryLogChanged:1;
+    } OAES;
+   struct
+   {
+        ULONG HostIdentifier128Bit:1;
+        ULONG NOPSPMode:1;
+        ULONG NVMSets:1;
+        ULONG ReadRecoveryLevels:1;
+        ULONG EnduranceGroups:1;
+        ULONG PredictableLatencyMode:1;
+        ULONG TBKAS:1;
+        ULONG NamespaceGranularity:1;
+        ULONG SQAssociations:1;
+        ULONG UUIDList:1;
+        ULONG MultiDomainSubsystem:1;
+        ULONG FixedCapacityManagement:1;
+        ULONG VariableCapacityManagement:1;
+        ULONG DeleteEnduranceGroup:1;
+        ULONG DeleteNVMSet:1;
+        ULONG ELBAS:1;
+        ULONG Reserved0:16;
+    } CTRATT;
+    struct
+    {
+        USHORT ReadRecoveryLevel0:1;
+        USHORT ReadRecoveryLevel1:1;
+        USHORT ReadRecoveryLevel2:1;
+        USHORT ReadRecoveryLevel3:1;
+        USHORT ReadRecoveryLevel4:1;
+        USHORT ReadRecoveryLevel5:1;
+        USHORT ReadRecoveryLevel6:1;
+        USHORT ReadRecoveryLevel7:1;
+        USHORT ReadRecoveryLevel8:1;
+        USHORT ReadRecoveryLevel9:1;
+        USHORT ReadRecoveryLevel10:1;
+        USHORT ReadRecoveryLevel11:1;
+        USHORT ReadRecoveryLevel12:1;
+        USHORT ReadRecoveryLevel13:1;
+        USHORT ReadRecoveryLevel14:1;
+        USHORT ReadRecoveryLevel15:1;
+    } RRLS;
+    UCHAR Reserved0[9];
+    UCHAR CNTRLTYPE;
+    UCHAR FGUID[16];
+    USHORT CRDT1;
+    USHORT CRDT2;
+    USHORT CRDT3;
+    UCHAR Reserved1[106];
+    UCHAR ReservedForManagement[13];
+    UCHAR NVMSR;
+    UCHAR VWCI;
+    UCHAR MEC;
+    struct
+    {
+        USHORT SecurityCommands:1;
+        USHORT FormatNVM:1;
+        USHORT FirmwareCommands:1;
+        USHORT NamespaceCommands:1;
+        USHORT DeviceSelfTest:1;
+        USHORT Directives:1;
+        USHORT NVMeMICommands:1;
+        USHORT VirtualizationMgmt:1;
+        USHORT DoorBellBufferConfig:1;
+        USHORT GetLBAStatus:1;
+        USHORT CommandFeatureLockdown:1;
+        USHORT Reserved:5;
+    } OACS;
+    UCHAR ACL;
+    UCHAR AERL;
+    struct
+    {
+        UCHAR Slot1ReadOnly:1;
+        UCHAR SlotCount:3;
+        UCHAR ActivationWithoutReset:1;
+        UCHAR Reserved:3;
+    } FRMW;
+    struct
+    {
+        UCHAR SmartPagePerNamespace:1;
+        UCHAR CommandEffectsLog:1;
+        UCHAR LogPageExtendedData:1;
+        UCHAR TelemetrySupport:1;
+        UCHAR PersistentEventLog:1;
+        UCHAR SupportedLogPages:1;
+        UCHAR TelemetryDataArea4:1;
+        UCHAR Reserved1:1;
+    } LPA;
+    UCHAR ELPE;
+    UCHAR NPSS;
+    struct
+    {
+        UCHAR CommandFormatInSpec:1;
+        UCHAR Reserved:7;
+    } AVSCC;
+    struct
+    {
+        UCHAR Supported:1;
+        UCHAR Reserved:7;
+    } APSTA;
+    USHORT WCTEMP;
+    USHORT CCTEMP;
+    USHORT MTFA;
+    ULONG HMPRE;
+    ULONG HMMIN;
+    UCHAR TNVMCAP[16];
+    UCHAR UNVMCAP[16];
+    struct
+    {
+        ULONG RPMBUnitCount:3;
+        ULONG AuthenticationMethod:3;
+        ULONG Reserved0:10;
+        ULONG TotalSize:8;
+        ULONG AccessSize:8;
+    } RPMBS;
+    USHORT EDSTT;
+    UCHAR DSTO;
+    UCHAR FWUG;
+    USHORT KAS;
+    struct
+    {
+        USHORT Supported:1;
+        USHORT Reserved:15;
+    } HCTMA;
+    USHORT MNTMT;
+    USHORT MXTMT;
+    struct
+    {
+        ULONG CryptoErase:1;
+        ULONG BlockErase:1;
+        ULONG Overwrite:1;
+        ULONG Reserved:26;
+        ULONG NDI:1;
+        ULONG NODMMAS:2;
+    } SANICAP;
+    ULONG HMMINDS;
+    USHORT HMMAXD;
+    USHORT NSETIDMAX;
+    USHORT ENDGIDMAX;
+    UCHAR ANATT;
+    struct
+    {
+        UCHAR OptimizedState:1;
+        UCHAR NonOptimizedState:1;
+        UCHAR InaccessibleState:1;
+        UCHAR PersistentLossState:1;
+        UCHAR ChangeState:1;
+        UCHAR Reserved:1;
+        UCHAR StaticANAGRPID:1;
+        UCHAR SupportNonZeroANAGRPID:1;
+    } ANACAP;
+    ULONG ANAGRPMAX;
+    ULONG NANAGRPID;
+    ULONG PELS;
+    USHORT DomainId;
+    UCHAR Reserved2[10];
+    UCHAR MEGCAP[16];
+    UCHAR TMPTHHA;
+    UCHAR Reserved3;
+    USHORT CQT;
+    UCHAR Reserved4[124];
+    struct
+    {
+        UCHAR RequiredEntrySize:4;
+        UCHAR MaxEntrySize:4;
+    } SQES;
+    struct
+    {
+        UCHAR RequiredEntrySize:4;
+        UCHAR MaxEntrySize:4;
+    } CQES;
+    USHORT MAXCMD;
+    ULONG NN;
+    struct
+    {
+        USHORT Compare:1;
+        USHORT WriteUncorrectable:1;
+        USHORT DatasetManagement:1;
+        USHORT WriteZeroes:1;
+        USHORT FeatureField:1;
+        USHORT Reservations:1;
+        USHORT Timestamp:1;
+        USHORT Verify:1;
+        USHORT Reserved:8;
+    } ONCS;
+    struct
+    {
+        USHORT CompareAndWrite:1;
+        USHORT Reserved:15;
+    } FUSES;
+    struct
+    {
+        UCHAR FormatApplyToAll:1;
+        UCHAR SecureEraseApplyToAll:1;
+        UCHAR CryptographicEraseSupported:1;
+        UCHAR FormatSupportNSIDAllF:1;
+        UCHAR Reserved:4;
+    } FNA;
+    struct
+    {
+        UCHAR Present:1;
+        UCHAR FlushBehavior:2;
+        UCHAR Reserved:5;
+    } VWC;
+    USHORT AWUN;
+    USHORT AWUPF;
+    struct
+    {
+        UCHAR CommandFormatInSpec:1;
+        UCHAR Reserved:7;
+    } NVSCC;
+    struct
+    {
+        UCHAR WriteProtect:1;
+        UCHAR UntilPowerCycle:1;
+        UCHAR Permanent:1;
+        UCHAR Reserved:5;
+    } NWPC;
+    USHORT ACWU;
+    USHORT CopyDescFormats;
+    struct
+    {
+        ULONG SGLSupported:2;
+        ULONG KeyedSGLData:1;
+        ULONG Reserved0:13;
+        ULONG BitBucketDescrSupported:1;
+        ULONG ByteAlignedContiguousPhysicalBuffer:1;
+        ULONG SGLLengthLargerThanDataLength:1;
+        ULONG MPTRSGLDescriptor:1;
+        ULONG AddressFieldSGLDataBlock:1;
+        ULONG TransportSGLData:1;
+        ULONG Reserved1:10;
+    } SGLS;
+    ULONG MNAN;
+    UCHAR MAXDNA[16];
+    ULONG MAXCNA;
+    UCHAR Reserved6[204];
+    UCHAR SUBNQN[256];
+    UCHAR Reserved7[768];
+    ULONG IOCCSZ;
+    ULONG IORCSZ;
+    USHORT ICDOFF;
+    struct
+    {
+        UCHAR StaticControllerModel:1;
+        UCHAR Reserved:7;
+    } FCATT;
+    UCHAR MSDBD;
+    struct
+    {
+        USHORT IOQueueDeletion:1;
+        USHORT Reserved:15;
+    } OFCS;
+    UCHAR DCTYPE;
+    UCHAR Reserved8[241];
+    NVME_POWER_STATE_DESC PDS[32];
+    UCHAR VS[1024];
+} NVME_IDENTIFY_CONTROLLER_DATA, *PNVME_IDENTIFY_CONTROLLER_DATA;
+
+typedef enum
+{
+    NVME_IDENTIFIER_TYPE_EUI64      = 0x1,
+    NVME_IDENTIFIER_TYPE_NGUID      = 0x2,
+    NVME_IDENTIFIER_TYPE_UUID       = 0x3,
+    NVME_IDENTIFIER_TYPE_CSI        = 0x4,
+} NVME_IDENTIFIER_TYPE;
+
+typedef enum
+{
+    NVME_IDENTIFIER_TYPE_EUI64_LENGTH      = 0x8,
+    NVME_IDENTIFIER_TYPE_NGUID_LENGTH      = 0x10,
+    NVME_IDENTIFIER_TYPE_UUID_LENGTH       = 0x10,
+    NVME_IDENTIFIER_TYPE_CSI_LENGTH        = 0x1,
+} NVME_IDENTIFIER_TYPE_LENGTH;
+
+typedef struct
+{
+    ULONG NSID[1024];
+} NVME_ACTIVE_NAMESPACE_ID_LIST, *PNVME_ACTIVE_NAMESPACE_ID_LIST;
+
+typedef struct
+{
+    UCHAR NIDT;
+    UCHAR NIDL;
+    UCHAR Reserved[2];
+    UCHAR NID[ANYSIZE_ARRAY];
+} NVME_IDENTIFY_NAMESPACE_DESCRIPTOR, *PNVME_IDENTIFY_NAMESPACE_DESCRIPTOR;
+
+typedef struct
+{
+    USHORT Identifier;
+    USHORT ENDGID;
+    ULONG Reserved1;
+    ULONG Random4KBReadTypical;
+    ULONG OptimalWriteSize;
+    UCHAR TotalCapacity[16];
+    UCHAR UnallocatedCapacity[16];
+    UCHAR Reserved2[80];
+} NVME_SET_ATTRIBUTES_ENTRY, *PNVME_SET_ATTRIBUTES_ENTRY;
+
+typedef struct
+{
+    ULONGLONG ZoneSize;
+    UCHAR ZDES;
+    UCHAR Reserved[7];
+} NVME_LBA_ZONE_FORMAT, *PNVME_LBA_ZONE_FORMAT;
+
+typedef struct
+{
+    struct
+    {
+        USHORT VariableZoneCapacity:1;
+        USHORT ZoneExcursions:1;
+        USHORT Reserved:14;
+    } ZOC;
+    struct
+    {
+        USHORT ReadAcrossZoneBoundaries:1;
+        USHORT Reserved:15;
+    } OZCS;
+    ULONG MAR;
+    ULONG MOR;
+    ULONG RRL;
+    ULONG FRL;
+    UCHAR Reserved0[2796];
+    NVME_LBA_ZONE_FORMAT LBAEF[16];
+    UCHAR Reserved1[768];
+    UCHAR VS[256];
+} NVME_IDENTIFY_SPECIFIC_NAMESPACE_IO_COMMAND_SET, *PNVME_IDENTIFY_SPECIFIC_NAMESPACE_IO_COMMAND_SET;
+
+typedef struct
+{
+    UCHAR VSL;
+    UCHAR WZSL;
+    UCHAR WUSL;
+    UCHAR DMRL;
+    ULONG DMRSL;
+    ULONGLONG DMSL;
+    UCHAR Reserved[4080];
+} NVME_IDENTIFY_NVM_SPECIFIC_CONTROLLER_IO_COMMAND_SET, *PNVME_IDENTIFY_NVM_SPECIFIC_CONTROLLER_IO_COMMAND_SET;
+
+typedef struct
+{
+    UCHAR ZASL;
+    UCHAR Reserved[4095];
+} NVME_IDENTIFY_ZNS_SPECIFIC_CONTROLLER_IO_COMMAND_SET, *PNVME_IDENTIFY_ZNS_SPECIFIC_CONTROLLER_IO_COMMAND_SET;
+
+typedef struct
+{
+    USHORT NumberOfIdentifiers;
+    USHORT ControllerID[2047];
+} NVME_CONTROLLER_LIST, *PNVME_CONTROLLER_LIST;
+
+typedef struct
+{
+    UCHAR IdentifierAssociation:2;
+    UCHAR Reserved:6;
+    UCHAR Reserved1[15];
+    UCHAR UUID[16];
+} NVME_UUID_LIST_ENTRY, *PNVME_UUID_LIST_ENTRY;
+
+typedef struct
+{
+    NVME_UUID_LIST_ENTRY UUID[NVME_NUM_UUID_LIST_ENTRIES];
+} NVME_UUID_LIST, *PNVME_UUID_LIST;
+
+typedef struct
+{
+    IO_COMMAND_SET_VECTOR IOCommandSetVector[512];
+} NVME_IDENTIFY_IO_COMMAND_SET, *PNVME_IDENTIFY_IO_COMMAND_SET;
+
+typedef enum
+{
+    NVME_LBA_RANGE_TYPE_RESERVED            = 0,
+    NVME_LBA_RANGE_TYPE_FILESYSTEM          = 1,
+    NVME_LBA_RANGE_TYPE_RAID                = 2,
+    NVME_LBA_RANGE_TYPE_CACHE               = 3,
+    NVME_LBA_RANGE_TYPE_PAGE_SWAP_FILE      = 4,
+} NVME_LBA_RANGE_TYPES;
+
+typedef struct
+{
+    UCHAR Type;
+    struct
+    {
+        UCHAR MayOverwritten:1;
+        UCHAR Hidden:1;
+        UCHAR Reserved:6;
+    } Attributes;
+    UCHAR Reserved0[14];
+    ULONGLONG SLBA;
+    ULONGLONG NLB;
+    UCHAR GUID[16];
+    UCHAR Reserved1[16];
+} NVME_LBA_RANGET_TYPE_ENTRY, *PNVME_LBA_RANGET_TYPE_ENTRY;
+
 C_ASSERT(sizeof(NVME_COMMAND) == 64);
+C_ASSERT(sizeof(NVME_IDENTIFY_CONTROLLER_DATA) == 4096);
+C_ASSERT(sizeof(NVME_IDENTIFY_NAMESPACE_DATA) == 4096);
+C_ASSERT(sizeof(NVME_POWER_STATE_DESC) == 32);
+C_ASSERT(sizeof(NVME_LBA_FORMAT) == 4);
 C_ASSERT(sizeof(NVME_CONTROLLER_CAPABILITIES) == 8);
 C_ASSERT(sizeof(NVME_COMPLETION_ENTRY) == 16);
 C_ASSERT(FIELD_OFFSET(NVME_CONTROLLER_REGISTERS, CC) == 0x14);
