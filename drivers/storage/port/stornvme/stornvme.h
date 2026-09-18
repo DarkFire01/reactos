@@ -1,7 +1,8 @@
 /*
  * PROJECT:     ReactOS NVM Express Miniport Driver
- * LICENSE:     GPL-2.0+ (https://spdx.org/licenses/GPL-2.0+)
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     Common header file
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  */
 
 #ifndef _STORNVME_H_
@@ -9,6 +10,7 @@
 
 #include <ntddk.h>
 #include <storport.h>
+#include <srbhelper.h>
 #include <nvme.h>
 
 /* Memory tags */
@@ -256,6 +258,31 @@ NvmpEnumerateNamespaces(
 BOOLEAN
 NvmpCreateIoQueues(
     _In_ PNVME_ADAPTER_EXTENSION Adapter);
+
+VOID
+NvmpCompleteRequest(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PVOID Srb,
+    _In_ UCHAR SrbStatus);
+
+/* nvmescsi.c */
+
+PNVME_NAMESPACE
+NvmpNamespaceFromLun(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ ULONG Lun);
+
+VOID
+NvmpSetSenseData(
+    _In_ PVOID Srb,
+    _In_ UCHAR SenseKey,
+    _In_ UCHAR AdditionalSenseCode,
+    _In_ UCHAR AdditionalSenseCodeQualifier);
+
+BOOLEAN
+NvmpTranslateScsi(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PVOID Srb);
 
 /* stornvme.c */
 
