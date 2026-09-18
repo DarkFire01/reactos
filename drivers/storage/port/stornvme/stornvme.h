@@ -37,6 +37,9 @@
 /* How long to wait between looks at CSTS while the controller settles */
 #define NVME_POLL_INTERVAL_US   10000
 
+/* How long an admin command run during startup may take */
+#define NVME_ADMIN_TIMEOUT_MS   60000
+
 /*
  * One submission and completion queue working as a pair. The admin pair is
  * queue zero; every IO pair gets an identifier of its own.
@@ -106,6 +109,9 @@ typedef struct _NVME_ADAPTER_EXTENSION
     /* The admin queue pair, which carries every command before IO starts */
     NVME_QUEUE_PAIR AdminQueue;
 
+    /* Handed out so a completion can be matched to the command it answers */
+    USHORT AdminCommandId;
+
     /* Contiguous memory the queues were carved out of */
     PVOID QueueMemory;
     PHYSICAL_ADDRESS QueueMemoryAddress;
@@ -162,6 +168,26 @@ BOOLEAN
 NvmpStartController(
     _In_ PNVME_ADAPTER_EXTENSION Adapter,
     _In_ PPORT_CONFIGURATION_INFORMATION ConfigInfo);
+
+/* nvmequeue.c */
+
+VOID
+NvmpSubmitCommand(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PNVME_QUEUE_PAIR Queue,
+    _In_ PNVME_COMMAND Command);
+
+BOOLEAN
+NvmpNextCompletion(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PNVME_QUEUE_PAIR Queue,
+    _Out_ PNVME_COMPLETION_ENTRY Completion);
+
+BOOLEAN
+NvmpIssueAdminCommand(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PNVME_COMMAND Command,
+    _Out_opt_ PNVME_COMPLETION_ENTRY Completion);
 
 /* stornvme.c */
 
