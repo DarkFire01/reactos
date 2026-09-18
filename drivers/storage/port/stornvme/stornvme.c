@@ -256,7 +256,8 @@ StorNvmeInitialize(
 
     DPRINT1("StorNvmeInitialize(%p)\n", DeviceExtension);
 
-    /* FIXME: Reset the controller and bring up the admin queues */
+    /* The controller was brought up while the adapter was being found, so all
+       that is left is to note that requests may start arriving */
     Adapter->State = NvmeAdapterRunning;
 
     return TRUE;
@@ -309,11 +310,19 @@ StorNvmeBuildIo(
             /* The write cache has to reach the medium before the power does */
             return NvmpBuildFlush(Adapter, Srb);
 
-        case SRB_FUNCTION_PNP:
-        case SRB_FUNCTION_POWER:
         case SRB_FUNCTION_RESET_BUS:
         case SRB_FUNCTION_RESET_DEVICE:
         case SRB_FUNCTION_RESET_LOGICAL_UNIT:
+            /* There is one controller behind every unit, so each of these
+               means the same thing: take it down and bring it back */
+            NvmpCompleteRequest(Adapter,
+                                Srb,
+                                StorNvmeResetBus(Adapter, 0) ? SRB_STATUS_SUCCESS
+                                                             : SRB_STATUS_ERROR);
+            return FALSE;
+
+        case SRB_FUNCTION_PNP:
+        case SRB_FUNCTION_POWER:
             NvmpCompleteRequest(Adapter, Srb, SRB_STATUS_SUCCESS);
             return FALSE;
 
@@ -400,11 +409,20 @@ StorNvmeResetBus(
     _In_ PVOID DeviceExtension,
     _In_ ULONG PathId)
 {
-    UNREFERENCED_PARAMETER(DeviceExtension);
+    PNVME_ADAPTER_EXTENSION Adapter = DeviceExtension;
+
     UNREFERENCED_PARAMETER(PathId);
 
-    /* FIXME: Reset the controller and rebuild its queues */
-    return FALSE;
+    DPRINT1("StorNvmeResetBus(%p)\n", DeviceExtension);
+
+    /*
+     * Whatever the controller still held is gone the moment it is disabled,
+     * so every request in flight is finished here rather than waiting for an
+     * answer that will never arrive.
+     */
+    NvmpFailOutstandingRequests(Adapter, SRB_STATUS_BUS_RESET);
+
+    return NvmpResetController(Adapter);
 }
 
 

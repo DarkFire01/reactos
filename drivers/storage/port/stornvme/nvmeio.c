@@ -468,6 +468,37 @@ NvmpPostCommand(
 
 
 /**
+ * @brief Finishes everything the controller was still holding.
+ *
+ * Called from the reset path, where the caller already owns the queue, so no
+ * lock is taken here.
+ */
+VOID
+NvmpFailOutstandingRequests(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ UCHAR SrbStatus)
+{
+    PNVME_REQUEST_CONTEXT Context;
+    ULONG CommandId;
+
+    for (CommandId = 0; CommandId < Adapter->IoQueueDepth; CommandId++)
+    {
+        Context = Adapter->Requests[CommandId];
+        if (Context == NULL)
+            continue;
+
+        Adapter->Requests[CommandId] = NULL;
+
+        SrbSetDataTransferLength(Context->Srb, 0);
+        NvmpCompleteRequest(Adapter, Context->Srb, SrbStatus);
+    }
+
+    /* The pool is rebuilt from scratch once the controller is back */
+    Adapter->FreeCommandCount = 0;
+}
+
+
+/**
  * @brief Says what a failed command should look like to the class layer.
  *
  * The status the controller reports is finer grained than the sense keys it
