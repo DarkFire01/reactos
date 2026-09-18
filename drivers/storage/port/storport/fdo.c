@@ -225,16 +225,23 @@ PortFdoStartMiniport(
 
     DPRINT1("PortFdoStartMiniport(%p)\n", DeviceExtension);
 
-    /* Get the interface type of the lower device */
-    InterfaceType = GetBusInterface(DeviceExtension->LowerDevice);
+    /* Device properties live on the physical device, not on whatever filter
+       happens to sit between us and it */
+    InterfaceType = GetBusInterface(DeviceExtension->PhysicalDevice);
     if (InterfaceType == InterfaceTypeUndefined)
+    {
+        DPRINT1("The bus this adapter sits on is unknown\n");
         return STATUS_NO_SUCH_DEVICE;
+    }
 
     /* Get the driver init data for the given interface type */
     InitData = PortGetDriverInitData(DeviceExtension->DriverExtension,
                                      InterfaceType);
     if (InitData == NULL)
+    {
+        DPRINT1("No init data registered for bus type %lu\n", InterfaceType);
         return STATUS_NO_SUCH_DEVICE;
+    }
 
     /* Initialize the miniport */
     Status = MiniportInitialize(&DeviceExtension->Miniport,
