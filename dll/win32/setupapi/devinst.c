@@ -146,6 +146,9 @@ GetPropertyErrorFromCrCode(
     }
 }
 
+/* Enough to sort a section meant for a later system below every other one */
+#define SCORE_NEWER_THAN_REPORTED 0x10000
+
 /* Lower scores are best ones */
 static BOOL
 CheckSectionValid(
@@ -316,18 +319,27 @@ CheckSectionValid(
                 goto cleanup;
             }
         }
-        if (PlatformInfo->MajorVersion < MajorVersion ||
-            (PlatformInfo->MajorVersion == MajorVersion && PlatformInfo->MinorVersion < MinorVersion))
+        if ((PlatformInfo->MajorVersion < MajorVersion) ||
+            (PlatformInfo->MajorVersion == MajorVersion &&
+             PlatformInfo->MinorVersion < MinorVersion))
         {
-            TRACE("Mismatch on version field (%lu.%lu and %lu.%lu)\n",
-                MajorVersion, MinorVersion, PlatformInfo->MajorVersion, PlatformInfo->MinorVersion);
-            goto cleanup;
-        }
-        *ScoreMajorVersion = MajorVersion - PlatformInfo->MajorVersion;
-        if (MajorVersion == PlatformInfo->MajorVersion)
-            *ScoreMinorVersion = MinorVersion - PlatformInfo->MinorVersion;
-        else
+            /*
+             * The section wants a newer system than we report. Take it anyway,
+             * so a driver built for a later version can still be installed,
+             * but score it beyond every other section so that one meant for
+             * the version we do report is always preferred.
+             */
+            *ScoreMajorVersion = SCORE_NEWER_THAN_REPORTED + MajorVersion;
             *ScoreMinorVersion = MinorVersion;
+        }
+        else
+        {
+            *ScoreMajorVersion = MajorVersion - PlatformInfo->MajorVersion;
+            if (MajorVersion == PlatformInfo->MajorVersion)
+                *ScoreMinorVersion = MinorVersion - PlatformInfo->MinorVersion;
+            else
+                *ScoreMinorVersion = MinorVersion;
+        }
     }
     else if (Fields[3] && *Fields[3])
     {
