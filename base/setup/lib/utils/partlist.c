@@ -2865,6 +2865,9 @@ GetPartitionCount(
 /* How many entries a GPT table holds when the disk does not say otherwise */
 #define DEFAULT_GPT_PARTITION_COUNT 128
 
+/* How much room one of those entries takes on the disk */
+#define GPT_PARTITION_ENTRY_SIZE 128
+
 
 static
 BOOLEAN
@@ -2990,16 +2993,73 @@ UpdateGPTDiskLayout(
 }
 
 /**
- * @brief   Settles which partitioning style a never-partitioned disk takes.
+ * @brief   Tells whether a disk holds no partition at all.
+ **/
+static
+BOOLEAN
+IsDiskEmpty(
+    _In_ PDISKENTRY DiskEntry)
+{
+    PLIST_ENTRY ListEntry;
+    PPARTENTRY PartEntry;
+
+    for (ListEntry = DiskEntry->PrimaryPartListHead.Flink;
+         ListEntry != &DiskEntry->PrimaryPartListHead;
+         ListEntry = ListEntry->Flink)
+    {
+        PartEntry = CONTAINING_RECORD(ListEntry, PARTENTRY, ListEntry);
+
+        if (PartEntry->IsPartitioned)
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
+/**
+ * @brief   Keeps the free space of a disk inside the range a partition may use.
  *
- * A disk carrying no table yet has to be given one before anything can be
- * written to it. Which one it gets follows the firmware: a UEFI one reads
- * GPT, and everything that came before it reads an MBR. A disk holding no
- * partition at all counts as one of these, whatever style the disk driver
- * reported for the empty table it read.
+ * A GPT table sits at both ends of the disk, so space that was free to take
+ * under another style has to give those sectors back.
+ **/
+static
+VOID
+ClampFreeRegions(
+    _In_ PDISKENTRY DiskEntry)
+{
+    ULONGLONG FirstSector = GetDiskFirstUsableSector(DiskEntry);
+    ULONGLONG EndSector = AlignDown(GetDiskLastUsableSector(DiskEntry),
+                                    DiskEntry->SectorAlignment);
+    PLIST_ENTRY ListEntry;
+    PPARTENTRY PartEntry;
+
+    for (ListEntry = DiskEntry->PrimaryPartListHead.Flink;
+         ListEntry != &DiskEntry->PrimaryPartListHead;
+         ListEntry = ListEntry->Flink)
+    {
+        ULONGLONG Start, End;
+
+        PartEntry = CONTAINING_RECORD(ListEntry, PARTENTRY, ListEntry);
+
+        if (PartEntry->IsPartitioned)
+            continue;
+
+        Start = max(PartEntry->StartSector.QuadPart, FirstSector);
+        End = min(PartEntry->StartSector.QuadPart + PartEntry->SectorCount.QuadPart,
+                  EndSector);
+
+        PartEntry->StartSector.QuadPart = Start;
+        PartEntry->SectorCount.QuadPart = (End > Start) ? (End - Start) : 0ULL;
+    }
+}
+
+/**
+ * @brief   Settles which partitioning style a disk holding nothing takes.
  *
- * Calling this more than once on the same disk changes nothing the first
- * call settled.
+ * A disk with no partition on it is free to be laid out either way, whatever
+ * style the disk driver read off it, so it follows the firmware: a UEFI one
+ * reads GPT, and everything that came before it reads an MBR. A disk that
+ * still holds a partition keeps the style that partition sits in.
  **/
 static
 VOID
@@ -3007,35 +3067,65 @@ InitializeDiskStyle(
     _In_ PDISKENTRY DiskEntry)
 {
     PARTITION_STYLE NewStyle;
+    ULONGLONG EntrySectors;
+    ULONGLONG FirstUsable;
+    ULONGLONG LastUsable;
 
-    /* A disk with a partition on it keeps the style that partition sits in */
-    if ((DiskEntry->DiskStyle != PARTITION_STYLE_RAW) && !DiskEntry->NewDisk)
+    if ((DiskEntry->DiskStyle != PARTITION_STYLE_RAW) && !IsDiskEmpty(DiskEntry))
         return;
 
     NewStyle = IsUefiBoot() ? PARTITION_STYLE_GPT : PARTITION_STYLE_MBR;
 
-    if (DiskEntry->DiskStyle != NewStyle)
-    {
-        DPRINT1("Disk %lu carries no partition table, laying it out as %s\n",
-                DiskEntry->DiskNumber,
-                (NewStyle == PARTITION_STYLE_GPT) ? "GPT" : "MBR");
-    }
+    /* Nothing to settle if it is laid out that way already */
+    if (DiskEntry->DiskStyle == NewStyle)
+        return;
+
+    DPRINT1("Disk %lu holds no partition, laying it out as %s\n",
+            DiskEntry->DiskNumber,
+            (NewStyle == PARTITION_STYLE_GPT) ? "GPT" : "MBR");
+
     DiskEntry->DiskStyle = NewStyle;
+
+    /* The disk driver read another table off it, so it needs a fresh one */
+    DiskEntry->NewDisk = TRUE;
 
     if (!DiskEntry->LayoutBuffer)
         return;
 
     DiskEntry->LayoutBuffer->PartitionStyle = NewStyle;
 
-    if (!IsGPTDisk(DiskEntry))
+    if (NewStyle != PARTITION_STYLE_GPT)
         return;
 
-    /* Keep whatever the disk was given the first time around */
-    if (IsEqualGUID(&DiskEntry->LayoutBuffer->Gpt.DiskId, &PARTITION_ENTRY_UNUSED_GUID))
-        CreatePartitionGuid(&DiskEntry->LayoutBuffer->Gpt.DiskId);
+    /*
+     * The two styles share one union, so whatever sits in there was written
+     * for the style the disk is leaving and means nothing now.
+     */
+    RtlZeroMemory(&DiskEntry->LayoutBuffer->Gpt,
+                  sizeof(DiskEntry->LayoutBuffer->Gpt));
 
-    if (DiskEntry->LayoutBuffer->Gpt.MaxPartitionCount == 0)
-        DiskEntry->LayoutBuffer->Gpt.MaxPartitionCount = DEFAULT_GPT_PARTITION_COUNT;
+    CreatePartitionGuid(&DiskEntry->LayoutBuffer->Gpt.DiskId);
+    DiskEntry->LayoutBuffer->Gpt.MaxPartitionCount = DEFAULT_GPT_PARTITION_COUNT;
+
+    /*
+     * Both ends of the disk go to the table: a header and an entry array at
+     * the front, and a copy of the two at the back. No driver worked this out
+     * for us, having read another style off the disk.
+     */
+    EntrySectors = ((ULONGLONG)DiskEntry->LayoutBuffer->Gpt.MaxPartitionCount *
+                        GPT_PARTITION_ENTRY_SIZE +
+                    DiskEntry->BytesPerSector - 1) / DiskEntry->BytesPerSector;
+
+    FirstUsable = 2 + EntrySectors;
+    LastUsable = DiskEntry->SectorCount.QuadPart - 2 - EntrySectors;
+
+    DiskEntry->LayoutBuffer->Gpt.StartingUsableOffset.QuadPart =
+        FirstUsable * DiskEntry->BytesPerSector;
+    DiskEntry->LayoutBuffer->Gpt.UsableLength.QuadPart =
+        (LastUsable - FirstUsable + 1) * DiskEntry->BytesPerSector;
+
+    /* The free space just lost whatever the table took */
+    ClampFreeRegions(DiskEntry);
 }
 
 static
