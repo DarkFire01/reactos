@@ -2980,6 +2980,36 @@ QSI_DEF(SystemProcessorBrandString)
     return STATUS_SUCCESS;
 }
 
+/* Class 90 - Boot Environment Information */
+QSI_DEF(SystemBootEnvironmentInformation)
+{
+    PSYSTEM_BOOT_ENVIRONMENT_INFORMATION BootInfo = Buffer;
+
+    /*
+     * Windows 8 grew a flags member on the end of this. A caller that asks
+     * for the shorter form is answered with the shorter form.
+     */
+    if (Size == RTL_SIZEOF_THROUGH_FIELD(SYSTEM_BOOT_ENVIRONMENT_INFORMATION,
+                                         FirmwareType))
+    {
+        *ReqSize = Size;
+    }
+    else
+    {
+        *ReqSize = sizeof(*BootInfo);
+
+        if (Size < sizeof(*BootInfo))
+            return STATUS_INFO_LENGTH_MISMATCH;
+
+        BootInfo->BootFlags = 0;
+    }
+
+    BootInfo->BootIdentifier = ExpBootIdentifier;
+    BootInfo->FirmwareType = ExpFirmwareType;
+
+    return STATUS_SUCCESS;
+}
+
 /* Query/Set Calls Table */
 typedef
 struct _QSSI_CALLS
@@ -3083,6 +3113,7 @@ CallQS[] =
     // Vista and later
     SI_QX(SystemModuleInformationEx),
     SI_QX(SystemProcessorIdleCycleTimeInformation),
+    SI_QX(SystemBootEnvironmentInformation),
     SI_QX(SystemProcessorBrandString),
 };
 
