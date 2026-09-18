@@ -1,0 +1,415 @@
+/*
+ * PROJECT:     ReactOS NVM Express Miniport Driver
+ * LICENSE:     GPL-2.0+ (https://spdx.org/licenses/GPL-2.0+)
+ * PURPOSE:     Driver entry and controller discovery
+ */
+
+/* INCLUDES *******************************************************************/
+
+#include "stornvme.h"
+
+#define NDEBUG
+#include <debug.h>
+
+
+/* FUNCTIONS ******************************************************************/
+
+/**
+ * @brief Reads one of the 64 bit controller registers.
+ *
+ * There is no 32 bit register accessor for a quadword, and the specification
+ * allows a host without one to read the two halves separately.
+ */
+static
+ULONGLONG
+NvmpReadRegister64(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PULONGLONG Register)
+{
+    PULONG Half = (PULONG)Register;
+    ULARGE_INTEGER Value;
+
+    Value.LowPart = StorPortReadRegisterUlong(Adapter, Half);
+    Value.HighPart = StorPortReadRegisterUlong(Adapter, Half + 1);
+
+    return Value.QuadPart;
+}
+
+
+/**
+ * @brief Maps the controller register block out of the adapter resources.
+ *
+ * Storport has already turned the bus resources into access ranges, so the
+ * register block is simply the first of them.
+ */
+static
+BOOLEAN
+NvmpMapRegisters(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter,
+    _In_ PPORT_CONFIGURATION_INFORMATION ConfigInfo)
+{
+    PACCESS_RANGE Range;
+
+    if (ConfigInfo->NumberOfAccessRanges <= NVME_BAR_REGISTERS)
+    {
+        DPRINT1("No register access range\n");
+        return FALSE;
+    }
+
+    Range = &(*ConfigInfo->AccessRanges)[NVME_BAR_REGISTERS];
+    if (!Range->RangeInMemory || Range->RangeLength < sizeof(NVME_CONTROLLER_REGISTERS))
+    {
+        DPRINT1("Register range is unusable (memory %u, length %lu)\n",
+                Range->RangeInMemory, Range->RangeLength);
+        return FALSE;
+    }
+
+    Adapter->Registers = StorPortGetDeviceBase(Adapter,
+                                               ConfigInfo->AdapterInterfaceType,
+                                               ConfigInfo->SystemIoBusNumber,
+                                               Range->RangeStart,
+                                               Range->RangeLength,
+                                               FALSE);
+    if (Adapter->Registers == NULL)
+    {
+        DPRINT1("Could not map the register range\n");
+        return FALSE;
+    }
+
+    Adapter->Doorbells = Adapter->Registers->Doorbells;
+
+    return TRUE;
+}
+
+
+/**
+ * @brief Works out what the controller supports from its capabilities.
+ */
+static
+VOID
+NvmpReadCapabilities(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter)
+{
+    ULONG HostShift;
+
+    Adapter->Capabilities.AsUlonglong =
+        NvmpReadRegister64(Adapter, &Adapter->Registers->CAP.AsUlonglong);
+    Adapter->Version.AsUlong =
+        StorPortReadRegisterUlong(Adapter, &Adapter->Registers->VS.AsUlong);
+
+    DPRINT1("NVMe %u.%u.%u controller, %lu queue entries\n",
+            Adapter->Version.MJR, Adapter->Version.MNR, Adapter->Version.TER,
+            (ULONG)Adapter->Capabilities.MQES + 1);
+
+    /* Doorbells are spaced by a power of two starting at four bytes */
+    Adapter->DoorbellStride = 4 << Adapter->Capabilities.DSTRD;
+
+    Adapter->ReadyTimeout = (ULONG)Adapter->Capabilities.TO * NVME_TIMEOUT_UNIT_MS;
+
+    /*
+     * Work in the host page size where the controller allows it, and fall back
+     * to the largest it does allow.
+     */
+    HostShift = NVME_MIN_PAGE_SHIFT;
+    if (HostShift > NVME_MIN_PAGE_SHIFT + Adapter->Capabilities.MPSMAX)
+        HostShift = NVME_MIN_PAGE_SHIFT + Adapter->Capabilities.MPSMAX;
+    if (HostShift < NVME_MIN_PAGE_SHIFT + Adapter->Capabilities.MPSMIN)
+        HostShift = NVME_MIN_PAGE_SHIFT + Adapter->Capabilities.MPSMIN;
+
+    Adapter->PageShift = HostShift;
+    Adapter->PageSize = 1UL << HostShift;
+
+    /* The admin queue is never deeper than the controller allows */
+    Adapter->AdminQueueDepth = 64;
+    if (Adapter->AdminQueueDepth > (ULONG)Adapter->Capabilities.MQES + 1)
+        Adapter->AdminQueueDepth = (ULONG)Adapter->Capabilities.MQES + 1;
+}
+
+
+ULONG
+NTAPI
+StorNvmeFindAdapter(
+    _In_ PVOID DeviceExtension,
+    _In_ PVOID HwContext,
+    _In_ PVOID BusInformation,
+    _In_ PCHAR ArgumentString,
+    _Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
+    _In_ PBOOLEAN Again)
+{
+    PNVME_ADAPTER_EXTENSION Adapter = DeviceExtension;
+
+    UNREFERENCED_PARAMETER(HwContext);
+    UNREFERENCED_PARAMETER(BusInformation);
+    UNREFERENCED_PARAMETER(ArgumentString);
+
+    DPRINT1("StorNvmeFindAdapter(%p)\n", DeviceExtension);
+
+    *Again = FALSE;
+
+    RtlZeroMemory(Adapter, sizeof(*Adapter));
+    Adapter->DumpMode = (ConfigInfo->DumpMode != 0);
+
+    if (!NvmpMapRegisters(Adapter, ConfigInfo))
+    {
+        Adapter->State = NvmeAdapterFailed;
+        return SP_RETURN_ERROR;
+    }
+
+    NvmpReadCapabilities(Adapter);
+
+    /* An NVMe controller has to speak the NVM command set to be of any use */
+    if (!Adapter->Capabilities.CSS_NVM)
+    {
+        DPRINT1("Controller does not support the NVM command set\n");
+        Adapter->State = NvmeAdapterFailed;
+        return SP_RETURN_ERROR;
+    }
+
+    /*
+     * One controller, one target. Namespaces show up as logical units, and
+     * how many there are is only known once the controller is identified.
+     */
+    ConfigInfo->NumberOfBuses = 1;
+    ConfigInfo->MaximumNumberOfTargets = 1;
+    ConfigInfo->MaximumNumberOfLogicalUnits = 1;
+
+    /* Transfers are described by physical region pages, which are dword aligned */
+    ConfigInfo->AlignmentMask = sizeof(ULONG) - 1;
+    ConfigInfo->ScatterGather = TRUE;
+    ConfigInfo->Master = TRUE;
+    ConfigInfo->CachesData = TRUE;
+    ConfigInfo->MapBuffers = STOR_MAP_NON_READ_WRITE_BUFFERS;
+
+    /* Completions arrive without the command having to be handed back first */
+    ConfigInfo->SynchronizationModel = StorSynchronizeFullDuplex;
+
+    /* A reset takes the whole controller, never a single namespace */
+    ConfigInfo->ResetTargetSupported = FALSE;
+
+    /* The controller addresses memory in its own pages, not in host terms */
+    if (ConfigInfo->Dma64BitAddresses == SCSI_DMA64_SYSTEM_SUPPORTED)
+        ConfigInfo->Dma64BitAddresses = SCSI_DMA64_MINIPORT_FULL64BIT_SUPPORTED;
+
+    /*
+     * Storport reports a latched interrupt when the controller was given
+     * messages, and only then is there any point offering it a per message
+     * service routine.
+     */
+    if (ConfigInfo->InterruptMode == Latched)
+    {
+        ConfigInfo->HwMSInterruptRoutine = StorNvmeMessageInterrupt;
+        ConfigInfo->InterruptSynchronizationMode = InterruptSynchronizePerMessage;
+        Adapter->MessageInterrupts = TRUE;
+    }
+    else
+    {
+        ConfigInfo->InterruptSynchronizationMode = InterruptSynchronizeAll;
+    }
+
+    Adapter->State = NvmeAdapterFound;
+
+    return SP_RETURN_FOUND;
+}
+
+
+BOOLEAN
+NTAPI
+StorNvmeInitialize(
+    _In_ PVOID DeviceExtension)
+{
+    PNVME_ADAPTER_EXTENSION Adapter = DeviceExtension;
+
+    DPRINT1("StorNvmeInitialize(%p)\n", DeviceExtension);
+
+    /* FIXME: Reset the controller and bring up the admin queues */
+    Adapter->State = NvmeAdapterRunning;
+
+    return TRUE;
+}
+
+
+BOOLEAN
+NTAPI
+StorNvmeBuildIo(
+    _In_ PVOID DeviceExtension,
+    _In_ PSCSI_REQUEST_BLOCK Srb)
+{
+    UNREFERENCED_PARAMETER(DeviceExtension);
+    UNREFERENCED_PARAMETER(Srb);
+
+    /* FIXME: Translate the request into an NVMe command */
+    return FALSE;
+}
+
+
+BOOLEAN
+NTAPI
+StorNvmeStartIo(
+    _In_ PVOID DeviceExtension,
+    _In_ PSCSI_REQUEST_BLOCK Srb)
+{
+    UNREFERENCED_PARAMETER(DeviceExtension);
+    UNREFERENCED_PARAMETER(Srb);
+
+    /* FIXME: Post the command to a submission queue */
+    return TRUE;
+}
+
+
+BOOLEAN
+NTAPI
+StorNvmeInterrupt(
+    _In_ PVOID DeviceExtension)
+{
+    UNREFERENCED_PARAMETER(DeviceExtension);
+
+    /* FIXME: Drain every completion queue */
+    return FALSE;
+}
+
+
+BOOLEAN
+NTAPI
+StorNvmeMessageInterrupt(
+    _In_ PVOID DeviceExtension,
+    _In_ ULONG MessageId)
+{
+    UNREFERENCED_PARAMETER(DeviceExtension);
+    UNREFERENCED_PARAMETER(MessageId);
+
+    /* FIXME: Drain the completion queue this message belongs to */
+    return FALSE;
+}
+
+
+BOOLEAN
+NTAPI
+StorNvmeResetBus(
+    _In_ PVOID DeviceExtension,
+    _In_ ULONG PathId)
+{
+    UNREFERENCED_PARAMETER(DeviceExtension);
+    UNREFERENCED_PARAMETER(PathId);
+
+    /* FIXME: Reset the controller and rebuild its queues */
+    return FALSE;
+}
+
+
+SCSI_ADAPTER_CONTROL_STATUS
+NTAPI
+StorNvmeAdapterControl(
+    _In_ PVOID DeviceExtension,
+    _In_ SCSI_ADAPTER_CONTROL_TYPE ControlType,
+    _In_ PVOID Parameters)
+{
+    PSCSI_SUPPORTED_CONTROL_TYPE_LIST List;
+
+    UNREFERENCED_PARAMETER(DeviceExtension);
+
+    DPRINT("StorNvmeAdapterControl(%u)\n", ControlType);
+
+    switch (ControlType)
+    {
+        case ScsiQuerySupportedControlTypes:
+        {
+            List = Parameters;
+
+            if (List->MaxControlType > ScsiStopAdapter)
+                List->SupportedTypeList[ScsiStopAdapter] = TRUE;
+            if (List->MaxControlType > ScsiRestartAdapter)
+                List->SupportedTypeList[ScsiRestartAdapter] = TRUE;
+
+            return ScsiAdapterControlSuccess;
+        }
+
+        case ScsiStopAdapter:
+        case ScsiRestartAdapter:
+            /* FIXME: Quiesce and rebuild the controller */
+            return ScsiAdapterControlSuccess;
+
+        default:
+            return ScsiAdapterControlUnsuccessful;
+    }
+}
+
+
+SCSI_UNIT_CONTROL_STATUS
+NTAPI
+StorNvmeUnitControl(
+    _In_ PVOID DeviceExtension,
+    _In_ SCSI_UNIT_CONTROL_TYPE ControlType,
+    _In_ PVOID Parameters)
+{
+    PSCSI_SUPPORTED_CONTROL_TYPE_LIST List;
+
+    UNREFERENCED_PARAMETER(DeviceExtension);
+
+    DPRINT("StorNvmeUnitControl(%u)\n", ControlType);
+
+    switch (ControlType)
+    {
+        case ScsiQuerySupportedUnitControlTypes:
+        {
+            List = Parameters;
+
+            if (List->MaxControlType > ScsiUnitStart)
+                List->SupportedTypeList[ScsiUnitStart] = TRUE;
+            if (List->MaxControlType > ScsiUnitRemove)
+                List->SupportedTypeList[ScsiUnitRemove] = TRUE;
+
+            return ScsiUnitControlSuccess;
+        }
+
+        case ScsiUnitStart:
+        case ScsiUnitRemove:
+            /* FIXME: Track which namespaces are in play */
+            return ScsiUnitControlSuccess;
+
+        default:
+            return ScsiUnitControlNotSupported;
+    }
+}
+
+
+NTSTATUS
+NTAPI
+DriverEntry(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PUNICODE_STRING RegistryPath)
+{
+    HW_INITIALIZATION_DATA InitData;
+
+    DPRINT1("StorNvme DriverEntry(%p %wZ)\n", DriverObject, RegistryPath);
+
+    RtlZeroMemory(&InitData, sizeof(InitData));
+
+    InitData.HwInitializationDataSize = sizeof(InitData);
+    InitData.AdapterInterfaceType = PCIBus;
+
+    InitData.HwFindAdapter = StorNvmeFindAdapter;
+    InitData.HwInitialize = StorNvmeInitialize;
+    InitData.HwBuildIo = StorNvmeBuildIo;
+    InitData.HwStartIo = StorNvmeStartIo;
+    InitData.HwInterrupt = StorNvmeInterrupt;
+    InitData.HwResetBus = StorNvmeResetBus;
+    InitData.HwAdapterControl = StorNvmeAdapterControl;
+    InitData.HwUnitControl = StorNvmeUnitControl;
+
+    InitData.DeviceExtensionSize = sizeof(NVME_ADAPTER_EXTENSION);
+
+    /* The register block is the only resource the controller exposes */
+    InitData.NumberOfAccessRanges = 1;
+
+    InitData.MapBuffers = STOR_MAP_NON_READ_WRITE_BUFFERS;
+    InitData.TaggedQueuing = TRUE;
+    InitData.AutoRequestSense = TRUE;
+    InitData.MultipleRequestPerLu = TRUE;
+    InitData.NeedPhysicalAddresses = TRUE;
+
+    /* Commands are built from the extended request block only */
+    InitData.SrbTypeFlags = SRB_TYPE_FLAG_STORAGE_REQUEST_BLOCK;
+    InitData.AddressTypeFlags = ADDRESS_TYPE_FLAG_BTL8;
+
+    return StorPortInitialize(DriverObject, RegistryPath, &InitData, NULL);
+}
