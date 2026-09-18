@@ -69,6 +69,14 @@ CopyFiles = StorNvme_CopyFiles.NT, Storport_CopyFiles.NT
 [StorNvme_CopyFiles.NT]
 stornvme.sys
 
+[StorNvme_Inst.NT.HW]
+AddReg = StorNvme_AddReg.HW
+
+[StorNvme_AddReg.HW]
+HKR, Interrupt Management,, 0x00000010
+HKR, Interrupt Management\MessageSignaledInterruptProperties,, 0x00000010
+HKR, Interrupt Management\MessageSignaledInterruptProperties, MSISupported, 0x00010001, 1
+
 [StorNvme_Inst.NT.Services]
 AddService = stornvme, 0x00000002, StorNvme_Service_Inst
 AddService = storport, , Storport_Service_Inst
