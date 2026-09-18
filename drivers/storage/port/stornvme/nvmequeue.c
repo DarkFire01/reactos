@@ -18,7 +18,7 @@
 /**
  * @brief Places a command in a submission queue and rings its doorbell.
  *
- * The caller owns the queue for the duration; nothing here serialises against
+ * The caller owns the queue for the duration; nothing here serializes against
  * another submitter.
  */
 VOID
@@ -105,7 +105,7 @@ NvmpIssueAdminCommand(
     ULONG Attempts;
     ULONG Limit;
 
-    /* Identify this command so its completion can be recognised */
+    /* Identify this command so its completion can be recognized */
     Command->CDW0.CID = Adapter->AdminCommandId++;
 
     NvmpSubmitCommand(Adapter, &Adapter->AdminQueue, Command);
