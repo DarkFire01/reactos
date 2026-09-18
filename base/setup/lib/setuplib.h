@@ -39,6 +39,7 @@ extern "C" {
 #include "utils/ntverrsrc.h"
 // #include "utils/arcname.h"
 #include "utils/bldrsup.h"
+#include "utils/devutils.h"
 #include "utils/filesup.h"
 #include "utils/fsrec.h"
 #include "utils/genlist.h"
