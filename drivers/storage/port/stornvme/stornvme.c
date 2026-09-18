@@ -433,9 +433,8 @@ StorNvmeAdapterControl(
     _In_ SCSI_ADAPTER_CONTROL_TYPE ControlType,
     _In_ PVOID Parameters)
 {
+    PNVME_ADAPTER_EXTENSION Adapter = DeviceExtension;
     PSCSI_SUPPORTED_CONTROL_TYPE_LIST List;
-
-    UNREFERENCED_PARAMETER(DeviceExtension);
 
     DPRINT("StorNvmeAdapterControl(%u)\n", ControlType);
 
@@ -454,8 +453,22 @@ StorNvmeAdapterControl(
         }
 
         case ScsiStopAdapter:
+            /*
+             * The queues live in memory storport is about to take back, so the
+             * controller has to stop reading them before that happens.
+             */
+            NvmpFailOutstandingRequests(Adapter, SRB_STATUS_BUS_RESET);
+
+            if (!NvmpDisableController(Adapter))
+                DPRINT1("Controller would not go idle on stop\n");
+
+            Adapter->State = NvmeAdapterStopped;
+            return ScsiAdapterControlSuccess;
+
         case ScsiRestartAdapter:
-            /* FIXME: Quiesce and rebuild the controller */
+            if (!NvmpResetController(Adapter))
+                return ScsiAdapterControlUnsuccessful;
+
             return ScsiAdapterControlSuccess;
 
         default:

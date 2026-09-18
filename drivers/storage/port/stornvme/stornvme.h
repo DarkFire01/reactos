@@ -33,6 +33,9 @@
 /* A page is the unit the controller addresses memory in */
 #define NVME_MIN_PAGE_SHIFT     12
 
+/* No namespace has blocks smaller than this */
+#define NVME_MIN_BLOCK_SHIFT    9
+
 /* Entries in the admin queues. The specification caps this at 4096. */
 #define NVME_ADMIN_QUEUE_DEPTH  64
 

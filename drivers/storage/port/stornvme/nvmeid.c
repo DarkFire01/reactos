@@ -157,6 +157,17 @@ NvmpIdentifyNamespace(
         return FALSE;
     }
 
+    /*
+     * The smallest block a format may name is 512 bytes. Anything below that
+     * is how a controller says the format is not one it really supports.
+     */
+    if (Data->LBAF[Format].LBADS < NVME_MIN_BLOCK_SHIFT)
+    {
+        DPRINT1("Namespace %lu names an unusable block size of 2^%u\n",
+                NamespaceId, Data->LBAF[Format].LBADS);
+        return FALSE;
+    }
+
     Namespace->NamespaceId = NamespaceId;
     Namespace->BlockCount = Data->NSZE;
     Namespace->BlockShift = Data->LBAF[Format].LBADS;
