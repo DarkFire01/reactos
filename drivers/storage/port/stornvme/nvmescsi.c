@@ -193,12 +193,54 @@ NvmpInquiryVpd(
             Pages->DeviceType = DIRECT_ACCESS_DEVICE;
             Pages->DeviceTypeQualifier = DEVICE_CONNECTED;
             Pages->PageCode = VPD_SUPPORTED_PAGES;
-            Pages->PageLength = 3;
+            Pages->PageLength = 5;
             Pages->SupportedPageList[0] = VPD_SUPPORTED_PAGES;
             Pages->SupportedPageList[1] = VPD_SERIAL_NUMBER;
             Pages->SupportedPageList[2] = VPD_DEVICE_IDENTIFIERS;
+            Pages->SupportedPageList[3] = VPD_BLOCK_LIMITS;
+            Pages->SupportedPageList[4] = VPD_BLOCK_DEVICE_CHARACTERISTICS;
 
-            Used = FIELD_OFFSET(VPD_SUPPORTED_PAGES_PAGE, SupportedPageList) + 3;
+            Used = FIELD_OFFSET(VPD_SUPPORTED_PAGES_PAGE, SupportedPageList) + 5;
+            break;
+        }
+
+        case VPD_BLOCK_LIMITS:
+        {
+            PVPD_BLOCK_LIMITS_PAGE Limits = (PVPD_BLOCK_LIMITS_PAGE)Data;
+            ULONG Blocks;
+            USHORT Granularity = 1;
+
+            Limits->DeviceType = DIRECT_ACCESS_DEVICE;
+            Limits->DeviceTypeQualifier = DEVICE_CONNECTED;
+            Limits->PageCode = VPD_BLOCK_LIMITS;
+            Limits->PageLength[1] = VPD_BLOCK_LIMITS_LENGTH;
+
+            /* The class layer counts in blocks, the controller in bytes */
+            Blocks = Adapter->MaximumTransferLength / Namespace->BlockSize;
+            REVERSE_BYTES(Limits->MaximumTransferLength, &Blocks);
+
+            REVERSE_BYTES_SHORT(Limits->OptimalTransferLengthGranularity, &Granularity);
+
+            Used = FIELD_OFFSET(VPD_BLOCK_LIMITS_PAGE, PageLength) +
+                   sizeof(Limits->PageLength) + VPD_BLOCK_LIMITS_LENGTH;
+            break;
+        }
+
+        case VPD_BLOCK_DEVICE_CHARACTERISTICS:
+        {
+            PVPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE Characteristics =
+                (PVPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE)Data;
+
+            Characteristics->DeviceType = DIRECT_ACCESS_DEVICE;
+            Characteristics->DeviceTypeQualifier = DEVICE_CONNECTED;
+            Characteristics->PageCode = VPD_BLOCK_DEVICE_CHARACTERISTICS;
+            Characteristics->PageLength = VPD_BLOCK_LIMITS_LENGTH;
+
+            /* Nothing in here spins, which is what the one means */
+            Characteristics->MediumRotationRateLsb = 1;
+
+            Used = FIELD_OFFSET(VPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE, PageLength) +
+                   sizeof(Characteristics->PageLength) + VPD_BLOCK_LIMITS_LENGTH;
             break;
         }
 
