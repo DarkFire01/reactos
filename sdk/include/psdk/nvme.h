@@ -620,6 +620,1369 @@ typedef enum
     NVME_NVM_COMMAND_ZONE_APPEND = 0x7D
 } NVME_NVM_COMMANDS;
 
+/* Get and Set Features feature identifiers */
+typedef enum
+{
+    NVME_FEATURE_ARBITRATION = 0x01,
+    NVME_FEATURE_POWER_MANAGEMENT = 0x02,
+    NVME_FEATURE_LBA_RANGE_TYPE = 0x03,
+    NVME_FEATURE_TEMPERATURE_THRESHOLD = 0x04,
+    NVME_FEATURE_ERROR_RECOVERY = 0x05,
+    NVME_FEATURE_VOLATILE_WRITE_CACHE = 0x06,
+    NVME_FEATURE_NUMBER_OF_QUEUES = 0x07,
+    NVME_FEATURE_INTERRUPT_COALESCING = 0x08,
+    NVME_FEATURE_INTERRUPT_VECTOR_CONFIG = 0x09,
+    NVME_FEATURE_WRITE_ATOMICITY = 0x0A,
+    NVME_FEATURE_ASYNC_EVENT_CONFIG = 0x0B,
+    NVME_FEATURE_AUTONOMOUS_POWER_STATE_TRANSITION = 0x0C,
+    NVME_FEATURE_HOST_MEMORY_BUFFER = 0x0D,
+    NVME_FEATURE_TIMESTAMP = 0x0E,
+    NVME_FEATURE_KEEP_ALIVE = 0x0F,
+    NVME_FEATURE_HOST_CONTROLLED_THERMAL_MANAGEMENT = 0x10,
+    NVME_FEATURE_NONOPERATIONAL_POWER_STATE = 0x11,
+    NVME_FEATURE_READ_RECOVERY_LEVEL_CONFIG = 0x12,
+    NVME_FEATURE_PREDICTABLE_LATENCY_MODE_CONFIG = 0x13,
+    NVME_FEATURE_PREDICTABLE_LATENCY_MODE_WINDOW = 0x14,
+    NVME_FEATURE_LBA_STATUS_INFORMATION_REPORT_INTERVAL = 0x15,
+    NVME_FEATURE_HOST_BEHAVIOR_SUPPORT = 0x16,
+    NVME_FEATURE_SANITIZE_CONFIG = 0x17,
+    NVME_FEATURE_ENDURANCE_GROUP_EVENT_CONFIG = 0x18,
+    NVME_FEATURE_IO_COMMAND_SET_PROFILE = 0x19,
+    NVME_FEATURE_ENHANCED_CONTROLLER_METADATA = 0x7D,
+    NVME_FEATURE_CONTROLLER_METADATA = 0x7E,
+    NVME_FEATURE_NAMESPACE_METADATA = 0x7F,
+    NVME_FEATURE_NVM_SOFTWARE_PROGRESS_MARKER = 0x80,
+    NVME_FEATURE_NVM_HOST_IDENTIFIER = 0x81,
+    NVME_FEATURE_NVM_RESERVATION_NOTIFICATION_MASK = 0x82,
+    NVME_FEATURE_NVM_RESERVATION_PERSISTANCE = 0x83,
+    NVME_FEATURE_NVM_NAMESPACE_WRITE_PROTECTION_CONFIG = 0x84,
+    /* The following come from the OCP NVMe cloud SSD specification */
+    NVME_FEATURE_ERROR_INJECTION = 0xC0,
+    NVME_FEATURE_CLEAR_FW_UPDATE_HISTORY = 0xC1,
+    NVME_FEATURE_READONLY_WRITETHROUGH_MODE = 0xC2,
+    NVME_FEATURE_CLEAR_PCIE_CORRECTABLE_ERROR_COUNTERS = 0xC3,
+    NVME_FEATURE_ENABLE_IEEE1667_SILO = 0xC4,
+    NVME_FEATURE_LATENCY_MONITOR = 0xC5,
+    NVME_FEATURE_PLP_HEALTH_CHECK_INTERVAL = 0xC6,
+    NVME_FEATURE_DSSD_POWER_STATE = 0xC7
+} NVME_FEATURES;
+
+/* CDW0.FUSE */
+typedef enum
+{
+    NVME_FUSED_OPERATION_NORMAL = 0,
+    NVME_FUSED_OPERATION_FIRST_CMD = 1,
+    NVME_FUSED_OPERATION_SECOND_CMD = 2
+} NVME_FUSED_OPERATION_CODES;
+
+/*
+ * CDW0.PSDT. When either SGL form is selected the metadata pointer holds a
+ * single contiguous buffer or a one descriptor SGL segment instead.
+ */
+#define NVME_PSDT_XFER_PRP                  0
+#define NVME_PSDT_XFER_SGL_BYTE             1
+#define NVME_PSDT_XFER_SGL_QWORD            2
+#define NVME_PSDT_XFER_RESERVED             3
+
+/* Commands that do not name a namespace clear NSID instead */
+#define NVME_NAMESPACE_ALL                  0xFFFFFFFF
+
+typedef union
+{
+    struct
+    {
+        ULONG SQID:8;
+        ULONG CID:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_ABORT, *PNVME_CDW10_ABORT;
+
+typedef union
+{
+    struct
+    {
+        ULONG CNS:8;
+        ULONG Reserved:8;
+        ULONG CNTID:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_IDENTIFY, *PNVME_CDW10_IDENTIFY;
+
+typedef union
+{
+    struct
+    {
+        USHORT NVMSETID;
+        USHORT Reserved;
+    } DUMMYSTRUCTNAME;
+    struct
+    {
+        ULONG CNSID:16;
+        ULONG Reserved2:8;
+        ULONG CSI:8;
+    } DUMMYSTRUCTNAME2;
+    ULONG AsUlong;
+} NVME_CDW11_IDENTIFY, *PNVME_CDW11_IDENTIFY;
+
+typedef union
+{
+    struct
+    {
+        ULONG UUIDIndex:7;
+        ULONG Reserved:25;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW14_IDENTIFY, *PNVME_CDW14_IDENTIFY;
+
+typedef union
+{
+    struct
+    {
+        ULONG QID:16;
+        ULONG QSIZE:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_CREATE_IO_QUEUE, *PNVME_CDW10_CREATE_IO_QUEUE;
+
+typedef union
+{
+    struct
+    {
+        ULONG PC:1;
+        ULONG IEN:1;
+        ULONG Reserved0:14;
+        ULONG IV:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_CREATE_IO_CQ, *PNVME_CDW11_CREATE_IO_CQ;
+
+typedef union
+{
+    struct
+    {
+        ULONG QID:16;
+        ULONG Reserved:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_DELETE_IO_QUEUE, *PNVME_CDW10_DELETE_IO_QUEUE;
+
+typedef union
+{
+    struct
+    {
+        ULONG PC:1;
+        ULONG QPRIO:2;
+        ULONG Reserved0:13;
+        ULONG CQID:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_CREATE_IO_SQ, *PNVME_CDW11_CREATE_IO_SQ;
+
+typedef union
+{
+    struct
+    {
+        ULONG FID:8;
+        ULONG SEL:3;
+        ULONG Reserved0:21;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_GET_FEATURES, *PNVME_CDW10_GET_FEATURES;
+
+typedef union
+{
+    struct
+    {
+        ULONG FID:8;
+        ULONG Reserved0:23;
+        ULONG SV:1;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_SET_FEATURES, *PNVME_CDW10_SET_FEATURES;
+
+typedef union
+{
+    struct
+    {
+        ULONG NSQ:16;
+        ULONG NCQ:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_NUMBER_OF_QUEUES, *PNVME_CDW11_FEATURE_NUMBER_OF_QUEUES;
+
+typedef union
+{
+    struct
+    {
+        ULONG THR:8;
+        ULONG TIME:8;
+        ULONG Reserved0:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_INTERRUPT_COALESCING, *PNVME_CDW11_FEATURE_INTERRUPT_COALESCING;
+
+typedef union
+{
+    struct
+    {
+        ULONG IV:16;
+        ULONG CD:1;
+        ULONG Reserved0:15;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_INTERRUPT_VECTOR_CONFIG, *PNVME_CDW11_FEATURE_INTERRUPT_VECTOR_CONFIG;
+
+typedef union
+{
+    struct
+    {
+        ULONG DN:1;
+        ULONG Reserved0:31;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_WRITE_ATOMICITY_NORMAL, *PNVME_CDW11_FEATURE_WRITE_ATOMICITY_NORMAL;
+
+typedef union
+{
+    struct
+    {
+        ULONG NOPPME:1;
+        ULONG Reserved0:31;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_NON_OPERATIONAL_POWER_STATE, *PNVME_CDW11_FEATURE_NON_OPERATIONAL_POWER_STATE;
+
+typedef union
+{
+    struct
+    {
+        ULONG NUM:6;
+        ULONG Reserved0:26;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_LBA_RANGE_TYPE, *PNVME_CDW11_FEATURE_LBA_RANGE_TYPE;
+
+typedef union
+{
+    struct
+    {
+        ULONG AB:3;
+        ULONG Reserved0:5;
+        ULONG LPW:8;
+        ULONG MPW:8;
+        ULONG HPW:8;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_ARBITRATION, *PNVME_CDW11_FEATURE_ARBITRATION;
+
+typedef union
+{
+    struct
+    {
+        ULONG WCE:1;
+        ULONG Reserved0:31;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_VOLATILE_WRITE_CACHE, *PNVME_CDW11_FEATURE_VOLATILE_WRITE_CACHE;
+
+typedef union
+{
+    struct
+    {
+        ULONG SAVE:1;
+        ULONG NSS:1;
+        ULONG MOD:1;
+        ULONG Reserved0:29;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_SUPPORTED_CAPABILITY, *PNVME_CDW11_FEATURE_SUPPORTED_CAPABILITY;
+
+typedef union
+{
+    struct
+    {
+        ULONG CriticalWarnings:8;
+        ULONG NsAttributeNotices:1;
+        ULONG FwActivationNotices:1;
+        ULONG TelemetryLogNotices:1;
+        ULONG ANAChangeNotices:1;
+        ULONG PredictableLogChangeNotices:1;
+        ULONG LBAStatusNotices:1;
+        ULONG EnduranceEventNotices:1;
+        ULONG NormalNVMSubsystemShutdown:1;
+        ULONG Reserved0:11;
+        ULONG ZoneDescriptorNotices:1;
+        ULONG Reserved1:3;
+        ULONG DiscoveryLogPageChange:1;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_ASYNC_EVENT_CONFIG, *PNVME_CDW11_FEATURE_ASYNC_EVENT_CONFIG;
+
+typedef union
+{
+    struct
+    {
+        ULONG PS:5;
+        ULONG Reserved0:27;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_POWER_MANAGEMENT, *PNVME_CDW11_FEATURE_POWER_MANAGEMENT;
+
+typedef union
+{
+    struct
+    {
+        ULONG APSTE:1;
+        ULONG Reserved0:31;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_AUTO_POWER_STATE_TRANSITION, *PNVME_CDW11_FEATURE_AUTO_POWER_STATE_TRANSITION;
+
+typedef union
+{
+    struct
+    {
+        ULONG TMPTH:16;
+        ULONG TMPSEL:4;
+        ULONG THSEL:2;
+        ULONG Reserved0:10;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_TEMPERATURE_THRESHOLD, *PNVME_CDW11_FEATURE_TEMPERATURE_THRESHOLD;
+
+typedef union
+{
+    struct
+    {
+        ULONG TLER:16;
+        ULONG DULBE:1;
+        ULONG Reserved0:15;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_ERROR_RECOVERY, *PNVME_CDW11_FEATURE_ERROR_RECOVERY;
+
+typedef union
+{
+    struct
+    {
+        ULONG EHM:1;
+        ULONG MR:1;
+        ULONG Reserved:30;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_HOST_MEMORY_BUFFER, *PNVME_CDW11_FEATURE_HOST_MEMORY_BUFFER;
+
+typedef union
+{
+    struct
+    {
+        ULONG HSIZE;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW12_FEATURE_HOST_MEMORY_BUFFER, *PNVME_CDW12_FEATURE_HOST_MEMORY_BUFFER;
+
+typedef union
+{
+    struct
+    {
+        ULONG Reserved:4;
+        ULONG HMDLLA:28;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW13_FEATURE_HOST_MEMORY_BUFFER, *PNVME_CDW13_FEATURE_HOST_MEMORY_BUFFER;
+
+typedef union
+{
+    struct
+    {
+        ULONG HMDLUA;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW14_FEATURE_HOST_MEMORY_BUFFER, *PNVME_CDW14_FEATURE_HOST_MEMORY_BUFFER;
+
+typedef union
+{
+    struct
+    {
+        ULONG HMDLEC;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW15_FEATURE_HOST_MEMORY_BUFFER, *PNVME_CDW15_FEATURE_HOST_MEMORY_BUFFER;
+
+typedef union
+{
+    struct
+    {
+        ULONG IOCSCI:8;
+        ULONG Reserved:24;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_IO_COMMAND_SET_PROFILE, *PNVME_CDW11_FEATURE_IO_COMMAND_SET_PROFILE;
+
+typedef union
+{
+    struct
+    {
+        ULONG GDHM:1;
+        ULONG Reserved:31;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_GET_HOST_METADATA, *PNVME_CDW11_FEATURE_GET_HOST_METADATA;
+
+typedef union
+{
+    struct
+    {
+        ULONG Reserved0:13;
+        ULONG EA:2;
+        ULONG Reserved1:17;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_SET_HOST_METADATA, *PNVME_CDW11_FEATURE_SET_HOST_METADATA;
+
+typedef union
+{
+    struct
+    {
+        ULONG NUM:7;
+        ULONG Reserved0:25;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_ERROR_INJECTION, *PNVME_CDW11_FEATURE_ERROR_INJECTION;
+
+typedef union
+{
+    struct
+    {
+        ULONG Reserved0:31;
+        ULONG Clear:1;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_CLEAR_FW_UPDATE_HISTORY, *PNVME_CDW11_FEATURE_CLEAR_FW_UPDATE_HISTORY;
+
+typedef union
+{
+    struct
+    {
+        ULONG Reserved0:30;
+        ULONG EOLBehavior:2;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_READONLY_WRITETHROUGH_MODE, *PNVME_CDW11_FEATURE_READONLY_WRITETHROUGH_MODE;
+
+typedef union
+{
+    struct
+    {
+        ULONG EOLBehavior:3;
+        ULONG Reserved0:29;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW0_FEATURE_READONLY_WRITETHROUGH_MODE, *PNVME_CDW0_FEATURE_READONLY_WRITETHROUGH_MODE;
+
+typedef union
+{
+    struct
+    {
+        ULONG Reserved0:31;
+        ULONG Clear:1;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_CLEAR_PCIE_CORRECTABLE_ERROR_COUNTERS, *PNVME_CDW11_FEATURE_CLEAR_PCIE_CORRECTABLE_ERROR_COUNTERS;
+
+typedef union
+{
+    struct
+    {
+        ULONG Reserved0:31;
+        ULONG Enable:1;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURE_ENABLE_IEEE1667_SILO, *PNVME_CDW11_FEATURE_ENABLE_IEEE1667_SILO;
+
+typedef union
+{
+    struct
+    {
+        ULONG Enabled:3;
+        ULONG Reserved0:29;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW0_FEATURE_ENABLE_IEEE1667_SILO, *PNVME_CDW0_FEATURE_ENABLE_IEEE1667_SILO;
+
+typedef union
+{
+    struct
+    {
+        ULONG DSSDPowerState:7;
+        ULONG Reserved0:25;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW0_FEATURE_DSSD_POWER_STATE, *PNVME_CDW0_FEATURE_DSSD_POWER_STATE;
+
+typedef struct
+{
+    ULONG EXHID:1;
+    ULONG Reserved:31;
+} NVME_CDW11_FEATURE_HOST_IDENTIFIER, *PNVME_CDW11_FEATURE_HOST_IDENTIFIER;
+
+typedef struct
+{
+    ULONG PTPL:1;
+    ULONG Reserved:31;
+} NVME_CDW11_FEATURE_RESERVATION_PERSISTENCE, *PNVME_CDW11_FEATURE_RESERVATION_PERSISTENCE;
+
+typedef struct
+{
+    ULONG Reserved:1;
+    ULONG REGPRE:1;
+    ULONG RESREL:1;
+    ULONG RESPRE:1;
+    ULONG Reserved1:28;
+} NVME_CDW11_FEATURE_RESERVATION_NOTIFICATION_MASK, *PNVME_CDW11_FEATURE_RESERVATION_NOTIFICATION_MASK;
+
+typedef union
+{
+    NVME_CDW11_FEATURE_NUMBER_OF_QUEUES NumberOfQueues;
+    NVME_CDW11_FEATURE_INTERRUPT_COALESCING InterruptCoalescing;
+    NVME_CDW11_FEATURE_INTERRUPT_VECTOR_CONFIG InterruptVectorConfig;
+    NVME_CDW11_FEATURE_LBA_RANGE_TYPE LbaRangeType;
+    NVME_CDW11_FEATURE_ARBITRATION Arbitration;
+    NVME_CDW11_FEATURE_VOLATILE_WRITE_CACHE VolatileWriteCache;
+    NVME_CDW11_FEATURE_ASYNC_EVENT_CONFIG AsyncEventConfig;
+    NVME_CDW11_FEATURE_POWER_MANAGEMENT PowerManagement;
+    NVME_CDW11_FEATURE_AUTO_POWER_STATE_TRANSITION AutoPowerStateTransition;
+    NVME_CDW11_FEATURE_TEMPERATURE_THRESHOLD TemperatureThreshold;
+    NVME_CDW11_FEATURE_ERROR_RECOVERY ErrorRecovery;
+    NVME_CDW11_FEATURE_HOST_MEMORY_BUFFER HostMemoryBuffer;
+    NVME_CDW11_FEATURE_WRITE_ATOMICITY_NORMAL WriteAtomicityNormal;
+    NVME_CDW11_FEATURE_NON_OPERATIONAL_POWER_STATE NonOperationalPowerState;
+    NVME_CDW11_FEATURE_IO_COMMAND_SET_PROFILE IoCommandSetProfile;
+    NVME_CDW11_FEATURE_ERROR_INJECTION ErrorInjection;
+    NVME_CDW11_FEATURE_HOST_IDENTIFIER HostIdentifier;
+    NVME_CDW11_FEATURE_RESERVATION_PERSISTENCE ReservationPersistence;
+    NVME_CDW11_FEATURE_RESERVATION_NOTIFICATION_MASK ReservationNotificationMask;
+    NVME_CDW11_FEATURE_GET_HOST_METADATA GetHostMetadata;
+    NVME_CDW11_FEATURE_SET_HOST_METADATA SetHostMetadata;
+    ULONG AsUlong;
+} NVME_CDW11_FEATURES, *PNVME_CDW11_FEATURES;
+
+typedef union
+{
+    NVME_CDW12_FEATURE_HOST_MEMORY_BUFFER HostMemoryBuffer;
+    ULONG AsUlong;
+} NVME_CDW12_FEATURES, *PNVME_CDW12_FEATURES;
+
+typedef union
+{
+    NVME_CDW13_FEATURE_HOST_MEMORY_BUFFER HostMemoryBuffer;
+    ULONG AsUlong;
+} NVME_CDW13_FEATURES, *PNVME_CDW13_FEATURES;
+
+typedef union
+{
+    NVME_CDW14_FEATURE_HOST_MEMORY_BUFFER HostMemoryBuffer;
+    ULONG AsUlong;
+} NVME_CDW14_FEATURES, *PNVME_CDW14_FEATURES;
+
+typedef union
+{
+    NVME_CDW15_FEATURE_HOST_MEMORY_BUFFER HostMemoryBuffer;
+    ULONG AsUlong;
+} NVME_CDW15_FEATURES, *PNVME_CDW15_FEATURES;
+
+typedef union
+{
+    struct
+    {
+        ULONG LID:8;
+        ULONG Reserved0:8;
+        ULONG NUMD:12;
+        ULONG Reserved1:4;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_GET_LOG_PAGE, *PNVME_CDW10_GET_LOG_PAGE;
+
+typedef union
+{
+    struct
+    {
+        ULONG LID:8;
+        ULONG Reserved0:8;
+        ULONG NUMDL:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_GET_LOG_PAGE_V121, *PNVME_CDW10_GET_LOG_PAGE_V121;
+
+typedef union
+{
+    struct
+    {
+        ULONG LID:8;
+        ULONG LSP:4;
+        ULONG Reserved0:3;
+        ULONG RAE:1;
+        ULONG NUMDL:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_GET_LOG_PAGE_V13, *PNVME_CDW10_GET_LOG_PAGE_V13;
+
+typedef union
+{
+    struct
+    {
+        ULONG LID:8;
+        ULONG LSP:7;
+        ULONG RAE:1;
+        ULONG NUMDL:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_GET_LOG_PAGE_V20, *PNVME_CDW10_GET_LOG_PAGE_V20;
+
+typedef union
+{
+    struct
+    {
+        ULONG NUMDU:16;
+        ULONG LogSpecificIdentifier:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_GET_LOG_PAGE, *PNVME_CDW11_GET_LOG_PAGE;
+
+typedef union
+{
+    ULONG LPOL;
+    ULONG AsUlong;
+} NVME_CDW12_GET_LOG_PAGE, *PNVME_CDW12_GET_LOG_PAGE;
+
+typedef union
+{
+    ULONG LPOU;
+    ULONG AsUlong;
+} NVME_CDW13_GET_LOG_PAGE, *PNVME_CDW13_GET_LOG_PAGE;
+
+typedef union
+{
+    struct
+    {
+        ULONG UUIDIndex:7;
+        ULONG Reserved:16;
+        ULONG OT:1;
+        ULONG CommandSetIdentifier:8;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW14_GET_LOG_PAGE, *PNVME_CDW14_GET_LOG_PAGE;
+
+typedef union
+{
+    struct
+    {
+        ULONG UUIDIndex:7;
+        ULONG Reserved:16;
+        ULONG OffsetType:1;
+        ULONG CommandSetIdentifier:8;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW14_GET_LOG_PAGE_V20, *PNVME_CDW14_GET_LOG_PAGE_V20;
+
+typedef struct
+{
+    ULONG NUMD;
+} NVME_CDW10_FIRMWARE_DOWNLOAD, *PNVME_CDW10_FIRMWARE_DOWNLOAD;
+
+typedef struct
+{
+    ULONG OFST;
+} NVME_CDW11_FIRMWARE_DOWNLOAD, *PNVME_CDW11_FIRMWARE_DOWNLOAD;
+
+typedef union
+{
+    struct
+    {
+        ULONG FS:3;
+        ULONG AA:2;
+        ULONG Reserved:27;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_FIRMWARE_ACTIVATE, *PNVME_CDW10_FIRMWARE_ACTIVATE;
+
+typedef union
+{
+    struct
+    {
+        ULONG LBAF:4;
+        ULONG MS:1;
+        ULONG PI:3;
+        ULONG PIL:1;
+        ULONG SES:3;
+        ULONG ZF:2;
+        ULONG Reserved:18;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_FORMAT_NVM, *PNVME_CDW10_FORMAT_NVM;
+
+typedef union
+{
+    struct
+    {
+        ULONG SANACT:3;
+        ULONG AUSE:1;
+        ULONG OWPASS:4;
+        ULONG OIPBP:1;
+        ULONG NDAS:1;
+        ULONG Reserved:22;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_SANITIZE, *PNVME_CDW10_SANITIZE;
+
+typedef union
+{
+    struct
+    {
+        ULONG OVRPAT;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_SANITIZE;
+
+typedef struct
+{
+    ULONG PTPL:1;
+    ULONG Reserved:31;
+} NVME_CDW0_RESERVATION_PERSISTENCE, *PNVME_CDW0_RESERVATION_PERSISTENCE;
+
+typedef union
+{
+    struct
+    {
+        ULONG RACQA:3;
+        ULONG IEKEY:1;
+        ULONG Reserved:4;
+        ULONG RTYPE:8;
+        ULONG Reserved1:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_RESERVATION_ACQUIRE, *PNVME_CDW10_RESERVATION_ACQUIRE;
+
+typedef union
+{
+    struct
+    {
+        ULONG RREGA:3;
+        ULONG IEKEY:1;
+        ULONG Reserved:26;
+        ULONG CPTPL:2;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_RESERVATION_REGISTER, *PNVME_CDW10_RESERVATION_REGISTER;
+
+typedef union
+{
+    struct
+    {
+        ULONG RRELA:3;
+        ULONG IEKEY:1;
+        ULONG Reserved:4;
+        ULONG RTYPE:8;
+        ULONG Reserved1:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_RESERVATION_RELEASE, *PNVME_CDW10_RESERVATION_RELEASE;
+
+typedef union
+{
+    struct
+    {
+        ULONG NUMD;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_RESERVATION_REPORT, *PNVME_CDW10_RESERVATION_REPORT;
+
+typedef union
+{
+    struct
+    {
+        ULONG EDS:1;
+        ULONG Reserved:31;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_RESERVATION_REPORT, *PNVME_CDW11_RESERVATION_REPORT;
+
+typedef struct
+{
+    ULONG NUMD;
+} NVME_CDW10_DIRECTIVE_RECEIVE, *PNVME_CDW10_DIRECTIVE_RECEIVE;
+
+typedef union
+{
+    struct
+    {
+        ULONG DOPER:8;
+        ULONG DTYPE:8;
+        ULONG DSPEC:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_DIRECTIVE_RECEIVE, *PNVME_CDW11_DIRECTIVE_RECEIVE;
+
+typedef struct
+{
+    ULONG NUMD;
+} NVME_CDW10_DIRECTIVE_SEND, *PNVME_CDW10_DIRECTIVE_SEND;
+
+typedef union
+{
+    struct
+    {
+        ULONG DOPER:8;
+        ULONG DTYPE:8;
+        ULONG DSPEC:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_DIRECTIVE_SEND, *PNVME_CDW11_DIRECTIVE_SEND;
+
+typedef union
+{
+    struct
+    {
+        ULONG ENDIR:1;
+        ULONG Reserved0:7;
+        ULONG DTYPE:8;
+        ULONG Reserved1:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW12_DIRECTIVE_SEND_IDENTIFY_ENABLE_DIRECTIVE, *PNVME_CDW12_DIRECTIVE_SEND_IDENTIFY_ENABLE_DIRECTIVE;
+
+typedef union
+{
+    struct
+    {
+        ULONG NSR:16;
+        ULONG Reserved:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW12_DIRECTIVE_RECEIVE_STREAMS_ALLOCATE_RESOURCES, *PNVME_CDW12_DIRECTIVE_RECEIVE_STREAMS_ALLOCATE_RESOURCES;
+
+typedef union
+{
+    NVME_CDW12_DIRECTIVE_SEND_IDENTIFY_ENABLE_DIRECTIVE EnableDirective;
+    ULONG AsUlong;
+} NVME_CDW12_DIRECTIVE_SEND;
+
+typedef union
+{
+    NVME_CDW12_DIRECTIVE_RECEIVE_STREAMS_ALLOCATE_RESOURCES AllocateResources;
+    ULONG AsUlong;
+} NVME_CDW12_DIRECTIVE_RECEIVE;
+
+typedef union
+{
+    struct
+    {
+        ULONG Reserved0:8;
+        ULONG SPSP:16;
+        ULONG SECP:8;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_SECURITY_SEND_RECEIVE, *PNVME_CDW10_SECURITY_SEND_RECEIVE;
+
+typedef struct
+{
+    ULONG TL;
+} NVME_CDW11_SECURITY_SEND, *PNVME_CDW11_SECURITY_SEND;
+
+typedef struct
+{
+    ULONG AL;
+} NVME_CDW11_SECURITY_RECEIVE, *PNVME_CDW11_SECURITY_RECEIVE;
+
+typedef union
+{
+    struct
+    {
+        ULONG NLB:16;
+        ULONG Reserved0:4;
+        ULONG DTYPE:4;
+        ULONG Reserved1:2;
+        ULONG PRINFO:4;
+        ULONG FUA:1;
+        ULONG LR:1;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW12_READ_WRITE, *PNVME_CDW12_READ_WRITE;
+
+typedef union
+{
+    struct
+    {
+        struct
+        {
+            UCHAR AccessFrequency:4;
+            UCHAR AccessLatency:2;
+            UCHAR SequentialRequest:1;
+            UCHAR Incompressible:1;
+        } DSM;
+        UCHAR Reserved;
+        USHORT DSPEC;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW13_READ_WRITE, *PNVME_CDW13_READ_WRITE;
+
+typedef union
+{
+    struct
+    {
+        ULONG ELBAT:16;
+        ULONG ELBATM:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW15_READ_WRITE, *PNVME_CDW15_READ_WRITE;
+
+typedef union
+{
+    struct
+    {
+        ULONG NR:8;
+        ULONG Reserved:24;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_DATASET_MANAGEMENT, *PNVME_CDW10_DATASET_MANAGEMENT;
+
+typedef union
+{
+    struct
+    {
+        ULONG IDR:1;
+        ULONG IDW:1;
+        ULONG AD:1;
+        ULONG Reserved:29;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW11_DATASET_MANAGEMENT, *PNVME_CDW11_DATASET_MANAGEMENT;
+
+typedef union
+{
+    struct
+    {
+        ULONG NLB:16;
+        ULONG Reserved:10;
+        ULONG PRINFO:4;
+        ULONG FUA:1;
+        ULONG LR:1;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW12_VERIFYCOMMAND, *PNVME_CDW12_VERIFYCOMMAND;
+
+typedef union
+{
+    struct
+    {
+        ULONG ELBAT:16;
+        ULONG ELBATM:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW15_VERIFY_COMMAND, *PNVME_CDW15_VERIFY_COMMAND;
+
+typedef struct
+{
+    ULONGLONG SLBA;
+} NVME_CDW10_ZONE_MANAGEMENT_SEND, *PNVME_CDW10_ZONE_MANAGEMENT_SEND;
+
+typedef union
+{
+    struct
+    {
+        ULONG ZSA:8;
+        ULONG SelectAll:1;
+        ULONG Reserved:23;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW13_ZONE_MANAGEMENT_SEND, *PNVME_CDW13_ZONE_MANAGEMENT_SEND;
+
+typedef struct
+{
+    ULONGLONG SLBA;
+} NVME_CDW10_ZONE_MANAGEMENT_RECEIVE, *PNVME_CDW10_ZONE_MANAGEMENT_RECEIVE;
+
+typedef union
+{
+    struct
+    {
+        ULONG ZRA:8;
+        ULONG ZRASpecific:8;
+        ULONG Partial:1;
+        ULONG Reserved:15;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW13_ZONE_MANAGEMENT_RECEIVE, *PNVME_CDW13_ZONE_MANAGEMENT_RECEIVE;
+
+typedef struct
+{
+    ULONGLONG SLBA;
+} NVME_CDW10_ZONE_APPEND, *PNVME_CDW10_ZONE_APPEND;
+
+typedef union
+{
+    struct
+    {
+        ULONG NLB:16;
+        ULONG Reserved:9;
+        ULONG PIREMAP:1;
+        ULONG PRINFO:4;
+        ULONG FUA:1;
+        ULONG LR:1;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW12_ZONE_APPEND, *PNVME_CDW12_ZONE_APPEND;
+
+typedef union
+{
+    struct
+    {
+        ULONG LBAT:16;
+        ULONG LBATM:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW15_ZONE_APPEND, *PNVME_CDW15_ZONE_APPEND;
+
+typedef union
+{
+    struct
+    {
+        ULONG STC:4;
+        ULONG Reserved:28;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_DEVICE_SELF_TEST, *PNVME_CDW10_DEVICE_SELF_TEST;
+
+typedef union
+{
+    struct
+    {
+        ULONG TAS:4;
+        ULONG Reserved:28;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_CDW10_DISCOVERY_INFO_MGMT, *PNVME_CDW10_DISCOVERY_INFO_MGMT;
+
+typedef union
+{
+    struct
+    {
+        ULONG OPC:8;
+        ULONG FUSE:2;
+        ULONG Reserved0:4;
+        ULONG PSDT:2;
+        ULONG CID:16;
+    } DUMMYSTRUCTNAME;
+    ULONG AsUlong;
+} NVME_COMMAND_DWORD0, *PNVME_COMMAND_DWORD0;
+
+typedef union
+{
+    struct
+    {
+        ULONGLONG Reserved0:2;
+        ULONGLONG PBAO:62;
+    } DUMMYSTRUCTNAME;
+    ULONGLONG AsUlonglong;
+} NVME_PRP_ENTRY, *PNVME_PRP_ENTRY;
+
+typedef struct
+{
+    NVME_COMMAND_DWORD0 CDW0;
+    ULONG NSID;
+    ULONG Reserved0[2];
+    ULONGLONG MPTR;
+    union
+    {
+        struct
+        {
+            ULONGLONG PRP1;
+            ULONGLONG PRP2;
+        };
+        ULONGLONG SGL1[2];
+    };
+    union
+    {
+        struct
+        {
+            ULONG CDW10;
+            ULONG CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } GENERAL;
+        struct
+        {
+            NVME_CDW10_IDENTIFY CDW10;
+            NVME_CDW11_IDENTIFY CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            union
+            {
+                ULONG CDW14;
+                NVME_CDW14_IDENTIFY CDW14_V20;
+            };
+            ULONG CDW15;
+        } IDENTIFY;
+        struct
+        {
+            NVME_CDW10_ABORT CDW10;
+            ULONG CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } ABORT;
+        struct
+        {
+            NVME_CDW10_GET_FEATURES CDW10;
+            NVME_CDW11_FEATURES CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } GETFEATURES;
+        struct
+        {
+            NVME_CDW10_SET_FEATURES CDW10;
+            NVME_CDW11_FEATURES CDW11;
+            NVME_CDW12_FEATURES CDW12;
+            NVME_CDW13_FEATURES CDW13;
+            NVME_CDW14_FEATURES CDW14;
+            NVME_CDW15_FEATURES CDW15;
+        } SETFEATURES;
+        struct
+        {
+            union
+            {
+                NVME_CDW10_GET_LOG_PAGE CDW10;
+                NVME_CDW10_GET_LOG_PAGE_V121 CDW10_V121;
+                NVME_CDW10_GET_LOG_PAGE_V13 CDW10_V13;
+                NVME_CDW10_GET_LOG_PAGE_V20 CDW10_V20;
+            };
+            NVME_CDW11_GET_LOG_PAGE CDW11;
+            NVME_CDW12_GET_LOG_PAGE CDW12;
+            NVME_CDW13_GET_LOG_PAGE CDW13;
+            union
+            {
+                NVME_CDW14_GET_LOG_PAGE CDW14;
+                NVME_CDW14_GET_LOG_PAGE_V20 CDW14_V20;
+            };
+            ULONG CDW15;
+        } GETLOGPAGE;
+        struct
+        {
+            NVME_CDW10_CREATE_IO_QUEUE CDW10;
+            NVME_CDW11_CREATE_IO_CQ CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } CREATEIOCQ;
+        struct
+        {
+            NVME_CDW10_CREATE_IO_QUEUE CDW10;
+            NVME_CDW11_CREATE_IO_SQ CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } CREATEIOSQ;
+        struct
+        {
+            NVME_CDW10_DELETE_IO_QUEUE CDW10;
+        } DELETEIOQUEUE;
+        struct
+        {
+            NVME_CDW10_DATASET_MANAGEMENT CDW10;
+            NVME_CDW11_DATASET_MANAGEMENT CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } DATASETMANAGEMENT;
+        struct
+        {
+            NVME_CDW10_SECURITY_SEND_RECEIVE CDW10;
+            NVME_CDW11_SECURITY_SEND CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } SECURITYSEND;
+        struct
+        {
+            NVME_CDW10_SECURITY_SEND_RECEIVE CDW10;
+            NVME_CDW11_SECURITY_RECEIVE CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } SECURITYRECEIVE;
+        struct
+        {
+            NVME_CDW10_FIRMWARE_DOWNLOAD CDW10;
+            NVME_CDW11_FIRMWARE_DOWNLOAD CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } FIRMWAREDOWNLOAD;
+        struct
+        {
+            NVME_CDW10_FIRMWARE_ACTIVATE CDW10;
+            ULONG CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } FIRMWAREACTIVATE;
+        struct
+        {
+            NVME_CDW10_FORMAT_NVM CDW10;
+            ULONG CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } FORMATNVM;
+        struct
+        {
+            NVME_CDW10_DIRECTIVE_RECEIVE CDW10;
+            NVME_CDW11_DIRECTIVE_RECEIVE CDW11;
+            NVME_CDW12_DIRECTIVE_RECEIVE CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } DIRECTIVERECEIVE;
+        struct
+        {
+            NVME_CDW10_DIRECTIVE_SEND CDW10;
+            NVME_CDW11_DIRECTIVE_SEND CDW11;
+            NVME_CDW12_DIRECTIVE_SEND CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } DIRECTIVESEND;
+        struct
+        {
+            NVME_CDW10_SANITIZE CDW10;
+            NVME_CDW11_SANITIZE CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } SANITIZE;
+        struct
+        {
+            ULONG LBALOW;
+            ULONG LBAHIGH;
+            NVME_CDW12_READ_WRITE CDW12;
+            NVME_CDW13_READ_WRITE CDW13;
+            ULONG CDW14;
+            NVME_CDW15_READ_WRITE CDW15;
+        } READWRITE;
+        struct
+        {
+            NVME_CDW10_RESERVATION_ACQUIRE CDW10;
+            ULONG CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } RESERVATIONACQUIRE;
+        struct
+        {
+            NVME_CDW10_RESERVATION_REGISTER CDW10;
+            ULONG CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } RESERVATIONREGISTER;
+        struct
+        {
+            NVME_CDW10_RESERVATION_RELEASE CDW10;
+            ULONG CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } RESERVATIONRELEASE;
+        struct
+        {
+            NVME_CDW10_RESERVATION_REPORT CDW10;
+            NVME_CDW11_RESERVATION_REPORT CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } RESERVATIONREPORT;
+        struct
+        {
+            NVME_CDW10_ZONE_MANAGEMENT_SEND CDW1011;
+            ULONG CDW12;
+            NVME_CDW13_ZONE_MANAGEMENT_SEND CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } ZONEMANAGEMENTSEND;
+        struct
+        {
+            NVME_CDW10_ZONE_MANAGEMENT_RECEIVE CDW1011;
+            ULONG DWORDCOUNT;
+            NVME_CDW13_ZONE_MANAGEMENT_RECEIVE CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } ZONEMANAGEMENTRECEIVE;
+        struct
+        {
+            NVME_CDW10_ZONE_APPEND CDW1011;
+            NVME_CDW12_ZONE_APPEND CDW12;
+            ULONG CDW13;
+            ULONG ILBRT;
+            NVME_CDW15_ZONE_APPEND CDW15;
+        } ZONEAPPEND;
+        struct
+        {
+            NVME_CDW10_DEVICE_SELF_TEST CDW10;
+            ULONG CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } DEVICESELFTEST;
+        struct
+        {
+            NVME_CDW10_DISCOVERY_INFO_MGMT CDW10;
+            ULONG CDW11;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } DISCOVERYINFOMGMT;
+        struct
+        {
+            ULONG NDT;
+            ULONG NDM;
+            ULONG CDW12;
+            ULONG CDW13;
+            ULONG CDW14;
+            ULONG CDW15;
+        } VENDORSPECIFIC;
+        struct
+        {
+            ULONG LBALOW;
+            ULONG LBAHIGH;
+            NVME_CDW12_VERIFYCOMMAND CDW12;
+            ULONG CDW13;
+            ULONG EILBRT;
+            NVME_CDW15_VERIFY_COMMAND CDW15;
+        } VERIFYCOMMAND;
+    } u;
+} NVME_COMMAND, *PNVME_COMMAND;
+
+C_ASSERT(sizeof(NVME_COMMAND) == 64);
 C_ASSERT(sizeof(NVME_CONTROLLER_CAPABILITIES) == 8);
 C_ASSERT(sizeof(NVME_COMPLETION_ENTRY) == 16);
 C_ASSERT(FIELD_OFFSET(NVME_CONTROLLER_REGISTERS, CC) == 0x14);
