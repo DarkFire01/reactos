@@ -230,8 +230,13 @@ PortFdoStartMiniport(
     InterfaceType = GetBusInterface(DeviceExtension->PhysicalDevice);
     if (InterfaceType == InterfaceTypeUndefined)
     {
-        DPRINT1("The bus this adapter sits on is unknown\n");
-        return STATUS_NO_SUCH_DEVICE;
+        /*
+         * A bus we have no resource arbitration story for, USB being the one
+         * that matters here. Only a virtual miniport can drive such a device,
+         * and those register themselves under Internal.
+         */
+        DPRINT1("The bus this adapter sits on is unknown, trying Internal\n");
+        InterfaceType = Internal;
     }
 
     /* Get the driver init data for the given interface type */
@@ -242,6 +247,13 @@ PortFdoStartMiniport(
         DPRINT1("No init data registered for bus type %lu\n", InterfaceType);
         return STATUS_NO_SUCH_DEVICE;
     }
+
+    /*
+     * The request path reaches the miniport routines through here, so it has
+     * to be in place before the first request, whether or not the miniport
+     * ever asks for an uncached extension.
+     */
+    DeviceExtension->HwInitData = InitData;
 
     /* Initialize the miniport */
     Status = MiniportInitialize(&DeviceExtension->Miniport,
@@ -1248,6 +1260,7 @@ PortFdoPnp(
             DPRINT1("IRP_MJ_PNP / IRP_MN_REMOVE_DEVICE\n");
             MiniportAdapterControl(&DeviceExtension->Miniport, ScsiStopAdapter, NULL);
             PortFdoDisconnectInterrupt(DeviceExtension);
+            MiniportFreeAdapterResources(&DeviceExtension->Miniport);
             DeviceExtension->PnpState = dsRemoved;
             break;
 
@@ -1259,6 +1272,7 @@ PortFdoPnp(
             DPRINT1("IRP_MJ_PNP / IRP_MN_STOP_DEVICE\n");
             MiniportAdapterControl(&DeviceExtension->Miniport, ScsiStopAdapter, NULL);
             PortFdoDisconnectInterrupt(DeviceExtension);
+            MiniportFreeAdapterResources(&DeviceExtension->Miniport);
             DeviceExtension->PnpState = dsStopped;
             break;
 
