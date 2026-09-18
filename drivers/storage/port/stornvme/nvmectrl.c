@@ -137,6 +137,46 @@ NvmpWriteRegister64(
 }
 
 
+/**
+ * @brief Points the controller at the admin queues and empties them.
+ *
+ * The memory behind the queues is carved out once and kept, so bringing the
+ * controller back only needs the registers filled in and the host side of the
+ * queues wound back to where a freshly enabled controller expects them.
+ */
+static
+VOID
+NvmpProgramAdminQueues(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter)
+{
+    PNVME_QUEUE_PAIR Queue = &Adapter->AdminQueue;
+    NVME_ADMIN_QUEUE_ATTRIBUTES Attributes;
+
+    Queue->SubmissionTail = 0;
+    Queue->CompletionHead = 0;
+    Queue->Phase = 1;
+
+    RtlZeroMemory(Queue->CompletionQueue,
+                  Queue->Depth * sizeof(NVME_COMPLETION_ENTRY));
+
+    /* Both queue sizes are reported one less than their real depth */
+    Attributes.AsUlong = 0;
+    Attributes.ASQS = Queue->Depth - 1;
+    Attributes.ACQS = Queue->Depth - 1;
+
+    StorPortWriteRegisterUlong(Adapter,
+                               &Adapter->Registers->AQA.AsUlong,
+                               Attributes.AsUlong);
+
+    NvmpWriteRegister64(Adapter,
+                        &Adapter->Registers->ASQ.AsUlonglong,
+                        Queue->SubmissionAddress);
+    NvmpWriteRegister64(Adapter,
+                        &Adapter->Registers->ACQ.AsUlonglong,
+                        Queue->CompletionAddress);
+}
+
+
 BOOLEAN
 NvmpCreateAdminQueues(
     _In_ PNVME_ADAPTER_EXTENSION Adapter,
@@ -144,7 +184,6 @@ NvmpCreateAdminQueues(
 {
     PNVME_QUEUE_PAIR Queue = &Adapter->AdminQueue;
     PNVME_QUEUE_PAIR IoQueue = &Adapter->IoQueue;
-    NVME_ADMIN_QUEUE_ATTRIBUTES Attributes;
     ULONG SubmissionSize;
     ULONG CompletionSize;
     ULONG IoSubmissionSize;
@@ -213,26 +252,69 @@ NvmpCreateAdminQueues(
     IoQueue->CompletionQueue = (PNVME_COMPLETION_ENTRY)((PUCHAR)Adapter->QueueMemory + Offset);
     IoQueue->CompletionAddress.QuadPart = Adapter->QueueMemoryAddress.QuadPart + Offset;
 
-    /* Both queue sizes are reported one less than their real depth */
-    Attributes.AsUlong = 0;
-    Attributes.ASQS = Queue->Depth - 1;
-    Attributes.ACQS = Queue->Depth - 1;
-
-    StorPortWriteRegisterUlong(Adapter,
-                               &Adapter->Registers->AQA.AsUlong,
-                               Attributes.AsUlong);
-
-    NvmpWriteRegister64(Adapter,
-                        &Adapter->Registers->ASQ.AsUlonglong,
-                        Queue->SubmissionAddress);
-    NvmpWriteRegister64(Adapter,
-                        &Adapter->Registers->ACQ.AsUlonglong,
-                        Queue->CompletionAddress);
+    NvmpProgramAdminQueues(Adapter);
 
     DPRINT1("Admin queues of %lu entries at 0x%I64x and 0x%I64x\n",
             Queue->Depth,
             Queue->SubmissionAddress.QuadPart,
             Queue->CompletionAddress.QuadPart);
+
+    return TRUE;
+}
+
+
+/**
+ * @brief Puts a controller that stopped answering back into a working state.
+ *
+ * Everything the controller knew about is gone once it is disabled, so the
+ * queues are rebuilt from the memory that was set aside at startup. What the
+ * controller reported about itself does not change across a reset, so none of
+ * the identify work is repeated.
+ */
+BOOLEAN
+NvmpResetController(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter)
+{
+    PNVME_QUEUE_PAIR IoQueue = &Adapter->IoQueue;
+
+    DPRINT1("Resetting the controller\n");
+
+    Adapter->State = NvmeAdapterStopped;
+
+    if (!NvmpDisableController(Adapter))
+    {
+        DPRINT1("Controller would not go idle\n");
+        Adapter->State = NvmeAdapterFailed;
+        return FALSE;
+    }
+
+    NvmpProgramAdminQueues(Adapter);
+
+    IoQueue->SubmissionTail = 0;
+    IoQueue->CompletionHead = 0;
+    IoQueue->Phase = 1;
+
+    RtlZeroMemory(IoQueue->CompletionQueue,
+                  IoQueue->Depth * sizeof(NVME_COMPLETION_ENTRY));
+
+    if (!NvmpEnableController(Adapter))
+    {
+        DPRINT1("Controller would not come ready\n");
+        Adapter->State = NvmeAdapterFailed;
+        return FALSE;
+    }
+
+    if (!NvmpCreateIoQueues(Adapter))
+    {
+        Adapter->State = NvmeAdapterFailed;
+        return FALSE;
+    }
+
+    NvmpInitializeCommandIds(Adapter);
+
+    Adapter->State = NvmeAdapterRunning;
+
+    DPRINT1("Controller is ready again\n");
 
     return TRUE;
 }
