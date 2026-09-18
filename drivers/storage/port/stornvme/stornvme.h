@@ -192,6 +192,14 @@ typedef struct _NVME_ADAPTER_EXTENSION
     /* Outstanding requests, indexed by the command identifier they carry */
     PNVME_REQUEST_CONTEXT Requests[NVME_MAX_OUTSTANDING];
 
+    /*
+     * Identifiers nothing is using, taken from the top. The controller answers
+     * in whatever order it likes, so an identifier is only free again once its
+     * own completion arrives.
+     */
+    USHORT FreeCommandIds[NVME_MAX_OUTSTANDING];
+    ULONG FreeCommandCount;
+
 
     /* Set while running as part of a crash dump or hibernation stack */
     BOOLEAN DumpMode;
@@ -294,6 +302,10 @@ NvmpCompleteRequest(
     _In_ UCHAR SrbStatus);
 
 /* nvmeio.c */
+
+VOID
+NvmpInitializeCommandIds(
+    _In_ PNVME_ADAPTER_EXTENSION Adapter);
 
 BOOLEAN
 NvmpBuildCommand(
