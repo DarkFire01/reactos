@@ -918,6 +918,106 @@ InstallBootloaderFiles(
     return STATUS_SUCCESS;
 }
 
+/*
+ * The name the firmware looks for on an EFI system partition when nothing
+ * else told it what to start, as laid down by the UEFI specification.
+ */
+#if defined(_M_AMD64)
+#define EFI_BOOT_FILE_NAME  L"bootx64.efi"
+#elif defined(_M_IX86)
+#define EFI_BOOT_FILE_NAME  L"bootia32.efi"
+#elif defined(_M_ARM64)
+#define EFI_BOOT_FILE_NAME  L"bootaa64.efi"
+#elif defined(_M_ARM)
+#define EFI_BOOT_FILE_NAME  L"bootarm.efi"
+#elif defined(_M_IA64)
+#define EFI_BOOT_FILE_NAME  L"bootia64.efi"
+#endif
+
+/**
+ * @brief   Puts the boot loader on an EFI system partition.
+ *
+ * There is no boot sector to write here: the firmware reads the file system
+ * itself and starts a file, so installing means placing the loader where it
+ * looks and writing the configuration beside it.
+ *
+ * @param[in]   SystemRootPath
+ * The mounted EFI system partition.
+ *
+ * @param[in]   SourceRootPath
+ * The root of the installation medium.
+ *
+ * @param[in]   DestinationArcPath
+ * Where the installation the loader has to start lives.
+ *
+ * @return  An NTSTATUS code indicating success or failure.
+ **/
+static
+NTSTATUS
+InstallEfiBootLoader(
+    _In_ PCUNICODE_STRING SystemRootPath,
+    _In_ PCUNICODE_STRING SourceRootPath,
+    _In_ PCUNICODE_STRING DestinationArcPath)
+{
+#ifndef EFI_BOOT_FILE_NAME
+    UNREFERENCED_PARAMETER(SystemRootPath);
+    UNREFERENCED_PARAMETER(SourceRootPath);
+    UNREFERENCED_PARAMETER(DestinationArcPath);
+
+    DPRINT1("No EFI boot loader is built for this architecture\n");
+    return STATUS_NOT_SUPPORTED;
+#else
+    NTSTATUS Status;
+    WCHAR SrcPath[MAX_PATH];
+    WCHAR DstPath[MAX_PATH];
+
+    /* The firmware only looks inside this one directory */
+    CombinePaths(DstPath, ARRAYSIZE(DstPath), 2, SystemRootPath->Buffer, L"EFI");
+    Status = SetupCreateDirectory(DstPath);
+    if (!NT_SUCCESS(Status) && (Status != STATUS_OBJECT_NAME_COLLISION))
+    {
+        DPRINT1("Could not create '%S' (Status 0x%08lx)\n", DstPath, Status);
+        return Status;
+    }
+
+    CombinePaths(DstPath, ARRAYSIZE(DstPath), 2, SystemRootPath->Buffer, L"EFI\\BOOT");
+    Status = SetupCreateDirectory(DstPath);
+    if (!NT_SUCCESS(Status) && (Status != STATUS_OBJECT_NAME_COLLISION))
+    {
+        DPRINT1("Could not create '%S' (Status 0x%08lx)\n", DstPath, Status);
+        return Status;
+    }
+
+    /* Copy the loader under the name the firmware starts by default */
+    CombinePaths(SrcPath, ARRAYSIZE(SrcPath), 2,
+                 SourceRootPath->Buffer, L"\\efi\\boot\\" EFI_BOOT_FILE_NAME);
+    CombinePaths(DstPath, ARRAYSIZE(DstPath), 2,
+                 SystemRootPath->Buffer, L"EFI\\BOOT\\" EFI_BOOT_FILE_NAME);
+
+    DPRINT("Copy: %S ==> %S\n", SrcPath, DstPath);
+    Status = SetupCopyFile(SrcPath, DstPath, FALSE);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("SetupCopyFile() failed (Status 0x%08lx)\n", Status);
+        return Status;
+    }
+
+    /*
+     * The loader reads its configuration from the root of the partition it
+     * was started from, the same as it does when a BIOS starts it.
+     */
+    Status = CreateFreeLoaderIniForReactOS(SystemRootPath->Buffer,
+                                           DestinationArcPath->Buffer);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("CreateFreeLoaderIniForReactOS() failed (Status 0x%08lx)\n", Status);
+        return Status;
+    }
+
+    return STATUS_SUCCESS;
+#endif
+}
+
 static
 NTSTATUS
 InstallFatBootcodeToPartition(
@@ -1495,6 +1595,28 @@ InstallBootManagerAndBootEntriesWorker(
     NTSTATUS Status;
     BOOLEAN IsBIOS = ((ArchType == ARCH_PcAT) || (ArchType == ARCH_NEC98x86));
     UCHAR InstallType = (Options & 0x03);
+
+    /*
+     * A UEFI firmware starts a file off the system partition, so the whole
+     * boot-sector business does not apply and neither does the install type.
+     */
+    if (ArchType == ARCH_Efi)
+    {
+        UNREFERENCED_PARAMETER(DiskNumber);
+        UNREFERENCED_PARAMETER(DiskStyle);
+        UNREFERENCED_PARAMETER(IsSuperFloppy);
+
+        /* The system partition is formatted FAT, as the specification requires */
+        if ((_wcsicmp(FileSystem, L"FAT")   != 0) &&
+            (_wcsicmp(FileSystem, L"FAT32") != 0))
+        {
+            DPRINT1("The EFI system partition has file system '%S', expected FAT\n",
+                    FileSystem);
+            return STATUS_NOT_SUPPORTED;
+        }
+
+        return InstallEfiBootLoader(SystemRootPath, SourceRootPath, DestinationArcPath);
+    }
 
     // FIXME: We currently only support BIOS-based PCs
     // TODO: Support other platforms
