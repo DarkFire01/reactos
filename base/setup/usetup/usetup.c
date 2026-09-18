@@ -1811,18 +1811,39 @@ CreateInstallPartition:
     /* Create the partition if the selected region is empty */
     if (!CurrentPartition->IsPartitioned)
     {
-        Error = PartitionCreateChecks(CurrentPartition, 0ULL, 0);
+        ULONGLONG SizeBytes = 0ULL;
+        ULONGLONG Reserved;
+
+        /*
+         * Whatever the firmware needs for itself has to stay free, so the
+         * region is taken whole only when nothing has to be held back.
+         */
+        Reserved = GetSystemPartitionReserve(PartitionList, CurrentPartition);
+        if (Reserved != 0ULL)
+        {
+            ULONGLONG SizeAvailable = GetPartEntrySizeInBytes(CurrentPartition);
+
+            if (SizeAvailable <= Reserved)
+            {
+                MUIDisplayError(ERROR_INSUFFICIENT_PARTITION_SIZE, Ir, POPUP_WAIT_ANY_KEY,
+                                (ULONG)RoundingDivide(Reserved, MB));
+                return SELECT_PARTITION_PAGE;
+            }
+            SizeBytes = SizeAvailable - Reserved;
+        }
+
+        Error = PartitionCreateChecks(CurrentPartition, SizeBytes, 0);
         if (Error != NOT_AN_ERROR)
         {
             MUIDisplayError(Error, Ir, POPUP_WAIT_ANY_KEY);
             return SELECT_PARTITION_PAGE;
         }
 
-        /* Automatically create the partition on the whole empty space;
+        /* Automatically create the partition on the empty space;
          * it will be formatted later with default parameters */
         CreatePartition(PartitionList,
                         CurrentPartition,
-                        0ULL,
+                        SizeBytes,
                         0);
         ASSERT(CurrentPartition->IsPartitioned);
         if (CurrentPartition->Volume)
