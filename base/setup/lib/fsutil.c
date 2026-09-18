@@ -894,11 +894,18 @@ FormatPartition(
         return STATUS_UNRECOGNIZED_VOLUME;
     }
 
-    /* Reset the MBR partition type, unless this is an OEM partition */
+    /*
+     * Reset the MBR partition type, unless this is an OEM partition, or one
+     * the firmware boots from: those are known by their type, which says
+     * nothing about the file system on them and must be left as it is.
+     */
     if (DiskEntry->DiskStyle == PARTITION_STYLE_MBR)
     {
-        if (!IsOEMPartition(PartEntry->PartitionType))
+        if (!IsOEMPartition(PartEntry->PartitionType) &&
+            !IsEfiSystemPartition(PartEntry))
+        {
             SetMBRPartitionType(PartEntry, PartitionType);
+        }
     }
 
     /*
