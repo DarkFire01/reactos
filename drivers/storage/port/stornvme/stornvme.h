@@ -36,6 +36,9 @@
 /* No namespace has blocks smaller than this */
 #define NVME_MIN_BLOCK_SHIFT    9
 
+/* Both block vital product pages carry this many bytes after their length */
+#define VPD_BLOCK_LIMITS_LENGTH 0x3C
+
 /* Entries in the admin queues. The specification caps this at 4096. */
 #define NVME_ADMIN_QUEUE_DEPTH  64
 
