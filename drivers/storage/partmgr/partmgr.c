@@ -192,6 +192,42 @@ PartMgrIsDiskSuperFloppy(
     return TRUE;
 }
 
+/**
+ * @brief   Tells whether a layout entry names a partition to hand a device to.
+ *
+ * An MBR table marks a free slot with a reserved type byte, and gives its
+ * extended containers slots of their own that hold no volume. A GPT one marks
+ * a free slot with an all-zero type and writes out every slot it has room
+ * for, used or not, so most of a table names nothing at all.
+ */
+static
+CODE_SEG("PAGE")
+BOOLEAN
+PartMgrIsEntryUsed(
+    _In_ PARTITION_STYLE PartitionStyle,
+    _In_ PPARTITION_INFORMATION_EX PartitionEntry)
+{
+    PAGED_CODE();
+
+    /* Whatever the style says, nothing lives in no sectors */
+    if (PartitionEntry->PartitionLength.QuadPart <= 0)
+        return FALSE;
+
+    if (PartitionStyle == PARTITION_STYLE_MBR)
+    {
+        return (PartitionEntry->Mbr.PartitionType != PARTITION_ENTRY_UNUSED) &&
+               !IsContainerPartition(PartitionEntry->Mbr.PartitionType);
+    }
+
+    if (PartitionStyle == PARTITION_STYLE_GPT)
+    {
+        return !IsEqualGUID(&PartitionEntry->Gpt.PartitionType,
+                            &PARTITION_ENTRY_UNUSED_GUID);
+    }
+
+    return FALSE;
+}
+
 static
 CODE_SEG("PAGE")
 VOID
@@ -224,10 +260,8 @@ PartMgrUpdatePartitionDevices(
         {
             partEntry = &NewLayout->PartitionEntry[i];
 
-            // skip unused and container partitions
-            if (NewLayout->PartitionStyle == PARTITION_STYLE_MBR &&
-                (partEntry->Mbr.PartitionType == PARTITION_ENTRY_UNUSED ||
-                    IsContainerPartition(partEntry->Mbr.PartitionType)))
+            // skip the entries that name no partition
+            if (!PartMgrIsEntryUsed(NewLayout->PartitionStyle, partEntry))
             {
                 continue;
             }
@@ -299,10 +333,8 @@ PartMgrUpdatePartitionDevices(
     {
         PPARTITION_INFORMATION_EX partEntry = &NewLayout->PartitionEntry[i];
 
-        // again, skip unused and container partitions
-        if (NewLayout->PartitionStyle == PARTITION_STYLE_MBR &&
-            (partEntry->Mbr.PartitionType == PARTITION_ENTRY_UNUSED ||
-                IsContainerPartition(partEntry->Mbr.PartitionType)))
+        // again, skip the entries that name no partition
+        if (!PartMgrIsEntryUsed(NewLayout->PartitionStyle, partEntry))
         {
             continue;
         }
