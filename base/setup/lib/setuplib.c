@@ -688,6 +688,31 @@ LoadSetupInf(
 }
 
 /**
+ * @brief   Tells whether a UEFI firmware started this system.
+ **/
+static
+BOOLEAN
+IsUefiBoot(VOID)
+{
+    SYSTEM_BOOT_ENVIRONMENT_INFORMATION BootInfo;
+    NTSTATUS Status;
+
+    Status = NtQuerySystemInformation(SystemBootEnvironmentInformation,
+                                      &BootInfo,
+                                      sizeof(BootInfo),
+                                      NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        /* A kernel that cannot say was started by a BIOS, as all of them were */
+        DPRINT1("Could not retrieve the firmware type (Status 0x%08lx)\n", Status);
+        return FALSE;
+    }
+
+    DPRINT1("Firmware type: %lu\n", BootInfo.FirmwareType);
+    return (BootInfo.FirmwareType == FirmwareTypeUefi);
+}
+
+/**
  * @brief   Find or set the active system partition.
  **/
 BOOLEAN
@@ -702,6 +727,7 @@ InitSystemPartition(
     FSVOL_OP Result;
     PPARTENTRY SystemPartition;
     PPARTENTRY OldActivePart;
+    BOOLEAN IsUefi = IsUefiBoot();
 
     /*
      * If we install on a fixed disk, try to find a supported system
@@ -710,10 +736,22 @@ InitSystemPartition(
      */
     if (InstallPartition->DiskEntry->MediaType == FixedMedia)
     {
-        SystemPartition = FindSupportedSystemPartition(PartitionList,
-                                                       FALSE,
-                                                       InstallPartition->DiskEntry,
-                                                       InstallPartition);
+        /*
+         * A UEFI firmware starts the system off an EFI system partition and
+         * nothing else, so that is the only one worth looking for.
+         */
+        if (IsUefi)
+        {
+            SystemPartition = FindEfiSystemPartition(PartitionList,
+                                                     InstallPartition->DiskEntry);
+        }
+        else
+        {
+            SystemPartition = FindSupportedSystemPartition(PartitionList,
+                                                           FALSE,
+                                                           InstallPartition->DiskEntry,
+                                                           InstallPartition);
+        }
         /* Use the original system partition as the old active partition hint */
         OldActivePart = PartitionList->SystemPartition;
 
@@ -754,14 +792,27 @@ InitSystemPartition(
      */
     if (!SystemPartition->IsPartitioned)
     {
+        ULONGLONG SizeBytes = 0ULL;
+        ULONG_PTR PartitionInfo = 0;
+
+        /*
+         * A partition the firmware reads has a type of its own and only has
+         * to be large enough to hold a boot loader.
+         */
+        if (IsUefi)
+        {
+            SizeBytes = EFI_SYSTEM_PARTITION_SIZE;
+            PartitionInfo = PARTITION_SYSTEM;
+        }
+
         /* Automatically create the partition; it will be
          * formatted later with default parameters */
         // FIXME: Don't use the whole empty space, but a minimal size
         // specified from the TXTSETUP.SIF or unattended setup.
         CreatePartition(PartitionList,
                         SystemPartition,
-                        0ULL,
-                        0);
+                        SizeBytes,
+                        PartitionInfo);
         ASSERT(SystemPartition->IsPartitioned);
     }
 
@@ -1102,14 +1153,20 @@ InitializeSetup(
     DPRINT1("SourceRootDir (2): '%wZ'\n", &pSetupData->SourceRootDir);
 
     /* Retrieve the target machine architecture type */
-    // FIXME: This should be determined at runtime!!
     // FIXME: Allow for (pre-)installing on an architecture
     //        different from the current one?
 #if defined(SARCH_XBOX)
     pSetupData->ArchType = ARCH_Xbox;
 // #elif defined(SARCH_PC98)
-#else // TODO: Arc, UEFI
-    pSetupData->ArchType = (IsNEC_98 ? ARCH_NEC98x86 : ARCH_PcAT);
+#else // TODO: Arc
+    /*
+     * What starts the installer is what will start the installation, so the
+     * firmware we were booted by decides how the system is made bootable.
+     */
+    if (IsUefiBoot())
+        pSetupData->ArchType = ARCH_Efi;
+    else
+        pSetupData->ArchType = (IsNEC_98 ? ARCH_NEC98x86 : ARCH_PcAT);
 #endif
 
     return ERROR_SUCCESS;
