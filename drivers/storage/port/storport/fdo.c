@@ -902,7 +902,7 @@ FdoDeviceControlQueryProperty(
     PIO_STACK_LOCATION IoStack;
     PFDO_DEVICE_EXTENSION FdoExtension;
     PMINIPORT Miniport;
-    PSTORAGE_ADAPTER_DESCRIPTOR_WIN8 AdapterDescriptor;
+    PSTORAGE_ADAPTER_DESCRIPTOR AdapterDescriptor;
     PSTORAGE_PROPERTY_QUERY Query;
     NTSTATUS Status;
 
@@ -946,7 +946,7 @@ FdoDeviceControlQueryProperty(
 
         /* Check buffer length */
         if (IoStack->Parameters.DeviceIoControl.OutputBufferLength <
-            sizeof(STORAGE_ADAPTER_DESCRIPTOR_WIN8))
+            sizeof(STORAGE_ADAPTER_DESCRIPTOR))
         {
             PSTORAGE_DESCRIPTOR_HEADER DescriptorHeader = Irp->AssociatedIrp.SystemBuffer;
 
@@ -959,8 +959,8 @@ FdoDeviceControlQueryProperty(
             }
 
             /* Return required size */
-            DescriptorHeader->Version = sizeof(STORAGE_ADAPTER_DESCRIPTOR_WIN8);
-            DescriptorHeader->Size = sizeof(STORAGE_ADAPTER_DESCRIPTOR_WIN8);
+            DescriptorHeader->Version = sizeof(STORAGE_ADAPTER_DESCRIPTOR);
+            DescriptorHeader->Size = sizeof(STORAGE_ADAPTER_DESCRIPTOR);
             Irp->IoStatus.Information = sizeof(STORAGE_DESCRIPTOR_HEADER);
             Status = STATUS_SUCCESS;
             break;
@@ -968,9 +968,9 @@ FdoDeviceControlQueryProperty(
 
         /* Return AdapterDescriptor */
         AdapterDescriptor = Irp->AssociatedIrp.SystemBuffer;
-        *AdapterDescriptor = (STORAGE_ADAPTER_DESCRIPTOR_WIN8) {
-            .Version = sizeof(STORAGE_ADAPTER_DESCRIPTOR_WIN8),
-            .Size = sizeof(STORAGE_ADAPTER_DESCRIPTOR_WIN8),
+        *AdapterDescriptor = (STORAGE_ADAPTER_DESCRIPTOR) {
+            .Version = sizeof(STORAGE_ADAPTER_DESCRIPTOR),
+            .Size = sizeof(STORAGE_ADAPTER_DESCRIPTOR),
             .MaximumTransferLength = Miniport->PortConfig.MaximumTransferLength,
             .MaximumPhysicalPages = Miniport->PortConfig.NumberOfPhysicalBreaks,
             .AlignmentMask = Miniport->PortConfig.AlignmentMask,
@@ -981,9 +981,10 @@ FdoDeviceControlQueryProperty(
             .BusType = BusTypeSata, /* FIXME: ＲＥＡＤ　ＦＲＯＭ　ＲＥＧＩＳＴＲＹ */
             .BusMajorVersion = 2,
             .BusMinorVersion = 0,
-            // .SrbType = SRB_TYPE_SCSI_REQUEST_BLOCK /* This is actually important */
+            .SrbType = SRB_TYPE_SCSI_REQUEST_BLOCK,
+            .AddressType = STORAGE_ADDRESS_TYPE_BTL8
         };
-        Irp->IoStatus.Information = sizeof(STORAGE_ADAPTER_DESCRIPTOR_WIN8);
+        Irp->IoStatus.Information = sizeof(STORAGE_ADAPTER_DESCRIPTOR);
         Status = STATUS_SUCCESS;
     }
     while (0);
