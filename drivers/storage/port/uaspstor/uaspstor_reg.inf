@@ -1,0 +1,9 @@
+; USB Attached SCSI miniport driver
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","Group",0x00000000,"SCSI Miniport"
+HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","ImagePath",0x00020000,"system32\drivers\uaspstor.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","Start",0x00010001,0x00000000
+HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","Type",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor","Tag",0x00010001,0x00000023
+HKLM,"SYSTEM\CurrentControlSet\Services\uaspstor\Parameters","BusType",0x00010001,0x00000007
