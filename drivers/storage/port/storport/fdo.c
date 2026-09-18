@@ -259,6 +259,7 @@ PortFdoStartMiniport(
      * adapter control requests it takes.
      */
     MiniportQueryAdapterControl(&DeviceExtension->Miniport);
+    MiniportQueryUnitControl(&DeviceExtension->Miniport);
 
     /* Connect the configured interrupt */
     Status = PortFdoConnectInterrupt(DeviceExtension);
