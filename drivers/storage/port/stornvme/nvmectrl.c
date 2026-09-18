@@ -147,10 +147,13 @@ NvmpCreateAdminQueues(
     ULONG CompletionSize;
     ULONG Length;
 
-    /* Both queues have to start on a page boundary of their own */
+    /*
+     * Both queues have to start on a page boundary of their own, and one more
+     * page follows them for the controller to answer startup commands into.
+     */
     SubmissionSize = ROUND_TO_PAGES(Adapter->AdminQueueDepth * sizeof(NVME_COMMAND));
     CompletionSize = ROUND_TO_PAGES(Adapter->AdminQueueDepth * sizeof(NVME_COMPLETION_ENTRY));
-    Length = SubmissionSize + CompletionSize;
+    Length = SubmissionSize + CompletionSize + PAGE_SIZE;
 
     Adapter->QueueMemory = StorPortGetUncachedExtension(Adapter, ConfigInfo, Length);
     if (Adapter->QueueMemory == NULL)
@@ -178,6 +181,10 @@ NvmpCreateAdminQueues(
 
     Queue->CompletionQueue = (PNVME_COMPLETION_ENTRY)((PUCHAR)Adapter->QueueMemory + SubmissionSize);
     Queue->CompletionAddress.QuadPart = Adapter->QueueMemoryAddress.QuadPart + SubmissionSize;
+
+    Adapter->ScratchBuffer = (PUCHAR)Adapter->QueueMemory + SubmissionSize + CompletionSize;
+    Adapter->ScratchAddress.QuadPart = Adapter->QueueMemoryAddress.QuadPart +
+                                       SubmissionSize + CompletionSize;
 
     /* Both queue sizes are reported one less than their real depth */
     Attributes.AsUlong = 0;
@@ -224,6 +231,15 @@ NvmpStartController(
     if (!NvmpEnableController(Adapter))
     {
         DPRINT1("Controller would not come ready\n");
+        return FALSE;
+    }
+
+    if (!NvmpIdentifyController(Adapter))
+        return FALSE;
+
+    if (!NvmpEnumerateNamespaces(Adapter))
+    {
+        DPRINT1("Controller has no usable namespace\n");
         return FALSE;
     }
 
