@@ -640,6 +640,57 @@ static const DEVVTBL UefiDiskVtbl =
     UefiDiskSeek,
 };
 
+/**
+ * @brief   Tells an optical drive apart from a disk by what its media says.
+ **/
+static BOOLEAN
+UefiIsOpticalDevice(
+    _In_ EFI_HANDLE Handle)
+{
+    EFI_BLOCK_IO* BlockIo = NULL;
+    EFI_STATUS Status;
+
+    Status = GlobalSystemTable->BootServices->HandleProtocol(Handle,
+                                                             &BlockIoGuid,
+                                                             (VOID**)&BlockIo);
+    if (EFI_ERROR(Status) || (BlockIo == NULL))
+        return FALSE;
+
+    return (BlockIo->Media->RemovableMedia && (BlockIo->Media->BlockSize == 2048));
+}
+
+/**
+ * @brief   Puts the disks ahead of the optical drives, order kept otherwise.
+ *
+ * An ARC name gives both kinds one number space, since rdisk(x) and cdrom(x)
+ * both name drive 0x80 + x. An installed system, on the other hand, names the
+ * disk it lives on by the number the kernel gave it, and the kernel counts
+ * disks alone. Handing out the low numbers to the disks keeps a disc left in
+ * the drive from moving the disk out from under a boot entry.
+ **/
+static VOID
+UefiOrderDisksFirst(
+    _Inout_updates_(Count) EFI_HANDLE* Handles,
+    _In_ ULONG Count)
+{
+    ULONG Read;
+    ULONG Write = 0;
+
+    for (Read = 0; Read < Count; ++Read)
+    {
+        EFI_HANDLE Handle = Handles[Read];
+
+        if (UefiIsOpticalDevice(Handle))
+            continue;
+
+        /* Slide the drives passed over along, and put the disk before them */
+        RtlMoveMemory(&Handles[Write + 1], &Handles[Write],
+                      (Read - Write) * sizeof(*Handles));
+        Handles[Write] = Handle;
+        ++Write;
+    }
+}
+
 static VOID
 GetHarddiskInformation(
     _In_ UCHAR DriveNumber)
@@ -759,6 +810,9 @@ UefiSetupBlockDevices(VOID)
     }
 
     HandleCount = SystemHandleCount;
+
+    /* The disks are named before anything else the firmware handed us */
+    UefiOrderDisksFirst(handles, SystemHandleCount);
 
     /* Step 4: Allocate internal disk structure */
     InternalUefiDisk = MmAllocateMemoryWithType(
