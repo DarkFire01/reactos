@@ -323,6 +323,19 @@ typedef struct _PDO_DEVICE_EXTENSION
  *
  * FIXME: Before completing a request, restore OriginalRequest as Classpnp will CHECK it.
  */
+/*
+ * What we hand a miniport that asked for STORAGE_REQUEST_BLOCKs. The address
+ * and the command block have to follow the request block in memory because it
+ * reaches them through byte offsets, and each of the three carries its own
+ * alignment so the compiler lays them out the way the miniport expects.
+ */
+typedef struct _EXTENDED_REQUEST
+{
+    STORAGE_REQUEST_BLOCK Srb;
+    STOR_ADDR_BTL8 Address;
+    SRBEX_DATA_SCSI_CDB16 Cdb;
+} EXTENDED_REQUEST, *PEXTENDED_REQUEST;
+
 typedef struct _QUEUED_REQUEST_REFERENCE
 {
     SLIST_ENTRY CompletionEntry;
@@ -330,6 +343,12 @@ typedef struct _QUEUED_REQUEST_REFERENCE
     LIST_ENTRY PdoEntry;
     PPDO_DEVICE_EXTENSION PdoExtension;
     PSCSI_REQUEST_BLOCK Srb;
+    /*
+     * Set only when the miniport takes the extended format. It lives in the
+     * same allocation as this structure and is what the miniport sees in place
+     * of Srb.
+     */
+    PEXTENDED_REQUEST ExtendedRequest;
     PIRP Irp;
     PSTOR_SCATTER_GATHER_LIST ScatterGatherList;
     PVOID MappedSystemVa;
@@ -545,6 +564,23 @@ NTAPI
 PortPdoDeviceControl(
     _In_ PDEVICE_OBJECT DeviceObject,
     _In_ PIRP Irp);
+
+
+/* srbex.c */
+
+BOOLEAN
+StorpIsExtendedSrb(
+    _In_ PVOID Srb);
+
+VOID
+StorpBuildExtendedSrb(
+    _In_ PSCSI_REQUEST_BLOCK Srb,
+    _Out_ PEXTENDED_REQUEST Request);
+
+VOID
+StorpCompleteExtendedSrb(
+    _In_ PSCSI_REQUEST_BLOCK Srb,
+    _In_ PEXTENDED_REQUEST Request);
 
 
 /* storport.c */

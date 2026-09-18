@@ -182,6 +182,7 @@ PortPdoAfterBuildingScatterGatherList(
     PVOID MiniportExtension;
     PHW_INITIALIZATION_DATA HwInitData;
     PQUEUED_REQUEST_REFERENCE RequestReference;
+    PSCSI_REQUEST_BLOCK MiniportSrb;
     BOOLEAN CanStartIo = TRUE;
     KIRQL OldIrql;
 
@@ -189,6 +190,12 @@ PortPdoAfterBuildingScatterGatherList(
     FdoExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
     MiniportExtension = &FdoExtension->Miniport.MiniportExtension->HwDeviceExtension;
     HwInitData = FdoExtension->HwInitData;
+
+    /* Hand over whichever request format the miniport asked for */
+    if (RequestReference->ExtendedRequest != NULL)
+        MiniportSrb = (PSCSI_REQUEST_BLOCK)RequestReference->ExtendedRequest;
+    else
+        MiniportSrb = RequestReference->Srb;
 
     /* Save our SG List */
     RequestReference->ScatterGatherList = (PSTOR_SCATTER_GATHER_LIST)ScatterGatherList;
@@ -200,7 +207,7 @@ PortPdoAfterBuildingScatterGatherList(
         /* Call BuildIo, if one is provided */
         if (HwInitData->HwBuildIo)
         {
-            CanStartIo = HwInitData->HwBuildIo(MiniportExtension, RequestReference->Srb);
+            CanStartIo = HwInitData->HwBuildIo(MiniportExtension, MiniportSrb);
         }
 
         /* If BuildIo says the request processing shall stop here, no more processing is needed */
@@ -209,7 +216,7 @@ PortPdoAfterBuildingScatterGatherList(
             break;
         }
 
-        HwInitData->HwStartIo(MiniportExtension, RequestReference->Srb);
+        HwInitData->HwStartIo(MiniportExtension, MiniportSrb);
     }
     while (0);
 
@@ -256,6 +263,13 @@ PortPdoSrbAllocatePrivateContexts(
         StorpCompleteRequest(Irp, SRB_STATUS_ERROR, Status); /* FIXME: SRB error code? */
         return Status;
     }
+
+    /*
+     * Translate the request now that the SRB extension is in place, since the
+     * miniport reaches its scratch area through the extended block.
+     */
+    if (RequestReference->ExtendedRequest != NULL)
+        StorpBuildExtendedSrb(Srb, RequestReference->ExtendedRequest);
 
     Status = STATUS_SUCCESS;
     return Status;

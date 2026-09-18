@@ -11,6 +11,7 @@ list(APPEND SOURCE
     miniport.c
     misc.c
     pdo.c
+    srbex.c
     storport.c
     stubs.c)
 

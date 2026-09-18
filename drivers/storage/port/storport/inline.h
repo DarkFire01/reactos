@@ -27,9 +27,19 @@ StorpSrbAllocateRequestReference(
     _In_ PPDO_DEVICE_EXTENSION PdoExtension)
 {
     PQUEUED_REQUEST_REFERENCE RequestReference;
+    BOOLEAN Extended;
+    ULONG Length;
+
+    /* A miniport on the extended format gets its request block from here too */
+    Extended = (PdoExtension->FdoExtension->Miniport.PortConfig.SrbType ==
+                SRB_TYPE_STORAGE_REQUEST_BLOCK);
+
+    Length = sizeof(QUEUED_REQUEST_REFERENCE);
+    if (Extended)
+        Length += sizeof(EXTENDED_REQUEST);
 
     RequestReference = ExAllocatePoolWithTag(NonPagedPool,
-                                             sizeof(QUEUED_REQUEST_REFERENCE),
+                                             Length,
                                              TAG_QUEUED_REQUEST);
 
     /* Fail request if allocation fails */
@@ -44,7 +54,7 @@ StorpSrbAllocateRequestReference(
     }
 
     /* Does initialization */
-    RtlZeroMemory(RequestReference, sizeof(QUEUED_REQUEST_REFERENCE));
+    RtlZeroMemory(RequestReference, Length);
 
     Srb->OriginalRequest = (PVOID)RequestReference;
     RequestReference->Irp = Irp;
@@ -52,6 +62,9 @@ StorpSrbAllocateRequestReference(
     RequestReference->TimeoutCounter = Srb->TimeOutValue;
 
     RequestReference->PdoExtension = PdoExtension;
+
+    if (Extended)
+        RequestReference->ExtendedRequest = (PEXTENDED_REQUEST)(RequestReference + 1);
 
     return RequestReference;
 }
