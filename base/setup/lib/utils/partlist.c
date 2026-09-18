@@ -3612,6 +3612,88 @@ IsSupportedActivePartition(
     return TRUE;
 }
 
+/**
+ * @brief   Finds the partition a UEFI firmware would start the system from.
+ *
+ * A system installed under UEFI needs an EFI system partition to put its
+ * loader on. One that already exists is reused, wherever it is, because the
+ * firmware reads whichever it finds; a disk given as the preferred one is
+ * looked at first so that the loader lands beside the installation when
+ * there is a choice.
+ *
+ * @param[in]   List
+ * The partition list to search.
+ *
+ * @param[in]   PreferredDisk
+ * The disk to look at before the others, usually the one being installed to.
+ *
+ * @return  The system partition, free space it can be created in, or NULL.
+ **/
+PPARTENTRY
+FindEfiSystemPartition(
+    _In_ PPARTLIST List,
+    _In_opt_ PDISKENTRY PreferredDisk)
+{
+    PLIST_ENTRY DiskListEntry, PartListEntry;
+    PDISKENTRY DiskEntry;
+    PPARTENTRY PartEntry;
+    PPARTENTRY FreeRegion = NULL;
+    ULONG Pass;
+
+    /* The preferred disk first, then all of them */
+    for (Pass = 0; Pass < 2; ++Pass)
+    {
+        for (DiskListEntry = List->DiskListHead.Flink;
+             DiskListEntry != &List->DiskListHead;
+             DiskListEntry = DiskListEntry->Flink)
+        {
+            DiskEntry = CONTAINING_RECORD(DiskListEntry, DISKENTRY, ListEntry);
+
+            if ((Pass == 0) && (DiskEntry != PreferredDisk))
+                continue;
+            if ((Pass == 1) && (DiskEntry == PreferredDisk))
+                continue;
+
+            /* The firmware only reads disks it can see */
+            if (DiskEntry->MediaType != FixedMedia || !DiskEntry->BiosFound)
+                continue;
+
+            for (PartListEntry = DiskEntry->PrimaryPartListHead.Flink;
+                 PartListEntry != &DiskEntry->PrimaryPartListHead;
+                 PartListEntry = PartListEntry->Flink)
+            {
+                PartEntry = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
+
+                if (IsEfiSystemPartition(PartEntry))
+                {
+                    DPRINT1("Found an EFI system partition %lu on disk %lu\n",
+                            PartEntry->PartitionNumber, DiskEntry->DiskNumber);
+                    return PartEntry;
+                }
+
+                /* Remember the first free region large enough to hold one */
+                if (!FreeRegion && !PartEntry->IsPartitioned &&
+                    (GetPartEntrySizeInBytes(PartEntry) >= EFI_SYSTEM_PARTITION_SIZE))
+                {
+                    FreeRegion = PartEntry;
+                }
+            }
+        }
+    }
+
+    if (FreeRegion)
+    {
+        DPRINT1("No EFI system partition yet, using free space on disk %lu\n",
+                FreeRegion->DiskEntry->DiskNumber);
+    }
+    else
+    {
+        DPRINT1("No EFI system partition and nowhere to put one\n");
+    }
+
+    return FreeRegion;
+}
+
 PPARTENTRY
 FindSupportedSystemPartition(
     IN PPARTLIST List,
