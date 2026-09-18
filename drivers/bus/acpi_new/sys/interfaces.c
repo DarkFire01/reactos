@@ -402,9 +402,16 @@ UacpiIrqTranslateResources(PVOID Context, PCM_PARTIAL_RESOURCE_DESCRIPTOR Source
             count = 1;
         }
         if (!NT_SUCCESS(UacpiIrqLibResolveMessageVector(PhysicalDeviceObject, gsiv,
-                                                       count, &base, &mirql, &maff)))
-                                                       {
-            return STATUS_SUCCESS;   // leave as written
+                                                       count, &base, &mirql, &maff))
+            || mirql == PASSIVE_LEVEL)
+            {
+            // An untouched target still carries the packed message count in
+            // Level and the message slot in Vector, neither of which is an IRQL
+            // or a vector. Handing that out as a translation puts a driver on an
+            // interrupt it can never connect, so report the failure instead.
+            UacpiTrace("[acpi] irqTrans: msg-gsiv 0x%X x%u has no vector\n",
+                      gsiv, count);
+            return STATUS_UNSUCCESSFUL;
         }
         Target->u.Interrupt.Level    = mirql;      // Translated.Level  = IRQL
         Target->u.Interrupt.Vector   = base;       // Translated.Vector = base IDT entry
@@ -423,10 +430,13 @@ UacpiIrqTranslateResources(PVOID Context, PCM_PARTIAL_RESOURCE_DESCRIPTOR Source
     }
 
     if (!NT_SUCCESS(UacpiIrqLibResolveVector(gsiv, &vector, &irql, &affinity,
-                                            &polarity, &mode)))
-                                            {
-        // Leave the descriptor as written (pre-arbiter behavior) on failure.
-        return STATUS_SUCCESS;
+                                            &polarity, &mode))
+        || irql == PASSIVE_LEVEL)
+        {
+        // As above: an untouched target still holds the GSIV where the vector
+        // and the IRQL belong.
+        UacpiTrace("[acpi] irqTrans: gsiv %u has no vector\n", gsiv);
+        return STATUS_UNSUCCESSFUL;
     }
 
     Target->u.Interrupt.Level    = irql;
