@@ -37,6 +37,9 @@
 @ cdecl -ret64 RoundingDivide(int64 int64)
 ;;;;
 @ cdecl IsPartitionActive(ptr)          ## -private
+@ cdecl IsPartitionUnused(ptr)
+@ cdecl IsPartitionRecognized(ptr)
+@ cdecl IsEfiSystemPartition(ptr)
 @ cdecl SelectPartition(ptr long long)
 
 ;; partinfo

@@ -70,7 +70,18 @@ typedef struct _PARTENTRY
     ULARGE_INTEGER SectorCount;
 
     BOOLEAN BootIndicator;  // NOTE: See comment for the PARTLIST::SystemPartition member.
-    UCHAR PartitionType;
+
+    /* What the partition holds. Which of the two applies is decided by the
+     * partitioning style of the disk the partition belongs to. */
+    UCHAR PartitionType;    /* MBR-partitioned disks */
+    GUID PartitionTypeGuid; /* GPT-partitioned disks */
+
+    /* The rest of the GPT entry. A GPT partition is named and identified in
+     * its own right, which is what the firmware and the boot manager go by. */
+    GUID PartitionIdGuid;
+    ULONGLONG Attributes;
+    WCHAR PartitionName[36];
+
     ULONG OnDiskPartitionNumber; /* Enumerated partition number (primary partitions first, excluding the extended partition container, then the logical partitions) */
     ULONG PartitionNumber;       /* Current partition number, only valid for the currently running NTOS instance */
     ULONG PartitionIndex;        /* Index in the LayoutBuffer->PartitionEntry[] cached array of the corresponding DiskEntry */
@@ -140,11 +151,12 @@ typedef struct _DISKENTRY
 
     UNICODE_STRING DriverName;
 
-    PDRIVE_LAYOUT_INFORMATION LayoutBuffer;
-    // TODO: When adding support for GPT disks:
-    // Use PDRIVE_LAYOUT_INFORMATION_EX which indicates whether
-    // the disk is MBR, GPT, or unknown (uninitialized).
-    // Depending on the style, either use the MBR or GPT partition info.
+    /*
+     * The layout as the disk driver reports it. It says which style the disk
+     * is in, and each entry carries either the MBR or the GPT half of the
+     * union accordingly.
+     */
+    PDRIVE_LAYOUT_INFORMATION_EX LayoutBuffer;
 
     LIST_ENTRY PrimaryPartListHead; /* List of primary partitions */
     LIST_ENTRY LogicalPartListHead; /* List of logical partitions (Valid only for MBR-partitioned disks) */
@@ -257,6 +269,39 @@ RoundingDivide(
 
 #define GetDiskSizeInBytes(DiskEntry) \
     ((DiskEntry)->SectorCount.QuadPart * (DiskEntry)->BytesPerSector)
+
+
+#define IsGPTDisk(DiskEntry) \
+    ((DiskEntry)->DiskStyle == PARTITION_STYLE_GPT)
+
+#define IsGPTPartition(PartEntry) \
+    IsGPTDisk((PartEntry)->DiskEntry)
+
+/* The layout entry a partition was built from, or is written back to */
+#define GetLayoutEntry(DiskEntry, Index) \
+    (&(DiskEntry)->LayoutBuffer->PartitionEntry[Index])
+
+/**
+ * @brief   Points at the type of a partition, whichever form it takes.
+ *
+ * Suitable for the routines that take a partitioning style alongside it,
+ * LookupPartitionTypeString() being the one that matters here.
+ **/
+#define GetPartitionType(PartEntry) \
+    (IsGPTPartition(PartEntry) ? (PVOID)&(PartEntry)->PartitionTypeGuid \
+                               : (PVOID)&(PartEntry)->PartitionType)
+
+BOOLEAN
+IsPartitionUnused(
+    _In_ const PARTENTRY* PartEntry);
+
+BOOLEAN
+IsPartitionRecognized(
+    _In_ const PARTENTRY* PartEntry);
+
+BOOLEAN
+IsEfiSystemPartition(
+    _In_ const PARTENTRY* PartEntry);
 
 
 BOOLEAN
