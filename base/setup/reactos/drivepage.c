@@ -902,13 +902,13 @@ GetPartitionTypeString(
     OUT PSTR strBuffer,
     IN ULONG cchBuffer)
 {
-    if (PartEntry->PartitionType == PARTITION_ENTRY_UNUSED)
+    if (IsPartitionUnused(PartEntry))
     {
         StringCchCopyA(strBuffer, cchBuffer,
                        "Unused" /* MUIGetString(STRING_FORMATUNUSED) */);
     }
     // else if (PartEntry == PartEntry->DiskEntry->ExtendedPartition)
-    else if (IsContainerPartition(PartEntry->PartitionType))
+    else if (!IsGPTPartition(PartEntry) && IsContainerPartition(PartEntry->PartitionType))
     {
         StringCchCopyA(strBuffer, cchBuffer,
                        "Extended Partition" /* MUIGetString(STRING_EXTENDED_PARTITION) */);
@@ -917,7 +917,7 @@ GetPartitionTypeString(
     {
         /* Do the table lookup */
         PCSTR Description = LookupPartitionTypeString(PartEntry->DiskEntry->DiskStyle,
-                                                      &PartEntry->PartitionType);
+                                                      GetPartitionType(PartEntry));
         if (Description)
         {
             StringCchCopyA(strBuffer, cchBuffer, Description);
@@ -930,10 +930,21 @@ GetPartitionTypeString(
 
     if ((cchBuffer > 0) && (*strBuffer == '\0'))
     {
-        StringCchPrintfA(strBuffer, cchBuffer,
-                         // MUIGetString(STRING_PARTTYPE),
-                         "Type 0x%02x",
-                         PartEntry->PartitionType);
+        if (IsGPTPartition(PartEntry))
+        {
+            StringCchPrintfA(strBuffer, cchBuffer,
+                             "Type %08lx-%04x-%04x",
+                             PartEntry->PartitionTypeGuid.Data1,
+                             PartEntry->PartitionTypeGuid.Data2,
+                             PartEntry->PartitionTypeGuid.Data3);
+        }
+        else
+        {
+            StringCchPrintfA(strBuffer, cchBuffer,
+                             // MUIGetString(STRING_PARTTYPE),
+                             "Type 0x%02x",
+                             PartEntry->PartitionType);
+        }
     }
 }
 
