@@ -27,6 +27,11 @@ HalpInitProcessor(
 {
     if (ProcessorNumber == 0)
     {
+        /* Silence the legacy controller while LINT0 still accepts it. An input
+           the firmware left asserted has no way back out once the entry is
+           masked, and the request stays pending until interrupts come back on */
+        HalpInitializeLegacyPICs();
+
         HalpParseApicTables(LoaderBlock);
     }
 
