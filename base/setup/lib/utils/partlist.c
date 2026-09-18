@@ -2969,6 +2969,40 @@ UpdateGPTDiskLayout(
     }
 }
 
+/**
+ * @brief   Settles which partitioning style a never-partitioned disk takes.
+ *
+ * A disk carrying no table yet has to be given one before anything can be
+ * written to it. Which one it gets follows the firmware: a UEFI one reads
+ * GPT, and everything that came before it reads an MBR.
+ **/
+static
+VOID
+InitializeDiskStyle(
+    _In_ PDISKENTRY DiskEntry)
+{
+    if (DiskEntry->DiskStyle != PARTITION_STYLE_RAW)
+        return;
+
+    DiskEntry->DiskStyle = IsUefiBoot() ? PARTITION_STYLE_GPT
+                                        : PARTITION_STYLE_MBR;
+
+    DPRINT1("Disk %lu carries no partition table, laying it out as %s\n",
+            DiskEntry->DiskNumber,
+            IsGPTDisk(DiskEntry) ? "GPT" : "MBR");
+
+    if (DiskEntry->LayoutBuffer)
+    {
+        DiskEntry->LayoutBuffer->PartitionStyle = DiskEntry->DiskStyle;
+
+        if (IsGPTDisk(DiskEntry))
+        {
+            CreatePartitionGuid(&DiskEntry->LayoutBuffer->Gpt.DiskId);
+            DiskEntry->LayoutBuffer->Gpt.MaxPartitionCount = DEFAULT_GPT_PARTITION_COUNT;
+        }
+    }
+}
+
 static
 VOID
 UpdateDiskLayout(
@@ -2983,6 +3017,9 @@ UpdateDiskLayout(
     ULONG PartitionNumber = 1;
 
     DPRINT1("UpdateDiskLayout()\n");
+
+    /* A disk that was never partitioned takes a style before it takes a partition */
+    InitializeDiskStyle(DiskEntry);
 
     /* Resize the layout buffer if necessary */
     if (!ReAllocateLayoutBuffer(DiskEntry))
@@ -3276,6 +3313,9 @@ PartitionCreateChecks(
     /* Fail if the partition is already in use */
     if (PartEntry->IsPartitioned)
         return ERROR_NEW_PARTITION;
+
+    /* The checks depend on the style, so an unpartitioned disk takes one now */
+    InitializeDiskStyle(PartEntry->DiskEntry);
 
     if (IsGPTPartition(PartEntry))
         return GPTPartitionCreateChecks(PartEntry, SizeBytes, PartitionInfo);
