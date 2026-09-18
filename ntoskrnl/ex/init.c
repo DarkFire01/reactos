@@ -72,6 +72,10 @@ CHAR NtBuildLab[] = KERNEL_VERSION_BUILD_STR "."
 ULONG ExpInitializationPhase;
 BOOLEAN ExpInTextModeSetup;
 BOOLEAN IoRemoteBootClient;
+
+/* What brought the system up, and which boot entry it came from */
+FIRMWARE_TYPE ExpFirmwareType = FirmwareTypeUnknown;
+GUID ExpBootIdentifier = {0};
 ULONG InitSafeBootMode;
 BOOLEAN InitIsWinPEMode, InitWinPEModeType;
 BOOLEAN SosEnabled; // Used by driver.c!IopDisplayLoadingMessage()
@@ -1125,6 +1129,15 @@ ExpInitializeExecutive(IN ULONG Cpu,
     {
         /* Setup headless terminal settings */
         HeadlessInit(LoaderBlock);
+
+        /*
+         * Remember what started the system, and which boot this is. A loader
+         * too old to say is taken to be a BIOS one, which is what every such
+         * loader was.
+         */
+        ExpFirmwareType = LoaderBlock->Extension->BootViaEFI ? FirmwareTypeUefi
+                                                             : FirmwareTypeBios;
+        ExpBootIdentifier = LoaderBlock->Extension->BootIdentifier;
     }
 
     /* Set system ranges */
