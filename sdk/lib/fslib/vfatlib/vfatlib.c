@@ -245,16 +245,10 @@ VfatFormat(
             /* FAT16 partition (partition size < 512MB) */
             FatType = FAT_16;
         }
-        else if (PartitionInfo.PartitionLength.QuadPart <= (32LL * 1024LL * 1024LL * 1024LL))
-        {
-            /* FAT32 partition (partition size < 32GB) */
-            FatType = FAT_32;
-        }
         else
         {
-            DPRINT1("The partition ist too large (> 32 GB) for the FAT file system!\n");
-            NtClose(FileHandle);
-            return FALSE;
+            /* FAT32 partition (partition size >= 512MB) */
+            FatType = FAT_32;
         }
 
         DPRINT("StartingOffset %I64d\n", PartitionInfo.StartingOffset.QuadPart);
