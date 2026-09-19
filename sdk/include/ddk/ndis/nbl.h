@@ -1,0 +1,211 @@
+/*
+ * PROJECT:     ReactOS NDIS 6 support
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     NET_BUFFER and NET_BUFFER_LIST definitions
+ */
+
+#pragma once
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define NDIS_OBJECT_TYPE_DEFAULT                0x80
+
+struct _NET_BUFFER;
+struct _NET_BUFFER_LIST;
+struct _NET_BUFFER_LIST_CONTEXT;
+struct _NET_BUFFER_SHARED_MEMORY;
+
+/* Slot indices into NET_BUFFER_LIST::NetBufferListInfo. */
+typedef enum _NDIS_NET_BUFFER_LIST_INFO
+{
+    TcpIpChecksumNetBufferListInfo = 0,
+    TcpOffloadBytesTransferred = 0,
+    IPsecOffloadV1NetBufferListInfo = 1,
+    IPsecOffloadV2NetBufferListInfo = 1,
+    TcpLargeSendNetBufferListInfo = 2,
+    TcpReceiveNoPush = 2,
+    ClassificationHandleNetBufferListInfo = 3,
+    Ieee8021QNetBufferListInfo = 4,
+    NetBufferListCancelId = 5,
+    MediaSpecificInformation = 6,
+    NetBufferListFrameType = 7,
+    NetBufferListProtocolId = 7,
+    NetBufferListHashValue = 8,
+    NetBufferListHashInfo = 9,
+    WfpNetBufferListInfo = 10,
+    IPsecOffloadV2TunnelNetBufferListInfo = 11,
+    IPsecOffloadV2HeaderNetBufferListInfo = 12,
+    NetBufferListCorrelationId = 13,
+    NetBufferListFilteringInfo = 14,
+    MediaSpecificInformationEx = 15,
+    NblOriginalInterfaceIfIndex = 16,
+    NblReAuthWfpFlowContext = 16,
+    TcpReceiveBytesTransferred = 17,
+    IMReserved = 18,
+    TcpRecvSegCoalesceInfo = 19,
+    RscTcpTimestampDelta = 20,
+    TcpSendOffloadsSupplementalNetBufferListInfo = 20,
+    NetBufferListInfoReserved1 = 21,
+    NetBufferListInfoReserved2 = 22,
+    MaxNetBufferListInfo = 23
+} NDIS_NET_BUFFER_LIST_INFO, *PNDIS_NET_BUFFER_LIST_INFO;
+
+typedef struct _NET_BUFFER_DATA
+{
+    struct _NET_BUFFER *Next;
+    PMDL CurrentMdl;
+    ULONG CurrentMdlOffset;
+    union
+    {
+        ULONG DataLength;
+        SIZE_T stDataLength;
+    };
+    PMDL MdlChain;
+    ULONG DataOffset;
+} NET_BUFFER_DATA, *PNET_BUFFER_DATA;
+
+typedef union _NET_BUFFER_HEADER
+{
+    NET_BUFFER_DATA NetBufferData;
+    SLIST_HEADER Link;
+} NET_BUFFER_HEADER, *PNET_BUFFER_HEADER;
+
+typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _NET_BUFFER
+{
+    union
+    {
+        struct
+        {
+            struct _NET_BUFFER *Next;
+            PMDL CurrentMdl;
+            ULONG CurrentMdlOffset;
+            union
+            {
+                ULONG DataLength;
+                SIZE_T stDataLength;
+            };
+            PMDL MdlChain;
+            ULONG DataOffset;
+        };
+        NET_BUFFER_HEADER NetBufferHeader;
+    };
+    USHORT ChecksumBias;
+    USHORT Reserved;
+    NDIS_HANDLE NdisPoolHandle;
+    PVOID NdisReserved[2];
+    PVOID ProtocolReserved[6];
+    PVOID MiniportReserved[4];
+    NDIS_PHYSICAL_ADDRESS DataPhysicalAddress;
+    union
+    {
+        struct _NET_BUFFER_SHARED_MEMORY *SharedMemoryInfo;
+        PSCATTER_GATHER_LIST ScatterGatherList;
+    };
+} NET_BUFFER, *PNET_BUFFER;
+
+typedef struct _NET_BUFFER_LIST_CONTEXT
+{
+    struct _NET_BUFFER_LIST_CONTEXT *Next;
+    USHORT Size;
+    USHORT Offset;
+    DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) UCHAR ContextData[];
+} NET_BUFFER_LIST_CONTEXT, *PNET_BUFFER_LIST_CONTEXT;
+
+typedef struct _NET_BUFFER_LIST_DATA
+{
+    struct _NET_BUFFER_LIST *Next;
+    PNET_BUFFER FirstNetBuffer;
+} NET_BUFFER_LIST_DATA, *PNET_BUFFER_LIST_DATA;
+
+typedef union _NET_BUFFER_LIST_HEADER
+{
+    NET_BUFFER_LIST_DATA NetBufferListData;
+    SLIST_HEADER Link;
+} NET_BUFFER_LIST_HEADER, *PNET_BUFFER_LIST_HEADER;
+
+typedef struct _NET_BUFFER_LIST
+{
+    union
+    {
+        struct
+        {
+            struct _NET_BUFFER_LIST *Next;
+            PNET_BUFFER FirstNetBuffer;
+        };
+        NET_BUFFER_LIST_HEADER NetBufferListHeader;
+    };
+    PNET_BUFFER_LIST_CONTEXT Context;
+    struct _NET_BUFFER_LIST *ParentNetBufferList;
+    NDIS_HANDLE NdisPoolHandle;
+    DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) PVOID NdisReserved[2];
+    DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) PVOID ProtocolReserved[4];
+    DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) PVOID MiniportReserved[2];
+    PVOID Scratch;
+    NDIS_HANDLE SourceHandle;
+    ULONG NblFlags;
+    LONG ChildRefCount;
+    ULONG Flags;
+    union
+    {
+        NDIS_STATUS Status;
+        ULONG NdisReserved2;
+    };
+    PVOID NetBufferListInfo[MaxNetBufferListInfo];
+} NET_BUFFER_LIST, *PNET_BUFFER_LIST;
+
+typedef PMDL
+(NTAPI NET_BUFFER_ALLOCATE_MDL_HANDLER)(
+    _In_ ULONG DataOffsetDelta,
+    _In_ ULONG DataBackFill);
+
+typedef NET_BUFFER_ALLOCATE_MDL_HANDLER *PNET_BUFFER_ALLOCATE_MDL_HANDLER;
+
+typedef VOID
+(NTAPI NET_BUFFER_FREE_MDL_HANDLER)(
+    _In_ PMDL Mdl);
+
+typedef NET_BUFFER_FREE_MDL_HANDLER *PNET_BUFFER_FREE_MDL_HANDLER;
+
+typedef struct _NET_BUFFER_POOL_PARAMETERS
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG PoolTag;
+    ULONG DataSize;
+} NET_BUFFER_POOL_PARAMETERS, *PNET_BUFFER_POOL_PARAMETERS;
+
+typedef struct _NET_BUFFER_LIST_POOL_PARAMETERS
+{
+    NDIS_OBJECT_HEADER Header;
+    UCHAR ProtocolId;
+    BOOLEAN fAllocateNetBuffer;
+    USHORT ContextSize;
+    ULONG PoolTag;
+    ULONG DataSize;
+} NET_BUFFER_LIST_POOL_PARAMETERS, *PNET_BUFFER_LIST_POOL_PARAMETERS;
+
+#define NET_BUFFER_POOL_PARAMETERS_REVISION_1           1
+#define NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1      1
+
+#define NDIS_SIZEOF_NET_BUFFER_POOL_PARAMETERS_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NET_BUFFER_POOL_PARAMETERS, DataSize)
+
+#define NDIS_SIZEOF_NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NET_BUFFER_LIST_POOL_PARAMETERS, DataSize)
+
+/* NET_BUFFER_LIST::NblFlags */
+#define NBL_FLAGS_PROTOCOL_RESERVED             0x0000000F
+#define NBL_FLAGS_MINIPORT_RESERVED             0x000000F0
+#define NBL_FLAGS_SEND_READ_ONLY                0x00000100
+#define NBL_FLAGS_RECV_READ_ONLY                0x00000200
+#define NBL_FLAGS_IS_IPV4                       0x00000400
+#define NBL_FLAGS_IS_IPV6                       0x00000800
+#define NBL_FLAGS_IS_TCP                        0x00001000
+#define NBL_FLAGS_IS_UDP                        0x00002000
+#define NBL_FLAGS_IS_LOOPBACK_PACKET            0x00004000
+#define NBL_FLAGS_SINGLE_SOURCE                 0x00008000
+
+#ifdef __cplusplus
+}
+#endif
