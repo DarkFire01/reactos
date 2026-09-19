@@ -134,6 +134,9 @@ typedef struct _UACPI_WAKE
     SYSTEM_POWER_STATE    SysWake;       ///< deepest wake S-state (_PRW[1]), Unspecified if none
     DEVICE_POWER_STATE    DevWake;       ///< wake D-state (_S<w>D else D3), for _DSW arg
     SYSTEM_POWER_STATE    ReqSysState;   ///< S-state the pending WAIT_WAKE asked for
+    BOOLEAN               PswParsed;     ///< _DSW/_PSW presence resolved once
+    BOOLEAN               HasDsw;        ///< _DSW present, so it wins over _PSW
+    BOOLEAN               HasPsw;        ///< _PSW present
     BOOLEAN               SetupDone;     ///< uacpi_setup_gpe_for_wake done once
     BOOLEAN               Armed;         ///< enable_gpe(_for_wake) outstanding
     BOOLEAN               DepthSuspended; ///< wake mask dropped for a deeper sleep than requested
@@ -541,7 +544,6 @@ VOID     UacpiWakeInit(PUACPI_WAKE Wake, uacpi_namespace_node *Node);
 
 // Boot: mark every _PRW GPE for wake, disarm each device's circuit, and keep the
 // fixed-function buttons/lid/RTC enabled in S0. Call before finalize_gpe_init.
-VOID     UacpiWakeBootInit(void);
 
 // S4 resume: re-assert _PSW/_DSW for every device still armed for wake.
 VOID     UacpiWakeReArmAfterHibernate(void);
