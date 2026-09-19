@@ -4,7 +4,11 @@ include(../ntos.cmake)
 include_directories(${REACTOS_SOURCE_DIR}/ntoskrnl)
 spec2def(ntkrnlmp.exe ../ntoskrnl.spec)
 
-if(MSVC_IDE)
+# The MSVC assembler consumes preprocessed .S files produced before the
+# ntkrnlmp target exists, so target_compile_definitions() cannot affect them.
+# Mark the original sources explicitly for every MSVC generator, not just the
+# Visual Studio IDE generator.
+if(MSVC)
     set_source_files_properties(${NTKRNLMP_ASM_SOURCE} PROPERTIES COMPILE_DEFINITIONS "CONFIG_SMP")
 endif()
 
