@@ -2254,7 +2254,7 @@ MsqCleanupThreadMsgs(PTHREADINFO pti)
       {
          if (CurrentMessage->dwQEvent == POSTEVENT_NWE)
          {
-            ExFreePoolWithTag( (PVOID)CurrentMessage->ExtraInfo, TAG_HOOK);
+            IntFreeEventPack(CurrentMessage->ExtraInfo);
          }
       }
       MsqDestroyMessage(CurrentMessage);
