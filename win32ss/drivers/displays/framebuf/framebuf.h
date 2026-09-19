@@ -35,6 +35,8 @@ typedef struct _PDEV
    HANDLE hDriver;
    HDEV hDevEng;
    HSURF hSurfEng;
+   HSURF hSurfShadow;
+   SURFOBJ *psoShadow;
    ULONG ModeIndex;
    ULONG ScreenWidth;
    ULONG ScreenHeight;
@@ -151,6 +153,11 @@ DrvMovePointer(
    IN LONG x,
    IN LONG y,
    IN RECTL *prcl);
+
+VOID
+IntFlushScreen(
+   IN PPDEV ppdev,
+   IN const RECTL *prcl);
 
 BOOL
 IntInitScreenInfo(
