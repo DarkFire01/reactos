@@ -43,6 +43,7 @@ typedef struct _NOTIFYEVENT
 LRESULT APIENTRY co_CallHook(INT HookId, INT Code, WPARAM wParam, LPARAM lParam);
 LRESULT APIENTRY co_HOOK_CallHooks(INT HookId, INT Code, WPARAM wParam, LPARAM lParam);
 LRESULT APIENTRY co_EVENT_CallEvents(DWORD, HWND, UINT_PTR, LONG_PTR);
+VOID FASTCALL IntFreeEventPack(LONG_PTR ExtraInfo);
 PHOOK FASTCALL IntGetHookObject(HHOOK);
 PHOOK FASTCALL IntGetNextHook(PHOOK Hook);
 LRESULT APIENTRY UserCallNextHookEx( PHOOK pHook, int Code, WPARAM wParam, LPARAM lParam, BOOL Ansi);
