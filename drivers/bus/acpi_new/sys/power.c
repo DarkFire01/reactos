@@ -7,8 +7,8 @@
 
 #include "acpipriv.h"
 #include <uacpi/event.h>
-#include <uacpi/namespace.h>      // uacpi_namespace_for_each_child_simple
-#include <uacpi/utilities.h>      // uacpi_eval_hid
+#include <uacpi/namespace.h>      // uacpi_namespace_node_find
+#include <uacpi/utilities.h>      // uacpi_eval_simple_integer
 
 // TRUE if 'node' has a direct child object named 'name'.
 BOOLEAN
@@ -462,8 +462,22 @@ UacpiWakeSetPsw(PUACPI_WAKE Wake, uacpi_u64 Enable)
         return;
     }
 
+    /* Which of the two exists never changes, so resolve it once per device. */
+    if (!Wake->PswParsed)
+    {
+        Wake->HasDsw = UacpiNodeHasChild(Wake->Node, "_DSW");
+        Wake->HasPsw = Wake->HasDsw ? FALSE
+                                    : UacpiNodeHasChild(Wake->Node, "_PSW");
+        Wake->PswParsed = TRUE;
+    }
+
+    if (!Wake->HasDsw && !Wake->HasPsw)
+    {
+        return;
+    }
+
 #if (NTDDI_VERSION >= NTDDI_WIN8)
-    if (UacpiNodeHasChild(Wake->Node, "_DSW"))
+    if (Wake->HasDsw)
     {
         // Arg1 = target system state (sleep number), Arg2 = target device state.
         uacpi_u64 targetS = 0;
@@ -507,77 +521,13 @@ UacpiWakeSetPsw(PUACPI_WAKE Wake, uacpi_u64 Enable)
     }
 }
 
-// One special fixed-function HID whose GPE must stay live in S0.
-static BOOLEAN
-UacpiWakeIsAlwaysOnHid(const char *Hid)
-{
-    return _stricmp(Hid, "PNP0C0C") == 0 ||   // power button
-           _stricmp(Hid, "PNP0C0D") == 0 ||   // lid
-           _stricmp(Hid, "PNP0C0E") == 0 ||   // sleep button
-           _stricmp(Hid, "PNP0C32") == 0 ||   // extra/app-launch button
-           _stricmp(Hid, "PNP0B00") == 0;     // RTC alarm
-}
-
-// Boot _PRW pass. For each device with an Integer-form _PRW: mark its GPE for
-// wake (so finalize leaves it disabled) and disarm the device's own wake circuit
-// so nothing starts armed. The fixed-function buttons/lid/RTC signal in S0
-// through that GPE, so those are enabled straight away.
-static uacpi_iteration_decision
-UacpiWakeBootCb(void *user, uacpi_namespace_node *node, uacpi_u32 depth)
-{
-    uacpi_object *ret = NULL;
-    uacpi_object_array pkg;
-    uacpi_u64 gpe = 0;
-
-    UNREFERENCED_PARAMETER(user);
-    UNREFERENCED_PARAMETER(depth);
-
-    if (uacpi_unlikely_error(uacpi_eval(node, "_PRW", NULL, &ret)) || ret == NULL)
-    {
-        return UACPI_ITERATION_DECISION_CONTINUE;
-    }
-
-    if (uacpi_object_get_type(ret) == UACPI_OBJECT_PACKAGE &&
-        uacpi_likely_success(uacpi_object_get_package(ret, &pkg)) &&
-        pkg.count >= 2 &&
-        uacpi_object_get_type(pkg.objects[0]) == UACPI_OBJECT_INTEGER &&
-        uacpi_likely_success(uacpi_object_get_integer(pkg.objects[0], &gpe)) &&
-        gpe <= 0xFF)
-        {
-        UACPI_WAKE       tmp;
-        uacpi_id_string *idstr = NULL;
-        char             hid[16] = { 0 };
-
-        (void)uacpi_setup_gpe_for_wake(NULL, (uacpi_u16)gpe, node);
-
-        // Disarm the device's own wake circuit (Enable == 0 gives _PSW(0) or
-        // _DSW(0,0,0)); reuse the gated path with a throwaway wake block.
-        UacpiWakeInit(&tmp, node);
-        UacpiWakeSetPsw(&tmp, 0);
-
-        if (uacpi_likely_success(uacpi_eval_hid(node, &idstr)) && idstr != NULL)
-        {
-            RtlStringCbCopyA(hid, sizeof(hid), idstr->value);
-            uacpi_free_id_string(idstr);
-        }
-        if (UacpiWakeIsAlwaysOnHid(hid))
-        {
-            (void)uacpi_enable_gpe(NULL, (uacpi_u16)gpe);
-            UacpiTrace("[acpi] wake: boot-enabled GPE 0x%02X for %s\n",
-                      (ULONG)gpe, hid);
-        }
-    }
-
-    uacpi_object_unref(ret);
-    return UACPI_ITERATION_DECISION_CONTINUE;
-}
-
-VOID
-UacpiWakeBootInit(void)
-{
-    (void)uacpi_namespace_for_each_child_simple(
-        uacpi_namespace_root(), UacpiWakeBootCb, NULL);
-}
+/*
+ * The boot-time _PRW sweep that used to live here is gone. acpi.sys resolves
+ * _PRW and _DSW/_PSW per device inside its build state machine, and marks a
+ * GPE for wake only when the device actually gets a WAIT_WAKE. UacpiWakeArm
+ * below is that path. Sweeping the whole namespace at bring-up instead ran AML
+ * on every node with the SCI already live, which is what hung boot.
+ */
 
 // Disarm the wake GPE if armed. PASSIVE_LEVEL, Lock not held.
 static VOID
