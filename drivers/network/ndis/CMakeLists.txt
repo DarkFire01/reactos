@@ -29,6 +29,7 @@ list(APPEND SOURCE
     ndis/memory.c
     ndis/miniport.c
     ndis/misc.c
+    ndis/nbl.c
     ndis/protocol.c
     ndis/string.c
     ndis/time.c
