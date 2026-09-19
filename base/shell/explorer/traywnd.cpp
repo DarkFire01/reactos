@@ -456,7 +456,9 @@ public:
         if (SHRestricted(REST_NOSAVESET))
             return;
 
-        SendMessage(m_DesktopWnd, WM_PROGMAN_SAVESTATE, 0, 0);
+        /* The tray can receive commands before the desktop has registered. */
+        if (::IsWindow(m_DesktopWnd))
+            ::SendMessageW(m_DesktopWnd, WM_PROGMAN_SAVESTATE, 0, 0);
 
         if (SHRestricted(REST_CLEARRECENTDOCSONEXIT))
             ClearRecentAndMru();
@@ -3194,7 +3196,7 @@ HandleTrayContextMenu:
             return FALSE;
         }
 
-        if (m_TrayBandSite == NULL || FAILED_UNEXPECTEDLY(m_TrayBandSite->ProcessMessage(m_hWnd, uMsg, wParam, lParam, &Ret)))
+        if (m_TrayBandSite == NULL || FAILED(m_TrayBandSite->ProcessMessage(m_hWnd, uMsg, wParam, lParam, &Ret)))
         {
             return HandleCommand(LOWORD(wParam));
         }

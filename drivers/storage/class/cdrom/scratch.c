@@ -717,15 +717,21 @@ Return Value:
                     originalRequestContext->ReadWriteRetryInitialized = TRUE;
                 }
 
-                KeAcquireSpinLock(&requestContext->ReadWriteCancelSpinLock, &oldIrql);
+                /*
+                 * Marking the original request cancelable and arming its timer
+                 * must be atomic with respect to its cancellation callback.
+                 * The scratch request has a different request context and is
+                 * reused for every transfer.
+                 */
+                KeAcquireSpinLock(&originalRequestContext->ReadWriteCancelSpinLock, &oldIrql);
 
                 status = WdfRequestMarkCancelableEx(originalRequest, ScratchBuffer_ReadWriteEvtRequestCancel);
 
                 if (status == STATUS_CANCELLED)
                 {
-                    requestContext->ReadWriteIsCompleted = TRUE;
+                    originalRequestContext->ReadWriteIsCompleted = TRUE;
 
-                    KeReleaseSpinLock(&requestContext->ReadWriteCancelSpinLock, oldIrql);
+                    KeReleaseSpinLock(&originalRequestContext->ReadWriteCancelSpinLock, oldIrql);
                 }
                 else
                 {
@@ -741,7 +747,7 @@ Return Value:
                                &originalRequestContext->ReadWriteDpc
                                );
 
-                    KeReleaseSpinLock(&requestContext->ReadWriteCancelSpinLock, oldIrql);
+                    KeReleaseSpinLock(&originalRequestContext->ReadWriteCancelSpinLock, oldIrql);
 
                     return;
                 }

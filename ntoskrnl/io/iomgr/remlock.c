@@ -86,6 +86,10 @@ IoAcquireRemoveLockEx(IN PIO_REMOVE_LOCK RemoveLock,
     KIRQL OldIrql;
     LONG LockValue;
     PIO_REMOVE_LOCK_TRACKING_BLOCK TrackingBlock;
+    PIO_REMOVE_LOCK_TRACKING_BLOCK CurrentBlock;
+    LARGE_INTEGER LockMoment;
+    ULONG BlocksToScan;
+    BOOLEAN FreeTrackingBlock;
     PEXTENDED_IO_REMOVE_LOCK Lock = (PEXTENDED_IO_REMOVE_LOCK)RemoveLock;
 
     DPRINT("%s(%p %p %s %u %u)\n", __FUNCTION__, RemoveLock, Tag, File, Line, RemlockSize);
@@ -109,18 +113,67 @@ IoAcquireRemoveLockEx(IN PIO_REMOVE_LOCK RemoveLock,
             }
             else
             {
-                /* Initialize block */
-                RtlZeroMemory(TrackingBlock, sizeof(IO_REMOVE_LOCK_TRACKING_BLOCK));
-                TrackingBlock->Tag = Tag;
-                TrackingBlock->File = File;
-                TrackingBlock->Line = Line;
-                KeQueryTickCount(&(TrackingBlock->LockMoment));
+                KeQueryTickCount(&LockMoment);
+                FreeTrackingBlock = FALSE;
 
-                /* Queue the block */
+                /* Queue the block. Check it before writing to it: a corrupt
+                 * pool lookaside list can return storage which is still linked
+                 * here, and clearing that storage would corrupt this list. */
                 KeAcquireSpinLock(&(Lock->Dbg.Spin), &OldIrql);
-                TrackingBlock->Next = Lock->Dbg.Blocks;
-                Lock->Dbg.Blocks = TrackingBlock;
+
+                CurrentBlock = Lock->Dbg.Blocks;
+                BlocksToScan = (LockValue > 0) ? (ULONG)LockValue : 0;
+                while (CurrentBlock && BlocksToScan--)
+                {
+                    if (CurrentBlock == TrackingBlock)
+                        break;
+
+                    /* Preserve the functional remove lock if its optional
+                     * tracking list has acquired a duplicate self-link. */
+                    if (CurrentBlock->Next == CurrentBlock)
+                    {
+                        DPRINT1("Remove lock %p has self-linked tracking block %p\n",
+                                Lock, CurrentBlock);
+                        CurrentBlock->Next = NULL;
+                        InterlockedIncrement(&(Lock->Dbg.LowMemoryCount));
+                        CurrentBlock = NULL;
+                        break;
+                    }
+
+                    CurrentBlock = CurrentBlock->Next;
+                }
+
+                if (CurrentBlock == TrackingBlock)
+                {
+                    /* The new acquisition cannot have a second record without
+                     * overwriting the existing one. Account it like an
+                     * allocation failure and leave the existing record intact. */
+                    DPRINT1("Pool returned linked tracking block %p for remove lock %p\n",
+                            TrackingBlock, Lock);
+                    InterlockedIncrement(&(Lock->Dbg.LowMemoryCount));
+                }
+                else if (CurrentBlock != NULL)
+                {
+                    /* The list contains more entries than the lock can own. */
+                    DPRINT1("Remove lock %p tracking list is cyclic\n", Lock);
+                    InterlockedIncrement(&(Lock->Dbg.LowMemoryCount));
+                    FreeTrackingBlock = TRUE;
+                }
+                else
+                {
+                    RtlZeroMemory(TrackingBlock, sizeof(IO_REMOVE_LOCK_TRACKING_BLOCK));
+                    TrackingBlock->Tag = Tag;
+                    TrackingBlock->LockMoment = LockMoment;
+                    TrackingBlock->File = File;
+                    TrackingBlock->Line = Line;
+                    TrackingBlock->Next = Lock->Dbg.Blocks;
+                    Lock->Dbg.Blocks = TrackingBlock;
+                }
+
                 KeReleaseSpinLock(&(Lock->Dbg.Spin), OldIrql);
+
+                if (FreeTrackingBlock)
+                    ExFreePoolWithTag(TrackingBlock, Lock->Dbg.AllocateTag);
             }
         }
     }
@@ -155,6 +208,7 @@ IoReleaseRemoveLockEx(IN PIO_REMOVE_LOCK RemoveLock,
     BOOLEAN TagFound;
     LARGE_INTEGER CurrentMoment;
     PIO_REMOVE_LOCK_TRACKING_BLOCK TrackingBlock;
+    PIO_REMOVE_LOCK_TRACKING_BLOCK NextBlock;
     PIO_REMOVE_LOCK_TRACKING_BLOCK *TrackingBlockLink;
     PEXTENDED_IO_REMOVE_LOCK Lock = (PEXTENDED_IO_REMOVE_LOCK)RemoveLock;
 
@@ -175,6 +229,20 @@ IoReleaseRemoveLockEx(IN PIO_REMOVE_LOCK RemoveLock,
         TrackingBlockLink = &(Lock->Dbg.Blocks);
         while (TrackingBlock != NULL)
         {
+            NextBlock = TrackingBlock->Next;
+            if (NextBlock == TrackingBlock)
+            {
+                DPRINT1("Remove lock %p has self-linked tracking block %p\n",
+                        Lock, TrackingBlock);
+                TrackingBlock->Next = NULL;
+                NextBlock = NULL;
+
+                /* A self-link represents at least one acquisition whose
+                 * tracking record was aliased. Preserve the bookkeeping used
+                 * for ordinary tracking-allocation failures. */
+                InterlockedIncrement(&(Lock->Dbg.LowMemoryCount));
+            }
+
             /* First of all, check if the lock was locked for too long */
             if (Lock->Dbg.MaxLockedTicks &&
                 CurrentMoment.QuadPart - TrackingBlock->LockMoment.QuadPart > Lock->Dbg.MaxLockedTicks)
@@ -190,7 +258,7 @@ IoReleaseRemoveLockEx(IN PIO_REMOVE_LOCK RemoveLock,
             {
                 /* Unlink this tracking block, and free it */
                 TagFound = TRUE;
-                *TrackingBlockLink = TrackingBlock->Next;
+                *TrackingBlockLink = NextBlock;
                 ExFreePoolWithTag(TrackingBlock, Lock->Dbg.AllocateTag);
                 TrackingBlock = *TrackingBlockLink;
             }
@@ -198,7 +266,7 @@ IoReleaseRemoveLockEx(IN PIO_REMOVE_LOCK RemoveLock,
             {
                 /* Go to the next tracking block */
                 TrackingBlockLink = &(TrackingBlock->Next);
-                TrackingBlock = TrackingBlock->Next;
+                TrackingBlock = NextBlock;
             }
         }
 

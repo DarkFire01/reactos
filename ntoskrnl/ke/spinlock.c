@@ -417,25 +417,38 @@ KeReleaseInStackQueuedSpinLockFromDpcLevel(IN PKLOCK_QUEUE_HANDLE LockHandle)
 }
 
 /*
- * @unimplemented
+ * @implemented
  */
 KIRQL
 FASTCALL
 KeAcquireSpinLockForDpc(IN PKSPIN_LOCK SpinLock)
 {
-    UNIMPLEMENTED;
-    return 0;
+    KIRQL OldIrql;
+
+    /* Preserve DISPATCH_LEVEL callers and raise lower callers as needed. */
+    OldIrql = KeGetCurrentIrql();
+    ASSERT(OldIrql <= DISPATCH_LEVEL);
+    if (OldIrql < DISPATCH_LEVEL)
+        KfRaiseIrql(DISPATCH_LEVEL);
+
+    KeAcquireSpinLockAtDpcLevel(SpinLock);
+    return OldIrql;
 }
 
 /*
- * @unimplemented
+ * @implemented
  */
 VOID
 FASTCALL
 KeReleaseSpinLockForDpc(IN PKSPIN_LOCK SpinLock,
                         IN KIRQL OldIrql)
 {
-    UNIMPLEMENTED;
+    ASSERT(KeGetCurrentIrql() == DISPATCH_LEVEL);
+    ASSERT(OldIrql <= DISPATCH_LEVEL);
+
+    KeReleaseSpinLockFromDpcLevel(SpinLock);
+    if (OldIrql < DISPATCH_LEVEL)
+        KeLowerIrql(OldIrql);
 }
 
 /*

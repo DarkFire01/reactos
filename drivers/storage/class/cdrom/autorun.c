@@ -2836,12 +2836,21 @@ Return Value:
 
 --*/
 {
-    PCDROM_DEVICE_EXTENSION      deviceExtension = NULL;
-    size_t                       dataLength = 0;
+    PCDROM_DEVICE_EXTENSION deviceExtension = NULL;
+    size_t dataLength = 0;
+    ULONG period;
 
     deviceExtension = WdfObjectGetTypedContext(WdfTimerGetParentObject(Timer), CDROM_DEVICE_EXTENSION);
 
     (void) RequestHandleEventNotification(deviceExtension, NULL, NULL, &dataLength);
+
+    /*
+     * Passive-level WDF timers must be one-shot.  Rearm after the callback so
+     * the media-change I/O never runs in the timer DPC.
+     */
+    period = TEST_FLAG(deviceExtension->DeviceAdditionalData.HackFlags,
+                       CDROM_HACK_MSFT_VIRTUAL_ODD) ? 2000 : 1000;
+    WdfTimerStart(Timer, WDF_REL_TIMEOUT_IN_MS(period));
 
     return;
 } // end DeviceMainTimerTickHandler()
@@ -2885,27 +2894,16 @@ Return Value:
 
         WDF_TIMER_CONFIG_INIT(&timerConfig, DeviceMainTimerTickHandler);
 
-        // Polling frequently on virtual optical devices created by Hyper-V will
-        // cause a significant perf / power hit. These devices need to be polled
-        // less frequently for device state changes.
-        if (TEST_FLAG(DeviceExtension->DeviceAdditionalData.HackFlags, CDROM_HACK_MSFT_VIRTUAL_ODD))
-        {
-            timerConfig.Period = 2000; // 2 seconds, in milliseconds.
-        }
-        else
-        {
-            timerConfig.Period = 1000; // 1 second, in milliseconds.
-        }
-
+        /*
+         * Media-change detection submits I/O and requires APC_LEVEL or below.
+         * Use an explicitly passive, one-shot timer; the callback rearms it.
+         */
         timerConfig.TolerableDelay = 500; // 0.5 seconds, in milliseconds
-
-        //Set the autoSerialization to FALSE, as the parent device's
-        //execute level is WdfExecutionLevelPassive.
         timerConfig.AutomaticSerialization = FALSE;
 
         WDF_OBJECT_ATTRIBUTES_INIT(&timerAttributes);
         timerAttributes.ParentObject = DeviceExtension->Device;
-        timerAttributes.ExecutionLevel = WdfExecutionLevelInheritFromParent;
+        timerAttributes.ExecutionLevel = WdfExecutionLevelPassive;
 
         status = WdfTimerCreate(&timerConfig,
                                 &timerAttributes,

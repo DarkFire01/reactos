@@ -131,7 +131,7 @@ FASTCALL
 FindSystemTimer(PMSG pMsg)
 {
   PLIST_ENTRY pLE;
-  PTIMER pTmr = NULL;
+  PTIMER pTmr, RetTmr = NULL;
 
   TimerEnterExclusive();
   pLE = TimersListHead.Flink;
@@ -141,13 +141,16 @@ FindSystemTimer(PMSG pMsg)
 
     if ( pMsg->lParam == (LPARAM)pTmr->pfn &&
          (pTmr->flags & TMRF_SYSTEM) )
+    {
+       RetTmr = pTmr;
        break;
+    }
 
     pLE = pLE->Flink;
   }
   TimerLeave();
 
-  return pTmr;
+  return RetTmr;
 }
 
 BOOL

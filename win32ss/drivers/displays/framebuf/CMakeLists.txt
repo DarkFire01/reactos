@@ -1,5 +1,6 @@
 
 list(APPEND SOURCE
+    blt.c
     enable.c
     palette.c
     pointer.c
