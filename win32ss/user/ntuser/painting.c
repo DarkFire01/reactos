@@ -1717,7 +1717,8 @@ NtUserFillWindow(HWND hWndParent,
    USER_REFERENCE_ENTRY Ref;
 
    TRACE("Enter NtUserFillWindow\n");
-   UserEnterExclusive();
+   /* Window geometry and properties are read-only in this drawing path. */
+   UserEnterShared();
 
    if (!hDC)
    {
@@ -2326,9 +2327,9 @@ BOOL UserDrawCaption(
       if (pWnd)
       {
          if (Set)
-            pWnd->state2 &= ~WNDS2_CAPTIONTEXTTRUNCATED;
+            InterlockedAnd((PLONG)&pWnd->state2, ~WNDS2_CAPTIONTEXTTRUNCATED);
          else
-            pWnd->state2 |= WNDS2_CAPTIONTEXTTRUNCATED;
+            InterlockedOr((PLONG)&pWnd->state2, WNDS2_CAPTIONTEXTTRUNCATED);
       }
    }
 
@@ -2385,7 +2386,12 @@ NtUserDrawCaptionTemp(
    RECTL SafeRect;
    BOOL Ret;
 
-   UserEnterExclusive();
+   /* The special NC modes mutate window-manager state; normal caption
+    * rendering only consumes a stable window snapshot. */
+   if (uFlags & (DC_DRAWCAPTIONMD | DC_DRAWFRAMEMD))
+      UserEnterExclusive();
+   else
+      UserEnterShared();
 
    if (hWnd != NULL)
    {
@@ -2523,7 +2529,8 @@ NtUserExcludeUpdateRgn(
     PWND pWnd;
 
     TRACE("Enter NtUserExcludeUpdateRgn\n");
-    UserEnterExclusive();
+    /* The window update region is sampled; the HDC owns its clip state. */
+    UserEnterShared();
 
     pWnd = UserGetWindowObject(hWnd);
 
