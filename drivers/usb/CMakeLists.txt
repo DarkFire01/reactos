@@ -1,4 +1,7 @@
-add_subdirectory(usb3-reactos)
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/usb3-reactos)
+    add_subdirectory(usb3-reactos)
+endif()
 add_subdirectory(usbccgp)
 add_subdirectory(usbd)
 add_subdirectory(usbehci)
