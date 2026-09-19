@@ -946,6 +946,12 @@ typedef struct _NDIS_CONFIGURATION_PARAMETER {
 
 typedef PHYSICAL_ADDRESS NDIS_PHYSICAL_ADDRESS, *PNDIS_PHYSICAL_ADDRESS;
 
+#if (NDIS_SUPPORT_NDIS6)
+#include <ndis/nbl.h>
+#include <ndis/nblaccessors.h>
+#include <ndis/nblapi.h>
+#endif
+
 typedef struct _NDIS_PHYSICAL_ADDRESS_UNIT {
   NDIS_PHYSICAL_ADDRESS PhysicalAddress;
   UINT Length;
