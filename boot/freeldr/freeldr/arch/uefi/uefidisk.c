@@ -752,6 +752,43 @@ GetHarddiskInformation(
     TRACE("Identifier: %s\n", Identifier);
 }
 
+/*
+ * Checks whether RootPath is the device path of the disk that ChildPath's
+ * partition lives on, by requiring RootPath's nodes to be an exact prefix
+ * of ChildPath, followed by at least one more node (the partition itself).
+ * Block size/removable-media heuristics can't tell two disks apart, so this
+ * is the only reliable way to map a partition handle back to its own disk.
+ */
+static
+BOOLEAN
+UefiDevicePathIsParentOf(
+    IN EFI_DEVICE_PATH_PROTOCOL *RootPath,
+    IN EFI_DEVICE_PATH_PROTOCOL *ChildPath)
+{
+    if (RootPath == NULL || ChildPath == NULL)
+        return FALSE;
+
+    while (!IsDevicePathEnd(RootPath))
+    {
+        UINT16 RootLength, ChildLength;
+
+        if (IsDevicePathEnd(ChildPath))
+            return FALSE;
+
+        RootLength = DevicePathNodeLength(RootPath);
+        ChildLength = DevicePathNodeLength(ChildPath);
+
+        if (RootLength != ChildLength || !RtlEqualMemory(RootPath, ChildPath, RootLength))
+            return FALSE;
+
+        RootPath = NextDevicePathNode(RootPath);
+        ChildPath = NextDevicePathNode(ChildPath);
+    }
+
+    /* ChildPath must carry at least one extra node (its partition node) past RootPath */
+    return !IsDevicePathEnd(ChildPath);
+}
+
 static
 VOID
 UefiSetupBlockDevices(VOID)
@@ -948,53 +985,39 @@ UefiSetupBlockDevices(VOID)
 
         if (!EFI_ERROR(Status) && BlockIo != NULL && BlockIo->Media->LogicalPartition)
         {
-            TRACE("Boot handle is a logical partition, searching for parent root device\n");
-            TRACE("Boot partition: BlockSize=%lu, RemovableMedia=%s\n",
-                BlockIo->Media->BlockSize,
-                BlockIo->Media->RemovableMedia ? "TRUE" : "FALSE");
-
-            /* Find the root device that matches the boot partition's characteristics */
-            /* For CD-ROMs: match BlockSize=2048 and RemovableMedia=TRUE */
-            /* For hard disks: match BlockSize and find the root device before this partition */
+            EFI_GUID DevicePathGuid = EFI_DEVICE_PATH_PROTOCOL_GUID;
+            EFI_DEVICE_PATH_PROTOCOL *BootDevicePath = NULL;
             BOOLEAN FoundBootDevice = FALSE;
-            for (i = 0; i < BlockDeviceIndex; i++)
+
+            TRACE("Boot handle is a logical partition, searching for parent root device\n");
+
+            Status = GlobalSystemTable->BootServices->HandleProtocol(
+                handles[UefiBootRootIndex],
+                &DevicePathGuid,
+                (VOID**)&BootDevicePath);
+
+            if (!EFI_ERROR(Status) && BootDevicePath != NULL)
             {
-                EFI_BLOCK_IO* RootBlockIo;
-                Status = GlobalSystemTable->BootServices->HandleProtocol(
-                    InternalUefiDisk[i].Handle,
-                    &BlockIoGuid,
-                    (VOID**)&RootBlockIo);
-
-                if (EFI_ERROR(Status) || RootBlockIo == NULL)
-                    continue;
-
-                /* For CD-ROM: match BlockSize=2048 and RemovableMedia */
-                if (BlockIo->Media->BlockSize == 2048 && BlockIo->Media->RemovableMedia)
+                /* Match the boot partition to the disk whose device path is its actual prefix */
+                for (i = 0; i < BlockDeviceIndex; i++)
                 {
-                    if (RootBlockIo->Media->BlockSize == 2048 && 
-                        RootBlockIo->Media->RemovableMedia &&
-                        !RootBlockIo->Media->LogicalPartition)
+                    EFI_DEVICE_PATH_PROTOCOL *RootDevicePath = NULL;
+
+                    Status = GlobalSystemTable->BootServices->HandleProtocol(
+                        InternalUefiDisk[i].Handle,
+                        &DevicePathGuid,
+                        (VOID**)&RootDevicePath);
+
+                    if (EFI_ERROR(Status) || RootDevicePath == NULL)
+                        continue;
+
+                    if (UefiDevicePathIsParentOf(RootDevicePath, BootDevicePath))
                     {
                         PublicBootArcDisk = i;
                         InternalUefiDisk[i].IsThisTheBootDrive = TRUE;
                         FoundBootDevice = TRUE;
-                        TRACE("Found CD-ROM boot device at ARC drive index %lu\n", i);
+                        TRACE("Found boot device's disk at ARC drive index %lu via device path\n", i);
                         break;
-                    }
-                }
-                /* For hard disk partitions: the root device should be before the partition handle */
-                else if (InternalUefiDisk[i].UefiHandleIndex < UefiBootRootIndex)
-                {
-                    /* Check if this root device is likely the parent */
-                    if (RootBlockIo->Media->BlockSize == BlockIo->Media->BlockSize &&
-                        !RootBlockIo->Media->LogicalPartition)
-                    {
-                        /* This might be the parent, but we need to be more certain */
-                        /* For now, use the last root device before the boot handle */
-                        PublicBootArcDisk = i;
-                        InternalUefiDisk[i].IsThisTheBootDrive = TRUE;
-                        FoundBootDevice = TRUE;
-                        TRACE("Found potential hard disk boot device at ARC drive index %lu\n", i);
                     }
                 }
             }
