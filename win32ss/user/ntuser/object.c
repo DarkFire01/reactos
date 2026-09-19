@@ -651,10 +651,14 @@ UserDereferenceObject(PVOID Object)
     ASSERT(ObjHead->cLockObj >= 1);
     ASSERT(ObjHead->cLockObj < 0x10000);
 
-    if (--ObjHead->cLockObj == 0)
+    if (InterlockedDecrement((PLONG)&ObjHead->cLockObj) == 0)
     {
         PUSER_HANDLE_ENTRY entry;
         HANDLE_TYPE type;
+
+        /* Handle-table removal and object teardown remain exclusive USER
+         * operations even though ordinary references are SMP-safe. */
+        ASSERT(UserIsEnteredExclusive());
 
         entry = handle_to_entry(gHandleTable, ObjHead->h);
 
@@ -756,7 +760,7 @@ UserReferenceObject(PVOID obj)
    PHEAD ObjHead = obj;
    ASSERT(ObjHead->cLockObj < 0x10000);
 
-   ObjHead->cLockObj++;
+   InterlockedIncrement((PLONG)&ObjHead->cLockObj);
 }
 
 PVOID
