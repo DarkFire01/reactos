@@ -1940,9 +1940,18 @@ IoInvalidateDeviceRelations(
     IN PDEVICE_OBJECT DeviceObject,
     IN DEVICE_RELATION_TYPE Type)
 {
-    if (!IopIsValidPhysicalDeviceObject(DeviceObject))
+    /* A device object the PnP manager never gave a node to is not a PDO */
+    if ((DeviceObject == NULL) || (DeviceObject->DeviceObjectExtension == NULL) ||
+        (IopGetDeviceNode(DeviceObject) == NULL))
     {
         KeBugCheckEx(PNP_DETECTED_FATAL_ERROR, 0x2, (ULONG_PTR)DeviceObject, 0, 0);
+    }
+
+    /* A bus that is itself going away has no relations left to report */
+    if (!(IopGetDeviceNode(DeviceObject)->Flags & DNF_ENUMERATED))
+    {
+        DPRINT("Ignoring the relations of a device that is no longer enumerated\n");
+        return;
     }
 
     switch (Type)
@@ -1968,9 +1977,18 @@ IoSynchronousInvalidateDeviceRelations(
 {
     PAGED_CODE();
 
-    if (!IopIsValidPhysicalDeviceObject(DeviceObject))
+    /* A device object the PnP manager never gave a node to is not a PDO */
+    if ((DeviceObject == NULL) || (DeviceObject->DeviceObjectExtension == NULL) ||
+        (IopGetDeviceNode(DeviceObject) == NULL))
     {
         KeBugCheckEx(PNP_DETECTED_FATAL_ERROR, 0x2, (ULONG_PTR)DeviceObject, 0, 0);
+    }
+
+    /* A bus that is itself going away has no relations left to report */
+    if (!(IopGetDeviceNode(DeviceObject)->Flags & DNF_ENUMERATED))
+    {
+        DPRINT("Ignoring the relations of a device that is no longer enumerated\n");
+        return STATUS_INVALID_DEVICE_REQUEST;
     }
 
     switch (Type)
@@ -1995,9 +2013,25 @@ NTAPI
 IoInvalidateDeviceState(
     IN PDEVICE_OBJECT DeviceObject)
 {
-    if (!IopIsValidPhysicalDeviceObject(DeviceObject))
+    PDEVICE_NODE DeviceNode;
+
+    /* A device object the PnP manager never gave a node to is not a PDO */
+    if ((DeviceObject == NULL) || (DeviceObject->DeviceObjectExtension == NULL) ||
+        (IopGetDeviceNode(DeviceObject) == NULL))
     {
         KeBugCheckEx(PNP_DETECTED_FATAL_ERROR, 0x2, (ULONG_PTR)DeviceObject, 0, 0);
+    }
+
+    /*
+     * A driver learns that its device changed and asks for it to be looked at
+     * again, which races the bus taking that device away. Once the device is
+     * gone there is nothing left to query, and the driver did nothing wrong.
+     */
+    DeviceNode = IopGetDeviceNode(DeviceObject);
+    if (!(DeviceNode->Flags & DNF_ENUMERATED))
+    {
+        DPRINT("Ignoring the state change of a device that is no longer enumerated\n");
+        return;
     }
 
     PiQueueDeviceAction(DeviceObject, PiActionQueryState, NULL, NULL);
