@@ -916,13 +916,17 @@ HidUsb_GetReportDescriptor(
     HidDeviceExtension = DeviceExtension->MiniDeviceExtension;
 
     //
-    // sanity checks
+    // the descriptor list is whatever the device said it was, so check it
+    // rather than assert on it
     //
-    ASSERT(HidDeviceExtension);
-    ASSERT(HidDeviceExtension->HidDescriptor);
-    ASSERT(HidDeviceExtension->HidDescriptor->bNumDescriptors >= 1);
-    ASSERT(HidDeviceExtension->HidDescriptor->DescriptorList[0].bReportType == HID_REPORT_DESCRIPTOR_TYPE);
-    ASSERT(HidDeviceExtension->HidDescriptor->DescriptorList[0].wReportLength > 0);
+    if (HidDeviceExtension->HidDescriptor == NULL ||
+        HidDeviceExtension->HidDescriptor->bNumDescriptors < 1 ||
+        HidDeviceExtension->HidDescriptor->DescriptorList[0].bReportType != HID_REPORT_DESCRIPTOR_TYPE ||
+        HidDeviceExtension->HidDescriptor->DescriptorList[0].wReportLength == 0)
+    {
+        DPRINT1("[HIDUSB] no usable report descriptor entry\n");
+        return STATUS_DEVICE_DATA_ERROR;
+    }
 
     //
     // FIXME: support old hid version
@@ -1817,6 +1821,7 @@ Hid_PnpStart(
     PHID_DEVICE_EXTENSION DeviceExtension;
     NTSTATUS Status;
     ULONG DescriptorLength;
+    ULONG Offset;
     PUSB_INTERFACE_DESCRIPTOR InterfaceDescriptor;
     PHID_DESCRIPTOR HidDescriptor;
 
@@ -1869,16 +1874,26 @@ Hid_PnpStart(
     }
 
     //
-    // sanity check
+    // everything below indexes this descriptor, so a device that answered
+    // with nothing usable has to stop here rather than be asserted at
     //
-    ASSERT(DescriptorLength);
-    ASSERT(HidDeviceExtension->ConfigurationDescriptor);
-    ASSERT(HidDeviceExtension->ConfigurationDescriptor->bLength);
+    if (DescriptorLength < sizeof(USB_CONFIGURATION_DESCRIPTOR) ||
+        HidDeviceExtension->ConfigurationDescriptor == NULL ||
+        HidDeviceExtension->ConfigurationDescriptor->bLength == 0)
+    {
+        DPRINT1("[HIDUSB] configuration descriptor is %lu bytes\n", DescriptorLength);
+        return STATUS_DEVICE_DATA_ERROR;
+    }
 
     //
     // store full length
     //
     DescriptorLength = HidDeviceExtension->ConfigurationDescriptor->wTotalLength;
+    if (DescriptorLength < sizeof(USB_CONFIGURATION_DESCRIPTOR))
+    {
+        DPRINT1("[HIDUSB] configuration claims a total of %lu bytes\n", DescriptorLength);
+        return STATUS_DEVICE_DATA_ERROR;
+    }
 
     //
     // delete partial configuration descriptor
@@ -1925,64 +1940,93 @@ Hid_PnpStart(
         return STATUS_UNSUCCESSFUL;
     }
 
-    //
-    // sanity check
-    //
-    ASSERT(InterfaceDescriptor->bInterfaceClass == USB_DEVICE_CLASS_HUMAN_INTERFACE);
-    ASSERT(InterfaceDescriptor->bDescriptorType == USB_INTERFACE_DESCRIPTOR_TYPE);
-    ASSERT(InterfaceDescriptor->bLength == sizeof(USB_INTERFACE_DESCRIPTOR));
-
-    //
-    // move to next descriptor
-    //
-    HidDescriptor = (PHID_DESCRIPTOR)((ULONG_PTR)InterfaceDescriptor + InterfaceDescriptor->bLength);
-    ASSERT(HidDescriptor->bLength >= 2);
-
-    //
-    // check if this is the hid descriptor
-    //
-    if (HidDescriptor->bLength == sizeof(HID_DESCRIPTOR) && HidDescriptor->bDescriptorType == HID_HID_DESCRIPTOR_TYPE)
+    if (InterfaceDescriptor->bLength < sizeof(USB_INTERFACE_DESCRIPTOR))
     {
-        //
-        // found
-        //
-        HidDeviceExtension->HidDescriptor = HidDescriptor;
+        DPRINT1("[HIDUSB] HID interface descriptor is %u bytes\n",
+                InterfaceDescriptor->bLength);
+        return STATUS_DEVICE_DATA_ERROR;
+    }
+
+    //
+    // The HID descriptor follows its interface, but a device is free to put
+    // its class descriptors in any order and to describe more than the report
+    // descriptor, so walk to it by type and stay inside the configuration.
+    //
+    HidDeviceExtension->HidDescriptor = NULL;
+
+    Offset = (ULONG)((ULONG_PTR)InterfaceDescriptor -
+                     (ULONG_PTR)HidDeviceExtension->ConfigurationDescriptor) +
+             InterfaceDescriptor->bLength;
+
+    while (Offset + sizeof(USB_COMMON_DESCRIPTOR) <= DescriptorLength)
+    {
+        HidDescriptor = (PHID_DESCRIPTOR)((PUCHAR)HidDeviceExtension->ConfigurationDescriptor + Offset);
 
         //
-        // select configuration
+        // a length that cannot advance would spin here
         //
-        Status = Hid_SelectConfiguration(DeviceObject);
+        if (HidDescriptor->bLength < sizeof(USB_COMMON_DESCRIPTOR) ||
+            Offset + HidDescriptor->bLength > DescriptorLength)
+        {
+            DPRINT1("[HIDUSB] descriptor at %lu claims %u bytes of %lu\n",
+                    Offset, HidDescriptor->bLength, DescriptorLength);
+            break;
+        }
 
         //
-        // done
+        // the next interface begins another function, so the search is over
         //
-        DPRINT("[HIDUSB] SelectConfiguration %x\n", Status);
+        if (HidDescriptor->bDescriptorType == USB_INTERFACE_DESCRIPTOR_TYPE)
+        {
+            break;
+        }
 
-        if (NT_SUCCESS(Status))
+        if (HidDescriptor->bDescriptorType == HID_HID_DESCRIPTOR_TYPE)
         {
             //
-            // now set the device idle
+            // bLength covers a list of bNumDescriptors entries, so it is only
+            // sizeof(HID_DESCRIPTOR) for a device that declares just the one
             //
-            Hid_SetIdle(DeviceObject);
+            if (HidDescriptor->bLength < sizeof(HID_DESCRIPTOR) ||
+                HidDescriptor->bNumDescriptors < 1)
+            {
+                DPRINT1("[HIDUSB] HID descriptor is %u bytes with %u entries\n",
+                        HidDescriptor->bLength, HidDescriptor->bNumDescriptors);
+                return STATUS_DEVICE_DATA_ERROR;
+            }
 
-            //
-            // get protocol
-            //
-            Hid_GetProtocol(DeviceObject);
-            return Status;
+            HidDeviceExtension->HidDescriptor = HidDescriptor;
+            break;
         }
+
+        Offset += HidDescriptor->bLength;
     }
-    else
+
+    if (HidDeviceExtension->HidDescriptor == NULL)
+    {
+        DPRINT1("[HIDUSB] no HID descriptor in the configuration\n");
+        return STATUS_DEVICE_DATA_ERROR;
+    }
+
+    //
+    // select configuration
+    //
+    Status = Hid_SelectConfiguration(DeviceObject);
+    DPRINT("[HIDUSB] SelectConfiguration %x\n", Status);
+
+    if (NT_SUCCESS(Status))
     {
         //
-        // FIXME parse hid descriptor
-        // select configuration
-        // set idle
-        // and get protocol
+        // now set the device idle
         //
-        UNIMPLEMENTED;
-        ASSERT(FALSE);
+        Hid_SetIdle(DeviceObject);
+
+        //
+        // get protocol
+        //
+        Hid_GetProtocol(DeviceObject);
     }
+
     return Status;
 }
 
