@@ -23,6 +23,9 @@ DBG_DEFAULT_CHANNEL(WARNING);
  */
 #define SPARE_DESCRIPTOR_COUNT 8
 
+/* Enough pages below 1 MB for the HAL's real-mode AP startup trampoline (5 pages on amd64, 3 on i386) */
+#define LOW_STUB_RESERVE_PAGES 8
+
 ULONG
 AddMemoryDescriptor(
     _Inout_ PFREELDR_MEMORY_DESCRIPTOR List,
@@ -251,6 +254,24 @@ UefiMemGetMemoryMap(ULONG *MemoryMapSize)
     }
 
     RtlZeroMemory(FreeldrMem, FreeldrMemMapSize);
+
+    /*
+     * The kernel's real-mode AP startup trampoline needs identity-mappable
+     * memory below 1 MB. Claim it now, before the loop below hands every
+     * free page in the map over to our own image; otherwise nothing would
+     * be left to reserve for it afterwards.
+     */
+    {
+        EFI_PHYSICAL_ADDRESS LowMemory = 0xFFFFF;
+
+        Status = GlobalSystemTable->BootServices->AllocatePages(AllocateMaxAddress,
+                                                                 EfiLoaderData,
+                                                                 LOW_STUB_RESERVE_PAGES,
+                                                                 &LowMemory);
+        if (Status != EFI_SUCCESS)
+            WARN("Failed to reserve low memory for the AP startup trampoline: %d\n", Status);
+    }
+
     MapEntry = EfiMemoryMap;
 	for (Index = 0; Index < EntryCount; ++Index)
     {
