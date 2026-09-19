@@ -137,10 +137,11 @@ UacpiBringUpInterpreter(PUACPI_FDO Fdo)
     // Phase 4: install handlers first; a GPE during install can deadlock.
     UacpiInstallEventHandlers(Fdo);
 
-    // Mark every _PRW GPE for wake and start each device disarmed, keeping the
-    // fixed-function buttons/lid/RTC live in S0. Must precede finalize so those
-    // GPEs are treated as wake sources, not runtime-auto-enabled.
-    UacpiWakeBootInit();
+    /*
+     * No boot-wide _PRW pass here. A GPE is marked for wake per device, when
+     * that device gets a WAIT_WAKE (UacpiWakeArm), so finalize below enables
+     * the runtime GPEs and leaves the rest alone.
+     */
 
     // Phase 5: enable the runtime GPEs last.
     st = uacpi_finalize_gpe_initialization();
