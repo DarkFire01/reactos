@@ -11,15 +11,9 @@
 #define NDEBUG
 #include <debug.h>
 
-<<<<<<< HEAD
-/* GLOBALS ********************************************************************/
-
-extern KSPIN_LOCK KiReverseStallIpiLock;
-=======
 /* GLOBALS ***/
 
 KSPIN_LOCK KiIpiSpinLock;
->>>>>>> a26e43460a3 (WIP [NTOS:KE/x64] Implement IPI code)
 
 /* FUNCTIONS *****************************************************************/
 
@@ -29,46 +23,6 @@ static PKIPI_BROADCAST_WORKER KiIpiBroadcastWorkerTable[] =
     NULL, // IPI_DPC
     NULL, // IPI_FREEZE
 };
-
-VOID
-FASTCALL
-KiIpiInterruptHandler(
-    _In_ PKTRAP_FRAME TrapFrame)
-{
-    PKPRCB Prcb = KeGetCurrentPrcb();
-    PKPRCB SenderPrcb;
-    ULONG SenderIndex;
-    PKREQUEST_PACKET RequestPacket;
-    PKIPI_WORKER WorkerRoutine;
-    //__debugbreak();
-    /* Process all request packets */
-    while (Prcb->SenderSummary != 0)
-    {
-        /* Get the sender index */
-        NT_VERIFY(BitScanForwardAffinity(&SenderIndex, Prcb->SenderSummary) != 0);
-        ASSERT(SenderIndex < KeNumberProcessors);
-
-        /* Get the request packet */
-        RequestPacket = &Prcb->RequestMailbox[SenderIndex].RequestPacket;
-        WorkerRoutine = RequestPacket->WorkerRoutine;
-
-        /* Call the worker routine */
-        WorkerRoutine(NULL,
-                      RequestPacket->CurrentPacket[0],
-                      RequestPacket->CurrentPacket[1],
-                      RequestPacket->CurrentPacket[2]);
-
-        /* Clear the request summary bit */
-        //InterlockedAnd64(&Prcb->RequestMailbox[SenderIndex].RequestSummary, 0);
-
-        /* Clear the sender summary bit */
-        InterlockedBitTestAndReset64(&Prcb->SenderSummary, SenderIndex);
-
-        /* Clear the sender's target set */
-        SenderPrcb = KiProcessorBlock[SenderIndex];
-        InterlockedBitTestAndReset64(&SenderPrcb->TargetSet, Prcb->Number);
-    }
-}
 
 static
 VOID
@@ -348,7 +302,7 @@ KeIpiGenericCall(
         KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
 
     /* Only one generic call may be in flight at a time */
-    KeAcquireSpinLockAtDpcLevel(&KiReverseStallIpiLock);
+    KeAcquireSpinLockAtDpcLevel(&KiIpiSpinLock);
 
     Prcb = KeGetCurrentPrcb();
     TargetSet = KeActiveProcessors & ~Prcb->SetMember;
@@ -358,7 +312,7 @@ KeIpiGenericCall(
         InterlockedExchange64((PLONG64)&Prcb->TargetSet, (LONG64)TargetSet);
         InterlockedExchange64((PLONG64)&Prcb->PacketBarrier, 1);
 
-        KiIpiSendGenericCall(TargetSet, Function, Argument);
+        KiIpiSendGenericCall(TargetSet, BroadcastFunction, Argument);
 
         /* Nothing may still be running elsewhere once the routine starts */
         while (Prcb->TargetSet != 0)
@@ -378,7 +332,7 @@ KeIpiGenericCall(
         InterlockedExchange64((PLONG64)&Prcb->PacketBarrier, 0);
     }
 
-    Status = Function(Argument);
+    Status = BroadcastFunction(Argument);
 
     if (TargetSet != 0)
     {
@@ -391,7 +345,7 @@ KeIpiGenericCall(
     }
 
     KeLowerIrql(DpcIrql);
-    KeReleaseSpinLockFromDpcLevel(&KiReverseStallIpiLock);
+    KeReleaseSpinLockFromDpcLevel(&KiIpiSpinLock);
     KeLowerIrql(OldIrql);
 
     return Status;
