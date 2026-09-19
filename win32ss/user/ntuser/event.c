@@ -20,6 +20,53 @@ static PEVENTTABLE GlobalEvents = NULL;
 
 /* PRIVATE FUNCTIONS *********************************************************/
 
+VOID
+FASTCALL
+IntFreeEventPack(
+   _In_ LONG_PTR ExtraInfo)
+{
+   PEVENTPACK pEP = (PEVENTPACK)ExtraInfo;
+
+   UserDereferenceObject(pEP->pEH);
+   ExFreePoolWithTag(pEP, TAG_HOOK);
+}
+
+static
+HWINEVENTHOOK*
+FASTCALL
+IntGetEventHookHandles(VOID)
+{
+   HWINEVENTHOOK *pList;
+   PLIST_ENTRY pEntry;
+   UINT i = 0, Count = 0;
+
+   for (pEntry = GlobalEvents->Events.Flink;
+        pEntry != &GlobalEvents->Events;
+        pEntry = pEntry->Flink)
+   {
+      Count++;
+   }
+
+   pList = ExAllocatePoolWithTag(PagedPool,
+                                 (Count + 1) * sizeof(*pList),
+                                 TAG_HOOK);
+   if (!pList)
+      return NULL;
+
+   for (pEntry = GlobalEvents->Events.Flink;
+        pEntry != &GlobalEvents->Events;
+        pEntry = pEntry->Flink)
+   {
+      PEVENTHOOK pEH = CONTAINING_RECORD(pEntry, EVENTHOOK, Chain);
+
+      NT_ASSERT(i < Count);
+      pList[i++] = UserHMGetHandle(pEH);
+   }
+   pList[i] = NULL;
+
+   return pList;
+}
+
 static
 DWORD
 FASTCALL
@@ -118,7 +165,9 @@ IntCallLowLevelEvent( PEVENTHOOK pEH,
    Msg.lParam = POSTEVENT_NWE;
    Msg.time = 0;
 
-   MsqPostMessage(pEH->head.pti, &Msg, FALSE, QS_EVENT, POSTEVENT_NWE, (LONG_PTR)pEP);
+   UserReferenceObject(pEH);
+   if (!MsqPostMessage(pEH->head.pti, &Msg, FALSE, QS_EVENT, POSTEVENT_NWE, (LONG_PTR)pEP))
+      IntFreeEventPack((LONG_PTR)pEP);
    return 0;
 }
 
@@ -169,7 +218,7 @@ co_EVENT_CallEvents( DWORD event,
                                  pEH->ihmod,
                                  pEH->offPfn);
 
-   ExFreePoolWithTag(pEP, TAG_HOOK);
+   IntFreeEventPack((LONG_PTR)pEP);
    return Result;
 }
 
@@ -183,9 +232,10 @@ IntNotifyWinEvent(
    DWORD flags)
 {
    PEVENTHOOK pEH;
-   PLIST_ENTRY ListEntry;
+   HWINEVENTHOOK *pHookHandles;
    PTHREADINFO pti, ptiCurrent;
-   USER_REFERENCE_ENTRY Ref;
+   USER_REFERENCE_ENTRY Ref, WndRef;
+   UINT i;
 
    TRACE("IntNotifyWinEvent GlobalEvents = %p pWnd %p\n", GlobalEvents, pWnd);
 
@@ -200,12 +250,22 @@ IntNotifyWinEvent(
    else
       pti = ptiCurrent;
 
-   ListEntry = GlobalEvents->Events.Flink;
-   ASSERT(ListEntry != &GlobalEvents->Events);
-   while (ListEntry != &GlobalEvents->Events)
+   if (pWnd)
+      UserRefObjectCo(pWnd, &WndRef);
+
+   pHookHandles = IntGetEventHookHandles();
+   if (!pHookHandles)
    {
-     pEH = CONTAINING_RECORD(ListEntry, EVENTHOOK, Chain);
-     ListEntry = ListEntry->Flink;
+      if (pWnd)
+         UserDerefObjectCo(pWnd);
+      return;
+   }
+
+   for (i = 0; pHookHandles[i]; i++)
+   {
+     pEH = (PEVENTHOOK)UserGetObject(gHandleTable, pHookHandles[i], TYPE_WINEVENTHOOK);
+     if (!pEH)
+        continue;
 
      // Must be inside the event window.
      if ( Event >= pEH->eventMin && Event <= pEH->eventMax )
@@ -247,6 +307,10 @@ IntNotifyWinEvent(
         }
      }
    }
+
+   ExFreePoolWithTag(pHookHandles, TAG_HOOK);
+   if (pWnd)
+      UserDerefObjectCo(pWnd);
 }
 
 VOID
