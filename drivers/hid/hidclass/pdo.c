@@ -37,7 +37,6 @@ HidClassPDO_GetCollectionDescription(
     // failed to find collection
     //
     DPRINT1("[HIDCLASS] GetCollectionDescription CollectionNumber %x not found\n", CollectionNumber);
-    ASSERT(FALSE);
     return NULL;
 }
 
@@ -85,11 +84,12 @@ HidClassPDO_GetReportDescriptionByReportID(
         }
     }
 
-    //
-    // failed to find report id
-    //
+    /*
+     * The identifier comes off the wire or out of a client's buffer, so one
+     * the descriptor never named is an ordinary answer. Every caller checks
+     * for it.
+     */
     DPRINT1("[HIDCLASS] GetReportDescriptionByReportID ReportID %x not found\n", ReportID);
-    ASSERT(FALSE);
     return NULL;
 }
 
@@ -224,9 +224,13 @@ HidClassPDO_HandleQueryHardwareId(
     // get collection description
     //
     CollectionDescription = HidClassPDO_GetCollectionDescription(&PDODeviceExtension->Common.DeviceDescription, PDODeviceExtension->CollectionNumber);
-    ASSERT(CollectionDescription);
 
-    if (CollectionDescription->UsagePage == HID_USAGE_PAGE_GENERIC)
+    //
+    // the compatible ids below describe the collection's usage, so a device
+    // without one keeps the hardware ids built above and nothing more
+    //
+    if (CollectionDescription != NULL &&
+        CollectionDescription->UsagePage == HID_USAGE_PAGE_GENERIC)
     {
         switch (CollectionDescription->Usage)
         {
