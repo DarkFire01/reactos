@@ -936,7 +936,12 @@ HidClass_DeviceControl(
             //
             CollectionDescription = HidClassPDO_GetCollectionDescription(&CommonDeviceExtension->DeviceDescription,
                                                                          PDODeviceExtension->CollectionNumber);
-            ASSERT(CollectionDescription);
+            if (CollectionDescription == NULL)
+            {
+                Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                return STATUS_INVALID_DEVICE_REQUEST;
+            }
 
             //
             // init result buffer
@@ -962,7 +967,12 @@ HidClass_DeviceControl(
             //
             CollectionDescription = HidClassPDO_GetCollectionDescription(&CommonDeviceExtension->DeviceDescription,
                                                                          PDODeviceExtension->CollectionNumber);
-            ASSERT(CollectionDescription);
+            if (CollectionDescription == NULL)
+            {
+                Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                return STATUS_INVALID_DEVICE_REQUEST;
+            }
 
             //
             // check if output buffer is big enough
