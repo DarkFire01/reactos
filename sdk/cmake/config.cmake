@@ -96,6 +96,10 @@ endif()
 cmake_dependent_option(ISAPNP_ENABLE "Whether to enable the ISA PnP support." ON
                        "ARCH STREQUAL i386 AND NOT SARCH STREQUAL xbox" OFF)
 
+set(NETCX FALSE CACHE BOOL
+"Whether to build NetAdapterCx and its RTL8168 sample. Both are imported but
+ do not compile yet, see drivers/network/netcx/inc/README.md.")
+
 set(GENERATE_DEPENDENCY_GRAPH FALSE CACHE BOOL
 "Whether to create a GraphML dependency graph of DLLs.")
 
