@@ -342,3 +342,123 @@ HidParser_GetTotalCollectionCount(
     //
     return HidParser_GetCollectionCount(CollectionContext, (PHID_COLLECTION)CollectionContext->RawData);
 }
+
+/*
+ * A report descriptor may number its reports, and a collection then holds one
+ * report per id and type rather than a single one. Walk them all so the report
+ * ids a device really uses can be recovered instead of guessed.
+ */
+static
+VOID
+HidParser_CollectReportIds(
+    IN PHID_COLLECTION_CONTEXT CollectionContext,
+    IN PHID_COLLECTION Collection,
+    OUT PUCHAR ReportIds,
+    IN ULONG MaxReportIds,
+    IN OUT PULONG Count)
+{
+    ULONG Index;
+    ULONG Seen;
+    PHID_REPORT Report;
+    PHID_COLLECTION SubCollection;
+
+    for (Index = 0; Index < Collection->ReportCount; Index++)
+    {
+        Report = (PHID_REPORT)(CollectionContext->RawData + Collection->Offsets[Index]);
+
+        /* One entry per id, no matter how many types carry it */
+        for (Seen = 0; Seen < *Count; Seen++)
+        {
+            if (ReportIds[Seen] == Report->ReportID)
+                break;
+        }
+
+        if (Seen == *Count && *Count < MaxReportIds)
+        {
+            ReportIds[*Count] = Report->ReportID;
+            (*Count)++;
+        }
+    }
+
+    for (Index = 0; Index < Collection->NodeCount; Index++)
+    {
+        SubCollection = (PHID_COLLECTION)(CollectionContext->RawData +
+                                          Collection->Offsets[Collection->ReportCount + Index]);
+        HidParser_CollectReportIds(CollectionContext, SubCollection, ReportIds, MaxReportIds, Count);
+    }
+}
+
+ULONG
+HidParser_GetReportIds(
+    IN PVOID Context,
+    OUT PUCHAR ReportIds,
+    IN ULONG MaxReportIds)
+{
+    PHID_COLLECTION_CONTEXT CollectionContext = (PHID_COLLECTION_CONTEXT)Context;
+    ULONG Count = 0;
+
+    HidParser_CollectReportIds(CollectionContext,
+                               (PHID_COLLECTION)CollectionContext->RawData,
+                               ReportIds,
+                               MaxReportIds,
+                               &Count);
+    return Count;
+}
+
+static
+PHID_REPORT
+HidParser_SearchReportByTypeAndId(
+    IN PHID_COLLECTION_CONTEXT CollectionContext,
+    IN PHID_COLLECTION Collection,
+    IN UCHAR ReportType,
+    IN UCHAR ReportID)
+{
+    ULONG Index;
+    PHID_REPORT Report;
+    PHID_COLLECTION SubCollection;
+
+    for (Index = 0; Index < Collection->ReportCount; Index++)
+    {
+        Report = (PHID_REPORT)(CollectionContext->RawData + Collection->Offsets[Index]);
+        if (Report->Type == ReportType && Report->ReportID == ReportID)
+        {
+            return Report;
+        }
+    }
+
+    for (Index = 0; Index < Collection->NodeCount; Index++)
+    {
+        SubCollection = (PHID_COLLECTION)(CollectionContext->RawData +
+                                          Collection->Offsets[Collection->ReportCount + Index]);
+        Report = HidParser_SearchReportByTypeAndId(CollectionContext, SubCollection,
+                                                   ReportType, ReportID);
+        if (Report)
+        {
+            return Report;
+        }
+    }
+
+    return NULL;
+}
+
+ULONG
+HidParser_GetReportLengthById(
+    IN PVOID Context,
+    IN UCHAR ReportType,
+    IN UCHAR ReportID)
+{
+    PHID_COLLECTION_CONTEXT CollectionContext = (PHID_COLLECTION_CONTEXT)Context;
+    PHID_REPORT Report;
+
+    Report = HidParser_SearchReportByTypeAndId(CollectionContext,
+                                               (PHID_COLLECTION)CollectionContext->RawData,
+                                               ReportType,
+                                               ReportID);
+    if (!Report || Report->ReportSize == 0)
+    {
+        return 0;
+    }
+
+    ASSERT(Report->ReportSize % 8 == 0);
+    return Report->ReportSize / 8;
+}

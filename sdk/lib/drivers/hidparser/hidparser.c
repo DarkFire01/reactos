@@ -25,6 +25,12 @@ HidParser_GetCollectionDescription(
     ULONG CollectionCount;
     ULONG Index;
     PVOID ParserContext;
+    ULONG ReportIdCount;
+    ULONG ReportIndex;
+    ULONG TotalReportIds;
+
+    /* A descriptor cannot name more ids than a byte can hold */
+    UCHAR ReportIds[256];
 
     //
     // first parse the report descriptor
@@ -70,18 +76,8 @@ HidParser_GetCollectionDescription(
     }
 
     //
-    // allocate report description
+    // the report descriptions are allocated once the ids are known, below
     //
-    DeviceDescription->ReportIDs = (PHIDP_REPORT_IDS)AllocFunction(sizeof(HIDP_REPORT_IDS) * CollectionCount);
-    if (!DeviceDescription->ReportIDs)
-    {
-        //
-        // no memory
-        //
-        FreeFunction(DeviceDescription->CollectionDesc);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
     for(Index = 0; Index < CollectionCount; Index++)
     {
         //
@@ -95,24 +91,8 @@ HidParser_GetCollectionDescription(
             // no memory
             //
             FreeFunction(DeviceDescription->CollectionDesc);
-            FreeFunction(DeviceDescription->ReportIDs);
             return ParserStatus;
         }
-
-        //
-        // init report description
-        //
-        DeviceDescription->ReportIDs[Index].CollectionNumber = Index + 1;
-        DeviceDescription->ReportIDs[Index].ReportID = Index; //FIXME
-        DeviceDescription->ReportIDs[Index].InputLength = HidParser_GetReportLength((PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData, HID_REPORT_TYPE_INPUT);
-        DeviceDescription->ReportIDs[Index].OutputLength = HidParser_GetReportLength((PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData, HID_REPORT_TYPE_OUTPUT);
-        DeviceDescription->ReportIDs[Index].FeatureLength = HidParser_GetReportLength((PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData, HID_REPORT_TYPE_FEATURE);
-
-
-        DeviceDescription->ReportIDs[Index].InputLength += (HidParser_UsesReportId((PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData, HID_REPORT_TYPE_INPUT) ? 1 : 0);
-        DeviceDescription->ReportIDs[Index].OutputLength += (HidParser_UsesReportId((PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData, HID_REPORT_TYPE_OUTPUT) ? 1 : 0);
-        DeviceDescription->ReportIDs[Index].FeatureLength += (HidParser_UsesReportId((PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData, HID_REPORT_TYPE_FEATURE) ? 1 : 0);
-
 
         //
         // init collection description
@@ -127,30 +107,105 @@ HidParser_GetCollectionDescription(
         {
             // collection not found
             FreeFunction(DeviceDescription->CollectionDesc);
-            FreeFunction(DeviceDescription->ReportIDs);
             return ParserStatus;
         }
 
         //
-        // windows seems to prepend the report id, regardless if it is required
+        // a client is always handed a report id, so the collection is a byte
+        // longer than the wire report whenever the device does not send one.
+        // with several numbered reports the longest one sets the size.
         //
-        DeviceDescription->CollectionDesc[Index].CollectionNumber = Index + 1;
-        DeviceDescription->CollectionDesc[Index].InputLength = DeviceDescription->ReportIDs[Index].InputLength;
-        DeviceDescription->CollectionDesc[Index].OutputLength = DeviceDescription->ReportIDs[Index].OutputLength;
-        DeviceDescription->CollectionDesc[Index].FeatureLength = DeviceDescription->ReportIDs[Index].FeatureLength;
+        ReportIdCount = HidParser_GetReportIds((PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData,
+                                               ReportIds,
+                                               ARRAYSIZE(ReportIds));
 
-        DeviceDescription->CollectionDesc[Index].InputLength += (HidParser_UsesReportId((PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData, HID_REPORT_TYPE_INPUT) == FALSE ? 1 : 0);
-        DeviceDescription->CollectionDesc[Index].OutputLength += (HidParser_UsesReportId((PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData, HID_REPORT_TYPE_OUTPUT) == FALSE ? 1 : 0);
-        DeviceDescription->CollectionDesc[Index].FeatureLength += (HidParser_UsesReportId((PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData, HID_REPORT_TYPE_FEATURE) == FALSE ? 1 : 0);
+        for (ReportIndex = 0; ReportIndex < ReportIdCount; ReportIndex++)
+        {
+            PVOID Context = (PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData;
+            UCHAR ReportID = ReportIds[ReportIndex];
 
+            DeviceDescription->CollectionDesc[Index].InputLength =
+                max(DeviceDescription->CollectionDesc[Index].InputLength,
+                    HidParser_GetReportLengthById(Context, HID_REPORT_TYPE_INPUT, ReportID));
+            DeviceDescription->CollectionDesc[Index].OutputLength =
+                max(DeviceDescription->CollectionDesc[Index].OutputLength,
+                    HidParser_GetReportLengthById(Context, HID_REPORT_TYPE_OUTPUT, ReportID));
+            DeviceDescription->CollectionDesc[Index].FeatureLength =
+                max(DeviceDescription->CollectionDesc[Index].FeatureLength,
+                    HidParser_GetReportLengthById(Context, HID_REPORT_TYPE_FEATURE, ReportID));
+        }
 
+        DeviceDescription->CollectionDesc[Index].InputLength += 1;
+        DeviceDescription->CollectionDesc[Index].OutputLength += 1;
+        DeviceDescription->CollectionDesc[Index].FeatureLength += 1;
+    }
+
+    //
+    // one report description per report id the device actually names, which is
+    // what a report arriving off the wire is matched against
+    //
+    TotalReportIds = 0;
+    for(Index = 0; Index < CollectionCount; Index++)
+    {
+        TotalReportIds += HidParser_GetReportIds((PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData,
+                                                 ReportIds,
+                                                 ARRAYSIZE(ReportIds));
+    }
+
+    //
+    // a descriptor with collections but no reports is degenerate, not a reason
+    // to fail the allocation below
+    //
+    DeviceDescription->ReportIDs =
+        (PHIDP_REPORT_IDS)AllocFunction(sizeof(HIDP_REPORT_IDS) * max(TotalReportIds, 1));
+    if (!DeviceDescription->ReportIDs)
+    {
+        //
+        // no memory
+        //
+        FreeFunction(DeviceDescription->CollectionDesc);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    TotalReportIds = 0;
+    for(Index = 0; Index < CollectionCount; Index++)
+    {
+        PVOID Context = (PVOID)DeviceDescription->CollectionDesc[Index].PreparsedData;
+
+        ReportIdCount = HidParser_GetReportIds(Context, ReportIds, ARRAYSIZE(ReportIds));
+
+        for (ReportIndex = 0; ReportIndex < ReportIdCount; ReportIndex++)
+        {
+            PHIDP_REPORT_IDS Report = &DeviceDescription->ReportIDs[TotalReportIds++];
+            UCHAR ReportID = ReportIds[ReportIndex];
+
+            Report->ReportID = ReportID;
+            Report->CollectionNumber = Index + 1;
+            Report->InputLength = HidParser_GetReportLengthById(Context, HID_REPORT_TYPE_INPUT, ReportID);
+            Report->OutputLength = HidParser_GetReportLengthById(Context, HID_REPORT_TYPE_OUTPUT, ReportID);
+            Report->FeatureLength = HidParser_GetReportLengthById(Context, HID_REPORT_TYPE_FEATURE, ReportID);
+
+            //
+            // these are wire lengths, so the id byte counts only when the
+            // device puts one in front of the report
+            //
+            if (ReportID != 0)
+            {
+                if (Report->InputLength)
+                    Report->InputLength += 1;
+                if (Report->OutputLength)
+                    Report->OutputLength += 1;
+                if (Report->FeatureLength)
+                    Report->FeatureLength += 1;
+            }
+        }
     }
 
     //
     // store collection & report count
     //
     DeviceDescription->CollectionDescLength = CollectionCount;
-    DeviceDescription->ReportIDsLength = CollectionCount;
+    DeviceDescription->ReportIDsLength = TotalReportIds;
 
     //
     // done
