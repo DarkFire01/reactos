@@ -362,11 +362,17 @@ UacpiIrqTranslateResources(PVOID Context, PCM_PARTIAL_RESOURCE_DESCRIPTOR Source
 
     *Target = *Source;   // start from an identity copy
 
+    /*
+     * acpi.sys answers the reverse direction with STATUS_NOT_SUPPORTED, and
+     * IopTranslateAssignmentToDevice fails the device on anything but success.
+     * Whether that path is reachable at all depends on how the requirement
+     * levels are chained, so the identity copy stands until that is known.
+     */
     if (Direction != TranslateChildToParent)
     {
-        // Reverse translation (parent->child) is not needed for the root.
         return STATUS_SUCCESS;
     }
+
     if (Source->Type != CmResourceTypeInterrupt)
     {
         return STATUS_SUCCESS;
@@ -405,13 +411,15 @@ UacpiIrqTranslateResources(PVOID Context, PCM_PARTIAL_RESOURCE_DESCRIPTOR Source
                                                        count, &base, &mirql, &maff))
             || mirql == PASSIVE_LEVEL)
             {
-            // An untouched target still carries the packed message count in
-            // Level and the message slot in Vector, neither of which is an IRQL
-            // or a vector. Handing that out as a translation puts a driver on an
-            // interrupt it can never connect, so report the failure instead.
-            UacpiTrace("[acpi] irqTrans: msg-gsiv 0x%X x%u has no vector\n",
+            /*
+             * No vector has been handed to this device yet. acpi.sys leaves the
+             * descriptor alone and reports success here, because failing the
+             * translation fails the whole resource list and the device never
+             * starts. The message slot stays in Vector for whoever assigns it.
+             */
+            UacpiTrace("[acpi] irqTrans: msg-gsiv 0x%X x%u has no vector yet\n",
                       gsiv, count);
-            return STATUS_UNSUCCESSFUL;
+            return STATUS_SUCCESS;
         }
         Target->u.Interrupt.Level    = mirql;      // Translated.Level  = IRQL
         Target->u.Interrupt.Vector   = base;       // Translated.Vector = base IDT entry
@@ -433,10 +441,9 @@ UacpiIrqTranslateResources(PVOID Context, PCM_PARTIAL_RESOURCE_DESCRIPTOR Source
                                             &polarity, &mode))
         || irql == PASSIVE_LEVEL)
         {
-        // As above: an untouched target still holds the GSIV where the vector
-        // and the IRQL belong.
-        UacpiTrace("[acpi] irqTrans: gsiv %u has no vector\n", gsiv);
-        return STATUS_UNSUCCESSFUL;
+        // As above: leave the descriptor alone rather than fail the device.
+        UacpiTrace("[acpi] irqTrans: gsiv %u has no vector yet\n", gsiv);
+        return STATUS_SUCCESS;
     }
 
     Target->u.Interrupt.Level    = irql;
