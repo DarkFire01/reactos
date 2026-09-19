@@ -23,6 +23,8 @@ static ULONG                 UacpiHostSciGsi;
 // The SCI's DIRQL once connected, DISPATCH_LEVEL before. The ISR takes the same
 // uACPI locks (GPE state, registers), so a holder must not be preemptable by it.
 static KIRQL UacpiHostSciLockIrql = DISPATCH_LEVEL;
+// Seconds between reports while a work drain is stuck.
+#define UACPI_WORK_WAIT_REPORT_SECONDS 5
 
 // Spinlocks
 
@@ -294,15 +296,32 @@ void uacpi_kernel_signal_event(uacpi_handle h)
 
 uacpi_status uacpi_kernel_wait_for_work_completion(void)
 {
+    LARGE_INTEGER to;
+    ULONG waited = 0;
+
     // Drain the deferral DPC, then scheduled work.
     KeFlushQueuedDpcs();
 
     if (UacpiHostWorkInit)
     {
+        // uACPI calls this from under its own locks, so a work item that needs
+        // one of those locks will never drain. Report instead of hanging mute.
         while (InterlockedCompareExchange(&UacpiHostWorkOutstanding, 0, 0) != 0)
         {
-            KeWaitForSingleObject(&UacpiHostWorkDrained, Executive, KernelMode,
-                                  FALSE, NULL);
+            to.QuadPart =
+                -((LONGLONG)UACPI_WORK_WAIT_REPORT_SECONDS * 10 * 1000 * 1000);
+            if (KeWaitForSingleObject(&UacpiHostWorkDrained, Executive, KernelMode,
+                                      FALSE, &to) != STATUS_TIMEOUT)
+            {
+                continue;
+            }
+
+            waited += UACPI_WORK_WAIT_REPORT_SECONDS;
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+                       "[uacpi] STUCK: %ld work item(s) undrained after %lu s "
+                       "(waiter thread %p, irql %u) - still waiting\n",
+                       InterlockedCompareExchange(&UacpiHostWorkOutstanding, 0, 0),
+                       waited, PsGetCurrentThread(), (ULONG)KeGetCurrentIrql());
         }
     }
     return UACPI_STATUS_OK;
