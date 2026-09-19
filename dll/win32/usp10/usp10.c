@@ -865,7 +865,7 @@ static inline BOOL set_cache_glyph_widths(SCRIPT_CACHE *psc, WORD glyph, ABC *ab
 
 static HRESULT init_script_cache(const HDC hdc, SCRIPT_CACHE *psc)
 {
-    ScriptCache *sc;
+    ScriptCache *sc, *new_sc;
     unsigned size;
     LOGFONTW lf;
 
@@ -894,46 +894,46 @@ static HRESULT init_script_cache(const HDC hdc, SCRIPT_CACHE *psc)
     }
     LeaveCriticalSection(&cs_script_cache);
 
-    if (!(sc = heap_alloc_zero(sizeof(ScriptCache)))) return E_OUTOFMEMORY;
-    if (!GetTextMetricsW(hdc, &sc->tm))
+    if (!(new_sc = heap_alloc_zero(sizeof(ScriptCache)))) return E_OUTOFMEMORY;
+    if (!GetTextMetricsW(hdc, &new_sc->tm))
     {
-        heap_free(sc);
+        heap_free(new_sc);
         return E_INVALIDARG;
     }
     size = GetOutlineTextMetricsW(hdc, 0, NULL);
     if (size)
     {
-        sc->otm = heap_alloc(size);
-        sc->otm->otmSize = size;
-        GetOutlineTextMetricsW(hdc, size, sc->otm);
+        new_sc->otm = heap_alloc(size);
+        new_sc->otm->otmSize = size;
+        GetOutlineTextMetricsW(hdc, size, new_sc->otm);
     }
-    sc->sfnt = (GetFontData(hdc, MS_MAKE_TAG('h','e','a','d'), 0, NULL, 0)!=GDI_ERROR);
-    if (!set_cache_font_properties(hdc, sc))
+    new_sc->sfnt = (GetFontData(hdc, MS_MAKE_TAG('h','e','a','d'), 0, NULL, 0)!=GDI_ERROR);
+    if (!set_cache_font_properties(hdc, new_sc))
     {
-        heap_free(sc);
+        heap_free(new_sc);
         return E_INVALIDARG;
     }
-    sc->lf = lf;
-    sc->refcount = 1;
-    *psc = sc;
+    new_sc->lf = lf;
+    new_sc->refcount = 1;
+    *psc = new_sc;
 
     EnterCriticalSection(&cs_script_cache);
-    list_add_head(&script_cache_list, &sc->entry);
+    list_add_head(&script_cache_list, &new_sc->entry);
     LIST_FOR_EACH_ENTRY(sc, &script_cache_list, ScriptCache, entry)
     {
-        if (sc != *psc && !memcmp(&sc->lf, &lf, sizeof(lf)))
+        if (sc != new_sc && !memcmp(&sc->lf, &lf, sizeof(lf)))
         {
             /* Another thread won the race. Use their cache instead of ours */
-            list_remove(&sc->entry);
+            list_remove(&new_sc->entry);
             sc->refcount++;
             LeaveCriticalSection(&cs_script_cache);
-            heap_free(*psc);
+            heap_free(new_sc);
             *psc = sc;
             return S_OK;
         }
     }
     LeaveCriticalSection(&cs_script_cache);
-    TRACE("<- %p\n", sc);
+    TRACE("<- %p\n", new_sc);
     return S_OK;
 }
 

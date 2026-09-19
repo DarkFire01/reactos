@@ -32,6 +32,13 @@ static DRVFN DrvFunctionTable[] =
    {INDEX_DrvSetPalette, (PFN)DrvSetPalette},
    {INDEX_DrvSetPointerShape, (PFN)DrvSetPointerShape},
    {INDEX_DrvMovePointer, (PFN)DrvMovePointer},
+   {INDEX_DrvBitBlt, (PFN)DrvBitBlt},
+   {INDEX_DrvCopyBits, (PFN)DrvCopyBits},
+   {INDEX_DrvStretchBltROP, (PFN)DrvStretchBltROP},
+   {INDEX_DrvTransparentBlt, (PFN)DrvTransparentBlt},
+   {INDEX_DrvAlphaBlend, (PFN)DrvAlphaBlend},
+   {INDEX_DrvGradientFill, (PFN)DrvGradientFill},
+   {INDEX_DrvLineTo, (PFN)DrvLineTo},
    {INDEX_DrvEnableDirectDraw, (PFN)DrvEnableDirectDraw},
    {INDEX_DrvDisableDirectDraw, (PFN)DrvDisableDirectDraw},
 

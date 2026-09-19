@@ -161,13 +161,17 @@ Control(
 {
     OVERLAPPED Overlapped;
     BOOLEAN IoResult;
+    DWORD ErrorCode = ERROR_SUCCESS;
     DWORD Transferred = 0;
+
+    if (lpBytesReturned)
+        *lpBytesReturned = 0;
 
     /* Overlapped I/O is done here - this is used for waiting for completion */
     ZeroMemory(&Overlapped, sizeof(OVERLAPPED));
     Overlapped.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 
-    if ( ! Overlapped.hEvent )
+    if (!Overlapped.hEvent)
         return MM_STATUS_NO_MEMORY;
 
     /* Talk to the device */
@@ -181,16 +185,25 @@ Control(
                                &Overlapped);
 
     /* If failure occurs, make sure it's not just due to the overlapped I/O */
-    if ( ! IoResult )
+    if (!IoResult)
     {
-        if ( GetLastError() != ERROR_IO_PENDING )
+        ErrorCode = GetLastError();
+        if (ErrorCode != ERROR_IO_PENDING)
         {
+            /*
+             * For an immediately completed overlapped request, the I/O status
+             * block is authoritative. DeviceIoControl is allowed to leave its
+             * byte-count output untouched when it reports a buffer error.
+             */
+            Transferred = (DWORD)Overlapped.InternalHigh;
             CloseHandle(Overlapped.hEvent);
 
-            if (GetLastError() == ERROR_MORE_DATA || GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+            if (lpBytesReturned)
+                *lpBytesReturned = Transferred;
+
+            if ((ErrorCode == ERROR_MORE_DATA) ||
+                (ErrorCode == ERROR_INSUFFICIENT_BUFFER))
             {
-                if ( lpBytesReturned )
-                    *lpBytesReturned = Transferred;
                 return MM_STATUS_MORE_ENTRIES;
             }
 
@@ -203,15 +216,25 @@ Control(
                                    &Overlapped,
                                    &Transferred,
                                    TRUE);
+    if (!IoResult)
+        ErrorCode = GetLastError();
 
     /* Don't need this any more */
     CloseHandle(Overlapped.hEvent);
 
-    if ( ! IoResult )
-        return MM_STATUS_UNSUCCESSFUL;
-
-    if ( lpBytesReturned )
+    if (lpBytesReturned)
         *lpBytesReturned = Transferred;
+
+    if (!IoResult)
+    {
+        if ((ErrorCode == ERROR_MORE_DATA) ||
+            (ErrorCode == ERROR_INSUFFICIENT_BUFFER))
+        {
+            return MM_STATUS_MORE_ENTRIES;
+        }
+
+        return MM_STATUS_UNSUCCESSFUL;
+    }
 
     return MM_STATUS_SUCCESS;
 }
