@@ -809,13 +809,13 @@ IopTranslateResourceToRoot(
     }
 
     /*
-     * Ports and memory read the same on both sides of a bus that does not move
-     * them, so an untouched copy is a translation. An interrupt does not work
-     * that way: raw holds a bus-relative line, or a packed message count, where
+     * Raw holds a bus-relative line, or a packed message count, where
      * translated has to hold an IRQL in Level and an IDT vector in Vector. The
      * root translator copies whatever it is given, so a resource no real
-     * translator claimed arrives here still in its raw form. A driver told to
-     * connect that spins on an interrupt it can never own, so refuse it.
+     * translator claimed arrives here still in its raw form, and a driver told
+     * to connect that gets an interrupt it can never own. Name it here rather
+     * than refuse it: the device would otherwise not start at all, and a
+     * message interrupt reaches its vector through the message table instead.
      */
     if ((Raw->Type == CmResourceTypeInterrupt) &&
         (Current.u.Interrupt.Vector != 0) &&
@@ -837,8 +837,6 @@ IopTranslateResourceToRoot(
                     Current.u.Interrupt.Vector,
                     Current.u.Interrupt.Level);
         }
-
-        return STATUS_UNSUCCESSFUL;
     }
 
     *Translated = Current;
