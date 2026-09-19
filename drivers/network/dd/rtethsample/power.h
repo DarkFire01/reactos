@@ -1,0 +1,19 @@
+/*++
+
+    THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
+    ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
+    PARTICULAR PURPOSE.
+
+    Copyright (c) Microsoft Corporation. All rights reserved
+
+--*/
+
+#pragma once
+
+_No_competing_thread_
+EVT_WDF_DEVICE_D0_ENTRY EvtDeviceD0Entry;
+_No_competing_thread_
+EVT_WDF_DEVICE_D0_EXIT  EvtDeviceD0Exit;
+EVT_WDF_DEVICE_ARM_WAKE_FROM_SX     EvtDeviceArmWakeFromSx;
+EVT_WDF_DEVICE_DISARM_WAKE_FROM_SX  EvtDeviceDisarmWakeFromSx;
