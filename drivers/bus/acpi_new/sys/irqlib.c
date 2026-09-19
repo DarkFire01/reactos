@@ -296,33 +296,20 @@ UacpipSeedIdtState(PRTL_RANGE_LIST Used)
     return STATUS_SUCCESS;
 }
 
-// HAL vector per line, or 0. These must not be handed to message interrupts.
+/*
+ * HAL vector per line, or 0. These must not be handed to message interrupts.
+ *
+ * Under the APIC model this driver allocates every line vector itself and
+ * records it in the per-processor IDT range lists, so the HAL is never asked
+ * for one and this map stays empty. It must stay that way: HalGetInterruptVector
+ * is not a query there. HalpGetRootInterruptVector calls
+ * HalpAllocateSystemInterrupt for a line that has no vector yet, so asking about
+ * a line assigns one. Walking every line to fill this map therefore spent a
+ * vector on each I/O APIC input, out of the same band the HAL granted this
+ * driver to allocate from, and left nothing for the message interrupts the map
+ * exists to protect.
+ */
 static ULONG UacpiHalLineVector[UACPI_MAX_GSIV];
-
-static VOID
-UacpipBuildHalLineMap(VOID)
-{
-    ULONG line;
-
-    if (UacpipHalGetInterruptVector == NULL)
-    {
-        return;
-    }
-
-    for (line = 0; line < UACPI_MAX_GSIV; line++)
-    {
-        KIRQL     halIrql = 0;
-        KAFFINITY halAffinity = 0;
-        ULONG     halVector;
-
-        halVector = UacpipHalGetInterruptVector(Internal, 0, line, line,
-                                                &halIrql, &halAffinity);
-        if (halVector != 0 && halVector <= 0xFF)
-        {
-            UacpiHalLineVector[line] = halVector;
-        }
-    }
-}
 
 // TRUE if the HAL maps Vector to a line other than Gsiv (UACPI_MAX_GSIV: any).
 static BOOLEAN
@@ -443,6 +430,9 @@ UacpipApicAllocateVector(ULONG Gsiv, PULONG Vector)
             if (Gsiv < UACPI_MAX_GSIV)
             {
                 UacpiGsivVector[Gsiv] = halVector;
+
+                // The map is only ever filled from a line the HAL really owns.
+                UacpiHalLineVector[Gsiv] = halVector;
             }
             *Vector = halVector;
             return STATUS_SUCCESS;
@@ -1469,7 +1459,6 @@ UacpiIrqLibInitialize(VOID)
     if (g_AcpiInterruptModel == 1)
     {
         // APIC: build the per-CPU IDT sets for running processors.
-        UacpipBuildHalLineMap();
         UacpipSeedExistingProcessors();
 
         // Hot-add tracking only; a NULL handle is not a failure.
