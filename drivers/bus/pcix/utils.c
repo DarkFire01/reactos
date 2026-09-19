@@ -1505,21 +1505,36 @@ NTAPI
 PciQueryPowerCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
                           IN PDEVICE_CAPABILITIES DeviceCapability)
 {
-    PDEVICE_OBJECT DeviceObject;
-    NTSTATUS Status;
+    PPCI_POWER_STATE ParentPowerState;
     DEVICE_CAPABILITIES AttachedCaps;
     DEVICE_POWER_STATE NewPowerState, DevicePowerState, DeviceWakeLevel, DeviceWakeState;
     SYSTEM_POWER_STATE SystemWakeState, DeepestWakeState, CurrentState;
+
+    C_ASSERT(sizeof(AttachedCaps.DeviceState) ==
+             RTL_FIELD_SIZE(PCI_POWER_STATE, SystemStateMapping));
 
     /* Nothing is known at first */
     DeviceWakeState = PowerDeviceUnspecified;
     SystemWakeState = DeepestWakeState = PowerSystemUnspecified;
 
-    /* Get the PCI capabilities for the parent PDO */
-    DeviceObject = PdoExtension->ParentFdoExtension->PhysicalDeviceObject;
-    Status = PciGetDeviceCapabilities(DeviceObject, &AttachedCaps);
-    ASSERT(NT_SUCCESS(Status));
-    if (!NT_SUCCESS(Status)) return Status;
+    /*
+     * The parent bus already recorded what the stack below it reported, back
+     * when its own FDO was queried. Re-asking for it here would send a fresh
+     * IRP_MN_QUERY_CAPABILITIES up a stack that lands on a PDO of ours again,
+     * and every bridge in the chain would nest one more round trip.
+     */
+    ParentPowerState = &PdoExtension->ParentFdoExtension->PowerState;
+
+    RtlZeroMemory(&AttachedCaps, sizeof(AttachedCaps));
+    AttachedCaps.Size = sizeof(AttachedCaps);
+    AttachedCaps.Version = 1;
+    AttachedCaps.Address = MAXULONG;
+    AttachedCaps.UINumber = MAXULONG;
+    AttachedCaps.SystemWake = ParentPowerState->SystemWakeLevel;
+    AttachedCaps.DeviceWake = ParentPowerState->DeviceWakeLevel;
+    RtlCopyMemory(AttachedCaps.DeviceState,
+                  ParentPowerState->SystemStateMapping,
+                  sizeof(AttachedCaps.DeviceState));
 
     /* Check if there's not an existing device state for S0 */
     if (!AttachedCaps.DeviceState[PowerSystemWorking])
