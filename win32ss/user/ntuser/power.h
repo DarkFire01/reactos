@@ -86,8 +86,8 @@ FORCEINLINE
 VOID
 IntReleasePowerCalloutLock(VOID)
 {
-    ExReleaseFastMutexUnsafe(gpPowerCalloutMutexLock);
     gpPowerCalloutMutexOwnerThread = NULL;
+    ExReleaseFastMutexUnsafe(gpPowerCalloutMutexLock);
     KeLeaveCriticalRegion();
 }
 
