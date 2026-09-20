@@ -206,6 +206,13 @@ typedef struct _NET_BUFFER_LIST_POOL_PARAMETERS
 #define NBL_FLAGS_IS_LOOPBACK_PACKET            0x00004000
 #define NBL_FLAGS_SINGLE_SOURCE                 0x00008000
 
+/*
+ * Clone flags. The allocate and the free side test the same bit, so a clone
+ * built over the original MDLs has to be freed with the flag set as well or
+ * the original's MDLs are freed out from under it.
+ */
+#define NDIS_CLONE_FLAGS_USE_ORIGINAL_MDLS      0x00000002
+
 #ifdef __cplusplus
 }
 #endif
