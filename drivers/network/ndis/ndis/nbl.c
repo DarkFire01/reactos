@@ -976,3 +976,306 @@ NdisCopyFromNetBufferToNetBuffer(
 
     return NDIS_STATUS_SUCCESS;
 }
+
+/*
+ * Release a chain of MDLs built here with IoAllocateMdl.
+ */
+static
+VOID
+NTAPI
+NdispFreeMdlChain(
+    _In_opt_ PMDL Mdl)
+{
+    PMDL Next;
+
+    while (Mdl != NULL)
+    {
+        Next = Mdl->Next;
+        IoFreeMdl(Mdl);
+        Mdl = Next;
+    }
+}
+
+/*
+ * Describe Length bytes of the source chain, starting Offset bytes into it,
+ * with partial MDLs of our own. The pages stay shared, the descriptors do not.
+ */
+static
+PMDL
+NTAPI
+NdispCloneMdlChain(
+    _In_opt_ PMDL SourceMdl,
+    _In_ ULONG Offset,
+    _In_ ULONG Length)
+{
+    PMDL Head = NULL;
+    PMDL Tail = NULL;
+    PMDL Mdl;
+    PVOID Address;
+    ULONG Chunk;
+
+    while (SourceMdl != NULL && Offset >= MmGetMdlByteCount(SourceMdl))
+    {
+        Offset -= MmGetMdlByteCount(SourceMdl);
+        SourceMdl = SourceMdl->Next;
+    }
+
+    while (SourceMdl != NULL && Length != 0)
+    {
+        Chunk = MmGetMdlByteCount(SourceMdl) - Offset;
+        if (Chunk > Length)
+            Chunk = Length;
+
+        Address = (PUCHAR)MmGetMdlVirtualAddress(SourceMdl) + Offset;
+
+        Mdl = IoAllocateMdl(Address, Chunk, FALSE, FALSE, NULL);
+        if (Mdl == NULL)
+        {
+            NdispFreeMdlChain(Head);
+            return NULL;
+        }
+
+        IoBuildPartialMdl(SourceMdl, Mdl, Address, Chunk);
+        Mdl->Next = NULL;
+
+        if (Tail == NULL)
+            Head = Mdl;
+        else
+            Tail->Next = Mdl;
+
+        Tail = Mdl;
+        Length -= Chunk;
+        Offset = 0;
+        SourceMdl = SourceMdl->Next;
+    }
+
+    return Head;
+}
+
+_Use_decl_annotations_
+PNET_BUFFER_LIST
+NTAPI
+NdisAllocateCloneNetBufferList(
+    PNET_BUFFER_LIST OriginalNetBufferList,
+    NDIS_HANDLE NetBufferListPoolHandle,
+    NDIS_HANDLE NetBufferPoolHandle,
+    ULONG AllocateCloneFlags)
+{
+    PNDIS_NBL_POOL Pool;
+    PNET_BUFFER_LIST Clone;
+    PNET_BUFFER SourceNb;
+    PNET_BUFFER CloneNb;
+    PNET_BUFFER *Link;
+    PMDL MdlChain;
+
+    /* The internal pools ndis.sys falls back on for a null handle are not here. */
+    if (NetBufferListPoolHandle == NULL || NetBufferPoolHandle == NULL)
+        return NULL;
+
+    Pool = (PNDIS_NBL_POOL)NetBufferListPoolHandle;
+    ASSERT(Pool->Signature == NBL_POOL_SIGNATURE);
+
+    Clone = NdisAllocateNetBufferList(NetBufferListPoolHandle, 0, 0);
+    if (Clone == NULL)
+        return NULL;
+
+    /*
+     * A pool carrying an inline NET_BUFFER has already handed one over, so the
+     * first source NET_BUFFER reuses it and only the rest are allocated.
+     */
+    CloneNb = NET_BUFFER_LIST_FIRST_NB(Clone);
+    if (CloneNb == NULL)
+    {
+        CloneNb = NdisAllocateNetBuffer(NetBufferPoolHandle, NULL, 0, 0);
+        if (CloneNb == NULL)
+        {
+            NdisFreeCloneNetBufferList(Clone, AllocateCloneFlags);
+            return NULL;
+        }
+
+        NET_BUFFER_LIST_FIRST_NB(Clone) = CloneNb;
+    }
+
+    Link = &NET_BUFFER_LIST_FIRST_NB(Clone);
+
+    for (SourceNb = NET_BUFFER_LIST_FIRST_NB(OriginalNetBufferList);
+         SourceNb != NULL;
+         SourceNb = NET_BUFFER_NEXT_NB(SourceNb))
+    {
+        if (CloneNb == NULL)
+        {
+            CloneNb = NdisAllocateNetBuffer(NetBufferPoolHandle, NULL, 0, 0);
+            if (CloneNb == NULL)
+            {
+                NdisFreeCloneNetBufferList(Clone, AllocateCloneFlags);
+                return NULL;
+            }
+
+            *Link = CloneNb;
+        }
+
+        if ((AllocateCloneFlags & NDIS_CLONE_FLAGS_USE_ORIGINAL_MDLS) != 0)
+        {
+            NET_BUFFER_FIRST_MDL(CloneNb) = NET_BUFFER_FIRST_MDL(SourceNb);
+            NET_BUFFER_CURRENT_MDL(CloneNb) = NET_BUFFER_CURRENT_MDL(SourceNb);
+            NET_BUFFER_CURRENT_MDL_OFFSET(CloneNb) = NET_BUFFER_CURRENT_MDL_OFFSET(SourceNb);
+            NET_BUFFER_DATA_OFFSET(CloneNb) = NET_BUFFER_DATA_OFFSET(SourceNb);
+        }
+        else
+        {
+            MdlChain = NdispCloneMdlChain(NET_BUFFER_FIRST_MDL(SourceNb),
+                                          NET_BUFFER_DATA_OFFSET(SourceNb),
+                                          NET_BUFFER_DATA_LENGTH(SourceNb));
+            if (MdlChain == NULL && NET_BUFFER_DATA_LENGTH(SourceNb) != 0)
+            {
+                NdisFreeCloneNetBufferList(Clone, AllocateCloneFlags);
+                return NULL;
+            }
+
+            /* The partial MDLs start at the data, so the offset resets. */
+            NET_BUFFER_FIRST_MDL(CloneNb) = MdlChain;
+            NET_BUFFER_CURRENT_MDL(CloneNb) = MdlChain;
+            NET_BUFFER_CURRENT_MDL_OFFSET(CloneNb) = 0;
+            NET_BUFFER_DATA_OFFSET(CloneNb) = 0;
+        }
+
+        CloneNb->stDataLength = SourceNb->stDataLength;
+
+        Link = &NET_BUFFER_NEXT_NB(CloneNb);
+        CloneNb = NULL;
+    }
+
+    Clone->SourceHandle = OriginalNetBufferList->SourceHandle;
+    NET_BUFFER_LIST_INFO(Clone, NblOriginalInterfaceIfIndex) =
+        NET_BUFFER_LIST_INFO(OriginalNetBufferList, NblOriginalInterfaceIfIndex);
+
+    return Clone;
+}
+
+_Use_decl_annotations_
+VOID
+NTAPI
+NdisFreeCloneNetBufferList(
+    PNET_BUFFER_LIST CloneNetBufferList,
+    ULONG FreeCloneFlags)
+{
+    PNDIS_NBL_POOL Pool = (PNDIS_NBL_POOL)CloneNetBufferList->NdisPoolHandle;
+    PNET_BUFFER FirstNetBuffer;
+    PNET_BUFFER NetBuffer;
+    PNET_BUFFER Next;
+    BOOLEAN OwnMdls;
+
+    ASSERT(Pool->Signature == NBL_POOL_SIGNATURE);
+
+    /* A clone over the original's MDLs never owned them. */
+    OwnMdls = (FreeCloneFlags & NDIS_CLONE_FLAGS_USE_ORIGINAL_MDLS) == 0;
+
+    NET_BUFFER_LIST_NEXT_NBL(CloneNetBufferList) = NULL;
+
+    FirstNetBuffer = NET_BUFFER_LIST_FIRST_NB(CloneNetBufferList);
+
+    for (NetBuffer = FirstNetBuffer; NetBuffer != NULL; NetBuffer = Next)
+    {
+        Next = NET_BUFFER_NEXT_NB(NetBuffer);
+
+        if (OwnMdls)
+            NdispFreeMdlChain(NET_BUFFER_FIRST_MDL(NetBuffer));
+
+        /*
+         * An inline NET_BUFFER is part of the NBL block and goes back with it
+         * rather than on its own.
+         */
+        if (NetBuffer != FirstNetBuffer || !Pool->AllocateNetBuffer)
+            NdisFreeNetBuffer(NetBuffer);
+    }
+
+    NdisFreeNetBufferList(CloneNetBufferList);
+}
+
+/*
+ * The info slots that survive a copy, per direction. The cancel id and the
+ * frame type slot are handled outside the tables because neither is a
+ * straight copy.
+ */
+static const UCHAR NdispReceiveInfoSlots[] =
+{
+    TcpIpChecksumNetBufferListInfo,
+    IPsecOffloadV1NetBufferListInfo,
+    TcpLargeSendNetBufferListInfo,
+    Ieee8021QNetBufferListInfo,
+    MediaSpecificInformation,
+    NetBufferListFrameType,
+    NetBufferListHashValue,
+    NetBufferListHashInfo,
+    IPsecOffloadV2TunnelNetBufferListInfo,
+    IPsecOffloadV2HeaderNetBufferListInfo,
+    NetBufferListFilteringInfo,
+    NblOriginalInterfaceIfIndex,
+    TcpRecvSegCoalesceInfo,
+    RscTcpTimestampDelta
+};
+
+static const UCHAR NdispSendInfoSlots[] =
+{
+    TcpIpChecksumNetBufferListInfo,
+    IPsecOffloadV1NetBufferListInfo,
+    TcpLargeSendNetBufferListInfo,
+    ClassificationHandleNetBufferListInfo,
+    Ieee8021QNetBufferListInfo,
+    NetBufferListCancelId,
+    MediaSpecificInformation,
+    NetBufferListHashValue,
+    IPsecOffloadV2TunnelNetBufferListInfo,
+    IPsecOffloadV2HeaderNetBufferListInfo,
+    NetBufferListFilteringInfo,
+    TcpSendOffloadsSupplementalNetBufferListInfo
+};
+
+_Use_decl_annotations_
+VOID
+NTAPI
+NdisCopyReceiveNetBufferListInfo(
+    PNET_BUFFER_LIST DestNetBufferList,
+    PNET_BUFFER_LIST SrcNetBufferList)
+{
+    ULONG Index;
+
+    for (Index = 0; Index < RTL_NUMBER_OF(NdispReceiveInfoSlots); Index++)
+    {
+        NET_BUFFER_LIST_INFO(DestNetBufferList, NdispReceiveInfoSlots[Index]) =
+            NET_BUFFER_LIST_INFO(SrcNetBufferList, NdispReceiveInfoSlots[Index]);
+    }
+
+    /* A cancel id only means anything when the NBL came from one source. */
+    if ((NET_BUFFER_LIST_NBL_FLAGS(SrcNetBufferList) & NBL_FLAGS_SINGLE_SOURCE) != 0)
+    {
+        NET_BUFFER_LIST_NBL_FLAGS(DestNetBufferList) |= NBL_FLAGS_SINGLE_SOURCE;
+        NET_BUFFER_LIST_INFO(DestNetBufferList, NetBufferListCancelId) =
+            NET_BUFFER_LIST_INFO(SrcNetBufferList, NetBufferListCancelId);
+    }
+}
+
+_Use_decl_annotations_
+VOID
+NTAPI
+NdisCopySendNetBufferListInfo(
+    PNET_BUFFER_LIST DestNetBufferList,
+    PNET_BUFFER_LIST SrcNetBufferList)
+{
+    ULONG_PTR FrameType;
+    UCHAR ProtocolId;
+    ULONG Index;
+
+    ProtocolId = NdisGetNetBufferListProtocolId(SrcNetBufferList);
+
+    for (Index = 0; Index < RTL_NUMBER_OF(NdispSendInfoSlots); Index++)
+    {
+        NET_BUFFER_LIST_INFO(DestNetBufferList, NdispSendInfoSlots[Index]) =
+            NET_BUFFER_LIST_INFO(SrcNetBufferList, NdispSendInfoSlots[Index]);
+    }
+
+    /* The frame type slot takes the source's protocol id, not a copy. */
+    FrameType = (ULONG_PTR)NET_BUFFER_LIST_INFO(DestNetBufferList, NetBufferListFrameType);
+    FrameType = (FrameType & ~(ULONG_PTR)0xFF) | ProtocolId;
+    NET_BUFFER_LIST_INFO(DestNetBufferList, NetBufferListFrameType) = (PVOID)FrameType;
+}
