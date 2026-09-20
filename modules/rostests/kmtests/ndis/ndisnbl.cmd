@@ -5,4 +5,5 @@ rem nothing on a headless run would otherwise see.
 cd /d "%SystemRoot%\bin"
 dbgprint NDISNBL-BEGIN
 dbgprint --process "kmtest.exe NdisNbl"
+dbgprint --process "kmtest.exe NdisXlate"
 dbgprint NDISNBL-END
