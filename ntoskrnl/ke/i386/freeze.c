@@ -153,7 +153,7 @@ KiProcessorFreezeHandler(
     KiRestoreProcessorControlState(&CurrentPrcb->ProcessorState);
 
     /* Flush the TLB on this processor */
-    KxFlushEntireCurrentTb();
+  //  KxFlushEntireCurrentTb();
 
     /* We are running again now */
     CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_RUNNING;
@@ -220,7 +220,7 @@ KxFreezeExecution(
                 }
 
                 /* Flush the TLB on this processor, as the freeze handler does */
-                KxFlushEntireCurrentTb();
+            //    KxFlushEntireCurrentTb();
 
                 CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_RUNNING;
             }
@@ -237,7 +237,7 @@ KxFreezeExecution(
                  * the owner waited for a RUNNING that nobody was going to
                  * write, and both spun until the machine was reset.
                  */
-                KxFlushEntireCurrentTb();
+           //     KxFlushEntireCurrentTb();
 
                 CurrentPrcb->IpiFrozen = IPI_FROZEN_STATE_RUNNING;
             }
