@@ -1388,6 +1388,26 @@ VOID NTAPI IdleRequestWorkerRoutine(IN PDEVICE_OBJECT DeviceObject, IN PVOID Con
 }
 
 
+// Drains the queue from a worker so the dispatchers run at PASSIVE_LEVEL
+VOID
+NTAPI
+DrainQueueWorkerRoutine(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PVOID Context)
+{
+    PDEVICE_EXTENSION deviceExtension;
+
+    deviceExtension = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
+
+    ProcessQueuedRequests(deviceExtension);
+
+    IoFreeWorkItem((PIO_WORKITEM) Context);
+
+    FreeBT_DbgPrint(3, ("FBTUSB: DrainQueueWorkerRoutine::"));
+    FreeBT_IoDecrement(deviceExtension);
+
+}
+
 VOID NTAPI ProcessQueuedRequests(IN OUT PDEVICE_EXTENSION DeviceExtension)
 /*++
 
@@ -1409,33 +1429,56 @@ Return Value:
 
 --*/
 {
-    KIRQL       oldIrql;
-    PIRP        nextIrp,
-                cancelledIrp;
-    PVOID       cancelRoutine;
-    LIST_ENTRY  cancelledIrpList;
-    PLIST_ENTRY listEntry;
+    KIRQL        oldIrql;
+    PIRP         nextIrp,
+                 cancelledIrp;
+    PVOID        cancelRoutine;
+    LIST_ENTRY   cancelledIrpList;
+    PLIST_ENTRY  listEntry;
+    LIST_ENTRY   pendingIrpList;
+    PIO_WORKITEM workItem;
 
     FreeBT_DbgPrint(3, ("FBTUSB: ProcessQueuedRequests: Entered\n"));
 
-    cancelRoutine = NULL;
-    InitializeListHead(&cancelledIrpList);
-
-    // 1.  dequeue the entries in the queue
-    // 2.  reset the cancel routine
-    // 3.  process them
-    // 3a. if the device is active, send them down
-    // 3b. else complete with STATUS_DELETE_PENDING
-    while(1)
+    // The resume path calls in from a power completion routine, where the
+    // dispatchers cannot run. Completing the queue is safe at any irql, so
+    // only the replay needs a worker.
+    if (KeGetCurrentIrql() > PASSIVE_LEVEL && FailRequests != DeviceExtension->QueueState)
     {
-        KeAcquireSpinLock(&DeviceExtension->QueueLock, &oldIrql);
-        if(IsListEmpty(&DeviceExtension->NewRequestsQueue))
+        workItem = IoAllocateWorkItem(DeviceExtension->FunctionalDeviceObject);
+        if (workItem == NULL)
         {
-            KeReleaseSpinLock(&DeviceExtension->QueueLock, oldIrql);
-            break;
+            // The requests stay queued and cancellable, removal drains them
+            FreeBT_DbgPrint(1, ("FBTUSB: ProcessQueuedRequests: No work item available\n"));
+
+            return;
 
         }
 
+        FreeBT_DbgPrint(3, ("FBTUSB: ProcessQueuedRequests::"));
+        FreeBT_IoIncrement(DeviceExtension);
+
+        IoQueueWorkItem(workItem, DrainQueueWorkerRoutine, DelayedWorkQueue, workItem);
+
+        return;
+
+    }
+
+    cancelRoutine = NULL;
+    InitializeListHead(&cancelledIrpList);
+    InitializeListHead(&pendingIrpList);
+
+    // 1.  take the whole queue in one pass
+    // 2.  reset the cancel routine
+    // 3.  process what was taken
+    // 3a. if the device is active, hand it back to the dispatchers
+    // 3b. else complete with STATUS_DELETE_PENDING
+    // Anything the dispatchers park again lands on the device queue and waits
+    // for the next transition, which keeps this from chasing its own tail
+    KeAcquireSpinLock(&DeviceExtension->QueueLock, &oldIrql);
+
+    while(!IsListEmpty(&DeviceExtension->NewRequestsQueue))
+    {
         listEntry = RemoveHeadList(&DeviceExtension->NewRequestsQueue);
         nextIrp = CONTAINING_RECORD(listEntry, IRP, Tail.Overlay.ListEntry);
 
@@ -1462,35 +1505,66 @@ Return Value:
 
             }
 
-            KeReleaseSpinLock(&DeviceExtension->QueueLock, oldIrql);
+        }
+
+        else
+        {
+            InsertTailList(&pendingIrpList, listEntry);
+
+        }
+
+    }
+
+    KeReleaseSpinLock(&DeviceExtension->QueueLock, oldIrql);
+
+    while(!IsListEmpty(&pendingIrpList))
+    {
+        listEntry = RemoveHeadList(&pendingIrpList);
+        nextIrp = CONTAINING_RECORD(listEntry, IRP, Tail.Overlay.ListEntry);
+
+        if(FailRequests == DeviceExtension->QueueState)
+        {
+            nextIrp->IoStatus.Information = 0;
+            nextIrp->IoStatus.Status = STATUS_DELETE_PENDING;
+            IoCompleteRequest(nextIrp, IO_NO_INCREMENT);
 
         }
 
         else
         {
-            KeReleaseSpinLock(&DeviceExtension->QueueLock, oldIrql);
-            if(FailRequests == DeviceExtension->QueueState)
+            PIO_STACK_LOCATION irpStack;
+
+            // These were queued before they became urbs, so they go back
+            // through the dispatchers rather than straight down the stack
+            irpStack = IoGetCurrentIrpStackLocation(nextIrp);
+
+            FreeBT_DbgPrint(3, ("FBTUSB: ProcessQueuedRequests::"));
+            FreeBT_IoIncrement(DeviceExtension);
+
+            switch (irpStack->MajorFunction)
             {
-                nextIrp->IoStatus.Information = 0;
-                nextIrp->IoStatus.Status = STATUS_DELETE_PENDING;
-                IoCompleteRequest(nextIrp, IO_NO_INCREMENT);
+                case IRP_MJ_READ:
+                    FreeBT_DispatchRead(DeviceExtension->FunctionalDeviceObject, nextIrp);
+                    break;
+
+                case IRP_MJ_WRITE:
+                    FreeBT_DispatchWrite(DeviceExtension->FunctionalDeviceObject, nextIrp);
+                    break;
+
+                case IRP_MJ_DEVICE_CONTROL:
+                    FreeBT_DispatchDevCtrl(DeviceExtension->FunctionalDeviceObject, nextIrp);
+                    break;
+
+                default:
+                    nextIrp->IoStatus.Information = 0;
+                    nextIrp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+                    IoCompleteRequest(nextIrp, IO_NO_INCREMENT);
+                    break;
 
             }
 
-            else
-            {
-                //PIO_STACK_LOCATION irpStack;
-
-                FreeBT_DbgPrint(3, ("FBTUSB: ProcessQueuedRequests::"));
-                FreeBT_IoIncrement(DeviceExtension);
-
-                IoSkipCurrentIrpStackLocation(nextIrp);
-                IoCallDriver(DeviceExtension->TopOfStackDeviceObject, nextIrp);
-
-                FreeBT_DbgPrint(3, ("FBTUSB: ProcessQueuedRequests::"));
-                FreeBT_IoDecrement(DeviceExtension);
-
-            }
+            FreeBT_DbgPrint(3, ("FBTUSB: ProcessQueuedRequests::"));
+            FreeBT_IoDecrement(DeviceExtension);
 
         }
 

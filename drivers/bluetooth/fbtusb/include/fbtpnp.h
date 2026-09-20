@@ -35,6 +35,13 @@ NTSTATUS NTAPI SelectInterfaces(IN PDEVICE_OBJECT DeviceObject, IN PUSB_CONFIGUR
 NTSTATUS NTAPI DeconfigureDevice(IN PDEVICE_OBJECT DeviceObject);
 NTSTATUS NTAPI CallUSBD(IN PDEVICE_OBJECT DeviceObject, IN PURB Urb);
 VOID NTAPI ProcessQueuedRequests(IN OUT PDEVICE_EXTENSION DeviceExtension);
+
+VOID
+NTAPI
+DrainQueueWorkerRoutine(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PVOID Context);
+
 NTSTATUS NTAPI FreeBT_GetRegistryDword(IN PWCHAR RegPath, IN PWCHAR ValueName, IN OUT PULONG Value);
 NTSTATUS NTAPI FreeBT_DispatchClean(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 VOID NTAPI DpcRoutine(
