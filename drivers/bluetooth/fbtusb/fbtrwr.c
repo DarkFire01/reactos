@@ -19,28 +19,144 @@
 
 #include "fbtusr.h"
 
-// Read/Write handler
-NTSTATUS NTAPI FreeBT_DispatchRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+// Completion for both ACL directions, the URB is passed as the context
+NTSTATUS
+NTAPI
+FreeBT_TransferCompletion(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp,
+    _In_ PVOID Context)
 {
-    PMDL                    mdl;
-    PURB                    urb;
-    ULONG                   totalLength;
-    ULONG                   stageLength;
-    NTSTATUS                ntStatus;
-    ULONG_PTR               virtualAddress;
-    PFILE_OBJECT            fileObject;
-    PDEVICE_EXTENSION       deviceExtension;
-    PIO_STACK_LOCATION      irpStack;
-    PIO_STACK_LOCATION      nextStack;
-    PFREEBT_RW_CONTEXT      rwContext;
-    //ULONG                   maxLength=0;
+    PURB                urb;
+    NTSTATUS            ntStatus;
+    PDEVICE_EXTENSION   deviceExtension;
 
-    urb = NULL;
-    mdl = NULL;
-    rwContext = NULL;
+    deviceExtension = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
+    urb = (PURB) Context;
+    ntStatus = Irp->IoStatus.Status;
+
+    if (Irp->PendingReturned)
+        IoMarkIrpPending(Irp);
+
+    if (NT_SUCCESS(ntStatus))
+    {
+        Irp->IoStatus.Information = urb->UrbBulkOrInterruptTransfer.TransferBufferLength;
+        FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_TransferCompletion: %d bytes transferred\n",
+                            urb->UrbBulkOrInterruptTransfer.TransferBufferLength));
+
+    }
+
+    else
+    {
+        Irp->IoStatus.Information = 0;
+        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_TransferCompletion: Failed with status 0x%08x, URB status 0x%08x\n",
+                            ntStatus, urb->UrbHeader.Status));
+
+    }
+
+    ExFreePool(urb);
+    FreeBT_IoDecrement(deviceExtension);
+
+    return ntStatus;
+
+}
+
+// Build and submit a bulk transfer over Pipe, described by the MDL the IRP
+// already carries. This routine owns the IRP, callers must not touch it after.
+NTSTATUS
+NTAPI
+FreeBT_SubmitTransfer(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp,
+    _In_ PUSBD_PIPE_INFORMATION Pipe,
+    _In_ ULONG TransferFlags,
+    _In_ ULONG TransferLength)
+{
+    PURB                urb;
+    NTSTATUS            ntStatus;
+    PDEVICE_EXTENSION   deviceExtension;
+    PIO_STACK_LOCATION  nextStack;
+
+    deviceExtension = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
+
+    urb = (PURB) ExAllocatePool(NonPagedPool, sizeof(struct _URB_BULK_OR_INTERRUPT_TRANSFER));
+    if (urb == NULL)
+    {
+        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_SubmitTransfer: Failed to alloc mem for urb\n"));
+        ntStatus = STATUS_INSUFFICIENT_RESOURCES;
+        Irp->IoStatus.Status = ntStatus;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+        return ntStatus;
+
+    }
+
+    // USBD splits the transfer into MaximumPacketSize chunks itself, so the
+    // whole buffer goes down as one URB and no staging is needed here
+    UsbBuildInterruptOrBulkTransferRequest(
+                            urb,
+                            sizeof(struct _URB_BULK_OR_INTERRUPT_TRANSFER),
+                            Pipe->PipeHandle,
+                            NULL,
+                            Irp->MdlAddress,
+                            TransferLength,
+                            TransferFlags,
+                            NULL);
+
+    // Reuse the read/write irp as an internal device control irp
+    nextStack = IoGetNextIrpStackLocation(Irp);
+    nextStack->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
+    nextStack->Parameters.Others.Argument1 = (PVOID) urb;
+    nextStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_INTERNAL_USB_SUBMIT_URB;
+
+    IoSetCompletionRoutine(Irp,
+                           FreeBT_TransferCompletion,
+                           urb,
+                           TRUE,
+                           TRUE,
+                           TRUE);
+
+    // Take the count before the call, the completion routine drops it and can
+    // run before IoCallDriver returns
+    FreeBT_IoIncrement(deviceExtension);
+    IoMarkIrpPending(Irp);
+
+    ntStatus = IoCallDriver(deviceExtension->TopOfStackDeviceObject, Irp);
+    if (!NT_SUCCESS(ntStatus))
+    {
+        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_SubmitTransfer: IoCallDriver fails with status %X\n", ntStatus));
+
+        // The completion routine has already run and completed the irp, so
+        // only the pipe is left to recover
+        if ((ntStatus != STATUS_CANCELLED) && (ntStatus != STATUS_DEVICE_NOT_CONNECTED))
+        {
+            if (!NT_SUCCESS(FreeBT_ResetPipe(DeviceObject, Pipe->PipeHandle)))
+            {
+                FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_SubmitTransfer: FreeBT_ResetPipe failed\n"));
+                FreeBT_ResetDevice(DeviceObject);
+
+            }
+
+        }
+
+    }
+
+    return STATUS_PENDING;
+
+}
+
+NTSTATUS
+NTAPI
+FreeBT_DispatchRead(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp)
+{
+    ULONG               totalLength;
+    NTSTATUS            ntStatus;
+    PDEVICE_EXTENSION   deviceExtension;
+
     totalLength = 0;
-    irpStack = IoGetCurrentIrpStackLocation(Irp);
-    fileObject = irpStack->FileObject;
     deviceExtension = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
 
     FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_DispatchRead: Entered\n"));
@@ -49,6 +165,14 @@ NTSTATUS NTAPI FreeBT_DispatchRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     {
         FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchRead: Invalid device state\n"));
         ntStatus = STATUS_INVALID_DEVICE_STATE;
+        goto FreeBT_DispatchRead_Exit;
+
+    }
+
+    if (deviceExtension->DataInPipe.PipeHandle == NULL)
+    {
+        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchRead: Device has no ACL in pipe\n"));
+        ntStatus = STATUS_DEVICE_NOT_READY;
         goto FreeBT_DispatchRead_Exit;
 
     }
@@ -65,134 +189,24 @@ NTSTATUS NTAPI FreeBT_DispatchRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     }
 
-    rwContext = (PFREEBT_RW_CONTEXT) ExAllocatePool(NonPagedPool, sizeof(FREEBT_RW_CONTEXT));
-    if (rwContext == NULL)
-    {
-        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchRead: Failed to alloc mem for rwContext\n"));
-        ntStatus = STATUS_INSUFFICIENT_RESOURCES;
-        goto FreeBT_DispatchRead_Exit;
-
-    }
-
     if (Irp->MdlAddress)
-    {
         totalLength = MmGetMdlByteCount(Irp->MdlAddress);
 
-    }
-
-    FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchRead: Transfer data length = %d\n", totalLength));
+    FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_DispatchRead: Transfer data length = %d\n", totalLength));
     if (totalLength == 0)
     {
         ntStatus = STATUS_SUCCESS;
-        ExFreePool(rwContext);
         goto FreeBT_DispatchRead_Exit;
 
     }
 
-    virtualAddress = (ULONG_PTR) MmGetMdlVirtualAddress(Irp->MdlAddress);
-    if (totalLength > deviceExtension->DataInPipe.MaximumPacketSize)
-    {
-        stageLength = deviceExtension->DataInPipe.MaximumPacketSize;
-
-    }
-
-    else
-    {
-        stageLength = totalLength;
-
-    }
-
-    mdl = IoAllocateMdl((PVOID) virtualAddress, totalLength, FALSE, FALSE, NULL);
-    if (mdl == NULL)
-    {
-        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchRead: Failed to alloc mem for mdl\n"));
-        ntStatus = STATUS_INSUFFICIENT_RESOURCES;
-        ExFreePool(rwContext);
-        goto FreeBT_DispatchRead_Exit;
-
-    }
-
-    // map the portion of user-buffer described by an mdl to another mdl
-    IoBuildPartialMdl(Irp->MdlAddress, mdl, (PVOID) virtualAddress, stageLength);
-    urb = (PURB) ExAllocatePool(NonPagedPool, sizeof(struct _URB_BULK_OR_INTERRUPT_TRANSFER));
-    if (urb == NULL)
-    {
-        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchRead: Failed to alloc mem for urb\n"));
-        ntStatus = STATUS_INSUFFICIENT_RESOURCES;
-        ExFreePool(rwContext);
-        IoFreeMdl(mdl);
-        goto FreeBT_DispatchRead_Exit;
-
-    }
-
-    UsbBuildInterruptOrBulkTransferRequest(
-                            urb,
-                            sizeof(struct _URB_BULK_OR_INTERRUPT_TRANSFER),
-                            deviceExtension->DataInPipe.PipeHandle,
-                            NULL,
-                            mdl,
-                            stageLength,
-                            USBD_SHORT_TRANSFER_OK | USBD_TRANSFER_DIRECTION_IN,
-                            NULL);
-
-    // set FREEBT_RW_CONTEXT parameters.
-    rwContext->Urb             = urb;
-    rwContext->Mdl             = mdl;
-    rwContext->Length          = totalLength - stageLength;
-    rwContext->Numxfer         = 0;
-    rwContext->VirtualAddress  = virtualAddress + stageLength;
-
-    // use the original read/write irp as an internal device control irp
-    nextStack = IoGetNextIrpStackLocation(Irp);
-    nextStack->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
-    nextStack->Parameters.Others.Argument1 = (PVOID) urb;
-    nextStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_INTERNAL_USB_SUBMIT_URB;
-    IoSetCompletionRoutine(Irp,
-                           (PIO_COMPLETION_ROUTINE)FreeBT_ReadCompletion,
-                           rwContext,
-                           TRUE,
-                           TRUE,
-                           TRUE);
-
-    // We return STATUS_PENDING; call IoMarkIrpPending.
-    IoMarkIrpPending(Irp);
-
-    ntStatus = IoCallDriver(deviceExtension->TopOfStackDeviceObject, Irp);
-    if (!NT_SUCCESS(ntStatus))
-    {
-        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchRead: IoCallDriver fails with status %X\n", ntStatus));
-
-        // if the device was yanked out, then the pipeInformation
-        // field is invalid.
-        // similarly if the request was cancelled, then we need not
-        // invoked reset pipe/device.
-        if((ntStatus != STATUS_CANCELLED) && (ntStatus != STATUS_DEVICE_NOT_CONNECTED))
-        {
-            ntStatus = FreeBT_ResetPipe(DeviceObject, deviceExtension->DataInPipe.PipeHandle);
-            if(!NT_SUCCESS(ntStatus))
-            {
-                FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchRead: FreeBT_ResetPipe failed\n"));
-                ntStatus = FreeBT_ResetDevice(DeviceObject);
-
-            }
-
-        }
-
-        else
-        {
-            FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_DispatchRead: ntStatus is STATUS_CANCELLED or STATUS_DEVICE_NOT_CONNECTED\n"));
-
-        }
-
-    }
-
-    FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_DispatchRead::"));
-    FreeBT_IoIncrement(deviceExtension);
-
-    FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_DispatchRead: URB sent to lower driver, IRP is pending\n"));
-
-    // we return STATUS_PENDING and not the status returned by the lower layer.
-    return STATUS_PENDING;
+    // A short packet ends the transfer, which is what frames one ACL packet
+    // per read
+    return FreeBT_SubmitTransfer(DeviceObject,
+                                 Irp,
+                                 &deviceExtension->DataInPipe,
+                                 USBD_SHORT_TRANSFER_OK | USBD_TRANSFER_DIRECTION_IN,
+                                 totalLength);
 
 FreeBT_DispatchRead_Exit:
     Irp->IoStatus.Status = ntStatus;
@@ -204,81 +218,33 @@ FreeBT_DispatchRead_Exit:
 
 }
 
-NTSTATUS NTAPI FreeBT_ReadCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
+NTSTATUS
+NTAPI
+FreeBT_DispatchWrite(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp)
 {
-    //ULONG               stageLength;
+    ULONG               totalLength;
     NTSTATUS            ntStatus;
-    //PIO_STACK_LOCATION  nextStack;
-    PFREEBT_RW_CONTEXT  rwContext;
     PDEVICE_EXTENSION   deviceExtension;
 
-    deviceExtension = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
-    rwContext = (PFREEBT_RW_CONTEXT) Context;
-    ntStatus = Irp->IoStatus.Status;
-
-    UNREFERENCED_PARAMETER(DeviceObject);
-    FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_ReadCompletion: Entered\n"));
-
-    if (NT_SUCCESS(ntStatus))
-    {
-        Irp->IoStatus.Information = rwContext->Urb->UrbBulkOrInterruptTransfer.TransferBufferLength;
-
-    }
-
-    else
-    {
-        Irp->IoStatus.Information = 0;
-        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_ReadCompletion: - failed with status = %X\n", ntStatus));
-
-    }
-
-    if (rwContext)
-    {
-        FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_ReadCompletion: ::"));
-        FreeBT_IoDecrement(deviceExtension);
-
-        ExFreePool(rwContext->Urb);
-        IoFreeMdl(rwContext->Mdl);
-        ExFreePool(rwContext);
-
-    }
-
-    FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_ReadCompletion: Leaving\n"));
-
-    return ntStatus;
-
-}
-
-// Read/Write handler
-NTSTATUS NTAPI FreeBT_DispatchWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
-{
-    PMDL                    mdl;
-    PURB                    urb;
-    ULONG                   totalLength;
-    ULONG                   stageLength;
-    NTSTATUS                ntStatus;
-    ULONG_PTR               virtualAddress;
-    PFILE_OBJECT            fileObject;
-    PDEVICE_EXTENSION       deviceExtension;
-    PIO_STACK_LOCATION      irpStack;
-    PIO_STACK_LOCATION      nextStack;
-    PFREEBT_RW_CONTEXT      rwContext;
-    //ULONG                   maxLength=0;
-
-    urb = NULL;
-    mdl = NULL;
-    rwContext = NULL;
     totalLength = 0;
-    irpStack = IoGetCurrentIrpStackLocation(Irp);
-    fileObject = irpStack->FileObject;
     deviceExtension = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
 
     FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_DispatchWrite: Entered\n"));
 
     if (deviceExtension->DeviceState != Working)
     {
-        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_WriteDispatch: Invalid device state\n"));
+        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchWrite: Invalid device state\n"));
         ntStatus = STATUS_INVALID_DEVICE_STATE;
+        goto FreeBT_DispatchWrite_Exit;
+
+    }
+
+    if (deviceExtension->DataOutPipe.PipeHandle == NULL)
+    {
+        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchWrite: Device has no ACL out pipe\n"));
+        ntStatus = STATUS_DEVICE_NOT_READY;
         goto FreeBT_DispatchWrite_Exit;
 
     }
@@ -286,7 +252,7 @@ NTSTATUS NTAPI FreeBT_DispatchWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     // Make sure that any selective suspend request has been completed.
     if (deviceExtension->SSEnable)
     {
-        FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_WriteDispatch: Waiting on the IdleReqPendEvent\n"));
+        FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_DispatchWrite: Waiting on the IdleReqPendEvent\n"));
         KeWaitForSingleObject(&deviceExtension->NoIdleReqPendEvent,
                               Executive,
                               KernelMode,
@@ -295,144 +261,35 @@ NTSTATUS NTAPI FreeBT_DispatchWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     }
 
-    rwContext = (PFREEBT_RW_CONTEXT) ExAllocatePool(NonPagedPool, sizeof(FREEBT_RW_CONTEXT));
-    if (rwContext == NULL)
-    {
-        FreeBT_DbgPrint(1, ("FBTUSB: Failed to alloc mem for rwContext\n"));
-        ntStatus = STATUS_INSUFFICIENT_RESOURCES;
-        goto FreeBT_DispatchWrite_Exit;
-
-    }
-
     if (Irp->MdlAddress)
-    {
         totalLength = MmGetMdlByteCount(Irp->MdlAddress);
 
-    }
+    FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_DispatchWrite: Transfer data length = %d\n", totalLength));
 
-    FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_WriteDispatch: Transfer data length = %d\n", totalLength));
-    if (totalLength>FBT_HCI_DATA_MAX_SIZE)
+    // The controller reports its own ACL limit in the buffer size parameters,
+    // all that can be enforced here is what the pipe will carry
+    if (totalLength > deviceExtension->DataOutPipe.MaximumTransferSize)
     {
-        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_WriteDispatch: Buffer exceeds maximum packet length (%d), failing IRP\n", FBT_HCI_DATA_MAX_SIZE));
+        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchWrite: Buffer exceeds pipe maximum (%d), failing IRP\n",
+                            deviceExtension->DataOutPipe.MaximumTransferSize));
         ntStatus = STATUS_INVALID_BUFFER_SIZE;
-        ExFreePool(rwContext);
         goto FreeBT_DispatchWrite_Exit;
 
     }
 
-    if (totalLength<FBT_HCI_DATA_MIN_SIZE)
+    if (totalLength < FBT_HCI_DATA_MIN_SIZE)
     {
-        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_WriteDispatch: Zero length buffer, completing IRP\n"));
+        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchWrite: Buffer shorter than an ACL header, completing IRP\n"));
         ntStatus = STATUS_BUFFER_TOO_SMALL;
-        ExFreePool(rwContext);
         goto FreeBT_DispatchWrite_Exit;
 
     }
 
-    virtualAddress = (ULONG_PTR) MmGetMdlVirtualAddress(Irp->MdlAddress);
-    if (totalLength > deviceExtension->DataOutPipe.MaximumPacketSize)
-    {
-        stageLength = deviceExtension->DataOutPipe.MaximumPacketSize;
-
-    }
-
-    else
-    {
-        stageLength = totalLength;
-
-    }
-
-    mdl = IoAllocateMdl((PVOID) virtualAddress, totalLength, FALSE, FALSE, NULL);
-    if (mdl == NULL)
-    {
-        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_WriteDispatch: Failed to alloc mem for mdl\n"));
-        ntStatus = STATUS_INSUFFICIENT_RESOURCES;
-        ExFreePool(rwContext);
-        goto FreeBT_DispatchWrite_Exit;
-
-    }
-
-    // map the portion of user-buffer described by an mdl to another mdl
-    IoBuildPartialMdl(Irp->MdlAddress, mdl, (PVOID) virtualAddress, stageLength);
-    urb = (PURB) ExAllocatePool(NonPagedPool, sizeof(struct _URB_BULK_OR_INTERRUPT_TRANSFER));
-    if (urb == NULL)
-    {
-        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_WriteDispatch: Failed to alloc mem for urb\n"));
-        ntStatus = STATUS_INSUFFICIENT_RESOURCES;
-        ExFreePool(rwContext);
-        IoFreeMdl(mdl);
-        goto FreeBT_DispatchWrite_Exit;
-
-    }
-
-    UsbBuildInterruptOrBulkTransferRequest(
-                            urb,
-                            sizeof(struct _URB_BULK_OR_INTERRUPT_TRANSFER),
-                            deviceExtension->DataOutPipe.PipeHandle,
-                            NULL,
-                            mdl,
-                            stageLength,
-                            USBD_SHORT_TRANSFER_OK | USBD_TRANSFER_DIRECTION_OUT,
-                            NULL);
-
-    // set FREEBT_RW_CONTEXT parameters.
-    rwContext->Urb             = urb;
-    rwContext->Mdl             = mdl;
-    rwContext->Length          = totalLength - stageLength;
-    rwContext->Numxfer         = 0;
-    rwContext->VirtualAddress  = virtualAddress + stageLength;
-
-    // use the original read/write irp as an internal device control irp
-    nextStack = IoGetNextIrpStackLocation(Irp);
-    nextStack->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
-    nextStack->Parameters.Others.Argument1 = (PVOID) urb;
-    nextStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_INTERNAL_USB_SUBMIT_URB;
-    IoSetCompletionRoutine(Irp,
-                           (PIO_COMPLETION_ROUTINE)FreeBT_WriteCompletion,
-                           rwContext,
-                           TRUE,
-                           TRUE,
-                           TRUE);
-
-    // We return STATUS_PENDING; call IoMarkIrpPending.
-    IoMarkIrpPending(Irp);
-
-    ntStatus = IoCallDriver(deviceExtension->TopOfStackDeviceObject, Irp);
-    if (!NT_SUCCESS(ntStatus))
-    {
-        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_WriteDispatch: IoCallDriver fails with status %X\n", ntStatus));
-
-        // if the device was yanked out, then the pipeInformation
-        // field is invalid.
-        // similarly if the request was cancelled, then we need not
-        // invoked reset pipe/device.
-        if((ntStatus != STATUS_CANCELLED) && (ntStatus != STATUS_DEVICE_NOT_CONNECTED))
-        {
-            ntStatus = FreeBT_ResetPipe(DeviceObject, deviceExtension->DataOutPipe.PipeHandle);
-            if(!NT_SUCCESS(ntStatus))
-            {
-                FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_ResetPipe failed\n"));
-                ntStatus = FreeBT_ResetDevice(DeviceObject);
-
-            }
-
-        }
-
-        else
-        {
-            FreeBT_DbgPrint(3, ("FBTUSB: ntStatus is STATUS_CANCELLED or STATUS_DEVICE_NOT_CONNECTED\n"));
-
-        }
-
-    }
-
-    FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_DispatchWrite::"));
-    FreeBT_IoIncrement(deviceExtension);
-
-    FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_DispatchWrite: URB sent to lower driver, IRP is pending\n"));
-
-    // we return STATUS_PENDING and not the status returned by the lower layer.
-    return STATUS_PENDING;
+    return FreeBT_SubmitTransfer(DeviceObject,
+                                 Irp,
+                                 &deviceExtension->DataOutPipe,
+                                 USBD_TRANSFER_DIRECTION_OUT,
+                                 totalLength);
 
 FreeBT_DispatchWrite_Exit:
     Irp->IoStatus.Status = ntStatus;
@@ -443,101 +300,3 @@ FreeBT_DispatchWrite_Exit:
     return ntStatus;
 
 }
-
-NTSTATUS NTAPI FreeBT_WriteCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
-{
-    ULONG               stageLength;
-    NTSTATUS            ntStatus;
-    PIO_STACK_LOCATION  nextStack;
-    PFREEBT_RW_CONTEXT  rwContext;
-    PDEVICE_EXTENSION   deviceExtension;
-
-    deviceExtension = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
-    rwContext = (PFREEBT_RW_CONTEXT) Context;
-    ntStatus = Irp->IoStatus.Status;
-
-    UNREFERENCED_PARAMETER(DeviceObject);
-    FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_WriteCompletion: Entered\n"));
-
-    if (NT_SUCCESS(ntStatus))
-    {
-        if (rwContext)
-        {
-            rwContext->Numxfer += rwContext->Urb->UrbBulkOrInterruptTransfer.TransferBufferLength;
-            if (rwContext->Length)
-            {
-                // More data to transfer
-                FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_WriteCompletion: Initiating next transfer\n"));
-                if (rwContext->Length > deviceExtension->DataOutPipe.MaximumPacketSize)
-                {
-                    stageLength = deviceExtension->DataOutPipe.MaximumPacketSize;
-
-                }
-
-                else
-                {
-                    stageLength = rwContext->Length;
-
-                }
-
-                IoBuildPartialMdl(Irp->MdlAddress, rwContext->Mdl, (PVOID) rwContext->VirtualAddress, stageLength);
-
-                // reinitialize the urb
-                rwContext->Urb->UrbBulkOrInterruptTransfer.TransferBufferLength = stageLength;
-                rwContext->VirtualAddress += stageLength;
-                rwContext->Length -= stageLength;
-
-                nextStack = IoGetNextIrpStackLocation(Irp);
-                nextStack->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
-                nextStack->Parameters.Others.Argument1 = rwContext->Urb;
-                nextStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_INTERNAL_USB_SUBMIT_URB;
-
-                IoSetCompletionRoutine(Irp,
-                                       FreeBT_ReadCompletion,
-                                       rwContext,
-                                       TRUE,
-                                       TRUE,
-                                       TRUE);
-
-                IoCallDriver(deviceExtension->TopOfStackDeviceObject, Irp);
-
-                return STATUS_MORE_PROCESSING_REQUIRED;
-
-            }
-
-            else
-            {
-                // No more data to transfer
-                FreeBT_DbgPrint(1, ("FBTUSB: FreeNT_WriteCompletion: Write completed, %d bytes written\n", Irp->IoStatus.Information));
-                Irp->IoStatus.Information = rwContext->Numxfer;
-
-            }
-
-        }
-
-    }
-
-    else
-    {
-        FreeBT_DbgPrint(1, ("FBTUSB: FreeNT_WriteCompletion - failed with status = %X\n", ntStatus));
-
-    }
-
-    if (rwContext)
-    {
-        FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_WriteCompletion: ::"));
-        FreeBT_IoDecrement(deviceExtension);
-
-        ExFreePool(rwContext->Urb);
-        IoFreeMdl(rwContext->Mdl);
-        ExFreePool(rwContext);
-
-    }
-
-
-    FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_WriteCompletion: Leaving\n"));
-
-    return ntStatus;
-
-}
-
