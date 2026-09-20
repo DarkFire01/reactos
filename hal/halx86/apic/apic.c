@@ -1618,7 +1618,7 @@ KfRaiseIrql(
 {
     KIRQL OldIrql;
 #if DBG
-    ULONG_PTR Caller = 0, *Frame;
+    ULONG_PTR Caller = 0;
 #endif
 
     /* Read the current IRQL */
@@ -1630,12 +1630,6 @@ KfRaiseIrql(
        is usually the second one. */
     if (OldIrql > NewIrql)
     {
-        /* Walk one frame past our caller. Everything here is built with
-           -fno-omit-frame-pointer, so [ebp] is the caller's frame and
-           [ebp + 4] the address it will return to. */
-        Frame = (ULONG_PTR *)__builtin_frame_address(0);
-        if (Frame != NULL && Frame[0] != 0)
-            Caller = ((ULONG_PTR *)Frame[0])[1];
 
         /* Crash system */
         KeBugCheckEx(IRQL_NOT_GREATER_OR_EQUAL,
