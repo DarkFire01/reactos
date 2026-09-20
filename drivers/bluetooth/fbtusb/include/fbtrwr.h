@@ -17,20 +17,33 @@
 extern "C" {
 #endif
 
-typedef struct _FREEBT_RW_CONTEXT
-{
-    PURB					Urb;
-    PMDL					Mdl;
-    ULONG					Length;				// remaining to xfer
-    ULONG					Numxfer;			// cumulate xfer
-    ULONG_PTR				VirtualAddress;		// va for next segment of xfer.
+NTSTATUS
+NTAPI
+FreeBT_TransferCompletion(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp,
+    _In_ PVOID Context);
 
-} FREEBT_RW_CONTEXT, * PFREEBT_RW_CONTEXT;
+NTSTATUS
+NTAPI
+FreeBT_SubmitTransfer(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp,
+    _In_ PUSBD_PIPE_INFORMATION Pipe,
+    _In_ ULONG TransferFlags,
+    _In_ ULONG TransferLength);
 
-NTSTATUS NTAPI FreeBT_DispatchRead(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
-NTSTATUS NTAPI FreeBT_ReadCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context);
-NTSTATUS NTAPI FreeBT_DispatchWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
-NTSTATUS NTAPI FreeBT_WriteCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context);
+NTSTATUS
+NTAPI
+FreeBT_DispatchRead(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp);
+
+NTSTATUS
+NTAPI
+FreeBT_DispatchWrite(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ PIRP Irp);
 
 #ifdef __cplusplus
 };
