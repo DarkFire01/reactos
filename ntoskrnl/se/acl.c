@@ -863,6 +863,14 @@ SepSelectAcl(
     *AclLength = 0;
     if (Acl)
     {
+        if (!RtlValidAcl(Acl))
+        {
+            DPRINT1("Invalid %s ACL %p: revision %u, size %u, %u ACEs\n",
+                    (Acl == ExplicitAcl) ? "explicit" :
+                    ((Acl == DefaultAcl) ? "default" : "parent"),
+                    Acl, Acl->AclRevision, Acl->AclSize, Acl->AceCount);
+        }
+
         /* Get the length */
         Status = SepPropagateAcl(NULL,
                                  AclLength,
