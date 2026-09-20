@@ -149,6 +149,24 @@ typedef struct _INTERRUPT_CONNECTION_DATA
     INTERRUPT_VECTOR_DATA Vectors[1];
 } INTERRUPT_CONNECTION_DATA, *PINTERRUPT_CONNECTION_DATA;
 
+//TODO: How does ARM64 work?
+typedef enum _INTERRUPT_TARGET_TYPE {
+    TargetApic =        0,
+    TargetApicRequest = 1,
+    TargetGlobal =      2
+} INTERRUPT_TARGET_TYPE;
+
+/* The target is a nested structure so its alignment matches what Windows passes */
+typedef struct _HAL_MESSAGE_SIGNAL_TARGET_REQUEST {
+    INTERRUPT_TARGET_TYPE InterruptTargetType;
+    struct {
+        ULONG InterruptVector;
+        GROUP_AFFINITY TargetProcessors;
+        HAL_APIC_DESTINATION_MODE ApicDestinationMode;
+        INTERRUPT_REMAPPING_INFO InterruptRemapInfo;
+    } ApicTarget;
+} HAL_MESSAGE_SIGNAL_TARGET_REQUEST, *PHAL_MESSAGE_SIGNAL_TARGET_REQUEST;
+
 //
 // HalShutdownSystem Types
 //
