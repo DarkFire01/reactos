@@ -436,6 +436,10 @@ NTSTATUS NTAPI FreeBT_DispatchDevCtrl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Ir
 
     }
 
+    // Park the request while the device is between power states
+    if (QueueRequestIfHeld(deviceExtension, Irp))
+        return STATUS_PENDING;
+
     FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_DispatchDevCtrl::"));
 
     // Make sure that any selective suspend request has been completed.

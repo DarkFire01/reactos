@@ -827,28 +827,51 @@ VOID NTAPI HoldIoRequestsWorkerRoutine(IN PDEVICE_OBJECT DeviceObject, IN PVOID 
 
 }
 
-NTSTATUS NTAPI QueueRequest(IN OUT PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+// Park the request when the device is between power states. Returns TRUE once
+// the irp has been taken over, in which case the caller returns STATUS_PENDING
+// and must not touch it again.
+BOOLEAN
+NTAPI
+QueueRequestIfHeld(
+    _Inout_ PDEVICE_EXTENSION DeviceExtension,
+    _In_ PIRP Irp)
 {
-    KIRQL    oldIrql;
-    NTSTATUS ntStatus;
-
-    FreeBT_DbgPrint(3, ("FBTUSB: QueueRequests: Entered\n"));
-
-    ntStatus = STATUS_PENDING;
-
-    ASSERT(HoldRequests == DeviceExtension->QueueState);
+    KIRQL oldIrql;
 
     KeAcquireSpinLock(&DeviceExtension->QueueLock, &oldIrql);
+
+    if (HoldRequests != DeviceExtension->QueueState)
+    {
+        KeReleaseSpinLock(&DeviceExtension->QueueLock, oldIrql);
+
+        return FALSE;
+
+    }
+
+    FreeBT_DbgPrint(3, ("FBTUSB: QueueRequestIfHeld: Holding irp %p\n", Irp));
 
     InsertTailList(&DeviceExtension->NewRequestsQueue, &Irp->Tail.Overlay.ListEntry);
     IoMarkIrpPending(Irp);
     IoSetCancelRoutine(Irp, CancelQueued);
 
+    // The io manager tests Cancel before calling the dispatcher, so catch a
+    // cancel that landed while the irp was going onto the queue
+    if (Irp->Cancel && IoSetCancelRoutine(Irp, NULL) != NULL)
+    {
+        RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
+        KeReleaseSpinLock(&DeviceExtension->QueueLock, oldIrql);
+
+        Irp->IoStatus.Status = STATUS_CANCELLED;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+        return TRUE;
+
+    }
+
     KeReleaseSpinLock(&DeviceExtension->QueueLock, oldIrql);
 
-    FreeBT_DbgPrint(3, ("FBTUSB: QueueRequests: Leaving\n"));
-
-    return ntStatus;
+    return TRUE;
 
 }
 
@@ -860,13 +883,12 @@ VOID NTAPI CancelQueued(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     FreeBT_DbgPrint(3, ("FBTUSB: CancelQueued: Entered\n"));
 
     deviceExtension = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
-    oldIrql = Irp->CancelIrql;
 
-    // Release the cancel spin lock
+    // Drop the cancel spin lock back to the irql the request came in at,
+    // then take the queue lock the ordinary way
     IoReleaseCancelSpinLock(Irp->CancelIrql);
 
-    // Acquire the queue lock
-    KeAcquireSpinLockAtDpcLevel(&deviceExtension->QueueLock);
+    KeAcquireSpinLock(&deviceExtension->QueueLock, &oldIrql);
 
     // Remove the cancelled Irp from queue and release the lock
     RemoveEntryList(&Irp->Tail.Overlay.ListEntry);

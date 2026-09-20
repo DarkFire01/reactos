@@ -52,7 +52,11 @@ NTSTATUS NTAPI SetDeviceFunctional(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, 
 NTSTATUS NTAPI FinishDevPoDnIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PDEVICE_EXTENSION DeviceExtension);
 NTSTATUS NTAPI HoldIoRequests(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 VOID NTAPI HoldIoRequestsWorkerRoutine(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context);
-NTSTATUS NTAPI QueueRequest(IN OUT PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp);
+BOOLEAN
+NTAPI
+QueueRequestIfHeld(
+    _Inout_ PDEVICE_EXTENSION DeviceExtension,
+    _In_ PIRP Irp);
 VOID NTAPI CancelQueued(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 NTSTATUS NTAPI WaitWakeCompletionRoutine(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PDEVICE_EXTENSION DeviceExtension);
 NTSTATUS NTAPI IssueWaitWake(IN PDEVICE_EXTENSION DeviceExtension);
