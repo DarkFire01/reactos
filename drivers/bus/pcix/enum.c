@@ -149,10 +149,15 @@ PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
                 /* Interrupt resource */
                 case CmResourceTypeInterrupt:
 
-                    /* Make sure it's a compatible (and the only) PCI interrupt */
+                    /* Make sure it's the only PCI interrupt */
                     ASSERT(InterruptResource == NULL);
-                    ASSERT(Partial->u.Interrupt.Level == Partial->u.Interrupt.Vector);
                     InterruptResource = Partial;
+
+                    /* A message grant packs its count into Level and names no wired line */
+                    if (Partial->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)
+                        break;
+
+                    ASSERT(Partial->u.Interrupt.Level == Partial->u.Interrupt.Vector);
 
                     /* Only 255 interrupts on x86/x64 hardware */
                     if (Partial->u.Interrupt.Level < 256)
@@ -649,6 +654,26 @@ Exit:
     return STATUS_SUCCESS;
 }
 
+static
+VOID
+NTAPI
+PciFillMessageRequirement(
+    _Out_ PIO_RESOURCE_DESCRIPTOR Descriptor,
+    _In_ ULONG MessageCount,
+    _In_ BOOLEAN HasLineFallback)
+{
+    Descriptor->Type = CmResourceTypeInterrupt;
+    Descriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+    Descriptor->Flags = CM_RESOURCE_INTERRUPT_LATCHED | CM_RESOURCE_INTERRUPT_MESSAGE;
+
+    /* Otherwise the arbiter ranks the wired line ahead of the messages */
+    if (HasLineFallback)
+        Descriptor->Option = IO_RESOURCE_PREFERRED;
+
+    Descriptor->u.Interrupt.MinimumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN - MessageCount + 1;
+    Descriptor->u.Interrupt.MaximumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
+}
+
 /**
  * @brief
  * Tells whether a discovered limit asks the arbiter for a range.
@@ -753,7 +778,7 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
     PIO_RESOURCE_DESCRIPTOR Descriptor, Limit, First, Next;
     PCI_CONFIGURATOR_CONTEXT Context;
-    ULONG Count, i;
+    ULONG Count, i, Messages;
     BOOLEAN HaveInterrupt;
 
     PAGED_CODE();
@@ -783,6 +808,13 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     HaveInterrupt = (PdoExtension->InterruptPin) &&
                     !(PdoExtension->HackFlags & PCI_HACK_NO_ENUM_AT_ALL);
     if (HaveInterrupt)
+        Count++;
+
+    /* Messages are asked for first, with a single message as the fallback for a run */
+    Messages = PciGetRequestableMessageCount(PdoExtension, HaveInterrupt);
+    if (Messages > 1)
+        Count += 2;
+    else if (Messages)
         Count++;
 
     /* And a bridge with legacy decodes enabled needs those ranges locked down */
@@ -846,11 +878,29 @@ PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
         }
     }
 
+    /* The message count is the span below the message token */
+    if (Messages > 1)
+    {
+        PciFillMessageRequirement(Descriptor, Messages, HaveInterrupt);
+        Descriptor++;
+    }
+
+    if (Messages)
+    {
+        PciFillMessageRequirement(Descriptor, 1, HaveInterrupt);
+        if (Messages > 1)
+            Descriptor->Option = IO_RESOURCE_ALTERNATIVE;
+        Descriptor++;
+    }
+
+    /* The wired line becomes the last resort once messages are offered */
     if (HaveInterrupt)
     {
         Descriptor->Type = CmResourceTypeInterrupt;
         Descriptor->ShareDisposition = CmResourceShareShared;
         Descriptor->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+        if (Messages)
+            Descriptor->Option = IO_RESOURCE_ALTERNATIVE;
         Descriptor->u.Interrupt.MinimumVector = 0;
         Descriptor->u.Interrupt.MaximumVector = MAXULONG;
         Descriptor++;
@@ -879,7 +929,7 @@ PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
     PCI_COMMON_HEADER PciHeader;
     PAGED_CODE();
 
-    /* Build even without a BAR or a pin, bridge legacy decodes need ranges too */
+    /* Build even without a BAR or a pin, messages and bridge legacy decodes need ranges too */
     PciReadDeviceConfig(PdoExtension, &PciHeader, 0, PCI_COMMON_HDR_LENGTH);
     Status = PciBuildRequirementsList(PdoExtension, &PciHeader, RequirementsList);
     if (!NT_SUCCESS(Status))
@@ -1546,6 +1596,9 @@ PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
     /* Now find out whether this is an Express function, and what kind */
     PciGetExpressCapabilities(PdoExtension);
 
+    /* And whether it can raise message interrupts instead of a wired line */
+    PciGetMessageCapabilities(PdoExtension);
+
     /* And whether any of its BARs can be resized */
     PciGetResizableBarCapability(PdoExtension);
 
@@ -2175,6 +2228,9 @@ PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 
             /* Now configure the BARs */
             Status = PciGetFunctionLimits(NewExtension, PciData, HackFlags);
+
+            /* With the BAR limits known, pick MSI-X or MSI */
+            PciSelectMessageType(NewExtension);
 
             /* Power up the device */
             PciSetPowerManagedDevicePowerState(NewExtension, PowerDeviceD0, FALSE);

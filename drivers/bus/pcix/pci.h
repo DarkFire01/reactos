@@ -12,6 +12,7 @@
 #include <ntifs.h>
 #include <wdmguid.h>
 #include <wchar.h>
+#include <devpropdef.h>
 #include <acpiioct.h>
 #include <drivers/pci/pci.h>
 #include <drivers/acpi/acpi.h>
@@ -80,6 +81,35 @@
 // Interrupt line register value meaning unknown or not connected
 //
 #define PCI_INTERRUPT_LINE_UNKNOWN          0xFF
+
+//
+// MSI and MSI-X Capability Register Offsets
+//
+#define PCI_MESSAGE_CONTROL_OFFSET          0x02
+#define PCI_MSI_ADDRESS_OFFSET              0x04
+#define PCI_MSIX_TABLE_OFFSET               0x04
+#define PCI_MSIX_PBA_OFFSET                 0x08
+
+//
+// MSI Message Control register
+//
+#define PCI_MSI_CONTROL_ENABLE              0x0001
+#define PCI_MSI_CONTROL_MMC_MASK            0x000E
+#define PCI_MSI_CONTROL_MMC_SHIFT           1
+#define PCI_MSI_CONTROL_MME_MASK            0x0070
+#define PCI_MSI_CONTROL_MME_SHIFT           4
+#define PCI_MSI_CONTROL_64BIT               0x0080
+#define PCI_MSI_CONTROL_MASKING             0x0100
+#define PCI_MSI_MAX_MESSAGE_SHIFT           5
+
+//
+// MSI-X Message Control register, and its table pointer
+//
+#define PCI_MSIX_CONTROL_TABLE_SIZE_MASK    0x07FF
+#define PCI_MSIX_CONTROL_FUNCTION_MASK      0x4000
+#define PCI_MSIX_CONTROL_ENABLE             0x8000
+#define PCI_MSIX_BIR_MASK                   0x00000007
+#define PCI_MSIX_OFFSET_MASK                0xFFFFFFF8
 
 //
 // Resizable BAR extended capability, one capability and control register pair per BAR
@@ -188,6 +218,64 @@ typedef struct _PCI_HACK_ENTRY
     USHORT RevisionID;
     UCHAR Flags;
 } PCI_HACK_ENTRY, *PPCI_HACK_ENTRY;
+
+//
+// Style of message-signaled interrupt a function supports
+//
+typedef enum _PCI_MESSAGE_TYPE
+{
+    PciMessageNone,
+    PciMessageMsi,
+    PciMessageMsiX
+} PCI_MESSAGE_TYPE;
+
+//
+// One entry of a function's MSI-X table
+//
+typedef struct _PCI_MSIX_VECTOR
+{
+    ULONG AddressLowPart;
+    ULONG AddressHighPart;
+    ULONG Data;
+    ULONG Control;
+} PCI_MSIX_VECTOR, *PPCI_MSIX_VECTOR;
+
+#define PCI_MSIX_VECTOR_CONTROL_MASK        0x00000001
+
+//
+// MSI Capability of a Device
+//
+typedef struct _PCI_MSI_CAP_INFO
+{
+    USHORT CapabilityPtr;
+    USHORT RequestedCount;
+    BOOLEAN Is64Bit;
+    BOOLEAN MaskCapable;
+} PCI_MSI_CAP_INFO, *PPCI_MSI_CAP_INFO;
+
+//
+// MSI-X Capability of a Device
+//
+typedef struct _PCI_MSIX_CAP_INFO
+{
+    USHORT CapabilityPtr;
+    USHORT RequestedCount;
+    UCHAR TableBarIndex;
+    UCHAR PbaBarIndex;
+    ULONG TableBarOffset;
+    ULONG PbaBarOffset;
+} PCI_MSIX_CAP_INFO, *PPCI_MSIX_CAP_INFO;
+
+//
+// Message-Signaled Interrupt State of a Device, Type is the capability in use
+//
+typedef struct _PCI_MESSAGE_INFO
+{
+    PCI_MESSAGE_TYPE Type;
+    USHORT GrantedCount;
+    PCI_MSI_CAP_INFO MsiCap;
+    PCI_MSIX_CAP_INFO MsiXCap;
+} PCI_MESSAGE_INFO, *PPCI_MESSAGE_INFO;
 
 //
 // Resizable BAR State of a Device, indexed by BAR
@@ -361,6 +449,7 @@ typedef struct _PCI_PDO_EXTENSION
     USHORT ExpressCapabilityPtr;
     UCHAR ExpressDeviceType;
     BOOLEAN IsExtendedConfigReachable;
+    PCI_MESSAGE_INFO MessageInfo;
     PCI_RESIZABLE_BAR_STATE ResizableBarState;
     ROUTING_TOKEN RoutingToken;
 } PCI_PDO_EXTENSION, *PPCI_PDO_EXTENSION;
@@ -1256,6 +1345,44 @@ PciReadDeviceExtendedCapability(
 VOID
 NTAPI
 PciGetExpressCapabilities(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension);
+
+VOID
+NTAPI
+PciGetMessageCapabilities(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension);
+
+VOID
+NTAPI
+PciSelectMessageType(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension);
+
+ULONG
+NTAPI
+PciGetRequestableMessageCount(
+    _In_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_ BOOLEAN HasLineInterrupt);
+
+NTSTATUS
+NTAPI
+PciProgramMessageInterrupt(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_opt_ PCM_PARTIAL_RESOURCE_DESCRIPTOR Resource);
+
+VOID
+NTAPI
+PciDisableMessageInterrupt(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension);
+
+NTSTATUS
+NTAPI
+PciProgramGrantedInterrupt(
+    _Inout_ PPCI_PDO_EXTENSION PdoExtension,
+    _In_opt_ PCM_RESOURCE_LIST ResourceList);
+
+NTSTATUS
+NTAPI
+PciRestoreGrantedInterrupt(
     _Inout_ PPCI_PDO_EXTENSION PdoExtension);
 
 VOID
