@@ -73,7 +73,7 @@ NTSTATUS NTAPI FreeBT_DispatchCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp
 
     if (deviceExtension->OpenHandleCount>0)
     {
-        ntStatus = STATUS_ACCESS_VIOLATION;
+        ntStatus = STATUS_DEVICE_BUSY;
         goto FreeBT_DispatchCreate_Exit;
 
     }
