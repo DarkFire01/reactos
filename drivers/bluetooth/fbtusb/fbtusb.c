@@ -23,7 +23,7 @@
 
 // Globals
 GLOBALS Globals;
-ULONG DebugLevel=255;
+ULONG DebugLevel=1;
 
 // Forward declaration
 NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT  DriverObject, IN PUNICODE_STRING UniRegistryPath );
@@ -57,6 +57,9 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING Un
 
     RtlZeroMemory (registryPath->Buffer, registryPath->MaximumLength);
     RtlMoveMemory (registryPath->Buffer, UniRegistryPath->Buffer, UniRegistryPath->Length);
+
+    // The service key tunes how loud the driver is, the inf seeds this
+    FreeBT_GetRegistryDword(FREEBT_REGISTRY_PARAMETERS_PATH, L"DebugLevel", &DebugLevel);
 
     ntStatus = STATUS_SUCCESS;
 
@@ -294,7 +297,7 @@ NTSTATUS NTAPI FreeBT_AddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJEC
     if (WinXpOrBetter == deviceExtension->WdmVersion)
     {
         FreeBT_GetRegistryDword(FREEBT_REGISTRY_PARAMETERS_PATH,
-                                 L"BulkUsbEnable",
+                                 L"FreeBTEnable",
                                  (PULONG)(&deviceExtension->SSRegistryEnable));
         if (deviceExtension->SSRegistryEnable)
         {
