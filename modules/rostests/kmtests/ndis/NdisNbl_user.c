@@ -9,7 +9,10 @@
 
 #include "ndisnbl.h"
 
-START_TEST(NdisNbl)
+static
+VOID
+RunDriverTest(
+    DWORD ControlCode)
 {
     DWORD Error;
 
@@ -18,9 +21,19 @@ START_TEST(NdisNbl)
     if (Error)
         return;
 
-    Error = KmtSendToDriver(IOCTL_TEST_NBL);
+    Error = KmtSendToDriver(ControlCode);
     ok_eq_ulong(Error, ERROR_SUCCESS);
 
     KmtCloseDriver();
     KmtUnloadDriver();
+}
+
+START_TEST(NdisNbl)
+{
+    RunDriverTest(IOCTL_TEST_NBL);
+}
+
+START_TEST(NdisXlate)
+{
+    RunDriverTest(IOCTL_TEST_XLATE);
 }
