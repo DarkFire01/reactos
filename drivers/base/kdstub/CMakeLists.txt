@@ -10,4 +10,4 @@ add_library(kdstub MODULE
 
 set_module_type(kdstub kerneldll ENTRYPOINT 0)
 set_subsystem(kdstub native)
-add_cd_file(TARGET kdstub DESTINATION reactos/system32 NO_CAB FOR all)
+#add_cd_file(TARGET kdstub DESTINATION reactos/system32 NO_CAB FOR all)
