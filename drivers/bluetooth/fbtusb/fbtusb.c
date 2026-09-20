@@ -30,11 +30,9 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT  DriverObject, IN PUNICODE_STRING U
 VOID NTAPI FreeBT_DriverUnload(IN PDRIVER_OBJECT DriverObject);
 NTSTATUS NTAPI FreeBT_AddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceObject);
 
-#ifdef PAGE_CODE
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
 #pragma alloc_text(PAGE, FreeBT_DriverUnload)
-#endif
 #endif
 
 NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING UniRegistryPath)
