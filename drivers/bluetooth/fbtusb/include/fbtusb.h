@@ -118,7 +118,7 @@ typedef enum _WDM_VERSION
 
 // registry path used for parameters
 // global to all instances of the driver
-#define FREEBT_REGISTRY_PARAMETERS_PATH  L"\\REGISTRY\\Machine\\System\\CurrentControlSet\\SERVICES\\BULKUSB\\Parameters"
+#define FREEBT_REGISTRY_PARAMETERS_PATH  L"\\REGISTRY\\Machine\\System\\CurrentControlSet\\SERVICES\\FreeBT\\Parameters"
 
 typedef struct _FREEBT_PIPE_CONTEXT
 {
