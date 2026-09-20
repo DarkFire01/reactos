@@ -722,6 +722,7 @@ MiWriteMappedPages(
     PMDL Mdl = (PMDL)MdlBuffer;
     LARGE_INTEGER EndingOffset;
     IO_STATUS_BLOCK IoStatus;
+    PIRP TopLevelIrp = NULL;
     NTSTATUS Status;
     KEVENT Event;
 
@@ -744,6 +745,8 @@ MiWriteMappedPages(
             return Status;
         }
 
+        /* A caller holding the file open owns this, put it back on the way out */
+        TopLevelIrp = IoGetTopLevelIrp();
         IoSetTopLevelIrp((PIRP)FSRTL_MOD_WRITE_TOP_LEVEL_IRP);
     }
 
@@ -760,7 +763,7 @@ MiWriteMappedPages(
 
     if (ModifiedWriter)
     {
-        IoSetTopLevelIrp(NULL);
+        IoSetTopLevelIrp(TopLevelIrp);
         if (ResourceToRelease)
             FsRtlReleaseFileForModWrite(FileObject, ResourceToRelease);
     }
