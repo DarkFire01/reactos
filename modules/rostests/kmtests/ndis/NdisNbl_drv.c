@@ -9,8 +9,10 @@
 #include "ndisnbl.h"
 
 VOID NTAPI TestNbl(VOID);
+VOID NTAPI TestXlate(VOID);
 
 static KMT_MESSAGE_HANDLER RunNblTest;
+static KMT_MESSAGE_HANDLER RunXlateTest;
 
 static
 NTSTATUS
@@ -32,6 +34,26 @@ RunNblTest(
     return STATUS_SUCCESS;
 }
 
+static
+NTSTATUS
+RunXlateTest(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ ULONG ControlCode,
+    _In_opt_ PVOID Buffer,
+    _In_ SIZE_T InLength,
+    _Inout_ PSIZE_T OutLength)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(ControlCode);
+    UNREFERENCED_PARAMETER(Buffer);
+    UNREFERENCED_PARAMETER(InLength);
+
+    *OutLength = 0;
+    TestXlate();
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 TestEntry(
     _In_ PDRIVER_OBJECT DriverObject,
@@ -48,6 +70,7 @@ TestEntry(
     *DeviceName = L"NdisNbl";
 
     KmtRegisterMessageHandler(IOCTL_TEST_NBL, NULL, RunNblTest);
+    KmtRegisterMessageHandler(IOCTL_TEST_XLATE, NULL, RunXlateTest);
 
     return STATUS_SUCCESS;
 }
