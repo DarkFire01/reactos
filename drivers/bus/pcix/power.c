@@ -195,6 +195,10 @@ PciSetPowerManagedDevicePowerState(IN PPCI_PDO_EXTENSION DeviceExtension,
         {
             /* Leaving D3 may reset the function, so write its configuration again */
             Status = PciSetResources(DeviceExtension, FALSE, FALSE);
+
+            /* Interrupts go last, an MSI-X table is only reachable in D0 with decodes on */
+            if (NT_SUCCESS(Status) && (DeviceState == PowerDeviceD0))
+                Status = PciRestoreGrantedInterrupt(DeviceExtension);
         }
     }
 

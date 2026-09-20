@@ -252,6 +252,9 @@ PciAssignSlotResources(
     PciComputeNewCurrentSettings(PdoExtension, Resources);
 
     Status = PciSetResources(PdoExtension, TRUE, TRUE);
+    if (NT_SUCCESS(Status))
+        Status = PciProgramGrantedInterrupt(PdoExtension, Resources);
+
     if (!NT_SUCCESS(Status))
         goto RestoreRouting;
 
