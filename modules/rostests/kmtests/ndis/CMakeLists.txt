@@ -1,0 +1,30 @@
+
+include_directories(../include)
+
+# NDIS60 is what pulls the NET_BUFFER_LIST headers into ndis.h. The test is not
+# a miniport, so it declares nothing else about itself.
+#
+# NDIS60 also implies protocol major version 6, which ndis.h refuses below
+# NTDDI_VISTA. The tree default is 0x502, so it has to come off first.
+remove_definitions(-D_WIN32_WINNT=0x502 -DWINVER=0x502)
+#
+# NDIS_LEGACY_DRIVER is forced on because ndis.h here does not actually build
+# for an NDIS 6 only consumer: NDIS40_PROTOCOL_CHARACTERISTICS and friends
+# reference RECEIVE_PACKET_HANDLER and NDIS_PACKET outside any
+# NDIS_LEGACY_DRIVER guard. ndis.sys itself gets away with it because
+# NDIS_WRAPPER sets NDIS_LEGACY_DRIVER to 1. Drop this once the guards are
+# finished.
+add_definitions(-D_WIN32_WINNT=0x600 -DWINVER=0x600 -DNDIS60 -DNDIS_LEGACY_DRIVER=1)
+
+list(APPEND NDIS_TEST_DRV_SOURCE
+    ../kmtest_drv/kmtest_standalone.c
+    NdisNbl.c
+    NdisNbl_drv.c)
+
+add_library(ndisnbl_drv MODULE ${NDIS_TEST_DRV_SOURCE})
+set_module_type(ndisnbl_drv kernelmodedriver)
+target_link_libraries(ndisnbl_drv kmtest_printf ${PSEH_LIB})
+add_importlibs(ndisnbl_drv ndis ntoskrnl hal)
+target_compile_definitions(ndisnbl_drv PRIVATE KMT_STANDALONE_DRIVER)
+add_rostests_file(TARGET ndisnbl_drv)
+add_rostests_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/ndisnbl.cmd)
