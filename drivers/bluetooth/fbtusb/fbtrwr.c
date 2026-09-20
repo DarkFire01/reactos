@@ -169,6 +169,10 @@ FreeBT_DispatchRead(
 
     }
 
+    // Park the request while the device is between power states
+    if (QueueRequestIfHeld(deviceExtension, Irp))
+        return STATUS_PENDING;
+
     if (deviceExtension->DataInPipe.PipeHandle == NULL)
     {
         FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_DispatchRead: Device has no ACL in pipe\n"));
@@ -240,6 +244,10 @@ FreeBT_DispatchWrite(
         goto FreeBT_DispatchWrite_Exit;
 
     }
+
+    // Park the request while the device is between power states
+    if (QueueRequestIfHeld(deviceExtension, Irp))
+        return STATUS_PENDING;
 
     if (deviceExtension->DataOutPipe.PipeHandle == NULL)
     {
