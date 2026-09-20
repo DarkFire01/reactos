@@ -192,6 +192,24 @@ CcpGetAppropriateBcb(
     iBcb->RefCount = 1;
     ExInitializeResourceLite(&iBcb->Lock);
 
+    /* Nothing can reach this one yet, so take its lock before the spin lock.
+     * A resource may not be acquired above APC_LEVEL.
+     */
+    if (ToPin)
+    {
+        if (BooleanFlagOn(PinFlags, PIN_EXCLUSIVE))
+        {
+            Result = ExAcquireResourceExclusiveLite(&iBcb->Lock, BooleanFlagOn(PinFlags, PIN_WAIT));
+        }
+        else
+        {
+            Result = ExAcquireSharedStarveExclusive(&iBcb->Lock, BooleanFlagOn(PinFlags, PIN_WAIT));
+        }
+
+        ASSERT(Result);
+        iBcb->PinCount++;
+    }
+
     KeAcquireSpinLock(&SharedCacheMap->BcbSpinLock, &OldIrql);
 
     /* Check if we raced with another BCB creation */
@@ -201,11 +219,14 @@ CcpGetAppropriateBcb(
     {
         /* We will return that BCB */
         ++DupBcb->RefCount;
-        Result = TRUE;
         KeReleaseSpinLock(&SharedCacheMap->BcbSpinLock, OldIrql);
 
         if (ToPin)
         {
+            /* The pin belongs to the BCB we hand back, not to ours */
+            ExReleaseResourceLite(&iBcb->Lock);
+            iBcb->PinCount--;
+
             if (BooleanFlagOn(PinFlags, PIN_EXCLUSIVE))
             {
                 Result = ExAcquireResourceExclusiveLite(&DupBcb->Lock, BooleanFlagOn(PinFlags, PIN_WAIT));
@@ -227,13 +248,14 @@ CcpGetAppropriateBcb(
             }
         }
 
+        /* Delete the loser. Coming back empty leaves the VACB to the caller */
         if (DupBcb != NULL)
         {
-            /* Delete the loser */
             CcRosReleaseVacb(SharedCacheMap, Vacb, FALSE, FALSE);
-            ExDeleteResourceLite(&iBcb->Lock);
-            ExFreeToNPagedLookasideList(&iBcbLookasideList, iBcb);
         }
+
+        ExDeleteResourceLite(&iBcb->Lock);
+        ExFreeToNPagedLookasideList(&iBcbLookasideList, iBcb);
 
         /* Return the winner - no need to update buffer address, it's
          * relative to the VACB, which is unchanged.
@@ -243,22 +265,6 @@ CcpGetAppropriateBcb(
     /* Nope, insert ourselves */
     else
     {
-        if (ToPin)
-        {
-            iBcb->PinCount++;
-
-            if (BooleanFlagOn(PinFlags, PIN_EXCLUSIVE))
-            {
-                Result = ExAcquireResourceExclusiveLite(&iBcb->Lock, BooleanFlagOn(PinFlags, PIN_WAIT));
-            }
-            else
-            {
-                Result = ExAcquireSharedStarveExclusive(&iBcb->Lock, BooleanFlagOn(PinFlags, PIN_WAIT));
-            }
-
-            ASSERT(Result);
-        }
-
         InsertTailList(&SharedCacheMap->BcbList, &iBcb->BcbEntry);
         KeReleaseSpinLock(&SharedCacheMap->BcbSpinLock, OldIrql);
 
