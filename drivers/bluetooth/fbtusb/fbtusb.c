@@ -127,7 +127,7 @@ NTSTATUS NTAPI FreeBT_AddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJEC
     while (instanceNumber<99 && !NT_SUCCESS(ntStatus))
     {
         _swprintf(wszDeviceName, L"\\Device\\FbtUsb%02d", instanceNumber);
-        uniDeviceName.Length = wcslen(wszDeviceName) * sizeof(WCHAR);
+        uniDeviceName.Length = (USHORT)(wcslen(wszDeviceName) * sizeof(WCHAR));
         FreeBT_DbgPrint(1, ("FBTUSB: Attempting to create device %ws\n", wszDeviceName));
         ntStatus = IoCreateDevice(
                         DriverObject,                   // our driver object
