@@ -1532,6 +1532,9 @@ NTSTATUS NTAPI FreeBT_GetRegistryDword(IN PWCHAR RegPath, IN PWCHAR ValueName, I
     RtlMoveMemory(regPath.Buffer, RegPath, wcslen(RegPath) * sizeof(WCHAR));
     RtlZeroMemory(paramTable, sizeof(paramTable));
 
+    // A missing value leaves the caller default in place
+    defaultData = *Value;
+
     paramTable[0].Flags = RTL_QUERY_REGISTRY_DIRECT;
     paramTable[0].Name = ValueName;
     paramTable[0].EntryContext = Value;
@@ -1554,8 +1557,8 @@ NTSTATUS NTAPI FreeBT_GetRegistryDword(IN PWCHAR RegPath, IN PWCHAR ValueName, I
 
     else
     {
-        FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_GetRegistryDword: Failed\n"));
-        *Value = 0;
+        FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_GetRegistryDword: Failed, keeping default\n"));
+
         return STATUS_UNSUCCESSFUL;
 
     }
