@@ -83,6 +83,36 @@ NdisAllocateNetBufferAndNetBufferList(
     _In_ SIZE_T DataLength);
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
+PNET_BUFFER_LIST
+NTAPI
+NdisAllocateCloneNetBufferList(
+    _In_ PNET_BUFFER_LIST OriginalNetBufferList,
+    _In_opt_ NDIS_HANDLE NetBufferListPoolHandle,
+    _In_opt_ NDIS_HANDLE NetBufferPoolHandle,
+    _In_ ULONG AllocateCloneFlags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisFreeCloneNetBufferList(
+    _In_ __drv_freesMem(mem) PNET_BUFFER_LIST CloneNetBufferList,
+    _In_ ULONG FreeCloneFlags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisCopySendNetBufferListInfo(
+    _In_ PNET_BUFFER_LIST DestNetBufferList,
+    _In_ PNET_BUFFER_LIST SrcNetBufferList);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisCopyReceiveNetBufferListInfo(
+    _In_ PNET_BUFFER_LIST DestNetBufferList,
+    _In_ PNET_BUFFER_LIST SrcNetBufferList);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
 NDIS_STATUS
 NTAPI
 NdisAllocateNetBufferListContext(
