@@ -129,6 +129,7 @@ struct __wine_debug_functions
                      const char *file, const char *function, const int line, const char *format, va_list args );
 };
 
+extern int __wine_dbg_output( const char *str );
 extern unsigned char __wine_dbg_get_channel_flags( struct __wine_debug_channel *channel );
 extern int __wine_dbg_set_channel_flags( struct __wine_debug_channel *channel,
                                          unsigned char set, unsigned char clear );
