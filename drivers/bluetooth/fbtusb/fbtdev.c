@@ -255,22 +255,15 @@ NTSTATUS NTAPI FreeBT_SendHCICommand(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp
     {
         FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_SendHCICommand: IoCallDriver fails with status %X\n", ntStatus));
 
-        FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_SendHCICommand::"));
-        FreeBT_IoDecrement(deviceExtension);
-
+        // The completion routine has already run, dropped the io count and
+        // completed the irp, so only the device is left to recover.
         // If the device was surprise removed out, the pipeInformation field is invalid.
         // similarly if the request was cancelled, then we need not reset the device.
         if((ntStatus != STATUS_CANCELLED) && (ntStatus != STATUS_DEVICE_NOT_CONNECTED))
-            ntStatus = FreeBT_ResetDevice(DeviceObject);
+            FreeBT_ResetDevice(DeviceObject);
 
         else
             FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_SendHCICommand: ntStatus is STATUS_CANCELLED or STATUS_DEVICE_NOT_CONNECTED\n"));
-
-        Irp->IoStatus.Status = ntStatus;
-        Irp->IoStatus.Information = 0;
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-        return ntStatus;
 
     }
 
@@ -283,9 +276,7 @@ NTSTATUS NTAPI FreeBT_SendHCICommand(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp
 // Called when a HCI Get on the event pipe completes
 NTSTATUS NTAPI FreeBT_HCIEventCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 {
-    //ULONG               stageLength;
     NTSTATUS            ntStatus;
-    PIO_STACK_LOCATION  nextStack;
     PURB                urb;
 
     FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_HCIEventCompletion, status=0x%08X\n", Irp->IoStatus.Status));
@@ -296,8 +287,12 @@ NTSTATUS NTAPI FreeBT_HCIEventCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP
     // initialize variables
     urb=(PURB)Context;
     ntStatus = Irp->IoStatus.Status;
-    Irp->IoStatus.Information = urb->UrbBulkOrInterruptTransfer.TransferBufferLength;
-    nextStack = IoGetNextIrpStackLocation(Irp);
+
+    if (NT_SUCCESS(ntStatus))
+        Irp->IoStatus.Information = urb->UrbBulkOrInterruptTransfer.TransferBufferLength;
+
+    else
+        Irp->IoStatus.Information = 0;
 
     ExFreePool(Context);
     FreeBT_IoDecrement(DeviceObject->DeviceExtension);
@@ -318,6 +313,14 @@ NTSTATUS NTAPI FreeBT_GetHCIEvent(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, I
 
     urb = NULL;
     deviceExtension = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
+
+    if (deviceExtension->EventPipe.PipeHandle == NULL)
+    {
+        FreeBT_DbgPrint(1, ("FBTUSB: FreeBT_GetHCIEvent: Device has no HCI event pipe\n"));
+        ntStatus = STATUS_DEVICE_NOT_READY;
+        goto FreeBT_GetHCIEvent_Exit;
+
+    }
 
     urb = (PURB)ExAllocatePool(NonPagedPool, sizeof(struct _URB_BULK_OR_INTERRUPT_TRANSFER));
     if (urb==NULL)
@@ -364,18 +367,16 @@ NTSTATUS NTAPI FreeBT_GetHCIEvent(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, I
     {
         FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_GetHCIEvent: IoCallDriver fails with status %X\n", ntStatus));
 
-        FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_GetHCIEvent::"));
-        FreeBT_IoDecrement(deviceExtension);
-
+        // The completion routine has already run, dropped the io count and
+        // completed the irp, so only the pipe is left to recover.
         // If the device was surprise removed out, the pipeInformation field is invalid.
         // similarly if the request was cancelled, then we need not reset the pipe.
         if((ntStatus != STATUS_CANCELLED) && (ntStatus != STATUS_DEVICE_NOT_CONNECTED))
         {
-            ntStatus = FreeBT_ResetPipe(DeviceObject, deviceExtension->EventPipe.PipeHandle);
-            if(!NT_SUCCESS(ntStatus))
+            if(!NT_SUCCESS(FreeBT_ResetPipe(DeviceObject, deviceExtension->EventPipe.PipeHandle)))
             {
                 FreeBT_DbgPrint(1, ("FreeBT_ResetPipe failed\n"));
-                ntStatus = FreeBT_ResetDevice(DeviceObject);
+                FreeBT_ResetDevice(DeviceObject);
 
             }
 
@@ -386,8 +387,6 @@ NTSTATUS NTAPI FreeBT_GetHCIEvent(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, I
             FreeBT_DbgPrint(3, ("FBTUSB: FreeBT_GetHCIEvent: ntStatus is STATUS_CANCELLED or STATUS_DEVICE_NOT_CONNECTED\n"));
 
         }
-
-        goto FreeBT_GetHCIEvent_Exit;
 
     }
 
