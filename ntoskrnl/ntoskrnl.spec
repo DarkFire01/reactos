@@ -1719,7 +1719,11 @@
 @ cdecl memcpy_s()
 @ cdecl strncpy_s()
 @ cdecl strtok_s()
+@ cdecl wcscpy_s()
 @ cdecl wcsncpy_s()
+
+# Debugging
+@ stdcall -version=0x603+ DbgkWerCaptureLiveKernelDump(wstr long ptr ptr ptr ptr ptr ptr long)
 
 # Errata Manager
 @ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
@@ -1767,11 +1771,13 @@
 
 # Kernel
 @ stdcall -version=0x603+ KeCancelTimer2(ptr)
+@ stdcall -version=0x601+ KeGetCurrentProcessorNumberEx(ptr)
 @ stdcall -version=0x601+ KeGetProcessorIndexFromNumber(ptr)
 @ stdcall -version=0x601+ KeGetProcessorNumberFromIndex(long ptr)
 @ stdcall -version=0x603+ KeInitializeTimer2(ptr)
 @ stdcall -version=0x601+ KeProcessorGroupAffinity(long)
 @ stdcall -version=0x601+ KeQueryActiveProcessorCountEx(long)
+@ stdcall -version=0x602+ KeQueryDpcWatchdogInformation(ptr)
 @ stdcall -version=0x601+ KeQueryGroupAffinity(long)
 @ stdcall -version=0x603+ KeQueryInterruptTimePrecise(ptr)
 @ stdcall -version=0x601+ KeQueryMaximumGroupCount()
@@ -1782,10 +1788,13 @@
 @ stdcall -version=0x601+ KeRevertToUserGroupAffinityThread(ptr)
 @ stdcall -version=0x600+ KeSetSystemAffinityThreadEx(long)
 @ stdcall -version=0x601+ KeSetSystemGroupAffinityThread(ptr ptr)
+@ stdcall -version=0x601+ KeSetTargetProcessorDpcEx(ptr ptr)
 @ stdcall -version=0x603+ KeSetTimer2(ptr int64 int64 ptr)
+@ stdcall -version=0xA00+ KeShouldYieldProcessor()
 @ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
 
 # Memory Manager
+@ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
 @ stdcall -version=0xa00+ MmMapInSpaceEx(int64 long long)
 
 # System information queries
@@ -1810,6 +1819,10 @@
 @ stdcall -version=0x600+ RtlIsNtDdiVersionAvailable(long)
 @ stdcall -version=0x600+ RtlNumberOfSetBitsUlongPtr(long)
 @ stdcall -version=0x602+ RtlQueryRegistryValuesEx(long wstr ptr ptr ptr)
+@ stdcall -version=0x600+ RtlRunOnceBeginInitialize(ptr long ptr)
+@ stdcall -version=0x600+ RtlRunOnceComplete(ptr long ptr)
+@ stdcall -version=0x600+ RtlRunOnceExecuteOnce(ptr ptr ptr ptr)
+@ stdcall -version=0x600+ RtlRunOnceInitialize(ptr)
 
 # Windows Hardware Error Architecture
 @ stdcall -version=0x600+ WheaAddErrorSource(ptr ptr)
