@@ -1404,6 +1404,12 @@ NdisIPnPRemoveDevice(
         CoreHaltAdapter(Adapter, NdisHaltDeviceDisabled);
     }
 
+    if (Adapter->NdisMiniportBlock.DriverHandle->PnpCharacteristics.MiniportRemoveDeviceHandler != NULL)
+    {
+        Adapter->NdisMiniportBlock.DriverHandle->PnpCharacteristics.MiniportRemoveDeviceHandler(
+            Adapter->Core.AddDeviceContext);
+    }
+
     if (Adapter->NdisMiniportBlock.EthDB)
     {
         EthDeleteFilter(Adapter->NdisMiniportBlock.EthDB);
@@ -1433,6 +1439,56 @@ NdisIPnPRemoveDevice(
     return Status;
 }
 
+/* The status a miniport's MiniportFilterResourceRequirements completes the IRP with */
+static
+NTSTATUS
+MiniFilterStatusToNtStatus(
+    _In_ NDIS_STATUS Status)
+{
+    switch (Status)
+    {
+        case NDIS_STATUS_SUCCESS:
+        case NDIS_STATUS_PENDING:
+        case NDIS_STATUS_BUFFER_OVERFLOW:
+        case NDIS_STATUS_FAILURE:
+        case NDIS_STATUS_RESOURCES:
+        case NDIS_STATUS_NOT_SUPPORTED:
+            return Status;
+
+        case NDIS_STATUS_BUFFER_TOO_SHORT:
+            return STATUS_BUFFER_TOO_SMALL;
+
+        case NDIS_STATUS_INVALID_LENGTH:
+            return STATUS_INVALID_BUFFER_SIZE;
+
+        case NDIS_STATUS_INVALID_DATA:
+            return STATUS_INVALID_PARAMETER;
+
+        default:
+            return STATUS_UNSUCCESSFUL;
+    }
+}
+
+/* The bus answers first, then the miniport may change the requirements */
+static
+NTSTATUS
+MiniFilterResourceRequirements(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PIRP Irp)
+{
+    MINIPORT_FILTER_RESOURCE_REQUIREMENTS_HANDLER Handler =
+        Adapter->NdisMiniportBlock.DriverHandle->PnpCharacteristics.MiniportFilterResourceRequirementsHandler;
+    NTSTATUS Status;
+
+    Status = NdisIForwardIrpAndWait(Adapter, Irp);
+    if (NT_SUCCESS(Status))
+        Status = MiniFilterStatusToNtStatus(Handler(Adapter->Core.AddDeviceContext, Irp));
+
+    Irp->IoStatus.Status = Status;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return Status;
+}
+
 NTSTATUS
 NTAPI
 NdisIDispatchPnp(
@@ -1446,6 +1502,17 @@ NdisIDispatchPnp(
   switch (Stack->MinorFunction)
     {
       case IRP_MN_START_DEVICE:
+        /* A miniport with a start handler sees the IRP before the bus does */
+        if (Adapter->NdisMiniportBlock.DriverHandle->PnpCharacteristics.MiniportStartDeviceHandler != NULL &&
+            Adapter->NdisMiniportBlock.DriverHandle->PnpCharacteristics.MiniportStartDeviceHandler(
+                Adapter->Core.AddDeviceContext, Irp) != NDIS_STATUS_SUCCESS)
+        {
+            Status = STATUS_UNSUCCESSFUL;
+            Irp->IoStatus.Status = Status;
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return Status;
+        }
+
         Status = NdisIForwardIrpAndWait(Adapter, Irp);
         if (NT_SUCCESS(Status) && NT_SUCCESS(Irp->IoStatus.Status))
           {
@@ -1499,6 +1566,11 @@ NdisIDispatchPnp(
 
       case IRP_MN_REMOVE_DEVICE:
         return NdisIPnPRemoveDevice(DeviceObject, Irp);
+
+      case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
+        if (Adapter->NdisMiniportBlock.DriverHandle->PnpCharacteristics.MiniportFilterResourceRequirementsHandler != NULL)
+            return MiniFilterResourceRequirements(Adapter, Irp);
+        break;
 
       default:
         NDIS_DbgPrint(MIN_TRACE, ("Unhandled minor function: 0x%X\n", Stack->MinorFunction));
@@ -1671,6 +1743,20 @@ NdisIAddDevice(
 
   KeInitializeTimer(&Adapter->NdisMiniportBlock.WakeUpDpcTimer.Timer);
   KeInitializeDpc(&Adapter->NdisMiniportBlock.WakeUpDpcTimer.Dpc, MiniportHangDpc, Adapter);
+
+  if (Miniport->PnpCharacteristics.MiniportAddDeviceHandler != NULL)
+    {
+      Status = Miniport->PnpCharacteristics.MiniportAddDeviceHandler(Adapter, Miniport->MiniportDriverContext);
+      if (Status != NDIS_STATUS_SUCCESS)
+        {
+          NDIS_DbgPrint(MIN_TRACE, ("MiniportAddDevice failed (0x%x).\n", Status));
+          IoDetachDevice(Adapter->NdisMiniportBlock.NextDeviceObject);
+          RtlFreeUnicodeString(&Adapter->NdisMiniportBlock.SymbolicLinkName);
+          RtlFreeUnicodeString(&ExportName);
+          IoDeleteDevice(DeviceObject);
+          return Status;
+        }
+    }
 
   DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
