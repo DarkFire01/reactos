@@ -337,8 +337,8 @@ CoreDeactivatePorts(
  * Hands a PnP event to every protocol bound to the adapter, waiting out the
  * ones that pend. The first failure ends it.
  */
-static
 NDIS_STATUS
+NTAPI
 CoreNotifyProtocols(
     _In_ PLOGICAL_ADAPTER Adapter,
     _In_ PNET_PNP_EVENT Template)

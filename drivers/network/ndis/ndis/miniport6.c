@@ -101,19 +101,26 @@ NdisMRegisterMiniportDriver(
                               MiniportDriverCharacteristics->MajorNdisVersion,
                               MiniportDriverCharacteristics->MinorNdisVersion));
 
-    Miniport = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Miniport), NDIS_TAG);
+    /* The caller's path need not outlive the call, so the block carries a copy */
+    Miniport = ExAllocatePoolWithTag(NonPagedPool,
+                                     sizeof(*Miniport) + RegistryPath->Length + sizeof(UNICODE_NULL),
+                                     NDIS_TAG);
     if (Miniport == NULL)
     {
         NDIS_DbgPrint(MIN_TRACE, ("Insufficient resources.\n"));
         return NDIS_STATUS_RESOURCES;
     }
 
-    RtlZeroMemory(Miniport, sizeof(*Miniport));
+    RtlZeroMemory(Miniport, sizeof(*Miniport) + RegistryPath->Length + sizeof(UNICODE_NULL));
+
+    Miniport->ServiceKeyPath.Buffer = (PWCH)(Miniport + 1);
+    Miniport->ServiceKeyPath.MaximumLength = RegistryPath->Length + sizeof(UNICODE_NULL);
+    RtlCopyUnicodeString(&Miniport->ServiceKeyPath, RegistryPath);
 
     KeInitializeSpinLock(&Miniport->Lock);
     InitializeListHead(&Miniport->DeviceList);
     Miniport->DriverObject = DriverObject;
-    Miniport->RegistryPath = RegistryPath;
+    Miniport->RegistryPath = &Miniport->ServiceKeyPath;
     Miniport->MiniportDriverContext = MiniportDriverContext;
     Miniport->Ndis6Driver = TRUE;
 

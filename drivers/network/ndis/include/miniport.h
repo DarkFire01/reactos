@@ -33,6 +33,10 @@ typedef struct _NDIS_M_DRIVER_BLOCK {
     /* From NdisSetOptionalHandlers */
     NDIS_MINIPORT_PNP_CHARACTERISTICS PnpCharacteristics;
     NDIS_MINIPORT_SS_CHARACTERISTICS SsCharacteristics;
+    /* The class extension that registered the driver, from NdisWdfRegisterMiniportDriver */
+    struct _CORE_WDF_CX_DRIVER      *CxDriver;
+    /* A 6.x driver's own copy of its service key path, which RegistryPath points to */
+    UNICODE_STRING                  ServiceKeyPath;
 #if !defined(_MSC_VER) && defined(_NDIS_)
 } NDIS_M_DRIVER_BLOCK_COMPATIBILITY_HACK_DONT_USE;
 #else
@@ -113,6 +117,10 @@ struct _CORE_INTERRUPT;
 struct _CORE_SG_DMA;
 struct _CORE_OID_REQUEST;
 
+/* Why a data path is held paused. Restart waits until none is left. */
+#define CORE_PAUSE_WDF              0x00000001
+#define CORE_PAUSE_LOW_POWER        0x00000002
+
 /*
  * The NDIS 6 view of an adapter. The core drives a miniport only through
  * Dispatch, the 6.x driver's own characteristics or the NDIS 5 shim.
@@ -136,6 +144,9 @@ typedef struct _MINIPORT_CORE
     /* A pause or restart waiting on its completion */
     PKEVENT OperationEvent;
     NDIS_STATUS OperationStatus;
+
+    /* CORE_PAUSE_* */
+    ULONG PauseReasons;
 
     /* NET_BUFFER_LISTs the miniport owns and has yet to complete */
     LONG OutstandingSends;
@@ -219,6 +230,70 @@ typedef struct _CORE_PACKET_STATE
 /* A miniport's packet indicated up carries the NET_BUFFER_LIST built around it */
 #define CORE_PACKET_OWNER_NBL(_Packet)      (*(PNET_BUFFER_LIST *)&(_Packet)->WrapperReservedEx[0])
 
+/* The network interface an adapter is, see mpif.c */
+typedef struct _CORE_INTERFACE
+{
+    LIST_ENTRY ListEntry;
+    BOOLEAN Registered;
+    NET_LUID NetLuid;
+    NET_IFINDEX IfIndex;
+    GUID InterfaceGuid;
+} CORE_INTERFACE, *PCORE_INTERFACE;
+
+/* The execution context tuning NetAdapterCx reads from NDIS_WDF_COMPLETE_ADD_PARAMS */
+typedef struct _CORE_WDF_EC_KNOBS
+{
+    ULONG Size;
+    ULONG Flags;
+    ULONG MaxTimeAtDispatch;
+    ULONG DispatchTimeWarning;
+    ULONG DispatchTimeWarningInterval;
+    ULONG DpcWatchdogTimerThreshold;
+    ULONG WorkerThreadPriority;
+
+    /* Each pair is at passive, then at dispatch */
+    ULONG MaxPacketsSend[2];
+    ULONG MaxPacketsSendComplete[2];
+    ULONG MaxPacketsReceive[2];
+    ULONG MaxPacketsReceiveComplete[2];
+} CORE_WDF_EC_KNOBS, *PCORE_WDF_EC_KNOBS;
+
+/* An adapter whose device objects belong to a WDF class extension, see mpwdf.c */
+typedef struct _CORE_WDF_ADAPTER
+{
+    struct _CORE_WDF_CX_DRIVER *CxDriver;
+
+    /* The class extension's own context for the adapter, for its callbacks */
+    NDIS_HANDLE CxAdapter;
+
+    /* NdisWdfMiniportTryReference, run down by removal */
+    EX_RUNDOWN_REF Rundown;
+
+    /* Serializes start, stop, removal and the data path */
+    KEVENT StateLock;
+
+    /* Handles from NdisWdfCreateIrpHandler, under CoreWdfOpenLock */
+    LIST_ENTRY OpenList;
+    BOOLEAN OpensAllowed;
+
+    /* NdisWdfMiniportStarted came, and protocols were offered the adapter */
+    BOOLEAN Started;
+    BOOLEAN Bound;
+    BOOLEAN Removed;
+
+    /* The class extension wants the data path running */
+    LONG DataPathRunning;
+
+    /* A queued CoreWdfApplyState */
+    LONG ApplyQueued;
+
+    UNICODE_STRING BaseName;
+    UNICODE_STRING InstanceName;
+    UNICODE_STRING DriverImageName;
+    UNICODE_STRING InterfaceLink;
+    CORE_WDF_EC_KNOBS Knobs;
+} CORE_WDF_ADAPTER, *PCORE_WDF_ADAPTER;
+
 /* Information about a logical adapter */
 typedef struct _LOGICAL_ADAPTER
 {
@@ -235,9 +310,14 @@ typedef struct _LOGICAL_ADAPTER
     BUS_INTERFACE_STANDARD     BusInterface;
     BOOLEAN                    BusInterfaceQueried;
     MINIPORT_CORE              Core;
+    CORE_INTERFACE             Interface;
+    CORE_WDF_ADAPTER           Wdf;
 } LOGICAL_ADAPTER, *PLOGICAL_ADAPTER;
 
 #define MINIPORT_IS_NDIS6(Adapter) ((Adapter)->NdisMiniportBlock.DriverHandle->Ndis6Driver)
+
+/* The device objects belong to a class extension, not to NDIS */
+#define MINIPORT_IS_WDF(Adapter) ((Adapter)->Wdf.CxDriver != NULL)
 
 #define GET_LOGICAL_ADAPTER(Handle)((PLOGICAL_ADAPTER)Handle)
 
@@ -367,6 +447,18 @@ CoreIndicateStatusCode(
     _In_ PLOGICAL_ADAPTER Adapter,
     _In_ NDIS_STATUS StatusCode);
 
+VOID
+NTAPI
+CoreHoldPaused(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ ULONG Reason);
+
+NDIS_STATUS
+NTAPI
+CoreReleasePaused(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ ULONG Reason);
+
 NDIS_STATUS
 NTAPI
 MiniCallResetHandler(
@@ -423,6 +515,16 @@ CoreQueryInformation(
 
 NDIS_STATUS
 NTAPI
+CoreQueryInformationEx(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ NDIS_OID Oid,
+    _Out_writes_bytes_to_opt_(Length, *BytesWritten) PVOID Buffer,
+    _In_ ULONG Length,
+    _Out_ PULONG BytesWritten,
+    _Out_ PULONG BytesNeeded);
+
+NDIS_STATUS
+NTAPI
 CoreSetInformation(
     _In_ PLOGICAL_ADAPTER Adapter,
     _In_ NDIS_OID Oid,
@@ -463,12 +565,52 @@ NTAPI
 CoreFreeNetBufferPacket(
     _In_ PNDIS_PACKET Packet);
 
+/* mpif.c */
+
+ULONG
+NTAPI
+CoreReadKeyUlong(
+    _In_ HANDLE Key,
+    _In_ PCWSTR Name,
+    _In_ ULONG Default);
+
+NTSTATUS
+NTAPI
+CoreRegisterInterface(
+    _In_ PLOGICAL_ADAPTER Adapter);
+
+VOID
+NTAPI
+CoreDeregisterInterface(
+    _In_ PLOGICAL_ADAPTER Adapter);
+
+/* mpwdf.c */
+
+VOID
+NTAPI
+CoreWdfRevokeOpens(
+    _In_ PLOGICAL_ADAPTER Adapter);
+
+/* miniport.c */
+
+NTSTATUS
+NTAPI
+MiniDeviceIoControl(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PIRP Irp);
+
 /* mpport.c */
 
 VOID
 NTAPI
 CoreFreePorts(
     _In_ PLOGICAL_ADAPTER Adapter);
+
+NDIS_STATUS
+NTAPI
+CoreNotifyProtocols(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PNET_PNP_EVENT Template);
 
 /* mp5shim.c */
 
