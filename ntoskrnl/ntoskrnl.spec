@@ -666,6 +666,7 @@
 @ stdcall KeLeaveCriticalRegion() _KeLeaveCriticalRegion
 @ stdcall KeLeaveGuardedRegion() _KeLeaveGuardedRegion
 @ extern KeLoaderBlock
+@ cdecl -arch=x86_64 -private KeGetCurrentIrql() KxGetCurrentIrql
 @ cdecl -arch=x86_64 -private KeLowerIrql(long) KxLowerIrql
 @ extern KeNumberProcessors
 @ stdcall -arch=i386,arm KeProfileInterrupt(ptr)
@@ -1762,7 +1763,9 @@
 @ stdcall -arch=arm __rt_udiv64()
 @ stdcall -arch=arm __rt_srsh()
 
-# ==================================================================
+# ===========================================================
+@ cdecl _strtoui64()
+@ cdecl sscanf_s()
 @ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
 @ stdcall -version=0x601+ EmClientRuleEvaluate(ptr ptr ptr)
 @ stdcall -version=0x601+ EmProviderDeregister(ptr)
@@ -1771,6 +1774,7 @@
 @ fastcall -version=0x600+ ExAcquireSpinLockShared(ptr)
 @ fastcall -version=0x600+ ExReleaseSpinLockExclusive(ptr long)
 @ fastcall -version=0x600+ ExReleaseSpinLockShared(ptr long)
+@ stdcall -version=0x602+ ExGetFirmwareEnvironmentVariable(ptr ptr ptr ptr ptr)
 @ stdcall -version=0x603+ ExSetTimer(ptr int64 int64 ptr)
 @ stdcall -version=0x602+ ExTryQueueWorkItem(ptr long)
 @ stdcall -version=0xa00+ HvlIsAnyHypervisorPresent()
@@ -1781,6 +1785,28 @@
 @ stdcall -version=0xa00+ MmMapInSpaceEx(int64 long long)
 @ stdcall -version=0x602+ NtQuerySystemInformationEx(long ptr long ptr long ptr)
 @ stdcall -version=0x602+ ZwQuerySystemInformationEx(long ptr long ptr long ptr)
+@ stdcall -version=0x602+ IoDuplicateDependency(ptr ptr)
+@ stdcall -version=0x602+ IoGetDeviceNumaNode(ptr ptr)
+@ stdcall -version=0x601+ IoRegisterContainerNotification(long ptr ptr long ptr)
+@ stdcall -version=0x602+ IoReportInterruptActive(ptr)
+@ stdcall -version=0x602+ IoReportInterruptInactive(ptr)
+@ stdcall -version=0x601+ IoRequestDeviceEjectEx(ptr ptr ptr ptr)
+@ stdcall -version=0x602+ IoRequestDeviceRemovalForReset(ptr long)
+@ stdcall -version=0x602+ IoReserveDependency(ptr ptr)
+@ stdcall -version=0x602+ IoResolveDependency(ptr)
+@ stdcall -version=0x602+ IoSetDependency(ptr ptr)
+@ stdcall -version=0x600+ IoSynchronousCallDriver(ptr ptr)
+@ stdcall -version=0x602+ IoTestDependency(ptr)
+@ stdcall -version=0x601+ IoUnregisterContainerNotification(ptr)
+@ stdcall -version=0x603+ KeCancelTimer2(ptr)
+@ stdcall -version=0x603+ KeInitializeTimer2(ptr)
+@ stdcall -version=0x601+ KeProcessorGroupAffinity(long)
+@ stdcall -version=0x603+ KeQueryInterruptTimePrecise(ptr)
+@ stdcall -version=0x601+ KeQueryNodeActiveAffinity(long ptr ptr)
+@ stdcall -version=0x600+ KeRegisterProcessorChangeCallback(ptr ptr long)
+@ stdcall -version=0x603+ KeSetTimer2(ptr int64 int64 ptr)
+@ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
+@ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
 @ fastcall -version=0x601+ ObfDereferenceObjectWithTag(ptr long)
 @ fastcall -version=0x601+ ObfReferenceObjectWithTag(ptr long)
 @ stdcall -version=0x603+ PoCreateThermalRequest(ptr ptr ptr ptr long)
