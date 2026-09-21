@@ -37,6 +37,7 @@ KMT_TESTFUNC Test_RtlStrSafe;
 KMT_TESTFUNC Test_RtlUnicodeString;
 KMT_TESTFUNC Test_TcpIpIoctl;
 KMT_TESTFUNC Test_NdisNbl;
+KMT_TESTFUNC Test_NdisMiniport6;
 KMT_TESTFUNC Test_NdisXlate;
 KMT_TESTFUNC Test_TcpIpTdi;
 KMT_TESTFUNC Test_TcpIpConnect;
@@ -73,6 +74,7 @@ const KMT_TEST TestList[] =
     { "RtlStrSafe",                   Test_RtlStrSafe },
     { "RtlUnicodeString",             Test_RtlUnicodeString },
     { "NdisNbl",                      Test_NdisNbl },
+    { "NdisMiniport6",                Test_NdisMiniport6 },
     { "NdisXlate",                    Test_NdisXlate },
     { "TcpIpTdi",                     Test_TcpIpTdi },
     { "TcpIpConnect",                 Test_TcpIpConnect },

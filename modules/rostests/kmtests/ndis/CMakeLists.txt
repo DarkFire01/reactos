@@ -14,6 +14,7 @@ list(APPEND NDIS_TEST_DRV_SOURCE
     ../kmtest_drv/kmtest_standalone.c
     NdisNbl.c
     NdisXlate.c
+    NdisMiniport6.c
     ${REACTOS_SOURCE_DIR}/drivers/network/ndis/xlate/xlate.c
     NdisNbl_drv.c)
 
