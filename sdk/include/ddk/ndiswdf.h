@@ -298,7 +298,8 @@ NTSTATUS
 NTAPI
 NdisWdfPnpPowerEventHandler(
     _In_ NDIS_HANDLE MiniportAdapterHandle,
-    _In_ NDIS_WDF_PNP_POWER_ACTION PnpPowerAction);
+    _In_ NDIS_WDF_PNP_POWER_ACTION PnpPowerAction,
+    _In_ NDIS_WDF_PNP_POWER_ACTION PowerAction);
 
 NDISAPI
 VOID
