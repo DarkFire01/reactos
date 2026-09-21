@@ -148,26 +148,32 @@ private:
     size_t m_count;
 };
 
-/*
- * The WDF entry points are macros over a function table, so they have no
- * address to take. These wrappers give the template something to bind to.
- */
-inline void CloseWdfObject(WDFOBJECT Object) noexcept
-{
-    WdfObjectDelete(Object);
-}
-
 inline void CloseKernelHandle(HANDLE Handle) noexcept
 {
     ZwClose(Handle);
 }
 
-typedef unique_any<WDFOBJECT, decltype(&CloseWdfObject), &CloseWdfObject> unique_wdf_any;
-typedef unique_any<WDFOBJECT, decltype(&CloseWdfObject), &CloseWdfObject> unique_wdf_object;
-typedef unique_any<WDFWORKITEM, decltype(&CloseWdfObject), &CloseWdfObject> unique_wdf_work_item;
-
 typedef unique_any<HANDLE, decltype(&CloseKernelHandle), &CloseKernelHandle> unique_handle;
 typedef unique_any<HANDLE, decltype(&CloseKernelHandle), &CloseKernelHandle> unique_kernel_handle;
+
+/*
+ * Only offered once the WDF headers are in. WDFOBJECT is a plain HANDLE, so
+ * every WDF handle type converts to it and one close routine covers them all.
+ */
+#ifdef _WDFOBJECT_H_
+
+inline void CloseWdfObject(WDFOBJECT Object) noexcept
+{
+    WdfObjectDelete(Object);
+}
+
+template <typename THandle>
+using unique_wdf_any = unique_any<THandle, decltype(&CloseWdfObject), &CloseWdfObject>;
+
+typedef unique_wdf_any<WDFOBJECT> unique_wdf_object;
+typedef unique_wdf_any<WDFWORKITEM> unique_wdf_work_item;
+
+#endif /* _WDFOBJECT_H_ */
 
 /*
  * Runs a callable when it goes out of scope unless it was released first.
@@ -211,6 +217,8 @@ inline scope_exit_t<Callable> scope_exit(Callable && Action) noexcept
     return scope_exit_t<Callable>(wistd::forward<Callable>(Action));
 }
 
+#ifdef _WDFSYNC_H_
+
 /* Holds a WDFWAITLOCK for the life of the returned object. */
 class wdf_wait_lock_release_scope_exit
 {
@@ -244,6 +252,8 @@ acquire_wdf_wait_lock(WDFWAITLOCK Lock) noexcept
     WdfWaitLockAcquire(Lock, nullptr);
     return wdf_wait_lock_release_scope_exit(Lock);
 }
+
+#endif /* _WDFSYNC_H_ */
 
 /*
  * Lets a smart pointer be passed to a function that writes a raw pointer out,
