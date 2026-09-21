@@ -75,6 +75,7 @@ list(APPEND SOURCE_TRANSLATOR
     translator/nxoffload.cpp
     translator/nxoffloadv1.cpp
     translator/nxpacketlayout.cpp
+    translator/nxperftuner.cpp
     translator/nxringbuffer.cpp
     translator/nxringcontext.cpp
     translator/nxrxxlat.cpp
