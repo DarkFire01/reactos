@@ -130,6 +130,9 @@ EVT_NET_DEVICE_COLLECT_RESET_DIAGNOSTICS(
 
 typedef EVT_NET_DEVICE_COLLECT_RESET_DIAGNOSTICS *PFN_NET_DEVICE_COLLECT_RESET_DIAGNOSTICS;
 
+/* The largest blob NetDeviceStoreResetDiagnostics keeps. */
+#define MAX_RESET_DIAGNOSTICS_SIZE  0x100000
+
 /* The diagnostics GUID tags the blob the driver hands to NetDeviceStoreResetDiagnostics. */
 typedef struct _NET_DEVICE_RESET_CAPABILITIES
 {

@@ -110,7 +110,10 @@ typedef struct _NET_PNP_EVENT {
 
 #if defined(NDIS_MINIPORT_DRIVER)
 
-#if defined(NDIS688_MINIPORT)
+#if defined(NDIS689_MINIPORT)
+#define NDIS_MINIPORT_MAJOR_VERSION 6
+#define NDIS_MINIPORT_MINOR_VERSION 89
+#elif defined(NDIS688_MINIPORT)
 #define NDIS_MINIPORT_MAJOR_VERSION 6
 #define NDIS_MINIPORT_MINOR_VERSION 88
 #elif defined(NDIS687_MINIPORT)
@@ -473,6 +476,21 @@ typedef struct _NET_PNP_EVENT {
 
 #endif /* !defined(NDIS_SUPPORT_NDIS687) */
 
+#if !defined(NDIS_SUPPORT_NDIS689)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 89))) ||       (defined (NDIS689)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS689      1
+#else
+#define NDIS_SUPPORT_NDIS689      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS689) */
+
+#if (NDIS_SUPPORT_NDIS689)
+#undef NDIS_SUPPORT_NDIS688
+#define NDIS_SUPPORT_NDIS688 1
+#endif
+
 #if !defined(NDIS_SUPPORT_NDIS688)
 
 #if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 88))) ||       (defined (NDIS688)) || NDIS_WRAPPER)
@@ -605,6 +623,9 @@ typedef PVOID NDIS_HANDLE, *PNDIS_HANDLE;
 
 typedef ANSI_STRING NDIS_ANSI_STRING, *PNDIS_ANSI_STRING;
 typedef UNICODE_STRING NDIS_STRING, *PNDIS_STRING;
+
+/* Initializer for an NDIS_STRING over a string literal. */
+#define NDIS_STRING_CONST(x) {sizeof(L##x) - 2, sizeof(L##x), L##x}
 
 typedef MDL NDIS_BUFFER, *PNDIS_BUFFER;
 
