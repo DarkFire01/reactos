@@ -561,6 +561,14 @@ $if (_NTIFS_)
 
 #define RTL_SYSTEM_VOLUME_INFORMATION_FOLDER    L"System Volume Information"
 
+#ifdef _WIN64
+/* A bitmap indexed in 64 bits. Only 64 bit kernels provide it. */
+typedef struct _RTL_BITMAP_EX {
+  ULONG64 SizeOfBitMap;
+  PULONG64 Buffer;
+} RTL_BITMAP_EX, *PRTL_BITMAP_EX;
+#endif
+
 _Function_class_(RTL_ALLOCATE_STRING_ROUTINE)
 _IRQL_requires_max_(PASSIVE_LEVEL)
 __drv_allocatesMem(Mem)
