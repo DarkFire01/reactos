@@ -2416,7 +2416,7 @@ MiFlushTbAndCapture(IN PMMVAD FoundVad,
     // Flush the TLB
     //
     ASSERT(PreviousPte.u.Hard.Valid == 1);
-    KeFlushCurrentTb();
+    KeInvalidateTlbEntry(MiPteToAddress(PointerPte));
     ASSERT(PreviousPte.u.Hard.Valid == 1);
 
     /* The rebuilt PTE is clean, keep a write that already happened */
@@ -2514,8 +2514,8 @@ MiRemoveMappedPtes(IN PVOID BaseAddress,
         NumberOfPtes--;
     }
 
-    /* Flush the TLB */
-    KeFlushCurrentTb();
+    /* System space views are mapped in every address space */
+    KeFlushEntireTb(TRUE, TRUE);
 
     /* Acquire the PFN lock */
     OldIrql = MiAcquirePfnLock();
