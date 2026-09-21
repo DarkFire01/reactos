@@ -80,6 +80,13 @@ static int wchar2digit(wchar_t c, int base) {
 #undef SECURE
 #include "scanf.h"
 
+/* vsscanf_s_l */
+#undef WIDE_SCANF
+#undef CONSOLE
+#define STRING 1
+#define SECURE 1
+#include "scanf.h"
+
 /* vswscanf_l */
 #define WIDE_SCANF 1
 #undef CONSOLE
@@ -181,6 +188,21 @@ int CDECL sscanf(const char *str, const char *format, ...)
 
     __ms_va_start(valist, format);
     res = vsscanf_l(str, format, NULL, valist);
+    __ms_va_end(valist);
+    return res;
+}
+
+
+/*********************************************************************
+ *		sscanf_s (MSVCRT.@)
+ */
+int CDECL sscanf_s(const char *str, const char *format, ...)
+{
+    __ms_va_list valist;
+    int res;
+
+    __ms_va_start(valist, format);
+    res = vsscanf_s_l(str, format, NULL, valist);
     __ms_va_end(valist);
     return res;
 }
