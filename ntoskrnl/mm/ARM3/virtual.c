@@ -539,8 +539,8 @@ MiDeletePte(IN PMMPTE PointerPte,
         //CurrentProcess->NumberOfPrivatePages--;
     }
 
-    /* Flush the TLB */
-    KeFlushCurrentTb();
+    /* Flush every processor running this process before the page can be reused */
+    KeFlushProcessTb();
 }
 
 VOID
@@ -2332,10 +2332,6 @@ MiSetProtectionOnPrivatePte(
             /* Decrease PFN share count and write the PTE */
             MiDecrementShareCount(Pfn1, PFN_FROM_PTE(&PteContents));
             MI_WRITE_INVALID_PTE(PointerPte, PteContents);
-#ifdef CONFIG_SMP
-            // FIXME: Should invalidate entry in every CPU TLB
-            ASSERT(KeNumberProcessors == 1);
-#endif
             KeInvalidateTlbEntry(MiPteToAddress(PointerPte));
 
             MiReleasePfnLock(OldIrql);
@@ -2899,7 +2895,7 @@ MiProcessValidPteList(IN PMMPTE *ValidPteList,
     // All the PTEs have been dereferenced and made invalid, flush the TLB now
     // and then release the PFN lock
     //
-    KeFlushCurrentTb();
+    KeFlushProcessTb();
     MiReleasePfnLock(OldIrql);
 }
 
