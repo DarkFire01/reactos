@@ -1322,13 +1322,26 @@ NdisIShutdown(
   return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Handles the device controls NDIS answers for an adapter, and completes the
+ * IRP unless it pends.
+ *
+ * @param[in] Adapter
+ * The adapter the handle is open on.
+ *
+ * @param[in] Irp
+ * The IRP_MJ_DEVICE_CONTROL.
+ *
+ * @return
+ * Its status.
+ */
 NTSTATUS
 NTAPI
-NdisIDeviceIoControl(
-    IN PDEVICE_OBJECT DeviceObject,
-    PIRP Irp)
+MiniDeviceIoControl(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PIRP Irp)
 {
-  PLOGICAL_ADAPTER Adapter = (PLOGICAL_ADAPTER)DeviceObject->DeviceExtension;
   PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
   NDIS_STATUS Status = STATUS_NOT_SUPPORTED;
   ULONG ControlCode;
@@ -1371,6 +1384,15 @@ NdisIDeviceIoControl(
   return Status;
 }
 
+NTSTATUS
+NTAPI
+NdisIDeviceIoControl(
+    IN PDEVICE_OBJECT DeviceObject,
+    PIRP Irp)
+{
+  return MiniDeviceIoControl((PLOGICAL_ADAPTER)DeviceObject->DeviceExtension, Irp);
+}
+
 static
 NTSTATUS
 NdisIPnPRemoveDevice(
@@ -1391,7 +1413,8 @@ NdisIPnPRemoveDevice(
     Status = IoCallDriver(Adapter->NdisMiniportBlock.NextDeviceObject, Irp);
 
     IoDetachDevice(Adapter->NdisMiniportBlock.NextDeviceObject);
-        
+
+    CoreDeregisterInterface(Adapter);
     RtlFreeUnicodeString(&Adapter->NdisMiniportBlock.MiniportName);
 
     if (Adapter->NdisMiniportBlock.PnPDeviceState == NdisPnPDeviceStarted)
@@ -1750,12 +1773,18 @@ NdisIAddDevice(
   KeInitializeTimer(&Adapter->NdisMiniportBlock.WakeUpDpcTimer.Timer);
   KeInitializeDpc(&Adapter->NdisMiniportBlock.WakeUpDpcTimer.Dpc, MiniportHangDpc, Adapter);
 
+  /* An adapter without its interface identity still works, it just cannot be found by LUID */
+  Status = CoreRegisterInterface(Adapter);
+  if (!NT_SUCCESS(Status))
+    NDIS_DbgPrint(MIN_TRACE, ("No interface identity for the adapter (0x%lx).\n", Status));
+
   if (Miniport->PnpCharacteristics.MiniportAddDeviceHandler != NULL)
     {
       Status = Miniport->PnpCharacteristics.MiniportAddDeviceHandler(Adapter, Miniport->MiniportDriverContext);
       if (Status != NDIS_STATUS_SUCCESS)
         {
           NDIS_DbgPrint(MIN_TRACE, ("MiniportAddDevice failed (0x%x).\n", Status));
+          CoreDeregisterInterface(Adapter);
           IoDetachDevice(Adapter->NdisMiniportBlock.NextDeviceObject);
           RtlFreeUnicodeString(&Adapter->NdisMiniportBlock.SymbolicLinkName);
           RtlFreeUnicodeString(&ExportName);

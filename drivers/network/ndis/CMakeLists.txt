@@ -37,10 +37,13 @@ list(APPEND SOURCE
     ndis/mpcore.c
     ndis/mpdata.c
     ndis/mpdma.c
+    ndis/mpif.c
     ndis/mpintr.c
     ndis/mpoid.c
     ndis/mpport.c
     ndis/mpsvc.c
+    ndis/mpwdf.c
+    ndis/mpwmi.c
     ndis/nbl.c
     ndis/pro5shim.c
     ndis/protocol.c
