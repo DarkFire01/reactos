@@ -213,6 +213,22 @@ NET_ADAPTER_WAKE_MAGIC_PACKET_CAPABILITIES_INIT(
     Capabilities->Size = sizeof(*Capabilities);
 }
 
+typedef struct _NET_ADAPTER_WAKE_EAPOL_PACKET_CAPABILITIES
+{
+    ULONG Size;
+    BOOLEAN EapolPacket;
+} NET_ADAPTER_WAKE_EAPOL_PACKET_CAPABILITIES;
+
+FORCEINLINE
+VOID
+NTAPI
+NET_ADAPTER_WAKE_EAPOL_PACKET_CAPABILITIES_INIT(
+    _Out_ NET_ADAPTER_WAKE_EAPOL_PACKET_CAPABILITIES *Capabilities)
+{
+    RtlZeroMemory(Capabilities, sizeof(*Capabilities));
+    Capabilities->Size = sizeof(*Capabilities);
+}
+
 typedef struct _NET_ADAPTER_WAKE_PACKET_FILTER_CAPABILITIES
 {
     ULONG Size;
@@ -444,7 +460,7 @@ FORCEINLINE
 VOID
 NTAPI
 NET_ADAPTER_LINK_STATE_INIT(
-    _Out_ NET_ADAPTER_LINK_STATE * LinkState,
+    _Out_ NET_ADAPTER_LINK_STATE *LinkState,
     _In_ ULONG64 LinkSpeed,
     _In_ NET_IF_MEDIA_CONNECT_STATE MediaConnectState,
     _In_ NET_IF_MEDIA_DUPLEX_STATE MediaDuplexState,
@@ -465,7 +481,7 @@ FORCEINLINE
 VOID
 NTAPI
 NET_ADAPTER_LINK_STATE_INIT_DISCONNECTED(
-    _Out_ NET_ADAPTER_LINK_STATE * LinkState)
+    _Out_ NET_ADAPTER_LINK_STATE *LinkState)
 {
     RtlZeroMemory(LinkState, sizeof(NET_ADAPTER_LINK_STATE));
     LinkState->Size = sizeof(NET_ADAPTER_LINK_STATE);
@@ -491,7 +507,7 @@ FORCEINLINE
 VOID
 NTAPI
 NET_ADAPTER_DATAPATH_CALLBACKS_INIT(
-    _Out_ NET_ADAPTER_DATAPATH_CALLBACKS * DatapathCallbacks,
+    _Out_ NET_ADAPTER_DATAPATH_CALLBACKS *DatapathCallbacks,
     _In_ PFN_NET_ADAPTER_CREATE_TXQUEUE EvtAdapterCreateTxQueue,
     _In_ PFN_NET_ADAPTER_CREATE_RXQUEUE EvtAdapterCreateRxQueue)
 {
@@ -1075,6 +1091,48 @@ NetAdapterReportWakeReasonMediaChange(
     _In_ NET_IF_MEDIA_CONNECT_STATE Reason)
 {
     ((PFN_NETADAPTERREPORTWAKEREASONMEDIACHANGE) NetFunctions[NetAdapterReportWakeReasonMediaChangeTableIndex])(NetDriverGlobals, Adapter, Reason);
+}
+
+typedef
+_IRQL_requires_(PASSIVE_LEVEL)
+WDFAPI
+VOID
+(NTAPI *PFN_NETADAPTERWAKESETEAPOLPACKETCAPABILITIES)(
+    _In_ PNET_DRIVER_GLOBALS DriverGlobals,
+    _In_ NETADAPTER Adapter,
+    _In_ CONST NET_ADAPTER_WAKE_EAPOL_PACKET_CAPABILITIES *Capabilities);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+FORCEINLINE
+VOID
+NTAPI
+NetAdapterWakeSetEapolPacketCapabilities(
+    _In_ NETADAPTER Adapter,
+    _In_ CONST NET_ADAPTER_WAKE_EAPOL_PACKET_CAPABILITIES *Capabilities)
+{
+    ((PFN_NETADAPTERWAKESETEAPOLPACKETCAPABILITIES)NetFunctions[NetAdapterWakeSetEapolPacketCapabilitiesTableIndex])(
+        NetDriverGlobals, Adapter, Capabilities);
+}
+
+typedef
+_IRQL_requires_(PASSIVE_LEVEL)
+WDFAPI
+VOID
+(NTAPI *PFN_NETADAPTERINITSETSELFMANAGEDPOWERREFERENCES)(
+    _In_ PNET_DRIVER_GLOBALS DriverGlobals,
+    _In_ NETADAPTER_INIT *AdapterInit,
+    _In_ BOOLEAN SelfManagedPowerReferences);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+FORCEINLINE
+VOID
+NTAPI
+NetAdapterInitSetSelfManagedPowerReferences(
+    _In_ NETADAPTER_INIT *AdapterInit,
+    _In_ BOOLEAN SelfManagedPowerReferences)
+{
+    ((PFN_NETADAPTERINITSETSELFMANAGEDPOWERREFERENCES)NetFunctions[NetAdapterInitSetSelfManagedPowerReferencesTableIndex])(
+        NetDriverGlobals, AdapterInit, SelfManagedPowerReferences);
 }
 
 #ifdef __cplusplus

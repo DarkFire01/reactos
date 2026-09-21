@@ -7,6 +7,7 @@
 #pragma once
 
 #include <ndis.h>
+#include <wdf.h>
 
 #include <net/extension.h>
 #include <net/fragment.h>
@@ -21,6 +22,8 @@
 #include <netcx/nettxqueue.h>
 #include <netcx/netrxqueue.h>
 #include <netcx/netadapter.h>
+#include <netcx/netadapteroffload.h>
+#include <netcx/netreceivefilter.h>
 #include <netcx/netpoweroffload.h>
 #include <netcx/netpoweroffloadlist.h>
 #include <netcx/netwakesource.h>
