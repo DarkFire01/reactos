@@ -529,6 +529,32 @@ PoFxCompleteDevicePowerNotRequired(
 
 /**
  * @brief
+ * Tells PoFx a device finished the directed power down it was asked for.
+ *
+ * @param[in] Handle
+ * The registration handle of the device.
+ *
+ * @remarks
+ * Directed transitions only go to devices registered with PO_FX_VERSION_V3,
+ * and registration here accepts version 1 only, so none is ever in flight.
+ */
+VOID
+NTAPI
+PoFxCompleteDirectedPowerDown(
+    _In_ POHANDLE Handle)
+{
+    if (Handle == NULL)
+    {
+        DPRINT1("PoFxCompleteDirectedPowerDown: NULL handle\n");
+        return;
+    }
+
+    POFXTRACE(POFX_DEVICE_DEBUG,
+              "PoFxCompleteDirectedPowerDown: FxDevice %p, no directed transition pending\n", Handle);
+}
+
+/**
+ * @brief
  * Turns a component of a device into the idle state,
  * after being activated previously by a call to PoFxActivateComponent.
  *
