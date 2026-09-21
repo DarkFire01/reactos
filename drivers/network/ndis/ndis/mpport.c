@@ -425,29 +425,3 @@ NdisMNetPnPEvent(
     }
 }
 
-/**
- * @brief
- * Completes a direct OID request. NDIS never sends one, so any completion
- * is a miniport bug and is dropped.
- *
- * @param[in] MiniportAdapterHandle
- * The adapter.
- *
- * @param[in] OidRequest
- * The request.
- *
- * @param[in] Status
- * How it went.
- */
-_Use_decl_annotations_
-VOID
-NTAPI
-NdisMDirectOidRequestComplete(
-    NDIS_HANDLE MiniportAdapterHandle,
-    PNDIS_OID_REQUEST OidRequest,
-    NDIS_STATUS Status)
-{
-    UNREFERENCED_PARAMETER(MiniportAdapterHandle);
-
-    NDIS_DbgPrint(MIN_TRACE, ("Direct OID request %p completed with 0x%x, none was sent.\n", OidRequest, Status));
-}
