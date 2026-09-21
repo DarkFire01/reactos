@@ -463,3 +463,43 @@ DbgkUnMapViewOfSection(IN PVOID BaseAddress)
     /* Send the message */
     DbgkpSendApiMessage(&ApiMessage, TRUE);
 }
+
+/**
+ * @brief
+ * Asks for a live kernel dump on behalf of a component that hit trouble.
+ *
+ * @return
+ * STATUS_INVALID_LEVEL above PASSIVE_LEVEL, otherwise STATUS_CONTENT_BLOCKED.
+ * Full live kernel dumps are never enabled here, so no request is taken.
+ */
+NTSTATUS
+NTAPI
+DbgkWerCaptureLiveKernelDump(
+    _In_ PCWSTR ComponentName,
+    _In_ ULONG BugCheckCode,
+    _In_opt_ ULONG_PTR P1,
+    _In_opt_ ULONG_PTR P2,
+    _In_opt_ ULONG_PTR P3,
+    _In_opt_ ULONG_PTR P4,
+    _In_opt_ PVOID CallbackContext,
+    _In_opt_ PDBGK_LIVEDUMP_CALLBACK_ROUTINE CallbackRoutine,
+    _In_ DBGK_LIVEDUMP_FLAGS Flags)
+{
+    UNREFERENCED_PARAMETER(P1);
+    UNREFERENCED_PARAMETER(P2);
+    UNREFERENCED_PARAMETER(P3);
+    UNREFERENCED_PARAMETER(P4);
+    UNREFERENCED_PARAMETER(CallbackContext);
+    UNREFERENCED_PARAMETER(CallbackRoutine);
+    UNREFERENCED_PARAMETER(Flags);
+
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL)
+    {
+        DPRINT1("DbgkWerCaptureLiveKernelDump called above PASSIVE_LEVEL\n");
+        return STATUS_INVALID_LEVEL;
+    }
+
+    DPRINT1("Live kernel dump for %S (bug check 0x%lx) refused, live dumps are off\n",
+            ComponentName, BugCheckCode);
+    return STATUS_CONTENT_BLOCKED;
+}
