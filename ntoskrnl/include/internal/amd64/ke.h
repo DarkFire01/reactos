@@ -266,6 +266,19 @@ KeRestoreInterrupts(BOOLEAN WereEnabled)
     if (WereEnabled) _enable();
 }
 
+#ifdef CONFIG_SMP
+
+VOID
+NTAPI
+KeInvalidateTlbEntry(
+    _In_ PVOID Address);
+
+VOID
+NTAPI
+KeFlushProcessTb(VOID);
+
+#else
+
 //
 // Invalidates the TLB entry for a specified address
 //
@@ -284,6 +297,8 @@ KeFlushProcessTb(VOID)
     /* Flush the TLB by resetting CR3 */
     __writecr3(__readcr3());
 }
+
+#endif
 
 FORCEINLINE
 VOID
@@ -424,6 +439,13 @@ VOID KiDebugServiceTrap(VOID);
 VOID KiDpcInterrupt(VOID);
 VOID KiIpiInterrupt(VOID);
 VOID NTAPI KiIpiInterruptHandler(VOID);
+
+VOID
+NTAPI
+KiIpiSendSynchRequest(
+    _In_ KAFFINITY TargetSet,
+    _In_ PKIPI_BROADCAST_WORKER Function,
+    _In_ ULONG_PTR Argument);
 
 VOID KiGdtPrepareForApplicationProcessorInit(ULONG Id);
 VOID Ki386InitializeLdt(VOID);
