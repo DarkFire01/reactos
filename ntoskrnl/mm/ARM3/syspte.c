@@ -231,9 +231,10 @@ MiReserveAlignedSystemPtes(IN ULONG NumberOfPtes,
     KeReleaseQueuedSpinLock(LockQueueSystemSpaceLock, OldIrql);
 
     //
-    // Flush the TLB
+    // Flush the TLB. System PTEs are shared by every address space, and a
+    // processor that used these last may still cache the old mapping
     //
-    KeFlushProcessTb();
+    KeFlushEntireTb(TRUE, TRUE);
 
     //
     // Return the reserved PTEs

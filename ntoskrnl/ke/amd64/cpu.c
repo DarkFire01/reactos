@@ -558,24 +558,101 @@ KiRestoreProcessorState(
     KiRestoreProcessorControlState(&Prcb->ProcessorState);
 }
 
+static
+ULONG_PTR
+NTAPI
+KiFlushTbTarget(
+    _In_ ULONG_PTR Argument)
+{
+    UNREFERENCED_PARAMETER(Argument);
+
+    KeFlushCurrentTb();
+    return 0;
+}
+
+static
+ULONG_PTR
+NTAPI
+KiInvalidateTbEntryTarget(
+    _In_ ULONG_PTR Argument)
+{
+    __invlpg((PVOID)Argument);
+    return 0;
+}
+
+/*!
+ * \brief Runs a TB flush routine on every processor that may still cache the
+ *        translations being changed, this one included.
+ *
+ * \param AllProcessors - TRUE for kernel space, which every address space
+ *                        shares. FALSE for the current address space only.
+ * \param Routine - The flush to run on each processor.
+ * \param Argument - The argument handed to the routine.
+ */
+static
+VOID
+KiFlushTb(
+    _In_ BOOLEAN AllProcessors,
+    _In_ PKIPI_BROADCAST_WORKER Routine,
+    _In_ ULONG_PTR Argument)
+{
+    KAFFINITY TargetSet;
+    KIRQL OldIrql;
+
+    /* Only the debugger flushes up here, and the processors it froze reload CR3 on thaw */
+    if (KeGetCurrentIrql() > SYNCH_LEVEL)
+    {
+        Routine(Argument);
+        return;
+    }
+
+    OldIrql = KeRaiseIrqlToSynchLevel();
+
+    /* The PTE store has to be visible before we look at who may be caching it */
+    KeMemoryBarrier();
+
+    if (AllProcessors)
+        TargetSet = KeActiveProcessors;
+    else
+        TargetSet = KeGetCurrentThread()->ApcState.Process->ActiveProcessors;
+
+    KiIpiSendSynchRequest(TargetSet, Routine, Argument);
+
+    KeLowerIrql(OldIrql);
+}
+
+#ifdef CONFIG_SMP
+
+VOID
+NTAPI
+KeInvalidateTlbEntry(
+    _In_ PVOID Address)
+{
+    KiFlushTb(Address >= MmSystemRangeStart, KiInvalidateTbEntryTarget, (ULONG_PTR)Address);
+}
+
+VOID
+NTAPI
+KeFlushProcessTb(VOID)
+{
+    KiFlushTb(FALSE, KiFlushTbTarget, 0);
+}
+
+#endif
+
 VOID
 NTAPI
 KeFlushEntireTb(IN BOOLEAN Invalid,
                 IN BOOLEAN AllProcessors)
 {
-    KIRQL OldIrql;
+    UNREFERENCED_PARAMETER(Invalid);
+    UNREFERENCED_PARAMETER(AllProcessors);
 
-    // FIXME: halfplemented
-    /* Raise the IRQL for the TB Flush */
-    OldIrql = KeRaiseIrqlToSynchLevel();
+    /* Kernel space is shared, so every processor is flushed whatever was asked */
+    KiFlushTb(TRUE, KiFlushTbTarget, 0);
 
-    /* Flush the TB for the Current CPU, and update the flush stamp */
-    KeFlushCurrentTb();
-
-    /* Update the flush stamp and return to original IRQL */
+    /* Update the flush stamp */
     InterlockedExchangeAdd(&KiTbFlushTimeStamp, 1);
-    KeLowerIrql(OldIrql);
-
 }
 
 NTSTATUS
