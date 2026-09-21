@@ -2096,10 +2096,35 @@ NdisIPnPStartDevice(
    * Call MiniportInitialize.
    */
 
-  NDIS_DbgPrint(MID_TRACE, ("calling MiniportInitialize\n"));
-  NdisStatus = (*Adapter->NdisMiniportBlock.DriverHandle->MiniportCharacteristics.InitializeHandler)(
-    &OpenErrorStatus, &SelectedMediumIndex, &MediaArray[0],
-    MEDIA_ARRAY_SIZE, Adapter, (NDIS_HANDLE)&WrapperContext);
+  if (Adapter->NdisMiniportBlock.DriverHandle->Ndis6Driver)
+    {
+      NDIS_MINIPORT_INIT_PARAMETERS InitParameters;
+
+      NDIS_DbgPrint(MID_TRACE, ("calling MiniportInitializeEx\n"));
+
+      RtlZeroMemory(&InitParameters, sizeof(InitParameters));
+      InitParameters.Header.Type = NDIS_OBJECT_TYPE_MINIPORT_INIT_PARAMETERS;
+      InitParameters.Header.Revision = NDIS_MINIPORT_INIT_PARAMETERS_REVISION_1;
+      InitParameters.Header.Size = NDIS_SIZEOF_MINIPORT_INIT_PARAMETERS_REVISION_1;
+      /* NDIS 6 hands over the partial list, which sits inside the full one. */
+      if (Adapter->NdisMiniportBlock.AllocatedResources != NULL)
+        {
+          InitParameters.AllocatedResources =
+            &Adapter->NdisMiniportBlock.AllocatedResources->List[0].PartialResourceList;
+        }
+
+      NdisStatus = (*Adapter->NdisMiniportBlock.DriverHandle->Characteristics6.InitializeHandlerEx)(
+        Adapter,
+        Adapter->NdisMiniportBlock.DriverHandle->MiniportDriverContext,
+        &InitParameters);
+    }
+  else
+    {
+    NDIS_DbgPrint(MID_TRACE, ("calling MiniportInitialize\n"));
+    NdisStatus = (*Adapter->NdisMiniportBlock.DriverHandle->MiniportCharacteristics.InitializeHandler)(
+      &OpenErrorStatus, &SelectedMediumIndex, &MediaArray[0],
+      MEDIA_ARRAY_SIZE, Adapter, (NDIS_HANDLE)&WrapperContext);
+    }
 
   ZwClose(WrapperContext.RegistryHandle);
 

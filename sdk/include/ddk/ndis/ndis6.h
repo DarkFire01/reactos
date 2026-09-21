@@ -1,0 +1,241 @@
+/*
+ * PROJECT:     ReactOS NDIS 6 support
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     NDIS 6.x miniport registration and attributes
+ */
+
+#pragma once
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef ULONG NDIS_PORT_NUMBER, *PNDIS_PORT_NUMBER;
+
+/* NDIS_OBJECT_HEADER::Type for the structures below. */
+#define NDIS_OBJECT_TYPE_MINIPORT_DRIVER_CHARACTERISTICS             0x83
+#define NDIS_OBJECT_TYPE_MINIPORT_INIT_PARAMETERS                    0x84
+#define NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES    0x9E
+#define NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES         0x9F
+#define NDIS_OBJECT_TYPE_MINIPORT_PAUSE_PARAMETERS                   0x85
+#define NDIS_OBJECT_TYPE_MINIPORT_RESTART_PARAMETERS                 0x86
+
+#define NDIS_MINIPORT_DRIVER_CHARACTERISTICS_REVISION_1              1
+#define NDIS_MINIPORT_INIT_PARAMETERS_REVISION_1                     1
+#define NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_1     1
+#define NDIS_MINIPORT_PAUSE_PARAMETERS_REVISION_1                    1
+#define NDIS_MINIPORT_RESTART_PARAMETERS_REVISION_1                  1
+
+/* NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES::AttributeFlags */
+#define NDIS_MINIPORT_ATTRIBUTES_HARDWARE_DEVICE                     0x00000002
+#define NDIS_MINIPORT_ATTRIBUTES_NO_HALT_ON_SUSPEND                  0x00000008
+#define NDIS_MINIPORT_ATTRIBUTES_SURPRISE_REMOVE_OK                  0x00000010
+#define NDIS_MINIPORT_ATTRIBUTES_NOT_CO_NDIS                         0x00000020
+#define NDIS_MINIPORT_ATTRIBUTES_DO_NOT_BIND_TO_ALL_CO               0x00000040
+
+typedef enum _NDIS_HALT_ACTION
+{
+    NdisHaltDeviceDisabled,
+    NdisHaltDeviceInstanceDeInitialized,
+    NdisHaltDevicePoweredDown,
+    NdisHaltDeviceSurpriseRemoved,
+    NdisHaltDeviceFailed,
+    NdisHaltDeviceInitializationFailed,
+    NdisHaltDeviceStopped
+} NDIS_HALT_ACTION, *PNDIS_HALT_ACTION;
+
+typedef enum _NDIS_SHUTDOWN_ACTION
+{
+    NdisShutdownPowerOff,
+    NdisShutdownBugCheck
+} NDIS_SHUTDOWN_ACTION, *PNDIS_SHUTDOWN_ACTION;
+
+struct _NDIS_OID_REQUEST;
+struct _NET_DEVICE_PNP_EVENT;
+struct _NDIS_RESTART_ATTRIBUTES;
+
+typedef struct _NDIS_MINIPORT_INIT_PARAMETERS
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG Flags;
+    PCM_PARTIAL_RESOURCE_LIST AllocatedResources;
+    NDIS_HANDLE IMDeviceInstanceContext;
+    NDIS_HANDLE MiniportAddDeviceContext;
+    NET_IFINDEX IfIndex;
+    NET_LUID NetLuid;
+    PVOID DefaultPortAuthStates;
+    PVOID PciDeviceCustomProperties;
+} NDIS_MINIPORT_INIT_PARAMETERS, *PNDIS_MINIPORT_INIT_PARAMETERS;
+
+typedef struct _NDIS_MINIPORT_PAUSE_PARAMETERS
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG Flags;
+    ULONG PauseReason;
+} NDIS_MINIPORT_PAUSE_PARAMETERS, *PNDIS_MINIPORT_PAUSE_PARAMETERS;
+
+typedef struct _NDIS_MINIPORT_RESTART_PARAMETERS
+{
+    NDIS_OBJECT_HEADER Header;
+    struct _NDIS_RESTART_ATTRIBUTES *RestartAttributes;
+    ULONG Flags;
+} NDIS_MINIPORT_RESTART_PARAMETERS, *PNDIS_MINIPORT_RESTART_PARAMETERS;
+
+typedef struct _NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES
+{
+    NDIS_OBJECT_HEADER Header;
+    NDIS_HANDLE MiniportAdapterContext;
+    ULONG AttributeFlags;
+    UINT CheckForHangTimeInSeconds;
+    NDIS_INTERFACE_TYPE InterfaceType;
+} NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES,
+  *PNDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES;
+
+/*
+ * Only the header and the registration arm are described. The other arms
+ * (general, offload, native 802.11, NDK, PacketDirect) are dispatched on
+ * Header.Type and can be added as each one is needed.
+ */
+typedef union _NDIS_MINIPORT_ADAPTER_ATTRIBUTES
+{
+    NDIS_OBJECT_HEADER Header;
+    NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES RegistrationAttributes;
+} NDIS_MINIPORT_ADAPTER_ATTRIBUTES, *PNDIS_MINIPORT_ADAPTER_ATTRIBUTES;
+
+typedef NDIS_STATUS (NTAPI MINIPORT_SET_OPTIONS)(
+    _In_ NDIS_HANDLE NdisDriverHandle,
+    _In_ NDIS_HANDLE DriverContext);
+typedef MINIPORT_SET_OPTIONS *SET_OPTIONS_HANDLER;
+
+typedef NDIS_STATUS (NTAPI MINIPORT_INITIALIZE)(
+    _In_ NDIS_HANDLE NdisMiniportHandle,
+    _In_ NDIS_HANDLE MiniportDriverContext,
+    _In_ PNDIS_MINIPORT_INIT_PARAMETERS MiniportInitParameters);
+typedef MINIPORT_INITIALIZE *MINIPORT_INITIALIZE_HANDLER;
+
+typedef VOID (NTAPI MINIPORT_HALT)(
+    _In_ NDIS_HANDLE MiniportAdapterContext,
+    _In_ NDIS_HALT_ACTION HaltAction);
+typedef MINIPORT_HALT *MINIPORT_HALT_HANDLER;
+
+typedef VOID (NTAPI MINIPORT_DRIVER_UNLOAD)(
+    _In_ PDRIVER_OBJECT DriverObject);
+typedef MINIPORT_DRIVER_UNLOAD *MINIPORT_UNLOAD_HANDLER;
+
+typedef NDIS_STATUS (NTAPI MINIPORT_PAUSE)(
+    _In_ NDIS_HANDLE MiniportAdapterContext,
+    _In_ PNDIS_MINIPORT_PAUSE_PARAMETERS MiniportPauseParameters);
+typedef MINIPORT_PAUSE *MINIPORT_PAUSE_HANDLER;
+
+typedef NDIS_STATUS (NTAPI MINIPORT_RESTART)(
+    _In_ NDIS_HANDLE MiniportAdapterContext,
+    _In_ PNDIS_MINIPORT_RESTART_PARAMETERS MiniportRestartParameters);
+typedef MINIPORT_RESTART *MINIPORT_RESTART_HANDLER;
+
+typedef NDIS_STATUS (NTAPI MINIPORT_OID_REQUEST)(
+    _In_ NDIS_HANDLE MiniportAdapterContext,
+    _In_ struct _NDIS_OID_REQUEST *OidRequest);
+typedef MINIPORT_OID_REQUEST *MINIPORT_OID_REQUEST_HANDLER;
+
+typedef VOID (NTAPI MINIPORT_SEND_NET_BUFFER_LISTS)(
+    _In_ NDIS_HANDLE MiniportAdapterContext,
+    _In_ PNET_BUFFER_LIST NetBufferList,
+    _In_ NDIS_PORT_NUMBER PortNumber,
+    _In_ ULONG SendFlags);
+typedef MINIPORT_SEND_NET_BUFFER_LISTS *MINIPORT_SEND_NET_BUFFER_LISTS_HANDLER;
+
+typedef VOID (NTAPI MINIPORT_RETURN_NET_BUFFER_LISTS)(
+    _In_ NDIS_HANDLE MiniportAdapterContext,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ ULONG ReturnFlags);
+typedef MINIPORT_RETURN_NET_BUFFER_LISTS *MINIPORT_RETURN_NET_BUFFER_LISTS_HANDLER;
+
+typedef VOID (NTAPI MINIPORT_CANCEL_SEND)(
+    _In_ NDIS_HANDLE MiniportAdapterContext,
+    _In_ PVOID CancelId);
+typedef MINIPORT_CANCEL_SEND *MINIPORT_CANCEL_SEND_HANDLER;
+
+typedef BOOLEAN (NTAPI MINIPORT_CHECK_FOR_HANG)(
+    _In_ NDIS_HANDLE MiniportAdapterContext);
+typedef MINIPORT_CHECK_FOR_HANG *MINIPORT_CHECK_FOR_HANG_HANDLER;
+
+typedef NDIS_STATUS (NTAPI MINIPORT_RESET)(
+    _In_ NDIS_HANDLE MiniportAdapterContext,
+    _Out_ PBOOLEAN AddressingReset);
+typedef MINIPORT_RESET *MINIPORT_RESET_HANDLER;
+
+typedef VOID (NTAPI MINIPORT_DEVICE_PNP_EVENT_NOTIFY)(
+    _In_ NDIS_HANDLE MiniportAdapterContext,
+    _In_ struct _NET_DEVICE_PNP_EVENT *NetDevicePnPEvent);
+typedef MINIPORT_DEVICE_PNP_EVENT_NOTIFY *MINIPORT_DEVICE_PNP_EVENT_NOTIFY_HANDLER;
+
+typedef VOID (NTAPI MINIPORT_SHUTDOWN)(
+    _In_ NDIS_HANDLE MiniportAdapterContext,
+    _In_ NDIS_SHUTDOWN_ACTION ShutdownAction);
+typedef MINIPORT_SHUTDOWN *MINIPORT_SHUTDOWN_HANDLER;
+
+typedef VOID (NTAPI MINIPORT_CANCEL_OID_REQUEST)(
+    _In_ NDIS_HANDLE MiniportAdapterContext,
+    _In_ PVOID RequestId);
+typedef MINIPORT_CANCEL_OID_REQUEST *MINIPORT_CANCEL_OID_REQUEST_HANDLER;
+
+typedef struct _NDIS_MINIPORT_DRIVER_CHARACTERISTICS
+{
+    NDIS_OBJECT_HEADER Header;
+    UCHAR MajorNdisVersion;
+    UCHAR MinorNdisVersion;
+    UCHAR MajorDriverVersion;
+    UCHAR MinorDriverVersion;
+    ULONG Flags;
+    SET_OPTIONS_HANDLER SetOptionsHandler;
+    MINIPORT_INITIALIZE_HANDLER InitializeHandlerEx;
+    MINIPORT_HALT_HANDLER HaltHandlerEx;
+    MINIPORT_UNLOAD_HANDLER UnloadHandler;
+    MINIPORT_PAUSE_HANDLER PauseHandler;
+    MINIPORT_RESTART_HANDLER RestartHandler;
+    MINIPORT_OID_REQUEST_HANDLER OidRequestHandler;
+    MINIPORT_SEND_NET_BUFFER_LISTS_HANDLER SendNetBufferListsHandler;
+    MINIPORT_RETURN_NET_BUFFER_LISTS_HANDLER ReturnNetBufferListsHandler;
+    MINIPORT_CANCEL_SEND_HANDLER CancelSendHandler;
+    MINIPORT_CHECK_FOR_HANG_HANDLER CheckForHangHandlerEx;
+    MINIPORT_RESET_HANDLER ResetHandlerEx;
+    MINIPORT_DEVICE_PNP_EVENT_NOTIFY_HANDLER DevicePnPEventNotifyHandler;
+    MINIPORT_SHUTDOWN_HANDLER ShutdownHandlerEx;
+    MINIPORT_CANCEL_OID_REQUEST_HANDLER CancelOidRequestHandler;
+} NDIS_MINIPORT_DRIVER_CHARACTERISTICS, *PNDIS_MINIPORT_DRIVER_CHARACTERISTICS;
+
+#define NDIS_SIZEOF_MINIPORT_DRIVER_CHARACTERISTICS_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_MINIPORT_DRIVER_CHARACTERISTICS, CancelOidRequestHandler)
+
+#define NDIS_SIZEOF_MINIPORT_INIT_PARAMETERS_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_MINIPORT_INIT_PARAMETERS, PciDeviceCustomProperties)
+
+#define NDIS_SIZEOF_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES, InterfaceType)
+
+_IRQL_requires_(PASSIVE_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisMRegisterMiniportDriver(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PUNICODE_STRING RegistryPath,
+    _In_opt_ NDIS_HANDLE MiniportDriverContext,
+    _In_ PNDIS_MINIPORT_DRIVER_CHARACTERISTICS MiniportDriverCharacteristics,
+    _Out_ PNDIS_HANDLE NdisMiniportDriverHandle);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID
+NTAPI
+NdisMDeregisterMiniportDriver(
+    _In_ NDIS_HANDLE NdisMiniportDriverHandle);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisMSetMiniportAttributes(
+    _In_ NDIS_HANDLE NdisMiniportHandle,
+    _In_ PNDIS_MINIPORT_ADAPTER_ATTRIBUTES MiniportAttributes);
+
+#ifdef __cplusplus
+}
+#endif
