@@ -86,6 +86,8 @@
  @ stdcall NdisCompletePnPEvent(long ptr ptr)
  @ stdcall NdisCompleteQueryStatistics(ptr ptr long)
  @ stdcall NdisCompleteUnbindAdapter(ptr long)
+ @ stdcall NdisConvertNdisStatusToNtStatus(long)
+ @ stdcall NdisConvertNtStatusToNdisStatus(long)
  @ stdcall NdisConvertStringToAtmAddress(ptr ptr ptr)
  @ stdcall NdisCopyBuffer(ptr ptr ptr ptr long long)
  @ stdcall NdisCopyFromPacketToPacket(ptr long long ptr long ptr)
