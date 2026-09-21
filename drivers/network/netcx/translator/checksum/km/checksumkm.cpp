@@ -8,8 +8,8 @@
 #include "Checksum.hpp"
 #include "ChecksumKm.tmh"
 
-#include <BatchingLib.h>
-#include <SegLib.h>
+#include <batchinglib.h>
+#include <seglib.h>
 #include <malloc.h>
 #include <wil/resource.h>
 

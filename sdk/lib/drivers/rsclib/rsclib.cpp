@@ -1,5 +1,5 @@
 /*
- * PROJECT:     ReactOS NetAdapterCx
+ * PROJECT:     ReactOS
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     Software receive segment coalescing library, stubbed
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
@@ -12,7 +12,7 @@
  * silent pass through looks exactly like hardware RSC being unavailable.
  */
 
-#include "NxXlatPrecomp.hpp"
+#include <ndis.h>
 
 #include <rsclib.h>
 
