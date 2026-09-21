@@ -1222,7 +1222,12 @@ typedef PHYSICAL_ADDRESS NDIS_PHYSICAL_ADDRESS, *PNDIS_PHYSICAL_ADDRESS;
 #include <ndis/nblaccessors.h>
 #include <ndis/nblapi.h>
 #include <ndis/nbloffload.h>
+#include <ndis/nblqueue.h>
 #include <ndis/nblchain.h>
+#include <ndis/nblsend.h>
+#include <ndis/nblreceive.h>
+#include <ndis/nbl8021q.h>
+#include <ndis/nblrsc.h>
 #endif
 
 typedef struct _NDIS_PHYSICAL_ADDRESS_UNIT {
@@ -6493,6 +6498,7 @@ typedef	NDIS_WAN_MAC_CHARACTERISTICS    *PNDIS_WAN_MAC_CHARACTERISTICS;
 #include <ndis/offload.h>
 #include <ndis/powermanagement.h>
 #include <ndis/receivescale.h>
+#include <ndis/nblhash.h>
 #include <ndis/oid.h>
 #include <ndis/oidrequest.h>
 #include <ndis/statusindication.h>
