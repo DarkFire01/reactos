@@ -159,6 +159,9 @@ add_library(netadaptercx MODULE
 set_module_type(netadaptercx kmdfdriver)
 target_link_libraries(netadaptercx pktmonclnt rsclib seglib)
 
+# if constexpr and nested namespace definitions are used throughout the drop.
+set_target_properties(netadaptercx PROPERTIES CXX_STANDARD 17)
+
 # The drop is built against an ntifs level kernel surface, see inc/NetCxKernel.h.
 if(MSVC)
     target_compile_options(netadaptercx PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/FINetCxKernel.h>)
