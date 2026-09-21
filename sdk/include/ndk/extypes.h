@@ -346,7 +346,7 @@ typedef enum _SYSTEM_INFORMATION_CLASS
     SystemQueryPerformanceCounterInformation              = 124, // 0x7C
 #endif // (NTDDI_VERSION >= NTDDI_WIN7)
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
     SystemSessionBigPoolInformation                       = 125, // 0x7D
     SystemBootGraphicsInformation                         = 126, // 0x7E
     SystemScrubPhysicalMemoryInformation                  = 127, // 0x7F
@@ -375,7 +375,7 @@ typedef enum _SYSTEM_INFORMATION_CLASS
     SystemFullProcessInformation                          = 148, // 0x94
 #endif // (NTDDI_VERSION >= NTDDI_WIN8)
 
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
+#if (NTDDI_VERSION >= NTDDI_WINBLUE) || defined(__REACTOS__)
     SystemKernelDebuggerInformationEx                     = 149, // 0x95
     SystemBootMetadataInformation                         = 150, // 0x96
     SystemSoftRebootInformation                           = 151, // 0x97
@@ -386,7 +386,7 @@ typedef enum _SYSTEM_INFORMATION_CLASS
     SystemEdidInformation                                 = 156, // 0x9C
 #endif // (NTDDI_VERSION >= NTDDI_WINBLUE)
 
-#if (NTDDI_VERSION >= NTDDI_WIN10)
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
     SystemManufacturingInformation                        = 157, // 0x9D
     SystemEnergyEstimationConfigInformation               = 158, // 0x9E
     SystemHypervisorDetailInformation                     = 159, // 0x9F
@@ -1776,6 +1776,16 @@ typedef struct _SYSTEM_MEMORY_LIST_INFORMATION
     SIZE_T RepurposedPagesByPriority[8];
     SIZE_T ModifiedPageCountPageFile;
 } SYSTEM_MEMORY_LIST_INFORMATION, *PSYSTEM_MEMORY_LIST_INFORMATION;
+
+//
+// Class 184
+//
+typedef struct _SYSTEM_PHYSICAL_MEMORY_INFORMATION
+{
+    ULONGLONG TotalPhysicalBytes;
+    ULONGLONG LowestPhysicalAddress;
+    ULONGLONG HighestPhysicalAddress;
+} SYSTEM_PHYSICAL_MEMORY_INFORMATION, *PSYSTEM_PHYSICAL_MEMORY_INFORMATION;
 
 //
 // Firmware variable attributes
