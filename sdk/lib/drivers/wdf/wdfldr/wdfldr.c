@@ -421,7 +421,6 @@ WdfVersionBind(
     CLIENT_INFO clientInfo;
     PVOID context = NULL;
 
-    UNREFERENCED_PARAMETER(DriverObject);
     PAGED_CODE();
 
     DPRINT_TRACE_ENTRY();
@@ -448,6 +447,7 @@ WdfVersionBind(
 
     clientInfo.Size = sizeof(CLIENT_INFO);
     clientInfo.RegistryPath = ServicePath;
+    clientInfo.DriverObject = DriverObject;
 
     status = LibraryLinkInClient(pLibModule, ServicePath, BindInfo, &clientInfo, &clientModule);
     if (!NT_SUCCESS(status))
@@ -479,6 +479,8 @@ WdfVersionBind(
     DPRINT_VERBOSE(("Calling LibraryRegisterClient at %p for library %wZ\n",
                    pLibModule->LibraryInfo->LibraryRegisterClient, &pLibModule->ServicePath));
 
+    /* The library reads the client info through the context and replaces it with its globals */
+    context = &clientInfo;
     status = pLibModule->LibraryInfo->LibraryRegisterClient(BindInfo, ComponentGlobals, &context);
     if (NT_SUCCESS(status))
     {
