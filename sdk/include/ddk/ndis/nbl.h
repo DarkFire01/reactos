@@ -17,39 +17,67 @@ struct _NET_BUFFER_LIST;
 struct _NET_BUFFER_LIST_CONTEXT;
 struct _NET_BUFFER_SHARED_MEMORY;
 
-/* Slot indices into NET_BUFFER_LIST::NetBufferListInfo. */
+/*
+ * Slot indices into NET_BUFFER_LIST::NetBufferListInfo, part of the miniport ABI.
+ * 64 bit builds add the switch and GFT slots, so TcpRecvSegCoalesceInfo is 22
+ * there and 19 on x86.
+ */
 typedef enum _NDIS_NET_BUFFER_LIST_INFO
 {
-    TcpIpChecksumNetBufferListInfo = 0,
-    TcpOffloadBytesTransferred = 0,
-    IPsecOffloadV1NetBufferListInfo = 1,
-    IPsecOffloadV2NetBufferListInfo = 1,
-    TcpLargeSendNetBufferListInfo = 2,
-    TcpReceiveNoPush = 2,
-    ClassificationHandleNetBufferListInfo = 3,
-    Ieee8021QNetBufferListInfo = 4,
-    NetBufferListCancelId = 5,
-    MediaSpecificInformation = 6,
-    NetBufferListFrameType = 7,
-    NetBufferListProtocolId = 7,
-    NetBufferListHashValue = 8,
-    NetBufferListHashInfo = 9,
-    WfpNetBufferListInfo = 10,
-    IPsecOffloadV2TunnelNetBufferListInfo = 11,
-    IPsecOffloadV2HeaderNetBufferListInfo = 12,
-    NetBufferListCorrelationId = 13,
-    NetBufferListFilteringInfo = 14,
-    MediaSpecificInformationEx = 15,
-    NblOriginalInterfaceIfIndex = 16,
-    NblReAuthWfpFlowContext = 16,
-    TcpReceiveBytesTransferred = 17,
-    IMReserved = 18,
-    TcpRecvSegCoalesceInfo = 19,
-    RscTcpTimestampDelta = 20,
-    TcpSendOffloadsSupplementalNetBufferListInfo = 20,
-    NetBufferListInfoReserved1 = 21,
-    NetBufferListInfoReserved2 = 22,
-    MaxNetBufferListInfo = 23
+    TcpIpChecksumNetBufferListInfo,
+    TcpOffloadBytesTransferred = TcpIpChecksumNetBufferListInfo,
+    IPsecOffloadV1NetBufferListInfo,
+    IPsecOffloadV2NetBufferListInfo = IPsecOffloadV1NetBufferListInfo,
+    TcpLargeSendNetBufferListInfo,
+    TcpReceiveNoPush = TcpLargeSendNetBufferListInfo,
+    ClassificationHandleNetBufferListInfo,
+    Ieee8021QNetBufferListInfo,
+    NetBufferListCancelId,
+    MediaSpecificInformation,
+    NetBufferListFrameType,
+    NetBufferListProtocolId = NetBufferListFrameType,
+    NetBufferListHashValue,
+    NetBufferListHashInfo,
+    WfpNetBufferListInfo,
+    IPsecOffloadV2TunnelNetBufferListInfo,
+    IPsecOffloadV2HeaderNetBufferListInfo,
+    NetBufferListCorrelationId,
+    NetBufferListFilteringInfo,
+    MediaSpecificInformationEx,
+    NblOriginalInterfaceIfIndex,
+    NblReAuthWfpFlowContext = NblOriginalInterfaceIfIndex,
+    TcpReceiveBytesTransferred,
+    NrtNameResolutionId = TcpReceiveBytesTransferred,
+    UdpRecvSegCoalesceOffloadInfo = TcpReceiveBytesTransferred,
+#if NDIS_SUPPORT_NDIS630
+#if defined(_AMD64_) || defined(_ARM64_)
+    SwitchForwardingReserved,
+    SwitchForwardingDetail,
+    VirtualSubnetInfo,
+#endif
+    IMReserved,
+    TcpRecvSegCoalesceInfo,
+    UdpSegmentationOffloadInfo = TcpRecvSegCoalesceInfo,
+    RscTcpTimestampDelta,
+    TcpSendOffloadsSupplementalNetBufferListInfo = RscTcpTimestampDelta,
+#if NDIS_SUPPORT_NDIS650
+#if defined(_AMD64_) || defined(_ARM64_)
+    GftOffloadInformation,
+    GftFlowEntryId,
+#endif
+#if NDIS_SUPPORT_NDIS680
+    NetBufferListInfoReserved3,
+#ifndef _WIN64
+    NetBufferListInfoReserved4,
+#endif
+#endif
+#endif
+#endif
+#if NDIS_WRAPPER
+    NetBufferListInfoReserved1,
+    NetBufferListInfoReserved2,
+#endif
+    MaxNetBufferListInfo
 } NDIS_NET_BUFFER_LIST_INFO, *PNDIS_NET_BUFFER_LIST_INFO;
 
 typedef struct _NET_BUFFER_DATA
