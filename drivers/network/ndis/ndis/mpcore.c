@@ -266,6 +266,66 @@ CorePause(
     KeReleaseSpinLock(&Core->Lock, OldIrql);
 }
 
+/**
+ * @brief
+ * Keeps an adapter's data path paused for a reason, pausing it if it runs.
+ *
+ * @param[in] Adapter
+ * The adapter.
+ *
+ * @param[in] Reason
+ * One CORE_PAUSE_* bit.
+ */
+VOID
+NTAPI
+CoreHoldPaused(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ ULONG Reason)
+{
+    PMINIPORT_CORE Core = &Adapter->Core;
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&Core->Lock, &OldIrql);
+    Core->PauseReasons |= Reason;
+    KeReleaseSpinLock(&Core->Lock, OldIrql);
+
+    CorePause(Adapter);
+}
+
+/**
+ * @brief
+ * Drops one reason to keep an adapter paused, restarting it when none is left.
+ *
+ * @param[in] Adapter
+ * The adapter.
+ *
+ * @param[in] Reason
+ * One CORE_PAUSE_* bit.
+ *
+ * @return
+ * The restart's status, or NDIS_STATUS_SUCCESS when there was nothing to restart.
+ */
+NDIS_STATUS
+NTAPI
+CoreReleasePaused(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ ULONG Reason)
+{
+    PMINIPORT_CORE Core = &Adapter->Core;
+    BOOLEAN Restart;
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&Core->Lock, &OldIrql);
+    Core->PauseReasons &= ~Reason;
+    Restart = (Core->PauseReasons == 0 && Core->State == CoreMiniportPaused);
+    KeReleaseSpinLock(&Core->Lock, OldIrql);
+
+    if (!Restart)
+        return NDIS_STATUS_SUCCESS;
+
+    return CoreRestart(Adapter);
+}
+
 /* Unexpected completions from 6.50 and later miniports are driver bugs */
 static
 VOID
@@ -466,6 +526,9 @@ CoreCompleteInitialization(
 
     /* Initialization leaves every miniport paused */
     Core->State = CoreMiniportPaused;
+
+    if (Core->PauseReasons != 0)
+        return NDIS_STATUS_SUCCESS;
 
     return CoreRestart(Adapter);
 }
