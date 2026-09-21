@@ -1,0 +1,6 @@
+; WDI upper edge, loaded by NDIS when a WLAN miniport registers
+[AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Services\WdiWifi","ErrorControl",0x00010001,0x00000001
+HKLM,"SYSTEM\CurrentControlSet\Services\WdiWifi","ImagePath",0x00020000,"system32\drivers\wdiwifi.sys"
+HKLM,"SYSTEM\CurrentControlSet\Services\WdiWifi","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\WdiWifi","Type",0x00010001,0x00000001
