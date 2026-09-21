@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <net/returncontexttypes.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,6 +21,11 @@ DECLARE_HANDLE(NETPOWEROFFLOAD);
 
 struct _NETADAPTER_INIT;
 typedef struct _NETADAPTER_INIT NETADAPTER_INIT;
+
+typedef union _NET_EUI48_ADDRESS
+{
+    UINT8 Value[6];
+} NET_EUI48_ADDRESS;
 
 typedef struct _NET_DRIVER_GLOBALS
 {
