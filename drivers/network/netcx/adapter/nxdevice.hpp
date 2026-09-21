@@ -34,6 +34,9 @@
 struct NX_PRIVATE_GLOBALS;
 class NxDriver;
 
+/* NDIS_GUID::Flags bit NDIS never sets, marking a status GUID with events turned on. */
+#define NX_GUID_EVENT_ENABLED 0x80000000
+
 NTSTATUS
 WdfCxDeviceInitAssignPreprocessorRoutines(
     _Inout_ WDFCXDEVICE_INIT * CxDeviceInit
