@@ -153,6 +153,20 @@ HaliQuerySystemInformation(IN HAL_QUERY_INFORMATION_CLASS InformationClass,
         REPORT_THIS_CASE(HalHypervisorInformation);
         REPORT_THIS_CASE(HalPlatformTimerInformation);
         REPORT_THIS_CASE(HalAcpiAuditInformation);
+        REPORT_THIS_CASE(HalIrtInformation);
+        case HalSecondaryInterruptInformation:
+        {
+            HAL_SECONDARY_INTERRUPT_INFORMATION Information;
+            NTSTATUS Status;
+
+            if (BufferSize < sizeof(Information))
+                return STATUS_INFO_LENGTH_MISMATCH;
+
+            Status = HalpQuerySecondaryInterruptInformation(&Information);
+            RtlCopyMemory(Buffer, &Information, sizeof(Information));
+            *ReturnedLength = sizeof(Information);
+            return Status;
+        }
     }
 #undef REPORT_THIS_CASE
 
@@ -166,6 +180,14 @@ HaliSetSystemInformation(IN HAL_SET_INFORMATION_CLASS InformationClass,
                          IN ULONG BufferSize,
                          IN OUT PVOID Buffer)
 {
+    if (InformationClass == HalRegisterSecondaryInterruptInterface)
+    {
+        if (BufferSize < sizeof(SECONDARY_INTERRUPT_PROVIDER_INTERFACE))
+            return STATUS_INFO_LENGTH_MISMATCH;
+
+        return HalpRegisterSecondaryIcInterface(Buffer);
+    }
+
     UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }

@@ -133,6 +133,8 @@ HalpAddDevice(IN PDRIVER_OBJECT DriverObject,
     /* Initialization is finished */
     PdoDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
+    HalpInitializeSecondaryInterruptServices();
+
     /* Return status */
     DPRINT("Device added %lx\n", Status);
     return Status;

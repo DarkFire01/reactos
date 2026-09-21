@@ -1350,6 +1350,11 @@ HalEnableInterrupt(
     }
 
     VectorData = &ConnectionData->Vectors[0];
+    if (HalpIsSecondaryControllerInput(VectorData))
+    {
+        return HalpEnableSecondaryInterrupt(ConnectionData);
+    }
+
     Vector = VectorData->Vector;
     if (Vector > 0xFF)
     {
@@ -1441,6 +1446,11 @@ HalDisableInterrupt(
     }
 
     VectorData = &ConnectionData->Vectors[0];
+    if (HalpIsSecondaryControllerInput(VectorData))
+    {
+        return HalpDisableSecondaryInterrupt(ConnectionData);
+    }
+
     Vector = VectorData->Vector;
     if (Vector > 0xFF)
     {
@@ -1551,6 +1561,110 @@ HalpIsInterruptInputValid(
     PHALP_IOAPIC_UNIT Unit;
 
     return HalpFindIoApicInput(Input, &Unit);
+}
+
+/* PRIMARY INPUT MASKING ******************************************************/
+
+/* Why HalMaskInterrupt is holding an input masked */
+#define APIC_INPUT_MASKED           0x01
+#define APIC_INPUT_PASSIVE_MASKED   0x02
+
+static UCHAR HalpInputMaskReasons[HALP_MAX_INPUTS];
+static KSPIN_LOCK HalpInputMaskLock;
+
+/**
+ * @brief
+ * Masks or unmasks an I/O APIC input for HalMaskInterrupt and
+ * HalUnmaskInterrupt. The input is unmasked again only when every reason it
+ * was masked for here is gone, and never when it was already masked by
+ * something else.
+ */
+NTSTATUS
+NTAPI
+HalpSetInterruptInputMask(
+    _In_ ULONG Input,
+    _In_ ULONG Flags,
+    _In_ BOOLEAN Mask)
+{
+    IOAPIC_REDIRECTION_REGISTER ReDirReg;
+    UCHAR Reason;
+    KIRQL OldIrql;
+
+    if (Input >= HALP_MAX_INPUTS)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (Mask)
+        Reason = (Flags & HAL_MASK_INTERRUPT_PASSIVE) ? APIC_INPUT_PASSIVE_MASKED : APIC_INPUT_MASKED;
+    else
+        Reason = (Flags & HAL_UNMASK_INTERRUPT_PASSIVE) ? APIC_INPUT_PASSIVE_MASKED : APIC_INPUT_MASKED;
+
+    KeRaiseIrql(HIGH_LEVEL, &OldIrql);
+    KeAcquireSpinLockAtDpcLevel(&HalpInputMaskLock);
+
+    ReDirReg = ApicReadIORedirectionEntry(Input);
+
+    if (Mask)
+    {
+        if (!ReDirReg.Mask || (HalpInputMaskReasons[Input] != 0))
+        {
+            HalpInputMaskReasons[Input] |= Reason;
+            ReDirReg.Mask = 1;
+            ApicWriteIORedirectionEntry(Input, ReDirReg);
+        }
+    }
+    else if (HalpInputMaskReasons[Input] & Reason)
+    {
+        HalpInputMaskReasons[Input] &= ~Reason;
+        if (HalpInputMaskReasons[Input] == 0)
+        {
+            ReDirReg.Mask = 0;
+            ApicWriteIORedirectionEntry(Input, ReDirReg);
+        }
+    }
+
+    KeReleaseSpinLockFromDpcLevel(&HalpInputMaskLock);
+    KeLowerIrql(OldIrql);
+
+    return STATUS_SUCCESS;
+}
+
+/* Raises an input's vector on this processor, for a line that fired unseen */
+NTSTATUS
+NTAPI
+HalpRequestInterruptInput(
+    _In_ ULONG Input)
+{
+    UCHAR Vector;
+
+    if (Input >= RTL_NUMBER_OF(HalpGsivToVector))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    Vector = HalpGsivToVector[Input];
+    if (Vector == APIC_FREE_VECTOR)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    ApicRequestSelfInterrupt(Vector);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NTAPI
+HalpQueryMaximumGsiv(
+    _Out_ PULONG Gsiv)
+{
+    if (HalpMaxGsi == 0)
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    *Gsiv = HalpMaxGsi - 1;
+    return STATUS_SUCCESS;
 }
 
 /* Writes every redirection entry back from the shadow table */
