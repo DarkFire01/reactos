@@ -6210,6 +6210,11 @@ typedef struct _NDIS_MAC_CHARACTERISTICS {
 typedef	NDIS_MAC_CHARACTERISTICS        NDIS_WAN_MAC_CHARACTERISTICS;
 typedef	NDIS_WAN_MAC_CHARACTERISTICS    *PNDIS_WAN_MAC_CHARACTERISTICS;
 
+#if NDIS_SUPPORT_NDIS6
+#include <ifdef.h>
+#include <ndis/ndis6.h>
+#endif /* NDIS_SUPPORT_NDIS6 */
+
 #ifdef __cplusplus
 }
 #endif
