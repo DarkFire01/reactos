@@ -1269,6 +1269,12 @@ KeQueryLogicalProcessorRelationship(
 $endif (_WDMDDK_ || _NTDDK_)
 
 $if (_WDMDDK_)
+_IRQL_requires_min_(DISPATCH_LEVEL)
+NTKERNELAPI
+LOGICAL
+NTAPI
+KeShouldYieldProcessor(VOID);
+
 _IRQL_requires_max_(APC_LEVEL)
 _IRQL_requires_min_(PASSIVE_LEVEL)
 _IRQL_requires_same_
