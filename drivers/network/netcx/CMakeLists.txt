@@ -168,6 +168,7 @@ target_include_directories(netadaptercx BEFORE PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/translator
     ${CMAKE_CURRENT_SOURCE_DIR}/translator/checksum
     ${CMAKE_CURRENT_SOURCE_DIR}/translator/segmentation
+    ${REACTOS_SOURCE_DIR}/sdk/include/ddk/netcx
     ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc
     ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc/pci
     ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf
