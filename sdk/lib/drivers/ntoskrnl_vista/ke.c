@@ -179,3 +179,63 @@ KeQueryMaximumProcessorCountEx(
 
     return KeQueryMaximumProcessorCount();
 }
+
+/**
+ * @brief
+ * Returns the processor the caller is running on.
+ *
+ * @param[out] ProcNumber
+ * Optionally receives the processor as a group and number pair.
+ *
+ * @return
+ * The system wide index of the current processor.
+ */
+NTKRNLVISTAAPI
+ULONG
+NTAPI
+KeGetCurrentProcessorNumberEx(
+    _Out_opt_ PPROCESSOR_NUMBER ProcNumber)
+{
+    ULONG Index = KeGetCurrentProcessorNumber();
+
+    if (ProcNumber != NULL)
+    {
+        ProcNumber->Group = 0;
+        ProcNumber->Number = (UCHAR)Index;
+        ProcNumber->Reserved = 0;
+    }
+
+    return Index;
+}
+
+/**
+ * @brief
+ * Picks the processor a DPC runs on, by group and number.
+ *
+ * @param[in,out] Dpc
+ * The DPC to retarget. One that is already queued keeps its processor.
+ *
+ * @param[in] ProcNumber
+ * The processor to run it on.
+ *
+ * @return
+ * STATUS_SUCCESS, or STATUS_INVALID_PARAMETER when @p ProcNumber names no
+ * active processor.
+ */
+NTKRNLVISTAAPI
+NTSTATUS
+NTAPI
+KeSetTargetProcessorDpcEx(
+    _Inout_ PKDPC Dpc,
+    _In_ PPROCESSOR_NUMBER ProcNumber)
+{
+    ULONG Index = KeGetProcessorIndexFromNumber(ProcNumber);
+
+    if (Index == INVALID_PROCESSOR_INDEX)
+        return STATUS_INVALID_PARAMETER;
+
+    if (Dpc->DpcData == NULL)
+        KeSetTargetProcessorDpc(Dpc, (CCHAR)Index);
+
+    return STATUS_SUCCESS;
+}

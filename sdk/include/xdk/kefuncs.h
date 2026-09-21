@@ -1226,7 +1226,7 @@ NTAPI
 KeQueryGroupAffinity(
   _In_ USHORT GroupNumber);
 
-NTKERNELAPI
+NTKRNLVISTAAPI
 ULONG
 NTAPI
 KeGetCurrentProcessorNumberEx(
@@ -1285,7 +1285,7 @@ KeQueryTotalCycleTimeThread(
   _Out_ PULONG64 CycleTimeStamp);
 
 _Must_inspect_result_
-NTKERNELAPI
+NTKRNLVISTAAPI
 NTSTATUS
 NTAPI
 KeSetTargetProcessorDpcEx(
