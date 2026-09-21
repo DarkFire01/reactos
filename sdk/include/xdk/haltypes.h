@@ -53,7 +53,6 @@ typedef enum _HAL_QUERY_INFORMATION_CLASS {
   HalHypervisorInformation,
   HalPlatformTimerInformation,
   HalAcpiAuditInformation,
-  HalQueryHypervisorInformation,
   HalIrtInformation,
   HalSecondaryInterruptInformation
 } HAL_QUERY_INFORMATION_CLASS, *PHAL_QUERY_INFORMATION_CLASS;
