@@ -6,6 +6,7 @@
  */
 
 #include "ndissys.h"
+#include <ndiswdf.h>
 
 NTSTATUS
 NTAPI
@@ -150,12 +151,32 @@ NdisMRegisterMiniportDriver(
 
     *MiniportPtr = Miniport;
 
-    for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
-        DriverObject->MajorFunction[i] = NdisGenericIrpHandler;
+    /* WDF owns the dispatch table of a driver a class extension registers */
+    if (!(MiniportDriverCharacteristics->Flags & NDIS_WDF_PNP_POWER_HANDLING))
+    {
+        for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++)
+            DriverObject->MajorFunction[i] = NdisGenericIrpHandler;
 
-    DriverObject->DriverExtension->AddDevice = NdisIAddDevice;
+        DriverObject->DriverExtension->AddDevice = NdisIAddDevice;
+    }
 
     ExInterlockedInsertTailList(&MiniportListHead, &Miniport->ListEntry, &MiniportListLock);
+
+    /* Optional handlers can only be registered from here, against the new handle */
+    if (Miniport->Characteristics6.SetOptionsHandler != NULL)
+    {
+        NDIS_STATUS NdisStatus;
+
+        NdisStatus = Miniport->Characteristics6.SetOptionsHandler(Miniport, MiniportDriverContext);
+        if (NdisStatus != NDIS_STATUS_SUCCESS)
+        {
+            NDIS_DbgPrint(MIN_TRACE, ("MiniportSetOptions failed (0x%x).\n", NdisStatus));
+            ExInterlockedRemoveEntryList(&Miniport->ListEntry, &MiniportListLock);
+            *MiniportPtr = NULL;
+            ExFreePoolWithTag(Miniport, NDIS_TAG);
+            return NdisStatus;
+        }
+    }
 
     *NdisMiniportDriverHandle = Miniport;
 
