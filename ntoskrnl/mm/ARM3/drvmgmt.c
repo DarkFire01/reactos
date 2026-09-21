@@ -225,6 +225,41 @@ MmIsDriverVerifying(IN PDRIVER_OBJECT DriverObject)
     return (LdrEntry->Flags & LDRP_IMAGE_VERIFYING) ? TRUE: FALSE;
 }
 
+/**
+ * @brief
+ * Tells whether the image containing an address is under the driver verifier.
+ *
+ * @param[in] AddressWithinSection
+ * Any address inside the loaded image.
+ *
+ * @return
+ * TRUE if the verifier is running and has that image marked.
+ */
+LOGICAL
+NTAPI
+MmIsDriverVerifyingByAddress(
+    _In_ PVOID AddressWithinSection)
+{
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    LOGICAL Verifying = FALSE;
+
+    /* Nothing is verified until the verifier has thunked its first driver */
+    if (!MiVerifierDriverAddedThunkListHead.Flink)
+        return FALSE;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceSharedLite(&PsLoadedModuleResource, TRUE);
+
+    LdrEntry = MiLookupDataTableEntry(AddressWithinSection);
+    if (LdrEntry != NULL)
+        Verifying = (LdrEntry->Flags & LDRP_IMAGE_VERIFYING) != 0;
+
+    ExReleaseResourceLite(&PsLoadedModuleResource);
+    KeLeaveCriticalRegion();
+
+    return Verifying;
+}
+
 /*
  * @implemented
  */
