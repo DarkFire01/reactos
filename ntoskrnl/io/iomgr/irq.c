@@ -14,6 +14,421 @@
 #define NDEBUG
 #include <debug.h>
 
+/* GLOBALS *******************************************************************/
+
+/*
+ * Passive level state of one vector. A level line stays masked from the time
+ * its passive routines are queued until the worker has run them.
+ */
+typedef struct _IOP_PASSIVE_INTERRUPT
+{
+    LIST_ENTRY ListEntry;
+    ULONG Vector;
+    ULONG Gsiv;
+    KINTERRUPT_MODE InterruptMode;
+    KSPIN_LOCK SpinLock;
+    BOOLEAN WorkerInProgress;
+    BOOLEAN WorkPending;
+    WORK_QUEUE_ITEM Worker;
+    KDPC Dpc;
+    KEVENT DispatcherLock;
+    volatile LONG ReferenceCount;
+} IOP_PASSIVE_INTERRUPT, *PIOP_PASSIVE_INTERRUPT;
+
+static LIST_ENTRY IopPassiveInterruptList = { &IopPassiveInterruptList, &IopPassiveInterruptList };
+static KSPIN_LOCK IopPassiveInterruptListLock;
+
+/* A secondary interrupt connected on every processor of its affinity */
+typedef struct _IOP_SECONDARY_INTERRUPT
+{
+    KSPIN_LOCK SpinLock;
+    INTERRUPT_CONNECTION_DATA ConnectionData;
+    KEVENT PassiveEvent;
+    BOOLEAN Passive;
+    UCHAR Count;
+    PKINTERRUPT Interrupts[MAXIMUM_PROCESSORS];
+    KINTERRUPT Objects[ANYSIZE_ARRAY];
+} IOP_SECONDARY_INTERRUPT, *PIOP_SECONDARY_INTERRUPT;
+
+/* PASSIVE AND SECONDARY INTERRUPTS ******************************************/
+
+static
+KIRQL
+IopAcquirePassiveLock(
+    _Inout_ PKSPIN_LOCK SpinLock)
+{
+    KIRQL OldIrql;
+
+    KeRaiseIrql(KI_HIGHEST_DEVICE_IRQL, &OldIrql);
+    KeAcquireSpinLockAtDpcLevel(SpinLock);
+    return OldIrql;
+}
+
+static
+VOID
+IopReleasePassiveLock(
+    _Inout_ PKSPIN_LOCK SpinLock,
+    _In_ KIRQL OldIrql)
+{
+    KeReleaseSpinLockFromDpcLevel(SpinLock);
+    KeLowerIrql(OldIrql);
+}
+
+/* Takes a reference on the passive state of a vector. The list lock is held. */
+static
+PIOP_PASSIVE_INTERRUPT
+IopFindPassiveInterruptLocked(
+    _In_ ULONG Vector)
+{
+    PIOP_PASSIVE_INTERRUPT Passive;
+    PLIST_ENTRY ListEntry;
+
+    for (ListEntry = IopPassiveInterruptList.Flink;
+         ListEntry != &IopPassiveInterruptList;
+         ListEntry = ListEntry->Flink)
+    {
+        Passive = CONTAINING_RECORD(ListEntry, IOP_PASSIVE_INTERRUPT, ListEntry);
+        if (Passive->Vector == Vector)
+        {
+            InterlockedIncrement(&Passive->ReferenceCount);
+            return Passive;
+        }
+    }
+
+    return NULL;
+}
+
+static
+PIOP_PASSIVE_INTERRUPT
+IopFindPassiveInterrupt(
+    _In_ ULONG Vector)
+{
+    PIOP_PASSIVE_INTERRUPT Passive;
+    KIRQL OldIrql;
+
+    OldIrql = IopAcquirePassiveLock(&IopPassiveInterruptListLock);
+    Passive = IopFindPassiveInterruptLocked(Vector);
+    IopReleasePassiveLock(&IopPassiveInterruptListLock, OldIrql);
+
+    return Passive;
+}
+
+static
+VOID
+IopDereferencePassiveInterrupt(
+    _Inout_ PIOP_PASSIVE_INTERRUPT Passive)
+{
+    BOOLEAN Free = FALSE;
+    KIRQL ListIrql, OldIrql;
+
+    ListIrql = IopAcquirePassiveLock(&IopPassiveInterruptListLock);
+    OldIrql = IopAcquirePassiveLock(&Passive->SpinLock);
+
+    if (InterlockedDecrement(&Passive->ReferenceCount) == 0)
+    {
+        RemoveEntryList(&Passive->ListEntry);
+        Free = TRUE;
+    }
+
+    IopReleasePassiveLock(&Passive->SpinLock, OldIrql);
+    IopReleasePassiveLock(&IopPassiveInterruptListLock, ListIrql);
+
+    if (Free)
+        ExFreePoolWithTag(Passive, TAG_PASSIVE_INTERRUPT);
+}
+
+/* Runs the passive routines of a vector until no more work was queued */
+static
+VOID
+NTAPI
+IopPassiveInterruptWorker(
+    _In_ PVOID Context)
+{
+    PIOP_PASSIVE_INTERRUPT Passive = Context;
+    KIRQL OldIrql;
+
+    KeWaitForSingleObject(&Passive->DispatcherLock, Executive, KernelMode, FALSE, NULL);
+
+    OldIrql = IopAcquirePassiveLock(&Passive->SpinLock);
+    while (Passive->WorkPending)
+    {
+        Passive->WorkPending = FALSE;
+        IopReleasePassiveLock(&Passive->SpinLock, OldIrql);
+
+        KiDispatchSecondaryInterrupt(Passive->Vector, TRUE, NULL);
+
+        OldIrql = IopAcquirePassiveLock(&Passive->SpinLock);
+    }
+    Passive->WorkerInProgress = FALSE;
+    IopReleasePassiveLock(&Passive->SpinLock, OldIrql);
+
+    KeSetEvent(&Passive->DispatcherLock, IO_NO_INCREMENT, FALSE);
+
+    if ((Passive->InterruptMode == LevelSensitive) && (HalUnmaskInterrupt != NULL))
+        HalUnmaskInterrupt(Passive->Gsiv, HAL_UNMASK_INTERRUPT_PASSIVE);
+
+    IopDereferencePassiveInterrupt(Passive);
+}
+
+static
+VOID
+NTAPI
+IopPassiveInterruptDpc(
+    _In_ PKDPC Dpc,
+    _In_opt_ PVOID DeferredContext,
+    _In_opt_ PVOID SystemArgument1,
+    _In_opt_ PVOID SystemArgument2)
+{
+    PIOP_PASSIVE_INTERRUPT Passive = DeferredContext;
+
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+
+    ExQueueWorkItem(&Passive->Worker, CriticalWorkQueue);
+}
+
+/**
+ * @brief
+ * Queues the passive routines of a vector to its worker. Called by the
+ * secondary dispatch when it reaches one above DISPATCH_LEVEL.
+ */
+VOID
+NTAPI
+IopProcessPassiveInterrupts(
+    _In_ ULONG Vector)
+{
+    PIOP_PASSIVE_INTERRUPT Passive;
+    KIRQL OldIrql;
+
+    Passive = IopFindPassiveInterrupt(Vector);
+    if (Passive == NULL)
+        return;
+
+    if ((Passive->InterruptMode == LevelSensitive) && (HalMaskInterrupt != NULL))
+        HalMaskInterrupt(Passive->Gsiv, HAL_MASK_INTERRUPT_PASSIVE);
+
+    OldIrql = IopAcquirePassiveLock(&Passive->SpinLock);
+
+    Passive->WorkPending = TRUE;
+    if (!Passive->WorkerInProgress)
+    {
+        /* The worker drops this reference when it is done */
+        Passive->WorkerInProgress = TRUE;
+        KeInsertQueueDpc(&Passive->Dpc, NULL, NULL);
+    }
+    else
+    {
+        /* The running worker holds a reference, so this cannot be the last */
+        InterlockedDecrement(&Passive->ReferenceCount);
+    }
+
+    IopReleasePassiveLock(&Passive->SpinLock, OldIrql);
+}
+
+/* Gives a passive connection a reference on the passive state of its vector */
+static
+NTSTATUS
+IopReferencePassiveInterrupt(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData)
+{
+    PIOP_PASSIVE_INTERRUPT Passive, Existing;
+    KIRQL OldIrql;
+
+    if ((ConnectionData->Count != 1) ||
+        (ConnectionData->Vectors[0].Type != InterruptTypeControllerInput))
+    {
+        return STATUS_INVALID_PARAMETER_1;
+    }
+
+    /* Connections sharing a vector share its passive state */
+    if (IopFindPassiveInterrupt(ConnectionData->Vectors[0].Vector) != NULL)
+        return STATUS_SUCCESS;
+
+    Passive = ExAllocatePoolZero(NonPagedPool, sizeof(*Passive), TAG_PASSIVE_INTERRUPT);
+    if (Passive == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Passive->Vector = ConnectionData->Vectors[0].Vector;
+    Passive->Gsiv = ConnectionData->Vectors[0].ControllerInput.Gsiv;
+    Passive->InterruptMode = ConnectionData->Vectors[0].Mode;
+    KeInitializeSpinLock(&Passive->SpinLock);
+    ExInitializeWorkItem(&Passive->Worker, IopPassiveInterruptWorker, Passive);
+    KeInitializeDpc(&Passive->Dpc, IopPassiveInterruptDpc, Passive);
+    KeInitializeEvent(&Passive->DispatcherLock, SynchronizationEvent, TRUE);
+
+    OldIrql = IopAcquirePassiveLock(&IopPassiveInterruptListLock);
+
+    Existing = IopFindPassiveInterruptLocked(Passive->Vector);
+    if (Existing == NULL)
+    {
+        Passive->ReferenceCount = 1;
+        InsertTailList(&IopPassiveInterruptList, &Passive->ListEntry);
+    }
+
+    IopReleasePassiveLock(&IopPassiveInterruptListLock, OldIrql);
+
+    if (Existing != NULL)
+        ExFreePoolWithTag(Passive, TAG_PASSIVE_INTERRUPT);
+
+    return STATUS_SUCCESS;
+}
+
+/* Drops the reference a passive connection holds */
+static
+VOID
+IopReleasePassiveInterrupt(
+    _In_ ULONG Vector)
+{
+    PIOP_PASSIVE_INTERRUPT Passive;
+
+    Passive = IopFindPassiveInterrupt(Vector);
+    if (Passive == NULL)
+        return;
+
+    InterlockedDecrement(&Passive->ReferenceCount);
+    IopDereferencePassiveInterrupt(Passive);
+}
+
+/**
+ * @brief
+ * Connects a secondary interrupt with one interrupt object for every active
+ * processor it targets. This is the only kind of interrupt that can be
+ * connected at passive level.
+ *
+ * @param[out] InterruptObject
+ * Receives the first interrupt object, which IoDisconnectInterrupt takes back.
+ */
+static
+NTSTATUS
+IopConnectSecondaryVector(
+    _In_ PINTERRUPT_VECTOR_DATA VectorData,
+    _In_ PKSERVICE_ROUTINE ServiceRoutine,
+    _In_opt_ PVOID ServiceContext,
+    _In_opt_ PKSPIN_LOCK SpinLock,
+    _In_ KIRQL SynchronizeIrql,
+    _In_ BOOLEAN ShareVector,
+    _Out_ PKINTERRUPT *InterruptObject)
+{
+    PIOP_SECONDARY_INTERRUPT Secondary;
+    KAFFINITY Affinity;
+    NTSTATUS Status;
+    UCHAR Count = 0;
+    ULONG Number;
+
+    PAGED_CODE();
+
+    *InterruptObject = NULL;
+
+    Affinity = VectorData->TargetProcessors.Mask & KeActiveProcessors;
+    if ((VectorData->TargetProcessors.Group != 0) || (Affinity == 0))
+        return STATUS_INVALID_PARAMETER;
+
+    for (Number = 0; Number < MAXIMUM_PROCESSORS; Number++)
+    {
+        if (Affinity & ((KAFFINITY)1 << Number))
+            Count++;
+    }
+
+    Secondary = ExAllocatePoolZero(NonPagedPool,
+                                   FIELD_OFFSET(IOP_SECONDARY_INTERRUPT, Objects) +
+                                   Count * sizeof(KINTERRUPT),
+                                   TAG_IO_INTERRUPT);
+    if (Secondary == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Secondary->ConnectionData.Count = 1;
+    Secondary->ConnectionData.Vectors[0] = *VectorData;
+    Secondary->Passive = (SynchronizeIrql == PASSIVE_LEVEL);
+
+    if (SpinLock == NULL)
+    {
+        KeInitializeSpinLock(&Secondary->SpinLock);
+        SpinLock = &Secondary->SpinLock;
+    }
+
+    for (Number = 0; Secondary->Count < Count; Number++)
+    {
+        if (!(Affinity & ((KAFFINITY)1 << Number)))
+            continue;
+
+        KiInitializeSecondaryInterrupt(&Secondary->Objects[Secondary->Count],
+                                       ServiceRoutine,
+                                       ServiceContext,
+                                       SpinLock,
+                                       Secondary->Passive ? &Secondary->PassiveEvent : NULL,
+                                       VectorData->Vector,
+                                       VectorData->Irql,
+                                       SynchronizeIrql,
+                                       VectorData->Mode,
+                                       ShareVector,
+                                       (CHAR)Number);
+        Secondary->Interrupts[Secondary->Count] = &Secondary->Objects[Secondary->Count];
+        Secondary->Count++;
+    }
+
+    if (Secondary->Passive)
+    {
+        Status = IopReferencePassiveInterrupt(&Secondary->ConnectionData);
+        if (!NT_SUCCESS(Status))
+            goto Fail;
+    }
+
+    Status = KiConnectSecondaryInterrupts(Secondary->Interrupts,
+                                          Secondary->Count,
+                                          &Secondary->ConnectionData);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Secondary vector 0x%lx (GSIV 0x%lx) did not connect: 0x%lx\n",
+                VectorData->Vector, VectorData->ControllerInput.Gsiv, Status);
+
+        if (Secondary->Passive)
+            IopReleasePassiveInterrupt(VectorData->Vector);
+
+        goto Fail;
+    }
+
+    *InterruptObject = &Secondary->Objects[0];
+    return STATUS_SUCCESS;
+
+Fail:
+    ExFreePoolWithTag(Secondary, TAG_IO_INTERRUPT);
+    return Status;
+}
+
+static
+VOID
+IopDisconnectSecondaryInterrupt(
+    _In_ PKINTERRUPT InterruptObject)
+{
+    PIOP_SECONDARY_INTERRUPT Secondary;
+    BOOLEAN InOwnRoutine = FALSE;
+    UCHAR Index;
+
+    Secondary = CONTAINING_RECORD(InterruptObject, IOP_SECONDARY_INTERRUPT, Objects);
+
+    KiDisconnectSecondaryInterrupts(Secondary->Interrupts,
+                                    Secondary->Count,
+                                    &Secondary->ConnectionData);
+
+    if (Secondary->Passive)
+    {
+        IopReleasePassiveInterrupt(Secondary->ConnectionData.Vectors[0].Vector);
+
+        for (Index = 0; Index < Secondary->Count; Index++)
+        {
+            if (Secondary->Objects[Index].ServiceThread == KeGetCurrentThread())
+                InOwnRoutine = TRUE;
+        }
+
+        /* Wait out a passive routine or synchronized call still running */
+        if (!InOwnRoutine)
+            KeWaitForSingleObject(&Secondary->PassiveEvent, Executive, KernelMode, FALSE, NULL);
+    }
+
+    ExFreePoolWithTag(Secondary, TAG_IO_INTERRUPT);
+}
+
 /* FUNCTIONS *****************************************************************/
 
 /*
@@ -146,6 +561,12 @@ IoDisconnectInterrupt(PKINTERRUPT InterruptObject)
     ULONG i;
 
     PAGED_CODE();
+
+    if (InterruptObject->Vector >= KI_SECONDARY_VECTOR_BASE)
+    {
+        IopDisconnectSecondaryInterrupt(InterruptObject);
+        return;
+    }
 
     /* Get the I/O interrupt */
     IoInterrupt = CONTAINING_RECORD(InterruptObject,
@@ -319,7 +740,7 @@ IopIsMessageVector(
  *
  * @param[in] SynchronizeIrql
  * The IRQL the service routine is synchronized at. PASSIVE_LEVEL asks for a
- * passive level interrupt, which the kernel does not support.
+ * passive level interrupt, which only a secondary interrupt can be.
  */
 static
 NTSTATUS
@@ -340,6 +761,17 @@ IopConnectVector(
     RtlZeroMemory(Connection, sizeof(*Connection));
     Connection->Vector.Count = 1;
     Connection->Vector.Vectors[0] = *VectorData;
+
+    if (KiIsInterruptTypeSecondary(&Connection->Vector))
+    {
+        return IopConnectSecondaryVector(VectorData,
+                                         ServiceRoutine,
+                                         ServiceContext,
+                                         SpinLock,
+                                         SynchronizeIrql,
+                                         ShareVector,
+                                         &Connection->Interrupt);
+    }
 
     if (SynchronizeIrql == PASSIVE_LEVEL)
     {
@@ -378,6 +810,13 @@ VOID
 IopDisconnectVector(
     _In_ PIOP_VECTOR_CONNECTION Connection)
 {
+    /* The kernel turns a secondary line off itself once its last object is gone */
+    if (KiIsInterruptTypeSecondary(&Connection->Vector))
+    {
+        IoDisconnectInterrupt(Connection->Interrupt);
+        return;
+    }
+
     /* Mask the input first, so that nothing arrives once the object is gone */
     HalDisableInterrupt(&Connection->Vector);
     IoDisconnectInterrupt(Connection->Interrupt);
