@@ -129,6 +129,7 @@ typedef struct DECLSPEC_ALIGN(8) _PKTMON_EDGE_CONTEXT
 } PKTMON_EDGE_CONTEXT, *PPKTMON_EDGE_CONTEXT;
 
 struct _PKTMON_PACKET_HEADER_INFO;
+struct _PKTMON_PROVIDER_DISPATCH;
 
 /* Runs when the packet monitor comes or goes, so components can re-register. */
 typedef
@@ -136,6 +137,21 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
 VOID
 (*PKTMON_CLIENT_ENUMERATE_CALLBACK)(
     VOID);
+
+/* The library's attachment to the provider. Enabled is set while one is attached. */
+typedef struct _PKTMON_CLIENT_CONTEXT
+{
+    PVOID NmrClientHandle;
+    PEX_RUNDOWN_REF_CACHE_AWARE RundownRef;
+    BOOLEAN Enabled;
+    PKTMON_CLIENT_ENUMERATE_CALLBACK EnumComponents;
+    PKTMON_CLIENT_ENUMERATE_CALLBACK CleanupComponents;
+    VOID (*NotifyComponent)(PKTMON_COMPONENT_CONTEXT *CompContext);
+    PVOID ProviderContext;
+    struct _PKTMON_PROVIDER_DISPATCH *ProviderDispatch;
+} PKTMON_CLIENT_CONTEXT;
+
+extern PKTMON_CLIENT_CONTEXT PktMon;
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 NTSTATUS
@@ -205,16 +221,31 @@ PktMonClientNblDrop(
     _In_ PKTMON_DROP_REASON DropReason,
     _In_ ULONG LocationCode);
 
-/* Report one NBL, or a whole chain as NDIS sees it. */
+/*
+ * Report one NBL, or a whole chain as NDIS sees it, only while a provider is
+ * attached with flow or drop reporting on. These expand to a braced statement.
+ */
+#define PKTMON_FLOW_ENABLED(EdgeContext) \
+    (PktMon.Enabled && (EdgeContext)->CompContext != NULL && (EdgeContext)->CompContext->FlowEnabled)
+
 #define PKTMON_LOG_NBL(EdgeContext, Nbl, PacketType, UseOnlyFirstNbl, Direction) \
-    PktMonClientNblLog((EdgeContext), (Nbl), (PacketType), NULL, (UseOnlyFirstNbl), (Direction))
+    if (PKTMON_FLOW_ENABLED(EdgeContext)) \
+    { \
+        PktMonClientNblLog((EdgeContext), (Nbl), (PacketType), NULL, (UseOnlyFirstNbl), (Direction)); \
+    }
 
 #define PKTMON_LOG_NBL_NDIS(EdgeContext, Nbl, Direction) \
-    PktMonClientNblLog((EdgeContext), (Nbl), (EdgeContext)->PacketType, NULL, FALSE, (Direction))
+    if (PKTMON_FLOW_ENABLED(EdgeContext)) \
+    { \
+        PktMonClientNblLog((EdgeContext), (Nbl), (EdgeContext)->PacketType, NULL, FALSE, (Direction)); \
+    }
 
 #define PKTMON_DROP_NBL(CompContext, Nbl, Direction, DropReason, Location) \
-    PktMonClientNblDrop((CompContext), (Nbl), (CompContext)->PacketType, NULL, TRUE, \
-                        (Direction), (DropReason), (ULONG)(Location))
+    if (PktMon.Enabled && (CompContext)->DropEnabled) \
+    { \
+        PktMonClientNblDrop((CompContext), (Nbl), (CompContext)->PacketType, NULL, TRUE, \
+                            (Direction), (DropReason), (ULONG)(Location)); \
+    }
 
 #ifdef __cplusplus
 }

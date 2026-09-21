@@ -17,6 +17,9 @@
 #define NDEBUG
 #include <debug.h>
 
+/* Never attached, so the logging macros never call in. */
+PKTMON_CLIENT_CONTEXT PktMon;
+
 _Use_decl_annotations_
 NTSTATUS
 PktMonClientInitializeEx(
