@@ -204,104 +204,62 @@ Return Value:
 
 --*/
 {
-    void * functionTable;
-    size_t functionCount;
+    auto const clientVersion = MAKEVER(ClassInfo->Version.Major, ClassInfo->Version.Minor);
 
-    switch (MAKEVER(ClassInfo->Version.Major, ClassInfo->Version.Minor))
+    if (clientVersion >= MAKEVER(1,0) && clientVersion <= MAKEVER(1,4))
     {
-        case MAKEVER(1,0):
-        case MAKEVER(1,1):
-        case MAKEVER(1,2):
-        case MAKEVER(1,3):
-        case MAKEVER(1,4):
-            DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL,
-                "\n\n"
-                "**********************************************************\n"
-                "* NetAdapterCx 1.%u (Preview) client detected.            \n"
-                "* Recompile your source code and target NetAdapterCx 2.%u.\n"
-                "**********************************************************\n"
-                "\n",
-                ClassInfo->Version.Minor,
-                NETCX_ADAPTER_MINOR_VERSION);
+        DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL,
+            "\n\n"
+            "**********************************************************\n"
+            "* NetAdapterCx 1.%u (Preview) client detected.            \n"
+            "* Recompile your source code and target NetAdapterCx 2.%u.\n"
+            "**********************************************************\n"
+            "\n",
+            ClassInfo->Version.Minor,
+            NETCX_ADAPTER_MINOR_VERSION);
 
-            __fallthrough;
-
-        default:
-
-            return STATUS_NOT_SUPPORTED;
-
-        case MAKEVER(2,0):
-        case MAKEVER(2,1):
-
-            if (ClassInfo->Version.Build > 0)
-            {
-                DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL,
-                    "\n\n"
-                    "**********************************************************\n"
-                    "* NetAdapterCx 2 (Preview) client detected.               \n"
-                    "* Recompile your source code and target NetAdapterCx 2.x  \n"
-                    "* (Stable) or NetAdapterCx 2.2 (Preview or Stable).       \n"
-                    "**********************************************************\n"
-                    "\n");
-
-                return STATUS_NOT_SUPPORTED;
-            }
-
-            __fallthrough;
-
-        case MAKEVER(NETCX_ADAPTER_MAJOR_VERSION, NETCX_ADAPTER_MINOR_VERSION):
-
-            switch (ClassInfo->Version.Build)
-            {
-
-                case 0:
-                    __fallthrough;
-
-                case NETCX_ADAPTER_BUILD_VERSION:
-                    functionTable = &NetVersion.Functions;
-                    functionCount = NetVersion.FuncCount;
-                    break;
-
-                default:
-                    return STATUS_NOT_SUPPORTED;
-            }
-
-            if (ClassInfo->Version.Build == NETCX_ADAPTER_BUILD_VERSION &&
-                ClassInfo->FunctionTableCount != functionCount)
-            {
-                //
-                // If a client driver is using the latest preview version of NetAdapterCx we only
-                // let it bind if it is targeting the latest preview the OS supports
-                //
-
-                DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL,
-                        "\n\n************************* \n"
-                        "* NetAdapterCx detected a function count mismatch. The driver \n"
-                        "* using this extension will not load until it is re-compiled \n"
-                        "* with the latest version of the extension's header and libs \n");
-                DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL,
-                        "* Actual function table count  : %u \n"
-                        "* Expected function table count: %u \n"
-                        "*************************** \n\n",
-                        ClassInfo->FunctionTableCount,
-                        NetFunctionTableNumEntries);
-
-                return STATUS_INVALID_PARAMETER;
-            }
+        return STATUS_NOT_SUPPORTED;
     }
 
     //
-    // Verify our function table has at least the amount of entries the class extension
-    // is requesting. If not we messed up the version check above
+    // Preview builds of the released versions are not supported, but any
+    // build of the two newest ones is
     //
-    NT_FRE_ASSERT(functionCount >= ClassInfo->FunctionTableCount);
+    if (clientVersion >= MAKEVER(2,0) && clientVersion <= MAKEVER(2,4) &&
+        ClassInfo->Version.Build > 0)
+    {
+        DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL,
+            "\n\n"
+            "**********************************************************\n"
+            "* NetAdapterCx 2 (Preview) client detected.               \n"
+            "* Recompile your source code and target NetAdapterCx 2.x  \n"
+            "* (Stable) or NetAdapterCx 2.4 (Stable).                  \n"
+            "**********************************************************\n"
+            "\n");
+
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    //
+    // The function table only ever grows, so any version up to ours can be
+    // served from its leading entries. The loader in this tree only produces
+    // the original bind info layout.
+    //
+    if (ClassInfo->Version.Major != NETCX_ADAPTER_MAJOR_VERSION ||
+        ClassInfo->Version.Minor > NETCX_ADAPTER_MINOR_VERSION ||
+        ClassInfo->Size != sizeof(WDF_CLASS_BIND_INFO) ||
+        ClassInfo->FunctionTableCount > NetVersion.FuncCount)
+    {
+        LogError(FLAG_DRIVER, "Unsupported client binding %!STATUS!", STATUS_INVALID_PARAMETER);
+        return STATUS_INVALID_PARAMETER;
+    }
 
     //
     // Setup the function table
     //
     #pragma warning(suppress:22107) //The analysis code identify buffer size
     RtlCopyMemory(ClassInfo->FunctionTable,
-                  functionTable,
+                  &NetVersion.Functions,
                   ClassInfo->FunctionTableCount * sizeof(void *));
 
     //

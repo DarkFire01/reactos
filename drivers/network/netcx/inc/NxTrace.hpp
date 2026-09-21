@@ -105,16 +105,17 @@ typedef const void *TraceLoggingHProvider;
 #define TraceLoggingRegister(Handle)                    ((void)(Handle), STATUS_SUCCESS)
 #define TraceLoggingUnregister(Handle)                  ((void)(Handle))
 
-#define TraceLoggingWrite(...)
-#define TraceLoggingKeyword(...)
-#define TraceLoggingValue(...)
-#define TraceLoggingString(...)
-#define TraceLoggingUInt32(...)
-#define TraceLoggingUInt64(...)
-#define TraceLoggingHexUInt32(...)
-#define TraceLoggingHexInt32(...)
-#define TraceLoggingHexUInt64(...)
-#define TraceLoggingDescription(...)
-#define TraceLoggingPointer(...)
-#define TraceLoggingLevel(...)
-#define TraceLoggingOpcode(...)
+/* Field values stay referenced the way WPP arguments do. Metadata fields drop out. */
+#define TraceLoggingWrite(Provider, EventName, ...)      NX_TRACE_ARGS((Provider), __VA_ARGS__)
+#define TraceLoggingKeyword(...)                        0
+#define TraceLoggingValue(Value, ...)                   (Value)
+#define TraceLoggingString(Value, ...)                  (Value)
+#define TraceLoggingUInt32(Value, ...)                  (Value)
+#define TraceLoggingUInt64(Value, ...)                  (Value)
+#define TraceLoggingHexUInt32(Value, ...)               (Value)
+#define TraceLoggingHexInt32(Value, ...)                (Value)
+#define TraceLoggingHexUInt64(Value, ...)               (Value)
+#define TraceLoggingDescription(...)                    0
+#define TraceLoggingPointer(Value, ...)                 (Value)
+#define TraceLoggingLevel(...)                          0
+#define TraceLoggingOpcode(...)                         0

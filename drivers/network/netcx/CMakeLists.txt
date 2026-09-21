@@ -203,10 +203,14 @@ target_include_directories(netadaptercx BEFORE PRIVATE
     ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc
     ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc/pci)
 
+# The client interface version this build serves, as the Windows 11 24H2 class extension does.
 target_compile_definitions(netadaptercx PRIVATE
+    NETCX_ADAPTER_MAJOR_VERSION=2
+    NETCX_ADAPTER_MINOR_VERSION=6
+    _CRT_SECURE_CPP_OVERLOAD_SECURE_NAMES=1
     _KERNEL_MODE=1
     NDIS_MINIPORT_DRIVER=1
-    NDIS680_MINIPORT=1)
+    NDIS689_MINIPORT=1)
 
 add_cd_file(TARGET netadaptercx DESTINATION reactos/system32/drivers NO_CAB FOR all)
 
