@@ -12,6 +12,8 @@
 
 #pragma once
 
+#include <wil/wistd_type_traits.h>
+
 /* Tests. */
 #define WI_IsFlagSet(Value, Flag)           (((Value) & (Flag)) != 0)
 #define WI_IsFlagClear(Value, Flag)         (((Value) & (Flag)) == 0)

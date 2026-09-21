@@ -37,6 +37,16 @@ template<typename T>
 struct is_trivially_destructible
     : integral_constant<bool, __is_trivially_destructible(T)> { };
 
+template<typename T>
+struct is_trivially_default_constructible
+    : integral_constant<bool, __is_trivially_constructible(T)> { };
+
+template<typename T> struct is_pointer : false_type { };
+template<typename T> struct is_pointer<T *> : true_type { };
+template<typename T> struct is_pointer<T * const> : true_type { };
+template<typename T> struct is_pointer<T * volatile> : true_type { };
+template<typename T> struct is_pointer<T * const volatile> : true_type { };
+
 template<typename T> struct remove_pointer { typedef T type; };
 template<typename T> struct remove_pointer<T *> { typedef T type; };
 template<typename T> struct remove_pointer<T * const> { typedef T type; };
@@ -54,6 +64,8 @@ template<typename T, typename U> constexpr bool is_same_v = is_same<T, U>::value
 template<typename T> constexpr bool is_void_v = is_void<T>::value;
 template<typename T> constexpr bool is_trivially_destructible_v =
     is_trivially_destructible<T>::value;
+template<typename T> constexpr bool is_trivially_default_constructible_v =
+    is_trivially_default_constructible<T>::value;
 
 /* Never defined, only ever named inside an unevaluated decltype. */
 template<typename T>
