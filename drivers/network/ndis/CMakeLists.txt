@@ -39,6 +39,7 @@ list(APPEND SOURCE
     ndis/mpdma.c
     ndis/mpintr.c
     ndis/mpoid.c
+    ndis/mpport.c
     ndis/mpsvc.c
     ndis/nbl.c
     ndis/pro5shim.c

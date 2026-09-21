@@ -27,6 +27,7 @@ CoreInitializeAdapterBlock(
     KeInitializeSpinLock(&Core->Lock);
     KeInitializeEvent(&Core->SendsDrained, NotificationEvent, TRUE);
     InitializeListHead(&Core->OidQueue);
+    InitializeListHead(&Core->PortList);
     Core->State = CoreMiniportHalted;
 }
 
@@ -420,6 +421,8 @@ CoreFreeResources(
         Core->SupportedOidList = NULL;
         Core->SupportedOidListLength = 0;
     }
+
+    CoreFreePorts(Adapter);
 
     Core->GeneralAttributesSet = FALSE;
 }
