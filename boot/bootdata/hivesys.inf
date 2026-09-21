@@ -1741,6 +1741,9 @@ HKLM,"SYSTEM\CurrentControlSet\Control\WOW",,0x00000012
 ; PNP Root device
 HKLM,"SYSTEM\CurrentControlSet\Enum\HTREE\ROOT\0","",0x00000000,""
 
+; Driver persistent state, see IoOpenDriverRegistryKey
+HKLM,"SYSTEM\CurrentControlSet\ServiceState",,0x00000010
+
 ; SWENUM driver
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","ErrorControl",0x00010001,0x00000001
 HKLM,"SYSTEM\CurrentControlSet\Services\swenum","ImagePath",0x00020000,"system32\drivers\swenum.sys"

@@ -241,7 +241,7 @@ PoFxCompleteDevicePowerNotRequired(
 
 #if (NTDDI_VERSION >= NTDDI_WIN10_VB)
 _IRQL_requires_max_(DISPATCH_LEVEL)
-NTKERNELAPI
+NTKRNLVISTAAPI
 VOID
 NTAPI
 PoFxCompleteDirectedPowerDown(
