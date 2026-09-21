@@ -194,17 +194,22 @@ typedef struct _NET_BUFFER_LIST_POOL_PARAMETERS
 #define NDIS_SIZEOF_NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1 \
     RTL_SIZEOF_THROUGH_FIELD(NET_BUFFER_LIST_POOL_PARAMETERS, DataSize)
 
-/* NET_BUFFER_LIST::NblFlags */
-#define NBL_FLAGS_PROTOCOL_RESERVED             0x0000000F
-#define NBL_FLAGS_MINIPORT_RESERVED             0x000000F0
-#define NBL_FLAGS_SEND_READ_ONLY                0x00000100
-#define NBL_FLAGS_RECV_READ_ONLY                0x00000200
-#define NBL_FLAGS_IS_IPV4                       0x00000400
-#define NBL_FLAGS_IS_IPV6                       0x00000800
-#define NBL_FLAGS_IS_TCP                        0x00001000
-#define NBL_FLAGS_IS_UDP                        0x00002000
-#define NBL_FLAGS_IS_LOOPBACK_PACKET            0x00004000
-#define NBL_FLAGS_SINGLE_SOURCE                 0x00008000
+/* NET_BUFFER_LIST::NblFlags, split by who owns which bits */
+#define NBL_FLAGS_PROTOCOL_RESERVED             0xFFF00000
+#define NBL_FLAGS_SCRATCH                       0x000F0000
+#define NBL_FLAGS_MINIPORT_RESERVED             0x0000F000
+#define NBL_FLAGS_NDIS_RESERVED                 0x00000FFF
+
+#define NDIS_NBL_FLAGS_SEND_READ_ONLY           0x00000001
+#define NDIS_NBL_FLAGS_RECV_READ_ONLY           0x00000002
+#define NDIS_NBL_FLAGS_HD_SPLIT                 0x00000100
+#define NDIS_NBL_FLAGS_IS_IPV4                  0x00000200
+#define NDIS_NBL_FLAGS_IS_IPV6                  0x00000400
+#define NDIS_NBL_FLAGS_IS_TCP                   0x00000800
+#define NDIS_NBL_FLAGS_IS_UDP                   0x00001000
+#define NDIS_NBL_FLAGS_SPLIT_AT_UPPER_LAYER_PROTOCOL_HEADER  0x00002000
+#define NDIS_NBL_FLAGS_SPLIT_AT_UPPER_LAYER_PROTOCOL_PAYLOAD 0x00004000
+#define NDIS_NBL_FLAGS_IS_LOOPBACK_PACKET       0x00008000
 
 /*
  * Clone flags. The allocate and the free side test the same bit, so a clone
