@@ -170,6 +170,9 @@ NdisMRegisterMiniportDriver(
 
     ExInterlockedInsertTailList(&MiniportListHead, &Miniport->ListEntry, &MiniportListLock);
 
+    /* The handle is out before SetOptions, which may look the driver up by it */
+    *NdisMiniportDriverHandle = Miniport;
+
     /* Optional handlers can only be registered from here, against the new handle */
     if (Miniport->Characteristics6.SetOptionsHandler != NULL)
     {
@@ -179,14 +182,13 @@ NdisMRegisterMiniportDriver(
         if (NdisStatus != NDIS_STATUS_SUCCESS)
         {
             NDIS_DbgPrint(MIN_TRACE, ("MiniportSetOptions failed (0x%x).\n", NdisStatus));
+            *NdisMiniportDriverHandle = NULL;
             ExInterlockedRemoveEntryList(&Miniport->ListEntry, &MiniportListLock);
             *MiniportPtr = NULL;
             ExFreePoolWithTag(Miniport, NDIS_TAG);
             return NdisStatus;
         }
     }
-
-    *NdisMiniportDriverHandle = Miniport;
 
     return NDIS_STATUS_SUCCESS;
 }
