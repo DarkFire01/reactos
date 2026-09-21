@@ -37,6 +37,12 @@ typedef struct _NDIS_M_DRIVER_BLOCK {
     struct _CORE_WDF_CX_DRIVER      *CxDriver;
     /* A 6.x driver's own copy of its service key path, which RegistryPath points to */
     UNICODE_STRING                  ServiceKeyPath;
+    /* A hook such as the WDI upper edge sits in front of the driver, see mphook.c */
+    ULONG                           HookType;
+    BOOLEAN                         HookRegistered;
+    NDIS_HANDLE                     HookDriverHandle;
+    /* The driver's own handlers, which the hook reaches through NDIS */
+    PNDIS_MINIPORT_DRIVER_CHARACTERISTICS UnhookedCharacteristics;
 #if !defined(_MSC_VER) && defined(_NDIS_)
 } NDIS_M_DRIVER_BLOCK_COMPATIBILITY_HACK_DONT_USE;
 #else
@@ -314,6 +320,7 @@ typedef struct _LOGICAL_ADAPTER
     MINIPORT_CORE              Core;
     CORE_INTERFACE             Interface;
     CORE_WDF_ADAPTER           Wdf;
+    NDIS_HANDLE                HookAdapterHandle;
 } LOGICAL_ADAPTER, *PLOGICAL_ADAPTER;
 
 #define MINIPORT_IS_NDIS6(Adapter) ((Adapter)->NdisMiniportBlock.DriverHandle->Ndis6Driver)
@@ -565,6 +572,12 @@ VOID
 NTAPI
 CoreFreeNetBufferPacket(
     _In_ PNDIS_PACKET Packet);
+
+/* mphook.c */
+
+VOID
+NTAPI
+CoreHookInitialize(VOID);
 
 /* mpif.c */
 
