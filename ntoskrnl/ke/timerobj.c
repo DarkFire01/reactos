@@ -341,3 +341,41 @@ KeSetTimerEx(IN OUT PKTIMER Timer,
     return Inserted;
 }
 
+/**
+ * @brief
+ * Sets a timer that may fire up to a given delay late, so it can share an
+ * expiration with other timers.
+ *
+ * @param[in,out] Timer
+ * The timer to set.
+ *
+ * @param[in] DueTime
+ * Absolute or relative expiration time.
+ *
+ * @param[in] Period
+ * Period in milliseconds, or zero for a one shot timer.
+ *
+ * @param[in] TolerableDelay
+ * How late the expiration may run, in milliseconds.
+ *
+ * @param[in] Dpc
+ * Optional DPC to queue when the timer expires.
+ *
+ * @return
+ * TRUE if the timer was already in the timer queue.
+ */
+BOOLEAN
+NTAPI
+KeSetCoalescableTimer(
+    _Inout_ PKTIMER Timer,
+    _In_ LARGE_INTEGER DueTime,
+    _In_ ULONG Period,
+    _In_ ULONG TolerableDelay,
+    _In_opt_ PKDPC Dpc)
+{
+    /* Timers are never coalesced, so every one expires on time */
+    UNREFERENCED_PARAMETER(TolerableDelay);
+
+    return KeSetTimerEx(Timer, DueTime, (LONG)Period, Dpc);
+}
+

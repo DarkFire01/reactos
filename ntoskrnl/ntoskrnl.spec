@@ -693,6 +693,7 @@
 @ extern KeServiceDescriptorTable
 @ stdcall KeSetAffinityThread(ptr long)
 @ stdcall KeSetBasePriorityThread(ptr long)
+@ stdcall -version=0x601+ KeSetCoalescableTimer(ptr long long long long ptr)
 @ stdcall KeSetDmaIoCoherency(long)
 @ stdcall KeSetEvent(ptr long long)
 @ stdcall KeSetEventBoostPriority(ptr ptr)
