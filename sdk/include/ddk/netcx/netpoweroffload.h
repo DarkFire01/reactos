@@ -95,6 +95,25 @@ NetPowerOffloadGetNSParameters(
             NetDriverGlobals, PowerOffload, Parameters);
 }
 
+typedef
+_IRQL_requires_(PASSIVE_LEVEL)
+WDFAPI
+NETADAPTER
+(NTAPI *PFN_NETPOWEROFFLOADGETADAPTER)(
+    _In_ PNET_DRIVER_GLOBALS DriverGlobals,
+    _In_ NETPOWEROFFLOAD PowerOffload);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+FORCEINLINE
+NETADAPTER
+NTAPI
+NetPowerOffloadGetAdapter(
+    _In_ NETPOWEROFFLOAD PowerOffload)
+{
+    return ((PFN_NETPOWEROFFLOADGETADAPTER)NetFunctions[NetPowerOffloadGetAdapterTableIndex])(
+        NetDriverGlobals, PowerOffload);
+}
+
 #ifdef __cplusplus
 }
 #endif
