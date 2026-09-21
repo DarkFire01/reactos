@@ -10,8 +10,6 @@ Abstract:
 
 #pragma once
 
-#include <ntosp.h>
-#include <zwapi.h>
 #include <ntassert.h>
 #include <wdmsec.h>
 #include <initguid.h>
