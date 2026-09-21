@@ -9,6 +9,12 @@
 
 #define HIDCLASS_TAG 'CdiH'
 
+/*
+ * Sent to a collection by a client that wants to hear when the device goes
+ * away. It is held until the minidriver calls HidNotifyPresence with FALSE.
+ */
+#define HIDCLASS_IOCTL_PRESENCE_NOTIFICATION    HID_CTL_CODE(153)
+
 /* Reads the class driver keeps outstanding so reports are never missed */
 #define HIDCLASS_PING_PONG_COUNT 2
 
@@ -155,6 +161,19 @@ typedef struct
     //
     KEVENT ReadsDrained;
 
+    //
+    // whether the minidriver last reported the device as present
+    //
+    volatile LONG DevicePresent;
+
+    //
+    // presence notifications waiting for the device to go away, and whether
+    // the device is being removed so no more can be queued
+    //
+    KSPIN_LOCK PresenceLock;
+    LIST_ENTRY PresenceNotificationList;
+    BOOLEAN PresenceNotificationsClosed;
+
 } HIDCLASS_FDO_EXTENSION, *PHIDCLASS_FDO_EXTENSION;
 
 typedef struct
@@ -246,6 +265,18 @@ NTSTATUS
 HidClassFDO_DispatchRequestSynchronous(
     IN PDEVICE_OBJECT DeviceObject,
     IN PIRP Irp);
+
+NTSTATUS
+HidClassFDO_QueuePresenceNotification(
+    _In_ PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension,
+    _Inout_ PIRP Irp);
+
+VOID
+HidClassFDO_CompletePresenceNotifications(
+    _Inout_ PHIDCLASS_FDO_EXTENSION FDODeviceExtension,
+    _In_opt_ PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension,
+    _In_ NTSTATUS Status,
+    _In_ BOOLEAN Close);
 
 /* pdo.c */
 NTSTATUS
