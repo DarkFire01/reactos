@@ -638,6 +638,9 @@ KiRetireDpcList(IN PKPRCB Prcb)
                 /* Decrease the queue depth */
                 DpcData->DpcQueueDepth--;
 
+                /* The routine about to run starts with no ticks charged to it */
+                Prcb->DpcTimeCount = 0;
+
 #if DBG
                 /* Clear DPC Time */
                 Prcb->DebugDpcTime = 0;
@@ -986,6 +989,98 @@ KeIsExecutingDpc(VOID)
 {
     /* Return if the Dpc Routine is active */
     return KeGetCurrentPrcb()->DpcRoutineActive;
+}
+
+/* Ticks a caller at DISPATCH_LEVEL may run before it is asked to give way. */
+#define KI_YIELD_TICKS 7
+
+static
+BOOLEAN
+KiDpcWorkPending(
+    _In_ PKPRCB Prcb)
+{
+    return Prcb->DpcInterruptRequested ||
+           Prcb->DpcThreadRequested ||
+           Prcb->TimerRequest != 0 ||
+           Prcb->DpcData[DPC_NORMAL].DpcQueueDepth != 0;
+}
+
+/**
+ * @brief
+ * Tells a caller that has held the processor at DISPATCH_LEVEL for a while
+ * whether other work is now waiting for it.
+ *
+ * @return
+ * TRUE if the caller should drop below DISPATCH_LEVEL soon.
+ */
+LOGICAL
+NTAPI
+KeShouldYieldProcessor(VOID)
+{
+    PKPRCB Prcb = KeGetCurrentPrcb();
+    ULONG RaisedTicks = (ULONG)Prcb->DpcWatchdogCount;
+    ULONG DpcTicks = Prcb->DpcTimeCount;
+    BOOLEAN Enabled;
+
+    if (Prcb->DpcRoutineActive)
+    {
+        if (DpcTicks > KI_YIELD_TICKS)
+        {
+            if (Prcb->QuantumEnd)
+                return TRUE;
+        }
+        else if (RaisedTicks <= KI_YIELD_TICKS)
+        {
+            return FALSE;
+        }
+
+        /* A long DPC gives way to more DPCs, or to the thread it interrupted */
+        if (KiDpcWorkPending(Prcb) || Prcb->CurrentThread != Prcb->IdleThread)
+            return TRUE;
+    }
+    else
+    {
+        /* A thread at raised IRQL gives way as soon as anything is waiting */
+        if (KiDpcWorkPending(Prcb) || Prcb->QuantumEnd)
+            return TRUE;
+
+        if (Prcb->NextThread != NULL && Prcb->NextThread != Prcb->CurrentThread)
+            return TRUE;
+
+        if (RaisedTicks <= KI_YIELD_TICKS)
+            return FALSE;
+    }
+
+    /* Nothing was waiting, so the caller starts a fresh budget */
+    Enabled = KeDisableInterrupts();
+    Prcb->DpcWatchdogCount = 0;
+    Prcb->DpcTimeCount = 0;
+    KeRestoreInterrupts(Enabled);
+
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Reports the DPC time budgets of the current processor.
+ *
+ * @param[out] WatchdogInformation
+ * Receives the limits and how much of each is left.
+ *
+ * @return
+ * STATUS_SUCCESS, or STATUS_UNSUCCESSFUL below DISPATCH_LEVEL.
+ */
+NTSTATUS
+NTAPI
+KeQueryDpcWatchdogInformation(
+    _Out_ PKDPC_WATCHDOG_INFORMATION WatchdogInformation)
+{
+    if (KeGetCurrentIrql() < DISPATCH_LEVEL)
+        return STATUS_UNSUCCESSFUL;
+
+    /* No single DPC limit or DPC watchdog period is ever set, so there is no budget to report */
+    RtlZeroMemory(WatchdogInformation, sizeof(*WatchdogInformation));
+    return STATUS_SUCCESS;
 }
 
 /*
