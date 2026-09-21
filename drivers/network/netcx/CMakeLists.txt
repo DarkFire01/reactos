@@ -1,9 +1,8 @@
 #
 # NetAdapterCx, the WDF class extension that NDIS 6.x miniports bind to.
 # Imported from Microsoft's Network-Adapter-Class-Extension drop (MIT, see
-# LICENSE). The drop ships no build files and is missing the WDK and internal
-# headers it includes, so this target does not compile yet. inc/README.md has
-# the inventory.
+# LICENSE). The drop ships no build files and is missing a number of the WDK
+# and internal headers it includes. inc/README.md has the inventory.
 #
 # Like every KMDF client this links wdfdriverentry, which raises the
 # _WIN32_WINNT floor above the tree default. The default has to come off first.
@@ -162,11 +161,24 @@ target_include_directories(netadaptercx BEFORE PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/inc
     ${CMAKE_CURRENT_SOURCE_DIR}/adapter
+    ${CMAKE_CURRENT_SOURCE_DIR}/adapter/config
+    ${CMAKE_CURRENT_SOURCE_DIR}/adapter/extension
+    ${CMAKE_CURRENT_SOURCE_DIR}/adapter/idle
+    ${CMAKE_CURRENT_SOURCE_DIR}/adapter/monitor
+    ${CMAKE_CURRENT_SOURCE_DIR}/adapter/powerpolicy
+    ${CMAKE_CURRENT_SOURCE_DIR}/adapter/queue
+    ${CMAKE_CURRENT_SOURCE_DIR}/adapter/rxscaling
+    ${CMAKE_CURRENT_SOURCE_DIR}/adapter/statemachines
+    ${CMAKE_CURRENT_SOURCE_DIR}/adapter/types
+    ${CMAKE_CURRENT_SOURCE_DIR}/bm
     ${CMAKE_CURRENT_SOURCE_DIR}/ec/inc
     ${CMAKE_CURRENT_SOURCE_DIR}/ec/lib
     ${CMAKE_CURRENT_SOURCE_DIR}/statistics
     ${CMAKE_CURRENT_SOURCE_DIR}/translator
     ${CMAKE_CURRENT_SOURCE_DIR}/translator/checksum
+    ${CMAKE_CURRENT_SOURCE_DIR}/translator/coalescing
+    ${CMAKE_CURRENT_SOURCE_DIR}/translator/framelayout
+    ${CMAKE_CURRENT_SOURCE_DIR}/translator/metadata
     ${CMAKE_CURRENT_SOURCE_DIR}/translator/segmentation
     ${REACTOS_SOURCE_DIR}/sdk/include/ddk/netcx
     ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc
