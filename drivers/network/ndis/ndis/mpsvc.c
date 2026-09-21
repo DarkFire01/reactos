@@ -651,11 +651,19 @@ NdisMGetBusData(
     ULONG Length)
 {
     PLOGICAL_ADAPTER Adapter = (PLOGICAL_ADAPTER)NdisMiniportHandle;
+    ULONG Read;
 
     if (Adapter->BusInterface.GetBusData == NULL)
+    {
+        NDIS_DbgPrint(MIN_TRACE, ("No bus interface to read space %lu at 0x%lx.\n", WhichSpace, Offset));
         return 0;
+    }
 
-    return Adapter->BusInterface.GetBusData(Adapter->BusInterface.Context, WhichSpace, Buffer, Offset, Length);
+    Read = Adapter->BusInterface.GetBusData(Adapter->BusInterface.Context, WhichSpace, Buffer, Offset, Length);
+    if (Read != Length)
+        NDIS_DbgPrint(MIN_TRACE, ("Read %lu of %lu bytes of space %lu at 0x%lx.\n", Read, Length, WhichSpace, Offset));
+
+    return Read;
 }
 
 /**
