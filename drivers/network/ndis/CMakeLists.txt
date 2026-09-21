@@ -37,6 +37,7 @@ list(APPEND SOURCE
     ndis/mpcore.c
     ndis/mpdata.c
     ndis/mpdma.c
+    ndis/mphook.c
     ndis/mpif.c
     ndis/mpintr.c
     ndis/mpoid.c
@@ -58,6 +59,6 @@ add_library(ndis MODULE
     ${CMAKE_CURRENT_BINARY_DIR}/ndis.def)
 
 set_module_type(ndis kernelmodedriver)
-add_importlibs(ndis ntoskrnl hal)
+add_importlibs(ndis ntoskrnl hal netio)
 add_pch(ndis include/ndissys.h SOURCE)
 add_cd_file(TARGET ndis DESTINATION reactos/system32/drivers FOR all)
