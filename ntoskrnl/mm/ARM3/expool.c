@@ -1856,7 +1856,7 @@ ExReturnPoolQuota(IN PVOID P)
     USHORT BlockSize;
     PEPROCESS Process;
 
-    if ((ExpPoolFlags & POOL_FLAG_SPECIAL_POOL) &&
+    if ((ExpPoolFlags & EXP_POOL_FLAG_SPECIAL_POOL) &&
         (MmIsSpecialPoolAddress(P)))
     {
         return;
@@ -1930,12 +1930,12 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
     //
     // Check if verifier or special pool is enabled
     //
-    if (ExpPoolFlags & (POOL_FLAG_VERIFIER | POOL_FLAG_SPECIAL_POOL))
+    if (ExpPoolFlags & (EXP_POOL_FLAG_VERIFIER | EXP_POOL_FLAG_SPECIAL_POOL))
     {
         //
         // For verifier, we should call the verification routine
         //
-        if (ExpPoolFlags & POOL_FLAG_VERIFIER)
+        if (ExpPoolFlags & EXP_POOL_FLAG_VERIFIER)
         {
             DPRINT1("Driver Verifier is not yet supported\n");
         }
@@ -1944,7 +1944,7 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
         // For special pool, we check if this is a suitable allocation and do
         // the special allocation if needed
         //
-        if (ExpPoolFlags & POOL_FLAG_SPECIAL_POOL)
+        if (ExpPoolFlags & EXP_POOL_FLAG_SPECIAL_POOL)
         {
             //
             // Check if this is a special pool allocation
@@ -2017,12 +2017,12 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
             // This flag requests printing failures, and can also further specify
             // breaking on failures
             //
-            if (ExpPoolFlags & POOL_FLAG_DBGPRINT_ON_FAILURE)
+            if (ExpPoolFlags & EXP_POOL_FLAG_DBGPRINT_ON_FAILURE)
             {
                 DPRINT1("EX: ExAllocatePool (%lu, 0x%x) returning NULL\n",
                         NumberOfBytes,
                         OriginalType);
-                if (ExpPoolFlags & POOL_FLAG_CRASH_ON_FAILURE) DbgBreakPoint();
+                if (ExpPoolFlags & EXP_POOL_FLAG_CRASH_ON_FAILURE) DbgBreakPoint();
             }
 
             //
@@ -2359,12 +2359,12 @@ ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
         // This flag requests printing failures, and can also further specify
         // breaking on failures
         //
-        if (ExpPoolFlags & POOL_FLAG_DBGPRINT_ON_FAILURE)
+        if (ExpPoolFlags & EXP_POOL_FLAG_DBGPRINT_ON_FAILURE)
         {
             DPRINT1("EX: ExAllocatePool (%lu, 0x%x) returning NULL\n",
                     NumberOfBytes,
                     OriginalType);
-            if (ExpPoolFlags & POOL_FLAG_CRASH_ON_FAILURE) DbgBreakPoint();
+            if (ExpPoolFlags & EXP_POOL_FLAG_CRASH_ON_FAILURE) DbgBreakPoint();
         }
 
         //
@@ -2509,17 +2509,17 @@ ExFreePoolWithTag(IN PVOID P,
     //
     // Check if any of the debug flags are enabled
     //
-    if (ExpPoolFlags & (POOL_FLAG_CHECK_TIMERS |
-                        POOL_FLAG_CHECK_WORKERS |
-                        POOL_FLAG_CHECK_RESOURCES |
-                        POOL_FLAG_VERIFIER |
-                        POOL_FLAG_CHECK_DEADLOCK |
-                        POOL_FLAG_SPECIAL_POOL))
+    if (ExpPoolFlags & (EXP_POOL_FLAG_CHECK_TIMERS |
+                        EXP_POOL_FLAG_CHECK_WORKERS |
+                        EXP_POOL_FLAG_CHECK_RESOURCES |
+                        EXP_POOL_FLAG_VERIFIER |
+                        EXP_POOL_FLAG_CHECK_DEADLOCK |
+                        EXP_POOL_FLAG_SPECIAL_POOL))
     {
         //
         // Check if special pool is enabled
         //
-        if (ExpPoolFlags & POOL_FLAG_SPECIAL_POOL)
+        if (ExpPoolFlags & EXP_POOL_FLAG_SPECIAL_POOL)
         {
             //
             // Check if it was allocated from a special pool
@@ -2530,7 +2530,7 @@ ExFreePoolWithTag(IN PVOID P,
                 // Was deadlock verification also enabled? We can do some extra
                 // checks at this point
                 //
-                if (ExpPoolFlags & POOL_FLAG_CHECK_DEADLOCK)
+                if (ExpPoolFlags & EXP_POOL_FLAG_CHECK_DEADLOCK)
                 {
                     DPRINT1("Verifier not yet supported\n");
                 }
@@ -2620,16 +2620,16 @@ ExFreePoolWithTag(IN PVOID P,
         //
         // Check if any of the debug flags are enabled
         //
-        if (ExpPoolFlags & (POOL_FLAG_CHECK_TIMERS |
-                            POOL_FLAG_CHECK_WORKERS |
-                            POOL_FLAG_CHECK_RESOURCES |
-                            POOL_FLAG_CHECK_DEADLOCK))
+        if (ExpPoolFlags & (EXP_POOL_FLAG_CHECK_TIMERS |
+                            EXP_POOL_FLAG_CHECK_WORKERS |
+                            EXP_POOL_FLAG_CHECK_RESOURCES |
+                            EXP_POOL_FLAG_CHECK_DEADLOCK))
         {
             //
             // Was deadlock verification also enabled? We can do some extra
             // checks at this point
             //
-            if (ExpPoolFlags & POOL_FLAG_CHECK_DEADLOCK)
+            if (ExpPoolFlags & EXP_POOL_FLAG_CHECK_DEADLOCK)
             {
                 DPRINT1("Verifier not yet supported\n");
             }
@@ -3044,7 +3044,7 @@ ExAllocatePoolWithQuotaTag(IN POOL_TYPE PoolType,
         // Also if special pool is enabled, and this was allocated from there,
         // we won't touch it either
         //
-        if ((ExpPoolFlags & POOL_FLAG_SPECIAL_POOL) &&
+        if ((ExpPoolFlags & EXP_POOL_FLAG_SPECIAL_POOL) &&
             (MmIsSpecialPoolAddress(Buffer)))
         {
             return Buffer;
