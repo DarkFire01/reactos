@@ -1,7 +1,6 @@
 
 include_directories(BEFORE include)
 include_directories(xlate)
-add_subdirectory(xlate)
 spec2def(ndis.sys ndis.spec ADD_IMPORTLIB)
 
 add_definitions(
@@ -35,6 +34,7 @@ list(APPEND SOURCE
     ndis/protocol.c
     ndis/string.c
     ndis/time.c
+    xlate/xlate.c
     include/ndissys.h)
 
 add_library(ndis MODULE
@@ -43,7 +43,6 @@ add_library(ndis MODULE
     ${CMAKE_CURRENT_BINARY_DIR}/ndis.def)
 
 set_module_type(ndis kernelmodedriver)
-target_link_libraries(ndis ndisxlate)
 add_importlibs(ndis ntoskrnl hal)
 add_pch(ndis include/ndissys.h SOURCE)
 add_cd_file(TARGET ndis DESTINATION reactos/system32/drivers FOR all)
