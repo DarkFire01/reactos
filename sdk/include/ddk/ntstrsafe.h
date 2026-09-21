@@ -3220,6 +3220,33 @@ RtlpUnicodeStringValidate(
     return STATUS_SUCCESS;
 }
 
+/* Points the string at pszSrc without copying; a missing source gives an empty string. */
+NTSTRSAFEAPI
+RtlUnicodeStringInit(
+    _Out_ PUNICODE_STRING DestinationString,
+    _In_opt_ NTSTRSAFE_PCWSTR pszSrc)
+{
+    NTSTATUS Status;
+    size_t cchSrcLength;
+
+    DestinationString->Length = 0;
+    DestinationString->MaximumLength = 0;
+    DestinationString->Buffer = NULL;
+
+    if (!pszSrc)
+        return STATUS_SUCCESS;
+
+    Status = RtlStringLengthWorkerW(pszSrc, NTSTRSAFE_UNICODE_STRING_MAX_CCH, &cchSrcLength);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    DestinationString->Length = (USHORT)(cchSrcLength * sizeof(wchar_t));
+    DestinationString->MaximumLength = (USHORT)((cchSrcLength + 1) * sizeof(wchar_t));
+    DestinationString->Buffer = (PWSTR)pszSrc;
+
+    return STATUS_SUCCESS;
+}
+
 NTSTRSAFEAPI
 RtlUnicodeStringValidate(_In_opt_ PCUNICODE_STRING SourceString)
 {
