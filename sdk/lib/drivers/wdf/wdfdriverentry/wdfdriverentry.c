@@ -173,7 +173,7 @@ FxBindClasses(VOID)
     while ((entry = FxNextClassBindEntry(cursor, end)) != NULL)
     {
         status = WdfVersionBindClass(&BindInfo,
-                                     (PWDF_COMPONENT_GLOBALS*)&WdfDriverGlobals,
+                                     (PWDF_COMPONENT_GLOBALS)WdfDriverGlobals,
                                      entry);
         if (!NT_SUCCESS(status))
         {
