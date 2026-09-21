@@ -89,6 +89,46 @@ typedef struct _DOT11_BSSID_LIST {
 #endif
 } DOT11_BSSID_LIST, *PDOT11_BSSID_LIST;
 
+#define DOT11_EXTSTA_SEND_CONTEXT_REVISION_1        1
+
+/* Out of band data on a send in extensible station mode. */
+typedef struct DOT11_EXTSTA_SEND_CONTEXT {
+    NDIS_OBJECT_HEADER Header;
+    USHORT usExemptionActionType;
+    ULONG uPhyId;
+    ULONG uDelayedSleepValue;
+#if defined(__midl) || defined(__WIDL__)
+    ULONG_PTR pvMediaSpecificInfo;
+#else
+    PVOID pvMediaSpecificInfo;
+#endif
+    ULONG uSendFlags;
+} DOT11_EXTSTA_SEND_CONTEXT, *PDOT11_EXTSTA_SEND_CONTEXT;
+
+#define DOT11_RECV_FLAG_RAW_PACKET                  0x00000001U
+#define DOT11_RECV_FLAG_RAW_PACKET_FCS_FAILURE      0x00000002U
+#define DOT11_RECV_FLAG_RAW_PACKET_TIMESTAMP        0x00000004U
+
+#define DOT11_EXTSTA_RECV_CONTEXT_REVISION_1        1
+
+/* Out of band data on a receive in extensible station mode. */
+typedef struct DOT11_EXTSTA_RECV_CONTEXT {
+    NDIS_OBJECT_HEADER Header;
+    ULONG uReceiveFlags;
+    ULONG uPhyId;
+    ULONG uChCenterFrequency;
+    USHORT usNumberOfMPDUsReceived;
+    LONG lRSSI;
+    UCHAR ucDataRate;
+    ULONG uSizeMediaSpecificInfo;
+#if defined(__midl) || defined(__WIDL__)
+    ULONG_PTR pvMediaSpecificInfo;
+#else
+    PVOID pvMediaSpecificInfo;
+#endif
+    ULONGLONG ullTimestamp;
+} DOT11_EXTSTA_RECV_CONTEXT, *PDOT11_EXTSTA_RECV_CONTEXT;
+
 
 #endif
 
