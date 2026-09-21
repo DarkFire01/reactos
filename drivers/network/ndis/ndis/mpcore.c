@@ -499,6 +499,7 @@ CoreInitializeAdapter(
     InitParameters.Header.Type = NDIS_OBJECT_TYPE_MINIPORT_INIT_PARAMETERS;
     InitParameters.Header.Revision = NDIS_MINIPORT_INIT_PARAMETERS_REVISION_1;
     InitParameters.Header.Size = NDIS_SIZEOF_MINIPORT_INIT_PARAMETERS_REVISION_1;
+    InitParameters.MiniportAddDeviceContext = Core->AddDeviceContext;
 
     /* NDIS 6 hands over the partial list, which sits inside the full one */
     if (Adapter->NdisMiniportBlock.AllocatedResources != NULL)
