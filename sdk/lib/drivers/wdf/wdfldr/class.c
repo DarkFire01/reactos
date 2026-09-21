@@ -802,7 +802,7 @@ DereferenceClassVersion(
         if (pClassModule->ClassLibraryInfo &&
             pClassModule->ClassLibraryInfo->ClassLibraryUnbindClient)
         {
-            pClassModule->ClassLibraryInfo->ClassLibraryUnbindClient(ClassBindInfo, &Globals);
+            pClassModule->ClassLibraryInfo->ClassLibraryUnbindClient(ClassBindInfo, Globals);
         }
         ClassUnlinkClient(pClassModule, ClassBindInfo);
         ClassReleaseClientReference(pClassModule);

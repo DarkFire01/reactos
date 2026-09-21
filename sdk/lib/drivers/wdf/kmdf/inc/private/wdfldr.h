@@ -41,13 +41,13 @@ typedef
 NTSTATUS
 (NTAPI *PFN_CLASS_LIBRARY_BIND_CLIENT)(
     _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
-    _Out_ PWDF_COMPONENT_GLOBALS* Globals);
+    _In_ PWDF_COMPONENT_GLOBALS Globals);
 
 typedef
 VOID
 (NTAPI *PFN_CLASS_LIBRARY_UNBIND_CLIENT)(
     _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
-    _In_ PWDF_COMPONENT_GLOBALS* Globals);
+    _In_ PWDF_COMPONENT_GLOBALS Globals);
 
 typedef
 NTSTATUS
@@ -164,7 +164,7 @@ NTSTATUS
 NTAPI
 WdfVersionBindClass(
     _In_ PWDF_BIND_INFO BindInfo,
-    _Inout_ PWDF_COMPONENT_GLOBALS* Globals,
+    _In_ PWDF_COMPONENT_GLOBALS Globals,
     _In_ PWDF_CLASS_BIND_INFO ClassBindInfo);
 
 
