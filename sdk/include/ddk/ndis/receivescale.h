@@ -1,0 +1,128 @@
+/*
+ * PROJECT:     ReactOS NDIS 6 support
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     Receive side scaling capabilities and parameters
+ */
+
+#pragma once
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define NDIS_OBJECT_TYPE_RSS_CAPABILITIES           0x88
+#define NDIS_OBJECT_TYPE_RSS_PARAMETERS             0x89
+
+#define NDIS_RECEIVE_SCALE_CAPABILITIES_REVISION_1  1
+#define NDIS_RECEIVE_SCALE_CAPABILITIES_REVISION_2  2
+#define NDIS_RECEIVE_SCALE_CAPABILITIES_REVISION_3  3
+#define NDIS_RECEIVE_SCALE_PARAMETERS_REVISION_1    1
+#define NDIS_RECEIVE_SCALE_PARAMETERS_REVISION_2    2
+#define NDIS_RECEIVE_SCALE_PARAMETERS_REVISION_3    3
+#define NDIS_RECEIVE_SCALE_PARAMETERS_V2_REVISION_1 1
+#define NDIS_RSS_SET_INDIRECTION_ENTRIES_REVISION_1 1
+
+#define NDIS_RSS_INDIRECTION_TABLE_MAX_SIZE_REVISION_1 (128 * sizeof(PROCESSOR_NUMBER))
+#define NDIS_RSS_HASH_SECRET_KEY_MAX_SIZE_REVISION_1   40
+
+/* Hash function, the low byte of HashInformation. */
+#define NDIS_HASH_FUNCTION_MASK                     0x000000FF
+#define NdisHashFunctionToeplitz                    0x00000001
+#define NdisHashFunctionReserved1                   0x00000002
+#define NdisHashFunctionReserved2                   0x00000004
+#define NdisHashFunctionReserved3                   0x00000008
+
+/* Hash type, the middle two bytes of HashInformation. */
+#define NDIS_HASH_TYPE_MASK                         0x00FFFF00
+#define NDIS_HASH_IPV4                              0x00000100
+#define NDIS_HASH_TCP_IPV4                          0x00000200
+#define NDIS_HASH_IPV6                              0x00000400
+#define NDIS_HASH_IPV6_EX                           0x00000800
+#define NDIS_HASH_TCP_IPV6                          0x00001000
+#define NDIS_HASH_TCP_IPV6_EX                       0x00002000
+#define NDIS_HASH_UDP_IPV4                          0x00004000
+#define NDIS_HASH_UDP_IPV6                          0x00008000
+#define NDIS_HASH_UDP_IPV6_EX                       0x00010000
+
+#define NDIS_RSS_HASH_TYPE_FROM_HASH_INFO(HashInfo) ((HashInfo) & NDIS_HASH_TYPE_MASK)
+#define NDIS_RSS_HASH_FUNC_FROM_HASH_INFO(HashInfo) ((HashInfo) & NDIS_HASH_FUNCTION_MASK)
+#define NDIS_RSS_HASH_INFO_FROM_TYPE_AND_FUNC(HashType, HashFunction) \
+    ((HashType) | (HashFunction))
+
+typedef ULONG NDIS_RSS_CAPS_FLAGS, *PNDIS_RSS_CAPS_FLAGS;
+
+/* NDIS_RECEIVE_SCALE_CAPABILITIES::CapabilitiesFlags */
+#define NDIS_RSS_CAPS_HASH_TYPE_TCP_IPV4            0x00000100
+#define NDIS_RSS_CAPS_HASH_TYPE_TCP_IPV6            0x00000200
+#define NDIS_RSS_CAPS_HASH_TYPE_TCP_IPV6_EX         0x00000400
+#define NDIS_RSS_CAPS_HASH_TYPE_UDP_IPV4            0x00000800
+#define NDIS_RSS_CAPS_HASH_TYPE_UDP_IPV6            0x00001000
+#define NDIS_RSS_CAPS_HASH_TYPE_UDP_IPV6_EX         0x00002000
+#define NDIS_RSS_CAPS_MESSAGE_SIGNALED_INTERRUPTS   0x01000000
+#define NDIS_RSS_CAPS_CLASSIFICATION_AT_ISR         0x02000000
+#define NDIS_RSS_CAPS_CLASSIFICATION_AT_DPC         0x04000000
+#define NDIS_RSS_CAPS_USING_MSI_X                   0x08000000
+#define NDIS_RSS_CAPS_RSS_AVAILABLE_ON_PORTS        0x10000000
+#define NDIS_RSS_CAPS_SUPPORTS_MSI_X                0x20000000
+#define NDIS_RSS_CAPS_SUPPORTS_INDEPENDENT_ENTRY_MOVE 0x40000000
+
+/* NDIS_RECEIVE_SCALE_PARAMETERS_V2::Flags */
+#define NDIS_RECEIVE_SCALE_PARAM_ENABLE_RSS                 0x0001
+#define NDIS_RECEIVE_SCALE_PARAM_HASH_INFO_CHANGED          0x0002
+#define NDIS_RECEIVE_SCALE_PARAM_HASH_KEY_CHANGED           0x0004
+#define NDIS_RECEIVE_SCALE_PARAM_NUMBER_OF_QUEUES_CHANGED   0x0008
+#define NDIS_RECEIVE_SCALE_PARAM_NUMBER_OF_ENTRIES_CHANGED  0x0010
+
+typedef struct _NDIS_RECEIVE_SCALE_CAPABILITIES
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG CapabilitiesFlags;
+    ULONG NumberOfInterruptMessages;
+    ULONG NumberOfReceiveQueues;
+    USHORT NumberOfIndirectionTableEntries;
+} NDIS_RECEIVE_SCALE_CAPABILITIES, *PNDIS_RECEIVE_SCALE_CAPABILITIES;
+
+#define NDIS_SIZEOF_RECEIVE_SCALE_CAPABILITIES_REVISION_2 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_RECEIVE_SCALE_CAPABILITIES, NumberOfReceiveQueues)
+#define NDIS_SIZEOF_RECEIVE_SCALE_CAPABILITIES_REVISION_3 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_RECEIVE_SCALE_CAPABILITIES, NumberOfIndirectionTableEntries)
+
+typedef struct _NDIS_RECEIVE_SCALE_PARAMETERS_V2
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG Flags;
+    ULONG HashInformation;
+    ULONG HashSecretKeySize;
+    ULONG HashSecretKeyOffset;
+    ULONG NumberOfQueues;
+    ULONG NumberOfIndirectionTableEntries;
+} NDIS_RECEIVE_SCALE_PARAMETERS_V2, *PNDIS_RECEIVE_SCALE_PARAMETERS_V2;
+
+#define NDIS_SIZEOF_RECEIVE_SCALE_PARAMETERS_V2_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_RECEIVE_SCALE_PARAMETERS_V2, NumberOfIndirectionTableEntries)
+
+typedef struct _NDIS_RSS_SET_INDIRECTION_ENTRY
+{
+    ULONG SwitchId;
+    ULONG VPortId;
+    ULONG Flags;
+    USHORT IndirectionTableIndex;
+    PROCESSOR_NUMBER TargetProcessorNumber;
+    NTSTATUS EntryStatus;
+} NDIS_RSS_SET_INDIRECTION_ENTRY, *PNDIS_RSS_SET_INDIRECTION_ENTRY;
+
+typedef struct _NDIS_RSS_SET_INDIRECTION_ENTRIES
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG Flags;
+    ULONG RssEntrySize;
+    ULONG RssEntryTableOffset;
+    ULONG NumberOfRssEntries;
+} NDIS_RSS_SET_INDIRECTION_ENTRIES, *PNDIS_RSS_SET_INDIRECTION_ENTRIES;
+
+#define NDIS_SIZEOF_RSS_SET_INDIRECTION_ENTRIES_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_RSS_SET_INDIRECTION_ENTRIES, NumberOfRssEntries)
+
+#ifdef __cplusplus
+}
+#endif
