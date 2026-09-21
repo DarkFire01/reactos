@@ -946,6 +946,7 @@ typedef PHYSICAL_ADDRESS NDIS_PHYSICAL_ADDRESS, *PNDIS_PHYSICAL_ADDRESS;
 #include <ndis/nblaccessors.h>
 #include <ndis/nblapi.h>
 #include <ndis/nbloffload.h>
+#include <ndis/nblchain.h>
 #endif
 
 typedef struct _NDIS_PHYSICAL_ADDRESS_UNIT {
