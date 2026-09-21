@@ -1247,9 +1247,9 @@ NdisCopyReceiveNetBufferListInfo(
     }
 
     /* A cancel id only means anything when the NBL came from one source. */
-    if ((NET_BUFFER_LIST_NBL_FLAGS(SrcNetBufferList) & NBL_FLAGS_SINGLE_SOURCE) != 0)
+    if ((NET_BUFFER_LIST_NBL_FLAGS(SrcNetBufferList) & NDIS_NBL_FLAGS_IS_LOOPBACK_PACKET) != 0)
     {
-        NET_BUFFER_LIST_NBL_FLAGS(DestNetBufferList) |= NBL_FLAGS_SINGLE_SOURCE;
+        NET_BUFFER_LIST_NBL_FLAGS(DestNetBufferList) |= NDIS_NBL_FLAGS_IS_LOOPBACK_PACKET;
         NET_BUFFER_LIST_INFO(DestNetBufferList, NetBufferListCancelId) =
             NET_BUFFER_LIST_INFO(SrcNetBufferList, NetBufferListCancelId);
     }
