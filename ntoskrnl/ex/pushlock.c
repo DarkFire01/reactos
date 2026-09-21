@@ -1300,3 +1300,173 @@ ExfUnblockPushLock(PEX_PUSH_LOCK PushLock,
         ExWaitForUnblockPushLock(PushLock, CurrentWaitBlock);
     }
 }
+
+/* PUBLIC FUNCTIONS WITH FLAGS ***********************************************/
+
+/*
+ * The flag carrying entry points drivers import. Two flag bits are defined;
+ * both only steer lock owner boosting, which this kernel does not do, so the
+ * flags are validated and otherwise have no effect.
+ */
+#define EXP_PUSH_LOCK_VALID_FLAGS   0x3
+
+static
+VOID
+ExpValidatePushLockFlags(
+    _In_ PULONG_PTR PushLock,
+    _In_ ULONG Flags)
+{
+    if (Flags & ~EXP_PUSH_LOCK_VALID_FLAGS)
+        KeBugCheckEx(INVALID_PUSH_LOCK_FLAGS, Flags, (ULONG_PTR)PushLock, 0, 0);
+}
+
+/* A blocking acquire from a DPC could never be satisfied. */
+static
+VOID
+ExpValidatePushLockWait(
+    _In_ PULONG_PTR PushLock)
+{
+    if (KeIsExecutingDpc())
+    {
+        KeBugCheckEx(KERNEL_AUTO_BOOST_LOCK_ACQUISITION_WITH_RAISED_IRQL,
+                     (ULONG_PTR)KeGetCurrentThread(),
+                     (ULONG_PTR)PushLock,
+                     KeGetCurrentIrql(),
+                     0);
+    }
+}
+
+#undef ExInitializePushLock
+
+/*
+ * @implemented
+ */
+VOID
+NTAPI
+ExInitializePushLock(
+    _Out_ PULONG_PTR PushLock)
+{
+    *PushLock = 0;
+}
+
+/*
+ * @implemented
+ */
+VOID
+FASTCALL
+ExAcquirePushLockExclusiveEx(
+    _Inout_ PULONG_PTR PushLock,
+    _In_ ULONG Flags)
+{
+    ExpValidatePushLockFlags(PushLock, Flags);
+    ExpValidatePushLockWait(PushLock);
+
+    ExAcquirePushLockExclusive((PEX_PUSH_LOCK)PushLock);
+}
+
+/*
+ * @implemented
+ */
+VOID
+FASTCALL
+ExAcquirePushLockSharedEx(
+    _Inout_ PULONG_PTR PushLock,
+    _In_ ULONG Flags)
+{
+    ExpValidatePushLockFlags(PushLock, Flags);
+    ExpValidatePushLockWait(PushLock);
+
+    ExAcquirePushLockShared((PEX_PUSH_LOCK)PushLock);
+}
+
+/*
+ * @implemented
+ */
+BOOLEAN
+FASTCALL
+ExTryAcquirePushLockExclusiveEx(
+    _Inout_ PULONG_PTR PushLock,
+    _In_ ULONG Flags)
+{
+    ExpValidatePushLockFlags(PushLock, Flags);
+
+    return ExTryToAcquirePushLockExclusive((PEX_PUSH_LOCK)PushLock);
+}
+
+/*
+ * @implemented
+ */
+BOOLEAN
+FASTCALL
+ExTryAcquirePushLockSharedEx(
+    _Inout_ PULONG_PTR PushLock,
+    _In_ ULONG Flags)
+{
+    PEX_PUSH_LOCK Lock = (PEX_PUSH_LOCK)PushLock;
+    EX_PUSH_LOCK OldValue, NewValue;
+
+    ExpValidatePushLockFlags(PushLock, Flags);
+
+    for (;;)
+    {
+        OldValue = *Lock;
+
+        /* Waiters queue behind the owner, so joining them would block */
+        if (OldValue.Waiting)
+            return FALSE;
+
+        /* Held exclusively, there is no share count to add to */
+        if (OldValue.Locked && !OldValue.Shared)
+            return FALSE;
+
+        if (OldValue.Locked)
+            NewValue.Value = OldValue.Value + EX_PUSH_LOCK_SHARE_INC;
+        else
+            NewValue.Value = EX_PUSH_LOCK_LOCK | EX_PUSH_LOCK_SHARE_INC;
+
+        if (InterlockedCompareExchangePointer(&Lock->Ptr, NewValue.Ptr, OldValue.Ptr) == OldValue.Ptr)
+            return TRUE;
+    }
+}
+
+/*
+ * @implemented
+ */
+VOID
+FASTCALL
+ExReleasePushLockExclusiveEx(
+    _Inout_ PULONG_PTR PushLock,
+    _In_ ULONG Flags)
+{
+    ExpValidatePushLockFlags(PushLock, Flags);
+
+    ExReleasePushLockExclusive((PEX_PUSH_LOCK)PushLock);
+}
+
+/*
+ * @implemented
+ */
+VOID
+FASTCALL
+ExReleasePushLockSharedEx(
+    _Inout_ PULONG_PTR PushLock,
+    _In_ ULONG Flags)
+{
+    ExpValidatePushLockFlags(PushLock, Flags);
+
+    ExReleasePushLockShared((PEX_PUSH_LOCK)PushLock);
+}
+
+/*
+ * @implemented
+ */
+VOID
+FASTCALL
+ExReleasePushLockEx(
+    _Inout_ PULONG_PTR PushLock,
+    _In_ ULONG Flags)
+{
+    ExpValidatePushLockFlags(PushLock, Flags);
+
+    ExReleasePushLock((PEX_PUSH_LOCK)PushLock);
+}
