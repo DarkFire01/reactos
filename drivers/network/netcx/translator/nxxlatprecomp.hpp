@@ -15,8 +15,6 @@ Abstract:
 #pragma once
 
 #ifdef _KERNEL_MODE
-#include <ntosp.h>
-#include <zwapi.h>
 #include <ntassert.h>
 #else
 #include <nt.h>
