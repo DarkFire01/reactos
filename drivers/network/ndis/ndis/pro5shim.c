@@ -249,7 +249,7 @@ Pro5IndicateLookahead(
     CopyPacketToBuffer(Frame, Packet, 0, TotalLength);
 
     /* NdisTransferData copies from here while the indication is in progress */
-    Adapter->NdisMiniportBlock.IndicatedPacket[KeGetCurrentProcessorNumber()] = Packet;
+    Adapter->NdisMiniportBlock.IndicatedPacket[KeGetCurrentProcessorIndex()] = Packet;
 
     Binding->ProtocolBinding->Chars.ReceiveHandler(Binding->NdisOpenBlock.ProtocolBindingContext,
                                                    (NDIS_HANDLE)Packet,
@@ -259,7 +259,7 @@ Pro5IndicateLookahead(
                                                    TotalLength - HeaderSize,
                                                    TotalLength - HeaderSize);
 
-    Adapter->NdisMiniportBlock.IndicatedPacket[KeGetCurrentProcessorNumber()] = NULL;
+    Adapter->NdisMiniportBlock.IndicatedPacket[KeGetCurrentProcessorIndex()] = NULL;
 
     ExFreePoolWithTag(Frame, NDIS_TAG);
 }
@@ -500,7 +500,7 @@ ProTransferData(
 
     *BytesTransferred = 0;
 
-    Indicated = Adapter->NdisMiniportBlock.IndicatedPacket[KeGetCurrentProcessorNumber()];
+    Indicated = Adapter->NdisMiniportBlock.IndicatedPacket[KeGetCurrentProcessorIndex()];
     if (Indicated == NULL)
         return NDIS_STATUS_FAILURE;
 
