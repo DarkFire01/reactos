@@ -462,6 +462,7 @@ DEFINE_SAFE_CONVERT_STOS(LongPtrToChar, LONG_PTR, _INTSAFE_CHAR)
 #define RtlULongLongToSSIZET RtlULongLongToLongPtr
 #define RtlULongLongToSIZET RtlULongLongToULongPtr
 #define RtlSIZETToULong RtlULongPtrToULong
+#define RtlSizeTToULong RtlULongPtrToULong
 #define RtlSSIZETToULongLong RtlLongPtrToULongLong
 #define RtlSSIZETToULong RtlLongPtrToULong
 #define RtlLongLongToSizeT RtlLongLongToUIntPtr
@@ -502,6 +503,7 @@ DEFINE_SAFE_CONVERT_STOS(LongPtrToChar, LONG_PTR, _INTSAFE_CHAR)
 #define ULongLongToSSIZET ULongLongToLongPtr
 #define ULongLongToSIZET ULongLongToULongPtr
 #define SIZETToULong ULongPtrToULong
+#define SizeTToULong ULongPtrToULong
 #define SSIZETToULongLong LongPtrToULongLong
 #define SSIZETToULong LongPtrToULong
 #define LongLongToSizeT LongLongToUIntPtr
