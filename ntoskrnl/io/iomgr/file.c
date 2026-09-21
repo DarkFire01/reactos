@@ -2490,6 +2490,27 @@ IopAcquireFileObjectLock(
     return Status;
 }
 
+/**
+ * @brief
+ * Returns the process a file was opened on behalf of.
+ *
+ * @param[in] FileObject
+ * The file object to look at.
+ *
+ * @return
+ * NULL. Creates are never issued for another process, so there is no
+ * initiator apart from the process that opened the file.
+ */
+PEPROCESS
+NTAPI
+IoGetInitiatorProcess(
+    _In_ PFILE_OBJECT FileObject)
+{
+    UNREFERENCED_PARAMETER(FileObject);
+
+    return NULL;
+}
+
 PVOID
 NTAPI
 IoGetFileObjectFilterContext(IN PFILE_OBJECT FileObject)
