@@ -165,6 +165,8 @@ set_target_properties(netadaptercx PROPERTIES CXX_STANDARD 17)
 # The drop is built against an ntifs level kernel surface, see inc/NetCxKernel.h.
 if(MSVC)
     target_compile_options(netadaptercx PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/FINetCxKernel.h>)
+    # The translator stores 32 bit values in NET_BUFFER_LIST info slots through pointer casts.
+    target_compile_options(netadaptercx PRIVATE /wd4312)
 else()
     target_compile_options(netadaptercx PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-include NetCxKernel.h>)
 endif()
@@ -196,11 +198,11 @@ target_include_directories(netadaptercx BEFORE PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/translator/metadata
     ${CMAKE_CURRENT_SOURCE_DIR}/translator/segmentation
     ${REACTOS_SOURCE_DIR}/sdk/include/ddk/netcx
-    ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc
-    ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc/pci
     ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf
     ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/kmdf/inc/private
-    ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/shared/inc/private/common)
+    ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/shared/inc/private/common
+    ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc
+    ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc/pci)
 
 target_compile_definitions(netadaptercx PRIVATE
     _KERNEL_MODE=1
