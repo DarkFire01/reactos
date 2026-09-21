@@ -309,6 +309,15 @@ NTAPI
 PoFxCompleteDevicePowerNotRequired(
     _In_ POHANDLE Handle);
 
+#if (NTDDI_VERSION >= NTDDI_WIN10_VB)
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+PoFxCompleteDirectedPowerDown(
+    _In_ POHANDLE Handle);
+#endif
+
 _IRQL_requires_max_(DISPATCH_LEVEL)
 NTKERNELAPI
 VOID

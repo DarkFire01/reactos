@@ -170,6 +170,15 @@ KeQuerySystemTime(
   _Out_ PLARGE_INTEGER CurrentTime);
 #endif /* !_M_AMD64 */
 
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+_IRQL_requires_max_(HIGH_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+KeQuerySystemTimePrecise(
+  _Out_ PLARGE_INTEGER CurrentTime);
+#endif
+
 #if !defined(_X86_) && !defined(_M_ARM)
 _Requires_lock_not_held_(*SpinLock)
 _Acquires_lock_(*SpinLock)
