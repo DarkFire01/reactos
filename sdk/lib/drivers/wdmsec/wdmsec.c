@@ -1,0 +1,33 @@
+/*
+ * PROJECT:     ReactOS Kernel
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     Default security descriptors for device objects
+ * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
+ */
+
+#include <ntddk.h>
+#include <wdmsec.h>
+
+const UNICODE_STRING SDDL_DEVOBJ_KERNEL_ONLY =
+    RTL_CONSTANT_STRING(L"D:P");
+
+const UNICODE_STRING SDDL_DEVOBJ_SYS_ALL =
+    RTL_CONSTANT_STRING(L"D:P(A;;GA;;;SY)");
+
+const UNICODE_STRING SDDL_DEVOBJ_SYS_ALL_ADM_ALL =
+    RTL_CONSTANT_STRING(L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+
+const UNICODE_STRING SDDL_DEVOBJ_SYS_ALL_ADM_RX =
+    RTL_CONSTANT_STRING(L"D:P(A;;GA;;;SY)(A;;GRGX;;;BA)");
+
+const UNICODE_STRING SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_R =
+    RTL_CONSTANT_STRING(L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GR;;;WD)");
+
+const UNICODE_STRING SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_R_RES_R =
+    RTL_CONSTANT_STRING(L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GR;;;WD)(A;;GR;;;RC)");
+
+const UNICODE_STRING SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_RW_RES_R =
+    RTL_CONSTANT_STRING(L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GRGW;;;WD)(A;;GR;;;RC)");
+
+const UNICODE_STRING SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_RWX_RES_RWX =
+    RTL_CONSTANT_STRING(L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GRGWGX;;;WD)(A;;GRGWGX;;;RC)");
