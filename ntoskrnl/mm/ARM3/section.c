@@ -2512,8 +2512,8 @@ MiRemoveMappedPtes(IN PVOID BaseAddress,
         NumberOfPtes--;
     }
 
-    /* Flush the TLB */
-    KeFlushCurrentTb();
+    /* System space views are mapped in every address space */
+    KeFlushEntireTb(TRUE, TRUE);
 
     /* Acquire the PFN lock */
     OldIrql = MiAcquirePfnLock();
