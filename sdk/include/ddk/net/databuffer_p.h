@@ -10,6 +10,7 @@
 #pragma once
 
 #include <net/databuffer.h>
+#include <net/ring.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,6 +34,16 @@ NetExtensionGetFragmentDataBuffer(
     _In_ UINT32 Index)
 {
     return (NET_FRAGMENT_DATA_BUFFER *)NetExtensionGetData(Extension, Index);
+}
+
+/* Elements of the data buffer ring are indices into the pool that owns the buffers. */
+FORCEINLINE
+SIZE_T *
+NetRingGetDataBufferAtIndex(
+    _In_ const NET_RING *Ring,
+    _In_ UINT32 Index)
+{
+    return (SIZE_T *)NetRingGetElementAtIndex(Ring, Index);
 }
 
 #ifdef __cplusplus
