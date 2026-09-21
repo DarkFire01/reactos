@@ -1,6 +1,6 @@
 /*
  * Copyright 2001 Andreas Mohr
- * Copyright 2005-2006 Hervé Poussineau
+ * Copyright 2005-2006 Hervï¿½ Poussineau
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -340,6 +340,13 @@ DestroyDriverInfoElement(struct DriverInfoElement* driverInfo);
 
 BOOL
 GetStringField( PINFCONTEXT context, DWORD index, PWSTR *value);
+
+BOOL
+SETUPAPI_InstallFromInfSection( HWND owner, HINF hinf, PCWSTR section, UINT flags,
+                                HKEY key_root, PCWSTR src_root, UINT copy_flags,
+                                PSP_FILE_CALLBACK_W callback, PVOID context,
+                                HDEVINFO devinfo, PSP_DEVINFO_DATA devinfo_data,
+                                HKEY device_key );
 
 /* interface.c */
 
