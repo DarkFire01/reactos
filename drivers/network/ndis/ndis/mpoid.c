@@ -456,29 +456,6 @@ CoreOidRequestComplete(
                   TRUE);
 }
 
-/**
- * @brief
- * A 6.x miniport finishes an OID request it returned NDIS_STATUS_PENDING for.
- *
- * @param[in] MiniportAdapterHandle
- * The adapter.
- *
- * @param[in] OidRequest
- * The request.
- *
- * @param[in] Status
- * How it went.
- */
-_Use_decl_annotations_
-VOID
-NTAPI
-NdisMOidRequestComplete(
-    NDIS_HANDLE MiniportAdapterHandle,
-    PNDIS_OID_REQUEST OidRequest,
-    NDIS_STATUS Status)
-{
-    CoreOidRequestComplete((PLOGICAL_ADAPTER)MiniportAdapterHandle, OidRequest, Status);
-}
 
 /* Requests NDIS makes for itself */
 

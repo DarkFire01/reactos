@@ -123,6 +123,7 @@ NdisMRegisterMiniportDriver(
     Miniport->RegistryPath = &Miniport->ServiceKeyPath;
     Miniport->MiniportDriverContext = MiniportDriverContext;
     Miniport->Ndis6Driver = TRUE;
+    Miniport->UnhookedCharacteristics = &Miniport->Characteristics6;
 
     RtlCopyMemory(&Miniport->Characteristics6,
                   MiniportDriverCharacteristics,
@@ -201,6 +202,11 @@ NdisMDeregisterMiniportDriver(
     NDIS_DbgPrint(MAX_TRACE, ("Called.\n"));
 
     ExInterlockedRemoveEntryList(&Miniport->ListEntry, &MiniportListLock);
+
+    /* A hooked driver's own handlers were copied aside */
+    if (Miniport->UnhookedCharacteristics != &Miniport->Characteristics6)
+        ExFreePoolWithTag(Miniport->UnhookedCharacteristics, NDIS_TAG);
+
     ExFreePoolWithTag(Miniport, NDIS_TAG);
 }
 

@@ -64,6 +64,8 @@ DriverEntry(
 
   CancelId = 0;
 
+  CoreHookInitialize();
+
   return STATUS_SUCCESS;
 }
 
