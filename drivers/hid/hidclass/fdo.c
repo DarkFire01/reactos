@@ -487,9 +487,10 @@ HidClassFDO_RemoveDevice(
     ASSERT(FDODeviceExtension->Common.IsFDO);
 
     //
-    // nothing may be left reading the device once it goes
+    // nothing may be left reading the device or waiting on it once it goes
     //
     HidClass_StopReads(FDODeviceExtension);
+    HidClassFDO_CompletePresenceNotifications(FDODeviceExtension, NULL, STATUS_CANCELLED, TRUE);
 
     /* FIXME cleanup */
 
@@ -514,6 +515,177 @@ HidClassFDO_RemoveDevice(
     return Status;
 }
 
+/* PRESENCE NOTIFICATIONS ****************************************************/
+
+static
+BOOLEAN
+HidClassFDO_UnlinkPresenceNotification(
+    _Inout_ PHIDCLASS_FDO_EXTENSION FDODeviceExtension,
+    _In_ PIRP Irp)
+{
+    PLIST_ENTRY Entry;
+
+    for (Entry = FDODeviceExtension->PresenceNotificationList.Flink;
+         Entry != &FDODeviceExtension->PresenceNotificationList;
+         Entry = Entry->Flink)
+    {
+        if (Entry == &Irp->Tail.Overlay.ListEntry)
+        {
+            RemoveEntryList(Entry);
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+static
+VOID
+NTAPI
+HidClassFDO_CancelPresenceNotification(
+    _Inout_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp)
+{
+    PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension = DeviceObject->DeviceExtension;
+    PHIDCLASS_FDO_EXTENSION FDODeviceExtension = PDODeviceExtension->FDODeviceExtension;
+    BOOLEAN Found;
+    KIRQL OldIrql;
+
+    IoReleaseCancelSpinLock(Irp->CancelIrql);
+
+    KeAcquireSpinLock(&FDODeviceExtension->PresenceLock, &OldIrql);
+    Found = HidClassFDO_UnlinkPresenceNotification(FDODeviceExtension, Irp);
+    KeReleaseSpinLock(&FDODeviceExtension->PresenceLock, OldIrql);
+
+    /* Whoever took it off the list first completes it */
+    if (Found)
+    {
+        Irp->IoStatus.Status = STATUS_CANCELLED;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    }
+}
+
+/**
+ * @brief
+ * Holds a presence notification until the device goes away.
+ *
+ * @return
+ * STATUS_PENDING, or STATUS_UNSUCCESSFUL once the device is being removed, in
+ * which case the caller completes the request.
+ */
+NTSTATUS
+HidClassFDO_QueuePresenceNotification(
+    _In_ PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension,
+    _Inout_ PIRP Irp)
+{
+    PHIDCLASS_FDO_EXTENSION FDODeviceExtension = PDODeviceExtension->FDODeviceExtension;
+    KIRQL OldIrql;
+
+    KeAcquireSpinLock(&FDODeviceExtension->PresenceLock, &OldIrql);
+
+    if (FDODeviceExtension->PresenceNotificationsClosed)
+    {
+        KeReleaseSpinLock(&FDODeviceExtension->PresenceLock, OldIrql);
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    IoMarkIrpPending(Irp);
+    Irp->Tail.Overlay.DriverContext[0] = PDODeviceExtension;
+    InsertTailList(&FDODeviceExtension->PresenceNotificationList, &Irp->Tail.Overlay.ListEntry);
+    IoSetCancelRoutine(Irp, HidClassFDO_CancelPresenceNotification);
+
+    /* Cancelled before the routine was in place, so nobody else will complete it */
+    if (Irp->Cancel && (IoSetCancelRoutine(Irp, NULL) != NULL))
+    {
+        RemoveEntryList(&Irp->Tail.Overlay.ListEntry);
+        KeReleaseSpinLock(&FDODeviceExtension->PresenceLock, OldIrql);
+
+        Irp->IoStatus.Status = STATUS_CANCELLED;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_PENDING;
+    }
+
+    KeReleaseSpinLock(&FDODeviceExtension->PresenceLock, OldIrql);
+    return STATUS_PENDING;
+}
+
+/**
+ * @brief
+ * Completes queued presence notifications.
+ *
+ * @param[in] PDODeviceExtension
+ * Only complete the ones sent to this collection, or all of them when NULL.
+ *
+ * @param[in] Close
+ * Refuse any more, for a device that is being removed.
+ */
+VOID
+HidClassFDO_CompletePresenceNotifications(
+    _Inout_ PHIDCLASS_FDO_EXTENSION FDODeviceExtension,
+    _In_opt_ PHIDCLASS_PDO_DEVICE_EXTENSION PDODeviceExtension,
+    _In_ NTSTATUS Status,
+    _In_ BOOLEAN Close)
+{
+    LIST_ENTRY Completed;
+    PLIST_ENTRY Entry, Next;
+    KIRQL OldIrql;
+    PIRP Irp;
+
+    InitializeListHead(&Completed);
+
+    KeAcquireSpinLock(&FDODeviceExtension->PresenceLock, &OldIrql);
+
+    if (Close)
+        FDODeviceExtension->PresenceNotificationsClosed = TRUE;
+
+    for (Entry = FDODeviceExtension->PresenceNotificationList.Flink;
+         Entry != &FDODeviceExtension->PresenceNotificationList;
+         Entry = Next)
+    {
+        Next = Entry->Flink;
+        Irp = CONTAINING_RECORD(Entry, IRP, Tail.Overlay.ListEntry);
+
+        if ((PDODeviceExtension != NULL) && (Irp->Tail.Overlay.DriverContext[0] != PDODeviceExtension))
+            continue;
+
+        /* One being cancelled right now is left for the cancel routine */
+        if (IoSetCancelRoutine(Irp, NULL) == NULL)
+            continue;
+
+        RemoveEntryList(Entry);
+        InsertTailList(&Completed, Entry);
+    }
+
+    KeReleaseSpinLock(&FDODeviceExtension->PresenceLock, OldIrql);
+
+    while (!IsListEmpty(&Completed))
+    {
+        Irp = CONTAINING_RECORD(RemoveHeadList(&Completed), IRP, Tail.Overlay.ListEntry);
+        Irp->IoStatus.Status = Status;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    }
+}
+
+/* Every collection reported earlier has since been removed */
+static
+BOOLEAN
+HidClassFDO_AllPdosRemoved(
+    _In_ PHIDCLASS_FDO_EXTENSION FDODeviceExtension)
+{
+    ULONG Index;
+
+    for (Index = 0; Index < FDODeviceExtension->DeviceRelations->Count; Index++)
+    {
+        if (FDODeviceExtension->DeviceRelations->Objects[Index] != NULL)
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
 NTSTATUS
 HidClassFDO_CopyDeviceRelations(
     IN PDEVICE_OBJECT DeviceObject,
@@ -521,7 +693,7 @@ HidClassFDO_CopyDeviceRelations(
 {
     PDEVICE_RELATIONS DeviceRelations;
     PHIDCLASS_FDO_EXTENSION FDODeviceExtension;
-    ULONG Index;
+    ULONG Index, Count;
 
     //
     // get device extension
@@ -545,10 +717,13 @@ HidClassFDO_CopyDeviceRelations(
     }
 
     //
-    // copy device objects
+    // copy the device objects that have not been removed
     //
-    for (Index = 0; Index < FDODeviceExtension->DeviceRelations->Count; Index++)
+    for (Index = 0, Count = 0; Index < FDODeviceExtension->DeviceRelations->Count; Index++)
     {
+        if (FDODeviceExtension->DeviceRelations->Objects[Index] == NULL)
+            continue;
+
         //
         // reference pdo
         //
@@ -557,13 +732,13 @@ HidClassFDO_CopyDeviceRelations(
         //
         // store object
         //
-        DeviceRelations->Objects[Index] = FDODeviceExtension->DeviceRelations->Objects[Index];
+        DeviceRelations->Objects[Count++] = FDODeviceExtension->DeviceRelations->Objects[Index];
     }
 
     //
     // set object count
     //
-    DeviceRelations->Count = FDODeviceExtension->DeviceRelations->Count;
+    DeviceRelations->Count = Count;
 
     //
     // store result
@@ -605,6 +780,39 @@ HidClassFDO_DeviceRelations(
         return IoCallDriver(FDODeviceExtension->Common.HidDeviceExtension.NextDeviceObject, Irp);
     }
 
+    //
+    // a device the minidriver reported gone has no collections and is not read
+    //
+    if (!InterlockedCompareExchange(&FDODeviceExtension->DevicePresent, FALSE, FALSE))
+    {
+        HidClass_StopReads(FDODeviceExtension);
+
+        DeviceRelations = ExAllocatePoolWithTag(NonPagedPool, sizeof(DEVICE_RELATIONS), HIDCLASS_TAG);
+        if (DeviceRelations != NULL)
+        {
+            DeviceRelations->Count = 0;
+            Status = STATUS_SUCCESS;
+        }
+        else
+        {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        Irp->IoStatus.Status = Status;
+        Irp->IoStatus.Information = (ULONG_PTR)DeviceRelations;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return Status;
+    }
+
+    //
+    // collections removed while the device was away are created again
+    //
+    if ((FDODeviceExtension->DeviceRelations != NULL) && HidClassFDO_AllPdosRemoved(FDODeviceExtension))
+    {
+        ExFreePoolWithTag(FDODeviceExtension->DeviceRelations, HIDCLASS_TAG);
+        FDODeviceExtension->DeviceRelations = NULL;
+    }
+
     if (FDODeviceExtension->DeviceRelations == NULL)
     {
         //
@@ -625,6 +833,16 @@ HidClassFDO_DeviceRelations(
         // sanity check
         //
         ASSERT(FDODeviceExtension->DeviceRelations->Count > 0);
+    }
+
+    //
+    // reads stopped while the device was away start again
+    //
+    if (FDODeviceExtension->PingPong == NULL)
+    {
+        Status = HidClass_StartReads(FDODeviceExtension);
+        if (!NT_SUCCESS(Status))
+            DPRINT1("[HIDCLASS] Failed to restart the read loop %x\n", Status);
     }
 
     //
@@ -676,6 +894,15 @@ HidClassFDO_PnP(
         case IRP_MN_QUERY_DEVICE_RELATIONS:
         {
              return HidClassFDO_DeviceRelations(DeviceObject, Irp);
+        }
+        case IRP_MN_SURPRISE_REMOVAL:
+        {
+            //
+            // nobody can wait for a device that is already gone
+            //
+            HidClassFDO_CompletePresenceNotifications(FDODeviceExtension, NULL, STATUS_CANCELLED, TRUE);
+            IoCopyCurrentIrpStackLocationToNext(Irp);
+            return HidClassFDO_DispatchRequest(DeviceObject, Irp);
         }
         case IRP_MN_QUERY_REMOVE_DEVICE:
         case IRP_MN_QUERY_STOP_DEVICE:
