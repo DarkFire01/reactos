@@ -71,6 +71,15 @@ public:
         return m_Stack[m_CurrentIndex];
     }
 
+    /* Prebuilt pools also address their items by the index they were stored at. */
+    NONPAGED
+    T &
+    operator[](
+        _In_ size_t Index)
+    {
+        return m_Stack[Index];
+    }
+
 private:
 
     Rtl::KArray<T, NonPagedPoolNx>

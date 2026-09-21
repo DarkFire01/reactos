@@ -1505,6 +1505,14 @@ Arguments:
     nxAdapter->m_powerRequiredWorkItemPending = FALSE;
 }
 
+/* NDIS sizes its miniport block, so this type only names the context. */
+typedef struct _NDIS_MINIPORT_BLOCK_TYPE
+{
+    ULONG unused;
+} NDIS_MINIPORT_BLOCK_TYPE;
+
+WDF_DECLARE_CONTEXT_TYPE(NDIS_MINIPORT_BLOCK_TYPE);
+
 _Use_decl_annotations_
 NTSTATUS
 EvtNdisAllocateMiniportBlock(
