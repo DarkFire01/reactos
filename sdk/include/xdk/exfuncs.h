@@ -1581,6 +1581,21 @@ ExSetResourceOwnerPointerEx(
 
 #endif /* (NTDDI_VERSION >= NTDDI_WIN7) */
 
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+ExGetFirmwareEnvironmentVariable(
+  _In_ PUNICODE_STRING VariableName,
+  _In_ LPGUID VendorGuid,
+  _Out_writes_bytes_opt_(*ValueLength) PVOID Value,
+  _Inout_ PULONG ValueLength,
+  _Out_opt_ PULONG Attributes);
+
+#endif /* (NTDDI_VERSION >= NTDDI_WIN8) */
+
 __drv_allocatesMem(Mem)
 _IRQL_requires_max_(DISPATCH_LEVEL)
 _Ret_maybenull_
