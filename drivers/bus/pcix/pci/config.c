@@ -160,6 +160,114 @@ PciReadDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
                             TRUE);
 }
 
+/**
+ * @brief
+ * Reads or writes a device's configuration space for a driver above PCI,
+ * whether it came in a READ_CONFIG or WRITE_CONFIG IRP or through the bus
+ * interface.
+ *
+ * @param[in] DeviceExtension
+ * The device.
+ *
+ * @param[in] WhichSpace
+ * PCI_WHICHSPACE_ROM is refused. Anything else is configuration space.
+ *
+ * @param[in,out] Buffer
+ * The data.
+ *
+ * @param[in] Offset
+ * Where in the space.
+ *
+ * @param[in] Length
+ * How many bytes.
+ *
+ * @param[in] Read
+ * TRUE to read, FALSE to write.
+ *
+ * @return
+ * STATUS_SUCCESS with all Length bytes moved, or why none were.
+ */
+NTSTATUS
+NTAPI
+PciAccessDeviceSpace(
+    _In_ PPCI_PDO_EXTENSION DeviceExtension,
+    _In_ ULONG WhichSpace,
+    _Inout_updates_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length,
+    _In_ BOOLEAN Read)
+{
+    PUCHAR Bounce;
+    PUCHAR Data;
+    ULONG End, Limit, LineOffset;
+    BOOLEAN CoversLine;
+
+    /* No ROM image is kept, and a ROM can never be written */
+    if (WhichSpace == PCI_WHICHSPACE_ROM)
+        return STATUS_INVALID_DEVICE_REQUEST;
+
+    End = Offset + Length;
+    if (End < Offset)
+        return STATUS_INTEGER_OVERFLOW;
+
+    Limit = DeviceExtension->IsExtendedConfigReachable ? PCI_EXTENDED_CONFIG_LENGTH :
+                                                         PCI_LEGACY_CONFIG_LENGTH;
+    if (End > Limit)
+        return STATUS_INVALID_DEVICE_REQUEST;
+
+    if (!Length)
+        return STATUS_SUCCESS;
+
+    /* Below DISPATCH_LEVEL the caller's buffer may be pageable, and config cycles run raised */
+    Bounce = NULL;
+    Data = Buffer;
+    if (KeGetCurrentIrql() < DISPATCH_LEVEL)
+    {
+        Bounce = ExAllocatePoolWithTag(NonPagedPool, Length, PCI_POOL_TAG);
+        if (!Bounce)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        Data = Bounce;
+    }
+
+    LineOffset = FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.InterruptLine);
+    CoversLine = (DeviceExtension->InterruptPin != 0) &&
+                 (LineOffset >= Offset) &&
+                 (LineOffset < End);
+
+    if (Read)
+    {
+        PciReadDeviceConfig(DeviceExtension, Data, Offset, Length);
+
+        /* Drivers see the line they were assigned */
+        if (CoversLine)
+            Data[LineOffset - Offset] = DeviceExtension->AdjustedInterruptLine;
+
+        if (Bounce)
+            RtlCopyMemory(Buffer, Bounce, Length);
+    }
+    else
+    {
+        if (Bounce)
+            RtlCopyMemory(Bounce, Buffer, Length);
+
+        /* The register keeps its firmware value */
+        if (CoversLine)
+            Data[LineOffset - Offset] = DeviceExtension->RawInterruptLine;
+
+        PciWriteDeviceConfig(DeviceExtension, Data, Offset, Length);
+
+        /* The caller's buffer is left as it was handed in */
+        if (!Bounce && CoversLine)
+            Data[LineOffset - Offset] = DeviceExtension->AdjustedInterruptLine;
+    }
+
+    if (Bounce)
+        ExFreePoolWithTag(Bounce, PCI_POOL_TAG);
+
+    return STATUS_SUCCESS;
+}
+
 VOID
 NTAPI
 PciReadSlotConfig(IN PPCI_FDO_EXTENSION DeviceExtension,

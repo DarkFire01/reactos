@@ -844,68 +844,21 @@ PciPdoReadWriteConfig(
     _In_ PPCI_PDO_EXTENSION DeviceExtension,
     _In_ BOOLEAN Read)
 {
-    PUCHAR Bounce;
-    ULONG Offset, Length, End, Limit, LineOffset;
-    BOOLEAN CoversLine;
+    NTSTATUS Status;
     PAGED_CODE();
 
     Irp->IoStatus.Information = 0;
 
-    /* No ROM image is kept, and a ROM can never be written */
-    if (IoStackLocation->Parameters.ReadWriteConfig.WhichSpace == PCI_WHICHSPACE_ROM)
-        return STATUS_INVALID_DEVICE_REQUEST;
+    Status = PciAccessDeviceSpace(DeviceExtension,
+                                  IoStackLocation->Parameters.ReadWriteConfig.WhichSpace,
+                                  IoStackLocation->Parameters.ReadWriteConfig.Buffer,
+                                  IoStackLocation->Parameters.ReadWriteConfig.Offset,
+                                  IoStackLocation->Parameters.ReadWriteConfig.Length,
+                                  Read);
+    if (NT_SUCCESS(Status))
+        Irp->IoStatus.Information = IoStackLocation->Parameters.ReadWriteConfig.Length;
 
-    /* Any other space value is taken as configuration space */
-    Offset = IoStackLocation->Parameters.ReadWriteConfig.Offset;
-    Length = IoStackLocation->Parameters.ReadWriteConfig.Length;
-
-    End = Offset + Length;
-    if (End < Offset)
-        return STATUS_INTEGER_OVERFLOW;
-
-    Limit = DeviceExtension->IsExtendedConfigReachable ? PCI_EXTENDED_CONFIG_LENGTH :
-                                                         PCI_LEGACY_CONFIG_LENGTH;
-    if (End > Limit)
-        return STATUS_INVALID_DEVICE_REQUEST;
-
-    if (!Length)
-        return STATUS_SUCCESS;
-
-    /* The caller's buffer may be pageable, and config cycles run at raised IRQL */
-    Bounce = ExAllocatePoolWithTag(NonPagedPool, Length, PCI_POOL_TAG);
-    if (!Bounce)
-        return STATUS_INSUFFICIENT_RESOURCES;
-
-    LineOffset = FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.InterruptLine);
-    CoversLine = (DeviceExtension->InterruptPin != 0) &&
-                 (LineOffset >= Offset) &&
-                 (LineOffset < End);
-
-    if (Read)
-    {
-        PciReadDeviceConfig(DeviceExtension, Bounce, Offset, Length);
-
-        /* Drivers see the line they were assigned */
-        if (CoversLine)
-            Bounce[LineOffset - Offset] = DeviceExtension->AdjustedInterruptLine;
-
-        RtlCopyMemory(IoStackLocation->Parameters.ReadWriteConfig.Buffer, Bounce, Length);
-    }
-    else
-    {
-        RtlCopyMemory(Bounce, IoStackLocation->Parameters.ReadWriteConfig.Buffer, Length);
-
-        /* The register keeps its firmware value */
-        if (CoversLine)
-            Bounce[LineOffset - Offset] = DeviceExtension->RawInterruptLine;
-
-        PciWriteDeviceConfig(DeviceExtension, Bounce, Offset, Length);
-    }
-
-    ExFreePoolWithTag(Bounce, PCI_POOL_TAG);
-
-    Irp->IoStatus.Information = Length;
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 NTSTATUS
