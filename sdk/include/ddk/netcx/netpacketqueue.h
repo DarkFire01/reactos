@@ -75,6 +75,10 @@ typedef struct _NET_PACKET_QUEUE_CONFIG
     PFN_PACKET_QUEUE_ADVANCE EvtAdvance;
     PFN_PACKET_QUEUE_SET_NOTIFICATION_ENABLED EvtSetNotificationEnabled;
     PFN_PACKET_QUEUE_CANCEL EvtCancel;
+#ifdef NETCX_ADAPTER_PREVIEW
+    /* When set, the queue is polled by this context and the callbacks become optional. */
+    NETEXECUTIONCONTEXT ExecutionContext;
+#endif
 } NET_PACKET_QUEUE_CONFIG;
 
 /* Start and Stop are optional and stay null unless the caller sets them. */
