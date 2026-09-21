@@ -715,3 +715,30 @@ KeSetDmaIoCoherency(IN ULONG Coherency)
     /* Save the coherency globally */
     KiDmaIoCoherency = Coherency;
 }
+
+/**
+ * @brief
+ * Makes a buffer's contents visible across a DMA transfer. x64 platforms keep
+ * DMA coherent with the processor caches, so there is nothing to flush.
+ *
+ * @param[in] Mdl
+ * The buffer.
+ *
+ * @param[in] ReadOperation
+ * Whether the transfer reads from the device.
+ *
+ * @param[in] DmaOperation
+ * Whether the transfer is DMA.
+ */
+#undef KeFlushIoBuffers
+VOID
+NTAPI
+KeFlushIoBuffers(
+    _In_ PMDL Mdl,
+    _In_ BOOLEAN ReadOperation,
+    _In_ BOOLEAN DmaOperation)
+{
+    UNREFERENCED_PARAMETER(Mdl);
+    UNREFERENCED_PARAMETER(ReadOperation);
+    UNREFERENCED_PARAMETER(DmaOperation);
+}
