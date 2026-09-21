@@ -1430,6 +1430,16 @@ PiIrpQueryPnPDeviceState(
     _In_ PDEVICE_NODE DeviceNode,
     _Out_ PPNP_DEVICE_STATE DeviceState);
 
+// HACK: Copied from wdm.h as we don't have the required NTDDI_VERSION
+#if (NTDDI_VERSION < NTDDI_WIN10_VB)
+typedef enum _DRIVER_REGKEY_TYPE
+{
+    DriverRegKeyParameters,
+    DriverRegKeyPersistentState,
+    DriverRegKeySharedPersistentState
+} DRIVER_REGKEY_TYPE, *PDRIVER_REGKEY_TYPE;
+#endif
+
 //
 // Global I/O Data
 //

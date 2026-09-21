@@ -103,3 +103,24 @@ PoFxReportDevicePoweredOn(
 {
     UNIMPLEMENTED;
 }
+
+/**
+ * @brief
+ * Tells PoFx a device finished the directed power down it was asked for.
+ *
+ * @param[in] Handle
+ * The registration handle of the device.
+ *
+ * @remarks
+ * Directed transitions only go to devices registered with PO_FX_VERSION_V3,
+ * and PoFx registration is not implemented, so none is ever in flight.
+ */
+NTKRNLVISTAAPI
+VOID
+NTAPI
+PoFxCompleteDirectedPowerDown(
+    _In_ POHANDLE Handle)
+{
+    if (Handle == NULL)
+        DPRINT1("PoFxCompleteDirectedPowerDown: NULL handle\n");
+}
