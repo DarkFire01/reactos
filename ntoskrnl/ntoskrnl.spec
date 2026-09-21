@@ -66,6 +66,8 @@
 @ stdcall ExAllocateCacheAwareRundownProtection(long long)
 @ stdcall ExAllocateFromPagedLookasideList(ptr) ExiAllocateFromPagedLookasideList
 @ stdcall ExAllocatePool(long long)
+@ stdcall ExAllocatePool2(int64 long long)
+@ stdcall ExAllocatePool3(int64 long long ptr long)
 @ stdcall ExAllocatePoolWithQuota(long long)
 @ stdcall ExAllocatePoolWithQuotaTag(long long long)
 @ stdcall ExAllocatePoolWithTag(long long long)
@@ -86,6 +88,7 @@
 @ stdcall ExExtendZone(ptr ptr long)
 @ stdcall ExFreeCacheAwareRundownProtection(ptr)
 @ stdcall ExFreePool(ptr)
+@ stdcall ExFreePool2(ptr long ptr long)
 @ stdcall ExFreePoolWithTag(ptr long)
 @ stdcall ExFreeToPagedLookasideList(ptr ptr) ExiFreeToPagedLookasideList
 @ stdcall ExGetCurrentProcessorCounts(ptr ptr ptr)
