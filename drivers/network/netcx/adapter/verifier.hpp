@@ -175,6 +175,12 @@ typedef enum _FailureCode : ULONG_PTR
     FailureCode_OffloadNotPaused,
     FailureCode_InvalidGsoHardwareCapabilities,
     FailureCode_InvalidRSSConfiguration,
+    FailureCode_InvalidAlpcMessage,
+    FailureCode_StuckNetBufferList,
+    FailureCode_InvalidNetMemoryRelease,
+    FailureCode_InvalidNetMemoryConfigStructure,
+    FailureCode_LeakedNetMemoryNotAllMemoryReleased,
+    FailureCode_StuckOidRequest,
 } FailureCode;
 
 //
