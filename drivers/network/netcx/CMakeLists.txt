@@ -99,6 +99,7 @@ list(APPEND SOURCE_TRANSLATOR
     translator/metadata/metadatatranslator.cpp
     translator/segmentation/segmentation.cpp
     translator/segmentation/km/segmentationkm.cpp
+    translator/rsclibstub.cpp
     translator/seglibstub.cpp)
 
 #
