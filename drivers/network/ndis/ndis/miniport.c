@@ -992,6 +992,94 @@ NdisICreateClose(
   return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Logs what a PCI adapter looks like after its miniport refused to initialize:
+ * its command and status, its BARs, its power state and the memory ranges the
+ * miniport was given.
+ *
+ * @param[in] Adapter
+ * The adapter.
+ */
+static
+VOID
+MiniLogPciState(
+    _In_ PLOGICAL_ADAPTER Adapter)
+{
+    PCI_COMMON_CONFIG Config;
+    PCM_PARTIAL_RESOURCE_LIST Resources;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Descriptor;
+    UCHAR Capability[4];
+    USHORT PowerControl;
+    UCHAR Next;
+    ULONG Loops;
+    ULONG i;
+
+    if (Adapter->BusInterface.GetBusData == NULL ||
+        Adapter->BusInterface.GetBusData(Adapter->BusInterface.Context,
+                                         PCI_WHICHSPACE_CONFIG,
+                                         &Config,
+                                         0,
+                                         PCI_COMMON_HDR_LENGTH) != PCI_COMMON_HDR_LENGTH)
+    {
+        return;
+    }
+
+    NDIS_DbgPrint(MIN_TRACE, ("PCI %04x:%04x command %04x status %04x\n",
+                              Config.VendorID, Config.DeviceID, Config.Command, Config.Status));
+
+    for (i = 0; i < PCI_TYPE0_ADDRESSES; i++)
+        NDIS_DbgPrint(MIN_TRACE, ("  BAR%lu %08lx\n", i, Config.u.type0.BaseAddresses[i]));
+
+    /* The power state sits in the power management capability, if there is one */
+    Next = (Config.Status & PCI_STATUS_CAPABILITIES_LIST) ? Config.u.type0.CapabilitiesPtr : 0;
+    for (Loops = 0; Next != 0 && Loops < 48; Loops++)
+    {
+        if (Adapter->BusInterface.GetBusData(Adapter->BusInterface.Context,
+                                             PCI_WHICHSPACE_CONFIG,
+                                             Capability,
+                                             Next,
+                                             sizeof(Capability)) != sizeof(Capability))
+        {
+            break;
+        }
+
+        if (Capability[0] == PCI_CAPABILITY_ID_POWER_MANAGEMENT)
+        {
+            if (Adapter->BusInterface.GetBusData(Adapter->BusInterface.Context,
+                                                 PCI_WHICHSPACE_CONFIG,
+                                                 &PowerControl,
+                                                 Next + 4,
+                                                 sizeof(PowerControl)) == sizeof(PowerControl))
+            {
+                NDIS_DbgPrint(MIN_TRACE, ("  power state D%u\n", PowerControl & 3));
+            }
+            break;
+        }
+
+        Next = Capability[1];
+    }
+
+    if (Adapter->NdisMiniportBlock.AllocatedResources == NULL)
+        return;
+
+    Resources = &Adapter->NdisMiniportBlock.AllocatedResources->List[0].PartialResourceList;
+    for (i = 0; i < Resources->Count; i++)
+    {
+        Descriptor = &Resources->PartialDescriptors[i];
+        if (Descriptor->Type == CmResourceTypeMemory || Descriptor->Type == CmResourceTypeMemoryLarge)
+        {
+            NDIS_DbgPrint(MIN_TRACE, ("  memory %I64x length %lx\n",
+                                      Descriptor->u.Memory.Start.QuadPart, Descriptor->u.Memory.Length));
+        }
+        else if (Descriptor->Type == CmResourceTypePort)
+        {
+            NDIS_DbgPrint(MIN_TRACE, ("  port %I64x length %lx\n",
+                                      Descriptor->u.Port.Start.QuadPart, Descriptor->u.Port.Length));
+        }
+    }
+}
+
 NTSTATUS
 NTAPI
 NdisIPnPStartDevice(
@@ -1198,6 +1286,7 @@ NdisIPnPStartDevice(
   if (NdisStatus != NDIS_STATUS_SUCCESS)
     {
       NDIS_DbgPrint(MIN_TRACE, ("MiniportInitialize() failed for an adapter (%lx).\n", NdisStatus));
+      MiniLogPciState(Adapter);
       ExInterlockedRemoveEntryList( &Adapter->ListEntry, &AdapterListLock );
       return NdisStatus;
     }
