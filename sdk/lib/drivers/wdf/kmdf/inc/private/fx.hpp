@@ -38,18 +38,11 @@ extern "C" {
 // #include "wdfdevicepri.h"
 // #include "wdfiotargetpri.h"
 #include "wdfcx.h"
+#include "wdfcxbase.h"
+#include "wdftriage.h"
 #include "wdfldr.h"
 
 #include <fxdynamicswrapper.h>
-
-#include "wdf10.h"
-#include "wdf11.h"
-#include "wdf15.h"
-#include "wdf17.h"
-#include "wdf19.h"
-#include "wdf111.h"
-#include "wdf113.h"
-#include "wdf115.h"
 }
 
 #define KMDF_ONLY_CODE_PATH_ASSERT()
@@ -204,7 +197,10 @@ extern "C" {
 
 // DMA support
 #include "fxdmaenabler.hpp"
-#include "fxdmatransaction.hpp"
+#include "fxdmatransactionbase.hpp"
+#include "fxdmatransactionscattergather.hpp"
+#include "fxdmatransactionpacket.hpp"
+#include "fxdmatransactionsystem.hpp"
 #include "fxcommonbuffer.hpp"
 
 // Triage info.

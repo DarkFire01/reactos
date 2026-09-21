@@ -109,7 +109,12 @@ FxUsbDeviceControlContext::CopyParameters(
     m_CompletionParams.IoStatus.Information = m_Urb->TransferBufferLength;
     m_UsbParameters.Parameters.DeviceControlTransfer.Length = m_Urb->TransferBufferLength;
 #elif (FX_CORE_MODE == FX_CORE_USER_MODE)
-    m_CompletionParams.IoStatus.Information = m_UmUrb.UmUrbControlTransfer.TransferBufferLength;
+    //
+    // In case of UMDF since the URB itself is not sent down the stack
+    // we propagate the transfer length into the URB via the UM IRP
+    //
+    m_UmUrb.UmUrbControlTransfer.TransferBufferLength = (ULONG)m_CompletionParams.IoStatus.Information;
+
     m_UsbParameters.Parameters.DeviceControlTransfer.Length = m_UmUrb.UmUrbControlTransfer.TransferBufferLength;
 #endif
     FxUsbRequestContext::CopyParameters(Request); // __super call
@@ -320,9 +325,9 @@ FxUsbDeviceStringContext::AllocateDescriptor(
     length = sizeof(USB_STRING_DESCRIPTOR) - sizeof(pDescriptor->bString[0]) +
              BufferSize;
 
-    pDescriptor = (PUSB_STRING_DESCRIPTOR) FxPoolAllocate(
+    pDescriptor = (PUSB_STRING_DESCRIPTOR) FxPoolAllocate2(
         FxDriverGlobals,
-        NonPagedPool,
+        POOL_FLAG_NON_PAGED,
         length);
 
     if (pDescriptor == NULL) {
@@ -332,8 +337,6 @@ FxUsbDeviceStringContext::AllocateDescriptor(
     if (m_StringDescriptor != NULL) {
         FxPoolFree(m_StringDescriptor);
     }
-
-    RtlZeroMemory(pDescriptor, length);
 
     m_StringDescriptor = pDescriptor;
 
@@ -397,6 +400,7 @@ FxUsbDevice::FxUsbDevice(
 
     m_USBDHandle = NULL;
     m_UrbType = FxUrbTypeLegacy;
+    m_SspIsochPipeFlags = FALSE;
 
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
     m_pHostTargetFile = NULL;
@@ -977,7 +981,7 @@ FxUsbDevice::CreateInterfaces(
     // Allocate an array large enough to hold pointers to interfaces
     //
     m_Interfaces = (FxUsbInterface**)
-        FxPoolAllocate(pFxDriverGlobals, NonPagedPool, size);
+        FxPoolAllocate2(pFxDriverGlobals, POOL_FLAG_NON_PAGED, size);
 
     if (m_Interfaces == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -989,8 +993,6 @@ FxUsbDevice::CreateInterfaces(
 
         goto Done;
     }
-
-    RtlZeroMemory(m_Interfaces, size);
     m_NumInterfaces = m_ConfigDescriptor->bNumInterfaces;
 
     //
@@ -1358,8 +1360,8 @@ FxUsbDevice::SelectConfigDescriptor(
         return status;
     }
 
-    pInterfaces = (PUSBD_INTERFACE_LIST_ENTRY) FxPoolAllocate(
-        pFxDriverGlobals, NonPagedPool, size);
+    pInterfaces = (PUSBD_INTERFACE_LIST_ENTRY) FxPoolAllocate2(
+        pFxDriverGlobals, POOL_FLAG_NON_PAGED, size);
 
     if (pInterfaces == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1371,8 +1373,6 @@ FxUsbDevice::SelectConfigDescriptor(
 
         return status;
     }
-
-    RtlZeroMemory(pInterfaces, size);
 
     for (i = 0; i < numInterfaces; i++) {
         pInterfaces[i].InterfaceDescriptor = interfaceDescriptors[i];
@@ -1393,10 +1393,7 @@ FxUsbDevice::SelectConfigDescriptor(
     // device, not the provided one), and if that validation fails, we return
     // !NT_SUCCESS from SelectConfig().
     //
-    urb = FxUsbCreateConfigRequest(GetDriverGlobals(),
-                                   configurationDescriptor,
-                                   pInterfaces,
-                                   GetDefaultMaxTransferSize());
+    urb = CreateConfigRequest(configurationDescriptor, pInterfaces);
     if (urb == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -1458,6 +1455,7 @@ Return Value:
     ULONG iPipe;
     USHORT maxNumPipes, size;
     UCHAR numPipes;
+    UCHAR numPipesAllocated = 0;
     FxInterfacePipeInformation* pPipeInfo;
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     FxUsbInterface * pUsbInterface ;
@@ -1510,13 +1508,15 @@ Return Value:
         // Use one in the zero case to make the logic simpler
         //
         size = sizeof(FxInterfacePipeInformation);
+        numPipesAllocated = 1;
     }
     else {
         size = m_NumInterfaces * sizeof(FxInterfacePipeInformation);
+        numPipesAllocated = m_NumInterfaces;
     }
 
-    pPipeInfo = (FxInterfacePipeInformation*) FxPoolAllocate(
-        pFxDriverGlobals, NonPagedPool, size
+    pPipeInfo = (FxInterfacePipeInformation*) FxPoolAllocate2(
+        pFxDriverGlobals, POOL_FLAG_NON_PAGED, size
         );
 
     if (pPipeInfo == NULL) {
@@ -1527,8 +1527,6 @@ Return Value:
             "WDFUSBDEVICE 0x%p, %!STATUS!", GetHandle(), status);
         goto Done;
     }
-
-    RtlZeroMemory(pPipeInfo, size);
 
     //
     // The following code and the one in select setting have a lot in common
@@ -1592,9 +1590,9 @@ Return Value:
             size = sizeof(FxUsbPipe*);
         }
 
-        ppPipes = (FxUsbPipe**) FxPoolAllocate(
+        ppPipes = (FxUsbPipe**) FxPoolAllocate2(
             pFxDriverGlobals,
-            NonPagedPool,
+            POOL_FLAG_NON_PAGED,
             size
             );
 
@@ -1607,8 +1605,6 @@ Return Value:
                 pIface->InterfaceNumber, status);
             goto Done;
         }
-
-        RtlZeroMemory(ppPipes, size);
 
         //
         // We store the pointer to the newly allocated arary in a temporary b/c
@@ -1675,10 +1671,10 @@ Return Value:
     if (m_NumInterfaces > 1 && maxNumPipes > 0) {
         size = GET_SELECT_INTERFACE_REQUEST_SIZE(maxNumPipes);
 
-        pSelectUrb = (PURB) FxPoolAllocate(GetDriverGlobals(),
-                                           NonPagedPool,
-                                           size
-                                           );
+        pSelectUrb = (PURB) FxPoolAllocate2(GetDriverGlobals(),
+                                            POOL_FLAG_NON_PAGED,
+                                            size
+                                            );
 
         if (pSelectUrb == NULL) {
             status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1687,8 +1683,6 @@ Return Value:
                 "Could not allocate a select interface URB, %!STATUS!", status);
             goto Done;
         }
-
-        RtlZeroMemory(pSelectUrb, size);
     }
 
     //
@@ -1845,7 +1839,7 @@ Done:
         //
         // Free all arrays that may have been allocated
         //
-        for (intfIndex = 0; intfIndex < m_NumInterfaces; intfIndex++) {
+        for (intfIndex = 0; intfIndex < numPipesAllocated; intfIndex++) {
             //
             // We can have NumPipes == 0 and still have an allocated array, so
             // use the array != NULL as the check.
@@ -1960,9 +1954,9 @@ FxUsbDevice::SelectConfigInterfaces(
         }
     }
 
-    pInterfaces = (PUSBD_INTERFACE_LIST_ENTRY) FxPoolAllocate(
+    pInterfaces = (PUSBD_INTERFACE_LIST_ENTRY) FxPoolAllocate2(
         pFxDriverGlobals,
-        NonPagedPool,
+        POOL_FLAG_NON_PAGED,
         size
         );
 
@@ -1977,8 +1971,6 @@ FxUsbDevice::SelectConfigInterfaces(
         return status;
     }
 
-    RtlZeroMemory(pInterfaces, size);
-
     for (i = 0; i < NumInterfaces; i++) {
         pInterfaces[i].InterfaceDescriptor = InterfaceDescriptors[i];
     }
@@ -1987,10 +1979,7 @@ FxUsbDevice::SelectConfigInterfaces(
         ConfigurationDescriptor = m_ConfigDescriptor;
     }
 
-    urb = FxUsbCreateConfigRequest(GetDriverGlobals(),
-                                   ConfigurationDescriptor,
-                                   pInterfaces,
-                                   GetDefaultMaxTransferSize());
+    urb = CreateConfigRequest(ConfigurationDescriptor, pInterfaces);
     if (urb == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
     }

@@ -101,7 +101,7 @@ FxUsbPipeContinuousReader::Config(
 
     pFxDriverGlobals = m_Pipe->GetDriverGlobals();
 
-    if (TotalBufferLength <= MAXUSHORT) {
+    if (TotalBufferLength < PAGE_SIZE) {
         m_Lookaside = new(pFxDriverGlobals, WDF_NO_OBJECT_ATTRIBUTES)
             FxNPagedLookasideList(pFxDriverGlobals, pFxDriverGlobals->Tag);
     }
@@ -254,7 +254,7 @@ FxUsbPipe::FormatTransferRequest(
         }
 
         if (m_CheckPacketSize &&
-            (bufferSize % m_PipeInformation.MaximumPacketSize) != 0) {
+            (bufferSize % GetMaxPacketSize()) != 0) {
             return STATUS_INVALID_BUFFER_SIZE;
         }
     }
@@ -348,36 +348,3 @@ FxUsbPipe::FormatTransferRequest(
 
     return STATUS_SUCCESS;
 }
-
-VOID
-FxUsbPipe::GetInformation(
-    __out PWDF_USB_PIPE_INFORMATION PipeInformation
-    )
-{
-    //
-    // Do a field by field copy for the WDF structure, since fields could change.
-    //
-    PipeInformation->MaximumPacketSize = m_PipeInformation.MaximumPacketSize;
-    PipeInformation->EndpointAddress = m_PipeInformation.EndpointAddress;
-    PipeInformation->Interval = m_PipeInformation.Interval;
-    PipeInformation->PipeType = _UsbdPipeTypeToWdf(m_PipeInformation.PipeType);
-    PipeInformation->MaximumTransferSize = m_PipeInformation.MaximumTransferSize;
-    PipeInformation->SettingIndex = m_UsbInterface->GetConfiguredSettingIndex();
-}
-
-WDF_USB_PIPE_TYPE
-FxUsbPipe::GetType(
-    VOID
-    )
-{
-    return _UsbdPipeTypeToWdf(m_PipeInformation.PipeType);
-}
-
-BOOLEAN
-FxUsbPipe::IsType(
-    __in WDF_USB_PIPE_TYPE Type
-    )
-{
-    return _UsbdPipeTypeToWdf(m_PipeInformation.PipeType) == Type ? TRUE : FALSE;
-}
-

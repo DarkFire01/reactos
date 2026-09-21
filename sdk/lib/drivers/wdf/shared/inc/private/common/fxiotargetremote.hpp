@@ -120,11 +120,11 @@ enum FxIoTargetRemoteOpenState {
     FxIoTargetRemoteOpenStateOpen,
 };
 
-struct FxIoTargetRemoveOpenParams {
+struct FxIoTargetRemoteOpenParams {
 
-    FxIoTargetRemoveOpenParams()
+    FxIoTargetRemoteOpenParams()
     {
-        RtlZeroMemory(this, sizeof(FxIoTargetRemoveOpenParams));
+        RtlZeroMemory(this, sizeof(FxIoTargetRemoteOpenParams));
     }
 
     VOID
@@ -209,7 +209,7 @@ public:
 
     NTSTATUS
     GetTargetDeviceRelations(
-        _Out_ BOOLEAN* Close
+        _Inout_ BOOLEAN* Close
         );
 
     BOOLEAN
@@ -246,7 +246,7 @@ public:
     NTSTATUS
     OpenTargetHandle(
         _In_ PWDF_IO_TARGET_OPEN_PARAMS OpenParams,
-        _Inout_ FxIoTargetRemoveOpenParams* pParams
+        _Inout_ FxIoTargetRemoteOpenParams* pParams
         );
 
     VOID
@@ -428,7 +428,7 @@ public:
     UCHAR m_OpenState;
 
 protected:
-    FxIoTargetRemoveOpenParams m_OpenParams;
+    FxIoTargetRemoteOpenParams m_OpenParams;
 };
 
 #if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)

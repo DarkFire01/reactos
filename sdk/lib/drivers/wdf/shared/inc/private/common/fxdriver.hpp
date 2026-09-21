@@ -60,7 +60,30 @@ friend class FxWmiIrpHandler;
 private:
 
     MxDriverObject m_DriverObject;
+
+    //
+    // A copy of RegistryPath parameter to DriverEntry API.
+    //
+    //  - Buffer field may be NULL, if memory allocation fails. When not NULL,
+    //    it is always properly NULL-terminated.
+    //  - Length field is the byte size of the buffer, excluding trailing NULL.
+    //  - MaximumLength field is Length + sizeof(UNICODE_NULL)
+    //
     UNICODE_STRING m_RegistryPath;
+
+    //
+    // The service name of the driver. From INF file:
+    //
+    //    KMDF: "AddService=<name>"  in [DDInstall.Services] section
+    //    UMDF: "UmdfService=<name>" in [DDInstall.Wdf] section
+    //
+    // FxDriverGlobals.Public.DriverName[32] serves similiar purpose but that
+    // is limited to the first 31 char of the services name. Newer code should
+    // use m_ServiceName instead.
+    //
+    // The field can be NULL e.g. allocating m_RegistryPath.Buffer fails.
+    //
+    PCWSTR m_ServiceName;
 
     BOOLEAN m_DebuggerConnected;
 
@@ -112,11 +135,17 @@ private:
 
 #if FX_IS_USER_MODE
     //
-    // A handle to the driver service parameters key.
+    // A handle to the driver service parameters key and persistent state key.
     // The framework does not have permission to open it with
     // write access from user mode, so we keep a pre-opened one.
     //
     HKEY m_DriverParametersKey;
+    HKEY m_DriverPersistentStateKey;
+
+    //
+    // Full path to the persistent driver state directory.
+    //
+    FxString* m_DriverDataDirectory;
 #endif
 
 private:
@@ -218,7 +247,7 @@ public:
 
     _Must_inspect_result_
     NTSTATUS
-    FxDriver::AddDevice(
+    AddDevice(
         _In_  IWudfDeviceStack *        DevStack,
         _In_  LPCWSTR                   KernelDeviceName,
         _In_opt_ HKEY                   PdoKey,
@@ -226,6 +255,19 @@ public:
         _In_  LPCWSTR                   DevInstanceID,
         _In_  ULONG                     DriverID
         );
+
+    _Must_inspect_result_
+    NTSTATUS
+    AddCompanion(
+        _In_  IWudfCompanion *  Companion
+        );
+
+    _Must_inspect_result_
+    NTSTATUS
+    InvokeDeviceAdd(
+        _In_  PWDFDEVICE_INIT Init
+        );
+
 #endif
 
     VOID
@@ -245,6 +287,18 @@ public:
         )
     {
         return &m_RegistryPath;
+    }
+
+    PUNICODE_STRING
+    GetPersistentStateRegistryPath(
+        VOID
+        )
+    {
+
+
+
+
+
     }
 
     __inline
@@ -368,16 +422,21 @@ public:
     static
     MdDriverUnloadType Unload;
 
+    NTSTATUS
+    GetDriverServiceName(
+        _Out_ UNICODE_STRING* ServiceName
+        );
+
 #if FX_IS_USER_MODE
 private:
 
     //
-    // Open the handle to the driver service parameters key
-    // that we keep opened for use from user mode.
+    // Open the handle to the driver service parameters key and persistent
+    // state key that we keep opened for use from user mode.
     //
     NTSTATUS
-    OpenParametersKey(
-        VOID
+    OpenDriverKey(
+        UMINT::WDF_PROPERTY_STORE_ROOT_CLASS ServiceKeyType
         );
 
     VOID
@@ -395,7 +454,34 @@ public:
     {
         return m_DriverParametersKey;
     }
+
+    __inline
+    HKEY
+    GetDriverPersistentStateKey(
+        VOID
+        )
+    {
+        return m_DriverPersistentStateKey;
+    }
+
+    NTSTATUS
+    InitDriverDataDirectory(
+        VOID
+        );
+
+    NTSTATUS
+    GetDriverDataDirectory(
+        _In_ FxString *String
+        );
+
+    NTSTATUS
+    InitFxRegKey(
+        _In_  ACCESS_MASK                          DesiredAccess,
+        _In_  UMINT::WDF_PROPERTY_STORE_ROOT_CLASS ServiceKeyType,
+        _In_  FxRegKey*                            FrameworkRegKey
+        );
 #endif
+
 
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
 

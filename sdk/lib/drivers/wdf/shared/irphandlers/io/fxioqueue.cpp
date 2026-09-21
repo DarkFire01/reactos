@@ -283,6 +283,28 @@ Returns:
         return STATUS_INVALID_PARAMETER;
     }
 
+#if (FX_CORE_MODE==FX_CORE_USER_MODE)
+    //
+    // UMDF does not support internal IOCTLs
+    //
+    if (pConfig->EvtIoInternalDeviceControl != NULL) {
+        if (FxDriverGlobals->IsVersionGreaterThanOrEqualTo(2, 19)) {
+            Status = STATUS_INVALID_PARAMETER;
+            DoTraceLevelMessage(FxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGIO,
+                                "EvtIoInternalDeviceControl is not supported "
+                                "for UMDF, Queue 0x%p %!STATUS!",
+                                GetObjectHandle(), Status);
+            return Status;
+        }
+        else {
+            DoTraceLevelMessage(FxDriverGlobals, TRACE_LEVEL_WARNING, TRACINGIO,
+                                "EvtIoInternalDeviceControl is not supported "
+                                "for UMDF, Queue 0x%p",
+                                GetObjectHandle());
+        }
+    }
+#endif
+
     //
     // If not a manual queue, must set at least IoStart, or one of
     // read|write|devicecontrol
@@ -506,6 +528,9 @@ Returns:
     //
     m_PkgIo->RemoveQueueReferences(this);
 
+    //
+    // DispatchEvents drops the lock before returning
+    //
     DispatchEvents(irql);
 
     //
@@ -3695,7 +3720,6 @@ Returns:
             //
             request->m_Canceled = TRUE;
 
-#pragma prefast(suppress:__WARNING_PASSING_FUNCTION_UNEXPECTED_NULL, "This is the tag value used in the ADDREF of Peek()")
             request->RELEASE(NULL);
         }
 
@@ -4667,7 +4691,7 @@ Return Value:
 __drv_requiresIRQL(DISPATCH_LEVEL)
 VOID
 FxIoQueue::ProcessIdleComplete(
-    __out PKIRQL PreviousIrql
+    _In_ PKIRQL PreviousIrql
     )
 /*++
 
@@ -4720,7 +4744,7 @@ Return Value:
 __drv_requiresIRQL(DISPATCH_LEVEL)
 VOID
 FxIoQueue::ProcessPurgeComplete(
-    __out PKIRQL PreviousIrql
+    _In_ PKIRQL PreviousIrql
     )
 /*++
 
@@ -4771,7 +4795,7 @@ Return Value:
 __drv_requiresIRQL(DISPATCH_LEVEL)
 VOID
 FxIoQueue::ProcessReadyNotify(
-    __out PKIRQL PreviousIrql
+    _In_ PKIRQL PreviousIrql
     )
 /*++
 
@@ -4833,7 +4857,7 @@ Return Value:
 __drv_requiresIRQL(DISPATCH_LEVEL)
 BOOLEAN
 FxIoQueue::ProcessCancelledRequests(
-    __out PKIRQL PreviousIrql
+    _In_ PKIRQL PreviousIrql
     )
 /*++
 
@@ -4917,7 +4941,7 @@ FxIoQueue::ProcessCancelledRequests(
 __drv_requiresIRQL(DISPATCH_LEVEL)
 BOOLEAN
 FxIoQueue::ProcessCancelledRequestsOnQueue(
-    __out PKIRQL PreviousIrql
+    _In_ PKIRQL PreviousIrql
     )
 /*++
 
@@ -4990,7 +5014,7 @@ FxIoQueue::ProcessCancelledRequestsOnQueue(
 __drv_requiresIRQL(DISPATCH_LEVEL)
 BOOLEAN
 FxIoQueue::ProcessPowerEvents(
-    __out PKIRQL PreviousIrql
+    _In_ PKIRQL PreviousIrql
     )
 /*++
 
@@ -5624,7 +5648,7 @@ __drv_requiresIRQL(DISPATCH_LEVEL)
 VOID
 FxIoQueue::ProcessAcknowledgedRequests(
     __in FxRequest* Request,
-    __out PKIRQL PreviousIrql
+    _In_ PKIRQL PreviousIrql
     )
 /*++
 

@@ -44,10 +44,10 @@ public:
     operator new(
         __in size_t Size,
         __in PFX_DRIVER_GLOBALS FxDriverGlobals,
-        __in POOL_TYPE PoolType = NonPagedPool
+        __in POOL_FLAGS PoolFlags = POOL_FLAG_NON_PAGED
         )
     {
-        return FxPoolAllocate(FxDriverGlobals, PoolType, Size);
+        return FxPoolAllocate2(FxDriverGlobals, PoolFlags, Size);
     }
 
     VOID
@@ -110,8 +110,10 @@ public:
     }
 
 protected:
+
     __inline
     void
+    #pragma prefast(suppress:__WARNING_RETURN_UNINIT_VAR, "Returning uninitialized memory '*PreviousIrql'")
     CallbackStart(
         __out PKIRQL PreviousIrql
         )

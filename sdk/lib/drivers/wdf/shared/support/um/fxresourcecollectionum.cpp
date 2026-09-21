@@ -23,13 +23,13 @@ Revision History:
 
 --*/
 
-#include "FxSupportPch.hpp"
+#include "fxsupportpch.hpp"
 #include <intsafe.h>
 
 #if defined(EVENT_TRACING)
 // Tracing support
 extern "C" {
-#include "FxResourceCollectionUm.tmh"
+// #include "FxResourceCollectionUm.tmh"
 }
 #endif
 

@@ -1311,7 +1311,7 @@ FxIrp::GetDriverContextSize(
 __inline
 VOID
 FxIrp::CopyParameters(
-    _Out_ PWDF_REQUEST_PARAMETERS Parameters
+    _Inout_ PWDF_REQUEST_PARAMETERS Parameters
     )
 {
     RtlMoveMemory(&Parameters->Parameters,

@@ -23,10 +23,10 @@ Revision History:
 --*/
 
 #include "fxmin.hpp"
-#include "FxInterruptThreadpoolUm.hpp"
+#include "fxinterruptthreadpoolum.hpp"
 
 extern "C" {
-#include "InterruptObjectUm.tmh"
+// #include "InterruptObjectUm.tmh"
 }
 
 #define STRSAFE_LIB

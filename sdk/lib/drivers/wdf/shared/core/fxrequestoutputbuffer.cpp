@@ -69,7 +69,7 @@ Return Value:
         // we can safely call MmGetSystemAddressForMdlSafe again to get a
         // valid VA pointer.
         //
-        return Mx::MxGetSystemAddressForMdlSafe(m_Mdl, NormalPagePriority);
+        return Mx::MxGetSystemAddressForMdlSafe(m_Mdl, NormalPagePriority | MdlMappingNoExecute);
 
     case METHOD_NEITHER:
         return m_Buffer;
@@ -218,7 +218,7 @@ ULONG
 FxRequestOutputBuffer::AddRef(
     __in PVOID Tag,
     __in LONG Line,
-    __in_opt PSTR File
+    __in_opt PCSTR File
     )
 /*++
 
@@ -252,7 +252,7 @@ ULONG
 FxRequestOutputBuffer::Release(
     __in PVOID Tag,
     __in LONG Line,
-    __in_opt PSTR File
+    __in_opt PCSTR File
     )
 /*++
 
