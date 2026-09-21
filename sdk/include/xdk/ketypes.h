@@ -432,7 +432,16 @@ typedef PROCESSOR_CALLBACK_FUNCTION *PPROCESSOR_CALLBACK_FUNCTION;
 typedef enum _KINTERRUPT_POLARITY {
   InterruptPolarityUnknown,
   InterruptActiveHigh,
-  InterruptActiveLow
+  InterruptRisingEdge = InterruptActiveHigh,
+  InterruptActiveLow,
+  InterruptFallingEdge = InterruptActiveLow,
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+  InterruptActiveBoth,
+#endif
+#if (NTDDI_VERSION >= NTDDI_WINBLUE)
+  InterruptActiveBothTriggerLow = InterruptActiveBoth,
+  InterruptActiveBothTriggerHigh,
+#endif
 } KINTERRUPT_POLARITY, *PKINTERRUPT_POLARITY;
 
 typedef enum _KPROFILE_SOURCE {
