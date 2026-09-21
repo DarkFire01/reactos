@@ -57,20 +57,6 @@ KeGetCurrentNodeNumber()
 	return 0;
 }
 
-_IRQL_requires_max_(DISPATCH_LEVEL)
-NTKRNLVISTAAPI
-BOOLEAN
-NTAPI
-KeSetCoalescableTimer(
-    _Inout_ PKTIMER Timer,
-    _In_ LARGE_INTEGER DueTime,
-    _In_ ULONG Period,
-    _In_ ULONG TolerableDelay,
-    _In_opt_ PKDPC Dpc)
-{
-    return KeSetTimerEx(Timer, DueTime, Period, Dpc);
-}
-
 /*
  * ReactOS runs the single processor group model, so every logical processor
  * lives in group 0 and the group aware APIs below sit on the plain ones.

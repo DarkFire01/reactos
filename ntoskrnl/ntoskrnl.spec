@@ -1786,6 +1786,7 @@
 @ stdcall -version=0x600+ KeRegisterProcessorChangeCallback(ptr ptr long)
 @ stdcall -version=0x600+ KeRevertToUserAffinityThreadEx(long)
 @ stdcall -version=0x601+ KeRevertToUserGroupAffinityThread(ptr)
+@ stdcall -version=0x601+ KeSetCoalescableTimer(ptr long long long long ptr)
 @ stdcall -version=0x600+ KeSetSystemAffinityThreadEx(long)
 @ stdcall -version=0x601+ KeSetSystemGroupAffinityThread(ptr ptr)
 @ stdcall -version=0x601+ KeSetTargetProcessorDpcEx(ptr ptr)
