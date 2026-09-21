@@ -86,6 +86,14 @@ typedef struct _EVENT_FILTER_HEADER {
   ULONG NextOffset;
 } EVENT_FILTER_HEADER, *PEVENT_FILTER_HEADER;
 
+typedef enum _EVENT_INFO_CLASS {
+  EventProviderBinaryTrackInfo,
+  EventProviderSetReserved1,
+  EventProviderSetTraits,
+  EventProviderUseDescriptorType,
+  MaxEventInfo
+} EVENT_INFO_CLASS;
+
 #ifndef _ETW_KM_
 
 typedef VOID

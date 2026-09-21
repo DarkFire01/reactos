@@ -299,6 +299,19 @@ MmMapIoSpace(
   _In_ SIZE_T NumberOfBytes,
   _In_ MEMORY_CACHING_TYPE CacheType);
 
+#if (NTDDI_VERSION >= NTDDI_WIN10) || defined(__REACTOS__)
+_Must_inspect_result_
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Out_writes_bytes_opt_(NumberOfBytes)
+NTKERNELAPI
+PVOID
+NTAPI
+MmMapIoSpaceEx(
+  _In_ PHYSICAL_ADDRESS PhysicalAddress,
+  _In_ SIZE_T NumberOfBytes,
+  _In_ ULONG Protect);
+#endif
+
 _Must_inspect_result_
 _When_(AccessMode==KernelMode, _IRQL_requires_max_(DISPATCH_LEVEL))
 _When_(AccessMode==UserMode, _Maybe_raises_SEH_exception_ _IRQL_requires_max_(APC_LEVEL))
