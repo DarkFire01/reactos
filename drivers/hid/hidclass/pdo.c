@@ -575,8 +575,25 @@ HidClassPDO_PnP(
             Status = STATUS_SUCCESS;
             break;
         }
+        case IRP_MN_SURPRISE_REMOVAL:
+        {
+            //
+            // nothing sent to a collection that is gone can wait on it
+            //
+            HidClassFDO_CompletePresenceNotifications(PDODeviceExtension->FDODeviceExtension,
+                                                      PDODeviceExtension,
+                                                      STATUS_CANCELLED,
+                                                      FALSE);
+            Status = STATUS_SUCCESS;
+            break;
+        }
         case IRP_MN_REMOVE_DEVICE:
         {
+            HidClassFDO_CompletePresenceNotifications(PDODeviceExtension->FDODeviceExtension,
+                                                      PDODeviceExtension,
+                                                      STATUS_CANCELLED,
+                                                      FALSE);
+
             /* Disable the device interface */
             if (PDODeviceExtension->DeviceInterface.Length != 0)
                 IoSetDeviceInterfaceState(&PDODeviceExtension->DeviceInterface, FALSE);
