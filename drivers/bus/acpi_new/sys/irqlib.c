@@ -37,12 +37,10 @@ typedef NTSTATUS (NTAPI *PIO_GET_DEVICE_PROPERTY_DATA)(
     PDEVPROPTYPE);
 typedef PVOID (NTAPI *PKE_REGISTER_PROCESSOR_CHANGE_CALLBACK)(
     PPROCESSOR_CALLBACK_FUNCTION, PVOID, ULONG);
-typedef NTSTATUS (NTAPI *PKE_ALLOCATE_SECONDARY_VECTOR)(ULONG Gsiv, PULONG Vector);
 
 static PIO_SET_DEVICE_PROPERTY_DATA           UacpipIoSetDevicePropertyData;
 static PIO_GET_DEVICE_PROPERTY_DATA           UacpipIoGetDevicePropertyData;
 static PKE_REGISTER_PROCESSOR_CHANGE_CALLBACK UacpipKeRegisterProcessorChangeCallback;
-static PKE_ALLOCATE_SECONDARY_VECTOR          UacpipKeAllocateSecondaryVector;
 static BOOLEAN                                UacpipKernelRoutinesResolved;
 
 // Idempotent; called from both the property writer and initialization.
@@ -64,9 +62,6 @@ UacpipResolveKernelRoutines(VOID)
     RtlInitUnicodeString(&name, L"KeRegisterProcessorChangeCallback");
     UacpipKeRegisterProcessorChangeCallback =
         (PKE_REGISTER_PROCESSOR_CHANGE_CALLBACK)MmGetSystemRoutineAddress(&name);
-    RtlInitUnicodeString(&name, L"KeAllocateSecondaryVector");
-    UacpipKeAllocateSecondaryVector =
-        (PKE_ALLOCATE_SECONDARY_VECTOR)MmGetSystemRoutineAddress(&name);
     UacpipKernelRoutinesResolved = TRUE;
 }
 
@@ -671,7 +666,7 @@ UacpiIrqLibResolveMessageVector(PVOID Owner, ULONG MsgGsiv, ULONG Count,
 static BOOLEAN
 UacpipIsSecondaryGsiv(ULONG Gsiv)
 {
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
     if (HALPRIVATEDISPATCH->HalIsInterruptTypeSecondary == NULL)
     {
         return FALSE;
@@ -685,7 +680,44 @@ UacpipIsSecondaryGsiv(ULONG Gsiv)
 #endif
 }
 
-// Secondary pin: vector from the kernel, IRQL from the primary GSIV's line.
+// Secondary vectors start past the IDT; the kernel indexes its secondary IDT with them.
+#define UACPI_SECONDARY_VECTOR_BASE   256
+#define UACPI_SECONDARY_VECTOR_COUNT  256
+
+static ULONG UacpiSecondaryVectorGsiv[UACPI_SECONDARY_VECTOR_COUNT];
+static ULONG UacpiSecondaryVectorCount;
+
+// One vector per secondary GSIV, kept for the life of the GSIV. Takes UacpiIrqLibLock.
+static NTSTATUS
+UacpipAllocateSecondaryVector(ULONG Gsiv, PULONG Vector)
+{
+    NTSTATUS status = STATUS_INSUFFICIENT_RESOURCES;
+    ULONG i;
+
+    ExAcquireFastMutex(&UacpiIrqLibLock);
+    for (i = 0; i < UacpiSecondaryVectorCount; i++)
+    {
+        if (UacpiSecondaryVectorGsiv[i] == Gsiv)
+        {
+            break;
+        }
+    }
+    if (i == UacpiSecondaryVectorCount && i < UACPI_SECONDARY_VECTOR_COUNT)
+    {
+        UacpiSecondaryVectorGsiv[i] = Gsiv;
+        UacpiSecondaryVectorCount++;
+    }
+    if (i < UacpiSecondaryVectorCount)
+    {
+        *Vector = UACPI_SECONDARY_VECTOR_BASE + i;
+        status = STATUS_SUCCESS;
+    }
+    ExReleaseFastMutex(&UacpiIrqLibLock);
+
+    return status;
+}
+
+// Secondary pin: vector from our own range, IRQL from the primary GSIV's line.
 static NTSTATUS
 UacpipResolveSecondaryVector(ULONG Gsiv, PULONG Vector, PKIRQL Irql)
 {
@@ -694,14 +726,7 @@ UacpipResolveSecondaryVector(ULONG Gsiv, PULONG Vector, PKIRQL Irql)
     ULONG primaryVector = 0;
     NTSTATUS status;
 
-    UacpipResolveKernelRoutines();
-
-    if (UacpipKeAllocateSecondaryVector == NULL)
-    {
-        return STATUS_NOT_SUPPORTED;
-    }
-
-    status = UacpipKeAllocateSecondaryVector(Gsiv, Vector);
+    status = UacpipAllocateSecondaryVector(Gsiv, Vector);
     if (!NT_SUCCESS(status))
     {
         return status;
@@ -709,7 +734,7 @@ UacpipResolveSecondaryVector(ULONG Gsiv, PULONG Vector, PKIRQL Irql)
 
     *Irql = HIGH_LEVEL;
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
     if (HALPRIVATEDISPATCH->HalSecondaryInterruptQueryPrimaryInformation == NULL)
     {
         return STATUS_SUCCESS;
@@ -720,7 +745,7 @@ UacpipResolveSecondaryVector(ULONG Gsiv, PULONG Vector, PKIRQL Irql)
     query.Vectors[0].Type = InterruptTypeControllerInput;
     query.Vectors[0].ControllerInput.Gsiv = Gsiv;
 
-#if (NTDDI_VERSION >= NTDDI_WIN10)
+#if (NTDDI_VERSION >= NTDDI_WIN10) && !defined(__REACTOS__)
     status = HALPRIVATEDISPATCH->HalSecondaryInterruptQueryPrimaryInformation(
                  &query.Vectors[0], &primaryGsiv);   // RS1: vector data
 #else
