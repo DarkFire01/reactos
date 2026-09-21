@@ -31,11 +31,15 @@ add_importlibs(rtethsample ndis ntoskrnl hal)
 
 target_include_directories(rtethsample PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${REACTOS_SOURCE_DIR}/sdk/include/ddk/netcx
     ${REACTOS_SOURCE_DIR}/drivers/network/netcx/inc
     ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc
     ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc/pci)
 
-target_compile_definitions(rtethsample PRIVATE _KERNEL_MODE=1)
+target_compile_definitions(rtethsample PRIVATE
+    _KERNEL_MODE=1
+    NDIS_MINIPORT_DRIVER=1
+    NDIS680_MINIPORT=1)
 
 add_cd_file(TARGET rtethsample DESTINATION reactos/system32/drivers FOR all)
 add_driver_inf(rtethsample netrteth.inf)
