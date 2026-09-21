@@ -153,7 +153,7 @@ add_library(netadaptercx MODULE
 set_module_type(netadaptercx kmdfdriver)
 add_importlibs(netadaptercx ndis ntoskrnl hal)
 
-target_include_directories(netadaptercx PRIVATE
+target_include_directories(netadaptercx BEFORE PRIVATE
     ${NETCX_TMH_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
