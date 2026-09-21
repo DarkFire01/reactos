@@ -29,6 +29,7 @@ FxPoxInterface::FxPoxInterface(
     m_DevicePowerRequirementMachine = NULL;
     m_CurrentIdleTimeoutHint = 0;
     m_NextIdleTimeoutHint = 0;
+    m_DirectedTransitionActive = FALSE;
 }
 
 FxPoxInterface::~FxPoxInterface(
@@ -590,5 +591,324 @@ FxPoxInterface::PowerNotRequiredCallbackWorker(
     //                                         );
     // }
     // return;
+}
+
+VOID
+FxPoxInterface::DirectedPowerUpCallbackWorker(
+    _In_ BOOLEAN InvokedFromPoxCallback
+    )
+/*++
+
+Routine Description:
+    This routine initiates the directed power up sequence for the device.
+
+Arguments:
+    InvokedFromPoxCallback - Supplies a flag indicating if the invocation was
+        due to a PoFx callback (TRUE) or generated internally (FALSE).
+
+Return Value:
+    None.
+
+--*/
+{
+    //
+    // Mark the directed transition as now in progress.
+    //
+    SetDirectedTransitionInProgress();
+
+    m_PkgPnp->SaveRequestD0IrpReasonHint(RequestD0ForDfxPowerUp);
+
+    //
+    // Send the device-power-not-required event to the device power
+    // requirement state machine.
+    //
+    if (InvokedFromPoxCallback) {
+        DprProcessEventFromPoxCallback(DprEventPoxDirectedPowerUp);
+    } else {
+        m_DevicePowerRequirementMachine->ProcessEvent(
+                                            DprEventPoxDirectedPowerUp
+                                            );
+    }
+    return;
+}
+
+VOID
+FxPoxInterface::DirectedPowerDownCallbackWorker(
+    _In_ BOOLEAN InvokedFromPoxCallback
+    )
+/*++
+
+Routine Description:
+    This routine initiates the directed power up sequence for the device.
+
+Arguments:
+    InvokedFromPoxCallback - Supplies a flag indicating if the invocation was
+        due to a PoFx callback (TRUE) or generated internally (FALSE).
+
+Return Value:
+    None.
+
+--*/
+{
+    //
+    // Mark the directed transition as now in progress.
+    //
+    SetDirectedTransitionInProgress();
+
+    //
+    // Send the device-power-not-required event to the device power
+    // requirement state machine.
+    //
+    if (InvokedFromPoxCallback) {
+        DprProcessEventFromPoxCallback(DprEventPoxDirectedPowerDown);
+    } else {
+        m_DevicePowerRequirementMachine->ProcessEvent(
+                                            DprEventPoxDirectedPowerDown
+                                            );
+    }
+    return;
+}
+
+VOID
+FxPoxInterface::NotifyDeviceDirectedPoweredDown(
+    VOID
+    )
+/*++
+
+Routine Description:
+    This routine notifies the device power requirement state machine that the
+    device should be considered as directed power down. This only applies when
+    a directed transition is in progress.
+
+Arguments:
+    None.
+
+Return Value:
+    None.
+
+--*/
+{
+    BOOLEAN directedTransition;
+
+    if (FALSE == m_PkgPnp->m_PowerPolicyMachine.m_Owner->m_IdleSettings.
+                                m_TimeoutMgmt.UsingSystemManagedIdleTimeout()) {
+        //
+        // Currently directed transitions are only supported for drivers using
+        // system-managed idle timeout. Simply bail out for driver-managed
+        // idle timeout cases.
+        //
+        return;
+    }
+
+    directedTransition = IsDirectedTransitionInProgress();
+    if (FALSE != directedTransition) {
+        //
+        // Send the directed-power-down event to the device power requirement
+        // state machine. A directed power down can only happen if a directed
+        // transition is currently in progress.
+        //
+        m_DevicePowerRequirementMachine->ProcessEvent(
+                                            DprEventDeviceDirectedPoweredDown
+                                            );
+    }
+
+    return;
+}
+
+VOID
+FxPoxInterface::NotifyPoxDirectedPowerDownCompletion(
+    VOID
+    )
+/*++
+
+Routine Description:
+    This routine notifies completion of a directed power down transition to
+    PoFx.
+
+Arguments:
+    None.
+
+Return Value:
+    None.
+
+--*/
+{
+    //
+    // Mark the directed transition as now complete.
+    //
+    ClearDirectedTransitionInProgress();
+
+    //
+    // Notify completion of the directed power transition to PoFx.
+    //
+    PoxCompleteDirectedPowerDownTransition();
+    return;
+}
+
+VOID
+FxPoxInterface::NotifyDeviceDirectedPoweredUp(
+    VOID
+    )
+/*++
+
+Routine Description:
+    This routine notifies the device power requirement state machine that the
+    device should be considered as directed power up. This only applies when a
+    directed transition is in progress.
+
+Arguments:
+    None.
+
+Return Value:
+    STATUS_SUCCESS always.
+
+--*/
+{
+    BOOLEAN directedTransition;
+
+    if (FALSE == m_PkgPnp->m_PowerPolicyMachine.m_Owner->m_IdleSettings.
+                                m_TimeoutMgmt.UsingSystemManagedIdleTimeout()) {
+        //
+        // Currently directed transitions are only supported for drivers using
+        // system-managed idle timeout. Simply bail out for driver-managed
+        // idle timeout cases.
+        //
+        return;
+    }
+
+    directedTransition = IsDirectedTransitionInProgress();
+    if (FALSE != directedTransition) {
+        //
+        // Send the directed-power-down event to the device power requirement
+        // state machine. This event should only be posted if a directed
+        // transition is currently in progress.
+        //
+        m_DevicePowerRequirementMachine->ProcessEvent(
+                                            DprEventDeviceDirectedPoweredUp
+                                            );
+    }
+
+    return;
+}
+
+VOID
+FxPoxInterface::NotifyPoxDirectedPowerUpCompletion(
+    VOID
+    )
+/*++
+
+Routine Description:
+    This routine performs actions required after a device has been powered up
+    in a directed manner.
+
+    Note for directed power up transitions, the completion is implicit as a
+    result of the device reporting itself as powered on (i.e. calling
+    PoFxReportDevicePoweredOn).
+
+Arguments:
+    None.
+
+Return Value:
+    None.
+
+--*/
+{
+    //
+    // Mark the directed transition as now complete.
+    //
+    ClearDirectedTransitionInProgress();
+
+    //
+    // Perform any post directed power up activities that are required by
+    // PoFx.
+    //
+    PoxCompleteDirectedPowerUpTransition();
+    return;
+}
+
+BOOLEAN
+FxPoxInterface::IsDirectedTransitionInProgress(
+    VOID
+    )
+/*++
+
+Routine Description:
+    This routine checks whether a directed power transition is currently in
+    progress or not.
+
+Arguments:
+    None.
+
+Return Value:
+    TRUE if directed transition is in progress; FALSE otherwise.
+
+--*/
+{
+
+    LONG value;
+
+    value = InterlockedCompareExchange(&m_DirectedTransitionActive, 0, 0);
+    if (0 == value) {
+        return FALSE;
+    } else {
+        return TRUE;
+    }
+}
+
+VOID
+FxPoxInterface::SetDirectedTransitionInProgress(
+    VOID
+    )
+/*++
+
+Routine Description:
+    This routine marks the directed power transition is currently being in
+    progress.
+
+Arguments:
+    None.
+
+Return Value:
+    None.
+
+--*/
+{
+
+    //
+    // Currently directed transitions are only supported for drivers using
+    // system-managed idle timeout. A directed transition should never
+    // have been initiated otherwise.
+    //
+    ASSERT(FALSE != m_PkgPnp->m_PowerPolicyMachine.m_Owner->m_IdleSettings.
+                            m_TimeoutMgmt.UsingSystemManagedIdleTimeout());
+
+    InterlockedExchange(&m_DirectedTransitionActive, 1);
+    return;
+}
+
+VOID
+FxPoxInterface::ClearDirectedTransitionInProgress(
+    VOID
+    )
+/*++
+
+Routine Description:
+    This routine resets the directed transition state.
+
+Arguments:
+    None.
+
+Return Value:
+    None.
+
+--*/
+{
+
+    //
+    // Although directed transitions are only really supported for drivers using
+    // system-managed idle timeout, any driver is allowed to reset this field.
+    //
+    InterlockedExchange(&m_DirectedTransitionActive, 0);
+    return;
 }
 

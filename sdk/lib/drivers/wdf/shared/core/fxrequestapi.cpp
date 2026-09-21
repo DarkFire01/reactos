@@ -2439,7 +2439,7 @@ WDFEXPORT(WdfRequestGetParameters)(
     PWDF_DRIVER_GLOBALS DriverGlobals,
     __in
     WDFREQUEST Request,
-    __out
+    _Inout_
     PWDF_REQUEST_PARAMETERS Parameters
     )
 {
@@ -2489,7 +2489,7 @@ WDFEXPORT(WdfRequestGetCompletionParams)(
     PWDF_DRIVER_GLOBALS DriverGlobals,
     __in
     WDFREQUEST Request,
-    __out
+    _Inout_
     PWDF_REQUEST_COMPLETION_PARAMS Params
     )
 {
@@ -3804,5 +3804,53 @@ Returns:
     return pRequest->IsReserved();
 }
 
+__drv_maxIRQL(DISPATCH_LEVEL)
+WDFAPI
+ULONG
+NTAPI
+WDFEXPORT(WdfRequestGetRequestorProcessId)(
+    _In_
+    PWDF_DRIVER_GLOBALS DriverGlobals,
+    _In_
+    WDFREQUEST Request
+    )
+/*++
+
+Routine Description:
+
+    This routine returns the identifier of the process that sent the I/O request.
+
+    The WDM IRP is invalid once WdfRequestComplete is called, regardless
+    of any reference counts on the WDFREQUEST object.
+
+Arguments:
+
+    Request - Handle to the Request object
+
+Returns:
+
+    Process ID
+
+--*/
+{
+    PFX_DRIVER_GLOBALS pFxDriverGlobals;
+    FxRequest *pRequest;
+
+    //
+    // Validate the request handle, and get the FxRequest*
+    //
+    FxObjectHandleGetPtrAndGlobals(GetFxDriverGlobals(DriverGlobals),
+                                   Request,
+                                   FX_TYPE_REQUEST,
+                                   (PVOID*)&pRequest,
+                                   &pFxDriverGlobals);
+
+#if FX_VERBOSE_TRACE
+    DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_VERBOSE, TRACINGREQUEST,
+                        "Enter: WDFREQUEST 0x%p", Request);
+#endif // FX_VERBOSE_TRACE
+
+    return pRequest->GetRequestorProcessId();
+}
 
 } // extern "C" the whole file

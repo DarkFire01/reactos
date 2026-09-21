@@ -118,14 +118,13 @@ FxMdlAllocateDebug(
         //
         // No more entries, allocate a new table
         //
-        pAllocated = (FxAllocatedMdls*) ExAllocatePoolWithTag(
-            NonPagedPool, sizeof(FxAllocatedMdls), FxDriverGlobals->Tag);
+        pAllocated = (FxAllocatedMdls*) ExAllocatePool2(
+            POOL_FLAG_NON_PAGED, sizeof(FxAllocatedMdls), FxDriverGlobals->Tag);
 
         if (pAllocated != NULL) {
             //
-            // Zero out the new buffer and link it in to the list
+            // Link the new buffer to the list
             //
-            RtlZeroMemory(pAllocated, sizeof(*pAllocated));
             *ppNext = pAllocated;
         }
         else {

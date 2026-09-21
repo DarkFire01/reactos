@@ -195,8 +195,8 @@ enum FxObjectDroppedEvent {
         __in PFX_DRIVER_GLOBALS FxDriverGlobals                 \
         )                                                   \
     {                                                       \
-        return FxObjectHandleAlloc(FxDriverGlobals,         \
-                                   NonPagedPool,            \
+        return FxObjectHandleAlloc2(FxDriverGlobals,        \
+                                   POOL_FLAG_NON_PAGED,     \
                                    Size,                    \
                                    0,                       \
                                    WDF_NO_OBJECT_ATTRIBUTES,\
@@ -212,6 +212,12 @@ struct FxObjectDebugExtension {
     BYTE StateHistory[8];
 
     LONG StateHistoryIndex;
+
+    //
+    // For object leak detection, TRUE indicates the object is been counted
+    // and needs it count removed
+    //
+    BOOLEAN ObjectCounted;
 
     //
     // Signature lives after all the fields to avoid byte padding if it is
@@ -280,6 +286,8 @@ private:
             USHORT HasDebug : 1;
             USHORT EarlyDisposedExt : 1;
             USHORT TraceState : 1;
+            USHORT HasCleanup : 1;
+            USHORT DisposeOverride : 1;
         } m_ObjectFlagsByName;
     };
 
@@ -342,6 +350,11 @@ private:
     VOID,
     VerifyConstruct,
         _In_ BOOLEAN
+        );
+
+    FX_DECLARE_VF_FUNCTION(
+    VOID,
+    VerifyLeakDetectionConsiderObject
         );
 
     VOID
@@ -543,13 +556,13 @@ public:
     {
         UNREFERENCED_PARAMETER(Type);
 
-        return FxObjectHandleAlloc(FxDriverGlobals,
-                                   NonPagedPool,
-                                   Size,
-                                   0,
-                                   WDF_NO_OBJECT_ATTRIBUTES,
-                                   0,
-                                   Type);
+        return FxObjectHandleAlloc2(FxDriverGlobals,
+                                    POOL_FLAG_NON_PAGED,
+                                    Size,
+                                    0,
+                                    WDF_NO_OBJECT_ATTRIBUTES,
+                                    0,
+                                    Type);
     }
 
     PVOID
@@ -561,13 +574,13 @@ public:
         __in USHORT ExtraSize = 0
         )
     {
-        return FxObjectHandleAlloc(FxDriverGlobals,
-                                   NonPagedPool,
-                                   Size,
-                                   0,
-                                   Attributes,
-                                   ExtraSize,
-                                   FxObjectTypeExternal);
+        return FxObjectHandleAlloc2(FxDriverGlobals,
+                                    POOL_FLAG_NON_PAGED,
+                                    Size,
+                                    0,
+                                    Attributes,
+                                    ExtraSize,
+                                    FxObjectTypeExternal);
     }
 
     VOID
@@ -674,7 +687,7 @@ public:
         __in        WDFOBJECT Object,
         __in_opt    PVOID Tag,
         __in        LONG Line,
-        __in        PSTR File
+        __in        PCSTR File
         )
     {
         FxObject* pObject;
@@ -698,7 +711,7 @@ public:
         __in        WDFOBJECT Object,
         __in_opt    PVOID Tag,
         __in        LONG Line,
-        __in        PSTR File
+        __in        PCSTR File
         )
     {
         FxObject* pObject;
@@ -826,7 +839,7 @@ public:
     AddRef(
         __in_opt   PVOID Tag = NULL,
         __in       LONG Line = 0,
-        __in_opt   PSTR File = NULL
+        __in_opt   PCSTR File = NULL
         )
     {
         FxTagTracker* pTagTracker;
@@ -853,7 +866,7 @@ public:
     Release(
         __in_opt    PVOID Tag = NULL,
         __in        LONG Line = 0,
-        __in_opt    PSTR File = NULL
+        __in_opt    PCSTR File = NULL
         )
     {
         FxTagTracker* pTagTracker;
@@ -879,7 +892,7 @@ public:
         __in        WDFOBJECT_OFFSET Offset,
         __in_opt    PVOID Tag = NULL,
         __in        LONG Line = 0,
-        __in_opt    PSTR File = NULL
+        __in_opt    PCSTR File = NULL
         )
     {
         UNREFERENCED_PARAMETER(Offset);
@@ -893,7 +906,7 @@ public:
         __in        WDFOBJECT_OFFSET Offset,
         __in_opt    PVOID Tag = NULL,
         __in        LONG Line = 0,
-        __in_opt    PSTR File = NULL
+        __in_opt    PCSTR File = NULL
         )
     {
         UNREFERENCED_PARAMETER(Offset);
@@ -1208,9 +1221,15 @@ public:
     _Must_inspect_result_
     NTSTATUS
     AddContext(
-        __in FxContextHeader *Header,
-        __in PVOID* Context,
-        __in PWDF_OBJECT_ATTRIBUTES Attributes
+        _In_         FxContextHeader*       Header,
+        _Outptr_opt_ PVOID*                 Context,
+        _In_opt_     PWDF_OBJECT_ATTRIBUTES Attributes
+        );
+
+    _Must_inspect_result_
+    NTSTATUS
+    MoveContexts(
+        _In_ FxObject* TargetObject
         );
 
     //
@@ -1381,7 +1400,7 @@ private:
 
     BOOLEAN
     ShouldDeferDisposeLocked(
-        __out_opt PKIRQL PreviousIrql = NULL
+        _In_opt_ PKIRQL PreviousIrql = NULL
         )
     {
         if (IsForceDisposeThreadLocked()) {
@@ -1486,8 +1505,8 @@ private:
         __in FxObject* ChildObject
         );
 
-   _Must_inspect_result_
-   NTSTATUS
+    _Must_inspect_result_
+    NTSTATUS
     RemoveChildObjectInternal(
         __in FxObject* ChildObject
         );

@@ -160,9 +160,9 @@ FxCalculateObjectTotalSize(
 }
 
 PVOID
-FxObjectHandleAlloc(
+FxObjectHandleAllocCommon(
     __in        PFX_DRIVER_GLOBALS FxDriverGlobals,
-    __in        POOL_TYPE PoolType,
+    __in        FxPoolTypeOrPoolFlags TypeOrFlags,
     __in        size_t Size,
     __in        ULONG Tag,
     __in_opt    PWDF_OBJECT_ATTRIBUTES Attributes,
@@ -177,7 +177,7 @@ Routine Description:
 
 Arguments:
     FxDriverGlobals - caller's globals
-    PoolType - type of pool to be used in allocating the object's memory
+    TypeOrFlags - pool type (or pool flags) to be used in allocating the object's memory
     Size - size of the object (as passed to operator new() by the compiler)
     Tag - tag to use when allocating the object's memory
     Attributes - attributes which describe the context to be associated with the
@@ -229,7 +229,14 @@ Return Value:
         return NULL;
     }
 
-    blob = FxPoolAllocateWithTag(FxDriverGlobals, PoolType, totalSize, Tag);
+    if (TypeOrFlags.UsePoolType) {
+        blob = FxPoolAllocateWithTag(
+            FxDriverGlobals, TypeOrFlags.u.PoolType, totalSize, Tag);
+    }
+    else {
+        blob = FxPoolAllocateWithTag2(
+            FxDriverGlobals, TypeOrFlags.u.PoolFlags, totalSize, Tag);
+    }
 
     if (blob != NULL) {
         blob = FxObjectAndHandleHeaderInit(
@@ -243,6 +250,59 @@ Return Value:
 
     return blob;
 }
+
+PVOID
+FxObjectHandleAlloc(
+    _In_        PFX_DRIVER_GLOBALS FxDriverGlobals,
+    _In_        POOL_TYPE PoolType,
+    _In_        size_t Size,
+    _In_        ULONG Tag,
+    _In_opt_    PWDF_OBJECT_ATTRIBUTES Attributes,
+    _In_        USHORT ExtraSize,
+    _In_        FxObjectType ObjectType
+    )
+{
+    FxPoolTypeOrPoolFlags typeOrFlags;
+
+    typeOrFlags.UsePoolType = TRUE;
+    typeOrFlags.u.PoolType = PoolType;
+
+    return FxObjectHandleAllocCommon(
+                FxDriverGlobals,
+                typeOrFlags,
+                Size,
+                Tag,
+                Attributes,
+                ExtraSize,
+                ObjectType);
+}
+
+PVOID
+FxObjectHandleAlloc2(
+    _In_        PFX_DRIVER_GLOBALS FxDriverGlobals,
+    _In_        POOL_FLAGS PoolFlags,
+    _In_        size_t Size,
+    _In_        ULONG Tag,
+    _In_opt_    PWDF_OBJECT_ATTRIBUTES Attributes,
+    _In_        USHORT ExtraSize,
+    _In_        FxObjectType ObjectType
+    )
+{
+    FxPoolTypeOrPoolFlags typeOrFlags;
+
+    typeOrFlags.UsePoolType = FALSE;
+    typeOrFlags.u.PoolFlags = PoolFlags;
+
+    return FxObjectHandleAllocCommon(
+                FxDriverGlobals,
+                typeOrFlags,
+                Size,
+                Tag,
+                Attributes,
+                ExtraSize,
+                ObjectType);
+}
+
 
 VOID
 FxContextHeaderInit(
@@ -469,7 +529,7 @@ Return Value:
     }
 
     header = (FxContextHeader*)
-                FxPoolAllocate(fxDriverGlobals, NonPagedPool, size);
+                FxPoolAllocate2(fxDriverGlobals, POOL_FLAG_NON_PAGED, size);
 
     if (header == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -495,6 +555,55 @@ Done:
     }
 
     return status;
+}
+
+PVOID
+FxObjectGetTypedContext(
+    _In_ FxObject*                      Object,
+    _In_ PCWDF_OBJECT_CONTEXT_TYPE_INFO TypeInfo
+    )
+/*++
+
+Routine Description:
+    Find the context given its type info
+
+Arguments:
+    Object - object on which to find a context
+    TypeInfo - the type info of the said context
+
+Return Value:
+    A pointer to the typed context structure if success, or NULL if failed
+
+  --*/
+{
+    PFX_DRIVER_GLOBALS pFxDriverGlobals;
+    FxContextHeader*   pHeader;
+
+    pFxDriverGlobals = Object->GetDriverGlobals();
+
+    pHeader = Object->GetContextHeader();
+
+    for ( ; pHeader != NULL; pHeader = pHeader->NextHeader) {
+        if (pHeader->ContextTypeInfo == TypeInfo) {
+            return &pHeader->Context[0];
+        }
+    }
+
+    LPCSTR pGivenName;
+
+    if (TypeInfo->ContextName != NULL) {
+        pGivenName = TypeInfo->ContextName;
+    }
+    else {
+        pGivenName = "<no typename given>";
+    }
+
+    DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_WARNING, TRACINGHANDLE,
+                        "Attempting to get context type %s from FxObject 0x%p",
+                        pGivenName, Object);
+
+    return NULL;
+
 }
 
 // extern "C" all APIs
@@ -601,7 +710,6 @@ Return Value:
 {
     DDI_ENTRY_IMPERSONATION_OK();
 
-    FxContextHeader* pHeader;
     FxObject* pObject;
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     WDFOBJECT_OFFSET offset;
@@ -629,28 +737,7 @@ Return Value:
 
     FxPointerNotNull(pFxDriverGlobals, TypeInfo);
 
-    pHeader = pObject->GetContextHeader();
-
-    for ( ; pHeader != NULL; pHeader = pHeader->NextHeader) {
-        if (pHeader->ContextTypeInfo == TypeInfo) {
-            return &pHeader->Context[0];
-        }
-    }
-
-    PCHAR pGivenName;
-
-    if (TypeInfo->ContextName != NULL) {
-        pGivenName = TypeInfo->ContextName;
-    }
-    else {
-        pGivenName = "<no typename given>";
-    }
-
-    DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_WARNING, TRACINGHANDLE,
-                        "Attempting to get context type %s from WDFOBJECT 0x%p",
-                        pGivenName, Handle);
-
-    return NULL;
+    return FxObjectGetTypedContext(pObject, TypeInfo);
 }
 
 __drv_maxIRQL(DISPATCH_LEVEL+1)

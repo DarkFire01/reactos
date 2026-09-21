@@ -23,11 +23,16 @@ Revision History:
 extern "C" {
 #include <ntddk.h>
 #include <ntstrsafe.h>
+// #include <FeatureStagingSupport.h>
+// #include <wil/staging.h>
 }
 
 #define  FX_DYNAMICS_GENERATE_TABLE   1
 
 #include "fx.hpp"
+
+#include "wudfrdnonpnp.hpp"
+#include "fxcompanionlibrary.hpp"
 
 #include <fxldr.h>
 #include "fxbugcheck.h"
@@ -289,6 +294,12 @@ FxLibraryCreateDevice(
         FxLibraryGlobals.LibraryDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
     }
 
+    status = FxCompanionLibrary::_CreateAndInitialize(
+                                        &(FxLibraryGlobals.CompanionLibrary));
+    if (!NT_SUCCESS(status)) {
+        __Print(("ERROR: Initializing companion library failed 0x%x\n", status));
+    }
+
     return status;
 }
 
@@ -309,6 +320,10 @@ FxLibraryCleanup(
     if (FxLibraryGlobals.LibraryDeviceObject != NULL) {
         IoDeleteDevice(FxLibraryGlobals.LibraryDeviceObject);
         FxLibraryGlobals.LibraryDeviceObject = NULL;
+    }
+    if (FxLibraryGlobals.CompanionLibrary != NULL) {
+        delete FxLibraryGlobals.CompanionLibrary;
+        FxLibraryGlobals.CompanionLibrary = NULL;
     }
 }
 
@@ -376,7 +391,7 @@ DriverEntry(
     status = FxLibraryCreateDevice(&name);
     if (!NT_SUCCESS(status)) {
         __Print(("ERROR: FxLibraryCreateDevice failed with Status 0x%x\n", status));
-        return status;
+        goto exit;
     }
 
     //
@@ -389,7 +404,7 @@ DriverEntry(
     if (!NT_SUCCESS(status)) {
         __Print(("ERROR: WdfRegisterLibrary failed with Status 0x%x\n", status));
         FxLibraryCleanup();
-        return status;
+        goto exit;
     }
 
     //
@@ -397,7 +412,13 @@ DriverEntry(
     //
     WdfWriteKmdfVersionToRegistry(DriverObject, RegistryPath);
 
-    return STATUS_SUCCESS;
+    status = STATUS_SUCCESS;
+
+exit:
+
+
+
+    return status;
 }
 
 //-----------------------------------------------------------------------------
@@ -422,6 +443,8 @@ DriverUnload(
     // driver, it can be unloaded while there are still outstanding device objects.
     //
     FxLibraryCleanup();
+
+
 }
 
 //-----------------------------------------------------------------------------
@@ -476,25 +499,22 @@ WDF_LIBRARY_REGISTER_CLIENT(
     clientInfo = (PCLIENT_INFO)*Context;
     *Context = NULL;
 
-    ASSERT(Info->Version.Major == WdfLibraryInfo.Version.Major);
+    status = WdfBindClientHelper(Info,
+                                WdfLibraryInfo.Version.Major,
+                                WdfLibraryInfo.Version.Minor);
 
-    //
-    // NOTE: If the currently loaded  library < drivers minor version fail the load
-    // instead of binding to a lower minor version. The reason for that if there
-    // is a newer API or new contract change made the driver shouldn't be using older
-    // API than it was compiled with.
-    //
+    if (!NT_SUCCESS(status)) {
 
-    if (Info->Version.Minor > WdfLibraryInfo.Version.Minor) {
-        status = RtlStringCchPrintfW(insertString,
+        NTSTATUS status2;
+        status2 = RtlStringCchPrintfW(insertString,
                                      RTL_NUMBER_OF(insertString),
                                      L"Driver Version: %d.%d Kmdf Lib. Version: %d.%d",
                                      Info->Version.Major,
                                      Info->Version.Minor,
                                      WdfLibraryInfo.Version.Major,
                                      WdfLibraryInfo.Version.Minor);
-        if (!NT_SUCCESS(status)) {
-            __Print(("ERROR: RtlStringCchPrintfW failed with Status 0x%x\n", status));
+        if (!NT_SUCCESS(status2)) {
+            __Print(("ERROR: RtlStringCchPrintfW failed with Status 0x%x\n", status2));
             return status;
         }
         rawData[0] = Info->Version.Major;
@@ -504,15 +524,12 @@ WDF_LIBRARY_REGISTER_CLIENT(
 
         LibraryLogEvent(FxLibraryGlobals.DriverObject,
                        WDFVER_MINOR_VERSION_NOT_SUPPORTED,
-                       STATUS_OBJECT_TYPE_MISMATCH,
+                       status,
                        insertString,
                        rawData,
                        sizeof(rawData) );
-        //
-        // this looks like the best status to return
-        //
-        return STATUS_OBJECT_TYPE_MISMATCH;
 
+        return status;
     }
 
     status = FxLibraryCommonRegisterClient(Info,
@@ -672,8 +689,8 @@ WdfWriteKmdfVersionToRegistry(
         goto out;
     }
 
-    driverExtension->ParametersRegistryPath.Buffer = (PWCHAR) ExAllocatePoolWithTag(
-                                                                PagedPool,
+    driverExtension->ParametersRegistryPath.Buffer = (PWCHAR) ExAllocatePool2(
+                                                                POOL_FLAG_PAGED,
                                                                 RegistryPath->MaximumLength,
                                                                 FX_TAG);
     if (driverExtension->ParametersRegistryPath.Buffer == NULL) {

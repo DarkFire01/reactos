@@ -677,9 +677,9 @@ FxUsbPipeContinuousReader::operator new(
 {
     ASSERT(NumReaders >= 1);
 
-    return FxPoolAllocate(
+    return FxPoolAllocate2(
         FxDriverGlobals,
-        NonPagedPool,
+        POOL_FLAG_NON_PAGED,
         Size + (NumReaders-1) * sizeof(FxUsbPipeRepeatReader)
         );
 }
@@ -886,6 +886,14 @@ FxUsbPipeTransferContext::CopyParameters(
     __in FxRequestBase* Request
     )
 {
+#if (FX_CORE_MODE == FX_CORE_USER_MODE)
+    //
+    // In case of UMDF since the URB itself is not sent down the stack
+    // we propagate the transfer length into the URB via the UM IRP
+    //
+    m_UmUrb.UmUrbBulkOrInterruptTransfer.TransferBufferLength = (ULONG)m_CompletionParams.IoStatus.Information;
+#endif
+
     m_CompletionParams.IoStatus.Information = GetUrbTransferLength();
 
     //
@@ -1058,9 +1066,6 @@ FxUsbPipe::FxUsbPipe(
 {
     InitializeListHead(&m_ListEntry);
     RtlZeroMemory(&m_PipeInformation, sizeof(m_PipeInformation));
-#if (FX_CORE_MODE == FX_CORE_USER_MODE)
-    RtlZeroMemory(&m_PipeInformationUm, sizeof(m_PipeInformationUm));
-#endif
     m_InterfaceNumber = 0;
     m_Reader = NULL;
     m_UsbInterface = NULL;
@@ -1385,12 +1390,16 @@ FxUsbPipe::GotoRemoveState(
     if (m_Reader != NULL && m_Reader->m_ReadersSubmitted &&
         WdfIoTargetStarted == m_State) {
         //
-        // Driver forgot to stop the pipe on D0Exit.
+        // Driver forgot to stop the pipe on D0Exit. In case of miniport wdf driver, it
+        // forgot to stop the pipe in EvtCleanupCallback of the framework device object.
         //
         DoTraceLevelMessage(
             GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGIOTARGET,
-            "WDFUSBPIPE %p was not stopped in EvtDeviceD0Exit callback",
-            GetHandle());
+            "WDFUSBPIPE %p was not stopped %s",
+            GetHandle(),
+            FLAG_TO_BOOL(GetDriverGlobals()->Public.DriverFlags, WdfDriverInitNoDispatchOverride) ?
+                "in EvtCleanupCallback of the miniport framework device object" :
+                "in EvtDeviceD0Exit callback");
 
         if (GetDriverGlobals()->IsVerificationEnabled(1,9,OkForDownLevel)) {
             FxVerifierDbgBreakPoint(GetDriverGlobals());
@@ -1772,7 +1781,7 @@ FxUsbPipe::FormatAbortRequest(
 #elif (FX_CORE_MODE == FX_CORE_USER_MODE)
     pContext->SetInfo(WdfUsbRequestTypePipeAbort,
                       m_UsbInterface->m_WinUsbHandle,
-                      m_PipeInformationUm.PipeId,
+                      GetPipeId(),
                       UMURB_FUNCTION_ABORT_PIPE);
     FxUsbUmFormatRequest(Request, &pContext->m_UmUrb.UmUrbPipeRequest.Hdr, m_UsbDevice->m_pHostTargetFile);
 #endif
@@ -1848,7 +1857,7 @@ FxUsbPipe::FormatResetRequest(
 #elif (FX_CORE_MODE == FX_CORE_USER_MODE)
     pContext->SetInfo(WdfUsbRequestTypePipeReset,
                       m_UsbInterface->m_WinUsbHandle,
-                      m_PipeInformationUm.PipeId,
+                      GetPipeId(),
                       UMURB_FUNCTION_SYNC_RESET_PIPE_AND_CLEAR_STALL);
     FxUsbUmFormatRequest(Request, &pContext->m_UmUrb.UmUrbPipeRequest.Hdr, m_UsbDevice->m_pHostTargetFile);
 #endif
@@ -1892,3 +1901,20 @@ FxUsbPipe::Reset(
     return status;
 }
 
+VOID
+FxUsbPipe::GetInformation(
+    __out PWDF_USB_PIPE_INFORMATION PipeInformation
+    )
+{
+    //
+    // Do a field by field copy for the WDF structure, since fields could change.
+    //
+    PipeInformation->MaximumPacketSize = GetMaxPacketSize();
+    PipeInformation->EndpointAddress = m_PipeInformation.EndpointAddress;
+    PipeInformation->Interval = m_PipeInformation.Interval;
+    PipeInformation->PipeType = GetType();
+#if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
+    PipeInformation->MaximumTransferSize = m_PipeInformation.MaximumTransferSize;
+#endif
+    PipeInformation->SettingIndex = m_UsbInterface->GetConfiguredSettingIndex();
+}

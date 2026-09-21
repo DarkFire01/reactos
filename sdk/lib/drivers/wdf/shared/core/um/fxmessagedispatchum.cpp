@@ -30,7 +30,7 @@ Revision History:
 
 extern "C"
 {
-#include "FxMessageDispatchUm.tmh"
+// #include "FxMessageDispatchUm.tmh"
 }
 
 // {cba20727-0910-4a8a-aada-c31d5cf5bf20}
@@ -343,6 +343,22 @@ FxMessageDispatch::PoFxDevicePowerNotRequired(
     )
 {
     FxDevice::PoFxDevicePowerNotRequired(GetDeviceObject());
+}
+
+void
+FxMessageDispatch::PoFxDirectedPowerUp(
+    void
+    )
+{
+    FxDevice::PoFxDeviceDirectedPowerUp(GetDeviceObject());
+}
+
+void
+FxMessageDispatch::PoFxDirectedPowerDown(
+    void
+    )
+{
+    FxDevice::PoFxDeviceDirectedPowerDown(GetDeviceObject());
 }
 
 //

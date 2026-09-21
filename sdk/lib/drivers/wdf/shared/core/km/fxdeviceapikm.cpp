@@ -638,10 +638,23 @@ WDFEXPORT(WdfDeviceSetSpecialFileSupport)(
                                    (PVOID *) &pDevice,
                                    &pFxDriverGlobals);
 
-    if (FileType < WdfSpecialFilePaging  || FileType >= WdfSpecialFileMax) {
+    if (FileType < WdfSpecialFilePaging  ||
+        FileType == WdfSpecialFilePostDisplay ||
+        FileType >= WdfSpecialFileMax) {
         DoTraceLevelMessage(
             pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
             "WDFDEVICE 0x%p FileType %d specified is not in valid range",
+            Device, FileType);
+        FxVerifierDbgBreakPoint(pFxDriverGlobals);
+        return;
+    }
+
+    if ((pFxDriverGlobals->IsVersionGreaterThanOrEqualTo(1, 29) == FALSE) &&
+        (FileType > WdfSpecialFileBoot)) {
+
+        DoTraceLevelMessage(
+            pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+            "WDFDEVICE 0x%p FileType %d specified is not supported in this version",
             Device, FileType);
         FxVerifierDbgBreakPoint(pFxDriverGlobals);
         return;
@@ -858,120 +871,56 @@ Return Value:
 }
 
 _Must_inspect_result_
-__drv_maxIRQL(PASSIVE_LEVEL)
+_IRQL_requires_max_(PASSIVE_LEVEL)
+WDFAPI
 NTSTATUS
 NTAPI
-WDFEXPORT(WdfDeviceWdmAssignPowerFrameworkSettings)(
-    __in
+WDFEXPORT(WdfDeviceRetrieveCompanionTarget)(
+    _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
-    __in
+    _In_
     WDFDEVICE Device,
-    __in
-    PWDF_POWER_FRAMEWORK_SETTINGS PowerFrameworkSettings
+    _Out_
+    WDFCOMPANIONTARGET* CompanionTarget
     )
 /*++
 
 Routine Description:
-    The DDI is invoked by KMDF client drivers for single-component devices to
-    specify their power framework settings to KMDF. KMDF uses these settings on
-    Win8+ when registering with the power framework.
-
-    On Win7 and older operating systems the power framework is not available, so
-    KMDF does nothing.
+    The DDI is invoked by KMDF drivers to retrieve the WDFCOMPANIONTARGET handle
+    that can be used to send tasks to the companion.
 
 Arguments:
+    Device - Handle to the framework device object. This must not be control or
+            miniport device.
 
-    Device - Handle to the framework device object for which power framework
-      settings are being specified.
-
-    PowerFrameworkSettings - Pointer to a WDF_POWER_FRAMEWORK_SETTINGS structure
-      that contains the client driver's power framework settings.
+    CompanionTarget - Pointer to CompanionTarget handle
 
 Return Value:
-    An NTSTATUS value that denotes success or failure of the DDI
-
+    An NTSTATUS value that denotes success or failure of the DDI. These are the
+    known failures, others could also be reported  -
+        STATUS_INVALID_DEVICE_REQUEST - Invalid device type.
+        STATUS_NOT_FOUND              - Companion not registered for device.
 --*/
 {
-    NTSTATUS status;
-    PFX_DRIVER_GLOBALS pFxDriverGlobals;
     FxDevice *pDevice;
+    FxPkgPnp* pkgPnP;
 
-    //
-    // Validate the Device object handle and get its FxDevice. Also get the
-    // driver globals pointer.
-    //
-    FxObjectHandleGetPtrAndGlobals(GetFxDriverGlobals(DriverGlobals),
-                                   Device,
-                                   FX_TYPE_DEVICE,
-                                   (PVOID *) &pDevice,
-                                   &pFxDriverGlobals);
+    FxObjectHandleGetPtr(GetFxDriverGlobals(DriverGlobals),
+                         Device,
+                         FX_TYPE_DEVICE,
+                         (PVOID*) &pDevice);
 
-    FxPointerNotNull(pFxDriverGlobals, PowerFrameworkSettings);
-
-    //
-    // Only power policy owners should call this DDI
-    //
-    if (pDevice->m_PkgPnp->IsPowerPolicyOwner() == FALSE) {
-        status = STATUS_INVALID_DEVICE_REQUEST;
-        DoTraceLevelMessage(
-            pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
-            "WDFDEVICE 0x%p is not the power policy owner, so the caller cannot"
-            " assign power framework settings %!STATUS!", Device, status);
-        FxVerifierDbgBreakPoint(pFxDriverGlobals);
-        return status;
+    if (!pDevice->IsPnp()) {
+        return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    //
-    // Validate the Settings parameter
-    //
-    if (PowerFrameworkSettings->Size != sizeof(WDF_POWER_FRAMEWORK_SETTINGS)) {
-        status = STATUS_INFO_LENGTH_MISMATCH;
-        DoTraceLevelMessage(
-            pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
-            "WDFDEVICE 0x%p Expected PowerFrameworkSettings size %d, actual %d,"
-            " %!STATUS!",
-            Device,
-            sizeof(WDF_POWER_FRAMEWORK_SETTINGS),
-            PowerFrameworkSettings->Size,
-            status);
-        FxVerifierDbgBreakPoint(pFxDriverGlobals);
-        return status;
+    pkgPnP = pDevice->m_PkgPnp;
+    if (NT_SUCCESS(pkgPnP->m_CompanionTargetStatus)) {
+        *CompanionTarget = (WDFCOMPANIONTARGET)
+                                pkgPnP->m_CompanionTarget->GetObjectHandle();
     }
 
-    //
-    // If settings for component 0 are specified, make sure it contains at least
-    // one F-state.
-    //
-    if (NULL != PowerFrameworkSettings->Component) {
-
-        if (0 == PowerFrameworkSettings->Component->IdleStateCount) {
-            status = STATUS_INVALID_PARAMETER;
-            DoTraceLevelMessage(
-                pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
-                "WDFDEVICE 0x%p Component settings are specified but "
-                "IdleStateCount is 0. %!STATUS!", Device, status);
-            FxVerifierDbgBreakPoint(pFxDriverGlobals);
-            return status;
-        }
-
-        if (NULL == PowerFrameworkSettings->Component->IdleStates) {
-            status = STATUS_INVALID_PARAMETER;
-            DoTraceLevelMessage(
-                pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
-                "WDFDEVICE 0x%p Component settings are specified but IdleStates"
-                " is NULL. %!STATUS!", Device, status);
-            FxVerifierDbgBreakPoint(pFxDriverGlobals);
-            return status;
-        }
-    }
-
-    //
-    // Assign the driver's settings
-    //
-    status = pDevice->m_PkgPnp->AssignPowerFrameworkSettings(
-                                            PowerFrameworkSettings);
-
-    return status;
+    return pkgPnP->m_CompanionTargetStatus;
 }
 
 } // extern "C"

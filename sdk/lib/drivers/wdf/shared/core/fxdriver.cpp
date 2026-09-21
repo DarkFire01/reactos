@@ -40,6 +40,7 @@ FxDriver::FxDriver(
     m_CallbackMutexLock(FxDriverGlobals)
 {
     RtlInitUnicodeString(&m_RegistryPath, NULL);
+    m_ServiceName = NULL;
 
 
 
@@ -72,6 +73,8 @@ FxDriver::FxDriver(
 
 #if FX_IS_USER_MODE
     m_DriverParametersKey = NULL;
+    m_DriverPersistentStateKey = NULL;
+    m_DriverDataDirectory = NULL;
 #endif
 }
 
@@ -95,6 +98,7 @@ FxDriver::~FxDriver()
     //
     if (m_RegistryPath.Buffer) {
         FxPoolFree(m_RegistryPath.Buffer);
+        m_ServiceName = NULL;
     }
 
     if (m_DisposeList != NULL) {
@@ -103,8 +107,8 @@ FxDriver::~FxDriver()
 
 #if FX_IS_USER_MODE
     //
-    // Close the R/W handle to the driver's service parameters key
-    // that we opened during Initialize.
+    // Close the R/W handles to the driver's service parameters key and persistent
+    // state key that we opened during Initialize.
     //
     if (m_DriverParametersKey != NULL) {
         NTSTATUS status = FxRegKey::_Close(m_DriverParametersKey);
@@ -116,12 +120,35 @@ FxDriver::~FxDriver()
         m_DriverParametersKey = NULL;
     }
 
+    if (m_DriverPersistentStateKey != NULL) {
+        NTSTATUS status = FxRegKey::_Close(m_DriverPersistentStateKey);
+        if (!NT_SUCCESS(status)) {
+            DoTraceLevelMessage(GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGDRIVER,
+                                "Cannot close Driver persistent state key %!STATUS!",
+                                status);
+        }
+        m_DriverPersistentStateKey = NULL;
+    }
+
+    //
+    // Cleanup the persistent driver state directory path created during Initialize.
+    //
+    if (m_DriverDataDirectory != NULL) {
+        m_DriverDataDirectory->DeleteObject();
+        m_DriverDataDirectory = NULL;
+    }
+
     //
     // The host-created driver object holds a reference to this
     // FxDriver object. Clear it, since this object was deleted.
     //
     ClearDriverObjectFxDriver();
 #endif
+
+    if ((GetDriverGlobals()->FxVerifierOn) &&
+        (GetDriverGlobals()->FxVerifyLeakDetection != NULL) ) {
+        ASSERT(GetDriverGlobals()->FxVerifyLeakDetection->ObjectCnt == 0);
+    }
 }
 
 BOOLEAN
@@ -351,13 +378,14 @@ FxDriver::Initialize(
     ConfigureConstraints(DriverAttributes);
 
     if (m_DriverObject.GetObject() == NULL) {
-        return STATUS_UNSUCCESSFUL;
+        status = STATUS_UNSUCCESSFUL;
+        goto exit;
     }
 
     // Allocate FxDisposeList
     status = FxDisposeList::_Create(FxDriverGlobals, m_DriverObject.GetObject(), &m_DisposeList);
     if (!NT_SUCCESS(status)) {
-        return status;
+        goto exit;
     }
 
     //
@@ -365,7 +393,7 @@ FxDriver::Initialize(
     //
     status = AllocateDriverObjectExtensionAndStoreFxDriver();
     if (!NT_SUCCESS(status)) {
-        return status;
+        goto exit;
     }
 
     //
@@ -388,8 +416,8 @@ FxDriver::Initialize(
 
         m_RegistryPath.Length = ArgRegistryPath->Length;
         m_RegistryPath.MaximumLength = length;
-        m_RegistryPath.Buffer = (PWSTR) FxPoolAllocate(
-            GetDriverGlobals(), PagedPool, length);
+        m_RegistryPath.Buffer = (PWSTR) FxPoolAllocate2(
+            GetDriverGlobals(), POOL_FLAG_PAGED, length);
 
         if (m_RegistryPath.Buffer != NULL) {
             RtlCopyMemory(m_RegistryPath.Buffer,
@@ -401,6 +429,17 @@ FxDriver::Initialize(
             // a null terminated string.  make sure it is.
             //
             m_RegistryPath.Buffer[length/sizeof(WCHAR)- 1] = UNICODE_NULL;
+
+            //
+            // m_ServiceName points to the last element of m_RegistryPath
+            //
+            m_ServiceName = wcsrchr(m_RegistryPath.Buffer, L'\\');
+            if (m_ServiceName != NULL) {
+                m_ServiceName++;
+            }
+            else {
+                m_ServiceName = m_RegistryPath.Buffer;
+            }
         }
         else {
             //
@@ -412,6 +451,21 @@ FxDriver::Initialize(
 
             status = STATUS_INSUFFICIENT_RESOURCES;
         }
+    }
+
+    //
+    // If we are driver companion, return early skipping below
+    // operations that which we don't need for a companion
+    //
+    if (FxDriverGlobals->IsCompanion()) {
+
+        //
+        // Companion driver, set our routines up
+        //
+        m_DriverObject.SetDriverExtensionAddDevice(AddDevice);
+        m_DriverObject.SetDriverUnload(Unload);
+
+        goto exit;
     }
 
     if (NT_SUCCESS(status)) {
@@ -521,16 +575,32 @@ FxDriver::Initialize(
         //
         // Open a R/W handle to the driver's service parameters key
         //
-        status = OpenParametersKey();
+        status = OpenDriverKey(UMINT::WdfPropertyStoreRootDriverParametersKey);
         if (!NT_SUCCESS(status)) {
             DoTraceLevelMessage(
                 FxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDRIVER,
                 "Cannot open Driver Parameters key %!STATUS!",
                 status);
+            goto exit;
+        }
+
+        status = OpenDriverKey(UMINT::WdfPropertyStoreRootDriverPersistentStateKey);
+        if (!NT_SUCCESS(status)) {
+            DoTraceLevelMessage(
+                FxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDRIVER,
+                "Cannot open Driver Persistent State key %!STATUS!",
+                status);
+            goto exit;
+        }
+
+        status = InitDriverDataDirectory();
+        if (!NT_SUCCESS(status)) {
+            goto exit;
         }
 #endif
     }
 
+exit:
     return status;
 }
 
@@ -654,3 +724,22 @@ Returns:
     }
 }
 
+NTSTATUS
+FxDriver::GetDriverServiceName(
+    _Out_ UNICODE_STRING* ServiceName
+    )
+{
+    NTSTATUS status = STATUS_SUCCESS;
+
+    GetNameFromPath(GetRegistryPathUnicodeString(),
+                    ServiceName);
+
+    if (ServiceName->Length == 0) {
+        status = STATUS_UNSUCCESSFUL;
+        DoTraceLevelMessage(
+            GetDriverGlobals(), TRACE_LEVEL_FATAL, TRACINGDRIVER,
+            "Unexpected error obtaining service name");
+    }
+
+    return status;
+}

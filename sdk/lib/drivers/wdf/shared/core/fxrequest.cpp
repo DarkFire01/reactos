@@ -641,6 +641,14 @@ Returns:
             Status = STATUS_INVALID_DEVICE_REQUEST;
             break;
 
+        case STATUS_WDF_TOO_MANY_TRANSFERS:
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+            break;
+
+        case STATUS_WDF_NOT_ENOUGH_MAP_REGISTERS:
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            break;
+
         default:
             DoTraceLevelMessage(
                 pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGREQUEST,
@@ -1219,7 +1227,7 @@ FxRequest::GetStatus(
 _Must_inspect_result_
 NTSTATUS
 FxRequest::GetParameters(
-    __out PWDF_REQUEST_PARAMETERS Parameters
+    _Inout_ PWDF_REQUEST_PARAMETERS Parameters
     )
 {
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
@@ -1470,7 +1478,7 @@ FxRequest::GetMemoryObject(
             // to do the initial mapping so that FxRequestSystemBuffer::GetBuffer()
             // will not return a NULL pointer.
             //
-            pVA = Mx::MxGetSystemAddressForMdlSafe(pMdl, NormalPagePriority);
+            pVA = Mx::MxGetSystemAddressForMdlSafe(pMdl, NormalPagePriority | MdlMappingNoExecute);
 
             if (pVA == NULL) {
                 status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1507,7 +1515,7 @@ Done:
 
         if (mapMdl) {
             *Buffer = Mx::MxGetSystemAddressForMdlSafe(m_SystemBuffer.m_Mdl,
-                                                   NormalPagePriority);
+                                                   NormalPagePriority | MdlMappingNoExecute);
         }
         else {
             *Buffer = m_SystemBuffer.m_Buffer;
@@ -1718,7 +1726,7 @@ Returns:
             // to do the initial mapping so that FxRequestOutputBuffer::GetBuffer()
             // will not return a NULL pointer.
             //
-            pVA = Mx::MxGetSystemAddressForMdlSafe(pMdl, NormalPagePriority);
+            pVA = Mx::MxGetSystemAddressForMdlSafe(pMdl, NormalPagePriority | MdlMappingNoExecute);
 
             if (pVA == NULL) {
                 status =  STATUS_INSUFFICIENT_RESOURCES;
@@ -1745,7 +1753,7 @@ Done:
         *MemoryObject = &m_OutputBuffer;
         if (mapMdl) {
             *Buffer = Mx::MxGetSystemAddressForMdlSafe(m_OutputBuffer.m_Mdl,
-                                                   NormalPagePriority);
+                                                   NormalPagePriority | MdlMappingNoExecute);
         }
         else {
             *Buffer = m_OutputBuffer.m_Buffer;
@@ -2099,7 +2107,7 @@ FxRequest::PeekRequest(
     __in FxIrpQueue*          IrpQueue,
     __in_opt FxRequest*           TagRequest,
     __in_opt MdFileObject         FileObject,
-    __out_opt PWDF_REQUEST_PARAMETERS Parameters,
+    _Inout_opt_ PWDF_REQUEST_PARAMETERS Parameters,
     __deref_out FxRequest**         ppOutRequest
     )
 {
@@ -2676,7 +2684,7 @@ FxRequest::AddRefOverride(
     __in WDFOBJECT_OFFSET Offset,
     __in PVOID Tag,
     __in LONG Line,
-    __in_opt PSTR File
+    __in_opt PCSTR File
     )
 {
     if (Offset != 0x0) {
@@ -2695,7 +2703,7 @@ FxRequest::ReleaseOverride(
     __in WDFOBJECT_OFFSET Offset,
     __in PVOID Tag,
     __in LONG Line,
-    __in_opt PSTR File
+    __in_opt PCSTR File
     )
 {
     if (Offset != 0x0) {
@@ -2753,9 +2761,11 @@ FX_VF_METHOD(FxRequest, VerifierBreakpoint_RequestEarlyDisposeDeferred) (
     if (FxDriverGlobals->IsVerificationEnabled(1, 11, OkForDownLevel)) {
         DoTraceLevelMessage(
             FxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGREQUEST,
-            "WDFREQUEST %p deferred the dispose operation. This normally "
-            "indicates that at least one of its children asked for passive "
-            "level disposal. This is not supported.", GetHandle());
+            "WDFREQUEST %p deferred the dispose operation. Usually this "
+            "indicates that some child object of the WDFREQUEST requires "
+            "passive level disposal (e.g. WDFTIMER). This is not supported. "
+            "Either ensure that the WDFREQUEST always completes at passive "
+            "level, or do not parent the object to the WDFREQUEST.", GetHandle());
 
         FxVerifierDbgBreakPoint(FxDriverGlobals);
     }
@@ -3089,7 +3099,7 @@ ULONG
 FxRequest::Release(
     __in PVOID Tag,
     __in LONG Line,
-    __in_opt PSTR File
+    __in_opt PCSTR File
     )
 {
     ULONG   retValue;

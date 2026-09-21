@@ -87,23 +87,6 @@ Return Value:
     ((FxCREvent*)DeferredContext)->Set();
 }
 
-_Must_inspect_result_
-BOOLEAN
-FX_DRIVER_GLOBALS::IsVersionGreaterThanOrEqualTo(
-    __in ULONG  Major,
-    __in ULONG  Minor
-    )
-{
-    if ((WdfBindInfo->Version.Major > Major) ||
-                (WdfBindInfo->Version.Major == Major &&
-                  WdfBindInfo->Version.Minor >= Minor)) {
-        return TRUE;
-    }
-    else {
-        return FALSE;
-    }
-}
-
 #define WDF_MAJOR_VERSION_VALUE L"WdfMajorVersion"
 #define WDF_MINOR_VERSION_VALUE L"WdfMinorVersion"
 
@@ -114,17 +97,14 @@ FX_DRIVER_GLOBALS::IsCorrectVersionRegistered(
     )
 {
     FxAutoRegKey hDriver, hWdf;
-    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Parameters\\Wdf");
+    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Wdf");
     DECLARE_CONST_UNICODE_STRING(wdfMajorValue, WDF_MAJOR_VERSION_VALUE);
     DECLARE_CONST_UNICODE_STRING(wdfMinorValue, WDF_MINOR_VERSION_VALUE);
     ULONG registeredMajor = 0, registeredMinor = 0;
     NTSTATUS status;
+    UNREFERENCED_PARAMETER(ServiceKeyName);
 
-    status = FxRegKey::_OpenKey(NULL,
-                                ServiceKeyName,
-                                &hDriver.m_Key,
-                                KEY_READ
-                                );
+    status = OpenDriverParamsKeyForRead(this, &hDriver.m_Key);
     if (!NT_SUCCESS(status)) {
         return FALSE;
     }
@@ -243,8 +223,6 @@ FX_DRIVER_GLOBALS::RegisterClientVersion(
     }
 }
 
-} // extern "C"
-
 _Must_inspect_result_
 BOOLEAN
 FX_DRIVER_GLOBALS::IsDebuggerAttached(
@@ -253,3 +231,5 @@ FX_DRIVER_GLOBALS::IsDebuggerAttached(
 {
     return (FALSE == KdRefreshDebuggerNotPresent());
 }
+
+} // extern "C"

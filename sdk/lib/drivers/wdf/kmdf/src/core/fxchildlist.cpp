@@ -30,8 +30,8 @@ extern "C" {
 
 FxDeviceDescriptionEntry::FxDeviceDescriptionEntry(
     __inout FxChildList* DeviceList,
-    __in ULONG AddressDescriptionSize,
-    __in ULONG IdentificationDescriptionSize
+    __in ULONG IdentificationDescriptionSize,
+    __in ULONG AddressDescriptionSize
     )
 {
     m_IdentificationDescription =
@@ -39,16 +39,16 @@ FxDeviceDescriptionEntry::FxDeviceDescriptionEntry(
         this, WDF_ALIGN_SIZE_UP(sizeof(*this), sizeof(PVOID)));
 
     m_IdentificationDescription->IdentificationDescriptionSize =
-        AddressDescriptionSize;
+        IdentificationDescriptionSize;
 
-    if (IdentificationDescriptionSize > 0) {
+    if (AddressDescriptionSize > 0) {
         m_AddressDescription =
             (PWDF_CHILD_ADDRESS_DESCRIPTION_HEADER) WDF_PTR_ADD_OFFSET(
                 m_IdentificationDescription,
-                WDF_ALIGN_SIZE_UP(AddressDescriptionSize, sizeof(PVOID)));
+                WDF_ALIGN_SIZE_UP(IdentificationDescriptionSize, sizeof(PVOID)));
 
         m_AddressDescription->AddressDescriptionSize =
-            IdentificationDescriptionSize;
+            AddressDescriptionSize;
     }
 
     InitializeListHead(&m_DescriptionLink);
@@ -89,11 +89,7 @@ FxDeviceDescriptionEntry::operator new(
 
     UNREFERENCED_PARAMETER(AllocatorBlock);
 
-    p = FxPoolAllocate(FxDriverGlobals, NonPagedPool, TotalDescriptionSize);
-
-    if (p != NULL) {
-        RtlZeroMemory(p, TotalDescriptionSize);
-    }
+    p = FxPoolAllocate2(FxDriverGlobals, POOL_FLAG_NON_PAGED, TotalDescriptionSize);
 
     return p;
 }
@@ -2279,7 +2275,7 @@ FxChildList::CreateDevice(
                 //
                 // Destroy any allocations assocated with the device.
                 //
-                init.CreatedDevice->Destroy();
+                ((FxDevice*)init.CreatedDevice)->Destroy();
             }
 
             *InvalidateRelations = TRUE;
@@ -2311,6 +2307,9 @@ FxChildList::CreateDevice(
 
         if (!NT_SUCCESS(status)) {
             if (init.CreatedDevice != NULL) {
+                FxDevice* createdDevice;
+                createdDevice = (FxDevice*)init.CreatedDevice;
+
                 KeAcquireSpinLock(&m_ListLock, &irql);
                 //
                 // Set to missing so that when the pnp machine evaluates whether the
@@ -2343,17 +2342,17 @@ FxChildList::CreateDevice(
                 }
                 KeReleaseSpinLock(&m_ListLock, irql);
 
-                ASSERT(init.CreatedDevice->IsPnp());
-                ASSERT(init.CreatedDevice->GetDevicePnpState() == WdfDevStatePnpInit);
-                ASSERT(init.CreatedDevice->GetPdoPkg()->m_Description != NULL);
+                ASSERT(createdDevice->IsPnp());
+                ASSERT(createdDevice->GetDevicePnpState() == WdfDevStatePnpInit);
+                ASSERT(createdDevice->GetPdoPkg()->m_Description != NULL);
 
                 ASSERT(Entry->m_Pdo == NULL);
 
                 DoTraceLevelMessage(
                     GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
                     "WDFDEVICE %p !devobj %p created, but EvtChildListCreateDevice "
-                    "returned status %!STATUS!", init.CreatedDevice->GetHandle(),
-                    init.CreatedDevice->GetDeviceObject(), status);
+                    "returned status %!STATUS!", createdDevice->GetHandle(),
+                    createdDevice->GetDeviceObject(), status);
 
                 //
                 // Simulate a remove event coming to the device.  After this call
@@ -2366,7 +2365,7 @@ FxChildList::CreateDevice(
                 // It is not really the status of DeleteDeviceFromFailedCreate
                 // operation, which is why we don't check it.
                 //
-                (void) init.CreatedDevice->DeleteDeviceFromFailedCreate(
+                (void) createdDevice->DeleteDeviceFromFailedCreate(
                                                                 status,
                                                                 TRUE);
 
@@ -2403,7 +2402,7 @@ FxChildList::CreateDevice(
     // assign m_Pdo after we have completely initalized device because we check
     // for m_Pdo in PostParentToD0.
     //
-    Entry->m_Pdo = init.CreatedDevice;
+    Entry->m_Pdo = (FxDevice*)init.CreatedDevice;
     Entry->m_DescriptionState = DescriptionInstantiatedHasObject;
 
     return TRUE;
@@ -2560,7 +2559,7 @@ FxChildList::ProcessBusRelations(
     size = _ComputeRelationsSize(totalCount);
 
     pNewRelations = (PDEVICE_RELATIONS)
-        ExAllocatePoolWithTag(PagedPool, size, pFxDriverGlobals->Tag);
+        ExAllocatePool2(POOL_FLAG_PAGED, size, pFxDriverGlobals->Tag);
 
     if (pNewRelations == NULL) {
         //
@@ -2696,8 +2695,6 @@ FxChildList::ProcessBusRelations(
 
         goto Done;
     }
-
-    RtlZeroMemory(pNewRelations, size);
 
     if (pPriorRelations != NULL && pPriorRelations->Count > 0) {
         DoTraceLevelMessage(
@@ -2900,7 +2897,13 @@ FxChildList::PostParentToD0(
             continue;
         }
 
-        if (pEntry->m_Pdo != NULL) {
+        //
+        // A child PDO that does not have a power dependency on the parent will
+        // never wait for this event, so don't post it.
+        //
+        if ((pEntry->m_Pdo != NULL) &&
+            (pEntry->m_Pdo->GetPdoPkg()->HasPowerDependencyOnParent() != FALSE)) {
+
             pEntry->m_Pdo->m_PkgPnp->PowerProcessEvent(PowerParentToD0);
         }
     }

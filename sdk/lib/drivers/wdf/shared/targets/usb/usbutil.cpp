@@ -363,11 +363,9 @@ FxUsbParseConfigurationDescriptor(
 }
 
 PURB
-FxUsbCreateConfigRequest(
-    __in PFX_DRIVER_GLOBALS FxDriverGlobals,
-    __in PUSB_CONFIGURATION_DESCRIPTOR ConfigDesc,
-    __in PUSBD_INTERFACE_LIST_ENTRY InterfaceList,
-    __in ULONG DefaultMaxPacketSize
+FxUsbDevice::CreateConfigRequest(
+    _In_ PUSB_CONFIGURATION_DESCRIPTOR ConfigDesc,
+    _In_ PUSBD_INTERFACE_LIST_ENTRY InterfaceList
     )
 {
     PURB urb;
@@ -415,7 +413,7 @@ FxUsbCreateConfigRequest(
                                   &size);
             if (!NT_SUCCESS(status)) {
                 DoTraceLevelMessage(
-                    FxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGIOTARGET,
+                    GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGIOTARGET,
                     "InterfaceList %p, NumEndPoints 0x%x, "
                     "Integer overflow while calculating interface size, %!STATUS!",
                     InterfaceList,
@@ -435,7 +433,7 @@ FxUsbCreateConfigRequest(
     //
     ASSERT(size <= 0xFFFF);
 
-    urb = (PURB) FxPoolAllocate(FxDriverGlobals, NonPagedPool, size);
+    urb = (PURB) FxPoolAllocate2(GetDriverGlobals(), POOL_FLAG_NON_PAGED, size);
 
     if (urb != NULL) {
         PUCHAR pCur;
@@ -443,8 +441,6 @@ FxUsbCreateConfigRequest(
         //
         // now all we have to do is initialize the urb
         //
-        RtlZeroMemory(urb, size);
-
         pList = InterfaceList;
 
         pCur = (PUCHAR) &urb->UrbSelectConfiguration.Interface;
@@ -463,8 +459,11 @@ FxUsbCreateConfigRequest(
                 GET_USBD_INTERFACE_SIZE(pInterfaceDesc->bNumEndpoints);
 
             for (LONG j = 0; j < pInterfaceDesc->bNumEndpoints; j++) {
-                pInterfaceInfo->Pipes[j].PipeFlags = 0;
-                pInterfaceInfo->Pipes[j].MaximumTransferSize = DefaultMaxPacketSize;
+                pInterfaceInfo->Pipes[j].PipeFlags =
+                    m_SspIsochPipeFlags
+                        ? USBD_PF_HANDLES_SSP_HIGH_BANDWIDTH_ISOCH
+                        : 0;
+                pInterfaceInfo->Pipes[j].MaximumTransferSize = GetDefaultMaxTransferSize();
             }
 
             ASSERT(pCur + pInterfaceInfo->Length <= ((PUCHAR) urb) + size);
@@ -555,12 +554,13 @@ Return Value:
 }
 
 VOID
+#pragma prefast(suppress:__WARNING_RETURN_UNINIT_VAR, "Returning uninitialized memory '*Buffer'")
 FxUsbUmInitDescriptorUrb(
-    __inout PUMURB UmUrb,
+    _Out_ PUMURB UmUrb,
     __in WINUSB_INTERFACE_HANDLE WinUsbHandle,
     __in UCHAR DescriptorType,
     __in ULONG BufferLength,
-    __in PVOID Buffer
+    _Out_ PVOID Buffer
     )
 {
     RtlZeroMemory(UmUrb, sizeof(UMURB));

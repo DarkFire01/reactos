@@ -152,6 +152,11 @@ public:
         return m_PkgContext;
     }
 
+    ULONG
+    GetInitiatorProcessId(
+        VOID
+        );
+
     //
     // Create a WDFFILEOBJECT from the WDM PFILE_OBJECT
     // and associate it with the WDM PFILE_OBJECT according

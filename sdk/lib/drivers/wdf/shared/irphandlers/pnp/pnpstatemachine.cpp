@@ -108,7 +108,7 @@ const PNP_EVENT_TARGET_STATE FxPkgPnp::m_PnpRemovedPdoWaitOtherStates[] =
 
 const PNP_EVENT_TARGET_STATE FxPkgPnp::m_PnpRestartingOtherStates[] =
 {
-    { PnpEventPwrPolStartFailed, WdfDevStatePnpFailedOwnHardware DEBUGGED_EVENT },
+    { PnpEventPwrPolStartFailed, WdfDevStatePnpHardwareAvailablePowerPolicyFailed DEBUGGED_EVENT },
     { PnpEventNull, WdfDevStatePnpNull },
 };
 
@@ -1381,20 +1381,24 @@ Return Value:
 {
     NTSTATUS status;
     BOOLEAN matched;
+    FxCxCallbackProgress progress = FxCxCallbackProgressInitialized;
 
     status = STATUS_SUCCESS;
     matched = FALSE;
 
-    This->QueryForReenumerationInterface();
-
-    status = This->CreatePowerThreadIfNeeded();
+    status = This->QueryForReenumerationInterface();
 
     if (NT_SUCCESS(status)) {
-        status = This->PnpPrepareHardware(&matched);
+        status = This->CreatePowerThreadIfNeeded();
+    }
+
+    if (NT_SUCCESS(status)) {
+        status = This->PnpPrepareHardware(&matched, &progress);
     }
 
     if (!NT_SUCCESS(status)) {
-        if (matched == FALSE) {
+        if ((matched == FALSE) ||
+            (progress  < FxCxCallbackProgressClientCalled)) {
             //
             // NOTE:  consider going to WdfDevStatePnpFailed instead of yet
             //        another failed state out of start device handling.
@@ -1507,7 +1511,7 @@ Routine Description:
     path.
 
 Arguments:
-    This - instance of the state machien
+    This - instance of the state machine
 
 Return Value:
     WdfDevStatePnpFailedOwnHardware
@@ -1704,11 +1708,12 @@ Return Value:
         DoTraceLevelMessage(
             This->GetDriverGlobals(), TRACE_LEVEL_INFORMATION, TRACINGPNP,
             "Failing QueryRemoveDevice due to open special file counts "
-            "(paging %d, hiber %d, dump %d, boot %d)",
+            "(paging %d, hiber %d, dump %d, boot %d, guest assigned %d)",
             This->GetUsageCount(WdfSpecialFilePaging),
             This->GetUsageCount(WdfSpecialFileHibernation),
             This->GetUsageCount(WdfSpecialFileDump),
-            This->GetUsageCount(WdfSpecialFileBoot));
+            This->GetUsageCount(WdfSpecialFileBoot),
+            This->GetUsageCount(WdfSpecialFileGuestAssigned));
 
         status = STATUS_DEVICE_NOT_READY;
     }
@@ -1950,11 +1955,12 @@ Return Value:
         DoTraceLevelMessage(
             This->GetDriverGlobals(), TRACE_LEVEL_INFORMATION, TRACINGPNP,
             "Failing QueryStopDevice due to open special file counts (paging %d,"
-            " hiber %d, dump %d, boot %d)",
+            " hiber %d, dump %d, boot %d, guest assigned %d)",
             This->GetUsageCount(WdfSpecialFilePaging),
             This->GetUsageCount(WdfSpecialFileHibernation),
             This->GetUsageCount(WdfSpecialFileDump),
-            This->GetUsageCount(WdfSpecialFileBoot));
+            This->GetUsageCount(WdfSpecialFileBoot),
+            This->GetUsageCount(WdfSpecialFileGuestAssigned));
 
         status = STATUS_DEVICE_NOT_READY;
     }
@@ -2026,8 +2032,8 @@ Return Value:
     //
     // Mark the device as removed.
     //
-    m_PnpStateAndCaps.Value &= ~FxPnpStateRemovedMask;
-    m_PnpStateAndCaps.Value |= FxPnpStateRemovedTrue;
+    m_PnpState.Value &= ~FxPnpStateRemovedMask;
+    m_PnpState.Value |= FxPnpStateRemovedTrue;
 
     //
     // Now call the driver and tell it to cleanup all its software state.
@@ -2320,12 +2326,9 @@ Return Value:
     if (!NT_SUCCESS(status)) {
         //
         // The driver failed to unmap resources.  Presumably this means that
-        // there are now some leaked PTEs.  Just log the failure.
+        // there are now some leaked PTEs.  Error is logged prior to this point.
         //
-        DoTraceLevelMessage(
-            This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-            "EvtDeviceReleaseHardware %p failed, %!STATUS!",
-            This->m_Device->GetHandle(), status);
+        DO_NOTHING();
     }
 
     This->PnpCleanupForRemove(TRUE);
@@ -2485,14 +2488,16 @@ Return Value:
 {
     NTSTATUS status;
     BOOLEAN matched;
+    FxCxCallbackProgress progress;
 
-    status = This->PnpPrepareHardware(&matched);
+    status = This->PnpPrepareHardware(&matched, &progress);
 
     if (!NT_SUCCESS(status)) {
         //
         // We can handle remove out of the init state, revert back to that state
         //
-        if (matched == FALSE) {
+        if ((matched == FALSE) ||
+            (progress < FxCxCallbackProgressClientCalled)) {
             //
             // Wait for the remove irp to come in
             //
@@ -2544,9 +2549,6 @@ Return Value:
         state = WdfDevStatePnpNull;
     }
     else {
-        DoTraceLevelMessage(This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-                            "EvtDeviceReleaseHardware failed - %!STATUS!",
-                            status);
         COVERAGE_TRAP();
 
         This->SetInternalFailure();
@@ -2918,6 +2920,10 @@ Return Value:
 
   --*/
 {
+    BOOLEAN failedActionAttemptRestart;
+
+    failedActionAttemptRestart = FALSE;
+
     //
     // Finish processing any pended PnP IRP.  Since we can reach this state from
     // states where a pnp irp was *not* pended, we do not require a pnp irp to
@@ -2926,11 +2932,29 @@ Return Value:
     This->PnpFinishProcessingIrp(FALSE);
 
     //
+    // For compatibility reasons, in case of UMDF version < 2.23
+    // and KMDF version < 1.23 renumerate the PDO if FailedAction
+    // is WdfDeviceFailedAttemptRestart. For later versions
+    // reenumeration is done by SetDeviceFailed
+    //
+    if (This->m_FailedAction == WdfDeviceFailedAttemptRestart) {
+#if (FX_CORE_MODE == FX_CORE_USER_MODE)
+        if (This->GetDriverGlobals()->IsVersionGreaterThanOrEqualTo(2, 23) == FALSE) {
+            failedActionAttemptRestart = TRUE;
+        }
+#else
+        if (This->GetDriverGlobals()->IsVersionGreaterThanOrEqualTo(1, 23) == FALSE) {
+            failedActionAttemptRestart = TRUE;
+        }
+#endif
+    }
+
+    //
     // Request reenumeration if the client driver asked for it or if there was
     // an internal failure *and* if the client driver didn't specify failure...
     // AND if we have not yet exceeded our restart count within a period of time.
     //
-    if ((This->m_FailedAction == WdfDeviceFailedAttemptRestart ||
+    if ((failedActionAttemptRestart ||
          (This->m_FailedAction == WdfDeviceFailedUndefined && This->m_InternalFailure))
         &&
         This->PnpCheckAndIncrementRestartCount()) {
@@ -3150,10 +3174,6 @@ Return Value:
 
     status = This->PnpReleaseHardware();
     if (!NT_SUCCESS(status)) {
-        DoTraceLevelMessage(
-            This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-            "EvtDeviceReleaseHardware failed with %!STATUS!", status);
-
         COVERAGE_TRAP();
 
         This->SetInternalFailure();
@@ -3197,11 +3217,13 @@ Return Value:
 {
     NTSTATUS status;
     BOOLEAN matched;
+    FxCxCallbackProgress progress;
 
-    status = This->PnpPrepareHardware(&matched);
+    status = This->PnpPrepareHardware(&matched, &progress);
 
     if (!NT_SUCCESS(status)) {
-        if (matched == FALSE) {
+        if ((matched == FALSE) ||
+            (progress  < FxCxCallbackProgressClientCalled)) {
             //
             // Wait for the remove irp to come in
             //
@@ -3454,7 +3476,10 @@ Return Value:
         //
         ASSERT(pDeviceInterface->m_SymbolicLinkName.Buffer != NULL);
 #endif
-        pDeviceInterface->SetState(TRUE);
+
+        if (pDeviceInterface->m_AutoEnableOnFirstStart) {
+            pDeviceInterface->SetState(TRUE);
+        }
 
         status = STATUS_SUCCESS;
     }
@@ -3474,9 +3499,11 @@ Return Value:
 }
 
 __drv_when(!NT_SUCCESS(return), __drv_arg(ResourcesMatched, _Must_inspect_result_))
+__drv_when(!NT_SUCCESS(return), __drv_arg(Progress, _Must_inspect_result_))
 NTSTATUS
 FxPkgPnp::PnpPrepareHardware(
-    __inout PBOOLEAN ResourcesMatched
+    _Out_ PBOOLEAN ResourcesMatched,
+    _Out_ FxCxCallbackProgress *Progress
     )
 /*++
 
@@ -3487,6 +3514,8 @@ Routine Description:
 Arguments:
     ResourcesMatched - indicates to the caller what stage failed if !NT_SUCCESS
                         is returned
+    Progress - indicates to the caller what stage the API failed if
+                        !NT_SUCCESS is returned
 
 Return Value:
     NT_SUCCESS if all goes well, !NT_SUCCESS if failure occurrs
@@ -3495,6 +3524,7 @@ Return Value:
 {
     NTSTATUS status;
     *ResourcesMatched = FALSE;
+	*Progress = FxCxCallbackProgressInitialized;
 
     //
     // FxPnpStateRemoved:
@@ -3507,12 +3537,12 @@ Return Value:
     // a need to set these values, the driver can set them in
     // EvtDevicePrepareHardware.
     //
-    m_PnpStateAndCaps.Value &= ~(FxPnpStateRemovedMask |
-                                 FxPnpStateFailedMask |
-                                 FxPnpStateResourcesChangedMask);
-    m_PnpStateAndCaps.Value |= (FxPnpStateRemovedUseDefault |
-                                FxPnpStateFailedUseDefault |
-                                FxPnpStateResourcesChangedUseDefault);
+    m_PnpState.Value &= ~(FxPnpStateRemovedMask |
+                          FxPnpStateFailedMask |
+                          FxPnpStateResourcesChangedMask);
+    m_PnpState.Value |= (FxPnpStateRemovedUseDefault |
+                         FxPnpStateFailedUseDefault |
+                         FxPnpStateResourcesChangedUseDefault);
 
     //
     // This will parse the resources and setup all the WDFINTERRUPT handles
@@ -3568,16 +3598,14 @@ Return Value:
 
     status = m_DevicePrepareHardware.Invoke(m_Device->GetHandle(),
                                             m_ResourcesRaw->GetHandle(),
-                                            m_Resources->GetHandle());
+                                            m_Resources->GetHandle(),
+                                            Progress);
 
     m_Device->ClearCallbackFlags(
                         FXDEVICE_CALLBACK_IN_PREPARE_HARDWARE
                         );
 
     if (!NT_SUCCESS(status)) {
-        DoTraceLevelMessage(GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-                            "EvtDevicePrepareHardware failed %!STATUS!", status);
-
         if (status == STATUS_NOT_SUPPORTED) {
             DoTraceLevelMessage(
                 GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
@@ -3923,10 +3951,10 @@ Returns:
     // states and the start succeeds, we would endlessly report that our
     // resources have changed and be restarted over and over.
     //
-    m_PnpStateAndCaps.Value &= ~(FxPnpStateFailedMask |
-                                 FxPnpStateResourcesChangedMask);
-    m_PnpStateAndCaps.Value |= (FxPnpStateFailedUseDefault |
-                                FxPnpStateResourcesChangedUseDefault);
+    m_PnpState.Value &= ~(FxPnpStateFailedMask |
+                          FxPnpStateResourcesChangedMask);
+    m_PnpState.Value |= (FxPnpStateFailedUseDefault |
+                         FxPnpStateResourcesChangedUseDefault);
 
     irp.SetIrp(m_PendingPnPIrp);
     pResourcesRaw = irp.GetParameterAllocatedResources();

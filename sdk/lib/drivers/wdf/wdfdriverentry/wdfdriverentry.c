@@ -7,8 +7,8 @@
 
 #include <ntddk.h>
 #include <windef.h>
-#include <fxldr.h>
 #include "wdf.h"
+#include <fxldr.h>
 
 
 #define WDFENTRY_TAG 'EFDW'
@@ -23,6 +23,14 @@ DriverEntry(
 
 const WDFFUNC *WdfFunctions;
 PWDF_DRIVER_GLOBALS WdfDriverGlobals;
+
+/* The client binds with the original bind info, so the framework never has to
+   shrink these tables and the client keeps its own view of them. */
+BOOLEAN WdfClientVersionHigherThanFramework = FALSE;
+ULONG WdfFunctionCount = WdfFunctionTableNumEntries;
+ULONG WdfStructureCount = 0;
+WDF_STRUCT_INFO WdfStructures = NULL;
+
 WDF_BIND_INFO BindInfo =
 {
     .Size = sizeof(BindInfo),

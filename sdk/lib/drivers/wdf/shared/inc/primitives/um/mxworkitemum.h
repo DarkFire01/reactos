@@ -81,7 +81,7 @@ typedef struct {
 
 typedef UmWorkItem*     MdWorkItem;
 
-#include "MxWorkItem.h"
+#include "mxworkitem.h"
 
 __inline
 MxWorkItem::MxWorkItem(

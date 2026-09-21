@@ -47,7 +47,7 @@ WDFEXPORT(WdfObjectReferenceActual)(
     __in
     LONG Line,
     __in
-    PSTR File
+    PCSTR File
     )
 /*++
 
@@ -93,7 +93,7 @@ WDFEXPORT(WdfObjectDereferenceActual)(
     __in
     LONG Line,
     __in
-    PSTR File
+    PCSTR File
     )
 /*++
 

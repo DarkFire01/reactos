@@ -36,7 +36,7 @@ extern "C" {
 #define INITGUID
 #include <guiddef.h>
 
-#include <WdfFileObject_private.h>
+#include <wdffileobject_private.h>
 
 //
 // Function declarations for the WdfObjectQuery DDIs
@@ -44,6 +44,7 @@ extern "C" {
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 WDFEXPORT(WdfFileObjectIncrementProcessKeepAliveCount)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -54,6 +55,7 @@ WDFEXPORT(WdfFileObjectIncrementProcessKeepAliveCount)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 WDFEXPORT(WdfFileObjectDecrementProcessKeepAliveCount)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -170,6 +172,11 @@ Returns:
         //
         // Check the struct version (require an exact match for a private DDI)
         //
+        // NOTE: doc on WdfObjectQuery says the QueryBuffer is _Out_ only, but
+        // it is used as _Inout_ here. For now, let's keep the existing public
+        // contract as is, unless we have strong reason to change it.
+        //
+        #pragma prefast(suppress:__WARNING_USING_UNINIT_VAR, "Using uninitialized memory '*QueryBuffer'")
         if (FileObjectInterface->Size != RequiredBufferLength) {
             DoTraceLevelMessage(
                 pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,

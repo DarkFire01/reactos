@@ -51,12 +51,14 @@ FxNPagedLookasideList::Initialize(
     NTSTATUS status;
 
     //
-    // This type of class does not support BufferSize greater than 0xFFFF.
-    // The verification below ensures this contract is respected in both
-    // free and chk builds.
+    // Note that FxMemoryBufferFromLookaside is used for buffer less than a page
+    // size so downcasting to USHORT (via COMPUTE_OBJECT_SIZE) is safe because
+    // size of object plus buffer (<page size) would be smaller than 64K that
+    // could fit in USHORT. See comments in FxMemoryObject.hpp for info on
+    // various fx memory objects.
     //
-    if (BufferSize > MAXUSHORT) {
-        ASSERT(FALSE);
+    ASSERT(BufferSize < PAGE_SIZE);
+    if (BufferSize >= PAGE_SIZE) {
         status = STATUS_INVALID_BUFFER_SIZE;
         goto Done;
     }
@@ -78,7 +80,7 @@ FxNPagedLookasideList::Initialize(
         ExInitializeNPagedLookasideList(&m_ObjectLookaside,
                                         NULL,
                                         NULL,
-                                        0,
+                                        POOL_NX_ALLOCATION,
                                         m_MemoryObjectSize,
                                         m_PoolTag,
                                         0);
@@ -180,7 +182,7 @@ FxNPagedLookasideListFromPool::Initialize(
     ExInitializeNPagedLookasideList(&m_ObjectLookaside,
                                     NULL,
                                     NULL,
-                                    0,
+                                    POOL_NX_ALLOCATION,
                                     m_MemoryObjectSize,
                                     m_PoolTag,
                                     0);
@@ -197,7 +199,7 @@ FxNPagedLookasideListFromPool::Initialize(
     ExInitializeNPagedLookasideList(&m_PoolLookaside,
                                     NULL,
                                     NULL,
-                                    0,
+                                    POOL_NX_ALLOCATION,
                                     m_BufferSize,
                                     m_PoolTag,
                                     0);

@@ -23,6 +23,7 @@ Revision History:
 
 --*/
 
+#include <ntifs.h>
 #include "coreprivshared.hpp"
 
 // Tracing support
@@ -692,7 +693,7 @@ Returns:
     //
     // Get a system address for the MDL
     //
-    pVA = Mx::MxGetSystemAddressForMdlSafe(pMdl, NormalPagePriority);
+    pVA = Mx::MxGetSystemAddressForMdlSafe(pMdl, NormalPagePriority | MdlMappingNoExecute);
     if (pVA == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         goto Done;
@@ -852,7 +853,7 @@ Returns:
     //
     // Get a system address for the MDL
     //
-    pVA = Mx::MxGetSystemAddressForMdlSafe(pMdl, NormalPagePriority);
+    pVA = Mx::MxGetSystemAddressForMdlSafe(pMdl, NormalPagePriority | MdlMappingNoExecute);
     if (pVA == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         goto Done;
@@ -904,3 +905,22 @@ Done:
     return status;
 }
 
+ULONG
+FxRequest::GetRequestorProcessId(
+    VOID
+    )
+{
+    NTSTATUS status;
+    MdIrp irp;
+
+    status = GetIrp(&irp);
+    if (!NT_SUCCESS(status)) {
+        DoTraceLevelMessage(GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGREQUEST,
+                            "Unable to obtain requestor ID. WDFREQUEST 0x%p is already completed, %!STATUS!",
+                            GetHandle(), status);
+        FxVerifierDbgBreakPoint(GetDriverGlobals());
+        return 0;
+    }
+
+    return IoGetRequestorProcessId(irp);
+}

@@ -30,7 +30,7 @@ Revision History:
 // Tracing support
 #if defined(EVENT_TRACING)
 extern "C" {
-#include "FxPkgPdoKM.tmh"
+// #include "FxPkgPdoKM.tmh"
 }
 #endif
 

@@ -100,14 +100,6 @@ FxUsbParseConfigurationDescriptor(
     __in UCHAR AlternateSetting = 1
     );
 
-PURB
-FxUsbCreateConfigRequest(
-    __in PFX_DRIVER_GLOBALS FxDriverGlobals,
-    __in PUSB_CONFIGURATION_DESCRIPTOR ConfigDesc,
-    __in PUSBD_INTERFACE_LIST_ENTRY InterfaceList,
-    __in ULONG DefaultMaxPacketSize
-    );
-
 NTSTATUS
 FxUsbValidateConfigDescriptorHeaders(
     __in PFX_DRIVER_GLOBALS FxDriverGlobals,
@@ -151,11 +143,11 @@ FxUsbUmFormatRequest(
 
 VOID
 FxUsbUmInitDescriptorUrb(
-    __inout PUMURB UmUrb,
+    _Out_ PUMURB UmUrb,
     __in WINUSB_INTERFACE_HANDLE WinUsbHandle,
     __in UCHAR DescriptorType,
     __in ULONG BufferLength,
-    __in PVOID Buffer
+    _Out_ PVOID Buffer
     );
 
 VOID

@@ -277,14 +277,15 @@ FxPoxInterface::PoxRegisterDevice(
 {
 
     NTSTATUS status;
-    PO_FX_DEVICE poxDevice;
+    PO_FX_DEVICE_V3 poxDevice;
     PO_FX_COMPONENT_IDLE_STATE idleState;
     PPOX_SETTINGS poxSettings = NULL;
+    BOOLEAN directedTransitions;
 
     RtlZeroMemory(&poxDevice, sizeof(poxDevice));
     RtlZeroMemory(&idleState, sizeof(idleState));
 
-    poxDevice.Version = PO_FX_VERSION_V1;
+    poxDevice.Version = PO_FX_VERSION_V3;
 
     //
     // Specify callbacks and context
@@ -300,6 +301,24 @@ FxPoxInterface::PoxRegisterDevice(
     poxDevice.DevicePowerNotRequiredCallback =
                     FxPoxInterface::PowerNotRequiredCallback;
     poxDevice.DeviceContext = this;
+
+    //
+    // If the device is opted into directed power transitions, then register
+    // directed power up/down callbacks with PoFx.
+    //
+    directedTransitions = m_PkgPnp->m_PowerPolicyMachine.m_Owner->
+        m_IdleSettings.m_TimeoutMgmt.GetDirectedPowerTransitionSupport();
+
+    if (FALSE != directedTransitions) {
+        poxDevice.DirectedPowerUpCallback =
+            FxPoxInterface::DirectedPowerUpCallback;
+
+        poxDevice.DirectedPowerDownCallback =
+            FxPoxInterface::DirectedPowerDownCallback;
+    }
+
+    poxDevice.Flags = m_PkgPnp->m_PowerPolicyMachine.m_Owner->
+        m_IdleSettings.m_TimeoutMgmt.GetPoFxDeviceFlags();
 
     //
     // We register as a single component device
@@ -357,21 +376,35 @@ FxPoxInterface::PoxRegisterDevice(
     }
     else {
         //
-        // Client driver's settings
+        // Copy the component information and all the idle state information
+        // from the client driver's settings.
         //
-        RtlCopyMemory(&(poxDevice.Components[0]),
-                      poxSettings->Component,
-                      sizeof(poxDevice.Components[0]));
+        // N.B. The components fields need to be copied over individually due
+        //      to the difference in the component structure version. The
+        //      poxDevice (PO_FX_DEVICE_V3) refers to v2 version of the
+        //      component structure (PO_FX_COMPONENT_V2) while the POX_SETTINGS
+        //      refers to the v1 version (PO_FX_COMPONENT_V1).
+        //
+        RtlCopyMemory(&poxDevice.Components[0].Id,
+                      &poxSettings->Component->Id,
+                      sizeof(GUID));
+
+        poxDevice.Components[0].IdleStateCount =
+            poxSettings->Component->IdleStateCount;
+
+        poxDevice.Components[0].DeepestWakeableIdleState =
+            poxSettings->Component->DeepestWakeableIdleState;
+
+        poxDevice.Components[0].IdleStates =
+            poxSettings->Component->IdleStates;
     }
 
-    //
-    // Register with the power framework
-    //
     status = PoFxRegisterDevice(
-                m_PkgPnp->GetDevice()->GetPhysicalDevice(),
-                &poxDevice,
-                &(m_PoHandle)
-                );
+        m_PkgPnp->GetDevice()->GetPhysicalDevice(),
+        (PPO_FX_DEVICE)&poxDevice,
+        &(m_PoHandle)
+        );
+
     if (FALSE == NT_SUCCESS(status)) {
         DoTraceLevelMessage(
             m_PkgPnp->GetDriverGlobals(),
@@ -456,5 +489,110 @@ FxPoxInterface::PoxSetDeviceIdleTimeout(
     )
 {
     PoFxSetDeviceIdleTimeout(m_PoHandle, IdleTimeout);
+}
+
+
+VOID
+FxPoxInterface::DirectedPowerDownCallback(
+    __in PVOID Context,
+    __in ULONG Flags
+    )
+{
+    FxPoxInterface * pThis = NULL;
+
+    UNREFERENCED_PARAMETER(Flags);
+
+    pThis = (FxPoxInterface*) Context;
+
+    DoTraceLevelMessage(
+        pThis->m_PkgPnp->GetDriverGlobals(),
+        TRACE_LEVEL_INFORMATION,
+        TRACINGPNP,
+        "WDFDEVICE 0x%p !devobj 0x%p PO_FX_DIRECTED_POWER_DOWN_CALLBACK "
+        "invoked.",
+        pThis->m_PkgPnp->GetDevice()->GetHandle(),
+        pThis->m_PkgPnp->GetDevice()->GetDeviceObject()
+        );
+
+    //
+    // The following guarantees will hold once a directed power down is
+    // initiated by PoFx:
+    //
+    // 1. PoFx will not issue runtime-D3 callbacks (like active/idle/DPR/DPNR)
+    //    until the device is powered back up in a directed manner.
+    //
+    // 2. No system state transitions (S-IRPs) will be issued to the device
+    //    stack until the device is powered back up in a directed manner.
+    //
+    // 3. PnP manager will not issue removal IRPs (orderly or surprise removal)
+    //    until the device is powered back up in a directed manner.
+    //
+    // 4. Once PoFx initiates directed power down, it will not issue a
+    //    directed power up request until the device completes the directed
+    //    power down request.
+    //
+    // Note a directed power down invocation must be completed back to PoFx
+    // by invoking the PoFxCompleteDirectedPowerDown() completion routine.
+    //
+    pThis->DirectedPowerDownCallbackWorker(TRUE /* InvokedFromPoxCallback */);
+    return;
+}
+
+
+VOID
+FxPoxInterface::DirectedPowerUpCallback(
+    __in PVOID Context,
+    __in ULONG Flags
+    )
+{
+    FxPoxInterface * pThis = NULL;
+
+    UNREFERENCED_PARAMETER(Flags);
+
+    pThis = (FxPoxInterface*) Context;
+
+    DoTraceLevelMessage(
+        pThis->m_PkgPnp->GetDriverGlobals(),
+        TRACE_LEVEL_INFORMATION,
+        TRACINGPNP,
+        "WDFDEVICE 0x%p !devobj 0x%p PO_FX_DIRECTED_POWER_UP_CALLBACK "
+        "invoked.",
+        pThis->m_PkgPnp->GetDevice()->GetHandle(),
+        pThis->m_PkgPnp->GetDevice()->GetDeviceObject()
+        );
+
+    //
+    // Refer to the directed power down routine above for the guarantees that
+    // hold until directed power up is completed.
+    //
+    // Note a directed power up invocation is completed by having the device
+    // report itself as powered ON [PoFxReportDevicePoweredOn()] which
+    // implicitly completes the power up request.
+    //
+    pThis->DirectedPowerUpCallbackWorker(TRUE /* InvokedFromPoxCallback */);
+    return;
+}
+
+
+VOID
+FxPoxInterface::PoxCompleteDirectedPowerDownTransition(
+    VOID
+    )
+{
+    PoFxCompleteDirectedPowerDown(m_PoHandle);
+}
+
+
+VOID
+FxPoxInterface::PoxCompleteDirectedPowerUpTransition(
+    VOID
+    )
+{
+    //
+    // For directed power up transitions, the completion is implicit as a
+    // result of the device reporting itself as powered on (i.e. calling
+    // PoFxReportDevicePoweredOn). Thus no further action is required here.
+    //
+    return;
 }
 

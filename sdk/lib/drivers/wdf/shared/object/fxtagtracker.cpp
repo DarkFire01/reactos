@@ -138,7 +138,7 @@ VOID
 FxTagTracker::UpdateTagHistory(
     __in        PVOID Tag,
     __in        LONG Line,
-    __in_opt    PSTR File,
+    __in_opt    PCSTR File,
     __in        FxTagRefType RefType,
     __in        ULONG RefCount
     )
@@ -168,7 +168,7 @@ Return Value:
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     FxTagHistory* pTagHistory;
     FxTagTrackingBlock* pBlock;
-    LONG pos;
+    ULONG pos;
     KIRQL irql;
     USHORT numFrames = 0;
     PVOID frames[FRAMES_TO_CAPTURE];
@@ -177,13 +177,6 @@ Return Value:
 
     pos = InterlockedIncrement(&m_CurRefHistory) - 1;
     pos %= TAG_HISTORY_DEPTH;
-
-    //
-    // Prefast reports that m_CurRefHistory can be negative which can lead to
-    // underflow. But we know that m_CurRefHistory would never be negative.
-    // Hence we assert for the condition below and assume that it would be true.
-    //
-    FX_ASSERT_AND_ASSUME_FOR_PREFAST(pos >= 0 && pos < TAG_HISTORY_DEPTH);
 
     pTagHistory = m_TagHistory + pos;
 

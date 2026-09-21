@@ -27,6 +27,8 @@ Revision History:
 --*/
 
 #include "fxcorepch.hpp"
+// #include "FeatureStagingSupport.h"
+// #include <FeatureStaging-WDF.h>
 
 // We use DoTraceMessage
 extern "C" {
@@ -114,7 +116,6 @@ FxWmiTraceMessage(
 
     va_start(va, MessageNumber);
 
-#pragma prefast(suppress:__WARNING_BUFFER_OVERFLOW, "Recommneded by EndClean");
 #ifndef __REACTOS__
     status = WmiTraceMessageVa(LoggerHandle,
                                MessageFlags,
@@ -132,10 +133,13 @@ FxWmiTraceMessage(
 // Subcomponents for the In-Flight Recorder follow.
 //-----------------------------------------------------------------------------
 
-ULONG
-FxIFRGetSize(
+VOID
+FxIFRGetSettings(
     __in PFX_DRIVER_GLOBALS FxDriverGlobals,
-    __in PCUNICODE_STRING RegistryPath
+    __in PCUNICODE_STRING RegistryPath,
+    __out ULONG * Size,
+    __out BOOLEAN * UseTimeStamp,
+    __out BOOLEAN * PreciseTimeStamp
     )
 /*++
 
@@ -145,16 +149,20 @@ Routine Description:
 
 Arguments:
     RegistryPath - path to the service
-
-Return Value:
-    The size of the IFR to create in bytes (not pages!)
+    [out] Size - The size of the IFR to create in bytes (not pages!)
+    [out] UseTimeStamp - Whether to store timestamp or not
+    [out] PreciseTimeStamp - Use precise timestamp.
 
   --*/
 {
     FxAutoRegKey service, parameters;
     NTSTATUS status;
-    OBJECT_ATTRIBUTES oa;
     ULONG numPages;
+    ULONG regValue;
+    BOOLEAN useTimeStamp;
+    BOOLEAN preciseTimeStamp;
+
+    UNREFERENCED_PARAMETER(RegistryPath);
 
     //
     // This is the value used in case of any error while retrieving 'LogPages'
@@ -162,60 +170,64 @@ Return Value:
     //
     numPages  = FxIFRMinLogPages;
 
+    useTimeStamp = TRUE;
+    preciseTimeStamp = FALSE;
+
     //
     // External representation of the IFR is the "LogPages", so use that term when
     // overriding the size via the registry.
     //
-    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Parameters\\Wdf");
+    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Wdf");
     DECLARE_CONST_UNICODE_STRING(valueName, L"LogPages");
+    DECLARE_CONST_UNICODE_STRING(nameTimeStamp, L"LogUseTimeStamp");
+    DECLARE_CONST_UNICODE_STRING(namePreciseTimeStamp, L"LogPreciseTimeStamp");
 
-    InitializeObjectAttributes(&oa,
-                               (PUNICODE_STRING)RegistryPath,
-                               OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
-                               NULL,
-                               NULL);
-
-    status = ZwOpenKey(&service.m_Key, KEY_READ, &oa);
+    status = OpenDriverParamsKeyForRead(FxDriverGlobals, &service.m_Key);
     if (!NT_SUCCESS(status)) {
         goto defaultValues;
     }
 
-    InitializeObjectAttributes(&oa,
-                               (PUNICODE_STRING)&parametersPath,
-                               OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
-                               service.m_Key,
-                               NULL);
-
-    status = ZwOpenKey(&parameters.m_Key, KEY_READ, &oa);
-
+    status = FxRegKey::_OpenKey(service.m_Key, &parametersPath, &parameters.m_Key, KEY_READ);
     if (!NT_SUCCESS(status)) {
         goto defaultValues;
     }
 
     status = FxRegKey::_QueryULong(parameters.m_Key, &valueName, &numPages);
-    if (!NT_SUCCESS(status)) {
-        goto defaultValues;
+    if (NT_SUCCESS(status)) {
+        if (numPages == 0) {
+            numPages = FxIFRMinLogPages;
+        }
+        //
+        // Use FxIFRAvgLogPages if user specifies greater than FxIFRMaxLogPages and if
+        // Verifier flag is on and so is Verbose flag.
+        //
+        if (numPages > FxIFRMaxLogPages) {
+            if (FxDriverGlobals->FxVerifierOn && FxDriverGlobals->FxVerboseOn) {
+                numPages = FxIFRAvgLogPages;
+            }
+            else {
+                numPages = FxIFRMinLogPages;
+            }
+        }
     }
 
-    if (numPages == 0) {
-        numPages = FxIFRMinLogPages;
+    status = FxRegKey::_QueryULong(parameters.m_Key, &nameTimeStamp, &regValue);
+    if (NT_SUCCESS(status)) {
+        useTimeStamp = (regValue != 0);
+    }
+
+    if (useTimeStamp) {
+        status = FxRegKey::_QueryULong(parameters.m_Key, &namePreciseTimeStamp, &regValue);
+        if (NT_SUCCESS(status)) {
+            preciseTimeStamp = (regValue != 0);
+        }
     }
 
 defaultValues:
-    //
-    // Use FxIFRAvgLogPages if user specifies greater than FxIFRMaxLogPages and if
-    // Verifier flag is on and so is Verbose flag.
-    //
-    if (numPages > FxIFRMaxLogPages) {
-        if (FxDriverGlobals->FxVerifierOn && FxDriverGlobals->FxVerboseOn) {
-            numPages = FxIFRAvgLogPages;
-        }
-        else {
-            numPages = FxIFRMinLogPages;
-        }
-    }
 
-    return numPages * PAGE_SIZE;
+    *Size = numPages * PAGE_SIZE;
+    *UseTimeStamp = useTimeStamp;
+    *PreciseTimeStamp = preciseTimeStamp;
 }
 
 VOID
@@ -239,10 +251,10 @@ Routine Description:
 {
     PWDF_IFR_HEADER pHeader;
     ULONG size;
+    BOOLEAN useTimeStamp;
+    BOOLEAN preciseTimeStamp;
 
     UNREFERENCED_PARAMETER( DriverObject );
-
-    WDFCASSERT(FxIFRRecordSignature == WDF_IFR_RECORD_SIGNATURE);
 
     //
     // Return early if IFR is disabled.
@@ -256,16 +268,15 @@ Routine Description:
         return;
     }
 
-    size = FxIFRGetSize(FxDriverGlobals, RegistryPath);
+    FxIFRGetSettings(FxDriverGlobals, RegistryPath, &size,
+                     &useTimeStamp, &preciseTimeStamp);
 
-    pHeader = (PWDF_IFR_HEADER) ExAllocatePoolWithTag(NonPagedPool,
-                                                      size,
-                                                      WDF_IFR_LOG_TAG );
+    pHeader = (PWDF_IFR_HEADER) ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                                size,
+                                                WDF_IFR_LOG_TAG );
     if (pHeader == NULL) {
         return;
     }
-
-    RtlZeroMemory(pHeader, size);
 
     //
     // Initialize the header.
@@ -276,12 +287,16 @@ Routine Description:
 
     pHeader->Base = (PUCHAR) &pHeader[1];
     pHeader->Size = size - sizeof(WDF_IFR_HEADER);
+    pHeader->UseTimeStamp = useTimeStamp;
+    pHeader->PreciseTimeStamp = preciseTimeStamp;
 
     pHeader->Offset.u.s.Current  = 0;
     pHeader->Offset.u.s.Previous = 0;
     RtlStringCchCopyA(pHeader->DriverName, WDF_IFR_HEADER_NAME_LEN, FxDriverGlobals->Public.DriverName);
 
     FxDriverGlobals->WdfLogHeader = pHeader;
+
+    InterlockedIncrement(&FxDriverGlobals->WdfLogHeaderRefCount);
 
     DoTraceLevelMessage(FxDriverGlobals, TRACE_LEVEL_INFORMATION, TRACINGDRIVER,
                         "FxIFR logging started" );
@@ -323,10 +338,18 @@ Routine Description:
     }
 
     //
-    // Free the Log buffer.
+    // Under normal operation the ref count should usually drop to zero when
+    // FxIfrStop is called by FxLibraryCommonUnregisterClient, unless
+    // FxIfrReplay is in the process of making a copy of the IFR buffer.
+    // In which case that thread will call FxIfrStop.
     //
-    ExFreePoolWithTag( FxDriverGlobals->WdfLogHeader, WDF_IFR_LOG_TAG );
-    FxDriverGlobals->WdfLogHeader = NULL;
+    if (0 == InterlockedDecrement(&(FxDriverGlobals->WdfLogHeaderRefCount))) {
+        //
+        // Free the Log buffer.
+        //
+        ExFreePoolWithTag(FxDriverGlobals->WdfLogHeader, WDF_IFR_LOG_TAG);
+        FxDriverGlobals->WdfLogHeader = NULL;
+    }
 }
 
 _Must_inspect_result_
@@ -397,7 +420,7 @@ Returns:
         size_t    argLen;
 
         va_start(ap, MessageNumber);
-#pragma prefast(suppress: __WARNING_BUFFER_OVERFLOW, "Recommneded by EndClean");
+
         while ((va_arg(ap, PVOID)) != NULL) {
 
             argLen = va_arg(ap, size_t);
@@ -424,7 +447,18 @@ Returns:
         }
     }
 
-    size += sizeof(WDF_IFR_RECORD);
+    header = (PWDF_IFR_HEADER) FxDriverGlobals->WdfLogHeader;
+
+    FxVerifyLogHeader(FxDriverGlobals, header);
+
+    //
+    // Allocate memory for timestamp only if necessary.
+    //
+    size_t recordSize = header->UseTimeStamp
+                        ? sizeof(WDF_IFR_RECORD)
+                        : sizeof(WDF_IFR_RECORD_V1);
+
+    size += recordSize;
 
     //
     // Allocate log space of the calculated size
@@ -435,38 +469,65 @@ Returns:
         WDF_IFR_OFFSET   offsetNew;
         USHORT           usSize = (USHORT) size;  // for a prefast artifact.
 
-        header = (PWDF_IFR_HEADER) FxDriverGlobals->WdfLogHeader;
-
-        FxVerifyLogHeader(FxDriverGlobals, header);
-
+        //
+        // Allocate space for the log in our circular buffer in a lockless way.
+        // The idea is: read the current buffer position, try and reserve space
+        // for our log, and then try and write the new buffer position. If another
+        // thread has changed the buffer position in this time simply try again.
+        //
         offsetRet.u.AsLONG = header->Offset.u.AsLONG;
-        offsetNew.u.AsLONG = offsetRet.u.s.Current;
 
         do {
+            //
+            // See if we can reserve based on our expected buffer position, and
+            // verify with InterlockedCompareExchange that this is the actual
+            // position (that another thread hasn't already beaten us here).
+            //
             offsetCur.u.AsLONG = offsetRet.u.AsLONG;
 
+            //
+            // See if we need to wrap around or if we can fit in the forward iteration
+            //
             if (&header->Base[header->Size] < &header->Base[offsetCur.u.s.Current+size]) {
 
-                offsetNew.u.s.Current  = 0;
-                offsetNew.u.s.Previous = offsetRet.u.s.Previous;
+                //
+                // We need to wrap around to the start of the buffer
+                //
+                offsetNew.u.s.Current  = usSize;
+                offsetNew.u.s.Previous = 0;
 
-                offsetRet.u.AsLONG =
-                    InterlockedCompareExchange( &header->Offset.u.AsLONG,
-                                                offsetNew.u.AsLONG,
-                                                offsetCur.u.AsLONG );
-
-                if (offsetCur.u.AsLONG != offsetRet.u.AsLONG) {
-                    continue;
-                } else {
-                    offsetNew.u.s.Current  = offsetCur.u.s.Current + usSize;
-                    offsetNew.u.s.Previous = offsetRet.u.s.Current;
-                }
             } else {
 
+                //
+                // We didn't need to wrap around so try claiming room at the
+                // end of the buffer
+                //
                 offsetNew.u.s.Current  = offsetCur.u.s.Current + usSize;
                 offsetNew.u.s.Previous = offsetCur.u.s.Current;
             }
 
+            //
+            // Check if another thread has preempted us and moved the log global
+            // offset pointer. If it has not, then our expected offset matches
+            // the log global offset, and we move it ourselves and claim the
+            // memory for our thread's use.
+            //
+            //   Thread 1:                          |  Thread 2:
+            //                                      |
+            //   offsetCur = header->Offset;        |  offsetCur = header->Offset;
+            //                                      |
+            //   compare and exchange, i.e.         |
+            //   offsetRet = header->Offset;        |
+            //   if (offsetCur == header->Offset) { |
+            //       header->Offset = offsetNew;    |
+            //   }                                  |
+            //                                      |  offsetRet = header->Offset; // read changed header
+            //                                      |  if (offsetCur == header->Offset) { // false
+            //                                      |      // because of false, do not modify header
+            //                                      |  }
+            //                                      |
+            //   break loop as offsetCur==offsetRet |  loop again as offsetCur != offsetRet
+            //
             offsetRet.u.AsLONG =
                 InterlockedCompareExchange( &header->Offset.u.AsLONG,
                                             offsetNew.u.AsLONG,
@@ -474,19 +535,37 @@ Returns:
 
         } while (offsetCur.u.AsLONG != offsetRet.u.AsLONG);
 
-        record = (PWDF_IFR_RECORD) &header->Base[offsetRet.u.s.Current];
+        //
+        // We had a successful compare+exchange, meaning we successfully reserved
+        // space in the buffer for this log message.
+        //
+        record = (PWDF_IFR_RECORD) &header->Base[offsetNew.u.s.Previous];
 
         // RtlZeroMemory( record, sizeof(WDF_IFR_RECORD) );
 
         //
         // Build record (fill all fields!)
         //
-        record->Signature     = FxIFRRecordSignature;
         record->Length        = (USHORT) size;
         record->PrevOffset    = (USHORT) offsetRet.u.s.Previous;
         record->MessageNumber = MessageNumber;
         record->Sequence      = InterlockedIncrement( &header->Sequence );
         record->MessageGuid   = *MessageGuid;
+
+        if (!header->UseTimeStamp) {
+            record->Signature = WDF_IFR_RECORD_SIGNATURE_V1;
+        } else {
+            record->Signature = WDF_IFR_RECORD_SIGNATURE;
+            LARGE_INTEGER timestamp;
+            if (header->PreciseTimeStamp) {
+                Mx::MxQuerySystemTimePrecise(&timestamp);
+            }
+            else {
+                Mx::MxQuerySystemTime(&timestamp);
+            }
+            record->TimeStamp.LowPart  = timestamp.LowPart;
+            record->TimeStamp.HighPart = timestamp.HighPart;
+        }
     }
 
     //
@@ -498,7 +577,7 @@ Returns:
         PVOID    source;
         PUCHAR   argsData;
 
-        argsData = (UCHAR*) &record[1];
+        argsData = ((UCHAR*)record) + recordSize;
 
         va_start(ap, MessageNumber);
 

@@ -40,6 +40,11 @@ FxMemoryBuffer::_Create(
 {
     FxMemoryBuffer* pBuffer;
 
+    ASSERT(BufferSize < PAGE_SIZE);
+    if (BufferSize >= PAGE_SIZE) {
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+
     pBuffer = new(DriverGlobals, Attributes, (USHORT) BufferSize, PoolTag, PoolType)
         FxMemoryBuffer(DriverGlobals, BufferSize);
 
@@ -92,7 +97,7 @@ Return Value:
 
   --*/
 {
-    ASSERT(BufferSize <= USHORT_MAX);
+    ASSERT(BufferSize < PAGE_SIZE);
 }
 
 FxMemoryBuffer::FxMemoryBuffer(
@@ -137,7 +142,7 @@ Return Value:
 
   --*/
 {
-    ASSERT(BufferSize <= USHORT_MAX);
+    ASSERT(BufferSize < PAGE_SIZE);
 }
 
 FxMemoryBuffer::~FxMemoryBuffer()

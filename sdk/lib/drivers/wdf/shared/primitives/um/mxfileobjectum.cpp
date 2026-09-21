@@ -18,7 +18,7 @@ Revision History:
 
 --*/
 
-#include "Mx.h"
+#include "mx.h"
 
 #include <strsafe.h>
 

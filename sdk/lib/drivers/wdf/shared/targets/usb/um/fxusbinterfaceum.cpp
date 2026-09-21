@@ -21,7 +21,7 @@ Revision History:
 #include "fxusbpch.hpp"
 
 extern "C" {
-#include "FxUsbInterfaceUm.tmh"
+// #include "FxUsbInterfaceUm.tmh"
 }
 
 NTSTATUS
@@ -97,7 +97,7 @@ FxUsbInterface::MakeAndConfigurePipes(
     ULONG size = (NumPipes == 0 ? 1 : NumPipes) * sizeof(FxUsbPipe*);
     UMURB urb;
 
-    ppPipes = (FxUsbPipe**)FxPoolAllocate(GetDriverGlobals(), NonPagedPool, size);
+    ppPipes = (FxUsbPipe**)FxPoolAllocate2(GetDriverGlobals(), POOL_FLAG_NON_PAGED, size);
     if (ppPipes == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         DoTraceLevelMessage(
@@ -105,8 +105,6 @@ FxUsbInterface::MakeAndConfigurePipes(
             "Unable to allocate memory %!STATUS!", status);
         goto Done;
     }
-
-    RtlZeroMemory(ppPipes, size);
 
     for (iPipe = 0; iPipe < NumPipes; iPipe++) {
         ppPipes[iPipe] = new (GetDriverGlobals(), PipesAttributes)

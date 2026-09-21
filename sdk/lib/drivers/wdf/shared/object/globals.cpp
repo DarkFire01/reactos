@@ -39,6 +39,12 @@ Revision History:
 
 #include "fxobjectpch.hpp"
 
+#if ((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
+// #include "FeatureStagingSupport.h"
+#endif
+
+// #include <FeatureStaging-WDF.h>
+
 // Tracing support
 extern "C" {
 #if defined(EVENT_TRACING)
@@ -81,10 +87,46 @@ FxVerifierGetObjectDebugInfo(
     __in PFX_DRIVER_GLOBALS  FxDriverGlobals
     );
 
+NTSTATUS
+FxVerifierReadObjectDebugInfo(
+    _In_ HANDLE Key,
+    _In_ PFX_DRIVER_GLOBALS  FxDriverGlobals,
+    _Inout_ FxObjectDebugInfo **Info,
+    _In_ PCWSTR KeyName,
+    _In_ FxObjectDebugInfoFlags DebugFlag,
+    _In_opt_ PCWSTR DefaultSettings
+    );
+
 VOID
 FxVerifierQueryTrackPower(
     __in HANDLE Key,
     __out FxTrackPowerOption* TrackPower
+    );
+
+VOID
+FxVerifierQueryStateSeparationDetection(
+    _In_ HANDLE Key,
+    _Out_ FxStateSeparationDetectionOption* StateSeparationDetection
+    );
+
+VOID
+FxOverrideDefaultVerifierSettings(
+    __in    HANDLE Key,
+    __in    LPWSTR Name,
+    _Inout_ PBOOLEAN OverrideValue
+    );
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlQueryRegistryValuesEx(
+    _In_     ULONG RelativeTo,
+    _In_     PCWSTR Path,
+    _Inout_ _At_(*(*QueryTable).EntryContext, _Pre_unknown_)
+        PRTL_QUERY_REGISTRY_TABLE QueryTable,
+    _In_opt_ PVOID Context,
+    _In_opt_ PVOID Environment
     );
 
 //
@@ -135,62 +177,72 @@ FxVerifyObjectTypeInTable(
 }
 
 _Must_inspect_result_
-FxObjectDebugInfo*
+NTSTATUS
 FxVerifyAllocateDebugInfo(
-    __in LPWSTR HandleNameList,
-    __in PFX_DRIVER_GLOBALS FxDriverGlobals
+    _Inout_ FxObjectDebugInfo** Info,
+    _In_ LPCWSTR HandleNameList,
+    _In_ PFX_DRIVER_GLOBALS FxDriverGlobals,
+    _In_ FxObjectDebugInfoFlags DebugFlag
     )
 
 /*++
 
 Routine Description:
-    Allocates an array of FxObjectDebugInfo's.  The length of this array is the
-    same length as FxObjectsInfo.  The array is sorted the same as
-    FxObjectDebugInfo, ObjectInfo is ascending in the list.
+    Allocates an array of FxObjectDebugInfo's if 'Info' is NULL.  The length
+    of this array is the same length as FxObjectsInfo.  The array is sorted
+    the same as FxObjectDebugInfo, ObjectInfo is ascending in the list.
 
     If HandleNameList's first string is "*", we treat this as a wildcard and
     track all external handles.
 
 Arguments:
+    Info - preallocated FxObjectDebugInfo struct. If NULL one will be allocated
+
     HandleNameList - a multi-sz of handle names.  It is assumed the multi sz is
         well formed.
 
+    DebugFlag - Flag to set based on the passed in HandleNameList
+
 Return Value:
-    a pointer allocated by ExAllocatePoolWithTag.  The caller is responsible for
-    eventually freeing the pointer by calling ExFreePool.
+    NT_SUCCESS(Status) if pInfo is valid and the list is in use
 
 --*/
 
 {
     FxObjectDebugInfo* pInfo;
-    PWCHAR pCur;
-    ULONG i, length;
+    LPCWCHAR pCur;
+    ULONG i;
     BOOLEAN all;
+
+    ASSERT(Info != NULL);
+    pInfo = *Info;
 
     //
     // check to see if the multi sz is empty
     //
     if (*HandleNameList == NULL) {
-        return NULL;
+        return STATUS_INVALID_PARAMETER;
     }
-
-    length = sizeof(FxObjectDebugInfo) * FxObjectsInfoCount;
-
-    //
-    // Freed with ExFreePool in FxFreeDriverGlobals.  Must be non paged because
-    // objects can be allocated at IRQL > PASSIVE_LEVEL.
-    //
-    pInfo = (FxObjectDebugInfo*) MxMemory::MxAllocatePoolWithTag(NonPagedPool,
-                                                       length,
-                                                       FxDriverGlobals->Tag);
 
     if (pInfo == NULL) {
-        return NULL;
+
+        ULONG length = sizeof(FxObjectDebugInfo) * FxObjectsInfoCount;
+
+        //
+        // Freed with ExFreePool in FxFreeDriverGlobals.  Must be non paged because
+        // objects can be allocated at IRQL > PASSIVE_LEVEL.
+        //
+        pInfo = (FxObjectDebugInfo*) MxMemory::MxAllocatePool2(POOL_FLAG_NON_PAGED,
+                                                           length,
+                                                           FxDriverGlobals->Tag);
+        if (pInfo == NULL) {
+            return STATUS_MEMORY_NOT_ALLOCATED;
+        }
     }
 
-    all = *HandleNameList == L'*' ? TRUE : FALSE;
+    ASSERT(pInfo != NULL);
 
-    RtlZeroMemory(pInfo, length);
+    all = *HandleNameList == L'*' ? TRUE : FALSE;
 
     //
     // Iterate over all of the objects in our internal array.  We iterate over
@@ -215,7 +267,7 @@ Return Value:
         // Short circuit if we are wildcarding
         //
         if (all) {
-            pInfo[i].u.DebugFlags |= FxObjectDebugTrackReferences;
+            pInfo[i].u.DebugFlags |= DebugFlag;
             continue;
         }
 
@@ -258,13 +310,17 @@ Return Value:
             // Case insensitive compare
             //
             if (RtlCompareUnicodeString(&handleName, &objectName, TRUE) == 0) {
-                pInfo[i].u.DebugFlags |= FxObjectDebugTrackReferences;
+                pInfo[i].u.DebugFlags |= DebugFlag;
                 break;
             }
         }
     }
 
-    return pInfo;
+    if (*Info == NULL) {
+        *Info = pInfo;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 VOID
@@ -282,8 +338,8 @@ FxDriverGlobalsInitializeDebugExtension(
     // info and it won't be available if registry info is not present.
     //
 
-    pExtension = (FxDriverGlobalsDebugExtension*) MxMemory::MxAllocatePoolWithTag(
-        NonPagedPool, sizeof(FxDriverGlobalsDebugExtension), FxDriverGlobals->Tag);
+    pExtension = (FxDriverGlobalsDebugExtension*) MxMemory::MxAllocatePool2(
+        POOL_FLAG_NON_PAGED, sizeof(FxDriverGlobalsDebugExtension), FxDriverGlobals->Tag);
 
     if (pExtension == NULL) {
         return;
@@ -296,6 +352,7 @@ FxDriverGlobalsInitializeDebugExtension(
     InitializeListHead(&pExtension->AllocatedTagTrackersListHead);
 
     pExtension->TrackPower = FxTrackPowerNone;
+    pExtension->StateSeparationDetection = FxStateSeparationDetectionNone;
 
     FxDriverGlobals->DebugExtension = pExtension;
 
@@ -305,6 +362,7 @@ FxDriverGlobalsInitializeDebugExtension(
                                                         FxDriverGlobals
                                                         );
         FxVerifierQueryTrackPower(Key, &pExtension->TrackPower);
+        FxVerifierQueryStateSeparationDetection(Key, &pExtension->StateSeparationDetection);
     }
 
 #if ((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
@@ -335,23 +393,26 @@ FxObjectTypeToHandleName(
 
 _Must_inspect_result_
 BOOLEAN
-FxVerifierGetTrackReferences(
-    __in FxObjectDebugInfo* DebugInfo,
-    __in WDFTYPE ObjectType
+FxVerifierIsDebugInfoFlagSetForType(
+    _In_ FxObjectDebugInfo* DebugInfo,
+    _In_ WDFTYPE ObjectType,
+    _In_ FxObjectDebugInfoFlags Flag
     )
 
 /*++
 
 Routine Description:
-    For a given object type, returns to the caller if it should track references
-    to the object.
+    For a given object type and flag, returns to the caller if the flag is set.
 
 Arguments:
     DebugInfo - array of object debug info to search through
+
     ObjectType - the type of the object to check
 
+    FxObjectDebugInfoFlags - Flag to check for
+
 Return Value:
-    TRUE if references should be tracked, FALSE otherwise
+    TRUE if objects of the given type had its flag set.
 
 --*/
 
@@ -364,7 +425,7 @@ Return Value:
     for (i = 0; i < FxObjectsInfoCount; i++) {
         if (ObjectType == DebugInfo[i].ObjectType) {
             return FLAG_TO_BOOL(DebugInfo[i].u.DebugFlags,
-                                FxObjectDebugTrackReferences);
+                                Flag);
         }
         else if (ObjectType > FxObjectsInfo[i].ObjectType) {
             continue;
@@ -397,69 +458,6 @@ FxVerifyObjectTableIsSorted(
     }
 }
 
-typedef
-NTSTATUS
-(NTAPI *PFN_RTL_GET_VERSION)(
-    __out PRTL_OSVERSIONINFOW VersionInformation
-    );
-
-typedef
-NTSTATUS
-(NTAPI *PFN_RTL_VERIFY_VERSION_INFO)(
-    __in PRTL_OSVERSIONINFOEXW VersionInfo,
-    __in ULONG TypeMask,
-    __in ULONGLONG  ConditionMask
-    );
-
-typedef
-ULONGLONG
-(NTAPI *PFN_VER_SET_CONDITION_MASK)(
-    __in  ULONGLONG   ConditionMask,
-    __in  ULONG   TypeMask,
-    __in  UCHAR   Condition
-    );
-
-VOID
-FxLibraryGlobalsVerifyVersion(
-    VOID
-    )
-{
-    RTL_OSVERSIONINFOEXW info;
-    PFN_RTL_VERIFY_VERSION_INFO pRtlVerifyVersionInfo;
-    PFN_VER_SET_CONDITION_MASK pVerSetConditionMask;
-    ULONGLONG condition;
-    NTSTATUS status;
-
-    pRtlVerifyVersionInfo = (PFN_RTL_VERIFY_VERSION_INFO)
-        Mx::MxGetSystemRoutineAddress(MAKE_MX_FUNC_NAME("RtlVerifyVersionInfo"));
-
-    if (pRtlVerifyVersionInfo == NULL) {
-        return;
-    }
-
-    pVerSetConditionMask = (PFN_VER_SET_CONDITION_MASK)
-        Mx::MxGetSystemRoutineAddress(MAKE_MX_FUNC_NAME("VerSetConditionMask"));
-
-    //
-    // Check for Win8 (6.2) and later for passive-level interrupt support.
-    //
-    RtlZeroMemory(&info, sizeof(info));
-    info.dwOSVersionInfoSize = sizeof(info);
-    info.dwMajorVersion = 6;
-    info.dwMinorVersion = 2;
-
-    condition = 0;
-    condition = pVerSetConditionMask(condition, VER_MAJORVERSION, VER_GREATER_EQUAL);
-    condition = pVerSetConditionMask(condition, VER_MINORVERSION, VER_GREATER_EQUAL);
-
-    status = pRtlVerifyVersionInfo(&info,
-                                   VER_MAJORVERSION | VER_MINORVERSION,
-                                   condition);
-    if (NT_SUCCESS(status)) {
-        FxLibraryGlobals.PassiveLevelInterruptSupport = TRUE;
-    }
-}
-
 VOID
 FxLibraryGlobalsQueryRegistrySettings(
     VOID
@@ -467,9 +465,14 @@ FxLibraryGlobalsQueryRegistrySettings(
 {
     FxAutoRegKey hWdf;
     NTSTATUS status = STATUS_SUCCESS;
-    DECLARE_CONST_UNICODE_STRING(path, WDF_REGISTRY_BASE_PATH);
+    DECLARE_CONST_UNICODE_STRING(path,            WDF_REGISTRY_BASE_PATH);
     DECLARE_CONST_UNICODE_STRING(ifrDisabledName, WDF_GLOBAL_VALUE_IFRDISABLED);
+    DECLARE_CONST_UNICODE_STRING(ssDisabledName,  WDF_GLOBAL_VALUE_SLEEPSTUDY_DISABLED);
+
+
     ULONG ifrDisabled = 0;
+    ULONG ssDisabled = 0;
+
 
     status = FxRegKey::_OpenKey(NULL, &path, &hWdf.m_Key, KEY_READ);
     if (!NT_SUCCESS(status)) {
@@ -477,13 +480,25 @@ FxLibraryGlobalsQueryRegistrySettings(
     }
 
     status = FxRegKey::_QueryULong(hWdf.m_Key, &ifrDisabledName, &ifrDisabled);
-    if (!NT_SUCCESS(status)) {
-        goto exit;
-    }
-
-    if (ifrDisabled == 1) {
+    if ((NT_SUCCESS(status)) && (ifrDisabled == 1)) {
         FxLibraryGlobals.IfrDisabled = TRUE;
     }
+
+    FxLibraryGlobals.SleepStudyDisabled = FALSE;
+    status = FxRegKey::_QueryULong(hWdf.m_Key, &ssDisabledName, &ssDisabled);
+    if ((NT_SUCCESS(status)) && (ssDisabled == 1)) {
+        FxLibraryGlobals.SleepStudyDisabled = TRUE;
+    }
+
+
+
+
+
+
+
+
+
+
 
 exit:
     return;
@@ -495,7 +510,6 @@ FxLibraryGlobalsCommission(
     VOID
     )
 {
-    PFN_RTL_GET_VERSION pRtlGetVersion;
     NTSTATUS status;
 
     //
@@ -529,6 +543,16 @@ FxLibraryGlobalsCommission(
     FxLibraryGlobals.IfrDisabled = FALSE;
 
     //
+    // Logging Sleep Study Blockers is enabled by default
+    //
+    FxLibraryGlobals.SleepStudyDisabled = FALSE;
+
+    //
+    // Directed Power Transition support
+    //
+    FxLibraryGlobals.WdfDirectedPowerTransitionEnabled = FALSE;
+
+    //
     // Query global WDF settings (both KMDF and UMDF).
     //
     FxLibraryGlobalsQueryRegistrySettings();
@@ -536,7 +560,7 @@ FxLibraryGlobalsCommission(
 #if ((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
     UNICODE_STRING funcName;
 
-    // For DSF support.
+
     RtlInitUnicodeString(&funcName, L"IoConnectInterruptEx");
     FxLibraryGlobals.IoConnectInterruptEx = (PFN_IO_CONNECT_INTERRUPT_EX)
         MmGetSystemRoutineAddress(&funcName);
@@ -545,115 +569,18 @@ FxLibraryGlobalsCommission(
     FxLibraryGlobals.IoDisconnectInterruptEx = (PFN_IO_DISCONNECT_INTERRUPT_EX)
         MmGetSystemRoutineAddress(&funcName);
 
-    // 32 bit: W2k and forward.
-    // 64 bit: W2k -> Windows Server 2008 (obsolete otherwise).
-    RtlInitUnicodeString(&funcName, L"KeQueryActiveProcessors");
-    FxLibraryGlobals.KeQueryActiveProcessors = (PFN_KE_QUERY_ACTIVE_PROCESSORS)
-        MmGetSystemRoutineAddress(&funcName);
-
-    RtlInitUnicodeString(&funcName, L"KeSetTargetProcessorDpc");
-    FxLibraryGlobals.KeSetTargetProcessorDpc = (PFN_KE_SET_TARGET_PROCESSOR_DPC)
-        MmGetSystemRoutineAddress(&funcName);
-
-    // These should always be there (obsolete in 64 bit Win 7 and forward).
-    ASSERT(FxLibraryGlobals.KeQueryActiveProcessors != NULL &&
-           FxLibraryGlobals.KeSetTargetProcessorDpc != NULL);
-
-    // Win 7 and forward.
-    RtlInitUnicodeString(&funcName, L"KeQueryActiveGroupCount");
-    if (MmGetSystemRoutineAddress(&funcName) != NULL) {
-        FxLibraryGlobals.ProcessorGroupSupport = TRUE;
-    }
-
-    // Win 7 and forward.
-    RtlInitUnicodeString(&funcName, L"KeSetCoalescableTimer");
-    FxLibraryGlobals.KeSetCoalescableTimer = (PFN_KE_SET_COALESCABLE_TIMER)
-        MmGetSystemRoutineAddress(&funcName);
-
-    // Win 7 and forward.
-    RtlInitUnicodeString(&funcName, L"IoUnregisterPlugPlayNotificationEx");
-    FxLibraryGlobals.IoUnregisterPlugPlayNotificationEx = (PFN_IO_UNREGISTER_PLUGPLAY_NOTIFICATION_EX)
-        MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxRegisterDevice");
-    FxLibraryGlobals.PoxRegisterDevice =
-      (PFN_POX_REGISTER_DEVICE) MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxStartDevicePowerManagement");
-    FxLibraryGlobals.PoxStartDevicePowerManagement =
-                                    (PFN_POX_START_DEVICE_POWER_MANAGEMENT)
-                                        MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxUnregisterDevice");
-    FxLibraryGlobals.PoxUnregisterDevice =
-                                (PFN_POX_UNREGISTER_DEVICE)
-                                    MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxActivateComponent");
-    FxLibraryGlobals.PoxActivateComponent = (PFN_POX_ACTIVATE_COMPONENT)
-                                          MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxIdleComponent");
-    FxLibraryGlobals.PoxIdleComponent = (PFN_POX_IDLE_COMPONENT)
-                                          MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxReportDevicePoweredOn");
-    FxLibraryGlobals.PoxReportDevicePoweredOn =
-      (PFN_POX_REPORT_DEVICE_POWERED_ON) MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxCompleteIdleState");
-    FxLibraryGlobals.PoxCompleteIdleState =
-      (PFN_POX_COMPLETE_IDLE_STATE) MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxCompleteIdleCondition");
-    FxLibraryGlobals.PoxCompleteIdleCondition =
-      (PFN_POX_COMPLETE_IDLE_CONDITION) MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxCompleteDevicePowerNotRequired");
-    FxLibraryGlobals.PoxCompleteDevicePowerNotRequired =
-      (PFN_POX_COMPLETE_DEVICE_POWER_NOT_REQUIRED) MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxSetDeviceIdleTimeout");
-    FxLibraryGlobals.PoxSetDeviceIdleTimeout =
-      (PFN_POX_SET_DEVICE_IDLE_TIMEOUT) MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
     RtlInitUnicodeString(&funcName, L"IoReportInterruptActive");
     FxLibraryGlobals.IoReportInterruptActive =
       (PFN_IO_REPORT_INTERRUPT_ACTIVE) MmGetSystemRoutineAddress(&funcName);
 
-    // Win 8 and forward
     RtlInitUnicodeString(&funcName, L"IoReportInterruptInactive");
     FxLibraryGlobals.IoReportInterruptInactive =
       (PFN_IO_REPORT_INTERRUPT_INACTIVE) MmGetSystemRoutineAddress(&funcName);
 
-    // Win 8.2 and forward
-    RtlInitUnicodeString(&funcName, L"VfCheckNxPoolType");
-    FxLibraryGlobals.VfCheckNxPoolType =
-      (PFN_VF_CHECK_NX_POOL_TYPE) MmGetSystemRoutineAddress(&funcName);
-
 #endif //((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
 
     FxLibraryGlobals.OsVersionInfo.dwOSVersionInfoSize = sizeof(FxLibraryGlobals.OsVersionInfo);
-
-    // User/Kernel agnostic.
-
-    pRtlGetVersion = (PFN_RTL_GET_VERSION)
-                Mx::MxGetSystemRoutineAddress(MAKE_MX_FUNC_NAME("RtlGetVersion"));
-
-    ASSERT(pRtlGetVersion != NULL);
-    pRtlGetVersion((PRTL_OSVERSIONINFOW) &FxLibraryGlobals.OsVersionInfo);
-    FxLibraryGlobalsVerifyVersion();
+    RtlGetVersion((PRTL_OSVERSIONINFOW) &FxLibraryGlobals.OsVersionInfo);
 
     //
     // Initialize power management-related stuff.
@@ -949,6 +876,43 @@ Returns:
     return STATUS_SUCCESS;
 }
 
+#if ((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
+BOOLEAN
+IsDriverVerifierActive(
+    _In_ MdDriverObject DriverObject
+    )
+/*++
+
+Routine Description:
+
+    This function checks whether WDF verification is turned on or not.
+
+Arguments:
+
+    DriverObject - Driver to test if WDF verification turned on.
+
+Returns:
+
+    TRUE if WDF verification is turned on. False otherwise.
+
+--*/
+{
+    BOOLEAN isWDFRuleClassTurnedOn = FALSE;
+
+    //
+    // This is defined in VRF_RULE_CLASS_ID for WDF verification.
+    //
+
+    const ULONG VrfWDFRuleClass = 33;
+
+    if (MmIsDriverVerifying (DriverObject) > 0) {
+        isWDFRuleClassTurnedOn = VfIsRuleClassEnabled (VrfWDFRuleClass);
+    }
+
+    return isWDFRuleClassTurnedOn;
+}
+#endif
+
 BOOLEAN
 IsWindowsVerifierOn(
     _In_ MdDriverObject DriverObject
@@ -956,12 +920,13 @@ IsWindowsVerifierOn(
 {
     BOOLEAN windowsVerifierOn = FALSE;
 
+
 #if ((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
     //
     // Check if windows driver verifier is on for this driver
     // We need this when initializing wdf verifier
     //
-    windowsVerifierOn = MmIsDriverVerifying(DriverObject) ? TRUE: FALSE;
+    windowsVerifierOn = IsDriverVerifierActive(DriverObject);
 
 #else
     UNREFERENCED_PARAMETER(DriverObject);
@@ -1058,7 +1023,7 @@ FxAllocateDriverGlobals(
     NTSTATUS            status;
 
     pFxDriverGlobals = (PFX_DRIVER_GLOBALS)
-        MxMemory::MxAllocatePoolWithTag(NonPagedPool, sizeof(FX_DRIVER_GLOBALS), FX_TAG);
+        MxMemory::MxAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(FX_DRIVER_GLOBALS), FX_TAG);
 
     if (pFxDriverGlobals == NULL) {
         return NULL;
@@ -1162,6 +1127,9 @@ FxAllocateDriverGlobals(
     //
     pFxDriverGlobals->FxDsfOn  = FALSE;
 
+    pFxDriverGlobals->FxVerifyLeakDetection = NULL;
+    pFxDriverGlobals->FxVerifyTagTrackingEnabled = FALSE;
+
     //
     // Allocate a telemetry context if a telemetry client is enabled, for any level/keyword.
     //
@@ -1205,6 +1173,10 @@ FxFreeDriverGlobals(
         pFxDriverGlobals->DebugExtension = NULL;
     }
 
+    if (pFxDriverGlobals->FxVerifyLeakDetection != NULL) {
+        MxMemory::MxFreePool(pFxDriverGlobals->FxVerifyLeakDetection);
+    }
+
     //
     // Cleanup event b/c d'tor is not called for MxAllocatePoolWithTag.
     //
@@ -1228,7 +1200,7 @@ FxVerifierGetObjectDebugInfo(
 /*++
 
 Routine Description:
-    Attempts to open a value under the passed in key and create an array of
+    Attempts to open values under the passed in key and create an array of
     FxObjectDebugInfo.
 
 Arguments:
@@ -1240,15 +1212,110 @@ Return Value:
 --*/
 
 {
-    FxObjectDebugInfo* pInfo;
-    PVOID dataBuffer;
+    FxObjectDebugInfo *pInfo = NULL;
+    NTSTATUS status;
+
+    //
+    // Read TrackHandles settings
+    //
+    FxVerifierReadObjectDebugInfo(Key,
+                                  FxDriverGlobals,
+                                  &pInfo,
+                                  L"TrackHandles",
+                                  FxObjectDebugTrackReferences,
+                                  NULL);
+    if (pInfo != NULL) {
+        FxDriverGlobals->FxVerifyTagTrackingEnabled = TRUE;
+    }
+
+    //
+    // To enable leak detection, a reg key must be present and not equal to 0xFFFFFFFF
+    //
+    DECLARE_CONST_UNICODE_STRING(valueName, L"ObjectLeakDetectionLimit");
+    ULONG Limit;
+    if (!NT_SUCCESS(FxRegKey::_QueryULong(Key, &valueName, &Limit))
+        || Limit == FX_OBJECT_LEAK_DETECTION_DISABLED) {
+
+        return pInfo;
+    }
+
+    FxDriverGlobals->FxVerifyLeakDetection = (FxObjectDebugLeakDetection*)
+                            MxMemory::MxAllocatePool2(POOL_FLAG_NON_PAGED,
+                                sizeof(FxObjectDebugLeakDetection),
+                                FxDriverGlobals->Tag);
+    if (FxDriverGlobals->FxVerifyLeakDetection == NULL) {
+        return pInfo;
+    }
+
+    FxDriverGlobals->FxVerifyLeakDetection->Limit = Limit;
+    FxDriverGlobals->FxVerifyLeakDetection->LimitScaled = Limit;
+    FxDriverGlobals->FxVerifyLeakDetection->ObjectCnt = 0;
+    FxDriverGlobals->FxVerifyLeakDetection->DeviceCnt = 0;
+    FxDriverGlobals->FxVerifyLeakDetection->Enabled = TRUE;
+
+    //
+    // Read REG key for "object types to count"
+    //
+    status = FxVerifierReadObjectDebugInfo(Key,
+                                           FxDriverGlobals,
+                                           &pInfo,
+                                           L"ObjectsForLeakDetection",
+                                           FxObjectDebugTrackObjectCount,
+                                           FX_OBJECT_LEAK_DETECTION_DEFAULT_TYPES);
+
+    if (!NT_SUCCESS(status) || NULL == pInfo) {
+        MxMemory::MxFreePool(FxDriverGlobals->FxVerifyLeakDetection);
+        FxDriverGlobals->FxVerifyLeakDetection = NULL;
+    }
+
+    return pInfo;
+}
+
+
+NTSTATUS
+FxVerifierReadObjectDebugInfo(
+    _In_ HANDLE Key,
+    _In_ PFX_DRIVER_GLOBALS  FxDriverGlobals,
+    _Inout_  FxObjectDebugInfo **Info,
+    _In_ PCWSTR KeyName,
+    _In_ FxObjectDebugInfoFlags DebugFlag,
+    _In_opt_ PCWSTR DefaultSettings
+    )
+
+/*++
+
+Routine Description:
+    Attempts to open a value under the passed in key. Will allocate an array of
+    FxObjectDebugInfo if provided pointer is NULL.
+
+Arguments:
+    Key - Registry key to query the value for
+
+    FxDriverGlobals - globals
+
+    Info - optional preallocated debug info structure.
+
+    KeyName - Key to read from
+
+    DebugFlag - flag to set in the debug info structure.
+
+    DefaultSettings - settings to use in the event the registery key is not
+        present or malformed.
+
+Return Value:
+    NT_SUCCESS if the registry key was read and memory was allocated.
+
+--*/
+
+{
+    PVOID dataBuffer = NULL;
     NTSTATUS status;
     ULONG length, type;
-    DECLARE_CONST_UNICODE_STRING(valueName, L"TrackHandles");
+    UNICODE_STRING valueName;
 
-    pInfo = NULL;
     type = REG_MULTI_SZ;
     length = 0;
+    RtlInitUnicodeString(&valueName, KeyName);
 
     //
     // Find out how big a buffer we need to allocate if the value is present
@@ -1266,16 +1333,17 @@ Return Value:
     // not, just bail now.
     //
     if (status != STATUS_BUFFER_OVERFLOW && status != STATUS_BUFFER_TOO_SMALL) {
-        return NULL;
+        goto exit;
     }
 
     //
     // Pool can be paged b/c we are running at PASSIVE_LEVEL and we are going
     // to free it at the end of this function.
     //
-    dataBuffer = MxMemory::MxAllocatePoolWithTag(PagedPool, length, FxDriverGlobals->Tag);
+    dataBuffer = MxMemory::MxAllocatePool2(POOL_FLAG_PAGED, length, FxDriverGlobals->Tag);
     if (dataBuffer == NULL) {
-        return NULL;
+        status = STATUS_MEMORY_NOT_ALLOCATED;
+        goto exit;
     }
 
     //
@@ -1301,14 +1369,21 @@ Return Value:
     if (NT_SUCCESS(status)) {
 #pragma prefast(push)
 #pragma prefast(suppress:__WARNING_PRECONDITION_NULLTERMINATION_VIOLATION, "FxRegKey::_VerifyMultiSzString makes sure the string is NULL-terminated")
-        pInfo = FxVerifyAllocateDebugInfo((LPWSTR) dataBuffer, FxDriverGlobals);
+        status = FxVerifyAllocateDebugInfo(Info, (LPCWSTR) dataBuffer, FxDriverGlobals, DebugFlag);
 #pragma prefast(pop)
 
     }
 
-    MxMemory::MxFreePool(dataBuffer);
+exit:
+    if (NULL != dataBuffer) {
+        MxMemory::MxFreePool(dataBuffer);
+    }
 
-    return pInfo;
+    if (!NT_SUCCESS(status) && DefaultSettings != NULL){
+        status = FxVerifyAllocateDebugInfo(Info, DefaultSettings, FxDriverGlobals, DebugFlag);
+    }
+
+    return status;
 }
 
 VOID
@@ -1330,11 +1405,32 @@ FxVerifierQueryTrackPower(
     }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 VOID
 FxOverrideDefaultVerifierSettings(
     __in    HANDLE Key,
     __in    LPWSTR Name,
-    __out   PBOOLEAN OverrideValue
+    _Inout_ PBOOLEAN OverrideValue
     )
 {
     UNICODE_STRING valueName;
@@ -1369,7 +1465,11 @@ Routine Description:
     Initialize Driver Framework settings from the driver
     specific registry settings under
 
+    (KMDF)
     \REGISTRY\MACHINE\SYSTEM\ControlSetxxx\Services\<driver>\Parameters\Wdf
+
+    (UMDF)
+    \REGISTRY\MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\WUDF\Services\<driver>
 
 Arguments:
 
@@ -1395,16 +1495,15 @@ Arguments:
     ULONG i;
     ULONG timeoutValue = 0;
     FxAutoRegKey hDriver, hWdf;
-    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Parameters\\Wdf");
-
-    typedef NTSTATUS NTAPI QUERYFN(
-        ULONG, PCWSTR, PRTL_QUERY_REGISTRY_TABLE, PVOID, PVOID);
-
-    QUERYFN* queryFn;
 
 #if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
-    UNICODE_STRING FunctionName;
-#endif
+    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Wdf");
+    UNREFERENCED_PARAMETER(RegistryPath);
+
+    status = OpenDriverParamsKeyForRead(FxDriverGlobals, &hDriver.m_Key);
+
+#else
+    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Parameters\\Wdf");
 
     //
     // UMDF may not provide this registry path
@@ -1414,6 +1513,8 @@ Arguments:
     }
 
     status = FxRegKey::_OpenKey(NULL, RegistryPath, &hDriver.m_Key, KEY_READ);
+#endif
+
     if (!NT_SUCCESS(status)) {
         return;
     }
@@ -1443,29 +1544,28 @@ Arguments:
     RtlZeroMemory (&paramTable[0], sizeof(paramTable));
     i = 0;
 
-    verboseValue = 0;
+    #define ADD_TABLE_ENTRY(ValueName, Value, Default) \
+        paramTable[i].Flags = \
+            RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK; \
+        paramTable[i].Name = L##ValueName; \
+        paramTable[i].EntryContext = &Value; \
+        paramTable[i].DefaultType = \
+            (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_NONE; \
+        paramTable[i].DefaultData = &Default; \
+        paramTable[i].DefaultLength = sizeof(ULONG); \
+        i++; \
+        ASSERT(i < sizeof(paramTable) / sizeof(paramTable[0]));
 
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"VerboseOn";
-    paramTable[i].EntryContext  = &verboseValue;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &zero;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    verboseValue = 0;
+    ADD_TABLE_ENTRY("VerboseOn", verboseValue, zero);
 
     allocateFailValue = (ULONG) -1;
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"VerifierAllocateFailCount";
-    paramTable[i].EntryContext  = &allocateFailValue;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &max;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    ADD_TABLE_ENTRY("VerifierAllocateFailCount", allocateFailValue, max);
 
     verifierOnValue = 0;
 
     //
-    // If the client version is 1.9 or above, the defaut (i.e when
+    // If the client version is 1.9 or above, the default (i.e when
     // the key is not present) VerifierOn state is tied to the
     // driver verifier.
     //
@@ -1473,34 +1573,13 @@ Arguments:
         verifierOnValue = WindowsVerifierOn;
     }
 
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"VerifierOn";
-    paramTable[i].EntryContext  = &verifierOnValue;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &verifierOnValue;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    ADD_TABLE_ENTRY("VerifierOn", verifierOnValue, verifierOnValue);
 
     verifyDownlevelValue = 0;
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"VerifyDownLevel";
-    paramTable[i].EntryContext  = &verifyDownlevelValue;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &zero;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    ADD_TABLE_ENTRY("VerifyDownLevel", verifyDownlevelValue, zero);
 
     forceLogsInMiniDump = 0;
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"ForceLogsInMiniDump";
-    paramTable[i].EntryContext  = &forceLogsInMiniDump;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &zero;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    ADD_TABLE_ENTRY("ForceLogsInMiniDump", forceLogsInMiniDump, zero);
 
     //
     // Track driver for minidump log:
@@ -1509,79 +1588,30 @@ Arguments:
     //
 #if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
     trackDriverForMiniDumpLog = (ULONG) TRUE;
+    ADD_TABLE_ENTRY("TrackDriverForMiniDumpLog", trackDriverForMiniDumpLog, defaultTrue);
 #else
     trackDriverForMiniDumpLog = 0;
+    ADD_TABLE_ENTRY("TrackDriverForMiniDumpLog", trackDriverForMiniDumpLog, zero);
 #endif
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"TrackDriverForMiniDumpLog";
-    paramTable[i].EntryContext  = &trackDriverForMiniDumpLog;
-    paramTable[i].DefaultType   = REG_DWORD;
-#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
-    paramTable[i].DefaultData    = &defaultTrue;
-#else
-    paramTable[i].DefaultData    = &zero;
-#endif
-    paramTable[i].DefaultLength = sizeof(ULONG);
 
     requestParentOptimizationOn = (ULONG) TRUE;
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"RequestParentOptimizationOn";
-    paramTable[i].EntryContext  = &requestParentOptimizationOn;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &defaultTrue;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    ADD_TABLE_ENTRY("RequestParentOptimizationOn", requestParentOptimizationOn, defaultTrue);
 
     dsfValue = 0;
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"DsfOn";
-    paramTable[i].EntryContext  = &dsfValue;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &zero;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    ADD_TABLE_ENTRY("DsfOn", dsfValue, zero);
 
     removeLockOptionFlags = 0;
-    i++;
+    ADD_TABLE_ENTRY("RemoveLockOptionFlags", removeLockOptionFlags, zero);
 
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"RemoveLockOptionFlags";
-    paramTable[i].EntryContext  = &removeLockOptionFlags;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &zero;
-    paramTable[i].DefaultLength = sizeof(ULONG);
-
+    //
+    // The last entry's QueryRoutine and Name fields must be NULL,
+    // because that marks the end of the query table.
+    //
     ASSERT(i < sizeof(paramTable) / sizeof(paramTable[0]));
+    ASSERT(paramTable[i].QueryRoutine == NULL);
+    ASSERT(paramTable[i].Name == NULL);
 
-#if (FX_CORE_MODE==FX_CORE_USER_MODE)
-
-    queryFn = (QUERYFN*) GetProcAddress(
-        GetModuleHandle(TEXT("ntdll.dll")),
-        "RtlQueryRegistryValuesEx"
-        );
-
-#else
-
-    RtlInitUnicodeString(&FunctionName, L"RtlQueryRegistryValuesEx");
-
-#pragma warning(push)
-#pragma warning(disable: 4055)
-
-    queryFn  = (QUERYFN*)MmGetSystemRoutineAddress(&FunctionName);
-
-#pragma warning(pop)
-
-#endif
-
-    if (queryFn == NULL) {
-        queryFn = &RtlQueryRegistryValues;
-    }
-
-    status = queryFn(
+    status = RtlQueryRegistryValuesEx(
         RTL_REGISTRY_OPTIONAL | RTL_REGISTRY_HANDLE,
         (PWSTR) hWdf.m_Key,
         &paramTable[0],
@@ -1742,4 +1772,47 @@ FX_DRIVER_GLOBALS::WaitForSignal(
     } WHILE(TRUE);
 }
 
+_Must_inspect_result_
+BOOLEAN
+FX_DRIVER_GLOBALS::IsVersionGreaterThanOrEqualTo(
+    _In_ ULONG Major,
+    _In_ ULONG Minor
+    )
+{
+    if ((WdfBindInfo->Version.Major > Major) ||
+                (WdfBindInfo->Version.Major == Major &&
+                  WdfBindInfo->Version.Minor >= Minor)) {
+        return TRUE;
+    }
+    else {
+        return FALSE;
+    }
+}
+
+_Must_inspect_result_
+BOOLEAN
+FX_DRIVER_GLOBALS::IsMinorVersionGreaterThanOrEqualTo(
+    _In_ ULONG Minor
+    )
+{
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+    ASSERT(WdfBindInfo->Version.Major == 1);
+#else
+    ASSERT(WdfBindInfo->Version.Major == 2);
+
+    //
+    // This is needed for e.g. KMDF checking version >= 1.11
+    //
+    // UMDF 2.0 = KMDF 1.13. Thus any check below 13 is always satisfied.
+    // Starting with minor version = 15, KMDF and UMDF are updated together.
+    //
+    if (Minor <= 13) {
+        return TRUE;
+    }
+#endif
+
+    return (WdfBindInfo->Version.Minor >= Minor);
+}
+
 } // extern "C"
+

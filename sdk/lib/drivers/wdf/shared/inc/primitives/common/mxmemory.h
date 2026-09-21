@@ -30,6 +30,19 @@ class MxMemory
 {
 public:
 
+    //
+    // MxAllocatePool2 zero-initializes memory by default. New code should
+    // ideally always use MxAllocatePool2 instead of MxAllocatePoolWithTag.
+    //
+    __inline
+    static
+    PVOID
+    MxAllocatePool2(
+        _In_ POOL_FLAGS  PoolFlags,
+        _In_ SIZE_T  NumberOfBytes,
+        _In_ ULONG  Tag
+        );
+
     __inline
     static
     PVOID

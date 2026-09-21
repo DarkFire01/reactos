@@ -188,25 +188,6 @@ public:
         __in PLARGE_INTEGER  Interval
         );
 
-    //
-    // Mode agnostic function to get address of a system function
-    // Should be used only for Rtl* functions applicable both to
-    // kernel mode and user mode
-    //
-    // User mode version is assumed to reside in ntdll.dll
-    //
-    // The argument type is MxFuncName so that it can be defined
-    // as LPCWSTR in kernel mode and LPCSTR in user mode
-    // which is what MmGetSystemRoutineAddress and GetProcAddress
-    // expect respectively
-    //
-    __inline
-    static
-    PVOID
-    MxGetSystemRoutineAddress(
-        __in MxFuncName FuncName
-        );
-
     __inline
     static
     VOID
@@ -468,15 +449,6 @@ public:
     __inline
     static
     NTSTATUS
-    MxOpenKey(
-        _Out_ PHANDLE KeyHandle,
-        _In_ ACCESS_MASK DesiredAccess,
-        _In_ POBJECT_ATTRIBUTES ObjectAttributes
-        );
-
-    __inline
-    static
-    NTSTATUS
     MxSetDeviceInterfaceState(
         _In_ PUNICODE_STRING SymbolicLinkName,
         _In_ BOOLEAN Enable
@@ -490,13 +462,6 @@ public:
         _In_      const GUID *InterfaceClassGuid,
         _In_opt_  PUNICODE_STRING ReferenceString,
         _Out_     PUNICODE_STRING SymbolicLinkName
-        );
-
-    __inline
-    static
-    NTSTATUS
-    MxDeleteKey(
-        _In_ HANDLE KeyHandle
         );
 
     __inline
@@ -534,27 +499,11 @@ public:
 
     __inline
     static
-    NTSTATUS
-    MxSetValueKey(
-        _In_      HANDLE KeyHandle,
-        _In_      PUNICODE_STRING ValueName,
-        _In_opt_  ULONG TitleIndex,
-        _In_      ULONG Type,
-        _In_opt_  PVOID Data,
-        _In_      ULONG DataSize
+    VOID
+    MxQuerySystemTimePrecise(
+        _Out_ PLARGE_INTEGER CurrentTime
         );
 
-    __inline
-    static
-    NTSTATUS
-    MxQueryValueKey(
-        _In_       HANDLE KeyHandle,
-        _In_       PUNICODE_STRING ValueName,
-        _In_       KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
-        _Out_opt_  PVOID KeyValueInformation,
-        _In_       ULONG Length,
-        _Out_      PULONG ResultLength
-    );
     __inline
     static
     NTSTATUS
