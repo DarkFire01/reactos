@@ -25,6 +25,10 @@ Author:
 #include <umtypes.h>
 #include <dbgktypes.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //
 // Native calls
 //
@@ -162,4 +166,9 @@ DbgkWerCaptureLiveKernelDump(
 );
 
 #endif
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif
