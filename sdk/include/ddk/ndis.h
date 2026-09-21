@@ -44,8 +44,6 @@
 
 typedef _Return_type_success_(return >= 0) int NDIS_STATUS, *PNDIS_STATUS;
 
-#include "ntddndis.h"
-
 #if !defined(_WINDEF_H)
 typedef unsigned int UINT, *PUINT;
 #endif
@@ -580,6 +578,9 @@ typedef struct _NET_PNP_EVENT {
 #undef NDIS_SUPPORT_NDIS6
 #define NDIS_SUPPORT_NDIS6 1
 #endif
+
+/* After the NDIS_SUPPORT_* macros, which gate parts of it */
+#include "ntddndis.h"
 
 #if defined(NDIS61_MINIPORT) || defined(NDIS60_MINIPORT) || defined(NDIS61) || \
     defined(NDIS60) || defined(NDIS_WRAPPER) || defined(NDIS_LEGACY_DRIVER)
