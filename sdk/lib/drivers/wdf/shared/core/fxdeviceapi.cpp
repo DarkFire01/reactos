@@ -748,7 +748,7 @@ WDFEXPORT(WdfDeviceGetDeviceState)(
     PWDF_DRIVER_GLOBALS DriverGlobals,
     __in
     WDFDEVICE Device,
-    __out
+    _Inout_
     PWDF_DEVICE_STATE DeviceState
     )
 {
@@ -765,7 +765,9 @@ WDFEXPORT(WdfDeviceGetDeviceState)(
 
     FxPointerNotNull(pFxDriverGlobals, DeviceState);
 
-    if (DeviceState->Size != sizeof(WDF_DEVICE_STATE)) {
+    if ((DeviceState->Size != sizeof(WDF_DEVICE_STATE_V1_27)) &&
+        (DeviceState->Size != sizeof(WDF_DEVICE_STATE))) {
+
         DoTraceLevelMessage(
             pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
             "WDFDEVICE 0x%p DeviceState Size %d, expected %d",
@@ -804,6 +806,7 @@ WDFEXPORT(WdfDeviceSetDeviceState)(
         OFFSET_AND_NAME(WDF_DEVICE_STATE, NotDisableable),
         OFFSET_AND_NAME(WDF_DEVICE_STATE, Removed),
         OFFSET_AND_NAME(WDF_DEVICE_STATE, ResourcesChanged),
+        OFFSET_AND_NAME(WDF_DEVICE_STATE, AssignedToGuest),
     };
 
     FxObjectHandleGetPtrAndGlobals(GetFxDriverGlobals(DriverGlobals),
@@ -814,7 +817,9 @@ WDFEXPORT(WdfDeviceSetDeviceState)(
 
     FxPointerNotNull(pFxDriverGlobals, DeviceState);
 
-    if (DeviceState->Size != sizeof(WDF_DEVICE_STATE)) {
+    if ((DeviceState->Size != sizeof(WDF_DEVICE_STATE_V1_27)) &&
+        (DeviceState->Size != sizeof(WDF_DEVICE_STATE))) {
+
         DoTraceLevelMessage(
             pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
             "WDFDEVICE 0x%p, DeviceState Size %d, expected %d",
@@ -832,6 +837,14 @@ WDFEXPORT(WdfDeviceSetDeviceState)(
         //
         if (offsets[i].Offset + sizeof(WDF_TRI_STATE) > sizeof(*DeviceState)) {
             return;
+        }
+
+        //
+        // If the device state passed in by the driver is an older version that
+        // does not contain this field, stop validating.
+        //
+        if (offsets[i].Offset + sizeof(WDF_TRI_STATE) > DeviceState->Size) {
+            break;
         }
 
         value = *(WDF_TRI_STATE*) WDF_PTR_ADD_OFFSET(DeviceState,
@@ -957,6 +970,20 @@ WDFEXPORT(WdfDeviceCreate)(
                 pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
                 "Client called WdfDeviceInitAllowSelfTarget. Self "
                 "IO Targets are supported only for FDOs, %!STATUS!", status);
+            return status;
+        }
+    }
+
+    if (((*DeviceInit)->Pdo.NoPowerDependencyOnParent != FALSE) &&
+        ((*DeviceInit)->Pdo.EventCallbacks.Size != 0)) {
+        if (((*DeviceInit)->Pdo.EventCallbacks.EvtDeviceEnableWakeAtBus) ||
+            ((*DeviceInit)->Pdo.EventCallbacks.EvtDeviceDisableWakeAtBus)) {
+            status = STATUS_INVALID_DEVICE_REQUEST;
+            DoTraceLevelMessage(
+                pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+                "Illegal to specify EvtDeviceEnableWakeAtBus/EvtDeviceDisableWakeAtBus "
+                "for PDOs that don't have a power dependency on the parent, %!STATUS!",
+                status);
             return status;
         }
     }
@@ -1269,30 +1296,33 @@ WDFEXPORT(WdfDeviceSetFailed)(
 {
     DDI_ENTRY();
 
-    PFX_DRIVER_GLOBALS pFxDriverGlobals;
+    PFX_DRIVER_GLOBALS pCallerFxDriverGlobals;
+    PFX_DRIVER_GLOBALS pObjectFxDriverGlobals;
     FxDevice *pDevice;
 
-    FxObjectHandleGetPtrAndGlobals(GetFxDriverGlobals(DriverGlobals),
+    pCallerFxDriverGlobals = GetFxDriverGlobals(DriverGlobals);
+
+    FxObjectHandleGetPtrAndGlobals(pCallerFxDriverGlobals,
                                    Device,
                                    FX_TYPE_DEVICE,
                                    (PVOID *) &pDevice,
-                                   &pFxDriverGlobals);
+                                   &pObjectFxDriverGlobals);
 
     if (FailedAction < WdfDeviceFailedAttemptRestart ||
         FailedAction > WdfDeviceFailedNoRestart) {
         DoTraceLevelMessage(
-            pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+            pObjectFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
             "Invalid FailedAction %d", FailedAction);
         FxVerifierDbgBreakPoint(pDevice->GetDriverGlobals());
         return;
     }
 
     DoTraceLevelMessage(
-        pFxDriverGlobals, TRACE_LEVEL_INFORMATION, TRACINGDEVICE,
+        pObjectFxDriverGlobals, TRACE_LEVEL_INFORMATION, TRACINGDEVICE,
         "WDFDEVICE %p, !devobj %p SetFailed %!WDF_DEVICE_FAILED_ACTION!",
         Device, pDevice->GetDeviceObject(), FailedAction);
 
-    pDevice->m_PkgPnp->SetDeviceFailed(FailedAction);
+    pDevice->m_PkgPnp->SetDeviceFailed(pCallerFxDriverGlobals, FailedAction);
 }
 
 __inline
@@ -1309,7 +1339,7 @@ StopIdleWorker(
     __in
     LONG Line,
     __in
-    PSTR File
+    PCSTR File
     )
 {
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
@@ -1340,12 +1370,25 @@ StopIdleWorker(
         return status;
     }
 
+    pDevice->m_PkgPnp->SaveRequestD0IrpReasonHint(RequestD0ForStopIdle);
+
     status = pDevice->m_PkgPnp->PowerReference(WaitForD0, Tag, Line, File);
 
     DoTraceLevelMessage(
         pFxDriverGlobals, TRACE_LEVEL_VERBOSE, TRACINGDEVICE,
         "WDFDEVICE %p WdfDeviceStopIdle, WaitForD0 %d %!STATUS!",
         Device, WaitForD0, status);
+
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+    //
+    // status may be STATUS_SUCCESS or STATUS_PENDING, in either case we
+    // increment
+    //
+    if (NT_SUCCESS(status) &&
+        pDevice->m_PkgPnp->IsSleepStudyTrackingRefs()) {
+        pDevice->m_PkgPnp->SleepStudyPowerRefIncrement();
+    }
+#endif
 
     return status;
 }
@@ -1362,7 +1405,7 @@ ResumeIdleWorker(
     __in
     LONG Line,
     __in
-    PSTR File
+    PCSTR File
     )
 {
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
@@ -1383,6 +1426,12 @@ ResumeIdleWorker(
     }
 
     pDevice->m_PkgPnp->PowerDereference(Tag, Line, File);
+
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+    if (pDevice->m_PkgPnp->IsSleepStudyTrackingRefs()) {
+        pDevice->m_PkgPnp->SleepStudyPowerRefDecrement();
+    }
+#endif
 }
 
 _Must_inspect_result_
@@ -1398,6 +1447,20 @@ WDFEXPORT(WdfDeviceStopIdleNoTrack)(
     __in
     BOOLEAN WaitForD0
     )
+/*++
+
+Routine Description:
+    WdfDeviceStopIdle for drivers compiled against WDF 1.13 and older. This
+    function entry point preserves the old function entry, without tag
+    tracking, in the WDF Function Entry Table.
+
+Arguments:
+    See MSDN documentation for WdfDeviceStopIdle for more details.
+
+Return Value:
+    NTSTATUS
+
+  --*/
 {
     DDI_ENTRY();
 
@@ -1430,8 +1493,21 @@ WDFEXPORT(WdfDeviceStopIdleActual)(
     __in
     LONG Line,
     __in
-    PSTR File
+    PCSTR File
     )
+/*++
+
+Routine Description:
+    WdfDeviceStopIdle and WdfDeviceStopIdleWithTag for drivers compiled
+    against WDF 1.15/2.15 and newer.
+
+Arguments:
+    See MSDN documentation for WdfDeviceStopIdleWithTags for more details.
+
+Return Value:
+    NTSTATUS
+
+  --*/
 {
     DDI_ENTRY();
 
@@ -1456,6 +1532,20 @@ WDFEXPORT(WdfDeviceResumeIdleNoTrack)(
     __in
     WDFDEVICE Device
     )
+/*++
+
+Routine Description:
+    WdfDeviceResumeIdle for drivers compiled against WDF 1.13/2.0 and older.
+    This function entry point preserves the old function, without tag
+    tracking, in the WDF Function Entry Table.
+
+Arguments:
+    See MSDN documentation for WdfDeviceResumeIdle for more details.
+
+Return Value:
+    NTSTATUS
+
+  --*/
 {
     DDI_ENTRY();
 
@@ -1479,8 +1569,21 @@ WDFEXPORT(WdfDeviceResumeIdleActual)(
     __in
     LONG Line,
     __in
-    PSTR File
+    PCSTR File
     )
+/*++
+
+Routine Description:
+    WdfDeviceResumeIdle and WdfDeviceStopIdleWithTag for drivers compiled
+    against WDF 1.15/2.15 and newer.
+
+Arguments:
+    See MSDN documentation for WdfDeviceResumeIdleWithTags for more details.
+
+Return Value:
+    NTSTATUS
+
+  --*/
 {
     DDI_ENTRY();
 
@@ -2731,6 +2834,204 @@ FX_VF_FUNCTION(VerifyWdfDeviceWdmDispatchIrpToIoQueue) (
     }
 
 Done:
+    return status;
+}
+
+_Must_inspect_result_
+__drv_maxIRQL(PASSIVE_LEVEL)
+NTSTATUS
+NTAPI
+WDFEXPORT(WdfDeviceWdmAssignPowerFrameworkSettings)(
+    __in
+    PWDF_DRIVER_GLOBALS DriverGlobals,
+    __in
+    WDFDEVICE Device,
+    __in
+    PWDF_POWER_FRAMEWORK_SETTINGS PowerFrameworkSettings
+    )
+/*++
+
+Routine Description:
+    The DDI is invoked by KMDF client drivers for single-component devices to
+    specify their power framework settings to KMDF. KMDF uses these settings on
+    Win8+ when registering with the power framework.
+
+    On Win7 and older operating systems the power framework is not available, so
+    KMDF does nothing.
+
+    Note: version 33+ UMDF driver can also call the DDI to configure PoFx/DFx.
+
+    DirectedPoFxEnabled
+
+    Directed PoFx (DFx) was implemented in Windows 10 version 1903 and later as
+    an option for drivers that use SystemManagedIdleTimeout(WithHint).
+
+     - For driver targeting pre-v31 WDF, use WdfDirectedPowerTransitionEnable
+       INF directive and specify 1 to opt-in to DFx.
+
+     - For driver targeting v31+ WDF, DFx is enabled by default. The driver can
+       use INF directive WdfDirectedPowerTransitionEnable and specify 0 to
+       opt-out of DFx if desired.
+
+     - For dirver targeting v33+ WDF, DFx is also enabled by default. The driver
+       can use either INF directive WdfDirectedPowerTransitionEnable = 0 or
+       calling WDF_POWER_FRAMEWORK_SETTINGS with DirectedPoFxEnabled = WdfFalse
+       (preferred) to opt-out of DFx. If both WDF_POWER_FRAMEWORK_SETTINGS and
+       INF directive are specified, the INF directive shall take precedence.
+
+Arguments:
+
+    Device - Handle to the framework device object for which power framework
+      settings are being specified.
+
+    PowerFrameworkSettings - Pointer to a WDF_POWER_FRAMEWORK_SETTINGS structure
+      that contains the client driver's power framework settings.
+
+Return Value:
+    An NTSTATUS value that denotes success or failure of the DDI
+
+--*/
+{
+    NTSTATUS status;
+    PFX_DRIVER_GLOBALS pFxDriverGlobals;
+    FxDevice *pDevice;
+    WDF_POWER_FRAMEWORK_SETTINGS pofxSettings;
+
+    //
+    // Validate the Device object handle and get its FxDevice. Also get the
+    // driver globals pointer.
+    //
+    FxObjectHandleGetPtrAndGlobals(GetFxDriverGlobals(DriverGlobals),
+                                   Device,
+                                   FX_TYPE_DEVICE,
+                                   (PVOID *) &pDevice,
+                                   &pFxDriverGlobals);
+
+    FxPointerNotNull(pFxDriverGlobals, PowerFrameworkSettings);
+
+    //
+    // Only power policy owners should call this DDI
+    //
+    if (pDevice->m_PkgPnp->IsPowerPolicyOwner() == FALSE) {
+        status = STATUS_INVALID_DEVICE_REQUEST;
+        DoTraceLevelMessage(
+            pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+            "WDFDEVICE 0x%p is not the power policy owner, so the caller cannot"
+            " assign power framework settings %!STATUS!", Device, status);
+        FxVerifierDbgBreakPoint(pFxDriverGlobals);
+        return status;
+    }
+
+    //
+    // Validate the Settings parameter
+    //
+    if (PowerFrameworkSettings->Size != sizeof(WDF_POWER_FRAMEWORK_SETTINGS)
+#if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
+        && PowerFrameworkSettings->Size != sizeof(WDF_POWER_FRAMEWORK_SETTINGS_V1_31)
+#endif
+        ) {
+        status = STATUS_INFO_LENGTH_MISMATCH;
+        DoTraceLevelMessage(
+            pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+            "WDFDEVICE 0x%p Expected PowerFrameworkSettings size %d, actual %d,"
+            " %!STATUS!",
+            Device,
+            sizeof(WDF_POWER_FRAMEWORK_SETTINGS),
+            PowerFrameworkSettings->Size,
+            status);
+        FxVerifierDbgBreakPoint(pFxDriverGlobals);
+        return status;
+    }
+
+    //
+    // Normalize WDF_POWER_FRAMEWORK_SETTINGS structure.
+    //
+    if (PowerFrameworkSettings->Size < sizeof(WDF_POWER_FRAMEWORK_SETTINGS)) {
+        //
+        // Init new fields to default values.
+        //
+        WDF_POWER_FRAMEWORK_SETTINGS_INIT(&pofxSettings);
+        //
+        // Copy over existing fields and readjust the struct size.
+        //
+        RtlCopyMemory(&pofxSettings, PowerFrameworkSettings, PowerFrameworkSettings->Size);
+        pofxSettings.Size = sizeof(WDF_POWER_FRAMEWORK_SETTINGS);
+
+        //
+        // Older version of client defaults to zero device flags, no DFx
+        //
+        pofxSettings.PoFxDeviceFlags = 0;
+
+        pofxSettings.DirectedPoFxEnabled = WdfFalse;
+
+        //
+        // Update DirectedPoFxEnabled. FxPkgPnp::PowerPolicySetS0IdleSettings
+        // duplicates the same logic if WdfDeviceWdmAssignPowerFrameworkSettings
+        // is not called.
+        //
+        if (FxLibraryGlobals.WdfDirectedPowerTransitionEnabled ||
+            GetFxDriverGlobals(DriverGlobals)->IsMinorVersionGreaterThanOrEqualTo(31)) {
+            pofxSettings.DirectedPoFxEnabled = WdfTrue;
+        }
+
+        //
+        // Use new config structure from now on.
+        //
+        PowerFrameworkSettings = &pofxSettings;
+    }
+
+#if (FX_CORE_MODE != FX_CORE_KERNEL_MODE)
+    if (PowerFrameworkSettings->EvtDeviceWdmPostPoFxRegisterDevice != NULL ||
+        PowerFrameworkSettings->EvtDeviceWdmPrePoFxUnregisterDevice != NULL ||
+        PowerFrameworkSettings->Component != NULL ||
+        PowerFrameworkSettings->ComponentActiveConditionCallback != NULL ||
+        PowerFrameworkSettings->ComponentIdleConditionCallback != NULL ||
+        PowerFrameworkSettings->ComponentIdleStateCallback != NULL ||
+        PowerFrameworkSettings->PowerControlCallback != NULL ||
+        PowerFrameworkSettings->PoFxDeviceContext != NULL) {
+        status = STATUS_INVALID_PARAMETER;
+        DoTraceLevelMessage(
+                pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+                "UMDF WDFDEVICE 0x%p cannot register PoFx callbacks. %!STATUS!",
+                Device, status);
+        FxVerifierDbgBreakPoint(pFxDriverGlobals);
+        return status;
+    }
+#endif
+
+    //
+    // If settings for component 0 are specified, make sure it contains at least
+    // one F-state.
+    //
+    if (NULL != PowerFrameworkSettings->Component) {
+
+        if (0 == PowerFrameworkSettings->Component->IdleStateCount) {
+            status = STATUS_INVALID_PARAMETER;
+            DoTraceLevelMessage(
+                pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+                "WDFDEVICE 0x%p Component settings are specified but "
+                "IdleStateCount is 0. %!STATUS!", Device, status);
+            FxVerifierDbgBreakPoint(pFxDriverGlobals);
+            return status;
+        }
+
+        if (NULL == PowerFrameworkSettings->Component->IdleStates) {
+            status = STATUS_INVALID_PARAMETER;
+            DoTraceLevelMessage(
+                pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+                "WDFDEVICE 0x%p Component settings are specified but IdleStates"
+                " is NULL. %!STATUS!", Device, status);
+            FxVerifierDbgBreakPoint(pFxDriverGlobals);
+            return status;
+        }
+    }
+
+    //
+    // Assign the driver's settings
+    //
+    status = pDevice->m_PkgPnp->AssignPowerFrameworkSettings(
+                                            PowerFrameworkSettings);
+
     return status;
 }
 

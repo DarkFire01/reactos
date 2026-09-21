@@ -701,7 +701,7 @@ function(set_module_type MODULE TYPE)
     endif()
 
     if(TYPE STREQUAL kmdfdriver)
-        target_include_directories(${MODULE} PUBLIC ${REACTOS_SOURCE_DIR}/sdk/include/wdf/kmdf/1.17)
+        target_include_directories(${MODULE} PUBLIC ${REACTOS_SOURCE_DIR}/sdk/include/wdf/kmdf/1.33)
         add_importlibs(${MODULE} wdfldr)
         target_link_libraries(${MODULE} wdfdriverentry)
     endif()

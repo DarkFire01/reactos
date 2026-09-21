@@ -61,6 +61,15 @@ typedef struct _WDFCX_FILEOBJECT_CONFIG {
 
 } WDFCX_FILEOBJECT_CONFIG, *PWDFCX_FILEOBJECT_CONFIG;
 
+typedef
+_Function_class_(EVT_WDFCXDEVICE_WDM_IRP_PREPROCESS)
+NTSTATUS
+NTAPI
+EVT_WDFCXDEVICE_WDM_IRP_PREPROCESS(
+    _In_ WDFDEVICE Device,
+    _Inout_ PIRP Irp,
+    _In_ PVOID DispatchContext);
+
 typedef NTSTATUS
 (NTAPI *PFN_WDFCXDEVICE_WDM_IRP_PREPROCESS)(
     _In_ WDFDEVICE Device,
@@ -130,12 +139,35 @@ typedef NTSTATUS
 
 /* Class Extension support */
 typedef NTSTATUS (NTAPI *PFN_WDF_CLASS_EXTENSIONIN_BIND)(
-    _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
-    _In_ PWDF_COMPONENT_GLOBALS ComponentGlobals);
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ PUNICODE_STRING RegistryPath);
 
 typedef VOID (NTAPI *PFN_WDF_CLASS_EXTENSIONIN_UNBIND)(
-    _In_ PWDF_CLASS_BIND_INFO ClassBindInfo,
-    _In_ PWDF_COMPONENT_GLOBALS ComponentGlobals);
+    _In_ PDRIVER_OBJECT DriverObject);
+
+/* A chain of class extensions a client brings up alongside itself. */
+typedef struct _WDF_CLASS_EXTENSION_DESCRIPTOR {
+    const struct _WDF_CLASS_EXTENSION_DESCRIPTOR *Next;
+    ULONG Size;
+    PFN_WDF_CLASS_EXTENSIONIN_BIND Bind;
+    PFN_WDF_CLASS_EXTENSIONIN_UNBIND Unbind;
+} WDF_CLASS_EXTENSION_DESCRIPTOR, *PWDF_CLASS_EXTENSION_DESCRIPTOR;
+
+typedef const WDF_CLASS_EXTENSION_DESCRIPTOR *PCWDF_CLASS_EXTENSION_DESCRIPTOR;
+
+/*
+ * The 1.25 and later form of the class bind info. The tail points at the
+ * client's own version globals, so a class library can tell the client which
+ * of its functions and structures it actually has.
+ */
+typedef struct _WDF_CLASS_BIND_INFO2 {
+    WDF_CLASS_BIND_INFO V1;
+    PULONG MinimumVersionRequired;
+    PBOOLEAN ClientVersionHigherThanFramework;
+    PULONG FuncCountPtr;
+    PULONG StructCountPtr;
+    WDF_STRUCT_INFO *StructTable;
+} WDF_CLASS_BIND_INFO2, *PWDF_CLASS_BIND_INFO2;
 
 typedef PVOID (NTAPI *PFN_WDF_CLASS_EXPORT)(VOID);
 

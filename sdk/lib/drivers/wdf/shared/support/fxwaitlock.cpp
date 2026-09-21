@@ -23,7 +23,7 @@ Revision History:
 #if defined(EVENT_TRACING)
 // Tracing support
 extern "C" {
-#include "fxwaitlock.tmh"
+// #include "fxwaitlock.tmh"
 }
 #endif
 

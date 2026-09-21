@@ -9,6 +9,11 @@
 
 #pragma once
 
+#include <ntddk.h>
+
+/* From wdftypes.h, which the loader does not otherwise need */
+typedef size_t* WDF_STRUCT_INFO;
+
 #include <fxldr.h>
 #include <aux_klib.h>
 #include <ntintsafe.h>

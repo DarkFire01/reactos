@@ -258,7 +258,7 @@ FxPkgPnp::UpdateWmiInstanceForS0Idle(
 VOID
 FxPkgPnp::ReadRegistryS0Idle(
     __in PCUNICODE_STRING ValueName,
-    __out BOOLEAN *Enabled
+    _Inout_ BOOLEAN *Enabled
     )
 {
     NTSTATUS status;
@@ -274,6 +274,50 @@ FxPkgPnp::ReadRegistryS0Idle(
         // Normalize the ULONG value into a BOOLEAN
         //
         *Enabled = (value == FALSE) ? FALSE : TRUE;
+    }
+}
+
+VOID
+FxPkgPnp::ReadRegistryWdfSetting(
+    _In_    PCUNICODE_STRING ValueName,
+    _Inout_ BOOLEAN *Enabled
+    )
+{
+    IWudfDeviceStack* devStack;
+    HKEY hKey;
+    DWORD err;
+    DWORD value;
+    DWORD dataSize;
+
+    dataSize = sizeof(value);
+    devStack = m_Device->GetDeviceStack();
+
+    err = RegOpenKeyEx(devStack->GetDeviceRegistryKey(),
+                       L"WDF",
+                       0,
+                       KEY_READ,
+                       &hKey);
+
+    if (ERROR_SUCCESS == err) {
+
+        err = RegQueryValueEx(hKey,
+                          ValueName->Buffer,
+                          NULL,
+                          NULL,
+                          (BYTE*) &value,
+                          &dataSize);
+
+        //
+        // Modify value of Enabled only if success
+        //
+        if (ERROR_SUCCESS == err) {
+            //
+            // Normalize the ULONG value into a BOOLEAN
+            //
+            *Enabled = (value == FALSE) ? FALSE : TRUE;
+        }
+
+        RegCloseKey(hKey);
     }
 }
 
@@ -296,7 +340,7 @@ FxPkgPnp::UpdateWmiInstanceForSxWake(
 VOID
 FxPkgPnp::ReadRegistrySxWake(
     __in PCUNICODE_STRING ValueName,
-    __out BOOLEAN *Enabled
+    _Inout_ BOOLEAN *Enabled
     )
 {
     NTSTATUS status;

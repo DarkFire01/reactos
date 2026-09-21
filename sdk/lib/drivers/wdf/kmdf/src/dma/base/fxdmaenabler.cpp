@@ -52,6 +52,7 @@ FxDmaEnabler::FxDmaEnabler(
     m_IsDuplexTransfer   = FALSE;
     m_IsSGListAllocated = FALSE;
     m_SGListSize = 0;
+    m_RequireSingleTransfer = FALSE;
 
     m_IsAdded = FALSE;
 
@@ -135,7 +136,7 @@ FxDmaEnabler::Initialize(
     // Default to version 2 description (except on ARM platforms)
     //
 
-#ifdef _ARM_
+#if defined(_ARM_) || defined(_ARM64_)
     deviceDescription.Version = DEVICE_DESCRIPTION_VERSION3;
 #else
     deviceDescription.Version = DEVICE_DESCRIPTION_VERSION2;
@@ -415,6 +416,35 @@ FxDmaEnabler::Initialize(
     }
 
     //
+    // Check if the client specified that WDF should never divide transactions
+    // into multiple transfers.
+    //
+    if (Config->Flags & WDF_DMA_ENABLER_CONFIG_REQUIRE_SINGLE_TRANSFER) {
+        if (GetDriverGlobals()->IsVersionGreaterThanOrEqualTo(1, 19)) {
+            if (deviceDescription.Version != DEVICE_DESCRIPTION_VERSION3) {
+                status = STATUS_INVALID_PARAMETER;
+                DoTraceLevelMessage(GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGDMA,
+                    "Cannot set single transfer requirement for WDFDMAENABLER %p "
+                    "because it is not configured to use DMA version 3, %!STATUS!",
+                    GetHandle(), status);
+                FxVerifierDbgBreakPoint(GetDriverGlobals());
+                return status;
+            }
+
+            m_RequireSingleTransfer = TRUE;
+        }
+        else {
+            status = STATUS_INVALID_PARAMETER;
+            DoTraceLevelMessage(GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGDMA,
+                "Cannot set single transfer requirement for WDFDMAENABLER %p, "
+                "only available for KMDF 1.19 and later clients, %!STATUS!",
+                GetHandle(), status);
+            FxVerifierDbgBreakPoint(GetDriverGlobals());
+            return status;
+        }
+    }
+
+    //
     // Get the FDO
     //
     m_FDO = m_DeviceBase->GetDeviceObject();
@@ -569,9 +599,9 @@ FxDmaEnabler::ConfigureSystemAdapter(
         // Allocate the SG list.
         //
         m_SGList.SystemProfile.List =
-            (PSCATTER_GATHER_LIST) ExAllocatePoolWithTag(NonPagedPool,
-                                                         systemSGListSize,
-                                                         GetDriverGlobals()->Tag);
+            (PSCATTER_GATHER_LIST) ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                                   systemSGListSize,
+                                                   GetDriverGlobals()->Tag);
 
         if (m_SGList.SystemProfile.List == NULL) {
             status = STATUS_INSUFFICIENT_RESOURCES;
@@ -728,7 +758,7 @@ FxDmaEnabler::ConfigureBusMasterAdapters(
             ExInitializeNPagedLookasideList( &m_SGList.ScatterGatherProfile.Lookaside,
                                              NULL, // Allocate  OPTIONAL
                                              NULL, //  Free  OPTIONAL
-                                             0, // Flag - Reserved. Must be zero.
+                                             POOL_NX_ALLOCATION,
                                              m_SGListSize,
                                              GetDriverGlobals()->Tag,
                                              0 ); // Depth - Reserved. Must be zero.

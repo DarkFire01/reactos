@@ -41,6 +41,10 @@ enum FxPowerPolicyEvent {
     PwrPolDevicePowerRequired           = 0x00800000,
     PwrPolRemove                        = 0x01000000,
     PwrPolWakeInterruptFired            = 0x02000000,
+    PwrPolDeviceDirectedPowerDown       = 0x04000000,
+    PwrPolDeviceDirectedPowerUp         = 0x08000000,
+    PwrPolDevicePowerNotRequiredDirected = 0x10000000,
+    PwrPolDevicePowerRequiredDirected   = 0x20000000,
 
     //
     // Not a real event, just a value that indicates all of the events which
@@ -60,7 +64,10 @@ enum FxPowerPolicyEvent {
                                           PwrPolWakeFailed |
                                           PwrPolPowerUpNotSeen |
                                           PwrPolUsbSelectiveSuspendCompleted |
-                                          PwrPolWakeInterruptFired,
+                                          PwrPolWakeInterruptFired |
+                                          PwrPolDevicePowerNotRequiredDirected |
+                                          PwrPolDevicePowerRequiredDirected |
+                                          PwrPolDeviceDirectedPowerUp,
 
     //
     // Not a real event, just a value that indicates all of the events which
@@ -82,7 +89,6 @@ enum FxPowerPolicyEvent {
     // this event.
     //
                                           PwrPolWakeInterruptFired,
-
 
     PwrPolNull                          = 0xFFFFFFFF,
 };
@@ -371,6 +377,51 @@ private:
     //
     PPOX_SETTINGS m_PoxSettings;
 
+    //
+    // This member is used to determine whether or not the driver will advertise
+    // support for Directed power transitions when it registers with PoFx for
+    // runtime idle support.
+    //
+    BOOLEAN m_DirectedTransitionsSupported;
+
+    //
+    // Zero or more Flags that can be OR-ed together. For more details refer to
+    // PO_FX_DEVICE_V3.Flags
+    //
+    // - PO_FX_DEVICE_FLAG_DFX_CHILDREN_OPTIONAL
+    //
+    // When DFx is enabled on a device, normally all child devices need enable
+    // DFx as well. However, if the child devices don't do any power management
+    // e.g. software devices, they shouldn't be required to implement DFx too.
+    //
+    // Also note that WDF currently doesn't support powering down a parent device
+    // if there is a child device(s) in D0. Thus child PDO has to be enumerated
+    // side-band through either a upper filter or SwDeviceCreate.
+    //
+    // In summary: if a WDF driver enables DFx, is not a bus driver, and knows
+    // that it might have some virtual child devices through side-band approach,
+    // then it can set PO_FX_DEVICE_FLAG_DFX_CHILDREN_OPTIONAL.
+    //
+    // - PO_FX_DEVICE_FLAG_DISABLE_FAST_RESUME
+    //
+    // Consider device A has PowerRelations on device B and thus depends on B to
+    // be in working D0 state first before A can enter D0 state. The device B
+    // must opt-out of fast resume to allow the dependence works reliably during
+    // system resume.
+    //
+    ULONGLONG m_PoFxDeviceFlags;
+
+    //
+    // With system managed idle timeout, normally WDF idle timer state machine
+    // uses 0 as its effective idle timeout, and passes the real idle timeout
+    // to PoFxSetDeviceIdleTimeout. This is the default.
+    //
+    // For some scenario, however, it is best to move the real idle timeout back
+    // to WDF idle timer state machine, and uses 0 for PoFxSetDeviceIdleTimeout
+    // instead. Set m_UseWdfTimerForPofx to TRUE for such scenarios.
+    //
+    BOOLEAN m_UseWdfTimerForPofx;
+
 private:
     IdleTimeoutStatusUpdateResult
     UpdateIdleTimeoutStatus(
@@ -386,7 +437,10 @@ public:
     IdleTimeoutManagement(
         VOID
         ) : m_IdleTimeoutStatus(0),
-            m_PoxSettings(NULL)
+            m_PoxSettings(NULL),
+            m_UseWdfTimerForPofx(FALSE),
+            m_DirectedTransitionsSupported(FALSE),
+            m_PoFxDeviceFlags(0)
     {
     }
 
@@ -475,6 +529,88 @@ public:
     {
         return m_PoxSettings;
     }
+
+    VOID
+    SetDirectedPowerTransitionSupport(
+        BOOLEAN Supported
+        )
+    {
+        m_DirectedTransitionsSupported = Supported;
+        return;
+    }
+
+    BOOLEAN
+    GetDirectedPowerTransitionSupport(
+        VOID
+        )
+    {
+        return m_DirectedTransitionsSupported;
+    }
+
+    VOID
+    SetDirectedPowerTransitionChildrenOptional(
+        BOOLEAN IsOptional
+        )
+    {
+        if (IsOptional) {
+            m_PoFxDeviceFlags |= PO_FX_DEVICE_FLAG_DFX_CHILDREN_OPTIONAL;
+        }
+        else {
+            m_PoFxDeviceFlags &= ~PO_FX_DEVICE_FLAG_DFX_CHILDREN_OPTIONAL;
+        }
+        return;
+    }
+
+    BOOLEAN
+    GetDirectedPowerTransitionChildrenOptional(
+        VOID
+        )
+    {
+        return (m_PoFxDeviceFlags & PO_FX_DEVICE_FLAG_DFX_CHILDREN_OPTIONAL)
+                    == PO_FX_DEVICE_FLAG_DFX_CHILDREN_OPTIONAL;
+    }
+
+    VOID
+    SetPoFxDeviceFlags(
+        ULONGLONG Flags
+        )
+    {
+        m_PoFxDeviceFlags = Flags;
+    }
+
+    ULONGLONG
+    GetPoFxDeviceFlags(
+        VOID
+        )
+    {
+        return m_PoFxDeviceFlags;
+    }
+
+    VOID
+    SetUseWdfTimerForPofx(
+        BOOLEAN Value
+        )
+    {
+        m_UseWdfTimerForPofx = Value;
+    }
+
+    BOOLEAN
+    GetUseWdfTimerForPofx(
+        VOID
+        )
+    {
+        return m_UseWdfTimerForPofx;
+    }
+
+    BOOLEAN
+    UsingSystemManagedIdleTimeoutAndPofxTimer(
+        VOID
+        )
+    {
+        return UsingSystemManagedIdleTimeout() &&
+               (! GetUseWdfTimerForPofx());
+    }
+
 };
 
 struct IdlePolicySettings : PolicySettings {
@@ -486,6 +622,8 @@ struct IdlePolicySettings : PolicySettings {
         UsbSSCapable = FALSE;
         PowerUpIdleDeviceOnSystemWake = FALSE;
         UsbSSCapabilityKnown = FALSE;
+        D3ColdCapabilityKnown = FALSE;
+        D3ColdSupported = FALSE;
     }
 
     //
@@ -520,6 +658,19 @@ struct IdlePolicySettings : PolicySettings {
     BOOLEAN PowerUpIdleDeviceOnSystemWake;
 
     //
+    // FALSE if WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS.ExcludeD3Cold = WdfUseDefault.
+    // TRUE otherwise
+    //
+    BOOLEAN D3ColdCapabilityKnown;
+
+    //
+    // This member is meaningful only if D3ColdCapabilityKnown = TRUE.
+    // TRUE if WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS.ExcludeD3Cold = WdfFalse.
+    // FALSE if ExcludeD3Cold = WdfTrue
+    //
+    BOOLEAN D3ColdSupported;
+
+    //
     // Member to manage interactions with the power manager for S0-idle support
     // on Win8 and above
     //
@@ -545,6 +696,166 @@ struct WakePolicySettings : PolicySettings {
     // TRUE if the device should propagate the wake status to its children.
     //
     BOOLEAN IndicateChildWakeOnParentWake;
+};
+
+enum RequestDIrpReason {
+
+    RequestDIrpReasonInvalid = 0,
+    RequestDIrpFailed,      // PoRequestPowerIrp failed. No D-IRP is sent out.
+
+    RequestD0ForS0,         // System in Sx. System wakes up
+    RequestDxForSx,         // Device in D0. System sleeps
+
+    RequestD0ForSx,         // Device in Dx. Sx comes, Device wakes to D0 first
+    RequestD0ForOther,      // deprecated
+
+    RequestD0ForDeviceWake, // Device in Dx. Wake by external signal
+    RequestD0ForArmWakeFail,// Device in D0. Dx comes and it fails to arm wake.
+                            // Now in Dx. Return to D0 next
+    RequestDxForIdleOut,    // Device in D0. Sleep because of Idle out
+    RequestDxForPnpStop,    // Device in D0. Pnp remove, Device implicitly Dx
+    RequestD0ForPnpStop,    // Device in Dx. Pnp remove, Device wakes to D0 first
+
+    RequestD0ForIoPresent,  // Device in Dx. I/O is delivered to a power-managed queue
+    RequestD0ForStopIdle,   // Device in Dx. Driver calls WdfDeviceStopIdle
+    RequestD0ForDfxPowerUp, // Device in Dx. PoFx DirectedPowerUpCallback is invoked
+    RequestD0ForUsbSs,      // Device in Dx. USB selective suspend IRP is completed
+    RequestD0ForWakeFailed, // Device in Dx. Wait-wake IRP is completed with failure
+    RequestD0ForSpecialFile,// Device in Dx. Special file usage is changing
+    RequestD0ForChildDevice,// Device in Dx. Child device is powering up
+    RequestD0ForS0IdlePolicy,//Device in Dx. S0 idle policy is changed by either
+                            // driver calling WdfDeviceAssignS0IdleSettings or
+                            // user changing it in device manager property page
+    RequestD0ForPowerReqCb, // Device in Dx. PoFx DevicePowerRequiredCallback is
+                            // invoked. Could be D0ForSx, D0ForPnpStop, or another
+                            // device on the same power rail entering D0, etc.
+
+};
+
+class FxDevicePowerIrpTracker {
+
+public:
+    FxDevicePowerIrpTracker(
+        _In_ FxPkgPnp* PkgPnp
+        )
+    {
+        InitHistory();
+        m_DIrpRequestedForSIrp = RequestDIrpReasonInvalid;
+        m_D0IrpReasonHint.Reason = RequestD0ForOther;
+        m_PkgPnp = PkgPnp;
+    }
+
+    VOID
+    SaveStateFromSystemPowerIrp(
+        _In_ FxIrp *Irp
+        );
+
+    VOID
+    LogRequestDIrpReason(
+        _In_ RequestDIrpReason Reason,
+        _In_ BOOLEAN           PowerUp
+        );
+
+    VOID
+    StartTrackingDevicePowerIrp(
+        _In_ RequestDIrpReason Reason
+        );
+
+    VOID
+    StopTrackingDevicePowerIrp(
+        VOID
+        );
+
+    POWER_ACTION
+    GetSystemPowerAction(
+        VOID
+        );
+
+    //
+    // Only save the first hint. The rest are ignored.
+    //
+    // This is especially important for DevicePowerRequiredCallback, which should
+    // be saved if it comes alone because of QuerySx, but should be ignored if it
+    // comes after IoPresent.
+    //
+    VOID
+    SaveRequestD0IrpReasonHint(
+        _In_ RequestDIrpReason Reason
+        )
+    {
+        InterlockedCompareExchange(&m_D0IrpReasonHint.AsLong,
+                                   Reason,
+                                   RequestD0ForOther);
+    }
+
+private:
+
+    FxPkgPnp* m_PkgPnp;
+
+    //
+    // Special handling only for RequestD0ForS0 and RequestDxForSx.
+    //
+    // Set right before D-IRP is requested.
+    //
+    // Cleared when D-IRP processing is finished:
+    //   - For RequestD0ForS0, PwrPolPowerUp is received.
+    //   - For RequestDxForSx, PwrPolPowerDown is received.
+    //   - Failure happens.
+    //
+    RequestDIrpReason m_DIrpRequestedForSIrp;
+
+    //
+    // Most of time the caller of PowerPolicySendDevicePowerRequest knows the
+    // exact reason of requesting D-IRP. But for RequestD0ForOther, only some
+    // prior code knows the real reason. Let's save it here.
+    //
+    // Note: this is a best-effort work, hence the name of "hint". For example,
+    // in prepare for Sx or pnp remove, power-required-callback will be invoked.
+    // The real reason behind is not known to WDF.
+    //
+    union {
+        RequestDIrpReason Reason;
+        LONG              AsLong;
+    } m_D0IrpReasonHint;
+
+    POWER_ACTION m_S0PowerAction;
+    POWER_ACTION m_SxPowerAction;
+
+    //
+    // Keep the history of RequestDIrpReason
+    //
+    struct HistoryEntry {
+        RequestDIrpReason Reason;
+        LARGE_INTEGER     Timestamp; // 100-nanosec ticks since 1601-01-01 GMT
+    };
+
+    static const UCHAR
+                 m_HistoryDepth = 8;
+    UCHAR        m_HistoryIndex;
+    HistoryEntry m_History[m_HistoryDepth];
+
+    VOID
+    InitHistory(
+        VOID
+        )
+    {
+        m_HistoryIndex = 0;
+        RtlZeroMemory(m_History, sizeof(m_History)); // 0 = RequestDIrpReasonInvalid
+    }
+
+    VOID
+    AddToHistory(
+        _In_ RequestDIrpReason Reason
+        )
+    {
+        HistoryEntry entry;
+
+        entry.Reason = Reason;
+        Mx::MxQuerySystemTime(&entry.Timestamp);
+
+        m_History[m_HistoryIndex] = entry;
+        m_HistoryIndex = (m_HistoryIndex + 1 ) % m_HistoryDepth;
+    }
 };
 
 struct FxPowerPolicyOwnerSettings : public FxStump {
@@ -617,6 +928,8 @@ public:
     WakePolicySettings m_WakeSettings;
 
     IdlePolicySettings m_IdleSettings;
+
+    FxDevicePowerIrpTracker          m_DevicePowerIrpTracker;
 
     //
     // Nibble packed structure.  Each D state is encoded 4 bits.  The S state is
@@ -769,6 +1082,21 @@ struct FxPowerPolicyMachine : public FxThreadedEventQueue {
         }
     }
 
+    VOID
+    SimulateDevicePowerRequiredForS0(
+        VOID
+        );
+
+    VOID
+    AcknowledgeS0(
+        VOID
+        );
+
+    ULONGLONG
+    CompactStates(
+        VOID
+        );
+
 public:
     FxPowerPolicyEvent m_Queue[FxPowerPolicyEventQueueDepth];
 
@@ -806,6 +1134,7 @@ public:
             ULONG PwrPolPowerUpFailedKnown : 1;
         } m_SingularEventsPresentByName;
     };
+
 };
 
 #endif // _FXPOWERPOLICYSTATEMACHINE_H_

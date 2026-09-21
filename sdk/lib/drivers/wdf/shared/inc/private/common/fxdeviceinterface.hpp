@@ -38,6 +38,8 @@ public:
 
     BOOLEAN m_State;
 
+    BOOLEAN m_AutoEnableOnFirstStart;
+
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
     //
     // This is needed in UM to get hold of host interface
