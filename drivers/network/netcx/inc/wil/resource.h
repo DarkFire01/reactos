@@ -33,18 +33,18 @@ struct function_deleter
 };
 
 /*
- * A handle released by a free function. Policy supplies the type, the value
- * that means empty, and how to close it.
+ * A handle released by a free function. The function is carried as a template
+ * argument so an instance costs no more than the handle itself.
  */
-template<typename Policy>
+template<typename T, typename FunctionType, FunctionType Function>
 class unique_any
 {
 public:
 
-    typedef typename Policy::pointer pointer;
+    typedef T pointer;
 
-    unique_any() noexcept : m_value(Policy::invalid_value()) { }
-    explicit unique_any(pointer Value) noexcept : m_value(Value) { }
+    unique_any() noexcept : m_value(T()) { }
+    explicit unique_any(T Value) noexcept : m_value(Value) { }
 
     unique_any(unique_any && Other) noexcept : m_value(Other.release()) { }
 
@@ -64,46 +64,38 @@ public:
     unique_any(unique_any const &) = delete;
     unique_any & operator=(unique_any const &) = delete;
 
-    pointer get() const noexcept { return m_value; }
+    T get() const noexcept { return m_value; }
 
-    pointer release() noexcept
+    T release() noexcept
     {
-        pointer Released = m_value;
-        m_value = Policy::invalid_value();
+        T Released = m_value;
+        m_value = T();
         return Released;
     }
 
-    void reset(pointer Value = Policy::invalid_value()) noexcept
+    void reset(T Value = T()) noexcept
     {
-        pointer Old = m_value;
+        T Old = m_value;
         m_value = Value;
 
-        if (Old != Policy::invalid_value())
-            Policy::close(Old);
+        if (Old != T())
+            Function(Old);
     }
 
-    /* For the out parameter pattern: hand over the slot, release what was there. */
-    pointer * put() noexcept
+    /* Hand over the slot for an out parameter, releasing what was there. */
+    T * put() noexcept
     {
         reset();
         return &m_value;
     }
 
-    pointer * operator&() noexcept { return put(); }
+    T * operator&() noexcept { return put(); }
 
-    explicit operator bool() const noexcept { return m_value != Policy::invalid_value(); }
+    explicit operator bool() const noexcept { return m_value != T(); }
 
 private:
 
-    pointer m_value;
-};
-
-template<typename T, void (*CloseFunction)(T)>
-struct handle_policy
-{
-    typedef T pointer;
-    static pointer invalid_value() noexcept { return nullptr; }
-    static void close(pointer Value) noexcept { CloseFunction(Value); }
+    T m_value;
 };
 
 /* An array plus its count, freed as one allocation. */
@@ -156,28 +148,26 @@ private:
     size_t m_count;
 };
 
-/* WDF objects all close the same way, so one policy serves every flavor. */
-template<typename T>
-struct wdf_object_policy
+/*
+ * The WDF entry points are macros over a function table, so they have no
+ * address to take. These wrappers give the template something to bind to.
+ */
+inline void CloseWdfObject(WDFOBJECT Object) noexcept
 {
-    typedef T pointer;
-    static pointer invalid_value() noexcept { return nullptr; }
-    static void close(pointer Value) noexcept { WdfObjectDelete(Value); }
-};
+    WdfObjectDelete(Object);
+}
 
-typedef unique_any<wdf_object_policy<WDFOBJECT>> unique_wdf_any;
-typedef unique_any<wdf_object_policy<WDFOBJECT>> unique_wdf_object;
-typedef unique_any<wdf_object_policy<WDFWORKITEM>> unique_wdf_work_item;
-
-struct kernel_handle_policy
+inline void CloseKernelHandle(HANDLE Handle) noexcept
 {
-    typedef HANDLE pointer;
-    static pointer invalid_value() noexcept { return nullptr; }
-    static void close(pointer Value) noexcept { ZwClose(Value); }
-};
+    ZwClose(Handle);
+}
 
-typedef unique_any<kernel_handle_policy> unique_handle;
-typedef unique_any<kernel_handle_policy> unique_kernel_handle;
+typedef unique_any<WDFOBJECT, decltype(&CloseWdfObject), &CloseWdfObject> unique_wdf_any;
+typedef unique_any<WDFOBJECT, decltype(&CloseWdfObject), &CloseWdfObject> unique_wdf_object;
+typedef unique_any<WDFWORKITEM, decltype(&CloseWdfObject), &CloseWdfObject> unique_wdf_work_item;
+
+typedef unique_any<HANDLE, decltype(&CloseKernelHandle), &CloseKernelHandle> unique_handle;
+typedef unique_any<HANDLE, decltype(&CloseKernelHandle), &CloseKernelHandle> unique_kernel_handle;
 
 /*
  * Runs a callable when it goes out of scope unless it was released first.
