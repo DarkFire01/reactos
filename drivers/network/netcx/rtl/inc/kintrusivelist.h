@@ -60,12 +60,13 @@ public:
     }
 };
 
+/*
+ * Range-for finds these by argument dependent lookup, which since C++14 no
+ * longer searches std, so they live next to the element type.
+ */
 #define MAKE_INTRUSIVE_LIST_ENUMERABLE_FUNCTOR(Type, Functor) \
-    namespace std \
-    { \
-        inline auto begin(Type *pHead) { return KIntrusiveListIterator<Type, Functor>(pHead); } \
-        inline auto end(Type *)   { return KIntrusiveListIterator<Type, Functor>();      } \
-    }
+    inline auto begin(Type *pHead) { return KIntrusiveListIterator<Type, Functor>(pHead); } \
+    inline auto end(Type *)   { return KIntrusiveListIterator<Type, Functor>();      }
 
 #define MAKE_INTRUSIVE_LIST_ENUMERABLE(Type, Field) \
     struct _K_ ## Type ## _Advance \

@@ -74,6 +74,10 @@ typedef struct _NET_CLIENT_OFFLOAD_GSO_CAPABILITIES
     SIZE_T MinimumSegmentCount;
 } NET_CLIENT_OFFLOAD_GSO_CAPABILITIES;
 
+/* Limits advertised for software segmentation when the hardware reports none. */
+#define NETCX_GSO_SOFTWARE_FALLBACK_MAX_SIZE            0x10000
+#define NETCX_GSO_SOFTWARE_FALLBACK_MIN_SEGMENT_COUNT   2
+
 typedef struct _NET_CLIENT_OFFLOAD_RSC_CAPABILITIES
 {
     ULONG Size;

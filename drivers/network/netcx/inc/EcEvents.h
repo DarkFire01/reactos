@@ -10,5 +10,8 @@
 
 #pragma once
 
+#define EventRegisterMicrosoft_Windows_Network_ExecutionContext()     (STATUS_SUCCESS)
+#define EventUnregisterMicrosoft_Windows_Network_ExecutionContext()   (STATUS_SUCCESS)
+
 #define EventWriteExecutionContextStateChange(...)      ((void)0)
 #define EventWriteExecutionTimeExceededWarning(...)     ((void)0)
