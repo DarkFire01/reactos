@@ -950,6 +950,77 @@ KiInitSystem(
     VOID
 );
 
+/* Secondary interrupts (ke/secint.c) ****************************************/
+
+/* Secondary vectors index the secondary IDT, they are never processor vectors */
+#define KI_SECONDARY_VECTOR_BASE        256
+#define KI_SECONDARY_VECTOR_COUNT       256
+
+/* Secondary dispatch runs under locks taken at the highest device IRQL */
+#ifdef _M_IX86
+#define KI_HIGHEST_DEVICE_IRQL          (PROFILE_LEVEL - 1)
+#else
+#define KI_HIGHEST_DEVICE_IRQL          (CLOCK_LEVEL - 1)
+#endif
+
+/* KINTERRUPT InternalState bits */
+#define KINTERRUPT_STATE_DISABLED       0x00000001
+#define KI_INTERRUPT_DISCONNECT_PENDING 0x00000002
+
+BOOLEAN
+NTAPI
+KiIsInterruptTypeSecondary(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData
+);
+
+VOID
+NTAPI
+KiInitializeSecondaryInterrupt(
+    _Out_ PKINTERRUPT Interrupt,
+    _In_ PKSERVICE_ROUTINE ServiceRoutine,
+    _In_opt_ PVOID ServiceContext,
+    _In_ PKSPIN_LOCK SpinLock,
+    _In_opt_ PKEVENT PassiveEvent,
+    _In_ ULONG Vector,
+    _In_ KIRQL Irql,
+    _In_ KIRQL SynchronizeIrql,
+    _In_ KINTERRUPT_MODE InterruptMode,
+    _In_ BOOLEAN ShareVector,
+    _In_ CHAR ProcessorNumber
+);
+
+NTSTATUS
+NTAPI
+KiConnectSecondaryInterrupts(
+    _In_reads_(Count) PKINTERRUPT *Interrupts,
+    _In_ UCHAR Count,
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData
+);
+
+NTSTATUS
+NTAPI
+KiDisconnectSecondaryInterrupts(
+    _In_reads_(Count) PKINTERRUPT *Interrupts,
+    _In_ UCHAR Count,
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData
+);
+
+BOOLEAN
+NTAPI
+KiDispatchSecondaryInterrupt(
+    _In_ ULONG Vector,
+    _In_ BOOLEAN PassiveOnly,
+    _Inout_opt_ PLIST_ENTRY DisconnectList
+);
+
+BOOLEAN
+NTAPI
+KiSynchronizePassiveInterruptExecution(
+    _In_ PKINTERRUPT Interrupt,
+    _In_ PKSYNCHRONIZE_ROUTINE SynchronizeRoutine,
+    _In_opt_ PVOID SynchronizeContext
+);
+
 VOID
 FASTCALL
 KiInsertQueueApc(

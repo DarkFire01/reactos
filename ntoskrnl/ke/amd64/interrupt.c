@@ -67,6 +67,11 @@ KeInitializeInterrupt(
     Interrupt->DispatchCount = 0;
     Interrupt->TrapFrame = NULL;
     Interrupt->Reserved = 0;
+    Interrupt->ActiveCount = 0;
+    Interrupt->InternalState = 0;
+    Interrupt->PassiveEvent = NULL;
+    Interrupt->DisconnectData = NULL;
+    Interrupt->ServiceThread = NULL;
 
     /* Copy the dispatch code (its location independent, no need to patch it) */
     RtlCopyMemory(Interrupt->DispatchCode,
@@ -240,6 +245,14 @@ KeSynchronizeExecution(IN OUT PKINTERRUPT Interrupt,
 {
     BOOLEAN Success;
     KIRQL OldIrql;
+
+    /* A passive level interrupt is synchronized by its passive event */
+    if (Interrupt->SynchronizeIrql == PASSIVE_LEVEL)
+    {
+        return KiSynchronizePassiveInterruptExecution(Interrupt,
+                                                      SynchronizeRoutine,
+                                                      SynchronizeContext);
+    }
 
     /* Raise IRQL */
     OldIrql = KfRaiseIrql(Interrupt->SynchronizeIrql);

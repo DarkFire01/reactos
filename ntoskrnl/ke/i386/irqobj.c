@@ -366,6 +366,11 @@ KeInitializeInterrupt(IN PKINTERRUPT Interrupt,
     Interrupt->FloatingSave = FloatingSave;
     Interrupt->TickCount = MAXULONG;
     Interrupt->DispatchCount = MAXULONG;
+    Interrupt->ActiveCount = 0;
+    Interrupt->InternalState = 0;
+    Interrupt->PassiveEvent = NULL;
+    Interrupt->DisconnectData = NULL;
+    Interrupt->ServiceThread = NULL;
 
     /* Loop the template in memory */
     for (i = 0; i < DISPATCH_LENGTH; i++)
@@ -587,6 +592,14 @@ KeSynchronizeExecution(IN OUT PKINTERRUPT Interrupt,
 {
     BOOLEAN Success;
     KIRQL OldIrql;
+
+    /* A passive level interrupt is synchronized by its passive event */
+    if (Interrupt->SynchronizeIrql == PASSIVE_LEVEL)
+    {
+        return KiSynchronizePassiveInterruptExecution(Interrupt,
+                                                      SynchronizeRoutine,
+                                                      SynchronizeContext);
+    }
 
     /* Raise IRQL */
     KeRaiseIrql(Interrupt->SynchronizeIrql,
