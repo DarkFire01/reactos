@@ -248,9 +248,12 @@ NdisMSetMiniportAttributes(
         case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES:
             return CoreSetGeneralAttributes(Adapter, &MiniportAttributes->GeneralAttributes);
 
+        case NDIS_OBJECT_TYPE_MINIPORT_ADD_DEVICE_REGISTRATION_ATTRIBUTES:
+            Adapter->Core.AddDeviceContext = MiniportAttributes->AddDeviceRegistrationAttributes.MiniportAddDeviceContext;
+            return NDIS_STATUS_SUCCESS;
+
         case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_OFFLOAD_ATTRIBUTES:
         case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES:
-        case NDIS_OBJECT_TYPE_MINIPORT_ADD_DEVICE_REGISTRATION_ATTRIBUTES:
         case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_HARDWARE_ASSIST_ATTRIBUTES:
         case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_NDK_ATTRIBUTES:
             /* No protocol here asks for these features, so nothing is recorded */
