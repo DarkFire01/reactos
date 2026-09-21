@@ -162,5 +162,17 @@ EtwWriteEx(
   _In_reads_opt_(UserDataCount) PEVENT_DATA_DESCRIPTOR UserData);
 #endif
 
+#if (NTDDI_VERSION >= NTDDI_WIN10)
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+EtwSetInformation(
+  _In_ REGHANDLE RegHandle,
+  _In_ EVENT_INFO_CLASS InformationClass,
+  _In_reads_bytes_opt_(InformationLength) PVOID EventInformation,
+  _In_ ULONG InformationLength);
+#endif
+
 
 
