@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <ntddndis.h>
+#include <ndis.h>
 
 #ifdef __cplusplus
 extern "C" {
