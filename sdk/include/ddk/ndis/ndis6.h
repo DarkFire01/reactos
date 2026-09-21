@@ -10,8 +10,6 @@
 extern "C" {
 #endif
 
-typedef ULONG NDIS_PORT_NUMBER, *PNDIS_PORT_NUMBER;
-
 /* NDIS_OBJECT_HEADER::Type for the structures below. */
 #define NDIS_OBJECT_TYPE_MINIPORT_DRIVER_CHARACTERISTICS             0x83
 #define NDIS_OBJECT_TYPE_MINIPORT_INIT_PARAMETERS                    0x84
@@ -92,14 +90,15 @@ typedef struct _NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES
   *PNDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES;
 
 /*
- * Only the header and the registration arm are described. The other arms
- * (general, offload, native 802.11, NDK, PacketDirect) are dispatched on
+ * The remaining arms (native 802.11, NDK, PacketDirect) are dispatched on
  * Header.Type and can be added as each one is needed.
  */
 typedef union _NDIS_MINIPORT_ADAPTER_ATTRIBUTES
 {
     NDIS_OBJECT_HEADER Header;
     NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES RegistrationAttributes;
+    NDIS_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES GeneralAttributes;
+    NDIS_MINIPORT_ADAPTER_OFFLOAD_ATTRIBUTES OffloadAttributes;
 } NDIS_MINIPORT_ADAPTER_ATTRIBUTES, *PNDIS_MINIPORT_ADAPTER_ATTRIBUTES;
 
 typedef NDIS_STATUS (NTAPI MINIPORT_SET_OPTIONS)(
