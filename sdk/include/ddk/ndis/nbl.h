@@ -20,15 +20,18 @@ struct _NET_BUFFER_SHARED_MEMORY;
 /*
  * Slot indices into NET_BUFFER_LIST::NetBufferListInfo. The layout is part of
  * the miniport ABI and differs by architecture: 64 bit builds carry the switch
- * and GFT slots, so TcpRecvSegCoalesceInfo is 22 there and 19 on x86. ndis.sys
- * itself sees two more trailing slots than any driver it hands an NBL to.
+ * and GFT slots, so TcpRecvSegCoalesceInfo is 22 there and 19 on x86. From 6.82
+ * on, x86 gets its own switch slots at the end instead. ndis.sys itself sees
+ * two more trailing slots than any driver it hands an NBL to.
  */
 typedef enum _NDIS_NET_BUFFER_LIST_INFO
 {
     TcpIpChecksumNetBufferListInfo,
     TcpOffloadBytesTransferred = TcpIpChecksumNetBufferListInfo,
     IPsecOffloadV1NetBufferListInfo,
+#if NDIS_SUPPORT_NDIS61
     IPsecOffloadV2NetBufferListInfo = IPsecOffloadV1NetBufferListInfo,
+#endif
     TcpLargeSendNetBufferListInfo,
     TcpReceiveNoPush = TcpLargeSendNetBufferListInfo,
     ClassificationHandleNetBufferListInfo,
@@ -40,8 +43,11 @@ typedef enum _NDIS_NET_BUFFER_LIST_INFO
     NetBufferListHashValue,
     NetBufferListHashInfo,
     WfpNetBufferListInfo,
+#if NDIS_SUPPORT_NDIS61
     IPsecOffloadV2TunnelNetBufferListInfo,
     IPsecOffloadV2HeaderNetBufferListInfo,
+#endif
+#if NDIS_SUPPORT_NDIS620
     NetBufferListCorrelationId,
     NetBufferListFilteringInfo,
     MediaSpecificInformationEx,
@@ -49,7 +55,9 @@ typedef enum _NDIS_NET_BUFFER_LIST_INFO
     NblReAuthWfpFlowContext = NblOriginalInterfaceIfIndex,
     TcpReceiveBytesTransferred,
     NrtNameResolutionId = TcpReceiveBytesTransferred,
+#if NDIS_SUPPORT_NDIS684
     UdpRecvSegCoalesceOffloadInfo = TcpReceiveBytesTransferred,
+#endif
 #if NDIS_SUPPORT_NDIS630
 #if defined(_AMD64_) || defined(_ARM64_)
     SwitchForwardingReserved,
@@ -58,7 +66,9 @@ typedef enum _NDIS_NET_BUFFER_LIST_INFO
 #endif
     IMReserved,
     TcpRecvSegCoalesceInfo,
+#if NDIS_SUPPORT_NDIS683
     UdpSegmentationOffloadInfo = TcpRecvSegCoalesceInfo,
+#endif
     RscTcpTimestampDelta,
     TcpSendOffloadsSupplementalNetBufferListInfo = RscTcpTimestampDelta,
 #if NDIS_SUPPORT_NDIS650
@@ -74,7 +84,16 @@ typedef enum _NDIS_NET_BUFFER_LIST_INFO
 #endif
 #endif
 #endif
-#if NDIS_WRAPPER
+#endif
+#if NDIS_SUPPORT_NDIS682
+#if !defined(_AMD64_) && !defined(_ARM64_)
+    SwitchForwardingReserved,
+    SwitchForwardingDetail_b0_to_b31,
+    SwitchForwardingDetail_b32_to_b63,
+    VirtualSubnetInfo,
+#endif
+#endif
+#if NDIS_WRAPPER == 1
     NetBufferListInfoReserved1,
     NetBufferListInfoReserved2,
 #endif
