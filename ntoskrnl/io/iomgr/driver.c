@@ -1954,6 +1954,203 @@ IoGetDriverObjectExtension(IN PDRIVER_OBJECT DriverObject,
     return DriverExtensions + 1;
 }
 
+/* A renamed service keeps its state under the name it was installed with */
+static
+NTSTATUS
+IopGetDriverStateName(
+    _In_ HANDLE ServiceKey,
+    _In_ PCUNICODE_STRING ServiceName,
+    _Out_ PUNICODE_STRING StateName)
+{
+    PKEY_VALUE_FULL_INFORMATION Value;
+    UNICODE_STRING OriginalName;
+    PCWSTR Chars;
+    NTSTATUS Status;
+
+    Status = IopGetRegistryValue(ServiceKey, L"OriginalServiceName", &Value);
+    if (Status == STATUS_OBJECT_NAME_NOT_FOUND)
+        return RtlDuplicateUnicodeString(RTL_DUPLICATE_UNICODE_STRING_NULL_TERMINATE, ServiceName, StateName);
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Chars = (PCWSTR)((PUCHAR)Value + Value->DataOffset);
+    if (Value->Type != REG_SZ ||
+        Value->DataLength < sizeof(WCHAR) ||
+        Chars[Value->DataLength / sizeof(WCHAR) - 1] != UNICODE_NULL)
+    {
+        Status = STATUS_OBJECT_TYPE_MISMATCH;
+    }
+    else
+    {
+        Status = RtlInitUnicodeStringEx(&OriginalName, Chars);
+        if (NT_SUCCESS(Status))
+        {
+            if (RtlEqualUnicodeString(ServiceName, &OriginalName, TRUE))
+                OriginalName = *ServiceName;
+
+            Status = RtlDuplicateUnicodeString(RTL_DUPLICATE_UNICODE_STRING_NULL_TERMINATE, &OriginalName, StateName);
+        }
+    }
+
+    ExFreePool(Value);
+    return Status;
+}
+
+static
+NTSTATUS
+IopOpenDriverStateKey(
+    _In_ HANDLE ServiceKey,
+    _In_ PCUNICODE_STRING ServiceName,
+    _In_ ACCESS_MASK DesiredAccess,
+    _Out_ PHANDLE Key)
+{
+    UNICODE_STRING StateRootName =
+        RTL_CONSTANT_STRING(L"\\Registry\\Machine\\System\\CurrentControlSet\\ServiceState");
+    UNICODE_STRING StateName;
+    HANDLE StateRoot;
+    NTSTATUS Status;
+
+    Status = IopGetDriverStateName(ServiceKey, ServiceName, &StateName);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = IopOpenRegistryKeyEx(&StateRoot, NULL, &StateRootName, KEY_CREATE_SUB_KEY);
+    if (NT_SUCCESS(Status))
+    {
+        Status = IopCreateRegistryKeyEx(Key,
+                                        StateRoot,
+                                        &StateName,
+                                        DesiredAccess,
+                                        REG_OPTION_NON_VOLATILE,
+                                        NULL);
+        ZwClose(StateRoot);
+    }
+
+    RtlFreeUnicodeString(&StateName);
+    return Status;
+}
+
+/**
+ * @brief
+ * Opens one of the registry keys that belong to a driver's service.
+ *
+ * @param[in] DriverObject
+ * The driver whose key to open.
+ *
+ * @param[in] RegKeyType
+ * Parameters, or the private or shared persistent state key.
+ *
+ * @param[in] DesiredAccess
+ * The access to open with. The Parameters key only allows reading.
+ *
+ * @param[in] Flags
+ * Must be zero.
+ *
+ * @param[out] DriverRegKey
+ * Receives a kernel handle to the key.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_INVALID_PARAMETER, STATUS_ACCESS_DENIED or the
+ * status of opening the key.
+ */
+NTSTATUS
+NTAPI
+IoOpenDriverRegistryKey(
+    _In_ PDRIVER_OBJECT DriverObject,
+    _In_ DRIVER_REGKEY_TYPE RegKeyType,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_ ULONG Flags,
+    _Out_ PHANDLE DriverRegKey)
+{
+    UNICODE_STRING ServicesName =
+        RTL_CONSTANT_STRING(L"\\Registry\\Machine\\System\\CurrentControlSet\\Services");
+    UNICODE_STRING ParametersName = RTL_CONSTANT_STRING(L"Parameters");
+    PUNICODE_STRING ServiceName;
+    PKEY_VALUE_FULL_INFORMATION TypeValue;
+    HANDLE ServicesKey, ServiceKey, Key = NULL;
+    ULONG ServiceType;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    if (DriverObject == NULL ||
+        DriverObject->DriverExtension == NULL ||
+        DriverObject->DriverExtension->ServiceKeyName.Buffer == NULL ||
+        DriverObject->DriverExtension->ServiceKeyName.Length == 0 ||
+        Flags != 0 ||
+        DriverRegKey == NULL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    ServiceName = &DriverObject->DriverExtension->ServiceKeyName;
+
+    Status = IopOpenRegistryKeyEx(&ServicesKey, NULL, &ServicesName, KEY_READ);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = IopOpenRegistryKeyEx(&ServiceKey, ServicesKey, ServiceName, KEY_READ | KEY_CREATE_SUB_KEY);
+    ZwClose(ServicesKey);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* Only a kernel driver's service has these keys */
+    Status = IopGetRegistryValue(ServiceKey, L"Type", &TypeValue);
+    if (Status == STATUS_OBJECT_NAME_NOT_FOUND)
+        Status = STATUS_INVALID_PARAMETER;
+    if (!NT_SUCCESS(Status))
+        goto Cleanup;
+
+    if (TypeValue->Type != REG_DWORD || TypeValue->DataLength != sizeof(ServiceType))
+    {
+        Status = STATUS_OBJECT_TYPE_MISMATCH;
+    }
+    else
+    {
+        ServiceType = *(PULONG)((PUCHAR)TypeValue + TypeValue->DataOffset);
+        if (!(ServiceType & (SERVICE_KERNEL_DRIVER | SERVICE_FILE_SYSTEM_DRIVER | SERVICE_RECOGNIZER_DRIVER)))
+            Status = STATUS_INVALID_PARAMETER;
+    }
+
+    ExFreePool(TypeValue);
+    if (!NT_SUCCESS(Status))
+        goto Cleanup;
+
+    switch (RegKeyType)
+    {
+        case DriverRegKeyParameters:
+            if (DesiredAccess & MAXIMUM_ALLOWED)
+                DesiredAccess = (DesiredAccess & ~MAXIMUM_ALLOWED) | KEY_READ;
+
+            if (DesiredAccess & ~(KEY_READ | GENERIC_READ))
+            {
+                Status = STATUS_ACCESS_DENIED;
+                break;
+            }
+
+            Status = IopOpenRegistryKeyEx(&Key, ServiceKey, &ParametersName, DesiredAccess);
+            break;
+
+        case DriverRegKeyPersistentState:
+        case DriverRegKeySharedPersistentState:
+            /* Both live in the same place, they differ only in the ACL a new key gets */
+            Status = IopOpenDriverStateKey(ServiceKey, ServiceName, DesiredAccess, &Key);
+            break;
+
+        default:
+            Status = STATUS_INVALID_PARAMETER;
+            break;
+    }
+
+    if (NT_SUCCESS(Status))
+        *DriverRegKey = Key;
+
+Cleanup:
+    ZwClose(ServiceKey);
+    return Status;
+}
+
 NTSTATUS
 IopLoadDriver(
     _In_ HANDLE ServiceHandle,

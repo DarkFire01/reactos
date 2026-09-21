@@ -210,6 +210,25 @@ KeQueryInterruptTime(VOID)
 }
 #endif
 
+/**
+ * @brief
+ * Returns the system time as precisely as the clock can tell it.
+ *
+ * @param[out] CurrentTime
+ * Receives the system time, in 100 nanosecond units since 1601.
+ *
+ * @remarks
+ * No performance counter reading is kept for the last clock tick, so this is
+ * only as fine as the tick.
+ */
+VOID
+NTAPI
+KeQuerySystemTimePrecise(
+    _Out_ PLARGE_INTEGER CurrentTime)
+{
+    KeQuerySystemTime(CurrentTime);
+}
+
 /*
  * @implemented
  */
