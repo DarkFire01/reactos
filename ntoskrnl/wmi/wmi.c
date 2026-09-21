@@ -432,6 +432,100 @@ WmiUpdateTrace(IN OUT PWMI_LOGGER_INFORMATION LoggerInfo)
     return STATUS_NOT_IMPLEMENTED;
 }
 
+/**
+ * @brief
+ * Writes an event that carries a related activity as well as its own.
+ *
+ * @param[in] RegHandle
+ * The registration handle returned by EtwRegister.
+ *
+ * @param[in] EventDescriptor
+ * Describes the event to write.
+ *
+ * @param[in] ActivityId
+ * Optional activity of the event.
+ *
+ * @param[in] RelatedActivityId
+ * Optional activity the event's activity came from.
+ *
+ * @param[in] UserDataCount
+ * Number of entries in UserData.
+ *
+ * @param[in] UserData
+ * Optional payload descriptors.
+ *
+ * @return
+ * What EtwWrite returns for the event.
+ */
+NTSTATUS
+NTAPI
+EtwWriteTransfer(
+    _In_ REGHANDLE RegHandle,
+    _In_ PCEVENT_DESCRIPTOR EventDescriptor,
+    _In_opt_ LPCGUID ActivityId,
+    _In_opt_ LPCGUID RelatedActivityId,
+    _In_ ULONG UserDataCount,
+    _In_reads_opt_(UserDataCount) PEVENT_DATA_DESCRIPTOR UserData)
+{
+    /* With no tracing sessions the related activity has nowhere to be recorded */
+    UNREFERENCED_PARAMETER(RelatedActivityId);
+
+    return EtwWrite(RegHandle, EventDescriptor, ActivityId, UserDataCount, UserData);
+}
+
+/**
+ * @brief
+ * Sets provider traits or whether a provider's events use descriptor types.
+ *
+ * @param[in] RegHandle
+ * The registration handle returned by EtwRegister.
+ *
+ * @param[in] InformationClass
+ * EventProviderSetTraits or EventProviderUseDescriptorType.
+ *
+ * @param[in] EventInformation
+ * The traits blob, or one BOOLEAN.
+ *
+ * @param[in] InformationLength
+ * Its size.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_INVALID_HANDLE, STATUS_INVALID_PARAMETER, or
+ * STATUS_INVALID_DEVICE_REQUEST for any other class.
+ */
+NTSTATUS
+NTAPI
+EtwSetInformation(
+    _In_ REGHANDLE RegHandle,
+    _In_ EVENT_INFO_CLASS InformationClass,
+    _In_reads_bytes_opt_(InformationLength) PVOID EventInformation,
+    _In_ ULONG InformationLength)
+{
+    if (RegHandle == 0)
+        return STATUS_INVALID_HANDLE;
+
+    switch (InformationClass)
+    {
+        case EventProviderSetTraits:
+            /* A 16 bit total size and at least a terminated empty name */
+            if (EventInformation == NULL || InformationLength < 3 || InformationLength > 0x7FFF)
+                return STATUS_INVALID_PARAMETER;
+            return STATUS_SUCCESS;
+
+        case EventProviderUseDescriptorType:
+            if (EventInformation == NULL ||
+                InformationLength != sizeof(BOOLEAN) ||
+                *(PUCHAR)EventInformation > TRUE)
+            {
+                return STATUS_INVALID_PARAMETER;
+            }
+            return STATUS_SUCCESS;
+
+        default:
+            return STATUS_INVALID_DEVICE_REQUEST;
+    }
+}
+
 /*
  * @unimplemented
  */
