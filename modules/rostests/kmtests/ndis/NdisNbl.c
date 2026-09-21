@@ -287,12 +287,12 @@ TestCopyReceiveInfo(
     /* The cancel id needs the source to be flagged single source. */
     ok_eq_pointer(NET_BUFFER_LIST_INFO(Dest, NetBufferListCancelId), NULL);
 
-    NET_BUFFER_LIST_NBL_FLAGS(Source) |= NBL_FLAGS_SINGLE_SOURCE;
+    NET_BUFFER_LIST_NBL_FLAGS(Source) |= NDIS_NBL_FLAGS_IS_LOOPBACK_PACKET;
     NdisCopyReceiveNetBufferListInfo(Dest, Source);
 
     ok_eq_pointer(NET_BUFFER_LIST_INFO(Dest, NetBufferListCancelId), SENTINEL(5));
-    ok((NET_BUFFER_LIST_NBL_FLAGS(Dest) & NBL_FLAGS_SINGLE_SOURCE) != 0,
-       "NBL_FLAGS_SINGLE_SOURCE was not carried\n");
+    ok((NET_BUFFER_LIST_NBL_FLAGS(Dest) & NDIS_NBL_FLAGS_IS_LOOPBACK_PACKET) != 0,
+       "NDIS_NBL_FLAGS_IS_LOOPBACK_PACKET was not carried\n");
 
 Cleanup:
     if (Source != NULL)
