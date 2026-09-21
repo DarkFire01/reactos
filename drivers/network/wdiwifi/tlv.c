@@ -24,6 +24,26 @@
 #define WDI_PORT_ATTRIBUTES_LENGTH          8
 #define WDI_CREATE_PORT_PARAMETERS_LENGTH   6
 #define WDI_LINK_QUALITY_ENTRY_LENGTH       3
+#define WDI_SCAN_MODE_LENGTH                10
+#define WDI_SCAN_DWELL_TIME_LENGTH          12
+#define WDI_SIGNAL_INFO_LENGTH              8
+#define WDI_CHANNEL_INFO_LENGTH             8
+
+/* A beacon or probe response body carries a timestamp, interval and capabilities before its IEs */
+#define WDI_FRAME_BODY_FIXED_LENGTH         12
+#define WDI_IE_SSID                         0
+
+static
+VOID
+WdiWrite32(
+    _Out_writes_bytes_(4) PUCHAR Buffer,
+    _In_ UINT32 Value)
+{
+    Buffer[0] = (UCHAR)Value;
+    Buffer[1] = (UCHAR)(Value >> 8);
+    Buffer[2] = (UCHAR)(Value >> 16);
+    Buffer[3] = (UCHAR)(Value >> 24);
+}
 
 static
 UINT16
@@ -81,6 +101,41 @@ WdiTlvAppend(
     _In_ UINT16 ValueLength)
 {
     *Length += WdiTlvPut(Buffer != NULL ? Buffer + *Length : NULL, Type, Value, ValueLength);
+}
+
+/**
+ * @brief
+ * Steps to the next TLV in a run of TLVs.
+ *
+ * @return
+ * TRUE with the TLV, or FALSE at the end of the run or where it overruns.
+ */
+_Use_decl_annotations_
+BOOLEAN
+NTAPI
+WdiTlvNext(
+    const UCHAR *Tlvs,
+    ULONG Length,
+    PULONG Offset,
+    PUSHORT Type,
+    const UCHAR **Value,
+    PUSHORT ValueLength)
+{
+    ULONG At = *Offset;
+    UINT16 ThisLength;
+
+    if (At > Length || Length - At < WDI_TLV_HEADER_LENGTH)
+        return FALSE;
+
+    ThisLength = WdiRead16(Tlvs + At + 2);
+    if (ThisLength > Length - At - WDI_TLV_HEADER_LENGTH)
+        return FALSE;
+
+    *Type = WdiRead16(Tlvs + At);
+    *Value = Tlvs + At + WDI_TLV_HEADER_LENGTH;
+    *ValueLength = ThisLength;
+    *Offset = At + WDI_TLV_HEADER_LENGTH + ThisLength;
+    return TRUE;
 }
 
 /**
@@ -358,4 +413,125 @@ WdiParsePortAttributes(
     RtlCopyMemory(Address->Address, Value, sizeof(Address->Address));
     *PortId = WdiRead16(Value + 6);
     return NDIS_STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Builds the TLVs of a WDI_TASK_SCAN for every network on every channel,
+ * with the dwell times and scan mode of an ordinary background scan.
+ *
+ * @return
+ * The length of the TLVs.
+ */
+_Use_decl_annotations_
+ULONG
+NTAPI
+WdiBuildScan(
+    PUCHAR Buffer)
+{
+    static const UCHAR Broadcast[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+    UCHAR Mode[WDI_SCAN_MODE_LENGTH];
+    UCHAR Dwell[WDI_SCAN_DWELL_TIME_LENGTH];
+    ULONG Length = 0;
+
+    /* One pass, active or passive as the channel allows, results indicated as they come */
+    Mode[0] = 1;
+    WdiWrite32(Mode + 1, WDI_SCAN_TYPE_AUTO);
+    Mode[5] = TRUE;
+    WdiWrite32(Mode + 6, WDI_SCAN_TRIGGER_BACKGROUND);
+
+    WdiWrite32(Dwell + 0, 80);
+    WdiWrite32(Dwell + 4, 110);
+    WdiWrite32(Dwell + 8, 4000);
+
+    WdiTlvAppend(Buffer, &Length, WDI_TLV_BSSID, Broadcast, sizeof(Broadcast));
+
+    /* An empty SSID asks for every network */
+    WdiTlvAppend(Buffer, &Length, WDI_TLV_SSID, NULL, 0);
+
+    WdiTlvAppend(Buffer, &Length, WDI_TLV_SCAN_MODE, Mode, sizeof(Mode));
+    WdiTlvAppend(Buffer, &Length, WDI_TLV_SCAN_DWELL_TIME, Dwell, sizeof(Dwell));
+
+    return Length;
+}
+
+/* The SSID element of a beacon or probe response body */
+static
+VOID
+WdiFrameSsid(
+    _In_reads_bytes_(Length) const UCHAR *Body,
+    _In_ ULONG Length,
+    _Inout_ PWDI_BSS Bss)
+{
+    ULONG Offset = WDI_FRAME_BODY_FIXED_LENGTH;
+    UCHAR ElementLength;
+
+    while (Offset + 2 <= Length)
+    {
+        ElementLength = Body[Offset + 1];
+        if (Offset + 2 + ElementLength > Length)
+            return;
+
+        if (Body[Offset] == WDI_IE_SSID)
+        {
+            if (ElementLength <= sizeof(Bss->Ssid))
+            {
+                RtlCopyMemory(Bss->Ssid, Body + Offset + 2, ElementLength);
+                Bss->SsidLength = ElementLength;
+            }
+            return;
+        }
+
+        Offset += 2 + ElementLength;
+    }
+}
+
+/**
+ * @brief
+ * Reads one WDI_TLV_BSS_ENTRY from a BSS list indication.
+ *
+ * @return
+ * TRUE when the entry has a BSSID.
+ */
+_Use_decl_annotations_
+BOOLEAN
+NTAPI
+WdiParseBssEntry(
+    const UCHAR *Entry,
+    ULONG Length,
+    PWDI_BSS Bss)
+{
+    const UCHAR *Value;
+    USHORT ValueLength;
+
+    RtlZeroMemory(Bss, sizeof(*Bss));
+
+    if (!WdiTlvFind(Entry, Length, WDI_TLV_BSSID, &Value, &ValueLength) ||
+        ValueLength != sizeof(Bss->Bssid.Address))
+    {
+        return FALSE;
+    }
+    RtlCopyMemory(Bss->Bssid.Address, Value, sizeof(Bss->Bssid.Address));
+
+    if (WdiTlvFind(Entry, Length, WDI_TLV_BSS_ENTRY_SIGNAL_INFO, &Value, &ValueLength) &&
+        ValueLength == WDI_SIGNAL_INFO_LENGTH)
+    {
+        Bss->Rssi = (INT32)WdiRead32(Value);
+        Bss->LinkQuality = WdiRead32(Value + 4);
+    }
+
+    if (WdiTlvFind(Entry, Length, WDI_TLV_BSS_ENTRY_CHANNEL_INFO, &Value, &ValueLength) &&
+        ValueLength == WDI_CHANNEL_INFO_LENGTH)
+    {
+        Bss->Channel = WdiRead32(Value);
+        Bss->BandId = WdiRead32(Value + 4);
+    }
+
+    /* Either frame carries the SSID; a probe response names hidden networks too */
+    if (WdiTlvFind(Entry, Length, WDI_TLV_PROBE_RESPONSE_FRAME, &Value, &ValueLength))
+        WdiFrameSsid(Value, ValueLength, Bss);
+    if (Bss->SsidLength == 0 && WdiTlvFind(Entry, Length, WDI_TLV_BEACON_FRAME, &Value, &ValueLength))
+        WdiFrameSsid(Value, ValueLength, Bss);
+
+    return TRUE;
 }
