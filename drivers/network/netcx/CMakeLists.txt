@@ -189,8 +189,8 @@ target_include_directories(netadaptercx BEFORE PRIVATE
 
 target_compile_definitions(netadaptercx PRIVATE
     _KERNEL_MODE=1
-    NDIS_SUPPORT_NDIS680=1
-    NDIS_WRAPPER=1)
+    NDIS_MINIPORT_DRIVER=1
+    NDIS680_MINIPORT=1)
 
 add_cd_file(TARGET netadaptercx DESTINATION reactos/system32/drivers NO_CAB FOR all)
 
