@@ -4,6 +4,8 @@ include_directories(xlate)
 spec2def(ndis.sys ndis.spec ADD_IMPORTLIB)
 
 add_definitions(
+    -D_WIN32_WINNT=0x602
+    -DNTDDI_VERSION=0x06020000
     -DNDIS_WRAPPER
     -DNDIS51
     -DNDIS51_MINIPORT
@@ -34,7 +36,10 @@ list(APPEND SOURCE
     ndis/mp5shim.c
     ndis/mpcore.c
     ndis/mpdata.c
+    ndis/mpdma.c
+    ndis/mpintr.c
     ndis/mpoid.c
+    ndis/mpsvc.c
     ndis/nbl.c
     ndis/pro5shim.c
     ndis/protocol.c
