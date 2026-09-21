@@ -43,8 +43,14 @@ EXTERN_C
 DRIVER_INITIALIZE
     DriverEntry;
 
+/* The translator registers with NMR under its own module id. */
 EXTERN_C
-CONST NPI_MODULEID NPI_MS_NDIS_TRANSLATOR_MODULEID;
+CONST NPI_MODULEID NPI_MS_NDIS_TRANSLATOR_MODULEID =
+{
+    sizeof(NPI_MODULEID),
+    MIT_GUID,
+    { 0xeb004a33, 0x9b1a, 0x11d4, { 0x91, 0x23, 0x00, 0x50, 0x04, 0x77, 0x59, 0xbc } }
+};
 
 static
 EVT_WDF_DRIVER_UNLOAD
