@@ -1,5 +1,5 @@
 /*
- * PROJECT:     ReactOS NetAdapterCx
+ * PROJECT:     ReactOS
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     Software segmentation and checksum library, stubbed
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
@@ -18,10 +18,10 @@
  * the TCP, UDP and IP checksums.
  */
 
-#include "NxXlatPrecomp.hpp"
+#include <ndis.h>
 
-#include <BatchingLib.h>
-#include <SegLib.h>
+#include <batchinglib.h>
+#include <seglib.h>
 
 #define NDEBUG
 #include <debug.h>

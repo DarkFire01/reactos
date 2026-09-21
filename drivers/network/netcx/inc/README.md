@@ -1,101 +1,76 @@
 # netcx/inc
 
-Shared headers for `netadaptercx` and its clients (`drivers/network/dd/rtethsample`).
+Headers that belong to `netadaptercx` itself, or that stand in for something
+Microsoft links from a source tree nobody else has. Anything a client driver
+also needs lives in `sdk/include/ddk` instead, not here.
 
-Microsoft's Network-Adapter-Class-Extension drop ships implementation files only.
-Neither driver compiles until the headers below land here. 173 angle-bracket
-includes were counted across both trees; 121 of them resolve to nothing in this
-tree today.
+Microsoft's Network-Adapter-Class-Extension drop ships implementation files
+only, so neither `netadaptercx` nor `drivers/network/dd/rtethsample` compiles
+until every header it includes exists somewhere. 52 includes across the drop
+still resolve to nothing.
 
-## Reachable already
+`NdisBringupDocs/NetCxFrontier.md` in the workspace tracks that number and what
+is behind it.
 
-These live in `drivers/usb/usb3-reactos/inc` and `inc/pci`, which both
-CMakeLists already put on the include path:
+## Already in the sdk
 
-    nt.h  ntosp.h  ntrtl.h  zwapi.h  wdmsec.h  WppRecorder.h
+Reconstructed and moved out of here, because a client driver needs them too:
 
-## WDK public headers
+    net/ (27, plus the 20 private halves)  netcx/ (17)
+    ndis/offload.h  ndis/powermanagement.h  ndis/receivescale.h
+    ndis/oid.h  ndis/oidrequest.h  ndis/statusindication.h
+    ndis/statusconvert.h  ndis/types.h
+    ndiswdf.h  ndis_p.h  ntddndis_p.h  rsclib.h  seglib.h  batchinglib.h
 
-Part of the WDK NetAdapterCx SDK. They describe the packet ring ABI and the
-NBL helpers, so they set the binary contract between the class extension, the
-miniport and ndis.sys. Get these right first, the rest follows.
+`ndiswdf.h` is the NDIS side of the binding, so it is a specification for work
+in `drivers/network/ndis` as much as a header: `NdisWdfRegisterCx` and
+`NdisWdfRegisterMiniportDriver` still do not exist there.
 
-`net/` (41):
+The libraries behind `rsclib.h`, `seglib.h` and `batchinglib.h` are stubbed
+under `sdk/lib/drivers/rsclib` and `sdk/lib/drivers/seglib`.
 
-    checksum.h  checksum_p.h  checksumtypes.h  checksumtypes_p.h
-    databuffer_p.h  extension.h  fragment.h  gso.h  gso_p.h  gsotypes.h
-    gsotypes_p.h  ieee8021q.h  ieee8021q_p.h  ieee8021qtypes.h
-    ieee8021qtypes_p.h  logicaladdress.h  logicaladdress_p.h
-    logicaladdresstypes_p.h  lso.h  mdl_p.h  mdltypes_p.h  packet.h
-    packethash.h  packethash_p.h  packethashtypes.h  packethashtypes_p.h
-    returncontext_p.h  returncontexttypes_p.h  ring.h  ringcollection.h
-    rsc.h  rsc_p.h  rsctypes.h  rsctypes_p.h  virtualaddress.h
-    virtualaddress_p.h  virtualaddresstypes_p.h
-    wifi/exemptionaction.h  wifi/exemptionaction_p.h
-    wifi/exemptionactiontypes.h  wifi/exemptionactiontypes_p.h
+## Here
 
-`ndis/` (13):
+Stand-ins written against how the drop calls them:
 
-    encapsulationconfig.h  nbl.h  nbl8021q.h  nblaccessors.h  nblapi.h
-    nblchain.h  nblqueue.h  nblreceive.h  nblrsc.h  nblsend.h
-    oidrequest.h  statusconvert.h  types.h
+    NxTrace.hpp  NxTraceLogging.hpp  NetClientBuffer.h
+    NetClientDriverConfigurationConstants.h  NdisStatisticalIoctls.h
+    KString.h  KStackStorage.h  KStopwatch.h  KMemoryAccess.h  EcEvents.h
+    ntassert.h  pooltypes.h  umwdm.h  wdfcxbase.h  new.h  cstddef
+    nt/rtl/integermacro.h
 
-Class extension surface:
+`wil/` is the kernel-mode subset of github.com/microsoft/wil, MIT:
 
-    netadaptercx.h  netadapter_p.h  netadapterextension_p.h
-    netadapteroffload.h  netbufferqueue_p.h  netdevice_p.h  netfuncenum.h
-    preview/netadapter.h  preview/netadaptercx.h  preview/netadapteroffload.h
+    wil/common.h  wil/resource.h  wil/wistd_memory.h  wil/wistd_type_traits.h
 
-Rest:
+## Still missing
 
-    ndiswdf.h  ndis_p.h  ntddndis_p.h  wdfcxbase.h  smfx.h
-    TraceLoggingProvider.h  pcwdata.h  pooltypes.h  ntassert.h  ntdef.h
-    nturtl.h  umwdm.h  FxObjectBase.hpp
+No public source exists for these, so each one has to be recovered from how the
+drop calls it:
 
-`ndiswdf.h` is the NDIS side of the binding. `NdisWdfRegisterCx` and
-`NdisWdfRegisterMiniportDriver` do not exist in ndis.sys here, so that header
-is a specification for work in `drivers/network/ndis`, not just a copy job.
-
-`smfx.h` is the state machine framework runtime. The generated state tables in
-`adapter/statemachines` are in the drop; the engine they call is not.
-
-## Never published
-
-No public source exists for these. They have to be reconstructed from how the
-drop calls them.
-
-    NxApi.hpp  NxCollection.hpp  NxTrace.hpp  NxTraceLogging.hpp
-    NxXlat.hpp  NxXlatTraceLogging.hpp  NxApp.hpp  NxNbl.hpp
-    NxNblDatapath.hpp  NxPerfTuner.hpp  Driver.hpp  netadaptercx_triage.h
-    NetClientApi.h  NetClientAdapter.h  NetClientQueue.h  NetClientBuffer.h
-    NetClientBufferImpl.h  NetClientTypes.h
-    NetClientDriverConfigurationConstants.h
+    NxApi.hpp  NxCollection.hpp  NxXlat.hpp  NxXlatTraceLogging.hpp
+    NxApp.hpp  NxNbl.hpp  NxNblDatapath.hpp  NxPerfTuner.hpp  Driver.hpp
+    netadaptercx_triage.h  NetClientApi.h  NetClientAdapter.h
+    NetClientQueue.h  NetClientTypes.h  NetClientBufferImpl.h
     NetClientDriverConfigurationImpl.hpp  NetAdapterCxPc.h
-    KString.h  KStackStorage.h  KStopwatch.h  KLoaderApi.h  KMemoryAccess.h
-    BatchingLib.h  SegLib.h  rsclib.h  EcEvents.h
-    pktmonclnt.h  pktmonloc.h  Net20.h  Net21.h  Net22.h
-    80211hdr.h  NdisStatisticalIoctls.h  wmi/NetDevice.h  affinity.h
-    nt/rtl/failfast.h  nt/rtl/integermacro.h
+    Net20.h  Net21.h  Net22.h  smfx.h  FxObjectBase.hpp
+    pktmonclnt.h  pktmonloc.h  pcwdata.h  KLoaderApi.h  affinity.h
+    80211hdr.h  wmi/NetDevice.h  nt/rtl/failfast.h
 
 `NxApi.hpp` is generated from `netfuncenum.h` and carries the exported function
-table that `adapter/version.cpp` hands to a binding client, so its entry order
-is the client ABI. `NetClient*.h` are the internal interface between the
-adapter half and the translator half.
+table `adapter/version.cpp` hands to a binding client, so its entry order is the
+client ABI. `NetClient*.h` are the internal interface between the adapter half
+and the translator half. `smfx.h` is the state machine framework runtime: the
+generated tables in `adapter/statemachines` are in the drop, the engine they
+call is not.
 
-The user-mode ones are only reached when `_KERNEL_MODE` is undefined and can be
-skipped: `mockdma.h`, `NdisUm.h`, `UmPool.h`.
-
-## wil
-
-Open source at github.com/microsoft/wil, MIT. Only the kernel-mode subset is
-used:
-
-    wil/common.h  wil/resource.h  wil/wistd_type_traits.h
+The user-mode only ones are reached with `_KERNEL_MODE` undefined and can stay
+missing: `mockdma.h`, `NdisUm.h`, `UmPool.h`.
 
 ## Not headers
 
-75 source files include a generated `.tmh`. WPP needs `tracewpp` in the build,
-or the `WPP_INIT_TRACING` / `LogError` macros need stubbing out.
+75 source files include a generated `.tmh`. The CMakeLists writes an empty stub
+for each at configure time; real WPP needs `tracewpp` in the build.
 
 `adapter/version.cpp` and `ec/driver/driver.cpp` both call TraceLogging
 (`TRACELOGGING_DEFINE_PROVIDER`), which lands on ETW. Stub or route to

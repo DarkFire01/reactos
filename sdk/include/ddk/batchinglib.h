@@ -1,12 +1,11 @@
 /*
- * PROJECT:     ReactOS NetAdapterCx
+ * PROJECT:     ReactOS
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     Batched buffer operation library
  *
  * Microsoft links this from an internal source tree. It is in no WDK and not
- * in the shipping netadaptercx.sys either, so only the shape the imported
- * sources need is declared here. The implementation in
- * translator/seglibstub.cpp is a stub that announces itself, see there.
+ * in the shipping netadaptercx.sys either, so only the shape the callers need
+ * is declared here. sdk/lib/drivers/seglib is a stub that announces itself.
  */
 
 #pragma once
