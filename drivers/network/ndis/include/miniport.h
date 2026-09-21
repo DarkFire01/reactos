@@ -24,6 +24,12 @@ typedef struct _NDIS_M_DRIVER_BLOCK {
     PDRIVER_OBJECT                  DriverObject;             /* Driver object of miniport */
     LIST_ENTRY                      DeviceList;               /* Adapters created by miniport */
     PUNICODE_STRING                 RegistryPath;             /* SCM Registry key */
+    /* NDIS 6.x registration. Characteristics6 is only meaningful when
+     * Ndis6Driver is set, and the two registration paths are mutually
+     * exclusive: a driver is 5.x or 6.x, never both. */
+    NDIS_MINIPORT_DRIVER_CHARACTERISTICS Characteristics6;
+    NDIS_HANDLE                     MiniportDriverContext;
+    BOOLEAN                         Ndis6Driver;
 #if !defined(_MSC_VER) && defined(_NDIS_)
 } NDIS_M_DRIVER_BLOCK_COMPATIBILITY_HACK_DONT_USE;
 #else
