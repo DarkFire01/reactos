@@ -16,6 +16,7 @@ Abstract:
 #include <wdmsec.h>
 #include <initguid.h>
 #include <wdmguid.h>
+#include <devpkey.h>
 
 #include <ntstrsafe.h>
 #include <ntintsafe.h>

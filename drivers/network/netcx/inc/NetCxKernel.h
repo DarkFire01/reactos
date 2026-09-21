@@ -39,3 +39,13 @@
 
 /* Live kernel dumps for device reset diagnostics. */
 #include <ndk/dbgkfuncs.h>
+
+/*
+ * wdm.h makes this vanish on x86 and amd64, where caches are DMA coherent. The
+ * drop names a local only in the flush, so the arguments are kept referenced.
+ */
+#if defined(_M_IX86) || defined(_M_AMD64)
+#undef KeFlushIoBuffers
+#define KeFlushIoBuffers(Mdl, ReadOperation, DmaOperation) \
+    ((void)(Mdl), (void)(ReadOperation), (void)(DmaOperation))
+#endif
