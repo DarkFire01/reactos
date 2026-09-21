@@ -100,6 +100,8 @@ typedef struct
 
 typedef WMIREGINFOW WMIREGINFO;
 typedef PWMIREGINFOW PWMIREGINFO;
+typedef WMIREGGUIDW WMIREGGUID;
+typedef PWMIREGGUIDW PWMIREGGUID;
 
 typedef struct
 {
