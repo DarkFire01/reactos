@@ -6,6 +6,7 @@ list(APPEND SOURCE
     command.c
     datapath.c
     miniport.c
+    scan.c
     tlv.c
     wdiwifi.h)
 
