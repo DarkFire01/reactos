@@ -6,8 +6,8 @@
 
 #ifdef _KERNEL_MODE
 
-#include <BatchingLib.h>
-#include <SegLib.h>
+#include <batchinglib.h>
+#include <seglib.h>
 
 #else
 
