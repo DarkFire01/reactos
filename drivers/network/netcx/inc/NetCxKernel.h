@@ -26,3 +26,16 @@
 
 #define RTL_NUM_ALIGN_UP(Number, Alignment) \
     RTL_NUM_ALIGN_DOWN((Number) + (Alignment) - 1, (Alignment))
+
+/*
+ * KMDF 1.25 routine. The KMDF in this tree is 1.17 and has no persistent state
+ * key, so it is reported missing and callers fall back to the Parameters key.
+ */
+#define WdfDriverOpenPersistentStateRegistryKey(Driver, DesiredAccess, KeyAttributes, Key) \
+    ((void)(Driver), (void)(DesiredAccess), (void)(KeyAttributes), (void)(Key), STATUS_NOT_SUPPORTED)
+
+/* The device reset interface is gated past this build's NTDDI floor in wdm.h. */
+#include <devicereset.h>
+
+/* Live kernel dumps for device reset diagnostics. */
+#include <ndk/dbgkfuncs.h>
