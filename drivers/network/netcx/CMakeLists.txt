@@ -200,7 +200,6 @@ target_include_directories(netadaptercx BEFORE PRIVATE
     ${REACTOS_SOURCE_DIR}/sdk/include/ddk/netcx
     ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf
     ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/kmdf/inc/private
-    ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/shared/inc/private/common
     ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc
     ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc/pci)
 
