@@ -127,12 +127,14 @@ list(APPEND SOURCE_EC
 # builds. The pass is not run here and the trace macros are defined away in
 # inc/NxTrace.hpp, so the headers only have to exist. Scan the sources for the
 # ones they ask for rather than guessing, because the names do not always match
-# the file that includes them.
+# the file that includes them, and headers ask for them too.
 #
 set(NETCX_TMH_DIR ${CMAKE_CURRENT_BINARY_DIR}/tmh)
 file(MAKE_DIRECTORY ${NETCX_TMH_DIR})
-foreach(_source ${SOURCE_ADAPTER} ${SOURCE_BM} ${SOURCE_TRANSLATOR} ${SOURCE_EC})
-    file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/${_source} _tmh_includes
+file(GLOB_RECURSE NETCX_TMH_SCAN
+     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
+foreach(_source ${NETCX_TMH_SCAN})
+    file(STRINGS ${_source} _tmh_includes
          REGEX "^#include \"[A-Za-z0-9_]+\.tmh\"")
     foreach(_line ${_tmh_includes})
         string(REGEX REPLACE "^#include \"(.*)\"" "\\1" _tmh "${_line}")
