@@ -1,10 +1,10 @@
 /*
  * PROJECT:     ReactOS NetAdapterCx support
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
- * PURPOSE:     Private view of the virtual address fragment extension
+ * PURPOSE:     Private view of the receive coalescing extension
  */
 
 #pragma once
 
-#include <net/virtualaddress.h>
-#include <net/virtualaddresstypes_p.h>
+#include <net/rsc.h>
+#include <net/rsctypes_p.h>
