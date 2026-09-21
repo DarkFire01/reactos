@@ -52,7 +52,7 @@ typedef struct _NET_CLIENT_MEMORY_CONSTRAINTS
 {
     NET_CLIENT_MEMORY_MAPPING_REQUIREMENT MappingRequirement;
     SIZE_T AlignmentRequirement;
-    struct
+    struct DMA
     {
         PVOID DmaAdapter;
         PVOID PhysicalDeviceObject;
