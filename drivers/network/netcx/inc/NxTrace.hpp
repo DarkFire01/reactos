@@ -34,7 +34,7 @@
 
 /*
  * Early return helpers from the WPP config block. The failure check is real;
- * the message only ever went to the recorder, so it is dropped.
+ * the message only ever went to the recorder, so it is never formatted.
  */
 #define CX_RETURN_IF_NOT_NT_SUCCESS(Expression)                 \
     do                                                          \
@@ -51,12 +51,47 @@
             return (Status);                                    \
     } while (0)
 
-#define CX_RETURN_IF_NOT_NT_SUCCESS_MSG(Expression, ...)            CX_RETURN_IF_NOT_NT_SUCCESS(Expression)
-#define CX_RETURN_NTSTATUS_IF_MSG(Status, Condition, ...)           CX_RETURN_NTSTATUS_IF(Status, Condition)
-#define CX_WARNING_RETURN_NTSTATUS_IF_MSG(Status, Condition, ...)   CX_RETURN_NTSTATUS_IF(Status, Condition)
-#define CX_RETURN_STATUS_SUCCESS_MSG(...)                           return STATUS_SUCCESS
-#define CX_RETURN_MSG(...)                                          return
-#define CX_LOG_IF_NOT_NT_SUCCESS_MSG(Expression, ...)               ((void)(Expression))
+/*
+ * WPP only evaluates message arguments when tracing is on. Naming them inside
+ * sizeof keeps them unevaluated but still referenced, so a local that exists
+ * only to be traced does not trip the unused variable error.
+ */
+int NxTraceSink(int, ...);
+#define NX_TRACE_ARGS(...)      ((void)sizeof(NxTraceSink(0, __VA_ARGS__)))
+
+#define CX_RETURN_IF_NOT_NT_SUCCESS_MSG(Expression, ...) \
+    do { NX_TRACE_ARGS(__VA_ARGS__); CX_RETURN_IF_NOT_NT_SUCCESS(Expression); } while (0)
+
+#define CX_RETURN_NTSTATUS_IF_MSG(Status, Condition, ...) \
+    do { NX_TRACE_ARGS(__VA_ARGS__); CX_RETURN_NTSTATUS_IF(Status, Condition); } while (0)
+
+#define CX_WARNING_RETURN_NTSTATUS_IF_MSG(Status, Condition, ...) \
+    CX_RETURN_NTSTATUS_IF_MSG(Status, Condition, __VA_ARGS__)
+
+#define CX_RETURN_STATUS_SUCCESS_MSG(...)   return (NX_TRACE_ARGS(__VA_ARGS__), STATUS_SUCCESS)
+#define CX_RETURN_MSG(...)                  return NX_TRACE_ARGS(__VA_ARGS__)
+
+#define CX_LOG_IF_NOT_NT_SUCCESS_MSG(Expression, ...) \
+    ((void)(Expression), NX_TRACE_ARGS(__VA_ARGS__))
+
+/* Flags from the class extension's WPP control GUID, used only to pick a channel. */
+enum NxTraceFlag
+{
+    FLAG_GENERAL,
+    FLAG_DRIVER,
+    FLAG_DEVICE,
+    FLAG_ADAPTER,
+    FLAG_CONFIGURATION,
+    FLAG_POWER,
+    FLAG_UTILITY,
+    FLAG_OBJECT_CALLBACK,
+    FLAG_TRANSLATOR,
+};
+
+#define LogError(Flag, ...)     ((void)(Flag), NX_TRACE_ARGS(__VA_ARGS__))
+#define LogWarning(Flag, ...)   ((void)(Flag), NX_TRACE_ARGS(__VA_ARGS__))
+#define LogInfo(Flag, ...)      ((void)(Flag), NX_TRACE_ARGS(__VA_ARGS__))
+#define LogVerbose(Flag, ...)   ((void)(Flag), NX_TRACE_ARGS(__VA_ARGS__))
 
 /*
  * TraceLogging is a separate ETW surface, equally absent. A provider handle
@@ -77,6 +112,9 @@ typedef const void *TraceLoggingHProvider;
 #define TraceLoggingUInt32(...)
 #define TraceLoggingUInt64(...)
 #define TraceLoggingHexUInt32(...)
+#define TraceLoggingHexInt32(...)
+#define TraceLoggingHexUInt64(...)
+#define TraceLoggingDescription(...)
 #define TraceLoggingPointer(...)
 #define TraceLoggingLevel(...)
 #define TraceLoggingOpcode(...)
