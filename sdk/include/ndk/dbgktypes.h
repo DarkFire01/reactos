@@ -238,6 +238,45 @@ typedef struct _DEBUG_EVENT
     DBGKM_MSG ApiMsg;
 } DEBUG_EVENT, *PDEBUG_EVENT;
 
+//
+// Live Kernel Dump
+//
+typedef union _DBGK_LIVEDUMP_FLAGS
+{
+    struct
+    {
+        ULONG UserPages : 1;
+        ULONG RequestMinidump : 1;
+        ULONG HypervisorPages : 1;
+        ULONG NoDeferWrite : 1;
+        ULONG Reserved : 28;
+    };
+    ULONG AsUlong;
+} DBGK_LIVEDUMP_FLAGS, *PDBGK_LIVEDUMP_FLAGS;
+
+typedef
+NTSTATUS
+(NTAPI *PDBGK_LIVEDUMP_ADDSECONDARYDATA_ROUTINE)(
+    _In_ HANDLE ReportHandle,
+    _In_ const GUID *Identifier,
+    _In_reads_bytes_(DataSize) PVOID Data,
+    _In_ ULONG DataSize
+);
+
+typedef
+NTSTATUS
+(NTAPI DBGK_LIVEDUMP_CALLBACK_ROUTINE)(
+    _In_ HANDLE ReportHandle,
+    _In_ PDBGK_LIVEDUMP_ADDSECONDARYDATA_ROUTINE AddSecondaryData,
+    _In_opt_ ULONG BugCheckCode,
+    _In_opt_ ULONG_PTR P1,
+    _In_opt_ ULONG_PTR P2,
+    _In_opt_ ULONG_PTR P3,
+    _In_opt_ ULONG_PTR P4,
+    _In_opt_ PVOID CallbackContext
+);
+
+typedef DBGK_LIVEDUMP_CALLBACK_ROUTINE *PDBGK_LIVEDUMP_CALLBACK_ROUTINE;
 
 #endif
 
