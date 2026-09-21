@@ -270,20 +270,35 @@ CoreAfterOid(
 
 static IO_WORKITEM_ROUTINE CoreRunQueuedOid;
 
+/* The device extension is not NDIS's when a class extension owns the device */
+typedef struct _CORE_OID_WORK
+{
+    PIO_WORKITEM WorkItem;
+    PLOGICAL_ADAPTER Adapter;
+} CORE_OID_WORK, *PCORE_OID_WORK;
+
 static
 VOID
 CoreScheduleQueuedOid(
     _In_ PLOGICAL_ADAPTER Adapter)
 {
-    PIO_WORKITEM WorkItem = IoAllocateWorkItem(Adapter->NdisMiniportBlock.DeviceObject);
+    PCORE_OID_WORK Work;
 
-    if (WorkItem == NULL)
+    Work = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Work), NDIS_TAG);
+    if (Work != NULL)
     {
-        NDIS_DbgPrint(MIN_TRACE, ("No work item for a queued OID request.\n"));
-        return;
+        Work->Adapter = Adapter;
+        Work->WorkItem = IoAllocateWorkItem(Adapter->NdisMiniportBlock.DeviceObject);
+        if (Work->WorkItem != NULL)
+        {
+            IoQueueWorkItem(Work->WorkItem, CoreRunQueuedOid, DelayedWorkQueue, Work);
+            return;
+        }
+
+        ExFreePoolWithTag(Work, NDIS_TAG);
     }
 
-    IoQueueWorkItem(WorkItem, CoreRunQueuedOid, DelayedWorkQueue, WorkItem);
+    NDIS_DbgPrint(MIN_TRACE, ("No work item for a queued OID request.\n"));
 }
 
 /*
@@ -333,13 +348,17 @@ CoreRunQueuedOid(
     _In_ PDEVICE_OBJECT DeviceObject,
     _In_opt_ PVOID Context)
 {
-    PLOGICAL_ADAPTER Adapter = DeviceObject->DeviceExtension;
+    PCORE_OID_WORK Work = Context;
+    PLOGICAL_ADAPTER Adapter = Work->Adapter;
     PMINIPORT_CORE Core = &Adapter->Core;
     PCORE_OID_REQUEST CoreRequest = NULL;
     NDIS_STATUS Status;
     KIRQL OldIrql;
 
-    IoFreeWorkItem((PIO_WORKITEM)Context);
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    IoFreeWorkItem(Work->WorkItem);
+    ExFreePoolWithTag(Work, NDIS_TAG);
 
     KeAcquireSpinLock(&Core->Lock, &OldIrql);
     if (Core->ActiveOidRequest == NULL && !IsListEmpty(&Core->OidQueue))
@@ -487,12 +506,15 @@ CoreSyncRequest(
     _In_ NDIS_OID Oid,
     _In_ PVOID Buffer,
     _In_ ULONG Length,
-    _Out_ PULONG BytesDone)
+    _Out_ PULONG BytesDone,
+    _Out_opt_ PULONG BytesNeeded)
 {
     PCORE_SYNC_REQUEST Request;
     NDIS_STATUS Status;
 
     *BytesDone = 0;
+    if (BytesNeeded != NULL)
+        *BytesNeeded = 0;
 
     Request = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Request), NDIS_TAG);
     if (Request == NULL)
@@ -522,6 +544,9 @@ CoreSyncRequest(
         *BytesDone = Request->Core.Request.DATA.SET_INFORMATION.BytesRead;
     else
         *BytesDone = Request->Core.Request.DATA.QUERY_INFORMATION.BytesWritten;
+
+    if (BytesNeeded != NULL)
+        *BytesNeeded = Request->Core.Request.DATA.QUERY_INFORMATION.BytesNeeded;
 
     ExFreePoolWithTag(Request, NDIS_TAG);
     return Status;
@@ -558,7 +583,52 @@ CoreQueryInformation(
     _In_ ULONG Length,
     _Out_ PULONG BytesWritten)
 {
-    return CoreSyncRequest(Adapter, NdisRequestQueryInformation, Oid, Buffer, Length, BytesWritten);
+    return CoreSyncRequest(Adapter, NdisRequestQueryInformation, Oid, Buffer, Length, BytesWritten, NULL);
+}
+
+/**
+ * @brief
+ * Queries a miniport for NDIS's own use and waits for the answer, also
+ * reporting how much room a longer answer needs.
+ *
+ * @param[in] Adapter
+ * The adapter to query.
+ *
+ * @param[in] Oid
+ * What to ask for.
+ *
+ * @param[out] Buffer
+ * Receives the answer. Can be NULL when Length is zero.
+ *
+ * @param[in] Length
+ * Size of Buffer.
+ *
+ * @param[out] BytesWritten
+ * How much was written.
+ *
+ * @param[out] BytesNeeded
+ * How much the answer needs, when Buffer was too short.
+ *
+ * @return
+ * The query's status.
+ */
+NDIS_STATUS
+NTAPI
+CoreQueryInformationEx(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ NDIS_OID Oid,
+    _Out_writes_bytes_to_opt_(Length, *BytesWritten) PVOID Buffer,
+    _In_ ULONG Length,
+    _Out_ PULONG BytesWritten,
+    _Out_ PULONG BytesNeeded)
+{
+    return CoreSyncRequest(Adapter,
+                           NdisRequestQueryInformation,
+                           Oid,
+                           Buffer,
+                           Length,
+                           BytesWritten,
+                           BytesNeeded);
 }
 
 /**
@@ -592,5 +662,5 @@ CoreSetInformation(
     _In_ ULONG Length,
     _Out_ PULONG BytesRead)
 {
-    return CoreSyncRequest(Adapter, NdisRequestSetInformation, Oid, Buffer, Length, BytesRead);
+    return CoreSyncRequest(Adapter, NdisRequestSetInformation, Oid, Buffer, Length, BytesRead, NULL);
 }
