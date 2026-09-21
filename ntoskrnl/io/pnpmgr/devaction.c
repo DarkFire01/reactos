@@ -2335,13 +2335,12 @@ cleanup:
                               &DeviceNode->InstancePath);
 }
 
+/* Asks the bus driver again for the device's boot configuration and resource requirements */
 static
 VOID
-PiFakeResourceRebalance(
+PiRequeryResources(
     _In_ PDEVICE_NODE DeviceNode)
 {
-    ASSERT(DeviceNode->Flags & DNF_RESOURCE_REQUIREMENTS_CHANGED);
-
     PCM_RESOURCE_LIST bootConfig = NULL;
     PIO_RESOURCE_REQUIREMENTS_LIST resourceRequirements = NULL;
 
@@ -2374,7 +2373,16 @@ PiFakeResourceRebalance(
     {
         DeviceNode->Flags &= ~DNF_HAS_BOOT_CONFIG;
     }
+}
 
+static
+VOID
+PiFakeResourceRebalance(
+    _In_ PDEVICE_NODE DeviceNode)
+{
+    ASSERT(DeviceNode->Flags & DNF_RESOURCE_REQUIREMENTS_CHANGED);
+
+    PiRequeryResources(DeviceNode);
     DeviceNode->Flags &= ~DNF_RESOURCE_REQUIREMENTS_CHANGED;
 }
 
@@ -2674,6 +2682,8 @@ PipDeviceActionWorker(
                 if (deviceNode->State == DeviceNodeInitialized &&
                     !(deviceNode->Flags & DNF_HAS_PROBLEM))
                 {
+                    /* Installing the driver can set parameters the bus driver reads, like MSISupported */
+                    PiRequeryResources(deviceNode);
                     PiDevNodeStateMachine(deviceNode);
                 }
                 else
