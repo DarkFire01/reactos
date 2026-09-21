@@ -694,7 +694,9 @@ typedef CM_PARTIAL_RESOURCE_LIST NDIS_RESOURCE_LIST, *PNDIS_RESOURCE_LIST;
 #define	NDIS_GUID_UNICODE_STRING          0x00000008
 #define	NDIS_GUID_ARRAY                   0x00000010
 
-#if NDIS_LEGACY_DRIVER
+/* The NDIS 5 packet model types are declared unconditionally. They cost a
+ * 6.x driver nothing, and hiding them left every later use in this header
+ * referring to types that were not there. */
 
 /* NDIS_PACKET_PRIVATE.Flags constants */
 #define fPACKET_WRAPPER_RESERVED             0x3f
@@ -755,7 +757,6 @@ typedef struct _NDIS_PACKET_STACK {
   ULONG_PTR NdisReserved[4];
 } NDIS_PACKET_STACK, *PNDIS_PACKET_STACK;
 
-#endif /* NDIS_LEGACY_DRIVER */
 
 typedef enum _NDIS_CLASS_ID {
   NdisClass802_3Priority,
@@ -771,7 +772,6 @@ typedef struct _MEDIA_SPECIFIC_INFORMATION {
   UCHAR ClassInformation[1];
 } MEDIA_SPECIFIC_INFORMATION, *PMEDIA_SPECIFIC_INFORMATION;
 
-#if NDIS_LEGACY_DRIVER
 typedef struct _NDIS_PACKET_OOB_DATA {
   __MINGW_EXTENSION union {
     ULONGLONG TimeToSend;
@@ -783,7 +783,6 @@ typedef struct _NDIS_PACKET_OOB_DATA {
   PVOID MediaSpecificInformation;
   NDIS_STATUS Status;
 } NDIS_PACKET_OOB_DATA, *PNDIS_PACKET_OOB_DATA;
-#endif
 
 /* Request types used by NdisRequest */
 typedef enum _NDIS_REQUEST_TYPE {
@@ -804,7 +803,6 @@ typedef enum _NDIS_REQUEST_TYPE {
 #endif
 } NDIS_REQUEST_TYPE, *PNDIS_REQUEST_TYPE;
 
-#if NDIS_LEGACY_DRIVER
 typedef struct _NDIS_REQUEST {
   UCHAR MacReserved[4 * sizeof(PVOID)];
   NDIS_REQUEST_TYPE RequestType;
@@ -833,11 +831,9 @@ typedef struct _NDIS_REQUEST {
   UCHAR MiniportReserved[2 * sizeof(PVOID)];
 #endif
 } NDIS_REQUEST, *PNDIS_REQUEST;
-#endif /* NDIS_LEGACY_DRIVER */
 
 /* Wide Area Networks definitions */
 
-#if NDIS_LEGACY_DRIVER
 typedef struct _NDIS_WAN_PACKET {
   LIST_ENTRY WanPacketQueue;
   PUCHAR CurrentBuffer;
@@ -853,7 +849,6 @@ typedef struct _NDIS_WAN_PACKET {
   PVOID MacReserved3;
   PVOID MacReserved4;
 } NDIS_WAN_PACKET, *PNDIS_WAN_PACKET;
-#endif
 
 /* DMA channel information */
 
@@ -1108,7 +1103,6 @@ typedef struct _CO_SAP {
   UCHAR Sap[1];
 } CO_SAP, *PCO_SAP;
 
-#if NDIS_LEGACY_DRIVER
 typedef struct _NDIS_IPSEC_PACKET_INFO {
   __MINGW_EXTENSION union {
     struct {
@@ -1123,7 +1117,6 @@ typedef struct _NDIS_IPSEC_PACKET_INFO {
     } Receive;
   };
 } NDIS_IPSEC_PACKET_INFO, *PNDIS_IPSEC_PACKET_INFO;
-#endif
 
 #if (NDIS_SUPPORT_NDIS6 || NDIS60)
 typedef struct _NDIS_IPSEC_OFFLOAD_V1_NET_BUFFER_LIST_INFO {
@@ -1196,7 +1189,6 @@ typedef enum _NDIS_PER_PACKET_INFO {
   MaxPerPacketInfo
 } NDIS_PER_PACKET_INFO, *PNDIS_PER_PACKET_INFO;
 
-#if NDIS_LEGACY_DRIVER
 
 typedef struct _NDIS_PACKET_EXTENSION {
   PVOID NdisPacketInfo[MaxPerPacketInfo];
@@ -1310,7 +1302,6 @@ typedef struct _NDIS_TASK_IPSEC {
   } V4ESP;
 } NDIS_TASK_IPSEC, *PNDIS_TASK_IPSEC;
 
-#endif /* NDIS_LEGACY_DRIVER */
 
 #define IPSEC_TPT_UDPESP_ENCAPTYPE_IKE                 0x00000001
 #define IPSEC_TUN_UDPESP_ENCAPTYPE_IKE                 0x00000002
@@ -1321,7 +1312,6 @@ typedef struct _NDIS_TASK_IPSEC {
 #define IPSEC_TPTOVERTUN_UDPESP_ENCAPTYPE_OTHER        0x00000040
 #define IPSEC_TPT_UDPESP_OVER_PURE_TUN_ENCAPTYPE_OTHER 0x00000080
 
-#if NDIS_LEGACY_DRIVER
 
 /*
  * PNDIS_PACKET
@@ -1379,7 +1369,6 @@ typedef struct _NDIS_TASK_IPSEC {
 #define NdisSetPacketCancelId(_Packet, _CancelId) NDIS_SET_PACKET_CANCEL_ID(_Packet, _CancelId)
 #define NdisGetPacketCancelId(_Packet) NDIS_GET_PACKET_CANCEL_ID(_Packet)
 
-#endif /* NDIS_LEGACY_DRIVER */
 
 #if NDIS_SUPPORT_NDIS6
 typedef struct _NDIS_GENERIC_OBJECT {
@@ -2693,7 +2682,6 @@ struct _NDIS_MINIPORT_BLOCK {
 #endif /* _NDIS_ */
 };
 
-#if NDIS_LEGACY_DRIVER
 
 typedef NDIS_STATUS
 (NTAPI *WAN_SEND_HANDLER)(
@@ -2730,7 +2718,6 @@ typedef NDIS_STATUS
   _In_ NDIS_HANDLE NdisBindingHandle,
   _In_ PNDIS_REQUEST NdisRequest);
 
-#endif /* NDIS_LEGACY_DRIVER */
 
 #if defined(NDIS_WRAPPER)
 #define NDIS_COMMON_OPEN_BLOCK_WRAPPER_S \
@@ -3395,7 +3382,6 @@ NdisQueryBufferOffset(
   *(NextBuffer) = (CurrentBuffer)->Next;  \
 }
 
-#if NDIS_LEGACY_DRIVER
 
 #define NDIS_PACKET_FIRST_NDIS_BUFFER(_Packet) ((_Packet)->Private.Head)
 #define NDIS_PACKET_LAST_NDIS_BUFFER(_Packet) ((_Packet)->Private.Tail)
@@ -3657,7 +3643,6 @@ NdisQueryPacket(
   else *(_TotalPacketLength) = (_Packet)->Private.TotalLength;      \
 }
 
-#endif /* NDIS_LEGACY_DRIVER */
 
 /* Memory management routines */
 
