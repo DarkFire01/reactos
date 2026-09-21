@@ -31,6 +31,8 @@ list(APPEND INF_FILES
     usbxhci.inf
     volume.inf
     wdmaudio.inf
+    netrtwlane601.inf
+    rt640x64.inf
     wmiacpi.inf)
 
 list(APPEND UTF8_INF_FILES
