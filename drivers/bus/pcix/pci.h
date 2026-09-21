@@ -1432,6 +1432,17 @@ PciWriteDeviceConfig(
     IN ULONG Length
 );
 
+NTSTATUS
+NTAPI
+PciAccessDeviceSpace(
+    _In_ PPCI_PDO_EXTENSION DeviceExtension,
+    _In_ ULONG WhichSpace,
+    _Inout_updates_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length,
+    _In_ BOOLEAN Read
+);
+
 VOID
 NTAPI
 PciReadDeviceConfig(

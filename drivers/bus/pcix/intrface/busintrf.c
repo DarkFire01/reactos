@@ -97,14 +97,11 @@ PciBusInterface_GetBusData(IN PVOID Context,
 {
     PPCI_PDO_EXTENSION PdoExtension = (PPCI_PDO_EXTENSION)Context;
 
-    UNREFERENCED_PARAMETER(WhichSpace);
+    /* The HAL only knows the buses it counted at boot, so this goes through PCI's own path */
+    if (!NT_SUCCESS(PciAccessDeviceSpace(PdoExtension, WhichSpace, Buffer, Offset, Length, TRUE)))
+        return 0;
 
-    return HalGetBusDataByOffset(PCIConfiguration,
-                                 PdoExtension->ParentFdoExtension->BaseBus,
-                                 PdoExtension->Slot.u.AsULONG,
-                                 Buffer,
-                                 Offset,
-                                 Length);
+    return Length;
 }
 
 ULONG
@@ -117,14 +114,10 @@ PciBusInterface_SetBusData(IN PVOID Context,
 {
     PPCI_PDO_EXTENSION PdoExtension = (PPCI_PDO_EXTENSION)Context;
 
-    UNREFERENCED_PARAMETER(WhichSpace);
+    if (!NT_SUCCESS(PciAccessDeviceSpace(PdoExtension, WhichSpace, Buffer, Offset, Length, FALSE)))
+        return 0;
 
-    return HalSetBusDataByOffset(PCIConfiguration,
-                                 PdoExtension->ParentFdoExtension->BaseBus,
-                                 PdoExtension->Slot.u.AsULONG,
-                                 Buffer,
-                                 Offset,
-                                 Length);
+    return Length;
 }
 
 NTSTATUS
