@@ -10,6 +10,10 @@ include_directories(${REACTOS_SOURCE_DIR}/drivers/network/ndis/xlate)
 remove_definitions(-D_WIN32_WINNT=0x502 -DWINVER=0x502)
 add_definitions(-D_WIN32_WINNT=0x600 -DWINVER=0x600 -DNDIS60)
 
+# The info slot tests need the NDIS 6.80 layout, which is what a current
+# miniport is built against, not the 6.0 one the protocol version implies.
+add_definitions(-DNDIS_SUPPORT_NDIS680=1)
+
 list(APPEND NDIS_TEST_DRV_SOURCE
     ../kmtest_drv/kmtest_standalone.c
     NdisNbl.c
