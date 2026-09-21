@@ -4193,4 +4193,54 @@ NtDeleteFile(IN POBJECT_ATTRIBUTES ObjectAttributes)
     return OpenPacket.FinalStatus;
 }
 
+/**
+ * @brief
+ * Replaces the name a file object was opened with. The name buffer is only
+ * reallocated when the new name does not fit in it.
+ *
+ * @return
+ * STATUS_SUCCESS, or STATUS_INSUFFICIENT_RESOURCES.
+ */
+NTSTATUS
+NTAPI
+IoReplaceFileObjectName(
+    _In_ PFILE_OBJECT FileObject,
+    _In_reads_bytes_(FileNameLength) PWSTR NewFileName,
+    _In_ USHORT FileNameLength)
+{
+    USHORT BufferSize;
+    PWSTR Buffer;
+
+    PAGED_CODE();
+
+    if (FileNameLength > FileObject->FileName.MaximumLength)
+    {
+        /* Grow in steps, so names of a similar length keep reusing the buffer */
+        if (FileNameLength < 56)
+            BufferSize = 56;
+        else if (FileNameLength < 120)
+            BufferSize = 120;
+        else if (FileNameLength < 248)
+            BufferSize = 248;
+        else
+            BufferSize = FileNameLength;
+
+        Buffer = ExAllocatePoolWithTag(PagedPool, BufferSize, TAG_IO_NAME);
+        if (Buffer == NULL)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        if (FileObject->FileName.Buffer != NULL)
+            ExFreePoolWithTag(FileObject->FileName.Buffer, 0);
+
+        FileObject->FileName.Buffer = Buffer;
+        FileObject->FileName.MaximumLength = BufferSize;
+    }
+
+    FileObject->FileName.Length = FileNameLength;
+    RtlZeroMemory(FileObject->FileName.Buffer, FileObject->FileName.MaximumLength);
+    RtlCopyMemory(FileObject->FileName.Buffer, NewFileName, FileNameLength);
+
+    return STATUS_SUCCESS;
+}
+
 /* EOF */
