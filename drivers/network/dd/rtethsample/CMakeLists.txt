@@ -5,7 +5,7 @@
 # compile yet either.
 #
 # Upstream targets KMDF 1.23 and NetAdapterCx 2.0. The tree currently carries
-# KMDF 1.17.
+# KMDF 1.33.
 #
 remove_definitions(-D_WIN32_WINNT=0x502)
 
