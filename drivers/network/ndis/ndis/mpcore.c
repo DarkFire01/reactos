@@ -748,25 +748,6 @@ CoreIndicateStatusCode(
     CoreIndicateStatus(Adapter, &Indication);
 }
 
-/**
- * @brief
- * Takes a status indication from a 6.x miniport.
- *
- * @param[in] MiniportAdapterHandle
- * The indicating adapter.
- *
- * @param[in] StatusIndication
- * The status code and its buffer.
- */
-_Use_decl_annotations_
-VOID
-NTAPI
-NdisMIndicateStatusEx(
-    NDIS_HANDLE MiniportAdapterHandle,
-    PNDIS_STATUS_INDICATION StatusIndication)
-{
-    CoreIndicateStatus((PLOGICAL_ADAPTER)MiniportAdapterHandle, StatusIndication);
-}
 
 /* Reset and hang detection */
 
