@@ -119,6 +119,88 @@ NetDeviceInitSetPowerPolicyEventCallbacks(
             NetDriverGlobals, DeviceInit, Callbacks);
 }
 
+typedef
+_Function_class_(EVT_NET_DEVICE_COLLECT_RESET_DIAGNOSTICS)
+_IRQL_requires_same_
+_IRQL_requires_max_(PASSIVE_LEVEL)
+VOID
+NTAPI
+EVT_NET_DEVICE_COLLECT_RESET_DIAGNOSTICS(
+    _In_ WDFDEVICE Device);
+
+typedef EVT_NET_DEVICE_COLLECT_RESET_DIAGNOSTICS *PFN_NET_DEVICE_COLLECT_RESET_DIAGNOSTICS;
+
+/* The diagnostics GUID tags the blob the driver hands to NetDeviceStoreResetDiagnostics. */
+typedef struct _NET_DEVICE_RESET_CAPABILITIES
+{
+    ULONG Size;
+    GUID ResetDiagnosticsGuid;
+    PFN_NET_DEVICE_COLLECT_RESET_DIAGNOSTICS EvtNetDeviceCollectResetDiagnostics;
+} NET_DEVICE_RESET_CAPABILITIES;
+
+typedef
+_IRQL_requires_(PASSIVE_LEVEL)
+WDFAPI
+VOID
+(NTAPI *PFN_NETDEVICEINITSETRESETCAPABILITIES)(
+    _In_ PNET_DRIVER_GLOBALS DriverGlobals,
+    _Inout_ PWDFDEVICE_INIT DeviceInit,
+    _In_ CONST NET_DEVICE_RESET_CAPABILITIES *ResetCapabilities);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+FORCEINLINE
+VOID
+NTAPI
+NetDeviceInitSetResetCapabilities(
+    _Inout_ PWDFDEVICE_INIT DeviceInit,
+    _In_ CONST NET_DEVICE_RESET_CAPABILITIES *ResetCapabilities)
+{
+    ((PFN_NETDEVICEINITSETRESETCAPABILITIES)NetFunctions[NetDeviceInitSetResetCapabilitiesTableIndex])(
+        NetDriverGlobals, DeviceInit, ResetCapabilities);
+}
+
+typedef
+_IRQL_requires_(PASSIVE_LEVEL)
+WDFAPI
+VOID
+(NTAPI *PFN_NETDEVICESTORERESETDIAGNOSTICS)(
+    _In_ PNET_DRIVER_GLOBALS DriverGlobals,
+    _In_ WDFDEVICE Device,
+    _In_ SIZE_T ResetDiagnosticsSize,
+    _In_reads_bytes_(ResetDiagnosticsSize) CONST UINT8 *ResetDiagnosticsBuffer);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+FORCEINLINE
+VOID
+NTAPI
+NetDeviceStoreResetDiagnostics(
+    _In_ WDFDEVICE Device,
+    _In_ SIZE_T ResetDiagnosticsSize,
+    _In_reads_bytes_(ResetDiagnosticsSize) CONST UINT8 *ResetDiagnosticsBuffer)
+{
+    ((PFN_NETDEVICESTORERESETDIAGNOSTICS)NetFunctions[NetDeviceStoreResetDiagnosticsTableIndex])(
+        NetDriverGlobals, Device, ResetDiagnosticsSize, ResetDiagnosticsBuffer);
+}
+
+typedef
+_IRQL_requires_(PASSIVE_LEVEL)
+WDFAPI
+VOID
+(NTAPI *PFN_NETDEVICEREQUESTRESET)(
+    _In_ PNET_DRIVER_GLOBALS DriverGlobals,
+    _In_ WDFDEVICE Device);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+FORCEINLINE
+VOID
+NTAPI
+NetDeviceRequestReset(
+    _In_ WDFDEVICE Device)
+{
+    ((PFN_NETDEVICEREQUESTRESET)NetFunctions[NetDeviceRequestResetTableIndex])(
+        NetDriverGlobals, Device);
+}
+
 #ifdef __cplusplus
 }
 #endif
