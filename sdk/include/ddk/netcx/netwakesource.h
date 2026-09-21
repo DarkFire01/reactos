@@ -32,7 +32,8 @@ typedef enum _NET_WAKE_SOURCE_TYPE
     NetWakeSourceTypeBitmapPattern = 1,
     NetWakeSourceTypeMagicPacket,
     NetWakeSourceTypeMediaChange,
-    NetWakeSourceTypePacketFilterMatch
+    NetWakeSourceTypePacketFilterMatch,
+    NetWakeSourceTypeEapolPacket
 } NET_WAKE_SOURCE_TYPE;
 
 typedef
