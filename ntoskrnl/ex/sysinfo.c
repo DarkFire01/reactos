@@ -562,6 +562,60 @@ NtEnumerateSystemEnvironmentValuesEx(IN ULONG InformationClass,
     return STATUS_NOT_IMPLEMENTED;
 }
 
+/**
+ * @brief
+ * Reads a UEFI firmware environment variable.
+ *
+ * @param[in] VariableName
+ * The variable's name.
+ *
+ * @param[in] VendorGuid
+ * The vendor namespace it lives in.
+ *
+ * @param[out] Value
+ * Receives the data.
+ *
+ * @param[in,out] ValueLength
+ * The buffer size in, the data size out.
+ *
+ * @param[out] Attributes
+ * Optionally receives the variable's attributes.
+ *
+ * @return
+ * What the HAL returns, or STATUS_NOT_IMPLEMENTED when the machine did not
+ * boot through UEFI.
+ */
+NTSTATUS
+NTAPI
+ExGetFirmwareEnvironmentVariable(
+    _In_ PUNICODE_STRING VariableName,
+    _In_ LPGUID VendorGuid,
+    _Out_writes_bytes_opt_(*ValueLength) PVOID Value,
+    _Inout_ PULONG ValueLength,
+    _Out_opt_ PULONG Attributes)
+{
+    NTSTATUS Status;
+    PWSTR Name;
+
+    PAGED_CODE();
+
+    if (ExpFirmwareType != FirmwareTypeUefi)
+        return STATUS_NOT_IMPLEMENTED;
+
+    /* The HAL takes a terminated name it can read with the firmware lock held */
+    Name = ExAllocatePoolWithTag(NonPagedPool, VariableName->Length + sizeof(UNICODE_NULL), 'rvnE');
+    if (Name == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    RtlCopyMemory(Name, VariableName->Buffer, VariableName->Length);
+    Name[VariableName->Length / sizeof(WCHAR)] = UNICODE_NULL;
+
+    Status = HalGetEnvironmentVariableEx(Name, VendorGuid, Value, ValueLength, Attributes);
+
+    ExFreePoolWithTag(Name, 'rvnE');
+    return Status;
+}
+
 NTSTATUS
 NTAPI
 NtQuerySystemEnvironmentValueEx(
