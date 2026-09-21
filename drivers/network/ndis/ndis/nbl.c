@@ -9,12 +9,13 @@
 
 /*
  * Both structures are part of the driver ABI, so their size is fixed. The x86
- * numbers are what ndis.sys itself reserves per object when a pool is created
- * with and without an inline NET_BUFFER.
+ * sizes are those of the published 6.89 layout, wrapper slots included.
  */
 #ifdef _X86_
-C_ASSERT(sizeof(NET_BUFFER_LIST) == 176);
+C_ASSERT(sizeof(NET_BUFFER_LIST) == 200);
 C_ASSERT(sizeof(NET_BUFFER) == 96);
+C_ASSERT(MaxNetBufferListInfo == 29);
+C_ASSERT(TcpRecvSegCoalesceInfo == 19);
 #endif
 
 /* A 64 bit miniport sees 27 info slots; ndis.sys owns two more behind them. */
