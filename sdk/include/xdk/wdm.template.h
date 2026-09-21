@@ -268,6 +268,7 @@ $include (psfuncs.h)
 $include (wmifuncs.h)
 $include (halfuncs.h)
 $include (nttmapi.h)
+$include (pcw.h)
 $include (zwfuncs.h)
 
 #ifdef __cplusplus
