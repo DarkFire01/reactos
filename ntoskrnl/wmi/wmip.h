@@ -56,3 +56,14 @@ WmipQueryRawSMBiosTables(
     _Inout_ ULONG *InOutBufferSize,
     _Out_opt_ PVOID OutBuffer);
 
+#if (NTDDI_VERSION < NTDDI_VISTA)
+NTSTATUS
+NTAPI
+EtwWrite(
+    _In_ REGHANDLE RegHandle,
+    _In_ PCEVENT_DESCRIPTOR EventDescriptor,
+    _In_opt_ LPCGUID ActivityId,
+    _In_ ULONG UserDataCount,
+    _In_reads_opt_(UserDataCount) PEVENT_DATA_DESCRIPTOR UserData);
+#endif
+

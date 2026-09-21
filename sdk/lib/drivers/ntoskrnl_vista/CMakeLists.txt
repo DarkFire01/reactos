@@ -13,7 +13,6 @@ list(APPEND SOURCE
     fsrtl.c
     hvl.c
     io.c
-    mm.c
     nt.c
     rtl.c
     string.c

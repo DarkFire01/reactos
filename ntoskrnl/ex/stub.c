@@ -192,20 +192,4 @@ NTSTATUS NTAPI PsGetProcessWow64Process() { UNIMPLEMENTED; return STATUS_NOT_IMP
 NTSTATUS NTAPI PsReleaseProcessExitSynchronization() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS NTAPI PsSetCreateProcessNotifyRoutineEx() { UNIMPLEMENTED; return STATUS_NOT_IMPLEMENTED; }
 
-
-
-
-
-
-
-
-int NTAPI strcpy_s( _Out_writes_z_(_Size) char *_Dst,
-    _In_ size_t _Size,
-    _In_z_ const char *_Src)
-{
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-
 #pragma warning( pop )
