@@ -1757,3 +1757,11 @@ SymbolicName=KERNEL_AUTO_BOOST_LOCK_ACQUISITION_WITH_RAISED_IRQL
 Language=English
 A lock that can boost its owner was acquired from a DPC.
 .
+
+MessageId=0x19E
+Severity=Success
+Facility=System
+SymbolicName=BUGCODE_NETADAPTER_DRIVER
+Language=English
+The network adapter class extension found a driver that violated its contract.
+.
