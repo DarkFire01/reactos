@@ -36,17 +36,6 @@ extern "C" {
 
 #define NET_BUFFER_LIST_INFO(_NBL, _Id)         ((_NBL)->NetBufferListInfo[(_Id)])
 
-/*
- * The 8021Q tag, the hash value and the hash info are stored in the info slot
- * itself rather than behind a pointer.
- */
-#define NET_BUFFER_LIST_RECEIVE_HASH_VALUE(_NBL) \
-    PtrToUlong(NET_BUFFER_LIST_INFO(_NBL, NetBufferListHashValue))
-#define NET_BUFFER_LIST_RECEIVE_HASH_TYPE(_NBL) \
-    (PtrToUlong(NET_BUFFER_LIST_INFO(_NBL, NetBufferListHashInfo)) & 0x0000FFFF)
-#define NET_BUFFER_LIST_RECEIVE_HASH_FUNCTION(_NBL) \
-    ((PtrToUlong(NET_BUFFER_LIST_INFO(_NBL, NetBufferListHashInfo)) >> 16) & 0x0000FFFF)
-
 #ifdef __cplusplus
 }
 #endif
