@@ -1301,7 +1301,7 @@ KeRevertToUserGroupAffinityThread(
   _In_ PGROUP_AFFINITY PreviousAffinity);
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
-NTKRNLVISTAAPI
+NTKERNELAPI
 BOOLEAN
 NTAPI
 KeSetCoalescableTimer(
