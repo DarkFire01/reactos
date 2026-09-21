@@ -28,108 +28,6 @@ extern "C" {
 // #include "FxDeviceInitApi.tmh"
 }
 
-typedef struct _WDF_PNPPOWER_EVENT_CALLBACKS_V1_9 {
-    //
-    // Size of this structure in bytes
-    //
-    ULONG Size;
-
-    PFN_WDF_DEVICE_D0_ENTRY                 EvtDeviceD0Entry;
-
-    PFN_WDF_DEVICE_D0_ENTRY_POST_INTERRUPTS_ENABLED EvtDeviceD0EntryPostInterruptsEnabled;
-
-    PFN_WDF_DEVICE_D0_EXIT                  EvtDeviceD0Exit;
-
-    PFN_WDF_DEVICE_D0_EXIT_PRE_INTERRUPTS_DISABLED EvtDeviceD0ExitPreInterruptsDisabled;
-
-    PFN_WDF_DEVICE_PREPARE_HARDWARE         EvtDevicePrepareHardware;
-
-    PFN_WDF_DEVICE_RELEASE_HARDWARE         EvtDeviceReleaseHardware;
-
-    PFN_WDF_DEVICE_SELF_MANAGED_IO_CLEANUP  EvtDeviceSelfManagedIoCleanup;
-
-    PFN_WDF_DEVICE_SELF_MANAGED_IO_FLUSH    EvtDeviceSelfManagedIoFlush;
-
-    PFN_WDF_DEVICE_SELF_MANAGED_IO_INIT     EvtDeviceSelfManagedIoInit;
-
-    PFN_WDF_DEVICE_SELF_MANAGED_IO_SUSPEND  EvtDeviceSelfManagedIoSuspend;
-
-    PFN_WDF_DEVICE_SELF_MANAGED_IO_RESTART  EvtDeviceSelfManagedIoRestart;
-
-    PFN_WDF_DEVICE_SURPRISE_REMOVAL         EvtDeviceSurpriseRemoval;
-
-    PFN_WDF_DEVICE_QUERY_REMOVE             EvtDeviceQueryRemove;
-
-    PFN_WDF_DEVICE_QUERY_STOP               EvtDeviceQueryStop;
-
-    PFN_WDF_DEVICE_USAGE_NOTIFICATION       EvtDeviceUsageNotification;
-
-    PFN_WDF_DEVICE_RELATIONS_QUERY          EvtDeviceRelationsQuery;
-
-} WDF_PNPPOWER_EVENT_CALLBACKS_V1_9, *PWDF_PNPPOWER_EVENT_CALLBACKS_V1_9;
-
-
-typedef struct _WDF_POWER_POLICY_EVENT_CALLBACKS_V1_5 {
-    //
-    // Size of this structure in bytes
-    //
-    ULONG Size;
-
-    PFN_WDF_DEVICE_ARM_WAKE_FROM_S0         EvtDeviceArmWakeFromS0;
-
-    PFN_WDF_DEVICE_DISARM_WAKE_FROM_S0      EvtDeviceDisarmWakeFromS0;
-
-    PFN_WDF_DEVICE_WAKE_FROM_S0_TRIGGERED   EvtDeviceWakeFromS0Triggered;
-
-    PFN_WDF_DEVICE_ARM_WAKE_FROM_SX         EvtDeviceArmWakeFromSx;
-
-    PFN_WDF_DEVICE_DISARM_WAKE_FROM_SX      EvtDeviceDisarmWakeFromSx;
-
-    PFN_WDF_DEVICE_WAKE_FROM_SX_TRIGGERED   EvtDeviceWakeFromSxTriggered;
-
-} WDF_POWER_POLICY_EVENT_CALLBACKS_V1_5, *PWDF_POWER_POLICY_EVENT_CALLBACKS_V1_5;
-
-typedef struct _WDF_PDO_EVENT_CALLBACKS_V1_9 {
-    //
-    // The size of this structure in bytes
-    //
-    ULONG Size;
-
-    //
-    // Called in response to IRP_MN_QUERY_RESOURCES
-    //
-    PFN_WDF_DEVICE_RESOURCES_QUERY EvtDeviceResourcesQuery;
-
-    //
-    // Called in response to IRP_MN_QUERY_RESOURCE_REQUIREMENTS
-    //
-    PFN_WDF_DEVICE_RESOURCE_REQUIREMENTS_QUERY EvtDeviceResourceRequirementsQuery;
-
-    //
-    // Called in response to IRP_MN_EJECT
-    //
-    PFN_WDF_DEVICE_EJECT EvtDeviceEject;
-
-    //
-    // Called in response to IRP_MN_SET_LOCK
-    //
-    PFN_WDF_DEVICE_SET_LOCK EvtDeviceSetLock;
-
-    //
-    // Called in response to the power policy owner sending a wait wake to the
-    // PDO.  Bus generic arming shoulding occur here.
-    //
-    PFN_WDF_DEVICE_ENABLE_WAKE_AT_BUS       EvtDeviceEnableWakeAtBus;
-
-    //
-    // Called in response to the power policy owner sending a wait wake to the
-    // PDO.  Bus generic disarming shoulding occur here.
-    //
-    PFN_WDF_DEVICE_DISABLE_WAKE_AT_BUS      EvtDeviceDisableWakeAtBus;
-
-} WDF_PDO_EVENT_CALLBACKS_V1_9, *PWDF_PDO_EVENT_CALLBACKS_V1_9;
-
-
 //
 // Extern "C" the entire file
 //
@@ -878,7 +776,7 @@ WDFEXPORT(WdfDeviceInitRegisterPnpStateChangeCallback)(
         return status;
     }
 
-    if (normalizedState < WdfDevStatePnpObjectCreated || normalizedState > WdfDevStatePnpNull) {
+    if (normalizedState < WdfDevStatePnpObjectCreated || normalizedState >= WdfDevStatePnpNull) {
         status = STATUS_INVALID_PARAMETER;
 
         DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
@@ -1156,9 +1054,9 @@ WDFEXPORT(WdfDeviceInitAssignWdmIrpPreprocessCallback)(
         }
 
         DeviceInit->PreprocessInfo->Dispatch[MajorFunction].MinorFunctions =
-            (PUCHAR) FxPoolAllocate(pFxDriverGlobals,
-                                    NonPagedPool,
-                                    sizeof(UCHAR) * NumMinorFunctions);
+            (PUCHAR) FxPoolAllocate2(pFxDriverGlobals,
+                                     POOL_FLAG_NON_PAGED,
+                                     sizeof(UCHAR) * NumMinorFunctions);
 
         if (DeviceInit->PreprocessInfo->Dispatch[MajorFunction].MinorFunctions == NULL) {
 
@@ -2491,7 +2389,7 @@ WDFEXPORT(WdfPdoInitAddDeviceText)(
         return status;
     }
 
-    pDeviceText = new(pFxDriverGlobals, PagedPool) FxDeviceText();
+    pDeviceText = new(pFxDriverGlobals, POOL_FLAG_PAGED) FxDeviceText();
 
     if (pDeviceText == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -2660,7 +2558,39 @@ WDFEXPORT(WdfPdoInitAllowForwardingRequestToParent)(
     return ;
 }
 
+__drv_maxIRQL(PASSIVE_LEVEL)
+VOID
+NTAPI
+WDFEXPORT(WdfPdoInitRemovePowerDependencyOnParent)(
+    __in
+    PWDF_DRIVER_GLOBALS DriverGlobals,
+    __in
+    PWDFDEVICE_INIT DeviceInit
+    )
+{
+    DDI_ENTRY();
 
+    PFX_DRIVER_GLOBALS pFxDriverGlobals;
+    NTSTATUS status;
+
+    FxPointerNotNull(GetFxDriverGlobals(DriverGlobals), DeviceInit);
+    pFxDriverGlobals = DeviceInit->DriverGlobals;
+
+    status = FxVerifierCheckIrqlLevel(pFxDriverGlobals, PASSIVE_LEVEL);
+    if (!NT_SUCCESS(status)) {
+        return;
+    }
+
+    if (DeviceInit->IsNotPdoInit()) {
+        DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+                            "Not a PWDFDEVICE_INIT for a PDO, %!STATUS!",
+                            status);
+        FxVerifierDbgBreakPoint(pFxDriverGlobals);
+        return;
+    }
+
+    DeviceInit->Pdo.NoPowerDependencyOnParent = TRUE;
+}
 
 //
 // END PDO specific functions

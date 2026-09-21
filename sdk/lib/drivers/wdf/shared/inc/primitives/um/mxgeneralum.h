@@ -74,7 +74,7 @@ typedef enum _IO_NOTIFICATION_EVENT_CATEGORY {
     EventCategoryTargetDeviceChange
 } IO_NOTIFICATION_EVENT_CATEGORY;
 
-#include "MxGeneral.h"
+#include "mxgeneral.h"
 
 __inline
 BOOLEAN
@@ -150,12 +150,13 @@ Mx::MxGetCurrentIrql(
     return PASSIVE_LEVEL;
 }
 
+_Use_decl_annotations_
 __inline
 VOID
-#pragma prefast(suppress:__WARNING_UNMATCHED_DECL_ANNO, "Can't apply kernel mode annotations.");
+#pragma prefast(suppress:__WARNING_IRQL_NOT_SET __WARNING_RETURN_UNINIT_VAR)
 Mx::MxRaiseIrql(
-    __in KIRQL  NewIrql,
-    __out PKIRQL  OldIrql
+    KIRQL  NewIrql,
+    PKIRQL OldIrql
     )
 {
     UNREFERENCED_PARAMETER(NewIrql);
@@ -164,11 +165,12 @@ Mx::MxRaiseIrql(
     DO_NOTHING();
 }
 
+_Use_decl_annotations_
 __inline
 VOID
-#pragma prefast(suppress:__WARNING_UNMATCHED_DECL_ANNO, "Can't apply kernel mode annotations.");
+#pragma prefast(suppress:__WARNING_IRQL_NOT_USED)
 Mx::MxLowerIrql(
-    __in KIRQL  NewIrql
+    KIRQL NewIrql
     )
 {
     UNREFERENCED_PARAMETER(NewIrql);
@@ -182,7 +184,7 @@ Mx::MxQueryTickCount(
     __out PLARGE_INTEGER  TickCount
     )
 {
-    TickCount->QuadPart = GetTickCount();
+    TickCount->QuadPart = GetTickCount64();
 }
 
 __inline
@@ -290,37 +292,6 @@ Mx::MxDelayExecutionThread(
     intervalMillisecond.QuadPart /= 10 * 1000;
 
     SleepEx((DWORD)intervalMillisecond.QuadPart, Alertable);
-}
-
-__inline
-PVOID
-Mx::MxGetSystemRoutineAddress(
-    __in MxFuncName FuncName
-    )
-/*++
-Description:
-
-    This function is meant to be called only by mode agnostic code
-    System routine is assumed to be in ntdll.dll.
-
-    This is because system routines (Rtl*) that can be used both
-    in kernel mode as well as user mode reside in ntdll.dll.
-    Kernel32.dll contains the user mode only Win32 API.
-
-Arguments:
-
-    MxFuncName FuncName -
-
-Return Value:
-
-    NTSTATUS Status code.
---*/
-{
-    HMODULE hMod;
-
-    hMod = GetModuleHandleW(L"ntdll.dll");
-
-    return GetProcAddress(hMod, FuncName);
 }
 
 __inline
@@ -476,11 +447,12 @@ Mx::MxHasEnoughRemainingThreadStack(
     return TRUE;
 }
 
+_Use_decl_annotations_
 __inline
 VOID
-#pragma prefast(suppress:__WARNING_UNMATCHED_DECL_ANNO, "Can't apply kernel mode annotations.");
+#pragma prefast(suppress:__WARNING_IRQL_NOT_USED);
 Mx::ReleaseCancelSpinLock(
-    __in KIRQL  Irql
+    KIRQL  Irql
     )
 {
     UNREFERENCED_PARAMETER(Irql);
@@ -655,16 +627,18 @@ Mx::MxDeletePagedLookasideList(
     ASSERTMSG("Not implemented for UMDF\n", FALSE);
 }
 
+_Use_decl_annotations_
 __inline
 VOID
+#pragma prefast(suppress:__WARNING_RETURN_UNINIT_VAR)
 Mx::MxInitializeNPagedLookasideList(
-    _Out_     PNPAGED_LOOKASIDE_LIST Lookaside,
-    _In_opt_  PALLOCATE_FUNCTION Allocate,
-    _In_opt_  PFREE_FUNCTION Free,
-    _In_      ULONG Flags,
-    _In_      SIZE_T Size,
-    _In_      ULONG Tag,
-    _In_      USHORT Depth
+    PNPAGED_LOOKASIDE_LIST Lookaside,
+    PALLOCATE_FUNCTION Allocate,
+    PFREE_FUNCTION Free,
+    ULONG Flags,
+    SIZE_T Size,
+    ULONG Tag,
+    USHORT Depth
     )
 {
 
@@ -680,16 +654,18 @@ Mx::MxInitializeNPagedLookasideList(
 
 }
 
+_Use_decl_annotations_
 __inline
 VOID
+#pragma prefast(suppress:__WARNING_RETURN_UNINIT_VAR)
 Mx::MxInitializePagedLookasideList(
-    _Out_     PPAGED_LOOKASIDE_LIST Lookaside,
-    _In_opt_  PALLOCATE_FUNCTION Allocate,
-    _In_opt_  PFREE_FUNCTION Free,
-    _In_      ULONG Flags,
-    _In_      SIZE_T Size,
-    _In_      ULONG Tag,
-    _In_      USHORT Depth
+    PPAGED_LOOKASIDE_LIST Lookaside,
+    PALLOCATE_FUNCTION Allocate,
+    PFREE_FUNCTION Free,
+    ULONG Flags,
+    SIZE_T Size,
+    ULONG Tag,
+    USHORT Depth
     )
 {
 
@@ -821,23 +797,6 @@ Mx::MxFlushQueuedDpcs(
 
 __inline
 NTSTATUS
-Mx::MxOpenKey(
-    _In_ PHANDLE KeyHandle,
-    _In_ ACCESS_MASK DesiredAccess,
-    _In_ POBJECT_ATTRIBUTES ObjectAttributes
-    )
-{
-    UNREFERENCED_PARAMETER(KeyHandle);
-    UNREFERENCED_PARAMETER(DesiredAccess);
-    UNREFERENCED_PARAMETER(ObjectAttributes);
-
-    ASSERTMSG("Not implemented for UMDF\n", FALSE);
-
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-__inline
-NTSTATUS
 Mx::MxSetDeviceInterfaceState(
     _In_ PUNICODE_STRING SymbolicLinkName,
     _In_ BOOLEAN Enable
@@ -865,20 +824,6 @@ Mx::MxRegisterDeviceInterface(
     UNREFERENCED_PARAMETER(InterfaceClassGuid);
     UNREFERENCED_PARAMETER(ReferenceString);
     UNREFERENCED_PARAMETER(SymbolicLinkName);
-
-    ASSERTMSG("Not implemented for UMDF\n", FALSE);
-
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-__inline
-NTSTATUS
-Mx::MxDeleteKey(
-    _In_ HANDLE KeyHandle
-    )
-
-{
-    UNREFERENCED_PARAMETER(KeyHandle);
 
     ASSERTMSG("Not implemented for UMDF\n", FALSE);
 
@@ -937,55 +882,26 @@ Mx::MxQuerySystemTime(
     _Out_ PLARGE_INTEGER CurrentTime
     )
 {
-    UNREFERENCED_PARAMETER(CurrentTime);
+    FILETIME filetime;
 
-    ASSERTMSG("Not implemented for UMDF\n", FALSE);
+    GetSystemTimeAsFileTime(&filetime);
+
+    CurrentTime->LowPart = filetime.dwLowDateTime;
+    CurrentTime->HighPart = (LONG) filetime.dwHighDateTime;
 }
 
 __inline
-NTSTATUS
-Mx::MxSetValueKey(
-    _In_      HANDLE KeyHandle,
-    _In_      PUNICODE_STRING ValueName,
-    _In_opt_  ULONG TitleIndex,
-    _In_      ULONG Type,
-    _In_opt_  PVOID Data,
-    _In_      ULONG DataSize
+VOID
+Mx::MxQuerySystemTimePrecise(
+    _Out_ PLARGE_INTEGER CurrentTime
     )
 {
-    UNREFERENCED_PARAMETER(KeyHandle);
-    UNREFERENCED_PARAMETER(ValueName);
-    UNREFERENCED_PARAMETER(TitleIndex);
-    UNREFERENCED_PARAMETER(Type);
-    UNREFERENCED_PARAMETER(Data);
-    UNREFERENCED_PARAMETER(DataSize);
+    FILETIME filetime;
 
-    ASSERTMSG("Not implemented for UMDF\n", FALSE);
+    GetSystemTimePreciseAsFileTime(&filetime);
 
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-__inline
-NTSTATUS
-Mx::MxQueryValueKey(
-    _In_       HANDLE KeyHandle,
-    _In_       PUNICODE_STRING ValueName,
-    _In_       KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
-    _Out_opt_  PVOID KeyValueInformation,
-    _In_       ULONG Length,
-    _Out_      PULONG ResultLength
-)
-{
-    UNREFERENCED_PARAMETER(KeyHandle);
-    UNREFERENCED_PARAMETER(ValueName);
-    UNREFERENCED_PARAMETER(KeyValueInformationClass);
-    UNREFERENCED_PARAMETER(KeyValueInformation);
-    UNREFERENCED_PARAMETER(Length);
-    UNREFERENCED_PARAMETER(ResultLength);
-
-    ASSERTMSG("Not implemented for UMDF\n", FALSE);
-
-    return STATUS_NOT_IMPLEMENTED;
+    CurrentTime->LowPart = filetime.dwLowDateTime;
+    CurrentTime->HighPart = (LONG) filetime.dwHighDateTime;
 }
 
 __inline

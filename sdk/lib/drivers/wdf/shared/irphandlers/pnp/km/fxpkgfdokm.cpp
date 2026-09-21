@@ -34,7 +34,7 @@ Revision History:
 #if defined(EVENT_TRACING)
 // Tracing support
 extern "C" {
-#include "FxPkgFdoKm.tmh"
+// #include "FxPkgFdoKm.tmh"
 }
 #endif
 
@@ -408,7 +408,6 @@ Returns:
         return status;
     }
 
-    #pragma prefast(suppress: __WARNING_PASSING_FUNCTION_UNEXPECTED_NULL, "Static child lists do not use the EvtChildListCreateDevice callback")
     WDF_CHILD_LIST_CONFIG_INIT(&config,
                                sizeof(FxStaticChildDescription),
                                NULL);
@@ -563,6 +562,7 @@ FxPkgFdo::QueryForDsfInterface(
 }
 
 _Must_inspect_result_
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 FxPkgFdo::AskParentToRemoveAndReenumerate(
     VOID

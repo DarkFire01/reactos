@@ -202,7 +202,7 @@ FxIoTargetRemote::Open(
     __in PWDF_IO_TARGET_OPEN_PARAMS OpenParams
     )
 {
-    FxIoTargetRemoveOpenParams params, *pParams;
+    FxIoTargetRemoteOpenParams params, *pParams;
     UNICODE_STRING name;
     LIST_ENTRY pended;
     WDF_IO_TARGET_OPEN_TYPE type;
@@ -259,9 +259,9 @@ FxIoTargetRemote::Open(
             }
             if (OpenParams->EaBuffer != NULL && OpenParams->EaBufferLength > 0) {
 
-                pEa = FxPoolAllocate(GetDriverGlobals(),
-                                     PagedPool,
-                                     OpenParams->EaBufferLength);
+                pEa = FxPoolAllocate2(GetDriverGlobals(),
+                                      POOL_FLAG_PAGED,
+                                      OpenParams->EaBufferLength);
 
                 if (pEa == NULL) {
                     DoTraceLevelMessage(
@@ -545,7 +545,7 @@ FxIoTargetRemote::Close(
     // Pick a value that is not used anywhere in the function and make sure that
     // we have changed it, before we go to the Remove state
     //
-#pragma prefast(suppress: __WARNING_UNUSED_SCALAR_ASSIGNMENT, "PFD is warning that the following assignement is unused. Suppress it to prevent changing any logic.")
+#pragma prefast(suppress: __WARNING_UNUSED_ASSIGNMENT, "PFD is warning that the following assignement is unused. Suppress it to prevent changing any logic.")
     removeState = WdfIoTargetStarted;
 
 CheckState:
@@ -779,7 +779,7 @@ FxIoTargetRemote::Remove(
 }
 
 VOID
-FxIoTargetRemoveOpenParams::Clear(
+FxIoTargetRemoteOpenParams::Clear(
     VOID
     )
 {
@@ -791,11 +791,11 @@ FxIoTargetRemoveOpenParams::Clear(
         FxPoolFree(TargetDeviceName.Buffer);
     }
 
-    RtlZeroMemory(this, sizeof(FxIoTargetRemoveOpenParams));
+    RtlZeroMemory(this, sizeof(FxIoTargetRemoteOpenParams));
 }
 
 VOID
-FxIoTargetRemoveOpenParams::Set(
+FxIoTargetRemoteOpenParams::Set(
     __in PWDF_IO_TARGET_OPEN_PARAMS OpenParams,
     __in PUNICODE_STRING Name,
     __in PVOID Ea,

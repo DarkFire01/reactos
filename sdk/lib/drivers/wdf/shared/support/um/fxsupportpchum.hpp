@@ -29,16 +29,16 @@ extern "C" {
 
 #include "fxmin.hpp"
 
-#include "FxPagedObject.hpp"
-#include "FxRegKey.hpp"
-#include "FxCollection.hpp"
-#include "FxString.hpp"
-#include "StringUtil.hpp"
+#include "fxpagedobject.hpp"
+#include "fxregkey.hpp"
+#include "fxcollection.hpp"
+#include "fxstring.hpp"
+#include "stringutil.hpp"
 
-#include "FxDeviceText.hpp"
+#include "fxdevicetext.hpp"
 
-#include <WdfResource.h>
-#include <FxResource.hpp>
+#include <wdfresource.h>
+#include <fxresource.hpp>
 
 
 #endif // __FX_SUPPORT_PCH_UM_HPP__
