@@ -43,6 +43,7 @@
 #define TAG_KERNEL                  '  eK'
 #define TAG_FLOATING_POINT_FX       'xFpF'
 #define TAG_FLOATING_POINT_CONTEXT  'oCpF'
+#define TAG_SECONDARY_IDT           'iSeK'
 
 /* File-System Run-Time Library Tags */
 #define TAG_UNC     'nuSF'
@@ -86,6 +87,7 @@
 #define TAG_IRP                 ' prI'
 #define TAG_IOBUF               'UBOI'
 #define TAG_IO_INTERRUPT        'nioI'
+#define TAG_PASSIVE_INTERRUPT   'bipK'
 #define TAG_MDL                 ' LDM'
 #define TAG_IO_DEVNODE          'donD'
 #define TAG_PNP_NOTIFY          'NPnP'
