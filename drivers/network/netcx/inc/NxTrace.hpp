@@ -32,7 +32,18 @@
 #define WPP_RECORDER_COMPNAME_LEVEL_NTEXPR_FILTER(Comp, Level, Expr)    (FALSE)
 #define WPP_RECORDER_COMPNAME_LEVEL_NTEXPR_ARGS(Comp, Level, Expr)
 
-/* TraceLogging is a separate ETW surface, equally absent. */
+/*
+ * TraceLogging is a separate ETW surface, equally absent. A provider handle
+ * still has to exist so the register and unregister calls have something to
+ * name, but it never refers to a registration.
+ */
+typedef const void *TraceLoggingHProvider;
+
+#define TRACELOGGING_DECLARE_PROVIDER(Handle)           extern TraceLoggingHProvider const Handle
+#define TRACELOGGING_DEFINE_PROVIDER(Handle, Name, Guid, ...)     TraceLoggingHProvider const Handle = nullptr
+#define TraceLoggingRegister(Handle)                    ((void)(Handle), STATUS_SUCCESS)
+#define TraceLoggingUnregister(Handle)                  ((void)(Handle))
+
 #define TraceLoggingWrite(...)
 #define TraceLoggingKeyword(...)
 #define TraceLoggingValue(...)
