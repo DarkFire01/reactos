@@ -99,7 +99,8 @@ list(APPEND SOURCE_TRANSLATOR
     translator/framelayout/layoutparser.cpp
     translator/metadata/metadatatranslator.cpp
     translator/segmentation/segmentation.cpp
-    translator/segmentation/km/segmentationkm.cpp)
+    translator/segmentation/km/segmentationkm.cpp
+    translator/seglibstub.cpp)
 
 #
 # The execution context and the histogram statistics are libraries upstream,
