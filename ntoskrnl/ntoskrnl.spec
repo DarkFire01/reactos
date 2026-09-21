@@ -1752,7 +1752,9 @@
 # I/O Manager
 @ stdcall -version=0x602+ IoDuplicateDependency(ptr ptr)
 @ stdcall -version=0x602+ IoGetDeviceNumaNode(ptr ptr)
+@ stdcall -version=0xA00+ IoGetInitiatorProcess(ptr)
 @ stdcall -version=0x600+ IoInitializeWorkItem(ptr ptr)
+@ stdcall -version=0xA00+ IoOpenDriverRegistryKey(ptr long long long ptr)
 @ stdcall -version=0x600+ IoQueueWorkItemEx(ptr ptr long ptr)
 @ stdcall -version=0x601+ IoRegisterContainerNotification(long ptr ptr long ptr)
 @ stdcall -version=0x602+ IoReportInterruptActive(ptr)
@@ -1783,6 +1785,7 @@
 @ stdcall -version=0x601+ KeQueryMaximumGroupCount()
 @ stdcall -version=0x601+ KeQueryMaximumProcessorCountEx(long)
 @ stdcall -version=0x601+ KeQueryNodeActiveAffinity(long ptr ptr)
+@ stdcall -version=0x602+ KeQuerySystemTimePrecise(ptr)
 @ stdcall -version=0x600+ KeRegisterProcessorChangeCallback(ptr ptr long)
 @ stdcall -version=0x600+ KeRevertToUserAffinityThreadEx(long)
 @ stdcall -version=0x601+ KeRevertToUserGroupAffinityThread(ptr)
@@ -1809,6 +1812,7 @@
 # Power Manager
 @ stdcall -version=0x603+ PoCreateThermalRequest(ptr ptr ptr ptr long)
 @ stdcall -version=0x603+ PoDeleteThermalRequest(ptr)
+@ stdcall -version=0xA00+ PoFxCompleteDirectedPowerDown(ptr)
 @ stdcall -version=0x602+ PoFxNotifySurprisePowerOn(ptr)
 @ stdcall -version=0x602+ PoFxPowerControl(ptr ptr ptr long ptr long ptr)
 @ stdcall -version=0x603+ PoGetThermalRequestSupport(ptr long)
