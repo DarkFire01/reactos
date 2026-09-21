@@ -133,6 +133,8 @@ NdisAllocateTimerObject(
     if (TimerCharacteristics->Header.Type != NDIS_OBJECT_TYPE_TIMER_CHARACTERISTICS ||
         TimerCharacteristics->Header.Size < NDIS_SIZEOF_TIMER_CHARACTERISTICS_REVISION_1)
     {
+        NDIS_DbgPrint(MIN_TRACE, ("Bad timer characteristics type 0x%x size %u.\n",
+                                  TimerCharacteristics->Header.Type, TimerCharacteristics->Header.Size));
         return NDIS_STATUS_BAD_CHARACTERISTICS;
     }
 
@@ -298,7 +300,10 @@ NdisAllocateIoWorkItem(
     }
 
     if (DeviceObject == NULL)
+    {
+        NDIS_DbgPrint(MIN_TRACE, ("No device object behind handle %p for a work item.\n", NdisObjectHandle));
         return NULL;
+    }
 
     WorkItem = ExAllocatePoolWithTag(NonPagedPool, sizeof(*WorkItem), NDIS_TAG);
     if (WorkItem == NULL)
@@ -395,9 +400,15 @@ NdisAllocateMemoryWithTagPriority(
     ULONG Tag,
     EX_POOL_PRIORITY Priority)
 {
+    PVOID Block;
+
     UNREFERENCED_PARAMETER(NdisHandle);
 
-    return ExAllocatePoolWithTagPriority(NonPagedPool, Length, (Tag != 0) ? Tag : NDIS_TAG, Priority);
+    Block = ExAllocatePoolWithTagPriority(NonPagedPool, Length, (Tag != 0) ? Tag : NDIS_TAG, Priority);
+    if (Block == NULL)
+        NDIS_DbgPrint(MIN_TRACE, ("No %u bytes of nonpaged pool.\n", Length));
+
+    return Block;
 }
 
 /**
@@ -954,6 +965,9 @@ NdisOpenConfigurationEx(
         ConfigObject->Header.Size < NDIS_SIZEOF_CONFIGURATION_OBJECT_REVISION_1 ||
         ConfigObject->Header.Revision == 0)
     {
+        NDIS_DbgPrint(MIN_TRACE, ("Bad configuration object type 0x%x revision %u size %u.\n",
+                                  ConfigObject->Header.Type, ConfigObject->Header.Revision,
+                                  ConfigObject->Header.Size));
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -967,13 +981,19 @@ NdisOpenConfigurationEx(
                                          KEY_ALL_ACCESS,
                                          &WrapperContext.RegistryHandle);
         if (!NT_SUCCESS(Status))
+        {
+            NDIS_DbgPrint(MIN_TRACE, ("No driver key for %wZ (0x%lx).\n",
+                                      &Adapter->NdisMiniportBlock.MiniportName, Status));
             return NDIS_STATUS_FAILURE;
+        }
 
         WrapperContext.DeviceObject = Adapter->NdisMiniportBlock.DeviceObject;
         WrapperContext.BusNumber = Adapter->NdisMiniportBlock.BusNumber;
         WrapperContext.SlotNumber = Adapter->NdisMiniportBlock.SlotNumber;
 
         NdisOpenConfiguration(&Status, ConfigurationHandle, &WrapperContext);
+        if (Status != NDIS_STATUS_SUCCESS)
+            NDIS_DbgPrint(MIN_TRACE, ("Opening the configuration failed (0x%x).\n", Status));
 
         ZwClose(WrapperContext.RegistryHandle);
         return Status;
@@ -986,6 +1006,7 @@ NdisOpenConfigurationEx(
         return Status;
     }
 
+    NDIS_DbgPrint(MIN_TRACE, ("Configuration asked for with unknown handle %p.\n", ConfigObject->NdisHandle));
     return NDIS_STATUS_FAILURE;
 }
 
