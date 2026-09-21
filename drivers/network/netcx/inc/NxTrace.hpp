@@ -33,6 +33,32 @@
 #define WPP_RECORDER_COMPNAME_LEVEL_NTEXPR_ARGS(Comp, Level, Expr)
 
 /*
+ * Early return helpers from the WPP config block. The failure check is real;
+ * the message only ever went to the recorder, so it is dropped.
+ */
+#define CX_RETURN_IF_NOT_NT_SUCCESS(Expression)                 \
+    do                                                          \
+    {                                                           \
+        NTSTATUS const cxStatus__ = (Expression);               \
+        if (!NT_SUCCESS(cxStatus__))                            \
+            return cxStatus__;                                  \
+    } while (0)
+
+#define CX_RETURN_NTSTATUS_IF(Status, Condition)                \
+    do                                                          \
+    {                                                           \
+        if (Condition)                                          \
+            return (Status);                                    \
+    } while (0)
+
+#define CX_RETURN_IF_NOT_NT_SUCCESS_MSG(Expression, ...)            CX_RETURN_IF_NOT_NT_SUCCESS(Expression)
+#define CX_RETURN_NTSTATUS_IF_MSG(Status, Condition, ...)           CX_RETURN_NTSTATUS_IF(Status, Condition)
+#define CX_WARNING_RETURN_NTSTATUS_IF_MSG(Status, Condition, ...)   CX_RETURN_NTSTATUS_IF(Status, Condition)
+#define CX_RETURN_STATUS_SUCCESS_MSG(...)                           return STATUS_SUCCESS
+#define CX_RETURN_MSG(...)                                          return
+#define CX_LOG_IF_NOT_NT_SUCCESS_MSG(Expression, ...)               ((void)(Expression))
+
+/*
  * TraceLogging is a separate ETW surface, equally absent. A provider handle
  * still has to exist so the register and unregister calls have something to
  * name, but it never refers to a registration.
