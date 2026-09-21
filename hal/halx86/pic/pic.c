@@ -1324,6 +1324,11 @@ HalEnableInterrupt(
     }
 
     VectorData = &ConnectionData->Vectors[0];
+    if (HalpIsSecondaryControllerInput(VectorData))
+    {
+        return HalpEnableSecondaryInterrupt(ConnectionData);
+    }
+
     if (VectorData->Type != InterruptTypeControllerInput)
     {
         return STATUS_NOT_SUPPORTED;
@@ -1360,6 +1365,11 @@ HalDisableInterrupt(
     }
 
     VectorData = &ConnectionData->Vectors[0];
+    if (HalpIsSecondaryControllerInput(VectorData))
+    {
+        return HalpDisableSecondaryInterrupt(ConnectionData);
+    }
+
     if (VectorData->Type != InterruptTypeControllerInput)
     {
         return STATUS_NOT_SUPPORTED;
@@ -1516,6 +1526,96 @@ HalpRestoreInterruptController(VOID)
     __writeeflags(EFlags);
 }
 
+/* PRIMARY INPUT MASKING ******************************************************/
+
+/* Why HalMaskInterrupt is holding an IRQ masked */
+#define PIC_INPUT_MASKED            0x01
+#define PIC_INPUT_PASSIVE_MASKED    0x02
+
+static UCHAR HalpInputMaskReasons[16];
+
+/**
+ * @brief
+ * Masks or unmasks an IRQ for HalMaskInterrupt and HalUnmaskInterrupt. The IRQ
+ * is unmasked again only when every reason it was masked for here is gone, and
+ * never when it was already disabled by something else.
+ */
+NTSTATUS
+NTAPI
+HalpSetInterruptInputMask(
+    _In_ ULONG Input,
+    _In_ ULONG Flags,
+    _In_ BOOLEAN Mask)
+{
+    PKPCR Pcr = KeGetPcr();
+    ULONG_PTR EFlags;
+    PIC_MASK PicMask;
+    ULONG IrqMask;
+    UCHAR Reason;
+
+    if (Input >= RTL_NUMBER_OF(HalpInputMaskReasons))
+        return STATUS_INVALID_PARAMETER;
+
+    if (Mask)
+        Reason = (Flags & HAL_MASK_INTERRUPT_PASSIVE) ? PIC_INPUT_PASSIVE_MASKED : PIC_INPUT_MASKED;
+    else
+        Reason = (Flags & HAL_UNMASK_INTERRUPT_PASSIVE) ? PIC_INPUT_PASSIVE_MASKED : PIC_INPUT_MASKED;
+
+    IrqMask = 1 << Input;
+
+    EFlags = __readeflags();
+    _disable();
+
+    if (Mask)
+    {
+        if (!(Pcr->IDR & IrqMask) || (HalpInputMaskReasons[Input] != 0))
+        {
+            HalpInputMaskReasons[Input] |= Reason;
+            Pcr->IDR |= IrqMask;
+
+            PicMask.Master = __inbyte(PIC1_DATA_PORT);
+            PicMask.Slave = __inbyte(PIC2_DATA_PORT);
+            PicMask.Both |= IrqMask;
+            __outbyte(PIC1_DATA_PORT, PicMask.Master);
+            __outbyte(PIC2_DATA_PORT, PicMask.Slave);
+        }
+    }
+    else if (HalpInputMaskReasons[Input] & Reason)
+    {
+        HalpInputMaskReasons[Input] &= ~Reason;
+        if (HalpInputMaskReasons[Input] == 0)
+        {
+            Pcr->IDR &= ~IrqMask;
+
+            PicMask.Both = (KiI8259MaskTable[Pcr->Irql] | Pcr->IDR) & 0xFFFF;
+            __outbyte(PIC1_DATA_PORT, PicMask.Master);
+            __outbyte(PIC2_DATA_PORT, PicMask.Slave);
+        }
+    }
+
+    __writeeflags(EFlags);
+    return STATUS_SUCCESS;
+}
+
+/* The 8259 has no way to raise one of its own inputs */
+NTSTATUS
+NTAPI
+HalpRequestInterruptInput(
+    _In_ ULONG Input)
+{
+    UNREFERENCED_PARAMETER(Input);
+
+    return STATUS_NOT_SUPPORTED;
+}
+
+NTSTATUS
+NTAPI
+HalpQueryMaximumGsiv(
+    _Out_ PULONG Gsiv)
+{
+    *Gsiv = RTL_NUMBER_OF(HalpInputMaskReasons) - 1;
+    return STATUS_SUCCESS;
+}
 
 #else /* _MINIHAL_ */
 

@@ -180,6 +180,13 @@ HalInitSystem(
         HalResetDisplay = HalpBiosDisplayReset;
         HalHaltSystem = HaliHaltSystem;
 
+        HalMaskInterrupt = HalpMaskInterrupt;
+        HalUnmaskInterrupt = HalpUnmaskInterrupt;
+        HalRequestInterrupt = HalpRequestInterrupt;
+        HalSecondaryInterruptQueryPrimaryInformation = HalpSecondaryInterruptQueryPrimaryInformation;
+        HalIsInterruptTypeSecondary = HalpIsInterruptTypeSecondary;
+        HalAllocateGsivForSecondaryInterrupt = HalpAllocateGsivForSecondaryInterrupt;
+
         /* Setup I/O space */
         HalpDefaultIoSpace.Next = HalpAddressUsageList;
         HalpAddressUsageList = &HalpDefaultIoSpace;
