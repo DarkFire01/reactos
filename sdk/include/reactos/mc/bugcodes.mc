@@ -1749,3 +1749,19 @@ SymbolicName=KERNEL_SECURITY_CHECK_FAILURE
 Language=English
 A critical kernel security check failed.
 .
+
+MessageId=0x152
+Severity=Success
+Facility=System
+SymbolicName=INVALID_PUSH_LOCK_FLAGS
+Language=English
+A push lock routine was passed flags it does not accept.
+.
+
+MessageId=0x192
+Severity=Success
+Facility=System
+SymbolicName=KERNEL_AUTO_BOOST_LOCK_ACQUISITION_WITH_RAISED_IRQL
+Language=English
+A lock that can boost its owner was acquired from a DPC.
+.
