@@ -1595,10 +1595,62 @@ public:
         VOID
         )
     {
+        return IsACxPresent();
+    }
+
+    __inline
+    BOOLEAN
+    IsACxPresent(
+        VOID
+        )
+    {
         return IsListEmpty(&m_CxDeviceInfoListHead) ? FALSE : TRUE;
     }
 
-#if DBG
+    _Must_inspect_result_
+    BOOLEAN
+    IsCxUsingSelfManagedIo(
+        VOID)
+    {
+        FxCxCallbackType callbackType;
+        FxCxDeviceInfo *cxInfo;
+        PFxCxPnpPowerCallbackContext context;
+        BOOLEAN smIoUsed = FALSE;
+
+        FxCxCallbackType smIoCallbackList[] =
+        {
+            FxCxCallbackSmIoInit,
+            FxCxCallbackSmIoRestart,
+            FxCxCallbackSmIoRestartEx,
+            FxCxCallbackSmIoSuspend,
+            FxCxCallbackSmIoSuspendEx,
+            FxCxCallbackSmIoFlush,
+            FxCxCallbackSmIoCleanup
+        };
+
+        cxInfo = GetFirstCxDeviceInfo();
+
+        while (cxInfo != NULL && smIoUsed == FALSE) {
+
+            for (ULONG loop = 0; loop < ARRAYSIZE(smIoCallbackList); loop++)
+            {
+                callbackType = smIoCallbackList[loop];
+                context = cxInfo->CxPnpPowerCallbackContexts[callbackType];
+
+                if (context != NULL) {
+                    //
+                    // Cx SmIo is used, so Self Managed Io State Machine is needed
+                    //
+                    smIoUsed = TRUE;
+                    break;
+                }
+            }
+
+            cxInfo = GetNextCxDeviceInfo(cxInfo);
+        }
+        return smIoUsed;
+    }
+
     __inline
     FxCxDeviceInfo*
     GetFirstCxDeviceInfo(
@@ -1631,8 +1683,6 @@ public:
                                      ListEntry);
         }
     }
-
-#endif
 
     __inline
     static
@@ -1684,6 +1734,11 @@ public:
         _In_       ULONG BufferLength,
         _Out_opt_  PVOID PropertyBuffer,
         _Out_      PULONG ResultLength
+        );
+
+    NTSTATUS
+    AllocateCompanionTarget(
+        _Out_ FxCompanionTarget ** DeviceCompanion
         );
 
 #elif (FX_CORE_MODE == FX_CORE_USER_MODE)
@@ -2029,6 +2084,18 @@ public:
     static
     void
     PoFxDevicePowerNotRequired (
+        _In_ MdDeviceObject DeviceObject
+        );
+
+    static
+    void
+    PoFxDeviceDirectedPowerDown (
+        _In_ MdDeviceObject DeviceObject
+        );
+
+    static
+    void
+    PoFxDeviceDirectedPowerUp (
         _In_ MdDeviceObject DeviceObject
         );
 

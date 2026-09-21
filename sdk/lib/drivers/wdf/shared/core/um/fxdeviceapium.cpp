@@ -26,7 +26,7 @@ Revision History:
 #include <intsafe.h>
 
 extern "C" {
-#include "FxDeviceApiUm.tmh"
+// #include "FxDeviceApiUm.tmh"
 }
 
 //
@@ -50,6 +50,7 @@ VerifyWdfDeviceWdmDispatchIrpToIoQueue,
 _Must_inspect_result_
 __drv_maxIRQL(PASSIVE_LEVEL)
 NTSTATUS
+NTAPI
 WDFEXPORT(WdfDevicePostEvent)(
     _In_ PWDF_DRIVER_GLOBALS DriverGlobals,
     _In_ WDFDEVICE Device,
@@ -151,6 +152,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 WDFEXPORT(WdfDeviceMapIoSpace)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -252,6 +254,7 @@ Return Value:
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 VOID
+NTAPI
 WDFEXPORT(WdfDeviceUnmapIoSpace)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -349,6 +352,7 @@ Return Value:
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 PVOID
+NTAPI
 WDFEXPORT(WdfDeviceGetHardwareRegisterMappedAddress)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -439,6 +443,7 @@ Return Value:
 _IRQL_requires_max_(PASSIVE_LEVEL)
 SIZE_T
 WDFAPI
+NTAPI
 WDFEXPORT(WdfDeviceReadFromHardware)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -664,6 +669,7 @@ Return Value:
 _IRQL_requires_max_(PASSIVE_LEVEL)
 VOID
 WDFAPI
+NTAPI
 WDFEXPORT(WdfDeviceWriteToHardware)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -1245,6 +1251,7 @@ WDFEXPORT(WdfDeviceGetDeviceStackIoType) (
 _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 NTSTATUS
+NTAPI
 WDFEXPORT(WdfDeviceHidNotifyPresence)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -1285,6 +1292,7 @@ WDFEXPORT(WdfDeviceHidNotifyPresence)(
 
 __drv_maxIRQL(DISPATCH_LEVEL)
 WDFFILEOBJECT
+NTAPI
 WDFEXPORT(WdfDeviceGetFileObject)(
     __in
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -1323,6 +1331,7 @@ Return Value:
 _Must_inspect_result_
 __drv_maxIRQL(DISPATCH_LEVEL)
 NTSTATUS
+NTAPI
 WDFEXPORT(WdfDeviceWdmDispatchIrpToIoQueue)(
     __in
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -1388,6 +1397,7 @@ WDFEXPORT(WdfDeviceWdmDispatchIrpToIoQueue)(
 _Must_inspect_result_
 __drv_maxIRQL(DISPATCH_LEVEL)
 NTSTATUS
+NTAPI
 WDFEXPORT(WdfDeviceWdmDispatchIrp)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -1459,4 +1469,62 @@ Returns:
                                            DispatchContext);
 }
 
+_Must_inspect_result_
+__drv_maxIRQL(PASSIVE_LEVEL)
+NTSTATUS
+NTAPI
+WDFEXPORT(WdfDeviceRetrieveDeviceDirectoryString)(
+    __in
+    PWDF_DRIVER_GLOBALS DriverGlobals,
+    __in
+    WDFDEVICE Device,
+    __in
+    WDFSTRING String
+    )
+{
+    DDI_ENTRY();
+    PFX_DRIVER_GLOBALS pFxDriverGlobals;
+    FxDevice *pDevice;
+    FxString* pString;
+    NTSTATUS status;
+    HRESULT hr;
+    PCWSTR dirPath;
+
+    FxObjectHandleGetPtrAndGlobals(GetFxDriverGlobals(DriverGlobals),
+                                   Device,
+                                   FX_TYPE_DEVICE,
+                                   (PVOID *) &pDevice,
+                                   &pFxDriverGlobals);
+
+    if (pDevice->IsLegacy()) {
+        status = STATUS_INVALID_DEVICE_REQUEST;
+
+        DoTraceLevelMessage(
+            pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGERROR,
+            "WDFDEVICE %p is not a PNP device. "
+            "WdfDeviceRetrieveDeviceDirectoryString failed %!STATUS!",
+            Device, status);
+        return status;
+    }
+
+    FxObjectHandleGetPtr(pFxDriverGlobals,
+                         String,
+                         FX_TYPE_STRING,
+                         (PVOID*) &pString);
+
+    hr = pDevice->GetDeviceStack2()->GetDeviceDirectory(&dirPath);
+    if (FAILED(hr)) {
+        status = FxDevice::NtStatusFromHr(pDevice->GetDeviceStack(), hr);
+        DoTraceLevelMessage(
+            pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGERROR,
+            "WdfDeviceRetrieveDeviceDirectoryString for WDFDEVICE %p failed %!STATUS!",
+            Device, status);
+    }
+    else {
+        status = pString->Assign(dirPath);
+        HeapFree(GetProcessHeap(), 0, (PVOID)dirPath);
+    }
+
+    return status;
+}
 } // extern "C"

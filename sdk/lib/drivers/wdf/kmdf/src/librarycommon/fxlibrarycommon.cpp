@@ -6,6 +6,29 @@ extern "C" {
 #include <ntddk.h>
 }
 
+typedef enum _WDFFUNCENUM_NUMENTRIES {
+
+    WdfFunctionTableNumEntries_V1_0  = 383,
+    WdfFunctionTableNumEntries_V1_1  = 386,
+    WdfFunctionTableNumEntries_V1_5  = 387,
+    WdfFunctionTableNumEntries_V1_7  = 387,
+    WdfFunctionTableNumEntries_V1_9  = 396,
+    WdfFunctionTableNumEntries_V1_11 = 432,
+    WdfFunctionTableNumEntries_V1_13 = 438,
+    WdfFunctionTableNumEntries_V1_15 = 444,
+    WdfFunctionTableNumEntries_V1_17 = 444,
+    WdfFunctionTableNumEntries_V1_19 = 446,
+    WdfFunctionTableNumEntries_V1_21 = 448,
+    WdfFunctionTableNumEntries_V1_23 = 451,
+    WdfFunctionTableNumEntries_V1_25 = 453,
+    WdfFunctionTableNumEntries_V1_27 = 453,
+    WdfFunctionTableNumEntries_V1_29 = 454,
+    WdfFunctionTableNumEntries_V1_31 = 458,
+
+
+
+} WDFFUNCENUM_NUMENTRIES;
+
 //
 // This will cause inclusion of VfWdfFunctions table implementation from header
 //
@@ -32,6 +55,9 @@ extern "C" {
 #else
 #include "reactos_special.h"
 #endif
+
+// #include "FeatureStagingSupport.h"
+// #include <FeatureStaging-WDF.h>
 
 extern "C" {
 //
@@ -159,6 +185,7 @@ IsClientInfoValid(
 {
     if (ClientInfo == NULL ||
         ClientInfo->Size != sizeof(CLIENT_INFO) ||
+        ClientInfo->DriverObject == NULL ||
         ClientInfo->RegistryPath == NULL ||
         ClientInfo->RegistryPath->Length == 0 ||
         ClientInfo->RegistryPath->Buffer == NULL) {
@@ -171,7 +198,8 @@ VOID
 ReportDdiFunctionCountMismatch(
     _In_ PCUNICODE_STRING ServiceName,
     _In_ ULONG ActualFunctionCount,
-    _In_ ULONG ExpectedFunctionCount
+    _In_ ULONG ExpectedFunctionCount,
+    _In_ BOOLEAN IssueBreak
     )
 {
     WCHAR    insertString[EVTLOG_DDI_COUNT_ERROR_MAX_LEN] = { 0 };
@@ -228,6 +256,14 @@ ReportDdiFunctionCountMismatch(
                     TraceLoggingUInt32(ActualFunctionCount, "FunctionCount"),
                     TraceLoggingUInt32(ExpectedFunctionCount, "ExpectedCount"));
 #endif
+
+    //
+    // If loader diagnostics are enabled and KD is connected, break-in
+    //
+    if (IssueBreak == TRUE &&
+        WdfLdrDbgPrintOn && KD_DEBUGGER_ENABLED && !KD_DEBUGGER_NOT_PRESENT) {
+        DbgBreakPoint();
+    }
 }
 
 _Must_inspect_result_
@@ -237,8 +273,6 @@ FxLibraryCommonCommission(
     VOID
     )
 {
-    DECLARE_CONST_UNICODE_STRING(usName, L"RtlGetVersion");
-    PFN_RTL_GET_VERSION pRtlGetVersion = NULL;
     NTSTATUS   status;
 
     __Print((LITERAL(WDF_LIBRARY_COMMISSION) "\n"));
@@ -275,19 +309,9 @@ FxLibraryCommonCommission(
         status = STATUS_SUCCESS;
     }
 #endif
-    //
-    // Attempt to load RtlGetVersion (works for > w2k).
-    //
-    pRtlGetVersion = (PFN_RTL_GET_VERSION) MmGetSystemRoutineAddress(
-        (PUNICODE_STRING) &usName
-        );
 
-    //
-    // Now attempt to get this OS's version.
-    //
-    if (pRtlGetVersion != NULL) {
-        pRtlGetVersion(&gOsVersion);
-    }
+    gOsVersion.dwOSVersionInfoSize = sizeof(gOsVersion);
+    RtlGetVersion(&gOsVersion);
 
     __Print(("OsVersion(%d.%d)\n",
              gOsVersion.dwMajorVersion,
@@ -378,35 +402,49 @@ FxLibraryCommonRegisterClient(
     __assume(WdfVersion.FuncCount == sizeof(WDFFUNCTIONS)/sizeof(PVOID));
 
     if (Info->FuncCount > WdfVersion.FuncCount) {
-        __Print((LITERAL(WDF_LIBRARY_REGISTER_CLIENT)
+        DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL,
+                 LITERAL(WDF_LIBRARY_REGISTER_CLIENT)
                  ": version mismatch detected in function table count: client"
                  "has 0x%x,  library has 0x%x\n",
-                 Info->FuncCount, WdfVersion.FuncCount));
+                 Info->FuncCount, WdfVersion.FuncCount);
         goto Done;
     }
 
-    if (Info->FuncCount <= WdfFunctionTableNumEntries_V1_15) {
+    if (Info->FuncCount <= WdfFunctionTableNumEntries_V1_31) {
         //
         // Make sure table count matches exactly with previously
         // released framework version table sizes.
         //
+        ASSERT(WdfFunctionTableNumEntries_V1_27 == WdfFunctionTableNumEntries_V1_25);
+        ASSERT(WdfFunctionTableNumEntries_V1_17 == WdfFunctionTableNumEntries_V1_15);
+        ASSERT(WdfFunctionTableNumEntries_V1_7  == WdfFunctionTableNumEntries_V1_5);
+
         switch (Info->FuncCount) {
 
-        case WdfFunctionTableNumEntries_V1_15:
-        case WdfFunctionTableNumEntries_V1_13:
-        case WdfFunctionTableNumEntries_V1_11:
-        case WdfFunctionTableNumEntries_V1_9:
-     // case WdfFunctionTableNumEntries_V1_7:  // both 1.7 and 1.5 have 387 functions
-        case WdfFunctionTableNumEntries_V1_5:
-        case WdfFunctionTableNumEntries_V1_1:
-        case WdfFunctionTableNumEntries_V1_0:
+        case WdfFunctionTableNumEntries_V1_31: // 458 - win10 2004 Vibranium
+        case WdfFunctionTableNumEntries_V1_29: // 454 - win10 1903 19H1
+     // case WdfFunctionTableNumEntries_V1_27: // 453 - win10 1809 RS5
+        case WdfFunctionTableNumEntries_V1_25: // 453 - win10 1803 RS4
+        case WdfFunctionTableNumEntries_V1_23: // 451 - win10 1709 RS3
+        case WdfFunctionTableNumEntries_V1_21: // 448 - win10 1703 RS2
+        case WdfFunctionTableNumEntries_V1_19: // 446 - win10 1607 RS1
+     // case WdfFunctionTableNumEntries_V1_17: // 444 - win10 1511 TH2
+        case WdfFunctionTableNumEntries_V1_15: // 444 - win10 1507 TH1
+        case WdfFunctionTableNumEntries_V1_13: // 438 - win8.1
+        case WdfFunctionTableNumEntries_V1_11: // 432 - win8
+        case WdfFunctionTableNumEntries_V1_9:  // 396 - win7
+     // case WdfFunctionTableNumEntries_V1_7:  // 387 - vista sp1
+        case WdfFunctionTableNumEntries_V1_5:  // 387 - vista
+        case WdfFunctionTableNumEntries_V1_1:  // 386
+        case WdfFunctionTableNumEntries_V1_0:  // 383
             break;
 
         default:
-            __Print((LITERAL(WDF_LIBRARY_REGISTER_CLIENT)
+            DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL,
+                     LITERAL(WDF_LIBRARY_REGISTER_CLIENT)
                      ": Function table count 0x%x doesn't match any previously "
                      "released framework version table size\n",
-                     Info->FuncCount));
+                     Info->FuncCount);
             goto Done;
         }
     }
@@ -417,10 +455,12 @@ FxLibraryCommonRegisterClient(
 
 
 
-
-
+        //
         // Client version is same as framework version. Make
         // sure table count is exact.
+        //
+        BOOLEAN issueBreak = WDF_PRODUCTION_RELEASE;
+
         if (Info->FuncCount != WdfFunctionTableNumEntries) {
             RtlZeroMemory(&serviceName, sizeof(UNICODE_STRING));
 
@@ -436,17 +476,12 @@ FxLibraryCommonRegisterClient(
             // will serve as diagnostic aid.
             //
             ReportDdiFunctionCountMismatch((PCUNICODE_STRING)&serviceName,
-                                        Info->FuncCount,
-                                        WdfFunctionTableNumEntries);
-
-            //
-            // If loader diagnostics are enabled and KD is connected, break-in
-            //
-            if (WdfLdrDbgPrintOn && KD_DEBUGGER_ENABLED &&
-                !KD_DEBUGGER_NOT_PRESENT) {
-                DbgBreakPoint();
-            }
+                                           Info->FuncCount,
+                                           WdfFunctionTableNumEntries,
+                                           issueBreak);
+#if WDF_PRODUCTION_RELEASE
             goto Done;
+#endif
         }
     }
 
@@ -466,7 +501,9 @@ FxLibraryCommonRegisterClient(
         // store enhanced verifier options in driver globals
         //
         fxDriverGlobals = GetFxDriverGlobals(*WdfDriverGlobals);
-        GetEnhancedVerifierOptions(ClientInfo, &fxDriverGlobals->FxEnhancedVerifierOptions);
+        fxDriverGlobals->DriverObject = ClientInfo->DriverObject;
+
+        GetEnhancedVerifierOptions(fxDriverGlobals);
         isFunctinTableHookingOn = IsFxVerifierFunctionTableHooking(fxDriverGlobals);
         isPerformanceAnalysisOn = IsFxPerformanceAnalysis(fxDriverGlobals);
 
@@ -542,6 +579,63 @@ Done:
     return status;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 _Must_inspect_result_
 NTSTATUS
 NTAPI
@@ -563,6 +657,12 @@ FxLibraryCommonUnregisterClient(
         status = STATUS_SUCCESS;
 
         pFxDriverGlobals = GetFxDriverGlobals(WdfDriverGlobals);
+
+
+
+
+
+
 
         //
         // Destroy this FxDriver instance, if its still indicated.
@@ -605,29 +705,17 @@ FxLibraryCommonUnregisterClient(
 
 VOID
 GetEnhancedVerifierOptions(
-    __in PCLIENT_INFO ClientInfo,
-    __out PULONG Options
+    _Inout_ PFX_DRIVER_GLOBALS FxDriverGlobals
     )
 {
     NTSTATUS status;
     ULONG value;
     FxAutoRegKey hKey, hWdf;
-    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Parameters\\Wdf");
+    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Wdf");
     DECLARE_CONST_UNICODE_STRING(valueName, WDF_ENHANCED_VERIFIER_OPTIONS_VALUE_NAME);
 
-    *Options = 0;
-    if (!IsClientInfoValid(ClientInfo) ||
-        Options == NULL) {
-
-        __Print((LITERAL(WDF_LIBRARY_REGISTER_CLIENT)
-                 ": Invalid ClientInfo received from wdfldr \n"));
-        return;
-    }
-
-    status = FxRegKey::_OpenKey(NULL,
-                                ClientInfo->RegistryPath,
-                                &hWdf.m_Key,
-                                KEY_READ);
+    status = OpenDriverParamsKeyForRead(FxDriverGlobals,
+                                        &hWdf.m_Key);
     if (!NT_SUCCESS(status)) {
         return;
     }
@@ -647,9 +735,7 @@ GetEnhancedVerifierOptions(
     // Examine key values and set Options only on success.
     //
     if (NT_SUCCESS(status)) {
-        if (value) {
-            *Options = value;
-        }
+        FxDriverGlobals->FxEnhancedVerifierOptions = value;
     }
 }
 

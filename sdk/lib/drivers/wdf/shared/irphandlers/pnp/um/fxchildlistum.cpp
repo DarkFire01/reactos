@@ -30,8 +30,8 @@ Revision History:
 
 FxDeviceDescriptionEntry::FxDeviceDescriptionEntry(
     __inout FxChildList* DeviceList,
-    __in ULONG AddressDescriptionSize,
-    __in ULONG IdentificationDescriptionSize
+    __in ULONG IdentificationDescriptionSize,
+    __in ULONG AddressDescriptionSize
     )
 {
     UfxVerifierTrapNotImpl();
@@ -190,6 +190,7 @@ FxChildList::GetAddressDescription(
 }
 
 VOID
+#pragma prefast(suppress:__WARNING_RETURN_UNINIT_VAR, "Returning uninitialized memory '*AddressDescription'")
 FxChildList::GetAddressDescriptionFromEntry(
     __in FxDeviceDescriptionEntry* Entry,
     __out PWDF_CHILD_ADDRESS_DESCRIPTION_HEADER AddressDescription
@@ -199,6 +200,7 @@ FxChildList::GetAddressDescriptionFromEntry(
 }
 
 VOID
+#pragma prefast(suppress:__WARNING_RETURN_UNINIT_VAR, "Returning uninitialized memory '*ScanTag'")
 FxChildList::BeginScan(
     __out_opt PULONG ScanTag
     )

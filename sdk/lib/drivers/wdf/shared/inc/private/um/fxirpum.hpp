@@ -10,7 +10,7 @@ typedef struct {
     PIO_CSQ Csq;
 } MdIoCsqIrpContext, *PMdIoCsqIrpContext;
 
-#include "FxIrp.hpp"
+#include "fxirp.hpp"
 
 
 #endif // _FXIRPUM_HPP_

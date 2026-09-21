@@ -481,7 +481,7 @@ Return Value:
         }
     }
 
-    PCHAR pGivenName;
+    LPCSTR pGivenName;
 
     if (TypeInfo->ContextName != NULL) {
         pGivenName = TypeInfo->ContextName;
@@ -558,7 +558,7 @@ Return Value:
     }
 
     pHeader = (FxContextHeader*)
-         FxPoolAllocate(pFxDriverGlobals, NonPagedPool, size);
+         FxPoolAllocate2(pFxDriverGlobals, POOL_FLAG_NON_PAGED, size);
 
     if (pHeader != NULL) {
         *ContextHeader = pHeader;

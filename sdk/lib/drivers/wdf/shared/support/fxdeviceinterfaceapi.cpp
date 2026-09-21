@@ -106,7 +106,7 @@ Return Value:
         return status;
     }
 
-    pDeviceInterface = new(pFxDriverGlobals, PagedPool) FxDeviceInterface();
+    pDeviceInterface = new(pFxDriverGlobals, POOL_FLAG_PAGED) FxDeviceInterface();
 
     if (pDeviceInterface == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -165,8 +165,7 @@ Done:
 
 __drv_maxIRQL(PASSIVE_LEVEL)
 VOID
-NTAPI
-WDFEXPORT(WdfDeviceSetDeviceInterfaceState)(
+WdfDeviceSetDeviceInterfaceStateWorker(
     __in
     PWDF_DRIVER_GLOBALS DriverGlobals,
     __in
@@ -176,7 +175,9 @@ WDFEXPORT(WdfDeviceSetDeviceInterfaceState)(
     __in_opt
     PCUNICODE_STRING RefString,
     __in
-    BOOLEAN State
+    BOOLEAN State,
+    __in
+    WDF_TRI_STATE AutoEnableOnFirstStart
     )
 {
     DDI_ENTRY();
@@ -263,11 +264,123 @@ WDFEXPORT(WdfDeviceSetDeviceInterfaceState)(
             // interface.
             //
             pDI->SetState(State);
+
+            if (AutoEnableOnFirstStart == WdfFalse) {
+                pDI->m_AutoEnableOnFirstStart = FALSE;
+            }
+            else if (AutoEnableOnFirstStart == WdfTrue) {
+                pDI->m_AutoEnableOnFirstStart = TRUE;
+            }
+
             break;
         }
     }
 
     pPkgPnp->m_DeviceInterfaceLock.ReleaseLock(pFxDriverGlobals);
+}
+
+__drv_maxIRQL(PASSIVE_LEVEL)
+VOID
+NTAPI
+WDFEXPORT(WdfDeviceSetDeviceInterfaceState)(
+    _In_
+    PWDF_DRIVER_GLOBALS DriverGlobals,
+    _In_
+    WDFDEVICE Device,
+    _In_
+    CONST GUID *InterfaceClassGUID,
+    _In_opt_
+    PCUNICODE_STRING RefString,
+    _In_
+    BOOLEAN IsInterfaceEnabled
+    )
+/*++
+
+Routine Description:
+    Enables or disables a device interface for a specified device.
+
+Arguments:
+    Device - Handle which represents the device exposing the interface
+
+    InterfaceClassGUID - GUID describing the interface being exposed
+
+    RefString - OPTIONAL string which allows the driver writer to
+        distinguish between different exposed interfaces
+
+    IsInterfaceEnabled - if TRUE, enables the specified device interface
+        instance or, if FALSE, disables it.
+
+Remarks:
+    The API should only be called after the device has started. If you want to
+    call the API during adding device, use WdfDeviceSetDeviceInterfaceStateEx instead.
+
+Return Value:
+    VOID
+
+  --*/
+{
+    WdfDeviceSetDeviceInterfaceStateWorker(
+        DriverGlobals,
+        Device,
+        InterfaceClassGUID,
+        RefString,
+        IsInterfaceEnabled,
+        WdfUseDefault);
+}
+
+__drv_maxIRQL(PASSIVE_LEVEL)
+VOID
+NTAPI
+WDFEXPORT(WdfDeviceSetDeviceInterfaceStateEx)(
+    _In_
+    PWDF_DRIVER_GLOBALS DriverGlobals,
+    _In_
+    WDFDEVICE Device,
+    _In_
+    CONST GUID *InterfaceClassGUID,
+    _In_opt_
+    PCUNICODE_STRING RefString,
+    _In_
+    BOOLEAN IsInterfaceEnabled
+    )
+/*++
+
+Routine Description:
+    Enables or disables a device interface for a specified device.
+
+Arguments:
+    Device - Handle which represents the device exposing the interface
+
+    InterfaceClassGUID - GUID describing the interface being exposed
+
+    RefString - OPTIONAL string which allows the driver writer to
+        distinguish between different exposed interfaces
+
+    IsInterfaceEnabled - if TRUE, enables the specified device interface
+        instance or, if FALSE, disables it.
+
+Remarks:
+    The API can be called during adding device, or after device has started.
+
+    If called during adding device, EnableInterface should be FALSE, which
+    means the interface won't be automatically enabled when the device starts.
+    Passing TRUE is redundant as interfaces will be auto enabled by default.
+
+    If called after device has started, the behavior is the same as
+    WdfDeviceSetDeviceInterfaceState.
+
+Return Value:
+    VOID
+
+  --*/
+{
+    WdfDeviceSetDeviceInterfaceStateWorker(
+        DriverGlobals,
+        Device,
+        InterfaceClassGUID,
+        RefString,
+        IsInterfaceEnabled,
+        WdfFalse);
 }
 
 _Must_inspect_result_
