@@ -15,6 +15,9 @@
 
 /* GLOBALS *******************************************************************/
 
+/* The loader maps exactly one page for the boot processor's PCR */
+C_ASSERT(sizeof(KIPCR) <= PAGE_SIZE);
+
 /* Boot and double-fault/NMI/DPC stack */
 UCHAR DECLSPEC_ALIGN(PAGE_SIZE) P0BootStackData[KERNEL_STACK_SIZE] = {0};
 UCHAR DECLSPEC_ALIGN(PAGE_SIZE) KiDoubleFaultStackData[KERNEL_STACK_SIZE] = {0};
