@@ -1556,6 +1556,23 @@ NETEXPORT(NetAdapterReportWakeReasonPacket)(
     Verifier_VerifyIrqlPassive(nxPrivateGlobals);
 
     auto nxAdapter = GetNxAdapterFromHandle(Adapter);
+
+    switch (Reason->PatternId)
+    {
+    case NetAdapterWakeFilterPatternId:
+        nxAdapter->SetWakeReason(NetWakeReasonTypePacketFilterMatch);
+        break;
+    case NetAdapterWakeEapolPatternId:
+        nxAdapter->SetWakeReason(NetWakeReasonTypeEapolPacket);
+        break;
+    case NetAdapterWakeMagicPatternId:
+        nxAdapter->SetWakeReason(NetWakeReasonTypeMagicPacket);
+        break;
+    default:
+        nxAdapter->SetWakeReason(NetWakeReasonTypeBitmapPattern);
+        break;
+    }
+
     nxAdapter->ReportWakeReasonPacket(Reason);
 }
 
@@ -1572,7 +1589,25 @@ NETEXPORT(NetAdapterReportWakeReasonMediaChange)(
     Verifier_VerifyIrqlPassive(nxPrivateGlobals);
 
     auto nxAdapter = GetNxAdapterFromHandle(Adapter);
+
+    nxAdapter->SetWakeReason(NetWakeReasonTypeMediaChange);
     nxAdapter->ReportWakeReasonMediaChange(Reason);
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+WDFAPI
+NET_WAKE_REASON_TYPE
+NTAPI
+NETEXPORT(NetAdapterQueryWakeReason)(
+    _In_ NET_DRIVER_GLOBALS * DriverGlobals,
+    _In_ NETADAPTER Adapter
+    )
+{
+    auto const nxPrivateGlobals = GetPrivateGlobals(DriverGlobals);
+    Verifier_VerifyPrivateGlobals(nxPrivateGlobals);
+    Verifier_VerifyIrqlPassive(nxPrivateGlobals);
+
+    return GetNxAdapterFromHandle(Adapter)->QueryWakeReason();
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
@@ -1591,6 +1626,68 @@ NETEXPORT(NetAdapterWifiDestroyPeerAddressDatapath)(
     Verifier_VerifyIrqlPassive(privateGlobals);
 
     GetNxAdapterFromHandle(Adapter)->WifiDestroyPeerAddressDatapath(Demux);
+}
+
+/*
+ * The translator here asks the WiFi extension for a packet's peer on every
+ * send, so it keeps no peer table for these two to update.
+ */
+_IRQL_requires_max_(PASSIVE_LEVEL)
+WDFAPI
+void
+NTAPI
+NETEXPORT(NetAdapterWifiAddPeer)(
+    _In_ NET_DRIVER_GLOBALS * DriverGlobals,
+    _In_ NETADAPTER Adapter,
+    _In_ NET_EUI48_ADDRESS const * Address
+    )
+{
+    auto const privateGlobals = GetPrivateGlobals(DriverGlobals);
+
+    Verifier_VerifyPrivateGlobals(privateGlobals);
+    Verifier_VerifyIrqlPassive(privateGlobals);
+
+    UNREFERENCED_PARAMETER((Adapter, Address));
+}
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+WDFAPI
+void
+NTAPI
+NETEXPORT(NetAdapterWifiRemovePeer)(
+    _In_ NET_DRIVER_GLOBALS * DriverGlobals,
+    _In_ NETADAPTER Adapter,
+    _In_ NET_EUI48_ADDRESS const * Address
+    )
+{
+    auto const privateGlobals = GetPrivateGlobals(DriverGlobals);
+
+    Verifier_VerifyPrivateGlobals(privateGlobals);
+    Verifier_VerifyIrqlPassive(privateGlobals);
+
+    UNREFERENCED_PARAMETER((Adapter, Address));
+}
+
+/*
+ * An adapter without a device needs a lightweight NDIS miniport, which NDIS
+ * here does not have, so the allocation fails the way a low memory one does.
+ */
+_IRQL_requires_(PASSIVE_LEVEL)
+WDFAPI
+NETADAPTER_INIT *
+NTAPI
+NETEXPORT(NetAdapterLightweightInitAllocate)(
+    _In_ NET_DRIVER_GLOBALS * DriverGlobals,
+    _In_ GUID const * NetLuidGuid
+    )
+{
+    auto const nxPrivateGlobals = GetPrivateGlobals(DriverGlobals);
+
+    Verifier_VerifyPrivateGlobals(nxPrivateGlobals);
+    Verifier_VerifyIrqlPassive(nxPrivateGlobals);
+    Verifier_VerifyNotNull(nxPrivateGlobals, NetLuidGuid);
+
+    return nullptr;
 }
 
 WDFAPI
