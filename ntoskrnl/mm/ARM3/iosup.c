@@ -37,16 +37,16 @@ MI_PFN_CACHE_ATTRIBUTE MiPlatformCacheAttributes[2][MmMaximumCacheType] =
     {MiNonCached,MiCached,MiWriteCombined,MiCached,MiNonCached,MiWriteCombined},
 };
 
-/* PUBLIC FUNCTIONS ***********************************************************/
+/* PRIVATE FUNCTIONS **********************************************************/
 
-/*
- * @implemented
- */
+/* Maps physical pages into system space with a cache type and an ARM3 protection mask */
+static
 PVOID
-NTAPI
-MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
-             IN SIZE_T NumberOfBytes,
-             IN MEMORY_CACHING_TYPE CacheType)
+MiMapIoSpace(
+    _In_ PHYSICAL_ADDRESS PhysicalAddress,
+    _In_ SIZE_T NumberOfBytes,
+    _In_ MEMORY_CACHING_TYPE CacheType,
+    _In_ ULONG ProtectionMask)
 {
 
     PFN_NUMBER Pfn;
@@ -122,7 +122,11 @@ MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
     //
     // Get the template and configure caching
     //
-    TempPte = ValidKernelPte;
+    if (ProtectionMask == MM_READWRITE)
+        TempPte = ValidKernelPte;
+    else
+        MI_MAKE_HARDWARE_PTE_KERNEL(&TempPte, PointerPte, ProtectionMask, 0);
+
     switch (CacheAttribute)
     {
         case MiNonCached:
@@ -183,6 +187,73 @@ MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
     // We're done!
     //
     return BaseAddress;
+}
+
+/* PUBLIC FUNCTIONS ***********************************************************/
+
+/*
+ * @implemented
+ */
+PVOID
+NTAPI
+MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
+             IN SIZE_T NumberOfBytes,
+             IN MEMORY_CACHING_TYPE CacheType)
+{
+    return MiMapIoSpace(PhysicalAddress, NumberOfBytes, CacheType, MM_READWRITE);
+}
+
+/**
+ * @brief
+ * Maps physical pages into system space. The page protection also picks the
+ * caching: PAGE_NOCACHE maps uncached, PAGE_WRITECOMBINE write combined, and
+ * anything else cached.
+ *
+ * @param[in] PhysicalAddress
+ * Where the range starts.
+ *
+ * @param[in] NumberOfBytes
+ * Its size.
+ *
+ * @param[in] Protect
+ * PAGE_* protection, optionally with PAGE_NOCACHE or PAGE_WRITECOMBINE.
+ *
+ * @return
+ * The system address of the range, or NULL.
+ */
+PVOID
+NTAPI
+MmMapIoSpaceEx(
+    _In_ PHYSICAL_ADDRESS PhysicalAddress,
+    _In_ SIZE_T NumberOfBytes,
+    _In_ ULONG Protect)
+{
+    ULONG ProtectionMask = MiMakeProtectionMask(Protect);
+    MEMORY_CACHING_TYPE CacheType;
+
+    if (ProtectionMask == MM_INVALID_PROTECTION || (ProtectionMask & MM_PROTECT_ACCESS) == MM_ZERO_ACCESS)
+        return NULL;
+
+    /* Write combined memory is never executable */
+    if ((ProtectionMask & MM_EXECUTE) && (ProtectionMask & MM_PROTECT_SPECIAL) == MM_WRITECOMBINE)
+        return NULL;
+
+    switch (ProtectionMask & MM_PROTECT_SPECIAL)
+    {
+        case MM_NOCACHE:
+            CacheType = MmNonCached;
+            break;
+
+        case MM_WRITECOMBINE:
+            CacheType = MmWriteCombined;
+            break;
+
+        default:
+            CacheType = MmCached;
+            break;
+    }
+
+    return MiMapIoSpace(PhysicalAddress, NumberOfBytes, CacheType, ProtectionMask & MM_PROTECT_ACCESS);
 }
 
 /*

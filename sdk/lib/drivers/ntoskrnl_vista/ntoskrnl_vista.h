@@ -214,16 +214,6 @@ NTAPI
 KeStartDynamicProcessor(
     _In_ PVOID ProcessorState);
 
-/* MEMORY MANAGER *************************************************************/
-
-NTKRNLVISTAAPI
-PVOID
-NTAPI
-MmMapInSpaceEx(
-    _In_ PHYSICAL_ADDRESS PhysicalAddress,
-    _In_ SIZE_T NumberOfBytes,
-    _In_ ULONG Flags);
-
 /* SYSTEM INFORMATION *********************************************************/
 
 NTKRNLVISTAAPI

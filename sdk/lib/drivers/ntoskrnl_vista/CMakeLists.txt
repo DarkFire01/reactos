@@ -13,7 +13,6 @@ list(APPEND SOURCE
     hvl.c
     io.c
     ke.c
-    mm.c
     nt.c
     rtl.c
     string.c

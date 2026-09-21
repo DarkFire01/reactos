@@ -651,6 +651,7 @@
 @ stdcall KeLeaveCriticalRegion() _KeLeaveCriticalRegion
 @ stdcall KeLeaveGuardedRegion() _KeLeaveGuardedRegion
 @ extern KeLoaderBlock
+@ cdecl -arch=x86_64 -private KeGetCurrentIrql() KxGetCurrentIrql
 @ cdecl -arch=x86_64 -private KeLowerIrql(long) KxLowerIrql
 @ extern KeNumberProcessors
 @ stdcall -arch=i386,arm KeProfileInterrupt(ptr)
@@ -1717,6 +1718,8 @@
 # C runtime helpers
 @ cdecl _strtoui64()
 @ cdecl memcpy_s()
+@ cdecl sscanf_s()
+@ cdecl strcpy_s()
 @ cdecl strncpy_s()
 @ cdecl strtok_s()
 @ cdecl wcscpy_s()
@@ -1734,14 +1737,17 @@
 # Event Tracing for Windows
 @ stdcall -version=0x600+ EtwEventEnabled(int64 ptr)
 @ stdcall -version=0x600+ EtwRegister(ptr ptr ptr ptr)
+@ stdcall -version=0xa00+ EtwSetInformation(int64 long ptr long)
 @ stdcall -version=0x600+ EtwUnregister(int64)
 @ stdcall -version=0x600+ EtwWrite(int64 ptr ptr long ptr)
+@ stdcall -version=0x600+ EtwWriteTransfer(int64 ptr ptr ptr long ptr)
 
 # Executive
 @ fastcall -version=0x600+ ExAcquireSpinLockExclusive(ptr)
 @ fastcall -version=0x600+ ExAcquireSpinLockShared(ptr)
 @ fastcall -version=0x600+ ExReleaseSpinLockExclusive(ptr long)
 @ fastcall -version=0x600+ ExReleaseSpinLockShared(ptr long)
+@ stdcall -version=0x602+ ExGetFirmwareEnvironmentVariable(ptr ptr ptr ptr ptr)
 @ stdcall -version=0x603+ ExSetTimer(ptr int64 int64 ptr)
 @ stdcall -version=0x602+ ExTryQueueWorkItem(ptr long)
 
@@ -1799,13 +1805,14 @@
 
 # Memory Manager
 @ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
-@ stdcall -version=0xa00+ MmMapInSpaceEx(int64 long long)
+@ stdcall -version=0xa00+ MmMapIoSpaceEx(int64 long long)
 
 # System information queries
 @ stdcall -version=0x602+ NtQuerySystemInformationEx(long ptr long ptr long ptr)
 @ stdcall -version=0x602+ ZwQuerySystemInformationEx(long ptr long ptr long ptr)
 
 # Object Manager
+@ stdcall -version=0x600+ ObDereferenceObjectDeferDelete(ptr)
 @ fastcall -version=0x601+ ObfDereferenceObjectWithTag(ptr long)
 @ fastcall -version=0x601+ ObfReferenceObjectWithTag(ptr long)
 
