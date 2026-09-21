@@ -105,6 +105,9 @@ list(APPEND SOURCE_TRANSLATOR
 # shared between this driver and ec/driver. Only this driver is built here, so
 # they are compiled straight in.
 #
+list(APPEND SOURCE_RTL
+    rtl/kpushlock.cpp)
+
 list(APPEND SOURCE_EC
     ec/lib/activitytracker.cpp
     ec/lib/dispatch.cpp
@@ -149,10 +152,18 @@ add_library(netadaptercx MODULE
     ${SOURCE_BM}
     ${SOURCE_TRANSLATOR}
     ${SOURCE_EC}
+    ${SOURCE_RTL}
     netadaptercx.rc)
 
 set_module_type(netadaptercx kmdfdriver)
 target_link_libraries(netadaptercx rsclib seglib)
+
+# The drop is built against an ntifs level kernel surface, see inc/NetCxKernel.h.
+if(MSVC)
+    target_compile_options(netadaptercx PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/FINetCxKernel.h>)
+else()
+    target_compile_options(netadaptercx PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-include NetCxKernel.h>)
+endif()
 add_importlibs(netadaptercx ndis ntoskrnl hal)
 
 target_include_directories(netadaptercx BEFORE PRIVATE
