@@ -30,6 +30,7 @@ list(APPEND SOURCE_ADAPTER
     adapter/nxexecutioncontextapi.cpp
     adapter/nxexecutioncontexttask.cpp
     adapter/nxextension.cpp
+    adapter/nxmemoryapi.cpp
     adapter/nxoffload.cpp
     adapter/nxpowerpolicyapi.cpp
     adapter/nxqueue.cpp
@@ -107,6 +108,7 @@ list(APPEND SOURCE_TRANSLATOR
 # they are compiled straight in.
 #
 list(APPEND SOURCE_RTL
+    rtl/knew.cpp
     rtl/kpushlock.cpp)
 
 list(APPEND SOURCE_EC
@@ -157,7 +159,7 @@ add_library(netadaptercx MODULE
     netadaptercx.rc)
 
 set_module_type(netadaptercx kmdfdriver)
-target_link_libraries(netadaptercx pktmonclnt rsclib seglib smfx)
+target_link_libraries(netadaptercx pktmonclnt rsclib seglib smfx wdmsec)
 
 # if constexpr and nested namespace definitions are used throughout the drop.
 set_target_properties(netadaptercx PROPERTIES CXX_STANDARD 17)
@@ -199,9 +201,7 @@ target_include_directories(netadaptercx BEFORE PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/translator/segmentation
     ${REACTOS_SOURCE_DIR}/sdk/include/ddk/netcx
     ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf
-    ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/kmdf/inc/private
-    ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc
-    ${REACTOS_SOURCE_DIR}/drivers/usb/usb3-reactos/inc/pci)
+    ${REACTOS_SOURCE_DIR}/sdk/lib/drivers/wdf/kmdf/inc/private)
 
 # The client interface version this build serves, as the Windows 11 24H2 class extension does.
 target_compile_definitions(netadaptercx PRIVATE
