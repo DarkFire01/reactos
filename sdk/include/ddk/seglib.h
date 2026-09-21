@@ -1,17 +1,16 @@
 /*
- * PROJECT:     ReactOS NetAdapterCx
+ * PROJECT:     ReactOS
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     Software segmentation and checksum library
  *
  * The fallback that performs LSO, USO and checksum in software when the
- * hardware cannot. Microsoft links it from an internal source tree, so the
- * implementation in translator/seglibstub.cpp is a stub that announces
- * itself and fails, see there.
+ * hardware cannot. Microsoft links it from an internal source tree, so
+ * sdk/lib/drivers/seglib is a stub that announces itself and fails.
  */
 
 #pragma once
 
-#include <BatchingLib.h>
+#include <batchinglib.h>
 
 #define SEGLIB_OFFLOAD_PERFORM_NONE     0x00000000
 #define SEGLIB_OFFLOAD_PERFORM_LSO      0x00000001

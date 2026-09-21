@@ -1,5 +1,5 @@
 /*
- * PROJECT:     ReactOS NetAdapterCx
+ * PROJECT:     ReactOS
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     Software receive segment coalescing library, stubbed
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
@@ -7,12 +7,12 @@
  * RSCLIB is linked from a Microsoft internal source tree. It is in no WDK and
  * not in the shipping netadaptercx.sys, so there is nothing to port from.
  *
- * Coalescing is an optimisation, so passing every chain through untouched is
+ * Coalescing is an optimization, so passing every chain through untouched is
  * correct, just slower. Each entry point says so on the debug port because a
  * silent pass through looks exactly like hardware RSC being unavailable.
  */
 
-#include "NxXlatPrecomp.hpp"
+#include <ndis.h>
 
 #include <rsclib.h>
 
