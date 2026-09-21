@@ -176,6 +176,49 @@ NdisMDeregisterMiniportDriver(
     ExFreePoolWithTag(Miniport, NDIS_TAG);
 }
 
+/* Attributes */
+
+/*
+ * The core keeps the NDIS 5 attribute flags, so the 6.x registration flags are
+ * mapped onto them. A 6.x miniport is always deserialized.
+ */
+static
+ULONG
+Mini6TranslateAttributeFlags(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ ULONG AttributeFlags)
+{
+    ULONG Flags = NDIS_ATTRIBUTE_DESERIALIZE | NDIS_ATTRIBUTE_USES_SAFE_BUFFER_APIS;
+
+    if (Adapter->NdisMiniportBlock.DriverHandle->Characteristics6.Flags & NDIS_INTERMEDIATE_DRIVER)
+        Flags |= NDIS_ATTRIBUTE_INTERMEDIATE_DRIVER;
+    if (AttributeFlags & NDIS_MINIPORT_ATTRIBUTES_SURPRISE_REMOVE_OK)
+        Flags |= NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK;
+    if (AttributeFlags & NDIS_MINIPORT_ATTRIBUTES_NOT_CO_NDIS)
+        Flags |= NDIS_ATTRIBUTE_NOT_CO_NDIS;
+    if (AttributeFlags & NDIS_MINIPORT_ATTRIBUTES_DO_NOT_BIND_TO_ALL_CO)
+        Flags |= NDIS_ATTRIBUTE_DO_NOT_BIND_TO_ALL_CO;
+    if (AttributeFlags & NDIS_MINIPORT_ATTRIBUTES_NO_HALT_ON_SUSPEND)
+        Flags |= NDIS_ATTRIBUTE_NO_HALT_ON_SUSPEND;
+    if (AttributeFlags & NDIS_MINIPORT_ATTRIBUTES_BUS_MASTER)
+        Flags |= NDIS_ATTRIBUTE_BUS_MASTER;
+
+    return Flags;
+}
+
+/**
+ * @brief
+ * Records one set of attributes a 6.x miniport describes itself with.
+ *
+ * @param[in] NdisMiniportHandle
+ * The adapter handle given to MiniportInitializeEx.
+ *
+ * @param[in] MiniportAttributes
+ * The attributes, dispatched on their header type.
+ *
+ * @return
+ * NDIS_STATUS_SUCCESS, or the reason the attributes were refused.
+ */
 _Use_decl_annotations_
 NDIS_STATUS
 NTAPI
@@ -194,28 +237,30 @@ NdisMSetMiniportAttributes(
             PNDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES Registration =
                 &MiniportAttributes->RegistrationAttributes;
 
-            /*
-             * The 6.x registration attributes carry what NdisMSetAttributesEx
-             * took as separate arguments, so the 5.x path does the work.
-             */
             NdisMSetAttributesEx(NdisMiniportHandle,
                                  Registration->MiniportAdapterContext,
                                  Registration->CheckForHangTimeInSeconds,
-                                 Registration->AttributeFlags,
+                                 Mini6TranslateAttributeFlags(Adapter, Registration->AttributeFlags),
                                  Registration->InterfaceType);
-
             return NDIS_STATUS_SUCCESS;
         }
 
         case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES:
-            /* Accepted and ignored until the general attributes are described. */
-            NDIS_DbgPrint(MID_TRACE, ("General attributes not handled yet.\n"));
+            return CoreSetGeneralAttributes(Adapter, &MiniportAttributes->GeneralAttributes);
+
+        case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_OFFLOAD_ATTRIBUTES:
+        case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES:
+        case NDIS_OBJECT_TYPE_MINIPORT_ADD_DEVICE_REGISTRATION_ATTRIBUTES:
+        case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_HARDWARE_ASSIST_ATTRIBUTES:
+        case NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_NDK_ATTRIBUTES:
+            /* No protocol here asks for these features, so nothing is recorded */
+            NDIS_DbgPrint(MID_TRACE, ("Attributes type 0x%x accepted and not used.\n",
+                                      MiniportAttributes->Header.Type));
             return NDIS_STATUS_SUCCESS;
 
         default:
-            NDIS_DbgPrint(MIN_TRACE, ("Unsupported attributes type 0x%x.\n",
+            NDIS_DbgPrint(MIN_TRACE, ("Unknown attributes type 0x%x.\n",
                                       MiniportAttributes->Header.Type));
-            UNREFERENCED_PARAMETER(Adapter);
-            return NDIS_STATUS_NOT_SUPPORTED;
+            return STATUS_INVALID_PARAMETER;
     }
 }
