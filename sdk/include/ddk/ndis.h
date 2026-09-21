@@ -888,6 +888,8 @@ typedef MDL NDIS_BUFFER, *PNDIS_BUFFER;
 #define NDIS_ATTRIBUTE_SURPRISE_REMOVE_OK       0x00000080
 #define NDIS_ATTRIBUTE_NOT_CO_NDIS              0x00000100
 #define NDIS_ATTRIBUTE_USES_SAFE_BUFFER_APIS    0x00000200
+#define NDIS_ATTRIBUTE_DO_NOT_BIND_TO_ALL_CO    0x00000400
+#define NDIS_ATTRIBUTE_MINIPORT_PADS_SHORT_PACKETS 0x00000800
 
 /* Lock */
 
@@ -6526,6 +6528,9 @@ typedef	NDIS_WAN_MAC_CHARACTERISTICS    *PNDIS_WAN_MAC_CHARACTERISTICS;
 #include <ndis/statusindication.h>
 #include <ndis/statusconvert.h>
 #include <ndis/ndis6.h>
+#include <ndis/interrupt.h>
+#include <ndis/sgdma.h>
+#include <ndis/services.h>
 #endif /* NDIS_SUPPORT_NDIS6 */
 
 #ifdef __cplusplus
