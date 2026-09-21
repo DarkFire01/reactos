@@ -2,7 +2,7 @@
  * Setupapi install routines
  *
  * Copyright 2002 Alexandre Julliard for CodeWeavers
- *           2005-2006 Hervé Poussineau (hpoussin@reactos.org)
+ *           2005-2006 Hervï¿½ Poussineau (hpoussin@reactos.org)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -68,6 +68,8 @@ struct registry_callback_info
 {
     HKEY default_root;
     BOOL delete;
+    /* The device instance key, when HKR is a device's hardware key */
+    HKEY device_key;
 };
 
 /* info passed to callback functions dealing with registering dlls */
@@ -94,6 +96,7 @@ struct needs_callback_info
     PSP_DEVINFO_DATA devinfo_data;
     PVOID            reserved1;
     PVOID            reserved2;
+    HKEY             device_key;
 };
 
 typedef BOOL (*iterate_fields_func)( HINF hinf, PCWSTR field, void *arg );
@@ -419,6 +422,19 @@ static BOOL do_reg_operation( HKEY hkey, const WCHAR *value, INFCONTEXT *context
  *
  * Called once for each AddReg and DelReg entry in a given section.
  */
+/* Whether the value an AddReg line names is a filter list, which the device instance key holds */
+static BOOL is_device_instance_value( INFCONTEXT *context )
+{
+    static const WCHAR UpperFilters[] = {'U','p','p','e','r','F','i','l','t','e','r','s',0};
+    static const WCHAR LowerFilters[] = {'L','o','w','e','r','F','i','l','t','e','r','s',0};
+    WCHAR value[MAX_INF_STRING_LENGTH];
+
+    if (!SetupGetStringFieldW( context, 3, value, sizeof(value)/sizeof(WCHAR), NULL ))
+        return FALSE;
+
+    return !strcmpiW( value, UpperFilters ) || !strcmpiW( value, LowerFilters );
+}
+
 static BOOL registry_callback( HINF hinf, PCWSTR field, void *arg )
 {
     struct registry_callback_info *info = arg;
@@ -478,6 +494,13 @@ static BOOL registry_callback( HINF hinf, PCWSTR field, void *arg )
         /* get key */
         if (!SetupGetStringFieldW( &context, 2, buffer, sizeof(buffer)/sizeof(WCHAR), NULL ))
             *buffer = 0;
+
+        /* Filters at the top of a hardware key belong to the device instance */
+        if (info->device_key && root_key == info->default_root && !*buffer &&
+            is_device_instance_value( &context ))
+        {
+            root_key = info->device_key;
+        }
 
         /* get flags */
         if (!SetupGetIntField( &context, 4, &flags )) flags = 0;
@@ -1311,9 +1334,9 @@ static BOOL needs_callback( HINF hinf, PCWSTR field, void *arg )
     switch (info->type)
     {
         case 0:
-            return SetupInstallFromInfSectionW(info->owner, *(HINF*)hinf, field, info->flags,
+            return SETUPAPI_InstallFromInfSection(info->owner, *(HINF*)hinf, field, info->flags,
                info->key_root, info->src_root, info->copy_flags, info->callback,
-               info->context, info->devinfo, info->devinfo_data);
+               info->context, info->devinfo, info->devinfo_data, info->device_key);
         case 1:
             return SetupInstallServicesFromInfSectionExW(*(HINF*)hinf, field, info->flags,
                 info->devinfo, info->devinfo_data, info->reserved1, info->reserved2);
@@ -1332,6 +1355,25 @@ BOOL WINAPI SetupInstallFromInfSectionW( HWND owner, HINF hinf, PCWSTR section, 
                                          PSP_FILE_CALLBACK_W callback, PVOID context,
                                          HDEVINFO devinfo, PSP_DEVINFO_DATA devinfo_data )
 {
+    return SETUPAPI_InstallFromInfSection( owner, hinf, section, flags, key_root, src_root,
+                                           copy_flags, callback, context, devinfo, devinfo_data,
+                                           NULL );
+}
+
+
+/***********************************************************************
+ *            SETUPAPI_InstallFromInfSection
+ *
+ * Installs a section. When device_key is given, key_root is the device's
+ * hardware key and the device properties an AddReg names at its top, like
+ * UpperFilters, go to the device instance key instead.
+ */
+BOOL SETUPAPI_InstallFromInfSection( HWND owner, HINF hinf, PCWSTR section, UINT flags,
+                                     HKEY key_root, PCWSTR src_root, UINT copy_flags,
+                                     PSP_FILE_CALLBACK_W callback, PVOID context,
+                                     HDEVINFO devinfo, PSP_DEVINFO_DATA devinfo_data,
+                                     HKEY device_key )
+{
     struct needs_callback_info needs_info;
 
     /* Parse 'Include' and 'Needs' directives */
@@ -1346,6 +1388,7 @@ BOOL WINAPI SetupInstallFromInfSectionW( HWND owner, HINF hinf, PCWSTR section, 
     needs_info.context = context;
     needs_info.devinfo = devinfo;
     needs_info.devinfo_data = devinfo_data;
+    needs_info.device_key = device_key;
     iterate_section_fields( hinf, section, Needs, needs_callback, &needs_info);
 
     if (flags & SPINST_FILES)
@@ -1432,6 +1475,7 @@ BOOL WINAPI SetupInstallFromInfSectionW( HWND owner, HINF hinf, PCWSTR section, 
         struct registry_callback_info info;
 
         info.default_root = key_root;
+        info.device_key = device_key;
         info.delete = TRUE;
         if (!iterate_section_fields( hinf, section, DelReg, registry_callback, &info ))
             return FALSE;
@@ -2185,6 +2229,7 @@ SetupInstallServicesFromInfSectionExW(
         needs_info.devinfo_data = DeviceInfoData;
         needs_info.reserved1 = Reserved1;
         needs_info.reserved2 = Reserved2;
+        needs_info.device_key = NULL;
         iterate_section_fields(InfHandle, SectionName, Needs, needs_callback, &needs_info);
 
         if (Flags & SPSVCINST_STOPSERVICE)
