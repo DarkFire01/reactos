@@ -241,6 +241,66 @@ NdisMSetMiniportAttributes(
     _In_ NDIS_HANDLE NdisMiniportHandle,
     _In_ PNDIS_MINIPORT_ADAPTER_ATTRIBUTES MiniportAttributes);
 
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisMPauseComplete(
+    _In_ NDIS_HANDLE MiniportAdapterHandle);
+
+VOID
+NTAPI
+NdisMRestartComplete(
+    _In_ NDIS_HANDLE MiniportAdapterHandle,
+    _In_ NDIS_STATUS Status);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisMOidRequestComplete(
+    _In_ NDIS_HANDLE MiniportAdapterHandle,
+    _In_ PNDIS_OID_REQUEST OidRequest,
+    _In_ NDIS_STATUS Status);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisMIndicateStatusEx(
+    _In_ NDIS_HANDLE MiniportAdapterHandle,
+    _In_ PNDIS_STATUS_INDICATION StatusIndication);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisMSendNetBufferListsComplete(
+    _In_ NDIS_HANDLE MiniportAdapterHandle,
+    _In_ PNET_BUFFER_LIST NetBufferList,
+    _In_ ULONG SendCompleteFlags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisMIndicateReceiveNetBufferLists(
+    _In_ NDIS_HANDLE MiniportAdapterHandle,
+    _In_ PNET_BUFFER_LIST NetBufferList,
+    _In_ NDIS_PORT_NUMBER PortNumber,
+    _In_ ULONG NumberOfNetBufferLists,
+    _In_ ULONG ReceiveFlags);
+
+_Must_inspect_result_
+_IRQL_requires_(PASSIVE_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisOpenConfigurationEx(
+    _In_ PNDIS_CONFIGURATION_OBJECT ConfigObject,
+    _Out_ PNDIS_HANDLE ConfigurationHandle);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisIfGetInterfaceIndexFromNetLuid(
+    _In_ NET_LUID NetLuid,
+    _Out_ PNET_IFINDEX pIfIndex);
+
 #ifdef __cplusplus
 }
 #endif
