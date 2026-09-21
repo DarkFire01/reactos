@@ -232,13 +232,6 @@ KeInitializeSecondaryInterruptServices(
     _In_opt_ PVOID HalExports
 );
 
-NTSTATUS
-NTAPI
-KeAllocateSecondaryVector(
-    _In_ ULONG Gsiv,
-    _Out_ PULONG Vector
-);
-
 BOOLEAN
 NTAPI
 KeDispatchSecondaryInterrupt(
