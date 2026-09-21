@@ -3104,4 +3104,132 @@ ExAllocatePoolWithQuotaTag(IN POOL_TYPE PoolType,
     return Buffer;
 }
 
+
+/*
+ * Map the flag form of a pool request onto the pool type the allocator takes.
+ * A request that names no backing store is a caller bug and is caught above.
+ */
+static
+POOL_TYPE
+NTAPI
+ExpPoolTypeFromFlags(
+    _In_ POOL_FLAGS Flags)
+{
+    POOL_TYPE PoolType;
+    BOOLEAN Aligned;
+
+    Aligned = (Flags & POOL_FLAG_CACHE_ALIGNED) != 0;
+
+    if (Flags & POOL_FLAG_PAGED)
+        PoolType = Aligned ? PagedPoolCacheAligned : PagedPool;
+    else if (Flags & POOL_FLAG_NON_PAGED_EXECUTE)
+        PoolType = Aligned ? NonPagedPoolCacheAligned : NonPagedPool;
+    else
+        PoolType = Aligned ? NonPagedPoolNxCacheAligned : NonPagedPoolNx;
+
+    if (Flags & POOL_FLAG_SESSION)
+        PoolType |= SESSION_POOL_MASK;
+
+    if (Flags & POOL_FLAG_RAISE_ON_FAILURE)
+        PoolType |= POOL_RAISE_IF_ALLOCATION_FAILURE;
+    else if (Flags & POOL_FLAG_USE_QUOTA)
+        PoolType |= POOL_QUOTA_FAIL_INSTEAD_OF_RAISE;
+
+    return PoolType;
+}
+
+/*
+ * @implemented
+ */
+PVOID
+NTAPI
+ExAllocatePool3(
+    _In_ POOL_FLAGS Flags,
+    _In_ SIZE_T NumberOfBytes,
+    _In_ ULONG Tag,
+    _In_reads_opt_(ExtendedParametersCount) PCPOOL_EXTENDED_PARAMETER ExtendedParameters,
+    _In_ ULONG ExtendedParametersCount)
+{
+    EX_POOL_PRIORITY Priority;
+    BOOLEAN Prioritized;
+    POOL_TYPE PoolType;
+    PVOID Block;
+    ULONG Index;
+
+    if (!(Flags & (POOL_FLAG_PAGED | POOL_FLAG_NON_PAGED | POOL_FLAG_NON_PAGED_EXECUTE)))
+    {
+        DPRINT1("Pool request 0x%I64x names no backing store, tag %.4s\n", Flags, (PCHAR)&Tag);
+        return NULL;
+    }
+
+    Priority = NormalPoolPriority;
+    Prioritized = FALSE;
+
+    for (Index = 0; Index < ExtendedParametersCount; Index++)
+    {
+        if (ExtendedParameters[Index].Type == PoolExtendedParameterPriority)
+        {
+            Priority = ExtendedParameters[Index].Priority;
+            Prioritized = TRUE;
+        }
+        else if (!ExtendedParameters[Index].Optional)
+        {
+            DPRINT1("Pool parameter %I64u is required but not supported\n",
+                    (ULONG64)ExtendedParameters[Index].Type);
+            return NULL;
+        }
+    }
+
+    PoolType = ExpPoolTypeFromFlags(Flags);
+
+    if (Flags & POOL_FLAG_USE_QUOTA)
+        Block = ExAllocatePoolWithQuotaTag(PoolType, NumberOfBytes, Tag);
+    else if (Prioritized)
+        Block = ExAllocatePoolWithTagPriority(PoolType, NumberOfBytes, Tag, Priority);
+    else
+        Block = ExAllocatePoolWithTag(PoolType, NumberOfBytes, Tag);
+
+    /* Unlike the older entry points this one hands back zeroed memory by default */
+    if ((Block != NULL) && !(Flags & POOL_FLAG_UNINITIALIZED))
+        RtlZeroMemory(Block, NumberOfBytes);
+
+    return Block;
+}
+
+/*
+ * @implemented
+ */
+PVOID
+NTAPI
+ExAllocatePool2(
+    _In_ POOL_FLAGS Flags,
+    _In_ SIZE_T NumberOfBytes,
+    _In_ ULONG Tag)
+{
+    return ExAllocatePool3(Flags, NumberOfBytes, Tag, NULL, 0);
+}
+
+/*
+ * @implemented
+ */
+VOID
+NTAPI
+ExFreePool2(
+    _Pre_notnull_ PVOID P,
+    _In_ ULONG Tag,
+    _In_reads_opt_(ExtendedParametersCount) PCPOOL_EXTENDED_PARAMETER ExtendedParameters,
+    _In_ ULONG ExtendedParametersCount)
+{
+    ULONG Index;
+
+    for (Index = 0; Index < ExtendedParametersCount; Index++)
+    {
+        if (!ExtendedParameters[Index].Optional)
+            DPRINT1("Pool parameter %I64u is required but not supported\n",
+                    (ULONG64)ExtendedParameters[Index].Type);
+    }
+
+    ExFreePoolWithTag(P, Tag);
+}
+
 /* EOF */
