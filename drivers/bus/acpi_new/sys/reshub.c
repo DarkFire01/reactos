@@ -27,7 +27,7 @@ UacpiAllocateGsivForSecondaryInterrupt(
 {
     NTSTATUS Status;
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
     if (HALPRIVATEDISPATCH->HalAllocateGsivForSecondaryInterrupt == NULL)
     {
         // No allocator: a GSIV minted here could never be connected.
