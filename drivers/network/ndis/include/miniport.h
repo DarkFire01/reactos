@@ -30,6 +30,9 @@ typedef struct _NDIS_M_DRIVER_BLOCK {
     NDIS_MINIPORT_DRIVER_CHARACTERISTICS Characteristics6;
     NDIS_HANDLE                     MiniportDriverContext;
     BOOLEAN                         Ndis6Driver;
+    /* From NdisSetOptionalHandlers */
+    NDIS_MINIPORT_PNP_CHARACTERISTICS PnpCharacteristics;
+    NDIS_MINIPORT_SS_CHARACTERISTICS SsCharacteristics;
 #if !defined(_MSC_VER) && defined(_NDIS_)
 } NDIS_M_DRIVER_BLOCK_COMPATIBILITY_HACK_DONT_USE;
 #else
@@ -41,6 +44,9 @@ typedef struct _NDIS_M_DEVICE_BLOCK {
     PDEVICE_OBJECT DeviceObject;
     PNDIS_STRING   SymbolicName;
     PDRIVER_DISPATCH MajorFunction[IRP_MJ_MAXIMUM_FUNCTION+1];
+    /* NdisRegisterDeviceEx keeps its own copy of the link name, and the caller's extension */
+    UNICODE_STRING SymbolicLink;
+    PVOID          ReservedExtension;
 } NDIS_M_DEVICE_BLOCK, *PNDIS_M_DEVICE_BLOCK;
 
 /* resources allocated on behalf on the miniport */
@@ -118,6 +124,9 @@ typedef struct _MINIPORT_CORE
 
     /* Only while the miniport initializes, for the NDIS 5 shim */
     PNDIS_WRAPPER_CONTEXT WrapperContext;
+
+    /* From MiniportAddDevice, for the miniport's PnP handlers and MiniportInitializeEx */
+    NDIS_HANDLE AddDeviceContext;
 
     /* Guards State, OutstandingSends and the OID queue. Kept apart from the
        miniport block lock, which the NDIS 5 paths hold while calling out. */
