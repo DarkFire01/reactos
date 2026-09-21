@@ -4,26 +4,22 @@
  * PURPOSE:     Buffer pool interface between the class extension and its
  *              buffer manager
  *
- * Layouts recovered from NetAdapterCx.pdb, see Reference/NetCx.
+ * The drop is an older revision than NetAdapterCx.pdb: its data header has a
+ * single virtual address and its pool entry points count in SIZE_T and ULONG.
+ * Both halves are compiled from the drop, so its shape is the one used here.
  */
 
 #pragma once
+
+#include <NetClientTypes.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef enum _NET_CLIENT_TRI_STATE
-{
-    NET_CLIENT_TRI_STATE_FALSE = 0,
-    NET_CLIENT_TRI_STATE_TRUE = 1,
-    NET_CLIENT_TRI_STATE_DEFAULT = 2
-} NET_CLIENT_TRI_STATE;
-
 /*
  * OS_ONLY_ALLOCATE is not in the 26100 binary, which has DRIVER_V2 at the
- * same value. The imported sources are a different revision and use the older
- * name, so both are declared.
+ * same value. The imported sources use the older name, so both are declared.
  */
 typedef enum _NET_CLIENT_MEMORY_MANAGEMENT_MODE
 {
@@ -48,66 +44,72 @@ typedef enum _NET_CLIENT_BUFFER_POOL_FLAGS
 typedef struct DECLSPEC_ALIGN(8) _NET_DATA_HEADER
 {
     UINT64 LogicalAddress;
-    PVOID KmVirtualAddress;
-    PVOID UmVirtualAddress;
-    MDL *Mdl;
-    UINT32 Index;
+    PVOID VirtualAddress;
+    PMDL Mdl;
 } NET_DATA_HEADER;
 
 typedef struct _NET_CLIENT_MEMORY_CONSTRAINTS
 {
     NET_CLIENT_MEMORY_MAPPING_REQUIREMENT MappingRequirement;
-    UINT64 AlignmentRequirement;
+    SIZE_T AlignmentRequirement;
     struct
     {
         PVOID DmaAdapter;
         PVOID PhysicalDeviceObject;
-        LARGE_INTEGER MaximumPhysicalAddress;
+        PHYSICAL_ADDRESS MaximumPhysicalAddress;
         NET_CLIENT_TRI_STATE CacheEnabled;
-        UINT32 PreferredNode;
+        ULONG PreferredNode;
     } Dma;
 } NET_CLIENT_MEMORY_CONSTRAINTS;
 
 typedef struct _NET_CLIENT_BUFFER_POOL_CONFIG
 {
     NET_CLIENT_MEMORY_CONSTRAINTS *MemoryConstraints;
-    UINT64 BufferCount;
-    UINT64 BufferSize;
-    UINT64 BufferAlignmentOffset;
-    UINT64 BufferAlignment;
-    UINT32 PreferredNode;
+    SIZE_T BufferCount;
+    SIZE_T BufferSize;
+    SIZE_T BufferAlignmentOffset;
+    SIZE_T BufferAlignment;
+    ULONG PreferredNode;
     NET_CLIENT_BUFFER_POOL_FLAGS Flag;
     struct _EPROCESS *Process;
 } NET_CLIENT_BUFFER_POOL_CONFIG;
 
 DECLARE_HANDLE(NET_CLIENT_BUFFER_POOL);
 
-typedef VOID (*NET_CLIENT_ENUMERATE_BUFFERS_CALLBACK)(
+typedef
+VOID
+(*ENUMERATE_CALLBACK)(
     _In_ PVOID Context,
-    _In_ NET_DATA_HEADER *const DataHeader);
+    _In_ SIZE_T Index,
+    _In_ UINT64 LogicalAddress,
+    _In_ PVOID VirtualAddress);
 
 typedef struct _NET_CLIENT_BUFFER_POOL_DISPATCH
 {
-    UINT32 Size;
+    ULONG Size;
 
-    VOID (*NetClientDestroyBufferPool)(
-        _In_ NET_CLIENT_BUFFER_POOL BufferPool);
+    VOID
+    (*NetClientDestroyBufferPool)(
+        _In_ NET_CLIENT_BUFFER_POOL Pool);
 
-    VOID (*NetClientEnumerateBuffers)(
-        _In_ NET_CLIENT_BUFFER_POOL BufferPool,
-        _In_ NET_CLIENT_ENUMERATE_BUFFERS_CALLBACK Callback,
+    VOID
+    (*NetClientEnumerateBuffers)(
+        _In_ NET_CLIENT_BUFFER_POOL Pool,
+        _In_ ENUMERATE_CALLBACK Callback,
         _In_ PVOID Context);
 
-    NTSTATUS (*NetClientAllocateBuffer)(
-        _In_ NET_CLIENT_BUFFER_POOL BufferPool,
-        _Out_ UINT64 *BufferIndex,
-        _Out_ NET_DATA_HEADER *DataHeader,
-        _Inout_ UINT64 *Count);
+    NTSTATUS
+    (*NetClientAllocateBuffer)(
+        _In_ NET_CLIENT_BUFFER_POOL Pool,
+        _Out_ SIZE_T *Index,
+        _Out_ NET_DATA_HEADER *NetDataHeader,
+        _Out_ SIZE_T *NetDataOffset);
 
-    VOID (*NetClientFreeBuffers)(
-        _In_ NET_CLIENT_BUFFER_POOL BufferPool,
-        _In_ UINT64 *BufferIndex,
-        _In_ UINT32 Count);
+    VOID
+    (*NetClientFreeBuffers)(
+        _In_ NET_CLIENT_BUFFER_POOL Pool,
+        _Inout_updates_(NumBuffers) SIZE_T *Buffers,
+        _In_ ULONG NumBuffers);
 } NET_CLIENT_BUFFER_POOL_DISPATCH;
 
 #ifdef __cplusplus
