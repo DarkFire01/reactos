@@ -173,6 +173,7 @@ KeUpdateRunTime(IN PKTRAP_FRAME TrapFrame,
         {
             /* Handle being in a DPC */
             Prcb->DpcTime++;
+            Prcb->DpcTimeCount++;
 
 #if DBG
             /* Update the DPC time */
@@ -193,6 +194,12 @@ KeUpdateRunTime(IN PKTRAP_FRAME TrapFrame,
 #endif
         }
     }
+
+    /* A tick below DISPATCH_LEVEL ends the run at raised IRQL */
+    if (Irql >= DISPATCH_LEVEL)
+        Prcb->DpcWatchdogCount++;
+    else
+        Prcb->DpcWatchdogCount = 0;
 
     /* Update DPC rates */
     Prcb->DpcRequestRate = ((Prcb->DpcData[0].DpcCount - Prcb->DpcLastCount) +
