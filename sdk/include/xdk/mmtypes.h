@@ -141,6 +141,10 @@ typedef enum _MM_PAGE_PRIORITY {
   HighPagePriority = 32
 } MM_PAGE_PRIORITY;
 
+/* OR'd into the priority passed to MmGetSystemAddressForMdlSafe */
+#define MdlMappingNoWrite       0x80000000
+#define MdlMappingNoExecute     0x40000000
+
 typedef enum _MM_SYSTEM_SIZE {
   MmSmallSystem,
   MmMediumSystem,
