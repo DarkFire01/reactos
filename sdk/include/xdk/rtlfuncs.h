@@ -3696,4 +3696,105 @@ $if (_NTIFS_)
 
 #define RtlOffsetToPointer(B,O) ((PCHAR)(((PCHAR)(B)) + ((ULONG_PTR)(O))))
 #define RtlPointerToOffset(B,P) ((ULONG)(((PCHAR)(P)) - ((PCHAR)(B))))
+#if defined(_WIN64) && ((NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__))
+
+NTSYSAPI
+VOID
+NTAPI
+RtlInitializeBitMapEx(
+  _Out_ PRTL_BITMAP_EX BitMapHeader,
+  _In_opt_ __drv_aliasesMem PULONG64 BitMapBuffer,
+  _In_opt_ ULONG64 SizeOfBitMap);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlClearAllBitsEx(
+  _In_ PRTL_BITMAP_EX BitMapHeader);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlSetAllBitsEx(
+  _In_ PRTL_BITMAP_EX BitMapHeader);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlClearBitEx(
+  _In_ PRTL_BITMAP_EX BitMapHeader,
+  _In_range_(<, BitMapHeader->SizeOfBitMap) ULONG64 BitNumber);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlSetBitEx(
+  _In_ PRTL_BITMAP_EX BitMapHeader,
+  _In_range_(<, BitMapHeader->SizeOfBitMap) ULONG64 BitNumber);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlClearBitsEx(
+  _In_ PRTL_BITMAP_EX BitMapHeader,
+  _In_range_(0, BitMapHeader->SizeOfBitMap - NumberToClear) ULONG64 StartingIndex,
+  _In_range_(0, BitMapHeader->SizeOfBitMap - StartingIndex) ULONG64 NumberToClear);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlSetBitsEx(
+  _In_ PRTL_BITMAP_EX BitMapHeader,
+  _In_range_(0, BitMapHeader->SizeOfBitMap - NumberToSet) ULONG64 StartingIndex,
+  _In_range_(0, BitMapHeader->SizeOfBitMap - StartingIndex) ULONG64 NumberToSet);
+
+NTSYSAPI
+ULONG64
+NTAPI
+RtlFindSetBitsEx(
+  _In_ PRTL_BITMAP_EX BitMapHeader,
+  _In_ ULONG64 NumberToFind,
+  _In_ ULONG64 HintIndex);
+
+NTSYSAPI
+ULONG64
+NTAPI
+RtlFindSetBitsAndClearEx(
+  _In_ PRTL_BITMAP_EX BitMapHeader,
+  _In_ ULONG64 NumberToFind,
+  _In_ ULONG64 HintIndex);
+
+NTSYSAPI
+ULONG64
+NTAPI
+RtlNumberOfSetBitsEx(
+  _In_ PRTL_BITMAP_EX BitMapHeader);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlInterlockedSetBitRunEx(
+  _In_ PRTL_BITMAP_EX BitMapHeader,
+  _In_range_(0, BitMapHeader->SizeOfBitMap - NumberToSet) ULONG64 StartingIndex,
+  _In_range_(0, BitMapHeader->SizeOfBitMap - StartingIndex) ULONG64 NumberToSet);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlInterlockedClearBitRunEx(
+  _In_ PRTL_BITMAP_EX BitMapHeader,
+  _In_range_(0, BitMapHeader->SizeOfBitMap - NumberToClear) ULONG64 StartingIndex,
+  _In_range_(0, BitMapHeader->SizeOfBitMap - StartingIndex) ULONG64 NumberToClear);
+
+FORCEINLINE
+BOOLEAN
+RtlCheckBitEx(
+  _In_ PRTL_BITMAP_EX BitMapHeader,
+  _In_range_(<, BitMapHeader->SizeOfBitMap) ULONG64 BitPosition)
+{
+  return BitTest64((LONG64 CONST*)BitMapHeader->Buffer, (LONG64)BitPosition);
+}
+
+#endif /* defined(_WIN64) && ((NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)) */
+
 $endif (_NTIFS_)
