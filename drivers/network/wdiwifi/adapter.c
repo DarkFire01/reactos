@@ -580,11 +580,14 @@ WdiInitializeAdapter(
 
     WdiInitializeCommands(Adapter);
     KeInitializeEvent(&Adapter->OpenCloseDone, NotificationEvent, FALSE);
+    KeInitializeEvent(&Adapter->ScanIdle, NotificationEvent, TRUE);
+    KeInitializeSpinLock(&Adapter->BssLock);
     WdiReadKnobs(Adapter);
     WdiSetDataApi(&Adapter->DataApi);
 
     Adapter->StateWorkItem = NdisAllocateIoWorkItem(Adapter->MiniportAdapterHandle);
-    if (Adapter->StateWorkItem == NULL)
+    Adapter->ScanWorkItem = NdisAllocateIoWorkItem(Adapter->MiniportAdapterHandle);
+    if (Adapter->StateWorkItem == NULL || Adapter->ScanWorkItem == NULL)
     {
         Status = NDIS_STATUS_RESOURCES;
         goto Failed;
@@ -639,6 +642,7 @@ WdiInitializeAdapter(
         goto Failed;
 
     DPRINT1("WLAN adapter up, WDI 0x%lx\n", Adapter->PeerVersion);
+    WdiStartTestScan(Adapter);
     return NDIS_STATUS_SUCCESS;
 
 Failed:
@@ -667,6 +671,8 @@ WdiHaltAdapter(
     LONG i;
 
     PAGED_CODE();
+
+    WdiWaitForScan(Adapter);
 
     if (Adapter->Progress & WDI_PROGRESS_OPERATING)
     {
@@ -724,6 +730,12 @@ WdiHaltAdapter(
     {
         NdisFreeIoWorkItem(Adapter->StateWorkItem);
         Adapter->StateWorkItem = NULL;
+    }
+
+    if (Adapter->ScanWorkItem != NULL)
+    {
+        NdisFreeIoWorkItem(Adapter->ScanWorkItem);
+        Adapter->ScanWorkItem = NULL;
     }
 
     Adapter->Progress = 0;

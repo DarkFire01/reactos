@@ -413,6 +413,13 @@ WdiIndication(
         return;
     }
 
+    if (MessageId == WDI_INDICATION_BSS_ENTRY_LIST)
+    {
+        WdiRecordBssList(Adapter,
+                         (const UCHAR *)(Header + 1),
+                         StatusIndication->StatusBufferSize - sizeof(*Header));
+    }
+
     KeAcquireSpinLock(&Adapter->TaskLock, &OldIrql);
     if (Adapter->TaskArmed &&
         Header->TransactionId == Adapter->TaskTransactionId &&
@@ -429,9 +436,9 @@ WdiIndication(
     }
     KeReleaseSpinLock(&Adapter->TaskLock, OldIrql);
 
-    if (!Ends)
+    if (!Ends && MessageId != WDI_INDICATION_BSS_ENTRY_LIST)
     {
-        DPRINT("Unsolicited WDI indication %u, port %u, transaction %lu\n",
-               MessageId, Header->PortId, Header->TransactionId);
+        DPRINT1("Unsolicited WDI indication %u, port %u, transaction %lu\n",
+                MessageId, Header->PortId, Header->TransactionId);
     }
 }
