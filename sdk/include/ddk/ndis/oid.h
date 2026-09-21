@@ -109,6 +109,12 @@ typedef enum _NDIS_INTERRUPT_MODERATION
     NdisInterruptModerationDisabled
 } NDIS_INTERRUPT_MODERATION, *PNDIS_INTERRUPT_MODERATION;
 
+typedef struct _NDIS_LINK_SPEED
+{
+    ULONG64 XmitLinkSpeed;
+    ULONG64 RcvLinkSpeed;
+} NDIS_LINK_SPEED, *PNDIS_LINK_SPEED;
+
 typedef struct _NDIS_LINK_STATE
 {
     NDIS_OBJECT_HEADER Header;
