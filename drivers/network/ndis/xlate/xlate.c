@@ -101,10 +101,11 @@ NdisXlatePacketArray(
         NetBufferList = NdisAllocateNetBufferAndNetBufferList(Xlate->NblPool, 0, 0, NULL, 0, 0);
         if (NetBufferList == NULL)
         {
-            /* Nothing partial goes out: drop the run and let the caller retry. */
+            /* Nothing partial goes out: drop the run and put the cursor back on its start */
             NdisXlateFreeNetBufferLists(Head);
             Xlate->NetBufferLists = NULL;
             Xlate->NetBufferListCount = 0;
+            Xlate->Translated -= Count;
             return Xlate->Translated < Xlate->PacketCount;
         }
 
@@ -115,6 +116,7 @@ NdisXlatePacketArray(
 
         NET_BUFFER_LIST_INFO(NetBufferList, NetBufferListFrameType) =
             (PVOID)(ULONG_PTR)(Packet->Private.Flags & NDIS_FLAGS_PROTOCOL_ID_MASK);
+        NDIS_SET_NET_BUFFER_LIST_CANCEL_ID(NetBufferList, NDIS_GET_PACKET_CANCEL_ID(Packet));
 
         if (Tail == NULL)
             Head = NetBufferList;

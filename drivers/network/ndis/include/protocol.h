@@ -43,16 +43,36 @@ extern LIST_ENTRY ProtocolListHead;
 extern KSPIN_LOCK ProtocolListLock;
 
 
-NDIS_STATUS
-ProIndicatePacket(
-    PLOGICAL_ADAPTER Adapter,
-    PNDIS_PACKET Packet);
+/* pro5shim.c */
 
-VOID NTAPI
+NDIS_STATUS
+NTAPI
+ProSend(
+    _In_ NDIS_HANDLE MacBindingHandle,
+    _In_ PNDIS_PACKET Packet);
+
+VOID
+NTAPI
 ProSendPackets(
-    IN  NDIS_HANDLE     NdisBindingHandle,
-    IN  PPNDIS_PACKET   PacketArray,
-    IN  UINT            NumberOfPackets);
+    _In_ NDIS_HANDLE NdisBindingHandle,
+    _In_reads_(NumberOfPackets) PPNDIS_PACKET PacketArray,
+    _In_ UINT NumberOfPackets);
+
+NDIS_STATUS
+NTAPI
+ProTransferData(
+    _In_ NDIS_HANDLE MacBindingHandle,
+    _In_ NDIS_HANDLE MacReceiveContext,
+    _In_ UINT ByteOffset,
+    _In_ UINT BytesToTransfer,
+    _Inout_ PNDIS_PACKET Packet,
+    _Out_ PUINT BytesTransferred);
+
+NDIS_STATUS
+NTAPI
+ProRequest(
+    _In_ NDIS_HANDLE MacBindingHandle,
+    _In_ PNDIS_REQUEST NdisRequest);
 
 NTSTATUS
 NTAPI
@@ -65,9 +85,6 @@ NTAPI
 NdisIPnPCancelStopDevice(
     IN PDEVICE_OBJECT DeviceObject,
     PIRP Irp);
-
-NDIS_STATUS
-proSendPacketToMiniport(PLOGICAL_ADAPTER Adapter, PNDIS_PACKET Packet);
 
 VOID
 NTAPI
