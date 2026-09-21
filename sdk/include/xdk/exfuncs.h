@@ -393,6 +393,68 @@ VOID
 NTAPI
 ExInitializePushLock(
   _Out_ PEX_PUSH_LOCK PushLock);
+
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
+
+_IRQL_requires_max_(APC_LEVEL)
+NTKERNELAPI
+VOID
+FASTCALL
+ExAcquirePushLockExclusiveEx(
+  _Inout_ PEX_PUSH_LOCK PushLock,
+  _In_ ULONG Flags);
+
+_IRQL_requires_max_(APC_LEVEL)
+NTKERNELAPI
+VOID
+FASTCALL
+ExAcquirePushLockSharedEx(
+  _Inout_ PEX_PUSH_LOCK PushLock,
+  _In_ ULONG Flags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Must_inspect_result_
+NTKERNELAPI
+BOOLEAN
+FASTCALL
+ExTryAcquirePushLockExclusiveEx(
+  _Inout_ PEX_PUSH_LOCK PushLock,
+  _In_ ULONG Flags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Must_inspect_result_
+NTKERNELAPI
+BOOLEAN
+FASTCALL
+ExTryAcquirePushLockSharedEx(
+  _Inout_ PEX_PUSH_LOCK PushLock,
+  _In_ ULONG Flags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+FASTCALL
+ExReleasePushLockExclusiveEx(
+  _Inout_ PEX_PUSH_LOCK PushLock,
+  _In_ ULONG Flags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+FASTCALL
+ExReleasePushLockSharedEx(
+  _Inout_ PEX_PUSH_LOCK PushLock,
+  _In_ ULONG Flags);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+FASTCALL
+ExReleasePushLockEx(
+  _Inout_ PEX_PUSH_LOCK PushLock,
+  _In_ ULONG Flags);
+
+#endif /* (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__) */
 $endif (_NTIFS_)
 
 #if (NTDDI_VERSION >= NTDDI_WIN2K)
