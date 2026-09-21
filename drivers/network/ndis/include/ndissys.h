@@ -23,8 +23,8 @@
 #define EXPORT NTAPI
 #endif
 
-/* the version of NDIS we claim to be */
-#define NDIS_VERSION 0x00050001
+/* NDIS 6.50, the oldest a WDI miniport registers with */
+#define NDIS_VERSION 0x00060032
 
 #define NDIS_TAG 'SIDN' // "NDIS"
 
