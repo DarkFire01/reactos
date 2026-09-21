@@ -11,4 +11,7 @@
 
 #include <NxTrace.hpp>
 
+/* The power policy sources expect the allocator bases to arrive through here. */
+#include <KNew.h>
+
 TRACELOGGING_DECLARE_PROVIDER(g_hNetAdapterCxEtwProvider);
