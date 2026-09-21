@@ -116,6 +116,7 @@ elseif(ARCH STREQUAL "amd64")
         amd64/unwind-asm.s)
     list(APPEND SOURCE
         bitmap64.c
+        bitmapex.c
         byteswap.c
         amd64/dynfntbl.c
         amd64/except.c

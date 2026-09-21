@@ -754,6 +754,14 @@ typedef struct _RTL_BITMAP_RUN
     ULONG NumberOfBits;
 } RTL_BITMAP_RUN, *PRTL_BITMAP_RUN;
 
+#ifdef _WIN64
+typedef struct _RTL_BITMAP_EX
+{
+    ULONG64 SizeOfBitMap;
+    PULONG64 Buffer;
+} RTL_BITMAP_EX, *PRTL_BITMAP_EX;
+#endif
+
 //
 // RtlGenerateXxxName context
 //

@@ -256,6 +256,39 @@ typedef struct _RTL_BITMAP_RUN64
     ULONG64 NumberOfBits;
 } RTL_BITMAP_RUN64, *PRTL_BITMAP_RUN64;
 
+VOID
+NTAPI
+RtlClearBits64(
+    _In_ PRTL_BITMAP64 BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 NumberToClear);
+
+VOID
+NTAPI
+RtlSetBits64(
+    _In_ PRTL_BITMAP64 BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 NumberToSet);
+
+ULONG64
+NTAPI
+RtlFindSetBits64(
+    _In_ PRTL_BITMAP64 BitMapHeader,
+    _In_ ULONG64 NumberToFind,
+    _In_ ULONG64 HintIndex);
+
+ULONG64
+NTAPI
+RtlFindSetBitsAndClear64(
+    _In_ PRTL_BITMAP64 BitMapHeader,
+    _In_ ULONG64 NumberToFind,
+    _In_ ULONG64 HintIndex);
+
+ULONG64
+NTAPI
+RtlNumberOfSetBits64(
+    _In_ PRTL_BITMAP64 BitMapHeader);
+
 /* Tags for the String Allocators */
 #define TAG_USTR        'RTSU'
 #define TAG_ASTR        'RTSA'
