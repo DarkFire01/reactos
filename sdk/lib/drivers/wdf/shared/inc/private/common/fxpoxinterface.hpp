@@ -101,6 +101,46 @@ public:
         VOID
         );
 
+    VOID
+    SimulateDevicePowerRequiredInReflector(
+        VOID
+        );
+
+    VOID
+    NotifyDeviceDirectedPoweredDown(
+        VOID
+        );
+
+    VOID
+    NotifyDeviceDirectedPoweredUp(
+        VOID
+        );
+
+    VOID
+    DirectedPowerDownCallbackInvoked(
+        VOID
+        );
+
+    VOID
+    DirectedPowerUpCallbackInvoked(
+        VOID
+        );
+
+    BOOLEAN
+    IsDirectedTransitionInProgress(
+        VOID
+        );
+
+    VOID
+    SetDirectedTransitionInProgress(
+        VOID
+        );
+
+    VOID
+    ClearDirectedTransitionInProgress(
+        VOID
+        );
+
 private:
 
     NTSTATUS
@@ -133,7 +173,6 @@ private:
         VOID
         );
 
-
     VOID
     PoxUnregisterDevice(
         VOID
@@ -154,12 +193,44 @@ private:
         __in ULONGLONG IdleTimeout
         );
 
+    VOID
+    DirectedPowerUpCallbackWorker(
+        _In_ BOOLEAN InvokedFromPoxCallback
+        );
+
+    VOID
+    DirectedPowerDownCallbackWorker(
+        _In_ BOOLEAN InvokedFromPoxCallback
+        );
+
+    VOID
+    NotifyPoxDirectedPowerDownCompletion(
+        VOID
+        );
+
+    VOID
+    NotifyPoxDirectedPowerUpCompletion(
+        VOID
+        );
+
+    VOID
+    PoxCompleteDirectedPowerDownTransition(
+        VOID
+        );
+
+    VOID
+    PoxCompleteDirectedPowerUpTransition(
+        VOID
+        );
+
     static PO_FX_COMPONENT_IDLE_STATE_CALLBACK StateCallback;
     static PO_FX_COMPONENT_ACTIVE_CONDITION_CALLBACK ComponentActiveCallback;
     static PO_FX_COMPONENT_IDLE_CONDITION_CALLBACK ComponentIdleCallback;
     static PO_FX_DEVICE_POWER_REQUIRED_CALLBACK PowerRequiredCallback;
     static PO_FX_DEVICE_POWER_NOT_REQUIRED_CALLBACK PowerNotRequiredCallback;
     static PO_FX_POWER_CONTROL_CALLBACK PowerControlCallback;
+    static PO_FX_DIRECTED_POWER_UP_CALLBACK DirectedPowerUpCallback;
+    static PO_FX_DIRECTED_POWER_DOWN_CALLBACK DirectedPowerDownCallback;
 
 public:
     //
@@ -192,6 +263,13 @@ private:
     // Idle timeout hint currently provided to power framework.
     //
     ULONG m_CurrentIdleTimeoutHint;
+
+    //
+    // Variable that tracks whether a directed power (up/down) transition is
+    // currently in progress. This variable is synchronized using interlocked
+    // operations.
+    //
+    volatile LONG m_DirectedTransitionActive;
 };
 
 #endif // _FXPOXINTERFACE_H_

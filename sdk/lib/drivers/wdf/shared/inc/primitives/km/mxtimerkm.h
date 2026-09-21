@@ -24,16 +24,6 @@ Revision History:
 
 #define TolerableDelayUnlimited ((ULONG)-1)
 
-typedef
-BOOLEAN
-(NTAPI *PFN_KE_SET_COALESCABLE_TIMER) (
-    __inout PKTIMER Timer,
-    __in LARGE_INTEGER DueTime,
-    __in ULONG Period,
-    __in ULONG TolerableDelay,
-    __in_opt PKDPC Dpc
-    );
-
 typedef struct _MdTimer {
 
 
@@ -274,7 +264,7 @@ MxTimer::Stop(
     VOID
     )
 {
-    BOOLEAN bRetVal;
+    BOOLEAN bRetVal = TRUE;
 
     if (m_Timer.m_IsExtTimer) {
         bRetVal = FALSE;

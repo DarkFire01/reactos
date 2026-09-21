@@ -24,10 +24,10 @@ Revision History:
 --*/
 
 #include "coreprivshared.hpp"
-#include "FxFileObject.hpp"
+#include "fxfileobject.hpp"
 
 extern "C" {
-#include "FxFileObjectApiUm.tmh"
+// #include "FxFileObjectApiUm.tmh"
 }
 
 //
@@ -38,6 +38,7 @@ extern "C" {
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 VOID
+NTAPI
 WDFEXPORT(WdfFileObjectClose)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -55,40 +56,8 @@ WDFEXPORT(WdfFileObjectClose)(
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
-ULONG
-WDFEXPORT(WdfFileObjectGetInitiatorProcessId)(
-    _In_
-    PWDF_DRIVER_GLOBALS DriverGlobals,
-    _In_
-    WDFFILEOBJECT FileObject
-    )
-{
-    DDI_ENTRY();
-
-    FxFileObject* pFO;
-
-    //
-    // Validate the FileObject object handle, and get its FxFileObject*
-    //
-    FxObjectHandleGetPtr(GetFxDriverGlobals(DriverGlobals),
-                         FileObject,
-                         FX_TYPE_FILEOBJECT,
-                         (PVOID*)&pFO);
-
-    if (pFO->GetWdmFileObject() != NULL) {
-        return pFO->GetWdmFileObject()->GetInitiatorProcessId();
-    }
-    else {
-        FX_VERIFY_WITH_NAME(DRIVER(BadArgument, TODO), TRAPMSG("Cannot get initiator "
-            "process ID from a file object that doesn't have a WDM file object"),
-            DriverGlobals->DriverName);
-        return 0;
-    }
-}
-
-_IRQL_requires_max_(PASSIVE_LEVEL)
-WDFAPI
 WDFFILEOBJECT
+NTAPI
 WDFEXPORT(WdfFileObjectGetRelatedFileObject)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -122,6 +91,7 @@ WDFEXPORT(WdfFileObjectGetRelatedFileObject)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 WDFEXPORT(WdfFileObjectIncrementProcessKeepAliveCount)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -151,6 +121,7 @@ WDFEXPORT(WdfFileObjectIncrementProcessKeepAliveCount)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 WDFEXPORT(WdfFileObjectDecrementProcessKeepAliveCount)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,

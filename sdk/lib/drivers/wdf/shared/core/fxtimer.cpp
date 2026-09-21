@@ -197,6 +197,28 @@ FxTimer::Initialize(
         return STATUS_INVALID_DEVICE_REQUEST;
     }
 
+    //
+    // Ideally if it is WdfExecutionLevelInheritFromParent, we should use
+    // the exec level from the timer's parent:
+    //
+    //     pCallbacks->GetConstraints(&parentExecLevel, NULL);
+    //     if (parentExecLevel == WdfExecutionLevelPassive)
+    //         isPassiveTimer = TRUE;
+    //
+    // However, consider the following,
+    //     - timer uses WdfExecutionLevelInheritFromParent
+    //     - parent uses WdfExecutionLevelPassive and WdfSynchronizationScopeNone
+    //
+    // Current code sets isPassiveTimer to false, and don't create m_SystemWorkItem;
+    // the proposed change on the other hand does create m_SystemWorkItem.
+    //
+    // Those are subtle behavior change that might break existing drivers. Thus
+    // we decide to not change the existing (though not perfect) behavior.
+    //
+    // Instead, we'll document that to create a passive level timer you have to
+    // set Attributes->ExecutionLevel explicitly. This is especially true for UMDF
+    // where everything from driver object down are assumed passive level already.
+    //
     if (Attributes->ExecutionLevel == WdfExecutionLevelPassive) {
         isPassiveTimer = TRUE;
     }

@@ -180,7 +180,7 @@ NTSTATUS
 FxDuplicateUnicodeString(
     __in PFX_DRIVER_GLOBALS FxDriverGlobals,
     __in const UNICODE_STRING* Source,
-    __out PUNICODE_STRING Destination
+    _Inout_ PUNICODE_STRING Destination
     )
 /*++
 
@@ -250,8 +250,8 @@ Return Value:
             RtlZeroMemory(Destination, sizeof(UNICODE_STRING));
         }
 
-        Destination->Buffer = (PWSTR) FxPoolAllocate(
-            FxDriverGlobals, PagedPool, dstMaxCbLength);
+        Destination->Buffer = (PWSTR) FxPoolAllocate2(
+            FxDriverGlobals, POOL_FLAG_PAGED, dstMaxCbLength);
 
         if (Destination->Buffer == NULL) {
             status = STATUS_INSUFFICIENT_RESOURCES;
@@ -291,8 +291,8 @@ FxDuplicateUnicodeStringToString(
 {
     PWSTR pDuplicate;
 
-    pDuplicate = (PWSTR) FxPoolAllocate(
-        FxDriverGlobals, PagedPool, Source->Length + sizeof(UNICODE_NULL));
+    pDuplicate = (PWSTR) FxPoolAllocate2(
+        FxDriverGlobals, POOL_FLAG_PAGED, Source->Length + sizeof(UNICODE_NULL));
 
     if (pDuplicate != NULL) {
         RtlCopyMemory(pDuplicate, Source->Buffer, Source->Length);

@@ -23,13 +23,28 @@ Revision History:
 #ifndef __FXDEVICEINIT_HPP__
 #define __FXDEVICEINIT_HPP__
 
+#include "fxuserobject.hpp"
+
 enum FxDeviceInitType {
     FxDeviceInitTypeFdo = 0,
     FxDeviceInitTypePdo,
-    FxDeviceInitTypeControlDevice
+    FxDeviceInitTypeControlDevice,
+    FxDeviceInitTypeCompanion
 };
 
 struct FileObjectInit {
+
+    FileObjectInit(
+        VOID
+        )
+    {
+        RtlZeroMemory(&Class, sizeof(Class));
+        RtlZeroMemory(&Attributes, sizeof(Attributes));
+        RtlZeroMemory(&Callbacks, sizeof(Callbacks));
+        AutoForwardCleanupClose = WdfUseDefault;
+        Set = FALSE;
+    }
+
     WDF_FILEOBJECT_CLASS Class;
 
     WDF_OBJECT_ATTRIBUTES Attributes;
@@ -42,6 +57,16 @@ struct FileObjectInit {
 };
 
 struct SecurityInit {
+
+    SecurityInit(
+        VOID
+        )
+    {
+        Sddl = NULL;
+        RtlZeroMemory(&DeviceClass, sizeof(DeviceClass));
+        DeviceClassSet = FALSE;
+    }
+
     FxString* Sddl;
 
     GUID DeviceClass;
@@ -49,7 +74,34 @@ struct SecurityInit {
     BOOLEAN DeviceClassSet;
 };
 
+#if (FX_CORE_MODE == FX_CORE_USER_MODE)
+struct CompanionInit {
+
+    CompanionInit(
+        VOID
+        )
+    {
+        RtlZeroMemory(&CompanionEventCallbacks, sizeof(CompanionEventCallbacks));
+    }
+
+    WDF_COMPANION_EVENT_CALLBACKS CompanionEventCallbacks;
+};
+#endif
+
 struct PnpPowerInit {
+
+    PnpPowerInit(
+        VOID
+        )
+    {
+        RtlZeroMemory(&PnpPowerEventCallbacks, sizeof(PnpPowerEventCallbacks));
+        RtlZeroMemory(&PolicyEventCallbacks, sizeof(PolicyEventCallbacks));
+        PnpStateCallbacks = NULL;
+        PowerStateCallbacks = NULL;
+        PowerPolicyStateCallbacks = NULL;
+        PowerPolicyOwner = WdfUseDefault;
+    }
+
     WDF_PNPPOWER_EVENT_CALLBACKS PnpPowerEventCallbacks;
 
     WDF_POWER_POLICY_EVENT_CALLBACKS PolicyEventCallbacks;
@@ -64,6 +116,18 @@ struct PnpPowerInit {
 };
 
 struct FdoInit {
+
+    FdoInit(
+        VOID
+        )
+    {
+        RtlZeroMemory(&EventCallbacks, sizeof(EventCallbacks));
+        RtlZeroMemory(&ListConfig, sizeof(ListConfig));
+        RtlZeroMemory(&ListConfigAttributes, sizeof(ListConfigAttributes));
+        Filter = FALSE;
+        PhysicalDevice = NULL;
+    }
+
     WDF_FDO_EVENT_CALLBACKS EventCallbacks;
 
     WDF_CHILD_LIST_CONFIG ListConfig;
@@ -93,6 +157,11 @@ struct ControlInit {
 
     UCHAR Flags;
 };
+
+//
+// Forward declaration
+//
+class FxCompanion;
 
 //
 // The typedef for a pointer to this structure is exposed in wdfdevice.h
@@ -155,6 +224,22 @@ public:
         )
     {
         return InitType == FxDeviceInitTypeControlDevice;
+    }
+
+    BOOLEAN
+    IsCompanionInit(
+        VOID
+        )
+    {
+        return InitType == FxDeviceInitTypeCompanion;
+    }
+
+    BOOLEAN
+    IsNotCompanionInit(
+        VOID
+        )
+    {
+        return InitType != FxDeviceInitTypeCompanion;
     }
 
     BOOLEAN
@@ -228,12 +313,25 @@ public:
         _In_ PWDF_IO_TYPE_CONFIG IoTypeConfig
         );
 
+    NTSTATUS
+    AllocateCxContext(
+        _In_  PFX_DRIVER_GLOBALS     CxDriverGlobals,
+        _In_  PWDF_OBJECT_ATTRIBUTES ContextAttributes,
+        _Outptr_opt_
+              PVOID*                 Context
+        );
+
+    PVOID
+    GetCxTypedContext(
+        _In_ PCWDF_OBJECT_CONTEXT_TYPE_INFO TypeInfo
+        );
+
 public:
     PFX_DRIVER_GLOBALS DriverGlobals;
 
     FxDriver* Driver;
 
-    FxDevice* CreatedDevice;
+    PVOID CreatedDevice;
 
     BOOLEAN CreatedOnStack;
 
@@ -282,7 +380,15 @@ public:
     //
     LIST_ENTRY      CxDeviceInitListHead;
 
+    //
+    // Hold contexts allocated by class extensions.
+    //
+    FxUserObject*           CxContextObject;
+
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
+
+    CompanionInit   CompanionInit;
+
     //
     // IoType preference for IOCTL
     //
@@ -297,6 +403,11 @@ public:
     // Weak reference to host side device stack
     //
     IWudfDeviceStack * DevStack;
+
+    //
+    // Weak reference to host side companion
+    //
+    IWudfCompanion * Companion;
 
     //
     // Kernel redirector's side object name.

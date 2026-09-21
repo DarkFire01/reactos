@@ -8,95 +8,19 @@ Module Name:
 
 Abstract:
 
-    This is the UMDF version of wdfldr.h
-
+    This is the UMDF version of fxldr.h
 
 --*/
 #ifndef __FXLDRUM_H__
 #define __FXLDRUM_H__
 
-#define WDF_COMPONENT_NAME(a) L#a
-
-typedef
-VOID
-(*WDFFUNC)(
-    VOID
-    );
-
 typedef ULONG WDF_MAJOR_VERSION;
 typedef ULONG WDF_MINOR_VERSION;
 typedef ULONG WDF_BUILD_NUMBER;
 
-//
-// Version container
-//
-typedef struct _WDF_VERSION {
-    WDF_MAJOR_VERSION  Major;
-    WDF_MINOR_VERSION  Minor;
-    WDF_BUILD_NUMBER   Build;
-} WDF_VERSION;
-
-//
-// WDF bind information structure.
-//
-typedef struct _WDF_BIND_INFO {
-    ULONG              Size;
-    PWCHAR             Component;
-    WDF_VERSION        Version;
-    ULONG              FuncCount;
-    __field_bcount(FuncCount*sizeof(WDFFUNC)) WDFFUNC* FuncTable;
-
-
-
-
-
-    //
-    // This field is not used in UMDF
-    //
-    PVOID              Module;
-
-
-
-} WDF_BIND_INFO, * PWDF_BIND_INFO;
-
 typedef PVOID WDF_COMPONENT_GLOBALS, *PWDF_COMPONENT_GLOBALS;
 
-typedef
-NTSTATUS
-(*PFNLIBRARYCOMMISSION)(
-    VOID
-    );
-
-typedef
-NTSTATUS
-(*PFNLIBRARYDECOMMISSION)(
-    VOID
-    );
-
-typedef
-NTSTATUS
-(*PFNLIBRARYREGISTERCLIENT)(
-    PWDF_BIND_INFO             Info,
-    PWDF_COMPONENT_GLOBALS   * ComponentGlobals,
-    PVOID                    * Context
-    );
-
-typedef
-NTSTATUS
-(*PFNLIBRARYUNREGISTERCLIENT)(
-    PWDF_BIND_INFO             Info,
-    PWDF_COMPONENT_GLOBALS     DriverGlobals
-    );
-
-
-typedef struct _WDF_LIBRARY_INFO {
-    ULONG                             Size;
-    PFNLIBRARYCOMMISSION              LibraryCommission;
-    PFNLIBRARYDECOMMISSION            LibraryDecommission;
-    PFNLIBRARYREGISTERCLIENT          LibraryRegisterClient;
-    PFNLIBRARYUNREGISTERCLIENT        LibraryUnregisterClient;
-    WDF_VERSION                       Version;
-} WDF_LIBRARY_INFO, *PWDF_LIBRARY_INFO;
+#include <fxldr.h>
 
 typedef
 PWDF_LIBRARY_INFO
@@ -114,9 +38,10 @@ struct IWudfDevice;
 struct IWudfIrp;
 struct IUnknown;
 typedef enum _WDF_DEVICE_IO_BUFFER_RETRIEVAL *PWDF_DEVICE_IO_BUFFER_RETRIEVAL;
-typedef enum RdWmiPowerAction;
+typedef enum RdWmiPowerAction RdWmiPowerAction;
 typedef const GUID *LPCGUID;
 typedef UINT64 WUDF_INTERFACE_CONTEXT;
+typedef struct _WUDF_DRIVER_LOAD_CONTEXT *PWUDF_DRIVER_LOAD_CONTEXT;
 class FxDriver;
 
 //
@@ -132,14 +57,14 @@ enum FxDriverObjectUmFlags : USHORT {
 typedef
 NTSTATUS
 DRIVER_ADD_DEVICE_UM (
-    _In_  PDRIVER_OBJECT_UM         DriverObject,
-    _In_  PVOID                     Context,
-    _In_  IWudfDeviceStack *        DevStack,
-    _In_  LPCWSTR                   KernelDeviceName,
-    _In_opt_ HKEY                   hPdoKey,
-    _In_  LPCWSTR                   pwszServiceName,
-    _In_  LPCWSTR                   pwszDevInstanceID,
-    _In_  ULONG                     ulDriverID
+    _In_  PDRIVER_OBJECT_UM          DriverObject,
+    _In_  PVOID                      Context,
+    _In_  PWUDF_DRIVER_LOAD_CONTEXT  DriverLoadContext,
+    _In_  LPCWSTR                    KernelDeviceName,
+    _In_opt_ HKEY                    hPdoKey,
+    _In_  LPCWSTR                    pwszServiceName,
+    _In_  LPCWSTR                    pwszDevInstanceID,
+    _In_  ULONG                      ulDriverID
     );
 
 typedef DRIVER_ADD_DEVICE_UM *PFN_DRIVER_ADD_DEVICE_UM;
@@ -184,10 +109,10 @@ typedef struct _DRIVER_OBJECT_UM {
     FxDriver* FxDriver;
 
     //
-    // Host device stack. This field is only valid while initializing
+    // Driver load context. This field is only valid while initializing
     // the driver, such as during DriverEntry, and is NULL at all other times.
     //
-    IWudfDeviceStack2* WudfDevStack;
+    PWUDF_DRIVER_LOAD_CONTEXT DriverLoadContext;
 
     //
     // Callback environment for driver workitems.
@@ -217,40 +142,5 @@ typedef struct _DRIVER_OBJECT_UM {
     PFN_DRIVER_DISPATCH_UM MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 
 } DRIVER_OBJECT_UM;
-
-typedef struct _CLIENT_INFO {
-    //
-    // Size of this structure
-    //
-    ULONG              Size;
-
-    //
-    // registry service path of client driver
-    //
-    PUNICODE_STRING    RegistryPath;
-
-} CLIENT_INFO, *PCLIENT_INFO;
-
-//
-// Event name:  WdfCensusEvtLinkClientToCx
-//
-// Source:      WudfHost (UM loader)
-//
-// Description: Written when a client is binding to a class extension.
-//              WdfVersionBindClass which is called from the client's stub,
-//              will load/reference the Cx and add it to the fx library's
-//              list of clients. The client driver's class extension list is
-//              also updated at that time, which is when this event is written.
-//
-// Frequency:   Everytime a client driver binds to a class extension.
-//
-//
-#define WDF_CENSUS_EVT_WRITE_LINK_CLIENT_TO_CX(TraceHandle, CxImageName, ClientImageName)        \
-            TraceLoggingWrite(TraceHandle,                                     \
-                "WdfCensusEvtLinkClientToCx",                                  \
-                WDF_TELEMETRY_EVT_KEYWORDS,                                    \
-                TraceLoggingWideString(CxImageName,       "CxImageName"),      \
-                TraceLoggingWideString(ClientImageName,   "ClientImageName"  ) \
-                );
 
 #endif // __FXLDRUM_H__

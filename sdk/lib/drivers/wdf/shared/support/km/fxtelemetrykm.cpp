@@ -50,8 +50,8 @@ AllocAndInitializeTelemetryContext(
     PFX_TELEMETRY_CONTEXT context = NULL;
     NTSTATUS status;
 
-    context = (PFX_TELEMETRY_CONTEXT)MxMemory::MxAllocatePoolWithTag(
-                                                    NonPagedPool,
+    context = (PFX_TELEMETRY_CONTEXT)MxMemory::MxAllocatePool2(
+                                                    POOL_FLAG_NON_PAGED,
                                                     sizeof(FX_TELEMETRY_CONTEXT),
                                                     FX_TAG);
     if (NULL == context) {
@@ -76,6 +76,7 @@ RegisterTelemetryProvider(
     VOID
     )
 {
+    InitializeTelemetryAssertsKMByName("wdf01000.sys");
     TraceLoggingRegister(g_TelemetryProvider);
 }
 
@@ -84,6 +85,7 @@ UnregisterTelemetryProvider(
     VOID
     )
 {
+    UninitializeTelemetryAssertsKM();
     TraceLoggingUnregister(g_TelemetryProvider);
 }
 
@@ -311,6 +313,7 @@ GetDriverInfo(
         DriverInfo->bitmap.IsUsingRemoveLockOption = Fdo->IsRemoveLockEnabledForIo();
         DriverInfo->bitmap.IsUsingNonDefaultHardwareReleaseOrder = pnpPkg->IsDefaultReleaseHardwareOrder();
         DriverInfo->bitmap.IsPowerPolicyOwner = pnpPkg->IsPowerPolicyOwner();
+        DriverInfo->bitmap.IsS0IdleEnabled =  pnpPkg->IsS0IdleEnabled();
         DriverInfo->bitmap.IsS0IdleWakeFromS0Enabled =  pnpPkg->IsS0IdleWakeFromS0Enabled();
         DriverInfo->bitmap.IsS0IdleUsbSSEnabled = pnpPkg->IsS0IdleUsbSSEnabled();
         DriverInfo->bitmap.IsS0IdleSystemManaged = pnpPkg->IsS0IdleSystemManaged();
@@ -336,7 +339,7 @@ RegistryReadLastLoggedTime(
     )
 {
     FxAutoRegKey hKey, hWdf;
-    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Parameters\\Wdf");
+    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Wdf");
     DECLARE_CONST_UNICODE_STRING(valueName, WDF_LAST_TELEMETRY_LOG_TIME_VALUE);
     LARGE_INTEGER value;
     NTSTATUS status;
@@ -344,13 +347,14 @@ RegistryReadLastLoggedTime(
     ASSERT(LastLoggedTime != NULL);
     LastLoggedTime->QuadPart = 0;
 
-    status = FxRegKey::_OpenKey(NULL,
-                                DriverGlobals->Driver->GetRegistryPathUnicodeString(),
-                                &hWdf.m_Key,
-                                KEY_READ);
+    status = IoOpenDriverRegistryKey(DriverGlobals->DriverObject.GetObject(),
+                                     DriverRegKeyPersistentState,
+                                     KEY_READ,
+                                     0, // Flags - Must be 0
+                                     &hWdf.m_Key);
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage(DriverGlobals, TRACE_LEVEL_ERROR, TRACINGDRIVER,
-            "Unable to open driver's service key, status %!STATUS!", status);
+            "Unable to open DriverRegKeyPersistentState, status %!STATUS!", status);
         return;
     }
 
@@ -382,49 +386,29 @@ RegistryWriteCurrentTime(
     _In_ PFX_DRIVER_GLOBALS DriverGlobals
     )
 {
-    FxAutoRegKey hDriver, hParameters, hWdf;
-    DECLARE_CONST_UNICODE_STRING(parametersPart, L"Parameters");
+    FxAutoRegKey hParameters, hWdf;
     DECLARE_CONST_UNICODE_STRING(wdfPart, L"Wdf");
     LARGE_INTEGER currentTime;
-
-    //
-    // Not defined with the macro because ZwSetValue doesn't use
-    // PCUNICODE_STRING
-    //
     UNICODE_STRING wdfTimeOfLastTelemetryLog;
     NTSTATUS status;
 
     RtlInitUnicodeString(&wdfTimeOfLastTelemetryLog, WDF_LAST_TELEMETRY_LOG_TIME_VALUE);
 
-    status = FxRegKey::_OpenKey(NULL,
-                                DriverGlobals->Driver->GetRegistryPathUnicodeString(),
-                                &hDriver.m_Key,
-                                KEY_WRITE | KEY_READ
-                                );
+    status = IoOpenDriverRegistryKey(DriverGlobals->DriverObject.GetObject(),
+                                     DriverRegKeyPersistentState,
+                                     KEY_WRITE,
+                                     0, // Flags - Must be 0
+                                     &hParameters.m_Key);
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage(DriverGlobals, TRACE_LEVEL_ERROR, TRACINGDRIVER,
-            "Unable to open driver's service key, status %!STATUS!", status);
-        return;
-    }
-    //
-    //  Key creation, unlike user mode, must happen one level at a time, since
-    //  create will also open take both steps instead of trying open first
-    //
-    status = FxRegKey::_Create(hDriver.m_Key,
-                               &parametersPart,
-                               &hParameters.m_Key,
-                               KEY_WRITE | KEY_READ
-                               );
-    if (!NT_SUCCESS(status)) {
-        DoTraceLevelMessage(DriverGlobals, TRACE_LEVEL_ERROR, TRACINGDRIVER,
-            "Unable to write Parameters key, status %!STATUS!", status);
+            "Unable to open DriverRegKeyPersistentState, status %!STATUS!", status);
         return;
     }
 
     status = FxRegKey::_Create(hParameters.m_Key,
                                &wdfPart,
                                &hWdf.m_Key,
-                               KEY_WRITE | KEY_READ
+                               KEY_WRITE
                                );
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage(DriverGlobals, TRACE_LEVEL_ERROR, TRACINGDRIVER,
@@ -432,21 +416,15 @@ RegistryWriteCurrentTime(
         return;
     }
 
-    //
-    //  Using ZwSetValueKey here to avoid having to change the implementation
-    //  in FxRegKey of SetValue to a static / thiscall pair
-    //
     currentTime.QuadPart = 0;
     Mx::MxQuerySystemTime(&currentTime);
 
-    status = Mx::MxSetValueKey(hWdf.m_Key,
-                           &wdfTimeOfLastTelemetryLog,
-                           0,
-                           REG_QWORD,
-                           &currentTime.QuadPart,
-                           sizeof(currentTime)
-                           );
-
+    status = FxRegKey::_SetValue(hWdf.m_Key,
+                                 &wdfTimeOfLastTelemetryLog,
+                                 REG_QWORD,
+                                 &currentTime.QuadPart,
+                                 sizeof(currentTime)
+                                 );
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage(DriverGlobals, TRACE_LEVEL_ERROR, TRACINGDRIVER,
             "Failed to record current time for Telemetry log, status %!STATUS!",
@@ -487,7 +465,7 @@ FxGetDevicePropertyString(
         return;
     }
 
-    buffer = FxPoolAllocate(pFxDriverGlobals, PagedPool, length);
+    buffer = FxPoolAllocate2(pFxDriverGlobals, POOL_FLAG_PAGED, length);
     if (buffer == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
@@ -525,7 +503,7 @@ GetImageName(
 /*++
 
 Routine Description:
-    Retrieve the ImageName value from the named Service registry key.
+    Retrieve the ImageName value from the driver object.
 
     Caller is responsible for freeing the buffer allocated in ImageName::Buffer.
 
@@ -541,41 +519,23 @@ Return Value:
 --*/
 {
     NTSTATUS status;
-    FxAutoRegKey hKey;
-    DECLARE_CONST_UNICODE_STRING(valueName, L"ImagePath");
     UNICODE_STRING imagePath = {0};
     UNICODE_STRING imageName = {0};
-    PKEY_VALUE_PARTIAL_INFORMATION value = NULL;
+    PWSTR stringBuffer = NULL;
     USHORT size;
 
     ASSERT(ImageName != NULL);
     RtlZeroMemory(ImageName, sizeof(UNICODE_STRING));
 
-    //
-    // Open driver's Service base key
-    //
-    status = FxRegKey::_OpenKey(NULL,
-                                DriverGlobals->Driver->GetRegistryPathUnicodeString(),
-                                &hKey.m_Key,
-                                KEY_READ);
+    status = IoQueryFullDriverPath(DriverGlobals->DriverObject.GetObject(),
+                                   &imagePath);
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage(DriverGlobals, TRACE_LEVEL_ERROR, TRACINGDRIVER,
-            "Unable to open driver's service key, status %!STATUS!", status);
+            "Failed to IoQueryFullDriverPath, status %!STATUS!", status);
         return status;
     }
 
-    status = QueryAndAllocString(hKey.m_Key,
-                                DriverGlobals,
-                                &valueName,
-                                &value);
-    if (!NT_SUCCESS(status)) {
-        DoTraceLevelMessage(DriverGlobals, TRACE_LEVEL_ERROR, TRACINGDRIVER,
-            "Failed to get Image name from service key, status %!STATUS!",
-            status);
-        return status;
-    }
-
-    BuildStringFromPartialInfo(value, &imagePath);
+    stringBuffer = imagePath.Buffer;
 
     //
     // Now read the "ImagePath" and extract just the driver filename as a new
@@ -607,7 +567,7 @@ Return Value:
     //
     // allocate a buffer to hold Unicode string + null char.
     //
-    ImageName->Buffer = (PWCH) FxPoolAllocate(DriverGlobals, PagedPool, size);
+    ImageName->Buffer = (PWCH) FxPoolAllocate2(DriverGlobals, POOL_FLAG_PAGED, size);
 
     if (ImageName->Buffer == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -616,7 +576,6 @@ Return Value:
         goto cleanUp;
     }
 
-    RtlZeroMemory(ImageName->Buffer, size);
     ImageName->Length = 0x0;
     ImageName->MaximumLength = size;
 
@@ -630,8 +589,8 @@ Return Value:
 
 cleanUp:
 
-    if (value != NULL) {
-        FxPoolFree(value);
+    if (stringBuffer != NULL) {
+        ExFreePool(stringBuffer);
     }
 
     return status;
@@ -645,27 +604,34 @@ QueryAndAllocString(
     _In_  HANDLE Key,
     _In_  PFX_DRIVER_GLOBALS Globals,
     _In_  PCUNICODE_STRING ValueName,
-    _Out_ PKEY_VALUE_PARTIAL_INFORMATION* Info
+    _Out_ PWSTR* StringBuffer
     )
 {
-    PKEY_VALUE_PARTIAL_INFORMATION info;
     NTSTATUS status;
-    ULONG length;
+    ULONG dataLength;
+    PVOID dataBuffer;
+    ULONG dataType;
 
     status = STATUS_UNSUCCESSFUL;
-    info = NULL;
+    dataLength = 0;
+    dataBuffer = NULL;
 
-    ASSERT(Info != NULL);
-    *Info = NULL;
+    ASSERT(StringBuffer != NULL);
+    *StringBuffer = NULL;
 
-    status = Mx::MxQueryValueKey(Key,
-                             (PUNICODE_STRING)ValueName,
-                             KeyValuePartialInformation,
-                             NULL,
-                             0,
-                             &length);
-
-    if (!NT_SUCCESS(status) && status != STATUS_BUFFER_TOO_SMALL) {
+    //
+    // _QueryValue returns STATUS_BUFFER_OVERFLOW when we pass
+    // a NULL buffer and the value exists in the registry. See
+    // the function's implementation for the reason why.
+    //
+    status = FxRegKey::_QueryValue(Globals,
+                                   Key,
+                                   (PUNICODE_STRING)ValueName,
+                                   0,
+                                   NULL,
+                                   &dataLength,
+                                   NULL);
+    if (!NT_SUCCESS(status) && status != STATUS_BUFFER_OVERFLOW) {
         goto cleanup;
     }
 
@@ -673,58 +639,46 @@ QueryAndAllocString(
     // Pool can be paged b/c we are running at PASSIVE_LEVEL and we are going
     // to free it at the end of this function.
     //
-    status = RtlULongAdd(length,
-                         FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data),
-                         &length);
-
-    if (!NT_SUCCESS(status)) {
-        goto cleanup;
-    }
-
-    info = (PKEY_VALUE_PARTIAL_INFORMATION) FxPoolAllocate(Globals,
-                                                           PagedPool,
-                                                           length);
-
-    if (info == NULL) {
+    dataBuffer = FxPoolAllocate2(Globals, POOL_FLAG_PAGED, dataLength);
+    if (dataBuffer == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         goto cleanup;
     }
 
-    RtlZeroMemory(info, length);
-
     //
     // Query registry for the data under ValueName
     //
-    status = Mx::MxQueryValueKey(Key,
-                             (PUNICODE_STRING) ValueName,
-                             KeyValuePartialInformation,
-                             info,
-                             length,
-                             &length);
-
-
+    status = FxRegKey::_QueryValue(Globals,
+                                   Key,
+                                   (PUNICODE_STRING)ValueName,
+                                   dataLength,
+                                   dataBuffer,
+                                   &dataLength,
+                                   &dataType);
     if (NT_SUCCESS(status)) {
-        if (info->Type != REG_SZ && info->Type != REG_EXPAND_SZ) {
+        if (FxRegKey::_IsValidSzType(dataType) == FALSE) {
             status = STATUS_OBJECT_TYPE_MISMATCH;
             goto cleanup;
         }
 
-        if (info->DataLength == 0 ||
-            (info->DataLength % 2) != 0 ||
-            (info->DataLength >
-            (length - FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data)))) {
+        if (dataLength == 0 || (dataLength % sizeof(WCHAR)) != 0) {
             status = STATUS_INVALID_PARAMETER;
             goto cleanup;
         }
 
-        *Info = info;
+        *StringBuffer = (PWSTR)dataBuffer;
+
+        //
+        // Ensure string is NULL-terminated
+        //
+        (*StringBuffer)[(dataLength / sizeof(WCHAR)) - 1] = UNICODE_NULL;
     }
 
 cleanup:
 
     if (!NT_SUCCESS(status)) {
-        if (info != NULL) {
-            FxPoolFree(info);
+        if (dataBuffer != NULL) {
+            FxPoolFree(dataBuffer);
         }
     }
 

@@ -31,7 +31,7 @@ Revision History:
 // Tracing support
 #if defined(EVENT_TRACING)
 extern "C" {
-#include "FxPkgPdo.tmh"
+// #include "FxPkgPdo.tmh"
 }
 #endif
 
@@ -102,6 +102,7 @@ Returns:
 
 {
     m_DeviceTextHead.Next = NULL;
+    m_DefaultLocale = 0x0;
 
     m_DeviceID   = NULL;
     m_InstanceID = NULL;
@@ -113,8 +114,10 @@ Returns:
     m_RawOK = FALSE;
     m_Static = FALSE;
     m_AddedToStaticList = FALSE;
+    m_AllowForwardRequestToParent = FALSE;
 
     //
+    // Override the setting in FxPkgPnp.
     // By default the PDO is the owner of wait wake irps (only case where this
     // wouldn't be the case is for a bus filter to be sitting above us).
     //
@@ -128,6 +131,8 @@ Returns:
 
     m_CanBeDeleted = FALSE;
     m_EnableWakeAtBusInvoked = FALSE;
+
+    m_HasPowerDependencyOnParent = TRUE;
 }
 
 FxPkgPdo::~FxPkgPdo(
@@ -231,9 +236,9 @@ Returns:
         cbLength += pPdo->ContainerID->ByteLength(TRUE);
     }
 
-    m_IDsAllocation = (PWSTR) FxPoolAllocate(GetDriverGlobals(),
-                                             PagedPool,
-                                             cbLength);
+    m_IDsAllocation = (PWSTR) FxPoolAllocate2(GetDriverGlobals(),
+                                              POOL_FLAG_PAGED,
+                                              cbLength);
 
     if (m_IDsAllocation == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -486,8 +491,8 @@ Returns:
         break;
 
     case TargetDeviceRelation:
-        pDeviceRelations = (PDEVICE_RELATIONS) MxMemory::MxAllocatePoolWithTag(
-                PagedPool, sizeof(DEVICE_RELATIONS), pFxDriverGlobals->Tag);
+        pDeviceRelations = (PDEVICE_RELATIONS) MxMemory::MxAllocatePool2(
+                POOL_FLAG_PAGED, sizeof(DEVICE_RELATIONS), pFxDriverGlobals->Tag);
 
         if (pDeviceRelations != NULL) {
             PDEVICE_OBJECT pDeviceObject;
@@ -939,8 +944,8 @@ Returns:
             //
             ASSERT(Irp->GetInformation() == NULL);
 
-            pBuffer = (PWCHAR) MxMemory::MxAllocatePoolWithTag(
-                PagedPool, length, pFxDriverGlobals->Tag);
+            pBuffer = (PWCHAR) MxMemory::MxAllocatePool2(
+                POOL_FLAG_PAGED, length, pFxDriverGlobals->Tag);
 
             if (pBuffer != NULL) {
                 RtlCopyMemory(pBuffer, pInformation, length);
@@ -1393,8 +1398,8 @@ FxPkgPdo::_PnpQueryId(
         if (pSrc != NULL) {
             cbLength = (wcslen(pSrc) + 1) * sizeof(WCHAR);
 
-            pBuffer = (PWCHAR) MxMemory::MxAllocatePoolWithTag(
-                PagedPool, cbLength, pFxDriverGlobals->Tag);
+            pBuffer = (PWCHAR) MxMemory::MxAllocatePool2(
+                POOL_FLAG_PAGED, cbLength, pFxDriverGlobals->Tag);
         }
         else {
             status = Irp->GetStatus();
@@ -1434,15 +1439,12 @@ FxPkgPdo::_PnpQueryId(
             cbLength = 2 * sizeof(UNICODE_NULL);
         }
 
-        pBuffer = (PWCHAR) MxMemory::MxAllocatePoolWithTag(
-            PagedPool, cbLength, pFxDriverGlobals->Tag);
+        pBuffer = (PWCHAR) MxMemory::MxAllocatePool2(
+            POOL_FLAG_PAGED, cbLength, pFxDriverGlobals->Tag);
 
         if (pBuffer != NULL) {
             if (pSrc != NULL) {
                 RtlCopyMemory(pBuffer, pSrc, cbLength);
-            }
-            else {
-                RtlZeroMemory(pBuffer, cbLength);
             }
 
             Irp->SetInformation((ULONG_PTR) pBuffer);
@@ -1594,6 +1596,7 @@ FxPkgPdo::RegisterCallbacks(
 }
 
 _Must_inspect_result_
+_IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS
 FxPkgPdo::AskParentToRemoveAndReenumerate(
     VOID
@@ -1679,6 +1682,8 @@ Return Value:
 
   --*/
 {
+    Mx::MxAssert(Mx::MxGetCurrentIrql() == PASSIVE_LEVEL);
+
     ((FxPkgPdo*) Context)->AskParentToRemoveAndReenumerate();
 }
 

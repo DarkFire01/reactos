@@ -26,7 +26,7 @@ Notes:
 
 #include "fxsupportpch.hpp"
 #include "DriverFrameworks-UserMode-UmEvents.h"
-#include "FxldrUm.h"
+#include "fxldrum.h"
 #include <winmeta.h>
 #include <TraceLoggingProvider.h>
 #include <telemetry\MicrosoftTelemetry.h>
@@ -53,7 +53,7 @@ AllocAndInitializeTelemetryContext(
     PFX_TELEMETRY_CONTEXT context = NULL;
     RPC_STATUS status;
 
-    context = (PFX_TELEMETRY_CONTEXT)MxMemory::MxAllocatePoolWithTag(NonPagedPool,
+    context = (PFX_TELEMETRY_CONTEXT)MxMemory::MxAllocatePool2(POOL_FLAG_NON_PAGED,
                                             sizeof(FX_TELEMETRY_CONTEXT),
                                             FX_TAG);
     if (NULL == context) {
@@ -143,7 +143,7 @@ LogDriverInfoStream(
         // current UMDF datapoint doesn't have a separate flag for non-pnp driver,
         // we still want to log the driver name and its properies if available.
         //
-        devStack = DriverGlobals->Driver->GetDriverObject()->WudfDevStack;
+        devStack = DriverGlobals->Driver->GetDriverObject()->DriverLoadContext->DeviceStack;
         if (devStack != NULL) {
             devStack->GetPdoProperties(&hardwareIds,
                                        &setupClass,
@@ -202,6 +202,7 @@ GetDriverInfo(
 
     DriverInfo->bitmap.IsFilter = Fdo->IsFilter();
     DriverInfo->bitmap.IsPowerPolicyOwner = pnpPkg->IsPowerPolicyOwner();
+    DriverInfo->bitmap.IsS0IdleEnabled = pnpPkg->IsS0IdleEnabled();
     DriverInfo->bitmap.IsS0IdleWakeFromS0Enabled =  pnpPkg->IsS0IdleWakeFromS0Enabled();
     DriverInfo->bitmap.IsS0IdleUsbSSEnabled = pnpPkg->IsS0IdleUsbSSEnabled();
     DriverInfo->bitmap.IsS0IdleSystemManaged = pnpPkg->IsS0IdleSystemManaged();
@@ -264,6 +265,14 @@ Return Value:
     ASSERT(ImageName != NULL);
     RtlZeroMemory(ImageName, sizeof(UNICODE_STRING));
 
+    if (FxDriverGlobals->IsCompanion()) {
+        //
+        // Driver companion has no access to registry
+        //
+        status = STATUS_UNSUCCESSFUL;
+        return status;
+    }
+
     //
     // Open driver's Service base key
     //
@@ -300,7 +309,7 @@ Return Value:
     // Pool can be paged b/c we are running at PASSIVE_LEVEL and we are going
     // to free it at the end of this function.
     //
-    dataBuffer = FxPoolAllocate(FxDriverGlobals, PagedPool, length);
+    dataBuffer = FxPoolAllocate2(FxDriverGlobals, POOL_FLAG_PAGED, length);
     if (dataBuffer == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         DoTraceLevelMessage(FxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDRIVER,
@@ -381,7 +390,7 @@ Return Value:
     //
     // allocate a buffer to hold Unicode string + null char.
     //
-    ImageName->Buffer = (PWCH) FxPoolAllocate(FxDriverGlobals, PagedPool, size);
+    ImageName->Buffer = (PWCH) FxPoolAllocate2(FxDriverGlobals, POOL_FLAG_PAGED, size);
 
     if (ImageName->Buffer == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -390,7 +399,6 @@ Return Value:
         goto cleanUp;
     }
 
-    RtlZeroMemory(ImageName->Buffer, size);
     ImageName->Length = 0x0;
     ImageName->MaximumLength = size;
 

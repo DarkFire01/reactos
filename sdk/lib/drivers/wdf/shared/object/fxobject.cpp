@@ -277,10 +277,12 @@ FxObject::AllocateTagTracker(
     ASSERT(IsDebug());
 
     if (m_Globals->DebugExtension != NULL &&
+        m_Globals->FxVerifyTagTrackingEnabled != FALSE &&
         m_Globals->DebugExtension->ObjectDebugInfo != NULL &&
-        FxVerifierGetTrackReferences(
+        FxVerifierIsDebugInfoFlagSetForType(
             m_Globals->DebugExtension->ObjectDebugInfo,
-            Type)) {
+            Type,
+            FxObjectDebugTrackReferences)) {
         //
         // Failure to CreateAndInitialize a tag tracker is no big deal, we just
         // don't track references.
@@ -603,9 +605,9 @@ Comments:
 _Must_inspect_result_
 NTSTATUS
 FxObject::AddContext(
-    __in FxContextHeader *Header,
-    __in PVOID* Context,
-    __in PWDF_OBJECT_ATTRIBUTES Attributes
+    _In_         FxContextHeader*       Header,
+    _Outptr_opt_ PVOID*                 Context,
+    _In_opt_     PWDF_OBJECT_ATTRIBUTES Attributes
     )
 {
     FxContextHeader *pCur, **ppLast;
@@ -671,18 +673,28 @@ FxObject::AddContext(
                 *Context = &Header->Context[0];
             }
 
-            //
-            // FxContextHeaderInit does not set these callbacks.  If this were
-            // the creation of the object itself, FxObject::Commit would have done
-            // this assignment.
-            //
-            Header->EvtDestroyCallback = Attributes->EvtDestroyCallback;
+            if (Attributes != NULL) {
+                //
+                // FxContextHeaderInit does not set these callbacks.  If this were
+                // the creation of the object itself, FxObject::Commit would have done
+                // this assignment.
+                //
+                Header->EvtDestroyCallback = Attributes->EvtDestroyCallback;
 
-            if (Attributes->EvtCleanupCallback != NULL) {
-                Header->EvtCleanupCallback = Attributes->EvtCleanupCallback;
-                m_ObjectFlags |= FXOBJECT_FLAGS_HAS_CLEANUP;
+                if (Attributes->EvtCleanupCallback != NULL) {
+                    Header->EvtCleanupCallback = Attributes->EvtCleanupCallback;
+                    m_ObjectFlags |= FXOBJECT_FLAGS_HAS_CLEANUP;
+                }
             }
-
+            else {
+                //
+                // When called from MoveContexts, Attributes is NULL and Header's
+                // callbacks are already initialized.
+                //
+                if (Header->EvtCleanupCallback != NULL) {
+                    m_ObjectFlags |= FXOBJECT_FLAGS_HAS_CLEANUP;
+                }
+            }
         }
     }
     else {
@@ -695,6 +707,127 @@ FxObject::AddContext(
 
     m_SpinLock.Release(irql);
 
+    return status;
+}
+
+_Must_inspect_result_
+NTSTATUS
+FxObject::MoveContexts(
+    _In_ FxObject* TargetObject
+    )
+/*++
+
+Routine Description:
+    Move contexts that were added with WdfObjectAllocateContext from one FxObject
+    to another FxObject.
+
+    NOTE: if this object is created with a context type by using the macro
+    WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE, it allocates a default context as
+    part of the object itself. As we cannot move part of the continous memory
+    to another place, the call to MoveContexts may return a failure.
+
+Arguments:
+    TargetObject - The object to move this object's contexts to
+
+Return Value:
+    STATUS_SUCCESS upon success, !NT_SUCCESS on failure
+
+  --*/
+{
+    NTSTATUS            status;
+    FxContextHeader     *header, *cur, *next;
+    PFX_DRIVER_GLOBALS  pFxDriverGlobals;
+    KIRQL               irql;
+
+    pFxDriverGlobals = GetDriverGlobals();
+    status = STATUS_SUCCESS;
+    header = this->GetContextHeader();
+    if (header == NULL) {
+        goto Done;
+    }
+
+    if (header->ContextTypeInfo != NULL) {
+        status = STATUS_INVALID_PARAMETER;
+        DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGHANDLE,
+            "Cannot move contexts from FxObject 0x%p as the object was created "
+            "with a context type using WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE",
+            this);
+        goto Done;
+    }
+
+    if (TargetObject->IsCommitted() == FALSE) {
+        status = STATUS_INVALID_PARAMETER;
+        DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGHANDLE,
+            "Cannot move contexts to FxObject 0x%p that is not completely created "
+            "yet, because if the object fails before/during Commit(), the incoming "
+            "context's cleanup callback will not be called",
+            TargetObject);
+        goto Done;
+    }
+
+    m_SpinLock.Acquire(&irql);
+
+    //
+    // All contexts for a object is linked together through a head. When moving
+    // all contexts from one object to another object, it might be tempting to
+    // take a shortcut by modifying head only. That is wrong as we need to verify
+    // there is no context type name conflict between two objects. Therefore we
+    // have to traverse the link and call AddContext one by one.
+    //
+    while ((cur = header->NextHeader) != NULL) {
+
+        next = cur->NextHeader;
+
+        //
+        // Prepare the context to add to a different object
+        //
+        cur->Object = TargetObject;
+        cur->NextHeader = NULL;
+
+        status = TargetObject->AddContext(cur, NULL, WDF_NO_OBJECT_ATTRIBUTES);
+
+        //
+        // Treat duplicate entry as an error
+        //
+        if (status == STATUS_OBJECT_NAME_EXISTS) {  // 0x40000000, NT_SUCCESS
+
+            DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGHANDLE,
+                "Duplicated context 0x%p already exists for the target object 0x%p.",
+                cur, TargetObject);
+
+            //
+            // This error should never happen when moving DeviceInit.CxContextObject
+            // to FxDevice. Break into debugger to check what is happening.
+            //
+            FxVerifierDbgBreakPoint(pFxDriverGlobals);
+
+            status = STATUS_DUPLICATE_NAME;         // 0xc00000bd, !NT_SUCCESS
+
+        }
+
+        if (!NT_SUCCESS(status)) {
+
+            DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGHANDLE,
+                "Fail to add context 0x%p to FxObject 0x%p, %!STATUS!",
+                cur, TargetObject, status);
+
+            //
+            // Restore as much as possible
+            //
+            cur->Object = this;
+            cur->NextHeader = next;
+            break;
+        }
+
+        //
+        // Unlink the current context from this->ContextHeader
+        //
+        header->NextHeader = next;
+    }
+
+    m_SpinLock.Release(irql);
+
+Done:
     return status;
 }
 
@@ -1036,7 +1169,115 @@ Returns:
         *ObjectHandle = object;
     }
 
+    VerifyLeakDetectionConsiderObject(m_Globals);
+
     return STATUS_SUCCESS;
+}
+
+VOID
+FX_VF_METHOD(FxObject, VerifyLeakDetectionConsiderObject) (
+    _In_ PFX_DRIVER_GLOBALS FxDriverGlobals
+    )
+{
+    UNREFERENCED_PARAMETER(FxDriverGlobals);
+
+    //
+    // Check to see if we are potentially leaking objects.
+    // Verify leak detection is enabled and that the object type
+    // is configured to be counted. We always count WDFDEVICE because
+    // we need it to scale the limit if there are multiple devices.
+    //
+    if ((m_Globals->FxVerifyLeakDetection != NULL) &&
+        (m_Globals->FxVerifyLeakDetection->Enabled) &&
+        (FxVerifierIsDebugInfoFlagSetForType(
+            m_Globals->DebugExtension->ObjectDebugInfo,
+            m_Type,
+            FxObjectDebugTrackObjectCount) ||
+            (m_Type == FX_TYPE_DEVICE))
+        ) {
+
+        LONG c;
+        FxObjectDebugLeakDetection *leakDetection = m_Globals->FxVerifyLeakDetection;
+        FxObjectDebugExtension* pExtension = GetDebugExtension();
+
+        switch (m_Type) {
+        case FX_TYPE_REQUEST:
+        {
+            FxRequestBase* requestBase = static_cast<FxRequestBase*>(this);
+            if (!requestBase->IsAllocatedDriver()) {
+                //
+                // Only count driver allocated requests, not framwork or
+                // IO from callers
+                //
+                return;
+            }
+            break;
+        }
+        case FX_TYPE_DEVICE:
+        {
+            //
+            // Scale the threshold the verify check happens at. For every
+            // device created we increase the limit by a multiple.
+            //
+            if (m_Type == FX_TYPE_DEVICE) {
+                c = InterlockedIncrement(&leakDetection->DeviceCnt);
+                if (c >= 2) {
+                    //
+                    // We skip 0->1 because LimitScaled is initialized
+                    // to Limit
+                    //
+                    InterlockedExchangeAdd(&leakDetection->LimitScaled,
+                        leakDetection->Limit);
+                }
+            }
+            break;
+        }
+        }
+
+        pExtension->ObjectCounted = TRUE;
+        c = InterlockedIncrement(&leakDetection->ObjectCnt);
+
+        //
+        // Check for exceeding the limit (no interlocked protection)
+        //
+        if (c == leakDetection->LimitScaled) {
+
+            //
+            // Potential leak of objects detected
+            // Device has exceeded WDF Verifiers peak threshold for
+            // objects to be allocated. Use !wdfDriverInfo <drivername>
+            // with flags 0x41 or 0x50 to see a list and count of objects
+            // currently allocated.
+            //
+            // To adjust this setting modify registry key
+            // "ObjectLeakDetectionLimit", which is a REG_DWORD,
+            // under the drivers Parameters\Wdf subkey. 0xFFFFFFFF
+            // will disable the check, any other value to set the
+            // threshold.
+            //
+            // NOTE: the limit will be scaled based on the number of
+            // WDFDEVICE objects present under the driver.
+            //
+            DoTraceLevelMessage(
+                m_Globals, TRACE_LEVEL_ERROR, TRACINGOBJECT,
+                "WDF Verifier has detected an excessive number of "
+                "allocated WDF objects. Investigate with !wdfDriverInfo "
+                "<driverName> 0x41 or 0x50");
+
+            DoTraceLevelMessage(
+                m_Globals, TRACE_LEVEL_ERROR, TRACINGOBJECT,
+                "WDF Verifier found %u objects allocated, limit=%u,"
+                " and the scaled limit=%u",
+                c, leakDetection->Limit, leakDetection->LimitScaled);
+
+            FxVerifierDbgBreakPoint(m_Globals);
+
+            //
+            // Disable the check going forward
+            //
+            leakDetection->Enabled = FALSE;
+        }
+    }
 }
 
 _Must_inspect_result_

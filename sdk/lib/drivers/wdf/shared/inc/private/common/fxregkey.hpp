@@ -22,9 +22,78 @@ Revision History:
 #ifndef _FXREGKEY_H_
 #define _FXREGKEY_H_
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class FxRegKey : public FxPagedObject {
 
 public:
+    //
+    // Verifier check that a driver only writes where driver package
+    // isolation allows. The body is not published and nothing enforces
+    // isolation here, so it checks nothing.
+    //
+    VOID
+    VerifyStateSeparationRegistryPolicy(
+        VOID
+        )
+    {
+    }
+
     FxRegKey(
         PFX_DRIVER_GLOBALS FxDriverGlobals
         );
@@ -88,6 +157,21 @@ public:
         __out    HANDLE* Key,
         __in     ACCESS_MASK DesiredAccess = KEY_ALL_ACCESS
         );
+
+    __inline
+    _Must_inspect_result_
+    __drv_maxIRQL(PASSIVE_LEVEL)
+    NTSTATUS
+    DeleteKey(
+        VOID
+        )
+	{
+#if (FX_CORE_MODE == FX_CORE_USER_MODE)
+		return STATUS_NOT_IMPLEMENTED;
+#else
+		return ZwDeleteKey(m_Key);
+#endif
+	}
 
     __inline
     VOID
@@ -181,7 +265,7 @@ public:
         __out_opt PULONG ValueType
         )
     {
-        return _QueryValue(m_Globals,
+        return _QueryValue(GetDriverGlobals(),
                            m_Key,
                            ValueName,
                            ValueLength,
@@ -195,7 +279,7 @@ public:
     __drv_maxIRQL(PASSIVE_LEVEL)
     NTSTATUS
     _QueryValue(
-        __in PFX_DRIVER_GLOBALS FxDriverGlobals,
+        __in_opt PFX_DRIVER_GLOBALS FxDriverGlobals,
         __in HANDLE Key,
         __in PCUNICODE_STRING ValueName,
         __in ULONG ValueLength,
@@ -244,6 +328,40 @@ public:
         __in ULONG DataLength
         );
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 private:
 
     static
@@ -259,7 +377,6 @@ private:
 protected:
 
     HANDLE m_Key;
-    PFX_DRIVER_GLOBALS m_Globals;
 
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
 private:

@@ -29,7 +29,7 @@ typedef struct {
     DWORD OwnerThreadId;
 } MdPagedLock;
 
-#include "MxPagedLock.h"
+#include "mxpagedlock.h"
 
 __inline
 MxPagedLock::MxPagedLock(

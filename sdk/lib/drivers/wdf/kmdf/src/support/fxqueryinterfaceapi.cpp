@@ -69,6 +69,17 @@ WDFEXPORT(WdfDeviceAddQueryInterface)(
         return status;
     }
 
+    if (pDevice->IsLegacy()) {
+        status = STATUS_INVALID_DEVICE_REQUEST;
+
+        DoTraceLevelMessage(
+            pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGERROR,
+            "WDFDEVICE 0x%p is not a PnP device %!STATUS!",
+            Device, status);
+
+        goto Done;
+    }
+
     pInterface = InterfaceConfig->Interface;
 
     if (InterfaceConfig->Size != sizeof(WDF_QUERY_INTERFACE_CONFIG)) {
@@ -160,7 +171,7 @@ WDFEXPORT(WdfDeviceAddQueryInterface)(
     // the list of FxQueryInterface's is locked by a lock which does not
     // raise IRQL, we can allocate the structure out paged pool.
     //
-    pQueryInterface = new (pFxDriverGlobals, PagedPool)
+    pQueryInterface = new (pFxDriverGlobals, POOL_FLAG_PAGED)
         FxQueryInterface(pDevice, InterfaceConfig);
 
     if (pQueryInterface == NULL) {
@@ -178,7 +189,7 @@ WDFEXPORT(WdfDeviceAddQueryInterface)(
         // Try to allocate memory for the interface.
         //
         pQueryInterface->m_Interface = (PINTERFACE)
-            FxPoolAllocate(pFxDriverGlobals, PagedPool, pInterface->Size);
+            FxPoolAllocate2(pFxDriverGlobals, POOL_FLAG_PAGED, pInterface->Size);
 
         if (pQueryInterface->m_Interface == NULL) {
             status = STATUS_INSUFFICIENT_RESOURCES;

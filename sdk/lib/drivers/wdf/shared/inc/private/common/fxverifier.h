@@ -56,6 +56,7 @@ enum FxEnhancedVerifierBitFlags {
 
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
 #define FxVerifierBugCheck(FxDriverGlobals, Error, ...)              \
+    FxVerifierBugCheckWorker(FxDriverGlobals, Error, __VA_ARGS__);   \
     FX_VERIFY_WITH_NAME(DRIVER(BadAction, Error),                    \
                         TRAPMSG("WDF Violation: Please check"        \
                         "tracelog for a description of this error"), \
@@ -65,10 +66,6 @@ enum FxEnhancedVerifierBitFlags {
         FxVerifierBugCheckWorker(FxDriverGlobals, __VA_ARGS__);
 #endif
 
-//
-// FxVerifierDbgBreakPoint and FxVerifierBreakOnDeviceStateError are mapped
-// to FX_VERIFY in UMDF and break regardless of any flags
-//
 __inline
 VOID
 FxVerifierDbgBreakPoint(
@@ -88,6 +85,12 @@ FxVerifierDbgBreakPoint(
              );
 
     if (FxDriverGlobals->FxVerifierDbgBreakOnError) {
+
+        //
+        // Indicate to the BugCheck callback filter which IFR to dump.
+        //
+        FxDriverGlobals->FxForceLogsInMiniDump = TRUE;
+
         Mx::MxDbgBreakPoint();
     } else {
         Mx::MxDbgPrint("Turn on framework verifier for %s.%s to automatically "
@@ -109,11 +112,17 @@ FxVerifierBreakOnDeviceStateError(
 #endif
 
     Mx::MxDbgPrint("WDF detected potentially invalid device state in %s.%s. "
-             "Dump the driver log (!wdflogdump %s.$s) for more information.\n",
+             "Dump the driver log (!wdflogdump %s.%s) for more information.\n",
              FxDriverGlobals->Public.DriverName, ext,
              FxDriverGlobals->Public.DriverName, ext);
 
     if (FxDriverGlobals->FxVerifierDbgBreakOnDeviceStateError) {
+
+        //
+        // Indicate to the BugCheck callback filter which IFR to dump.
+        //
+        FxDriverGlobals->FxForceLogsInMiniDump = TRUE;
+
         Mx::MxDbgBreakPoint();
     } else {
         Mx::MxDbgPrint("Turn on framework verifier for %s.%s to automatically "
@@ -144,6 +153,17 @@ FxVerifierBugCheckWorker(
     __in     WDF_BUGCHECK_CODES WdfBugCheckCode,
     __in_opt ULONG_PTR BugCheckParameter2 = 0,
     __in_opt ULONG_PTR BugCheckParameter3 = 0
+    );
+
+DECLSPEC_NORETURN
+VOID
+FxVerifierDriverReportedBugcheck(
+    _In_ PFX_DRIVER_GLOBALS FxDriverGlobals,
+    _In_ ULONG  BugCheckCode,
+    _In_ ULONG_PTR  BugCheckParameter1,
+    _In_ ULONG_PTR  BugCheckParameter2,
+    _In_ ULONG_PTR  BugCheckParameter3,
+    _In_ ULONG_PTR  BugCheckParameter4
     );
 
 DECLSPEC_NORETURN

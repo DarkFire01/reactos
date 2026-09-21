@@ -26,10 +26,10 @@ Revision History:
 
 #include <fxmin.hpp>
 #include <wdfwmi.h>
-#include <FxCallback.hpp>
-#include <FxPackage.hpp>
-#include <FxWmiIrpHandler.hpp>
-#include <FxWmiProvider.hpp>
+#include <fxcallback.hpp>
+#include <fxpackage.hpp>
+#include <fxwmiirphandler.hpp>
+#include <fxwmiprovider.hpp>
 
 #pragma warning(push)
 #pragma warning(disable:4100) //unreferenced parameter

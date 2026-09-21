@@ -31,158 +31,6 @@ extern "C" {
 }
 
 //
-// At this time we are unable to include wdf19.h in the share code, thus for
-// now we simply cut and paste the needed structures.
-//
-typedef struct _WDF_INTERRUPT_CONFIG_V1_9 {
-    ULONG              Size;
-
-    //
-    // If this interrupt is to be synchronized with other interrupt(s) assigned
-    // to the same WDFDEVICE, create a WDFSPINLOCK and assign it to each of the
-    // WDFINTERRUPTs config.
-    //
-    WDFSPINLOCK        SpinLock;
-
-    WDF_TRI_STATE      ShareVector;
-
-    BOOLEAN            FloatingSave;
-
-    //
-    // Automatic Serialization of the DpcForIsr
-    //
-    BOOLEAN            AutomaticSerialization;
-
-    // Event Callbacks
-    PFN_WDF_INTERRUPT_ISR         EvtInterruptIsr;
-
-    PFN_WDF_INTERRUPT_DPC         EvtInterruptDpc;
-
-    PFN_WDF_INTERRUPT_ENABLE      EvtInterruptEnable;
-
-    PFN_WDF_INTERRUPT_DISABLE     EvtInterruptDisable;
-
-} WDF_INTERRUPT_CONFIG_V1_9, *PWDF_INTERRUPT_CONFIG_V1_9;
-
-//
-// The interrupt config structure has changed post win8-Beta. This is a
-// temporary definition to allow beta drivers to load on post-beta builds.
-// Note that size of win8-beta and win8-postbeta structure is different only on
-// non-x64 platforms, but the fact that size is same on amd64 is harmless because
-// the struture gets zero'out by init macro, and the default value of the new
-// field is 0 on amd64.
-//
-typedef struct _WDF_INTERRUPT_CONFIG_V1_11_BETA {
-    ULONG              Size;
-
-    //
-    // If this interrupt is to be synchronized with other interrupt(s) assigned
-    // to the same WDFDEVICE, create a WDFSPINLOCK and assign it to each of the
-    // WDFINTERRUPTs config.
-    //
-    WDFSPINLOCK                     SpinLock;
-
-    WDF_TRI_STATE                   ShareVector;
-
-    BOOLEAN                         FloatingSave;
-
-    //
-    // DIRQL handling: automatic serialization of the DpcForIsr/WaitItemForIsr.
-    // Passive-level handling: automatic serialization of all callbacks.
-    //
-    BOOLEAN                         AutomaticSerialization;
-
-    //
-    // Event Callbacks
-    //
-    PFN_WDF_INTERRUPT_ISR           EvtInterruptIsr;
-    PFN_WDF_INTERRUPT_DPC           EvtInterruptDpc;
-    PFN_WDF_INTERRUPT_ENABLE        EvtInterruptEnable;
-    PFN_WDF_INTERRUPT_DISABLE       EvtInterruptDisable;
-    PFN_WDF_INTERRUPT_WORKITEM      EvtInterruptWorkItem;
-
-    //
-    // These fields are only used when interrupt is created in
-    // EvtDevicePrepareHardware callback.
-    //
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR InterruptRaw;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR InterruptTranslated;
-
-    //
-    // Optional passive lock for handling interrupts at passive-level.
-    //
-    WDFWAITLOCK                     WaitLock;
-
-    //
-    // TRUE: handle interrupt at passive-level.
-    // FALSE: handle interrupt at DIRQL level. This is the default.
-    //
-    BOOLEAN                         PassiveHandling;
-
-} WDF_INTERRUPT_CONFIG_V1_11_BETA, *PWDF_INTERRUPT_CONFIG_V1_11_BETA;
-
-//
-// Interrupt Configuration Structure
-//
-typedef struct _WDF_INTERRUPT_CONFIG_V1_11 {
-    ULONG              Size;
-
-    //
-    // If this interrupt is to be synchronized with other interrupt(s) assigned
-    // to the same WDFDEVICE, create a WDFSPINLOCK and assign it to each of the
-    // WDFINTERRUPTs config.
-    //
-    WDFSPINLOCK                     SpinLock;
-
-    WDF_TRI_STATE                   ShareVector;
-
-    BOOLEAN                         FloatingSave;
-
-    //
-    // DIRQL handling: automatic serialization of the DpcForIsr/WaitItemForIsr.
-    // Passive-level handling: automatic serialization of all callbacks.
-    //
-    BOOLEAN                         AutomaticSerialization;
-
-    //
-    // Event Callbacks
-    //
-    PFN_WDF_INTERRUPT_ISR           EvtInterruptIsr;
-    PFN_WDF_INTERRUPT_DPC           EvtInterruptDpc;
-    PFN_WDF_INTERRUPT_ENABLE        EvtInterruptEnable;
-    PFN_WDF_INTERRUPT_DISABLE       EvtInterruptDisable;
-    PFN_WDF_INTERRUPT_WORKITEM      EvtInterruptWorkItem;
-
-    //
-    // These fields are only used when interrupt is created in
-    // EvtDevicePrepareHardware callback.
-    //
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR InterruptRaw;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR InterruptTranslated;
-
-    //
-    // Optional passive lock for handling interrupts at passive-level.
-    //
-    WDFWAITLOCK                     WaitLock;
-
-    //
-    // TRUE: handle interrupt at passive-level.
-    // FALSE: handle interrupt at DIRQL level. This is the default.
-    //
-    BOOLEAN                         PassiveHandling;
-
-    //
-    // TRUE: Interrupt is reported inactive on explicit power down
-    //       instead of disconnecting it.
-    // FALSE: Interrupt is disconnected instead of reporting inactive
-    //        on explicit power down.
-    // DEFAULT: Framework decides the right value.
-    //
-    WDF_TRI_STATE                   ReportInactiveOnPowerDown;
-
-} WDF_INTERRUPT_CONFIG_V1_11, *PWDF_INTERRUPT_CONFIG_V1_11;
-
-//
 // extern "C" the entire file
 //
 extern "C" {
@@ -561,27 +409,6 @@ Returns:
 
             return status;
         }
-
-
-       //
-       // For UMDF reflector decides whether to handle the interrupt
-       // at passive or DIRQL. Driver has no choice. Therefore this check
-       // is applicable only for KMDF.
-       //
-#if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
-        if (Configuration->InterruptTranslated != NULL &&
-            FxInterrupt::_IsMessageInterrupt(
-                Configuration->InterruptTranslated->Flags)) {
-            status = STATUS_INVALID_PARAMETER;
-            DoTraceLevelMessage(
-                pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGPNP,
-                "Driver cannot specify PassiveHandling for MSI interrupts, "
-                "WDF_INTERRUPT_CONFIG structure 0x%p passed, %!STATUS!",
-                Configuration, status);
-
-            return status;
-        }
-#endif
     }
 
     //
@@ -992,7 +819,7 @@ WDFEXPORT(WdfInterruptGetInfo)(
     PWDF_DRIVER_GLOBALS DriverGlobals,
     __in
     WDFINTERRUPT Interrupt,
-    __out
+    _Inout_
     PWDF_INTERRUPT_INFO    Info
     )
 

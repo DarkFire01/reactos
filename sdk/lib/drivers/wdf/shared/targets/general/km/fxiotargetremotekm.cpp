@@ -167,42 +167,14 @@ FxIoTargetRemote::UnregisterForPnpNotification(
     )
 {
     if (Handle != NULL) {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        if (FxLibraryGlobals.IoUnregisterPlugPlayNotificationEx != NULL) {
-            FxLibraryGlobals.IoUnregisterPlugPlayNotificationEx(Handle);
-        }
-        else {
-            IoUnregisterPlugPlayNotification(Handle);
-        }
+        IoUnregisterPlugPlayNotificationEx(Handle);
     }
 }
 
 NTSTATUS
 FxIoTargetRemote::OpenTargetHandle(
     _In_ PWDF_IO_TARGET_OPEN_PARAMS OpenParams,
-    _Inout_ FxIoTargetRemoveOpenParams* pParams
+    _Inout_ FxIoTargetRemoteOpenParams* pParams
     )
 {
     OBJECT_ATTRIBUTES oa;

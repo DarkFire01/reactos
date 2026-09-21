@@ -18,22 +18,22 @@ extern RTL_OSVERSIONINFOW  gOsVersion;
 #define _LIT_(a)    # a
 #define LITERAL(a) _LIT_(a)
 
+#define __PrintUnfiltered(...)          \
+    DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__);
 
-
-
-#define __Print(_x_)                    \
-{                                       \
-    if (WdfLdrDbgPrintOn) {             \
-    }                                   \
+#define __Print(_x_)                                                           \
+{                                                                              \
+    if (WdfLdrDbgPrintOn) {                                                    \
+        DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s: ", WdfLdrType); \
+        __PrintUnfiltered _x_                                                  \
+    }                                                                          \
 }
 
 #define WDF_ENHANCED_VERIFIER_OPTIONS_VALUE_NAME      L"EnhancedVerifierOptions"
 
-typedef
-NTSTATUS
-(*PFN_RTL_GET_VERSION)(
-    OUT PRTL_OSVERSIONINFOW VersionInformation
-    );
+#define WIDEN(str)                                 WIDEN2(str)
+#define WIDEN2(str)                                L##str
+#define WDF_UNKNOWN_SERVICE_NAME                   "Unknown"
 
 NTSTATUS
 FxLibraryCommonCommission(

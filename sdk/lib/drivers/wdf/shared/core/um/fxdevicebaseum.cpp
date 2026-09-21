@@ -27,7 +27,7 @@ Revision History:
 #include "coreprivshared.hpp"
 
 extern "C" {
-#include "FxDeviceBaseUm.tmh"
+// #include "FxDeviceBaseUm.tmh"
 }
 
 _Must_inspect_result_

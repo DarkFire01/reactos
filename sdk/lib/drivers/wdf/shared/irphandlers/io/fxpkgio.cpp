@@ -454,7 +454,7 @@ FxPkgIo::DispatchStep2(
         request->IsReserved() == FALSE) {
 
         request->SetInternalContext(Queue);
-        status = DispathToInCallerContextCallback(IoInCallerCtx, request, Irp);
+        status = DispatchToInCallerContextCallback(IoInCallerCtx, request, Irp);
 
         //
         // The driver is responsible for calling WdfDeviceEnqueueRequest to
@@ -917,6 +917,7 @@ FxPkgIo::ConfigureForwarding(
     NTSTATUS status;
 
     ASSERT(RequestType <= IRP_MJ_MAXIMUM_FUNCTION);
+    _Analysis_assume_(RequestType <= IRP_MJ_MAXIMUM_FUNCTION && RequestType >= 0);
 
     if(TargetQueue->IsIoEventHandlerRegistered(RequestType) == FALSE){
         status = STATUS_INVALID_DEVICE_REQUEST;
@@ -1696,7 +1697,7 @@ FxPkgIo::GetNextIoQueueLocked(
 }
 
 NTSTATUS
-FxPkgIo::DispathToInCallerContextCallback(
+FxPkgIo::DispatchToInCallerContextCallback(
     __in    FxIoInCallerContext *InCallerContextInfo,
     __in    FxRequest *Request,
     __inout MdIrp      Irp

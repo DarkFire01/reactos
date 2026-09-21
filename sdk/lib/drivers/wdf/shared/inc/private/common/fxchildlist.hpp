@@ -525,6 +525,7 @@ protected:
     }
 
     VOID
+    #pragma prefast(suppress:__WARNING_RETURN_UNINIT_VAR, "Returning uninitialized memory '*Dest'")
     CopyAddress(
         __out PWDF_CHILD_ADDRESS_DESCRIPTION_HEADER Dest,
         __in_opt PWDF_CHILD_ADDRESS_DESCRIPTION_HEADER Source
@@ -670,8 +671,8 @@ struct FxDeviceDescriptionEntry : public FxStump {
 public:
     FxDeviceDescriptionEntry(
         __inout FxChildList* DeviceList,
-        __in ULONG AddressDescriptionSize,
-        __in ULONG IdentificationDescriptionSize
+        __in ULONG IdentificationDescriptionSize,
+        __in ULONG AddressDescriptionSize
         );
 
     ~FxDeviceDescriptionEntry();

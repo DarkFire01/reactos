@@ -23,7 +23,7 @@ Revision History:
 
 --*/
 
-#include "Mx.h"
+#include "mx.h"
 
 VOID
 CALLBACK

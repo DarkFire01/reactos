@@ -115,11 +115,12 @@ typedef enum _WDF_INTERRUPT_POLICY WDF_INTERRUPT_POLICY;
 typedef enum _WDF_INTERRUPT_PRIORITY WDF_INTERRUPT_PRIORITY;
 typedef struct _WDF_OBJECT_ATTRIBUTES *PWDF_OBJECT_ATTRIBUTES;
 typedef enum _WDF_DEVICE_IO_BUFFER_RETRIEVAL WDF_DEVICE_IO_BUFFER_RETRIEVAL;
-typedef enum RdWmiPowerAction;
+typedef enum RdWmiPowerAction RdWmiPowerAction;
 typedef struct _WDF_REQUEST_PARAMETERS *PWDF_REQUEST_PARAMETERS;
 typedef enum _WDF_EVENT_TYPE WDF_EVENT_TYPE;
 typedef enum _WDF_FILE_INFORMATION_CLASS WDF_FILE_INFORMATION_CLASS;
 typedef WDF_FILE_INFORMATION_CLASS *PWDF_FILE_INFORMATION_CLASS;
+typedef struct _WUDF_DRIVER_LOAD_CONTEXT *PWUDF_DRIVER_LOAD_CONTEXT;
 
 typedef
 NTSTATUS
@@ -172,7 +173,7 @@ NTSTATUS
 DRIVER_ADD_DEVICE_UM (
     _In_  PDRIVER_OBJECT_UM         DriverObject,
     _In_  PVOID                     Context,
-    _In_  IWudfDeviceStack *        DevStack,
+    _In_  PWUDF_DRIVER_LOAD_CONTEXT DriverLoadContext,
     _In_  LPCWSTR                   KernelDeviceName,
     _In_opt_ HKEY                   hPdoKey,
     _In_  LPCWSTR                   pwszServiceName,
@@ -232,15 +233,15 @@ typedef FREE_FUNCTION *PFREE_FUNCTION;
 #include <limits.h>
 #include <driverspecs.h>
 
-#include "ErrToStatus.h"
+#include "errtostatus.h"
 
-#include "MxDriverObjectUm.h"
-#include "MxDeviceObjectUm.h"
-#include "MxFileObjectUm.h"
-#include "MxGeneralUm.h"
-#include "MxLockUm.h"
-#include "MxPagedLockUm.h"
-#include "MxEventUm.h"
-#include "MxMemoryUm.h"
-#include "MxTimerUm.h"
-#include "MxWorkItemUm.h"
+#include "mxdriverobjectum.h"
+#include "mxdeviceobjectum.h"
+#include "mxfileobjectum.h"
+#include "mxgeneralum.h"
+#include "mxlockum.h"
+#include "mxpagedlockum.h"
+#include "mxeventum.h"
+#include "mxmemoryum.h"
+#include "mxtimerum.h"
+#include "mxworkitemum.h"

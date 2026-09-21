@@ -20,7 +20,7 @@ Revision History:
 
 --*/
 
-#include "Mx.h"
+#include "mx.h"
 
 #include <strsafe.h>
 
@@ -37,7 +37,7 @@ Mx::MxDbgPrint(
 {
 #if DBG
 
-#define         TEMP_BUFFER_SIZE        1024
+#define         TEMP_BUFFER_SIZE        512
     va_list     list;
     CHAR        debugMessageBuffer[TEMP_BUFFER_SIZE];
     HRESULT     hr;

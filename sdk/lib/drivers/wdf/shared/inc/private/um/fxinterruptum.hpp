@@ -26,7 +26,7 @@ Revision History:
 #ifndef _FXINTERRUPTUM_H_
 #define _FXINTERRUPTUM_H_
 
-#include "FxInterrupt.hpp"
+#include "fxinterrupt.hpp"
 
 __inline
 struct _KINTERRUPT*

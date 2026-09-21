@@ -30,8 +30,8 @@ typedef struct {
 #endif
 } MdEvent;
 
-#include "DbgMacros.h"
-#include "MxEvent.h"
+#include "dbgmacros.h"
+#include "mxevent.h"
 
 __inline
 MxEvent::MxEvent()

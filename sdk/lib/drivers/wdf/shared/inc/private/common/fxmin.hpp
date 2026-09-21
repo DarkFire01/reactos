@@ -95,6 +95,7 @@ extern const WDFFUNC *WdfFunctions;
 #include "wdfiotarget.h"
 #include "wdfcontrol.h"
 #include "wdfcx.h"
+#include "wdfcxbase.h"
 #include "wdfio.h"
 #include "wdfqueryinterface.h"
 #include "wdfworkitem.h"
@@ -111,6 +112,17 @@ extern const WDFFUNC *WdfFunctions;
 
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
 #include "wdfhid.h"
+#endif
+
+//
+// Companion headers
+//
+#if (FX_CORE_MODE == FX_CORE_USER_MODE)
+#include "wdfcompanion.h"
+#endif
+
+#if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
+#include "wdfcompaniontarget.h"
 #endif
 
 // #pragma warning(disable:4200)  // suppress nameless struct/union warning
@@ -215,6 +227,9 @@ typedef enum _TRACE_INFORMATION_CLASS {
 #include "fxpool.h"
 
 #if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+// Internal companion Library object to interact with non-PnP WudfRd
+#include "wudfrdnonpnp.hpp"
+#include "fxcompanionlibrary.hpp"
 #include "fxglobalskm.h"
 #include "fxperftracekm.hpp"
 // #include "DriverFrameworks-KernelMode-KmEvents.h"
@@ -362,14 +377,20 @@ typedef enum _TRACE_INFORMATION_CLASS {
 #include "fxiotargetremote.hpp"
 #include "fxiotargetself.hpp"
 
+// Companion target for interaction with device companions
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+#include "fxcompaniontarget.hpp"
+#endif
+
+// Companion object representing device companion
+#if FX_CORE_MODE==FX_CORE_USER_MODE
+#include "fxcompanion.hpp"
+#include "fxtaskqueue.hpp"
+#endif
+
 #include "fxusbdevice.hpp"
 #include "fxusbinterface.hpp"
 #include "fxusbpipe.hpp"
-
-// DMA support
-//#include "fxdmaenabler.hpp"
-//#include "fxdmatransaction.hpp"
-//#include "fxcommonbuffer.hpp"
 
 // Triage info.
 // #include "wdftriage.h"

@@ -28,7 +28,7 @@ Revision History:
 #if defined(EVENT_TRACING)
 // Tracing support
 extern "C" {
-#include "FxResourceCollectionKm.tmh"
+// #include "FxResourceCollectionKm.tmh"
 }
 #endif
 

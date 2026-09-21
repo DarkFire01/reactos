@@ -351,7 +351,7 @@ typedef struct _MdTimer {
     }
 } MdTimer;
 
-#include "MxTimer.h"
+#include "mxtimer.h"
 
 //
 // Implementation of MxTimer functions

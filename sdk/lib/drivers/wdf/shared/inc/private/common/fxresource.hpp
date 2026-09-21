@@ -463,7 +463,7 @@ public:
     _Must_inspect_result_
     PCM_RESOURCE_LIST
     CreateWdmList(
-        __in __drv_strictTypeMatch(__drv_typeExpr) POOL_TYPE PoolType = PagedPool
+        __in __drv_strictTypeMatch(__drv_typeExpr) POOL_FLAGS PoolFlags = POOL_FLAG_PAGED
         );
 
     ULONG

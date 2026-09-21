@@ -55,6 +55,10 @@ Return Value:
 
   --*/
 {
+#if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
+    ASSERT(BufferSize < PAGE_SIZE);
+#endif
+
     Init();
 }
 
@@ -154,6 +158,13 @@ Return Value:
     UNREFERENCED_PARAMETER(Size);
 
     ASSERT(Size >= sizeof(FxMemoryBufferFromLookaside));
+
+#if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
+    ASSERT(BufferSize < PAGE_SIZE);
+    if (BufferSize >= PAGE_SIZE) {
+        return NULL;
+    }
+#endif
 
     //
     // We round up the object size (via COMPUTE_OBJECT_SIZE) because the object,

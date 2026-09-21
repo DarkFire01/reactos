@@ -26,7 +26,7 @@ Revision History:
 #ifndef _FXFILEOBJECTUM_H_
 #define _FXFILEOBJECTUM_H_
 
-#include "FxFileObject.hpp"
+#include "fxfileobject.hpp"
 
 #endif // _FXFILEOBJECTUM_H_
 

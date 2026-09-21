@@ -70,6 +70,10 @@ public:
         // Specialize operator new so that we can use the caller's tag when
         // making the object allocation vs using the default driver-wide tag.
         //
+
+        //
+        // Used by WdfMemoryCreate. Keep POOL_TYPE for compat
+        //
         return FxObjectHandleAlloc(FxDriverGlobals,
                                    PoolType,
                                    Size,

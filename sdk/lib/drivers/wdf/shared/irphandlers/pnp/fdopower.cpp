@@ -34,7 +34,7 @@ Revision History:
 
 #if defined(EVENT_TRACING)
 extern "C" {
-#include "FdoPower.tmh"
+// #include "FdoPower.tmh"
 }
 #endif
 
@@ -245,6 +245,10 @@ FxPkgFdo::DispatchSystemSetPower(
                                Irp->GetParameterPowerState());
 
     if (IsPowerPolicyOwner()) {
+
+        m_PowerPolicyMachine.m_Owner->
+            m_DevicePowerIrpTracker.SaveStateFromSystemPowerIrp(Irp);
+
         //
         // If we are going to S0, we just notify the power policy state machine
         // and then let the request go (per the fast resume spec).  Otherwise,

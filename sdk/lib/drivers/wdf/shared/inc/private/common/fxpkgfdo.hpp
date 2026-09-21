@@ -398,7 +398,7 @@ private:
         );
 
     virtual
-    VOID
+    NTSTATUS
     QueryForReenumerationInterface(
         VOID
         );

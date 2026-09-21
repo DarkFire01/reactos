@@ -24,7 +24,7 @@ Revision History:
 --*/
 
 #include "fxmin.hpp"
-#include "FxWmiIrpHandler.hpp"
+#include "fxwmiirphandler.hpp"
 
 class  FxWmiIrpHandler;
 

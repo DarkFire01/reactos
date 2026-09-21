@@ -23,7 +23,25 @@ Revision History:
 
 #pragma once
 
-#include "MxMemory.h"
+#include "mxmemory.h"
+
+__inline
+PVOID
+MxMemory::MxAllocatePool2(
+    _In_ POOL_FLAGS  PoolFlags,
+    _In_ SIZE_T  NumberOfBytes,
+    _In_ ULONG  Tag
+    )
+{
+    UNREFERENCED_PARAMETER(PoolFlags);
+    UNREFERENCED_PARAMETER(Tag);
+
+    return ::HeapAlloc(
+                GetProcessHeap(),
+                HEAP_ZERO_MEMORY,
+                NumberOfBytes
+                );
+}
 
 __inline
 PVOID

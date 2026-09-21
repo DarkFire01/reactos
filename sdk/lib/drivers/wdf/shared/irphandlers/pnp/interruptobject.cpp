@@ -47,97 +47,6 @@ struct FxInterruptSyncParameters {
 };
 
 //
-// At this time we are unable to include wdf19.h in the share code, thus for
-// now we simply cut and paste the needed structures.
-//
-typedef struct _WDF_INTERRUPT_CONFIG_V1_9 {
-    ULONG              Size;
-
-    //
-    // If this interrupt is to be synchronized with other interrupt(s) assigned
-    // to the same WDFDEVICE, create a WDFSPINLOCK and assign it to each of the
-    // WDFINTERRUPTs config.
-    //
-    WDFSPINLOCK        SpinLock;
-
-    WDF_TRI_STATE      ShareVector;
-
-    BOOLEAN            FloatingSave;
-
-    //
-    // Automatic Serialization of the DpcForIsr
-    //
-    BOOLEAN            AutomaticSerialization;
-
-    // Event Callbacks
-    PFN_WDF_INTERRUPT_ISR         EvtInterruptIsr;
-
-    PFN_WDF_INTERRUPT_DPC         EvtInterruptDpc;
-
-    PFN_WDF_INTERRUPT_ENABLE      EvtInterruptEnable;
-
-    PFN_WDF_INTERRUPT_DISABLE     EvtInterruptDisable;
-
-} WDF_INTERRUPT_CONFIG_V1_9, *PWDF_INTERRUPT_CONFIG_V1_9;
-
-//
-// The interrupt config structure has changed post win8-Beta. This is a
-// temporary definition to allow beta drivers to load on post-beta builds.
-// Note that size of win8-beta and win8-postbeta structure is different only on
-// non-x64 platforms, but the fact that size is same on amd64 is harmless because
-// the struture gets zero'out by init macro, and the default value of the new
-// field is 0 on amd64.
-//
-typedef struct _WDF_INTERRUPT_CONFIG_V1_11_BETA {
-    ULONG              Size;
-
-    //
-    // If this interrupt is to be synchronized with other interrupt(s) assigned
-    // to the same WDFDEVICE, create a WDFSPINLOCK and assign it to each of the
-    // WDFINTERRUPTs config.
-    //
-    WDFSPINLOCK                     SpinLock;
-
-    WDF_TRI_STATE                   ShareVector;
-
-    BOOLEAN                         FloatingSave;
-
-    //
-    // DIRQL handling: automatic serialization of the DpcForIsr/WaitItemForIsr.
-    // Passive-level handling: automatic serialization of all callbacks.
-    //
-    BOOLEAN                         AutomaticSerialization;
-
-    //
-    // Event Callbacks
-    //
-    PFN_WDF_INTERRUPT_ISR           EvtInterruptIsr;
-    PFN_WDF_INTERRUPT_DPC           EvtInterruptDpc;
-    PFN_WDF_INTERRUPT_ENABLE        EvtInterruptEnable;
-    PFN_WDF_INTERRUPT_DISABLE       EvtInterruptDisable;
-    PFN_WDF_INTERRUPT_WORKITEM      EvtInterruptWorkItem;
-
-    //
-    // These fields are only used when interrupt is created in
-    // EvtDevicePrepareHardware callback.
-    //
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR InterruptRaw;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR InterruptTranslated;
-
-    //
-    // Optional passive lock for handling interrupts at passive-level.
-    //
-    WDFWAITLOCK                     WaitLock;
-
-    //
-    // TRUE: handle interrupt at passive-level.
-    // FALSE: handle interrupt at DIRQL level. This is the default.
-    //
-    BOOLEAN                         PassiveHandling;
-
-} WDF_INTERRUPT_CONFIG_V1_11_BETA, *PWDF_INTERRUPT_CONFIG_V1_11_BETA;
-
-//
 // Public constructors
 //
 FxInterrupt::FxInterrupt(
@@ -170,7 +79,7 @@ FxInterrupt::FxInterrupt(
     // compat issues on existing platforms. In later versions (after 1.11) the
     // platform differenciation could be removed.
     //
-#if defined(_ARM_)
+#if defined(_ARM_) || defined(_ARM64_)
     m_UseSoftDisconnect = TRUE;
 #else
     m_UseSoftDisconnect = FALSE;
@@ -876,6 +785,8 @@ FxInterrupt::DeleteObject(
     if (m_WakeInterruptMachine) {
         delete m_WakeInterruptMachine;
         m_WakeInterruptMachine = NULL;
+
+        m_Device->m_PkgPnp->WakeInterruptDestroyed();
     }
 
     //
@@ -972,14 +883,6 @@ Return Value:
         m_PassiveHandlingByRedirector = TRUE;
     }
 #endif
-
-    if (IsPassiveConnect() && _IsMessageInterrupt(CmDescTrans->Flags)) {
-        DoTraceLevelMessage(
-            GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-            "Driver cannot specify PassiveHandling for MSI interrupts.");
-        FxVerifierDbgBreakPoint(GetDriverGlobals());
-        // IoConnectInterruptEx will fail later on.
-    }
 
     m_InterruptInfo.Group                   = CmDescTrans->u.Interrupt.Group;
     m_InterruptInfo.TargetProcessorSet      = CmDescTrans->u.Interrupt.Affinity;
@@ -1894,12 +1797,24 @@ FxInterrupt::AcquireLock(
         //
         // DIRQL interrupt handling.
         //
-        ASSERTMSG("Can't synchronize when the interrupt isn't connected: ",
-                  kinterrupt != NULL);
+        if (NULL == kinterrupt) {
+            DoTraceLevelMessage(
+                GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+                "Can't synchronize when WDFINTERRUPT 0x%p isn't connected",
+                GetHandle());
+            FxVerifierDbgBreakPoint(GetDriverGlobals());
 
-        if (NULL != kinterrupt) {
-            m_OldIrql = Mx::MxAcquireInterruptSpinLock(kinterrupt);
+            //
+            // This is a defence in depth when verifier is not enabled.
+            // This way, if ReleaseLock is called and interrupt happens
+            // to be connected, at least it can restore irql properly.
+            //
+            m_OldIrql = Mx::MxGetCurrentIrql();
+
+            return;
         }
+
+        m_OldIrql = Mx::MxAcquireInterruptSpinLock(kinterrupt);
     }
     else {
         //
@@ -1949,13 +1864,17 @@ FxInterrupt::ReleaseLock(
         //
         // DIRQL interrupt handling.
         //
-        ASSERTMSG("Can't synchronize when the interrupt isn't connected: ",
-                  kinterrupt != NULL);
-
-        if (NULL != kinterrupt) {
-#pragma prefast(suppress:__WARNING_CALLER_FAILING_TO_HOLD, "Unable to annotate ReleaseLock for this case.");
-            Mx::MxReleaseInterruptSpinLock(kinterrupt, m_OldIrql);
+        if (NULL == kinterrupt) {
+            DoTraceLevelMessage(
+                GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+                "Can't synchronize when WDFINTERRUPT 0x%p isn't connected",
+                GetHandle());
+            FxVerifierDbgBreakPoint(GetDriverGlobals());
+            return;
         }
+
+#pragma prefast(suppress:__WARNING_CALLER_FAILING_TO_HOLD, "Unable to annotate ReleaseLock for this case.");
+        Mx::MxReleaseInterruptSpinLock(kinterrupt, m_OldIrql);
     }
     else {
         //

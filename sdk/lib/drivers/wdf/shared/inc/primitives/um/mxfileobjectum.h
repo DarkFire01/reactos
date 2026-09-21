@@ -18,7 +18,7 @@ struct IWudfFile;
 
 typedef IWudfFile * MdFileObject;
 
-#include "MxFileObject.h"
+#include "mxfileobject.h"
 
 __inline
 PLARGE_INTEGER
