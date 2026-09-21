@@ -2503,6 +2503,14 @@ NdisCompletePnPEvent(
   PLOGICAL_ADAPTER Adapter = AdapterBinding->Adapter;
   NDIS_STATUS NdisStatus;
 
+  /* A miniport initiated event has no IRP, just a waiter in NdisMNetPnPEvent */
+  if (Irp == NULL && NetPnPEvent->NdisReserved[2] != 0)
+  {
+      NetPnPEvent->NdisReserved[3] = (ULONG_PTR)Status;
+      KeSetEvent((PKEVENT)NetPnPEvent->NdisReserved[2], IO_NO_INCREMENT, FALSE);
+      return;
+  }
+
   if (Status != NDIS_STATUS_SUCCESS)
   {
       if (NetPnPEvent->Buffer) ExFreePool(NetPnPEvent->Buffer);

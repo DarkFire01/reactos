@@ -183,6 +183,12 @@ typedef struct _MINIPORT_CORE
 
     struct _CORE_INTERRUPT *Interrupt;
     struct _CORE_SG_DMA *SgDma;
+
+    /* Ports from NdisMAllocatePort, under Lock. Bit n of PortIndices is port n. */
+    LIST_ENTRY PortList;
+    PUCHAR PortIndices;
+    ULONG PortIndicesLength;
+    ULONG PortCount;
 } MINIPORT_CORE, *PMINIPORT_CORE;
 
 /*
@@ -456,6 +462,13 @@ VOID
 NTAPI
 CoreFreeNetBufferPacket(
     _In_ PNDIS_PACKET Packet);
+
+/* mpport.c */
+
+VOID
+NTAPI
+CoreFreePorts(
+    _In_ PLOGICAL_ADAPTER Adapter);
 
 /* mp5shim.c */
 
