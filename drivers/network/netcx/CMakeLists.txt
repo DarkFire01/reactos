@@ -98,9 +98,7 @@ list(APPEND SOURCE_TRANSLATOR
     translator/framelayout/layoutparser.cpp
     translator/metadata/metadatatranslator.cpp
     translator/segmentation/segmentation.cpp
-    translator/segmentation/km/segmentationkm.cpp
-    translator/rsclibstub.cpp
-    translator/seglibstub.cpp)
+    translator/segmentation/km/segmentationkm.cpp)
 
 #
 # The execution context and the histogram statistics are libraries upstream,
@@ -154,6 +152,7 @@ add_library(netadaptercx MODULE
     netadaptercx.rc)
 
 set_module_type(netadaptercx kmdfdriver)
+target_link_libraries(netadaptercx rsclib seglib)
 add_importlibs(netadaptercx ndis ntoskrnl hal)
 
 target_include_directories(netadaptercx BEFORE PRIVATE
