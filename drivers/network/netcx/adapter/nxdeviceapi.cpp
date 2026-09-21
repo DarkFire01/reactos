@@ -306,3 +306,24 @@ NETEXPORT(NetDeviceRequestReset)(
     auto nxDevice = GetNxDeviceFromHandle(Device);
     nxDevice->PlatformLevelDeviceResetWithDiagnostics();
 }
+
+_IRQL_requires_(PASSIVE_LEVEL)
+WDFAPI
+ULONG
+NTAPI
+NETEXPORT(NetDeviceGetSupportedDeviceResetTypes)(
+    _In_ NET_DRIVER_GLOBALS * DriverGlobals,
+    _In_ WDFDEVICE Device)
+{
+    auto const nxPrivateGlobals = GetPrivateGlobals(DriverGlobals);
+
+    Verifier_VerifyExtensionGlobals(nxPrivateGlobals);
+    Verifier_VerifyIrqlPassive(nxPrivateGlobals);
+    Verifier_VerifyNotNull(nxPrivateGlobals, Device);
+
+    /* Zero when the bus offered no reset interface. */
+    ULONG supportedTypes = 0;
+    (void)GetNxDeviceFromHandle(Device)->GetSupportedDeviceResetType(&supportedTypes);
+
+    return supportedTypes;
+}

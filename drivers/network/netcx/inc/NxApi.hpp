@@ -1280,7 +1280,7 @@ NETEXPORT(NetMemoryCollectionCreate)(
     _Out_ NETMEMORYCOLLECTION *MemoryCollection);
 
 _Must_inspect_result_
-_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
 NTAPI
@@ -1290,7 +1290,7 @@ NETEXPORT(NetMemoryCreate)(
     _In_ NET_MEMORY_CONFIG const *Config,
     _Out_ void ** Memory);
 
-_IRQL_requires_max_(DISPATCH_LEVEL)
+_IRQL_requires_(PASSIVE_LEVEL)
 WDFAPI
 void
 NTAPI

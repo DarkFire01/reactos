@@ -377,3 +377,16 @@ NETEXPORT(NetTxQueueGetDemuxPeerAddress)(
 
     return *reinterpret_cast<NET_EUI48_ADDRESS const *>(&property->Property.PeerAddress);
 }
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+WDFAPI
+void
+NTAPI
+NETEXPORT(NetTxQueueGetDemuxPeerAddressV2)(
+    _In_ NET_DRIVER_GLOBALS * DriverGlobals,
+    _In_ NETPACKETQUEUE Queue,
+    _Out_ NET_EUI48_ADDRESS * Address)
+{
+    /* Same lookup, returned through a pointer instead of a union by value. */
+    *Address = NETEXPORT(NetTxQueueGetDemuxPeerAddress)(DriverGlobals, Queue);
+}
