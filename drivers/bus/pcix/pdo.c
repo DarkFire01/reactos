@@ -153,6 +153,93 @@ PciPdoIrpQueryPower(IN PIRP Irp,
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Works out which address decodes a device needs from the resources it was
+ * granted: I/O for any port range, memory for any memory range.
+ *
+ * @param[in] DeviceExtension
+ * The device being started.
+ *
+ * @param[in] StartResources
+ * The raw resources in the start IRP, used when the PnP manager has no list.
+ *
+ * @return
+ * PCI_ENABLE_IO_SPACE and PCI_ENABLE_MEMORY_SPACE as needed.
+ */
+static
+USHORT
+PciDecodesForGrantedResources(
+    _In_ PPCI_PDO_EXTENSION DeviceExtension,
+    _In_opt_ PCM_RESOURCE_LIST StartResources)
+{
+    PCM_RESOURCE_LIST Granted = NULL;
+    PCM_RESOURCE_LIST List;
+    PCM_FULL_RESOURCE_DESCRIPTOR Full;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial;
+    ULONG Length = 0;
+    ULONG i, j;
+    USHORT Decodes = 0;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    /* Upper filters can trim the start IRP's list, the PnP manager's copy is whole */
+    Status = IoGetDeviceProperty(DeviceExtension->PhysicalDeviceObject,
+                                 DevicePropertyAllocatedResources,
+                                 0,
+                                 NULL,
+                                 &Length);
+    if ((Status == STATUS_BUFFER_TOO_SMALL) && Length)
+    {
+        Granted = ExAllocatePoolWithTag(PagedPool, Length, PCI_POOL_TAG);
+        if (Granted &&
+            !NT_SUCCESS(IoGetDeviceProperty(DeviceExtension->PhysicalDeviceObject,
+                                            DevicePropertyAllocatedResources,
+                                            Length,
+                                            Granted,
+                                            &Length)))
+        {
+            ExFreePoolWithTag(Granted, PCI_POOL_TAG);
+            Granted = NULL;
+        }
+    }
+
+    List = Granted ? Granted : StartResources;
+    if (List)
+    {
+        Full = List->List;
+        for (i = 0; i < List->Count; i++)
+        {
+            for (j = 0; j < Full->PartialResourceList.Count; j++)
+            {
+                Partial = &Full->PartialResourceList.PartialDescriptors[j];
+
+                if (Partial->Type == CmResourceTypePort)
+                    Decodes |= PCI_ENABLE_IO_SPACE;
+                else if ((Partial->Type == CmResourceTypeMemory) ||
+                         (Partial->Type == CmResourceTypeMemoryLarge))
+                    Decodes |= PCI_ENABLE_MEMORY_SPACE;
+            }
+
+            /* Device specific data sits after the last descriptor */
+            Partial = &Full->PartialResourceList.PartialDescriptors[Full->PartialResourceList.Count];
+            if (Full->PartialResourceList.Count &&
+                (Partial[-1].Type == CmResourceTypeDeviceSpecific))
+            {
+                Partial = (PCM_PARTIAL_RESOURCE_DESCRIPTOR)((PUCHAR)Partial +
+                                                            Partial[-1].u.DeviceSpecificData.DataSize);
+            }
+            Full = (PCM_FULL_RESOURCE_DESCRIPTOR)Partial;
+        }
+    }
+
+    if (Granted)
+        ExFreePoolWithTag(Granted, PCI_POOL_TAG);
+
+    return Decodes;
+}
+
 NTSTATUS
 NTAPI
 PciPdoIrpStartDevice(IN PIRP Irp,
@@ -171,6 +258,15 @@ PciPdoIrpStartDevice(IN PIRP Irp,
     /* Begin entering the start phase */
     Status = PciBeginStateTransition((PVOID)DeviceExtension, PciStarted);
     if (!NT_SUCCESS(Status)) return Status;
+
+    /* Decodes follow the granted resources, not the command value firmware left, which can have memory off */
+    if (DeviceExtension->HeaderType == PCI_DEVICE_TYPE)
+    {
+        DeviceExtension->CommandEnables &= ~(PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE);
+        DeviceExtension->CommandEnables |=
+            PciDecodesForGrantedResources(DeviceExtension,
+                                          IoStackLocation->Parameters.StartDevice.AllocatedResources);
+    }
 
     /* Check if this is a VGA device */
     if (((DeviceExtension->BaseClass == PCI_CLASS_PRE_20) &&
