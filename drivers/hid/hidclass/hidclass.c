@@ -87,6 +87,9 @@ HidClassAddDevice(
     FDODeviceExtension->SelfDeviceObject = NewDeviceObject;
     KeInitializeSpinLock(&FDODeviceExtension->ReadLock);
     KeInitializeEvent(&FDODeviceExtension->ReadsDrained, NotificationEvent, FALSE);
+    FDODeviceExtension->DevicePresent = TRUE;
+    KeInitializeSpinLock(&FDODeviceExtension->PresenceLock);
+    InitializeListHead(&FDODeviceExtension->PresenceNotificationList);
     FDODeviceExtension->Common.HidDeviceExtension.PhysicalDeviceObject = PhysicalDeviceObject;
     FDODeviceExtension->Common.HidDeviceExtension.MiniDeviceExtension = (PVOID)((ULONG_PTR)FDODeviceExtension + sizeof(HIDCLASS_FDO_EXTENSION));
     FDODeviceExtension->Common.HidDeviceExtension.NextDeviceObject = IoAttachDeviceToDeviceStack(NewDeviceObject, PhysicalDeviceObject);
@@ -822,6 +825,26 @@ HidClass_DeviceControl(
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return Status;
         }
+        case HIDCLASS_IOCTL_PRESENCE_NOTIFICATION:
+        {
+            NTSTATUS Status;
+
+            if (IoStack->Parameters.DeviceIoControl.InputBufferLength != 0)
+            {
+                Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                return STATUS_INVALID_DEVICE_REQUEST;
+            }
+
+            Status = HidClassFDO_QueuePresenceNotification(PDODeviceExtension, Irp);
+            if (Status != STATUS_PENDING)
+            {
+                Irp->IoStatus.Status = Status;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            }
+
+            return Status;
+        }
         default:
         {
             DPRINT1("[HIDCLASS] DeviceControl IoControlCode 0x%x not implemented\n", IoStack->Parameters.DeviceIoControl.IoControlCode);
@@ -1028,5 +1051,40 @@ HidRegisterMinidriver(
     DriverExtension->DriverObject->MajorFunction[IRP_MJ_PNP] = HidClassDispatch;
 
     /* done */
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Lets a minidriver report that its device has gone away or come back
+ * without the device stack itself being removed. The collections are taken
+ * away or reported again on the next bus relations query.
+ *
+ * @param[in] DeviceObject
+ * The minidriver's functional device object.
+ *
+ * @param[in] IsPresent
+ * Whether the device is there now.
+ */
+NTSTATUS
+NTAPI
+HidNotifyPresence(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _In_ BOOLEAN IsPresent)
+{
+    PHIDCLASS_FDO_EXTENSION FDODeviceExtension = DeviceObject->DeviceExtension;
+    LONG Present = IsPresent ? TRUE : FALSE;
+
+    ASSERT(FDODeviceExtension->Common.IsFDO);
+
+    if (InterlockedCompareExchange(&FDODeviceExtension->DevicePresent, Present, !Present) == Present)
+        return STATUS_SUCCESS;
+
+    /* Clients waiting to hear that the device went away */
+    if (!Present)
+        HidClassFDO_CompletePresenceNotifications(FDODeviceExtension, NULL, STATUS_SUCCESS, FALSE);
+
+    IoInvalidateDeviceRelations(FDODeviceExtension->Common.HidDeviceExtension.PhysicalDeviceObject,
+                                BusRelations);
     return STATUS_SUCCESS;
 }
