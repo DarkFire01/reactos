@@ -287,6 +287,216 @@ typedef struct _NET_PNP_EVENT {
 
 #endif /* !defined(NDIS_SUPPORT_NDIS620) */
 
+#if !defined(NDIS_SUPPORT_NDIS630)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 30))) ||       (defined (NDIS630)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS630      1
+#else
+#define NDIS_SUPPORT_NDIS630      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS630) */
+
+#if !defined(NDIS_SUPPORT_NDIS640)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 40))) ||       (defined (NDIS640)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS640      1
+#else
+#define NDIS_SUPPORT_NDIS640      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS640) */
+
+#if !defined(NDIS_SUPPORT_NDIS650)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 50))) ||       (defined (NDIS650)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS650      1
+#else
+#define NDIS_SUPPORT_NDIS650      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS650) */
+
+#if !defined(NDIS_SUPPORT_NDIS660)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 60))) ||       (defined (NDIS660)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS660      1
+#else
+#define NDIS_SUPPORT_NDIS660      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS660) */
+
+#if !defined(NDIS_SUPPORT_NDIS670)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 70))) ||       (defined (NDIS670)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS670      1
+#else
+#define NDIS_SUPPORT_NDIS670      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS670) */
+
+#if !defined(NDIS_SUPPORT_NDIS680)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 80))) ||       (defined (NDIS680)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS680      1
+#else
+#define NDIS_SUPPORT_NDIS680      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS680) */
+
+#if !defined(NDIS_SUPPORT_NDIS681)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 81))) ||       (defined (NDIS681)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS681      1
+#else
+#define NDIS_SUPPORT_NDIS681      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS681) */
+
+#if !defined(NDIS_SUPPORT_NDIS682)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 82))) ||       (defined (NDIS682)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS682      1
+#else
+#define NDIS_SUPPORT_NDIS682      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS682) */
+
+#if !defined(NDIS_SUPPORT_NDIS683)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 83))) ||       (defined (NDIS683)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS683      1
+#else
+#define NDIS_SUPPORT_NDIS683      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS683) */
+
+#if !defined(NDIS_SUPPORT_NDIS684)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 84))) ||       (defined (NDIS684)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS684      1
+#else
+#define NDIS_SUPPORT_NDIS684      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS684) */
+
+#if !defined(NDIS_SUPPORT_NDIS685)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 85))) ||       (defined (NDIS685)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS685      1
+#else
+#define NDIS_SUPPORT_NDIS685      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS685) */
+
+#if !defined(NDIS_SUPPORT_NDIS686)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 86))) ||       (defined (NDIS686)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS686      1
+#else
+#define NDIS_SUPPORT_NDIS686      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS686) */
+
+#if !defined(NDIS_SUPPORT_NDIS687)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 87))) ||       (defined (NDIS687)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS687      1
+#else
+#define NDIS_SUPPORT_NDIS687      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS687) */
+
+#if !defined(NDIS_SUPPORT_NDIS688)
+
+#if  (((defined (NDIS_MINIPORT_MAJOR_VERSION) && (NDIS_MINIPORT_MAJOR_VERSION >= 6)) &&        (defined (NDIS_MINIPORT_MINOR_VERSION) && (NDIS_MINIPORT_MINOR_VERSION >= 88))) ||       (defined (NDIS688)) || NDIS_WRAPPER)
+#define NDIS_SUPPORT_NDIS688      1
+#else
+#define NDIS_SUPPORT_NDIS688      0
+#endif
+
+#endif /* !defined(NDIS_SUPPORT_NDIS688) */
+
+#if (NDIS_SUPPORT_NDIS688)
+#undef NDIS_SUPPORT_NDIS620
+#define NDIS_SUPPORT_NDIS620 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS687)
+#undef NDIS_SUPPORT_NDIS688
+#define NDIS_SUPPORT_NDIS688 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS686)
+#undef NDIS_SUPPORT_NDIS687
+#define NDIS_SUPPORT_NDIS687 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS685)
+#undef NDIS_SUPPORT_NDIS686
+#define NDIS_SUPPORT_NDIS686 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS684)
+#undef NDIS_SUPPORT_NDIS685
+#define NDIS_SUPPORT_NDIS685 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS683)
+#undef NDIS_SUPPORT_NDIS684
+#define NDIS_SUPPORT_NDIS684 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS682)
+#undef NDIS_SUPPORT_NDIS683
+#define NDIS_SUPPORT_NDIS683 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS681)
+#undef NDIS_SUPPORT_NDIS682
+#define NDIS_SUPPORT_NDIS682 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS680)
+#undef NDIS_SUPPORT_NDIS681
+#define NDIS_SUPPORT_NDIS681 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS670)
+#undef NDIS_SUPPORT_NDIS680
+#define NDIS_SUPPORT_NDIS680 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS660)
+#undef NDIS_SUPPORT_NDIS670
+#define NDIS_SUPPORT_NDIS670 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS650)
+#undef NDIS_SUPPORT_NDIS660
+#define NDIS_SUPPORT_NDIS660 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS640)
+#undef NDIS_SUPPORT_NDIS650
+#define NDIS_SUPPORT_NDIS650 1
+#endif
+
+#if (NDIS_SUPPORT_NDIS630)
+#undef NDIS_SUPPORT_NDIS640
+#define NDIS_SUPPORT_NDIS640 1
+#endif
+
 #if (NDIS_SUPPORT_NDIS620)
 #undef NDIS_SUPPORT_NDIS61
 #define NDIS_SUPPORT_NDIS61 1
@@ -456,6 +666,16 @@ typedef MDL NDIS_BUFFER, *PNDIS_BUFFER;
 #define NDIS_STATUS_PM_WOL_PATTERN_REJECTED     ((NDIS_STATUS)0x40030051L)
 #define NDIS_STATUS_PM_OFFLOAD_REJECTED         ((NDIS_STATUS)0x40030052L)
 #define NDIS_STATUS_PM_CAPABILITIES_CHANGE      ((NDIS_STATUS)0x40030053L)
+#endif
+
+#if (NDIS_SUPPORT_NDIS630)
+#define NDIS_STATUS_PM_HARDWARE_CAPABILITIES    ((NDIS_STATUS)0x40030054L)
+#define NDIS_STATUS_PM_WAKE_REASON              ((NDIS_STATUS)0x40030055L)
+#endif
+
+#if (NDIS_SUPPORT_NDIS650)
+#define NDIS_STATUS_CURRENT_MAC_ADDRESS_CHANGE  ((NDIS_STATUS)0x400200B0L)
+#define NDIS_STATUS_L2_MTU_SIZE_CHANGE          ((NDIS_STATUS)0x400200B1L)
 #endif
 
 #define NDIS_STATUS_NOT_RESETTABLE              ((NDIS_STATUS)0x80010001L)
@@ -6214,6 +6434,13 @@ typedef	NDIS_WAN_MAC_CHARACTERISTICS    *PNDIS_WAN_MAC_CHARACTERISTICS;
 
 #if NDIS_SUPPORT_NDIS6
 #include <ifdef.h>
+#include <ndis/offload.h>
+#include <ndis/powermanagement.h>
+#include <ndis/receivescale.h>
+#include <ndis/oid.h>
+#include <ndis/oidrequest.h>
+#include <ndis/statusindication.h>
+#include <ndis/statusconvert.h>
 #include <ndis/ndis6.h>
 #endif /* NDIS_SUPPORT_NDIS6 */
 
