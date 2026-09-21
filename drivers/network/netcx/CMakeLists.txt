@@ -122,6 +122,27 @@ list(APPEND SOURCE_EC
     statistics/histogramapi.cpp
     statistics/histogramhub.cpp)
 
+#
+# WPP generates one .tmh per source file to hold the message descriptors it
+# builds. The pass is not run here and the trace macros are defined away in
+# inc/NxTrace.hpp, so the headers only have to exist. Scan the sources for the
+# ones they ask for rather than guessing, because the names do not always match
+# the file that includes them.
+#
+set(NETCX_TMH_DIR ${CMAKE_CURRENT_BINARY_DIR}/tmh)
+file(MAKE_DIRECTORY ${NETCX_TMH_DIR})
+foreach(_source ${SOURCE_ADAPTER} ${SOURCE_BM} ${SOURCE_TRANSLATOR} ${SOURCE_EC})
+    file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/${_source} _tmh_includes
+         REGEX "^#include \"[A-Za-z0-9_]+\.tmh\"")
+    foreach(_line ${_tmh_includes})
+        string(REGEX REPLACE "^#include \"(.*)\"" "\\1" _tmh "${_line}")
+        if(NOT EXISTS ${NETCX_TMH_DIR}/${_tmh})
+            file(WRITE ${NETCX_TMH_DIR}/${_tmh}
+                 "/* WPP is not run in this tree, see inc/NxTrace.hpp */\n")
+        endif()
+    endforeach()
+endforeach()
+
 add_library(netadaptercx MODULE
     ${SOURCE_ADAPTER}
     ${SOURCE_BM}
@@ -133,6 +154,7 @@ set_module_type(netadaptercx kmdfdriver)
 add_importlibs(netadaptercx ndis ntoskrnl hal)
 
 target_include_directories(netadaptercx PRIVATE
+    ${NETCX_TMH_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
     ${CMAKE_CURRENT_SOURCE_DIR}/rtl/inc
