@@ -4184,6 +4184,47 @@ void NxAdapter::ReportWakeReasonMediaChange(
     NdisMIndicateStatusEx(m_ndisAdapterHandle, &wakeIndication);
 }
 
+/**
+ * @brief
+ * Records what woke the device. The first reason sticks, except that a wake
+ * put down to the device gives way to anything but an NDIS wake.
+ *
+ * @param[in] Reason
+ * The wake reason.
+ */
+_Use_decl_annotations_
+void
+NxAdapter::SetWakeReason(
+    NET_WAKE_REASON_TYPE Reason
+)
+{
+    KAcquireSpinLock lock(m_wakeReasonLock);
+
+    if (m_wakeReasonType == NetWakeReasonTypeNone ||
+        (m_wakeReasonType == NetWakeReasonTypeDevice && Reason != NetWakeReasonTypeNdis))
+    {
+        m_wakeReasonType = Reason;
+    }
+}
+
+void
+NxAdapter::ClearWakeReason(
+    void
+)
+{
+    KAcquireSpinLock lock(m_wakeReasonLock);
+    m_wakeReasonType = NetWakeReasonTypeNone;
+}
+
+NET_WAKE_REASON_TYPE
+NxAdapter::QueryWakeReason(
+    void
+)
+{
+    KAcquireSpinLock lock(m_wakeReasonLock);
+    return m_wakeReasonType;
+}
+
 _Use_decl_annotations_
 NTSTATUS
 NxAdapter::PowerReference(

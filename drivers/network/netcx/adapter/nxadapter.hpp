@@ -294,6 +294,13 @@ private:
     WDFMEMORY
         m_wakeReasonMemory = WDF_NO_HANDLE;
 
+    /* What woke the device, for NetAdapterQueryWakeReason */
+    KSpinLock
+        m_wakeReasonLock;
+
+    NET_WAKE_REASON_TYPE
+        m_wakeReasonType = NetWakeReasonTypeNone;
+
     MediaExtensionType
         m_mediaExtensionType = MediaExtensionType::None;
 
@@ -923,6 +930,21 @@ public:
     ReportWakeReasonMediaChange(
         _In_ NET_IF_MEDIA_CONNECT_STATE MediaEvent
     ) const;
+
+    void
+    SetWakeReason(
+        _In_ NET_WAKE_REASON_TYPE Reason
+    );
+
+    void
+    ClearWakeReason(
+        void
+    );
+
+    NET_WAKE_REASON_TYPE
+    QueryWakeReason(
+        void
+    );
 
     void
     WifiDestroyPeerAddressDatapath(
