@@ -36,6 +36,11 @@ extern "C" {
 
 #define NET_BUFFER_LIST_INFO(_NBL, _Id)         ((_NBL)->NetBufferListInfo[(_Id)])
 
+#define NDIS_SET_NET_BUFFER_LIST_CANCEL_ID(_NBL, _CancelId) \
+    NET_BUFFER_LIST_INFO(_NBL, NetBufferListCancelId) = (PVOID)(_CancelId)
+#define NDIS_GET_NET_BUFFER_LIST_CANCEL_ID(_NBL) \
+    (NET_BUFFER_LIST_INFO(_NBL, NetBufferListCancelId))
+
 #ifdef __cplusplus
 }
 #endif
