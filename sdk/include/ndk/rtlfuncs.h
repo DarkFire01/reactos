@@ -3612,6 +3612,110 @@ RtlCheckBit(
 #define RtlCheckBit(BMH,BP) (((((PLONG)(BMH)->Buffer)[(BP)/32]) >> ((BP)%32)) & 0x1)
 #endif /* defined(_M_AMD64) */
 
+#ifdef _WIN64
+
+NTSYSAPI
+VOID
+NTAPI
+RtlInitializeBitMapEx(
+    _Out_ PRTL_BITMAP_EX BitMapHeader,
+    _In_opt_ __drv_aliasesMem PULONG64 BitMapBuffer,
+    _In_opt_ ULONG64 SizeOfBitMap
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlClearAllBitsEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlSetAllBitsEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlClearBitEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 BitNumber
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlSetBitEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 BitNumber
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlClearBitsEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 NumberToClear
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlSetBitsEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 NumberToSet
+);
+
+NTSYSAPI
+ULONG64
+NTAPI
+RtlFindSetBitsEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 NumberToFind,
+    _In_ ULONG64 HintIndex
+);
+
+NTSYSAPI
+ULONG64
+NTAPI
+RtlFindSetBitsAndClearEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 NumberToFind,
+    _In_ ULONG64 HintIndex
+);
+
+NTSYSAPI
+ULONG64
+NTAPI
+RtlNumberOfSetBitsEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlInterlockedSetBitRunEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 NumberToSet
+);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlInterlockedClearBitRunEx(
+    _In_ PRTL_BITMAP_EX BitMapHeader,
+    _In_ ULONG64 StartingIndex,
+    _In_ ULONG64 NumberToClear
+);
+
+#endif /* _WIN64 */
+
 #endif // NTOS_MODE_USER
 
 
