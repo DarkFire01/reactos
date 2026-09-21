@@ -134,6 +134,8 @@ HalpAddDevice(IN PDRIVER_OBJECT DriverObject,
     /* Initialization is finished */
     PdoDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
+    HalpInitializeSecondaryInterruptServices();
+
     /* Find the ACPI watchdog table */
     Wdrt = HalAcpiGetTable(0, 'TRDW');
     if (Wdrt)

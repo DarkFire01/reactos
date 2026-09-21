@@ -427,6 +427,143 @@ HaliHaltSystem(
 );
 
 //
+// Secondary interrupt controllers (generic/secint.c)
+//
+extern BOOLEAN HalpSecondaryIcServicesEnabled;
+extern ULONG HalpSecondaryGsivRangeStart;
+extern ULONG HalpSecondaryGsivRangeSize;
+
+NTSTATUS
+NTAPI
+HalpInitializeSecondaryInterruptServices(
+    VOID
+);
+
+NTSTATUS
+NTAPI
+HalpAllocateGsivForSecondaryInterrupt(
+    _In_reads_bytes_(OwnerNameLength) PCCHAR OwnerName,
+    _In_ USHORT OwnerNameLength,
+    _Out_ PULONG Gsiv
+);
+
+BOOLEAN
+NTAPI
+HalpIsInterruptTypeSecondary(
+    _In_ ULONG Type,
+    _In_ ULONG InputGsiv
+);
+
+BOOLEAN
+NTAPI
+HalpIsSecondaryControllerInput(
+    _In_ PINTERRUPT_VECTOR_DATA VectorData
+);
+
+BOOLEAN
+NTAPI
+HalpInvokeIsrForGsiv(
+    _In_ ULONG InputGsiv,
+    _In_ PVOID ControllerContext
+);
+
+NTSTATUS
+NTAPI
+HalpRegisterSecondaryIcInterface(
+    _In_ PSECONDARY_INTERRUPT_PROVIDER_INTERFACE Interface
+);
+
+NTSTATUS
+NTAPI
+HalpUnregisterSecondaryIcInterface(
+    _In_ ULONG GsivBase,
+    _In_ ULONG GsivSize,
+    _In_ PDRIVER_OBJECT DriverObject
+);
+
+NTSTATUS
+NTAPI
+HalpHandleMaskUnmaskSecondaryInterrupt(
+    _In_ ULONG InputGsiv,
+    _In_ ULONG Flags,
+    _In_ BOOLEAN MaskRequest
+);
+
+NTSTATUS
+NTAPI
+HalpSecondaryInterruptQueryPrimaryInformation(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData,
+    _Out_ PULONG PrimaryGsiv
+);
+
+NTSTATUS
+NTAPI
+HalpEnableSecondaryInterrupt(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData
+);
+
+NTSTATUS
+NTAPI
+HalpDisableSecondaryInterrupt(
+    _In_ PINTERRUPT_CONNECTION_DATA ConnectionData
+);
+
+NTSTATUS
+NTAPI
+HalpRequestSecondaryInterrupt(
+    _In_ ULONG Gsiv
+);
+
+NTSTATUS
+NTAPI
+HalpQuerySecondaryInterruptInformation(
+    _Out_ PHAL_SECONDARY_INTERRUPT_INFORMATION Information
+);
+
+NTSTATUS
+NTAPI
+HalpMaskInterrupt(
+    _In_ ULONG InputGsiv,
+    _In_ ULONG Flags
+);
+
+NTSTATUS
+NTAPI
+HalpUnmaskInterrupt(
+    _In_ ULONG InputGsiv,
+    _In_ ULONG Flags
+);
+
+NTSTATUS
+NTAPI
+HalpRequestInterrupt(
+    _In_ ULONG Gsiv
+);
+
+//
+// Primary interrupt controller hooks for the routines above (apic.c, pic.c)
+//
+NTSTATUS
+NTAPI
+HalpSetInterruptInputMask(
+    _In_ ULONG Input,
+    _In_ ULONG Flags,
+    _In_ BOOLEAN Mask
+);
+
+NTSTATUS
+NTAPI
+HalpRequestInterruptInput(
+    _In_ ULONG Input
+);
+
+NTSTATUS
+NTAPI
+HalpQueryMaximumGsiv(
+    _Out_ PULONG Gsiv
+);
+
+//
 // CMOS Routines
 //
 CODE_SEG("INIT")
