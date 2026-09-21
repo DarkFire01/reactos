@@ -583,4 +583,47 @@ NdisGeneratePartialCancelId(VOID)
     return PartialCancelId;
 }
 
+/*
+ * @implemented
+ */
+NTSTATUS
+EXPORT
+NdisConvertNdisStatusToNtStatus(
+    _In_ NDIS_STATUS NdisStatus)
+{
+    /* Pending and every warning or error keep their value */
+    if (NdisStatus == NDIS_STATUS_BUFFER_TOO_SHORT)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    if ((NdisStatus > 0) &&
+        (NdisStatus != NDIS_STATUS_PENDING) &&
+        (NdisStatus != NDIS_STATUS_INDICATION_REQUIRED))
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    return (NTSTATUS)NdisStatus;
+}
+
+/*
+ * @implemented
+ */
+NDIS_STATUS
+EXPORT
+NdisConvertNtStatusToNdisStatus(
+    _In_ NTSTATUS NtStatus)
+{
+    if (NtStatus == STATUS_BUFFER_TOO_SMALL)
+        return NDIS_STATUS_BUFFER_TOO_SHORT;
+
+    if (NT_SUCCESS(NtStatus) &&
+        (NtStatus != STATUS_PENDING) &&
+        (NtStatus != STATUS_NDIS_INDICATION_REQUIRED))
+    {
+        return NDIS_STATUS_SUCCESS;
+    }
+
+    return (NDIS_STATUS)NtStatus;
+}
+
 /* EOF */
