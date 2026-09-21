@@ -278,13 +278,19 @@ TestCopyReceiveInfo(
     ok_eq_pointer(NET_BUFFER_LIST_INFO(Dest, NetBufferListFrameType), SENTINEL(7));
     ok_eq_pointer(NET_BUFFER_LIST_INFO(Dest, NetBufferListHashInfo), SENTINEL(9));
     ok_eq_pointer(NET_BUFFER_LIST_INFO(Dest, NblOriginalInterfaceIfIndex), SENTINEL(16));
+
+    /* 64 bit builds carry the switch slots ahead of it, x86 does not. */
+#if defined(_M_AMD64) || defined(_M_ARM64)
+    ok_eq_pointer(NET_BUFFER_LIST_INFO(Dest, TcpRecvSegCoalesceInfo), SENTINEL(22));
+#else
     ok_eq_pointer(NET_BUFFER_LIST_INFO(Dest, TcpRecvSegCoalesceInfo), SENTINEL(19));
+#endif
 
     /* Not carried. WFP state and the correlation id belong to the destination. */
     ok_eq_pointer(NET_BUFFER_LIST_INFO(Dest, WfpNetBufferListInfo), NULL);
     ok_eq_pointer(NET_BUFFER_LIST_INFO(Dest, NetBufferListCorrelationId), NULL);
 
-    /* The cancel id needs the source to be flagged single source. */
+    /* The cancel id only follows when the source carries the loopback flag. */
     ok_eq_pointer(NET_BUFFER_LIST_INFO(Dest, NetBufferListCancelId), NULL);
 
     NET_BUFFER_LIST_NBL_FLAGS(Source) |= NDIS_NBL_FLAGS_IS_LOOPBACK_PACKET;

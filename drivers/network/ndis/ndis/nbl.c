@@ -17,6 +17,13 @@ C_ASSERT(sizeof(NET_BUFFER_LIST) == 176);
 C_ASSERT(sizeof(NET_BUFFER) == 96);
 #endif
 
+/* A 64 bit miniport sees 27 info slots; ndis.sys owns two more behind them. */
+#if defined(_AMD64_) || defined(_ARM64_)
+C_ASSERT(FIELD_OFFSET(NET_BUFFER_LIST, NetBufferListInfo) == 144);
+C_ASSERT(MaxNetBufferListInfo == 29);
+C_ASSERT(TcpRecvSegCoalesceInfo == 22);
+#endif
+
 C_ASSERT(FIELD_OFFSET(NET_BUFFER_LIST, Context) == sizeof(PVOID) * 2);
 C_ASSERT(RTL_FIELD_SIZE(NET_BUFFER_LIST, NetBufferListInfo) ==
          sizeof(PVOID) * MaxNetBufferListInfo);
