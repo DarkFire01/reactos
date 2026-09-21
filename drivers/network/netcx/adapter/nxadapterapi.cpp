@@ -1525,6 +1525,24 @@ NETEXPORT(NetOffloadIsRscTcpTimestampOptionEnabled)(
     return capabilities->TcpTimestampOption;
 }
 
+WDFAPI
+_IRQL_requires_(PASSIVE_LEVEL)
+BOOLEAN
+NTAPI
+NETEXPORT(NetOffloadIsUdpRscEnabled)(
+    _In_ NET_DRIVER_GLOBALS * DriverGlobals,
+    _In_ NETOFFLOAD Offload)
+{
+    auto const nxPrivateGlobals = GetPrivateGlobals(DriverGlobals);
+    auto const capabilities = reinterpret_cast<NET_ADAPTER_OFFLOAD_RSC_CAPABILITIES const *>(Offload);
+
+    Verifier_VerifyPrivateGlobals(nxPrivateGlobals);
+    Verifier_VerifyIrqlPassive(nxPrivateGlobals);
+    Verifier_VerifyTypeSize(nxPrivateGlobals, capabilities);
+
+    return WI_IsFlagSet(capabilities->Layer4Flags, NetAdapterOffloadLayer4FlagUdp);
+}
+
 _IRQL_requires_(PASSIVE_LEVEL)
 void
 NETEXPORT(NetAdapterReportWakeReasonPacket)(

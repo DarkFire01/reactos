@@ -539,3 +539,68 @@ NETEXPORT(NetAdapterExtensionInitSetPowerPolicyCallbacks)(
         Callbacks,
         Callbacks->Size);
 }
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+WDFAPI
+void
+NTAPI
+NETEXPORT(NetAdapterCompleteOidRequest)(
+    _In_ NET_DRIVER_GLOBALS * DriverGlobals,
+    _In_ NETADAPTER Adapter,
+    _In_ NDIS_OID_REQUEST * Request,
+    _In_ NDIS_STATUS Status)
+{
+    auto const privateGlobals = GetPrivateGlobals(DriverGlobals);
+
+    Verifier_VerifyExtensionGlobals(privateGlobals);
+    Verifier_VerifyIrqlLessThanOrEqualDispatch(privateGlobals);
+    Verifier_VerifyNotNull(privateGlobals, Adapter);
+    Verifier_VerifyNotNull(privateGlobals, Request);
+
+    /* An extension that owns the request completes it to NDIS directly. */
+    NdisMOidRequestComplete(GetNxAdapterFromHandle(Adapter)->GetNdisHandle(), Request, Status);
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+WDFAPI
+NTSTATUS
+NTAPI
+NETEXPORT(NetAdapterSetNative80211Attributes)(
+    _In_ NET_DRIVER_GLOBALS * DriverGlobals,
+    _In_ NETADAPTER Adapter,
+    _In_ NDIS_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES * Attributes)
+{
+    auto const privateGlobals = GetPrivateGlobals(DriverGlobals);
+
+    Verifier_VerifyExtensionGlobals(privateGlobals);
+    Verifier_VerifyIrqlPassive(privateGlobals);
+    Verifier_VerifyNotNull(privateGlobals, Adapter);
+    Verifier_VerifyNotNull(privateGlobals, Attributes);
+
+    NDIS_MINIPORT_ADAPTER_ATTRIBUTES miniportAttributes;
+    RtlZeroMemory(&miniportAttributes, sizeof(miniportAttributes));
+    miniportAttributes.Native_802_11_Attributes = *Attributes;
+
+    /* What NDIS makes of the attributes is its business, the call itself always succeeds. */
+    (void)NdisMSetMiniportAttributes(GetNxAdapterFromHandle(Adapter)->GetNdisHandle(), &miniportAttributes);
+
+    return STATUS_SUCCESS;
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+WDFAPI
+void
+NTAPI
+NETEXPORT(NetAdapterIndicateMiniportStatus)(
+    _In_ NET_DRIVER_GLOBALS * DriverGlobals,
+    _In_ NETADAPTER Adapter,
+    _In_ NDIS_STATUS_INDICATION * StatusIndication)
+{
+    auto const privateGlobals = GetPrivateGlobals(DriverGlobals);
+
+    Verifier_VerifyExtensionGlobals(privateGlobals);
+    Verifier_VerifyNotNull(privateGlobals, Adapter);
+    Verifier_VerifyNotNull(privateGlobals, StatusIndication);
+
+    NdisMIndicateStatusEx(GetNxAdapterFromHandle(Adapter)->GetNdisHandle(), StatusIndication);
+}
