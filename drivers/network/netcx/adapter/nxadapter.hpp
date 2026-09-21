@@ -17,7 +17,6 @@ Abstract:
 #include <wdfcx.h>
 #include <wdfcxbase.h>
 
-#include <WppRecorder.h>
 
 #include "NdisUm.h"
 

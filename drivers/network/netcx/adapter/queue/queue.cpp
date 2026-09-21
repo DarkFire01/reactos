@@ -1,8 +1,6 @@
 // Copyright (C) Microsoft Corporation. All rights reserved.
 
-#ifdef _KERNEL_MODE
-#include <ntosp.h>
-#else
+#ifndef _KERNEL_MODE
 #include <umwdm.h>
 #include <KPtr.h>
 #endif
