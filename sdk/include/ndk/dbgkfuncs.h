@@ -139,4 +139,27 @@ ZwSetInformationDebugObject(
     _In_ ULONG InformationLength,
     _Out_opt_ PULONG ReturnLength
 );
+
+#ifndef NTOS_MODE_USER
+
+//
+// Live kernel dumps
+//
+_IRQL_requires_(PASSIVE_LEVEL)
+NTKERNELAPI
+NTSTATUS
+NTAPI
+DbgkWerCaptureLiveKernelDump(
+    _In_ PCWSTR ComponentName,
+    _In_ ULONG BugCheckCode,
+    _In_opt_ ULONG_PTR P1,
+    _In_opt_ ULONG_PTR P2,
+    _In_opt_ ULONG_PTR P3,
+    _In_opt_ ULONG_PTR P4,
+    _In_opt_ PVOID CallbackContext,
+    _In_opt_ PDBGK_LIVEDUMP_CALLBACK_ROUTINE CallbackRoutine,
+    _In_ DBGK_LIVEDUMP_FLAGS Flags
+);
+
+#endif
 #endif
