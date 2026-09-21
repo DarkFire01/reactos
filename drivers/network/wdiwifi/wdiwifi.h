@@ -133,6 +133,20 @@ typedef struct _WDI_REQUEST
 #define WDI_REQUEST_COMPLETED               1
 #define WDI_REQUEST_ABANDONED               2
 
+/* A network seen by a scan */
+typedef struct _WDI_BSS
+{
+    WDI_MAC_ADDRESS Bssid;
+    UCHAR SsidLength;
+    UCHAR Ssid[32];
+    INT32 Rssi;
+    UINT32 LinkQuality;
+    UINT32 Channel;
+    UINT32 BandId;
+} WDI_BSS, *PWDI_BSS;
+
+#define WDI_MAX_BSS                         64
+
 /* A received message, WDI header first */
 typedef struct _WDI_MESSAGE
 {
@@ -190,6 +204,13 @@ typedef struct _WDI_ADAPTER
     BOOLEAN Pausing;
     PNDIS_MINIPORT_PAUSE_PARAMETERS PauseParameters;
     PNDIS_MINIPORT_RESTART_PARAMETERS RestartParameters;
+
+    /* Scans run on their own work item; halt waits for the one in flight */
+    NDIS_HANDLE ScanWorkItem;
+    KEVENT ScanIdle;
+    KSPIN_LOCK BssLock;
+    ULONG BssCount;
+    WDI_BSS Bss[WDI_MAX_BSS];
 } WDI_ADAPTER, *PWDI_ADAPTER;
 
 /* Frames the IHV allocates metadata for, the metadata sits after this header */
@@ -314,6 +335,47 @@ WdiParsePortAttributes(
     _In_ ULONG Length,
     _Out_ PWDI_MAC_ADDRESS Address,
     _Out_ WDI_PORT_ID *PortId);
+
+BOOLEAN
+NTAPI
+WdiTlvNext(
+    _In_reads_bytes_(Length) const UCHAR *Tlvs,
+    _In_ ULONG Length,
+    _Inout_ PULONG Offset,
+    _Out_ PUSHORT Type,
+    _Outptr_result_bytebuffer_(*ValueLength) const UCHAR **Value,
+    _Out_ PUSHORT ValueLength);
+
+ULONG
+NTAPI
+WdiBuildScan(
+    _Out_writes_bytes_opt_(return) PUCHAR Buffer);
+
+BOOLEAN
+NTAPI
+WdiParseBssEntry(
+    _In_reads_bytes_(Length) const UCHAR *Entry,
+    _In_ ULONG Length,
+    _Out_ PWDI_BSS Bss);
+
+/* scan.c */
+
+VOID
+NTAPI
+WdiStartTestScan(
+    _In_ PWDI_ADAPTER Adapter);
+
+VOID
+NTAPI
+WdiWaitForScan(
+    _In_ PWDI_ADAPTER Adapter);
+
+VOID
+NTAPI
+WdiRecordBssList(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_reads_bytes_(Length) const UCHAR *Tlvs,
+    _In_ ULONG Length);
 
 /* datapath.c */
 
