@@ -1110,6 +1110,13 @@ typedef struct _KINTERRUPT
     PVOID Reserved;
 #endif
     ULONG DispatchCode[DISPATCH_LENGTH];
+#if (NTDDI_VERSION >= NTDDI_WIN8) || defined(__REACTOS__)
+    USHORT ActiveCount;
+    LONG InternalState;
+    struct _KEVENT *PassiveEvent;
+    PVOID DisconnectData;
+    struct _KTHREAD *volatile ServiceThread;
+#endif
 } KINTERRUPT;
 
 //
