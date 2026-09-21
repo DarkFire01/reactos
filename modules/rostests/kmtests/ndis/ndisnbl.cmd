@@ -6,4 +6,5 @@ cd /d "%SystemRoot%\bin"
 dbgprint NDISNBL-BEGIN
 dbgprint --process "kmtest.exe NdisNbl"
 dbgprint --process "kmtest.exe NdisXlate"
+dbgprint --process "kmtest.exe NdisMiniport6"
 dbgprint NDISNBL-END

@@ -37,3 +37,8 @@ START_TEST(NdisXlate)
 {
     RunDriverTest(IOCTL_TEST_XLATE);
 }
+
+START_TEST(NdisMiniport6)
+{
+    RunDriverTest(IOCTL_TEST_MINIPORT6);
+}
