@@ -1180,7 +1180,13 @@ NdisIPnPStartDevice(
   WrapperContext.SlotNumber = Adapter->NdisMiniportBlock.SlotNumber;
 
   if (Adapter->NdisMiniportBlock.BusType == NdisInterfacePci)
-    Status = NdisQueryPciBusInterface(Adapter);
+    {
+      /* Without it NdisMGetBusData reads nothing, which drivers take as a missing adapter */
+      Status = NdisQueryPciBusInterface(Adapter);
+      if (!NT_SUCCESS(Status))
+        NDIS_DbgPrint(MIN_TRACE, ("No PCI bus interface for %wZ (0x%lx)\n",
+                                  &Adapter->NdisMiniportBlock.MiniportName, Status));
+    }
 
   NdisCloseConfiguration(ConfigHandle);
 
