@@ -2573,6 +2573,35 @@ IoGetDeviceNumaNode(
   _In_ PDEVICE_OBJECT Pdo,
   _Out_ PUSHORT NodeNumber);
 
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS5)
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTKERNELAPI
+PEPROCESS
+NTAPI
+IoGetInitiatorProcess(
+  _In_ PFILE_OBJECT FileObject);
+#endif
+
+#if (NTDDI_VERSION >= NTDDI_WIN10_VB)
+typedef enum _DRIVER_REGKEY_TYPE {
+  DriverRegKeyParameters,
+  DriverRegKeyPersistentState,
+  DriverRegKeySharedPersistentState
+} DRIVER_REGKEY_TYPE, *PDRIVER_REGKEY_TYPE;
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Must_inspect_result_
+NTKERNELAPI
+NTSTATUS
+NTAPI
+IoOpenDriverRegistryKey(
+  _In_ PDRIVER_OBJECT DriverObject,
+  _In_ DRIVER_REGKEY_TYPE RegKeyType,
+  _In_ ACCESS_MASK DesiredAccess,
+  _In_ ULONG Flags,
+  _Out_ PHANDLE DriverRegKey);
+#endif
+
 $endif (_WDMDDK_)
 $if (_NTDDK_)
 NTSTATUS
