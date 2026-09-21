@@ -147,5 +147,5 @@ public:
     NTSTATUS
     QueryRscStatisticsInfo(
         _Inout_ NDIS_OID_REQUEST & Request
-    ) = 0;
+    ) const = 0;
 };

@@ -94,7 +94,7 @@ public:
     NTSTATUS
     QueryRscStatisticsInfo(
         _Inout_ NDIS_OID_REQUEST & Request
-    ) override;
+    ) const override;
 
 private:
 

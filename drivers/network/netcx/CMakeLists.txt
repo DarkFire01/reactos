@@ -157,7 +157,7 @@ add_library(netadaptercx MODULE
     netadaptercx.rc)
 
 set_module_type(netadaptercx kmdfdriver)
-target_link_libraries(netadaptercx pktmonclnt rsclib seglib)
+target_link_libraries(netadaptercx pktmonclnt rsclib seglib smfx)
 
 # if constexpr and nested namespace definitions are used throughout the drop.
 set_target_properties(netadaptercx PROPERTIES CXX_STANDARD 17)

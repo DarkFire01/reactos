@@ -23,6 +23,15 @@ struct default_delete
     }
 };
 
+template<typename T>
+struct default_delete<T[]>
+{
+    void operator()(T * Pointer) const
+    {
+        delete[] Pointer;
+    }
+};
+
 template<typename T, typename Deleter = default_delete<T>>
 class unique_ptr
 {
@@ -93,6 +102,71 @@ public:
 
     typename wistd::remove_pointer<pointer>::type & operator*() const { return *m_pointer; }
     pointer operator->() const noexcept { return m_pointer; }
+
+private:
+
+    pointer m_pointer;
+};
+
+/* The array form: indexing instead of dereference, and no conversions between types. */
+template<typename T, typename Deleter>
+class unique_ptr<T[], Deleter>
+{
+public:
+
+    typedef T element_type;
+    typedef T * pointer;
+    typedef Deleter deleter_type;
+
+    unique_ptr() noexcept : m_pointer(nullptr) { }
+    unique_ptr(decltype(nullptr)) noexcept : m_pointer(nullptr) { }
+    explicit unique_ptr(pointer Pointer) noexcept : m_pointer(Pointer) { }
+
+    unique_ptr(unique_ptr && Other) noexcept : m_pointer(Other.release()) { }
+
+    ~unique_ptr()
+    {
+        reset();
+    }
+
+    unique_ptr & operator=(unique_ptr && Other) noexcept
+    {
+        if (this != wistd::addressof(Other))
+            reset(Other.release());
+
+        return *this;
+    }
+
+    unique_ptr & operator=(decltype(nullptr)) noexcept
+    {
+        reset();
+        return *this;
+    }
+
+    unique_ptr(unique_ptr const &) = delete;
+    unique_ptr & operator=(unique_ptr const &) = delete;
+
+    pointer get() const noexcept { return m_pointer; }
+
+    pointer release() noexcept
+    {
+        pointer Released = m_pointer;
+        m_pointer = nullptr;
+        return Released;
+    }
+
+    void reset(pointer Pointer = nullptr) noexcept
+    {
+        pointer Old = m_pointer;
+        m_pointer = Pointer;
+
+        if (Old != nullptr)
+            Deleter()(Old);
+    }
+
+    explicit operator bool() const noexcept { return m_pointer != nullptr; }
+
+    T & operator[](size_t Index) const { return m_pointer[Index]; }
 
 private:
 
