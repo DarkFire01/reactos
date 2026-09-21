@@ -238,6 +238,196 @@ NTAPI
 NdisMResetMiniport(
     _In_ NDIS_HANDLE MiniportAdapterHandle);
 
+/* Optional driver handlers */
+
+#define NDIS_OBJECT_TYPE_MINIPORT_PNP_CHARACTERISTICS                0x92
+#define NDIS_OBJECT_TYPE_MINIPORT_SS_CHARACTERISTICS                 0xB4
+
+typedef struct _NDIS_DRIVER_OPTIONAL_HANDLERS
+{
+    NDIS_OBJECT_HEADER Header;
+} NDIS_DRIVER_OPTIONAL_HANDLERS, *PNDIS_DRIVER_OPTIONAL_HANDLERS;
+
+_IRQL_requires_(PASSIVE_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisSetOptionalHandlers(
+    _In_ NDIS_HANDLE NdisHandle,
+    _In_ PNDIS_DRIVER_OPTIONAL_HANDLERS OptionalHandlers);
+
+typedef NDIS_STATUS (NTAPI MINIPORT_ADD_DEVICE)(
+    _In_ NDIS_HANDLE NdisMiniportHandle,
+    _In_ NDIS_HANDLE MiniportDriverContext);
+typedef MINIPORT_ADD_DEVICE *MINIPORT_ADD_DEVICE_HANDLER;
+
+typedef VOID (NTAPI MINIPORT_REMOVE_DEVICE)(
+    _In_ NDIS_HANDLE MiniportAddDeviceContext);
+typedef MINIPORT_REMOVE_DEVICE *MINIPORT_REMOVE_DEVICE_HANDLER;
+
+typedef NDIS_STATUS (NTAPI MINIPORT_PNP_IRP)(
+    _In_ NDIS_HANDLE MiniportAddDeviceContext,
+    _In_ PIRP Irp);
+typedef MINIPORT_PNP_IRP *MINIPORT_PNP_IRP_HANDLER;
+typedef MINIPORT_PNP_IRP MINIPORT_START_DEVICE;
+typedef MINIPORT_PNP_IRP *MINIPORT_START_DEVICE_HANDLER;
+typedef MINIPORT_PNP_IRP MINIPORT_FILTER_RESOURCE_REQUIREMENTS;
+typedef MINIPORT_PNP_IRP *MINIPORT_FILTER_RESOURCE_REQUIREMENTS_HANDLER;
+
+#define NDIS_MINIPORT_PNP_CHARACTERISTICS_REVISION_1                 1
+
+typedef struct _NDIS_MINIPORT_PNP_CHARACTERISTICS
+{
+    NDIS_OBJECT_HEADER Header;
+    MINIPORT_ADD_DEVICE_HANDLER MiniportAddDeviceHandler;
+    MINIPORT_REMOVE_DEVICE_HANDLER MiniportRemoveDeviceHandler;
+    MINIPORT_FILTER_RESOURCE_REQUIREMENTS_HANDLER MiniportFilterResourceRequirementsHandler;
+    MINIPORT_START_DEVICE_HANDLER MiniportStartDeviceHandler;
+    ULONG Flags;
+} NDIS_MINIPORT_PNP_CHARACTERISTICS, *PNDIS_MINIPORT_PNP_CHARACTERISTICS;
+
+#define NDIS_SIZEOF_MINIPORT_PNP_CHARACTERISTICS_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_MINIPORT_PNP_CHARACTERISTICS, Flags)
+
+/* Selective suspend */
+
+typedef NDIS_STATUS (NTAPI MINIPORT_IDLE_NOTIFICATION)(
+    _In_ NDIS_HANDLE MiniportAdapterContext,
+    _In_ BOOLEAN ForceIdle);
+typedef MINIPORT_IDLE_NOTIFICATION *MINIPORT_IDLE_NOTIFICATION_HANDLER;
+
+typedef VOID (NTAPI MINIPORT_CANCEL_IDLE_NOTIFICATION)(
+    _In_ NDIS_HANDLE MiniportAdapterContext);
+typedef MINIPORT_CANCEL_IDLE_NOTIFICATION *MINIPORT_CANCEL_IDLE_NOTIFICATION_HANDLER;
+
+#define NDIS_MINIPORT_SS_CHARACTERISTICS_REVISION_1                  1
+
+typedef struct _NDIS_MINIPORT_SS_CHARACTERISTICS
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG Flags;
+    MINIPORT_IDLE_NOTIFICATION_HANDLER IdleNotificationHandler;
+    MINIPORT_CANCEL_IDLE_NOTIFICATION_HANDLER CancelIdleNotificationHandler;
+} NDIS_MINIPORT_SS_CHARACTERISTICS, *PNDIS_MINIPORT_SS_CHARACTERISTICS;
+
+#define NDIS_SIZEOF_MINIPORT_SS_CHARACTERISTICS_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_MINIPORT_SS_CHARACTERISTICS, CancelIdleNotificationHandler)
+
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID
+NTAPI
+NdisMIdleNotificationConfirm(
+    _In_ NDIS_HANDLE MiniportAdapterHandle,
+    _In_ NDIS_DEVICE_POWER_STATE IdlePowerState);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+VOID
+NTAPI
+NdisMIdleNotificationComplete(
+    _In_ NDIS_HANDLE MiniportAdapterHandle);
+
+/* SR-IOV */
+
+typedef USHORT NDIS_SRIOV_FUNCTION_ID, *PNDIS_SRIOV_FUNCTION_ID;
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisMEnableVirtualization(
+    _In_ NDIS_HANDLE NdisMiniportHandle,
+    _In_ USHORT NumVFs,
+    _In_ BOOLEAN EnableVFMigration,
+    _In_ BOOLEAN EnableMigrationInterrupt,
+    _In_ BOOLEAN EnableVirtualization);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+ULONG
+NTAPI
+NdisMGetVirtualFunctionBusData(
+    _In_ NDIS_HANDLE NdisMiniportHandle,
+    _In_ NDIS_SRIOV_FUNCTION_ID VFId,
+    _Out_writes_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+ULONG
+NTAPI
+NdisMSetVirtualFunctionBusData(
+    _In_ NDIS_HANDLE NdisMiniportHandle,
+    _In_ NDIS_SRIOV_FUNCTION_ID VFId,
+    _In_reads_bytes_(Length) PVOID Buffer,
+    _In_ ULONG Offset,
+    _In_ ULONG Length);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+VOID
+NTAPI
+NdisMGetVirtualFunctionLocation(
+    _In_ NDIS_HANDLE NdisMiniportHandle,
+    _In_ NDIS_SRIOV_FUNCTION_ID VFId,
+    _Out_ PUSHORT SegmentNumber,
+    _Out_ PUCHAR BusNumber,
+    _Out_ PUCHAR FunctionNumber);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisMQueryProbedBars(
+    _In_ NDIS_HANDLE NdisMiniportHandle,
+    _Out_writes_(PCI_TYPE0_ADDRESSES) PULONG BaseRegisterValues);
+
+/* Processors */
+
+typedef enum _NDIS_PROCESSOR_VENDOR
+{
+    NdisProcessorVendorUnknown,
+    NdisProcessorVendorGenuinIntel,
+    NdisProcessorVendorGenuineIntel = NdisProcessorVendorGenuinIntel,
+    NdisProcessorVendorAuthenticAMD
+} NDIS_PROCESSOR_VENDOR, *PNDIS_PROCESSOR_VENDOR;
+
+typedef struct _NDIS_PROCESSOR_INFO_EX
+{
+    PROCESSOR_NUMBER ProcNum;
+    ULONG SocketId;
+    ULONG CoreId;
+    ULONG HyperThreadId;
+    USHORT NodeId;
+    USHORT NodeDistance;
+} NDIS_PROCESSOR_INFO_EX, *PNDIS_PROCESSOR_INFO_EX;
+
+#define NDIS_SYSTEM_PROCESSOR_INFO_EX_REVISION_1                     1
+
+typedef struct _NDIS_SYSTEM_PROCESSOR_INFO_EX
+{
+    NDIS_OBJECT_HEADER Header;
+    ULONG Flags;
+    NDIS_PROCESSOR_VENDOR ProcessorVendor;
+    ULONG NumSockets;
+    ULONG NumCores;
+    ULONG NumCoresPerSocket;
+    ULONG MaxHyperThreadingProcsPerCore;
+    ULONG ProcessorInfoOffset;
+    ULONG NumberOfProcessors;
+    ULONG ProcessorInfoEntrySize;
+} NDIS_SYSTEM_PROCESSOR_INFO_EX, *PNDIS_SYSTEM_PROCESSOR_INFO_EX;
+
+#define NDIS_SIZEOF_SYSTEM_PROCESSOR_INFO_EX_REVISION_1 \
+    RTL_SIZEOF_THROUGH_FIELD(NDIS_SYSTEM_PROCESSOR_INFO_EX, ProcessorInfoEntrySize)
+
+ULONG
+NTAPI
+NdisGroupActiveProcessorCount(
+    _In_ USHORT Group);
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NDIS_STATUS
+NTAPI
+NdisGetProcessorInformationEx(
+    _In_opt_ NDIS_HANDLE NdisHandle,
+    _Out_writes_bytes_to_opt_(*Size, *Size) PNDIS_SYSTEM_PROCESSOR_INFO_EX SystemProcessorInfo,
+    _Inout_ PSIZE_T Size);
+
 #ifdef __cplusplus
 }
 #endif
