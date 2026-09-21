@@ -16,6 +16,7 @@
 #include <net/returncontexttypes.h>
 #include <executioncontext.h>
 #include <executioncontextdispatch.h>
+#include <pktmonclnt.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -147,8 +148,8 @@ typedef struct _NET_CLIENT_ADAPTER_PROPERTIES
     BOOLEAN DriverIsVerifying;
     NDIS_HANDLE NdisAdapterHandle;
     PVOID NblDispatcher;
-    struct PKTMON_LOWEREDGE_HANDLE__ *PacketMonitorLowerEdge;
-    struct PKTMON_COMPONENT_HANDLE__ *PacketMonitorComponentContext;
+    PKTMON_LOWEREDGE_HANDLE PacketMonitorLowerEdge;
+    PKTMON_COMPONENT_HANDLE PacketMonitorComponentContext;
     UNICODE_STRING const *Name;
     EXECUTION_CONTEXT_RUNTIME_KNOBS const *ExecutionContextKnobs;
     struct _EPROCESS *Process;
