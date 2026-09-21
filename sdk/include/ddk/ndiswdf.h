@@ -19,6 +19,10 @@ DECLARE_HANDLE(NDIS_WDF_CX_DRIVER);
 DECLARE_HANDLE(NDIS_WDF_CX_DRIVER_CONTEXT);
 DECLARE_HANDLE(NDIS_WDF_CX_HANDLE);
 
+/* NDIS_MINIPORT_DRIVER_CHARACTERISTICS::Flags for a miniport a class extension registers. */
+#define NDIS_DRIVER_POWERMGMT_PROXY     0x00000008
+#define NDIS_WDF_PNP_POWER_HANDLING     0x00000010
+
 #define NDIS_WDF_CX_CHARACTERISTICS_REVISION_1      1
 
 typedef enum _NdisWdfPnpPowerAction
@@ -63,6 +67,9 @@ typedef struct _NDIS_WDF_ADD_DEVICE_INFO
     PDRIVER_OBJECT DriverObject;
     PDEVICE_OBJECT PhysicalDeviceObject;
     PVOID MiniportAdapterContext;
+
+    /* Not in the 24H2 layout; the class extension sets it when it creates the miniport. */
+    BOOLEAN WdfCxPowerManagement;
 } NDIS_WDF_ADD_DEVICE_INFO, *PNDIS_WDF_ADD_DEVICE_INFO;
 
 typedef struct _NDIS_WDF_COMPLETE_ADD_PARAMS
@@ -287,11 +294,9 @@ NdisWdfRegisterMiniportDriver(
 NDISAPI
 NTSTATUS
 NTAPI
-NdisWdfPnpAddDevice(
-    _In_ PDRIVER_OBJECT DriverObject,
-    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
-    _Out_ PNDIS_HANDLE NdisAdapterHandle,
-    _In_ NDIS_HANDLE MiniportAdapterContext);
+NdisWdfPnPAddDevice(
+    _In_ PNDIS_WDF_ADD_DEVICE_INFO AddDeviceInfo,
+    _Out_ PNDIS_HANDLE NdisAdapterHandle);
 
 NDISAPI
 NTSTATUS
@@ -379,21 +384,18 @@ NDISAPI
 NTSTATUS
 NTAPI
 NdisWdfCloseIrpHandler(
-    _In_ NDIS_HANDLE MiniportAdapterHandle,
     _In_ PIRP Irp);
 
 NDISAPI
 NTSTATUS
 NTAPI
 NdisWdfDeviceControlIrpHandler(
-    _In_ NDIS_HANDLE MiniportAdapterHandle,
     _In_ PIRP Irp);
 
 NDISAPI
 NTSTATUS
 NTAPI
 NdisWdfDeviceInternalControlIrpHandler(
-    _In_ NDIS_HANDLE MiniportAdapterHandle,
     _In_ PIRP Irp);
 
 NDISAPI
@@ -403,7 +405,7 @@ NdisWdfGetGuidToOidMap(
     _In_reads_(OidCount) PNDIS_OID OidList,
     _In_ USHORT OidCount,
     _Out_writes_opt_(*GuidToOidCount) PNDIS_GUID GuidToOidMap,
-    _Inout_ PULONG GuidToOidCount);
+    _Inout_ PUSHORT GuidToOidCount);
 
 NDISAPI
 NTSTATUS
@@ -421,7 +423,7 @@ NTSTATUS
 NTAPI
 NdisWdfQuerySingleInstance(
     _In_ NDIS_HANDLE MiniportAdapterHandle,
-    _In_ LPCGUID Guid,
+    _In_ PNDIS_GUID NdisGuid,
     _Inout_ PVOID Wnode,
     _In_ ULONG BufferSize,
     _Out_ PULONG ReturnSize);
@@ -431,7 +433,7 @@ NTSTATUS
 NTAPI
 NdisWdfChangeSingleInstance(
     _In_ NDIS_HANDLE MiniportAdapterHandle,
-    _In_ LPCGUID Guid,
+    _In_ PNDIS_GUID NdisGuid,
     _In_ PVOID Wnode);
 
 NDISAPI
@@ -439,7 +441,7 @@ NTSTATUS
 NTAPI
 NdisWdfExecuteMethod(
     _In_ NDIS_HANDLE MiniportAdapterHandle,
-    _In_ LPCGUID Guid,
+    _In_ PNDIS_GUID NdisGuid,
     _Inout_ PVOID Wnode,
     _In_ ULONG BufferSize,
     _Out_ PULONG ReturnSize);

@@ -43,6 +43,15 @@ NetRingCollectionGetFragmentRing(
 
 FORCEINLINE
 NET_RING *
+NetRingCollectionGetDataBufferRing(
+    _In_ const NET_RING_COLLECTION *Rings)
+{
+    return Rings->Rings[NetRingTypeDataBuffer];
+}
+
+/* The same slot under its earlier name, from when it carried return contexts. */
+FORCEINLINE
+NET_RING *
 NetRingCollectionGetFragmentReturnContextRing(
     _In_ const NET_RING_COLLECTION *Rings)
 {
