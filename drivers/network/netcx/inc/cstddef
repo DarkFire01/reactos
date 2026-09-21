@@ -1,0 +1,18 @@
+/*
+ * PROJECT:     ReactOS NetAdapterCx
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * PURPOSE:     The parts of <cstddef> a kernel mode C++ driver may use
+ *
+ * The CRT's version pulls in a user mode runtime. Only the size and pointer
+ * difference types are wanted here, and the DDK already defines both.
+ */
+
+#pragma once
+
+#include <ntddk.h>
+
+namespace std
+{
+    typedef ::size_t size_t;
+    typedef ::ptrdiff_t ptrdiff_t;
+}
