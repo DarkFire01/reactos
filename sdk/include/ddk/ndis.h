@@ -80,6 +80,16 @@ typedef enum _NET_PNP_EVENT_CODE {
   NetEventPortActivation,
   NetEventPortDeactivation,
   NetEventIMReEnableDevice,
+  NetEventNDKEnable,
+  NetEventNDKDisable,
+  NetEventFilterPreDetach,
+  NetEventBindFailed,
+  NetEventSwitchActivate,
+  NetEventAllowBindsAbove,
+  NetEventInhibitBindsAbove,
+  NetEventAllowStart,
+  NetEventRequirePause,
+  NetEventUploadGftFlowEntries,
   NetEventMaximum
 } NET_PNP_EVENT_CODE, *PNET_PNP_EVENT_CODE;
 
@@ -6531,6 +6541,7 @@ typedef	NDIS_WAN_MAC_CHARACTERISTICS    *PNDIS_WAN_MAC_CHARACTERISTICS;
 #include <ndis/interrupt.h>
 #include <ndis/sgdma.h>
 #include <ndis/services.h>
+#include <ndis/port.h>
 #endif /* NDIS_SUPPORT_NDIS6 */
 
 #ifdef __cplusplus
