@@ -45,6 +45,11 @@ const FxPowerIdleTargetState FxPowerIdleMachine::m_StartedStates[] =
     { PowerIdleEventStop, FxIdleStopped DEBUGGED_EVENT },
 };
 
+const FxPowerIdleTargetState FxPowerIdleMachine::m_StartedPowerFailedStates[] =
+{
+    { PowerIdleEventStop, FxIdleStopped DEBUGGED_EVENT },
+};
+
 const FxPowerIdleTargetState FxPowerIdleMachine::m_DisabledStates[] =
 {
     { PowerIdleEventEnabled, FxIdleCheckIoCount DEBUGGED_EVENT },
@@ -132,8 +137,8 @@ const FxIdleStateTable FxPowerIdleMachine::m_StateTable[] =
 
     // FxIdleStartedPowerFailed
     {   FxPowerIdleMachine::StartedPowerFailed,
-        NULL,
-        0,
+        FxPowerIdleMachine::m_StartedPowerFailedStates,
+        ARRAY_SIZE(FxPowerIdleMachine::m_StartedPowerFailedStates),
     },
 
     // FxIdleDisabled
@@ -516,7 +521,7 @@ Arguments:
     This - instance of the state machine
 
 Return Value:
-    FxIdleStarted
+    FxIdleMax
 
   --*/
 {
@@ -526,11 +531,11 @@ Return Value:
     This->m_Flags |= FxPowerIdlePowerFailed;
 
     //
-    // We assume in the started state that the event is set
+    // Wake up any waiters and indicate failure to them.
     //
-    ASSERT(This->m_D0NotificationEvent.ReadState() == 0);
+    This->SendD0Notification();
 
-    return FxIdleStarted;
+    return FxIdleMax;
 }
 
 FxPowerIdleStates
@@ -1342,6 +1347,9 @@ Return Value:
         //
         // Ignore potential failure, power ref tracking is not an essential feature.
         //
+
+
+        //
         (void)FxTagTracker::CreateAndInitialize(&m_TagTracker,
                                                 pFxDriverGlobals,
                                                 FxTagTrackerTypePower,
@@ -1482,7 +1490,7 @@ FxPowerIdleMachine::PowerReferenceWorker(
     __in FxPowerReferenceFlags Flags,
     __in_opt PVOID Tag,
     __in_opt LONG Line,
-    __in_opt PSTR File
+    __in_opt PCSTR File
     )
 /*++
 
@@ -1735,7 +1743,7 @@ VOID
 FxPowerIdleMachine::IoDecrement(
     __in_opt PVOID Tag,
     __in_opt LONG Line,
-    __in_opt PSTR File
+    __in_opt PCSTR File
     )
 /*++
 

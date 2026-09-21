@@ -242,7 +242,7 @@ public:
     __inline
     NTSTATUS
     GetCurrentFrameNumber(
-        __in PULONG Current
+        _Out_ PULONG Current
         )
     {
         if (m_QueryBusTime != NULL) {
@@ -597,10 +597,16 @@ protected:
         __out PULONG PortStatus
         );
 
+    PURB
+    CreateConfigRequest(
+        _In_ PUSB_CONFIGURATION_DESCRIPTOR ConfigDesc,
+        _In_ PUSBD_INTERFACE_LIST_ENTRY InterfaceList
+        );
+
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
     _Must_inspect_result_
     NTSTATUS
-    FxUsbDevice::SendSyncRequest(
+    SendSyncRequest(
         __in FxSyncRequest* Request,
         __in ULONGLONG Time
         );
@@ -649,6 +655,8 @@ protected:
     BOOLEAN m_MismatchedInterfacesInConfigDescriptor;
 
     FX_URB_TYPE m_UrbType;
+
+    BOOLEAN m_SspIsochPipeFlags; // Support USBD_PF_HANDLES_SSP_HIGH_BANDWIDTH_ISOCH
 
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
 private:

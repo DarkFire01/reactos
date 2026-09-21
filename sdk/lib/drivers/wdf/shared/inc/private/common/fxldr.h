@@ -16,11 +16,26 @@ Abstract:
 #ifndef __FXLDR_H__
 #define __FXLDR_H__
 
+//
+// Use __FXLDRUM_H__ (defined in fxldrum.h) to tell who (KMDF/UMDF) is building
+//
+#ifndef __FXLDRUM_H__
+
 #include <initguid.h>
 #include <wdfldr.h>
 
 #ifdef __cplusplus
 extern "C" {
+#endif
+
+#endif // __FXLDRUM_H__
+
+//
+// Cherry-pick MAX_SERVICE_NAME_LENGTH from winsvcp.h
+// This does not include the trailing NULL.
+//
+#ifndef MAX_SERVICE_NAME_LENGTH
+#define MAX_SERVICE_NAME_LENGTH 256
 #endif
 
 #define WDF_COMPONENT_NAME(a) L#a
@@ -48,6 +63,207 @@ VOID
 (NTAPI *WDFFUNC)(
     VOID
     );
+
+//
+// Version container
+//
+typedef struct _WDF_VERSION {
+    WDF_MAJOR_VERSION  Major;
+    WDF_MINOR_VERSION  Minor;
+    WDF_BUILD_NUMBER   Build;
+} WDF_VERSION;
+
+//
+// WDF bind information structure.
+//
+typedef struct _WDF_BIND_INFO {
+    ULONG              Size;
+    PWCHAR             Component;
+    WDF_VERSION        Version;
+    ULONG              FuncCount;
+    __field_bcount(FuncCount*sizeof(WDFFUNC)) WDFFUNC* FuncTable;
+
+#ifndef __FXLDRUM_H__
+    PLIBRARY_MODULE    Module;     // Mgmt and diagnostic use only
+#else
+    PVOID              Module;
+#endif
+} WDF_BIND_INFO, * PWDF_BIND_INFO;
+
+#if (!defined(WDF_STUB_VERSION)) || (WDF_STUB_VERSION >= 25)
+
+//
+// Bind info v2. Allow client driver to run on old version of framework
+//
+typedef struct _WDF_BIND_INFO2 {
+    //
+    // Embed the original V1 bind info here. Note initalize V1.Size = sizeof(V2)
+    //
+    WDF_BIND_INFO       V1;
+
+    //
+    // The following fields are all pointers to global variables, which will be
+    // used later by the client driver to, e.g. check whether the DDI/Structure
+    // is available on this platform.
+    //
+
+    //
+    // The 'minimum required framework version' to load the client driver.
+    // In other words, if the driver does load, we know that
+    //
+    //       MinimumVersionRequired <= framework version
+    //
+    // There are actually two sub-category of minor version numbers:
+    //
+    // 1) The 'target framework version', which controls the version of the
+    //    header/lib that the client driver was compiled against and is allowed
+    //    to use at runtime
+    //
+    // 2) The 'minimum required framework version'. The client driver won't be
+    //    able to load on any framework that is older than this version
+    //
+    // A driver that is built against an old framework and uses the old v1 bind
+    // info has only one version number at BindInfo.Version.Minor. It represents
+    // both the 'target' and the 'minimum required' versions.
+    //
+    // A driver that is built against a newer framework and uses the v2 bind
+    // info has both:
+    //
+    // 1) BindInfoV2.V1.Version.Minor       for the 'target' version
+    // 2) BindInfoV2.MinimumVersionRequired for the 'minimum required' version
+    //
+    // Note that it is Ok for a driver that uses the v2 bind info but specifies
+    // a identical 'target' and 'minimum required' version. In such a case the
+    // behavior is identical to the one of using v1 bind info.
+    //
+    WDF_MINOR_VERSION * MinimumVersionRequired;
+
+    //
+    // True if BindInfoV2.V1.Version.Minor > Framework Version
+    // False otherwise.
+    //
+    BOOLEAN           * ClientVersionHigherThanFramework;
+
+    //
+    // The count of function/DDI provided by the framework that the client
+    // driver is allowed to use.
+    //
+    // Note there is already a V1.FuncCount. However we still need create a new
+    // field because the client driver has no access to the bind info structure;
+    // instead, the client expects a global variable to hold the total count.
+    // Thus we introduce a ptr to the said global, and keep the two in sync.
+    //
+    //     - V2.V1.FuncCount
+    //     - (* V2.FuncCountPtr)
+    //
+    ULONG             * FuncCountPtr;
+
+    //
+    // The count of public structures provided by the framework that the client
+    // driver is allowed to use
+    //
+    ULONG             * StructCountPtr;
+
+    //
+    // An array of sizeof(struct) for all public structures provided by the
+    // framework that the client driver is allowed to use
+    //
+    WDF_STRUCT_INFO   * StructTable;
+
+} WDF_BIND_INFO2, * PWDF_BIND_INFO2;
+
+#endif
+
+NTSTATUS
+WdfBindClientHelper(
+    _Inout_ PWDF_BIND_INFO       BindInfo,
+    _In_ WDF_MAJOR_VERSION       FxMajorVersion,
+    _In_ WDF_MINOR_VERSION       FxMinorVersion
+    );
+
+#ifdef WDF_STUB_VERSION
+
+PWDF_CLASS_BIND_INFO
+__inline
+FxGetNextClassBindInfo(
+    _In_reads_bytes_((BYTE*)pEnd - pCur) const BYTE* pCur,
+    _In_reads_bytes_(0) const PWDF_CLASS_BIND_INFO   pEnd
+    )
+/*++
+
+Routine Description:
+
+    Search the next class bind info, starting from the given address
+
+Arguments:
+
+    pCur - The address to start searching the bind info
+
+    pEnd - The end of all bind info, normally address of __KMDF_CLASS_BIND_END
+
+Return Value:
+
+    NULL - Stop. Failure happens
+    pEnd - Stop. No more bind info
+    Others - Continue. Find a valid bind info
+
+--*/
+{
+    //
+    // Skip padding buffer (arbitrary length of zeros, added by the compiler)
+    // between data structures.
+    //
+    // Structures (including WDF_CLASS_BIND_INFO) are generally aligned on the
+    // natural boundaries of the target processor, i.e. sizoef(PVOID).
+    // We also C_ASSERT that this struct ends on natural boundaries too. Thus
+    // any padding between them must be one or more NULL pointers.
+    //
+    // We know the first field of the structure, "Size", is never zero. Thus
+    // if the location contains zero, it must be a padding.
+    //
+    C_ASSERT(alignof(WDF_CLASS_BIND_INFO) % sizeof(PVOID) == 0);
+    C_ASSERT(sizeof (WDF_CLASS_BIND_INFO) % sizeof(PVOID) == 0);
+    C_ASSERT(FIELD_OFFSET(_WDF_CLASS_BIND_INFO, Size) == 0);
+
+    //
+    // Skip any leading padding buffers
+    //
+    while ((pCur + sizeof(PVOID) <= (PBYTE)pEnd) && (*(PVOID*)pCur == NULL)) {
+        pCur += sizeof(PVOID);
+    }
+
+    //
+    // Verify whether we reached the end of all bind info
+    //
+    if (pCur >= (PBYTE)pEnd) {
+        return pEnd;
+    }
+
+    //
+    // Verify the Size field is correct, and the whole strucure is within pEnd
+    //
+    if ((pCur + sizeof(WDF_CLASS_BIND_INFO) <= (PBYTE)pEnd) &&
+        (sizeof(WDF_CLASS_BIND_INFO) == ((PWDF_CLASS_BIND_INFO)pCur)->Size)) {
+        return (PWDF_CLASS_BIND_INFO)pCur;
+    }
+
+#if WDF_STUB_VERSION >= 25
+    //
+    // Verify the structure starts and ends on natural boundaries
+    //
+    C_ASSERT(alignof(WDF_CLASS_BIND_INFO2) % sizeof(PVOID) == 0);
+    C_ASSERT(sizeof (WDF_CLASS_BIND_INFO2) % sizeof(PVOID) == 0);
+
+    if ((pCur + sizeof(WDF_CLASS_BIND_INFO2) <= (PBYTE)pEnd) &&
+        (sizeof(WDF_CLASS_BIND_INFO2) == ((PWDF_CLASS_BIND_INFO)pCur)->Size)) {
+        return (PWDF_CLASS_BIND_INFO)pCur;
+    }
+#endif
+
+    return NULL;
+}
+
+#endif // WDF_STUB_VERSION
 
 typedef
 _Must_inspect_result_
@@ -79,6 +295,45 @@ NTSTATUS
     __in PWDF_BIND_INFO             Info,
     __in PWDF_COMPONENT_GLOBALS     DriverGlobals
     );
+
+#define WDF_REGISTRY_DBGPRINT_ON   L"DbgPrintOn"
+
+typedef struct _WDF_LIBRARY_INFO {
+    ULONG                             Size;
+    PFNLIBRARYCOMMISSION              LibraryCommission;
+    PFNLIBRARYDECOMMISSION            LibraryDecommission;
+    PFNLIBRARYREGISTERCLIENT          LibraryRegisterClient;
+    PFNLIBRARYUNREGISTERCLIENT        LibraryUnregisterClient;
+    WDF_VERSION                       Version;
+} WDF_LIBRARY_INFO, *PWDF_LIBRARY_INFO;
+
+//
+// Client Driver information structure. This is used by loader when
+// registering client with library to provide some additional info to
+// library that is not already present in WDF_BIND_INFO (also passed to library
+// during client registration)
+//
+typedef struct _CLIENT_INFO {
+    //
+    // Size of this structure
+    //
+    ULONG              Size;
+
+    //
+    // registry service path of client driver
+    //
+    PUNICODE_STRING    RegistryPath;
+
+#ifndef __FXLDRUM_H__
+    //
+    // driver object
+    //
+    PDRIVER_OBJECT     DriverObject;
+#endif
+
+} CLIENT_INFO, *PCLIENT_INFO;
+
+#ifndef __FXLDRUM_H__
 
 typedef
 _Must_inspect_result_
@@ -112,39 +367,6 @@ NTSTATUS
 #define WDF_LIBRARY_REGISTER_CLIENT     LibraryRegisterClient
 #define WDF_LIBRARY_UNREGISTER_CLIENT   LibraryUnregisterClient
 
-#define WDF_REGISTRY_DBGPRINT_ON   L"DbgPrintOn"
-
-
-//
-// Version container
-//
-typedef struct _WDF_VERSION {
-    WDF_MAJOR_VERSION  Major;
-    WDF_MINOR_VERSION  Minor;
-    WDF_BUILD_NUMBER   Build;
-} WDF_VERSION;
-
-//
-// WDF bind information structure.
-//
-typedef struct _WDF_BIND_INFO {
-    ULONG              Size;
-    PWCHAR             Component;
-    WDF_VERSION        Version;
-    ULONG              FuncCount;
-    __field_bcount(FuncCount*sizeof(WDFFUNC)) WDFFUNC* FuncTable;
-    PLIBRARY_MODULE    Module;     // Mgmt and diagnostic use only
-} WDF_BIND_INFO, * PWDF_BIND_INFO;
-
-typedef struct _WDF_LIBRARY_INFO {
-    ULONG                             Size;
-    PFNLIBRARYCOMMISSION              LibraryCommission;
-    PFNLIBRARYDECOMMISSION            LibraryDecommission;
-    PFNLIBRARYREGISTERCLIENT          LibraryRegisterClient;
-    PFNLIBRARYUNREGISTERCLIENT        LibraryUnregisterClient;
-    WDF_VERSION                       Version;
-} WDF_LIBRARY_INFO, *PWDF_LIBRARY_INFO;
-
 // {49215DFF-F5AC-4901-8588-AB3D540F6021}
 DEFINE_GUID(GUID_WDF_LOADER_INTERFACE_STANDARD, \
              0x49215dff, 0xf5ac, 0x4901, 0x85, 0x88, 0xab, 0x3d, 0x54, 0xf, 0x60, 0x21);
@@ -167,25 +389,6 @@ WDF_LOADER_INTERFACE_INIT(
     Interface->Header.InterfaceSize = sizeof(WDF_LOADER_INTERFACE);
     Interface->Header.InterfaceType = &GUID_WDF_LOADER_INTERFACE_STANDARD;
 }
-
-//
-// Client Driver information structure. This is used by loader when
-// registering client with library to provide some additional info to
-// library that is not already present in WDF_BIND_INFO (also passed to library
-// during client registration)
-//
-typedef struct _CLIENT_INFO {
-    //
-    // Size of this structure
-    //
-    ULONG              Size;
-
-    //
-    // registry service path of client driver
-    //
-    PUNICODE_STRING    RegistryPath;
-
-} CLIENT_INFO, *PCLIENT_INFO;
 
 //-----------------------------------------------------------------------------
 // WDFLDR.SYS exported function prototype definitions
@@ -228,10 +431,12 @@ WdfRegisterLibrary(
 } // extern "C"
 #endif
 
+#endif // __FXLDRUM_H__
+
 //
 // Event name: WdfCensusEvtLinkClientToCx
 //
-// Source:      WdfLdr
+// Source:      WdfLdr / WudfHost (UM loader)
 // Description: Written when a client is binding to a class extension.
 //              WdfVersionBindClass which is called from the client's stub,
 //              will load/reference the Cx and add it to the fx library's
@@ -241,12 +446,15 @@ WdfRegisterLibrary(
 // Frequency: Everytime a client driver binds to a class extension.
 //
 //
-#define WDF_CENSUS_EVT_WRITE_LINK_CLIENT_TO_CX(TraceHandle, CxImageName, ClientImageName)        \
+#define WDF_CENSUS_EVT_WRITE_LINK_CLIENT_TO_CX(TraceHandle, CxImageName, ClientImageName, ClientVerMajor, ClientVerMinor, ClientVerBuild)        \
             TraceLoggingWrite(TraceHandle,                                     \
                 "WdfCensusEvtLinkClientToCx",                                  \
                 WDF_TELEMETRY_EVT_KEYWORDS,                                    \
-                TraceLoggingWideString(CxImageName,       "CxImageName"),      \
-                TraceLoggingWideString(ClientImageName,   "ClientImageName"  ) \
+                TraceLoggingWideString(CxImageName,     "CxImageName"),        \
+                TraceLoggingWideString(ClientImageName, "ClientImageName"  ),  \
+                TraceLoggingUInt32(ClientVerMajor,      "ClientVersionMajor"), \
+                TraceLoggingUInt32(ClientVerMinor,      "ClientVersionMinor"), \
+                TraceLoggingUInt32(ClientVerBuild,      "ClientVersionBuild")  \
                 );
 
 #endif // __FXLDR_H__

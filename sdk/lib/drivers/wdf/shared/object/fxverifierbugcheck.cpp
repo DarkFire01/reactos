@@ -60,6 +60,23 @@ Returns:
 
 --*/
 {
+#if (FX_CORE_MODE == FX_CORE_USER_MODE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#else
     //
     // Indicate to the BugCheck callback filter which IFR to dump.
     //
@@ -70,6 +87,7 @@ Returns:
                  BugCheckParameter2,
                  BugCheckParameter3,
                  (ULONG_PTR) FxDriverGlobals );
+#endif
 }
 
 DECLSPEC_NORETURN
@@ -104,4 +122,75 @@ Returns:
                        0,                               // Parameter 2
                        (ULONG_PTR)ReturnAddress         // Parameter 3
                        );
+}
+
+VOID
+__declspec(noreturn)
+FxVerifierDriverReportedBugcheck(
+    _In_ PFX_DRIVER_GLOBALS FxDriverGlobals,
+    _In_ ULONG      BugCheckCode,
+    _In_ ULONG_PTR  BugCheckParameter1,
+    _In_ ULONG_PTR  BugCheckParameter2,
+    _In_ ULONG_PTR  BugCheckParameter3,
+    _In_ ULONG_PTR  BugCheckParameter4
+    )
+/*++
+
+Routine Description:
+
+    For KMDF this will bugcheck the system while for UMDF a watson report
+    is filed that will blame the driver for the host failure.
+
+Arguments:
+    FxDriverGlobals - Unreferenced for KMDF. For UMDF a watson report is filed
+                blaming the driver associated with the globals
+
+    BugCheckCode - Specifies a value that indicates the reason for the bug check.
+
+    BugCheckParameter1 - Additional information pertaining to the bugcheck.
+
+    BugCheckParameter2 - Additional information pertaining to the bugcheck.
+
+    BugCheckParameter3 - Additional information pertaining to the bugcheck.
+
+    BugCheckParameter4 - Additional information pertaining to the bugcheck.
+
+Returns: VOID
+
+--*/
+{
+    //
+    // Indicate to the BugCheck callback filter which IFR to dump.
+    //
+    FxDriverGlobals->FxForceLogsInMiniDump = TRUE;
+
+#if (FX_CORE_MODE == FX_CORE_USER_MODE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    FX_VERIFY_WITH_NAME(DRIVER(BadAction, BugCheckCode), TRAPMSG("A UMDF driver "
+        "reported a fatal error"), FxDriverGlobals->Public.DriverName);
+#else
+    UNREFERENCED_PARAMETER(FxDriverGlobals);
+#pragma prefast(suppress:__WARNING_USE_OTHER_FUNCTION, "WDF wrapper to KeBugCheckEx.");
+    Mx::MxBugCheckEx(BugCheckCode,
+        BugCheckParameter1,
+        BugCheckParameter2,
+        BugCheckParameter3,
+        BugCheckParameter4);
+#endif //(FX_CORE_MODE == FX_CORE_USER_MODE)
 }

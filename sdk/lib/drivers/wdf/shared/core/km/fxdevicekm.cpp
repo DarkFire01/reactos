@@ -302,6 +302,10 @@ FxDevice::PdoInitialize(
             pPkgPdo->m_AllowForwardRequestToParent = TRUE;
         }
 
+        if (DeviceInit->Pdo.NoPowerDependencyOnParent) {
+            pPkgPdo->m_HasPowerDependencyOnParent = FALSE;
+        }
+
         // status = m_PkgWmi->PostCreateDeviceInitialize(); __REACTOS__
         // if (!NT_SUCCESS(status)) {
         //     return status;
@@ -594,7 +598,7 @@ FxDevice::CreateSymbolicLink(
             return status;
         }
 
-        pBuffer = (PWSTR) FxPoolAllocate(FxDriverGlobals, PagedPool, length);
+        pBuffer = (PWSTR) FxPoolAllocate2(FxDriverGlobals, POOL_FLAG_PAGED, length);
         if (pBuffer == NULL) {
             status = STATUS_INSUFFICIENT_RESOURCES;
 
@@ -1035,3 +1039,55 @@ FxDevice::OpenDevicemapKeyWorker(
     return status;
 }
 
+NTSTATUS
+FxDevice::AllocateCompanionTarget(
+    _Out_ FxCompanionTarget** DeviceCompanion
+    )
+{
+    FxCompanionTarget* deviceCompanion = NULL;
+    NTSTATUS ntStatus;
+
+    deviceCompanion = (FxCompanionTarget*) new (GetDriverGlobals(), WDF_NO_OBJECT_ATTRIBUTES)
+                            FxCompanionTarget(GetDriverGlobals(), sizeof(FxCompanionTarget));
+    if (deviceCompanion == NULL) {
+        ntStatus = STATUS_INSUFFICIENT_RESOURCES;
+
+        DoTraceLevelMessage(
+            GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGDEVICE,
+            "WDFDEVICE %p could not allocate a device companion target, %!STATUS!",
+            GetHandle(), ntStatus);
+        goto Done;
+    }
+
+    //
+    // Actually load the device companion process
+    //
+    ntStatus = deviceCompanion->Init(this);
+    if (!NT_SUCCESS(ntStatus)) {
+        DoTraceLevelMessage(
+            GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGDEVICE,
+            "WDFDEVICE %p failed to initialize device companion, %!STATUS!",
+            GetHandle(), ntStatus);
+        goto Done;
+    }
+
+    ntStatus = deviceCompanion->Commit(WDF_NO_OBJECT_ATTRIBUTES, NULL, this);
+    if (!NT_SUCCESS(ntStatus)) {
+        DoTraceLevelMessage(
+            GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGDEVICE,
+            "WDFDEVICE %p failed to initialize (commit) a WDFIOTARGET, %!STATUS!",
+            GetHandle(), ntStatus);
+        goto Done;
+    }
+
+Done:
+    if (!NT_SUCCESS(ntStatus)) {
+        if (deviceCompanion != NULL) {
+            deviceCompanion->DeleteFromFailedCreate();
+            deviceCompanion = NULL;
+        }
+    }
+
+    *DeviceCompanion = deviceCompanion;
+    return ntStatus;
+}

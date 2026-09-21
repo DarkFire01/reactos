@@ -28,7 +28,7 @@ Revision History:
 
 // Tracing support
 extern "C" {
-#include "FxFileObjectUm.tmh"
+// #include "FxFileObjectUm.tmh"
 }
 
 VOID
@@ -57,6 +57,23 @@ FxFileObject::SetFileObjectContext(
 
     pIoIrp->SetFrameworkFileObjectContext(Device->GetDeviceObject(),
                                           (IUnknown *) this);
+}
+
+ULONG
+FxFileObject::GetInitiatorProcessId(
+    VOID
+    )
+{
+    if (GetWdmFileObject() != NULL) {
+        return GetWdmFileObject()->GetInitiatorProcessId();
+    }
+    else {
+        FX_VERIFY_WITH_NAME(DRIVER(BadArgument, TODO), TRAPMSG("Cannot get initiator "
+            "process ID from a file object that doesn't have a WDM file object"),
+            GetDriverGlobals()->Public.DriverName);
+        return 0;
+    }
+
 }
 
 VOID

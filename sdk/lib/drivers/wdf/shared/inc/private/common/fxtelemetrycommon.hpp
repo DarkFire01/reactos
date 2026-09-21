@@ -45,11 +45,26 @@ Notes:
 // WudfHost.exe
 #define UMDF_HOST_TRACE_LOGGING_PROVIDER_NAME  "Microsoft.Wdf.UMDF.Host"
 
+// WudfCompanionHost.exe
+#define COMPANION_HOST_TRACE_LOGGING_PROVIDER_NAME  "Microsoft.Wdf.Companion.Host"
+
 // WdfLdr.sys
 #define KMDF_LDR_TRACE_LOGGING_PROVIDER_NAME   "Microsoft.Wdf.KMDF.Ldr"
 
-// WudfSvc.dll
+// UMDF driver manager, now running inside services.exe
 #define UMDF_DM_TRACE_LOGGING_PROVIDER_NAME    "Microsoft.Wdf.UMDF.Dm"
 
-// Common telemetry related keyword used across all telemetry events
-#define WDF_TELEMETRY_EVT_KEYWORDS TraceLoggingKeyword(MICROSOFT_KEYWORD_TELEMETRY)
+// WUDFPlatform.dll
+#define UMDF_PLATFORM_TRACE_LOGGING_PROVIDER_NAME   "Microsoft.Wdf.UMDF.Platform"
+
+
+
+
+
+
+
+
+
+
+
+
