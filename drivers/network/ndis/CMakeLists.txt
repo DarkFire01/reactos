@@ -31,7 +31,12 @@ list(APPEND SOURCE
     ndis/miniport.c
     ndis/miniport6.c
     ndis/misc.c
+    ndis/mp5shim.c
+    ndis/mpcore.c
+    ndis/mpdata.c
+    ndis/mpoid.c
     ndis/nbl.c
+    ndis/pro5shim.c
     ndis/protocol.c
     ndis/string.c
     ndis/time.c

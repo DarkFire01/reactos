@@ -95,13 +95,13 @@ EthFilterDprIndicateReceive(
         NDIS_DbgPrint(MIN_TRACE, ("Filter is NULL\n"));
         return;
     }
-    MiniIndicateData((PLOGICAL_ADAPTER)((PETHI_FILTER)Filter)->Miniport,
-		     MacReceiveContext,
-		     HeaderBuffer,
-		     HeaderBufferSize,
-		     LookaheadBuffer,
-		     LookaheadBufferSize,
-		     PacketSize);
+    Mp5IndicateLookahead((PLOGICAL_ADAPTER)((PETHI_FILTER)Filter)->Miniport,
+                         MacReceiveContext,
+                         HeaderBuffer,
+                         HeaderBufferSize,
+                         LookaheadBuffer,
+                         LookaheadBufferSize,
+                         PacketSize);
 }
 
 
@@ -118,35 +118,8 @@ EthFilterDprIndicateReceiveComplete(
  *     Filter = Pointer to Ethernet filter
  */
 {
-  PLIST_ENTRY CurrentEntry;
-  PLOGICAL_ADAPTER Adapter;
-  PADAPTER_BINDING AdapterBinding;
-
-  NDIS_DbgPrint(DEBUG_MINIPORT, ("Called.\n"));
-
-  if( !Filter ) {
-      NDIS_DbgPrint(MIN_TRACE, ("Filter is NULL\n"));
-      return;
-  }
-
-  Adapter = (PLOGICAL_ADAPTER)((PETHI_FILTER)Filter)->Miniport;
-
-  NDIS_DbgPrint(MAX_TRACE, ("acquiring miniport block lock\n"));
-  KeAcquireSpinLockAtDpcLevel(&Adapter->NdisMiniportBlock.Lock);
-    {
-      CurrentEntry = Adapter->ProtocolListHead.Flink;
-
-      while (CurrentEntry != &Adapter->ProtocolListHead)
-        {
-          AdapterBinding = CONTAINING_RECORD(CurrentEntry, ADAPTER_BINDING, AdapterListEntry);
-
-          (*AdapterBinding->ProtocolBinding->Chars.ReceiveCompleteHandler)(
-              AdapterBinding->NdisOpenBlock.ProtocolBindingContext);
-
-          CurrentEntry = CurrentEntry->Flink;
-        }
-    }
-  KeReleaseSpinLockFromDpcLevel(&Adapter->NdisMiniportBlock.Lock);
+    /* Each lookahead indication already went up complete */
+    UNREFERENCED_PARAMETER(Filter);
 }
 
 /* EOF */
