@@ -192,3 +192,6 @@ struct KRTL_CLASS NONPAGED_OBJECT :
 
 };
 
+// Nonpaged allocation that is safe to free at DISPATCH_LEVEL.
+template <ULONG TAG>
+using NxNonpagedAllocation = KALLOCATOR_NONPAGED<TAG, NonPagedPoolNx>;
