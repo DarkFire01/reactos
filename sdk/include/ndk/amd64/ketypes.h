@@ -953,6 +953,9 @@ typedef struct _KPRCB
 #if (NTDDI_VERSION < NTDDI_LONGHORN)
     UINT64 StartCycles;
     UINT64 CycleTime;
+    /* Clock ticks in the running DPC, and in a row at DISPATCH_LEVEL or above */
+    ULONG DpcTimeCount;
+    LONG DpcWatchdogCount;
 #endif
 #if  (NTDDI_VERSION < NTDDI_WINBLUE)
     // On Win 8.1+ the FeatureBits field is extended to 64 bits
