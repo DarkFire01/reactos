@@ -913,6 +913,12 @@ NxDevice::EnableWakeReasonReporting(
 )
 {
     m_isWakeInProgress = true;
+
+    /* A new wake starts without a reason */
+    m_adapterCollection.ForEach([](NxAdapter & adapter)
+    {
+        adapter.ClearWakeReason();
+    });
 }
 
 void
@@ -921,6 +927,17 @@ NxDevice::DisableWakeReasonReporting(
 )
 {
     m_isWakeInProgress = false;
+}
+
+void
+NxDevice::SetWakeReasonDevice(
+    void
+)
+{
+    m_adapterCollection.ForEach([](NxAdapter & adapter)
+    {
+        adapter.SetWakeReason(NetWakeReasonTypeDevice);
+    });
 }
 
 _Use_decl_annotations_
@@ -936,6 +953,10 @@ EvtCxDevicePreD0Entry(
     {
         nxDevice->BeginPowerTransition();
     }
+
+    /* Put the wake down to the device until the client reports something better */
+    if (nxDevice->IsWakeInProgress())
+        nxDevice->SetWakeReasonDevice();
 
     nxDevice->IdleStateMachine.D0Entry();
 

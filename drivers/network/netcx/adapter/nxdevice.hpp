@@ -428,6 +428,11 @@ public:
     );
 
     void
+    SetWakeReasonDevice(
+        void
+    );
+
+    void
     GetPowerOffloadList(
         _Inout_ NxPowerOffloadList * PowerList
     );
