@@ -385,7 +385,7 @@ Return Value:
     }
 
     NTSTATUS
-    DispathToInCallerContextCallback(
+    DispatchToInCallerContextCallback(
         __in    FxIoInCallerContext *InCallerContextInfo,
         __in    FxRequest *Request,
         __inout MdIrp      Irp

@@ -244,8 +244,8 @@ Return Value:
             );
     }
     size =  sizeof(FxUsbInterfaceSetting) * m_NumSettings;
-    m_Settings = (FxUsbInterfaceSetting *) FxPoolAllocate(
-        GetDriverGlobals(), NonPagedPool, size);
+    m_Settings = (FxUsbInterfaceSetting *) FxPoolAllocate2(
+        GetDriverGlobals(), POOL_FLAG_NON_PAGED, size);
 
     if (m_Settings == NULL) {
         DoTraceLevelMessage(
@@ -257,8 +257,6 @@ Return Value:
 
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-
-    RtlZeroMemory(m_Settings, size);
 
     //
     // Add all the settings for this interface
@@ -435,7 +433,7 @@ Return Value:
     size = GET_SELECT_INTERFACE_REQUEST_SIZE(numEP);
 
 #if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
-    urb = (PURB) FxPoolAllocate(GetDriverGlobals(), NonPagedPool, size);
+    urb = (PURB) FxPoolAllocate2(GetDriverGlobals(), POOL_FLAG_NON_PAGED, size);
 
     if (urb == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -532,7 +530,7 @@ Return Value:
 
     size = GET_SELECT_INTERFACE_REQUEST_SIZE(InterfaceDescriptor->bNumEndpoints);
 
-    urb = (PURB) FxPoolAllocate(GetDriverGlobals(), NonPagedPool, size);
+    urb = (PURB) FxPoolAllocate2(GetDriverGlobals(), POOL_FLAG_NON_PAGED, size);
 
     if (urb == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -692,7 +690,7 @@ Return Value:
     // If the interface is already configured don't do anything with the old
     // settings till we allocate new.
     //
-    ppPipes = (FxUsbPipe **) FxPoolAllocate(GetDriverGlobals(), NonPagedPool, size);
+    ppPipes = (FxUsbPipe **) FxPoolAllocate2(GetDriverGlobals(), POOL_FLAG_NON_PAGED, size);
 
     if (ppPipes == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -702,8 +700,6 @@ Return Value:
             , status);
         goto Done;
     }
-
-    RtlZeroMemory(ppPipes, size);
 
     for (iPipe = 0; iPipe < numPipes; iPipe++) {
         ppPipes[iPipe] = new (GetDriverGlobals(), PipesAttributes)
@@ -845,7 +841,10 @@ Arguments:
                                Urb->UrbSelectInterface.Interface.Length)
             );
 
-        Urb->UrbSelectInterface.Interface.Pipes[i].PipeFlags = 0x0;
+        Urb->UrbSelectInterface.Interface.Pipes[i].PipeFlags =
+            m_UsbDevice->m_SspIsochPipeFlags
+                ? USBD_PF_HANDLES_SSP_HIGH_BANDWIDTH_ISOCH
+                : 0;
         Urb->UrbSelectInterface.Interface.Pipes[i].MaximumTransferSize =
             defaultMaxTransferSize;
     }
@@ -1020,6 +1019,7 @@ Return Value:
     PipeInfo->SettingIndex  = SettingIndex;
 }
 
+_Success_(return != NULL)
 WDFUSBPIPE
 FxUsbInterface::GetConfiguredPipe(
     __in UCHAR PipeIndex,
@@ -1054,7 +1054,7 @@ Return Value:
 
 VOID
 FxUsbInterface::GetDescriptor(
-    __in PUSB_INTERFACE_DESCRIPTOR  UsbInterfaceDescriptor,
+    _Out_ PUSB_INTERFACE_DESCRIPTOR  UsbInterfaceDescriptor,
     __in UCHAR SettingIndex
     )
 /*++

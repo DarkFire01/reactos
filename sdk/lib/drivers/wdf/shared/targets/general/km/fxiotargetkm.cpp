@@ -117,8 +117,8 @@ FxIoTarget::FormatIoRequest(
                     setBufferAndLength = FALSE;
             }
             else {
-                irp->SetSystemBuffer(FxPoolAllocate(GetDriverGlobals(),
-                                   NonPagedPool,
+                irp->SetSystemBuffer(FxPoolAllocate2(GetDriverGlobals(),
+                                   POOL_FLAG_NON_PAGED,
                                    ioLength));
                 if (irp->GetSystemBuffer() == NULL) {
                     DoTraceLevelMessage(
@@ -370,8 +370,8 @@ FxIoTarget::FormatIoctlRequest(
                     setBufferAndLength = FALSE;
             }
             else {
-                irp->SetSystemBuffer(FxPoolAllocate(GetDriverGlobals(),
-                                   NonPagedPool,
+                irp->SetSystemBuffer(FxPoolAllocate2(GetDriverGlobals(),
+                                   POOL_FLAG_NON_PAGED,
                                    allocationLength));
                 if (irp->GetSystemBuffer() == NULL) {
                     DoTraceLevelMessage(

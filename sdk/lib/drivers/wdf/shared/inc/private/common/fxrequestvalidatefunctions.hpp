@@ -28,7 +28,7 @@ Revision History:
 
 #if defined(EVENT_TRACING)
 extern "C" {
-#include "FxRequestValidateFunctions.hpp.tmh"
+// #include "FxRequestValidateFunctions.hpp.tmh"
 }
 #endif
 

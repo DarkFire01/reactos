@@ -246,7 +246,7 @@ WDFEXPORT(WdfUsbInterfaceGetEndpointInformation)(
     UCHAR SettingIndex,
     __in
     UCHAR EndpointIndex,
-    __out
+    _Inout_
     PWDF_USB_PIPE_INFORMATION EndpointInfo
     )
 /*++
@@ -456,7 +456,7 @@ WDFEXPORT(WdfUsbInterfaceGetConfiguredPipe)(
     WDFUSBINTERFACE UsbInterface,
     __in
     UCHAR PipeIndex,
-    __out_opt
+    _Inout_opt_
     PWDF_USB_PIPE_INFORMATION PipeInfo
     )
 /*++

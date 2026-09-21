@@ -192,6 +192,16 @@ public:
         VOID
         );
 
+    virtual void __stdcall
+    PoFxDirectedPowerUp(
+        VOID
+        );
+
+    virtual void __stdcall
+    PoFxDirectedPowerDown(
+        VOID
+        );
+
     //
     // Additional public functions.
     //

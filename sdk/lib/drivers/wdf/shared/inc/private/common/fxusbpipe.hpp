@@ -492,13 +492,18 @@ public:
     BOOLEAN
     IsType(
         __in WDF_USB_PIPE_TYPE Type
-        );
-
+        )
+    {
+        return GetType() == Type;
+    }
 
     WDF_USB_PIPE_TYPE
     GetType(
         VOID
-        );
+        )
+    {
+        return _UsbdPipeTypeToWdf(m_PipeInformation.PipeType);
+    }
 
     WDFUSBPIPE
     GetHandle(
@@ -507,6 +512,17 @@ public:
     {
         return (WDFUSBPIPE) GetObjectHandle();
     }
+
+#if (FX_CORE_MODE == FX_CORE_USER_MODE)
+    __inline
+    UCHAR
+    GetPipeId(
+        VOID
+        )
+    {
+        return m_PipeInformation.EndpointAddress;
+    }
+#endif
 
     __inline
     BOOLEAN
@@ -519,11 +535,7 @@ public:
         // return 0 or some non zero value.  Make sure the non zero value is
         // TRUE
         //
-#if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
         return USB_ENDPOINT_DIRECTION_IN(m_PipeInformation.EndpointAddress) ? TRUE : FALSE;
-#elif (FX_CORE_MODE == FX_CORE_USER_MODE)
-        return USB_ENDPOINT_DIRECTION_IN(m_PipeInformationUm.PipeId) ? TRUE : FALSE;
-#endif
     }
 
     __inline
@@ -537,11 +549,7 @@ public:
         // return 0 or some non zero value.  Make sure the non zero value is
         // TRUE
         //
-#if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
         return USB_ENDPOINT_DIRECTION_OUT(m_PipeInformation.EndpointAddress) ? TRUE : FALSE;
-#elif (FX_CORE_MODE == FX_CORE_USER_MODE)
-        return USB_ENDPOINT_DIRECTION_OUT(m_PipeInformationUm.PipeId) ? TRUE : FALSE;
-#endif
     }
 
     _Must_inspect_result_
@@ -557,9 +565,11 @@ public:
         )
     {
 #if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
-        return  m_PipeInformation.MaximumPacketSize;
+        return  FLAG_TO_BOOL(m_PipeInformation.PipeFlags, USBD_PF_SSP_HIGH_BANDWIDTH_ISOCH)
+                    ? m_PipeInformation.MaximumTransferSize
+                    : m_PipeInformation.MaximumPacketSize;
 #elif (FX_CORE_MODE == FX_CORE_USER_MODE)
-        return  m_PipeInformationUm.MaximumPacketSize;
+        return  m_PipeInformation.MaximumPacketSize;
 #endif
     }
 
@@ -573,11 +583,7 @@ public:
         // Assumes this is not a control pipe
         //
         if (m_CheckPacketSize &&
-#if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
-            (Length % m_PipeInformation.MaximumPacketSize) != 0) {
-#elif (FX_CORE_MODE == FX_CORE_USER_MODE)
-            (Length % m_PipeInformationUm.MaximumPacketSize) != 0) {
-#endif
+            (Length % GetMaxPacketSize()) != 0) {
             return STATUS_INVALID_BUFFER_SIZE;
         }
         else {
@@ -711,14 +717,13 @@ protected:
     //
     // Information about this pipe
     //
+    // For UMDF, the following fields should not be used:
+    //
+    //   USBD_PIPE_HANDLE PipeHandle;   // KMDF: WdfUsbTargetPipeWdmGetPipeHandle
+    //   ULONG  MaximumTransferSize;    // KMDF: > 64KB size if high_bw_iso flag
+    //   ULONG  PipeFlags;              // KMDF: USBD_PF_SSP_HIGH_BANDWIDTH_ISOCH
+    //
     USBD_PIPE_INFORMATION  m_PipeInformation;
-
-#if (FX_CORE_MODE == FX_CORE_USER_MODE)
-
-
-
-    WINUSB_PIPE_INFORMATION m_PipeInformationUm;
-#endif
 
     //
     // Interface associated with this pipe

@@ -71,6 +71,15 @@ extern "C" {
     #define VALIDATE_PWR_POL_STATE(_CurrentState, _NewState)   (0)
 #endif  //FX_STATE_MACHINE_VERIFY
 
+//
+// Define to control whether Directed power transitions (DFx) should be
+// supported for devices that are not idle-capable. By default, directed
+// transitions are not supported for such devices. They can be enabled for
+// testing purposes though.
+//
+
+// #define WDF_ALLOW_DFX_FOR_NON_IDLE_CAPABLE_DEVICES
+
 // @@SMVERIFY_SPLIT_BEGIN
 
 const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolObjectCreatedOtherStates[] =
@@ -91,6 +100,7 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolStartedIdleCapableOthe
     { PwrPolStop, WdfDevStatePwrPolStoppingCancelTimer DEBUGGED_EVENT },
     { PwrPolSurpriseRemove,WdfDevStatePwrPolStoppingCancelTimer DEBUGGED_EVENT },
     { PwrPolS0IdlePolicyChanged, WdfDevStatePwrPolStartedCancelTimer DEBUGGED_EVENT },
+    { PwrPolDeviceDirectedPowerDown, WdfDevStatePwrPolStartedIdleCapableCancelTimerForSleep DEBUGGED_EVENT },
     { PwrPolNull, WdfDevStatePwrPolNull },
 };
 
@@ -99,8 +109,9 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolIdleCapableDeviceIdleO
     { PwrPolSx, WdfDevStatePwrPolDeviceIdleSleeping DEBUGGED_EVENT },
     { PwrPolStop, WdfDevStatePwrPolDeviceIdleStopping DEBUGGED_EVENT },
     { PwrPolSurpriseRemove,WdfDevStatePwrPolDeviceIdleStopping DEBUGGED_EVENT },
-    { PwrPolS0IdlePolicyChanged, WdfDevStatePwrPolDeviceIdleReturnToActive TRAP_ON_EVENT },
+    { PwrPolS0IdlePolicyChanged, WdfDevStatePwrPolDeviceIdleReturnToActive DEBUGGED_EVENT },
     { PwrPolIoPresent, WdfDevStatePwrPolDeviceIdleReturnToActive DEBUGGED_EVENT },
+    { PwrPolDeviceDirectedPowerDown, WdfDevStatePwrPolIdleCapableDirectedDownTriggerDPNR DEBUGGED_EVENT },
     { PwrPolNull, WdfDevStatePwrPolNull },
 };
 
@@ -168,8 +179,8 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSystemAsleepWakeArmedN
 
 const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSystemWakeDeviceToD0OtherStates[] =
 {
-    { PwrPolPowerUpFailed, WdfDevStatePwrPolDevicePowerRequestFailed DEBUGGED_EVENT },
-    { PwrPolPowerUpNotSeen, WdfDevStatePwrPolDeviceD0PowerRequestFailed TRAP_ON_EVENT },
+    { PwrPolPowerUpFailed, WdfDevStatePwrPolSystemWakeDevicePowerRequestFailed DEBUGGED_EVENT },
+    { PwrPolPowerUpNotSeen, WdfDevStatePwrPolSystemWakeDeviceD0PowerRequestFailed TRAP_ON_EVENT },
     { PwrPolNull,        WdfDevStatePwrPolNull },
 };
 
@@ -185,6 +196,7 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolStartedWakeCapableOthe
     { PwrPolStop, WdfDevStatePwrPolStoppingCancelTimer DEBUGGED_EVENT },
     { PwrPolSurpriseRemove, WdfDevStatePwrPolStoppingCancelTimer DEBUGGED_EVENT },
     { PwrPolS0IdlePolicyChanged, WdfDevStatePwrPolStartedCancelTimer DEBUGGED_EVENT },
+    { PwrPolDeviceDirectedPowerDown, WdfDevStatePwrPolStartedWakeCapableCancelTimerForSleep DEBUGGED_EVENT },
     { PwrPolNull, WdfDevStatePwrPolNull },
 };
 
@@ -195,6 +207,7 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolWakeCapableDeviceIdleO
     { PwrPolSurpriseRemove,WdfDevStatePwrPolDeviceIdleStopping DEBUGGED_EVENT },
     { PwrPolS0IdlePolicyChanged, WdfDevStatePwrPolDeviceIdleReturnToActive TRAP_ON_EVENT },
     { PwrPolIoPresent, WdfDevStatePwrPolDeviceIdleReturnToActive DEBUGGED_EVENT },
+    { PwrPolDeviceDirectedPowerDown, WdfDevStatePwrPolWakeCapableDirectedDownTriggerDPNR DEBUGGED_EVENT },
     { PwrPolNull, WdfDevStatePwrPolNull },
 };
 
@@ -229,6 +242,17 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolTimerExpiredWakeCapabl
     { PwrPolNull, WdfDevStatePwrPolNull },
 };
 
+const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolTimerExpiredWakeCapableUsbSSDirectedDownOtherStates[] =
+{
+    // Note PnP IRPs, S-IRPs and PoFx device-power-required won't be issued by the kernel if a
+    // directed transition is in progress. Thus the following events, which are handled in the
+    // non-directed state (TimerExpiredWakeCapableUsbSS), don't need to be handled here:
+    // PwrPolSx, PwrPolStop, PwrPolSurpriseRemove and PwrPolDevicePowerRequired.
+    // The PwrPolS0IdlePolicyChanged and PwrPolIoPresent events are marked as known dropped.
+    { PwrPolUsbSelectiveSuspendCompleted, WdfDevStatePwrPolWakeCapableUsbSSCompleted DEBUGGED_EVENT },
+    { PwrPolNull, WdfDevStatePwrPolNull },
+};
+
 const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolWaitingArmedOtherStates[] =
 {
     { PwrPolSx, WdfDevStatePwrPolCancelingUsbSSForSystemSleep DEBUGGED_EVENT },
@@ -237,9 +261,23 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolWaitingArmedOtherState
     { PwrPolStop, WdfDevStatePwrPolStoppingD0CancelUsbSS DEBUGGED_EVENT },
     { PwrPolSurpriseRemove, WdfDevStatePwrPolWaitingArmedStoppingCancelUsbSS DEBUGGED_EVENT },
     { PwrPolS0IdlePolicyChanged, WdfDevStatePwrPolWaitingArmedIoPresentCancelUsbSS  DEBUGGED_EVENT },
-    { PwrPolUsbSelectiveSuspendCompleted, WdfDevStatePwrPolIoPresentArmed TRAP_ON_EVENT },
+    { PwrPolUsbSelectiveSuspendCompleted, WdfDevStatePwrPolIoPresentArmed DEBUGGED_EVENT },
     { PwrPolDevicePowerRequired, WdfDevStatePwrPolWaitingArmedIoPresentCancelUsbSS DEBUGGED_EVENT },
     { PwrPolWakeInterruptFired, WdfDevStatePwrPolWaitingArmedWakeInterruptFired DEBUGGED_EVENT },
+    { PwrPolNull, WdfDevStatePwrPolNull },
+};
+
+const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolWaitingArmedDirectedDownOtherStates[] =
+{
+    // Note PnP IRPs, S-IRPs and PoFx device-power-required won't be issued by the kernel if a
+    // directed transition is in progress. Thus the following events, which are handled in the
+    // non-directed state (WaitingArmed), don't need to be handled here:
+    // PwrPolSx, PwrPolStop, PwrPolSurpriseRemove and PwrPolDevicePowerRequired.
+    // The PwrPolS0IdlePolicyChanged and PwrPolIoPresent events are marked as known dropped.
+    { PwrPolWakeSuccess, WdfDevStatePwrPolWaitingArmedDirectedDownWakeSucceededCancelUsbSS DEBUGGED_EVENT },
+    { PwrPolWakeFailed, WdfDevStatePwrPolWaitingArmedDirectedDownWakeFailedCancelUsbSS DEBUGGED_EVENT },
+    { PwrPolUsbSelectiveSuspendCompleted, WdfDevStatePwrPolWaitingArmedDirectedDownUsbSSCompleted TRAP_ON_EVENT },
+    { PwrPolWakeInterruptFired, WdfDevStatePwrPolWaitingArmedDirectedDownWakeInterruptFired DEBUGGED_EVENT },
     { PwrPolNull, WdfDevStatePwrPolNull },
 };
 
@@ -300,6 +338,7 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolStartedOtherStates[] =
     { PwrPolStop, WdfDevStatePwrPolStopping DEBUGGED_EVENT },
     { PwrPolSurpriseRemove, WdfDevStatePwrPolStopping DEBUGGED_EVENT },
     { PwrPolS0IdlePolicyChanged, WdfDevStatePwrPolStartingDecideS0Wake DEBUGGED_EVENT },
+    { PwrPolDeviceDirectedPowerDown, WdfDevStatePwrPolStartedNotIdleCapableDirectedDown DEBUGGED_EVENT },
     { PwrPolNull, WdfDevStatePwrPolNull },
 };
 
@@ -389,15 +428,15 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSleepingWakeWakeArrive
 
 const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSystemWakeDeviceWakeTriggeredS0OtherStates[] =
 {
-    { PwrPolPowerUpFailed, WdfDevStatePwrPolDevicePowerRequestFailed DEBUGGED_EVENT },
-    { PwrPolPowerUpNotSeen, WdfDevStatePwrPolDeviceD0PowerRequestFailed TRAP_ON_EVENT },
+    { PwrPolPowerUpFailed, WdfDevStatePwrPolSystemWakeDevicePowerRequestFailed TRAP_ON_EVENT },
+    { PwrPolPowerUpNotSeen, WdfDevStatePwrPolSystemWakeDeviceD0PowerRequestFailed TRAP_ON_EVENT },
     { PwrPolNull,           WdfDevStatePwrPolNull },
 };
 
 const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSystemWakeDeviceWakeTriggeredS0NPOtherStates[] =
 {
-    { PwrPolPowerUpFailed, WdfDevStatePwrPolDevicePowerRequestFailed DEBUGGED_EVENT },
-    { PwrPolPowerUpNotSeen, WdfDevStatePwrPolDeviceD0PowerRequestFailed TRAP_ON_EVENT },
+    { PwrPolPowerUpFailed, WdfDevStatePwrPolSystemWakeDevicePowerRequestFailed TRAP_ON_EVENT },
+    { PwrPolPowerUpNotSeen, WdfDevStatePwrPolSystemWakeDeviceD0PowerRequestFailed TRAP_ON_EVENT },
     { PwrPolNull, WdfDevStatePwrPolNull },
 };
 
@@ -446,8 +485,8 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSystemWakeDeviceWakeEn
 
 const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSystemWakeDeviceWakeEnabledWakeCanceledOtherStates[] =
 {
-    { PwrPolPowerUpFailed, WdfDevStatePwrPolDevicePowerRequestFailed DEBUGGED_EVENT },
-    { PwrPolPowerUpNotSeen, WdfDevStatePwrPolDeviceD0PowerRequestFailed TRAP_ON_EVENT },
+    { PwrPolPowerUpFailed, WdfDevStatePwrPolSystemWakeDevicePowerRequestFailed DEBUGGED_EVENT },
+    { PwrPolPowerUpNotSeen, WdfDevStatePwrPolSystemWakeDeviceD0PowerRequestFailed TRAP_ON_EVENT },
     { PwrPolNull,           WdfDevStatePwrPolNull },
 };
 
@@ -459,14 +498,15 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSystemWakeDeviceWakeEn
 
 const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSystemWakeDeviceWakeEnabledWakeCanceledNPOtherStates[] =
 {
-    { PwrPolPowerUpFailed, WdfDevStatePwrPolDevicePowerRequestFailed DEBUGGED_EVENT },
-    { PwrPolPowerUpNotSeen, WdfDevStatePwrPolDeviceD0PowerRequestFailed TRAP_ON_EVENT },
+    { PwrPolPowerUpFailed, WdfDevStatePwrPolSystemWakeDevicePowerRequestFailed TRAP_ON_EVENT },
+    { PwrPolPowerUpNotSeen, WdfDevStatePwrPolSystemWakeDeviceD0PowerRequestFailed TRAP_ON_EVENT },
     { PwrPolNull,          WdfDevStatePwrPolNull },
 };
 
 const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolDevicePowerRequestFailedOtherStates[] =
 {
     { PwrPolSurpriseRemove, WdfDevStatePwrPolStopping DEBUGGED_EVENT },
+    { PwrPolDeviceDirectedPowerDown, WdfDevStatePwrPolDevicePowerRequestFailed DEBUGGED_EVENT },
     { PwrPolNull,           WdfDevStatePwrPolNull },
 };
 
@@ -496,18 +536,19 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolStoppingCancelWakeOthe
 
 const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolCancelUsbSSOtherStates[] =
 {
-    { PwrPolStop, WdfDevStatePwrPolStoppingWaitForUsbSSCompletion TRAP_ON_EVENT },
-    { PwrPolSurpriseRemove, WdfDevStatePwrPolStoppingWaitForUsbSSCompletion TRAP_ON_EVENT },
+    { PwrPolStop, WdfDevStatePwrPolStoppingCancelUsbSS TRAP_ON_EVENT },
+    { PwrPolSurpriseRemove, WdfDevStatePwrPolStoppingCancelUsbSS DEBUGGED_EVENT },
+    { PwrPolUsbSelectiveSuspendCallback, WdfDevStatePwrPolTimerExpiredWakeCapablePowerDown DEBUGGED_EVENT },
     { PwrPolNull,        WdfDevStatePwrPolNull },
 };
 
-const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSleepingWakeRevertArmWakeOtherStates[] =
+const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSleepingWakeCancelWakeOtherStates[] =
 {
     { PwrPolWakeSuccess,    WdfDevStatePwrPolSleepingNoWakeCompletePowerDown DEBUGGED_EVENT },
     { PwrPolNull,           WdfDevStatePwrPolNull },
 };
 
-const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSleepingWakeRevertArmWakeNPOtherStates[] =
+const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSleepingWakeCancelWakeNPOtherStates[] =
 {
     { PwrPolWakeSuccess,    WdfDevStatePwrPolSleepingNoWakeCompletePowerDown DEBUGGED_EVENT },
     { PwrPolNull,           WdfDevStatePwrPolNull },
@@ -527,7 +568,7 @@ const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolWaitingArmedWakeInterr
 
 const POWER_POLICY_EVENT_TARGET_STATE FxPkgPnp::m_PowerPolSystemWakeDeviceWakeInterruptFiredOtherStates[] =
 {
-    { PwrPolWakeSuccess, WdfDevStatePwrPolSystemWakeDeviceWakeTriggered TRAP_ON_EVENT },
+    { PwrPolWakeSuccess, WdfDevStatePwrPolSystemWakeDeviceWakeTriggered DEBUGGED_EVENT },
     { PwrPolNull, WdfDevStatePwrPolNull },
 };
 
@@ -670,6 +711,13 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
                                        // state machine that we are idle, but ignore the
                                        // device-power-not-required event, because we are
                                        // already in Dx.
+
+        //
+        // Note events specific to directed power transitions cannot come in
+        // while in this state as the kernel power manager takes an active
+        // reference on the device prior to issuing the directed transition,
+        // which should move it back to the Started[IdleCapable] state.
+        //
       },
     },
 
@@ -753,8 +801,8 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
 
     // WdfDevStatePwrPolSleepingWakeRevertArmWake
     { FxPkgPnp::PowerPolSleepingWakeRevertArmWake,
-      { PwrPolWakeFailed, WdfDevStatePwrPolSleepingNoWakeCompletePowerDown DEBUGGED_EVENT },
-      FxPkgPnp::m_PowerPolSleepingWakeRevertArmWakeOtherStates,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
       { FALSE,
         0 },
     },
@@ -847,8 +895,8 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
 
     // WdfDevStatePwrPolSleepingWakeRevertArmWakeNP,
     { FxPkgPnp::PowerPolSleepingWakeRevertArmWakeNP,
-      { PwrPolWakeFailed, WdfDevStatePwrPolSleepingNoWakeCompletePowerDown DEBUGGED_EVENT },
-      FxPkgPnp::m_PowerPolSleepingWakeRevertArmWakeNPOtherStates,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
       { FALSE,
         0 },
     },
@@ -876,8 +924,12 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
       { TRUE,
         PwrPolWakeFailed |        // Wake failed while in Sx
         PwrPolIoPresent |         // IO arrived when the machine was going to Sx
-        PwrPolPowerTimeoutExpired // we don't cancel the power timer when we goto
-                                  // sleep from an idleable state
+        PwrPolPowerTimeoutExpired | // we don't cancel the power timer when we goto
+                                    // sleep from an idleable state
+        PwrPolDevicePowerNotRequired // Upon receiving Sx, we simulated a device-power-
+                                     // not-required, so the device-power-requirement
+                                     // state machine sent us this event in response.
+                                     // We can drop it because we already powered down.
         },
     },
 
@@ -1159,7 +1211,7 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
 
     // WdfDevStatePwrPolTimerExpiredWakeCompletedPowerDown
     { FxPkgPnp::PowerPolTimerExpiredWakeCompletedPowerDown,
-      { PwrPolPowerDown, WdfDevStatePwrPolTimerExpiredWakeCompletedPowerUp DEBUGGED_EVENT },
+      { PwrPolPowerDown, WdfDevStatePwrPolTimerExpiredWakeCompletedPowerDownCheckDirected DEBUGGED_EVENT },
       FxPkgPnp::m_PowerPolTimerExpiredWakeCompletedPowerDownOtherStates,
       { FALSE,
         PwrPolWakeSuccess | // arming callback failed while going into Dx armed for wake from S0
@@ -1280,7 +1332,7 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
 
     // WdfDevStatePwrPolTimerExpiredWakeCapableWakeSucceeded
     { NULL,
-      { PwrPolPowerDown, WdfDevStatePwrPolWokeFromS0UsbSS DEBUGGED_EVENT },
+      { PwrPolPowerDown, WdfDevStatePwrPolTimerExpiredWakeCapableWakeSucceededCheckDirected DEBUGGED_EVENT },
       FxPkgPnp::m_PowerPolTimerExpiredWakeCapableWakeSucceededOtherStates,
       { FALSE,
         0 },
@@ -1288,7 +1340,7 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
 
     // WdfDevStatePwrPolTimerExpiredWakeCapableWakeFailed
     { NULL,
-      { PwrPolPowerDown, WdfDevStatePwrPolWakeFailedUsbSS DEBUGGED_EVENT },
+      { PwrPolPowerDown, WdfDevStatePwrPolTimerExpiredWakeCapableWakeFailedCheckDirected DEBUGGED_EVENT },
       FxPkgPnp::m_PowerPolTimerExpiredWakeCapableWakeFailedOtherStates,
       { FALSE,
         0 },
@@ -1296,7 +1348,7 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
 
     // WdfDevStatePwrPolWakeFailedUsbSS
     { FxPkgPnp::PowerPolWakeFailedUsbSS,
-      { PwrPolUsbSelectiveSuspendCompleted, WdfDevStatePwrPolIoPresentArmedWakeCanceled TRAP_ON_EVENT },
+      { PwrPolUsbSelectiveSuspendCompleted, WdfDevStatePwrPolIoPresentArmedWakeCanceled DEBUGGED_EVENT },
       NULL,
       { FALSE,
         0 },
@@ -1517,7 +1569,8 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
      { PwrPolUsbSelectiveSuspendCompleted, WdfDevStatePwrPolStoppingCancelTimer DEBUGGED_EVENT },
      NULL,
      { TRUE,
-       0 },
+       PwrPolUsbSelectiveSuspendCallback // Callback happens after device is removed
+     },
     },
 
     // WdfDevStatePwrPolStoppingCancelWake
@@ -1536,6 +1589,11 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
         PwrPolPowerTimeoutExpired | // idle timer fired right before stopping
                                     // pwr policy and before pwr pol could process
                                     // the timeout
+
+        PwrPolS0 | // PwrPolS0 is special handled in PowerPolicyProcessEventInner
+                   // when no valid response is specified. It is still marked as
+                   // a known drop event here to avoid an error trace message.
+
         PwrPolIoPresent |         // I/O arrived while transitioning to the
                                   // stopped state
         PwrPolDevicePowerRequired // Due to a power-related failure, we declared our device state
@@ -1549,9 +1607,13 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
 
     // WdfDevStatePwrPolCancelUsbSS
     { FxPkgPnp::PowerPolCancelUsbSS,
-      { PwrPolUsbSelectiveSuspendCompleted, WdfDevStatePwrPolStartedCancelTimer DEBUGGED_EVENT },
+      { PwrPolUsbSelectiveSuspendCompleted, WdfDevStatePwrPolUsbSSCancelled DEBUGGED_EVENT },
       FxPkgPnp::m_PowerPolCancelUsbSSOtherStates,
       { TRUE,
+        PwrPolDevicePowerRequired | // This could arrive when surprise remove happens. The same
+                                    // could happen in TimerExpiredWakeCapableUsbSS state which
+                                    // simply moves to CancelUsbSS state. As we're already in
+                                    // CancelUsbSS state, it is safe to drop the event.
         PwrPolIoPresent // I/O arrived while we were waiting for the USB idle notification IOCTL
                         // to be completed after we had canceled it. It is okay to drop this
                         // event because we are already in the process to returning to the powered-
@@ -1564,6 +1626,15 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
       { PwrPolSx, WdfDevStatePwrPolSleeping DEBUGGED_EVENT },
       FxPkgPnp::m_PowerPolStartedOtherStates,
       { TRUE,
+#if !defined(WDF_ALLOW_DFX_FOR_NON_IDLE_CAPABLE_DEVICES)
+        PwrPolDeviceDirectedPowerUp | // A not idle-capable device got a directed power down request.
+                                      // This is not supported. Device went from Started state to
+                                      // StartedNotIdleCapableDirectedDown, and back to Started.
+                                      // Now the device got a directed power up, which should be
+                                      // dropped. Note the device power requirement state machine
+                                      // will still complete the directed power up request back to
+                                      // PoFx even though this event is being ignored here.
+#endif
         PwrPolS0 | // If the machine send a query Sx and it fails, it will send
                    // an S0 while in the running state (w/out ever sending a true set Sx irp)
         PwrPolWakeArrived | // If the wake request is failed by the bus in between WakeArrived
@@ -1612,7 +1683,7 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
 
     // WdfDevStatePwrPolStartedWakeCapableWaitForIdleTimeout
     { NULL,
-      { PwrPolPowerTimeoutExpired, WdfDevStatePwrPolSleeping TRAP_ON_EVENT },
+      { PwrPolPowerTimeoutExpired, WdfDevStatePwrPolStartedWakeCapableTimerCanceledForSleep TRAP_ON_EVENT },
       NULL,
       { TRUE,
         0 },
@@ -1636,7 +1707,7 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
 
     // WdfDevStatePwrPolStartedIdleCapableWaitForIdleTimeout
     { NULL,
-      { PwrPolPowerTimeoutExpired, WdfDevStatePwrPolSleeping TRAP_ON_EVENT },
+      { PwrPolPowerTimeoutExpired, WdfDevStatePwrPolStartedIdleCapableTimerCanceledForSleep TRAP_ON_EVENT },
       NULL,
       { TRUE,
         0 },
@@ -1657,8 +1728,16 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
       { TRUE,
         PwrPolUsbSelectiveSuspendCompleted | // Device was suspened and surprise
                                              // removed while in Dx
-        PwrPolS0 | // If the device failed D0Exit while the machine was going into
-                   // Sx, then we will get this event when the machine comes back up
+
+        PwrPolS0 | // PwrPolS0 is special handled in PowerPolicyProcessEventInner
+                   // when no valid response is specified. It is still marked as
+                   // a known drop event here to avoid an error trace message.
+
+        PwrPolSx | // Device is in Dx unarmed (WaitingUnarmed) with system managed
+                   // timeout. On Sx transition PoFx will activate the component
+                   // (PwrPolDevicePowerRequired) before Sx IRP is seen. Power up
+                   // fails and then PwrPolSx event is dropped. IRP will be completed
+                   // at the end of PwrPolProcessEventInner
 
         PwrPolWakeArrived | // wake was completed before PwrPolWakeArrived was
                             // sent.  On immediate power down or up, the power
@@ -1669,9 +1748,16 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
         PwrPolDevicePowerRequired | // We can drop because we already declared ourselves
                                     // as being powered on (fake power-on in order to
                                     // move the power framework to consistent state).
-        PwrPolIoPresent // We're being notified that we need to be powered-on because
-                        // there is I/O to process, but the device is already in failed
-                        // state and is about to be removed.
+        PwrPolIoPresent | // We're being notified that we need to be powered-on because
+                          // there is I/O to process, but the device is already in failed
+                          // state and is about to be removed.
+
+        PwrPolDeviceDirectedPowerUp  // We're being notified that we need to be powered-on because
+                                     // a directed power up request was issued by PoFx. But the device
+                                     // failed to power down when processing the directed power and is
+                                     // already in a failed state and about to be removed. Note the device
+                                     // power requirement state machine will still complete the directed up
+                                     // request back to PoFx even though this event is being ignored here.
       },
     },
 
@@ -1867,7 +1953,12 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
       { PwrPolDevicePowerNotRequired, WdfDevStatePwrPolTimerExpiredNoWake DEBUGGED_EVENT },
       FxPkgPnp::m_PowerPolIdleCapableDeviceIdleOtherStates,
       { TRUE,
-        0 },
+        PwrPolS0 | // If the machine sends a query Sx and it fails, it will send
+                   // an S0 while in the running state (w/out ever sending a true set Sx irp)
+        PwrPolDevicePowerRequired // The device-power-required event arrived, but we had already
+                                  // powered-up the device proactively because we detected that
+                                  // power was needed. The event is ignored in this case.
+      },
     },
 
     // WdfDevStatePwrPolDeviceIdleReturnToActive
@@ -1907,6 +1998,8 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
       { PwrPolDevicePowerNotRequired, WdfDevStatePwrPolTimerExpiredDecideUsbSS DEBUGGED_EVENT },
       FxPkgPnp::m_PowerPolWakeCapableDeviceIdleOtherStates,
       { TRUE,
+        PwrPolS0 | // If the machine sends a query Sx and it fails, it will send
+                   // an S0 while in the running state (w/out ever sending a true set Sx irp)
         PwrPolDevicePowerRequired // The device-power-required event arrived, but we had already
                                   // powered-up the device proactively because we detected that
                                   // power was needed. And after we powered up, we become idle
@@ -2038,6 +2131,343 @@ const POWER_POLICY_STATE_TABLE FxPkgPnp::m_WdfPowerPolicyStates[] =
     { NULL,
       { PwrPolWakeFailed, WdfDevStatePwrPolWaitingArmedWakeSucceededCancelUsbSS DEBUGGED_EVENT },
       FxPkgPnp::m_PowerPolWaitingArmedWakeInterruptFiredDuringPowerDownOtherStates,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolStartedNotIdleCapableDirectedDown
+    { FxPkgPnp::PowerPolStartedNotIdleCapableDirectedDown,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolStartedIdleCapableTimerCanceledForSleep
+    { FxPkgPnp::PowerPolStartedIdleCapableTimerCanceledForSleep,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredNoWakeUndoPowerDownWaitForDirectedUp
+    { NULL,
+      { PwrPolDeviceDirectedPowerUp, WdfDevStatePwrPolTimerExpiredNoWakeReturnToActive DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolIdleCapableTimerNotExpiredDirectedDown
+    { FxPkgPnp::PowerPolIdleCapableTimerNotExpiredDirectedDown,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolIdleCapableDirectedDownTriggerDPNR
+    { FxPkgPnp::PowerPolIdleCapableDirectedDownTriggerDPNR,
+      { PwrPolDevicePowerNotRequiredDirected, WdfDevStatePwrPolTimerExpiredNoWake DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWaitingUnarmedDirectedDown
+    { FxPkgPnp::PowerPolWaitingUnarmedDirectedDown,
+      { PwrPolDeviceDirectedPowerUp, WdfDevStatePwrPolIdleCapableDirectedDownTriggerDPR DEBUGGED_EVENT },
+      NULL,
+      { TRUE,
+        PwrPolS0IdlePolicyChanged | // Policy changed while the device is in Dx
+                                    // because of a directed power down; we will reevaluate the idle
+                                    // settings when the device is powered back up
+        PwrPolIoPresent   // I/O showed up when going into directed power down; the I/O should be
+                          // pended and processed when the device is powered back up
+
+        // Note PnP IRPs, S-IRPs and PoFx device-power-required won't be issued by the kernel if a
+        // directed transition is in progress. Thus the following events, which are handled in the
+        // non-directed state (WaitingUnarmed), don't need to be handled here:
+        // PwrPolSx, PwrPolStop, PwrPolSurpriseRemove and PwrPolDevicePowerRequired.
+       },
+    },
+
+    // WdfDevStatePwrPolIdleCapableDirectedDownTriggerDPR
+    { FxPkgPnp::PowerPolIdleCapableDirectedDownTriggerDPR,
+      { PwrPolDevicePowerRequiredDirected, WdfDevStatePwrPolS0NoWakePowerUp DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolStartedWakeCapableTimerCanceledForSleep
+    { FxPkgPnp::PowerPolStartedWakeCapableTimerCanceledForSleep,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWakeCapableTimerNotExpiredDirectedDown
+    { FxPkgPnp::PowerPolWakeCapableTimerNotExpiredDirectedDown,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWakeCapableDirectedDownTriggerDPNR
+    { FxPkgPnp::PowerPolWakeCapableDirectedDownTriggerDPNR,
+      { PwrPolDevicePowerNotRequiredDirected, WdfDevStatePwrPolTimerExpiredDecideUsbSS DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredWakeCompletedPowerDownWaitForDirectedUp
+    { FxPkgPnp::PowerPolTimerExpiredWakeCompletedPowerDownWaitForDirectedUp,
+      { PwrPolDeviceDirectedPowerUp, WdfDevStatePwrPolTimerExpiredWakeCompletedPowerDownDirectedTriggerDPR DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredWakeCompletedPowerDownDirectedTriggerDPR
+    { FxPkgPnp::PowerPolTimerExpiredWakeCompletedPowerDownDirectedTriggerDPR,
+      { PwrPolDevicePowerRequiredDirected, WdfDevStatePwrPolTimerExpiredWakeCompletedPowerUp DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredWakeCapableUndoPowerDownWaitForDirectedUp
+    { NULL,
+      { PwrPolDeviceDirectedPowerUp, WdfDevStatePwrPolDeviceIdleReturnToActive DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWakeCapableUsbSSCompletedUndoWaitForDirectedUp
+    { NULL,
+      { PwrPolDeviceDirectedPowerUp, WdfDevStatePwrPolStartedWakeCapable DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredWakeCapableUsbSSDirectedDown
+    { FxPkgPnp::PowerPolTimerExpiredWakeCapableUsbSSDirectedDown,
+      { PwrPolUsbSelectiveSuspendCallback, WdfDevStatePwrPolTimerExpiredWakeCapablePowerDown DEBUGGED_EVENT },
+      FxPkgPnp::m_PowerPolTimerExpiredWakeCapableUsbSSDirectedDownOtherStates,
+      { TRUE,
+        PwrPolS0IdlePolicyChanged | // Policy changed while the device was powering down in directed
+                                    // manner. This can be ignored in this state; we will reevaluate the idle
+                                    // settings when the device is powered back up
+        PwrPolIoPresent   // I/O showed up when going is into directed power down; the I/O should be
+                          // pended and processed when the device is powered back up
+
+        // Refer to comment in m_PowerPolTimerExpiredWakeCapableUsbSSDirectedDownOtherStates definition on why
+        // PnP IRPs, S-IRPs and PoFx RTD3 events don't need to be handled in this state.
+      },
+    },
+
+    // WdfDevStatePwrPolWaitingArmedWakeInterruptFiredDuringPowerDownCheckDirected
+    { FxPkgPnp::PowerPolWaitingArmedWakeInterruptFiredDuringPowerDownCheckDirected,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredWakeCompletedPowerDownCheckDirected
+    { FxPkgPnp::PowerPolTimerExpiredWakeCompletedPowerDownCheckDirected,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredWakeCapableWakeSucceededCheckDirected
+    { FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeSucceededCheckDirected,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredWakeCapableWakeSucceededWaitForDirectedUp
+    { FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeSucceededWaitForDirectedUp,
+      { PwrPolDeviceDirectedPowerUp, WdfDevStatePwrPolTimerExpiredWakeCapableWakeSucceededTriggerDPR DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredWakeCapableWakeSucceededTriggerDPR
+    { FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeSucceededTriggerDPR,
+      { PwrPolDevicePowerRequiredDirected, WdfDevStatePwrPolWokeFromS0UsbSS DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredWakeCapableWakeFailedCheckDirected
+    { FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeFailedCheckDirected,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredWakeCapableWakeFailedWaitForDirectedUp
+    { FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeFailedWaitForDirectedUp,
+      { PwrPolDeviceDirectedPowerUp, WdfDevStatePwrPolTimerExpiredWakeCapableWakeFailedTriggerDPR DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredWakeCapableWakeFailedTriggerDPR
+    { FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeFailedTriggerDPR,
+      { PwrPolDevicePowerRequiredDirected, WdfDevStatePwrPolWakeFailedUsbSS DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWaitingArmedDirectedDownWakeInterruptFiredTriggerDPR
+    { FxPkgPnp::PowerPolWaitingArmedDirectedDownWakeInterruptFiredTriggerDPR,
+      { PwrPolDevicePowerRequiredDirected, WdfDevStatePwrPolWaitingArmedWakeInterruptFired DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWaitingArmedDirectedDownWakeInterruptFired
+    { FxPkgPnp::PowerPolWaitingArmedDirectedDownWakeInterruptFired,
+      { PwrPolDeviceDirectedPowerUp, WdfDevStatePwrPolWaitingArmedDirectedDownWakeInterruptFiredTriggerDPR DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWaitingArmedDirectedDown
+    { FxPkgPnp::PowerPolWaitingArmedDirectedDown,
+      { PwrPolDeviceDirectedPowerUp, WdfDevStatePwrPolWaitingArmedDirectedDownTriggerDPR DEBUGGED_EVENT },
+      FxPkgPnp::m_PowerPolWaitingArmedDirectedDownOtherStates,
+      { TRUE,
+        PwrPolS0IdlePolicyChanged | // Policy changed while the device is in Dx
+                                    // because of a directed power down; we will reevaluate the idle
+                                    // settings when the device is powered back up
+        PwrPolIoPresent   // I/O showed up when going into directed power down; the I/O should be
+                          // pended and processed when the device is powered back up
+        // Refer to comment in m_PowerPolWaitingArmedDirectedDownOtherStates definition on why
+        // PnP IRPs, S-IRPs and PoFx RTD3 events don't need to be handled in this state.
+       },
+    },
+
+    // WdfDevStatePwrPolWaitingArmedDirectedDownWakeSucceededCancelUsbSS
+    { NULL,
+      { PwrPolDeviceDirectedPowerUp, WdfDevStatePwrPolWaitingArmedDirectedDownWakeSucceededTriggerDPR DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWaitingArmedDirectedDownWakeFailedCancelUsbSS
+    { NULL,
+      { PwrPolDeviceDirectedPowerUp, WdfDevStatePwrPolWaitingArmedDirectedDownWakeFailedCancelUsbSSTriggerDPR DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWaitingArmedDirectedDownTriggerDPR
+    { FxPkgPnp::PowerPolWaitingArmedDirectedDownTriggerDPR,
+      { PwrPolDevicePowerRequiredDirected, WdfDevStatePwrPolWaitingArmedIoPresentCancelUsbSS DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWaitingArmedDirectedDownWakeSucceededTriggerDPR
+    { FxPkgPnp::PowerPolWaitingArmedDirectedDownWakeSucceededTriggerDPR,
+      { PwrPolDevicePowerRequiredDirected, WdfDevStatePwrPolWaitingArmedWakeSucceededCancelUsbSS DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWaitingArmedDirectedDownUsbSSCompleted
+    { NULL,
+      { PwrPolDeviceDirectedPowerUp, WdfDevStatePwrPolWaitingArmedDirectedDownUsbSSCompletedTriggerDPR DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWaitingArmedDirectedDownUsbSSCompletedTriggerDPR
+    { FxPkgPnp::PowerPolWaitingArmedDirectedDownUsbSSCompletedTriggerDPR,
+      { PwrPolDevicePowerRequiredDirected, WdfDevStatePwrPolIoPresentArmed DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolWaitingArmedDirectedDownWakeFailedCancelUsbSSTriggerDPR
+    { FxPkgPnp::PowerPolWaitingArmedDirectedDownWakeFailedCancelUsbSSTriggerDPR,
+      { PwrPolDevicePowerRequiredDirected, WdfDevStatePwrPolWaitingArmedWakeFailedCancelUsbSS DEBUGGED_EVENT },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolUsbSSCancelled
+    { FxPkgPnp::PowerPolUsbSSCancelled,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolTimerExpiredWakeCapableRevertArmWake
+    { FxPkgPnp::PowerPolTimerExpiredWakeCapableRevertArmWake,
+      { PwrPolNull, WdfDevStatePwrPolNull },
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolSleepingWakeCancelWake
+    { FxPkgPnp::PowerPolSleepingWakeCancelWake,
+      { PwrPolWakeFailed, WdfDevStatePwrPolSleepingNoWakeCompletePowerDown DEBUGGED_EVENT },
+      FxPkgPnp::m_PowerPolSleepingWakeCancelWakeOtherStates,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolSleepingWakeCancelWakeNP
+    { FxPkgPnp::PowerPolSleepingWakeCancelWakeNP,
+      { PwrPolWakeFailed, WdfDevStatePwrPolSleepingNoWakeCompletePowerDown DEBUGGED_EVENT },
+      FxPkgPnp::m_PowerPolSleepingWakeCancelWakeNPOtherStates,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolSystemWakeDeviceD0PowerRequestFailed
+    { FxPkgPnp::PowerPolSystemWakeDeviceD0PowerRequestFailed,
+      { PwrPolNull, WdfDevStatePwrPolNull},
+      NULL,
+      { FALSE,
+        0 },
+    },
+
+    // WdfDevStatePwrPolSystemWakeDevicePowerRequestFailed
+    { FxPkgPnp::PowerPolSystemWakeDevicePowerRequestFailed,
+      { PwrPolNull, WdfDevStatePwrPolNull},
+      NULL,
       { FALSE,
         0 },
     },
@@ -2604,9 +3034,79 @@ FxPowerPolicyMachine::InitUsbSS(
     return STATUS_SUCCESS;
 }
 
+VOID
+FxPowerPolicyMachine::SimulateDevicePowerRequiredForS0(
+    VOID
+    )
+{
+    //
+    // An S0-IRP is essentially equivalent to a device-power-required
+    // notification.
+    //
+
+    //
+    // The reflector maintains state around pending PoFx callbacks/events
+    // and then notifies the host/fx asynchronously. It will reflect the
+    // corresponding calls from the Fx/Host to PoFx IFF there is a
+    // pending callback.So we must simulate a device power required event in both
+    // the Fx state machine and reflector.
+    //
+#if ((FX_CORE_MODE)==(FX_CORE_USER_MODE))
+    m_Owner->m_PoxInterface.SimulateDevicePowerRequiredInReflector();
+#endif
+
+    //
+    // Simulate a device-power-required notification from the power framework.
+    //
+    m_Owner->m_PoxInterface.SimulateDevicePowerRequired();
+}
+
+VOID
+FxPowerPolicyMachine::AcknowledgeS0(
+    VOID
+    )
+{
+    if (FALSE == m_Owner->m_IdleSettings.m_TimeoutMgmt.UsingSystemManagedIdleTimeout()) {
+        //
+        // Driver-managed idle timeout. Nothing to do.
+        //
+        return;
+    }
+
+    //
+    // This is needed for states that do not explicitly handle PwrPolS0. For those
+    // that do handle PwrPolS0, use SimulateDevicePowerRequiredForS0 instead.
+    //
+
+    //
+    // Notify the reflector that we're going to call PoFxReportDevicePoweredOn
+    //
+#if ((FX_CORE_MODE)==(FX_CORE_USER_MODE))
+    m_Owner->m_PoxInterface.SimulateDevicePowerRequiredInReflector();
+#endif
+
+    //
+    // Call PoFxReportDevicePoweredOn directly without moving state machine forward
+    //
+    m_Owner->m_PoxInterface.PoxReportDevicePoweredOn();
+}
+
+ULONGLONG
+FxPowerPolicyMachine::CompactStates(
+    VOID
+    )
+{
+    return FxPkgPnp::CompactStatesToBytes(
+                                m_States.History,
+                                FxPowerPolicyEventQueueDepth,
+                                m_HistoryIndex,
+                                WdfDevStatePwrPolObjectCreated);
+}
+
 FxPowerPolicyOwnerSettings::FxPowerPolicyOwnerSettings(
     __in FxPkgPnp* PkgPnp
     ) : m_PoxInterface(PkgPnp)
+      , m_DevicePowerIrpTracker(PkgPnp)
 {
     ULONG i;
 
@@ -3085,7 +3585,7 @@ FxPkgPnp::PowerPolicyProcessEventInner(
     __inout FxPostProcessInfo* Info
     )
 {
-    WDF_DEVICE_POWER_POLICY_STATE newState;
+    WDF_DEVICE_POWER_POLICY_STATE state, newState;
     FxPowerPolicyEvent event;
     ULONG i;
     KIRQL irql;
@@ -3097,7 +3597,8 @@ FxPkgPnp::PowerPolicyProcessEventInner(
         // Process as many events as we can.
         //
         for ( ; ; ) {
-            entry = GetPowerPolicyTableEntry(m_Device->GetDevicePowerPolicyState());
+            state = m_Device->GetDevicePowerPolicyState();
+            entry = GetPowerPolicyTableEntry(state);
 
             //
             // Get an event from the queue.
@@ -3115,6 +3616,7 @@ FxPkgPnp::PowerPolicyProcessEventInner(
             }
 
             event = m_PowerPolicyMachine.m_Queue[m_PowerPolicyMachine.GetHead()];
+
 
             //
             // At this point, we need to determine whether we can process this
@@ -3178,7 +3680,7 @@ FxPkgPnp::PowerPolicyProcessEventInner(
             if (newState == WdfDevStatePwrPolNull) {
                 //
                 // This state doesn't respond to the event.  Just throw the event
-                // away.
+                // away, except for several events which do get special treatment.
                 //
                 DoTraceLevelMessage(
                     GetDriverGlobals(), TRACE_LEVEL_VERBOSE, TRACINGPNP,
@@ -3186,7 +3688,7 @@ FxPkgPnp::PowerPolicyProcessEventInner(
                     "%!WDF_DEVICE_POWER_POLICY_STATE! dropping event "
                     "%!FxPowerPolicyEvent!", m_Device->GetHandle(),
                     m_Device->GetDeviceObject(),
-                    m_Device->GetDevicePowerPolicyState(), event);
+                    state, event);
 
                 if ((entry->StateInfo.Bits.KnownDroppedEvents & event) == 0) {
                     COVERAGE_TRAP();
@@ -3198,8 +3700,28 @@ FxPkgPnp::PowerPolicyProcessEventInner(
                         "%!FxPowerPolicyEvent! is not a known dropped "
                         "event, known dropped events are %!FxPowerPolicyEvent!",
                         m_Device->GetHandle(), m_Device->GetDeviceObject(),
-                        m_Device->GetDevicePowerPolicyState(),
-                        event, entry->StateInfo.Bits.KnownDroppedEvents);
+                        state, event, entry->StateInfo.Bits.KnownDroppedEvents);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
                 }
@@ -3208,6 +3730,71 @@ FxPkgPnp::PowerPolicyProcessEventInner(
                 // Failsafes for events which have required processing in them.
                 //
                 switch (event) {
+                case PwrPolS0:
+                    //
+                    // After receiving Set/S0, devices using system managed idle
+                    // timeout must call PoFxReportDevicePoweredOn. This is esp
+                    // important when fast-resume is disabled and PoFx waits for
+                    // this call to continue S0 IRP completion. Not making this
+                    // call will block S0 power transition and cause bugcheck.
+                    //
+                    // Note PwrPolS0 is only sent to PowerPolicyOwner.
+                    //
+                    switch (state) {
+
+                    case WdfDevStatePwrPolDevicePowerRequestFailed:
+                    case WdfDevStatePwrPolStopped:
+                        //
+                        // If a device fails either D0 or Dx during system sleep,
+                        // when system wakes up, the device will stay in this
+                        // state and need to acknowledge S0 properly.
+                        //
+                        m_PowerPolicyMachine.AcknowledgeS0();
+                        break;
+
+                    case WdfDevStatePwrPolStarted:
+                    case WdfDevStatePwrPolStartedIdleCapable:
+                    case WdfDevStatePwrPolStartedWakeCapable:
+                    case WdfDevStatePwrPolWaitingUnarmed:
+                    case WdfDevStatePwrPolWaitingArmed:
+                    case WdfDevStatePwrPolIdleCapableDeviceIdle:
+                    case WdfDevStatePwrPolWakeCapableDeviceIdle:
+                        //
+                        // If Query/Sx fails, the device will receive a Set/S0
+                        // even if it is already in working state. Forgetting to
+                        // acknowledge S0 will leak a PoFx power reference and
+                        // the device will no longer be able to idle out.
+                        //
+                        m_PowerPolicyMachine.AcknowledgeS0();
+                        break;
+
+                    case WdfDevStatePwrPolObjectCreated:
+                    case WdfDevStatePwrPolRemoved:
+                        //
+                        // Drop event. Device no longer registers with PoFx.
+                        //
+                        break;
+
+                    default:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                        break;
+                    }
+                    break;
+
                 case PwrPolSx:
                     //
                     // The Sx handling code expects that the state machine
@@ -3602,6 +4189,13 @@ Return Value:
         return WdfDevStatePwrPolStartingPoweredUpFailed;
     }
 
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+    //
+    // Determine if this device can block DRIPS on AOAC (PoFx) based devices.
+    //
+    This->SleepStudyEvaluateParticipation();
+#endif
+
     return WdfDevStatePwrPolStartingSucceeded;
 }
 
@@ -3700,6 +4294,11 @@ FxPkgPnp::PowerPolStartingDecideS0Wake(
     )
 {
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolStartingDecideS0Wake);
+
+    //
+    // PwrPolPowerUp received.
+    //
+    This->PowerPolicyStopTrackingDevicePowerIrp();
 
     This->PowerPolicyChildrenCanPowerUp();
 
@@ -3889,6 +4488,18 @@ FxPkgPnp::PowerPolTimerExpiredNoWake(
     notifyPowerDownStatus = This->m_PowerPolicyMachine.m_Owner->
                               m_PoxInterface.NotifyDevicePowerDown();
     if (FALSE == NT_SUCCESS(notifyPowerDownStatus)) {
+        BOOLEAN directedTransition;
+
+        //
+        // Power down notify shouldn't fail if the device is undergoing a
+        // directed power transition.
+        //
+
+        directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
+
+        ASSERT(FALSE == directedTransition);
+
         //
         // We couldn't notify the device power requirement state machine that
         // we are about to power down, because the "device-power-required"
@@ -3987,7 +4598,8 @@ FxPkgPnp::PowerPolS0NoWakePowerUp(
     //
     This->m_PowerPolicyMachine.m_Owner->
             m_PoxInterface.RequestComponentActive();
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry,
+                        RequestD0ForOther);
 
     if (!NT_SUCCESS(status)) {
         COVERAGE_TRAP();
@@ -4019,6 +4631,23 @@ Return Value:
 {
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolS0NoWakeCompletePowerUp);
 
+    //
+    // If the device power requirement state machine is undergoing a directed
+    // power transition, then notify it to consider the device as powered
+    // up now. This allows the pending directed transition request to be
+    // completed back to PoFx.  Note the notification will only really be sent
+    // if a directed transition is currently in progress.
+    //
+    // N.B. This needs to be issued before the subsequent device powered ON
+    //      notification.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredUp();
+
+    //
+    // Notify device power requirement state machine that the device is now
+    // powered on.
+    //
     This->m_PowerPolicyMachine.m_Owner->
                 m_PoxInterface.DeviceIsPoweredOn();
 
@@ -4062,7 +4691,8 @@ FxPkgPnp::PowerPolSystemSleepNeedWake(
     ASSERT(result);
     UNREFERENCED_PARAMETER(result);
 
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry,
+                        RequestD0ForSx);
 
     //
     // We are currently in Dx and not armed for wake.  While the current Dx
@@ -4137,6 +4767,11 @@ Return Value:
 {
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolSystemSleepPowerRequestFailed);
 
+    //
+    // PwrPolPowerDownFailed received.
+    //
+    This->PowerPolicyStopTrackingDevicePowerIrp();
+
     This->PowerPolicyCompleteSystemPowerIrp();
 
     return WdfDevStatePwrPolDevicePowerRequestFailed;
@@ -4202,6 +4837,7 @@ Return Value:
 {
     NTSTATUS status;
     ULONG wakeReason;
+    FxCxCallbackProgress progress = FxCxCallbackProgressInitialized;
 
     ASSERT_PWR_POL_STATE(
         This, WdfDevStatePwrPolSleepingWakeWakeArrived);
@@ -4215,10 +4851,21 @@ Return Value:
     status = This->m_PowerPolicyMachine.m_Owner->m_DeviceArmWakeFromSx.Invoke(
         This->m_Device->GetHandle(),
         FLAG_TO_BOOL(wakeReason, FxPowerPolicySxWakeDeviceEnabledFlag),
-        FLAG_TO_BOOL(wakeReason, FxPowerPolicySxWakeChildrenArmedFlag)
+        FLAG_TO_BOOL(wakeReason, FxPowerPolicySxWakeChildrenArmedFlag),
+        &progress
         );
 
     if (!NT_SUCCESS(status)) {
+
+        if (progress == FxCxCallbackProgressFailedInPreCalls) {
+            DoTraceLevelMessage(
+                This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+                "WDFDEVICE %p Failed in EvtCxDevicePreArmWakeFromSx/WithReason, %!STATUS!",
+                This->m_Device->GetHandle(), status);
+
+            return WdfDevStatePwrPolSleepingWakeCancelWake;
+        }
+
         DoTraceLevelMessage(
             This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
             "WDFDEVICE %p Failed to arm for wake from Sx, %!STATUS!",
@@ -4270,6 +4917,17 @@ FxPkgPnp::PowerPolSleepingWakeRevertArmWake(
     //
     This->PowerPolicyDisarmWakeFromSx();
 
+    return WdfDevStatePwrPolSleepingWakeCancelWake;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolSleepingWakeCancelWake(
+    __inout FxPkgPnp* This
+    )
+{
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolSleepingWakeCancelWake);
+
     //
     // attempt to cancel ww
     //
@@ -4281,12 +4939,19 @@ FxPkgPnp::PowerPolSleepingWakeRevertArmWake(
     return WdfDevStatePwrPolNull;
 }
 
+
 WDF_DEVICE_POWER_POLICY_STATE
 FxPkgPnp::PowerPolSystemAsleepWakeArmed(
     __inout FxPkgPnp* This
     )
 {
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolSystemAsleepWakeArmed);
+
+    //
+    // PwrPolPowerDown received.
+    //
+    This->PowerPolicyStopTrackingDevicePowerIrp();
+
     This->PowerPolicyCompleteSystemPowerIrp();
 
     return WdfDevStatePwrPolNull;
@@ -4341,11 +5006,12 @@ FxPkgPnp::PowerPolSystemWakeDeviceWakeEnabledWakeCanceled(
     ASSERT_PWR_POL_STATE(
         This, WdfDevStatePwrPolSystemWakeDeviceWakeEnabledWakeCanceled);
 
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry,
+                        RequestD0ForS0);
 
     if (!NT_SUCCESS(status)) {
         COVERAGE_TRAP();
-        return WdfDevStatePwrPolDeviceD0PowerRequestFailed;
+        return WdfDevStatePwrPolSystemWakeDeviceD0PowerRequestFailed;
     }
 
     return WdfDevStatePwrPolNull;
@@ -4382,11 +5048,12 @@ FxPkgPnp::PowerPolSystemWakeDeviceWakeTriggeredS0(
     ASSERT_PWR_POL_STATE(
         This, WdfDevStatePwrPolSystemWakeDeviceWakeTriggeredS0);
 
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry,
+                        RequestD0ForS0);
 
     if (!NT_SUCCESS(status)) {
         COVERAGE_TRAP();
-        return WdfDevStatePwrPolDeviceD0PowerRequestFailed;
+        return WdfDevStatePwrPolSystemWakeDeviceD0PowerRequestFailed;
     }
 
     return WdfDevStatePwrPolNull;
@@ -4438,6 +5105,7 @@ Return Value:
 {
     NTSTATUS status;
     ULONG wakeReason;
+    FxCxCallbackProgress progress = FxCxCallbackProgressInitialized;
 
     ASSERT_PWR_POL_STATE(
         This, WdfDevStatePwrPolSleepingWakeWakeArrivedNP);
@@ -4451,10 +5119,22 @@ Return Value:
     status = This->m_PowerPolicyMachine.m_Owner->m_DeviceArmWakeFromSx.Invoke(
         This->m_Device->GetHandle(),
         FLAG_TO_BOOL(wakeReason, FxPowerPolicySxWakeDeviceEnabledFlag),
-        FLAG_TO_BOOL(wakeReason, FxPowerPolicySxWakeChildrenArmedFlag)
+        FLAG_TO_BOOL(wakeReason, FxPowerPolicySxWakeChildrenArmedFlag),
+        &progress
         );
 
     if (!NT_SUCCESS(status)) {
+
+        if (progress == FxCxCallbackProgressFailedInPreCalls) {
+            DoTraceLevelMessage(
+                This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+                "WDFDEVICE %p a framework extension failed in "
+                "EvtCxDevicePreArmWakeFromSx(WithReason), %!STATUS!",
+                This->m_Device->GetHandle(), status);
+
+            return WdfDevStatePwrPolSleepingWakeCancelWakeNP;
+        }
+
         DoTraceLevelMessage(
             This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
             "WDFDEVICE %p Failed to arm for wake from Sx, %!STATUS!",
@@ -4506,6 +5186,17 @@ FxPkgPnp::PowerPolSleepingWakeRevertArmWakeNP(
     //
     This->PowerPolicyDisarmWakeFromSx();
 
+    return WdfDevStatePwrPolSleepingWakeCancelWakeNP;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolSleepingWakeCancelWakeNP(
+    __inout FxPkgPnp* This
+    )
+{
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolSleepingWakeCancelWakeNP);
+
     //
     // attempt to cancel ww
     //
@@ -4538,6 +5229,11 @@ Return Value:
 {
     ASSERT_PWR_POL_STATE(
         This, WdfDevStatePwrPolSleepingWakePowerDownFailed);
+
+    //
+    // PwrPolPowerDownFailed received.
+    //
+    This->PowerPolicyStopTrackingDevicePowerIrp();
 
     if (This->PowerPolicyCancelWaitWake() == FALSE &&
         This->m_PowerPolicyMachine.m_Owner->m_WakeCompletionEventDropped) {
@@ -4579,6 +5275,11 @@ FxPkgPnp::PowerPolSystemAsleepWakeArmedNP(
     )
 {
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolSystemAsleepWakeArmedNP);
+
+    //
+    // PwrPolPowerDown received.
+    //
+    This->PowerPolicyStopTrackingDevicePowerIrp();
 
     This->PowerPolicyCompleteSystemPowerIrp();
 
@@ -4632,11 +5333,12 @@ FxPkgPnp::PowerPolSystemWakeDeviceWakeEnabledWakeCanceledNP(
     ASSERT_PWR_POL_STATE(
         This, WdfDevStatePwrPolSystemWakeDeviceWakeEnabledWakeCanceledNP);
 
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry,
+                        RequestD0ForS0);
 
     if (!NT_SUCCESS(status)) {
         COVERAGE_TRAP();
-        return WdfDevStatePwrPolDeviceD0PowerRequestFailed;
+        return WdfDevStatePwrPolSystemWakeDeviceD0PowerRequestFailed;
     }
 
     return WdfDevStatePwrPolNull;
@@ -4671,11 +5373,12 @@ FxPkgPnp::PowerPolSystemWakeDeviceWakeTriggeredS0NP(
 
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolSystemWakeDeviceWakeTriggeredS0NP);
 
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry,
+                        RequestD0ForS0);
 
     if (!NT_SUCCESS(status)) {
         COVERAGE_TRAP();
-        return WdfDevStatePwrPolDeviceD0PowerRequestFailed;
+        return WdfDevStatePwrPolSystemWakeDeviceD0PowerRequestFailed;
     }
 
     return WdfDevStatePwrPolNull;
@@ -4728,13 +5431,7 @@ Return Value:
     ASSERT_PWR_POL_STATE(This,
                          WdfDevStatePwrPolSystemWakeDeviceWakeCompletePowerUp);
 
-    //
-    // Simulate a device-power-required notification from the power framework.
-    // An S0-IRP is essentially equivalent to a device-power-required
-    // notification.
-    //
-    This->m_PowerPolicyMachine.m_Owner->
-        m_PoxInterface.SimulateDevicePowerRequired();
+    This->m_PowerPolicyMachine.SimulateDevicePowerRequiredForS0();
 
     //
     // Notify the device-power-requirement state machine that we are powered on
@@ -5023,6 +5720,11 @@ FxPkgPnp::PowerPolSystemAsleepNoWake(
 {
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolSystemAsleepNoWake);
 
+    //
+    // PwrPolPowerDown received.
+    //
+    This->PowerPolicyStopTrackingDevicePowerIrp();
+
     This->PowerPolicyCompleteSystemPowerIrp();
 
     return WdfDevStatePwrPolNull;
@@ -5083,10 +5785,12 @@ FxPkgPnp::PowerPolSystemWakeDeviceToD0(
 
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolSystemWakeDeviceToD0);
 
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry,
+                        RequestD0ForS0);
+
     if (!NT_SUCCESS(status)) {
         COVERAGE_TRAP();
-        return WdfDevStatePwrPolDeviceD0PowerRequestFailed;
+        return WdfDevStatePwrPolSystemWakeDeviceD0PowerRequestFailed;
     }
 
     return WdfDevStatePwrPolNull;
@@ -5115,13 +5819,7 @@ Return Value:
     ASSERT_PWR_POL_STATE(
         This, WdfDevStatePwrPolSystemWakeDeviceToD0CompletePowerUp);
 
-    //
-    // Simulate a device-power-not-required notification from the power
-    // framework. An S0-IRP is essentially equivalent to a device-power-required
-    // notification.
-    //
-    This->m_PowerPolicyMachine.m_Owner->
-        m_PoxInterface.SimulateDevicePowerRequired();
+    This->m_PowerPolicyMachine.SimulateDevicePowerRequiredForS0();
 
     //
     // Notify the device-power-requirement state machine that we are powered on
@@ -5232,9 +5930,16 @@ Return Value:
 
   --*/
 {
+    BOOLEAN directedTransition;
     NTSTATUS notifyPowerDownStatus;
 
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolTimerExpiredDecideUsbSS);
+
+    //
+    // Determine if a directed transition is currently in progress.
+    //
+    directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
 
     //
     // Notify the device power requirement state machine that we are about to
@@ -5243,6 +5948,12 @@ Return Value:
     notifyPowerDownStatus = This->m_PowerPolicyMachine.m_Owner->
                               m_PoxInterface.NotifyDevicePowerDown();
     if (FALSE == NT_SUCCESS(notifyPowerDownStatus)) {
+        //
+        // Power down notify shouldn't fail if the device is undergoing a
+        // directed power transition.
+        //
+        ASSERT(FALSE == directedTransition);
+
         //
         // We couldn't notify the device power requirement state machine that
         // we are about to power down, because the "device-power-required"
@@ -5253,7 +5964,12 @@ Return Value:
     }
 
     if (This->m_PowerPolicyMachine.m_Owner->m_IdleSettings.UsbSSCapable) {
-        return WdfDevStatePwrPolTimerExpiredWakeCapableUsbSS;
+        if (FALSE == directedTransition) {
+            return WdfDevStatePwrPolTimerExpiredWakeCapableUsbSS;
+        }
+        else {
+            return WdfDevStatePwrPolTimerExpiredWakeCapableUsbSSDirectedDown;
+        }
     }
     else {
         return WdfDevStatePwrPolTimerExpiredWakeCapablePowerDown;
@@ -5356,6 +6072,31 @@ Return Value:
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolTimerExpiredWakeCapableUsbSSDirectedDown(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    Sends the selective suspend ready irp down to the USB parent.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolTimerExpiredWakeCapableUsbSSDirectedDown);
+
+    This->PowerPolicySubmitUsbIdleNotification();
+
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
 FxPkgPnp::PowerPolWakeCapableUsbSSCompleted(
     __inout FxPkgPnp* This
     )
@@ -5369,11 +6110,27 @@ Arguments:
     This - instance of the state machine
 
 Return Value:
-    WdfDevStatePwrPolNull
+    new state
 
   --*/
 {
+    BOOLEAN directedTransition;
+
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolWakeCapableUsbSSCompleted);
+
+    //
+    // If the device power requirement state machine is undergoing a directed
+    // power transition, then notify it to consider the device as powered
+    // down now even though the device failed to power down. This allows the
+    // pending directed transition request to be completed back to PoFx. Note
+    // this operation only takes effect if a directed transition is currently
+    // in progress.
+    //
+    // N.B. This needs to be issued before the subsequent device powered ON
+    //      notification.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredDown();
 
     //
     // We notified the device power requirement state machine that we are about
@@ -5387,7 +6144,25 @@ Return Value:
     This->m_PowerPolicyMachine.m_Owner->
             m_PoxInterface.RequestComponentActive();
 
-    return WdfDevStatePwrPolStartedWakeCapable;
+    //
+    // Check if a directed transition is currently in progress.
+    //
+    directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
+    if (FALSE == directedTransition) {
+        //
+        // For normal transitions, return to the StartedWakeCapable state.
+        //
+        return WdfDevStatePwrPolStartedWakeCapable;
+    }
+    else {
+        //
+        // For directed transitions, go to a state that will wait until a
+        // directed power up request is issued by PoFx.
+        //
+        COVERAGE_TRAP();
+        return WdfDevStatePwrPolWakeCapableUsbSSCompletedUndoWaitForDirectedUp;
+    }
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
@@ -5410,15 +6185,33 @@ Return Value:
   --*/
 {
     NTSTATUS status;
+    FxCxCallbackProgress progress = FxCxCallbackProgressInitialized;
 
     ASSERT_PWR_POL_STATE(
         This, WdfDevStatePwrPolTimerExpiredWakeCapableWakeArrived);
 
     status = This->m_PowerPolicyMachine.m_Owner->m_DeviceArmWakeFromS0.Invoke(
-        This->m_Device->GetHandle()
+        This->m_Device->GetHandle(),
+        &progress
         );
 
     if (!NT_SUCCESS(status)) {
+
+        if (progress == FxCxCallbackProgressFailedInPostCalls) {
+            DoTraceLevelMessage(
+                This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+                "WDFDEVICE %p a framework extension failed in "
+                "EvtCxDevicePostArmWakeFromS0, %!STATUS!",
+                This->m_Device->GetHandle(), status);
+
+            return WdfDevStatePwrPolTimerExpiredWakeCapableRevertArmWake;
+        }
+
+        DoTraceLevelMessage(
+            This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
+            "WDFDEVICE %p EvtDeviceArmWakeFromS0 Failed, %!STATUS!",
+            This->m_Device->GetHandle(), status);
+
         return WdfDevStatePwrPolTimerExpiredWakeCapableCancelWake;
     }
 
@@ -5441,6 +6234,38 @@ Return Value:
     This->PowerProcessEvent(PowerCompleteDx);
 
     return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolTimerExpiredWakeCapableRevertArmWake(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    new state
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolTimerExpiredWakeCapableRevertArmWake);
+
+    DoTraceLevelMessage(
+        This->GetDriverGlobals(), TRACE_LEVEL_WARNING, TRACINGPNP,
+        "WDFDEVICE %p Calling EvtDeviceDisarmWakeFromS0 because "
+        "a framework extension failed EvtCxDevicePostArmWakeFromS0",
+        This->m_Device->GetHandle());
+
+    This->m_PowerPolicyMachine.m_Owner->m_DeviceDisarmWakeFromS0.Invoke(
+        This->m_Device->GetHandle()
+        );
+
+    return WdfDevStatePwrPolTimerExpiredWakeCapableCancelWake;
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
@@ -5593,8 +6418,24 @@ Return Value:
 
   --*/
 {
+    BOOLEAN directedTransition;
+
     ASSERT_PWR_POL_STATE(
         This, WdfDevStatePwrPolTimerExpiredWakeCapableUndoPowerDown);
+
+    //
+    // If the device power requirement state machine is undergoing a directed
+    // power transition, then notify it to consider the device as powered
+    // down now even though the device failed to power down. This allows the
+    // pending directed transition request to be completed back to PoFx. Note
+    // this operation only takes effect if a directed transition is currently
+    // in progress.
+    //
+    // N.B. This needs to be issued before the subsequent device powered ON
+    //      notification.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredDown();
 
     //
     // We notified the device power requirement state machine that we are about
@@ -5604,7 +6445,26 @@ Return Value:
     //
     This->m_PowerPolicyMachine.m_Owner->
                 m_PoxInterface.DeviceIsPoweredOn();
-    return WdfDevStatePwrPolDeviceIdleReturnToActive;
+
+    //
+    // Check if a directed transition is currently in progress.
+    //
+    directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
+    if (FALSE == directedTransition) {
+        //
+        // For normal (RTD3) transitions, return the device back to active.
+        //
+        return WdfDevStatePwrPolDeviceIdleReturnToActive;
+    }
+    else {
+        //
+        // For directed transitions, wait for the directed power up request to
+        // be sent by PoFx before returning the device to active.
+        //
+        COVERAGE_TRAP();
+        return WdfDevStatePwrPolTimerExpiredWakeCapableUndoPowerDownWaitForDirectedUp;
+    }
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
@@ -5630,6 +6490,101 @@ Return Value:
         This, WdfDevStatePwrPolTimerExpiredWakeCompletedPowerDown);
 
     This->PowerProcessEvent(PowerCompleteDx);
+
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolTimerExpiredWakeCompletedPowerDownCheckDirected(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was armed for wake from S0 and the wake completed immediately
+    (or there was a problem). We put the device into Dx and we are now trying
+    to bring it back into D0. We will do so immediately or wait for the
+    directed power up request depending on whether this was a directed
+    transition or not.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    new state
+
+  --*/
+{
+    BOOLEAN directedTransition;
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolTimerExpiredWakeCompletedPowerDownCheckDirected);
+
+    //
+    // Check if a directed transition is currently in progress.
+    //
+    directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
+    if (FALSE == directedTransition) {
+        //
+        // For normal transitions, attempt to power the device back up
+        // immediately.
+        //
+        return WdfDevStatePwrPolTimerExpiredWakeCompletedPowerUp;
+    }
+    else {
+        //
+        // For directed transitions, go to a state that will wait until a
+        // directed power up request is issued by PoFx.
+        //
+        COVERAGE_TRAP();
+        return WdfDevStatePwrPolTimerExpiredWakeCompletedPowerDownWaitForDirectedUp;
+    }
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolTimerExpiredWakeCompletedPowerDownWaitForDirectedUp(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device power down in a directed manner with wake-from-S0 armed but the
+    wake completed immediately (or there was a problem).  We put the device
+    into Dx and we are now trying to bring it back into D0. Since it was
+    powered down in a directed manner, wait for PoFx to send the directed power
+    up request.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolTimerExpiredWakeCompletedPowerDownWaitForDirectedUp);
+
+    //
+    // This state should be reached only if we are undergoing a directed
+    // transition.
+    //
+    ASSERT(
+        This->m_PowerPolicyMachine.m_Owner->
+            m_PoxInterface.IsDirectedTransitionInProgress() != FALSE
+      );
+
+    //
+    // If the device power requirement state machine is undergoing a directed
+    // power transition, then notify it to consider the device as powered
+    // down now even though the device failed to power down. This allows the
+    // pending directed transition request to be completed back to PoFx. Note
+    // this operation only takes effect if a directed transition is currently
+    // in progress.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredDown();
 
     return WdfDevStatePwrPolNull;
 }
@@ -5671,7 +6626,8 @@ Return Value:
     ASSERT(result);
     UNREFERENCED_PARAMETER(result);
 
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry,
+                        RequestD0ForArmWakeFail);
 
     if (!NT_SUCCESS(status)) {
         //
@@ -5707,6 +6663,19 @@ Return Value:
     ASSERT_PWR_POL_STATE(This,
         WdfDevStatePwrPolTimerExpiredWakeCompletedHardwareStarted);
 
+    //
+    // If the device power requirement state machine is undergoing a directed
+    // power transition, then notify it to consider the device as powered
+    // up now. This allows the pending directed transition request to be
+    // completed back to PoFx.  Note the notification will only really be sent
+    // if a directed transition is currently in  progress.
+    //
+    // N.B. This needs to be issued before the subsequent device powered ON
+    //      notification.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredUp();
+
     This->m_PowerPolicyMachine.m_Owner->
                 m_PoxInterface.DeviceIsPoweredOn();
 
@@ -5726,10 +6695,11 @@ Arguments:
     This - instance of the state machine
 
 Return Value:
-    WdfDevStatePwrPolWaitingArmed
+    WdfDevStatePwrPolWaitingArmedQueryIdle
 
   --*/
 {
+    BOOLEAN directedTransition;
     BOOLEAN result;
 
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolWaitingArmedUsbSS);
@@ -5748,13 +6718,32 @@ Return Value:
     UNREFERENCED_PARAMETER(result);
 
     //
-    // PwrPolIoPresent can be sent before PwrPolPowerTimeoutExpired in the idle
-    // state machine if the idle s.m. attempts to cancel the timer after it has
-    // started running.  That means the PwrPolIoPresent meant to wake up the
-    // device and resume from idle is lost.  By first querying the idle s.m.
-    // after moving into Dx we can recover from the lost event.
+    // Check if a directed transition is currently in progress.
     //
-    return WdfDevStatePwrPolWaitingArmedQueryIdle;
+    directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
+    if (FALSE == directedTransition) {
+        //
+        // For normal RTD3 transitions, idle down waiting for an exit event.
+        //
+        // Note PwrPolIoPresent can be sent before PwrPolPowerTimeoutExpired in
+        // the idle state machine if the idle s.m. attempts to cancel the timer
+        // after it has started running.  That means the PwrPolIoPresent meant
+        // to wake up the device and resume from idle is lost.  By first
+        // querying the idle s.m. after moving into Dx we can recover from the
+        // lost event.
+        //
+        return WdfDevStatePwrPolWaitingArmedQueryIdle;
+
+    }
+    else {
+        //
+        // For directed transitions, idle down waiting for an exit event. The
+        // exit events for this state are slightly different than the normal
+        // RTD3 waiting state.
+        //
+        return WdfDevStatePwrPolWaitingArmedDirectedDown;
+    }
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
@@ -5788,6 +6777,48 @@ Return Value:
     else {
         return WdfDevStatePwrPolWaitingArmedIoPresentCancelUsbSS;
     }
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolWaitingArmedDirectedDown(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device has powered down now in directed manner and reached its
+    waiting/resting state with wake-from-S0 armed in response to a directed
+    power down request from PoFx. The device will wait in this state until it
+    receives an exit event.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolWaitingArmedDirectedDown);
+
+    //
+    // This state should be reached only if we are undergoing a directed
+    // transition.
+    //
+    ASSERT(
+        This->m_PowerPolicyMachine.m_Owner->
+            m_PoxInterface.IsDirectedTransitionInProgress() != FALSE
+      );
+
+    //
+    // Notify the device power requirement state machine that the device has
+    // been powered down now. This allows the pending directed transition
+    // request to be completed back to PoFx.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredDown();
+
+    return WdfDevStatePwrPolNull;
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
@@ -5833,7 +6864,8 @@ FxPkgPnp::PowerPolIoPresentArmedWakeCanceled(
     This->m_PowerPolicyMachine.m_Owner->
             m_PoxInterface.RequestComponentActive();
 
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry,
+                        RequestD0ForOther);
 
     if (!NT_SUCCESS(status)) {
         COVERAGE_TRAP();
@@ -5849,6 +6881,19 @@ FxPkgPnp::PowerPolS0WakeDisarm(
     )
 {
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolS0WakeDisarm);
+
+    //
+    // If the device power requirement state machine is undergoing a directed
+    // power transition, then notify it to consider the device as powered
+    // up now. This allows the pending directed transition request to be
+    // completed back to PoFx. Note this operation only takes effect if a
+    // directed transition is currently in progress.
+    //
+    // N.B. This needs to be issued before the subsequent device powered ON
+    //      notification.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredUp();
 
     This->m_PowerPolicyMachine.m_Owner->
                 m_PoxInterface.DeviceIsPoweredOn();
@@ -5979,6 +7024,8 @@ Return Value:
     BOOLEAN result;
 
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolWakeFailedUsbSS);
+
+    This->SaveRequestD0IrpReasonHint(RequestD0ForWakeFailed);
 
     if (This->m_PowerPolicyMachine.m_Owner->m_IdleSettings.UsbSSCapable) {
         This->m_PowerPolicyMachine.UsbSSCallbackProcessingComplete();
@@ -6124,7 +7171,8 @@ FxPkgPnp::PowerPolCancelingWakeForSystemSleepWakeCanceled(
     ASSERT_PWR_POL_STATE(
         This, WdfDevStatePwrPolCancelingWakeForSystemSleepWakeCanceled);
 
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, NoRetry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, NoRetry,
+                        RequestD0ForSx);
 
     if (!NT_SUCCESS(status)) {
         COVERAGE_TRAP();
@@ -6201,6 +7249,249 @@ Return Value:
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeSucceededCheckDirected(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was armed for wake from S0 but woke up before we got to the
+    waiting/resting state. We need to complete the USB SS callback while we
+    are in Dx. We will do so immediately for regular (RTD3) transitions. For
+    directed transitions, we will wait for the the directed power up to be
+    issued by PoFx.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    new state
+
+  --*/
+{
+    BOOLEAN directedTransition;
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolTimerExpiredWakeCapableWakeSucceededCheckDirected);
+
+    //
+    // Check if a directed transition is currently in progress.
+    //
+    directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
+    if (FALSE == directedTransition) {
+        //
+        // For normal transitions, proceed to completing the USB SS callback.
+        //
+        return WdfDevStatePwrPolWokeFromS0UsbSS;
+    }
+    else {
+        //
+        // For directed transitions, go to a state that will wait until a
+        // directed power up request is issued by PoFx.
+        //
+        COVERAGE_TRAP();
+        return WdfDevStatePwrPolTimerExpiredWakeCapableWakeSucceededWaitForDirectedUp;
+    }
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeSucceededWaitForDirectedUp(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was armed for wake from S0 but its wake completed before we got
+    to the waiting/resting state. Since it was powered down in a directed
+    manner, wait for PoFx to send the directed power up request. The device
+    should be considered as powered down now.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolTimerExpiredWakeCapableWakeSucceededWaitForDirectedUp);
+
+    //
+    // This state should be reached only if we are undergoing a directed
+    // transition.
+    //
+    ASSERT(
+        This->m_PowerPolicyMachine.m_Owner->
+            m_PoxInterface.IsDirectedTransitionInProgress() != FALSE
+      );
+
+    //
+    // Notify the device power requirement state machine that the device has
+    // been powered down now. This allows the pending directed transition
+    // request to be completed back to PoFx.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredDown();
+
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeSucceededTriggerDPR(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was powered down but the wake IRP was already completed. We
+    were waiting for the directed power up request to be issued by PoFx,
+    which has now arrived, before powering the device back up. Simulate a
+    device-power-required notification to trigger the D0 sequence to be started.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolTimerExpiredWakeCapableWakeSucceededTriggerDPR);
+
+    //
+    // Invoke the common routine to simulate a device-power-required
+    // notification on the device.
+    //
+    This->PowerPolDirectedTransitionTriggerDPR();
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeFailedCheckDirected(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was armed for wake from S0 but the wait wake IRP failed before
+    we got to the waiting/resting state. We need to complete the USB SS callback
+    while we are in Dx. We will do so immediately for regular (RTD3) transitions.
+    For directed transitions, we will wait for the the directed power up to be
+    issued by PoFx.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    new state
+
+  --*/
+{
+    BOOLEAN directedTransition;
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolTimerExpiredWakeCapableWakeFailedCheckDirected);
+
+    //
+    // Check if a directed transition is currently in progress.
+    //
+    directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
+    if (FALSE == directedTransition) {
+        //
+        // For normal transitions, proceed to completing the USB SS callback.
+        //
+        return WdfDevStatePwrPolWakeFailedUsbSS;
+    }
+    else {
+        //
+        // For directed transitions, go to a state that will wait until a
+        // directed power up request is issued by PoFx.
+        //
+        COVERAGE_TRAP();
+        return WdfDevStatePwrPolTimerExpiredWakeCapableWakeFailedWaitForDirectedUp;
+    }
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeFailedWaitForDirectedUp(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was armed for wake from S0 but the wait wake IRP failed before we
+    got to the waiting/resting state. Since it was powered down in a directed
+    manner, wait for PoFx to send the directed power up request. The device
+    should be considered as powered down now.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolTimerExpiredWakeCapableWakeFailedWaitForDirectedUp);
+
+    //
+    // This state should be reached only if we are undergoing a directed
+    // transition.
+    //
+    ASSERT(
+        This->m_PowerPolicyMachine.m_Owner->
+            m_PoxInterface.IsDirectedTransitionInProgress() != FALSE
+      );
+
+    //
+    // Notify the device power requirement state machine that the device has
+    // been powered down now. This allows the pending directed transition
+    // request to be completed back to PoFx.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredDown();
+
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeFailedTriggerDPR(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was powered down but the wake IRP already failed. The directed
+    power up request has now arrived from PoFx. Simulate a
+    device-power-required notification to trigger the D0 sequence to be started.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolTimerExpiredWakeCapableWakeFailedTriggerDPR);
+
+    //
+    // Invoke the common routine to simulate a device-power-required
+    // notification on the device.
+    //
+    This->PowerPolDirectedTransitionTriggerDPR();
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
 FxPkgPnp::PowerPolWokeFromS0UsbSS(
     __inout FxPkgPnp* This
     )
@@ -6260,7 +7551,9 @@ FxPkgPnp::PowerPolWokeFromS0(
     This->m_PowerPolicyMachine.m_Owner->
             m_PoxInterface.RequestComponentActive();
 
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry,
+                        RequestD0ForDeviceWake);
+
     if (!NT_SUCCESS(status)) {
         COVERAGE_TRAP();
         return WdfDevStatePwrPolDeviceD0PowerRequestFailed;
@@ -6303,7 +7596,7 @@ FxPkgPnp::PowerPolStoppingResetDevice(
 /*++
 
 Routine Description:
-    The device was in a Dx state, unarmed for wake.  The device is not being
+    The device was in a Dx state, unarmed for wake.  The device is now being
     removed, so we must disable the idle timer and power up the device so that
     we can implicitly power it down.
 
@@ -6327,7 +7620,8 @@ Return Value:
     ASSERT(result);
     UNREFERENCED_PARAMETER(result);
 
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry,
+                        RequestD0ForPnpStop);
 
     if (!NT_SUCCESS(status)) {
         COVERAGE_TRAP();
@@ -6417,7 +7711,9 @@ FxPkgPnp::PowerPolStoppingD0(
 
     This->m_PowerPolicyMachine.m_Owner->m_PowerIdleMachine.DisableTimer();
 
-    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry);
+    status = This->PowerPolicySendDevicePowerRequest(PowerDeviceD0, Retry,
+                        RequestD0ForPnpStop);
+
     if (!NT_SUCCESS(status)) {
         COVERAGE_TRAP();
         return WdfDevStatePwrPolDeviceD0PowerRequestFailed;
@@ -6632,6 +7928,14 @@ Return Value:
 
     This->m_PowerPolicyMachine.m_Owner->
             m_PoxInterface.UninitializeComponents();
+
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+    //
+    // Stop Async thread attempting to determine if this device can block
+    // DRIPS on AOAC (PoFx) based devices
+    //
+    This->SleepStudyStopEvaluation();
+#endif
 
     return WdfDevStatePwrPolRemoved;
 }
@@ -6861,6 +8165,35 @@ Return Value:
 {
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolCancelUsbSS);
 
+    if (This->PowerPolicyCancelUsbSSIfCapable() == FALSE) {
+        //
+        // UsbSS has already been canceled/completed
+        //
+        return WdfDevStatePwrPolUsbSSCancelled;
+    }
+
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolUsbSSCancelled(
+    __inout FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    Usb SS request has been cancelled
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolStartedCancelTimer
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolUsbSSCancelled);
+
     //
     // We notified the device power requirement state machine that we are about
     // to power down, but eventually we didn't power down. So notify the device
@@ -6873,14 +8206,7 @@ Return Value:
     This->m_PowerPolicyMachine.m_Owner->
             m_PoxInterface.RequestComponentActive();
 
-    if (This->PowerPolicyCancelUsbSSIfCapable() == FALSE) {
-        //
-        // UsbSS has already been canceled/completed
-        //
-        return WdfDevStatePwrPolStartedCancelTimer;
-    }
-
-    return WdfDevStatePwrPolNull;
+    return WdfDevStatePwrPolStartedCancelTimer;
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
@@ -6968,7 +8294,7 @@ Return Value:
         This, WdfDevStatePwrPolStartedWakeCapableCancelTimerForSleep);
 
     if (This->m_PowerPolicyMachine.m_Owner->m_PowerIdleMachine.DisableTimer()) {
-        return WdfDevStatePwrPolSleeping;
+        return WdfDevStatePwrPolStartedWakeCapableTimerCanceledForSleep;
     }
     else {
         COVERAGE_TRAP();
@@ -7016,6 +8342,419 @@ Return Value:
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolStartedNotIdleCapableDirectedDown(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    Device is not idle capable and was requested to be powered down in a
+    directed manner. By default this is not supported and thus the device is
+    returned back to the Started state. For testing purposes though directed
+    transitions may be supported for such devices (require private binaries).
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    new power policy state
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolStartedNotIdleCapableDirectedDown);
+
+    //
+    // This state should be reached only if we are undergoing a directed
+    // transition.
+    //
+    ASSERT(
+        This->m_PowerPolicyMachine.m_Owner->
+            m_PoxInterface.IsDirectedTransitionInProgress() != FALSE
+      );
+
+#if defined(WDF_ALLOW_DFX_FOR_NON_IDLE_CAPABLE_DEVICES)
+
+    UNREFERENCED_PARAMETER(This);
+
+    //
+    // If directed transitions are supported for not idle-capable devices, then
+    // proceed to powering the device down in directed manner.
+    //
+
+    return WdfDevStatePwrPolIdleCapableTimerNotExpiredDirectedDown;
+
+#else
+
+    //
+    // If the device power requirement state machine is undergoing a directed
+    // power transition, then notify it to consider the device as powered
+    // down although it didn't really happen. This allows the pending
+    // directed transition to be completed back to PoFx. Note the notification
+    // will only really be sent if a directed transition is currently in
+    // progress.
+    //
+    // N.B. This needs to be issued before the subsequent device powered ON
+    //      notification.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredDown();
+
+    //
+    // We notified the device power requirement state machine that we are about
+    // to power down, but eventually we didn't power down. So notify the device
+    // power requirement state machine that the device should be considered
+    // powered on.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.DeviceIsPoweredOn();
+
+    return WdfDevStatePwrPolStarted;
+
+#endif
+
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolStartedWakeCapableTimerCanceledForSleep(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    Device is wake capable and idle timer has been canceled. This state can be
+    entered for regular S-state transitions or directed transitions. Proceed to
+    the next state depending on whether the current transition is a directed
+    transition or an S-state transition.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    new power policy state
+
+  --*/
+{
+    BOOLEAN directedTransition;
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolStartedWakeCapableTimerCanceledForSleep);
+
+    //
+    // Check if a directed transition is currently in progress.
+    //
+    directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
+    if (FALSE == directedTransition) {
+        //
+        // For S-state transitions, proceed to the sleeping state.
+        //
+        return WdfDevStatePwrPolSleeping;
+    }
+    else {
+        //
+        // For directed transitions, proceed to processing the directed power
+        // down transition request.
+        //
+        return WdfDevStatePwrPolWakeCapableTimerNotExpiredDirectedDown;
+    }
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolWakeCapableTimerNotExpiredDirectedDown(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was not idle but was directed to be transitioned into Dx by
+    PoFx. Drop the reference on the component and proceed to triggering a
+    device-power-not-required event.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolWakeCapableDirectedDownTriggerDPNR
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolWakeCapableTimerNotExpiredDirectedDown);
+
+    //
+    // This state should be reached only if we are undergoing a directed
+    // transition.
+    //
+    ASSERT(
+        This->m_PowerPolicyMachine.m_Owner->
+            m_PoxInterface.IsDirectedTransitionInProgress() != FALSE
+      );
+
+    //
+    // Declare the component as idle. Note for directed power transitions, the
+    // device-power-not-required notification is not awaited (and thus the
+    // return code is not checked.)
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+            m_PoxInterface.DeclareComponentIdle();
+
+    return WdfDevStatePwrPolWakeCapableDirectedDownTriggerDPNR;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolWakeCapableDirectedDownTriggerDPNR(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device is attempting to go to Dx in a directed manner. Simulate a
+    device-power-not-required notification to trigger the Dx sequence to be
+    started.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolWakeCapableDirectedDownTriggerDPNR);
+
+    //
+    // Invoke the common routine to simulate a device-power-not-required
+    // notification on the device.
+    //
+    This->PowerPolDirectedTransitionTriggerDPNR();
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolTimerExpiredWakeCompletedPowerDownDirectedTriggerDPR(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was powered down in a directed manner and is now attempting to
+    go to D0. Simulate a device-power-required notification to trigger the D0
+    sequence to be started.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolTimerExpiredWakeCompletedPowerDownDirectedTriggerDPR);
+
+    //
+    // Invoke the common routine to simulate a device-power-required
+    // notification on the device.
+    //
+    This->PowerPolDirectedTransitionTriggerDPR();
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolWaitingArmedDirectedDownWakeInterruptFiredTriggerDPR(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was powered down in a directed manner, its wake interrupt
+    fired and is now attempting to go to D0 after receiving the directed
+    power up request. Simulate a device-power-required notification to trigger
+    the D0 sequence to be started.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolWaitingArmedDirectedDownWakeInterruptFiredTriggerDPR);
+
+    //
+    // Invoke the common routine to simulate a device-power-required
+    // notification on the device.
+    //
+    This->PowerPolDirectedTransitionTriggerDPR();
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolWaitingArmedDirectedDownWakeInterruptFired(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was powered down in a directed manner and its wake interrupt
+    fired. Wait for the directed power up request to be issued prior to
+    powering up the device.
+
+    Note in future this routine may invoke an API to notify PoFx that the device
+    needs to be powered back up due to a wake event.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+
+    UNREFERENCED_PARAMETER(This);
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolWaitingArmedDirectedDownWakeInterruptFired);
+
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolWaitingArmedDirectedDownTriggerDPR(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was powered down in a directed manner and is now attempting to
+    go to D0 in response to a directed power up request. Simulate a
+    device-power-required notification to trigger the D0 sequence to be started.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolWaitingArmedDirectedDownTriggerDPR);
+
+    //
+    // Invoke the common routine to simulate a device-power-required
+    // notification on the device.
+    //
+    This->PowerPolDirectedTransitionTriggerDPR();
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolWaitingArmedDirectedDownWakeSucceededTriggerDPR(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was powered down in a directed manner, its wait-wake IRP
+    succeeded and is now attempting to go to D0 after receiving the directed
+    power up request. Simulate a device-power-required notification to trigger
+    the D0 sequence to be started.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolWaitingArmedDirectedDownWakeSucceededTriggerDPR);
+
+    //
+    // Invoke the common routine to simulate a device-power-required
+    // notification on the device.
+    //
+    This->PowerPolDirectedTransitionTriggerDPR();
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolWaitingArmedDirectedDownWakeFailedCancelUsbSSTriggerDPR(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was powered down in a directed manner, its wait-wake IRP
+    failed and is now attempting to go to D0 after receiving the directed
+    power up request. Simulate a device-power-required notification to trigger
+    the D0 sequence to be started.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolWaitingArmedDirectedDownWakeFailedCancelUsbSSTriggerDPR);
+
+    //
+    // Invoke the common routine to simulate a device-power-required
+    // notification on the device.
+    //
+    This->PowerPolDirectedTransitionTriggerDPR();
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolWaitingArmedDirectedDownUsbSSCompletedTriggerDPR(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was powered down in a directed manner, its USB selective-suspend
+    callback succeeded and is now attempting to go to D0 after receiving the
+    directed power up request. Simulate a device-power-required notification
+    to trigger the D0 sequence to be started.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolWaitingArmedDirectedDownUsbSSCompletedTriggerDPR);
+
+    //
+    // Invoke the common routine to simulate a device-power-required
+    // notification on the device.
+    //
+    This->PowerPolDirectedTransitionTriggerDPR();
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
 FxPkgPnp::PowerPolStartedIdleCapableCancelTimerForSleep(
     __inout FxPkgPnp* This
     )
@@ -7037,11 +8776,56 @@ Return Value:
         This, WdfDevStatePwrPolStartedIdleCapableCancelTimerForSleep);
 
     if (This->m_PowerPolicyMachine.m_Owner->m_PowerIdleMachine.DisableTimer()) {
-        return WdfDevStatePwrPolSleeping;
+        return WdfDevStatePwrPolStartedIdleCapableTimerCanceledForSleep;
     }
     else {
         COVERAGE_TRAP();
         return WdfDevStatePwrPolStartedIdleCapableWaitForIdleTimeout;
+    }
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolStartedIdleCapableTimerCanceledForSleep(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    Device is idle capable and idle timer has been canceled. This state can be
+    entered for regular S-state transitions or PoFx directed transitions.
+    Proceed to the next state depending on whether the current transition is a
+    directed transition or an S-state transition.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    new power policy state
+
+  --*/
+{
+    BOOLEAN directedTransition;
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolStartedIdleCapableTimerCanceledForSleep);
+
+    //
+    // Check if a directed transition is currently in progress.
+    //
+    directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
+    if (FALSE == directedTransition) {
+        //
+        // For S-state transitions, proceed to the sleeping state.
+        //
+        return WdfDevStatePwrPolSleeping;
+    }
+    else {
+        //
+        // For directed transitions, proceed to processing the directed power
+        // transition request.
+        //
+        return WdfDevStatePwrPolIdleCapableTimerNotExpiredDirectedDown;
     }
 }
 
@@ -7097,12 +8881,31 @@ Return Value:
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolDevicePowerRequestFailed);
 
     //
+    // PwrPolPowerUpFailed received.
+    //
+    This->PowerPolicyStopTrackingDevicePowerIrp();
+
+    //
     // In the failure path we still need to notify the children that they can
     // power up so that they will unblock.
     //
     This->PowerPolicyChildrenCanPowerUp();
 
     This->m_PowerPolicyMachine.m_Owner->m_PowerFailed = TRUE;
+
+    //
+    // If the device power requirement state machine is undergoing a directed
+    // power transition, then notify it to consider the device as powered
+    // down now although the device couldn't power down. This allows the pending
+    // directed transition request to be completed back to PoFx. Note the
+    // notification will only really be sent if a directed transition is
+    // currently in progress.
+    //
+    // N.B. This needs to be issued before the subsequent device powered ON
+    //      notification.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredDown();
 
     //
     // Notify the device power requirement state machine that the device should
@@ -7113,6 +8916,54 @@ Return Value:
                 m_PoxInterface.DeviceIsPoweredOn();
 
     return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolSystemWakeDeviceD0PowerRequestFailed(
+    __inout FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    Simulate device-power-required on failure when handling S0
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolDeviceD0PowerRequestFailed
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolSystemWakeDeviceD0PowerRequestFailed);
+
+    This->m_PowerPolicyMachine.SimulateDevicePowerRequiredForS0();
+
+    return WdfDevStatePwrPolDeviceD0PowerRequestFailed;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolSystemWakeDevicePowerRequestFailed(
+    __inout FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    Simulate device-power-requireed on failure when handling S0
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolDevicePowerRequestFailed
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolSystemWakeDevicePowerRequestFailed);
+
+    This->m_PowerPolicyMachine.SimulateDevicePowerRequiredForS0();
+
+    return WdfDevStatePwrPolDevicePowerRequestFailed;
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
@@ -7213,8 +9064,24 @@ Return Value:
 
   --*/
 {
+    BOOLEAN directedTransition;
+
     ASSERT_PWR_POL_STATE(
         This, WdfDevStatePwrPolTimerExpiredNoWakeUndoPowerDown);
+
+    //
+    // If the device power requirement state machine is undergoing a directed
+    // power transition, then notify it to consider the device as powered
+    // down although it didn't really happen. This allows the pending
+    // directed transition to be completed back to PoFx. Note the notification
+    // will only really be sent if a directed transition is currently in
+    // progress.
+    //
+    // N.B. This needs to be issued before the subsequent device powered ON
+    //      notification.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredDown();
 
     //
     // We notified the device power requirement state machine that we are about
@@ -7225,7 +9092,25 @@ Return Value:
     This->m_PowerPolicyMachine.m_Owner->
                 m_PoxInterface.DeviceIsPoweredOn();
 
-    return WdfDevStatePwrPolTimerExpiredNoWakeReturnToActive;
+    //
+    // Check if a directed transition is currently in progress.
+    //
+    directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
+    if (FALSE == directedTransition) {
+        //
+        // For normal transitions, return the device back to active.
+        //
+        return WdfDevStatePwrPolTimerExpiredNoWakeReturnToActive;
+    }
+    else {
+        //
+        // For directed transitions, wait for the directed power up request to
+        // be sent by PoFx before returning the device to active.
+        //
+        COVERAGE_TRAP();
+        return WdfDevStatePwrPolTimerExpiredNoWakeUndoPowerDownWaitForDirectedUp;
+    }
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
@@ -7254,7 +9139,74 @@ Return Value:
     This->m_PowerPolicyMachine.m_Owner->
             m_PoxInterface.RequestComponentActive();
 
+#if !defined(WDF_ALLOW_DFX_FOR_NON_IDLE_CAPABLE_DEVICES)
+
     return WdfDevStatePwrPolStartedIdleCapable;
+
+#else
+
+    //
+    // If idle power management is enabled, then return to the
+    // WdfDevStatePwrPolStartedIdleCapable state.
+    //
+    // This state can also be reached for devices that are not idle-capable and
+    // were attempted to be powered down in a directed manner but that
+    // operation failed. In such cases, return to the WdfDevStatePwrPolStarted
+    // state.
+    //
+
+    if (This->m_PowerPolicyMachine.m_Owner->m_IdleSettings.Enabled) {
+        return WdfDevStatePwrPolStartedIdleCapable;
+
+    }
+    else {
+        return WdfDevStatePwrPolStarted;
+    }
+
+#endif
+
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolIdleCapableTimerNotExpiredDirectedDown(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was not idle but was directed to be transitioned into Dx by
+    PoFx. Drop the reference on the component and proceed to triggering a
+    device-power-not-required event.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolIdleCapableDirectedDownTriggerDPNR
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolIdleCapableTimerNotExpiredDirectedDown);
+
+    //
+    // This state should be reached only if we are undergoing a directed
+    // transition.
+    //
+    ASSERT(
+        This->m_PowerPolicyMachine.m_Owner->
+            m_PoxInterface.IsDirectedTransitionInProgress() != FALSE
+      );
+
+    //
+    // Declare the component as idle. Note for directed power transitions, the
+    // device-power-not-required notification is not awaited (and thus the
+    // return code is not checked.)
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+            m_PoxInterface.DeclareComponentIdle();
+
+    return WdfDevStatePwrPolIdleCapableDirectedDownTriggerDPNR;
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
@@ -7277,6 +9229,7 @@ Return Value:
 
   --*/
 {
+    BOOLEAN directedTransition;
     BOOLEAN result;
 
     ASSERT_PWR_POL_STATE(
@@ -7292,9 +9245,130 @@ Return Value:
     UNREFERENCED_PARAMETER(result);
 
     //
-    // Check to see if we should immediately power up
+    // Check if a directed transition is currently in progress.
     //
-    return WdfDevStatePwrPolWaitingUnarmedQueryIdle;
+    directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
+    if (FALSE == directedTransition) {
+        //
+        // For normal (RTD3) transitions, check to see if we should immediately
+        // power up.
+        //
+        return WdfDevStatePwrPolWaitingUnarmedQueryIdle;
+    }
+    else {
+        //
+        // For directed transitions, wait until a directed power up request
+        // is issued by PoFx.
+        //
+        return WdfDevStatePwrPolWaitingUnarmedDirectedDown;
+    }
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolIdleCapableDirectedDownTriggerDPNR(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device is attempting to go to Dx (without wake-from-S0) due to a
+    directed power down request from PoFx. Simulate a
+    device-power-not-required notification to trigger the Dx sequence to be
+    started.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolIdleCapableDirectedDownTriggerDPNR);
+
+    //
+    // Invoke the common routine to simulate a device-power-not-required
+    // notification on the device.
+    //
+    This->PowerPolDirectedTransitionTriggerDPNR();
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolIdleCapableDirectedDownTriggerDPR(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device was powered down in a directed manner and is now attempting to
+    go to D0. Simulate a device-power-required notification to trigger the D0
+    sequence to be started.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolIdleCapableDirectedDownTriggerDPR);
+
+    //
+    // Invoke the common routine to simulate a device-power-required
+    // notification on the device. A directed power up transition, similar
+    // to S0 IRPs, is essentially equivalent to a device-power-required
+    // notification.
+    //
+    This->PowerPolDirectedTransitionTriggerDPR();
+    return WdfDevStatePwrPolNull;
+}
+
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolWaitingUnarmedDirectedDown(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
+
+Routine Description:
+    The device has been powered down in a directed manner. Thus the pended
+    directed power down request can now be completed back to PoFx.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    WdfDevStatePwrPolNull
+
+  --*/
+{
+    ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolWaitingUnarmedDirectedDown);
+
+    //
+    // This state should be reached only if we are undergoing a directed
+    // transition.
+    //
+    ASSERT(
+        This->m_PowerPolicyMachine.m_Owner->
+            m_PoxInterface.IsDirectedTransitionInProgress() != FALSE
+      );
+
+    //
+    // If the device power requirement state machine is undergoing a directed
+    // power transition, then notify it to consider the device as powered now.
+    // This allows the pending directed transition request to be completed back
+    // to PoFx.
+    //
+    This->m_PowerPolicyMachine.m_Owner->
+                m_PoxInterface.NotifyDeviceDirectedPoweredDown();
+
+    return WdfDevStatePwrPolNull;
 }
 
 WDF_DEVICE_POWER_POLICY_STATE
@@ -7523,7 +9597,8 @@ _Must_inspect_result_
 NTSTATUS
 FxPkgPnp::PowerPolicySendDevicePowerRequest(
     __in DEVICE_POWER_STATE DeviceState,
-    __in SendDeviceRequestAction Action
+    __in SendDeviceRequestAction Action,
+    __in RequestDIrpReason Reason
     )
 /*++
 
@@ -7554,6 +9629,10 @@ Arguments:
 
     Action - Whether to retry upon failure to allocate the request
 
+    Reason - The reason why the D-IRP is requested. Only two values are used:
+             RequestD0ForS0 and RequestDxForSx. Others are simply stored for
+             debugging purpose only.
+
 Return Value:
     NT_SUCCESS if the request was allocated, !NT_SUCCESS otherwise
 
@@ -7564,6 +9643,7 @@ Return Value:
     NTSTATUS status;
     POWER_STATE state;
     ULONG i;
+    FxDevicePowerIrpTracker *devicePowerIrpTracker;
 
     status = STATUS_UNSUCCESSFUL;
     interval.QuadPart = WDF_REL_TIMEOUT_IN_MS(500);
@@ -7585,6 +9665,15 @@ Return Value:
         // machine takes care of it.
         //
         pCompletionRoutine = _PowerPolDevicePowerDownComplete;
+    }
+
+    devicePowerIrpTracker = &m_PowerPolicyMachine.m_Owner->m_DevicePowerIrpTracker;
+
+    devicePowerIrpTracker->LogRequestDIrpReason(Reason,
+                                                (DeviceState == PowerDeviceD0));
+
+    if (Reason == RequestD0ForS0 || Reason == RequestDxForSx) {
+        devicePowerIrpTracker->StartTrackingDevicePowerIrp(Reason);
     }
 
     //
@@ -7619,6 +9708,13 @@ Return Value:
         //
         // We are no longer requesting a power irp
         //
+        devicePowerIrpTracker->LogRequestDIrpReason(RequestDIrpFailed,
+                                                    (DeviceState == PowerDeviceD0));
+
+        if (Reason == RequestD0ForS0 || Reason == RequestDxForSx) {
+            devicePowerIrpTracker->StopTrackingDevicePowerIrp();
+        }
+
         if (DeviceState == PowerDeviceD0) {
             m_PowerPolicyMachine.m_Owner->m_RequestedPowerUpIrp = FALSE;
         }
@@ -7899,6 +9995,8 @@ FxPkgPnp::_PowerPolicyUsbSelectiveSuspendCompletionRoutine(
 
     This = (FxPkgPnp*) Context;
 
+    This->SaveRequestD0IrpReasonHint(RequestD0ForUsbSs);
+
     //
     // Parameters DeviceObejct and Irp are always set to NULL in UMDF, so
     // don't touch these in UMDF trace
@@ -7986,7 +10084,8 @@ Return Value:
     if (powerDown) {
         NTSTATUS status;
 
-        status = PowerPolicySendDevicePowerRequest(DxState, NoRetry);
+        status = PowerPolicySendDevicePowerRequest(DxState, NoRetry,
+                        RequestDxForIdleOut);
 
         if (!NT_SUCCESS(status)) {
             //
@@ -8207,11 +10306,13 @@ Arguments:
     This - instance of the state machine
 
 Return Value:
-    WdfDevStatePwrPolIoPresentArmedWakeCanceled
+    WdfDevStatePwrPolIoPresentArmedWakeCanceled or WdfDevStatePwrPolNull
 
   --*/
 {
     ASSERT_PWR_POL_STATE(This, WdfDevStatePwrPolWaitingArmedWakeFailedCancelUsbSS);
+
+    This->SaveRequestD0IrpReasonHint(RequestD0ForWakeFailed);
 
     if (This->PowerPolicyCancelUsbSSIfCapable()) {
         //
@@ -8400,4 +10501,132 @@ FxPkgPnp::PowerPolTimerExpiredWakeCapableWakeInterruptArrived(
     return WdfDevStatePwrPolNull;
 }
 
+WDF_DEVICE_POWER_POLICY_STATE
+FxPkgPnp::PowerPolWaitingArmedWakeInterruptFiredDuringPowerDownCheckDirected(
+    _Inout_ FxPkgPnp* This
+    )
+/*++
 
+Routine Description:
+    The device was powered down in a directed manner with wake-from-S0 armed.
+    However, the wait_wake IRP completed (success or failure) before we got
+    to the resting state. We are now trying to to bring it back into D0. We
+    will do so immediately or wait for the directed power up request depending
+    on whether this was a directed transition or not.
+
+Arguments:
+    This - instance of the state machine
+
+Return Value:
+    new state
+
+  --*/
+{
+    BOOLEAN directedTransition;
+
+    ASSERT_PWR_POL_STATE(
+        This, WdfDevStatePwrPolWaitingArmedWakeInterruptFiredDuringPowerDownCheckDirected);
+
+    //
+    // Check if a directed transition is currently in progress.
+    //
+    directedTransition = This->m_PowerPolicyMachine.m_Owner->
+                              m_PoxInterface.IsDirectedTransitionInProgress();
+    if (FALSE == directedTransition) {
+        //
+        // For normal transitions, attempt to power the device back up
+        // immediately.
+        //
+        return WdfDevStatePwrPolWaitingArmedWakeSucceededCancelUsbSS;
+    }
+    else {
+        //
+        // For directed transitions, go to a state that will wait until a
+        // directed power up request is issued by PoFx.
+        //
+        COVERAGE_TRAP();
+        return WdfDevStatePwrPolWaitingArmedDirectedDownWakeSucceededCancelUsbSS;
+    }
+}
+
+VOID
+FxPkgPnp::PowerPolDirectedTransitionTriggerDPR(
+    VOID
+    )
+/*++
+
+Routine Description:
+    This a common routine to simulate a device power required notification on
+    the device that needs to be powered up in a directed manner. The device
+    was powered down earlier in a directed manner. Simulating the
+    device-power-required notification will trigger the D0 sequence to be
+    started.
+
+Arguments:
+    None.
+
+Return Value:
+    None.
+
+  --*/
+{
+
+    //
+    // This state should be reached only if we are undergoing a directed
+    // transition.
+    //
+    ASSERT(
+        m_PowerPolicyMachine.m_Owner->
+            m_PoxInterface.IsDirectedTransitionInProgress() != FALSE
+      );
+
+    //
+    // Simulate a device-power-required notification from the power
+    // framework. A directed power up transition, similar to S0 IRPs, is
+    // essentially equivalent to a device-power-required notification.
+    //
+    m_PowerPolicyMachine.m_Owner->m_PoxInterface.SimulateDevicePowerRequired();
+
+    return;
+}
+
+VOID
+FxPkgPnp::PowerPolDirectedTransitionTriggerDPNR(
+    VOID
+    )
+/*++
+
+Routine Description:
+    This a common routine to simulate a device power not required notification
+    on the device that needs to be powered down in a directed manner. Simulating
+    a device-power-not-required notification will trigger the Dx sequence to
+    be started for device.
+
+Arguments:
+    None.
+
+Return Value:
+    None.
+
+  --*/
+{
+
+    //
+    // This state should be reached only if we are undergoing a directed
+    // transition.
+    //
+    ASSERT(
+        m_PowerPolicyMachine.m_Owner->
+            m_PoxInterface.IsDirectedTransitionInProgress() != FALSE
+      );
+
+    //
+    // Simulate a device-power-not-required notification from the power
+    // framework. A directed power down transition, similar to S-IRPs, is
+    // essentially equivalent to a device-power-not-required notification.
+    //
+    m_PowerPolicyMachine.m_Owner->
+        m_PoxInterface.SimulateDevicePowerNotRequired();
+
+    return;
+}

@@ -37,7 +37,7 @@ Revision History:
 #if defined(EVENT_TRACING)
 // Tracing support
 extern "C" {
-#include "fxpkgfdo.tmh"
+// #include "fxpkgfdo.tmh"
 }
 #endif
 
@@ -140,17 +140,14 @@ Returns:
     m_DefaultTarget = NULL;
     m_SelfTarget = NULL;
 
-    m_BusEnumRetries = 0;
-
     //
+    // Override the setting in FxPkgPnp.
     // Since we will always have a valid PDO when we are the FDO, we can do
     // any device interface related activity at any time
     //
     m_DeviceInterfacesCanBeEnabled = TRUE;
 
     m_Filter = FALSE;
-
-    RtlZeroMemory(&m_BusInformation, sizeof(m_BusInformation));
 
     RtlZeroMemory(&m_SurpriseRemoveAndReenumerateSelfInterface,
         sizeof(m_SurpriseRemoveAndReenumerateSelfInterface));
@@ -998,7 +995,7 @@ Return Value:
                 //
                 if (m_ResourcesRaw->Count() > 0) {
                     pContext->ResourcesRaw =
-                        m_ResourcesRaw->CreateWdmList(NonPagedPool);
+                        m_ResourcesRaw->CreateWdmList(POOL_FLAG_NON_PAGED);
 
                     if (pContext->ResourcesRaw == NULL) {
                         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1007,7 +1004,7 @@ Return Value:
 
                 if (NT_SUCCESS(status) && m_Resources->Count() > 0) {
                     pContext->ResourcesTranslated =
-                        m_Resources->CreateWdmList(NonPagedPool);
+                        m_Resources->CreateWdmList(POOL_FLAG_NON_PAGED);
 
                     if (pContext->ResourcesTranslated == NULL) {
                         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1303,7 +1300,7 @@ Return Value:
     m_Device->DeleteSymbolicLink();
 }
 
-VOID
+NTSTATUS
 FxPkgFdo::QueryForReenumerationInterface(
     VOID
     )
@@ -1318,7 +1315,7 @@ FxPkgFdo::QueryForReenumerationInterface(
         // Already got it, just return.  This function can be called again during
         // stop -> start, so we must check.
         //
-        return;
+        return STATUS_SUCCESS;
     }
 
     RtlZeroMemory(pInterface, sizeof(*pInterface));
@@ -1349,7 +1346,18 @@ FxPkgFdo::QueryForReenumerationInterface(
     // Note that an implicit reference has been taken on the interface. We
     // must release the reference when we are done with the interface.
     //
-    UNREFERENCED_PARAMETER(status); // for analyis tools.
+    status = STATUS_SUCCESS;
+
+#if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
+    if (pInterface->SurpriseRemoveAndReenumerateSelf != NULL) {
+        status = AllocateWorkItemForSetDeviceFailed();
+        if (!NT_SUCCESS(status)) {
+            ReleaseReenumerationInterface();
+        }
+    }
+#endif
+
+    return status;
 }
 
 VOID
@@ -1371,6 +1379,11 @@ Return Value:
 
   --*/
 {
+
+#if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
+    RemoveWorkItemForSetDeviceFailed();
+#endif
+
     PREENUMERATE_SELF_INTERFACE_STANDARD pInterface;
 
     pInterface = &m_SurpriseRemoveAndReenumerateSelfInterface;

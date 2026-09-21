@@ -22,10 +22,10 @@ Revision History:
 
 --*/
 
-#include "FxSupportPch.hpp"
+#include "fxsupportpch.hpp"
 
 extern "C" {
-#include "FxRequestBufferUm.tmh"
+// #include "FxRequestBufferUm.tmh"
 }
 
 _Must_inspect_result_

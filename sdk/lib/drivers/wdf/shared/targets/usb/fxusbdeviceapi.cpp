@@ -261,7 +261,7 @@ WDFEXPORT(WdfUsbTargetDeviceRetrieveInformation)(
     PWDF_DRIVER_GLOBALS DriverGlobals,
     __in
     WDFUSBDEVICE UsbDevice,
-    __out
+    _Inout_
     PWDF_USB_DEVICE_INFORMATION Information
     )
 {
@@ -296,6 +296,7 @@ WDFEXPORT(WdfUsbTargetDeviceRetrieveInformation)(
 __drv_maxIRQL(PASSIVE_LEVEL)
 VOID
 WDFAPI
+#pragma prefast(suppress:__WARNING_RETURN_UNINIT_VAR, "On failure case, '*UsbDeviceDescriptor' is not initialized")
 NTAPI
 WDFEXPORT(WdfUsbTargetDeviceGetDeviceDescriptor)(
     __in
@@ -1310,6 +1311,7 @@ Return Value:
         return status;
     }
 
+    #pragma prefast(suppress:__WARNING_USING_UNINIT_VAR, "Using uninitialized memory '**Urb'")
     status = pUsbDevice->CreateIsochUrb(Attributes,
                                         NumberOfIsochPackets,
                                         UrbMemory,

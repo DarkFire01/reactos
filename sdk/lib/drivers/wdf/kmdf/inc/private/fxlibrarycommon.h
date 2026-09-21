@@ -33,12 +33,6 @@ extern RTL_OSVERSIONINFOW  gOsVersion;
 
 #define WDF_ENHANCED_VERIFIER_OPTIONS_VALUE_NAME      L"EnhancedVerifierOptions"
 
-typedef
-NTSTATUS
-(NTAPI *PFN_RTL_GET_VERSION)(
-    __out PRTL_OSVERSIONINFOW VersionInformation
-    );
-
 _Must_inspect_result_
 NTSTATUS
 NTAPI
@@ -72,8 +66,7 @@ FxLibraryCommonUnregisterClient(
 
 VOID
 GetEnhancedVerifierOptions(
-    __in PCLIENT_INFO ClientInfo,
-    __out PULONG Options
+    _Inout_ PFX_DRIVER_GLOBALS FxDriverGlobals
     );
 
 VOID

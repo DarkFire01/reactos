@@ -28,9 +28,10 @@ Revision History:
 extern "C" {
 #endif
 
-#include "FxGlobals.h"
+#include "fxglobals.h"
 
 extern IUMDFPlatform *g_IUMDFPlatform;
+extern IUMDFPlatformModule *g_IUMDFPlatformModule;
 extern IWudfHost2 *g_IWudfHost2;
 
 _Must_inspect_result_
@@ -82,6 +83,8 @@ FxAllocateFromNPagedLookasideList (
 
     //
     // UMDF doesn't yet use a look-aside list, so just alloc memory from pool.
+    //
+    // Used by WdfLookasideListCreate. Keep POOL_TYPE for compat
     //
     return MxMemory::MxAllocatePoolWithTag(NonPagedPool, // not used
                                           ElementSize,
@@ -149,7 +152,7 @@ GetActivationList(
     VOID
     )
 {
-    return g_IUMDFPlatform->GetActivationListHead();
+    return g_IUMDFPlatformModule->GetActivationListHead();
 }
 
 //

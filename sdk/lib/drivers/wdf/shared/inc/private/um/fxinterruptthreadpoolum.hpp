@@ -59,6 +59,8 @@ public:
         PFX_DRIVER_GLOBALS FxDriverGlobals
         );
 
+    using FxStump::operator delete;
+
     ~FxInterruptThreadpool();
 
     static
@@ -133,6 +135,8 @@ public:
         m_Event(NULL)
     {
     }
+
+    using FxStump::operator delete;
 
     ~FxInterruptWaitblock();
 

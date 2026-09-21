@@ -376,7 +376,6 @@ FxDevice::_Create(
     WDFOBJECT           object;
     PLIST_ENTRY         pNext;
     PWDFCXDEVICE_INIT   pCxInit;
-    FxWdmDeviceExtension* wdmDeviceExtension;
 
     *Device = NULL;
     pInit = *DeviceInit;
@@ -439,6 +438,19 @@ FxDevice::_Create(
     }
 
     //
+    // If class extensions allocated any context, move them to FxDevice
+    //
+    // This line cannot be put before FxDevice->Commit, or else if Commit fails,
+    // those context's cleanup callback will not be called.
+    //
+    if (pInit->CxContextObject != NULL) {
+        status = pInit->CxContextObject->MoveContexts(pDevice);
+        if (!NT_SUCCESS(status)) {
+            goto Done;
+        }
+    }
+
+    //
     // NOTE: ---> DO NOT FAIL FROM HERE FORWARD <---
     //
 
@@ -476,6 +488,8 @@ FxDevice::_Create(
     }
 
 #if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
+    FxWdmDeviceExtension* wdmDeviceExtension;
+
     wdmDeviceExtension = _GetFxWdmExtension(pDevice->GetDeviceObject());
     if (wdmDeviceExtension->RemoveLockOptionFlags &
             WDF_REMOVE_LOCK_OPTION_ACQUIRE_FOR_IO) {
@@ -492,9 +506,6 @@ FxDevice::_Create(
     if (pDevice->m_SelfIoTargetNeeded) {
         pDevice->SetStackSize(pDevice->GetStackSize()+1);
     }
-
-#else
-    UNREFERENCED_PARAMETER(wdmDeviceExtension);
 #endif
 
     //
@@ -572,6 +583,16 @@ FxDevice::DeleteDeviceFromFailedCreateNoDelete(
         GetObjectHandleUnchecked(), GetDeviceObject(), FailedStatus);
 
     //
+
+
+
+
+
+
+
+    //
+#if ((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
+    //
     // We do not let filters affect the building of the rest of the stack.
     // If they return error, we convert it to STATUS_SUCCESS, remove the
     // attached device from the stack, and cleanup.
@@ -584,6 +605,7 @@ FxDevice::DeleteDeviceFromFailedCreateNoDelete(
             FailedStatus);
         FailedStatus = STATUS_SUCCESS;
     }
+#endif
 
     if (UseStateMachine) {
         MxEvent waitEvent;
@@ -728,7 +750,11 @@ Return Value:
     reqCtxSize = FxGetContextSize(&m_RequestAttributes);
 
     //
-    // If present, setup a I/O class extensions info chain.
+    // Setup and initialize the Class Extension chain.
+    //
+    // The order of class extension callbacks is the reverse of the order that
+    // WdfCxDeviceInitAllocate is called. This is to prioritize CX's that link
+    // to other CX's. A Client->Cx1->CX2 will have CX2 callbacks called first.
     //
     for (next = DeviceInit->CxDeviceInitListHead.Flink;
          next != &DeviceInit->CxDeviceInitListHead;
@@ -762,6 +788,23 @@ Return Value:
 
         reqCtxSize = MAX(FxGetContextSize(&cxInit->RequestAttributes),
                          reqCtxSize);
+
+        //
+        // Initialize Cx Registered Pnp / Power callbacks
+        //
+        if (cxInit->PnpPowerCallbacks.Set == TRUE) {
+            ULONG callback;
+            for (callback = 0 ; callback < FxCxCallbackMax; callback++) {
+                status = FxPrePostCallback::_InitializeContext(
+                            GetDriverGlobals(),
+                            cxInit,
+                            &cxDeviceInfo->CxPnpPowerCallbackContexts[callback],
+                            (FxCxCallbackType) callback);
+                if (!NT_SUCCESS(status)) {
+                    return status;
+                }
+            }
+        }
     }
 
     //
@@ -804,7 +847,7 @@ Return Value:
     Mx::MxInitializeNPagedLookasideList(&m_RequestLookasideList,
                                     NULL,
                                     NULL,
-                                    0,
+                                    POOL_NX_ALLOCATION,
                                     m_RequestLookasideListElementSize,
                                     pGlobals->Tag,
                                     0);
@@ -2173,4 +2216,3 @@ FxDevice::_ValidateOpenKeyParams(
 
     return status;
 }
-

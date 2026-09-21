@@ -51,6 +51,8 @@ Return Value:
     m_Entry.Next = NULL;
 
     m_State = FALSE;
+
+    m_AutoEnableOnFirstStart = TRUE;
 }
 
 FxDeviceInterface::~FxDeviceInterface()

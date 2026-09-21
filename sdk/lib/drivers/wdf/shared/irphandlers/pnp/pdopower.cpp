@@ -30,7 +30,7 @@ Revision History:
 // Tracing support
 #if defined(EVENT_TRACING)
 extern "C" {
-#include "PdoPower.tmh"
+// #include "PdoPower.tmh"
 }
 #endif
 
@@ -104,6 +104,10 @@ FxPkgPdo::DispatchSystemSetPower(
                                Irp->GetParameterPowerState());
 
     if (IsPowerPolicyOwner()) {
+
+        m_PowerPolicyMachine.m_Owner->
+            m_DevicePowerIrpTracker.SaveStateFromSystemPowerIrp(Irp);
+
         if (m_SystemPowerState == PowerSystemWorking) {
             //
             // Ideally we would like to complete the S0 irp before we start
@@ -167,9 +171,17 @@ FxPkgPdo::DispatchDeviceSetPower(
                 m_Device->GetHandle(),
                 m_Device->GetDeviceObject());
 
-            ASSERTMSG("Received set device power irp but the irp was not "
-                "requested by the device (the power policy owner)\n",
-                FALSE);
+            //
+
+            //
+            if (GetDriverGlobals()->FxVerifierOn) {
+                FxVerifierBugCheck(GetDriverGlobals(),          // globals
+                       WDF_POWER_MULTIPLE_PPO,                  // specific type
+                       (ULONG_PTR)m_Device->GetDeviceObject(),  // parm 2
+                       (ULONG_PTR)Irp->GetIrp());               // parm 3
+
+                /* NOTREACHED */
+            }
         }
 
         //
@@ -259,21 +271,24 @@ FxPkgPdo::PowerReleasePendingDeviceIrp(
 _Must_inspect_result_
 NTSTATUS
 FxPkgPdo::PowerCheckParentOverload(
-    __in BOOLEAN* ParentOn
+    __out BOOLEAN* WaitForParentOn
     )
 /*++
 
 Routine Description:
-    This function implements the CheckParent state.  Its
-    job is to determine which state we should go to next based on whether
-    the parent is in D0.
+
+    This function implements the CheckParent state.  Its job is to determine
+    whether the PDO should power-reference the parent and wait for it to
+    transition to D0.
 
 Arguments:
-    none
+
+    WaitForParentOn - Whether the caller should wait for the parent to notify
+                      it that it has transitioned to D0 before proceeding.
 
 Return Value:
 
-    VOID
+    NTSTATUS
 
 --*/
 {
@@ -281,8 +296,20 @@ Return Value:
 
 
 
-    return (m_Device->m_ParentDevice->m_PkgPnp)->
-        PowerPolicyCanChildPowerUp(ParentOn);
+    if (m_HasPowerDependencyOnParent) {
+        BOOLEAN parentOn;
+        NTSTATUS status;
+        status = m_Device->m_ParentDevice->m_PkgPnp->
+            PowerPolicyCanChildPowerUp(&parentOn);
+        if (NT_SUCCESS(status)) {
+            *WaitForParentOn = (parentOn == FALSE);
+        }
+        return status;
+    }
+    else {
+        *WaitForParentOn = FALSE;
+        return STATUS_SUCCESS;
+    }
 }
 
 WDF_DEVICE_POWER_STATE
@@ -419,7 +446,14 @@ Return Value:
   --*/
 {
 
-    m_Device->m_ParentDevice->m_PkgPnp->PowerPolicyChildPoweredDown();
+
+    //
+    // If the child does not have a power dependency on the parent, then a
+    // reference was never acquired.
+    //
+    if (m_HasPowerDependencyOnParent) {
+        m_Device->m_ParentDevice->m_PkgPnp->PowerPolicyChildPoweredDown();
+    }
 }
 
 VOID

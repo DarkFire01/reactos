@@ -22,10 +22,10 @@ Revision History:
 
 --*/
 
-#include "FxSupportPch.hpp"
+#include "fxsupportpch.hpp"
 
 extern "C" {
-#include "FxDeviceInterfaceUM.tmh"
+// #include "FxDeviceInterfaceUM.tmh"
 }
 
 FxDeviceInterface::FxDeviceInterface(
@@ -51,6 +51,10 @@ Return Value:
     m_Entry.Next = NULL;
 
     m_State = FALSE;
+
+    m_Device = NULL;
+
+    m_AutoEnableOnFirstStart = TRUE;
 }
 
 FxDeviceInterface::~FxDeviceInterface()

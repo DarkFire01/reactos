@@ -25,7 +25,7 @@ Revision History:
 #include "coreprivshared.hpp"
 
 extern "C" {
-#include "FxDeviceUm.tmh"
+// #include "FxDeviceUm.tmh"
 }
 
 VOID
@@ -344,7 +344,6 @@ FxDevice::CreateDevice(
     MdDeviceObject  pNewDeviceObject = NULL;
     ULONG           characteristics;
     NTSTATUS        status;
-    DEVICE_TYPE     devType;
     HRESULT hr;
     IWudfDevice2* pNewDeviceObject2;
     IWudfDeviceStack2* pDevStack2;
@@ -363,7 +362,7 @@ FxDevice::CreateDevice(
 
 
 
-    UNREFERENCED_PARAMETER(devType);
+
 
     characteristics = DeviceInit->Characteristics;
 
@@ -722,6 +721,8 @@ FxDevice::ProcessWmiPowerQueryOrSetData (
 
 --*/
 {
+    *QueryResult = FALSE;
+
     if (Action == ActionInvalid) {
         return STATUS_INVALID_PARAMETER;
     }
@@ -821,6 +822,25 @@ FxDevice::PoFxDevicePowerNotRequired (
     GetFxDevice(DeviceObject)->m_PkgPnp->m_PowerPolicyMachine.m_Owner->
          m_PoxInterface.PowerNotRequiredCallbackInvoked();
 }
+
+void
+FxDevice::PoFxDeviceDirectedPowerDown (
+    _In_ MdDeviceObject DeviceObject
+    )
+{
+    GetFxDevice(DeviceObject)->m_PkgPnp->m_PowerPolicyMachine.m_Owner->
+         m_PoxInterface.DirectedPowerDownCallbackInvoked();
+}
+
+void
+FxDevice::PoFxDeviceDirectedPowerUp (
+    _In_ MdDeviceObject DeviceObject
+    )
+{
+    GetFxDevice(DeviceObject)->m_PkgPnp->m_PowerPolicyMachine.m_Owner->
+         m_PoxInterface.DirectedPowerUpCallbackInvoked();
+}
+
 
 NTSTATUS
 FxDevice::NtStatusFromHr (
@@ -1772,6 +1792,8 @@ FxDevice::RetrieveDeviceInfoRegistrySettings(
     ASSERT(GroupId != NULL);
     ASSERT(DeviceRegInfo != NULL);
 
+    *GroupId = NULL;
+
     ZeroMemory(DeviceRegInfo, sizeof(UMDF_DRIVER_REGSITRY_INFO));
     type = REG_NONE;
 
@@ -1890,17 +1912,16 @@ FxDevice::RetrieveDeviceInfoRegistrySettings(
                           &type,
                           (LPBYTE) buffer,
                           &bufferSize);
-    if (ERROR_MORE_DATA == Err) {
-
-        buffer = new WCHAR[bufferSize/sizeof(buffer[0])];
+    if (ERROR_SUCCESS == Err && type == REG_SZ) {
+        buffer = new WCHAR[(bufferSize / sizeof(buffer[0])) + 1];
         if (buffer == NULL) {
             Err = ERROR_NOT_ENOUGH_MEMORY;
             DoTraceLevelMessage(GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
                          "Failed to allocate memory for string buffer");
         }
         else {
-
             buffer[0] = L'\0';
+
             Err = RegQueryValueEx(wudfKey,
                                   FX_DEVICE_GROUP_ID,
                                   0,
@@ -1931,7 +1952,7 @@ FxDevice::RetrieveDeviceInfoRegistrySettings(
     }
     else if (ERROR_FILE_NOT_FOUND != Err) {
         DoTraceLevelMessage(GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-                     "Failed to read Group id value in registry");
+                     "Failed to read Group id value from registry %!WINERROR!", Err);
     }
 
 

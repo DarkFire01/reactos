@@ -19,6 +19,6 @@ typedef DRIVER_ADD_DEVICE_UM MdDriverAddDeviceType, *MdDriverAddDevice;
 typedef DRIVER_UNLOAD_UM MdDriverUnloadType, *MdDriverUnload;
 typedef DRIVER_DISPATCH_UM MdDriverDispatchType, *MdDriverDispatch;
 
-#include "MxDriverObject.h"
+#include "mxdriverobject.h"
 
 

@@ -40,9 +40,6 @@ WDFDEVICE_INIT::WDFDEVICE_INIT(
     DeviceType = FILE_DEVICE_UNKNOWN;
     Characteristics = FILE_DEVICE_SECURE_OPEN;
 
-    RtlZeroMemory(&FileObject, sizeof(FileObject));
-    FileObject.AutoForwardCleanupClose = WdfUseDefault;
-
     DeviceName = NULL;
     CreatedDevice = NULL;
 
@@ -53,32 +50,7 @@ WDFDEVICE_INIT::WDFDEVICE_INIT(
 
     RemoveLockOptionFlags = 0;
 
-    RtlZeroMemory(&PnpPower.PnpPowerEventCallbacks, sizeof(PnpPower.PnpPowerEventCallbacks));
-    RtlZeroMemory(&PnpPower.PolicyEventCallbacks, sizeof(PnpPower.PolicyEventCallbacks));
-    PnpPower.PnpStateCallbacks = NULL;
-    PnpPower.PowerStateCallbacks = NULL;
-    PnpPower.PowerPolicyStateCallbacks = NULL;
-
-    PnpPower.PowerPolicyOwner = WdfUseDefault;
-
     InitType = FxDeviceInitTypeFdo;
-
-    RtlZeroMemory(&Fdo.EventCallbacks, sizeof(Fdo.EventCallbacks));
-    RtlZeroMemory(&Fdo.ListConfig, sizeof(Fdo.ListConfig));
-    RtlZeroMemory(&Fdo.ListConfigAttributes, sizeof(Fdo.ListConfigAttributes));
-    Fdo.Filter = FALSE;
-
-    RtlZeroMemory(&Pdo.EventCallbacks, sizeof(Pdo.EventCallbacks));
-    Pdo.Raw = FALSE;
-    Pdo.Static = FALSE;
-    Pdo.DeviceID = NULL;
-    Pdo.InstanceID = NULL;
-    Pdo.ContainerID = NULL;
-    Pdo.DefaultLocale = 0x0;
-    Pdo.DescriptionEntry = NULL;
-    Pdo.ForwardRequestToParent = FALSE;
-
-    RtlZeroMemory(&Security, sizeof(Security));
 
     RtlZeroMemory(&RequestAttributes, sizeof(RequestAttributes));
 
@@ -89,6 +61,8 @@ WDFDEVICE_INIT::WDFDEVICE_INIT(
     InitializeListHead(&CxDeviceInitListHead);
 
     ReleaseHardwareOrderOnFailure = WdfReleaseHardwareOrderOnFailureEarly;
+
+    CxContextObject = NULL;
 
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
 
@@ -101,9 +75,13 @@ WDFDEVICE_INIT::WDFDEVICE_INIT(
 
     PdoKey = NULL;
 
+    ConfigRegistryPath = NULL;
+
     DevInstanceID = NULL;
 
     DriverID = 0;
+
+    Companion = NULL;
 #endif
 }
 
@@ -143,6 +121,10 @@ WDFDEVICE_INIT::~WDFDEVICE_INIT()
     }
     if (PreprocessInfo != NULL) {
         delete PreprocessInfo;
+    }
+
+    if (CxContextObject != NULL) {
+        CxContextObject->DeleteObject();
     }
 
     while(!IsListEmpty(&CxDeviceInitListHead)) {
@@ -321,3 +303,46 @@ WDFDEVICE_INIT::AddCxDeviceInit(
     InsertHeadList(&CxDeviceInitListHead, &CxDeviceInit->ListEntry);
 }
 
+NTSTATUS
+WDFDEVICE_INIT::AllocateCxContext(
+    _In_  PFX_DRIVER_GLOBALS     CxDriverGlobals,
+    _In_  PWDF_OBJECT_ATTRIBUTES ContextAttributes,
+    _Outptr_opt_
+          PVOID*                 Context
+    )
+{
+    NTSTATUS status;
+
+    //
+    // This is thread safe. The caller WdfCxDeviceInitAllocateContext are
+    // already serialized since they can only be called from EvtDeviceAdd.
+    //
+    if (CxContextObject == NULL) {
+        status = FxUserObject::_Create(CxDriverGlobals,
+                                       WDF_NO_OBJECT_ATTRIBUTES,
+                                       &CxContextObject);
+        if (!NT_SUCCESS(status)) {
+            goto Done;
+        }
+    }
+
+    status = FxObjectAllocateContext(CxContextObject,
+                                     ContextAttributes,
+                                     FALSE, // AllowCallbacksOnly
+                                     Context);
+Done:
+    return status;
+}
+
+PVOID
+WDFDEVICE_INIT::GetCxTypedContext(
+    _In_ PCWDF_OBJECT_CONTEXT_TYPE_INFO TypeInfo
+    )
+{
+    if (CxContextObject == NULL) {
+        return NULL;
+    }
+
+    return FxObjectGetTypedContext(CxContextObject,
+                                   TypeInfo);
+}

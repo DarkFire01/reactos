@@ -171,9 +171,9 @@ FxpGetImageBase(
     //
     // Allocate returned-sized memory for the modules area.
     //
-    modules = (AUX_MODULE_EXTENDED_INFO*) ExAllocatePoolWithTag(PagedPool,
-                                                                modulesSize,
-                                                                '30LW');
+    modules = (AUX_MODULE_EXTENDED_INFO*) ExAllocatePool2(POOL_FLAG_PAGED,
+                                                          modulesSize,
+                                                          '30LW');
     if (NULL == modules) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         goto exit;
@@ -430,9 +430,7 @@ FxRegisterBugCheckCallback(
     __in    PDRIVER_OBJECT DriverObject
     )
 {
-    UNICODE_STRING funcName;
     PKBUGCHECK_REASON_CALLBACK_RECORD callbackRecord;
-    PFN_KE_REGISTER_BUGCHECK_REASON_CALLBACK funcPtr;
     BOOLEAN enableDriverTracking;
 
     //
@@ -472,19 +470,6 @@ FxRegisterBugCheckCallback(
 
 
     //
-    // The KeRegisterBugCheckReasonCallback exists for xp sp1 and above. So
-    // check whether this function is defined on the current OS and register
-    // for the bugcheck callback only if this function is defined.
-    //
-    RtlInitUnicodeString(&funcName, L"KeRegisterBugCheckReasonCallback");
-    funcPtr = (PFN_KE_REGISTER_BUGCHECK_REASON_CALLBACK)
-        MmGetSystemRoutineAddress(&funcName);
-
-    if (NULL == funcPtr) {
-        goto Done;
-    }
-
-    //
     // Register this driver with driver tracker.
     //
     if (enableDriverTracking) {
@@ -502,7 +487,7 @@ FxRegisterBugCheckCallback(
     //
     // Register the bugcheck callback.
     //
-    funcPtr(callbackRecord,
+    KeRegisterBugCheckReasonCallback(callbackRecord,
             FxpBugCheckCallback,
             KbCallbackSecondaryDumpData,
             (PUCHAR)FxDriverGlobals->Public.DriverName);
@@ -517,29 +502,14 @@ FxUnregisterBugCheckCallback(
     __inout PFX_DRIVER_GLOBALS FxDriverGlobals
     )
 {
-    UNICODE_STRING funcName;
     PKBUGCHECK_REASON_CALLBACK_RECORD callbackRecord;
-    PFN_KE_DEREGISTER_BUGCHECK_REASON_CALLBACK funcPtr;
 
     callbackRecord = &FxDriverGlobals->BugCheckCallbackRecord;
     if (NULL == callbackRecord->CallbackRoutine) {
         goto Done;
     }
 
-    //
-    // The KeDeregisterBugCheckReasonCallback exists for xp sp1 and above. So
-    // check whether this function is defined on the current OS and deregister
-    // from the bugcheck callback only if this function is defined.
-    //
-    RtlInitUnicodeString(&funcName, L"KeDeregisterBugCheckReasonCallback");
-    funcPtr = (PFN_KE_DEREGISTER_BUGCHECK_REASON_CALLBACK)
-        MmGetSystemRoutineAddress(&funcName);
-
-    if (NULL == funcPtr) {
-        goto Done;
-    }
-
-    funcPtr(callbackRecord);
+    KeDeregisterBugCheckReasonCallback(callbackRecord);
     callbackRecord->CallbackRoutine = NULL;
 
     //
@@ -627,9 +597,7 @@ VOID
 FxInitializeBugCheckDriverInfo()
 {
     NTSTATUS                                 status;
-    UNICODE_STRING                           funcName;
     PKBUGCHECK_REASON_CALLBACK_RECORD        callbackRecord;
-    PFN_KE_REGISTER_BUGCHECK_REASON_CALLBACK funcPtr;
     SIZE_T                                   arraySize;
     ULONG                                    arrayCount;
 
@@ -650,25 +618,12 @@ FxInitializeBugCheckDriverInfo()
 
 
 
-    //
-    // The KeRegisterBugCheckReasonCallback exists for xp sp1 and above. So
-    // check whether this function is defined on the current OS and register
-    // for the bugcheck callback only if this function is defined.
-    //
-    RtlInitUnicodeString(&funcName, L"KeRegisterBugCheckReasonCallback");
-    funcPtr = (PFN_KE_REGISTER_BUGCHECK_REASON_CALLBACK)
-        MmGetSystemRoutineAddress(&funcName);
-
-    if (NULL == funcPtr) {
-        goto Done;
-    }
-
     arraySize = sizeof(FX_DUMP_DRIVER_INFO_ENTRY) * FX_DUMP_DRIVER_INFO_INCREMENT;
     arrayCount = FX_DUMP_DRIVER_INFO_INCREMENT;
 
     FxLibraryGlobals.BugCheckDriverInfo =
-        (PFX_DUMP_DRIVER_INFO_ENTRY)MxMemory::MxAllocatePoolWithTag(
-                                    NonPagedPool,
+        (PFX_DUMP_DRIVER_INFO_ENTRY)MxMemory::MxAllocatePool2(
+                                    POOL_FLAG_NON_PAGED,
                                     arraySize,
                                     FX_TAG);
 
@@ -706,7 +661,7 @@ FxInitializeBugCheckDriverInfo()
     //
     // Register the bugcheck callback.
     //
-    funcPtr(callbackRecord,
+    KeRegisterBugCheckReasonCallback(callbackRecord,
             FxpLibraryBugCheckCallback,
             KbCallbackSecondaryDumpData,
             (PUCHAR)WdfLdrType);
@@ -719,9 +674,7 @@ Done:;
 VOID
 FxUninitializeBugCheckDriverInfo()
 {
-    UNICODE_STRING                              funcName;
     PKBUGCHECK_REASON_CALLBACK_RECORD           callbackRecord;
-    PFN_KE_DEREGISTER_BUGCHECK_REASON_CALLBACK  funcPtr;
 
     //
     // Deregister callback.
@@ -738,20 +691,7 @@ FxUninitializeBugCheckDriverInfo()
         goto Done;
     }
 
-    //
-    // The KeDeregisterBugCheckReasonCallback exists for xp sp1 and above. So
-    // check whether this function is defined on the current OS and deregister
-    // from the bugcheck callback only if this function is defined.
-    //
-    RtlInitUnicodeString(&funcName, L"KeDeregisterBugCheckReasonCallback");
-    funcPtr = (PFN_KE_DEREGISTER_BUGCHECK_REASON_CALLBACK)
-        MmGetSystemRoutineAddress(&funcName);
-
-    if (NULL == funcPtr) {
-        goto Done;
-    }
-
-    funcPtr(callbackRecord);
+    KeDeregisterBugCheckReasonCallback(callbackRecord);
     callbackRecord->CallbackRoutine = NULL;
 
     //
@@ -819,8 +759,8 @@ FxCacheBugCheckDriverInfo(
         //
         // Allocate new buffer to hold driver info.
         //
-        driverInfo = (PFX_DUMP_DRIVER_INFO_ENTRY)MxMemory::MxAllocatePoolWithTag(
-                                NonPagedPool,
+        driverInfo = (PFX_DUMP_DRIVER_INFO_ENTRY)MxMemory::MxAllocatePool2(
+                                POOL_FLAG_NON_PAGED,
                                 sizeof(FX_DUMP_DRIVER_INFO_ENTRY)* newCount,
                                 FX_TAG);
 
@@ -1014,8 +954,6 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Register(
     ULONG                       index       = 0;
     PFX_DRIVER_TRACKER_ENTRY    pool        = NULL;
     PFX_DRIVER_TRACKER_ENTRY    driverUsage = NULL;
-    UNICODE_STRING              funcName;
-    PVOID                       funcPtr     = NULL;
 
     //
     // Nothing to do if tracker is already initialized. No need for a lock
@@ -1035,44 +973,7 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Register(
     //
     // Capture maximum number of processors.
     //
-    RtlInitUnicodeString(&funcName, L"KeQueryMaximumProcessorCountEx");
-    funcPtr = MmGetSystemRoutineAddress(&funcName);
-    if (funcPtr != NULL) {
-        //
-        // Win 7 and forward.
-        //
-        m_Number = ((PFN_KE_QUERY_MAXIMUM_PROCESSOR_COUNT_EX)funcPtr)(
-                            ALL_PROCESSOR_GROUPS);
-    }
-    else {
-        RtlInitUnicodeString(&funcName, L"KeQueryMaximumProcessorCount");
-        funcPtr = MmGetSystemRoutineAddress(&funcName);
-        if (funcPtr != NULL) {
-            //
-            // Windows Server 2008.
-            //
-            m_Number = ((PFN_KE_QUERY_MAXIMUM_PROCESSOR_COUNT)funcPtr)();
-        }
-        else {
-            if ((5 == FxLibraryGlobals.OsVersionInfo.dwMajorVersion &&
-                 0 <  FxLibraryGlobals.OsVersionInfo.dwMinorVersion) ||
-                (6 == FxLibraryGlobals.OsVersionInfo.dwMajorVersion &&
-                 0 == FxLibraryGlobals.OsVersionInfo.dwMinorVersion)){
-                //
-                // XP (Major=5, Minor>0) and Vista (Major=6, Minor=0).
-                //
-                m_Number = (ULONG)(*((CCHAR *)&KeNumberProcessors));
-            }
-            else {
-                //
-                // This feature is not supported for Windows 2000.
-                //
-                ASSERT(FALSE);
-                status = STATUS_NOT_SUPPORTED;
-                goto Done;
-            }
-        }
-    }
+    m_Number = KeQueryMaximumProcessorCountEx(ALL_PROCESSOR_GROUPS);
 
     //
     // Validate upper bound.
@@ -1086,23 +987,8 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Register(
     // Determine padded size of each tracking entry structure.
     //
     if (m_Number > 1 ) {
-        RtlInitUnicodeString(&funcName, L"KeGetRecommendedSharedDataAlignment");
-        funcPtr = MmGetSystemRoutineAddress(&funcName);
-
-        if (funcPtr != NULL) {
-            //
-            //XP and forward
-            //
-            paddedSize = ((PFN_KE_GET_RECOMMENDED_SHARED_DATA_ALIGNMENT)funcPtr)();
-            ASSERT ((paddedSize & (paddedSize - 1)) == 0);
-        }
-        else {
-            //
-            // This feature is not supported for Windows 2000.
-            //
-            status = STATUS_NOT_SUPPORTED;
-            goto Done;
-        }
+        paddedSize = KeGetRecommendedSharedDataAlignment();
+        ASSERT ((paddedSize & (paddedSize - 1)) == 0);
     }
     else {
         paddedSize = sizeof(FX_DRIVER_TRACKER_ENTRY);
@@ -1115,8 +1001,8 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Register(
     //
     m_EntrySize = paddedSize;
 
-    pool = (PFX_DRIVER_TRACKER_ENTRY)MxMemory::MxAllocatePoolWithTag(
-                                        NonPagedPool,
+    pool = (PFX_DRIVER_TRACKER_ENTRY)MxMemory::MxAllocatePool2(
+                                        POOL_FLAG_NON_PAGED,
                                         paddedSize * m_Number,
                                         FX_TAG);
     if (NULL == pool) {
@@ -1136,8 +1022,8 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Register(
         //
         // Allocate enough padding so we can start the refs on an aligned boundary
         //
-        pool = (PFX_DRIVER_TRACKER_ENTRY)MxMemory::MxAllocatePoolWithTag(
-                                        NonPagedPool,
+        pool = (PFX_DRIVER_TRACKER_ENTRY)MxMemory::MxAllocatePool2(
+                                        POOL_FLAG_NON_PAGED,
                                         paddedSize * m_Number + paddedSize,
                                         FX_TAG);
         if (NULL == pool) {

@@ -34,6 +34,7 @@ extern "C" {
 
 _Must_inspect_result_
 NTSTATUS
+#pragma prefast(suppress:__WARNING_INIT_NOT_CLEARED, "AddDevice-like function did not clear DO_DEVICE_INITIALIZING")
 NTAPI
 FxDriver::AddDevice(
     __in MdDriverObject DriverObject,
@@ -97,7 +98,7 @@ FxDriver::AddDevice(
         return status;
     }
 
-    pDevice = init.CreatedDevice;
+    pDevice = (FxDevice*)init.CreatedDevice;
 
     if (NT_SUCCESS(status)) {
         //

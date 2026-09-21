@@ -24,12 +24,13 @@ Revision History:
 
 // Tracing support
 extern "C" {
-#include "FxRequestApiUm.tmh"
+// #include "FxRequestApiUm.tmh"
 
 _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 WDFEXPORT(WdfRequestImpersonate)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -114,67 +115,8 @@ Returns:
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
-ULONG
-WDFEXPORT(WdfRequestGetRequestorProcessId)(
-    _In_
-    PWDF_DRIVER_GLOBALS DriverGlobals,
-    _In_
-    WDFREQUEST Request
-    )
-/*++
-
-Routine Description:
-
-    This routine returns the identifier of the process that sent the I/O request.
-
-    The WDM IRP is invalid once WdfRequestComplete is called, regardless
-    of any reference counts on the WDFREQUEST object.
-
-Arguments:
-
-    Request - Handle to the Request object
-
-Returns:
-
-    Process ID
-
---*/
-{
-    PFX_DRIVER_GLOBALS pFxDriverGlobals;
-    NTSTATUS status;
-    FxRequest *pRequest;
-    MdIrp irp;
-
-    //
-    // Validate the request handle, and get the FxRequest*
-    //
-    FxObjectHandleGetPtrAndGlobals(GetFxDriverGlobals(DriverGlobals),
-                                   Request,
-                                   FX_TYPE_REQUEST,
-                                   (PVOID*)&pRequest,
-                                   &pFxDriverGlobals);
-
-#if FX_VERBOSE_TRACE
-    DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_VERBOSE, TRACINGREQUEST,
-                        "Enter: WDFREQUEST 0x%p", Request);
-#endif // FX_VERBOSE_TRACE
-
-    status = pRequest->GetIrp(&irp);
-
-    if (!NT_SUCCESS(status)) {
-        DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGREQUEST,
-                            "WDFREQUEST is already completed 0x%p, %!STATUS!",
-                            Request, status);
-        FxVerifierDbgBreakPoint(pFxDriverGlobals);
-        return 0;
-    }
-
-    return irp->GetRequestorProcessId();
-}
-
-_IRQL_requires_max_(PASSIVE_LEVEL)
-WDFAPI
 BOOLEAN
+NTAPI
 WDFEXPORT(WdfRequestIsFromUserModeDriver)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -217,6 +159,7 @@ WDFEXPORT(WdfRequestIsFromUserModeDriver)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 VOID
+NTAPI
 WDFEXPORT(WdfRequestSetUserModeDriverInitiatedIo)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -263,6 +206,7 @@ WDFEXPORT(WdfRequestSetUserModeDriverInitiatedIo)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 BOOLEAN
+NTAPI
 WDFEXPORT(WdfRequestGetUserModeDriverInitiatedIo)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -306,6 +250,7 @@ WDFEXPORT(WdfRequestGetUserModeDriverInitiatedIo)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 VOID
+NTAPI
 WDFEXPORT(WdfRequestSetActivityId)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -350,6 +295,7 @@ WDFEXPORT(WdfRequestSetActivityId)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 WDFEXPORT(WdfRequestRetrieveActivityId)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
@@ -407,6 +353,7 @@ WDFEXPORT(WdfRequestRetrieveActivityId)(
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 WDF_DEVICE_IO_TYPE
+NTAPI
 WDFEXPORT(WdfRequestGetEffectiveIoType)(
     _In_
     PWDF_DRIVER_GLOBALS DriverGlobals,
