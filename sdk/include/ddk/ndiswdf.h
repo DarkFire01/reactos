@@ -9,6 +9,7 @@
 #pragma once
 
 #include <ndis.h>
+#include <ntddndis_p.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,14 +45,6 @@ typedef enum _NdisWdfPnpPowerAction
     NdisWdfActionPnpRebalance,
     NdisWdfActionDeviceObjectCleanup
 } NDIS_WDF_PNP_POWER_ACTION, *PNDIS_WDF_PNP_POWER_ACTION;
-
-typedef enum _NDIS_IDLE_CONDITION
-{
-    NdisIdleConditionAnyLowLatency = 0,
-    NdisIdleConditionAny,
-    NdisIdleConditionUnicastOnly,
-    NdisIdleConditionL2ConnectedOnly
-} NDIS_IDLE_CONDITION, *PNDIS_IDLE_CONDITION;
 
 typedef enum _NET_DEVICE_RESET_TYPE
 {
