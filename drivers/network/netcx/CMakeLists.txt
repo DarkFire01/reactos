@@ -156,7 +156,7 @@ add_library(netadaptercx MODULE
     netadaptercx.rc)
 
 set_module_type(netadaptercx kmdfdriver)
-target_link_libraries(netadaptercx rsclib seglib)
+target_link_libraries(netadaptercx pktmonclnt rsclib seglib)
 
 # The drop is built against an ntifs level kernel surface, see inc/NetCxKernel.h.
 if(MSVC)
