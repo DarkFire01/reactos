@@ -281,6 +281,13 @@ typedef ULONG NDIS_OID, *PNDIS_OID;
 /* Optional OIDs */
 #define OID_GEN_MEDIA_CAPABILITIES        0x00010201
 #define OID_GEN_PHYSICAL_MEDIUM           0x00010202
+#if ((NTDDI_VERSION >= NTDDI_VISTA) || NDIS_SUPPORT_NDIS6)
+#define OID_GEN_LINK_PARAMETERS           0x00010208
+#define OID_GEN_INTERRUPT_MODERATION      0x00010209
+#define OID_GEN_RECEIVE_SCALE_PARAMETERS_V2 0x00010214
+#define OID_GEN_RSS_SET_INDIRECTION_TABLE_ENTRIES 0x000102C0
+#define OID_GEN_RECEIVE_SCALE_INITIALIZE  0x000102C1
+#endif
 
 /* Required statistics OIDs */
 #define OID_GEN_XMIT_OK                   0x00020101
@@ -288,6 +295,9 @@ typedef ULONG NDIS_OID, *PNDIS_OID;
 #define OID_GEN_XMIT_ERROR                0x00020103
 #define OID_GEN_RCV_ERROR                 0x00020104
 #define OID_GEN_RCV_NO_BUFFER             0x00020105
+#if ((NTDDI_VERSION >= NTDDI_VISTA) || NDIS_SUPPORT_NDIS6)
+#define OID_GEN_STATISTICS                0x00020106
+#endif
 
 /* Optional statistics OIDs */
 #define OID_GEN_DIRECTED_BYTES_XMIT       0x00020201
@@ -314,6 +324,9 @@ typedef ULONG NDIS_OID, *PNDIS_OID;
 #define OID_GEN_FRIENDLY_NAME             0x00020216
 #define OID_GEN_MINIPORT_INFO             0x00020217
 #define OID_GEN_RESET_VERIFY_PARAMETERS   0x00020218
+#if ((NTDDI_VERSION >= NTDDI_VISTA) || NDIS_SUPPORT_NDIS6)
+#define OID_TCP_RSC_STATISTICS            0x0002021D
+#endif
 
 /* IEEE 802.3 (Ethernet) OIDs */
 #define NDIS_802_3_MAC_OPTION_PRIORITY    0x00000001
@@ -383,6 +396,13 @@ typedef ULONG NDIS_OID, *PNDIS_OID;
 #define OID_PNP_REMOVE_WAKE_UP_PATTERN          0xFD010104
 #define OID_PNP_WAKE_UP_PATTERN_LIST            0xFD010105
 #define OID_PNP_ENABLE_WAKE_UP                  0xFD010106
+#if ((NTDDI_VERSION >= NTDDI_VISTA) || NDIS_SUPPORT_NDIS6)
+#define OID_PM_PARAMETERS                       0xFD010109
+#define OID_PM_ADD_WOL_PATTERN                  0xFD01010A
+#define OID_PM_REMOVE_WOL_PATTERN               0xFD01010B
+#define OID_PM_ADD_PROTOCOL_OFFLOAD             0xFD01010D
+#define OID_PM_REMOVE_PROTOCOL_OFFLOAD          0xFD01010F
+#endif
 
 /* Optional PnP/PM statistics OIDs */
 #define OID_PNP_WAKE_UP_OK                      0xFD020200
@@ -502,10 +522,21 @@ typedef struct _NDIS_GUID {
   union {
     NDIS_OID Oid;
     NDIS_STATUS Status;
-  } u;
+  } DUMMYUNIONNAME;
   ULONG Size;
   ULONG Flags;
 } NDIS_GUID, *PNDIS_GUID;
+
+#define fNDIS_GUID_TO_OID                 0x00000001
+#define fNDIS_GUID_TO_STATUS              0x00000002
+#define fNDIS_GUID_ANSI_STRING            0x00000004
+#define fNDIS_GUID_UNICODE_STRING         0x00000008
+#define fNDIS_GUID_ARRAY                  0x00000010
+#define fNDIS_GUID_ALLOW_READ             0x00000020
+#define fNDIS_GUID_ALLOW_WRITE            0x00000040
+#define fNDIS_GUID_METHOD                 0x00000080
+#define fNDIS_GUID_NDIS_RESERVED          0x00000100
+#define fNDIS_GUID_SUPPORT_COMMON_HEADER  0x00000200
 
 typedef struct _NDIS_PM_PACKET_PATTERN {
   ULONG Priority;
@@ -543,6 +574,13 @@ typedef struct _NDIS_CO_LINK_SPEED {
 
 #ifdef __cplusplus
 }
+#endif
+
+/* Native 802.11 definitions, as the NDIS 6 medium list refers to them. */
+#if ((NTDDI_VERSION >= NTDDI_VISTA) || NDIS_SUPPORT_NDIS6)
+#ifndef __WINDOT11_H__
+#include <windot11.h>
+#endif
 #endif
 
 #endif /* _NTDDNDIS_ */
