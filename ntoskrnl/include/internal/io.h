@@ -1301,6 +1301,15 @@ IopCompleteRequest(
 );
 
 //
+// Interrupt Routines
+//
+VOID
+NTAPI
+IopProcessPassiveInterrupts(
+    _In_ ULONG Vector
+);
+
+//
 // Error Logging Routines
 //
 VOID

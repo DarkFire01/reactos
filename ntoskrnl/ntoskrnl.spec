@@ -595,6 +595,7 @@
 @ stdcall KeDeregisterNmiCallback(ptr)
 @ stdcall KeDetachProcess()
 @ stdcall KeDisconnectInterrupt(ptr)
+@ stdcall KeDispatchSecondaryInterrupt(long long)
 @ stdcall KeEnterCriticalRegion() _KeEnterCriticalRegion
 @ stdcall KeEnterGuardedRegion() _KeEnterGuardedRegion
 @ stdcall KeEnterKernelDebugger()
@@ -628,6 +629,7 @@
 @ stdcall KeInitializeMutant(ptr long)
 @ stdcall KeInitializeMutex(ptr long)
 @ stdcall KeInitializeQueue(ptr long)
+@ stdcall KeInitializeSecondaryInterruptServices(ptr)
 @ stdcall KeInitializeSemaphore(ptr long long)
 @ stdcall -arch=i386,arm KeInitializeSpinLock(ptr) _KeInitializeSpinLock
 @ stdcall KeInitializeThreadedDpc(ptr ptr ptr)
