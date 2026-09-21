@@ -44,6 +44,7 @@ public:
     typedef T pointer;
 
     unique_any() noexcept : m_value(T()) { }
+    unique_any(decltype(nullptr)) noexcept : m_value(T()) { }
     explicit unique_any(T Value) noexcept : m_value(Value) { }
 
     unique_any(unique_any && Other) noexcept : m_value(Other.release()) { }
@@ -98,19 +99,51 @@ private:
     T m_value;
 };
 
-/* An array plus its count, freed as one allocation. */
-template<typename T>
+/* Deleter for elements that own nothing. */
+struct empty_deleter
+{
+    template<typename T>
+    void operator()(T const &) const noexcept { }
+};
+
+/*
+ * An array plus its count. Each element goes to ElementDeleter before the
+ * array itself goes to ArrayDeleter.
+ */
+template<typename ValueType, typename ArrayDeleter, typename ElementDeleter = empty_deleter>
 class unique_any_array_ptr
 {
 public:
 
-    unique_any_array_ptr() noexcept : m_pointer(nullptr), m_count(0) { }
+    typedef ValueType value_type;
+    typedef size_t size_type;
+    typedef ValueType * pointer;
+
+    unique_any_array_ptr() noexcept : m_ptr(nullptr), m_size(0) { }
+
+    unique_any_array_ptr(decltype(nullptr)) noexcept : m_ptr(nullptr), m_size(0) { }
+
+    unique_any_array_ptr(pointer Pointer, size_type Size) noexcept : m_ptr(Pointer), m_size(Size) { }
 
     unique_any_array_ptr(unique_any_array_ptr && Other) noexcept
-        : m_pointer(Other.m_pointer), m_count(Other.m_count)
+        : m_ptr(Other.m_ptr), m_size(Other.m_size)
     {
-        Other.m_pointer = nullptr;
-        Other.m_count = 0;
+        Other.m_ptr = nullptr;
+        Other.m_size = 0;
+    }
+
+    unique_any_array_ptr & operator=(unique_any_array_ptr && Other) noexcept
+    {
+        if (this != wistd::addressof(Other))
+        {
+            reset();
+            m_ptr = Other.m_ptr;
+            m_size = Other.m_size;
+            Other.m_ptr = nullptr;
+            Other.m_size = 0;
+        }
+
+        return *this;
     }
 
     ~unique_any_array_ptr()
@@ -121,31 +154,34 @@ public:
     unique_any_array_ptr(unique_any_array_ptr const &) = delete;
     unique_any_array_ptr & operator=(unique_any_array_ptr const &) = delete;
 
-    T * get() const noexcept { return m_pointer; }
-    size_t size() const noexcept { return m_count; }
+    pointer get() const noexcept { return m_ptr; }
+    size_type size() const noexcept { return m_size; }
+    bool empty() const noexcept { return m_size == 0; }
 
-    T & operator[](size_t Index) noexcept { return m_pointer[Index]; }
-    T const & operator[](size_t Index) const noexcept { return m_pointer[Index]; }
+    pointer begin() const noexcept { return m_ptr; }
+    pointer end() const noexcept { return m_ptr + m_size; }
+
+    ValueType & operator[](size_type Index) const noexcept { return m_ptr[Index]; }
 
     void reset() noexcept
     {
-        if (m_pointer != nullptr)
-        {
-            for (size_t i = 0; i < m_count; i++)
-                m_pointer[i].~T();
+        if (m_ptr == nullptr)
+            return;
 
-            ExFreePool(m_pointer);
-            m_pointer = nullptr;
-            m_count = 0;
-        }
+        for (size_type i = 0; i < m_size; i++)
+            ElementDeleter()(m_ptr[i]);
+
+        ArrayDeleter()(m_ptr);
+        m_ptr = nullptr;
+        m_size = 0;
     }
 
-    explicit operator bool() const noexcept { return m_pointer != nullptr; }
+    explicit operator bool() const noexcept { return m_ptr != nullptr; }
 
 private:
 
-    T * m_pointer;
-    size_t m_count;
+    pointer m_ptr;
+    size_type m_size;
 };
 
 inline void CloseKernelHandle(HANDLE Handle) noexcept
@@ -294,9 +330,20 @@ inline out_param_t<SmartPointer> out_param(SmartPointer & Target) noexcept
  * rather than raising.
  */
 template<typename T, typename... Args>
-inline wistd::unique_ptr<T> make_unique_nothrow(Args &&... Arguments)
+inline typename wistd::enable_if<!wistd::is_array<T>::value, wistd::unique_ptr<T>>::type
+make_unique_nothrow(Args &&... Arguments)
 {
     return wistd::unique_ptr<T>(new (std::nothrow) T(wistd::forward<Args>(Arguments)...));
+}
+
+/* Unbounded arrays only, with every element value initialized. */
+template<typename T>
+inline typename wistd::enable_if<wistd::is_array<T>::value, wistd::unique_ptr<T>>::type
+make_unique_nothrow(size_t Count)
+{
+    typedef typename wistd::remove_extent<T>::type Element;
+
+    return wistd::unique_ptr<T>(new (std::nothrow) Element[Count]());
 }
 
 }

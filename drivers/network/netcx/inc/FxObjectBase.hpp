@@ -85,3 +85,15 @@ protected:
     bool
         m_Constructed;
 };
+
+/* Deleting the WDF object is what destroys the C++ object living in its context. */
+struct CFxObjectDeleter
+{
+    template <typename T>
+    void
+    operator()(
+        _In_ T *Object) const
+    {
+        WdfObjectDelete(Object->GetFxObject());
+    }
+};
