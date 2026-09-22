@@ -1799,6 +1799,8 @@
 @ stdcall -version=0xa00+ MmMapInSpaceEx(int64 long long)
 @ stdcall -version=0x602+ NtQuerySystemInformationEx(long ptr long ptr long ptr)
 @ stdcall -version=0x602+ ZwQuerySystemInformationEx(long ptr long ptr long ptr)
+@ stdcall -version=0x602+ InbvNotifyDisplayOwnershipChange(long ptr)
+@ stdcall -version=0x602+ InbvSetVirtualFrameBuffer(ptr ptr)
 @ stdcall -version=0x602+ IoDuplicateDependency(ptr ptr)
 @ stdcall -version=0x602+ IoGetDeviceNumaNode(ptr ptr)
 @ stdcall -version=0x601+ IoRegisterContainerNotification(long ptr ptr long ptr)

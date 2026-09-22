@@ -48,6 +48,20 @@ InbvNotifyDisplayOwnershipLost(
     _In_ INBV_RESET_DISPLAY_PARAMETERS Callback
 );
 
+NTSTATUS
+NTAPI
+InbvNotifyDisplayOwnershipChange(
+    _In_ BOOLEAN DisplayOwned,
+    _In_opt_ PVOID ResetDisplayCallback
+);
+
+NTSTATUS
+NTAPI
+InbvSetVirtualFrameBuffer(
+    _In_ PVOID VirtualFrameBuffer,
+    _In_opt_ PVOID ResetDisplayCallback
+);
+
 //
 // Installation Functions
 //
