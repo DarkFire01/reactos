@@ -190,6 +190,12 @@ typedef struct _MINIPORT_CORE
     /* Kept current by NDIS_STATUS_LINK_STATE */
     NDIS_LINK_STATE LinkState;
 
+    /* Native 802.11 to Ethernet translation, kept current by the dot11
+       association indications. Only meaningful when MediaType is
+       NdisMediumNative802_11. */
+    BOOLEAN Dot11Associated;
+    UCHAR Dot11Bssid[NDIS_MAX_PHYS_ADDRESS_LENGTH];
+
     /* NDIS 5 protocol sends become NET_BUFFER_LISTs from here */
     NDIS_HANDLE SendNblPool;
     /* NDIS 5 miniport indications become NET_BUFFER_LISTs from here */
@@ -572,6 +578,33 @@ VOID
 NTAPI
 CoreFreeNetBufferPacket(
     _In_ PNDIS_PACKET Packet);
+
+/* native80211.c */
+
+BOOLEAN
+NTAPI
+NdisDot11Active(
+    _In_ PLOGICAL_ADAPTER Adapter);
+
+VOID
+NTAPI
+NdisDot11ReceiveToEthernet(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PNET_BUFFER_LIST NetBufferLists);
+
+VOID
+NTAPI
+NdisDot11SendToNative(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ PNET_BUFFER_LIST NetBufferLists);
+
+VOID
+NTAPI
+NdisDot11CaptureStatus(
+    _In_ PLOGICAL_ADAPTER Adapter,
+    _In_ NDIS_STATUS StatusCode,
+    _In_reads_bytes_opt_(BufferLength) PVOID StatusBuffer,
+    _In_ ULONG BufferLength);
 
 /* mphook.c */
 

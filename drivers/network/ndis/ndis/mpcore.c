@@ -502,8 +502,10 @@ CoreCompleteInitialization(
         return NDIS_STATUS_FAILURE;
     }
 
-    /* The NDIS 5 edges read these out of the miniport block */
-    Adapter->NdisMiniportBlock.MediaType = Core->MediaType;
+    /* The NDIS 5 edges read these out of the miniport block. A native 802.11
+       adapter is shown to them as Ethernet; native80211.c does the framing. */
+    Adapter->NdisMiniportBlock.MediaType =
+        (Core->MediaType == NdisMediumNative802_11) ? NdisMedium802_3 : Core->MediaType;
     Adapter->NdisMiniportBlock.MacOptions = Core->MacOptions;
     Adapter->NdisMiniportBlock.MaximumLookahead = Core->LookaheadSize;
     Adapter->NdisMiniportBlock.CurrentLookahead = Core->CurrentLookahead;
