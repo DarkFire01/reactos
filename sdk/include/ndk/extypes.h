@@ -1774,6 +1774,29 @@ typedef struct _SYSTEM_MEMORY_LIST_INFORMATION
 } SYSTEM_MEMORY_LIST_INFORMATION, *PSYSTEM_MEMORY_LIST_INFORMATION;
 
 //
+// Class 126
+//
+typedef enum _SYSTEM_PIXEL_FORMAT
+{
+    SystemPixelFormatUnknown,
+    SystemPixelFormatR8G8B8,
+    SystemPixelFormatR8G8B8X8,
+    SystemPixelFormatB8G8R8,
+    SystemPixelFormatB8G8R8X8
+} SYSTEM_PIXEL_FORMAT;
+
+typedef struct _SYSTEM_BOOT_GRAPHICS_INFORMATION
+{
+    LARGE_INTEGER FrameBuffer;
+    ULONG Width;
+    ULONG Height;
+    ULONG PixelStride;
+    ULONG Flags;
+    SYSTEM_PIXEL_FORMAT Format;
+    ULONG DisplayRotation;
+} SYSTEM_BOOT_GRAPHICS_INFORMATION, *PSYSTEM_BOOT_GRAPHICS_INFORMATION;
+
+//
 // Class 184
 //
 typedef struct _SYSTEM_PHYSICAL_MEMORY_INFORMATION
