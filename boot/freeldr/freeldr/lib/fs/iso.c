@@ -68,7 +68,7 @@ static BOOLEAN IsoSearchDirectoryBufferForFile(PVOID DirectoryBuffer, ULONG Dire
     PDIR_RECORD    Record;
     ULONG        Offset;
     ULONG i;
-    CHAR Name[32];
+    CHAR Name[MAXUCHAR + 1]; // FileIdLength is a byte, so any identifier fits
 
     TRACE("IsoSearchDirectoryBufferForFile() DirectoryBuffer = 0x%x DirectoryLength = %d FileName = %s\n", DirectoryBuffer, DirectoryLength, FileName);
 
