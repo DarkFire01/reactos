@@ -1704,6 +1704,23 @@ EngDeviceIoControl(
     _In_ DWORD cjOutBufferSize,
     _Out_ LPDWORD lpBytesReturned);
 
+/*
+ * ReactOS-only helper (not part of the real DDI): opens \Device\DxgKrnl for a GDI driver that
+ * may only import win32k (e.g. the CDD). Use EngDeviceIoControl() on the returned handle, and
+ * release it with EngCloseDxgkrnl(*phFileObject).
+ */
+ENGAPI
+HANDLE
+APIENTRY
+EngOpenDxgkrnl(
+    _Out_ HANDLE *phFileObject);
+
+ENGAPI
+VOID
+APIENTRY
+EngCloseDxgkrnl(
+    _In_ HANDLE hFileObject);
+
 #define DM_DEFAULT                        0x00000001
 #define DM_MONOCHROME                     0x00000002
 
