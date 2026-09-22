@@ -200,6 +200,9 @@ WlanQueryOid(
     else
     {
         Error = GetLastError();
+        /* An overflow reports, past the header, the buffer size to retry with */
+        if (Error == ERROR_MORE_DATA && Got > FIELD_OFFSET(NDISUIO_QUERY_OID, Data))
+            *Returned = Got - FIELD_OFFSET(NDISUIO_QUERY_OID, Data);
     }
 
     HeapFree(GetProcessHeap(), 0, Query);
@@ -249,10 +252,10 @@ WlanGetBssList(
 {
     HANDLE Interface;
     PWLAN_DOT11_BYTE_ARRAY Array;
-    /* Room for the most networks the driver keeps, each with its beacon body */
-    ULONG Size = 65536;
+    ULONG Size = 4096;
     ULONG Returned;
-    DWORD Error;
+    DWORD Error = ERROR_GEN_FAILURE;
+    ULONG Attempt;
 
     *BssList = NULL;
 
@@ -260,24 +263,40 @@ WlanGetBssList(
     if (Interface == NULL)
         return ERROR_BAD_UNIT;
 
-    Array = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, Size);
-    if (Array == NULL)
+    /* Query into a small buffer, and if the driver reports it needs more,
+       grow to that size and query again */
+    for (Attempt = 0; Attempt < 3; Attempt++)
     {
-        CloseHandle(Interface);
-        return ERROR_NOT_ENOUGH_MEMORY;
-    }
+        Array = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, Size);
+        if (Array == NULL)
+        {
+            CloseHandle(Interface);
+            return ERROR_NOT_ENOUGH_MEMORY;
+        }
 
-    Error = WlanQueryOid(Interface, OID_DOT11_ENUM_BSS_LIST, Array, Size, &Returned);
-    CloseHandle(Interface);
+        Returned = 0;
+        Error = WlanQueryOid(Interface, OID_DOT11_ENUM_BSS_LIST, Array, Size, &Returned);
 
-    if (Error != ERROR_SUCCESS || Returned < FIELD_OFFSET(WLAN_DOT11_BYTE_ARRAY, ucBuffer))
-    {
+        if (Error == ERROR_SUCCESS && Returned >= FIELD_OFFSET(WLAN_DOT11_BYTE_ARRAY, ucBuffer))
+        {
+            CloseHandle(Interface);
+            *BssList = Array;
+            return ERROR_SUCCESS;
+        }
+
         HeapFree(GetProcessHeap(), 0, Array);
-        return Error != ERROR_SUCCESS ? Error : ERROR_GEN_FAILURE;
+
+        if (Error == ERROR_MORE_DATA && Returned > Size)
+        {
+            Size = Returned;
+            continue;
+        }
+
+        break;
     }
 
-    *BssList = Array;
-    return ERROR_SUCCESS;
+    CloseHandle(Interface);
+    return Error != ERROR_SUCCESS ? Error : ERROR_GEN_FAILURE;
 }
 
 /* Reads the interface GUID out of a "\DEVICE\{guid}" binding name */
