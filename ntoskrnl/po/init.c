@@ -444,6 +444,10 @@ PopInitSystemPhase0(VOID)
     InitializeListHead(&PopControlSwitches);
     InitializeListHead(&PopActionWaiters);
 
+    /* Initialize the sleep state vetoes held by drivers */
+    InitializeListHead(&PopSleepDisableList);
+    ExInitializeFastMutex(&PopSleepDisableLock);
+
     /*
      * Initialize the memory unlock worker thread and corresponding
      * completion event. These constructs are specifically used in
