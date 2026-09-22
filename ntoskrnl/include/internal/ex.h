@@ -122,6 +122,48 @@ typedef struct _ETIMER
     LIST_ENTRY WakeTimerListEntry;
 } ETIMER, *PETIMER;
 
+// HACK: Copied from wdm.h as we don't have the required NTDDI_VERSION
+#if (NTDDI_VERSION < NTDDI_WINBLUE)
+#define EX_TIMER_HIGH_RESOLUTION 0x4
+#define EX_TIMER_NO_WAKE 0x8
+#define EX_TIMER_UNLIMITED_TOLERANCE ((LONGLONG)-1)
+#define EX_TIMER_NOTIFICATION (1UL << 31)
+
+typedef struct _EXT_SET_PARAMETERS_V0
+{
+    ULONG Version;
+    ULONG Reserved;
+    LONGLONG NoWakeTolerance;
+} EXT_SET_PARAMETERS, *PEXT_SET_PARAMETERS;
+
+typedef struct _EX_TIMER *PEX_TIMER;
+
+typedef
+VOID
+NTAPI
+EXT_CALLBACK(
+    _In_ PEX_TIMER Timer,
+    _In_opt_ PVOID Context);
+typedef EXT_CALLBACK *PEXT_CALLBACK;
+
+typedef
+VOID
+NTAPI
+EXT_DELETE_CALLBACK(
+    _In_opt_ PVOID Context);
+typedef EXT_DELETE_CALLBACK *PEXT_DELETE_CALLBACK;
+
+typedef PVOID PEXT_CANCEL_PARAMETERS;
+
+typedef struct _EXT_DELETE_PARAMETERS
+{
+    ULONG Version;
+    ULONG Reserved;
+    PEXT_DELETE_CALLBACK DeleteCallback;
+    PVOID DeleteContext;
+} EXT_DELETE_PARAMETERS, *PEXT_DELETE_PARAMETERS;
+#endif
+
 typedef struct
 {
     PCALLBACK_OBJECT *CallbackObject;
