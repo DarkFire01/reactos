@@ -1766,6 +1766,8 @@
 # ===========================================================
 @ cdecl _strtoui64()
 @ cdecl sscanf_s()
+
+@ cdecl -arch=i386 _chkstk()
 @ stdcall -version=0x601+ EmClientQueryRuleState(ptr ptr ptr)
 @ stdcall -version=0x601+ EmClientRuleEvaluate(ptr ptr ptr)
 @ stdcall -version=0x601+ EmProviderDeregister(ptr)
@@ -1831,9 +1833,13 @@
 @ stdcall -version=0x600+ KeSetActualBasePriorityThread(ptr long)
 @ stdcall -version=0x603+ KeSetTimer2(ptr int64 int64 ptr)
 @ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
+@ fastcall -arch=i386 KfAcquireSpinLock(ptr) hal.KfAcquireSpinLock
+@ fastcall -arch=i386 KfReleaseSpinLock(ptr long) hal.KfReleaseSpinLock
 
 @ stdcall -version=0x602+ LdrResFindResource(ptr ptr ptr ptr ptr ptr ptr ptr long)
 @ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
+
+@ stdcall -version=0x600+ MmMapViewInSystemSpaceEx(ptr ptr ptr ptr long)
 @ stdcall -version=0x600+ MmRotatePhysicalView(ptr ptr ptr long ptr ptr)
 @ fastcall -version=0x601+ ObfDereferenceObjectWithTag(ptr long)
 @ fastcall -version=0x601+ ObfReferenceObjectWithTag(ptr long)
@@ -1862,10 +1868,12 @@
 
 @ stdcall -version=0x603+ RtlAvlInsertNodeEx(ptr ptr long ptr)
 @ stdcall -version=0x603+ RtlAvlRemoveNode(ptr ptr)
+@ stdcall -version=0x600+ RtlCompareUnicodeStrings(ptr long ptr long long)
 @ stdcall -version=0x600+ RtlFindClosestEncodableLength(int64 ptr)
 @ stdcall -version=0x602+ RtlGenerateClass5Guid(ptr ptr long ptr)
 @ stdcall -version=0xA00+ RtlGetActiveConsoleId()
 @ stdcall -version=0x600+ RtlGetNtProductType(ptr)
+@ stdcall -version=0x600+ RtlGetProductInfo(long long long long ptr)
 @ stdcall -version=0xA00+ RtlIsMultiSessionSku()
 @ stdcall -version=0x600+ RtlIsNtDdiVersionAvailable(long)
 @ stdcall -version=0x600+ RtlNumberOfSetBitsUlongPtr(long)
@@ -1875,6 +1883,8 @@
 @ stdcall -version=0xA00+ TtmNotifyDeviceArrival(long int64 ptr long ptr)
 @ stdcall -version=0xA00+ TtmNotifyDeviceDeparture(long int64)
 @ stdcall -version=0x600+ ZwQueryLicenseValue(ptr ptr ptr long ptr)
+@ stdcall -version=0x600+ ZwAllocateLocallyUniqueId(ptr)
+@ stdcall -version=0x600+ ZwUnlockVirtualMemory(ptr ptr ptr long)
 @ stdcall -version=0xA00+ ZwUpdateWnfStateData(ptr ptr long ptr ptr long long)
 @ stdcall -version=0x600+ WheaAddErrorSource(ptr ptr)
 @ stdcall -version=0x600+ WheaConfigureErrorSource(long ptr)
