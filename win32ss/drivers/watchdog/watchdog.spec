@@ -3,6 +3,7 @@
 @ fastcall WdResetDeferredWatch(ptr)
 @ fastcall WdResumeDeferredWatch(ptr ptr)
 @ fastcall WdSuspendDeferredWatch(ptr)
+@ stdcall SMgrNotifySessionChange(long)
 @ stdcall WdAllocateDeferredWatchdog(ptr ptr long)
 @ stdcall WdAllocateWatchdog(ptr ptr long)
 @ stdcall WdAttachContext(ptr ptr)
