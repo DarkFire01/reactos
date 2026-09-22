@@ -15,6 +15,9 @@
 #define MODULE_INVOLVED_IN_ARM3
 #include <mm/ARM3/miarm.h>
 
+/* The low bits of the section attributes name a preferred NUMA node, counted from 1 */
+#define MI_SECTION_NODE_MASK    0x7F
+
 /* GLOBALS ********************************************************************/
 
 ACCESS_MASK MmMakeSectionAccess[8] =
@@ -2011,6 +2014,18 @@ MiCreatePagingFileMap(OUT PSEGMENT *Segment,
         return STATUS_COMMITMENT_LIMIT;
     }
 
+    /*
+     * Committed 64K page sections must be whole 64K units. The pages are
+     * still handed out one at a time, so the flag only shapes the size.
+     */
+    if ((AllocationAttributes & SEC_COMMIT) &&
+        (AllocationAttributes & SEC_64K_PAGES) &&
+        (PteCount % (_64K / PAGE_SIZE)))
+    {
+        MiReturnCommitment(PteCount);
+        return STATUS_INVALID_PARAMETER_4;
+    }
+
     /* The segment contains all the Prototype PTEs, allocate it in paged pool */
     NewSegment = ExAllocatePoolWithTag(PagedPool,
                                        sizeof(SEGMENT) +
@@ -2745,26 +2760,35 @@ MmCreateSection(OUT PVOID *SectionObject,
         return STATUS_INVALID_PARAMETER_6;
     }
 
-    /* Win32k still sets bit 0, it used to pick this implementation over the legacy one */
-    AllocationAttributes &= ~1;
+    /* Strip the preferred node, which has to exist; win32k passes node 1 */
+    if ((AllocationAttributes & MI_SECTION_NODE_MASK) > KeNumberNodes)
+        return STATUS_INVALID_PARAMETER_6;
+
+    AllocationAttributes &= ~MI_SECTION_NODE_MASK;
 
     /* Make the same sanity checks that the Nt interface should've validated */
     ASSERT((AllocationAttributes & ~(SEC_COMMIT | SEC_RESERVE | SEC_BASED |
                                      SEC_LARGE_PAGES | SEC_IMAGE | SEC_NOCACHE |
+                                     SEC_WRITECOMBINE | SEC_64K_PAGES |
                                      SEC_NO_CHANGE)) == 0);
     ASSERT((AllocationAttributes & (SEC_COMMIT | SEC_RESERVE | SEC_IMAGE)) != 0);
     ASSERT(!((AllocationAttributes & SEC_IMAGE) &&
-             (AllocationAttributes & (SEC_COMMIT | SEC_RESERVE |
-                                      SEC_NOCACHE | SEC_NO_CHANGE))));
+             (AllocationAttributes & (SEC_COMMIT | SEC_RESERVE | SEC_NOCACHE |
+                                      SEC_WRITECOMBINE | SEC_NO_CHANGE))));
     ASSERT(!((AllocationAttributes & SEC_COMMIT) && (AllocationAttributes & SEC_RESERVE)));
     ASSERT(!((SectionPageProtection & PAGE_NOCACHE) ||
              (SectionPageProtection & PAGE_WRITECOMBINE) ||
              (SectionPageProtection & PAGE_GUARD) ||
              (SectionPageProtection & PAGE_NOACCESS)));
 
-    /* Convert section flag to page flag */
-    if (AllocationAttributes & SEC_NOCACHE)
-        SectionPageProtection |= PAGE_NOCACHE;
+    /* Data sections carry their caching in the page protection, uncached wins over combined */
+    if (!(AllocationAttributes & SEC_IMAGE))
+    {
+        if (AllocationAttributes & SEC_NOCACHE)
+            SectionPageProtection |= PAGE_NOCACHE;
+        else if (AllocationAttributes & SEC_WRITECOMBINE)
+            SectionPageProtection |= PAGE_WRITECOMBINE;
+    }
 
     /* Check to make sure the protection is correct. Nt* does this already */
     ProtectionMask = MiMakeProtectionMask(SectionPageProtection);
@@ -2777,8 +2801,9 @@ MmCreateSection(OUT PVOID *SectionObject,
     /* Check if this is going to be a data or image backed file section */
     if ((FileHandle) || (FileObject))
     {
-        /* These cannot be mapped with large pages */
-        if (AllocationAttributes & SEC_LARGE_PAGES) return STATUS_INVALID_PARAMETER_6;
+        /* These cannot be mapped with large or 64K pages */
+        if (AllocationAttributes & (SEC_LARGE_PAGES | SEC_64K_PAGES))
+            return STATUS_INVALID_PARAMETER_6;
 
         if (FileObject)
         {
@@ -2791,7 +2816,7 @@ MmCreateSection(OUT PVOID *SectionObject,
         {
             /* Reference the file handle to get the object */
             Status = ObReferenceObjectByHandle(FileHandle,
-                                               MmMakeFileAccess[ProtectionMask],
+                                               MmMakeFileAccess[ProtectionMask & MM_PROTECT_ACCESS],
                                                IoFileObjectType,
                                                PreviousMode,
                                                (PVOID*)&File,
@@ -3724,16 +3749,14 @@ NtCreateSection(OUT PHANDLE SectionHandle,
     NTSTATUS Status;
     PAGED_CODE();
 
-    /* Check for non-existing flags */
+    /* Check for non-existing flags, the low bits are a preferred node */
     if ((AllocationAttributes & ~(SEC_COMMIT | SEC_RESERVE | SEC_BASED |
                                   SEC_LARGE_PAGES | SEC_IMAGE | SEC_NOCACHE |
-                                  SEC_NO_CHANGE)))
+                                  SEC_WRITECOMBINE | SEC_64K_PAGES |
+                                  SEC_NO_CHANGE | MI_SECTION_NODE_MASK)))
     {
-        if (!(AllocationAttributes & 1))
-        {
-            DPRINT1("Bogus allocation attribute: %lx\n", AllocationAttributes);
-            return STATUS_INVALID_PARAMETER_6;
-        }
+        DPRINT1("Bogus allocation attribute: %lx\n", AllocationAttributes);
+        return STATUS_INVALID_PARAMETER_6;
     }
 
     /* Check for no allocation type */
@@ -3746,7 +3769,7 @@ NtCreateSection(OUT PHANDLE SectionHandle,
     /* Check for image allocation with invalid attributes */
     if ((AllocationAttributes & SEC_IMAGE) &&
         (AllocationAttributes & (SEC_COMMIT | SEC_RESERVE | SEC_LARGE_PAGES |
-                                 SEC_NOCACHE | SEC_NO_CHANGE)))
+                                 SEC_NOCACHE | SEC_WRITECOMBINE | SEC_NO_CHANGE)))
     {
         DPRINT1("Image allocation with invalid attributes\n");
         return STATUS_INVALID_PARAMETER_6;
@@ -3756,6 +3779,13 @@ NtCreateSection(OUT PHANDLE SectionHandle,
     if ((AllocationAttributes & SEC_COMMIT) && (AllocationAttributes & SEC_RESERVE))
     {
         DPRINT1("Commit and reserve in the same time\n");
+        return STATUS_INVALID_PARAMETER_6;
+    }
+
+    /* A section has one page size */
+    if ((AllocationAttributes & SEC_LARGE_PAGES) && (AllocationAttributes & SEC_64K_PAGES))
+    {
+        DPRINT1("Large and 64K pages in the same time\n");
         return STATUS_INVALID_PARAMETER_6;
     }
 
