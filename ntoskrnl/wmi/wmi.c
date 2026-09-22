@@ -31,7 +31,48 @@ typedef enum _WMI_CLOCK_TYPE
     WMICT_CPUCYCLE
 } WMI_CLOCK_TYPE;
 
+/*
+ * The TEB activity ID sits at the end of the Vista Instrumentation array,
+ * which the NT 5.2 layout ntoskrnl is built with still covers.
+ */
+#define ETWP_TEB_ACTIVITY_ID_SLOT   (13 - sizeof(GUID) / sizeof(PVOID))
+#define EtwpTebActivityId(Teb)      ((LPGUID)&(Teb)->Instrumentation[ETWP_TEB_ACTIVITY_ID_SLOT])
+
+#define ETWP_TEB_ACTIVITY_ID_OFFSET \
+    (FIELD_OFFSET(TEB, Instrumentation) + ETWP_TEB_ACTIVITY_ID_SLOT * sizeof(PVOID))
+
+#ifdef _M_AMD64
+C_ASSERT(ETWP_TEB_ACTIVITY_ID_OFFSET == 0x1710);
+#elif defined(_M_IX86)
+C_ASSERT(ETWP_TEB_ACTIVITY_ID_OFFSET == 0xF50);
+#endif
+
+/* Activity IDs are a random per boot base followed by a running sequence number */
+static ULONG EtwpActivityIdBase[2];
+static volatile LONG64 EtwpActivityIdSequence;
+
 /* FUNCTIONS *****************************************************************/
+
+static
+VOID
+EtwpNewActivityId(
+    _Out_ LPGUID ActivityId)
+{
+    LONG64 Sequence;
+
+    do
+    {
+        Sequence = EtwpActivityIdSequence;
+    } while (InterlockedCompareExchange64(&EtwpActivityIdSequence,
+                                          Sequence + 1,
+                                          Sequence) != Sequence);
+
+    Sequence++;
+    ActivityId->Data1 = EtwpActivityIdBase[0];
+    ActivityId->Data2 = (USHORT)EtwpActivityIdBase[1];
+    ActivityId->Data3 = (USHORT)(EtwpActivityIdBase[1] >> 16);
+    RtlCopyMemory(ActivityId->Data4, &Sequence, sizeof(ActivityId->Data4));
+}
 
 BOOLEAN
 NTAPI
@@ -40,6 +81,11 @@ WmiInitialize(
 {
     UNICODE_STRING DriverName = RTL_CONSTANT_STRING(L"\\Driver\\WMIxWDM");
     NTSTATUS Status;
+    ULONG Seed;
+
+    Seed = KeQueryPerformanceCounter(NULL).LowPart ^ (ULONG)KeQueryInterruptTime();
+    EtwpActivityIdBase[0] = RtlRandomEx(&Seed);
+    EtwpActivityIdBase[1] = RtlRandomEx(&Seed);
 
     /* Initialize the GUID object type */
     Status = WmipInitializeGuidObjectType();
@@ -524,6 +570,83 @@ EtwSetInformation(
         default:
             return STATUS_INVALID_DEVICE_REQUEST;
     }
+}
+
+/**
+ * @brief
+ * Creates an activity ID, or reads or replaces the activity ID of the current thread.
+ *
+ * @param[in] ControlCode
+ * One of the EVENT_ACTIVITY_CTRL_* codes.
+ *
+ * @param[in,out] ActivityId
+ * The activity ID to hand in or to receive.
+ *
+ * @return
+ * STATUS_SUCCESS, STATUS_NOT_SUPPORTED when the thread has no TEB to keep an
+ * activity ID in, or STATUS_INVALID_PARAMETER for an unknown control code.
+ */
+NTSTATUS
+NTAPI
+EtwActivityIdControl(
+    _In_ ULONG ControlCode,
+    _Inout_updates_bytes_(sizeof(GUID)) LPGUID ActivityId)
+{
+    PTEB Teb = NULL;
+    LPGUID ThreadActivityId;
+    GUID Previous;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    if (ControlCode == EVENT_ACTIVITY_CTRL_CREATE_ID)
+    {
+        EtwpNewActivityId(ActivityId);
+        return STATUS_SUCCESS;
+    }
+
+    /* Only a thread running in its own process can reach its TEB */
+    if (!PsIsSystemThread(PsGetCurrentThread()) && !KeIsAttachedProcess())
+        Teb = KeGetCurrentThread()->Teb;
+
+    if (Teb == NULL)
+        return STATUS_NOT_SUPPORTED;
+
+    ThreadActivityId = EtwpTebActivityId(Teb);
+
+    _SEH2_TRY
+    {
+        switch (ControlCode)
+        {
+            case EVENT_ACTIVITY_CTRL_GET_ID:
+                *ActivityId = *ThreadActivityId;
+                break;
+
+            case EVENT_ACTIVITY_CTRL_SET_ID:
+                *ThreadActivityId = *ActivityId;
+                break;
+
+            case EVENT_ACTIVITY_CTRL_GET_SET_ID:
+                Previous = *ThreadActivityId;
+                *ThreadActivityId = *ActivityId;
+                *ActivityId = Previous;
+                break;
+
+            case EVENT_ACTIVITY_CTRL_CREATE_SET_ID:
+                *ActivityId = *ThreadActivityId;
+                EtwpNewActivityId(ThreadActivityId);
+                break;
+
+            default:
+                Status = STATUS_INVALID_PARAMETER;
+                break;
+        }
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    return Status;
 }
 
 /*
