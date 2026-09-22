@@ -237,6 +237,59 @@ WdiQuery(
 
 /* Set OIDs */
 
+/* Little-endian 32-bit store for the packed WDI wire fields */
+static
+VOID
+WdiPutLe32(
+    _Out_writes_bytes_(4) PUCHAR Buffer,
+    _In_ UINT32 Value)
+{
+    Buffer[0] = (UCHAR)Value;
+    Buffer[1] = (UCHAR)(Value >> 8);
+    Buffer[2] = (UCHAR)(Value >> 16);
+    Buffer[3] = (UCHAR)(Value >> 24);
+}
+
+/* Picks the cached scan entry to connect to: the desired BSSID when one is
+   set, otherwise the strongest network whose SSID matches the desired one */
+static
+BOOLEAN
+WdiFindConnectBss(
+    _In_ PWDI_ADAPTER Adapter,
+    _Out_ PWDI_BSS Target)
+{
+    KIRQL OldIrql;
+    BOOLEAN Found = FALSE;
+    ULONG i;
+
+    KeAcquireSpinLock(&Adapter->BssLock, &OldIrql);
+    for (i = 0; i < Adapter->BssCount; i++)
+    {
+        PWDI_BSS Bss = &Adapter->Bss[i];
+
+        if (Adapter->HasDesiredBssid)
+        {
+            if (!RtlEqualMemory(Bss->Bssid.Address, Adapter->DesiredBssid.Address,
+                                sizeof(Bss->Bssid.Address)))
+                continue;
+        }
+        else if (Bss->SsidLength != Adapter->DesiredSsidLength ||
+                 !RtlEqualMemory(Bss->Ssid, Adapter->DesiredSsid, Adapter->DesiredSsidLength))
+        {
+            continue;
+        }
+
+        if (!Found || Bss->Rssi > Target->Rssi)
+        {
+            *Target = *Bss;
+            Found = TRUE;
+        }
+    }
+    KeReleaseSpinLock(&Adapter->BssLock, OldIrql);
+
+    return Found;
+}
+
 static
 VOID
 NTAPI
@@ -247,11 +300,20 @@ WdiConnectWorker(
     PWDI_ADAPTER Adapter = WorkItemContext;
     PWDI_PORT Port = NULL;
     NDIS_STATUS Status;
-    UCHAR Tlvs[128];
-    ULONG Length = 0;
-    ULONG Auth;
-    ULONG Cipher;
-    DOT11_SSID Ssid;
+    UCHAR Message[256];
+    UCHAR Parameters[128];
+    UCHAR Entry[64];
+    UCHAR Settings[WDI_CONNECTION_SETTINGS_MAX_LENGTH];
+    UCHAR SignalInfo[WDI_SIGNAL_INFO_LENGTH];
+    UCHAR ChannelInfo[WDI_CHANNEL_INFO_LENGTH];
+    ULONG MessageLength = 0;
+    ULONG ParametersLength = 0;
+    ULONG EntryLength = 0;
+    ULONG SettingsLength;
+    UINT32 Auth;
+    UINT32 Cipher;
+    WDI_BSS Target;
+    BOOLEAN HaveTarget;
     ULONG i;
 
     UNREFERENCED_PARAMETER(NdisIoWorkItemHandle);
@@ -271,25 +333,63 @@ WdiConnectWorker(
         goto Done;
     }
 
-    /* The desired network, an open one for now */
-    RtlZeroMemory(&Ssid, sizeof(Ssid));
-    Ssid.uSSIDLength = Adapter->DesiredSsidLength;
-    RtlCopyMemory(Ssid.ucSSID, Adapter->DesiredSsid, Adapter->DesiredSsidLength);
-    Length += WdiTlvPut(Tlvs + Length, WDI_TLV_SSID, &Ssid, sizeof(Ssid));
+    /* WDI_TLV_CONNECT_PARAMETERS holds the connection settings, the SSID and
+       the auth and cipher lists. A fresh connect to an open network for now,
+       so the settings are all left clear. The packed settings grew with the
+       WDI version */
+    if (Adapter->PeerVersion >= WDI_VERSION_1_1_13)
+        SettingsLength = 15;
+    else if (Adapter->PeerVersion >= WDI_VERSION_1_0_1)
+        SettingsLength = 14;
+    else
+        SettingsLength = 13;
 
-    Auth = DOT11_AUTH_ALGO_80211_OPEN;
-    Length += WdiTlvPut(Tlvs + Length, WDI_TLV_AUTH_ALGO_LIST, &Auth, sizeof(Auth));
+    RtlZeroMemory(Settings, sizeof(Settings));
+    ParametersLength += WdiTlvPut(Parameters + ParametersLength, WDI_TLV_CONNECTION_SETTINGS,
+                                  Settings, (UINT16)SettingsLength);
 
-    Cipher = DOT11_CIPHER_ALGO_NONE;
-    Length += WdiTlvPut(Tlvs + Length, WDI_TLV_UNICAST_CIPHER_ALGO_LIST, &Cipher, sizeof(Cipher));
-    Length += WdiTlvPut(Tlvs + Length, WDI_TLV_MULTICAST_CIPHER_ALGO_LIST, &Cipher, sizeof(Cipher));
+    ParametersLength += WdiTlvPut(Parameters + ParametersLength, WDI_TLV_SSID,
+                                  Adapter->DesiredSsid, Adapter->DesiredSsidLength);
 
-    if (Adapter->HasDesiredBssid)
-        Length += WdiTlvPut(Tlvs + Length, WDI_TLV_BSSID, &Adapter->DesiredBssid, sizeof(Adapter->DesiredBssid));
+    Auth = WDI_AUTH_ALGO_80211_OPEN;
+    ParametersLength += WdiTlvPut(Parameters + ParametersLength, WDI_TLV_AUTH_ALGO_LIST,
+                                  &Auth, sizeof(Auth));
 
-    DPRINT1("WLAN connecting to a %u byte SSID on port %u\n", Adapter->DesiredSsidLength, Port->PortId);
+    Cipher = WDI_CIPHER_ALGO_NONE;
+    ParametersLength += WdiTlvPut(Parameters + ParametersLength, WDI_TLV_MULTICAST_CIPHER_ALGO_LIST,
+                                  &Cipher, sizeof(Cipher));
+    ParametersLength += WdiTlvPut(Parameters + ParametersLength, WDI_TLV_UNICAST_CIPHER_ALGO_LIST,
+                                  &Cipher, sizeof(Cipher));
 
-    Status = WdiSendCommand(Adapter, WDI_TASK_CONNECT, Port->PortId, Tlvs, Length, TRUE, NULL);
+    MessageLength += WdiTlvPut(Message + MessageLength, WDI_TLV_CONNECT_PARAMETERS,
+                               Parameters, (UINT16)ParametersLength);
+
+    /* The candidate from our own scan gives the miniport the BSSID, signal
+       and channel it needs to associate */
+    HaveTarget = WdiFindConnectBss(Adapter, &Target);
+    if (HaveTarget)
+    {
+        EntryLength += WdiTlvPut(Entry + EntryLength, WDI_TLV_BSSID,
+                                 Target.Bssid.Address, sizeof(Target.Bssid.Address));
+
+        WdiPutLe32(SignalInfo + 0, (UINT32)Target.Rssi);
+        WdiPutLe32(SignalInfo + 4, Target.LinkQuality);
+        EntryLength += WdiTlvPut(Entry + EntryLength, WDI_TLV_BSS_ENTRY_SIGNAL_INFO,
+                                 SignalInfo, sizeof(SignalInfo));
+
+        WdiPutLe32(ChannelInfo + 0, Target.Channel);
+        WdiPutLe32(ChannelInfo + 4, Target.BandId);
+        EntryLength += WdiTlvPut(Entry + EntryLength, WDI_TLV_BSS_ENTRY_CHANNEL_INFO,
+                                 ChannelInfo, sizeof(ChannelInfo));
+
+        MessageLength += WdiTlvPut(Message + MessageLength, WDI_TLV_CONNECT_BSS_ENTRY,
+                                   Entry, (UINT16)EntryLength);
+    }
+
+    DPRINT1("WLAN connecting to a %u byte SSID on port %u, candidate %s\n",
+            Adapter->DesiredSsidLength, Port->PortId, HaveTarget ? "found" : "none");
+
+    Status = WdiSendCommand(Adapter, WDI_TASK_CONNECT, Port->PortId, Message, MessageLength, TRUE, NULL);
 
     /* The association indication carries the BSSID from the peer creation, so
        this only needs to report whether the task itself finished */

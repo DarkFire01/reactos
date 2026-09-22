@@ -26,8 +26,6 @@
 #define WDI_LINK_QUALITY_ENTRY_LENGTH       3
 #define WDI_SCAN_MODE_LENGTH                10
 #define WDI_SCAN_DWELL_TIME_LENGTH          12
-#define WDI_SIGNAL_INFO_LENGTH              8
-#define WDI_CHANNEL_INFO_LENGTH             8
 
 /* A beacon or probe response body carries a timestamp, interval and capabilities before its IEs */
 #define WDI_FRAME_BODY_FIXED_LENGTH         12
