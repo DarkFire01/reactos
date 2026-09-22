@@ -10,6 +10,7 @@
 /* INCLUDES *****************************************************************/
 
 #include <ntoskrnl.h>
+#include <sha1.h>
 #define NDEBUG
 #include <debug.h>
 
@@ -65,26 +66,18 @@ RtlGetVersion(IN OUT PRTL_OSVERSIONINFOW lpVersionInformation)
 
 /**
  * @brief
- * Retrieves the NT type product of the operating system. This is the kernel-mode variant
- * of this function.
+ * Reads the NT product type from the ProductOptions key.
  *
  * @param[out]  ProductType
- *      The NT type product enumeration value returned by the call.
+ *      Receives the product type when the call succeeds.
  *
  * @return
- *      The function returns TRUE when the call successfully returned the type product of the system.
- *      It'll return FALSE on failure otherwise. In the latter case the function will return WinNT
- *      as the default product type.
- *
- * @remarks
- *      The call expects to be called at PASSIVE_LEVEL. The function firstly checks if the product type is
- *      actually valid by checking the "ProductTypeIsValid" member of _KUSER_SHARED_DATA structure.
- *      Currently we do not implement code that is responsible for the management of this member, yet.
- *
+ *      TRUE if a known product type was found, FALSE otherwise.
  */
+static
 BOOLEAN
-NTAPI
-RtlGetNtProductType(OUT PNT_PRODUCT_TYPE ProductType)
+RtlpQueryProductTypeValue(
+    _Out_ PNT_PRODUCT_TYPE ProductType)
 {
     HANDLE Key;
     BOOLEAN Success;
@@ -196,13 +189,137 @@ RtlGetNtProductType(OUT PNT_PRODUCT_TYPE ProductType)
     }
 
 Exit:
-    if (!Success)
+    if (BufferKey)
+        ExFreePoolWithTag(BufferKey, PRODUCT_TAG);
+
+    return Success;
+}
+
+/**
+ * @brief
+ * Retrieves the NT type product of the operating system. This is the kernel-mode variant
+ * of this function.
+ *
+ * @param[out]  ProductType
+ *      The NT type product enumeration value returned by the call.
+ *
+ * @return
+ *      The function returns TRUE when the call successfully returned the type product of the system.
+ *      It'll return FALSE on failure otherwise. In the latter case the function will return WinNT
+ *      as the default product type.
+ *
+ * @remarks
+ *      Once the memory manager has published the product type in the shared user data it is
+ *      returned from there at any IRQL. Before that the registry is read, which is only possible
+ *      at APC_LEVEL or below.
+ */
+BOOLEAN
+NTAPI
+RtlGetNtProductType(
+    _Out_ PNT_PRODUCT_TYPE ProductType)
+{
+    if (SharedUserData->ProductTypeIsValid)
     {
-        *ProductType = NtProductWinNt;
+        *ProductType = SharedUserData->NtProductType;
+        return TRUE;
     }
 
-    ExFreePoolWithTag(BufferKey, PRODUCT_TAG);
-    return Success;
+    if ((KeGetCurrentIrql() <= APC_LEVEL) && RtlpQueryProductTypeValue(ProductType))
+        return TRUE;
+
+    *ProductType = NtProductWinNt;
+    return FALSE;
+}
+
+/**
+ * @brief
+ * Returns the ID of the session attached to the physical console.
+ */
+ULONG
+NTAPI
+RtlGetActiveConsoleId(VOID)
+{
+    return SharedUserData->ActiveConsoleId;
+}
+
+/**
+ * @brief
+ * Tells whether this SKU allows more than one interactive session.
+ *
+ * @remarks
+ * The NT 5.2 layout of the shared user data calls the global flags TraceLogging.
+ */
+BOOLEAN
+NTAPI
+RtlIsMultiSessionSku(VOID)
+{
+    return (SharedUserData->TraceLogging & SHARED_GLOBAL_FLAGS_MULTI_SESSION_SKU) != 0;
+}
+
+/**
+ * @brief
+ * Creates a name based GUID, RFC 4122 version 5, from a namespace GUID and a name.
+ *
+ * @param[in] NamespaceGuid
+ * The namespace the name belongs to.
+ *
+ * @param[in] Buffer
+ * The name, hashed as raw bytes.
+ *
+ * @param[in] BufferSize
+ * The size of @p Buffer, in bytes.
+ *
+ * @param[out] Guid
+ * Receives the generated GUID.
+ *
+ * @return
+ * STATUS_SUCCESS, or STATUS_INVALID_PARAMETER_1, _3 or _4 for a missing argument.
+ */
+NTSTATUS
+NTAPI
+RtlGenerateClass5Guid(
+    _In_ REFGUID NamespaceGuid,
+    _In_reads_bytes_(BufferSize) PVOID Buffer,
+    _In_ ULONG BufferSize,
+    _Out_ GUID *Guid)
+{
+    SHA_CTX Context;
+    GUID Namespace;
+    ULONG Digest[5];
+
+    PAGED_CODE();
+
+    if (NamespaceGuid == NULL)
+        return STATUS_INVALID_PARAMETER_1;
+
+    if (Guid == NULL)
+        return STATUS_INVALID_PARAMETER_4;
+
+    if ((Buffer == NULL) && (BufferSize != 0))
+        return STATUS_INVALID_PARAMETER_3;
+
+    /* The namespace is hashed with its integer fields in network byte order */
+    Namespace = *NamespaceGuid;
+    Namespace.Data1 = RtlUlongByteSwap(Namespace.Data1);
+    Namespace.Data2 = RtlUshortByteSwap(Namespace.Data2);
+    Namespace.Data3 = RtlUshortByteSwap(Namespace.Data3);
+
+    A_SHAInit(&Context);
+    A_SHAUpdate(&Context, (const UCHAR *)&Namespace, sizeof(Namespace));
+    A_SHAUpdate(&Context, Buffer, BufferSize);
+    A_SHAFinal(&Context, Digest);
+
+    /* The first 16 bytes of the digest are the GUID, also in network byte order */
+    RtlCopyMemory(Guid, Digest, sizeof(*Guid));
+    Guid->Data1 = RtlUlongByteSwap(Guid->Data1);
+    Guid->Data2 = RtlUshortByteSwap(Guid->Data2);
+    Guid->Data3 = RtlUshortByteSwap(Guid->Data3);
+
+    /* Stamp version 5 and the RFC 4122 variant */
+    Guid->Data3 = (Guid->Data3 & 0x0FFF) | 0x5000;
+    Guid->Data4[0] = (Guid->Data4[0] & 0x3F) | 0x80;
+
+    return STATUS_SUCCESS;
 }
 
 #if !defined(_M_IX86)
