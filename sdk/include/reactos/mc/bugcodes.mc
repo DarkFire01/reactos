@@ -1389,6 +1389,16 @@ The faulty driver currently on the kernel stack must be replaced
 with a working version.
 .
 
+MessageId=0xC7
+Severity=Success
+Facility=System
+SymbolicName=TIMER_OR_DPC_INVALID
+Language=English
+A kernel timer or DPC was used in a way that is not permitted.
+This is usually caused by a driver passing invalid timer attributes
+or parameters, or freeing memory that still holds an active timer.
+.
+
 MessageId=0xC8
 Severity=Success
 Facility=System
