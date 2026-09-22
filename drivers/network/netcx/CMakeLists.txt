@@ -219,3 +219,8 @@ if(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
         PRIVATE -Wno-unknown-pragmas -Wno-unused-parameter -Wno-switch
         PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wno-reorder -Wno-invalid-offsetof -Wno-delete-non-virtual-dtor>)
 endif()
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # The KALLOCATOR operator new overloads return null on failure, as MSVC always checks for.
+    target_compile_options(netadaptercx PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fcheck-new -Wno-class-memaccess>)
+endif()

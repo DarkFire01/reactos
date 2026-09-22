@@ -51,7 +51,7 @@ private:
 
 #if _KERNEL_MODE
 
-    PAGED static VOID CallbackThunk(
+    PAGED static VOID NTAPI CallbackThunk(
         PVOID Context)
     {
         auto *This = reinterpret_cast<TBASE*>(Context);
@@ -102,12 +102,12 @@ public:
     _IRQL_requires_max_(DISPATCH_LEVEL)
     void Queue()
     {
-        QueueInner();
+        this->QueueInner();
     }
 
     PAGED void Invoke()
     {
-        InvokeInner();
+        this->InvokeInner();
     }
 };
 
@@ -135,14 +135,14 @@ public:
         if (InterlockedCompareExchange(&m_queued, true, false))
             return false;
 
-        QueueInner();
+        this->QueueInner();
         return true;
     }
 
     PAGED void Invoke()
     {
         WIN_VERIFY(InterlockedExchange(&m_queued, false));
-        InvokeInner();
+        this->InvokeInner();
     }
 
 private:
@@ -174,7 +174,7 @@ public:
     {
         if (0 == InterlockedIncrement(&m_count))
         {
-            QueueInner();
+            this->QueueInner();
         }
     }
 
@@ -182,7 +182,7 @@ public:
     {
         do
         {
-            InvokeInner();
+            this->InvokeInner();
 
         } while (InterlockedDecrement(&m_count));
     }

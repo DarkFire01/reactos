@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <net/ring.h>
 #include <net/ringcollection.h>
 
 class NxRingContext

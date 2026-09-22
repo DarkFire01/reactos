@@ -33,9 +33,16 @@ template<typename T> struct is_same<T, T> : true_type { };
 
 template<typename T> struct is_void : is_same<void, T> { };
 
+/* GCC before 13 only has the older name for this builtin. */
+#if defined(__GNUC__) && !defined(__clang__)
+template<typename T>
+struct is_trivially_destructible
+    : integral_constant<bool, __has_trivial_destructor(T)> { };
+#else
 template<typename T>
 struct is_trivially_destructible
     : integral_constant<bool, __is_trivially_destructible(T)> { };
+#endif
 
 template<typename T>
 struct is_trivially_default_constructible
