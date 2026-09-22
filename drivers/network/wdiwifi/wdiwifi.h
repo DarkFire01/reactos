@@ -249,6 +249,11 @@ typedef struct _WDI_ADAPTER
     WDI_MAC_ADDRESS DesiredBssid;
     BOOLEAN HasDesiredBssid;
 
+    /* The auth and cipher a connect asks for, as dot11 values, open by default */
+    ULONG DesiredAuth;
+    ULONG DesiredUnicastCipher;
+    ULONG DesiredMulticastCipher;
+
     /* Connects run on their own work item */
     NDIS_HANDLE ConnectWorkItem;
     KEVENT ConnectIdle;
