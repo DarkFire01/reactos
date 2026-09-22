@@ -20,6 +20,9 @@
 /* A port slot per port the IHV can create */
 #define WDI_MAX_PORTS                       5
 
+/* Sends outstanding at the miniport at once, indexed by frame id */
+#define WDI_MAX_TX_FRAMES                   256
+
 /* The version this upper edge speaks, and the oldest it tells an IHV about */
 #define WDI_UPPER_EDGE_VERSION              WDI_VERSION_1_1_13
 #define WDI_UPPER_EDGE_FLOOR_VERSION        WDI_VERSION_1_1_12
@@ -195,6 +198,14 @@ typedef struct _WDI_ADAPTER
     BOOLEAN FrameLookasideReady;
     NPAGED_LOOKASIDE_LIST FrameLookaside;
     UINT16 MaxOutstandingTransfers;
+
+    /* Sends wait here to be pulled by the miniport's TxDequeue, and the ones
+       handed out wait by frame id for a send complete */
+    KSPIN_LOCK TxLock;
+    LIST_ENTRY TxQueue;
+    ULONG TxQueued;
+    PWDI_FRAME_METADATA TxOutstanding[WDI_MAX_TX_FRAMES];
+    ULONG TxNextId;
 
     WDI_CAPABILITIES Caps;
     WDI_PORT Ports[WDI_MAX_PORTS];
@@ -383,6 +394,24 @@ VOID
 NTAPI
 WdiSetDataApi(
     _Out_ PNDIS_WDI_DATA_API DataApi);
+
+VOID
+NTAPI
+WdiInitializeSendQueue(
+    _In_ PWDI_ADAPTER Adapter);
+
+VOID
+NTAPI
+WdiQueueSend(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ PNET_BUFFER_LIST NetBufferLists,
+    _In_ ULONG SendFlags);
+
+VOID
+NTAPI
+WdiFlushSends(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ NDIS_STATUS Status);
 
 NDIS_STATUS
 NTAPI

@@ -579,6 +579,7 @@ WdiInitializeAdapter(
     PAGED_CODE();
 
     WdiInitializeCommands(Adapter);
+    WdiInitializeSendQueue(Adapter);
     KeInitializeEvent(&Adapter->OpenCloseDone, NotificationEvent, FALSE);
     KeInitializeEvent(&Adapter->ScanIdle, NotificationEvent, TRUE);
     KeInitializeSpinLock(&Adapter->BssLock);
@@ -690,6 +691,7 @@ WdiHaltAdapter(
     if (Adapter->Progress & WDI_PROGRESS_DATAPATH_STARTED)
     {
         Adapter->DataHandlers.TalTxRxStopHandler(Adapter->TalTxRx);
+        WdiFlushSends(Adapter, NDIS_STATUS_MEDIA_DISCONNECTED);
         Adapter->Progress &= ~WDI_PROGRESS_DATAPATH_STARTED;
     }
 
