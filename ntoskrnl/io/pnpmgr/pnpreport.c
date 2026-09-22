@@ -28,6 +28,9 @@ typedef struct _INTERNAL_WORK_QUEUE_ITEM
 #define IOP_ROOT_DEVICE_PREFIX      L"ROOT\\"
 #define IOP_ROOT_DEVICE_ID_CHARS    200
 
+/* Legacy BIOS boots keep XDDM, so this service only gets its root device on UEFI */
+#define IOP_UEFI_ONLY_ROOT_SERVICE  L"BasicDisplay"
+
 NTSTATUS
 IopSetDeviceInstanceData(HANDLE InstanceKey,
                          PDEVICE_NODE DeviceNode);
@@ -401,7 +404,8 @@ IoReportDetectedDevice(
  *
  * @return
  * STATUS_SUCCESS if the device exists afterwards, STATUS_OBJECT_NAME_INVALID
- * if the service name is too long, or a registry failure.
+ * if the service name is too long, STATUS_NOT_SUPPORTED for BasicDisplay on a
+ * legacy BIOS boot, or a registry failure.
  *
  * @remarks
  * Only the first report creates the device, later ones find it in place.
@@ -414,6 +418,7 @@ IoReportRootDevice(
     _In_ PDRIVER_OBJECT DriverObject)
 {
     UNICODE_STRING EnumName = RTL_CONSTANT_STRING(ENUM_ROOT);
+    UNICODE_STRING UefiOnlyService = RTL_CONSTANT_STRING(IOP_UEFI_ONLY_ROOT_SERVICE);
     UNICODE_STRING ValueName;
     UNICODE_STRING InstancePath;
     PUNICODE_STRING ServiceName = &DriverObject->DriverExtension->ServiceKeyName;
@@ -427,6 +432,10 @@ IoReportRootDevice(
     NTSTATUS Status;
 
     PAGED_CODE();
+
+    if ((ExpFirmwareType != FirmwareTypeUefi) &&
+        RtlEqualUnicodeString(ServiceName, &UefiOnlyService, TRUE))
+        return STATUS_NOT_SUPPORTED;
 
     RtlInitEmptyUnicodeString(&InstancePath, InstanceBuffer, sizeof(InstanceBuffer));
     Status = RtlAppendUnicodeToString(&InstancePath, IOP_ROOT_DEVICE_PREFIX);
