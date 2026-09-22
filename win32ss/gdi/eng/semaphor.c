@@ -97,6 +97,90 @@ EngAcquireSemaphoreShared(
     if (pti) ++pti->dwEngAcquireCount;
 }
 
+/**
+ * @brief
+ * Acquires a semaphore exclusively, but only if nobody holds it.
+ *
+ * @param[in,out] hsem
+ * The semaphore.
+ *
+ * @return
+ * TRUE when it was acquired.
+ */
+BOOL
+APIENTRY
+EngAcquireSemaphoreNoWait(
+    _Inout_ HSEMAPHORE hsem)
+{
+    PTHREADINFO W32Thread;
+
+    /* On Windows a NULL hsem is ignored */
+    if (hsem == NULL)
+        return FALSE;
+
+    KeEnterCriticalRegion();
+    if (!ExAcquireResourceExclusiveLite((PERESOURCE)hsem, FALSE))
+    {
+        KeLeaveCriticalRegion();
+        return FALSE;
+    }
+
+    W32Thread = PsGetThreadWin32Thread(PsGetCurrentThread());
+    if (W32Thread) W32Thread->dwEngAcquireCount++;
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Acquires a semaphore for shared access, but only if nobody holds it exclusively.
+ *
+ * @param[in,out] hsem
+ * The semaphore.
+ *
+ * @return
+ * TRUE when it was acquired.
+ */
+BOOL
+APIENTRY
+EngAcquireSemaphoreSharedNoWait(
+    _Inout_ HSEMAPHORE hsem)
+{
+    PTHREADINFO W32Thread;
+
+    if (hsem == NULL)
+        return FALSE;
+
+    KeEnterCriticalRegion();
+    if (!ExAcquireResourceSharedLite((PERESOURCE)hsem, FALSE))
+    {
+        KeLeaveCriticalRegion();
+        return FALSE;
+    }
+
+    W32Thread = PsGetThreadWin32Thread(PsGetCurrentThread());
+    if (W32Thread) W32Thread->dwEngAcquireCount++;
+    return TRUE;
+}
+
+/**
+ * @brief
+ * Tells whether the calling thread holds a semaphore for shared access.
+ *
+ * @param[in] hsem
+ * The semaphore.
+ *
+ * @return
+ * TRUE when this thread holds it shared.
+ */
+BOOL
+APIENTRY
+EngIsSemaphoreSharedByCurrentThread(
+    _In_ HSEMAPHORE hsem)
+{
+    ASSERT(hsem);
+    return (ExIsResourceAcquiredSharedLite((PERESOURCE)hsem) != 0);
+}
+
 /*
  * @implemented
  */

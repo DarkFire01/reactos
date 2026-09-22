@@ -9,6 +9,7 @@
 
 #include <win32k.h>
 #include <ntddvdeo.h>
+#include <reactos/rddm/rddm_private.h>
 
 DBG_DEFAULT_CHANNEL(EngDev);
 
@@ -657,6 +658,106 @@ EngpUpdateMonitorDevices(
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief
+ * Asks a display device whether a WDDM adapter drives it.
+ *
+ * @param[in] pDeviceObject
+ * The \Device\VideoN device object.
+ *
+ * @param[out] pViewInformation
+ * Receives the adapter and its LUID.
+ *
+ * @return
+ * TRUE when dxgkrnl answered with an adapter.
+ */
+static
+BOOLEAN
+EngpQueryWddmAdapter(
+    _In_ PDEVICE_OBJECT pDeviceObject,
+    _Out_ PDXGK_GDI_VIEW_INFORMATION pViewInformation)
+{
+    KEVENT Event;
+    IO_STATUS_BLOCK Iosb;
+    PIRP pIrp;
+    NTSTATUS Status;
+
+    RtlZeroMemory(pViewInformation, sizeof(*pViewInformation));
+
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
+    pIrp = IoBuildDeviceIoControlRequest(IOCTL_VIDEO_QUERY_GDI_VIEW_INFORMATION,
+                                         pDeviceObject,
+                                         NULL,
+                                         0,
+                                         pViewInformation,
+                                         sizeof(*pViewInformation),
+                                         TRUE,
+                                         &Event,
+                                         &Iosb);
+    if (pIrp == NULL)
+        return FALSE;
+
+    Status = IoCallDriver(pDeviceObject, pIrp);
+    if (Status == STATUS_PENDING)
+    {
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = Iosb.Status;
+    }
+
+    return NT_SUCCESS(Status) && (pViewInformation->Adapter != NULL);
+}
+
+/**
+ * @brief
+ * Claims a WDDM display device for this session, or gives it back.
+ *
+ * @param[in] pDeviceObject
+ * The \Device\VideoN device object.
+ *
+ * @param[in] bEnable
+ * TRUE to claim the device, FALSE to release it.
+ *
+ * @return
+ * TRUE when the device now belongs to this session, FALSE when another session holds it.
+ */
+static
+BOOL
+EngpSetDeviceSessionUsage(
+    _In_ PDEVICE_OBJECT pDeviceObject,
+    _In_ BOOL bEnable)
+{
+    DXGK_SESSION_USAGE SessionUsage;
+    KEVENT Event;
+    IO_STATUS_BLOCK Iosb;
+    PIRP pIrp;
+    NTSTATUS Status;
+
+    SessionUsage.Enable = bEnable ? 1 : 0;
+    SessionUsage.Succeeded = 0;
+
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
+    pIrp = IoBuildDeviceIoControlRequest(IOCTL_VIDEO_SET_SESSION_USAGE,
+                                         pDeviceObject,
+                                         &SessionUsage,
+                                         sizeof(SessionUsage),
+                                         &SessionUsage,
+                                         sizeof(SessionUsage),
+                                         TRUE,
+                                         &Event,
+                                         &Iosb);
+    if (pIrp == NULL)
+        return FALSE;
+
+    Status = IoCallDriver(pDeviceObject, pIrp);
+    if (Status == STATUS_PENDING)
+    {
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = Iosb.Status;
+    }
+
+    return NT_SUCCESS(Status) && (SessionUsage.Succeeded != 0);
+}
+
 PGRAPHICS_DEVICE
 NTAPI
 EngpRegisterGraphicsDevice(
@@ -664,6 +765,9 @@ EngpRegisterGraphicsDevice(
     _In_ PUNICODE_STRING pustrDiplayDrivers,
     _In_ PUNICODE_STRING pustrDescription)
 {
+    /* A REG_MULTI_SZ list, so it ends with a second NUL */
+    UNICODE_STRING ustrCddDriver = RTL_CONSTANT_STRING(L"cdd\0\0");
+    DXGK_GDI_VIEW_INFORMATION ViewInformation;
     PGRAPHICS_DEVICE pGraphicsDevice;
     PDEVICE_OBJECT pDeviceObject;
     PFILE_OBJECT pFileObject;
@@ -724,6 +828,27 @@ EngpRegisterGraphicsDevice(
     // if (Win32kCallbacks.bACPI)
     // if (Win32kCallbacks.DualviewFlags & ???)
     pGraphicsDevice->PhysDeviceHandle = Win32kCallbacks.pPhysDeviceObject;
+
+    /* A WDDM adapter names no display driver of its own, the CDD drives it */
+    if (EngpQueryWddmAdapter(pDeviceObject, &ViewInformation))
+    {
+        TRACE("%wZ is WDDM, adapter %p\n", pustrDeviceName, ViewInformation.Adapter);
+        pGraphicsDevice->DxgAdapter = ViewInformation.Adapter;
+        pGraphicsDevice->DxgAdapterLuid = ViewInformation.AdapterLuid;
+        pGraphicsDevice->VidPnSourceId = ViewInformation.VidPnSourceId;
+        pustrDiplayDrivers = &ustrCddDriver;
+
+        /* The CDD only finds its adapter once the session has claimed the device */
+        if (!EngpSetDeviceSessionUsage(pDeviceObject, TRUE))
+            ERR("%wZ is already in use by another session\n", pustrDeviceName);
+    }
+    else if (pustrDiplayDrivers->Length == 0)
+    {
+        ERR("No display driver for %wZ\n", pustrDeviceName);
+        ObDereferenceObject(pFileObject);
+        ExFreePoolWithTag(pGraphicsDevice, GDITAG_GDEVICE);
+        return NULL;
+    }
 
     /* Copy the device name */
     RtlStringCbCopyNW(pGraphicsDevice->szNtDeviceName,
@@ -786,6 +911,39 @@ EngpRegisterGraphicsDevice(
         hdc = IntGdiCreateDC(&DriverName, &DisplayName, NULL, NULL, FALSE);
         IntPaintDesktop(hdc);
     }
+
+    return pGraphicsDevice;
+}
+
+/**
+ * @brief
+ * Finds the graphics device a device handle belongs to. This is the handle GDI
+ * passes to DrvEnablePDEV, which display drivers hand back to identify themselves.
+ *
+ * @param[in] hDevObj
+ * The device handle.
+ *
+ * @return
+ * The graphics device, or NULL.
+ */
+PGRAPHICS_DEVICE
+NTAPI
+EngpFindGraphicsDeviceByHandle(
+    _In_ HANDLE hDevObj)
+{
+    PGRAPHICS_DEVICE pGraphicsDevice;
+
+    EngAcquireSemaphoreShared(ghsemGraphicsDeviceList);
+
+    for (pGraphicsDevice = gpGraphicsDeviceFirst;
+         pGraphicsDevice;
+         pGraphicsDevice = pGraphicsDevice->pNextGraphicsDevice)
+    {
+        if ((HANDLE)pGraphicsDevice->DeviceObject == hDevObj)
+            break;
+    }
+
+    EngReleaseSemaphore(ghsemGraphicsDeviceList);
 
     return pGraphicsDevice;
 }

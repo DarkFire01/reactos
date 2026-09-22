@@ -63,7 +63,9 @@ list(APPEND SOURCE
     gdi/eng/bitblt.c
     gdi/eng/engbrush.c
     gdi/eng/engevent.c
+    gdi/eng/cdd.c
     gdi/eng/clip.c
+    gdi/eng/dxgkeng.c
     gdi/eng/debug.c
     gdi/eng/device.c
     gdi/eng/dxgkrnl.c

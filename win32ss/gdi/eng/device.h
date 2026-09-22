@@ -29,6 +29,11 @@ EngpFindGraphicsDevice(
 
 PGRAPHICS_DEVICE
 NTAPI
+EngpFindGraphicsDeviceByHandle(
+    _In_ HANDLE hDevObj);
+
+PGRAPHICS_DEVICE
+NTAPI
 EngpRegisterGraphicsDevice(
     _In_ PUNICODE_STRING pustrDeviceName,
     _In_ PUNICODE_STRING pustrDiplayDrivers,
