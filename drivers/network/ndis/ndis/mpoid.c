@@ -165,7 +165,9 @@ CoreAnswerOid(
 
         case OID_GEN_MEDIA_SUPPORTED:
         case OID_GEN_MEDIA_IN_USE:
-            *Status = CoreAnswerUlong(Request, Core->MediaType);
+            /* Native 802.11 is framed as Ethernet before it reaches a protocol */
+            *Status = CoreAnswerUlong(Request,
+                (Core->MediaType == NdisMediumNative802_11) ? NdisMedium802_3 : Core->MediaType);
             return TRUE;
 
         case OID_GEN_MAXIMUM_LOOKAHEAD:

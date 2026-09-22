@@ -273,6 +273,13 @@ NdisMIndicateStatusEx(
     PLOGICAL_ADAPTER Adapter = MiniportAdapterHandle;
     PCORE_HOOK Hook = CoreHookOfAdapter(Adapter);
 
+    /* Track the dot11 association so native 802.11 sends know the BSSID */
+    if (NdisDot11Active(Adapter))
+        NdisDot11CaptureStatus(Adapter,
+                               StatusIndication->StatusCode,
+                               StatusIndication->StatusBuffer,
+                               StatusIndication->StatusBufferSize);
+
     Hook->Dispatch.IndicateStatus(Hook->ProviderBindingContext,
                                   Adapter->HookAdapterHandle,
                                   Adapter,
