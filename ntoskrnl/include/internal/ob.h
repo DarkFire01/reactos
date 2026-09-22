@@ -130,6 +130,64 @@ typedef struct _OBP_FIND_HANDLE_DATA
 } OBP_FIND_HANDLE_DATA, *POBP_FIND_HANDLE_DATA;
 
 //
+// Object type initializer layout passed by Windows 8 and later callers
+//
+typedef struct _OBJECT_TYPE_INITIALIZER_WIN8
+{
+    USHORT Length;
+    union
+    {
+        UCHAR ObjectTypeFlags;
+        struct
+        {
+            UCHAR CaseInsensitive:1;
+            UCHAR UnnamedObjectsOnly:1;
+            UCHAR UseDefaultObject:1;
+            UCHAR SecurityRequired:1;
+            UCHAR MaintainHandleCount:1;
+            UCHAR MaintainTypeList:1;
+            UCHAR SupportsObjectCallbacks:1;
+            UCHAR CacheAligned:1;
+        };
+    };
+    union
+    {
+        UCHAR ObjectTypeFlags2;
+        struct
+        {
+            UCHAR UseExtendedParameters:1;
+            UCHAR Reserved:7;
+        };
+    };
+    ULONG ObjectTypeCode;
+    ULONG InvalidAttributes;
+    GENERIC_MAPPING GenericMapping;
+    ULONG ValidAccessMask;
+    ULONG RetainAccess;
+    POOL_TYPE PoolType;
+    ULONG DefaultPagedPoolCharge;
+    ULONG DefaultNonPagedPoolCharge;
+    OB_DUMP_METHOD DumpProcedure;
+    OB_OPEN_METHOD OpenProcedure;
+    OB_CLOSE_METHOD CloseProcedure;
+    OB_DELETE_METHOD DeleteProcedure;
+    OB_PARSE_METHOD ParseProcedure; /* ParseProcedureEx if UseExtendedParameters */
+    OB_SECURITY_METHOD SecurityProcedure;
+    OB_QUERYNAME_METHOD QueryNameProcedure;
+    OB_OKAYTOCLOSE_METHOD OkayToCloseProcedure;
+    ULONG WaitObjectFlagMask;
+    USHORT WaitObjectFlagOffset;
+    USHORT WaitObjectPointerOffset;
+} OBJECT_TYPE_INITIALIZER_WIN8, *POBJECT_TYPE_INITIALIZER_WIN8;
+
+#ifdef _WIN64
+C_ASSERT(sizeof(OBJECT_TYPE_INITIALIZER_WIN8) == 0x78);
+#else
+C_ASSERT(sizeof(OBJECT_TYPE_INITIALIZER_WIN8) == 0x58);
+#endif
+C_ASSERT(sizeof(OBJECT_TYPE_INITIALIZER_WIN8) != sizeof(OBJECT_TYPE_INITIALIZER));
+
+//
 // Cached Security Descriptor Header
 //
 typedef struct _SECURITY_DESCRIPTOR_HEADER
