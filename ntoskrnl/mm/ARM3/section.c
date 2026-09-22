@@ -1435,6 +1435,9 @@ MiMapViewOfDataSection(
     RtlZeroMemory(Vad, sizeof(MMVAD_LONG));
     Vad->u4.Banked = (PVOID)(ULONG_PTR)0xDEADBABEDEADBABEULL;
 
+    /* Long enough for MmSecureVirtualMemory to use u3 */
+    Vad->u2.VadFlags2.LongVad = 1;
+
     /* Write all the data required in the VAD for handling a fault */
     Vad->ControlArea = ControlArea;
     Vad->u.VadFlags.CommitCharge = 0;
@@ -1625,6 +1628,9 @@ MiMapViewOfImageSection(
 
     RtlZeroMemory(Vad, sizeof(MMVAD_LONG));
     Vad->u4.Banked = (PVOID)(ULONG_PTR)0xDEADBABEDEADBABEULL;
+
+    /* Long enough for MmSecureVirtualMemory to use u3 */
+    Vad->u2.VadFlags2.LongVad = 1;
 
     /* Pages take their protection from their image section */
     Vad->ControlArea = ControlArea;
