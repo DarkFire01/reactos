@@ -1595,6 +1595,8 @@ typedef struct _EPROCESS
 #if defined(__REACTOS__)
     // Temp HACK until we switch to NTDDI_VISTA, when this moves to KPROCESS
     ULONGLONG CycleTime;
+    // Per-process DirectX graphics kernel state, see PsGetProcessDxgProcess
+    PVOID DxgProcess;
 #endif // ]
 } EPROCESS;
 
