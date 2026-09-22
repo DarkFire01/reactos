@@ -1758,6 +1758,10 @@
 @ stdcall -version=0xa00+ HvlIsAnyHypervisorPresent()
 @ stdcall -version=0xa00+ HvlQueryActiveHypervisorProcessorCount()
 
+# Boot Video
+@ stdcall -version=0x602+ InbvNotifyDisplayOwnershipChange(long ptr)
+@ stdcall -version=0x602+ InbvSetVirtualFrameBuffer(ptr ptr)
+
 # I/O Manager
 @ stdcall -version=0x602+ IoDuplicateDependency(ptr ptr)
 @ stdcall -version=0x602+ IoGetDeviceNumaNode(ptr ptr)
