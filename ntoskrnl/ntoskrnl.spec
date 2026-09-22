@@ -1815,6 +1815,9 @@
 @ stdcall -version=0xA00+ KeShouldYieldProcessor()
 @ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
 
+# Loader
+@ stdcall -version=0x602+ LdrResFindResource(ptr ptr ptr ptr ptr ptr ptr ptr long)
+
 # Memory Manager
 @ stdcall -version=0x602+ MmAllocateContiguousNodeMemory(long int64 int64 int64 long long)
 @ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)

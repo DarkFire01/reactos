@@ -176,7 +176,7 @@
 @ stdcall LdrQueryProcessModuleInformation(ptr long ptr)
 @ stdcall -version=0x600+ LdrRegisterDllNotification(long ptr ptr ptr)
 @ stdcall -stub -version=0x600+ LdrRemoveLoadAsDataTable(ptr ptr ptr long)
-@ stdcall -stub -version=0x600+ LdrResFindResource(ptr long long long long long long long long)
+@ stdcall -version=0x600+ LdrResFindResource(ptr ptr ptr ptr ptr ptr ptr ptr long)
 @ stdcall -stub -version=0x600+ LdrResFindResourceDirectory(ptr long long long long long long)
 @ stdcall -stub -version=0x600+ LdrResRelease(ptr ptr long long)
 @ stdcall -stub -version=0x600+ LdrResSearchResource(wstr wstr long long long ptr long long)
