@@ -375,6 +375,24 @@ ObDereferenceObject(IN PVOID Object)
     ObfDereferenceObject(Object);
 }
 
+/**
+ * @brief
+ * Returns the type of an object.
+ *
+ * @param[in] Object
+ * Body of the object.
+ *
+ * @return
+ * The object type.
+ */
+POBJECT_TYPE
+NTAPI
+ObGetObjectType(
+    _In_ PVOID Object)
+{
+    return OBJECT_TO_OBJECT_HEADER(Object)->Type;
+}
+
 NTSTATUS
 NTAPI
 ObReferenceObjectByPointer(IN PVOID Object,

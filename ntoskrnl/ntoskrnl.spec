@@ -1825,8 +1825,10 @@
 
 # Object Manager
 @ stdcall -version=0x600+ ObDereferenceObjectDeferDelete(ptr)
+@ stdcall -version=0x600+ ObDuplicateObject(ptr ptr ptr ptr long long long long)
 @ fastcall -version=0x601+ ObfDereferenceObjectWithTag(ptr long)
 @ fastcall -version=0x601+ ObfReferenceObjectWithTag(ptr long)
+@ stdcall -version=0x600+ ObGetObjectType(ptr)
 
 # Power Manager
 @ stdcall -version=0x603+ PoCreateThermalRequest(ptr ptr ptr ptr long)
