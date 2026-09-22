@@ -260,12 +260,19 @@ CoreSendNetBufferLists(
 
     /* Ethernet sends become 802.11 before a native 802.11 miniport sees them */
     if (NdisDot11Active(Adapter))
+    {
+        NDIS_DbgPrint(MIN_TRACE, ("DOT11TRACE: TX convert start\n"));
         NdisDot11SendToNative(Adapter, Head);
+        NDIS_DbgPrint(MIN_TRACE, ("DOT11TRACE: TX convert done, into miniport\n"));
+    }
 
     Core->Dispatch->SendNetBufferListsHandler(CORE_DISPATCH_CONTEXT(Adapter),
                                               Head,
                                               PortNumber,
                                               SendFlags);
+
+    if (NdisDot11Active(Adapter))
+        NDIS_DbgPrint(MIN_TRACE, ("DOT11TRACE: TX miniport returned\n"));
 }
 
 /**
@@ -301,7 +308,11 @@ NdisMSendNetBufferListsComplete(
     if (!(SendCompleteFlags & NDIS_SEND_COMPLETE_FLAGS_DISPATCH_LEVEL))
         KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
 
+    if (NdisDot11Active(Adapter))
+        NDIS_DbgPrint(MIN_TRACE, ("DOT11TRACE: send complete start\n"));
     Pro5SendComplete(Adapter, NetBufferList);
+    if (NdisDot11Active(Adapter))
+        NDIS_DbgPrint(MIN_TRACE, ("DOT11TRACE: send complete done\n"));
 
     KeAcquireSpinLockAtDpcLevel(&Core->Lock);
     Core->OutstandingSends -= Count;
@@ -399,9 +410,14 @@ NdisMIndicateReceiveNetBufferLists(
     {
         /* Native 802.11 frames become Ethernet before a protocol sees them */
         if (NdisDot11Active(Adapter))
+        {
+            NDIS_DbgPrint(MIN_TRACE, ("DOT11TRACE: RX convert start\n"));
             NdisDot11ReceiveToEthernet(Adapter, NetBufferList);
+            NDIS_DbgPrint(MIN_TRACE, ("DOT11TRACE: RX convert done, into pro5\n"));
+        }
 
         Pro5IndicateReceive(Adapter, NetBufferList, ReceiveFlags, &Unheld);
+        NDIS_DbgPrint(MIN_TRACE, ("DOT11TRACE: RX pro5 done\n"));
     }
     else
         Unheld = NetBufferList;
