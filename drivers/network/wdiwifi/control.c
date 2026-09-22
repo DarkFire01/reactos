@@ -373,19 +373,25 @@ WdiConnectWorker(
         SettingsLength = 13;
 
     RtlZeroMemory(Settings, sizeof(Settings));
+    /* Byte 1 is ExcludeUnencrypted: on for a secured network, so plaintext data
+       is dropped until the host handshake installs the keys. The dot11 and WDI
+       auth and cipher values are the same, so they carry across unchanged */
+    if (Adapter->DesiredAuth != DOT11_AUTH_ALGO_80211_OPEN)
+        Settings[1] = 1;
     ParametersLength += WdiTlvPut(Parameters + ParametersLength, WDI_TLV_CONNECTION_SETTINGS,
                                   Settings, (UINT16)SettingsLength);
 
     ParametersLength += WdiTlvPut(Parameters + ParametersLength, WDI_TLV_SSID,
                                   Adapter->DesiredSsid, Adapter->DesiredSsidLength);
 
-    Auth = WDI_AUTH_ALGO_80211_OPEN;
+    Auth = Adapter->DesiredAuth;
     ParametersLength += WdiTlvPut(Parameters + ParametersLength, WDI_TLV_AUTH_ALGO_LIST,
                                   &Auth, sizeof(Auth));
 
-    Cipher = WDI_CIPHER_ALGO_NONE;
+    Cipher = Adapter->DesiredMulticastCipher;
     ParametersLength += WdiTlvPut(Parameters + ParametersLength, WDI_TLV_MULTICAST_CIPHER_ALGO_LIST,
                                   &Cipher, sizeof(Cipher));
+    Cipher = Adapter->DesiredUnicastCipher;
     ParametersLength += WdiTlvPut(Parameters + ParametersLength, WDI_TLV_UNICAST_CIPHER_ALGO_LIST,
                                   &Cipher, sizeof(Cipher));
 
@@ -428,6 +434,89 @@ WdiConnectWorker(
 Done:
     Adapter->Connecting = FALSE;
     KeSetEvent(&Adapter->ConnectIdle, IO_NO_INCREMENT, FALSE);
+}
+
+/* The station port a connect and its keys act on */
+static
+PWDI_PORT
+WdiDefaultPort(
+    _In_ PWDI_ADAPTER Adapter)
+{
+    ULONG i;
+
+    for (i = 0; i < RTL_NUMBER_OF(Adapter->Ports); i++)
+    {
+        if (Adapter->Ports[i].InUse &&
+            Adapter->Ports[i].NdisPortNumber == NDIS_DEFAULT_PORT_NUMBER)
+        {
+            return &Adapter->Ports[i];
+        }
+    }
+    return NULL;
+}
+
+/* Installs one temporal key the host handshake derived, as WDI_SET_ADD_CIPHER_KEYS */
+static
+NDIS_STATUS
+WdiInstallCipherKey(
+    _In_ PWDI_ADAPTER Adapter,
+    _In_ WDI_PORT_ID PortId,
+    _In_ WDI_CIPHER_KEY_TYPE KeyType,
+    _In_ ULONG Cipher,
+    _In_reads_bytes_opt_(6) const UCHAR *PeerMac,
+    _In_ ULONG KeyId,
+    _In_reads_bytes_(KeyLength) const UCHAR *Key,
+    _In_ ULONG KeyLength)
+{
+    UCHAR Container[128];
+    UCHAR Message[160];
+    UCHAR TypeInfo[13];
+    UCHAR Rsc[6];
+    UINT32 KeyIdValue = KeyId;
+    ULONG ContainerLength = 0;
+    ULONG MessageLength = 0;
+
+    if (KeyLength == 0 || KeyLength > 32)
+        return NDIS_STATUS_INVALID_LENGTH;
+
+    if (PeerMac != NULL)
+        ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_PEER_MAC_ADDRESS, PeerMac, 6);
+    else
+        ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_ID,
+                                     &KeyIdValue, sizeof(KeyIdValue));
+
+    /* Cipher (u32), direction (u32), key type (u8) and the static flag (u32) */
+    WdiPutLe32(TypeInfo + 0, Cipher);
+    WdiPutLe32(TypeInfo + 4, WDI_CIPHER_KEY_DIRECTION_BOTH);
+    TypeInfo[8] = (UCHAR)KeyType;
+    WdiPutLe32(TypeInfo + 9, 0);
+    ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_TYPE_INFO,
+                                 TypeInfo, sizeof(TypeInfo));
+
+    RtlZeroMemory(Rsc, sizeof(Rsc));
+    ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_RECEIVE_SEQUENCE_COUNT,
+                                 Rsc, sizeof(Rsc));
+
+    if (Cipher == WDI_CIPHER_ALGO_TKIP && KeyLength >= 32)
+    {
+        UCHAR TkipInfo[64];
+        ULONG TkipLength = 0;
+
+        /* A TKIP key is the 16 byte key then the two 8 byte MICs */
+        TkipLength += WdiTlvPut(TkipInfo + TkipLength, WDI_TLV_CIPHER_KEY_TKIP_KEY, Key, 16);
+        TkipLength += WdiTlvPut(TkipInfo + TkipLength, WDI_TLV_CIPHER_KEY_TKIP_MIC, Key + 16, 16);
+        ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_TKIP_INFO,
+                                     TkipInfo, (UINT16)TkipLength);
+    }
+    else
+    {
+        ContainerLength += WdiTlvPut(Container + ContainerLength, WDI_TLV_CIPHER_KEY_CCMP_KEY,
+                                     Key, (UINT16)KeyLength);
+    }
+
+    MessageLength += WdiTlvPut(Message, WDI_TLV_SET_CIPHER_KEY_INFO, Container, (UINT16)ContainerLength);
+
+    return WdiSendCommand(Adapter, WDI_SET_ADD_CIPHER_KEYS, PortId, Message, MessageLength, FALSE, NULL);
 }
 
 static
@@ -484,6 +573,96 @@ WdiSet(
             Adapter->HasDesiredBssid = TRUE;
             OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
             return NDIS_STATUS_SUCCESS;
+        }
+
+        case OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM:
+        {
+            PDOT11_AUTH_ALGORITHM_LIST List = Buffer;
+
+            if (BufferLength < FIELD_OFFSET(DOT11_AUTH_ALGORITHM_LIST, AlgorithmIds) + sizeof(DOT11_AUTH_ALGORITHM))
+                return NDIS_STATUS_INVALID_LENGTH;
+            if (List->uNumOfEntries != 0)
+                Adapter->DesiredAuth = List->AlgorithmIds[0];
+            OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
+            return NDIS_STATUS_SUCCESS;
+        }
+
+        case OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM:
+        {
+            PDOT11_CIPHER_ALGORITHM_LIST List = Buffer;
+
+            if (BufferLength < FIELD_OFFSET(DOT11_CIPHER_ALGORITHM_LIST, AlgorithmIds) + sizeof(DOT11_CIPHER_ALGORITHM))
+                return NDIS_STATUS_INVALID_LENGTH;
+            if (List->uNumOfEntries != 0)
+                Adapter->DesiredUnicastCipher = List->AlgorithmIds[0];
+            OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
+            return NDIS_STATUS_SUCCESS;
+        }
+
+        case OID_DOT11_ENABLED_MULTICAST_CIPHER_ALGORITHM:
+        {
+            PDOT11_CIPHER_ALGORITHM_LIST List = Buffer;
+
+            if (BufferLength < FIELD_OFFSET(DOT11_CIPHER_ALGORITHM_LIST, AlgorithmIds) + sizeof(DOT11_CIPHER_ALGORITHM))
+                return NDIS_STATUS_INVALID_LENGTH;
+            if (List->uNumOfEntries != 0)
+                Adapter->DesiredMulticastCipher = List->AlgorithmIds[0];
+            OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
+            return NDIS_STATUS_SUCCESS;
+        }
+
+        case OID_DOT11_CIPHER_KEY_MAPPING_KEY:
+        {
+            PDOT11_CIPHER_KEY_MAPPING_KEY_VALUE Key = Buffer;
+            PWDI_PORT Port = WdiDefaultPort(Adapter);
+
+            if (BufferLength < FIELD_OFFSET(DOT11_CIPHER_KEY_MAPPING_KEY_VALUE, ucKey))
+                return NDIS_STATUS_INVALID_LENGTH;
+            if (Port == NULL)
+                return NDIS_STATUS_INVALID_STATE;
+            if (FIELD_OFFSET(DOT11_CIPHER_KEY_MAPPING_KEY_VALUE, ucKey) + Key->usKeyLength > BufferLength)
+                return NDIS_STATUS_INVALID_LENGTH;
+
+            OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
+            return WdiInstallCipherKey(Adapter, Port->PortId, WDI_CIPHER_KEY_TYPE_PAIRWISE_KEY,
+                                       Key->AlgorithmId, Key->PeerMacAddr, 0,
+                                       Key->ucKey, Key->usKeyLength);
+        }
+
+        case OID_DOT11_CIPHER_DEFAULT_KEY:
+        {
+            PDOT11_CIPHER_DEFAULT_KEY_VALUE Key = Buffer;
+            PWDI_PORT Port = WdiDefaultPort(Adapter);
+
+            if (BufferLength < FIELD_OFFSET(DOT11_CIPHER_DEFAULT_KEY_VALUE, ucKey))
+                return NDIS_STATUS_INVALID_LENGTH;
+            if (Port == NULL)
+                return NDIS_STATUS_INVALID_STATE;
+            if (FIELD_OFFSET(DOT11_CIPHER_DEFAULT_KEY_VALUE, ucKey) + Key->usKeyLength > BufferLength)
+                return NDIS_STATUS_INVALID_LENGTH;
+
+            OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
+            return WdiInstallCipherKey(Adapter, Port->PortId, WDI_CIPHER_KEY_TYPE_GROUP_KEY,
+                                       Key->AlgorithmId, NULL, Key->uKeyIndex,
+                                       Key->ucKey, Key->usKeyLength);
+        }
+
+        case OID_DOT11_CIPHER_DEFAULT_KEY_ID:
+        {
+            PWDI_PORT Port = WdiDefaultPort(Adapter);
+            UCHAR Tlv[8];
+            UINT32 KeyId;
+            ULONG Length = 0;
+
+            if (BufferLength < sizeof(UINT32))
+                return NDIS_STATUS_INVALID_LENGTH;
+            if (Port == NULL)
+                return NDIS_STATUS_INVALID_STATE;
+
+            KeyId = *(PULONG)Buffer;
+            Length += WdiTlvPut(Tlv, WDI_TLV_DEFAULT_TX_KEY_ID_PARAMETERS, &KeyId, sizeof(KeyId));
+            OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
+            return WdiSendCommand(Adapter, WDI_SET_DEFAULT_KEY_ID, Port->PortId, Tlv, Length, FALSE, NULL);
         }
 
         case OID_DOT11_SCAN_REQUEST:
