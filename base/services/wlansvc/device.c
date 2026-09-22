@@ -200,9 +200,6 @@ WlanQueryOid(
     else
     {
         Error = GetLastError();
-        /* An overflow reports, past the header, the buffer size to retry with */
-        if (Error == ERROR_MORE_DATA && Got > FIELD_OFFSET(NDISUIO_QUERY_OID, Data))
-            *Returned = Got - FIELD_OFFSET(NDISUIO_QUERY_OID, Data);
     }
 
     HeapFree(GetProcessHeap(), 0, Query);
@@ -252,7 +249,7 @@ WlanGetBssList(
 {
     HANDLE Interface;
     PWLAN_DOT11_BYTE_ARRAY Array;
-    ULONG Size = 4096;
+    ULONG Size = 8192;
     ULONG Returned;
     DWORD Error = ERROR_GEN_FAILURE;
     ULONG Attempt;
@@ -263,9 +260,9 @@ WlanGetBssList(
     if (Interface == NULL)
         return ERROR_BAD_UNIT;
 
-    /* Query into a small buffer, and if the driver reports it needs more,
-       grow to that size and query again */
-    for (Attempt = 0; Attempt < 3; Attempt++)
+    /* Query into a buffer, and while the driver reports it is too small, double
+       it and try again. The driver copies nothing on an overflow */
+    for (Attempt = 0; Attempt < 6; Attempt++)
     {
         Array = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, Size);
         if (Array == NULL)
@@ -286,9 +283,9 @@ WlanGetBssList(
 
         HeapFree(GetProcessHeap(), 0, Array);
 
-        if (Error == ERROR_MORE_DATA && Returned > Size)
+        if (Error == ERROR_MORE_DATA)
         {
-            Size = Returned;
+            Size *= 2;
             continue;
         }
 

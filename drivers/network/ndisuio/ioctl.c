@@ -263,12 +263,13 @@ QueryAdapterOid(PIRP Irp, PIO_STACK_LOCATION IrpSp)
             Status = AdapterContext->AsyncStatus;
         }
 
-        /* Return the bytes written, or the size the caller needs to retry */
+        /* The buffer was too small. Copy nothing back, since the buffered
+           output copy is not clamped, and let the caller retry with more */
         if (Status == NDIS_STATUS_INVALID_LENGTH ||
             Status == NDIS_STATUS_BUFFER_TOO_SHORT ||
             Status == NDIS_STATUS_BUFFER_OVERFLOW)
         {
-            Irp->IoStatus.Information = sizeof(NDIS_OID) + Request.DATA.QUERY_INFORMATION.BytesNeeded;
+            Irp->IoStatus.Information = 0;
             Status = STATUS_BUFFER_OVERFLOW;
         }
         else if (Status == NDIS_STATUS_SUCCESS)
