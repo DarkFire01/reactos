@@ -228,6 +228,28 @@ WdMadeAnyProgress(
     return FALSE;
 }
 
+/**
+ * @brief
+ * Reports a session state change from win32k.
+ *
+ * @param[in] SessionState
+ * 0 when the session opens, 1 when it closes, 2 when it runs down.
+ *
+ * @return
+ * STATUS_INVALID_PARAMETER_1 for an unknown state, otherwise STATUS_SUCCESS.
+ * Nothing registers for session changes here, so there is nobody to tell.
+ */
+NTSTATUS
+NTAPI
+SMgrNotifySessionChange(
+    _In_ ULONG SessionState)
+{
+    if (SessionState > 2)
+        return STATUS_INVALID_PARAMETER_1;
+
+    return STATUS_SUCCESS;
+}
+
 
 
 
