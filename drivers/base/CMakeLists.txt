@@ -19,3 +19,4 @@ add_subdirectory(kdstub)
 
 add_subdirectory(nmidebug)
 add_subdirectory(null)
+add_subdirectory(werkernel)
