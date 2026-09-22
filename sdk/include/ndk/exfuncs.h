@@ -126,6 +126,89 @@ ExRaiseHardError(
     _In_ ULONG ValidResponseOptions,
     _Out_ PULONG Response
 );
+//
+// Notification Facility Functions
+//
+NTSTATUS
+NTAPI
+ZwUpdateWnfStateData(
+    _In_ const VOID *StateName,
+    _In_reads_bytes_opt_(Length) const VOID *Buffer,
+    _In_opt_ ULONG Length,
+    _In_opt_ LPCGUID TypeId,
+    _In_opt_ const VOID *ExplicitScope,
+    _In_ ULONG MatchingChangeStamp,
+    _In_ LOGICAL CheckStamp
+);
+
+NTSTATUS
+NTAPI
+ExSubscribeWnfStateChange(
+    _Out_ PVOID *Subscription,
+    _In_ const VOID *StateName,
+    _In_ ULONG DeliveryOption,
+    _In_ ULONG OriginalChangeStamp,
+    _In_ PVOID Callback,
+    _In_opt_ PVOID CallbackContext
+);
+
+NTSTATUS
+NTAPI
+ExQueryWnfStateData(
+    _In_ PVOID Subscription,
+    _Out_ PULONG ChangeStamp,
+    _Out_writes_bytes_to_opt_(*BufferSize, *BufferSize) PVOID Buffer,
+    _Inout_ PULONG BufferSize
+);
+
+VOID
+NTAPI
+ExUnsubscribeWnfStateChange(
+    _In_opt_ PVOID Subscription
+);
+
+//
+// Terminal Device Functions
+//
+NTSTATUS
+NTAPI
+TtmNotifyDeviceArrival(
+    _In_ ULONG Provider,
+    _In_ ULONG64 Token,
+    _In_ const VOID *Routines,
+    _In_ ULONG DeviceType,
+    _In_opt_ PCUNICODE_STRING Identity
+);
+
+VOID
+NTAPI
+TtmNotifyDeviceDeparture(
+    _In_ ULONG Provider,
+    _In_ ULONG64 Token
+);
+
+//
+// Licensing Functions
+//
+NTSTATUS
+NTAPI
+ZwQueryLicenseValue(
+    _In_ PUNICODE_STRING ValueName,
+    _Out_opt_ PULONG Type,
+    _Out_writes_bytes_to_opt_(DataSize, *ResultDataSize) PVOID Data,
+    _In_ ULONG DataSize,
+    _Out_ PULONG ResultDataSize
+);
+
+//
+// Device Address Space Sharing Functions
+//
+NTSTATUS
+NTAPI
+ExShareAddressSpaceWithDevice(
+    _In_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _Out_ PULONG ReturnedAsid
+);
 
 #endif
 
