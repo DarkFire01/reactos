@@ -506,9 +506,9 @@ typedef struct _DRIVEROBJ {
 #define INDEX_DrvReserved9                90L
 #define INDEX_DrvReserved10               91L
 #define INDEX_DrvReserved11               92L
-#if (NTDDI_VERSION >= NTDDI_VISTA)
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
 #define INDEX_DrvRenderHint               93L
-#if (NTDDI_VERSION >= NTDDI_WIN7)
+#if (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__)
 #define INDEX_DrvCreateDeviceBitmapEx     94L
 #define INDEX_DrvDeleteDeviceBitmapEx     95L
 #define INDEX_DrvAssociateSharedSurface   96L
@@ -519,12 +519,12 @@ typedef struct _DRIVEROBJ {
 #define INDEX_DrvLockDisplayArea         101L
 #define INDEX_DrvUnlockDisplayArea       102L
 #define INDEX_LAST                       103L
-#else /* (NTDDI_VERSION >= NTDDI_WIN7) */
+#else /* (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__) */
 #define INDEX_LAST                        94L
-#endif /* (NTDDI_VERSION >= NTDDI_WIN7) */
-#else /* (NTDDI_VERSION >= NTDDI_VISTA) */
+#endif /* (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__) */
+#else /* (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__) */
 #define INDEX_LAST                        93L
-#endif /* (NTDDI_VERSION >= NTDDI_VISTA) */
+#endif /* (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__) */
 
 typedef struct _DRVFN {
   ULONG  iFunc;
@@ -3213,7 +3213,7 @@ EngBugCheckEx(
 
 #endif /* (NTDDI_VERSION >= NTDDI_WINXPSP2) */
 
-#if (NTDDI_VERSION >= NTDDI_VISTA)
+#if (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__)
 
 ENGAPI
 HANDLE
@@ -3397,9 +3397,9 @@ EngUpdateDeviceSurface(
     _In_ SURFOBJ *pso,
     _Inout_ CLIPOBJ **ppco);
 
-#endif /* (NTDDI_VERSION >= NTDDI_VISTA) */
+#endif /* (NTDDI_VERSION >= NTDDI_VISTA) || defined(__REACTOS__) */
 
-#if (NTDDI_VERSION >= NTDDI_WIN7)
+#if (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__)
 
 ENGAPI
 HBITMAP
@@ -3421,7 +3421,7 @@ APIENTRY
 EngCTGetCurrentGamma(
     _In_ HDEV hdev);
 
-#endif /* (NTDDI_VERSION >= NTDDI_WIN7) */
+#endif /* (NTDDI_VERSION >= NTDDI_WIN7) || defined(__REACTOS__) */
 
 /* Graphics Driver Functions */
 
