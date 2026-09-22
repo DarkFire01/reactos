@@ -17,70 +17,13 @@
 #define NDEBUG
 #include <debug.h>
 
-/*
- * win32k callbacks dxgkrnl keeps in every DXGPROCESS (win32kbase gDxgkWin32kEngInterface).
- * Slot order is from the 14361 PDB. All of them are NULL until they get implemented.
- */
-typedef struct _DXGKWIN32KENG_INTERFACE
-{
-    USHORT Size;
-    USHORT Version;
-    PVOID pfnDxgkEngVisRgnUniq;
-    PVOID pfnDxgkEngLockVisRgn;
-    PVOID pfnDxgkEngUnlockVisRgn;
-    PVOID pfnDxgkEngEnterUserCrit;
-    PVOID pfnDxgkEngLeaveUserCrit;
-    PVOID pfnDxgkEngGetDC;
-    PVOID pfnDxgkEngIsRedirectionDC;
-    PVOID pfnDxgkEngReleaseDC;
-    PVOID pfnDxgkEngGetClientRect;
-    PVOID pfnDxgkEngCreateRectRgn;
-    PVOID pfnDxgkEngGetVisRgn;
-    PVOID pfnDxgkEngSetRgn;
-    PVOID pfnDxgkEngCombineRgn;
-    PVOID pfnDxgkEngGetRgnData;
-    PVOID pfnDxgkEngGetBoxRgn;
-    PVOID pfnDxgkEngDeleteObject;
-    PVOID pfnDxgkEngDetectGDIPath;
-    PVOID pfnDxgkEngBltViaGDI;
-    PVOID pfnDxgkEngColorFillViaGDI;
-    PVOID pfnDxgkEngLockShareSem;
-    PVOID pfnDxgkEngUnlockShareSem;
-    PVOID pfnDxgkEngAcquireWin32kAndPDEVLocks;
-    PVOID pfnDxgkEngAssertGdiOutput;
-    PVOID pfnDxgkEngResetPointer;
-    PVOID pfnDxgkEngReleaseWin32kAndPDEVLocks;
-    PVOID pfnDxgkEngScreenAccessCheck;
-    PVOID pfnDxgkEngIsDwmProcess;
-    PVOID pfnDxgkEngIsRemoteConnection;
-    PVOID pfnDxgkEngGetRedirBitmapSharedHandle;
-    PVOID pfnDxgkEngAddRedirBitmapD3DDirtyRgn;
-    PVOID pfnDxgkEngAccumD3DPresentBounds;
-    PVOID pfnDxgkEngRefPresentHistoryToken;
-    PVOID pfnDxgkEngAcquireStableVisRgn;
-    PVOID pfnDxgkEngReleaseStableVisRgn;
-    PVOID pfnDxgkEngAcquireStableSprite;
-    PVOID pfnDxgkEngReleaseStableSprite;
-    PVOID pfnDxgkEngWatchVisRgnChange;
-    PVOID pfnDxgkEngFindViewDesktopPosition;
-    PVOID pfnDxgkEngIsDwmComposing;
-    PVOID pfnDxgkEngQuerySwapChainBindingStatus;
-    PVOID pfnDxgkEngGetRedirectedWindowOrigin;
-    PVOID pfnDxgkEngAdjustMonitorPosition;
-    PVOID pfnDxgkEngGetRemoteDeviceCount;
-    PVOID pfnDxgkEngGetAdapterUniquenessPointer;
-    PVOID pfbDxgkEngIncSpritetUniq;
-    PVOID pfnDxgkEngQueryWin32Info;
-    PVOID pfnDxgkEngGetWindowRect;
-    PVOID pfnDxgkEngNotifyDisplayChange;
-} DXGKWIN32KENG_INTERFACE;
-
-/* Size and Version share the first pointer slot, 392 bytes on x64 */
-C_ASSERT(sizeof(DXGKWIN32KENG_INTERFACE) == 49 * sizeof(PVOID));
+/* The engine interface dxgkrnl calls back through (gdi/eng/dxgkeng.c) */
+struct _DXGKWIN32KENG_INTERFACE;
+extern struct _DXGKWIN32KENG_INTERFACE gDxgkWin32kEngInterface;
 
 typedef NTSTATUS (NTAPI *PFN_DxgkProcessCallout)(
     _Inout_ PVOID *DxProcess,
-    _In_ const DXGKWIN32KENG_INTERFACE *EngInterface,
+    _In_ const struct _DXGKWIN32KENG_INTERFACE *EngInterface,
     _In_ BOOLEAN Create);
 
 /*
@@ -112,8 +55,6 @@ PDEVICE_OBJECT           gpDxgkDeviceObject = NULL;
 PFILE_OBJECT             gpDxgkFileObject = NULL;
 DXGKWIN32K_INTERFACE_BUF gDxgkInterface = { 0 };
 BOOLEAN                  gbDxgkInitialized = FALSE;
-
-DXGKWIN32KENG_INTERFACE  gDxgkWin32kEngInterface = { sizeof(DXGKWIN32KENG_INTERFACE), 5 };
 
 /* Exported by watchdog.sys */
 NTSTATUS NTAPI SMgrNotifySessionChange(_In_ ULONG SessionState);
