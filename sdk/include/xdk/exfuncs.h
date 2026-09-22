@@ -1058,6 +1058,68 @@ ExLocalTimeToSystemTime(
   _In_ PLARGE_INTEGER LocalTime,
   _Out_ PLARGE_INTEGER SystemTime);
 
+#if (NTDDI_VERSION >= NTDDI_VISTASP1)
+
+_IRQL_requires_min_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+ExAcquireSpinLockSharedAtDpcLevel(
+  _Inout_ PEX_SPIN_LOCK SpinLock);
+
+_IRQL_raises_(DISPATCH_LEVEL)
+_IRQL_saves_
+NTKERNELAPI
+KIRQL
+NTAPI
+ExAcquireSpinLockShared(
+  _Inout_ PEX_SPIN_LOCK SpinLock);
+
+_IRQL_requires_min_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+ExReleaseSpinLockSharedFromDpcLevel(
+  _Inout_ PEX_SPIN_LOCK SpinLock);
+
+NTKERNELAPI
+VOID
+NTAPI
+ExReleaseSpinLockShared(
+  _Inout_ PEX_SPIN_LOCK SpinLock,
+  _In_ _IRQL_restores_ KIRQL OldIrql);
+
+_IRQL_requires_min_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+ExAcquireSpinLockExclusiveAtDpcLevel(
+  _Inout_ PEX_SPIN_LOCK SpinLock);
+
+_IRQL_raises_(DISPATCH_LEVEL)
+_IRQL_saves_
+NTKERNELAPI
+KIRQL
+NTAPI
+ExAcquireSpinLockExclusive(
+  _Inout_ PEX_SPIN_LOCK SpinLock);
+
+_IRQL_requires_min_(DISPATCH_LEVEL)
+NTKERNELAPI
+VOID
+NTAPI
+ExReleaseSpinLockExclusiveFromDpcLevel(
+  _Inout_ PEX_SPIN_LOCK SpinLock);
+
+NTKERNELAPI
+VOID
+NTAPI
+ExReleaseSpinLockExclusive(
+  _Inout_ PEX_SPIN_LOCK SpinLock,
+  _In_ _IRQL_restores_ KIRQL OldIrql);
+
+#endif /* (NTDDI_VERSION >= NTDDI_VISTASP1) */
+
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
 
 #define EX_TIMER_HIGH_RESOLUTION 0x4

@@ -1743,14 +1743,18 @@
 @ stdcall -version=0x600+ EtwWriteTransfer(int64 ptr ptr ptr long ptr)
 
 # Executive
-@ fastcall -version=0x600+ ExAcquireSpinLockExclusive(ptr)
-@ fastcall -version=0x600+ ExAcquireSpinLockShared(ptr)
-@ fastcall -version=0x600+ ExReleaseSpinLockExclusive(ptr long)
-@ fastcall -version=0x600+ ExReleaseSpinLockShared(ptr long)
+@ stdcall -version=0x600+ ExAcquireSpinLockExclusive(ptr)
+@ stdcall -version=0x600+ ExAcquireSpinLockExclusiveAtDpcLevel(ptr)
+@ stdcall -version=0x600+ ExAcquireSpinLockShared(ptr)
+@ stdcall -version=0x600+ ExAcquireSpinLockSharedAtDpcLevel(ptr)
 @ stdcall -version=0x603+ ExAllocateTimer(ptr ptr long)
 @ stdcall -version=0x603+ ExCancelTimer(ptr ptr)
 @ stdcall -version=0x603+ ExDeleteTimer(ptr long long ptr)
 @ stdcall -version=0x602+ ExGetFirmwareEnvironmentVariable(ptr ptr ptr ptr ptr)
+@ stdcall -version=0x600+ ExReleaseSpinLockExclusive(ptr long)
+@ stdcall -version=0x600+ ExReleaseSpinLockExclusiveFromDpcLevel(ptr)
+@ stdcall -version=0x600+ ExReleaseSpinLockShared(ptr long)
+@ stdcall -version=0x600+ ExReleaseSpinLockSharedFromDpcLevel(ptr)
 @ stdcall -version=0x603+ ExSetTimer(ptr int64 int64 ptr)
 @ stdcall -version=0x602+ ExTryQueueWorkItem(ptr long)
 
