@@ -21,4 +21,27 @@ typedef struct _WLANSVCHANDLE
     DWORD      dwClientVersion;
 } WLANSVCHANDLE, *PWLANSVCHANDLE;
 
+/* device.c: driving a native 802.11 adapter through NDISUIO */
+
+struct _DOT11_SSID;
+struct _WLAN_DOT11_BYTE_ARRAY;
+
+DWORD
+WlanScan(
+    _In_ const GUID *InterfaceGuid);
+
+DWORD
+WlanGetBssList(
+    _In_ const GUID *InterfaceGuid,
+    _Outptr_result_maybenull_ struct _WLAN_DOT11_BYTE_ARRAY **BssList);
+
+DWORD
+WlanConnect(
+    _In_ const GUID *InterfaceGuid,
+    _In_ struct _DOT11_SSID *Ssid);
+
+DWORD
+WlanDisconnect(
+    _In_ const GUID *InterfaceGuid);
+
 #endif /* _WLANSVC_PCH_ */

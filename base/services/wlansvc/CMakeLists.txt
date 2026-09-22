@@ -1,8 +1,11 @@
 
-include_directories(${REACTOS_SOURCE_DIR}/sdk/include/reactos/idl)
+include_directories(
+    ${REACTOS_SOURCE_DIR}/sdk/include/reactos/idl
+    ${REACTOS_SOURCE_DIR}/sdk/include/reactos/drivers/ndisuio)
 add_rpc_files(server ${REACTOS_SOURCE_DIR}/sdk/include/reactos/idl/wlansvc.idl)
 
 list(APPEND SOURCE
+    device.c
     wlansvc.c
     rpcserver.c
     precomp.h
