@@ -6,6 +6,7 @@ list(APPEND INF_FILES
     bth.inf
     c_image.inf
     display.inf
+    e1d.inf
     fdc.inf
     flpydisk.inf
     hal.inf
