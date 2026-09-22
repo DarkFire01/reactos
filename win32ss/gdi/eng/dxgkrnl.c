@@ -6,7 +6,7 @@
  *
  * Ported from Reference/win10/win32kbase.c (DlpLoadDxgkrnl:110414, DlInitDxgkrnl:110290). This is
  * the win32k side of WDDM: it opens \Device\DxgKrnl when a miniport has loaded dxgkrnl, and sends
- * IOCTL_VIDEO_GIVE_CALLSBACK (0x23E057, INTERNAL_DEVICE_CONTROL) with a 944-byte DXGKWIN32K_INTERFACE
+ * IOCTL_VIDEO_GIVE_CALLSBACK (0x23E057, INTERNAL_DEVICE_CONTROL) with a DXGKWIN32K_INTERFACE
  * (Version 22) that dxgkrnl fills with the D3DKMT entry points - the table win32k routes the
  * D3DKMT* APIs through (gDxgkInterface). DarkFire's WDDM upgrade to the otherwise-XPDM win32k.
  */
@@ -18,21 +18,91 @@
 #include <debug.h>
 
 /*
- * The DXGKWIN32K_INTERFACE is 944 (0x3B0) bytes: USHORT Size + USHORT Version, then Context/
- * InterfaceReference/InterfaceDereference and 232 pfnDxgk* slots dxgkrnl fills. The fully-typed
- * layout (rxgkwddminterface.h) forward-declares ~157 D3DKMT structs opaquely, which clash with the
- * partial D3DKMT types win32k.h already pulls in - so the bootstrap uses a sized opaque buffer
- * (it only needs to stamp Size/Version and hand the table to dxgkrnl). D3DKMT* routing through the
- * filled pfn slots, with the real win32k D3DKMT types, is the next step.
+ * win32k callbacks dxgkrnl keeps in every DXGPROCESS (win32kbase gDxgkWin32kEngInterface).
+ * Slot order is from the 14361 PDB. All of them are NULL until they get implemented.
+ */
+typedef struct _DXGKWIN32KENG_INTERFACE
+{
+    USHORT Size;
+    USHORT Version;
+    PVOID pfnDxgkEngVisRgnUniq;
+    PVOID pfnDxgkEngLockVisRgn;
+    PVOID pfnDxgkEngUnlockVisRgn;
+    PVOID pfnDxgkEngEnterUserCrit;
+    PVOID pfnDxgkEngLeaveUserCrit;
+    PVOID pfnDxgkEngGetDC;
+    PVOID pfnDxgkEngIsRedirectionDC;
+    PVOID pfnDxgkEngReleaseDC;
+    PVOID pfnDxgkEngGetClientRect;
+    PVOID pfnDxgkEngCreateRectRgn;
+    PVOID pfnDxgkEngGetVisRgn;
+    PVOID pfnDxgkEngSetRgn;
+    PVOID pfnDxgkEngCombineRgn;
+    PVOID pfnDxgkEngGetRgnData;
+    PVOID pfnDxgkEngGetBoxRgn;
+    PVOID pfnDxgkEngDeleteObject;
+    PVOID pfnDxgkEngDetectGDIPath;
+    PVOID pfnDxgkEngBltViaGDI;
+    PVOID pfnDxgkEngColorFillViaGDI;
+    PVOID pfnDxgkEngLockShareSem;
+    PVOID pfnDxgkEngUnlockShareSem;
+    PVOID pfnDxgkEngAcquireWin32kAndPDEVLocks;
+    PVOID pfnDxgkEngAssertGdiOutput;
+    PVOID pfnDxgkEngResetPointer;
+    PVOID pfnDxgkEngReleaseWin32kAndPDEVLocks;
+    PVOID pfnDxgkEngScreenAccessCheck;
+    PVOID pfnDxgkEngIsDwmProcess;
+    PVOID pfnDxgkEngIsRemoteConnection;
+    PVOID pfnDxgkEngGetRedirBitmapSharedHandle;
+    PVOID pfnDxgkEngAddRedirBitmapD3DDirtyRgn;
+    PVOID pfnDxgkEngAccumD3DPresentBounds;
+    PVOID pfnDxgkEngRefPresentHistoryToken;
+    PVOID pfnDxgkEngAcquireStableVisRgn;
+    PVOID pfnDxgkEngReleaseStableVisRgn;
+    PVOID pfnDxgkEngAcquireStableSprite;
+    PVOID pfnDxgkEngReleaseStableSprite;
+    PVOID pfnDxgkEngWatchVisRgnChange;
+    PVOID pfnDxgkEngFindViewDesktopPosition;
+    PVOID pfnDxgkEngIsDwmComposing;
+    PVOID pfnDxgkEngQuerySwapChainBindingStatus;
+    PVOID pfnDxgkEngGetRedirectedWindowOrigin;
+    PVOID pfnDxgkEngAdjustMonitorPosition;
+    PVOID pfnDxgkEngGetRemoteDeviceCount;
+    PVOID pfnDxgkEngGetAdapterUniquenessPointer;
+    PVOID pfbDxgkEngIncSpritetUniq;
+    PVOID pfnDxgkEngQueryWin32Info;
+    PVOID pfnDxgkEngGetWindowRect;
+    PVOID pfnDxgkEngNotifyDisplayChange;
+} DXGKWIN32KENG_INTERFACE;
+
+/* Size and Version share the first pointer slot, 392 bytes on x64 */
+C_ASSERT(sizeof(DXGKWIN32KENG_INTERFACE) == 49 * sizeof(PVOID));
+
+typedef NTSTATUS (NTAPI *PFN_DxgkProcessCallout)(
+    _Inout_ PVOID *DxProcess,
+    _In_ const DXGKWIN32KENG_INTERFACE *EngInterface,
+    _In_ BOOLEAN Create);
+
+/*
+ * The DXGKWIN32K_INTERFACE: USHORT Size + USHORT Version, then Context/InterfaceReference/
+ * InterfaceDereference and 232 pfnDxgk* slots dxgkrnl fills, 944 bytes on x86 and 1888 on x64.
+ * The fully-typed layout (rxgkwddminterface.h) forward-declares ~157 D3DKMT structs opaquely,
+ * which clash with the partial D3DKMT types win32k.h already pulls in - so the bootstrap names
+ * only the slots it uses. D3DKMT* routing through the filled pfn slots, with the real win32k
+ * D3DKMT types, is the next step.
  */
 typedef struct _DXGKWIN32K_INTERFACE_BUF
 {
     USHORT Size;
     USHORT Version;
-    UCHAR  Payload[0x3B0 - 4];   /* Context + Ref/Deref + 232 pfnDxgk* slots */
+    PVOID Context;
+    PVOID InterfaceReference;
+    PVOID InterfaceDereference;
+    PFN_DxgkProcessCallout pfnDxgkProcessCallout;
+    PVOID Payload[231];   /* the remaining pfnDxgk* slots */
 } DXGKWIN32K_INTERFACE_BUF;
 
-C_ASSERT(sizeof(DXGKWIN32K_INTERFACE_BUF) == 0x3B0);
+C_ASSERT(sizeof(DXGKWIN32K_INTERFACE_BUF) == 236 * sizeof(PVOID));
 
 /* Fills the NtGdiDdDDI* D3DKMT callback table (gdi/ntgdi/d3dkmt.c) via IOCTL_VIDEO_REGISTER_RXGK. */
 NTSTATUS NTAPI DxgRegisterAdapterCallbacks(_In_ PDEVICE_OBJECT pDxgkrnl);
@@ -42,6 +112,8 @@ PDEVICE_OBJECT           gpDxgkDeviceObject = NULL;
 PFILE_OBJECT             gpDxgkFileObject = NULL;
 DXGKWIN32K_INTERFACE_BUF gDxgkInterface = { 0 };
 BOOLEAN                  gbDxgkInitialized = FALSE;
+
+DXGKWIN32KENG_INTERFACE  gDxgkWin32kEngInterface = { sizeof(DXGKWIN32KENG_INTERFACE), 5 };
 
 /* Exported by watchdog.sys */
 NTSTATUS NTAPI SMgrNotifySessionChange(_In_ ULONG SessionState);
@@ -60,6 +132,21 @@ DlpOpenDxgkrnl(VOID)
     RtlInitUnicodeString(&DeviceName, L"\\Device\\DxgKrnl");
     return IoGetDeviceObjectPointer(&DeviceName, GENERIC_READ | GENERIC_WRITE,
                                     &gpDxgkFileObject, &gpDxgkDeviceObject);
+}
+
+/**
+ * @brief Create or drop a process's DXGPROCESS. Reference win32kbase GdiProcessCallout.
+ *        dxgkrnl frees the DXGPROCESS itself when the process dies; the drop only clears DxProcess.
+ */
+NTSTATUS NTAPI
+DlProcessCallout(
+    _Inout_ PPROCESSINFO ppi,
+    _In_ BOOLEAN Create)
+{
+    if (!gbDxgkInitialized)
+        return STATUS_SUCCESS;
+
+    return gDxgkInterface.pfnDxgkProcessCallout(&ppi->DxProcess, &gDxgkWin32kEngInterface, Create);
 }
 
 /**
@@ -83,7 +170,7 @@ DlInitDxgkrnl(VOID)
 
     /* win32k stamps Version/Size; dxgkrnl fills the pfn slots (ref :110322). */
     gDxgkInterface.Version = 22;
-    gDxgkInterface.Size    = sizeof(gDxgkInterface);   /* 944 (0x3B0) */
+    gDxgkInterface.Size    = sizeof(gDxgkInterface);   /* 944 on x86, 1888 on x64 */
 
     KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     Irp = IoBuildDeviceIoControlRequest(IOCTL_VIDEO_GIVE_CALLSBACK,
@@ -107,6 +194,11 @@ DlInitDxgkrnl(VOID)
         gbDxgkInitialized = TRUE;
         DPRINT1("win32k: DxgKrnl WDDM interface acquired (Version %u)\n", gDxgkInterface.Version);
 
+        /* CSRSS became a GUI process before the interface existed, so it gets its DXGPROCESS now */
+        Status = DlProcessCallout(PsGetCurrentProcessWin32Process(), TRUE);
+        if (!NT_SUCCESS(Status))
+            DPRINT1("win32k: DxgkProcessCallout for CSRSS failed 0x%lX\n", Status);
+
         /* Also populate the D3DKMT callback table the NtGdiDdDDI* thunks route through. */
         Status = DxgRegisterAdapterCallbacks(gpDxgkDeviceObject);
         if (!NT_SUCCESS(Status))
@@ -127,10 +219,14 @@ DlInitDxgkrnl(VOID)
 VOID NTAPI
 DlNotifySessionOpen(VOID)
 {
+    PPROCESSINFO ppi = PsGetCurrentProcessWin32Process();
     NTSTATUS Status;
 
-    /* dxgkrnl blocks here until an adapter has started, so only call when a miniport loaded it */
-    if (gpDxgkDeviceObject == NULL)
+    /*
+     * dxgkrnl blocks here until an adapter has started and needs CSRSS's DXGPROCESS, so only
+     * call once a miniport loaded dxgkrnl and the process callout ran.
+     */
+    if (!gbDxgkInitialized || (ppi == NULL) || (ppi->DxProcess == NULL))
         return;
 
     Status = SMgrNotifySessionChange(DL_SESSION_OPEN);
