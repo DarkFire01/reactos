@@ -1,561 +1,640 @@
 /*
  * PROJECT:     ReactOS Bluetooth probe
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
- * PURPOSE:     Drives a radio over the FreeBT transport IOCTL contract
+ * PURPOSE:     Scan, pair, connect and inspect devices over the FreeBT transport
  * COPYRIGHT:   Copyright 2026 Justin Miller <justinmiller100@gmail.com>
  */
 
-#include <windows.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "bthprobe.h"
 
-#include <fbtusr.h>
+typedef enum _BT_COMMAND
+{
+    BtCommandInfo = 0,
+    BtCommandScan,
+    BtCommandPair,
+    BtCommandConnect,
+    BtCommandSdp,
+    BtCommandHid,
+    BtCommandList,
+    BtCommandUnpair
+} BT_COMMAND;
 
-/* The transport rejects an event buffer smaller than this */
-#define HCI_MAX_EVENT_SIZE          257
-#define HCI_MAX_COMMAND_SIZE        258
-#define HCI_EVENT_TIMEOUT           4000
-#define HCI_MAX_STRAY_EVENTS        16
-
-#define HCI_OGF_LINK_CONTROL        0x01
-#define HCI_OGF_CONTROL_BASEBAND    0x03
-#define HCI_OGF_INFORMATIONAL       0x04
-
-#define HCI_OPCODE(Ogf, Ocf)        ((USHORT)(((Ogf) << 10) | (Ocf)))
-
-#define HCI_RESET                   HCI_OPCODE(HCI_OGF_CONTROL_BASEBAND, 0x0003)
-#define HCI_READ_LOCAL_NAME         HCI_OPCODE(HCI_OGF_CONTROL_BASEBAND, 0x0014)
-#define HCI_READ_LOCAL_VERSION      HCI_OPCODE(HCI_OGF_INFORMATIONAL, 0x0001)
-#define HCI_READ_LOCAL_FEATURES     HCI_OPCODE(HCI_OGF_INFORMATIONAL, 0x0003)
-#define HCI_READ_BUFFER_SIZE        HCI_OPCODE(HCI_OGF_INFORMATIONAL, 0x0005)
-#define HCI_READ_BD_ADDR            HCI_OPCODE(HCI_OGF_INFORMATIONAL, 0x0009)
-#define HCI_INQUIRY                 HCI_OPCODE(HCI_OGF_LINK_CONTROL, 0x0001)
-
-#define HCI_EVENT_INQUIRY_COMPLETE  0x01
-#define HCI_EVENT_INQUIRY_RESULT    0x02
-#define HCI_EVENT_COMMAND_COMPLETE  0x0E
-#define HCI_EVENT_COMMAND_STATUS    0x0F
-#define HCI_EVENT_INQUIRY_RSSI      0x22
-#define HCI_EVENT_EXTENDED_INQUIRY  0x2F
+typedef struct _BT_OPTIONS
+{
+    BT_COMMAND Command;
+    BOOLEAN InfoThenScan;
+    BOOLEAN Verbose;
+    BOOLEAN AutoConfirm;
+    BOOLEAN SkipNames;
+    BOOLEAN HavePin;
+    UCHAR InquiryLength;
+    ULONG Instance;
+    UCHAR Address[BT_ADDRESS_LENGTH];
+    CHAR Pin[BTH_MAX_PIN_SIZE + 1];
+} BT_OPTIONS, *PBT_OPTIONS;
 
 /* General inquiry access code, least significant byte first */
-static const UCHAR GeneralInquiryLap[3] = { 0x33, 0x8B, 0x9E };
-
-static
-const char *
-HciErrorName(
-    _In_ UCHAR Status)
-{
-    switch (Status)
-    {
-        case 0x00: return "success";
-        case 0x01: return "unknown HCI command";
-        case 0x02: return "no connection";
-        case 0x03: return "hardware failure";
-        case 0x04: return "page timeout";
-        case 0x05: return "authentication failure";
-        case 0x0C: return "command disallowed";
-        case 0x11: return "unsupported feature or parameter";
-        case 0x12: return "invalid HCI command parameters";
-        case 0x1A: return "unsupported remote feature";
-        default: return "unknown";
-    }
-}
-
-static
-const char *
-ManufacturerName(
-    _In_ USHORT Id)
-{
-    switch (Id)
-    {
-        case 0x0001: return "Nokia";
-        case 0x0002: return "Intel";
-        case 0x000A: return "Cambridge Silicon Radio";
-        case 0x000F: return "Broadcom";
-        case 0x001D: return "Qualcomm";
-        case 0x005D: return "Realtek";
-        case 0x005F: return "MediaTek";
-        default: return "unknown";
-    }
-}
-
-static
-void
-PrintAddress(
-    _In_reads_(6) const UCHAR *Address)
-{
-    /* The address arrives least significant byte first */
-    printf("%02X:%02X:%02X:%02X:%02X:%02X",
-           Address[5], Address[4], Address[3],
-           Address[2], Address[1], Address[0]);
-}
-
-static
-void
-PrintHex(
-    _In_reads_(Length) const UCHAR *Buffer,
-    _In_ DWORD Length)
-{
-    DWORD i;
-
-    for (i = 0; i < Length; i++)
-        printf("%02X ", Buffer[i]);
-}
-
-static
-HANDLE
-OpenRadio(
-    _In_ int Instance)
-{
-    WCHAR Path[64];
-    HANDLE Radio;
-
-    swprintf(Path, sizeof(Path) / sizeof(Path[0]), L"\\\\.\\FbtUsb%02d", Instance);
-
-    Radio = CreateFileW(Path,
-                        GENERIC_READ | GENERIC_WRITE,
-                        0,
-                        NULL,
-                        OPEN_EXISTING,
-                        FILE_FLAG_OVERLAPPED,
-                        NULL);
-
-    if (Radio != INVALID_HANDLE_VALUE)
-        printf("Opened %ls\n\n", Path);
-
-    return Radio;
-}
+static const UCHAR BtGeneralInquiryLap[3] = { 0x33, 0x8B, 0x9E };
 
 static
 BOOL
-SendCommand(
-    _In_ HANDLE Radio,
-    _In_ USHORT OpCode,
-    _In_reads_opt_(ParamLength) const UCHAR *Params,
-    _In_ UCHAR ParamLength)
+WINAPI
+BtConsoleHandler(
+    _In_ DWORD CtrlType)
 {
-    UCHAR Packet[HCI_MAX_COMMAND_SIZE];
-    OVERLAPPED Overlapped;
-    DWORD Returned;
-    BOOL Result;
-
-    Packet[0] = (UCHAR)(OpCode & 0xFF);
-    Packet[1] = (UCHAR)(OpCode >> 8);
-    Packet[2] = ParamLength;
-
-    if (ParamLength != 0 && Params != NULL)
-        CopyMemory(&Packet[3], Params, ParamLength);
-
-    ZeroMemory(&Overlapped, sizeof(Overlapped));
-    Overlapped.hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
-    if (Overlapped.hEvent == NULL)
-        return FALSE;
-
-    Result = DeviceIoControl(Radio,
-                             IOCTL_FREEBT_HCI_SEND_CMD,
-                             Packet,
-                             (DWORD)(3 + ParamLength),
-                             NULL,
-                             0,
-                             &Returned,
-                             &Overlapped);
-
-    if (!Result && GetLastError() == ERROR_IO_PENDING)
-        Result = GetOverlappedResult(Radio, &Overlapped, &Returned, TRUE);
-
-    CloseHandle(Overlapped.hEvent);
-
-    return Result;
-}
-
-static
-BOOL
-ReadEvent(
-    _In_ HANDLE Radio,
-    _Out_writes_(HCI_MAX_EVENT_SIZE) UCHAR *Buffer,
-    _Out_ DWORD *Length,
-    _In_ DWORD Timeout)
-{
-    OVERLAPPED Overlapped;
-    DWORD Returned;
-    BOOL Result;
-
-    Returned = 0;
-
-    ZeroMemory(&Overlapped, sizeof(Overlapped));
-    Overlapped.hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
-    if (Overlapped.hEvent == NULL)
-        return FALSE;
-
-    Result = DeviceIoControl(Radio,
-                             IOCTL_FREEBT_HCI_GET_EVENT,
-                             NULL,
-                             0,
-                             Buffer,
-                             HCI_MAX_EVENT_SIZE,
-                             &Returned,
-                             &Overlapped);
-
-    if (!Result && GetLastError() == ERROR_IO_PENDING)
+    if (CtrlType == CTRL_C_EVENT || CtrlType == CTRL_BREAK_EVENT)
     {
-        if (WaitForSingleObject(Overlapped.hEvent, Timeout) == WAIT_OBJECT_0)
-        {
-            Result = GetOverlappedResult(Radio, &Overlapped, &Returned, TRUE);
-
-        }
-
-        else
-        {
-            /* Let the cancelled transfer settle so the next read starts clean */
-            CancelIo(Radio);
-            GetOverlappedResult(Radio, &Overlapped, &Returned, TRUE);
-            SetLastError(WAIT_TIMEOUT);
-            Result = FALSE;
-
-        }
-
+        InterlockedExchange(&BtStopRequested, 1);
+        return TRUE;
     }
-
-    CloseHandle(Overlapped.hEvent);
-    *Length = Returned;
-
-    return Result;
-}
-
-static
-void
-PrintInquiryResult(
-    _In_reads_(Length) const UCHAR *Event,
-    _In_ DWORD Length)
-{
-    /* Both layouts pack one field at a time rather than one record at a time */
-    UCHAR Count;
-    UCHAR Stride;
-    const UCHAR *Addresses;
-    const UCHAR *Classes;
-    DWORD i;
-
-    if (Length < 3)
-        return;
-
-    Count = Event[2];
-    Stride = 14;
-
-    if ((DWORD)(3 + Count * Stride) > Length)
-    {
-        printf("  truncated inquiry result, %lu bytes for %u responses\n", Length, Count);
-        return;
-    }
-
-    Addresses = &Event[3];
-
-    if (Event[0] == HCI_EVENT_INQUIRY_RSSI)
-        Classes = Addresses + Count * 6 + Count * 1 + Count * 1;
-
-    else
-        Classes = Addresses + Count * 6 + Count * 1 + Count * 2;
-
-    for (i = 0; i < Count; i++)
-    {
-        printf("  found ");
-        PrintAddress(&Addresses[i * 6]);
-        printf("  class %02X%02X%02X",
-               Classes[i * 3 + 2], Classes[i * 3 + 1], Classes[i * 3]);
-
-        if (Event[0] == HCI_EVENT_INQUIRY_RSSI)
-        {
-            const UCHAR *Rssi = Classes + Count * 3 + Count * 2;
-            printf("  rssi %d dBm", (signed char)Rssi[i]);
-
-        }
-
-        printf("\n");
-
-    }
-}
-
-static
-void
-PrintStrayEvent(
-    _In_reads_(Length) const UCHAR *Event,
-    _In_ DWORD Length)
-{
-    switch (Event[0])
-    {
-        case HCI_EVENT_INQUIRY_RESULT:
-        case HCI_EVENT_INQUIRY_RSSI:
-            PrintInquiryResult(Event, Length);
-            break;
-
-        case HCI_EVENT_INQUIRY_COMPLETE:
-            printf("  inquiry complete\n");
-            break;
-
-        default:
-            printf("  event 0x%02X, %lu bytes: ", Event[0], Length);
-            PrintHex(Event, Length);
-            printf("\n");
-            break;
-
-    }
-}
-
-/* Send a command and pump events until its completion comes back */
-static
-BOOL
-Command(
-    _In_ HANDLE Radio,
-    _In_ USHORT OpCode,
-    _In_reads_opt_(ParamLength) const UCHAR *Params,
-    _In_ UCHAR ParamLength,
-    _Out_writes_to_(HCI_MAX_EVENT_SIZE, *ReturnLength) UCHAR *Return,
-    _Out_ DWORD *ReturnLength)
-{
-    UCHAR Event[HCI_MAX_EVENT_SIZE];
-    DWORD Length;
-    USHORT Echoed;
-    int Stray;
-
-    *ReturnLength = 0;
-
-    if (!SendCommand(Radio, OpCode, Params, ParamLength))
-    {
-        printf("  command 0x%04X could not be sent, error %lu\n", OpCode, GetLastError());
-        return FALSE;
-
-    }
-
-    for (Stray = 0; Stray < HCI_MAX_STRAY_EVENTS; Stray++)
-    {
-        if (!ReadEvent(Radio, Event, &Length, HCI_EVENT_TIMEOUT))
-        {
-            printf("  no event for command 0x%04X, error %lu\n", OpCode, GetLastError());
-            return FALSE;
-
-        }
-
-        if (Length < 2)
-            continue;
-
-        if (Event[0] == HCI_EVENT_COMMAND_COMPLETE && Length >= 5)
-        {
-            Echoed = (USHORT)(Event[3] | (Event[4] << 8));
-            if (Echoed == OpCode)
-            {
-                *ReturnLength = Length - 5;
-                if (*ReturnLength != 0)
-                    CopyMemory(Return, &Event[5], *ReturnLength);
-
-                return TRUE;
-
-            }
-
-        }
-
-        else if (Event[0] == HCI_EVENT_COMMAND_STATUS && Length >= 6)
-        {
-            Echoed = (USHORT)(Event[4] | (Event[5] << 8));
-            if (Echoed == OpCode)
-            {
-                Return[0] = Event[2];
-                *ReturnLength = 1;
-
-                return TRUE;
-
-            }
-
-        }
-
-        PrintStrayEvent(Event, Length);
-
-    }
-
-    printf("  gave up waiting for command 0x%04X\n", OpCode);
 
     return FALSE;
 }
 
 static
-BOOL
-ProbeRadio(
-    _In_ HANDLE Radio)
+ULONG
+BtRead24(
+    _In_reads_(3) const UCHAR *Data)
 {
-    UCHAR Return[HCI_MAX_EVENT_SIZE];
-    DWORD Length;
-    USHORT Manufacturer;
+    return (ULONG)Data[0] | ((ULONG)Data[1] << 8) | ((ULONG)Data[2] << 16);
+}
 
-    printf("Reset\n");
-    if (!Command(Radio, HCI_RESET, NULL, 0, Return, &Length) || Length < 1)
+static
+PBT_SCAN_RESULT
+BtScanEntry(
+    _Inout_updates_(BT_MAX_SCAN_RESULTS) PBT_SCAN_RESULT Results,
+    _Inout_ PULONG Count,
+    _In_reads_(BT_ADDRESS_LENGTH) const UCHAR *Address)
+{
+    CHAR Text[BT_ADDRESS_STRING];
+    ULONG Index;
+
+    for (Index = 0; Index < *Count; Index++)
+    {
+        if (memcmp(Results[Index].Address, Address, BT_ADDRESS_LENGTH) == 0)
+            return &Results[Index];
+    }
+
+    if (*Count == BT_MAX_SCAN_RESULTS)
+        return NULL;
+
+    ZeroMemory(&Results[*Count], sizeof(Results[*Count]));
+    CopyMemory(Results[*Count].Address, Address, BT_ADDRESS_LENGTH);
+
+    BtFormatAddress(Address, Text);
+    printf("  found %s\n", Text);
+
+    return &Results[(*Count)++];
+}
+
+static
+VOID
+BtParseEirName(
+    _In_reads_(Length) const UCHAR *Eir,
+    _In_ ULONG Length,
+    _Inout_ PBT_SCAN_RESULT Result)
+{
+    ULONG Offset;
+    ULONG Field;
+    ULONG Size;
+
+    for (Offset = 0; Offset < Length; Offset += 1 + Field)
+    {
+        Field = Eir[Offset];
+        if (Field == 0 || Offset + 1 + Field > Length)
+            break;
+
+        /* 0x09 is the complete name, 0x08 a shortened one */
+        if (Eir[Offset + 1] == 0x09 || (Eir[Offset + 1] == 0x08 && !Result->HasName))
+        {
+            Size = min(Field - 1, (ULONG)BTH_MAX_NAME_SIZE);
+            CopyMemory(Result->Name, &Eir[Offset + 2], Size);
+            Result->Name[Size] = '\0';
+            Result->HasName = Size != 0;
+        }
+    }
+}
+
+/* Inquiry results pack one field at a time across all responses, not one response at a time */
+static
+VOID
+BtScanEvent(
+    _In_reads_(Length) const UCHAR *Event,
+    _In_ ULONG Length,
+    _Inout_updates_(BT_MAX_SCAN_RESULTS) PBT_SCAN_RESULT Results,
+    _Inout_ PULONG Count)
+{
+    PBT_SCAN_RESULT Entry;
+    const UCHAR *Params;
+    ULONG ParamLength;
+    ULONG Responses;
+    ULONG Index;
+
+    Params = Event + 2;
+    ParamLength = Length - 2;
+    if (ParamLength < 1)
+        return;
+
+    Responses = Params[0];
+
+    switch (Event[0])
+    {
+        case HCI_EV_INQUIRY_RESULT:
+            if (1 + Responses * 14 > ParamLength)
+                return;
+
+            for (Index = 0; Index < Responses; Index++)
+            {
+                Entry = BtScanEntry(Results, Count, &Params[1 + Index * 6]);
+                if (Entry == NULL)
+                    continue;
+
+                Entry->PageScanRepetitionMode = Params[1 + Responses * 6 + Index];
+                Entry->ClassOfDevice = BtRead24(&Params[1 + Responses * 9 + Index * 3]);
+                Entry->ClockOffset = BT_READ16(&Params[1 + Responses * 12 + Index * 2]);
+            }
+            break;
+
+        case HCI_EV_INQUIRY_RESULT_RSSI:
+            if (1 + Responses * 14 > ParamLength)
+                return;
+
+            for (Index = 0; Index < Responses; Index++)
+            {
+                Entry = BtScanEntry(Results, Count, &Params[1 + Index * 6]);
+                if (Entry == NULL)
+                    continue;
+
+                Entry->PageScanRepetitionMode = Params[1 + Responses * 6 + Index];
+                Entry->ClassOfDevice = BtRead24(&Params[1 + Responses * 8 + Index * 3]);
+                Entry->ClockOffset = BT_READ16(&Params[1 + Responses * 11 + Index * 2]);
+                Entry->Rssi = (CHAR)Params[1 + Responses * 13 + Index];
+                Entry->HasRssi = TRUE;
+            }
+            break;
+
+        case HCI_EV_EXTENDED_INQUIRY_RESULT:
+            /* Always a single response, followed by 240 bytes of extended data */
+            if (ParamLength < 15)
+                return;
+
+            Entry = BtScanEntry(Results, Count, &Params[1]);
+            if (Entry == NULL)
+                return;
+
+            Entry->PageScanRepetitionMode = Params[7];
+            Entry->ClassOfDevice = BtRead24(&Params[9]);
+            Entry->ClockOffset = BT_READ16(&Params[12]);
+            Entry->Rssi = (CHAR)Params[14];
+            Entry->HasRssi = TRUE;
+            BtParseEirName(&Params[15], ParamLength - 15, Entry);
+            break;
+
+        default:
+            break;
+    }
+}
+
+static
+BOOLEAN
+BtScan(
+    _Inout_ PBT_RADIO Radio,
+    _In_ UCHAR InquiryLength,
+    _In_ BOOLEAN ResolveNames)
+{
+    CHAR ClassText[40];
+    CHAR RssiText[8];
+    CHAR Text[BT_ADDRESS_STRING];
+    PBT_SCAN_RESULT Results;
+    HCI_ITEM_KIND Kind;
+    UCHAR Params[5];
+    DWORD Deadline;
+    ULONG Count;
+    ULONG Index;
+    UCHAR Status;
+
+    Results = calloc(BT_MAX_SCAN_RESULTS, sizeof(*Results));
+    if (Results == NULL)
         return FALSE;
 
-    printf("  %s\n\n", HciErrorName(Return[0]));
-    if (Return[0] != 0x00)
+    Count = 0;
+
+    CopyMemory(Params, BtGeneralInquiryLap, sizeof(BtGeneralInquiryLap));
+    Params[3] = InquiryLength;
+    Params[4] = 0x00;
+
+    /* The inquiry length counts 1.28 second units */
+    printf("Scanning for about %u seconds, Ctrl+C stops early\n", InquiryLength * 128 / 100);
+
+    Status = HciCommand(Radio, HCI_INQUIRY, Params, sizeof(Params), NULL, 0, NULL);
+    if (Status != BTH_ERROR_SUCCESS)
+    {
+        printf("  inquiry refused, %s (0x%02X)\n", HciErrorName(Status), Status);
+        free(Results);
         return FALSE;
-
-    printf("Read BD_ADDR\n");
-    if (Command(Radio, HCI_READ_BD_ADDR, NULL, 0, Return, &Length) && Length >= 7)
-    {
-        printf("  address ");
-        PrintAddress(&Return[1]);
-        printf("\n\n");
-
     }
 
-    printf("Read Local Version Information\n");
-    if (Command(Radio, HCI_READ_LOCAL_VERSION, NULL, 0, Return, &Length) && Length >= 9)
-    {
-        Manufacturer = (USHORT)(Return[4] | (Return[5] << 8));
-        printf("  HCI version %u revision %u\n", Return[1], (USHORT)(Return[2] | (Return[3] << 8)));
-        printf("  LMP version %u subversion %u\n", Return[6], (USHORT)(Return[7] | (Return[8] << 8)));
-        printf("  manufacturer %u (%s)\n\n", Manufacturer, ManufacturerName(Manufacturer));
+    Deadline = GetTickCount() + InquiryLength * 1280 + 5000;
 
+    for (;;)
+    {
+        Kind = HciPump(Radio, BtRemaining(Deadline));
+        if (Kind == HciItemError)
+            break;
+
+        if (Kind == HciItemEvent)
+        {
+            if (Radio->Item[0] == HCI_EV_INQUIRY_COMPLETE)
+                break;
+
+            BtScanEvent(Radio->Item, Radio->ItemLength, Results, &Count);
+        }
+
+        if (BtStopRequested)
+        {
+            HciCommand(Radio, HCI_INQUIRY_CANCEL, NULL, 0, NULL, 0, NULL);
+            break;
+        }
+
+        if (BtExpired(Deadline))
+        {
+            printf("  the controller never reported the inquiry finished\n");
+            break;
+        }
     }
 
-    printf("Read Buffer Size\n");
-    if (Command(Radio, HCI_READ_BUFFER_SIZE, NULL, 0, Return, &Length) && Length >= 8)
+    /* Devices that did not send a name in their extended response have to be asked */
+    for (Index = 0; Index < Count && ResolveNames && !BtStopRequested; Index++)
     {
-        printf("  ACL %u bytes x %u packets\n",
-               (USHORT)(Return[1] | (Return[2] << 8)),
-               (USHORT)(Return[4] | (Return[5] << 8)));
-        printf("  SCO %u bytes x %u packets\n\n",
-               Return[3],
-               (USHORT)(Return[6] | (Return[7] << 8)));
+        if (Results[Index].HasName)
+            continue;
 
+        Results[Index].HasName = BtRemoteName(Radio,
+                                              Results[Index].Address,
+                                              Results[Index].PageScanRepetitionMode,
+                                              Results[Index].ClockOffset | 0x8000,
+                                              Results[Index].Name,
+                                              sizeof(Results[Index].Name));
     }
 
-    printf("Read Local Supported Features\n");
-    if (Command(Radio, HCI_READ_LOCAL_FEATURES, NULL, 0, Return, &Length) && Length >= 9)
+    if (Count == 0)
     {
-        printf("  LMP features ");
-        PrintHex(&Return[1], 8);
-        printf("\n\n");
-
+        printf("\nNo devices found. Is the device in pairing or discoverable mode?\n");
+        free(Results);
+        return TRUE;
     }
 
-    printf("Read Local Name\n");
-    if (Command(Radio, HCI_READ_LOCAL_NAME, NULL, 0, Return, &Length) && Length >= 2)
-    {
-        Return[Length - 1] = '\0';
-        printf("  name \"%s\"\n\n", (const char *)&Return[1]);
+    printf("\n  %-17s  %5s  %-26s  %s\n", "Address", "RSSI", "Class", "Name");
 
+    for (Index = 0; Index < Count; Index++)
+    {
+        BtFormatAddress(Results[Index].Address, Text);
+        BtDescribeClass(Results[Index].ClassOfDevice, ClassText, sizeof(ClassText));
+
+        if (Results[Index].HasRssi)
+            sprintf(RssiText, "%4d", Results[Index].Rssi);
+        else
+            strcpy(RssiText, "    -");
+
+        printf("  %s  %5s  %-26s  %s\n",
+               Text,
+               RssiText,
+               ClassText,
+               Results[Index].HasName ? Results[Index].Name : "");
     }
+
+    printf("\n");
+    free(Results);
 
     return TRUE;
 }
 
 static
-void
-RunInquiry(
-    _In_ HANDLE Radio,
-    _In_ UCHAR Seconds)
+BOOLEAN
+BtPair(
+    _Inout_ PBT_RADIO Radio,
+    _In_ const BT_OPTIONS *Options)
 {
-    UCHAR Params[5];
-    UCHAR Event[HCI_MAX_EVENT_SIZE];
-    UCHAR Return[HCI_MAX_EVENT_SIZE];
-    DWORD Length;
+    CHAR Name[BTH_MAX_NAME_SIZE + 1];
+    CHAR Text[BT_ADDRESS_STRING];
+    PBT_SECURITY Security;
+    PBT_LINK Link;
+    BOOLEAN Paired;
 
-    /* The inquiry length counts 1.28 second units */
-    CopyMemory(Params, GeneralInquiryLap, sizeof(GeneralInquiryLap));
-    Params[3] = (UCHAR)(Seconds > 0 ? Seconds : 8);
-    Params[4] = 0;
+    Security = &Radio->Security;
+    Security->AllowPairing = TRUE;
+    Security->UseStoredKeys = FALSE;
+    Security->AutoConfirm = Options->AutoConfirm;
+    Security->HaveTarget = TRUE;
+    Security->AuthRequirements = BT_AUTH_MITM_DEDICATED_BONDING;
+    CopyMemory(Security->Target, Options->Address, BT_ADDRESS_LENGTH);
 
-    printf("Inquiry for about %u seconds\n", (unsigned)(Params[3] * 128 / 100));
-
-    if (!Command(Radio, HCI_INQUIRY, Params, sizeof(Params), Return, &Length) || Length < 1)
-        return;
-
-    if (Return[0] != 0x00)
+    if (Options->HavePin)
     {
-        printf("  refused, %s\n", HciErrorName(Return[0]));
-        return;
-
+        Security->PinGiven = TRUE;
+        strcpy(Security->Pin, Options->Pin);
     }
 
-    /* Results trickle in until the controller reports the inquiry finished */
-    for (;;)
+    BtFormatAddress(Options->Address, Text);
+    printf("Pairing with %s, put it in pairing mode if it is not already\n", Text);
+
+    Link = BtConnect(Radio, Options->Address);
+    if (Link == NULL)
+        return FALSE;
+
+    if (BtRemoteName(Radio, Options->Address, 0x02, 0x0000, Name, sizeof(Name)))
+        printf("  name %s\n", Name);
+
+    /* Refusing the stored key forces a fresh pairing */
+    Paired = BtAuthenticate(Radio, Link, BT_PAIR_TIMEOUT) && Security->KeyStored;
+
+    if (Paired)
     {
-        if (!ReadEvent(Radio, Event, &Length, (DWORD)(Params[3] * 1280 + HCI_EVENT_TIMEOUT)))
-        {
-            printf("  inquiry timed out, error %lu\n", GetLastError());
-            return;
+        if (Name[0] != '\0')
+            BtStoreName(Radio, Options->Address, Name);
 
-        }
+        if (Link->InUse)
+            BtEncrypt(Radio, Link);
 
-        if (Length < 2)
-            continue;
-
-        if (Event[0] == HCI_EVENT_INQUIRY_COMPLETE)
-        {
-            printf("  inquiry complete\n");
-            return;
-
-        }
-
-        PrintStrayEvent(Event, Length);
-
+        printf("Paired with %s\n", Text);
     }
+    else
+    {
+        printf("Pairing with %s failed\n", Text);
+    }
+
+    if (Link->InUse)
+        BtDisconnect(Radio, Link);
+
+    return Paired;
+}
+
+static
+BOOLEAN
+BtConnectAndShow(
+    _Inout_ PBT_RADIO Radio,
+    _In_ const BT_OPTIONS *Options)
+{
+    UCHAR LinkKey[BTH_LINK_KEY_LENGTH];
+    CHAR Text[BT_ADDRESS_STRING];
+    PBT_LINK Link;
+    BOOLEAN Paired;
+    BOOLEAN Secured;
+
+    BtFormatAddress(Options->Address, Text);
+
+    Radio->Security.UseStoredKeys = TRUE;
+    Radio->Security.HaveTarget = TRUE;
+    CopyMemory(Radio->Security.Target, Options->Address, BT_ADDRESS_LENGTH);
+
+    Paired = BtLoadKey(Radio, Options->Address, LinkKey);
+    SecureZeroMemory(LinkKey, sizeof(LinkKey));
+
+    if (!Paired)
+        printf("No stored pairing for %s, the link will stay unauthenticated\n", Text);
+
+    Link = BtConnect(Radio, Options->Address);
+    if (Link == NULL)
+        return FALSE;
+
+    BtPrintRemoteInfo(Radio, Link);
+
+    Secured = FALSE;
+    if (Paired && Link->InUse && BtAuthenticate(Radio, Link, BT_SHORT_TIMEOUT) && Link->InUse)
+        Secured = BtEncrypt(Radio, Link);
+
+    printf("Connected to %s, %s\n", Text, Secured ? "authenticated and encrypted" : "not secured");
+
+    if (Link->InUse)
+        BtDisconnect(Radio, Link);
+
+    return TRUE;
+}
+
+static
+BOOLEAN
+BtShowServices(
+    _Inout_ PBT_RADIO Radio,
+    _In_ const BT_OPTIONS *Options)
+{
+    PBT_LINK Link;
+    BOOLEAN Result;
+
+    /* SDP rarely needs security, but answer with the stored key if asked */
+    Radio->Security.UseStoredKeys = TRUE;
+    Radio->Security.HaveTarget = TRUE;
+    CopyMemory(Radio->Security.Target, Options->Address, BT_ADDRESS_LENGTH);
+
+    Link = BtConnect(Radio, Options->Address);
+    if (Link == NULL)
+        return FALSE;
+
+    Result = SdpBrowse(Radio, Link);
+
+    if (Link->InUse)
+        BtDisconnect(Radio, Link);
+
+    return Result;
+}
+
+static
+VOID
+BtUsage(VOID)
+{
+    printf("Usage: bthprobe [options] [command] [address]\n\n");
+    printf("Commands:\n");
+    printf("  info               controller details, the default\n");
+    printf("  scan               find nearby devices\n");
+    printf("  pair <address>     pair with a device and store its link key\n");
+    printf("  connect <address>  connect with the stored key and show device details\n");
+    printf("  sdp <address>      list the services a device offers\n");
+    printf("  hid <address>      show input from a paired keyboard or mouse\n");
+    printf("  list               show stored pairings\n");
+    printf("  unpair <address>   forget a stored pairing\n\n");
+    printf("Options:\n");
+    printf("  -d n      radio instance, default 0\n");
+    printf("  -t units  inquiry length in 1.28 second units, default 8\n");
+    printf("  -n        skip name lookups while scanning\n");
+    printf("  -p pin    PIN for legacy pairing\n");
+    printf("  -y        accept pairing confirmations without asking\n");
+    printf("  -v        print every HCI packet and L2CAP signal\n");
+    printf("  -i        info followed by a scan\n\n");
+    printf("Addresses look like 00:1A:7D:DA:71:13\n");
+}
+
+static
+BOOLEAN
+BtParseOptions(
+    _In_ int argc,
+    _In_reads_(argc) char *argv[],
+    _Out_ PBT_OPTIONS Options)
+{
+    const CHAR *Command;
+    const CHAR *Address;
+    BOOLEAN NeedsAddress;
+    int Index;
+
+    ZeroMemory(Options, sizeof(*Options));
+    Options->InquiryLength = 8;
+    Command = NULL;
+    Address = NULL;
+
+    for (Index = 1; Index < argc; Index++)
+    {
+        if (strcmp(argv[Index], "-v") == 0)
+            Options->Verbose = TRUE;
+        else if (strcmp(argv[Index], "-y") == 0)
+            Options->AutoConfirm = TRUE;
+        else if (strcmp(argv[Index], "-n") == 0)
+            Options->SkipNames = TRUE;
+        else if (strcmp(argv[Index], "-i") == 0)
+            Options->InfoThenScan = TRUE;
+        else if (strcmp(argv[Index], "-d") == 0 && Index + 1 < argc)
+            Options->Instance = strtoul(argv[++Index], NULL, 10);
+        else if ((strcmp(argv[Index], "-t") == 0 || strcmp(argv[Index], "-l") == 0) && Index + 1 < argc)
+            Options->InquiryLength = (UCHAR)strtoul(argv[++Index], NULL, 10);
+        else if (strcmp(argv[Index], "-p") == 0 && Index + 1 < argc)
+        {
+            Options->HavePin = TRUE;
+            strncpy(Options->Pin, argv[++Index], BTH_MAX_PIN_SIZE);
+            Options->Pin[BTH_MAX_PIN_SIZE] = '\0';
+        }
+        else if (argv[Index][0] == '-')
+            return FALSE;
+        else if (Command == NULL)
+            Command = argv[Index];
+        else if (Address == NULL)
+            Address = argv[Index];
+        else
+            return FALSE;
+    }
+
+    /* The spec caps an inquiry at 0x30 units */
+    if (Options->InquiryLength == 0 || Options->InquiryLength > 0x30)
+        Options->InquiryLength = 8;
+
+    NeedsAddress = TRUE;
+
+    if (Command == NULL || strcmp(Command, "info") == 0)
+    {
+        Options->Command = BtCommandInfo;
+        NeedsAddress = FALSE;
+    }
+    else if (strcmp(Command, "scan") == 0)
+    {
+        Options->Command = BtCommandScan;
+        NeedsAddress = FALSE;
+    }
+    else if (strcmp(Command, "list") == 0)
+    {
+        Options->Command = BtCommandList;
+        NeedsAddress = FALSE;
+    }
+    else if (strcmp(Command, "pair") == 0)
+        Options->Command = BtCommandPair;
+    else if (strcmp(Command, "connect") == 0)
+        Options->Command = BtCommandConnect;
+    else if (strcmp(Command, "sdp") == 0)
+        Options->Command = BtCommandSdp;
+    else if (strcmp(Command, "hid") == 0)
+        Options->Command = BtCommandHid;
+    else if (strcmp(Command, "unpair") == 0)
+        Options->Command = BtCommandUnpair;
+    else
+    {
+        printf("Unknown command %s\n\n", Command);
+        return FALSE;
+    }
+
+    if (!NeedsAddress)
+        return Address == NULL;
+
+    if (Address == NULL || !BtParseAddress(Address, Options->Address))
+    {
+        printf("%s needs a device address\n\n", Command);
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 int
 main(
-    int argc,
-    char *argv[])
+    _In_ int argc,
+    _In_reads_(argc) char *argv[])
 {
-    HANDLE Radio;
-    int Instance;
-    int i;
-    BOOL Inquiry;
-    UCHAR InquiryLength;
+    BT_OPTIONS Options;
+    PBT_RADIO Radio;
+    BOOLEAN Result;
 
-    Instance = 0;
-    Inquiry = FALSE;
-    InquiryLength = 8;
-
-    for (i = 1; i < argc; i++)
+    if (!BtParseOptions(argc, argv, &Options))
     {
-        if (strcmp(argv[i], "-i") == 0)
-            Inquiry = TRUE;
-
-        else if (strcmp(argv[i], "-d") == 0 && i + 1 < argc)
-            Instance = atoi(argv[++i]);
-
-        else if (strcmp(argv[i], "-l") == 0 && i + 1 < argc)
-            InquiryLength = (UCHAR)atoi(argv[++i]);
-
-        else
-        {
-            printf("Usage: bthprobe [-d instance] [-i] [-l units]\n");
-            printf("  -d  radio instance, default 0\n");
-            printf("  -i  run a general inquiry after the probe\n");
-            printf("  -l  inquiry length in 1.28 second units, default 8\n");
-            return 1;
-
-        }
-
+        BtUsage();
+        return 1;
     }
 
-    Radio = OpenRadio(Instance);
-    if (Radio == INVALID_HANDLE_VALUE)
+    /* The key store needs no radio */
+    if (Options.Command == BtCommandList)
     {
-        printf("No radio at instance %d, error %lu\n", Instance, GetLastError());
-        printf("The transport creates \\\\.\\FbtUsb00 once a dongle binds to fbtusb.sys\n");
+        BtListKeys();
+        return 0;
+    }
+
+    if (Options.Command == BtCommandUnpair)
+        return BtDeleteKey(Options.Address) ? 0 : 1;
+
+    SetConsoleCtrlHandler(BtConsoleHandler, TRUE);
+
+    Radio = HciOpen(Options.Instance, Options.Verbose);
+    if (Radio == NULL)
         return 1;
 
-    }
-
-    if (!ProbeRadio(Radio))
+    /* Only the HID viewer needs the device to be able to page us */
+    if (!HciInitialize(Radio, Options.Command == BtCommandHid))
     {
-        printf("Probe failed\n");
-        CloseHandle(Radio);
+        printf("Controller setup failed\n");
+        HciClose(Radio);
         return 1;
-
     }
 
-    if (Inquiry)
-        RunInquiry(Radio, InquiryLength);
+    if (Options.Command == BtCommandInfo)
+        HciPrintInfo(Radio);
+    else
+        HciPrintSummary(Radio);
 
-    CloseHandle(Radio);
+    switch (Options.Command)
+    {
+        case BtCommandInfo:
+            Result = !Options.InfoThenScan || BtScan(Radio, Options.InquiryLength, !Options.SkipNames);
+            break;
 
-    return 0;
+        case BtCommandScan:
+            Result = BtScan(Radio, Options.InquiryLength, !Options.SkipNames);
+            break;
+
+        case BtCommandPair:
+            Result = BtPair(Radio, &Options);
+            break;
+
+        case BtCommandConnect:
+            Result = BtConnectAndShow(Radio, &Options);
+            break;
+
+        case BtCommandSdp:
+            Result = BtShowServices(Radio, &Options);
+            break;
+
+        case BtCommandHid:
+            HidRun(Radio, Options.Address);
+            Result = TRUE;
+            break;
+
+        default:
+            Result = FALSE;
+            break;
+    }
+
+    HciClose(Radio);
+
+    return Result ? 0 : 1;
 }
