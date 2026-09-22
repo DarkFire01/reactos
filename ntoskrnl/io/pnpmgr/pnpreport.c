@@ -24,6 +24,10 @@ typedef struct _INTERNAL_WORK_QUEUE_ITEM
     TARGET_DEVICE_CUSTOM_NOTIFICATION NotificationStructure;
 } INTERNAL_WORK_QUEUE_ITEM, *PINTERNAL_WORK_QUEUE_ITEM;
 
+/* Device IDs made by IoReportRootDevice, and the longest one allowed, in characters */
+#define IOP_ROOT_DEVICE_PREFIX      L"ROOT\\"
+#define IOP_ROOT_DEVICE_ID_CHARS    200
+
 NTSTATUS
 IopSetDeviceInstanceData(HANDLE InstanceKey,
                          PDEVICE_NODE DeviceNode);
@@ -384,6 +388,132 @@ IoReportDetectedDevice(
     if (DeviceObject) *DeviceObject = Pdo;
 
     return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Creates a root enumerated device for a driver that has no hardware of its
+ * own, so that the driver can be started through PnP.
+ *
+ * @param[in] DriverObject
+ * The driver the device is created for. Its service name becomes both the
+ * device ID, ROOT\<Service>, and the only hardware ID.
+ *
+ * @return
+ * STATUS_SUCCESS if the device exists afterwards, STATUS_OBJECT_NAME_INVALID
+ * if the service name is too long, or a registry failure.
+ *
+ * @remarks
+ * Only the first report creates the device, later ones find it in place.
+ * The device is not flagged as reported, since the root enumerator would
+ * then skip it on the next boot.
+ */
+NTSTATUS
+NTAPI
+IoReportRootDevice(
+    _In_ PDRIVER_OBJECT DriverObject)
+{
+    UNICODE_STRING EnumName = RTL_CONSTANT_STRING(ENUM_ROOT);
+    UNICODE_STRING ValueName;
+    UNICODE_STRING InstancePath;
+    PUNICODE_STRING ServiceName = &DriverObject->DriverExtension->ServiceKeyName;
+    WCHAR InstanceBuffer[IOP_ROOT_DEVICE_ID_CHARS + 6];
+    WCHAR HardwareIds[IOP_ROOT_DEVICE_ID_CHARS + 2];
+    ULONG ConfigFlags = CONFIGFLAG_REINSTALL;
+    ULONG Disposition;
+    ULONG IdsLength;
+    HANDLE EnumKey = NULL;
+    HANDLE InstanceKey = NULL;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    RtlInitEmptyUnicodeString(&InstancePath, InstanceBuffer, sizeof(InstanceBuffer));
+    Status = RtlAppendUnicodeToString(&InstancePath, IOP_ROOT_DEVICE_PREFIX);
+    if (NT_SUCCESS(Status))
+        Status = RtlAppendUnicodeStringToString(&InstancePath, ServiceName);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (InstancePath.Length > (IOP_ROOT_DEVICE_ID_CHARS - 1) * sizeof(WCHAR))
+        return STATUS_OBJECT_NAME_INVALID;
+
+    /* The hardware ID list is the device ID followed by an empty string */
+    RtlCopyMemory(HardwareIds, InstancePath.Buffer, InstancePath.Length);
+    IdsLength = InstancePath.Length / sizeof(WCHAR);
+    HardwareIds[IdsLength++] = UNICODE_NULL;
+    HardwareIds[IdsLength++] = UNICODE_NULL;
+
+    /* A driver only ever gets one root device, instance 0000 */
+    Status = RtlAppendUnicodeToString(&InstancePath, L"\\0000");
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    KeEnterCriticalRegion();
+    ExAcquireResourceExclusiveLite(&PpRegistryDeviceResource, TRUE);
+
+    Status = IopOpenRegistryKeyEx(&EnumKey, NULL, &EnumName, KEY_ALL_ACCESS);
+    if (!NT_SUCCESS(Status))
+        goto Quit;
+
+    Status = IopCreateRegistryKeyEx(&InstanceKey,
+                                    EnumKey,
+                                    &InstancePath,
+                                    KEY_ALL_ACCESS,
+                                    REG_OPTION_NON_VOLATILE,
+                                    &Disposition);
+    if (!NT_SUCCESS(Status) || (Disposition != REG_CREATED_NEW_KEY))
+        goto Quit;
+
+    RtlInitUnicodeString(&ValueName, REGSTR_VAL_HARDWAREID);
+    Status = ZwSetValueKey(InstanceKey,
+                           &ValueName,
+                           0,
+                           REG_MULTI_SZ,
+                           HardwareIds,
+                           IdsLength * sizeof(WCHAR));
+    if (!NT_SUCCESS(Status))
+        goto Undo;
+
+    RtlInitUnicodeString(&ValueName, REGSTR_VAL_CONFIGFLAGS);
+    Status = ZwSetValueKey(InstanceKey,
+                           &ValueName,
+                           0,
+                           REG_DWORD,
+                           &ConfigFlags,
+                           sizeof(ConfigFlags));
+    if (!NT_SUCCESS(Status))
+        goto Undo;
+
+    /* The service name follows the prefix in the NUL terminated hardware ID */
+    RtlInitUnicodeString(&ValueName, REGSTR_VAL_SERVICE);
+    Status = ZwSetValueKey(InstanceKey,
+                           &ValueName,
+                           0,
+                           REG_SZ,
+                           &HardwareIds[RTL_NUMBER_OF(IOP_ROOT_DEVICE_PREFIX) - 1],
+                           ServiceName->Length + sizeof(UNICODE_NULL));
+    if (!NT_SUCCESS(Status))
+        goto Undo;
+
+    DriverObject->Flags |= DRVO_ROOT_DEVICE_REPORTED;
+    IoInvalidateDeviceRelations(IopRootDeviceNode->PhysicalDeviceObject, BusRelations);
+    goto Quit;
+
+Undo:
+    ZwDeleteKey(InstanceKey);
+
+Quit:
+    if (InstanceKey)
+        ZwClose(InstanceKey);
+
+    if (EnumKey)
+        ZwClose(EnumKey);
+
+    ExReleaseResourceLite(&PpRegistryDeviceResource);
+    KeLeaveCriticalRegion();
+
+    return Status;
 }
 
 /*
