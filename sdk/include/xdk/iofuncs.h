@@ -2565,6 +2565,14 @@ IoGetDeviceNumaNode(
 
 $endif (_WDMDDK_)
 $if (_NTDDK_)
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Must_inspect_result_
+NTKERNELAPI
+NTSTATUS
+NTAPI
+IoReportRootDevice(
+  _In_ PDRIVER_OBJECT DriverObject);
+
 NTSTATUS
 NTAPI
 IoSetFileObjectIgnoreSharing(
