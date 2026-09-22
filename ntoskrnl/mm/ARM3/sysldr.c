@@ -1071,6 +1071,75 @@ Done:
     return STATUS_SUCCESS;
 }
 
+/*
+ * Kernel api sets, keyed by their name up to the last hyphen so that every
+ * minor version finds the same entry. A NULL host means nothing implements
+ * the api set, and importers keep the fallbacks their IAT already holds.
+ */
+static const struct
+{
+    PCWSTR ApiSet;
+    PCWSTR Host;
+} MiKernelApiSets[] =
+{
+    { L"ext-ms-win-ntos-ksr-l1-1", NULL },
+    { L"ext-ms-win-ntos-werkernel-l1-1", L"werkernel.sys" },
+};
+
+/**
+ * @brief
+ * Looks up an imported module name in the kernel api set table.
+ *
+ * @param[in] ImportName
+ * The module name from the import descriptor.
+ *
+ * @param[out] Host
+ * Receives the hosting module, or an empty string when there is none.
+ *
+ * @return
+ * TRUE if the name is a known api set, FALSE if it names a real module.
+ */
+static
+BOOLEAN
+MiResolveKernelApiSet(
+    _In_ PCUNICODE_STRING ImportName,
+    _Out_ PUNICODE_STRING Host)
+{
+    UNICODE_STRING Stem, ApiSet;
+    USHORT Chars;
+    ULONG Index;
+
+    RtlInitEmptyUnicodeString(Host, NULL, 0);
+
+    if (ImportName->Length < 4 * sizeof(WCHAR) ||
+        (_wcsnicmp(ImportName->Buffer, L"api-", 4) && _wcsnicmp(ImportName->Buffer, L"ext-", 4)))
+    {
+        return FALSE;
+    }
+
+    /* Drop the minor version and the extension behind the last hyphen */
+    Chars = ImportName->Length / sizeof(WCHAR);
+    while ((Chars > 1) && (ImportName->Buffer[Chars - 1] != L'-'))
+        Chars--;
+
+    Stem.Buffer = ImportName->Buffer;
+    Stem.Length = Stem.MaximumLength = (USHORT)((Chars - 1) * sizeof(WCHAR));
+
+    for (Index = 0; Index < RTL_NUMBER_OF(MiKernelApiSets); Index++)
+    {
+        RtlInitUnicodeString(&ApiSet, MiKernelApiSets[Index].ApiSet);
+        if (RtlEqualUnicodeString(&Stem, &ApiSet, TRUE))
+        {
+            if (MiKernelApiSets[Index].Host)
+                RtlInitUnicodeString(Host, MiKernelApiSets[Index].Host);
+
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
 NTSTATUS
 NTAPI
 MiResolveImageReferences(IN PVOID ImageBase,
@@ -1089,7 +1158,7 @@ MiResolveImageReferences(IN PVOID ImageBase,
     BOOLEAN GdiLink, NormalLink;
     BOOLEAN ReferenceNeeded, Loaded;
     ANSI_STRING TempString;
-    UNICODE_STRING NameString, DllName;
+    UNICODE_STRING NameString, DllName, ApiSetHost;
     PLDR_DATA_TABLE_ENTRY LdrEntry = NULL, DllEntry, ImportEntry = NULL;
     PVOID ImportBase, DllBase;
     PLIST_ENTRY NextEntry;
@@ -1206,6 +1275,25 @@ MiResolveImageReferences(IN PVOID ImageBase,
         {
             /* Failed */
             goto Failure;
+        }
+
+        /* An api set is served by its host module, or by nothing at all */
+        if (MiResolveKernelApiSet(&NameString, &ApiSetHost))
+        {
+            if (ApiSetHost.Length == 0)
+            {
+                /* Leave the thunks alone, the image falls back on what they hold */
+                DPRINT("Api set %wZ has no host, keeping its fallbacks\n", &NameString);
+                RtlFreeUnicodeString(&NameString);
+                ImportDescriptor++;
+                continue;
+            }
+
+            DPRINT("Api set %wZ is hosted by %wZ\n", &NameString, &ApiSetHost);
+            RtlFreeUnicodeString(&NameString);
+            Status = RtlDuplicateUnicodeString(0, &ApiSetHost, &NameString);
+            if (!NT_SUCCESS(Status))
+                goto Failure;
         }
 
         /* We don't support name prefixes yet */
