@@ -440,7 +440,7 @@ PciIdeXAddDeviceEx(
         Status = PciIdeXPnpQueryInterface(&FdoExtension->Common,
                                           &GUID_BUS_INTERFACE_STANDARD,
                                           &BusInterface,
-                                          PCI_BUS_INTERFACE_STANDARD_VERSION,
+                                          1, /* The generic bus interface is version 1 */
                                           sizeof(BusInterface));
         if (!NT_SUCCESS(Status))
         {
