@@ -146,6 +146,9 @@ InitDisplayDriver(
     return pGraphicsDevice;
 }
 
+/* WDDM bootstrap (win32ss/gdi/eng/dxgkrnl.c) - loads dxgkrnl + acquires the D3DKMT callback table. */
+NTSTATUS NTAPI DlInitDxgkrnl(VOID);
+
 NTSTATUS
 NTAPI
 InitVideo(VOID)
@@ -162,6 +165,14 @@ InitVideo(VOID)
     gbBaseVideo = NT_SUCCESS(Status);
     if (gbBaseVideo)
         ERR("VGA mode requested.\n");
+
+    /*
+     * Bring up the WDDM stack: load dxgkrnl and acquire the D3DKMT callback table. Non-fatal - if
+     * dxgkrnl is absent or unsupported (no WDDM miniport), win32k continues on the legacy XPDM path.
+     */
+    Status = DlInitDxgkrnl();
+    if (!NT_SUCCESS(Status))
+        ERR("WDDM dxgkrnl init failed (0x%lX); using legacy display path.\n", Status);
 
     /* Initialize all display devices */
     Status = EngpUpdateGraphicsDeviceList();

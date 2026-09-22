@@ -74,6 +74,7 @@ GdiThreadDestroy(PETHREAD Thread)
 {
     return STATUS_SUCCESS;
 }
+extern BOOLEAN gbDxgkInitialized;
 
 BOOL
 InitializeGreCSRSS(VOID)
@@ -81,11 +82,19 @@ InitializeGreCSRSS(VOID)
     /* Initialize Dxgkrnl interfaces and run startup routine */
     DxStartupDxgkInt();
 
-    /* Initialize Legacy DirectX graphics driver */
+    /*
+     * Start the legacy DirectDraw/D3D path (dxg.sys) unconditionally - it coexists with WDDM
+     * rather than being replaced by it.
+     *
+     * Vista ships dxg.sys alongside dxgkrnl.sys, and its d3d9.dll statically imports d3d8thk.dll
+     * (47 OsThunk* entry points) as well as gdi32's D3DKMT*: the runtime uses BOTH paths, and
+     * OsThunk* reaches dxg.sys through NtGdiDd* and gpDxFuncs. Skipping dxg.sys therefore breaks
+     * DirectDraw outright and stops Direct3DCreate9 before it makes its first D3DKMT call.
+     */
     if (DxDdStartupDxGraphics(0, NULL, 0, NULL, NULL, gpepCSRSS) != STATUS_SUCCESS)
     {
-        ERR("Unable to initialize DirectX graphics\n");
-        return FALSE;
+       ERR("Unable to initialize DirectX graphics\n");
+       return FALSE;
     }
 
     /* Get global language ID */

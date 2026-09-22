@@ -10,3 +10,11 @@
 VOID
 APIENTRY
 DxStartupDxgkInt(VOID);
+
+/**
+ * @brief TRUE when at least one WDDM adapter has finished starting, i.e. when the CDD has
+ *        something to talk to. Not a cached flag - see the definition in ntgdi/d3dkmt.c.
+ */
+BOOLEAN
+APIENTRY
+DxIsWddmDisplayAvailable(VOID);

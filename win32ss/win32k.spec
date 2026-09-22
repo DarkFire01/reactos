@@ -16,6 +16,7 @@
 @ stdcall EngBugCheckEx(long ptr ptr ptr ptr) NTOSKRNL.KeBugCheckEx
 @ stdcall EngCheckAbort(ptr)
 @ stdcall EngClearEvent(ptr)
+@ stdcall EngCloseDxgkrnl(ptr)
 @ stdcall EngComputeGlyphSet(long long long)
 @ stdcall EngControlSprites(ptr long)
 @ stdcall EngCopyBits(ptr ptr ptr ptr ptr ptr)
@@ -27,6 +28,7 @@
 @ stdcall EngCreateEvent(ptr)
 @ stdcall EngCreatePalette(long long long long long long)
 @ stdcall EngCreatePath()
+@ stdcall EngCreateRectRgn(long long long long)
 @ stdcall EngCreateSemaphore()
 @ stdcall EngCreateWnd(ptr ptr ptr long long)
 @ stdcall EngDebugBreak() NTOSKRNL.DbgBreakPoint
@@ -37,6 +39,7 @@
 @ stdcall EngDeleteFile(ptr)
 @ stdcall EngDeletePalette(ptr)
 @ stdcall EngDeletePath(ptr)
+@ stdcall EngDeleteRgn(ptr)
 @ stdcall EngDeleteSafeSemaphore(ptr)
 @ stdcall EngDeleteSemaphore(ptr)
 @ stdcall EngDeleteSurface(ptr)
@@ -100,6 +103,7 @@
 @ stdcall EngMultiByteToUnicodeN(ptr long ptr ptr long) NTOSKRNL.RtlMultiByteToUnicodeN
 @ stdcall EngMultiByteToWideChar(long ptr long ptr long)
 @ stdcall EngNineGrid(ptr ptr ptr ptr ptr ptr ptr ptr ptr)
+@ stdcall EngOpenDxgkrnl(ptr)
 @ stdcall EngPaint(ptr ptr ptr ptr long)
 @ stdcall EngPlgBlt(ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr long)
 @ stdcall EngProbeForRead(ptr long long) NTOSKRNL.ProbeForRead
@@ -141,6 +145,18 @@
 @ stdcall EngWaitForSingleObject(ptr ptr)
 @ stdcall EngWideCharToMultiByte(long ptr long ptr long)
 @ stdcall EngWritePrinter(ptr ptr long ptr)
+@ stdcall EngCombineRgn(ptr ptr ptr long)
+@ stdcall EngCopyRgn(ptr ptr)
+@ stdcall EngEqualRgn(ptr ptr)
+@ stdcall EngGetRgnBox(ptr ptr)
+@ stdcall EngGetRgnData(ptr long ptr)
+@ stdcall EngIntersectRgn(ptr ptr ptr)
+@ stdcall EngOffsetRgn(ptr long long)
+@ stdcall EngRectInRgn(ptr ptr)
+@ stdcall EngSetRectRgn(ptr long long long long)
+@ stdcall EngSubtractRgn(ptr ptr ptr)
+@ stdcall EngUnionRgn(ptr ptr ptr)
+@ stdcall EngXorRgn(ptr ptr ptr)
 @ stdcall -arch=i386 FLOATOBJ_Add(ptr ptr)
 @ stdcall -arch=i386 FLOATOBJ_AddFloat(ptr long)
 @ stdcall -arch=i386 FLOATOBJ_AddFloatObj(ptr ptr) FLOATOBJ_Add
