@@ -55,6 +55,20 @@ LdrFindResource_U(
 
 NTSTATUS
 NTAPI
+LdrResFindResource(
+    _In_ PVOID DllHandle,
+    _In_ ULONG_PTR Type,
+    _In_ ULONG_PTR Name,
+    _In_ ULONG_PTR Language,
+    _Out_opt_ PVOID *ResourceBuffer,
+    _Out_opt_ PSIZE_T ResourceLength,
+    _Out_writes_bytes_opt_(*CultureNameLength) PVOID CultureName,
+    _Inout_opt_ PULONG CultureNameLength,
+    _In_ ULONG Flags
+);
+
+NTSTATUS
+NTAPI
 LdrEnumResources(
     _In_ PVOID BaseAddress,
     _In_ PLDR_RESOURCE_INFO ResourceInfo,
