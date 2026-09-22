@@ -239,7 +239,7 @@ HalpQueryInterface(IN PDEVICE_OBJECT DeviceObject,
         
         RtlZeroMemory(PciBusInterface, sizeof(*PciBusInterface));
         PciBusInterface->Size = sizeof(*PciBusInterface);
-        PciBusInterface->Version = 1;
+        PciBusInterface->Version = PCI_BUS_INTERFACE_STANDARD_VERSION;
         PciBusInterface->Context = DeviceObject;
         PciBusInterface->InterfaceDereference = HalpBusInterfaceDereference;
         PciBusInterface->InterfaceReference = HalpBusInterfaceReference;
