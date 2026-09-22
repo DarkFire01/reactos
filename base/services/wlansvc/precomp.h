@@ -50,7 +50,21 @@ WlanConnect(
     _In_ struct _DOT11_SSID *Ssid);
 
 DWORD
+WlanConnectProfile(
+    _In_ const GUID *InterfaceGuid,
+    _In_ struct _DOT11_SSID *Ssid,
+    _In_opt_ PCWSTR Profile);
+
+DWORD
 WlanDisconnect(
     _In_ const GUID *InterfaceGuid);
+
+/* supplicant.c: the host WPA2-PSK 4-way handshake */
+
+DWORD
+WlanConnectWpa(
+    _In_ const GUID *InterfaceGuid,
+    _In_ struct _DOT11_SSID *Ssid,
+    _In_ PCWSTR Passphrase);
 
 #endif /* _WLANSVC_PCH_ */
