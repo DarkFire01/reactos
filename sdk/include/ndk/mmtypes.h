@@ -192,6 +192,31 @@ typedef enum _MEMORY_INFORMATION_CLASS
 } MEMORY_INFORMATION_CLASS;
 
 //
+// Virtual Memory Information Classes for NtSetInformationVirtualMemory
+//
+typedef enum _VIRTUAL_MEMORY_INFORMATION_CLASS
+{
+    VmPrefetchInformation,
+    VmPagePriorityInformation,
+    VmCfgCallTargetInformation,
+    VmPageDirtyStateInformation,
+    VmImageHotPatchInformation,
+    VmPhysicalContiguityInformation,
+    VmVirtualMachinePrepopulateInformation,
+    VmRemoveFromWorkingSetInformation,
+    MaxVmInfoClass
+} VIRTUAL_MEMORY_INFORMATION_CLASS;
+
+//
+// A range of virtual addresses for NtSetInformationVirtualMemory
+//
+typedef struct _MEMORY_RANGE_ENTRY
+{
+    PVOID VirtualAddress;
+    SIZE_T NumberOfBytes;
+} MEMORY_RANGE_ENTRY, *PMEMORY_RANGE_ENTRY;
+
+//
 // Section Information Clasess for NtQuerySection
 //
 typedef enum _SECTION_INFORMATION_CLASS

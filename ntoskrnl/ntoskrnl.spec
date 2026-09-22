@@ -1824,6 +1824,7 @@
 @ stdcall -version=0x603+ KeSetTimer2(ptr int64 int64 ptr)
 @ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
 @ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
+@ stdcall -version=0x600+ MmRotatePhysicalView(ptr ptr ptr long ptr ptr)
 @ fastcall -version=0x601+ ObfDereferenceObjectWithTag(ptr long)
 @ fastcall -version=0x601+ ObfReferenceObjectWithTag(ptr long)
 @ stdcall -version=0x600+ ObDuplicateObject(ptr ptr ptr ptr long long long long)
@@ -1852,6 +1853,8 @@
 @ stdcall -version=0x600+ RtlIsNtDdiVersionAvailable(long)
 @ stdcall -version=0x600+ RtlNumberOfSetBitsUlongPtr(long)
 @ stdcall -version=0x602+ RtlQueryRegistryValuesEx(long wstr ptr ptr ptr)
+
+@ stdcall -version=0x602+ ZwSetInformationVirtualMemory(ptr long long ptr ptr long)
 @ stdcall -version=0x600+ WheaAddErrorSource(ptr ptr)
 @ stdcall -version=0x600+ WheaConfigureErrorSource(long ptr)
 @ stdcall -version=0x600+ WheaGetErrorSource(long ptr)
