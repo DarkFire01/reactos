@@ -1755,12 +1755,16 @@
 @ stdcall -version=0x600+ ExFlushLookasideListEx(ptr)
 @ stdcall -version=0x602+ ExGetFirmwareEnvironmentVariable(ptr ptr ptr ptr ptr)
 @ stdcall -version=0x600+ ExInitializeLookasideListEx(ptr ptr ptr long long long long long)
+@ stdcall -version=0x602+ ExQueryWnfStateData(ptr ptr ptr ptr)
 @ stdcall -version=0x600+ ExReleaseSpinLockExclusive(ptr long)
 @ stdcall -version=0x600+ ExReleaseSpinLockExclusiveFromDpcLevel(ptr)
 @ stdcall -version=0x600+ ExReleaseSpinLockShared(ptr long)
 @ stdcall -version=0x600+ ExReleaseSpinLockSharedFromDpcLevel(ptr)
 @ stdcall -version=0x603+ ExSetTimer(ptr int64 int64 ptr)
+@ stdcall -version=0xA00+ ExShareAddressSpaceWithDevice(ptr ptr)
+@ stdcall -version=0x602+ ExSubscribeWnfStateChange(ptr ptr long long ptr ptr)
 @ stdcall -version=0x602+ ExTryQueueWorkItem(ptr long)
+@ stdcall -version=0x602+ ExUnsubscribeWnfStateChange(ptr)
 
 # Hypervisor Library
 @ stdcall -version=0xa00+ HvlIsAnyHypervisorPresent()
@@ -1880,9 +1884,14 @@
 @ stdcall -version=0x600+ RtlRunOnceExecuteOnce(ptr ptr ptr ptr)
 @ stdcall -version=0x600+ RtlRunOnceInitialize(ptr)
 
+# Terminal Topology Manager
+@ stdcall -version=0xA00+ TtmNotifyDeviceArrival(long int64 ptr long ptr)
+@ stdcall -version=0xA00+ TtmNotifyDeviceDeparture(long int64)
 
 # Zw routines without a system call
+@ stdcall -version=0x600+ ZwQueryLicenseValue(ptr ptr ptr long ptr)
 @ stdcall -version=0x602+ ZwSetInformationVirtualMemory(ptr long long ptr ptr long)
+@ stdcall -version=0xA00+ ZwUpdateWnfStateData(ptr ptr long ptr ptr long long)
 
 # Windows Hardware Error Architecture
 @ stdcall -version=0x600+ WheaAddErrorSource(ptr ptr)
