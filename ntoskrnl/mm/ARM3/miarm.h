@@ -68,6 +68,11 @@ C_ASSERT(SYSTEM_PD_SIZE == PAGE_SIZE);
 #define MM_INVALID_PROTECTION  0xFFFFFFFF
 
 //
+// Highest page priority, matching MEMORY_PRIORITY_NORMAL in the Win32 API
+//
+#define MI_MAXIMUM_PAGE_PRIORITY  5
+
+//
 // Specific PTE Definitions that map to the Memory Manager's Protection Mask Bits
 // The Memory Manager's definition define the attributes that must be preserved
 // and these PTE definitions describe the attributes in the hardware sense. This
