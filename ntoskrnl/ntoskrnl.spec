@@ -1823,6 +1823,8 @@
 @ stdcall -version=0x600+ KeSetActualBasePriorityThread(ptr long)
 @ stdcall -version=0x603+ KeSetTimer2(ptr int64 int64 ptr)
 @ stdcall -version=0x603+ KeStartDynamicProcessor(ptr)
+
+@ stdcall -version=0x602+ LdrResFindResource(ptr ptr ptr ptr ptr ptr ptr ptr long)
 @ stdcall -version=0x600+ MmIsDriverVerifyingByAddress(ptr)
 @ stdcall -version=0x600+ MmRotatePhysicalView(ptr ptr ptr long ptr ptr)
 @ fastcall -version=0x601+ ObfDereferenceObjectWithTag(ptr long)
