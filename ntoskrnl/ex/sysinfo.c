@@ -3064,6 +3064,28 @@ QSI_DEF(SystemBootEnvironmentInformation)
     return STATUS_SUCCESS;
 }
 
+/* Class 126 - Boot Graphics Information */
+QSI_DEF(SystemBootGraphicsInformation)
+{
+    SYSTEM_BOOT_GRAPHICS_INFORMATION Information;
+    NTSTATUS Status;
+
+    *ReqSize = sizeof(Information);
+    if (Size != sizeof(Information))
+        return STATUS_INFO_LENGTH_MISMATCH;
+
+    Status = ExpQueryBootGraphicsInformation(&Information);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* Only kernel mode callers learn where the framebuffer lives */
+    if (ExGetPreviousMode() != KernelMode)
+        Information.FrameBuffer.QuadPart = 0;
+
+    RtlCopyMemory(Buffer, &Information, sizeof(Information));
+    return STATUS_SUCCESS;
+}
+
 /* Class 184 - Physical Memory Information */
 QSI_DEF(SystemPhysicalMemoryInformation)
 {
@@ -3188,6 +3210,9 @@ CallQS[] =
     SI_QX(SystemProcessorIdleCycleTimeInformation),
     SI_QX(SystemBootEnvironmentInformation),
     SI_QX(SystemProcessorBrandString),
+
+    // Windows 8 and later
+    SI_QX(SystemBootGraphicsInformation),
 
     // Windows 10 and later
     SI_QX(SystemPhysicalMemoryInformation),

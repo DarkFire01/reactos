@@ -47,6 +47,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/dbgk/dbgkobj.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/dbgk/dbgkutil.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/atom.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/bootgfx.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/callback.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/dbgctrl.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ex/efi.c
