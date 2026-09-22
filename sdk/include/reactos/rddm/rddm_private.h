@@ -56,3 +56,34 @@
 #define IOCTL_VIDEO_REGISTER_RXGK \
 	CTL_CODE( FILE_DEVICE_VIDEO, 0x817, METHOD_NEITHER, FILE_READ_DATA | FILE_WRITE_DATA )
 
+/*
+ * win32k sends this to \Device\VideoN (INTERNAL_DEVICE_CONTROL, buffer in Irp->UserBuffer).
+ * dxgkrnl answers it for a WDDM adapter, and win32k drives those with the CDD instead of the
+ * display driver named by InstalledDisplayDrivers (Reference win32kbase.c:58372,
+ * DrvUpdateGraphicsDeviceList).
+ */
+#define IOCTL_VIDEO_QUERY_GDI_VIEW_INFORMATION \
+	CTL_CODE( FILE_DEVICE_VIDEO, 0x80C, METHOD_NEITHER, FILE_ANY_ACCESS )
+
+typedef struct _DXGK_GDI_VIEW_INFORMATION
+{
+    ULONG Type;             /* 2 on a WDDM adapter */
+    ULONG VidPnSourceId;
+    PVOID Adapter;          /* NULL when nothing WDDM drives this device */
+    LUID AdapterLuid;
+} DXGK_GDI_VIEW_INFORMATION, *PDXGK_GDI_VIEW_INFORMATION;
+
+/*
+ * Claims a display device for the calling session, which is what gives the session its view of
+ * the adapter. Without it the CDD finds no session adapter and cannot create its device
+ * (Reference win32kbase.c:38559, bSetDeviceSessionUsage). The same buffer carries the answer.
+ */
+#define IOCTL_VIDEO_SET_SESSION_USAGE \
+	CTL_CODE( FILE_DEVICE_VIDEO, 0x80A, METHOD_NEITHER, FILE_ANY_ACCESS )
+
+typedef struct _DXGK_SESSION_USAGE
+{
+    ULONG Enable;
+    ULONG Succeeded;
+} DXGK_SESSION_USAGE, *PDXGK_SESSION_USAGE;
+
