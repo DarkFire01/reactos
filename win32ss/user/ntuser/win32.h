@@ -241,6 +241,7 @@ typedef struct _W32PROCESS
     RTL_AVL_TABLE GDIEngUserMemAllocTable;  /* Process AVL Table. */
     LIST_ENTRY    GDIDcAttrFreeList;
     LIST_ENTRY    GDIBrushAttrFreeList;
+    PVOID         DxProcess;    /* dxgkrnl's DXGPROCESS */
 } W32PROCESS, *PW32PROCESS;
 
 #define CLIBS 32
