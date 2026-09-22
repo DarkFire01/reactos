@@ -934,50 +934,50 @@ KeRemoveQueueDpc(IN PKDPC Dpc)
     return DpcData ? TRUE : FALSE;
 }
 
-/*
- * @implemented
+/**
+ * @brief
+ * Waits until every DPC queued or running on any processor has completed.
+ *
+ * @remarks
+ * Every active processor is visited, not only those with a non-empty queue.
+ * A DPC that was already taken off its queue is still running, and it has
+ * returned by the time this thread is scheduled on that processor.
  */
 _IRQL_requires_max_(APC_LEVEL)
 VOID
 NTAPI
 KeFlushQueuedDpcs(VOID)
 {
-    ULONG ProcessorIndex;
-    PKPRCB TargetPrcb;
+    KAFFINITY Remaining;
+    KAFFINITY Processor;
+    PKPRCB Prcb;
+    KIRQL OldIrql;
 
     PAGED_CODE();
     ASSERT(KeGetCurrentThread()->SystemAffinityActive == FALSE);
 
-    /* Loop all processors */
-    for (ProcessorIndex = 0; ProcessorIndex < KeNumberProcessors; ProcessorIndex++)
+    for (Remaining = KeActiveProcessors, Processor = 1;
+         Remaining != 0;
+         Processor <<= 1)
     {
-        /* Get the target processor's PRCB */
-        TargetPrcb = KiProcessorBlock[ProcessorIndex];
+        if (!(Remaining & Processor))
+            continue;
 
-        /* Check if there are DPCs on either queues */
-        if ((TargetPrcb->DpcData[DPC_NORMAL].DpcQueueDepth > 0) ||
-            (TargetPrcb->DpcData[DPC_THREADED].DpcQueueDepth > 0))
+        Remaining &= ~Processor;
+        KeSetSystemAffinityThread(Processor);
+
+        /* Drain what is still queued here; the interrupt is taken on the way back down */
+        Prcb = KeGetCurrentPrcb();
+        if ((Prcb->DpcData[DPC_NORMAL].DpcQueueDepth != 0) ||
+            (Prcb->DpcData[DPC_THREADED].DpcQueueDepth != 0))
         {
-            /* Check if this is the current processor */
-            if (TargetPrcb == KeGetCurrentPrcb())
-            {
-                /* Request a DPC interrupt */
-                HalRequestSoftwareInterrupt(DISPATCH_LEVEL);
-            }
-            else
-            {
-                /* Attach to the target processor. This will cause a DPC
-                   interrupt on the target processor and flush all DPCs. */
-                KeSetSystemAffinityThread(TargetPrcb->SetMember);
-            }
+            KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
+            HalRequestSoftwareInterrupt(DISPATCH_LEVEL);
+            KeLowerIrql(OldIrql);
         }
     }
 
-    /* Revert back to user affinity */
-    if (KeGetCurrentThread()->SystemAffinityActive)
-    {
-        KeRevertToUserAffinityThread();
-    }
+    KeRevertToUserAffinityThread();
 }
 
 /*
