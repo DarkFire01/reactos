@@ -27,6 +27,21 @@
 #define RTL_NUM_ALIGN_UP(Number, Alignment) \
     RTL_NUM_ALIGN_DOWN((Number) + (Alignment) - 1, (Alignment))
 
+/*
+ * The 64 bit indexed bitmap only exists on 64 bit kernels. On x86 a machine
+ * word is 32 bits, which the plain bitmap already indexes.
+ */
+#ifndef _WIN64
+typedef RTL_BITMAP RTL_BITMAP_EX, *PRTL_BITMAP_EX;
+#define RtlInitializeBitMapEx       RtlInitializeBitMap
+#define RtlClearAllBitsEx           RtlClearAllBits
+#define RtlCheckBitEx               RtlCheckBit
+#define RtlSetBitEx                 RtlSetBit
+#define RtlClearBitEx               RtlClearBit
+#define RtlFindSetBitsEx            RtlFindSetBits
+#define RtlFindSetBitsAndClearEx    RtlFindSetBitsAndClear
+#endif
+
 /* The device reset interface is gated past this build's NTDDI floor in wdm.h. */
 #include <devicereset.h>
 

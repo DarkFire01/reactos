@@ -21,10 +21,19 @@ using ::std::nullptr_t;
 #define BEGIN_MACRO do {
 #define END_MACRO } while (0)
 
-#ifdef _KERNEL_MODE
+#if defined(_KERNEL_MODE) && defined(_MSC_VER)
 #define CODE_SEG(segment) __declspec(code_seg(segment))
 #else
+// GCC cannot put inline and template members in a named section without
+// breaking COMDAT folding, so everything stays in .text there.
+#undef CODE_SEG
 #define CODE_SEG(segment)
+#endif
+
+#ifdef _MSC_VER
+#define KRTL_EMPTY_BASES __declspec(empty_bases)
+#else
+#define KRTL_EMPTY_BASES
 #endif
 
 #ifndef KRTL_PAGE_SEGMENT
@@ -62,11 +71,11 @@ using ::std::nullptr_t;
 
 /// Use on classes or structs.  Class member functions & compiler-generated code
 /// will default to the PAGE segment.  You can override any member function with `NONPAGED`.
-#define KRTL_CLASS CODE_SEG(KRTL_PAGE_SEGMENT) __declspec(empty_bases)
+#define KRTL_CLASS CODE_SEG(KRTL_PAGE_SEGMENT) KRTL_EMPTY_BASES
 
 /// Use on classes or structs.  Class member functions & compiler-generated code
 /// will default to the NONPAGED segment.  You can override any member function with `PAGED`.
-#define KRTL_CLASS_DPC_ALLOC __declspec(empty_bases)
+#define KRTL_CLASS_DPC_ALLOC KRTL_EMPTY_BASES
 
 enum CallRunMode
 {

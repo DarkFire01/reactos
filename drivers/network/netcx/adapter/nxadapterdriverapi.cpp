@@ -18,6 +18,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetAdapterDriverRegister)(
     _In_     NET_DRIVER_GLOBALS *        Globals,
     _In_     WDFDRIVER                   Driver
@@ -70,6 +71,7 @@ Return Value:
 _IRQL_requires_max_(DISPATCH_LEVEL)
 WDFAPI
 NDIS_HANDLE
+NTAPI
 NETEXPORT(NetAdapterDriverWdmGetHandle)(
     _In_     NET_DRIVER_GLOBALS *        Globals,
     _In_     WDFDRIVER                   Driver

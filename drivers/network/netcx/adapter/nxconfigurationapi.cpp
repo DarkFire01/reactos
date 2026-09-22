@@ -23,6 +23,7 @@ Abstract:
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 void
+NTAPI
 NETEXPORT(NetConfigurationClose)(
     _In_ NET_DRIVER_GLOBALS *              Globals,
     _In_ NETCONFIGURATION                  Configuration
@@ -55,6 +56,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetConfigurationOpenSubConfiguration)(
     _In_     NET_DRIVER_GLOBALS *       Globals,
     _In_     NETCONFIGURATION           Configuration,
@@ -143,6 +145,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetConfigurationQueryUlong)(
     _In_  NET_DRIVER_GLOBALS *                  Globals,
     _In_  NETCONFIGURATION                      Configuration,
@@ -199,6 +202,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetConfigurationQueryString)(
     _In_     NET_DRIVER_GLOBALS *                  Globals,
     _In_     NETCONFIGURATION                      Configuration,
@@ -237,6 +241,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetConfigurationQueryMultiString)(
     _In_     NET_DRIVER_GLOBALS *                  Globals,
     _In_     NETCONFIGURATION                      Configuration,
@@ -279,6 +284,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetConfigurationQueryBinary)(
     _In_     NET_DRIVER_GLOBALS *                  Globals,
     _In_     NETCONFIGURATION                      Configuration,
@@ -326,6 +332,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetConfigurationQueryLinkLayerAddress)(
     _In_  NET_DRIVER_GLOBALS * DriverGlobals,
     _In_  NETCONFIGURATION Configuration,
@@ -367,6 +374,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetConfigurationAssignUlong)(
     _In_  NET_DRIVER_GLOBALS *                  Globals,
     _In_  NETCONFIGURATION                      Configuration,
@@ -404,6 +412,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetConfigurationAssignUnicodeString)(
     _In_  NET_DRIVER_GLOBALS *                  Globals,
     _In_  NETCONFIGURATION                      Configuration,
@@ -440,6 +449,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetConfigurationAssignBinary)(
     _In_                               NET_DRIVER_GLOBALS *      Globals,
     _In_                               NETCONFIGURATION          Configuration,
@@ -477,6 +487,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetConfigurationAssignMultiString)(
     _In_  NET_DRIVER_GLOBALS *                  Globals,
     _In_  NETCONFIGURATION                      Configuration,

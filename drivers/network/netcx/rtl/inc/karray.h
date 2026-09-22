@@ -96,8 +96,8 @@ public:
 
     public:
 
-        PAGED T &operator*() const { return (*_a)[_i]; }
-        PAGED T *operator->() const { return &(*_a)[_i]; }
+        PAGED T &operator*() const { return (*this->_a)[this->_i]; }
+        PAGED T *operator->() const { return &(*this->_a)[this->_i]; }
     };
 
     PAGED KArray(size_t sizeHint = 0) noexcept

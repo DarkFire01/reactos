@@ -113,6 +113,9 @@
 /* Returns the type's alignment */
 #if defined(_MSC_VER)
  #define TYPE_ALIGNMENT(t) __alignof(t)
+#elif defined(__cplusplus) && (__cplusplus >= 201103L)
+ /* C++ does not allow a type to be defined inside offsetof */
+ #define TYPE_ALIGNMENT(t) alignof(t)
 #else
  #define TYPE_ALIGNMENT(t) FIELD_OFFSET(struct { char x; t test; }, test)
 #endif /* _MSC_VER */

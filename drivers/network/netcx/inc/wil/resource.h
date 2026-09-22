@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <new.h>
 #include <wil/common.h>
 #include <wil/wistd_type_traits.h>
 #include <wil/wistd_memory.h>
