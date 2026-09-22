@@ -923,20 +923,53 @@ KeUninitThread(IN PKTHREAD Thread)
 
 /* PUBLIC FUNCTIONS **********************************************************/
 
-/*
+/**
+ * @brief
+ * Writes a minidump of a thread into a caller supplied buffer.
+ *
+ * @param[in] Context
+ * The register state to record for the thread.
+ *
+ * @param[in] Thread
+ * The thread to capture.
+ *
+ * @param[in] BugCheckCode
+ * The bugcheck code recorded in the dump header.
+ *
+ * @param[in] BugCheckParameter1
+ * First bugcheck parameter recorded in the dump header.
+ *
+ * @param[in] BugCheckParameter2
+ * Second bugcheck parameter recorded in the dump header.
+ *
+ * @param[in] BugCheckParameter3
+ * Third bugcheck parameter recorded in the dump header.
+ *
+ * @param[in] BugCheckParameter4
+ * Fourth bugcheck parameter recorded in the dump header.
+ *
+ * @param[out] DumpBuffer
+ * Receives the dump.
+ *
+ * @return
+ * The number of bytes written. Nothing is captured yet, so always 0.
+ *
  * @unimplemented
  */
-VOID
+ULONG
 NTAPI
-KeCapturePersistentThreadState(IN PVOID CurrentThread,
-                               IN ULONG Setting1,
-                               IN ULONG Setting2,
-                               IN ULONG Setting3,
-                               IN ULONG Setting4,
-                               IN ULONG Setting5,
-                               IN PVOID ThreadState)
+KeCapturePersistentThreadState(
+    _In_ PCONTEXT Context,
+    _In_ PETHREAD Thread,
+    _In_ ULONG BugCheckCode,
+    _In_ ULONG_PTR BugCheckParameter1,
+    _In_ ULONG_PTR BugCheckParameter2,
+    _In_ ULONG_PTR BugCheckParameter3,
+    _In_ ULONG_PTR BugCheckParameter4,
+    _Out_ PVOID DumpBuffer)
 {
     UNIMPLEMENTED;
+    return 0;
 }
 
 /*
