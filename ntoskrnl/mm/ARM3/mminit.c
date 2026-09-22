@@ -2535,6 +2535,9 @@ MmArmInitSystem(IN ULONG Phase,
             MmThrottleBottom = 80;
         }
 
+        /* The product type is final now, let RtlGetNtProductType skip the registry */
+        SharedUserData->ProductTypeIsValid = TRUE;
+
         /* Update working set tuning parameters */
         MiAdjustWorkingSetManagerParameters(!MmProductType);
 
