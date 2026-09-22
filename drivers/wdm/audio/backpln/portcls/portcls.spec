@@ -46,6 +46,7 @@
 ; Properties
 @ stdcall PcCompletePendingPropertyRequest(ptr long)
 @ stdcall PcGetDeviceProperty(ptr long long ptr ptr)
+@ stdcall PcGetPhysicalDeviceObject(ptr)
 
 ; Timeouts
 @ stdcall PcRegisterIoTimeout(ptr ptr ptr)
