@@ -664,12 +664,15 @@ Pro5IndicateStatus(
     {
         Binding = CONTAINING_RECORD(Entry, ADAPTER_BINDING, AdapterListEntry);
 
-        Binding->ProtocolBinding->Chars.StatusHandler(Binding->NdisOpenBlock.ProtocolBindingContext,
-                                                      GeneralStatus,
-                                                      StatusBuffer,
-                                                      StatusBufferSize);
+        /* Both handlers are optional for a protocol */
+        if (Binding->ProtocolBinding->Chars.StatusHandler != NULL)
+            Binding->ProtocolBinding->Chars.StatusHandler(Binding->NdisOpenBlock.ProtocolBindingContext,
+                                                          GeneralStatus,
+                                                          StatusBuffer,
+                                                          StatusBufferSize);
 
-        Binding->ProtocolBinding->Chars.StatusCompleteHandler(Binding->NdisOpenBlock.ProtocolBindingContext);
+        if (Binding->ProtocolBinding->Chars.StatusCompleteHandler != NULL)
+            Binding->ProtocolBinding->Chars.StatusCompleteHandler(Binding->NdisOpenBlock.ProtocolBindingContext);
     }
 
     KeReleaseSpinLock(&Adapter->NdisMiniportBlock.Lock, OldIrql);
