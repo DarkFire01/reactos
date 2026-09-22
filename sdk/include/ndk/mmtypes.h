@@ -92,6 +92,7 @@ extern "C" {
 //
 // Section Flags for NtCreateSection
 //
+#define SEC_64K_PAGES                                       0x80000
 #define SEC_NO_CHANGE                                       0x400000
 #define SEC_FILE                                            0x800000
 #define SEC_IMAGE                                           0x1000000
