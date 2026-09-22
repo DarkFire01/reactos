@@ -39,6 +39,7 @@ extern "C" {
 #define X86_FEATURE_PGE         0x00002000 /* Page Global Enable */
 #define X86_FEATURE_CMOV        0x00008000 /* "Conditional move" instruction supported */
 #define X86_FEATURE_PAT         0x00010000 /* Page Attribute Table is supported */
+#define X86_FEATURE_CLFLUSH     0x00080000 /* CLFLUSH instruction present */
 #define X86_FEATURE_DS          0x00200000 /* Debug Store is present */
 #define X86_FEATURE_MMX         0x00800000 /* MMX extension present */
 #define X86_FEATURE_FXSR        0x01000000 /* FXSAVE/FXRSTOR instructions present */
