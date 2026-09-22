@@ -142,8 +142,10 @@ extern void __wine_dbg_set_functions( const struct __wine_debug_functions *new_f
 /* These functions return a printable version of a string, including
    quotes.  The string will be valid for some time, but not indefinitely
    as strings are re-used.  */
+#ifndef __WINE_WINE_TEST_H /* wine/test.h declares these with intptr_t lengths */
 extern const char *wine_dbgstr_an( const char * s, int n );
 extern const char *wine_dbgstr_wn( const WCHAR *s, int n );
+#endif /* !__WINE_WINE_TEST_H */
 extern const char *wine_dbg_sprintf( const char *format, ... ) __WINE_PRINTF_ATTR(1,2);
 
 extern int wine_dbg_printf( const char *format, ... ) __WINE_PRINTF_ATTR(1,2);
