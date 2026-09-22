@@ -1063,6 +1063,62 @@ KeInvalidateAllCaches(VOID)
     return TRUE;
 }
 
+static
+ULONG_PTR
+NTAPI
+KiSerializeProcessor(
+    _In_ ULONG_PTR Argument)
+{
+    UNREFERENCED_PARAMETER(Argument);
+    return 0;
+}
+
+/**
+ * @brief
+ * Writes back and invalidates a range of memory in the caches of every
+ * processor.
+ *
+ * @param[in] BaseAddress
+ * Start of the range.
+ *
+ * @param[in] Length
+ * Size of the range in bytes.
+ */
+VOID
+FASTCALL
+KeInvalidateRangeAllCaches(
+    _In_ PVOID BaseAddress,
+    _In_ ULONG Length)
+{
+    PKIPCR Pcr = (PKIPCR)KeGetPcr();
+    CPU_INFO CpuInfo;
+    ULONG_PTR LineSize;
+    ULONG_PTR Line;
+    ULONG_PTR End;
+
+    KiCpuId(&CpuInfo, 1);
+    LineSize = ((CpuInfo.Ebx >> 8) & 0xFF) * 8;
+
+    /* Without CLFLUSH, or for a range the size of the caches, drop everything */
+    if (!(CpuInfo.Edx & X86_FEATURE_CLFLUSH) ||
+        (LineSize == 0) ||
+        ((Pcr->SecondLevelCacheSize != 0) && (Length >= Pcr->SecondLevelCacheSize)))
+    {
+        KeInvalidateAllCaches();
+        return;
+    }
+
+    /* Make every other processor take an interrupt before the lines go */
+    if ((KeGetCurrentIrql() <= DISPATCH_LEVEL) && (KeNumberProcessors > 1))
+        KeIpiGenericCall(KiSerializeProcessor, 0);
+
+    End = (ULONG_PTR)BaseAddress + Length;
+    for (Line = (ULONG_PTR)BaseAddress & ~(LineSize - 1); Line < End; Line += LineSize)
+        _mm_clflush((PVOID)Line);
+
+    _mm_mfence();
+}
+
 VOID
 NTAPI
 KiSaveProcessorState(IN PKTRAP_FRAME TrapFrame,
