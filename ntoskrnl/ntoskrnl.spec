@@ -1770,14 +1770,22 @@
 @ stdcall -version=0x601+ EmClientRuleEvaluate(ptr ptr ptr)
 @ stdcall -version=0x601+ EmProviderDeregister(ptr)
 @ stdcall -version=0x601+ EmProviderRegister(ptr ptr ptr)
-@ fastcall -version=0x600+ ExAcquireSpinLockExclusive(ptr)
-@ fastcall -version=0x600+ ExAcquireSpinLockShared(ptr)
-@ fastcall -version=0x600+ ExReleaseSpinLockExclusive(ptr long)
-@ fastcall -version=0x600+ ExReleaseSpinLockShared(ptr long)
+
+# Event Tracing for Windows
+
+# Executive
+@ stdcall -version=0x600+ ExAcquireSpinLockExclusive(ptr)
+@ stdcall -version=0x600+ ExAcquireSpinLockExclusiveAtDpcLevel(ptr)
+@ stdcall -version=0x600+ ExAcquireSpinLockShared(ptr)
+@ stdcall -version=0x600+ ExAcquireSpinLockSharedAtDpcLevel(ptr)
 @ stdcall -version=0x603+ ExAllocateTimer(ptr ptr long)
 @ stdcall -version=0x603+ ExCancelTimer(ptr ptr)
 @ stdcall -version=0x603+ ExDeleteTimer(ptr long long ptr)
 @ stdcall -version=0x602+ ExGetFirmwareEnvironmentVariable(ptr ptr ptr ptr ptr)
+@ stdcall -version=0x600+ ExReleaseSpinLockExclusive(ptr long)
+@ stdcall -version=0x600+ ExReleaseSpinLockExclusiveFromDpcLevel(ptr)
+@ stdcall -version=0x600+ ExReleaseSpinLockShared(ptr long)
+@ stdcall -version=0x600+ ExReleaseSpinLockSharedFromDpcLevel(ptr)
 @ stdcall -version=0x603+ ExSetTimer(ptr int64 int64 ptr)
 @ stdcall -version=0x602+ ExTryQueueWorkItem(ptr long)
 @ stdcall -version=0xa00+ HvlIsAnyHypervisorPresent()
