@@ -358,8 +358,9 @@ SupplicantOpen(
                      InterfaceGuid->Data4[3], InterfaceGuid->Data4[4], InterfaceGuid->Data4[5],
                      InterfaceGuid->Data4[6], InterfaceGuid->Data4[7]);
 
+    /* The length must exclude the terminator to match the bound device name */
     if (!DeviceIoControl(Device, IOCTL_NDISUIO_OPEN_DEVICE,
-                         Name, (DWORD)((wcslen(Name) + 1) * sizeof(WCHAR)),
+                         Name, (DWORD)(wcslen(Name) * sizeof(WCHAR)),
                          NULL, 0, &Returned, NULL))
     {
         CloseHandle(Device);
