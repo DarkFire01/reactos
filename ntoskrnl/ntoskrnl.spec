@@ -758,6 +758,7 @@
 @ stdcall MmAddVerifierThunks(ptr long)
 @ stdcall MmAdjustWorkingSetSize(long long long long)
 @ stdcall MmAdvanceMdl(ptr long)
+@ stdcall -version=0x602+ MmAllocateContiguousNodeMemory(long int64 int64 int64 long long)
 @ stdcall MmAllocateContiguousMemory(long long long)
 @ stdcall MmAllocateContiguousMemorySpecifyCache(long long long long long long long long)
 @ stdcall MmAllocateMappingAddress(long long)
@@ -816,6 +817,7 @@
 @ stdcall MmQuerySystemSize()
 @ stdcall MmRemovePhysicalMemory(ptr ptr)
 @ stdcall MmResetDriverPaging(ptr)
+@ stdcall -version=0x600+ MmRotatePhysicalView(ptr ptr ptr long ptr ptr)
 @ extern MmSectionObjectType
 @ stdcall MmSecureVirtualMemory(ptr long long)
 @ stdcall MmSetAddressRangeModified(ptr long)
@@ -1534,6 +1536,7 @@
 @ stdcall ZwSetInformationObject(ptr long ptr long)
 @ stdcall ZwSetInformationProcess(ptr long ptr long)
 @ stdcall ZwSetInformationThread(ptr long ptr long)
+@ stdcall -version=0x602+ ZwSetInformationVirtualMemory(ptr long long ptr ptr long)
 @ stdcall ZwSetSecurityObject(ptr long ptr)
 @ stdcall ZwSetSystemInformation(long ptr long)
 @ stdcall ZwSetSystemTime(ptr ptr)
