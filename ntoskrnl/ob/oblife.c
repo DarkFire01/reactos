@@ -1132,6 +1132,63 @@ ObCreateObject(IN KPROCESSOR_MODE ProbeMode OPTIONAL,
     return Status;
 }
 
+/**
+ * @brief
+ * Converts a Windows 8 and later type initializer into the layout the object
+ * manager keeps.
+ *
+ * @return
+ * STATUS_NOT_SUPPORTED if the caller relies on an extended parse routine or on
+ * a wait object description, which have no equivalent here.
+ */
+static
+NTSTATUS
+ObpConvertTypeInitializer(
+    _In_ POBJECT_TYPE_INITIALIZER_WIN8 Source,
+    _Out_ POBJECT_TYPE_INITIALIZER Destination)
+{
+    if (Source->Reserved)
+        return STATUS_INVALID_PARAMETER;
+
+    if ((Source->UseExtendedParameters && Source->ParseProcedure) ||
+        (!Source->UseDefaultObject &&
+         (Source->WaitObjectFlagMask ||
+          Source->WaitObjectFlagOffset ||
+          Source->WaitObjectPointerOffset)))
+    {
+        DPRINT1("Object type initializer flags 0x%x/0x%x are not supported\n",
+                Source->ObjectTypeFlags, Source->ObjectTypeFlags2);
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    RtlZeroMemory(Destination, sizeof(*Destination));
+    Destination->Length = sizeof(*Destination);
+    Destination->UseDefaultObject = Source->UseDefaultObject;
+    Destination->CaseInsensitive = Source->CaseInsensitive;
+    Destination->InvalidAttributes = Source->InvalidAttributes;
+    Destination->GenericMapping = Source->GenericMapping;
+    Destination->ValidAccessMask = Source->ValidAccessMask;
+    Destination->SecurityRequired = Source->SecurityRequired;
+    Destination->MaintainHandleCount = Source->MaintainHandleCount;
+    Destination->MaintainTypeList = Source->MaintainTypeList;
+    Destination->DefaultPagedPoolCharge = Source->DefaultPagedPoolCharge;
+    Destination->DefaultNonPagedPoolCharge = Source->DefaultNonPagedPoolCharge;
+    Destination->DumpProcedure = Source->DumpProcedure;
+    Destination->OpenProcedure = Source->OpenProcedure;
+    Destination->CloseProcedure = Source->CloseProcedure;
+    Destination->DeleteProcedure = Source->DeleteProcedure;
+    Destination->ParseProcedure = Source->ParseProcedure;
+    Destination->SecurityProcedure = Source->SecurityProcedure;
+    Destination->QueryNameProcedure = Source->QueryNameProcedure;
+    Destination->OkayToCloseProcedure = Source->OkayToCloseProcedure;
+
+    /* Our nonpaged pool is not split by execute access */
+    Destination->PoolType = (Source->PoolType == NonPagedPoolNx) ? NonPagedPool :
+                                                                  Source->PoolType;
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 NTAPI
 ObCreateObjectType(IN PUNICODE_STRING TypeName,
@@ -1149,6 +1206,18 @@ ObCreateObjectType(IN PUNICODE_STRING TypeName,
     UNICODE_STRING ObjectName;
     ANSI_STRING AnsiName;
     POBJECT_HEADER_CREATOR_INFO CreatorInfo;
+    OBJECT_TYPE_INITIALIZER ConvertedInitializer;
+
+    if (ObjectTypeInitializer &&
+        (ObjectTypeInitializer->Length == sizeof(OBJECT_TYPE_INITIALIZER_WIN8)))
+    {
+        Status = ObpConvertTypeInitializer((POBJECT_TYPE_INITIALIZER_WIN8)ObjectTypeInitializer,
+                                           &ConvertedInitializer);
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        ObjectTypeInitializer = &ConvertedInitializer;
+    }
 
     /* Verify parameters */
     if (!(TypeName) ||
