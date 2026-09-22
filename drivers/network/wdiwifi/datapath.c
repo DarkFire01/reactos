@@ -607,12 +607,21 @@ WdiPeerCreate(
     _In_ WDI_PEER_ID PeerId,
     _In_ WDI_MAC_ADDRESS PeerAddr)
 {
-    UNREFERENCED_PARAMETER(NdisMiniportDataPathHandle);
+    PWDI_ADAPTER Adapter = NdisMiniportDataPathHandle;
 
     DPRINT1("Peer %u on port %u is %02x:%02x:%02x:%02x:%02x:%02x\n",
             PeerId, PortId,
             PeerAddr.Address[0], PeerAddr.Address[1], PeerAddr.Address[2],
             PeerAddr.Address[3], PeerAddr.Address[4], PeerAddr.Address[5]);
+
+    /* A unicast peer on the station port is the AP just associated with, which
+       is the association the Ethernet framing addresses its sends to */
+    if (!(PeerAddr.Address[0] & 0x01))
+    {
+        Adapter->ConnectedBssid = PeerAddr;
+        Adapter->Connected = TRUE;
+        WdiIndicateAssociation(Adapter, &PeerAddr, DOT11_ASSOC_STATUS_SUCCESS);
+    }
 }
 
 static
@@ -624,10 +633,17 @@ WdiPeerDelete(
     _In_ WDI_PEER_ID PeerId,
     _Out_ NDIS_STATUS *WifiStatus)
 {
-    UNREFERENCED_PARAMETER(NdisMiniportDataPathHandle);
+    PWDI_ADAPTER Adapter = NdisMiniportDataPathHandle;
 
     /* No frames are queued for any peer, so it can go right away */
     DPRINT1("Peer %u on port %u deleted\n", PeerId, PortId);
+
+    if (Adapter->Connected)
+    {
+        Adapter->Connected = FALSE;
+        WdiIndicateDisassociation(Adapter, &Adapter->ConnectedBssid, DOT11_ASSOC_STATUS_DISASSOCIATED_BY_OS);
+    }
+
     *WifiStatus = NDIS_STATUS_SUCCESS;
 }
 
