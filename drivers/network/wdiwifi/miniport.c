@@ -402,10 +402,12 @@ WdiMpOidRequest(
     _In_ NDIS_HANDLE MiniportAdapterContext,
     _In_ PNDIS_OID_REQUEST OidRequest)
 {
-    UNREFERENCED_PARAMETER(MiniportAdapterContext);
+    PWDI_ADAPTER Adapter = WdiFindAdapterByContext(MiniportAdapterContext);
 
-    DPRINT("OID 0x%08lx not handled\n", OidRequest->DATA.QUERY_INFORMATION.Oid);
-    return NDIS_STATUS_NOT_SUPPORTED;
+    if (Adapter == NULL)
+        return NDIS_STATUS_FAILURE;
+
+    return WdiHandleOidRequest(Adapter, OidRequest);
 }
 
 static
