@@ -2176,6 +2176,7 @@ IopLoadDriver(
     _In_ HANDLE ServiceHandle,
     _Out_ PDRIVER_OBJECT *DriverObject)
 {
+    UNICODE_STRING UefiOnlyImage = RTL_CONSTANT_STRING(L"\\BasicDisplay.sys");
     UNICODE_STRING ImagePath;
     NTSTATUS Status;
     PLDR_DATA_TABLE_ENTRY ModuleObject;
@@ -2228,6 +2229,14 @@ IopLoadDriver(
     }
 
     DPRINT("FullImagePath: '%wZ'\n", &ImagePath);
+
+    /* Legacy BIOS boots keep XDDM, so BasicDisplay and the dxgkrnl it brings in stay out */
+    if ((ExpFirmwareType != FirmwareTypeUefi) &&
+        IopSuffixUnicodeString(&UefiOnlyImage, &ImagePath, TRUE))
+    {
+        RtlFreeUnicodeString(&ImagePath);
+        return STATUS_NOT_SUPPORTED;
+    }
 
     KeEnterCriticalRegion();
     ExAcquireResourceExclusiveLite(&IopDriverLoadResource, TRUE);

@@ -75,12 +75,14 @@ GdiThreadDestroy(PETHREAD Thread)
     return STATUS_SUCCESS;
 }
 extern BOOLEAN gbDxgkInitialized;
+VOID NTAPI DlNotifySessionOpen(VOID);
 
 BOOL
 InitializeGreCSRSS(VOID)
 {
     /* Initialize Dxgkrnl interfaces and run startup routine */
     DxStartupDxgkInt();
+    DlNotifySessionOpen();
 
     /*
      * Start the legacy DirectDraw/D3D path (dxg.sys) unconditionally - it coexists with WDDM
