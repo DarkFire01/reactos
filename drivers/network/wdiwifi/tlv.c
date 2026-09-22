@@ -27,8 +27,7 @@
 #define WDI_SCAN_MODE_LENGTH                10
 #define WDI_SCAN_DWELL_TIME_LENGTH          12
 
-/* A beacon or probe response body carries a timestamp, interval and capabilities before its IEs */
-#define WDI_FRAME_BODY_FIXED_LENGTH         12
+/* The 802.11 element id of the SSID, first in a beacon or probe response body */
 #define WDI_IE_SSID                         0
 
 static
@@ -484,6 +483,27 @@ WdiFrameSsid(
     }
 }
 
+/* Keeps a beacon or probe response body: the SSID, the capability field and
+   as much of the raw body as fits, for the security elements */
+static
+VOID
+WdiFrameCapture(
+    _In_reads_bytes_(Length) const UCHAR *Body,
+    _In_ ULONG Length,
+    _Inout_ PWDI_BSS Bss)
+{
+    ULONG Copy = min(Length, sizeof(Bss->Beacon));
+
+    RtlCopyMemory(Bss->Beacon, Body, Copy);
+    Bss->BeaconLength = (UINT16)Copy;
+
+    /* The capability field follows the 8 byte timestamp and 2 byte interval */
+    if (Length >= WDI_FRAME_BODY_FIXED_LENGTH)
+        Bss->Capability = WdiRead16(Body + 10);
+
+    WdiFrameSsid(Body, Length, Bss);
+}
+
 /**
  * @brief
  * Reads one WDI_TLV_BSS_ENTRY from a BSS list indication.
@@ -525,11 +545,13 @@ WdiParseBssEntry(
         Bss->BandId = WdiRead32(Value + 4);
     }
 
-    /* Either frame carries the SSID; a probe response names hidden networks too */
+    /* A probe response first, since a directed probe reveals hidden names,
+       then the beacon. Both carry the capability and the security elements */
     if (WdiTlvFind(Entry, Length, WDI_TLV_PROBE_RESPONSE_FRAME, &Value, &ValueLength))
-        WdiFrameSsid(Value, ValueLength, Bss);
-    if (Bss->SsidLength == 0 && WdiTlvFind(Entry, Length, WDI_TLV_BEACON_FRAME, &Value, &ValueLength))
-        WdiFrameSsid(Value, ValueLength, Bss);
+        WdiFrameCapture(Value, ValueLength, Bss);
+    if ((Bss->SsidLength == 0 || Bss->BeaconLength == 0) &&
+        WdiTlvFind(Entry, Length, WDI_TLV_BEACON_FRAME, &Value, &ValueLength))
+        WdiFrameCapture(Value, ValueLength, Bss);
 
     return TRUE;
 }

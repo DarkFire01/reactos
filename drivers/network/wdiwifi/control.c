@@ -119,6 +119,28 @@ WdiIndicateDisassociation(
 
 /* Query OIDs */
 
+/* The IEs a BSS entry carries, the body past its fixed fields */
+static
+ULONG
+WdiBssIeLength(
+    _In_ PWDI_BSS Bss)
+{
+    if (Bss->BeaconLength > WDI_FRAME_BODY_FIXED_LENGTH)
+        return Bss->BeaconLength - WDI_FRAME_BODY_FIXED_LENGTH;
+    return 0;
+}
+
+/* One entry is its header plus the IEs, rounded so the next stays aligned */
+static
+ULONG
+WdiBssEntrySize(
+    _In_ PWDI_BSS Bss)
+{
+    ULONG Size = FIELD_OFFSET(DOT11_BSS_ENTRY, ucBuffer) + WdiBssIeLength(Bss);
+
+    return (Size + 3) & ~3u;
+}
+
 static
 NDIS_STATUS
 NTAPI
@@ -132,18 +154,19 @@ WdiQueryBssList(
     PDOT11_BYTE_ARRAY Array = (PDOT11_BYTE_ARRAY)Buffer;
     PUCHAR At;
     ULONG Total;
-    ULONG EntrySize;
     KIRQL OldIrql;
     ULONG i;
 
     *Written = 0;
     *Needed = 0;
 
-    EntrySize = FIELD_OFFSET(DOT11_BSS_ENTRY, ucBuffer);
-
     KeAcquireSpinLock(&Adapter->BssLock, &OldIrql);
 
-    Total = FIELD_OFFSET(DOT11_BYTE_ARRAY, ucBuffer) + Adapter->BssCount * EntrySize;
+    /* The entries vary in size with the IEs they carry */
+    Total = FIELD_OFFSET(DOT11_BYTE_ARRAY, ucBuffer);
+    for (i = 0; i < Adapter->BssCount; i++)
+        Total += WdiBssEntrySize(&Adapter->Bss[i]);
+
     if (BufferLength < Total)
     {
         KeReleaseSpinLock(&Adapter->BssLock, OldIrql);
@@ -154,16 +177,17 @@ WdiQueryBssList(
     Array->Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
     Array->Header.Revision = DOT11_BSS_ENTRY_BYTE_ARRAY_REVISION_1;
     Array->Header.Size = sizeof(DOT11_BYTE_ARRAY);
-    Array->uNumOfBytes = Adapter->BssCount * EntrySize;
-    Array->uTotalNumOfBytes = Adapter->BssCount * EntrySize;
+    Array->uNumOfBytes = Total - FIELD_OFFSET(DOT11_BYTE_ARRAY, ucBuffer);
+    Array->uTotalNumOfBytes = Array->uNumOfBytes;
 
     At = Array->ucBuffer;
     for (i = 0; i < Adapter->BssCount; i++)
     {
         PDOT11_BSS_ENTRY Entry = (PDOT11_BSS_ENTRY)At;
         PWDI_BSS Bss = &Adapter->Bss[i];
+        ULONG IeLength = WdiBssIeLength(Bss);
 
-        RtlZeroMemory(Entry, EntrySize);
+        RtlZeroMemory(Entry, WdiBssEntrySize(Bss));
         Entry->uPhyId = Bss->BandId;
         Entry->PhySpecificInfo.uChCenterFrequency = Bss->Channel;
         RtlCopyMemory(Entry->dot11BSSID, Bss->Bssid.Address, sizeof(Entry->dot11BSSID));
@@ -171,8 +195,12 @@ WdiQueryBssList(
         Entry->lRSSI = Bss->Rssi;
         Entry->uLinkQuality = Bss->LinkQuality;
         Entry->bInRegDomain = TRUE;
-        Entry->uBufferLength = 0;
-        At += EntrySize;
+        Entry->usCapabilityInformation = Bss->Capability;
+        Entry->uBufferLength = IeLength;
+        if (IeLength != 0)
+            RtlCopyMemory(Entry->ucBuffer, Bss->Beacon + WDI_FRAME_BODY_FIXED_LENGTH, IeLength);
+
+        At += WdiBssEntrySize(Bss);
     }
 
     KeReleaseSpinLock(&Adapter->BssLock, OldIrql);
