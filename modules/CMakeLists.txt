@@ -35,7 +35,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/livecd_extras/)
         add_cd_file(FILE ${CMAKE_CURRENT_SOURCE_DIR}/livecd_extras/${item} DESTINATION extras NO_CAB NAME_ON_CD ${item} FOR livecd)
     endforeach(item)
 endif()
-
+#
 ## Extra files which you need existing on the hard drive after the installation.
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/)
     file(GLOB_RECURSE EXTRA_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/*)
