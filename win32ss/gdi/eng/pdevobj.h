@@ -74,6 +74,9 @@ typedef struct _GRAPHICS_DEVICE
     PVIDEO_MONITOR_DEVICE pvMonDev;
     PFILE_OBJECT     FileObject;
     DWORD            ProtocolType;
+    PVOID            DxgAdapter;                     /* dxgkrnl's adapter, NULL if not WDDM */
+    LUID             DxgAdapterLuid;
+    ULONG            VidPnSourceId;
 } GRAPHICS_DEVICE, *PGRAPHICS_DEVICE;
 
 typedef struct _PDEVOBJ
@@ -146,6 +149,13 @@ typedef struct _PDEVOBJ
                               0 for not removed */
     UINT SafetyRemoveCount;
     struct _EDD_DIRECTDRAW_GLOBAL * pEDDgpl;
+
+    /* What cdd.dll handed over in EngQueryW32kCddInterface */
+    PVOID pfnCddW32kAddD3DDirtyRgn;
+    PVOID pfnCddW32kCloseProcess;
+    PVOID pfnCddW32kDeleteDeviceBitmapEx;
+    PVOID pfnCddW32kDriverSupportsLiteModeChange;
+    PVOID pfnCddW32kUpdateDevMode;
 } PDEVOBJ, *PPDEVOBJ;
 
 /* Function prototypes ********************************************************/
