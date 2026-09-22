@@ -4,7 +4,6 @@ add_definitions(
     -D__ROS_LONG64__)
 
 include_directories(${VKD3D_INCLUDE_DIRS})
-
 spec2def(d3d8.dll d3d8.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
