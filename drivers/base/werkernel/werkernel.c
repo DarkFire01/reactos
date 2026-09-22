@@ -4,7 +4,7 @@
  * PURPOSE:     Stubs of the WerLiveKernel entry points drivers import
  * COPYRIGHT:   Copyright 2026 Justin Miller <justin.miller@reactos.org>
  *
- * These satisfy the ext-ms-win-ntos-werkernel imports of drivers that would
+ * The loader maps the ext-ms-win-ntos-werkernel api set here, for drivers that would
  * file a live kernel error report. Reporting is not supported, so each one
  * fails, which a driver treats as "no report was made" and carries on.
  */
