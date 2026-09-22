@@ -17,6 +17,7 @@ _Must_inspect_result_
 _IRQL_requires_max_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetExecutionContextCreate)(
     _In_ NET_DRIVER_GLOBALS * DriverGlobals,
     _In_ WDFDEVICE Device,
@@ -104,6 +105,7 @@ _Must_inspect_result_
 _IRQL_requires_(PASSIVE_LEVEL)
 WDFAPI
 NTSTATUS
+NTAPI
 NETEXPORT(NetExecutionContextTaskCreate)(
     _In_ NET_DRIVER_GLOBALS * DriverGlobals,
     _In_ NETEXECUTIONCONTEXT NetExecutionContextHandle,
@@ -183,6 +185,7 @@ Returns:
 _IRQL_requires_max_(DISPATCH_LEVEL)
 WDFAPI
 void
+NTAPI
 NETEXPORT(NetExecutionContextTaskEnqueue)(
     _In_ NET_DRIVER_GLOBALS * DriverGlobals,
     _In_ NETEXECUTIONCONTEXTTASK NetExecutionContextTaskHandle
@@ -210,6 +213,7 @@ Routine Description:
 _IRQL_requires_(PASSIVE_LEVEL)
 WDFAPI
 void
+NTAPI
 NETEXPORT(NetExecutionContextTaskWaitCompletion)(
     _In_ NET_DRIVER_GLOBALS * DriverGlobals,
     _Inout_ NETEXECUTIONCONTEXTTASK NetExecutionContextTaskHandle
