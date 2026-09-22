@@ -3486,6 +3486,19 @@ RTLVERLIB_DDI(RtlIsServicePackVersionInstalled)(
 #define RtlInterlockedClearBitsDiscardReturn(Flags, Flag) \
     RtlInterlockedAndBitsDiscardReturn(Flags, ~(Flag))
 
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Must_inspect_result_
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlGenerateClass5Guid(
+  _In_ REFGUID NamespaceGuid,
+  _In_reads_bytes_(BufferSize) PVOID Buffer,
+  _In_ ULONG BufferSize,
+  _Out_ GUID *Guid);
+#endif /* (NTDDI_VERSION >= NTDDI_WIN8) */
+
 $endif (_WDMDDK_)
 
 $if (_NTDDK_)
@@ -3682,6 +3695,20 @@ RtlActiveEnumeratorsHashTable(
 #endif /* (NTDDI_VERSION >= NTDDI_WIN7) */
 
 #endif /* !defined(MIDL_PASS) && !defined(SORTPP_PASS) */
+
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS1)
+NTSYSAPI
+ULONG
+NTAPI
+RtlGetActiveConsoleId(VOID);
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+_Must_inspect_result_
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlIsMultiSessionSku(VOID);
+#endif /* (NTDDI_VERSION >= NTDDI_WIN10_RS1) */
 
 $endif (_NTDDK_)
 $if (_NTIFS_)
