@@ -584,6 +584,12 @@ WdiInitializeAdapter(
     KeInitializeEvent(&Adapter->ScanIdle, NotificationEvent, TRUE);
     KeInitializeEvent(&Adapter->ConnectIdle, NotificationEvent, TRUE);
     KeInitializeSpinLock(&Adapter->BssLock);
+
+    /* An open network until the dot11 OIDs ask for something else */
+    Adapter->DesiredAuth = DOT11_AUTH_ALGO_80211_OPEN;
+    Adapter->DesiredUnicastCipher = DOT11_CIPHER_ALGO_NONE;
+    Adapter->DesiredMulticastCipher = DOT11_CIPHER_ALGO_NONE;
+
     WdiReadKnobs(Adapter);
     WdiSetDataApi(&Adapter->DataApi);
 
