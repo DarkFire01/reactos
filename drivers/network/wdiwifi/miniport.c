@@ -455,20 +455,13 @@ WdiMpSendNetBufferLists(
     _In_ ULONG SendFlags)
 {
     PWDI_ADAPTER Adapter = WdiFindAdapterByContext(MiniportAdapterContext);
-    PNET_BUFFER_LIST NetBufferList;
 
     UNREFERENCED_PARAMETER(PortNumber);
 
     if (Adapter == NULL)
         return;
 
-    for (NetBufferList = NetBufferLists; NetBufferList != NULL; NetBufferList = NET_BUFFER_LIST_NEXT_NBL(NetBufferList))
-        NET_BUFFER_LIST_STATUS(NetBufferList) = NDIS_STATUS_MEDIA_DISCONNECTED;
-
-    NdisMSendNetBufferListsComplete(Adapter->MiniportAdapterHandle,
-                                    NetBufferLists,
-                                    (SendFlags & NDIS_SEND_FLAGS_DISPATCH_LEVEL) ?
-                                    NDIS_SEND_COMPLETE_FLAGS_DISPATCH_LEVEL : 0);
+    WdiQueueSend(Adapter, NetBufferLists, SendFlags);
 }
 
 static
