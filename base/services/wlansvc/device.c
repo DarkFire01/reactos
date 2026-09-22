@@ -249,7 +249,8 @@ WlanGetBssList(
 {
     HANDLE Interface;
     PWLAN_DOT11_BYTE_ARRAY Array;
-    ULONG Size = 8192;
+    /* Room for the most networks the driver keeps, each with its beacon body */
+    ULONG Size = 65536;
     ULONG Returned;
     DWORD Error;
 
