@@ -823,6 +823,84 @@ PoFxReportDevicePoweredOn(
 
 /**
  * @brief
+ * Tells the Power Framework the longest transition latency a component
+ * can tolerate when leaving an idle state.
+ *
+ * @param[in] Handle
+ * A pointer to a Framework handle that represents the
+ * registered handle with PoFx.
+ *
+ * @param[in] Component
+ * An index to the component the hint applies to.
+ *
+ * @param[in] Latency
+ * The tolerated latency, in 100-nanosecond units.
+ *
+ * @remarks
+ * The hint is only consumed by a power engine plug-in, which ReactOS does
+ * not load yet, so it is traced and dropped.
+ */
+VOID
+NTAPI
+PoFxSetComponentLatency(
+    _In_ POHANDLE Handle,
+    _In_ ULONG Component,
+    _In_ ULONGLONG Latency)
+{
+    PPOP_FX_DEVICE FxDevice = (PPOP_FX_DEVICE)Handle;
+
+    if (FxDevice == NULL || Component >= FxDevice->ComponentCount)
+    {
+        DPRINT1("PoFxSetComponentLatency: invalid parameter\n");
+        return;
+    }
+
+    POFXTRACE(POFX_COMPONENT_DEBUG,
+              "PoFxSetComponentLatency: FxDevice %p component %u latency %I64u\n",
+              FxDevice, Component, Latency);
+}
+
+/**
+ * @brief
+ * Tells the Power Framework how long a component is expected to stay idle
+ * once it enters an idle state.
+ *
+ * @param[in] Handle
+ * A pointer to a Framework handle that represents the
+ * registered handle with PoFx.
+ *
+ * @param[in] Component
+ * An index to the component the hint applies to.
+ *
+ * @param[in] Residency
+ * The expected residency, in 100-nanosecond units.
+ *
+ * @remarks
+ * The hint is only consumed by a power engine plug-in, which ReactOS does
+ * not load yet, so it is traced and dropped.
+ */
+VOID
+NTAPI
+PoFxSetComponentResidency(
+    _In_ POHANDLE Handle,
+    _In_ ULONG Component,
+    _In_ ULONGLONG Residency)
+{
+    PPOP_FX_DEVICE FxDevice = (PPOP_FX_DEVICE)Handle;
+
+    if (FxDevice == NULL || Component >= FxDevice->ComponentCount)
+    {
+        DPRINT1("PoFxSetComponentResidency: invalid parameter\n");
+        return;
+    }
+
+    POFXTRACE(POFX_COMPONENT_DEBUG,
+              "PoFxSetComponentResidency: FxDevice %p component %u residency %I64u\n",
+              FxDevice, Component, Residency);
+}
+
+/**
+ * @brief
  * Tells the Power Framework that a device came back to D0 on its own,
  * without the Power Manager having asked for it.
  *
