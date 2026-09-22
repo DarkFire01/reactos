@@ -432,6 +432,61 @@ InbvNotifyDisplayOwnershipLost(
     }
 }
 
+/**
+ * @brief
+ * Hands the display to a graphics driver or takes it back.
+ *
+ * @param[in] DisplayOwned
+ * TRUE when the boot display takes the screen back, FALSE when a driver takes it.
+ *
+ * @param[in] ResetDisplayCallback
+ * The driver's callback for handing the screen back. Only a boot graphics
+ * library would call it, which ReactOS does not have, so it is ignored.
+ *
+ * @return
+ * STATUS_SUCCESS.
+ */
+NTSTATUS
+NTAPI
+InbvNotifyDisplayOwnershipChange(
+    _In_ BOOLEAN DisplayOwned,
+    _In_opt_ PVOID ResetDisplayCallback)
+{
+    UNREFERENCED_PARAMETER(ResetDisplayCallback);
+
+    if (DisplayOwned)
+    {
+        if (InbvDisplayState != INBV_DISPLAY_STATE_OWNED)
+            InbvAcquireDisplayOwnership();
+    }
+    else if (InbvDisplayState != INBV_DISPLAY_STATE_LOST)
+    {
+        InbvNotifyDisplayOwnershipLost(NULL);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief
+ * Moves the boot display onto a frame buffer in system memory.
+ *
+ * @return
+ * STATUS_NOT_IMPLEMENTED. Only a boot graphics library can draw into a
+ * virtual frame buffer, and the boot video driver draws straight to the device.
+ */
+NTSTATUS
+NTAPI
+InbvSetVirtualFrameBuffer(
+    _In_ PVOID VirtualFrameBuffer,
+    _In_opt_ PVOID ResetDisplayCallback)
+{
+    UNREFERENCED_PARAMETER(VirtualFrameBuffer);
+    UNREFERENCED_PARAMETER(ResetDisplayCallback);
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
 BOOLEAN
 NTAPI
 InbvResetDisplay(VOID)
