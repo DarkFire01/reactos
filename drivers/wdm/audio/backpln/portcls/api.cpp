@@ -29,6 +29,22 @@ PcGetDeviceProperty(
     return IoGetDeviceProperty(DeviceExtension->PhysicalDeviceObject, DeviceProperty, BufferLength, PropertyBuffer, ResultLength);
 }
 
+/*
+ * @implemented
+ */
+PORTCLASSAPI
+PDEVICE_OBJECT
+NTAPI
+PcGetPhysicalDeviceObject(
+    IN PDEVICE_OBJECT DeviceObject)
+{
+    PPCLASS_DEVICE_EXTENSION DeviceExtension;
+
+    DeviceExtension = (PPCLASS_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+
+    return DeviceExtension->PhysicalDeviceObject;
+}
+
 ULONGLONG
 NTAPI
 PcGetTimeInterval(
