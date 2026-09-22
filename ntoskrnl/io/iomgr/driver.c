@@ -2156,11 +2156,16 @@ IopLoadDriver(
     _In_ HANDLE ServiceHandle,
     _Out_ PDRIVER_OBJECT *DriverObject)
 {
-    UNICODE_STRING UefiOnlyImage = RTL_CONSTANT_STRING(L"\\BasicDisplay.sys");
+    static const UNICODE_STRING UefiOnlyImages[] =
+    {
+        RTL_CONSTANT_STRING(L"\\BasicDisplay.sys"),
+        RTL_CONSTANT_STRING(L"\\BasicRender.sys")
+    };
     UNICODE_STRING ImagePath;
     NTSTATUS Status;
     PLDR_DATA_TABLE_ENTRY ModuleObject;
     PVOID BaseAddress;
+    ULONG Index;
 
     PKEY_VALUE_FULL_INFORMATION kvInfo;
     Status = IopGetRegistryValue(ServiceHandle, L"ImagePath", &kvInfo);
@@ -2210,12 +2215,17 @@ IopLoadDriver(
 
     DPRINT("FullImagePath: '%wZ'\n", &ImagePath);
 
-    /* Legacy BIOS boots keep XDDM, so BasicDisplay and the dxgkrnl it brings in stay out */
-    if ((ExpFirmwareType != FirmwareTypeUefi) &&
-        IopSuffixUnicodeString(&UefiOnlyImage, &ImagePath, TRUE))
+    /* Legacy BIOS boots keep XDDM, so the basic drivers and the dxgkrnl they bring in stay out */
+    if (ExpFirmwareType != FirmwareTypeUefi)
     {
-        RtlFreeUnicodeString(&ImagePath);
-        return STATUS_NOT_SUPPORTED;
+        for (Index = 0; Index < RTL_NUMBER_OF(UefiOnlyImages); Index++)
+        {
+            if (!IopSuffixUnicodeString(&UefiOnlyImages[Index], &ImagePath, TRUE))
+                continue;
+
+            RtlFreeUnicodeString(&ImagePath);
+            return STATUS_NOT_SUPPORTED;
+        }
     }
 
     KeEnterCriticalRegion();

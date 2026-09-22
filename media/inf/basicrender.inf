@@ -1,0 +1,47 @@
+; BasicRender.INF
+;
+; Installation file for the WDDM Basic Render Driver
+;
+[Version]
+Signature  = "$Windows NT$"
+;Signature  = "$ReactOS$"
+LayoutFile = layout.inf
+Class      = System
+ClassGUID  = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider   = %ReactOS%
+DriverVer  = 09/22/2026,1.00
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[Manufacturer]
+%StdMfg% = StdMfg
+
+; The kernel only reports this device on UEFI boots
+[StdMfg]
+%BasicRender.DeviceDesc% = BasicRender_Inst,ROOT\BASICRENDER
+
+;-------------------------- BASIC RENDER DRIVER -------------------------
+
+[BasicRender_Inst.NT]
+FeatureScore = FB
+
+[BasicRender_Inst.NT.Services]
+AddService = BasicRender, 0x00000002, BasicRender_Service_Inst
+
+[BasicRender_Service_Inst]
+ServiceType    = 1
+StartType      = 1
+ErrorControl   = 0
+ServiceBinary  = %12%\BasicRender.sys
+LoadOrderGroup = Video
+
+;-------------------------------- STRINGS -------------------------------
+
+[Strings]
+; Non-localizable
+ReactOS = "ReactOS Project"
+
+; Localizable
+StdMfg = "(Standard system devices)"
+BasicRender.DeviceDesc = "Basic Render Driver"

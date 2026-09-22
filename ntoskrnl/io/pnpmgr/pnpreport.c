@@ -28,8 +28,9 @@ typedef struct _INTERNAL_WORK_QUEUE_ITEM
 #define IOP_ROOT_DEVICE_PREFIX      L"ROOT\\"
 #define IOP_ROOT_DEVICE_ID_CHARS    200
 
-/* Legacy BIOS boots keep XDDM, so this service only gets its root device on UEFI */
-#define IOP_UEFI_ONLY_ROOT_SERVICE  L"BasicDisplay"
+/* Legacy BIOS boots keep XDDM, so these services only get their root device on UEFI */
+#define IOP_UEFI_ONLY_DISPLAY       L"BasicDisplay"
+#define IOP_UEFI_ONLY_RENDER        L"BasicRender"
 
 NTSTATUS
 IopSetDeviceInstanceData(HANDLE InstanceKey,
@@ -418,7 +419,8 @@ IoReportRootDevice(
     _In_ PDRIVER_OBJECT DriverObject)
 {
     UNICODE_STRING EnumName = RTL_CONSTANT_STRING(ENUM_ROOT);
-    UNICODE_STRING UefiOnlyService = RTL_CONSTANT_STRING(IOP_UEFI_ONLY_ROOT_SERVICE);
+    UNICODE_STRING UefiOnlyDisplay = RTL_CONSTANT_STRING(IOP_UEFI_ONLY_DISPLAY);
+    UNICODE_STRING UefiOnlyRender = RTL_CONSTANT_STRING(IOP_UEFI_ONLY_RENDER);
     UNICODE_STRING ValueName;
     UNICODE_STRING InstancePath;
     PUNICODE_STRING ServiceName = &DriverObject->DriverExtension->ServiceKeyName;
@@ -434,7 +436,8 @@ IoReportRootDevice(
     PAGED_CODE();
 
     if ((ExpFirmwareType != FirmwareTypeUefi) &&
-        RtlEqualUnicodeString(ServiceName, &UefiOnlyService, TRUE))
+        (RtlEqualUnicodeString(ServiceName, &UefiOnlyDisplay, TRUE) ||
+         RtlEqualUnicodeString(ServiceName, &UefiOnlyRender, TRUE)))
         return STATUS_NOT_SUPPORTED;
 
     RtlInitEmptyUnicodeString(&InstancePath, InstanceBuffer, sizeof(InstanceBuffer));
