@@ -258,6 +258,10 @@ CoreSendNetBufferLists(
     else
         SendFlags &= ~NDIS_SEND_FLAGS_DISPATCH_LEVEL;
 
+    /* Ethernet sends become 802.11 before a native 802.11 miniport sees them */
+    if (NdisDot11Active(Adapter))
+        NdisDot11SendToNative(Adapter, Head);
+
     Core->Dispatch->SendNetBufferListsHandler(CORE_DISPATCH_CONTEXT(Adapter),
                                               Head,
                                               PortNumber,
@@ -392,7 +396,13 @@ NdisMIndicateReceiveNetBufferLists(
     }
 
     if (Adapter->Core.State == CoreMiniportRunning)
+    {
+        /* Native 802.11 frames become Ethernet before a protocol sees them */
+        if (NdisDot11Active(Adapter))
+            NdisDot11ReceiveToEthernet(Adapter, NetBufferList);
+
         Pro5IndicateReceive(Adapter, NetBufferList, ReceiveFlags, &Unheld);
+    }
     else
         Unheld = NetBufferList;
 
