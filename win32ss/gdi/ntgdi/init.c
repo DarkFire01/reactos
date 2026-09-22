@@ -12,6 +12,7 @@ DBG_DEFAULT_CHANNEL(UserMisc);
 USHORT gusLanguageID;
 
 BOOL NTAPI GDI_CleanupForProcess(struct _EPROCESS *Process);
+NTSTATUS NTAPI DlProcessCallout(_Inout_ PPROCESSINFO ppi, _In_ BOOLEAN Create);
 
 NTSTATUS
 GdiProcessCreate(PEPROCESS Process)
@@ -39,6 +40,10 @@ GdiProcessCreate(PEPROCESS Process)
     ASSERT(ppiCurrent->pPoolBrushAttr);
     ASSERT(ppiCurrent->pPoolRgnAttr);
 
+    /* Without its DXGPROCESS the process cannot become a GUI process, as on Windows */
+    if (!NT_SUCCESS(DlProcessCallout(ppiCurrent, TRUE)))
+        return STATUS_DLL_INIT_FAILED;
+
     return STATUS_SUCCESS;
 }
 
@@ -53,6 +58,8 @@ GdiProcessDestroy(PEPROCESS Process)
 
     /* And GDI ones too */
     GDI_CleanupForProcess(Process);
+
+    DlProcessCallout(ppiCurrent, FALSE);
 
     /* So we can now free the pools */
     GdiPoolDestroy(ppiCurrent->pPoolDcAttr);
